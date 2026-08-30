@@ -105,8 +105,16 @@ func TestCreateListener_CrossProjectTG_HiddenAsMissing(t *testing.T) {
 		"no listener row may be created when the wired TG is cross-project")
 }
 
-// Legacy `default_target_group_id` is the same wiring authority (both coexist until
-// CONTRACT) — the cross-project guard must cover it too.
+// Снятый вход `default_target_group_id` отвергается РАНЬШЕ, чем что-либо
+// спрашивается о названной группе, — и потому не заводит нового оракула
+// существования (задача продукта #1596).
+//
+// Проба переориентирована, а не ослаблена: её прежний предикат — «межпроектная
+// группа не привязывается и через легаси-поле» — потерял СРЕДСТВО (второго
+// входного поля больше нет), но не смысл. Сам предикат по-прежнему держит
+// TestCreateListener_CrossProjectTG_HiddenAsMissing на живом входе; здесь
+// утверждается то, что стало новым: отказ наступает до резолва, поэтому о чужой
+// группе не сообщается ничего.
 func TestCreateListener_CrossProjectTG_LegacyField_Rejected(t *testing.T) {
 	t.Parallel()
 	repo := newFakeRepo()
@@ -122,8 +130,14 @@ func TestCreateListener_CrossProjectTG_LegacyField_Rejected(t *testing.T) {
 		Port:                 443,
 		DefaultTargetGroupId: string(crossProjectVictimTGID),
 	})
-	require.Error(t, err)
-	require.Equal(t, codes.FailedPrecondition, status.Code(err))
+	require.Equal(t, codes.InvalidArgument, status.Code(err),
+		"снятый вход обязан отвергаться явно, а не молча отбрасываться")
+	msg := status.Convert(err).Message()
+	require.Contains(t, msg, "target_group_id", "отказ обязан назвать замену")
+	require.NotContains(t, msg, string(crossProjectVictimProject),
+		"проект чужой группы не может утечь в отказ")
+	require.NotContains(t, msg, string(crossProjectVictimTGID),
+		"отказ наступает ДО резолва, поэтому id чужой группы в нём появиться не может")
 	require.Empty(t, listenerByLB(repo, string(lb.ID)))
 }
 

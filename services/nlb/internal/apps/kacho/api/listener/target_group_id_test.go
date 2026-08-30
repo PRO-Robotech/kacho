@@ -102,9 +102,14 @@ func TestCreateListener_NLB_1b_TargetGroupId(t *testing.T) {
 	require.Equal(t, domain.ResourceID("tgr-wired00000000001"), v)
 }
 
-// target_group_id takes precedence over the legacy default_target_group_id when both
-// are supplied (both coexist in EXPAND).
-func TestCreateListener_NLB_1b_TargetGroupId_Precedence(t *testing.T) {
+// ЗАМЕНА, А НЕ СНЯТИЕ. Здесь стояла проба приоритета: «когда присланы оба поля,
+// побеждает target_group_id». Её предикат ИСЧЕЗ вместе с предметом — второго
+// входного поля больше нет, приоритету не между чем возникать (задача продукта
+// #1596). Оставить пробу как есть значило бы утверждать несуществующее; просто
+// снять — потерять сценарий «клиент прислал оба», который как раз и стоил дорого.
+// Поэтому проба утверждает НОВОЕ свойство того же сценария: оба поля в теле дают
+// ЯВНЫЙ отказ, а не молчаливое разрешение в пользу одного из них.
+func TestCreateListener_BothTargetGroupInputs_RejectedNotSilentlyResolved(t *testing.T) {
 	t.Parallel()
 	repo := newFakeRepo()
 	ops := newFakeOpsRepo()
@@ -113,7 +118,7 @@ func TestCreateListener_NLB_1b_TargetGroupId_Precedence(t *testing.T) {
 	seedListenerTG(repo, "tgr-legacy0000000001", lb.ProjectID, lb.RegionID)
 	uc := newCreateUC(repo, ops)
 
-	op, err := uc.Run(contextWithSubject("user:test-actor"), &lbv1.CreateListenerRequest{
+	_, err := uc.Run(contextWithSubject("user:test-actor"), &lbv1.CreateListenerRequest{
 		LoadBalancerId:       string(lb.ID),
 		Name:                 "tcp-443",
 		Protocol:             lbv1.Listener_TCP,
@@ -121,13 +126,10 @@ func TestCreateListener_NLB_1b_TargetGroupId_Precedence(t *testing.T) {
 		TargetGroupId:        "tgr-new0000000000001",
 		DefaultTargetGroupId: "tgr-legacy0000000001",
 	})
-	require.NoError(t, err)
-	require.Nil(t, awaitOpDone(t, ops, op.ID, testTimeout).Error)
-
-	got := listenerByLB(repo, string(lb.ID))
-	require.Len(t, got, 1)
-	v, _ := got[0].DefaultTargetGroupID.Maybe()
-	require.Equal(t, domain.ResourceID("tgr-new0000000000001"), v)
+	require.Equal(t, codes.InvalidArgument, status.Code(err),
+		"молчаливый выбор одного из двух присланных значений — тот самый дефект")
+	require.Empty(t, listenerByLB(repo, string(lb.ID)),
+		"отказ обязан наступать до записи")
 }
 
 // NLB-1-22 (F4, EXPAND): target_group_id is LIVE-mutable — repoint the listener to

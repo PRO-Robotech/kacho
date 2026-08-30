@@ -389,7 +389,8 @@ These extended patterns saturate the RPC × class matrix to ≥320 total cases f
 - `*-UPD-VAL-TARGET-PORT-RETIRED` — VAL/P2 — Update with retired target_port in mask → InvalidArgument
 - `*-CR-CRUD-IPV6` — CRUD/P1 — Create with ip_version=IPV6 → OK
 - `*-UPD-VAL-PROXY-PROTO-V2-RETIRED` — VAL/P2 — Update with retired proxy_protocol_v2 in mask → InvalidArgument
-- `*-UPD-CRUD-DEFAULT-TG-CLEAR` — CRUD,STATE/P2 — Update default_target_group_id=null → cleared
+- `*-UPD-VAL-DEFAULT-TG-RETIRED` — VAL,NEG/P1 — Update with retired default_target_group_id in mask → InvalidArgument naming target_group_id as the replacement (Verifies #1596)
+- `*-UPD-CRUD-DEFAULT-TG-CLEAR` — CRUD,STATE/P2 — Update target_group_id="" → cleared
 - `*-CR-VAL-TG-NAME-COLLISION-CROSS-REGION` — VAL/P2 — same name in different region → allowed (Verifies REQ-DB-TGR-NAME-UNIQ)
 - `*-RM-VAL-EMPTY-LIST` — VAL/P1 — RemoveTargets with empty list → InvalidArgument
 - `*-LST-FILTER-LABELS` — LSG,VAL,NEG/P2 — List with unsupported filter field labels.X="..." → 400 InvalidArgument (filter whitelist is name only)
