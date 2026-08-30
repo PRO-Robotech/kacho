@@ -75,10 +75,13 @@ const consoleFormatScript = "format:check"
 // consoleFormatCIInvocation — строка, которой конвейер зовёт корневой скрипт.
 const consoleFormatCIInvocation = "npm run format:check"
 
-// consoleFormatPrefixRe — вызов `npm run <скрипт> --prefix <пакет>` в корневом
+// consolePrefixCallRe — вызов `npm run <скрипт> --prefix <пакет>` в корневом
 // скрипте. Читается ИМЯ ПАКЕТА, а не порядок слов: цепочку пишут вручную, и
 // перестановка аргументов не должна выводить пакет из-под наблюдения.
-var consoleFormatPrefixRe = regexp.MustCompile(`--prefix\s+([A-Za-z0-9._-]+)`)
+//
+// Общий на все гейты консоли, читающие корневые цепочки (`format:check`,
+// `typecheck`): вторая копия того же предиката разошлась бы с первой молча.
+var consolePrefixCallRe = regexp.MustCompile(`--prefix\s+([A-Za-z0-9._-]+)`)
 
 // TestEveryConsoleFormatCheckHasAProducer — вердикт на настоящем дереве.
 func TestEveryConsoleFormatCheckHasAProducer(t *testing.T) {
@@ -103,7 +106,7 @@ func TestEveryConsoleFormatCheckHasAProducer(t *testing.T) {
 	}
 
 	var called []string
-	for _, m := range consoleFormatPrefixRe.FindAllStringSubmatch(rootScript, -1) {
+	for _, m := range consolePrefixCallRe.FindAllStringSubmatch(rootScript, -1) {
 		called = append(called, m[1])
 	}
 	for _, f := range judgeConsoleFormatProducers(declaring, called) {
