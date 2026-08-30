@@ -52,12 +52,15 @@
 package repohygiene
 
 import (
+	"errors"
 	"os"
 	"path/filepath"
 	"regexp"
 	"sort"
 	"strings"
 	"testing"
+
+	"github.com/PRO-Robotech/kacho/internal/treecorpus"
 )
 
 // sqlCommentText — ТОЛЬКО комментарии, каждый отдельной записью.
@@ -192,10 +195,10 @@ func TestInventoriesReadExecutablePartNotComments(t *testing.T) {
 	asComment := syntheticCommentedTree(t, "-- ")
 	asCode := syntheticCommentedTree(t, "")
 
-	dictComment := enumDictionaryInventory(t, asComment).dict["alpha:q"]["event_type"]
-	dictCode := enumDictionaryInventory(t, asCode).dict["alpha:q"]["event_type"]
-	idxComment, filesC := pendingIndexInventory(t, asComment)
-	idxCode, filesK := pendingIndexInventory(t, asCode)
+	dictComment := enumDictionaryInventory(t, asComment, syntheticMigrationSQL).dict["alpha:q"]["event_type"]
+	dictCode := enumDictionaryInventory(t, asCode, syntheticMigrationSQL).dict["alpha:q"]["event_type"]
+	idxComment, filesC := pendingIndexInventory(t, asComment, syntheticMigrationSQL)
+	idxCode, filesK := pendingIndexInventory(t, asCode, syntheticMigrationSQL)
 	if filesC == 0 || filesK == 0 {
 		t.Fatalf("синтетическое дерево не прочитано (%d / %d миграций) — проба ничего "+
 			"не доказывает", filesC, filesK)
@@ -330,6 +333,49 @@ func sqlCommentAreas(s string) []string {
 
 // migrationFiles — все миграции всех сервисов, отсортированные (имя начинается с
 // версии, поэтому лексикографический порядок и есть порядок применения).
+// migrationSQLCorpus — КАК перечисляются файлы миграций службы.
+//
+// Полос две, и выбирает их ВЫЗЫВАЮЩИЙ, а не помощник. Один и тот же разбор
+// исполняется на настоящем дереве и на синтетическом, собранном самой пробой во
+// временном каталоге, — а состав у них берётся из разных мест по существу:
+// у репозитория есть индекс, и вердикт обязан быть свойством коммита; у
+// временного каталога индекса нет и быть не может.
+//
+// Собирай помощник состав сам, одна из полос была бы неверной: обход диска на
+// настоящем дереве читал бы игнорируемое (рабочие копии агентов, распаковки
+// чартов, отчёты прогонов), а запрос к индексу на синтетике отказывал бы.
+type migrationSQLCorpus func(dir string) ([]string, error)
+
+// trackedMigrationSQL — состав из ИНДЕКСА git. Полоса НАСТОЯЩЕГО дерева.
+//
+// Служба без каталога миграций — законный ПУСТОЙ ответ; недоступный git — отказ,
+// и он доходит до вызывающего. Сведение обоих в `nil, nil` проглотило бы второе.
+func trackedMigrationSQL(dir string) ([]string, error) {
+	sqls, err := treecorpus.Glob(filepath.Join(dir, "*.sql"))
+	if errors.Is(err, treecorpus.ErrEmptyCorpus) {
+		return nil, nil
+	}
+	return sqls, err
+}
+
+// syntheticMigrationSQL — состав с ДИСКА. Полоса дерева, собранного САМОЙ
+// пробой во временном каталоге: репозиторием оно не является, спрашивать у него
+// индекс нечего, и обход файловой системы здесь законен.
+//
+// Настоящему дереву эта полоса не передаётся НИКОГДА — там она вернула бы
+// вердикт о рабочем каталоге вместо вердикта о коммите.
+//
+// ПРЕДЕЛ, названный вслух: гейт дерева (`TestTreeWalkersAskTheIndex`) этого не
+// удержит. Состав уезжает сюда ЗНАЧЕНИЕМ-функцией, а граф вызовов строится по
+// имени — предел объявлен там же, в его собственной шапке. Значит правило
+// «синтетике — диск, репозиторию — индекс» здесь держится ИМЕНЕМ и этой
+// строкой, а не проверкой. Передав `syntheticMigrationSQL` настоящий корень,
+// вернёшь ровно тот дефект, ради которого разделение и заведено, и ни одна
+// проверка об этом не скажет.
+func syntheticMigrationSQL(dir string) ([]string, error) {
+	return filepath.Glob(filepath.Join(dir, "*.sql"))
+}
+
 func migrationFiles(root string) ([]string, error) {
 	servicesDir := filepath.Join(root, "services")
 	entries, err := os.ReadDir(servicesDir)
@@ -341,7 +387,12 @@ func migrationFiles(root string) ([]string, error) {
 		if !e.IsDir() {
 			continue
 		}
-		sqls, globErr := filepath.Glob(filepath.Join(servicesDir, e.Name(), "internal", "migrations", "*.sql"))
+		sqls, globErr := treecorpus.Glob(filepath.Join(servicesDir, e.Name(), "internal", "migrations", "*.sql"))
+		// Служба без каталога миграций — законный ПУСТОЙ ответ; недоступный git —
+		// отказ, и он обязан дойти до вызывающего, а не стать пустым перечнем.
+		if errors.Is(globErr, treecorpus.ErrEmptyCorpus) {
+			continue
+		}
 		if globErr != nil {
 			return nil, globErr
 		}

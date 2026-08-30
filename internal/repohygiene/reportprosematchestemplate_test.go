@@ -79,7 +79,10 @@ func TestReportProseMatchesTheTemplateThatPrintsIt(t *testing.T) {
 	var reports []string
 	corpus := map[string]string{}
 	for _, g := range reportGlobs {
-		matches, err := filepath.Glob(filepath.Join(root, g))
+		matches, err := treecorpus.Glob(filepath.Join(root, g))
+		// Отсутствующая база НЕ смягчается: перечень reportGlobs объявлен руками,
+		// и запись, под которой в индексе нет ничего, — это запись без предмета.
+		// Смолчав здесь, гейт унаследовал бы её как слепое пятно.
 		if err != nil {
 			t.Fatalf("перебор %s: %v", g, err)
 		}
