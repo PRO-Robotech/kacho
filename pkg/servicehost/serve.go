@@ -71,6 +71,17 @@ func Serve(ctx context.Context, d servicecontract.Descriptor, public, internal R
 			"Нулевое значение собирается литералом и не проходило ни одного отказа старта — " +
 			"поднимать по нему процесс значит не проверить ничего")
 	}
+	// Заявление о собственном контуре СТОИТ процесса носителя, и вот это место —
+	// его цена. Без отказа здесь `OwnContour` был бы ручкой, снимающей проверки
+	// проводки: объяви её — и носитель всё равно поднимет контур, а объявленного
+	// в дескрипторе не будет вовсе. Поэтому объявивший собственный контур обязан
+	// собрать его сам, целиком.
+	if because := d.OwnContour(); because != "" {
+		return fmt.Errorf("servicehost: дескриптор объявил СОБСТВЕННЫЙ контур входящего пути (%q) — "+
+			"проводки носителя он не несёт (её принесение отвергается отказом старта О14), "+
+			"и поднимать по нему контур нечем. Либо снимите OwnContour и принесите проводку, "+
+			"либо не зовите носителя", because)
+	}
 	spec := d.Spec()
 	log := spec.Logger
 
@@ -609,7 +620,7 @@ func unaryChain(spec servicecontract.Spec, slot *decisionSlot,
 	if gate, ok := spec.BootGate.Get(); ok && gate != nil {
 		chain = append(chain, bootGateUnary(gate))
 	}
-	chain = append(chain, grpcsrv.PrincipalExtractUnary(spec.Forwarders)...)
+	chain = append(chain, grpcsrv.PrincipalExtractUnary(carriedForwarders(spec))...)
 	return append(chain, slot.unary())
 }
 
@@ -636,6 +647,19 @@ func streamChain(spec servicecontract.Spec, slot *decisionSlot,
 	if budget, ok := spec.StreamBudget.Get(); ok {
 		chain = append(chain, streamBudgetLink(budget))
 	}
-	chain = append(chain, grpcsrv.PrincipalExtractStream(spec.Forwarders)...)
+	chain = append(chain, grpcsrv.PrincipalExtractStream(carriedForwarders(spec))...)
 	return append(chain, slot.stream())
+}
+
+// carriedForwarders — круг отправителей контура, поднятого носителем.
+//
+// Ось здесь ВСЕГДА несёт значение, и это гарантия конструктора, а не удача:
+// изъятие («принимать переданную личность некому») он отвергает у всякого, чей
+// контур поднимает носитель, — именно потому, что пару звеньев извлечения
+// личности носитель ставит безусловно. Нулевой круг, доставшийся отсюда, означал
+// бы «доверяем любому проверенному пиру», поэтому молчаливого пути к нему нет:
+// до `Serve` доходит только принятый дескриптор.
+func carriedForwarders(spec servicecontract.Spec) grpcsrv.TrustedForwarders {
+	circle, _ := spec.Forwarders.Get()
+	return circle
 }

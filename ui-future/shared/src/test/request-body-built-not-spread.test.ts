@@ -153,10 +153,25 @@ describe("generic submit paths build the request body", () => {
       unlisted: found.filter((rel) => !listed.has(rel)),
     }).toEqual({ apps: APPS.length, copiesFound: found.length, shims: shims.length, unlisted: [] });
     expect(found.length).toBeGreaterThan(0);
-    // Own premise: the four inline forms folded into `shared/` still delegate.
-    // Without this the guard would go quietly vacuous the day a fold is reverted
-    // by deleting the shim rather than by restoring a copy.
-    expect(shims.length).toBeGreaterThan(0);
+  });
+
+  it("own premise: a shim is recognised as one, a copy is not (synthetic control)", () => {
+    // Эта проба заменила утверждение `shims.length > 0`, и замена — не
+    // ослабление. Прежнее сторожило распознаватель ЖИВОЙ записью дерева: пока
+    // хоть где-то оставалась прослойка, `isShim` считался работающим. Сведение
+    // форков доведено до конца — прослоек в дереве НОЛЬ, — и проба покраснела на
+    // достижении собственной цели, тогда как распознаватель исправен.
+    //
+    // Контроль в обе стороны на синтетике: он не зависит от того, осталась ли в
+    // дереве прослойка, и потому не истекает вместе с ней. Перепись (`shims`)
+    // печатается утверждением выше и остаётся наблюдаемой: «прослоек нет» и
+    // «распознаватель молчит» по-прежнему различимы.
+    expect(isShim('// комментарий\nexport * from "@shared/x";\n')).toBe(true);
+    expect(isShim('export { A } from "@shared/x";\n')).toBe(true);
+    expect(isShim('export function A() {\n  return null;\n}\n')).toBe(false);
+    // Пустой файл прослойкой не считается — иначе снятое тело выглядело бы
+    // делегированием.
+    expect(isShim("// только комментарий\n")).toBe(false);
   });
 
   for (const [app, rel] of EDIT_PATHS) {

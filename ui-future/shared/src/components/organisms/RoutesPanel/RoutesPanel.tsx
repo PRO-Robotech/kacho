@@ -37,7 +37,7 @@ import { DeleteOutlined, EditOutlined, PlusOutlined } from "@ant-design/icons";
 import { useMutation, useQueryClient } from "@tanstack/react-query";
 
 import { api } from "@shared/api/client";
-import { extractOperationId } from "@shared/components/molecules/OperationDialog";
+import { resolveMutationResponse } from "@shared/lib/operation-outcome";
 import { REGISTRY } from "@shared/lib/resource-registry";
 import { RefSelect } from "@shared/components/organisms/form/RefSelect";
 import {
@@ -231,10 +231,15 @@ export function RoutesPanel({ routeTableId, projectId, routes }: RoutesPanelProp
         update_mask: "staticRoutes",
       });
 
-      const operationId = extractOperationId(res);
-      if (operationId) {
+      // Отказ уходит вызывающему через `throw`: `save()` ниже ждёт эту
+      // мутацию и показывает отказ тем же сообщением, что и отказ края.
+      // Прежний ключ ветки «операции нет» не имел — панель закрывала правку
+      // молча, при том что подтвердить сохранение было нечем.
+      const resolved = resolveMutationResponse(res, rtSpec.mutationsReturnOperation !== false);
+      if (resolved.kind === "violation") throw new Error(resolved.message);
+      if (resolved.kind === "operation") {
         operationStore.start({
-          id: operationId,
+          id: resolved.opId,
           title: `Сохранение маршрутов (${next.length})`,
           resourceId: rtSpec.id,
           projectId,

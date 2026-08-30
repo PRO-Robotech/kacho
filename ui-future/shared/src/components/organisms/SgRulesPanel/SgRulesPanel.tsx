@@ -13,7 +13,7 @@ import { useMutation, useQueryClient } from "@tanstack/react-query";
 import { Button, Checkbox, Dropdown, Modal, Typography } from "antd";
 import { MoreOutlined, EditOutlined, DeleteOutlined, PlusOutlined, ExclamationCircleFilled } from "@ant-design/icons";
 import { api } from "@shared/api/client";
-import { extractOperationId } from "@shared/components/molecules/OperationDialog";
+import { resolveMutationResponse } from "@shared/lib/operation-outcome";
 import { FormShell } from "@shared/components/organisms/form/FormShell";
 import { FormFooter } from "@shared/components/organisms/form/FormFooter";
 import { DirectionFact } from "@shared/components/atoms/DirectionFact";
@@ -181,6 +181,13 @@ function targetCell(r: SgRule, projectId: string | null): ReactNode {
   );
 }
 
+// Отвечают ли мутации группы безопасности операцией — свойство РЕСУРСА, и
+// объявляет его спека. Величина взята на уровне модуля, а не в теле функции:
+// её читает обработчик под `useCallback`, и чтение поля спеки внутри него
+// потребовало бы держать саму спеку в перечне зависимостей — то есть заводить
+// зависимость там, где меняться нечему.
+const SG_EXPECTS_OPERATION = REGISTRY["security-groups"].mutationsReturnOperation !== false;
+
 export function SgRulesPanel({ sgId, projectId, rules, networkId }: Props) {
   const sgSpec = REGISTRY["security-groups"];
   const qc = useQueryClient();
@@ -212,8 +219,14 @@ export function SgRulesPanel({ sgId, projectId, rules, networkId }: Props) {
   const submit = useCallback(
     async (payload: { deletion_rule_ids?: string[]; addition_rule_specs?: unknown[] }, opTitle: string) => {
       const resp = await mutateAsync(payload);
-      const opId = extractOperationId(resp);
-      if (opId) operationStore.start({ id: opId, title: opTitle, resourceId: sgSpec.id, projectId });
+      // Отказ ОТДАЁТСЯ вызывающему — тем же способом, каким эта функция уже
+      // отдаёт отказ края (см. её шапку выше): решение «как показать»
+      // принимает вызывающий, а не она.
+      const resolved = resolveMutationResponse(resp, SG_EXPECTS_OPERATION);
+      if (resolved.kind === "violation") throw new Error(resolved.message);
+      if (resolved.kind === "operation") {
+        operationStore.start({ id: resolved.opId, title: opTitle, resourceId: sgSpec.id, projectId });
+      }
       void refresh();
     },
     [mutateAsync, projectId, refresh, sgSpec.id],

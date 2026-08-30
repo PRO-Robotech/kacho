@@ -22,6 +22,7 @@
 // полей не несёт вовсе) — эти два глагола единственный путь. Снятие блока, в
 // котором есть выданные адреса, край отвергает; тогда блок остаётся на месте, а
 // причина показывается.
+import { REGISTRY } from "@shared/lib/resource-registry";
 import { CidrTableSection, type CidrBlockFields } from "@shared/components/organisms/CidrTableSection";
 
 const POOLS_API = "/vpc/v1/addressPools";
@@ -58,6 +59,7 @@ export function AddressPoolCidrManager({ poolId, v4Blocks, v6Blocks }: Props) {
         blockFields={BLOCK_FIELDS}
         extraBody={{ address_pool_id: poolId }}
         invalidateKey="address-pools"
+        expectOperation={REGISTRY["address-pools"].mutationsReturnOperation !== false}
         alsoInvalidate={alsoInvalidate}
         kind="v4"
         blocks={v4Blocks}
@@ -73,6 +75,7 @@ export function AddressPoolCidrManager({ poolId, v4Blocks, v6Blocks }: Props) {
         blockFields={BLOCK_FIELDS}
         extraBody={{ address_pool_id: poolId }}
         invalidateKey="address-pools"
+        expectOperation={REGISTRY["address-pools"].mutationsReturnOperation !== false}
         alsoInvalidate={alsoInvalidate}
         kind="v6"
         blocks={v6Blocks}

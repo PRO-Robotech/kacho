@@ -31,20 +31,40 @@
 
 set -euo pipefail
 cd "$(dirname "$0")/.."
+NEWMAN_DIR="$PWD"
 
-# COLLECTIONS — собственный ожидаемый набор суиты (gen.py эмитит 1:1 из cases/*.py).
-# NB: legacy `instance` RETIRED — вытеснен `instance-redesign` (COMP-1 Instance core:
-# instanceKind/machineTypeId/bootSource/vm|container spec). Legacy-суита была целиком
-# построена на tombstoned platformId/resourcesSpec/bootDiskSpec create-поверхности
-# (RESERVED в CreateInstanceRequest, ban #2) и не могла пройти.
-# NB: `disk` / `image` / `snapshot` / `disk-type` RETIRED вместе с дублем блочного
-# хранения (625f6f05, a52f0b87) — владелец один, kacho-storage; их cases/ и
-# collections/ удалены, суиты живут в services/storage/tests/newman. Этот список —
-# ОЖИДАЕМЫЙ набор, и `run_one` на отсутствующий файл пишет rc="missing" → строка
-# MISSING → bad=1. Ретайрнутые стемы, оставленные здесь, делали вердикт compute
-# КРАСНЫМ безусловно, независимо от утверждений (drift-петля ниже только ДОБАВЛЯЕТ
-# стемы, никогда не вычищает).
-COLLECTIONS=(instance-redesign machine-type operation list-filter authz-deny sec-d instance-nic-attach)
+# ОТБОР КОЛЛЕКЦИЙ — ИЗ ОБЩЕГО СЛОЯ, А НЕ РУКОПИСНЫМ МАССИВОМ.
+#
+# Здесь стоял массив `COLLECTIONS=(...)` — второе место об одном предмете.
+# Перечень коллекций объявлен деревом (`gen.py` эмитит коллекцию на каждый
+# `cases/<имя>.py`), и рукописная копия расходится с ним молча, ровно в одну
+# сторону: новый модуль кейсов появляется, коллекция генерируется, а массив о
+# ней не знает. У registry это уже случилось, и подхват печатал предупреждение
+# на КАЖДОМ штатном прогоне — а такое предупреждение перестают читать вместе с
+# настоящими.
+#
+# Общий слой ищется ВВЕРХ ОТ ЭТОГО ФАЙЛА, а не от cwd: прогонщик зовут из
+# каталога набора, и путь, выведенный из текущего каталога, был бы свойством
+# того, ОТКУДА позвали. Поиск — тот же бутстрап, что у `_kacholib_dir()` в
+# gen.py, и по той же причине неустраним: общий слой нельзя найти его же
+# средствами.
+_stems_lib() {
+  local d="$NEWMAN_DIR"
+  while [[ "$d" != "/" ]]; do
+    if [[ -f "$d/tests/newman/kacholib/stems.sh" ]]; then
+      printf '%s\n' "$d/tests/newman/kacholib/stems.sh"
+      return 0
+    fi
+    d="$(dirname "$d")"
+  done
+  echo "общий слой отбора не найден: ожидается <корень>/tests/newman/kacholib/stems.sh" >&2
+  echo "Это ОТКАЗ, а не пропуск: без него прогонщик выбрал бы коллекции молча и не те." >&2
+  return 1
+}
+_STEMS_LIB="$(_stems_lib)"
+# shellcheck source=/dev/null
+. "$_STEMS_LIB"
+
 
 SERVICE=""
 BAIL=""
@@ -184,16 +204,14 @@ if [[ -n "$SERVICE" ]]; then
   stems=("$SERVICE")
   run_one "$SERVICE"
 else
-  stems=("${COLLECTIONS[@]}")
-  for f in collections/*.postman_collection.json; do
-    [[ -e "$f" ]] || continue
-    extra_stem="$(basename "$f" .postman_collection.json)"
-    for known in "${COLLECTIONS[@]}"; do
-      if [[ "$known" == "$extra_stem" ]]; then continue 2; fi
-    done
-    echo "[drift] ${extra_stem} — сгенерирована, но нет в COLLECTIONS; прогоняем"
-    stems+=("$extra_stem")
-  done
+  while IFS= read -r s; do
+    [[ -n "$s" ]] && stems+=("$s")
+  done < <(newman_all_stems "$NEWMAN_DIR")
+  if [[ "${#stems[@]}" -eq 0 ]]; then
+    echo "FAIL: коллекций не найдено — прогон без предмета не может быть зелёным." >&2
+    exit 1
+  fi
+  echo "[stems] коллекций к прогону: ${#stems[@]} (выведены из дерева, не выписаны): ${stems[*]}"
   for res in "${stems[@]}"; do
     run_one "$res"
   done

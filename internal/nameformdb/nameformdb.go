@@ -52,14 +52,15 @@ package nameformdb
 
 import (
 	"context"
-	"errors"
 	"fmt"
 	"sort"
 	"strings"
 	"testing"
 
-	"github.com/jackc/pgx/v5"
 	"github.com/jackc/pgx/v5/pgconn"
+
+	"github.com/PRO-Robotech/kacho/pkg/db/pgfault"
+	"github.com/jackc/pgx/v5"
 
 	canon "github.com/PRO-Robotech/kacho/pkg/validate/nameform"
 )
@@ -455,18 +456,18 @@ func rejectedByForm(ctx context.Context, db Execer, tbl Table, conname, label, n
 		return fmt.Sprintf("%s: %s (%q) — строка ВСТАВЛЕНА, форма имени не действует", tbl.Name, label, name)
 	}
 
-	var pgErr *pgconn.PgError
-	if !errors.As(err, &pgErr) {
+	f := pgfault.Classify(err)
+	if !f.FromDatabase() {
 		return fmt.Sprintf("%s: %s (%q) — отказ пришёл не от сервера: %v", tbl.Name, label, name, err)
 	}
-	if pgErr.Code != "23514" {
-		return fmt.Sprintf("%s: %s (%q) — ожидался отказ проверки (23514), получен %s: %s",
-			tbl.Name, label, name, pgErr.Code, pgErr.Message)
+	if !f.Is(pgfault.Check) {
+		return fmt.Sprintf("%s: %s (%q) — ожидался отказ проверки, получен %s: %s",
+			tbl.Name, label, name, f.SQLState, f.Message)
 	}
-	if pgErr.ConstraintName != conname {
+	if f.Constraint != conname {
 		return fmt.Sprintf("%s: %s (%q) — отвергло ДРУГОЕ ограничение (%s), а не форма имени (%s): "+
 			"строка не дошла до проверки формы, и её действие этим не доказано",
-			tbl.Name, label, name, pgErr.ConstraintName, conname)
+			tbl.Name, label, name, f.Constraint, conname)
 	}
 	return ""
 }

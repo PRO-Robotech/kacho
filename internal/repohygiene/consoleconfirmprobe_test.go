@@ -59,7 +59,6 @@ const confirmMarker = `"tooltip"`
 // обязано истекать само, иначе оно переживёт свой предмет.
 var confirmRoster = map[string]string{
 	"ui-future/shared/src/pages/system/TokenIssuancePage.tsx":                                 "выдача токена; пробы у страницы нет вовсе",
-	"ui-future/shared/src/pages/TargetGroupDetailPage.tsx":                                    "снятие цели группы; пробы у страницы нет вовсе",
 	"ui-future/shared/src/pages/system/ClusterAdminsPage.tsx":                                 "снятие администратора кластера; пробы у страницы нет вовсе",
 	"ui-future/iam/src/registerExtensions.tsx":                                                "два подтверждения на вкладках субъекта; проба есть, подтверждение не открывает",
 	"ui-future/iam/src/pages/iam/GroupsPage/GroupsPage.tsx":                                   "удаление группы и удаление участника; проба есть, подтверждение не открывает",

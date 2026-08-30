@@ -405,7 +405,8 @@ func TestDescriptorCarriesTheConfiguredCircle(t *testing.T) {
 		if err != nil {
 			t.Fatalf("дескриптор не принят на круге %v: %v", sans, err)
 		}
-		return desc.Spec().Forwarders.SANs()
+		circle, _ := desc.Spec().Forwarders.Get()
+		return circle.SANs()
 	}
 
 	const otherSAN = "spiffe://kacho.cloud/ns/kacho-system/sa/kacho-nlb"

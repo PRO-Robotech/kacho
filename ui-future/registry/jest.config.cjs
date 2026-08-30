@@ -10,7 +10,15 @@ module.exports = {
   testEnvironment: "jsdom",
   extensionsToTreatAsEsm: [".ts", ".tsx"],
   setupFilesAfterEnv: ["<rootDir>/../shared/src/test/setup.ts"],
-  testMatch: ["<rootDir>/src/**/*.test.{ts,tsx}"],
+  // Суита общего модуля исполняется прогоном ЭТОГО домена (#1469): у
+  // `ui-future/shared` собственного прогона нет, его пробы исполняют
+  // модули-потребители. Раздел `/registry/*` берёт из общего оболочку карточки,
+  // реестр ресурсов и почти все компоненты — без этих двух строк «зелёный
+  // registry» означал бы «зелены пробы домена», а не «домен работает с тем
+  // общим кодом, что лежит рядом»: правка в общем модуле этим прогоном не
+  // проверялась бы вовсе.
+  roots: ["<rootDir>/src", "<rootDir>/../shared/src"],
+  testMatch: ["<rootDir>/src/**/*.test.{ts,tsx}", "<rootDir>/../shared/src/**/*.test.{ts,tsx}"],
   // У `ui-future/shared` собственных node_modules нет: его исходники — часть сборки
   // КАЖДОГО remote'а, и зависимости им даёт remote (так же это делает vite, для
   // которого `@shared/*` — обычный alias внутри одного графа). Без этой строки любой

@@ -314,7 +314,9 @@ CASES.append(Case(
              body={"updateMask": "sizeBytes", "sizeBytes": _SHRINK_SIZE},
              test_script=[*assert_status(200), *save_from_response("j.id", "opId")]),
         poll_operation_until_done(),
-        assert_op_error(3, "INVALID_ARGUMENT", msg_substr="Volume size can only be increased"),
+        # `msg_substr` приводит обе стороны к нижнему регистру и заглавную имени
+        # ресурса не различает; `msg_regex` сверяет текст владельца как есть.
+        assert_op_error(3, "INVALID_ARGUMENT", msg_regex="Volume size can only be increased"),
         Step(name="cleanup", method="DELETE", path=f"{VOL}/{{{{volumeId}}}}", test_script=[*save_from_response("j.id", "opId")]),
         poll_operation_until_done(),
     ],
@@ -334,7 +336,9 @@ CASES.append(Case(
              body={"updateMask": "sizeBytes", "sizeBytes": _DEF_SIZE},
              test_script=[*assert_status(200), *save_from_response("j.id", "opId")]),
         poll_operation_until_done(),
-        assert_op_error(3, "INVALID_ARGUMENT", msg_substr="Volume size can only be increased"),
+        # `msg_substr` приводит обе стороны к нижнему регистру и заглавную имени
+        # ресурса не различает; `msg_regex` сверяет текст владельца как есть.
+        assert_op_error(3, "INVALID_ARGUMENT", msg_regex="Volume size can only be increased"),
         Step(name="cleanup", method="DELETE", path=f"{VOL}/{{{{volumeId}}}}", test_script=[*save_from_response("j.id", "opId")]),
         poll_operation_until_done(),
     ],
@@ -424,7 +428,8 @@ CASES.append(Case(
         Step(name="cr-2-dup", method="POST", path=VOL, body=_vol_body("dup"),
              test_script=[*assert_status(200), *save_from_response("j.id", "opId")]),
         poll_operation_until_done(),
-        assert_op_error(6, "ALREADY_EXISTS", msg_substr="already exists in project"),
+        # Целиком: подстрока без имени ресурса не отличает дубль тома от дубля образа.
+        assert_op_error(6, "ALREADY_EXISTS", msg_regex="volume with name [^ ]+ already exists in project"),
         Step(name="cleanup", method="DELETE", path=f"{VOL}/{{{{volumeId}}}}", test_script=[*save_from_response("j.id", "opId")]),
         poll_operation_until_done(),
     ],
@@ -508,7 +513,8 @@ CASES.append(Case(
         Step(name="del-nx", method="DELETE", path=f"{VOL}/{{{{garbageStorageId}}}}",
              test_script=[*assert_status(200), *save_from_response("j.id", "opId")]),
         poll_operation_until_done(),
-        assert_op_error(5, "NOT_FOUND", msg_substr="not found"),
+        # Целиком, а не «not found»: голая подстрока зеленела на сообщении о ЛЮБОМ ресурсе.
+        assert_op_error(5, "NOT_FOUND", msg_regex="Volume [^ ]+ not found"),
     ],
 ))
 
@@ -556,7 +562,9 @@ CASES.append(Case(
         Step(name="cr-bad-dt", method="POST", path=VOL, body=_vol_body("bdt", diskTypeId="block-unicorn"),
              test_script=[*assert_status(200), *save_from_response("j.id", "opId")]),
         poll_operation_until_done(),
-        assert_op_error(9, "FAILED_PRECONDITION", msg_substr="DiskType block-unicorn not found"),
+        # `msg_substr` приводит обе стороны к нижнему регистру и заглавную имени
+        # ресурса не различает; `msg_regex` сверяет текст владельца как есть.
+        assert_op_error(9, "FAILED_PRECONDITION", msg_regex="DiskType block-unicorn not found"),
     ],
 ))
 
@@ -570,7 +578,9 @@ CASES.append(Case(
              body=_vol_body("bsnap", sourceSnapshotId="{{garbageSnapshotId}}"),
              test_script=[*assert_status(200), *save_from_response("j.id", "opId")]),
         poll_operation_until_done(),
-        assert_op_error(9, "FAILED_PRECONDITION", msg_substr="Snapshot snp00000000000000000 not found"),
+        # `msg_substr` приводит обе стороны к нижнему регистру и заглавную имени
+        # ресурса не различает; `msg_regex` сверяет текст владельца как есть.
+        assert_op_error(9, "FAILED_PRECONDITION", msg_regex="Snapshot snp00000000000000000 not found"),
     ],
 ))
 
@@ -1116,7 +1126,9 @@ CASES.append(Case(
              body={"diskTypeId": "{{existingDiskTypeId}}"},
              test_script=[*assert_status(200), *save_from_response("j.id", "opId")]),
         poll_operation_until_done(),
-        assert_op_error(5, "NOT_FOUND", msg_substr="Volume vol00000000000000000 not found"),
+        # `msg_substr` приводит обе стороны к нижнему регистру и заглавную имени
+        # ресурса не различает; `msg_regex` сверяет текст владельца как есть.
+        assert_op_error(5, "NOT_FOUND", msg_regex="Volume vol00000000000000000 not found"),
     ],
 ))
 
@@ -1139,7 +1151,9 @@ CASES.append(Case(
              path=f"{VOL}/{{{{volumeId}}}}:changeDiskType", body={"diskTypeId": "block-unicorn"},
              test_script=[*assert_status(200), *save_from_response("j.id", "opId")]),
         poll_operation_until_done(),
-        assert_op_error(9, "FAILED_PRECONDITION", msg_substr="DiskType block-unicorn not found"),
+        # `msg_substr` приводит обе стороны к нижнему регистру и заглавную имени
+        # ресурса не различает; `msg_regex` сверяет текст владельца как есть.
+        assert_op_error(9, "FAILED_PRECONDITION", msg_regex="DiskType block-unicorn not found"),
         Step(name="verify-unchanged", method="GET", path=f"{VOL}/{{{{volumeId}}}}",
              test_script=[*assert_status(200),
                           "pm.test('класс тома не изменился отвергнутым глаголом', () => pm.expect(String(pm.response.json().diskTypeId)).to.eql(String(pm.environment.get('existingDiskTypeId'))));"]),

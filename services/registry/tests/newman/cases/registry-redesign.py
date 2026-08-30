@@ -263,7 +263,11 @@ CASES.append(Case(
                     # статусу — то есть падение называло невиновного.
                     "pm.test('rejected (FAILED_PRECONDITION → 400)', () => pm.expect(pm.response.code, pm.response.text()).to.eql(400));",
                     "pm.test('grpc code 9 (FAILED_PRECONDITION, peer-validate lane)', () => pm.expect(pm.response.json().code).to.eql(9));",
-                    "pm.test('region not found text', () => pm.expect((pm.response.json().message||'').toLowerCase()).to.include('region').and.to.include('not found'));",
+                    # Текст владельца целиком (services/registry/.../api/registry/create.go,
+                    # `regionExistsErr`), а не два слова порознь: «region» несут пять
+                    # разных отказов registry, «not found» — тридцать два, и ни одно из
+                    # них не про эту полосу (#1520).
+                    *assert_refusal_message("region {{garbageRegionId}} not found"),
                 ])],
 ))
 

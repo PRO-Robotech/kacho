@@ -187,7 +187,10 @@ CASES.append(Case(
             test_script=[
                 *assert_status(409),
                 *assert_grpc_code(6, "ALREADY_EXISTS"),
-                "pm.test('mentions already exists', () => pm.expect(pm.response.json().message.toLowerCase()).to.include('already exists'));",
+                # Текст владельца дословно (services/vpc/.../api/network/create.go), а не
+                # общая часть тона: под `include('already exists')` проходил отказ ЛЮБОГО
+                # ресурса vpc, и подмены одного отказа другим шаг не различал (#1520).
+                *assert_refusal_message("Network with name net-dup-{{runId}} already exists"),
             ],
         ),
         Step(
@@ -829,7 +832,11 @@ CASES.extend(ecp_labels_block("NET", "/vpc/v1/networks", {}))
 CASES.extend(updatemask_decision_table("NET", "/vpc/v1/networks"))
 CASES.extend(filter_syntax_block("NET", "/vpc/v1/networks"))
 CASES.append(pagination_roundtrip("NET", "/vpc/v1/networks"))
-CASES.append(idempotency_block("NET", "/vpc/v1/networks", "net-idm-{{runId}}", {}))
+CASES.append(idempotency_block(
+    "NET", "/vpc/v1/networks",
+    # Текст владельца дословно: services/vpc/internal/apps/kacho/api/network/create.go
+    refusal="Network with name {name} already exists",
+    name_template="net-idm-{{runId}}", body_extra={}))
 
 # Update happy / perf-baseline / conformance-text / authz-caller-headers
 CASES.extend(update_happy_per_field("NET", "/vpc/v1/networks", "/vpc/v1/networks", {"projectId": "{{_suiteProjectId}}"}))
@@ -846,7 +853,10 @@ CASES.extend(http_method_not_allowed_block("NET", "/vpc/v1/networks"))
 CASES.extend(malformed_body_block("NET", "/vpc/v1/networks"))
 
 # AlreadyExists dup-name + update-mask partial + perf-baseline-get + list-total-size + headers/content-type
-CASES.append(alreadyexists_dup_name_for("NET", "/vpc/v1/networks", {"projectId": "{{_suiteProjectId}}"}))
+CASES.append(alreadyexists_dup_name_for(
+    "NET", "/vpc/v1/networks",
+    refusal="Network with name {name} already exists",
+    body_create={"projectId": "{{_suiteProjectId}}"}))
 CASES.extend(update_mask_partial_block("NET", "/vpc/v1/networks", "/vpc/v1/networks", {"projectId": "{{_suiteProjectId}}"}))
 CASES.append(perf_baseline_get_block("NET", "/vpc/v1/networks", {"projectId": "{{_suiteProjectId}}"}))
 CASES.extend(list_total_size_check_block("NET", "/vpc/v1/networks"))

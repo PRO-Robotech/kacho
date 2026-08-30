@@ -109,10 +109,39 @@ function substitutePath(item, env) {
   }));
 }
 
+// ВСТРОЕННЫЕ ВЕЛИЧИНЫ ПЕСОЧНИЦЫ NEWMAN. `CryptoJS` кейс не импортирует — его даёт
+// песочница, и шаг, собирающий заголовок Basic, законно на неё рассчитывает. Дублёр без
+// неё ронял такой шаг исключением `CryptoJS is not defined`, то есть объявлял находкой
+// шаг, который в прогоне работает.
+//
+// ПОДДЕЛКА НЕ ШИРЕ НАСТОЯЩЕГО И НЕ УЖЕ ИСПОЛЬЗУЕМОГО: реализованы ровно те две
+// операции, которые зовут кейсы (`grep -n CryptoJS cases/*.py` → одна форма,
+// `enc.Base64.stringify(enc.Utf8.parse(s))`). Обращение к любой другой части даёт
+// обычный отказ по имени — его гейт покажет как «скрипт падает», и это верно: подделка
+// честно говорит, чего не умеет, вместо того чтобы молча вернуть `undefined` и разойтись
+// с newman незаметно (`testing.md`: дублёр обязан выполнять контракт настоящего).
+const SANDBOX_CRYPTOJS = {
+  enc: {
+    // Слово CryptoJS — непрозрачный носитель байтов; наружу отдаётся только через
+    // stringify, поэтому внутреннее представление здесь произвольно.
+    Utf8: { parse: (str) => ({ __bytes: Buffer.from(String(str), 'utf8') }) },
+    Base64: {
+      stringify: (word) => {
+        if (!word || !word.__bytes) {
+          throw new Error('CryptoJS.enc.Base64.stringify: дублёр умеет только слово из ' +
+            'CryptoJS.enc.Utf8.parse — иная форма в дереве не встречается и не подделывается');
+        }
+        return word.__bytes.toString('base64');
+      },
+    },
+  },
+};
+
 function runStep(item, response, env, onRetry) {
   const executed = [];
   const failed = [];
   let threw = null;
+  let skipped = false;
 
   const fail = (msg) => { throw new Error(msg); };
   const pm = {
@@ -143,7 +172,18 @@ function runStep(item, response, env, onRetry) {
       url: { path: substitutePath(item, env), raw: (item.request && item.request.url && item.request.url.raw) || '' },
     },
     info: { requestName: item.name },
-    execution: { setNextRequest: () => { if (onRetry) onRetry(); } },
+    // ПРОПУСК ЗАПРОСА — ЧАСТЬ КОНТРАКТА NEWMAN, а не крайний случай. Санкционированная
+    // форма отсутствующей фикстуры в этом дереве — «утвердить, назвав переменную, и НЕ
+    // отправлять» (`gen.py::_auth_pre_script`, `require_env_url`, `PRE_GLOBAL`;
+    // объявлена в `exec-coverage.py`, раздел STATIC BANS). Дублёра без этого вызова
+    // такой шаг ронял ИСКЛЮЧЕНИЕМ ещё в пред-скрипте — и гейт объявлял находкой ровно
+    // ту конструкцию, которой требует сам: 21 находка из 21 на суите registry имела
+    // этот и только этот источник (16 попали в предикат Q, 5 — в «скрипт падает»).
+    // Дублёр обязан выполнять контракт настоящего (`testing.md`).
+    execution: {
+      setNextRequest: () => { if (onRetry) onRetry(); },
+      skipRequest: () => { skipped = true; },
+    },
     expect: makeExpect(fail),
     test: (name, fn) => {
       executed.push(name);
@@ -166,11 +206,18 @@ function runStep(item, response, env, onRetry) {
     if (!ev) continue;
     try {
       // eslint-disable-next-line no-new-func
-      new Function('pm', 'Date', 'console', ev.script.exec.join('\n'))(pm, FakeDate, QUIET_CONSOLE);
+      new Function('pm', 'Date', 'console', 'CryptoJS', ev.script.exec.join('\n'))(
+        pm, FakeDate, QUIET_CONSOLE, SANDBOX_CRYPTOJS);
     } catch (e) {
       threw = `${listen}: ${e.message}`;
       break;
     }
+    // ПРОПУСК ПОДАВЛЯЕТ test-СКРИПТ — и это несущая половина, а не деталь. Заглушка,
+    // которая только не роняет, сделала бы дублёр СНИСХОДИТЕЛЬНЕЕ newman: шаг,
+    // пропустивший запрос МОЛЧА, спросил бы утверждение из test-скрипта, которого в
+    // прогоне не было, и предикаты P/Q перестали бы его находить. Свойство держит
+    // зеркальная проба (д) в `prove()`.
+    if (skipped) break;
   }
   return { executed, failed, threw };
 }
@@ -265,6 +312,17 @@ function survey(item, mkEnv) {
 // Гейт обязан краснеть на возвращённом дефекте и МОЛЧАТЬ на законной конструкции той
 // же формы. Без второй половины он ловил бы форму, а не существо, и первый же ложный
 // срабат его отключил бы. Оба образца — синтетические, реального дерева не касаются.
+// Законные близнецы пробы предпосылки: те конструкции, на которых гейт ОБЯЗАН
+// молчать. Перечень ВЫВОДИТСЯ в вывод, а не выписывается числом в строке отчёта:
+// выписанное число устаревает молча — это уже случилось (стояло «две законные
+// конструкции» при пяти).
+const PROVE_LEGIT_TWINS = [
+  'отказ вместо тишины',
+  'ограниченный повтор',
+  'отказ по имени + пропуск',
+  'встроенный CryptoJS песочницы',
+];
+
 function prove() {
   const mk = (name, exec) => ({ name, request: { method: 'GET' }, event: [{ listen: 'test', script: { exec } }] });
 
@@ -289,6 +347,38 @@ function prove() {
     "pm.test('settled', () => pm.expect(pm.response.code).to.eql(200));",
   ]);
 
+  // (г) и (д) — ДУБЛЁР ОБЯЗАН УМЕТЬ ТО, ЧТО УМЕЕТ NEWMAN: `pm.execution.skipRequest()`.
+  //
+  //     Санкционированная форма отсутствующей фикстуры — «утвердить, НАЗВАВ переменную,
+  //     и НЕ отправлять»: её пишут `gen.py::_auth_pre_script`, `require_env_url` и
+  //     `PRE_GLOBAL`, и объявляет `exec-coverage.py` (STATIC BANS). Дублёр, не знающий
+  //     этого вызова, ронял такой шаг ИСКЛЮЧЕНИЕМ ещё в пред-скрипте — то есть гейт
+  //     объявлял находкой ровно ту конструкцию, которой требует сам.
+  //
+  //     ПАРА ОБЯЗАТЕЛЬНА, И ВТОРАЯ ПОЛОВИНА ЗДЕСЬ НЕ УКРАШЕНИЕ. Заглушка `skipRequest`,
+  //     ничего не делающая, вернула бы (г) в зелёное и при этом дала бы test-скрипту
+  //     исполниться — то есть дублёр стал бы СНИСХОДИТЕЛЬНЕЕ newman, и немой пропуск
+  //     (д) перестал бы находиться вовсе. Поэтому (д) требует, чтобы пропуск ДЕЙСТВОВАЛ.
+  const mkPre = (name, pre, test) => ({
+    name,
+    request: { method: 'GET' },
+    event: [
+      { listen: 'prerequest', script: { exec: pre } },
+      { listen: 'test', script: { exec: test } },
+    ],
+  });
+  const skipAfterRefusal = mkPre('injected-refuse-then-skip', [
+    "const _v = pm.environment.get('jwtProjectViewerA') || '';",
+    "if (!_v) {",
+    "  pm.test('FIXTURE REQUIRED: jwtProjectViewerA', () => pm.expect.fail('jwtProjectViewerA is empty'));",
+    "  pm.execution.skipRequest();",
+    "}",
+  ], ["pm.test('status 200', () => pm.expect(pm.response.code).to.eql(200));"]);
+  const skipWithoutRefusal = mkPre('injected-skip-without-refusal', [
+    "const _v = pm.environment.get('jwtProjectViewerA') || '';",
+    "if (!_v) { pm.execution.skipRequest(); }",
+  ], ["pm.test('status 200', () => pm.expect(pm.response.code).to.eql(200));"]);
+
   const q = (it) => {
     const full = survey(it, populatedEnv);
     const bare = survey(it, emptySubjectEnv);
@@ -307,6 +397,55 @@ function prove() {
   if (r.caught || r.mute.length > 0) {
     problems.push(`законный ограниченный повтор ОШИБОЧНО помечен (Q=${r.caught}, R=[${r.mute.join(',')}]) — ` +
       'гейт не доводит петлю ожидания до конца');
+  }
+  // (г) ЗАКОННАЯ конструкция: отказ по имени переменной, затем пропуск. Ни исключения,
+  //     ни находки — утверждение пред-скрипта исполнилось и засчитано.
+  const sk = survey(skipAfterRefusal, emptySubjectEnv);
+  if (sk.threws.length > 0) {
+    problems.push(`дублёр не умеет pm.execution.skipRequest — санкционированная форма ` +
+      `отсутствующей фикстуры роняет его исключением (${sk.threws[0]}); гейт объявит находкой ` +
+      'ровно ту конструкцию, которой требует сам');
+  } else if (q(skipAfterRefusal).caught) {
+    problems.push('законный «отказ по имени + пропуск» ОШИБОЧНО пойман предикатом Q');
+  }
+  // (д) ЗЕРКАЛО: пропуск БЕЗ отказа обязан остаться находкой. Оно же доказывает, что
+  //     пропуск ДЕЙСТВУЕТ: заглушка-пустышка пустила бы test-скрипт, шаг спросил бы
+  //     утверждение и предикат P/Q промолчал бы на немом пропуске.
+  const ms = q(skipWithoutRefusal);
+  if (!ms.caught) {
+    problems.push(`немой пропуск (skipRequest без утверждения) НЕ пойман предикатом Q ` +
+      `(при заполненных ${ms.full}, при пустых ${ms.bare}) — пропуск дублёра не подавляет ` +
+      'test-скрипт, то есть дублёр снисходительнее newman');
+  }
+  // (е) ТОТ ЖЕ КЛАСС, ВТОРОЙ ЭКЗЕМПЛЯР: `CryptoJS` — встроенная величина песочницы
+  //     newman, а не библиотека кейса. Шаг, собирающий заголовок Basic из неё, ронял
+  //     дублёр исключением `CryptoJS is not defined`, и гейт объявлял находкой шаг,
+  //     который в прогоне работает.
+  //
+  //     ОРАКУЛ ВНЕШНИЙ: ожидаемая строка получена вне этого файла (`base64` оболочки),
+  //     поэтому сверка не сводится к «моя реализация равна себе». Второй образец —
+  //     многобайтный: он отличает кодирование UTF-8 от побайтного latin-1, на котором
+  //     наивная заглушка молча разошлась бы с newman.
+  const b64 = mkPre('injected-cryptojs-basic', [
+    "pm.environment.set('_b64ascii', CryptoJS.enc.Base64.stringify(",
+    "  CryptoJS.enc.Utf8.parse('ibt-not-a-real-key:ibt-not-a-real-secret')));",
+    "pm.environment.set('_b64utf8', CryptoJS.enc.Base64.stringify(",
+    "  CryptoJS.enc.Utf8.parse('\u043a\u043b\u044e\u0447:\u0441\u0435\u043a\u0440\u0435\u0442')));",
+  ], [
+    "pm.test('base64 ascii', () => pm.expect(pm.environment.get('_b64ascii'))",
+    "  .to.eql('aWJ0LW5vdC1hLXJlYWwta2V5OmlidC1ub3QtYS1yZWFsLXNlY3JldA=='));",
+    "pm.test('base64 utf8', () => pm.expect(pm.environment.get('_b64utf8'))",
+    "  .to.eql('0LrQu9GO0Yc60YHQtdC60YDQtdGC'));",
+  ]);
+  const cj = runStep(b64, RESPONSES[0], populatedEnv(), null);
+  if (cj.threw) {
+    problems.push(`дублёр не знает встроенной величины песочницы newman: ${cj.threw} — ` +
+      'гейт объявит находкой шаг, который в прогоне работает');
+  } else if (cj.failed.length > 0) {
+    problems.push(`подделка CryptoJS расходится с newman: ${cj.failed.map((f) => f.name).join(', ')}`);
+  } else if (cj.executed.length !== 2) {
+    problems.push(`проба CryptoJS исполнила ${cj.executed.length} утверждений вместо 2 — ` +
+      'предпосылка пробы исчезла');
   }
   return problems;
 }
@@ -405,7 +544,8 @@ if (proveProblems.length > 0) {
   for (const p of proveProblems) console.error('  - ' + p);
   process.exit(1);
 }
-console.log('проверка предпосылки: инъекция дефекта поймана, две законные конструкции той же формы пропущены');
+console.log(`проверка предпосылки: инъекция дефекта поймана, законных конструкций той же ` +
+  `формы пропущено ${PROVE_LEGIT_TWINS.length} (${PROVE_LEGIT_TWINS.join(', ')})`);
 
 const collections = fs.existsSync(COLLECTIONS_DIR)
   ? fs.readdirSync(COLLECTIONS_DIR).filter((f) => f.endsWith('.postman_collection.json')).sort()

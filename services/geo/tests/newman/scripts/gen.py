@@ -4,7 +4,7 @@
 
 """
 tests/newman/scripts/gen.py — генератор Postman collections для kacho-geo из
-декларативных case-файлов (Case/Step DSL, паритет с vpc/compute/iam suite'ами).
+декларативных case-файлов (Case/Step DSL).
 
 Использование:
     python3 scripts/gen.py             # все case-файлы
@@ -14,6 +14,15 @@ tests/newman/scripts/gen.py — генератор Postman collections для ka
 Источник истины — модули в tests/newman/cases/<name>.py, каждый экспортирует
 переменную CASES — список объектов Case. gen.py делает 1:1 коллекцию на каждый
 case-файл (collections/<name>.postman_collection.json).
+
+Форму коллекции и вспомогательный слой собирает ОБЩИЙ модуль
+`tests/newman/kacholib/gen_shared.py` — один на дерево (#1367, #1377, #1379,
+#1474). Здесь объявлено только то, чем ЭТОТ набор отличается: решения формы
+(дескриптор `Emit`), решения оркестрации (дескриптор `Run`), таблица впрыска
+и собственные помощники набора.
+
+Соседний генератор образцом НЕ является и сверяться с ним не надо: расхождение
+между копиями было предметом сведения, а не способом его проверить.
 
 Гео-специфика (в отличие от vpc/compute):
   * Region/Zone — ГЛОБАЛЬНЫЙ cluster-scoped каталог, НЕ project-scoped: у кейсов
@@ -45,6 +54,7 @@ case-файл (collections/<name>.postman_collection.json).
 """
 from __future__ import annotations
 
+import functools
 import json
 import re
 import sys
@@ -81,20 +91,37 @@ def _kacholib_dir() -> Path:
 sys.path.insert(0, str(_kacholib_dir()))
 
 from gen_shared import (  # noqa: E402  — импорт после провязки sys.path
-    _MUTATION_METHODS,
-    _OP_POLL_PATH,
-    _PUB_SET_RE,
+    generate,
+    Run,
     _assert_delete_operation_outcome,
+    assert_grpc_code,
+    _assert_published_id_outcome,
+    assert_status,
     _asserts_done,
     _asserts_outcome,
     _assigns_env_var,
+    build_collection,
     _carries_assertion,
+    case_to_postman,
+    _DELETE_ACCEPTED,
+    Emit,
+    _is_operation_id_var,
     _js_code_and_literals,
-    _published_id_outcome_assert,
-    _reset_captured_operation_id,
-    _strip_js_comments,
     js_comment,
     js_str,
+    load_cases_module,
+    _MUTATION_METHODS,
+    _OP_POLL_PATH,
+    _PUB_ASSIGN_RE,
+    _PUB_BIND_RE,
+    _PUB_DECL_RE,
+    _PUB_RESERVED,
+    _PUB_SET_RE,
+    _published_id_outcome_assert,
+    _published_resource_vars,
+    _reset_captured_operation_id,
+    step_to_postman,
+    _strip_js_comments,
 )
 
 
@@ -198,32 +225,6 @@ PRE_GLOBAL = [
     "}",
     *_URL_VAR_GUARD,
 ]
-
-
-def assert_status(code: int) -> List[str]:
-    return [
-        f"pm.test({js_str(f'status {code}')}, () => pm.expect(pm.response.code, JSON.stringify(pm.response.text())).to.eql({code}));",
-    ]
-
-
-def assert_grpc_code(code: int, code_name: str) -> List[str]:
-    return [
-        f"pm.test({js_str(f'grpc code {code} ({code_name})')}, () => {{",
-        "  let j; try { j = pm.response.json(); } catch (e) { j = {}; }",
-        f"  pm.expect(j.code, JSON.stringify(j)).to.eql({code});",
-        "});",
-    ]
-
-
-def _is_operation_id_var(env_var: str) -> bool:
-    """Держит ли это имя идентификатор Operation — то есть читает ли его шаг опроса?
-
-    Соглашение об именах едино на всё дерево: общий `opId` либо собственное имя
-    кейса, оканчивающееся на `OpId`/`OperationId`. Идентификаторы РЕСУРСОВ под него
-    не подпадают намеренно — их сохраняют один раз и читают много шагов спустя,
-    тогда как устаревание опасно ровно у того, что потребляется следующим запросом.
-    """
-    return env_var == "opId" or env_var.endswith("OpId") or env_var.endswith("OperationId")
 
 
 def save_from_response(jsonpath: str, env_var: str) -> List[str]:
@@ -340,14 +341,6 @@ def assert_operation_failed(code: int, code_name: str, message_substr: str = "")
             "});",
         ]
     return lines
-
-
-def save_op_metadata_id(env_var: str) -> List[str]:
-    """Сохранить <resource>Id из Operation.metadata (regionId/zoneId) в env."""
-    return save_from_response(
-        "(j.metadata && Object.keys(j.metadata).filter(k => k.endsWith('Id')).map(k => j.metadata[k])[0]) || ''",
-        env_var,
-    )
 
 
 _RETRY_SEQ = [0]
@@ -477,280 +470,6 @@ def _auth_pre_script(auth: str) -> List[str]:
     ]
 
 
-# Утверждение о том, что удаление ПРИНЯТО. Ровно одно и однозначное: `oneOf`
-# со взаимоисключающими исходами утверждением не является (testing.md).
-_DELETE_ACCEPTED = [
-    "// УТВЕРЖДЕНИЕ ПО УМОЛЧАНИЮ для шага удаления: без него шаг зеленел бы и на",
-    "// отказе, а следующий опрос уехал бы на opId предыдущей операции.",
-    "pm.test('delete accepted: status 200', () => "
-    "pm.expect(pm.response.code, pm.response.text()).to.eql(200));",
-]
-
-
-_PUB_BIND_RE = re.compile(r"\b(?:const|let|var)\s+([A-Za-z_$][\w$]*)\s*=")
-# Объявление БЕЗ инициализатора (`let j;`) и присваивание отдельным оператором
-# (`j = pm.response.json()`). Форма `let j; try { j = pm.response.json(); } catch (e)
-# { j = null; }` — самая частая запись безопасного разбора тела в этом корпусе, и
-# `_PUB_BIND_RE` её не узнаёт вовсе: она требует `=` В ОБЪЯВЛЕНИИ. Пока узнавалось
-# только объявление-с-инициализатором, цепочка происхождения рвалась на первом
-# звене, и проход не видел ни публикации, ни всего, что от этого имени
-# производилось дальше. Тот же распознаватель и по той же причине расширен в гейте
-# `internal/repohygiene/artifactgates` — проход и гейт обязаны считать ОДНО И ТО ЖЕ,
-# иначе они разойдутся на первом же шаге, записанном не по канону.
-_PUB_DECL_RE = re.compile(r"\b(?:const|let|var)\s+([A-Za-z_$][\w$]*)\s*[;,]")
-# Имя непосредственно перед `=`: `a.b = c` отсекается предшествующей точкой,
-# `==`/`===`/`=>` — заглядыванием вперёд, `+=`/`!==`/`>=` — тем, что между именем и
-# `=` у них стоит оператор.
-_PUB_ASSIGN_RE = re.compile(r"(?:^|[^.\w$])([A-Za-z_$][\w$]*)\s*=(?![=>])")
-# Слова, за которыми `имя =` связыванием значения не является. Перечень закрытый:
-# «что-нибудь похожее на ключевое слово» отсекло бы имя, начинающееся так же.
-_PUB_RESERVED = frozenset((
-    "if", "for", "while", "switch", "return", "function", "const", "let", "var",
-    "catch", "typeof", "new", "delete", "void", "in", "of",
-))
-
-
-def _published_resource_vars(src: str, op_var: str) -> List[str]:
-    """Имена окружения, которым шаг присваивает значение ИЗ `metadata` операции.
-
-    Одного вхождения слова `metadata` в скрипт мало: один и тот же шаг захватывает
-    и идентификатор ОПЕРАЦИИ (`j.id`), и идентификатор РЕСУРСА
-    (`j.metadata.<res>Id`), причём оба — через локальную `const v` в СВОЁМ блоке
-    (`save_from_response`). Без учёта области видимости ручка операции сошла бы за
-    координату ресурса, и проход дописывал бы защиту там, где публиковать нечего.
-
-    `op_var` — имя, которым цепочка адресует саму операцию (берётся из адреса
-    опроса). Оно исключается: это ручка, а не координата ресурса.
-    """
-    code, lits = _js_code_and_literals(src)
-    depth, cur = [0] * (len(code) + 1), 0
-    for i, ch in enumerate(code):
-        depth[i] = cur
-        if ch == "{":
-            cur += 1
-        elif ch == "}":
-            cur -= 1
-    depth[len(code)] = cur
-
-    binds = []  # (offset, depth, name, derived)
-
-    def visible(at: int, expr: str) -> bool:
-        for off, d, name, derived in binds:
-            if off >= at or not derived:
-                continue
-            if any(depth[k] < d for k in range(off, at)):
-                continue  # блок объявления уже закрыт — имя не видно
-            if re.search(r"\b" + re.escape(name) + r"\b", expr):
-                return True
-        return False
-
-    # ОБЛАСТЬ ВИДИМОСТИ БЕРЁТСЯ У ОБЪЯВЛЕНИЯ, А НЕ У ПРИСВАИВАНИЯ. `let j;` стоит на
-    # верхнем уровне скрипта, а значение ему присваивают внутри `try { … }` — то
-    # есть глубже. Считать глубиной связывания глубину присваивания значило бы
-    # закрывать имя вместе с блоком `try`, и все последующие чтения `j` оказались бы
-    # «вне области» — ровно наоборот тому, как это работает в JavaScript.
-    decl_depth = {}
-    for m in _PUB_DECL_RE.finditer(code):
-        decl_depth[m.group(1)] = depth[m.start()]
-    for m in _PUB_BIND_RE.finditer(code):
-        decl_depth[m.group(1)] = depth[m.start()]
-
-    sites = []  # (offset, depth, name, expr_at)
-    for m in _PUB_BIND_RE.finditer(code):
-        sites.append((m.start(), depth[m.start()], m.group(1), m.end()))
-    for m in _PUB_ASSIGN_RE.finditer(code):
-        name = m.group(1)
-        if name in _PUB_RESERVED:
-            continue
-        at = m.start(1)
-        # Объявление-с-инициализатором уже учтено выше: `const v = …` матчится и
-        # сюда. Считать его дважды безвредно для вердикта, но смещение связывания
-        # разошлось бы на длину `const `, а от смещения зависит проверка
-        # «объявлено ДО использования».
-        head = code[:at].rstrip()
-        if head.endswith(("const", "let", "var")) and len(head) < at:
-            tail = "const" if head.endswith("const") else ("let" if head.endswith("let") else "var")
-            j = len(head) - len(tail)
-            if j == 0 or not (code[j - 1].isalnum() or code[j - 1] in "_$"):
-                continue
-        sites.append((at, decl_depth.get(name, 0), name, m.end()))
-    sites.sort(key=lambda s: s[0])
-
-    for off, d, name, expr_at in sites:
-        semi = code.find(";", expr_at)
-        expr = code[expr_at:semi if semi >= 0 else len(code)]
-        binds.append((off, d, name, "metadata" in expr or visible(off, expr)))
-
-    def arg_tail(pos: int) -> str:
-        lvl = 1
-        for k in range(pos, len(code)):
-            if code[k] == "(":
-                lvl += 1
-            elif code[k] == ")":
-                lvl -= 1
-                if lvl == 0:
-                    return code[pos:k]
-        return code[pos:]
-
-    names: List[str] = []
-    for m in _PUB_SET_RE.finditer(code):
-        name = lits[int(m.group(1))]
-        if not name or name == op_var or name in names:
-            continue
-        expr = arg_tail(m.end())
-        if "metadata" in expr or visible(m.start(), expr):
-            names.append(name)
-    return sorted(names)
-
-
-def _assert_published_id_outcome(steps: List[Step]) -> List[Step]:
-    """Опубликовал идентификатор ресурса из metadata — назови ИСХОД операции.
-
-    Операция несёт предвыделенный идентификатор в `metadata` ДАЖЕ когда завершилась
-    ошибкой: он чеканится до того, как отработает воркер. Шаг, сохранивший
-    `metadata.<res>Id`, и опрос, утверждающий только `done`, вместе публикуют
-    координату ресурса, которого нет, — `done` у провалившейся операции такой же
-    `true`. Дальше по этой координате идут привязки прав (край отвечает успехом) и
-    межсервисные запросы (владелец отвечает «не найдено»), и падает не тот шаг,
-    который ошибся: симптом к причине отношения не имеет.
-
-    Ставится ПО СВОЙСТВУ шага, а не по перечню имён: ручная пометка неотличима от
-    решения не помечать, и класс возвращался ровно так — закрыт в одном кейсе,
-    через несколько часов проявился в соседнем.
-
-    ОПРОС ПРИНАДЛЕЖИТ ТОМУ, ЧЬЮ ОПЕРАЦИЮ ЧИТАЕТ, а не просто предыдущей мутации.
-    Между созданием и его опросом законно стоит другая мутация — отмена той же
-    операции (`/operations/{{opId}}:cancel`), — и правило «последняя мутация»
-    отдало бы опрос ей, оставив создание без единого читателя исхода. Поэтому
-    опрос отходит ближайшей предшествующей мутации, которая ПРИСВАИВАЕТ имя,
-    стоящее в адресе опроса; если такой нет — ближайшей предшествующей мутации.
-
-    Вопрос задаётся ОДИН НА ЦЕПОЧКУ: если исход называет сам шаг мутации (так
-    устроена синхронная операция без опроса вовсе) или ЛЮБОЙ её опрос — успехом
-    или отказом, — дописывать нечего. Иначе проход дописал бы «операция успешна»
-    кейсу, чей ПРЕДМЕТ — отказ операции, и кейс утверждал бы обе взаимоисключающие
-    вещи разом.
-
-    Держит свойство по дереву гейт `internal/repohygiene`
-    `TestPublishedResourceIdIsGuardedByOperationOutcome` — он читает
-    СГЕНЕРИРОВАННЫЕ коллекции, поэтому правка мимо генератора его не обходит.
-    """
-    out = list(steps)
-    muts = [i for i, st in enumerate(out)
-            if st.method in _MUTATION_METHODS and not _OP_POLL_PATH.search(st.path)]
-    chains = {i: [] for i in muts}
-    for idx, st in enumerate(out):
-        if st.method != "GET":
-            continue
-        m = _OP_POLL_PATH.search(st.path)
-        if not m:
-            continue
-        owner = None
-        for i in muts:
-            if i >= idx:
-                break
-            if _assigns_env_var("\n".join(out[i].test_script), m.group(1)):
-                owner = i
-        if owner is None:
-            owner = max((i for i in muts if i < idx), default=None)
-        if owner is not None:
-            chains[owner].append(idx)
-    for sidx, polls in chains.items():
-        if not polls:
-            continue  # операцию никто не опрашивает — вписать утверждение некуда
-        op_var = "opId"
-        for k in polls:
-            m = _OP_POLL_PATH.search(out[k].path)
-            if m:
-                op_var = m.group(1)
-        own = "\n".join(out[sidx].test_script)
-        names = _published_resource_vars(own, op_var)
-        if not names:
-            continue
-        if _asserts_outcome(_strip_js_comments(own)):
-            # Исход назван самой мутацией — так устроена СИНХРОННАЯ операция
-            # (`done:true` в ответе, опрашивать нечего). Утверждать второй раз
-            # нечего, но снять опубликованное имя на ошибке всё равно надо.
-            out[sidx] = replace(out[sidx], test_script=list(out[sidx].test_script)
-                                + _published_id_outcome_assert(names, False, need_assert=False))
-            continue
-        code = "\n".join(_strip_js_comments("\n".join(out[k].test_script)) for k in polls)
-        if _asserts_outcome(code):
-            continue
-        k = polls[0]
-        out[k] = replace(out[k], test_script=list(out[k].test_script)
-                         + _published_id_outcome_assert(names, not _asserts_done(code)))
-    return out
-
-
-def step_to_postman(step: Step) -> Dict:
-    host = "{{internalBaseUrl}}" if step.internal else "{{baseUrl}}"
-    item: Dict = {
-        "name": step.name,
-        "request": {
-            "method": step.method,
-            "header": [{"key": "Content-Type", "value": "application/json"}],
-            "url": {
-                "raw": host + step.path,
-                "host": [host],
-                "path": [p for p in step.path.strip("/").split("/") if p],
-            },
-        },
-    }
-    if step.body is not None:
-        item["request"]["body"] = {
-            "mode": "raw",
-            "raw": json.dumps(step.body, ensure_ascii=False),
-            "options": {"raw": {"language": "json"}},
-        }
-    pre = list(step.pre_script)
-    if step.auth is not None:
-        pre = _auth_pre_script(step.auth) + pre
-    events = []
-    if pre:
-        events.append({"listen": "prerequest", "script": {"type": "text/javascript", "exec": pre}})
-    # Шаг удаления без собственного утверждения получает утверждение по умолчанию
-    # (см. _DELETE_ACCEPTED выше). Ставится в КОНЕЦ — после обёртки ожидания.
-    test_exec = list(step.test_script)
-    if step.method == "DELETE" and not _carries_assertion(test_exec):
-        test_exec = test_exec + _DELETE_ACCEPTED
-    if test_exec:
-        events.append({"listen": "test", "script": {"type": "text/javascript", "exec": test_exec}})
-    if events:
-        item["event"] = events
-    return item
-
-
-def case_to_postman(case: Case) -> Dict:
-    tags = [f"class:{c}" for c in case.classes] + [f"priority:{case.priority}"]
-    return {
-        "name": f"{case.id} — {case.title}",
-        "description": " | ".join(tags),
-        "item": [step_to_postman(s) for s in _assert_published_id_outcome(
-            _reset_captured_operation_id(_assert_delete_operation_outcome(case.steps)))],
-    }
-
-
-def build_collection(service: str, cases: List[Case]) -> Dict:
-    return {
-        "info": {
-            # Deterministic _postman_id (UUIDv5 over the collection name) so a
-            # regeneration with no source change produces no diff. A random id
-            # here made every regeneration dirty every collection, which meant
-            # "generated matches source" could never be checked and a real drift
-            # had nowhere to show. Postman only needs this to be stable+unique.
-            "_postman_id": str(uuid.uuid5(uuid.NAMESPACE_URL, f"kacho-geo/newman/{service}")),
-            "name": f"kacho-geo / newman / {service}",
-            "schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json",
-        },
-        "event": [
-            {"listen": "prerequest", "script": {"type": "text/javascript", "exec": PRE_GLOBAL}},
-        ],
-        "item": [case_to_postman(c) for c in cases],
-        "variable": [],
-    }
-
-
 # ---------------------------------------------------------------------------
 # Discovery + main
 # ---------------------------------------------------------------------------
@@ -772,73 +491,67 @@ def _reset_step_name_counters() -> None:
     Held by internal/repohygiene TestGeneratedStepNamesDoNotDependOnHowManyModulesRan.
     """
     _RETRY_SEQ[0] = 0
+# ─────────────────────────────────────────────────────────────────────────────
+# РЕШЕНИЯ НАБОРА, от которых зависит форма коллекции (#1379). Форму собирает
+# общий слой; здесь объявлено ТОЛЬКО то, чем этот набор от остальных отличается.
+# ─────────────────────────────────────────────────────────────────────────────
+
+def _geo_case_steps(case):
+    """Конвейер шагов кейса geo: утверждения об исходе, без обёртки видимости.
+
+    Обёртки первого доступа здесь НЕТ намеренно: каталог размещения — глобальный
+    справочник, права на него не материализуются под арендатора, и ждать нечего.
+    """
+    return _assert_published_id_outcome(
+        _reset_captured_operation_id(_assert_delete_operation_outcome(case.steps)))
 
 
-def load_cases_module(path: Path):
-    _reset_step_name_counters()
-    spec = importlib.util.spec_from_file_location(path.stem, path)
-    mod = importlib.util.module_from_spec(spec)
-    # пробрасываем helpers в namespace модуля
-    mod.Step = Step
-    mod.Case = Case
-    mod.assert_status = assert_status
-    mod.assert_grpc_code = assert_grpc_code
-    mod.save_from_response = save_from_response
-    mod.save_op_metadata_id = save_op_metadata_id
-    mod.assert_operation_envelope = assert_operation_envelope
-    mod.assert_operation_failed = assert_operation_failed
-    mod.retry_get_until_found = retry_get_until_found
-    mod.assert_createdat_truncated = assert_createdat_truncated
-    mod.assert_no_infra_fields = assert_no_infra_fields
-    spec.loader.exec_module(mod)
-    return mod
+_EMIT = Emit(
+    id_slug="kacho-geo",
+    display_name="kacho-geo / newman",
+    pre_global=lambda key: PRE_GLOBAL,
+    steps_of=_geo_case_steps,
+    auth_pre=_auth_pre_script,
+    # Internal*-шаги идут на cluster-internal REST listener — на публичном их нет
+    # by design (запрет №6). См. `Step.internal`.
+    host_var=lambda step: "internalBaseUrl" if step.internal else "baseUrl",
+)
+
+# Помощники, доезжающие до модуля кейсов. Перечень — СЛОВАРЬ: он объявлен один
+# раз и виден целиком, а не сорока строками `mod.X = X`, каждая из которых
+# переживала снятие своего предмета молча.
+_INJECTED = {
+    "Step": Step,
+    "Case": Case,
+    "assert_status": assert_status,
+    "assert_grpc_code": assert_grpc_code,
+    "save_from_response": save_from_response,
+    "assert_operation_envelope": assert_operation_envelope,
+    "assert_operation_failed": assert_operation_failed,
+    "retry_get_until_found": retry_get_until_found,
+    "assert_createdat_truncated": assert_createdat_truncated,
+    "assert_no_infra_fields": assert_no_infra_fields,
+}
 
 
-def _check_duplicate_ids() -> int:
-    """HARD-FAIL: case-id обязан быть уникален среди всех кейсов всех файлов."""
-    seen: Dict[str, str] = {}
-    dups: List[str] = []
-    for f in sorted(CASES_DIR.glob("*.py")):
-        mod = load_cases_module(f)
-        for c in getattr(mod, "CASES", []):
-            if c.id in seen:
-                dups.append(f"  - {c.id!r}: {seen[c.id]} и {f.name}")
-            else:
-                seen[c.id] = f.name
-    if dups:
-        sys.stderr.write("gen: FAIL — дубли case-id:\n")
-        sys.stderr.write("\n".join(dups) + "\n")
-        return 1
-    return 0
+_RUN = Run(
+    root=ROOT,
+    cases_dir=CASES_DIR,
+    out_dir=OUT_DIR,
+    scripts_dir=SCRIPTS_DIR,
+    emit=_EMIT,
+    case_cls=Case,
+    injected=_INJECTED,
+    before=_reset_step_name_counters,
+    stem_dashes_to_underscores=False,
+    per_collection=None,
+    after_all=None,
+)
 
-
-def main(argv: List[str]) -> int:
-    args = argv[1:]
-    if "--validate" in args:
-        import runpy
-        sys.argv = [str(SCRIPTS_DIR / "validate-cases.py")]
-        runpy.run_path(str(SCRIPTS_DIR / "validate-cases.py"), run_name="__main__")
-        return 0
-
-    OUT_DIR.mkdir(parents=True, exist_ok=True)
-    want = set(args)
-    found = sorted(CASES_DIR.glob("*.py"))
-    if not found:
-        print(f"no case files in {CASES_DIR}")
-        return 1
-    if _check_duplicate_ids() != 0:
-        return 1
-    for f in found:
-        svc = f.stem
-        if want and svc not in want:
-            continue
-        mod = load_cases_module(f)
-        cases = getattr(mod, "CASES", [])
-        col = build_collection(svc, cases)
-        out = OUT_DIR / f"{svc}.postman_collection.json"
-        out.write_text(json.dumps(col, indent=2, ensure_ascii=False))
-        print(f"[{svc}] {len(cases)} cases → {out.relative_to(ROOT)}")
-    return 0
+# Точка входа — связывание, а не своё тело (#1474). Оркестрация одна на дерево;
+# здесь набор связывает СВОИ решения. Имя `main` сохранено: его импортирует
+# тонкая обёртка края (`from gen import main`).
+main = functools.partial(generate, _RUN)
 
 
 if __name__ == "__main__":

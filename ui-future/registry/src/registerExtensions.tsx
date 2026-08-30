@@ -24,12 +24,13 @@ import { SafetyCertificateOutlined } from "@ant-design/icons";
 import { registerDetailExtension } from "@shared/components/organisms/ResourceDetailExtensions";
 import { MonoValue } from "@shared/components/atoms/CopyableId/MonoValue";
 import { StatusBadge } from "@shared/components/atoms/StatusBadge";
+import { PlacementAnchor } from "@shared/components/molecules/PlacementAnchor";
 import { getByPath } from "@shared/lib/resource-registry";
 import { displayText } from "@shared/lib/display-text";
 import { formatBytes } from "@shared/lib/bytes";
 
-import { LifecycleTag } from "@/components/atoms/LifecycleTag";
-import { VisibilityTag } from "@/components/atoms/VisibilityTag";
+import { RepositoryLifecycleTag } from "@shared/components/atoms/RepositoryLifecycleTag";
+import { VisibilityTag } from "@shared/components/atoms/VisibilityTag";
 
 /** Значение строки свойств словами; пусто — прочерк, как у «Описания» Обзора. */
 function text(v: unknown): string {
@@ -44,8 +45,19 @@ registerDetailExtension("registries", {
     const endpoint = getByPath<string>(data, "endpoint") ?? "";
     return [
       { label: "Адрес", value: <MonoValue value={endpoint} />, copy: endpoint || undefined },
-      { label: "Регион", value: text(getByPath<string>(data, "region_id")) },
-      { label: "Размещение", value: text(getByPath<string>(data, "placement_type")) },
+      // ОДНА строка размещения вместо двух. Прежде их было две: «Регион» с
+      // плоским идентификатором и «Размещение» с сырым токеном `REGIONAL` — то
+      // есть машинное слово рядом с тем же самым фактом, уже названным строкой
+      // выше. Ветку ZONAL/REGIONAL рисует единственный `PlacementAnchor`: вид
+      // размещения он отдельным словом не называет — вид и есть тип ресурса, на
+      // который ведёт ссылка (правило 2 канона консоли).
+      {
+        label: "Размещение",
+        value: <PlacementAnchor row={data} maxChars={32} />,
+        // Копируется ИДЕНТИФИКАТОР якоря, а не его имя: имя меняется, координата
+        // размещения — нет (ban #15).
+        copy: getByPath<string>(data, "region_id") || undefined,
+      },
       {
         label: "Видимость репозиториев по умолчанию",
         value: <VisibilityTag value={getByPath<string>(data, "default_repository_visibility")} />,
@@ -71,7 +83,7 @@ registerDetailExtension("registries", {
 
 registerDetailExtension("repositories", {
   overviewExtra: ({ data }) => [
-    { label: "Класс", value: <LifecycleTag value={getByPath<string>(data, "lifecycle")} /> },
+    { label: "Класс", value: <RepositoryLifecycleTag value={getByPath<string>(data, "lifecycle")} /> },
     { label: "Видимость", value: <VisibilityTag value={getByPath<string>(data, "visibility")} /> },
     { label: "Тегов", value: text(getByPath<number>(data, "tag_count") ?? 0) },
     // `formatBytes` сам отвечает прочерком на пустом и на не-числе, поэтому

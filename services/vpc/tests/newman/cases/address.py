@@ -130,8 +130,11 @@ CASES.append(Case(
         Step(name="create", method="POST", path="/vpc/v1/addresses",
              body={"projectId": "{{_suiteProjectId}}", "name": "adr-snf-{{runId}}",
                    "internalIpv4AddressSpec": {"subnetId": "{{garbageVpcId}}"}},
+             # Текст владельца целиком (services/vpc/internal/repo/kacho/pg/address.go),
+             # а не слово «subnet»: под ним проходили 17 разных отказов vpc, несущих то
+             # же слово, — например про зону шлюза или про интерфейс (#1520).
              test_script=[*assert_status(404), *assert_grpc_code(5, "NOT_FOUND"),
-                          "pm.test('mentions subnet', () => pm.expect(pm.response.json().message.toLowerCase()).to.include('subnet'));"]),
+                          *assert_refusal_message("Subnet {{garbageVpcId}} not found")]),
     ],
 ))
 
@@ -695,7 +698,9 @@ CASES.extend(http_method_not_allowed_block("ADR", "/vpc/v1/addresses"))
 CASES.extend(malformed_body_block("ADR", "/vpc/v1/addresses"))
 
 CASES.append(alreadyexists_dup_name_for("ADR", "/vpc/v1/addresses",
-    {"projectId": "{{_suiteProjectId}}", "externalIpv4AddressSpec": {"zoneId": "{{existingZoneId}}"}}))
+    # Текст владельца дословно: services/vpc/internal/apps/kacho/api/address/create.go
+    refusal="Address with name {name} already exists",
+    body_create={"projectId": "{{_suiteProjectId}}", "externalIpv4AddressSpec": {"zoneId": "{{existingZoneId}}"}}))
 CASES.extend(update_mask_partial_block("ADR", "/vpc/v1/addresses", "/vpc/v1/addresses",
     {"projectId": "{{_suiteProjectId}}", "externalIpv4AddressSpec": {"zoneId": "{{existingZoneId}}"}}))
 CASES.append(perf_baseline_get_block("ADR", "/vpc/v1/addresses",

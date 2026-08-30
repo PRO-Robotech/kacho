@@ -12,9 +12,9 @@ import (
 	"strings"
 
 	"github.com/jackc/pgx/v5"
-	"github.com/jackc/pgx/v5/pgconn"
 	"github.com/jackc/pgx/v5/pgxpool"
 
+	"github.com/PRO-Robotech/kacho/pkg/db/pgfault"
 	"github.com/PRO-Robotech/kacho/services/storage/internal/apps/kacho/api/disktypebinding"
 	"github.com/PRO-Robotech/kacho/services/storage/internal/domain"
 	storageerr "github.com/PRO-Robotech/kacho/services/storage/internal/errors"
@@ -348,11 +348,11 @@ func mapDiskTypeBindingErr(err error, c dtbErrCtx) error {
 	if errors.Is(err, pgx.ErrNoRows) {
 		return fmt.Errorf("%w: DiskTypeBinding %s not found", storageerr.ErrNotFound, c.bindingID)
 	}
-	var pgErr *pgconn.PgError
-	if errors.As(err, &pgErr) {
-		switch pgErr.Code {
-		case "23505": // unique_violation
-			switch pgErr.ConstraintName {
+	f := pgfault.Classify(err)
+	if f.FromDatabase() {
+		switch f.Class {
+		case pgfault.Unique:
+			switch f.Constraint {
 			case cnBindingPK:
 				return fmt.Errorf("%w: DiskTypeBinding %s already exists", storageerr.ErrAlreadyExists, c.bindingID)
 			case cnBindingActiveUniq, cnBindingRevisionUniq:
@@ -364,19 +364,19 @@ func mapDiskTypeBindingErr(err error, c dtbErrCtx) error {
 					storageerr.ErrAlreadyExists, c.diskTypeID, c.zoneID)
 			}
 			return fmt.Errorf("%w: disk type binding already exists", storageerr.ErrAlreadyExists)
-		case "23503": // foreign_key_violation — класс либо бэкенд
-			switch pgErr.ConstraintName {
+		case pgfault.ForeignKey: // класс либо бэкенд
+			switch f.Constraint {
 			case cnBindingDiskTypeFK:
 				return fmt.Errorf("%w: DiskType %s not found", storageerr.ErrFailedPrecondition, c.diskTypeID)
 			case cnBindingBackendFK:
 				return fmt.Errorf("%w: StorageBackend %s not found", storageerr.ErrFailedPrecondition, c.backendID)
 			}
 			return fmt.Errorf("%w: disk type binding violates a reference constraint", storageerr.ErrFailedPrecondition)
-		case "23514": // check_violation — состояние, номер, зона, пространство размещения, срок корзины
+		case pgfault.Check: // состояние, номер, зона, пространство размещения, срок корзины
 			return fmt.Errorf("%w: Illegal argument", storageerr.ErrInvalidArg)
 		}
 		slog.Error("uncategorized postgres error mapped to internal",
-			"sqlstate", pgErr.Code, "constraint", pgErr.ConstraintName, "disk_type_binding_id", c.bindingID)
+			append([]any{"disk_type_binding_id", c.bindingID}, f.LogAttrs()...)...)
 		return storageerr.ErrInternal
 	}
 	slog.Error("uncategorized db error mapped to internal", "err", err.Error(), "disk_type_binding_id", c.bindingID)

@@ -93,7 +93,7 @@ func TestForwardedIdentityIsHonouredOnlyFromTheCircle(t *testing.T) {
 // осталось бы прозой в комментарии.
 func TestUnnarrowedCircleWouldHonourAnyVerifiedPeer(t *testing.T) {
 	spec := chainSpec()
-	spec.Forwarders = grpcsrv.TrustedForwarders{} // круг НЕ сужен
+	spec.Forwarders = servicecontract.Value(grpcsrv.TrustedForwarders{}) // круг НЕ сужен
 	chain := chainOf(t, spec)
 
 	ctx := withForgedPrincipal(verifiedPeerCtx(t, neighbourSAN), "usr-admin")
@@ -112,7 +112,7 @@ func TestUnnarrowedCircleWouldHonourAnyVerifiedPeer(t *testing.T) {
 func hostChainWithPermissiveDecision(t *testing.T) grpc.UnaryServerInterceptor {
 	t.Helper()
 	spec := chainSpec()
-	spec.Forwarders = grpcsrv.NewTrustedForwarders(gatewaySAN)
+	spec.Forwarders = servicecontract.Value(grpcsrv.NewTrustedForwarders(gatewaySAN))
 	return chainOf(t, spec)
 }
 
