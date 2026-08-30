@@ -14,14 +14,14 @@ message Gateway {
   // ID of the gateway. Generated at creation time.
   string id = 1;
 
-  // ID of the folder that the gateway belongs to.
+  // ID of the project that the gateway belongs to.
   string project_id = 2;
 
   // Creation timestamp.
   google.protobuf.Timestamp created_at = 3;
 
   // Name of the gateway.
-  // The name is unique within the folder.
+  // The name is unique within the project.
   // Value must match the regular expression ``\|[a-z]([-a-z0-9]{0,61}[a-z0-9])?``.
   string name = 4;
 

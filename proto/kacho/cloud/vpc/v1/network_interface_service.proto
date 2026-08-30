@@ -33,7 +33,7 @@ service NetworkInterfaceService {
     option (kacho.iam.authz.v1.required_acr_min) = "1";
   }
 
-  // Retrieves the list of NetworkInterface resources in the specified folder,
+  // Retrieves the list of NetworkInterface resources in the specified project,
   // optionally filtered by instance / subnet / network.
   rpc List(ListNetworkInterfacesRequest) returns (ListNetworkInterfacesResponse) {
     option (google.api.http) = { get: "/vpc/v1/networkInterfaces" };
@@ -54,7 +54,7 @@ service NetworkInterfaceService {
     option (kacho.iam.authz.v1.required_acr_min) = "1";
   }
 
-  // Creates a network interface in the specified folder.
+  // Creates a network interface in the specified project.
   rpc Create(CreateNetworkInterfaceRequest) returns (operation.Operation) {
     option (google.api.http) = { post: "/vpc/v1/networkInterfaces" body: "*" };
     option (kacho.cloud.api.operation) = {
@@ -123,7 +123,7 @@ message GetNetworkInterfaceRequest {
 }
 
 message ListNetworkInterfacesRequest {
-  // ID of the folder to list network interfaces in.
+  // ID of the project to list network interfaces in.
   string project_id = 1;
 
   // The maximum number of results per page. Default 100.
@@ -148,10 +148,10 @@ message ListNetworkInterfacesResponse {
 }
 
 message CreateNetworkInterfaceRequest {
-  // ID of the folder to create the interface in.
+  // ID of the project to create the interface in.
   string project_id = 1;
 
-  // Name. Must be unique within the folder.
+  // Name. Must be unique within the project.
   string name = 2;
 
   // Description. 0-256 characters.

@@ -31,7 +31,7 @@ service SubnetService {
     option (kacho.iam.authz.v1.required_acr_min) = "1";
   }
 
-  // Retrieves the list of Subnet resources in the specified folder.
+  // Retrieves the list of Subnet resources in the specified project.
   rpc List(ListSubnetsRequest) returns (ListSubnetsResponse) {
     option (google.api.http) = {get: "/vpc/v1/subnets"};
     option (kacho.iam.authz.v1.permission)        = "vpc.subnets.list";
@@ -51,7 +51,7 @@ service SubnetService {
     option (kacho.iam.authz.v1.required_acr_min) = "1";
   }
 
-  // Creates a subnet in the specified folder and network.
+  // Creates a subnet in the specified project and network.
   // Method starts an asynchronous operation that can be cancelled while it is in progress.
   rpc Create(CreateSubnetRequest) returns (operation.Operation) {
     option (google.api.http) = {
@@ -226,7 +226,7 @@ message CreateSubnetRequest {
   string project_id = 1;
 
   // Name of the subnet.
-  // The name must be unique within the folder.
+  // The name must be unique within the project.
   string name = 2;
 
   // Description of the subnet.
@@ -290,7 +290,7 @@ message UpdateSubnetRequest {
   google.protobuf.FieldMask update_mask = 2;
 
   // Name of the subnet.
-  // The name must be unique within the folder.
+  // The name must be unique within the project.
   string name = 3;
 
   // Description of the subnet.

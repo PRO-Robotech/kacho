@@ -223,8 +223,8 @@ service InternalAddressPoolService {
 
   // -- Admin observability --
 
-  // ListAddresses — все Address (cross-folder), которые получили IP из этого
-  // pool. Admin-only (folder/cloud/org info берется из Address.project_id).
+  // ListAddresses — все Address (cross-project), которые получили IP из этого
+  // pool. Admin-only (project/account info берется из Address.project_id).
   rpc ListAddresses(ListAddressPoolAddressesRequest) returns (ListAddressPoolAddressesResponse) {
     option (google.api.http) = { get: "/vpc/v1/addressPools/{pool_id}/addresses" };
     option (kacho.iam.authz.v1.permission)        = "vpc.address_pools.list_addresses";

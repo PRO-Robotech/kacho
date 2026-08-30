@@ -29,7 +29,7 @@ service GatewayService {
     option (kacho.iam.authz.v1.required_acr_min) = "1";
   }
 
-  // Retrieves the list of Gateway resources in the specified folder.
+  // Retrieves the list of Gateway resources in the specified project.
   rpc List (ListGatewaysRequest) returns (ListGatewaysResponse) {
     option (google.api.http) = {get: "/vpc/v1/gateways"};
     option (kacho.iam.authz.v1.permission)        = "vpc.gateways.list";
@@ -49,7 +49,7 @@ service GatewayService {
     option (kacho.iam.authz.v1.required_acr_min) = "1";
   }
 
-  // Creates a gateway in the specified folder.
+  // Creates a gateway in the specified project.
   rpc Create (CreateGatewayRequest) returns (operation.Operation) {
     option (google.api.http) = {post: "/vpc/v1/gateways" body: "*"};
     option (kacho.cloud.api.operation) = {
@@ -208,7 +208,7 @@ message CreateGatewayRequest {
   string project_id = 1;
 
   // Name of the gateway.
-  // The name must be unique within the folder.
+  // The name must be unique within the project.
   string name = 2;
 
   // Description of the gateway.
@@ -260,7 +260,7 @@ message UpdateGatewayRequest {
   google.protobuf.FieldMask update_mask = 2;
 
   // New name for the gateway.
-  // The name must be unique within the folder.
+  // The name must be unique within the project.
   string name = 3;
 
   // New description of the gateway.
