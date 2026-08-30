@@ -388,8 +388,9 @@ resource может быть удален до завершения op). `accoun
 Транзакционный outbox-журнал domain-событий. PK `sequence_no BIGINT` (DEFAULT
 `nextval(vpc_outbox_sequence_no_seq)`). Trigger `vpc_outbox_notify_trg` AFTER INSERT →
 `pg_notify('vpc_outbox', NEW.sequence_no::text)` — in-cluster `LISTEN/NOTIFY`-канал.
-Публичного Watch RPC в Kachō нет: клиенты наблюдают изменения через polling
-`List` / `OperationService.Get`.
+Он же — журнал платформенной подписки: vpc объявлен её владельцем, и край отдаёт эти
+строки арендатору потоком (`owner=vpc`). Опрос `List` / `OperationService.Get` остаётся
+законным путём, а исход операции узнаётся только им.
 
 #### `fga_register_outbox` (миграция 0006/0008)
 Отдельный transactional-outbox для регистрации владения через `kacho-iam`. Независим
