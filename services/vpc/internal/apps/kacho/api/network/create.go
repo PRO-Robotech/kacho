@@ -223,14 +223,20 @@ func (u *CreateNetworkUseCase) Execute(ctx context.Context, n domain.Network) (*
 // ВСЕ идет в одной writer-TX:
 //
 //	w := u.repo.Writer(ctx)            // открыли единую TX
-//	created := w.Networks().Insert     // Network.CREATED outbox
-//	(if inline) u.createDefaultSG.Execute(ctx, w, created.Network)
+//	created := w.Networks().Insert     // строки журнала ещё НЕТ
+//	u.createDefaultSG.Execute(ctx, w, created.Network)
 //	            // → w.SGs().Insert + SG.CREATED outbox
-//	            //   + w.Networks().SetDefaultSGID + Network.UPDATED outbox
+//	            //   + w.Networks().SetDefaultSGID (без строки о сети)
 //	u.createDefaultRT.Execute(ctx, w, created.Network)
 //	            // → w.RouteTables().Insert + RouteTable.CREATED outbox
-//	            //   + w.Networks().SetDefaultRouteTableID + Network.UPDATED outbox
+//	            //   + w.Networks().SetDefaultRouteTableID (без строки о сети)
+//	Emit("Network", finalRec, CREATED) // ОДНА строка, собранная сеть (#1548)
 //	w.Commit()                         // либо все, либо ничего (Abort/crash)
+//
+// Строк журнала на одно создание ТРИ — по одной на каждый заведённый ресурс.
+// Прежде их было пять: сеть объявлялась сразу после вставки, пустой, и следом
+// шли два `UPDATED` по мере достройки умолчаний. Разбор — у самой эмиссии ниже;
+// свойство держит `services/vpc/internal/repo/network_create_journal_rows_integration_test.go`.
 //
 // Так исключены частичные результаты на crash между шагами (orphan SG, Network
 // без default_sg_id или забытый outbox-event). Default-SG composition вынесена в
@@ -264,9 +270,6 @@ func (u *CreateNetworkUseCase) doCreate(ctx context.Context, netID string, n dom
 	if err != nil {
 		return nil, serviceerr.MapRepoErr(err)
 	}
-	if err := w.Outbox().Emit(ctx, "Network", created.ID, created.ProjectID, "CREATED", helpers.DomainToMap(created)); err != nil {
-		return nil, serviceerr.MapRepoErr(fmt.Errorf("%w: outbox emit: %v", repo.ErrInternal, err))
-	}
 
 	// Системная группа правил по умолчанию — в ТОЙ ЖЕ writer-TX, БЕЗУСЛОВНО.
 	// Композиция use-case'ов в одной транзакции: он работает в нашей `w`, а
@@ -285,6 +288,41 @@ func (u *CreateNetworkUseCase) doCreate(ctx context.Context, netID string, n dom
 	finalRec, rtErr := u.createDefaultRT.Execute(ctx, w, created.Network)
 	if rtErr != nil {
 		return nil, rtErr
+	}
+
+	// Сеть объявляется журналу ОДИН раз — здесь, когда она СОБРАНА (#1548).
+	//
+	// # Почему не сразу после Insert, как было
+	//
+	// Умолчания достраиваются той же транзакцией ПОСЛЕ вставки строки, поэтому
+	// строка, объявленная сразу, несла пустые `default_security_group_id` и
+	// `default_route_table_id`, а следом шли два `UPDATED` — по одному на каждое
+	// достроенное умолчание. Подписчик вправе читать непустую нагрузку как ПОЛНОЕ
+	// состояние предмета (`proto/kacho/cloud/subscription/subscription.proto`,
+	// поле `state`) — и читал: показывал и записывал сеть БЕЗ группы безопасности
+	// и БЕЗ таблицы маршрутов, а затем дважды себя поправлял. Состояние это было
+	// правдой ровно внутри нашей транзакции и ложью к её концу.
+	//
+	// # Что этим куплено помимо правды
+	//
+	// Число событий перестало быть функцией нашей ВНУТРЕННЕЙ композиции. Прежде
+	// третье умолчание дало бы подписчику четвёртое событие, хотя арендатор
+	// по-прежнему делал одно действие; теперь состав умолчаний — наше частное
+	// дело, а наружу едет один факт: сеть создана, вот она целиком.
+	//
+	// # Чего это НЕ отменяет
+	//
+	// Группа и таблица — самостоятельные ресурсы, и их появление подписчик узнаёт
+	// своими строками (их эмитят те же два use-case'а). Сеть объявляется ПОСЛЕ
+	// них: каждое событие называет ресурс, УЖЕ собранный к своей позиции, а
+	// межвидового порядка поток не обещает и обещать не может — подписка сужается
+	// по видам, и клиент, взявший один вид, соседних строк не увидит вовсе.
+	//
+	// Атомарность не затронута: эмиссия по-прежнему в той же writer-TX, что и
+	// строка ресурса, поэтому при отказе операции события нет ВОВСЕ.
+	if err := w.Outbox().Emit(ctx, "Network", finalRec.ID, finalRec.ProjectID, "CREATED",
+		helpers.DomainToMap(finalRec)); err != nil {
+		return nil, serviceerr.MapRepoErr(fmt.Errorf("%w: outbox emit: %v", repo.ErrInternal, err))
 	}
 
 	// Публикуем INTENT на hierarchy-tuple vpc_network→project в ТОЙ ЖЕ writer-TX,

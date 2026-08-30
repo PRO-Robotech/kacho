@@ -41,17 +41,16 @@ sequenceDiagram
   alt project not found
     S->>DB: UPDATE operation done=true, error=NotFound
   else project OK
+    Note over S: одна writer-транзакция на всё создание — либо весь композит, либо ничего
     S->>DB: BEGIN
     S->>DB: INSERT networks (id, project_id, name, …)
-    S->>DB: INSERT vpc_outbox (Network, CREATED) → pg_notify
-    S->>DB: COMMIT
-
-    Note over S: группа правил по умолчанию создаётся безусловно, в той же транзакции
-    S->>S: short = first-8-chars(net_id)
-    S->>DB: BEGIN
     S->>DB: INSERT security_groups (default-sg-{short}, network_id, default_for_network=true)
-    S->>DB: UPDATE networks SET default_security_group_id=...
-    S->>DB: INSERT vpc_outbox (SG CREATED, Network UPDATED)
+    S->>DB: INSERT vpc_outbox (SecurityGroup, CREATED) → pg_notify
+    S->>DB: UPDATE networks SET default_security_group_id=…
+    S->>DB: INSERT route_tables (default-rt-{short}, network_id, system_owned=true)
+    S->>DB: INSERT vpc_outbox (RouteTable, CREATED) → pg_notify
+    S->>DB: UPDATE networks SET default_route_table_id=…
+    S->>DB: INSERT vpc_outbox (Network, CREATED — сеть уже СОБРАНА) → pg_notify
     S->>DB: COMMIT
 
     S->>DB: UPDATE operation done=true, response=Network

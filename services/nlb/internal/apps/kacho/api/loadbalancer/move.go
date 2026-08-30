@@ -205,14 +205,14 @@ func (u *MoveLoadBalancerUseCase) doMove(ctx context.Context, id, srcProject, ds
 	}
 	if err := w.Outbox().Emit(ctx,
 		kachorepo.OutboxResourceLoadBalancer, string(moved.ID), string(moved.ProjectID),
-		kachorepo.OutboxActionMoved, lbMovedPayload(string(moved.ID), srcProject, dstProject),
+		kachorepo.OutboxActionMoved, kachorepo.LoadBalancerStatePayload(moved),
 	); err != nil {
 		return nil, mapDomainErr(err)
 	}
 	// Also emit UPDATED for downstream watchers that don't subscribe to MOVED.
 	if err := w.Outbox().Emit(ctx,
 		kachorepo.OutboxResourceLoadBalancer, string(moved.ID), string(moved.ProjectID),
-		kachorepo.OutboxActionUpdated, lbOutboxPayload(moved),
+		kachorepo.OutboxActionUpdated, kachorepo.LoadBalancerStatePayload(moved),
 	); err != nil {
 		return nil, mapDomainErr(err)
 	}
