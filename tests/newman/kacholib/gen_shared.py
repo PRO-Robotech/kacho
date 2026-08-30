@@ -1681,6 +1681,33 @@ class Run:
         return load_cases_module(path, self.injected, before=self.before,
                                  stem_dashes_to_underscores=self.stem_dashes_to_underscores)
 
+    # ── Форма коллекции решениями ЭТОГО набора ──────────────────────────────
+    #
+    # Три метода ниже — то же связывание, что `load`, и заведены они по той же
+    # причине и той же ценой. Функции хребта принимают дескриптор набора первым
+    # параметром; потребитель, зовущий их своими руками, обязан этот дескриптор
+    # НАЗВАТЬ — то есть записать решения набора во второй раз. Разошлось это
+    # молча: сведение хребта (#1379) дало `case_to_postman`, `step_to_postman` и
+    # `build_collection` второй параметр, и двадцать восемь регрессионных проб
+    # перестали исполняться ВОВСЕ (#1536) — не упали, а не запустились, что
+    # newman и pytest считают в разных каналах.
+    #
+    # Ручкой «на будущее» это не является: у каждого метода есть вызывающий в
+    # дереве сегодня. Держит свойство гейт
+    # `TestNewmanConsumersReachTheSpineThroughTheSuiteBinding`.
+
+    def case_item(self, case) -> Dict:
+        """Кейс — в папку коллекции решениями набора."""
+        return case_to_postman(self.emit, case)
+
+    def step_item(self, step) -> Dict:
+        """Шаг — в элемент коллекции решениями набора."""
+        return step_to_postman(self.emit, step)
+
+    def collection(self, key: str, cases: list) -> Dict:
+        """Перечень кейсов — в коллекцию решениями набора."""
+        return build_collection(self.emit, key, cases)
+
     def case_modules(self) -> list:
         """Модули кейсов набора — тем же отбором, что у генерации."""
         return _case_modules(self)
