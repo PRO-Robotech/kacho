@@ -183,6 +183,9 @@ type Sweeper struct {
 	passes   int64
 	removed  map[string]int64
 	failures map[string]int64
+	// started — поднята ли петля. Под тем же замком, что накопитель: второй
+	// Start обязан быть отвергнут ДО того, как заведёт вторую горутину.
+	started bool
 
 	stopped chan struct{}
 }
@@ -324,6 +327,24 @@ func (s *Sweeper) Stats() Counts {
 // Общий замок не нужен: он купил бы отсутствие дубля ценой одиночной точки, у
 // которой свой отказ.
 func (s *Sweeper) Start(ctx context.Context) {
+	// ВТОРОЙ ВЫЗОВ НЕ ПОДНИМАЕТ ВТОРОЙ ПЕТЛИ, и это регрессия, а не осторожность.
+	// Прежде он заводил вторую горутину, и обе закрывали ОДИН канал завершения —
+	// «close of closed channel» на ОСТАНОВЕ, то есть опечатка композиционного
+	// корня роняла процесс целиком в момент, когда он и так завершается.
+	//
+	// Отвергается ГРОМКО: ошибка провязки остаётся ошибкой, и молчание сделало бы
+	// её ненаблюдаемой. Но паника здесь — заведомо худший исход, чем лишний
+	// вызов, поэтому исход не она.
+	s.mu.Lock()
+	if s.started {
+		s.mu.Unlock()
+		s.log.Warn("retention sweep already started; second Start ignored",
+			slog.Int("subjects", len(s.subjects)))
+		return
+	}
+	s.started = true
+	s.mu.Unlock()
+
 	go func() {
 		defer close(s.stopped)
 		ticker := time.NewTicker(s.cfg.Interval)
