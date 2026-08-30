@@ -88,6 +88,7 @@ from gen_shared import (  # noqa: E402  — импорт после провяз
     _is_operation_id_var,
     _js_code_and_literals,
     js_comment,
+    js_regex_literal_text,
     js_str,
     load_cases_module,
     _MUTATION_METHODS,
@@ -99,6 +100,7 @@ from gen_shared import (  # noqa: E402  — импорт после провяз
     _PUB_SET_RE,
     _published_id_outcome_assert,
     _published_resource_vars,
+    _REGEX_META,
     _reset_captured_operation_id,
     step_to_postman,
     _strip_js_comments,
@@ -106,47 +108,6 @@ from gen_shared import (  # noqa: E402  — импорт после провяз
     _wrap_own_fresh_reads,
 )
 
-
-# Знаки, значимые в регулярном выражении, плюс разделитель литерала. `-` сюда НЕ
-# входит намеренно: вне класса символов он и так буква, а `\-` под флагом `u`
-# был бы синтаксической ошибкой — то есть «на всякий случай» сломало бы литерал.
-_REGEX_META = "^$\\.*+?()[]{}|/"
-
-
-def js_regex_literal_text(value: str) -> str:
-    r"""ТЕКСТ вызывающего внутри литерала регулярного выражения (#1202).
-
-    Имя ресурса, фрагмент контракт-тона, подпись — это ТЕКСТ, а стоит он внутри
-    `/…/`, где каждый знак выражения работает ОПЕРАТОРОМ. Без экранирования
-    `Route table (v2)` стал бы группой, `a.b` — «любой знак», а `/` закрыл бы
-    литерал и хвост стал бы КОДОМ.
-
-    ПОЧЕМУ НЕ `js_str`. Сериализатор строки экранирует по правилам СТРОКИ:
-    апостроф, кавычку, обратный слэш. Скобка и точка для него безобидны, а здесь
-    именно они и опасны. Правила разные, потому что языки разные — литерал
-    строки и литерал выражения.
-
-    ПОЧЕМУ НЕ `re.escape`. Питонов набор — другой язык: он экранирует и то, чего
-    в JavaScript экранировать нельзя под флагом `u`, и не экранирует разделитель
-    `/`, которого у Python вовсе нет.
-
-    ЧЕМ ДЕРЖИТСЯ. Проба
-    `services/iam/tests/newman/scripts/js_regex_literal_test.py`: враждебный
-    текст не рвёт синтаксис, собранное выражение совпадает с текстом ДОСЛОВНО и
-    НЕ совпадает со строкой, где те же знаки сработали бы операторами.
-    """
-    out = []
-    for ch in str(value):
-        code = ord(ch)
-        # Разделители строк — экранированными: знаками они невидимы в
-        # исходнике, и первый же редактор молча их съест.
-        if code < 0x20 or code == 0x7F or ch in ("\u2028", "\u2029"):
-            out.append("\\u%04x" % code)
-        elif ch in _REGEX_META:
-            out.append("\\" + ch)
-        else:
-            out.append(ch)
-    return "".join(out)
 
 ROOT = Path(__file__).resolve().parents[1]
 SCRIPTS_DIR = Path(__file__).resolve().parent
