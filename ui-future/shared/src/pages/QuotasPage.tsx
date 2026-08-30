@@ -31,7 +31,7 @@ import { PanelHeader } from "@shared/components/molecules/PanelHeader";
 import { ProjectRequiredEmpty } from "@shared/components/molecules/ProjectRequiredEmpty";
 import { useBreadcrumb } from "@shared/components/molecules/PageHeaderSlot";
 import { ResourceTable, type Column } from "@shared/components/organisms/ResourceTable";
-import { quotaRows, type Quota, type QuotaRow } from "@shared/lib/quota-view";
+import { QUOTA_VALUES_SET_BY, quotaRows, type Quota, type QuotaRow } from "@shared/lib/quota-view";
 
 /**
  * Владельцы, подающие чтение квот.
@@ -146,7 +146,9 @@ export function QuotasPage() {
           title="Квоты"
           right={
             <Typography.Text type="secondary" style={{ fontSize: 12 }}>
-              Величины задаёт администратор облака
+              {/* Та же фраза говорится в отказе по пределу — источник один,
+                  иначе два места об одном предмете разошлись бы молча. */}
+              {QUOTA_VALUES_SET_BY}
             </Typography.Text>
           }
         />

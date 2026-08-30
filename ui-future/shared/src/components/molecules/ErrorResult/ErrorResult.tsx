@@ -15,6 +15,7 @@
 // неоднозначности не несёт и остаётся 403.
 
 import type { ReactNode } from "react";
+import { Link } from "react-router";
 import { Result, Typography } from "antd";
 import type { ResultStatusType } from "antd/es/result";
 import { presentError } from "@shared/lib/error-presentation";
@@ -43,6 +44,16 @@ export function ErrorResult({ error, status: statusOverride, title, subTitle, ex
   // тому, кто смотрит на экран. Место ему — подсказка при наведении, откуда его
   // достанет поддержка и разработчик; текст сообщения остаётся текстом сервера.
   const devDetail = statusOverride === undefined && subTitle === undefined ? p.devDetail : null;
+  // Отказ по пределу оставляет клиента там, где он упёрся, если не сказать,
+  // КУДА идти: сколько разрешено, сколько занято и кто задал величину, живут на
+  // витрине квот. Адрес берётся из носителя, названного самим отказом, — не
+  // подделывается: носителя не назвали, значит ссылки нет, а раздел всё равно
+  // назван словами в оговорке ниже.
+  //
+  // Дополнение вызывающего сильнее: он знает про своё место больше, и подмена
+  // его кнопки нашей ссылкой отняла бы у него действие.
+  const quotaHref = statusOverride === undefined && subTitle === undefined ? (p.quota?.href ?? null) : null;
+  const finalExtra = extra ?? (quotaHref === null ? undefined : <Link to={quotaHref}>Открыть раздел «Квоты»</Link>);
   const finalSubTitle =
     subTitle ??
     (p.subTitle === null ? null : (
@@ -59,7 +70,7 @@ export function ErrorResult({ error, status: statusOverride, title, subTitle, ex
       </span>
     ));
 
-  const result = <Result status={status} title={finalTitle} subTitle={finalSubTitle} extra={extra} />;
+  const result = <Result status={status} title={finalTitle} subTitle={finalSubTitle} extra={finalExtra} />;
 
   if (!centered) return result;
 

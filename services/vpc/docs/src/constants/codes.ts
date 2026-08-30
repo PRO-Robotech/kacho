@@ -20,7 +20,12 @@ export const CODES = {
   failedPrecondition: {
     grpc: 'FAILED_PRECONDITION',
     http: '400',
-    when: 'Состояние не позволяет операцию: CIDR overlap, «network is not empty», deletion_protection, IPAM pool not resolved',
+    when: 'Состояние не позволяет операцию: CIDR overlap, «network is not empty», deletion_protection, IPAM pool not resolved; потолок квоты на вид не назван ни на одной области видимости (признак QUOTA_NOT_PROVISIONED) — требуется завести предел',
+  },
+  resourceExhausted: {
+    grpc: 'RESOURCE_EXHAUSTED',
+    http: '429',
+    when: 'Исчерпана квота на число ресурсов вида: потолок назван и выбран полностью (признак QUOTA_EXCEEDED в ErrorInfo). Требуется поднять предел',
   },
   unavailable: {
     grpc: 'UNAVAILABLE',

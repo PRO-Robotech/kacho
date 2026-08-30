@@ -3,7 +3,7 @@
 export const DICTIONARY = {
   id: { short: 'Идентификатор ресурса (output-only, генерируется сервером)' },
   projectId: { short: 'Идентификатор проекта (домен kacho-iam); ресурс — project-level' },
-  name: { short: 'Имя ресурса (lowercase, 0..63 символа)' },
+  name: { short: 'Имя ресурса: DNS label по RFC 1123 — ^[a-z0-9]([-a-z0-9]{0,61}[a-z0-9])?$ (строчные латинские буквы, цифры и дефис; 1..63; цифра первым знаком допустима). Уникально в паре (projectId, name). Пустая строка — законный вход Create: сервер проставит имя, производное от id; в Update отвергается' },
   description: { short: 'Описание (0..256 символов)' },
   labels: { short: 'Метки key:value (до 64 пар)' },
   createdAt: { short: 'Время создания (RFC 3339, усечено до секунд)' },

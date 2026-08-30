@@ -52,9 +52,15 @@ Registry — **тонкий namespace-слой над общим хранили�
 
 :::info Две поверхности: control-plane и data-plane
 Kachō Registry — это **два интерфейса** к одному namespace. **Control-plane** (gRPC + REST через
-`api-gateway`) управляет реестрами и показывает содержимое: создать/переименовать/удалить Registry,
-перечислить репозитории и теги. **Data-plane** (OCI Distribution / Docker Registry v2 на
-`registry.kacho.local`) — это то, с чем работает `docker` / `helm`: push и pull блобов и манифестов.
+`api-gateway`) управляет и реестрами, и репозиториями: создать, переименовать и удалить Registry;
+завести Repository ещё до первой загрузки, задать ему описание, метки и публичность, переименовать
+или удалить; перечислить репозитории и теги и удалить тег. **Data-plane** (OCI Distribution /
+Docker Registry v2 на `registry.kacho.local`) — это то, с чем работает `docker` / `helm`: push и
+pull блобов и манифестов.
+
+Переименование **реестра** безопасно: его имя в путь загрузки не входит — там стоит неизменяемый
+`registryId`. Переименование **репозитория** обрывает каждый путь загрузки: имя репозитория и есть
+его адрес, редиректа нет — см. [Repository](/api/repository).
 :::
 
 :::tip С чего начать
@@ -77,7 +83,7 @@ Kachō Registry оперирует **тремя типами ресурсов**.
   <tbody>
     <tr><td><strong>Registry</strong></td><td>Namespace-реестр в проекте: имя, метки, endpoint, статус жизненного цикла. Единица владения и авторизации</td><td>БД kacho-registry (метаданные)</td></tr>
     <tr><td><strong>Repository</strong></td><td>OCI-репозиторий (образ) внутри namespace, напр. <code>backend/api</code>: число тегов, размер, тип артефакта — и наложенные описание, метки, публичность</td><td>Наложение — БД kacho-registry; содержимое — проекция из zot</td></tr>
-    <tr><td><strong>Tag</strong></td><td>Тегированный образ (манифест): digest, размер, платформа, время создания, число скачиваний</td><td>Проекция из zot (read-only)</td></tr>
+    <tr><td><strong>Tag</strong></td><td>Тегированный образ (манифест): digest, размер, платформа, время создания, число скачиваний</td><td>Проекция из zot: собственной строки в БД сервиса нет</td></tr>
   </tbody>
 </table>
 
