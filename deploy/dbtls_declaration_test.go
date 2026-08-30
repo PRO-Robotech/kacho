@@ -418,7 +418,7 @@ func scanDBTLS(stacks map[string]stackFacts, knobs []dbTLSKnob) []dbFinding {
 // TestRecordedConcessions_StillHaveASubject краснеет и требует удалить запись.
 // Иначе исключение переживёт свой предмет и начнёт разрешать то, чего уже нет.
 var recordedPlaintextConcessions = map[string]string{
-	"fe3455/registry.db.sslmode": "объявленная уступка кластера fe3455: сервер pg-registry " +
+	"fe3455/registry.db.sslMode": "объявленная уступка кластера fe3455: сервер pg-registry " +
 		"TLS отдаёт (mtls.pgTls.services включает registry), клиент его пока не просит. " +
 		"Причина и обратимость записаны в шапке values.fe3455-prod.yaml §KNOWN, DOCUMENTED " +
 		"concessions. Снятие — решение владельца: меняет посадку живого кластера",
@@ -689,7 +689,7 @@ func TestDBTLSPredicates_RecogniseTheRealTree(t *testing.T) {
 	for _, want := range []string{
 		"kacho-iam.config.repository.postgres.sslMode",
 		"vpc.repository.postgres.sslMode",
-		"kacho-geo.dataMigration.source.sslmode",
+		"kacho-geo.dataMigration.source.sslMode",
 	} {
 		found := false
 		for _, h := range have {

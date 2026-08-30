@@ -110,7 +110,7 @@ spec:
             - name: SRC_DB
               value: "{{ $src.name }}"
             - name: SRC_SSLMODE
-              value: "{{ $src.sslmode }}"
+              value: "{{ include "kacho-geo.dbSslMode" $src }}"
             - name: SRC_PASSWORD
               valueFrom:
                 secretKeyRef:
@@ -126,7 +126,7 @@ spec:
             - name: DST_DB
               value: "{{ .Values.db.name }}"
             - name: DST_SSLMODE
-              value: "{{ .Values.db.sslmode }}"
+              value: "{{ include "kacho-geo.dbSslMode" .Values.db }}"
             - name: DST_PASSWORD
               valueFrom:
                 secretKeyRef:

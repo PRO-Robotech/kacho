@@ -90,7 +90,10 @@ var guardedServices = []guardedService{
 		key:      "storage",
 		chart:    "../../../services/storage/deploy",
 		guardSrc: "services/storage/internal/config/validate.go",
-		modePath: []string{"config", "authMode"},
+		// Посадка адресуется каноном в корне значений сервиса: прежний адрес
+		// (config.authMode) снят вместе с пятью такими же — вопрос «в какой
+		// посадке работает кластер» задавался семью разными ключами.
+		modePath: []string{"authMode"},
 		edgePaths: [][]string{
 			{"mtls", "edges", "iam"},
 			{"mtls", "edges", "geo"},

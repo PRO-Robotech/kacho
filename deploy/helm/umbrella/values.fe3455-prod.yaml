@@ -532,7 +532,7 @@ registry:
     tag: main-b622b388
   authMode: production
   db:
-    sslmode: disable
+    sslMode: disable
   authz:
     iamGrpcAddr: kacho-iam-internal.kacho.svc:9091
     iamProjectGrpcAddr: kacho-iam.kacho.svc:9090
@@ -713,6 +713,8 @@ pg-registry:
 # (sslmode=require; pg server cert issued via mtls.pgTls.services above). Peer edges:
 # storage→geo (zone_id), storage→iam PUBLIC (ProjectService.Get) + INTERNAL (Check).
 storage:
+  # ПОСАДКА БЕЗОПАСНОСТИ — один адрес на весь флот (прежний: config.authMode).
+  authMode: production
   # ✅ ВКЛЮЧЁН (2026-07-20) — чарт kacho-storage интегрирован с umbrella
   # (services/storage/deploy: fullnameOverride kacho-storage, certificate.yaml +
   # mtls.*, db.* existingSecret, storage→iam fga-register). Три блокера прошлой
@@ -740,7 +742,6 @@ storage:
     # vpc/compute/nlb release SHA pinned above.
     tag: main-b622b388
   config:
-    authMode: production
     # storage→geo (zone_id) + storage→iam PUBLIC (ProjectService.Get, :9090) +
     # INTERNAL (Check + RegisterResource fga-register, :9091).
     geoGrpcAddr: kacho-geo.kacho.svc:9090

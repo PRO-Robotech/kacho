@@ -160,6 +160,8 @@ cert-manager:
 
 # ─── api-gateway (edge) ─────────────────────────────────────────────────────
 api-gateway:
+  # ПОСАДКА БЕЗОПАСНОСТИ — один адрес на весь флот (прежний: authn.mode).
+  authMode: production-strict
   # ─── Объявление приёма токена (Ф1б, задача #926) ──────────────────────
   #
   # Издатель на крае — МНОЖЕСТВО: платформа чеканит свои токены сама (задача
@@ -248,7 +250,6 @@ api-gateway:
   # AuthN: production-strict → Bearer REQUIRED (reject missing token) + Hydra
   # JWKS RS256 validation. No devSecret (HS256 dev path is never used in prod).
   authn:
-    mode: production-strict
     # Apply the per-RPC authentication floor the catalog declares. The gateway
     # refuses to start in a production-class environment without it, so this is
     # not optional here — it is stated so that no future edit to a chart default
@@ -362,9 +363,8 @@ api-gateway:
 
 # ─── kacho-vpc ──────────────────────────────────────────────────────────────
 vpc:
-  # production-mode AuthN: anonymous fail-closed.
-  authn:
-    mode: production
+  # ПОСАДКА БЕЗОПАСНОСТИ — один адрес на весь флот (прежний: authn.mode).
+  authMode: production
   repository:
     postgres:
       sslMode: require
@@ -425,6 +425,14 @@ vpc:
 # grpcAddr) + fail-closed FGA list-filter + DB ssl-mode=require (env escape-hatch:
 # the compute Go config reads KACHO_COMPUTE_DB_SSLMODE, default `disable`).
 compute:
+  # ПОСАДКА БЕЗОПАСНОСТИ — один адрес на весь флот.
+  #
+  # Здесь её НЕ БЫЛО вовсе: посадка приходила умолчанием чарта, и прочитать её
+  # по профилю было нельзя. Для профиля, чьё назначение — боевая посадка, это
+  # худший из способов её задать: значение верное, а вопрос «в какой посадке
+  # работает этот кластер» по нему не отвечается. Значение то же, что и было
+  # умолчанием, — меняется не посадка, а её читаемость.
+  authMode: production
   # First-class knob, NOT the free-form `env` passthrough. The chart already emits
   # KACHO_COMPUTE_DB_SSLMODE from db.sslMode; setting the same variable through
   # `env` too put TWO entries with the same name in one container's env list — the
@@ -496,7 +504,7 @@ kacho-geo:
   env:
     KACHO_GEO_AUTHZ_TRUSTED_FORWARDER_SANS: "spiffe://kacho.cloud/ns/kacho/sa/kacho-api-gateway,spiffe://kacho.cloud/ns/kacho/sa/kacho-vpc,spiffe://kacho.cloud/ns/kacho/sa/kacho-compute,spiffe://kacho.cloud/ns/kacho/sa/kacho-nlb,spiffe://kacho.cloud/ns/kacho-storage/sa/kacho-storage,spiffe://kacho.cloud/ns/kacho/sa/kacho-registry"
   db:
-    sslmode: require
+    sslMode: require
   mtls:
     enable: true
     edges:
@@ -509,10 +517,12 @@ kacho-geo:
   dataMigration:
     enabled: false
     source:
-      sslmode: require
+      sslMode: require
 
 # ─── kacho-iam (authz authority + identity tier) ────────────────────────────
 kacho-iam:
+  # ПОСАДКА БЕЗОПАСНОСТИ — один адрес на весь флот (прежний: config.authn.mode).
+  authMode: production-strict
   # mTLS: server-only (authz authority; gateway/vpc/compute/nlb dial iam).
   mtls:
     # Слушатель :9097 несёт ДВЕ поверхности с разными требованиями. Набор
@@ -610,7 +620,6 @@ kacho-iam:
     # AuthN secrets (KACHO_IAM_HOOK_TOKEN + KACHO_IAM_JWKS_ENC_KEY) — wired via
     # secretKeyRef (kacho.hooks.* / kacho.iam.jwks.*); operator provisions them.
     authn:
-      mode: production-strict
       # Who may FORWARD an end-user identity (x-kacho-principal-*) to iam.
       # Restated here even though the chart default already carries it: an EMPTY
       # list does not mean "nobody" — the corelib contract narrows the circle only
@@ -695,6 +704,14 @@ kacho-iam:
 # ─── kacho-nlb (L4 NLB control-plane) ───────────────────────────────────────
 # Enabled in production; condition-gated pieces (sub-chart + its Postgres) on.
 kacho-nlb:
+  # ПОСАДКА БЕЗОПАСНОСТИ — один адрес на весь флот (прежний: config.mode).
+  # production mode: peer-рёбра обязаны быть mTLS, DSN — с sslmode ∈
+  # require/verify-ca/verify-full, per-object фильтр списков обязателен и
+  # fail-closed. Ручки аварийного обхода авторизации у nlb НЕТ: звено решения
+  # о доступе ставится безусловно, отключить его нечем. Здесь стояло
+  # `breakglass: false` — строка, которую оператор читает как «обход закрыт»,
+  # при том что её не читал ни шаблон чарта, ни описатель настроек процесса.
+  authMode: production
   enabled: true
   # mTLS: server (gateway dials here) + client (nlb→iam, nlb→vpc, nlb→compute).
   mtls:
@@ -719,20 +736,13 @@ kacho-nlb:
     # because the correct host happened to come from the dev profile, which this
     # production layer does not inherit.
     host: kacho-umbrella-pg-nlb
-    sslmode: require
+    sslMode: require
     # No plaintext password in values — reference an existing Secret (key
     # `password`). Operator provisions kacho-umbrella-pg-nlb (or override the
     # name per cluster). Same Secret the pg-nlb instance is configured with below.
     existingSecret: kacho-umbrella-pg-nlb
     existingSecretKey: password
   config:
-    # production mode: peer-рёбра обязаны быть mTLS, DSN — с sslmode ∈
-    # require/verify-ca/verify-full, per-object фильтр списков обязателен и
-    # fail-closed. Ручки аварийного обхода авторизации у nlb НЕТ: звено решения
-    # о доступе ставится безусловно, отключить его нечем. Здесь стояло
-    # `breakglass: false` — строка, которую оператор читает как «обход закрыт»,
-    # при том что её не читал ни шаблон чарта, ни описатель настроек процесса.
-    mode: production
     authz:
       # BOOT REQUIREMENT: non-empty when mode=production AND mtls.enable=true.
       # The chart default is [] — "trust any mTLS peer to forward the end-user
@@ -773,9 +783,10 @@ kacho-nlb:
 #   config.trustedForwarderSANs   → who may forward an end-user identity (without it
 #                                   any certificate-verified peer may act as any tenant)
 storage:
+  # ПОСАДКА БЕЗОПАСНОСТИ — один адрес на весь флот (прежний: config.authMode).
+  authMode: production
   enabled: true
   config:
-    authMode: production
     # Runtime peer edges. storage→geo (ZoneService.Get for zone_id + the zone's
     # region, which is never derived from the zone name) and storage→iam PUBLIC
     # :9090 (ProjectService.Get) — both fail-closed when unset.
@@ -902,7 +913,7 @@ registry:
   db:
     # Chart default host (kacho-umbrella-pg-registry) and existingSecret are
     # already correct for this umbrella — only the ssl floor needs stating.
-    sslmode: require
+    sslMode: require
   authz:
     # Restated (they ARE the chart defaults) because all three are fail-closed:
     # an empty address does not degrade, it refuses to boot or refuses the call.

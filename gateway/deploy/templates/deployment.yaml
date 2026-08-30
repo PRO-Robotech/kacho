@@ -190,7 +190,7 @@ spec:
               value: "{{ .Values.advertisedEndpoint }}"
             {{- if .Values.authn }}
             - name: KACHO_API_GATEWAY_AUTHN_MODE
-              value: {{ .Values.authn.mode | default "production" | quote }}
+              value: {{ include "api-gateway.authMode" . | default "production" | quote }}
             {{- /* ПОСАДКА ЛИЧНОСТИ (задача #1125): чем стенд проверяет человека.
                  Разводит требование АДМИНИСТРАТИВНОГО адреса поставщика — того,
                  которым выход человека снимает сессию на его стороне; под `own`
@@ -499,9 +499,23 @@ spec:
               mountPath: {{ .Values.tokenAcceptance.revocationCa.mountPath | quote }}
               readOnly: true
             {{- end }}
+          # ГОТОВНОСТЬ СПРАШИВАЕТСЯ ПО ТОМУ, ЧТО КРАЙ СТРОИТ. `/readyz` опрашивает
+          # grpc.health.v1.Health у каждого backend и отвечает 503 ТОЛЬКО когда
+          # недоступен критичный (iam фронтит authN+authZ на каждом запросе);
+          # падение одного домена оставляет реплику Ready намеренно, иначе
+          # одно-доменный сбой амплифицируется в полный отказ края (см. godoc
+          # health.HTTPReadyz).
+          #
+          # Прежде ОБА слота спрашивали `/healthz` — безусловный 200, который о
+          # backend'ах не знает ничего. Край, потерявший iam, оставался в ротации и
+          # принимал запросы, которые не мог авторизовать.
+          #
+          # Живость остаётся `/healthz` намеренно: готовность зависит от соседей, и
+          # ставить её в слот живости значило бы перезапускать край из-за чужого
+          # сбоя.
           readinessProbe:
             httpGet:
-              path: /healthz
+              path: /readyz
               port: cmux
             initialDelaySeconds: 5
             periodSeconds: 10

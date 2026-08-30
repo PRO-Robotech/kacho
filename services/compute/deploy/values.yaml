@@ -51,7 +51,6 @@ db:
 # allow-list. `production-strict` additionally demands per-edge client-mTLS on
 # every live peer edge. `dev` is the only insecure mode (local stand only).
 auth:
-  mode: production
   # requireIAM — fail-closed boot-gate (KACHO_COMPUTE_REQUIRE_IAM): mutating
   # Create is refused (UNAVAILABLE) and readiness stays NotReady until the
   # register-drainer is IAM-connected, so no resource is ever created without a
@@ -273,3 +272,12 @@ metricsScrape:
 # Сверяет gateway/deploy/subscription_stream_budget_test.go, читая это объявление.
 subscription:
   maxStreams: 16
+
+# ── ПОСАДКА БЕЗОПАСНОСТИ ─────────────────────────────────────────────────
+#
+# ОДИН адрес на весь флот: `authMode` в корне значений сервиса. Ручку звали
+# шестью разными адресами и двумя именами, и вопрос «в какой посадке работает
+# этот кластер» нельзя было задать одной командой. Прежний адрес (auth.mode)
+# снят; профиль, всё ещё задающий его, получает отказ рендера с обоими
+# значениями в тексте — молчаливого отката к умолчанию не будет.
+authMode: production
