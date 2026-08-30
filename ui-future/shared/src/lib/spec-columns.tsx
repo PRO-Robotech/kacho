@@ -15,6 +15,7 @@ import { ResourceLink } from "@shared/components/molecules/ResourceLink";
 import { getByPath, type ResourceColumn, type ResourceSpec } from "@shared/lib/resource-registry";
 import { formatDateTime } from "@shared/lib/datetime";
 import { referrerHref, referrerMeta } from "@shared/lib/referrer";
+import type { Referrer, ResourceReference } from "@shared/api/types";
 import { displayText } from "@shared/lib/display-text";
 
 // Ре-экспорт для стабильности публичного API @shared/lib/spec-columns (route/label
@@ -76,39 +77,84 @@ export interface FormatCellOpts {
 export function ReferrerLink({
   projectId,
   referrer,
+  owned,
 }: {
   projectId: string | null | undefined;
-  referrer: { type?: string; id?: string } | undefined;
+  referrer: Referrer | undefined;
+  /** `Reference.owned` — владеет ли референт этим ресурсом. Не задан — владение
+   *  НЕ объявлено (proto3 не отличает ложь от отсутствия), пометки нет. */
+  owned?: boolean;
 }): ReactNode {
   // Известный тип → единая ссылка «иконка + имя» через RefNameLink (резолв имени
-  // + detail-роут). Неизвестный тип — forward-compat fallback (label + id ниже).
+  // + detail-роут). Неизвестный тип — forward-compat fallback (label + имя/id ниже).
   const mappedSpec = referrer?.type ? REFERRER_SPEC[referrer.type] : undefined;
   if (mappedSpec && referrer?.id) {
-    return <RefNameLink specId={mappedSpec} refId={referrer.id} projectId={projectId ?? undefined} maxChars={32} />;
+    return (
+      <>
+        <RefNameLink specId={mappedSpec} refId={referrer.id} projectId={projectId ?? undefined} maxChars={32} />
+        <OwnedMark owned={owned} />
+      </>
+    );
   }
   const meta = referrerMeta(referrer?.type);
   const id = referrer?.id ?? "";
-  const href = referrerHref(projectId, referrer);
+  // Имя референта — то, что читает человек, и для кросс-модульного потребителя
+  // ЕДИНСТВЕННЫЙ способ его узнать: точечный тип намеренно минует REFERRER_SPEC
+  // (чужого ресурса в реестре модуля нет by construction), значит резолвить имя
+  // запросом нечем. Имени в ответе нет — остаётся идентификатор, моноширинным:
+  // подставить сюда что-либо ещё нельзя, выдуманное читается как настоящее.
+  const name = referrer?.name ?? "";
   const inner = (
     <>
       <span style={{ color: meta.color, fontWeight: 500, fontSize: 12 }}>{meta.label}</span>
-      <Typography.Text code style={{ fontSize: 12 }} title={id || undefined}>
-        {id || "—"}
-      </Typography.Text>
+      {name ? (
+        <Typography.Text style={{ fontSize: 12 }} title={id || undefined}>
+          {name}
+        </Typography.Text>
+      ) : (
+        <Typography.Text code style={{ fontSize: 12 }} title={id || undefined}>
+          {id || "—"}
+        </Typography.Text>
+      )}
     </>
   );
-  if (href) {
-    return (
-      <Link
-        to={href}
-        onClick={(e) => e.stopPropagation()}
-        style={{ display: "inline-flex", alignItems: "baseline", gap: 4 }}
-      >
-        {inner}
-      </Link>
-    );
-  }
-  return <span style={{ display: "inline-flex", alignItems: "baseline", gap: 4 }}>{inner}</span>;
+  const to = referrerHref(projectId, referrer);
+  const body = to ? (
+    <Link
+      to={to}
+      onClick={(e) => e.stopPropagation()}
+      style={{ display: "inline-flex", alignItems: "baseline", gap: 4 }}
+    >
+      {inner}
+    </Link>
+  ) : (
+    <span style={{ display: "inline-flex", alignItems: "baseline", gap: 4 }}>{inner}</span>
+  );
+  return (
+    <>
+      {body}
+      <OwnedMark owned={owned} />
+    </>
+  );
+}
+
+// OwnedMark — `Reference.owned` названо СЛЕДСТВИЕМ, а не словом «да» (правило 6
+// консоли): владение значит, что ресурс заказан потребителем и уедет вместе с ним.
+//
+// Помечается ТОЛЬКО истина, и это не пропущенная симметрия: `owned` — proto3
+// bool, ложь на проводе неотличима от отсутствия поля, поэтому «не удалится»
+// было бы утверждением, которого ответ не делал.
+function OwnedMark({ owned }: { owned?: boolean }): ReactNode {
+  if (owned !== true) return null;
+  return (
+    <Typography.Text
+      type="secondary"
+      style={{ fontSize: 12, marginLeft: 6 }}
+      title="Ресурс заказан этим потребителем и удалится вместе с ним"
+    >
+      удалится вместе с ним
+    </Typography.Text>
+  );
 }
 
 // reorderNameIdFirst — KAC-245: во всех таблицах первые две колонки по умолчанию
@@ -317,7 +363,7 @@ export function formatCellByFormat(
       // чужого домена, и выдумывать адрес для незнакомого нельзя.
       if (Array.isArray(v) && v.length > 0) {
         const projectId = opts.projectId ?? (getByPath<string>(row, "project_id") || null);
-        const list = v as Array<{ referrer?: { type?: string; id?: string } }>;
+        const list = v as ResourceReference[];
         return (
           <span
             style={{
@@ -330,7 +376,12 @@ export function formatCellByFormat(
             }}
           >
             {list.map((r, k) => (
-              <ReferrerLink key={`${r.referrer?.id ?? "?"}-${k}`} projectId={projectId} referrer={r.referrer} />
+              <ReferrerLink
+                key={`${r.referrer?.id ?? "?"}-${k}`}
+                projectId={projectId}
+                referrer={r.referrer}
+                owned={r.owned}
+              />
             ))}
           </span>
         );

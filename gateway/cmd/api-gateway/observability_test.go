@@ -121,19 +121,13 @@ func TestDiagnosticSurfaceDeclaresItsPosture(t *testing.T) {
 	assert.Contains(t, desc.AuthStatement(), "внутрь кластера")
 }
 
-// TestSurfaceModeFailsClosedOnAnUnknownLabel — неизвестная метка посадки
-// читается как БОЕВАЯ.
+// ПРОБА ВЫВОДА ПОСАДКИ ПЕРЕЕХАЛА ВМЕСТЕ СО СВОИМ ПРЕДМЕТОМ.
 //
-// Тот же fail-closed, что у загрузочного стража края: посадка, выведенная из
-// незнания, не должна оказаться самой мягкой.
-func TestSurfaceModeFailsClosedOnAnUnknownLabel(t *testing.T) {
-	assert.Equal(t, servicecontract.ModeDev, surfaceMode("dev"))
-	assert.Equal(t, servicecontract.ModeProduction, surfaceMode("production"))
-	assert.Equal(t, servicecontract.ModeProductionStrict, surfaceMode("production-strict"))
-	assert.Equal(t, servicecontract.ModeProduction, surfaceMode(""),
-		"пустая метка — боевая посадка, а не dev")
-	assert.Equal(t, servicecontract.ModeProduction, surfaceMode("что-то-новое"))
-}
+// Здесь стояла `TestSurfaceModeFailsClosedOnAnUnknownLabel`: неизвестная метка
+// читалась как боевая. Вывод посадки переехал в `describePosture` (задача
+// продукта #1407) и перестал быть мягким — неразборчивая метка теперь роняет
+// старт, называя ручку, а не молча выбирает режим за оператора. Пробы предмета
+// стоят в `posture_test.go`.
 
 // freeAddr — свободный адрес на петле. Фиксированный порт сделал бы пробу
 // зависимой от того, что ещё поднято на машине.

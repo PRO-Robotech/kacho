@@ -118,7 +118,7 @@ func describe(
 		Mode:    mode,
 		Logger:  logger,
 
-		Forwarders: cfg.TrustedForwarders(),
+		Forwarders: servicecontract.Value(cfg.TrustedForwarders()),
 		ForwarderKnobs: servicecontract.ForwarderKnobs{
 			SANs:     "authz.trusted-forwarder-sans (env KACHO_NLB_AUTHZ__TRUSTED_FORWARDER_SANS)",
 			TrustAny: "authz.trust-any-forwarder (env KACHO_NLB_AUTHZ__TRUST_ANY_FORWARDER)",
@@ -166,7 +166,7 @@ func describe(
 		// сам судит её отношение к границе обработки одиночного вызова.
 		StreamBudget: servicecontract.Value(cfg.APIServer.SubscriptionStreamBudget),
 
-		DBSSLMode:     coredb.SSLModeFromDSN(cfg.Repository.Postgres.URL),
+		DBSSLMode:     servicecontract.Value(coredb.SSLModeFromDSN(cfg.Repository.Postgres.URL)),
 		PublicAddr:    hostPort(cfg.APIServer.Endpoint),
 		InternalAddr:  hostPort(cfg.APIServer.InternalEndpoint),
 		PublicCreds:   serverCreds,

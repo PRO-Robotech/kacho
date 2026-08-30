@@ -10,65 +10,34 @@ import (
 	"strings"
 
 	"github.com/jackc/pgx/v5"
-	"github.com/jackc/pgx/v5/pgconn"
 
-	"github.com/PRO-Robotech/kacho/pkg/validate/nameform"
+	"github.com/PRO-Robotech/kacho/pkg/db/pgfault"
 	"github.com/PRO-Robotech/kacho/services/compute/internal/ports"
 )
 
 // isUniqueViolation — Postgres unique-constraint violation (SQLSTATE 23505).
 func isUniqueViolation(err error) bool {
-	if err == nil {
-		return false
-	}
-	var pgErr *pgconn.PgError
-	if errors.As(err, &pgErr) {
-		return pgErr.Code == "23505"
-	}
-	s := err.Error()
-	return strings.Contains(s, "23505") || strings.Contains(s, "duplicate key value")
+	return pgfault.Classify(err).Is(pgfault.Unique)
 }
 
 // isFKViolation — Postgres foreign_key_violation (SQLSTATE 23503). Маппится в
 // gRPC FailedPrecondition ("The <resource> is being used").
 func isFKViolation(err error) bool {
-	if err == nil {
-		return false
-	}
-	var pgErr *pgconn.PgError
-	if errors.As(err, &pgErr) {
-		return pgErr.Code == "23503"
-	}
-	s := err.Error()
-	return strings.Contains(s, "23503") || strings.Contains(s, "violates foreign key")
+	return pgfault.Classify(err).Is(pgfault.ForeignKey)
 }
 
 // isCheckViolation — Postgres check_violation (SQLSTATE 23514). Легитимный
 // bad-input по user-reachable CHECK-constraint → gRPC InvalidArgument
 // (data-integrity.md SQLSTATE→gRPC table).
 func isCheckViolation(err error) bool {
-	if err == nil {
-		return false
-	}
-	var pgErr *pgconn.PgError
-	if errors.As(err, &pgErr) {
-		return pgErr.Code == "23514"
-	}
-	return strings.Contains(err.Error(), "23514")
+	return pgfault.Classify(err).Is(pgfault.Check)
 }
 
 // isExclusionViolation — Postgres exclusion_violation (SQLSTATE 23P01). Состояние
 // ресурса не позволяет (пересечение EXCLUDE-range) → gRPC FailedPrecondition
 // (data-integrity.md SQLSTATE→gRPC table).
 func isExclusionViolation(err error) bool {
-	if err == nil {
-		return false
-	}
-	var pgErr *pgconn.PgError
-	if errors.As(err, &pgErr) {
-		return pgErr.Code == "23P01"
-	}
-	return strings.Contains(err.Error(), "23P01")
+	return pgfault.Classify(err).Is(pgfault.Exclusion)
 }
 
 // wrapPgErr классифицирует pgx-ошибку и возвращает sentinel-ошибку из
@@ -123,17 +92,15 @@ func wrapPgErr(err error, kind, id string) error {
 // даёт ему ничего, что можно исправить. Имя ограничения идёт в журнал (ERROR для
 // нашего дефекта, WARN для ввода) — иначе о срабатывании не знает никто.
 func wrapCheckViolation(err error, kind, id string) error {
-	var pgErr *pgconn.PgError
-	if errors.As(err, &pgErr) {
-		if nameform.IsConstraint(pgErr.TableName, pgErr.ConstraintName) {
-			slog.Error("name form backstop fired: service admitted a name it validates itself",
-				"sqlstate", pgErr.Code, "table", pgErr.TableName,
-				"constraint", pgErr.ConstraintName, "kind", kind, "id", id)
-			return ports.ErrInternal
-		}
+	f := pgfault.Classify(err)
+	switch pgfault.CheckLaneOf(f) {
+	case pgfault.LaneServiceDefect:
+		slog.Error("name form backstop fired: service admitted a name it validates itself",
+			append([]any{"kind", kind, "id", id}, f.LogAttrs()...)...)
+		return ports.ErrInternal
+	case pgfault.LaneCallerInput:
 		slog.Warn("check constraint rejected caller input",
-			"sqlstate", pgErr.Code, "table", pgErr.TableName,
-			"constraint", pgErr.ConstraintName, "kind", kind, "id", id)
+			append([]any{"kind", kind, "id", id}, f.LogAttrs()...)...)
 	}
 	return ports.ErrInvalidArg
 }

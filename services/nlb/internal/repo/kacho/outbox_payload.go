@@ -220,9 +220,13 @@ func stateFromPayload[T any](raw []byte) (*T, error) {
 // системных колонок не отдаёт, и класть его сюда со стороны Go значило бы
 // объявить полем то, чем следующий читатель попробует воспользоваться.
 type LoadBalancerJournalRow struct {
-	ID          string            `json:"id"`
-	ProjectID   string            `json:"project_id"`
-	RegionID    string            `json:"region_id"`
+	ID        string `json:"id"`
+	ProjectID string `json:"project_id"`
+	RegionID  string `json:"region_id"`
+	// Зона балансировщика — своя координата размещения, а не производная от
+	// региона: у ZONAL она названа, у REGIONAL пуста. На проводе обязана быть,
+	// иначе подписчик получит «полное состояние» без поля, которое чтение несёт.
+	ZoneID      string            `json:"zone_id"`
 	CreatedAt   time.Time         `json:"created_at"`
 	UpdatedAt   time.Time         `json:"updated_at"`
 	Name        string            `json:"name"`
@@ -256,6 +260,7 @@ func loadBalancerJournalRowOf(rec *LoadBalancerRecord) LoadBalancerJournalRow {
 		ID:                    string(rec.ID),
 		ProjectID:             string(rec.ProjectID),
 		RegionID:              string(rec.RegionID),
+		ZoneID:                string(rec.ZoneID),
 		CreatedAt:             rec.CreatedAt,
 		UpdatedAt:             rec.UpdatedAt,
 		Name:                  string(rec.Name),

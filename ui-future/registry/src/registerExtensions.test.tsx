@@ -8,9 +8,43 @@
 // ресурсов, — то есть ровно на тех двух способах, которыми доменные строки
 // исчезают молча.
 
+import { isValidElement, type ReactElement, type ReactNode } from "react";
 import { jest } from "@jest/globals";
 import { fireEvent, render, screen } from "@testing-library/react";
 import type { DescItem, DetailExtCtx } from "@shared/components/organisms/ResourceDetailExtensions";
+import { PlacementAnchor } from "@shared/components/molecules/PlacementAnchor";
+import { RefNameLink } from "@shared/components/molecules/RefNameLink";
+
+/**
+ * Обходит дерево элементов и возвращает все узлы указанного типа.
+ *
+ * Спускается по ЛЮБОМУ значению props, а не только по `children`: строка свойств
+ * получает содержимое ЧЕРЕЗ ПРОП (`value`), поэтому обход по детям вернул бы
+ * пустой список — и отрицание «плоского текста нет» прошло бы на строке, где нет
+ * вообще ничего.
+ */
+function nodesOfType(node: unknown, type: unknown): ReactElement[] {
+  const out: ReactElement[] = [];
+  const seen = new Set<unknown>();
+  const walk = (n: unknown): void => {
+    if (n === null || n === undefined || typeof n !== "object") return;
+    if (Array.isArray(n)) {
+      n.forEach(walk);
+      return;
+    }
+    if (seen.has(n)) return;
+    seen.add(n);
+    if (isValidElement(n)) {
+      const el = n as ReactElement<Record<string, unknown>>;
+      if (el.type === type) out.push(el);
+      for (const value of Object.values(el.props ?? {})) walk(value);
+      return;
+    }
+    for (const value of Object.values(n as Record<string, unknown>)) walk(value);
+  };
+  walk(node as ReactNode);
+  return out;
+}
 
 const ctx = (data: Record<string, unknown>, over: Partial<DetailExtCtx> = {}): DetailExtCtx => ({
   data,
@@ -44,12 +78,60 @@ describe("доменные расширения карточек registry-remote
     );
     expect(labels(rows ?? [])).toEqual([
       "Адрес",
-      "Регион",
       "Размещение",
       "Видимость репозиториев по умолчанию",
       "Репозиториев",
       "Статус",
     ]);
+  });
+
+  it("правило 2: размещение реестра — ССЫЛКА на каталог geo, а не плоский идентификатор", async () => {
+    // Утверждается ДЕРЕВО ЭЛЕМЕНТОВ, а не отрисованный текст. Правило 2 требует
+    // именно ссылку («иконка типа + имя + переход»), и проба, ищущая текст,
+    // осталась бы зелёной на плоском идентификаторе, из которого некуда пойти, —
+    // ровно на том дефекте, который правило и запрещает.
+    const ext = await extensionFor("registries");
+    const rows = ext.overviewExtra?.(ctx({ region_id: "ru-central1", placement_type: "REGIONAL" })) ?? [];
+    const row = rows.find((r) => r.label === "Размещение");
+    expect(row).toBeDefined();
+
+    const anchors = nodesOfType(row?.value, PlacementAnchor);
+    expect(anchors).toHaveLength(1);
+
+    // Компонент РАСКРЫВАЕТСЯ вызовом, и смотрим, чем он оказался: утверждать сам
+    // факт «в строке стоит PlacementAnchor» значило бы закрепить имя компонента,
+    // а не свойство, — и проба осталась бы зелёной, перестань он вести на каталог.
+    const props = anchors[0].props as { row: Record<string, unknown>; maxChars?: number };
+    const link = nodesOfType(PlacementAnchor(props), RefNameLink)[0];
+    expect(link.props).toMatchObject({ specId: "regions", refId: "ru-central1" });
+    // Глобальный каталог geo спрашивается БЕЗ project_id: область видимости берётся
+    // из спеки, а переданный вручную проп её перекрыл бы.
+    expect(link.props).not.toHaveProperty("projectId", "prj-1");
+  });
+
+  it("правило 2: вид размещения НЕ печатается токеном рядом с тем же фактом", async () => {
+    // Прежде строк было две: «Регион» с плоским идентификатором и «Размещение» с
+    // сырым `REGIONAL` — машинное слово рядом с фактом, уже названным строкой
+    // выше. Токен наружу не выходит вовсе: вид размещения это тип ресурса, на
+    // который ведёт ссылка.
+    const ext = await extensionFor("registries");
+    const rows = ext.overviewExtra?.(ctx({ region_id: "ru-central1", placement_type: "REGIONAL" })) ?? [];
+    expect(labels(rows)).not.toContain("Регион");
+    expect(rows.map((r) => r.value)).not.toContain("REGIONAL");
+    // Положительный контроль: отрицания выше зеленели бы на карточке без строк
+    // вовсе — рядом стоит утверждение, что строки есть и размещение среди них.
+    expect(labels(rows)).toContain("Размещение");
+  });
+
+  it("правило 2: копируется ИДЕНТИФИКАТОР якоря, а не его имя", async () => {
+    // Имя региона меняется, координата размещения — нет (ban #15): переносят в
+    // чужое поле именно её.
+    const ext = await extensionFor("registries");
+    const rows = ext.overviewExtra?.(ctx({ region_id: "ru-central1" })) ?? [];
+    expect(rows.find((r) => r.label === "Размещение")?.copy).toBe("ru-central1");
+    // Якоря нет — копировать нечего, и кнопки быть не должно.
+    const empty = ext.overviewExtra?.(ctx({})) ?? [];
+    expect(empty.find((r) => r.label === "Размещение")?.copy).toBeUndefined();
   });
 
   it("реестр: адрес отдаётся общему значку копирования строки", async () => {

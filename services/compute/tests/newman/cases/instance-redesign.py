@@ -138,6 +138,22 @@ def _delete_inst(name="del-inst", var="instanceId"):
             poll_operation_until_done()]
 
 
+# Зона, которой у geo нет: код полосы контрактом ещё не зафиксирован (3 либо 9),
+# а ТЕКСТ владельца зафиксирован — `Zone %s not found`.
+#
+# `msg_substr` здесь непригоден by construction: он приводит к нижнему регистру
+# ОБЕ стороны, поэтому заглавную `Z` не различает ни при каком ответе, а
+# `assert_op_error_oneof` формы `msg_regex` не несёт. Поэтому утверждение о
+# тексте дописывается к шагу — тем же `j`, который шаг уже разобрал.
+def _zone_unknown_op_error():
+    step = assert_op_error_oneof([3, 9], "INVALID_ARGUMENT|FAILED_PRECONDITION")
+    step.test_script.append(
+        "pm.test('текст владельца дословно (Zone с заглавной)', () => "
+        "pm.expect(j.error && j.error.message || '', JSON.stringify(j))"
+        ".to.eql('Zone no-such-zone not found'));")
+    return step
+
+
 # ===========================================================================
 # F1 — instanceKind oneof XOR (COMP-1-01/02/03/04)
 # ===========================================================================
@@ -224,7 +240,7 @@ CASES.append(Case(
     steps=[Step(name="cr-no-kind", method="POST", path=INSTANCES,
                 body={k: v for k, v in _vm_body("nk", mt=_PLACEHOLDER_MT).items() if k != "instanceKind"},
                 test_script=[*assert_status(400), *assert_grpc_code(3, "INVALID_ARGUMENT"),
-                             "pm.test('text: instanceKind is required', () => pm.expect((pm.response.json().message||'').toLowerCase()).to.include('instancekind is required'));"])],
+                             "pm.test('text: instanceKind is required', () => pm.expect(pm.response.json().message||'', pm.response.text()).to.eql('instanceKind is required'));"])],
 ))
 
 CASES.append(Case(
@@ -239,7 +255,7 @@ CASES.append(Case(
                 body={**{k: v for k, v in _vm_body("vmct", mt=_PLACEHOLDER_MT).items() if k != "vmSpec"},
                       "containerSpec": {"command": ["x"]}},
                 test_script=[*assert_status(400), *assert_grpc_code(3, "INVALID_ARGUMENT"),
-                             "pm.test('text: containerSpec not allowed when VM', () => pm.expect((pm.response.json().message||'').toLowerCase()).to.include('containerspec is not allowed when instancekind is vm'));"])],
+                             "pm.test('text: containerSpec not allowed when VM', () => pm.expect(pm.response.json().message||'', pm.response.text()).to.eql('containerSpec is not allowed when instanceKind is VM'));"])],
 ))
 
 CASES.append(Case(
@@ -256,7 +272,7 @@ CASES.append(Case(
                 body={**{k: v for k, v in _container_body("ctvm", mt=_PLACEHOLDER_MT).items() if k != "containerSpec"},
                       "vmSpec": {"userData": "x"}},
                 test_script=[*assert_status(400), *assert_grpc_code(3, "INVALID_ARGUMENT"),
-                             "pm.test('text: kind CONTAINER refused before the spec-arm check', () => pm.expect((pm.response.json().message||'').toLowerCase()).to.include('instancekind container is not creatable yet'));",
+                             "pm.test('text: kind CONTAINER refused before the spec-arm check', () => pm.expect(pm.response.json().message||'', pm.response.text()).to.eql('instanceKind CONTAINER is not creatable yet: a registry image has no durable address today'));",
                              "pm.test('деталь несёт имя поля вида', () => { const d=(pm.response.json().details||[])[0]||{}; const v=(d.fieldViolations||[])[0]||{}; pm.expect(v.field).to.eql('instance_kind'); });"])],
 ))
 
@@ -288,7 +304,7 @@ CASES.append(Case(
     classes=["VAL", "NEG"], priority="P0",
     steps=[Step(name="cr-no-mt", method="POST", path=INSTANCES, body=_vm_body("nomt", mt=""),
                 test_script=[*assert_status(400), *assert_grpc_code(3, "INVALID_ARGUMENT"),
-                             "pm.test('text: machineTypeId is required', () => pm.expect((pm.response.json().message||'').toLowerCase()).to.include('machinetypeid is required'));"])],
+                             "pm.test('text: machineTypeId is required', () => pm.expect(pm.response.json().message||'', pm.response.text()).to.eql('machineTypeId is required'));"])],
 ))
 
 # INST-RD-CR-VAL-RAW-SIZING-RETIRED — СНЯТ (предмет исчерпан).
@@ -334,7 +350,7 @@ CASES.append(Case(
     steps=[Step(name="cr-cpu-over", method="POST", path=INSTANCES,
                 body=_vm_body("cpu", mt=_PLACEHOLDER_MT, extra={"cpuGuaranteePercent": 101}),
                 test_script=[*assert_status(400), *assert_grpc_code(3, "INVALID_ARGUMENT"),
-                             "pm.test('text: cpuGuaranteePercent 0..100', () => pm.expect((pm.response.json().message||'').toLowerCase()).to.include('cpuguaranteepercent must be between 0 and 100'));"])],
+                             "pm.test('text: cpuGuaranteePercent 0..100', () => pm.expect(pm.response.json().message||'', pm.response.text()).to.eql('cpuGuaranteePercent must be between 0 and 100'));"])],
 ))
 
 CASES.append(Case(
@@ -363,7 +379,7 @@ CASES.append(Case(
     steps=[Step(name="cr-no-boot", method="POST", path=INSTANCES,
                 body={k: v for k, v in _vm_body("nb", mt=_PLACEHOLDER_MT).items() if k != "bootSource"},
                 test_script=[*assert_status(400), *assert_grpc_code(3, "INVALID_ARGUMENT"),
-                             "pm.test('text: bootSource is required', () => pm.expect((pm.response.json().message||'').toLowerCase()).to.include('bootsource is required'));"])],
+                             "pm.test('text: bootSource is required', () => pm.expect(pm.response.json().message||'', pm.response.text()).to.eql('bootSource is required'));"])],
 ))
 
 CASES.append(Case(
@@ -379,7 +395,9 @@ CASES.append(Case(
         Step(name="cr-boot-malformed", method="POST", path=INSTANCES,
              body=_vm_body("mal", mt=_PLACEHOLDER_MT, boot={"type": "storage.image", "id": "не идентификатор"}),
              test_script=[*assert_status(400), *assert_grpc_code(3, "INVALID_ARGUMENT"),
-                          "pm.test('текст называет ресурс и присланную строку', () => { const m=(pm.response.json().message||''); pm.expect(m.toLowerCase()).to.include('invalid image id'); });"]),
+                          # Дословно и без приведения регистра: владелец пишет ресурс с
+                          # ЗАГЛАВНОЙ (`invalid Image id`), и приведение прятало ровно это.
+                          '''pm.test('текст называет ресурс и присланную строку', () => { const m=(pm.response.json().message||''); pm.expect(m, m).to.eql("invalid Image id 'не идентификатор'"); });''']),
         # Положительный контроль в паре: без него отрицание выше зеленело бы на
         # проверке, отвергающей ЛЮБОЙ идентификатор образа.
         #
@@ -403,7 +421,7 @@ CASES.append(Case(
     steps=[Step(name="cr-boot-badtype", method="POST", path=INSTANCES,
                 body=_vm_body("bt", mt=_PLACEHOLDER_MT, boot={"type": "vm.image", "id": "img-x:tag"}),
                 test_script=[*assert_status(400), *assert_grpc_code(3, "INVALID_ARGUMENT"),
-                             "pm.test('text: bootSource.type must be one of', () => pm.expect((pm.response.json().message||'').toLowerCase()).to.include('bootsource.type must be one of'));"])],
+                             "pm.test('text: bootSource.type must be one of', () => pm.expect(pm.response.json().message||'', pm.response.text()).to.eql('bootSource.type must be one of storage.image, registry.image'));"])],
 ))
 
 CASES.append(Case(
@@ -416,7 +434,7 @@ CASES.append(Case(
                 body=_vm_body("out", mt=_PLACEHOLDER_MT,
                               boot={"type": "storage.image", "id": "img-9k2m4x7q1n8p:22.04-lts", "name": "ubuntu"}),
                 test_script=[*assert_status(400), *assert_grpc_code(3, "INVALID_ARGUMENT"),
-                             "pm.test('text: output-only must not be set on input', () => pm.expect((pm.response.json().message||'').toLowerCase()).to.include('output-only'));"])],
+                             "pm.test('text: output-only must not be set on input', () => pm.expect(pm.response.json().message||'', pm.response.text()).to.eql('bootSource name/resolvedDigest/materializedVolume are output-only and must not be set on input'));"])],
 ))
 
 
@@ -466,7 +484,7 @@ CASES.append(Case(
     steps=[Step(name="cr-unreachable", method="POST", path=INSTANCES,
                 body=_vm_body("unr", mt=_PLACEHOLDER_MT, ack=False),
                 test_script=[*assert_status(400), *assert_grpc_code(9, "FAILED_PRECONDITION"),
-                             "pm.test('text mentions unreachable', () => pm.expect((pm.response.json().message||'').toLowerCase()).to.include('unreachable'));"])],
+                             "pm.test('text mentions unreachable', () => pm.expect(pm.response.json().message||'', pm.response.text()).to.eql('VM will be RUNNING but unreachable (no external address); set acknowledgeUnreachable:true to proceed'));"])],
 ))
 
 CASES.append(Case(
@@ -497,7 +515,7 @@ CASES.append(Case(
     classes=["VAL", "NEG"], priority="P1",
     steps=[Step(name="cr-no-net", method="POST", path=INSTANCES, body=_vm_body("nonet", mt=_PLACEHOLDER_MT, nic=False),
                 test_script=[*assert_status(400), *assert_grpc_code(9, "FAILED_PRECONDITION"),
-                             "pm.test('text: needs an existing subnet+SG', () => pm.expect((pm.response.json().message||'').toLowerCase()).to.include('needs an existing subnet'));"])],
+                             "pm.test('text: needs an existing subnet+SG', () => pm.expect(pm.response.json().message||'', pm.response.text()).to.eql('needs an existing subnet+SG in zone ' + pm.environment.get('existingZoneId') + '; discover via SubnetService.List / SecurityGroupService.List, create via SubnetService.Create \u2014 or set useDefaultNetwork:true'));"])],
 ))
 
 CASES.append(Case(
@@ -524,7 +542,7 @@ CASES.append(Case(
                 body=_vm_body("sv", mt=_PLACEHOLDER_MT,
                               extra={"secondaryVolumeSpecs": [{"sizeGib": 0, "volumeTypeId": "vt-ssd", "mountPath": "/data"}]}),
                 test_script=[*assert_status(400), *assert_grpc_code(3, "INVALID_ARGUMENT"),
-                             "pm.test('text: sizeGiB must be > 0', () => pm.expect((pm.response.json().message||'').toLowerCase()).to.include('sizegib must be > 0'));"])],
+                             "pm.test('text: sizeGiB must be > 0', () => pm.expect(pm.response.json().message||'', pm.response.text()).to.eql('secondaryVolumeSpecs[].sizeGiB must be > 0'));"])],
 ))
 
 
@@ -694,7 +712,7 @@ CASES.append(Case(
                 body=_vm_body("badzone", mt=_PLACEHOLDER_MT, extra={"zoneId": "no-such-zone"}),
                 test_script=[*assert_status(200), *save_from_response("j.id", "opId")]),
            poll_operation_until_done(),
-           assert_op_error_oneof([3, 9], "INVALID_ARGUMENT|FAILED_PRECONDITION", msg_substr="not found")],
+           _zone_unknown_op_error()],
 ))
 
 
@@ -747,22 +765,24 @@ CASES.append(Case(
         Step(name="upd-kind-immutable", method="PATCH", path=INSTANCES + "/{{instanceId}}",
              body={"updateMask": "instanceKind"},
              test_script=[*assert_status(400), *assert_grpc_code(3, "INVALID_ARGUMENT"),
-                          "pm.test('text: instanceKind is immutable', () => pm.expect((pm.response.json().message||'').toLowerCase()).to.include('instancekind is immutable after instance.create'));"]),
+                          "pm.test('text: instanceKind is immutable', () => pm.expect(pm.response.json().message||'', pm.response.text()).to.eql('instanceKind is immutable after Instance.Create'));"]),
         Step(name="upd-zone-immutable", method="PATCH", path=INSTANCES + "/{{instanceId}}",
              body={"updateMask": "zoneId"},
              test_script=[*assert_status(400), *assert_grpc_code(3, "INVALID_ARGUMENT"),
-                          "pm.test('text: zoneId is immutable', () => pm.expect((pm.response.json().message||'').toLowerCase()).to.include('zoneid is immutable after instance.create'));"]),
+                          "pm.test('text: zoneId is immutable', () => pm.expect(pm.response.json().message||'', pm.response.text()).to.eql('zoneId is immutable after Instance.Create'));"]),
         Step(name="upd-bootsource-reinstall", method="PATCH", path=INSTANCES + "/{{instanceId}}",
              body={"updateMask": "bootSource"},
              test_script=[*assert_status(400), *assert_grpc_code(3, "INVALID_ARGUMENT"),
-                          "pm.test('text: bootSource is immutable after Instance.Create', () => pm.expect((pm.response.json().message||'').toLowerCase()).to.include('bootsource is immutable after instance.create'));"]),
+                          "pm.test('text: bootSource is immutable after Instance.Create', () => pm.expect(pm.response.json().message||'', pm.response.text()).to.eql('bootSource is immutable after Instance.Create'));"]),
         Step(name="upd-unknown-mask", method="PATCH", path=INSTANCES + "/{{instanceId}}",
              body={"updateMask": "fqdn", "description": "x"},
              test_script=[*assert_status(400), *assert_grpc_code(3, "INVALID_ARGUMENT")]),
         Step(name="upd-stopped-gate", method="PATCH", path=INSTANCES + "/{{instanceId}}",
              body={"updateMask": "machineTypeId", "machineTypeId": "{{mtId}}"},
              test_script=[*assert_status(400), *assert_grpc_code(9, "FAILED_PRECONDITION"),
-                          "pm.test('text: must be STOPPED to change sizing or placement', () => pm.expect((pm.response.json().message||'').toLowerCase()).to.include('instance must be stopped to change sizing or placement'));"]),
+                          # Владелец пишет режим ЗАГЛАВНЫМИ (`must be STOPPED`) — приведение
+                          # регистра не различало бы его ни при каком ответе.
+                          "pm.test('text: must be STOPPED to change sizing or placement', () => pm.expect(pm.response.json().message||'', pm.response.text()).to.eql('instance must be STOPPED to change sizing or placement'));"]),
         *_delete_inst(),
         *_cleanup_mt(),
     ],

@@ -31,6 +31,14 @@ linters:
     - copyloopvar
 
   settings:
+    misspell:
+      # `requrie` — намеренная опечатка: она вход пробы `pkg/db/sslmode_test.go`
+      # и предмет объяснения в `pkg/db/sslmode.go`, где сказано, почему
+      # перечисляются ДОПУСТИМЫЕ значения, а не запрещённые (перечень запретов
+      # пропустил бы `sslmode=requrie` как безопасный). Директива `nolint` внутри
+      # комментарного блока не действует — отсюда словарь.
+      ignore-rules:
+        - requrie
     revive:
       rules:
         - name: var-naming

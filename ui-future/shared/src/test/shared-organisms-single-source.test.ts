@@ -1,8 +1,8 @@
-import { existsSync, readFileSync, readdirSync, writeFileSync } from "node:fs";
+import { existsSync, readFileSync, readdirSync, statSync, writeFileSync } from "node:fs";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 
-import { declaredSymbols, sourceFiles, sweep, type ForkHit } from "./shared-symbol-sweep";
+import { declaredSymbols, isReExportOnly, sourceFiles, sweep, type ForkHit } from "./shared-symbol-sweep";
 
 /**
  * Гейт единого источника: реализация живёт в `shared/`, приложение берёт её
@@ -124,27 +124,139 @@ const COMPONENTS: readonly Organism[] = [
   // означала бы два вида одного предмета, а её не поймал бы ни признак по символу
   // (переименуют), ни признак по адресу (переименуют файл) — только это правило.
   { dir: "molecules/StatePanel", file: "StatePanel", symbol: "StatePanel" },
+  // ── Пополнение перечня (#406) ────────────────────────────────────────────
+  //
+  // Гейт наблюдал СЕМЬ компонентов при полусотне парных каталогов, и такой
+  // перечень читается как «форк закрыт», удостоверяя семь из пятидесяти. Ниже —
+  // все компоненты, которые сегодня УЖЕ сведены к прослойке во ВСЯКОМ
+  // приложении, где их каталог есть: добавление не краснит ни одного дерева, а
+  // запрещает вернуть копию завтра. Отбор механический и повторяемый: символ
+  // объявлен в `shared/` РОВНО ОДИН раз формой `export function`, каталог
+  // приложения содержит только `index.ts`, и тот ведёт в `@shared`.
+  { dir: "atoms/BoolFact", file: "BoolFact", symbol: "BoolFact" },
+  { dir: "atoms/ContextBadge", file: "ContextBadge", symbol: "ContextBadge" },
+  { dir: "atoms/CopyableId", file: "CopyableId", symbol: "CopyableId" },
+  { dir: "atoms/CopyableName", file: "CopyableName", symbol: "CopyableName" },
+  { dir: "atoms/LabelsCell", file: "LabelsCell", symbol: "LabelsCell" },
+  { dir: "molecules/EditableKVTable", file: "EditableKVTable", symbol: "EditableKVTable" },
+  { dir: "molecules/JsonEditor", file: "JsonEditor", symbol: "JsonEditor" },
+  { dir: "molecules/PanelHeader", file: "PanelHeader", symbol: "PanelHeader" },
+  { dir: "molecules/ProjectRequiredEmpty", file: "ProjectRequiredEmpty", symbol: "ProjectRequiredEmpty" },
+  { dir: "organisms/AdminLayout", file: "AdminLayout", symbol: "AdminLayout" },
+  { dir: "organisms/GlobalResourceFormModal", file: "GlobalResourceFormModal", symbol: "GlobalResourceFormModal" },
+  { dir: "organisms/form/FieldLabel", file: "FieldLabel", symbol: "FieldLabel" },
+  { dir: "organisms/form/FormFooter", file: "FormFooter", symbol: "FormFooter" },
+  { dir: "organisms/form/FormShell", file: "FormShell", symbol: "FormShell" },
+  { dir: "organisms/form/ImmutableField", file: "ImmutableField", symbol: "ImmutableField" },
+  { dir: "organisms/LabelsEditor", file: "LabelsEditor", symbol: "LabelsEditor" },
+  { dir: "organisms/form/LabelsEditor", file: "LabelsEditor", symbol: "LabelsFieldRenderer" },
+  { dir: "atoms/StatusBadge", file: "StatusBadge", symbol: "StatusBadge" },
+  { dir: "molecules/OperationsTable", file: "OperationsTable", symbol: "OperationsTable" },
+  // ── Пополнение перечня (#1505/#1506) ────────────────────────────────────
+  //
+  // Предикат каталога перестал считать копией ПРОБУ и ВТОРУЮ ПРОСЛОЙКУ рядом с
+  // `index.ts`, и вместе с этим отпало основание, по которому перечень стоял на
+  // 22 записях при полусотне парных каталогов. Отбор — тот же механический и
+  // повторяемый, что и в #406, с одной уточнённой осью: символ обязан
+  // СОВПАДАТЬ С ИМЕНЕМ каталога и файла. Прежде фильтр брал «единственную
+  // `export function` файла», и на трёх каталогах это давало ЧУЖОЙ символ
+  // (`atoms/ui/Input` → `Label`, `atoms/VisibilityTag` → `visibilityLabel`):
+  // компонент там объявлен `export const`, а проба реализации ниже утверждает
+  // `export function`. Форма объявления у ведомых одна, и ослаблять её ради
+  // трёх записей нельзя — та же причина, по которой вне перечня остаётся
+  // `ModuleUnavailableArt`.
+  //
+  // Предикат отбора целиком: символ объявлен в `shared/` РОВНО ОДИН раз формой
+  // `export function`, имя символа = имя файла = имя каталога, и в КАЖДОМ
+  // приложении, где каталог есть, лежит `index.ts` в `@shared/components/<dir>`,
+  // а всё прочее рядом — проба либо прослойка.
+  { dir: "atoms/DirectionFact", file: "DirectionFact", symbol: "DirectionFact" },
+  { dir: "atoms/PlacementBadge", file: "PlacementBadge", symbol: "PlacementBadge" },
+  { dir: "molecules/CidrListCell", file: "CidrListCell", symbol: "CidrListCell" },
+  { dir: "molecules/ConsumersFact", file: "ConsumersFact", symbol: "ConsumersFact" },
+  { dir: "molecules/DeleteDialog", file: "DeleteDialog", symbol: "DeleteDialog" },
+  { dir: "molecules/DopplerButton", file: "DopplerButton", symbol: "DopplerButton" },
+  { dir: "molecules/IpamUtilizationBar", file: "IpamUtilizationBar", symbol: "IpamUtilizationBar" },
+  { dir: "molecules/MoveStubDialog", file: "MoveStubDialog", symbol: "MoveStubDialog" },
+  { dir: "molecules/PlacementAnchor", file: "PlacementAnchor", symbol: "PlacementAnchor" },
+  { dir: "molecules/ResourceRefChips", file: "ResourceRefChips", symbol: "ResourceRefChips" },
+  { dir: "molecules/SectionHeader", file: "SectionHeader", symbol: "SectionHeader" },
+  { dir: "molecules/SubnetCidrChips", file: "SubnetCidrChips", symbol: "SubnetCidrChips" },
+  { dir: "organisms/AddressPoolCidrManager", file: "AddressPoolCidrManager", symbol: "AddressPoolCidrManager" },
+  { dir: "organisms/CidrGroupBlocksManager", file: "CidrGroupBlocksManager", symbol: "CidrGroupBlocksManager" },
+  { dir: "organisms/CidrTableSection", file: "CidrTableSection", symbol: "CidrTableSection" },
+  { dir: "organisms/DependencyTreePanel", file: "DependencyTreePanel", symbol: "DependencyTreePanel" },
+  { dir: "organisms/InlineAddressPoolCreateForm", file: "InlineAddressPoolCreateForm", symbol: "InlineAddressPoolCreateForm" },
+  { dir: "organisms/InlineAddressPoolEditForm", file: "InlineAddressPoolEditForm", symbol: "InlineAddressPoolEditForm" },
+  { dir: "organisms/InlineNetworkInterfaceCreateForm", file: "InlineNetworkInterfaceCreateForm", symbol: "InlineNetworkInterfaceCreateForm" },
+  { dir: "organisms/InlineNetworkInterfaceEditForm", file: "InlineNetworkInterfaceEditForm", symbol: "InlineNetworkInterfaceEditForm" },
+  { dir: "organisms/InlineResourceCreateForm", file: "InlineResourceCreateForm", symbol: "InlineResourceCreateForm" },
+  { dir: "organisms/InlineResourceEditForm", file: "InlineResourceEditForm", symbol: "InlineResourceEditForm" },
+  { dir: "organisms/InlineSecurityGroupEditForm", file: "InlineSecurityGroupEditForm", symbol: "InlineSecurityGroupEditForm" },
+  { dir: "organisms/InlineSubnetCreateForm", file: "InlineSubnetCreateForm", symbol: "InlineSubnetCreateForm" },
+  { dir: "organisms/InlineSubnetEditForm", file: "InlineSubnetEditForm", symbol: "InlineSubnetEditForm" },
+  { dir: "organisms/NetworkCidrManager", file: "NetworkCidrManager", symbol: "NetworkCidrManager" },
+  { dir: "organisms/ResourceDetailPage", file: "ResourceDetailPage", symbol: "ResourceDetailPage" },
+  { dir: "organisms/RoutesEditor", file: "RoutesEditor", symbol: "RoutesEditor" },
+  { dir: "organisms/RoutesPanel", file: "RoutesPanel", symbol: "RoutesPanel" },
+  { dir: "organisms/SgRulesPanel", file: "SgRulesPanel", symbol: "SgRulesPanel" },
+  { dir: "organisms/SubnetCidrPanel", file: "SubnetCidrPanel", symbol: "SubnetCidrPanel" },
+  { dir: "organisms/form/AddressVpcCascader", file: "AddressVpcCascader", symbol: "AddressVpcCascader" },
+  { dir: "organisms/form/FieldError", file: "FieldError", symbol: "FieldError" },
+  { dir: "organisms/form/FormGrid", file: "FormGrid", symbol: "FormGrid" },
+  { dir: "organisms/form/NicSpecFields", file: "NicSpecFields", symbol: "NicSpecFields" },
+  { dir: "organisms/form/NlbVipSourceField", file: "NlbVipSourceField", symbol: "NlbVipSourceField" },
+  { dir: "organisms/form/SgRulesEditor", file: "SgRulesEditor", symbol: "SgRulesEditor" },
+  { dir: "organisms/system/GrantAdminModal", file: "GrantAdminModal", symbol: "GrantAdminModal" },
+  { dir: "organisms/system/OneTimeSecretModal", file: "OneTimeSecretModal", symbol: "OneTimeSecretModal" },
 ] as const;
 
 /*
- * ЧЕТЫРЕ КОМПОНЕНТА СЕГОДНЯШНЕЙ СЕРИИ В ЭТОТ ПЕРЕЧЕНЬ НЕ ВОШЛИ — назвать причину
- * обязательно, иначе следующий читатель прочтёт пропуск как недосмотр и внесёт
- * их, получив красное на исправном дереве:
+ * ПОЧЕМУ ВНЕ ПЕРЕЧНЯ ОСТАЛИСЬ ТЕ, КТО ОСТАЛСЯ — назвать причину обязательно,
+ * иначе следующий читатель прочтёт пропуск как недосмотр и внесёт их, получив
+ * красное на исправном дереве. Причина ПЕРЕМЕРЕНА (#1505/#1506) и оказалась НЕ
+ * той, что здесь стояла: прежняя редакция объясняла пропуск двадцати одного
+ * компонента тем, что «правило требует „в каталоге только index.ts“», и после
+ * правки предиката это перестало быть верным — а пропуск остался. Настоящих
+ * причин ровно три, и они разные.
  *
- *   `PageHead`, `DetailSurface` — живут в `organisms/DetailShell/`, а этот каталог
- *   у compute/nlb/registry/storage содержит ЗАКОННУЮ прослойку `DetailShell.tsx`
- *   рядом с `index.ts`. Правило ниже требует «в каталоге только `index.ts`», то
- *   есть на законной прослойке дало бы ложное красное. Оба накрыты правилом дерева
- *   (их символы объявлены `shared/`, копия по адресу тоже видна).
+ * 1. ПРОСЛОЙКА В ДВА ЗВЕНА. `ResourceShell`, `ResourceTable`, `RefSelect`,
+ *    `DetailShell`, `RefNameLink`, `ResourceLink`, `Toaster`, `OperationDialog`,
+ *    `OperationToastWatcher`, `OperationBanner`, `ErrorResult`,
+ *    `ResourceEmptyState`, `RowActionsMenu`, `ResourceIcon`,
+ *    `InlineResourceForm`, `OperationsTab`, `ResourceFormModal`,
+ *    `JsonMonacoView`, `DetailOverviewActions`, `IamRefLink`, `StepUpModal`,
+ *    `PageHead`, `DetailSurface`, `RefMultiSelect` — у них `index.ts` ведёт не в
+ *    `@shared`, а в СОСЕДНИЙ файл того же каталога (`export * from "./X"`), и уже
+ *    тот файл — прослойка в общий барель. Форма законная и заведена осознанно:
+ *    ре-экспорт ведёт на барель общего модуля, а не на один файл из него, иначе
+ *    соседние части того же языка карточки остаются за барьером. Правило ниже
+ *    требует `@shared` в тексте САМОГО `index.ts` и цепочку в два звена не
+ *    проходит. Расширять его до цепочки — отдельный предмет: часть этих
+ *    каталогов несёт НАСТОЯЩИЕ форки (у registry `ResourceShell.tsx` прослойкой
+ *    не является и стоит в ведомости), поэтому внесение потребует сперва их
+ *    свести. Все двадцать четыре накрыты правилом дерева выше — не наблюдением,
+ *    а другим.
  *
- *   `RefMultiSelect` — то же самое для `organisms/form/RefSelect/`.
+ * 2. ФОРМА ОБЪЯВЛЕНИЯ. `ModuleUnavailableArt`, `atoms/ui/Button`,
+ *    `atoms/ui/Dialog`, `atoms/ui/Input`, `atoms/ArtifactTypeTag`,
+ *    `atoms/VisibilityTag`, `atoms/RepositoryLifecycleTag`,
+ *    `molecules/NlbVipCell`, `molecules/PageHeaderSlot`, `molecules/TableToolbar`,
+ *    `organisms/ResourceDetailExtensions`, `organisms/form/field-rules`,
+ *    `organisms/iam/IamCommon` — компонент объявлен `export const` либо каталог
+ *    вообще не имеет символа, совпадающего с именем файла. Проба реализации ниже
+ *    утверждает `export function`, и ослаблять её ради этих записей нельзя:
+ *    форма объявления у ведомых компонентов ОДНА, и именно на ней держится
+ *    «своя предпосылка». `ModuleUnavailableArt` вдобавок сосед по уже ведомому
+ *    каталогу и отдельной записи не требует.
  *
- *   `ModuleUnavailableArt` — сосед по уже ведомому каталогу (см. запись выше),
- *   отдельной записи не требует; вдобавок объявлен `export const`, а проба
- *   реализации ниже утверждает `export function` — форма объявления у ведомых
- *   компонентов одна, и ослаблять её ради одной записи нельзя.
+ * 3. ДВА ОБЪЯВЛЕНИЯ ОДНОГО ИМЕНИ В `shared/`. `organisms/SubnetCidrManager` —
+ *    символ `SubnetCidrManager` объявлен и там, и в `molecules/SubnetCidrChips`.
+ *    «Своя предпосылка» требует единственного объявления и покраснела бы на
+ *    самом ОБЩЕМ модуле. Это настоящая находка, но её предмет — раздвоение
+ *    внутри `shared/`, а не форк приложения. Тот же класс был у `LabelsEditor` и
+ *    закрыт разведением имён (#1504).
  */
-
 const SWEEP = sweep(repoRoot);
 
 /** Причина по умолчанию для группы, которой человек ещё не написал свою. */
@@ -293,8 +405,43 @@ describe("ведомые компоненты: в приложении допу�
           hasIndex: true,
         });
         expect(readFileSync(indexFile, "utf8")).toContain("@shared/components/" + comp.dir);
-        // Anything besides the shim is a fork in disguise.
-        const stray = readdirSync(appDir).filter((f) => f !== "index.ts");
+        // Всё, кроме прослоек, — переодетый форк. Слово тут во множественном
+        // числе не случайно: прослойка бывает не одна. `index.ts` ведёт в общий
+        // барель, а рядом с ним законно лежит вторая прослойка — на подмодуль,
+        // который импортируют отдельно (`opFilter.ts` → чистые предикаты
+        // фильтрации без графа antd). Прежний предикат «в каталоге только
+        // index.ts» такую прослойку от копии не отличал и потому дал бы ложное
+        // красное на исправном дереве; ровно этим и был закрыт от наблюдения
+        // `OperationsTable` (#1505), а до него — два десятка компонентов, у
+        // которых рядом с `index.ts` лежит законная прослойка `<Имя>.tsx`.
+        //
+        // Прослойкой файл признаётся ПО СОДЕРЖИМОМУ (`isReExportOnly`), тем же
+        // предикатом, которым его признаёт правило дерева выше. Второй копии
+        // предиката здесь не заводится: разойдясь, они разошлись бы молча — на
+        // валидном входе оба «согласны».
+        //
+        // Но ПРОБА рядом с прослойкой
+        // форком не является: она ничего не объявляет, в бандл не попадает и
+        // утверждает о том же общем компоненте, только с точки зрения этого
+        // модуля (тон полосы у compute, словарь состояний у storage). Прежний
+        // предикат «в каталоге только index.ts» её от копии не отличал, и цена
+        // слепоты была ровно один невидимый компонент: `StatusBadge` пришлось
+        // держать ВНЕ перечня наблюдаемых, потому что внесение дало бы красное
+        // на исправном дереве (#1506). Дальше она стоила бы по компоненту за
+        // каждого, у кого рядом с прослойкой захотят написать пробу.
+        //
+        // Признак — суффикс имени файла, и здесь это не «мерить соглашение об
+        // именовании»: `.test.`/`.spec.` — то, по чему ФАЙЛ ОТБИРАЕТ САМ jest
+        // (`testMatch` в `jest.config.cjs` каждого приложения). Файл с таким
+        // именем исполняется как проба by construction, а не по чьей-то
+        // договорённости.
+        const stray = readdirSync(appDir).filter((f) => {
+          if (f === "index.ts") return false;
+          if (/\.(test|spec)\.tsx?$/.test(f)) return false;
+          const full = path.join(appDir, f);
+          if (!statSync(full).isFile()) return true;
+          return !isReExportOnly(readFileSync(full, "utf8"));
+        });
         expect({ app, comp: comp.dir, stray }).toEqual({
           app,
           comp: comp.dir,

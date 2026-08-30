@@ -71,6 +71,180 @@ import (
 	"testing"
 )
 
+// freshReadWrapCensus — объём осмотренного. Обе величины печатаются порознь:
+// одно число («находок ноль») скрыло бы ровно тот случай, ради которого гейт
+// заведён, — предикат, который никто не применяет.
+type freshReadWrapCensus struct {
+	generators      int
+	withLane        int
+	sharedDeclare   bool
+	takenFromShared int
+	// withHead — наборы, чья полоса несёт голову: отказ от ожидания там, где
+	// адрес шага собран из НЕЗАХВАЧЕННОЙ переменной. Считается отдельно
+	// намеренно: одно число «находок ноль» скрыло бы ровно тот случай, ради
+	// которого ось заведена, — полосу, ждущую того, чего ждать нельзя.
+	withHead int
+}
+
+// auditFreshReadWrapWiring — судящая функция гейта.
+//
+// Выделена, чтобы инъекция гоняла ЕЁ, а не свою копию: проба, повторяющая
+// логику гейта, доказывала бы свойство копии.
+//
+// ПРЕДИКАТ ПЕРЕЕХАЛ В ОБЩИЙ СЛОЙ (#1379), и гейт обязан был переехать за ним.
+// Пока он искал `def _wrap_own_fresh_reads(` в генераторе набора, снятие копий
+// читалось им как снятие ЗАЩИТЫ — красное на работе, которая защиту как раз и
+// укрепила. Это тот же класс, что ловит сам гейт: утверждение, пережившее свой
+// предмет.
+//
+// ДОСТУПНОСТЬ И ПРОВЯЗКА — РАЗНЫЕ ВОПРОСЫ, и оба задаются. Объявления в общем
+// слое НЕ достаточно: оно одинаково истинно для генератора, который предикат
+// импортирует, и для того, который о нём не знает. Поэтому доступным предикат
+// считается там, где он объявлен У СЕБЯ ЛИБО взят ИМПОРТОМ, — а провязанным
+// по-прежнему там, где он применён к шагам кейса.
+func auditFreshReadWrapWiring(sharedSrc string, generators map[string]string) ([]string, freshReadWrapCensus) {
+	cen := freshReadWrapCensus{
+		generators:    len(generators),
+		sharedDeclare: strings.Contains(sharedSrc, "def _wrap_own_fresh_reads("),
+	}
+	rels := make([]string, 0, len(generators))
+	for rel := range generators {
+		rels = append(rels, rel)
+	}
+	sort.Strings(rels)
+
+	var findings []string
+	for _, rel := range rels {
+		src := generators[rel]
+		// ПОЛОСА ЕСТЬ И ТОГДА, КОГДА ТЕЛО ВЗЯТО ИЗ ОБЩЕГО СЛОЯ (#1379).
+		//
+		// Прежняя редакция признавала полосу только по `def` у набора. Правило
+		// «объявлен у себя ЛИБО взят импортом» гейт уже применял — но к предикату
+		// обёртки, а не к самой полосе: половину распознавателя починили, вторую
+		// оставили. Следствие наступило на первом же сведении: шесть тел уехали в
+		// общий слой, «с полосой видимости» стало 0, и гейт упал предпосылкой —
+		// то есть отказался судить, вместо того чтобы промолчать. Он был прав в
+		// том, что упал, и неправ в том, ЧТО искал.
+		//
+		// Третья законная форма — связывание окна набора: `_rya =
+		// functools.partial(retry_until_authorized, budget=…, interval_ms=…)`.
+		// Величину окна решает набор (пути материализации у доменов разные), тело
+		// — общее. Для этого вопроса важно только, что полоса у набора ЕСТЬ.
+		if !strings.Contains(src, "def retry_until_authorized(") &&
+			!importsSharedName(src, "retry_until_authorized") {
+			continue // генератор без полосы видимости — предмета нет
+		}
+		cen.withLane++
+
+		declaredHere := strings.Contains(src, "def _wrap_own_fresh_reads(")
+		importedFromShared := cen.sharedDeclare && importsSharedName(src, "_wrap_own_fresh_reads")
+		if importedFromShared {
+			cen.takenFromShared++
+		}
+		hasPredicate := declaredHere || importedFromShared
+		// Открытая скобка без закрывающей — намеренно: у генератора, который сам
+		// делает имена уникальными, вызов идёт с `rename=False`, и обе формы
+		// одинаково провязывают предикат.
+		wired := strings.Contains(src, "_wrap_own_fresh_reads(case.steps")
+
+		// ГОЛОВА ПОЛОСЫ — ТРЕТЬЕ УТВЕРЖДЕНИЕ, И ОНО О ДРУГОМ. Первые два говорят,
+		// что полоса ЕСТЬ и ПРОВЯЗАНА; это — что она отказывается ждать того,
+		// чего ждать нельзя. Ждать можно ПРАВА на существующее имя, а не
+		// появление самого имени: адрес, собранный из незахваченной переменной,
+		// окно видимости не наполнит никогда, а отказ по нему приходит кодом ИЗ
+		// полосы — шаг выжигает весь бюджет и называет следствие вместо предмета.
+		//
+		// СПРАШИВАЕТСЯ ЭТО ТОЛЬКО У ТОГО, КТО БЕРЁТ ПОЛОСУ ИЗ ОБЩЕГО СЛОЯ: голова —
+		// величина ЕГО реализации, и у набора, объявившего полосу своей копией,
+		// такой ручки нет вовсе. Своя копия — предмет соседнего гейта
+		// (`newmansharedhelpers_test.go`), и требовать от неё ручки значило бы
+		// судить раскладку вместо свойства.
+		laneFromShared := importsSharedName(src, "retry_until_authorized")
+		_, head := laneBindingHasHead(src)
+		if head {
+			cen.withHead++
+		}
+		if !hasPredicate || !wired || (laneFromShared && !head) {
+			findings = append(findings, rel+" (предикат доступен: "+yesNo(hasPredicate)+
+				", провязан в case_to_postman: "+yesNo(wired)+
+				", полоса несёт голову: "+yesNo(head)+")")
+		}
+	}
+	return findings, cen
+}
+
+// ─── ОСЬ: ПОЛОСА ОЖИДАНИЯ НЕСЁТ СВОЮ ГОЛОВУ ──────────────────────────────────
+//
+// ПРЕДМЕТ. Ждать можно ПРАВА на существующее имя, а не появление самого имени.
+// Шаг, чей адрес собран из переменной, которую предыдущий шаг не захватил,
+// спрашивает не о ресурсе: окно видимости прав такой адрес не наполнит никогда,
+// а отказ по нему приходит кодом ИЗ полосы ожидания — то есть шаг выжигает ВЕСЬ
+// бюджет и падает, называя следствие вместо предмета.
+//
+// ЦЕНА ИЗМЕРЕНА, А НЕ ПРЕДПОЛОЖЕНА. Один прогон, один набор: 1863 запроса из
+// 3903 ушли по неразрешённому адресу в 23 обёрнутых шагах — около 18 минут
+// стенда на вопросы ни о чём, и ни одно утверждение о продукте при этом не
+// проверялось.
+//
+// ПОЧЕМУ ЭТО СВОЙСТВО ДЕРЕВА, А НЕ НАБОРА. Класс принадлежит ФОРМЕ кейса, а не
+// домену: адрес, собранный из переменной, есть у каждого набора. Голову нёс один
+// набор из шести — не по решению, а потому что помощник был скопирован до
+// починки.
+//
+// ЧТО СЧИТАЕТСЯ ГОЛОВОЙ. Признак структурный: величина `lane_head` задана
+// ИСТИНОЙ внутри связывания полосы (`functools.partial(retry_until_authorized,
+// …)`). Упоминание в прозе головой не является — иначе гейт зеленел бы на
+// объяснении, которым набор рассказывает, чего у него нет.
+func laneBindingHasHead(src string) (bound bool, head bool) {
+	const anchor = "functools.partial(retry_until_authorized"
+	i := strings.Index(src, anchor)
+	if i < 0 {
+		return false, false
+	}
+	// Обход начинается с открывающей скобки САМОГО связывания, а не с конца
+	// якоря: иначе первая же закрывающая уводит глубину в минус, и связывание
+	// никогда не закрывается — распознаватель молча отвечает «головы нет» на
+	// любом входе.
+	open := i + len("functools.partial")
+	depth := 0
+	for j := open; j < len(src); j++ {
+		switch src[j] {
+		case '(':
+			depth++
+		case ')':
+			depth--
+			if depth == 0 {
+				return true, strings.Contains(src[i:j], "lane_head=True")
+			}
+		}
+	}
+	return true, false
+}
+
+// importsSharedName — берёт ли модуль имя из общего слоя.
+//
+// Судит СПИСОК ИМПОРТА, а не упоминание: имя предиката встречается в вызовах и в
+// объяснениях рядом, и проверка по подстроке краснела бы на собственном
+// комментарии гейта. Форма импорта в дереве одна — скобочный список
+// `from gen_shared import ( … )`, по имени на строку.
+func importsSharedName(src, name string) bool {
+	i := strings.Index(src, "from gen_shared import (")
+	if i < 0 {
+		return false
+	}
+	rest := src[i:]
+	j := strings.Index(rest, "\n)")
+	if j < 0 {
+		return false
+	}
+	for _, ln := range strings.Split(rest[:j], "\n") {
+		if strings.TrimSuffix(strings.TrimSpace(ln), ",") == name {
+			return true
+		}
+	}
+	return false
+}
+
 func TestOwnFreshReadWrapPredicateWiredInEveryNewmanGenerator(t *testing.T) {
 	root := repoRoot(t)
 
@@ -78,46 +252,50 @@ func TestOwnFreshReadWrapPredicateWiredInEveryNewmanGenerator(t *testing.T) {
 	// каталоги, которых в репозитории нет (рабочие копии агентов, отчёты
 	// прогонов), и обход по диску сделал бы вердикт свойством чужого рабочего
 	// каталога — в обе стороны: красный на файле, которого в коммите нет, и
-	// молчание в свежем checkout. Это требование держит соседний гейт
-	// (trackedtree_test.go), и оно нашло здесь ровно этот дефект.
+	// молчание в свежем checkout.
 	tt := newTrackedTree(t, root)
-	var generators []string
-	for rel := range tt.files {
-		if filepath.Base(rel) == "gen.py" && strings.Contains(rel, "tests/newman") {
-			generators = append(generators, rel)
-		}
+	if !tt.files[sharedHelperRel] {
+		t.Fatalf("предпосылка гейта не выполняется: общего слоя %s в индексе git нет.\n"+
+			"Предикат обёртки живёт там, и без него гейт судил бы пустоту.", sharedHelperRel)
 	}
-	sort.Strings(generators)
+	sharedSrc, err := os.ReadFile(filepath.Join(root, sharedHelperRel)) // #nosec G304 -- путь из индекса git этого модуля
+	if err != nil {
+		t.Fatalf("чтение %s: %v", sharedHelperRel, err)
+	}
 
-	var withHelper, findings []string
-	for _, rel := range generators {
+	generators := map[string]string{}
+	for rel := range tt.files {
+		if filepath.Base(rel) != "gen.py" || !strings.Contains(rel, "tests/newman") {
+			continue
+		}
 		b, err := os.ReadFile(filepath.Join(root, rel)) // #nosec G304 -- путь получен из индекса git этого модуля
 		if err != nil {
 			t.Fatalf("чтение %s: %v", rel, err)
 		}
-		src := string(b)
-		if !strings.Contains(src, "def retry_until_authorized(") {
-			continue // генератор без полосы видимости — предмета нет
-		}
-		withHelper = append(withHelper, rel)
-
-		hasPredicate := strings.Contains(src, "def _wrap_own_fresh_reads(")
-		// Открытая скобка без закрывающей — намеренно: у генератора, который сам
-		// делает имена уникальными, вызов идёт с `rename=False`, и обе формы
-		// одинаково провязывают предикат.
-		wired := strings.Contains(src, "_wrap_own_fresh_reads(case.steps")
-		if !hasPredicate || !wired {
-			findings = append(findings, rel+" (предикат: "+yesNo(hasPredicate)+", провязан в case_to_postman: "+yesNo(wired)+")")
-		}
+		generators[rel] = string(b)
 	}
+
+	findings, cen := auditFreshReadWrapWiring(string(sharedSrc), generators)
 
 	// Проверка предпосылки: обходчик обязан заявить объём осмотренного, иначе
 	// «находок нет» неотличимо от «ничего не прочитано».
-	t.Logf("осмотрено генераторов newman: %d, из них с полосой видимости: %d", len(generators), len(withHelper))
-	if len(withHelper) == 0 {
+	t.Logf("осмотрено генераторов newman: %d, из них с полосой видимости: %d; "+
+		"предикат объявлен в общем слое: %s, берут его оттуда: %d; полоса несёт голову у %d",
+		cen.generators, cen.withLane, yesNo(cen.sharedDeclare), cen.takenFromShared, cen.withHead)
+	if cen.withLane == 0 {
 		t.Fatalf("предпосылка гейта не выполняется: ни одного генератора с retry_until_authorized "+
 			"среди %d найденных gen.py — либо помощник переименован, либо обход смотрит не туда; "+
-			"чинить надо гейт, а не молча выходить успехом", len(generators))
+			"чинить надо гейт, а не молча выходить успехом", cen.generators)
+	}
+	// Вторая половина предпосылки — своя. Предикат, объявленный в общем слое и
+	// НЕ взятый оттуда ни одним генератором, означает, что обход импорта слеп:
+	// тогда «доступен» вычислялось бы только по локальному `def`, и переезд
+	// снова читался бы как снятие защиты.
+	if cen.sharedDeclare && cen.takenFromShared == 0 {
+		t.Fatalf("предпосылка гейта не выполняется: предикат объявлен в общем слое, но ни один\n"+
+			"из %d генераторов с полосой видимости не берёт его оттуда. Либо форма импорта\n"+
+			"изменилась и обход её не читает, либо предикат в дереве никем не применяется —\n"+
+			"в обоих случаях чинить надо предмет, а не молча выходить успехом.", cen.withLane)
 	}
 
 	if len(findings) > 0 {

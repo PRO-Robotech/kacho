@@ -23,7 +23,7 @@ import { RefNameLink } from "@/components/molecules/RefNameLink";
 import { TargetsManager, type Target } from "@/components/organisms/TargetsManager";
 import { LbTargetGroupsTab } from "@/components/organisms/LbTargetGroupsTab";
 import { StatusBadge, statusPillStyle } from "@/components/atoms/StatusBadge";
-import { NlbVipCell } from "@/components/molecules/NlbVipCell";
+import { NlbVipCell } from "@shared/components/molecules/NlbVipCell";
 import { getByPath } from "@/lib/resource-registry";
 // Логическое свойство — ОДНИМ рендером на всю консоль. Здесь стоял свой
 // `boolTag(v, "Да", "Нет")`: он отвечал на вопрос, которого пользователь не

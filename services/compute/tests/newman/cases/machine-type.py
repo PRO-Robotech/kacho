@@ -171,7 +171,7 @@ CASES.append(Case(
     classes=["NEG", "CONF"], priority="P1",
     steps=[Step(name="get-absent", method="GET", path=f"{MT}/{{{{garbageMachineTypeId}}}}",
                 test_script=[*assert_status(404), *assert_grpc_code(5, "NOT_FOUND"),
-                             "pm.test('text mentions not found', () => pm.expect((pm.response.json().message||'').toLowerCase()).to.include('not found'));"])],
+                             "pm.test('text mentions not found', () => pm.expect(pm.response.json().message||'', pm.response.text()).to.eql('MachineType ' + pm.environment.get('garbageMachineTypeId') + ' not found'));"])],
 ))
 
 

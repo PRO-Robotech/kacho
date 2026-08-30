@@ -15,6 +15,7 @@ import (
 
 	"go.uber.org/multierr"
 
+	coredb "github.com/PRO-Robotech/kacho/pkg/db"
 	"github.com/PRO-Robotech/kacho/pkg/grpcsrv"
 )
 
@@ -278,10 +279,24 @@ func (c Config) Validate() error {
 		// DB-пароль (KACHO_NLB_DB_PASSWORD) и tenant-данные (VIP/listener/target)
 		// идут в открытую. В проде допустимы только `require`/`verify-ca`/
 		// `verify-full`. Проверяем лишь при непустом URL (пустой ловится выше).
-		if u := strings.TrimSpace(c.Repository.Postgres.URL); u != "" && !postgresSSLSecure(u) {
+		// Разбор строки подключения и перечень безопасных значений — НЕ свои:
+		// оба приходят из дома семантики DSN (`pkg/db`), где объявлены один раз
+		// на всё дерево (задача продукта #1464). Своя копия здесь была, и она
+		// расходилась с домом на URL, который `url.Parse` не осиливает (пробел
+		// или управляющий символ в пароле — законное содержимое секрета): её
+		// запасной разбор бил строку по пробелам, а URL — один токен, поэтому
+		// реальный `require` читался как «не задан» и исправная посадка
+		// отвергалась.
+		//
+		// Судится строка, которая уходит В ПУЛ (`DSN()`), а не сырое поле URL:
+		// у nlb они совпадают по `sslmode` (DSN дописывает только `pool_*`), но
+		// спрашивать надо исход, иначе первое же изменение сборки строки
+		// разведёт стража с пулом молча.
+		if dsn := strings.TrimSpace(c.DSN()); dsn != "" && !coredb.SSLModeSecure(coredb.SSLModeFromDSN(dsn)) {
 			errs = multierr.Append(errs, fmt.Errorf(
-				"production mode: insecure Postgres transport — repository.postgres.url sslmode must be require|verify-ca|verify-full "+
-					"(disable/allow/prefer or unset permits a plaintext DB connection; forbidden)"))
+				"production mode: insecure Postgres transport — repository.postgres.url sslmode must be %s "+
+					"(disable/allow/prefer or unset permits a plaintext DB connection; forbidden)",
+				strings.Join(coredb.SecureSSLModes(), "|")))
 		}
 	}
 
@@ -354,31 +369,6 @@ func (c Config) peerEdges() []peerEdge {
 			mtlsKey: "iam-project", tlsKey: "iam",
 		},
 	}
-}
-
-// postgresSSLSecure — true, если DSN несёт защищённый sslmode
-// (`require`/`verify-ca`/`verify-full`). `disable`/`allow`/`prefer` и
-// отсутствие sslmode (libpq-default 'prefer', plaintext-fallback) → false.
-// Парсит query-param у URL-DSN (`postgres://…?sslmode=…`); при неудаче парса —
-// keyword-DSN-fallback через регистронезависимый скан `sslmode=<value>`.
-func postgresSSLSecure(dsn string) bool {
-	secure := map[string]struct{}{
-		"require": {}, "verify-ca": {}, "verify-full": {},
-	}
-	mode := ""
-	if u, err := url.Parse(dsn); err == nil && u.Query().Has("sslmode") {
-		mode = u.Query().Get("sslmode")
-	} else {
-		// keyword-form fallback (`host=… sslmode=require`) — грубый скан.
-		for _, tok := range strings.Fields(dsn) {
-			if kv := strings.SplitN(tok, "=", 2); len(kv) == 2 && strings.EqualFold(strings.TrimSpace(kv[0]), "sslmode") {
-				mode = kv[1]
-				break
-			}
-		}
-	}
-	_, ok := secure[strings.ToLower(strings.TrimSpace(mode))]
-	return ok
 }
 
 // validateEndpoint — `tcp://host:port` парсится как url, схема обязательна,

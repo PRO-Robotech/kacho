@@ -684,7 +684,9 @@ sync-precheck `AddressesBySubnet` тоже покрывает обе семьи.
 
 ### REQ-OPS-02 — OperationService.Get bad id [P1]
 Несуществующий op-id с правильным prefix → `NOT_FOUND "operation <id> not found"`. Malformed / unknown-prefix id →
-`InvalidArgument "invalid operation id <X>"`; well-formed id с prefix без backend → `NOT_FOUND`.
+`InvalidArgument` с текстом `invalid operation id "<X>"` (кавычки двойные — глагол `%q`
+производителя; #1400); well-formed id с prefix без backend → `NOT_FOUND` с текстом
+`operation <X> not found` — тем же, что отдаёт владелец операции, побайтово.
 - Validated-by: `OP-GET-NEG-NF-VALID-PREFIX`, `OP-GET-NEG-NF-INVALID-PREFIX`
 - Проверка: `kacho-api-gateway/internal/opsproxy/proxy.go` (`resolveBackend`); см. `07-known-divergences.md`, раздел 2.
 - Divergence: исторически возвращалось `400 "unknown prefix"` для любого нероутируемого id — приведено к контракту Kachō.

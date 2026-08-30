@@ -9,6 +9,24 @@
 // единственное место, где живут apiPath спек, и он же переезжает вслед за proto
 // ствола. Выписанный список разошёлся бы с ним молча.
 //
+// Выводится он из того, что монтирует ЭТОТ модуль (`MODULE_SPEC_IDS`), плюс цели
+// ссылок его полей и колонок, — а НЕ из всего реестра. Разница появилась вместе
+// с общим реестром (#409): прежде реестр был доменным, и «все спеки» совпадало
+// с «спеки этого приложения» by construction. После переезда в реестре лежит вся
+// платформа, и обход по нему потребовал бы правил прокси для /compute, /nlb,
+// /storage и /vpc — доменов, к которым это приложение не обращается ни одним
+// запросом.
+//
+// То есть предпосылка гейта была верна ОТНОСИТЕЛЬНО ПОПУЛЯЦИИ, на которой он
+// писался, и молчала об этом. Расширился охват — перепроверяется предпосылка, а
+// не только её новые элементы. Тот же порядок и та же причина, что у storage
+// (#1466).
+//
+// Замыкание по ссылкам — ровно ОДИН шаг, и это не экономия: `RefSelect` и
+// `RefNameLink` разрешают ссылку запросом к домену цели, а цель цели запросом
+// уже не разрешают. Больший шаг вернул бы обход всей платформы через первую же
+// спеку, которая ссылается на соседний домен.
+//
 // Правила прокси берутся ЗАГРУЗКОЙ `vite.config.ts` и чтением `server.proxy`
 // как значения, а не разбором его текста: текстовый разбор утверждает о
 // символах файла и переживает любую смену формы записи (сокращённая запись,
@@ -17,6 +35,7 @@
 
 import { jest } from "@jest/globals";
 import { REGISTRY } from "./lib/resource-registry";
+import { MODULE_SPEC_IDS } from "./lib/module-specs";
 
 /** Первый сегмент пути — домен, по которому выбирается правило прокси. */
 function domainOf(apiPath: string): string | null {
@@ -24,9 +43,23 @@ function domainOf(apiPath: string): string | null {
   return m ? `/${m[1]}` : null;
 }
 
+/** Спеки, к которым приложение обращается: смонтированные + цели их ссылок. */
+function reachedSpecIds(): string[] {
+  const out = new Set<string>(MODULE_SPEC_IDS);
+  for (const id of MODULE_SPEC_IDS) {
+    const spec = REGISTRY[id];
+    if (!spec) continue;
+    const refs = [...(spec.fields ?? []), ...(spec.columns ?? [])] as { refResource?: string }[];
+    for (const r of refs) if (r.refResource) out.add(r.refResource);
+  }
+  return [...out];
+}
+
 function registryDomains(): string[] {
   const out = new Set<string>();
-  for (const spec of Object.values(REGISTRY)) {
+  for (const id of reachedSpecIds()) {
+    const spec = REGISTRY[id];
+    if (!spec) continue;
     for (const p of [spec.apiPath, spec.internalGetPath, spec.admin?.basePath]) {
       const d = p ? domainOf(p) : null;
       if (d) out.add(d);
@@ -67,6 +100,13 @@ describe("dev-прокси покрывает домены, к которым п
   it("предмет проверки непуст — реестр прочитан, правила прокси прочитаны", () => {
     expect(registryDomains().length).toBeGreaterThan(1);
     expect(prefixes.length).toBeGreaterThan(1);
+  });
+
+  it("перечень модуля резолвится в общем реестре — иначе обход пуст и всё ниже вакуумно", () => {
+    // Опечатка в идентификаторе или снятая запись оставили бы `reachedSpecIds`
+    // без спек, и перечисление ниже прошло бы, ничего не измерив.
+    expect(MODULE_SPEC_IDS.length).toBeGreaterThan(0);
+    expect(MODULE_SPEC_IDS.filter((id) => !REGISTRY[id])).toEqual([]);
   });
 
   it.each(registryDomains().map((d) => [d]))("%s проксируется", (domain) => {

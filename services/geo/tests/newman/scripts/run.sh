@@ -37,26 +37,38 @@
 
 NEWMAN_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 
-# expected_stems — ожидаемый набор коллекций: basename каждого cases/*.py.
-expected_stems() {
-  local f stem
-  for f in "$NEWMAN_DIR"/cases/*.py; do
-    [[ -e "$f" ]] || continue
-    stem="$(basename "$f" .py)"
-    case "$stem" in __init__|__main__) continue ;; esac
-    printf '%s\n' "$stem"
+# ОТБОР КОЛЛЕКЦИЙ — ИЗ ОБЩЕГО СЛОЯ, А НЕ СВОЕЙ КОПИЕЙ.
+#
+# Здесь стояли `expected_stems`/`present_stems` — побайтово те же, что у двух
+# соседних прогонщиков. Правка правила отбора стоила трёх правок, а «поправил у
+# себя» было неотличимо от «поправил везде»; правило при этом уже разошлось с
+# генератором: копии пропускали `__init__`/`__main__`, генератор — ЛЮБОЕ имя с
+# ведущим подчёркиванием. У vpc/geo/gateway модулей с подчёркиванием нет, поэтому
+# расхождение было невидимо ИМЕННО ТАМ, где его писали; у nlb и registry такой
+# модуль есть, и по узкому правилу `_helpers` стал бы ожидаемой коллекцией.
+#
+# Общий слой ищется ВВЕРХ ОТ ЭТОГО ФАЙЛА, а не от cwd: прогонщик зовут из
+# каталога набора, и путь, выведенный из текущего каталога, был бы свойством
+# того, ОТКУДА позвали. Поиск — тот же бутстрап, что у `_kacholib_dir()` в
+# gen.py, и по той же причине неустраним: общий слой нельзя найти его же
+# средствами.
+_stems_lib() {
+  local d="$NEWMAN_DIR"
+  while [[ "$d" != "/" ]]; do
+    if [[ -f "$d/tests/newman/kacholib/stems.sh" ]]; then
+      printf '%s
+' "$d/tests/newman/kacholib/stems.sh"
+      return 0
+    fi
+    d="$(dirname "$d")"
   done
+  echo "общий слой отбора не найден: ожидается <корень>/tests/newman/kacholib/stems.sh" >&2
+  echo "Это ОТКАЗ, а не пропуск: без него прогонщик выбрал бы коллекции молча и не те." >&2
+  return 1
 }
-
-# present_stems — фактически сгенерированные коллекции collections/*.json.
-present_stems() {
-  local f stem
-  for f in "$NEWMAN_DIR"/collections/*.postman_collection.json; do
-    [[ -e "$f" ]] || continue
-    stem="$(basename "$f" .postman_collection.json)"
-    printf '%s\n' "$stem"
-  done
-}
+_STEMS_LIB="$(_stems_lib)"
+# shellcheck source=/dev/null
+. "$_STEMS_LIB"
 
 # run_one — прогон одной коллекции. Пишет out/<svc>.json|.cli|.rc.
 run_one() {
@@ -205,7 +217,7 @@ main() {
     local s
     while IFS= read -r s; do
       [[ -n "$s" ]] && stems+=("$s")
-    done < <( { expected_stems; present_stems; } | sort -u )
+    done < <(newman_all_stems "$NEWMAN_DIR")
   fi
 
   # serial-collections.txt (optional, one stem per line, '#'-comments ok): коллекции,

@@ -8,6 +8,8 @@
 // (start/stop/restart) и attach/detach тома и сетевого интерфейса, которых нет
 // в generic-конвейере. Все действия async → { operation }.
 
+import { catalogApi, resourceApi } from "@shared/api/resources";
+
 import { api } from "./client";
 import type { Operation, InstanceList, MachineTypeList } from "./types";
 
@@ -37,11 +39,7 @@ export function buildAttachNicPayload(nicId: string | undefined): { attached_nic
 }
 
 export const instancesApi = {
-  list: (q?: Record<string, string>) => api.list<InstanceList>(INSTANCES, q),
-  get: (id: string) => api.get<Record<string, unknown>>(`${INSTANCES}/${id}`),
-  create: (body: unknown): Promise<{ operation: Operation }> => api.create(INSTANCES, body),
-  update: (id: string, body: unknown): Promise<{ operation: Operation }> => api.update(`${INSTANCES}/${id}`, body),
-  delete: (id: string): Promise<{ operation: Operation }> => api.delete(`${INSTANCES}/${id}`),
+  ...resourceApi<InstanceList>(INSTANCES),
 
   // Lifecycle — суффикс-действия (:verb), async Operation.
   start: (id: string): Promise<{ operation: Operation }> => api.action(`${INSTANCES}/${id}:start`),
@@ -65,7 +63,4 @@ export const instancesApi = {
 // (ambient cluster-scoped read); каталог используется формой Create инстанса как
 // ref-цель machineTypeId. Admin-CRUD над каталогом — InternalMachineTypeService
 // (:9091, ban #6), не выведен на tenant-facing UI.
-export const machineTypesApi = {
-  list: (q?: Record<string, string>) => api.list<MachineTypeList>(MACHINE_TYPES, q),
-  get: (id: string) => api.get<Record<string, unknown>>(`${MACHINE_TYPES}/${id}`),
-};
+export const machineTypesApi = catalogApi<MachineTypeList>(MACHINE_TYPES);

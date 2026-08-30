@@ -20,7 +20,7 @@ import { useMutation } from "@tanstack/react-query";
 import { Button, Modal, Space, Typography, Tag } from "antd";
 import { PlusOutlined, MinusOutlined } from "@ant-design/icons";
 import { ResourceDetailPage } from "@shared/components/organisms/ResourceDetailPage";
-import { OperationDialog, extractOperationId } from "@shared/components/molecules/OperationDialog";
+import { OperationDialog } from "@shared/components/molecules/OperationDialog";
 import { RefSelect } from "@shared/components/organisms/form/RefSelect";
 import { api } from "@shared/api/client";
 import { REGISTRY, getByPath } from "@shared/lib/resource-registry";
@@ -28,6 +28,7 @@ import { useProjectStore } from "@shared/lib/context-store";
 import { useInvalidateResourceList } from "@shared/lib/use-operation";
 import { toast } from "@shared/lib/toast";
 import { errorText } from "@shared/lib/error-presentation";
+import { resolveMutationResponse } from "@shared/lib/operation-outcome";
 
 const SPEC = REGISTRY["compute-instances"];
 
@@ -59,10 +60,12 @@ export function InstanceDetailPage() {
       }),
     onSuccess: (resp) => {
       setAttachOpen(false);
-      const id = extractOperationId(resp);
-      if (id) {
+      const resolved = resolveMutationResponse(resp, SPEC.mutationsReturnOperation !== false);
+      if (resolved.kind === "operation") {
         setOpTitle("Подключение тома");
-        setOpId(id);
+        setOpId(resolved.opId);
+      } else if (resolved.kind === "violation") {
+        toast.error(`Подключить том: ${resolved.message}`);
       } else {
         invalidate("compute-instances", project?.id);
         invalidate("volumes", project?.id);
@@ -76,10 +79,12 @@ export function InstanceDetailPage() {
     mutationFn: () => api.action(`${SPEC.apiPath}/${instanceId}:detachDisk`, { volume_id: detachVolumeId }),
     onSuccess: (resp) => {
       setDetachOpen(false);
-      const id = extractOperationId(resp);
-      if (id) {
+      const resolved = resolveMutationResponse(resp, SPEC.mutationsReturnOperation !== false);
+      if (resolved.kind === "operation") {
         setOpTitle("Отключение тома");
-        setOpId(id);
+        setOpId(resolved.opId);
+      } else if (resolved.kind === "violation") {
+        toast.error(`Отключить том: ${resolved.message}`);
       } else {
         invalidate("compute-instances", project?.id);
         invalidate("volumes", project?.id);

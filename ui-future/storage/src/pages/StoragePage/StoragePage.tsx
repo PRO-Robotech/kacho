@@ -13,6 +13,7 @@ import { ResourceListPage } from "@/components/organisms/ResourceListPage";
 import { ResourceShell } from "@/components/organisms/ResourceShell";
 import { contextApi } from "@/lib/context-store";
 import { REGISTRY, type ResourceSpec } from "@/lib/resource-registry";
+import { MODULE_CATALOG_SPEC_ID, MODULE_CRUD_SPEC_IDS } from "@/lib/module-specs";
 // Доменные расширения detail-страницы регистрируются в ОБЩЕМ реестре
 // (`@shared/components/organisms/ResourceDetailExtensions`) на старте бандла —
 // до рендера страниц. Импорт ради side-effect'а, экспортов у модуля нет.
@@ -30,8 +31,8 @@ export interface StoragePageProps {
 
 // Storage-домен: Volume / Snapshot / Image (project-scoped CRUD) + DiskType
 // (read-only cluster-scoped справочник) через единый REGISTRY.
-const CRUD_SPECS: ResourceSpec[] = ["volumes", "snapshots", "images"].map((id) => REGISTRY[id]).filter(Boolean);
-const DISK_TYPES = REGISTRY["disk-types"];
+const CRUD_SPECS: ResourceSpec[] = MODULE_CRUD_SPEC_IDS.map((id) => REGISTRY[id]).filter(Boolean);
+const DISK_TYPES = REGISTRY[MODULE_CATALOG_SPEC_ID];
 
 export const StoragePage: FC<StoragePageProps> = ({ context }) => {
   const queryClient = useMemo(

@@ -193,7 +193,8 @@ func hostIdentityChain(t *testing.T, forwarders ...string) []grpc.UnaryServerInt
 		t.Fatalf("дескриптор с кругом %v отвергнут конструктором — процесс не поднялся бы:\n%v",
 			forwarders, err)
 	}
-	return grpcsrv.PrincipalExtractUnary(desc.Spec().Forwarders)
+	circle, _ := desc.Spec().Forwarders.Get()
+	return grpcsrv.PrincipalExtractUnary(circle)
 }
 
 // seenIdentity прогоняет запрос через цепочку и возвращает личность, которую

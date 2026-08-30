@@ -9,6 +9,8 @@
 // ListRepositories(registryId) / ListTags(registryId, repository)), которых нет
 // в generic-конвейере (он умеет только project_id-query фильтр).
 
+import { resourceApi } from "@shared/api/resources";
+
 import { api } from "./client";
 import type { Operation, RegistryList, RepositoryList, TagList } from "./types";
 
@@ -25,11 +27,7 @@ export function tagsPath(registryId: string, repository: string): string {
 }
 
 export const registriesApi = {
-  list: (q?: Record<string, string>) => api.list<RegistryList>(REGISTRIES, q),
-  get: (id: string) => api.get<Record<string, unknown>>(`${REGISTRIES}/${id}`),
-  create: (body: unknown): Promise<{ operation: Operation }> => api.create(REGISTRIES, body),
-  update: (id: string, body: unknown): Promise<{ operation: Operation }> => api.update(`${REGISTRIES}/${id}`, body),
-  delete: (id: string): Promise<{ operation: Operation }> => api.delete(`${REGISTRIES}/${id}`),
+  ...resourceApi<RegistryList>(REGISTRIES),
 
   // Read-only дочерние ресурсы — path-scoped под реестром/репозиторием.
   listRepositories: (registryId: string, q?: Record<string, string>) =>

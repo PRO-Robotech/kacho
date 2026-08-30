@@ -170,7 +170,12 @@ CASES.append(Case(
                     "const j = pm.response.json();",
                     "if (pm.response.code === 400) {",
                     "  pm.test('grpc code 3 (INVALID_ARGUMENT)', () => pm.expect(j.code).to.eql(3));",
-                    "  pm.test('backend not-found text', () => pm.expect((j.message||'').toLowerCase()).to.include('not found'));",
+                    # Текст владельца целиком (services/registry/.../api/registry/create.go),
+                    # а не общая часть «not found»: её несут 32 разных отказа registry
+                    # (#1520). Ветка 403 текста не утверждает намеренно — там отвечает
+                    # край, и его отказ пинится своим кодом ниже.
+                    "  pm.test('backend not-found text', () => pm.expect(j.message||'', JSON.stringify(j))"
+                    ".to.have.string('project ' + pm.environment.get('garbageProjectId') + ' not found'));",
                     "} else {",
                     "  pm.test('grpc code 7 (PERMISSION_DENIED)', () => pm.expect(j.code).to.eql(7));",
                     "}",
@@ -691,8 +696,11 @@ CASES.append(Case(
     title="ListOperations with malformed registry id → 400 INVALID_ARGUMENT (gateway id-validate)",
     classes=["NEG", "VAL"], priority="P1",
     steps=[Step(name="list-ops-bad-id", method="GET", path=REG + "/not-an-id/operations",
+                # Текст КРАЯ целиком (gateway/internal/middleware — нейтральный тип
+                # ресурса), а не слово «invalid»: его несут 13 разных отказов, включая
+                # отказы старта, к этой полосе отношения не имеющие (#1520).
                 test_script=[*assert_status(400), *assert_grpc_code(3, "INVALID_ARGUMENT"),
-                             "pm.test('invalid id text', () => pm.expect((pm.response.json().message||'').toLowerCase()).to.include('invalid'));"])],
+                             *assert_refusal_message("invalid resource id 'not-an-id'")])],
 ))
 
 # ListOperations pageSize > max (1000) → 400 (BVA: rejected not clamped).

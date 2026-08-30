@@ -24,6 +24,18 @@ type LoadBalancer struct {
 	// Immutable после Create. Coupling placement↔type и матрица источника
 	// валидируются в use-case'е (точные тексты) + DB CHECK (defense-in-depth).
 	PlacementType PlacementType
+	// ZoneID — площадка ZONAL-балансировщика (#1473). Output-only, immutable
+	// после Create, задаётся ИСКЛЮЧИТЕЛЬНО резолвом подсети VIP у её владельца
+	// (`Subnet.ZoneID`) — из имени зоны она не выводится никогда: строковая
+	// деривация молча отдаёт пустую строку на REGIONAL-подсети и превращает
+	// проверку когерентности в тождественно истинную.
+	//
+	// Непуста РОВНО при PlacementType == ZONAL. У REGIONAL зональной координаты
+	// нет by construction (anycast); у EXTERNAL зона подлежащего адреса деривится
+	// платформой и от публичной поверхности скрыта — placement-leak, из-за
+	// которого сняты прежние per-zone-поля контракта. Исключительность держит
+	// DB-CHECK, а не этот комментарий.
+	ZoneID ZoneID
 	// DisabledAnnounceZones — deny-list зон anycast-drain (REGIONAL only), mutable.
 	// Каждая зона ∈ регион LB; набор не покрывает все зоны (валидация geo в use-case).
 	DisabledAnnounceZones []string
@@ -116,6 +128,7 @@ func (lb LoadBalancer) Equal(other LoadBalancer) bool {
 		lb.ProjectID == other.ProjectID &&
 		lb.RegionID == other.RegionID &&
 		lb.PlacementType == other.PlacementType &&
+		lb.ZoneID == other.ZoneID &&
 		stringsEqualOrdered(lb.DisabledAnnounceZones, other.DisabledAnnounceZones) &&
 		ipVersionsEqual(lb.IPFamilies, other.IPFamilies) &&
 		lb.AddressV4 == other.AddressV4 &&

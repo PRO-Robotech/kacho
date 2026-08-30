@@ -133,7 +133,6 @@ var consoleMutationLedger = []string{
 	"shared/src/components/organisms/SgRulesPanel/SgRulesPanel.tsx",
 	"shared/src/components/organisms/iam/IamCommon/IamCommon.tsx",
 	"shared/src/pages/InstanceDetailPage.tsx",
-	"shared/src/pages/TargetGroupDetailPage.tsx",
 	"shared/src/pages/system/LimitsPage.tsx",
 }
 
