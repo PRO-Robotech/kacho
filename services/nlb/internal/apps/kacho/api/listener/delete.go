@@ -128,19 +128,38 @@ func (u *DeleteUseCase) doDelete(ctx context.Context, cur *kachorepo.ListenerRec
 				w.Abort()
 			}
 		}()
-		_, err = w.Listeners().SetStatusCAS(ctx, listenerID, cur.Status, domain.ListenerStatusDeleting)
+		// Событие несёт состояние НА МОМЕНТ СОБЫТИЯ, а не на момент чтения,
+		// поэтому в нагрузку идёт запись, ВОЗВРАЩЁННАЯ сменой состояния, а не
+		// снимок `cur`, прочитанный до неё. Прежняя редакция отдавала `cur` — и
+		// событие утверждало прежнее состояние на строке, которую сама же только
+		// что сдвинула в DELETING. Пока нагрузка была минимальным снимком без
+		// читателя, расхождение никого не задевало; с обогащением вида (#1381)
+		// оно стало ЛОЖНЫМ УТВЕРЖДЕНИЕМ о предмете.
+		moved, err := w.Listeners().SetStatusCAS(ctx, listenerID, cur.Status, domain.ListenerStatusDeleting)
 		if err != nil {
 			// CAS-miss (e.g. parallel writer already moved to DELETING) →
-			// proceed anyway (read current status); else propagate.
+			// proceed anyway; else propagate.
 			if !errors.Is(err, domain.ErrFailedPrecondition) {
 				return nil, mapDomainErr(err)
 			}
+			// Кто победил в гонке — неизвестно, а гадать нельзя: догадка уехала
+			// бы подписчику как факт. Строка перечитывается в ТОЙ ЖЕ
+			// транзакции, поэтому ответ авторитетен и гонки не заводит.
+			moved, err = w.Listeners().Get(ctx, listenerID)
+			if err != nil && !errors.Is(err, domain.ErrNotFound) {
+				return nil, mapDomainErr(err)
+			}
 		}
-		if err := w.Outbox().Emit(ctx,
-			outboxResourceTypeListener, listenerID, projectID,
-			outboxActionUpdated, listenerPayloadMap(cur),
-		); err != nil {
-			return nil, mapDomainErr(fmt.Errorf("%w: outbox emit listener UPDATED: %v", domain.ErrInternal, err))
+		// Строки уже нет — параллельный воркер снял её целиком. Правку не о чем
+		// объявлять; снятие объявит шаг 2, и повторный Delete остаётся
+		// идемпотентным.
+		if moved != nil {
+			if err := w.Outbox().Emit(ctx,
+				outboxResourceTypeListener, listenerID, projectID,
+				outboxActionUpdated, listenerPayloadMap(moved),
+			); err != nil {
+				return nil, mapDomainErr(fmt.Errorf("%w: outbox emit listener UPDATED: %v", domain.ErrInternal, err))
+			}
 		}
 		if err := w.Commit(); err != nil {
 			return nil, mapDomainErr(err)
