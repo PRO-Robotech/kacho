@@ -167,6 +167,13 @@ Registry.
 full-object PATCH (все mutable-поля). Неизвестное поле в mask → `INVALID_ARGUMENT`. Требует `v_update`.
 Конфликт имени → `ALREADY_EXISTS`. Ответ — `Operation`.
 
+:::note Имя реестра менять безопасно — но это НЕ переносится на репозиторий
+Путь загрузки строится по `id` реестра, а не по его имени, поэтому переименование реестра не
+задевает ни один `docker pull`. У **репозитория** ровно наоборот: его имя и есть второй сегмент
+пути, и смена имени (`RenameRepository`) обрывает все старые пути — см.
+[Repository](/api/repository), врезку «Переименование ломает каждый путь загрузки».
+:::
+
 <CodeBlock language="bash">
   {dedent`
     curl -X PATCH 'http://localhost:18080/registry/v1/registries/reg7h9x2k4m8p0q1r5' \\
