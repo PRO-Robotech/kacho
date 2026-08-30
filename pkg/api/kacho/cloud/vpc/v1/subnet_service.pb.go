@@ -1104,7 +1104,7 @@ const file_kacho_cloud_vpc_v1_subnet_service_proto_rawDesc = "" +
 	"\x06filter\x18\x04 \x01(\tR\x06filter\"s\n" +
 	"\x13ListSubnetsResponse\x124\n" +
 	"\asubnets\x18\x01 \x03(\v2\x1a.kacho.cloud.vpc.v1.SubnetR\asubnets\x12&\n" +
-	"\x0fnext_page_token\x18\x02 \x01(\tR\rnextPageToken\"\xbb\x04\n" +
+	"\x0fnext_page_token\x18\x02 \x01(\tR\rnextPageToken\"\xdb\x04\n" +
 	"\x13CreateSubnetRequest\x12\x1d\n" +
 	"\n" +
 	"project_id\x18\x01 \x01(\tR\tprojectId\x12\x12\n" +
@@ -1122,9 +1122,9 @@ const file_kacho_cloud_vpc_v1_subnet_service_proto_rawDesc = "" +
 	"\vLabelsEntry\x12\x10\n" +
 	"\x03key\x18\x01 \x01(\tR\x03key\x12\x14\n" +
 	"\x05value\x18\x02 \x01(\tR\x05value:\x028\x01J\x04\b\a\x10\bJ\x04\b\b\x10\tJ\x04\b\n" +
-	"\x10\vJ\x04\b\v\x10\fR\fdhcp_options\"3\n" +
+	"\x10\vJ\x04\b\v\x10\fR\fdhcp_optionsR\x0ev4_cidr_blocksR\x0ev6_cidr_blocks\"3\n" +
 	"\x14CreateSubnetMetadata\x12\x1b\n" +
-	"\tsubnet_id\x18\x01 \x01(\tR\bsubnetId\"\xf3\x02\n" +
+	"\tsubnet_id\x18\x01 \x01(\tR\bsubnetId\"\x93\x03\n" +
 	"\x13UpdateSubnetRequest\x12\x1b\n" +
 	"\tsubnet_id\x18\x01 \x01(\tR\bsubnetId\x12;\n" +
 	"\vupdate_mask\x18\x02 \x01(\v2\x1a.google.protobuf.FieldMaskR\n" +
@@ -1136,7 +1136,7 @@ const file_kacho_cloud_vpc_v1_subnet_service_proto_rawDesc = "" +
 	"\vLabelsEntry\x12\x10\n" +
 	"\x03key\x18\x01 \x01(\tR\x03key\x12\x14\n" +
 	"\x05value\x18\x02 \x01(\tR\x05value:\x028\x01J\x04\b\a\x10\bJ\x04\b\b\x10\tJ\x04\b\t\x10\n" +
-	"R\fdhcp_options\"3\n" +
+	"R\fdhcp_optionsR\x0ev4_cidr_blocksR\x0ev6_cidr_blocks\"3\n" +
 	"\x14UpdateSubnetMetadata\x12\x1b\n" +
 	"\tsubnet_id\x18\x01 \x01(\tR\bsubnetId\"\x8d\x01\n" +
 	"\x1aAddSubnetCidrBlocksRequest\x12\x1b\n" +

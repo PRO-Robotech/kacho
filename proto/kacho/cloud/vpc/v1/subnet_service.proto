@@ -219,8 +219,15 @@ message CreateSubnetRequest {
   // Create takes the immutable primary anchor only; additional ranges via
   // AddCidrBlocks). 8 — retired oneof slot. 10 — legacy dhcp_options
   // (retired VPC-1-43: DHCP/DNS knobs dropped by design).
+  //
+  // Имена сняты вместе с номерами (api-conventions, «принято-и-проигнорировано»:
+  // снять с контракта = зарезервировать номер И ИМЯ). Прежде стоял только номер,
+  // и это было наблюдаемо дорого: край не мог отличить снятый ключ от опечатки и
+  // отбрасывал `v4CidrBlocks` молча — тело с ним создавало подсеть ВООБЩЕ БЕЗ
+  // диапазона и получало 200. Набор проб этого домена несёт тот же разбор своими
+  // словами: тридцать три создания везли ключ, которого никто не читал.
   reserved 7, 8, 10, 11;
-  reserved "dhcp_options";
+  reserved "dhcp_options", "v4_cidr_blocks", "v6_cidr_blocks";
   // ID of the project to create a subnet in.
   // To get project ID use a [kacho.cloud.iam.v1.ProjectService.List] request.
   string project_id = 1;
@@ -306,8 +313,10 @@ message UpdateSubnetRequest {
   // design). 8/9 — legacy v4_cidr_blocks/v6_cidr_blocks (retired VPC-1 F7).
   // CIDR is immutable via Update: the primary anchor never changes; additional
   // ranges go through AddCidrBlocks/RemoveCidrBlocks.
+  //
+  // Имена сняты вместе с номерами — см. разбор у `CreateSubnetRequest`.
   reserved 7, 8, 9;
-  reserved "dhcp_options";
+  reserved "dhcp_options", "v4_cidr_blocks", "v6_cidr_blocks";
 }
 
 message UpdateSubnetMetadata {
