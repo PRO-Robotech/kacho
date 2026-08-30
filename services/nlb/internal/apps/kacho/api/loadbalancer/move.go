@@ -31,7 +31,8 @@ import (
 //     project — Move заблокирован если есть).
 //
 // Worker: Writer-TX → repo.MoveProject (UPDATE LB + cascade UPDATE listeners) +
-// outbox MOVED + FGA-register(dst project) + FGA-unregister(src project) → Commit
+// outbox MOVED/UPDATED балансировщика + outbox MOVED НА КАЖДЫЙ переехавший
+// слушатель + FGA-register(dst project) + FGA-unregister(src project) → Commit
 // (Вариант A: project-rewrite = register new-project tuple + unregister
 // old-project tuple, both in the same writer-tx as MoveProject — no dual-write).
 //
@@ -198,22 +199,59 @@ func (u *MoveLoadBalancerUseCase) doMove(ctx context.Context, id, srcProject, ds
 	}
 	defer w.Abort()
 
-	moved, err := w.LoadBalancers().MoveProject(ctx, id, dstProject)
+	moved, movedListeners, err := w.LoadBalancers().MoveProject(ctx, id, dstProject)
 	if err != nil {
 		return nil, mapDomainErr(err)
 	}
+	// ОДИН ПЕРЕЕЗД — ОДНА СТРОКА О ПЕРЕЕХАВШЕМ ПРЕДМЕТЕ.
+	//
+	// Здесь стояла ПАРА: следом за этой строкой шла вторая, рода `UPDATED`, «для
+	// downstream watchers, не подписанных на MOVED». Довод неисполним by
+	// construction: подписки ПО РОДУ ИЗМЕНЕНИЯ не бывает — фильтр единой формы
+	// сужается по видам, проекту и идентификаторам, и только по ним. Значит
+	// второй род не добавлял ни одного получателя.
+	//
+	// Что он добавлял: словарь журнала отдаёт `MOVED` и `UPDATED` ОДНИМ родом
+	// контракта, а нагрузку обе строки собирали ОДНИМ строителем на ОДНОЙ записи,
+	// — подписчик получал два события, различимых только позицией, и обязан был
+	// сам догадаться, что второе не несёт новости. Плюс объём в журнале, который
+	// НЕ ЧИСТИТСЯ, и который поток с начала доносит целиком.
+	//
+	// Ровно этот вывод уже сделан НИЖЕ, на слушателях того же переезда, и теми же
+	// словами. Продукт противоречил себе в пределах одной функции (#1565).
+	//
+	// Оставлено `MOVED`: слово хранилища обязано называть сделанное, а форма на
+	// проводе от этого не зависит — словарь отдаёт его правкой, как и прежде.
 	if err := w.Outbox().Emit(ctx,
 		kachorepo.OutboxResourceLoadBalancer, string(moved.ID), string(moved.ProjectID),
-		kachorepo.OutboxActionMoved, lbMovedPayload(string(moved.ID), srcProject, dstProject),
+		kachorepo.OutboxActionMoved, kachorepo.LoadBalancerStatePayload(moved),
 	); err != nil {
 		return nil, mapDomainErr(err)
 	}
-	// Also emit UPDATED for downstream watchers that don't subscribe to MOVED.
-	if err := w.Outbox().Emit(ctx,
-		kachorepo.OutboxResourceLoadBalancer, string(moved.ID), string(moved.ProjectID),
-		kachorepo.OutboxActionUpdated, lbOutboxPayload(moved),
-	); err != nil {
-		return nil, mapDomainErr(err)
+	// ПЕРЕЕЗД ОБЪЯВЛЯЕТ ТО, ЧТО СДЕЛАЛ — по строке на каждый переехавший слушатель.
+	//
+	// MoveProject каскадом переписывает `project_id` у ВСЕХ слушателей этого
+	// балансировщика. Прежде в журнал уходили только строки своего вида — и якорь
+	// проекта у чужого вида менялся МОЛЧА. Поток при этом не замолкал и не
+	// отказывал, поэтому отличить «событие не пришло» от «изменений не было»
+	// подписчику было нечем, и слушатель оставался у него в СТАРОМ проекте
+	// бессрочно (#1549).
+	//
+	// Строка несёт ПОЛНОЕ состояние: вид `nlb_listener` объявлен несущим его, и
+	// одна частичная строка сделала бы ложным ВЕСЬ вид. Записи пришли `RETURNING`
+	// того же UPDATE — состояние на момент события, без второго запроса.
+	//
+	// Род — MOVED, и парного UPDATED здесь не шлётся: подписка сужается по видам,
+	// проекту и идентификаторам, но НЕ по роду изменения, а общий сервер отдаёт
+	// MOVED тем же UPDATED. То же правило теперь и у самого балансировщика выше —
+	// прежде пара там жила исторически и никем не читалась (#1565).
+	for _, l := range movedListeners {
+		if err := w.Outbox().Emit(ctx,
+			kachorepo.OutboxResourceListener, string(l.ID), string(l.ProjectID),
+			kachorepo.OutboxActionMoved, kachorepo.ListenerStatePayload(l),
+		); err != nil {
+			return nil, mapDomainErr(err)
+		}
 	}
 	// project-rewrite as unregister(src) THEN register(dst) in the SAME tx.
 	//

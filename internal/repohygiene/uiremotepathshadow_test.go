@@ -56,6 +56,8 @@ import (
 	"sort"
 	"strings"
 	"testing"
+
+	"github.com/PRO-Robotech/kacho/internal/treecorpus"
 )
 
 // uiHostDockerfile — где объявлены адреса модулей, попадающие в сборку оболочки.
@@ -100,12 +102,40 @@ func auditUIRemoteAssetPaths(root string) (findings []uiPathFinding, declared in
 	return findings, declared, nil
 }
 
-// auditUIRemoteBuildBase — обход базовых путей сборки модулей.
-func auditUIRemoteBuildBase(root string) (findings []uiPathFinding, checked, dockerfiles int, err error) {
-	dfs, gerr := filepath.Glob(filepath.Join(root, "ui-future", "*", "Dockerfile"))
-	if gerr != nil {
-		return nil, 0, 0, fmt.Errorf("обход ui-future: %w", gerr)
+// uiDockerfilesInTree — оболочки модулей консоли ПО ИНДЕКСУ git.
+//
+// Настоящее дерево спрашивается у индекса: под `ui-future/` на всякой машине,
+// где собирали фронтенд, лежит игнорируемое (`node_modules`, сборочные
+// каталоги, распаковки), и обход диска считал бы его частью репозитория.
+func uiDockerfilesInTree(t *testing.T, root string) []string {
+	t.Helper()
+	dfs, err := treecorpus.Glob(filepath.Join(root, "ui-future", "*", "Dockerfile"))
+	if err != nil {
+		t.Fatalf("перечень оболочек модулей: %v — предпосылка гейта исчезла, "+
+			"а не дерево стало чистым", err)
 	}
+	return dfs
+}
+
+// uiDockerfilesInSyntheticTree — то же для дерева, собранного САМОЙ пробой во
+// временном каталоге. Репозиторием оно не является, индекса у него нет, и обход
+// диска здесь законен — предмет запрета в другом.
+func uiDockerfilesInSyntheticTree(t *testing.T, root string) []string {
+	t.Helper()
+	dfs, err := filepath.Glob(filepath.Join(root, "ui-future", "*", "Dockerfile"))
+	if err != nil {
+		t.Fatalf("обход синтетического дерева: %v", err)
+	}
+	return dfs
+}
+
+// auditUIRemoteBuildBase — разбор базовых путей сборки модулей.
+//
+// Состав ПРИНИМАЕТСЯ, а не собирается: тот же разбор исполняется и на настоящем
+// дереве (состав из индекса), и на синтетическом (состав с диска). Собирай он
+// состав сам — одна из двух полос была бы неверной, а сведение их к одному
+// источнику лишило бы гейт способности исполниться на синтетике.
+func auditUIRemoteBuildBase(dfs []string) (findings []uiPathFinding, checked, dockerfiles int, err error) {
 	sort.Strings(dfs)
 	dockerfiles = len(dfs)
 	for _, df := range dfs {
@@ -170,7 +200,7 @@ func TestUIRemoteAssetPathsDoNotShadowConsoleRoutes(t *testing.T) {
 // журнале браузера (`__federation_expose_*.js` → 404). Поймано проходом
 // headless-браузером, не проверкой HTTP.
 func TestUIRemoteBuildBaseMatchesItsServedPath(t *testing.T) {
-	findings, checked, dockerfiles, err := auditUIRemoteBuildBase(repoRoot(t))
+	findings, checked, dockerfiles, err := auditUIRemoteBuildBase(uiDockerfilesInTree(t, repoRoot(t)))
 	if err != nil {
 		t.Fatalf("%v", err)
 	}
@@ -265,7 +295,7 @@ func TestUIRemoteBuildBaseGateRedOnAMismatch(t *testing.T) {
 		"ui-future/host/Dockerfile":      "FROM nginx\n",
 		"ui-future/dashboard/Dockerfile": "FROM node\nARG KACHO_PUBLIC_BASE=/dashboard/\n",
 	})
-	findings, checked, dockerfiles, err := auditUIRemoteBuildBase(root)
+	findings, checked, dockerfiles, err := auditUIRemoteBuildBase(uiDockerfilesInSyntheticTree(t, root))
 	if err != nil {
 		t.Fatalf("обход синтетического дерева: %v", err)
 	}
@@ -285,7 +315,7 @@ func TestUIRemoteBuildBaseGateSilentOnTheLawfulTwin(t *testing.T) {
 		"ui-future/host/Dockerfile":      "FROM nginx\n",
 		"ui-future/dashboard/Dockerfile": "FROM node\nARG KACHO_PUBLIC_BASE=/dashboard-remote/\n",
 	})
-	findings, checked, dockerfiles, err := auditUIRemoteBuildBase(root)
+	findings, checked, dockerfiles, err := auditUIRemoteBuildBase(uiDockerfilesInSyntheticTree(t, root))
 	if err != nil {
 		t.Fatalf("обход синтетического дерева: %v", err)
 	}

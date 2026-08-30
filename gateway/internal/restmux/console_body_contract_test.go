@@ -415,25 +415,24 @@ func consoleProjectionsWithoutARegistry(targets map[string]string, declaring map
 // consoleRegistryFiles ищет реестры ОБХОДОМ дерева, а не списком путей: новый
 // remote попадает под проверку сам, без правки гейта. Список путей означал бы,
 // что забытая правка списка выглядит как «нарушений нет».
+// Состав — из ИНДЕКСА git, а не с диска. Под `ui-future/` на всякой машине, где
+// собирали фронтенд, лежит игнорируемое, и обход диска считал бы его частью
+// репозитория: вердикт стал бы свойством рабочего каталога, а не коммита.
+//
+// Отдельные пропуски `node_modules` и `dist` отсюда ушли не по недосмотру — они
+// стали не нужны: индекс их не содержит by construction, а рукописный перечень
+// исключений отстаёт от дерева молча (следующий сборочный каталог с другим
+// именем в него бы не попал).
 func consoleRegistryFiles(root string) ([]string, error) {
-	var out []string
-	err := filepath.WalkDir(root, func(path string, d os.DirEntry, err error) error {
-		if err != nil {
-			return err
-		}
-		if d.IsDir() {
-			if d.Name() == "node_modules" || d.Name() == "dist" {
-				return filepath.SkipDir
-			}
-			return nil
-		}
-		if d.Name() == consoleRegistryFileName {
-			out = append(out, path)
-		}
-		return nil
-	})
+	files, err := treecorpus.Under(root)
 	if err != nil {
 		return nil, err
+	}
+	var out []string
+	for _, path := range files {
+		if filepath.Base(path) == consoleRegistryFileName {
+			out = append(out, path)
+		}
 	}
 	sort.Strings(out)
 	return out, nil

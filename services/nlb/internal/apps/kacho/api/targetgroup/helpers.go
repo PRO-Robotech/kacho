@@ -172,32 +172,29 @@ func targetsFromPbForWrite(field string, pbs []*lbv1.Target) ([]domain.Target, e
 	return targetsFromPb(pbs), nil
 }
 
-// tgOutboxPayload — нагрузка журнала для целевой группы. Минимальный снимок;
-// ключи — из словаря `kachorepo.LifecyclePayload`. Читателя у нагрузки сегодня
-// нет ни одного (задача #1452).
-func tgOutboxPayload(rec *kachorepo.TargetGroupRecord) map[string]any {
-	if rec == nil {
-		return nil
-	}
-	return kachorepo.LifecyclePayload{
-		ID:        string(rec.ID),
-		ProjectID: string(rec.ProjectID),
-		RegionID:  string(rec.RegionID),
-		Name:      string(rec.Name),
-		Status:    string(rec.Status),
-	}.Map()
-}
-
-// tgMovedPayload — нагрузка события переезда целевой группы. `old_project_id` —
-// исходный проект: колонка якоря несёт уже целевой. Читателя нет; названный
-// прежде потребитель снят задачей #814 (см. lbMovedPayload у балансировщика).
-func tgMovedPayload(id, srcProject, dstProject string) map[string]any {
-	return kachorepo.LifecyclePayload{
-		ID:           id,
-		OldProjectID: srcProject,
-		NewProjectID: dstProject,
-	}.Map()
-}
+// Строитель нагрузки вида `nlb_target_group` живёт НЕ ЗДЕСЬ, а в repo-leaf —
+// `kachorepo.TargetGroupStatePayload`, рядом со своим читателем.
+//
+// # Здесь стояли ДВА строителя минимального снимка — их больше нет
+//
+// `tgOutboxPayload` собирал пять полей строки, `tgMovedPayload` — идентификатор
+// и пару проектов; ещё две точки эмиссии (добавление и снятие целей) строили
+// нагрузку СВОИМ литералом прямо на месте. Четыре формы у одного вида, и ни
+// одна не несла целей.
+//
+// Событие вида теперь несёт ПОЛНОЕ состояние, а контракт формы разрешает
+// подписчику читать непустое состояние как ПОЛНОЕ. Значит форма обязана быть
+// ОДНА: одна точка с частичным снимком делает ложным весь вид, и делает тихо.
+// Держит это разбор дерева use-case'ов
+// (`subscriptionjournal.TestEveryEmissionOfAStatefulKindBuildsTheSamePayload`).
+//
+// # Что при этом ПОТЕРЯНО, названо вслух
+//
+// Ключи `old_project_id`/`new_project_id` события переезда в нагрузку больше не
+// идут. Читателя у них не было ни одного, а якорь проекта в колонке несёт уже
+// целевой — то есть подписчик источника этой строки не получает by construction
+// (подписка сужается по проекту). Исходный проект восстанавливается прежним
+// событием той же группы, а не полем, за которым никто не следит.
 
 // marshalTargetGroup — anypb.New(TargetGroup) для Operation.Response.
 func marshalTargetGroup(rec *kachorepo.TargetGroupRecord) (*anypb.Any, error) {

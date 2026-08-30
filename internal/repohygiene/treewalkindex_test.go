@@ -27,12 +27,32 @@ import (
 
 // ─── ОБХОД ОТ КОРНЯ РЕПОЗИТОРИЯ: РАЗБОР, А НЕ ПОИСК ПОДСТРОКИ ────────────────
 
-// diskRootWalk — одна находка: вызов filepath.Walk/WalkDir, чей корень пришёл
-// от функции, находящей корень репозитория.
+// diskRootWalk — одна находка: вызов filepath.Walk/WalkDir/Glob, чей корень
+// пришёл от функции, находящей корень репозитория.
+//
+// # Почему форм ТРИ, а не две
+//
+// `filepath.Glob` — такое же перечисление содержимого репозитория по диску, как
+// обход: `dir/*.sql` отвечает «какие файлы там лежат», и правила игнорирования
+// на него не действуют ровно так же. Первая редакция знала только Walk и
+// WalkDir, и всё, записанное третьей формой, было ВНЕ НАБЛЮДЕНИЯ — не
+// нарушением, которое гейт разрешил, а предметом, которого он не видел.
+//
+// Слепота измерена, а не предположена: расширение распознавателя на Glob
+// подняло перепись с 33 обходов до 46 и обнажило 12 мест, ни одно из которых
+// перечнем не покрывалось. Два из них — соседние гейты об ОДНОМ корпусе
+// (`services/*/internal/migrations/*.sql`): один спрашивал диск, другой индекс,
+// и на неотслеживаемой миграции они давали 342 против 341. Вердикт зависел от
+// того, что лежит в рабочем каталоге у прогоняющего (задача продукта #1495).
+//
+// Отсюда требование к правке этого гейта: добавляя форму, печатай перепись ПО
+// ФОРМАМ. Одно суммарное число скрывает ровно тот случай, ради которого форма
+// добавлена, — прибавка к осмотренному неотличима от роста дерева.
 type diskRootWalk struct {
 	File string
 	Line int
 	Func string // объемлющая функция — по ней читается, ЧЕЙ это обход
+	Form string // Walk | WalkDir | Glob — перепись печатается по формам
 	Text string
 	// Subtree — обходится не сам корень, а каталог ВНУТРИ него
 	// (`filepath.Join(root, "services")`). Класс тот же — правила игнорирования
@@ -74,7 +94,6 @@ const (
 
 var inRepoDiskWalks = map[string]string{
 	"gateway/internal/restmux/console_body_contract_test.go:consoleExportedStringConsts":                           whyPending,
-	"gateway/internal/restmux/console_body_contract_test.go:consoleRegistryFiles":                                  whyPending,
 	"gateway/internal/restmux/console_body_contract_test.go:TestConsoleMutationSurfaceIsAccountedFor":              whyPending,
 	"internal/repohygiene/declaredcardinality_test.go:hasProductionReader":                                         whyPending,
 	"internal/repohygiene/guardnamedincomment_test.go:TestCommentsNamingAGuardHaveItInScope":                       whyPending,
@@ -105,8 +124,21 @@ var inRepoDiskWalks = map[string]string{
 	"tools/foreignclouds/foreignclouds.go:Scan":                                                                    whyOwnIgnoreReader,
 	"tools/foreignclouds/foreignclouds.go:undeclaredDebtFiles":                                                     whyOwnIgnoreReader,
 	"tools/foreignclouds/foreignclouds.go:unusedCoordinates":                                                       whyOwnIgnoreReader,
-	"tools/newmancensus/ci_wiring_test.go:TestEverySuiteValidatorIsCoveredByTheGlob":                               whyPending,
 }
+
+// diskEnumerationForms — формы перечисления содержимого по диску, которые
+// распознаватель знает.
+//
+// Три, а не две: `filepath.Glob` отвечает на тот же вопрос «какие файлы лежат в
+// этом каталоге» и правила игнорирования видит так же — то есть это обход,
+// записанный иначе. Форма, которой распознаватель не знает, даёт не зелёное и не
+// красное, а МОЛЧАНИЕ: всё записанное в ней невидимо целиком.
+//
+// Перечень ОДИН на детектор и перепись намеренно. Разойдись они, перепись
+// печатала бы «Glob 0» о форме, которой детектор не ищет, — и «ноль находок»
+// стало бы неотличимо от «ноль искомого». По этой же причине перепись печатает
+// ВСЕ формы отсюда, включая нулевые.
+var diskEnumerationForms = map[string]bool{"Walk": true, "WalkDir": true, "Glob": true}
 
 // rootProducers — функции пакета, говорящие о КОРНЕ ДЕРЕВА, которое
 // принадлежит репозиторию.
@@ -413,7 +445,7 @@ func findDiskRootWalks(fset *token.FileSet, files map[string]*ast.File, producer
 				if !isIdent || pkg.Name != "filepath" {
 					return true
 				}
-				if sel.Sel.Name != "Walk" && sel.Sel.Name != "WalkDir" {
+				if !diskEnumerationForms[sel.Sel.Name] {
 					return true
 				}
 				if len(call.Args) == 0 || !isRootValued(call.Args[0], producers, local) {
@@ -427,6 +459,7 @@ func findDiskRootWalks(fset *token.FileSet, files map[string]*ast.File, producer
 					File:    name,
 					Line:    fset.Position(call.Pos()).Line,
 					Func:    enclosing,
+					Form:    sel.Sel.Name,
 					Text:    "filepath." + sel.Sel.Name + "(" + renderExpr(fset, call.Args[0]) + ", …)",
 					Subtree: !rootIsExact(call.Args[0], producers, local),
 				})
@@ -628,14 +661,25 @@ func TestTreeWalkersAskTheIndex(t *testing.T) {
 	sort.Strings(reasonless)
 
 	subtrees := 0
+	byForm := map[string]int{}
 	for _, o := range offenders {
 		if o.Subtree {
 			subtrees++
 		}
+		byForm[o.Form]++
 	}
+	// Перепись ПО ФОРМАМ, а не одним числом: расширив распознаватель на новую
+	// форму, сравнивать надо осмотренное с находками отдельно по каждой. Одно
+	// суммарное число не отличает «прибавка была слепой зоной» от «дерево
+	// выросло» — то есть скрывает именно то, ради чего форму добавляли.
+	forms := make([]string, 0, len(diskEnumerationForms))
+	for f := range diskEnumerationForms {
+		forms = append(forms, f+" "+strconv.Itoa(byForm[f]))
+	}
+	sort.Strings(forms)
 	t.Logf("перепись обходов: внутри репозитория %d (корневых %d, поддеревьев %d); "+
-		"перечень: записей %d, с предметом %d, просроченных %d",
-		len(offenders), len(offenders)-subtrees, subtrees,
+		"по формам: %s; перечень: записей %d, с предметом %d, просроченных %d",
+		len(offenders), len(offenders)-subtrees, subtrees, strings.Join(forms, ", "),
 		len(inRepoDiskWalks), len(covered), len(stale))
 
 	for _, key := range stale {
@@ -779,6 +823,28 @@ func viaMarkerRoot(t *testing.T) {
 func joinsOnly(base string) string { return filepath.Join(base, "sub") }
 
 func viaJoinsOnly(t *testing.T) { _ = filepath.Walk(joinsOnly(t.TempDir()), nil) }
+
+// ── ТРЕТЬЯ ФОРМА: перечисление образцом. Была слепой зоной целиком ─────────
+
+// ЛОВИТСЯ: образец собран поверх корня — то же перечисление содержимого
+// репозитория по диску, только записанное не обходом.
+func globsSubtree(t *testing.T) {
+	root := repoRoot(t)
+	_, _ = filepath.Glob(filepath.Join(root, "services", "*.sql"))
+}
+
+// ЛОВИТСЯ: образец с метасимволом в СЕРЕДИНЕ — форма, которой переводятся
+// перечисления вида ui-future/<модуль>/Dockerfile.
+func globsMetaInTheMiddle(t *testing.T) {
+	_, _ = filepath.Glob(filepath.Join(repoRoot(t), "ui-future", "*", "Dockerfile"))
+}
+
+// МОЛЧИТ: тот же вызов той же формы, но каталог временный — законный близнец.
+// Без него гейт ловил бы ФОРМУ, а не существо, и первый же ложный срабат на
+// синтетике его отключил бы.
+func globsSynthetic(t *testing.T) {
+	_, _ = filepath.Glob(filepath.Join(t.TempDir(), "*.sql"))
+}
 `
 	fset := token.NewFileSet()
 	parsed, err := parser.ParseFile(fset, "synthetic.go", src, parser.ParseComments)
@@ -796,6 +862,13 @@ func viaJoinsOnly(t *testing.T) { _ = filepath.Walk(joinsOnly(t.TempDir()), nil)
 			"Это была слепая зона: помощник, поднимающийся до каталога-маркера, "+
 			"возвращает каталог репозитория так же верно, как поиск go.mod, — и "+
 			"обходы от него гейт не видел вовсе", producers)
+	}
+	// Предпосылка новой формы, записанная так, чтобы её нельзя было потерять
+	// молча: снимут Glob из перечня — покраснеет здесь, а не «станет чисто».
+	if !diskEnumerationForms["Glob"] {
+		t.Fatal("распознаватель не знает формы Glob. Это не «нет находок», а «нет " +
+			"искомого»: перечисление образцом невидимо целиком, и всё, записанное " +
+			"им, уходит из-под наблюдения — не нарушением, а слепой зоной")
 	}
 	if producers["joinsOnly"] {
 		t.Errorf("соединение путей принято за подъём к корню (%v) — признак стал "+
@@ -822,6 +895,10 @@ func viaJoinsOnly(t *testing.T) { _ = filepath.Walk(joinsOnly(t.TempDir()), nil)
 		"helperWalks":   false, // обход спрятан в помощнике, корень приезжает параметром
 		"viaMarkerRoot": false, // корень найден подъёмом до маркера — форма, которой признак раньше не знал
 		"subtree":       true,  // каталог ВНУТРИ репозитория: тот же класс, другой исход
+		// Третья форма перечисления. До её добавления обе эти функции были
+		// невидимы целиком — не разрешены, а не осмотрены.
+		"globsSubtree":         true,
+		"globsMetaInTheMiddle": true,
 	}
 	for fn, wantSubtree := range mustCatch {
 		if !got[fn] {
@@ -851,6 +928,8 @@ func viaJoinsOnly(t *testing.T) { _ = filepath.Walk(joinsOnly(t.TempDir()), nil)
 		"mentionsOnly": "форма найдена в строковом литерале или комментарии — " +
 			"проверка читает ТЕКСТ, а не исполняемую часть",
 		"repoRoot": "поиск go.mod принят за обход",
+		"globsSynthetic": "образец ТОЙ ЖЕ формы над временным каталогом — " +
+			"дискриминатором стала форма вызова, а не источник значения",
 	}
 	for fn, why := range mustStaySilent {
 		if got[fn] {

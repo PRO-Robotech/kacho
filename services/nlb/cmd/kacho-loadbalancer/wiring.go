@@ -282,7 +282,7 @@ func assembleBackgroundWorkers(ctx context.Context, d backgroundDeps) ([]bgWorke
 	}})
 
 	// target drain-runner (фаза B): tick-loop по cfg.Jobs.TargetDrain.Interval.
-	drainRunner := jobs.NewTargetDrainRunner(d.pool, d.logger, d.cfg.Jobs.TargetDrain.Interval)
+	drainRunner := jobs.NewTargetDrainRunner(d.repo, d.logger, d.cfg.Jobs.TargetDrain.Interval)
 	background = append(background, bgWorker{"target-drain", drainRunner.Run})
 
 	// free_ip_runner: реконсиляция застрявших балансировщиков (multi-replica-safe). Требует

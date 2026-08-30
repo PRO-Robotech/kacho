@@ -265,15 +265,42 @@ func (w *listenerWriter) SetStatusCAS(ctx context.Context, id string, expected, 
 	return rec, nil
 }
 
-func (w *listenerWriter) MoveProject(ctx context.Context, lbID, newProjectID string) (int64, error) {
-	tag, err := w.tx.Exec(ctx,
-		`UPDATE kacho_nlb.listeners SET project_id = $2, updated_at = now() WHERE load_balancer_id = $1`,
-		lbID, newProjectID,
-	)
+// MoveProject — каскад от LoadBalancer.MoveProject: переписывает `project_id` у
+// ВСЕХ слушателей балансировщика и возвращает ПЕРЕЕХАВШИЕ ЗАПИСИ.
+//
+// Записи берутся `RETURNING` того же UPDATE, а не отдельным чтением после него.
+// Это не оптимизация: вид `nlb_listener` объявлен несущим ПОЛНОЕ состояние, и
+// состояние обязано быть тем, что было НА МОМЕНТ СОБЫТИЯ. Второй запрос отвечал
+// бы за момент чтения — в этой же транзакции разница не наблюдаема, но она
+// становится наблюдаемой при первой же правке порядка операций, а построение
+// `RETURNING` от порядка не зависит.
+//
+// Прежде метод отдавал одно лишь количество, и вызывающий не мог собрать строку
+// журнала ни на один переехавший слушатель (#1549).
+func (w *listenerWriter) MoveProject(ctx context.Context, lbID, newProjectID string) ([]*kacho.ListenerRecord, error) {
+	q := fmt.Sprintf(`
+        UPDATE kacho_nlb.listeners
+           SET project_id = $2, updated_at = now()
+         WHERE load_balancer_id = $1
+        RETURNING %s`, listenerCols)
+	rows, err := w.tx.Query(ctx, q, lbID, newProjectID)
 	if err != nil {
-		return 0, mapPgErr(err, "Listener", "")
+		return nil, mapPgErr(err, "Listener", "")
 	}
-	return tag.RowsAffected(), nil
+	defer rows.Close()
+
+	var moved []*kacho.ListenerRecord
+	for rows.Next() {
+		rec, sErr := scanListener(rows)
+		if sErr != nil {
+			return nil, sErr
+		}
+		moved = append(moved, rec)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, mapPgErr(err, "Listener", "")
+	}
+	return moved, nil
 }
 
 func (w *listenerWriter) Delete(ctx context.Context, id string) error {

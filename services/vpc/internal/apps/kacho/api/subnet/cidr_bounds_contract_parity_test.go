@@ -42,6 +42,7 @@ import (
 	"strings"
 	"testing"
 
+	"github.com/PRO-Robotech/kacho/internal/treecorpus"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 )
@@ -161,7 +162,7 @@ func vpcProtoDir(t *testing.T) string {
 // валидатора; обещание у v6-поля — находка.
 func TestSubnetCidrBoundsMatchTheContract(t *testing.T) {
 	protoDir := vpcProtoDir(t)
-	entries, err := filepath.Glob(filepath.Join(protoDir, "*.proto"))
+	entries, err := treecorpus.Glob(filepath.Join(protoDir, "*.proto"))
 	require.NoError(t, err)
 
 	var census protoCensus

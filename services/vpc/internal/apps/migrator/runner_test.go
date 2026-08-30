@@ -61,34 +61,15 @@ func TestNew_RejectsInvalidConfig(t *testing.T) {
 	}
 }
 
-func TestParseTargetVersion(t *testing.T) {
-	cases := []struct {
-		in      string
-		want    int64
-		wantErr bool
-	}{
-		{in: "10", want: 10},
-		{in: "0010", want: 10}, // leading zeros — file-naming convention goose
-		{in: "12345", want: 12345},
-		{in: "abc", wantErr: true},
-		{in: "-5", wantErr: true},
-		{in: "", wantErr: true},
-	}
-	for _, tc := range cases {
-		t.Run(tc.in, func(t *testing.T) {
-			got, err := parseTargetVersion(tc.in)
-			if tc.wantErr {
-				if err == nil {
-					t.Fatalf("expected error for %q, got %d", tc.in, got)
-				}
-				return
-			}
-			if err != nil {
-				t.Fatalf("unexpected error for %q: %v", tc.in, err)
-			}
-			if got != tc.want {
-				t.Fatalf("expected %d, got %d", tc.want, got)
-			}
-		})
-	}
-}
+// TestParseTargetVersion снят ВМЕСТЕ СО СВОИМ ПРЕДМЕТОМ (#1383): локальной
+// parseTargetVersion в пакете больше нет — разбор `--target` у всех семи точек
+// наката один, [migratorcli.ParseTargetVersion], и его пробы строго ШИРЕ снятой:
+// снятая утверждала «10», «0010», «12345», «abc»✗, «-5»✗, «""»✗ — все шесть
+// утверждений живы в `pkg/migratorcli/parse_test.go` и
+// `pkg/migratorcli/parsetarget_test.go`.
+//
+// Замечание, ради которого эта врезка оставлена, а не просто удалён код: снятая
+// проба «abc» проверяла, а «12abc» — НЕТ, и потому не ловила настоящую дыру
+// прежнего разбора: `fmt.Sscanf("12abc", "%d", &v)` возвращает 12 БЕЗ ошибки,
+// то есть накат уезжал к версии, которой оператор не называл. Проба была, и
+// была зелёной, и предмета не измеряла.

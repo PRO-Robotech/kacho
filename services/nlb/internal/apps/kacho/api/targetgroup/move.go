@@ -190,7 +190,7 @@ func (u *MoveTargetGroupUseCase) authorizeDestination(ctx context.Context, dst s
 		fmt.Sprintf("caller is not authorized (editor) on destination project %s", dst))
 }
 
-// doMove — worker: Writer-TX → MoveProject + outbox MOVED + UPDATED → Commit → FGA rewrite.
+// doMove — worker: Writer-TX → MoveProject + outbox MOVED → Commit → FGA rewrite.
 func (u *MoveTargetGroupUseCase) doMove(ctx context.Context, id, srcProject, dstProject string) (*anypb.Any, error) {
 	w, err := u.repo.Writer(ctx)
 	if err != nil {
@@ -202,16 +202,22 @@ func (u *MoveTargetGroupUseCase) doMove(ctx context.Context, id, srcProject, dst
 	if err != nil {
 		return nil, mapDomainErr(err)
 	}
+	// ОДИН ПЕРЕЕЗД — ОДНА СТРОКА О ПЕРЕЕХАВШЕМ ПРЕДМЕТЕ.
+	//
+	// Здесь стояла ПАРА: следом шла вторая строка рода `UPDATED`, «для downstream
+	// watchers, не подписанных на MOVED». Подписки ПО РОДУ ИЗМЕНЕНИЯ не бывает —
+	// фильтр единой формы сужается по видам, проекту и идентификаторам, — поэтому
+	// второй род не добавлял ни одного получателя. Добавлял он второе событие,
+	// неотличимое от первого: словарь журнала отдаёт оба слова одним родом
+	// контракта, а нагрузку обе строки собирали одним строителем на одной записи.
+	// У этого вида состояние есть давно, поэтому подписчик получал ДВА полных
+	// состояния подряд и обязан был сам догадаться, что второе — то же самое.
+	//
+	// Разбор и решение — те же, что у балансировщика (#1565); оставлено `MOVED`:
+	// слово хранилища обязано называть сделанное, а форма на проводе не меняется.
 	if err := w.Outbox().Emit(ctx,
 		kachorepo.OutboxResourceTargetGroup, string(moved.ID), string(moved.ProjectID),
-		kachorepo.OutboxActionMoved, tgMovedPayload(string(moved.ID), srcProject, dstProject),
-	); err != nil {
-		return nil, mapDomainErr(err)
-	}
-	// UPDATED — для downstream watchers, не подписанных на MOVED.
-	if err := w.Outbox().Emit(ctx,
-		kachorepo.OutboxResourceTargetGroup, string(moved.ID), string(moved.ProjectID),
-		kachorepo.OutboxActionUpdated, tgOutboxPayload(moved),
+		kachorepo.OutboxActionMoved, kachorepo.TargetGroupStatePayload(moved),
 	); err != nil {
 		return nil, mapDomainErr(err)
 	}

@@ -71,42 +71,42 @@ func marshalListener(rec *kachorepo.ListenerRecord) (*anypb.Any, error) {
 	return any, nil
 }
 
-// listenerPayloadMap — снимок нагрузки `nlb_outbox` для слушателя.
+// Строитель нагрузки вида `nlb_listener` живёт НЕ ЗДЕСЬ, а в repo-leaf —
+// `kachorepo.ListenerStatePayload`, рядом со своим читателем.
 //
-// ЧИТАТЕЛЯ у нагрузки сегодня нет ни одного (задача #1452): прежняя редакция
-// называла здесь «kacho-iam reader, metrics», а перепись даёт по обоим ноль —
-// зеркало прав ходит очередью `fga_register_outbox`, а счётчики nlb считают
-// строки журнала, но в нагрузку не заглядывают. Имена ключей — из словаря
-// `kachorepo.LifecyclePayload`; что нагрузка должна нести, решает задача #1381.
-func listenerPayloadMap(rec *kachorepo.ListenerRecord) map[string]any {
-	if rec == nil {
-		return nil
-	}
-	// ParentResourceID — идентификатор родительского балансировщика, ключ
-	// `parent_resource_id` (прежние строители писали `load_balancer_id`).
-	return kachorepo.LifecyclePayload{
-		ID:               string(rec.ID),
-		ParentResourceID: string(rec.LoadBalancerID),
-		ProjectID:        string(rec.ProjectID),
-		RegionID:         string(rec.RegionID),
-		Name:             string(rec.Name),
-		Protocol:         string(rec.Protocol),
-		Port:             int32(rec.Port),
-		Status:           string(rec.Status),
-	}.Map()
-}
+// # Почему он оттуда, а не отсюда
+//
+// Точки эмиссии этого вида лежат в ДВУХ пакетах use-case: правку и снятие
+// эмитит этот, а каскадный переезд — пакет балансировщика, который правит проект
+// слушателей вместе со своим (#1549). Строитель, спрятанный здесь, второму
+// пакету недоступен, и второй завёл бы свой — вторую форму нагрузки того же вида.
+// Контракт единой формы разрешает читать непустое состояние как ПОЛНОЕ, поэтому
+// одна частичная точка делает ложным ВЕСЬ вид, и делает тихо.
+//
+// Держит это разбор ДЕРЕВА use-case'ов
+// (`subscriptionjournal.TestEveryEmissionOfAStatefulKindBuildsTheSamePayload`), а
+// не внимание.
 
-// lbUpdatedPayloadMap — нагрузка перекрёстного эмита правки
-// `nlb_load_balancer:<lb_id> UPDATED` после Listener.Create / .Delete.
-// Минимальная; читателя у неё сегодня нет (см. listenerPayloadMap).
-func lbUpdatedPayloadMap(lbID, projectID, regionID, trigger string) map[string]any {
-	return kachorepo.LifecyclePayload{
-		ID:        lbID,
-		ProjectID: projectID,
-		RegionID:  regionID,
-		Trigger:   trigger,
-	}.Map()
-}
+// Строитель нагрузки вида `nlb_load_balancer` тоже живёт в repo-leaf —
+// `kachorepo.LoadBalancerStatePayload`. Здесь стоял `lbUpdatedPayloadMap`:
+// минимальный снимок из четырёх полей плюс диагностический маркер
+// (`listener_created` / `listener_deleted`). Он снят вместе с минимальным
+// снимком — вид объявлен несущим ПОЛНОЕ состояние, и частичная нагрузка одной
+// точки делала бы ложным весь вид.
+//
+// # Запись балансировщика ПОСЛЕ мутации читается заново, и это не гонка
+//
+// Родительская запись, взятая до вставки (или снятия) слушателя, отвечает за
+// момент ДО пересчёта статуса: триггер `lb_status_recompute` срабатывает внутри
+// самого оператора и меняет `status`. Отдать её значило бы объявить прежнее
+// состояние на строке, которую этот же оператор только что сдвинул.
+//
+// `RETURNING` здесь недоступен by construction: возвращает он строку СЛУШАТЕЛЯ,
+// а нужна строка родителя. Поэтому она перечитывается — в ТОЙ ЖЕ транзакции,
+// сразу после оператора, чьи триггеры к этому моменту уже отработали. Ответ
+// авторитетен: транзакция видит свои записи и держит на строке замок, взятый
+// вставкой (`FOR NO KEY UPDATE OF lb`). Тем же доводом читается строка
+// слушателя на проигранной гонке снятия — этажом выше, в снятии слушателя.
 
 // loggerOrDiscard — defensive accessor для nil-loggers. Возвращает global
 // default slog (через slog.Default) если переданный logger == nil; иначе

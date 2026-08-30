@@ -314,14 +314,22 @@ func (u *CreateUseCase) doCreate(ctx context.Context, in createInput) (*anypb.An
 		return nil, mapDomainErr(err)
 	}
 	if err := w.Outbox().Emit(ctx,
-		outboxResourceTypeListener, string(created.ID), string(created.ProjectID),
-		outboxActionCreated, listenerPayloadMap(created),
+		kachorepo.OutboxResourceListener, string(created.ID), string(created.ProjectID),
+		kachorepo.OutboxActionCreated, kachorepo.ListenerStatePayload(created),
 	); err != nil {
 		return nil, mapDomainErr(fmt.Errorf("%w: outbox emit listener CREATED: %v", domain.ErrInternal, err))
 	}
+	// Запись родителя читается ЗАНОВО, после вставки: `in.lb` снят ДО неё, а
+	// триггер пересчёта статуса срабатывает внутри самого оператора вставки —
+	// значит снимок «до» объявлял бы прежний статус на строке, которую эта же
+	// транзакция только что сдвинула. Разбор — в соседнем `helpers.go` этого пакета.
+	lbAfter, err := w.LoadBalancers().Get(ctx, string(in.lb.ID))
+	if err != nil {
+		return nil, mapDomainErr(fmt.Errorf("%w: read parent load balancer after insert: %v", domain.ErrInternal, err))
+	}
 	if err := w.Outbox().Emit(ctx,
-		outboxResourceTypeLoadBalancer, string(in.lb.ID), string(in.lb.ProjectID),
-		outboxActionUpdated, lbUpdatedPayloadMap(string(in.lb.ID), string(in.lb.ProjectID), string(in.lb.RegionID), "listener_created"),
+		kachorepo.OutboxResourceLoadBalancer, string(lbAfter.ID), string(lbAfter.ProjectID),
+		kachorepo.OutboxActionUpdated, kachorepo.LoadBalancerStatePayload(lbAfter),
 	); err != nil {
 		return nil, mapDomainErr(fmt.Errorf("%w: outbox emit lb UPDATED: %v", domain.ErrInternal, err))
 	}

@@ -373,8 +373,9 @@ Geography (Region/Zone) — **не VPC-ресурс**, а leaf-домен `kacho
 
 - `vpc_outbox` — таблица событий (resource_type/resource_id/op/payload).
   Триггер `pg_notify('vpc_outbox', sequence_no)` — in-cluster `LISTEN/NOTIFY`-канал
-  доменных мутаций. Публичного Watch RPC в Kachō нет: клиенты наблюдают изменения
-  через polling `List` / `OperationService.Get`.
+  доменных мутаций. Он же — журнал платформенной подписки: vpc объявлен её владельцем,
+  и край отдаёт его строки арендатору потоком (`owner=vpc`, восемь видов). Словарь видов
+  и удержание объявлены в `internal/subscriptionjournal/journal.go`.
 
 - `operations` — LRO-таблица сервиса, в схеме `kacho_vpc` (`0001_initial.sql`).
   Не редактировать локально.

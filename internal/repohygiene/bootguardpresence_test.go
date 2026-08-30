@@ -7,6 +7,8 @@ import (
 	"path/filepath"
 	"strings"
 	"testing"
+
+	"github.com/PRO-Robotech/kacho/internal/treecorpus"
 )
 
 // postureReachRelaxations — ведомость, КОТОРАЯ ИСТЕКАЕТ САМА.
@@ -307,7 +309,15 @@ func TestCentralDescriptorCarriesARefusalWitness(t *testing.T) {
 	root := repoRoot(t)
 	dir := filepath.Join(root, "pkg", "servicecontract")
 
-	w, err := scanContractRefusalWitness(dir)
+	// Состав — из индекса git: обход диска подобрал бы игнорируемое и сделал бы
+	// вердикт свойством рабочего каталога, а не коммита.
+	paths, gerr := treecorpus.Glob(filepath.Join(dir, "*_test.go"))
+	if gerr != nil {
+		t.Fatalf("перечень проб %s: %v — предпосылка гейта исчезла, а не дерево "+
+			"стало чистым", dir, gerr)
+	}
+
+	w, err := scanContractRefusalWitness(paths)
 	if err != nil {
 		t.Fatalf("разбор проб центрального контракта: %v", err)
 	}

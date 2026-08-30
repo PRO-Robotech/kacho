@@ -381,7 +381,7 @@ var (
 
 // enumDictionaryInventory проигрывает Up-секции всех миграций всех сервисов в
 // порядке версий и возвращает ИТОГОВЫЕ закрытые словари.
-func enumDictionaryInventory(t *testing.T, root string) enumDictInventory {
+func enumDictionaryInventory(t *testing.T, root string, corpus migrationSQLCorpus) enumDictInventory {
 	t.Helper()
 	enumDictInventoryMu.Lock()
 	cached, ok := enumDictInventoryCache[root]
@@ -412,9 +412,9 @@ func enumDictionaryInventory(t *testing.T, root string) enumDictInventory {
 		}
 		svc := e.Name()
 		dir := filepath.Join(servicesDir, svc, "internal", "migrations")
-		sqls, globErr := filepath.Glob(filepath.Join(dir, "*.sql"))
+		sqls, globErr := corpus(dir)
 		if globErr != nil {
-			t.Fatalf("обход %s: %v", dir, globErr)
+			t.Fatalf("состав %s: %v", dir, globErr)
 		}
 		sort.Strings(sqls) // имя начинается с версии → лексикографический порядок = порядок применения
 		for _, path := range sqls {
@@ -523,7 +523,7 @@ func sortedKeys1(m map[string]sqlEnumDict) []string {
 // молчал бы «чисто» на любой записке.
 func TestEnumDictionaryInventoryReadsTheTree(t *testing.T) {
 	root := repoRoot(t)
-	inv := enumDictionaryInventory(t, root)
+	inv := enumDictionaryInventory(t, root, trackedMigrationSQL)
 
 	if inv.filesRead == 0 {
 		t.Fatalf("разбор не прочитал ни одной миграции — предпосылка сломана, молчание "+
@@ -794,7 +794,7 @@ func exemptQueueService(coords []string) (string, error) {
 func TestCommutativeDrainExemptionMatchesEventDictionary(t *testing.T) {
 	root := repoRoot(t)
 	wiring := outboxWiringInventory(t, root)
-	dicts := enumDictionaryInventory(t, root)
+	dicts := enumDictionaryInventory(t, root, trackedMigrationSQL)
 
 	if wiring.filesRead == 0 || dicts.filesRead == 0 {
 		t.Fatalf("гейт не прочитал одну из двух картин (файлов проводок: %d, миграций: %d) — "+

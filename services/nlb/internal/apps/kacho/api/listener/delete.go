@@ -111,7 +111,6 @@ func (u *DeleteUseCase) doDelete(ctx context.Context, cur *kachorepo.ListenerRec
 	listenerID := string(cur.ID)
 	lbID := string(cur.LoadBalancerID)
 	projectID := string(cur.ProjectID)
-	regionID := string(cur.RegionID)
 
 	// Step 1: mark DELETING (atomic CAS — protects against parallel writers).
 	// We accept any non-DELETING current status. Mutex (CAS-style) writes
@@ -128,19 +127,38 @@ func (u *DeleteUseCase) doDelete(ctx context.Context, cur *kachorepo.ListenerRec
 				w.Abort()
 			}
 		}()
-		_, err = w.Listeners().SetStatusCAS(ctx, listenerID, cur.Status, domain.ListenerStatusDeleting)
+		// Событие несёт состояние НА МОМЕНТ СОБЫТИЯ, а не на момент чтения,
+		// поэтому в нагрузку идёт запись, ВОЗВРАЩЁННАЯ сменой состояния, а не
+		// снимок `cur`, прочитанный до неё. Прежняя редакция отдавала `cur` — и
+		// событие утверждало прежнее состояние на строке, которую сама же только
+		// что сдвинула в DELETING. Пока нагрузка была минимальным снимком без
+		// читателя, расхождение никого не задевало; с обогащением вида (#1381)
+		// оно стало ЛОЖНЫМ УТВЕРЖДЕНИЕМ о предмете.
+		moved, err := w.Listeners().SetStatusCAS(ctx, listenerID, cur.Status, domain.ListenerStatusDeleting)
 		if err != nil {
 			// CAS-miss (e.g. parallel writer already moved to DELETING) →
-			// proceed anyway (read current status); else propagate.
+			// proceed anyway; else propagate.
 			if !errors.Is(err, domain.ErrFailedPrecondition) {
 				return nil, mapDomainErr(err)
 			}
+			// Кто победил в гонке — неизвестно, а гадать нельзя: догадка уехала
+			// бы подписчику как факт. Строка перечитывается в ТОЙ ЖЕ
+			// транзакции, поэтому ответ авторитетен и гонки не заводит.
+			moved, err = w.Listeners().Get(ctx, listenerID)
+			if err != nil && !errors.Is(err, domain.ErrNotFound) {
+				return nil, mapDomainErr(err)
+			}
 		}
-		if err := w.Outbox().Emit(ctx,
-			outboxResourceTypeListener, listenerID, projectID,
-			outboxActionUpdated, listenerPayloadMap(cur),
-		); err != nil {
-			return nil, mapDomainErr(fmt.Errorf("%w: outbox emit listener UPDATED: %v", domain.ErrInternal, err))
+		// Строки уже нет — параллельный воркер снял её целиком. Правку не о чем
+		// объявлять; снятие объявит шаг 2, и повторный Delete остаётся
+		// идемпотентным.
+		if moved != nil {
+			if err := w.Outbox().Emit(ctx,
+				kachorepo.OutboxResourceListener, listenerID, projectID,
+				kachorepo.OutboxActionUpdated, kachorepo.ListenerStatePayload(moved),
+			); err != nil {
+				return nil, mapDomainErr(fmt.Errorf("%w: outbox emit listener UPDATED: %v", domain.ErrInternal, err))
+			}
 		}
 		if err := w.Commit(); err != nil {
 			return nil, mapDomainErr(err)
@@ -167,16 +185,33 @@ func (u *DeleteUseCase) doDelete(ctx context.Context, cur *kachorepo.ListenerRec
 		}
 	}
 	if err := w.Outbox().Emit(ctx,
-		outboxResourceTypeListener, listenerID, projectID,
-		outboxActionDeleted, listenerPayloadMap(cur),
+		kachorepo.OutboxResourceListener, listenerID, projectID,
+		kachorepo.OutboxActionDeleted, kachorepo.ListenerStatePayload(cur),
 	); err != nil {
 		return nil, mapDomainErr(fmt.Errorf("%w: outbox emit listener DELETED: %v", domain.ErrInternal, err))
 	}
-	if err := w.Outbox().Emit(ctx,
-		outboxResourceTypeLoadBalancer, lbID, projectID,
-		outboxActionUpdated, lbUpdatedPayloadMap(lbID, projectID, regionID, "listener_deleted"),
-	); err != nil {
-		return nil, mapDomainErr(fmt.Errorf("%w: outbox emit lb UPDATED: %v", domain.ErrInternal, err))
+	// Запись родителя читается ЗАНОВО, после снятия слушателя: триггер пересчёта
+	// статуса срабатывает внутри самого оператора, и снимок «до» объявлял бы
+	// прежний статус. Разбор — в соседнем `helpers.go` этого пакета.
+	//
+	// Промах здесь ЗАКОНЕН и молчанием не является: повторное снятие идёт по
+	// строке, которой уже нет, и родителя мог снять тот, кто выиграл гонку. Тогда
+	// правку не о чем объявлять — снятие балансировщика объявил он сам своей
+	// строкой, а выдуманное состояние уехало бы подписчику как факт.
+	lbAfter, err := w.LoadBalancers().Get(ctx, lbID)
+	switch {
+	case errors.Is(err, domain.ErrNotFound):
+		lbAfter = nil
+	case err != nil:
+		return nil, mapDomainErr(fmt.Errorf("%w: read parent load balancer after delete: %v", domain.ErrInternal, err))
+	}
+	if lbAfter != nil {
+		if err := w.Outbox().Emit(ctx,
+			kachorepo.OutboxResourceLoadBalancer, lbID, projectID,
+			kachorepo.OutboxActionUpdated, kachorepo.LoadBalancerStatePayload(lbAfter),
+		); err != nil {
+			return nil, mapDomainErr(fmt.Errorf("%w: outbox emit lb UPDATED: %v", domain.ErrInternal, err))
+		}
 	}
 	// FGA-unregister-intent (project-hierarchy) in the SAME tx as the Delete —
 	// register-drainer retracts the tuple AND the resource_mirror row via

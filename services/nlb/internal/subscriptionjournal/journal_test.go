@@ -4,13 +4,20 @@
 package subscriptionjournal
 
 import (
+	"encoding/json"
 	"reflect"
 	"sort"
 	"testing"
+	"time"
 
+	"google.golang.org/protobuf/proto"
+
+	lbv1 "github.com/PRO-Robotech/kacho/pkg/api/kacho/cloud/loadbalancer/v1"
 	subscriptionv1 "github.com/PRO-Robotech/kacho/pkg/api/kacho/cloud/subscription"
 	"github.com/PRO-Robotech/kacho/pkg/subscription"
 	"github.com/PRO-Robotech/kacho/services/nlb/internal/authzfilter"
+	"github.com/PRO-Robotech/kacho/services/nlb/internal/domain"
+	"github.com/PRO-Robotech/kacho/services/nlb/internal/dto"
 	kachorepo "github.com/PRO-Robotech/kacho/services/nlb/internal/repo/kacho"
 )
 
@@ -109,34 +116,203 @@ func TestChangeWordsCoverTheDatabaseConstraint(t *testing.T) {
 	}
 }
 
-// TestStateIsAbsentBecauseTheJournalCarriesNone — состояния нет НИ У ОДНОГО рода,
-// и это не сбой, а НАЗВАННОЕ свойство журнала.
+// TestListenerStateIsTheContractSubjectAndCarriesLabels — у вида `nlb_listener`
+// событие несёт ПОЛНОЕ состояние предмета, и метки в нём есть.
 //
-// Отрицание здесь не вакуумно: оно утверждает тройку — отсутствие, отсутствие
-// ошибки И названную причину. Ошибка означала бы «состояние есть, но собрать не
-// удалось», и следующий читатель чинил бы несуществующую поломку; неназванная
-// причина уехала бы клиенту как `REASON_UNSPECIFIED`, то есть «владелец забыл».
-func TestStateIsAbsentBecauseTheJournalCarriesNone(t *testing.T) {
-	for _, word := range []string{"CREATED", "UPDATED", "DELETED", "MOVED"} {
+// Утверждение сделано СРАВНЕНИЕМ С ЧТЕНИЕМ, а не перечислением полей: состояние
+// обязано совпасть с тем, что по той же записи отдаёт обычный путь чтения. Список
+// полей разошёлся бы с контрактом молча при первом же добавлении поля — а
+// совпадение с трансфером чтения ломается ровно тогда, когда журнал заводит
+// ВТОРУЮ проекцию ресурса.
+func TestListenerStateIsTheContractSubjectAndCarriesLabels(t *testing.T) {
+	rec := probeListenerRecord()
+
+	var want *lbv1.Listener
+	if err := dto.Transfer(dto.FromTo(*rec, &want)); err != nil {
+		t.Fatalf("путь чтения не смог перенести запись в контракт: %v — сравнивать не с чем", err)
+	}
+
+	for _, word := range []string{kachorepo.OutboxActionCreated, kachorepo.OutboxActionUpdated} {
 		got, absence, err := state(subscription.Row{
+			Kind:    kachorepo.OutboxResourceListener,
 			Change:  word,
-			Payload: []byte(`{"id":"nlb-1234567890abcdefg","projectId":"prj-1234567890abcdefg"}`),
+			Payload: probeListenerPayload(t, rec),
 		})
 		if err != nil {
-			t.Errorf("род %q: отсутствие состояния объявлено ОШИБКОЙ (%v); это свойство "+
-				"журнала, а не сбой сборки", word, err)
+			t.Fatalf("род %q: состояние не собралось (%v)", word, err)
 		}
-		if got != nil {
-			t.Errorf("род %q: отдано состояние из МИНИМАЛЬНОГО снимка. Подписчик вправе "+
-				"читать непустую нагрузку как ПОЛНОЕ состояние и записал бы как факт, "+
-				"что у ресурса нет ни меток, ни целей, ни адреса", word)
+		if got == nil {
+			t.Fatalf("род %q: состояние НЕ отдано (причина %v) — клиентский отбор по меткам "+
+				"для слушателя остаётся без источника", word, absence)
 		}
-		if absence != subscription.StateNotProduced {
-			t.Errorf("род %q: причина отсутствия %v, ожидалась StateNotProduced — "+
-				"неназванная причина доезжает клиенту как «владелец забыл назвать»",
-				word, absence)
+		var have lbv1.Listener
+		if err := got.UnmarshalTo(&have); err != nil {
+			t.Fatalf("род %q: в конверте состояния не контракт слушателя: %v", word, err)
+		}
+		if !proto.Equal(want, &have) {
+			t.Fatalf("род %q: состояние потока разошлось с чтением.\nчтение: %v\nпоток:  %v",
+				word, want, &have)
+		}
+		if have.GetLabels()["env"] != "prod" {
+			t.Fatalf("род %q: метки не доехали (%v) — клиентский отбор по меткам остался бы "+
+				"без источника", word, have.GetLabels())
 		}
 	}
+}
+
+// TestListenerRemovalCarriesNoStateBecauseThereIsNoSubject — у снятия состояния
+// нет и быть не может: предмета больше нет.
+//
+// Причина обязана быть НАЗВАНА: «не удалось собрать» означало бы неудавшуюся
+// попытку там, где попытки не было, и звало бы подписчика перечитать снятый
+// слушатель.
+func TestListenerRemovalCarriesNoStateBecauseThereIsNoSubject(t *testing.T) {
+	got, absence, err := state(subscription.Row{
+		Kind:    kachorepo.OutboxResourceListener,
+		Change:  kachorepo.OutboxActionDeleted,
+		Payload: probeListenerPayload(t, probeListenerRecord()),
+	})
+	if err != nil {
+		t.Fatalf("снятие: отсутствие состояния объявлено ОШИБКОЙ (%v)", err)
+	}
+	if got != nil {
+		t.Fatal("снятие: отдано состояние предмета, которого больше нет")
+	}
+	if absence != subscription.StateNotProduced {
+		t.Fatalf("снятие: причина отсутствия %v, ожидалась StateNotProduced", absence)
+	}
+}
+
+// TestListenerRowOfTheOldShapeIsNotPassedOffAsFullState — строка, записанная ДО
+// обогащения, состоянием НЕ становится.
+//
+// Журнал nlb не чистится (`RetainsEverything`), а подписчик вправе открыть поток
+// с начала — значит МИНИМАЛЬНЫЕ снимки прежней формы доезжают до сборщика и
+// сегодня. Разбор их молча НЕ отвергнет: `encoding/json` сопоставляет имена без
+// учёта регистра, поэтому `id`/`name`/`protocol`/`port`/`status` прежней нагрузки
+// попали бы в поля записи, а `project_id`, родитель, отметка создания и МЕТКИ —
+// нет. Получился бы разбираемый, переносимый и ЛОЖНЫЙ предмет: слушатель без
+// проекта и без меток. Поэтому полноту объявляет КОНВЕРТ, а не удача разбора.
+func TestListenerRowOfTheOldShapeIsNotPassedOffAsFullState(t *testing.T) {
+	old := []byte(`{"id":"nlb-l-1","project_id":"prj-1","parent_resource_id":"nlb-1",` +
+		`"name":"front","protocol":"TCP","port":443,"status":"ACTIVE"}`)
+
+	got, absence, err := state(subscription.Row{
+		Kind:    kachorepo.OutboxResourceListener,
+		Change:  kachorepo.OutboxActionUpdated,
+		Payload: old,
+	})
+	if err != nil {
+		t.Fatalf("строка прежней формы объявлена СБОЕМ сборки (%v) — сбоя не было, "+
+			"состояние в ней просто не производилось", err)
+	}
+	if got != nil {
+		var have lbv1.Listener
+		_ = got.UnmarshalTo(&have)
+		t.Fatalf("минимальный снимок отдан как ПОЛНОЕ состояние (%v): подписчик записал бы "+
+			"как факт, что у слушателя нет ни проекта, ни меток", &have)
+	}
+	if absence != subscription.StateNotProduced {
+		t.Fatalf("причина отсутствия %v, ожидалась StateNotProduced", absence)
+	}
+}
+
+// TestRowOfTheOldShapeSaysItIsNotProduced_EveryKind — СТРОКА ПРЕЖНЕЙ ФОРМЫ
+// состоянием не притворяется НИ У ОДНОГО вида.
+//
+// # Здесь стояло утверждение, ПЕРЕЖИВШЕЕ свой предмет
+//
+// Прежняя редакция звалась «у двух остальных видов состояния НЕТ» и перечисляла
+// балансировщик с целевой группой. К моменту, когда состояние появилось у группы
+// (#1551), заголовок стал шире тела: проба подавала МИНИМАЛЬНЫЙ снимок, поэтому
+// оставалась зелёной и утверждала при этом о видах то, что перестало быть верным.
+// Ослабить её было нельзя, поэтому она ЗАМЕНЕНА утверждением о том, что проверяла
+// на самом деле, — и предмет у этого утверждения не исчезнет: журнал не чистится
+// (`RetainsEverything`), а подписчик вправе открыть поток с начала, значит строки
+// прежней формы доезжают до сборщика и сегодня.
+//
+// # Почему по ВСЕМ трём видам, а не по одному
+//
+// Полноту объявляет КОНВЕРТ, и это свойство обязано держаться у каждого вида
+// отдельно: разбор минимального снимка молча не отвергается — `encoding/json`
+// сопоставляет имена без учёта регистра, поэтому `id`, `name`, `status` попали бы
+// в поля записи, а проект, отметка создания и МЕТКИ — нет. Вышел бы разбираемый,
+// переносимый и ЛОЖНЫЙ предмет.
+//
+// Отрицание не вакуумно: положительные контроли стоят рядом — слушатель выше и
+// сквозная проба балансировщика в этом же пакете.
+func TestRowOfTheOldShapeSaysItIsNotProduced_EveryKind(t *testing.T) {
+	// Ключи — те самые, которыми писал минимальный снимок, включая совпадающие
+	// по имени с полями записи: именно они и делали удачу разбора негодным
+	// признаком.
+	const oldShape = `{"id":"nlb-1234567890abcdefg","project_id":"prj-1234567890abcdefg",` +
+		`"region_id":"ru-central1","name":"front","status":"ACTIVE","type":"EXTERNAL"}`
+
+	for _, kind := range []string{
+		kachorepo.OutboxResourceLoadBalancer,
+		kachorepo.OutboxResourceListener,
+		kachorepo.OutboxResourceTargetGroup,
+	} {
+		for _, word := range []string{"CREATED", "UPDATED", "DELETED", "MOVED"} {
+			got, absence, err := state(subscription.Row{
+				Kind:    kind,
+				Change:  word,
+				Payload: []byte(oldShape),
+			})
+			if err != nil {
+				t.Errorf("вид %q род %q: отсутствие состояния объявлено ОШИБКОЙ (%v); это "+
+					"свойство строки, а не сбой сборки — на сбой подписчик перечитывает "+
+					"событие, на свойство идёт за предметом", kind, word, err)
+			}
+			if got != nil {
+				t.Errorf("вид %q род %q: отдано состояние из МИНИМАЛЬНОГО снимка. Подписчик "+
+					"вправе читать непустую нагрузку как ПОЛНОЕ состояние и записал бы как "+
+					"факт, что у ресурса нет ни меток, ни целей, ни адреса", kind, word)
+			}
+			if absence != subscription.StateNotProduced {
+				t.Errorf("вид %q род %q: причина отсутствия %v, ожидалась StateNotProduced — "+
+					"неназванная причина доезжает клиенту как «владелец забыл назвать»",
+					kind, word, absence)
+			}
+		}
+	}
+}
+
+// probeListenerRecord — запись слушателя, заполненная ЦЕЛИКОМ.
+//
+// Целиком — потому что предмет проб «полное состояние»: запись с пустыми полями
+// зеленела бы на сборщике, который их теряет.
+func probeListenerRecord() *kachorepo.ListenerRecord {
+	rec := &kachorepo.ListenerRecord{
+		CreatedAt: time.Date(2026, 8, 30, 12, 0, 0, 0, time.UTC),
+		UpdatedAt: time.Date(2026, 8, 30, 12, 30, 0, 0, time.UTC),
+		Xmin:      "4242",
+	}
+	rec.ID = domain.ResourceID("nlb-l-1234567890abcd")
+	rec.ProjectID = domain.ProjectID("prj-1234567890abcdef")
+	rec.LoadBalancerID = domain.ResourceID("nlb-1234567890abcdef")
+	rec.RegionID = domain.RegionID("ru-central1")
+	rec.Name = domain.LbName("front")
+	rec.Description = domain.LbDescription("витрина")
+	rec.Labels = domain.LabelsFromMap(map[string]string{"env": "prod"})
+	rec.Protocol = domain.ProtoTCP
+	rec.Port = domain.LbPort(443)
+	rec.Status = domain.ListenerStatusActive
+	return rec
+}
+
+// probeListenerPayload — нагрузка строки журнала, собранная ТЕМ ЖЕ строителем,
+// каким её собирает эмиттер.
+//
+// Своя копия формы здесь была бы кругом: обе стороны брали бы её из пробы, и
+// расхождение эмиттера со сборщиком осталось бы невидимым.
+func probeListenerPayload(t *testing.T, rec *kachorepo.ListenerRecord) []byte {
+	t.Helper()
+	raw, err := json.Marshal(kachorepo.StateEnvelope(rec))
+	if err != nil {
+		t.Fatalf("нагрузка не собралась: %v", err)
+	}
+	return raw
 }
 
 // TestProjectGateTakesItsRefusalFromTheProducer — форма отказа стража взята у
@@ -189,4 +365,150 @@ func TestKindDictionaryIsWhatTheClientCanName(t *testing.T) {
 			}
 		}
 	}
+}
+
+// TestTargetGroupStateIsTheContractSubjectAndCarriesTargetsWithState — у вида
+// `nlb_target_group` событие несёт ПОЛНОЕ состояние группы, и оно совпадает с
+// тем, что отдаёт чтение.
+//
+// # Почему цели названы отдельно
+//
+// Публичная проекция группы строится НЕ из её строки, а из набора целей С
+// СОСТОЯНИЕМ. Строка, собранная из одной лишь записи группы, разобралась бы,
+// перенеслась в контракт и объявила группу БЕЗ ЦЕЛЕЙ — то есть дала бы предмет,
+// отличный от ответа `Get`, причём отличие читалось бы подписчиком как факт
+// («все цели удалены»), а не как неполнота.
+//
+// # Почему сверка идёт с ЧТЕНИЕМ, а не со списком полей
+//
+// Перечень полей здесь был бы вторым отображением записи в контракт: он
+// разошёлся бы с первым молча. Сверяется то же, что отдаёт `Get`, — одним и тем
+// же трансфером.
+func TestTargetGroupStateIsTheContractSubjectAndCarriesTargetsWithState(t *testing.T) {
+	rec := probeTargetGroupRecord()
+
+	var want *lbv1.TargetGroup
+	if err := dto.Transfer(dto.FromTo(*rec, &want)); err != nil {
+		t.Fatalf("эталон чтения не собрался: %v", err)
+	}
+
+	for _, word := range []string{
+		kachorepo.OutboxActionCreated,
+		kachorepo.OutboxActionUpdated,
+		kachorepo.OutboxActionMoved,
+	} {
+		got, absence, err := state(subscription.Row{
+			Kind:    kachorepo.OutboxResourceTargetGroup,
+			Change:  word,
+			Payload: probeTargetGroupPayload(t, rec),
+		})
+		if err != nil {
+			t.Fatalf("род %q: состояние не собралось (%v)", word, err)
+		}
+		if got == nil {
+			t.Fatalf("род %q: состояние НЕ отдано (причина %v) — клиентский отбор по меткам "+
+				"для группы остаётся без источника", word, absence)
+		}
+		var have lbv1.TargetGroup
+		if err := got.UnmarshalTo(&have); err != nil {
+			t.Fatalf("род %q: в конверте состояния не контракт группы: %v", word, err)
+		}
+		if !proto.Equal(want, &have) {
+			t.Fatalf("род %q: состояние потока разошлось с чтением.\nчтение: %v\nпоток:  %v",
+				word, want, &have)
+		}
+		if len(have.GetTargets()) == 0 {
+			t.Fatalf("род %q: состояние пришло БЕЗ целей. Пустой набор читается подписчиком "+
+				"как «целей нет», а не как «это событие поле не заполняет», и клиент, ведущий "+
+				"состояние, предложит создать их заново", word)
+		}
+		if have.GetLabels()["env"] != "prod" {
+			t.Fatalf("род %q: метки не доехали (%v) — клиентский отбор по меткам остался бы "+
+				"без источника", word, have.GetLabels())
+		}
+	}
+}
+
+// TestTargetGroupRemovalCarriesNoStateBecauseThereIsNoSubject — у снятия группы
+// состояния нет и быть не может.
+func TestTargetGroupRemovalCarriesNoStateBecauseThereIsNoSubject(t *testing.T) {
+	got, absence, err := state(subscription.Row{
+		Kind:    kachorepo.OutboxResourceTargetGroup,
+		Change:  kachorepo.OutboxActionDeleted,
+		Payload: probeTargetGroupPayload(t, probeTargetGroupRecord()),
+	})
+	if err != nil {
+		t.Fatalf("снятие: отсутствие состояния объявлено ОШИБКОЙ (%v)", err)
+	}
+	if got != nil {
+		t.Fatal("снятие: отдано состояние предмета, которого больше нет")
+	}
+	if absence != subscription.StateNotProduced {
+		t.Fatalf("снятие: причина отсутствия %v, ожидалась StateNotProduced", absence)
+	}
+}
+
+// probeTargetGroupRecord — запись группы, заполненная ЦЕЛИКОМ, включая набор
+// целей С СОСТОЯНИЕМ: запись с пустыми полями зеленела бы на сборщике, который
+// их теряет.
+func probeTargetGroupRecord() *kachorepo.TargetGroupRecord {
+	rec := &kachorepo.TargetGroupRecord{
+		CreatedAt: time.Date(2026, 8, 30, 12, 0, 0, 0, time.UTC),
+		UpdatedAt: time.Date(2026, 8, 30, 12, 30, 0, 0, time.UTC),
+		Xmin:      "4242",
+	}
+	rec.ID = domain.ResourceID("tgr-1234567890abcde")
+	rec.ProjectID = domain.ProjectID("prj-1234567890abcdef")
+	rec.RegionID = domain.RegionID("ru-central1")
+	rec.Name = domain.LbName("back")
+	rec.Description = domain.LbDescription("бэкенды")
+	rec.Labels = domain.LabelsFromMap(map[string]string{"env": "prod"})
+	rec.Status = domain.TargetGroupStatusActive
+	rec.Port = 8080
+	rec.DeregistrationDelay = domain.LbDuration(300 * time.Second)
+	rec.HealthCheck = domain.HealthCheck{
+		Interval:           domain.DefaultHealthInterval,
+		Timeout:            domain.DefaultHealthTimeout,
+		UnhealthyThreshold: domain.DefaultUnhealthyThreshold,
+		HealthyThreshold:   domain.DefaultHealthyThreshold,
+		TCP:                &domain.HealthCheckTCP{Port: 80},
+	}
+	drainedAt := time.Date(2026, 8, 30, 12, 15, 0, 0, time.UTC)
+	// Две цели, и одна из них СЛИВАЕТСЯ: без lifecycle-состояния она неотличима
+	// от обычной, а именно ради этого различия проекция строится из набора С
+	// состоянием.
+	rec.TargetStates = []kachorepo.TargetRecord{
+		{
+			Target:        domain.Target{ExternalIP: &domain.TargetExternalIP{Address: "203.0.113.10"}, Weight: 100},
+			ID:            "tgt-live",
+			TargetGroupID: string(rec.ID),
+			Status:        kachorepo.TargetStatusActive,
+			CreatedAt:     rec.CreatedAt,
+			UpdatedAt:     rec.UpdatedAt,
+		},
+		{
+			Target:         domain.Target{ExternalIP: &domain.TargetExternalIP{Address: "203.0.113.11"}, Weight: 50},
+			ID:             "tgt-draining",
+			TargetGroupID:  string(rec.ID),
+			Status:         kachorepo.TargetStatusDraining,
+			DrainStartedAt: &drainedAt,
+			CreatedAt:      rec.CreatedAt,
+			UpdatedAt:      rec.UpdatedAt,
+		},
+	}
+	for _, ts := range rec.TargetStates {
+		rec.Targets = append(rec.Targets, ts.Target)
+	}
+	return rec
+}
+
+// probeTargetGroupPayload — нагрузка строки журнала, собранная ТЕМ ЖЕ
+// строителем, каким её собирает эмиттер.
+func probeTargetGroupPayload(t *testing.T, rec *kachorepo.TargetGroupRecord) []byte {
+	t.Helper()
+	raw, err := json.Marshal(kachorepo.TargetGroupStatePayload(rec))
+	if err != nil {
+		t.Fatalf("нагрузка не собралась: %v", err)
+	}
+	return raw
 }

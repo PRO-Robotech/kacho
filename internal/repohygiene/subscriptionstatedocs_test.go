@@ -84,15 +84,21 @@ func TestSubscriptionOwnerPageSaysWhatItsJournalDoes(t *testing.T) {
 			claims++
 		}
 	}
+	walked := 0
+	for _, rep := range reports {
+		walked += rep.funcsWalked
+	}
 	// Перепись печатает ОБЕ величины по каждой стороне: одно число скрыло бы
 	// ровно тот случай, ради которого гейт заведён, — согласие количеств при
 	// расхождении по владельцам.
-	t.Logf("перепись: объявлений журналов осмотрено %d · из них собирают состояние %d · "+
-		"строк таблицы владельцев прочитано %d · из них называют тип состояния %d",
-		filesRead, produces, len(rows), claims)
+	t.Logf("перепись: объявлений журналов осмотрено %d · функций обойдено %d · "+
+		"из них собирают состояние %d · строк таблицы владельцев прочитано %d · "+
+		"из них называют тип состояния %d",
+		filesRead, walked, produces, len(rows), claims)
 	for _, rep := range reports {
-		t.Logf("  · журнал services/%s: функция состояния %q · собирает %v",
-			rep.service, rep.stateFunc, rep.produces)
+		t.Logf("  · журнал services/%s: функция состояния %q · обойдено функций %d · "+
+			"файлов пакета %d · собирает %v",
+			rep.service, rep.stateFunc, rep.funcsWalked, rep.pkgFiles, rep.produces)
 	}
 	for _, row := range rows {
 		t.Logf("  · строка %q: называет тип состояния %v · обещает %q",

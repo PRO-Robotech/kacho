@@ -70,6 +70,7 @@ import { buildSpecColumns } from "@/lib/spec-columns";
 import { useResourceList, useResourceListAllPages } from "@/lib/use-resource-list";
 import { noMatchesText, rowsAreComplete, type NarrowingScope } from "@shared/lib/list-scope";
 import { useInvalidateResourceList } from "@/lib/use-operation";
+import { useResourceStream } from "@shared/lib/subscription/use-resource-stream";
 import { DetailOverviewActions } from "@/components/molecules/DetailOverviewActions";
 import { RepositoryTagsPanel } from "@/components/organisms/RepositoryTagsPanel";
 // Решения об адресе — ОДНО объявление на консоль: что такое подстановка, чем
@@ -316,6 +317,18 @@ export function ResourceShell({ spec, mode }: { spec: ResourceSpec; mode?: Resou
       ? location.pathname.slice(0, mIdx + marker.length)
       : `${resourceProjectPath(spec.id, projectId) ?? `/${spec.route}`}/${uid}`;
 
+  // Карточка узнаёт о своих изменениях ПОТОКОМ (#1021): опрос остаётся ровно до
+  // тех пор, пока владелец журнала не назвал этот вид. У реестра журнал ведёт
+  // ОДИН вид — сами реестры, — поэтому карточка репозитория и карточка тега
+  // остаются на опросе САМИ, без второго решения здесь: покрытие читается по
+  // проводу (`hub.covers`), а не выводится из имени домена.
+  const { streamed } = useResourceStream({
+    specId: spec.id,
+    projectId: projectId ?? null,
+    invalidate: [spec.id, "shell-detail", detailPath],
+    enabled: !!uid && specAddressable,
+  });
+
   const { data, isLoading, isError, error } = useQuery({
     // Разрешённый путь — часть ключа: у ресурса под родителем имя уникально
     // только внутри родителя, и два репозитория `nginx` в разных реестрах без
@@ -323,9 +336,7 @@ export function ResourceShell({ spec, mode }: { spec: ResourceSpec; mode?: Resou
     queryKey: [spec.id, "shell-detail", detailPath],
     queryFn: () => api.get<Record<string, unknown>>(detailPath),
     enabled: !!uid && specAddressable,
-    // поллинг остаётся: журнала у registry нет — глагол подписки служат
-    // compute, nlb и vpc, реестра среди владельцев не значится.
-    refetchInterval: 5_000,
+    refetchInterval: streamed ? false : 5_000,
     staleTime: 0,
   });
 

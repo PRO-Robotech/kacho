@@ -726,7 +726,7 @@ func (u *CreateLoadBalancerUseCase) finalizeCreate(
 	}
 	if err := w.Outbox().Emit(ctx,
 		kachorepo.OutboxResourceLoadBalancer, string(created.ID), string(created.ProjectID),
-		kachorepo.OutboxActionCreated, lbOutboxPayload(created),
+		kachorepo.OutboxActionCreated, kachorepo.LoadBalancerStatePayload(created),
 	); err != nil {
 		return nil, domain.FGARegisterIntent{}, time.Time{}, err
 	}

@@ -18,7 +18,6 @@ import (
 	"github.com/PRO-Robotech/kacho/pkg/operations"
 
 	"github.com/PRO-Robotech/kacho/services/nlb/internal/domain"
-	kachorepo "github.com/PRO-Robotech/kacho/services/nlb/internal/repo/kacho"
 )
 
 // TestMapDomainErr_AllSentinels — each domain-sentinel maps to the right
@@ -90,35 +89,6 @@ func TestOperationToProto_FillsPrincipal(t *testing.T) {
 	require.Equal(t, true, pb.Done)
 	require.Nil(t, pb.GetError())
 	require.Nil(t, pb.GetResponse())
-}
-
-// TestListenerPayloadMap_NilGuard — nil input returns nil.
-func TestListenerPayloadMap_NilGuard(t *testing.T) {
-	t.Parallel()
-	require.Nil(t, listenerPayloadMap(nil))
-}
-
-// TestListenerPayloadMap_KeysOnTheWire — строитель нагрузки слушателя кладёт
-// родителя под именем `parent_resource_id`, а не под прежним `load_balancer_id`.
-//
-// Утверждение сделано СТРОКОВЫМ ЛИТЕРАЛОМ, а не константой словаря. Прежняя
-// редакция гоняла нагрузку через разборщик, собранный из тех же констант, и
-// потому была истинна при любом их значении: замер задачи #1452 переименовал
-// значение ключа — проба осталась зелёной. Разборщик снят (прод-вызывающих у
-// него не было), утверждение переведено на провод.
-func TestListenerPayloadMap_KeysOnTheWire(t *testing.T) {
-	t.Parallel()
-	rec := &kachorepo.ListenerRecord{}
-	rec.ID = domain.ResourceID("nlb-listener-1")
-	rec.LoadBalancerID = domain.ResourceID("nlb-1")
-	rec.ProjectID = domain.ProjectID("prj-b")
-
-	m := listenerPayloadMap(rec)
-	require.NotContains(t, m, "load_balancer_id", "прежнее имя ключа не возвращается")
-	require.Equal(t, "nlb-1", m["parent_resource_id"],
-		"родитель слушателя лежит на проводе под именем parent_resource_id")
-	require.Equal(t, "nlb-listener-1", m["id"])
-	require.Equal(t, "prj-b", m["project_id"])
 }
 
 // TestListenerRecordToPb_NilGuard — nil → Internal.

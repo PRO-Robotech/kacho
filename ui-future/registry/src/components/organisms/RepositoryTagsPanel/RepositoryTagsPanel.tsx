@@ -67,8 +67,9 @@ export const RepositoryTagsPanel: FC<{
     queryKey: tagsKey,
     queryFn: () => registriesApi.listTags(registryId, repository),
     enabled: !!registryId && !!repository,
-    // поллинг остаётся: журнала у registry нет, а тег и вовсе не ресурс
-    // платформы — он живёт в OCI-данных и в ресурсный журнал не пишется.
+    // поллинг остаётся: тег не ресурс платформы — он живёт в OCI-данных и в
+    // ресурсный журнал не пишется вовсе. Журнал у реестра ЕСТЬ (владелец
+    // `registry` объявлен краю), но ведёт он один вид — сами реестры.
     refetchInterval: 5_000,
     staleTime: 0,
   });

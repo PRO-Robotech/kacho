@@ -10,7 +10,7 @@ Sequence-диаграммы реальных VPC-сценариев (то что
 4. [Address allocate (internal IP в Subnet)](#4-address-allocate-internal-ip-в-subnet)
 5. [Cross-service: project existence check](#5-cross-service-project-existence-check)
 6. [Operations LRO worker](#6-operations-lro-worker)
-7. [Outbox-журнал доменных событий (polling-модель)](#7-outbox-журнал-доменных-событий-polling-модель)
+7. [Outbox-журнал доменных событий (он же журнал подписки)](#7-outbox-журнал-доменных-событий-он-же-журнал-подписки)
 8. [NetworkInterface create](#8-networkinterface-create)
 9. [Dependency / delete-blocking chain (NIC → Address → Subnet → Network)](#9-dependency--delete-blocking-chain)
 
@@ -41,17 +41,16 @@ sequenceDiagram
   alt project not found
     S->>DB: UPDATE operation done=true, error=NotFound
   else project OK
+    Note over S: одна writer-транзакция на всё создание — либо весь композит, либо ничего
     S->>DB: BEGIN
     S->>DB: INSERT networks (id, project_id, name, …)
-    S->>DB: INSERT vpc_outbox (Network, CREATED) → pg_notify
-    S->>DB: COMMIT
-
-    Note over S: группа правил по умолчанию создаётся безусловно, в той же транзакции
-    S->>S: short = first-8-chars(net_id)
-    S->>DB: BEGIN
     S->>DB: INSERT security_groups (default-sg-{short}, network_id, default_for_network=true)
-    S->>DB: UPDATE networks SET default_security_group_id=...
-    S->>DB: INSERT vpc_outbox (SG CREATED, Network UPDATED)
+    S->>DB: INSERT vpc_outbox (SecurityGroup, CREATED) → pg_notify
+    S->>DB: UPDATE networks SET default_security_group_id=…
+    S->>DB: INSERT route_tables (default-rt-{short}, network_id, system_owned=true)
+    S->>DB: INSERT vpc_outbox (RouteTable, CREATED) → pg_notify
+    S->>DB: UPDATE networks SET default_route_table_id=…
+    S->>DB: INSERT vpc_outbox (Network, CREATED — сеть уже СОБРАНА) → pg_notify
     S->>DB: COMMIT
 
     S->>DB: UPDATE operation done=true, response=Network
@@ -280,15 +279,18 @@ Worker — на той же поде, что сервис. Если pod краш
 
 ---
 
-## 7. Outbox-журнал доменных событий (polling-модель)
+## 7. Outbox-журнал доменных событий (он же журнал подписки)
 
 Каждая мутация ресурса в той же транзакции пишет событие в `vpc_outbox`
 (`resource_kind/resource_id/event_type/payload`). Триггер `vpc_outbox_notify_trg`
 на INSERT шлет `pg_notify('vpc_outbox', sequence_no)` — это in-cluster
 `LISTEN/NOTIFY`-канал.
 
-**Публичного per-resource Watch RPC в Kachō нет.** Клиенты (UI/TUI/CLI и peer-сервисы)
-узнают о состоянии через polling:
+**Отдельного per-resource Watch RPC (`<Resource>.Watch`) в Kachō нет: подписка — ОДИН глагол
+на всю платформу**, и единственность этой формы держится гейтом дерева, а не обещанием.
+Служит её край поверх журнала владельца, и vpc в число владельцев объявлен. Клиенты
+(UI/TUI/CLI и peer-сервисы) выбирают между этим потоком и опросом; исход операции узнаётся
+только опросом, и ниже показан именно он:
 
 ```mermaid
 sequenceDiagram
@@ -312,7 +314,7 @@ sequenceDiagram
 ```
 
 `vpc_outbox` — транзакционный журнал доменных событий; `pg_notify` доступен
-in-cluster-потребителям, но наружу как Watch RPC не публикуется.
+in-cluster-потребителям, а сами строки журнала край проецирует наружу потоком подписки.
 
 ---
 

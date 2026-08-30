@@ -552,7 +552,7 @@ func (w *loadBalancerWriter) markDeletingBlockReason(ctx context.Context, id str
 // (TestLBMove_vs_ListenerWire_CascadeBlocked).
 //
 // 0 rows при существующем LB → listener привязался между sync-check и apply → FailedPrecondition.
-func (w *loadBalancerWriter) MoveProject(ctx context.Context, id, newProjectID string) (*kacho.LoadBalancerRecord, error) {
+func (w *loadBalancerWriter) MoveProject(ctx context.Context, id, newProjectID string) (*kacho.LoadBalancerRecord, []*kacho.ListenerRecord, error) {
 	// 1. Сам LB — atomic CAS-подобный guard: двигаем только если нет wired listener'ов.
 	q := fmt.Sprintf(`
         UPDATE kacho_nlb.load_balancers
@@ -572,24 +572,32 @@ func (w *loadBalancerWriter) MoveProject(ctx context.Context, id, newProjectID s
 			if e := w.tx.QueryRow(ctx,
 				`SELECT EXISTS(SELECT 1 FROM kacho_nlb.load_balancers WHERE id = $1)`, id,
 			).Scan(&exists); e != nil {
-				return nil, mapPgErr(e, "NetworkLoadBalancer", id)
+				return nil, nil, mapPgErr(e, "NetworkLoadBalancer", id)
 			}
 			if exists {
-				return nil, fmt.Errorf("%w: NetworkLoadBalancer %s has a listener wired to a target group; repoint before Move",
+				return nil, nil, fmt.Errorf("%w: NetworkLoadBalancer %s has a listener wired to a target group; repoint before Move",
 					kacho.ErrFailedPrecondition, id)
 			}
-			return nil, fmt.Errorf("%w: NetworkLoadBalancer %s not found", kacho.ErrNotFound, id)
+			return nil, nil, fmt.Errorf("%w: NetworkLoadBalancer %s not found", kacho.ErrNotFound, id)
 		}
-		return nil, mapPgErr(err, "NetworkLoadBalancer", id)
+		return nil, nil, mapPgErr(err, "NetworkLoadBalancer", id)
 	}
 	// 2. Каскад на listeners (denorm) — только после успешного move LB.
-	if _, err := w.tx.Exec(ctx,
-		`UPDATE kacho_nlb.listeners SET project_id = $2, updated_at = now() WHERE load_balancer_id = $1`,
-		id, newProjectID,
-	); err != nil {
-		return nil, mapPgErr(err, "Listener", "")
+	//
+	// Каскад исполняет ВЛАДЕЛЕЦ вида, а не этот метод своим SQL. Прежде здесь
+	// стоял собственный UPDATE, а объявление `ListenerWriterIface.MoveProject`
+	// говорило, что каскад зовут отсюда, — два места об одном предмете, из
+	// которых верно было второе только на словах: живых вызывающих у метода не
+	// было ни одного, и его контракт держала лишь проба покрытия.
+	//
+	// Записи переехавших слушателей возвращаются наверх: каскад меняет якорь
+	// проекта у чужого вида, а вид `nlb_listener` несёт ПОЛНОЕ состояние, и
+	// строку журнала на каждый слушатель собрать больше не из чего (#1549).
+	movedListeners, err := (&listenerWriter{listenerReader{tx: w.tx}}).MoveProject(ctx, id, newProjectID)
+	if err != nil {
+		return nil, nil, err
 	}
-	return rec, nil
+	return rec, movedListeners, nil
 }
 
 // Delete — DELETE WHERE id (безусловный). Ссылку слушателя держит схема

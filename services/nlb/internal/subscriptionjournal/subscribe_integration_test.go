@@ -18,18 +18,21 @@ import (
 	"google.golang.org/grpc/test/bufconn"
 
 	"github.com/PRO-Robotech/kacho/internal/pgtest"
+	lbv1 "github.com/PRO-Robotech/kacho/pkg/api/kacho/cloud/loadbalancer/v1"
 	subscriptionv1 "github.com/PRO-Robotech/kacho/pkg/api/kacho/cloud/subscription"
 	"github.com/PRO-Robotech/kacho/pkg/listnarrow"
 	"github.com/PRO-Robotech/kacho/pkg/listnarrow/narrowtest"
 	"github.com/PRO-Robotech/kacho/pkg/subscription"
 	"github.com/PRO-Robotech/kacho/services/nlb/internal/authzfilter"
+	"github.com/PRO-Robotech/kacho/services/nlb/internal/domain"
 	kachorepo "github.com/PRO-Robotech/kacho/services/nlb/internal/repo/kacho"
 	"github.com/PRO-Robotech/kacho/services/nlb/internal/subscriptionjournal"
 )
 
 const (
-	probeProject = "prj-1234567890abcdef"
-	probeLB      = "nlb-1234567890abcdef"
+	probeProject  = "prj-1234567890abcdef"
+	probeLB       = "nlb-1234567890abcdef"
+	probeListener = "nlb-l-1234567890abcd"
 )
 
 type stand struct {
@@ -232,38 +235,136 @@ func TestVisibilityIsAskedAboutTheModelsTypeNotTheJournalWord(t *testing.T) {
 	}
 }
 
-// TestEventsCarryNoStateBecauseTheJournalCarriesNone — состояния нет, и это
-// сказано ПРИЗНАКОМ, а не пустым предметом.
+// TestListenerEventsCarryTheFullSubjectWithLabels — событие вида `nlb_listener`
+// доезжает ДО КЛИЕНТА с полным состоянием предмета, и метки в нём есть.
 //
-// Нагрузка nlb — намеренно минимальный снимок. Отдай его как состояние —
-// подписчик, которому контракт разрешает читать непустую нагрузку как ПОЛНОЕ
-// состояние, записал бы как факт, что у балансировщика нет ни меток, ни целей.
-func TestEventsCarryNoStateBecauseTheJournalCarriesNone(t *testing.T) {
+// Утверждение сквозное: нагрузка кладётся тем же строителем, каким её кладёт
+// эмиттер, читается настоящим сервером потока над настоящей схемой и
+// распаковывается из конверта контракта. Проба над одной функцией сборки этого не
+// сказала бы: между ней и клиентом лежат выбор колонки запросом, сужение по
+// правам и упаковка в `Any`.
+func TestListenerEventsCarryTheFullSubjectWithLabels(t *testing.T) {
+	s := newStand(t)
+
+	rec := &kachorepo.ListenerRecord{CreatedAt: time.Date(2026, 8, 30, 12, 0, 0, 0, time.UTC)}
+	rec.ID = domain.ResourceID(probeListener)
+	rec.ProjectID = domain.ProjectID(probeProject)
+	rec.LoadBalancerID = domain.ResourceID(probeLB)
+	rec.RegionID = domain.RegionID("ru-central1")
+	rec.Name = domain.LbName("front")
+	rec.Labels = domain.LabelsFromMap(map[string]string{"env": "prod"})
+	rec.Protocol = domain.ProtoTCP
+	rec.Port = domain.LbPort(443)
+	rec.Status = domain.ListenerStatusActive
+
+	s.emit(t, kachorepo.OutboxResourceListener, probeListener, probeProject,
+		kachorepo.OutboxActionCreated, kachorepo.StateEnvelope(rec))
+
+	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
+	defer cancel()
+	ev := recv(t, s.subscribe(t, ctx, []string{authzfilter.ResourceTypeListener}))
+
+	if ev.GetState() == nil {
+		t.Fatalf("состояние НЕ доехало (причина %v) — клиентский отбор по меткам для "+
+			"слушателя остался бы без источника", ev.GetStateUnavailable().GetReason())
+	}
+	var got lbv1.Listener
+	if err := ev.GetState().UnmarshalTo(&got); err != nil {
+		t.Fatalf("в конверте состояния не контракт слушателя: %v", err)
+	}
+	if got.GetId() != probeListener || got.GetProjectId() != probeProject {
+		t.Fatalf("состояние про другой предмет: id %q, проект %q", got.GetId(), got.GetProjectId())
+	}
+	if got.GetLabels()["env"] != "prod" {
+		t.Fatalf("метки не доехали (%v) — клиентский отбор по меткам остался бы без источника",
+			got.GetLabels())
+	}
+	if got.GetName() != "front" || got.GetPort() != 443 {
+		t.Fatalf("предмет доехал урезанным: имя %q, порт %d", got.GetName(), got.GetPort())
+	}
+}
+
+// TestLoadBalancerRowOfTheOldShapeArrivesWithoutState — строка ПРЕЖНЕЙ,
+// минимальной формы у балансировщика состоянием не притворяется.
+//
+// # Здесь стояло утверждение, ПЕРЕЖИВШЕЕ свой предмет
+//
+// Прежняя редакция звалась «у балансировщика и целевой группы состояния нет» и
+// подавала минимальный снимок. К моменту, когда состояние появилось у обоих
+// (#1551), её заголовок утверждал о видах то, что перестало быть верным, а тело
+// оставалось зелёным — оно проверяло не вид, а ФОРМУ строки. Ослабить её было
+// нельзя, поэтому она ЗАМЕНЕНА утверждением о том, что проверяла на самом деле.
+//
+// Предмет у нового утверждения не исчезнет: журнал не чистится
+// (`RetainsEverything`), подписчик вправе открыть поток с начала, и строки,
+// записанные ДО обогащения этого вида, доезжают до сборщика и сегодня. Полноту
+// объявляет КОНВЕРТ, а не удача разбора: `encoding/json` сопоставляет имена без
+// учёта регистра, поэтому `id`, `name`, `status` минимального снимка попали бы в
+// поля записи, а проект, отметка создания и МЕТКИ — нет.
+//
+// Отрицание не вакуумно: положительный контроль того же вида — сквозная проба
+// `TestLoadBalancerStateIsTheSameFromTheTriggerAndFromGo` в этом же пакете.
+func TestLoadBalancerRowOfTheOldShapeArrivesWithoutState(t *testing.T) {
 	s := newStand(t)
 	s.emit(t, kachorepo.OutboxResourceLoadBalancer, probeLB, probeProject,
-		kachorepo.OutboxActionCreated,
-		map[string]any{"id": probeLB, "projectId": probeProject, "name": "front", "status": "ACTIVE"})
+		kachorepo.OutboxActionUpdated,
+		map[string]any{
+			"id": probeLB, "project_id": probeProject, "region_id": "ru-central1",
+			"name": "front", "status": "ACTIVE", "type": "EXTERNAL",
+		})
 
 	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
 	defer cancel()
 	ev := recv(t, s.subscribe(t, ctx, []string{authzfilter.ResourceTypeLoadBalancer}))
 
 	if ev.GetState() != nil {
-		t.Fatal("отдано состояние из МИНИМАЛЬНОГО снимка: подписчик прочёл бы его как " +
-			"полное и записал бы отсутствие меток и целей как факт")
+		var got lbv1.NetworkLoadBalancer
+		_ = ev.GetState().UnmarshalTo(&got)
+		t.Fatalf("минимальный снимок доехал как ПОЛНОЕ состояние (%v): подписчик записал "+
+			"бы как факт, что у балансировщика нет ни меток, ни адреса", &got)
 	}
 	if ev.GetStateUnavailable() == nil {
 		t.Fatal("носитель нагрузки не выбран вовсе — форма требует одну из двух ветвей")
 	}
 	// ПРИЧИНА — часть контракта, и клиент ключуется на неё, а не на прозу.
-	// «Не удалось сериализовать» здесь было бы утверждением о неудавшейся
-	// попытке там, где попытки не было: журнал nlb состояния НЕ ПРОИЗВОДИТ ни у
-	// одного вида. Действия у двух причин противоположны — на сбой разумно
-	// перечитать, на свойство журнала разумно сразу идти за предметом, — и
-	// неразличимые причины заставляют клиента выбрать неверное.
+	// «Не удалось собрать» здесь было бы утверждением о неудавшейся попытке там,
+	// где попытки не было. Действия у двух причин противоположны — на сбой
+	// разумно перечитать событие, на свойство строки разумно сразу идти за
+	// предметом, — и неразличимые причины заставляют клиента выбрать неверное.
 	if got := ev.GetStateUnavailable().GetReason(); got != subscriptionv1.SubscriptionEvent_StateUnavailable_NOT_PRODUCED {
-		t.Fatalf("причина отсутствия состояния %v, ожидалась NOT_PRODUCED — журнал nlb "+
-			"состояния не производит, и это свойство, а не сбой сборки", got)
+		t.Fatalf("причина отсутствия состояния %v, ожидалась NOT_PRODUCED — сбоя сборки "+
+			"не было, состояние в этой строке просто не производилось", got)
+	}
+}
+
+// TestListenerRowOfTheOldShapeArrivesWithoutState — строка ПРЕЖНЕЙ формы,
+// лежащая в журнале с до-обогащения времён, состоянием не притворяется.
+//
+// Журнал не чистится, а подписчик вправе открыть поток с начала — значит такие
+// строки доезжают до клиента и сегодня. Разбор их молча не отвергнет (имена
+// сопоставляются без учёта регистра), поэтому полноту объявляет КОНВЕРТ.
+func TestListenerRowOfTheOldShapeArrivesWithoutState(t *testing.T) {
+	s := newStand(t)
+	s.emit(t, kachorepo.OutboxResourceListener, probeListener, probeProject,
+		kachorepo.OutboxActionUpdated,
+		map[string]any{
+			"id": probeListener, "project_id": probeProject, "parent_resource_id": probeLB,
+			"name": "front", "protocol": "TCP", "port": 443, "status": "ACTIVE",
+		})
+
+	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
+	defer cancel()
+	ev := recv(t, s.subscribe(t, ctx, []string{authzfilter.ResourceTypeListener}))
+
+	if ev.GetState() != nil {
+		var got lbv1.Listener
+		_ = ev.GetState().UnmarshalTo(&got)
+		t.Fatalf("минимальный снимок доехал как ПОЛНОЕ состояние (%v): подписчик записал "+
+			"бы как факт, что у слушателя нет меток", &got)
+	}
+	if got := ev.GetStateUnavailable().GetReason(); got != subscriptionv1.SubscriptionEvent_StateUnavailable_NOT_PRODUCED {
+		t.Fatalf("причина отсутствия %v, ожидалась NOT_PRODUCED — сбоя сборки не было, "+
+			"состояние в этой строке просто не производилось", got)
 	}
 }
 

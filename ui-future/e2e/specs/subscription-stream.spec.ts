@@ -111,52 +111,135 @@ async function installStreamReader(page: Page): Promise<void> {
      * Возобновление С НАЗВАННОЙ ПОЗИЦИИ. `EventSource` заголовков не ставит,
      * поэтому здесь запрос и разбор кадров вручную — та же полоса края, тот же
      * заголовок, что браузер шлёт сам при переподключении.
+     *
+     * ─────────────────────────────────────────────────────────────────────────
+     * ЧИТАЕТ ДО ПРЕДМЕТА, А НЕ ДО ЧИСЛА КАДРОВ (#1540)
+     *
+     * Здесь стоял счётчик кадров: «дай мне три штуки — служебное открытие и два
+     * события». Он держался допущения «одно создание = одно событие», и
+     * допущение было ЛОЖНО: создание сети объявлялось тогда ТРЕМЯ строками вида
+     * `vpc_network` — сама сеть, затем по `UPDATED` на каждое достроенное
+     * умолчание. Поэтому «три кадра» выбирались служебным открытием и ПЕРВЫМИ
+     * ДВУМЯ событиями ПЕРВОЙ сети — а до второй чтение не доходило вовсе, и
+     * проба объявляла потерянным предмет, которого она не дочитала.
+     *
+     * СЕГОДНЯ ЧИСЛО ДРУГОЕ, И ЭТО ЛУЧШЕЕ ДОКАЗАТЕЛЬСТВО, ЧТО ЕГО ЗДЕСЬ БЫТЬ НЕ
+     * ДОЛЖНО. Владелец журнала объявляет собранную сеть ОДИН раз (#1548): на
+     * одно создание приходится по строке на каждый заведённый ресурс — сеть,
+     * группа безопасности по умолчанию, таблица маршрутов по умолчанию, — то
+     * есть три строки ТРЁХ РАЗНЫХ видов, из которых виду `vpc_network`
+     * принадлежит ровно одна. Проба подписана на один этот вид (`KIND` выше),
+     * значит на одно создание ей приходит один кадр вместо трёх.
+     *
+     * Ловушка для следующего читателя: число «три» уцелело, а его ПРЕДМЕТ
+     * сменился — прежде это были три строки о сети, теперь три строки о трёх
+     * разных ресурсах. Совпадение чисел здесь ничего не значит.
+     *
+     * Свойство «по строке на ресурс» держит
+     * `services/vpc/internal/repo/network_create_journal_rows_integration_test.go`
+     * (`TestIntegration_NetworkCreate_OneJournalRowPerResource`) — на стороне
+     * владельца, а не здесь. У пробы предикат другой и он ниже: предмет, а не число.
+     *
+     * Перемежаемость давало ДЕЛЕНИЕ ОТВЕТА НА ПОРЦИИ: условие счётчика
+     * проверяется между чтениями порции, а разбор внутри порции достаёт все
+     * готовые кадры разом. Приедь весь хвост журнала одной порцией — кадров
+     * оказывалось семь, предмет находился, проба зеленела. Разойдись порции по
+     * границе — чтение прекращалось на четвёртом кадре. Ни то ни другое от
+     * ветки не зависит, поэтому красное блуждало по веткам, предмета не
+     * касавшимся.
+     *
+     * ЖДЁМ УСЛОВИЕ, О КОТОРОМ СУДИМ: чтение идёт, пока в собранном не окажется
+     * КАЖДЫЙ названный предмет, либо пока не выйдет бюджет. Числа кадров проба
+     * больше не знает — и знать не должна: сколько строк журнала рождает одно
+     * создание, решает владелец журнала, и завтра он вправе решить иначе.
+     *
+     * ─────────────────────────────────────────────────────────────────────────
+     * РАЗРЫВ — ШТАТНОЕ СОБЫТИЕ, И ЗДЕСЬ ОН ТЕПЕРЬ ОБРАБОТАН
+     *
+     * Прежнее чтение на конце потока возвращало собранное, и вызывающий читал
+     * это как «предмета нет». Но предмет пробы — ПОЗИЦИЯ, а не одно соединение:
+     * контракт обещает, что клиент, назвавший свою позицию, получит всё, что
+     * после неё. Поэтому конец потока здесь — повод открыть его заново С
+     * ПОСЛЕДНЕЙ ПОЛУЧЕННОЙ ПОЗИЦИИ, ровно как делает сам браузер в `EventSource`.
+     *
+     * Утверждение это НЕ ослабляет: строку, которую край пропустил, повторное
+     * открытие не воскрешает — окно чтения у края `(позиция, устоявшееся]`, а
+     * позиция берётся МАКСИМАЛЬНАЯ из полученных. Пропущенное остаётся
+     * пропущенным, бюджет выходит, проба краснеет.
+     *
+     * ОТКАЗ КРАЯ НАЗЫВАЕТСЯ ОТДЕЛЬНО от потери предмета: «край не дал потока» и
+     * «поток потерял событие» — разные исходы, и подавать первый как второй
+     * значит обвинять поток в том, чего он не делал.
      */
     (window as unknown as Record<string, unknown>).__kachoStreamResume = async (
       url: string,
       lastEventId: string,
-      wantFrames: number,
+      wantIds: string[],
       budgetMs: number,
-    ): Promise<StreamFrame[]> => {
+    ): Promise<{ frames: StreamFrame[]; refusal: string }> => {
       const got: StreamFrame[] = [];
-      const controller = new AbortController();
-      const deadline = setTimeout(() => controller.abort(), budgetMs);
-      try {
-        const res = await fetch(url, {
-          headers: { "Last-Event-ID": lastEventId },
-          signal: controller.signal,
-        });
-        if (!res.ok || !res.body) return got;
-        const reader = res.body.getReader();
-        const decoder = new TextDecoder();
-        let buf = "";
-        while (got.length < wantFrames) {
-          const chunk = await reader.read();
-          if (chunk.done) break;
-          buf += decoder.decode(chunk.value, { stream: true });
-          let cut = buf.indexOf("\n\n");
-          while (cut >= 0) {
-            const frame = buf.slice(0, cut);
-            buf = buf.slice(cut + 2);
-            const f: StreamFrame = { id: "", event: "message", data: "" };
-            for (const line of frame.split("\n")) {
-              if (line.startsWith("id:")) f.id = line.slice(3).trim();
-              else if (line.startsWith("event:")) f.event = line.slice(6).trim();
-              else if (line.startsWith("data:")) f.data += line.slice(5).trim();
-            }
-            // Двоеточие первым знаком — служебный кадр поддержания связи; он
-            // не событие и в счёт не идёт.
-            if (!frame.startsWith(":")) got.push(f);
-            cut = buf.indexOf("\n\n");
+      // Позиция, с которой возобновляемся. Растёт по МАКСИМУМУ полученного:
+      // возобновиться с меньшей значило бы просить край повторить уже отданное.
+      let position = lastEventId;
+      let refusal = "";
+      const until = Date.now() + budgetMs;
+      const collected = () => wantIds.every((id) => got.some((f) => f.data.includes(id)));
+
+      while (!collected() && Date.now() < until) {
+        const controller = new AbortController();
+        const deadline = setTimeout(() => controller.abort(), Math.max(1, until - Date.now()));
+        try {
+          const res = await fetch(url, {
+            headers: { "Last-Event-ID": position },
+            signal: controller.signal,
+          });
+          if (!res.ok || !res.body) {
+            refusal = `край отказал в возобновлении с позиции ${position}: ${res.status}`;
+            break;
           }
+          const reader = res.body.getReader();
+          const decoder = new TextDecoder();
+          let buf = "";
+          while (!collected() && Date.now() < until) {
+            const chunk = await reader.read();
+            // Конец потока — не конец чтения: возобновимся с текущей позиции.
+            if (chunk.done) break;
+            buf += decoder.decode(chunk.value, { stream: true });
+            let cut = buf.indexOf("\n\n");
+            while (cut >= 0) {
+              const frame = buf.slice(0, cut);
+              buf = buf.slice(cut + 2);
+              // Двоеточие первым знаком — служебный кадр поддержания связи; он
+              // не событие и позицию не двигает.
+              if (!frame.startsWith(":")) {
+                const f: StreamFrame = { id: "", event: "message", data: "" };
+                for (const line of frame.split("\n")) {
+                  if (line.startsWith("id:")) f.id = line.slice(3).trim();
+                  else if (line.startsWith("event:")) f.event = line.slice(6).trim();
+                  else if (line.startsWith("data:")) f.data += line.slice(5).trim();
+                }
+                got.push(f);
+                if (f.id !== "") position = f.id;
+              }
+              cut = buf.indexOf("\n\n");
+            }
+          }
+          reader.cancel().catch(() => undefined);
+        } catch {
+          // Обрыв по бюджету — законный конец чтения: вернём собранное.
+        } finally {
+          clearTimeout(deadline);
         }
-        reader.cancel().catch(() => undefined);
-      } catch {
-        // Обрыв по бюджету — законный конец чтения: вернём собранное.
-      } finally {
-        clearTimeout(deadline);
+        if (!collected() && Date.now() < until) {
+          // Пауза между ПЕРЕОТКРЫТИЯМИ, а не ожидание предмета временем.
+          // Условие выхода остаётся предметным; пауза лишь не даёт молча
+          // закрывающемуся краю принять на себя сотни соединений в секунду —
+          // ровно то, ради чего браузер и выдерживает свою паузу перед
+          // переподключением `EventSource`.
+          await new Promise((resolve) => setTimeout(resolve, 250));
+        }
       }
-      return got;
+      return { frames: got, refusal };
     };
   });
 }
@@ -307,18 +390,36 @@ test("возобновление с позиции не теряет событ�
   const second = await createNetwork(page, projectId, `net-resume-b-${tag}`);
   const third = await createNetwork(page, projectId, `net-resume-c-${tag}`);
 
+  // Читаем ДО ПРЕДМЕТА: названы оба идентификатора, а не число кадров. Сколько
+  // строк журнала рождает одно создание — дело владельца журнала (у сети их
+  // сегодня три: сама сеть, группа безопасности по умолчанию, таблица
+  // маршрутов по умолчанию), и проба об этом числе не судит.
   const resumed = await page.evaluate(
-    async ([u, id]) =>
+    async (arg: { url: string; from: string; wantIds: string[] }) =>
       (
         window as unknown as Record<
           string,
-          (u: string, id: string, want: number, budget: number) => Promise<Frame[]>
+          (
+            u: string,
+            id: string,
+            wantIds: string[],
+            budget: number,
+          ) => Promise<{ frames: Frame[]; refusal: string }>
         >
-      ).__kachoStreamResume(u, id, 3, 60_000),
-    [url, anchor.id] as const,
+      ).__kachoStreamResume(arg.url, arg.from, arg.wantIds, 60_000),
+    { url, from: anchor.id, wantIds: [second, third] },
   );
 
-  const payload = resumed.map((f) => f.data).join("\n");
+  // ОТКАЗ КРАЯ — не потеря события. Утверждается ПЕРВЫМ, иначе «потока не
+  // дали» подавалось бы как «поток потерял предмет»: обвинён механизм, до
+  // которого дело не дошло.
+  expect(
+    resumed.refusal,
+    "край не дал потока на возобновление — это УСЛОВИЕ пробы, а не её предмет: " +
+      "о сохранности событий такой прогон не говорит ничего",
+  ).toBe("");
+
+  const payload = resumed.frames.map((f) => f.data).join("\n");
   expect(
     payload.includes(second),
     `возобновление с позиции ${anchor.id} потеряло предмет ${second}, ` +
@@ -329,7 +430,7 @@ test("возобновление с позиции не теряет событ�
     `возобновление с позиции ${anchor.id} потеряло предмет ${third}`,
   ).toBe(true);
   expect(
-    resumed.filter((f) => f.event === "event" && f.data.includes(first)).length,
+    resumed.frames.filter((f) => f.event === "event" && f.data.includes(first)).length,
     `возобновление с позиции ${anchor.id} принесло предмет ${first}, который эта позиция ` +
       `ПОКРЫВАЕТ: клиент, ведущий состояние, применил бы его дважды`,
   ).toBe(0);

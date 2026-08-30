@@ -3,6 +3,7 @@
 
 import { useQuery } from "@tanstack/react-query";
 import { api } from "@/api/client";
+import { useResourceStream } from "@shared/lib/subscription/use-resource-stream";
 import type { ResourceSpec } from "./resource-registry";
 
 // Неразрешённый path-плейсхолдер: apiPath вида /registries/{registryId}/repositories.
@@ -35,13 +36,23 @@ export function useResourceList<T = Record<string, unknown>>(
     else q[filterField] = filterValue;
   }
   const resolved = !UNRESOLVED_PLACEHOLDER.test(path);
+  // Покрытие читается ПО ПРОВОДУ, а не выводится из имени домена (#1021).
+  //
+  // Сегодня этот хук зовёт только вкладки дочерних списков карточки реестра —
+  // репозитории и теги, — а журнал реестра ведёт ОДИН вид, сами реестры. Значит
+  // покрытия у них не бывает, и опрос остаётся. Записывать это причиной было бы
+  // утверждением о том, КТО зовёт хук, — а состав вызывающих меняется молча,
+  // тогда как признак покрытия отвечает по спеке, которую передали.
+  const { streamed } = useResourceStream({
+    specId: spec.id,
+    projectId: filterField === "project_id" ? filterValue : null,
+    invalidate: [spec.id, "list", filterField, filterValue],
+    enabled: (!filterField || !!filterValue) && resolved,
+  });
   return useQuery({
     queryKey: [spec.id, "list", filterField, filterValue],
     queryFn: () => api.list<Record<string, T[]>>(path, q),
-    // поллинг остаётся: журнала у registry нет — глагол подписки служат три
-    // владельца (compute, nlb, vpc), и реестра среди них не значится.
-    // Подписаться не на что, поток отверг бы `owner` как неизвестного.
-    refetchInterval: 3_000,
+    refetchInterval: streamed ? false : 3_000,
     enabled: (!filterField || !!filterValue) && resolved,
     staleTime: 0,
   });
@@ -87,14 +98,22 @@ export async function fetchAllPages<T = Record<string, unknown>>(
  * дала бы неполный фильтр (helm-образ со страницы 2+ пропал бы).
  */
 export function useResourceListAllPages<T = Record<string, unknown>>(spec: ResourceSpec, opts: { enabled: boolean }) {
+  // Тот же признак покрытия по проводу, что и у одностраничного чтения выше:
+  // спека решает, а не имя домена. Область здесь путевая (родитель назван
+  // адресом), поэтому проект в предмет потока не передаётся.
+  const { streamed } = useResourceStream({
+    specId: spec.id,
+    projectId: null,
+    invalidate: [spec.id, "list-all", spec.apiPath],
+    enabled: opts.enabled && !UNRESOLVED_PLACEHOLDER.test(spec.apiPath),
+  });
   return useQuery({
     queryKey: [spec.id, "list-all", spec.apiPath],
     queryFn: async () => {
       const rows = await fetchAllPages<T>(spec.apiPath, spec.payloadKey);
       return { [spec.payloadKey]: rows } as Record<string, T[]>;
     },
-    // поллинг остаётся: журнала у registry нет, подписаться не на что.
-    refetchInterval: 3_000,
+    refetchInterval: streamed ? false : 3_000,
     // Guard: не фетчим, пока apiPath несёт неразрешённый `{...}` (родитель неизвестен).
     enabled: opts.enabled && !UNRESOLVED_PLACEHOLDER.test(spec.apiPath),
     staleTime: 0,

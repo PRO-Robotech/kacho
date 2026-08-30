@@ -34,6 +34,8 @@ import (
 	coredb "github.com/PRO-Robotech/kacho/pkg/db"
 	"github.com/PRO-Robotech/kacho/pkg/ids"
 	"github.com/PRO-Robotech/kacho/pkg/observability"
+	kachorepo "github.com/PRO-Robotech/kacho/services/nlb/internal/repo/kacho"
+	kachopg "github.com/PRO-Robotech/kacho/services/nlb/internal/repo/kacho/pg"
 	"github.com/jackc/pgx/v5/pgxpool"
 )
 
@@ -64,7 +66,10 @@ func newRunner(t testing.TB, pool *pgxpool.Pool, interval time.Duration) *Target
 	// Использовать standard slog handler с io.Discard — observability.NewSlogger
 	// пишет в os.Stdout что зашумляет вывод тестов. Достаточно «тихого» logger'а.
 	logger := observability.NewSlogger(discardWriter{})
-	return NewTargetDrainRunner(pool, logger, interval)
+	// Джоба берёт РЕПОЗИТОРИЙ, а не пул: снятие истёкших целей и строка журнала
+	// идут одной writer-транзакцией, а нагрузку строки собирает тот же строитель,
+	// что и остальные точки эмиссии вида (см. шапку рантаймера).
+	return NewTargetDrainRunner(kachopg.New(pool, nil), logger, interval)
 }
 
 type discardWriter struct{}
@@ -123,6 +128,20 @@ func countTargets(t testing.TB, ctx context.Context, pool *pgxpool.Pool) int {
 	return n
 }
 
+// outboxPayloadForTG — нагрузка последней строки журнала группы.
+func outboxPayloadForTG(t testing.TB, ctx context.Context, pool *pgxpool.Pool, tgID string) []byte {
+	t.Helper()
+	var raw []byte
+	require.NoError(t, pool.QueryRow(ctx, `
+		SELECT payload FROM kacho_nlb.nlb_outbox
+		 WHERE resource_type='nlb_target_group'
+		   AND resource_id=$1
+		   AND action='UPDATED'
+		 ORDER BY sequence_no DESC LIMIT 1
+	`, tgID).Scan(&raw))
+	return raw
+}
+
 func countOutboxForTG(t testing.TB, ctx context.Context, pool *pgxpool.Pool, tgID string) int {
 	t.Helper()
 	var n int
@@ -164,6 +183,26 @@ func TestDrainOnce_ExpiredOnly(t *testing.T) {
 
 	assert.Equal(t, 2, countTargets(t, ctx, pool), "non-expired DRAINING + ACTIVE remain")
 	assert.Equal(t, 1, countOutboxForTG(t, ctx, pool, tgID), "exactly 1 UPDATED outbox row for TG")
+
+	// Строка журнала несёт ПОЛНОЕ состояние группы, а не «что-то изменилось».
+	//
+	// Прежде и снятие, и строка шли одним оператором, а нагрузка собиралась в SQL —
+	// `{id, reason}`, без целей, без меток, без якоря проекта. Вид объявлен несущим
+	// состояние, поэтому такая строка оставляла подписчика без источника ровно на
+	// том событии, ради которого он и подписан.
+	//
+	// Набор целей утверждается ПОСЛЕ снятия: в нём обязаны остаться две уцелевшие
+	// и не быть снятой. Утверждение «конверт есть» без этого зеленело бы на
+	// состоянии, собранном ДО снятия, — то есть на самом дефекте.
+	state, err := kachorepo.TargetGroupStateFromPayload(outboxPayloadForTG(t, ctx, pool, tgID))
+	require.NoError(t, err)
+	require.NotNil(t, state, "нагрузка джобы слива не несёт конверта полного состояния")
+	assert.Equal(t, tgID, string(state.ID))
+	assert.Len(t, state.TargetStates, 2,
+		"состояние собрано ДО снятия: подписчик увидел бы снятую цель живой")
+	for _, ts := range state.TargetStates {
+		assert.NotEqual(t, idExpired, ts.ID, "снятая цель осталась в состоянии события")
+	}
 
 	// Проверяем, какие именно остались.
 	rows, err := pool.Query(ctx, `SELECT id FROM kacho_nlb.targets ORDER BY id`)
