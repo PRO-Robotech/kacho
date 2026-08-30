@@ -55,6 +55,21 @@ it("контракт несёт поле", () => {
 });
 `
 
+// ЗАКОННЫЙ БЛИЗНЕЦ 3 — имя вызова записи как ХВОСТ чужого идентификатора, в файле,
+// который node:fs импортирует законно (ради чтения). Именно на нём гейт краснел:
+// сравнение шло подстрокой, и `rm(` находилось внутри `goDeclaredForm(`.
+// Предпосылка «файл работает с ФС» этот случай не отсекает by construction.
+const synthProbeNameIsATailOfAnIdentifier = `import { readFileSync } from "node:fs";
+
+function goDeclaredForm(relPath: string): string {
+  return readFileSync(relPath, "utf8");
+}
+
+it("форма имени взята у платформы", () => {
+  expect(goDeclaredForm("pkg/validate/nameform/nameform.go")).toContain("a-z0-9");
+});
+`
+
 // ЗАКОННЫЙ БЛИЗНЕЦ 2 — доменный `rename` без всякого node:fs. Гейт по одному имени
 // покраснел бы здесь и был бы снят следующим как мешающий.
 const synthProbeDomainRename = `import { render, screen } from "@testing-library/react";
@@ -91,6 +106,7 @@ func TestConsoleFilesystemGateStaysSilentOnReadsAndDomainVerbs(t *testing.T) {
 	findings, scanned, fsAware, readers, _ := auditConsoleFilesystemWrites(map[string]string{
 		"ui-future/x/src/Contract.test.ts": synthProbeReadsTree,
 		"ui-future/x/src/Rename.test.tsx":  synthProbeDomainRename,
+		"ui-future/x/src/NameForm.test.ts": synthProbeNameIsATailOfAnIdentifier,
 	}, map[string]string{})
 
 	if len(findings) != 0 {
@@ -99,15 +115,15 @@ func TestConsoleFilesystemGateStaysSilentOnReadsAndDomainVerbs(t *testing.T) {
 	}
 
 	// Молчание обязано быть молчанием ПРОЧИТАВШЕГО.
-	if scanned != 2 {
-		t.Errorf("осмотрено %d файлов вместо 2", scanned)
+	if scanned != 3 {
+		t.Errorf("осмотрено %d файлов вместо 3", scanned)
 	}
-	if fsAware != 1 {
-		t.Errorf("работающими с ФС признаны %d файлов вместо 1 — предпосылка, отсекающая "+
+	if fsAware != 2 {
+		t.Errorf("работающими с ФС признаны %d файлов вместо 2 — предпосылка, отсекающая "+
 			"доменные глаголы, считает не то", fsAware)
 	}
-	if readers != 1 {
-		t.Errorf("читающими засчитаны %d файлов вместо 1 — дискриминатор не считает законную форму", readers)
+	if readers != 2 {
+		t.Errorf("читающими засчитаны %d файлов вместо 2 — дискриминатор не считает законную форму", readers)
 	}
 }
 

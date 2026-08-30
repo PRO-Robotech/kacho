@@ -73,6 +73,33 @@ var fsWriteCalls = []string{
 // fsReadCalls — контроль дискриминатора: чтение обязано оставаться законным.
 var fsReadCalls = []string{"readFileSync", "readdirSync", "existsSync", "statSync", "readFile"}
 
+// callsByName — встречается ли вызов ИМЕНЕМ, а не подстрокой. Различие несущее:
+// `strings.Contains(code, "rm(")` находит `rm(` внутри `goDeclaredForm(`, и гейт
+// краснеет на файле, который ничего не пишет. Предпосылка «файл импортирует
+// node:fs» этот случай НЕ отсекает: проба, читающая объявление формы имени из
+// исходника на Go, импортирует `node:fs` законно — ради чтения.
+//
+// Знак перед именем обязан не быть частью идентификатора. Точка допустима и
+// нужна: `fs.rm(` и `promises.rm(` — законные формы вызова, ради которых
+// перечень и заведён.
+func callsByName(code, name string) bool {
+	for i := 0; ; {
+		j := strings.Index(code[i:], name+"(")
+		if j < 0 {
+			return false
+		}
+		at := i + j
+		if at == 0 {
+			return true
+		}
+		prev := rune(code[at-1])
+		if !(prev >= 'a' && prev <= 'z' || prev >= 'A' && prev <= 'Z' || prev >= '0' && prev <= '9' || prev == '_' || prev == '$') {
+			return true
+		}
+		i = at + len(name) + 1
+	}
+}
+
 // usesFilesystemModule — импортирует ли файл `node:fs` (в любой из форм).
 func usesFilesystemModule(literals []string) bool {
 	for _, lit := range literals {
@@ -134,14 +161,14 @@ func auditConsoleFilesystemWrites(
 		fsAware++
 
 		for _, name := range fsReadCalls {
-			if strings.Contains(code, name+"(") {
+			if callsByName(code, name) {
 				readers++
 				break
 			}
 		}
 
 		for _, name := range fsWriteCalls {
-			if !strings.Contains(code, name+"(") {
+			if !callsByName(code, name) {
 				continue
 			}
 			writesSeen[rel] = true

@@ -192,6 +192,8 @@ var exemptFiles = map[string]string{
 	"tools/legacyfolder/legacyfolder.go":      "this gate: it has to spell the name it forbids",
 	"tools/legacyfolder/legacyfolder_test.go": "the fixtures that prove this gate fires and does not over-fire",
 
+	"internal/repohygiene/clienttruth_vpc_tenancylevel.go": "a second gate declaring the same rule: it forbids a contract comment from naming a container the tree has no field for, and cites folder_id as the canonical retired one — it has to spell the name it forbids, exactly like this gate does above",
+
 	"services/compute/internal/migrations/0001_initial.sql":                       "applied migration: the baseline that created the column under its original name; applied migrations are never edited (ban #5)",
 	"services/compute/internal/migrations/0009_rename_folder_to_project.sql":      "applied migration: the record of the rename itself — it must keep naming what it renamed",
 	"services/iam/internal/migrations/0001_initial.sql":                           "applied migration: the baseline that created conditions.folder_id; applied migrations are never edited (ban #5)",
