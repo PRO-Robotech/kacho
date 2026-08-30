@@ -232,8 +232,19 @@ Production-режим обязывает mTLS на публичном и interna
 ## 8. Привязать роль к субъекту
 
 AccessBinding соединяет субъект (User / ServiceAccount / Group) с ролью на выбранном уровне
-иерархии (`scopeRef.tier` = CLUSTER / ACCOUNT / PROJECT). Пример: выдать роль `vpc-viewer`
-пользователю на проекте.
+иерархии и говорит, **на какие объекты** под этим уровнем роль распространяется. Три поля
+обязательны:
+
+<table>
+  <thead><tr><th>Поле</th><th>Что задаёт</th><th>Значения</th></tr></thead>
+  <tbody>
+    <tr><td><code>scopeType</code></td><td>уровень-якорь, в <strong>точечной</strong> форме</td><td><code>iam.cluster</code> / <code>iam.account</code> / <code>iam.project</code></td></tr>
+    <tr><td><code>scopeId</code></td><td>идентификатор якоря</td><td><code>cluster_kacho_root</code> / <code>acc…</code> / <code>prj…</code></td></tr>
+    <tr><td><code>target</code></td><td>какие объекты под якорем охвачены</td><td><code>&#123; "allInScope": &#123;&#125; &#125;</code> либо перечень <code>resources</code></td></tr>
+  </tbody>
+</table>
+
+Пример: выдать роль `vpc-viewer` пользователю на всех объектах проекта.
 
 <CodeBlock language="bash">
   {dedent`
@@ -243,10 +254,22 @@ AccessBinding соединяет субъект (User / ServiceAccount / Group) 
       -d '{
             "subjects": [ { "type": "SUBJECT_TYPE_USER", "id": "usrbr69ze0ftz3jf7396" } ],
             "roleId": "rolkw55v2z363gpqath1",
-            "scopeRef": { "tier": "PROJECT", "id": "prj7mfpj2my52k5a06kg" }
+            "scopeType": "iam.project",
+            "scopeId": "prj7mfpj2my52k5a06kg",
+            "target": { "allInScope": {} }
           }'
   `}
 </CodeBlock>
+
+:::warning Три отказа, если пропустить любое из трёх
+`scopeType` пуст → `"scopeType is required"`; задан коротким словом (`"PROJECT"`) →
+`Illegal argument scopeType "PROJECT"` — форма **точечная**, `iam.project`; нет `target` →
+`"target is required; use target.allInScope{} to grant all objects under the anchor"`.
+Все три — `INVALID_ARGUMENT`, синхронно, до заведения операции.
+
+`target` обязателен намеренно: «все объекты под якорем, включая будущие» — самая широкая из
+возможных выдач, и она заявляется явно, а не достаётся умолчанием.
+:::
 
 :::tip Право действует сразу; отстать может кэш края
 После `done=true` привязка **уже действует**: вызов, идущий мимо кэша прав api-gateway, видит её
