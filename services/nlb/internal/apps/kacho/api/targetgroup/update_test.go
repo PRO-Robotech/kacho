@@ -104,7 +104,8 @@ func TestUpdate_Immutable_RegionID(t *testing.T) {
 		UpdateMask:    &fieldmaskpb.FieldMask{Paths: []string{"region_id"}},
 	})
 	require.Equal(t, codes.InvalidArgument, status.Code(err))
-	require.Contains(t, status.Convert(err).Message(), "region_id is immutable after TargetGroup.Create")
+	require.Equal(t, "region_id is immutable after TargetGroup.Create",
+		status.Convert(err).Message())
 }
 
 func TestUpdate_Immutable_ProjectID(t *testing.T) {
@@ -118,9 +119,14 @@ func TestUpdate_Immutable_ProjectID(t *testing.T) {
 		UpdateMask:    &fieldmaskpb.FieldMask{Paths: []string{"project_id"}},
 	})
 	require.Equal(t, codes.InvalidArgument, status.Code(err))
-	// NLB-1-40: contract text is the plain immutable message for both
-	// project_id and region_id ("<field> is immutable after TargetGroup.Create").
-	require.Contains(t, status.Convert(err).Message(), "project_id is immutable after TargetGroup.Create")
+	// NLB-1-40 объявлял ОБЩИЙ текст для project_id и region_id — он писался, когда
+	// `TargetGroupService.Move` ещё не существовал. Глагол появился, а текст никто
+	// не перечитал, и отказ перестал называть доступный клиенту следующий шаг
+	// (#1671). Сверка ДОСЛОВНАЯ: `Contains` пережила эту правку контракта, ничего
+	// не заметив, — включение проходит и на тексте, к которому дописали хвост.
+	require.Equal(t,
+		"project_id is immutable after TargetGroup.Create; use TargetGroupService.Move",
+		status.Convert(err).Message())
 }
 
 // targets via mask → InvalidArgument с фиксированным текстом.

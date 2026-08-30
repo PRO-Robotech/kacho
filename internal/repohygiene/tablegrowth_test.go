@@ -416,14 +416,6 @@ var tableGrowthRegistry = []TableGrowthDecl{
 		Issue: "#1361",
 	},
 	{
-		Owner: "services/iam", Table: "dpop_replay_jti",
-		Tempo: tempoOurs, Verdict: verdictDebt,
-		Reason: "таблица пережила механизм, которому принадлежала: писателей и читателей в " +
-			"прод-коде ноль. Верный исход — снятие новой миграцией, а не уборка: объявить " +
-			"«рост приемлем» значило бы описать её как живую",
-		Issue: "#1362",
-	},
-	{
 		Owner: "services/vpc", Table: "nested_quota_defaults",
 		Tempo: tempoExternal, Verdict: verdictDebt,
 		Reason: "зеркало вложенных пределов, ключ «проект, вид»: слияние по ключу есть, " +

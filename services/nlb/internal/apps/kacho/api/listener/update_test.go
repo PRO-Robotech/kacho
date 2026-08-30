@@ -58,7 +58,8 @@ func TestUpdateListener_GWT_LST_019_ImmutableLoadBalancerID(t *testing.T) {
 	})
 	require.Error(t, err)
 	require.Equal(t, codes.InvalidArgument, status.Code(err))
-	require.Contains(t, err.Error(), "load_balancer_id is immutable after Listener.Create")
+	require.Equal(t, "load_balancer_id is immutable after Listener.Create",
+		status.Convert(err).Message())
 }
 
 // TestUpdateListener_GWT_LST_020_ImmutableFields — all immutable mask paths
@@ -70,8 +71,19 @@ func TestUpdateListener_GWT_LST_019_ImmutableLoadBalancerID(t *testing.T) {
 // закреплено отдельно, в target_port_retired_test.go.
 func TestUpdateListener_GWT_LST_020_ImmutableFields(t *testing.T) {
 	t.Parallel()
-	immutable := []string{"protocol", "port", "project_id"}
-	for _, field := range immutable {
+	//
+	// Текст называется ДОСЛОВНО по каждому полю, а не выводится из имени поля общим
+	// шаблоном (#1671). Общий шаблон здесь не годится дважды: он не различает
+	// область владения, у которой есть следующий шаг, — и он же переживает правку
+	// контракта молча, потому что проверяет ту часть текста, которую сам и
+	// построил.
+	immutable := map[string]string{
+		"protocol": "protocol is immutable after Listener.Create",
+		"port":     "port is immutable after Listener.Create",
+		"project_id": "project_id is immutable after Listener.Create; " +
+			"use NetworkLoadBalancerService.Move on the parent load balancer",
+	}
+	for field, want := range immutable {
 		t.Run(field, func(t *testing.T) {
 			t.Parallel()
 			suite := newUpdateSuite(t)
@@ -81,7 +93,7 @@ func TestUpdateListener_GWT_LST_020_ImmutableFields(t *testing.T) {
 			})
 			require.Error(t, err)
 			require.Equal(t, codes.InvalidArgument, status.Code(err))
-			require.Contains(t, err.Error(), field+" is immutable after Listener.Create")
+			require.Equal(t, want, status.Convert(err).Message())
 		})
 	}
 }

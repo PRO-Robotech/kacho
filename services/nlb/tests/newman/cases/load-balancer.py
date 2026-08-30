@@ -1511,15 +1511,26 @@ CASES.append(Case(
     ],
 ))
 
+# Текст владельца ДОСЛОВНО: services/nlb/internal/apps/kacho/api/loadbalancer/update.go,
+# таблица immutableUpdateFields. Утверждается ПАРА — код и текст: расхождение тона
+# живёт внутри INVALID_ARGUMENT, поэтому кейс, проверяющий один код, остаётся
+# зелёным при любом сообщении. Так и вышло — отказ балансировщика называл глагол
+# переноса, а два соседних ресурса на тот же запрет молчали, и ни одна проба
+# различить этого не могла (#1671).
+_MSG_PROJECT_IMMUTABLE = ("project_id is immutable after NetworkLoadBalancer.Create; "
+                          "use NetworkLoadBalancerService.Move")
+
 CASES.append(Case(
     id="NLB-UPD-STATE-IMMUTABLE-PROJECT",
-    title="Update with mask=project_id → InvalidArgument 'project_id is immutable; use Move'",
+    title=f"Update with mask=project_id → InvalidArgument, verbatim {_MSG_PROJECT_IMMUTABLE!r}",
     classes=["STATE", "VAL"], priority="P0",
     steps=[
         *_setup_lb("im-proj"),
         Step(name="upd-proj", method="PATCH", path=f"{_CREATE_BASE}/{{{{nlbId}}}}",
              body={"updateMask": "projectId"},
-             test_script=[*assert_status(400), *assert_grpc_code(3, "INVALID_ARGUMENT")]),
+             test_script=[*assert_status(400), *assert_grpc_code(3, "INVALID_ARGUMENT"),
+                          "pm.test('verbatim message names the next step', () => "
+                          f"pm.expect(pm.response.json().message).to.eql({_MSG_PROJECT_IMMUTABLE!r}));"]),
         *_cleanup_lb(),
     ],
 ))

@@ -104,7 +104,12 @@ var hcProbeSubFields = map[string]bool{
 
 // immutableUpdateFieldsTG — hard-immutable, с фиксированным текстом error text.
 var immutableUpdateFieldsTG = map[string]string{
-	"project_id": "project_id is immutable after TargetGroup.Create",
+	// `TargetGroupService.Move` существует и доступен получившему отказ, поэтому
+	// отказ его называет (#1671). У `region_id` глагола переноса нет — там
+	// канонический текст без следующего шага, и это не расхождение тона, а
+	// отсутствие шага: обещать несуществующий глагол значило бы объявить
+	// неисполнимую возможность.
+	"project_id": "project_id is immutable after TargetGroup.Create; use TargetGroupService.Move",
 	"region_id":  "region_id is immutable after TargetGroup.Create",
 }
 

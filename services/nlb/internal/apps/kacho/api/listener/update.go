@@ -34,8 +34,10 @@ import (
 //     immutable из тела silently игнорируются (parity с loadbalancer/targetgroup).
 //     - unknown field → InvalidArgument "field '<X>' is not recognised in update_mask".
 //     - immutable field (load_balancer_id / protocol / port / project_id)
-//     → InvalidArgument
-//     по конвенции Kachō `"<field> is immutable after Listener.Create"`.
+//     → InvalidArgument по конвенции Kachō
+//     `"<field> is immutable after Listener.Create"`; у project_id к
+//     каноническому тексту добавлен следующий шаг, потому что он у клиента
+//     есть — глагол переноса владельца (#1671). Тексты — таблицей ниже.
 //  4. Validate per-mask field (name regex, labels schema, etc).
 //  5. default_target_group_id same-region precheck  — async-soft
 //     либо sync; здесь делаем sync через kacho-nlb local TG.Get (same-DB
@@ -117,11 +119,24 @@ var listenerMutableMaskPaths = map[string]struct{}{
 // VIP консолидирован на LoadBalancer: address_id/ip_version/subnet_id/region_id
 // сняты с листенера (proto reserved), поэтому в immutable-списке их больше нет —
 // неизвестный путь → "field '<x>' is not recognised in update_mask".
-var listenerImmutableMaskPaths = map[string]struct{}{
-	"load_balancer_id": {},
-	"protocol":         {},
-	"port":             {},
-	"project_id":       {},
+//
+// Таблица путь→ТЕКСТ, а не набор путей под общим форматом (#1671). Причин две, и
+// вторая сильнее первой. Первая: у области владения есть следующий шаг, а у
+// остальных трёх полей его нет, поэтому один формат на всех выразить это не
+// может. Вторая: пока текст собирался форматом, полоса слушателя была НЕВИДИМА
+// переписи отказов по литералу — она находила две полосы из трёх и молчала о
+// третьей. Полосы сведены к одной форме записи, общей с балансировщиком и
+// группой целей, именно затем, чтобы распознаватель видел их все.
+var listenerImmutableMaskPaths = map[string]string{
+	"load_balancer_id": "load_balancer_id is immutable after Listener.Create",
+	"protocol":         "protocol is immutable after Listener.Create",
+	"port":             "port is immutable after Listener.Create",
+	// Собственного глагола переноса у слушателя нет и не заводится: его проект
+	// денормализован с балансировщика, и Move владельца переставляет слушателей
+	// каскадом, в той же транзакции. Отказ называет глагол ВЛАДЕЛЬЦА — обещать
+	// `ListenerService.Move` значило бы объявить возможность, которой нет.
+	"project_id": "project_id is immutable after Listener.Create; " +
+		"use NetworkLoadBalancerService.Move on the parent load balancer",
 }
 
 // Run — sync validate + spawn worker. Errors mapped to gRPC codes inline.
@@ -308,9 +323,8 @@ func listenerLabelsInMask(mask []string) bool {
 // immutable + unknown.
 func validateListenerMask(paths []string) error {
 	for _, p := range paths {
-		if _, ok := listenerImmutableMaskPaths[p]; ok {
-			return status.Errorf(codes.InvalidArgument,
-				"%s is immutable after Listener.Create", p)
+		if msg, ok := listenerImmutableMaskPaths[p]; ok {
+			return status.Errorf(codes.InvalidArgument, "%s", msg)
 		}
 		if _, ok := listenerMutableMaskPaths[p]; ok {
 			continue

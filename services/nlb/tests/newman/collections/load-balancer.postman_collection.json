@@ -19473,7 +19473,7 @@
       ]
     },
     {
-      "name": "NLB-UPD-STATE-IMMUTABLE-PROJECT — Update with mask=project_id → InvalidArgument 'project_id is immutable; use Move'",
+      "name": "NLB-UPD-STATE-IMMUTABLE-PROJECT — Update with mask=project_id → InvalidArgument, verbatim 'project_id is immutable after NetworkLoadBalancer.Create; use NetworkLoadBalancerService.Move'",
       "description": "class:STATE | class:VAL | priority:P0",
       "item": [
         {
@@ -20092,7 +20092,8 @@
                   "pm.test('grpc code 3 (INVALID_ARGUMENT)', () => {",
                   "  let j; try { j = pm.response.json(); } catch (e) { j = {}; }",
                   "  pm.expect(j.code, JSON.stringify(j)).to.eql(3);",
-                  "});"
+                  "});",
+                  "pm.test('verbatim message names the next step', () => pm.expect(pm.response.json().message).to.eql('project_id is immutable after NetworkLoadBalancer.Create; use NetworkLoadBalancerService.Move'));"
                 ]
               }
             }
