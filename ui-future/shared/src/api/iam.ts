@@ -100,6 +100,62 @@ export interface InviteUserRequest {
   role_id?: string;
 }
 
+// ====== Членство человека в аккаунте (MembershipService) ======
+//
+// Принадлежность — ОТДЕЛЬНАЯ связь, а не поле человека: людей и аккаунты
+// связывает «многие ко многим», и поле на записи человека умело бы назвать лишь
+// один аккаунт. Ровно поэтому оно снято с контракта (#471), а читаемая
+// принадлежность вернулась своим ресурсом (#1085).
+//
+// Аккаунт стоит В ПУТИ обоих чтений, а не термом фильтра, и это несущая часть
+// контракта, а не форма адреса: вопроса «в каких аккаунтах состоит этот
+// человек» на поверхности НЕТ ВОВСЕ. Параметра для него не существует, значит
+// задать его по ошибке — в новой ветке, в оптимизации, «права уже проверены
+// выше» — нельзя by construction.
+
+/** Состояний ровно два, и это закреплено конструкцией хранилища. */
+export type MembershipState = "PENDING" | "ACTIVE";
+
+export interface Membership {
+  id: string;
+  account_id: string;
+  /** Зеркало имени аккаунта, best-effort. Пусто — имя не задано, а НЕ «аккаунта нет». */
+  account_name?: string;
+  user_id: string;
+  state?: MembershipState;
+  /** След приглашения, переживающий вход. Пусто у членства, заведённого не приглашением. */
+  invited_by?: string;
+  created_at?: string;
+  updated_at?: string;
+}
+
+export interface MembershipList {
+  memberships: Membership[];
+  next_page_token?: string;
+}
+
+/**
+ * Путь строится ЗДЕСЬ, в поверхности API домена, по той же причине, что и у
+ * глаголов человека выше: перепись путей консоли резолвит голову литерала в
+ * объявление `IAM` и сверяет получившийся путь с `google.api.http` контракта.
+ * Собранный «на месте» путь ушёл бы из-под этого надзора.
+ */
+export function accountMembershipsPath(accountId: string): string {
+  return `${IAM.accounts}/${encodeURIComponent(accountId)}/memberships`;
+}
+
+/**
+ * Терм отбора по человеку — единственный, который принимает эта поверхность.
+ *
+ * Оператор только равенство: подстрочный поиск грамматика разбирает, а чтение
+ * отвергает явно, и сводить его к равенству молча значило бы ответить уверенно
+ * и неверно. Терм действует ВНУТРИ названного аккаунта — оракула из него не
+ * возникает.
+ */
+export function membershipUserFilter(userId: string): string {
+  return `userId="${userId}"`;
+}
+
 // ====== ServiceAccount ======
 export interface ServiceAccount {
   id: string;
@@ -694,6 +750,10 @@ export const iamApi = {
       error?: { code: number; message: string };
     }>(`${IAM.users}:invite`, req),
   listUsers: (q?: Record<string, string>) => api.list<UserList>(IAM.users, q),
+  // Членства НАЗВАННОГО аккаунта. Аккаунт — отдельный аргумент, а не элемент
+  // `q`: он стоит в пути, и забыть его нельзя — без него не собирается адрес.
+  listAccountMemberships: (accountId: string, q?: Record<string, string>) =>
+    api.list<MembershipList>(accountMembershipsPath(accountId), q),
   // SAs
   listServiceAccounts: (q?: Record<string, string>) =>
     api.list<ServiceAccountList>(IAM.serviceAccounts, q),

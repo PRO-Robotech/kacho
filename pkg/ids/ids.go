@@ -327,6 +327,22 @@ const (
 	// Account/Project и уже является leaf'ом для каждого сервиса (приёмка
 	// vpc-quota, Р1).
 	PrefixLimitHyphen = "lim"
+	// PrefixMembershipHyphen — iam Membership (`mbr-…`): принадлежность человека
+	// аккаунту как ОТДЕЛЬНАЯ связь, которых у глобальной личности бывает
+	// несколько (IAM-ID-1/IAM-ID-2).
+	//
+	// Чеканит его НЕ `NewHyphenID`, а неизменяемая SQL-функция
+	// `kacho_iam.membership_mirror_id` — `'mbr-' || substr(md5(…), 1, 17)`:
+	// писателей строки членства больше одного (триггер зеркала и два стейтмента
+	// репозитория), и все они обязаны прийти к ОДНОЙ строке на одну пару
+	// «человек × аккаунт». Шестнадцатеричные цифры md5 — подмножество крокфордова
+	// алфавита этого продукта, поэтому тело остаётся в алфавите канона.
+	//
+	// Запись здесь обязательна и не косметическая: без неё `validate.ResourceID`
+	// отвергал бы корректный идентификатор, который сам же продукт и произвёл, —
+	// то есть одиночное чтение членства отвечало бы `INVALID_ARGUMENT` на всяком
+	// входе (тот же класс, что уже ловили на пределе арендатора выше).
+	PrefixMembershipHyphen = "mbr"
 )
 
 // hyphenFormPrefixes — going-forward hyphen-form id prefixes (B3, redesign-2026
@@ -354,6 +370,9 @@ var hyphenFormPrefixes = []string{
 	// произвёл, — то есть Get/Update/Delete предела отвечали бы
 	// INVALID_ARGUMENT на всяком входе.
 	PrefixLimitHyphen,
+	// iam: Membership — принадлежность человека аккаунту. Именованная константа:
+	// единый источник истины с SQL-чеканкой (см. объявление выше).
+	PrefixMembershipHyphen,
 	// compute: Instance/MachineType/PlacementGroup/VolumeType (ins/mt — именованные
 	// константы: единый источник истины с NewHyphenID-генерацией).
 	PrefixInstanceHyphen, PrefixMachineTypeHyphen, "plg", "vt",

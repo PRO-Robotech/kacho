@@ -29,6 +29,7 @@ import { ResourceIcon } from "@shared/components/organisms/form/ResourceIcon";
 import { FieldLabel } from "@shared/components/organisms/form/FieldLabel";
 import { CopyableMonoId, fmtTs, useIamMutation } from "@shared/components/organisms/iam/IamCommon";
 import { ErrorResult } from "@shared/components/molecules/ErrorResult";
+import { AccountMembership } from "@/components/organisms/iam/AccountMembership";
 import { getByPath } from "@shared/lib/resource-registry";
 import {
   iamApi,
@@ -849,12 +850,18 @@ registerDetailExtension("service-accounts", {
 });
 
 // User — субъект типа user. Обзор: статус приглашения, external id,
-// пригласивший (output-only). Вкладки: «Привилегии» + «Токены».
+// пригласивший (output-only). Под обзором — членство в ТЕКУЩЕМ аккаунте.
+// Вкладки: «Привилегии» + «Токены».
 //
-// Аккаунта в обзоре НЕТ: поле снято с ресурса пользователя (#471), источника у
-// подписи не осталось ни на одном чтении. Строка была убрана вместе с полем, а
-// эта шапка продолжала её обещать — то есть описывала свойство, которого у
-// кода нет. Вернётся вместе с ресурсом членства (#1085), не раньше.
+// Аккаунт вернулся на карточку вместе со своим источником (#1085) — и вернулся
+// СЕКЦИЕЙ, а не строкой обзора. Причина не в оформлении: строку обзора собирает
+// обычная функция, а значение здесь приходит отдельным чтением, и подпись
+// пришлось бы рисовать раньше ответа — то есть обещать величину, которой может
+// не оказаться. Секция сама решает, показываться ли ей: человек, не состоящий в
+// текущем аккаунте, не получает ни подписи, ни прочерка (ui.md, правило 9).
+//
+// Аккаунта в СТРОКЕ обзора по-прежнему нет и быть не может: поле снято с записи
+// человека (#471), потому что назвать им можно было только один аккаунт.
 registerDetailExtension("users", {
   overviewExtra: ({ data }) => [
     { label: "Статус приглашения", value: <StatusBadge state={getByPath<string>(data, "invite_status")} /> },
@@ -876,6 +883,7 @@ registerDetailExtension("users", {
       value: <IamRefLink specId="users" refId={getByPath<string>(data, "invited_by")} nameField="email" />,
     },
   ],
+  overviewBelow: ({ data }) => <AccountMembership userId={getByPath<string>(data, "id") ?? ""} />,
   extraTabs: ({ data, detailBase }) => {
     const id = getByPath<string>(data, "id") ?? "";
     if (!id) return [];

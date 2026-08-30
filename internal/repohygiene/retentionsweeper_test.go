@@ -36,7 +36,6 @@ import (
 	"path/filepath"
 	"sort"
 	"strconv"
-	"strings"
 	"testing"
 )
 
@@ -61,16 +60,13 @@ var retentionSweeperLedger = []struct {
 }
 
 // serviceUnitOf — служба, которой принадлежит каталог.
-func serviceUnitOf(dir string) string {
-	parts := strings.Split(dir, "/")
-	if len(parts) >= 2 && parts[0] == "services" {
-		return parts[0] + "/" + parts[1]
-	}
-	if len(parts) > 0 {
-		return parts[0]
-	}
-	return dir
-}
+//
+// Тело переехало в `MigrationOwnerOf` (`tablegrowth.go`), и это не косметика:
+// ту же границу спрашивает соседний гейт роста таблиц (#1356), а он живёт в
+// НЕ-тестовом файле и объявления из тестового не видит. Две реализации одной
+// границы разошлись бы молча — и разошлись бы именно там, где расхождение не
+// видно: обе отвечают верно на обычном пути. Поведение здесь не меняется.
+func serviceUnitOf(dir string) string { return MigrationOwnerOf(dir) }
 
 // retentionSweeperVerdict — ЧИСТОЕ суждение по уже прочитанному дереву.
 //
