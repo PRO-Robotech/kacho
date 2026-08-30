@@ -152,7 +152,7 @@ interface StaticRoute {
   gateway_id?: string;
   labels?: Record<string, string>;
 }
-// Статические маршруты — PROP таблицы маршрутизации (не смежный ресурс).
+// Статические маршруты — PROP таблицы маршрутов (не смежный ресурс).
 // Показываем ОТДЕЛЬНОЙ таблицей с подписью под Обзором (overviewBelow);
 // добавление/правка — через «Редактировать» (generic array-field static_routes).
 
@@ -231,7 +231,7 @@ export const DETAIL_EXTENSIONS: Record<string, DetailExtension> = {
         copy: getByPath<string>(data, "default_security_group_id") ?? undefined,
       },
       {
-        label: "Таблица маршрутизации по умолчанию",
+        label: "Таблица маршрутов по умолчанию",
         value: getByPath<string>(data, "default_route_table_id") ? (
           <RefNameLink specId="route-tables" refId={getByPath<string>(data, "default_route_table_id")} maxChars={42} copy={false} />
         ) : (
@@ -272,7 +272,7 @@ export const DETAIL_EXTENSIONS: Record<string, DetailExtension> = {
           value: <RefNameLink specId="networks" refId={getByPath<string>(data, "network_id")}  maxChars={42} copy={false} />, copy: getByPath<string>(data, "network_id") ?? undefined,
         },
         {
-          label: "Таблица маршрутизации",
+          label: "Таблица маршрутов",
           value: getByPath<string>(data, "route_table_id") ? (
             <RefNameLink specId="route-tables" refId={getByPath<string>(data, "route_table_id")} maxChars={42} copy={false} />
           ) : (

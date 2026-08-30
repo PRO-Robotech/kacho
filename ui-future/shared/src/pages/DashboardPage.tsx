@@ -106,7 +106,7 @@ export function DashboardPage() {
     if (ctx.project) return `Проект: ${ctx.project.name || ctx.project.id}`;
     if (ctx.account)
       return `Аккаунт: ${ctx.account.name || ctx.account.id} — выберите проект чтобы перейти к ресурсам.`;
-    return "Контекст не выбран — выберите Account и Project в шапке. IAM-блок доступен всегда.";
+    return "Область не выбрана — выберите аккаунт и проект в шапке. Раздел IAM доступен всегда.";
   })();
 
   // Плашки VPC/Compute требуют Project context. IAM — всегда виден.
@@ -131,7 +131,7 @@ export function DashboardPage() {
           <Alert
             type="info"
             showIcon
-            message="Выберите Account и Project в шапке для просмотра VPC и Compute ресурсов. IAM доступен всегда."
+            message="Выберите аккаунт и проект в шапке, чтобы увидеть ресурсы VPC и Compute. Раздел IAM доступен всегда."
             action={
               <Button
                 size="small"

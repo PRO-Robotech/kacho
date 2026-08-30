@@ -199,8 +199,8 @@ const SCOPE_TIER_LABEL: Record<ScopeTier, string> = {
 };
 const SCOPE_TIER_HINT: Record<ScopeTier, string> = {
   GLOBAL: "На весь кластер. Допустим только для роли cluster-admin (*.*.*).",
-  ACCOUNT: "Граница материализации — выбранный Account (и его проекты).",
-  PROJECT: "Граница материализации — выбранный Project.",
+  ACCOUNT: "Право будет действовать в границах выбранного аккаунта и его проектов.",
+  PROJECT: "Право будет действовать в границах выбранного проекта.",
 };
 
 /** Anchor-тир запроса из UI scope-измерения. GLOBAL → CLUSTER. */
@@ -229,8 +229,8 @@ function scopeFromResourceType(rt?: ResourceType): ScopeTier | undefined {
 const SCOPE_GROUP_ORDER: ScopeGroup[] = ["SYSTEM", "ACCOUNT", "PROJECT"];
 const SCOPE_GROUP_LABEL: Record<ScopeGroup, string> = {
   SYSTEM: "Системные",
-  ACCOUNT: "Account-роли",
-  PROJECT: "Project-роли",
+  ACCOUNT: "Роли аккаунта",
+  PROJECT: "Роли проекта",
   SCOPE_GROUP_UNSPECIFIED: "Прочие",
 };
 
@@ -909,7 +909,7 @@ export function AccessBindingCreateForm({ lockedSubject, subjectAccountId, prese
                 <Select
                   data-testid="access-bindings-scope-ref"
                   placeholder={
-                    headerAccountId ? "Выберите Project" : "Выберите Account в шапке — тогда подгрузятся проекты"
+                    headerAccountId ? "Выберите проект" : "Выберите аккаунт в шапке — тогда подгрузятся проекты"
                   }
                   options={anchorSelectOptions}
                   showSearch
@@ -924,7 +924,7 @@ export function AccessBindingCreateForm({ lockedSubject, subjectAccountId, prese
                   // и вот последний обязан назвать свою область.
                   notFoundContent={
                     !headerAccountId
-                      ? "Сначала выберите Account в шапке секции"
+                      ? "Сначала выберите аккаунт в шапке секции"
                       : projects.isLoading
                         ? undefined
                         : ANCHOR_SCOPE.emptyText
@@ -933,7 +933,7 @@ export function AccessBindingCreateForm({ lockedSubject, subjectAccountId, prese
               ) : (
                 <Select
                   data-testid="access-bindings-scope-ref"
-                  placeholder="Выберите Account"
+                  placeholder="Выберите аккаунт"
                   options={anchorSelectOptions}
                   showSearch
                   onSearch={setAccountTerm}

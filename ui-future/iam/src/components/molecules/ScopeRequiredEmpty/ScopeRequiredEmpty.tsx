@@ -19,20 +19,25 @@
 // рисунка при этом всё равно держит высоту — `StatePanel` резервирует её и
 // пустой, поэтому заголовок и описание стоят там же, где у экранов с рисунком.
 import { StatePanel } from "@shared/components/molecules/StatePanel";
+import { ENTITIES } from "@shared/lib/entity-names";
 
-/** Какая именно область не выбрана. Слово в описании — то же, что на пилюле
- *  выбора в шапке: подменив его переводом, экран отправил бы искать ручку,
- *  которая называется иначе. */
+/** Какая именно область не выбрана. */
 type Scope = "account" | "project";
 
-const SCOPE_TITLE: Record<Scope, string> = {
-  account: "Аккаунт не выбран",
-  project: "Проект не выбран",
-};
-
-const SCOPE_PICKER: Record<Scope, string> = {
-  account: "Account",
-  project: "Project",
+/**
+ * ОДНО слово на область — то, что написано на пилюле выбора в шапке.
+ *
+ * Обоснование «слово в описании — то же, что на пилюле» стояло здесь и раньше,
+ * но было ЛОЖНЫМ: на пилюле «Проект», а описание звало выбрать «Project».
+ * Экран отправлял искать ручку, которая называется иначе, — и делал это на
+ * разделе, где цена ошибки области есть выданный не туда доступ (#1609).
+ *
+ * Теперь оба конца берут слово у словаря подписей: пилюля (`ScopePicker`) и
+ * этот экран называют область одинаково by construction, а не по совпадению.
+ */
+const SCOPE_NAME: Record<Scope, string> = {
+  account: ENTITIES.accounts.singular,
+  project: ENTITIES.projects.singular,
 };
 
 interface Props {
@@ -52,8 +57,8 @@ export function ScopeRequiredEmpty({ purpose, scope = "account" }: Props) {
       role="status"
       data-testid="iam-scope-required"
       data={{ "data-scope": scope }}
-      title={SCOPE_TITLE[scope]}
-      description={`Выберите ${SCOPE_PICKER[scope]} вверху секции, чтобы ${purpose}.`}
+      title={`${SCOPE_NAME[scope]} не выбран`}
+      description={`Выберите ${SCOPE_NAME[scope].toLowerCase()} вверху секции, чтобы ${purpose}.`}
     />
   );
 }
