@@ -49,6 +49,30 @@ message ProbeNic {
   string nic_id = 1;
 }
 `)
+	// СОСТАВНОЕ ИМЯ С УТОЧНЕНИЕМ ВПЕРЕДИ — форма, на которой прежний захват дал
+	// ЛОЖНОЕ КРАСНОЕ: он брал первое слово (`PARENT`) и следа ему не находил.
+	// След даёт головное существительное — `probe_lb_id`.
+	//
+	// Рядом, В ТОЙ ЖЕ СТРОКЕ, стоит «NOT within the ProbeProject» — так написан и
+	// настоящий текст. Формой оно НЕ является (голое «within the» под перечень не
+	// подпадает), и захват первой группы обязан на нём остановиться, а не утянуть
+	// его в имя.
+	s.write(t, "proto/kacho/cloud/probelb/v1/listener.proto", `
+syntax = "proto3";
+package kacho.cloud.probelb.v1;
+
+message ProbeListener {
+  // ID of the parent ProbeLb.
+  string probe_lb_id = 1;
+
+  // Name of the listener. Is unique within the PARENT PROBE LB — NOT within the
+  // ProbeProject.
+  string name = 2;
+
+  // ID of the ProbeListener membership row to block.
+  string probe_membership_row_id = 3;
+}
+`)
 	// След ВТОРОГО вида — сообщение без одноимённого поля. Контейнер `ProbeCell`
 	// назван, поля `probe_cell_id` в дереве нет, но сообщение есть.
 	s.write(t, "proto/kacho/cloud/probevpc/v1/cell.proto", `
@@ -117,15 +141,29 @@ func TestTenancyLevelInjection_CleanStandIsSilent(t *testing.T) {
 	if len(findings) != 0 {
 		t.Fatalf("на законном дереве находок %d, ожидался ноль: %v", len(findings), findings)
 	}
-	if census.ProtoFiles != 4 {
-		t.Fatalf("файлов контракта %d, ожидалось 4 — стенд прочитан не весь", census.ProtoFiles)
+	if census.ProtoFiles != 5 {
+		t.Fatalf("файлов контракта %d, ожидалось 5 — стенд прочитан не весь", census.ProtoFiles)
 	}
-	// Пять утверждений: «project that», «unique within the project», «ID of the
-	// NIC to», «unique within the ProbeCell», «unique within the probeiam domain».
-	// Все пять со следом — иначе молчание получено даром.
-	if census.Claims != 5 || census.Traced != 5 {
-		t.Fatalf("утверждений %d (ожидалось 5), со следом %d (ожидалось 5)",
+	// Семь утверждений: «project that», «unique within the project», «ID of the
+	// NIC to», «unique within the ProbeCell», «unique within the probeiam domain»,
+	// «unique within the PARENT PROBE LB» и «ID of the ProbeListener membership
+	// row to». Все семь со следом — иначе молчание получено даром.
+	//
+	// «NOT within the ProbeProject» из той же строки утверждением НЕ считается, и
+	// это правильно: голое «within the» формой не является — под него попало бы
+	// любое предложение, где рядом стоят предлог и существительное. Восьмого
+	// утверждения здесь нет by construction, и проверка это фиксирует числом.
+	if census.Claims != 7 || census.Traced != 7 {
+		t.Fatalf("утверждений %d (ожидалось 7), со следом %d (ожидалось 7)",
 			census.Claims, census.Traced)
+	}
+	// Составных имён ровно три: «PARENT PROBE LB», «ProbeListener membership row»
+	// и «probeiam domain». Ноль означал бы, что захват именной группы выродился в
+	// одно слово, — и тогда молчание выше получено не различением, а тем, что
+	// анализатор перестал видеть предмет.
+	if census.MultiWord != 3 {
+		t.Fatalf("составных имён %d, ожидалось 3 — захват именной группы не работает",
+			census.MultiWord)
 	}
 }
 
@@ -253,5 +291,137 @@ func TestTenancyLevelInjection_EmptyWalkIsVisible(t *testing.T) {
 	}
 	if census.ProtoFiles != 0 || census.Claims != 0 || census.Fields != 0 {
 		t.Fatalf("перепись не показала пустоту: %+v", census)
+	}
+}
+
+// TestTenancyLevelInjection_QualifiedNameTracesByItsHead — ФОРМА «уточнение +
+// головное существительное». Инъекция снимает РОВНО ОДНО свойство: поле
+// `probe_lb_id`, дающее след головному существительному. Само утверждение и его
+// форма целы.
+//
+// Это тот самый вход, на котором прежний захват дал ложное красное: он брал
+// первое слово (`PARENT`) и следа ему не находил. Пара «поле есть — молчит /
+// поля нет — находка» доказывает, что судится ПРЕДМЕТ, а не длина фразы.
+func TestTenancyLevelInjection_QualifiedNameTracesByItsHead(t *testing.T) {
+	s := newTenancyStand(t)
+	s.write(t, "proto/kacho/cloud/probelb/v1/listener.proto", `
+syntax = "proto3";
+package kacho.cloud.probelb.v1;
+
+message ProbeListener {
+  // Поля probe_lb_id больше нет — следа головному существительному взяться
+  // неоткуда.
+  string other_id = 1;
+
+  // Name of the listener. Is unique within the PARENT PROBE LB — NOT within the
+  // ProbeProject.
+  string name = 2;
+}
+`)
+	findings, census := s.run(t)
+	if len(findings) != 1 {
+		t.Fatalf("находок %d, ожидалась 1: %v", len(findings), findings)
+	}
+	f := findings[0]
+	if f.Level != "PARENT PROBE LB" {
+		t.Fatalf("имя контейнера захвачено не целиком: %q", f.Level)
+	}
+	// Находка обязана назвать написания, которыми искался след, — иначе читатель
+	// не поймёт, ЧТО не нашлось, и пойдёт править не то.
+	if !strings.Contains(f.String(), "probe_lb_id") {
+		t.Fatalf("находка не называет искомое головное написание: %q", f.String())
+	}
+	if census.MultiWord == 0 {
+		t.Fatalf("составных имён 0 — захват именной группы выродился в одно слово")
+	}
+}
+
+// TestTenancyLevelInjection_ThreeWordNameIsSeenAtAll — ФОРМА из трёх слов.
+// Прежний захват не видел её ВОВСЕ: ни красного, ни зелёного — невидимость.
+// Инъекция снимает след (`probe_membership_row_id`), оставив всё прочее целым;
+// утверждение обязано и распознаться, и покраснеть.
+func TestTenancyLevelInjection_ThreeWordNameIsSeenAtAll(t *testing.T) {
+	s := newTenancyStand(t)
+	s.write(t, "proto/kacho/cloud/probelb/v1/listener.proto", `
+syntax = "proto3";
+package kacho.cloud.probelb.v1;
+
+message ProbeListener {
+  // ID of the ProbeGhost membership row to block.
+  string other_id = 1;
+}
+`)
+	findings, census := s.run(t)
+	if len(findings) != 1 || findings[0].Level != "ProbeGhost membership row" {
+		t.Fatalf("трёхсловное имя не распознано либо не найдено: %v", findings)
+	}
+	// Пять утверждений базового стенда плюс это, шестое. Без трёхсловной формы
+	// оно не распозналось бы вовсе, и перепись показала бы пять — то есть
+	// «находок ноль» было бы получено невидимостью, а не различением.
+	if census.Claims != 6 {
+		t.Fatalf("утверждений %d, ожидалось 6 — трёхсловная форма не попала в перепись",
+			census.Claims)
+	}
+}
+
+// TestTenancyLevelInjection_StopWordKeepsTheGateHonest — РЕВЕРСНЫЙ КОНТРОЛЬ, и
+// самый важный: расширение захвата обязано не ослабить обнаружение.
+//
+// «in the specified drawer and net» — контейнера `drawer` не существует, а слово
+// за союзом (`net`) существует. Без обрезки по не-существительному кандидат `net`
+// нашёл бы след, и находка ИСЧЕЗЛА БЫ — то есть расширение захвата сузило бы
+// наблюдение молча. Здесь утверждается обратное: находка на месте, и её имя —
+// `drawer`, а не `drawer and net`.
+func TestTenancyLevelInjection_StopWordKeepsTheGateHonest(t *testing.T) {
+	s := newTenancyStand(t)
+	s.write(t, "proto/kacho/cloud/probevpc/v1/net.proto", `
+syntax = "proto3";
+package kacho.cloud.probevpc.v1;
+
+message ProbeNet {
+  // Creates a thing in the specified drawer and net.
+  string project_id = 1;
+
+  // ID of the probe_net.
+  string id = 2;
+}
+`)
+	findings, _ := s.run(t)
+	if len(findings) != 1 {
+		t.Fatalf("находок %d, ожидалась 1 — слово за союзом помиловало находку: %v",
+			len(findings), findings)
+	}
+	if findings[0].Level != "drawer" {
+		t.Fatalf("имя контейнера %q — захват ушёл за пределы именной группы",
+			findings[0].Level)
+	}
+}
+
+// TestTenancyLevelInjection_InventedContainerStillFound — РЕВЕРСНЫЙ КОНТРОЛЬ к
+// расширению: выдуманный контейнер обязан находиться по-прежнему, в том числе
+// составной. Без этой ветви «ноль находок» после расширения было бы неотличимо
+// от анализатора, который перестал судить.
+func TestTenancyLevelInjection_InventedContainerStillFound(t *testing.T) {
+	s := newTenancyStand(t)
+	s.write(t, "proto/kacho/cloud/probevpc/v1/net.proto", `
+syntax = "proto3";
+package kacho.cloud.probevpc.v1;
+
+message ProbeNet {
+  // The name is unique within the FOLDER.
+  string name = 1;
+
+  // The name is unique within the PARENT FOLDER.
+  string other = 2;
+}
+`)
+	findings, _ := s.run(t)
+	if len(findings) != 2 {
+		t.Fatalf("находок %d, ожидалось 2 (одно- и двусловный выдуманный контейнер): %v",
+			len(findings), findings)
+	}
+	got := []string{findings[0].Level, findings[1].Level}
+	if got[0] != "FOLDER" || got[1] != "PARENT FOLDER" {
+		t.Fatalf("имена контейнеров %v — захват именной группы неверен", got)
 	}
 }
