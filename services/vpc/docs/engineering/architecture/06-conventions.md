@@ -143,23 +143,31 @@ NIC `used_by` (кто использует NIC) — денормализован
 отдаем накопленные операции; прочие ошибки пробрасываются. `operations`-строки без FK-каскада — история сохраняется.
 (route_table/SG/gateway `ListOperations` по-прежнему гейтит на `repo.Get` — это существующее поведение.)
 
-## Default Security Group (inline, опционально)
+## Умолчания сети (inline, безусловно)
 
-Создаётся БЕЗУСЛОВНО: флага, которым это отменялось, больше нет — интерфейс наследует группу своей сети, поэтому сеть без неё означала бы интерфейс без единого правила.
+Группа правил и таблица маршрутов по умолчанию создаются БЕЗУСЛОВНО: настройки, которой это
+отменялось, больше нет — интерфейс наследует группу своей сети, поэтому сеть без неё означала бы
+интерфейс без единого правила, а `Network.defaultRouteTableId°` — единственный источник истины,
+по которому `Subnet.Create` детерминированно привязывает подсеть.
 
-При `true` — Network.Create:
-1. SYNC создается Operation, возвращается клиенту.
-2. ASYNC в worker:
-   - `repo.Insert(network)`.
-   - **Inline создается SG** `default-sg-{first-8-chars-of-net-id}` с правилами по умолчанию.
-   - `UPDATE networks SET default_security_group_id = sg.id`.
-3. Outbox emit для всех трех событий (Network.CREATED, SecurityGroup.CREATED, Network.UPDATED).
+Network.Create:
+1. SYNC создаётся Operation, возвращается клиенту.
+2. ASYNC в worker, в ОДНОЙ writer-транзакции:
+   - `repo.Insert(network)`;
+   - **inline создаётся SG** `default-sg-{first-8-chars-of-net-id}` с правилами по умолчанию →
+     `INSERT vpc_outbox (SecurityGroup, CREATED)`; `UPDATE networks SET default_security_group_id`;
+   - **inline создаётся RT** `default-rt-{first-8-chars-of-net-id}` →
+     `INSERT vpc_outbox (RouteTable, CREATED)`; `UPDATE networks SET default_route_table_id`;
+   - `INSERT vpc_outbox (Network, CREATED)` — **одна** строка, с уже проставленными умолчаниями.
+3. Строк журнала на одно создание — **три**, по одной на каждый заведённый ресурс.
 
-При `false` — Network.Create НЕ создает SG (композиционный корень передаёт `false` в
-`NewCreateNetworkUseCase`), `default_security_group_id` остается пустым; создание
-делегируется внешнему reconciler'у.
-Убирает 2 INSERT + 1 UPDATE из hot-path (≈ +30-40% write-throughput) — для load-тестов.
-В таком режиме newman-кейсы `*-LSG-CRUD-DEFAULT-SG` / `*-DEL-STATE-DEFAULT-SG` ожидаемо падают.
+**Почему сеть объявляется последней и один раз (#1548).** Прежде её строка шла сразу после вставки,
+с пустыми умолчаниями, и следом шли два `Network.UPDATED` по мере их достройки. Подписчик потока
+вправе читать непустую нагрузку как ПОЛНОЕ состояние предмета — и читал: показывал сеть без группы
+и без таблицы маршрутов, а затем дважды себя поправлял. Цена обратного размена названа: число
+событий переставало быть функцией нашей внутренней композиции — третье умолчание дало бы
+подписчику четвёртое событие при том же одном действии арендатора. Свойство держит
+`services/vpc/internal/repo/network_create_journal_rows_integration_test.go`.
 
 При Network.Delete worker сначала удаляет default SG (если есть), потом Network. Не-default SG / subnets / route tables препятствуют удалению (FK RESTRICT + sync-precheck) → клиент получает `FailedPrecondition "Network <id> is not empty (<виды и числа>)"` — перечень мешающего, а не один факт непустоты.
 
