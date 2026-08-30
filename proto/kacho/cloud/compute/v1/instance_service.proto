@@ -32,7 +32,7 @@ service InstanceService {
     option (kacho.iam.authz.v1.required_acr_min) = "1";
   }
 
-  // Retrieves the list of Instance resources in the specified folder.
+  // Retrieves the list of Instance resources in the specified project.
   rpc List(ListInstancesRequest) returns (ListInstancesResponse) {
     option (google.api.http) = {get: "/compute/v1/instances"};
     option (kacho.iam.authz.v1.permission)        = "compute.instanceses.list";
@@ -52,7 +52,7 @@ service InstanceService {
     option (kacho.iam.authz.v1.required_acr_min) = "1";
   }
 
-  // Creates an instance in the specified folder.
+  // Creates an instance in the specified project.
   // Method starts an asynchronous operation that can be cancelled while it is in progress.
   rpc Create(CreateInstanceRequest) returns (operation.Operation) {
     option (google.api.http) = {
@@ -310,7 +310,7 @@ message GetInstanceRequest {
 }
 
 message ListInstancesRequest {
-  // ID of the Folder to list instances in.
+  // ID of the project to list instances in.
   // To get the project ID, use a [kacho.cloud.iam.v1.ProjectService.List] request.
   string project_id = 1;
 

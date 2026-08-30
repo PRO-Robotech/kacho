@@ -133,12 +133,12 @@ type Subnet struct {
 	state protoimpl.MessageState `protogen:"open.v1"`
 	// ID of the subnet.
 	Id string `protobuf:"bytes,1,opt,name=id,proto3" json:"id,omitempty"`
-	// ID of the folder that the subnet belongs to.
+	// ID of the project that the subnet belongs to.
 	ProjectId string `protobuf:"bytes,2,opt,name=project_id,json=projectId,proto3" json:"project_id,omitempty"`
 	// Creation timestamp in [RFC3339](https://www.ietf.org/rfc/rfc3339.txt) text format.
 	CreatedAt *timestamppb.Timestamp `protobuf:"bytes,3,opt,name=created_at,json=createdAt,proto3" json:"created_at,omitempty"`
 	// Name of the subnet.
-	// The name must be unique within the folder.
+	// The name must be unique within the project.
 	// Value must match the regular expression “\|[a-zA-Z]([-_a-zA-Z0-9]{0,61}[a-zA-Z0-9])?“.
 	Name string `protobuf:"bytes,4,opt,name=name,proto3" json:"name,omitempty"`
 	// Optional description of the subnet. 0-256 characters long.

@@ -11,17 +11,11 @@ import (
 	"github.com/PRO-Robotech/kacho/services/vpc/internal/domain"
 )
 
-// reservedOverlapMsg — текст отказа. Часть контракта: тон стабилен и меняется
-// только осознанно (api-conventions §Error-format).
-//
-// Называется ИМЯ ПОЛЯ и ПРИСЛАННОЕ ЗНАЧЕНИЕ — то, что вызывающий и так знает и что
-// ему надо править. Служебный диапазон, с которым вышло пересечение, НЕ
-// называется: перечень служебного адресного пространства не выставляется на
-// публичной поверхности (`security.md` §«Инфра-чувствительные данные»), и отказ,
-// печатающий его, стал бы способом получить карту служебных диапазонов по одному
-// пробному запросу. Доменное значение перечня такой печати и не позволяет — у него
-// нет метода, отдающего диапазоны.
-const reservedOverlapMsg = "%s %s overlaps an address range reserved by the platform"
+// Текст отказа и его машинный признак живут ОДНИМ производителем —
+// `serviceerr.ReservedCIDROverlap`. Второй копии здесь нет намеренно: тон
+// сообщения есть контракт, и разойдясь с производителем, копия разошлась бы
+// молча — ровно там, где деталь читают машиной, а не глазом. Почему у этого
+// отказа свой признак и чего он клиенту НЕ даёт — в godoc производителя.
 
 // validateNotReserved — ни один объявляемый диапазон подсети не пересекается с
 // адресным пространством, которое платформа держит за собой.
@@ -55,7 +49,7 @@ func validateNotReserved(field string, reserved domain.ReservedPrefixes, cidrs [
 			return serviceerr.InvalidArg(slot, slot+" must be a valid CIDR (e.g. 10.0.0.0/24)")
 		}
 		if reserved.Overlaps(prefix) {
-			return serviceerr.InvalidArg(slot, fmt.Sprintf(reservedOverlapMsg, slot, c))
+			return serviceerr.ReservedCIDROverlap(slot, c)
 		}
 	}
 	return nil

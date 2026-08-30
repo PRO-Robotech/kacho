@@ -30,12 +30,12 @@ type Gateway struct {
 	state protoimpl.MessageState `protogen:"open.v1"`
 	// ID of the gateway. Generated at creation time.
 	Id string `protobuf:"bytes,1,opt,name=id,proto3" json:"id,omitempty"`
-	// ID of the folder that the gateway belongs to.
+	// ID of the project that the gateway belongs to.
 	ProjectId string `protobuf:"bytes,2,opt,name=project_id,json=projectId,proto3" json:"project_id,omitempty"`
 	// Creation timestamp.
 	CreatedAt *timestamppb.Timestamp `protobuf:"bytes,3,opt,name=created_at,json=createdAt,proto3" json:"created_at,omitempty"`
 	// Name of the gateway.
-	// The name is unique within the folder.
+	// The name is unique within the project.
 	// Value must match the regular expression “\|[a-z]([-a-z0-9]{0,61}[a-z0-9])?“.
 	Name string `protobuf:"bytes,4,opt,name=name,proto3" json:"name,omitempty"`
 	// Description of the gateway. 0-256 characters long.

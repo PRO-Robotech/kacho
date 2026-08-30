@@ -55272,7 +55272,8 @@
                   "  pm.expect(j.code, JSON.stringify(j)).to.eql(3);",
                   "});",
                   "pm.test('текст отказа — дословный контракт, и в нём НЕТ ничего, кроме слота и присланного значения', () => pm.expect(String(pm.response.json().message || '')).to.eql('v4_cidr_blocks[0] 169.254.10.0/24 overlaps an address range reserved by the platform'));",
-                  "pm.test('операция не создана', () => pm.expect(pm.response.json().id).to.be.undefined);"
+                  "pm.test('операция не создана', () => pm.expect(pm.response.json().id).to.be.undefined);",
+                  "pm.test('полоса отказа различима машинно — ErrorInfo.reason', () => { const d = pm.response.json().details || []; pm.expect(d.some(x => x && x.reason === 'SUBNET_CIDR_RESERVED'), JSON.stringify(d)).to.eql(true); });"
                 ]
               }
             }
@@ -56093,7 +56094,8 @@
                   "  pm.expect(j.code, JSON.stringify(j)).to.eql(3);",
                   "});",
                   "pm.test('текст отказа — дословный контракт', () => pm.expect(String(pm.response.json().message || '')).to.eql('v4_cidr_blocks[0] 169.254.10.0/24 overlaps an address range reserved by the platform'));",
-                  "pm.test('операция не создана', () => pm.expect(pm.response.json().id).to.be.undefined);"
+                  "pm.test('операция не создана', () => pm.expect(pm.response.json().id).to.be.undefined);",
+                  "pm.test('полоса отказа различима машинно — ErrorInfo.reason', () => { const d = pm.response.json().details || []; pm.expect(d.some(x => x && x.reason === 'SUBNET_CIDR_RESERVED'), JSON.stringify(d)).to.eql(true); });"
                 ]
               }
             }

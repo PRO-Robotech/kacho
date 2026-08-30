@@ -50,9 +50,9 @@ type InstanceServiceClient interface {
 	//
 	// To get the list of available Instance resources, make a [List] request.
 	Get(ctx context.Context, in *GetInstanceRequest, opts ...grpc.CallOption) (*Instance, error)
-	// Retrieves the list of Instance resources in the specified folder.
+	// Retrieves the list of Instance resources in the specified project.
 	List(ctx context.Context, in *ListInstancesRequest, opts ...grpc.CallOption) (*ListInstancesResponse, error)
-	// Creates an instance in the specified folder.
+	// Creates an instance in the specified project.
 	// Method starts an asynchronous operation that can be cancelled while it is in progress.
 	Create(ctx context.Context, in *CreateInstanceRequest, opts ...grpc.CallOption) (*operation.Operation, error)
 	// Updates the specified instance.
@@ -258,9 +258,9 @@ type InstanceServiceServer interface {
 	//
 	// To get the list of available Instance resources, make a [List] request.
 	Get(context.Context, *GetInstanceRequest) (*Instance, error)
-	// Retrieves the list of Instance resources in the specified folder.
+	// Retrieves the list of Instance resources in the specified project.
 	List(context.Context, *ListInstancesRequest) (*ListInstancesResponse, error)
-	// Creates an instance in the specified folder.
+	// Creates an instance in the specified project.
 	// Method starts an asynchronous operation that can be cancelled while it is in progress.
 	Create(context.Context, *CreateInstanceRequest) (*operation.Operation, error)
 	// Updates the specified instance.

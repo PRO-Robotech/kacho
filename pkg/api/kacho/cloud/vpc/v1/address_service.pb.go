@@ -255,7 +255,7 @@ type CreateAddressRequest struct {
 	// To get a project ID make a [kacho.cloud.iam.v1.ProjectService.List] request.
 	ProjectId string `protobuf:"bytes,1,opt,name=project_id,json=projectId,proto3" json:"project_id,omitempty"`
 	// Name of the address.
-	// The name must be unique within the folder.
+	// The name must be unique within the project.
 	Name string `protobuf:"bytes,2,opt,name=name,proto3" json:"name,omitempty"`
 	// Description of the address.
 	Description string `protobuf:"bytes,3,opt,name=description,proto3" json:"description,omitempty"`
@@ -732,7 +732,7 @@ type UpdateAddressRequest struct {
 	// Field mask that specifies which attributes of the Address should be updated.
 	UpdateMask *fieldmaskpb.FieldMask `protobuf:"bytes,2,opt,name=update_mask,json=updateMask,proto3" json:"update_mask,omitempty"`
 	// New name for the address.
-	// The name must be unique within the folder.
+	// The name must be unique within the project.
 	Name string `protobuf:"bytes,3,opt,name=name,proto3" json:"name,omitempty"`
 	// New description of the address.
 	Description string `protobuf:"bytes,4,opt,name=description,proto3" json:"description,omitempty"`

@@ -39,9 +39,9 @@ type GatewayServiceClient interface {
 	//
 	// To get the list of all available Gateway resources, make a [List] request.
 	Get(ctx context.Context, in *GetGatewayRequest, opts ...grpc.CallOption) (*Gateway, error)
-	// Retrieves the list of Gateway resources in the specified folder.
+	// Retrieves the list of Gateway resources in the specified project.
 	List(ctx context.Context, in *ListGatewaysRequest, opts ...grpc.CallOption) (*ListGatewaysResponse, error)
-	// Creates a gateway in the specified folder.
+	// Creates a gateway in the specified project.
 	Create(ctx context.Context, in *CreateGatewayRequest, opts ...grpc.CallOption) (*operation.Operation, error)
 	// Updates the specified gateway.
 	Update(ctx context.Context, in *UpdateGatewayRequest, opts ...grpc.CallOption) (*operation.Operation, error)
@@ -127,9 +127,9 @@ type GatewayServiceServer interface {
 	//
 	// To get the list of all available Gateway resources, make a [List] request.
 	Get(context.Context, *GetGatewayRequest) (*Gateway, error)
-	// Retrieves the list of Gateway resources in the specified folder.
+	// Retrieves the list of Gateway resources in the specified project.
 	List(context.Context, *ListGatewaysRequest) (*ListGatewaysResponse, error)
-	// Creates a gateway in the specified folder.
+	// Creates a gateway in the specified project.
 	Create(context.Context, *CreateGatewayRequest) (*operation.Operation, error)
 	// Updates the specified gateway.
 	Update(context.Context, *UpdateGatewayRequest) (*operation.Operation, error)

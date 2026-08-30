@@ -531,8 +531,8 @@ NIC-ресурс и `used_by`-колонки сохранены, но через
 
 | Pattern | Classes | P | Apps | Что проверяет |
 |---|---|---|---|---|
-| `SUB-CR-CONF-RESERVED-OVERLAP` | CONF,NEG,VAL | P0 | 1 (sub) | Create Subnet поверх диапазона, зарезервированного посадкой → sync `400 INVALID_ARGUMENT`, текст РАВЕН `"<slot> <value> overlaps an address range reserved by the platform"`, Operation не создаётся; законный префикс той же сети проходит и виден в GET. Verifies REQ-CIDR-11. |
-| `SUB-ACB-CONF-RESERVED-OVERLAP` | CONF,NEG,VAL | P0 | 1 (sub) | `:add-cidr-blocks` служебного диапазона к уже созданной подсети → тот же sync-отказ (второй и последний глагол, объявляющий диапазон); законный блок тем же глаголом проходит, служебного в наборе нет. Verifies REQ-CIDR-11. |
+| `SUB-CR-CONF-RESERVED-OVERLAP` | CONF,NEG,VAL | P0 | 1 (sub) | Create Subnet поверх диапазона, зарезервированного посадкой → sync `400 INVALID_ARGUMENT`, текст РАВЕН `"<slot> <value> overlaps an address range reserved by the platform"`, `ErrorInfo.reason` = `SUBNET_CIDR_RESERVED` (полоса различима машинно, без разбора прозы), Operation не создаётся; законный префикс той же сети проходит и виден в GET. Verifies REQ-CIDR-11. |
+| `SUB-ACB-CONF-RESERVED-OVERLAP` | CONF,NEG,VAL | P0 | 1 (sub) | `:add-cidr-blocks` служебного диапазона к уже созданной подсети → тот же sync-отказ с тем же признаком `SUBNET_CIDR_RESERVED` (второй и последний глагол, объявляющий диапазон); законный блок тем же глаголом проходит, служебного в наборе нет. Verifies REQ-CIDR-11. |
 
 ### Address release / idempotency
 
