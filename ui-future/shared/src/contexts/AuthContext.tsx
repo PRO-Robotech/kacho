@@ -127,6 +127,12 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   // полного `refresh` (который дополнительно дёргает /me и kratos/whoami).
   useEffect(() => {
     if (!user) return;
+    // поллинг остаётся: предмет здесь не ресурс, а ЛИЧНОСТЬ вызывающего и её
+    // права. Выдача роли — мутация iam, а журнала у iam нет: среди владельцев
+    // глагола подписки его не значится (`JOURNAL_OWNERS`,
+    // `@shared/lib/subscription/subjects`). Подписаться не на что, и это не
+    // пропуск: ресурсный журнал несёт состояние РЕСУРСА, а не решение модели
+    // прав о вызывающем, — его не было бы в потоке, будь у iam журнал.
     const t = setInterval(() => {
       void refreshWhoAmI();
     }, WHOAMI_REFETCH_MS);
