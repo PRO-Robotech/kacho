@@ -13,7 +13,7 @@ func clientTruthIAMRequestBodyOptions(t *testing.T) ClientTruthIAMRequestBodyOpt
 	return ClientTruthIAMRequestBodyOptions{
 		Root:         repoRoot(t),
 		ProtoPackage: "kacho.cloud.iam.v1",
-		DocsDirs:     []string{"services/iam/docs/content"},
+		DocsDirs:     []string{"services/iam/docs/content", "services/iam/docs/engineering"},
 		DocExts:      []string{".mdx", ".md"},
 		UseCaseDirs:  []string{"services/iam/internal/apps/kacho/api"},
 	}

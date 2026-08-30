@@ -145,7 +145,9 @@ TOKEN=$(curl -s -X POST "$HYDRA_TOKEN_URL" \
 RESP=$(curl -s -X POST http://localhost:18080/iam/v1/accounts \
   -H "Authorization: Bearer $TOKEN" \
   -H "Content-Type: application/json" \
-  -d '{"name":"acme","description":"Acme Corp","labels":{"env":"prod"},"owner_user_id":"usr_xxx"}')
+  -d '{"name":"acme","description":"Acme Corp","labels":{"env":"prod"}}')
+# owner_user_id НЕ присылается: поле выходное, владельцем становится вызывающий.
+# Присланное значение — sync INVALID_ARGUMENT, включая собственный верный id.
 OP_ID=$(echo "$RESP" | jq -r .id)
 
 # 3. Poll Operation. Путь домен-агностичен — без имени сервиса в начале.

@@ -87,7 +87,10 @@
 //     СЧИТАЕТСЯ переписью отдельным числом: примеры ходят и к соседним доменам
 //     (`/vpc/v1/networks`), и объявлять их дефектом значило бы краснеть на
 //     законном. Число печатается, чтобы «сопоставилось ноль» не выглядело как
-//     «нарушений ноль».
+//     «нарушений ноль», — и однажды оно уже отработало: четырнадцать тел
+//     инженерной части стояли в нём не потому, что домен чужой, а потому, что
+//     распознаватель не знал ГОЛОГО адреса без кавычек. Растущее число здесь —
+//     повод проверить распознаватель, а не признак чужого домена.
 //
 // # Падает на ПУСТОМ ОБХОДЕ
 //
@@ -146,7 +149,9 @@ type ClientTruthIAMRequestBodyCensus struct {
 	BodiesParsed int
 	// BodiesMatched — тел, чей адрес сопоставился с методом домена.
 	BodiesMatched int
-	// BodiesUnmatched — тел, чей адрес НЕ сопоставился (чужой домен). Не находка.
+	// BodiesUnmatched — тел, чей адрес НЕ сопоставился ни с одним методом домена:
+	// чужой домен, адрес из переменной, путь с опечаткой. Не находка, но и не
+	// «нарушений ноль» — потому и печатается отдельным числом.
 	BodiesUnmatched int
 	// KeysJudged — ключей рассужено.
 	KeysJudged int
@@ -185,8 +190,14 @@ type httpMethodBinding struct {
 var (
 	curlLineRe = regexp.MustCompile(`\bcurl\b`)
 	verbRe     = regexp.MustCompile(`-X\s+([A-Z]+)`)
-	urlRe      = regexp.MustCompile(`['"](https?://[^'"\s]+)['"]`)
-	bodyRe     = regexp.MustCompile(`(?s)-d\s+'(\{.*?\})'`)
+	// Адрес пишут ТРЕМЯ законными способами: в одинарных кавычках, в двойных и
+	// без кавычек вовсе. Первая редакция знала только кавычки — и не видела
+	// ни одного примера инженерной части, где адрес голый: четырнадцать тел
+	// уходили в «не сопоставилось», и среди них жил настоящий дефект
+	// (`owner_user_id` в теле Create). Распознаватель, не знающий одной из
+	// законных форм, не даёт ни красного, ни зелёного — он молчит.
+	urlRe  = regexp.MustCompile(`['"](https?://[^'"\s]+)['"]|(https?://[^'"\s\\]+)`)
+	bodyRe = regexp.MustCompile(`(?s)-d\s+'(\{.*?\})'`)
 )
 
 // AuditClientTruthIAMRequestBody требует, чтобы каждый ключ тела запроса в
@@ -250,7 +261,7 @@ func AuditClientTruthIAMRequestBody(
 		}
 		sort.Strings(names)
 		fmt.Fprintf(log, "перепись: методов с телом %d · страниц %d · команд curl %d · "+
-			"тел разобрано %d · сопоставлено с методом %d · чужой домен %d (НЕ судятся) · "+
+			"тел разобрано %d · сопоставлено с методом %d · адрес не сопоставился %d (НЕ судятся) · "+
 			"ключей рассужено %d · невходных полей выведено %d (%s)\n",
 			census.Methods, census.DocFiles, census.CurlBlocks, census.BodiesParsed,
 			census.BodiesMatched, census.BodiesUnmatched, census.KeysJudged,
@@ -320,7 +331,7 @@ func auditOneDoc(
 			census.BodiesUnmatched++
 			continue
 		}
-		path := urlPath(u[1])
+		path := urlPath(firstNonEmpty(u[1:]))
 		bind, ok := matchBinding(bindings, verb, path)
 		if !ok {
 			census.BodiesUnmatched++
