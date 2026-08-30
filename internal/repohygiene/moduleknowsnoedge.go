@@ -23,16 +23,27 @@
 // рукописный список расходится с деревом молча. Приставка ручки выводится из
 // имени модуля (`KACHO_<МОДУЛЬ>_GATEWAY`), а не берётся константой.
 //
-// # Что судится — ДВЕ половины, и одной мало
+// # Что судится — ТРИ половины, и любых двух мало
 //
 //  1. ТИП. Прод-файл модуля не импортирует ни контракт края
 //     (`pkg/api/kacho/cloud/apigateway`), ни его код (`kacho/gateway/`). Импорт —
 //     узел синтаксического дерева, поэтому упоминание имени пакета в комментарии
 //     находкой не является by construction.
-//  2. АДРЕС. Ни прод-код модуля, ни его чарт не объявляют ручки адреса края
+//  2. РУЧКА. Ни прод-код модуля, ни его чарт не объявляют ручки адреса края
 //     (`KACHO_<МОДУЛЬ>_GATEWAY*`). Половина без второй ничего не держит: снятый
 //     импорт при живой ручке оставляет отказ старта, а снятая ручка при живом
 //     импорте оставляет ребро.
+//  3. АДРЕС. Ни прод-код модуля, ни его чарт не называют край ЦЕЛЬЮ ДОЗВОНА
+//     (`http://api-gateway…:8080`, `nc -z api-gateway… 8080`). Заведена задачей
+//     продукта #1576; распознаватель и его законные близнецы —
+//     `moduleknowsnoedgeaddress.go`.
+//
+// ЗДЕСЬ СТОЯЛО «ДВЕ половины», и вместе с ним — довод, что адрес края в обход
+// конвенции ручек держит половина ТИПА: «набрать типизированный вызов края без
+// его контракта нечем». Довод верен для ТИПИЗИРОВАННОГО gRPC и ложен для голого
+// HTTP: `http.Get` контракта не требует. Инъекция показала молчание анализатора и
+// на сыром адресе в коде, и на посадке, ЖДУЩЕЙ край, — то есть ровно на «модуль
+// не поднимается там, где края нет вовсе», второй половине предмета из шапки.
 //
 // # ЗАКОННЫЕ СЛУЧАИ, названные поимённо
 //
@@ -74,9 +85,10 @@
 // нет, а цена точного разбора — свой парсер шаблонов.
 //
 // Вторая граница — ИМЯ ручки. Судится каноническая форма `KACHO_<МОДУЛЬ>_GATEWAY`;
-// адрес края, названный в обход конвенции (`..._EDGE_ADDR` и подобное), этой
-// половиной не ловится. Держит его половина ТИПА: набрать типизированный вызов
-// края без его контракта нечем, а контракт — импорт, и он судится узлом дерева.
+// ручка, названная в обход конвенции (`..._EDGE_ADDR` и подобное), этой половиной
+// не ловится. Её держат половина ТИПА, пока вызов типизирован, и половина АДРЕСА,
+// пока в значении стоит цель дозвона; голый вызов по адресу, СОБРАННОМУ в рантайме
+// из переменных, не держит ничто — остаток назван в `moduleknowsnoedgeaddress.go`.
 package repohygiene
 
 import (
@@ -129,6 +141,12 @@ type ModuleKnowsNoEdgeCensus struct {
 	GoLiterals int
 	ChartFiles int
 	ChartLines int
+	// EdgeNamedGo и EdgeNamedChart — сколько литералов Go и строк чарта НАЗВАЛИ
+	// край и потому были осмотрены половиной АДРЕСА. Обе печатаются: расширение
+	// распознавателя обязано менять ОСМОТРЕННОЕ, иначе оно холостое, а падение
+	// этих величин до нуля означает, что половина перестала видеть свой предмет.
+	EdgeNamedGo    int
+	EdgeNamedChart int
 }
 
 // ModuleKnowsNoEdgeFinding — одно нарушение с координатой и именем модуля.
@@ -137,6 +155,10 @@ type ModuleKnowsNoEdgeFinding struct {
 	Path   string
 	Line   int
 	What   string
+	// Lane — ПОЛОСА, которой находка принадлежит (см. константы EdgeLane*).
+	// Нужна инъекции: «роняет только проверяемое» доказуемо лишь атрибуцией, а
+	// разбор полосы по тексту находки был бы вторым предикатом о том же.
+	Lane string
 }
 
 func (f ModuleKnowsNoEdgeFinding) String() string {
@@ -194,10 +216,11 @@ func AuditModuleKnowsNoEdge(opts ModuleKnowsNoEdgeOptions, log io.Writer) ([]Mod
 		_, _ = fmt.Fprintf(log,
 			"перепись: модулей осмотрено %d (%s) · файлов Go прочитано %d · импортов разобрано %d · "+
 				"строковых литералов разобрано %d · каталогов чарта найдено %d · файлов чарта прочитано %d · "+
-				"строк чарта осмотрено %d · находок %d\n",
+				"строк чарта осмотрено %d · из них НАЗВАЛИ край: литералов Go %d, строк чарта %d · находок %d\n",
 			len(census.Modules), strings.Join(census.Modules, ", "),
 			census.GoFiles, census.GoImports, census.GoLiterals,
-			census.ChartDirs, census.ChartFiles, census.ChartLines, len(findings))
+			census.ChartDirs, census.ChartFiles, census.ChartLines,
+			census.EdgeNamedGo, census.EdgeNamedChart, len(findings))
 	}
 	return findings, census, nil
 }
@@ -270,11 +293,13 @@ func auditModuleGo(opts ModuleKnowsNoEdgeOptions, module, knob string, census *M
 				findings = append(findings, ModuleKnowsNoEdgeFinding{
 					Module: module, Path: rel, Line: fset.Position(imp.Pos()).Line,
 					What: "импорт контракта края " + ip + " — модуль типизирован своим потребителем",
+					Lane: EdgeLaneType,
 				})
 			case strings.Contains(ip, edgeCodeImportMarker):
 				findings = append(findings, ModuleKnowsNoEdgeFinding{
 					Module: module, Path: rel, Line: fset.Position(imp.Pos()).Line,
 					What: "импорт кода края " + ip + " — модуль собирается только вместе с краем",
+					Lane: EdgeLaneType,
 				})
 			}
 		}
@@ -293,7 +318,21 @@ func auditModuleGo(opts ModuleKnowsNoEdgeOptions, module, knob string, census *M
 				findings = append(findings, ModuleKnowsNoEdgeFinding{
 					Module: module, Path: rel, Line: fset.Position(lit.Pos()).Line,
 					What: "ручка адреса края " + v + " — модуль не поднимется там, где края нет",
+					Lane: EdgeLaneKnob,
 				})
+			}
+			// Половина АДРЕСА: литерал, назвавший край, осматривается на ЦЕЛЬ
+			// ДОЗВОНА. Имя без схемы и порта целью не является и молчит.
+			if strings.Contains(v, edgeHostToken) {
+				census.EdgeNamedGo++
+				for _, target := range edgeDialTargets(v, false) {
+					findings = append(findings, ModuleKnowsNoEdgeFinding{
+						Module: module, Path: rel, Line: fset.Position(lit.Pos()).Line,
+						What: "цель дозвона до края " + target + " — исходящее ребро модуль→край, " +
+							"то есть цикл: край уже зовёт модуль",
+						Lane: EdgeLaneAddress,
+					})
+				}
 			}
 			return true
 		})
@@ -345,7 +384,22 @@ func auditModuleCharts(opts ModuleKnowsNoEdgeOptions, module, knob string, censu
 				findings = append(findings, ModuleKnowsNoEdgeFinding{
 					Module: module, Path: rel, Line: i + 1,
 					What: "чарт объявляет ручку адреса края — посадка обязывает модуль знать потребителя",
+					Lane: EdgeLaneKnob,
 				})
+			}
+			// Половина АДРЕСА. Порт через пробел разрешён ТОЛЬКО здесь: в чарте
+			// это форма оболочечной пробы (`nc -z <хост> <порт>`), которой посадка
+			// ЖДЁТ край, а в литерале Go число после имени было бы прозой.
+			if strings.Contains(line, edgeHostToken) {
+				census.EdgeNamedChart++
+				for _, target := range edgeDialTargets(line, true) {
+					findings = append(findings, ModuleKnowsNoEdgeFinding{
+						Module: module, Path: rel, Line: i + 1,
+						What: "посадка называет цель дозвона до края " + target +
+							" — модуль не поднимется там, где края нет вовсе",
+						Lane: EdgeLaneAddress,
+					})
+				}
 			}
 		}
 	}
