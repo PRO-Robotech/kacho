@@ -255,3 +255,37 @@ func TestRequireDataplaneTLSAck(t *testing.T) {
 		})
 	}
 }
+
+// TestValidateSecurityConfig_Production_BreakglassRefusesBoot — отказ старта при
+// аварийном обходе в боевом режиме, закреплённый ОТДЕЛЬНЫМ утверждением, а не
+// строкой таблицы выше.
+//
+// Свойство то же, и таблица его проверяет; разница в том, что здесь оно
+// названо ИМЕНЕМ ФУНКЦИИ. Гейт `audit-list-filter` разрешает провязку
+// авторизатора, способного остаться пустым, ровно пока отказ ручки в боевом
+// режиме закреплён пробой композиционного корня, и ищет её по имени — подкейс
+// таблицы он не видит by construction.
+//
+// Второе отличие несущее: проба утверждает ИМЯ РУЧКИ в тексте отказа. Оператор,
+// упёршийся в отказ старта, обязан прочитать, что именно выключить, — иначе
+// стенд не поднять, а отказ станет загадкой вместо диагностики.
+func TestValidateSecurityConfig_Production_BreakglassRefusesBoot(t *testing.T) {
+	for _, mode := range []string{"production", "production-strict"} {
+		t.Run(mode, func(t *testing.T) {
+			cfg := config.Config{
+				AuthMode:           mode,
+				AuthZIAMGRPCAddr:   "kacho-iam-internal.kacho.svc:9091",
+				PublicServerMTLS:   grpcsrv.TLSServer{Enable: true},
+				InternalServerMTLS: grpcsrv.TLSServer{Enable: true},
+				AuthZBreakglass:    true,
+			}
+			err := validateSecurityConfig(cfg)
+			if err == nil {
+				t.Fatalf("аварийный обход в режиме %s обязан отказать в старте, получено nil", mode)
+			}
+			if !strings.Contains(err.Error(), "KACHO_REGISTRY_AUTHZ_BREAKGLASS") {
+				t.Errorf("отказ обязан называть ручку KACHO_REGISTRY_AUTHZ_BREAKGLASS, получено: %q", err.Error())
+			}
+		})
+	}
+}

@@ -28,7 +28,7 @@ import { FieldError } from "@shared/components/organisms/form/FieldError";
 import { LabelsEditor, labelsToMap, type LabelEntry } from "@shared/components/organisms/LabelsEditor";
 import { REGISTRY } from "@shared/lib/resource-registry";
 import { useInvalidateResourceList, useOperation } from "@shared/lib/use-operation";
-import { extractOperationId } from "@shared/components/molecules/OperationDialog";
+import { resolveMutationResponse } from "@shared/lib/operation-outcome";
 import { toast } from "@shared/lib/toast";
 import { errorText } from "@shared/lib/error-presentation";
 
@@ -128,8 +128,9 @@ export function InlineNetworkInterfaceCreateForm({ projectId, subnetId: presetSu
   const mutation = useMutation({
     mutationFn: (item: unknown) => api.create(spec.apiPath, item),
     onSuccess: (resp) => {
-      const opId = extractOperationId(resp);
-      if (opId) setPendingOpId(opId);
+      const resolved = resolveMutationResponse(resp, spec.mutationsReturnOperation !== false);
+      if (resolved.kind === "operation") setPendingOpId(resolved.opId);
+      else if (resolved.kind === "violation") toast.error(`Создать NIC: ${resolved.message}`);
       else {
         invalidate(spec.id, projectId);
         toast.success(`NIC ${name} создан`);

@@ -11,7 +11,7 @@ import (
 	"github.com/jackc/pgx/v5"
 	"github.com/jackc/pgx/v5/pgconn"
 
-	"github.com/PRO-Robotech/kacho/pkg/validate/nameform"
+	"github.com/PRO-Robotech/kacho/pkg/db/pgfault"
 	storageerr "github.com/PRO-Robotech/kacho/services/storage/internal/errors"
 )
 
@@ -163,19 +163,19 @@ func mapVolumeErr(err error, c volErrCtx) error {
 	if errors.Is(err, pgx.ErrNoRows) {
 		return fmt.Errorf("%w: Volume %s not found", storageerr.ErrNotFound, c.volumeID)
 	}
-	var pgErr *pgconn.PgError
-	if errors.As(err, &pgErr) {
-		switch pgErr.Code {
-		case "23505": // unique_violation
-			switch pgErr.ConstraintName {
+	f := pgfault.Classify(err)
+	if f.FromDatabase() {
+		switch f.Class {
+		case pgfault.Unique:
+			switch f.Constraint {
 			case cnVolumeNameUniq:
 				return fmt.Errorf("%w: volume with name %s already exists in project", storageerr.ErrAlreadyExists, c.volumeName)
 			case cnAttachDeviceUniq:
 				return fmt.Errorf("%w: device %s is already in use on Instance %s", storageerr.ErrFailedPrecondition, c.deviceName, c.instanceID)
 			}
 			return fmt.Errorf("%w: volume already exists", storageerr.ErrAlreadyExists)
-		case "23503": // foreign_key_violation
-			switch pgErr.ConstraintName {
+		case pgfault.ForeignKey:
+			switch f.Constraint {
 			case cnVolumeDiskTypeFK:
 				return fmt.Errorf("%w: DiskType %s not found", storageerr.ErrFailedPrecondition, c.diskTypeID)
 			case cnVolumeSnapshotFK:
@@ -186,16 +186,16 @@ func mapVolumeErr(err error, c volErrCtx) error {
 				return fmt.Errorf("%w: Volume %s is in use", storageerr.ErrFailedPrecondition, c.volumeID)
 			}
 			return fmt.Errorf("%w: volume violates a reference constraint", storageerr.ErrFailedPrecondition)
-		case "23514": // check_violation (size_bytes>0 / block_size>0 / name / labels)
-			return checkViolation(pgErr, "volume", c.volumeID)
-		case "23P01": // exclusion_violation (EXCLUDE … WHERE is_boot)
-			if pgErr.ConstraintName == cnAttachOneBoot {
+		case pgfault.Check: // size_bytes>0 / block_size>0 / name / labels
+			return checkViolation(f, "volume", c.volumeID)
+		case pgfault.Exclusion: // EXCLUDE … WHERE is_boot
+			if f.Constraint == cnAttachOneBoot {
 				return fmt.Errorf("%w: Instance %s already has a boot volume", storageerr.ErrFailedPrecondition, c.instanceID)
 			}
 			return fmt.Errorf("%w: volume exclusion constraint", storageerr.ErrFailedPrecondition)
 		}
 		slog.Error("uncategorized postgres error mapped to internal",
-			"sqlstate", pgErr.Code, "constraint", pgErr.ConstraintName, "volume_id", c.volumeID)
+			append([]any{"volume_id", c.volumeID}, f.LogAttrs()...)...)
 		return storageerr.ErrInternal
 	}
 	slog.Error("uncategorized db error mapped to internal", "err", err.Error(), "volume_id", c.volumeID)
@@ -239,21 +239,21 @@ func mapSnapshotErr(err error, c snapErrCtx) error {
 	if errors.Is(err, pgx.ErrNoRows) {
 		return fmt.Errorf("%w: Snapshot %s not found", storageerr.ErrNotFound, c.snapshotID)
 	}
-	var pgErr *pgconn.PgError
-	if errors.As(err, &pgErr) {
-		switch pgErr.Code {
-		case "23505": // unique_violation
-			if pgErr.ConstraintName == cnSnapshotNameUniq {
+	f := pgfault.Classify(err)
+	if f.FromDatabase() {
+		switch f.Class {
+		case pgfault.Unique:
+			if f.Constraint == cnSnapshotNameUniq {
 				return fmt.Errorf("%w: snapshot with name %s already exists in project", storageerr.ErrAlreadyExists, c.snapshotName)
 			}
 			return fmt.Errorf("%w: snapshot already exists", storageerr.ErrAlreadyExists)
-		case "23503": // foreign_key_violation — source_volume_id → volumes
+		case pgfault.ForeignKey: // source_volume_id → volumes
 			return fmt.Errorf("%w: Volume %s not found", storageerr.ErrFailedPrecondition, c.sourceVolumeID)
-		case "23514": // check_violation (name / description / size / labels)
-			return checkViolation(pgErr, "snapshot", c.snapshotID)
+		case pgfault.Check: // name / description / size / labels
+			return checkViolation(f, "snapshot", c.snapshotID)
 		}
 		slog.Error("uncategorized postgres error mapped to internal",
-			"sqlstate", pgErr.Code, "constraint", pgErr.ConstraintName, "snapshot_id", c.snapshotID)
+			append([]any{"snapshot_id", c.snapshotID}, f.LogAttrs()...)...)
 		return storageerr.ErrInternal
 	}
 	slog.Error("uncategorized db error mapped to internal", "err", err.Error(), "snapshot_id", c.snapshotID)
@@ -302,27 +302,27 @@ func mapImageErr(err error, c imgErrCtx) error {
 	if errors.Is(err, pgx.ErrNoRows) {
 		return fmt.Errorf("%w: Image %s not found", storageerr.ErrNotFound, c.imageID)
 	}
-	var pgErr *pgconn.PgError
-	if errors.As(err, &pgErr) {
-		switch pgErr.Code {
-		case "23505": // unique_violation
-			if pgErr.ConstraintName == cnImageNameUniq {
+	f := pgfault.Classify(err)
+	if f.FromDatabase() {
+		switch f.Class {
+		case pgfault.Unique:
+			if f.Constraint == cnImageNameUniq {
 				return fmt.Errorf("%w: image with name %s already exists in project", storageerr.ErrAlreadyExists, c.imageName)
 			}
 			return fmt.Errorf("%w: image already exists", storageerr.ErrAlreadyExists)
-		case "23503": // foreign_key_violation — source_snapshot_id / source_volume_id
-			switch pgErr.ConstraintName {
+		case pgfault.ForeignKey: // source_snapshot_id / source_volume_id
+			switch f.Constraint {
 			case cnImageSnapshotFK:
 				return fmt.Errorf("%w: Snapshot %s not found", storageerr.ErrFailedPrecondition, c.snapshotID)
 			case cnImageVolumeFK:
 				return fmt.Errorf("%w: Volume %s not found", storageerr.ErrFailedPrecondition, c.volumeID)
 			}
 			return fmt.Errorf("%w: image violates a reference constraint", storageerr.ErrFailedPrecondition)
-		case "23514": // check_violation (source at-most-one mutual-exclusion / name / description / format / size / labels)
-			return checkViolation(pgErr, "image", c.imageID)
+		case pgfault.Check: // source at-most-one / name / description / format / size / labels
+			return checkViolation(f, "image", c.imageID)
 		}
 		slog.Error("uncategorized postgres error mapped to internal",
-			"sqlstate", pgErr.Code, "constraint", pgErr.ConstraintName, "image_id", c.imageID)
+			append([]any{"image_id", c.imageID}, f.LogAttrs()...)...)
 		return storageerr.ErrInternal
 	}
 	slog.Error("uncategorized db error mapped to internal", "err", err.Error(), "image_id", c.imageID)
@@ -350,21 +350,21 @@ func mapDiskTypeErr(err error, c dtErrCtx) error {
 	if errors.Is(err, pgx.ErrNoRows) {
 		return fmt.Errorf("%w: DiskType %s not found", storageerr.ErrNotFound, c.diskTypeID)
 	}
-	var pgErr *pgconn.PgError
-	if errors.As(err, &pgErr) {
-		switch pgErr.Code {
-		case "23505": // unique_violation — дубликат PK-слага
+	f := pgfault.Classify(err)
+	if f.FromDatabase() {
+		switch f.Class {
+		case pgfault.Unique: // дубликат PK-слага
 			return fmt.Errorf("%w: DiskType %s already exists", storageerr.ErrAlreadyExists, c.diskTypeID)
-		case "23503": // foreign_key_violation — volumes.disk_type_id RESTRICT (delete in-use, Q4)
-			if pgErr.ConstraintName == cnVolumeDiskTypeFK {
+		case pgfault.ForeignKey: // volumes.disk_type_id RESTRICT (delete in-use, Q4)
+			if f.Constraint == cnVolumeDiskTypeFK {
 				return fmt.Errorf("%w: DiskType %s is in use", storageerr.ErrFailedPrecondition, c.diskTypeID)
 			}
 			return fmt.Errorf("%w: disk type violates a reference constraint", storageerr.ErrFailedPrecondition)
-		case "23514": // check_violation (description length / zone_ids array)
-			return checkViolation(pgErr, "disk type", c.diskTypeID)
+		case pgfault.Check: // description length / zone_ids array
+			return checkViolation(f, "disk type", c.diskTypeID)
 		}
 		slog.Error("uncategorized postgres error mapped to internal",
-			"sqlstate", pgErr.Code, "constraint", pgErr.ConstraintName, "disk_type_id", c.diskTypeID)
+			append([]any{"disk_type_id", c.diskTypeID}, f.LogAttrs()...)...)
 		return storageerr.ErrInternal
 	}
 	slog.Error("uncategorized db error mapped to internal", "err", err.Error(), "disk_type_id", c.diskTypeID)
@@ -386,15 +386,13 @@ func mapDiskTypeErr(err error, c dtErrCtx) error {
 // идёт в журнал: ERROR для нашего дефекта, WARN для ввода. Ограничение, которое
 // ловит ввод регулярно, — кандидат в синхронную проверку, и его частота обязана
 // быть счётной.
-func checkViolation(pgErr *pgconn.PgError, kind, id string) error {
-	if nameform.IsConstraint(pgErr.TableName, pgErr.ConstraintName) {
+func checkViolation(f pgfault.Fault, kind, id string) error {
+	if pgfault.CheckLaneOf(f) == pgfault.LaneServiceDefect {
 		slog.Error("name form backstop fired: service admitted a name it validates itself",
-			"sqlstate", pgErr.Code, "table", pgErr.TableName,
-			"constraint", pgErr.ConstraintName, "kind", kind, "id", id)
+			append([]any{"kind", kind, "id", id}, f.LogAttrs()...)...)
 		return storageerr.ErrInternal
 	}
 	slog.Warn("check constraint rejected caller input",
-		"sqlstate", pgErr.Code, "table", pgErr.TableName,
-		"constraint", pgErr.ConstraintName, "kind", kind, "id", id)
+		append([]any{"kind", kind, "id", id}, f.LogAttrs()...)...)
 	return fmt.Errorf("%w: Illegal argument", storageerr.ErrInvalidArg)
 }

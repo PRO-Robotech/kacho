@@ -100,7 +100,7 @@
                   "  const _h = JSON.parse(_cj.enc.Utf8.stringify(_cj.enc.Base64.parse(_b64)));",
                   "  pm.expect(['RS256', 'ES256', 'EdDSA'], JSON.stringify(_h)).to.include(_h.alg);",
                   "});",
-                  "pm.test('status 200', () => pm.expect(pm.response.code, pm.response.text()).to.eql(200));",
+                  "pm.test('status 200', () => pm.expect(pm.response.code, JSON.stringify(pm.response.text())).to.eql(200));",
                   "pm.test('ответ — страница списка (поле accounts — массив)', () => {",
                   "  const j = pm.response.json();",
                   "  pm.expect(Array.isArray(j.accounts || []), JSON.stringify(j)).to.eql(true);",

@@ -147,6 +147,28 @@ message NetworkLoadBalancer {
   // construction.
   bool cross_zone_enabled = 42;
 
+  // zone_id — output-only availability zone of a ZONAL load balancer (#1473).
+  //
+  // Set IFF placement_type == ZONAL; empty for REGIONAL (anycast has no zonal
+  // coordinate by construction) and for EXTERNAL (whose underlying zone is
+  // derived by the platform and stays off the public surface — the very
+  // placement-leak that retired the former per-zone fields, `reserved 15, 18`).
+  // The exclusivity is a DB CHECK, not a comment.
+  //
+  // Not a Create input (write-reject): the value is the zone of the tenant's own
+  // VIP subnet, resolved from its owner on the request path
+  // (vpc.SubnetService.Get) and never derived by parsing a name — a string
+  // derivation silently yields "" on a REGIONAL subnet and turns the coherence
+  // check into a no-op.
+  //
+  // Why it exists: placement_type says the placement IS zonal without saying
+  // WHICH zone, so a caller could not tell whether an instance and a load
+  // balancer share a site — the invariant data-integrity.md §Placement-coherence
+  // requires them to satisfy. It is the same placement anchor the platform
+  // already carries on Subnet (placement_type + zone_id / region_id); a resource
+  // bearing one half of that discriminator contradicted the platform with itself.
+  string zone_id = 44;
+
   // security_group_ids — NLB-1b MIGRATE (revival, output + Create/Update input).
   // vpc SecurityGroup refs firewalling the LB VIP (frontend access control), TEXT
   // ids without FK; same-project existence is peer-validated via

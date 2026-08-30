@@ -7,6 +7,8 @@
 // spec.apiPath; эти helpers дают типизированные доменные вызовы (напр. снимок из
 // тома) для мест, где нужен явный контракт.
 
+import { catalogApi, resourceApi } from "@shared/api/resources";
+
 import { api } from "./client";
 import type { Operation, VolumeList, SnapshotList, DiskTypeList, ImageList } from "./types";
 
@@ -16,11 +18,7 @@ const DISK_TYPES = "/storage/v1/diskTypes";
 const IMAGES = "/storage/v1/images";
 
 export const volumesApi = {
-  list: (q?: Record<string, string>) => api.list<VolumeList>(VOLUMES, q),
-  get: (id: string) => api.get<Record<string, unknown>>(`${VOLUMES}/${id}`),
-  create: (body: unknown): Promise<{ operation: Operation }> => api.create(VOLUMES, body),
-  update: (id: string, body: unknown): Promise<{ operation: Operation }> => api.update(`${VOLUMES}/${id}`, body),
-  delete: (id: string): Promise<{ operation: Operation }> => api.delete(`${VOLUMES}/${id}`),
+  ...resourceApi<VolumeList>(VOLUMES),
   // Перевод тома на другой тип диска — ОТДЕЛЬНЫЙ глагол, а не поле правки: это
   // перемещение данных, оно длится (том всё это время MIGRATING) и может отказать
   // на половине, оставив данные на исходном типе. `disk_type_id` в update_mask
@@ -30,12 +28,8 @@ export const volumesApi = {
 };
 
 export const snapshotsApi = {
-  list: (q?: Record<string, string>) => api.list<SnapshotList>(SNAPSHOTS, q),
-  get: (id: string) => api.get<Record<string, unknown>>(`${SNAPSHOTS}/${id}`),
-  // Снимок создаётся ИЗ тома: тело несёт source_volume_id (+ project_id).
-  create: (body: unknown): Promise<{ operation: Operation }> => api.create(SNAPSHOTS, body),
-  update: (id: string, body: unknown): Promise<{ operation: Operation }> => api.update(`${SNAPSHOTS}/${id}`, body),
-  delete: (id: string): Promise<{ operation: Operation }> => api.delete(`${SNAPSHOTS}/${id}`),
+  // Снимок создаётся ИЗ тома: тело `create` несёт source_volume_id (+ project_id).
+  ...resourceApi<SnapshotList>(SNAPSHOTS),
   // Копия снимка в ДРУГУЮ зону. `project_id` обязателен, хотя выглядит выводимым
   // из источника: именно он — объект вопроса о правах («создать» спрашивают у
   // проекта). Метки и имя источника НЕ наследуются — имя уникально в проекте, а
@@ -43,19 +37,13 @@ export const snapshotsApi = {
   copy: (id: string, body: unknown): Promise<{ operation: Operation }> => api.action(`${SNAPSHOTS}/${id}:copy`, body),
 };
 
-export const diskTypesApi = {
-  // Read-only каталог (cluster-scoped, без project_id). Admin-CRUD — Internal* API.
-  list: (q?: Record<string, string>) => api.list<DiskTypeList>(DISK_TYPES, q),
-  get: (id: string) => api.get<Record<string, unknown>>(`${DISK_TYPES}/${id}`),
-};
+// Read-only каталог (cluster-scoped, без project_id). Admin-CRUD — Internal* API.
+export const diskTypesApi = catalogApi<DiskTypeList>(DISK_TYPES);
 
 export const imagesApi = {
-  list: (q?: Record<string, string>) => api.list<ImageList>(IMAGES, q),
-  get: (id: string) => api.get<Record<string, unknown>>(`${IMAGES}/${id}`),
-  // Образ создаётся РОВНО из одного источника: source_snapshot_id XOR source_volume_id.
-  create: (body: unknown): Promise<{ operation: Operation }> => api.create(IMAGES, body),
-  update: (id: string, body: unknown): Promise<{ operation: Operation }> => api.update(`${IMAGES}/${id}`, body),
-  delete: (id: string): Promise<{ operation: Operation }> => api.delete(`${IMAGES}/${id}`),
+  // Образ создаётся РОВНО из одного источника: `create` принимает
+  // source_snapshot_id XOR source_volume_id.
+  ...resourceApi<ImageList>(IMAGES),
   // Копия образа в ДРУГОЙ регион (образ REGIONAL/anycast). Копия остаётся в
   // проекте источника, поэтому имя источника не наследуется: оно уникально в паре
   // с проектом и столкнулось бы с самим собой.

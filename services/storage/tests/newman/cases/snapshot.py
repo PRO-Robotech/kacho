@@ -134,7 +134,9 @@ CASES.append(Case(
                    "name": "snap-badsrc-{{runId}}"},
              test_script=[*assert_status(200), *save_from_response("j.id", "opId")]),
         poll_operation_until_done(),
-        assert_op_error(9, "FAILED_PRECONDITION", msg_substr="Volume vol00000000000000000 not found"),
+        # `msg_substr` приводит обе стороны к нижнему регистру и заглавную имени
+        # ресурса не различает; `msg_regex` сверяет текст владельца как есть.
+        assert_op_error(9, "FAILED_PRECONDITION", msg_regex="Volume vol00000000000000000 not found"),
     ],
 ))
 
@@ -328,7 +330,8 @@ CASES.append(Case(
         Step(name="del-nx", method="DELETE", path=f"{SNP}/{{{{garbageSnapshotId}}}}",
              test_script=[*assert_status(200), *save_from_response("j.id", "opId")]),
         poll_operation_until_done(),
-        assert_op_error(5, "NOT_FOUND", msg_substr="not found"),
+        # Целиком, а не «not found»: голая подстрока зеленела на сообщении о ЛЮБОМ ресурсе.
+        assert_op_error(5, "NOT_FOUND", msg_regex="Snapshot [^ ]+ not found"),
     ],
 ))
 

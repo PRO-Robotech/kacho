@@ -3,7 +3,7 @@
 // apiPath содержит полный путь с доменным префиксом (verbatim из proto google.api.http annotations).
 
 import type { ReactNode } from "react";
-import { Tag } from "antd";
+import { Tag, Tooltip, Typography } from "antd";
 import { StopOutlined, UnlockOutlined, UserDeleteOutlined } from "@ant-design/icons";
 import type { FormField } from "./form-schema";
 import { setByPath, getByPath as getByPathImpl } from "./path";
@@ -27,7 +27,18 @@ import { PlacementAnchor } from "@shared/components/molecules/PlacementAnchor";
 import { RefNameLink } from "@shared/components/molecules/RefNameLink";
 import { IamRefLink } from "@shared/components/molecules/IamRefLink";
 import { LabelsCell } from "@shared/components/atoms/LabelsCell";
+import { ArtifactTypesTag } from "@shared/components/atoms/ArtifactTypeTag";
+import { RepositoryLifecycleTag } from "@shared/components/atoms/RepositoryLifecycleTag";
+import { VisibilityTag } from "@shared/components/atoms/VisibilityTag";
 import { NicSpecFields } from "@shared/components/organisms/form/NicSpecFields";
+import { NlbVipCell } from "@shared/components/molecules/NlbVipCell";
+import {
+  NlbVipSourceField,
+  NlbDisabledZonesField,
+  buildVipSourceOrNull,
+  lbTypeFromPlacement,
+  lbPlacementTypeFromPlacement,
+} from "@shared/components/organisms/form/NlbVipSourceField";
 import { stripFormOnlyKeys } from "@shared/lib/update-mask";
 import {
   roleIsSystem,
@@ -40,6 +51,17 @@ import {
   type DefinitionTier,
 } from "@shared/api/iam";
 import { displayText } from "@shared/lib/display-text";
+import { formatBytes } from "@shared/lib/bytes";
+// Словарь класса диска — ЕДИНСТВЕННАЯ реализация, та же, что читают карточка
+// класса и подпись опции в подборщике. Реестр домена storage ходил в неё через
+// свой ре-экспорт; после сведения ходит напрямую.
+import {
+  LIFECYCLE_HINT,
+  TIER_HINT,
+  acceptsNewVolumes,
+  lifecycleLabel,
+  tierLabel,
+} from "@shared/lib/storage-disk-type";
 import { flatIdList } from "@shared/lib/id-list";
 import {
   GUEST_ACCESS_KEY_EMPTY_STATE,
@@ -286,6 +308,26 @@ const FIELD_NAME_VPC: FormField = {
 };
 
 // Compute name-regex — lowercase-only (kacho-compute/CLAUDE.md §5).
+// Имя тома / снимка / образа. ОТДЕЛЬНАЯ константа, а не общий `FIELD_NAME`, и
+// это не пропущенная унификация: у storage имя НЕ обязательно (пустое —
+// законный вход, сервер проставляет имя от `id`) и допускает подчёркивание.
+// Свести его к общему значило бы начать отвергать в форме вход, который край
+// принимает, — то есть снять возможность молча, ровно ради чего эти спеки и
+// переносились богатой стороной.
+//
+// Что здесь третья форма имени подряд — предмет ОТДЕЛЬНОЙ задачи продукта
+// (#715, «одна форма имени на дерево»); свести её сведением форка нельзя:
+// одна форма требует решения о том, какая именно, а не выбора из наличных.
+const FIELD_NAME_STORAGE: FormField = {
+  name: "name",
+  label: "Имя",
+  type: "string",
+  placeholder: "my-volume",
+  description:
+    "Строчные латинские буквы, цифры, «-» и «_». Должно начинаться с буквы, длина до 63 символов. Можно оставить пустым.",
+  pattern: "^([a-z]([-_a-z0-9]{0,61}[a-z0-9])?)?$",
+};
+
 const FIELD_NAME_COMPUTE: FormField = {
   name: "name",
   label: "Имя",
@@ -294,6 +336,20 @@ const FIELD_NAME_COMPUTE: FormField = {
   description:
     "Строчные латинские буквы, цифры, «-» и «_». Должно начинаться с буквы, длина до 63 символов. Можно оставить пустым.",
   pattern: "^([a-z]([-_a-z0-9]{0,61}[a-z0-9])?)?$",
+};
+
+// Имя реестра — DNS-safe (строчные + цифры + дефисы). Mutable: сменить можно и
+// после создания — OCI-путь образа строится по ИДЕНТИФИКАТОРУ реестра, не по
+// имени (ban #15), поэтому переименование не ломает docker pull/push.
+const FIELD_NAME_REGISTRY: FormField = {
+  name: "name",
+  label: "Имя",
+  type: "string",
+  required: true,
+  placeholder: "my-registry",
+  description:
+    "Строчные латинские буквы, цифры и «-». Должно начинаться с буквы, длина до 63 символов. Можно изменить позже — имя не входит в OCI-путь (тот по идентификатору).",
+  pattern: "^[a-z]([-a-z0-9]{0,61}[a-z0-9])?$",
 };
 
 const FIELD_DESCRIPTION: FormField = {
@@ -338,87 +394,16 @@ const FIELD_LABELS: FormField = {
 //   • режим задаёт ЕДИНСТВЕННО `placement` — `type`/`placement_type` в запросе
 //     существуют лишь затем, чтобы выставивший их клиент получил явный отказ.
 //
-// Поэтому «авто» означает разное по обе стороны и нормализуется от placement, а
-// не от того, что осталось в виджете после смены режима: подсеть, выбранная в
-// INTERNAL-черновике, после переключения на EXTERNAL схлопывается в public, а не
-// уезжает телом, которое сервис отвергнет.
-
-export function lbTypeFromPlacement(placement: string | undefined): "EXTERNAL" | "INTERNAL" {
-  return placement === "EXTERNAL_REGIONAL" ? "EXTERNAL" : "INTERNAL";
-}
-
-/**
- * buildVipSourceOrNull — wire-ветвь oneof одного семейства, либо null, если
- * семейство не задано. Пустой subnet_id/address_id — это «не задано», а не
- * `{subnet_id: ""}`: выбранная ветвь oneof с пустой ссылкой возвращается с
- * сервиса как «required», то есть жалобой на поле, которого оператор не называл.
- */
-export function buildVipSourceOrNull(
-  placement: string | undefined,
-  obj: Record<string, unknown>,
-  family: "v4" | "v6",
-): Record<string, unknown> | null {
-  const mode = (obj[`_${family}_source`] as string | undefined) ?? "off";
-  if (mode === "off") return null;
-  const fam = (obj[`${family}_source`] as Record<string, unknown> | undefined) ?? {};
-  if (mode === "address") {
-    const id = (fam.address_id as string) || "";
-    return id ? { address_id: id } : null;
-  }
-  // Автоматические ветви — «public» и «subnet» — нормализуются под placement:
-  // выбранная в INTERNAL-черновике подсеть после переключения на EXTERNAL
-  // схлопывается в public, а не уезжает телом, которое сервис отвергнет.
-  if (lbTypeFromPlacement(placement) === "EXTERNAL") return { public: {} };
-  const subnetId = (fam.subnet_id as string) || "";
-  return subnetId ? { subnet_id: subnetId } : null;
-}
-
-/** Поля одного семейства: режим + ссылка активного режима. */
-function vipSourceFields(family: "v4" | "v6", label: string): FormField[] {
-  const mode = `_${family}_source`;
-  return [
-    {
-      name: mode,
-      label: `Источник VIP (${label})`,
-      type: "enum",
-      immutable: true,
-      default: family === "v4" ? "public" : "off",
-      options: [
-        { value: "public", label: "Публичный (авто) — VIP выделяет платформа (EXTERNAL-размещение)" },
-        { value: "subnet", label: "Из подсети (авто) — VIP выделяется из подсети (INTERNAL-размещение)" },
-        { value: "address", label: "Линк адреса — заранее созданный Address" },
-        { value: "off", label: "Не задавать это семейство" },
-      ],
-      description:
-        "Ветвь источника VIP этого семейства. Хотя бы одно семейство обязано нести источник. Подсеть допустима только для INTERNAL-размещения, публичный VIP — только для EXTERNAL.",
-    },
-    {
-      name: `${family}_source.subnet_id`,
-      label: `Подсеть (${label})`,
-      type: "ref",
-      refResource: "subnets",
-      refProjectScoped: true,
-      immutable: true,
-      visibleWhen: { field: mode, equals: "subnet" },
-      description:
-        "Подсеть, из которой выделяется адрес балансировщика при внутреннем размещении. Размещение подсети обязано совпадать с размещением балансировщика.",
-    },
-    {
-      name: `${family}_source.address_id`,
-      label: `Адрес (${label})`,
-      type: "ref",
-      refResource: "addresses",
-      refProjectScoped: true,
-      immutable: true,
-      visibleWhen: { field: mode, equals: "address" },
-      refFilter: (row) =>
-        family === "v4"
-          ? !!row.internal_ipv4_address || !!row.external_ipv4_address
-          : !!row.internal_ipv6_address || !!row.external_ipv6_address,
-      description: "Существующий Address, линкуемый как VIP. Сфера адреса обязана совпадать с режимом балансировщика.",
-    },
-  ];
-}
+// Здесь стояла ВТОРАЯ реализация этих правил — четыре объявленных поля на
+// семейство (`_v4_source`, `v4_source.subnet_id`, …) и свои `lbTypeFromPlacement`
+// / `buildVipSourceOrNull` с другой сигнатурой. Их близнец жил в модуле `nlb`, и
+// пользователь видел РАЗНЫЕ формы одного ресурса: маршрут `/nlb/*` рисует модуль,
+// а этот реестр — оболочку. Реализация теперь одна и та, что богаче: выбор
+// «сеть → адрес» деревом, отбор кандидатов по размещению и явный отказ от
+// семейства (#1471).
+//
+// Сами правила — в `@shared/components/organisms/form/NlbVipSourceField`, рядом с
+// виджетом, который их исполняет; отсюда они только зовутся.
 
 // VPC-1 Subnet cell: immutable primary CIDR anchor + "+N" additional-ranges
 // hint (additional ranges managed via :add/:remove-cidr-blocks, not shown inline).
@@ -583,6 +568,33 @@ function hydrateStringListFields(out: Record<string, unknown>, keys: string[]): 
     if (!Array.isArray(raw)) continue;
     out[key] = (raw as unknown[]).map((item: unknown) => (typeof item === "string" ? { value: item } : item));
   }
+}
+
+// SizeCell — размер (байты int64 строкой) в человекочитаемом виде; пусто/0 → «—».
+function SizeCell({ value }: { value: unknown }): ReactNode {
+  const t = formatBytes(value);
+  return t === "—" ? <Typography.Text type="secondary">—</Typography.Text> : <>{t}</>;
+}
+
+// TierCell / LifecycleCell — закрытые словари класса диска СЛОВАМИ, а не
+// токенами перечисления. Подписи и пояснения живут в `@shared/lib/storage-disk-type`,
+// чтобы у текста было ОДНО место: тот же словарь читают карточка класса и
+// подпись опции в подборщике.
+function TierCell({ value }: { value: unknown }): ReactNode {
+  const label = tierLabel(value);
+  if (!label) return <Typography.Text type="secondary">—</Typography.Text>;
+  const hint = typeof value === "string" ? TIER_HINT[value] : undefined;
+  return hint ? <Tooltip title={hint}>{label}</Tooltip> : <>{label}</>;
+}
+
+function LifecycleCell({ value }: { value: unknown }): ReactNode {
+  const label = lifecycleLabel(value);
+  if (!label) return <Typography.Text type="secondary">—</Typography.Text>;
+  const hint = typeof value === "string" ? LIFECYCLE_HINT[value] : undefined;
+  // Цветом выделяется только то, о чём стоит знать: класс, который НЕ принимает
+  // новые тома. Красить и «принимает» значило бы не выделять ничего.
+  const body = acceptsNewVolumes(value) ? <>{label}</> : <Typography.Text type="warning">{label}</Typography.Text>;
+  return hint ? <Tooltip title={hint}>{body}</Tooltip> : body;
 }
 
 export const REGISTRY: Record<string, ResourceSpec> = {
@@ -2748,8 +2760,11 @@ export const REGISTRY: Record<string, ResourceSpec> = {
   // proto: GET /compute/v1/instances. Name-regex lowercase-only
   // (kacho-compute/CLAUDE.md §5: `^([a-z]([-_a-z0-9]{0,61}[a-z0-9])?)?$`).
 
-  // disk-types — read-only справочник kacho-storage (владелец блочного хранения),
-  // используется как refResource в dropdown'ах.
+  // ====== storage: DiskType (read-only catalog) ======
+  //
+  // Спека ПОЛНАЯ (перенесена из реестра домена storage): ярус, состояние
+  // обращения и границы размера показываются словами закрытого словаря, а не
+  // токенами перечисления.
   "disk-types": {
     id: "disk-types",
     route: "disk-types",
@@ -2762,27 +2777,66 @@ export const REGISTRY: Record<string, ResourceSpec> = {
     singular: ENTITIES["disk-types"].singular,
     accusative: "тип диска",
     plural: ENTITIES["disk-types"].plural,
-    serviceTitle: SERVICES.compute.title,
+    genitive: "Типа диска",
+    description:
+      "Класс хранилища, на котором создаётся том: ярус, состояние обращения, границы размера и способности. Каталог заводит администратор кластера; пустой каталог — законное состояние, пока класс не зарегистрирован, том не создаётся.",
+    serviceTitle: SERVICES.storage.title,
     scope: "global",
     ops: { create: false, update: false, delete: false },
-    emptyState: {
-      title: "Каталог типов дисков пуст",
-      body:
-        "Тип диска задаёт носитель и предел скорости для томов: его записи заводит администратор облака. " +
-        "Пока каталог пуст, создать том не получится — обратитесь к администратору.",
-      docs: ["Типы дисков"],
-    },
     columns: [
+      { header: "Имя", path: "name", format: "text", className: "font-medium" },
+      // Идентификатор — `uid-short`, а не `text`: этот формат и есть форма
+      // идентификатора в продукте (значение плюс копирование одним значком).
+      // Прежде здесь стоял `text` с моноширинным классом — идентификатор
+      // выглядел похоже и НЕ копировался, тогда как у тома, снимка и образа в
+      // том же модуле копировался. Один предмет, два вида (правило 9 канона).
+      { header: "Идентификатор", path: "id", format: "uid-short" },
       {
-        header: "Идентификатор",
-        path: "id",
-        format: "text",
-        className: "font-mono",
+        header: "Ярус",
+        path: "tier",
+        render: (row) => <TierCell value={row.tier} />,
       },
-      { header: "Описание", path: "description", format: "text" },
-      { header: "Зоны", path: "zone_ids", format: "list" },
+      // Состояние обращения названо СЛЕДСТВИЕМ (правило 6): «Принимает новые
+      // тома» / «Новые тома не создаются». Токен `DEPRECATED` не говорит
+      // читателю ни того, что класс ещё работает, ни того, что на нём нельзя
+      // создать новый том, — а вопрос у этого поля ровно один.
+      {
+        header: "Обращение",
+        path: "lifecycle",
+        render: (row) => <LifecycleCell value={row.lifecycle} />,
+      },
+      // Зоны — ССЫЛКИ, по одной на зону (правило 2 канона консоли: поле, значение
+      // которого есть идентификатор другого ресурса, показывается именем и ведёт
+      // на карточку). Множественность от правила не освобождает: это несколько
+      // ссылок, а не другой вид значения. До этого здесь стоял `format: "list"`,
+      // и в каталоге классов зона была строкой `zone-…`, тогда как у тома, у
+      // снимка и в форме выбора — именем: один ресурс, два прочтения на соседних
+      // экранах.
+      //
+      // `projectId` не передаётся намеренно: зона — глобальный справочник geo, у
+      // него нет измерения «проект», а страница каталога живёт под `/system/*`,
+      // где проекта в контексте нет вовсе.
+      {
+        header: "Зоны",
+        path: "zone_ids",
+        render: (row) => {
+          const ids = Array.isArray(row.zone_ids) ? (row.zone_ids as string[]).filter(Boolean) : [];
+          if (ids.length === 0) return <span className="text-muted-foreground">—</span>;
+          return (
+            <span style={{ display: "inline-flex", flexWrap: "wrap", gap: 6, minWidth: 0 }}>
+              {ids.map((id) => (
+                <RefNameLink key={id} specId="zones" refId={id} maxChars={28} />
+              ))}
+            </span>
+          );
+        },
+      },
     ],
     template: () => ({}),
+    emptyState: {
+      title: "Каталог типов дисков пуст",
+      body: "Класс диска описывает хранилище, на котором создаётся том: ярус, границы размера, способности. Каталог заводит администратор кластера — пока класс не зарегистрирован, том создать нельзя.",
+    },
   },
 
   // compute-zones / compute-regions — read-only проекции ТОГО ЖЕ каталога
@@ -2930,7 +2984,22 @@ export const REGISTRY: Record<string, ResourceSpec> = {
         path: "zone_id",
         render: (row) => <RefNameLink specId="zones" refId={row.zone_id as string | undefined} maxChars={28} />,
       },
-      { header: "Тип машины", path: "machine_type_id", format: "code" },
+      {
+        // Тип машины — запись каталога размера со своей карточкой, значит
+        // ссылка, а не моноширинный идентификатор. Рядом в этой же строке зона
+        // ссылкой уже была: одна таблица, два поведения читались как «этот
+        // переход не сделали» (#406).
+        //
+        // Две оси, и они РАЗНЫЕ: читается каталог глобально (`scope: "global"`,
+        // запрос идёт без project_id), а РАЗДЕЛ его смонтирован внутри проекта,
+        // потому что рисует его модуль compute, — поэтому адрес карточки
+        // project-scoped.
+        header: "Тип машины",
+        path: "machine_type_id",
+        render: (row) => (
+          <RefNameLink specId="machine-types" refId={row.machine_type_id as string | undefined} maxChars={28} />
+        ),
+      },
       {
         header: "vCPU / RAM",
         path: "effective_resources",
@@ -3308,11 +3377,12 @@ export const REGISTRY: Record<string, ResourceSpec> = {
     },
   },
 
-  // ====== storage: Volume (read-only ref target) ======
-  // proto: kacho.cloud.storage.v1.VolumeService (/storage/v1/volumes). Storage owns
-  // block storage; the instance attach/detach verbs are specified in terms of a
-  // Volume id ("vol"), so this is the picker they read. CRUD lives in the storage
-  // remote — here it is a ref target only.
+  // ====== storage: Volume ======
+  //
+  // Спека ПОЛНАЯ, и приехала она из реестра домена storage — не наоборот.
+  // Здесь стояла цель ссылки: без полей формы, без глаголов, с четырьмя
+  // колонками. Свести реестры «взяв общее» значило бы снять у арендатора
+  // создание тома, правку размера и смену класса, ничего об этом не сказав.
   volumes: {
     id: "volumes",
     route: "volumes",
@@ -3324,60 +3394,14 @@ export const REGISTRY: Record<string, ResourceSpec> = {
     genitive: "Тома",
     serviceTitle: SERVICES.storage.title,
     scope: "project",
-    ops: { create: false, update: false, delete: false },
-    emptyState: {
-      title: "Создайте первый том",
-      body:
-        "Том — блочный диск, который подключается к машине и переживает её пересоздание. " +
-        "Том можно создать пустым, из образа или из снимка, а затем расширить без остановки машины.",
-      docs: ["Тома и снимки"],
-    },
-    columns: [
-      {
-        header: "Имя",
-        path: "name",
-        render: (row) => <CopyableName name={(row.name as string) ?? ""} fallback={row.id as string} />,
-      },
-      {
-        header: "Идентификатор",
-        path: "id",
-        render: (row) => <CopyableId id={(row.id as string) ?? ""} />,
-      },
-      { header: "Статус", path: "status", format: "status" },
-      {
-        header: "Зона",
-        path: "zone_id",
-        render: (row) => <RefNameLink specId="zones" refId={row.zone_id as string | undefined} maxChars={28} />,
-      },
-    ],
-    template: () => ({}),
-  },
-
-  // ====== storage: Image (ref target) ======
-  // proto: kacho.cloud.storage.v1.ImageService (/storage/v1/images). Образ — вход
-  // в цепочку «образ → том → машина»: без него из пустого проекта загрузочный том
-  // не получить вовсе (том делается пустым или из снимка, снимок — из тома).
-  // Здесь ТОЛЬКО цель ссылки для подборщика образа в форме машины; CRUD живёт в
-  // разделе Storage.
-  images: {
-    id: "images",
-    route: "images",
-    apiPath: "/storage/v1/images",
-    payloadKey: "images",
-    singular: "Образ",
-    plural: "Образы",
-    genitive: "Образа",
-    accusative: "образ",
-    serviceTitle: "Storage",
-    scope: "project",
-    ops: { create: false, update: false, delete: false },
-    emptyState: {
-      title: "Создайте первый образ",
-      body:
-        "Образ — слепок диска, из которого разворачивают загрузочные тома машин. " +
-        "Один образ раскатывается на сколько угодно машин, поэтому им удобно фиксировать готовую сборку.",
-      docs: ["Образы дисков"],
-    },
+    ops: { create: true, update: true, delete: true },
+    // Здесь стояло объявление `docs` с адресами `href: "#"` — тем и снято.
+    // Адреса у документации в дереве нет ни одного, а ссылка, ведущая на ту же
+    // страницу, обещает переход, которого не существует, и обнаруживает это
+    // только кликом (правило 9 канона консоли). Читателя объявление не
+    // достигало вовсе: `spec.docs` не читает НИ ОДНО место продукта — темы
+    // показывает пустое состояние из `emptyState.docs`, и показывает их
+    // текстом. То есть объявление было обещанием без исполнителя.
     columns: [
       {
         header: "Имя",
@@ -3385,9 +3409,410 @@ export const REGISTRY: Record<string, ResourceSpec> = {
         render: (row) => <CopyableName name={(row.name as string) ?? ""} fallback={row.id as string} />,
       },
       { header: "Идентификатор", path: "id", render: (row) => <CopyableId id={(row.id as string) ?? ""} /> },
+      // Зона и класс диска — ссылки на ЧУЖИЕ ресурсы, значит ссылки (правило 2):
+      // идентификатор вида `zone-…` пользователю не адресован, он работает с
+      // именем. Зона — глобальный каталог geo, и `RefNameLink` спрашивает её без
+      // `project_id`: измерения «проект» у каталога нет.
+      {
+        header: "Зона",
+        path: "zone_id",
+        render: (row) => <RefNameLink specId="zones" refId={row.zone_id as string | undefined} maxChars={28} />,
+      },
+      {
+        header: "Тип диска",
+        path: "disk_type_id",
+        render: (row) => (
+          <RefNameLink specId="disk-types" refId={row.disk_type_id as string | undefined} maxChars={28} />
+        ),
+      },
+      { header: "Размер", path: "size_bytes", render: (row) => <SizeCell value={row.size_bytes} /> },
       { header: "Статус", path: "status", format: "status" },
+      // used_by° — output-only зеркало attachments (кто использует том). Generic
+      // "references"-рендер (spec-columns): показывает первого потребителя + «+N».
+      { header: "Используется", path: "used_by", format: "references" },
+      { header: "Дата создания", path: "created_at", format: "datetime" },
+      {
+        header: "Метки",
+        path: "labels",
+        render: (row) => <LabelsCell labels={row.labels as Record<string, string> | undefined} />,
+      },
     ],
-    template: () => ({}),
+    fields: [
+      FIELD_NAME_STORAGE,
+      FIELD_DESCRIPTION,
+      {
+        name: "zone_id",
+        label: "Зона доступности",
+        type: "ref",
+        refResource: "zones",
+        required: true,
+        immutable: true,
+        description: "Зона размещения тома. Неизменяема после создания.",
+      },
+      {
+        name: "disk_type_id",
+        label: "Тип диска",
+        type: "ref",
+        refResource: "disk-types",
+        required: true,
+        immutable: true,
+        description:
+          "Класс хранилища тома. Правкой не меняется — для переезда на другой класс есть отдельное действие «Сменить класс диска» на карточке тома. Класс, выведенный из обращения, помечен в списке: новые тома он не принимает.",
+      },
+      {
+        // Размер тома. Wire-поле — size_bytes (int64). UI вводит в ГиБ, sanitize
+        // переводит в байты. Размер задаётся при Create; resize (increase-only)
+        // не выведен в форму редактирования (editHidden) — mask строится по имени
+        // поля, а size_gib не является wire-полем.
+        name: "size_gib",
+        label: "Размер, ГиБ",
+        type: "int",
+        required: true,
+        min: 1,
+        max: 4096,
+        default: 10,
+        editHidden: true,
+        description: "Размер тома в гибибайтах (ГиБ), задаётся при создании.",
+      },
+      {
+        // Дискриминатор источника (form-only). У контракта источников РОВНО три
+        // (`source_snapshot_id` и `source_image_id` взаимоисключающи, пусто в
+        // обоих = чистый том), поэтому форма выражает выбор, а не предлагает
+        // заполнить два поля, из которых сервер примет одно.
+        //
+        // Умолчание — «пустой том»: единственная ветка, которой не нужен предмет
+        // в проекте. Открывать форму на ветке, требующей уже существующий
+        // снимок, значит встречать свежий проект пустым списком.
+        name: "_source_kind",
+        label: "Источник данных",
+        type: "enum",
+        required: true,
+        createOnly: true,
+        default: "empty",
+        options: [
+          { value: "empty", label: "Пустой том — без данных" },
+          { value: "snapshot", label: "Из снимка" },
+          { value: "image", label: "Из образа (Image) — загрузочный том" },
+        ],
+        description:
+          "Чем наполняется том при создании: ничем (пустой), снимком другого тома или образом. Загрузочный том машины делается ИЗ ОБРАЗА — это и есть первый шаг из пустого проекта. Источник неизменяем после создания.",
+      },
+      {
+        name: "source_snapshot_id",
+        label: "Снимок-источник",
+        type: "ref",
+        refResource: "snapshots",
+        refProjectScoped: true,
+        required: true,
+        createOnly: true,
+        immutable: true,
+        visibleWhen: { field: "_source_kind", equals: "snapshot" },
+        description: "Снимок, из которого восстанавливается том. Задаётся при создании и потом не меняется.",
+      },
+      {
+        // Образ — вход в цепочку «образ → том → машина». Без него из свежего
+        // проекта загрузочный том не получить вовсе: снимок делается из тома, а
+        // образ — из тома или снимка, то есть круг замкнут сам на себя.
+        name: "source_image_id",
+        label: "Образ-источник",
+        type: "ref",
+        refResource: "images",
+        refProjectScoped: true,
+        required: true,
+        createOnly: true,
+        immutable: true,
+        visibleWhen: { field: "_source_kind", equals: "image" },
+          description: "Образ, из которого создаётся загрузочный том. Задаётся при создании и потом не меняется.",
+      },
+      FIELD_LABELS,
+      FIELD_PROJECT_ID,
+    ],
+    template: ({ projectId }) => ({
+      project_id: projectId ?? "",
+      name: "",
+      description: "",
+      zone_id: "",
+      disk_type_id: "",
+      size_gib: 10,
+      _source_kind: "empty",
+      source_snapshot_id: "",
+      source_image_id: "",
+      labels: {},
+    }),
+    // size_gib (UI) → size_bytes (wire); ровно одна ветка источника по
+    // `_source_kind`, form-only дискриминатор срезаем.
+    //
+    // Неактивная ветка режется ПО ДИСКРИМИНАТОРУ, а не по пустоте значения:
+    // пользователь мог выбрать образ и затем переключиться на снимок, и тогда
+    // непустой `source_image_id` уехал бы вместе со снимком — сервер отверг бы
+    // взаимоисключающую пару, назвав поле, которого в форме уже не видно.
+    sanitize: (obj) => {
+      const out: Record<string, unknown> = { ...obj };
+      const gib = Number(out.size_gib);
+      if (Number.isFinite(gib) && gib > 0) out.size_bytes = String(Math.round(gib) * GIB);
+      delete out.size_gib;
+      const kind = out._source_kind;
+      delete out._source_kind;
+      if (kind === "snapshot") {
+        delete out.source_image_id;
+        if (!out.source_snapshot_id) delete out.source_snapshot_id;
+      } else if (kind === "image") {
+        delete out.source_snapshot_id;
+        if (!out.source_image_id) delete out.source_image_id;
+      } else {
+        delete out.source_snapshot_id;
+        delete out.source_image_id;
+      }
+      return out;
+    },
+    // Клиент-валидация ДО submit: активный источник должен быть выбран. Ветка
+    // «пустой том» предмета не имеет и проходит без выбора — иначе проверка
+    // отказывала бы всегда и её отрицание зеленело бы на чём угодно.
+    validate: (obj) => {
+      const kind = obj._source_kind;
+      if (kind === "image" && !obj.source_image_id) return "Выберите образ, из которого создаётся том.";
+      if (kind === "snapshot" && !obj.source_snapshot_id)
+        return "Выберите снимок, из которого восстанавливается том.";
+      return null;
+    },
+    // size_bytes (wire) → size_gib (UI) для edit-формы.
+    hydrate: (obj) => {
+      const out: Record<string, unknown> = { ...obj };
+      const bytes = typeof obj.size_bytes === "string" ? Number.parseInt(obj.size_bytes, 10) : Number(obj.size_bytes);
+      if (Number.isFinite(bytes) && bytes > 0) out.size_gib = Math.max(1, Math.round(bytes / GIB));
+      return out;
+    },
+    emptyState: {
+      title: "Создайте первый том",
+      body: "Том — это персистентный блочный диск. ОС инстанса доставляется из OCI-образа, а данные живут на подключённых томах. После создания том можно подключить к виртуальной машине в разделе Compute.",
+      docs: ["Тома (блочное хранение)"],
+    },
+  },
+
+  // ====== storage: Snapshot ======
+  //
+  // Спеки снимка в общем реестре не было ВОВСЕ, и это стоило двух форков сразу
+  // (#1466): оболочка карточки резолвит спеку по маршруту здесь, поэтому домен
+  // был обязан держать и свою оболочку, и свой реестр. Наблюдаемо было третье:
+  // колонка «Источник» на карточке образа ссылается на снимок либо на том — и
+  // на снимке ссылка вырождалась в плоский идентификатор, тогда как на томе в
+  // той же колонке работала.
+  snapshots: {
+    id: "snapshots",
+    route: "snapshots",
+    apiPath: "/storage/v1/snapshots",
+    payloadKey: "snapshots",
+    singular: ENTITIES.snapshots.singular,
+    accusative: "снимок",
+    plural: ENTITIES.snapshots.plural,
+    genitive: "Снимка",
+    serviceTitle: SERVICES.storage.title,
+    scope: "project",
+    ops: { create: true, update: true, delete: true },
+    columns: [
+      {
+        header: "Имя",
+        path: "name",
+        render: (row) => <CopyableName name={(row.name as string) ?? ""} fallback={row.id as string} />,
+      },
+      { header: "Идентификатор", path: "id", render: (row) => <CopyableId id={(row.id as string) ?? ""} /> },
+      {
+        header: "Исходный том",
+        path: "source_volume_id",
+        render: (row) => (
+          <RefNameLink specId="volumes" refId={row.source_volume_id as string | undefined} maxChars={32} />
+        ),
+      },
+      {
+        header: "Зона",
+        path: "zone_id",
+        render: (row) => <RefNameLink specId="zones" refId={row.zone_id as string | undefined} maxChars={28} />,
+      },
+      { header: "Размер", path: "size_bytes", render: (row) => <SizeCell value={row.size_bytes} /> },
+      { header: "Статус", path: "status", format: "status" },
+      { header: "Дата создания", path: "created_at", format: "datetime" },
+      {
+        header: "Метки",
+        path: "labels",
+        render: (row) => <LabelsCell labels={row.labels as Record<string, string> | undefined} />,
+      },
+    ],
+    fields: [
+      {
+        name: "source_volume_id",
+        label: "Исходный том",
+        type: "ref",
+        refResource: "volumes",
+        refProjectScoped: true,
+        required: true,
+        immutable: true,
+        description: "Том, с которого снимается копия на момент времени. Неизменяем после создания.",
+      },
+      FIELD_NAME_STORAGE,
+      FIELD_DESCRIPTION,
+      FIELD_LABELS,
+      FIELD_PROJECT_ID,
+    ],
+    template: ({ projectId }) => ({
+      project_id: projectId ?? "",
+      source_volume_id: "",
+      name: "",
+      description: "",
+      labels: {},
+    }),
+    emptyState: {
+      title: "Создайте первый снимок",
+      body: "Снимок — это point-in-time копия тома. Выберите том-источник, чтобы создать снимок; из снимка позже можно восстановить новый том.",
+      docs: ["Снимки томов"],
+    },
+  },
+
+  // ====== storage: Image ======
+  //
+  // Спека ПОЛНАЯ (перенесена из реестра домена storage). Здесь стояла цель
+  // ссылки для подборщика образа в форме машины — без полей формы и без
+  // выбора источника.
+  images: {
+    id: "images",
+    route: "images",
+    apiPath: "/storage/v1/images",
+    payloadKey: "images",
+    singular: ENTITIES.images.singular,
+    accusative: "образ",
+    plural: ENTITIES.images.plural,
+    genitive: "Образа",
+    serviceTitle: SERVICES.storage.title,
+    scope: "project",
+    ops: { create: true, update: true, delete: true },
+    // Здесь стояло объявление `docs` с адресами `href: "#"` — тем и снято.
+    // Адреса у документации в дереве нет ни одного, а ссылка, ведущая на ту же
+    // страницу, обещает переход, которого не существует, и обнаруживает это
+    // только кликом (правило 9 канона консоли). Читателя объявление не
+    // достигало вовсе: `spec.docs` не читает НИ ОДНО место продукта — темы
+    // показывает пустое состояние из `emptyState.docs`, и показывает их
+    // текстом. То есть объявление было обещанием без исполнителя.
+    columns: [
+      {
+        header: "Имя",
+        path: "name",
+        render: (row) => <CopyableName name={(row.name as string) ?? ""} fallback={row.id as string} />,
+      },
+      { header: "Идентификатор", path: "id", render: (row) => <CopyableId id={(row.id as string) ?? ""} /> },
+      // Регион — глобальный каталог geo: ссылка (правило 2), запрос без
+      // `project_id`.
+      {
+        header: "Регион",
+        path: "region_id",
+        render: (row) => <RefNameLink specId="regions" refId={row.region_id as string | undefined} maxChars={28} />,
+      },
+      {
+        header: "Источник",
+        path: "source_snapshot_id",
+        render: (row) => {
+          const snap = row.source_snapshot_id as string | undefined;
+          const vol = row.source_volume_id as string | undefined;
+          if (snap) return <RefNameLink specId="snapshots" refId={snap} maxChars={28} />;
+          if (vol) return <RefNameLink specId="volumes" refId={vol} maxChars={28} />;
+          return <Typography.Text type="secondary">—</Typography.Text>;
+        },
+      },
+      { header: "Размер", path: "size_bytes", render: (row) => <SizeCell value={row.size_bytes} /> },
+      { header: "Статус", path: "status", format: "status" },
+      { header: "Дата создания", path: "created_at", format: "datetime" },
+      {
+        header: "Метки",
+        path: "labels",
+        render: (row) => <LabelsCell labels={row.labels as Record<string, string> | undefined} />,
+      },
+    ],
+    fields: [
+      FIELD_NAME_STORAGE,
+      FIELD_DESCRIPTION,
+      {
+        name: "region_id",
+        label: "Регион",
+        type: "ref",
+        refResource: "regions",
+        required: true,
+        immutable: true,
+        description: "Регион размещения образа. Образ доступен из всего региона; неизменяем после создания.",
+      },
+      {
+        // Дискриминатор источника (form-only): образ создаётся РОВНО из одного —
+        // снимок XOR том. sanitize срезает `_source_kind` и неактивную ветку.
+        name: "_source_kind",
+        label: "Источник образа",
+        type: "enum",
+        required: true,
+        createOnly: true,
+        default: "snapshot",
+        options: [
+          { value: "snapshot", label: "Из снимка" },
+          { value: "volume", label: "Из тома" },
+        ],
+        description: "Образ создаётся РОВНО из одного источника: снимок ИЛИ том (взаимоисключающе).",
+      },
+      {
+        name: "source_snapshot_id",
+        label: "Снимок-источник",
+        type: "ref",
+        refResource: "snapshots",
+        refProjectScoped: true,
+        required: true,
+        createOnly: true,
+        visibleWhen: { field: "_source_kind", equals: "snapshot" },
+        description: "Снимок, из которого создаётся образ. Неизменяем после создания.",
+      },
+      {
+        name: "source_volume_id",
+        label: "Том-источник",
+        type: "ref",
+        refResource: "volumes",
+        refProjectScoped: true,
+        required: true,
+        createOnly: true,
+        visibleWhen: { field: "_source_kind", equals: "volume" },
+        description: "Том, из которого создаётся образ. Неизменяем после создания.",
+      },
+      FIELD_LABELS,
+      FIELD_PROJECT_ID,
+    ],
+    template: ({ projectId }) => ({
+      project_id: projectId ?? "",
+      name: "",
+      description: "",
+      region_id: "",
+      _source_kind: "snapshot",
+      source_snapshot_id: "",
+      source_volume_id: "",
+      labels: {},
+    }),
+    // Ровно один источник по _source_kind; form-only дискриминатор срезаем.
+    sanitize: (obj) => {
+      const out: Record<string, unknown> = { ...obj };
+      const kind = out._source_kind;
+      delete out._source_kind;
+      if (kind === "volume") {
+        delete out.source_snapshot_id;
+        if (!out.source_volume_id) delete out.source_volume_id;
+      } else {
+        delete out.source_volume_id;
+        if (!out.source_snapshot_id) delete out.source_snapshot_id;
+      }
+      return out;
+    },
+    // Клиент-валидация ДО submit: активный источник должен быть выбран.
+    validate: (obj) => {
+      const kind = obj._source_kind;
+      const chosen = kind === "volume" ? obj.source_volume_id : obj.source_snapshot_id;
+      if (!chosen) return "Выберите источник образа (снимок или том).";
+      return null;
+    },
+    emptyState: {
+      title: "Создайте первый образ",
+      body: "Образ — это boot-seed для тома: том с указанным образом материализуется из него. Образ REGIONAL (anycast) и создаётся из снимка или тома проекта.",
+      docs: ["Образы (загрузочные)"],
+    },
   },
 
   // ====== compute: GuestAccessKey ======
@@ -3459,9 +3884,12 @@ export const REGISTRY: Record<string, ResourceSpec> = {
     ops: { create: false, update: false, delete: false },
     emptyState: {
       title: "Каталог типов машин пуст",
+      // Размер назван ЦЕЛИКОМ — включая ускорители: две редакции этого
+      // объяснения разошлись ровно там же, где разошлись колонки, и упоминала
+      // ускорители та, что стояла у форка модуля.
       body:
-        "Тип машины задаёт число процессоров и объём памяти для виртуальных машин. " +
-        "Записи каталога заводит администратор облака; обратитесь к нему, если список пуст.",
+        "Тип машины задаёт размер виртуальной машины — число ядер, объём памяти и графические ускорители. " +
+        "Каталог заводит администратор облака: обратитесь к нему, если ни одного типа не видно.",
       docs: ["Типы машин"],
     },
     columns: [
@@ -3487,6 +3915,13 @@ export const REGISTRY: Record<string, ResourceSpec> = {
         ),
       },
       { header: "GPU", path: "effective_resources.gpus", format: "text" },
+      // Модель ускорителя — то, чем два типа с одинаковым числом GPU отличаются
+      // друг от друга: без неё выбор из каталога делается вслепую. Колонку
+      // показывал ТОЛЬКО форк реестра модуля compute, поэтому одна и та же
+      // запись каталога выглядела по-разному в двух местах продукта (#406).
+      // Держит `resource-registry.machine-type-parity.test.tsx` — он читает
+      // контракт, а не этот перечень.
+      { header: "GPU-модель", path: "effective_resources.gpu_type", format: "code" },
       { header: "Зоны", path: "available_zones", format: "list" },
       { header: "Статус", path: "status", format: "status" },
     ],
@@ -4192,14 +4627,22 @@ export const REGISTRY: Record<string, ResourceSpec> = {
     genitive: "Балансировщика нагрузки",
     serviceTitle: SERVICES.nlb.title,
     scope: "project",
+    // Действий-глаголов у балансировщика нет: `:start`/`:stop` сняты с контракта,
+    // административное включение/выключение выражается полем admin_state.
     ops: { create: true, update: true, delete: true },
     emptyState: {
-      title: "Создайте первый балансировщик",
+      title: "Создайте первый балансировщик нагрузки",
       body:
-        "Балансировщик распределяет входящие соединения по целям и снимает нагрузку с отказавших. " +
-        "Ему понадобятся слушатель на нужном порту и целевая группа с адресатами.",
-      docs: ["Балансировка нагрузки"],
+        "Балансировщик нагрузки принимает трафик на VIP-адрес и разносит его между целями внутри " +
+        "региона Kachō. Дальше к нему добавляют обработчики — они задают протокол и порт приёма.",
+      docs: ["Балансировщики нагрузки"],
     },
+    // Обработчики — связанный дочерний ресурс (within-service FK
+    // `load_balancer_id`): registry-driven вкладка карточки + призыв «создать».
+    // Без записи путь «завёл балансировщик → завёл обработчик» из консоли не
+    // проходится вовсе. Целевые группы одним `filterField` не выражаются (связь
+    // идёт ЧЕРЕЗ обработчик) — их вкладку подаёт расширение карточки.
+    related: [{ childId: "listeners", filterField: "load_balancer_id", label: ENTITIES.listeners.plural }],
     columns: [
       {
         header: "Имя",
@@ -4212,9 +4655,33 @@ export const REGISTRY: Record<string, ResourceSpec> = {
         render: (row) => <CopyableId id={(row.id as string) ?? ""} />,
       },
       {
-        header: "Регион",
-        path: "region_id",
-        render: (row) => <RefNameLink specId="regions" refId={row.region_id as string | undefined} maxChars={28} />,
+        // Якорь размещения рисует единственный `PlacementAnchor` (правило 2
+        // канона консоли): зональный балансировщик ведёт на СВОЮ зону,
+        // региональный — на регион. Оба якоря суть ресурсы каталога geo со
+        // своими карточками, поэтому это ссылка, а не плоский текст.
+        //
+        // Здесь стояла колонка «Регион», и она отвечала не на тот вопрос:
+        // регион у ЛЮБОГО балансировщика есть, а площадку зонального она
+        // назвать не могла. Ветвь ZONAL общего якоря была недостижима by
+        // construction — контракт зоны не нёс вовсе (#1473).
+        header: "Размещение",
+        path: "placement_type",
+        render: (row) => <PlacementAnchor row={row} maxChars={28} />,
+      },
+      // Схема (`type`) — производная проекция размещения, и именно она отвечает
+      // на вопрос «внешний он или внутренний», с которого начинают чтение списка.
+      { header: "Схема", path: "type", format: "code" },
+      {
+        // VIP резолвится в связанный vpc Address; ячейка показывает САМ адрес и
+        // ведёт на его карточку. Без неё список молчит о том, куда идёт трафик.
+        header: "Адрес",
+        path: "v4_address_id",
+        render: (row) => (
+          <NlbVipCell
+            v4AddressId={row.v4_address_id as string | undefined}
+            v6AddressId={row.v6_address_id as string | undefined}
+          />
+        ),
       },
       { header: "Статус", path: "status", format: "status" },
       { header: "Дата создания", path: "created_at", format: "datetime" },
@@ -4254,10 +4721,105 @@ export const REGISTRY: Record<string, ResourceSpec> = {
         type: "ref",
         refResource: "compute-regions",
         required: true,
-        description: "Регион размещения балансировщика.",
+        description: "Регион размещения балансировщика. Неизменяем после создания.",
       },
-      ...vipSourceFields("v4", "IPv4"),
-      ...vipSourceFields("v6", "IPv6"),
+      {
+        // Источник VIP (per-family oneof v4_source/v6_source) — интерактивный
+        // выбор: пофамильно (v4/v6) подсеть/адрес/публичный/не задавать; в правке
+        // источник неизменяем (read-only резолвнутый Address). sanitize собирает
+        // wire-oneof.
+        name: "vip_source",
+        label: "Источник VIP",
+        type: "custom",
+        immutable: true,
+        render: ({ value, onChange, editMode }) => (
+          <NlbVipSourceField value={value} onChange={onChange} editMode={editMode} />
+        ),
+      },
+      {
+        name: "disabled_announce_zones",
+        label: "Зоны без анонса",
+        type: "custom",
+        // Drain только для REGIONAL; mutable через Update. fullWidth:false — label
+        // слева (как обычное поле), multi-select зон справа.
+        fullWidth: false,
+        // Гейт по `placement` — единственному, что форма несёт. `placement_type`
+        // объект формы не содержит (write-reject проекция), поэтому условие по
+        // нему не выполнялось бы никогда и поле было бы недостижимо.
+        visibleWhen: { field: "placement", equals: ["EXTERNAL_REGIONAL", "INTERNAL_REGIONAL"] },
+        description:
+          "Зоны, из которых anycast-VIP не анонсируется (drain). Пусто — анонс из всех здоровых зон региона.",
+        render: ({ value, onChange }) => <NlbDisabledZonesField value={value} onChange={onChange} />,
+      },
+      {
+        name: "session_affinity",
+        label: "Привязка сессий",
+        type: "enum",
+        default: "FIVE_TUPLE",
+        options: [
+          { value: "FIVE_TUPLE", label: "По пяти полям (src ip+port, dst ip+port, proto)" },
+          { value: "CLIENT_IP_ONLY", label: "Только по адресу клиента" },
+        ],
+        description:
+          "Привязка соединений к цели: FIVE_TUPLE — по 5-tuple, CLIENT_IP_ONLY — только по IP клиента. Control-plane намерение (распределение трафика — data-plane).",
+      },
+      {
+        name: "admin_state",
+        label: "Административное состояние",
+        type: "enum",
+        // Значения несут префикс перечисления: у `AdminState` он объявлен в
+        // контракте (`ADMIN_STATE_ENABLED`), в отличие от соседних `Placement`
+        // и `SessionAffinity`, где значения объявлены без него. Короткая форма
+        // отвергается краем — `invalid value for enum field adminState`.
+        default: "ADMIN_STATE_ENABLED",
+        options: [
+          { value: "ADMIN_STATE_ENABLED", label: "ENABLED — принимает трафик" },
+          { value: "ADMIN_STATE_DISABLED", label: "DISABLED — выключен администратором" },
+        ],
+        description:
+          "Желаемое административное состояние. Выключение — не удаление: ресурс и его VIP сохраняются, приём трафика прекращается.",
+      },
+      {
+        name: "cross_zone_enabled",
+        label: "Межзональная балансировка",
+        type: "bool",
+        default: false,
+        // REGIONAL-only: у ZONAL-балансировщика зона одна, и сервис отвечает на
+        // `true` явным InvalidArgument. Поле скрыто по тому же `placement`, что и
+        // зоны без анонса, а sanitize снимает его для ZONAL — чтобы скрытое поле
+        // не уезжало телом, которое сервис отвергнет.
+        visibleWhen: { field: "placement", equals: ["EXTERNAL_REGIONAL", "INTERNAL_REGIONAL"] },
+        description: "Разносить трафик по целям всех зон региона. Применимо только к региональному размещению.",
+      },
+      {
+        name: "security_group_ids",
+        label: "Группы безопасности",
+        type: "array",
+        itemLabel: "SG",
+        // INTERNAL-only: группы безопасности живут в сети, и сервис отвечает на
+        // набор при внешнем размещении явным InvalidArgument.
+        visibleWhen: { field: "placement", equals: ["INTERNAL_REGIONAL", "INTERNAL_ZONAL"] },
+        description:
+          "Опционально. Ограничивают доступ к VIP балансировщика. Только для внутреннего размещения; набор заменяется целиком.",
+        newItem: () => ({ value: "" }),
+        itemFields: [
+          {
+            name: "value",
+            label: "Группа безопасности",
+            type: "ref",
+            refResource: "security-groups",
+            refProjectScoped: true,
+            required: true,
+          },
+        ],
+      },
+      {
+        name: "deletion_protection",
+        label: "Защита от удаления",
+        type: "bool",
+        default: false,
+        description: "Если включена, балансировщик нельзя удалить, пока защита не снята.",
+      },
       FIELD_LABELS,
       FIELD_PROJECT_ID,
     ],
@@ -4267,40 +4829,111 @@ export const REGISTRY: Record<string, ResourceSpec> = {
       description: "",
       region_id: "",
       placement: "EXTERNAL_REGIONAL",
-      // Источник VIP пофамильно. Хотя бы одно семейство обязательно, иначе
-      // resolveVipSources отвергает запрос целиком. IPv4 по умолчанию — «авто»
-      // (для EXTERNAL это платформенный public VIP, ничего выбирать не нужно),
-      // IPv6 выключен.
-      _v4_source: "public",
-      _v6_source: "off",
-      v4_source: { subnet_id: "", address_id: "" },
-      v6_source: { subnet_id: "", address_id: "" },
+      session_affinity: "FIVE_TUPLE",
+      admin_state: "ADMIN_STATE_ENABLED",
+      cross_zone_enabled: false,
+      security_group_ids: [],
+      deletion_protection: false,
+      disabled_announce_zones: [],
+      // vip_source — UI-представление источника VIP per-family (NlbVipSourceField).
+      //
+      // IPv4 — в авто-режиме своей схемы («из подсети» для INTERNAL,
+      // нормализуется в «публичный» для EXTERNAL). IPv6 — ЯВНО не задаётся:
+      // двойной стек включается по решению арендатора, а не по умолчанию.
+      //
+      // Прежде оба семейства стояли в режиме «из подсети». Для INTERNAL это
+      // означало «пусто → семейство опущено», а для EXTERNAL (умолчание
+      // размещения!) режим схлопывался в «публичный», который источник даёт
+      // ВСЕГДА, — то есть внешний балансировщик по умолчанию уезжал с ОБОИМИ
+      // семействами, и отказаться от одного было нечем.
+      vip_source: {
+        _v4_mode: "subnet",
+        v4: { subnet_id: "", address_id: "" },
+        _v6_mode: "off",
+        v6: { subnet_id: "", address_id: "" },
+      },
       labels: {},
     }),
-    // Хотя бы одно семейство должно нести источник — тот же инвариант, что
-    // resolveVipSources энфорсит на сервисе; ловим его до отправки.
+    // Клиент-валидация ДО submit: источник VIP должен быть задан хотя бы для
+    // одного семейства (IPv4/IPv6) — иначе backend отвергнет InvalidArgument.
     validate: (obj) => {
-      const placement = obj.placement as string | undefined;
-      if (!buildVipSourceOrNull(placement, obj, "v4") && !buildVipSourceOrNull(placement, obj, "v6")) {
+      const type = lbTypeFromPlacement(obj.placement as string | undefined);
+      const vs = (obj.vip_source as Record<string, unknown> | undefined) ?? {};
+      const v4 = buildVipSourceOrNull(
+        type,
+        vs._v4_mode as string | undefined,
+        vs.v4 as Record<string, unknown> | undefined,
+      );
+      const v6 = buildVipSourceOrNull(
+        type,
+        vs._v6_mode as string | undefined,
+        vs.v6 as Record<string, unknown> | undefined,
+      );
+      if (!v4 && !v6) {
         return "Укажите источник VIP хотя бы для одного семейства (IPv4 или IPv6).";
       }
       return null;
     },
+    // Собирает per-family oneof v4_source/v6_source из UI-представления
+    // (NlbVipSourceField): семейство эмитится, только если у активного режима
+    // есть значение (buildVipSourceOrNull ≠ null) — пустой addressId/subnetId
+    // никогда не уходит на бэкенд. Ветвь oneof нормализуется под РЕЖИМ, а не под
+    // то, что осталось в виджете: subnet_id валиден только для INTERNAL, public —
+    // только для EXTERNAL (validateSourceTypeMatrix на стороне сервиса), поэтому
+    // подсеть, выбранная в INTERNAL-черновике, после переключения на EXTERNAL
+    // схлопывается в public, а не уезжает отвергаемым телом.
+    //
+    // Поля, чьё применение сервис ограничивает размещением, снимаются здесь же —
+    // скрытое поле иначе уезжает телом, на которое приходит явный отказ:
+    // disabled_announce_zones и cross_zone_enabled — REGIONAL-only,
+    // security_group_ids — INTERNAL-only.
     sanitize: (obj) => {
       const out: Record<string, unknown> = { ...obj };
       const placement = out.placement as string | undefined;
-      const v4 = buildVipSourceOrNull(placement, out, "v4");
-      const v6 = buildVipSourceOrNull(placement, out, "v6");
-      delete out.v4_source;
-      delete out.v6_source;
-      delete out._v4_source;
-      delete out._v6_source;
+      const type = lbTypeFromPlacement(placement);
+
+      const vs = (out.vip_source as Record<string, unknown> | undefined) ?? {};
+      const v4 = buildVipSourceOrNull(
+        type,
+        vs._v4_mode as string | undefined,
+        vs.v4 as Record<string, unknown> | undefined,
+      );
+      const v6 = buildVipSourceOrNull(
+        type,
+        vs._v6_mode as string | undefined,
+        vs.v6 as Record<string, unknown> | undefined,
+      );
       if (v4) out.v4_source = v4;
       if (v6) out.v6_source = v6;
+      delete out.vip_source;
+
+      if (lbPlacementTypeFromPlacement(placement) !== "REGIONAL") {
+        delete out.disabled_announce_zones;
+        delete out.cross_zone_enabled;
+      }
+      // Набор SG на проводе — `repeated string`, а в форме элемент объектом
+      // (`{value}`): перевод один на всё дерево (`flatIdList`). Пустой набор в
+      // тело не уезжает — пустой массив утверждал бы «ни одной группы», тогда
+      // как арендатор чаще просто не дошёл до поля.
+      if (type !== "INTERNAL") {
+        delete out.security_group_ids;
+      } else {
+        const sgs = flatIdList(out.security_group_ids);
+        if (sgs) out.security_group_ids = sgs;
+        else delete out.security_group_ids;
+      }
+
+      return out;
+    },
+    // Обратное преобразование (провод → форма): сервис возвращает список строк,
+    // а `ArrayField` держит элемент объектом. Без него в правке список групп
+    // приезжает строками и `RefSelect` не показывает ни одного имени.
+    hydrate: (obj) => {
+      const out: Record<string, unknown> = { ...obj };
+      hydrateStringListFields(out, ["security_group_ids"]);
       return out;
     },
   },
-
   listeners: {
     id: "listeners",
     route: "listeners",
@@ -4313,11 +4946,11 @@ export const REGISTRY: Record<string, ResourceSpec> = {
     scope: "project",
     ops: { create: true, update: true, delete: true },
     emptyState: {
-      title: "Создайте первый слушатель",
+      title: "Создайте первый обработчик",
       body:
-        "Слушатель — порт и протокол, на которых балансировщик принимает соединения. " +
-        "Каждый слушатель направляет трафик в свою целевую группу, поэтому их заводят по числу служб.",
-      docs: ["Слушатели балансировщика"],
+        "Обработчик — точка приёма трафика балансировщика: протокол и порт, на которых он слушает. " +
+        "Обработчик указывает целевую группу, и с него начинается путь запроса к машинам.",
+      docs: ["Обработчики"],
     },
     columns: [
       {
@@ -4339,6 +4972,9 @@ export const REGISTRY: Record<string, ResourceSpec> = {
       },
       { header: "Протокол", path: "protocol", format: "code" },
       { header: "Порт", path: "port", format: "text" },
+      // `resolved_backend_port` — эхо порта привязанной группы целей. Без него
+      // список говорит, КУДА трафик приходит, и молчит о том, куда он уходит.
+      { header: "Порт на цели", path: "resolved_backend_port", format: "text" },
       { header: "Статус", path: "status", format: "status" },
       { header: "Дата создания", path: "created_at", format: "datetime" },
     ],
@@ -4350,9 +4986,11 @@ export const REGISTRY: Record<string, ResourceSpec> = {
         // Create-only: UpdateListenerRequest его не несёт.
         immutable: true,
         label: "Балансировщик",
-        type: "string",
+        type: "ref",
+        refResource: "load-balancers",
+        refProjectScoped: true,
         required: true,
-        description: "Балансировщик, которому принадлежит слушатель. Неизменяем после создания.",
+        description: "Балансировщик, которому принадлежит обработчик. Неизменяем после создания.",
       },
       {
         name: "protocol",
@@ -4374,7 +5012,19 @@ export const REGISTRY: Record<string, ResourceSpec> = {
         label: "Порт",
         type: "int",
         required: true,
-        description: "Внешний порт (1..65535). Неизменяем после создания.",
+        min: 1,
+        max: 65535,
+        description: "Порт, на котором обработчик принимает входящий трафик (1..65535). Неизменяем после создания.",
+      },
+      {
+        name: "default_target_group_id",
+        label: "Целевая группа по умолчанию",
+        type: "ref",
+        refResource: "target-groups",
+        refProjectScoped: true,
+        required: false,
+        description:
+          "Целевая группа, принимающая трафик. Привязка живёт ЗДЕСЬ: у балансировщика собственной привязки к группе нет.",
       },
       FIELD_LABELS,
     ],
@@ -4383,6 +5033,9 @@ export const REGISTRY: Record<string, ResourceSpec> = {
       description: "",
       load_balancer_id: "",
       protocol: "TCP",
+      // Порта на цели здесь нет: он живёт на группе целей и приходит обратно
+      // вычисляемым `resolved_backend_port`.
+      default_target_group_id: "",
       // `port` НЕ дефолтим: 0 вне диапазона [1,65535], который энфорсит
       // LbPort.Validate, поэтому засеянный ноль превращает «оператор не ввёл
       // порт» в тело, на которое сервис отвечает «port must be in range
@@ -4523,6 +5176,238 @@ export const REGISTRY: Record<string, ResourceSpec> = {
         if (Number.isFinite(n)) out["deregistration_delay"] = n;
       }
       return out;
+    },
+  },
+
+  // ====== registry (Container Registry) ======
+  //
+  // Записи перенесены сюда из модульного реестра `registry/src/lib` (#409). До
+  // переноса общий реестр их не нёс, а спеку по идентификатору резолвят ОБЩИЕ
+  // оболочка карточки, подборщик ссылок и `RefNameLink` — поэтому ссылка на
+  // реестр из соседнего раздела вырождалась в плоский идентификатор, а раздел
+  // `/registry/*` был обязан держать и свой реестр, и свою оболочку сразу.
+  //
+  // proto: kacho.cloud.registry.v1. Registry (реестр, tenant-facing) →
+  // Repository (появляется при docker push, read-only) → Tag (тег образа;
+  // единственная мутация — DeleteTag, async).
+
+  registries: {
+    id: "registries",
+    route: "registries",
+    apiPath: "/registry/v1/registries",
+    payloadKey: "registries",
+    singular: ENTITIES.registries.singular,
+    accusative: "реестр",
+    plural: ENTITIES.registries.plural,
+    genitive: "Реестра",
+    serviceTitle: SERVICES.registry.title,
+    scope: "project",
+    ops: { create: true, update: true, delete: true },
+    // Репозитории — дочерний ресурс: появляются при docker push в реестр.
+    // Отдельный registry-driven таб (read-only список, без CTA «Создать»).
+    related: [{ childId: "repositories", filterField: "registry_id", label: "Репозитории" }],
+    columns: [
+      {
+        header: "Имя",
+        path: "name",
+        render: (row) => <CopyableName name={(row.name as string) ?? ""} fallback={row.id as string} />,
+      },
+      {
+        header: "Идентификатор",
+        path: "id",
+        render: (row) => <CopyableId id={(row.id as string) ?? ""} />,
+      },
+      // REG-1 F4: реестр — REGIONAL-anycast, якорь размещения его региона.
+      //
+      // Правило 2 канона консоли: якорь рисует единственный `PlacementAnchor` —
+      // регион есть ресурс каталога geo со своей карточкой, поэтому показывается
+      // ссылкой (иконка типа + имя + переход). Плоский идентификатор, стоявший
+      // здесь, не давал ни имени, ни перехода, при том что соседняя колонка
+      // «Имя» ссылкой уже была.
+      {
+        header: "Размещение",
+        path: "region_id",
+        render: (row) => <PlacementAnchor row={row} maxChars={28} />,
+      },
+      { header: "Статус", path: "status", format: "status" },
+      { header: "Репозиториев", path: "repository_count", format: "text" },
+      { header: "Адрес", path: "endpoint", format: "code" },
+      COL_CREATED,
+      {
+        header: "Метки",
+        path: "labels",
+        render: (row) => <LabelsCell labels={row.labels as Record<string, string> | undefined} />,
+      },
+    ],
+    fields: [
+      FIELD_NAME_REGISTRY,
+      FIELD_DESCRIPTION,
+      // REG-1 F4: region_id — required + immutable, cross-service ref → geo.Region
+      // (REGIONAL-anycast placement, peer-validate fail-closed). Смена региона
+      // сломала бы storage-locality блобов → immutable после Create.
+      {
+        name: "region_id",
+        label: "Регион",
+        type: "ref",
+        refResource: "regions",
+        required: true,
+        immutable: true,
+        description: "Регион размещения реестра. Реестр доступен из всего региона; неизменяем после создания.",
+      },
+      // REG-1 F5: default_repository_visibility — видимость по умолчанию для
+      // новых репозиториев реестра. PUBLIC требует прав администратора реестра
+      // (проверяется на сервере: any-path-to-PUBLIC admin-gate).
+      {
+        name: "default_repository_visibility",
+        label: "Видимость репозиториев по умолчанию",
+        type: "enum",
+        // CreateRegistryRequest этого поля не несёт (только Update, тег 6) —
+        // выбранное при создании PUBLIC край выбрасывал, и реестр получался
+        // PRIVATE с успешным тостом.
+        updateOnly: true,
+        default: "PRIVATE",
+        options: [
+          { value: "PRIVATE", label: "PRIVATE — приватные (доступ по правам)" },
+          { value: "PUBLIC", label: "PUBLIC — публичные (anonymous pull; требует прав администратора)" },
+        ],
+        description:
+          "Видимость, наследуемая новыми репозиториями при создании. Переключение на PUBLIC требует прав администратора реестра.",
+      },
+      FIELD_LABELS,
+      FIELD_PROJECT_ID,
+    ],
+    template: ({ projectId }) => ({
+      project_id: projectId ?? "",
+      name: "",
+      description: "",
+      region_id: "",
+      labels: {},
+    }),
+    emptyState: {
+      title: "Создайте первый реестр",
+      body: "Реестр хранит контейнерные образы проекта. После создания выполните docker login к endpoint реестра и docker push — репозитории появятся автоматически.",
+      docs: ["Реестры контейнеров", "Публикация образов (docker login / push)"],
+    },
+  },
+
+  // ====== repository (OCI-репозиторий) ======
+  // Репозиторий — read-only: репозитории НЕ создаются через API, они
+  // материализуются при первом docker push в реестр. Единственный вход —
+  // ListRepositories(registryId) (path-scoped под реестром). Мутаций нет.
+  // Tenant-facing термин — «репозиторий» (id/route/apiPath/payloadKey =
+  // repositories по OCI/REST-контракту).
+
+  repositories: {
+    id: "repositories",
+    route: "repositories",
+    // registryId подставляется из родителя (реестра); прямой fetch —
+    // registriesApi.listRepositories(registryId) (см. registry/src/api/resources.ts).
+    apiPath: "/registry/v1/registries/{registryId}/repositories",
+    payloadKey: "repositories",
+    singular: ENTITIES.repositories.singular,
+    accusative: "репозиторий",
+    plural: ENTITIES.repositories.plural,
+    genitive: "Репозитория",
+    serviceTitle: SERVICES.registry.title,
+    scope: "project",
+    // Read-only: репозиторий появляется через docker push, а не через UI.
+    ops: { create: false, update: false, delete: false },
+    // Теги — дочерний ресурс репозитория (ListTags(registryId, repository)).
+    related: [{ childId: "tags", filterField: ["registry_id", "repository"], label: "Теги" }],
+    // Facet-фильтр по типу артефакта: отделить docker-образы от helm-чартов.
+    // Фильтруем по массиву artifact_types (включение) — смешанный репозиторий
+    // (docker + helm) попадает в обе категории. Значения — enum-имена проекции.
+    facet: {
+      path: "artifact_types",
+      label: "Тип",
+      options: [
+        { value: "ARTIFACT_TYPE_CONTAINER_IMAGE", label: "Docker-образы" },
+        { value: "ARTIFACT_TYPE_HELM_CHART", label: "Helm-чарты" },
+        { value: "ARTIFACT_TYPE_OTHER", label: "Иные" },
+      ],
+    },
+    // Репозитории пагинируются на handler-слое (next_page_token) — грузим ВСЕ
+    // страницы, чтобы facet видел полный набор (helm-чарт со страницы 2+ не пропал).
+    loadAllPages: true,
+    columns: [
+      {
+        header: "Имя",
+        path: "name",
+        render: (row) => <CopyableName name={(row.name as string) ?? ""} fallback={row.name as string} />,
+      },
+      // Тип(ы) артефакта — цветные иконки (docker + helm рядом для смешанного
+      // репозитория); читаем массив artifact_types, fallback — primary artifact_type.
+      {
+        header: "Тип",
+        path: "artifact_types",
+        render: (row) => <ArtifactTypesTag value={row.artifact_types ?? row.artifact_type} />,
+      },
+      // REG-1 F7: класс исчезаемости (DURABLE survives-empty / EPHEMERAL push-materialized).
+      {
+        header: "Класс",
+        path: "lifecycle",
+        render: (row) => <RepositoryLifecycleTag value={row.lifecycle} />,
+      },
+      // REG-1 F5: видимость репозитория (PRIVATE / PUBLIC anonymous-pull).
+      { header: "Видимость", path: "visibility", render: (row) => <VisibilityTag value={row.visibility} /> },
+      { header: "Тегов", path: "tag_count", format: "text" },
+      // size_bytes — агрегат по репозиторию (int64 строкой) → человекочитаемо;
+      // 0/пусто → «—» (никогда «0 B»).
+      { header: "Размер", path: "size_bytes", render: (row) => <SizeCell value={row.size_bytes} /> },
+      // updated_at — время последнего push (last pushed) в репозиторий.
+      { header: "Обновлён", path: "updated_at", format: "datetime" },
+    ],
+    // Read-only ресурс — form-schema нет.
+    template: () => ({}),
+    emptyState: {
+      title: "Репозитории появляются автоматически",
+      body: "Репозиторий появляется при первом docker push в этот реестр. Пустой реестр не содержит репозиториев — выполните push, чтобы репозиторий появился здесь.",
+      docs: ["Публикация образов (docker login / push)"],
+    },
+  },
+
+  // ====== tag ======
+  // Tag — версия образа (тег/манифест). Read-в основном; единственная мутация —
+  // DeleteTag (async Operation). Создание/обновление тегов — через docker push,
+  // не через UI.
+
+  tags: {
+    id: "tags",
+    route: "tags",
+    // registryId + repository подставляются из родителей; прямой fetch —
+    // registriesApi.listTags(registryId, repository) (см. registry/src/api/resources.ts).
+    apiPath: "/registry/v1/registries/{registryId}/repositories/{repository}/tags",
+    payloadKey: "tags",
+    singular: ENTITIES.tags.singular,
+    accusative: "тег",
+    plural: ENTITIES.tags.plural,
+    genitive: "Тега",
+    serviceTitle: SERVICES.registry.title,
+    scope: "project",
+    // DeleteTag — единственная мутация (create/update нет: теги пишет docker push).
+    ops: { create: false, update: false, delete: true },
+    columns: [
+      { header: "Тег", path: "tag", format: "text" },
+      { header: "Дайджест", path: "digest", format: "code" },
+      // Размер тега — тот же `size_bytes` того же домена, что у репозитория, и
+      // потому тот же вид (правило 3 канона консоли, #1509). До переноса тег
+      // показывал сырой `int64`, а соседний репозиторий — человекочитаемо;
+      // перенос сохранил обе формы ДОСЛОВНО, чтобы остаться проверяемым
+      // сравнением, и различие чинится здесь, своим заходом. Держит проба
+      // `resource-registry.size-parity.test.tsx`: она сверяет ТЕКСТ ячейки
+      // обеих спек, а не имя компонента.
+      { header: "Размер", path: "size_bytes", render: (row) => <SizeCell value={row.size_bytes} /> },
+      { header: "Тип содержимого", path: "media_type", format: "text" },
+      COL_CREATED,
+    ],
+    // Мутаций create/update нет — form-schema не требуется.
+    template: () => ({}),
+    emptyState: {
+      title: "Теги появляются после docker push",
+      body:
+        "Тег — версия образа в репозитории: имя, за которым стоит манифест и его дайджест. " +
+        "В консоли теги не создаются — выполните docker push в этот репозиторий, и тег появится в списке.",
+      docs: ["Публикация образов (docker login / push)"],
     },
   },
 };

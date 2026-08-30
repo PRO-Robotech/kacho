@@ -152,6 +152,8 @@ export const ENTITIES = {
   "target-groups": { singular: "Целевая группа", plural: "Целевые группы", gender: "f" },
   // registry
   registries: { singular: "Реестр", plural: "Реестры", gender: "m" },
+  repositories: { singular: "Репозиторий", plural: "Репозитории", gender: "m" },
+  tags: { singular: "Тег", plural: "Теги", gender: "m" },
   // geo
   regions: { singular: "Регион", plural: "Регионы", gender: "m" },
   zones: { singular: "Зона", plural: "Зоны", gender: "f" },

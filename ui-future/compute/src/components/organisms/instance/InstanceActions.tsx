@@ -7,7 +7,6 @@ import { useMutation } from "@tanstack/react-query";
 import { Button, Space } from "antd";
 import { CaretRightOutlined, PoweroffOutlined, ReloadOutlined } from "@ant-design/icons";
 import { instancesApi } from "@/api/resources";
-import { extractOperationId } from "@/components/molecules/OperationDialog";
 import { OperationToastWatcher } from "@/components/molecules/OperationToastWatcher";
 import { useInvalidateResourceList } from "@/lib/use-operation";
 import { toast } from "@/lib/toast";
@@ -15,6 +14,7 @@ import { toast } from "@/lib/toast";
 // вторым именем машины в продукте (везде остальное — «Виртуальная машина»).
 import { ENTITIES } from "@shared/lib/entity-names";
 import { errorText } from "@shared/lib/error-presentation";
+import { resolveMutationResponse } from "@shared/lib/operation-outcome";
 import { REGISTRY } from "@/lib/resource-registry";
 
 // Подпись операции склоняется — «Запуск виртуальной машины», а не «Запуск
@@ -23,6 +23,13 @@ import { REGISTRY } from "@/lib/resource-registry";
 // инстанса»: ВТОРОЕ имя того же предмета, при том что шапка этого же файла
 // объявляет запрет на него и импортирует ради него единый источник имён.
 const VM_GENITIVE = (REGISTRY["compute-instances"]?.genitive ?? ENTITIES.instances.singular).toLowerCase();
+
+// Отвечают ли мутации ресурса операцией — свойство РЕСУРСА, и объявляет его
+// спека, а не это место: тот же вопрос задаёт меню действий строки, и второй
+// ответ на него разошёлся бы с первым молча. Умолчание — «отвечают»: контракт
+// платформы таков (ban #9), а послабление ставится явно и только там, где
+// сервер честно отдаёт ресурс.
+const EXPECTS_OPERATION = REGISTRY["compute-instances"]?.mutationsReturnOperation !== false;
 
 type Verb = "start" | "stop" | "restart";
 
@@ -42,8 +49,14 @@ export function InstanceActions({
   const mut = useMutation({
     mutationFn: (verb: Verb) => instancesApi[verb](instanceId),
     onSuccess: (resp) => {
-      const id = extractOperationId(resp);
-      if (id) setOpId(id);
+      // Разбор ОБЩИЙ, а не свой ключ. Свой отвечал `string | null`, и ветка
+      // «операции нет» молча читалась как успех: список обновлялся, оператор
+      // уходил в уверенности, что машина запущена, — при том что подтвердить
+      // выполнение было нечем. Общий разбор отличает третий исход и называет
+      // его нарушением контракта.
+      const resolved = resolveMutationResponse(resp, EXPECTS_OPERATION);
+      if (resolved.kind === "operation") setOpId(resolved.opId);
+      else if (resolved.kind === "violation") toast.error(`${ENTITIES.instances.singular}: ${resolved.message}`);
       else invalidate("compute-instances", projectId);
     },
     onError: (e) => toast.error(`${ENTITIES.instances.singular}: ${errorText(e)}`),

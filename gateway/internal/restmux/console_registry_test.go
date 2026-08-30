@@ -29,9 +29,21 @@ package restmux
 // молча ничего не проверил. Разбор же целиком статический и работает на голом
 // дереве.
 //
+// В каких ФОРМАХ реестр записан. Их две, и обе законны. Первая — файл с
+// объявлением `REGISTRY` на верхнем уровне. Вторая — ПРОЕКЦИЯ: домен, чьи спеки
+// переехали в общий реестр, держит не копию, а ре-экспорт модуля целиком, и
+// своей константы у него нет by construction. Проекция из обхода НЕ выводится:
+// она обязана вести к реестру, который сканер читает как реестр (проверяет
+// TestConsoleProjectionMustLeadToAScannedRegistry), — иначе домен остался бы
+// непроверенным, а гейт зелёным. Файл, не являющийся ни тем, ни другим, ломает
+// разбор, как и прежде.
+//
 // Чем этот разбор НЕ может тихо промолчать (это его главное свойство):
 //   - файлы ищутся ОБХОДОМ дерева по имени, а не списком путей — новый remote
 //     попадает в область сам;
+//   - перепись печатается ПО ФОРМАМ, а не суммой: пять проекций и ни одного
+//     объявления иначе читались бы как «прочитано пять реестров» при нуле
+//     прочитанных спек;
 //   - число разобранных ресурсов сверяется с НЕЗАВИСИМЫМ подсчётом по сырому
 //     тексту, число разобранных полей — тоже; расхождение роняет гейт;
 //   - конструкция, которую разбор не понимает (поле-ссылка на неизвестную
@@ -131,6 +143,19 @@ type consoleSpec struct {
 type consoleParse struct {
 	File  string
 	Specs []consoleSpec
+	// Projection — спецификатор модуля, чей реестр этот файл ПРОЕЦИРУЕТ.
+	//
+	// ЗАЧЕМ ОТДЕЛЬНЫЙ ВИД. Реестр записывается в дереве ДВУМЯ формами, и вторая
+	// появилась вместе со сведением форка: домен, чьи спеки переехали в общий
+	// реестр, держит не копию, а ре-экспорт модуля целиком. Своей константы у
+	// такого файла нет by construction.
+	//
+	// Отдельным полем, а не молчаливым нулём спек: «проекция» и «реестр, из
+	// которого ничего не извлеклось» — разные состояния, и различать их обязан
+	// тот, кто печатает перепись. Пустая строка означает собственный реестр.
+	Projection string
+	// ProjectionLine — строка ре-экспорта; нужна находке, чтобы называть место.
+	ProjectionLine int
 	// FieldDecls — сколько объявлений поля формы разбор увидел ВСЕГО (включая
 	// объявленные константой и не использованные ни одним ресурсом). Сверяется с
 	// независимым подсчётом по сырому тексту.
@@ -254,7 +279,15 @@ func parseConsoleRegistry(file, src string, ext consoleExterns) (consoleParse, e
 
 	registry, ok := consts["REGISTRY"]
 	if !ok {
-		return out, fmt.Errorf("%s: no top-level `REGISTRY` const: the file is a resource registry or it is not, and a scanner that shrugs here checks nothing", file)
+		// Вторая законная форма: файл ничего не объявляет, а ПРОЕЦИРУЕТ реестр
+		// другого модуля. Проверяется ПОСЛЕ разбора констант намеренно: файл,
+		// который и объявляет, и проецирует, остаётся отказом — какой из двух
+		// реестров он тогда представляет, не решал никто.
+		if module, line, isProjection := consoleRegistryProjection(src); isProjection {
+			out.Projection, out.ProjectionLine = module, line
+			return out, nil
+		}
+		return out, fmt.Errorf("%s: neither a top-level `REGISTRY` const nor a whole-module re-export of one (`export * from \"…\";` and nothing else): the file declares a resource registry, projects one, or is neither — and a scanner that shrugs here checks nothing", file)
 	}
 	if registry.kind != jsObject {
 		return out, fmt.Errorf("%s:%d: `REGISTRY` is %s, expected an object literal", file, registry.line, registry.kind)
@@ -303,6 +336,62 @@ func parseConsoleRegistry(file, src string, ext consoleExterns) (consoleParse, e
 		return out, fmt.Errorf("%s: `REGISTRY` declares %d resources, extraction produced %d — extraction is dropping entries the parser already read", file, len(registry.obj), len(out.Specs))
 	}
 	return out, nil
+}
+
+// consoleRegistryReexport — единственная форма проекции, которую сканер признаёт:
+// ре-экспорт модуля ЦЕЛИКОМ.
+//
+// Форма НАМЕРЕННО узкая, по той же причине, что и у ссылки на общую запись ниже.
+// Ре-экспорт поимённый (`export { REGISTRY } from …`) сюда не подходит: он
+// объявляет, ЧТО именно взято, и следующая правка вправе взять не всё — тогда
+// «проекция» перестанет означать «то же самое», а сканер об этом не узнает.
+var consoleRegistryReexport = regexp.MustCompile(`^export\s+\*\s+from\s+"([^"]+)"\s*;?`)
+
+// consoleRegistryProjection — файл, чей ЕДИНСТВЕННЫЙ оператор есть ре-экспорт
+// реестра другого модуля.
+//
+// «Единственный» здесь несущее слово, а не придирка: файл, который проецирует
+// общий реестр И объявляет что-то своё, представляет два реестра сразу, и какой
+// из них видит потребитель — вопрос, который никто не решал. Такой файл остаётся
+// громким отказом, как и файл, не являющийся ни тем, ни другим.
+func consoleRegistryProjection(text string) (module string, line int, ok bool) {
+	src := newJSSource(text)
+	start := jsSkipTrivia(text, 0)
+	m := consoleRegistryReexport.FindStringSubmatchIndex(text[start:])
+	if m == nil {
+		return "", 0, false
+	}
+	if rest := jsSkipTrivia(text, start+m[1]); rest != len(text) {
+		return "", 0, false
+	}
+	return text[start+m[2] : start+m[3]], src.line(start), true
+}
+
+// consoleRegistryForms — разбивка ОСМОТРЕННЫХ реестров по форме записи.
+//
+// Одно число («реестров N») скрывает ровно тот случай, ради которого сканер
+// заведён: пять проекций и ни одного объявления читаются как «пять реестров
+// прочитано», хотя не прочитана ни одна спека. Поэтому перепись печатает обе
+// величины, а не сумму.
+type consoleRegistryForms struct {
+	// Declaring — файлы с собственным объявлением `REGISTRY`.
+	Declaring int
+	// Projections — файлы, проецирующие реестр другого модуля.
+	Projections int
+}
+
+// add учитывает один разобранный файл.
+func (f *consoleRegistryForms) add(p consoleParse) {
+	if p.Projection != "" {
+		f.Projections++
+		return
+	}
+	f.Declaring++
+}
+
+func (f consoleRegistryForms) String() string {
+	return fmt.Sprintf("реестров осмотрено %d, из них объявляют константу %d, проекций общего %d",
+		f.Declaring+f.Projections, f.Declaring, f.Projections)
 }
 
 // sharedRegistryRefPattern — единственная форма ссылки, которую сканер признаёт.

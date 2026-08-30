@@ -41,7 +41,9 @@ CASES.append(Case(
              test_script=[
                  *assert_status(400),
                  *assert_grpc_code(3, "INVALID_ARGUMENT"),
-                 "pm.test('message: invalid operation id', () => pm.expect(String(pm.response.json().message).toLowerCase()).to.include('invalid operation id'));",
+                 "pm.test('сообщение дословно равно тексту края', () => "
+                 "  pm.expect(pm.response.json().message).to.eql("
+                 "'invalid operation id \"garbage-not-an-op-id\"'));",
              ]),
     ],
 ))

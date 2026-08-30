@@ -22,7 +22,7 @@ import { Button, Input, Spin, Tag, Tooltip } from "antd";
 import { DeleteOutlined, LoadingOutlined, LockOutlined, PlusOutlined } from "@ant-design/icons";
 import { api } from "@shared/api/client";
 import { OperationToastWatcher } from "@shared/components/molecules/OperationToastWatcher";
-import { extractOperationId } from "@shared/components/molecules/OperationDialog";
+import { resolveMutationResponse } from "@shared/lib/operation-outcome";
 import { toast } from "@shared/lib/toast";
 import { errorText } from "@shared/lib/error-presentation";
 import {
@@ -102,6 +102,14 @@ export interface CidrTableSectionProps {
   primary?: string;
   /** Подпись у замка основного блока. */
   primaryHint?: string;
+  /** Отвечают ли глаголы этого набора `Operation`. Объявляет ВЛАДЕЛЕЦ ресурса
+   *  (`spec.mutationsReturnOperation`) — по той же причине, что имена полей и
+   *  путь глагола выше: у пула адресов ответ синхронный, у сети и подсети —
+   *  операция, и общий вид этого за них не решает. Обязателен: умолчание
+   *  здесь означало бы либо молчаливый успех на ответе без операции (то, чем
+   *  этот тип и был плох), либо ложный отказ там, где ответ синхронный
+   *  законно. */
+  expectOperation: boolean;
 }
 
 export function CidrTableSection({
@@ -118,6 +126,7 @@ export function CidrTableSection({
   opNoun,
   errNoun,
   emptyText,
+  expectOperation,
   primary,
   primaryHint,
 }: CidrTableSectionProps) {
@@ -155,11 +164,19 @@ export function CidrTableSection({
     mutationFn: (params: { verb: "add" | "remove"; cidr: string }) =>
       api.action(actionPath(params.verb), { ...extraBody, [field]: [params.cidr] }),
     onSuccess: (resp, vars) => {
-      const id = extractOperationId(resp);
-      if (id) {
+      // Исходов ТРИ. Ответ без операции у ресурса, который её объявил, —
+      // нарушение контракта: подтверждать выполнение нечем, и молчаливое
+      // обновление набора показало бы блок, которого край мог не принять.
+      // Отказ идёт той же строкой, что и отказ края: он относится к набору, а
+      // не к вводу.
+      const resolved = resolveMutationResponse(resp, expectOperation);
+      if (resolved.kind === "operation") {
         setOpTitle(`${vars.verb === "add" ? "Добавление" : "Удаление"} ${family} ${opNoun} ${vars.cidr}`);
-        setOpId(id);
+        setOpId(resolved.opId);
         setPendingCidr(vars.cidr);
+      } else if (resolved.kind === "violation") {
+        toast.error(`${family} ${errNoun} ${vars.verb === "add" ? "добавление" : "удаление"}: ${resolved.message}`);
+        setPendingCidr(null);
       } else {
         // Широкий prefix-инвалидейт: матчит и карточку (shell-detail), и список
         // — узкие ключи не совпадали с ключом ResourceShell, и карточка

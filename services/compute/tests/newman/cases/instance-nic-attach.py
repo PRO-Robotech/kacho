@@ -284,7 +284,7 @@ CASES.append(Case(
                  # не дошли. Какой именно код здесь контрактный, снят со стенда пробой,
                  # а не угадан — см. RESULTS.md.
                  "pm.test('код — отказ ВЛАДЕЛЬЦА, не транспорт (никогда 14/UNAVAILABLE)', () => { pm.expect(j.error.code, JSON.stringify(j)).to.not.eql(14); pm.expect(j.error.code, JSON.stringify(j)).to.eql(5); });",
-                 "pm.test('тон сообщения — контракт отсутствия у владельца', () => pm.expect((j.error.message||'').toLowerCase()).to.include('not found'));",
+                 "pm.test('тон сообщения — контракт отсутствия у владельца', () => pm.expect(j.error.message||'', JSON.stringify(j)).to.eql('Network interface " + _ABSENT_NIC + " not found'));",
                  "pm.test('сообщение называет запрошенный идентификатор', () => pm.expect(j.error.message||'').to.include('" + _ABSENT_NIC + "'));",
              ]),
         Step(name="cleanup-inst-abs", method="DELETE", path=INSTANCES + "/{{instanceId}}",
@@ -380,7 +380,9 @@ CASES.append(Case(
              test_script=[*assert_status(200), *assert_operation_envelope(),
                           *save_from_response("j.id", "opId")]),
         poll_operation_until_done(),
-        assert_op_error(9, "FAILED_PRECONDITION", msg_substr="Instance is not running or stopped"),
+        # Тон утверждается ДОСЛОВНО: `msg_substr` приводит обе стороны к нижнему
+        # регистру, и расхождение по регистру под ним покраснеть не может.
+        assert_op_error(9, "FAILED_PRECONDITION", msg_regex="^Instance is not running or stopped$"),
         *_cleanup("gate"),
     ],
 ))

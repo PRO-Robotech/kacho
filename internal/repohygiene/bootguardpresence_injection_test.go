@@ -1391,3 +1391,174 @@ func TestRefusalReachRedWhenTheProviderIsNeverCalled(t *testing.T) {
 		t.Fatalf("вызовов осмотрено %d там, где их нет", reach.callersSeen)
 	}
 }
+
+// ── фикстуры ТРЕТЬЕГО состояния оси провязки: изъятие с причиной ───────────
+//
+// ЗАЧЕМ ОНО ВООБЩЕ ЕСТЬ. Двух состояний («выведено из настройки» / «подставлена
+// константа») хватало ровно до компонента, которому ось НЕ АДРЕСОВАНА: у края
+// нет своей базы и нет входящей переданной личности, ручек этих осей он не
+// объявляет, и выводить значение ему неоткуда. Двухсостоянийное чтение
+// оставляло ему один исход — правдоподобную константу, то есть ровно ту
+// подделку, которую ось и ловит.
+//
+// ЧЕМ ЭТО НЕ ПОСЛАБЛЕНИЕ. Изъятие ИСТЕКАЕТ САМО: ось объявлена неприменимой, а
+// ручка этой оси компонентом ОБЪЯВЛЕНА — находка. Обе стороны доказываются
+// здесь порознь, и различаются они РОВНО ОДНИМ: наличием ручки. Инъекция
+// поэтому ломает только проверяемое — вторая сторона фикстуры остаётся законной
+// целиком (`testing.md` §«Гейт на класс», п.2в).
+
+// injWithdrawnTmpl — та же фикстура, но набор ручек задаётся параметром: первый
+// `%s` — объявление ручек, второй — тело посадочных полей.
+const injWithdrawnTmpl = `package main
+
+import (
+	"github.com/PRO-Robotech/kacho/pkg/grpcsrv"
+	"github.com/PRO-Robotech/kacho/pkg/servicecontract"
+)
+
+type Config struct {
+	AuthMode string ` + "`envconfig:\"KACHO_DEMO_AUTH_MODE\"`" + `
+%s
+	OptIn    bool   ` + "`envconfig:\"KACHO_DEMO_AUTHZ_TRUST_ANY_FORWARDER\"`" + `
+}
+
+func (c Config) TrustedForwarders() grpcsrv.TrustedForwarders { return grpcsrv.TrustedForwarders{} }
+
+func describe(cfg Config) (servicecontract.Descriptor, error) {
+	mode, err := servicecontract.ParseMode(cfg.AuthMode)
+	if err != nil {
+		return servicecontract.Descriptor{}, err
+	}
+	return servicecontract.New(servicecontract.Spec{
+		Service: "kacho-demo",
+		Mode:      mode,
+%s
+		Forwarders: cfg.TrustedForwarders(),
+		ForwarderKnobs: servicecontract.ForwarderKnobs{
+			SANs:     "KACHO_DEMO_AUTHZ_TRUSTED_FORWARDER_SANS",
+			TrustAny: "KACHO_DEMO_AUTHZ_TRUST_ANY_FORWARDER",
+			OptIn:    cfg.OptIn,
+		},
+	})
+}
+
+// Вызывающий нужен фикстуре целиком: без него ТРЕТЬЯ ось гейта (отказ доезжает
+// до остановки) краснела бы своим предметом, и обе стороны инъекции ниже
+// покраснели бы по причине, к изъятию оси отношения не имеющей.
+func main() {
+	desc, err := describe(Config{})
+	if err != nil {
+		return
+	}
+	_ = desc
+}
+`
+
+const (
+	// injDBKnob — ручка шифрования до собственной базы. ЕДИНСТВЕННОЕ, чем
+	// различаются две стороны инъекции ниже.
+	injDBKnob = "\tDBSSLMode string `envconfig:\"KACHO_DEMO_DB_SSLMODE\"`"
+	// injDBWithdrawn — ось объявлена неприменимой с причиной.
+	injDBWithdrawn = "\t\tDBSSLMode: servicecontract.NotApplicable[string](\n" +
+		"\t\t\t\"своей базы этот процесс не держит\"),"
+	// injDBWired — та же ось, выведенная из ручки.
+	injDBWired = "\t\tDBSSLMode: cfg.DBSSLMode,"
+)
+
+func scanWithdrawn(t *testing.T, knobs, body string) postureReach {
+	t.Helper()
+	root := synthCarrierTree(t, map[string]string{
+		"services/demo/cmd/demo/describe.go": fmt.Sprintf(injWithdrawnTmpl, knobs, body),
+	})
+	reach, err := scanPostureReach(root)
+	if err != nil {
+		t.Fatalf("обход синтетического дерева: %v", err)
+	}
+	if reach.accepts["demo"] == "" {
+		t.Fatal("фикстура не принимает дескриптор — инъекция проверяла бы не ту ось")
+	}
+	return reach
+}
+
+// КОНТРОЛЬ 1 — ручка есть, ось из неё выведена: молчат ОБА признака.
+//
+// Стоит первым: пока он красный, обе стороны ниже краснеют по причине, не
+// имеющей отношения к своему предмету.
+func TestWithdrawnAxis_ControlWiredFromItsKnobIsSilent(t *testing.T) {
+	reach := scanWithdrawn(t, injDBKnob, injDBWired)
+	if lits := reach.literalFields["demo"]; len(lits) != 0 {
+		t.Fatalf("исправная провязка объявлена находкой:\n%s", strings.Join(lits, "\n"))
+	}
+	if st := reach.staleWithdrawals["demo"]; len(st) != 0 {
+		t.Fatalf("исправная провязка объявлена истёкшим изъятием:\n%s", strings.Join(st, "\n"))
+	}
+	if reach.fieldsWithdrawn != 0 {
+		t.Fatalf("изъятий насчитано %d там, где их нет", reach.fieldsWithdrawn)
+	}
+}
+
+// ЗАКОННЫЙ БЛИЗНЕЦ — ручки НЕТ, ось изъята с причиной: гейт МОЛЧИТ, а перепись
+// называет изъятие ОТДЕЛЬНОЙ величиной.
+//
+// Отдельная величина здесь несущая: слейся изъятие с провязанными, «мне это не
+// адресовано» стало бы неотличимо от «выведено из настройки», и послабление
+// растворилось бы в числе, которое читают как успех.
+func TestWithdrawnAxis_SilentWhenTheComponentDeclaresNoSuchKnob(t *testing.T) {
+	reach := scanWithdrawn(t, "", injDBWithdrawn)
+	if lits := reach.literalFields["demo"]; len(lits) != 0 {
+		t.Fatalf("изъятие с причиной объявлено подставленной константой — гейт краснел "+
+			"бы на компоненте, которому ось не адресована:\n%s", strings.Join(lits, "\n"))
+	}
+	if st := reach.staleWithdrawals["demo"]; len(st) != 0 {
+		t.Fatalf("изъятие объявлено истёкшим при ОТСУТСТВУЮЩЕЙ ручке:\n%s", strings.Join(st, "\n"))
+	}
+	if reach.fieldsWithdrawn != 1 {
+		t.Fatalf("изъятий насчитано %d, ожидалось 1 — перепись не отличает изъятие "+
+			"от провязки, и число читается как успех", reach.fieldsWithdrawn)
+	}
+	if reach.fieldsSeen != reach.fieldsWired+reach.fieldsWithdrawn {
+		t.Fatalf("перепись не сходится: осмотрено %d, провязано %d, изъято %d",
+			reach.fieldsSeen, reach.fieldsWired, reach.fieldsWithdrawn)
+	}
+}
+
+// САМОИСТЕЧЕНИЕ — ручка ЕСТЬ, а ось объявлена неприменимой: НАХОДКА, и она
+// называет и поле, и ручку.
+//
+// От законного близнеца выше эта сторона отличается РОВНО ОДНОЙ строкой —
+// объявлением ручки. Всё прочее в фикстуре законно, поэтому красное приходит от
+// проверяемого свойства, а не от соседа.
+func TestWithdrawnAxis_RedWhenTheKnobItWithdrawsIsDeclared(t *testing.T) {
+	reach := scanWithdrawn(t, injDBKnob, injDBWithdrawn)
+	st := strings.Join(reach.staleWithdrawals["demo"], "\n")
+	if st == "" {
+		t.Fatal("изъятие ПЕРЕЖИЛО СВОЙ ПРЕДМЕТ и не найдено: ручка объявлена и читается, " +
+			"а до стража не доезжает вовсе — послабление стало слепой зоной, выданной вперёд")
+	}
+	if !strings.Contains(st, "DBSSLMode") {
+		t.Fatalf("находка не называет ось — по ней нечего чинить:\n%s", st)
+	}
+	if !strings.Contains(st, "KACHO_DEMO_DB_SSLMODE") {
+		t.Fatalf("находка не называет РУЧКУ, из-за которой изъятие истекло:\n%s", st)
+	}
+	if reach.fieldsWithdrawn != 0 {
+		t.Fatalf("истёкшее изъятие зачтено в перепись как законное (%d)", reach.fieldsWithdrawn)
+	}
+}
+
+// ВЕРДИКТ ГЕЙТА — истёкшее изъятие обязано доехать до находки целого гейта, а не
+// остаться в поле разбора. Без этой пробы предыдущая доказывала бы свойство
+// СКАНЕРА, о котором вердикт не утверждает ничего.
+func TestWithdrawnAxis_SurfacesInTheGateVerdict(t *testing.T) {
+	reach := scanWithdrawn(t, injDBKnob, injDBWithdrawn)
+	v := adjudicatePostureReachFull(reach, nil)
+	joined := strings.Join(v.findings, "\n")
+	if !strings.Contains(joined, "ИЗЪЯТИЕ ОСИ ПЕРЕЖИЛО СВОЙ ПРЕДМЕТ") {
+		t.Fatalf("вердикт гейта молчит об истёкшем изъятии:\n%s", joined)
+	}
+
+	silent := adjudicatePostureReachFull(scanWithdrawn(t, "", injDBWithdrawn), nil)
+	if len(silent.findings) != 0 {
+		t.Fatalf("вердикт краснеет на законном изъятии:\n%s", strings.Join(silent.findings, "\n"))
+	}
+}
