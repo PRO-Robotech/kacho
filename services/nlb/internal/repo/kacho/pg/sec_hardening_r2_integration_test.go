@@ -55,7 +55,7 @@ func TestMoveProject_BlockedByWiredListener_Atomic(t *testing.T) {
 	w, err := repo.Writer(ctx)
 	require.NoError(t, err)
 	defer w.Abort()
-	_, err = w.LoadBalancers().MoveProject(ctx, string(lb.ID), "prj02OTHER234567890ll")
+	_, _, err = w.LoadBalancers().MoveProject(ctx, string(lb.ID), "prj02OTHER234567890ll")
 	require.Error(t, err)
 	assert.True(t, errors.Is(err, kacho.ErrFailedPrecondition),
 		"wired-listener LB move must be FailedPrecondition, got %v", err)
@@ -82,7 +82,7 @@ func TestMoveProject_Allowed_NoAttach(t *testing.T) {
 	})
 
 	commitWriter(t, repo, func(w kacho.RepositoryWriter) {
-		moved, err := w.LoadBalancers().MoveProject(ctx, string(lb.ID), "prj02MOVEOK234567890l")
+		moved, _, err := w.LoadBalancers().MoveProject(ctx, string(lb.ID), "prj02MOVEOK234567890l")
 		require.NoError(t, err)
 		assert.Equal(t, domain.ProjectID("prj02MOVEOK234567890l"), moved.ProjectID)
 	})
@@ -97,7 +97,7 @@ func TestMoveProject_NotFound(t *testing.T) {
 	w, err := repo.Writer(ctx)
 	require.NoError(t, err)
 	defer w.Abort()
-	_, err = w.LoadBalancers().MoveProject(ctx, "nlbMISSING1234567890", "prj02OTHER234567890ll")
+	_, _, err = w.LoadBalancers().MoveProject(ctx, "nlbMISSING1234567890", "prj02OTHER234567890ll")
 	require.Error(t, err)
 	assert.True(t, errors.Is(err, kacho.ErrNotFound), "missing LB → NotFound, got %v", err)
 }

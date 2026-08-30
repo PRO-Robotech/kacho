@@ -186,17 +186,16 @@ func TestProjectGateBorrowsTheOwnersNotFoundForm(t *testing.T) {
 // изменения спрашивается ЯВНО, а не выводится из бедности нагрузки: вывод из
 // бедности сработал бы и на настоящем сбое разбора, и два разных исхода стали бы
 // неразличимы.
+//
+// Нагрузка здесь НЕСЁТ конверт состояния — то есть проба утверждает отказ на
+// входе, который собрался бы. Бедная нагрузка дала бы тот же зелёный и на
+// сборщике, забывшем спросить род изменения вовсе.
 func TestRemovalCarriesNoState(t *testing.T) {
 	state := subscriptionjournal.Journal().Mapping.State
 	if state == nil {
 		t.Fatal("отображение состояния не назначено — общая форма его требует")
 	}
-	got, absence, err := state(subscription.Row{
-		Kind:    subscriptionjournal.JournalWordVolume,
-		ID:      "vol-0000000000000001",
-		Change:  "DELETED",
-		Payload: []byte(`{"id":"vol-0000000000000001","project_id":"prj-1"}`),
-	})
+	got, absence, err := state(volumeStateRow("DELETED", attachedVolumeBody))
 	if err != nil {
 		t.Fatalf("снятие дало ОШИБКУ разбора (%v): отсутствие состояния у снятия — "+
 			"свойство предмета, а не сбой, и ошибка звала бы чинить несуществующую поломку", err)
@@ -208,59 +207,4 @@ func TestRemovalCarriesNoState(t *testing.T) {
 	if absence != subscription.StateNotProduced {
 		t.Fatalf("причина отсутствия %v, ожидалась StateNotProduced", absence)
 	}
-}
-
-// TestStateAbsenceIsNamedForEveryKindAndChange — состояния нет НИ У ОДНОГО вида и
-// НИ У ОДНОГО рода, и это НАЗВАННОЕ свойство журнала, а не сбой.
-//
-// # Почему по всем видам и родам, а не на одном примере
-//
-// Отсутствие состояния у storage — свойство ЖУРНАЛА (публичная проекция всех трёх
-// видов выводится ЧЕРЕЗ таблицы, и собрать её в триггере значило бы завести вторую
-// реализацию `protoconv` на SQL). Свойство журнала обязано держаться на всём
-// журнале: заведись у одного вида ветка со своим ответом — эта проба покраснеет и
-// потребует назвать причину ЕЙ, а не унаследовать соседнюю.
-//
-// # Почему причина, а не только пустота
-//
-// Пустота без названной причины доезжает клиенту как `REASON_UNSPECIFIED` —
-// «владелец забыл назвать». Действия у клиента разные: на «не производится» он
-// идёт за предметом чтением по идентификатору, на «не удалось собрать» —
-// перечитывает событие. Утверждать одну пустоту значит не утверждать ничего о том,
-// ради чего причина введена.
-func TestStateAbsenceIsNamedForEveryKindAndChange(t *testing.T) {
-	journal := subscriptionjournal.Journal()
-	kinds := journal.Mapping.Kinds
-	changes := journal.Mapping.Changes
-	if len(kinds) == 0 || len(changes) == 0 {
-		t.Fatal("словарь видов или родов пуст — судить не о чем, и зелёное было бы пустым обходом")
-	}
-	state := journal.Mapping.State
-	seen := 0
-	for kind := range kinds {
-		for change := range changes {
-			got, absence, err := state(subscription.Row{
-				Kind:    kind,
-				ID:      "probe",
-				Change:  change,
-				Payload: []byte(`{"id":"probe","project_id":"prj-1"}`),
-			})
-			seen++
-			if err != nil {
-				t.Errorf("вид %q род %q: отсутствие объявлено ОШИБКОЙ (%v); это свойство "+
-					"журнала, а не сбой сборки — следующий читатель чинил бы несуществующую поломку",
-					kind, change, err)
-			}
-			if got != nil {
-				t.Errorf("вид %q род %q: отдано состояние, собранное из строки таблицы. "+
-					"Публичная проекция выводится ЧЕРЕЗ таблицы, и частичная уехала бы "+
-					"подписчику как ПОЛНАЯ", kind, change)
-			}
-			if absence != subscription.StateNotProduced {
-				t.Errorf("вид %q род %q: причина отсутствия %v, ожидалась StateNotProduced — "+
-					"неназванная доезжает клиенту как «владелец забыл»", kind, change, absence)
-			}
-		}
-	}
-	t.Logf("перепись: видов %d · родов %d · пар осмотрено %d", len(kinds), len(changes), seen)
 }

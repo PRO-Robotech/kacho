@@ -386,7 +386,33 @@ func (q *fakeTGWriter) Update(_ context.Context, tg *domain.TargetGroup, _ strin
 	updated.UpdatedAt = time.Now().UTC()
 	q.w.pendingTGs = append(q.w.pendingTGs, &updated)
 	c := updated
+	q.r.fillFromSeed(&c)
 	return &c, nil
+}
+
+// fillFromSeed — раскладывает засеянные цели по ОБОИМ наборам записи, как это
+// делает настоящий путь (`fillTargets` в pg-адаптере).
+//
+// Двойник обязан это делать на путях ЗАПИСИ тоже. Прежде `Update` и
+// `MoveProject` возвращали запись без набора целей — то есть двойник был
+// снисходительнее продукта ровно там, где живёт дефект: событие журнала,
+// собранное из такой записи, объявляет группу БЕЗ ЦЕЛЕЙ, и подписчик читает это
+// как «цели удалены».
+func (r *fakeRepo) fillFromSeed(rec *kachorepo.TargetGroupRecord) {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	m := r.targets[string(rec.ID)]
+	if len(m) == 0 {
+		rec.Targets = nil
+		rec.TargetStates = nil
+		return
+	}
+	rec.Targets = make([]domain.Target, 0, len(m))
+	rec.TargetStates = make([]kachorepo.TargetRecord, 0, len(m))
+	for _, t := range m {
+		rec.Targets = append(rec.Targets, t.Target)
+		rec.TargetStates = append(rec.TargetStates, *t)
+	}
 }
 
 func (q *fakeTGWriter) SetStatusCAS(_ context.Context, id string, expected, newStatus domain.TargetGroupStatus) (*kachorepo.TargetGroupRecord, error) {
@@ -405,6 +431,11 @@ func (q *fakeTGWriter) SetStatusCAS(_ context.Context, id string, expected, newS
 	return &c, nil
 }
 
+// DeleteExpiredDrainingTargets — фаза B слива; в этом двойнике не используется.
+func (q *fakeTGWriter) DeleteExpiredDrainingTargets(context.Context) (int64, []string, error) {
+	return 0, nil, errors.New("not used")
+}
+
 func (q *fakeTGWriter) MoveProject(_ context.Context, id, newProjectID string) (*kachorepo.TargetGroupRecord, error) {
 	q.r.mu.Lock()
 	cur, ok := q.r.tgs[id]
@@ -417,6 +448,7 @@ func (q *fakeTGWriter) MoveProject(_ context.Context, id, newProjectID string) (
 	updated.UpdatedAt = time.Now().UTC()
 	q.w.pendingTGs = append(q.w.pendingTGs, &updated)
 	c := updated
+	q.r.fillFromSeed(&c)
 	return &c, nil
 }
 
@@ -546,8 +578,8 @@ func (fakeLBStub) SetStatusCAS(context.Context, string, domain.LBStatus, domain.
 func (fakeLBStub) MarkDeleting(context.Context, string) (*kachorepo.LoadBalancerRecord, error) {
 	return nil, errors.New("not used")
 }
-func (fakeLBStub) MoveProject(context.Context, string, string) (*kachorepo.LoadBalancerRecord, error) {
-	return nil, errors.New("not used")
+func (fakeLBStub) MoveProject(context.Context, string, string) (*kachorepo.LoadBalancerRecord, []*kachorepo.ListenerRecord, error) {
+	return nil, nil, errors.New("not used")
 }
 func (fakeLBStub) Delete(context.Context, string) error {
 	return errors.New("not used")
@@ -582,8 +614,8 @@ func (fakeListenerStub) SetAllocatedAddress(context.Context, string, string) (*k
 func (fakeListenerStub) SetVIP(context.Context, string, string, string) (*kachorepo.ListenerRecord, error) {
 	return nil, errors.New("not used")
 }
-func (fakeListenerStub) MoveProject(context.Context, string, string) (int64, error) {
-	return 0, nil
+func (fakeListenerStub) MoveProject(context.Context, string, string) ([]*kachorepo.ListenerRecord, error) {
+	return nil, nil
 }
 func (fakeListenerStub) Delete(context.Context, string) error {
 	return errors.New("not used")

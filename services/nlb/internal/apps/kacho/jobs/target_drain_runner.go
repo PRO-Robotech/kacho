@@ -37,56 +37,42 @@ import (
 	"log/slog"
 	"time"
 
-	"github.com/jackc/pgx/v5/pgxpool"
+	kachorepo "github.com/PRO-Robotech/kacho/services/nlb/internal/repo/kacho"
 )
 
-// drainSQL — атомарный DELETE expired DRAINING targets + DISTINCT outbox emit
-// одним statement'ом (CTE). Per-TG expiry: `drain_started_at + interval` берёт
-// `tg.deregistration_delay_seconds` из owning TG.
+// ЗДЕСЬ СТОЯЛ ОДИН ОПЕРАТОР — снятие истёкших целей и строка журнала общим
+// табличным выражением. Его больше нет, и причина не в стиле.
 //
-// Возвращает:
+// Вид `nlb_target_group` объявлен несущим ПОЛНОЕ состояние предмета, а публичная
+// проекция группы строится НЕ из её строки, а из набора целей С СОСТОЯНИЕМ.
+// Собрать такую нагрузку в SQL значило бы завести ВТОРУЮ проекцию ресурса — на
+// другом языке, рядом с той, которой отвечает чтение, — и расходились бы они
+// молча. Прежняя нагрузка этого не делала и потому была честно неполной:
+// `{id, reason}`, без целей, без меток, без якоря проекта.
 //
-//	deleted (bigint) — сколько targets удалено;
-//	tgs     (int4)   — сколько DISTINCT TG получили UPDATED outbox row.
+// Теперь снятие отдаёт ЧТО СНЯЛОСЬ (`DeleteExpiredDrainingTargets`), а строку
+// журнала собирает эта джоба — тем же строителем, что и остальные шесть точек
+// эмиссии вида.
 //
-// Single round-trip → один acquire pool conn, один TX-implicit, минимум
-// latency. JOIN на target_groups — ON DELETE RESTRICT FK уже гарантирует, что
-// tg существует для каждого target.
-const drainSQL = `
-WITH drained AS (
-    DELETE FROM kacho_nlb.targets t
-    USING kacho_nlb.target_groups tg
-    WHERE t.target_group_id = tg.id
-      AND t.status = 'DRAINING'
-      AND t.drain_started_at < now() - make_interval(secs => tg.deregistration_delay_seconds)
-    RETURNING t.target_group_id
-),
-outbox_emitted AS (
-    INSERT INTO kacho_nlb.nlb_outbox
-        (resource_type, resource_id, project_id, action, payload)
-    SELECT DISTINCT
-        'nlb_target_group',
-        d.target_group_id,
-        tg.project_id,
-        'UPDATED',
-        jsonb_build_object(
-            'id', d.target_group_id,
-            'reason', 'drain_complete'
-        )
-    FROM drained d
-    JOIN kacho_nlb.target_groups tg ON tg.id = d.target_group_id
-    RETURNING 1
-)
-SELECT
-    (SELECT count(*) FROM drained)        AS deleted,
-    (SELECT count(*) FROM outbox_emitted) AS tgs
-`
+// ЧТО ПРИ ЭТОМ СОХРАНЕНО, названо явно, потому что стоило миграций:
+//
+//   - АТОМАРНОСТЬ: снятие и эмиссия идут в ОДНОЙ writer-транзакции, как и прежде.
+//     Сорвавшийся проход не оставляет ни снятых строк без события, ни события без
+//     снятия;
+//   - МНОГОРЕПЛИЧНОСТЬ: строки заперты самим `DELETE`, поэтому вторая реплика
+//     снимает ноль строк и эмитит ноль событий; к соседям проход не ходит;
+//   - ОДНА СТРОКА НА ГРУППУ: различные идентификаторы отбирает порт, а не
+//     `DISTINCT` в тексте запроса.
+//
+// ЦЕНА, названная тоже: чтений стало N+1 — по одному на затронутую группу вместо
+// нуля. Плата за это — событие, из которого подписчик узнаёт, ЧТО ИМЕННО у
+// группы теперь, вместо «что-то изменилось, перечитай».
 
 // TargetDrainRunner — фоновый worker, реализующий двухфазный drain.
 // Запускается из cmd/kacho-loadbalancer/main.go параллельно с gRPC-серверами
 // через H-BF/corlib/pkg/parallel.ExecAbstract.
 type TargetDrainRunner struct {
-	pool     *pgxpool.Pool
+	repo     kachorepo.Repository
 	logger   *slog.Logger
 	interval time.Duration
 
@@ -101,12 +87,12 @@ type TargetDrainRunner struct {
 // (рекомендованный default 10s; задаётся через `cfg.Jobs.TargetDrain.Interval`).
 // Если interval <= 0 — используется fallback 10s (defense-in-depth от
 // мисконфига; основная защита — config.Validate).
-func NewTargetDrainRunner(pool *pgxpool.Pool, logger *slog.Logger, interval time.Duration) *TargetDrainRunner {
+func NewTargetDrainRunner(repo kachorepo.Repository, logger *slog.Logger, interval time.Duration) *TargetDrainRunner {
 	if interval <= 0 {
 		interval = 10 * time.Second
 	}
 	return &TargetDrainRunner{
-		pool:     pool,
+		repo:     repo,
 		logger:   logger,
 		interval: interval,
 	}
@@ -167,13 +153,43 @@ func (r *TargetDrainRunner) tick(ctx context.Context) {
 		"deleted", deleted, "tgs", tgs, "took_ms", took.Milliseconds())
 }
 
-// drainOnce — один tick: атомарный DELETE+outbox emit (см. drainSQL).
-// Возвращает (deleted_count, distinct_tg_count, err).
+// drainOnce — один проход: снятие истёкших целей + строка журнала на каждую
+// затронутую группу, ОДНОЙ writer-транзакцией.
+//
+// Возвращает (снято строк, различных групп, ошибка).
 func (r *TargetDrainRunner) drainOnce(ctx context.Context) (int64, int, error) {
-	var deleted int64
-	var tgs int
-	if err := r.pool.QueryRow(ctx, drainSQL).Scan(&deleted, &tgs); err != nil {
+	w, err := r.repo.Writer(ctx)
+	if err != nil {
 		return 0, 0, fmt.Errorf("drain expired targets: %w", err)
 	}
-	return deleted, tgs, nil
+	defer w.Abort()
+
+	deleted, tgIDs, err := w.TargetGroups().DeleteExpiredDrainingTargets(ctx)
+	if err != nil {
+		return 0, 0, fmt.Errorf("drain expired targets: %w", err)
+	}
+	if deleted == 0 {
+		// Снимать было нечего — объявлять тоже. Пустая транзакция закрывается без
+		// фиксации: строки журнала у прохода без предмета не бывает.
+		return 0, 0, nil
+	}
+	for _, tgID := range tgIDs {
+		// Состояние читается В ТОЙ ЖЕ транзакции, ПОСЛЕ снятия: именно снятие и
+		// есть предмет события, и набор целей обязан прийти уже без снятых. Запись,
+		// прочитанная до, показала бы их живыми.
+		state, gerr := w.TargetGroups().Get(ctx, tgID)
+		if gerr != nil {
+			return 0, 0, fmt.Errorf("drain expired targets: read group %s: %w", tgID, gerr)
+		}
+		if eerr := w.Outbox().Emit(ctx,
+			kachorepo.OutboxResourceTargetGroup, tgID, string(state.ProjectID),
+			kachorepo.OutboxActionUpdated, kachorepo.TargetGroupStatePayload(state),
+		); eerr != nil {
+			return 0, 0, fmt.Errorf("drain expired targets: emit for group %s: %w", tgID, eerr)
+		}
+	}
+	if err := w.Commit(); err != nil {
+		return 0, 0, fmt.Errorf("drain expired targets: %w", err)
+	}
+	return deleted, len(tgIDs), nil
 }

@@ -230,7 +230,7 @@ func (u *UpdateTargetGroupUseCase) doUpdate(ctx context.Context, tg domain.Targe
 	}
 	if err := w.Outbox().Emit(ctx,
 		kachorepo.OutboxResourceTargetGroup, string(updated.ID), string(updated.ProjectID),
-		kachorepo.OutboxActionUpdated, tgOutboxPayload(updated),
+		kachorepo.OutboxActionUpdated, kachorepo.TargetGroupStatePayload(updated),
 	); err != nil {
 		return nil, mapDomainErr(err)
 	}

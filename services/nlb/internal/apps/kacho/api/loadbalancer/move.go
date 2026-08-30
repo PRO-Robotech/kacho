@@ -31,7 +31,8 @@ import (
 //     project — Move заблокирован если есть).
 //
 // Worker: Writer-TX → repo.MoveProject (UPDATE LB + cascade UPDATE listeners) +
-// outbox MOVED + FGA-register(dst project) + FGA-unregister(src project) → Commit
+// outbox MOVED/UPDATED балансировщика + outbox MOVED НА КАЖДЫЙ переехавший
+// слушатель + FGA-register(dst project) + FGA-unregister(src project) → Commit
 // (Вариант A: project-rewrite = register new-project tuple + unregister
 // old-project tuple, both in the same writer-tx as MoveProject — no dual-write).
 //
@@ -198,7 +199,7 @@ func (u *MoveLoadBalancerUseCase) doMove(ctx context.Context, id, srcProject, ds
 	}
 	defer w.Abort()
 
-	moved, err := w.LoadBalancers().MoveProject(ctx, id, dstProject)
+	moved, movedListeners, err := w.LoadBalancers().MoveProject(ctx, id, dstProject)
 	if err != nil {
 		return nil, mapDomainErr(err)
 	}
@@ -214,6 +215,32 @@ func (u *MoveLoadBalancerUseCase) doMove(ctx context.Context, id, srcProject, ds
 		kachorepo.OutboxActionUpdated, lbOutboxPayload(moved),
 	); err != nil {
 		return nil, mapDomainErr(err)
+	}
+	// ПЕРЕЕЗД ОБЪЯВЛЯЕТ ТО, ЧТО СДЕЛАЛ — по строке на каждый переехавший слушатель.
+	//
+	// MoveProject каскадом переписывает `project_id` у ВСЕХ слушателей этого
+	// балансировщика. Прежде в журнал уходили только две строки выше, обе своего
+	// вида, — и якорь проекта у чужого вида менялся МОЛЧА. Поток при этом не
+	// замолкал и не отказывал, поэтому отличить «событие не пришло» от «изменений
+	// не было» подписчику было нечем, и слушатель оставался у него в СТАРОМ
+	// проекте бессрочно (#1549).
+	//
+	// Строка несёт ПОЛНОЕ состояние: вид `nlb_listener` объявлен несущим его, и
+	// одна частичная строка сделала бы ложным ВЕСЬ вид. Записи пришли `RETURNING`
+	// того же UPDATE — состояние на момент события, без второго запроса.
+	//
+	// Род — MOVED, и парного UPDATED здесь НЕ шлётся намеренно: подписка сужается
+	// по видам, проекту и идентификаторам, но НЕ по роду изменения, а общий
+	// сервер отдаёт MOVED тем же UPDATED. Пара у балансировщика выше осталась
+	// исторической и никем не читается; воспроизводить её здесь значило бы
+	// удвоить объём журнала на переезде без потребителя.
+	for _, l := range movedListeners {
+		if err := w.Outbox().Emit(ctx,
+			kachorepo.OutboxResourceListener, string(l.ID), string(l.ProjectID),
+			kachorepo.OutboxActionMoved, kachorepo.ListenerStatePayload(l),
+		); err != nil {
+			return nil, mapDomainErr(err)
+		}
 	}
 	// project-rewrite as unregister(src) THEN register(dst) in the SAME tx.
 	//
