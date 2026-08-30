@@ -4767,10 +4767,14 @@ export const REGISTRY: Record<string, ResourceSpec> = {
         name: "admin_state",
         label: "Административное состояние",
         type: "enum",
-        default: "ENABLED",
+        // Значения несут префикс перечисления: у `AdminState` он объявлен в
+        // контракте (`ADMIN_STATE_ENABLED`), в отличие от соседних `Placement`
+        // и `SessionAffinity`, где значения объявлены без него. Короткая форма
+        // отвергается краем — `invalid value for enum field adminState`.
+        default: "ADMIN_STATE_ENABLED",
         options: [
-          { value: "ENABLED", label: "ENABLED — принимает трафик" },
-          { value: "DISABLED", label: "DISABLED — выключен администратором" },
+          { value: "ADMIN_STATE_ENABLED", label: "ENABLED — принимает трафик" },
+          { value: "ADMIN_STATE_DISABLED", label: "DISABLED — выключен администратором" },
         ],
         description:
           "Желаемое административное состояние. Выключение — не удаление: ресурс и его VIP сохраняются, приём трафика прекращается.",
@@ -4826,7 +4830,7 @@ export const REGISTRY: Record<string, ResourceSpec> = {
       region_id: "",
       placement: "EXTERNAL_REGIONAL",
       session_affinity: "FIVE_TUPLE",
-      admin_state: "ENABLED",
+      admin_state: "ADMIN_STATE_ENABLED",
       cross_zone_enabled: false,
       security_group_ids: [],
       deletion_protection: false,

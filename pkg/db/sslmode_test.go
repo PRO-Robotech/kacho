@@ -23,7 +23,7 @@ func TestSSLModeSecureCutsBothWays(t *testing.T) {
 	}
 	// `prefer` и отсутствие значения — plaintext-fallback libpq, а не «наверное
 	// зашифровано»; `allow` — то же самое с другой стороны.
-	for _, mode := range []string{"disable", "allow", "prefer", "", "   ", "requrie", "verify"} {
+	for _, mode := range []string{"disable", "allow", "prefer", "", "   ", "requrie", "verify"} { //nolint:misspell // намеренная опечатка — вход пробы
 		if coredb.SSLModeSecure(mode) {
 			t.Errorf("режим %q принят как защищённый — до базы пошёл бы открытый канал", mode)
 		}
