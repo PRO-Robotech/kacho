@@ -38,9 +38,7 @@ import {
  * в полосу модулей ВДОБАВОК к кнопке внизу — две кнопки с одним именем и одним
  * адресом назначения в одной полосе навигации.
  */
-const SELF_PLACED_SECTIONS = new Set(
-  REMOTE_MODULES.filter((module) => !module.section).map((module) => module.remote),
-);
+const SELF_PLACED_SECTIONS = new Set(REMOTE_MODULES.filter((module) => !module.section).map((module) => module.remote));
 
 const commonTop: ShellNavItem[] = [
   {

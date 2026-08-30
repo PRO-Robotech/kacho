@@ -51,7 +51,10 @@ describe("нескалярное значение в ячейке показыв
 
   it("список строк остаётся собой", () => {
     const shown = textOf(
-      formatCellByFormat({ header: "Список", path: "value", format: "list" }, { value: ["10.0.0.0/24", "10.1.0.0/24"] }),
+      formatCellByFormat(
+        { header: "Список", path: "value", format: "list" },
+        { value: ["10.0.0.0/24", "10.1.0.0/24"] },
+      ),
     );
     expect(shown).toContain("10.0.0.0/24");
     expect(shown).toContain("10.1.0.0/24");

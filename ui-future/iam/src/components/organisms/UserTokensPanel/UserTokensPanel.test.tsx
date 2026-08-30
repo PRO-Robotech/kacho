@@ -166,8 +166,6 @@ describe("UserTokensPanel", () => {
     expect(screen.getByRole("dialog")).toHaveTextContent("Срок действия");
   });
 
-
-
   // ЗДЕСЬ СТОЯЛИ ДВЕ ПРОБЫ О ПОДТВЕРЖДЕНИИ ОТЗЫВА — они переехали туда, где
   // подтверждение объявлено: `TokensPanel.test.tsx`.
   //

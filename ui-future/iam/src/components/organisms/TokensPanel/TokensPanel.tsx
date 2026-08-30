@@ -212,8 +212,7 @@ function CreateTokenModal({
     onSuccess: (op: Operation) => {
       if (deliver(op)) return;
       toast.error(
-        "Токен выпущен, но его значение не пришло — оно невосстановимо. " +
-          "Отзовите этот токен и выпустите новый.",
+        "Токен выпущен, но его значение не пришло — оно невосстановимо. " + "Отзовите этот токен и выпустите новый.",
       );
     },
   });
@@ -286,7 +285,13 @@ function CreateTokenModal({
           <Segmented value={kind} onChange={(v) => switchKind(v as IssuableCredentialKind)} options={kindOptions} />
         </Form.Item>
         {kind === CREDENTIAL_KIND_SECRET && (
-          <Alert type="warning" showIcon style={{ marginBottom: 16 }} message="Что открывает этот секрет" description={SECRET_RADIUS_NOTICE} />
+          <Alert
+            type="warning"
+            showIcon
+            style={{ marginBottom: 16 }}
+            message="Что открывает этот секрет"
+            description={SECRET_RADIUS_NOTICE}
+          />
         )}
         <Form.Item label="Описание" help={`Например: ${descriptionExample}. Не более 256 символов.`}>
           <Input.TextArea
@@ -507,9 +512,7 @@ export function TokensPanel({
       dataIndex: "expires_at",
       key: "expires_at",
       width: 190,
-      render: (_v: unknown, row: TokenRow) => (
-        <ExpiryBadge expiresAt={row.expires_at} kind={row.credential_kind} />
-      ),
+      render: (_v: unknown, row: TokenRow) => <ExpiryBadge expiresAt={row.expires_at} kind={row.credential_kind} />,
     },
     {
       title: "Последнее использование",
