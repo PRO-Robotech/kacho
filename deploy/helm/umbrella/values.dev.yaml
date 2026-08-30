@@ -946,9 +946,21 @@ kratos:
       selfservice:
         # Все browser-redirect URLs — relative. Браузер сам резолвит к текущему origin.
         default_browser_return_url: "/"
-        # Whitelist для return_to query — relative (`/`, `/dashboard`, ...) + любой
-        # localhost-port (для programmatic redirect через ?return_to=...).
-        # Kratos schema допускает relative URI в этом списке (uri-reference format).
+        # ─── ЭТОТ СПИСОК ДО ПРОЦЕССА НЕ ДОЕЗЖАЕТ (#1238) ─────────────────────
+        #
+        # Здесь стояло «whitelist для return_to query — relative + любой
+        # localhost-port», и это утверждение пережило свой предмет. Служба
+        # получает ДВА файла настроек и сливает их по порядку; наш идёт ВТОРЫМ, а
+        # список под общим ключом не дополняется — он ЗАМЕЩАЕТСЯ целиком. Значит
+        # действует ОДНА запись из тела продукта
+        # (charts/kacho-iam/templates/_kratos-identity.tpl), а эти десять —
+        # умолчание, которое к процессу не относится.
+        #
+        # Сужение решено и записано: решение и его цена — в ведомости
+        # `identityReplacedListDecisions`
+        # (deploy/identity_replaced_lists_are_decided_test.go). Правя список
+        # здесь, правьте объявление продукта: правка ТОЛЬКО этих строк не
+        # доезжает никуда, и это не видно ни в рендере, ни при старте.
         allowed_return_urls:
           - "/"
           - "/dashboard"
