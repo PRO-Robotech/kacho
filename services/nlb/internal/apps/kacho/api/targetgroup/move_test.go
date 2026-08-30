@@ -37,11 +37,15 @@ func TestMove_Happy(t *testing.T) {
 	final := awaitOpDone(t, opsRepo, op.ID)
 	require.Nil(t, final.Error)
 
+	// Здесь утверждалась ПАРА `MOVED` + `UPDATED` — то есть проба закрепляла
+	// дефект #1565: второе событие не добавляло получателей (подписки по роду
+	// изменения не бывает) и было неотличимо от первого. Утверждение ЗАМЕНЕНО, а
+	// не ослаблено: теперь оно про число строк, а не про их перечень.
 	events := repo.outboxEvents()
-	// MOVED + UPDATED
-	require.Len(t, events, 2)
-	assert.Equal(t, kachorepo.OutboxActionMoved, events[0].Action)
-	assert.Equal(t, kachorepo.OutboxActionUpdated, events[1].Action)
+	require.Len(t, events, 1,
+		"переезд объявляет о переехавшей группе РОВНО ОДНУ строку")
+	assert.Equal(t, kachorepo.OutboxActionMoved, events[0].Action,
+		"слово хранилища обязано называть сделанное — словарь отдаёт его правкой")
 
 	// project-rewrite = unregister(src) THEN register(dst) in the writer-tx.
 	// The order is the contract, not the style: both intents are about the same
