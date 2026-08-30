@@ -1,4 +1,4 @@
-import { JOURNAL_OWNERS, STREAM_SUBJECTS, streamSubject } from "./subjects";
+import { STREAM_SUBJECTS, streamSubject } from "./subjects";
 
 /**
  * Мост между спекой консоли и её предметом потока: `streamSubject(specId)`.
@@ -43,6 +43,41 @@ import { JOURNAL_OWNERS, STREAM_SUBJECTS, streamSubject } from "./subjects";
  * `TestSubscriptionKindVocabularyHasOneWriting`, но её обход — proto, Go и
  * клиентская страница; файлов `.ts` в нём нет.
  *
+ * # ЗДЕСЬ СТОЯЛА ПРОБА «владельцы названы доменами контракта, а не сегментами REST»
+ *
+ * Снята задачей #1578 вместе с экспортом `JOURNAL_OWNERS`, который она сверяла.
+ * Её заголовок был честен — предметом было НАПИСАНИЕ имени, — но утверждала она
+ * РАВЕНСТВО МНОЖЕСТВ выписанному тут же перечню из пяти имён, то есть держала
+ * вторую точку правки при появлении шестого владельца.
+ *
+ * СНЯТА, А НЕ ОСЛАБЛЕНА, и довод ЗАМЕРЕН, а не взят у соседней задачи. Четыре
+ * инъекции — каждая меняет множество владельцев так, как его меняет ошибка, — и
+ * ни в одной перечень не был единственным, кто краснеет:
+ *
+ *  · шестой владелец `geo` с видом `geo_zone`     → `…KindTheConsoleNamesIsDeclaredByItsOwner`
+ *  · шестой владелец `geo` с чужим видом          → он же
+ *  · снят последний предмет владельца `registry`  → `…OwnerDeclaresIsNamedOrDeclaredUnshown`
+ *                                                   + `…DeclaredStreamOwnerIsMappedByTheConsole`
+ *  · владелец `storage` переименован в `geo`      → первый + третий
+ *
+ * (первые два гейта — `ui-future/deploy/console_stream_kind_dictionary_test.go` и
+ * `console_stream_kind_coverage_test.go`, третий — `console_stream_owner_coverage_test.go`.)
+ *
+ * ОСТОРОЖНО С ЧЕТВЁРТЫМ ГЕЙТОМ: `gateway/deploy/console_subscription_owner_test.go`
+ * держит НАПИСАНИЕ (`nlb` вместо `loadbalancer` он ловит), но СОСТАВ — нет. Он
+ * сверяет имена с множеством, которое край ПРИНИМАЕТ, а принимает край всякий
+ * домен с внутренним адресом: их семь (`compute geo iam loadbalancer registry
+ * storage vpc`), тогда как ОБЪЯВЛЕНО посадкой пять. Во всех четырёх инъекциях он
+ * молчал. Состав держат гейты `ui-future/deploy`, и ссылаться за составом надо на
+ * них.
+ *
+ * ЧЕМ ЭТА ПРОБА БЫЛА ПОУЧИТЕЛЬНА: она ЗАКРЕПЛЯЛА ДЕФЕКТ (#1440). Перечень ждал
+ * `nlb`, проба была зелена — а страница списка балансировщиков давала два отказа
+ * `400` на каждом открытии. Опровергнуть копию перечня список и не мог: обе
+ * стороны сверки лежали в этом файле, а край в нём не участвует вовсе. Разбор
+ * самого дефекта живёт у гейта, который его теперь держит, и здесь не
+ * пересказывается.
+ *
  * # ЗДЕСЬ СТОЯЛИ ЕЩЁ ДВЕ КОПИИ — ПЕРЕЧЕНЬ ВЛАДЕЛЬЦЕВ И КАРТА ПРЕФИКСОВ
  *
  * Сняты задачей #1635, и довод ЗАМЕРЕН, а не выбран по вкусу. Обе были ВТОРОЙ
@@ -83,45 +118,53 @@ import { JOURNAL_OWNERS, STREAM_SUBJECTS, streamSubject } from "./subjects";
  * Краснеет — это вторая точка правки, а не проверка.
  */
 describe("подписка: спека консоли → владелец журнала и вид предмета", () => {
-  // verifies #1021, #1635
-  it("перечень владельцев выводится из карты, а не выписан вторым списком", () => {
-    // ЗДЕСЬ СТОЯЛ ЛИТЕРАЛ ИЗ ПЯТИ ИМЁН — снят задачей #1635 (разбор в шапке).
-    // Он утверждал о КРАЕ, которого этот файл прочитать не может, и краснел бы на
-    // шестом владельце при верном дереве. Равенство названного объявленному держит
-    // пара гейтов дерева, названная в шапке.
+  // verifies #1021, #1578, #1635
+  it("виды карты названы при своих владельцах и перечень не выписан вторым списком", () => {
+    // ЗДЕСЬ СТОЯЛИ ДВА УТВЕРЖДЕНИЯ, И ОБА ЛИШИЛИСЬ ПРЕДМЕТА — по-разному.
     //
-    // Осталось то, что этот файл УТВЕРЖДАТЬ ВПРАВЕ: `JOURNAL_OWNERS` есть функция
-    // карты, а не её рукописный сосед. Прежняя редакция `subjects.ts` объявляла
-    // ровно это и при том держала литерал — два места об одном предмете, из
-    // которых верно одно; расхождение не наступило только потому, что перечень не
-    // рос. Утверждение ниже растёт вместе с картой и второй точкой правки не
-    // становится.
-    const fromMap = Object.values(STREAM_SUBJECTS).map((s) => s.owner);
+    // Первое сверяло плоский перечень `JOURNAL_OWNERS` с картой. Его предмет снят
+    // задачей #1578 СИЛЬНЕЕ, чем предлагала эта проба: экспорта больше нет вовсе,
+    // поэтому второй точки правки не существует BY CONSTRUCTION, и сверять нечего.
+    //
+    // Второе сверяло карту «владелец → префикс вида». Снято задачей #1635 по
+    // замеру (разбор в шапке): все её верные находки воспроизводит гейт дерева,
+    // на опечатке при верном префиксе она слепа, а единственное, что она находит
+    // одна, — своя собственная неполнота.
+    //
+    // ОСТАЛОСЬ то, что этот файл утверждать ВПРАВЕ и что не становится второй
+    // точкой правки: карта непуста и каждый её вид назван ровно один раз.
+    const owners = Object.values(STREAM_SUBJECTS).map((s) => s.owner);
+    const kinds = Object.values(STREAM_SUBJECTS).map((s) => s.kind);
 
-    // ПРЕМИСА, а не вежливость: на пустой карте оба обхода ниже вакуумны, и
+    // ПРЕМИСА, а не вежливость: на пустой карте обходы ниже вакуумны, и
     // «нарушений нет» означало бы «нечего было обходить».
-    expect(fromMap.length).toBeGreaterThan(0);
-    expect(JOURNAL_OWNERS.length).toBeGreaterThan(0);
+    expect(owners.length).toBeGreaterThan(0);
 
-    // Ни одного лишнего имени — и ни одного пропущенного. Односторонняя проверка
-    // зеленела бы на пустом перечне.
-    expect([...JOURNAL_OWNERS].filter((o) => !fromMap.includes(o))).toEqual([]);
-    expect([...new Set(fromMap)].filter((o) => !JOURNAL_OWNERS.includes(o))).toEqual([]);
-
-    // Без повторов и в устойчивом порядке: перечень уходит в разметку списков.
-    expect(JOURNAL_OWNERS.length).toBe(new Set(JOURNAL_OWNERS).size);
-    expect([...JOURNAL_OWNERS]).toEqual([...JOURNAL_OWNERS].sort());
+    // Вид назван один раз: дубль дал бы два потока об одном предмете.
+    expect(kinds.length).toBe(new Set(kinds).size);
   });
 
   it("покрытые спеки называют свой предмет", () => {
-    expect(streamSubject("networks")).toEqual({ owner: "vpc", kind: "vpc_network" });
-    expect(streamSubject("compute-instances")).toEqual({ owner: "compute", kind: "compute_instance" });
+    expect(streamSubject("networks")).toEqual({
+      owner: "vpc",
+      kind: "vpc_network",
+    });
+    expect(streamSubject("compute-instances")).toEqual({
+      owner: "compute",
+      kind: "compute_instance",
+    });
     expect(streamSubject("load-balancers")).toEqual({
       owner: "loadbalancer",
       kind: "nlb_network_load_balancer",
     });
-    expect(streamSubject("volumes")).toEqual({ owner: "storage", kind: "storage_volume" });
-    expect(streamSubject("registries")).toEqual({ owner: "registry", kind: "registry_registry" });
+    expect(streamSubject("volumes")).toEqual({
+      owner: "storage",
+      kind: "storage_volume",
+    });
+    expect(streamSubject("registries")).toEqual({
+      owner: "registry",
+      kind: "registry_registry",
+    });
   });
 
   it("непокрытая спека отвечает null, а не догадкой", () => {
@@ -151,7 +194,10 @@ describe("подписка: спека консоли → владелец жу�
       // приводится к «[object Object]», то есть ЛЮБОЙ непустой ответ выглядел
       // бы в отказе одинаково, а два разных — одинаково же. Пара «спека +
       // ответ» называет виновника лучше и ничего не приводит.
-      expect({ specId, subject: streamSubject(specId) }).toEqual({ specId, subject: null });
+      expect({ specId, subject: streamSubject(specId) }).toEqual({
+        specId,
+        subject: null,
+      });
     }
   });
 
