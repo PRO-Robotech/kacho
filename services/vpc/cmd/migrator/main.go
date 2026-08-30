@@ -26,18 +26,18 @@
 //	--dialect postgres                    (default; продукт Postgres-only)
 //	--dsn     <connection-string>         (или ENV KACHO_MIGRATOR_DSN)
 //
-// Помимо ENV KACHO_MIGRATOR_DSN, для удобства dev-стенда (тот же набор переменных,
-// что и у kacho-vpc) поддерживается fallback: если --dsn пуст и
-// KACHO_MIGRATOR_DSN пуст, читаем `config.Load()` (viper/YAML-config) и берем
-// `cfg.MigrateDSN()`. Так одно helm-values задает БД-параметры для обоих binary,
-// не дублируя DSN. Явно переданный --dsn перекрывает vpc-config.
+// Приоритет источников DSN — один на семь точек наката и объявлен в общем пакете
+// (`pkg/migratorcli.ResolveDSN`): --dsn > ENV KACHO_MIGRATOR_DSN > конфигурация
+// сервиса. Запасная конфигурация здесь — `config.Load()` (viper/YAML), из неё
+// берётся `cfg.MigrateDSN()`: одно helm-values задаёт БД-параметры обоим binary,
+// не дублируя DSN. Своей редакции порядка тут быть не должно — две редакции об
+// одном предмете расходятся молча, и разошлись: тексты отказа у vpc, iam и
+// общего пакета называли РАЗНЫЕ подмножества собственных источников (#1544).
 package main
 
 import (
-	"fmt"
 	"io/fs"
 	"os"
-	"strings"
 
 	_ "github.com/jackc/pgx/v5/stdlib" // регистрирует "pgx" driver для sql.Open
 	"github.com/spf13/cobra"
@@ -185,29 +185,30 @@ func newStatusCmd(opts *rootOptions, migrationsFS fs.FS) *cobra.Command {
 
 // buildRunner собирает migrator.Runner из persistent-флагов + ENV + config-fallback.
 //
-// Источник DSN — приоритет: --dsn flag > ENV KACHO_MIGRATOR_DSN > viper/YAML-config
-// (config.Load → cfg.MigrateDSN). Так одно helm-values покрывает оба binary,
-// и можно явно перекрыть `--dsn` для cross-DB-инструментов и ad-hoc запусков.
+// Приоритет DSN живёт в общем пакете (`migratorcli.ResolveDSN`), а не здесь:
+// --dsn > ENV KACHO_MIGRATOR_DSN > конфигурация сервиса. Сюда принадлежит только
+// то, чем СВОЯ конфигурация читается, — имя переменной пути и способ достать из
+// неё строку подключения; общий пакет не вправе называть оператору чужое имя.
 func buildRunner(opts *rootOptions, migrationsFS fs.FS) (*migrator.Runner, error) {
 	dialect, err := migrator.NewDialect(opts.dialect)
 	if err != nil {
 		return nil, err
 	}
 
-	dsn := strings.TrimSpace(opts.dsn)
-	if dsn == "" {
-		dsn = strings.TrimSpace(os.Getenv(envDSN))
-	}
-	if dsn == "" {
-		// Fallback к vpc-config: тот же набор DB-параметров (host/port/user/name/sslmode).
-		// config.Load() возвращает Config без ошибки даже без пароля — пароль
-		// подставляется через repository.postgres.password-from-env либо напрямую в DSN;
-		// здесь fallback фейлится лишь при реальной ошибке загрузки config.
+	// Запасная конфигурация vpc — тот же набор DB-параметров (host/port/user/
+	// name/sslmode), что и у kacho-vpc: одно helm-values задаёт БД обоим binary.
+	// config.Load возвращает Config без ошибки даже без пароля — пароль
+	// подставляется через repository.postgres.password-from-env либо прямо в DSN,
+	// поэтому замыкание отказывает лишь на настоящей ошибке загрузки.
+	dsn, err := migratorcli.ResolveDSN(opts.dsn, func() (string, error) {
 		cfg, cerr := config.Load(os.Getenv("KACHO_VPC_CONFIG_PATH"))
 		if cerr != nil {
-			return nil, fmt.Errorf("dsn unset (--dsn / %s) and vpc config load failed: %w", envDSN, cerr)
+			return "", cerr
 		}
-		dsn = cfg.MigrateDSN()
+		return cfg.MigrateDSN(), nil
+	})
+	if err != nil {
+		return nil, err
 	}
 
 	return migrator.New(migrator.Config{
