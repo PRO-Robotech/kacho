@@ -29,9 +29,7 @@ function serve() {
     calls.push(url);
     const body = url.includes("/memberships")
       ? {
-          memberships: [
-            { id: "mbr-1", accountId: ACCOUNT, accountName: "Ромашка", userId: PERSON, state: "ACTIVE" },
-          ],
+          memberships: [{ id: "mbr-1", accountId: ACCOUNT, accountName: "Ромашка", userId: PERSON, state: "ACTIVE" }],
         }
       : { id: ACCOUNT, name: "Ромашка" };
     return Promise.resolve({

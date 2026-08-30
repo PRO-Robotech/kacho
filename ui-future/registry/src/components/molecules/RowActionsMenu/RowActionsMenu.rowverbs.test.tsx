@@ -86,7 +86,13 @@ describe("объявленный глагол доезжает до меню с�
     render(
       <QueryClientProvider client={qc}>
         <MemoryRouter initialEntries={["/x"]}>
-          <RowActionsMenu spec={specWithVerb()} row={{ id: "usr-1", invite_status: "ACTIVE" }} basePath="/x" projectId={null} editAsPanel />
+          <RowActionsMenu
+            spec={specWithVerb()}
+            row={{ id: "usr-1", invite_status: "ACTIVE" }}
+            basePath="/x"
+            projectId={null}
+            editAsPanel
+          />
         </MemoryRouter>
       </QueryClientProvider>,
     );

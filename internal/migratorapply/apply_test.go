@@ -135,18 +135,44 @@ func replaceDBName(t *testing.T, dsn, name string) string {
 // «код 1» без текста, посылает читателя искать не там.
 func runMigrator(t *testing.T, bin string, args ...string) (string, error) {
 	t.Helper()
-	ctx, cancel := context.WithTimeout(context.Background(), applyBudget)
-	defer cancel()
-
-	cmd := exec.CommandContext(ctx, bin, args...)
 	// Переменная DSN окружения гасится. Флаг её ПЕРЕБИВАЕТ (приоритет у всех семи
 	// один: --dsn > KACHO_MIGRATOR_DSN > конфигурация), поэтому на сегодняшних
 	// вызовах это ничего не меняет — гасится она затем, чтобы вызов БЕЗ флага,
 	// если такой здесь когда-нибудь заведут, не увёл накат на базу из окружения
 	// прогона молча.
-	cmd.Env = append(os.Environ(), "KACHO_MIGRATOR_DSN=")
+	return runMigratorEnv(t, bin, []string{"KACHO_MIGRATOR_DSN="}, args...)
+}
+
+// runMigratorEnv — тот же запуск с добавленным окружением.
+//
+// Окружение — параметр, а не константа, потому что DSN приходит накату ТРЕМЯ
+// источниками (`--dsn` > `KACHO_MIGRATOR_DSN` > конфигурация), и доказательство
+// формы вызова (invocation_test.go) гоняет последний из них — тот, которым
+// пользуются все семь развёртываний.
+func runMigratorEnv(t *testing.T, bin string, env []string, args ...string) (string, error) {
+	t.Helper()
+	ctx, cancel := context.WithTimeout(context.Background(), applyBudget)
+	defer cancel()
+
+	cmd := exec.CommandContext(ctx, bin, args...)
+	cmd.Env = append(os.Environ(), env...)
 	out, err := cmd.CombinedOutput()
 	return string(out), err
+}
+
+// buildApplyPoint собирает бинарь точки наката. Отказ сборки — «сервис не
+// развернётся», а не «проба не смогла»: он называется предметом, а не средством.
+func buildApplyPoint(t *testing.T, root, binDir, pkg, service string) string {
+	t.Helper()
+	bin := filepath.Join(binDir, service)
+	ctx, cancel := context.WithTimeout(context.Background(), applyBudget)
+	defer cancel()
+	build := exec.CommandContext(ctx, "go", "build", "-o", bin, "./"+pkg)
+	build.Dir = root
+	if out, err := build.CombinedOutput(); err != nil {
+		t.Fatalf("точка наката %s НЕ СОБИРАЕТСЯ — сервис не развернётся: %v\n%s", pkg, err, out)
+	}
+	return bin
 }
 
 // TestEveryMigratorAppliesItsChainToALiveDatabase — доказательство наката.
@@ -184,14 +210,7 @@ func TestEveryMigratorAppliesItsChainToALiveDatabase(t *testing.T) {
 					"и «накат прошёл» здесь означало бы только «бинарь вышел нулём»", migDir)
 			}
 
-			bin := filepath.Join(binDir, service)
-			ctx, cancel := context.WithTimeout(context.Background(), applyBudget)
-			defer cancel()
-			build := exec.CommandContext(ctx, "go", "build", "-o", bin, "./"+pkg)
-			build.Dir = root
-			if out, err := build.CombinedOutput(); err != nil {
-				t.Fatalf("точка наката %s НЕ СОБИРАЕТСЯ — сервис не развернётся: %v\n%s", pkg, err, out)
-			}
+			bin := buildApplyPoint(t, root, binDir, pkg, service)
 
 			dsn := pgtest.NewEmptyDB(t)
 
@@ -275,15 +294,7 @@ func TestApplyProofDistinguishesFailureFromSuccess(t *testing.T) {
 
 	pkg := points[0]
 	service, _ := migrationsDirOf(pkg)
-	bin := filepath.Join(t.TempDir(), service)
-
-	ctx, cancel := context.WithTimeout(context.Background(), applyBudget)
-	defer cancel()
-	build := exec.CommandContext(ctx, "go", "build", "-o", bin, "./"+pkg)
-	build.Dir = root
-	if out, err := build.CombinedOutput(); err != nil {
-		t.Fatalf("контрольная точка наката %s не собирается: %v\n%s", pkg, err, out)
-	}
+	bin := buildApplyPoint(t, root, t.TempDir(), pkg, service)
 
 	// Живой сервер, несуществующая база: DSN отличается от годного ровно тем, что
 	// проверяется, — и потому отказ приходит от НАКАТА, а не от разбора аргументов.

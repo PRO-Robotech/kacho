@@ -162,9 +162,7 @@ describe("карточка блочного хранения: опрос сни�
     // Поток открыт хабом на владельца `storage` — значит карта предметов его
     // называет. Пустой перечень означал бы, что карта молчит, и утверждение
     // ниже стало бы вакуумным.
-    expect(FakeSource.live.map((s) => s.url)).toEqual([
-      "/subscription/v1/events?owner=storage&projectId=prj-1",
-    ]);
+    expect(FakeSource.live.map((s) => s.url)).toEqual(["/subscription/v1/events?owner=storage&projectId=prj-1"]);
 
     await act(async () => {
       FakeSource.live[0].announce(["storage_volume", "storage_snapshot", "storage_image"]);

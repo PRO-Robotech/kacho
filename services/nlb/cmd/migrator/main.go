@@ -53,9 +53,9 @@ import (
 
 	"github.com/PRO-Robotech/kacho/pkg/migratorcli/cobraargs"
 
+	"github.com/PRO-Robotech/kacho/internal/migratorrun"
 	"github.com/PRO-Robotech/kacho/pkg/migratorcli"
 	"github.com/PRO-Robotech/kacho/services/nlb/internal/apps/kacho/config"
-	"github.com/PRO-Robotech/kacho/services/nlb/internal/apps/migrator"
 	"github.com/PRO-Robotech/kacho/services/nlb/internal/migrations"
 )
 
@@ -63,6 +63,18 @@ const (
 	defaultDialect       = "postgres"
 	defaultMigrationsDir = "."
 )
+
+// serviceName — чью цепочку применяет эта точка наката. Живой счёт строк перед
+// сносом называет им то, что стережёт, поэтому безымянной точки наката не
+// бывает: предусловия отказывают ей в старте.
+const serviceName = "nlb"
+
+// dsnExtraSources — чем ЭТА служба заполняет DSN СВЕРХ двух общих (`--dsn` и
+// KACHO_MIGRATOR_DSN), в порядке убывания приоритета. Два общих здесь НЕ
+// перечисляются намеренно: их печатает сам общий пакет, поэтому умолчать
+// источник, который перебивает названные, нельзя by construction. Ровно это и
+// случилось однажды — текст отказа называл третий источник и умалчивал второй.
+var dsnExtraSources = []string{"KACHO_NLB_REPOSITORY__POSTGRES__URL", "config repository.postgres.url (--config)"}
 
 // rootOptions — shared параметры всех subcommand'ов (persistent flags).
 type rootOptions struct {
@@ -140,7 +152,7 @@ func newUpCmd(opts *rootOptions, migrationsFS fs.FS) *cobra.Command {
 			if err != nil {
 				return err
 			}
-			return r.Up(target)
+			return r.Up(cmd.Context(), target)
 		},
 	}
 	cmd.Flags().StringVar(&target, "target", "", "stop at this version (inclusive); default — latest")
@@ -162,7 +174,7 @@ func newDownCmd(opts *rootOptions, migrationsFS fs.FS) *cobra.Command {
 			if err != nil {
 				return err
 			}
-			return r.Down(target)
+			return r.Down(cmd.Context(), target)
 		},
 	}
 	cmd.Flags().StringVar(&target, "target", "", "rollback down to this version (inclusive); default — one step back")
@@ -183,21 +195,28 @@ func newStatusCmd(opts *rootOptions, migrationsFS fs.FS) *cobra.Command {
 			if err != nil {
 				return err
 			}
-			return r.Status(cmd.OutOrStdout())
+			return r.Status(cmd.Context(), cmd.OutOrStdout())
 		},
 	}
 }
 
-// buildRunner собирает migrator.Runner из persistent-флагов + ENV + config-fallback.
+// buildRunner собирает накат из persistent-флагов + ENV + config-fallback.
 //
 // Приоритет DSN один на семь сервисов и живёт в общем пакете:
 // --dsn > ENV KACHO_MIGRATOR_DSN > конфигурация сервиса (здесь — config.Load,
 // который сам читает `KACHO_NLB_REPOSITORY__POSTGRES__URL` и смонтированный
 // `--config`). Своей редакции порядка тут быть не должно: две редакции об одном
 // предмете расходятся молча — и разошлись, общей переменной nlb не читал вовсе.
-func buildRunner(opts *rootOptions, migrationsFS fs.FS) (*migrator.Runner, error) {
-	dialect, err := migrator.ResolveDialect(opts.dialect)
-	if err != nil {
+func buildRunner(opts *rootOptions, migrationsFS fs.FS) (*migratorrun.Runner, error) {
+	// ДИАЛЕКТ СВЕРЯЕТСЯ ПЕРВЫМ, и это порядок, а не стиль. Общий накат сверяет
+	// его тоже — но уже приняв DSN, а до DSN лежит загрузка конфигурации службы.
+	// Оператор, назвавший несуществующий диалект, получал бы тогда отказ
+	// КОНФИГУРАЦИИ: длинный, про совсем другое и не называющий причины, по
+	// которой запуск отвергнут. У прямой четвёрки этот порядок держит сам разбор
+	// (migratorcli.Parse отвергает диалект до всего прочего); cobra такой
+	// проверки не делает, поэтому здесь она стоит явно. Функция та же — двух
+	// редакций одного текста не заводится.
+	if _, err := migratorcli.ResolveDialectSpec(opts.dialect); err != nil {
 		return nil, err
 	}
 
@@ -212,11 +231,12 @@ func buildRunner(opts *rootOptions, migrationsFS fs.FS) (*migrator.Runner, error
 		return nil, err
 	}
 
-	return migrator.New(migrator.Config{
-		Service:       "nlb",
-		Dialect:       dialect,
-		DSN:           dsn,
-		FS:            migrationsFS,
-		MigrationsDir: defaultMigrationsDir,
+	return migratorrun.New(migratorrun.Config{
+		Service:         serviceName,
+		Dialect:         opts.dialect,
+		DSN:             dsn,
+		FS:              migrationsFS,
+		MigrationsDir:   defaultMigrationsDir,
+		DSNExtraSources: dsnExtraSources,
 	})
 }

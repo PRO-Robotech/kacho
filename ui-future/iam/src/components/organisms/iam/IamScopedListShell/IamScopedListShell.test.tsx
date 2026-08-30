@@ -30,8 +30,7 @@ const spec = { id: "projects", plural: "Projects" } as ResourceSpec;
  * Дублёр приведён к настоящему поведению, и проба следует за ним — теперь она
  * читает то же, что прочёл бы человек.
  */
-const emptyText = (root: HTMLElement): string | null =>
-  root.textContent?.match(/Выберите[^.]*\./)?.[0] ?? null;
+const emptyText = (root: HTMLElement): string | null => root.textContent?.match(/Выберите[^.]*\./)?.[0] ?? null;
 
 describe("IamScopedListShell", () => {
   beforeAll(async () => {

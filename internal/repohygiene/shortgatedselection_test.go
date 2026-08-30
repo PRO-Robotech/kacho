@@ -32,6 +32,19 @@
 // Написаны они правильно (пропуск честно объявлен), но объявление некому
 // прочитать — джоба зелёная, а колонки не считал никто.
 //
+// ЭТИ ПЯТЬ СТРОК ЗАКРЫТЫ (2026-08-30, задача #1649): все пять цепочек гоняет цель
+// test-pg-outside-selection своим шагом (см. shortGatedRunByOwnCIStep ниже), и
+// абзац выше с этого дня описывает прошлое, а не дерево. Оставлен он по той же
+// причине, что и замер: он называет, ЧТО именно перепись предсказала, — а
+// предсказала она предмет, стоивший бы дороже соседнего. Снос колонки необратим,
+// и решался он абзацем в миграции, счёт под которым не сверял никто.
+//
+// Цена, которой это закрыто, измерена, а не оценена: пять пакетов — 110 с чистого
+// времени проб (`-race -p 1`), 106 утверждений, пропущенных ноль. Числа замера
+// выше при этом НЕ переписаны и здесь: они верны для своей ревизии, а на сегодня
+// проб в этих пакетах не 3 и не по 1, а 77 — перечень рос всё это время, и
+// правка задним числом скрыла бы, насколько долго он рос вне наблюдения.
+//
 // ВТОРАЯ СТРОКА ЭТОГО ПЕРЕЧНЯ ЗАКРЫТА (2026-08-16, задача #495): фоновые проходы
 // nlb гоняет цель test-pg-outside-selection своим шагом (см.
 // shortGatedRunByOwnCIStep ниже). Замер выше не переписан — он верен для своей
@@ -170,20 +183,15 @@ var shortGatedOutsideSelection = []string{
 	"pkg/outbox/metrics",
 	"pkg/outbox/reconciler",
 	"services/compute/internal/handler",
-	"services/compute/internal/migrations",
 	"services/iam/internal/apps/kacho/api/audit",
 	"services/iam/internal/apps/kacho/api/cluster",
 	"services/iam/internal/apps/kacho/api/internal_iam",
 	"services/iam/internal/apps/kacho/api/sa_keys",
 	"services/iam/internal/apps/kacho/api/session_revocations",
 	"services/iam/internal/apps/kacho/seed",
-	"services/iam/internal/migrations",
 	"services/nlb/internal/apps/kacho/api/loadbalancer",
 	"services/nlb/internal/apps/kacho/api/targetgroup",
-	"services/nlb/internal/migrations",
 	"services/registry/internal/dataplane/e2e",
-	"services/storage/internal/migrations",
-	"services/vpc/internal/migrations",
 }
 
 // shortGatedRunByOwnCIStep — пакеты, чьи краткогейтящие тесты гоняет СОБСТВЕННЫЙ
@@ -253,6 +261,34 @@ var shortGatedRunByOwnCIStep = map[string]string{
 	// и проба, заведённая без него, была бы ровно тем классом, ради которого задача
 	// стоит. Отсюда запись, а не строка в переписи долга.
 	"internal/migratorapply": "make test-pg-outside-selection",
+
+	// Пять цепочек миграций, чьи сносы решаются СЧЁТОМ (задача #1649). Каждая несёт
+	// манифест dropguard.json и пробу, которая проигрывает цепочку в пустой Postgres,
+	// останавливается на версии перед каждым сносом и сверяет число строк с
+	// объявленным. Предмет у них НЕ тот, что у наката выше: там доказывается, что
+	// цепочка применяется, здесь — что необратимый снос принят по факту, а не по
+	// абзацу в миграции.
+	//
+	// Долгом это быть перестало, а не «стало исполняться заодно»: до #1649 пробы не
+	// гоняла НИ ОДНА джоба — под кратким страж честно печатает «измерено 0 из N»,
+	// помечает себя пропущенным и выходит нулём, а отбор интеграционной джобы идёт по
+	// пути и до internal/migrations не достаёт вовсе. Пакет с нулём исполненных проб
+	// печатает ok, поэтому ни один вердикт этого не говорил.
+	//
+	// Цена измерена, а не оценена (эта машина, `-race -p 1`, как гоняет цель): пять
+	// пакетов вместе — 110 с чистого времени проб, из них iam 76.5 с (148 миграций,
+	// самая длинная цепочка дерева), остальные четыре 33.6 с. Утверждений 106,
+	// пропущенных ноль — то есть требование цели «пропуск = отказ» они выдерживают.
+	// Джоба отдельная, критический путь конвейера не удлиняется.
+	//
+	// Вторую половину шва держит dropguardproducer_test.go: он выводит перечень
+	// манифестов ИЗ ДЕРЕВА, поэтому новая служба со своим стражем и без производителя
+	// краснеет сама, а не ждёт, пока кто-то вспомнит про этот файл.
+	"services/compute/internal/migrations": "make test-pg-outside-selection",
+	"services/iam/internal/migrations":     "make test-pg-outside-selection",
+	"services/nlb/internal/migrations":     "make test-pg-outside-selection",
+	"services/storage/internal/migrations": "make test-pg-outside-selection",
+	"services/vpc/internal/migrations":     "make test-pg-outside-selection",
 
 	"services/iam/internal/apps/kacho/api/bootstrap_token": "make test-pg-outside-selection",
 

@@ -96,7 +96,9 @@ jest.unstable_mockModule("@shared/lib/resource-registry", () => {
     REGISTRY,
     getResource: (id: string) => REGISTRY[id],
     getByPath: (obj: unknown, path: string): unknown =>
-      path.split(".").reduce<unknown>((acc, key) => (acc == null ? undefined : (acc as Record<string, unknown>)[key]), obj),
+      path
+        .split(".")
+        .reduce<unknown>((acc, key) => (acc == null ? undefined : (acc as Record<string, unknown>)[key]), obj),
     resourceServicePrefix: () => "iam" as const,
     resourceProjectPath: () => null,
     applyFieldDefaults: (obj: Record<string, unknown>) => obj,

@@ -81,30 +81,30 @@ export const VpcPage: FC<VpcPageProps> = ({ context, surface }) => {
               {surface === "quotas" ? (
                 <QuotasPage />
               ) : (
-              <Routes>
-                <Route index element={<ProjectVpcDefaultRedirect />} />
-                {VPC_SCOPED.map((spec) => (
-                  <Route key={spec.id}>
-                    <Route
-                      path={spec.route}
-                      // VPC-раздел регистрирует `${route}/create` (ниже) и панель правки.
-                      element={
-                        <ResourceListPage spec={spec} parentField="project_id" parentParam="projectId" panelForms />
-                      }
-                    />
-                    <Route path={`${spec.route}/create`} element={createElementFor(spec)} />
-                    <Route path={`${spec.route}/:uid`} element={<ResourceShell spec={spec} />} />
-                    <Route path={`${spec.route}/:uid/edit`} element={<ResourceShell spec={spec} mode="edit" />} />
-                    <Route
-                      path={`${spec.route}/:uid/:childRoute/create`}
-                      element={<ResourceShell spec={spec} mode="child-create" />}
-                    />
-                    <Route path={`${spec.route}/:uid/:tab`} element={<ResourceShell spec={spec} />} />
-                  </Route>
-                ))}
-                <Route path="operations" element={<OperationsPage />} />
-                <Route path="*" element={<ProjectVpcDefaultRedirect />} />
-              </Routes>
+                <Routes>
+                  <Route index element={<ProjectVpcDefaultRedirect />} />
+                  {VPC_SCOPED.map((spec) => (
+                    <Route key={spec.id}>
+                      <Route
+                        path={spec.route}
+                        // VPC-раздел регистрирует `${route}/create` (ниже) и панель правки.
+                        element={
+                          <ResourceListPage spec={spec} parentField="project_id" parentParam="projectId" panelForms />
+                        }
+                      />
+                      <Route path={`${spec.route}/create`} element={createElementFor(spec)} />
+                      <Route path={`${spec.route}/:uid`} element={<ResourceShell spec={spec} />} />
+                      <Route path={`${spec.route}/:uid/edit`} element={<ResourceShell spec={spec} mode="edit" />} />
+                      <Route
+                        path={`${spec.route}/:uid/:childRoute/create`}
+                        element={<ResourceShell spec={spec} mode="child-create" />}
+                      />
+                      <Route path={`${spec.route}/:uid/:tab`} element={<ResourceShell spec={spec} />} />
+                    </Route>
+                  ))}
+                  <Route path="operations" element={<OperationsPage />} />
+                  <Route path="*" element={<ProjectVpcDefaultRedirect />} />
+                </Routes>
               )}
             </VpcFrame>
           </PageHeaderSlotProvider>

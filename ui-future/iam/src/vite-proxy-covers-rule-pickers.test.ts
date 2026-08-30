@@ -40,9 +40,9 @@ describe("iam dev-прокси против путей, по которым хо
     const [module, resource] = t.split(".");
     return { module, resource };
   });
-  const apiPaths = [
-    ...new Set(tokens.map((t) => instanceFetcherFor(t.module, t.resource)?.spec.apiPath ?? "")),
-  ].filter(Boolean);
+  const apiPaths = [...new Set(tokens.map((t) => instanceFetcherFor(t.module, t.resource)?.spec.apiPath ?? ""))].filter(
+    Boolean,
+  );
 
   it("объём осмотренного назван: сколько токенов, путей и прокси прочитано", () => {
     expect(tokens.length).toBeGreaterThanOrEqual(15);
