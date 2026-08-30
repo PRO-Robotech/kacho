@@ -14,7 +14,7 @@
 
 import { jest } from "@jest/globals";
 import React from "react";
-import { fireEvent, render, screen, waitFor } from "@testing-library/react";
+import { cleanup, fireEvent, render, screen, waitFor } from "@testing-library/react";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { antdStub } from "@shared/test/antd-stub";
 
@@ -25,7 +25,7 @@ jest.unstable_mockModule("antd", () => ({
 }));
 
 const { toast } = await import("@shared/lib/toast");
-const { DeleteDialog, requiresNameConfirm, HIGH_RISK_DELETE } = await import("./DeleteDialog");
+const { DeleteDialog, requiresNameConfirm, deleteConsequence } = await import("./DeleteDialog");
 
 const realFetch = globalThis.fetch;
 let calls: Array<{ method: string; url: string }> = [];
@@ -97,10 +97,30 @@ describe("DeleteDialog — подтверждение именем", () => {
     expect(confirm).not.toBeDisabled();
   });
 
-  it("список ресурсов повышенного риска отвечает и «да», и «нет»", () => {
-    expect(requiresNameConfirm("networks")).toBe(true);
-    expect(requiresNameConfirm("subnets")).toBe(false);
-    expect(HIGH_RISK_DELETE.has("security-groups")).toBe(true);
+  it("ввод имени спрашивают там, где исчезают данные, и не спрашивают, где нет", () => {
+    // ЗДЕСЬ ЗАКРЕПЛЯЛСЯ ПЕРЕВЁРНУТЫЙ КРИТЕРИЙ: «networks → да, subnets → нет».
+    // Проба была верна про механизм и неверна про предмет — она пиннила ровно
+    // то состояние, из-за которого самая дорогая ошибка стоила одного клика, а
+    // самая безобидная требовала набирать имя (#1606).
+    //
+    // Сам критерий держит гейт `console-delete-ritual-tracks-risk` (множества
+    // «требует имя» и «защищён RESTRICT» не пересекаются). Здесь — только то,
+    // что признак ЧИТАЕТСЯ из объявления причины и отвечает обе стороны.
+    expect(requiresNameConfirm("volumes")).toBe(true);
+    expect(requiresNameConfirm("networks")).toBe(false);
+    expect(deleteConsequence("volumes")).toMatch(/Данные тома/);
+    expect(deleteConsequence("networks")).toBeUndefined();
+  });
+
+  it("диалог называет, ЧТО исчезнет, — и не выдумывает потерю там, где её нет", () => {
+    // Отрицание в паре с положительным: без второй половины проба зеленела бы
+    // на диалоге, который вообще ничего не пишет.
+    renderDialog({ resourceId: "volumes", requireNameConfirm: true });
+    expect(screen.getByTestId("delete-consequence").textContent).toMatch(/Данные тома будут стёрты/);
+    cleanup();
+
+    renderDialog({ resourceId: "networks" });
+    expect(screen.getByTestId("delete-consequence").textContent).toMatch(/будет удалён безвозвратно/);
   });
 });
 

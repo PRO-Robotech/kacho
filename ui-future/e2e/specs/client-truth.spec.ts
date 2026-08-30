@@ -43,6 +43,19 @@ async function openCreateForm(page: Page, projectId: string, resource: string): 
   ).toBeVisible({ timeout: 45_000 });
 }
 
+/**
+ * Открыть диалог удаления строки с этим именем.
+ *
+ * Ищется СТРОКА по видимому имени, а не по индексу: индекс зависит от порядка,
+ * а порядок — от того, что ещё лежит в проекте.
+ */
+async function openDeleteDialog(page: Page, name: string): Promise<void> {
+  const row = page.locator("tbody tr", { hasText: name }).first();
+  await expect(row, `строка «${name}» не появилась в списке: удалять нечего`).toBeVisible({ timeout: 60_000 });
+  await row.locator("button").last().click();
+  await page.getByRole("menuitem", { name: /Удалить/ }).click();
+}
+
 // ─────────────────────────────────────────────────────────────────────────────
 
 test("форма создания называет ту форму имени, которую платформа принимает", async ({ page }) => {
@@ -103,4 +116,80 @@ test("форма создания называет ту форму имени, �
       timeout: 15_000,
     })
     .toBe(0);
+});
+
+// ─────────────────────────────────────────────────────────────────────────────
+
+test("подтверждение удаления тяжелее там, где исчезают данные", async ({ page }) => {
+  // verifies #1606
+  //
+  // Дефект: ритуал был перевёрнут относительно риска. Ввод имени руками
+  // требовался у сети — там, где край и так откажет, пока есть дети, и терять
+  // нечего; у тома, где содержимое исчезает безвозвратно, хватало одного клика,
+  // и та же общая фраза не называла, что именно уйдёт.
+  //
+  // Утверждается наблюдаемое: что видит человек в диалоге удаления у обоих
+  // ресурсов. Пара обязательна — «у сети имени не спрашивают» одинаково зелено
+  // и на исправном продукте, и на диалоге, который не спрашивает ничего нигде.
+  test.setTimeout(240_000);
+  const { projectId } = await tenantWithProject(page);
+
+  const tag = runTag();
+
+  // ── сеть: терять нечего, ритуал лёгкий, предупреждение общее ──────────────
+  await page.goto(`/projects/${projectId}/vpc/networks/create`, { waitUntil: "domcontentloaded" });
+  const netForm = page.locator("form.ant-form");
+  await expect(netForm).toBeVisible({ timeout: 45_000 });
+  await netForm.locator("input#name, input[name=name]").first().fill(`net-${tag}`);
+  await page.locator('button:has-text("Создать")').last().click();
+
+  await page.goto(`/projects/${projectId}/vpc/networks`, { waitUntil: "domcontentloaded" });
+  await openDeleteDialog(page, `net-${tag}`);
+
+  const dialog = page.locator("[role=dialog]");
+  await expect(
+    dialog.getByTestId("delete-consequence"),
+    "диалог удаления не сказал ничего о последствиях — тогда сравнивать не с чем",
+  ).toBeVisible({ timeout: 30_000 });
+
+  await expect(
+    dialog.getByText("Подтвердите удаление — введите имя ресурса"),
+    "у сети спрашивают имя руками: край и так откажет, пока есть дети, и терять нечего. " +
+      "Ритуал, стоящий на каждом удалении, перестаёт отличать опасное от рядового",
+  ).toHaveCount(0);
+});
+
+test("удаление тома называет, что именно исчезнет, и просит имя", async ({ page }) => {
+  // verifies #1606 — вторая половина пары выше, отдельной пробой: у неё своя
+  // фикстура (том), и склеивать их значило бы терять вердикт по одной из
+  // половин при отказе другой.
+  test.setTimeout(240_000);
+  const { projectId } = await tenantWithProject(page);
+  const tag = runTag();
+
+  await page.goto(`/projects/${projectId}/storage/volumes/create`, { waitUntil: "domcontentloaded" });
+  const form = page.locator("form.ant-form");
+  await expect(form).toBeVisible({ timeout: 45_000 });
+  await form.locator("input#name, input[name=name]").first().fill(`vol-${tag}`);
+  await page.locator('button:has-text("Создать")').last().click();
+
+  await page.goto(`/projects/${projectId}/storage/volumes`, { waitUntil: "domcontentloaded" });
+  await openDeleteDialog(page, `vol-${tag}`);
+
+  const dialog = page.locator("[role=dialog]");
+  const consequence = dialog.getByTestId("delete-consequence");
+  await expect(consequence).toBeVisible({ timeout: 30_000 });
+
+  const text = (await consequence.textContent()) ?? "";
+  expect(
+    text,
+    `диалог удаления тома говорит общей фразой — «${text}». Она одинакова у тома и у пустой ` +
+      `сети, поэтому не сообщает клиенту, чем он рискует: данные тома исчезают безвозвратно`,
+  ).toMatch(/Данные тома/);
+
+  await expect(
+    dialog.getByText("Подтвердите удаление — введите имя ресурса"),
+    "удаление тома проходит одним кликом: самая дорогая ошибка в консоли стоит меньше усилий, " +
+      "чем самая безобидная",
+  ).toBeVisible({ timeout: 15_000 });
 });
