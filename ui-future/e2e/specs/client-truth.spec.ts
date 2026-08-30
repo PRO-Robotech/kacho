@@ -58,6 +58,20 @@ async function openDeleteDialog(page: Page, name: string): Promise<void> {
 
 // ─────────────────────────────────────────────────────────────────────────────
 
+// nameInputOf — поле «Имя» формы создания.
+//
+// Адресуется ЗАПОЛНИТЕЛЕМ, и это не вкус: подпись поля с ним НЕ связана —
+// снимок страницы из прогона показал доступное имя `my-resource`, то есть
+// метка рисуется отдельным узлом без `for`. Прежние редакции искали
+// `input#name` (идентификатор генерируется React и не совпадёт никогда) и
+// `getByLabel` (связи нет) — обе не могли найти поле ни при каком продукте.
+//
+// Реестр образов несёт свой заполнитель: его имя допускает точку и живёт по
+// своей форме, поэтому образцов два, а не один.
+function nameInputOf(scope: import("@playwright/test").Locator) {
+  return scope.getByPlaceholder(/^my-(resource|registry)$/).first();
+}
+
 test("форма создания называет ту форму имени, которую платформа принимает", async ({ page }) => {
   // verifies #1604
   //
@@ -79,7 +93,17 @@ test("форма создания называет ту форму имени, �
   // ВИДИМЫЙ текст под полем и падала на верном продукте: требование «всегда
   // видно» строже предмета #1604, где подсказка была НЕВЕРНОЙ, а не невидимой.
   // Снимок страницы из прогона это и показал — поле есть, видимого текста нет.
-  const infoIcon = form.locator('[aria-label="field-info"]').first();
+  // Иконка берётся у ПОДПИСИ «Имя», а не первая в форме: пояснения есть у
+  // нескольких полей, и `.first()` навёл бы на чужое.
+  //
+  // Подпись — не элемент `label`: снимок страницы показал её отдельным узлом
+  // без связи с полем, поэтому привязка идёт по СОСЕДСТВУ — блок, который несёт
+  // текст «Имя» и иконку рядом.
+  const nameLabel = form
+    .locator('div:has(> [aria-label="field-info"])')
+    .filter({ hasText: /^Имя/ })
+    .first();
+  const infoIcon = nameLabel.locator('[aria-label="field-info"]').first();
 
   // ПОЛОЖИТЕЛЬНЫЙ КОНТРОЛЬ: пояснение вообще есть. Без него отрицание ниже
   // зеленело бы на форме, у которой пояснений нет вовсе.
@@ -89,7 +113,7 @@ test("форма создания называет ту форму имени, �
   ).toBeVisible({ timeout: 30_000 });
   await infoIcon.hover();
 
-  const hint = page.locator(".ant-tooltip-inner").first();
+  const hint = page.locator('[role="tooltip"]').first();
   await expect(
     hint,
     "пояснение не раскрывается: правило объявлено, но клиенту недоступно",
@@ -112,7 +136,7 @@ test("форма создания называет ту форму имени, �
 
   // Имя по ПРЕЖНЕЙ подсказке отвергается ФОРМОЙ, а не операцией: клиент узнаёт
   // о правиле сразу, а не после ожидания.
-  const nameInput = form.locator("input#name, input[name=name]").first();
+  const nameInput = nameInputOf(form);
   await nameInput.fill(`Web_Net_${runTag()}`);
   await page.locator('button:has-text("Создать")').last().click();
 
@@ -157,7 +181,7 @@ test("подтверждение удаления тяжелее там, где 
   await page.goto(`/projects/${projectId}/vpc/networks/create`, { waitUntil: "domcontentloaded" });
   const netForm = page.locator("form.ant-form");
   await expect(netForm).toBeVisible({ timeout: 45_000 });
-  await netForm.locator("input#name, input[name=name]").first().fill(`net-${tag}`);
+  await nameInputOf(netForm).fill(`net-${tag}`);
   await page.locator('button:has-text("Создать")').last().click();
 
   await page.goto(`/projects/${projectId}/vpc/networks`, { waitUntil: "domcontentloaded" });
@@ -187,7 +211,7 @@ test("удаление тома называет, что именно исчез
   await page.goto(`/projects/${projectId}/storage/volumes/create`, { waitUntil: "domcontentloaded" });
   const form = page.locator("form.ant-form");
   await expect(form).toBeVisible({ timeout: 45_000 });
-  await form.locator("input#name, input[name=name]").first().fill(`vol-${tag}`);
+  await nameInputOf(form).fill(`vol-${tag}`);
   await page.locator('button:has-text("Создать")').last().click();
 
   await page.goto(`/projects/${projectId}/storage/volumes`, { waitUntil: "domcontentloaded" });
@@ -301,7 +325,7 @@ test("пустой реестр не учит клиента, что push — е
   await page.goto(`/projects/${projectId}/registry/registries/create`, { waitUntil: "domcontentloaded" });
   const form = page.locator("form.ant-form");
   await expect(form).toBeVisible({ timeout: 45_000 });
-  await form.locator("input#name, input[name=name]").first().fill(`reg-${tag}`);
+  await nameInputOf(form).fill(`reg-${tag}`);
   await page.locator('button:has-text("Создать")').last().click();
 
   await page.goto(`/projects/${projectId}/registry/registries`, { waitUntil: "domcontentloaded" });
