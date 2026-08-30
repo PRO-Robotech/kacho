@@ -17,15 +17,14 @@ import (
 	"github.com/PRO-Robotech/kacho/pkg/quota/quotadetail"
 )
 
-// Величины отказа учёта доезжают до клиента МАШИННО (задача продукта #1605).
+// Величины отказа учёта доезжают до клиента МАШИННО.
 //
 // Производитель отказа уже посчитал носителя, вид, предел и занятое и положил их
 // в `DETAIL`. Клиент обязан читать их из `google.rpc.ErrorInfo.metadata`, а не
-// разбором прозы: тон сообщения стабилен, но не парсибелен
-// (`api-conventions.md` §By-lane code-split).
+// разбором прозы: тон сообщения стабилен, но не парсибелен.
 
-// refusalMetadataInfo достаёт `ErrorInfo` из статуса; отсутствие детали —
-// находка, а не «ну и ладно».
+// refusalMetadataInfo достаёт `ErrorInfo` из статуса. Отсутствие детали —
+// ошибка пробы: поле обязано быть заполнено, и пустое молчанием быть не может.
 func refusalMetadataInfo(t testing.TB, err error) *errdetails.ErrorInfo {
 	t.Helper()
 	st, ok := status.FromError(err)
