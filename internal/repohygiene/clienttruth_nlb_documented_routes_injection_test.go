@@ -57,7 +57,7 @@ func TestNlbDocumentedRoutesGateInjection(t *testing.T) {
 		root := writeNlbRouteTree(t,
 			"/nlb/v1/networkLoadBalancers/nlb...",
 			"/nlb/v1/networkLoadBalancers/nlb...:move")
-		c, err := collectNlbDocumentedRoutes(root)
+		c, err := collectNlbDocumentedRoutes(mustSyntheticTree(t, root))
 		if err != nil {
 			t.Fatalf("обход: %v", err)
 		}
@@ -73,7 +73,7 @@ func TestNlbDocumentedRoutesGateInjection(t *testing.T) {
 		root := writeNlbRouteTree(t,
 			"/nlb/v1/networkLoadBalancers/nlb...:move",
 			"/nlb/v1/networkLoadBalancers/nlb...:attachTargetGroup")
-		c, err := collectNlbDocumentedRoutes(root)
+		c, err := collectNlbDocumentedRoutes(mustSyntheticTree(t, root))
 		if err != nil {
 			t.Fatalf("обход: %v", err)
 		}
@@ -93,7 +93,7 @@ func TestNlbDocumentedRoutesGateInjection(t *testing.T) {
 		// Отличие от дефекта ровно в одном сегменте — :verb. Близнец обязан быть
 		// ПРОЧИТАН, иначе его молчание ничего не доказывает.
 		root := writeNlbRouteTree(t, "/nlb/v1/networkLoadBalancers/{id}")
-		c, err := collectNlbDocumentedRoutes(root)
+		c, err := collectNlbDocumentedRoutes(mustSyntheticTree(t, root))
 		if err != nil {
 			t.Fatalf("обход: %v", err)
 		}
@@ -112,7 +112,7 @@ func TestNlbDocumentedRoutesGateInjection(t *testing.T) {
 			"/nlb/v1/networkLoadBalancers/{id}",
 			"/nlb/v1/networkLoadBalancers/&#123;id&#125;",
 			"/nlb/v1/networkLoadBalancers/nlb...")
-		c, err := collectNlbDocumentedRoutes(root)
+		c, err := collectNlbDocumentedRoutes(mustSyntheticTree(t, root))
 		if err != nil {
 			t.Fatalf("обход: %v", err)
 		}
@@ -125,7 +125,7 @@ func TestNlbDocumentedRoutesGateInjection(t *testing.T) {
 	})
 
 	t.Run("ПУСТОЙ ОБХОД отличим от «нарушений нет»", func(t *testing.T) {
-		c, err := collectNlbDocumentedRoutes(t.TempDir())
+		c, err := collectNlbDocumentedRoutes(mustSyntheticTree(t, t.TempDir()))
 		if err != nil {
 			t.Fatalf("обход: %v", err)
 		}

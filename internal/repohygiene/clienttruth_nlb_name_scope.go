@@ -6,11 +6,14 @@ package repohygiene
 import (
 	"fmt"
 	"os"
+	"path"
 	"path/filepath"
 	"regexp"
 	"sort"
 	"strconv"
 	"strings"
+
+	"github.com/PRO-Robotech/kacho/internal/treecorpus"
 )
 
 // Область уникальности имени: контракт, документация и база обязаны называть ОДНУ.
@@ -44,6 +47,55 @@ import (
 // ДВУЯЗЫЧНОСТЬ КОРПУСА УЧТЕНА НАМЕРЕННО (`testing.md` §«Предикат по ДВУЯЗЫЧНОМУ
 // корпусу»): предикат на одном языке недобирал бы молча, и недобор пришёлся бы
 // ровно на документацию — то есть на ту сторону, ради которой гейт заведён.
+
+// nlbTreeFiles — отслеживаемые файлы под каталогом dirRel с одним из суффиксов.
+//
+// СОСТАВ БЕРЁТСЯ У ИНДЕКСА, А НЕ У ДИСКА, и это не формальность. Под
+// `services/` и `proto/` на машине, где поднимали стенд или собирали фронтенд,
+// лежат распаковки чартов, сборочные каталоги и отчёты прогонов; обход файловой
+// системы прочитал бы их наравне с деревом, и вердикт стал бы свойством рабочего
+// каталога, а не коммита. Два соседних гейта уже разошлись ровно так — 342
+// против 341 на одной неотслеживаемой миграции.
+//
+// recursive=false повторяет семантику `filepath.Glob("dir/*.ext")` — ОДИН
+// уровень: перевод плоского каталога на рекурсивный обход сменил бы вместе с
+// источником состава и ВОПРОС, который проверка задаёт.
+//
+// Возвращаются ОТНОСИТЕЛЬНЫЕ пути (как их отдаёт индекс); читающая сторона
+// склеивает их с `tree.Root()`.
+func nlbTreeFiles(tree *treecorpus.Tree, dirRel string, recursive bool, suffixes ...string) []string {
+	prefix := strings.TrimSuffix(filepath.ToSlash(dirRel), "/") + "/"
+	var out []string
+	for _, rel := range tree.SortedFiles() {
+		if !strings.HasPrefix(rel, prefix) {
+			continue
+		}
+		if !recursive && strings.Contains(rel[len(prefix):], "/") {
+			continue
+		}
+		if len(suffixes) > 0 {
+			ok := false
+			for _, sfx := range suffixes {
+				if strings.HasSuffix(rel, sfx) {
+					ok = true
+					break
+				}
+			}
+			if !ok {
+				continue
+			}
+		}
+		out = append(out, rel)
+	}
+	return out
+}
+
+// nlbReadTreeFile — чтение файла состава. Путь склеивается ЗДЕСЬ, из корня
+// дерева и относительного имени, пришедшего из индекса: в таком виде он не
+// приходит извне ни одной своей частью.
+func nlbReadTreeFile(tree *treecorpus.Tree, rel string) ([]byte, error) {
+	return os.ReadFile(filepath.Join(tree.Root(), filepath.FromSlash(rel)))
+}
 
 // nlbNameScopeTable — таблица, чьё имя проверяется. Ключ — имя таблицы в схеме
 // `kacho_nlb`, значение — как этот ресурс называется в контракте и на странице.
@@ -149,22 +201,23 @@ func gooseVersion(name string) int64 {
 }
 
 // collectNlbNameScope — собирает авторитет (из миграций) и все утверждения о нём
-// (из контракта и документации) под корнем root.
-func collectNlbNameScope(root string) (nlbNameScopeCensus, error) {
+// (из контракта и документации).
+//
+// Состав дерева приходит СОСТАВЛЕННЫМ (`treecorpus.Tree`), а не собирается здесь
+// обходом диска. Конструктор выбирает ВЫЗЫВАЮЩИЙ: гейт берёт
+// `treecorpus.NewTree` (индекс git), инъекционная проба — `treecorpus.SyntheticTree`
+// (её дерево репозиторием не является, спрашивать у него индекс нечего).
+func collectNlbNameScope(tree *treecorpus.Tree) (nlbNameScopeCensus, error) {
 	c := nlbNameScopeCensus{
 		IndexesDerived: map[string]string{},
 		ClaimsByKind:   map[string]int{},
 	}
 
 	// ── 1. АВТОРИТЕТ: последний уникальный индекс имени по каждой таблице ──────
-	migDir := filepath.Join(root, "services", "nlb", "internal", "migrations")
-	migs, err := filepath.Glob(filepath.Join(migDir, "*.sql"))
-	if err != nil {
-		return c, err
-	}
+	migs := nlbTreeFiles(tree, "services/nlb/internal/migrations", false, ".sql")
 	sort.Slice(migs, func(i, j int) bool { return gooseVersion(migs[i]) < gooseVersion(migs[j]) })
 	for _, m := range migs {
-		body, err := os.ReadFile(m) //nolint:gosec // путь построен из глоба под корнем репо
+		body, err := nlbReadTreeFile(tree, m)
 		if err != nil {
 			return c, err
 		}
@@ -180,19 +233,13 @@ func collectNlbNameScope(root string) (nlbNameScopeCensus, error) {
 	}
 
 	// ── 2. УТВЕРЖДЕНИЯ КОНТРАКТА ──────────────────────────────────────────────
-	protoDir := filepath.Join(root, "proto", "kacho", "cloud", "loadbalancer", "v1")
-	protos, err := filepath.Glob(filepath.Join(protoDir, "*.proto"))
-	if err != nil {
-		return c, err
-	}
-	sort.Strings(protos)
-	for _, p := range protos {
-		body, err := os.ReadFile(p) //nolint:gosec // путь построен из глоба под корнем репо
+	protos := nlbTreeFiles(tree, "proto/kacho/cloud/loadbalancer/v1", false, ".proto")
+	for _, rel := range protos {
+		body, err := nlbReadTreeFile(tree, rel)
 		if err != nil {
 			return c, err
 		}
 		c.ProtoFiles++
-		rel, _ := filepath.Rel(root, p)
 		lines := strings.Split(string(body), "\n")
 		msg := ""
 		var block []string
@@ -241,24 +288,13 @@ func collectNlbNameScope(root string) (nlbNameScopeCensus, error) {
 	}
 
 	// ── 3. УТВЕРЖДЕНИЯ ДОКУМЕНТАЦИИ ───────────────────────────────────────────
-	docRoot := filepath.Join(root, "services", "nlb", "docs", "content")
-	err = filepath.WalkDir(docRoot, func(path string, d os.DirEntry, err error) error {
-		if err != nil {
-			if os.IsNotExist(err) {
-				return nil
-			}
-			return err
-		}
-		if d.IsDir() || !strings.HasSuffix(path, ".mdx") {
-			return nil
-		}
-		body, rerr := os.ReadFile(path) //nolint:gosec // путь пришёл из обхода под корнем репо
+	for _, rel := range nlbTreeFiles(tree, "services/nlb/docs/content", true, ".mdx") {
+		body, rerr := nlbReadTreeFile(tree, rel)
 		if rerr != nil {
-			return rerr
+			return c, rerr
 		}
 		c.DocFiles++
-		rel, _ := filepath.Rel(root, path)
-		base := filepath.Base(path)
+		base := path.Base(rel)
 		for i, ln := range strings.Split(string(body), "\n") {
 			// (а) запись ограничения — опознаёт себя КОЛОНКОЙ, ресурс берётся из неё
 			for _, mt := range nlbDocConstraintRe.FindAllStringSubmatch(ln, -1) {
@@ -289,10 +325,6 @@ func collectNlbNameScope(root string) (nlbNameScopeCensus, error) {
 				c.ClaimsByKind["документация (проза)"]++
 			}
 		}
-		return nil
-	})
-	if err != nil {
-		return c, err
 	}
 	return c, nil
 }

@@ -8,6 +8,8 @@ import (
 	"path/filepath"
 	"strings"
 	"testing"
+
+	"github.com/PRO-Robotech/kacho/internal/treecorpus"
 )
 
 // Инъекция для гейта области уникальности имени — В ОБЕ СТОРОНЫ.
@@ -20,6 +22,21 @@ import (
 // Дефект возвращается НАСТОЯЩИЙ — тот самый текст, что стоял в контракте до
 // задачи продукта #1597 («unique within the project» у имени слушателя при
 // `listeners_lb_name_uniq (load_balancer_id, name)` в базе).
+
+// mustSyntheticTree — состав СИНТЕТИЧЕСКОГО дерева инъекции.
+//
+// Такое дерево репозиторием не является, индекса у него нет, и обход файловой
+// системы здесь — не откат, а единственный возможный авторитет. Конструктор
+// отдельный намеренно: молчаливый откат внутри NewTree был бы невидим, а
+// отдельное имя вызывающий выбирает осознанно (см. godoc treecorpus.SyntheticTree).
+func mustSyntheticTree(t *testing.T, root string) *treecorpus.Tree {
+	t.Helper()
+	tree, err := treecorpus.SyntheticTree(root)
+	if err != nil {
+		t.Fatalf("синтетическое дерево %s: %v", root, err)
+	}
+	return tree
+}
 
 // nlbScopeFixture — синтетическое дерево: миграция (авторитет), контракт и
 // страница справочника. Значения подставляются, чтобы одна и та же форма
@@ -88,7 +105,7 @@ func TestNlbNameScopeGateInjection(t *testing.T) {
 			listenerScopeInDoc:   "балансировщика",
 			lbScopeInProto:       "project",
 		})
-		c, err := collectNlbNameScope(root)
+		c, err := collectNlbNameScope(mustSyntheticTree(t, root))
 		if err != nil {
 			t.Fatalf("обход: %v", err)
 		}
@@ -106,7 +123,7 @@ func TestNlbNameScopeGateInjection(t *testing.T) {
 			listenerScopeInDoc:   "балансировщика",
 			lbScopeInProto:       "project",
 		})
-		c, err := collectNlbNameScope(root)
+		c, err := collectNlbNameScope(mustSyntheticTree(t, root))
 		if err != nil {
 			t.Fatalf("обход: %v", err)
 		}
@@ -129,7 +146,7 @@ func TestNlbNameScopeGateInjection(t *testing.T) {
 			listenerScopeInDoc:   "проекта", // документация разошлась с базой
 			lbScopeInProto:       "project",
 		})
-		c, err := collectNlbNameScope(root)
+		c, err := collectNlbNameScope(mustSyntheticTree(t, root))
 		if err != nil {
 			t.Fatalf("обход: %v", err)
 		}
@@ -148,7 +165,7 @@ func TestNlbNameScopeGateInjection(t *testing.T) {
 			listenerScopeInDoc:   "балансировщика",
 			lbScopeInProto:       "project",
 		})
-		c, err := collectNlbNameScope(root)
+		c, err := collectNlbNameScope(mustSyntheticTree(t, root))
 		if err != nil {
 			t.Fatalf("обход: %v", err)
 		}
@@ -168,7 +185,7 @@ func TestNlbNameScopeGateInjection(t *testing.T) {
 	})
 
 	t.Run("ПУСТОЙ ОБХОД отличим от «нарушений нет»", func(t *testing.T) {
-		c, err := collectNlbNameScope(t.TempDir())
+		c, err := collectNlbNameScope(mustSyntheticTree(t, t.TempDir()))
 		if err != nil {
 			t.Fatalf("обход: %v", err)
 		}
