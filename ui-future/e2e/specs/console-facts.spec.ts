@@ -308,7 +308,7 @@ test("ни одна ячейка списка не показывает сыро
 
   const lists = [
     { name: "группы безопасности", path: `/projects/${projectId}/vpc/security-groups` },
-    { name: "таблицы маршрутизации", path: `/projects/${projectId}/vpc/route-tables` },
+    { name: "таблицы маршрутов", path: `/projects/${projectId}/vpc/route-tables` },
     { name: "облачные сети", path: `/projects/${projectId}/vpc/networks` },
     { name: "зоны", path: "/system/zones" },
     { name: "регионы", path: "/system/regions" },

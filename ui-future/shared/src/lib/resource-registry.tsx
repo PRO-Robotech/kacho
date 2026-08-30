@@ -178,7 +178,7 @@ function narrowExitFromAccount(ctx: RowVerbContext, isSelf: boolean): string {
 // `test/set-replacement-draft-composition`, а перепись мест он берёт обходом
 // дерева: новое такое место без объявления рядом уронит его с координатой.
 
-/** Строки маршрутов формы таблицы маршрутизации (`render` + `sanitize` ниже). */
+/** Строки маршрутов формы таблицы маршрутов (`render` + `sanitize` ниже). */
 export const STATIC_ROUTES_REPLACEMENT: SetReplacementDraft = {
   field: "static_routes",
   contract: "kacho/cloud/vpc/v1/route_table.proto",
@@ -1250,14 +1250,14 @@ export const REGISTRY: Record<string, ResourceSpec> = {
     ],
     docs: [
       { label: "Облачные сети и подсети", href: "#" },
-      { label: "Таблицы маршрутизации", href: "#" },
+      { label: "Таблицы маршрутов", href: "#" },
       { label: "Группы безопасности", href: "#" },
       { label: "Адреса облачных ресурсов", href: "#" },
     ],
     emptyState: {
       title: "Создайте вашу первую облачную сеть",
       body:
-        "Облачная сеть Kachō объединяет подсети, таблицы маршрутизации и группы безопасности в единое " +
+        "Облачная сеть Kachō объединяет подсети, таблицы маршрутов и группы безопасности в единое " +
         "изолированное адресное пространство. Внутри сети ресурсы общаются напрямую, а наружу — через шлюзы " +
         "и публичные адреса.",
       docs: ["Облачные сети и подсети"],
@@ -1306,7 +1306,7 @@ export const REGISTRY: Record<string, ResourceSpec> = {
       },
       {
         // VPC-1: system-provisioned default RT (output-only), echoed on create.
-        header: "Таблица маршрутизации по умолчанию",
+        header: "Таблица маршрутов по умолчанию",
         path: "default_route_table_id",
         render: (row) => (
           <RefNameLink specId="route-tables" refId={row.default_route_table_id as string | undefined} maxChars={42} />
@@ -1491,7 +1491,7 @@ export const REGISTRY: Record<string, ResourceSpec> = {
         render: (row) => <LabelsCell labels={row.labels as Record<string, string> | undefined} />,
       },
       {
-        header: "Таблица маршрутизации",
+        header: "Таблица маршрутов",
         path: "route_table_id",
         render: (row) => <RefNameLink specId="route-tables" refId={row.route_table_id as string | undefined} />,
       },
@@ -1570,7 +1570,7 @@ export const REGISTRY: Record<string, ResourceSpec> = {
         refProjectScoped: true,
         placeholder: "— авто: default сети —",
         description:
-          "Опционально. Если не задано — авто-ассоциируется таблица маршрутизации по умолчанию сети (network.defaultRouteTableId°).",
+          "Опционально. Если не задано — авто-ассоциируется таблица маршрутов по умолчанию сети (network.defaultRouteTableId°).",
       },
       FIELD_LABELS,
       FIELD_DESCRIPTION,
@@ -1919,14 +1919,14 @@ export const REGISTRY: Record<string, ResourceSpec> = {
     // `lib/list-server-search-parity.test.ts`.
     serverSearchField: "name",
     docs: [
-      { label: "Таблицы маршрутизации", href: "#" },
+      { label: "Таблицы маршрутов", href: "#" },
       { label: "Статическая маршрутизация", href: "#" },
       { label: "Маршрутизация через NAT-инстанс", href: "#" },
     ],
     emptyState: {
-      title: "Создайте вашу первую таблицу маршрутизации",
+      title: "Создайте вашу первую таблицу маршрутов",
       body:
-        "С помощью таблиц маршрутизации вы можете построить маршруты между облачной сетью Kachō и другими " +
+        "С помощью таблиц маршрутов вы можете построить маршруты между облачной сетью Kachō и другими " +
         "виртуальными или локальными сетями, либо настроить отказоустойчивую схему передачи данных с " +
         "маршрутами в нескольких зонах доступности.",
       docs: ["Статическая маршрутизация", "Маршрутизация через NAT-инстанс"],
@@ -2507,7 +2507,7 @@ export const REGISTRY: Record<string, ResourceSpec> = {
       title: "Создайте первый шлюз",
       body:
         "Шлюз — выход из облачной сети наружу: через него ресурсы без публичного адреса обращаются в интернет. " +
-        "Маршрут к шлюзу задаётся в таблице маршрутизации подсети.",
+        "Маршрут к шлюзу задаётся в таблице маршрутов подсети.",
       docs: ["Шлюзы и выход в интернет"],
     },
     columns: [

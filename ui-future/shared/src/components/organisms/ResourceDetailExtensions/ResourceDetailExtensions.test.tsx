@@ -86,7 +86,7 @@ describe("дополнения обзора показывают доменны�
       default_route_table_id: "rt-1",
     });
 
-    expect(labels).toEqual(["Группа безопасности по умолчанию", "Таблица маршрутизации по умолчанию"]);
+    expect(labels).toEqual(["Группа безопасности по умолчанию", "Таблица маршрутов по умолчанию"]);
     expect(screen.getByText("Группа безопасности по умолчанию")).toBeInTheDocument();
   });
 
@@ -134,7 +134,7 @@ describe("дополнения обзора показывают доменны�
     );
   });
 
-  it("таблица маршрутизации называет свою сеть", () => {
+  it("таблица маршрутов называет свою сеть", () => {
     const labels = drawOverviewExtra("route-tables", { id: "rt-1", network_id: "net-1" });
 
     expect(labels).toEqual(["Сеть"]);
@@ -155,7 +155,7 @@ describe("панели под обзором", () => {
     expect(screen.getByText("CIDR-блоков нет")).toBeInTheDocument();
   });
 
-  it("таблица маршрутизации получает панель своих статических маршрутов", () => {
+  it("таблица маршрутов получает панель своих статических маршрутов", () => {
     draw(
       detailExtension("route-tables")!.overviewBelow!(
         ctx({ id: "rt-1", static_routes: [{ destination_prefix: "0.0.0.0/0", next_hop_address: "10.0.0.1" }] }),

@@ -4,7 +4,7 @@
 // ровно тронутое. Попади неизменяемое в тело — край отверг бы правку имени
 // целиком, и пользователь получил бы отказ на действие, которого не совершал.
 //
-// Отдельно проверяется выбор таблицы маршрутизации: он обязан предлагать только
+// Отдельно проверяется выбор таблицы маршрутов: он обязан предлагать только
 // таблицы СВОЕЙ сети. Чужая таблица в списке — приглашение отправить заведомо
 // отвергаемое значение.
 
@@ -145,7 +145,7 @@ describe("InlineSubnetEditForm", () => {
     expect(body()).not.toHaveProperty("network_id");
   });
 
-  it("предлагаются таблицы маршрутизации только своей сети", async () => {
+  it("предлагаются таблицы маршрутов только своей сети", async () => {
     list.mockResolvedValue({
       route_tables: [
         { id: "rtb-own", name: "своя", network_id: "net-1" },
@@ -170,15 +170,15 @@ describe("InlineSubnetEditForm — черта", () => {
   //
   // Утверждается МЕСТО черты, а не её наличие: черта, уехавшая в конец формы,
   // тоже «есть» и при этом ничего не отделяет.
-  it("стоит между «Метки» и «Таблица маршрутизации»", async () => {
+  it("стоит между «Метки» и «Таблица маршрутов»", async () => {
     show();
-    await screen.findByText("Таблица маршрутизации");
+    await screen.findByText("Таблица маршрутов");
 
     const [divider] = formDividers();
     expect(divider).toBeDefined();
 
     const position = (el: Element) => [...document.body.querySelectorAll("*")].indexOf(el);
     expect(position(screen.getByText("Метки"))).toBeLessThan(position(divider));
-    expect(position(divider)).toBeLessThan(position(screen.getByText("Таблица маршрутизации")));
+    expect(position(divider)).toBeLessThan(position(screen.getByText("Таблица маршрутов")));
   });
 });
