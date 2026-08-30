@@ -82,8 +82,14 @@ type LoadBalancerWriterIface interface {
 	MarkDeleting(ctx context.Context, id string) (*LoadBalancerRecord, error)
 
 	// MoveProject меняет project_id у LB и каскадно — у его листенеров (denorm
-	// sync в одной TX). Возвращает обновлённый LB-record.
-	MoveProject(ctx context.Context, id, newProjectID string) (*LoadBalancerRecord, error)
+	// sync в одной TX). Возвращает обновлённый LB-record И записи переехавших
+	// слушателей.
+	//
+	// Слушатели возвращаются потому, что каскад меняет якорь проекта у ЧУЖОГО
+	// вида, а вид `nlb_listener` объявлен несущим полное состояние: без записей
+	// вызывающему не из чего собрать строку журнала на каждый переехавший
+	// слушатель, и переезд молчал бы о том, что сделал (#1549).
+	MoveProject(ctx context.Context, id, newProjectID string) (*LoadBalancerRecord, []*ListenerRecord, error)
 
 	// Delete — DELETE load_balancers WHERE id=$1. FK-violation (есть дети —
 	// listeners) → ErrFailedPrecondition. row absent

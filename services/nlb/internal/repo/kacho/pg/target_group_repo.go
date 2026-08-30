@@ -377,6 +377,28 @@ type targetGroupWriter struct {
 	targetGroupReader
 }
 
+// withTargets — дочитывает цели группы и раскладывает их по обоим наборам записи.
+//
+// # Почему пути ЗАПИСИ обязаны это делать, а не только чтение
+//
+// Публичная проекция группы строится из `TargetStates`, поэтому запись без него
+// проецируется в группу с ПУСТЫМ набором целей. Пустой массив неотличим на
+// проводе от «целей нет» — и таким его читает и вызывающий (ответ операции
+// правки и переезда), и подписчик потока (событие вида `nlb_target_group` несёт
+// полное состояние). Прежде `Update` и `MoveProject` целей не подгружали, и оба
+// ответа приходили с пустым набором при живых целях.
+//
+// Чтение идёт в ТОЙ ЖЕ транзакции, сразу за мутацией: это состояние на момент
+// события, а не на момент публикации.
+func (w *targetGroupWriter) withTargets(ctx context.Context, rec *kacho.TargetGroupRecord) (*kacho.TargetGroupRecord, error) {
+	targets, err := w.ListTargets(ctx, string(rec.ID))
+	if err != nil {
+		return nil, err
+	}
+	fillTargets(rec, targets)
+	return rec, nil
+}
+
 func (w *targetGroupWriter) Insert(ctx context.Context, tg *domain.TargetGroup) (*kacho.TargetGroupRecord, error) {
 	labelsJSON, err := dto.LabelsToJSONB(tg.Labels)
 	if err != nil {
@@ -474,7 +496,7 @@ func (w *targetGroupWriter) Update(ctx context.Context, tg *domain.TargetGroup, 
 		}
 		return nil, mapPgErr(err, "TargetGroup", string(tg.ID))
 	}
-	return rec, nil
+	return w.withTargets(ctx, rec)
 }
 
 func (w *targetGroupWriter) SetStatusCAS(ctx context.Context, id string, expected, newStatus domain.TargetGroupStatus) (*kacho.TargetGroupRecord, error) {
@@ -572,7 +594,7 @@ func (w *targetGroupWriter) MoveProject(ctx context.Context, id, newProjectID st
 	if err := sp.Commit(ctx); err != nil {
 		return nil, mapPgErr(err, "TargetGroup", id)
 	}
-	return rec, nil
+	return w.withTargets(ctx, rec)
 }
 
 // AddTargets — INSERT ON CONFLICT DO NOTHING per-identity-type partial UNIQUE.
@@ -727,6 +749,49 @@ func (w *targetGroupWriter) DeleteTargetsDraining(ctx context.Context, tgID stri
 		return 0, mapPgErr(err, "Target", "")
 	}
 	return int(tag.RowsAffected()), nil
+}
+
+// DeleteExpiredDrainingTargets — фаза B слива: снимает дренирующиеся строки, у
+// которых истёк `deregistration_delay` ВЛАДЕЮЩЕЙ группы, и возвращает различные
+// идентификаторы затронутых групп.
+//
+// Срок берётся у владеющей группы (`tg.deregistration_delay_seconds`), поэтому
+// JOIN обязателен: у групп он разный. `ON DELETE RESTRICT` на ссылке цели
+// гарантирует, что владелец есть у каждой строки.
+//
+// Строку журнала собирает ВЫЗЫВАЮЩИЙ — тем же строителем, что и остальные точки
+// эмиссии вида, и в ЭТОЙ ЖЕ транзакции (см. объявление порта).
+func (w *targetGroupWriter) DeleteExpiredDrainingTargets(ctx context.Context) (int64, []string, error) {
+	rows, err := w.tx.Query(ctx, `
+        DELETE FROM kacho_nlb.targets t
+              USING kacho_nlb.target_groups tg
+              WHERE t.target_group_id = tg.id
+                AND t.status = 'DRAINING'
+                AND t.drain_started_at < now() - make_interval(secs => tg.deregistration_delay_seconds)
+          RETURNING t.target_group_id`)
+	if err != nil {
+		return 0, nil, mapPgErr(err, "Target", "")
+	}
+	defer rows.Close()
+
+	var deleted int64
+	seen := make(map[string]struct{})
+	var tgIDs []string
+	for rows.Next() {
+		var tgID string
+		if err := rows.Scan(&tgID); err != nil {
+			return 0, nil, mapPgErr(err, "Target", "")
+		}
+		deleted++
+		if _, ok := seen[tgID]; !ok {
+			seen[tgID] = struct{}{}
+			tgIDs = append(tgIDs, tgID)
+		}
+	}
+	if err := rows.Err(); err != nil {
+		return 0, nil, mapPgErr(err, "Target", "")
+	}
+	return deleted, tgIDs, nil
 }
 
 // Delete — снос группы целей. Отказывает не этот код, а схема: ссылки

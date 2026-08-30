@@ -4,7 +4,6 @@
 package listener
 
 import (
-	"encoding/json"
 	"errors"
 	"fmt"
 	"log/slog"
@@ -19,7 +18,6 @@ import (
 	"github.com/PRO-Robotech/kacho/pkg/operations"
 
 	"github.com/PRO-Robotech/kacho/services/nlb/internal/domain"
-	kachorepo "github.com/PRO-Robotech/kacho/services/nlb/internal/repo/kacho"
 )
 
 // TestMapDomainErr_AllSentinels — each domain-sentinel maps to the right
@@ -91,56 +89,6 @@ func TestOperationToProto_FillsPrincipal(t *testing.T) {
 	require.Equal(t, true, pb.Done)
 	require.Nil(t, pb.GetError())
 	require.Nil(t, pb.GetResponse())
-}
-
-// TestListenerPayloadMap_NilGuard — nil input returns nil.
-func TestListenerPayloadMap_NilGuard(t *testing.T) {
-	t.Parallel()
-	require.Nil(t, listenerPayloadMap(nil))
-}
-
-// TestListenerPayloadCarriesTheWholeRecordUnderTheStateEnvelope — строитель
-// нагрузки слушателя кладёт ЗАПИСЬ ЦЕЛИКОМ, под конвертом полного состояния.
-//
-// Здесь стояла проба про имя ключа `parent_resource_id` — предмет её исчез
-// вместе с минимальным снимком: форма нагрузки заменена, а не дополнена (задача
-// #1381). Ослабить её было нельзя, поэтому она ЗАМЕНЕНА утверждением о новой
-// форме, и утверждение сделано ПО ПРОВОДУ — через настоящий JSON, а не через
-// разборщик, собранный из тех же констант: круговой ход был бы истинен при любом
-// их значении.
-//
-// Метки названы отдельно: клиентский отбор по меткам берёт источник ровно
-// отсюда, и потеря их в кодировании оставила бы его без источника МОЛЧА.
-func TestListenerPayloadCarriesTheWholeRecordUnderTheStateEnvelope(t *testing.T) {
-	t.Parallel()
-	rec := &kachorepo.ListenerRecord{}
-	rec.ID = domain.ResourceID("nlb-listener-1")
-	rec.LoadBalancerID = domain.ResourceID("nlb-1")
-	rec.ProjectID = domain.ProjectID("prj-b")
-	rec.Name = domain.LbName("front")
-	rec.Labels = domain.LabelsFromMap(map[string]string{"env": "prod"})
-	rec.Protocol = domain.ProtoTCP
-	rec.Port = domain.LbPort(443)
-	rec.Status = domain.ListenerStatusActive
-
-	raw, err := json.Marshal(listenerPayloadMap(rec))
-	require.NoError(t, err)
-
-	var wire struct {
-		State *kachorepo.ListenerRecord `json:"state"`
-	}
-	require.NoError(t, json.Unmarshal(raw, &wire))
-	require.NotNil(t, wire.State,
-		"нагрузка не несёт конверта полного состояния — сборщик журнала обязан отличать её "+
-			"от строк прежней, минимальной формы, а по удаче разбора этого не сделать")
-	require.Equal(t, "nlb-listener-1", string(wire.State.ID))
-	require.Equal(t, "prj-b", string(wire.State.ProjectID))
-	require.Equal(t, "nlb-1", string(wire.State.LoadBalancerID))
-	require.Equal(t, map[string]string{"env": "prod"}, domain.LabelsToMap(wire.State.Labels),
-		"метки не пережили круг — клиентский отбор по меткам остался бы без источника")
-	require.Equal(t, domain.ProtoTCP, wire.State.Protocol)
-	require.Equal(t, domain.LbPort(443), wire.State.Port)
-	require.Equal(t, domain.ListenerStatusActive, wire.State.Status)
 }
 
 // TestListenerRecordToPb_NilGuard — nil → Internal.

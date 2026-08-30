@@ -342,3 +342,149 @@ func TestKindDictionaryIsWhatTheClientCanName(t *testing.T) {
 		}
 	}
 }
+
+// TestTargetGroupStateIsTheContractSubjectAndCarriesTargetsWithState — у вида
+// `nlb_target_group` событие несёт ПОЛНОЕ состояние группы, и оно совпадает с
+// тем, что отдаёт чтение.
+//
+// # Почему цели названы отдельно
+//
+// Публичная проекция группы строится НЕ из её строки, а из набора целей С
+// СОСТОЯНИЕМ. Строка, собранная из одной лишь записи группы, разобралась бы,
+// перенеслась в контракт и объявила группу БЕЗ ЦЕЛЕЙ — то есть дала бы предмет,
+// отличный от ответа `Get`, причём отличие читалось бы подписчиком как факт
+// («все цели удалены»), а не как неполнота.
+//
+// # Почему сверка идёт с ЧТЕНИЕМ, а не со списком полей
+//
+// Перечень полей здесь был бы вторым отображением записи в контракт: он
+// разошёлся бы с первым молча. Сверяется то же, что отдаёт `Get`, — одним и тем
+// же трансфером.
+func TestTargetGroupStateIsTheContractSubjectAndCarriesTargetsWithState(t *testing.T) {
+	rec := probeTargetGroupRecord()
+
+	var want *lbv1.TargetGroup
+	if err := dto.Transfer(dto.FromTo(*rec, &want)); err != nil {
+		t.Fatalf("эталон чтения не собрался: %v", err)
+	}
+
+	for _, word := range []string{
+		kachorepo.OutboxActionCreated,
+		kachorepo.OutboxActionUpdated,
+		kachorepo.OutboxActionMoved,
+	} {
+		got, absence, err := state(subscription.Row{
+			Kind:    kachorepo.OutboxResourceTargetGroup,
+			Change:  word,
+			Payload: probeTargetGroupPayload(t, rec),
+		})
+		if err != nil {
+			t.Fatalf("род %q: состояние не собралось (%v)", word, err)
+		}
+		if got == nil {
+			t.Fatalf("род %q: состояние НЕ отдано (причина %v) — клиентский отбор по меткам "+
+				"для группы остаётся без источника", word, absence)
+		}
+		var have lbv1.TargetGroup
+		if err := got.UnmarshalTo(&have); err != nil {
+			t.Fatalf("род %q: в конверте состояния не контракт группы: %v", word, err)
+		}
+		if !proto.Equal(want, &have) {
+			t.Fatalf("род %q: состояние потока разошлось с чтением.\nчтение: %v\nпоток:  %v",
+				word, want, &have)
+		}
+		if len(have.GetTargets()) == 0 {
+			t.Fatalf("род %q: состояние пришло БЕЗ целей. Пустой набор читается подписчиком "+
+				"как «целей нет», а не как «это событие поле не заполняет», и клиент, ведущий "+
+				"состояние, предложит создать их заново", word)
+		}
+		if have.GetLabels()["env"] != "prod" {
+			t.Fatalf("род %q: метки не доехали (%v) — клиентский отбор по меткам остался бы "+
+				"без источника", word, have.GetLabels())
+		}
+	}
+}
+
+// TestTargetGroupRemovalCarriesNoStateBecauseThereIsNoSubject — у снятия группы
+// состояния нет и быть не может.
+func TestTargetGroupRemovalCarriesNoStateBecauseThereIsNoSubject(t *testing.T) {
+	got, absence, err := state(subscription.Row{
+		Kind:    kachorepo.OutboxResourceTargetGroup,
+		Change:  kachorepo.OutboxActionDeleted,
+		Payload: probeTargetGroupPayload(t, probeTargetGroupRecord()),
+	})
+	if err != nil {
+		t.Fatalf("снятие: отсутствие состояния объявлено ОШИБКОЙ (%v)", err)
+	}
+	if got != nil {
+		t.Fatal("снятие: отдано состояние предмета, которого больше нет")
+	}
+	if absence != subscription.StateNotProduced {
+		t.Fatalf("снятие: причина отсутствия %v, ожидалась StateNotProduced", absence)
+	}
+}
+
+// probeTargetGroupRecord — запись группы, заполненная ЦЕЛИКОМ, включая набор
+// целей С СОСТОЯНИЕМ: запись с пустыми полями зеленела бы на сборщике, который
+// их теряет.
+func probeTargetGroupRecord() *kachorepo.TargetGroupRecord {
+	rec := &kachorepo.TargetGroupRecord{
+		CreatedAt: time.Date(2026, 8, 30, 12, 0, 0, 0, time.UTC),
+		UpdatedAt: time.Date(2026, 8, 30, 12, 30, 0, 0, time.UTC),
+		Xmin:      "4242",
+	}
+	rec.ID = domain.ResourceID("tgr-1234567890abcde")
+	rec.ProjectID = domain.ProjectID("prj-1234567890abcdef")
+	rec.RegionID = domain.RegionID("ru-central1")
+	rec.Name = domain.LbName("back")
+	rec.Description = domain.LbDescription("бэкенды")
+	rec.Labels = domain.LabelsFromMap(map[string]string{"env": "prod"})
+	rec.Status = domain.TargetGroupStatusActive
+	rec.Port = 8080
+	rec.DeregistrationDelay = domain.LbDuration(300 * time.Second)
+	rec.HealthCheck = domain.HealthCheck{
+		Interval:           domain.DefaultHealthInterval,
+		Timeout:            domain.DefaultHealthTimeout,
+		UnhealthyThreshold: domain.DefaultUnhealthyThreshold,
+		HealthyThreshold:   domain.DefaultHealthyThreshold,
+		TCP:                &domain.HealthCheckTCP{Port: 80},
+	}
+	drainedAt := time.Date(2026, 8, 30, 12, 15, 0, 0, time.UTC)
+	// Две цели, и одна из них СЛИВАЕТСЯ: без lifecycle-состояния она неотличима
+	// от обычной, а именно ради этого различия проекция строится из набора С
+	// состоянием.
+	rec.TargetStates = []kachorepo.TargetRecord{
+		{
+			Target:        domain.Target{ExternalIP: &domain.TargetExternalIP{Address: "203.0.113.10"}, Weight: 100},
+			ID:            "tgt-live",
+			TargetGroupID: string(rec.ID),
+			Status:        kachorepo.TargetStatusActive,
+			CreatedAt:     rec.CreatedAt,
+			UpdatedAt:     rec.UpdatedAt,
+		},
+		{
+			Target:         domain.Target{ExternalIP: &domain.TargetExternalIP{Address: "203.0.113.11"}, Weight: 50},
+			ID:             "tgt-draining",
+			TargetGroupID:  string(rec.ID),
+			Status:         kachorepo.TargetStatusDraining,
+			DrainStartedAt: &drainedAt,
+			CreatedAt:      rec.CreatedAt,
+			UpdatedAt:      rec.UpdatedAt,
+		},
+	}
+	for _, ts := range rec.TargetStates {
+		rec.Targets = append(rec.Targets, ts.Target)
+	}
+	return rec
+}
+
+// probeTargetGroupPayload — нагрузка строки журнала, собранная ТЕМ ЖЕ
+// строителем, каким её собирает эмиттер.
+func probeTargetGroupPayload(t *testing.T, rec *kachorepo.TargetGroupRecord) []byte {
+	t.Helper()
+	raw, err := json.Marshal(kachorepo.TargetGroupStatePayload(rec))
+	if err != nil {
+		t.Fatalf("нагрузка не собралась: %v", err)
+	}
+	return raw
+}

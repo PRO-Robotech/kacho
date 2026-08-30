@@ -262,7 +262,7 @@ func TestLBMove_vs_ListenerWire_CascadeBlocked(t *testing.T) {
 			return
 		}
 		defer w.Abort()
-		if _, merr := w.LoadBalancers().MoveProject(ctx, string(lb.ID), projB); merr != nil {
+		if _, _, merr := w.LoadBalancers().MoveProject(ctx, string(lb.ID), projB); merr != nil {
 			moveErrCh <- merr
 			return
 		}

@@ -204,14 +204,14 @@ func (u *MoveTargetGroupUseCase) doMove(ctx context.Context, id, srcProject, dst
 	}
 	if err := w.Outbox().Emit(ctx,
 		kachorepo.OutboxResourceTargetGroup, string(moved.ID), string(moved.ProjectID),
-		kachorepo.OutboxActionMoved, tgMovedPayload(string(moved.ID), srcProject, dstProject),
+		kachorepo.OutboxActionMoved, kachorepo.TargetGroupStatePayload(moved),
 	); err != nil {
 		return nil, mapDomainErr(err)
 	}
 	// UPDATED — для downstream watchers, не подписанных на MOVED.
 	if err := w.Outbox().Emit(ctx,
 		kachorepo.OutboxResourceTargetGroup, string(moved.ID), string(moved.ProjectID),
-		kachorepo.OutboxActionUpdated, tgOutboxPayload(moved),
+		kachorepo.OutboxActionUpdated, kachorepo.TargetGroupStatePayload(moved),
 	); err != nil {
 		return nil, mapDomainErr(err)
 	}
