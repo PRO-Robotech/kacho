@@ -822,7 +822,7 @@ func rejectedField(t *testing.T, err error, field string) bool {
 }
 
 // Отказ по output-only полю bootSource обязан НАЗЫВАТЬ то поле, которое клиент
-// прислал, — иначе он не восстанавливает следующий шаг (#1625).
+// прислал, — иначе он не восстанавливает следующий шаг.
 //
 // Условие отказа включало четыре поля, текст перечислял три: клиент, приславший
 // `imageKind`, читал «name/resolvedDigest/materializedVolume are output-only»,
