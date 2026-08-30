@@ -63,7 +63,7 @@ Authz проверяется на **обоих** listener'ах — internal не
 
 Ресурсы доступны по единому шаблону `/nlb/v1/<resource>`. Стандартные методы — `Get`/`List`
 (sync) и `Create`/`Update`/`Delete` (async `Operation`). Дополнительные действия оформлены как
-suffix-`:verb` на конкретном ресурсе (`.../{id}:start`), а под-коллекции — как вложенный путь
+suffix-`:verb` на конкретном ресурсе (`.../{id}:move`), а под-коллекции — как вложенный путь
 (`.../{id}/operations`).
 
 <table>
@@ -74,8 +74,7 @@ suffix-`:verb` на конкретном ресурсе (`.../{id}:start`), а �
     <tr><td><code>Create</code></td><td><code>POST</code></td><td><code>/nlb/v1/networkLoadBalancers</code></td><td>async · Operation</td></tr>
     <tr><td><code>Update</code></td><td><code>PATCH</code></td><td><code>/nlb/v1/networkLoadBalancers/&#123;id&#125;</code></td><td>async · Operation</td></tr>
     <tr><td><code>Delete</code></td><td><code>DELETE</code></td><td><code>/nlb/v1/networkLoadBalancers/&#123;id&#125;</code></td><td>async · Operation</td></tr>
-    <tr><td><code>Start</code></td><td><code>POST</code></td><td><code>/nlb/v1/networkLoadBalancers/&#123;id&#125;:start</code></td><td>async · Operation</td></tr>
-    <tr><td><code>AttachTargetGroup</code></td><td><code>POST</code></td><td><code>/nlb/v1/networkLoadBalancers/&#123;id&#125;:attachTargetGroup</code></td><td>async · Operation</td></tr>
+    <tr><td><code>Move</code></td><td><code>POST</code></td><td><code>/nlb/v1/networkLoadBalancers/&#123;id&#125;:move</code></td><td>async · Operation</td></tr>
     <tr><td><code>GetTargetStates</code></td><td><code>GET</code></td><td><code>/nlb/v1/networkLoadBalancers/&#123;id&#125;/targetStates</code></td><td>sync</td></tr>
   </tbody>
 </table>
@@ -198,16 +197,12 @@ Kachō. БД хранит микросекунды, но клиент видит
 <table>
   <thead><tr><th>Сервис</th><th>RPC</th><th>REST</th><th>Тип</th></tr></thead>
   <tbody>
-    <tr><td rowSpan="12"><code>NetworkLoadBalancerService</code></td><td><code>Get</code></td><td><code>GET /nlb/v1/networkLoadBalancers/&#123;id&#125;</code></td><td>sync</td></tr>
+    <tr><td rowSpan="8"><code>NetworkLoadBalancerService</code></td><td><code>Get</code></td><td><code>GET /nlb/v1/networkLoadBalancers/&#123;id&#125;</code></td><td>sync</td></tr>
     <tr><td><code>List</code></td><td><code>GET /nlb/v1/networkLoadBalancers</code></td><td>sync</td></tr>
     <tr><td><code>Create</code></td><td><code>POST /nlb/v1/networkLoadBalancers</code></td><td>async</td></tr>
     <tr><td><code>Update</code></td><td><code>PATCH /nlb/v1/networkLoadBalancers/&#123;id&#125;</code></td><td>async</td></tr>
     <tr><td><code>Delete</code></td><td><code>DELETE /nlb/v1/networkLoadBalancers/&#123;id&#125;</code></td><td>async</td></tr>
-    <tr><td><code>Start</code></td><td><code>POST /nlb/v1/networkLoadBalancers/&#123;id&#125;:start</code></td><td>async</td></tr>
-    <tr><td><code>Stop</code></td><td><code>POST /nlb/v1/networkLoadBalancers/&#123;id&#125;:stop</code></td><td>async</td></tr>
     <tr><td><code>Move</code></td><td><code>POST /nlb/v1/networkLoadBalancers/&#123;id&#125;:move</code></td><td>async</td></tr>
-    <tr><td><code>AttachTargetGroup</code></td><td><code>POST /nlb/v1/networkLoadBalancers/&#123;id&#125;:attachTargetGroup</code></td><td>async</td></tr>
-    <tr><td><code>DetachTargetGroup</code></td><td><code>POST /nlb/v1/networkLoadBalancers/&#123;id&#125;:detachTargetGroup</code></td><td>async</td></tr>
     <tr><td><code>GetTargetStates</code></td><td><code>GET /nlb/v1/networkLoadBalancers/&#123;id&#125;/targetStates</code></td><td>sync</td></tr>
     <tr><td><code>ListOperations</code></td><td><code>GET /nlb/v1/networkLoadBalancers/&#123;id&#125;/operations</code></td><td>sync</td></tr>
     <tr><td rowSpan="6"><code>ListenerService</code></td><td><code>Get</code></td><td><code>GET /nlb/v1/listeners/&#123;id&#125;</code></td><td>sync</td></tr>

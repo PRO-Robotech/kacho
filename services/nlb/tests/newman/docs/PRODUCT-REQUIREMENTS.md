@@ -42,13 +42,17 @@ noted in `docs/engineering/architecture/08-known-divergences.md` of kacho-nlb.
 | **REQ-NLB-UPD-01** | `Update` with `update_mask` containing mutable fields MUST apply only those fields; full-PATCH (empty mask) MUST be rejected with `INVALID_ARGUMENT` "update_mask is required". | NLB-015, NLB-019 | `NLB-UPD-CRUD-OK`, `NLB-UPD-STATE-MASK-EMPTY` |
 | **REQ-NLB-UPD-OCC** | Concurrent `Update` MUST use atomic xmin OCC: exactly one transaction succeeds; loser MUST receive `ABORTED` "concurrent update; please retry". | NLB-021 | `NLB-UPD-CONF-OCC-RACE` |
 | **REQ-NLB-IMMUTABLE-TYPE** | `type` MUST be immutable after Create; `update_mask=["type"]` MUST return `INVALID_ARGUMENT` "type is immutable after NetworkLoadBalancer.Create". | NLB-016 | `NLB-UPD-STATE-IMMUTABLE-TYPE` |
-| **REQ-NLB-LIFE-01** | `Start` MUST only succeed when LB.status ∈ {STOPPED, INACTIVE}; from ACTIVE MUST return `FAILED_PRECONDITION`. | NLB-022, NLB-023 | `NLB-START-CRUD-OK`, `NLB-START-STATE-ALREADY-ACTIVE` |
-| **REQ-NLB-LIFE-02** | `Stop` MUST only succeed when LB.status ∈ {ACTIVE, INACTIVE}; from STOPPED MUST return `FAILED_PRECONDITION`. | NLB-024, NLB-025 | `NLB-STOP-CRUD-OK`, `NLB-STOP-STATE-ALREADY-STOPPED` |
+> [!note] Сняты требования к глаголам, которых в контракте нет
+> `REQ-NLB-LIFE-01` / `-02` описывали `Start` / `Stop`, `REQ-NLB-ATT-01` / `REQ-NLB-DET-01` —
+> `AttachTargetGroup` / `DetachTargetGroup`. Ни одного из четырёх глаголов контракт не
+> производит: административное состояние выражается полем `adminState`, привязка группы целей —
+> полем `Listener.targetGroupId`. Кейсов, названных в этих строках, в наборе **ноль** — то есть
+> ведомость требовала покрытия у поведения, которого нет, и это покрытие нельзя было ни
+> получить, ни признать недостающим (задача продукта #1617).
+
 | **REQ-NLB-MV-01** | `Move` MUST atomically update `load_balancers.project_id` AND `listeners.project_id` (denorm sync) in the same transaction and emit one `MOVED` outbox event. | NLB-027 | `NLB-MV-CRUD-OK` |
-| **REQ-NLB-MV-NEG** | `Move` MUST be rejected with `FAILED_PRECONDITION` when LB has ≥1 attached TG: "NetworkLoadBalancer has attached target group(s); detach before moving". | NLB-029 | `NLB-MV-NEG-ATTACHED-TG` |
-| **REQ-NLB-ATT-01** | `AttachTargetGroup` MUST be idempotent: repeat with same `(load_balancer_id, target_group_id)` MUST NOT create duplicate rows. Changing `priority` MUST update the existing row. | NLB-033, NLB-034 | `NLB-ATT-IDEM-REPEAT-OK`, `NLB-ATT-IDEM-PRIORITY-UPDATE` |
-| **REQ-NLB-SAME-REGION** | LB and each attached TG MUST be in the same `region_id`; mismatch MUST return `FAILED_PRECONDITION` "target group region <X> does not match load balancer region <Y>". | NLB-032 | `NLB-ATT-STATE-REGION-MISMATCH` |
-| **REQ-NLB-DET-01** | `DetachTargetGroup` removes the pivot row immediately; the underlying TG and its targets MUST remain unchanged. | NLB-038 | `NLB-DET-CRUD-OK` |
+| **REQ-NLB-MV-NEG** | `Move` MUST be rejected with `FAILED_PRECONDITION` when a child listener is wired to a target group: "NetworkLoadBalancer has a listener wired to a target group; repoint before Move". | NLB-029 | `NLB-MV-NEG-ATTACHED-TG` |
+| **REQ-NLB-SAME-REGION** | A listener and the target group it wires MUST be in the same `region_id`; mismatch MUST return `FAILED_PRECONDITION`. Enforced on `Listener.Create` and `Listener.Update` (the wiring is `Listener.targetGroupId`; the LB has no direct TG link). | NLB-032 | `LST-UPD-STATE-DEFAULT-TG-REGION-MISMATCH` |
 | **REQ-NLB-GTS-01** | `GetTargetStates` MUST return a deterministic state per target: `INITIAL` while `age < interval × healthy_threshold`, `HEALTHY` afterwards, `DRAINING` when target is mid-Phase-A drain, `INACTIVE` when LB.status=STOPPED. | NLB-040, NLB-041 | `NLB-GTS-CRUD-EMPTY`, `NLB-GTS-STATE-LB-STOPPED` |
 | **REQ-NLB-DEL-01** | `Delete` MUST succeed when LB has no listeners + no attached TG + `deletion_protection=false`. | NLB-043 | `NLB-DEL-CRUD-OK` |
 | **REQ-NLB-DEL-PROT** | `Delete` with `deletion_protection=true` MUST return `FAILED_PRECONDITION` "deletion_protection is enabled; disable via Update before deleting". | NLB-044 | `NLB-DEL-STATE-PROTECTION` |
