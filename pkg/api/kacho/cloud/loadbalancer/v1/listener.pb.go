@@ -214,16 +214,28 @@ type Listener struct {
 	Protocol Listener_Protocol `protobuf:"varint,9,opt,name=protocol,proto3,enum=kacho.cloud.loadbalancer.v1.Listener_Protocol" json:"protocol,omitempty"`
 	// Port for incoming traffic.
 	Port int64 `protobuf:"varint,10,opt,name=port,proto3" json:"port,omitempty"`
-	// Optional target group that receives traffic when no per-listener routing
-	// rule matches. Soft reference to a target group attached to the parent LB.
+	// default_target_group_id — OUTPUT-ONLY MIRROR of target_group_id (#1596).
+	// Kept so existing readers keep working; it always carries the same value as
+	// target_group_id above and never differs from it.
+	//
+	// NOT an input: setting it in Create, or naming it in Update's update_mask,
+	// is an EXPLICIT InvalidArgument reject. There is exactly one input for the
+	// wiring, and it is target_group_id.
+	//
+	// The name is also a misnomer this product never earned: "default" implied a
+	// fallback among per-listener routing rules, and no such rules exist — a
+	// listener wires to exactly one target group.
 	DefaultTargetGroupId string `protobuf:"bytes,17,opt,name=default_target_group_id,json=defaultTargetGroupId,proto3" json:"default_target_group_id,omitempty"`
 	// Current lifecycle status.
 	Status Listener_Status `protobuf:"varint,18,opt,name=status,proto3,enum=kacho.cloud.loadbalancer.v1.Listener_Status" json:"status,omitempty"`
-	// target_group_id — NLB-1b EXPAND (additive, output + Create/Update input).
-	// The single (soon authoritative) target group the listener wires to. In
-	// EXPAND it maps to the same underlying reference as default_target_group_id
-	// (both coexist); the M:N pivot + FK-RESTRICT authority switch land in
-	// NLB-1c/MIGRATE. LIVE-mutable (repoint).
+	// target_group_id — THE target group the listener wires to. The single
+	// authoritative input (Create + Update) and the authoritative output.
+	// LIVE-mutable: naming it in update_mask repoints the listener, an empty
+	// value clears the wiring.
+	//
+	// The M:N attach pivot this field once coexisted with is gone (migration
+	// 0022 dropped it); default_target_group_id below is now an output-only
+	// mirror, so no precedence between inputs exists by construction.
 	TargetGroupId string `protobuf:"bytes,19,opt,name=target_group_id,json=targetGroupId,proto3" json:"target_group_id,omitempty"`
 	// resolved_backend_port — NLB-1b EXPAND (additive, output-only, derived).
 	// Echo of the wired TargetGroup.port (NLB-1-19); 0 when no TG resolves. Not

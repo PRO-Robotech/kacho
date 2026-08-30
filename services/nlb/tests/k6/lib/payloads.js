@@ -13,26 +13,30 @@ import { fixtureBody } from './payload-templates.js';
 export const templates = {
   // CreateNetworkLoadBalancerRequest
   // proto: kacho.cloud.loadbalancer.v1.CreateNetworkLoadBalancerRequest
-  createNLB({ projectId, regionId, type, name, description, labels } = {}) {
+  // `placement` — единственный вход режима; `type`/`placement_type` контракт на
+  // входе отвергает, `allow_zonal_shift` снят с резервированием номера. Прежний
+  // шаблон слал их, из-за чего каждое создание под нагрузкой давало 400
+  // (задача продукта #1616).
+  createNLB({ projectId, regionId, placement, name, description, labels } = {}) {
     return fixtureBody('createNLB', {
       project_id: projectId,
       region_id: regionId || '',
-      type,
+      placement,
       name,
       description: description || 'k6-load-test',
       labels: labels || { env: 'loadtest' },
       deletion_protection: false,
-      allow_zonal_shift: false,
     });
   },
 
   // CreateListenerRequest — uses auto-allocate VIP unless BYO addressId given.
   // proto: kacho.cloud.loadbalancer.v1.CreateListenerRequest
-  createListener({ lbId, addressId, name, protocol = 'TCP', port = 80, targetPort = 8080 } = {}) {
-    // address_spec is a oneof: either { address_id: "..." } or { auto_allocate: {...} }.
-    const addressSpec = addressId
-      ? { address_id: addressId }
-      : { auto_allocate: {} };
+  // Собственного адреса у листенера нет — он наследует VIP балансировщика, поэтому
+  // `address_spec`/`ip_version` сняты с контракта (номера зарезервированы), а
+  // backend-порт живёт на группе целей, а не здесь (`target_port` тоже снят).
+  // Прежний шаблон слал все три: край отбрасывал их молча, и шаблон обещал
+  // настройку, которой не производил.
+  createListener({ lbId, name, protocol = 'TCP', port = 80, targetGroupId } = {}) {
     return fixtureBody('createListener', {
       load_balancer_id: lbId,
       name,
@@ -40,9 +44,7 @@ export const templates = {
       labels: { env: 'loadtest' },
       protocol,
       port,
-      target_port: targetPort,
-      ip_version: 'IPV4',
-      address_spec: addressSpec,
+      ...(targetGroupId ? { target_group_id: targetGroupId } : {}),
     });
   },
 
@@ -59,16 +61,6 @@ export const templates = {
       health_check: defaultHealthCheck(name),
       deregistration_delay_seconds: 30,
       slow_start_seconds: 0,
-    });
-  },
-
-  // AttachNetworkLoadBalancerTargetGroupRequest
-  attachTG({ tgId }) {
-    return fixtureBody('attachTG', {
-      attached_target_group: {
-        target_group_id: tgId,
-        health_checks: [defaultHealthCheck('attach')],
-      },
     });
   },
 

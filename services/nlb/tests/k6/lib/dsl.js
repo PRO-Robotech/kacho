@@ -30,11 +30,14 @@ export function listLB(query) {
 
 // createLB submits the request and returns { status, opId, json }.
 // Does NOT poll.
-export function createLB({ projectId, regionId, type = 'EXTERNAL', namePrefix = 'lb' } = {}) {
+// `placement` — ЕДИНСТВЕННЫЙ вход режима; `type`/`placementType` контракт на входе
+// отвергает (задача продукта #1616). Прежний помощник слал `type`, поэтому КАЖДОЕ
+// создание балансировщика под нагрузкой возвращало 400.
+export function createLB({ projectId, regionId, placement = 'EXTERNAL_REGIONAL', namePrefix = 'lb' } = {}) {
   const body = templates.createNLB({
     projectId,
     regionId,
-    type,
+    placement,
     name: uniqueName(namePrefix),
   });
   const res = post(ROUTES.loadBalancers, body, { rpc: 'NLB.Create', op: 'write' });
@@ -46,30 +49,35 @@ export function deleteLB(id) {
   return wrapOpResponse(res);
 }
 
-export function attachTG(lbId, tgId) {
-  const res = post(
-    `${ROUTES.loadBalancers}/${lbId}:attachTargetGroup`,
-    templates.attachTG({ tgId }),
-    { rpc: 'NLB.AttachTargetGroup', op: 'write' }
+// Привязка группы целей живёт на ЛИСТЕНЕРЕ (`targetGroupId`), а не на
+// балансировщике: глаголов `:attachTargetGroup` / `:detachTargetGroup` в контракте
+// нет (задача продукта #1617). Прежние помощники звали именно их, и профиль
+// нагрузки десятью процентами смеси мерил `404` — проверка `status < 500` их
+// принимала, поэтому мёртвая полоса выглядела здоровой.
+export function wireListenerTG(listenerId, tgId) {
+  const res = patch(
+    `${ROUTES.listeners}/${listenerId}`,
+    { updateMask: 'targetGroupId', targetGroupId: tgId },
+    { rpc: 'Listener.Update.WireTG', op: 'write' }
   );
   return wrapOpResponse(res);
 }
 
-export function detachTG(lbId, tgId) {
-  const res = post(
-    `${ROUTES.loadBalancers}/${lbId}:detachTargetGroup`,
-    { target_group_id: tgId },
-    { rpc: 'NLB.DetachTargetGroup', op: 'write' }
+export function unwireListenerTG(listenerId) {
+  const res = patch(
+    `${ROUTES.listeners}/${listenerId}`,
+    { updateMask: 'targetGroupId', targetGroupId: '' },
+    { rpc: 'Listener.Update.UnwireTG', op: 'write' }
   );
   return wrapOpResponse(res);
 }
 
 // ---------- Listener ----------
 
-export function createListener({ lbId, addressId, namePrefix = 'lst' } = {}) {
+export function createListener({ lbId, targetGroupId, namePrefix = 'lst' } = {}) {
   const body = templates.createListener({
     lbId,
-    addressId,
+    targetGroupId,
     name: uniqueName(namePrefix),
   });
   const res = post(ROUTES.listeners, body, { rpc: 'Listener.Create', op: 'write' });
