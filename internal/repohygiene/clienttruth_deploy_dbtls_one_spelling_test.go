@@ -18,10 +18,12 @@
 // объявляется здесь, оператор грепает здесь, и проверке не нужны ни зависимости
 // чарта, ни helm, поэтому она не может пропуститься.
 //
-// Канон — `sslMode` (camelCase, как прочие ключи продукта). Переходный приём
-// прежнего написания живёт в шаблонах (`<чарт>.dbSslMode`) и под этот гейт не
-// подпадает: он читает ключ, которого в объявлениях больше нет, и существует
-// ровно ради того, кто уже развернул со старым именем.
+// Канон — `sslMode` (camelCase, как прочие ключи продукта). Это ПЕРЕИМЕНОВАНИЕ
+// ПОД ОХРАНОЙ, а не совместимость: канон объявлен умолчанием чарта, поэтому
+// профиль, задающий прежнее написание, даёт расхождение и отказ рендера с обоими
+// значениями в тексте. Механизм гарантирует не приём старого имени, а отсутствие
+// МОЛЧАЛИВОГО отката к умолчанию — для ключа, чьё умолчание у половины чартов
+// `disable`, такой откат означал бы открытый текст до базы.
 package repohygiene
 
 import (
@@ -68,17 +70,21 @@ func valuesFiles(t *testing.T, root string) []string {
 			if !e.IsDir() {
 				continue
 			}
-			for _, cand := range []string{
-				filepath.Join(dir, e.Name(), "deploy", "values.yaml"),
-				filepath.Join(dir, e.Name(), "values.yaml"),
+			// values.yaml И профили рядом с ним: у чарта бывает свой overlay
+			// (`values.dev.yaml`). Первая редакция брала только `values.yaml`,
+			// и прежний адрес, доживший в таком overlay, был для гейта невидим —
+			// нашёл его СОСЕДНИЙ гейт, требующий читателя у ключа профиля.
+			for _, base := range []string{
+				filepath.Join(dir, e.Name(), "deploy"),
+				filepath.Join(dir, e.Name()),
 			} {
-				if fileExists(cand) {
+				for _, cand := range valuesInDir(base) {
 					add(cand)
 				}
 			}
 		}
 	}
-	if p := filepath.Join(root, "gateway", "deploy", "values.yaml"); fileExists(p) {
+	for _, p := range valuesInDir(filepath.Join(root, "gateway", "deploy")) {
 		add(p)
 	}
 	// Профили зонтика — все values*.yaml.
@@ -94,6 +100,23 @@ func valuesFiles(t *testing.T, root string) []string {
 	sort.Strings(out)
 	if len(out) == 0 {
 		t.Fatal("обход не нашёл ни одного файла значений — гейт не утверждает ничего")
+	}
+	return out
+}
+
+// valuesInDir — файлы значений каталога: `values.yaml` и профили рядом с ним
+// (`values.<что-то>.yaml`). Перечень выводится обходом, а не выписывается.
+func valuesInDir(dir string) []string {
+	entries, err := os.ReadDir(dir)
+	if err != nil {
+		return nil
+	}
+	var out []string
+	for _, e := range entries {
+		n := e.Name()
+		if !e.IsDir() && strings.HasPrefix(n, "values") && strings.HasSuffix(n, ".yaml") {
+			out = append(out, filepath.Join(dir, n))
+		}
 	}
 	return out
 }

@@ -98,7 +98,6 @@ config:
       binary: /usr/bin/rbd
       clientName: client.kacho-storage
   # authMode — fail-closed режим: dev | production | production-strict.
-  authMode: production
   # Peer-адреса (runtime cross-domain edges). Пусто → клиент fail-closed.
   geoGrpcAddr: ""      # storage→geo ZoneService.Get (zone_id), public :9090
   iamGrpcAddr: ""      # storage→iam ProjectService.Get (project_id), public :9090
@@ -290,3 +289,12 @@ metricsScrape:
 # Сверяет gateway/deploy/subscription_stream_budget_test.go, читая это объявление.
 subscription:
   maxStreams: 16
+
+# ── ПОСАДКА БЕЗОПАСНОСТИ ─────────────────────────────────────────────────
+#
+# ОДИН адрес на весь флот: `authMode` в корне значений сервиса. Ручку звали
+# шестью разными адресами и двумя именами, и вопрос «в какой посадке работает
+# этот кластер» нельзя было задать одной командой. Прежний адрес (config.authMode)
+# снят; профиль, всё ещё задающий его, получает отказ рендера с обоими
+# значениями в тексте — молчаливого отката к умолчанию не будет.
+authMode: production

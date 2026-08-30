@@ -97,7 +97,7 @@ data:
     # дереве нет. Держит это гейт TestR7_3_32_NoTemplateWiresTheRetiredEngine.
 
     authn:
-      mode: {{ default "production" .Values.config.authn.mode | quote }}
+      mode: {{ default "production" (include "kacho-iam.authMode" .) | quote }}
       {{- /* ПОСАДКА ЛИЧНОСТИ (задача #1125): чем стенд проверяет человека —
            внешним поставщиком удостоверений (`external`) или своей чеканкой
            (`own`). Разводит ТРЕБОВАНИЯ СТАРТА: под `external` обязательны три

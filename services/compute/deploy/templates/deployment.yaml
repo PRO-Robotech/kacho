@@ -136,7 +136,7 @@ spec:
             # production (rules/security.md: every deploy is production-mode); a
             # dev stand overrides auth.mode=dev + mtls.enable=false + db.sslMode=disable.
             - name: KACHO_COMPUTE_AUTH_MODE
-              value: {{ .Values.auth.mode | quote }}
+              value: {{ include "kacho-compute.authMode" . | quote }}
             - name: KACHO_COMPUTE_DB_SSLMODE
               value: {{ .Values.db.sslMode | quote }}
             - name: KACHO_COMPUTE_REQUIRE_IAM

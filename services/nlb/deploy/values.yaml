@@ -54,7 +54,6 @@ containerSecurityContext:
 
 # ─── Config (mounted at /etc/kacho-nlb/config.yaml) ───────────────────────────
 config:
-  mode: production            # dev | production (controls config-validation strictness)
   logger:
     level: INFO               # FATAL | ERROR | WARN | INFO | DEBUG
   apiServer:
@@ -340,3 +339,12 @@ metricsScrape:
 # Сверяет gateway/deploy/subscription_stream_budget_test.go, читая это объявление.
 subscription:
   maxStreams: 16
+
+# ── ПОСАДКА БЕЗОПАСНОСТИ ─────────────────────────────────────────────────
+#
+# ОДИН адрес на весь флот: `authMode` в корне значений сервиса. Ручку звали
+# шестью разными адресами и двумя именами, и вопрос «в какой посадке работает
+# этот кластер» нельзя было задать одной командой. Прежний адрес (config.mode)
+# снят; профиль, всё ещё задающий его, получает отказ рендера с обоими
+# значениями в тексте — молчаливого отката к умолчанию не будет.
+authMode: production

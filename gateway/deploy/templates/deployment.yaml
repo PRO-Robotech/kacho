@@ -190,7 +190,7 @@ spec:
               value: "{{ .Values.advertisedEndpoint }}"
             {{- if .Values.authn }}
             - name: KACHO_API_GATEWAY_AUTHN_MODE
-              value: {{ .Values.authn.mode | default "production" | quote }}
+              value: {{ include "api-gateway.authMode" . | default "production" | quote }}
             {{- /* ПОСАДКА ЛИЧНОСТИ (задача #1125): чем стенд проверяет человека.
                  Разводит требование АДМИНИСТРАТИВНОГО адреса поставщика — того,
                  которым выход человека снимает сессию на его стороне; под `own`
