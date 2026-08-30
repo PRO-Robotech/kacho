@@ -111,10 +111,10 @@ func (u *CreateSubnetUseCase) Execute(ctx context.Context, s domain.Subnet) (*op
 	// иначе выводим дискриминатор и записываем его в domain (Insert → placement_type-
 	// колонка). Существование zone/region валидируется у owner-домена geo (fail-closed).
 	// Потолок числа диапазонов — до поэлементной и до квадратичной проверок.
-	if err := validateSubnetCidrCardinality("v4_cidr_blocks", s.V4CidrBlocks); err != nil {
+	if err := validateSubnetCidrCardinality(createCidrFields.v4, s.V4CidrBlocks); err != nil {
 		return nil, err
 	}
-	if err := validateSubnetCidrCardinality("v6_cidr_blocks", s.V6CidrBlocks); err != nil {
+	if err := validateSubnetCidrCardinality(createCidrFields.v6, s.V6CidrBlocks); err != nil {
 		return nil, err
 	}
 	// `ipv4_cidr_primary` сам по себе НЕ обязателен — подсеть может быть v6-only,
@@ -122,14 +122,14 @@ func (u *CreateSubnetUseCase) Execute(ctx context.Context, s domain.Subnet) (*op
 	// (проверено выше). Переданное значение валидируется целиком: host-bits=0 и
 	// размер внутри контрактного диапазона /16../28 (`cidr_bounds.go`).
 	for i, c := range s.V4CidrBlocks {
-		if err := validateSubnetV4CIDR(fmt.Sprintf("v4_cidr_blocks[%d]", i), c); err != nil {
+		if err := validateSubnetV4CIDR(createCidrFields.V4Slot(i), c); err != nil {
 			return nil, err
 		}
 	}
 	// v6_cidr_blocks — опциональны; если переданы, валидируем как IPv6 CIDR
 	// (host-bits=0). Immutable после Create (как v4).
 	for i, c := range s.V6CidrBlocks {
-		if err := validateSubnetV6CIDR(fmt.Sprintf("v6_cidr_blocks[%d]", i), c); err != nil {
+		if err := validateSubnetV6CIDR(createCidrFields.V6Slot(i), c); err != nil {
 			return nil, err
 		}
 	}
@@ -139,7 +139,7 @@ func (u *CreateSubnetUseCase) Execute(ctx context.Context, s domain.Subnet) (*op
 	// (разбираемое каноническое значение) — и ДО вызова к владельцу Geography: ввод
 	// поверх служебного диапазона не станет законным ни при каком ответе соседа,
 	// поэтому платить за него сетевым вызовом нечем.
-	if err := validateSubnetNotReserved(u.reserved, s.V4CidrBlocks, s.V6CidrBlocks); err != nil {
+	if err := validateSubnetNotReserved(createCidrFields, u.reserved, s.V4CidrBlocks, s.V6CidrBlocks); err != nil {
 		return nil, err
 	}
 	// Domain-self-validation: Name/Description/Labels валидируются через newtypes
@@ -405,7 +405,7 @@ func (u *CreateSubnetUseCase) checkSubnetCIDROverlap(ctx context.Context, rd Rea
 		pr, err := netip.ParsePrefix(c)
 		if err != nil {
 			// host-bits / формат уже провалидированы выше; защищаемся на всякий случай.
-			return serviceerr.InvalidArg("v4_cidr_blocks", "must be valid CIDR")
+			return serviceerr.InvalidArg(createCidrFields.v4, "must be valid CIDR")
 		}
 		newPrefixes = append(newPrefixes, pr)
 	}

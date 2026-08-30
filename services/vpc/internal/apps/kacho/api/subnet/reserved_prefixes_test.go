@@ -112,7 +112,7 @@ func TestSubnetCreate_ReservedV4Overlap_RefusedSynchronously(t *testing.T) {
 
 	st := status.Convert(err)
 	assert.Equal(t, codes.InvalidArgument, st.Code())
-	assert.Contains(t, st.Message(), "v4_cidr_blocks[0]", "отказ обязан назвать поле")
+	assert.Contains(t, st.Message(), createCidrFields.v4, "отказ обязан назвать поле контракта, которое клиент написал")
 	assert.Contains(t, st.Message(), "10.11.12.0/24", "и присланное значение")
 	assert.Contains(t, st.Message(), "reserved")
 
@@ -149,7 +149,7 @@ func TestSubnetCreate_ReservedV6Overlap_Refused(t *testing.T) {
 	require.Nil(t, op)
 	st := status.Convert(err)
 	assert.Equal(t, codes.InvalidArgument, st.Code())
-	assert.Contains(t, st.Message(), "v6_cidr_blocks[0]")
+	assert.Contains(t, st.Message(), createCidrFields.v6)
 	assert.Contains(t, st.Message(), "fd00:dead:beef::/48")
 }
 
@@ -278,7 +278,7 @@ func TestSubnetAddCidrBlocks_ReservedOverlap_RefusedSynchronously(t *testing.T) 
 	require.Nil(t, op, "отказ синхронный: операция не создаётся вовсе")
 	st := status.Convert(aerr)
 	assert.Equal(t, codes.InvalidArgument, st.Code())
-	assert.Contains(t, st.Message(), "v4_cidr_blocks[0]")
+	assert.Contains(t, st.Message(), blocksCidrFields.V4Slot(0))
 	assert.Contains(t, st.Message(), "10.11.12.0/24")
 
 	// ПОЛОЖИТЕЛЬНЫЙ КОНТРОЛЬ рядом: законный блок тем же глаголом проходит.

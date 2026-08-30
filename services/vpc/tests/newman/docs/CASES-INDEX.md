@@ -433,8 +433,8 @@ Move RPC у Network/Subnet/Address/RouteTable/SecurityGroup/Gateway удален
 | `*-UPD-STATE-IMMUTABLE-PROJECT-ID` | CONF,STATE,VAL | P1 | 6 (add,gat,net,rou,sec,sub) | Update mask='project_id' (immutable) → 400 InvalidArgument (точный текст) |
 | `*-UPD-STATE-IMMUTABLE-INTERNAL-IPV4-ADDRESS-SPEC` | CONF,STATE,VAL | P1 | 1 (add) | Update mask='internal_ipv4_address_spec' (immutable) → 400 InvalidArgument (точный текст) |
 | `*-UPD-STATE-IMMUTABLE-NETWORK-ID` | CONF,STATE,VAL | P1 | 3 (rou,sec,sub) | Update mask='network_id' (immutable) → 400 InvalidArgument (точный текст) |
-| `*-UPD-STATE-IMMUTABLE-V4-CIDR-BLOCKS` | CONF,STATE,VAL | P1 | 1 (sub) | Update mask='v4_cidr_blocks' (immutable) → 400 InvalidArgument (точный текст) |
-| `*-UPD-STATE-IMMUTABLE-V6-CIDR-BLOCKS` | CONF,STATE,VAL | P1 | 1 (sub) | Update mask='v6_cidr_blocks' (immutable) → 400 InvalidArgument (точный текст) |
+| `*-UPD-STATE-IMMUTABLE-IPV4-CIDR-BLOCKS` | CONF,STATE,VAL | P1 | 1 (sub) | Update mask='ipv4_cidr_blocks' (immutable) → 400 InvalidArgument (точный текст) |
+| `*-UPD-STATE-IMMUTABLE-IPV6-CIDR-BLOCKS` | CONF,STATE,VAL | P1 | 1 (sub) | Update mask='ipv6_cidr_blocks' (immutable) → 400 InvalidArgument (точный текст) |
 | `*-UPD-STATE-IMMUTABLE-ZONE-ID` | CONF,STATE,VAL | P1 | 1 (sub) | Update mask='zone_id' (immutable) → 400 InvalidArgument (точный текст) |
 | `*-UPD-VAL-MASK-EMPTY` | STATE,VAL | P2 | 6 (add,gat,net,rou,sec,sub) | Update с пустой mask → full PATCH (200) |
 | `*-UPD-VAL-MASK-MULTIPLE-UNKNOWN` | STATE,VAL | P2 | 6 (add,gat,net,rou,sec,sub) | Update с несколькими unknown полями в mask → 400 |
