@@ -70,7 +70,7 @@ func (s *bodyStand) run(t *testing.T) ([]ClientTruthIAMRequestBodyFinding, Clien
 	t.Helper()
 	var log strings.Builder
 	f, c, err := AuditClientTruthIAMRequestBody(ClientTruthIAMRequestBodyOptions{
-		Root:         s.root,
+		Tree:         clientTruthSyntheticTree(t, s.root),
 		ProtoPackage: "kacho.cloud.iam.v1",
 		DocsDirs:     []string{"docs"},
 		DocExts:      []string{".mdx"},
@@ -159,7 +159,7 @@ func run() error {
 	s.write(t, "docs/ok.mdx", curlDoc(`{ "name": "acme", "description": "ACME" }`))
 	var log strings.Builder
 	_, _, err := AuditClientTruthIAMRequestBody(ClientTruthIAMRequestBodyOptions{
-		Root: s.root, ProtoPackage: "kacho.cloud.iam.v1",
+		Tree: clientTruthSyntheticTree(t, s.root), ProtoPackage: "kacho.cloud.iam.v1",
 		DocsDirs: []string{"docs"}, DocExts: []string{".mdx"},
 		UseCaseDirs: []string{"usecase"},
 	}, &log)
@@ -240,7 +240,7 @@ func TestBodyGate_FailsWhenPackageYieldsNoMethods(t *testing.T) {
 	s := newBodyStand(t)
 	var log strings.Builder
 	_, _, err := AuditClientTruthIAMRequestBody(ClientTruthIAMRequestBodyOptions{
-		Root: s.root, ProtoPackage: "kacho.cloud.несуществующий.v1",
+		Tree: clientTruthSyntheticTree(t, s.root), ProtoPackage: "kacho.cloud.несуществующий.v1",
 		DocsDirs: []string{"docs"}, DocExts: []string{".mdx"},
 		UseCaseDirs: []string{"usecase"},
 	}, &log)

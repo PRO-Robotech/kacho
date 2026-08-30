@@ -101,7 +101,7 @@ func (s *nameFormStand) run(
 	t.Helper()
 	var log strings.Builder
 	f, c, err := AuditNameFormClaims(NameFormClaimOptions{
-		Root:       s.root,
+		Tree:       clientTruthSyntheticTree(t, s.root),
 		ProtoRoot:  "proto",
 		DocsRoots:  []string{"services"},
 		Exemptions: ex,
@@ -264,7 +264,7 @@ func TestNameFormInjection_EmptyWalkIsNotSilentSuccess(t *testing.T) {
 	s.write(t, "unused", "")
 	var log strings.Builder
 	_, census, err := AuditNameFormClaims(NameFormClaimOptions{
-		Root:       s.root,
+		Tree:       clientTruthSyntheticTree(t, s.root),
 		ProtoRoot:  filepath.Base(empty), // каталога такого имени в стенде нет
 		DocsRoots:  []string{filepath.Base(empty)},
 		FormSource: "pkg/validate/nameform/nameform.go",

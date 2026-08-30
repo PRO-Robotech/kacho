@@ -87,7 +87,7 @@ func (s *prefixStand) run(
 	t.Helper()
 	var log strings.Builder
 	f, c, err := AuditProtoPrefixClaims(ProtoPrefixClaimOptions{
-		Root: s.root, ProtoRoot: "proto", Exemptions: ex,
+		Tree: clientTruthSyntheticTree(t, s.root), ProtoRoot: "proto", Exemptions: ex,
 	}, &log)
 	if err != nil {
 		t.Fatalf("анализатор не отработал: %v", err)

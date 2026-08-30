@@ -106,12 +106,12 @@ func normaliseNlbRoute(p string) string {
 //
 // Состав дерева приходит СОСТАВЛЕННЫМ (`treecorpus.Tree`), а не собирается здесь
 // обходом диска: конструктор выбирает вызывающий — гейт берёт индекс git, а
-// инъекционная проба `treecorpus.SyntheticTree`. Разбор — у nlbTreeFiles.
+// инъекционная проба `treecorpus.SyntheticTree`. Разбор — clienttruth_treefiles.go.
 func collectNlbDocumentedRoutes(tree *treecorpus.Tree) (nlbRouteCensus, error) {
 	c := nlbRouteCensus{ContractRoutes: map[string]struct{}{}}
 
-	for _, rel := range nlbTreeFiles(tree, "proto/kacho/cloud/loadbalancer/v1", false, ".proto") {
-		body, rerr := nlbReadTreeFile(tree, rel)
+	for _, rel := range clientTruthTreeFiles(tree, "proto/kacho/cloud/loadbalancer/v1", false, ".proto") {
+		body, rerr := clientTruthReadTreeFile(tree, rel)
 		if rerr != nil {
 			return c, rerr
 		}
@@ -121,8 +121,8 @@ func collectNlbDocumentedRoutes(tree *treecorpus.Tree) (nlbRouteCensus, error) {
 		}
 	}
 
-	for _, rel := range nlbTreeFiles(tree, "services/nlb/docs/content", true, ".mdx") {
-		body, rerr := nlbReadTreeFile(tree, rel)
+	for _, rel := range clientTruthTreeFiles(tree, "services/nlb/docs/content", true, ".mdx") {
+		body, rerr := clientTruthReadTreeFile(tree, rel)
 		if rerr != nil {
 			return c, rerr
 		}

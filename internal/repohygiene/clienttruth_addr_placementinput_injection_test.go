@@ -79,7 +79,7 @@ func (s *placementStand) run(
 	t.Helper()
 	var log strings.Builder
 	f, c, err := AuditPlacementInput(PlacementInputOptions{
-		Root: s.root, ProtoRoot: "proto", Exemptions: ex,
+		Tree: clientTruthSyntheticTree(t, s.root), ProtoRoot: "proto", Exemptions: ex,
 	}, &log)
 	if err != nil {
 		t.Fatalf("анализатор не отработал: %v", err)
@@ -263,7 +263,7 @@ func TestPlacementInputInjection_EmptyWalkIsNotSilentSuccess(t *testing.T) {
 	}
 	var log strings.Builder
 	findings, census, err := AuditPlacementInput(
-		PlacementInputOptions{Root: root, ProtoRoot: "proto"}, &log)
+		PlacementInputOptions{Tree: clientTruthSyntheticTree(t, root), ProtoRoot: "proto"}, &log)
 	if err != nil {
 		t.Fatalf("анализатор не отработал: %v", err)
 	}

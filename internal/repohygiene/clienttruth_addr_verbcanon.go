@@ -68,18 +68,20 @@ package repohygiene
 import (
 	"fmt"
 	"io"
-	"os"
-	"path/filepath"
 	"regexp"
 	"sort"
 	"strings"
+
+	"github.com/PRO-Robotech/kacho/internal/treecorpus"
 )
 
 // VerbCanonOptions — вход анализатора.
 type VerbCanonOptions struct {
-	// Root — корень дерева.
-	Root string
-	// ProtoRoot — каталог контрактов относительно Root.
+	// Tree — СОСТАВ дерева, а не его корень: гейт берёт индекс git
+	// (`treecorpus.NewTree`), инъекционная проба — синтетическое дерево
+	// (`treecorpus.SyntheticTree`). Разбор — clienttruth_treefiles.go.
+	Tree *treecorpus.Tree
+	// ProtoRoot — каталог контрактов относительно корня дерева.
 	ProtoRoot string
 	// Exemptions — послабления; каждое обязано истекать само.
 	Exemptions []VerbCanonExemption
@@ -175,26 +177,13 @@ func AuditVerbCanon(
 	opts VerbCanonOptions, log io.Writer,
 ) ([]VerbCanonFinding, VerbCanonCensus, error) {
 	var census VerbCanonCensus
-	protoAbs := filepath.Join(opts.Root, filepath.FromSlash(opts.ProtoRoot))
-
 	var findings []VerbCanonFinding
 	matched := map[string]bool{}
 
-	walkErr := filepath.Walk(protoAbs, func(path string, info os.FileInfo, werr error) error {
-		if werr != nil {
-			return werr
-		}
-		if info.IsDir() || !strings.HasSuffix(path, ".proto") {
-			return nil
-		}
-		rel, rerr := filepath.Rel(opts.Root, path)
+	for _, rel := range clientTruthTreeFiles(opts.Tree, opts.ProtoRoot, true, ".proto") {
+		body, rerr := clientTruthReadTreeFile(opts.Tree, rel)
 		if rerr != nil {
-			return rerr
-		}
-		rel = filepath.ToSlash(rel)
-		body, rerr := os.ReadFile(path)
-		if rerr != nil {
-			return rerr
+			return nil, census, rerr
 		}
 		census.ProtoFiles++
 
@@ -223,10 +212,6 @@ func AuditVerbCanon(
 				findings = append(findings, f)
 			}
 		}
-		return nil
-	})
-	if walkErr != nil {
-		return nil, census, walkErr
 	}
 
 	// Послабление, которому больше нечего исключать, — находка.

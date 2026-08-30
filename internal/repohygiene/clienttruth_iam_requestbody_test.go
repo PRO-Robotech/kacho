@@ -11,7 +11,7 @@ import (
 func clientTruthIAMRequestBodyOptions(t *testing.T) ClientTruthIAMRequestBodyOptions {
 	t.Helper()
 	return ClientTruthIAMRequestBodyOptions{
-		Root:         repoRoot(t),
+		Tree:         clientTruthRepoTree(t),
 		ProtoPackage: "kacho.cloud.iam.v1",
 		DocsDirs:     []string{"services/iam/docs/content", "services/iam/docs/engineering"},
 		DocExts:      []string{".mdx", ".md"},

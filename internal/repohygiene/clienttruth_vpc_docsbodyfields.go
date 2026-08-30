@@ -61,19 +61,21 @@ package repohygiene
 import (
 	"fmt"
 	"io"
-	"os"
-	"path/filepath"
 	"regexp"
 	"sort"
 	"strings"
+
+	"github.com/PRO-Robotech/kacho/internal/treecorpus"
 )
 
 // DocsBodyFieldOptions — вход анализатора.
 type DocsBodyFieldOptions struct {
-	// Root — корень дерева.
-	Root string
-	// ProtoRoot — каталог контрактов относительно Root. Маршруты выводятся
-	// отсюда и только отсюда.
+	// Tree — СОСТАВ дерева, а не его корень: гейт берёт индекс git
+	// (`treecorpus.NewTree`), инъекционная проба — синтетическое дерево
+	// (`treecorpus.SyntheticTree`). Разбор — clienttruth_treefiles.go.
+	Tree *treecorpus.Tree
+	// ProtoRoot — каталог контрактов относительно корня дерева. Маршруты
+	// выводятся отсюда и только отсюда.
 	ProtoRoot string
 	// DocRoots — каталоги клиентской документации, которые судятся.
 	DocRoots []string
@@ -162,17 +164,10 @@ func AuditDocsBodyFields(
 	var routes []route
 	fields := map[string]map[string]bool{}
 
-	protoAbs := filepath.Join(opts.Root, filepath.FromSlash(opts.ProtoRoot))
-	walkErr := filepath.Walk(protoAbs, func(path string, info os.FileInfo, werr error) error {
-		if werr != nil {
-			return werr
-		}
-		if info.IsDir() || !strings.HasSuffix(path, ".proto") {
-			return nil
-		}
-		body, rerr := os.ReadFile(path)
+	for _, rel := range clientTruthTreeFiles(opts.Tree, opts.ProtoRoot, true, ".proto") {
+		body, rerr := clientTruthReadTreeFile(opts.Tree, rel)
 		if rerr != nil {
-			return rerr
+			return nil, census, rerr
 		}
 		census.ProtoFiles++
 		var (
@@ -226,16 +221,12 @@ func AuditDocsBodyFields(
 				pending = ""
 			}
 		}
-		return nil
-	})
-	if walkErr != nil {
-		return nil, census, walkErr
 	}
 	census.Routes = len(routes)
 
 	// Сколько деревьев документации в репозитории вообще — чтобы частичность
 	// охвата была видна в каждом прогоне, а не только в этом комментарии.
-	census.DocTreesTotal = countDocTrees(opts.Root)
+	census.DocTreesTotal = countDocTrees(opts.Tree)
 	census.DocTreesJudged = len(opts.DocRoots)
 
 	matchRoute := func(method string, path string) string {
@@ -271,22 +262,10 @@ func AuditDocsBodyFields(
 
 	var findings []DocsBodyFieldFinding
 	for _, docRoot := range opts.DocRoots {
-		docAbs := filepath.Join(opts.Root, filepath.FromSlash(docRoot))
-		werr := filepath.Walk(docAbs, func(path string, info os.FileInfo, werr error) error {
-			if werr != nil {
-				return werr
-			}
-			if info.IsDir() || !strings.HasSuffix(path, ".mdx") {
-				return nil
-			}
-			rel, rerr := filepath.Rel(opts.Root, path)
+		for _, rel := range clientTruthTreeFiles(opts.Tree, docRoot, true, ".mdx") {
+			raw, rerr := clientTruthReadTreeFile(opts.Tree, rel)
 			if rerr != nil {
-				return rerr
-			}
-			rel = filepath.ToSlash(rel)
-			raw, rerr := os.ReadFile(path)
-			if rerr != nil {
-				return rerr
+				return nil, census, rerr
 			}
 			census.DocFiles++
 			lines := strings.Split(string(raw), "\n")
@@ -325,10 +304,6 @@ func AuditDocsBodyFields(
 					})
 				}
 			}
-			return nil
-		})
-		if werr != nil {
-			return nil, census, werr
 		}
 	}
 
@@ -455,26 +430,29 @@ func docsSnake(k string) string {
 // countDocTrees — сколько деревьев клиентской документации есть в репозитории.
 // Нужен ровно для того, чтобы частичность охвата печаталась числом: суженный
 // обход, о котором молчат, читается как «класс закрыт везде».
-func countDocTrees(root string) int {
+//
+// Считает по СОСТАВУ, а не по каталогам на диске: `os.ReadDir`+`os.Stat` учли бы
+// сборку сайта документации и распаковку чарта наравне с деревом, и знаменатель
+// охвата стал бы свойством рабочего каталога. Каталог, о котором состав не
+// знает, деревом документации не является — [treecorpus.Tree.HasDir] отвечает
+// «есть ли хоть один отслеживаемый файл на этом пути или ниже», а это и есть
+// искомое.
+func countDocTrees(tree *treecorpus.Tree) int {
 	n := 0
-	for _, base := range []string{"services", "gateway"} {
-		dir := filepath.Join(root, base)
-		entries, err := os.ReadDir(dir)
-		if err != nil {
+	if tree.HasDir("gateway/docs/content") {
+		n++
+	}
+	// Имена сервисов ВЫВОДЯТСЯ из состава, а не выписываются: рукописный
+	// перечень разошёлся бы с деревом молча — ровно тот класс, ради которого
+	// это число и печатается.
+	seen := map[string]bool{}
+	for _, rel := range tree.SortedFiles() {
+		parts := strings.SplitN(rel, "/", 3)
+		if len(parts) < 3 || parts[0] != "services" || seen[parts[1]] {
 			continue
 		}
-		for _, e := range entries {
-			if !e.IsDir() {
-				if base == "gateway" {
-					continue
-				}
-				continue
-			}
-			if _, serr := os.Stat(filepath.Join(dir, e.Name(), "docs", "content")); serr == nil {
-				n++
-			}
-		}
-		if _, serr := os.Stat(filepath.Join(dir, "docs", "content")); serr == nil {
+		seen[parts[1]] = true
+		if tree.HasDir("services/" + parts[1] + "/docs/content") {
 			n++
 		}
 	}

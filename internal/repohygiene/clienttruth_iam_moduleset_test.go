@@ -11,7 +11,7 @@ import (
 func clientTruthIAMModuleSetOptions(t *testing.T) ClientTruthIAMModuleSetOptions {
 	t.Helper()
 	return ClientTruthIAMModuleSetOptions{
-		Root:          repoRoot(t),
+		Tree:          clientTruthRepoTree(t),
 		ModuleSetFile: "services/iam/internal/domain/module_set.go",
 		ModuleSetVar:  "knownModules",
 		Surfaces:      []string{"services/iam/docs/content", "proto/kacho/cloud/iam"},
