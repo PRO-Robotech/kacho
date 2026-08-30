@@ -23,13 +23,12 @@ package migrator
 
 import (
 	"context"
-	"errors"
-	"fmt"
 	"io"
 	"io/fs"
 	"os"
 
 	"github.com/PRO-Robotech/kacho/internal/dropguard"
+	"github.com/PRO-Robotech/kacho/pkg/migratorcli"
 )
 
 // Config — параметры одного запуска runner'а. Заполняется cmd/migrator/main.go
@@ -55,27 +54,37 @@ type Config struct {
 	MigrationsDir string
 }
 
+// dsnExtraSources — чем ЭТОТ сервис заполняет DSN СВЕРХ двух общих (`--dsn` и
+// [migratorcli.EnvDSN]), в порядке убывания приоритета. Два общих здесь НЕ
+// перечисляются намеренно: их печатает сам пакет, поэтому умолчать источник,
+// который перебивает названные, нельзя by construction. Ровно это и случилось
+// однажды — текст отказа называл третий источник и умалчивал второй (#1383).
+var dsnExtraSources = []string{"kacho-vpc config (KACHO_VPC_CONFIG_PATH)"}
+
 // Validate проверяет минимально необходимые поля перед обращением к диалекту.
+//
+// Проверки, их ПОРЯДОК и тексты отказа объявлены ОДИН раз на дерево —
+// [migratorcli.RunnerPreconditions] (#1383). Здесь остаётся только сведение
+// своего типа диалекта к двум значениям, которые общий предикат понимает:
+// задан ли диалект и как называется его spec. Тип диалекта у сервисов разный, и
+// его сведение ждёт своих проб (`docs/architecture/migrator-form.md`).
 func (c Config) Validate() error {
-	if c.Service == "" {
-		return errors.New("service is empty (the live drop preflight would have nothing to name)")
+	// Spec() читается ТОЛЬКО у заданного диалекта: на незаданном это
+	// разыменование nil. Порядок проверок внутри общего предиката тот же и
+	// закреплён его пробой.
+	specName := ""
+	if c.Dialect != nil {
+		specName = c.Dialect.Spec().Name
 	}
-	if c.Dialect == nil {
-		return errors.New("dialect is not set")
-	}
-	if c.Dialect.Spec().Name == "" {
-		return errors.New("dialect spec.Name is empty")
-	}
-	if c.DSN == "" {
-		return errors.New("dsn is empty (set --dsn or KACHO_MIGRATOR_DSN)")
-	}
-	if c.FS == nil {
-		return errors.New("migrations FS is nil")
-	}
-	if c.MigrationsDir == "" {
-		return errors.New("migrations dir is empty")
-	}
-	return nil
+	return migratorcli.RunnerPreconditions{
+		Service:         c.Service,
+		DialectSet:      c.Dialect != nil,
+		DialectSpecName: specName,
+		DSN:             c.DSN,
+		DSNExtraSources: dsnExtraSources,
+		MigrationsFSSet: c.FS != nil,
+		MigrationsDir:   c.MigrationsDir,
+	}.Validate()
 }
 
 // Runner — высокоуровневая обертка над [Dialect]. Один экземпляр на жизнь
@@ -112,7 +121,7 @@ func (r *Runner) Up(target string) error {
 	// ровно настолько же и применяемое.
 	scope := dropguard.WholeChain()
 	if target != "" {
-		version, err := parseTargetVersion(target)
+		version, err := migratorcli.ParseTargetVersion(target)
 		if err != nil {
 			return err
 		}
@@ -156,21 +165,4 @@ func (r *Runner) Down(target string) error {
 // Status печатает примененные/непримененные миграции.
 func (r *Runner) Status(out io.Writer) error {
 	return r.cfg.Dialect.Status(context.Background(), r.cfg.DSN, r.cfg.FS, r.cfg.MigrationsDir, out)
-}
-
-// parseTargetVersion — goose использует int64 для версии (timestamp или
-// 4-digit prefix файла). Принимаем строку с CLI, чтобы пользователь мог
-// написать "0010" как в имени файла; конвертация — fmt.Sscanf вместо
-// strconv.ParseInt для устойчивости к leading zeros.
-//
-// Helper используется postgres.go.
-func parseTargetVersion(s string) (int64, error) {
-	var v int64
-	if _, err := fmt.Sscanf(s, "%d", &v); err != nil {
-		return 0, fmt.Errorf("parse target version %q: %w", s, err)
-	}
-	if v < 0 {
-		return 0, fmt.Errorf("target version must be non-negative, got %d", v)
-	}
-	return v, nil
 }

@@ -364,7 +364,7 @@ func TestHelpIsAlsoASubcommand(t *testing.T) {
 //
 // Замер инъекции: `ParseTargetVersion("12abc")` → v=12, err=<nil>.
 func TestParseTargetVersionRejectsATrailingTail(t *testing.T) {
-	for _, in := range []string{"12abc", "800001x", "12 34", "1,2", "0x10", "12.0", "+", "-", ""} {
+	for _, in := range []string{"12abc", "800001x", "-1", "-5", "12 34", "1,2", "0x10", "12.0", "+", "-", ""} {
 		got, err := migratorcli.ParseTargetVersion(in)
 		if err == nil {
 			t.Errorf("%q принято как версия %d — накат уехал бы не туда, куда просили", in, got)
@@ -385,6 +385,23 @@ func TestParseTargetVersionRejectsATrailingTail(t *testing.T) {
 //
 // Ведущие нули приняты намеренно: `0010_…sql` — законная запись имени миграции
 // в этом дереве, и оператор списывает версию с имени файла.
+//
+// Здесь стояло `{"-1", -1}` с объяснением «goose принимает отрицательную версию
+// как „до нуля"». Объяснение проверено подачей входа, а не чтением назначения
+// (#1383), и оказалось верным лишь наполовину, а держало оно ЦЕЛУЮ ось:
+//
+//   - `down --target -1` действительно откатывает всё — но ровно то же делает
+//     `down --target 0`: цикл `DownToContext` кончается по `current.Version <=
+//     version`, и для версий ≥ 1 обе границы недостижимы одинаково. Отдельной
+//     возможности за `-1` нет;
+//   - `up --target -1` возможностью не является вовсе: `CollectMigrations(dir,
+//     0, -1)` даёт `n=0, err="no migration files found"` — тот же исход, что у
+//     пустого каталога, то есть отказ, называющий оператору НЕ ту причину.
+//
+// Значение при этом стоило дорого: пока оно числилось законным, отрицательную
+// цель нельзя было отвергнуть здесь, а три снятые копии разбора её отвергали, —
+// и сведение к общему разбору молча ослабило бы их. Отрицательная цель ушла в
+// перечень отвергаемых выше.
 func TestParseTargetVersionAcceptsWhatMigrationFilesUse(t *testing.T) {
 	for _, tc := range []struct {
 		in   string
@@ -395,7 +412,6 @@ func TestParseTargetVersionAcceptsWhatMigrationFilesUse(t *testing.T) {
 		{"0", 0},
 		{"20260829120000", 20260829120000},
 		{" 800001 ", 800001}, // окружающие пробелы — обычный след копирования
-		{"-1", -1},           // goose принимает отрицательную версию как «до нуля»
 	} {
 		got, err := migratorcli.ParseTargetVersion(tc.in)
 		if err != nil {
