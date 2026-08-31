@@ -162,11 +162,6 @@ export function csrfToken(ui: UiContainer): string {
   return node?.attributes?.value ? displayText(node.attributes.value) : "";
 }
 
-/** Получить UI-сообщения уровня flow (errors / info). */
-export function flowMessages(ui: UiContainer): UiText[] {
-  return ui.messages ?? [];
-}
-
 // ─────────────────────────────────────────────────────────────────────────────
 // Public API
 // ─────────────────────────────────────────────────────────────────────────────
