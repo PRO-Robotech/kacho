@@ -8,12 +8,21 @@ Covered RPCs:
 
 CRUD fixture dependency:
   Reuses vars from crud-fixture/setup.sh (superset: authz-fixtures/setup.sh):
-    jwtAccountAdminA  — JWT for userAAAId (admin of accountAId)
-    jwtAccountAdminB  — JWT for accountBId owner
+    jwtAccountAdminA  — служебная учётка, admin @ accountAId (НЕ предъявитель userAAAId)
+    jwtAccountAdminB  — служебная учётка, admin @ accountBId
     jwtNoBindings     — authenticated, no account membership
     accountAId        — pre-seeded account for SA scope
     accountBId        — cross-account (for isolation probes)
-    userAAAId         — User.id of jwtAccountAdminA principal
+    userAAAId         — ЦЕЛЬ ПРИВЯЗКИ: строка пользователя, владеющая accountAId
+
+  ПОЧЕМУ `user*Id` НЕ ПРЕДЪЯВИТЕЛИ. Это ЦЕЛИ ПРИВЯЗКИ — строки пользователей,
+  заведённые, чтобы разрешился триггер существования субъекта. Ни один выдаваемый
+  предъявитель ими не аутентифицируется, и не может: машинный харнесс получает
+  `client_credentials`, то есть служебную учётку. Привязать роль к `{{user*Id}}` и
+  читать `{{jwt*}}` значит завести канал, который не разрешится ни при каком
+  бюджете, а выглядеть это будет таймаутом шестью шагами позже. Набор объявлен
+  ДАННЫМИ (`tests/authz-fixtures/principal_pairings.py`, `BINDING_TARGET_ONLY_IDS`)
+  и сверяется гейтом `scripts/case_header_principal_claim_test.py`.
 
   No additional env vars are needed. The suite creates a FRESH ServiceAccount
   per runId ("sva-{{runId}}") in accountAId using jwtAccountAdminA.
