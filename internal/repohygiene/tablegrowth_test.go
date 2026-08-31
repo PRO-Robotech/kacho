@@ -247,13 +247,16 @@ var tableGrowthRegistry = []TableGrowthDecl{
 	},
 	{
 		Owner: "services/compute", Table: "compute_outbox",
-		Tempo: tempoExternal, Verdict: verdictDebt,
-		Reason: "журнал подписки: строка пишется на каждой мутации ресурса владельца, " +
-			"а снятия строк нет ни на одном пути — удержание объявлено самим кодом " +
-			"(`Retention: subscription.RetainsEverything`), и подписчику обещано, что " +
-			"отказ «позиция утрачена» не наступает никогда. Дренажа НЕТ: колонки " +
-			"`sent_at` в форме нет, читают курсором по номеру позиции",
-		Issue:  "#1735",
+		Tempo: tempoExternal, Verdict: verdictBound,
+		Reason: "журнал подписки: строка пишется на каждой мутации ресурса владельца, а рост " +
+			"ограничен УБОРКОЙ ПО СРОКУ — `pkg/subscription.JournalRetention` (7 суток), " +
+			"провязана в композиционном корне владельца " +
+			"(`subscription.StartJournalRetentionSweep`, #1735). Владелец объявляет " +
+			"`Retention: subscription.RetainsFromEarliestRow` и колонку срока `created_at` " +
+			"(`DEFAULT now()`, 0001_initial.sql), поэтому подписчик, отставший дальше окна, " +
+			"получает явный отказ с названной возобновимой позицией, а не неполное молча. " +
+			"Имени таблицы в операторе снятия нет — оно приезжает значением, — поэтому " +
+			"запись остаётся, а не снимается",
 		Family: familyJournal,
 	},
 	{
@@ -316,13 +319,16 @@ var tableGrowthRegistry = []TableGrowthDecl{
 	},
 	{
 		Owner: "services/nlb", Table: "nlb_outbox",
-		Tempo: tempoExternal, Verdict: verdictDebt,
-		Reason: "журнал подписки: строка пишется на каждой мутации ресурса владельца, " +
-			"а снятия строк нет ни на одном пути — удержание объявлено самим кодом " +
-			"(`Retention: subscription.RetainsEverything`), и подписчику обещано, что " +
-			"отказ «позиция утрачена» не наступает никогда. Дренажа НЕТ: колонки " +
-			"`sent_at` в форме нет, читают курсором по номеру позиции",
-		Issue:  "#1735",
+		Tempo: tempoExternal, Verdict: verdictBound,
+		Reason: "журнал подписки: строка пишется на каждой мутации ресурса владельца, а рост " +
+			"ограничен УБОРКОЙ ПО СРОКУ — `pkg/subscription.JournalRetention` (7 суток), " +
+			"провязана в композиционном корне владельца " +
+			"(`subscription.StartJournalRetentionSweep`, #1735). Владелец объявляет " +
+			"`Retention: subscription.RetainsFromEarliestRow` и колонку срока `emitted_at` " +
+			"(`DEFAULT now()`, 0001_initial.sql), поэтому подписчик, отставший дальше окна, " +
+			"получает явный отказ с названной возобновимой позицией, а не неполное молча. " +
+			"Имени таблицы в операторе снятия нет — оно приезжает значением, — поэтому " +
+			"запись остаётся, а не снимается",
 		Family: familyJournal,
 	},
 	{
@@ -399,13 +405,16 @@ var tableGrowthRegistry = []TableGrowthDecl{
 	},
 	{
 		Owner: "services/vpc", Table: "vpc_outbox",
-		Tempo: tempoExternal, Verdict: verdictDebt,
-		Reason: "журнал подписки: строка пишется на каждой мутации ресурса владельца, " +
-			"а снятия строк нет ни на одном пути — удержание объявлено самим кодом " +
-			"(`Retention: subscription.RetainsEverything`), и подписчику обещано, что " +
-			"отказ «позиция утрачена» не наступает никогда. Дренажа НЕТ: колонки " +
-			"`sent_at` в форме нет, читают курсором по номеру позиции",
-		Issue:  "#1735",
+		Tempo: tempoExternal, Verdict: verdictBound,
+		Reason: "журнал подписки: строка пишется на каждой мутации ресурса владельца, а рост " +
+			"ограничен УБОРКОЙ ПО СРОКУ — `pkg/subscription.JournalRetention` (7 суток), " +
+			"провязана в композиционном корне владельца " +
+			"(`subscription.StartJournalRetentionSweep`, #1735). Владелец объявляет " +
+			"`Retention: subscription.RetainsFromEarliestRow` и колонку срока `created_at` " +
+			"(`DEFAULT now()`, 0001_initial.sql), поэтому подписчик, отставший дальше окна, " +
+			"получает явный отказ с названной возобновимой позицией, а не неполное молча. " +
+			"Имени таблицы в операторе снятия нет — оно приезжает значением, — поэтому " +
+			"запись остаётся, а не снимается",
 		Family: familyJournal,
 	},
 	{

@@ -37,6 +37,7 @@ import (
 	operationpb "github.com/PRO-Robotech/kacho/pkg/api/kacho/cloud/operation"
 	subscriptionv1 "github.com/PRO-Robotech/kacho/pkg/api/kacho/cloud/subscription"
 	vpcv1 "github.com/PRO-Robotech/kacho/pkg/api/kacho/cloud/vpc/v1"
+	"github.com/PRO-Robotech/kacho/pkg/retention"
 	"github.com/PRO-Robotech/kacho/pkg/subscription"
 	"github.com/PRO-Robotech/kacho/services/vpc/internal/subscriptionjournal"
 
@@ -303,6 +304,28 @@ func runServe(cfg config.Config) error {
 		logger,
 	); err != nil {
 		return fmt.Errorf("фоновая уборка таблицы операций: %w", err)
+	}
+
+	// Фоновая уборка РЕСУРСНОГО ЖУРНАЛА подписки (#1735).
+	//
+	// Строка в него пишется на КАЖДОЙ мутации ресурса владельца, то есть темп
+	// задаёт арендатор, а снятия строк не было ни на одном пути: рост был
+	// монотонным и вечным.
+	//
+	// Петля СВОЯ, а не запись в реестре уборки таблицы операций: пороги у двух
+	// предметов выводятся из РАЗНЫХ читателей (оператор, разбирающий отказавшую
+	// мутацию, против подписчика, возобновляющегося с позиции). Расписание при
+	// этом одно и берётся из одного места — разошлись бы два литерала, а не два
+	// вызова одной функции.
+	//
+	// Пул, а не одиночное соединение подписки: уборка — обычный оператор, ей
+	// выделенная сессия не нужна, а сессия подписки занята `LISTEN`.
+	if _, err := subscription.StartJournalRetentionSweep(
+		ctx, pool, subscriptionjournal.Journal(),
+		retention.DefaultConfig(),
+		logger.With(slog.String("component", "journal_retention_sweep")),
+	); err != nil {
+		return fmt.Errorf("фоновая уборка ресурсного журнала: %w", err)
 	}
 
 	// Prometheus observability adapter: приватный реестр, питает outbox-recorder,
