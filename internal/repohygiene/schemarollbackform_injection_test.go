@@ -41,7 +41,7 @@ func TestInjectedColumnRemovalIsAFinding(t *testing.T) {
 		sql  string
 	}{
 		{"DROP COLUMN", "ALTER TABLE kacho_vpc.networks DROP COLUMN vrf_id;"},
-		{"RENAME COLUMN", "ALTER TABLE kacho_vpc.networks RENAME COLUMN folder_id TO project_id;"},
+		{"RENAME COLUMN", "ALTER TABLE kacho_vpc.networks RENAME COLUMN vrf_id TO transport_id;"},
 		{"SET NOT NULL", "ALTER TABLE kacho_vpc.networks ALTER COLUMN vrf_id SET NOT NULL;"},
 	}
 	for _, c := range cases {
