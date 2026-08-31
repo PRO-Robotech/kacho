@@ -565,7 +565,7 @@ type ListAccessBindingsRequest struct {
 	// `filter` and with `include_revoked`, which is the same shape already chosen
 	// once for `include_revoked` above:
 	//
-	//	GET /iam/v1/accessBindings?filter=subject%3D%22usr-…%22&accountId=acc-…
+	//	GET /iam/v1/accessBindings?filter=subject%3D%22usr…%22&accountId=acc…
 	//
 	// WHY IT IS NOT `scopeId`. `scopeId` matches the row's `resource_id`, so
 	// `scope="iam.account"` + `scopeId="<acct>"` returns the bindings attached to

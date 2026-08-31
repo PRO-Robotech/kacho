@@ -84,7 +84,7 @@ type AccessBindingServiceClient interface {
 	// question this read exists for be asked in ONE call — "what does THIS subject
 	// hold in THIS account":
 	//
-	//	GET /iam/v1/accessBindings?filter=subject%3D%22usr-…%22&accountId=acc-…
+	//	GET /iam/v1/accessBindings?filter=subject%3D%22usr…%22&accountId=acc…
 	List(ctx context.Context, in *ListAccessBindingsRequest, opts ...grpc.CallOption) (*ListAccessBindingsResponse, error)
 	// DEPRECATED — use `List` with `filter=scope="iam.<tier>"` +
 	// `filter=scopeId="<id>"`. Retained for back-compat.
@@ -480,7 +480,7 @@ type AccessBindingServiceServer interface {
 	// question this read exists for be asked in ONE call — "what does THIS subject
 	// hold in THIS account":
 	//
-	//	GET /iam/v1/accessBindings?filter=subject%3D%22usr-…%22&accountId=acc-…
+	//	GET /iam/v1/accessBindings?filter=subject%3D%22usr…%22&accountId=acc…
 	List(context.Context, *ListAccessBindingsRequest) (*ListAccessBindingsResponse, error)
 	// DEPRECATED — use `List` with `filter=scope="iam.<tier>"` +
 	// `filter=scopeId="<id>"`. Retained for back-compat.
