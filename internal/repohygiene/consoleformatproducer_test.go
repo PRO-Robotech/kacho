@@ -44,15 +44,13 @@
 //
 // # Чего гейт НЕ проверяет — названо, чтобы его не читали шире
 //
-// Он судит НАЛИЧИЕ производителя, а не СОГЛАСИЕ судей. Версия prettier
-// закрепляется замком КАЖДОГО пакета отдельно, и в этом дереве их три — 3.8.3
-// (host, dashboard), 3.9.4 (compute, storage, nlb, registry) и 3.9.6 у
-// workspace-членов (vpc, iam, system). Они расходятся на живом коде: объединение
-// типов, помещающееся в предел строки, одна версия требует разбить, другая —
-// собрать. То есть «формат зелёный» здесь означает «каждый пакет согласен со
-// СВОИМ судьёй», а не «в дереве один формат». Раскол — отдельный предмет (#1674),
-// и до его закрытия замер формата ОДНОЙ версией на все девять пакетов даёт
-// неверное число.
+// Он судит НАЛИЧИЕ производителя, а не СОГЛАСИЕ судей: перечень вызовов и версия
+// форматтера — разные свойства одного скрипта. Согласие держит соседний
+// consoleformatterversion_test.go (#1674) — он требует, чтобы версия была
+// объявлена ТОЧНО и одинаково всеми и чтобы замок разрешал ровно объявленное.
+// До его заведения судей в дереве было три (3.8.3 · 3.9.4 · 3.9.6), и «формат
+// зелёный» означало «каждый пакет согласен со СВОИМ судьёй», а не «в дереве один
+// формат».
 //
 // # Перепись
 //
@@ -77,10 +75,13 @@ const consoleFormatScript = "format:check"
 // consoleFormatCIInvocation — строка, которой конвейер зовёт корневой скрипт.
 const consoleFormatCIInvocation = "npm run format:check"
 
-// consoleFormatPrefixRe — вызов `npm run <скрипт> --prefix <пакет>` в корневом
+// consolePrefixCallRe — вызов `npm run <скрипт> --prefix <пакет>` в корневом
 // скрипте. Читается ИМЯ ПАКЕТА, а не порядок слов: цепочку пишут вручную, и
 // перестановка аргументов не должна выводить пакет из-под наблюдения.
-var consoleFormatPrefixRe = regexp.MustCompile(`--prefix\s+([A-Za-z0-9._-]+)`)
+//
+// Общий на все гейты консоли, читающие корневые цепочки (`format:check`,
+// `typecheck`): вторая копия того же предиката разошлась бы с первой молча.
+var consolePrefixCallRe = regexp.MustCompile(`--prefix\s+([A-Za-z0-9._-]+)`)
 
 // TestEveryConsoleFormatCheckHasAProducer — вердикт на настоящем дереве.
 func TestEveryConsoleFormatCheckHasAProducer(t *testing.T) {
@@ -105,7 +106,7 @@ func TestEveryConsoleFormatCheckHasAProducer(t *testing.T) {
 	}
 
 	var called []string
-	for _, m := range consoleFormatPrefixRe.FindAllStringSubmatch(rootScript, -1) {
+	for _, m := range consolePrefixCallRe.FindAllStringSubmatch(rootScript, -1) {
 		called = append(called, m[1])
 	}
 	for _, f := range judgeConsoleFormatProducers(declaring, called) {
