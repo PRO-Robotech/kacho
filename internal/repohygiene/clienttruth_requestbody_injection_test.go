@@ -283,12 +283,21 @@ func TestBodyGate_RedOnPathThatResolvesNowhere(t *testing.T) {
 }
 
 // TestBodyGate_SilentWhenTheAddressIsNotInTheCommand — законный близнец #1647:
-// адреса в команде нет вовсе (он из переменной). Это НЕ путь без маршрута, и
-// объявлять его находкой значило бы краснеть на том, чего в примере не написано.
+// адреса в команде нет вовсе. Это НЕ путь без маршрута, и объявлять его находкой
+// значило бы краснеть на том, чего в примере не написано.
+//
+// # Пример пробы ЗАМЕНЁН вместе с предметом гейта (#1725)
+//
+// Здесь стояло `"$KACHO_ENDPOINT/iam/v1/accounts"` — адрес от переменной оболочки.
+// Он перестал быть примером «адреса нет»: путь в такой команде НАПИСАН и сопоставим
+// с шаблоном, и теперь распознаётся (одиннадцать живых тел дерева написаны так).
+// Оставить прежний пример значило бы держать пробу, утверждающую слепоту там, где
+// гейт обязан судить. Взята команда, где пути нет и вправду: он целиком в
+// переменной.
 func TestBodyGate_SilentWhenTheAddressIsNotInTheCommand(t *testing.T) {
 	s := newBodyStand(t)
 	s.write(t, "docs/var.mdx",
-		"```bash\ncurl -X POST \"$KACHO_ENDPOINT/iam/v1/accounts\" \\\\\n"+
+		"```bash\ncurl -X POST \"$KACHO_ACCOUNTS_URL\" \\\\\n"+
 			"  -d '{ \"name\": \"acme\" }'\n```\n")
 	findings, census := s.run(t)
 	if census.BodiesNoAddress != 1 {
@@ -476,13 +485,123 @@ func TestBodyGate_CountsBodiesThatAreNotJSON(t *testing.T) {
 	if census.BodiesNotJSON != 1 {
 		t.Fatalf("тел, не разобравшихся как JSON, посчитано %d, ожидалось 1", census.BodiesNotJSON)
 	}
-	if len(findings) != 0 {
-		t.Fatalf("тело-плейсхолдер объявлено находкой: %v", findings)
+	// Теперь это НАХОДКА, а не перепись, и вердикт пробы перевёрнут вместе с
+	// предметом (#1725). Прежде число покрывало ДВА разных предмета: девять тел с
+	// законной подстановкой оболочки — слепую зону распознавателя — и одно с лишней
+	// запятой, то есть дефект примера. Адъюдикация развела их поимённо: первое
+	// теперь судится (см. пробу ниже), второе краснеет здесь.
+	if len(findings) != 1 || !findings[0].Malformed {
+		t.Fatalf("неисполнимое тело не объявлено находкой: %v", findings)
+	}
+	if !strings.Contains(findings[0].String(), "не разбирается как JSON") {
+		t.Errorf("находка не называет предмет: %s", findings[0].String())
 	}
 	// Положительный контроль: законная страница стенда по-прежнему разбирается и
 	// судится — иначе «не JSON» было бы неотличимо от сломанного разбора тел.
 	if census.BodiesParsed != 1 || census.KeysJudged != 2 {
 		t.Errorf("тел разобрано %d, ключей рассужено %d — ожидалось 1 и 2: разбор тел сломан",
 			census.BodiesParsed, census.KeysJudged)
+	}
+}
+
+// ---------------------------------------------------------------------------
+// ТРИ ФОРМЫ, сведённые сюда из второго гейта об этом же предмете (#1725).
+//
+// Второй гейт судил тела ДРУГИМ признаком — по форме команды, а не по разбираемому
+// JSON, — и потому видел то, чего не видел этот, при том что сам был у́же по корпусу
+// и судил только верхний уровень. Ни один не был надмножеством другого, и тело,
+// попавшее к одному, выглядело проверенным у обоих. Каждая форма доказывается
+// ОТДЕЛЬНО: распознаватель, знающий не все законные формы, не даёт ни красного, ни
+// зелёного — он молчит.
+// ---------------------------------------------------------------------------
+
+// (1) ПОДСТАНОВКА ОБОЛОЧКИ. `"'"$VAR"'"` — единственный способ подставить переменную
+// в одинарно-закавыченное тело; строгим разбором JSON такое тело не берётся, а после
+// раскрытия оболочкой становится валидным. Девять живых тел дерева написаны так, и
+// до этой правки ни одно не судилось.
+func TestBodyGate_ShellInterpolatedBodyIsJudged(t *testing.T) {
+	s := newBodyStand(t)
+	s.write(t, "docs/shell.mdx", curlDoc(`{ "name": "'"$NAME"'", "нетакогополя": "'"${X}"'" }`))
+	findings, census := s.run(t)
+	if census.BodiesShellInterpolated != 1 {
+		t.Fatalf("тел, разобранных после подстановок, %d, ожидалось 1", census.BodiesShellInterpolated)
+	}
+	if census.BodiesNotJSON != 0 {
+		t.Errorf("законная подстановка зачтена как неисполнимое тело (не JSON %d)", census.BodiesNotJSON)
+	}
+	if len(findings) != 1 {
+		t.Fatalf("ключ, которого нет в сообщении, не найден в теле с подстановкой: %v", findings)
+	}
+	if !strings.Contains(findings[0].String(), "нетакогополя") {
+		t.Errorf("находка не называет ключ: %s", findings[0].String())
+	}
+}
+
+// (1-контроль) ЗАКОННЫЙ БЛИЗНЕЦ — то же тело, но все ключи настоящие. Без него
+// «краснеет на подстановке» было бы неотличимо от «краснеет на подстановке всегда».
+func TestBodyGate_ShellInterpolatedLawfulBodyIsSilent(t *testing.T) {
+	s := newBodyStand(t)
+	s.write(t, "docs/shell-ok.mdx", curlDoc(`{ "name": "'"$NAME"'" }`))
+	findings, census := s.run(t)
+	if len(findings) != 0 {
+		t.Fatalf("гейт краснеет на законном теле с подстановкой: %v", findings)
+	}
+	if census.BodiesShellInterpolated != 1 {
+		t.Errorf("подстановка не опознана (%d) — тогда молчание означает «не читал»",
+			census.BodiesShellInterpolated)
+	}
+}
+
+// (2) АДРЕС БЕЗ СХЕМЫ — от переменной оболочки. Путь в команде НАПИСАН и сопоставим
+// с шаблоном; схема живёт в переменной. Одиннадцать живых тел дерева написаны так, и
+// до этой правки все уходили в «адреса в команде нет».
+func TestBodyGate_PathWithoutASchemeIsRouted(t *testing.T) {
+	s := newBodyStand(t)
+	s.write(t, "docs/nohost.mdx",
+		"```bash\ncurl -X POST $BASE/iam/v1/accounts \\\\\n"+
+			"  -d '{ \"нетакогополя\": \"x\" }'\n```\n")
+	findings, census := s.run(t)
+	if census.BodiesNoAddress != 0 {
+		t.Fatalf("путь от переменной зачтён как отсутствие адреса (%d)", census.BodiesNoAddress)
+	}
+	if census.BodiesMatched != 2 {
+		t.Fatalf("сопоставлено %d, ожидалось 2 (законная страница стенда и эта)", census.BodiesMatched)
+	}
+	if len(findings) != 1 || !strings.Contains(findings[0].String(), "нетакогополя") {
+		t.Fatalf("ключ в теле с адресом без схемы не рассужен: %v", findings)
+	}
+}
+
+// (2-контроль) Путь ищется ВНЕ ТЕЛА. Иначе строка-значение, похожая на путь, стала бы
+// адресом запроса — и пример судился бы против чужого сообщения молча.
+func TestBodyGate_PathInsideTheBodyIsNotTakenForTheAddress(t *testing.T) {
+	s := newBodyStand(t)
+	s.write(t, "docs/pathinbody.mdx",
+		"```bash\ncurl -X POST \"$KACHO_ACCOUNTS_URL\" \\\\\n"+
+			"  -d '{ \"name\": \"/iam/v1/accounts\" }'\n```\n")
+	findings, census := s.run(t)
+	if census.BodiesNoAddress != 1 {
+		t.Fatalf("путь взят ИЗ ТЕЛА: тел без адреса %d, ожидалось 1", census.BodiesNoAddress)
+	}
+	if len(findings) != 0 {
+		t.Fatalf("находок %d, ожидалось 0: %v", len(findings), findings)
+	}
+}
+
+// (3) ГЛАГОЛ СЛИТНО. `curl -XPOST` — та же команда, что `curl -X POST`. Форма в
+// дереве живая (одно тело), и до этой правки она молча получала умолчание GET, то
+// есть не сопоставлялась ни с одним маршрутом мутации.
+func TestBodyGate_VerbWrittenWithoutASpaceIsRead(t *testing.T) {
+	s := newBodyStand(t)
+	s.write(t, "docs/tight.mdx",
+		"```bash\ncurl -XPOST 'http://localhost:18080/iam/v1/accounts' \\\\\n"+
+			"  -d '{ \"нетакогополя\": \"x\" }'\n```\n")
+	findings, census := s.run(t)
+	if census.BodiesUnrouted != 0 {
+		t.Fatalf("слитный глагол не прочитан: тел без маршрута %d (умолчание GET)",
+			census.BodiesUnrouted)
+	}
+	if len(findings) != 1 || !strings.Contains(findings[0].String(), "POST") {
+		t.Fatalf("тело слитной формы не рассужено как POST: %v", findings)
 	}
 }
