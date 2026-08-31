@@ -61,15 +61,16 @@ export function emptyRule(): Rule {
   return { module: "", resources: [], verbs: [] };
 }
 
-/** Опции валидации правила. catalog — для labelSelectable-gating (опц.; без него
- *  labels-gating пропускается — back-compat для чистого unit-вызова). */
-export interface RuleInvalidOpts {
+/** Опции валидации правила. catalog — для labelSelectable-gating; необязателен,
+ *  потому что оба вызывающих берут его из `usePermissionCatalog().data`, а тот
+ *  до загрузки отдаёт undefined — тогда labels-gating пропускается. */
+interface RuleInvalidOpts {
   isSystem: boolean;
   catalog?: PermissionCatalog;
 }
 
 /** Список ошибок правила (человекочитаемые сообщения) — для подсветки + submit-gate. */
-export function ruleInvalid(rule: Rule, opts: RuleInvalidOpts): string[] {
+function ruleInvalid(rule: Rule, opts: RuleInvalidOpts): string[] {
   const errs: string[] = [];
   const nonEmpty = (xs: string[] | undefined) => (xs ?? []).filter((s) => s.trim());
   // Scalar module (один модуль на правило).
