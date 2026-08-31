@@ -5,6 +5,7 @@ package config
 
 import (
 	"github.com/PRO-Robotech/kacho/pkg/grpcsrv"
+	"github.com/PRO-Robotech/kacho/pkg/servicecontract"
 )
 
 // Validate — ДОПОЛНЕНИЕ к центральному стражу посадки, а не его замена.
@@ -52,9 +53,33 @@ func (c Config) Validate() error {
 		return nil
 	}
 	return c.TrustedForwarders().Require(grpcsrv.ForwarderGate{
-		Production:   c.AuthMode == "production" || c.AuthMode == "production-strict",
+		Production:   c.Posture().IsProduction(),
 		DevTrustAny:  c.AuthZTrustAnyForwarder,
 		SANsKnob:     "KACHO_COMPUTE_AUTHZ_TRUSTED_FORWARDER_SANS",
 		TrustAnyKnob: "KACHO_COMPUTE_AUTHZ_TRUST_ANY_FORWARDER",
 	})
+}
+
+// Posture — посадка процесса, разобранная ОБЩИМ словарём.
+//
+// Словарь допустимых значений объявлен в дереве один раз
+// (`servicecontract.Modes`): пока каждый сервис сравнивал строку на месте, у
+// одного предмета было пять объявлений, и одно из них расходилось с остальными в
+// обе стороны — и разойтись копиям было нечем.
+//
+// Сравнение со строкой на месте негодно и по второй причине, самостоятельной:
+// оно перечисляет боевые режимы САМО. Появится в словаре четвёртый — сравнение
+// его не узнает и объявит посадку не боевой, сняв стражу молча; предикат дома
+// узнает его тем же прогоном.
+//
+// Неразобранное значение читается как БОЕВАЯ посадка. Это не «умолчание»: старт
+// на нём всё равно отвергает страж, который называет ручку и перечисляет словарь;
+// а до отказа послаблений быть не должно — иначе опечатка в профиле тихо
+// открывала бы то, что закрывает боевой режим.
+func (c Config) Posture() servicecontract.Mode {
+	mode, err := servicecontract.ParseMode(c.AuthMode)
+	if err != nil {
+		return servicecontract.ModeProduction
+	}
+	return mode
 }

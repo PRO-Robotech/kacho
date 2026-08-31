@@ -183,8 +183,9 @@ func (r *userInvitationResource) Schema(_ context.Context, _ resource.SchemaRequ
 			"display_name": schema.StringAttribute{Optional: true, PlanModifiers: seed,
 				MarkdownDescription: "ЗАТРАВКА отображаемого имени. Край подставляет её в " +
 					"строку членства при заведении и перезаписывает при первом входе " +
-					"данными провайдера личности; изменяющей операции для этого поля у края " +
-					"нет. Поэтому значение здесь остаётся тем, что задали вы, а фактическое " +
+					"данными провайдера личности, а `UserService/Update` принимает " +
+					"единственное изменяемое поле — `labels`. Поэтому значение здесь " +
+					"остаётся тем, что задали вы, а фактическое " +
 					"имя видно в `effective_display_name`. Если не задано — край выводит " +
 					"имя из почты."},
 			"project_id": schema.StringAttribute{Optional: true, PlanModifiers: seed,

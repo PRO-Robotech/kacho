@@ -9,6 +9,8 @@ package main
 import (
 	"fmt"
 	"strings"
+
+	"github.com/PRO-Robotech/kacho/pkg/servicecontract"
 )
 
 // AuthzMiddlewareConfig is the minimal cross-section of the middleware
@@ -78,12 +80,15 @@ func validateProductionAuthzConfig(env string, cfg AuthzMiddlewareConfig) error 
 	if cfg.FailOpen {
 		problems = append(problems, "authz.failOpen=true (must be false in prod)")
 	}
-	switch cfg.AuthNMode {
-	case "production", "production-strict":
-		// ok — authenticated callers required.
-	default:
+	// Боевая ли посадка, решает ОБЩИЙ словарь, а не сравнение со строкой на месте.
+	// Сравнение перечисляло боевые режимы само — то есть было вторым объявлением
+	// словаря, и появление четвёртой посадки оно объявило бы негодной, а страж
+	// потребовал бы переписать значение, которое уже верно.
+	mode, modeErr := servicecontract.ParseMode(cfg.AuthNMode)
+	if modeErr != nil || !mode.IsProduction() {
 		problems = append(problems, fmt.Sprintf(
-			"authn.mode=%q (must be production or production-strict in prod)", cfg.AuthNMode))
+			"authn.mode=%q (must be one of %s in prod, and not dev)",
+			cfg.AuthNMode, strings.Join(servicecontract.Modes(), ", ")))
 	}
 	// NB: the shared-signing-key clause is NOT repeated here. It is checked above,
 	// unconditionally, and returns before this point — a second copy would be an

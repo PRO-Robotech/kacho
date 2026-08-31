@@ -27,6 +27,7 @@ import (
 	"github.com/PRO-Robotech/kacho/pkg/grpcsrv"
 	"github.com/PRO-Robotech/kacho/pkg/listnarrow"
 	"github.com/PRO-Robotech/kacho/pkg/observability"
+	"github.com/PRO-Robotech/kacho/pkg/observability/health"
 	"github.com/PRO-Robotech/kacho/pkg/operations"
 	"github.com/PRO-Robotech/kacho/pkg/operations/operationspb"
 	"github.com/PRO-Robotech/kacho/pkg/outbox/drainer"
@@ -93,7 +94,7 @@ func runServe(cfg config.Config) error {
 	}
 	// Хранилище слоёв аутентифицирует всех: без учётных данных сервис не смог бы в
 	// него ходить — а значит хранилище открыто любому в сети подов.
-	if err := requireZotCredentials(cfg.AuthMode, cfg.ZotAddr, cfg.ZotUsername, cfg.ZotPassword); err != nil {
+	if err := requireZotCredentials(cfg.Posture(), cfg.ZotAddr, cfg.ZotUsername, cfg.ZotPassword); err != nil {
 		return err
 	}
 	// Самоотчёт о security-posture: ПОСЛЕ boot-guard'ов (validateAuthMode +
@@ -128,7 +129,19 @@ func runServe(cfg config.Config) error {
 		return fmt.Errorf("KACHO_REGISTRY_AUTH_MODE: %w", merr)
 	}
 	svcMetrics := metrics.New()
-	diagDesc, derr := describeDiagnosticSurface(cfg.MetricsAddr, svcMetrics, mode, logger)
+	// Готовность СТРОИТСЯ из именованных зависимостей и отдаётся отдельным путём
+	// от живости; чарт пробирует именно её. Носитель канала к владельцу прав
+	// приезжает ниже по тексту — до его установки готовность отвечает «не готов»,
+	// а не «готов» (см. buildReadinessCheckers).
+	var authzSlot health.Slot
+	healthAgg := health.New(buildReadinessCheckers(pool, cfg.AuthZIAMGRPCAddr != "", &authzSlot))
+	// Гашение переводит готовность в 503 ДО остановки слушателей: kubelet
+	// перестаёт слать трафик, пока текущие вызовы дорабатывают.
+	go func() {
+		<-ctx.Done()
+		healthAgg.SetShuttingDown()
+	}()
+	diagDesc, derr := describeDiagnosticSurface(cfg.MetricsAddr, svcMetrics, healthAgg, mode, logger)
 	if derr != nil {
 		return fmt.Errorf("профиль диагностической поверхности: %w", derr)
 	}
@@ -177,6 +190,10 @@ func runServe(cfg config.Config) error {
 			return fmt.Errorf("dial kacho-iam internal: %w", err)
 		}
 		defer func() { _ = authzConn.Close() }()
+		// Носитель зависимости, объявленной посадкой выше. До этой строки
+		// готовность отвечает «не готов»: окно старта не зачитывается в готовность
+		// молча.
+		authzSlot.Install(func(context.Context) error { return authzConnHealth(authzConn) })
 	}
 
 	// ── ребро registry→iam PUBLIC (:9090, mTLS): ProjectService.Get (existence-
@@ -668,7 +685,7 @@ func buildDataplaneHandler(cfg config.Config, authzConn *grpc.ClientConn, repoRe
 	// identity-JWT не должны транзитить открытым текстом). В проде — явный ack
 	// оператора; проверяется независимо от breakglass (риск открытого сокета
 	// ортогонален обходу authz).
-	if err := requireDataplaneTLSAck(cfg.AuthMode, cfg.DataplaneTLSTerminatedExternally); err != nil {
+	if err := requireDataplaneTLSAck(cfg.Posture(), cfg.DataplaneTLSTerminatedExternally); err != nil {
 		return nil, err
 	}
 
@@ -745,14 +762,11 @@ func runStaleSweeper(ctx context.Context, sweeper staleSweeper, interval time.Du
 // терминацию (KACHO_REGISTRY_DATAPLANE_TLS_TERMINATED_EXTERNALLY=true) — параллель
 // Config.TokenAcceptance. В dev — no-op (как http:// JWKS и DB
 // sslmode=disable). Вызывается только когда data-plane поднимается (DataplaneAddr!="").
-func requireDataplaneTLSAck(authMode string, tlsTerminatedExternally bool) error {
-	switch authMode {
-	case "production", "production-strict":
-		if !tlsTerminatedExternally {
-			return fmt.Errorf("AuthMode=%s requires KACHO_REGISTRY_DATAPLANE_TLS_TERMINATED_EXTERNALLY=true "+
-				"(the data-plane serves plaintext HTTP and must sit behind external TLS termination; "+
-				"bearer identity-JWTs would otherwise transit cleartext)", authMode)
-		}
+func requireDataplaneTLSAck(mode servicecontract.Mode, tlsTerminatedExternally bool) error {
+	if mode.IsProduction() && !tlsTerminatedExternally {
+		return fmt.Errorf("AuthMode=%s requires KACHO_REGISTRY_DATAPLANE_TLS_TERMINATED_EXTERNALLY=true "+
+			"(the data-plane serves plaintext HTTP and must sit behind external TLS termination; "+
+			"bearer identity-JWTs would otherwise transit cleartext)", mode)
 	}
 	return nil
 }
@@ -772,18 +786,15 @@ func requireDataplaneTLSAck(authMode string, tlsTerminatedExternally bool) error
 //
 // zotAddr пуст ⇒ хранилище не сконфигурировано, ходить некуда — гейт молчит.
 // В dev — no-op (in-process фикстуры поднимают zot без аутентификации).
-func requireZotCredentials(authMode, zotAddr, username, password string) error {
-	switch authMode {
-	case "production", "production-strict":
-		if strings.TrimSpace(zotAddr) == "" {
-			return nil
-		}
-		if strings.TrimSpace(username) == "" || strings.TrimSpace(password) == "" {
-			return fmt.Errorf("AuthMode=%s requires KACHO_REGISTRY_ZOT_USERNAME and "+
-				"KACHO_REGISTRY_ZOT_PASSWORD (the layer store at %q must authenticate its callers; "+
-				"without credentials it serves anyone that reaches its port, and the whole data-plane "+
-				"authorization is one hop away)", authMode, zotAddr)
-		}
+func requireZotCredentials(mode servicecontract.Mode, zotAddr, username, password string) error {
+	if !mode.IsProduction() || strings.TrimSpace(zotAddr) == "" {
+		return nil
+	}
+	if strings.TrimSpace(username) == "" || strings.TrimSpace(password) == "" {
+		return fmt.Errorf("AuthMode=%s requires KACHO_REGISTRY_ZOT_USERNAME and "+
+			"KACHO_REGISTRY_ZOT_PASSWORD (the layer store at %q must authenticate its callers; "+
+			"without credentials it serves anyone that reaches its port, and the whole data-plane "+
+			"authorization is one hop away)", mode, zotAddr)
 	}
 	return nil
 }
@@ -792,27 +803,29 @@ func requireZotCredentials(authMode, zotAddr, username, password string) error {
 // DB-SSL. Режим не управляет authz/mTLS — ими управляет breakglass (см.
 // validateSecurityConfig). `production-strict` дополнительно требует SSL до БД.
 func validateAuthMode(cfg config.Config, logger *slog.Logger) error {
-	switch cfg.AuthMode {
-	case "dev":
+	// Словарь допустимых значений — НЕ свой: он объявлен в дереве один раз
+	// (`servicecontract.Modes`), и отказ перечисляет ТОТ ЖЕ набор, что у остальных
+	// шести стражей старта. Свой словарь здесь был, и он был одним из пяти.
+	mode, err := servicecontract.ParseMode(cfg.AuthMode)
+	if err != nil {
+		return fmt.Errorf("KACHO_REGISTRY_AUTH_MODE: %w", err)
+	}
+	switch mode {
+	case servicecontract.ModeDev:
 		if cfg.DBSSLMode == "" || cfg.DBSSLMode == "disable" {
 			logger.Warn("KACHO_REGISTRY_DB_SSLMODE=disable — DB plaintext (dev only)")
 		}
-		return nil
-	case "production":
-		return nil
-	case "production-strict":
-		// Перечень безопасных значений — НЕ свой: он приходит из дома семантики
+	case servicecontract.ModeProductionStrict:
+		// Перечень безопасных значений — тоже НЕ свой: он приходит из дома семантики
 		// строки подключения (`pkg/db`), где объявлен один раз на всё дерево
 		// (задача продукта #1464). Судится ИСХОД — режим строки, уходящей в пул.
-		if mode := coredb.SSLModeFromDSN(cfg.DSN()); !coredb.SSLModeSecure(mode) {
+		if sslMode := coredb.SSLModeFromDSN(cfg.DSN()); !coredb.SSLModeSecure(sslMode) {
 			return fmt.Errorf("production-strict mode: KACHO_REGISTRY_DB_SSLMODE must be one of %s (got %q)",
 				strings.Join(coredb.SecureSSLModes(), "|"), cfg.DBSSLMode)
 		}
 		logger.Warn("AuthMode=production-strict: DB SSL strictly validated")
-		return nil
-	default:
-		return fmt.Errorf("unknown KACHO_REGISTRY_AUTH_MODE=%q (allowed: dev, production, production-strict)", cfg.AuthMode)
 	}
+	return nil
 }
 
 // validateSecurityConfig — secure-by-default: операции без авторизации и mTLS
@@ -829,22 +842,22 @@ func validateSecurityConfig(cfg config.Config) error {
 		// первым стейтментом снимал и authz-Check, и mTLS на ОБОИХ листенерах в
 		// ЛЮБОМ режиме, включая production-strict. Теперь — fail-closed
 		// (security.md «AuthN+AuthZ ВЕЗДЕ», core rule #16); в dev обход сохранён.
-		if breakglassRefusedIn(cfg.AuthMode) {
+		if breakglassRefusedIn(cfg.Posture()) {
 			return fmt.Errorf("production mode (%s): KACHO_REGISTRY_AUTHZ_BREAKGLASS must not be enabled "+
 				"— it bypasses per-RPC authz Check and mTLS on both listeners; breakglass is a "+
-				"non-production emergency escape only", cfg.AuthMode)
+				"non-production emergency escape only", cfg.Posture())
 		}
 		return nil
 	}
 	if cfg.AuthZIAMGRPCAddr == "" {
 		return fmt.Errorf("%sauthz Check required on both listeners: set "+
 			"KACHO_REGISTRY_AUTHZ_IAM_GRPC_ADDR to the internal endpoint of kacho-iam (:9091)%s",
-			bootRefusalModePrefix(cfg.AuthMode), breakglassBypassHint(cfg.AuthMode))
+			bootRefusalModePrefix(cfg.Posture()), breakglassBypassHint(cfg.Posture()))
 	}
 	if !cfg.PublicServerMTLS.Enable || !cfg.InternalServerMTLS.Enable {
 		return fmt.Errorf("%smTLS required on both listeners: set "+
 			"KACHO_REGISTRY_PUBLIC_SERVER_MTLS_ENABLE and KACHO_REGISTRY_INTERNAL_SERVER_MTLS_ENABLE=true%s",
-			bootRefusalModePrefix(cfg.AuthMode), breakglassBypassHint(cfg.AuthMode))
+			bootRefusalModePrefix(cfg.Posture()), breakglassBypassHint(cfg.Posture()))
 	}
 	return requirePeerTransport(cfg)
 }
@@ -855,13 +868,7 @@ func validateSecurityConfig(cfg config.Config) error {
 // составителем совета, который его предлагает. Пока предикат был один (switch
 // внутри стража), а совет — константой в тексте отказа, стороны разошлись молча:
 // отказ рекомендовал ровно то, чем страж выше по этой же функции валит старт.
-func breakglassRefusedIn(authMode string) bool {
-	switch authMode {
-	case "production", "production-strict":
-		return true
-	}
-	return false
-}
+func breakglassRefusedIn(mode servicecontract.Mode) bool { return mode.IsProduction() }
 
 // breakglassBypassHint — хвост «как обойти», приписываемый к отказу посадки.
 //
@@ -875,8 +882,8 @@ func breakglassRefusedIn(authMode string) bool {
 // читается как вариант независимо от того, что про неё написано рядом; предупредить
 // о ней — работа отказа САМОГО breakglass-стража (он называет и ручку, и режим) и
 // страницы установки, а не отказа о нехватке чего-то другого.
-func breakglassBypassHint(authMode string) string {
-	if breakglassRefusedIn(authMode) {
+func breakglassBypassHint(mode servicecontract.Mode) string {
+	if breakglassRefusedIn(mode) {
 		return ""
 	}
 	return " (or set KACHO_REGISTRY_AUTHZ_BREAKGLASS=true to bypass — non-production only)"
@@ -888,9 +895,9 @@ func breakglassBypassHint(authMode string) string {
 // так нельзя» от «так нельзя нигде» — то есть не поймёт, почему тот же стенд
 // поднимался вчера. Неизвестный режим сюда не доходит: `validateAuthMode` идёт
 // в композиционном корне РАНЬШЕ и отвергает его по закрытому перечню.
-func bootRefusalModePrefix(authMode string) string {
-	if breakglassRefusedIn(authMode) {
-		return fmt.Sprintf("production mode (%s): ", authMode)
+func bootRefusalModePrefix(mode servicecontract.Mode) string {
+	if breakglassRefusedIn(mode) {
+		return fmt.Sprintf("production mode (%s): ", mode)
 	}
 	return ""
 }
@@ -921,9 +928,7 @@ func bootRefusalModePrefix(authMode string) string {
 // РАЗВЁРНУТОМ стенде dev-посадка запрещена отдельным правилом (production-mode
 // ВЕЗДЕ), поэтому послабление не расширяет поверхность стенда.
 func requirePeerTransport(cfg config.Config) error {
-	switch cfg.AuthMode {
-	case "production", "production-strict":
-	default:
+	if !cfg.Posture().IsProduction() {
 		return nil
 	}
 	if cfg.AuthZIAMGRPCAddr != "" && !cfg.IAMAuthzMTLS.Enable {

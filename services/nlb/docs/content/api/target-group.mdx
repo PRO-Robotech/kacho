@@ -33,8 +33,9 @@ Health-check живёт **на группе** (не на привязке): ед
     <tr><td><code>labels</code></td><td>map&lt;string,string&gt;</td><td>mutable</td><td>Метки</td></tr>
     <tr><td><code>healthCheck</code></td><td>HealthCheck</td><td>mutable</td><td>Единый health-check группы (обязателен на Create)</td></tr>
     <tr><td><code>targets</code></td><td>Target[]</td><td>output-only**</td><td>Снимок таргетов (<strong>набор</strong>, не последовательность); источник истины — дочерняя таблица, состав меняется через Add/RemoveTargets. Заполняется <strong>обоими</strong> чтениями — <code>Get</code> и <code>List</code></td></tr>
-    <tr><td><code>deregistrationDelaySeconds</code></td><td>int32</td><td>mutable</td><td>Таймаут drain при удалении таргета (0–3600, дефолт 300)</td></tr>
-    <tr><td><code>slowStartSeconds</code></td><td>int32</td><td>mutable</td><td>Окно slow-start для новых таргетов (0–900, дефолт 0)</td></tr>
+    <tr><td><code>port</code></td><td>int32</td><td>mutable</td><td>Единый backend-порт группы (1–65535). Обязателен на Create; его же переэхоит <code>Listener.resolvedBackendPort</code></td></tr>
+    <tr><td><code>deregistrationDelay</code></td><td>duration</td><td>mutable</td><td>Таймаут drain при удалении таргета. Строка вида <code>"300s"</code>, границы [0s, 3600s], по умолчанию 300s</td></tr>
+    <tr><td><code>slowStart</code></td><td>duration</td><td>mutable</td><td>Окно slow-start для новых таргетов. Строка вида <code>"0s"</code>, границы [0s, 900s], по умолчанию 0s</td></tr>
     <tr><td><code>status</code></td><td>enum</td><td>output-only</td><td><code>ACTIVE</code> / <code>DELETING</code></td></tr>
     <tr><td><code>createdAt</code></td><td>timestamp</td><td>output-only</td><td>Момент создания (RFC 3339, усечён до секунд)</td></tr>
   </tbody>
@@ -44,15 +45,22 @@ Health-check живёт **на группе** (не на привязке): ед
 
 ### HealthCheck
 
-Единый чек группы: `name`, `interval`, `timeout`, `unhealthyThreshold` (2–10),
-`healthyThreshold` (2–10) и **ровно один** вариант проверки (`tcpOptions` **или**
-`httpOptions`).
+Единый чек группы: `interval`, `timeout`, `unhealthyThreshold` (2–10),
+`healthyThreshold` (2–10) и **ровно один** вариант проверки — `tcp`, `http`, `https`
+либо `grpc`. Имени у health-check нет: это встроенное значение группы, а не отдельно
+адресуемый ресурс.
+
+`port` внутри варианта — необязательное переопределение порта пробы; `0` означает
+«взять backend-порт группы». Фактический порт пробы виден output-only полем
+`effectivePort`.
 
 <table>
   <thead><tr><th>Вариант</th><th>Поля</th></tr></thead>
   <tbody>
-    <tr><td><code>tcpOptions</code></td><td><code>port</code> (1–65535)</td></tr>
-    <tr><td><code>httpOptions</code></td><td><code>port</code> (1–65535), <code>path</code> (по умолчанию <code>/</code>)</td></tr>
+    <tr><td><code>tcp</code></td><td><code>port</code></td></tr>
+    <tr><td><code>http</code></td><td><code>port</code>, <code>path</code> (по умолчанию <code>/</code>), <code>expectedCodes</code>, <code>host</code>, <code>headers</code></td></tr>
+    <tr><td><code>https</code></td><td>то же, что у <code>http</code>, но поверх TLS</td></tr>
+    <tr><td><code>grpc</code></td><td><code>port</code>, <code>serviceName</code> (пусто → здоровье сервера целиком)</td></tr>
   </tbody>
 </table>
 
@@ -89,11 +97,12 @@ Health-check живёт **на группе** (не на привязке): ед
       "projectId": "prj-1",
       "regionId": "region-1",
       "name": "web-backends",
-      "healthCheck": { "name": "tcp-80", "tcpOptions": { "port": 80 } },
+      "port": 80,
+      "healthCheck": { "tcp": { "port": 80 } },
       "targets": [
         { "ipRef": { "subnetId": "sub-1", "address": "10.0.0.11" }, "weight": 100 }
       ],
-      "deregistrationDelaySeconds": 300,
+      "deregistrationDelay": "300s",
       "status": "ACTIVE",
       "createdAt": "2026-06-24T10:00:00Z"
     }
@@ -135,11 +144,11 @@ Health-check живёт **на группе** (не на привязке): ед
             "projectId": "prj-1",
             "name": "web-backends",
             "regionId": "region-1",
+            "port": 8080,
             "healthCheck": {
-              "name": "http-ping",
-              "httpOptions": { "port": 8080, "path": "/ping" }
+              "http": { "port": 8080, "path": "/ping" }
             },
-            "deregistrationDelaySeconds": 300,
+            "deregistrationDelay": "300s",
             "targets": [
               { "instanceId": "epd...", "weight": 100 }
             ]
@@ -153,8 +162,8 @@ Health-check живёт **на группе** (не на привязке): ед
 
 <ApiOperation method="PATCH" endpoint="/nlb/v1/targetGroups/{id}" async>
 
-Меняет `name`, `description`, `labels`, `healthCheck`, `deregistrationDelaySeconds`,
-`slowStartSeconds`. Замена состава `targets` на этом RPC **запрещена** — используйте
+Меняет `name`, `description`, `labels`, `healthCheck`, `deregistrationDelay`,
+`slowStart`. Замена состава `targets` на этом RPC **запрещена** — используйте
 `AddTargets` / `RemoveTargets`, чтобы каждое изменение прошло через свою операцию и
 idempotency-ключи.
 
@@ -207,7 +216,7 @@ peer-resolve в воркере.
 <ApiOperation method="POST" endpoint="/nlb/v1/targetGroups/{id}:removeTargets" async>
 
 Удаляет таргеты (`targets` ≥ 1). Удаление двухфазное: таргет переводится в `DRAINING` и
-физически убирается после `deregistrationDelaySeconds`.
+физически убирается после `deregistrationDelay`.
 
 </ApiOperation>
 
@@ -228,7 +237,7 @@ peer-resolve в воркере.
     <tr><td>Get/Delete несуществующей группы</td><td><code>NOT_FOUND</code></td><td><code>"TargetGroup &lt;id&gt; not found"</code></td></tr>
     <tr><td>Malformed id</td><td><code>INVALID_ARGUMENT</code></td><td><code>"invalid tgr id '&lt;X&gt;'"</code></td></tr>
     <tr><td>Create без <code>healthCheck</code></td><td><code>INVALID_ARGUMENT</code></td><td>health-check обязателен</td></tr>
-    <tr><td>Оба / ни одного варианта health-check</td><td><code>INVALID_ARGUMENT</code></td><td>Ровно один: <code>tcpOptions</code> XOR <code>httpOptions</code></td></tr>
+    <tr><td>Оба / ни одного варианта health-check</td><td><code>INVALID_ARGUMENT</code></td><td>Ровно один из <code>tcp</code> / <code>http</code> / <code>https</code> / <code>grpc</code></td></tr>
     <tr><td>Таргет без ровно одной формы идентичности</td><td><code>INVALID_ARGUMENT</code></td><td>Ровно одно из instance/nic/ipRef/externalIp</td></tr>
     <tr><td>External IP — bogon-адрес</td><td><code>INVALID_ARGUMENT</code></td><td>loopback / link-local / multicast / unspecified отклоняются</td></tr>
     <tr><td>Move привязанной группы</td><td><code>FAILED_PRECONDITION</code></td><td><code>"is attached to N load balancer(s); detach before moving"</code></td></tr>

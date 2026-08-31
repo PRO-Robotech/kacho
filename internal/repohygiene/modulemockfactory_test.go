@@ -89,7 +89,7 @@ func auditModuleMockFactories(sources map[string]string) (findings []mockFactory
 		code, _ := tsScan(src)
 		for _, arg := range mockFactoryArgs(code) {
 			calls++
-			if strings.Contains(arg, "import(") {
+			if callsJSName(arg, "import") {
 				findings = append(findings, mockFactoryFinding{File: rel, Call: trimCall(arg)})
 				continue
 			}

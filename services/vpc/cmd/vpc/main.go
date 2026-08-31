@@ -40,6 +40,7 @@ import (
 	"github.com/PRO-Robotech/kacho/pkg/subscription"
 	"github.com/PRO-Robotech/kacho/services/vpc/internal/subscriptionjournal"
 
+	"github.com/PRO-Robotech/kacho/pkg/observability/health"
 	addressapp "github.com/PRO-Robotech/kacho/services/vpc/internal/apps/kacho/api/address"
 	addresspoolapp "github.com/PRO-Robotech/kacho/services/vpc/internal/apps/kacho/api/addresspool"
 	cidrgroupapp "github.com/PRO-Robotech/kacho/services/vpc/internal/apps/kacho/api/cidrgroup"
@@ -62,7 +63,6 @@ import (
 	"github.com/PRO-Robotech/kacho/services/vpc/internal/dto"
 	_ "github.com/PRO-Robotech/kacho/services/vpc/internal/dto/toproto" // регистрирует DTO-трансферы (init); boot-check ниже
 	"github.com/PRO-Robotech/kacho/services/vpc/internal/handler"
-	"github.com/PRO-Robotech/kacho/services/vpc/internal/observability/health"
 	vpcmetrics "github.com/PRO-Robotech/kacho/services/vpc/internal/observability/metrics"
 	"github.com/PRO-Robotech/kacho/services/vpc/internal/repo"
 	"github.com/PRO-Robotech/kacho/services/vpc/internal/repo/cqrsadapter"

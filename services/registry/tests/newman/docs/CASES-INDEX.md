@@ -98,6 +98,7 @@ public-mux registration (отдельный срез) — green after routes wir
 | `REPO-DEL-NEG-ABSENT` | NEG | P1 | DeleteRepository absent → sync 404 "repository not found" (existence-hiding) | RG-1-A15 |
 | `REPO-REN-OK` | CRUD | P1 | RenameRepository durable old→new → Get(new) 200, Get(old) 404 | RG-1-A16 |
 | `REPO-REN-NEG-NOOP` | NEG, VAL | P1 | RenameRepository `newName==repository` → 400 ("new name must differ from current name") | RG-1-A19 |
+| `REPO-REN-NEG-BADCONFIRM` | NEG, VAL | P1 | RenameRepository `confirmCurrentName` != current → 400 ("confirm_current_name must repeat the current repository name"); в паре — верное подтверждение проходит (полоса подтверждения, #1644) | RG-1-A19 |
 | `REPO-REF-EMPTY` | CRUD | P2 | ListReferrers subject без referrer'ов → `referrers=[]` 200 (not 404) | RG-1-C03 |
 | `REPO-REF-NEG-BADDIGEST` | NEG, VAL | P1 | ListReferrers malformed subject_digest → 400 ("invalid subject digest") | RG-1-C04 |
 | `REPO-CLEANUP` | CRUD | P3 | Cleanup: delete shared overlay registry | RG-1-A01 |
@@ -193,7 +194,7 @@ the subject cannot see returns `NOT_FOUND` (deny→404, `corelib ErrHideExistenc
 | `REG-UPD-AZ-NO-GRANT-NF` | AZ, NEG | P1 | Update without `v_update` → **sync** 404 NOT_FOUND (existence-hiding), no Operation | REG-36 |
 | `REG-AZ-ANON-UNAUTH` | AZ, NEG | P0 | Control-plane RPC with no `Authorization` → 401 UNAUTHENTICATED (fail-closed) | REG-10, REG-26 |
 | `REG-AZ-OWNER-TUPLE-CREATOR` | AZ | P1 | creator gets owner/project-tuple → sees own registry in List (atomic outbox → drainer) | REG-28 |
-| `REG-AZ-GRANT-LATENCY-POLL` | AZ | P1 | grant a role → access appears within FGA propagation (poll-retry, ~0.6–2s) | REG-30 |
+| `REG-AZ-GRANT-LATENCY-POLL` | AZ | P1 | grant a role → access appears within the visibility window — registry verdict cache (`KACHO_REGISTRY_AUTHZ_CACHE_TTL`) plus materialisation at the rights owner; poll-retry, budget declared at the binding | REG-30 |
 | `REG-AZ-DOMAIN-BINDING` | AZ | P1 | object-prefix `registry_` == service name → owner-tuples accepted, resources visible | REG-29 |
 | `REG-AZ-CATALOG-COMPLETE` | AZ | P1 | full enumeration of `registry.*` permission catalog present (verb-decoupled relations) | REG-28 |
 

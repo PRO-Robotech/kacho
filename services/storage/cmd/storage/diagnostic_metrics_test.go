@@ -20,6 +20,8 @@ package main
 // different hat.
 
 import (
+	"context"
+	"errors"
 	"net/http"
 	"net/http/httptest"
 	"os"
@@ -30,6 +32,7 @@ import (
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 
+	"github.com/PRO-Robotech/kacho/pkg/observability/health"
 	"github.com/PRO-Robotech/kacho/services/storage/internal/observability/metrics"
 )
 
@@ -44,15 +47,43 @@ var outboxSeries = []string{
 	"kacho_storage_outbox_poisoned_total",
 }
 
-// TestDiagnosticListenerServesMetricsAndHealth — the mux answers both paths.
+// TestDiagnosticListenerServesMetricsAndHealth — мультиплексор отвечает на все
+// три пути, и живость с готовностью отвечают РАЗНОЕ.
+//
+// Утверждается не только «оба отвечают 200»: пока `/readyz` был безусловным, он
+// отвечал 200 и при недоступной базе, а чарт пробировал им слот готовности. Здесь
+// зависимость нарочно объявлена недоступной — живость обязана остаться 200
+// (процесс жив), готовность обязана стать 503. Проба без второй половины зеленела
+// бы на подмене готовности живостью, то есть ровно на том дефекте.
 func TestDiagnosticListenerServesMetricsAndHealth(t *testing.T) {
-	mux := diagnosticMux(metrics.New())
+	down := health.New([]health.Checker{{
+		Name:  "database",
+		Check: func(context.Context) error { return errors.New("pool is down") },
+	}})
+	mux := diagnosticMux(metrics.New(), down)
 
 	for _, path := range []string{"/metrics", "/healthz"} {
 		rec := httptest.NewRecorder()
 		mux.ServeHTTP(rec, httptest.NewRequest(http.MethodGet, path, nil))
 		assert.Equalf(t, http.StatusOK, rec.Code, "diagnostic listener must serve %s", path)
 	}
+
+	rec := httptest.NewRecorder()
+	mux.ServeHTTP(rec, httptest.NewRequest(http.MethodGet, "/readyz", nil))
+	assert.Equal(t, http.StatusServiceUnavailable, rec.Code,
+		"готовность при недоступной зависимости обязана быть 503 — иначе это живость под другим адресом")
+	assert.Contains(t, rec.Body.String(), "database",
+		"ответ обязан НАЗВАТЬ упавшую зависимость: дежурному нужно знать, что чинить")
+
+	// И положительный контроль: на здоровой зависимости готовность — 200. Без него
+	// утверждение выше зеленело бы на обработчике, отвечающем 503 всегда.
+	up := diagnosticMux(metrics.New(), health.New([]health.Checker{{
+		Name:  "database",
+		Check: func(context.Context) error { return nil },
+	}}))
+	rec = httptest.NewRecorder()
+	up.ServeHTTP(rec, httptest.NewRequest(http.MethodGet, "/readyz", nil))
+	assert.Equal(t, http.StatusOK, rec.Code, "готовность на здоровой зависимости обязана быть 200")
 }
 
 // TestMetricsEndpointExposesOutboxSeries — the endpoint carries the series it exists
@@ -69,7 +100,7 @@ func TestMetricsEndpointExposesOutboxSeries(t *testing.T) {
 	m.IncPoisoned(table)
 
 	rec := httptest.NewRecorder()
-	diagnosticMux(m).ServeHTTP(rec, httptest.NewRequest(http.MethodGet, "/metrics", nil))
+	diagnosticMux(m, readyAggregator()).ServeHTTP(rec, httptest.NewRequest(http.MethodGet, "/metrics", nil))
 	require.Equal(t, http.StatusOK, rec.Code)
 	body := rec.Body.String()
 
@@ -97,7 +128,7 @@ func TestScrapeAnnotationMatchesWhatTheProcessServes(t *testing.T) {
 
 	path := scrapePathOf(t, string(raw))
 	rec := httptest.NewRecorder()
-	diagnosticMux(metrics.New()).ServeHTTP(rec, httptest.NewRequest(http.MethodGet, path, nil))
+	diagnosticMux(metrics.New(), readyAggregator()).ServeHTTP(rec, httptest.NewRequest(http.MethodGet, path, nil))
 	assert.Equalf(t, http.StatusOK, rec.Code,
 		"объявление сбора называет %q; процесс обязан его обслуживать, иначе объявление is monitoring nothing", path)
 }
@@ -114,3 +145,8 @@ func scrapePathOf(t *testing.T, manifest string) string {
 	t.Fatal("объявление сбора не называет пути — сверять с процессом нечего")
 	return ""
 }
+
+// readyAggregator — агрегатор без зависимостей: пробам, утверждающим о СБОРЕ
+// величин, готовность безразлична, и подмешивать сюда живой пул значило бы
+// поставить их вердикт в зависимость от чужого предмета.
+func readyAggregator() *health.Aggregator { return health.New(nil) }

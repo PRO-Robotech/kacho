@@ -177,7 +177,8 @@ the Hydra token-exchange. All hard assertions GREEN on fe3455:
 - `GET /v2/` ping without a token → 401, with a valid token → 200;
 - push-init (`POST /v2/<repo>/blobs/uploads/`) → 202;
 - blob upload + manifest PUT → 201;
-- pull (`GET` manifest) → 200 (poll-retry to absorb grant-latency, ~0.6–2s);
+- pull (`GET` manifest) → 200 (poll-retry absorbs the grant-latency window — registry
+  verdict cache `KACHO_REGISTRY_AUTHZ_CACHE_TTL` plus materialisation at the rights owner);
 - tags list (`GET /v2/<repo>/tags/list`) → present;
 - no-auth request → 401 (fail-closed);
 - data-plane HTTP `DELETE` → 405 (deletion only via `v_delete`-gated DeleteTag);

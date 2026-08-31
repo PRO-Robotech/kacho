@@ -89,6 +89,11 @@ func collectNarrowConsumers(t *testing.T) (consumers map[string]*narrowConsumer,
 	walkOwnerRegisterGoFiles(t, root, []string{"services", "pkg"}, func(rel string, body []byte) {
 		scanned++
 		src := string(body)
+		// Дешёвый отсев. Подстрочного совпадения ДОСТАТОЧНО, чтобы файл
+		// пропустить, и НЕ достаточно, чтобы что-либо засчитать: решает разбор по
+		// узлам вызова ниже. Поэтому хвост чужого идентификатора здесь стоит
+		// лишнего разбора, а не ложного вердикта (замер по 4983 файлам Go:
+		// хвостов у всех трёх имён — ноль).
 		if !strings.Contains(src, "listnarrow.New(") &&
 			!strings.Contains(src, "narrowmetrics.New(") &&
 			!strings.Contains(src, "RegisterListNarrow(") {

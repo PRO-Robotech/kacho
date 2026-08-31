@@ -2,7 +2,8 @@
 // SPDX-License-Identifier: BUSL-1.1
 
 // diagnostics.go — cluster-internal diagnostic-листенер kacho-registry
-// (/healthz, /metrics) и сканер состояния очереди регистраций.
+// (/healthz, /readyz, /metrics), разведённые живость с готовностью и сканер
+// состояния очереди регистраций.
 //
 // # Почему отдельный листенер
 //
@@ -15,12 +16,16 @@ package main
 
 import (
 	"context"
+	"errors"
 	"log/slog"
 	"net/http"
 	"time"
 
 	"github.com/jackc/pgx/v5/pgxpool"
+	"google.golang.org/grpc"
+	"google.golang.org/grpc/connectivity"
 
+	"github.com/PRO-Robotech/kacho/pkg/observability/health"
 	outboxmetrics "github.com/PRO-Robotech/kacho/pkg/outbox/metrics"
 	"github.com/PRO-Robotech/kacho/pkg/servicecontract"
 
@@ -36,15 +41,59 @@ const outboxMetricsInterval = 15 * time.Second
 // обслуживается, проверялось без сети: расхождение между объявленным в чарте
 // скрейпом и реально обслуживаемым путём иначе замечается только на живом
 // Prometheus.
-func diagnosticMux(m *metrics.Metrics) *http.ServeMux {
+//
+// Живость и готовность отдаются РАЗНЫМИ обработчиками. Прежде `/healthz` был
+// здесь один и отвечал безусловным 200; чарт при этом пробировал слот готовности
+// открытым сокетом. Слушающий сокет открыт и у процесса, который отвергает
+// каждый вызов, поэтому обещанного NotReady не наступало ни при каких условиях.
+func diagnosticMux(m *metrics.Metrics, agg *health.Aggregator) *http.ServeMux {
 	mux := http.NewServeMux()
-	mux.HandleFunc("GET /healthz", func(w http.ResponseWriter, _ *http.Request) {
-		w.WriteHeader(http.StatusOK)
-		_, _ = w.Write([]byte("ok"))
-	})
+	mux.Handle("GET /healthz", agg.LiveHandler())
+	mux.Handle("GET /readyz", agg.ReadyHandler())
 	mux.Handle("GET /metrics", m.Handler())
 	return mux
 }
+
+// buildReadinessCheckers — ИМЕНОВАННЫЕ зависимости, без которых registry
+// обслуживать не может. Живость их НЕ включает намеренно: блип зависимости
+// обязан снять под из ротации, а не перезапустить процесс.
+//
+// # Почему канал к владельцу прав приезжает ОТЛОЖЕННО
+//
+// Диагностическая поверхность этого корня поднимается РАНО и намеренно: пока её
+// нет, проба живости получает отказ соединения, и медленный старт читается
+// kubelet'ом как мёртвый процесс. Соединение с владельцем прав набирается ниже
+// по тексту корня, когда поверхность уже отвечает.
+//
+// Отсюда разделение: ОБЪЯВЛЯЕТ зависимость посадка (адрес известен из конфигурации
+// с первой строки), а НОСИТЕЛЯ корень устанавливает позже. Пока носителя нет,
+// [health.Slot] отвечает «не готов» — окно старта не зачитывается в готовность
+// молча. Адрес не объявлен вовсе — чекера нет: держать под вечно неготовым по
+// зависимости, которой на этой посадке не существует, значит выдавать посадку за
+// поломку.
+func buildReadinessCheckers(pool *pgxpool.Pool, authzDeclared bool, authzSlot *health.Slot) []health.Checker {
+	checkers := []health.Checker{
+		{Name: "database", Check: func(ctx context.Context) error { return pool.Ping(ctx) }},
+	}
+	if authzDeclared {
+		checkers = append(checkers, authzSlot.Checker("iam-authz"))
+	}
+	return checkers
+}
+
+// authzConnHealth — состояние соединения с владельцем прав. Shutdown — отказ;
+// прочие состояния (Idle/Connecting/Ready/TransientFailure) считаются рабочими:
+// gRPC переподключается лениво, и снятие пода из ротации на кратком
+// TransientFailure дало бы ложный флап на каждом перекате соседа.
+func authzConnHealth(conn *grpc.ClientConn) error {
+	if conn.GetState() == connectivity.Shutdown {
+		return errIAMConnShutdown
+	}
+	return nil
+}
+
+// errIAMConnShutdown — причина «не готов» без раскрытия внутренних деталей наружу.
+var errIAMConnShutdown = errors.New("connection to kacho-iam is shut down")
 
 // Сроки диагностической поверхности. Названы константами, а не вписаны в
 // объявление: они одинаковы у всех диагностических поверхностей платформы, и
@@ -57,30 +106,31 @@ const (
 )
 
 // describeDiagnosticSurface — ОБЪЯВЛЕНИЕ diagnostic-поверхности (/healthz,
-// /metrics).
+// /readyz, /metrics).
 //
 // Сервера, привязки порта и гашения здесь нет: их держит профиль не-gRPC
 // поверхности (`pkg/servicehost.ServeSurface`). Прежнее предупреждение о том,
 // что выключенная поверхность оставляет очередь регистраций без сканера
 // состояния, никуда не делось — оно переехало в ПРИЧИНУ выключения, то есть
 // стало частью объявления, а не отдельной строкой рядом с ним.
-func describeDiagnosticSurface(endpoint string, m *metrics.Metrics, mode servicecontract.Mode,
-	logger *slog.Logger) (servicecontract.SurfaceDescriptor, error) {
+func describeDiagnosticSurface(endpoint string, m *metrics.Metrics, agg *health.Aggregator,
+	mode servicecontract.Mode, logger *slog.Logger) (servicecontract.SurfaceDescriptor, error) {
 	addr := servicecontract.Value(endpoint)
 	if endpoint == "" {
 		addr = servicecontract.NotApplicable[string](
 			"KACHO_REGISTRY_METRICS_ADDR не задан профилем развёртывания. Цена названа здесь, " +
 				"а не в отдельном предупреждении: очередь регистраций останется без сканера " +
-				"состояния, и застрявшая очередь будет молчать так же, как пустая")
+				"состояния, застрявшая очередь будет молчать так же, как пустая, а kubelet " +
+				"не узнает о неготовности зависимостей ничего")
 	}
 	return servicecontract.NewSurface(servicecontract.Surface{
 		Service: "kacho-registry",
-		Name:    "диагностика (/healthz, /metrics)",
+		Name:    "диагностика (/healthz, /readyz, /metrics)",
 		Mode:    mode,
 		Logger:  logger,
 
 		Addr:    addr,
-		Handler: diagnosticMux(m),
+		Handler: diagnosticMux(m, agg),
 
 		Reach: servicecontract.ReachClusterInternal,
 		Auth: servicecontract.NotApplicable[servicecontract.SurfaceAuthMech](

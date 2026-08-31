@@ -272,7 +272,17 @@ func TestReadPathAnswersStatusReasonAndUsedBytes(t *testing.T) {
 func seedTypeWithMultiAttach(t *testing.T, pool *pgxpool.Pool, multi bool) string {
 	t.Helper()
 	ctx := context.Background()
-	typeID := ids.NewHyphenID("dt")
+	// Идентификатор класса диска — человекочитаемый СЛАГ, назначаемый
+	// администратором (`block-standard`, `block-fast`; миграция 0003 объявляет это
+	// прямо), а НЕ чеканимый id. Прежде фикстура звала `NewHyphenID("dt")` и
+	// производила форму, которой продукт для этого ресурса не выпускает нигде:
+	// префикса `dt` нет ни в одном вызове чеканки прод-кода. Фикстура, минтящая
+	// невозможное значение, отличается от продукта ровно там, где проба должна
+	// его повторять, — и вдобавок этот `dt` всплывал третьим «недостающим
+	// префиксом» в каждой переписи дефисной чеканки, будучи артефактом пробы.
+	// Бэкенд и привязка ниже дефисную чеканку зовут ЗАКОННО: `sb` и `dtb` —
+	// настоящие префиксы этих ресурсов.
+	typeID := "block-fixture-" + ids.NewUID()
 	backendID := ids.NewHyphenID("sb")
 	_, err := pool.Exec(ctx,
 		`INSERT INTO disk_types (id, name, lifecycle) VALUES ($1, $1, 'ACTIVE')`, typeID)

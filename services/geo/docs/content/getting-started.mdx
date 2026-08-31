@@ -151,13 +151,13 @@ cluster-internal listener (`InternalZoneService`, порт `:9091`), не на �
 <CodeBlock language="bash">
   {dedent`
     # internal mux api-gateway — только cluster-internal (port-forward / admin-tooling)
-    curl -X POST 'http://localhost:19091/geo/v1/zones' \\
+    curl -X POST 'http://localhost:19091/geo/v1/internal/zones' \\
       -H 'Authorization: Bearer <admin-JWT>' \\
       -H 'Content-Type: application/json' \\
       -d '{
             "id": "ru-central1-c",
             "regionId": "ru-central1",
-            "status": "UP",
+            "status": "UP"
           }'
   `}
 </CodeBlock>

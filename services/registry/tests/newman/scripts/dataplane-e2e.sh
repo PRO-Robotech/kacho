@@ -350,8 +350,12 @@ echo
 # ---------------------------------------------------------------------------
 echo "--- 6. pull: manifest / blob / tags-list → 200 ---"
 if [[ "$MANIFEST_OK" == 1 ]]; then
-  # register-on-first-push материализует per-object v_get на новом repo асинхронно
-  # (FGA-пропагация ~0.6–2s). Первый pull может дать 404 (existence-hidden, грант ещё
+  # register-on-first-push материализует per-object v_get на новом repo асинхронно.
+  # Окно видимости складывают ДВА слагаемых, и у каждого свой владелец: кэш вердиктов
+  # registry (ручка KACHO_REGISTRY_AUTHZ_CACHE_TTL) и материализация выдачи у владельца
+  # прав (величину называет документация IAM). Здесь величина НЕ пишется: она была бы
+  # вторым местом об одном предмете и разошлась бы с ручкой молча — бюджет ожидания
+  # виден на связывании ниже. Первый pull может дать 404 (existence-hidden, грант ещё
   # не долетел) — poll-retry до 10× по 1.5s, затем финальный assert (#10 grant-latency).
   for _att in $(seq 1 10); do
     code="$(do_req GET "${DATAPLANE_URL}/v2/${REGISTRY_ID}/${REPO}/manifests/${TAG}" "${AUTH[@]}" \
@@ -432,8 +436,11 @@ for r in d.get("repositories", []):
 print("")
 PY
 }
-# poll-retry: register-on-first-push материализует v_list на repo асинхронно
-# (FGA-пропагация ~0.6–2s) — тянем ListRepositories, пока docker-repo не появится.
+# poll-retry: register-on-first-push материализует v_list на repo асинхронно. Окно
+# видимости — кэш вердиктов registry (ручка KACHO_REGISTRY_AUTHZ_CACHE_TTL) плюс
+# материализация выдачи у владельца прав; величину называют их владельцы, здесь
+# стоит только БЮДЖЕТ, и он виден на связывании ниже (10× по 1.5s).
+# Тянем ListRepositories, пока docker-repo не появится.
 DOCKER_AT=""
 for _a in $(seq 1 10); do
   code="$(do_req GET "${GATEWAY_URL}/registry/v1/registries/${REGISTRY_ID}/repositories" \

@@ -98,11 +98,54 @@ func TestResultObserver_MirrorsState(t *testing.T) {
 	seen := map[string]bool{}
 	agg := New([]Checker{
 		{Name: "database", Check: func(context.Context) error { return nil }},
-		{Name: "iam-authz", Check: func(context.Context) error { return errors.New("down") }},
+		{Name: "register-drainer", Check: func(context.Context) error { return errors.New("down") }},
 	}, WithResultObserver(func(dep string, up bool) { seen[dep] = up }))
 
 	_, _ = agg.Evaluate(context.Background())
-	if !seen["database"] || seen["iam-authz"] {
-		t.Fatalf("observer mirror = %v, want database=true iam-authz=false", seen)
+	if !seen["database"] || seen["register-drainer"] {
+		t.Fatalf("observer mirror = %v, want database=true register-drainer=false", seen)
+	}
+}
+
+// Slot до установки носителя отвечает НЕ ГОТОВ, а после — тем, что установили.
+//
+// Обе стороны утверждаются вместе. Односторонняя проба здесь зеленела бы на
+// вырожденной реализации: «всегда не готов» прошло бы отрицание, «всегда готов» —
+// положительный контроль, и ровно первое из двух есть тот дефект, ради которого
+// Slot заведён (окно старта, молча зачтённое в готовность).
+func TestSlotIsNotReadyUntilItsCarrierIsInstalled(t *testing.T) {
+	var s Slot
+
+	if err := s.Check(context.Background()); !errors.Is(err, ErrDependencyNotWired) {
+		t.Fatalf("до установки Check = %v, ожидалось %v: неустановленная зависимость обязана "+
+			"читаться как «ответа нет», а не как «да»", err, ErrDependencyNotWired)
+	}
+
+	s.Install(func(context.Context) error { return nil })
+	if err := s.Check(context.Background()); err != nil {
+		t.Fatalf("после установки исправного носителя Check = %v, ожидалось nil", err)
+	}
+
+	boom := errors.New("peer down")
+	s.Install(func(context.Context) error { return boom })
+	if err := s.Check(context.Background()); !errors.Is(err, boom) {
+		t.Fatalf("повторная установка не заменила носителя: Check = %v, ожидалось %v", err, boom)
+	}
+}
+
+// Агрегатор, собранный из Slot, объявляет под НЕ ГОТОВЫМ, пока корень не
+// подключил зависимость, и называет её ПО ИМЕНИ.
+func TestAggregatorOverAnUnwiredSlotNamesTheDependency(t *testing.T) {
+	var s Slot
+	agg := New([]Checker{s.Checker("iam-authz")})
+
+	ready, down := agg.Evaluate(context.Background())
+	if ready || len(down) != 1 || down[0] != "iam-authz" {
+		t.Fatalf("до установки Evaluate = (%v, %v), ожидалось (false, [iam-authz])", ready, down)
+	}
+
+	s.Install(func(context.Context) error { return nil })
+	if ready, down = agg.Evaluate(context.Background()); !ready || len(down) != 0 {
+		t.Fatalf("после установки Evaluate = (%v, %v), ожидалось (true, [])", ready, down)
 	}
 }

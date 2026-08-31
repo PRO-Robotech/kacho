@@ -952,7 +952,8 @@ func (r *targetGroupResource) Delete(ctx context.Context, req resource.DeleteReq
 
 // targetKey — канонический ключ элемента: личность И вес. Вес входит намеренно —
 // добавление на уже существующую личность идемпотентно и вес НЕ меняет (измерено), значит
-// смена веса выражается снятием и добавлением, а не «обновлением цели», которого у края нет.
+// смена веса выражается снятием и добавлением, а не изменением цели: метода
+// `TargetGroupService/UpdateTarget` у края нет.
 func targetKey(t targetModel) string {
 	switch {
 	case t.IPRef != nil:

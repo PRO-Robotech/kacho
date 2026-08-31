@@ -23,8 +23,8 @@ import (
 	"github.com/PRO-Robotech/kacho/pkg/outbox/bootgate"
 	"github.com/PRO-Robotech/kacho/pkg/servicecontract"
 
+	"github.com/PRO-Robotech/kacho/pkg/observability/health"
 	"github.com/PRO-Robotech/kacho/services/vpc/internal/clients"
-	"github.com/PRO-Robotech/kacho/services/vpc/internal/observability/health"
 	vpcmetrics "github.com/PRO-Robotech/kacho/services/vpc/internal/observability/metrics"
 )
 
