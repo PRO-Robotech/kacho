@@ -78,7 +78,7 @@ type Metrics struct {
 
 	outboxDirBacklog   *prometheus.GaugeVec
 	outboxDirOldest    *prometheus.GaugeVec
-	outboxDirDelivered *prometheus.GaugeVec
+	outboxDirDelivered *prometheus.CounterVec
 }
 
 // New конструирует адаптер и регистрирует Go + process runtime-коллекторы и
@@ -118,10 +118,13 @@ func New() *Metrics {
 			Help: "Возраст самой старой недоставленной строки одного направления — " +
 				"отвечает на «как давно это направление перестало доезжать».",
 		}, []string{"table", "direction"}),
-		outboxDirDelivered: prometheus.NewGaugeVec(prometheus.GaugeOpts{
+		outboxDirDelivered: prometheus.NewCounterVec(prometheus.CounterOpts{
 			Name: "kacho_registry_outbox_delivered_total",
-			Help: "Доставленные строки очереди по направлению. Единственная величина, " +
-				"отличающая «их не было» от «они не доезжают».",
+			Help: "Доставленные строки очереди по направлению, считаются В МОМЕНТ " +
+				"доставки. Единственная величина, отличающая «их не было» от «они не " +
+				"доезжают». Счётчик, а не измеритель: значение не зависит от числа " +
+				"хранимых строк, поэтому уборка доставленных его не снижает. Ноль означает " +
+				"«ни одной с момента старта процесса»; порог ставить на increase() за окно.",
 		}, []string{"table", "direction"}),
 	}
 	reg.MustRegister(
@@ -194,9 +197,20 @@ func (m *Metrics) SetOldestPendingAgeByDirection(table, direction string, age fl
 	m.outboxDirOldest.WithLabelValues(table, direction).Set(age)
 }
 
-// SetDeliveredTotal — доставленные строки направления.
-func (m *Metrics) SetDeliveredTotal(table, direction string, count float64) {
-	m.outboxDirDelivered.WithLabelValues(table, direction).Set(count)
+// IncDeliveredByDirection — ОДНА доставленная строка направления.
+//
+// СЧЁТЧИК, инкрементируемый наблюдателем дренажа, а не измеритель, ставящийся
+// сканом (#1714): величина объявлена «за всё время», и счёт по живым строкам
+// совпадал с этим ровно до появления уборки доставленных строк.
+func (m *Metrics) IncDeliveredByDirection(table, direction string) {
+	m.outboxDirDelivered.WithLabelValues(table, direction).Inc()
+}
+
+// InitDeliveredByDirection заводит серию направления с нулём, не увеличивая её:
+// дочерняя серия счётчика иначе появилась бы только после ПЕРВОЙ доставки, и
+// «ни одного отзыва не доставлено» выражалось бы отсутствием ряда вместо нуля.
+func (m *Metrics) InitDeliveredByDirection(table, direction string) {
+	m.outboxDirDelivered.WithLabelValues(table, direction)
 }
 
 // Compile-time: адаптер удовлетворяет оба corelib-порта.

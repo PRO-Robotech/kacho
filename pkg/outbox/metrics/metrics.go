@@ -55,6 +55,11 @@ type Recorder interface {
 // DIRECTION of the queue, plus the one the table-wide series cannot express at all — how
 // many rows of a direction have EVER been delivered.
 //
+// ПЕРВЫЕ ДВЕ ВЕЛИЧИНЫ СТАВИТ СКАН, ТРЕТЬЮ — ДРЕНАЖ, и это не асимметрия ради
+// удобства. Первые две суть вопросы о том, что ЛЕЖИТ в очереди сейчас, и скан
+// отвечает на них по определению. Третья — вопрос о том, что ПРОИЗОШЛО, и скан
+// живых строк отвечает на него лишь пока строки не убираются (#1714).
+//
 // WHY IT IS A SEPARATE INTERFACE. A recorder that predates the split still satisfies
 // Recorder, and the Collector asserts this capability at run time — so wiring that has
 // not adopted the split keeps working and simply publishes no per-direction series.
@@ -75,9 +80,74 @@ type DirectionRecorder interface {
 	// SetOldestPendingAgeByDirection — age of the OLDEST pending row of one direction:
 	// the value that answers "how long ago did this direction stop arriving".
 	SetOldestPendingAgeByDirection(table, direction string, age float64)
-	// SetDeliveredTotal — rows of one direction that have been delivered. The only one
-	// of the four that distinguishes "there were none" from "none get through".
-	SetDeliveredTotal(table, direction string, count float64)
+	// IncDeliveredByDirection — ОДНА доставленная строка направления.
+	//
+	// СЧЁТЧИК, А НЕ ИЗМЕРИТЕЛЬ, и это несущее различие (#1714). Величина
+	// объявлена «за всё время» и служит единственным способом отличить «отзывов
+	// не было» от «отзывы не проходят». Прежде она ставилась сканом как
+	// `count(*)` по ЖИВЫМ строкам — совпадая с объявленным ровно до тех пор, пока
+	// строки не убираются. Уборка доставленных (#1361) обнулила бы её на
+	// ИСПРАВНОЙ очереди, где отзыв редок, и ноль прочитался бы по контракту как
+	// «не доставлено ни одного отзыва».
+	//
+	// Инкрементирует НАБЛЮДАТЕЛЬ ДРЕНАЖА (`drainer.WithDeliveryObserver`) — как
+	// это уже сделано у отравления (`IncPoisoned`), — поэтому величина не
+	// зависит от числа живых строк by construction.
+	IncDeliveredByDirection(table, direction string)
+	// InitDeliveredByDirection — ЗАВЕСТИ серию направления со значением ноль, не
+	// увеличивая её.
+	//
+	// БЕЗ ЭТОГО МЕТОДА СЧЁТЧИК ТЕРЯЕТ СВОЙ ПРЕДМЕТ, и это не украшение. Дочерняя
+	// серия счётчика появляется в выдаче лишь ПОСЛЕ первого инкремента — значит
+	// «ни одного отзыва не доставлено» выражалось бы ОТСУТСТВИЕМ ряда, тогда как
+	// весь смысл разбивки в том, чтобы это состояние было видно ЧИСЛОМ. Прежняя
+	// величина-измеритель заводилась сканом и потому всегда существовала; счётчик
+	// обязан получить ту же видимость явно.
+	//
+	// Зовётся ОДИН раз на направление при сборке наблюдателя ([DeliveryObserver]),
+	// то есть при старте процесса: ряд существует с нуля, ещё до первой доставки.
+	InitDeliveredByDirection(table, direction string)
+}
+
+// DeliveryObserver — переходник «дренаж → счётчик направления».
+//
+// Живёт ЗДЕСЬ, потому что словарь направлений принадлежит наблюдению, а не
+// дренажу: дренаж отдаёт ТИП СОБЫТИЯ, и второе написание словаря у него
+// разошлось бы с этим молча.
+//
+// Событие вне словаря СЧИТАЕТСЯ ОТДЕЛЬНО и роняет не прогон, а величину: у
+// очереди бывают типы, которых разбивка не покрывает, и молча приписать их
+// чужому направлению значило бы солгать именно той величине, ради точности
+// которой всё это заведено. Возвращает nil, когда считать некому либо нечем, —
+// тогда дренаж не получает наблюдателя вовсе (nil игнорируется опцией), а не
+// зовёт пустышку.
+// Принимает [Recorder] и сам приводит его к [DirectionRecorder] — ТОЙ ЖЕ
+// проверкой в рантайме, что и `Collector.scanDirections`. Приёмник, заведённый
+// до разбивки, по-прежнему удовлетворяет [Recorder]: он просто не получает
+// наблюдателя, и серии не публикуются вовсе. Отсутствие серии — честный сигнал;
+// ноль прочитался бы как «отзывов не было», а это ровно то состояние, ради
+// отличения которого разбивка и заведена.
+func DeliveryObserver(table string, dirs map[string][]string, rec Recorder) func(string) {
+	dirRec, ok := rec.(DirectionRecorder)
+	if !ok || len(dirs) == 0 {
+		return nil
+	}
+	// Обратный словарь строится ОДИН раз: наблюдатель зовётся на каждой
+	// доставленной строке, то есть на горячем пути дренажа.
+	byEvent := make(map[string]string, len(dirs))
+	for dir, events := range dirs {
+		for _, ev := range events {
+			byEvent[ev] = dir
+		}
+		// Ряд заводится СРАЗУ и с нуля: «ни одного отзыва не доставлено» обязано
+		// читаться числом, а не отсутствием ряда (см. InitDeliveredByDirection).
+		dirRec.InitDeliveredByDirection(table, dir)
+	}
+	return func(eventType string) {
+		if dir, ok := byEvent[eventType]; ok {
+			dirRec.IncDeliveredByDirection(table, dir)
+		}
+	}
 }
 
 // MemRecorder is an in-memory Recorder for tests and as a safe default. It is
@@ -154,7 +224,7 @@ func (m *MemRecorder) read(src map[string]float64, table string) float64 {
 	return src[table]
 }
 
-// SetBacklogDepthByDirection / SetOldestPendingAgeByDirection / SetDeliveredTotal —
+// SetBacklogDepthByDirection / SetOldestPendingAgeByDirection / IncDeliveredByDirection —
 // DirectionRecorder for tests.
 func (m *MemRecorder) SetBacklogDepthByDirection(table, direction string, depth float64) {
 	m.write(m.dirBacklog, table, direction, depth)
@@ -164,8 +234,26 @@ func (m *MemRecorder) SetOldestPendingAgeByDirection(table, direction string, ag
 	m.write(m.dirOldest, table, direction, age)
 }
 
-func (m *MemRecorder) SetDeliveredTotal(table, direction string, count float64) {
-	m.write(m.dirDelivered, table, direction, count)
+// IncDeliveredByDirection — монотонный счётчик доставленных строк направления.
+func (m *MemRecorder) IncDeliveredByDirection(table, direction string) {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	if m.dirDelivered[table] == nil {
+		m.dirDelivered[table] = map[string]float64{}
+	}
+	m.dirDelivered[table][direction]++
+}
+
+// InitDeliveredByDirection заводит серию направления с нулём, не увеличивая её.
+func (m *MemRecorder) InitDeliveredByDirection(table, direction string) {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	if m.dirDelivered[table] == nil {
+		m.dirDelivered[table] = map[string]float64{}
+	}
+	if _, ok := m.dirDelivered[table][direction]; !ok {
+		m.dirDelivered[table][direction] = 0
+	}
 }
 
 // BacklogDepthByDirection / OldestPendingAgeByDirection / DeliveredTotal — test accessors.
@@ -390,14 +478,17 @@ func (c *Collector) scanDirections(ctx context.Context) error {
 	if serr != nil {
 		return fmt.Errorf("metrics.Collector.Scan %s directions: %w", c.cfg.Table, serr)
 	}
+	// ДОСТАВЛЕННЫЕ ЗДЕСЬ НЕ СЧИТАЮТСЯ — намеренно (#1714). Скан отвечает на
+	// вопрос «что лежит», а «сколько доставлено за всё время» — вопрос о
+	// событии; счёт по живым строкам совпадал с ним ровно до появления уборки.
+	// Величину ведёт наблюдатель дренажа (`DeliveryObserver`).
 	q := fmt.Sprintf(`
 		SELECT
 		    count(*) FILTER (WHERE %[2]s)                                              AS backlog,
-		    COALESCE(EXTRACT(EPOCH FROM (now() - min(created_at) FILTER (WHERE %[2]s))), 0) AS oldest_age,
-		    count(*) FILTER (WHERE %[3]s)                                              AS delivered
+		    COALESCE(EXTRACT(EPOCH FROM (now() - min(created_at) FILTER (WHERE %[2]s))), 0) AS oldest_age
 		FROM %[1]s
 		WHERE event_type = ANY($1)
-	`, outbox.SanitizeTable(c.cfg.Table), shape.pending, shape.delivered)
+	`, outbox.SanitizeTable(c.cfg.Table), shape.pending)
 
 	// Deterministic order so a scan reports its directions the same way every time.
 	names := make([]string, 0, len(c.cfg.Directions))
@@ -407,15 +498,14 @@ func (c *Collector) scanDirections(ctx context.Context) error {
 	sort.Strings(names)
 
 	for _, name := range names {
-		var backlog, delivered int64
+		var backlog int64
 		var oldestAge float64
 		if err := c.pool.QueryRow(ctx, q, c.cfg.Directions[name]).
-			Scan(&backlog, &oldestAge, &delivered); err != nil {
+			Scan(&backlog, &oldestAge); err != nil {
 			return fmt.Errorf("metrics.Collector.Scan %s direction %s: %w", c.cfg.Table, name, err)
 		}
 		dirRec.SetBacklogDepthByDirection(c.cfg.Table, name, float64(backlog))
 		dirRec.SetOldestPendingAgeByDirection(c.cfg.Table, name, oldestAge)
-		dirRec.SetDeliveredTotal(c.cfg.Table, name, float64(delivered))
 	}
 	return nil
 }

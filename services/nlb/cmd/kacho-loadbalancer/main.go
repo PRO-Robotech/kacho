@@ -44,9 +44,14 @@ import (
 	"github.com/PRO-Robotech/kacho/pkg/listnarrow"
 	"github.com/PRO-Robotech/kacho/pkg/observability"
 	"github.com/PRO-Robotech/kacho/pkg/operations"
+	"github.com/PRO-Robotech/kacho/pkg/outbox"
 	"github.com/PRO-Robotech/kacho/pkg/outbox/bootgate"
 	"github.com/PRO-Robotech/kacho/pkg/outbox/metrics"
+	"github.com/PRO-Robotech/kacho/pkg/outbox/reconciler"
+	"github.com/PRO-Robotech/kacho/pkg/retention"
 	"github.com/PRO-Robotech/kacho/pkg/servicehost"
+	"github.com/PRO-Robotech/kacho/pkg/subscription"
+	"github.com/PRO-Robotech/kacho/services/nlb/internal/subscriptionjournal"
 
 	"github.com/PRO-Robotech/kacho/pkg/observability/health"
 	"github.com/PRO-Robotech/kacho/services/nlb/internal/apps/kacho/config"
@@ -244,6 +249,50 @@ func runServe(configPath string) error {
 		logger,
 	); err != nil {
 		return fmt.Errorf("фоновая уборка таблицы операций: %w", err)
+	}
+
+	// Фоновая уборка ДОСТАВЛЕННЫХ строк очереди регистрации (#1361).
+	//
+	// Дренаж помечает доставленную строку `sent_at` и не удаляет её никогда, а
+	// заводится она в writer-транзакции КАЖДОЙ мутации: темп задаёт арендатор,
+	// рост был монотонным и вечным.
+	//
+	// Ключ партиции — ТОТ ЖЕ, которым пользуются клейм дренажа и анти-джойн
+	// реконсайлера, и он обязателен: без него уборка сняла бы доставленную
+	// строку, которая одна и не даёт оживить отравленного предшественника, —
+	// то есть вернула бы возможность отменить уже применённое снятие доступа.
+	if _, err := outbox.StartQueueRetentionSweep(
+		ctx, pool,
+		outbox.QueueRetentionConfig{
+			Table:           nlbFGAOutboxTable,
+			PartitionColumn: reconciler.RegisterOutboxPartition,
+		},
+		retention.DefaultConfig(),
+		logger.With(slog.String("component", "queue_retention_sweep")),
+	); err != nil {
+		return fmt.Errorf("фоновая уборка доставленных строк очереди: %w", err)
+	}
+
+	// Фоновая уборка РЕСУРСНОГО ЖУРНАЛА подписки (#1735).
+	//
+	// Строка в него пишется на КАЖДОЙ мутации ресурса владельца, то есть темп
+	// задаёт арендатор, а снятия строк не было ни на одном пути: рост был
+	// монотонным и вечным.
+	//
+	// Петля СВОЯ, а не запись в реестре уборки таблицы операций: пороги у двух
+	// предметов выводятся из РАЗНЫХ читателей (оператор, разбирающий отказавшую
+	// мутацию, против подписчика, возобновляющегося с позиции). Расписание при
+	// этом одно и берётся из одного места — разошлись бы два литерала, а не два
+	// вызова одной функции.
+	//
+	// Пул, а не одиночное соединение подписки: уборка — обычный оператор, ей
+	// выделенная сессия не нужна, а сессия подписки занята `LISTEN`.
+	if _, err := subscription.StartJournalRetentionSweep(
+		ctx, pool, subscriptionjournal.Journal(),
+		retention.DefaultConfig(),
+		logger.With(slog.String("component", "journal_retention_sweep")),
+	); err != nil {
+		return fmt.Errorf("фоновая уборка ресурсного журнала: %w", err)
 	}
 
 	// Снимок величины квоты обязан ДОГОНЯТЬ авторитет: без тянущего строка учёта,
