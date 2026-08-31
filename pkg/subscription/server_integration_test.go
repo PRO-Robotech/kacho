@@ -334,8 +334,10 @@ func TestModelRefusalIsNotSilence(t *testing.T) {
 // названной возобновимой позицией, а не молчаливое начало с ближайшего
 // удержанного места.
 func TestPositionNoLongerResumableIsAnExplicitRefusal(t *testing.T) {
-	j := probeJournal()
-	j.Storage.Retention = subscription.RetainsFromEarliestRow
+	// Колонка срока идёт ПАРОЙ к объявлению чистки: с задачи #1666 объявить одно
+	// без другого нельзя — «журнал чистится» и «по чему судить возраст» суть одно
+	// решение, и половина его не выражается.
+	j := sweepingJournal()
 	s := newStand(t, standOpts{journal: &j})
 	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
 	defer cancel()

@@ -10,8 +10,17 @@
 //
 // Инвариант «любая мутация Kachō → Operation» держится буквально (ban #9): op
 // персистится в per-service operations-таблице (corelib), pollable, но done уже
-// true. Downstream FGA-catalog-tuple материализуется eventually через geo_outbox —
-// done на его видимость НЕ гейтится.
+// true.
+//
+// ЗДЕСЬ СТОЯЛО «downstream FGA-catalog-tuple материализуется eventually через
+// geo_outbox» — механизма с таким предметом НЕ СУЩЕСТВУЕТ, и утверждение
+// расходилось с решением своего же домена. geo намеренно НЕ участвует в потоке
+// регистрации владения: per-resource записей для Region/Zone нет вовсе, Check
+// идёт через cluster-синглтон, а `geo_outbox` — audit-only и НЕ драйвер
+// регистрации (`docs/engineering/architecture/authz-and-tuples.md`). Предикаты:
+// вызовов `RegisterResource` в прод-дереве geo — ноль, дренажа над `geo_outbox` —
+// ноль. Гейтить `done` было НЕ НА ЧТО, и это верно по построению, а не по
+// расписанию: у синхронно завершённой мутации каталога downstream-эффекта нет.
 //
 // # Порядок: строка операции ДО мутации
 //

@@ -30,7 +30,11 @@ import (
 	"github.com/PRO-Robotech/kacho/pkg/observability/health"
 	"github.com/PRO-Robotech/kacho/pkg/operations"
 	"github.com/PRO-Robotech/kacho/pkg/operations/operationspb"
+	"github.com/PRO-Robotech/kacho/pkg/outbox"
 	"github.com/PRO-Robotech/kacho/pkg/outbox/drainer"
+	outboxmetrics "github.com/PRO-Robotech/kacho/pkg/outbox/metrics"
+	"github.com/PRO-Robotech/kacho/pkg/outbox/reconciler"
+	"github.com/PRO-Robotech/kacho/pkg/retention"
 	"github.com/PRO-Robotech/kacho/pkg/servicecontract"
 	"github.com/PRO-Robotech/kacho/pkg/servicehost"
 
@@ -51,6 +55,10 @@ import (
 	"github.com/PRO-Robotech/kacho/services/registry/internal/observability/metrics"
 	"github.com/PRO-Robotech/kacho/services/registry/internal/operationresolver"
 	"github.com/PRO-Robotech/kacho/services/registry/internal/repo/kacho/pg"
+
+	"github.com/PRO-Robotech/kacho/pkg/schemaguard"
+
+	"github.com/PRO-Robotech/kacho/services/registry/internal/migrations"
 )
 
 // Сроки ПЛОСКОСТИ ДАННЫХ. Названы отдельно от диагностических намеренно: у этих
@@ -134,7 +142,12 @@ func runServe(cfg config.Config) error {
 	// приезжает ниже по тексту — до его установки готовность отвечает «не готов»,
 	// а не «готов» (см. buildReadinessCheckers).
 	var authzSlot health.Slot
-	healthAgg := health.New(buildReadinessCheckers(pool, cfg.AuthZIAMGRPCAddr != "", &authzSlot))
+	// Версия схемы читается из ВСТРОЕННОГО набора миграций — того же, что
+	// применяет мигратор. Least-privilege serve-бинаря это не нарушает: набор
+	// читается как встроенные байты, а у базы спрашивается ОДИН `SELECT`
+	// применённой версии; схему serve-бинарь по-прежнему не меняет.
+	healthAgg := health.New(buildReadinessCheckers(pool, cfg.AuthZIAMGRPCAddr != "", &authzSlot,
+		schemaguard.CheckFromFS(migrations.FS, schemaguard.PgxVersionReader(pool))))
 	// Гашение переводит готовность в 503 ДО остановки слушателей: kubelet
 	// перестаёт слать трафик, пока текущие вызовы дорабатывают.
 	go func() {
@@ -172,6 +185,36 @@ func runServe(cfg config.Config) error {
 		logger,
 	); err != nil {
 		return fmt.Errorf("фоновая уборка таблицы операций: %w", err)
+	}
+
+	// Фоновая уборка ДОСТАВЛЕННЫХ строк очереди регистрации (#1361).
+	//
+	// Дренаж помечает доставленную строку `sent_at` и не удаляет её никогда, а
+	// заводится она в writer-транзакции КАЖДОЙ мутации: темп задаёт арендатор,
+	// рост был монотонным и вечным.
+	//
+	// Ключ партиции — ТОТ ЖЕ, которым пользуются клейм дренажа и анти-джойн
+	// реконсайлера, и он обязателен: без него уборка сняла бы доставленную
+	// строку, которая одна и не даёт оживить отравленного предшественника, —
+	// то есть вернула бы возможность отменить уже применённое снятие доступа.
+	if _, err := outbox.StartQueueRetentionSweep(
+		ctx, pool,
+		outbox.QueueRetentionConfig{
+			Table:           registerOutboxTable,
+			PartitionColumn: reconciler.RegisterOutboxPartition,
+		},
+		retention.DefaultConfig(),
+		logger.With(slog.String("component", "queue_retention_sweep")),
+	); err != nil {
+		return fmt.Errorf("фоновая уборка доставленных строк очереди: %w", err)
+	}
+
+	// Фоновая уборка РЕСУРСНОГО ЖУРНАЛА подписки (#1666). Строка в него пишется
+	// триггером на каждой мутации реестра, темп задаёт арендатор, а снятия строк
+	// не было ни на одном пути. Порог, предикат и обещание подписчику объявлены
+	// в `pkg/subscription` ОДИН раз — здесь только провязка.
+	if err := startJournalRetentionSweep(ctx, pool, cfg, logger); err != nil {
+		return err
 	}
 
 	// ── ребро registry→iam INTERNAL (:9091, mTLS): per-RPC authz Check +
@@ -389,6 +432,13 @@ func runServe(cfg config.Config) error {
 		drainer.WithPoisonObserver[domain.RegisterIntent](func() {
 			svcMetrics.IncPoisoned(registerOutboxTable)
 		}),
+		// Каждая ДОСТАВЛЕННАЯ строка инкрементит счётчик своего направления
+		// (#1714). Прежде эту величину ставил скан как `count(*)` по живым
+		// строкам — совпадая с объявленным «за всё время» ровно до тех пор,
+		// пока строки не убираются. Наблюдатель считает СОБЫТИЕ доставки,
+		// поэтому уборка на величину не влияет by construction.
+		drainer.WithDeliveryObserver[domain.RegisterIntent](
+			outboxmetrics.DeliveryObserver(registerOutboxTable, outboxmetrics.RegisterOutboxDirections(), svcMetrics)),
 	)
 	if derr != nil {
 		return fmt.Errorf("build register-drainer: %w", derr)

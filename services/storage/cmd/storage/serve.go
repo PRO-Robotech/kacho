@@ -30,7 +30,10 @@ import (
 	"github.com/PRO-Robotech/kacho/pkg/observability/health"
 	"github.com/PRO-Robotech/kacho/pkg/operations"
 	"github.com/PRO-Robotech/kacho/pkg/operations/operationspb"
+	"github.com/PRO-Robotech/kacho/pkg/outbox"
+	outboxreconciler "github.com/PRO-Robotech/kacho/pkg/outbox/reconciler"
 	"github.com/PRO-Robotech/kacho/pkg/ownerregister"
+	"github.com/PRO-Robotech/kacho/pkg/retention"
 	"github.com/PRO-Robotech/kacho/pkg/servicecontract"
 	"github.com/PRO-Robotech/kacho/pkg/servicehost"
 	"github.com/PRO-Robotech/kacho/pkg/subscription"
@@ -58,6 +61,10 @@ import (
 	"github.com/PRO-Robotech/kacho/services/storage/internal/reconciler"
 	"github.com/PRO-Robotech/kacho/services/storage/internal/repo/pg"
 	"github.com/PRO-Robotech/kacho/services/storage/internal/subscriptionjournal"
+
+	"github.com/PRO-Robotech/kacho/pkg/schemaguard"
+
+	"github.com/PRO-Robotech/kacho/services/storage/internal/migrations"
 )
 
 // lroDrainTimeout — граница graceful-дренажа in-flight LRO-worker'ов на SIGTERM
@@ -241,6 +248,47 @@ func runServe(cfg config.Config) error {
 		logger,
 	); err != nil {
 		return fmt.Errorf("фоновая уборка таблицы операций: %w", err)
+	}
+
+	// Фоновая уборка ДОСТАВЛЕННЫХ строк очереди регистрации (#1361).
+	//
+	// Дренаж помечает доставленную строку `sent_at` и не удаляет её никогда, а
+	// заводится она в writer-транзакции КАЖДОЙ мутации: темп задаёт арендатор,
+	// рост был монотонным и вечным.
+	//
+	// Ключ партиции — ТОТ ЖЕ, которым пользуются клейм дренажа и анти-джойн
+	// реконсайлера, и он обязателен: без него уборка сняла бы доставленную
+	// строку, которая одна и не даёт оживить отравленного предшественника, —
+	// то есть вернула бы возможность отменить уже применённое снятие доступа.
+	if _, err := outbox.StartQueueRetentionSweep(
+		ctx, pool,
+		outbox.QueueRetentionConfig{
+			Table:           fgaRegisterOutboxTable,
+			PartitionColumn: outboxreconciler.RegisterOutboxPartition,
+		},
+		retention.DefaultConfig(),
+		logger.With(slog.String("component", "queue_retention_sweep")),
+	); err != nil {
+		return fmt.Errorf("фоновая уборка доставленных строк очереди: %w", err)
+	}
+
+	// Фоновая уборка РЕСУРСНОГО ЖУРНАЛА подписки (#1666).
+	//
+	// Строка в него пишется ТРИГГЕРОМ на каждой мутации тома, снимка и образа —
+	// включая мутации сверщика, идущие мимо репозиториев, — то есть темп задаёт
+	// арендатор, а снятия строк не было ни на одном пути.
+	//
+	// Петля СВОЯ, а не запись в реестре уборки таблицы операций: пороги у двух
+	// предметов выводятся из РАЗНЫХ читателей (оператор, разбирающий отказавшую
+	// мутацию, против подписчика, возобновляющегося с позиции). Расписание при
+	// этом одно и берётся из одного места — разошлись бы два литерала, а не два
+	// вызова одной функции.
+	if _, err := subscription.StartJournalRetentionSweep(
+		ctx, pool, subscriptionjournal.Journal(),
+		retention.DefaultConfig(),
+		logger.With(slog.String("component", "journal_retention_sweep")),
+	); err != nil {
+		return fmt.Errorf("фоновая уборка ресурсного журнала: %w", err)
 	}
 
 	if err = operations.ConfigureDefault(
@@ -453,7 +501,11 @@ func runServe(cfg config.Config) error {
 	// дескриптор в свалку. До отдельной фазы она честно остаётся вне контура.
 	// Готовность СТРОИТСЯ из именованных зависимостей и отдаётся отдельным путём
 	// от живости; чарт пробирует именно её.
-	healthAgg := health.New(buildReadinessCheckers(pool, authzConn))
+	// Версия схемы читается из ВСТРОЕННОГО набора миграций — того же, что
+	// применяет мигратор. Least-privilege serve-бинаря это не нарушает: набор
+	// читается как встроенные байты, а у базы спрашивается ОДИН `SELECT`
+	// применённой версии; схему serve-бинарь по-прежнему не меняет.
+	healthAgg := health.New(buildReadinessCheckers(pool, authzConn, schemaguard.CheckFromFS(migrations.FS, schemaguard.PgxVersionReader(pool))))
 	// Гашение переводит готовность в 503 ДО остановки слушателей: kubelet
 	// перестаёт слать трафик, пока текущие вызовы дорабатывают.
 	go func() {
@@ -903,9 +955,18 @@ func diagnosticMux(m *metrics.Metrics, agg *health.Aggregator) *http.ServeMux {
 //   - iam-authz — канал к владельцу прав. Включается ТОЛЬКО когда он
 //     сконфигурирован: объявить зависимость, которой на этой посадке нет,
 //     значило бы держать под вечно неготовым по причине, которой не существует.
-func buildReadinessCheckers(pool *pgxpool.Pool, authzConn *grpc.ClientConn) []health.Checker {
+//
+// ВЕРСИЯ СХЕМЫ — ОТДЕЛЬНАЯ ИМЕНОВАННАЯ ЗАВИСИМОСТЬ, а не часть проверки базы.
+// Мигратор идёт при каждом раскате, поэтому откат выкатки ставит ПРЕЖНИЙ образ
+// на НОВУЮ схему; база при этом отвечает на `Ping`, и без этого чекера под
+// объявлялся бы готовым и получал трафик (`pkg/schemaguard`, задача #1734).
+// Отдельное имя обязательно: оператор обязан отличить «база недоступна» от
+// «образ не той версии, что схема», не читая кода.
+func buildReadinessCheckers(pool *pgxpool.Pool, authzConn *grpc.ClientConn,
+	schemaCheck func(context.Context) error) []health.Checker {
 	checkers := []health.Checker{
 		{Name: "database", Check: func(ctx context.Context) error { return pool.Ping(ctx) }},
+		{Name: schemaguard.CheckerName, Check: schemaCheck},
 		{Name: "lro-worker", Check: func(context.Context) error {
 			if operations.Ready() {
 				return nil

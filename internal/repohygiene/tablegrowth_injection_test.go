@@ -729,3 +729,85 @@ func (r *R) Reap(ctx context.Context) error {
 		})
 	}
 }
+
+// TestTableGrowthGate_Injection_BlockedRemovalIsAFindingNotAResolvedEntry —
+// у таблицы, чья запись объявила `RemovalBlocked`, появление оператора снятия
+// строк есть НАХОДКА, а не закрывшийся предмет (задача #1712).
+//
+// # Что здесь доказывается и почему одного случая мало
+//
+// Полоса `stale` говорит «механизм нашёлся, снимите запись» — и для почти всякой
+// таблицы это верно. Для журнала, читатель которого не обнаруживает пропуска,
+// оно неверно ровно наоборот: уборка не разрешает запись, а реализует ту самую
+// беду, о которой запись предупреждает. Гейт, не различающий двух исходов,
+// подсказывал бы снять единственное место, где написано, почему уборка опасна.
+//
+// Поэтому случаев ТРИ, и третий — законный близнец: та же таблица, тот же
+// оператор снятия, запись БЕЗ объявленного блока обязана по-прежнему давать
+// `stale`. Без него проверка доказывала бы лишь, что гейт умеет ругаться на
+// всякую появившуюся уборку, — то есть ловила бы форму, а не существо.
+func TestTableGrowthGate_Injection_BlockedRemovalIsAFindingNotAResolvedEntry(t *testing.T) {
+	base := scanInjectedMigration(t, "services/synthetic/internal/migrations/0001_ledger.sql", createLedger)
+	sweep := func(t *testing.T) []SQLRemoval {
+		t.Helper()
+		return scanInjectedGo(t, "services/synthetic/internal/repo/pg/x.go",
+			growthGoFileWith("\t_, _ = r.pool.Exec(ctx, `DELETE FROM kacho_synth.ledger WHERE seen_at <= now()`)"))
+	}
+
+	blocked := TableGrowthDecl{
+		Owner: injectedOwner, Table: "ledger",
+		Tempo: tempoExternal, Verdict: verdictDebt,
+		Reason: "журнал: читатель идёт по диапазону позиций", Issue: "#1712",
+		RemovalBlocked: "читатель не обнаруживает пропуска: снятая строка неотличима от " +
+			"«строк не было», и отзыв доступа не применится молча",
+	}
+
+	t.Run("уборка при объявленном блоке — НАХОДКА, называющая таблицу и причину", func(t *testing.T) {
+		findings, stale, _ := verdictOn([]MigrationScan{base}, sweep(t), []TableGrowthDecl{blocked})
+		if len(findings) != 1 {
+			t.Fatalf("уборка у таблицы с объявленным блоком находкой НЕ объявлена: находок %v, просрочено %v",
+				findings, stale)
+		}
+		if !strings.Contains(findings[0], "ledger") {
+			t.Errorf("находка не называет таблицу: %s", findings[0])
+		}
+		if !strings.Contains(findings[0], "не обнаруживает пропуска") {
+			t.Errorf("находка не называет ПРИЧИНУ блока — чинить по ней нечего: %s", findings[0])
+		}
+		if len(stale) != 0 {
+			t.Errorf("запись с блоком объявлена ещё и просроченной — два исхода об одном предмете: %v", stale)
+		}
+	})
+
+	t.Run("близнец: та же уборка БЕЗ блока — по-прежнему просроченная запись", func(t *testing.T) {
+		open := blocked
+		open.RemovalBlocked = ""
+		findings, stale, _ := verdictOn([]MigrationScan{base}, sweep(t), []TableGrowthDecl{open})
+		if len(stale) != 1 {
+			t.Fatalf("запись без блока при появившейся уборке просроченной НЕ объявлена: %v", stale)
+		}
+		if len(findings) != 0 {
+			t.Errorf("запись без блока дала находку — гейт ловит форму, а не существо: %v", findings)
+		}
+	})
+
+	t.Run("близнец: блок объявлен, а уборки НЕТ — молчание", func(t *testing.T) {
+		findings, stale, _ := verdictOn([]MigrationScan{base}, nil, []TableGrowthDecl{blocked})
+		if len(findings) != 0 || len(stale) != 0 {
+			t.Fatalf("блок без появившейся уборки заговорил: находок %v, просрочено %v", findings, stale)
+		}
+	})
+
+	t.Run("блок без НОМЕРА ЗАДАЧИ — находка: он не истёк бы никогда", func(t *testing.T) {
+		noIssue := blocked
+		noIssue.Verdict = verdictRetained
+		noIssue.Issue = ""
+		findings, _, _ := verdictOn([]MigrationScan{base}, nil, []TableGrowthDecl{noIssue})
+		if len(findings) != 1 {
+			t.Fatalf("блок без номера задачи находкой НЕ объявлен: %v", findings)
+		}
+		if !strings.Contains(findings[0], "ledger") {
+			t.Errorf("находка не называет запись: %s", findings[0])
+		}
+	})
+}

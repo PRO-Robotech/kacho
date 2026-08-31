@@ -24,12 +24,14 @@
 package main
 
 import (
+	"context"
 	"fmt"
 	"log/slog"
 
 	subscriptionv1 "github.com/PRO-Robotech/kacho/pkg/api/kacho/cloud/subscription"
 	coredb "github.com/PRO-Robotech/kacho/pkg/db"
 	"github.com/PRO-Robotech/kacho/pkg/listnarrow"
+	"github.com/PRO-Robotech/kacho/pkg/retention"
 	"github.com/PRO-Robotech/kacho/pkg/subscription"
 	"github.com/PRO-Robotech/kacho/services/registry/internal/apps/kacho/config"
 	"github.com/PRO-Robotech/kacho/services/registry/internal/subscriptionjournal"
@@ -104,4 +106,32 @@ func buildSubscriptionServer(cfg config.Config, narrower *listnarrow.Narrower,
 		return nil, fmt.Errorf("поток изменений: %w", err)
 	}
 	return srv, nil
+}
+
+// startJournalRetentionSweep поднимает фоновую уборку РЕСУРСНОГО ЖУРНАЛА реестра.
+//
+// # Почему отдельная петля, а не запись в реестре уборки таблицы операций
+//
+// Предметы разные, и пороги у них выводятся из РАЗНЫХ читателей: у таблицы
+// операций читатель — оператор, разбирающий отказавшую мутацию, у журнала —
+// подписчик, возобновляющийся с сохранённой позиции. Расписание при этом у обеих
+// петель ОДНО и берётся из одного места (`retention.DefaultConfig`), поэтому
+// разойтись им нечем: разошлись бы два ЛИТЕРАЛА, а не два вызова одной функции.
+//
+// Так же устроен и сосед: восемь владельцев таблицы операций поднимают по своей
+// петле каждый, и это не восемь расписаний, а восемь вызовов одного.
+//
+// Отказывает, а не предупреждает: отказ означает негодные величины расписания
+// либо объявление, при котором уборка невыразима, — то есть уборку, которая
+// исполняется и не убирает ничего.
+func startJournalRetentionSweep(ctx context.Context, db subscription.Execer,
+	cfg config.Config, logger *slog.Logger) error {
+	if _, err := subscription.StartJournalRetentionSweep(
+		ctx, db, subscriptionjournal.Journal(cfg.EndpointBase),
+		retention.DefaultConfig(),
+		logger.With(slog.String("component", "journal_retention_sweep")),
+	); err != nil {
+		return fmt.Errorf("уборка ресурсного журнала: %w", err)
+	}
+	return nil
 }

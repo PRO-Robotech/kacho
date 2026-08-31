@@ -15,8 +15,15 @@ import { displayText } from "@shared/lib/display-text";
 import { grpcCodeLabel } from "@shared/lib/grpc-status";
 import { QUOTA_VALUES_SET_BY, kindLabel } from "@shared/lib/quota-view";
 
-/** Полоса отказа по пределу. Различаются ДЕЙСТВИЕМ администратора, не оттенком. */
-export type QuotaLane = "exceeded" | "not_provisioned";
+/**
+ * Полоса отказа по пределу. Различаются ДЕЙСТВИЕМ, а не оттенком.
+ *
+ * У двух первых действие принадлежит АДМИНИСТРАТОРУ (поднять предел, завести
+ * предел), у третьей — САМОМУ ВЫЗЫВАЮЩЕМУ (подождать). Производитель завёл её
+ * отдельным признаком осознанно и записал почему: повтор по объёму не пройдёт
+ * никогда, повтор по темпу пройдёт в следующем окне.
+ */
+export type QuotaLane = "exceeded" | "not_provisioned" | "rate_exceeded";
 
 export interface QuotaRefusal {
   lane: QuotaLane;
@@ -98,7 +105,23 @@ const TITLES: Record<ErrorStatus, string> = {
 const FORBIDDEN_EXPLANATION =
   "Этот раздел доступен администраторам платформы. Если доступ нужен по работе — запросите его у администратора вашей организации.";
 
-/** Похоже ли сообщение на цитату внутренней проверки прав. */
+/**
+ * Учётные данные не приняты — край отвечает `unauthenticated: credentials
+ * required`. Строка точна и вызывающему бесполезна: она не говорит ни что
+ * произошло (срок сессии истёк), ни что делать (войти заново).
+ */
+const REAUTH_EXPLANATION =
+  "Сессия истекла или учётные данные не приняты. Войдите заново, чтобы продолжить работу.";
+
+/**
+ * Похоже ли сообщение на цитату внутренней проверки прав.
+ *
+ * ЗАПАСНОЙ ПУТЬ, А НЕ ОСНОВНОЙ. Полоса решается признаком (`REFUSALS` ниже);
+ * этот разбор остаётся ровно для отказов, пришедших БЕЗ признака, — их
+ * производят места, до которых `ErrorInfo` ещё не дошёл. Вывод полосы из
+ * английской фразы молча вернул бы пустоту при первой же смене тона, а тон —
+ * часть контракта и меняется осознанно.
+ */
 export function looksLikePermissionToken(message: string | null): boolean {
   if (!message) return false;
   // Имя права — точечный путь без пробелов (`iam.limits.list`); фраза для
@@ -138,9 +161,59 @@ export function looksLikePermissionToken(message: string | null): boolean {
  * показывается то, что приехало: чего сервер не назвал, то не выдумывается —
  * ни вид, ни предел, ни адрес витрины.
  */
-const QUOTA_LANES: Record<string, QuotaLane> = {
-  QUOTA_EXCEEDED: "exceeded",
-  QUOTA_NOT_PROVISIONED: "not_provisioned",
+/**
+ * Вердикт консоли по одному машинному признаку отказа.
+ *
+ * `passthrough` — РЕШЕНИЕ, а не пропуск: текст производителя уже называет
+ * следующий шаг («другой префикс, а не починка кодировщика запроса»), и
+ * подменять его своей фразой значило бы потерять названные им координаты.
+ * Отсутствие записи решением НЕ является — гейт
+ * `ui-future/deploy/console_refusal_reason_coverage_test.go` требует вердикт по
+ * каждому производимому токену и падает на записи, которой нечего разбирать.
+ */
+type RefusalVerdict =
+  | { kind: "quota"; lane: QuotaLane }
+  | { kind: "explain"; title?: string; text: string }
+  | { kind: "passthrough" };
+
+/**
+ * ВЕРДИКТ ПО КАЖДОМУ ПРИЗНАКУ, КОТОРЫЙ ПРОИЗВОДИТ ПЛАТФОРМА (#1736).
+ *
+ * Перечень не выписан — он СВЕРЯЕТСЯ с производителями гейтом, в обе стороны:
+ * токен без вердикта есть полоса, о которой арендатору показывают, что
+ * придётся; вердикт без производителя есть послабление, пережившее свой
+ * предмет.
+ *
+ * Полосы потока (`SUBSCRIPTION_*`) сюда НЕ входят намеренно: их читает хаб
+ * подписки, а не разбор отказа запроса, и второе место об одном предмете
+ * разошлось бы с ним молча.
+ */
+const REFUSALS: Record<string, RefusalVerdict> = {
+  // Край и служба личности называют внутреннее имя проверки — оно раскрывает
+  // устройство проверок и не отвечает ни на один вопрос смотрящего.
+  AUTHZ_DENIED: { kind: "explain", text: FORBIDDEN_EXPLANATION },
+  AUTHN_REQUIRED: { kind: "explain", title: "Требуется вход", text: REAUTH_EXPLANATION },
+
+  QUOTA_EXCEEDED: { kind: "quota", lane: "exceeded" },
+  QUOTA_NOT_PROVISIONED: { kind: "quota", lane: "not_provisioned" },
+  QUOTA_RATE_EXCEEDED: { kind: "quota", lane: "rate_exceeded" },
+
+  // Ниже — полосы, чей текст производителя уже называет следующий шаг: он
+  // несёт координату (имя слота, идентификатор подсети, вид ресурса), которую
+  // общая фраза потеряла бы. Английский язык этих текстов — предмет ОТДЕЛЬНОЙ
+  // задачи (#1691), и закрывается он здесь же: с вердиктом у каждого признака
+  // перевод становится сменой одной записи с `passthrough` на `explain`, без
+  // единой правки сервиса.
+  MEMBERSHIP_CARRIES_RIGHTS: { kind: "passthrough" },
+  INVALID_RESOURCE_ID: { kind: "passthrough" },
+  RESOURCE_NOT_FOUND: { kind: "passthrough" },
+  PEER_RESOURCE_MISSING: { kind: "passthrough" },
+  PEER_RESOURCE_STATE: { kind: "passthrough" },
+  PEER_UNAVAILABLE: { kind: "passthrough" },
+  SUBNET_NO_FREE_ADDRESS: { kind: "passthrough" },
+  ALLOCATION_CONTENDED: { kind: "passthrough" },
+  EXTERNAL_ADDRESS_UNAVAILABLE: { kind: "passthrough" },
+  SUBNET_CIDR_RESERVED: { kind: "passthrough" },
 };
 
 /** Носитель, при котором «занято» относится к проекту, — он же адресует витрину. */
@@ -177,40 +250,42 @@ function metaNumber(md: Record<string, unknown>, ...keys: string[]): number | nu
   return Number.isFinite(n) ? n : null;
 }
 
-/** Разбирает отказ по пределу; `null` — отказ не про предел. */
-function quotaRefusalOf(details: unknown): QuotaRefusal | null {
+/** Деталь `google.rpc.ErrorInfo` ответа; `null` — признака нет вовсе. */
+function errorInfoOf(details: unknown): { reason: string; metadata: Record<string, unknown> } | null {
   if (!Array.isArray(details)) return null;
   for (const d of details) {
     if (!d || typeof d !== "object") continue;
     const reason = (d as { reason?: unknown }).reason;
-    if (typeof reason !== "string") continue;
-    const lane = QUOTA_LANES[reason];
-    if (!lane) continue;
-
+    if (typeof reason !== "string" || reason === "") continue;
     const rawMd = (d as { metadata?: unknown }).metadata;
-    const md = rawMd && typeof rawMd === "object" ? (rawMd as Record<string, unknown>) : {};
-    const kind = metaText(md, "kind", "quota_kind", "quotaKind");
-    const carrierType = metaText(md, "carrier_type", "carrierType");
-    const carrierId = metaText(md, "carrier_id", "carrierId");
-
-    return {
-      lane,
-      kind,
-      // Человеческое имя берётся из ЕДИНСТВЕННОГО словаря видов (витрина квот),
-      // а не из второй копии рядом: копия разошлась бы с витриной молча, и один
-      // предмет назывался бы на экране двумя словами.
-      label: kind === null ? null : kindLabel(kind),
-      limit: metaNumber(md, "limit"),
-      used: metaNumber(md, "used"),
-      href: carrierType === CARRIER_PROJECT && carrierId ? `/projects/${carrierId}/quotas` : null,
-    };
+    return { reason, metadata: rawMd && typeof rawMd === "object" ? (rawMd as Record<string, unknown>) : {} };
   }
   return null;
+}
+
+/** Собирает отказ по пределу из уже найденной детали. */
+function quotaRefusalOf(md: Record<string, unknown>, lane: QuotaLane): QuotaRefusal {
+  const kind = metaText(md, "kind", "quota_kind", "quotaKind");
+  const carrierType = metaText(md, "carrier_type", "carrierType");
+  const carrierId = metaText(md, "carrier_id", "carrierId");
+
+  return {
+    lane,
+    // Человеческое имя берётся из ЕДИНСТВЕННОГО словаря видов (витрина квот),
+    // а не из второй копии рядом: копия разошлась бы с витриной молча, и один
+    // предмет назывался бы на экране двумя словами.
+    label: kind === null ? null : kindLabel(kind),
+    kind,
+    limit: metaNumber(md, "limit"),
+    used: metaNumber(md, "used"),
+    href: carrierType === CARRIER_PROJECT && carrierId ? `/projects/${carrierId}/quotas` : null,
+  };
 }
 
 const QUOTA_TITLES: Record<QuotaLane, string> = {
   exceeded: "Предел исчерпан",
   not_provisioned: "Предел не задан",
+  rate_exceeded: "Слишком часто",
 };
 
 /** Сколько именно — ровно из того, что сервер назвал. */
@@ -228,6 +303,13 @@ function quotaAmount(q: QuotaRefusal): string {
  */
 function quotaExplanation(q: QuotaRefusal): string {
   const on = q.label === null ? "на этот вид ресурсов" : `на «${q.label}»`;
+  if (q.lane === "rate_exceeded") {
+    // Действие принадлежит ВЫЗЫВАЮЩЕМУ, а не администратору: величину поднимать
+    // не нужно и незачем — темп восстановится в следующем окне. Приклеив сюда
+    // «кто задаёт пределы», мы послали бы человека к администратору за тем,
+    // чего тот не решает.
+    return `Слишком частые запросы ${on}. Повторите через несколько секунд.`;
+  }
   const head =
     q.lane === "exceeded"
       ? `В проекте достигнут предел ${on}${quotaAmount(q)}.`
@@ -307,34 +389,55 @@ export function presentError(err: unknown): ErrorPresentation {
   }
 
   if (err instanceof ApiError) {
-    const quota = quotaRefusalOf(err.details);
-    if (quota !== null) {
+    const status = statusFromHttp(err.status);
+    const ambiguousNotFound = status === "404";
+    const dev = devDetailOf(err);
+
+    // ПОЛОСА РЕШАЕТСЯ ПРИЗНАКОМ, А НЕ ПРОЗОЙ (#1736). Проза — запасной путь
+    // ниже, ровно для отказов, пришедших без признака.
+    const info = errorInfoOf(err.details);
+    const verdict = info === null ? undefined : REFUSALS[info.reason];
+
+    // Текст производителя — контракт, и он НЕ ТЕРЯЕТСЯ ни в одной ветке: уходит
+    // в подсказку рядом с кодом протокола, откуда его достаёт поддержка.
+    const devWithMessage = [dev, err.message].filter(Boolean).join(" · ") || null;
+
+    if (verdict?.kind === "quota" && info !== null) {
+      const quota = quotaRefusalOf(info.metadata, verdict.lane);
       return {
-        status: statusFromHttp(err.status),
+        status,
         title: QUOTA_TITLES[quota.lane],
         subTitle: quotaExplanation(quota),
         note: QUOTA_SHOWCASE_HINT,
-        // Текст производителя — контракт, и он не теряется: он в подсказке
-        // рядом с кодом протокола, откуда его достаёт поддержка.
-        devDetail: [devDetailOf(err), err.message].filter(Boolean).join(" · ") || null,
+        devDetail: devWithMessage,
         ambiguousNotFound: false,
         quota,
       };
     }
 
-    const status = statusFromHttp(err.status);
-    const ambiguousNotFound = status === "404";
-    // Отказ в правах, сообщённый ИМЕНЕМ ВНУТРЕННЕЙ ПРОВЕРКИ, заменяется
-    // объяснением. Точный текст сервера не теряется — он уходит в подсказку
-    // вместе с кодом протокола, туда же, откуда его достаёт поддержка.
-    const hideToken = status === "403" && looksLikePermissionToken(err.message);
-    const dev = devDetailOf(err);
+    if (verdict?.kind === "explain") {
+      return {
+        status,
+        title: verdict.title ?? TITLES[status],
+        subTitle: verdict.text,
+        note: ambiguousNotFound ? NOT_FOUND_IS_AMBIGUOUS : null,
+        devDetail: devWithMessage,
+        ambiguousNotFound,
+        quota: null,
+      };
+    }
+
+    // ЗАПАСНОЙ ПУТЬ. Признака нет (или он неизвестен — тогда красен гейт
+    // покрытия, а не экран): решаем прозой, как решали до появления признаков.
+    // Вердикт `passthrough` попадает сюда же осознанно — он и означает «показать
+    // текст сервера», а не «показать вместо него общую фразу».
+    const hideToken = verdict === undefined && status === "403" && looksLikePermissionToken(err.message);
     return {
       status,
       title: TITLES[status],
       subTitle: hideToken ? FORBIDDEN_EXPLANATION : err.message,
       note: ambiguousNotFound ? NOT_FOUND_IS_AMBIGUOUS : null,
-      devDetail: hideToken ? [dev, err.message].filter(Boolean).join(" · ") || null : dev,
+      devDetail: hideToken ? devWithMessage : dev,
       ambiguousNotFound,
       quota: null,
     };

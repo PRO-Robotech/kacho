@@ -45,7 +45,10 @@ package repohygiene
 
 import (
 	"fmt"
+	"go/ast"
 	"go/build/constraint"
+	"go/parser"
+	"go/token"
 	"os"
 	"path/filepath"
 	"regexp"
@@ -65,17 +68,35 @@ import (
 // вызывающий обязан их различать.
 type taggedPkgScan struct {
 	ByPkg        map[string]map[string]bool // пакет -> набор включающих признаков
+	Funcs        []taggedTestFunc           // пробы под признаком, поимённо и с координатой
 	FilesScanned int
 	FilesWithTag int
 }
 
-// collectTaggedTestPackages — ОДИН сканер на оба гейта.
+// taggedTestFunc — одна проба, объявленная под включающим признаком сборки.
+//
+// Имя и координата едут вместе: гейт отбора судит ИМЕНА (их сверяет `-run`), а
+// чинить находку читатель идёт по координате. Находка без координаты требует от
+// читателя обхода дерева, который гейт только что уже сделал.
+type taggedTestFunc struct {
+	Pkg  string // каталог пакета относительно корня
+	Tag  string // включающий признак сборки файла
+	Name string // имя функции: то, что сверяет `-run`
+	Rel  string // файл относительно корня
+	Line int    // строка объявления
+}
+
+func (f taggedTestFunc) coord() string { return fmt.Sprintf("%s:%d", f.Rel, f.Line) }
+
+// collectTaggedTestPackages — ОДИН сканер на все три гейта.
 //
 // Прежде цикл обхода стоял внутри `auditBuildTaggedTestPackages`. Второй гейт с
 // собственной копией того же обхода — это два места об одном предмете, из
 // которых со временем верно одно; отбор включающих признаков достаточно тонок
 // (`integration || !short` даёт один тег, а не два), чтобы копия разошлась
-// незаметно.
+// незаметно. По той же причине сюда добавлен сбор ИМЁН проб: третий гейт
+// (`buildtagrunselection_test.go`) судит отбор `-run`, и свой обход дерева был
+// бы третьей копией того же цикла.
 func collectTaggedTestPackages(root string) (taggedPkgScan, error) {
 	scan := taggedPkgScan{ByPkg: map[string]map[string]bool{}}
 
@@ -113,11 +134,82 @@ func collectTaggedTestPackages(root string) (taggedPkgScan, error) {
 		if scan.ByPkg[pkg] == nil {
 			scan.ByPkg[pkg] = map[string]bool{}
 		}
+		names, err := testFuncNames(abs)
+		if err != nil {
+			return scan, fmt.Errorf("разбор проб в %s: %w", rel, err)
+		}
 		for _, tag := range kept {
 			scan.ByPkg[pkg][tag] = true
+			for _, n := range names {
+				scan.Funcs = append(scan.Funcs, taggedTestFunc{
+					Pkg: pkg, Tag: tag, Name: n.name, Rel: rel, Line: n.line,
+				})
+			}
 		}
 	}
 	return scan, nil
+}
+
+// testFuncDecl — имя пробы и строка её объявления.
+type testFuncDecl struct {
+	name string
+	line int
+}
+
+// testFuncNames — имена проб файла, взятые РАЗБОРОМ, а не образцом по тексту.
+//
+// Образец по тексту здесь негоден дважды: `func TestX` встречается в строковом
+// литерале соседней пробы инъекции (в этом пакете такие литералы есть) и в
+// комментарии, объясняющем пробу. Разбор судит УЗЕЛ объявления, поэтому ни то,
+// ни другое под него не подпадает by construction. Признак сборки разбору не
+// мешает: `go/parser` читает файл независимо от того, включён ли тег.
+//
+// Границу гейт объявляет сам: считаются только `func TestXxx(*testing.T)` —
+// то, что отбирает `-run` у `go test`. Замеры (`Benchmark`) отбирает `-bench`,
+// фаззеры (`Fuzz`) — своя пара флагов; это другие предметы, и молча
+// приписывать их сюда значило бы утверждать о них то, чего гейт не проверял.
+func testFuncNames(path string) ([]testFuncDecl, error) {
+	fset := token.NewFileSet()
+	f, err := parser.ParseFile(fset, path, nil, 0)
+	if err != nil {
+		return nil, err
+	}
+	var out []testFuncDecl
+	for _, d := range f.Decls {
+		fn, ok := d.(*ast.FuncDecl)
+		if !ok || fn.Recv != nil || fn.Name == nil {
+			continue
+		}
+		if !strings.HasPrefix(fn.Name.Name, "Test") || !isTestingTParam(fn) {
+			continue
+		}
+		out = append(out, testFuncDecl{
+			name: fn.Name.Name,
+			line: fset.Position(fn.Pos()).Line,
+		})
+	}
+	return out, nil
+}
+
+// isTestingTParam — единственный параметр функции есть `*testing.T`.
+//
+// Без этой проверки под перепись попал бы помощник с именем на `Test` и другой
+// сигнатурой: `-run` его не отбирает, и требовать его отбора значило бы
+// производить находку, которую нечем закрыть.
+func isTestingTParam(fn *ast.FuncDecl) bool {
+	if fn.Type.Params == nil || len(fn.Type.Params.List) != 1 {
+		return false
+	}
+	star, ok := fn.Type.Params.List[0].Type.(*ast.StarExpr)
+	if !ok {
+		return false
+	}
+	sel, ok := star.X.(*ast.SelectorExpr)
+	if !ok || sel.Sel == nil || sel.Sel.Name != "T" {
+		return false
+	}
+	pkg, ok := sel.X.(*ast.Ident)
+	return ok && pkg.Name == "testing"
 }
 
 // ── извлечение прогонов из объявлений ───────────────────────────────────────
@@ -128,6 +220,18 @@ type taggedRun struct {
 	Tag     string           // признак, который прогон передаёт
 	Scopes  []string         // область: операнды `go test` либо питающего `go list`
 	Filters []*regexp.Regexp // отбор `grep -E`, если прогон питается конвейером
+	// Select и Skip — сужение ВНУТРИ пакета: `-run` и `-skip` вызова.
+	//
+	// Пустой Select означает «берёт всё», а не «не берёт ничего»: `go test` без
+	// `-run` исполняет каждую пробу пакета. Это ровно тот вид ручки, о котором
+	// предупреждает `polyrepo.md`: пустое значение обязано читаться в ту
+	// сторону, в какую его читает исполнитель, а не в удобную.
+	Select *regexp.Regexp
+	Skip   *regexp.Regexp
+	// RunPattern и SkipPattern — исходные строки, ради находки: читателю нужен
+	// текст, который стоит в объявлении, а не то, во что его скомпилировали.
+	RunPattern  string
+	SkipPattern string
 }
 
 func (r taggedRun) String() string {
@@ -222,7 +326,45 @@ var (
 	reOperand = regexp.MustCompile(`\./[A-Za-z0-9_./*-]*(?:\$\([A-Za-z0-9_]+\)|\$\{[A-Za-z0-9_]+\})?[A-Za-z0-9_./*-]*`)
 	// отбор конвейером: grep -E '<re>' / grep -E "<re>"
 	reGrepE = regexp.MustCompile(`grep\s+(?:-[A-Za-z]+\s+)*-[A-Za-z]*E[A-Za-z]*\s+'([^']+)'|grep\s+(?:-[A-Za-z]+\s+)*-[A-Za-z]*E[A-Za-z]*\s+"([^"]+)"`)
+	// сужение внутри пакета: `-run X`, `-run=X`, `-test.run='X'`, `-run "X"`.
+	// Все четыре формы законны у `go test`, поэтому распознаются все четыре:
+	// форма, о которой распознаватель не знает, делает сужение НЕВИДИМЫМ, а не
+	// редким (`testing.md` §«Гейт на класс» п.7).
+	reRunFlag  = regexp.MustCompile(`-(?:test\.)?run[= ]\s*(?:'([^']*)'|"([^"]*)"|([^\s'"]+))`)
+	reSkipFlag = regexp.MustCompile(`-(?:test\.)?skip[= ]\s*(?:'([^']*)'|"([^"]*)"|([^\s'"]+))`)
 )
+
+// lastFlagValue — значение флага, каким его увидит `go test`.
+//
+// Флаг, повторённый дважды, у `go test` разрешается ПОСЛЕДНИМ вхождением, и
+// гейт обязан читать его так же: иначе он судил бы отбор, которого исполнитель
+// не применяет.
+func lastFlagValue(re *regexp.Regexp, line string) string {
+	ms := re.FindAllStringSubmatch(line, -1)
+	if len(ms) == 0 {
+		return ""
+	}
+	m := ms[len(ms)-1]
+	for _, g := range m[1:] {
+		if g != "" {
+			return g
+		}
+	}
+	return ""
+}
+
+// topLevelPattern — часть образца `-run`, относящаяся к пробе верхнего уровня.
+//
+// `go test` делит образец по `/`: первый сегмент сверяется с именем пробы,
+// остальные — с именами вложенных. Гейт судит только верхний уровень и говорит
+// об этом прямо: вложенные пробы он не перечисляет, поэтому и утверждать об их
+// отборе не вправе.
+func topLevelPattern(pat string) string {
+	if i := strings.IndexByte(pat, '/'); i >= 0 {
+		return pat[:i]
+	}
+	return pat
+}
 
 // lookBack — сколько строк назад искать питающий `go list` и `grep -E`.
 //
@@ -273,6 +415,18 @@ func extractTaggedRuns(root string) ([]taggedRun, int, error) {
 					Source: fmt.Sprintf("%s:%d", rel, i+1),
 					Tag:    tag,
 					Scopes: operandsOf(line, kind),
+				}
+				if pat := lastFlagValue(reRunFlag, line); pat != "" {
+					run.RunPattern = pat
+					if re, err := regexp.Compile(topLevelPattern(pat)); err == nil {
+						run.Select = re
+					}
+				}
+				if pat := lastFlagValue(reSkipFlag, line); pat != "" {
+					run.SkipPattern = pat
+					if re, err := regexp.Compile(topLevelPattern(pat)); err == nil {
+						run.Skip = re
+					}
 				}
 				// Вызов без своих операндов питается конвейером: область и отбор
 				// стоят выше, в той же рецептуре.

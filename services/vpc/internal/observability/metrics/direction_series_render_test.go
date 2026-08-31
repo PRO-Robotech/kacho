@@ -34,7 +34,12 @@ func TestDirectionSeries_AreAcceptedAndRendered(t *testing.T) {
 	rec.SetBacklogDepthByDirection(tbl, outboxmetrics.DirectionWithdrawal, 3)
 	rec.SetOldestPendingAgeByDirection(tbl, outboxmetrics.DirectionWithdrawal, 42)
 	// Ноль доставленных — то самое состояние, ради видимости которого ряд заведён.
-	rec.SetDeliveredTotal(tbl, outboxmetrics.DirectionWithdrawal, 0)
+	//
+	// Величина стала СЧЁТЧИКОМ (#1714), и дочерняя серия счётчика появляется лишь
+	// после первого инкремента. Поэтому ряд заводится ЯВНО, и утверждение ниже —
+	// про то, что «ни одного отзыва не доставлено» видно ЧИСЛОМ, а не отсутствием
+	// ряда. Инкремента здесь нет намеренно: проверяется именно нулевое состояние.
+	rec.InitDeliveredByDirection(tbl, outboxmetrics.DirectionWithdrawal)
 
 	rr := httptest.NewRecorder()
 	m.Handler().ServeHTTP(rr, httptest.NewRequest(http.MethodGet, "/metrics", nil))

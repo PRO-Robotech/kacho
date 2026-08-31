@@ -310,7 +310,8 @@ PG_OUTSIDE_SELECTION_PKGS ?= \
 	./services/iam/internal/service \
 	./services/iam/internal/testsupport/accesssnapshot \
 	./gateway/internal/idempotencypg \
-	./pkg/subscription
+	./pkg/subscription \
+	./pkg/schemaguard
 
 # ─── Хуки git ────────────────────────────────────────────────────────────────
 #

@@ -1259,11 +1259,30 @@ jobs:
       # который подкачивает шаг выше и который git не отслеживает, — поэтому её
       # место здесь, а не в unit-прогоне: там её условие не создаётся ничем, и
       # «архив не читается» было бы безусловным красным на исправном дереве.
-      # Файл выведен из общего прогона тегом `helmcharts`; что тег зовётся —
+      # Файлы выведены из общего прогона тегом `helmcharts`; что тег зовётся —
       # утверждает deploy/identity_chart_premise_reachability_test.go, читающий
       # ЭТОТ файл, поэтому удаление шага ниже уронит unit-прогон.
+      #
+      # Отбор перечисляет ВСЕ пробы тега, и перечень не выписан на память:
+      # internal/repohygiene TestBuildTagTestsAreSelectedByTheDeclaredRun читает
+      # это объявление, достаёт из него `-run` и сверяет с именами проб,
+      # объявленных под признаком в дереве. Следующая проба под тем же тегом
+      # уронит unit-прогон, пока её имя не появится здесь.
+      #
+      # Пока имя стояло ОДНО, вторая проба (несимметричность раздачи настроек
+      # двум процессам службы личности) не исполнялась ни разу за свою жизнь:
+      # пакет в область попадал, поэтому гейт достижимости молчал, а `-run` её
+      # не брал. Вердикта у неё не было вовсе — ни зелёного, ни красного (#1678).
+      #
+      # Четыре имени добавлены вместе с гейтом переписи «ключ нашего файла не
+      # перебивается переменной» (#1733): он рендерит УМБРЕЛЛУ каждым стеком
+      # таблицы, а рендер умбреллы требует тех же материализованных архивов, что
+      # и проверки умолчаний, — то есть его условие создаёт ровно этот шаг.
       - name: умолчания чартов личности всё ещё безопасны
-        run: go test -tags helmcharts ./deploy/ -run 'TestIdentityDevFlags_ChartDefaultsAreStillSecure' -count=1 -v
+        run: >-
+          go test -tags helmcharts ./deploy/
+          -run 'TestIdentityDevFlags_ChartDefaultsAreStillSecure|TestCourierArgsAreNotInheritedFromTheDeployment|TestIdentityFileKeysAreNotOverriddenByTheEnvironment|TestEnvNamesForCoversPathAndItsPrefixes|TestFileKeyOverrideInjection_RealKnobRedsAndLegalTwinIsSilent|TestFileKeyOverrideInjection_ExistingControlStillReds'
+          -count=1 -v
 
       - name: umbrella template — каждый стек таблицы
         working-directory: deploy/helm/umbrella

@@ -19,9 +19,22 @@ package metrics_test
 // направлении: замер 2026-08-04 нашёл 479 регистраций репозиториев против 60 снятий, и
 // ни один сводный ряд об этом не говорил.
 //
-// Поэтому Collector обязан уметь разложить те же самые величины по направлению и, сверх
-// них, назвать число ДОСТАВЛЕННЫХ строк каждого направления: только счётчик доставленных
-// отличает «снятий не было» от «снятия не доезжают».
+// Поэтому Collector обязан уметь разложить те же самые величины по направлению.
+//
+// # ЧИСЛО ДОСТАВЛЕННЫХ СКАН БОЛЬШЕ НЕ СТАВИТ — и это не отказ от величины
+//
+// Величина осталась и по-прежнему есть единственное, что отличает «снятий не было» от
+// «снятия не доезжают». Сменился ПРОИЗВОДИТЕЛЬ: её ведёт наблюдатель дренажа
+// (`DeliveryObserver` → `drainer.WithDeliveryObserver`), а не `count(*)` по живым
+// строкам (#1714). Причина — объявление величины: «за всё время». Счёт по живым строкам
+// совпадал с объявленным ровно до тех пор, пока строки не убираются; уборка доставленных
+// (#1361) обнулила бы её на ИСПРАВНОЙ очереди, где отзыв редок, и ноль прочитался бы по
+// контракту как «не доставлено ни одного отзыва».
+//
+// Поэтому утверждения о доставленных уехали ОТСЮДА к своему новому производителю —
+// `Test_DeliveryObserver_CountsDeliveriesByDirection` ниже и
+// `Test_DeliveredTotal_SurvivesTheSweepOfDeliveredRows` в пакете дренажа, — а не были
+// сняты: предмет жив, у него другой источник.
 
 import (
 	"context"
@@ -70,12 +83,12 @@ func Test_CollectorScan_SplitsByDirection_ExposesUndeliveredWithdrawals(t *testi
 	})
 	require.NoError(t, col.Scan(ctx))
 
-	// Доставленные — то, чем «снятий не было» отличается от «снятия не доезжают».
-	assert.Equal(t, float64(5), rec.DeliveredTotal(tbl, "grant"),
-		"выдачи доезжают")
-	assert.Equal(t, float64(0), rec.DeliveredTotal(tbl, "withdrawal"),
-		"ноль доставленных снятий за всю жизнь очереди обязан быть ВИДЕН числом, "+
-			"а не выводиться из отсутствия жалоб")
+	// Доставленных здесь НЕ утверждается: их ставит наблюдатель дренажа, а не скан
+	// (см. шапку файла). Скан обязан отвечать на вопрос «что ЛЕЖИТ», и ровно это
+	// проверяется ниже.
+	assert.Equal(t, float64(0), rec.DeliveredTotal(tbl, "grant"),
+		"скан НЕ ставит доставленных: величина ведётся событием доставки, и проход "+
+			"скана не вправе её ни поднять, ни обнулить")
 
 	assert.Equal(t, float64(0), rec.BacklogDepthByDirection(tbl, "grant"))
 	assert.Equal(t, float64(2), rec.BacklogDepthByDirection(tbl, "withdrawal"),
@@ -141,3 +154,54 @@ func Test_CollectorScan_WithoutDirections_RecordsNoSplit(t *testing.T) {
 			"отсутствие ряда честнее нуля, который читается как «снятий не было»")
 	assert.Equal(t, float64(1), rec.BacklogDepth(tbl), "сводные ряды работают как прежде")
 }
+
+// Test_DeliveryObserver_CountsDeliveriesByDirection — новый ПРОИЗВОДИТЕЛЬ величины.
+//
+// Утверждает три вещи, и третья — та, ради которой словарь вообще передаётся
+// наблюдателю: событие ВНЕ словаря не приписывается чужому направлению.
+func Test_DeliveryObserver_CountsDeliveriesByDirection(t *testing.T) {
+	t.Parallel()
+
+	const tbl = "kacho_apps.fga_register_outbox"
+	rec := metrics.NewMemRecorder()
+	obs := metrics.DeliveryObserver(tbl, metrics.RegisterOutboxDirections(), rec)
+	require.NotNil(t, obs, "приёмник умеет разбивку — наблюдатель обязан собраться")
+
+	obs(metrics.EventFGARegister)
+	obs(metrics.EventFGARegister)
+	obs(metrics.EventFGAUnregister)
+	obs("fga.something.else") // вне словаря
+
+	assert.Equal(t, float64(2), rec.DeliveredTotal(tbl, metrics.DirectionGrant),
+		"счётчик МОНОТОНЕН: две доставки выдачи — двойка, а не «сколько лежит»")
+	assert.Equal(t, float64(1), rec.DeliveredTotal(tbl, metrics.DirectionWithdrawal),
+		"направление отзыва считается отдельно — ради него разбивка и заведена")
+	assert.NotContains(t, rec.Directions(tbl), "fga.something.else",
+		"событие вне словаря не заводит своего направления и не приписывается чужому: "+
+			"молча приписать его значило бы солгать именно той величине, ради точности "+
+			"которой разбивка заведена")
+}
+
+// Test_DeliveryObserver_RecorderWithoutTheSplit_GetsNoObserver — законный близнец.
+//
+// Приёмник, заведённый ДО разбивки, удовлетворяет [metrics.Recorder] и не умеет
+// [metrics.DirectionRecorder]. Наблюдателя он не получает вовсе — а не получает
+// пустышку, которая молча считала бы в никуда. Отсутствие серии здесь честный сигнал:
+// ноль прочитался бы как «отзывов не было».
+func Test_DeliveryObserver_RecorderWithoutTheSplit_GetsNoObserver(t *testing.T) {
+	t.Parallel()
+
+	assert.Nil(t, metrics.DeliveryObserver("t", metrics.RegisterOutboxDirections(), recorderWithoutSplit{}),
+		"приёмник без разбивки наблюдателя не получает")
+	assert.Nil(t, metrics.DeliveryObserver("t", nil, metrics.NewMemRecorder()),
+		"без словаря направлений считать нечем — наблюдателя нет")
+}
+
+// recorderWithoutSplit — приёмник, заведённый до разбивки: умеет [metrics.Recorder]
+// и НЕ умеет [metrics.DirectionRecorder].
+type recorderWithoutSplit struct{}
+
+func (recorderWithoutSplit) SetBacklogDepth(string, float64)            {}
+func (recorderWithoutSplit) SetOldestPendingAgeSeconds(string, float64) {}
+func (recorderWithoutSplit) SetPoisonedCount(string, float64)           {}
+func (recorderWithoutSplit) IncPoisoned(string)                         {}

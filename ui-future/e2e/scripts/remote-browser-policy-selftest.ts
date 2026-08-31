@@ -164,7 +164,27 @@ check(
 
 const STUB = `export function defineConfig(config) { return config; }\n`;
 
-/** Каталог с копией конфигурации, копией политики и подставным прогонщиком. */
+/**
+ * СОСЕДНИЕ МОДУЛИ КОНФИГУРАЦИИ — ВЫВОДЯТСЯ ИЗ НЕЁ САМОЙ, А НЕ ВЫПИСЫВАЮТСЯ.
+ *
+ * Здесь стоял ПЕРЕЧЕНЬ из одного имени, и он разошёлся с деревом на первом же
+ * пополнении: конфигурация стала импортировать вторую половину отображения
+ * имени (`./host-mapping.ts`, #1750), а песочница её не копировала — и ПЯТЬ
+ * утверждений уровня 2 упали с `Cannot find module`. Отказ при этом выглядел
+ * как опровержение решения о браузере, к которому он отношения не имеет:
+ * находка называла не тот предмет.
+ *
+ * Перечень, который надо править вторым заходом, — второе место об одном
+ * предмете; выведенный из самой конфигурации разойтись с ней не может
+ * by construction.
+ */
+function siblingModules(configSource: string): string[] {
+  const out = new Set<string>();
+  for (const m of configSource.matchAll(/from\s+"\.\/([\w.-]+\.ts)"/g)) out.add(m[1]);
+  return [...out];
+}
+
+/** Каталог с копией конфигурации, копиями её соседей и подставным прогонщиком. */
 function sandbox(transformConfig: (source: string) => string): string {
   const dir = mkdtempSync(path.join(tmpdir(), "kacho-remote-browser-"));
   const stubDir = path.join(dir, "node_modules", "@playwright", "test");
@@ -175,16 +195,21 @@ function sandbox(transformConfig: (source: string) => string): string {
     JSON.stringify({ name: "@playwright/test", version: "0.0.0", type: "module", exports: { ".": "./index.mjs" } }),
     "utf-8",
   );
-  writeFileSync(
-    path.join(dir, "remote-browser-policy.ts"),
-    readFileSync(path.join(E2E, "remote-browser-policy.ts"), "utf-8"),
-    "utf-8",
-  );
-  writeFileSync(
-    path.join(dir, "playwright.config.ts"),
-    transformConfig(readFileSync(path.join(E2E, "playwright.config.ts"), "utf-8")),
-    "utf-8",
-  );
+  const source = readFileSync(path.join(E2E, "playwright.config.ts"), "utf-8");
+  const siblings = siblingModules(source);
+  if (siblings.length === 0) {
+    // Ноль соседей означает «распознаватель импортов ослеп», а не «их нет»:
+    // конфигурация зовёт решение о браузере из соседнего модуля, и без него
+    // уровень 2 доказывал бы свойство пустого файла.
+    throw new Error(
+      "в конфигурации проб не найдено НИ ОДНОГО соседнего модуля: сменилась форма " +
+        "импорта, и песочница собрала бы конфигурацию без её половин",
+    );
+  }
+  for (const rel of siblings) {
+    writeFileSync(path.join(dir, rel), readFileSync(path.join(E2E, rel), "utf-8"), "utf-8");
+  }
+  writeFileSync(path.join(dir, "playwright.config.ts"), transformConfig(source), "utf-8");
   return dir;
 }
 
