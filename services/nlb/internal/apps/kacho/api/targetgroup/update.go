@@ -24,11 +24,26 @@ import (
 	kachorepo "github.com/PRO-Robotech/kacho/services/nlb/internal/repo/kacho"
 )
 
-// UpdateTargetGroupUseCase — UpdateMask discipline + async update
-// .
+// UpdateTargetGroupUseCase — UpdateMask discipline + async update.
 //
-// Mutable: name / description / labels / health_check / deregistration_delay_seconds /
-// slow_start_seconds. Immutable: project_id / region_id (mask → InvalidArgument).
+// Mutable: перечень задаёт knownUpdateFieldsTG ниже — он и есть источник истины,
+// потому что именно по нему отвергается маска. Immutable: project_id / region_id
+// (mask → InvalidArgument).
+//
+// Здесь стояли `deregistration_delay_seconds` и `slow_start_seconds` — имена,
+// которых среди ЖИВЫХ полей контракта нет: NLB-1c (B8) заменил их Duration-полями
+// `deregistration_delay` / `slow_start`, а прежние имена стоят в `reserved`
+// (proto/kacho/cloud/loadbalancer/v1/target_group.proto). Вызывающий, взявший имя
+// отсюда, получал `unknown update_mask field`. Заодно перечень молчал о `port`,
+// который изменяем.
+//
+// Наивная сверка «встречается ли имя в контракте» этот класс НЕ ловит: оба
+// мёртвых имени в контракте встречаются — в резервировании. И она же дала бы
+// ложную находку на колонке БД: `deregistration_delay_seconds` — живое имя
+// СТОЛБЦА (миграция 0001), поэтому ссылки на него в repo/dto/jobs верны и правке
+// не подлежат. Разделяет одно: имя употреблено как путь контракта (маска, JSON)
+// или как столбец.
+//
 // Targets — отдельная семантика через AddTargets/RemoveTargets; mask=["targets"]
 // → InvalidArgument с фиксированным текстом.
 type UpdateTargetGroupUseCase struct {

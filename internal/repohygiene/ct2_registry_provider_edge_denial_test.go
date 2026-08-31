@@ -25,6 +25,10 @@ const (
 // чём контракт только рассуждает.
 var rpcDeclRe = regexp.MustCompile(`(?m)^\s*rpc\s+([A-Za-z][A-Za-z0-9]*)\s*\(`)
 
+// serviceDeclRe — ОБЪЯВЛЕНИЕ службы. Нужно, чтобы у метода был объект: имя RPC его
+// не несёт (`rpc Update` объявлен в шести доменах из шести), объект живёт здесь.
+var serviceDeclRe = regexp.MustCompile(`(?m)^\s*service\s+([A-Za-z][A-Za-z0-9]*)\s*\{`)
+
 // restActionRe — суффикс-действие REST-привязки: `post: "/…/{id}:start"`.
 //
 // Набор символов ОБЯЗАН совпадать с тем, что распознаётся в прозе
@@ -136,7 +140,8 @@ func edgeContracts(t *testing.T, root string, aliases map[string]string) map[str
 		if err != nil {
 			t.Fatalf("обход контракта %s: %v", dir, err)
 		}
-		c := EdgeContract{Domain: dir, RPCs: map[string]bool{}, Actions: map[string]bool{}}
+		c := EdgeContract{Domain: dir, RPCs: map[string]bool{}, Actions: map[string]bool{},
+			Methods: map[string]bool{}}
 		for _, f := range files {
 			src := edgeReadFile(t, f)
 			for _, m := range rpcDeclRe.FindAllStringSubmatch(src, -1) {
@@ -145,10 +150,27 @@ func edgeContracts(t *testing.T, root string, aliases map[string]string) map[str
 			for _, m := range restActionRe.FindAllStringSubmatch(src, -1) {
 				c.Actions[m[1]] = true
 			}
+			// Метод вместе со службой. Служба берётся ПОСЛЕДНЯЯ объявленная выше
+			// метода: в файле контракта их бывает несколько, и приписать все методы
+			// первой значило бы объявить существующим `ListenerService/AddTargets`.
+			svc := ""
+			for _, line := range strings.Split(src, "\n") {
+				if m := serviceDeclRe.FindStringSubmatch(line); m != nil {
+					svc = m[1]
+					continue
+				}
+				if m := rpcDeclRe.FindStringSubmatch(line); m != nil && svc != "" {
+					c.Methods[svc+"/"+m[1]] = true
+				}
+			}
 		}
 		if len(c.RPCs) == 0 {
 			t.Fatalf("контракт %s не дал ни одного объявления rpc — разбор сломан, "+
 				"а не домен пуст", dir)
+		}
+		if len(c.Methods) == 0 {
+			t.Fatalf("контракт %s не дал ни одной пары «служба/метод» — объект методов "+
+				"не выведен, и квалифицированный токен резолвить будет не с чем", dir)
 		}
 		out[dir] = c
 	}

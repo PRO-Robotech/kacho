@@ -431,25 +431,41 @@ CASES.append(Case(
 
 CASES.append(Case(
     id="INST-RD-CR-VAL-BOOTSOURCE-OUTPUT-FIELDS",
-    title="COMP-1-11: Create с bootSource output-only полем (name; imageKind) в теле → sync 400 "
-          "'... output-only and must not be set on input' (name°/resolvedDigest°/materializedVolume°/"
-          "imageKind° server-derived). [verifies COMP-1-11 · #1625 · error-guessing output-field-reject]",
+    title="COMP-1-11: Create с output-only подполем bootSource (name; imageKind; оба сразу) → sync 400, "
+          "и отказ называет ИМЕННО присланное подполе — текстом и путём в fieldViolations, "
+          "а НЕ обязательного родителя bootSource. [verifies COMP-1-11 · #1625 · #1724 · "
+          "error-guessing output-field-reject]",
     classes=["VAL", "NEG"], priority="P1",
     steps=[Step(name="cr-boot-out", method="POST", path=INSTANCES,
                 body=_vm_body("out", mt=_PLACEHOLDER_MT,
                               boot={"type": "storage.image", "id": "img-9k2m4x7q1n8p:22.04-lts", "name": "ubuntu"}),
                 test_script=[*assert_status(400), *assert_grpc_code(3, "INVALID_ARGUMENT"),
-                             "pm.test('text: output-only must not be set on input', () => pm.expect(pm.response.json().message||'', pm.response.text()).to.eql('bootSource name/resolvedDigest/materializedVolume/imageKind are output-only and must not be set on input'));"]),
+                             "pm.test('text: назван присланный name, и только он', () => pm.expect(pm.response.json().message||'', pm.response.text()).to.eql('bootSource.name is output-only and must not be set on input'));",
+                             "pm.test('деталь несёт путь ПОДПОЛЯ, а не родителя', () => { const d=(pm.response.json().details||[])[0]||{}; const got=(d.fieldViolations||[]).map(v=>v.field); pm.expect(got).to.eql(['boot_source.name']); });"]),
            # imageKind — четвёртое отвергаемое поле, и до #1625 отказ о нём МОЛЧАЛ:
-           # условие включало его, текст перечислял три. Шаг утверждает, что имя
-           # присланного поля стоит в ответе, — иначе клиент снимает три чужих
-           # поля и получает тот же отказ снова.
+           # условие включало его, текст перечислял три. До #1724 отказ называл все
+           # четыре ВСЕГДА, поэтому «назвал присланное» было неотличимо от «назвал
+           # все» — шаг утверждает, что три чужих поля НЕ названы.
            Step(name="cr-boot-out-imagekind", method="POST", path=INSTANCES,
                 body=_vm_body("outik", mt=_PLACEHOLDER_MT,
                               boot={"type": "storage.image", "id": "img-9k2m4x7q1n8p:22.04-lts",
                                     "imageKind": "STORAGE_IMAGE"}),
                 test_script=[*assert_status(400), *assert_grpc_code(3, "INVALID_ARGUMENT"),
-                             "pm.test('text: imageKind named in the refusal', () => pm.expect(pm.response.json().message||'', pm.response.text()).to.eql('bootSource name/resolvedDigest/materializedVolume/imageKind are output-only and must not be set on input'));"])],
+                             "pm.test('text: назван присланный imageKind, и только он', () => pm.expect(pm.response.json().message||'', pm.response.text()).to.eql('bootSource.imageKind is output-only and must not be set on input'));",
+                             "pm.test('поля, которых клиент не слал, НЕ названы', () => { const m=pm.response.json().message||''; ['name','resolvedDigest','materializedVolume'].forEach(f => pm.expect(m, f).to.not.include('bootSource.'+f)); });",
+                             "pm.test('деталь несёт путь ПОДПОЛЯ, а не родителя', () => { const d=(pm.response.json().details||[])[0]||{}; const got=(d.fieldViolations||[]).map(v=>v.field); pm.expect(got).to.eql(['boot_source.image_kind']); });"]),
+           # Два подполя сразу — один заход вместо круга запроса на каждое.
+           Step(name="cr-boot-out-two", method="POST", path=INSTANCES,
+                body=_vm_body("outtwo", mt=_PLACEHOLDER_MT,
+                              boot={"type": "storage.image", "id": "img-9k2m4x7q1n8p:22.04-lts",
+                                    "name": "ubuntu", "imageKind": "STORAGE_IMAGE"}),
+                test_script=[*assert_status(400), *assert_grpc_code(3, "INVALID_ARGUMENT"),
+                             "pm.test('оба присланных подполя названы за один заход', () => {",
+                             "  const det = (pm.response.json().details||[]).find(d => (d['@type']||'').includes('BadRequest'));",
+                             "  pm.expect(det, 'BadRequest detail').to.be.an('object');",
+                             "  pm.expect((det.fieldViolations||[]).map(v=>v.field)).to.eql(['boot_source.name','boot_source.image_kind']);",
+                             "});",
+                             "pm.test('родитель bootSource нарушителем не назван', () => { const det=(pm.response.json().details||[]).find(d => (d['@type']||'').includes('BadRequest'))||{}; pm.expect((det.fieldViolations||[]).map(v=>v.field)).to.not.include('boot_source'); });"])],
 ))
 
 
