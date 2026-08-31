@@ -1020,7 +1020,7 @@ def poll_request_until_status(name: str, method: str, path: str, test_script: Li
 
 def assert_op_error(code: int, code_name: str, msg_substr: Optional[str] = None,
                     msg_regex: Optional[str] = None, auth: str = AUTH_INHERIT_OP,
-                    op_var: str = "opId") -> Step:
+                    op_var: str = "opId", reason: Optional[str] = None) -> Step:
     """Поллит /operations/{op_var} до done и проверяет, что operation завершилась с error.code == code.
 
     The auth parameter carries a valid Bearer token: OperationService/Get is
@@ -1036,6 +1036,13 @@ def assert_op_error(code: int, code_name: str, msg_substr: Optional[str] = None,
     suite) overwrites between the action and this assertion, so it polls a
     FOREIGN operation (the IAM-ACB-ADD/RM red was reading an IssueSAKey op,
     code 13). Default "opId" keeps every existing caller byte-identical.
+
+    reason: признак полосы из `google.rpc.ErrorInfo.reason` в `error.details[]`.
+    Пинить его ОБЯЗАТЕЛЬНО там, где один код отказа несёт несколько полос: код у
+    них общий (`api-conventions.md` §by-lane code-split), тон сообщения стабилен,
+    но НЕ парсибелен, поэтому машинно различает вызывающего только признак.
+    Утверждение о признаке идёт В ПАРЕ с кодом, а не вместо него: по одному коду
+    не отличить полосу, по одному признаку не заметить смену отображения.
 
     Poll-until-done: this is a self-re-invoking poll step
     (setNextRequest → same request, bounded by POLL_CAP) with a request-name-scoped
@@ -1063,6 +1070,12 @@ def assert_op_error(code: int, code_name: str, msg_substr: Optional[str] = None,
         body.append(f"pm.test({js_str(f'error text includes \"{msg_substr}\"')}, () => pm.expect((j.error && j.error.message || '').toLowerCase(), JSON.stringify(j)).to.include({js_str(msg_substr.lower())}));")
     if msg_regex is not None:
         body.append(f"pm.test({js_str(f'error text matches /{msg_regex}/')}, () => pm.expect(j.error && j.error.message || '', JSON.stringify(j)).to.match(/{js_regex_src(msg_regex, where='iam/assert_op_error/msg_regex')}/));")
+    if reason is not None:
+        # Признак ищется ПО ТИПУ детали, а не по позиции: порядок `details[]` контрактом
+        # не объявлен, и утверждение по индексу зеленело бы или краснело от перестановки,
+        # которую никто не решал.
+        body.append("const _ei = ((j.error && j.error.details) || []).filter(d => String(d['@type'] || '').endsWith('google.rpc.ErrorInfo'));")
+        body.append(f"pm.test({js_str(f'ErrorInfo.reason == {reason}')}, () => pm.expect(_ei.map(d => d.reason), JSON.stringify(j)).to.include({js_str(reason)}));")
     return Step(name="assert-op-error", method="GET", path="/operations/{{" + op_var + "}}",
                 auth=auth, op_var=op_var, pre_script=_op_id_guard(op_var, True), test_script=body)
 
