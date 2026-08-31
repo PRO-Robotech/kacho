@@ -7,8 +7,6 @@ import (
 	"sort"
 	"strings"
 	"testing"
-
-	"github.com/PRO-Robotech/kacho/internal/treecorpus"
 )
 
 // clientTruthRequestBodyDomains — реестр доменов под наблюдением.
@@ -199,5 +197,3 @@ func describeBodyFindings(fs []ClientTruthRequestBodyFinding) string {
 	}
 	return strings.Join(lines, "\n")
 }
-
-var _ = treecorpus.Tree{}
