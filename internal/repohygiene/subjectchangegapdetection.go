@@ -55,7 +55,8 @@
 //     этому разбору невидимо;
 //  2. окно узнаётся по паре сравнений позиции в одном запросе: строго больше
 //     курсора и не больше границы;
-//  3. пол спрашивается ВЫЗОВОМ в теле той же функции, а не в соседней.
+//  3. пол берётся ВЫЗОВОМ в теле той же функции, а не в соседней, и там же
+//     стоит вызов, НАПОЛНЯЮЩИЙ его свежим наблюдением.
 //
 // Каждая может измениться, поэтому гейт печатает объём КАЖДОЙ полосы и падает на
 // пустом обходе: ноль прочитанных файлов и ноль найденных окон означают слепоту
@@ -93,14 +94,25 @@ const (
 	// subjectChangeJournalTable — имя журнала, как оно стоит в запросе.
 	subjectChangeJournalTable = "subject_change_outbox"
 
-	// floorSelector / refreshEarliestSelector — чем спрашивают нижнюю границу.
-	floorSelector           = "Floor"
-	refreshEarliestSelector = "RefreshEarliest"
+	// floorSelector — чем БЕРУТ нижнюю границу.
+	floorSelector = "Floor"
 
 	// positionLostProducer / positionLostParser — две стороны шва.
 	positionLostProducer = "PositionLost"
 	positionLostParser   = "AsPositionLost"
+
+	// observedFloor — внутренний ключ переписи: наблюдение, наполняющее границу.
+	observedFloor = "<наблюдение>"
 )
+
+// floorObservers — ДВЕ законные формы наполнить нижнюю границу свежим числом.
+//
+// `Advance` спрашивает максимум и минимум одним запросом, поэтому там, где оно
+// идёт на каждый вызов, узкий вопрос был бы round-trip за уже известным числом.
+// `RefreshEarliest` спрашивает только минимум и заведён для полосы, где полного
+// наблюдения на каждой партии не происходит. Обе формы живут в дереве, и гейт,
+// знающий одну, объявил бы вторую отсутствующей.
+var floorObservers = []string{"Advance", "RefreshEarliest"}
 
 // SubjectChangeGapDetectionOptions — посадка анализатора.
 type SubjectChangeGapDetectionOptions struct {
@@ -219,12 +231,22 @@ func AuditSubjectChangeGapDetection(
 						return true
 					}
 					switch name {
-					case floorSelector, refreshEarliestSelector:
-						asks[name] = true
+					case floorSelector:
+						asks[floorSelector] = true
 					case positionLostProducer, positionLostParser:
 						calls = append(calls, name)
 						if _, seen := callAt[name]; !seen {
 							callAt[name] = node.Pos()
+						}
+					}
+					// Наблюдение, НАПОЛНЯЮЩЕЕ нижнюю границу. Форм две, и обе
+					// законны: полное наблюдение спрашивает максимум и минимум
+					// ОДНИМ запросом, узкий вопрос — только минимум. Знать одну
+					// значило бы объявить вторую отсутствующей — не нарушением,
+					// а невидимостью (`testing.md` §«Гейт на класс», п. 7).
+					for _, observer := range floorObservers {
+						if name == observer {
+							asks[observedFloor] = true
 						}
 					}
 				}
@@ -246,14 +268,15 @@ func AuditSubjectChangeGapDetection(
 			}
 			where := at(fn.Pos()) + " " + fn.Name.Name
 			census.Windows = append(census.Windows, where)
-			if asks[floorSelector] && asks[refreshEarliestSelector] {
+			if asks[floorSelector] && asks[observedFloor] {
 				census.WindowsAskFloor = append(census.WindowsAskFloor, where)
 				continue
 			}
 			findings = append(findings, SubjectChangeGapDetectionFinding{
 				What: where + " — журнал смены субъекта читается ОКНОМ по позиции, а нижняя " +
-					"удержанная граница не спрашивается (нужны оба вызова: " +
-					refreshEarliestSelector + " и " + floorSelector + "). Снятая строка в такое " +
+					"удержанная граница не спрашивается (нужен вызов " + floorSelector +
+					" и наблюдение, его наполняющее: " + strings.Join(floorObservers, " либо ") +
+					"). Снятая строка в такое " +
 					"окно не попадает вовсе: курсор переезжает через неё, и «строк не было» " +
 					"становится неотличимо от «строки убрали» — то есть отзыв доступа не " +
 					"применён, и об этом не узнает никто",

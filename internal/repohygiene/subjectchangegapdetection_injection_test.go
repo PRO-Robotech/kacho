@@ -35,6 +35,9 @@ import (
 type gapTree struct {
 	// noFloor — окно чтения без вопроса о нижней границе.
 	noFloor bool
+	// floorViaAdvance — ВТОРАЯ законная форма наполнить границу: полное
+	// наблюдение вместо узкого вопроса.
+	floorViaAdvance bool
 	// noProducer — отказ никем не производится.
 	noProducer bool
 	// noParser — отказ никем не разбирается.
@@ -81,6 +84,9 @@ func writeGapTree(t *testing.T, tree gapTree) string {
 
 	// ── Владелец журнала: окно чтения, пол и производство отказа ─────────────
 	ask := "\t\th.RefreshEarliest()\n\t\tfloor := h.Floor()\n\t\t_ = floor\n"
+	if tree.floorViaAdvance {
+		ask = "\t\th.Advance()\n\t\tfloor := h.Floor()\n\t\t_ = floor\n"
+	}
 	if tree.noFloor {
 		ask = ""
 	}
@@ -98,6 +104,7 @@ func writeGapTree(t *testing.T, tree gapTree) string {
 		"import \"example.test/pkg/subjectchange\"\n\n"+
 		"type watermark struct{}\n\n"+
 		"func (watermark) RefreshEarliest() {}\n"+
+		"func (watermark) Advance()         {}\n"+
 		"func (watermark) Floor() int64     { return 0 }\n\n"+
 		"func Read(h watermark, q interface{ Query(string) error }) error {\n"+
 		ask+
@@ -226,5 +233,33 @@ func TestGapDetectionInjection_NoWindowIsAnEmptyTraversalNotSilence(t *testing.T
 	}
 	if census.GoFiles == 0 {
 		t.Error("объём осмотренного не назван — «ноль находок» неотличимо от «ноль прочитанного»")
+	}
+}
+
+// TestGapDetectionInjection_FloorFilledByFullObservationIsSilent — ВТОРАЯ
+// законная форма (`testing.md` §«Гейт на класс», п. 7).
+//
+// Нижнюю границу наполняют ДВЕ формы, и обе живут в дереве: полное наблюдение
+// спрашивает максимум и минимум ОДНИМ запросом (так делает владелец журнала
+// смены субъекта, у которого наблюдение идёт на каждый вызов), узкий вопрос —
+// только минимум (так делает поток подписки, где полного наблюдения на каждой
+// партии не происходит).
+//
+// Распознаватель, знающий одну форму, объявил бы вторую ОТСУТСТВУЮЩЕЙ — не
+// нарушением, а невидимостью: всё, записанное во второй, ушло бы из наблюдения,
+// а гейт остался бы зелёным. Проба требует МОЛЧАНИЯ, потому что вторая форма
+// законна ровно так же, как первая.
+func TestGapDetectionInjection_FloorFilledByFullObservationIsSilent(t *testing.T) {
+	findings, census, err := auditGapTree(t, gapTree{floorViaAdvance: true})
+	if err != nil {
+		t.Fatalf("обход синтетики: %v", err)
+	}
+	if len(findings) != 0 {
+		t.Fatalf("вторая законная форма объявлена нарушением — гейт ловит имя вызова, "+
+			"а не наполнение границы: %v", findings)
+	}
+	if len(census.WindowsAskFloor) != 1 {
+		t.Errorf("окон, спрашивающих пол, %d — вторая форма не засчитана, то есть невидима",
+			len(census.WindowsAskFloor))
 	}
 }
