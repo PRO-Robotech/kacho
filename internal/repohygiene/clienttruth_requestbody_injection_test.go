@@ -459,3 +459,30 @@ func TestBodyGate_MultiSegmentRouteIsRecognised(t *testing.T) {
 		t.Errorf("тело сопоставлено не с сообщением реестра: %s", findings[0].Message)
 	}
 }
+
+// TestBodyGate_CountsBodiesThatAreNotJSON — вторая объявленная слепая зона.
+//
+// Тело с плейсхолдером вместо значения инструкцией не является и находкой не
+// считается. Но и молчать о нём нельзя: без отдельного числа «тел разобрано»
+// читалось бы как «тел столько и было», и сужение распознавателя прошло бы
+// незамеченным. Замер на день заведения — 10 таких тел в дереве.
+func TestBodyGate_CountsBodiesThatAreNotJSON(t *testing.T) {
+	s := newBodyStand(t)
+	s.write(t, "docs/placeholder.mdx",
+		"<CodeBlock language=\"bash\">\n  {dedent`\n"+
+			"    curl -X POST 'http://localhost:18080/iam/v1/accounts' \\\\\n"+
+			"      -d '{ name: <имя>, ... }'\n  `}\n</CodeBlock>\n")
+	findings, census := s.run(t)
+	if census.BodiesNotJSON != 1 {
+		t.Fatalf("тел, не разобравшихся как JSON, посчитано %d, ожидалось 1", census.BodiesNotJSON)
+	}
+	if len(findings) != 0 {
+		t.Fatalf("тело-плейсхолдер объявлено находкой: %v", findings)
+	}
+	// Положительный контроль: законная страница стенда по-прежнему разбирается и
+	// судится — иначе «не JSON» было бы неотличимо от сломанного разбора тел.
+	if census.BodiesParsed != 1 || census.KeysJudged != 2 {
+		t.Errorf("тел разобрано %d, ключей рассужено %d — ожидалось 1 и 2: разбор тел сломан",
+			census.BodiesParsed, census.KeysJudged)
+	}
+}

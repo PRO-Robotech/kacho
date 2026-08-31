@@ -238,6 +238,11 @@ type ClientTruthRequestBodyCensus struct {
 	GrpcUnknownService int
 	// KeysJudged — ключей рассужено.
 	KeysJudged int
+	// BodiesNotJSON — тел, которые не разобрались как JSON (плейсхолдер вместо
+	// значения, `<JWT>`, многоточие). Инструкцией такое тело не является и
+	// находкой не считается — но и молчать о нём нельзя: без числа «тел
+	// разобрано» читалось бы как «тел столько и было».
+	BodiesNotJSON int
 	// DiagramBodies — тел запроса, нарисованных УЗЛОМ ДИАГРАММЫ. Объявленная
 	// слепая зона: метка узла есть свободный текст, а не команда, и
 	// распознавателя под неё не заводилось. Число печатается, чтобы «находок
@@ -265,6 +270,8 @@ type ClientTruthRequestBodyDomainCensus struct {
 	BodiesNoAddress    int
 	GrpcUnknownService int
 	KeysJudged         int
+	// BodiesNotJSON — тел, не разобравшихся как JSON (не судятся).
+	BodiesNotJSON int
 	// DiagramBodies — тел запроса, нарисованных узлом диаграммы (не судятся).
 	DiagramBodies int
 	// RejectedFreeForm — отказов с пометкой вне конвенционной формы.
@@ -442,6 +449,7 @@ func AuditClientTruthRequestBody(
 		census.GrpcUnknownService += dc.GrpcUnknownService
 		census.KeysJudged += dc.KeysJudged
 		census.DiagramBodies += dc.DiagramBodies
+		census.BodiesNotJSON += dc.BodiesNotJSON
 	}
 
 	if log != nil {
@@ -449,19 +457,22 @@ func AuditClientTruthRequestBody(
 			"команд curl %d · тел разобрано %d · сопоставлено %d · путь без маршрута %d (НАХОДКА) · "+
 			"адреса в команде нет %d · служба gRPC вне регистра %d · ключей рассужено %d · "+
 			"невходных полей выведено %d · отказов с пометкой вне конвенционной формы %d "+
-			"(НЕ читаются — объявленная граница) · тел, нарисованных узлом диаграммы, %d "+
-			"(НЕ судятся — объявленная слепая зона)\n",
+			"(НЕ читаются — объявленная граница) · тел, нарисованных узлом диаграммы, %d · "+
+			"тел не разобралось как JSON %d (оба НЕ судятся — объявленные слепые зоны)\n",
 			len(census.Domains), census.Methods, census.DocFiles, census.CurlBlocks,
 			census.BodiesParsed, census.BodiesMatched, census.BodiesUnrouted,
 			census.BodiesNoAddress, census.GrpcUnknownService, census.KeysJudged,
-			census.RejectedFields, census.RejectedFreeForm, census.DiagramBodies)
+			census.RejectedFields, census.RejectedFreeForm, census.DiagramBodies,
+			census.BodiesNotJSON)
 		for _, d := range census.Domains {
 			_, _ = fmt.Fprintf(log, "  %-9s (%s): методов %d · страниц %d · команд %d · тел %d · "+
 				"сопоставлено %d · без маршрута %d · без адреса %d · gRPC вне регистра %d · "+
-				"ключей %d · тел узлом диаграммы %d · невходных полей %d (вне формы %d) · находок %d\n",
+				"ключей %d · тел узлом диаграммы %d · не JSON %d · невходных полей %d (вне формы %d) · "+
+				"находок %d\n",
 				d.Name, d.ProtoPackage, d.Methods, d.DocFiles, d.CurlBlocks, d.BodiesParsed,
 				d.BodiesMatched, d.BodiesUnrouted, d.BodiesNoAddress, d.GrpcUnknownService,
-				d.KeysJudged, d.DiagramBodies, d.RejectedFields, d.RejectedFreeForm, d.Findings)
+				d.KeysJudged, d.DiagramBodies, d.BodiesNotJSON, d.RejectedFields,
+				d.RejectedFreeForm, d.Findings)
 		}
 	}
 	sort.Slice(findings, func(i, j int) bool {
@@ -521,7 +532,10 @@ func auditOneDoc(
 		}
 		var body map[string]any
 		if err := json.Unmarshal([]byte(m[1]), &body); err != nil {
-			// Тело с плейсхолдером вместо JSON — не инструкция и не находка.
+			// Тело с плейсхолдером вместо JSON — не инструкция и не находка. Но
+			// СЧИТАЕТСЯ: без этого числа «тел разобрано» читалось бы как «тел
+			// столько и было», и сужение распознавателя прошло бы незамеченным.
+			census.BodiesNotJSON++
 			continue
 		}
 		census.BodiesParsed++
