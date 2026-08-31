@@ -1,0 +1,223 @@
+{{/*
+Copyright (c) PRO-Robotech
+SPDX-License-Identifier: BUSL-1.1
+
+УЗЕЛ-ПРИЁМНИК ПИСЕМ СТЕНДА — часть ПОСТАВКИ, а не обязанность читателя.
+
+ПОЧЕМУ ОН ЗДЕСЬ ВООБЩЕ ПОЯВИЛСЯ. Три профиля называли почтовым узлом
+`mailhog.kacho.svc:1025`, и не поднимал его НИ ОДИН манифест: ни умбрелла, ни
+подчарт, ни рецепт стенда. Со стороны кластера всё выглядело исправным — поды
+стартовали, посадка зелёная, самопроверка процесса довольна, — а письма уходили
+в никуда. «Поднимите почтовый узел сами» в инструкции есть ровно то самое
+«условие не создано», поднятое до обязанности читателя (решение Р7 приёмки
+ID-MAIL-1).
+
+ПОЧЕМУ ИМЕННО ЭТОТ УЗЕЛ, А НЕ ПРЕЖНИЙ. Предшественник (MailHog) не выпускается
+с 2020 года, и — это и есть решающий довод, а не возраст — его слушатель SMTP
+не умеет TLS ВОВСЕ: ни STARTTLS, ни неявного. Полоса до него выразима только
+незашифрованной, то есть решение Р5 («полоса шифрована, и на стенде тоже»)
+на нём неисполнимо by construction. Отсюда и стояло `disable_starttls=true` в
+адресе узла: это была не небрежность, а единственная выразимая на нём форма.
+Mailpit — преемник того же назначения, умеет и STARTTLS с нашим сертификатом,
+и чтение доставленного по HTTP (это второе нужно пробе: она обязана прочитать
+письмо и извлечь из него код).
+
+ОБРАЗ ПРИБИТ ДАЙДЖЕСТОМ, А НЕ ТЕГОМ. Тег подвижен: `helm upgrade` на неизменном
+дереве в разные дни развернул бы разные образы, и «на чём мы проверили» ответа
+бы не имело. Тег остаётся рядом — он читаемый, — но в имя образа идёт дайджест,
+и расхождение между ними отвергает гейт дерева, а не внимание.
+
+ЧТО ЭТОТ ФАЙЛ НЕ УТВЕРЖДАЕТ (граница названа, чтобы её не приняли шире):
+  · что письмо ДОШЛО — это вопрос поднятого стенда, и на него отвечает
+    сквозная проба, а не рендер;
+  · что боевая площадка получает этот узел: она его НЕ получает и не должна —
+    там полоса ведёт во внешний ретранслятор. Приёмник поднимается только там,
+    где профиль объявил `mailpit.enabled`, и ни один ШАРД сквозных проб его не
+    снимает (решение Р18; держит гейт deploy/mail_receiver_core_test.go).
+*/}}
+{{- if (.Values.mailpit).enabled }}
+{{- $mp := .Values.mailpit }}
+{{- $ns := .Release.Namespace }}
+{{- $name := printf "%s-mailpit" .Release.Name }}
+{{- $img := $mp.image | default dict }}
+
+{{/* ── ОТКАЗ РЕНДЕРА: образ обязан быть прибит дайджестом ──────────────────
+     Плавающий тег на приёмнике означает, что вердикт сквозной пробы относится
+     к образу, который выбрал день недели, а не дерево. */}}
+{{- if not $img.digest }}
+{{- fail (printf "kacho-umbrella: приёмник писем включён (mailpit.enabled), но образ не прибит — `mailpit.image.digest` пуст. Плавающий тег означает, что два прогона одного дерева идут на разных образах, и «на чём проверили» ответа не имеет") }}
+{{- end }}
+{{- if not (hasPrefix "sha256:" (toString $img.digest)) }}
+{{- fail (printf "kacho-umbrella: `mailpit.image.digest` = %q — это не дайджест. Ожидается форма `sha256:<64 hex>`" (toString $img.digest)) }}
+{{- end }}
+
+{{/* ── ОТКАЗ РЕНДЕРА: приёмник без внутреннего удостоверяющего невыразим ───
+     Решение Р5 не знает исключения для стенда (ban #16): полоса до приёмника
+     шифрована и сертификат проверяется по объявленному якорю. Якорь здесь —
+     `ca.crt` того же секрета, который выпускает cert-manager. Выключенный
+     mTLS означает, что выпускать сертификат нечем, и единственная выразимая
+     полоса — незашифрованная. Это и есть та посадка, которой на поднятом
+     стенде существовать не должно, поэтому отказ, а не тихий откат. */}}
+{{- if not (.Values.mtls).enabled }}
+{{- fail (printf "kacho-umbrella: приёмник писем включён (mailpit.enabled), но `mtls.enabled` выключен — внутреннего удостоверяющего нет, сертификат приёмнику выпустить нечем, и полоса до него выразима только незашифрованной. Решение Р5 приёмки ID-MAIL-1 исключения для стенда не знает (ban #16)") }}
+{{- end }}
+{{- $ca := (.Values.mtls).internalCA | default dict }}
+{{- $issuerName := $ca.clusterIssuerName | default "kacho-internal-ca" }}
+apiVersion: cert-manager.io/v1
+kind: Certificate
+metadata:
+  name: {{ $mp.tlsSecretName | quote }}
+  namespace: {{ $ns | quote }}
+  labels:
+    kacho.cloud/component: mail-receiver
+    app.kubernetes.io/name: mailpit
+    app.kubernetes.io/managed-by: helm
+spec:
+  secretName: {{ $mp.tlsSecretName | quote }}
+  duration: {{ (.Values.mtls).leafDuration | default "2160h" | quote }}
+  renewBefore: {{ (.Values.mtls).leafRenewBefore | default "720h" | quote }}
+  privateKey:
+    algorithm: ECDSA
+    size: 256
+    rotationPolicy: Always
+  issuerRef:
+    name: {{ $issuerName | quote }}
+    kind: "ClusterIssuer"
+    group: cert-manager.io
+  {{/* Имя, которым к узлу обращается отправитель, ОБЯЗАНО стоять здесь: проверка
+       сертификата сверяет его с адресом соединения, и короткое имя внутри одного
+       пространства имён — именно то, что стоит в адресе полосы. */}}
+  dnsNames:
+    - {{ $name | quote }}
+    - {{ printf "%s.%s" $name $ns | quote }}
+    - {{ printf "%s.%s.svc" $name $ns | quote }}
+    - {{ printf "%s.%s.svc.cluster.local" $name $ns | quote }}
+  usages:
+    - server auth
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: {{ $name | quote }}
+  namespace: {{ $ns | quote }}
+  labels:
+    kacho.cloud/component: mail-receiver
+    app.kubernetes.io/name: mailpit
+    app.kubernetes.io/managed-by: helm
+spec:
+  type: ClusterIP
+  selector:
+    app.kubernetes.io/name: mailpit
+    app.kubernetes.io/instance: {{ .Release.Name | quote }}
+  ports:
+    - name: smtp
+      port: {{ $mp.smtpPort | int }}
+      targetPort: smtp
+      protocol: TCP
+    - name: http
+      port: {{ $mp.httpPort | int }}
+      targetPort: http
+      protocol: TCP
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: {{ $name | quote }}
+  namespace: {{ $ns | quote }}
+  labels:
+    kacho.cloud/component: mail-receiver
+    app.kubernetes.io/name: mailpit
+    app.kubernetes.io/managed-by: helm
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app.kubernetes.io/name: mailpit
+      app.kubernetes.io/instance: {{ .Release.Name | quote }}
+  template:
+    metadata:
+      labels:
+        kacho.cloud/component: mail-receiver
+        app.kubernetes.io/name: mailpit
+        app.kubernetes.io/instance: {{ .Release.Name | quote }}
+    spec:
+      automountServiceAccountToken: false
+      securityContext:
+        runAsNonRoot: true
+        runAsUser: 10000
+        runAsGroup: 10000
+        fsGroup: 10000
+        seccompProfile:
+          type: RuntimeDefault
+      containers:
+        - name: mailpit
+          {{/* Дайджест, а не тег: тег стоит рядом ради читаемости, в рантайм
+               идёт дайджест. Согласие двух держит гейт дерева. */}}
+          image: {{ printf "%s@%s" $img.repository $img.digest | quote }}
+          imagePullPolicy: {{ $img.pullPolicy | default "IfNotPresent" | quote }}
+          securityContext:
+            allowPrivilegeEscalation: false
+            readOnlyRootFilesystem: true
+            capabilities:
+              drop: ["ALL"]
+          env:
+            {{/* ── ШИФРОВАНИЕ ПОЛОСЫ — ТРЕБОВАНИЕ ПРИЁМНИКА, А НЕ ПРОСЬБА
+                 ОТПРАВИТЕЛЯ. Отправитель, у которого шифрование снято, здесь
+                 не проходит: `REQUIRE_STARTTLS` отвергает соединение до
+                 команды `MAIL FROM`. Это вторая сторона решения Р5 — первая
+                 (страж, отвергающий адрес со снятым шифрованием) живёт в
+                 identity-mail-lane-guard.yaml. Одна сторона без другой
+                 означала бы, что посадку выбирает тот, кто её нарушает. */}}
+            - name: MP_SMTP_TLS_CERT
+              value: "/etc/mailpit-tls/tls.crt"
+            - name: MP_SMTP_TLS_KEY
+              value: "/etc/mailpit-tls/tls.key"
+            - name: MP_SMTP_REQUIRE_STARTTLS
+              value: "true"
+            - name: MP_SMTP_BIND_ADDR
+              value: {{ printf "0.0.0.0:%d" (int $mp.smtpPort) | quote }}
+            - name: MP_LISTEN
+              value: {{ printf "0.0.0.0:%d" (int $mp.httpPort) | quote }}
+            {{/* Хранилище — в памяти (умолчание образа), поэтому корневая
+                 файловая система остаётся только на чтение. Потолок держит
+                 аппетит по памяти ограниченным сверху ЧИСЛОМ, а не надеждой:
+                 приёмник стенда живёт столько же, сколько стенд. */}}
+            - name: MP_MAX_MESSAGES
+              value: {{ $mp.maxMessages | int | quote }}
+          ports:
+            - name: smtp
+              containerPort: {{ $mp.smtpPort | int }}
+              protocol: TCP
+            - name: http
+              containerPort: {{ $mp.httpPort | int }}
+              protocol: TCP
+          {{/* Готовность спрашивается ТЕМ ЖЕ способом, который объявляет сам
+               образ (`HEALTHCHECK CMD /mailpit readyz`): своя выдумка о пути
+               разошлась бы с образом молча при его подъёме. */}}
+          readinessProbe:
+            exec:
+              command: ["/mailpit", "readyz"]
+            initialDelaySeconds: 3
+            periodSeconds: 5
+            timeoutSeconds: 3
+          livenessProbe:
+            exec:
+              command: ["/mailpit", "readyz"]
+            initialDelaySeconds: 10
+            periodSeconds: 20
+            timeoutSeconds: 3
+          resources:
+            {{- toYaml $mp.resources | nindent 12 }}
+          volumeMounts:
+            - name: mailpit-tls
+              mountPath: /etc/mailpit-tls
+              readOnly: true
+            - name: tmp
+              mountPath: /tmp
+      volumes:
+        - name: mailpit-tls
+          secret:
+            secretName: {{ $mp.tlsSecretName | quote }}
+        - name: tmp
+          emptyDir: {}
+{{- end }}

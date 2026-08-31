@@ -220,10 +220,14 @@ global:
         scheme: http
         host: ""
         port: ""
+      # ─── ПОЧТОВАЯ ПОЛОСА: УМОЛЧАНИЯ НЕТ (Р3 приёмки ID-MAIL-1) ──────────
+      # Пусто ⇒ отказ, а не «разумное значение». Разбор — в умбрелле
+      # (values.yaml, тот же узел): здесь копия ради одиночного рендера
+      # подчарта, и второго изложения одного предмета тут не заводится.
       smtp:
-        connectionURI: "smtp://mailhog.kacho.svc:1025/?disable_starttls=true"
-        fromAddress: noreply@kacho.cloud
-        fromName: Kacho Cloud
+        connectionURI: ""
+        fromAddress: ""
+        fromName: ""
 
 # Phase 2 (KAC-127) — Kratos identity schema + config ConfigMaps. Управляются
 # флагами; в Phase 2 поднимаются вместе с kacho-iam (один namespace, один Helm
