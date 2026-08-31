@@ -172,3 +172,42 @@ func TestInjection_ProfileWithoutTheDefectStaysSilent(t *testing.T) {
 		t.Errorf("законная полоса дерева объявлена незащищённой: %q", w)
 	}
 }
+
+// TestInjection_LaneNamingTheWrongReceiverIsFound — доказательство суждения
+// «полоса названа на приёмник, которого ЭТОТ релиз не поднимает».
+//
+// ПОЧЕМУ ЭТА ОСЬ ОТДЕЛЬНАЯ, А НЕ ЧАСТЬ ПЕРВОЙ. Утверждение (1) спрашивает, есть
+// ли у названного узла производитель ВООБЩЕ, и сверяет СУФФИКС. Расхождение
+// префикса оно пропускает by construction: `kacho-umbrella-mailpit` и
+// `stand-a-mailpit` оба кончаются на `-mailpit`, и оба «производитель есть».
+// Между тем поднимается ровно один из них — тот, чьё имя дал релиз, — и полоса,
+// назвавшая второй, ведёт в никуда. Симптом ТОТ ЖЕ, ради которого заведён весь
+// файл: рендер проходит, под стартует, писем нет и сигнала нет.
+//
+// ВХОД БЕРЁТСЯ ИЗ ДЕРЕВА: `kacho-umbrella-mailpit` — дословно та величина, что
+// стоит в профиле стенда, а `kacho`/`stand-a` — имена, которые даёт та же
+// ручка `STACK_RELEASE` рецепта (она объявлена через `?=`, то есть перекрываема).
+func TestInjection_LaneNamingTheWrongReceiverIsFound(t *testing.T) {
+	const suffix = receiverSuffixUnderTest
+	cases := []struct {
+		name, uri, release string
+		want               bool // ждём находку
+	}{
+		// Законный близнец: имя полосы сложено из ТОГО ЖЕ релиза.
+		{"полоса и релиз сходятся", "smtp://kacho-umbrella-mailpit:1025/", "kacho-umbrella", false},
+		{"то же с полным именем службы", "smtp://kacho-umbrella-mailpit.kacho.svc:1025/", "kacho-umbrella", false},
+		// Инъекции: релиз назван иначе — поднимается не тот объект.
+		{"релиз короче объявленного", "smtp://kacho-umbrella-mailpit:1025/", "kacho", true},
+		{"релиз назван иначе вовсе", "smtp://kacho-umbrella-mailpit:1025/", "stand-a", true},
+		// Близнецы ЧУЖИХ осей: судить их этому предикату не положено.
+		{"внешний ретранслятор", "smtps://smtp.example.com:465/", "kacho", false},
+		{"узел не приёмник вовсе — предмет утверждения (1)", "smtp://mailhog.kacho.svc:1025/", "kacho", false},
+	}
+	for _, c := range cases {
+		got := laneMissesTheRaisedReceiver(c.uri, c.release, suffix) != ""
+		if got != c.want {
+			t.Errorf("%s: находка=%v, ожидалось %v (полоса %q, релиз %q)", c.name, got, c.want, c.uri, c.release)
+		}
+	}
+	t.Logf("перепись: осей подано %d · из них ждут находку %d", len(cases), 2)
+}

@@ -195,6 +195,44 @@ func unraisedInClusterHost(uri, receiverSuffix string) string {
 	return host
 }
 
+// laneMissesTheRaisedReceiver — полоса названа на приёмник, которого ЭТОТ релиз
+// НЕ поднимает. Возвращает находку либо пустую строку.
+//
+// ЧЕМ ЭТО ОТЛИЧАЕТСЯ ОТ unraisedInClusterHost, СТОЯЩЕЙ ВЫШЕ. Та спрашивает,
+// есть ли у названного узла производитель ВООБЩЕ, и сверяет СУФФИКС. Расхождение
+// ПРЕФИКСА она пропускает by construction: `kacho-umbrella-mailpit` и
+// `stand-a-mailpit` оба кончаются на `-mailpit`. Между тем имя рабочего объекта
+// складывается из ИМЕНИ РЕЛИЗА (`printf "%s-mailpit" .Release.Name`), а имя узла
+// в полосе — литерал профиля; это ДВА МЕСТА ОБ ОДНОМ ПРЕДМЕТЕ, и разойтись они
+// могут молча. Ручка `STACK_RELEASE` рецепта объявлена через `?=`, то есть
+// перекрываема, — значит расхождение достижимо штатным вызовом, а не только
+// правкой дерева.
+//
+// Цена расхождения — ровно тот дефект, ради которого заведён весь этот файл:
+// приёмник поднимается под одним именем, полоса ведёт к другому, рендер
+// проходит, под стартует, посадка зелёная, писем нет и сигнала нет ни одного.
+//
+// ЧЕГО ЭТО СУЖДЕНИЕ НЕ УТВЕРЖДАЕТ (граница названа, чтобы её не приняли шире):
+//   - внешний ретранслятор под него не подпадает — его поднимаем не мы;
+//   - внутрикластерный узел, НЕ несущий суффикса приёмника, — предмет
+//     утверждения (1), а не этого: здесь судится «назвали приёмник, но не тот»,
+//     а не «назвали узел, которого нет вовсе».
+func laneMissesTheRaisedReceiver(uri, release, receiverSuffix string) string {
+	host := mailHostOf(uri)
+	if !inClusterHost(host) {
+		return ""
+	}
+	short := strings.SplitN(host, ".", 2)[0]
+	if !strings.HasSuffix(short, receiverSuffix) {
+		return ""
+	}
+	want := release + receiverSuffix
+	if short == want {
+		return ""
+	}
+	return fmt.Sprintf("полоса названа на %q, а релиз %q поднимает %q", short, release, want)
+}
+
 // unprotectedLane — почему полоса не защищена; пустая строка ⇒ защищена.
 func unprotectedLane(uri string) string {
 	low := strings.ToLower(strings.TrimSpace(uri))
@@ -442,5 +480,86 @@ func TestNoProfileDeclaresAnUnencryptedMailLane(t *testing.T) {
 		if !strings.Contains(string(g), needle) {
 			t.Errorf("страж %s не упоминает %q — величина остаётся вне его предмета", mailLaneGuard, needle)
 		}
+	}
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// (5) ПОЛОСА НАЗВАНА НА ПРИЁМНИК, КОТОРЫЙ ЭТОТ РЕЛИЗ ПОДНИМАЕТ
+
+// stackReleaseRe / devUpReleaseRe — имена релиза ВЫВОДЯТСЯ из рецепта, а не
+// выписываются здесь: выписанное разошлось бы с рецептом молча, и гейт стал бы
+// сверять себя с собой. Мест два, потому что стенд поднимают двумя путями —
+// перекрываемой ручкой `STACK_RELEASE ?=` (цель stack-up) и литералом (dev-up).
+var (
+	stackReleaseRe = regexp.MustCompile(`(?m)^STACK_RELEASE\s*\?=\s*(\S+)`)
+	devUpReleaseRe = regexp.MustCompile(`helm upgrade (?:--install )?(\S+) \./helm/umbrella`)
+)
+
+// stackReleaseNames — имена релиза, которыми дерево поднимает умбреллу.
+func stackReleaseNames(t *testing.T) []string {
+	t.Helper()
+	raw, err := os.ReadFile("Makefile") // #nosec G304 -- координата из константы
+	if err != nil {
+		t.Fatalf("рецепт стенда не читается: %v — имя релиза взять неоткуда, "+
+			"и «расхождений нет» стало бы свойством рабочего каталога", err)
+	}
+	seen := map[string]bool{}
+	var out []string
+	add := func(n string) {
+		if n == "" || strings.HasPrefix(n, "$(") || seen[n] {
+			return
+		}
+		seen[n] = true
+		out = append(out, n)
+	}
+	if m := stackReleaseRe.FindSubmatch(raw); m != nil {
+		add(string(m[1]))
+	}
+	for _, m := range devUpReleaseRe.FindAllSubmatch(raw, -1) {
+		add(string(m[1]))
+	}
+	sort.Strings(out)
+	return out
+}
+
+func TestDeclaredLaneNamesTheReceiverThisReleaseRaises(t *testing.T) {
+	suffix := receiverServiceSuffix(t)
+	releases := stackReleaseNames(t)
+	profiles := umbrellaProfiles(t)
+
+	// Ноль имён — это «ничего не прочитано», а не «расхождений нет».
+	if len(releases) == 0 {
+		t.Fatal("в рецепте не найдено ни одного имени релиза умбреллы — сверять полосу не с чем; " +
+			"гейт, не прочитавший предмет, обязан падать, а не зеленеть")
+	}
+
+	filesRead, lanesDeclared := 0, 0
+	var stray []string
+	for _, p := range profiles {
+		doc := readProfile(t, p)
+		filesRead++
+		uri := declaredMailURI(doc)
+		if uri == "" {
+			continue
+		}
+		lanesDeclared++
+		for _, r := range releases {
+			if why := laneMissesTheRaisedReceiver(uri, r, suffix); why != "" {
+				stray = append(stray, fmt.Sprintf("%s: %s", filepath.Base(p), why))
+			}
+		}
+	}
+
+	t.Logf("перепись: профилей прочитано %d · полос объявлено %d · имён релиза прочитано %d (%v)",
+		filesRead, lanesDeclared, len(releases), releases)
+
+	if len(stray) > 0 {
+		sort.Strings(stray)
+		t.Errorf("полоса названа на приёмник, которого релиз НЕ поднимает: %v.\n"+
+			"Имя рабочего объекта складывается из имени релиза (`printf \"%%s%s\" .Release.Name` в %s),\n"+
+			"а узел в полосе — литерал профиля: два места об одном предмете, и расходятся они молча.\n"+
+			"Цена расхождения — тот же тихий отказ, ради которого заведён этот гейт: приёмник поднят под\n"+
+			"одним именем, полоса ведёт к другому, рендер проходит, посадка зелёная, писем нет.",
+			stray, suffix, mailReceiverTemplate)
 	}
 }
