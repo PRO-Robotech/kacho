@@ -112,6 +112,26 @@ service InternalIAMService {
   // UNAVAILABLE while the journal has no settled position yet (cold start): the
   // caller retries on its next tick. This is a state, not a failure — the
   // settled flag is monotone and never withdrawn once raised.
+  //
+  // OUT_OF_RANGE when `since_id` sits BELOW the journal floor — the rows between
+  // them have been removed and will never be delivered. The refusal carries
+  // `google.rpc.ErrorInfo` with reason `SUBJECT_CHANGE_POSITION_LOST`, domain
+  // `iam.kacho.cloud` and metadata `earliest_resumable_position` (decimal), and
+  // the caller keys on that token, never on the prose of the message.
+  //
+  // The two refusals advise OPPOSITE actions and must never be merged. UNAVAILABLE
+  // says "ask again from the same position"; OUT_OF_RANGE says "that retry will
+  // never succeed — flush your decision cache, close your open streams and resume
+  // from the named position". A caller that read the second as the first would
+  // retry from a lost position forever, and its cache would keep answering from
+  // rights that are already gone — silently.
+  //
+  // Why an explicit refusal exists at all: the read window is
+  // `id > since_id AND id <= settled`, and a removed row simply does not appear
+  // in it. The cursor rolls past it on the last row read, so "no rows" becomes
+  // indistinguishable from "rows were swept" — an unapplied revocation nobody
+  // observes. Until this refusal existed, sweeping the journal was impossible
+  // by construction, not by preference.
   rpc PollSubjectChanges (PollSubjectChangesRequest) returns (PollSubjectChangesResponse) {
     option (kacho.iam.authz.v1.permission) = "<exempt>";
     option (kacho.iam.authz.v1.exempt_reason)  = "INTERNAL_LISTENER";
@@ -468,6 +488,12 @@ message ForceLogoutResult {
 // PollSubjectChangesRequest — cursor-based drain of subject_change_outbox.
 message PollSubjectChangesRequest {
   // since_id — return rows with id > since_id. 0 on first call.
+  //
+  // Zero means "I hold no position", and it is never refused with
+  // OUT_OF_RANGE: a caller cannot lose a position it does not have, and the
+  // caller sending zero discards the page and adopts `head_id`. Refusing it
+  // would send a fresh replica to replay the retained tail instead of jumping
+  // to the head — a worse outcome for no safety gain.
   int64 since_id = 1;
   // limit — max rows; server clamps to [1, 1000], default 256.
   int32 limit = 2;

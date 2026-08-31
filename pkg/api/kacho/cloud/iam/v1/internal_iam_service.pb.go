@@ -963,6 +963,12 @@ func (x *ForceLogoutResult) GetRevokedCount() int32 {
 type PollSubjectChangesRequest struct {
 	state protoimpl.MessageState `protogen:"open.v1"`
 	// since_id — return rows with id > since_id. 0 on first call.
+	//
+	// Zero means "I hold no position", and it is never refused with
+	// OUT_OF_RANGE: a caller cannot lose a position it does not have, and the
+	// caller sending zero discards the page and adopts `head_id`. Refusing it
+	// would send a fresh replica to replay the retained tail instead of jumping
+	// to the head — a worse outcome for no safety gain.
 	SinceId int64 `protobuf:"varint,1,opt,name=since_id,json=sinceId,proto3" json:"since_id,omitempty"`
 	// limit — max rows; server clamps to [1, 1000], default 256.
 	Limit         int32 `protobuf:"varint,2,opt,name=limit,proto3" json:"limit,omitempty"`
