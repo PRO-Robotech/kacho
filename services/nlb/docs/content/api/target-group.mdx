@@ -103,6 +103,7 @@ Health-check живёт **на группе** (не на привязке): ед
         { "ipRef": { "subnetId": "sub-1", "address": "10.0.0.11" }, "weight": 100 }
       ],
       "deregistrationDelay": "300s",
+      "slowStart": "0s",
       "status": "ACTIVE",
       "createdAt": "2026-06-24T10:00:00Z"
     }
@@ -163,7 +164,7 @@ Health-check живёт **на группе** (не на привязке): ед
 <ApiOperation method="PATCH" endpoint="/nlb/v1/targetGroups/{id}" async>
 
 Меняет `name`, `description`, `labels`, `healthCheck`, `deregistrationDelay`,
-`slowStart`. Замена состава `targets` на этом RPC **запрещена** — используйте
+`slowStart`, `port`. Замена состава `targets` на этом RPC **запрещена** — используйте
 `AddTargets` / `RemoveTargets`, чтобы каждое изменение прошло через свою операцию и
 idempotency-ключи.
 

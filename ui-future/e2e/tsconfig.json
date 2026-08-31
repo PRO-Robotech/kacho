@@ -72,6 +72,7 @@
     "specs-awaiting-journal-owner/**/*.ts",
     "scripts/**/*.ts",
     "playwright.config.ts",
-    "remote-browser-policy.ts"
+    "remote-browser-policy.ts",
+    "host-mapping.ts"
   ]
 }

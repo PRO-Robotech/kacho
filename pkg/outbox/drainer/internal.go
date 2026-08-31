@@ -676,6 +676,15 @@ func (d *Drainer[T]) markRow(parentCtx context.Context, tx pgx.Tx, r claimedRow,
 			d.logger.Error("mark_success_failed",
 				slog.Int64("id", r.id), slog.String("err", err.Error()))
 		}
+		// Доставка наблюдается ЗДЕСЬ, а не сканом живых строк: скан считает то,
+		// что ЛЕЖИТ, а величина объявлена «за всё время» (#1714). Наблюдатель
+		// зовётся и тогда, когда пометка не удалась: строка применена у
+		// адресата, и это факт о доставке, а не о нашей записи о ней, —
+		// непомеченная строка приедет повторно и будет отброшена как
+		// уже-применённая, но событие доставки уже состоялось.
+		if d.onDeliver != nil {
+			d.onDeliver(r.eventType)
+		}
 		return false
 	case DispositionPoison:
 		event := "apply_permanent_poison"

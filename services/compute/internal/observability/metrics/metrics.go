@@ -61,7 +61,7 @@ type Metrics struct {
 	// "there were none" from "none get through".
 	outboxDirBacklog   *prometheus.GaugeVec
 	outboxDirOldest    *prometheus.GaugeVec
-	outboxDirDelivered *prometheus.GaugeVec
+	outboxDirDelivered *prometheus.CounterVec
 
 	// readiness mirror
 	dependencyUp *prometheus.GaugeVec
@@ -123,11 +123,14 @@ func New(version, commit string) *Metrics {
 			Help: "Age of the oldest pending register-outbox row by table and queue direction; " +
 				"for direction=withdrawal this is how long ago revocation stopped arriving.",
 		}, []string{"table", "direction"}),
-		outboxDirDelivered: prometheus.NewGaugeVec(prometheus.GaugeOpts{
+		outboxDirDelivered: prometheus.NewCounterVec(prometheus.CounterOpts{
 			Name: "kacho_compute_outbox_delivered_by_direction",
-			Help: "Register-outbox rows delivered so far by table and queue direction. " +
-				"Zero for a direction means not one row of it has EVER been delivered — the " +
-				"state no other series here can distinguish from a quiet queue.",
+			Help: "Register-outbox rows delivered by table and queue direction, counted at " +
+				"the moment of delivery. Zero for a direction means not one row of it has " +
+				"been delivered SINCE THIS PROCESS STARTED — the state no other series here " +
+				"can distinguish from a quiet queue. A counter, not a gauge: the value is " +
+				"independent of how many rows are still stored, so sweeping delivered rows " +
+				"never lowers it. Alert on increase() over a window, not on the raw value.",
 		}, []string{"table", "direction"}),
 		dependencyUp: prometheus.NewGaugeVec(prometheus.GaugeOpts{
 			Name: "kacho_compute_dependency_up",
@@ -261,9 +264,20 @@ func (m *Metrics) SetOldestPendingAgeByDirection(table, direction string, age fl
 	m.outboxDirOldest.WithLabelValues(table, direction).Set(age)
 }
 
-// SetDeliveredTotal — rows of one direction delivered so far.
-func (m *Metrics) SetDeliveredTotal(table, direction string, count float64) {
-	m.outboxDirDelivered.WithLabelValues(table, direction).Set(count)
+// IncDeliveredByDirection — ОДНА доставленная строка направления.
+//
+// СЧЁТЧИК, инкрементируемый наблюдателем дренажа, а не измеритель, ставящийся
+// сканом: величина объявлена «за всё время», и счёт по живым строкам
+// совпадал с этим ровно до появления уборки доставленных строк.
+func (m *Metrics) IncDeliveredByDirection(table, direction string) {
+	m.outboxDirDelivered.WithLabelValues(table, direction).Inc()
+}
+
+// InitDeliveredByDirection заводит серию направления с нулём, не увеличивая её:
+// дочерняя серия счётчика иначе появилась бы только после ПЕРВОЙ доставки, и
+// «ни одного отзыва не доставлено» выражалось бы отсутствием ряда вместо нуля.
+func (m *Metrics) InitDeliveredByDirection(table, direction string) {
+	m.outboxDirDelivered.WithLabelValues(table, direction)
 }
 
 // RegisterListNarrow провязывает читателя величин СУЖАТЕЛЯ СПИСКОВ.

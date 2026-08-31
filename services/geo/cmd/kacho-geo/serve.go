@@ -38,6 +38,10 @@ import (
 	"github.com/PRO-Robotech/kacho/services/geo/internal/handler"
 	"github.com/PRO-Robotech/kacho/services/geo/internal/observability/metrics"
 	"github.com/PRO-Robotech/kacho/services/geo/internal/repo/kacho/pg"
+
+	"github.com/PRO-Robotech/kacho/pkg/schemaguard"
+
+	"github.com/PRO-Robotech/kacho/services/geo/internal/migrations"
 )
 
 // runServe — composition root.
@@ -153,7 +157,11 @@ func runServe(cfg config.Config) error {
 	// только `/metrics`, чарт пробировал открытый сокет, и под рапортовал Ready,
 	// не умея ответить ни на один запрос, — kubelet слал трафик в отказ ещё до
 	// того, как база отозвалась.
-	healthAgg := health.New(buildReadinessCheckers(pool))
+	// Версия схемы читается из ВСТРОЕННОГО набора миграций — того же, что
+	// применяет мигратор. Least-privilege serve-бинаря это не нарушает: набор
+	// читается как встроенные байты, а у базы спрашивается ОДИН `SELECT`
+	// применённой версии; схему serve-бинарь по-прежнему не меняет.
+	healthAgg := health.New(buildReadinessCheckers(pool, schemaguard.CheckFromFS(migrations.FS, schemaguard.PgxVersionReader(pool))))
 	// Гашение переводит готовность в 503 ДО остановки слушателей: kubelet
 	// перестаёт слать трафик, пока текущие вызовы дорабатывают. Живость при этом
 	// не трогается — иначе завершение читалось бы как смерть процесса.

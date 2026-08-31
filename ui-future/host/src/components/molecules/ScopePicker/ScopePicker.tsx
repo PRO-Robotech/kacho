@@ -1,5 +1,5 @@
 import { useMemo, useState } from "react";
-import type { FC, ReactNode } from "react";
+import type { FC } from "react";
 import { Dropdown, Empty, Input } from "antd";
 import { Check, ChevronRight, Search } from "lucide-react";
 
@@ -112,6 +112,18 @@ export const ScopePicker: FC<Props> = ({
     </div>
   );
 
+  // ПОДПИСЬ КНОПКИ СОБИРАЕТСЯ ЗДЕСЬ, И БОЛЬШЕ НИГДЕ.
+  //
+  // Рядом стояло второе её выражение — экспортированная функция с объяснением
+  // «вынесено ради потребителя: подпись собирают и пробы». Потребителей у неё за
+  // всю жизнь было НОЛЬ: во всём отслеживаемом дереве имя встречалось только в
+  // собственном объявлении, а одноимённые функции двух других пакетов — про
+  // область предела, другой предмет (#1441 п.1). То есть комментарий назначал
+  // потребителя, которого не существовало, а выражений подписи стало два.
+  //
+  // Пробе экспорт и не нужен: сквозная проба утверждает НАБЛЮДАЕМОЕ — что
+  // человек читает на кнопке, — а не то, чем консоль эту строку собрала
+  // (`ui.md` правило 12). Понадобится второму месту — оно назовётся здесь.
   const label = account
     ? accountOnly || !project
       ? account.name
@@ -208,9 +220,3 @@ const Column: FC<{
     </div>
   </div>
 );
-
-/** Вынесено ради потребителя: подпись кнопки собирают и пробы. */
-export function scopeLabel(account: ScopeRef | null, project: ScopeRef | null, accountOnly: boolean): ReactNode {
-  if (!account) return "Выберите область";
-  return accountOnly || !project ? account.name : `${account.name} / ${project.name}`;
-}

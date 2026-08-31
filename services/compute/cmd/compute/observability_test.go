@@ -27,13 +27,19 @@ func (okPinger) Ping(context.Context) error { return nil }
 
 func quietLogger() *slog.Logger { return slog.New(slog.NewTextHandler(io.Discard, nil)) }
 
+// schemaAlwaysReady — версия схемы в этих пробах НЕ предмет: они судят
+// поведение соседних чекеров. Подставляется ПРОХОДЯЩАЯ проверка, а не nil, —
+// иначе «готов» здесь означало бы «схему не спрашивали», и предмет проб
+// смешался бы с чужим.
+func schemaAlwaysReady(context.Context) error { return nil }
+
 func TestBuildReadinessCheckers_DrainerFlipsWithBootGate(t *testing.T) {
 	// lro-worker checker reads the package-level operations.Ready(); start the
 	// default dispatcher so the only variable under test is the drainer/bootGate.
 	operations.Start()
 
 	gate := bootgate.New(bootgate.Config{RequireIAM: true, Service: "kacho-compute"})
-	checkers := buildReadinessCheckers(okPinger{}, gate, nil)
+	checkers := buildReadinessCheckers(okPinger{}, gate, nil, schemaAlwaysReady)
 	agg := health.New(checkers)
 
 	// register-drainer not connected → not ready.
@@ -50,7 +56,7 @@ func TestBuildReadinessCheckers_DrainerFlipsWithBootGate(t *testing.T) {
 func TestBuildReadinessCheckers_IAMAuthzCheckerPresence(t *testing.T) {
 	gate := bootgate.New(bootgate.Config{})
 
-	none := buildReadinessCheckers(okPinger{}, gate, nil)
+	none := buildReadinessCheckers(okPinger{}, gate, nil, schemaAlwaysReady)
 	if hasChecker(none, "iam-authz") {
 		t.Fatal("iam-authz checker must be absent when authzConn is nil")
 	}
@@ -60,7 +66,7 @@ func TestBuildReadinessCheckers_IAMAuthzCheckerPresence(t *testing.T) {
 		t.Fatalf("grpc.NewClient: %v", err)
 	}
 	defer conn.Close()
-	with := buildReadinessCheckers(okPinger{}, gate, conn)
+	with := buildReadinessCheckers(okPinger{}, gate, conn, schemaAlwaysReady)
 	if !hasChecker(with, "iam-authz") {
 		t.Fatal("iam-authz checker must be present when authzConn is set")
 	}

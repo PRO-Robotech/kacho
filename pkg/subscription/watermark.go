@@ -102,7 +102,9 @@ type Watermark struct {
 
 	log   *slog.Logger
 	query string
-	table string
+	// earliestQuery — вопрос ТОЛЬКО о самой ранней удержанной строке.
+	earliestQuery string
+	table         string
 
 	// settled — граница устоявшегося: каждый номер ≤ settled либо уже видим,
 	// либо не появится никогда (писатель откатился).
@@ -158,6 +160,12 @@ func newWatermark(table, positionColumn string, log *slog.Logger, now func() tim
 		log:   log,
 		now:   now,
 		table: table,
+		// Вопрос ОДНОЙ величины, отдельно от полного наблюдения: чтение
+		// спрашивает его перед КАЖДОЙ партией у владельца, который журнал чистит
+		// (см. [Server.drain]), а полное наблюдение несёт ещё и просмотр
+		// блокировок — платить за него на каждой партии незачем.
+		earliestQuery: fmt.Sprintf(
+			`SELECT COALESCE((SELECT min(%[1]s) FROM %[2]s), 0)`, positionColumn, table),
 		query: fmt.Sprintf(`
 			SELECT COALESCE((SELECT max(%[1]s) FROM %[2]s), 0),
 			       COALESCE((SELECT min(%[1]s) FROM %[2]s), 0),
@@ -308,6 +316,33 @@ func (h *Watermark) floor(r Retention) int64 {
 		return h.earliest - 1
 	}
 	return h.settled
+}
+
+// RefreshEarliest перечитывает ТОЛЬКО нижнюю удержанную строку.
+//
+// # Зачем отдельный вопрос, а не [Watermark.Advance]
+//
+// Владелец, который журнал ЧИСТИТ, двигает нижнюю границу под работающим
+// потоком. Читающий поток обязан узнать об этом ДО того, как отдаст следующую
+// партию: иначе снятые строки просто не придут в выборку, курсор переедет через
+// них, и подписчик получит НЕПОЛНОЕ, ничем не отличимое от «изменений не было».
+//
+// Полное наблюдение отвечать на этот вопрос негодно по цене: оно несёт ещё и
+// просмотр блокировок журнала, а спрашивать границу приходится перед КАЖДОЙ
+// партией. Здесь — один просмотр индекса по первичному ключу.
+//
+// Верхнюю границу метод НЕ трогает: устоявшееся двигает только полное
+// наблюдение, и подмешивать сюда его половину значило бы завести второй путь к
+// одной величине.
+func (h *Watermark) RefreshEarliest(ctx context.Context, q Querier) error {
+	var minSeq int64
+	if err := q.QueryRow(ctx, h.earliestQuery).Scan(&minSeq); err != nil {
+		return err
+	}
+	h.mu.Lock()
+	defer h.mu.Unlock()
+	h.earliest = minSeq
+	return nil
 }
 
 // anyStillWriting — пересекается ли зафиксированное множество писателей с

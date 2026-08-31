@@ -83,6 +83,19 @@ type Storage struct {
 
 	// Retention — что владелец обещает про удержание журнала.
 	Retention Retention
+
+	// AgeColumn — колонка отметки времени, по которой судится возраст строки.
+	//
+	// ПАРА к [Storage.Retention], а не независимое поле: заполняется тогда и
+	// только тогда, когда объявлено [RetainsFromEarliestRow]. «Журнал чистится»
+	// и «по чему судить возраст» — ОДНО решение, и половина его не выражается:
+	// без колонки предикат уборки не построить вовсе, а колонка без чистки —
+	// объявление, которого не читает никто (класс «принято-и-проигнорировано»,
+	// `api-conventions.md`).
+	//
+	// Обе стороны отвергает [Journal.Validate]; уборщик, который эту колонку
+	// читает, — `retention.go`.
+	AgeColumn string
 }
 
 // ProjectDimension — откуда берётся проектный якорь события. Состояния ТРИ, и
@@ -444,7 +457,18 @@ func (s Storage) validate() error {
 	switch s.Retention {
 	case RetentionUnset:
 		return fmt.Errorf("subscription: Storage.Retention не объявлен — «удерживаю всё» есть свойство владельца, а не умолчание формы: назовите RetainsEverything либо RetainsFromEarliestRow")
-	case RetainsEverything, RetainsFromEarliestRow:
+	case RetainsEverything:
+		if s.AgeColumn != "" {
+			return fmt.Errorf("subscription: Storage.AgeColumn назван (%q) при Retention = RetainsEverything — "+
+				"уборки нет, значит колонку не читает никто, а следующий примет объявление за действующий механизм",
+				s.AgeColumn)
+		}
+	case RetainsFromEarliestRow:
+		if !sqlIdent.MatchString(s.AgeColumn) {
+			return fmt.Errorf("subscription: Storage.Retention = RetainsFromEarliestRow, но Storage.AgeColumn %q "+
+				"негодно как имя колонки — предикат уборки не из чего построить, "+
+				"а подписчику уже обещана нижняя возобновимая позиция", s.AgeColumn)
+		}
 	default:
 		return fmt.Errorf("subscription: Storage.Retention = %d — такого состояния нет", s.Retention)
 	}

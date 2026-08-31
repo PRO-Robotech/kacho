@@ -366,6 +366,16 @@ type Drainer[T any] struct {
 	// without coupling the drainer to the metrics package.
 	onPoison func()
 
+	// onDeliver, if set, is invoked once each time a row is DELIVERED, with that
+	// row's event type. Drives the per-direction delivered counter without
+	// coupling the drainer to the metrics package — the same shape as onPoison.
+	//
+	// Тип события, а не направление: направление есть словарь НАБЛЮДАТЕЛЯ
+	// (`metrics.RegisterOutboxDirections`), и дренаж его не знает и знать не
+	// должен. Отдав ему направление, мы завели бы второе написание того же
+	// словаря, а два написания расходятся молча.
+	onDeliver func(eventType string)
+
 	// onClaim, if set, is invoked once each time a claim query is issued against
 	// the outbox table (every SELECT…FOR UPDATE SKIP LOCKED claim, including the
 	// terminal empty claim that ends a drain loop). Enables deterministic,
@@ -397,6 +407,30 @@ func WithPoisonObserver[T any](fn func()) Option[T] {
 	return func(d *Drainer[T]) {
 		if fn != nil {
 			d.onPoison = fn
+		}
+	}
+}
+
+// WithDeliveryObserver registers a callback invoked once per DELIVERED row, with
+// that row's event type. Wire it to a metrics recorder to make
+// «доставлено по направлению» a MONOTONIC counter. nil is ignored.
+//
+// # Почему счётчик здесь, а не скан живых строк
+//
+// Величина объявлена «за всё время» и служит ЕДИНСТВЕННЫМ способом отличить
+// «отзывов не было» от «отзывы не проходят». Считать её `count(*)` по живым
+// строкам можно ровно до тех пор, пока строки не убираются: уборка доставленных
+// (#1361) обнулила бы её на исправной очереди, где отзыв редок, — то есть
+// уничтожила бы именно тот сигнал, ради которого разбивка по направлениям
+// заведена. Наблюдатель считает СОБЫТИЕ доставки, и уборка на него не влияет
+// by construction (#1714).
+//
+// Зовётся ПОСЛЕ того, как исход строки признан доставкой, и до возврата из
+// пометки; последовательно в пределах партии — как и onPoison.
+func WithDeliveryObserver[T any](fn func(eventType string)) Option[T] {
+	return func(d *Drainer[T]) {
+		if fn != nil {
+			d.onDeliver = fn
 		}
 	}
 }
