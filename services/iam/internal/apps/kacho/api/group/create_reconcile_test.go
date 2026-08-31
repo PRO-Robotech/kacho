@@ -25,6 +25,7 @@ package group
 
 import (
 	"context"
+	"fmt"
 	"testing"
 
 	"github.com/stretchr/testify/assert"
@@ -170,4 +171,19 @@ func TestGroupCreate_SyncReconcilesObject(t *testing.T) {
 	assert.Empty(t, rec.forwardCalls,
 		"create hot-path must NOT take the GUARDED forward entry — its member-read is answerable in advance")
 	assert.Empty(t, rec.calls, "create hot-path must NOT take the FULL EXCLUSIVE ReconcileObject (forward only)")
+}
+
+// EmitInviteMail — порт со-коммита намерения отправить письмо приглашения.
+// Дублёр не глотает того, что настоящий отвергает: пустой адресат и пустой ключ
+// партиции отвергаются здесь так же, как ограничением миграции, — иначе фикстура
+// была бы снисходительнее продукта и скрыла бы ровно тот дефект, ради которого её
+// подставляют.
+func (w *fakeGroupCreateWriter) EmitInviteMail(_ context.Context, userID, _, to, _ string) error {
+	if to == "" {
+		return fmt.Errorf("invite mail: recipient required")
+	}
+	if userID == "" {
+		return fmt.Errorf("invite mail: user id required")
+	}
+	return nil
 }
