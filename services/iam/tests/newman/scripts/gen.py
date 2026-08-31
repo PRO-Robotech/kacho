@@ -71,6 +71,7 @@ from gen_shared import (  # noqa: E402  — импорт после провяз
     generate,
     Run,
     retry_until_authorized,
+    retry_until_present,
     _RYA_SEQ,
     _accepted_http_codes,
     assert_created_at_seconds,
@@ -823,6 +824,17 @@ def require_env_url(var: str, path: str, why: str = "") -> List[str]:
 # и падает, называя следствие вместо предмета.
 _rya = functools.partial(retry_until_authorized,
                         budget=15, interval_ms=400, lane_head=True)
+
+# То же окно у СПИСОЧНОГО ожидания — и то же правило: величину называет НАБОР,
+# а не общий слой (#1379). Форма общая: до сведения ЭТОТ набор нёс ЧЕТВЁРТУЮ
+# копию ожидания — кейс-локальную, вписанную прямо в тест-скрипт, — потому что в
+# общем слое обёртки не было вовсе. Она отличалась от трёх остальных ещё и по
+# существу: читала ОДНО поле ответа по имени вместо первого массива, не
+# отсекала не-200 и не снимала свои счётчики. Здесь остаётся только величина.
+_rup = functools.partial(retry_until_present,
+                        budget=25, interval_ms=500)
+
+
 def _op_id_guard(op_var: str, required: bool) -> List[str]:
     """Pre-request guard: do not send the poll when `op_var` is empty.
 
@@ -1763,6 +1775,7 @@ _INJECTED = {
     "require_env_url": require_env_url,
     "poll_operation_until_done": poll_operation_until_done,
     "retry_until_authorized": _rya,
+    "retry_until_present": _rup,
     "get_until_gone": get_until_gone,
     "poll_request_until_status": poll_request_until_status,
     "reliable_delete": reliable_delete,

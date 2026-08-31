@@ -554,9 +554,44 @@ hashers:
 #
 # Величина без выражения проходит через раскрытие неизменной, поэтому внешний
 # ретранслятор по-прежнему объявляется дословной строкой.
+# УДОСТОВЕРЕНИЕ СЮДА НЕ ПОПАДАЕТ (решение Р6). Эта карта настроек читается шире
+# секрета: её отдаёт `kubectl get configmap`, она попадает в рендер чарта, в
+# вывод отладки и в артефакты прогона. Поэтому величины здесь нет — стоит
+# ССЫЛКА `${KACHO_IDENTITY_SMTP_CREDENTIAL}`, а подставляет её шаг
+# `kacho.identity.configRenderInitContainer` до старта процесса, тем же приёмом,
+# каким подставляется учётная величина обратных вызовов. Второго механизма не
+# заводится.
+#
+# ИМЯ ПЕРЕМЕННОЙ ПРИНАДЛЕЖИТ ШАБЛОНУ, А НЕ ПРОФИЛЮ, и это не стиль: профиль,
+# выписавший его руками, разошёлся бы с шагом подстановки МОЛЧА — ссылка уехала
+# бы в адрес соединения дословно. Профиль объявляет ИМЯ ПОЛЬЗОВАТЕЛЯ в адресе и
+# ИСТОЧНИК величины (`credentialSecret.name`/`.key`); ссылку вставляет вот этот
+# splice. Половину пары отвергает страж рендера
+# (umbrella/templates/identity-mail-lane-guard.yaml, место С1), поэтому сюда
+# доезжает либо пара целиком, либо адрес без пользователя.
+{{- $mailSmtp := .Values.global.kacho.identity.smtp }}
+{{/* АДРЕС РАСКРЫВАЕТСЯ ДО РАЗБОРА. Узел профиль называет выражением по имени
+     релиза, и раскрыть его надо ПЕРЕД тем, как отсюда вырежут схему и часть до
+     «@»: разбор нераскрытой строки дал бы ссылку в чужой части адреса. */}}
+{{- $mailURI := tpl (toString ($mailSmtp.connectionURI | default "")) . }}
+{{- $mailCred := ($mailSmtp.credentialSecret) | default dict }}
+{{- $mailCredName := trim (toString ($mailCred.name | default "")) }}
+{{- $mailCredKey := trim (toString ($mailCred.key | default "")) }}
+{{- $mailCredDeclared := and (ne $mailCredName "") (ne $mailCredKey "") }}
+{{/* ВЕЗДЕ `:=`, НИГДЕ ПЕРЕПРИСВОЕНИЕ, и это не вкус: разбор нашей стороны */}}
+{{/* (deploy/identity_replaced_lists_are_decided_test.go) знает объявление и не */}}
+{{/* знает переприсвоения — форма, которой распознаватель не знает, уводит тело */}}
+{{/* ИЗ-ПОД НАБЛЮДЕНИЯ, не давая ни красного, ни зелёного. */}}
+{{/* Схема снимается ЯВНО, чтобы ссылка встала в часть до «@», а не в путь. */}}
+{{- $mailScheme := ternary "smtps://" (ternary "smtp://" "" (hasPrefix "smtp://" $mailURI)) (hasPrefix "smtps://" $mailURI) }}
+{{/* `index`, а не `get`: splitn отдаёт map[string]string, а `get` объявлен на */}}
+{{/* map[string]interface{} и роняет рендер несовпадением типа. */}}
+{{- $mailParts := splitn "@" 2 (trimPrefix $mailScheme $mailURI) }}
+{{- $mailSpliced := printf "%s%s:${KACHO_IDENTITY_SMTP_CREDENTIAL}@%s" $mailScheme (index $mailParts "_0") (index $mailParts "_1") }}
+{{- $mailOut := ternary $mailSpliced $mailURI $mailCredDeclared }}
 courier:
   smtp:
-    connection_uri: {{ tpl (toString .Values.global.kacho.identity.smtp.connectionURI) . | quote }}
+    connection_uri: {{ $mailOut | quote }}
     from_address: {{ .Values.global.kacho.identity.smtp.fromAddress | quote }}
     from_name: {{ .Values.global.kacho.identity.smtp.fromName | quote }}
 
@@ -715,6 +750,16 @@ kacho.identity.configRenderInitContainer — подстановка величи
 совпадает by construction.
 */}}
 {{- define "kacho.identity.configRenderInitContainer" -}}
+{{/* Источник удостоверения считается ЗДЕСЬ ЗАНОВО: переменные шаблона через */}}
+{{/* границу объявления не проходят. Предикат «объявлено» тот же, что у стража */}}
+{{/* рендера и у тела настроек: обе половины непусты — три места об одном */}}
+{{/* предмете разошлись бы молча ровно там, где расхождение опасно. */}}
+{{/* Комментарии ОДНОСТРОЧНЫЕ: гейт разбора этого объявления снимает действия */}}
+{{/* шаблона построчно, и многострочный комментарий уехал бы в YAML телом. */}}
+{{- $mailCred := ((((.Values.global).kacho).identity).smtp | default dict).credentialSecret | default dict }}
+{{- $mailCredName := trim (toString ($mailCred.name | default "")) }}
+{{- $mailCredKey := trim (toString ($mailCred.key | default "")) }}
+{{- $mailCredDeclared := and (ne $mailCredName "") (ne $mailCredKey "") }}
 - name: identity-config-render
   image: {{ include "kratos.image" . }}
   imagePullPolicy: {{ .Values.image.pullPolicy | default "IfNotPresent" }}
@@ -865,6 +910,19 @@ kacho.identity.configRenderInitContainer — подстановка величи
         MAIL_URI="$(awk -F: '/^[[:space:]]*connection_uri:/{sub(/^[[:space:]]*connection_uri:[[:space:]]*/,""); gsub(/^"|"$|^'"'"'|'"'"'$/,""); print; exit}' /etc/kacho-identity-rendered/kratos.yaml)"
         MAIL_SRC="файл настроек (global.kacho.identity.smtp.connectionURI)"
       fi
+      # ── УДОСТОВЕРЕНИЕ НЕ ПЕЧАТАЕТСЯ НИ В ОДНОМ ОТКАЗЕ ──────────────────────
+      #
+      # К этому месту подстановка УЖЕ произошла, то есть адрес несёт величину из
+      # секрета. Журнал пода читается шире секрета ровно так же, как карта
+      # настроек, ради которой удостоверение оттуда и выносили (решение Р6):
+      # `kubectl logs`, сборщик журналов, артефакты прогона. Отказ, печатающий
+      # адрес целиком, вернул бы величину туда же — только другой дверью.
+      #
+      # НАРУЖУ ИДЁТ АДРЕС С ВЫРЕЗАННОЙ ЧАСТЬЮ ДО «@»: схема, узел, порт и
+      # параметры видны, и этого хватает, чтобы отказ назвал свой предмет. Сами
+      # проверки ниже судят ПОЛНУЮ величину — сокращается только то, что
+      # печатается.
+      MAIL_SHOWN=$(printf %s "$MAIL_URI" | sed 's#://[^@/]*@#://***@#')
       case "$(printf %s "$MAIL_URI" | tr -d '[:space:],')" in
         "")
           echo "ОТКАЗ: почтовая полоса пуста — ни переменная, ни файл настроек её не несут. Пусто НЕ означает «не доставляем»: без неё письма подтверждения, приглашения и восстановления не уходят, а процесс стартует и молчит" >&2
@@ -872,17 +930,17 @@ kacho.identity.configRenderInitContainer — подстановка величи
       esac
       case "$MAIL_URI" in
         *'${'*)
-          echo "ОТКАЗ: почтовая полоса несёт неподставленную ссылку '$MAIL_URI' (источник: $MAIL_SRC) — служба личности подстановки в значениях конфигурации не делает, строка уехала бы в адрес соединения дословно" >&2
+          echo "ОТКАЗ: почтовая полоса несёт неподставленную ссылку '$MAIL_SHOWN' (источник: $MAIL_SRC) — служба личности подстановки в значениях конфигурации не делает, строка уехала бы в адрес соединения дословно" >&2
           exit 1 ;;
         *disable_starttls=true*|*disable_starttls=1*|*skip_ssl_verify=true*|*skip_ssl_verify=1*)
-          echo "ОТКАЗ: почтовая полоса объявлена без шифрования либо без проверки сертификата ('$MAIL_URI'; источник: $MAIL_SRC). Под ban #16 такой посадки на поднятом стенде существовать не должно (решение Р5)" >&2
+          echo "ОТКАЗ: почтовая полоса объявлена без шифрования либо без проверки сертификата ('$MAIL_SHOWN'; источник: $MAIL_SRC). Под ban #16 такой посадки на поднятом стенде существовать не должно (решение Р5)" >&2
           exit 1 ;;
         smtp://|smtps://)
-          echo "ОТКАЗ: почтовая полоса '$MAIL_URI' (источник: $MAIL_SRC) — схема есть, узла нет. Вырожденное значение считается НЕЗАДАННЫМ, а не «непустым»" >&2
+          echo "ОТКАЗ: почтовая полоса '$MAIL_SHOWN' (источник: $MAIL_SRC) — схема есть, узла нет. Вырожденное значение считается НЕЗАДАННЫМ, а не «непустым»" >&2
           exit 1 ;;
         smtp://*|smtps://*) : ;;
         *)
-          echo "ОТКАЗ: почтовая полоса '$MAIL_URI' (источник: $MAIL_SRC) — схема не распознана; ожидается smtp:// (STARTTLS) либо smtps:// (неявный TLS)" >&2
+          echo "ОТКАЗ: почтовая полоса '$MAIL_SHOWN' (источник: $MAIL_SRC) — схема не распознана; ожидается smtp:// (STARTTLS) либо smtps:// (неявный TLS)" >&2
           exit 1 ;;
       esac
       echo "подстановка исполнена: $(wc -l < /etc/kacho-identity-rendered/kratos.yaml) строк; почтовая полоса задана и шифрована; источник величины — $MAIL_SRC"
@@ -890,8 +948,17 @@ kacho.identity.configRenderInitContainer — подстановка величи
     # Перечень имён, которыми ВЛАДЕЕТ шаг. Он объявлен рядом с самими
     # переменными, и их согласие держит гейт, а не внимание: имя, попавшее в
     # одно и не попавшее в другое, роняет прогон.
+    # ПЕРЕЧЕНЬ УСЛОВЕН, И ЭТО ТРЕБОВАНИЕ, А НЕ УДОБСТВО. Шаг отвергает пустую
+    # величину каждого имени, которым владеет; безусловно названное удостоверение
+    # роняло бы КАЖДЫЙ стенд, где почтовый узел пароля не спрашивает (стенд с
+    # приёмником-мейлпитом — именно такой).
+    #
+    # ОБЪЯВЛЕНИЕ ОДНО, А НЕ ДВЕ ВЕТКИ. Две ветки дали бы ДВА объявления одного
+    # имени в статическом тексте: побеждает последняя, и какая именно — из
+    # объявления не видно. Это два места об одном предмете, и разошлись бы они
+    # молча; держит единственность deploy/identity_step_declaration_parses_test.go.
     - name: KACHO_IDENTITY_SUBSTITUTED_VARS
-      value: KACHO_IAM_HOOK_TOKEN
+      value: "KACHO_IAM_HOOK_TOKEN{{ if $mailCredDeclared }} KACHO_IDENTITY_SMTP_CREDENTIAL{{ end }}"
     # Почтовая полоса, ЭФФЕКТИВНАЯ: тот же секрет и тот же ключ, из которого её
     # берёт сам процесс. Ссылка НЕОБЯЗАТЕЛЬНА — подчарт поставщика заводит ключ
     # только когда объявлен его собственный ключ полосы; отсутствие переменной
@@ -919,6 +986,20 @@ kacho.identity.configRenderInitContainer — подстановка величи
           name: {{ include "kratos.secretname" . }}
           key: smtpConnectionURI
           optional: true
+{{- if $mailCredDeclared }}
+    # УДОСТОВЕРЕНИЕ ПОЧТОВОЙ ПОЛОСЫ — величина живёт ТОЛЬКО в памяти этих двух
+    # контейнеров: в карту настроек уезжает ссылка, в рендер чарта — тоже.
+    # Ссылка НЕОБЯЗАТЕЛЬНА по той же причине, что у величины обратных вызовов:
+    # обязательная форма роняет под ДО старта и молча — сообщение получает
+    # планировщик, а не оператор. Пустую величину отвергает сам шаг, с текстом,
+    # называющим ручку, то есть отказ остался закрытым, но стал ЧИТАЕМЫМ.
+    - name: KACHO_IDENTITY_SMTP_CREDENTIAL
+      valueFrom:
+        secretKeyRef:
+          name: {{ $mailCredName | quote }}
+          key: {{ $mailCredKey | quote }}
+          optional: true
+{{- end }}
   volumeMounts:
     - name: kacho-identity-config
       mountPath: /etc/kacho-identity-src

@@ -67,6 +67,7 @@ from gen_shared import (  # noqa: E402  — импорт после провяз
     generate,
     Run,
     retry_until_authorized,
+    retry_until_present,
     _RYA_SEQ,
     _accepted_http_codes,
     assert_created_at_seconds,
@@ -318,49 +319,6 @@ def assert_operation_envelope() -> List[str]:
 _ABS_SEQ = [0]
 
 
-def retry_until_present(step: Step, id_env_var: str, budget: int = 50,
-                        interval_ms: int = 600) -> Step:
-    """Bounded retry a LIST step until the caller's OWN fresh resource id appears in
-    the returned array (read-your-writes over the list-authz visibility window; opgate
-    removed -> owner-tuple eventual-consistency). The list returns 200 with the id
-    ABSENT until the tuple materializes, so retry_until_authorized (403/404) does not
-    apply -- we retry while the id is missing. Fail-open after budget: the real
-    assertion then runs once and FAILS if still absent (never masked, never infinite).
-    Use ONLY on a list of the caller's OWN just-created resource.
-
-    budget*interval_ms bounds the wait (default 50*600ms = 30s). Raised 40->50 (24s->30s,
-    modest and targeted to THIS helper — not a blanket suite-wide widen): every call site
-    already polls the create op to done first (most also warm the owner-tuple with a direct-
-    read GET), yet the list-authz (ListObjects) materialization tail was observed to exceed
-    the 24s default on the umbrella parallel lane (ListObjects consistency can lag the direct
-    Check that a warm-GET satisfies). Fast lanes never consume the extra window (they converge
-    in the first few polls), so the raise only extends the genuine tail — it does not mask a
-    real over-hide, which still FAILS at budget."""
-    guard = [
-        "// bounded read-your-writes retry until own fresh id is present in the list",
-        "// (opgate removed -> eventual-consistency); retries SELF while id absent.",
-        "if (pm.environment.get('_lstRetryStarted') !== pm.info.requestName) {",
-        "  pm.environment.set('_lstRetryCount', '0');",
-        "  pm.environment.set('_lstRetryStarted', pm.info.requestName);",
-        "}",
-        "const _lrc = parseInt(pm.environment.get('_lstRetryCount') || '0', 10);",
-        "let _present = false;",
-        "try { const _arr = Object.values(pm.response.json()).find(v => Array.isArray(v)) || [];"
-        " _present = _arr.map(x => x.id).includes(pm.environment.get('" + id_env_var + "')); } catch (e) {}",
-        f"if (pm.response.code === 200 && !_present && _lrc < {budget}) {{",
-        "  pm.environment.set('_lstRetryCount', String(_lrc + 1));",
-        f"  const _lrd = Date.now(); while (Date.now() - _lrd < {interval_ms}) {{ /* list-visibility wait */ }}",
-        "  pm.execution.setNextRequest(pm.info.requestName);",
-        "  return;",
-        "}",
-        "pm.environment.unset('_lstRetryCount');",
-        "pm.environment.unset('_lstRetryStarted');",
-    ]
-    _RYA_SEQ[0] += 1
-    return replace(step, name=f"{step.name}-lst{_RYA_SEQ[0]}",
-                   test_script=guard + list(step.test_script))
-
-
 # Окно видимости прав — РЕШЕНИЕ НАБОРА, а не общего слоя (#1379): путь
 # материализации у доменов разный, и одно число за всех было бы решением
 # за них. Здесь — путь материализации compute. Величина видна
@@ -371,6 +329,15 @@ def retry_until_present(step: Step, id_env_var: str, budget: int = 50,
 # и падает, называя следствие вместо предмета.
 _rya = functools.partial(retry_until_authorized,
                         budget=40, interval_ms=600, lane_head=True)
+# То же окно у СПИСОЧНОГО ожидания — и то же правило: величину называет НАБОР,
+# а не общий слой (#1379). Три копии этой обёртки расходились ещё и телом:
+# одна ждала появления ВСЕХ названных имён, другая вела ведомость исчерпания,
+# третья не делала ни того, ни другого. Общая форма несёт обе починки, а
+# различие набора выражено ЗДЕСЬ — аргументом, видимым на связывании.
+_rup = functools.partial(retry_until_present,
+                        budget=50, interval_ms=600)
+
+
 def retry_until_absent(step: Step, still_present_expr: str, budget: int = 25,
                        interval_ms: int = 500) -> Step:
     """Bounded retry a "must-be-ABSENT/empty" read over a read-your-writes-ON-REVOKE
@@ -770,7 +737,7 @@ _INJECTED = {
     "assert_created_at_seconds": assert_created_at_seconds,
     "poll_operation_until_done": poll_operation_until_done,
     "retry_until_authorized": _rya,
-    "retry_until_present": retry_until_present,
+    "retry_until_present": _rup,
     "retry_until_absent": retry_until_absent,
     "assert_op_error": assert_op_error,
     "assert_op_error_oneof": assert_op_error_oneof,

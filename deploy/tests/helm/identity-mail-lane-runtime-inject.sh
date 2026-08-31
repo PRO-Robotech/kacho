@@ -117,8 +117,121 @@ echo "=== порядок источников: переменная БЬЁТ ф�
 run "файл законен, переменная негодна" RED "переменная COURIER_SMTP_CONNECTION_URI" \
     "$LEGAL" "smtp://mailhog.kacho.svc:1025/?disable_starttls=true"
 
+# ── УДОСТОВЕРЕНИЕ: ПОДСТАНОВКА, ОТКАЗ И НЕРАЗГЛАШЕНИЕ (решение Р6) ──────────
+#
+# ВТОРОЙ РЕНДЕР, А НЕ ПОДМЕНА ПЕРЕЧНЯ РУКАМИ. Перечень имён во владении шага
+# зависит от того, объявлен ли источник удостоверения; выписанный здесь, он
+# разошёлся бы с чартом молча — ровно тот класс, который эти гейты и ловят.
+#
+# ЗДЕСЬ НЕТ НИ ОДНОГО НАСТОЯЩЕГО УДОСТОВЕРЕНИЯ: строка ниже заведомо негодна и
+# нужна лишь затем, чтобы её можно было ИСКАТЬ в выводе.
+CRED_VALUE='injected-not-a-secret-7f3a'
+helm template kacho-umbrella ./helm/umbrella -n kacho \
+  $(bash tests/helm/stacks.sh --args dev-prod ./helm/umbrella) \
+  --set 'global.kacho.identity.smtp.connectionURI=smtp://noreply%40kacho.cloud@kacho-umbrella-mailpit:1025/' \
+  --set global.kacho.identity.smtp.credentialSecret.name=kacho-identity-smtp \
+  --set global.kacho.identity.smtp.credentialSecret.key=password \
+  > "$TMP/render-cred.yaml" 2>"$TMP/err-cred" || {
+    echo "ОТКАЗ: рендер с объявленным источником удостоверения не удался"; tail -3 "$TMP/err-cred"; exit 1; }
+
+python3 - "$TMP/render-cred.yaml" > "$TMP/script-cred.raw" <<'PY'
+import sys, yaml
+for d in yaml.safe_load_all(open(sys.argv[1])):
+    if not d or d.get('kind') not in ('Deployment', 'StatefulSet'):
+        continue
+    for c in d['spec']['template']['spec'].get('initContainers', []):
+        if c['name'] == 'identity-config-render':
+            print(c['args'][0]); raise SystemExit(0)
+raise SystemExit("шаг подстановки не найден в рендере с удостоверением")
+PY
+[ -s "$TMP/script-cred.raw" ] || { echo "ОТКАЗ: шаг подстановки не извлечён (ветка удостоверения)"; exit 1; }
+
+CRED_VARS="$(python3 - "$TMP/render-cred.yaml" <<'PYVARS'
+import sys, yaml
+for d in yaml.safe_load_all(open(sys.argv[1])):
+    if not d or d.get('kind') not in ('Deployment', 'StatefulSet'):
+        continue
+    for c in d['spec']['template']['spec'].get('initContainers', []):
+        if c['name'] != 'identity-config-render':
+            continue
+        for e in c.get('env', []):
+            if e.get('name') == 'KACHO_IDENTITY_SUBSTITUTED_VARS':
+                print(e.get('value', '')); raise SystemExit(0)
+raise SystemExit("перечень владения не объявлен в рендере с удостоверением")
+PYVARS
+)" || { echo "ОТКАЗ: перечень владения (ветка удостоверения) не извлечён"; exit 1; }
+
+# ПРЕДПОСЫЛКА ДОКАЗАТЕЛЬСТВА, ПРОВЕРЯЕМАЯ ЯВНО. Если чарт перестанет добавлять
+# имя удостоверения в перечень владения, все оси ниже станут вакуумными —
+# зелёными по отсутствию предмета, а не по исправности. Это «условие не
+# создано», и оно обязано быть отличимо от вердикта.
+case "$CRED_VARS" in
+  *KACHO_IDENTITY_SMTP_CREDENTIAL*) : ;;
+  *) echo "ОТКАЗ: чарт не назвал KACHO_IDENTITY_SMTP_CREDENTIAL в перечне владения ($CRED_VARS) — оси удостоверения проверяли бы пустоту"; exit 1 ;;
+esac
+
+sed "s#/etc/kacho-identity-src#$TMP/src#g; s#/etc/kacho-identity-rendered#$TMP/rendered#g" \
+  "$TMP/script-cred.raw" > "$TMP/script-cred.sh"
+
+run_cred() { # имя · ожидание(RED|GREEN) · улика · величина-удостоверения · uri-в-файле
+  local name="$1" want="$2" needle="$3" cred="$4" fileuri="$5" got out
+  cat > "$TMP/src/kratos.yaml" <<YAML
+dsn: postgres://kratos@pg/kratos
+courier:
+  smtp:
+    connection_uri: "$fileuri"
+    from_address: "noreply@kacho.local"
+selfservice:
+  hook_token: "\${KACHO_IAM_HOOK_TOKEN}"
+YAML
+  if out="$(KACHO_IDENTITY_SUBSTITUTED_VARS="$CRED_VARS" KACHO_IAM_HOOK_TOKEN=tok \
+            KACHO_IDENTITY_SMTP_CREDENTIAL="$cred" COURIER_SMTP_CONNECTION_URI='' \
+            sh -euc "$(cat "$TMP/script-cred.sh")" 2>&1)"
+  then got=GREEN; else got=RED; fi
+  if [ "$got" != "$want" ]; then
+    echo "  ОТКАЗ $name → $got, ожидалось $want"; printf '       %s\n' "$out" | tail -2; rc=1; return
+  fi
+  # Сравнение БЕЗ внешнего процесса: `grep -q` выходит до конца входа, писатель
+  # слева получает SIGPIPE, и под `pipefail` найденное объявляется ненайденным.
+  if [ "$want" = RED ] && [[ "$out" != *"$needle"* ]]; then
+    echo "  ОТКАЗ $name → RED, но отказ не называет $needle"; printf '       %s\n' "$out" | tail -2; rc=1; return
+  fi
+  # НЕРАЗГЛАШЕНИЕ ПРОВЕРЯЕТСЯ НА КАЖДОЙ ОСИ, а не отдельной. Журнал пода
+  # читается шире секрета ровно как карта настроек, ради которой удостоверение
+  # оттуда и выносили: величина, напечатанная в отказе, вернулась бы туда же —
+  # только другой дверью. Утверждение отрицательное, поэтому рядом стоит
+  # положительный контроль: подставленная величина ДОЕЗЖАЕТ до файла.
+  #
+  # ГРАНИЦА НАЗВАНА: утверждение относится к величине, ОТЛИЧНОЙ от имени ручки.
+  # На оси «величина равна своему имени» совпадение законно и обязательно —
+  # отказ там называет РУЧКУ, а называть ручку он обязан (иначе оператор не
+  # узнает, что чинить). Сверять эту ось на неразглашение значило бы требовать
+  # молчания ровно там, где требуется речь.
+  if [ "$cred" = "$CRED_VALUE" ] && [[ "$out" == *"$cred"* ]]; then
+    echo "  ОТКАЗ $name → вывод шага НЕСЁТ удостоверение — оно ушло в журнал пода"; rc=1; return
+  fi
+  echo "  ok   $name → $got"
+  [ "$want" = RED ] && red=$((red+1)) || green=$((green+1))
+}
+
+CRED_URI='smtp://noreply%40kacho.cloud:${KACHO_IDENTITY_SMTP_CREDENTIAL}@kacho-umbrella-mailpit:1025/'
+
+echo "=== удостоверение: подстановка, отказ, неразглашение ==="
+run_cred "величина подставляется, в журнал не идёт" GREEN "" "$CRED_VALUE" "$CRED_URI"
+# ПОЛОЖИТЕЛЬНЫЙ КОНТРОЛЬ К НЕРАЗГЛАШЕНИЮ: без него отрицание «величины в выводе
+# нет» зеленело бы и на шаге, который её никуда не подставил.
+if grep -qF -- "$CRED_VALUE" "$TMP/rendered/kratos.yaml"; then
+  echo "  ok   величина ДОЕХАЛА до отрендеренного файла → GREEN"; green=$((green+1))
+else
+  echo "  ОТКАЗ: величина до файла не доехала — «в журнале её нет» ничего не доказывает"; rc=1
+fi
+run_cred "удостоверение пусто"                 RED "пуста"        ""                              "$CRED_URI"
+run_cred "величина равна своему имени"         RED "собственному" "KACHO_IDENTITY_SMTP_CREDENTIAL" "$CRED_URI"
+run_cred "шифрование снято, величина настоящая" RED "без шифрования" "$CRED_VALUE" \
+  'smtp://noreply%40kacho.cloud:${KACHO_IDENTITY_SMTP_CREDENTIAL}@relay:1025/?disable_starttls=true'
+
 echo "перепись: инъекций красных $red · законных близнецов зелёных $green"
-[ "$red" -ge 9 ] || { echo "ОТКАЗ: красных инъекций $red — доказательство неполно"; rc=1; }
-[ "$green" -ge 3 ] || { echo "ОТКАЗ: зелёных близнецов $green — отрицание не проверено в обратную сторону"; rc=1; }
+[ "$red" -ge 12 ] || { echo "ОТКАЗ: красных инъекций $red — доказательство неполно"; rc=1; }
+[ "$green" -ge 5 ] || { echo "ОТКАЗ: зелёных близнецов $green — отрицание не проверено в обратную сторону"; rc=1; }
 [ "$rc" = 0 ] && echo "ИТОГ: шаг подстановки способен упасть и способен смолчать" || echo "ИТОГ: ОТКАЗ"
 exit "$rc"
