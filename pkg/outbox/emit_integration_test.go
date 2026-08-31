@@ -60,6 +60,21 @@ $fn$;
 CREATE TRIGGER test_outbox_notify_trigger
     AFTER INSERT ON test_outbox
     FOR EACH ROW EXECUTE FUNCTION test_outbox_notify();
+
+-- test_register_outbox — форма ОЧЕРЕДИ ДРЕНАЖА, на которой проверяется уборка
+-- доставленных строк (#1361). От ленты выше её отличают ровно те три колонки,
+-- которыми владеет дренаж: отметка доставки, счётчик попыток и ключ партиции
+-- порядка. Форма общая у семи очередей платформы.
+CREATE TABLE test_register_outbox (
+    id            bigserial    PRIMARY KEY,
+    resource_id   text         NOT NULL,
+    event_type    text         NOT NULL,
+    payload       jsonb        NOT NULL DEFAULT '{}'::jsonb,
+    created_at    timestamptz  NOT NULL DEFAULT now(),
+    sent_at       timestamptz,
+    last_error    text,
+    attempt_count integer      NOT NULL DEFAULT 0
+);
 `
 
 func setupOutboxPG(t *testing.T) *pgxpool.Pool {

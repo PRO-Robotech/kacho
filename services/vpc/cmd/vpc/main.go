@@ -27,9 +27,11 @@ import (
 	"github.com/PRO-Robotech/kacho/pkg/observability"
 	"github.com/PRO-Robotech/kacho/pkg/operations"
 	"github.com/PRO-Robotech/kacho/pkg/operations/operationspb"
+	"github.com/PRO-Robotech/kacho/pkg/outbox"
 	"github.com/PRO-Robotech/kacho/pkg/outbox/bootgate"
 	"github.com/PRO-Robotech/kacho/pkg/outbox/drainer"
 	"github.com/PRO-Robotech/kacho/pkg/outbox/metrics"
+	"github.com/PRO-Robotech/kacho/pkg/outbox/reconciler"
 	"github.com/PRO-Robotech/kacho/pkg/safeconv"
 	"github.com/PRO-Robotech/kacho/pkg/servicehost"
 
@@ -304,6 +306,28 @@ func runServe(cfg config.Config) error {
 		logger,
 	); err != nil {
 		return fmt.Errorf("фоновая уборка таблицы операций: %w", err)
+	}
+
+	// Фоновая уборка ДОСТАВЛЕННЫХ строк очереди регистрации (#1361).
+	//
+	// Дренаж помечает доставленную строку `sent_at` и не удаляет её никогда, а
+	// заводится она в writer-транзакции КАЖДОЙ мутации: темп задаёт арендатор,
+	// рост был монотонным и вечным.
+	//
+	// Ключ партиции — ТОТ ЖЕ, которым пользуются клейм дренажа и анти-джойн
+	// реконсайлера, и он обязателен: без него уборка сняла бы доставленную
+	// строку, которая одна и не даёт оживить отравленного предшественника, —
+	// то есть вернула бы возможность отменить уже применённое снятие доступа.
+	if _, err := outbox.StartQueueRetentionSweep(
+		ctx, pool,
+		outbox.QueueRetentionConfig{
+			Table:           fgaRegisterOutboxTable,
+			PartitionColumn: reconciler.RegisterOutboxPartition,
+		},
+		retention.DefaultConfig(),
+		logger.With(slog.String("component", "queue_retention_sweep")),
+	); err != nil {
+		return fmt.Errorf("фоновая уборка доставленных строк очереди: %w", err)
 	}
 
 	// Фоновая уборка РЕСУРСНОГО ЖУРНАЛА подписки (#1735).
