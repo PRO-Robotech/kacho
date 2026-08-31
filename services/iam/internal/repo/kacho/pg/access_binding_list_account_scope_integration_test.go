@@ -28,6 +28,7 @@ import (
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 
+	"github.com/PRO-Robotech/kacho/internal/pgtest"
 	coredb "github.com/PRO-Robotech/kacho/pkg/db"
 	"github.com/PRO-Robotech/kacho/pkg/ids"
 
@@ -52,7 +53,11 @@ func TestAB_SIA_ListNarrowedToAccountScope(t *testing.T) {
 	dsn := setupTestDB(t)
 	pool, err := coredb.NewPool(ctx, dsn)
 	require.NoError(t, err)
-	defer pool.Close()
+	// Закрытие С ПРЕДЕЛОМ: `defer pool.Close()` ждёт возврата ВСЕХ соединений, и
+	// проба, упавшая внутри открытой транзакции, соединение не вернёт — пакет
+	// упирается в -timeout и печатает FAIL, то есть «не выполнилось» приходит
+	// под видом красного.
+	pgtest.ClosePoolAtEnd(t, pool)
 	repo := kachopg.New(pool, nil)
 
 	owner := mustSeedUser(t, ctx, pool, "sia01o")
@@ -145,7 +150,11 @@ func TestAB_SIA03_AccountScopeComposesWithIncludeRevoked(t *testing.T) {
 	dsn := setupTestDB(t)
 	pool, err := coredb.NewPool(ctx, dsn)
 	require.NoError(t, err)
-	defer pool.Close()
+	// Закрытие С ПРЕДЕЛОМ: `defer pool.Close()` ждёт возврата ВСЕХ соединений, и
+	// проба, упавшая внутри открытой транзакции, соединение не вернёт — пакет
+	// упирается в -timeout и печатает FAIL, то есть «не выполнилось» приходит
+	// под видом красного.
+	pgtest.ClosePoolAtEnd(t, pool)
 	repo := kachopg.New(pool, nil)
 
 	owner := mustSeedUser(t, ctx, pool, "sia03o")
