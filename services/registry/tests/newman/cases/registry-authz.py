@@ -296,7 +296,10 @@ CASES.append(Case(
 
 # Positive control: Get как jwtProjectViewerA → 200 (viewer имеет v_get).
 # Fixture-gated: без зарегистрированного viewer-юзера — informational SKIP.
-# Retry-on-404 поглощает grant-latency (FGA-пропагация project-tuple ~0.6-2s).
+# Retry-on-404 поглощает grant-latency. Окно складывают кэш вердиктов registry
+# (ручка KACHO_REGISTRY_AUTHZ_CACHE_TTL) и материализация project-tuple у владельца
+# прав; величина здесь НЕ называется — её называет владелец, а бюджет ожидания виден
+# на связывании ниже (cap 20 × 500 мс).
 CASES.append(Case(
     id="REG-AZ-GET-VIEWER-OK",
     title="Get as jwtProjectViewerA on existing regId → 200 (viewer has v_get) — positive control (fixture-gated)",
@@ -468,7 +471,9 @@ CASES.append(Case(
 ))
 
 # GetRepository как jwtProjectViewerA (v_get) → 200 (positive control). Fixture-gated;
-# retry-on-404 поглощает grant-latency (FGA-пропагация ~0.6-2s).
+# retry-on-404 поглощает grant-latency (кэш вердиктов registry — ручка
+# KACHO_REGISTRY_AUTHZ_CACHE_TTL — плюс материализация у владельца прав; величина
+# у владельцев, бюджет на связывании ниже).
 CASES.append(Case(
     id="REPO-AZ-GET-VIEWER-OK",
     title="GetRepository as jwtProjectViewerA (v_get) → 200 (positive control, fixture-gated)",
