@@ -245,3 +245,105 @@ describe("отказ по пределу восстанавливает след
     expect(p.subTitle).toBe("subnet is not ready");
   });
 });
+
+// ─────────────────────────────────────────────────────────────────────────────
+// ПОЛОСА РАЗЛИЧАЕТСЯ ПРИЗНАКОМ, А НЕ ПРОЗОЙ (#1736)
+//
+// Разбор отказа по пределу выше ключуется на `reason` — и объясняет, почему:
+// «вывод вида из английской фразы молча вернул бы пустоту при первой же смене
+// тона». Полоса отказа в правах в том же файле делала ровно это, чего соседний
+// разбор не велит: решала по английской подстроке `permission denied`.
+//
+// Тон сообщений — ЧАСТЬ КОНТРАКТА и меняется осознанно. Пока полоса ключуется
+// прозой, любая такая правка молча возвращает арендатору внутреннее имя
+// проверки вместо объяснения — то есть ровно то состояние, ради устранения
+// которого объяснение и написано, и ни одно утверждение об экране не краснеет.
+//
+// Признак `AUTHZ_DENIED` для этого уже производится краем и службой личности —
+// он просто не читался.
+
+/** Тело отказа с признаком; домен назван, потому что его называет производитель. */
+function refusalDetails(reason: string, domain: string, metadata?: Record<string, string>) {
+  return [
+    {
+      "@type": "type.googleapis.com/google.rpc.ErrorInfo",
+      reason,
+      domain,
+      ...(metadata ? { metadata } : {}),
+    },
+  ];
+}
+
+describe("полоса отказа читается по признаку, а не по английской прозе (#1736)", () => {
+  it("AUTHZ_DENIED объясняется, даже когда в тексте НЕТ фразы, на которую опирался разбор", () => {
+    // Ключевое: сообщение не содержит ни `permission denied`, ни точечного имени
+    // права — то есть прозаический разбор его НЕ поймает. Признак поймает.
+    // Это и есть смена тона, которая сегодня проходит молча.
+    const p = presentError(
+      new ApiError(403, 7, refusalDetails("AUTHZ_DENIED", "kacho.cloud.iam.v1", {
+        action: "iam.limits.list",
+        resource: "project:prj-1",
+      }), "доступ к iam.limits.list закрыт"),
+    );
+
+    expect(p.title).toBe("Недостаточно прав");
+    expect(p.subTitle).toContain("администратор");
+    // Внутреннее имя проверки на экран не попадает ни в каком написании.
+    expect(p.subTitle).not.toContain("iam.limits.list");
+    // Текст сервера НЕ ПОТЕРЯН — он в подсказке, по образцу остальных полос.
+    expect(p.devDetail).toContain("доступ к iam.limits.list закрыт");
+  });
+
+  it("403 БЕЗ признака и с осмысленным текстом показывается дословно — контроль", () => {
+    // Парный положительный: без него утверждение выше зеленело бы и на подмене
+    // ЛЮБОГО отказа общей фразой, то есть на потере настоящей причины.
+    const p = presentError(new ApiError(403, 7, null, "Аккаунт заблокирован администратором"));
+
+    expect(p.subTitle).toBe("Аккаунт заблокирован администратором");
+  });
+
+  it("AUTHN_REQUIRED говорит, что делать, вместо английской строки края", () => {
+    // Край отвечает `unauthenticated: credentials required`. Арендатору это не
+    // сообщает ни что произошло, ни что делать: сессия истекла — надо войти.
+    const p = presentError(
+      new ApiError(401, 16, refusalDetails("AUTHN_REQUIRED", "kacho.cloud.iam.v1"),
+        "unauthenticated: credentials required"),
+    );
+
+    expect(p.subTitle).not.toBe("unauthenticated: credentials required");
+    expect(p.subTitle).toContain("Войдите заново");
+    expect(p.devDetail).toContain("unauthenticated: credentials required");
+  });
+
+  it("QUOTA_RATE_EXCEEDED — ТРЕТЬЯ полоса: ждёт САМ вызывающий, а не администратор", () => {
+    // Производитель завёл её отдельным признаком осознанно и записал почему:
+    // «повтор запроса по объёму не пройдёт никогда, повтор по темпу пройдёт в
+    // следующем окне». Свести её с `QUOTA_EXCEEDED` значило бы послать клиента
+    // поднимать предел там, где надо просто подождать.
+    const p = presentError(
+      new ApiError(429, 8, refusalDetails("QUOTA_RATE_EXCEEDED", "iam.kacho.cloud", { kind: "iam.user" }),
+        "rate limit exceeded for iam.user"),
+    );
+
+    expect(p.quota?.lane).toBe("rate_exceeded");
+    expect(p.subTitle).toContain("Повторите через несколько секунд");
+    // Действие принадлежит ВЫЗЫВАЮЩЕМУ: про поднятие предела здесь не говорится.
+    expect(p.subTitle).not.toContain("поднять");
+    expect(p.subTitle).not.toContain("завести");
+    expect(p.devDetail).toContain("rate limit exceeded for iam.user");
+  });
+
+  it("признак, по которому решено показывать текст сервера, его и показывает", () => {
+    // `passthrough` — ЗАКОННЫЙ вердикт, а не пропуск: текст производителя уже
+    // называет следующий шаг («другой префикс, а не починка кодировщика»).
+    // Утверждается именно это, иначе «вердикт есть» ничем не отличалось бы от
+    // «вердикта нет».
+    const p = presentError(
+      new ApiError(400, 3, refusalDetails("SUBNET_CIDR_RESERVED", "vpc.kacho.cloud"),
+        "cidrBlock 10.0.0.0/8 overlaps an address range reserved by the platform"),
+    );
+
+    expect(p.subTitle).toBe("cidrBlock 10.0.0.0/8 overlaps an address range reserved by the platform");
+    expect(p.quota).toBeNull();
+  });
+});
