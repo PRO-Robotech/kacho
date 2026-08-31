@@ -921,14 +921,14 @@ jobs:
             exit 0
           fi
           rm -f stand-logs/no-cluster.txt
-          for d in kacho-iam vpc compute kacho-nlb kacho-storage registry kacho-geo api-gateway; do
-            kubectl -n kacho logs "deploy/$d" --tail=20000 > "stand-logs/$d.log" 2>&1 || \
-              echo "(журнал недоступен)" > "stand-logs/$d.log"
-          done
-          kubectl -n kacho get events --sort-by=.lastTimestamp > stand-logs/events.txt 2>&1 || \
-            echo "(события недоступны)" > stand-logs/events.txt
-          # Перепись: «ноль строк» обязано быть отличимо от «не читали».
-          echo "=== собрано журналов:"; wc -l stand-logs/*.log stand-logs/events.txt | tail -20
+          # Перечень собираемых журналов ВЫВОДИТСЯ ИЗ ПОДНЯТОГО СТЕНДА, а не
+          # выписывается здесь. Выписанный перечень называл восемь наших служб и
+          # не называл службу личности, её курьера и провайдера токенов, которые
+          # тот же чарт поднимает, — поэтому при поломке полосы личности
+          # единственный журнал с причиной выбрасывался вместе с кластером
+          # (#1741). Числа «поднято · собрано» печатает сам скрипт: «журналы
+          # собраны» обязано быть отличимо от «собраны не все».
+          "$GITHUB_WORKSPACE/.github/scripts/collect-stand-logs.sh" kacho stand-logs 20000
 
       - name: upload — опись шарда + newman-отчёты + журналы стенда
         if: always()
@@ -956,9 +956,16 @@ jobs:
       - name: хвост журналов при падении (в журнал работы)
         if: failure()
         run: |
-          for d in kacho-iam vpc compute kacho-nlb kacho-storage registry kacho-geo api-gateway; do
-            echo "───────── $d"
-            tail -60 "stand-logs/$d.log" 2>/dev/null || echo "  (нет)"
+          # Хвост печатается по СОБРАННЫМ ФАЙЛАМ, а не по второму перечню имён.
+          # Здесь стоял ВТОРОЙ выписанный перечень — то есть два места об одном
+          # предмете, из которых верно одно: правка одного молча не доезжала до
+          # другого (#1741).
+          shopt -s nullglob
+          logs=(stand-logs/*.log)
+          echo "───────── журналов собрано: ${#logs[@]}"
+          for f in "${logs[@]}"; do
+            echo "───────── ${f#stand-logs/}"
+            tail -60 "$f" 2>/dev/null || echo "  (нет)"
           done
           echo "───────── события"
           tail -25 stand-logs/events.txt 2>/dev/null || echo "  (события недоступны)"
