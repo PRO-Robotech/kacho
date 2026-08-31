@@ -152,7 +152,10 @@ kratos:
         schemas: *kachoInheritedIdentitySchemas
       courier:
         smtp:
-          connection_uri: "smtp://mailhog.kacho.svc:1025/?disable_starttls=true"
+          # `connection_uri` здесь не объявляется (#1733) — из него чарт
+          # поставщика производит переменную `COURIER_SMTP_CONNECTION_URI`, а она
+          # перебивает наш файл настроек. Владелец полосы один —
+          # `global.kacho.identity.smtp`. Разбор — в values.dev.yaml, тот же ключ.
           from_address: "noreply@kacho.local"
           from_name: "Kacho"
 
