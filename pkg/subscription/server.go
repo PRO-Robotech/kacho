@@ -350,7 +350,7 @@ func (s *Server) serve(
 		return status.Error(codes.Unavailable, "subscription position not settled")
 	}
 
-	floor := h.floor(storage.Retention)
+	floor := h.Floor(storage.Retention)
 
 	cursor, err := s.resolveCursor(start, h, floor)
 	if err != nil {

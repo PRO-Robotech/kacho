@@ -67,6 +67,39 @@
 // случайно названный похоже, — а путь этого сделать не может. Исключённое
 // печатается поимённо: «ноль находок» обязано быть отличимо от «ноль
 // прочитанного».
+//
+// ─────────────────────────────────────────────────────────────────────────────
+// ЧЕГО ЭТОТ ГЕЙТ НЕ ВИДИТ — ОХВАТ СЧИТАЕТСЯ ПО ТОКЕНАМ, А НЕ ПО ОТКАЗАМ
+//
+// Равенство двух множеств выше — утверждение о ТОКЕНАХ: каждый признак, который
+// дерево производит, консоль разбирает, и наоборот. Отсюда НЕ следует, что
+// каждый отказ несёт признак. Отказ, не несущий его вовсе, в перепись не
+// попадает ни одной стороной: он не производит токена, поэтому гейт остаётся
+// зелёным, ничего о нём не сказав.
+//
+// Величина названа числом, чтобы «гейт зелёный» не читалось как «покрытие
+// полное». Ревизия — `kacho@5d58b4aa5`; единица счёта — ТОЧКА ЧЕКАНКИ, то есть
+// вызов `status.Error`/`Errorf`/`New`/`Newf` с кодом, отличным от OK; обход —
+// типизированный разбор 358 пакетов и 1445 не-тестовых файлов:
+//
+//	903  точки чеканки отказа во всём прод-дереве
+//	 15  из них прикрепляют ErrorInfo в той же функции. Это ПОТОЛОК, а не факт:
+//	     одна из пятнадцати — запасная ветка Internal в Reason.Errf, признака не
+//	     несущая, поэтому несущих НЕ БОЛЬШЕ четырнадцати
+//	621  точек лежат на запросной полосе (`**/apps/kacho/api/**`), голых из них 618
+//	545  из этих 618 действенны арендатору — без Internal, Canceled,
+//	     DeadlineExceeded и Unimplemented, где признак не полагается
+//
+// Признак прикрепляется НЕ в точке чеканки, а на уровне ПОЛОСЫ — общим
+// классификатором сервиса либо перехватчиком (учёт, отказ в правах, полосы
+// резолва). Поэтому пятнадцать точек покрывают много больше пятнадцати отказов;
+// а 545 — это отказы, у которых полосы нет вовсе, и клиенту остаётся проза.
+//
+// Отсюда следует, ЧТО ИМЕННО НЕЛЬЗЯ утверждать по зелени этого гейта:
+// «отказы объяснимы машинно» — нельзя; «объявленный токен объяснён» — можно.
+// Расширение охвата с токенов на отказы требует словаря полос шире нынешнего
+// (он ЗАКРЫТ пятью, и закрыт намеренно), то есть решения о контракте, а не
+// правки этого файла. Предмет заведён задачей продукта #1756.
 package deploy_test
 
 import (
@@ -97,11 +130,46 @@ var consoleVerdictEntry = regexp.MustCompile(`(?m)^  ([A-Z][A-Z0-9_]+):`)
 // consoleDictBlock вырезает объявление словаря целиком.
 var consoleDictBlock = regexp.MustCompile(`(?s)const REFUSALS: Record<string, RefusalVerdict> = \{(.*?)\n\};`)
 
-// streamProducerPaths — пути, чьи токены читает ХАБ ПОДПИСКИ, а не разбор
-// отказа запроса. Исключение задано путём производителя, а не именем токена.
-var streamProducerPaths = []string{
-	filepath.Join("pkg", "subscription") + string(filepath.Separator),
-	filepath.Join("gateway", "internal", "subscriptionstream") + string(filepath.Separator),
+// offConsoleProducerPaths — пути, чей потребитель НЕ КОНСОЛЬ.
+//
+// Исключение задано ПУТЁМ ПРОИЗВОДИТЕЛЯ, а не именем токена: перечень имён
+// принял бы под себя и токен запросной полосы, случайно названный похоже, — а
+// путь этого сделать не может.
+//
+// У каждой записи назван СВОЙ потребитель, и это не украшение: «потребитель
+// другой» — единственное основание исключения, поэтому запись без названного
+// потребителя была бы послаблением без предмета. Потребители печатаются
+// переписью поимённо.
+//
+// Прежде перечень звался «полосой потока» и нёс два пути с одним потребителем.
+// Оснований у исключения оказалось два, а не одно: у полосы отзыва края отказ до
+// браузера не доезжает ВООБЩЕ — глагол внутренний (ban #6), и его читает Go
+// соседней реплики. Объявить такому токену вердикт консоли значило бы завести
+// запись, которая не сработает ни при каком входе.
+var offConsoleProducerPaths = []struct {
+	prefix   string
+	consumer string
+}{
+	{filepath.Join("pkg", "subscription") + string(filepath.Separator),
+		"хаб подписки браузера"},
+	{filepath.Join("gateway", "internal", "subscriptionstream") + string(filepath.Separator),
+		"хаб подписки браузера"},
+	{filepath.Join("pkg", "subjectchange") + string(filepath.Separator),
+		"читатель отзыва края (Go): глагол внутренний, до браузера отказ не доезжает"},
+}
+
+// offConsoleConsumer — чей это токен, если не консоли. Пустая строка означает
+// запросную полосу, которую консоль обязана разобрать.
+//
+// Функция чистая намеренно: доказательство подаёт ей путь строкой, а не трогает
+// дерево.
+func offConsoleConsumer(rel string) string {
+	for _, p := range offConsoleProducerPaths {
+		if strings.HasPrefix(rel, p.prefix) {
+			return p.consumer
+		}
+	}
+	return ""
 }
 
 // censusSkipPaths — не производители: гейты и утилиты держат СВОИ копии токенов,
@@ -112,9 +180,11 @@ var censusSkipPaths = []string{
 }
 
 type producedReason struct {
-	token  string
-	where  string
-	stream bool
+	token string
+	where string
+	// offConsole — потребитель токена, если это НЕ консоль; пусто у запросной
+	// полосы.
+	offConsole string
 }
 
 // collectProducedReasons собирает токены всех трёх форм ПО СОСТАВУ ИНДЕКСА, а не
@@ -152,14 +222,9 @@ func collectProducedReasons(t *testing.T, root string) (found []producedReason, 
 		}
 		filesRead++
 
-		isStream := false
-		for _, sp := range streamProducerPaths {
-			if strings.HasPrefix(rel, sp) {
-				isStream = true
-			}
-		}
+		offConsole := offConsoleConsumer(rel)
 		for _, tok := range scanGoSource(string(body)) {
-			found = append(found, producedReason{token: tok, where: rel, stream: isStream})
+			found = append(found, producedReason{token: tok, where: rel, offConsole: offConsole})
 		}
 	}
 	return found, filesRead
@@ -251,11 +316,15 @@ func TestConsoleDeclaresEveryProducedRefusalReason(t *testing.T) {
 	}
 
 	rest := map[string][]string{}
-	stream := map[string][]string{}
+	offConsole := map[string][]string{}
+	byConsumer := map[string][]string{}
 	for _, p := range produced {
 		dst := rest
-		if p.stream {
-			dst = stream
+		if p.offConsole != "" {
+			dst = offConsole
+			if !containsWhere(byConsumer[p.offConsole], p.token) {
+				byConsumer[p.offConsole] = append(byConsumer[p.offConsole], p.token)
+			}
 		}
 		if !containsWhere(dst[p.token], p.where) {
 			dst[p.token] = append(dst[p.token], p.where)
@@ -267,9 +336,16 @@ func TestConsoleDeclaresEveryProducedRefusalReason(t *testing.T) {
 	// Перепись печатается ВСЕГДА: «ноль находок» обязано быть отличимо от
 	// «ноль прочитанного».
 	t.Logf("перепись: файлов Go прочитано %d · токенов запросной полосы %d · "+
-		"токенов полосы потока %d (исключены — их читает хаб подписки) · вердиктов консоли %d",
-		filesRead, len(rest), len(stream), len(declared))
-	t.Logf("полоса потока, исключена по пути производителя: %s", strings.Join(sortedTokens(stream), " · "))
+		"токенов вне консоли %d (исключены по пути производителя) · вердиктов консоли %d",
+		filesRead, len(rest), len(offConsole), len(declared))
+	// Исключённое печатается ПО ПОТРЕБИТЕЛЯМ, а не одним списком: основание у
+	// исключения одно на потребителя, и «ноль находок» обязано быть отличимо не
+	// только от «ноль прочитанного», но и от «основание перестало действовать».
+	for _, consumer := range sortedTokens(byConsumer) {
+		sort.Strings(byConsumer[consumer])
+		t.Logf("вне консоли, потребитель — %s: %s",
+			consumer, strings.Join(byConsumer[consumer], " · "))
+	}
 
 	missing, orphan := judgeCoverage(rest, declared)
 	for i, tok := range missing {

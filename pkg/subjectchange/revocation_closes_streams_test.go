@@ -57,14 +57,19 @@ type subjectPoller struct {
 	errs    []error
 	calls   int
 	limits  []int32
+	// sinces — курсор, НАБЛЮДЁННЫЙ на каждом перепросе. Записывается затем, что
+	// «читатель пересел» иначе неотличимо от «читатель остался»: обе полосы
+	// зовут источник, и различает их только поданная позиция.
+	sinces []int64
 }
 
 func (p *subjectPoller) PollSubjectChanges(
-	_ context.Context, _ int64, limit int32,
+	_ context.Context, since int64, limit int32,
 ) ([]subjectchange.SubjectChange, int64, error) {
 	p.mu.Lock()
 	defer p.mu.Unlock()
 	p.limits = append(p.limits, limit)
+	p.sinces = append(p.sinces, since)
 	i := p.calls
 	p.calls++
 	if i < len(p.errs) && p.errs[i] != nil {
@@ -404,4 +409,15 @@ func (p *truncatingPoller) PollSubjectChanges(
 	default:
 		return nil, p.head, nil
 	}
+}
+
+// sinceAt — курсор, поданный на (считая с нуля) n-м перепросе; -1, если такого
+// перепроса не было.
+func (p *subjectPoller) sinceAt(n int) int64 {
+	p.mu.Lock()
+	defer p.mu.Unlock()
+	if n < 0 || n >= len(p.sinces) {
+		return -1
+	}
+	return p.sinces[n]
 }
