@@ -31,6 +31,7 @@ import (
 	"github.com/PRO-Robotech/kacho/pkg/operations"
 	"github.com/PRO-Robotech/kacho/pkg/operations/operationspb"
 	"github.com/PRO-Robotech/kacho/pkg/outbox/drainer"
+	outboxmetrics "github.com/PRO-Robotech/kacho/pkg/outbox/metrics"
 	"github.com/PRO-Robotech/kacho/pkg/servicecontract"
 	"github.com/PRO-Robotech/kacho/pkg/servicehost"
 
@@ -397,6 +398,13 @@ func runServe(cfg config.Config) error {
 		drainer.WithPoisonObserver[domain.RegisterIntent](func() {
 			svcMetrics.IncPoisoned(registerOutboxTable)
 		}),
+		// Каждая ДОСТАВЛЕННАЯ строка инкрементит счётчик своего направления
+		// (#1714). Прежде эту величину ставил скан как `count(*)` по живым
+		// строкам — совпадая с объявленным «за всё время» ровно до тех пор,
+		// пока строки не убираются. Наблюдатель считает СОБЫТИЕ доставки,
+		// поэтому уборка на величину не влияет by construction.
+		drainer.WithDeliveryObserver[domain.RegisterIntent](
+			outboxmetrics.DeliveryObserver(registerOutboxTable, outboxmetrics.RegisterOutboxDirections(), svcMetrics)),
 	)
 	if derr != nil {
 		return fmt.Errorf("build register-drainer: %w", derr)

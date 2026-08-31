@@ -1250,6 +1250,13 @@ func startRegisterDrainer(cfg config.Config, pool *pgxpool.Pool, rec metrics.Rec
 		drainer.WithPoisonObserver[fgaintent.Payload](func() {
 			rec.IncPoisoned(computeFGAOutboxTable)
 		}),
+		// Каждая ДОСТАВЛЕННАЯ строка инкрементит счётчик своего направления
+		// (#1714). Прежде эту величину ставил скан как `count(*)` по живым
+		// строкам — совпадая с объявленным «за всё время» ровно до тех пор,
+		// пока строки не убираются. Наблюдатель считает СОБЫТИЕ доставки,
+		// поэтому уборка на величину не влияет by construction.
+		drainer.WithDeliveryObserver[fgaintent.Payload](
+			metrics.DeliveryObserver(computeFGAOutboxTable, metrics.RegisterOutboxDirections(), rec)),
 	)
 	if derr != nil {
 		_ = conn.Close()

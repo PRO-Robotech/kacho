@@ -996,6 +996,13 @@ func startRegisterDrainer(ctx context.Context, iamAddr string, mtlsCfg config.MT
 		drainer.WithPoisonObserver[clients.FGARegisterPayload](func() {
 			rec.IncPoisoned(fgaRegisterOutboxTable)
 		}),
+		// Каждая ДОСТАВЛЕННАЯ строка инкрементит счётчик своего направления
+		// (#1714). Прежде эту величину ставил скан как `count(*)` по живым
+		// строкам — совпадая с объявленным «за всё время» ровно до тех пор,
+		// пока строки не убираются. Наблюдатель считает СОБЫТИЕ доставки,
+		// поэтому уборка на величину не влияет by construction.
+		drainer.WithDeliveryObserver[clients.FGARegisterPayload](
+			metrics.DeliveryObserver(fgaRegisterOutboxTable, metrics.RegisterOutboxDirections(), rec)),
 	)
 	if err != nil {
 		_ = conn.Close()

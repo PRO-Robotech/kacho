@@ -349,6 +349,13 @@ func assembleBackgroundWorkers(ctx context.Context, d backgroundDeps) ([]bgWorke
 			drainer.WithPoisonObserver[domain.FGARegisterIntent](func() {
 				d.outboxRec.IncPoisoned(nlbFGAOutboxTable)
 			}),
+			// Каждая ДОСТАВЛЕННАЯ строка инкрементит счётчик своего направления
+			// (#1714). Прежде эту величину ставил скан как `count(*)` по живым
+			// строкам — совпадая с объявленным «за всё время» ровно до тех пор,
+			// пока строки не убираются. Наблюдатель считает СОБЫТИЕ доставки,
+			// поэтому уборка на величину не влияет by construction.
+			drainer.WithDeliveryObserver[domain.FGARegisterIntent](
+				metrics.DeliveryObserver(nlbFGAOutboxTable, metrics.RegisterOutboxDirections(), d.outboxRec)),
 		)
 		if derr != nil {
 			return nil, fmt.Errorf("build fga register-drainer: %w", derr)
