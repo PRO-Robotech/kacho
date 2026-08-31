@@ -419,3 +419,43 @@ func TestBodyGate_CountsDiagramBodiesWithoutJudgingThem(t *testing.T) {
 			"метка узла принята за команду", census.CurlBlocks)
 	}
 }
+
+// TestBodyGate_MultiSegmentRouteIsRecognised — многосегментная подстановка
+// `{name=**}` есть ЗАКОННАЯ форма шаблона, и распознаватель обязан её знать.
+//
+// Форма, о которой распознаватель не знает, не даёт ни красного, ни зелёного у
+// СВОЕГО предмета — она даёт ложное красное у соседнего. Замер: пока
+// сопоставление требовало равенства длин, два верных примера реестра (имя
+// репозитория содержит слэш) объявлялись документирующими несуществующий путь.
+func TestBodyGate_MultiSegmentRouteIsRecognised(t *testing.T) {
+	s := newBodyStand(t)
+	// Страница пишется ДО построения входа: состав синтетического дерева
+	// снимается один раз, и файл, появившийся после, в обход не попадёт.
+	s.write(t, "docs/multi.mdx",
+		"<CodeBlock language=\"bash\">\n  {dedent`\n"+
+			"    curl -X PATCH 'http://localhost:18080/registry/v1/registries/reg1/repositories/backend/api' \\\\\n"+
+			"      -d '{ \"чегоНетНигде\": 1 }'\n  `}\n</CodeBlock>\n")
+	opts := bodyStandOptions(t, s.root)
+	opts.Domains = append(opts.Domains,
+		ClientTruthRequestBodyDomain{Name: "registry", ProtoPackage: "kacho.cloud.registry.v1"})
+
+	var log strings.Builder
+	findings, census, err := AuditClientTruthRequestBody(opts, &log)
+	if err != nil {
+		t.Fatalf("анализатор не отработал: %v", err)
+	}
+	t.Log(strings.TrimSpace(log.String()))
+
+	if census.BodiesUnrouted != 0 {
+		t.Fatalf("многосегментный маршрут не распознан (без маршрута %d) — верный пример "+
+			"объявлен документирующим несуществующий путь", census.BodiesUnrouted)
+	}
+	// Положительный контроль формы: тело всё-таки СУДИТСЯ, а не просто
+	// «сопоставилось». Иначе распознавание маршрута зеленело бы вхолостую.
+	if len(findings) != 1 || findings[0].Unrouted {
+		t.Fatalf("findings=%v, ожидалась ровно одна находка по ключу", findings)
+	}
+	if !strings.Contains(findings[0].Message, "registry") {
+		t.Errorf("тело сопоставлено не с сообщением реестра: %s", findings[0].Message)
+	}
+}

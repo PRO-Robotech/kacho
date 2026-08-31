@@ -319,6 +319,11 @@ type httpMethodBinding struct {
 	input protoreflect.MessageDescriptor
 }
 
+// path — шаблон одной строкой. Нужен для УСТОЙЧИВОГО порядка: дескрипторы
+// приходят обходом регистра, порядок которого не определён, а вердикт, зависящий
+// от порядка прогона, читать нельзя.
+func (b httpMethodBinding) path() string { return b.verb + " /" + strings.Join(b.tmpl, "/") }
+
 var (
 	curlLineRe = regexp.MustCompile(`\b(?:grpcurl|curl)\b`)
 	verbRe     = regexp.MustCompile(`-X\s+([A-Z]+)`)
@@ -680,6 +685,9 @@ func collectHTTPBindings(pkg string) ([]httpMethodBinding, error) {
 		}
 		return true
 	})
+	// Порядок обхода регистра дескрипторов не определён — закрепляем свой, чтобы
+	// перепись и вердикт не зависели от прогона.
+	sort.Slice(out, func(i, j int) bool { return out[i].path() < out[j].path() })
 	return out, nil
 }
 
@@ -749,17 +757,56 @@ func urlPath(u string) string {
 //
 // Суффикс последнего сегмента шаблона (`{id}:verb`) обязан совпасть — иначе
 // `POST /x/{id}:rename` матчил бы `POST /x/{id}:archive`.
+// Совпадений бывает несколько: многосегментная подстановка перекрывает более
+// частные маршруты. Берётся САМОЕ ЧАСТНОЕ — больше дословных сегментов, при
+// равенстве шаблон без `**`, при равенстве и этого — первый в лексикографическом
+// порядке. Порядок обхода регистра дескрипторов не определён, поэтому «первый
+// подошедший» давал бы вердикт, зависящий от прогона.
 func matchBinding(bs []httpMethodBinding, verb, path string) (httpMethodBinding, bool) {
 	segs := splitPath(path)
+	var best httpMethodBinding
+	found := false
 	for _, b := range bs {
-		if b.verb != verb {
+		if b.verb != verb || !matchTemplate(b.tmpl, segs) {
 			continue
 		}
-		if matchTemplate(b.tmpl, segs) {
-			return b, true
+		if !found || moreSpecific(b, best) {
+			best, found = b, true
 		}
 	}
-	return httpMethodBinding{}, false
+	return best, found
+}
+
+// moreSpecific — частнее ли a, чем b.
+func moreSpecific(a, b httpMethodBinding) bool {
+	al, bl := literalSegments(a.tmpl), literalSegments(b.tmpl)
+	if al != bl {
+		return al > bl
+	}
+	aw, bw := hasMultiWildcard(a.tmpl), hasMultiWildcard(b.tmpl)
+	if aw != bw {
+		return !aw
+	}
+	return a.path() < b.path()
+}
+
+func literalSegments(tmpl []string) int {
+	n := 0
+	for _, t := range tmpl {
+		if !strings.HasPrefix(t, "{") {
+			n++
+		}
+	}
+	return n
+}
+
+func hasMultiWildcard(tmpl []string) bool {
+	for _, t := range tmpl {
+		if strings.Contains(t, "=**") {
+			return true
+		}
+	}
+	return false
 }
 
 // matchTemplate — сопоставление сегментов с шаблоном.
