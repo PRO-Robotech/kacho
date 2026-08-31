@@ -13,6 +13,7 @@ import (
 
 	"github.com/stretchr/testify/require"
 
+	"github.com/PRO-Robotech/kacho/internal/treecorpus"
 	"github.com/PRO-Robotech/kacho/pkg/ids"
 	"github.com/PRO-Robotech/kacho/services/iam/internal/domain"
 )
@@ -241,7 +242,7 @@ func TestContractIdFormMatchesWhatTheProductMints(t *testing.T) {
 		if e.IsDir() || !strings.HasSuffix(e.Name(), ".proto") {
 			continue
 		}
-		raw, err := os.ReadFile(filepath.Join(dir, e.Name())) //nolint:gosec // путь собран из корня модуля
+		raw, err := os.ReadFile(filepath.Join(dir, e.Name())) // #nosec G304 -- путь собран из корня собственного модуля
 		require.NoError(t, err)
 		filesRead++
 		for _, ex := range scanIDExamples(string(raw)) {
@@ -425,30 +426,28 @@ func isBodyPlaceholder(s string) bool {
 }
 
 // grepTree — сколько файлов прочитано и встретился ли литерал в непробном дереве.
+//
+// Состав берётся у ИНДЕКСА (`internal/treecorpus`), а не обходом диска: правила
+// игнорирования действуют на любой глубине, и под `services/` на всякой машине,
+// где поднимали стенд, лежит неотслеживаемое — рабочие копии агентов,
+// распаковки чартов, отчёты прогонов. Обход диска сделал бы вердикт свойством
+// рабочего каталога, а не коммита; пустой корпус там же становится отказом, а
+// не тихим «ноль находок».
 func grepTree(t *testing.T, root, literal string) (int, bool) {
 	t.Helper()
+	paths, err := treecorpus.UnderWithSuffix(root, ".go", ".sql")
+	require.NoError(t, err)
 	filesRead, found := 0, false
-	err := filepath.Walk(root, func(path string, info os.FileInfo, err error) error {
-		if err != nil || info.IsDir() {
-			return err //nolint:wrapcheck // walk-функция возвращает ошибку обхода как есть
+	for _, path := range paths {
+		if strings.HasSuffix(path, "_test.go") {
+			continue
 		}
-		name := info.Name()
-		if strings.HasSuffix(name, "_test.go") {
-			return nil
-		}
-		if !strings.HasSuffix(name, ".go") && !strings.HasSuffix(name, ".sql") {
-			return nil
-		}
-		raw, readErr := os.ReadFile(path) //nolint:gosec // путь приходит из обхода дерева модуля
-		if readErr != nil {
-			return readErr //nolint:wrapcheck // ошибка чтения возвращается обходу как есть
-		}
+		raw, readErr := os.ReadFile(path) // #nosec G304 -- путь получен из индекса собственного дерева
+		require.NoError(t, readErr)
 		filesRead++
 		if strings.Contains(string(raw), literal) {
 			found = true
 		}
-		return nil
-	})
-	require.NoError(t, err)
+	}
 	return filesRead, found
 }

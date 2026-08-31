@@ -37,12 +37,13 @@ import (
 	"go/ast"
 	"go/parser"
 	"go/token"
-	"os/exec"
 	"path"
 	"sort"
 	"strconv"
 	"strings"
 	"testing"
+
+	"github.com/PRO-Robotech/kacho/internal/gitenv"
 )
 
 // serviceRoot — корень дерева службы относительно этого пакета.
@@ -110,7 +111,7 @@ type clientText struct {
 
 func collectClientTexts(t *testing.T) []clientText {
 	t.Helper()
-	out, err := exec.Command("git", "-C", serviceRoot, "ls-files", "internal").Output()
+	out, err := gitenv.Command(serviceRoot, "ls-files", "internal").Output()
 	if err != nil {
 		t.Fatalf("перечень файлов службы не получен: %v", err)
 	}

@@ -33,8 +33,14 @@ import (
 //     `registry_outbox`, по своему домену, и потому в ведомости отсутствует.
 //
 //   - `fga_model_version*` (iam) — версия модели, ЗАГРУЖЕННОЙ в снятый движок.
-//     Читателей и писателей у таблицы нет ни одного вне миграций; это предмет
-//     уборки, а не переименования, и он заведён отдельно.
+//     Читателей и писателей у таблицы не было ни одного вне миграций, поэтому
+//     предметом здесь была уборка, а не переименование: таблица снята миграцией
+//     `20260831120000_drop_fga_model_version.sql` (задача #1717), и строка
+//     ведомости ушла ТЕМ ЖЕ изменением.
+//     Три строки семьи остались, и это НЕ упущение: последовательность и оба
+//     ключа уходят из базы вместе с таблицей неявно, а разбор миграций видит
+//     только ЯВНЫЙ `DROP` в секции `Up`. Снять их из ведомости значило бы
+//     объявить прибавкой то, что разбор по-прежнему считает живым.
 var retiredEngineDatabaseLedger = []string{
 	"compute CONSTRAINT compute_fga_register_outbox_event_type_check",
 	"compute FUNCTION compute_fga_register_outbox_notify",
@@ -49,7 +55,6 @@ var retiredEngineDatabaseLedger = []string{
 	"iam CONSTRAINT fga_outbox_relation_present_check",
 	"iam SEQUENCE fga_model_version_id_seq",
 	"iam SEQUENCE fga_outbox_id_seq",
-	"iam TABLE fga_model_version",
 	"iam TABLE fga_outbox",
 	"nlb CONSTRAINT fga_register_outbox_event_type_check",
 	"nlb CONSTRAINT fga_register_outbox_payload_object_ck",

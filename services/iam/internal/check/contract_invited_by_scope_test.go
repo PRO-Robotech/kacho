@@ -68,7 +68,7 @@ var invitedByFields = []invitedByField{
 func TestBothInvitedByFieldsDeclareTheirScope(t *testing.T) {
 	dir := filepath.Join(monorepoRoot(t), iamContractDir)
 	read := func(name string) (string, error) {
-		raw, err := os.ReadFile(filepath.Join(dir, name)) //nolint:gosec // путь собран из корня модуля
+		raw, err := os.ReadFile(filepath.Join(dir, name)) // #nosec G304 -- путь собран из корня собственного модуля
 		return string(raw), err                           //nolint:wrapcheck // ошибка чтения возвращается вызывающему как есть
 	}
 	findings, inspected, scopes := auditInvitedByScopes(t, read, invitedByFields)
@@ -124,7 +124,7 @@ func TestNoThirdInvitedByFieldSlippedIn(t *testing.T) {
 		if e.IsDir() || !strings.HasSuffix(e.Name(), ".proto") {
 			continue
 		}
-		raw, err := os.ReadFile(filepath.Join(dir, e.Name())) //nolint:gosec // путь собран из корня модуля
+		raw, err := os.ReadFile(filepath.Join(dir, e.Name())) // #nosec G304 -- путь собран из корня собственного модуля
 		require.NoError(t, err)
 		filesRead++
 		for _, line := range strings.Split(string(raw), "\n") {

@@ -29,11 +29,12 @@ import (
 	"go/ast"
 	"go/parser"
 	"go/token"
-	"os/exec"
 	"sort"
 	"strconv"
 	"strings"
 	"testing"
+
+	"github.com/PRO-Robotech/kacho/internal/gitenv"
 )
 
 // deletingMethodPrefixes — имена методов, чья работа есть снятие строки.
@@ -52,7 +53,7 @@ func isDeletingMethodName(name string) bool {
 }
 
 func TestDeletingRepoMethodNamesItsKindHint(t *testing.T) {
-	out, err := exec.Command("git", "ls-files", ".").Output()
+	out, err := gitenv.Command("", "ls-files", ".").Output()
 	if err != nil {
 		t.Fatalf("перечень файлов пакета не получен: %v", err)
 	}
