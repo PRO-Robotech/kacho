@@ -301,11 +301,21 @@ GET /iam/v1/accessBindings?filter=subject%3D%22usr-…%22&accountId=acc-…
   потому что три разные единицы дают три разных числа, и одно из них уже было
   приведено неверно):
 
+  **Сужение по РАСШИРЕНИЮ обязательно, и без него число считает сам этот
+  документ** (задача #1792). Прежняя редакция предиката обходила всё поддерево
+  и потому включала два файла документации, называющих проверку прозой, — эту
+  приёмку и `architecture/known-divergences.md`. Предикат, считающий
+  собственное объяснение, — тот же класс, что он здесь и описывает.
+
   ```sh
-  git grep -l 'ValidateResourceID(' -- 'services/iam/**' ':!*_test.go' | wc -l          # 49 файлов
-  git grep -o 'shared\.ValidateResourceID(' -- 'services/iam/**' ':!*_test.go' | wc -l  # 50 вызовов
-  git grep -o '\bValidateResourceID(' -- 'services/iam/**' ':!*_test.go' | wc -l        # 52 с внутрипакетными
+  git grep -l 'shared\.ValidateResourceID(' -- 'services/iam/**/*.go' ':!*_test.go' | wc -l  # 50 файлов
+  git grep -o 'shared\.ValidateResourceID(' -- 'services/iam/**/*.go' ':!*_test.go' | wc -l  # 53 вызова
+  git grep -o '\bValidateResourceID(' -- 'services/iam/**/*.go' ':!*_test.go' | wc -l        # 55 с внутрипакетными
   ```
+
+  Числа сняты на этой линии **после** #1791, приведшего к общей проверке две
+  рукописные копии (`sa_keys`, `user_tokens`): на базе линии `bdbc7ee86` те же
+  предикаты давали **48 · 51 · 53**.
 
   **Круг 1 требовал здесь «сообщение называет ПОЛЕ» со ссылкой на
   `corevalidate.ResourceID` — требование СНЯТО как неисполнимое:** ни строгая, ни
@@ -426,7 +436,7 @@ GET /iam/v1/accessBindings?filter=subject%3D%22usr-…%22&accountId=acc-…
    формата own-owned id.** Конвенция называет для своих id family-agnostic
    `corevalidate.ResourceID` (её godoc прямо оговаривает: id с чужим для поля
    префиксом **проходит**); iam зовёт префикс-строгую `shared.ValidateResourceID` —
-   **50** вызовов в **49** файлах (предикаты — в IAM-AB-SIA-12). Расхождение
+   **53** вызова в **50** файлах (предикаты — в IAM-AB-SIA-12). Расхождение
    сплошное и **нигде не записано решением**. Своя задача: либо записать как
    осознанное отступление сервиса, либо привести к конвенции. Эта приёмка следует
    практике сервиса, а не конвенции, и говорит об этом прямо (IAM-AB-SIA-16).
