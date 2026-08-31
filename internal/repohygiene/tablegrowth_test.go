@@ -233,12 +233,6 @@ var tableGrowthRegistry = []TableGrowthDecl{
 			"предъявленный токен нечем объяснить. Темп задаёт расписание ротации",
 	},
 	{
-		Owner: "services/iam", Table: "fga_model_version",
-		Tempo: tempoOurs, Verdict: verdictRetained,
-		Reason: "история применённых моделей прав: строка на выкатку модели. Темп задаёт " +
-			"выкатка, не арендатор; запись — свидетельство того, какая модель действовала",
-	},
-	{
 		Owner: "services/storage", Table: "disk_type_bindings",
 		Tempo: tempoOurs, Verdict: verdictRetained,
 		Reason: "каталог привязок вида диска к носителю: прежняя привязка не удаляется, а " +
