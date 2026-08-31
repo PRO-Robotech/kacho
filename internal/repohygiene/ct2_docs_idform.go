@@ -126,6 +126,10 @@ type DocsIDFormCensus struct {
 	Judged          int
 	UnknownPrefix   int
 	UnknownPrefixes []string
+	// MintedAt — префикс → позиции вызовов чеканки, его производящих. Нужно
+	// потребителю словаря: находка о префиксе без координаты не восстанавливает
+	// следующий шаг.
+	MintedAt map[string][]string
 }
 
 // DocsIDFormFinding — один идентификатор, написанный не в той форме.
@@ -281,6 +285,7 @@ func docsIDFormMintMap(opts DocsIDFormOptions, census *DocsIDFormCensus) (map[st
 	minted := map[string]map[string]bool{}
 	sites := map[string]bool{}      // позиции разрешённых вызовов — счёт без дублей по проходам
 	unresolved := map[string]bool{} // позиции вызовов, чей аргумент не сведён к литералу
+	mintedAt := map[string]bool{}   // «префикс\x00позиция» — дедупликация по проходам
 
 	consts, err := docsIDFormConsts(opts, census)
 	if err != nil {
@@ -288,7 +293,7 @@ func docsIDFormMintMap(opts DocsIDFormOptions, census *DocsIDFormCensus) (map[st
 	}
 
 	for round := 0; round < docsIDFormMaxRounds; round++ {
-		changed, err := docsIDFormRound(opts, consts, known, minted, sites, unresolved)
+		changed, err := docsIDFormRound(opts, consts, known, minted, sites, unresolved, mintedAt)
 		if err != nil {
 			return nil, err
 		}
@@ -297,6 +302,14 @@ func docsIDFormMintMap(opts DocsIDFormOptions, census *DocsIDFormCensus) (map[st
 		}
 	}
 
+	census.MintedAt = map[string][]string{}
+	for k := range mintedAt {
+		i := strings.IndexByte(k, 0)
+		census.MintedAt[k[:i]] = append(census.MintedAt[k[:i]], k[i+1:])
+	}
+	for p := range census.MintedAt {
+		sort.Strings(census.MintedAt[p])
+	}
 	census.MintCalls = len(sites) + len(unresolved)
 	census.MintUnresolved = len(unresolved)
 	for pos := range unresolved {
@@ -389,7 +402,7 @@ func docsIDFormRound(
 	consts map[string]map[string]string,
 	known map[string]string,
 	minted map[string]map[string]bool,
-	sites, unresolved map[string]bool,
+	sites, unresolved, mintedAt map[string]bool,
 ) (bool, error) {
 	changed := false
 	err := docsIDFormWalkGo(opts, func(rel, dir string, file *ast.File, fset *token.FileSet) {
@@ -420,6 +433,7 @@ func docsIDFormRound(
 							minted[v] = map[string]bool{}
 						}
 						minted[v][form] = true
+						mintedAt[v+"\x00"+pos] = true
 						sites[pos] = true
 						delete(unresolved, pos)
 						continue
