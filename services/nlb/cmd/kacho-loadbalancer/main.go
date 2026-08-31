@@ -70,6 +70,10 @@ import (
 	corequota "github.com/PRO-Robotech/kacho/pkg/quota"
 	_ "github.com/PRO-Robotech/kacho/services/nlb/internal/dto/type2pb"
 	kachopg "github.com/PRO-Robotech/kacho/services/nlb/internal/repo/kacho/pg"
+
+	"github.com/PRO-Robotech/kacho/pkg/schemaguard"
+
+	"github.com/PRO-Robotech/kacho/services/nlb/internal/migrations"
 )
 
 // peerClients — composition root bundle типизированных адаптеров к peer-сервисам.
@@ -420,7 +424,11 @@ func runServe(configPath string) error {
 	// процесса (защита от restart-storm). Результат зеркалится в dependency_up
 	// Prometheus-gauge.
 	healthAgg := health.New(
-		buildReadinessCheckers(pool, bootGate),
+		// Версия схемы читается из ВСТРОЕННОГО набора миграций — того же, что
+		// применяет мигратор. Least-privilege serve-бинаря это не нарушает: набор
+		// читается как встроенные байты, а у базы спрашивается ОДИН `SELECT`
+		// применённой версии; схему serve-бинарь по-прежнему не меняет.
+		buildReadinessCheckers(pool, bootGate, schemaguard.CheckFromFS(migrations.FS, schemaguard.PgxVersionReader(pool))),
 		health.WithResultObserver(metricsAdapter.SetDependencyUp),
 	)
 	// Diagnostic HTTP-listener (cluster-internal): /metrics + /healthz + /readyz.

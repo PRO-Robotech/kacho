@@ -70,6 +70,10 @@ import (
 	"github.com/PRO-Robotech/kacho/services/vpc/internal/repo"
 	"github.com/PRO-Robotech/kacho/services/vpc/internal/repo/cqrsadapter"
 	kachopg "github.com/PRO-Robotech/kacho/services/vpc/internal/repo/kacho/pg"
+
+	"github.com/PRO-Robotech/kacho/pkg/schemaguard"
+
+	"github.com/PRO-Robotech/kacho/services/vpc/internal/migrations"
 )
 
 // configPathEnv — путь к YAML-конфигу. Пустое значение допустимо (defaults +
@@ -641,7 +645,11 @@ func runServe(cfg config.Config) error {
 	// живость процесса (защита от restart-storm). Результат зеркалится в
 	// dependency_up Prometheus-gauge.
 	healthAgg := health.New(
-		buildReadinessCheckers(pool, bootGate, authzConn),
+		// Версия схемы читается из ВСТРОЕННОГО набора миграций — того же, что
+		// применяет мигратор. Least-privilege serve-бинаря это не нарушает: набор
+		// читается как встроенные байты, а у базы спрашивается ОДИН `SELECT`
+		// применённой версии; схему serve-бинарь по-прежнему не меняет.
+		buildReadinessCheckers(pool, bootGate, authzConn, schemaguard.CheckFromFS(migrations.FS, schemaguard.PgxVersionReader(pool))),
 		health.WithResultObserver(metricsAdapter.SetDependencyUp),
 	)
 

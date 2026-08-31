@@ -27,6 +27,7 @@ import (
 
 	"github.com/PRO-Robotech/kacho/pkg/observability/health"
 	outboxmetrics "github.com/PRO-Robotech/kacho/pkg/outbox/metrics"
+	"github.com/PRO-Robotech/kacho/pkg/schemaguard"
 	"github.com/PRO-Robotech/kacho/pkg/servicecontract"
 
 	"github.com/PRO-Robotech/kacho/services/registry/internal/observability/metrics"
@@ -71,9 +72,17 @@ func diagnosticMux(m *metrics.Metrics, agg *health.Aggregator) *http.ServeMux {
 // молча. Адрес не объявлен вовсе — чекера нет: держать под вечно неготовым по
 // зависимости, которой на этой посадке не существует, значит выдавать посадку за
 // поломку.
-func buildReadinessCheckers(pool *pgxpool.Pool, authzDeclared bool, authzSlot *health.Slot) []health.Checker {
+// ВЕРСИЯ СХЕМЫ — ОТДЕЛЬНАЯ ИМЕНОВАННАЯ ЗАВИСИМОСТЬ, а не часть проверки базы.
+// Мигратор идёт при каждом раскате, поэтому откат выкатки ставит ПРЕЖНИЙ образ
+// на НОВУЮ схему; база при этом отвечает на `Ping`, и без этого чекера под
+// объявлялся бы готовым и получал трафик (`pkg/schemaguard`, задача #1734).
+// Отдельное имя обязательно: оператор обязан отличить «база недоступна» от
+// «образ не той версии, что схема», не читая кода.
+func buildReadinessCheckers(pool *pgxpool.Pool, authzDeclared bool, authzSlot *health.Slot,
+	schemaCheck func(context.Context) error) []health.Checker {
 	checkers := []health.Checker{
 		{Name: "database", Check: func(ctx context.Context) error { return pool.Ping(ctx) }},
+		{Name: schemaguard.CheckerName, Check: schemaCheck},
 	}
 	if authzDeclared {
 		checkers = append(checkers, authzSlot.Checker("iam-authz"))
