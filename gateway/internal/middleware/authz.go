@@ -200,15 +200,19 @@ func NewAuthzMiddleware(cfg AuthzMiddlewareConfig) (*AuthzMiddleware, error) {
 	if cfg.Now == nil {
 		cfg.Now = time.Now
 	}
-	if cfg.CacheTTL <= 0 {
-		// Read the declared policy, never a literal here. A positive verdict is
-		// cached, so this number IS the edge's revocation window — how long a
-		// grant that was taken away keeps working when the proactive drop has
-		// not arrived. While it was an anonymous literal on this line, the edge
-		// had a second, undeclared source for the same security parameter, and
-		// changing it would have moved the window with nothing going red.
-		cfg.CacheTTL = authz.RevocationPolicy.Default
-	}
+	// Read the declared policy, never a literal here. A positive verdict is
+	// cached, so this number IS the edge's revocation window — how long a grant
+	// that was taken away keeps working when the proactive drop has not arrived.
+	// While it was an anonymous literal on this line, the edge had a second,
+	// undeclared source for the same security parameter, and changing it would
+	// have moved the window with nothing going red.
+	//
+	// Разрешение «неположительное ⇒ умолчание политики» живёт в САМОЙ политике и
+	// зовётся отсюда: ту же функцию зовёт страж старта, судящий эту величину.
+	// Две копии правила отвечали бы одинаково на всяком положительном входе и
+	// по-разному на нуле — то есть расходились бы ровно на посадке, где ручку не
+	// трогали.
+	cfg.CacheTTL = authz.RevocationPolicy.Resolve(cfg.CacheTTL)
 	if cfg.CacheMaxEntries <= 0 {
 		cfg.CacheMaxEntries = 10000
 	}

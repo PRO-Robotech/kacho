@@ -15,6 +15,7 @@ import (
 
 	"go.uber.org/multierr"
 
+	"github.com/PRO-Robotech/kacho/pkg/authz"
 	coredb "github.com/PRO-Robotech/kacho/pkg/db"
 	"github.com/PRO-Robotech/kacho/pkg/grpcsrv"
 )
@@ -172,6 +173,27 @@ func (c Config) Validate() error {
 			"authz.deny-budget-per-sec must be > 0, got %v (a non-positive value reads as "+
 				"'no limit' to the decision link: the cut-off would switch itself off silently)",
 			c.Authz.DenyBudgetPerSec))
+	}
+
+	// Первая ступень цепочки отзыва гранта — доставка намерения регистрации до
+	// владельца прав. Дренаж будится уведомлением; когда уведомление потеряно,
+	// ступенью становится ОТКАТ, и отозванная выдача действует ровно столько.
+	//
+	// Судится на ЛЮБОЙ посадке и одним потолком со всеми: потолок принадлежит
+	// ЦЕПОЧКЕ, а не этой ручке, и объявлен там же, где два остальных
+	// (`pkg/authz.RevocationPolicy`). Объявленный здесь, он стал бы вторым местом
+	// об одном предмете — сумма ступеней разошлась бы со своими слагаемыми молча.
+	//
+	// Ноль — законный вход: библиотека дренажа подставит своё умолчание, и оно
+	// равно потолку ступени. Отвергать его значило бы отвергать посадку, ручку
+	// которой никто не трогал.
+	if pf := c.FGA.RegisterDrainer.PollFallback; pf > authz.RevocationPolicy.DeliveryCeiling {
+		errs = multierr.Append(errs, fmt.Errorf(
+			"fga.register-drainer.poll-fallback %v exceeds the declared ceiling %v: this is the "+
+				"FIRST step of the grant-revocation chain — with the notification lost, a withdrawn "+
+				"binding keeps being honoured for exactly this long. The ceiling is declared once in "+
+				"pkg/authz.RevocationPolicy, whose ChainCeiling is %v",
+			pf, authz.RevocationPolicy.DeliveryCeiling, authz.RevocationPolicy.ChainCeiling()))
 	}
 
 	// Production transport fail-closed (security.md «AuthN+AuthZ ВЕЗДЕ»): plaintext

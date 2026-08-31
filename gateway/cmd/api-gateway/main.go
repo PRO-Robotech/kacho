@@ -665,6 +665,10 @@ func main() {
 			FailOpen:     cfg.AuthZFailOpen,
 			AuthNMode:    cfg.AuthNMode,
 			DevSecretSet: cfg.AuthNDevSecret != "",
+			// Окно отзыва — четвёртая ось того же контура. До этого она лишь
+			// печаталась строкой `authz-mw wired` ниже: величина была видна и не
+			// судилась.
+			RevocationWindow: time.Duration(cfg.AuthZCacheTTLSeconds) * time.Second,
 		}); vErr != nil {
 			log.Fatalf("authz config startup-validation: %v", vErr)
 		}

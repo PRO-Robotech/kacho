@@ -9,6 +9,9 @@ package main
 import (
 	"fmt"
 	"strings"
+	"time"
+
+	"github.com/PRO-Robotech/kacho/pkg/authz"
 )
 
 // AuthzMiddlewareConfig is the minimal cross-section of the middleware
@@ -28,11 +31,23 @@ type AuthzMiddlewareConfig struct {
 	// HMAC-dev token path yields a real principal / forges a service_account with
 	// no IAM lookup (CWE-347). populated from `cfg.AuthNDevSecret != ""`.
 	DevSecretSet bool
+
+	// RevocationWindow — ОКНО ОТЗЫВА края, то есть срок жизни записи кэша
+	// положительных вердиктов: столько субъект, у которого право уже отобрали,
+	// продолжает проходить. Заполняется из
+	// `KACHO_API_GATEWAY_AUTHZ_CACHE_TTL_SECONDS`; неположительное значение
+	// означает «беру умолчание политики» и разрешается тем же
+	// `authz.RevocationPolicy.Resolve`, каким его разрешает сборка звена, — второй
+	// копии этого правила здесь заводить нельзя.
+	RevocationWindow time.Duration
 }
 
 // validateProductionAuthzConfig refuses to start when the deploy environment is
 // production-class AND the security posture is relaxed: authz disabled, authz
-// fail-open, or an anonymous (dev) authN mode. Only the explicit dev-class
+// fail-open, or an anonymous (dev) authN mode. Two axes bind under EVERY label
+// and are checked before the label is consulted at all — a shared signing key
+// and a revocation window wider than the declared ceiling; each says why at its
+// own branch. Only the explicit dev-class
 // labels ("dev" / "local" / "test") tolerate a relaxed config (the caller emits
 // a WARN line). Every OTHER env value — an empty/unset label, or a typo like
 // "prd" / "live" — is treated as production-class and validated (secure-by-
@@ -59,6 +74,29 @@ func validateProductionAuthzConfig(env string, cfg AuthzMiddlewareConfig) error 
 				"(KACHO_API_GATEWAY_AUTHN_DEV_SECRET must be empty on every deployed stand — "+
 				"a shared signing key makes every holder of it an issuer) (refuse to start)",
 			env,
+		)
+	}
+
+	// Окно отзыва тоже судится под КАЖДОЙ пометкой, и по той же причине, что
+	// общий ключ подписи выше. Потолок — обещание платформы про отзыв гранта:
+	// столько субъект, у которого право уже отобрали, продолжает проходить.
+	// Пометку, которая давала бы изъятие, выбирает тот же, кто пишет профиль
+	// развёртывания, — значит изъятие на ней барьером не является; а стенд,
+	// объявивший окно шире обещанного, отличается от боевого только тем, что
+	// цену ошибки на нём никто не увидит.
+	//
+	// Судится ВЕЛИЧИНА, С КОТОРОЙ ПРОЦЕСС БУДЕТ РАБОТАТЬ, а не сырая ручка:
+	// неположительное значение означает «беру умолчание политики», и разрешает
+	// его та же функция политики, что и сборка звена. Читать здесь сырое поле
+	// значило бы судить намерение вместо исхода.
+	if window := authz.RevocationPolicy.Resolve(cfg.RevocationWindow); window > authz.RevocationPolicy.Ceiling {
+		return fmt.Errorf(
+			"authz config invalid in %q env: revocation window %v exceeds the declared "+
+				"ceiling %v (KACHO_API_GATEWAY_AUTHZ_CACHE_TTL_SECONDS — the edge caches "+
+				"POSITIVE verdicts, so this value IS how long a withdrawn grant keeps "+
+				"working; the ceiling is declared once in pkg/authz.RevocationPolicy) "+
+				"(refuse to start)",
+			env, window, authz.RevocationPolicy.Ceiling,
 		)
 	}
 
