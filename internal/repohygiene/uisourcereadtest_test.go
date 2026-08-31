@@ -377,6 +377,27 @@ func isJSIdentByte(b byte) bool {
 		(b >= 'a' && b <= 'z') || (b >= 'A' && b <= 'Z') || (b >= '0' && b <= '9')
 }
 
+// callsJSName — зовёт ли код функцию с этим именем, где имя совпадает ЦЕЛИКОМ,
+// а не хвостом чужого идентификатора.
+//
+// ЕДИНСТВЕННЫЙ предикат этого вопроса в пакете: `strings.Contains(code, имя+"(")`
+// не отличает вызов от хвоста (`goDeclaredForm(` кончается на `rm(`), а вторая
+// копия предиката разошлась бы с первой молча — это второе место об одном
+// предмете. Разбор делегируется `callArgSpans`, который уже отсекает совпадение
+// в середине имени по `isJSIdentByte`.
+//
+// НАПРАВЛЕНИЕ ошибки у вызывающих РАЗНОЕ, и это причина, по которой предикат
+// один. Там, где подстрока решала «имя ВЫЗВАНО», лишнее совпадение объявляло
+// вызванным то, чего нет, — и вызывающий ПРОЩАЛ пробу, то есть находка гасла.
+// Ложное молчание себя не выдаёт ничем; ложная находка выдаёт сразу.
+//
+// Формы, которые предикат НЕ ловит и не ловил раньше: имя, отделённое от скобки
+// пробелом (`rm (path)`), и вызов через псевдоним импорта. Обеих в дереве
+// сегодня ноль — расширение сюда было бы изменением без предмета.
+func callsJSName(code, name string) bool {
+	return len(callArgSpans(code, []string{name + "("})) > 0
+}
+
 // readCoordinates — литералы, стоящие в аргументах вызова, который путь
 // ПОТРЕБЛЯЕТ. Всё остальное — метка, а не координата: соседний гейт передаёт
 // `"bad.ts"` в разбор исходника, собранного из строки в памяти, и файловой
@@ -548,6 +569,13 @@ func walkingHelperExports(helpers map[string]string) (walking, ambiguous, unreso
 		// Замыкание внутри модуля: функция, зовущая обходящую функцию своего же
 		// модуля, обход тоже несёт — и неважно, экспортирована ли та
 		// (`sweep` → `sourceFiles`; `walkCeremonyCarriers` → местный обходчик).
+		//
+		// Вызов спрашивается ЦЕЛЫМ ИМЕНЕМ (`callsJSName`), а не подстрокой.
+		// Направление ошибки здесь — ложное МОЛЧАНИЕ: хвост чужого имени объявил
+		// бы функцию доходящей до обхода, её экспорт попал бы в `walking`, и
+		// проба, импортирующая это имя, была бы ПРОЩЕНА — находка исчезла бы, не
+		// выдав себя ничем. Вторичное следствие противоположно и потому заметно:
+		// то же лишнее совпадение делает имя `ambiguous` в паре модулей.
 		for changed := true; changed; {
 			changed = false
 			for name, body := range bodies {
@@ -555,7 +583,7 @@ func walkingHelperExports(helpers map[string]string) (walking, ambiguous, unreso
 					continue
 				}
 				for peer, ok := range reaches {
-					if ok && peer != name && strings.Contains(body, peer+"(") {
+					if ok && peer != name && callsJSName(body, peer) {
 						reaches[name] = true
 						changed = true
 						break
@@ -608,6 +636,11 @@ func namedImports(code string) map[string]bool {
 
 // reachesTreeWalk — доходит ли проба до обхода дерева ЛЮБОЙ из двух законных
 // форм записи.
+//
+// Вторая форма спрашивается ЦЕЛЫМ ИМЕНЕМ: ответ `true` ПРОЩАЕТ пробу, поэтому
+// лишнее совпадение подстроки (хвост чужого идентификатора) гасило бы находку —
+// ложное молчание, которое ничем себя не выдаёт. Предпосылка `imported` этого
+// не закрывает: импортированное имя точно так же бывает хвостом другого.
 func reachesTreeWalk(code string, walking map[string]bool) bool {
 	if containsAny(code, treeWalkCalls) {
 		return true
@@ -617,7 +650,7 @@ func reachesTreeWalk(code string, walking map[string]bool) bool {
 	}
 	imported := namedImports(code)
 	for name := range walking {
-		if imported[name] && strings.Contains(code, name+"(") {
+		if imported[name] && callsJSName(code, name) {
 			return true
 		}
 	}
