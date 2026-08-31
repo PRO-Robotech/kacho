@@ -15,6 +15,7 @@ package subscription_test
 
 import (
 	"context"
+	"github.com/PRO-Robotech/kacho/internal/pgtest"
 	"sync"
 	"testing"
 	"time"
@@ -353,7 +354,7 @@ func (s *stand) pool(t testing.TB, ctx context.Context) *pgxpool.Pool {
 	if err != nil {
 		t.Fatalf("пул: %v", err)
 	}
-	t.Cleanup(p.Close)
+	pgtest.ClosePoolAtEnd(t, p)
 	return p
 }
 
