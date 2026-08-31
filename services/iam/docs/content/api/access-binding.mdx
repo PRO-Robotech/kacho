@@ -408,6 +408,63 @@ posture безопасности). Асинхронно.
 
 ### listByScope — что привязано к этому якорю {#list-by-scope}
 
+**Начинайте с `List`** — он отвечает на все вопросы срезов ниже, и только он не помечен
+устаревшим.
+
+<ApiOperation method="GET" endpoint="/iam/v1/accessBindings">
+
+**«Покажи выдачи»** — каноническое чтение. Отдаёт страницу привязок, которые вызывающий вправе
+прочитать по идентификатору; сортировка `(createdAt, id)` ASC, keyset-пагинация
+(`pageSize` до 1000, `pageToken`).
+
+Сужается тремя независимыми входами, и они **композируются**:
+
+<table>
+  <thead><tr><th>Вход</th><th>Что сужает</th></tr></thead>
+  <tbody>
+    <tr>
+      <td><code>filter</code></td>
+      <td>
+        <strong>ровно один</strong> предикат: <code>subject="&lt;id&gt;"</code> ·
+        <code>role="&lt;id&gt;"</code> · <code>scope="iam.account|iam.project|iam.cluster"</code> ·
+        <code>scopeId="&lt;id&gt;"</code>. Неизвестный ключ → <code>INVALID_ARGUMENT</code>
+      </td>
+    </tr>
+    <tr>
+      <td><code>accountId</code></td>
+      <td>область одного аккаунта: выдачи на <strong>самом аккаунте</strong> плюс выдачи на
+      <strong>каждом его проекте</strong></td>
+    </tr>
+    <tr>
+      <td><code>includeRevoked</code></td>
+      <td>показать и отозванные строки (<code>status=REVOKED</code>); по умолчанию скрыты</td>
+    </tr>
+  </tbody>
+</table>
+
+**«Что у этого человека в моём аккаунте» — один запрос.** Это самый частый вопрос ревизии
+доступа, и раньше он требовал обхода по всем аккаунтам субъекта:
+
+<CodeBlock language="bash">
+  {dedent`
+    curl -G 'http://localhost:18080/iam/v1/accessBindings' \\
+      -H 'Authorization: Bearer <JWT>' \\
+      --data-urlencode 'filter=subject="usrbr69ze0ftz3jf7396"' \\
+      --data-urlencode 'accountId=accbr69ze0ftz3jf7396'
+  `}
+</CodeBlock>
+
+**`accountId` — это не `scopeId`, и разница практическая.** `scopeId` сверяется с якорем самой
+строки, поэтому `scope="iam.account"` + `scopeId=<аккаунт>` вернёт выдачи, привязанные
+**к аккаунту**, и ни одной выдачи на его проектах. `accountId` покрывает и то, и другое.
+
+**Чужой либо несуществующий аккаунт в `accountId` даёт пустую страницу**, а не отказ: по ответу
+нельзя узнать, существует ли аккаунт. Негодный по форме идентификатор (или идентификатор другого
+ресурса, например `prj-…`) отвергается сразу — `400` / `INVALID_ARGUMENT`,
+`"invalid account id '<значение>'"`. Пустое значение `accountId` означает «не сужать».
+
+</ApiOperation>
+
 <ApiOperation method="GET" endpoint="/iam/v1/accessBindings:listByScope">
 
 :::warning Помечено к снятию — используйте `List`
@@ -534,6 +591,11 @@ audit-пробел «привязка на GROUP показывает лишь �
 **гейт края**); сверх того сервис требует распорядителя аккаунта — владелец, `admin` на
 аккаунте либо администратор облака. Распорядитель видит всех, включая тех, кого не он
 выдавал.
+
+**Устарел — тот же охват даёт `List` с `accountId`.** Отличий осталось два, и оба намеренные:
+порядок (здесь `createdAt` DESC, у `List` — ASC, поэтому сравнивать ответы двух глаголов надо
+**по составу**, а не по позиции) и `subjectTypeFilter` — `List` сужает субъекта по точному
+идентификатору, а не по классу.
 
 </ApiOperation>
 
