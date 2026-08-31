@@ -61,15 +61,28 @@ sed 's|/etc/kacho-identity-rendered/kratos.yaml|/etc/kacho-identity/kratos.yaml|
   "$CHART/values.dev.yaml" > "$TMP/values.inject-oldpath.yaml"
 assert "читает шаблон" RED "$TMP/values.inject-oldpath.yaml"
 
-# (4) отказ перестал быть закрытым: проверка пустой величины снята.
+# (4) отказ перестал быть закрытым: обязательность перечня имён, которыми шаг
+#     владеет, снята — тогда пустая и недоехавшая величина проходят молча.
 python3 - "$CHART/values.dev.yaml" "$TMP/values.inject-open.yaml" <<'PY'
 import io,sys
 s=io.open(sys.argv[1],encoding="utf-8").read()
 s=s.replace('{{- include "kacho.identity.configRenderInitContainer" . | nindent 0 }}',
-            '{{- include "kacho.identity.configRenderInitContainer" . | nindent 0 | replace ":?величина" ":-величина" }}')
+            '{{- include "kacho.identity.configRenderInitContainer" . | nindent 0 | replace ":?перечень" ":-перечень" }}')
 io.open(sys.argv[2],"w",encoding="utf-8").write(s)
 PY
 assert "отказ не закрытый" RED "$TMP/values.inject-open.yaml"
+
+# (4a) шаг снова судит остаток ПО ИМЕНИ, а не по форме — ровно дефект #1677.
+#      Класс символов в поиске заменён конкретным именем: перечень имён растёт
+#      вместе с конфигурацией и не растёт вместе с деревом.
+python3 - "$CHART/values.dev.yaml" "$TMP/values.inject-byname.yaml" <<'PY'
+import io,sys
+s=io.open(sys.argv[1],encoding="utf-8").read()
+s=s.replace('{{- include "kacho.identity.configRenderInitContainer" . | nindent 0 }}',
+            '{{- include "kacho.identity.configRenderInitContainer" . | nindent 0 | replace "[A-Za-z_][A-Za-z0-9_]*" "KACHO_IAM_HOOK_TOKEN" }}')
+io.open(sys.argv[2],"w",encoding="utf-8").write(s)
+PY
+assert "остаток судится по имени" RED "$TMP/values.inject-byname.yaml"
 
 # (5) законный близнец второго рода: профиль БЕЗ службы личности — не находка,
 #     а отсутствие предмета. Проба обязана пройти, сказав об этом.
