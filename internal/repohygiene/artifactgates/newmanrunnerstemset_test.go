@@ -284,6 +284,122 @@ func collectionStemsForRunner(tt *trackedTree, runnerRel string) []string {
 	return out
 }
 
+// stemLane — полоса сравнения: какую функцию общего слоя исполняем, из какого
+// подкаталога набора произведён стем и как называется вторая сторона в тексте
+// находки.
+//
+// Полоса выделена типом, а не двумя копиями кода, ровно потому, что обе стороны
+// сравнения у них РАЗНЫЕ по происхождению: слева ответ слоя (он спрашивает
+// ДИСК), справа — правило, применённое к ИНДЕКСУ git. Именно этот шов и породил
+// находку #1780; держать его в двух местах значило бы чинить одно из них.
+type stemLane struct {
+	fn     string // функция общего слоя, чей ОТВЕТ сверяется
+	dir    string // подкаталог набора, в котором лежит файл-производитель стема
+	suffix string // расширение файла-производителя
+	other  string // как называется вторая сторона сравнения
+}
+
+var (
+	stemLaneExpected = stemLane{
+		fn: "newman_expected_stems", dir: "cases", suffix: ".py",
+		other: "правило генератора",
+	}
+	stemLanePresent = stemLane{
+		fn: "newman_present_stems", dir: "collections", suffix: ".postman_collection.json",
+		other: "состав дерева",
+	}
+)
+
+// rel — путь файла, из которого стем произведён.
+func (l stemLane) rel(suite, stem string) string {
+	return suite + "/" + l.dir + "/" + stem + l.suffix
+}
+
+// stemDiffVerdict — расхождения, РАЗВЕДЁННЫЕ по причине.
+//
+// Две причины, и смешивать их нельзя: первая говорит о ПРАВИЛАХ отбора (предмет
+// гейта), вторая — о том, что рабочее дерево разошлось с индексом git (предмет
+// вообще не гейта). Одна общая корзина посылала читателя искать дефект в
+// правилах отбора там, где причина «файла нет в индексе».
+type stemDiffVerdict struct {
+	rule  []string // расхождение ПРАВИЛ отбора
+	index []string // рабочее дерево разошлось с индексом git
+}
+
+// classifySuiteStemDiff — судящая функция: почему имя разошлось.
+//
+// ПОЧЕМУ РАЗЛИЧЕНИЕ ВООБЩЕ ВОЗМОЖНО. Стороны сравнения спрашивают РАЗНЫЕ
+// авторитеты: слой отбора обходит диск глобом оболочки, правило генератора
+// применяется к индексу git. Значит у каждого расхождения есть ровно два
+// объяснения, и они отличимы вопросом к самому файлу-производителю:
+//
+//	есть на диске  · нет в индексе  → ИНДЕКС: файл не добавлен (`git add`)
+//	нет на диске   · есть в индексе → ИНДЕКС: файл удалён из рабочего дерева
+//	сходятся оба                    → ПРАВИЛА: слой и генератор судят по-разному
+//
+// Третья строка — единственная, о которой гейт заведён. Первые две означают, что
+// сравнение отборов на этом наборе БЕСПРЕДМЕТНО, и текст обязан называть индекс,
+// а не отбор: иначе находка посылает искать дефект в правилах, которых он не
+// касается. Стоило полного локального прогона (#1780).
+//
+// Гейт при этом остаётся КРАСНЫМ в обоих случаях: молчание на расхождении дерева
+// с индексом было бы ослаблением, а предмет находки — диагностика, а не вердикт.
+func classifySuiteStemDiff(lane stemLane, suite string, got, want []string,
+	inIndex, onDisk func(rel string) bool) stemDiffVerdict {
+
+	gotSet := map[string]bool{}
+	for _, s := range got {
+		gotSet[s] = true
+	}
+	wantSet := map[string]bool{}
+	for _, s := range want {
+		wantSet[s] = true
+	}
+
+	var v stemDiffVerdict
+	var ruleOnly []string
+	for _, s := range got {
+		if wantSet[s] {
+			continue
+		}
+		rel := lane.rel(suite, s)
+		if !inIndex(rel) && onDisk(rel) {
+			v.index = append(v.index, fmt.Sprintf(
+				"%s — имя %q НЕ ПРО ПРАВИЛА ОТБОРА: файл %s лежит на диске и в ИНДЕКСЕ git ОТСУТСТВУЕТ. "+
+					"%s спрашивает диск, %s применяется к индексу — оттого имя есть у одной стороны и нет у другой. "+
+					"Сведите рабочее дерево с индексом (`git add %s` либо уберите файл): до этого сравнение "+
+					"отборов на этом наборе беспредметно",
+				suite, s, rel, lane.fn, lane.other, rel))
+			continue
+		}
+		ruleOnly = append(ruleOnly, s)
+	}
+	for _, s := range want {
+		if gotSet[s] {
+			continue
+		}
+		rel := lane.rel(suite, s)
+		if inIndex(rel) && !onDisk(rel) {
+			v.index = append(v.index, fmt.Sprintf(
+				"%s — имя %q НЕ ПРО ПРАВИЛА ОТБОРА: файл %s числится в ИНДЕКСЕ git и на диске ОТСУТСТВУЕТ. "+
+					"%s спрашивает диск, %s применяется к индексу — оттого имя есть у одной стороны и нет у другой. "+
+					"Сведите рабочее дерево с индексом (`git checkout -- %s` либо `git rm`): до этого сравнение "+
+					"отборов на этом наборе беспредметно",
+				suite, s, rel, lane.fn, lane.other, rel))
+			continue
+		}
+		ruleOnly = append(ruleOnly, s)
+	}
+	if len(ruleOnly) > 0 {
+		sort.Strings(ruleOnly)
+		v.rule = append(v.rule, fmt.Sprintf(
+			"%s — %s дал [%s], %s даёт [%s]; расходятся имена: %s",
+			suite, lane.fn, strings.Join(got, " "), lane.other, strings.Join(want, " "),
+			strings.Join(ruleOnly, ", ")))
+	}
+	return v
+}
+
 // Отбор общего слоя ИСПОЛНЯЕТСЯ и сходится с правилом генератора.
 //
 // ПОЧЕМУ ИСПОЛНЕНИЕМ, А НЕ ЧТЕНИЕМ. Предмет здесь — не текст функции, а её
@@ -296,6 +412,14 @@ func collectionStemsForRunner(tt *trackedTree, runnerRel string) []string {
 // Расхождение было НЕВИДИМО там, где его писали: у vpc/geo/gateway модулей с
 // подчёркиванием нет вовсе, поэтому узкое правило выглядело решением, не будучи
 // им, — тот же класс, который общий слой генератора называет у себя.
+//
+// ДИАГНОСТИКА ЕСТЬ ЧАСТЬ СВОЙСТВА (#1780, `testing.md` §«Гейт на класс» п.8).
+// Стороны сравнения спрашивают разные авторитеты — диск и индекс git, — поэтому
+// НЕОТСЛЕЖИВАЕМЫЙ файл кейса даёт расхождение, к правилам отбора отношения не
+// имеющее. Прежняя редакция называла его «расхождением отбора» и печатала два
+// списка имён: находка читалась как настоящая, а причина была «файл не в
+// индексе». Причины разведены `classifySuiteStemDiff`, и перепись печатает их
+// ПОРОЗНЬ — одно суммарное число вернуло бы ту же неразличимость.
 func TestNewmanSharedStemSelectorMatchesTheGenerator(t *testing.T) {
 	root := repoRoot(t)
 	tt := newTrackedTree(t, root)
@@ -318,30 +442,26 @@ func TestNewmanSharedStemSelectorMatchesTheGenerator(t *testing.T) {
 	}
 	sort.Strings(names)
 
-	var checked, helpers, mismatched int
-	var findings []string
+	inIndex := func(rel string) bool { return tt.files[rel] }
+	onDisk := func(rel string) bool {
+		_, err := os.Stat(filepath.Join(root, rel))
+		return err == nil
+	}
+
+	var checked int
+	var ruleFindings, indexFindings []string
 	for _, suite := range names {
 		wantExpected := generatorCaseStems(tt, suite)
 		wantPresent := collectionStemsForRunner(tt, suite+"/scripts/run.sh")
-		for _, s := range wantExpected {
-			if strings.HasPrefix(s, "_") {
-				helpers++
-			}
-		}
-		gotExpected := runSharedSelector(t, root, "newman_expected_stems", suite)
-		gotPresent := runSharedSelector(t, root, "newman_present_stems", suite)
+		gotExpected := runSharedSelector(t, root, stemLaneExpected.fn, suite)
+		gotPresent := runSharedSelector(t, root, stemLanePresent.fn, suite)
 		checked++
-		if !equalStrings(gotExpected, wantExpected) {
-			mismatched++
-			findings = append(findings, fmt.Sprintf(
-				"%s — newman_expected_stems дал [%s], правило генератора даёт [%s]",
-				suite, strings.Join(gotExpected, " "), strings.Join(wantExpected, " ")))
-		}
-		if !equalStrings(gotPresent, wantPresent) {
-			mismatched++
-			findings = append(findings, fmt.Sprintf(
-				"%s — newman_present_stems дал [%s], в дереве лежит [%s]",
-				suite, strings.Join(gotPresent, " "), strings.Join(wantPresent, " ")))
+		for _, v := range []stemDiffVerdict{
+			classifySuiteStemDiff(stemLaneExpected, suite, gotExpected, wantExpected, inIndex, onDisk),
+			classifySuiteStemDiff(stemLanePresent, suite, gotPresent, wantPresent, inIndex, onDisk),
+		} {
+			ruleFindings = append(ruleFindings, v.rule...)
+			indexFindings = append(indexFindings, v.index...)
 		}
 	}
 
@@ -358,8 +478,13 @@ func TestNewmanSharedStemSelectorMatchesTheGenerator(t *testing.T) {
 			}
 		}
 	}
-	t.Logf("наборов newman осмотрено: %d, из них с модулем-помощником в cases/: %d; расхождений отбора: %d",
-		checked, helperSuites, mismatched)
+	// Расхождения печатаются ПОРОЗНЬ по причине: сумма вернула бы ту самую
+	// неразличимость, ради устранения которой заведено `classifySuiteStemDiff`.
+	// Охват (наборов · наборов с помощником) при этом не изменился — расширение
+	// текста не есть расширение обхода.
+	t.Logf("наборов newman осмотрено: %d, из них с модулем-помощником в cases/: %d; "+
+		"расхождений ПРАВИЛ отбора: %d, имён вне индекса git: %d",
+		checked, helperSuites, len(ruleFindings), len(indexFindings))
 	if checked == 0 {
 		t.Fatal("предпосылка пробы не выполняется: наборов newman не найдено — сверять нечего")
 	}
@@ -367,8 +492,20 @@ func TestNewmanSharedStemSelectorMatchesTheGenerator(t *testing.T) {
 		t.Fatal("предпосылка пробы не выполняется: ни в одном наборе нет модуля с ведущим подчёркиванием,\n" +
 			"поэтому узкое и широкое правила отбора отвечали бы одинаково и проба была бы вакуумна")
 	}
-	if len(findings) > 0 {
-		t.Fatalf("отбор общего слоя разошёлся с правилом генератора:\n  %s", strings.Join(findings, "\n  "))
+	// ПОРЯДОК НАЗЫВАНИЯ. Первым идёт предмет гейта (правила отбора), вторым —
+	// расхождение дерева с индексом. Обратный порядок вернул бы прежнее: читатель
+	// принимает первую строку за диагноз и идёт по ней.
+	var msg []string
+	if len(ruleFindings) > 0 {
+		msg = append(msg, "отбор общего слоя разошёлся с правилом генератора:\n  "+
+			strings.Join(ruleFindings, "\n  "))
+	}
+	if len(indexFindings) > 0 {
+		msg = append(msg, "рабочее дерево разошлось с ИНДЕКСОМ git — это НЕ расхождение правил отбора:\n  "+
+			strings.Join(indexFindings, "\n  "))
+	}
+	if len(msg) > 0 {
+		t.Fatal(strings.Join(msg, "\n"))
 	}
 }
 
@@ -430,14 +567,8 @@ func runSelectorFrom(t *testing.T, lib, fn, dir string) []string {
 	return res
 }
 
-func equalStrings(a, b []string) bool {
-	if len(a) != len(b) {
-		return false
-	}
-	for i := range a {
-		if a[i] != b[i] {
-			return false
-		}
-	}
-	return true
-}
+// Здесь стоял `equalStrings` — он снят ВМЕСТЕ со своим предметом (#1780).
+// Сравнение «равны или нет» отвечало на вопрос, который больше не задаётся:
+// `classifySuiteStemDiff` спрашивает не РАВНЫ ли перечни, а ПОЧЕМУ они
+// разошлись, и различает имена поимённо. Мёртвый близнец, оставленный «на
+// всякий случай», к следующей правке разошёлся бы с живым разбором молча.
