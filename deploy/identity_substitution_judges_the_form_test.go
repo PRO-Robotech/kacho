@@ -143,6 +143,32 @@ func envSecretVars(block string) []string {
 	return out
 }
 
+// substTemplateAction — действие шаблона внутри литерала перечня владения.
+//
+// ФОРМ ЗАПИСИ ПЕРЕЧНЯ ДВЕ, И ВТОРАЯ ЗАВЕДЕНА ВМЕСТЕ С ВЫНОСОМ УДОСТОВЕРЕНИЯ В
+// СЕКРЕТ (решение Р6 приёмки ID-MAIL-1). Имя удостоверения попадает в перечень
+// ТОЛЬКО когда профиль объявил его источник: безусловно названное, оно роняло бы
+// каждый стенд, где почтовый узел пароля не спрашивает. Отсюда условный литерал
+//
+//	value: "KACHO_IAM_HOOK_TOKEN{{ if … }} KACHO_IDENTITY_SMTP_CREDENTIAL{{ end }}"
+//
+// Двумя ветками этого не записать: два объявления одного имени в статическом
+// тексте — находка соседнего гейта (identity_step_declaration_parses_test.go),
+// и справедливая: побеждает последняя, а какая именно, из объявления не видно.
+//
+// ПОЧЕМУ РАСПОЗНАВАТЕЛЬ РАСШИРЕН, А НЕ ОБОЙДЁН. Форма, о которой он не знает,
+// не даёт ни красного, ни зелёного — она МОЛЧИТ (`testing.md` §«Гейт на класс»,
+// п. 7): без этого снятия `strings.Fields` вернул бы фигурные скобки именами, и
+// согласие перечня с переменными перестало бы проверяться ВООБЩЕ, оставаясь на
+// вид исполненным.
+var substTemplateAction = regexp.MustCompile(`\{\{.*?\}\}`)
+
+// substListLiteral — перечень владения, очищенный от действий шаблона. Имена
+// после снятия остаются теми же; условной становится лишь их наличие.
+func substListLiteral(v string) string {
+	return substTemplateAction.ReplaceAllString(v, " ")
+}
+
 // envLiteralValue — литеральное значение переменной блока.
 func envLiteralValue(block, name string) (string, bool) {
 	lines := strings.Split(block, "\n")
@@ -161,7 +187,7 @@ func envLiteralValue(block, name string) (string, bool) {
 				break
 			}
 			if s := scalarLine.FindStringSubmatch(cur); s != nil && s[2] == "value" {
-				return strings.Trim(s[3], `"'`), true
+				return substListLiteral(strings.Trim(s[3], `"'`)), true
 			}
 		}
 	}
@@ -401,6 +427,64 @@ func TestScanSubstitution_SelfTest(t *testing.T) {
 	silent.refuses = false
 	if got := scanSubstitution(silent); len(got) == 0 {
 		t.Errorf("(E) шаг без отказа ПРОПУЩЕН")
+	}
+}
+
+// TestSubstitutedListLiteralKnowsBothForms — распознаватель перечня владения
+// знает ОБЕ законные формы записи, и это доказано в обе стороны.
+//
+// Форма, о которой распознаватель не знает, не даёт ни красного, ни зелёного —
+// она МОЛЧИТ, и всё записанное в ней уходит из-под наблюдения (`testing.md`
+// §«Гейт на класс», п. 7). Здесь измеряется именно это: сколько ИМЁН разбор
+// видит в каждой форме.
+func TestSubstitutedListLiteralKnowsBothForms(t *testing.T) {
+	cases := []struct {
+		name    string
+		literal string
+		want    []string
+	}{
+		{
+			// Форма первая — безусловный перечень. Была единственной.
+			name:    "безусловный перечень",
+			literal: "KACHO_IAM_HOOK_TOKEN",
+			want:    []string{"KACHO_IAM_HOOK_TOKEN"},
+		},
+		{
+			// Форма вторая — условный хвост (решение Р6). Без снятия действия
+			// разбор вернул бы фигурные скобки именами, и согласие перечня с
+			// переменными перестало бы проверяться, оставаясь на вид исполненным.
+			name:    "условный хвост",
+			literal: "KACHO_IAM_HOOK_TOKEN{{ if $mailCredDeclared }} KACHO_IDENTITY_SMTP_CREDENTIAL{{ end }}",
+			want:    []string{"KACHO_IAM_HOOK_TOKEN", "KACHO_IDENTITY_SMTP_CREDENTIAL"},
+		},
+		{
+			// Условная ГОЛОВА — та же форма с другой стороны: если бы снятие
+			// работало только на хвосте, эта запись молча дала бы одно имя.
+			name:    "условная голова",
+			literal: "{{ if $x }}A_TOKEN {{ end }}B_TOKEN",
+			want:    []string{"A_TOKEN", "B_TOKEN"},
+		},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			got := uniqueSorted(strings.Fields(substListLiteral(tc.literal)))
+			want := uniqueSorted(tc.want)
+			if strings.Join(got, " ") != strings.Join(want, " ") {
+				t.Fatalf("разбор перечня владения назвал %v, ожидалось %v — "+
+					"форма, которую он не знает, уводит перечень ИЗ-ПОД НАБЛЮДЕНИЯ: "+
+					"он не даёт ни красного, ни зелёного, он молчит", got, want)
+			}
+		})
+	}
+
+	// ОБРАТНАЯ СТОРОНА: без снятия действий условная форма даёт ИМЕНАМИ фигурные
+	// скобки. Проверяется явно — иначе «расширение помогло» неотличимо от
+	// «расширение ничего не изменило» (перепись обязана двигаться).
+	rawFields := uniqueSorted(strings.Fields(
+		"KACHO_IAM_HOOK_TOKEN{{ if $mailCredDeclared }} KACHO_IDENTITY_SMTP_CREDENTIAL{{ end }}"))
+	if len(rawFields) <= 2 {
+		t.Fatalf("контроль расширения не сработал: без снятия действий разбор дал %v — "+
+			"значит снимать было нечего, и расширение холостое", rawFields)
 	}
 }
 

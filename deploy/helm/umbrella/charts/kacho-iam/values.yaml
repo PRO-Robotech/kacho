@@ -228,6 +228,10 @@ global:
         connectionURI: ""
         fromAddress: ""
         fromName: ""
+        # Источник удостоверения, не сама величина (Р6). Разбор — в умбрелле.
+        credentialSecret:
+          name: ""
+          key: ""
 
 # Phase 2 (KAC-127) — Kratos identity schema + config ConfigMaps. Управляются
 # флагами; в Phase 2 поднимаются вместе с kacho-iam (один namespace, один Helm
