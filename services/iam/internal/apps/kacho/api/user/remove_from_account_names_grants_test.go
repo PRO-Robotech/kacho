@@ -155,7 +155,7 @@ func TestRemoveFromAccount_RefusalNamesTheGrantsThatHold(t *testing.T) {
 	ctx := context.Background()
 	pool, err := coredb.NewPool(ctx, dsnWithSchema(t))
 	require.NoError(t, err)
-	t.Cleanup(pool.Close)
+	pgtest.ClosePoolAtEnd(t, pool)
 	repo := kachopg.New(pool, nil)
 
 	uid, accID := seedUserWithAccount(t, ctx, repo, "hold")
@@ -216,7 +216,7 @@ func TestRemoveFromAccount_SucceedsOnceTheGrantIsGone(t *testing.T) {
 	ctx := context.Background()
 	pool, err := coredb.NewPool(ctx, dsnWithSchema(t))
 	require.NoError(t, err)
-	t.Cleanup(pool.Close)
+	pgtest.ClosePoolAtEnd(t, pool)
 	repo := kachopg.New(pool, nil)
 
 	uid, accID := seedUserWithAccount(t, ctx, repo, "free")
@@ -247,7 +247,7 @@ func TestRemoveFromAccount_RefusalNamesGrantsScopedOnAccountProjects(t *testing.
 	ctx := context.Background()
 	pool, err := coredb.NewPool(ctx, dsnWithSchema(t))
 	require.NoError(t, err)
-	t.Cleanup(pool.Close)
+	pgtest.ClosePoolAtEnd(t, pool)
 	repo := kachopg.New(pool, nil)
 
 	uid, accID := seedUserWithAccount(t, ctx, repo, "proj")
