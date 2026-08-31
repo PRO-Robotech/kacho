@@ -94,6 +94,9 @@ func auditPostureVocabularySingleSource(root string, files []string) ([]postureF
 		if strings.HasPrefix(slashed, "pkg/api/") {
 			continue
 		}
+		// #nosec G304 -- путь пришёл из индекса git ЭТОГО дерева (treecorpus, через
+		// trackedGoFiles) либо из синтетического корня инъекции; постороннего ввода
+		// тут нет.
 		src, err := os.ReadFile(filepath.Join(root, rel))
 		if err != nil {
 			return nil, cen, err

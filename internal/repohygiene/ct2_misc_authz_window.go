@@ -288,8 +288,9 @@ func ct2AllEqual(values []string, want string) bool {
 // Разбор, а не поиск по тексту: имя ручки стоит и в комментариях рядом, и
 // подстрочный поиск взял бы число оттуда.
 func ct2EnvDefault(path, knob string) (string, error) {
-	// Путь собран из индекса дерева, а не из ввода вызывающего: подавления
-	// анализатора здесь не требуется.
+	// #nosec G304 -- путь собран из перечня владельцев в этом же модуле
+	// (ct2WindowOwners, поле ConfigFile) и корня обхода, а его наличие вызывающий
+	// проверил по индексу git (tree.HasFile); постороннего ввода тут нет.
 	src, err := os.ReadFile(path)
 	if err != nil {
 		return "", fmt.Errorf("чтение %s: %w", path, err)

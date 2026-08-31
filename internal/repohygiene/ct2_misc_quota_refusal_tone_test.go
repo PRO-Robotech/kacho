@@ -51,24 +51,7 @@ func TestQuotaRefusalToneIsDerivedFromTheSentinelNotAPrefixList(t *testing.T) {
 	// которого гейт заведён.
 	var perOwner []string
 	for _, o := range c.Owners {
-		f := c.Facts[o]
-		state := "нет маппера"
-		switch {
-		case f.literalPrefixFile != "":
-			state = "перечень префиксов-строк"
-		case f.stripperFile == "":
-			state = "стриппер не разрешён"
-		case f.derivesPrefix && !f.guardsEmptyRemainder:
-			state = "выводит, пустой остаток не ограждён"
-		case f.derivesPrefix:
-			state = "выводит из sentinel'а"
-		default:
-			state = "префикс ниоткуда"
-		}
-		if !ct2ToneVocabularyAgrees(f) {
-			state += " · словарь разошёлся"
-		}
-		perOwner = append(perOwner, o+"="+state)
+		perOwner = append(perOwner, o+"="+ct2ToneOwnerState(c.Facts[o]))
 	}
 	t.Logf("перепись: владельцев %d · прод-файлов осмотрено %d (разобрано %d) · "+
 		"мапперов наружу %d · стрипперов разрешено %d\n"+
@@ -112,4 +95,39 @@ func TestQuotaRefusalToneIsDerivedFromTheSentinelNotAPrefixList(t *testing.T) {
 				strconv.Itoa(len(c.Owners)), ax.name, strconv.Itoa(ax.got))
 		}
 	}
+}
+
+// ct2ToneOwnerState — имя состояния ОДНОГО владельца для переписи.
+//
+// Вынесено из тела гейта не ради краткости, а чтобы диагностику можно было
+// ПРОВЕРИТЬ: «находка называет симптом вместо причины» — дефект того же рода,
+// что молчащий гейт (`testing.md` §«Гейт на класс», п.8), и в диффе он не
+// виден. Инъекция утверждает это имя по каждому состоянию:
+// TestCt2ToneInjection_BlindSpotsAreFindingsNotSilence.
+//
+// Порядок ветвей повторяет порядок находок в quotaRefusalToneFindings и этим
+// несущий: маппер наружу спрашивается ПЕРВЫМ, потому что стриппер ищется от
+// его имени (проход 2) и без маппера пуст тоже. Спроси о стриппере раньше — и
+// владелец без маппера получит имя ВТОРОГО симптома, тогда как находка о нём
+// говорит «маппера наружу не найдено»: два имени одного состояния.
+func ct2ToneOwnerState(f *ct2ToneOwnerFacts) string {
+	var state string
+	switch {
+	case f.outwardFile == "":
+		state = "нет маппера"
+	case f.literalPrefixFile != "":
+		state = "перечень префиксов-строк"
+	case f.stripperFile == "":
+		state = "стриппер не разрешён"
+	case f.derivesPrefix && !f.guardsEmptyRemainder:
+		state = "выводит, пустой остаток не ограждён"
+	case f.derivesPrefix:
+		state = "выводит из sentinel'а"
+	default:
+		state = "префикс ниоткуда"
+	}
+	if !ct2ToneVocabularyAgrees(f) {
+		state += " · словарь разошёлся"
+	}
+	return state
 }

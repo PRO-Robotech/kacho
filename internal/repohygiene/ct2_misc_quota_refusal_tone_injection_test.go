@@ -281,13 +281,18 @@ func TestCt2ToneInjection_BlindSpotsAreFindingsNotSilence(t *testing.T) {
 		name    string
 		fixture ct2ToneFixture
 		want    string
+		// wantState — как ту же слепоту называет ПЕРЕПИСЬ. Утверждается вместе с
+		// находкой: перепись и находка обязаны говорить об одном состоянии одно и
+		// то же. Без этой оси перепись называла владельца без маппера «стриппер не
+		// разрешён» — имя ВТОРОГО симптома, — и разойтись они могли молча.
+		wantState string
 	}{
 		{"маппера нет", ct2ToneFixture{owner: "iam", body: "склейка-на-месте", noReason: true},
-			"маппер отказа учёта наружу не найден"},
+			"маппер отказа учёта наружу не найден", "нет маппера"},
 		{"стриппер не объявлен", ct2ToneFixture{owner: "iam", body: ""},
-			"объявления которого в прод-дереве владельца нет"},
+			"объявления которого в прод-дереве владельца нет", "стриппер не разрешён"},
 		{"префикс ниоткуда", ct2ToneFixture{owner: "iam", body: "префикс-ниоткуда"},
-			"префикса из sentinel'а не выводит"},
+			"префикса из sentinel'а не выводит", "префикс ниоткуда"},
 	}
 	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {
@@ -295,6 +300,10 @@ func TestCt2ToneInjection_BlindSpotsAreFindingsNotSilence(t *testing.T) {
 			c, findings := ct2ToneRun(t, root, []string{"iam"})
 			if len(findings) != 1 || !strings.Contains(findings[0], tc.want) {
 				t.Fatalf("ожидалась находка %q, получено: %v", tc.want, findings)
+			}
+			if got := ct2ToneOwnerState(c.Facts["iam"]); got != tc.wantState {
+				t.Errorf("перепись назвала состояние %q, ожидалось %q — "+
+					"перепись и находка говорят о владельце разное", got, tc.wantState)
 			}
 			if c.Conforming != 0 {
 				t.Errorf("соответствующих обязано быть 0, посчитано %d", c.Conforming)
