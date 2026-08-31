@@ -345,8 +345,12 @@ func (u *IssueSAKeyUseCase) Execute(ctx context.Context, in IssueInput) (*operat
 	if in.ServiceAccountID == "" {
 		return nil, status.Error(codes.InvalidArgument, "service_account_id required")
 	}
-	if !strings.HasPrefix(string(in.ServiceAccountID), domain.PrefixServiceAccount) {
-		return nil, status.Errorf(codes.InvalidArgument, "invalid service account id '%s'", in.ServiceAccountID)
+	// Формат СВОЕГО идентификатора судит общая проверка, а не копия рядом
+	// (задача #1791). Копия сверяла только префикс и потому принимала
+	// обрезанный идентификатор, производя при этом ПОБАЙТОВО ТОТ ЖЕ отказ, —
+	// расхождение было невидимо всякой пробе, сверяющей сообщение.
+	if err := shared.ValidateResourceID(string(in.ServiceAccountID), domain.PrefixServiceAccount, "service account"); err != nil {
+		return nil, err
 	}
 	if in.CreatedByUserID == "" {
 		return nil, status.Error(codes.InvalidArgument, "created_by_user_id required")

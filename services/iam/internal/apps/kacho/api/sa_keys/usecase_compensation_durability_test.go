@@ -112,7 +112,7 @@ func (c *recordingCompensation) snapshot() []string {
 // (ветка та же по составу саги: регистрация у провайдера → коммит своей строки).
 func federatedInput() IssueInput {
 	return IssueInput{
-		ServiceAccountID: "sva_test",
+		ServiceAccountID: "sva_test000000000000",
 		CreatedByUserID:  "usr_admin",
 		TrustedSubjects: []domain.TrustedSubject{
 			{

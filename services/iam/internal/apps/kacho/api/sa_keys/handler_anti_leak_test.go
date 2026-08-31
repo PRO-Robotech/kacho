@@ -35,7 +35,7 @@ func TestSAKey_Issue_SpoofRejected(t *testing.T) {
 	ctx := userCtxSAK("usr_actual")
 
 	_, err := h.Issue(ctx, &iamv1.IssueSAKeyRequest{
-		ServiceAccountId: "sva_xxx",
+		ServiceAccountId: "sva_xxx0000000000000",
 		CreatedByUserId:  "usr_someone_else",
 		TtlSeconds:       0,
 	})
@@ -50,7 +50,7 @@ func TestSAKey_Issue_AnonymousDenied(t *testing.T) {
 		operations.Principal{Type: "system", ID: "anonymous"})
 
 	_, err := h.Issue(ctx, &iamv1.IssueSAKeyRequest{
-		ServiceAccountId: "sva_xxx",
+		ServiceAccountId: "sva_xxx0000000000000",
 		CreatedByUserId:  "",
 	})
 	if status.Code(err) != codes.PermissionDenied {
