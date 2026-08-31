@@ -79,6 +79,8 @@ import (
 	"regexp"
 	"sort"
 	"strings"
+
+	"github.com/PRO-Robotech/kacho/internal/treecorpus"
 )
 
 // clientDocsSharedProtoDomains — пакеты контракта, чьи поля законно встречаются в
@@ -190,21 +192,22 @@ func clientDocsProtoDomains(opts ClientDocsContractDriftOptions) (
 	live = map[string]map[string]bool{}
 	reserved = map[string]map[string]bool{}
 	base := filepath.Join(opts.Root, opts.ProtoRoot, "kacho", "cloud")
-	err = filepath.WalkDir(base, func(p string, d os.DirEntry, walkErr error) error {
-		if walkErr != nil {
-			return walkErr
-		}
-		if d.IsDir() || filepath.Ext(p) != ".proto" {
-			return nil
-		}
+	// Состав берётся ИЗ ИНДЕКСА, а не обходом диска: чтение внутри колбэка обхода
+	// подвержено подмене пути символической ссылкой между шагом обхода и открытием
+	// файла (G122). Индекс отдаёт готовый перечень, и файл открывается вне обхода.
+	paths, err := treecorpus.UnderWithSuffix(base, ".proto")
+	if err != nil {
+		return nil, nil, 0, err
+	}
+	for _, p := range paths {
 		rel, rerr := filepath.Rel(base, p)
 		if rerr != nil {
-			return rerr
+			return nil, nil, files, rerr
 		}
 		domain := strings.SplitN(filepath.ToSlash(rel), "/", 2)[0]
-		raw, rerr := os.ReadFile(p) // #nosec G304 -- путь получен обходом собственного дерева
+		raw, rerr := os.ReadFile(p) // #nosec G304 -- путь из индекса собственного дерева
 		if rerr != nil {
-			return rerr
+			return nil, nil, files, rerr
 		}
 		files++
 		src := string(raw)
@@ -220,9 +223,8 @@ func clientDocsProtoDomains(opts ClientDocsContractDriftOptions) (
 				reserved[domain][clientDocsCamel(n[1])] = true
 			}
 		}
-		return nil
-	})
-	return live, reserved, files, err
+	}
+	return live, reserved, files, nil
 }
 
 // clientDocsSite — один сайт документации и домен, о котором он говорит.
@@ -475,16 +477,16 @@ func clientDocsDeprecatedPaths(opts ClientDocsContractDriftOptions) (map[string]
 	out := map[string]string{}
 	files := 0
 	base := filepath.Join(opts.Root, opts.ProtoRoot, "kacho", "cloud")
-	err := filepath.WalkDir(base, func(p string, d os.DirEntry, walkErr error) error {
-		if walkErr != nil {
-			return walkErr
-		}
-		if d.IsDir() || filepath.Ext(p) != ".proto" {
-			return nil
-		}
-		raw, rerr := os.ReadFile(p) // #nosec G304 -- путь получен обходом собственного дерева
+	// Состав из индекса, а не обходом диска — та же причина, что у соседней функции:
+	// чтение внутри колбэка обхода подвержено подмене пути символической ссылкой.
+	paths, err := treecorpus.UnderWithSuffix(base, ".proto")
+	if err != nil {
+		return nil, 0, err
+	}
+	for _, p := range paths {
+		raw, rerr := os.ReadFile(p) // #nosec G304 -- путь из индекса собственного дерева
 		if rerr != nil {
-			return rerr
+			return nil, files, rerr
 		}
 		files++
 		deprecated, inRPC := false, false
@@ -514,9 +516,8 @@ func clientDocsDeprecatedPaths(opts ClientDocsContractDriftOptions) (map[string]
 				deprecated = false
 			}
 		}
-		return nil
-	})
-	return out, files, err
+	}
+	return out, files, nil
 }
 
 // AuditClientDocsDeprecationParity выносит вердикт о дереве.
