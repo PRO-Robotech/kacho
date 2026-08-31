@@ -87,12 +87,13 @@ package deploy_test
 
 import (
 	"os"
-	"os/exec"
 	"path/filepath"
 	"regexp"
 	"sort"
 	"strings"
 	"testing"
+
+	"github.com/PRO-Robotech/kacho/internal/gitenv"
 )
 
 // trustAnchorVars — переменные, которыми пинится набор корней. Обе, и это
@@ -179,11 +180,15 @@ func scanTrustEnvLists(path string, body string) []trustEnvList {
 // Пути возвращаются относительно корня репозитория.
 func trustTrackedYAML(t *testing.T, prefix string) []string {
 	t.Helper()
-	args := []string{"-C", "..", "ls-files"}
+	args := []string{"ls-files"}
 	if prefix != "" {
 		args = append(args, "--", prefix)
 	}
-	out, err := exec.Command("git", args...).Output()
+	// Помощник, а не прямой вызов: он задаёт окружение git ЯВНО. Прямой вызов
+	// наследует окружение прогона, и `cmd.Dir` тогда не выбирает репозиторий —
+	// перепись пошла бы по чужому дереву, а вердикт молча стал бы свойством
+	// рабочего каталога.
+	out, err := gitenv.Command("..", args...).Output()
 	if err != nil {
 		t.Fatalf("перепись отслеживаемых файлов не удалась: %v", err)
 	}
