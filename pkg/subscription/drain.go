@@ -100,7 +100,7 @@ func (s *Server) drain(
 				}
 				return cursor, status.Error(codes.Unavailable, "subscription backend unavailable")
 			}
-			if floor := h.floor(RetainsFromEarliestRow); cursor < floor {
+			if floor := h.Floor(RetainsFromEarliestRow); cursor < floor {
 				return cursor, positionLost(pagetoken.EncodeSubscriptionPosition(
 					pagetoken.SubscriptionPosition{Settled: floor}))
 			}

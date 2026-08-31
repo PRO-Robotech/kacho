@@ -74,6 +74,26 @@ type InternalIAMServiceClient interface {
 	// UNAVAILABLE while the journal has no settled position yet (cold start): the
 	// caller retries on its next tick. This is a state, not a failure — the
 	// settled flag is monotone and never withdrawn once raised.
+	//
+	// OUT_OF_RANGE when `since_id` sits BELOW the journal floor — the rows between
+	// them have been removed and will never be delivered. The refusal carries
+	// `google.rpc.ErrorInfo` with reason `SUBJECT_CHANGE_POSITION_LOST`, domain
+	// `iam.kacho.cloud` and metadata `earliest_resumable_position` (decimal), and
+	// the caller keys on that token, never on the prose of the message.
+	//
+	// The two refusals advise OPPOSITE actions and must never be merged. UNAVAILABLE
+	// says "ask again from the same position"; OUT_OF_RANGE says "that retry will
+	// never succeed — flush your decision cache, close your open streams and resume
+	// from the named position". A caller that read the second as the first would
+	// retry from a lost position forever, and its cache would keep answering from
+	// rights that are already gone — silently.
+	//
+	// Why an explicit refusal exists at all: the read window is
+	// `id > since_id AND id <= settled`, and a removed row simply does not appear
+	// in it. The cursor rolls past it on the last row read, so "no rows" becomes
+	// indistinguishable from "rows were swept" — an unapplied revocation nobody
+	// observes. Until this refusal existed, sweeping the journal was impossible
+	// by construction, not by preference.
 	PollSubjectChanges(ctx context.Context, in *PollSubjectChangesRequest, opts ...grpc.CallOption) (*PollSubjectChangesResponse, error)
 	// RegisterResource — Internal FGA-proxy: apply an owner-hierarchy tuple
 	// (subject holds `relation` on `object`) on behalf of the resource-owning
@@ -301,6 +321,26 @@ type InternalIAMServiceServer interface {
 	// UNAVAILABLE while the journal has no settled position yet (cold start): the
 	// caller retries on its next tick. This is a state, not a failure — the
 	// settled flag is monotone and never withdrawn once raised.
+	//
+	// OUT_OF_RANGE when `since_id` sits BELOW the journal floor — the rows between
+	// them have been removed and will never be delivered. The refusal carries
+	// `google.rpc.ErrorInfo` with reason `SUBJECT_CHANGE_POSITION_LOST`, domain
+	// `iam.kacho.cloud` and metadata `earliest_resumable_position` (decimal), and
+	// the caller keys on that token, never on the prose of the message.
+	//
+	// The two refusals advise OPPOSITE actions and must never be merged. UNAVAILABLE
+	// says "ask again from the same position"; OUT_OF_RANGE says "that retry will
+	// never succeed — flush your decision cache, close your open streams and resume
+	// from the named position". A caller that read the second as the first would
+	// retry from a lost position forever, and its cache would keep answering from
+	// rights that are already gone — silently.
+	//
+	// Why an explicit refusal exists at all: the read window is
+	// `id > since_id AND id <= settled`, and a removed row simply does not appear
+	// in it. The cursor rolls past it on the last row read, so "no rows" becomes
+	// indistinguishable from "rows were swept" — an unapplied revocation nobody
+	// observes. Until this refusal existed, sweeping the journal was impossible
+	// by construction, not by preference.
 	PollSubjectChanges(context.Context, *PollSubjectChangesRequest) (*PollSubjectChangesResponse, error)
 	// RegisterResource — Internal FGA-proxy: apply an owner-hierarchy tuple
 	// (subject holds `relation` on `object`) on behalf of the resource-owning
