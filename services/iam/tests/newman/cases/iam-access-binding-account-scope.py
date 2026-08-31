@@ -28,8 +28,8 @@
 table (accountId × filter × includeRevoked), error-guessing (id чужого типа),
 anti-oracle (чужой и несуществующий аккаунт отвечают одинаково).
 
-Дисциплина (testing.md): read-your-writes → `_await_present` на ПЕРВОЕ
-списочное чтение своей свежей выдачи; отрицательные кейсы НЕ оборачиваются
+Дисциплина (testing.md): read-your-writes → `retry_until_present` (общий
+слой) на ПЕРВОЕ списочное чтение своей свежей выдачи; отрицательные кейсы НЕ оборачиваются
 повтором (повтор там маскирует настоящий отказ); каждый кейс сеет своё и за
 собой убирает; имена run-unique через {{runId}}.
 """
@@ -78,44 +78,6 @@ def _ids_js(var):
     return f"const {var} = (pm.response.json().accessBindings || []).map(b => b.id);"
 
 
-def _await_present(env_var, cap=25):
-    """Ограниченный повтор СПИСОЧНОГО чтения, пока своя свежая выдача не видна.
-
-    Окно тут не выдумано: `Operation.done` означает, что строка закоммичена, а
-    пообъектный вердикт на неё материализуется eventually-consistent
-    (`api-conventions.md`), поэтому первый список законно отдаёт `200` БЕЗ неё.
-    `retry_until_authorized` этот случай не покрывает — он ждёт 403/404, а здесь
-    приходит 200 с отсутствующей строкой.
-
-    Три свойства, каждое обязательное (testing.md §newman):
-      - повтор ОГРАНИЧЕН и по исчерпании бюджета проваливается в НАСТОЯЩЕЕ
-        утверждение — то есть не маскирует дефект, а откладывает вердикт;
-      - между попытками стоит РЕАЛЬНАЯ задержка: newman исполняет тест-скрипт
-        синхронно и зовёт setNextRequest ДО любого setTimeout, поэтому пауза
-        может быть только активной. Без неё 25 итераций покрывают миллисекунды,
-        и «поллер сдался» означало бы «проба вообще не ждала»;
-      - счётчик сбрасывается по ИМЕНИ шага, иначе соседний кейс унаследует
-        исчерпанный бюджет.
-
-    Задержка размеряется от бюджета, а не константой: 30 с на всю петлю.
-    Оборачивается ТОЛЬКО первое чтение своей свежей строки — никогда
-    отрицательные шаги, где повтор скрыл бы настоящий отказ.
-    """
-    delay = max(100, min(500, 30000 // cap))
-    return [
-        "if (pm.environment.get('_siaPresentFor') !== pm.info.requestName) {",
-        "  pm.environment.set('_siaPresentTries', '0');",
-        "  pm.environment.set('_siaPresentFor', pm.info.requestName);",
-        "}",
-        "const _siaTries = parseInt(pm.environment.get('_siaPresentTries') || '0', 10);",
-        "const _siaSeen = (pm.response.json().accessBindings || []).map(b => b.id);",
-        f"const _siaWant = pm.environment.get({js_str(env_var)});",
-        f"if (_siaSeen.indexOf(_siaWant) === -1 && _siaTries < {cap}) {{",
-        "  pm.environment.set('_siaPresentTries', String(_siaTries + 1));",
-        f"  const _siaWait = Date.now(); while (Date.now() - _siaWait < {delay}) void 0;",
-        "  pm.execution.setNextRequest(pm.info.requestName);",
-        "}",
-    ]
 
 
 # ===========================================================================
@@ -131,13 +93,12 @@ CASES.append(Case(
     steps=[
         *_grant("grant-on-account", "iam.account", "{{accountAId}}", "siaAcbAcct"),
         *_grant("grant-on-project", "iam.project", "{{projectA1Id}}", "siaAcbProj"),
-        Step(
+        retry_until_present(Step(
             name="list-account-scope",
             method="GET",
             path="/iam/v1/accessBindings?pageSize=1000&accountId={{accountAId}}",
             auth="jwtAccountAdminA",
             test_script=[
-                *_await_present("siaAcbProj"),
                 *assert_status(200),
                 _ids_js("ids"),
                 "pm.test('строка на самом аккаунте видна', () =>",
@@ -145,7 +106,11 @@ CASES.append(Case(
                 "pm.test('строка на ПРОЕКТЕ аккаунта видна — это и есть фан-аут', () =>",
                 "  pm.expect(ids, pm.response.text()).to.include(pm.environment.get('siaAcbProj')));",
             ],
-        ),
+        # Ждём ОБЕ строки, а не одну: шаг утверждает присутствие и той и другой,
+        # и ожидание у́же утверждения даёт падение на второй, пока она ещё
+        # материализуется. До сведения обёрток эта форма была недоступна —
+        # кейс-локальная копия принимала ровно одно имя.
+        ), ["siaAcbAcct", "siaAcbProj"]),
         *_cleanup("siaAcbAcct", name="cleanup-binding-acct"),
         *_cleanup("siaAcbProj", name="cleanup-binding-proj"),
     ],
@@ -168,19 +133,18 @@ CASES.append(Case(
         # Сначала дожидаемся видимости свежей строки — ТОЛЬКО здесь, на первом
         # доступе к своему. Ниже повтора нет: там утверждается ОТСУТСТВИЕ, и
         # повтор на нём маскировал бы настоящий дефект.
-        Step(
+        retry_until_present(Step(
             name="disc-list-by-account",
             method="GET",
             path="/iam/v1/accessBindings?pageSize=1000&accountId={{accountAId}}",
             auth="jwtAccountAdminA",
             test_script=[
-                *_await_present("siaDiscProj"),
                 *assert_status(200),
                 _ids_js("ids"),
                 "pm.test('accountId ВИДИТ выдачу на проекте аккаунта', () =>",
                 "  pm.expect(ids, pm.response.text()).to.include(pm.environment.get('siaDiscProj')));",
             ],
-        ),
+        ), "siaDiscProj"),
         Step(
             name="disc-list-by-scope-id",
             method="GET",
@@ -213,14 +177,13 @@ CASES.append(Case(
     priority="P1",
     steps=[
         *_grant("comp-grant", "iam.account", "{{accountAId}}", "siaCompAcb"),
-        Step(
+        retry_until_present(Step(
             name="comp-list",
             method="GET",
             path="/iam/v1/accessBindings?pageSize=1000&accountId={{accountAId}}"
                  "&filter=subject%3D%22{{userNOBId}}%22",
             auth="jwtAccountAdminA",
             test_script=[
-                *_await_present("siaCompAcb"),
                 *assert_status(200),
                 "pm.test('своя выдача субъекта видна', () => {",
                 "  const ids = (pm.response.json().accessBindings || []).map(b => b.id);",
@@ -232,7 +195,7 @@ CASES.append(Case(
                 "  rows.forEach(b => pm.expect(b.subjectId, JSON.stringify(b)).to.eql(want));",
                 "});",
             ],
-        ),
+        ), "siaCompAcb"),
         *_cleanup("siaCompAcb"),
     ],
 ))
@@ -251,19 +214,18 @@ CASES.append(Case(
     priority="P1",
     steps=[
         *_grant("rev-grant", "iam.account", "{{accountAId}}", "siaRevAcb"),
-        Step(
+        retry_until_present(Step(
             name="rev-visible-before",
             method="GET",
             path="/iam/v1/accessBindings?pageSize=1000&accountId={{accountAId}}",
             auth="jwtAccountAdminA",
             test_script=[
-                *_await_present("siaRevAcb"),
                 *assert_status(200),
                 _ids_js("ids"),
                 "pm.test('живая выдача видна до отзыва (положительный контроль)', () =>",
                 "  pm.expect(ids, pm.response.text()).to.include(pm.environment.get('siaRevAcb')));",
             ],
-        ),
+        ), "siaRevAcb"),
         Step(name="rev-revoke", method="POST",
              path="/iam/v1/accessBindings/{{siaRevAcb}}:revoke", body={},
              auth="jwtAccountAdminAStepUp",

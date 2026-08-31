@@ -1662,6 +1662,80 @@ def retry_until_authorized(step, budget: int, interval_ms: int,
                    test_script=guard + list(step.test_script))
 
 
+def retry_until_present(step, id_env_var, budget: int, interval_ms: int, ledger=None):
+    """ОКНО ЗАДАЁТ НАБОР, ТЕЛО — ОБЩЕЕ. Зеркало `retry_until_authorized` для
+    СПИСОЧНОГО чтения: там ждут код отказа, здесь — появление своей строки в теле
+    ответа `200`.
+
+    Три копии этой функции (compute · nlb · vpc) разошлись по ТРЁМ осям, и две из
+    трёх были расхождением ПО СУЩЕСТВУ — то есть каждая копия несла починку,
+    которой у двух других не было:
+
+      * ЧИСЛО ОЖИДАЕМЫХ ИМЁН. Две копии принимали ОДНО имя переменной и ждали
+        появления ОДНОЙ строки; третья принимает список и ждёт появления ВСЕХ.
+        Это починка реального дефекта, а не вкус: кейс, утверждающий «все три на
+        странице», ждал появления ПЕРВОЙ и падал на второй — она ещё
+        материализовалась. Общая форма — список; одно имя остаётся законным
+        входом и даёт ТО ЖЕ поведение (`every` над списком из одного).
+      * ВЕДОМОСТЬ ИСЧЕРПАНИЯ (`ledger`). Одна копия разводила «бюджет исчерпан» и
+        «бюджет не понадобился», две — нет, и у них оба исхода выглядели
+        одинаково: никак. Названа полем, как у `retry_until_authorized`, а не
+        вшита в тело.
+      * ВЕЛИЧИНА ОКНА (50×600 против 25×500) — решение НАБОРА, а не общего слоя
+        (#1379): путь материализации у доменов разный. Поэтому окно здесь —
+        ОБЯЗАТЕЛЬНЫЙ аргумент без умолчания: умолчание в общем слое молча стало бы
+        решением за всех, а шапки трёх копий величину уже называли ПРОЗОЙ и уже
+        разошлись с подписью. Здесь величина не называется прозой вовсе — она
+        приходит аргументом и видна на вызове.
+
+    Bounded retry a LIST step until the caller's OWN fresh resource id(s) appear in
+    the returned array (read-your-writes over the list-authz visibility window;
+    opgate removed -> owner-tuple eventual-consistency). The list returns 200 with
+    the id ABSENT until the tuple materializes, so retry_until_authorized (403/404)
+    does not apply -- we retry while an id is missing. Fail-open after budget: the
+    real assertion then runs once and FAILS if still absent (never masked, never
+    infinite).
+
+    Use ONLY on a list of the caller's OWN just-created resource. Do NOT wrap
+    negative / cross-account-deny / absent-id steps: a poll there would wait out
+    exactly the deny the step was written to observe.
+    """
+    want = [id_env_var] if isinstance(id_env_var, str) else list(id_env_var)
+    guard = [
+        "// bounded read-your-writes retry until own fresh id is present in the list",
+        "// (opgate removed -> eventual-consistency); retries SELF while id absent.",
+        "if (pm.environment.get('_lstRetryStarted') !== pm.info.requestName) {",
+        "  pm.environment.set('_lstRetryCount', '0');",
+        "  pm.environment.set('_lstRetryStarted', pm.info.requestName);",
+        "}",
+        "const _lrc = parseInt(pm.environment.get('_lstRetryCount') || '0', 10);",
+        "let _present = false;",
+        # УСЛОВИЕ ПОВТОРА ОБЯЗАНО СОВПАДАТЬ С УТВЕРЖДЕНИЕМ, а не быть у́же его:
+        # ждём появления ВСЕХ названных имён, а не первого из них.
+        "const _want = [" + ", ".join("pm.environment.get(%s)" % js_str(v) for v in want) + "];",
+        "try { const _arr = Object.values(pm.response.json()).find(v => Array.isArray(v)) || [];"
+        " const _have = _arr.map(x => x.id);"
+        " _present = _want.every(w => _have.includes(w)); } catch (e) {}",
+        f"if (pm.response.code === 200 && !_present && _lrc < {budget}) {{",
+        "  pm.environment.set('_lstRetryCount', String(_lrc + 1));",
+        f"  const _lrd = Date.now(); while (Date.now() - _lrd < {interval_ms}) {{ /* list-visibility wait */ }}",
+        "  pm.execution.setNextRequest(pm.info.requestName);",
+        "  return;",
+        "}",
+        # Добавка набора ПЕРЕД снятием счётчика — та же дисциплина, что у
+        # `retry_until_authorized`: без неё «исчерпан» и «не понадобился» неразличимы.
+        *(ledger("pm.response.code === 200 && !_present", "_lrc", budget) if ledger else ()),
+        "pm.environment.unset('_lstRetryCount');",
+        "pm.environment.unset('_lstRetryStarted');",
+    ]
+    _RYA_SEQ[0] += 1
+    # Уникальное имя — по той же причине, что у `retry_until_authorized`: newman
+    # резолвит setNextRequest в ПЕРВЫЙ item с таким именем, и повтор одноимённого
+    # шага уехал бы к чужому.
+    return replace(step, name=f"{step.name}-lst{_RYA_SEQ[0]}",
+                   test_script=guard + list(step.test_script))
+
+
 
 # Голова полосы ожидания: отказ ждать по НЕРАЗРЕШЁННОМУ адресу.
 #
