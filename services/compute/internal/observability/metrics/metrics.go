@@ -267,7 +267,7 @@ func (m *Metrics) SetOldestPendingAgeByDirection(table, direction string, age fl
 // IncDeliveredByDirection — ОДНА доставленная строка направления.
 //
 // СЧЁТЧИК, инкрементируемый наблюдателем дренажа, а не измеритель, ставящийся
-// сканом (#1714): величина объявлена «за всё время», и счёт по живым строкам
+// сканом: величина объявлена «за всё время», и счёт по живым строкам
 // совпадал с этим ровно до появления уборки доставленных строк.
 func (m *Metrics) IncDeliveredByDirection(table, direction string) {
 	m.outboxDirDelivered.WithLabelValues(table, direction).Inc()
