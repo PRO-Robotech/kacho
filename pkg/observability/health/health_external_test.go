@@ -14,7 +14,7 @@ import (
 
 	"github.com/stretchr/testify/require"
 
-	"github.com/PRO-Robotech/kacho/services/vpc/internal/observability/health"
+	"github.com/PRO-Robotech/kacho/pkg/observability/health"
 )
 
 // Readiness-агрегатор: именованные чекеры с bounded-timeout; /readyz отражает
