@@ -37,7 +37,7 @@ func TestIssue_PrivateKeyJWT_AudienceOverridesPrefix(t *testing.T) {
 	u.AudiencePrefix = "https://internal.example/iam"
 
 	in := IssueInput{
-		ServiceAccountID: "sva_ext",
+		ServiceAccountID: "sva_ext0000000000000",
 		CreatedByUserID:  "usr_admin",
 		Audience:         []string{"sts.example.com"},
 	}
@@ -52,7 +52,7 @@ func TestIssue_PrivateKeyJWT_AudienceOverridesPrefix(t *testing.T) {
 		t.Fatal("Hydra CreateOAuthClient never called")
 	}
 	if len(hydra.gotReq.Audience) != 1 || hydra.gotReq.Audience[0] != "sts.example.com" {
-		t.Fatalf("Hydra audience = %v, want [sts.example.com] (caller override, NOT %s/sa/sva_ext)",
+		t.Fatalf("Hydra audience = %v, want [sts.example.com] (caller override, NOT %s/sa/sva_ext0000000000000)",
 			hydra.gotReq.Audience, u.AudiencePrefix)
 	}
 
@@ -83,7 +83,7 @@ func TestIssue_Federated_AudienceOverridesPrefix(t *testing.T) {
 	u.AudiencePrefix = "https://internal.example/iam"
 
 	in := IssueInput{
-		ServiceAccountID: "sva_ext2",
+		ServiceAccountID: "sva_ext2000000000000",
 		CreatedByUserID:  "usr_admin",
 		TrustedSubjects: []domain.TrustedSubject{
 			{
@@ -133,7 +133,7 @@ func TestIssue_AudienceDedupAndEmptyDrop(t *testing.T) {
 	u := NewIssueSAKeyUseCase(repo, &stubTx{}, hydra, ops)
 
 	_, err := u.Execute(context.Background(), IssueInput{
-		ServiceAccountID: "sva_abc",
+		ServiceAccountID: "sva_abc0000000000000",
 		CreatedByUserID:  "usr_admin",
 		Audience:         []string{"a.example", "", "a.example", "b.example", ""},
 	})

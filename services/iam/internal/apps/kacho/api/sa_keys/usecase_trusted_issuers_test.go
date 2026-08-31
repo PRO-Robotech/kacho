@@ -86,7 +86,7 @@ func (f *fakeTrustedIssuers) InsertTrustedIssuers(
 // trustedIssuerInput — вход федеративной выдачи с одним доверенным субъектом.
 func trustedIssuerInput() IssueInput {
 	return IssueInput{
-		ServiceAccountID: "sva_test",
+		ServiceAccountID: "sva_test000000000000",
 		CreatedByUserID:  "usr_admin",
 		TrustedSubjects: []domain.TrustedSubject{{
 			Issuer:         "https://kube.cluster.local",
