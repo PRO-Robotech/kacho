@@ -211,3 +211,63 @@ func TestInjection_LaneNamingTheWrongReceiverIsFound(t *testing.T) {
 	}
 	t.Logf("перепись: осей подано %d · из них ждут находку %d", len(cases), 2)
 }
+
+// TestInjection_LaneExpressionIsExpandedBeforeItIsJudged — доказательство того,
+// что гейт ЗНАЕТ форму, которой профиль называет приёмник не выписывая его.
+//
+// ПОЧЕМУ ЭТА ОСЬ ОБЯЗАТЕЛЬНА, А НЕ ЖЕЛАТЕЛЬНА. Форма, о которой распознаватель
+// не знает, даёт не находку и не молчание, а НЕВИДИМОСТЬ: `mailHostOf` вернул бы
+// строку с точками внутри выражения, `inClusterHost` признал бы её внешним
+// ретранслятором, и полоса выпала бы из-под обоих утверждений этого файла молча.
+// Наблюдалось ровно так: после перевода профиля стенда на выражение оба гейта
+// остались зелёными, а перепись показывала «полос объявлено 1» — то есть они
+// читали величину и не судили её.
+//
+// Прогонов три, и третий — контроль в обратную сторону: выражение, которого гейт
+// не знает, обязано быть НАХОДКОЙ, а не тихо пропущенной строкой.
+func TestInjection_LaneExpressionIsExpandedBeforeItIsJudged(t *testing.T) {
+	const suffix = receiverSuffixUnderTest
+	const expr = `smtp://{{ .Release.Name }}` + receiverSuffixUnderTest + `:1025/`
+
+	t.Run("выражение раскрывается именем релиза", func(t *testing.T) {
+		got := expandedLane(expr, "stand-a", suffix)
+		if want := "smtp://stand-a" + suffix + ":1025/"; got != want {
+			t.Fatalf("раскрытие дало %q, ожидалось %q", got, want)
+		}
+		// Раскрытая полоса сходится с ЛЮБЫМ релизом — она берёт имя оттуда же,
+		// откуда его берёт манифест. Это и есть предмет починки.
+		for _, r := range []string{"kacho-umbrella", "ci", "stand-a"} {
+			lane := expandedLane(expr, r, suffix)
+			if why := laneMissesTheRaisedReceiver(lane, r, suffix); why != "" {
+				t.Errorf("релиз %q: выражение объявлено расходящимся: %s", r, why)
+			}
+			if h := unraisedInClusterHost(lane, suffix); h != "" {
+				t.Errorf("релиз %q: узел объявлен неподнимаемым: %q", r, h)
+			}
+		}
+	})
+
+	t.Run("литерал по-прежнему судится — прежнее свойство не потеряно", func(t *testing.T) {
+		// Инъекция старого свойства (`testing.md` §«Гейт на класс», п. 2в):
+		// молчание существующего контроля неотличимо от молчания мёртвого, пока
+		// его не уронишь отдельно.
+		lane := expandedLane("smtp://kacho-umbrella"+suffix+":1025/", "stand-a", suffix)
+		if why := laneMissesTheRaisedReceiver(lane, "stand-a", suffix); why == "" {
+			t.Error("литерал, разошедшийся с релизом, находкой НЕ объявлен — раскрытие " +
+				"съело прежнее утверждение вместо того, чтобы дополнить его")
+		}
+	})
+
+	t.Run("выражение, которого гейт не знает, — находка", func(t *testing.T) {
+		unknown := `smtp://{{ include "kacho.someOther.name" . }}` + suffix + `:1025/`
+		lane := expandedLane(unknown, "kacho-umbrella", suffix)
+		if unknownLaneExpression(lane) == "" {
+			t.Error("нераспознанное выражение пропущено молча — гейт перестал судить " +
+				"и не сказал об этом: «ноль находок» стало неотличимо от «не прочитано»")
+		}
+		if unknownLaneExpression(expandedLane(expr, "kacho-umbrella", suffix)) != "" {
+			t.Error("законный близнец объявлен нераспознанным — предикат ловит форму " +
+				"«есть фигурные скобки», а не «выражение осталось нераскрытым»")
+		}
+	})
+}
