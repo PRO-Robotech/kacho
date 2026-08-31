@@ -33,8 +33,8 @@ Health-check живёт **на группе** (не на привязке): ед
     <tr><td><code>labels</code></td><td>map&lt;string,string&gt;</td><td>mutable</td><td>Метки</td></tr>
     <tr><td><code>healthCheck</code></td><td>HealthCheck</td><td>mutable</td><td>Единый health-check группы (обязателен на Create)</td></tr>
     <tr><td><code>targets</code></td><td>Target[]</td><td>output-only**</td><td>Снимок таргетов (<strong>набор</strong>, не последовательность); источник истины — дочерняя таблица, состав меняется через Add/RemoveTargets. Заполняется <strong>обоими</strong> чтениями — <code>Get</code> и <code>List</code></td></tr>
-    <tr><td><code>deregistrationDelaySeconds</code></td><td>int32</td><td>mutable</td><td>Таймаут drain при удалении таргета (0–3600, дефолт 300)</td></tr>
-    <tr><td><code>slowStartSeconds</code></td><td>int32</td><td>mutable</td><td>Окно slow-start для новых таргетов (0–900, дефолт 0)</td></tr>
+    <tr><td><code>deregistrationDelay</code></td><td>duration</td><td>mutable</td><td>Таймаут drain при удалении таргета. Строка длительности (<code>"300s"</code>), границы <code>0s</code>–<code>3600s</code>, дефолт <code>300s</code></td></tr>
+    <tr><td><code>slowStart</code></td><td>duration</td><td>mutable</td><td>Окно slow-start для новых таргетов. Строка длительности (<code>"0s"</code>), границы <code>0s</code>–<code>900s</code>, дефолт <code>0s</code></td></tr>
     <tr><td><code>status</code></td><td>enum</td><td>output-only</td><td><code>ACTIVE</code> / <code>DELETING</code></td></tr>
     <tr><td><code>createdAt</code></td><td>timestamp</td><td>output-only</td><td>Момент создания (RFC 3339, усечён до секунд)</td></tr>
   </tbody>
@@ -93,7 +93,8 @@ Health-check живёт **на группе** (не на привязке): ед
       "targets": [
         { "ipRef": { "subnetId": "sub-1", "address": "10.0.0.11" }, "weight": 100 }
       ],
-      "deregistrationDelaySeconds": 300,
+      "deregistrationDelay": "300s",
+      "slowStart": "0s",
       "status": "ACTIVE",
       "createdAt": "2026-06-24T10:00:00Z"
     }
@@ -139,7 +140,7 @@ Health-check живёт **на группе** (не на привязке): ед
               "name": "http-ping",
               "httpOptions": { "port": 8080, "path": "/ping" }
             },
-            "deregistrationDelaySeconds": 300,
+            "deregistrationDelay": "300s",
             "targets": [
               { "instanceId": "epd...", "weight": 100 }
             ]
@@ -153,8 +154,8 @@ Health-check живёт **на группе** (не на привязке): ед
 
 <ApiOperation method="PATCH" endpoint="/nlb/v1/targetGroups/{id}" async>
 
-Меняет `name`, `description`, `labels`, `healthCheck`, `deregistrationDelaySeconds`,
-`slowStartSeconds`. Замена состава `targets` на этом RPC **запрещена** — используйте
+Меняет `name`, `description`, `labels`, `healthCheck`, `deregistrationDelay`,
+`slowStart`, `port`. Замена состава `targets` на этом RPC **запрещена** — используйте
 `AddTargets` / `RemoveTargets`, чтобы каждое изменение прошло через свою операцию и
 idempotency-ключи.
 
@@ -207,7 +208,7 @@ peer-resolve в воркере.
 <ApiOperation method="POST" endpoint="/nlb/v1/targetGroups/{id}:removeTargets" async>
 
 Удаляет таргеты (`targets` ≥ 1). Удаление двухфазное: таргет переводится в `DRAINING` и
-физически убирается после `deregistrationDelaySeconds`.
+физически убирается после `deregistrationDelay`.
 
 </ApiOperation>
 
