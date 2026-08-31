@@ -291,6 +291,20 @@ func runServe(cfg config.Config) error {
 	// дополнительно передает схему явно для квалификации SQL-операций.
 	opsRepo := operations.NewRepo(pool, "kacho_vpc")
 
+	// Фоновая уборка терминальных строк таблицы операций.
+	//
+	// Строка заводится КАЖДОЙ мутацией — контракт объявляет мутации асинхронными,
+	// и `Operation` возвращается вместо ресурса, — а снятия строк не было ни у
+	// одного из восьми владельцев. Порог, предикат и расписание объявлены в
+	// `pkg/operations` и `pkg/retention` ОДИН раз: восемь расписаний об одном
+	// предмете разошлись бы молча.
+	if _, err := operations.StartRetentionSweep(
+		ctx, opsRepo, operations.DefaultRetentionConfig(),
+		logger,
+	); err != nil {
+		return fmt.Errorf("фоновая уборка таблицы операций: %w", err)
+	}
+
 	// Prometheus observability adapter: приватный реестр, питает outbox-recorder,
 	// reconciler-recorder и diagnostic /metrics. Заменяет in-memory MemRecorder —
 	// метрики теперь экспортируются наружу (scrape).

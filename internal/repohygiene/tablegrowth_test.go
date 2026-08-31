@@ -80,6 +80,35 @@ const (
 	verdictDebt growthVerdict = "долг"
 )
 
+// growthFamily — К КАКОЙ СЕМЬЕ принадлежит таблица. Третья ось реестра, и
+// единственная ПРОВЕРЯЕМАЯ ПО СХЕМЕ: темп и вердикт суть суждения человека, а
+// семья имеет машинный признак — колонку-признак доставки.
+//
+// Словарь ЗАКРЫТ, и пустое значение здесь законно: классифицированы те семьи, у
+// которых признак есть. Требовать объявления от КАЖДОЙ таблицы дерева значило бы
+// заводить записи «на будущее» — ровно то, что реестр запрещает себе сам.
+type growthFamily string
+
+const (
+	// familyUnclassified — семья не объявлена. Законное значение: гейт судит
+	// только объявленное, а не требует объявления от всех.
+	familyUnclassified growthFamily = ""
+	// familyDrainerQueue — ОЧЕРЕДЬ ДРЕНАЖА: у строки есть адресат, дренаж
+	// применяет её и помечает доставленной колонкой DeliveryMarkerColumn.
+	// Признак ОБЯЗАН быть в схеме — это и проверяется.
+	familyDrainerQueue growthFamily = "очередь дренажа"
+	// familyJournal — ЖУРНАЛ: у строки нет адресата, который её применяет;
+	// её читают ПО ПОЗИЦИИ (курсором подписки, курсором края, триггером,
+	// сворачивающим строки в факт) либо не читают вовсе. Признака доставки в
+	// схеме НЕТ, и его отсутствие проверяется так же строго, как у очереди —
+	// наличие.
+	//
+	// Значение ОДНО на все виды журналов намеренно: ось называет то, что гейт
+	// умеет проверить, — состояние схемы, а не механизм чтения. Кто именно
+	// читает журнал, говорит ПРИЧИНА записи, и она у каждого своя.
+	familyJournal growthFamily = "журнал"
+)
+
 // TableGrowthDecl — объявленный исход по одной таблице.
 type TableGrowthDecl struct {
 	// Owner, Table — та же единица счёта, что у переписи: владелец плюс имя.
@@ -95,6 +124,9 @@ type TableGrowthDecl struct {
 	Reason string
 	// Issue — номер задачи. Обязателен у вердикта «долг».
 	Issue string
+	// Family — семья таблицы. Необязательна; объявленная — сверяется со схемой
+	// гейтом TestGrowthRegistryFamilyMatchesTheSchema.
+	Family growthFamily
 }
 
 // tableGrowthRegistry — объявленные исходы.
@@ -214,84 +246,15 @@ var tableGrowthRegistry = []TableGrowthDecl{
 			"заводит администратор",
 	},
 	{
-		Owner: "pkg", Table: "operations",
-		Tempo: tempoExternal, Verdict: verdictDebt,
-		Reason: "строка заводится КАЖДОЙ мутацией платформы (мутации асинхронны, Operation " +
-			"возвращается вместо ресурса), а операторов снятия строк в pkg/operations " +
-			"ноль: реконсайлер доводит зависшую запись до терминального состояния и не " +
-			"удаляет её",
-		Issue: "#1360",
-	},
-	{
-		Owner: "services/compute", Table: "operations",
-		Tempo: tempoExternal, Verdict: verdictDebt,
-		Reason: "строка заводится КАЖДОЙ мутацией платформы (мутации асинхронны, Operation " +
-			"возвращается вместо ресурса), а операторов снятия строк в pkg/operations " +
-			"ноль: реконсайлер доводит зависшую запись до терминального состояния и не " +
-			"удаляет её",
-		Issue: "#1360",
-	},
-	{
-		Owner: "services/geo", Table: "operations",
-		Tempo: tempoExternal, Verdict: verdictDebt,
-		Reason: "строка заводится КАЖДОЙ мутацией платформы (мутации асинхронны, Operation " +
-			"возвращается вместо ресурса), а операторов снятия строк в pkg/operations " +
-			"ноль: реконсайлер доводит зависшую запись до терминального состояния и не " +
-			"удаляет её",
-		Issue: "#1360",
-	},
-	{
-		Owner: "services/iam", Table: "operations",
-		Tempo: tempoExternal, Verdict: verdictDebt,
-		Reason: "строка заводится КАЖДОЙ мутацией платформы (мутации асинхронны, Operation " +
-			"возвращается вместо ресурса), а операторов снятия строк в pkg/operations " +
-			"ноль: реконсайлер доводит зависшую запись до терминального состояния и не " +
-			"удаляет её",
-		Issue: "#1360",
-	},
-	{
-		Owner: "services/nlb", Table: "operations",
-		Tempo: tempoExternal, Verdict: verdictDebt,
-		Reason: "строка заводится КАЖДОЙ мутацией платформы (мутации асинхронны, Operation " +
-			"возвращается вместо ресурса), а операторов снятия строк в pkg/operations " +
-			"ноль: реконсайлер доводит зависшую запись до терминального состояния и не " +
-			"удаляет её",
-		Issue: "#1360",
-	},
-	{
-		Owner: "services/registry", Table: "operations",
-		Tempo: tempoExternal, Verdict: verdictDebt,
-		Reason: "строка заводится КАЖДОЙ мутацией платформы (мутации асинхронны, Operation " +
-			"возвращается вместо ресурса), а операторов снятия строк в pkg/operations " +
-			"ноль: реконсайлер доводит зависшую запись до терминального состояния и не " +
-			"удаляет её",
-		Issue: "#1360",
-	},
-	{
-		Owner: "services/storage", Table: "operations",
-		Tempo: tempoExternal, Verdict: verdictDebt,
-		Reason: "строка заводится КАЖДОЙ мутацией платформы (мутации асинхронны, Operation " +
-			"возвращается вместо ресурса), а операторов снятия строк в pkg/operations " +
-			"ноль: реконсайлер доводит зависшую запись до терминального состояния и не " +
-			"удаляет её",
-		Issue: "#1360",
-	},
-	{
-		Owner: "services/vpc", Table: "operations",
-		Tempo: tempoExternal, Verdict: verdictDebt,
-		Reason: "строка заводится КАЖДОЙ мутацией платформы (мутации асинхронны, Operation " +
-			"возвращается вместо ресурса), а операторов снятия строк в pkg/operations " +
-			"ноль: реконсайлер доводит зависшую запись до терминального состояния и не " +
-			"удаляет её",
-		Issue: "#1360",
-	},
-	{
 		Owner: "services/compute", Table: "compute_outbox",
 		Tempo: tempoExternal, Verdict: verdictDebt,
-		Reason: "очередь дренажа: строка заводится в writer-транзакции мутации, дренаж " +
-			"помечает доставленную sent_at и не удаляет её никогда (операторов DELETE в " +
-			"pkg/outbox ноль)",
-		Issue: "#1361",
+		Reason: "журнал подписки: строка пишется на каждой мутации ресурса владельца, " +
+			"а снятия строк нет ни на одном пути — удержание объявлено самим кодом " +
+			"(`Retention: subscription.RetainsEverything`), и подписчику обещано, что " +
+			"отказ «позиция утрачена» не наступает никогда. Дренажа НЕТ: колонки " +
+			"`sent_at` в форме нет, читают курсором по номеру позиции",
+		Issue:  "#1666",
+		Family: familyJournal,
 	},
 	{
 		Owner: "services/compute", Table: "compute_fga_register_outbox",
@@ -299,31 +262,39 @@ var tableGrowthRegistry = []TableGrowthDecl{
 		Reason: "очередь дренажа: строка заводится в writer-транзакции мутации, дренаж " +
 			"помечает доставленную sent_at и не удаляет её никогда (операторов DELETE в " +
 			"pkg/outbox ноль)",
-		Issue: "#1361",
+		Issue:  "#1361",
+		Family: familyDrainerQueue,
 	},
 	{
 		Owner: "services/geo", Table: "geo_outbox",
-		Tempo: tempoExternal, Verdict: verdictDebt,
-		Reason: "очередь дренажа: строка заводится в writer-транзакции мутации, дренаж " +
-			"помечает доставленную sent_at и не удаляет её никогда (операторов DELETE в " +
-			"pkg/outbox ноль)",
-		Issue: "#1361",
+		Tempo: tempoOurs, Verdict: verdictDebt,
+		Reason: "журнал аудита admin-мутаций Region/Zone: строка пишется репозиторием на " +
+			"каждой мутации, а ЧИТАТЕЛЕЙ в прод-коде НОЛЬ — только пробы (канал " +
+			"`pg_notify('geo_outbox')` не слушает никто). Дренажа нет: колонки `sent_at` " +
+			"в форме нет и не было, форма — `sequence_no`/`processed_at`. Исход — либо " +
+			"удержание со сроком как у журнала аудита, либо снятие таблицы новой миграцией",
+		Issue:  "#1711",
+		Family: familyJournal,
 	},
 	{
 		Owner: "services/iam", Table: "fga_outbox",
 		Tempo: tempoExternal, Verdict: verdictDebt,
-		Reason: "очередь дренажа: строка заводится в writer-транзакции мутации, дренаж " +
-			"помечает доставленную sent_at и не удаляет её никогда (операторов DELETE в " +
-			"pkg/outbox ноль)",
-		Issue: "#1361",
+		Reason: "журнал намерений, ПЕРЕСТАВШИЙ быть очередью: колонки доставки сняты " +
+			"применённой миграцией вместе с дренажом, которому принадлежали (#917). " +
+			"Строки читает ТРИГГЕР, складывающий из них прямой факт о доступе, — значит " +
+			"порог выводится из нужд этого факта, а не из признака доставки, которого нет",
+		Issue:  "#1712",
+		Family: familyJournal,
 	},
 	{
 		Owner: "services/iam", Table: "subject_change_outbox",
 		Tempo: tempoExternal, Verdict: verdictDebt,
-		Reason: "очередь дренажа: строка заводится в writer-транзакции мутации, дренаж " +
-			"помечает доставленную sent_at и не удаляет её никогда (операторов DELETE в " +
-			"pkg/outbox ноль)",
-		Issue: "#1361",
+		Reason: "журнал смены субъекта, ПЕРЕСТАВШИЙ быть очередью: колонки доставки сняты " +
+			"применённой миграцией вместе со своим дренажом. Строки читает КРАЙ курсором " +
+			"по позиции (#1024), поэтому порог выводится из самого отставшего курсора — " +
+			"та же величина, что у журналов подписки, а не признак доставки",
+		Issue:  "#1712",
+		Family: familyJournal,
 	},
 	{
 		Owner: "services/iam", Table: "resource_reconcile_outbox",
@@ -331,7 +302,8 @@ var tableGrowthRegistry = []TableGrowthDecl{
 		Reason: "очередь дренажа: строка заводится в writer-транзакции мутации, дренаж " +
 			"помечает доставленную sent_at и не удаляет её никогда (операторов DELETE в " +
 			"pkg/outbox ноль)",
-		Issue: "#1361",
+		Issue:  "#1361",
+		Family: familyDrainerQueue,
 	},
 	{
 		Owner: "services/iam", Table: "provider_compensation_outbox",
@@ -339,15 +311,19 @@ var tableGrowthRegistry = []TableGrowthDecl{
 		Reason: "очередь дренажа: строка заводится в writer-транзакции мутации, дренаж " +
 			"помечает доставленную sent_at и не удаляет её никогда (операторов DELETE в " +
 			"pkg/outbox ноль)",
-		Issue: "#1361",
+		Issue:  "#1361",
+		Family: familyDrainerQueue,
 	},
 	{
 		Owner: "services/nlb", Table: "nlb_outbox",
 		Tempo: tempoExternal, Verdict: verdictDebt,
-		Reason: "очередь дренажа: строка заводится в writer-транзакции мутации, дренаж " +
-			"помечает доставленную sent_at и не удаляет её никогда (операторов DELETE в " +
-			"pkg/outbox ноль)",
-		Issue: "#1361",
+		Reason: "журнал подписки: строка пишется на каждой мутации ресурса владельца, " +
+			"а снятия строк нет ни на одном пути — удержание объявлено самим кодом " +
+			"(`Retention: subscription.RetainsEverything`), и подписчику обещано, что " +
+			"отказ «позиция утрачена» не наступает никогда. Дренажа НЕТ: колонки " +
+			"`sent_at` в форме нет, читают курсором по номеру позиции",
+		Issue:  "#1666",
+		Family: familyJournal,
 	},
 	{
 		Owner: "services/nlb", Table: "fga_register_outbox",
@@ -355,7 +331,8 @@ var tableGrowthRegistry = []TableGrowthDecl{
 		Reason: "очередь дренажа: строка заводится в writer-транзакции мутации, дренаж " +
 			"помечает доставленную sent_at и не удаляет её никогда (операторов DELETE в " +
 			"pkg/outbox ноль)",
-		Issue: "#1361",
+		Issue:  "#1361",
+		Family: familyDrainerQueue,
 	},
 	{
 		// Журнал подписки, заведённый эпиком единого потока изменений (#1016).
@@ -368,7 +345,8 @@ var tableGrowthRegistry = []TableGrowthDecl{
 			"а снятия строк нет ни на одном пути — удержание объявлено самим кодом " +
 			"(`Retention: subscription.RetainsEverything`), и подписчику обещано, что " +
 			"отказ «позиция утрачена» не наступает никогда",
-		Issue: "#1666",
+		Issue:  "#1666",
+		Family: familyJournal,
 	},
 	{
 		// Тот же журнал у storage. Имя совпадает со снятой 0011 очередью, но форма
@@ -381,7 +359,8 @@ var tableGrowthRegistry = []TableGrowthDecl{
 			"владельца, а снятия строк нет ни на одном пути — удержание объявлено самим " +
 			"кодом (`Retention: subscription.RetainsEverything`), и подписчику обещано, " +
 			"что отказ «позиция утрачена» не наступает никогда",
-		Issue: "#1666",
+		Issue:  "#1666",
+		Family: familyJournal,
 	},
 	{
 		Owner: "services/registry", Table: "registry_outbox",
@@ -389,7 +368,8 @@ var tableGrowthRegistry = []TableGrowthDecl{
 		Reason: "очередь дренажа: строка заводится в writer-транзакции мутации, дренаж " +
 			"помечает доставленную sent_at и не удаляет её никогда (операторов DELETE в " +
 			"pkg/outbox ноль)",
-		Issue: "#1361",
+		Issue:  "#1361",
+		Family: familyDrainerQueue,
 	},
 	{
 		Owner: "services/storage", Table: "fga_register_outbox",
@@ -397,15 +377,19 @@ var tableGrowthRegistry = []TableGrowthDecl{
 		Reason: "очередь дренажа: строка заводится в writer-транзакции мутации, дренаж " +
 			"помечает доставленную sent_at и не удаляет её никогда (операторов DELETE в " +
 			"pkg/outbox ноль)",
-		Issue: "#1361",
+		Issue:  "#1361",
+		Family: familyDrainerQueue,
 	},
 	{
 		Owner: "services/vpc", Table: "vpc_outbox",
 		Tempo: tempoExternal, Verdict: verdictDebt,
-		Reason: "очередь дренажа: строка заводится в writer-транзакции мутации, дренаж " +
-			"помечает доставленную sent_at и не удаляет её никогда (операторов DELETE в " +
-			"pkg/outbox ноль)",
-		Issue: "#1361",
+		Reason: "журнал подписки: строка пишется на каждой мутации ресурса владельца, " +
+			"а снятия строк нет ни на одном пути — удержание объявлено самим кодом " +
+			"(`Retention: subscription.RetainsEverything`), и подписчику обещано, что " +
+			"отказ «позиция утрачена» не наступает никогда. Дренажа НЕТ: колонки " +
+			"`sent_at` в форме нет, читают курсором по номеру позиции",
+		Issue:  "#1666",
+		Family: familyJournal,
 	},
 	{
 		Owner: "services/vpc", Table: "fga_register_outbox",
@@ -413,7 +397,8 @@ var tableGrowthRegistry = []TableGrowthDecl{
 		Reason: "очередь дренажа: строка заводится в writer-транзакции мутации, дренаж " +
 			"помечает доставленную sent_at и не удаляет её никогда (операторов DELETE в " +
 			"pkg/outbox ноль)",
-		Issue: "#1361",
+		Issue:  "#1361",
+		Family: familyDrainerQueue,
 	},
 	{
 		Owner: "services/vpc", Table: "nested_quota_defaults",

@@ -277,7 +277,17 @@ type UpdateProjectRequest struct {
 	// ID of the Project resource to update.
 	ProjectId string `protobuf:"bytes,1,opt,name=project_id,json=projectId,proto3" json:"project_id,omitempty"`
 	// Field mask. Allowed fields: name, description, labels.
-	// account_id is NOT mutable via Update — use ProjectService.Move.
+	//
+	// account_id is NOT mutable — not by Update, and not by any other call: this
+	// service carries no transfer verb, and Project.account_id documents why it
+	// is not going to get one. Update rejects account_id in the mask with
+	// "accountId is immutable after Project.Create".
+	//
+	// WHAT TO DO INSTEAD, said as the OUTCOME rather than as a verb name, because
+	// a name in prose goes stale silently while an outcome survives renaming: to
+	// end up with a Project under a different Account, use Create above with the
+	// target account_id. Nothing follows it across, and that is the reason the
+	// transfer does not exist rather than a gap in the surface.
 	UpdateMask *fieldmaskpb.FieldMask `protobuf:"bytes,2,opt,name=update_mask,json=updateMask,proto3" json:"update_mask,omitempty"`
 	// Name of the project.
 	Name string `protobuf:"bytes,3,opt,name=name,proto3" json:"name,omitempty"`

@@ -101,6 +101,11 @@ type FullRepo interface {
 	Repo
 	OwnedOperationRepo
 	MetadataFinalizer
+	// TerminalSweeper — уборка терминальных строк по сроку (задача #1360).
+	// Входит в FullRepo, а не берётся type-assert'ом: композиционный корень
+	// каждого владельца обязан получить отказ КОМПИЛЯЦИИ, если уборщика у
+	// репозитория нет, — иначе провязка молча выпадет у одного из восьми.
+	TerminalSweeper
 }
 
 var _ FullRepo = (*pgRepo)(nil)

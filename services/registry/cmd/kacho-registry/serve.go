@@ -147,6 +147,20 @@ func runServe(cfg config.Config) error {
 	// ── LRO-стек: общая operations-таблица (corelib) каталога kacho_registry.
 	opsRepo := operations.NewRepo(pool, "kacho_registry")
 
+	// Фоновая уборка терминальных строк таблицы операций.
+	//
+	// Строка заводится КАЖДОЙ мутацией — контракт объявляет мутации асинхронными,
+	// и `Operation` возвращается вместо ресурса, — а снятия строк не было ни у
+	// одного из восьми владельцев. Порог, предикат и расписание объявлены в
+	// `pkg/operations` и `pkg/retention` ОДИН раз: восемь расписаний об одном
+	// предмете разошлись бы молча.
+	if _, err := operations.StartRetentionSweep(
+		ctx, opsRepo, operations.DefaultRetentionConfig(),
+		logger,
+	); err != nil {
+		return fmt.Errorf("фоновая уборка таблицы операций: %w", err)
+	}
+
 	// ── ребро registry→iam INTERNAL (:9091, mTLS): per-RPC authz Check +
 	// fga-proxy RegisterResource/UnregisterResource (Internal-only). При breakglass
 	// conn может быть nil (интерсептор пропускает всё; клиенты отвечают Unavailable).

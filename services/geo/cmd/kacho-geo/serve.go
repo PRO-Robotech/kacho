@@ -107,6 +107,20 @@ func runServe(cfg config.Config) error {
 	// (Operation{done:true}); клиент разворачивает .response, поллить не нужно.
 	opsRepo := operations.NewRepo(pool, "kacho_geo")
 
+	// Фоновая уборка терминальных строк таблицы операций.
+	//
+	// Строка заводится КАЖДОЙ мутацией — контракт объявляет мутации асинхронными,
+	// и `Operation` возвращается вместо ресурса, — а снятия строк не было ни у
+	// одного из восьми владельцев. Порог, предикат и расписание объявлены в
+	// `pkg/operations` и `pkg/retention` ОДИН раз: восемь расписаний об одном
+	// предмете разошлись бы молча.
+	if _, err := operations.StartRetentionSweep(
+		ctx, opsRepo, operations.DefaultRetentionConfig(),
+		logger,
+	); err != nil {
+		return fmt.Errorf("фоновая уборка таблицы операций: %w", err)
+	}
+
 	// ── use-cases (repo → use-case → handler) ──────────────────────────────
 	// CQRS-порты Reader/Writer связываются раздельно (сейчас обе стороны — один
 	// pg-adapter поверх primary-pool; read-side можно позже перецепить на
