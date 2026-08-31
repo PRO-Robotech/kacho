@@ -1091,12 +1091,6 @@ def assert_op_error(code: int, code_name: str, msg_substr: Optional[str] = None,
             f" pm.expect(rs, JSON.stringify(j)).to.include({js_str(reason)}); }});")
     if msg_regex is not None:
         body.append(f"pm.test({js_str(f'error text matches /{msg_regex}/')}, () => pm.expect(j.error && j.error.message || '', JSON.stringify(j)).to.match(/{js_regex_src(msg_regex, where='iam/assert_op_error/msg_regex')}/));")
-    if reason is not None:
-        # Признак ищется ПО ТИПУ детали, а не по позиции: порядок `details[]` контрактом
-        # не объявлен, и утверждение по индексу зеленело бы или краснело от перестановки,
-        # которую никто не решал.
-        body.append("const _ei = ((j.error && j.error.details) || []).filter(d => String(d['@type'] || '').endsWith('google.rpc.ErrorInfo'));")
-        body.append(f"pm.test({js_str(f'ErrorInfo.reason == {reason}')}, () => pm.expect(_ei.map(d => d.reason), JSON.stringify(j)).to.include({js_str(reason)}));")
     if msg_text is not None:
         body.extend(assert_op_refusal_message(msg_text))
     if msg_text_contains is not None:
