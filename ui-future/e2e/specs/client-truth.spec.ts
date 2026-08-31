@@ -79,11 +79,16 @@ async function openDeleteDialog(page: Page, name: string): Promise<void> {
 // с одним заполненным именем поднимает сообщения у ВСЕХ обязательных полей
 // (у сети это диапазон), и счётчик по всей форме уже не обнулится — проба
 // прочитала бы чужой отказ как отказ имени.
+//
+// Блок берётся ПРЕДКОМ найденного поля, а не отбором среди блоков формы.
+// Отбор `filter({ has })` перепривязывает вложенный локатор к кандидату, а наш
+// начинается с `form.ant-form` — внутри `.ant-form-item` такого предка нет,
+// поэтому отбор не матчил НИЧЕГО, и отрицательная половина пробы
+// (`count() === 0`) выполнялась на пустом наборе тривиально.
 function nameItemOf(scope: import("@playwright/test").Locator) {
-  return scope
-    .locator(".ant-form-item")
-    .filter({ has: nameInputOf(scope) })
-    .first();
+  return nameInputOf(scope).locator(
+    'xpath=ancestor::div[contains(concat(" ", normalize-space(@class), " "), " ant-form-item ")][1]',
+  );
 }
 
 // firstOfCatalog — первое значение справочника платформы (зона, тип диска,
@@ -180,6 +185,12 @@ test("форма создания называет ту форму имени, �
   await page.locator('button:has-text("Создать")').last().click();
 
   const nameItem = nameItemOf(form);
+  // Положительный контроль блока: без него отрицательная половина ниже
+  // (`count() === 0`) зеленела бы на любом локаторе, который не находит ничего.
+  await expect(
+    nameItem,
+    "блок формы, принадлежащий полю «Имя», не найден — утверждения об отказе стали бы вакуумными",
+  ).toBeVisible({ timeout: 15_000 });
   await expect(
     nameItem.locator("[role=alert]").first(),
     "имя с подчёркиванием принято формой: отказ придёт от края после ожидания операции, " +
