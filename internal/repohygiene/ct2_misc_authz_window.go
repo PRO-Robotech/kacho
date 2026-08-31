@@ -1,15 +1,23 @@
 // Copyright (c) PRO-Robotech
 // SPDX-License-Identifier: BUSL-1.1
 
-// ct2_misc_authz_window.go — страница края, отправляющая клиента ждать
+// ct2_misc_authz_window.go — страница, отправляющая клиента ждать
 // authz-видимость, обязана назвать СВОЮ величину этого окна и назвать её верно.
 //
 // ПРЕДМЕТ (задача продукта #1645). Окно, после которого выдача становится
 // наблюдаемой, складывается из ДВУХ слагаемых: материализация выдачи у владельца
-// прав и кэш решений на самом крае. Второе слагаемое — собственность края: у
-// него своя ручка и своё умолчание. Край называл только ПЕРВОЕ, да ещё числом,
-// у которого в дереве нет производителя, — и клиент, отлаживающий свежую выдачу
-// по странице края, ждал меньше, чем нужно, и заключал, что доступ не выдался.
+// прав и кэш вердиктов у того, кто спрашивает. Второе слагаемое — собственность
+// спрашивающего: у него своя ручка и своё умолчание. Спрашивающий называл только
+// ПЕРВОЕ, да ещё числом, у которого в дереве нет производителя, — и клиент,
+// отлаживающий свежую выдачу по этой странице, ждал меньше, чем нужно, и
+// заключал, что доступ не выдался.
+//
+// ВЛАДЕЛЬЦЕВ ОКНА В ДЕРЕВЕ ДВА, и это не совпадение, а класс: всякий, кто кэширует
+// положительный вердикт, заводит своё слагаемое. Край назвал половину — и registry
+// назвал половину, причём числом СНЯТОГО механизма: «~0.6–2 с (распространение
+// прав)» была ценой очереди к внешнему хранилищу отношений, которого в
+// развёртывании больше нет. Гейт поэтому обходит ПЕРЕЧЕНЬ владельцев, а не один
+// каталог: третий, заведя кэш, обязан покраснеть в тот же день.
 //
 // ЧТО ГЕЙТ ДЕРЖИТ — ДВЕ ПОЛОВИНЫ, и каждая ловит свою сторону дефекта:
 //
@@ -55,14 +63,37 @@ import (
 	"github.com/PRO-Robotech/kacho/internal/treecorpus"
 )
 
-const (
-	// ct2AuthzCacheKnob — ручка, которой настраивается ВТОРОЕ слагаемое окна.
-	ct2AuthzCacheKnob = "KACHO_API_GATEWAY_AUTHZ_CACHE_TTL_SECONDS"
-	// ct2GatewayConfigFile — где объявлено её умолчание.
-	ct2GatewayConfigFile = "gateway/internal/config/config.go"
-	// ct2GatewayDocsDir — страницы края.
-	ct2GatewayDocsDir = "gateway/docs/content/"
-)
+// ct2WindowOwner — тот, кто кэширует вердикт и потому владеет своим слагаемым
+// окна: его страницы, его ручка, его конфигурация.
+type ct2WindowOwner struct {
+	// Name — как владелец зовётся в переписи и в находке.
+	Name string
+	// DocsDir — каталог его клиентских страниц.
+	DocsDir string
+	// ConfigFile — где объявлено умолчание ручки.
+	ConfigFile string
+	// Knob — имя ручки, которой настраивается его слагаемое.
+	Knob string
+}
+
+// ct2WindowOwners — ВСЕ, кто кэширует положительный вердикт и отправляет клиента
+// ждать. Перечень выписан, а не выведен из дерева, и это осознанно: вывести его
+// можно было бы только поиском по имени ручки, то есть предикатом, совпадающим с
+// предметом проверки, — он подтверждал бы сам себя.
+var ct2WindowOwners = []ct2WindowOwner{
+	{
+		Name:       "gateway",
+		DocsDir:    "gateway/docs/content/",
+		ConfigFile: "gateway/internal/config/config.go",
+		Knob:       "KACHO_API_GATEWAY_AUTHZ_CACHE_TTL_SECONDS",
+	},
+	{
+		Name:       "registry",
+		DocsDir:    "services/registry/docs/content/",
+		ConfigFile: "services/registry/internal/apps/kacho/config/config.go",
+		Knob:       "KACHO_REGISTRY_AUTHZ_CACHE_TTL",
+	},
+}
 
 // ct2WindowMarkers — по чему опознаётся страница, отправляющая клиента ждать
 // authz-видимость.
@@ -74,14 +105,33 @@ var ct2WindowMarkers = []string{
 	"authz-видимость",
 	"authz-видимости",
 	"видимость нового ресурса",
+	// Форма registry: врезка называет предмет своим именем.
+	"grant-latency",
+	"Grant-latency",
 }
 
+// ЧТО В ЭТОТ ПЕРЕЧЕНЬ НЕ ПОПАЛО И ПОЧЕМУ. Первая редакция несла ещё
+// «authz-фильтрованном» — и немедленно дала ложную находку: страница обзора
+// registry этой фразой ОПИСЫВАЕТ механизм («чтобы создатель видел реестр в
+// authz-фильтрованном списке»), а не отправляет клиента ждать. Маркер обязан
+// узнавать НАМЕРЕНИЕ страницы, а не её словарь; проверка, у которой ложные
+// находки, перестаёт читаться — и вместе с ней перестают читаться настоящие.
+
 // ct2KnobValueRe — число, названное рядом с ручкой: «… секунд (по умолчанию 5)»
-// либо «…, по умолчанию 5 с».
+// либо «…, по умолчанию 2 с».
 var ct2KnobValueRe = regexp.MustCompile(`по умолчанию\s+(\d+)`)
+
+// ct2DurationDefaultRe — умолчание, объявленное длительностью (`2s`), а не голым
+// числом. Обе формы приводятся к СЕКУНДАМ: ручка называет окно ожидания, и
+// сравнивать её с числом на странице иначе нечем. Форма, о которой
+// распознаватель не знает, дала бы не находку, а невидимость (п.7 §«Гейт на
+// класс»), поэтому обе названы здесь.
+var ct2DurationDefaultRe = regexp.MustCompile(`^(\d+)s$`)
 
 // ct2WindowPage — что найдено на ОДНОЙ странице края.
 type ct2WindowPage struct {
+	// Owner — чья это страница; находка обязана его называть.
+	Owner string
 	// Rel — координата страницы; находка обязана её называть.
 	Rel string
 	// SpeaksOfWindow — страница отправляет клиента ждать authz-видимость.
@@ -95,13 +145,14 @@ type ct2WindowPage struct {
 // ct2WindowCensus — перепись обхода. Печатается ВСЕГДА: «ноль находок» обязано
 // быть отличимо от «ноль прочитанного».
 type ct2WindowCensus struct {
-	// DefaultValue — умолчание, объявленное конфигурацией края; "" — не найдено.
-	DefaultValue string
-	Pages        []ct2WindowPage
-	PagesRead    int
-	SpeakingOf   int
-	NamingKnob   int
-	Agreeing     int
+	// Defaults — «владелец» → умолчание его ручки в секундах; "" — не найдено.
+	Defaults   map[string]string
+	Owners     []ct2WindowOwner
+	Pages      []ct2WindowPage
+	PagesRead  int
+	SpeakingOf int
+	NamingKnob int
+	Agreeing   int
 }
 
 // collectAuthzWindow обходит конфигурацию и страницы края.
@@ -110,18 +161,28 @@ type ct2WindowCensus struct {
 // сборки сайта, и вердикт, собранный обходом файловой системы, стал бы
 // свойством рабочего каталога, а не коммита.
 func collectAuthzWindow(tree *treecorpus.Tree) (ct2WindowCensus, error) {
-	var c ct2WindowCensus
+	c := ct2WindowCensus{
+		Defaults: map[string]string{},
+		Owners:   append([]ct2WindowOwner(nil), ct2WindowOwners...),
+	}
 
-	if tree.HasFile(ct2GatewayConfigFile) {
-		v, err := ct2EnvDefault(filepath.Join(tree.Root(), filepath.FromSlash(ct2GatewayConfigFile)), ct2AuthzCacheKnob)
+	for _, o := range c.Owners {
+		if !tree.HasFile(o.ConfigFile) {
+			continue
+		}
+		v, err := ct2EnvDefault(filepath.Join(tree.Root(), filepath.FromSlash(o.ConfigFile)), o.Knob)
 		if err != nil {
 			return c, err
 		}
-		c.DefaultValue = v
+		c.Defaults[o.Name] = ct2SecondsOf(v)
 	}
 
 	for _, rel := range tree.SortedFiles() {
-		if !strings.HasPrefix(rel, ct2GatewayDocsDir) || !strings.HasSuffix(rel, ".mdx") {
+		if !strings.HasSuffix(rel, ".mdx") {
+			continue
+		}
+		owner := ct2WindowOwnerOf(rel, c.Owners)
+		if owner == nil {
 			continue
 		}
 		body, err := os.ReadFile(filepath.Join(tree.Root(), filepath.FromSlash(rel)))
@@ -131,7 +192,11 @@ func collectAuthzWindow(tree *treecorpus.Tree) (ct2WindowCensus, error) {
 		text := string(body)
 		c.PagesRead++
 
-		p := ct2WindowPage{Rel: rel, NamesKnob: strings.Contains(text, ct2AuthzCacheKnob)}
+		p := ct2WindowPage{
+			Owner:     owner.Name,
+			Rel:       rel,
+			NamesKnob: strings.Contains(text, owner.Knob),
+		}
 		for _, m := range ct2WindowMarkers {
 			if strings.Contains(text, m) {
 				p.SpeaksOfWindow = true
@@ -139,7 +204,7 @@ func collectAuthzWindow(tree *treecorpus.Tree) (ct2WindowCensus, error) {
 			}
 		}
 		if p.NamesKnob {
-			for _, line := range ct2KnobNeighbourhood(text) {
+			for _, line := range ct2KnobNeighbourhood(text, owner.Knob) {
 				if m := ct2KnobValueRe.FindStringSubmatch(line); m != nil {
 					p.StatedValues = append(p.StatedValues, m[1])
 				}
@@ -158,20 +223,43 @@ func collectAuthzWindow(tree *treecorpus.Tree) (ct2WindowCensus, error) {
 		if p.NamesKnob {
 			c.NamingKnob++
 		}
-		if p.NamesKnob && len(p.StatedValues) > 0 && ct2AllEqual(p.StatedValues, c.DefaultValue) {
+		if p.NamesKnob && len(p.StatedValues) > 0 && ct2AllEqual(p.StatedValues, c.Defaults[p.Owner]) {
 			c.Agreeing++
 		}
 	}
 	return c, nil
 }
 
+// ct2WindowOwnerOf — чья это страница; nil — ничья из названных.
+func ct2WindowOwnerOf(rel string, owners []ct2WindowOwner) *ct2WindowOwner {
+	for i := range owners {
+		if strings.HasPrefix(rel, owners[i].DocsDir) {
+			return &owners[i]
+		}
+	}
+	return nil
+}
+
+// ct2SecondsOf приводит объявленное умолчание к СЕКУНДАМ.
+//
+// Ручки этого перечня объявляют окно ожидания и потому обе измеряются секундами:
+// одна голым числом (поле названо `…Seconds`), другая длительностью (`2s`).
+// Приведение названо, а не подразумевается: единица счёта — часть числа, и без
+// неё сравнение страницы с конфигурацией было бы сравнением разных величин.
+func ct2SecondsOf(raw string) string {
+	if m := ct2DurationDefaultRe.FindStringSubmatch(raw); m != nil {
+		return m[1]
+	}
+	return raw
+}
+
 // ct2KnobNeighbourhood — строки, в которых упомянута ручка, вместе с соседней
 // снизу: величина часто переносится на следующую строку абзаца.
-func ct2KnobNeighbourhood(text string) []string {
+func ct2KnobNeighbourhood(text, knob string) []string {
 	lines := strings.Split(text, "\n")
 	var out []string
 	for i, l := range lines {
-		if !strings.Contains(l, ct2AuthzCacheKnob) {
+		if !strings.Contains(l, knob) {
 			continue
 		}
 		out = append(out, l)
@@ -236,31 +324,48 @@ func ct2EnvDefault(path, knob string) (string, error) {
 
 // authzWindowFindings — расхождения, каждое с координатой.
 func authzWindowFindings(c ct2WindowCensus) []string {
+	knobOf := map[string]ct2WindowOwner{}
+	for _, o := range c.Owners {
+		knobOf[o.Name] = o
+	}
 	var out []string
 	for _, p := range c.Pages {
+		o := knobOf[p.Owner]
 		if p.SpeaksOfWindow && !p.NamesKnob {
 			out = append(out, fmt.Sprintf(
 				"%s: страница отправляет клиента ждать authz-видимость и не называет "+
 					"%s — названа половина окна, а прочитана будет как целое",
-				p.Rel, ct2AuthzCacheKnob))
+				p.Rel, o.Knob))
 			continue
 		}
 		if !p.NamesKnob {
 			continue
 		}
-		if len(p.StatedValues) == 0 {
+		// Величины требует только страница, ОТПРАВЛЯЮЩАЯ ждать. Страница
+		// настройки перечисляет ручку таблицей, и величина у неё стоит ячейкой,
+		// а не фразой; требовать от неё фразы значило бы краснеть на справочнике,
+		// который делает ровно свою работу.
+		if p.SpeaksOfWindow && len(p.StatedValues) == 0 {
 			out = append(out, fmt.Sprintf(
 				"%s: %s назван без величины — клиенту нечего заложить в повтор",
-				p.Rel, ct2AuthzCacheKnob))
+				p.Rel, o.Knob))
 			continue
 		}
 		for _, v := range p.StatedValues {
-			if v != c.DefaultValue {
+			if v != c.Defaults[p.Owner] {
 				out = append(out, fmt.Sprintf(
-					"%s: названо умолчание %s, конфигурация края объявляет %s (%s) — "+
+					"%s: названо умолчание %s, конфигурация владельца %s объявляет %s (%s) — "+
 						"два места об одном предмете, и расходятся они молча",
-					p.Rel, v, c.DefaultValue, ct2GatewayConfigFile))
+					p.Rel, v, p.Owner, c.Defaults[p.Owner], o.ConfigFile))
 			}
+		}
+	}
+	// Владелец, чьё умолчание не выведено, — слепая зона, а не молчание.
+	for _, o := range c.Owners {
+		if c.Defaults[o.Name] == "" {
+			out = append(out, fmt.Sprintf(
+				"%s: умолчание %s не выведено из %s — сверять названное не с чем",
+				o.Name, o.Knob, o.ConfigFile))
 		}
 	}
 	return out

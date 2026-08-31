@@ -34,41 +34,55 @@ func TestEdgePagesNameTheirOwnHalfOfTheAuthzVisibilityWindow(t *testing.T) {
 	// случай, ради которого гейт заведён.
 	var named []string
 	for _, p := range c.Pages {
-		mark := ""
+		mark := "ручка"
 		switch {
 		case p.SpeaksOfWindow && p.NamesKnob:
 			mark = "окно+ручка"
 		case p.SpeaksOfWindow:
 			mark = "окно без ручки"
-		default:
-			mark = "ручка"
 		}
-		named = append(named, p.Rel+" ("+mark+")")
+		named = append(named, p.Owner+" "+p.Rel+" ("+mark+")")
 	}
-	t.Logf("перепись: страниц края прочитано %d · относящихся к окну %d · "+
-		"говорят об окне %d · называют ручку %d · величина совпала %d · умолчание %q\n         %s",
-		c.PagesRead, len(c.Pages), c.SpeakingOf, c.NamingKnob, c.Agreeing,
-		c.DefaultValue, strings.Join(named, "; "))
+	var defaults []string
+	for _, o := range c.Owners {
+		defaults = append(defaults, o.Name+"="+c.Defaults[o.Name]+"с")
+	}
+	t.Logf("перепись: владельцев окна %d (умолчания: %s) · страниц прочитано %d · "+
+		"относящихся к окну %d\n         говорят об окне %d · называют ручку %d · "+
+		"величина совпала %d\n         %s",
+		len(c.Owners), strings.Join(defaults, ", "), c.PagesRead, len(c.Pages),
+		c.SpeakingOf, c.NamingKnob, c.Agreeing, strings.Join(named, "; "))
 
 	// ── ПРОВЕРКА СОБСТВЕННОЙ ПРЕДПОСЫЛКИ. Пустой обход обесценивает вердикт.
-	if c.PagesRead == 0 {
-		t.Fatal("страниц края не прочитано ни одной — вердикт беспредметен")
+	if len(c.Owners) == 0 {
+		t.Fatal("владельцев окна не объявлено ни одного — предмета у гейта нет")
 	}
-	if c.DefaultValue == "" {
-		t.Fatalf("умолчание %s не выведено из %s — сверять названное не с чем",
-			ct2AuthzCacheKnob, ct2GatewayConfigFile)
+	if c.PagesRead == 0 {
+		t.Fatal("страниц владельцев не прочитано ни одной — вердикт беспредметен")
 	}
 	if len(c.Pages) == 0 {
-		t.Fatal("ни одна страница края не говорит об окне authz-видимости и не " +
-			"называет ручку — распознаватель перестал видеть предмет " +
-			"(см. п.7 §«Гейт на класс»)")
+		t.Fatal("ни одна страница не говорит об окне authz-видимости и не называет " +
+			"ручку — распознаватель перестал видеть предмет (п.7 §«Гейт на класс»)")
 	}
 	if c.SpeakingOf == 0 {
-		t.Fatal("ни одна страница края не отправляет клиента ждать authz-видимость — " +
+		t.Fatal("ни одна страница не отправляет клиента ждать authz-видимость — " +
 			"маркеры распознавания пережили свой предмет")
+	}
+	// Каждый объявленный владелец обязан быть ПРЕДСТАВЛЕН в обходе: владелец без
+	// единой прочитанной страницы — слепая зона, неотличимая от исправного.
+	seen := map[string]bool{}
+	for _, p := range c.Pages {
+		seen[p.Owner] = true
+	}
+	for _, o := range c.Owners {
+		if !seen[o.Name] {
+			t.Errorf("у владельца %s не найдено ни одной страницы об окне — "+
+				"каталог %s либо пуст, либо маркеры его формы записи неизвестны",
+				o.Name, o.DocsDir)
+		}
 	}
 
 	for _, f := range authzWindowFindings(c) {
-		t.Errorf("окно authz-видимости на странице края: %s", f)
+		t.Errorf("окно authz-видимости: %s", f)
 	}
 }
