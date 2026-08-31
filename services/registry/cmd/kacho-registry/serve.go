@@ -51,6 +51,10 @@ import (
 	"github.com/PRO-Robotech/kacho/services/registry/internal/observability/metrics"
 	"github.com/PRO-Robotech/kacho/services/registry/internal/operationresolver"
 	"github.com/PRO-Robotech/kacho/services/registry/internal/repo/kacho/pg"
+
+	"github.com/PRO-Robotech/kacho/pkg/schemaguard"
+
+	"github.com/PRO-Robotech/kacho/services/registry/internal/migrations"
 )
 
 // Сроки ПЛОСКОСТИ ДАННЫХ. Названы отдельно от диагностических намеренно: у этих
@@ -134,7 +138,12 @@ func runServe(cfg config.Config) error {
 	// приезжает ниже по тексту — до его установки готовность отвечает «не готов»,
 	// а не «готов» (см. buildReadinessCheckers).
 	var authzSlot health.Slot
-	healthAgg := health.New(buildReadinessCheckers(pool, cfg.AuthZIAMGRPCAddr != "", &authzSlot))
+	// Версия схемы читается из ВСТРОЕННОГО набора миграций — того же, что
+	// применяет мигратор. Least-privilege serve-бинаря это не нарушает: набор
+	// читается как встроенные байты, а у базы спрашивается ОДИН `SELECT`
+	// применённой версии; схему serve-бинарь по-прежнему не меняет.
+	healthAgg := health.New(buildReadinessCheckers(pool, cfg.AuthZIAMGRPCAddr != "", &authzSlot,
+		schemaguard.CheckFromFS(migrations.FS, schemaguard.PgxVersionReader(pool))))
 	// Гашение переводит готовность в 503 ДО остановки слушателей: kubelet
 	// перестаёт слать трафик, пока текущие вызовы дорабатывают.
 	go func() {

@@ -92,6 +92,8 @@ import (
 	"sort"
 	"strconv"
 	"strings"
+
+	"github.com/PRO-Robotech/kacho/pkg/schemaguard"
 )
 
 // schemaRollbackBaselineFile — счётная ведомость файлов, лежавших в дереве до
@@ -99,10 +101,18 @@ import (
 // свойство дерева.
 const schemaRollbackBaselineFile = "internal/repohygiene/schema-rollback-baseline.txt"
 
-// pointOfNoReturnMarker — признак в самой миграции. Токен назван здесь один раз
-// и печатается в тексте отказа отсюда же: два места об одном имени разошлись бы
-// молча, и автор прочитал бы в подсказке одно, а гейт требовал бы другое.
-const pointOfNoReturnMarker = "-- +kacho point-of-no-return:"
+// pointOfNoReturnMarker — признак в самой миграции.
+//
+// ВЛАДЕЛЕЦ ТОКЕНА — ПРОД-КОД (`pkg/schemaguard`), а не этот гейт, и это не
+// косметика. У объявления теперь ДВА читателя: гейт, требующий признака на
+// коммите, и страж старта, снимающий под из ротации на несовместимой схеме
+// (задача #1734). Две копии токена разошлись бы молча — и разошлись бы там, где
+// расхождение не видно: автор прочитал бы в подсказке гейта одно, а страж
+// старта искал бы другое, то есть проверка была бы зелена, а защита мертва.
+//
+// Общий источник снимает предмет расхождения by construction: приведение
+// невозможно обойти, потому что символ один.
+const pointOfNoReturnMarker = schemaguard.PointOfNoReturnMarker
 
 // schemaRollbackForm — форма, отнимающая у прежнего образа колонку.
 type schemaRollbackForm struct {
@@ -181,21 +191,13 @@ func scanSchemaRollbackForms(body string) map[string]int {
 // комментарий, и в исполняемой части его нет by construction. Пустое
 // обоснование признаком не считается — иначе токен становится печатью, которую
 // ставят не читая.
+//
+// РАСПОЗНАВАТЕЛЬ ОДИН на гейт и на стража старта (`pkg/schemaguard`): гейт
+// требует признака на коммите, страж читает его в развёрнутом образе, и
+// вопрос у них ОДИН И ТОТ ЖЕ. Своя копия разбора отвечала бы на него иначе —
+// и заметить это было бы неоткуда: обе стороны зелены поодиночке.
 func hasPointOfNoReturnMarker(body string) bool {
-	up := body
-	if i := strings.Index(up, "-- +goose Down"); i >= 0 {
-		up = up[:i]
-	}
-	for _, line := range strings.Split(up, "\n") {
-		s := strings.TrimSpace(line)
-		if !strings.HasPrefix(s, pointOfNoReturnMarker) {
-			continue
-		}
-		if strings.TrimSpace(strings.TrimPrefix(s, pointOfNoReturnMarker)) != "" {
-			return true
-		}
-	}
-	return false
+	return schemaguard.DeclaresPointOfNoReturn(body)
 }
 
 // parseSchemaRollbackBaseline — разбор ведомости. Строка:

@@ -22,6 +22,12 @@ type okPinger struct{}
 
 func (okPinger) Ping(context.Context) error { return nil }
 
+// schemaAlwaysReady — версия схемы в этих пробах НЕ предмет: они судят
+// поведение соседних чекеров. Подставляется ПРОХОДЯЩАЯ проверка, а не nil, —
+// иначе «готов» здесь означало бы «схему не спрашивали», и предмет проб
+// смешался бы с чужим.
+func schemaAlwaysReady(context.Context) error { return nil }
+
 func quietLogger() *slog.Logger { return slog.New(slog.NewTextHandler(io.Discard, nil)) }
 
 func hasChecker(checkers []health.Checker, name string) bool {
@@ -39,7 +45,7 @@ func TestBuildReadinessCheckers_DrainerFlipsWithBootGate(t *testing.T) {
 	operations.Start()
 
 	gate := bootgate.New(bootgate.Config{RequireIAM: true, Service: "kacho-nlb"})
-	checkers := buildReadinessCheckers(okPinger{}, gate)
+	checkers := buildReadinessCheckers(okPinger{}, gate, schemaAlwaysReady)
 	agg := health.New(checkers)
 
 	// register-drainer not connected → not ready.
@@ -55,7 +61,7 @@ func TestBuildReadinessCheckers_DrainerFlipsWithBootGate(t *testing.T) {
 
 func TestBuildReadinessCheckers_CoreDependenciesPresent(t *testing.T) {
 	gate := bootgate.New(bootgate.Config{})
-	checkers := buildReadinessCheckers(okPinger{}, gate)
+	checkers := buildReadinessCheckers(okPinger{}, gate, schemaAlwaysReady)
 	for _, want := range []string{"database", "register-drainer", "lro-worker"} {
 		if !hasChecker(checkers, want) {
 			t.Fatalf("readiness checker %q missing", want)

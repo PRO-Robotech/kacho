@@ -25,6 +25,9 @@ import (
 	kachorepo "github.com/PRO-Robotech/kacho/services/iam/internal/repo/kacho"
 	kachopg "github.com/PRO-Robotech/kacho/services/iam/internal/repo/kacho/pg"
 	"github.com/PRO-Robotech/kacho/services/iam/internal/service"
+
+	"github.com/PRO-Robotech/kacho/pkg/schemaguard"
+	"github.com/PRO-Robotech/kacho/services/iam/internal/migrations"
 )
 
 // buildHooksMux — собирает HTTP mux для AuthN hooks.
@@ -130,10 +133,24 @@ func buildHooksMux(
 		RefreshHook:   refreshHook,
 		ProvisionHook: provisionHook,
 		RecoveryHook:  recoveryHook,
-		// /readyz отражает доступность критичных зависимостей: коннект к БД и
-		// поднятый LRO-worker. /healthz остается чистым liveness.
+		// /readyz отражает доступность критичных зависимостей: коннект к БД,
+		// версию схемы под образом и поднятый LRO-worker. /healthz остается
+		// чистым liveness.
 		Readiness: []handlerinternal.ReadinessChecker{
 			{Name: "database", Check: pool.Ping},
+			// ВЕРСИЯ СХЕМЫ — ОТДЕЛЬНАЯ ИМЕНОВАННАЯ ЗАВИСИМОСТЬ, а не часть
+			// проверки базы. Мигратор идёт при каждом раскате, поэтому откат
+			// выкатки ставит ПРЕЖНИЙ образ на НОВУЮ схему; база при этом
+			// отвечает на `Ping`, и без этого чекера под объявлялся бы готовым и
+			// получал трафик (`pkg/schemaguard`, задача #1734). Отдельное имя
+			// обязательно: оператор обязан отличить «база недоступна» от «образ
+			// не той версии, что схема», не читая кода.
+			//
+			// Набор миграций читается как встроенные байты, у базы спрашивается
+			// ОДИН `SELECT` применённой версии — least-privilege serve-бинаря
+			// сохраняется, схему он по-прежнему не меняет.
+			{Name: schemaguard.CheckerName, Check: schemaguard.CheckFromFS(
+				migrations.FS, schemaguard.PgxVersionReader(pool))},
 			{Name: "lro-worker", Check: func(context.Context) error {
 				if operations.Ready() {
 					return nil

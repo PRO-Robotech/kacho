@@ -24,6 +24,7 @@ import (
 	"github.com/PRO-Robotech/kacho/pkg/servicecontract"
 
 	"github.com/PRO-Robotech/kacho/pkg/observability/health"
+	"github.com/PRO-Robotech/kacho/pkg/schemaguard"
 	"github.com/PRO-Robotech/kacho/services/compute/internal/observability/metrics"
 )
 
@@ -74,9 +75,17 @@ func startLROWorker(rec operations.Recorder, logger *slog.Logger) error {
 // buildReadinessCheckers собирает чекеры критичных зависимостей для readiness.
 // liveness намеренно НЕ включает их (защита от restart-storm). iam-authz
 // регистрируется только когда authzConn реально сконфигурирован (production).
-func buildReadinessCheckers(db readinessPinger, gate *bootgate.Gate, authzConn *grpc.ClientConn) []health.Checker {
+// ВЕРСИЯ СХЕМЫ — ОТДЕЛЬНАЯ ИМЕНОВАННАЯ ЗАВИСИМОСТЬ, а не часть проверки базы.
+// Мигратор идёт при каждом раскате, поэтому откат выкатки ставит ПРЕЖНИЙ образ
+// на НОВУЮ схему; база при этом отвечает на `Ping`, и без этого чекера под
+// объявлялся бы готовым и получал трафик (`pkg/schemaguard`, задача #1734).
+// Отдельное имя обязательно: оператор обязан отличить «база недоступна» от
+// «образ не той версии, что схема», не читая кода.
+func buildReadinessCheckers(db readinessPinger, gate *bootgate.Gate, authzConn *grpc.ClientConn,
+	schemaCheck func(context.Context) error) []health.Checker {
 	checkers := []health.Checker{
 		{Name: "database", Check: func(ctx context.Context) error { return db.Ping(ctx) }},
+		{Name: schemaguard.CheckerName, Check: schemaCheck},
 		{Name: "register-drainer", Check: func(context.Context) error {
 			if gate.Ready() {
 				return nil
