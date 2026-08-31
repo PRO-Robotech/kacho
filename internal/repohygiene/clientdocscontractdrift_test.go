@@ -114,7 +114,7 @@ func TestClientDocsRetiredFieldLedgerHasSubject(t *testing.T) {
 			t.Errorf("запись ведомости %q без причины: послабление без записанной причины "+
 				"снимут как непонятное либо не снимут никогда", key)
 		}
-		raw, rerr := os.ReadFile(filepath.Join(opts.Root, filepath.FromSlash(page))) //nolint:gosec // путь из ведомости этого же пакета
+		raw, rerr := os.ReadFile(filepath.Join(opts.Root, filepath.FromSlash(page))) // #nosec G304 -- путь из ведомости этого же пакета
 		if rerr != nil {
 			t.Errorf("запись ведомости %q: страницы нет в дереве — прощать нечего", key)
 			continue

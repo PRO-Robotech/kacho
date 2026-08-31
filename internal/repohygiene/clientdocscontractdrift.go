@@ -202,7 +202,7 @@ func clientDocsProtoDomains(opts ClientDocsContractDriftOptions) (
 			return rerr
 		}
 		domain := strings.SplitN(filepath.ToSlash(rel), "/", 2)[0]
-		raw, rerr := os.ReadFile(p) //nolint:gosec // путь получен обходом дерева репозитория
+		raw, rerr := os.ReadFile(p) // #nosec G304 -- путь получен обходом собственного дерева
 		if rerr != nil {
 			return rerr
 		}
@@ -384,7 +384,7 @@ func AuditClientDocsRetiredFieldInExample(
 		}
 		for _, page := range pages {
 			census.Pages++
-			raw, rerr := os.ReadFile(filepath.Join(opts.Root, filepath.FromSlash(page))) //nolint:gosec // путь получен обходом дерева
+			raw, rerr := os.ReadFile(filepath.Join(opts.Root, filepath.FromSlash(page))) // #nosec G304 -- путь получен обходом собственного дерева
 			if rerr != nil {
 				return nil, census, rerr
 			}
@@ -482,7 +482,7 @@ func clientDocsDeprecatedPaths(opts ClientDocsContractDriftOptions) (map[string]
 		if d.IsDir() || filepath.Ext(p) != ".proto" {
 			return nil
 		}
-		raw, rerr := os.ReadFile(p) //nolint:gosec // путь получен обходом дерева репозитория
+		raw, rerr := os.ReadFile(p) // #nosec G304 -- путь получен обходом собственного дерева
 		if rerr != nil {
 			return rerr
 		}
@@ -547,7 +547,7 @@ func AuditClientDocsDeprecationParity(
 		}
 		for _, page := range pages {
 			census.Pages++
-			raw, rerr := os.ReadFile(filepath.Join(opts.Root, filepath.FromSlash(page))) //nolint:gosec // путь получен обходом дерева
+			raw, rerr := os.ReadFile(filepath.Join(opts.Root, filepath.FromSlash(page))) // #nosec G304 -- путь получен обходом собственного дерева
 			if rerr != nil {
 				return nil, census, rerr
 			}
