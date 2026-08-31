@@ -1216,8 +1216,12 @@ CASES.append(Case(
             ],
         ),
         # Polls as jwtHumanCeremony — inherited from the step that minted the operation.
+        # Текст владельца ЦЕЛИКОМ: «has active access bindings and cannot be deleted»
+        # несут отказы User, Group и ServiceAccount, и утверждение об общей части не
+        # различало, ЧЕЙ отказ пришёл (#1748).
         assert_op_error(9, "FAILED_PRECONDITION",
-                        msg_substr="has active access bindings and cannot be deleted",
+                        msg_text="User {{ceremonyUserId}} has active access bindings "
+                                 "and cannot be deleted",
                         op_var="boundDelOpId"),
     ],
 ))

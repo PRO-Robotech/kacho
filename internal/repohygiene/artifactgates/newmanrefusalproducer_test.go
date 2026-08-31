@@ -132,61 +132,6 @@ const rpMinAnchor = 4
 // 100 %. Порог разводит их и закреплён инъекцией с обеих сторон.
 const rpNearestFloor = 0.5
 
-// rpProducers — тексты отказа дерева, разложенные по владельцам: общий
-// распознаватель `rtProducers` плюс ТРИ ФОРМЫ, которых он не читает.
-//
-// ПОЧЕМУ РАСШИРЕНИЕ ЗДЕСЬ, А НЕ В ОБЩЕМ РАСПОЗНАВАТЕЛЕ — сказано прямо, чтобы
-// расхождение не завелось молча. Формы ниже общему распознавателю НУЖНЫ ТОЖЕ:
-// без них он объявляет «производителя нет» у целого вида текстов, и виды 1-4
-// гейта тона на них не срабатывают — это не находка и не её отсутствие, это
-// невидимость (`testing.md` §«Гейт на класс», п. 7).
-//
-// Внесение их в `rtProducers` ПРОВЕРЕНО в этой же работе и даёт гейту тона 8
-// НАСТОЯЩИХ находок вида 4 (утверждается общая часть тона: «already exists»
-// покрывает пять разных отказов iam, «cannot be deleted» — пять). Их починка
-// требует правки общего слоя генератора: `msg_substr` у `assert_op_error`
-// подстановки окружения не несёт, а сам `assert_op_error` в дереве существует
-// ТРЕМЯ копиями (compute, iam, storage). Это отдельный предмет и отдельная
-// работа; чинить чужой предмет в своём изменении запрещено
-// (`multi-agent-flow.md` §«Находка по дороге попадает в СВОЙ релиз»).
-//
-// Здесь расширение локально и БЕЗОПАСНО в одну сторону: лишний прочитанный
-// производитель может только СНЯТЬ находку этого гейта, но не создать её.
-//
-// Замер 2026-08-31 по не-тестовому дереву: `fmt.Sprintf` — 803 вхождения в 256
-// файлах, `errors.New` — 354 в 106, `Wrapf`/`Wrap` — 210.
-func rpProducers(root string, goFiles []string) (map[string]map[string]bool, error) {
-	out, err := rtProducers(root, goFiles)
-	if err != nil {
-		return nil, err
-	}
-	for _, rel := range goFiles {
-		if strings.HasSuffix(rel, "_test.go") {
-			continue
-		}
-		b, err := os.ReadFile(filepath.Join(root, rel)) // #nosec G304 -- путь получен из индекса git этого модуля
-		if err != nil {
-			return nil, fmt.Errorf("чтение %s: %w", rel, err)
-		}
-		owner := rtOwner(rel)
-		if out[owner] == nil {
-			out[owner] = map[string]bool{}
-		}
-		var joined strings.Builder
-		for _, raw := range strings.Split(string(b), "\n") {
-			joined.WriteString(slpStripGoComment(raw))
-			joined.WriteString("\n")
-		}
-		whole := joined.String()
-		for _, re := range []*regexp.Regexp{rpSprintfText, rpErrorsNew, rpWrapText} {
-			for _, m := range re.FindAllStringSubmatch(whole, -1) {
-				out[owner][strings.ReplaceAll(m[len(m)-1], "%q", `"%s"`)] = true
-			}
-		}
-	}
-	return out, nil
-}
-
 // rpCorpusFor — чьими текстами вправе отвечать шаг этой коллекции.
 //
 // КРАЙ — ОСОБЫЙ СЛУЧАЙ, И ЕГО НАДО НАЗВАТЬ. Коллекции `gateway/` гоняют ВСЕ
@@ -215,9 +160,20 @@ func rpCorpusFor(byOwner map[string]map[string]bool, rel string) rtCorpus {
 }
 
 var (
-	// Утверждение, собранное общим слоем: обе формы одного помощника.
+	// Утверждение, собранное общим слоем: обе формы одного помощника и ОБА
+	// КОНВЕРТА. Синхронный отказ приезжает полем `message` верхнего уровня,
+	// отказ асинхронной мутации — вложенным `error.message` конверта `Operation`
+	// (`api-conventions.md`: мутации возвращают `Operation`), и общий слой
+	// выносит его в `opMsg`. Конверт, о котором распознаватель не знает, делает
+	// каждое утверждение о нём не находкой и не её отсутствием, а НЕВИДИМЫМ
+	// (`testing.md` §«Гейт на класс», п. 7) — и завёл бы ровно ту слепую зону,
+	// ради которой заведён #1748. Перепись печатает конверты порознь.
 	rpAssert = regexp.MustCompile(
-		`pm\.expect\(\s*j\.message\s*,\s*JSON\.stringify\(j\)\s*\)\.to\.(eql|have\.string)\(`)
+		`pm\.expect\(\s*(?:j\.message|opMsg)\s*,\s*JSON\.stringify\(j\)\s*\)\.to\.(eql|have\.string)\(`)
+	// Тот же разбор, но отвечает на другой вопрос: КАКОЙ конверт прочитан.
+	// Нужен для переписи — ноль у одного конверта означает ослепший
+	// распознаватель, а не чистое дерево.
+	rpOpEnvelope = regexp.MustCompile(`pm\.expect\(\s*opMsg\s*,`)
 	// Кусок объявленного текста и чтение окружения на его месте.
 	// ОБЕ ФОРМЫ КАВЫЧЕК ОБЯЗАТЕЛЬНЫ. Сериализатор общего слоя (`js_str`) берёт
 	// двойные кавычки, как только сам текст несёт апостроф, — а он его несёт у
@@ -230,13 +186,6 @@ var (
 	rpChunk  = regexp.MustCompile(`'((?:[^'\\]|\\.)*)'|"((?:[^"\\]|\\.)*)"`)
 	rpEnvGet = regexp.MustCompile(`pm\.environment\.get\(`)
 	rpVerb   = regexp.MustCompile(`%[#+\-0-9.]*[a-zA-Z]`)
-	// Три формы записи текста, которых общий распознаватель не читает; зачем они
-	// здесь и почему не там — в шапке `rpProducers`.
-	rpSprintfText = regexp.MustCompile(`fmt\.Sprintf\(\s*"((?:[^"\\]|\\.)*)"`)
-	rpErrorsNew   = regexp.MustCompile(`errors\.New\(\s*"((?:[^"\\]|\\.)*)"`)
-	// `iamerr.Wrapf(iamerr.ErrNotFound, "%s %s is not an active cluster admin", …)`
-	// — текст стоит ВТОРЫМ аргументом, за сигнальной ошибкой.
-	rpWrapText = regexp.MustCompile(`\bWrapf?\(\s*[\w.]+\s*,\s*"((?:[^"\\]|\\.)*)"`)
 )
 
 // rpDeclared — объявленный текст: постоянные куски автора, разделённые местом
@@ -397,6 +346,10 @@ type rpCensus struct {
 	// eqlAsserts / containsAsserts — обе формы помощника порознь: ноль у одной
 	// означает ослепший распознаватель, а не чистое дерево.
 	eqlAsserts, containsAsserts int
+	// syncEnvelope / opEnvelope — та же перепись по КОНВЕРТУ: `message` верхнего
+	// уровня против `error.message` конверта операции. Ноль у одного означает,
+	// что распознаватель этого конверта не читает.
+	syncEnvelope, opEnvelope int
 }
 
 func (c rpCensus) declared() int { return c.eqlAsserts + c.containsAsserts }
@@ -443,6 +396,11 @@ func auditRefusalProducer(root string, cols []string,
 						} else {
 							cen.containsAsserts++
 						}
+						if rpOpEnvelope.MatchString(line) {
+							cen.opEnvelope++
+						} else {
+							cen.syncEnvelope++
+						}
 						decl, saw := rpDeclared(line[loc[1]:])
 						if !saw || rpConstLen(decl) == 0 {
 							continue
@@ -486,7 +444,7 @@ func TestNewmanAssertedRefusalTextHasAProducer(t *testing.T) {
 	// рабочего каталога, а не коммита.
 	tt := newTrackedTree(t, root)
 
-	byOwner, err := rpProducers(root, optGoFiles(tt))
+	byOwner, err := rtProducers(root, optGoFiles(tt))
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -518,6 +476,15 @@ func TestNewmanAssertedRefusalTextHasAProducer(t *testing.T) {
 			"ноль у любой формы означает ослепший распознаватель, а не чистое дерево",
 			cen.steps, cen.eqlAsserts, cen.containsAsserts)
 	}
+	// Предпосылка третья: читаются ОБА конверта. Отказ мутации приезжает
+	// вложенным `error.message`, и распознаватель, знающий один лишь `message`
+	// верхнего уровня, объявлял бы «производителя нет» у целого конверта — то
+	// есть молчал бы там, где предмет и живёт (#1748).
+	if cen.syncEnvelope == 0 || cen.opEnvelope == 0 {
+		t.Fatalf("в %d шагах утверждений по конвертам: синхронный %d, конверт операции %d — "+
+			"ноль у любого означает, что этот конверт распознаватель не читает вовсе",
+			cen.steps, cen.syncEnvelope, cen.opEnvelope)
+	}
 
 	owners := make([]string, 0, len(byOwner))
 	for o := range byOwner {
@@ -529,11 +496,12 @@ func TestNewmanAssertedRefusalTextHasAProducer(t *testing.T) {
 		fmt.Fprintf(&unproven, "\n    %s", f)
 	}
 	t.Logf("осмотрено: коллекций %d, шагов %d; утверждений общего слоя о тексте отказа %d "+
-		"(равенством %d, вхождением %d); из них доказательства нет ни в одну сторону у %d "+
+		"(равенством %d, вхождением %d; конверт синхронный %d, операции %d); из них "+
+		"доказательства нет ни в одну сторону у %d "+
 		"(текст собран из аргументов либо произведён вне дерева — исход «не установлено», "+
 		"а не находка).%s\nПроизводителей по владельцам: %v",
 		cen.collections, cen.steps, cen.declared(), cen.eqlAsserts, cen.containsAsserts,
-		len(cen.unproven), unproven.String(), owners)
+		cen.syncEnvelope, cen.opEnvelope, len(cen.unproven), unproven.String(), owners)
 
 	if len(findings) > 0 {
 		var b strings.Builder

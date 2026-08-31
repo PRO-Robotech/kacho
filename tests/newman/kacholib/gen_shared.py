@@ -724,6 +724,62 @@ def assert_refusal_message_contains(template: str,
     return lines
 
 
+def assert_op_refusal_message(template: str,
+                              probe: str = "operation refusal text is the owner's verbatim tone",
+                              contains: bool = False) -> List[str]:
+    """То же утверждение о тексте владельца, но для КОНВЕРТА ОПЕРАЦИИ.
+
+    ЗАЧЕМ ОТДЕЛЬНЫЙ ВХОД, А НЕ ФЛАГ У СОСЕДА. Синхронный отказ приезжает полем
+    `message` верхнего уровня, а отказ асинхронной мутации — вложенным
+    `error.message` конверта `Operation` (`api-conventions.md`: мутации
+    возвращают `Operation`). Утверждение о `j.message` на конверте операции
+    зеленеет на ЛЮБОМ ответе: этого поля там нет, и `undefined` не равен ничему
+    ожидаемому... кроме случая, когда ожидаемое тоже пусто. Поэтому доступ к
+    полю — часть утверждения, а не его настройка.
+
+    ЧТО ЭТО ЗАМЕНЯЕТ. `assert_op_error(msg_substr=…)` приводит регистр и
+    утверждает ВХОЖДЕНИЕ ОБЩЕЙ ЧАСТИ ТОНА («already exists», «cannot be
+    deleted»), а такую часть у одного владельца несут несколько разных отказов:
+    у iam «cannot be deleted» несут одиннадцать. Утверждение проходит на отказе,
+    которого кейс не называл, и подмены одного отказа другим не различает ни при
+    каком ответе (#1748, гейт `newmanrefusaltone_test.go`, вид 4). Вдобавок
+    `msg_substr` подстановки окружения не несёт, поэтому «текст владельца
+    целиком» через него невыразим: имя и идентификатор в тексте живут
+    переменными набора.
+
+    ВХОД — текст владельца дословно, с `{{имя}}` на месте переменной окружения:
+
+        assert_op_refusal_message("Account %s contains projects and cannot be "
+                                  "deleted" % "{{accountAId}}")
+
+    `contains=True` — когда сообщение доезжает с хвостом, который статически не
+    вычисляется (см. `assert_refusal_message_contains`); утверждается всё равно
+    ВЕСЬ текст владельца, а не общая часть тона.
+
+    ИМЯ ДОСТУПА `opMsg` — ЧАСТЬ КОНТРАКТА С ГЕЙТАМИ, а не вкус. Гейт
+    производителя (`newmanrefusalproducer_test.go`) узнаёт объявленный текст по
+    паре «доступ к полю + `JSON.stringify(j)`»; форма доступа, о которой он не
+    знает, делает утверждение не находкой и не её отсутствием, а НЕВИДИМЫМ
+    (`testing.md` §«Гейт на класс», п. 7). Переименуешь — поправь `rpAssert` тем
+    же изменением.
+    """
+    lines = assert_refusal_message(template, probe)
+    # Тело одно: вторая копия разбора ответа была бы вторым местом об одном
+    # предмете, и разошлись бы они молча.
+    lines.insert(2, "  const opMsg = (j.error && j.error.message) || '';")
+    lines[-2] = lines[-2].replace("pm.expect(j.message,", "pm.expect(opMsg,", 1)
+    if contains:
+        lines[-2] = lines[-2].replace(".to.eql(", ".to.have.string(", 1)
+    return lines
+
+
+def assert_op_refusal_message_contains(
+        template: str,
+        probe: str = "operation refusal text carries the owner's verbatim wording") -> List[str]:
+    """`assert_op_refusal_message` вхождением — см. его шапку и шапку соседа."""
+    return assert_op_refusal_message(template, probe, contains=True)
+
+
 # ПРИНЯТА ВЕРСИЯ БОЛЬШИНСТВА (семь копий против одной).
 #
 # Тело у всех восьми ПОБАЙТОВО одно; расходилась только шапка: у одного набора

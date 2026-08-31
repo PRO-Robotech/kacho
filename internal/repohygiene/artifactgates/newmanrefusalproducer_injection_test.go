@@ -266,7 +266,7 @@ func TestRP_NearProducerYieldsUnprovenNotAFinding(t *testing.T) {
 func TestRP_RemovingARealProducerFromTheTreeRedsTheGate(t *testing.T) {
 	root := repoRoot(t)
 	tt := newTrackedTree(t, root)
-	byOwner, err := rpProducers(root, optGoFiles(tt))
+	byOwner, err := rtProducers(root, optGoFiles(tt))
 	if err != nil {
 		t.Fatal(err)
 	}

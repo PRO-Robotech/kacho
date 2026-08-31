@@ -2859,7 +2859,11 @@
                   "const j = pm.response.json();",
                   "pm.test('operation done', () => pm.expect(j.done, JSON.stringify(j)).to.eql(true));",
                   "pm.test('error code 9 (FAILED_PRECONDITION)', () => pm.expect(j.error && j.error.code, JSON.stringify(j)).to.eql(9));",
-                  "pm.test('error text includes \"machine type\"', () => pm.expect((j.error && j.error.message || '').toLowerCase()).to.include('machine type'));"
+                  "pm.test('operation refusal text is the owner\\'s verbatim tone', () => {",
+                  "  let j; try { j = pm.response.json(); } catch (e) { j = {}; }",
+                  "  const opMsg = (j.error && j.error.message) || '';",
+                  "  pm.expect(opMsg, JSON.stringify(j)).to.eql('machine type ' + pm.environment.get('garbageMachineTypeId') + ' not found');",
+                  "});"
                 ]
               }
             }

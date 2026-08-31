@@ -77,6 +77,8 @@ from gen_shared import (  # noqa: E402  — импорт после провяз
     _assert_delete_operation_outcome,
     assert_field_violation,
     assert_grpc_code,
+    assert_op_refusal_message,
+    assert_op_refusal_message_contains,
     assert_refusal_message,
     assert_refusal_message_contains,
     _assert_published_id_outcome,
@@ -1020,7 +1022,9 @@ def poll_request_until_status(name: str, method: str, path: str, test_script: Li
 
 def assert_op_error(code: int, code_name: str, msg_substr: Optional[str] = None,
                     msg_regex: Optional[str] = None, auth: str = AUTH_INHERIT_OP,
-                    op_var: str = "opId", reason: Optional[str] = None) -> Step:
+                    op_var: str = "opId", reason: Optional[str] = None,
+                    msg_text: Optional[str] = None,
+                    msg_text_contains: Optional[str] = None) -> Step:
     """Поллит /operations/{op_var} до done и проверяет, что operation завершилась с error.code == code.
 
     The auth parameter carries a valid Bearer token: OperationService/Get is
@@ -1080,6 +1084,10 @@ def assert_op_error(code: int, code_name: str, msg_substr: Optional[str] = None,
             f" pm.expect(rs, JSON.stringify(j)).to.include({js_str(reason)}); }});")
     if msg_regex is not None:
         body.append(f"pm.test({js_str(f'error text matches /{msg_regex}/')}, () => pm.expect(j.error && j.error.message || '', JSON.stringify(j)).to.match(/{js_regex_src(msg_regex, where='iam/assert_op_error/msg_regex')}/));")
+    if msg_text is not None:
+        body.extend(assert_op_refusal_message(msg_text))
+    if msg_text_contains is not None:
+        body.extend(assert_op_refusal_message_contains(msg_text_contains))
     return Step(name="assert-op-error", method="GET", path="/operations/{{" + op_var + "}}",
                 auth=auth, op_var=op_var, pre_script=_op_id_guard(op_var, True), test_script=body)
 
