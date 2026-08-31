@@ -59,8 +59,17 @@ func TestMapDomainErr_UnknownStatusNotPassedThrough(t *testing.T) {
 
 func TestStripSentinel(t *testing.T) {
 	t.Parallel()
+	// Снимается префикс ТОГО sentinel'а, который назвал вызывающий.
 	require.Equal(t, "LB nlb-x not found",
-		StripSentinel(fmt.Errorf("%w: LB nlb-x not found", domain.ErrNotFound), "fallback"))
-	require.Equal(t, "fallback", StripSentinel(nil, "fallback"))
-	require.Equal(t, "raw text", StripSentinel(errors.New("raw text"), "fallback"))
+		StripSentinel(fmt.Errorf("%w: LB nlb-x not found", domain.ErrNotFound), domain.ErrNotFound))
+	// Чужой sentinel чужого префикса не снимает — иначе выведение префикса из
+	// названного sentinel'а было бы неотличимо от прежнего закрытого перечня.
+	require.Equal(t, "not found: LB nlb-x not found",
+		StripSentinel(fmt.Errorf("%w: LB nlb-x not found", domain.ErrNotFound), domain.ErrInvalidArg))
+	// Вырожденные входы отдают текст самого sentinel'а — ровно ту строку, что
+	// прежние вызывающие передавали фиксированным `fallback`.
+	require.Equal(t, "not found", StripSentinel(nil, domain.ErrNotFound))
+	require.Equal(t, "not found", StripSentinel(errors.New(""), domain.ErrNotFound))
+	require.Equal(t, "raw text", StripSentinel(errors.New("raw text"), domain.ErrNotFound))
+	require.Equal(t, "raw text", StripSentinel(errors.New("raw text"), nil))
 }
