@@ -211,12 +211,19 @@ async function secondAccountMembership(
   const ctx = await browser.newContext({ baseURL });
   const page = await ctx.newPage();
   try {
-    const inviteeEmail = await register(page);
+    // Это ПРИГЛАШАЮЩИЙ, а не приглашаемый: приглашение требует прав на
+    // аккаунт-получатель, и у первого арендатора их нет и быть не должно.
+    const hostEmail = await register(page);
     const host = await onlyAccount(page);
     expect(
-      inviteeEmail,
+      hostEmail,
       "второй арендатор не завёлся — приглашать во второй аккаунт некому",
     ).not.toBe("");
+    expect(
+      hostEmail.toLowerCase(),
+      "второй арендатор завёлся под той же почтой, что и первый: аккаунт вышел бы " +
+        "тот же самый, и второго членства не получилось бы",
+    ).not.toBe(invitee.email.toLowerCase());
 
     // Приглашение объявлено полом уровня «2»; без подъёма край отвергнет его
     // 401-м, и виновником выглядел бы продукт.
