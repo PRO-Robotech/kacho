@@ -105,9 +105,10 @@
 //     которых на входе нет (`ownerUserId` в ответе Create — верен). А вот тело,
 //     нарисованное узлом ДИАГРАММЫ последовательности
 //     (`Cli->>GW: POST /iam/v1/accounts<br/>{…}`), судиться должно бы — и не
-//     судится: таких мест в дереве пять, они правились руками, и распознаватель
-//     под них не заводился, потому что метка узла — свободный текст, а не
-//     команда. Это объявленная слепая зона, а не покрытие.
+//     судится: метка узла есть свободный текст, а не команда. Это объявленная
+//     слепая зона, а не покрытие, и с расширением охвата она СЧИТАЕТСЯ отдельным
+//     числом переписи: молчать о ней значило бы выдавать «находок ноль» шире,
+//     чем оно есть. Замер на день расширения — 7 узлов, все у iam.
 //
 //  5. ПУТЬ БЕЗ МАРШРУТА — ТЕПЕРЬ НАХОДКА, и здесь стояло обратное (#1647).
 //     Прежняя редакция считала его переписью с доводом «примеры ходят и к
@@ -237,6 +238,11 @@ type ClientTruthRequestBodyCensus struct {
 	GrpcUnknownService int
 	// KeysJudged — ключей рассужено.
 	KeysJudged int
+	// DiagramBodies — тел запроса, нарисованных УЗЛОМ ДИАГРАММЫ. Объявленная
+	// слепая зона: метка узла есть свободный текст, а не команда, и
+	// распознавателя под неё не заводилось. Число печатается, чтобы «находок
+	// ноль» не читалось шире, чем есть.
+	DiagramBodies int
 	// RejectedFields — сколько невходных полей выведено из прод-кода всех доменов.
 	RejectedFields int
 	// RejectedFreeForm — отказов, несущих пометку невходного поля ВНЕ
@@ -259,6 +265,8 @@ type ClientTruthRequestBodyDomainCensus struct {
 	BodiesNoAddress    int
 	GrpcUnknownService int
 	KeysJudged         int
+	// DiagramBodies — тел запроса, нарисованных узлом диаграммы (не судятся).
+	DiagramBodies int
 	// RejectedFreeForm — отказов с пометкой вне конвенционной формы.
 	RejectedFreeForm int
 	// RejectedFields — невходных полей выведено из прод-кода ЭТОГО домена. Ноль
@@ -328,7 +336,23 @@ var (
 	// распознавателем не наблюдались никак.
 	grpcurlRe    = regexp.MustCompile(`\bgrpcurl\b`)
 	grpcMethodRe = regexp.MustCompile(`([a-z][\w.]*\.[A-Z]\w*)/(\w+)`)
+
+	// diagramRequestNode — узел диаграммы последовательности, несущий ТЕЛО
+	// запроса: стрелка запроса (`->>`, а не ответа `-->>`), мутирующий глагол и
+	// фигурная группа с содержимым. Судить такое тело гейт НЕ умеет — метка узла
+	// есть свободный текст, а не команда, — но СЧИТАТЬ обязан: слепая зона,
+	// о которой молчат, неотличима от покрытия.
+	diagramArrowRe = regexp.MustCompile(`(^|[^-])->>`)
+	diagramVerbRe  = regexp.MustCompile(`\b(POST|PUT|PATCH)\b`)
+	diagramBodyRe  = regexp.MustCompile(`\{[^}]*[:,][^}]*\}`)
 )
+
+// isDiagramRequestNode — строка рисует запрос с телом узлом диаграммы.
+func isDiagramRequestNode(line string) bool {
+	return diagramArrowRe.MatchString(line) &&
+		diagramVerbRe.MatchString(line) &&
+		diagramBodyRe.MatchString(line)
+}
 
 // AuditClientTruthRequestBody требует, чтобы каждый ключ тела запроса в
 // клиентской документации существовал в сообщении запроса этого метода, а адрес
@@ -412,6 +436,7 @@ func AuditClientTruthRequestBody(
 		census.BodiesNoAddress += dc.BodiesNoAddress
 		census.GrpcUnknownService += dc.GrpcUnknownService
 		census.KeysJudged += dc.KeysJudged
+		census.DiagramBodies += dc.DiagramBodies
 	}
 
 	if log != nil {
@@ -419,18 +444,19 @@ func AuditClientTruthRequestBody(
 			"команд curl %d · тел разобрано %d · сопоставлено %d · путь без маршрута %d (НАХОДКА) · "+
 			"адреса в команде нет %d · служба gRPC вне регистра %d · ключей рассужено %d · "+
 			"невходных полей выведено %d · отказов с пометкой вне конвенционной формы %d "+
-			"(НЕ читаются — объявленная граница)\n",
+			"(НЕ читаются — объявленная граница) · тел, нарисованных узлом диаграммы, %d "+
+			"(НЕ судятся — объявленная слепая зона)\n",
 			len(census.Domains), census.Methods, census.DocFiles, census.CurlBlocks,
 			census.BodiesParsed, census.BodiesMatched, census.BodiesUnrouted,
 			census.BodiesNoAddress, census.GrpcUnknownService, census.KeysJudged,
-			census.RejectedFields, census.RejectedFreeForm)
+			census.RejectedFields, census.RejectedFreeForm, census.DiagramBodies)
 		for _, d := range census.Domains {
 			_, _ = fmt.Fprintf(log, "  %-9s (%s): методов %d · страниц %d · команд %d · тел %d · "+
 				"сопоставлено %d · без маршрута %d · без адреса %d · gRPC вне регистра %d · "+
-				"ключей %d · невходных полей %d (вне формы %d) · находок %d\n",
+				"ключей %d · тел узлом диаграммы %d · невходных полей %d (вне формы %d) · находок %d\n",
 				d.Name, d.ProtoPackage, d.Methods, d.DocFiles, d.CurlBlocks, d.BodiesParsed,
 				d.BodiesMatched, d.BodiesUnrouted, d.BodiesNoAddress, d.GrpcUnknownService,
-				d.KeysJudged, d.RejectedFields, d.RejectedFreeForm, d.Findings)
+				d.KeysJudged, d.DiagramBodies, d.RejectedFields, d.RejectedFreeForm, d.Findings)
 		}
 	}
 	sort.Slice(findings, func(i, j int) bool {
@@ -454,6 +480,11 @@ func auditOneDoc(
 	var out []ClientTruthRequestBodyFinding
 	lines := strings.Split(text, "\n")
 	for i := 0; i < len(lines); i++ {
+		if isDiagramRequestNode(lines[i]) {
+			census.DiagramBodies++
+			// Не `continue`: строка может нести и команду, и стрелку — считать
+			// её слепой зоной и одновременно судить не запрещено.
+		}
 		if !curlLineRe.MatchString(lines[i]) {
 			continue
 		}

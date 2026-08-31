@@ -388,3 +388,34 @@ func TestBodyGate_GrpcurlUnknownServiceIsNotAFinding(t *testing.T) {
 			census.GrpcUnknownService)
 	}
 }
+
+// TestBodyGate_CountsDiagramBodiesWithoutJudgingThem — объявленная слепая зона
+// СЧИТАЕТСЯ, а не умалчивается.
+//
+// Тело запроса, нарисованное узлом диаграммы, гейт судить не умеет: метка узла
+// есть свободный текст, а не команда. Молчать о таких местах нельзя — тогда
+// «находок ноль» читается шире, чем оно есть. Отрицание («не судится») проверено
+// вместе с положительным контролем («посчитано»): без второго оно зеленело бы на
+// нераспознанной строке.
+func TestBodyGate_CountsDiagramBodiesWithoutJudgingThem(t *testing.T) {
+	s := newBodyStand(t)
+	s.write(t, "docs/diagram.mdx",
+		"```mermaid\nsequenceDiagram\n"+
+			"  Cli->>GW: POST /iam/v1/accounts<br/>{\"чегоНетНигде\":1}\n"+
+			"  GW-->>Cli: 200 {\"id\":\"acc1\",\"ownerUserId\":\"usr1\"}\n"+
+			"```\n")
+	findings, census := s.run(t)
+	if census.DiagramBodies != 1 {
+		t.Fatalf("узлов диаграммы с телом запроса посчитано %d, ожидался 1 — слепая зона "+
+			"не видна в переписи, и «находок ноль» читается шире, чем есть", census.DiagramBodies)
+	}
+	// Стрелка ОТВЕТА (`-->>`) телом запроса не является: считать её значило бы
+	// объявлять слепой зоной то, что зоной не является.
+	if len(findings) != 0 {
+		t.Fatalf("узел диаграммы рассужен как команда: %v", findings)
+	}
+	if census.CurlBlocks != 1 {
+		t.Errorf("команд curl %d, ожидалась 1 (только законная страница стенда) — "+
+			"метка узла принята за команду", census.CurlBlocks)
+	}
+}
