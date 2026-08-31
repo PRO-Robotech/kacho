@@ -1185,7 +1185,8 @@ type protoreflectMessage = proto.Message
 // validateBootSource — grammar + type-whitelist + output-field-reject (COMP-1 F3).
 // На входе допустимы только Type/ID; tag/digest живут ВНУТРИ ID; bare-untagged → 400
 // с грамматикой в тексте; name/resolvedDigest/materializedVolume/imageKind —
-// output-only (на вход не принимаются, COMP-1-11).
+// output-only (на вход не принимаются, COMP-1-11) и отвергаются ПОИМЁННО, каждое
+// своим путём: см. bootSourceOutputOnlyViolations.
 func validateBootSource(bs domain.BootSource) error {
 	if bs.Type == "" && bs.ID == "" {
 		return serviceerr.InvalidArg("boot_source", "bootSource is required")
@@ -1194,16 +1195,8 @@ func validateBootSource(bs domain.BootSource) error {
 		return serviceerr.InvalidArg("boot_source.type",
 			"bootSource.type must be one of storage.image, registry.image")
 	}
-	if bs.Name != "" || bs.ResolvedDigest != "" || bs.MaterializedVolume != nil || bs.ImageKind != domain.ImageKindUnspecified {
-		// Текст перечисляет ВСЕ ЧЕТЫРЕ поля, которые условие выше отвергает.
-		// Прежняя редакция называла три и молчала о четвёртом — `imageKind`,
-		// том самом, который вызывающий вероятнее всего и заполнил: он объявлен
-		// в контракте без пометки output-only и со словарём значений, то есть
-		// выглядит входом. Отказ, не назвавший присланное поле, не
-		// восстанавливает следующий шаг: вызывающий снимает три названных,
-		// которых не слал, и получает тот же отказ снова.
-		return serviceerr.InvalidArg("boot_source",
-			"bootSource name/resolvedDigest/materializedVolume/imageKind are output-only and must not be set on input")
+	if v := bootSourceOutputOnlyViolations(bs); len(v) > 0 {
+		return serviceerr.InvalidArgFields(v...)
 	}
 	if bs.ID == "" {
 		return serviceerr.InvalidArg("boot_source.id", "bootSource.id is required")
@@ -1245,6 +1238,51 @@ func validateBootSource(bs domain.BootSource) error {
 			"bootSource.type registry.image is not accepted yet: a registry image has no durable address today")
 	}
 	return nil
+}
+
+// bootSourceOutputOnly — подполя источника загрузки, которые заполняет СЕРВЕР.
+// Порядок — порядок объявления в контракте (proto BootSource): он и определяет
+// порядок нарушителей в отказе, поэтому перечень, а не карта.
+var bootSourceOutputOnly = []struct {
+	path string // машиночитаемый путь: field_violations[].field
+	json string // имя в контракте, для текста отказа
+	set  func(domain.BootSource) bool
+}{
+	{"boot_source.name", "bootSource.name",
+		func(bs domain.BootSource) bool { return bs.Name != "" }},
+	{"boot_source.resolved_digest", "bootSource.resolvedDigest",
+		func(bs domain.BootSource) bool { return bs.ResolvedDigest != "" }},
+	{"boot_source.materialized_volume", "bootSource.materializedVolume",
+		func(bs domain.BootSource) bool { return bs.MaterializedVolume != nil }},
+	{"boot_source.image_kind", "bootSource.imageKind",
+		func(bs domain.BootSource) bool { return bs.ImageKind != domain.ImageKindUnspecified }},
+}
+
+// bootSourceOutputOnlyViolations — нарушители среди output-only подполей: по
+// одному на КАЖДОЕ присланное поле, каждый со своим путём.
+//
+// Отказ называет ПОДПОЛЕ, а не родителя, и это не косметика. Прежде он
+// назывался по `boot_source` и перечислял четыре подполя текстом. Родитель при
+// этом ОБЯЗАТЕЛЕН, поэтому машиночитаемое имя указывало на поле, к которому
+// правило не относится: клиент-автомат, действующий по
+// `field_violations[].field` (провайдер, консоль), снимал `bootSource` целиком —
+// то есть ровно то, без чего машина не создастся, — и получал следующий отказ,
+// уже об обязательности. Человек читал перечень из четырёх имён и снимал три
+// чужих: отказ не восстанавливал следующий шаг.
+//
+// Нарушители отдаются ВСЕ сразу, а не по одному за круг запроса: та же форма и
+// та же причина, что у `handler.RejectUnsupportedCreateFields`.
+func bootSourceOutputOnlyViolations(bs domain.BootSource) []serviceerr.FieldViolation {
+	var out []serviceerr.FieldViolation
+	for _, f := range bootSourceOutputOnly {
+		if f.set(bs) {
+			out = append(out, serviceerr.FieldViolation{
+				Field: f.path,
+				Desc:  f.json + " is output-only and must not be set on input",
+			})
+		}
+	}
+	return out
 }
 
 // imageKindFor — server-derived B13 imageKind по bootSource.type (COMP-1 F3).

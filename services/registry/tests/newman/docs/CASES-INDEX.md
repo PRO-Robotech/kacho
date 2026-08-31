@@ -194,7 +194,7 @@ the subject cannot see returns `NOT_FOUND` (deny→404, `corelib ErrHideExistenc
 | `REG-UPD-AZ-NO-GRANT-NF` | AZ, NEG | P1 | Update without `v_update` → **sync** 404 NOT_FOUND (existence-hiding), no Operation | REG-36 |
 | `REG-AZ-ANON-UNAUTH` | AZ, NEG | P0 | Control-plane RPC with no `Authorization` → 401 UNAUTHENTICATED (fail-closed) | REG-10, REG-26 |
 | `REG-AZ-OWNER-TUPLE-CREATOR` | AZ | P1 | creator gets owner/project-tuple → sees own registry in List (atomic outbox → drainer) | REG-28 |
-| `REG-AZ-GRANT-LATENCY-POLL` | AZ | P1 | grant a role → access appears within FGA propagation (poll-retry, ~0.6–2s) | REG-30 |
+| `REG-AZ-GRANT-LATENCY-POLL` | AZ | P1 | grant a role → access appears within the visibility window — registry verdict cache (`KACHO_REGISTRY_AUTHZ_CACHE_TTL`) plus materialisation at the rights owner; poll-retry, budget declared at the binding | REG-30 |
 | `REG-AZ-DOMAIN-BINDING` | AZ | P1 | object-prefix `registry_` == service name → owner-tuples accepted, resources visible | REG-29 |
 | `REG-AZ-CATALOG-COMPLETE` | AZ | P1 | full enumeration of `registry.*` permission catalog present (verb-decoupled relations) | REG-28 |
 

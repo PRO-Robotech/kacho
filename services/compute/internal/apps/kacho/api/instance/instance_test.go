@@ -821,16 +821,41 @@ func rejectedField(t *testing.T, err error, field string) bool {
 	return false
 }
 
-// Отказ по output-only полю bootSource обязан НАЗЫВАТЬ то поле, которое клиент
-// прислал, — иначе он не восстанавливает следующий шаг.
+// bootSourceViolations — пути полей, названные отказом машиночитаемо
+// (google.rpc.BadRequest.field_violations[].field). Утверждать отказ по одному
+// лишь тексту нельзя: клиент-автомат (провайдер, консоль) действует по ЭТОМУ
+// списку, а не по прозе.
+func bootSourceViolations(t *testing.T, err error) []string {
+	t.Helper()
+	var got []string
+	for _, d := range status.Convert(err).Details() {
+		br, ok := d.(*errdetails.BadRequest)
+		if !ok {
+			continue
+		}
+		for _, v := range br.GetFieldViolations() {
+			got = append(got, v.GetField())
+		}
+	}
+	return got
+}
+
+// Отказ по output-only полю bootSource обязан называть ТО поле, которое клиент
+// прислал, — и машиночитаемо, и текстом.
 //
-// Условие отказа включало четыре поля, текст перечислял три: клиент, приславший
-// `imageKind`, читал «name/resolvedDigest/materializedVolume are output-only»,
-// снимал названные три, которых он не слал, и получал тот же отказ снова.
+// Прежде отказ назывался по РОДИТЕЛЮ (`boot_source`) и перечислял текстом все
+// четыре подполя. Родитель обязателен, поэтому клиент-автомат, действующий по
+// `field_violations[].field`, снимал `bootSource` целиком — то есть ровно то,
+// без чего машина не создастся, — и получал следующий отказ, уже об
+// обязательности. Два круга запроса вместо одного, и первый уводил в неверную
+// сторону.
 //
-// Проба утверждает СООБЩЕНИЕ, а не только код: по коду она зеленела бы и на
-// прежнем тексте. Рядом — положительный контроль: без output-only полей тот же
-// запрос проходит, иначе «отвергнуто» было бы верно и на страже, отвергающем всё.
+// Проба утверждает ТРИ вещи, и первых двух по отдельности мало: (а) названо
+// присланное поле; (б) НЕ названы три остальных — без этого проба зеленела бы на
+// прежнем тексте, перечислявшем все четыре всегда; (в) машиночитаемый путь —
+// подполе, а не родитель. Рядом положительный контроль: без output-only полей
+// тот же запрос проходит, иначе «отвергнуто» было бы верно и на страже,
+// отвергающем всё.
 func TestInstance_BootSourceRefusalNamesTheFieldTheCallerSet(t *testing.T) {
 	k := newInstanceSvc(t, true)
 	ctx := context.Background()
@@ -840,17 +865,18 @@ func TestInstance_BootSourceRefusalNamesTheFieldTheCallerSet(t *testing.T) {
 	require.NoError(t, err, "положительный контроль: законный bootSource обязан проходить")
 	require.Nil(t, portmock.AwaitOpDone(t, k.ops, okOp.ID).Error)
 
-	// Каждое output-only поле по отдельности: отказ называет ИМЕННО его.
+	all := []string{"name", "resolvedDigest", "materializedVolume", "imageKind"}
 	for _, tc := range []struct {
 		field string
+		path  string
 		mut   func(*domain.BootSource)
 	}{
-		{"name", func(bs *domain.BootSource) { bs.Name = "ubuntu-22-04" }},
-		{"resolvedDigest", func(bs *domain.BootSource) { bs.ResolvedDigest = "sha256:deadbeef" }},
-		{"materializedVolume", func(bs *domain.BootSource) {
+		{"name", "boot_source.name", func(bs *domain.BootSource) { bs.Name = "ubuntu-22-04" }},
+		{"resolvedDigest", "boot_source.resolved_digest", func(bs *domain.BootSource) { bs.ResolvedDigest = "sha256:deadbeef" }},
+		{"materializedVolume", "boot_source.materialized_volume", func(bs *domain.BootSource) {
 			bs.MaterializedVolume = &domain.MaterializedVolume{VolumeID: "vol0am5d8q1w4e7r2t6y"}
 		}},
-		{"imageKind", func(bs *domain.BootSource) { bs.ImageKind = domain.ImageKindStorageImage }},
+		{"imageKind", "boot_source.image_kind", func(bs *domain.BootSource) { bs.ImageKind = domain.ImageKindStorageImage }},
 	} {
 		t.Run(tc.field, func(t *testing.T) {
 			req := baseCreateReq()
@@ -860,8 +886,49 @@ func TestInstance_BootSourceRefusalNamesTheFieldTheCallerSet(t *testing.T) {
 			_, err := k.svc.Create(ctx, req)
 			require.Equal(t, codes.InvalidArgument, status.Code(err))
 			msg := status.Convert(err).Message()
-			require.Contains(t, msg, tc.field,
-				"отказ обязан назвать поле, которое прислал клиент; получено: %q", msg)
+
+			// (а) названо присланное поле.
+			require.Equal(t, "bootSource."+tc.field+" is output-only and must not be set on input", msg)
+
+			// (б) НЕ названы поля, которых клиент не слал. Без этого утверждения
+			// проба зеленела бы на прежнем тексте, перечислявшем все четыре.
+			for _, other := range all {
+				if other == tc.field {
+					continue
+				}
+				require.NotContains(t, msg, other,
+					"отказ назвал поле, которого вызывающий не слал: %q", msg)
+			}
+
+			// (в) машиночитаемый путь — ПОДПОЛЕ, а не обязательный родитель.
+			require.Equal(t, []string{tc.path}, bootSourceViolations(t, err))
 		})
 	}
+}
+
+// Клиент, приславший НЕСКОЛЬКО output-only подполей, узнаёт про все за один
+// заход. Отказ по одному нарушителю за круг стоил бы клиенту круга запроса на
+// каждое поле; та же форма и по той же причине, что у
+// handler.RejectUnsupportedCreateFields.
+func TestInstance_BootSourceRefusalNamesEverySetOutputOnlyFieldAtOnce(t *testing.T) {
+	k := newInstanceSvc(t, true)
+	ctx := context.Background()
+
+	req := baseCreateReq()
+	req.Name = "vm-multi-output-only"
+	req.BootSource.Name = "ubuntu-22-04"
+	req.BootSource.ImageKind = domain.ImageKindStorageImage
+
+	_, err := k.svc.Create(ctx, req)
+	require.Equal(t, codes.InvalidArgument, status.Code(err))
+
+	require.Equal(t, []string{"boot_source.name", "boot_source.image_kind"},
+		bootSourceViolations(t, err),
+		"названы оба присланных подполя, в порядке объявления в контракте")
+
+	msg := status.Convert(err).Message()
+	require.Contains(t, msg, "bootSource.name is output-only")
+	require.Contains(t, msg, "bootSource.imageKind is output-only")
+	require.NotContains(t, msg, "resolvedDigest", "поле, которого вызывающий не слал")
+	require.NotContains(t, msg, "materializedVolume", "поле, которого вызывающий не слал")
 }

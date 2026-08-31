@@ -319,7 +319,7 @@ NIC автоматически. Сетевые интерфейсы (из дом
     curl -s -X POST "$STG/storage/v1/snapshots" "\${auth[@]}" \\
       -d '{
         "projectId": "'"$PROJECT"'",
-        "volumeId": "'"$VOL"'",
+        "sourceVolumeId": "'"$VOL"'",
         "name": "data-volume-snap"
       }'
   `}
