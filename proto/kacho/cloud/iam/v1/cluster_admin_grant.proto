@@ -23,7 +23,7 @@ enum ClusterGrantSubjectType {
 // Removed via soft revoke (CAEP push); hard delete is reserved for
 // GDPR erasure. DB FK `ON DELETE RESTRICT` preserves audit trail.
 //
-// Resource id prefix: `cag`.
+// Resource id prefix: `cag_` (underscore form, `domain.NewKac127ID`).
 message ClusterAdminGrant {
   // ID of the grant.
   string id = 1;

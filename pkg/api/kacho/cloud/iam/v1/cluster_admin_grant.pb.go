@@ -82,7 +82,7 @@ func (ClusterGrantSubjectType) EnumDescriptor() ([]byte, []int) {
 // Removed via soft revoke (CAEP push); hard delete is reserved for
 // GDPR erasure. DB FK `ON DELETE RESTRICT` preserves audit trail.
 //
-// Resource id prefix: `cag`.
+// Resource id prefix: `cag_` (underscore form, `domain.NewKac127ID`).
 type ClusterAdminGrant struct {
 	state protoimpl.MessageState `protogen:"open.v1"`
 	// ID of the grant.

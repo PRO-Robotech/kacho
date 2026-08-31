@@ -31,7 +31,7 @@ const (
 // Members хранятся в отдельной таблице group_members; добавляются/удаляются через
 // GroupService.AddMember / RemoveMember.
 //
-// Resource id prefix: `grp-`.
+// Resource id prefix: `grp` (concatenated form, `ids.NewID`).
 type Group struct {
 	state protoimpl.MessageState `protogen:"open.v1"`
 	// ID of the group.

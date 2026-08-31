@@ -33,7 +33,7 @@ const (
 // Служебная учётка привязана к Account'у; `enabled` решает, вправе ли она
 // аутентифицироваться.
 //
-// Resource id prefix: `sva-`.
+// Resource id prefix: `sva` (concatenated form, `ids.NewID`).
 type ServiceAccount struct {
 	state protoimpl.MessageState `protogen:"open.v1"`
 	// ID of the service account.

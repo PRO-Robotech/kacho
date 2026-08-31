@@ -43,7 +43,7 @@ const (
 // account_id. За ним ничего не переносится, и это то же самое решение, а не
 // отдельное ограничение.
 //
-// Resource id prefix: `prj-`.
+// Resource id prefix: `prj` (concatenated form, `ids.NewID`).
 type Project struct {
 	state protoimpl.MessageState `protogen:"open.v1"`
 	// ID of the project.

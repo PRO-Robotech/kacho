@@ -15,7 +15,7 @@ option go_package = "github.com/PRO-Robotech/kacho/pkg/api/kacho/cloud/iam/v1;ia
 // Members хранятся в отдельной таблице group_members; добавляются/удаляются через
 // GroupService.AddMember / RemoveMember.
 //
-// Resource id prefix: `grp-`.
+// Resource id prefix: `grp` (concatenated form, `ids.NewID`).
 message Group {
   // ID of the group.
   string id = 1;

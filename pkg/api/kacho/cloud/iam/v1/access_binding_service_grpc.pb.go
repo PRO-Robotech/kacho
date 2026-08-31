@@ -121,15 +121,30 @@ type AccessBindingServiceClient interface {
 	ListBySubject(ctx context.Context, in *ListAccessBindingsBySubjectRequest, opts ...grpc.CallOption) (*ListAccessBindingsResponse, error)
 	// Lists the privileges (enriched access bindings) attached to the specified
 	// subject (User or ServiceAccount). Sync read (NOT an Operation). It shares
-	// admission with `ListBySubject` (one predicate, see there); unlike it — raw
-	// bindings, no existence-check — this RPC:
+	// admission with `ListBySubject` — ONE predicate, see there. What it does that
+	// `ListBySubject` does not (that verb returns raw bindings and never resolves
+	// existence):
 	//   - resolves the human-readable `role_name` server-side via a within-DB
 	//     JOIN `access_bindings ⋈ roles` (no N+1 client round-trips);
 	//   - returns NOT_FOUND for a well-formed-but-missing subject to a caller who
 	//     may read it (existence-resolve is required for authz), where
-	//     `ListBySubject` reports nothing about existence at all;
-	//   - is DIRECT-only in v1 (`derivation=DIRECT`); GROUP-derived (effective)
-	//     roles are reserved forward-compat.
+	//     `ListBySubject` reports nothing about existence at all.
+	//
+	// THE ANSWER INCLUDES GROUP-DERIVED GRANTS, and this line used to say the
+	// opposite — "DIRECT-only in v1; GROUP-derived roles are reserved
+	// forward-compat". That reservation was lifted and the sentence outlived its
+	// subject: for `user` and `service_account` the reply carries BOTH the direct
+	// grants (`derivation=DIRECT`) and the ones held through membership in a group
+	// (`derivation=GROUP`, `via_group_id` names the group), and the request field
+	// twenty lines below said so the whole time. Two statements about one subject,
+	// one of them true, and the reader could not tell which.
+	//
+	// The stale half was the DANGEROUS one to believe: the platform's own rule is
+	// to grant to a GROUP rather than to a list of subjects, so a reader who
+	// trusted "DIRECT-only" would read an empty page for exactly the case we
+	// recommend — and an access review would conclude "nothing to revoke" from a
+	// `200` that means the opposite. For `group` the reply is the grants of the
+	// group itself (DIRECT); groups do not nest.
 	//
 	// Authorized by kacho-iam: self (for a group subject — a member of it), or
 	// `admin`/owner of the HOME ACCOUNT of the subject named in the request, or the
@@ -483,15 +498,30 @@ type AccessBindingServiceServer interface {
 	ListBySubject(context.Context, *ListAccessBindingsBySubjectRequest) (*ListAccessBindingsResponse, error)
 	// Lists the privileges (enriched access bindings) attached to the specified
 	// subject (User or ServiceAccount). Sync read (NOT an Operation). It shares
-	// admission with `ListBySubject` (one predicate, see there); unlike it — raw
-	// bindings, no existence-check — this RPC:
+	// admission with `ListBySubject` — ONE predicate, see there. What it does that
+	// `ListBySubject` does not (that verb returns raw bindings and never resolves
+	// existence):
 	//   - resolves the human-readable `role_name` server-side via a within-DB
 	//     JOIN `access_bindings ⋈ roles` (no N+1 client round-trips);
 	//   - returns NOT_FOUND for a well-formed-but-missing subject to a caller who
 	//     may read it (existence-resolve is required for authz), where
-	//     `ListBySubject` reports nothing about existence at all;
-	//   - is DIRECT-only in v1 (`derivation=DIRECT`); GROUP-derived (effective)
-	//     roles are reserved forward-compat.
+	//     `ListBySubject` reports nothing about existence at all.
+	//
+	// THE ANSWER INCLUDES GROUP-DERIVED GRANTS, and this line used to say the
+	// opposite — "DIRECT-only in v1; GROUP-derived roles are reserved
+	// forward-compat". That reservation was lifted and the sentence outlived its
+	// subject: for `user` and `service_account` the reply carries BOTH the direct
+	// grants (`derivation=DIRECT`) and the ones held through membership in a group
+	// (`derivation=GROUP`, `via_group_id` names the group), and the request field
+	// twenty lines below said so the whole time. Two statements about one subject,
+	// one of them true, and the reader could not tell which.
+	//
+	// The stale half was the DANGEROUS one to believe: the platform's own rule is
+	// to grant to a GROUP rather than to a list of subjects, so a reader who
+	// trusted "DIRECT-only" would read an empty page for exactly the case we
+	// recommend — and an access review would conclude "nothing to revoke" from a
+	// `200` that means the opposite. For `group` the reply is the grants of the
+	// group itself (DIRECT); groups do not nest.
 	//
 	// Authorized by kacho-iam: self (for a group subject — a member of it), or
 	// `admin`/owner of the HOME ACCOUNT of the subject named in the request, or the

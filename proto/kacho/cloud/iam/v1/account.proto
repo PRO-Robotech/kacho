@@ -17,7 +17,7 @@ option go_package = "github.com/PRO-Robotech/kacho/pkg/api/kacho/cloud/iam/v1;ia
 // INVALID_ARGUMENT) and immutable after Create (not in UpdateAccountRequest.update_mask
 // → "ownerUserId is immutable after Account.Create").
 //
-// Resource id prefix: `acc-`.
+// Resource id prefix: `acc` (concatenated form, `ids.NewID`).
 message Account {
   // ID of the account.
   string id = 1;

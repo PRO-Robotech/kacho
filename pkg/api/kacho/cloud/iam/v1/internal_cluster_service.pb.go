@@ -97,7 +97,7 @@ type GrantClusterAdminRequest struct {
 	// Subject type. Only `USER` is accepted in this version; other values
 	// return InvalidArgument `"Illegal argument subject_type: only 'user' supported in this version"`.
 	SubjectType ClusterGrantSubjectType `protobuf:"varint,1,opt,name=subject_type,json=subjectType,proto3,enum=kacho.cloud.iam.v1.ClusterGrantSubjectType" json:"subject_type,omitempty"`
-	// User id of the new admin. Must match `^usr_[0-9a-hjkmnp-tv-z]{17}$` and
+	// User id of the new admin. Must match `^usr[0-9a-hjkmnp-tv-z]{17}$` and
 	// exist in `kacho_iam.users` (missing user returns InvalidArgument).
 	SubjectId     string `protobuf:"bytes,2,opt,name=subject_id,json=subjectId,proto3" json:"subject_id,omitempty"`
 	unknownFields protoimpl.UnknownFields
@@ -212,7 +212,7 @@ type RevokeClusterAdminRequest struct {
 	// Subject type. Only `USER` is accepted in this version.
 	SubjectType ClusterGrantSubjectType `protobuf:"varint,1,opt,name=subject_type,json=subjectType,proto3,enum=kacho.cloud.iam.v1.ClusterGrantSubjectType" json:"subject_type,omitempty"`
 	// User id of the admin being revoked. Must match
-	// `^usr_[0-9a-hjkmnp-tv-z]{17}$`. Self-revoke is rejected
+	// `^usr[0-9a-hjkmnp-tv-z]{17}$`. Self-revoke is rejected
 	// (FailedPrecondition); last-admin revoke is rejected
 	// (FailedPrecondition); non-existent / already-revoked admin returns
 	// NotFound.
@@ -420,7 +420,7 @@ type ClusterAdminEntry struct {
 	ClusterAdminGrantId string `protobuf:"bytes,1,opt,name=cluster_admin_grant_id,json=clusterAdminGrantId,proto3" json:"cluster_admin_grant_id,omitempty"`
 	// Subject type (`USER` only in this version).
 	SubjectType ClusterGrantSubjectType `protobuf:"varint,2,opt,name=subject_type,json=subjectType,proto3,enum=kacho.cloud.iam.v1.ClusterGrantSubjectType" json:"subject_type,omitempty"`
-	// User id of the admin (`usr_<17>`).
+	// User id of the admin (`usr<17>`).
 	SubjectId string `protobuf:"bytes,3,opt,name=subject_id,json=subjectId,proto3" json:"subject_id,omitempty"`
 	// Subject email enriched from `kacho_iam.users`. Empty string when the
 	// user row is absent (dangling reference; should not happen, surfaced as
@@ -429,7 +429,7 @@ type ClusterAdminEntry struct {
 	// Subject display name enriched from `kacho_iam.users`. Empty string when
 	// the user row is absent.
 	SubjectDisplayName string `protobuf:"bytes,5,opt,name=subject_display_name,json=subjectDisplayName,proto3" json:"subject_display_name,omitempty"`
-	// User id of the granter (`usr_<17>` for a regular admin, or the literal
+	// User id of the granter (`usr<17>` for a regular admin, or the literal
 	// `"bootstrap"` for the initial bootstrap-seeded admin).
 	GrantedByUserId string `protobuf:"bytes,6,opt,name=granted_by_user_id,json=grantedByUserId,proto3" json:"granted_by_user_id,omitempty"`
 	// Granter email enriched from `kacho_iam.users`. Empty string when
