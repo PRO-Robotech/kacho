@@ -56,6 +56,12 @@ func startRetentionSweeper(
 			kachopg.NewSessionRevocationRepo(pool),
 			kachopg.NewMintedTokenRevocationRepo(pool),
 			kachopg.NewIdentityAdmissionWindowRepo(pool),
+			// Пятым предметом — журнал смены субъекта (#1758). Наблюдатель
+			// границы устоявшегося у него СВОЙ, а не общий с читателем, и это
+			// безопасно by construction: граница монотонна, поэтому величина,
+			// наблюдённая до оператора, остаётся нижней оценкой — снимется не
+			// больше, чем позволено.
+			kachopg.NewSubjectChangeJournalSweeper(pool, logger),
 		),
 		logger.With(slog.String("component", "retention_sweep")),
 	)
