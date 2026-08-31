@@ -45,6 +45,29 @@ for d in yaml.safe_load_all(open(sys.argv[1])):
 raise SystemExit("шаг подстановки не найден в рендере")
 PY
 [ -s "$TMP/script.raw" ] || { echo "ОТКАЗ: шаг подстановки не извлечён — проверять нечего"; exit 1; }
+
+# Шаг судит СВОЙ перечень владения и роняет исполнение, если он не объявлен, —
+# страж заведён работой о подстановке величин и стоит РАНЬШЕ почтовых проверок.
+# Песочница обязана объявить его так же, как под, иначе инъекция обрывается до
+# собственного предмета: обе работы верны, неверно их сочетание.
+#
+# Величина берётся ИЗ ТОГО ЖЕ рендера, а не выписывается здесь: выписанная
+# разошлась бы с чартом молча.
+SUBST_VARS="$(python3 - "$TMP/render.yaml" <<'PYVARS'
+import sys, yaml
+for d in yaml.safe_load_all(open(sys.argv[1])):
+    if not d or d.get('kind') not in ('Deployment', 'StatefulSet'):
+        continue
+    for c in d['spec']['template']['spec'].get('initContainers', []):
+        if c['name'] != 'identity-config-render':
+            continue
+        for e in c.get('env', []):
+            if e.get('name') == 'KACHO_IDENTITY_SUBSTITUTED_VARS':
+                print(e.get('value', '')); raise SystemExit(0)
+raise SystemExit("перечень владения не объявлен в рендере")
+PYVARS
+)" || { echo "ОТКАЗ: перечень владения не извлечён из рендера"; exit 1; }
+export KACHO_IDENTITY_SUBSTITUTED_VARS="$SUBST_VARS"
 sed "s#/etc/kacho-identity-src#$TMP/src#g; s#/etc/kacho-identity-rendered#$TMP/rendered#g" \
   "$TMP/script.raw" > "$TMP/script.sh"
 
@@ -65,7 +88,8 @@ YAML
   if [ "$got" != "$want" ]; then
     echo "  ОТКАЗ $name → $got, ожидалось $want"; printf '       %s\n' "$out" | tail -2; rc=1; return
   fi
-  if [ "$want" = RED ] && ! printf '%s' "$out" | grep -qF -- "$needle"; then
+  case "$out" in *"$needle"*) has_needle=1 ;; *) has_needle=0 ;; esac
+  if [ "$want" = RED ] && [ "$has_needle" -eq 0 ]; then
     echo "  ОТКАЗ $name → RED, но отказ не называет $needle"; printf '       %s\n' "$out" | tail -2; rc=1; return
   fi
   echo "  ok   $name → $got"
