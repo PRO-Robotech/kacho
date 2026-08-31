@@ -24,10 +24,20 @@
 // ЧТО ГЕЙТ ДЕРЖИТ. Не «сегодня тексты совпали» — это свойство ПРОГОНА, и по
 // дереву оно недоказуемо (пакеты владельцев лежат под `services/<svc>/internal`
 // и вне своего сервиса не импортируются by construction, поэтому свести шесть
-// мапперов в одну пробу нечем). Гейт держит СТРУКТУРНУЮ причину совпадения:
-// снимаемый префикс ВЫВОДИТСЯ из sentinel'а (`<err>.Error()`), а не выписан
-// строкой. Тогда седьмой sentinel добавить в обход нечего — снимается ровно тот
-// префикс, который назвал распознавший вызывающий.
+// мапперов в одну пробу нечем). Гейт держит СТРУКТУРНЫЕ причины совпадения, и
+// осей у него ТРИ — каждая закрывает свой способ разойтись молча:
+//
+//  1. ПРЕФИКС ВЫВОДИТСЯ из sentinel'а (`<err>.Error()`), а не выписан строкой.
+//     Тогда седьмой sentinel добавить в обход нечего — снимается ровно тот
+//     префикс, который назвал распознавший вызывающий.
+//  2. ПУСТОЙ ОСТАТОК ОГРАЖДЁН. Снятие устроено как «отрезать префикс и отдать
+//     остаток»; на обёртке без текста остаток пуст, и клиент получает КОД БЕЗ
+//     ЕДИНОГО СЛОВА о том, что делать дальше — в журнале это неотличимо от
+//     потери сообщения. Ось нужна отдельно от первой: вывод префикса из
+//     sentinel'а этот случай не закрывает, он его ПОРОЖДАЕТ.
+//  3. СЛОВАРЬ SENTINEL'ОВ ОДИН. Текст sentinel'а — то, чем снимается префикс,
+//     поэтому расхождение делает шесть мапперов несравнимыми. Клиенту оно не
+//     видно (префикс снимается), и потому тихо: обзор изменения его не поймает.
 //
 // ПОЧЕМУ ЭТО НЕ СУЖЕНИЕ ДО ОДНОЙ ФОРМЫ ЗАПИСИ. Законных форм в дереве две, и обе
 // выводят префикс: «сними префикс НАЗВАННОГО sentinel'а» (пять владельцев) и
@@ -42,9 +52,13 @@
 //
 // ЧТО ОБХОД НЕ ВИДИТ — названо, а не спрятано:
 //
-//  1. ПРАВДИВОСТЬ текста — что предложение производителя доехало дословно. Это
-//     свойство ВЫЗОВА, и держат его пробы владельцев (у nlb —
-//     `errmap_quota_tone_test.go`, у остальных — их `quota_metadata_test.go`).
+//  1. ПРАВДИВОСТЬ текста — что предложение производителя доехало дословно, и
+//     что ограждение пустого остатка ВЕРНО, а не просто присутствует. Это
+//     свойства ВЫЗОВА, и держат их пробы владельцев: `empty_refusal_test.go`
+//     рядом с каждым стриппером (пара «обычная обёртка доезжает дословно» ·
+//     «обёртка без текста не даёт отказа без сообщения») и
+//     `quota_metadata_test.go`. Ось 2 ниже проверяет НАЛИЧИЕ ограждения, а не
+//     его правильность, — и это сказано, а не подразумевается.
 //  2. КОСВЕННЫЙ вызов стриппера — значение функции, положенное в переменную или
 //     поле: разбор судит вызов по имени, а не по потоку значений. Такой владелец
 //     попадёт в находку «стриппер не разрешён», а не в молчание.
@@ -77,6 +91,17 @@ const (
 	ct2ErrorMethod = "Error"
 	// ct2SentinelSeparator — разделитель, которым sentinel приклеен к тексту.
 	ct2SentinelSeparator = ": "
+	// ct2CutPrefixFunc — срезка префикса; её первое значение и есть остаток,
+	// который уезжает клиенту.
+	ct2CutPrefixFunc = "CutPrefix"
+	// ct2QuotaExceededSentinel — общий словарь шести владельцев учёта.
+	ct2QuotaExceededSentinel = "resource count quota exceeded"
+	// ct2QuotaNotProvisionedSentinel — вторая половина того же словаря.
+	ct2QuotaNotProvisionedSentinel = "resource count quota not provisioned"
+	// ct2QuotaExceededVar / ct2QuotaNotProvisionedVar — имена, под которыми
+	// словарь объявлен у каждого владельца.
+	ct2QuotaExceededVar       = "ErrQuotaExceeded"
+	ct2QuotaNotProvisionedVar = "ErrQuotaNotProvisioned"
 )
 
 // ct2ToneOwnerFacts — что найдено в прод-коде ОДНОГО владельца учёта.
@@ -97,6 +122,12 @@ type ct2ToneOwnerFacts struct {
 	literalPrefixFile string
 	// literalPrefix — первый такой префикс, для диагностики.
 	literalPrefix string
+	// guardsEmptyRemainder — стриппер ограждает пустой остаток.
+	guardsEmptyRemainder bool
+	// sentinelFile — где объявлен словарь sentinel'ов учёта.
+	sentinelFile string
+	// sentinelTexts — «имя переменной» → объявленный текст.
+	sentinelTexts map[string]string
 }
 
 // ct2ToneCensus — перепись обхода. Печатается ВСЕГДА: «ноль находок» обязано
@@ -109,6 +140,8 @@ type ct2ToneCensus struct {
 	Outward    int
 	Resolved   int
 	Conforming int
+	Guarding   int
+	Vocabulary int
 }
 
 // collectQuotaRefusalTone обходит прод-код названных владельцев.
@@ -189,16 +222,37 @@ func collectQuotaRefusalTone(tree *treecorpus.Tree, owners []string) (ct2ToneCen
 		}
 		facts.stripperFile = pf.rel
 		facts.derivesPrefix = ct2ToneDerivesPrefix(decl)
+		facts.guardsEmptyRemainder = ct2ToneGuardsEmptyRemainder(decl)
 		if lit, ok := ct2ToneLiteralPrefixList(decl); ok {
 			facts.literalPrefixFile = pf.rel
 			facts.literalPrefix = lit
 		}
 	}
 
+	// ПРОХОД 3 — словарь sentinel'ов учёта: где объявлен и каким текстом.
+	for _, pf := range parsed {
+		facts := c.Facts[pf.owner]
+		if facts.sentinelFile != "" {
+			continue
+		}
+		texts := ct2ToneSentinelTexts(pf.file)
+		if len(texts) == 0 {
+			continue
+		}
+		facts.sentinelFile = pf.rel
+		facts.sentinelTexts = texts
+	}
+
 	for _, o := range c.Owners {
 		f := c.Facts[o]
 		if f.outwardFile != "" {
 			c.Outward++
+		}
+		if f.stripperFile != "" && f.guardsEmptyRemainder {
+			c.Guarding++
+		}
+		if ct2ToneVocabularyAgrees(f) {
+			c.Vocabulary++
 		}
 		if f.stripperFile != "" {
 			c.Resolved++
@@ -461,6 +515,45 @@ func quotaRefusalToneFindings(c ct2ToneCensus) []string {
 				"%s: %s.%s префикса из sentinel'а не выводит — клиент увидит "+
 					"внутреннее имя sentinel'а либо не увидит предложения производителя",
 				o, f.stripperFile, f.stripperName))
+			continue
+		}
+		if !f.guardsEmptyRemainder {
+			out = append(out, fmt.Sprintf(
+				"%s: %s.%s не ограждает ПУСТОЙ остаток — на обёртке без текста "+
+					"клиент получит код и ни слова о том, что делать дальше; "+
+					"в журнале это неотличимо от потери сообщения",
+				o, f.stripperFile, f.stripperName))
+		}
+	}
+	// Словарь sentinel'ов — ось ОБЩАЯ для владельцев, поэтому судится отдельным
+	// проходом: находка называет не «у тебя не так», а «вас двое об одном».
+	for _, o := range c.Owners {
+		f := c.Facts[o]
+		if f.sentinelFile == "" {
+			out = append(out, fmt.Sprintf(
+				"%s: объявления словаря sentinel'ов учёта (%s / %s) в прод-дереве "+
+					"владельца не найдено — ось вне наблюдения",
+				o, ct2QuotaExceededVar, ct2QuotaNotProvisionedVar))
+			continue
+		}
+		for name, want := range map[string]string{
+			ct2QuotaExceededVar:       ct2QuotaExceededSentinel,
+			ct2QuotaNotProvisionedVar: ct2QuotaNotProvisionedSentinel,
+		} {
+			got, ok := f.sentinelTexts[name]
+			if !ok {
+				out = append(out, fmt.Sprintf(
+					"%s: %s не объявляет %s — словарь учёта неполон",
+					o, f.sentinelFile, name))
+				continue
+			}
+			if got != want {
+				out = append(out, fmt.Sprintf(
+					"%s: %s объявляет %s текстом %q, общий словарь шести — %q; "+
+						"этим текстом снимается префикс, поэтому расхождение делает "+
+						"мапперы несравнимыми, а клиенту оно не видно и потому тихо",
+					o, f.sentinelFile, name, got, want))
+			}
 		}
 	}
 	return out
@@ -480,4 +573,157 @@ func ct2ToneCallIs(c *ast.CallExpr, imports map[string]string, pkgPath, fn strin
 		return false
 	}
 	return imports[id.Name] == pkgPath
+}
+
+// ct2ToneGuardsEmptyRemainder — стриппер ограждает ПУСТОЙ ОСТАТОК.
+//
+// Судится не «есть ли в теле сравнение с пустой строкой», а сравнение ИМЕННО
+// ТОГО значения, которое отдаётся клиенту, — остатка, связанного срезкой
+// префикса. Различие несущее, и оно измерено: прежняя, широкая редакция считала
+// огражденным дофиксовый nlb, у которого сравнение с пустой строкой было, но
+// относилось ко ВСЕМУ сообщению, а не к остатку. Ложное «ограждено» — ошибка в
+// опасную сторону: гейт объявлял бы свойство там, где его нет.
+//
+// Законных форм записи ДВЕ, и обе распознаются (п.7 §«Гейт на класс»):
+//
+//	if rest == "" { … }        — сравнение со строкой;
+//	if len(rest) == 0 { … }    — сравнение длины.
+//
+// ГРАНИЦА НАЗВАНА: гейт судит НАЛИЧИЕ ограждения, а не его правильность —
+// «функция не может вернуть пустую строку на непустом входе» статически
+// неразрешимо. Правильность держат парные пробы владельцев
+// (`empty_refusal_test.go`).
+func ct2ToneGuardsEmptyRemainder(fn *ast.FuncDecl) bool {
+	// Остаток — первое из значений, связанных вызовом срезки префикса.
+	remainders := map[string]bool{}
+	ast.Inspect(fn.Body, func(n ast.Node) bool {
+		as, isAs := n.(*ast.AssignStmt)
+		if !isAs || len(as.Rhs) != 1 || len(as.Lhs) < 1 {
+			return true
+		}
+		call, isCall := as.Rhs[0].(*ast.CallExpr)
+		if !isCall {
+			return true
+		}
+		sel, isSel := call.Fun.(*ast.SelectorExpr)
+		if !isSel || sel.Sel.Name != ct2CutPrefixFunc {
+			return true
+		}
+		if id, isID := as.Lhs[0].(*ast.Ident); isID {
+			remainders[id.Name] = true
+		}
+		return true
+	})
+	if len(remainders) == 0 {
+		return false
+	}
+
+	var ok bool
+	ast.Inspect(fn.Body, func(n ast.Node) bool {
+		if ok {
+			return false
+		}
+		bin, isBin := n.(*ast.BinaryExpr)
+		if !isBin || (bin.Op != token.EQL && bin.Op != token.NEQ) {
+			return true
+		}
+		for a, b := range map[int]int{0: 1, 1: 0} {
+			sides := []ast.Expr{bin.X, bin.Y}
+			if ct2ToneIsEmptyOf(sides[a], remainders) && ct2ToneIsEmptyMark(sides[b]) {
+				ok = true
+				return false
+			}
+		}
+		return true
+	})
+	return ok
+}
+
+// ct2ToneIsEmptyOf — выражение есть сам остаток либо его длина.
+func ct2ToneIsEmptyOf(e ast.Expr, remainders map[string]bool) bool {
+	if id, isID := e.(*ast.Ident); isID {
+		return remainders[id.Name]
+	}
+	call, isCall := e.(*ast.CallExpr)
+	if !isCall || len(call.Args) != 1 {
+		return false
+	}
+	fn, isID := call.Fun.(*ast.Ident)
+	if !isID || fn.Name != "len" {
+		return false
+	}
+	arg, isArg := call.Args[0].(*ast.Ident)
+	return isArg && remainders[arg.Name]
+}
+
+// ct2ToneIsEmptyMark — пустая строка либо нулевая длина.
+func ct2ToneIsEmptyMark(e ast.Expr) bool {
+	lit, isLit := e.(*ast.BasicLit)
+	if !isLit {
+		return false
+	}
+	switch lit.Kind {
+	case token.STRING:
+		v, err := strconv.Unquote(lit.Value)
+		return err == nil && v == ""
+	case token.INT:
+		return lit.Value == "0"
+	default:
+		return false
+	}
+}
+
+// ct2ToneSentinelTexts — объявленный словарь sentinel'ов учёта в этом файле.
+//
+// Разбор УЗЛА, а не поиск по тексту: те же имена и те же строки стоят в
+// комментариях рядом — в том числе в шапке этого файла.
+func ct2ToneSentinelTexts(f *ast.File) map[string]string {
+	out := map[string]string{}
+	ast.Inspect(f, func(n ast.Node) bool {
+		vs, isVS := n.(*ast.ValueSpec)
+		if !isVS {
+			return true
+		}
+		for i, name := range vs.Names {
+			if name.Name != ct2QuotaExceededVar && name.Name != ct2QuotaNotProvisionedVar {
+				continue
+			}
+			if i >= len(vs.Values) {
+				continue
+			}
+			// Объявление вида `errors.New("…")` / `stderrors.New("…")`; алиас на
+			// чужую переменную текста не несёт и потому пропускается — словарь
+			// объявляет тот, кто его ЗАВОДИТ.
+			call, isCall := vs.Values[i].(*ast.CallExpr)
+			if !isCall || len(call.Args) != 1 {
+				continue
+			}
+			lit, isLit := call.Args[0].(*ast.BasicLit)
+			if !isLit || lit.Kind != token.STRING {
+				continue
+			}
+			if v, err := strconv.Unquote(lit.Value); err == nil {
+				out[name.Name] = v
+			}
+		}
+		return true
+	})
+	return out
+}
+
+// ct2ToneVocabularyAgrees — словарь владельца совпал с общим.
+func ct2ToneVocabularyAgrees(f *ct2ToneOwnerFacts) bool {
+	if f.sentinelFile == "" {
+		return false
+	}
+	for name, want := range map[string]string{
+		ct2QuotaExceededVar:       ct2QuotaExceededSentinel,
+		ct2QuotaNotProvisionedVar: ct2QuotaNotProvisionedSentinel,
+	} {
+		got, ok := f.sentinelTexts[name]
+		if !ok || got != want {
+			return false
+		}
+	}
+	return true
 }

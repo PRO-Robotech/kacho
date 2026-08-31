@@ -58,16 +58,24 @@ func TestQuotaRefusalToneIsDerivedFromTheSentinelNotAPrefixList(t *testing.T) {
 			state = "перечень префиксов-строк"
 		case f.stripperFile == "":
 			state = "стриппер не разрешён"
+		case f.derivesPrefix && !f.guardsEmptyRemainder:
+			state = "выводит, пустой остаток не ограждён"
 		case f.derivesPrefix:
 			state = "выводит из sentinel'а"
 		default:
 			state = "префикс ниоткуда"
 		}
+		if !ct2ToneVocabularyAgrees(f) {
+			state += " · словарь разошёлся"
+		}
 		perOwner = append(perOwner, o+"="+state)
 	}
 	t.Logf("перепись: владельцев %d · прод-файлов осмотрено %d (разобрано %d) · "+
-		"мапперов наружу %d · стрипперов разрешено %d · соответствует %d\n         по владельцам: %s",
-		len(c.Owners), c.Files, c.Parsed, c.Outward, c.Resolved, c.Conforming,
+		"мапперов наружу %d · стрипперов разрешено %d\n"+
+		"         ось 1 префикс из sentinel'а: %d · ось 2 пустой остаток ограждён: %d · "+
+		"ось 3 словарь общий: %d\n         по владельцам: %s",
+		len(c.Owners), c.Files, c.Parsed, c.Outward, c.Resolved,
+		c.Conforming, c.Guarding, c.Vocabulary,
 		strings.Join(perOwner, ", "))
 
 	// ── ПРОВЕРКА СОБСТВЕННОЙ ПРЕДПОСЫЛКИ. Пустой обход обесценивает вердикт:
@@ -91,8 +99,17 @@ func TestQuotaRefusalToneIsDerivedFromTheSentinelNotAPrefixList(t *testing.T) {
 	// Число соответствующих обязано сойтись с числом владельцев: расхождение
 	// названо находками выше, а это утверждение ловит случай, когда находок
 	// нет, а соответствие всё равно неполно.
-	if c.Conforming != len(c.Owners) {
-		t.Errorf("владельцев %s, выводят префикс из sentinel'а %s — расхождение",
-			strconv.Itoa(len(c.Owners)), strconv.Itoa(c.Conforming))
+	for _, ax := range []struct {
+		name string
+		got  int
+	}{
+		{"выводят префикс из sentinel'а", c.Conforming},
+		{"ограждают пустой остаток", c.Guarding},
+		{"несут общий словарь sentinel'ов", c.Vocabulary},
+	} {
+		if ax.got != len(c.Owners) {
+			t.Errorf("владельцев %s, %s %s — расхождение",
+				strconv.Itoa(len(c.Owners)), ax.name, strconv.Itoa(ax.got))
+		}
 	}
 }

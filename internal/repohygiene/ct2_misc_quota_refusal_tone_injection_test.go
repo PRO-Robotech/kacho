@@ -45,6 +45,9 @@ func stripIt(err error, sentinel error) string {
 	msg := err.Error()
 	prefix := sentinel.Error() + ": "
 	if rest, ok := strings.CutPrefix(msg, prefix); ok {
+		if rest == "" {
+			return sentinel.Error()
+		}
 		return rest
 	}
 	return msg
@@ -56,6 +59,9 @@ func stripIt(err error, sentinel error) string {
 	msg := err.Error()
 	for _, s := range []error{errNotFound, errQuota} {
 		if rest, ok := strings.CutPrefix(msg, s.Error()+": "); ok {
+			if rest == "" {
+				return s.Error()
+			}
 			return rest
 		}
 	}
@@ -70,11 +76,49 @@ func stripIt(err error, sentinel error) string {
 	}
 	msg := err.Error()
 	if rest, ok := strings.CutPrefix(msg, fallback+": "); ok {
+		if rest == "" {
+			return fallback
+		}
 		return rest
 	}
 	return msg
 }`,
-	// НАХОДКА ВТОРОГО РОДА: стриппер есть, префикса не выводит ниоткуда.
+	// ЗАКОННАЯ ФОРМА 4 — ограждение остатка сравнением ДЛИНЫ, а не строки.
+	"ограждение-длиной": `
+func stripIt(err error, sentinel error) string {
+	msg := err.Error()
+	if rest, ok := strings.CutPrefix(msg, sentinel.Error()+": "); ok {
+		if len(rest) == 0 {
+			return sentinel.Error()
+		}
+		return rest
+	}
+	return msg
+}`,
+	// НАХОДКА ОСИ 2: префикс выводится, пустой остаток НЕ ограждён.
+	"остаток-без-ограждения": `
+func stripIt(err error, sentinel error) string {
+	msg := err.Error()
+	if rest, ok := strings.CutPrefix(msg, sentinel.Error()+": "); ok {
+		return rest
+	}
+	return msg
+}`,
+	// НАХОДКА ОСИ 2, ЛОЖНЫЙ БЛИЗНЕЦ: сравнение с пустой строкой ЕСТЬ, но
+	// относится ко всему сообщению, а не к остатку. Широкий распознаватель
+	// объявил бы это огражденным — ошибка в опасную сторону.
+	"ограждение-не-того": `
+func stripIt(err error, sentinel error) string {
+	msg := err.Error()
+	if msg == "" {
+		return sentinel.Error()
+	}
+	if rest, ok := strings.CutPrefix(msg, sentinel.Error()+": "); ok {
+		return rest
+	}
+	return msg
+}`,
+	// НАХОДКА ПЕРВОГО РОДА: стриппер есть, префикса не выводит ниоткуда.
 	"префикс-ниоткуда": `
 func stripIt(err error, sentinel error) string {
 	return err.Error()
@@ -90,6 +134,9 @@ type ct2ToneFixture struct {
 	noReason bool
 	// commentOnly — литеральный префикс стоит в КОММЕНТАРИИ, а код законен.
 	commentOnly bool
+	// vocabulary — тексты словаря sentinel'ов; пусто → общий словарь.
+	// "нет" → файла словаря не будет вовсе.
+	vocabulary string
 }
 
 func writeCt2ToneTree(t *testing.T, fixtures ...ct2ToneFixture) string {
@@ -126,6 +173,25 @@ func refuse(err error, sentinel error) error {
 	return status.New(codes.ResourceExhausted, stripIt(err, sentinel)).Err()
 }
 `)
+		switch f.vocabulary {
+		case "нет":
+			// файла словаря нет — ось 3 обязана назвать это находкой
+		default:
+			exceeded, notProvisioned := ct2QuotaExceededSentinel, ct2QuotaNotProvisionedSentinel
+			if f.vocabulary != "" {
+				exceeded, notProvisioned = f.vocabulary, f.vocabulary+" not provisioned"
+			}
+			mk("services/"+f.owner+"/internal/errors/errors.go", `
+package errors
+
+import "errors"
+
+var (
+	ErrQuotaExceeded       = errors.New("`+exceeded+`")
+	ErrQuotaNotProvisioned = errors.New("`+notProvisioned+`")
+)
+`)
+		}
 		if f.body == "" {
 			continue
 		}
@@ -246,10 +312,101 @@ func TestCt2ToneInjection_EmptyWalkIsDistinguishable(t *testing.T) {
 		t.Fatalf("на пустом дереве обход обязан быть пуст: файлов %d, мапперов %d",
 			c.Files, c.Outward)
 	}
-	// Находка при этом ЕСТЬ — «о владельце ничего не известно», а не молчание.
-	if len(findings) != 1 || !strings.Contains(findings[0], "вне наблюдения") {
-		t.Fatalf("пустой обход обязан объявить владельца ненаблюдаемым, получено: %v", findings)
+	// Находки при этом ЕСТЬ — «о владельце ничего не известно», а не молчание, и
+	// по КАЖДОЙ оси своя: маппер не найден и словарь не найден.
+	if len(findings) != 2 {
+		t.Fatalf("пустой обход обязан объявить владельца ненаблюдаемым по обеим "+
+			"осям, получено %d: %v", len(findings), findings)
 	}
+	joined := strings.Join(findings, " | ")
+	for _, want := range []string{"вне наблюдения", "словаря sentinel'ов"} {
+		if !strings.Contains(joined, want) {
+			t.Errorf("среди находок обязано быть %q, получено: %v", want, findings)
+		}
+	}
+}
+
+// (е) ОСЬ 2 — ПУСТОЙ ОСТАТОК. Дефект и ЛОЖНЫЙ БЛИЗНЕЦ судятся раздельно:
+// сравнение с пустой строкой, относящееся не к остатку, ограждением НЕ является.
+func TestCt2ToneInjection_EmptyRemainderAxis(t *testing.T) {
+	cases := []struct {
+		name    string
+		body    string
+		finding bool
+	}{
+		{"остаток не ограждён", "остаток-без-ограждения", true},
+		{"ограждено не то значение", "ограждение-не-того", true},
+		{"ограждение строкой", "склейка-на-месте", false},
+		{"ограждение длиной", "ограждение-длиной", false},
+		{"ограждение в перечне sentinel'ов", "перечень-sentinel", false},
+		{"ограждение через переменную", "через-переменную", false},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			root := writeCt2ToneTree(t, ct2ToneFixture{owner: "vpc", body: tc.body})
+			c, findings := ct2ToneRun(t, root, []string{"vpc"})
+			if !tc.finding {
+				if len(findings) != 0 {
+					t.Fatalf("законная форма %q обязана молчать: %v", tc.body, findings)
+				}
+				if c.Guarding != 1 {
+					t.Errorf("огражденных обязан быть 1, посчитано %d", c.Guarding)
+				}
+				return
+			}
+			if len(findings) != 1 || !strings.Contains(findings[0], "ПУСТОЙ остаток") {
+				t.Fatalf("ожидалась находка об остатке, получено: %v", findings)
+			}
+			if !strings.Contains(findings[0], "strip.go") {
+				t.Errorf("находка обязана называть координату, а называет: %s", findings[0])
+			}
+			if c.Guarding != 0 {
+				t.Errorf("огражденных обязано быть 0, посчитано %d", c.Guarding)
+			}
+		})
+	}
+}
+
+// (ж) ОСЬ 3 — СЛОВАРЬ SENTINEL'ОВ. Расхождение называет ОБА текста, отсутствие
+// объявления называется отдельно, совпадение молчит.
+func TestCt2ToneInjection_SentinelVocabularyAxis(t *testing.T) {
+	t.Run("разошёлся", func(t *testing.T) {
+		root := writeCt2ToneTree(t, ct2ToneFixture{
+			owner: "compute", body: "склейка-на-месте", vocabulary: "quota exceeded"})
+		c, findings := ct2ToneRun(t, root, []string{"compute"})
+		if len(findings) != 2 {
+			t.Fatalf("разошедшийся словарь обязан дать находку по каждому имени, "+
+				"получено %d: %v", len(findings), findings)
+		}
+		joined := strings.Join(findings, " | ")
+		for _, want := range []string{`"quota exceeded"`, `"` + ct2QuotaExceededSentinel + `"`,
+			"errors.go", ct2QuotaNotProvisionedVar} {
+			if !strings.Contains(joined, want) {
+				t.Errorf("находки обязаны называть %q, получено: %v", want, findings)
+			}
+		}
+		if c.Vocabulary != 0 {
+			t.Errorf("совпавших словарей обязано быть 0, посчитано %d", c.Vocabulary)
+		}
+	})
+	t.Run("не объявлен", func(t *testing.T) {
+		root := writeCt2ToneTree(t, ct2ToneFixture{
+			owner: "compute", body: "склейка-на-месте", vocabulary: "нет"})
+		_, findings := ct2ToneRun(t, root, []string{"compute"})
+		if len(findings) != 1 || !strings.Contains(findings[0], "вне наблюдения") {
+			t.Fatalf("отсутствие словаря обязано быть названо находкой, получено: %v", findings)
+		}
+	})
+	t.Run("совпал", func(t *testing.T) {
+		root := writeCt2ToneTree(t, ct2ToneFixture{owner: "compute", body: "склейка-на-месте"})
+		c, findings := ct2ToneRun(t, root, []string{"compute"})
+		if len(findings) != 0 {
+			t.Fatalf("совпавший словарь обязан молчать: %v", findings)
+		}
+		if c.Vocabulary != 1 {
+			t.Errorf("совпавших словарей обязан быть 1, посчитано %d", c.Vocabulary)
+		}
+	})
 }
 
 // (д) РАЗДЕЛЬНОСТЬ ВЛАДЕЛЬЦЕВ: дефект одного не красит остальных, и перепись
