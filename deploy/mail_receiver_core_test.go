@@ -139,6 +139,46 @@ func mailHostOf(uri string) string {
 	return strings.TrimSpace(rest)
 }
 
+// laneReceiverExpression — форма, которой профиль называет НАШ приёмник, не
+// выписывая имени релиза: `{{ .Release.Name }}` в узле полосы.
+//
+// ПОЧЕМУ ЭТА ФОРМА ВООБЩЕ ЕСТЬ. Имя рабочего объекта приёмника складывается из
+// имени релиза, и выписанный литерал расходился бы с ним на всяком релизе,
+// кроме одного: рендер конвейера идёт под именем `ci`, и страж полосы отвергал
+// его на четырёх стеках из шести. Профиль объявляет узел выражением, а
+// раскрывают его ОБА читателя величины — шаблон настроек личности и страж.
+//
+// ПОЧЕМУ ИМЯ РЕЛИЗА, А НЕ ВКЛЮЧЕНИЕ ШАБЛОНА ИМЕНИ ПРИЁМНИКА. Шаблон имени
+// объявлен в умбрелле, а подчарт личности рендерится ОДИНОЧНО пятью гейтами
+// этого каталога и самопроверкой политики: там его нет, и величина роняла бы
+// рендер на всех них. `.Release` есть в любом контексте.
+//
+// ГЕЙТ ОБЯЗАН ЗНАТЬ ЭТУ ФОРМУ. Не зная её, он не находит и не молчит — он
+// перестаёт судить: `mailHostOf` вернул бы строку с точкой внутри выражения,
+// `inClusterHost` признал бы её внешним ретранслятором, и полоса выпала бы
+// из-под обоих утверждений молча (`testing.md` §«Гейт на класс», п. 7 — форма,
+// о которой распознаватель не знает, есть невидимость, а не край).
+var laneReceiverExpression = regexp.MustCompile(`\{\{-?\s*\.Release\.Name\s*-?\}\}`)
+
+// expandedLane — полоса с раскрытым выражением имени приёмника.
+//
+// Раскрытие идёт ТЕМ ЖЕ именем релиза, которым дерево поднимает умбреллу, —
+// то есть гейт судит ровно ту величину, что доедет до процесса.
+func expandedLane(uri, release, receiverSuffix string) string {
+	_ = receiverSuffix // суффикс профиль пишет сам; выражением задан только релиз
+	return laneReceiverExpression.ReplaceAllString(uri, release)
+}
+
+// unknownLaneExpression — выражение, которого гейт НЕ знает; пустая строка ⇒
+// таких нет. Раскрыв известное, он обязан сказать вслух, что осталось
+// нераскрытым: молчаливый пропуск и есть та самая невидимость.
+func unknownLaneExpression(expanded string) string {
+	if strings.Contains(expanded, "{{") {
+		return expanded
+	}
+	return ""
+}
+
 // inClusterHost — узел, у которого нет собственного доменного имени наружу.
 // Именно этот класс и был предметом дефекта: имя внутри кластера, которого никто
 // не поднимает. Внешний ретранслятор боевой площадки под утверждение (1) не
@@ -272,8 +312,15 @@ func receiverIsGateable(l shardLayout, key string) []string {
 func TestNamedMailNodeIsRaisedByTheDelivery(t *testing.T) {
 	suffix := receiverServiceSuffix(t)
 	profiles := umbrellaProfiles(t)
+	// Имя релиза нужно и ЗДЕСЬ: полоса вправе называть приёмник выражением, и
+	// нераскрытое выражение выпало бы из-под этого утверждения молча.
+	releases := stackReleaseNames(t)
+	if len(releases) == 0 {
+		t.Fatal("в рецепте не найдено ни одного имени релиза умбреллы — раскрыть " +
+			"выражение полосы нечем, и «расхождений нет» означало бы «не судили»")
+	}
 
-	filesRead, lanesDeclared := 0, 0
+	filesRead, lanesDeclared, expanded := 0, 0, 0
 	var stray []string
 	for _, p := range profiles {
 		doc := readProfile(t, p)
@@ -283,13 +330,22 @@ func TestNamedMailNodeIsRaisedByTheDelivery(t *testing.T) {
 			continue
 		}
 		lanesDeclared++
-		if host := unraisedInClusterHost(uri, suffix); host != "" {
+		lane := expandedLane(uri, releases[0], suffix)
+		if lane != uri {
+			expanded++
+		}
+		if left := unknownLaneExpression(lane); left != "" {
+			stray = append(stray, fmt.Sprintf("%s → выражение, которого гейт не знает: %s",
+				filepath.Base(p), left))
+			continue
+		}
+		if host := unraisedInClusterHost(lane, suffix); host != "" {
 			stray = append(stray, fmt.Sprintf("%s → %s", filepath.Base(p), host))
 		}
 	}
 
-	t.Logf("перепись: профилей прочитано %d · полос объявлено %d · манифест приёмника %s",
-		filesRead, lanesDeclared, mailReceiverTemplate)
+	t.Logf("перепись: профилей прочитано %d · полос объявлено %d · из них выражением %d · "+
+		"манифест приёмника %s", filesRead, lanesDeclared, expanded, mailReceiverTemplate)
 
 	if filesRead == 0 {
 		t.Fatal("прочитано ноль профилей — «расхождений нет» означало бы «ничего не прочитано»")
@@ -533,7 +589,7 @@ func TestDeclaredLaneNamesTheReceiverThisReleaseRaises(t *testing.T) {
 			"гейт, не прочитавший предмет, обязан падать, а не зеленеть")
 	}
 
-	filesRead, lanesDeclared := 0, 0
+	filesRead, lanesDeclared, expanded := 0, 0, 0
 	var stray []string
 	for _, p := range profiles {
 		doc := readProfile(t, p)
@@ -544,14 +600,28 @@ func TestDeclaredLaneNamesTheReceiverThisReleaseRaises(t *testing.T) {
 		}
 		lanesDeclared++
 		for _, r := range releases {
-			if why := laneMissesTheRaisedReceiver(uri, r, suffix); why != "" {
+			// Полоса, объявленная ВЫРАЖЕНИЕМ, сходится с релизом by
+			// construction — она берёт имя оттуда же, откуда его берёт
+			// манифест. Судить её нераскрытой значило бы судить не ту
+			// величину, что доедет до процесса.
+			lane := expandedLane(uri, r, suffix)
+			if lane != uri && r == releases[0] {
+				expanded++
+			}
+			if left := unknownLaneExpression(lane); left != "" {
+				stray = append(stray, fmt.Sprintf("%s: выражение, которого гейт не знает: %s",
+					filepath.Base(p), left))
+				continue
+			}
+			if why := laneMissesTheRaisedReceiver(lane, r, suffix); why != "" {
 				stray = append(stray, fmt.Sprintf("%s: %s", filepath.Base(p), why))
 			}
 		}
 	}
 
-	t.Logf("перепись: профилей прочитано %d · полос объявлено %d · имён релиза прочитано %d (%v)",
-		filesRead, lanesDeclared, len(releases), releases)
+	t.Logf("перепись: профилей прочитано %d · полос объявлено %d · из них выражением %d · "+
+		"имён релиза прочитано %d (%v)",
+		filesRead, lanesDeclared, expanded, len(releases), releases)
 
 	if len(stray) > 0 {
 		sort.Strings(stray)
