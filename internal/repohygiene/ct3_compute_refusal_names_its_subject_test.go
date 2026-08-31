@@ -9,32 +9,41 @@ import (
 	"strings"
 	"testing"
 
+	"github.com/PRO-Robotech/kacho/internal/treecorpus"
+
 	_ "github.com/PRO-Robotech/kacho/pkg/api/kacho/cloud/compute/v1" // регистрирует дескрипторы contract-а compute
 )
 
-// ct3ComputeSources — прод-код compute: путь → исходник. Пробы исключены
-// намеренно: синтетика проб содержит заведомо дефектные примеры.
+// ct3ComputeSources — прод-код compute: путь → исходник.
+//
+// Состав берётся у ИНДЕКСА git (`internal/treecorpus`), а не с диска. Правила
+// игнорирования действуют на любой глубине, и под `services/` на всякой машине,
+// где поднимали стенд или собирали консоль, лежат распакованные чарты,
+// сборочные каталоги и отчёты прогонов. Обход по диску подобрал бы их, и
+// перепись стала бы свойством рабочего каталога, а не коммита.
+//
+// Пробы исключены намеренно: синтетика проб содержит заведомо дефектные примеры.
 func ct3ComputeSources(t *testing.T) map[string]string {
 	t.Helper()
-	root := filepath.Join(repoRoot(t), "services", "compute")
-	out := map[string]string{}
-	err := filepath.Walk(root, func(path string, info os.FileInfo, err error) error {
-		if err != nil {
-			return err
-		}
-		if info.IsDir() || !strings.HasSuffix(path, ".go") || strings.HasSuffix(path, "_test.go") {
-			return nil
-		}
-		b, rerr := os.ReadFile(path) //nolint:gosec // путь получен обходом дерева репозитория
-		if rerr != nil {
-			return rerr
-		}
-		rel, _ := filepath.Rel(repoRoot(t), path)
-		out[rel] = string(b)
-		return nil
-	})
+	root := repoRoot(t)
+	files, err := treecorpus.UnderWithSuffix(filepath.Join(root, "services", "compute"), ".go")
 	if err != nil {
-		t.Fatalf("обход services/compute: %v", err)
+		t.Fatalf("состав services/compute: %v", err)
+	}
+	out := map[string]string{}
+	for _, abs := range files {
+		if strings.HasSuffix(abs, "_test.go") {
+			continue
+		}
+		b, rerr := os.ReadFile(abs) // #nosec G304 -- путь пришёл из индекса git ЭТОГО дерева (treecorpus), а не из ввода
+		if rerr != nil {
+			t.Fatalf("чтение %s: %v", abs, rerr)
+		}
+		rel, rerr := filepath.Rel(root, abs)
+		if rerr != nil {
+			t.Fatalf("относительный путь для %s: %v", abs, rerr)
+		}
+		out[rel] = string(b)
 	}
 	return out
 }
