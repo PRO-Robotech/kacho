@@ -154,6 +154,59 @@ func deps(ping func(context.Context) error) []checker {
 			find: false,
 		},
 		{
+			name: "МОЛЧИТ: зависимость с ОТЛОЖЕННЫМ носителем — вторая законная форма имени",
+			files: map[string]string{
+				"services/quiet/cmd/quiet/diag.go": `package main
+
+import (
+	"net/http"
+
+	"github.com/PRO-Robotech/kacho/pkg/observability/health"
+)
+
+func deps(slot *health.Slot) []health.Checker {
+	return []health.Checker{slot.Checker("iam-authz")}
+}
+
+func mux(agg *health.Aggregator, m http.Handler) *http.ServeMux {
+	s := http.NewServeMux()
+	s.Handle("GET /metrics", m)
+	s.Handle("GET /healthz", agg.LiveHandler())
+	s.Handle("GET /readyz", agg.ReadyHandler())
+	return s
+}
+`,
+			},
+			find: false,
+		},
+		{
+			name: "НАХОДКА: имя зависимости ВЫЧИСЛЯЕТСЯ, а не названо",
+			files: map[string]string{
+				"services/broken/cmd/broken/diag.go": `package main
+
+import (
+	"net/http"
+
+	"github.com/PRO-Robotech/kacho/pkg/observability/health"
+)
+
+func deps(slot *health.Slot, name string) []health.Checker {
+	return []health.Checker{slot.Checker(name)}
+}
+
+func mux(agg *health.Aggregator, m http.Handler) *http.ServeMux {
+	s := http.NewServeMux()
+	s.Handle("GET /metrics", m)
+	s.Handle("GET /healthz", agg.LiveHandler())
+	s.Handle("GET /readyz", agg.ReadyHandler())
+	return s
+}
+`,
+			},
+			find: true,
+			says: []string{"broken", "ни одной ИМЕНОВАННОЙ проверки"},
+		},
+		{
 			name: "МОЛЧИТ: /readyz только в комментарии, а регистрация на месте",
 			files: map[string]string{
 				"services/quiet/cmd/quiet/diag.go": "// Готовность отдаётся на /readyz, живость на /healthz — разные вопросы.\n" + legitimateService,
