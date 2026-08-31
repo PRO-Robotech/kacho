@@ -78,7 +78,9 @@ deploy/load-tests/restart-verdict-inject.sh
 deploy/scripts/deps-failure-class-inject.sh
 deploy/tests/helm/identity-hook-credential-source-inject.sh
 deploy/tests/helm/identity-mail-lane-guard-inject.sh
-deploy/tests/helm/identity-mail-lane-runtime-inject.shdeploy/tests/helm/identity-session-secret-source-inject.shdeploy/tests/helm/machine-credential-posture-inject.sh
+deploy/tests/helm/identity-mail-lane-runtime-inject.sh
+deploy/tests/helm/identity-session-secret-source-inject.sh
+deploy/tests/helm/machine-credential-posture-inject.sh
 deploy/tests/helm/outcome-contract-inject.sh
 gateway/deploy/revocation_authority_inject.sh
 scripts/ci-local-outcome-inject.sh
