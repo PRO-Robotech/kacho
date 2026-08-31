@@ -47,7 +47,7 @@ func TestRename_MetadataCommittedBeforeDestructiveStep(t *testing.T) {
 	var newNameCommittedAtPurge bool
 	zot.onPurge = func() { newNameCommittedAtPurge = cfg.has("ord/dst") }
 
-	op, err := uc.RenameRepository(aliceCtx(), regID, "ord/src", "ord/dst")
+	op, err := uc.RenameRepository(aliceCtx(), regID, "ord/src", "ord/dst", "")
 	require.NoError(t, err)
 	require.Nil(t, awaitOpDone(t, ops, op.ID).Error)
 
@@ -71,7 +71,7 @@ func TestRename_PurgeFailureLeavesEverythingAddressable(t *testing.T) {
 	}
 	uc := ucWithRegistry(cfg, zot, ops, domain.VisibilityPrivate)
 
-	op, err := uc.RenameRepository(aliceCtx(), regID, "res/src", "res/dst")
+	op, err := uc.RenameRepository(aliceCtx(), regID, "res/src", "res/dst", "")
 	require.NoError(t, err)
 	require.Nil(t, awaitOpDone(t, ops, op.ID).Error,
 		"снятие остатка под старым именем не отменяет состоявшийся перенос")
@@ -98,7 +98,7 @@ func TestRename_CopyFailureDoesNotPoisonRetry(t *testing.T) {
 	}
 	uc := ucWithRegistry(cfg, zot, ops, domain.VisibilityPrivate)
 
-	op, err := uc.RenameRepository(aliceCtx(), regID, "rty/src", "rty/dst")
+	op, err := uc.RenameRepository(aliceCtx(), regID, "rty/src", "rty/dst", "")
 	require.NoError(t, err)
 	require.Nil(t, awaitOpDone(t, ops, op.ID).Error,
 		"повтор после прерванной копии обязан сходиться, а не отвечать «уже существует»")
@@ -123,7 +123,7 @@ func TestRename_IndependentTargetStillCollides(t *testing.T) {
 	}
 	uc := ucWithRegistry(cfg, zot, ops, domain.VisibilityPrivate)
 
-	op, err := uc.RenameRepository(aliceCtx(), regID, "ind/src", "ind/dst")
+	op, err := uc.RenameRepository(aliceCtx(), regID, "ind/src", "ind/dst", "")
 	require.NoError(t, err)
 	d := awaitOpDone(t, ops, op.ID)
 	require.NotNil(t, d.Error)

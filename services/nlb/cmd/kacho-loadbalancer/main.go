@@ -48,6 +48,7 @@ import (
 	"github.com/PRO-Robotech/kacho/pkg/outbox/metrics"
 	"github.com/PRO-Robotech/kacho/pkg/servicehost"
 
+	"github.com/PRO-Robotech/kacho/pkg/observability/health"
 	"github.com/PRO-Robotech/kacho/services/nlb/internal/apps/kacho/config"
 	"github.com/PRO-Robotech/kacho/services/nlb/internal/authzfilter"
 	"github.com/PRO-Robotech/kacho/services/nlb/internal/clients"
@@ -55,7 +56,6 @@ import (
 	geoclient "github.com/PRO-Robotech/kacho/services/nlb/internal/clients/geo"
 	iamclient "github.com/PRO-Robotech/kacho/services/nlb/internal/clients/iam"
 	vpcclient "github.com/PRO-Robotech/kacho/services/nlb/internal/clients/vpc"
-	"github.com/PRO-Robotech/kacho/services/nlb/internal/observability/health"
 	nlbmetrics "github.com/PRO-Robotech/kacho/services/nlb/internal/observability/metrics"
 
 	// dto/type2pb init регистрирует все DTO трансферы (domain ↔ proto) в реестре.

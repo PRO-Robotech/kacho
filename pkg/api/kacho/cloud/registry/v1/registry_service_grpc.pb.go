@@ -128,7 +128,10 @@ type RegistryServiceClient interface {
 	// ПОСЛЕ DeleteRepository catch-all'а → пробуется РАНЬШЕ, не затеняется.
 	DeleteTag(ctx context.Context, in *DeleteTagRequest, opts ...grpc.CallOption) (*operation.Operation, error)
 	// RenameRepository — async, в пределах ОДНОГО реестра (new_name — голое repo-имя;
-	// cross-registry rename структурно невыразим, D-5). Durable → re-key overlay-имя
+	// cross-registry rename структурно невыразим, D-5). Полоса подтверждения:
+	// repo с доказанными потребителями (download_count > 0) БЕЗ confirm_current_name →
+	// FAILED_PRECONDITION с числом скачиваний; confirm_current_name задан и не равен
+	// repository → INVALID_ARGUMENT. Durable → re-key overlay-имя
 	// (UPDATE); ephemeral → auto-promote в durable (INSERT). Engine re-home тегов/
 	// манифестов/referrers, старое имя → 404. Целевое имя занято → ALREADY_EXISTS;
 	// malformed|no-op new_name → INVALID_ARGUMENT; движок недоступен в середине remap →
@@ -390,7 +393,10 @@ type RegistryServiceServer interface {
 	// ПОСЛЕ DeleteRepository catch-all'а → пробуется РАНЬШЕ, не затеняется.
 	DeleteTag(context.Context, *DeleteTagRequest) (*operation.Operation, error)
 	// RenameRepository — async, в пределах ОДНОГО реестра (new_name — голое repo-имя;
-	// cross-registry rename структурно невыразим, D-5). Durable → re-key overlay-имя
+	// cross-registry rename структурно невыразим, D-5). Полоса подтверждения:
+	// repo с доказанными потребителями (download_count > 0) БЕЗ confirm_current_name →
+	// FAILED_PRECONDITION с числом скачиваний; confirm_current_name задан и не равен
+	// repository → INVALID_ARGUMENT. Durable → re-key overlay-имя
 	// (UPDATE); ephemeral → auto-promote в durable (INSERT). Engine re-home тегов/
 	// манифестов/referrers, старое имя → 404. Целевое имя занято → ALREADY_EXISTS;
 	// malformed|no-op new_name → INVALID_ARGUMENT; движок недоступен в середине remap →

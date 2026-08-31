@@ -54,8 +54,10 @@ import (
 	"github.com/PRO-Robotech/kacho/pkg/subscription"
 	"github.com/PRO-Robotech/kacho/services/compute/internal/subscriptionjournal"
 
+	"github.com/PRO-Robotech/kacho/pkg/observability/health"
 	"github.com/PRO-Robotech/kacho/pkg/ownerregister"
 	corequota "github.com/PRO-Robotech/kacho/pkg/quota"
+	"github.com/PRO-Robotech/kacho/pkg/servicecontract"
 	"github.com/PRO-Robotech/kacho/services/compute/internal/apps/kacho/api/guestaccesskey"
 	"github.com/PRO-Robotech/kacho/services/compute/internal/apps/kacho/api/instance"
 	"github.com/PRO-Robotech/kacho/services/compute/internal/apps/kacho/api/machinetype"
@@ -68,7 +70,6 @@ import (
 	"github.com/PRO-Robotech/kacho/services/compute/internal/config"
 	"github.com/PRO-Robotech/kacho/services/compute/internal/fgaintent"
 	"github.com/PRO-Robotech/kacho/services/compute/internal/handler"
-	"github.com/PRO-Robotech/kacho/services/compute/internal/observability/health"
 	computemetrics "github.com/PRO-Robotech/kacho/services/compute/internal/observability/metrics"
 	"github.com/PRO-Robotech/kacho/services/compute/internal/operationresolver"
 	"github.com/PRO-Robotech/kacho/services/compute/internal/ports"
@@ -569,7 +570,7 @@ func validateAuthMode(cfg config.Config, logger *slog.Logger) (productionMode bo
 	// AuthN). Это прямое нарушение security.md «AuthN+AuthZ ВЕЗДЕ» и kacho core rule «production-mode обязателен ВЕЗДЕ»
 	// («production-mode boot-guard fail-closed → refuse-to-start»). В dev аварийный
 	// обход остаётся доступным — там он и задуман.
-	if cfg.AuthZBreakglass && (cfg.AuthMode == "production" || cfg.AuthMode == "production-strict") {
+	if cfg.AuthZBreakglass && cfg.Posture().IsProduction() {
 		return false, fmt.Errorf("production mode (%s): KACHO_COMPUTE_AUTHZ_BREAKGLASS must not be enabled "+
 			"— it bypasses ALL per-RPC authz Check on both listeners (every RPC allowed without IAM "+
 			"authorization); breakglass is a non-production emergency escape only", cfg.AuthMode)
@@ -586,17 +587,30 @@ func validateAuthMode(cfg config.Config, logger *slog.Logger) (productionMode bo
 	// Проверяется ДО разбора режима, рядом с breakglass, по той же причине: иначе
 	// причина утонула бы в жалобах на рёбра, требование mTLS с которых этот же
 	// выключатель и снимает (см. insecureEdgesInProductionStrict).
-	if cfg.SkipPeerValidation && (cfg.AuthMode == "production" || cfg.AuthMode == "production-strict") {
+	if cfg.SkipPeerValidation && cfg.Posture().IsProduction() {
 		return false, fmt.Errorf("production mode (%s): KACHO_COMPUTE_SKIP_PEER_VALIDATION must not be enabled "+
 			"— it disables EVERY cross-service check at once (project existence, zone existence, NIC subnet "+
 			"placement coherence, NIC/volume release on Delete): peers are replaced by no-op stubs for which "+
 			"any foreign id \"exists\"; skipping peer validation is a non-production escape only", cfg.AuthMode)
 	}
 
-	switch cfg.AuthMode {
-	case "dev":
+	// Словарь допустимых значений — НЕ свой: он объявлен в дереве один раз
+	// (`servicecontract.Modes`), и отказ ниже перечисляет ТОТ ЖЕ набор, что у
+	// остальных шести стражей старта. Свой словарь здесь был, и он был одним из
+	// пяти; копии не собираются вместе и друг друга не читают, поэтому расхождение
+	// приходило молча.
+	//
+	// Разбор ЗДЕСЬ, а свич — по ЗНАЧЕНИЮ: ветки посадки перестают быть вторым
+	// перечислением словаря, и появление четвёртой посадки заметит компилятор, а
+	// не оператор на выкатке.
+	mode, merr := servicecontract.ParseMode(cfg.AuthMode)
+	if merr != nil {
+		return false, fmt.Errorf("KACHO_COMPUTE_AUTH_MODE: %w", merr)
+	}
+	switch mode {
+	case servicecontract.ModeDev:
 		productionMode = false
-	case "production":
+	case servicecontract.ModeProduction:
 		productionMode = true
 		// Fail-closed listener gate: оба server-листенера (public :9090 / internal
 		// :9091) принимают forwarded x-kacho-principal-* и доверяют ему на
@@ -622,7 +636,7 @@ func validateAuthMode(cfg config.Config, logger *slog.Logger) (productionMode bo
 			return false, terr
 		}
 		logger.Warn("AuthMode=production: anonymous rejected + server-mTLS listeners + SSL DB + forwarder allow-list + per-object List-filter required")
-	case "production-strict":
+	case servicecontract.ModeProductionStrict:
 		productionMode = true
 		// TLS-check on the actually-dialed transport edges (per-edge mTLS value-
 		// structs). The former server-auth-only IAM/AUTHZ bool knobs wired no live
@@ -638,8 +652,6 @@ func validateAuthMode(cfg config.Config, logger *slog.Logger) (productionMode bo
 			return false, terr
 		}
 		logger.Warn("AuthMode=production-strict: anonymous rejected + per-edge mTLS+SSL + forwarder allow-list + per-object List-filter strictly validated")
-	default:
-		return false, fmt.Errorf("unknown KACHO_COMPUTE_AUTH_MODE=%q (allowed: dev, production, production-strict)", cfg.AuthMode)
 	}
 	if !productionMode {
 		if terr := insecureEdgesInProductionStrict(cfg); terr != nil {
@@ -757,7 +769,7 @@ func requireListFilter(cfg config.Config) error {
 
 // insecureListenersInProduction — non-nil ошибка, если хотя бы один из двух
 // server-листенеров запущен без mTLS. Оба принимают forwarded principal-identity;
-// plaintext на любом даёт subject-spoofing (см. вызов в case "production"). Это
+// plaintext на любом даёт subject-spoofing (см. вызов в боевой ветке свича). Это
 // подмножество insecureEdgesInProductionStrict (только листенеры, без peer-рёбер).
 func insecureListenersInProduction(cfg config.Config) error {
 	var insecure []string

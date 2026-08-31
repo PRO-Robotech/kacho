@@ -23,6 +23,7 @@ import (
 	"github.com/PRO-Robotech/kacho/pkg/grpcclient"
 	"github.com/PRO-Robotech/kacho/pkg/grpcsrv"
 	"github.com/PRO-Robotech/kacho/pkg/observability"
+	"github.com/PRO-Robotech/kacho/pkg/observability/health"
 	"github.com/PRO-Robotech/kacho/pkg/operations"
 	"github.com/PRO-Robotech/kacho/pkg/operations/operationspb"
 	"github.com/PRO-Robotech/kacho/pkg/servicecontract"
@@ -51,7 +52,7 @@ import (
 //
 // Здесь остаётся то, что действительно принадлежит домену: пул, слой доступа к
 // данным, use-cases, разрешитель осиротевших операций, диагностический
-// слушатель и ОБЪЯВЛЕНИЕ о себе — дескриптор.
+// слушатель с разведёнными живостью и готовностью, и ОБЪЯВЛЕНИЕ о себе — дескриптор.
 func runServe(cfg config.Config) error {
 	ctx, cancel := signal.NotifyContext(context.Background(), syscall.SIGTERM, syscall.SIGINT)
 	defer cancel()
@@ -147,7 +148,20 @@ func runServe(cfg config.Config) error {
 	// XC-7, в-1): не gRPC, цепочка другая, и полями общего дескриптора её не
 	// втягивают — иначе дескриптор становится свалкой. Корень приносит сюда
 	// ОБЪЯВЛЕНИЕ, а подъём, самоотчёт и гашение принадлежат профилю.
-	diagDesc, err := describeDiagnosticSurface(cfg.MetricsAddr, metricsAdapter, desc.Spec().Mode, logger)
+	// Готовность СТРОИТСЯ из именованных зависимостей и отдаётся отдельным путём
+	// от живости. Прежде её у сервиса не было вовсе: поверхность обслуживала
+	// только `/metrics`, чарт пробировал открытый сокет, и под рапортовал Ready,
+	// не умея ответить ни на один запрос, — kubelet слал трафик в отказ ещё до
+	// того, как база отозвалась.
+	healthAgg := health.New(buildReadinessCheckers(pool))
+	// Гашение переводит готовность в 503 ДО остановки слушателей: kubelet
+	// перестаёт слать трафик, пока текущие вызовы дорабатывают. Живость при этом
+	// не трогается — иначе завершение читалось бы как смерть процесса.
+	go func() {
+		<-ctx.Done()
+		healthAgg.SetShuttingDown()
+	}()
+	diagDesc, err := describeDiagnosticSurface(cfg.MetricsAddr, metricsAdapter, healthAgg, desc.Spec().Mode, logger)
 	if err != nil {
 		return fmt.Errorf("профиль диагностической поверхности: %w", err)
 	}

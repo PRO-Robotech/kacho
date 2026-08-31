@@ -18,14 +18,28 @@ import (
 	"github.com/PRO-Robotech/kacho/pkg/authz"
 	coredb "github.com/PRO-Robotech/kacho/pkg/db"
 	"github.com/PRO-Robotech/kacho/pkg/grpcsrv"
+	"github.com/PRO-Robotech/kacho/pkg/servicecontract"
 )
 
-// ModeEnum — общий режим работы сервиса (bool → enum).
-type ModeEnum int
+// ModeEnum — посадка процесса. ТИП ОБЩИЙ (`servicecontract.Mode`), и это не
+// сокращение записи: пока у сервиса был свой enum, у него был и свой СЛОВАРЬ
+// значений — а он разошёлся с остальными В ОБЕ СТОРОНЫ.
+//
+// Что было (замер задачи продукта #1656): принимались `development`, `prod` и
+// ПУСТАЯ строка — алиасы, которых не принимал никто из шести соседей; и
+// отвергался `production-strict`, в котором работали все шестеро. Оператор видел
+// это как две противоположные поломки: выравнивание флота на строгой посадке
+// роняло nlb отказом старта, а короткий алиас ронял шестерых и поднимал одного.
+// Единой команды «ужесточить флот» не существовало.
+//
+// Псевдоним типа, а не свой enum: у одного предмета один дом. Имена ниже
+// остаются, потому что читаются из этого пакета сотнями строк — но ЗНАЧЕНИЯ они
+// берут у дома, а не объявляют заново.
+type ModeEnum = servicecontract.Mode
 
 const (
-	// ModeDev — relaxed validation, TLS опционален.
-	ModeDev ModeEnum = iota + 1
+	// ModeDev — relaxed validation, TLS опционален. СТРОГО локальные фикстуры.
+	ModeDev = servicecontract.ModeDev
 	// ModeProduction — TLS обязателен для public listener / peer-вызовов,
 	// FGA endpoint обязателен, Postgres DSN обязателен, пообъектный фильтр
 	// списков включён и fail-closed.
@@ -36,35 +50,30 @@ const (
 	// допускается, в production запрещена»), и по этому описанию три профиля
 	// развёртывания объявляли ключ выключенным. Запрет, которому нечего
 	// запрещать, читается как действующий контроль.
-	ModeProduction
+	ModeProduction = servicecontract.ModeProduction
+	// ModeProductionStrict — боевая посадка, в которой у КАЖДОГО ребра к соседу
+	// требуется взаимная проверка сертификата, а не только шифрование канала.
+	//
+	// Ось названа своя, а не принята «за компанию»: в обычной боевой посадке
+	// ребро считается защищённым и при одностороннем TLS — канал зашифрован, но
+	// СОБЕСЕДНИК себя не доказывает, поэтому дозвонившийся в обход края
+	// принимается как законный сосед. Строгая посадка эту разницу закрывает.
+	// Значение, принятое и ничего не меняющее, было бы «принято-и-проигнорировано»
+	// (`api-conventions.md`) — обещанием возможности, которой нет.
+	ModeProductionStrict = servicecontract.ModeProductionStrict
 )
 
-// String — для логирования / error-сообщений.
-func (m ModeEnum) String() string {
-	switch m {
-	case ModeDev:
-		return "dev"
-	case ModeProduction:
-		return "production"
-	default:
-		return "unknown"
-	}
-}
-
-// ParseMode разбирает строку из YAML / ENV (`dev` / `production`). Регистр
-// игнорируется. Пустая/неуказанная строка → ModeProduction — fail-closed
-// (security.md; RegisterDefaults тоже дефолтит `production`). dev — ЯВНЫЙ
-// opt-in; пустой `mode: ""` не должен молча включать relaxed-режим.
-func ParseMode(s string) (ModeEnum, error) {
-	switch strings.ToLower(strings.TrimSpace(s)) {
-	case "dev", "development":
-		return ModeDev, nil
-	case "", "production", "prod":
-		return ModeProduction, nil
-	default:
-		return 0, fmt.Errorf("invalid mode %q (want dev|production)", s)
-	}
-}
+// ParseMode разбирает строку из YAML / ENV. Разбор НЕ СВОЙ: словарь допустимых
+// написаний объявлен в дереве один раз (`servicecontract.Modes`), и отказ
+// перечисляет тот же набор, что у остальных шести стражей старта.
+//
+// Пустая строка режимом больше не является. Прежде она молча означала
+// `production` — «fail-closed», и это выглядело осторожным; на деле посадка,
+// которую никто не выбрал, есть решение о доступе, принятое никем, и отличить
+// «оператор выбрал боевой режим» от «ключ потерялся при сборке профиля» было
+// нечем. Умолчание при этом никуда не делось: его ставит `RegisterDefaults`
+// (`mode: production`) — то есть выбор остаётся ЯВНЫМ и наблюдаемым в профиле.
+func ParseMode(s string) (ModeEnum, error) { return servicecontract.ParseMode(s) }
 
 // validLogLevels — допустимые значения logger.level.
 var validLogLevels = map[string]struct{}{
@@ -98,7 +107,7 @@ func (c Config) Validate() error {
 	// Стража общая на все семь сервисов (grpcsrv.TrustedForwarders.Require):
 	// одинаковый исход и одинаковый текст отказа, различаются только имена ручек.
 	errs = multierr.Append(errs, c.TrustedForwarders().Require(grpcsrv.ForwarderGate{
-		Production:   c.Mode() == ModeProduction,
+		Production:   c.Mode().IsProduction(),
 		DevTrustAny:  c.Authz.TrustAnyForwarder,
 		SANsKnob:     "authz.trusted-forwarder-sans (env KACHO_NLB_AUTHZ__TRUSTED_FORWARDER_SANS)",
 		TrustAnyKnob: "authz.trust-any-forwarder (env KACHO_NLB_AUTHZ__TRUST_ANY_FORWARDER)",
@@ -199,7 +208,7 @@ func (c Config) Validate() error {
 	// Production transport fail-closed (security.md «AuthN+AuthZ ВЕЗДЕ»): plaintext
 	// listener и insecure peer-вызовы в проде запрещены — boot отвергает insecure
 	// prod-конфиг (не silent insecure-fallback).
-	if mode == ModeProduction {
+	if mode.IsProduction() {
 		// Server listener transport-security: ТОЛЬКО реальный server-cred
 		// grpcsrv.TLSServerCreds(cfg.MTLS.Server) (composition root,
 		// cmd/kacho-loadbalancer/main.go). authn.type=tls — МЁРТВОЕ значение: cfg.Authn
@@ -279,6 +288,18 @@ func (c Config) Validate() error {
 				errs = multierr.Append(errs, fmt.Errorf(
 					"production mode: insecure peer transport on %s edge — set mtls.%s.enable=true or %s.tls=true (plaintext peer dial forbidden)",
 					e.name, e.mtlsKey, e.tlsKey))
+				continue
+			}
+			// Строгая посадка требует ВЗАИМНОЙ проверки сертификата, а не только
+			// шифрования канала: односторонний TLS доказывает, кто СЕРВЕР, и
+			// молчит о том, кто клиент, поэтому дозвонившийся в обход края
+			// принимается ребром как законный сосед.
+			if mode == ModeProductionStrict && !e.mtls {
+				errs = multierr.Append(errs, fmt.Errorf(
+					"production-strict mode: %s peer edge runs one-way TLS — set mtls.%s.enable=true "+
+						"(one-way TLS encrypts the channel but does not prove the CLIENT, so a caller "+
+						"reaching the peer around the edge is accepted as a legitimate neighbour)",
+					e.name, e.mtlsKey))
 			}
 		}
 		// Per-object List authorization fail-closed (security.md, defense-in-depth
@@ -346,9 +367,15 @@ func (c Config) Validate() error {
 // и config-ключи для actionable-текста. Зеркалит peerDialSpecs в composition root
 // (cmd/kacho-loadbalancer/main.go) — там же строятся реальные conn'ы.
 type peerEdge struct {
-	name    string
-	addr    string
-	secure  bool
+	name string
+	addr string
+	// secure — канал защищён хоть чем-то: взаимный либо односторонний TLS.
+	secure bool
+	// mtls — собеседник ДОКАЗЫВАЕТ СЕБЯ. Отдельное поле, а не вывод из secure:
+	// односторонний TLS шифрует канал и молчит о том, кто клиент, поэтому свести
+	// две величины в одну значило бы потерять именно то различие, которое строгая
+	// посадка и требует.
+	mtls    bool
 	mtlsKey string
 	tlsKey  string
 }
@@ -370,24 +397,28 @@ func (c Config) peerEdges() []peerEdge {
 			name:    "vpc",
 			addr:    firstNonEmpty(c.ExtAPI.VPC.Addr, c.ExtAPI.VPC.InternalAddr),
 			secure:  c.MTLS.VPC.Enable || c.ExtAPI.VPC.TLS,
+			mtls:    c.MTLS.VPC.Enable,
 			mtlsKey: "vpc", tlsKey: "vpc",
 		},
 		{
 			name:    "compute",
 			addr:    firstNonEmpty(c.ExtAPI.Compute.Addr, c.ExtAPI.Compute.InternalAddr),
 			secure:  c.MTLS.Compute.Enable || c.ExtAPI.Compute.TLS,
+			mtls:    c.MTLS.Compute.Enable,
 			mtlsKey: "compute", tlsKey: "compute",
 		},
 		{
 			name:    "geo",
 			addr:    firstNonEmpty(c.ExtAPI.Geo.Addr, c.ExtAPI.Geo.InternalAddr),
 			secure:  c.MTLS.Geo.Enable || c.ExtAPI.Geo.TLS,
+			mtls:    c.MTLS.Geo.Enable,
 			mtlsKey: "geo", tlsKey: "geo",
 		},
 		{
 			name:    "iam-project",
 			addr:    firstNonEmpty(c.ExtAPI.IAM.Addr, c.ExtAPI.IAM.InternalAddr),
 			secure:  c.MTLS.IAMProject.Enable || c.ExtAPI.IAM.TLS,
+			mtls:    c.MTLS.IAMProject.Enable,
 			mtlsKey: "iam-project", tlsKey: "iam",
 		},
 	}

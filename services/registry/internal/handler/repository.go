@@ -149,7 +149,7 @@ func (h *RegistryHandler) RenameRepository(ctx context.Context, req *registryv1.
 	if err := h.authz.registryGate(ctx, registryID, relationVCreate); err != nil {
 		return nil, err
 	}
-	op, err := h.uc.RenameRepository(ctx, registryID, repository, req.GetNewName())
+	op, err := h.uc.RenameRepository(ctx, registryID, repository, req.GetNewName(), req.GetConfirmCurrentName())
 	if err != nil {
 		return nil, mapErr(err)
 	}

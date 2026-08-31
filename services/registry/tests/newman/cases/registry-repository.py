@@ -250,6 +250,42 @@ CASES.append(Case(
     ],
 ))
 
+# Полоса подтверждения переименования (#1644). Здесь проверяется то, что
+# ДОСТИЖИМО через край: поле confirm_current_name читается на КАЖДОМ вызове, а не
+# только на опасной полосе. Без этих кейсов поле было бы неотличимо от принятого и
+# выброшенного — и заметить это можно было бы только по последствиям.
+#
+# Полоса «доказанные потребители → 403/400 с величиной» отсюда НЕДОСТИЖИМА: она
+# требует непустого download_count, то есть настоящего `docker pull`, которого у
+# API-суиты нет. Это факт расписания, а не отсутствие проверки: серверная сторона
+# закрыта пробами use-case (rename_confirmation_test.go), а недостающий сквозной
+# кейс назван открытым остатком в
+# services/registry/docs/engineering/architecture/known-divergences.md.
+CASES.append(Case(
+    id="REPO-REN-NEG-BADCONFIRM", title="RenameRepository confirm_current_name != current → 400 (#1644)",
+    classes=["NEG", "VAL"], priority="P1",
+    steps=[
+        *_create_repo("cnf/svc-{{runId}}"),
+        # Частая ошибка: «подтвердил» НОВЫМ именем. Подтверждение, называющее не тот
+        # предмет, подтверждением не является.
+        Step(name="rename-bad-confirm", method="POST", path=_reg_base() + "/cnf/svc-{{runId}}:rename",
+             body={"newName": "cnf/svc2-{{runId}}", "confirmCurrentName": "cnf/svc2-{{runId}}"},
+             test_script=[*assert_status(400), *assert_grpc_code(3, "INVALID_ARGUMENT"),
+                          "pm.test('confirm text', () => pm.expect(pm.response.json().message).to.eql('confirm_current_name must repeat the current repository name'));"]),
+        # Положительный контроль в том же кейсе: без него отказ выше зеленел бы на
+        # крае, который поле вообще не пропускает, — и «прочитано» было бы
+        # неотличимо от «отброшено до сервиса».
+        Step(name="rename-good-confirm", method="POST", path=_reg_base() + "/cnf/svc-{{runId}}:rename",
+             body={"newName": "cnf/svc2-{{runId}}", "confirmCurrentName": "cnf/svc-{{runId}}"},
+             test_script=[*assert_status(200), *assert_operation_envelope(OP_ENVELOPE),
+                          *save_operation_id()]),
+        poll_operation_until_done(),
+        Step(name="rename-confirm-verify", method="GET", path=_reg_base() + "/cnf/svc2-{{runId}}",
+             test_script=[*assert_status(200),
+                          "pm.test('renamed under confirmation', () => pm.expect(pm.response.json().name).to.eql('cnf/svc2-'+pm.environment.get('runId')));"]),
+    ],
+))
+
 # --- ListReferrers ---------------------------------------------------------
 CASES.append(Case(
     id="REPO-REF-EMPTY", title="ListReferrers subject без referrer'ов → [] 200 (C03)",

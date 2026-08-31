@@ -212,15 +212,29 @@ spec:
             # молча стала бы нулём — на нём страж старта отказывает, называя ручку.
             - name: KACHO_STORAGE_SUBSCRIPTION_MAX_STREAMS
               value: "{{ .Values.subscription.maxStreams }}"
+          # ── ЖИВОСТЬ И ГОТОВНОСТЬ — РАЗНЫЕ ВОПРОСЫ, И СПРАШИВАЮТСЯ ОНИ РАЗНЫМ ──
+          #
+          # Живость отвечает «жив ли процесс»; готовность — «может ли он
+          # ОБСЛУЖИВАТЬ». Перечень зависимостей называет САМ ПРОЦЕСС именованными
+          # проверками — здесь он намеренно не переписывается: второе место об
+          # одном предмете разошлось бы с первым молча. Прежде в слоте готовности
+          # стояла живость, и обещанного NotReady не наступало ни при каких
+          # условиях: под рапортовал Ready, отвергая каждый вызов, а kubelet слал
+          # в него трафик.
+          #
+          # Пробируется то, что процесс СТРОИТ (`/readyz` — набор именованных
+          # проверок зависимостей); совпадение двух полос держит гейт дерева
+          # `TestReadinessProbeAsksWhatTheServiceActuallyServes`.
           readinessProbe:
             httpGet:
-              path: /healthz
+              path: /readyz
               port: {{ .Values.ports.metrics }}
             initialDelaySeconds: 3
             periodSeconds: 10
           livenessProbe:
-            tcpSocket:
-              port: {{ .Values.ports.public }}
+            httpGet:
+              path: /healthz
+              port: {{ .Values.ports.metrics }}
             initialDelaySeconds: 5
             periodSeconds: 15
           resources:

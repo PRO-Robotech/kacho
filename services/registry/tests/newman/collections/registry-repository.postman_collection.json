@@ -166,7 +166,7 @@
           ]
         },
         {
-          "name": "reg-capture-rya34",
+          "name": "reg-capture-rya36",
           "request": {
             "method": "GET",
             "header": [
@@ -468,7 +468,7 @@
           ]
         },
         {
-          "name": "repo-capture-rya35",
+          "name": "repo-capture-rya37",
           "request": {
             "method": "GET",
             "header": [
@@ -825,7 +825,7 @@
           ]
         },
         {
-          "name": "repo-capture-rya36",
+          "name": "repo-capture-rya38",
           "request": {
             "method": "GET",
             "header": [
@@ -1213,7 +1213,7 @@
           ]
         },
         {
-          "name": "repo-capture-rya37",
+          "name": "repo-capture-rya39",
           "request": {
             "method": "GET",
             "header": [
@@ -1663,7 +1663,7 @@
           ]
         },
         {
-          "name": "repo-capture-rya38",
+          "name": "repo-capture-rya40",
           "request": {
             "method": "GET",
             "header": [
@@ -2013,7 +2013,7 @@
           ]
         },
         {
-          "name": "repo-capture-rya39",
+          "name": "repo-capture-rya41",
           "request": {
             "method": "GET",
             "header": [
@@ -2515,7 +2515,7 @@
           ]
         },
         {
-          "name": "repo-capture-rya40",
+          "name": "repo-capture-rya42",
           "request": {
             "method": "GET",
             "header": [
@@ -3007,7 +3007,7 @@
           ]
         },
         {
-          "name": "repo-capture-rya41",
+          "name": "repo-capture-rya43",
           "request": {
             "method": "GET",
             "header": [
@@ -3206,8 +3206,8 @@
       ]
     },
     {
-      "name": "REPO-REF-EMPTY — ListReferrers subject без referrer'ов → [] 200 (C03)",
-      "description": "class:CRUD | priority:P2",
+      "name": "REPO-REN-NEG-BADCONFIRM — RenameRepository confirm_current_name != current → 400 (#1644)",
+      "description": "class:NEG | class:VAL | priority:P1",
       "item": [
         {
           "name": "repo-create-rya16",
@@ -3234,7 +3234,7 @@
             },
             "body": {
               "mode": "raw",
-              "raw": "{\"repository\": \"ref/svc-{{runId}}\", \"description\": \"api service images\", \"labels\": {\"team\": \"core\"}}",
+              "raw": "{\"repository\": \"cnf/svc-{{runId}}\", \"description\": \"api service images\", \"labels\": {\"team\": \"core\"}}",
               "options": {
                 "raw": {
                   "language": "json"
@@ -3304,686 +3304,6 @@
         },
         {
           "name": "poll-op-12",
-          "request": {
-            "method": "GET",
-            "header": [
-              {
-                "key": "Content-Type",
-                "value": "application/json"
-              }
-            ],
-            "url": {
-              "raw": "{{baseUrl}}/operations/{{opId}}",
-              "host": [
-                "{{baseUrl}}"
-              ],
-              "path": [
-                "operations",
-                "{{opId}}"
-              ]
-            }
-          },
-          "event": [
-            {
-              "listen": "test",
-              "script": {
-                "type": "text/javascript",
-                "exec": [
-                  "if (!pm.environment.get('opId')) {",
-                  "  pm.environment.unset('_pollCount');",
-                  "  return;",
-                  "}",
-                  "pm.test('poll status 200', () => pm.expect(pm.response.code, pm.response.text()).to.eql(200));",
-                  "if (pm.response.code !== 200) {",
-                  "  pm.environment.unset('_pollCount');",
-                  "  return;",
-                  "}",
-                  "const j = pm.response.json();",
-                  "const pc = parseInt(pm.environment.get('_pollCount') || '0', 10);",
-                  "if (!j.done && pc < 60) {",
-                  "  pm.environment.set('_pollCount', String(pc + 1));",
-                  "  const _pd = Date.now(); while (Date.now() - _pd < 500) { /* inter-poll delay */ }",
-                  "  pm.execution.setNextRequest(pm.info.requestName);",
-                  "  return;",
-                  "}",
-                  "pm.environment.unset('_pollCount');",
-                  "pm.test('operation done', () => pm.expect(j.done, JSON.stringify(j)).to.eql(true));",
-                  "if (j.error) pm.environment.set('lastOpError', JSON.stringify(j.error));",
-                  "else pm.environment.unset('lastOpError');",
-                  "if (j.response) pm.environment.set('lastOpResponse', JSON.stringify(j.response));"
-                ]
-              }
-            }
-          ]
-        },
-        {
-          "name": "repo-capture-rya42",
-          "request": {
-            "method": "GET",
-            "header": [
-              {
-                "key": "Content-Type",
-                "value": "application/json"
-              }
-            ],
-            "url": {
-              "raw": "{{baseUrl}}/operations/{{opId}}",
-              "host": [
-                "{{baseUrl}}"
-              ],
-              "path": [
-                "operations",
-                "{{opId}}"
-              ]
-            }
-          },
-          "event": [
-            {
-              "listen": "test",
-              "script": {
-                "type": "text/javascript",
-                "exec": [
-                  "// bounded read-your-writes retry over the owner-tuple materialization window",
-                  "// (opgate removed -> eventual-consistency); retries SELF only on 403/404.",
-                  "// ПОЛОСА — синхронный отказ ЭТОГО шага. У асинхронной мутации отказ ВЛАДЕЛЬЦА",
-                  "// приезжает внутри Operation и сюда НЕ попадает: нужен прогрев чтением.",
-                  "",
-                  "// Ждать можно ПРАВА на существующее имя, а не появление самого имени: адрес,",
-                  "// собранный из незахваченной переменной, окно видимости не наполнит никогда.",
-                  "const _rpath = ((pm.request.url && pm.request.url.path) || []).map(function (s) {",
-                  "  return String(s && s.value !== undefined ? s.value : s);",
-                  "});",
-                  "const _rblank = _rpath.some(function (v) {",
-                  "  if (v === '') { return true; }",
-                  "  var _d = v; try { _d = decodeURIComponent(v); } catch (e) { _d = v; }",
-                  "  return /\\{\\{[^}]*\\}\\}/.test(_d);",
-                  "});",
-                  "if (_rblank) {",
-                  "  pm.environment.unset('_authRetryCount');",
-                  "  pm.environment.unset('_authRetryStarted');",
-                  "  pm.test('step addresses a captured variable', function () {",
-                  "    pm.expect.fail('адрес шага собран из НЕЗАХВАЧЕННОЙ переменной (/' + _rpath.join('/') +",
-                  "      '): предыдущий шаг не захватил её, повторять нечего');",
-                  "  });",
-                  "}",
-                  "if (pm.environment.get('_authRetryStarted') !== pm.info.requestName) {",
-                  "  pm.environment.set('_authRetryCount', '0');",
-                  "  pm.environment.set('_authRetryStarted', pm.info.requestName);",
-                  "}",
-                  "const _arc = parseInt(pm.environment.get('_authRetryCount') || '0', 10);",
-                  "if (!_rblank && [403,404].includes(pm.response.code) && _arc < 80) {",
-                  "  pm.environment.set('_authRetryCount', String(_arc + 1));",
-                  "  const _ard = Date.now(); while (Date.now() - _ard < 600) { /* owner-tuple materialization wait */ }",
-                  "  pm.execution.setNextRequest(pm.info.requestName);",
-                  "  return;",
-                  "}",
-                  "pm.environment.unset('_authRetryCount');",
-                  "pm.environment.unset('_authRetryStarted');",
-                  "pm.test('status 200', () => pm.expect(pm.response.code, JSON.stringify(pm.response.text())).to.eql(200));",
-                  "const r=(pm.response.json().response)||{};",
-                  "pm.test('op ok', () => pm.expect(pm.environment.get('lastOpError')||'').to.eql(''));"
-                ]
-              }
-            }
-          ]
-        },
-        {
-          "name": "repo-warm-rya17",
-          "request": {
-            "method": "GET",
-            "header": [
-              {
-                "key": "Content-Type",
-                "value": "application/json"
-              }
-            ],
-            "url": {
-              "raw": "{{baseUrl}}/registry/v1/registries/{{repoRegId}}/repositories/ref/svc-{{runId}}",
-              "host": [
-                "{{baseUrl}}"
-              ],
-              "path": [
-                "registry",
-                "v1",
-                "registries",
-                "{{repoRegId}}",
-                "repositories",
-                "ref",
-                "svc-{{runId}}"
-              ]
-            }
-          },
-          "event": [
-            {
-              "listen": "test",
-              "script": {
-                "type": "text/javascript",
-                "exec": [
-                  "// bounded read-your-writes retry over the owner-tuple materialization window",
-                  "// (opgate removed -> eventual-consistency); retries SELF only on 403/404.",
-                  "// ПОЛОСА — синхронный отказ ЭТОГО шага. У асинхронной мутации отказ ВЛАДЕЛЬЦА",
-                  "// приезжает внутри Operation и сюда НЕ попадает: нужен прогрев чтением.",
-                  "",
-                  "// Ждать можно ПРАВА на существующее имя, а не появление самого имени: адрес,",
-                  "// собранный из незахваченной переменной, окно видимости не наполнит никогда.",
-                  "const _rpath = ((pm.request.url && pm.request.url.path) || []).map(function (s) {",
-                  "  return String(s && s.value !== undefined ? s.value : s);",
-                  "});",
-                  "const _rblank = _rpath.some(function (v) {",
-                  "  if (v === '') { return true; }",
-                  "  var _d = v; try { _d = decodeURIComponent(v); } catch (e) { _d = v; }",
-                  "  return /\\{\\{[^}]*\\}\\}/.test(_d);",
-                  "});",
-                  "if (_rblank) {",
-                  "  pm.environment.unset('_authRetryCount');",
-                  "  pm.environment.unset('_authRetryStarted');",
-                  "  pm.test('step addresses a captured variable', function () {",
-                  "    pm.expect.fail('адрес шага собран из НЕЗАХВАЧЕННОЙ переменной (/' + _rpath.join('/') +",
-                  "      '): предыдущий шаг не захватил её, повторять нечего');",
-                  "  });",
-                  "}",
-                  "if (pm.environment.get('_authRetryStarted') !== pm.info.requestName) {",
-                  "  pm.environment.set('_authRetryCount', '0');",
-                  "  pm.environment.set('_authRetryStarted', pm.info.requestName);",
-                  "}",
-                  "const _arc = parseInt(pm.environment.get('_authRetryCount') || '0', 10);",
-                  "if (!_rblank && [403,404].includes(pm.response.code) && _arc < 80) {",
-                  "  pm.environment.set('_authRetryCount', String(_arc + 1));",
-                  "  const _ard = Date.now(); while (Date.now() - _ard < 600) { /* owner-tuple materialization wait */ }",
-                  "  pm.execution.setNextRequest(pm.info.requestName);",
-                  "  return;",
-                  "}",
-                  "pm.environment.unset('_authRetryCount');",
-                  "pm.environment.unset('_authRetryStarted');",
-                  "pm.test('status 200', () => pm.expect(pm.response.code, JSON.stringify(pm.response.text())).to.eql(200));"
-                ]
-              }
-            }
-          ]
-        },
-        {
-          "name": "referrers-empty",
-          "request": {
-            "method": "GET",
-            "header": [
-              {
-                "key": "Content-Type",
-                "value": "application/json"
-              }
-            ],
-            "url": {
-              "raw": "{{baseUrl}}/registry/v1/registries/{{repoRegId}}/repositories/ref/svc-{{runId}}/referrers?subjectDigest=sha256:eeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeee",
-              "host": [
-                "{{baseUrl}}"
-              ],
-              "path": [
-                "registry",
-                "v1",
-                "registries",
-                "{{repoRegId}}",
-                "repositories",
-                "ref",
-                "svc-{{runId}}",
-                "referrers?subjectDigest=sha256:eeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeee"
-              ]
-            }
-          },
-          "event": [
-            {
-              "listen": "test",
-              "script": {
-                "type": "text/javascript",
-                "exec": [
-                  "pm.test('status 200', () => pm.expect(pm.response.code, JSON.stringify(pm.response.text())).to.eql(200));",
-                  "pm.test('empty referrers []', () => pm.expect((pm.response.json().referrers||[]).length).to.eql(0));"
-                ]
-              }
-            }
-          ]
-        }
-      ]
-    },
-    {
-      "name": "REPO-REF-NEG-BADDIGEST — ListReferrers malformed subject_digest → 400 (C04)",
-      "description": "class:NEG | class:VAL | priority:P1",
-      "item": [
-        {
-          "name": "repo-create-rya18",
-          "request": {
-            "method": "POST",
-            "header": [
-              {
-                "key": "Content-Type",
-                "value": "application/json"
-              }
-            ],
-            "url": {
-              "raw": "{{baseUrl}}/registry/v1/registries/{{repoRegId}}/repositories",
-              "host": [
-                "{{baseUrl}}"
-              ],
-              "path": [
-                "registry",
-                "v1",
-                "registries",
-                "{{repoRegId}}",
-                "repositories"
-              ]
-            },
-            "body": {
-              "mode": "raw",
-              "raw": "{\"repository\": \"refbad/svc-{{runId}}\", \"description\": \"api service images\", \"labels\": {\"team\": \"core\"}}",
-              "options": {
-                "raw": {
-                  "language": "json"
-                }
-              }
-            }
-          },
-          "event": [
-            {
-              "listen": "test",
-              "script": {
-                "type": "text/javascript",
-                "exec": [
-                  "// bounded read-your-writes retry over the owner-tuple materialization window",
-                  "// (opgate removed -> eventual-consistency); retries SELF only on 403/404.",
-                  "// ПОЛОСА — синхронный отказ ЭТОГО шага. У асинхронной мутации отказ ВЛАДЕЛЬЦА",
-                  "// приезжает внутри Operation и сюда НЕ попадает: нужен прогрев чтением.",
-                  "",
-                  "// Ждать можно ПРАВА на существующее имя, а не появление самого имени: адрес,",
-                  "// собранный из незахваченной переменной, окно видимости не наполнит никогда.",
-                  "const _rpath = ((pm.request.url && pm.request.url.path) || []).map(function (s) {",
-                  "  return String(s && s.value !== undefined ? s.value : s);",
-                  "});",
-                  "const _rblank = _rpath.some(function (v) {",
-                  "  if (v === '') { return true; }",
-                  "  var _d = v; try { _d = decodeURIComponent(v); } catch (e) { _d = v; }",
-                  "  return /\\{\\{[^}]*\\}\\}/.test(_d);",
-                  "});",
-                  "if (_rblank) {",
-                  "  pm.environment.unset('_authRetryCount');",
-                  "  pm.environment.unset('_authRetryStarted');",
-                  "  pm.test('step addresses a captured variable', function () {",
-                  "    pm.expect.fail('адрес шага собран из НЕЗАХВАЧЕННОЙ переменной (/' + _rpath.join('/') +",
-                  "      '): предыдущий шаг не захватил её, повторять нечего');",
-                  "  });",
-                  "}",
-                  "if (pm.environment.get('_authRetryStarted') !== pm.info.requestName) {",
-                  "  pm.environment.set('_authRetryCount', '0');",
-                  "  pm.environment.set('_authRetryStarted', pm.info.requestName);",
-                  "}",
-                  "const _arc = parseInt(pm.environment.get('_authRetryCount') || '0', 10);",
-                  "if (!_rblank && [403,404].includes(pm.response.code) && _arc < 80) {",
-                  "  pm.environment.set('_authRetryCount', String(_arc + 1));",
-                  "  const _ard = Date.now(); while (Date.now() - _ard < 600) { /* owner-tuple materialization wait */ }",
-                  "  pm.execution.setNextRequest(pm.info.requestName);",
-                  "  return;",
-                  "}",
-                  "pm.environment.unset('_authRetryCount');",
-                  "pm.environment.unset('_authRetryStarted');",
-                  "pm.test('status 200', () => pm.expect(pm.response.code, JSON.stringify(pm.response.text())).to.eql(200));",
-                  "pm.test('Operation envelope returned', () => {",
-                  "  const j = pm.response.json();",
-                  "  pm.expect(j.id, 'operation.id').to.match(/^(rop|reo)[a-z0-9]+$/);",
-                  "  pm.expect(j.metadata, 'operation.metadata').to.be.an('object');",
-                  "});",
-                  "pm.environment.unset('opId');",
-                  "pm.environment.set('opId', '');",
-                  "try {",
-                  "  const j = pm.response.json();",
-                  "  const v = (j.id);",
-                  "  if (v !== undefined && v !== null) pm.environment.set('opId', String(v));",
-                  "} catch (e) {}"
-                ]
-              }
-            }
-          ]
-        },
-        {
-          "name": "poll-op-13",
-          "request": {
-            "method": "GET",
-            "header": [
-              {
-                "key": "Content-Type",
-                "value": "application/json"
-              }
-            ],
-            "url": {
-              "raw": "{{baseUrl}}/operations/{{opId}}",
-              "host": [
-                "{{baseUrl}}"
-              ],
-              "path": [
-                "operations",
-                "{{opId}}"
-              ]
-            }
-          },
-          "event": [
-            {
-              "listen": "test",
-              "script": {
-                "type": "text/javascript",
-                "exec": [
-                  "if (!pm.environment.get('opId')) {",
-                  "  pm.environment.unset('_pollCount');",
-                  "  return;",
-                  "}",
-                  "pm.test('poll status 200', () => pm.expect(pm.response.code, pm.response.text()).to.eql(200));",
-                  "if (pm.response.code !== 200) {",
-                  "  pm.environment.unset('_pollCount');",
-                  "  return;",
-                  "}",
-                  "const j = pm.response.json();",
-                  "const pc = parseInt(pm.environment.get('_pollCount') || '0', 10);",
-                  "if (!j.done && pc < 60) {",
-                  "  pm.environment.set('_pollCount', String(pc + 1));",
-                  "  const _pd = Date.now(); while (Date.now() - _pd < 500) { /* inter-poll delay */ }",
-                  "  pm.execution.setNextRequest(pm.info.requestName);",
-                  "  return;",
-                  "}",
-                  "pm.environment.unset('_pollCount');",
-                  "pm.test('operation done', () => pm.expect(j.done, JSON.stringify(j)).to.eql(true));",
-                  "if (j.error) pm.environment.set('lastOpError', JSON.stringify(j.error));",
-                  "else pm.environment.unset('lastOpError');",
-                  "if (j.response) pm.environment.set('lastOpResponse', JSON.stringify(j.response));"
-                ]
-              }
-            }
-          ]
-        },
-        {
-          "name": "repo-capture-rya43",
-          "request": {
-            "method": "GET",
-            "header": [
-              {
-                "key": "Content-Type",
-                "value": "application/json"
-              }
-            ],
-            "url": {
-              "raw": "{{baseUrl}}/operations/{{opId}}",
-              "host": [
-                "{{baseUrl}}"
-              ],
-              "path": [
-                "operations",
-                "{{opId}}"
-              ]
-            }
-          },
-          "event": [
-            {
-              "listen": "test",
-              "script": {
-                "type": "text/javascript",
-                "exec": [
-                  "// bounded read-your-writes retry over the owner-tuple materialization window",
-                  "// (opgate removed -> eventual-consistency); retries SELF only on 403/404.",
-                  "// ПОЛОСА — синхронный отказ ЭТОГО шага. У асинхронной мутации отказ ВЛАДЕЛЬЦА",
-                  "// приезжает внутри Operation и сюда НЕ попадает: нужен прогрев чтением.",
-                  "",
-                  "// Ждать можно ПРАВА на существующее имя, а не появление самого имени: адрес,",
-                  "// собранный из незахваченной переменной, окно видимости не наполнит никогда.",
-                  "const _rpath = ((pm.request.url && pm.request.url.path) || []).map(function (s) {",
-                  "  return String(s && s.value !== undefined ? s.value : s);",
-                  "});",
-                  "const _rblank = _rpath.some(function (v) {",
-                  "  if (v === '') { return true; }",
-                  "  var _d = v; try { _d = decodeURIComponent(v); } catch (e) { _d = v; }",
-                  "  return /\\{\\{[^}]*\\}\\}/.test(_d);",
-                  "});",
-                  "if (_rblank) {",
-                  "  pm.environment.unset('_authRetryCount');",
-                  "  pm.environment.unset('_authRetryStarted');",
-                  "  pm.test('step addresses a captured variable', function () {",
-                  "    pm.expect.fail('адрес шага собран из НЕЗАХВАЧЕННОЙ переменной (/' + _rpath.join('/') +",
-                  "      '): предыдущий шаг не захватил её, повторять нечего');",
-                  "  });",
-                  "}",
-                  "if (pm.environment.get('_authRetryStarted') !== pm.info.requestName) {",
-                  "  pm.environment.set('_authRetryCount', '0');",
-                  "  pm.environment.set('_authRetryStarted', pm.info.requestName);",
-                  "}",
-                  "const _arc = parseInt(pm.environment.get('_authRetryCount') || '0', 10);",
-                  "if (!_rblank && [403,404].includes(pm.response.code) && _arc < 80) {",
-                  "  pm.environment.set('_authRetryCount', String(_arc + 1));",
-                  "  const _ard = Date.now(); while (Date.now() - _ard < 600) { /* owner-tuple materialization wait */ }",
-                  "  pm.execution.setNextRequest(pm.info.requestName);",
-                  "  return;",
-                  "}",
-                  "pm.environment.unset('_authRetryCount');",
-                  "pm.environment.unset('_authRetryStarted');",
-                  "pm.test('status 200', () => pm.expect(pm.response.code, JSON.stringify(pm.response.text())).to.eql(200));",
-                  "const r=(pm.response.json().response)||{};",
-                  "pm.test('op ok', () => pm.expect(pm.environment.get('lastOpError')||'').to.eql(''));"
-                ]
-              }
-            }
-          ]
-        },
-        {
-          "name": "repo-warm-rya19",
-          "request": {
-            "method": "GET",
-            "header": [
-              {
-                "key": "Content-Type",
-                "value": "application/json"
-              }
-            ],
-            "url": {
-              "raw": "{{baseUrl}}/registry/v1/registries/{{repoRegId}}/repositories/refbad/svc-{{runId}}",
-              "host": [
-                "{{baseUrl}}"
-              ],
-              "path": [
-                "registry",
-                "v1",
-                "registries",
-                "{{repoRegId}}",
-                "repositories",
-                "refbad",
-                "svc-{{runId}}"
-              ]
-            }
-          },
-          "event": [
-            {
-              "listen": "test",
-              "script": {
-                "type": "text/javascript",
-                "exec": [
-                  "// bounded read-your-writes retry over the owner-tuple materialization window",
-                  "// (opgate removed -> eventual-consistency); retries SELF only on 403/404.",
-                  "// ПОЛОСА — синхронный отказ ЭТОГО шага. У асинхронной мутации отказ ВЛАДЕЛЬЦА",
-                  "// приезжает внутри Operation и сюда НЕ попадает: нужен прогрев чтением.",
-                  "",
-                  "// Ждать можно ПРАВА на существующее имя, а не появление самого имени: адрес,",
-                  "// собранный из незахваченной переменной, окно видимости не наполнит никогда.",
-                  "const _rpath = ((pm.request.url && pm.request.url.path) || []).map(function (s) {",
-                  "  return String(s && s.value !== undefined ? s.value : s);",
-                  "});",
-                  "const _rblank = _rpath.some(function (v) {",
-                  "  if (v === '') { return true; }",
-                  "  var _d = v; try { _d = decodeURIComponent(v); } catch (e) { _d = v; }",
-                  "  return /\\{\\{[^}]*\\}\\}/.test(_d);",
-                  "});",
-                  "if (_rblank) {",
-                  "  pm.environment.unset('_authRetryCount');",
-                  "  pm.environment.unset('_authRetryStarted');",
-                  "  pm.test('step addresses a captured variable', function () {",
-                  "    pm.expect.fail('адрес шага собран из НЕЗАХВАЧЕННОЙ переменной (/' + _rpath.join('/') +",
-                  "      '): предыдущий шаг не захватил её, повторять нечего');",
-                  "  });",
-                  "}",
-                  "if (pm.environment.get('_authRetryStarted') !== pm.info.requestName) {",
-                  "  pm.environment.set('_authRetryCount', '0');",
-                  "  pm.environment.set('_authRetryStarted', pm.info.requestName);",
-                  "}",
-                  "const _arc = parseInt(pm.environment.get('_authRetryCount') || '0', 10);",
-                  "if (!_rblank && [403,404].includes(pm.response.code) && _arc < 80) {",
-                  "  pm.environment.set('_authRetryCount', String(_arc + 1));",
-                  "  const _ard = Date.now(); while (Date.now() - _ard < 600) { /* owner-tuple materialization wait */ }",
-                  "  pm.execution.setNextRequest(pm.info.requestName);",
-                  "  return;",
-                  "}",
-                  "pm.environment.unset('_authRetryCount');",
-                  "pm.environment.unset('_authRetryStarted');",
-                  "pm.test('status 200', () => pm.expect(pm.response.code, JSON.stringify(pm.response.text())).to.eql(200));"
-                ]
-              }
-            }
-          ]
-        },
-        {
-          "name": "referrers-bad",
-          "request": {
-            "method": "GET",
-            "header": [
-              {
-                "key": "Content-Type",
-                "value": "application/json"
-              }
-            ],
-            "url": {
-              "raw": "{{baseUrl}}/registry/v1/registries/{{repoRegId}}/repositories/refbad/svc-{{runId}}/referrers?subjectDigest=not-a-digest",
-              "host": [
-                "{{baseUrl}}"
-              ],
-              "path": [
-                "registry",
-                "v1",
-                "registries",
-                "{{repoRegId}}",
-                "repositories",
-                "refbad",
-                "svc-{{runId}}",
-                "referrers?subjectDigest=not-a-digest"
-              ]
-            }
-          },
-          "event": [
-            {
-              "listen": "test",
-              "script": {
-                "type": "text/javascript",
-                "exec": [
-                  "pm.test('status 400', () => pm.expect(pm.response.code, JSON.stringify(pm.response.text())).to.eql(400));",
-                  "pm.test('grpc code 3 (INVALID_ARGUMENT)', () => {",
-                  "  let j; try { j = pm.response.json(); } catch (e) { j = {}; }",
-                  "  pm.expect(j.code, JSON.stringify(j)).to.eql(3);",
-                  "});",
-                  "pm.test('invalid digest text', () => pm.expect(pm.response.json().message).to.include('invalid subject digest'));"
-                ]
-              }
-            }
-          ]
-        }
-      ]
-    },
-    {
-      "name": "REPO-CR-NEG-DUP — CreateRepository duplicate (registryId,name) → sync 409 ALREADY_EXISTS \"repository already exists\" (A02, DB UNIQUE)",
-      "description": "class:NEG | class:CONF | class:IDEM | priority:P1",
-      "item": [
-        {
-          "name": "repo-create-rya20",
-          "request": {
-            "method": "POST",
-            "header": [
-              {
-                "key": "Content-Type",
-                "value": "application/json"
-              }
-            ],
-            "url": {
-              "raw": "{{baseUrl}}/registry/v1/registries/{{repoRegId}}/repositories",
-              "host": [
-                "{{baseUrl}}"
-              ],
-              "path": [
-                "registry",
-                "v1",
-                "registries",
-                "{{repoRegId}}",
-                "repositories"
-              ]
-            },
-            "body": {
-              "mode": "raw",
-              "raw": "{\"repository\": \"dup/svc-{{runId}}\", \"description\": \"api service images\", \"labels\": {\"team\": \"core\"}}",
-              "options": {
-                "raw": {
-                  "language": "json"
-                }
-              }
-            }
-          },
-          "event": [
-            {
-              "listen": "test",
-              "script": {
-                "type": "text/javascript",
-                "exec": [
-                  "// bounded read-your-writes retry over the owner-tuple materialization window",
-                  "// (opgate removed -> eventual-consistency); retries SELF only on 403/404.",
-                  "// ПОЛОСА — синхронный отказ ЭТОГО шага. У асинхронной мутации отказ ВЛАДЕЛЬЦА",
-                  "// приезжает внутри Operation и сюда НЕ попадает: нужен прогрев чтением.",
-                  "",
-                  "// Ждать можно ПРАВА на существующее имя, а не появление самого имени: адрес,",
-                  "// собранный из незахваченной переменной, окно видимости не наполнит никогда.",
-                  "const _rpath = ((pm.request.url && pm.request.url.path) || []).map(function (s) {",
-                  "  return String(s && s.value !== undefined ? s.value : s);",
-                  "});",
-                  "const _rblank = _rpath.some(function (v) {",
-                  "  if (v === '') { return true; }",
-                  "  var _d = v; try { _d = decodeURIComponent(v); } catch (e) { _d = v; }",
-                  "  return /\\{\\{[^}]*\\}\\}/.test(_d);",
-                  "});",
-                  "if (_rblank) {",
-                  "  pm.environment.unset('_authRetryCount');",
-                  "  pm.environment.unset('_authRetryStarted');",
-                  "  pm.test('step addresses a captured variable', function () {",
-                  "    pm.expect.fail('адрес шага собран из НЕЗАХВАЧЕННОЙ переменной (/' + _rpath.join('/') +",
-                  "      '): предыдущий шаг не захватил её, повторять нечего');",
-                  "  });",
-                  "}",
-                  "if (pm.environment.get('_authRetryStarted') !== pm.info.requestName) {",
-                  "  pm.environment.set('_authRetryCount', '0');",
-                  "  pm.environment.set('_authRetryStarted', pm.info.requestName);",
-                  "}",
-                  "const _arc = parseInt(pm.environment.get('_authRetryCount') || '0', 10);",
-                  "if (!_rblank && [403,404].includes(pm.response.code) && _arc < 80) {",
-                  "  pm.environment.set('_authRetryCount', String(_arc + 1));",
-                  "  const _ard = Date.now(); while (Date.now() - _ard < 600) { /* owner-tuple materialization wait */ }",
-                  "  pm.execution.setNextRequest(pm.info.requestName);",
-                  "  return;",
-                  "}",
-                  "pm.environment.unset('_authRetryCount');",
-                  "pm.environment.unset('_authRetryStarted');",
-                  "pm.test('status 200', () => pm.expect(pm.response.code, JSON.stringify(pm.response.text())).to.eql(200));",
-                  "pm.test('Operation envelope returned', () => {",
-                  "  const j = pm.response.json();",
-                  "  pm.expect(j.id, 'operation.id').to.match(/^(rop|reo)[a-z0-9]+$/);",
-                  "  pm.expect(j.metadata, 'operation.metadata').to.be.an('object');",
-                  "});",
-                  "pm.environment.unset('opId');",
-                  "pm.environment.set('opId', '');",
-                  "try {",
-                  "  const j = pm.response.json();",
-                  "  const v = (j.id);",
-                  "  if (v !== undefined && v !== null) pm.environment.set('opId', String(v));",
-                  "} catch (e) {}"
-                ]
-              }
-            }
-          ]
-        },
-        {
-          "name": "poll-op-14",
           "request": {
             "method": "GET",
             "header": [
@@ -4108,7 +3428,1189 @@
           ]
         },
         {
+          "name": "repo-warm-rya17",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/registry/v1/registries/{{repoRegId}}/repositories/cnf/svc-{{runId}}",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "registry",
+                "v1",
+                "registries",
+                "{{repoRegId}}",
+                "repositories",
+                "cnf",
+                "svc-{{runId}}"
+              ]
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "// bounded read-your-writes retry over the owner-tuple materialization window",
+                  "// (opgate removed -> eventual-consistency); retries SELF only on 403/404.",
+                  "// ПОЛОСА — синхронный отказ ЭТОГО шага. У асинхронной мутации отказ ВЛАДЕЛЬЦА",
+                  "// приезжает внутри Operation и сюда НЕ попадает: нужен прогрев чтением.",
+                  "",
+                  "// Ждать можно ПРАВА на существующее имя, а не появление самого имени: адрес,",
+                  "// собранный из незахваченной переменной, окно видимости не наполнит никогда.",
+                  "const _rpath = ((pm.request.url && pm.request.url.path) || []).map(function (s) {",
+                  "  return String(s && s.value !== undefined ? s.value : s);",
+                  "});",
+                  "const _rblank = _rpath.some(function (v) {",
+                  "  if (v === '') { return true; }",
+                  "  var _d = v; try { _d = decodeURIComponent(v); } catch (e) { _d = v; }",
+                  "  return /\\{\\{[^}]*\\}\\}/.test(_d);",
+                  "});",
+                  "if (_rblank) {",
+                  "  pm.environment.unset('_authRetryCount');",
+                  "  pm.environment.unset('_authRetryStarted');",
+                  "  pm.test('step addresses a captured variable', function () {",
+                  "    pm.expect.fail('адрес шага собран из НЕЗАХВАЧЕННОЙ переменной (/' + _rpath.join('/') +",
+                  "      '): предыдущий шаг не захватил её, повторять нечего');",
+                  "  });",
+                  "}",
+                  "if (pm.environment.get('_authRetryStarted') !== pm.info.requestName) {",
+                  "  pm.environment.set('_authRetryCount', '0');",
+                  "  pm.environment.set('_authRetryStarted', pm.info.requestName);",
+                  "}",
+                  "const _arc = parseInt(pm.environment.get('_authRetryCount') || '0', 10);",
+                  "if (!_rblank && [403,404].includes(pm.response.code) && _arc < 80) {",
+                  "  pm.environment.set('_authRetryCount', String(_arc + 1));",
+                  "  const _ard = Date.now(); while (Date.now() - _ard < 600) { /* owner-tuple materialization wait */ }",
+                  "  pm.execution.setNextRequest(pm.info.requestName);",
+                  "  return;",
+                  "}",
+                  "pm.environment.unset('_authRetryCount');",
+                  "pm.environment.unset('_authRetryStarted');",
+                  "pm.test('status 200', () => pm.expect(pm.response.code, JSON.stringify(pm.response.text())).to.eql(200));"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "rename-bad-confirm",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/registry/v1/registries/{{repoRegId}}/repositories/cnf/svc-{{runId}}:rename",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "registry",
+                "v1",
+                "registries",
+                "{{repoRegId}}",
+                "repositories",
+                "cnf",
+                "svc-{{runId}}:rename"
+              ]
+            },
+            "body": {
+              "mode": "raw",
+              "raw": "{\"newName\": \"cnf/svc2-{{runId}}\", \"confirmCurrentName\": \"cnf/svc2-{{runId}}\"}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('status 400', () => pm.expect(pm.response.code, JSON.stringify(pm.response.text())).to.eql(400));",
+                  "pm.test('grpc code 3 (INVALID_ARGUMENT)', () => {",
+                  "  let j; try { j = pm.response.json(); } catch (e) { j = {}; }",
+                  "  pm.expect(j.code, JSON.stringify(j)).to.eql(3);",
+                  "});",
+                  "pm.test('confirm text', () => pm.expect(pm.response.json().message).to.eql('confirm_current_name must repeat the current repository name'));"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "rename-good-confirm",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/registry/v1/registries/{{repoRegId}}/repositories/cnf/svc-{{runId}}:rename",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "registry",
+                "v1",
+                "registries",
+                "{{repoRegId}}",
+                "repositories",
+                "cnf",
+                "svc-{{runId}}:rename"
+              ]
+            },
+            "body": {
+              "mode": "raw",
+              "raw": "{\"newName\": \"cnf/svc2-{{runId}}\", \"confirmCurrentName\": \"cnf/svc-{{runId}}\"}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('status 200', () => pm.expect(pm.response.code, JSON.stringify(pm.response.text())).to.eql(200));",
+                  "pm.test('Operation envelope returned', () => {",
+                  "  const j = pm.response.json();",
+                  "  pm.expect(j.id, 'operation.id').to.match(/^(rop|reo)[a-z0-9]+$/);",
+                  "  pm.expect(j.metadata, 'operation.metadata').to.be.an('object');",
+                  "});",
+                  "pm.environment.unset('opId');",
+                  "pm.environment.set('opId', '');",
+                  "try {",
+                  "  const j = pm.response.json();",
+                  "  const v = (j.id);",
+                  "  if (v !== undefined && v !== null) pm.environment.set('opId', String(v));",
+                  "} catch (e) {}"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "poll-op-13",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/operations/{{opId}}",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "operations",
+                "{{opId}}"
+              ]
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "if (!pm.environment.get('opId')) {",
+                  "  pm.environment.unset('_pollCount');",
+                  "  return;",
+                  "}",
+                  "pm.test('poll status 200', () => pm.expect(pm.response.code, pm.response.text()).to.eql(200));",
+                  "if (pm.response.code !== 200) {",
+                  "  pm.environment.unset('_pollCount');",
+                  "  return;",
+                  "}",
+                  "const j = pm.response.json();",
+                  "const pc = parseInt(pm.environment.get('_pollCount') || '0', 10);",
+                  "if (!j.done && pc < 60) {",
+                  "  pm.environment.set('_pollCount', String(pc + 1));",
+                  "  const _pd = Date.now(); while (Date.now() - _pd < 500) { /* inter-poll delay */ }",
+                  "  pm.execution.setNextRequest(pm.info.requestName);",
+                  "  return;",
+                  "}",
+                  "pm.environment.unset('_pollCount');",
+                  "pm.test('operation done', () => pm.expect(j.done, JSON.stringify(j)).to.eql(true));",
+                  "if (j.error) pm.environment.set('lastOpError', JSON.stringify(j.error));",
+                  "else pm.environment.unset('lastOpError');",
+                  "if (j.response) pm.environment.set('lastOpResponse', JSON.stringify(j.response));"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "rename-confirm-verify",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/registry/v1/registries/{{repoRegId}}/repositories/cnf/svc2-{{runId}}",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "registry",
+                "v1",
+                "registries",
+                "{{repoRegId}}",
+                "repositories",
+                "cnf",
+                "svc2-{{runId}}"
+              ]
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('status 200', () => pm.expect(pm.response.code, JSON.stringify(pm.response.text())).to.eql(200));",
+                  "pm.test('renamed under confirmation', () => pm.expect(pm.response.json().name).to.eql('cnf/svc2-'+pm.environment.get('runId')));"
+                ]
+              }
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "name": "REPO-REF-EMPTY — ListReferrers subject без referrer'ов → [] 200 (C03)",
+      "description": "class:CRUD | priority:P2",
+      "item": [
+        {
+          "name": "repo-create-rya18",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/registry/v1/registries/{{repoRegId}}/repositories",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "registry",
+                "v1",
+                "registries",
+                "{{repoRegId}}",
+                "repositories"
+              ]
+            },
+            "body": {
+              "mode": "raw",
+              "raw": "{\"repository\": \"ref/svc-{{runId}}\", \"description\": \"api service images\", \"labels\": {\"team\": \"core\"}}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "// bounded read-your-writes retry over the owner-tuple materialization window",
+                  "// (opgate removed -> eventual-consistency); retries SELF only on 403/404.",
+                  "// ПОЛОСА — синхронный отказ ЭТОГО шага. У асинхронной мутации отказ ВЛАДЕЛЬЦА",
+                  "// приезжает внутри Operation и сюда НЕ попадает: нужен прогрев чтением.",
+                  "",
+                  "// Ждать можно ПРАВА на существующее имя, а не появление самого имени: адрес,",
+                  "// собранный из незахваченной переменной, окно видимости не наполнит никогда.",
+                  "const _rpath = ((pm.request.url && pm.request.url.path) || []).map(function (s) {",
+                  "  return String(s && s.value !== undefined ? s.value : s);",
+                  "});",
+                  "const _rblank = _rpath.some(function (v) {",
+                  "  if (v === '') { return true; }",
+                  "  var _d = v; try { _d = decodeURIComponent(v); } catch (e) { _d = v; }",
+                  "  return /\\{\\{[^}]*\\}\\}/.test(_d);",
+                  "});",
+                  "if (_rblank) {",
+                  "  pm.environment.unset('_authRetryCount');",
+                  "  pm.environment.unset('_authRetryStarted');",
+                  "  pm.test('step addresses a captured variable', function () {",
+                  "    pm.expect.fail('адрес шага собран из НЕЗАХВАЧЕННОЙ переменной (/' + _rpath.join('/') +",
+                  "      '): предыдущий шаг не захватил её, повторять нечего');",
+                  "  });",
+                  "}",
+                  "if (pm.environment.get('_authRetryStarted') !== pm.info.requestName) {",
+                  "  pm.environment.set('_authRetryCount', '0');",
+                  "  pm.environment.set('_authRetryStarted', pm.info.requestName);",
+                  "}",
+                  "const _arc = parseInt(pm.environment.get('_authRetryCount') || '0', 10);",
+                  "if (!_rblank && [403,404].includes(pm.response.code) && _arc < 80) {",
+                  "  pm.environment.set('_authRetryCount', String(_arc + 1));",
+                  "  const _ard = Date.now(); while (Date.now() - _ard < 600) { /* owner-tuple materialization wait */ }",
+                  "  pm.execution.setNextRequest(pm.info.requestName);",
+                  "  return;",
+                  "}",
+                  "pm.environment.unset('_authRetryCount');",
+                  "pm.environment.unset('_authRetryStarted');",
+                  "pm.test('status 200', () => pm.expect(pm.response.code, JSON.stringify(pm.response.text())).to.eql(200));",
+                  "pm.test('Operation envelope returned', () => {",
+                  "  const j = pm.response.json();",
+                  "  pm.expect(j.id, 'operation.id').to.match(/^(rop|reo)[a-z0-9]+$/);",
+                  "  pm.expect(j.metadata, 'operation.metadata').to.be.an('object');",
+                  "});",
+                  "pm.environment.unset('opId');",
+                  "pm.environment.set('opId', '');",
+                  "try {",
+                  "  const j = pm.response.json();",
+                  "  const v = (j.id);",
+                  "  if (v !== undefined && v !== null) pm.environment.set('opId', String(v));",
+                  "} catch (e) {}"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "poll-op-14",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/operations/{{opId}}",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "operations",
+                "{{opId}}"
+              ]
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "if (!pm.environment.get('opId')) {",
+                  "  pm.environment.unset('_pollCount');",
+                  "  return;",
+                  "}",
+                  "pm.test('poll status 200', () => pm.expect(pm.response.code, pm.response.text()).to.eql(200));",
+                  "if (pm.response.code !== 200) {",
+                  "  pm.environment.unset('_pollCount');",
+                  "  return;",
+                  "}",
+                  "const j = pm.response.json();",
+                  "const pc = parseInt(pm.environment.get('_pollCount') || '0', 10);",
+                  "if (!j.done && pc < 60) {",
+                  "  pm.environment.set('_pollCount', String(pc + 1));",
+                  "  const _pd = Date.now(); while (Date.now() - _pd < 500) { /* inter-poll delay */ }",
+                  "  pm.execution.setNextRequest(pm.info.requestName);",
+                  "  return;",
+                  "}",
+                  "pm.environment.unset('_pollCount');",
+                  "pm.test('operation done', () => pm.expect(j.done, JSON.stringify(j)).to.eql(true));",
+                  "if (j.error) pm.environment.set('lastOpError', JSON.stringify(j.error));",
+                  "else pm.environment.unset('lastOpError');",
+                  "if (j.response) pm.environment.set('lastOpResponse', JSON.stringify(j.response));"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "repo-capture-rya45",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/operations/{{opId}}",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "operations",
+                "{{opId}}"
+              ]
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "// bounded read-your-writes retry over the owner-tuple materialization window",
+                  "// (opgate removed -> eventual-consistency); retries SELF only on 403/404.",
+                  "// ПОЛОСА — синхронный отказ ЭТОГО шага. У асинхронной мутации отказ ВЛАДЕЛЬЦА",
+                  "// приезжает внутри Operation и сюда НЕ попадает: нужен прогрев чтением.",
+                  "",
+                  "// Ждать можно ПРАВА на существующее имя, а не появление самого имени: адрес,",
+                  "// собранный из незахваченной переменной, окно видимости не наполнит никогда.",
+                  "const _rpath = ((pm.request.url && pm.request.url.path) || []).map(function (s) {",
+                  "  return String(s && s.value !== undefined ? s.value : s);",
+                  "});",
+                  "const _rblank = _rpath.some(function (v) {",
+                  "  if (v === '') { return true; }",
+                  "  var _d = v; try { _d = decodeURIComponent(v); } catch (e) { _d = v; }",
+                  "  return /\\{\\{[^}]*\\}\\}/.test(_d);",
+                  "});",
+                  "if (_rblank) {",
+                  "  pm.environment.unset('_authRetryCount');",
+                  "  pm.environment.unset('_authRetryStarted');",
+                  "  pm.test('step addresses a captured variable', function () {",
+                  "    pm.expect.fail('адрес шага собран из НЕЗАХВАЧЕННОЙ переменной (/' + _rpath.join('/') +",
+                  "      '): предыдущий шаг не захватил её, повторять нечего');",
+                  "  });",
+                  "}",
+                  "if (pm.environment.get('_authRetryStarted') !== pm.info.requestName) {",
+                  "  pm.environment.set('_authRetryCount', '0');",
+                  "  pm.environment.set('_authRetryStarted', pm.info.requestName);",
+                  "}",
+                  "const _arc = parseInt(pm.environment.get('_authRetryCount') || '0', 10);",
+                  "if (!_rblank && [403,404].includes(pm.response.code) && _arc < 80) {",
+                  "  pm.environment.set('_authRetryCount', String(_arc + 1));",
+                  "  const _ard = Date.now(); while (Date.now() - _ard < 600) { /* owner-tuple materialization wait */ }",
+                  "  pm.execution.setNextRequest(pm.info.requestName);",
+                  "  return;",
+                  "}",
+                  "pm.environment.unset('_authRetryCount');",
+                  "pm.environment.unset('_authRetryStarted');",
+                  "pm.test('status 200', () => pm.expect(pm.response.code, JSON.stringify(pm.response.text())).to.eql(200));",
+                  "const r=(pm.response.json().response)||{};",
+                  "pm.test('op ok', () => pm.expect(pm.environment.get('lastOpError')||'').to.eql(''));"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "repo-warm-rya19",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/registry/v1/registries/{{repoRegId}}/repositories/ref/svc-{{runId}}",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "registry",
+                "v1",
+                "registries",
+                "{{repoRegId}}",
+                "repositories",
+                "ref",
+                "svc-{{runId}}"
+              ]
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "// bounded read-your-writes retry over the owner-tuple materialization window",
+                  "// (opgate removed -> eventual-consistency); retries SELF only on 403/404.",
+                  "// ПОЛОСА — синхронный отказ ЭТОГО шага. У асинхронной мутации отказ ВЛАДЕЛЬЦА",
+                  "// приезжает внутри Operation и сюда НЕ попадает: нужен прогрев чтением.",
+                  "",
+                  "// Ждать можно ПРАВА на существующее имя, а не появление самого имени: адрес,",
+                  "// собранный из незахваченной переменной, окно видимости не наполнит никогда.",
+                  "const _rpath = ((pm.request.url && pm.request.url.path) || []).map(function (s) {",
+                  "  return String(s && s.value !== undefined ? s.value : s);",
+                  "});",
+                  "const _rblank = _rpath.some(function (v) {",
+                  "  if (v === '') { return true; }",
+                  "  var _d = v; try { _d = decodeURIComponent(v); } catch (e) { _d = v; }",
+                  "  return /\\{\\{[^}]*\\}\\}/.test(_d);",
+                  "});",
+                  "if (_rblank) {",
+                  "  pm.environment.unset('_authRetryCount');",
+                  "  pm.environment.unset('_authRetryStarted');",
+                  "  pm.test('step addresses a captured variable', function () {",
+                  "    pm.expect.fail('адрес шага собран из НЕЗАХВАЧЕННОЙ переменной (/' + _rpath.join('/') +",
+                  "      '): предыдущий шаг не захватил её, повторять нечего');",
+                  "  });",
+                  "}",
+                  "if (pm.environment.get('_authRetryStarted') !== pm.info.requestName) {",
+                  "  pm.environment.set('_authRetryCount', '0');",
+                  "  pm.environment.set('_authRetryStarted', pm.info.requestName);",
+                  "}",
+                  "const _arc = parseInt(pm.environment.get('_authRetryCount') || '0', 10);",
+                  "if (!_rblank && [403,404].includes(pm.response.code) && _arc < 80) {",
+                  "  pm.environment.set('_authRetryCount', String(_arc + 1));",
+                  "  const _ard = Date.now(); while (Date.now() - _ard < 600) { /* owner-tuple materialization wait */ }",
+                  "  pm.execution.setNextRequest(pm.info.requestName);",
+                  "  return;",
+                  "}",
+                  "pm.environment.unset('_authRetryCount');",
+                  "pm.environment.unset('_authRetryStarted');",
+                  "pm.test('status 200', () => pm.expect(pm.response.code, JSON.stringify(pm.response.text())).to.eql(200));"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "referrers-empty",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/registry/v1/registries/{{repoRegId}}/repositories/ref/svc-{{runId}}/referrers?subjectDigest=sha256:eeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeee",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "registry",
+                "v1",
+                "registries",
+                "{{repoRegId}}",
+                "repositories",
+                "ref",
+                "svc-{{runId}}",
+                "referrers?subjectDigest=sha256:eeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeee"
+              ]
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('status 200', () => pm.expect(pm.response.code, JSON.stringify(pm.response.text())).to.eql(200));",
+                  "pm.test('empty referrers []', () => pm.expect((pm.response.json().referrers||[]).length).to.eql(0));"
+                ]
+              }
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "name": "REPO-REF-NEG-BADDIGEST — ListReferrers malformed subject_digest → 400 (C04)",
+      "description": "class:NEG | class:VAL | priority:P1",
+      "item": [
+        {
+          "name": "repo-create-rya20",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/registry/v1/registries/{{repoRegId}}/repositories",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "registry",
+                "v1",
+                "registries",
+                "{{repoRegId}}",
+                "repositories"
+              ]
+            },
+            "body": {
+              "mode": "raw",
+              "raw": "{\"repository\": \"refbad/svc-{{runId}}\", \"description\": \"api service images\", \"labels\": {\"team\": \"core\"}}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "// bounded read-your-writes retry over the owner-tuple materialization window",
+                  "// (opgate removed -> eventual-consistency); retries SELF only on 403/404.",
+                  "// ПОЛОСА — синхронный отказ ЭТОГО шага. У асинхронной мутации отказ ВЛАДЕЛЬЦА",
+                  "// приезжает внутри Operation и сюда НЕ попадает: нужен прогрев чтением.",
+                  "",
+                  "// Ждать можно ПРАВА на существующее имя, а не появление самого имени: адрес,",
+                  "// собранный из незахваченной переменной, окно видимости не наполнит никогда.",
+                  "const _rpath = ((pm.request.url && pm.request.url.path) || []).map(function (s) {",
+                  "  return String(s && s.value !== undefined ? s.value : s);",
+                  "});",
+                  "const _rblank = _rpath.some(function (v) {",
+                  "  if (v === '') { return true; }",
+                  "  var _d = v; try { _d = decodeURIComponent(v); } catch (e) { _d = v; }",
+                  "  return /\\{\\{[^}]*\\}\\}/.test(_d);",
+                  "});",
+                  "if (_rblank) {",
+                  "  pm.environment.unset('_authRetryCount');",
+                  "  pm.environment.unset('_authRetryStarted');",
+                  "  pm.test('step addresses a captured variable', function () {",
+                  "    pm.expect.fail('адрес шага собран из НЕЗАХВАЧЕННОЙ переменной (/' + _rpath.join('/') +",
+                  "      '): предыдущий шаг не захватил её, повторять нечего');",
+                  "  });",
+                  "}",
+                  "if (pm.environment.get('_authRetryStarted') !== pm.info.requestName) {",
+                  "  pm.environment.set('_authRetryCount', '0');",
+                  "  pm.environment.set('_authRetryStarted', pm.info.requestName);",
+                  "}",
+                  "const _arc = parseInt(pm.environment.get('_authRetryCount') || '0', 10);",
+                  "if (!_rblank && [403,404].includes(pm.response.code) && _arc < 80) {",
+                  "  pm.environment.set('_authRetryCount', String(_arc + 1));",
+                  "  const _ard = Date.now(); while (Date.now() - _ard < 600) { /* owner-tuple materialization wait */ }",
+                  "  pm.execution.setNextRequest(pm.info.requestName);",
+                  "  return;",
+                  "}",
+                  "pm.environment.unset('_authRetryCount');",
+                  "pm.environment.unset('_authRetryStarted');",
+                  "pm.test('status 200', () => pm.expect(pm.response.code, JSON.stringify(pm.response.text())).to.eql(200));",
+                  "pm.test('Operation envelope returned', () => {",
+                  "  const j = pm.response.json();",
+                  "  pm.expect(j.id, 'operation.id').to.match(/^(rop|reo)[a-z0-9]+$/);",
+                  "  pm.expect(j.metadata, 'operation.metadata').to.be.an('object');",
+                  "});",
+                  "pm.environment.unset('opId');",
+                  "pm.environment.set('opId', '');",
+                  "try {",
+                  "  const j = pm.response.json();",
+                  "  const v = (j.id);",
+                  "  if (v !== undefined && v !== null) pm.environment.set('opId', String(v));",
+                  "} catch (e) {}"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "poll-op-15",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/operations/{{opId}}",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "operations",
+                "{{opId}}"
+              ]
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "if (!pm.environment.get('opId')) {",
+                  "  pm.environment.unset('_pollCount');",
+                  "  return;",
+                  "}",
+                  "pm.test('poll status 200', () => pm.expect(pm.response.code, pm.response.text()).to.eql(200));",
+                  "if (pm.response.code !== 200) {",
+                  "  pm.environment.unset('_pollCount');",
+                  "  return;",
+                  "}",
+                  "const j = pm.response.json();",
+                  "const pc = parseInt(pm.environment.get('_pollCount') || '0', 10);",
+                  "if (!j.done && pc < 60) {",
+                  "  pm.environment.set('_pollCount', String(pc + 1));",
+                  "  const _pd = Date.now(); while (Date.now() - _pd < 500) { /* inter-poll delay */ }",
+                  "  pm.execution.setNextRequest(pm.info.requestName);",
+                  "  return;",
+                  "}",
+                  "pm.environment.unset('_pollCount');",
+                  "pm.test('operation done', () => pm.expect(j.done, JSON.stringify(j)).to.eql(true));",
+                  "if (j.error) pm.environment.set('lastOpError', JSON.stringify(j.error));",
+                  "else pm.environment.unset('lastOpError');",
+                  "if (j.response) pm.environment.set('lastOpResponse', JSON.stringify(j.response));"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "repo-capture-rya46",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/operations/{{opId}}",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "operations",
+                "{{opId}}"
+              ]
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "// bounded read-your-writes retry over the owner-tuple materialization window",
+                  "// (opgate removed -> eventual-consistency); retries SELF only on 403/404.",
+                  "// ПОЛОСА — синхронный отказ ЭТОГО шага. У асинхронной мутации отказ ВЛАДЕЛЬЦА",
+                  "// приезжает внутри Operation и сюда НЕ попадает: нужен прогрев чтением.",
+                  "",
+                  "// Ждать можно ПРАВА на существующее имя, а не появление самого имени: адрес,",
+                  "// собранный из незахваченной переменной, окно видимости не наполнит никогда.",
+                  "const _rpath = ((pm.request.url && pm.request.url.path) || []).map(function (s) {",
+                  "  return String(s && s.value !== undefined ? s.value : s);",
+                  "});",
+                  "const _rblank = _rpath.some(function (v) {",
+                  "  if (v === '') { return true; }",
+                  "  var _d = v; try { _d = decodeURIComponent(v); } catch (e) { _d = v; }",
+                  "  return /\\{\\{[^}]*\\}\\}/.test(_d);",
+                  "});",
+                  "if (_rblank) {",
+                  "  pm.environment.unset('_authRetryCount');",
+                  "  pm.environment.unset('_authRetryStarted');",
+                  "  pm.test('step addresses a captured variable', function () {",
+                  "    pm.expect.fail('адрес шага собран из НЕЗАХВАЧЕННОЙ переменной (/' + _rpath.join('/') +",
+                  "      '): предыдущий шаг не захватил её, повторять нечего');",
+                  "  });",
+                  "}",
+                  "if (pm.environment.get('_authRetryStarted') !== pm.info.requestName) {",
+                  "  pm.environment.set('_authRetryCount', '0');",
+                  "  pm.environment.set('_authRetryStarted', pm.info.requestName);",
+                  "}",
+                  "const _arc = parseInt(pm.environment.get('_authRetryCount') || '0', 10);",
+                  "if (!_rblank && [403,404].includes(pm.response.code) && _arc < 80) {",
+                  "  pm.environment.set('_authRetryCount', String(_arc + 1));",
+                  "  const _ard = Date.now(); while (Date.now() - _ard < 600) { /* owner-tuple materialization wait */ }",
+                  "  pm.execution.setNextRequest(pm.info.requestName);",
+                  "  return;",
+                  "}",
+                  "pm.environment.unset('_authRetryCount');",
+                  "pm.environment.unset('_authRetryStarted');",
+                  "pm.test('status 200', () => pm.expect(pm.response.code, JSON.stringify(pm.response.text())).to.eql(200));",
+                  "const r=(pm.response.json().response)||{};",
+                  "pm.test('op ok', () => pm.expect(pm.environment.get('lastOpError')||'').to.eql(''));"
+                ]
+              }
+            }
+          ]
+        },
+        {
           "name": "repo-warm-rya21",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/registry/v1/registries/{{repoRegId}}/repositories/refbad/svc-{{runId}}",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "registry",
+                "v1",
+                "registries",
+                "{{repoRegId}}",
+                "repositories",
+                "refbad",
+                "svc-{{runId}}"
+              ]
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "// bounded read-your-writes retry over the owner-tuple materialization window",
+                  "// (opgate removed -> eventual-consistency); retries SELF only on 403/404.",
+                  "// ПОЛОСА — синхронный отказ ЭТОГО шага. У асинхронной мутации отказ ВЛАДЕЛЬЦА",
+                  "// приезжает внутри Operation и сюда НЕ попадает: нужен прогрев чтением.",
+                  "",
+                  "// Ждать можно ПРАВА на существующее имя, а не появление самого имени: адрес,",
+                  "// собранный из незахваченной переменной, окно видимости не наполнит никогда.",
+                  "const _rpath = ((pm.request.url && pm.request.url.path) || []).map(function (s) {",
+                  "  return String(s && s.value !== undefined ? s.value : s);",
+                  "});",
+                  "const _rblank = _rpath.some(function (v) {",
+                  "  if (v === '') { return true; }",
+                  "  var _d = v; try { _d = decodeURIComponent(v); } catch (e) { _d = v; }",
+                  "  return /\\{\\{[^}]*\\}\\}/.test(_d);",
+                  "});",
+                  "if (_rblank) {",
+                  "  pm.environment.unset('_authRetryCount');",
+                  "  pm.environment.unset('_authRetryStarted');",
+                  "  pm.test('step addresses a captured variable', function () {",
+                  "    pm.expect.fail('адрес шага собран из НЕЗАХВАЧЕННОЙ переменной (/' + _rpath.join('/') +",
+                  "      '): предыдущий шаг не захватил её, повторять нечего');",
+                  "  });",
+                  "}",
+                  "if (pm.environment.get('_authRetryStarted') !== pm.info.requestName) {",
+                  "  pm.environment.set('_authRetryCount', '0');",
+                  "  pm.environment.set('_authRetryStarted', pm.info.requestName);",
+                  "}",
+                  "const _arc = parseInt(pm.environment.get('_authRetryCount') || '0', 10);",
+                  "if (!_rblank && [403,404].includes(pm.response.code) && _arc < 80) {",
+                  "  pm.environment.set('_authRetryCount', String(_arc + 1));",
+                  "  const _ard = Date.now(); while (Date.now() - _ard < 600) { /* owner-tuple materialization wait */ }",
+                  "  pm.execution.setNextRequest(pm.info.requestName);",
+                  "  return;",
+                  "}",
+                  "pm.environment.unset('_authRetryCount');",
+                  "pm.environment.unset('_authRetryStarted');",
+                  "pm.test('status 200', () => pm.expect(pm.response.code, JSON.stringify(pm.response.text())).to.eql(200));"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "referrers-bad",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/registry/v1/registries/{{repoRegId}}/repositories/refbad/svc-{{runId}}/referrers?subjectDigest=not-a-digest",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "registry",
+                "v1",
+                "registries",
+                "{{repoRegId}}",
+                "repositories",
+                "refbad",
+                "svc-{{runId}}",
+                "referrers?subjectDigest=not-a-digest"
+              ]
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('status 400', () => pm.expect(pm.response.code, JSON.stringify(pm.response.text())).to.eql(400));",
+                  "pm.test('grpc code 3 (INVALID_ARGUMENT)', () => {",
+                  "  let j; try { j = pm.response.json(); } catch (e) { j = {}; }",
+                  "  pm.expect(j.code, JSON.stringify(j)).to.eql(3);",
+                  "});",
+                  "pm.test('invalid digest text', () => pm.expect(pm.response.json().message).to.include('invalid subject digest'));"
+                ]
+              }
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "name": "REPO-CR-NEG-DUP — CreateRepository duplicate (registryId,name) → sync 409 ALREADY_EXISTS \"repository already exists\" (A02, DB UNIQUE)",
+      "description": "class:NEG | class:CONF | class:IDEM | priority:P1",
+      "item": [
+        {
+          "name": "repo-create-rya22",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/registry/v1/registries/{{repoRegId}}/repositories",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "registry",
+                "v1",
+                "registries",
+                "{{repoRegId}}",
+                "repositories"
+              ]
+            },
+            "body": {
+              "mode": "raw",
+              "raw": "{\"repository\": \"dup/svc-{{runId}}\", \"description\": \"api service images\", \"labels\": {\"team\": \"core\"}}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "// bounded read-your-writes retry over the owner-tuple materialization window",
+                  "// (opgate removed -> eventual-consistency); retries SELF only on 403/404.",
+                  "// ПОЛОСА — синхронный отказ ЭТОГО шага. У асинхронной мутации отказ ВЛАДЕЛЬЦА",
+                  "// приезжает внутри Operation и сюда НЕ попадает: нужен прогрев чтением.",
+                  "",
+                  "// Ждать можно ПРАВА на существующее имя, а не появление самого имени: адрес,",
+                  "// собранный из незахваченной переменной, окно видимости не наполнит никогда.",
+                  "const _rpath = ((pm.request.url && pm.request.url.path) || []).map(function (s) {",
+                  "  return String(s && s.value !== undefined ? s.value : s);",
+                  "});",
+                  "const _rblank = _rpath.some(function (v) {",
+                  "  if (v === '') { return true; }",
+                  "  var _d = v; try { _d = decodeURIComponent(v); } catch (e) { _d = v; }",
+                  "  return /\\{\\{[^}]*\\}\\}/.test(_d);",
+                  "});",
+                  "if (_rblank) {",
+                  "  pm.environment.unset('_authRetryCount');",
+                  "  pm.environment.unset('_authRetryStarted');",
+                  "  pm.test('step addresses a captured variable', function () {",
+                  "    pm.expect.fail('адрес шага собран из НЕЗАХВАЧЕННОЙ переменной (/' + _rpath.join('/') +",
+                  "      '): предыдущий шаг не захватил её, повторять нечего');",
+                  "  });",
+                  "}",
+                  "if (pm.environment.get('_authRetryStarted') !== pm.info.requestName) {",
+                  "  pm.environment.set('_authRetryCount', '0');",
+                  "  pm.environment.set('_authRetryStarted', pm.info.requestName);",
+                  "}",
+                  "const _arc = parseInt(pm.environment.get('_authRetryCount') || '0', 10);",
+                  "if (!_rblank && [403,404].includes(pm.response.code) && _arc < 80) {",
+                  "  pm.environment.set('_authRetryCount', String(_arc + 1));",
+                  "  const _ard = Date.now(); while (Date.now() - _ard < 600) { /* owner-tuple materialization wait */ }",
+                  "  pm.execution.setNextRequest(pm.info.requestName);",
+                  "  return;",
+                  "}",
+                  "pm.environment.unset('_authRetryCount');",
+                  "pm.environment.unset('_authRetryStarted');",
+                  "pm.test('status 200', () => pm.expect(pm.response.code, JSON.stringify(pm.response.text())).to.eql(200));",
+                  "pm.test('Operation envelope returned', () => {",
+                  "  const j = pm.response.json();",
+                  "  pm.expect(j.id, 'operation.id').to.match(/^(rop|reo)[a-z0-9]+$/);",
+                  "  pm.expect(j.metadata, 'operation.metadata').to.be.an('object');",
+                  "});",
+                  "pm.environment.unset('opId');",
+                  "pm.environment.set('opId', '');",
+                  "try {",
+                  "  const j = pm.response.json();",
+                  "  const v = (j.id);",
+                  "  if (v !== undefined && v !== null) pm.environment.set('opId', String(v));",
+                  "} catch (e) {}"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "poll-op-16",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/operations/{{opId}}",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "operations",
+                "{{opId}}"
+              ]
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "if (!pm.environment.get('opId')) {",
+                  "  pm.environment.unset('_pollCount');",
+                  "  return;",
+                  "}",
+                  "pm.test('poll status 200', () => pm.expect(pm.response.code, pm.response.text()).to.eql(200));",
+                  "if (pm.response.code !== 200) {",
+                  "  pm.environment.unset('_pollCount');",
+                  "  return;",
+                  "}",
+                  "const j = pm.response.json();",
+                  "const pc = parseInt(pm.environment.get('_pollCount') || '0', 10);",
+                  "if (!j.done && pc < 60) {",
+                  "  pm.environment.set('_pollCount', String(pc + 1));",
+                  "  const _pd = Date.now(); while (Date.now() - _pd < 500) { /* inter-poll delay */ }",
+                  "  pm.execution.setNextRequest(pm.info.requestName);",
+                  "  return;",
+                  "}",
+                  "pm.environment.unset('_pollCount');",
+                  "pm.test('operation done', () => pm.expect(j.done, JSON.stringify(j)).to.eql(true));",
+                  "if (j.error) pm.environment.set('lastOpError', JSON.stringify(j.error));",
+                  "else pm.environment.unset('lastOpError');",
+                  "if (j.response) pm.environment.set('lastOpResponse', JSON.stringify(j.response));"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "repo-capture-rya47",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/operations/{{opId}}",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "operations",
+                "{{opId}}"
+              ]
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "// bounded read-your-writes retry over the owner-tuple materialization window",
+                  "// (opgate removed -> eventual-consistency); retries SELF only on 403/404.",
+                  "// ПОЛОСА — синхронный отказ ЭТОГО шага. У асинхронной мутации отказ ВЛАДЕЛЬЦА",
+                  "// приезжает внутри Operation и сюда НЕ попадает: нужен прогрев чтением.",
+                  "",
+                  "// Ждать можно ПРАВА на существующее имя, а не появление самого имени: адрес,",
+                  "// собранный из незахваченной переменной, окно видимости не наполнит никогда.",
+                  "const _rpath = ((pm.request.url && pm.request.url.path) || []).map(function (s) {",
+                  "  return String(s && s.value !== undefined ? s.value : s);",
+                  "});",
+                  "const _rblank = _rpath.some(function (v) {",
+                  "  if (v === '') { return true; }",
+                  "  var _d = v; try { _d = decodeURIComponent(v); } catch (e) { _d = v; }",
+                  "  return /\\{\\{[^}]*\\}\\}/.test(_d);",
+                  "});",
+                  "if (_rblank) {",
+                  "  pm.environment.unset('_authRetryCount');",
+                  "  pm.environment.unset('_authRetryStarted');",
+                  "  pm.test('step addresses a captured variable', function () {",
+                  "    pm.expect.fail('адрес шага собран из НЕЗАХВАЧЕННОЙ переменной (/' + _rpath.join('/') +",
+                  "      '): предыдущий шаг не захватил её, повторять нечего');",
+                  "  });",
+                  "}",
+                  "if (pm.environment.get('_authRetryStarted') !== pm.info.requestName) {",
+                  "  pm.environment.set('_authRetryCount', '0');",
+                  "  pm.environment.set('_authRetryStarted', pm.info.requestName);",
+                  "}",
+                  "const _arc = parseInt(pm.environment.get('_authRetryCount') || '0', 10);",
+                  "if (!_rblank && [403,404].includes(pm.response.code) && _arc < 80) {",
+                  "  pm.environment.set('_authRetryCount', String(_arc + 1));",
+                  "  const _ard = Date.now(); while (Date.now() - _ard < 600) { /* owner-tuple materialization wait */ }",
+                  "  pm.execution.setNextRequest(pm.info.requestName);",
+                  "  return;",
+                  "}",
+                  "pm.environment.unset('_authRetryCount');",
+                  "pm.environment.unset('_authRetryStarted');",
+                  "pm.test('status 200', () => pm.expect(pm.response.code, JSON.stringify(pm.response.text())).to.eql(200));",
+                  "const r=(pm.response.json().response)||{};",
+                  "pm.test('op ok', () => pm.expect(pm.environment.get('lastOpError')||'').to.eql(''));"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "repo-warm-rya23",
           "request": {
             "method": "GET",
             "header": [
@@ -4584,7 +5086,7 @@
       "description": "class:NEG | class:VAL | priority:P1",
       "item": [
         {
-          "name": "repo-create-rya22",
+          "name": "repo-create-rya24",
           "request": {
             "method": "POST",
             "header": [
@@ -4677,7 +5179,7 @@
           ]
         },
         {
-          "name": "poll-op-15",
+          "name": "poll-op-17",
           "request": {
             "method": "GET",
             "header": [
@@ -4731,7 +5233,7 @@
           ]
         },
         {
-          "name": "repo-capture-rya45",
+          "name": "repo-capture-rya48",
           "request": {
             "method": "GET",
             "header": [
@@ -4802,7 +5304,7 @@
           ]
         },
         {
-          "name": "repo-warm-rya23",
+          "name": "repo-warm-rya25",
           "request": {
             "method": "GET",
             "header": [
@@ -4933,7 +5435,7 @@
       "description": "class:NEG | class:CONF | priority:P1",
       "item": [
         {
-          "name": "repo-create-rya24",
+          "name": "repo-create-rya26",
           "request": {
             "method": "POST",
             "header": [
@@ -5026,7 +5528,7 @@
           ]
         },
         {
-          "name": "poll-op-16",
+          "name": "poll-op-18",
           "request": {
             "method": "GET",
             "header": [
@@ -5080,7 +5582,7 @@
           ]
         },
         {
-          "name": "repo-capture-rya46",
+          "name": "repo-capture-rya49",
           "request": {
             "method": "GET",
             "header": [
@@ -5151,7 +5653,7 @@
           ]
         },
         {
-          "name": "repo-warm-rya25",
+          "name": "repo-warm-rya27",
           "request": {
             "method": "GET",
             "header": [
@@ -5225,7 +5727,7 @@
           ]
         },
         {
-          "name": "repo-create-rya26",
+          "name": "repo-create-rya28",
           "request": {
             "method": "POST",
             "header": [
@@ -5318,7 +5820,7 @@
           ]
         },
         {
-          "name": "poll-op-17",
+          "name": "poll-op-19",
           "request": {
             "method": "GET",
             "header": [
@@ -5372,7 +5874,7 @@
           ]
         },
         {
-          "name": "repo-capture-rya47",
+          "name": "repo-capture-rya50",
           "request": {
             "method": "GET",
             "header": [
@@ -5443,7 +5945,7 @@
           ]
         },
         {
-          "name": "repo-warm-rya27",
+          "name": "repo-warm-rya29",
           "request": {
             "method": "GET",
             "header": [
@@ -5571,7 +6073,7 @@
           ]
         },
         {
-          "name": "poll-op-18",
+          "name": "poll-op-20",
           "request": {
             "method": "GET",
             "header": [
@@ -5625,7 +6127,7 @@
           ]
         },
         {
-          "name": "assert-collision-async-rya48",
+          "name": "assert-collision-async-rya51",
           "request": {
             "method": "GET",
             "header": [
@@ -5704,7 +6206,7 @@
       "description": "class:NEG | class:VAL | priority:P1",
       "item": [
         {
-          "name": "repo-create-rya28",
+          "name": "repo-create-rya30",
           "request": {
             "method": "POST",
             "header": [
@@ -5797,7 +6299,7 @@
           ]
         },
         {
-          "name": "poll-op-19",
+          "name": "poll-op-21",
           "request": {
             "method": "GET",
             "header": [
@@ -5851,7 +6353,7 @@
           ]
         },
         {
-          "name": "repo-capture-rya49",
+          "name": "repo-capture-rya52",
           "request": {
             "method": "GET",
             "header": [
@@ -5922,7 +6424,7 @@
           ]
         },
         {
-          "name": "repo-warm-rya29",
+          "name": "repo-warm-rya31",
           "request": {
             "method": "GET",
             "header": [
@@ -6054,7 +6556,7 @@
       "description": "class:CONF | priority:P2",
       "item": [
         {
-          "name": "repo-create-rya30",
+          "name": "repo-create-rya32",
           "request": {
             "method": "POST",
             "header": [
@@ -6147,7 +6649,7 @@
           ]
         },
         {
-          "name": "poll-op-20",
+          "name": "poll-op-22",
           "request": {
             "method": "GET",
             "header": [
@@ -6201,7 +6703,7 @@
           ]
         },
         {
-          "name": "repo-capture-rya50",
+          "name": "repo-capture-rya53",
           "request": {
             "method": "GET",
             "header": [
@@ -6272,7 +6774,7 @@
           ]
         },
         {
-          "name": "repo-warm-rya31",
+          "name": "repo-warm-rya33",
           "request": {
             "method": "GET",
             "header": [
@@ -6405,7 +6907,7 @@
           ]
         },
         {
-          "name": "poll-op-21",
+          "name": "poll-op-23",
           "request": {
             "method": "GET",
             "header": [
@@ -6694,7 +7196,7 @@
       "description": "class:CONF | priority:P1",
       "item": [
         {
-          "name": "repo-create-rya32",
+          "name": "repo-create-rya34",
           "request": {
             "method": "POST",
             "header": [
@@ -6787,7 +7289,7 @@
           ]
         },
         {
-          "name": "poll-op-22",
+          "name": "poll-op-24",
           "request": {
             "method": "GET",
             "header": [
@@ -6841,7 +7343,7 @@
           ]
         },
         {
-          "name": "repo-capture-rya51",
+          "name": "repo-capture-rya54",
           "request": {
             "method": "GET",
             "header": [
@@ -6912,7 +7414,7 @@
           ]
         },
         {
-          "name": "repo-warm-rya33",
+          "name": "repo-warm-rya35",
           "request": {
             "method": "GET",
             "header": [
@@ -7072,7 +7574,7 @@
           ]
         },
         {
-          "name": "poll-op-23",
+          "name": "poll-op-25",
           "request": {
             "method": "GET",
             "header": [

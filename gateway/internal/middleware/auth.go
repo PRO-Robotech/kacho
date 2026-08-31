@@ -57,15 +57,26 @@ import (
 	"github.com/PRO-Robotech/kacho/pkg/operations"
 
 	"github.com/PRO-Robotech/kacho/gateway/internal/principalmeta"
+
+	"github.com/PRO-Robotech/kacho/pkg/servicecontract"
 )
 
-// AuthMode — режим работы auth-interceptor'а.
-type AuthMode string
+// AuthMode — режим работы auth-interceptor'а. ТИП ОБЩИЙ, и это не сокращение
+// записи.
+//
+// Прежде это была своя строка со своими тремя написаниями, а корень приводил к
+// ней СЫРОЕ значение ручки приведением типа — без разбора. Тогда написание вне
+// перечня (`Production`, значение с хвостовым пробелом, опечатка) не совпадало ни
+// с одной константой и уезжало в ветку `default` каждого свича: край поднимался,
+// объявляя посадку, которой не существует. Разбор общим словарём делает такое
+// состояние невыразимым — неизвестное написание отвергается на старте и называет
+// весь допустимый набор.
+type AuthMode = servicecontract.Mode
 
 const (
-	AuthModeDev              AuthMode = "dev"
-	AuthModeProduction       AuthMode = "production"
-	AuthModeProductionStrict AuthMode = "production-strict"
+	AuthModeDev              = servicecontract.ModeDev
+	AuthModeProduction       = servicecontract.ModeProduction
+	AuthModeProductionStrict = servicecontract.ModeProductionStrict
 )
 
 // authFailedMsg is the single, constant client-visible message for every

@@ -1020,6 +1020,11 @@ func TestListReadRelationParity_PremiseHolds(t *testing.T) {
 			return nil
 		}
 		for _, n := range relationStoreQuestions {
+			// Форма `"."+имя+"("` к хвосту чужого идентификатора НЕВОСПРИИМЧИВА
+			// by construction: точка символом имени не бывает, поэтому слева от
+			// имени стоит разделитель, а справа — скобка. Проверено на закрытом
+			// списке: `.Check(` не совпадает ни с `.BatchCheck(` (слева буква),
+			// ни с `.CheckWithContext(` (справа буква).
 			if strings.Contains(string(b), "."+n+"(") {
 				seen[n] = true
 			}

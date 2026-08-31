@@ -132,6 +132,14 @@ func stripSentinel(err, sentinel error) string {
 	msg := err.Error()
 	prefix := sentinel.Error() + ": "
 	if rest, ok := strings.CutPrefix(msg, prefix); ok {
+		// Пустой остаток — вырожденный случай: обёртка без текста
+		// (`fmt.Errorf("%w: %s", sentinel, "")`). Отдать его клиенту значило бы
+		// отказать БЕЗ СООБЩЕНИЯ — код без единого слова о том, что делать
+		// дальше, неотличимый в журнале от потери сообщения. Замещается текстом
+		// самого sentinel'а.
+		if rest == "" {
+			return sentinel.Error()
+		}
 		return rest
 	}
 	return msg

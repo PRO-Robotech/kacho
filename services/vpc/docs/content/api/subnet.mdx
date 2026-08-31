@@ -51,7 +51,7 @@ CIDR-блоков меняется **не** через `Update` (там они �
 
 :::info Идентификатор и размещение
 ID подсети — префикс `sub` + 17 символов crockford-base32 (например,
-`sub-7k2m9p4q1r8s3t6vw`). Зона (`zoneId`) и регион (`regionId`) — ресурсы отдельного домена
+`sub7k2m9p4q1r8s3t6vw`). Зона (`zoneId`) и регион (`regionId`) — ресурсы отдельного домена
 `kacho-geo`; их существование проверяется при `Create` синхронным вызовом `kacho-geo`
 (несуществующая зона/регион → `InvalidArgument "unknown zone id '<id>'"` /
 `"unknown region id '<id>'"`, недоступность домена → `Unavailable`).

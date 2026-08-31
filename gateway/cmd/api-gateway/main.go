@@ -115,7 +115,10 @@ func main() {
 	defer func() { _ = iamSubjectClient.Close() }()
 
 	authInterceptor := middleware.NewAuthInterceptor(
-		middleware.AuthMode(cfg.AuthNMode),
+		// Ручка названа ЗДЕСЬ, а не спрятана за методом конфигурации: место сборки
+		// обязано показывать, чем компонент настраивается, иначе он выглядит
+		// ненастраиваемым ни одним профилем (`gateway/deploy/producerless_input_test.go`).
+		config.PostureOf(cfg.AuthNMode),
 		cfg.AuthNDevSecret,
 		iamSubjectClient,
 		logger,
@@ -584,7 +587,7 @@ func main() {
 			RestRouter:            middleware.NewRestRouter(),
 			Logger:                logger,
 			APIDomain:             cfg.APIDomain,
-			RequireForAllRequests: cfg.AuthNMode == string(middleware.AuthModeProductionStrict),
+			RequireForAllRequests: cfg.Posture() == middleware.AuthModeProductionStrict,
 		})
 		if verifierErr != nil {
 			log.Fatalf("dpop middleware: %v", verifierErr)
@@ -696,7 +699,7 @@ func main() {
 		// startup WARN whenever it is enabled together with a relaxed posture,
 		// independent of the env label — the operator sees the fail-open edge in pod
 		// logs instead of it being invisible.
-		if cfg.TLSEnabled() && (!cfg.AuthZEnabled || cfg.AuthNMode == string(middleware.AuthModeDev)) {
+		if cfg.TLSEnabled() && (!cfg.AuthZEnabled || cfg.Posture() == middleware.AuthModeDev) {
 			logger.Warn("SECURITY: external TLS edge enabled with a relaxed auth posture",
 				"tls_listen_addr", cfg.TLSListenAddr,
 				"authz_enabled", cfg.AuthZEnabled,

@@ -41,7 +41,14 @@ var (
 	// ErrQuotaExceeded — место кончилось: потолок назван и выбран.
 	// Маппится в gRPC ResourceExhausted (край даёт 429), признак
 	// `QUOTA_EXCEEDED`. Администратору требуется ПОДНЯТЬ предел.
-	ErrQuotaExceeded = errors.New("quota exceeded")
+	//
+	// Текст ОДИН на шесть владельцев учёта и потому произносится дословно так же,
+	// как у остальных пяти. Он не украшение: им и снимается префикс на пути
+	// наружу, поэтому расхождение словаря делает шесть мапперов несравнимыми, а
+	// короткая форма вдобавок совпадает с чужими сообщениями о переполнении в
+	// смежных подсистемах. Клиенту текст не виден — префикс снимается, — и
+	// именно поэтому расхождение было тихим.
+	ErrQuotaExceeded = errors.New("resource count quota exceeded")
 
 	// ErrQuotaNotProvisioned — потолок не назван НИ НА ОДНОЙ области.
 	// Маппится в gRPC FailedPrecondition (край даёт 400), признак
@@ -54,7 +61,9 @@ var (
 	// Почему это отдельный sentinel, а не оттенок ErrQuotaExceeded: причины
 	// разные, и различать их обязан клиент — машинно, по признаку в
 	// `google.rpc.ErrorInfo`, а не разбором прозы.
-	ErrQuotaNotProvisioned = errors.New("quota not provisioned")
+	//
+	// Текст — общий словарь шести владельцев, см. довод у ErrQuotaExceeded.
+	ErrQuotaNotProvisioned = errors.New("resource count quota not provisioned")
 )
 
 // QuotaCarrierProject — носитель учёта «проект».

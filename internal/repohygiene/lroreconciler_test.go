@@ -272,6 +272,10 @@ func reconcilerGraceLiterals(t *testing.T, servicesDir string) (out map[string]i
 		}
 		scanned++
 		text := string(body)
+		// Дешёвый отсев: подстроки довольно, чтобы файл пропустить, но вердикт
+		// ниже выносится не по ней, а по наличию и форме `OrphanGrace:`. Хвост
+		// чужого имени здесь стоит лишнего чтения, а не находки (замер: хвостов
+		// `NewReconciler(` в дереве ноль).
 		if !strings.Contains(text, "NewReconciler(") {
 			return nil
 		}

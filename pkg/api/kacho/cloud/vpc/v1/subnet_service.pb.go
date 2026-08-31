@@ -95,8 +95,11 @@ type ListSubnetsRequest struct {
 	//  2. An `=` operator.
 	//  3. The value in double quotes (`"`). The value is compared to the resource
 	//     name as-is, so only a value in the name form can match anything:
-	//     `[a-z0-9]([-a-z0-9]{0,61}[a-z0-9])?`. The filter itself applies no
-	//     separate length or alphabet rule to the value.
+	//     `[a-z0-9]([-a-z0-9]{0,61}[a-z0-9])?`. Beyond that, the filter refuses a
+	//     value longer than 256 characters, or one containing a NUL character,
+	//     with INVALID_ARGUMENT naming the field and the rule. It applies no
+	//     alphabet rule of its own: filterable fields elsewhere hold identifiers
+	//     and enum spellings, not names.
 	Filter        string `protobuf:"bytes,4,opt,name=filter,proto3" json:"filter,omitempty"`
 	unknownFields protoimpl.UnknownFields
 	sizeCache     protoimpl.SizeCache

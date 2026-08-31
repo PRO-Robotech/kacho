@@ -105,7 +105,7 @@ Consumer-сервисы (Compute, VPC и др.) ссылаются на реги
 
 ### Create — создать регион (admin, internal)
 
-<ApiOperation method="POST" endpoint="/geo/v1/regions">
+<ApiOperation method="POST" endpoint="/geo/v1/internal/regions">
 
 Создаёт регион с **явно заданным** администратором id. Синхронная операция: ответ — сам
 ресурс. Доступна только на cluster-internal listener (`InternalRegionService`, требует
@@ -113,7 +113,7 @@ Consumer-сервисы (Compute, VPC и др.) ссылаются на реги
 
 <CodeBlock language="bash">
   {dedent`
-    curl -X POST 'http://localhost:19091/geo/v1/regions' \\
+    curl -X POST 'http://localhost:19091/geo/v1/internal/regions' \\
       -H 'Authorization: Bearer <admin-JWT>' \\
       -H 'Content-Type: application/json' \\
       -d '{ "id": "ru-central2" }'
@@ -133,7 +133,7 @@ Consumer-сервисы (Compute, VPC и др.) ссылаются на реги
 
 ### Update — изменить регион (admin, internal)
 
-<ApiOperation method="PATCH" endpoint="/geo/v1/regions/{id}">
+<ApiOperation method="PATCH" endpoint="/geo/v1/internal/regions/{id}">
 
 Меняет изменяемые поля региона — `countryCode` и `status` (последний живёт только на админской
 проекции). Идентификатор изменить нельзя (immutable PK), а **переименовать регион нечем**:
@@ -141,7 +141,7 @@ Consumer-сервисы (Compute, VPC и др.) ссылаются на реги
 
 <CodeBlock language="bash">
   {dedent`
-    curl -X PATCH 'http://localhost:19091/geo/v1/regions/ru-central2' \\
+    curl -X PATCH 'http://localhost:19091/geo/v1/internal/regions/ru-central2' \\
       -H 'Authorization: Bearer <admin-JWT>' \\
       -H 'Content-Type: application/json' \\
       -d '{ "countryCode": "RU" }'
@@ -152,7 +152,7 @@ Consumer-сервисы (Compute, VPC и др.) ссылаются на реги
 
 ### Delete — удалить регион (admin, internal)
 
-<ApiOperation method="DELETE" endpoint="/geo/v1/regions/{id}">
+<ApiOperation method="DELETE" endpoint="/geo/v1/internal/regions/{id}">
 
 Удаляет регион. Если к региону привязана хотя бы одна [Zone](/api/zone), удаление блокируется
 (`FAILED_PRECONDITION`) внешним ключом `ON DELETE RESTRICT` — сначала удаляются зоны.
@@ -160,7 +160,7 @@ Consumer-сервисы (Compute, VPC и др.) ссылаются на реги
 
 <CodeBlock language="bash">
   {dedent`
-    curl -X DELETE 'http://localhost:19091/geo/v1/regions/ru-central2' \\
+    curl -X DELETE 'http://localhost:19091/geo/v1/internal/regions/ru-central2' \\
       -H 'Authorization: Bearer <admin-JWT>'
   `}
 </CodeBlock>

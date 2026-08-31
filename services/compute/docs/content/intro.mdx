@@ -182,7 +182,7 @@ Compute-`Operation` сохраняют legacy-префикс `epd` — по не
 ```mermaid
 flowchart TD
   mt["MachineType · mt-…"] -->|machine_type_id| inst["Instance · ins-…"]
-  inst -->|boot_source| src["Образ / снимок / том<br/>(kacho-storage)"]
+  inst -->|boot_source| src["Образ<br/>(kacho-storage)"]
   inst -->|volume_id| vol["Volume (kacho-storage)"]
   inst -->|network_interfaces| nic["NIC (kacho-vpc)"]
   inst -->|zone_id| zone["Zone (kacho-geo)"]

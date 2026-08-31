@@ -92,9 +92,9 @@ production требует TLS и сконфигурированный адрес
             "projectId": "prj-1",
             "name": "web-backends",
             "regionId": "region-1",
+            "port": 80,
             "healthCheck": {
-              "name": "tcp-80",
-              "tcpOptions": { "port": 80 }
+              "tcp": { "port": 80 }
             },
             "targets": [
               { "ipRef": { "subnetId": "sub-1", "address": "10.0.0.11" }, "weight": 100 }
