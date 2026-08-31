@@ -4,21 +4,47 @@
 package main
 
 // Observability-проводка composition root: ОБЪЯВЛЕНИЕ диагностической
-// поверхности (/metrics). Поднимает и гасит её профиль не-gRPC поверхности
+// поверхности (/metrics, /healthz, /readyz) и разведённые живость с готовностью.
+// Поднимает и гасит поверхность профиль не-gRPC поверхности
 // (`pkg/servicehost.ServeSurface`) — здесь только данные. prometheus
 // импортируется в adapter-пакете internal/observability/metrics (Clean
 // Architecture). geo — leaf-сервис без register-outbox и без асинхронных
 // операций, поэтому набор метрик ограничен восстановлением осиротевших LRO.
 
 import (
+	"context"
 	"log/slog"
 	"net/http"
 	"time"
 
+	"github.com/jackc/pgx/v5/pgxpool"
+
+	"github.com/PRO-Robotech/kacho/pkg/observability/health"
 	"github.com/PRO-Robotech/kacho/pkg/servicecontract"
 
 	"github.com/PRO-Robotech/kacho/services/geo/internal/observability/metrics"
 )
+
+// buildReadinessCheckers — ИМЕНОВАННЫЕ зависимости, без которых geo обслуживать
+// не может. Живость их НЕ включает намеренно: блип зависимости обязан снять под
+// из ротации, а не перезапустить процесс.
+//
+// Зависимость здесь ровно одна, и это не недоделка. geo — лист графа: своих
+// соседей на пути запроса он не зовёт, асинхронного исполнителя операций не
+// поднимает (мутации каталога завершаются синхронно, `operations.Start` в этом
+// корне не вызывается), очереди регистраций у него нет. Единственное, без чего
+// он не отвечает, — собственная база. Перечислить здесь больше значило бы
+// объявить зависимости, которых нет, и получить готовность, отражающую не
+// сервис, а наше представление о нём.
+//
+// Ребро решения о доступе в перечень не входит по другой причине: соединение с
+// владельцем прав держит носитель контура, корню оно не выдаётся. Пока
+// носитель не отдаёт его наружу, чекер на нём был бы написан по догадке.
+func buildReadinessCheckers(pool *pgxpool.Pool) []health.Checker {
+	return []health.Checker{
+		{Name: "database", Check: func(ctx context.Context) error { return pool.Ping(ctx) }},
+	}
+}
 
 // build-info — инжектится через -ldflags "-X main.buildVersion=… -X main.buildCommit=…";
 // дефолты для локальной сборки.
@@ -37,19 +63,23 @@ var (
 // выключение с причиной, и причина едет в журнал. Различие не косметическое —
 // профиль развёртывания, забывший задать адрес, и посадка без скрейпа выглядели
 // одинаково.
-func describeDiagnosticSurface(endpoint string, m *metrics.Metrics, mode servicecontract.Mode,
-	logger *slog.Logger) (servicecontract.SurfaceDescriptor, error) {
+func describeDiagnosticSurface(endpoint string, m *metrics.Metrics, agg *health.Aggregator,
+	mode servicecontract.Mode, logger *slog.Logger) (servicecontract.SurfaceDescriptor, error) {
 	mux := http.NewServeMux()
 	mux.Handle("GET /metrics", m.Handler())
+	mux.Handle("GET /healthz", agg.LiveHandler())
+	mux.Handle("GET /readyz", agg.ReadyHandler())
 
 	addr := servicecontract.Value(endpoint)
 	if endpoint == "" {
 		addr = servicecontract.NotApplicable[string](
-			"KACHO_GEO_METRICS_ADDR не задан профилем развёртывания: скрейпа на этой посадке нет")
+			"KACHO_GEO_METRICS_ADDR не задан профилем развёртывания: ни скрейпа, ни проб " +
+				"живости и готовности на этой посадке нет — kubelet не узнает о неготовности " +
+				"базы ничего")
 	}
 	return servicecontract.NewSurface(servicecontract.Surface{
 		Service: "kacho-geo",
-		Name:    "диагностика (/metrics)",
+		Name:    "диагностика (/metrics, /healthz, /readyz)",
 		Mode:    mode,
 		Logger:  logger,
 

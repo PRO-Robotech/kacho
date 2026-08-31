@@ -5,6 +5,7 @@ package main
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"log/slog"
 	"net/http"
@@ -13,8 +14,10 @@ import (
 	"syscall"
 	"time"
 
+	"github.com/jackc/pgx/v5/pgxpool"
 	"github.com/prometheus/client_golang/prometheus"
 	"google.golang.org/grpc"
+	"google.golang.org/grpc/connectivity"
 
 	"github.com/PRO-Robotech/kacho/pkg/authz"
 	"github.com/PRO-Robotech/kacho/pkg/authz/authzmetrics"
@@ -24,6 +27,7 @@ import (
 	"github.com/PRO-Robotech/kacho/pkg/grpcsrv"
 	"github.com/PRO-Robotech/kacho/pkg/listnarrow"
 	"github.com/PRO-Robotech/kacho/pkg/observability"
+	"github.com/PRO-Robotech/kacho/pkg/observability/health"
 	"github.com/PRO-Robotech/kacho/pkg/operations"
 	"github.com/PRO-Robotech/kacho/pkg/operations/operationspb"
 	"github.com/PRO-Robotech/kacho/pkg/ownerregister"
@@ -447,7 +451,16 @@ func runServe(cfg config.Config) error {
 	// Эта поверхность НЕ входит в контур носителя: она не gRPC, у неё другая
 	// цепочка, и втягивать её полями общего дескриптора значило бы превратить
 	// дескриптор в свалку. До отдельной фазы она честно остаётся вне контура.
-	diagDesc, err := describeDiagnosticSurface(cfg.MetricsAddr, svcMetrics, desc.Spec().Mode, logger)
+	// Готовность СТРОИТСЯ из именованных зависимостей и отдаётся отдельным путём
+	// от живости; чарт пробирует именно её.
+	healthAgg := health.New(buildReadinessCheckers(pool, authzConn))
+	// Гашение переводит готовность в 503 ДО остановки слушателей: kubelet
+	// перестаёт слать трафик, пока текущие вызовы дорабатывают.
+	go func() {
+		<-ctx.Done()
+		healthAgg.SetShuttingDown()
+	}()
+	diagDesc, err := describeDiagnosticSurface(cfg.MetricsAddr, svcMetrics, healthAgg, desc.Spec().Mode, logger)
 	if err != nil {
 		return fmt.Errorf("профиль диагностической поверхности: %w", err)
 	}
@@ -861,18 +874,70 @@ func dialPeer(addr string, tls grpcclient.TLSClient, logger *slog.Logger, name s
 }
 
 // diagnosticMux — маршруты cluster-internal diagnostic-листенера. Вынесен из
-// startDiagnosticListener, чтобы то, ЧТО отдаётся, можно было проверить без сети:
+// подъёма поверхности, чтобы то, ЧТО отдаётся, можно было проверить без сети:
 // расхождение между объявленным в чарте скрейпом и реально обслуживаемым путём
 // иначе замечается только на живом Prometheus (см. diagnostic_metrics_test.go).
-func diagnosticMux(m *metrics.Metrics) *http.ServeMux {
+//
+// Живость и готовность отдаются РАЗНЫМИ обработчиками. Прежде `/healthz` был
+// здесь один и отвечал безусловным 200, а чарт пробировал им СЛОТ ГОТОВНОСТИ:
+// под объявлял себя готовым, ничего не зная ни о базе, ни о канале к владельцу
+// прав, — то есть kubelet начинал слать трафик до того, как сервис был способен
+// ответить. Безусловные 200 остаются законным ответом ровно на один вопрос:
+// «жив ли процесс».
+func diagnosticMux(m *metrics.Metrics, agg *health.Aggregator) *http.ServeMux {
 	mux := http.NewServeMux()
-	mux.HandleFunc("GET /healthz", func(w http.ResponseWriter, _ *http.Request) {
-		w.WriteHeader(http.StatusOK)
-		_, _ = w.Write([]byte("ok"))
-	})
+	mux.Handle("GET /healthz", agg.LiveHandler())
+	mux.Handle("GET /readyz", agg.ReadyHandler())
 	mux.Handle("GET /metrics", m.Handler())
 	return mux
 }
+
+// buildReadinessCheckers — ИМЕНОВАННЫЕ зависимости, без которых storage
+// обслуживать не может. Живость их НЕ включает намеренно: блип зависимости
+// обязан снять под из ротации, а не перезапустить процесс.
+//
+//   - database — собственный пул; без него не отвечает ни одно чтение;
+//   - lro-worker — исполнитель операций поднят и готов забирать незавершённые.
+//     Без него каждая мутация принимается и не исполняется НИКОГДА, а клиент
+//     видит принятую операцию, которая не завершится;
+//   - iam-authz — канал к владельцу прав. Включается ТОЛЬКО когда он
+//     сконфигурирован: объявить зависимость, которой на этой посадке нет,
+//     значило бы держать под вечно неготовым по причине, которой не существует.
+func buildReadinessCheckers(pool *pgxpool.Pool, authzConn *grpc.ClientConn) []health.Checker {
+	checkers := []health.Checker{
+		{Name: "database", Check: func(ctx context.Context) error { return pool.Ping(ctx) }},
+		{Name: "lro-worker", Check: func(context.Context) error {
+			if operations.Ready() {
+				return nil
+			}
+			return errLROWorkerDown
+		}},
+	}
+	if authzConn != nil {
+		checkers = append(checkers, health.Checker{Name: "iam-authz", Check: func(context.Context) error {
+			return authzConnHealth(authzConn)
+		}})
+	}
+	return checkers
+}
+
+// authzConnHealth — состояние соединения с владельцем прав. Shutdown — отказ;
+// прочие состояния (Idle/Connecting/Ready/TransientFailure) считаются рабочими:
+// gRPC переподключается лениво, и снятие пода из ротации на кратком
+// TransientFailure дало бы ложный флап на каждом перекате соседа.
+func authzConnHealth(conn *grpc.ClientConn) error {
+	if conn.GetState() == connectivity.Shutdown {
+		return errIAMConnShutdown
+	}
+	return nil
+}
+
+// Сентинелы чекеров: причина «не готов» в ответе `/readyz` без раскрытия
+// внутренних деталей наружу.
+var (
+	errLROWorkerDown   = errors.New("LRO dispatcher loop not running")
+	errIAMConnShutdown = errors.New("connection to kacho-iam is shut down")
+)
 
 // Сроки диагностической поверхности. Названы константами, а не вписаны в
 // объявление: они одинаковы у всех диагностических поверхностей платформы, и
@@ -885,7 +950,7 @@ const (
 )
 
 // describeDiagnosticSurface — ОБЪЯВЛЕНИЕ cluster-internal диагностической
-// поверхности (/healthz, /metrics).
+// поверхности (/healthz, /readyz, /metrics).
 //
 // Сервера, привязки порта и гашения здесь нет: их держит профиль не-gRPC
 // поверхности (`pkg/servicehost.ServeSurface`). Корень отвечает на четыре
@@ -894,27 +959,29 @@ const (
 //
 // Пустой эндпоинт перестал выключать поверхность МОЛЧА: теперь это объявленное
 // выключение с причиной, и причина едет в журнал.
-func describeDiagnosticSurface(endpoint string, m *metrics.Metrics, mode servicecontract.Mode,
-	logger *slog.Logger) (servicecontract.SurfaceDescriptor, error) {
+func describeDiagnosticSurface(endpoint string, m *metrics.Metrics, agg *health.Aggregator,
+	mode servicecontract.Mode, logger *slog.Logger) (servicecontract.SurfaceDescriptor, error) {
 	addr := servicecontract.Value(endpoint)
 	if endpoint == "" {
 		addr = servicecontract.NotApplicable[string](
-			"KACHO_STORAGE_METRICS_ADDR не задан профилем развёртывания: ни скрейпа, ни пробы " +
-				"живости на этой посадке нет")
+			"KACHO_STORAGE_METRICS_ADDR не задан профилем развёртывания: ни скрейпа, ни проб " +
+				"живости и готовности на этой посадке нет — kubelet не узнает о неготовности " +
+				"зависимостей ничего")
 	}
 	return servicecontract.NewSurface(servicecontract.Surface{
 		Service: "kacho-storage",
-		Name:    "диагностика (/healthz, /metrics)",
+		Name:    "диагностика (/healthz, /readyz, /metrics)",
 		Mode:    mode,
 		Logger:  logger,
 
 		Addr:    addr,
-		Handler: diagnosticMux(m),
+		Handler: diagnosticMux(m, agg),
 
 		Reach: servicecontract.ReachClusterInternal,
 		Auth: servicecontract.NotApplicable[servicecontract.SurfaceAuthMech](
 			"снята осознанно: поверхность выставлена только на внутренний Service и несёт " +
-				"счётчики процесса и признак живости — ни секретов, ни данных арендатора, ни " +
+				"счётчики процесса, признак живости и имена зависимостей — ни секретов, ни " +
+				"данных арендатора, ни " +
 				"сведений о размещении на проводе нет (security.md §«Инфра-чувствительные данные»)"),
 
 		ReadHeaderBudget: diagReadHeaderBudget,

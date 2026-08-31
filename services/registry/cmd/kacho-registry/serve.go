@@ -27,6 +27,7 @@ import (
 	"github.com/PRO-Robotech/kacho/pkg/grpcsrv"
 	"github.com/PRO-Robotech/kacho/pkg/listnarrow"
 	"github.com/PRO-Robotech/kacho/pkg/observability"
+	"github.com/PRO-Robotech/kacho/pkg/observability/health"
 	"github.com/PRO-Robotech/kacho/pkg/operations"
 	"github.com/PRO-Robotech/kacho/pkg/operations/operationspb"
 	"github.com/PRO-Robotech/kacho/pkg/outbox/drainer"
@@ -128,7 +129,19 @@ func runServe(cfg config.Config) error {
 		return fmt.Errorf("KACHO_REGISTRY_AUTH_MODE: %w", merr)
 	}
 	svcMetrics := metrics.New()
-	diagDesc, derr := describeDiagnosticSurface(cfg.MetricsAddr, svcMetrics, mode, logger)
+	// Готовность СТРОИТСЯ из именованных зависимостей и отдаётся отдельным путём
+	// от живости; чарт пробирует именно её. Носитель канала к владельцу прав
+	// приезжает ниже по тексту — до его установки готовность отвечает «не готов»,
+	// а не «готов» (см. buildReadinessCheckers).
+	var authzSlot health.Slot
+	healthAgg := health.New(buildReadinessCheckers(pool, cfg.AuthZIAMGRPCAddr != "", &authzSlot))
+	// Гашение переводит готовность в 503 ДО остановки слушателей: kubelet
+	// перестаёт слать трафик, пока текущие вызовы дорабатывают.
+	go func() {
+		<-ctx.Done()
+		healthAgg.SetShuttingDown()
+	}()
+	diagDesc, derr := describeDiagnosticSurface(cfg.MetricsAddr, svcMetrics, healthAgg, mode, logger)
 	if derr != nil {
 		return fmt.Errorf("профиль диагностической поверхности: %w", derr)
 	}
@@ -177,6 +190,10 @@ func runServe(cfg config.Config) error {
 			return fmt.Errorf("dial kacho-iam internal: %w", err)
 		}
 		defer func() { _ = authzConn.Close() }()
+		// Носитель зависимости, объявленной посадкой выше. До этой строки
+		// готовность отвечает «не готов»: окно старта не зачитывается в готовность
+		// молча.
+		authzSlot.Install(func(context.Context) error { return authzConnHealth(authzConn) })
 	}
 
 	// ── ребро registry→iam PUBLIC (:9090, mTLS): ProjectService.Get (existence-
