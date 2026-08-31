@@ -15,10 +15,11 @@ package subscription_test
 
 import (
 	"context"
-	"github.com/PRO-Robotech/kacho/internal/pgtest"
 	"sync"
 	"testing"
 	"time"
+
+	"github.com/PRO-Robotech/kacho/internal/pgtest"
 
 	"github.com/jackc/pgx/v5"
 	"github.com/jackc/pgx/v5/pgxpool"
