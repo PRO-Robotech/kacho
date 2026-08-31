@@ -42,9 +42,6 @@ import { useDebouncedValue } from "@shared/lib/list-search";
 import { pickerScope, pickerScopeOfSpec } from "@shared/lib/picker-search";
 import { MONO_FONT } from "@shared/components/organisms/form/editor-surface";
 
-// Re-export WILDCARD для обратной совместимости импортёров RulesEditor.
-export { WILDCARD };
-
 /**
  * Каталог платформы сервер по вводу НЕ сужает (#528).
  *
