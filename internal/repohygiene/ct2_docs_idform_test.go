@@ -13,11 +13,22 @@ func docsIDFormOptions(t *testing.T) DocsIDFormOptions {
 	return DocsIDFormOptions{
 		Root:       repoRoot(t),
 		ModulePath: "github.com/PRO-Robotech/kacho",
-		// Судимые домены объявлены явно — это граница полосы, а не свойство
-		// дерева; остаток назван в шапке анализатора числом.
+		// Судятся ВСЕ клиентские деревья документации. Границы больше нет:
+		// прежде судились два домена, и остаток был назван честно; #1723
+		// перемерил остальные шесть — находок в них НОЛЬ, и это сказано числом,
+		// а не умолчанием (перепись печатает страницы и рассуженные токены по
+		// всему набору). Перечень выписан, а не выведен обходом `services/*`,
+		// намеренно: домен без клиентской документации обязан быть виден как
+		// решение, а не как пропуск обхода.
 		JudgedDomains: []string{
+			"gateway/docs/content",
 			"services/compute/docs/content",
+			"services/geo/docs/content",
+			"services/iam/docs/content",
+			"services/nlb/docs/content",
+			"services/registry/docs/content",
 			"services/storage/docs/content",
+			"services/vpc/docs/content",
 		},
 	}
 }
@@ -64,8 +75,8 @@ func TestDocsIDFormMatchesWhatTheCodeMints(t *testing.T) {
 		t.Fatalf("в словаре представлены не обе формы (слитная=%v дефисная=%v) — "+
 			"вердикт был бы о выборе анализатора, а не о дереве", sawConcat, sawHyphen)
 	}
-	if census.DocFiles < 20 {
-		t.Fatalf("страниц клиентской документации %d — обход пуст, вердикт беспредметен", census.DocFiles)
+	if census.DocFiles < 100 {
+		t.Fatalf("страниц клиентской документации %d — обход неполон, вердикт беспредметен", census.DocFiles)
 	}
 	if census.Judged == 0 {
 		t.Fatalf("токенов рассужено 0 при %d встреченных — сверка не состоялась", census.TokensSeen)
