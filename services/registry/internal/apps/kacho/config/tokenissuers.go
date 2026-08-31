@@ -17,6 +17,8 @@ import (
 	"strings"
 
 	"github.com/PRO-Robotech/kacho/pkg/tokenpolicy"
+
+	"github.com/PRO-Robotech/kacho/pkg/servicecontract"
 )
 
 const (
@@ -235,14 +237,31 @@ func (c Config) TokenIssuerBindings() ([]TokenIssuerBinding, error) {
 // процесс при старте. Пока предикат жил в `main`, такой пробе оставалось
 // сформулировать его заново — и разойтись с ним молча.
 
-// isProductionPosture — режимы, в которых послаблений нет.
-func (c Config) isProductionPosture() bool {
-	switch c.AuthMode {
-	case "production", "production-strict":
-		return true
+// Posture — посадка процесса, разобранная ОБЩИМ словарём.
+//
+// Словарь допустимых значений объявлен в дереве один раз
+// (`servicecontract.Modes`): пока каждый сервис сравнивал строку на месте, у
+// одного предмета было пять объявлений, и одно из них расходилось с остальными в
+// обе стороны — принимало алиасы, которых не принимал никто, и отвергало
+// значение, в котором работали шестеро (задача продукта #1656).
+//
+// Неразобранное значение читается как БОЕВАЯ посадка. Это не «умолчание»: старт
+// на нём всё равно отвергает страж, который называет ручку и перечисляет словарь;
+// а до отказа послаблений быть не должно — иначе опечатка в профиле тихо
+// открывала бы то, что закрывает боевой режим.
+//
+// Разбор точный: ни регистр, ни обрамляющие пробелы дом не прощает, и здесь они
+// не прощаются тоже — иначе у одной ручки завелось бы два правила чтения.
+func (c Config) Posture() servicecontract.Mode {
+	mode, err := servicecontract.ParseMode(c.AuthMode)
+	if err != nil {
+		return servicecontract.ModeProduction
 	}
-	return false
+	return mode
 }
+
+// isProductionPosture — режимы, в которых послаблений нет.
+func (c Config) isProductionPosture() bool { return c.Posture().IsProduction() }
 
 // TokenAcceptance возвращает записи приёма и отвергает объявление, с которым
 // плоскость данных не поднимется.

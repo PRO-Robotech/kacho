@@ -36,7 +36,7 @@ func (c Config) Validate() error {
 		return nil
 	}
 	return c.TrustedForwarders().Require(grpcsrv.ForwarderGate{
-		Production:   c.AuthMode == "production" || c.AuthMode == "production-strict",
+		Production:   c.Posture().IsProduction(),
 		DevTrustAny:  c.AuthZTrustAnyForwarder,
 		SANsKnob:     "KACHO_REGISTRY_AUTHZ_TRUSTED_FORWARDER_SANS",
 		TrustAnyKnob: "KACHO_REGISTRY_AUTHZ_TRUST_ANY_FORWARDER",

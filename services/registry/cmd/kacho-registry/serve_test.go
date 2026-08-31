@@ -13,6 +13,8 @@ import (
 	"github.com/PRO-Robotech/kacho/pkg/grpcsrv"
 
 	"github.com/PRO-Robotech/kacho/services/registry/internal/apps/kacho/config"
+
+	"github.com/PRO-Robotech/kacho/pkg/servicecontract"
 )
 
 // discardLogger — тихий slog для тестов validateAuthMode (ветки логируют WARN).
@@ -245,7 +247,7 @@ func TestRequireDataplaneTLSAck(t *testing.T) {
 	}
 	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {
-			err := requireDataplaneTLSAck(tc.authMode, tc.tlsTerminated)
+			err := requireDataplaneTLSAck(posture(t, tc.authMode), tc.tlsTerminated)
 			if tc.wantErr && err == nil {
 				t.Fatalf("want error, got nil")
 			}
@@ -288,4 +290,16 @@ func TestValidateSecurityConfig_Production_BreakglassRefusesBoot(t *testing.T) {
 			}
 		})
 	}
+}
+
+// posture — посадка по её написанию, для табличных проб. Разбор общий, поэтому
+// проба утверждает о ТОМ ЖЕ словаре, который читает страж; собственный перевод
+// строки в значение был бы третьим местом об одном предмете.
+func posture(t *testing.T, raw string) servicecontract.Mode {
+	t.Helper()
+	mode, err := servicecontract.ParseMode(raw)
+	if err != nil {
+		t.Fatalf("посадка %q не разбирается общим словарём: %v", raw, err)
+	}
+	return mode
 }
