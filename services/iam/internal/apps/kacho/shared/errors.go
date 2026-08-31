@@ -57,6 +57,14 @@ func MapRepoErr(err error) error {
 	if refusal, ok := quotaRefusal(err); ok {
 		return refusal
 	}
+	// Отказ по ссылке — по той же причине и тем же порядком: две его полосы
+	// («ссылаемого нет» / «ещё используется») различает ТОЛЬКО признак, а
+	// sentinel-ветка ниже пересобрала бы статус голым `status.Error` и признак
+	// потеряла бы. Спрашивается ДО общего switch'а ещё и потому, что обе полосы
+	// вложены в `ErrFailedPrecondition` и его ветвь перехватила бы их первой.
+	if refusal, ok := referenceRefusal(err); ok {
+		return refusal
+	}
 	switch {
 	case stderrors.Is(err, iamerr.ErrNotFound):
 		return status.Error(codes.NotFound, iamerr.StripSentinel(err))

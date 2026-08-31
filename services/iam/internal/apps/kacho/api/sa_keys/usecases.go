@@ -714,7 +714,11 @@ func (u *IssueSAKeyUseCase) hydraUnavailable(ctx context.Context, action string,
 		u.logger.ErrorContext(ctx, "hydra admin call failed",
 			slog.String("action", action), slog.Any("error", err))
 	}
-	return status.Error(codes.Unavailable, "hydra admin unavailable")
+	// Текст НЕ называет ни поставщика, ни его административный API: арендатору
+	// о них знать не полагается, а знание не даёт ему следующего шага — тот же
+	// довод, которым `shared.MapRepoErr` держит фиксированный текст на признаке
+	// недоступности. Подробность остаётся в цепочке и уходит в журнал.
+	return status.Error(codes.Unavailable, "service unavailable")
 }
 
 // doIssuePrivateKeyJWT — mint ECDSA P-256 keypair, name the client (registering it

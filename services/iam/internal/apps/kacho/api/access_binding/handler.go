@@ -228,7 +228,7 @@ func (h *Handler) Get(ctx context.Context, req *iamv1.GetAccessBindingRequest) (
 	}
 	pb, err := abToPb(b)
 	if err != nil {
-		return nil, status.Error(codes.Internal, "marshal access binding")
+		return nil, status.Error(codes.Internal, "internal error")
 	}
 	return pb, nil
 }
@@ -620,7 +620,7 @@ func listPageToProto(page ListPage) (*iamv1.ListAccessBindingsResponse, error) {
 	for _, b := range page.Bindings {
 		pb, err := abToPb(b)
 		if err != nil {
-			return nil, status.Error(codes.Internal, "marshal access binding")
+			return nil, status.Error(codes.Internal, "internal error")
 		}
 		out = append(out, pb)
 		records = append(records, &iamv1.GrantSurfaceRecord{
@@ -680,7 +680,7 @@ func listToProto(rows []domain.AccessBinding, next string) (*iamv1.ListAccessBin
 	for _, b := range rows {
 		pb, err := abToPb(b)
 		if err != nil {
-			return nil, status.Error(codes.Internal, "marshal access binding")
+			return nil, status.Error(codes.Internal, "internal error")
 		}
 		out = append(out, pb)
 	}
