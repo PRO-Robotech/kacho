@@ -38,6 +38,8 @@ import (
 
 	coredb "github.com/PRO-Robotech/kacho/pkg/db"
 
+	"github.com/PRO-Robotech/kacho/internal/pgtest"
+
 	"github.com/PRO-Robotech/kacho/services/iam/internal/repo/kacho/access_binding"
 	kachopg "github.com/PRO-Robotech/kacho/services/iam/internal/repo/kacho/pg"
 	"github.com/PRO-Robotech/kacho/services/iam/internal/service"
@@ -70,7 +72,7 @@ func TestSubjectChangeRepo_CursorBelowTheFloorIsRefusedByName(t *testing.T) {
 	ctx := context.Background()
 	pool, err := coredb.NewPool(ctx, iampgtest.NewTestPostgres(t))
 	require.NoError(t, err)
-	defer pool.Close()
+	pgtest.ClosePoolAtEnd(t, pool)
 
 	repo := kachopg.NewSubjectChangeRepo(pool, nil)
 
@@ -130,7 +132,7 @@ func TestSubjectChangeRepo_EmptiedJournalSeatsTheCallerOnTheSettledBoundary(t *t
 	ctx := context.Background()
 	pool, err := coredb.NewPool(ctx, iampgtest.NewTestPostgres(t))
 	require.NoError(t, err)
-	defer pool.Close()
+	pgtest.ClosePoolAtEnd(t, pool)
 
 	repo := kachopg.NewSubjectChangeRepo(pool, nil)
 
@@ -172,7 +174,7 @@ func TestSubjectChangeRepo_ConcurrentSweepNeverProducesASilentGap(t *testing.T) 
 	ctx := context.Background()
 	pool, err := coredb.NewPool(ctx, iampgtest.NewTestPostgres(t))
 	require.NoError(t, err)
-	defer pool.Close()
+	pgtest.ClosePoolAtEnd(t, pool)
 
 	repo := kachopg.NewSubjectChangeRepo(pool, nil)
 
