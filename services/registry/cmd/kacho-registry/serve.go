@@ -174,6 +174,14 @@ func runServe(cfg config.Config) error {
 		return fmt.Errorf("фоновая уборка таблицы операций: %w", err)
 	}
 
+	// Фоновая уборка РЕСУРСНОГО ЖУРНАЛА подписки (#1666). Строка в него пишется
+	// триггером на каждой мутации реестра, темп задаёт арендатор, а снятия строк
+	// не было ни на одном пути. Порог, предикат и обещание подписчику объявлены
+	// в `pkg/subscription` ОДИН раз — здесь только провязка.
+	if err := startJournalRetentionSweep(ctx, pool, cfg, logger); err != nil {
+		return err
+	}
+
 	// ── ребро registry→iam INTERNAL (:9091, mTLS): per-RPC authz Check +
 	// fga-proxy RegisterResource/UnregisterResource (Internal-only). При breakglass
 	// conn может быть nil (интерсептор пропускает всё; клиенты отвечают Unavailable).

@@ -31,6 +31,7 @@ import (
 	"github.com/PRO-Robotech/kacho/pkg/operations"
 	"github.com/PRO-Robotech/kacho/pkg/operations/operationspb"
 	"github.com/PRO-Robotech/kacho/pkg/ownerregister"
+	"github.com/PRO-Robotech/kacho/pkg/retention"
 	"github.com/PRO-Robotech/kacho/pkg/servicecontract"
 	"github.com/PRO-Robotech/kacho/pkg/servicehost"
 	"github.com/PRO-Robotech/kacho/pkg/subscription"
@@ -241,6 +242,25 @@ func runServe(cfg config.Config) error {
 		logger,
 	); err != nil {
 		return fmt.Errorf("фоновая уборка таблицы операций: %w", err)
+	}
+
+	// Фоновая уборка РЕСУРСНОГО ЖУРНАЛА подписки (#1666).
+	//
+	// Строка в него пишется ТРИГГЕРОМ на каждой мутации тома, снимка и образа —
+	// включая мутации сверщика, идущие мимо репозиториев, — то есть темп задаёт
+	// арендатор, а снятия строк не было ни на одном пути.
+	//
+	// Петля СВОЯ, а не запись в реестре уборки таблицы операций: пороги у двух
+	// предметов выводятся из РАЗНЫХ читателей (оператор, разбирающий отказавшую
+	// мутацию, против подписчика, возобновляющегося с позиции). Расписание при
+	// этом одно и берётся из одного места — разошлись бы два литерала, а не два
+	// вызова одной функции.
+	if _, err := subscription.StartJournalRetentionSweep(
+		ctx, pool, subscriptionjournal.Journal(),
+		retention.DefaultConfig(),
+		logger.With(slog.String("component", "journal_retention_sweep")),
+	); err != nil {
+		return fmt.Errorf("фоновая уборка ресурсного журнала: %w", err)
 	}
 
 	if err = operations.ConfigureDefault(
