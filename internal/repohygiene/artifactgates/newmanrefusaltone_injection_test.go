@@ -387,6 +387,18 @@ func f(fieldName string) error {
 	if e {
 		return serviceerr.InvalidArg(fieldName, "field name is a variable here")
 	}
+	if g {
+		// Форма ГОСПОДСТВУЮЩАЯ у таблиц SQLSTATE→текст: сам текст уезжает
+		// клиенту через status.Errorf(codes.X, "%s", msg), и по вызову
+		// status.Errorf он не читается вовсе.
+		return errors.New(fmt.Sprintf("sprintf assembled text"))
+	}
+	if h {
+		return errors.New("errors new constant text")
+	}
+	if i {
+		return iamerr.Wrapf(iamerr.ErrNotFound, "wrapf second argument text", id)
+	}
 	return corevalidate.ResourceID("Image", "img", x)
 }
 `
@@ -406,6 +418,9 @@ func f(fieldName string) error {
 		"text carried onto the next line", // тот же вызов, перенос строки
 		"field name is a variable here",   // InvalidArg, имя поля переменной
 		"invalid Image id '%s'",           // проверка формата чужого id
+		"sprintf assembled text",          // fmt.Sprintf (#1748)
+		"errors new constant text",        // errors.New (#1748)
+		"wrapf second argument text",      // Wrapf, текст вторым аргументом (#1748)
 	} {
 		if !got[want] {
 			t.Errorf("распознаватель производителей не прочитал форму %q — "+

@@ -410,7 +410,13 @@ CASES.append(Case(
                 "  pm.environment.unset('_sysDelCount'); pm.environment.unset('_sysDelStarted');",
                 "  pm.test('operation done', () => pm.expect(j.done, JSON.stringify(j)).to.eql(true));",
                 "  pm.test('op.error FAILED_PRECONDITION (9)', () => pm.expect(j.error && j.error.code, JSON.stringify(j)).to.eql(9));",
-                "  pm.test('cannot be deleted text', () => pm.expect(((j.error&&j.error.message)||'').toLowerCase(), JSON.stringify(j)).to.include('cannot be deleted'));",
+                # Текст владельца ЦЕЛИКОМ и с различением регистра: «cannot be
+                # deleted» несут одиннадцать разных отказов iam, и утверждение об
+                # общей части проходило на любом из них (#1748). Имя доступа
+                # `opMsg` — то же, что у общего слоя: по нему гейт производителя
+                # узнаёт объявленный текст.
+                "  const opMsg = (j.error && j.error.message) || '';",
+                f"  pm.test('op refusal is the owner verbatim tone', () => pm.expect(opMsg, JSON.stringify(j)).to.eql('System role {SYS_VIEW} cannot be deleted'));",
                 "}",
             ],
         ),

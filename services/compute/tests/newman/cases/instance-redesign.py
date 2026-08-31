@@ -363,7 +363,12 @@ CASES.append(Case(
                 body=_vm_body("mtabs", mt="{{garbageMachineTypeId}}"),
                 test_script=[*assert_status(200), *save_from_response("j.id", "opId")]),
            poll_operation_until_done(),
-           assert_op_error(9, "FAILED_PRECONDITION", msg_substr="machine type")],
+           # Текст владельца ЦЕЛИКОМ: `machine type` несут четыре разных отказа
+           # compute («Create machine type %s», «Delete machine type %s», …), и
+           # утверждение об общей части проходило на отказе, которого кейс не
+           # называл (#1748).
+           assert_op_error(9, "FAILED_PRECONDITION",
+                           msg_text="machine type {{garbageMachineTypeId}} not found")],
 ))
 
 

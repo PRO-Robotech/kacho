@@ -234,7 +234,10 @@ CASES.append(Case(
                 *save_from_response("j.id", "opId"),
             ],
         ),
-        assert_op_error(6, "ALREADY_EXISTS", msg_substr="already exists"),
+        # Текст владельца ЦЕЛИКОМ: «already exists» несут пять разных отказов iam,
+        # и утверждение об общей части проходило на отказе о ЧУЖОМ ресурсе (#1748).
+        assert_op_error(6, "ALREADY_EXISTS",
+                        msg_text="ServiceAccount with name sva-{{runId}} already exists"),
     ],
 ))
 
