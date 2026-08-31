@@ -106,7 +106,14 @@ func StripSentinel(err error, sentinel error) string {
 	}
 	msg := err.Error()
 	if fallback != "" {
+		// Пустой остаток — вырожденный случай: обёртка без текста
+		// (`fmt.Errorf("%w: %s", sentinel, "")`). Отдать его клиенту значило бы
+		// отказать БЕЗ СООБЩЕНИЯ; прежняя редакция такого не допускала, и
+		// приведение к общей форме не повод это менять.
 		if rest, ok := strings.CutPrefix(msg, fallback+": "); ok {
+			if rest == "" {
+				return fallback
+			}
 			return rest
 		}
 	}

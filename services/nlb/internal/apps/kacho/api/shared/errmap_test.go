@@ -72,4 +72,8 @@ func TestStripSentinel(t *testing.T) {
 	require.Equal(t, "not found", StripSentinel(errors.New(""), domain.ErrNotFound))
 	require.Equal(t, "raw text", StripSentinel(errors.New("raw text"), domain.ErrNotFound))
 	require.Equal(t, "raw text", StripSentinel(errors.New("raw text"), nil))
+	// Обёртка без текста не даёт ОТКАЗА БЕЗ СООБЩЕНИЯ: пустой остаток замещается
+	// текстом самого sentinel'а.
+	require.Equal(t, "not found",
+		StripSentinel(fmt.Errorf("%w: %s", domain.ErrNotFound, ""), domain.ErrNotFound))
 }
