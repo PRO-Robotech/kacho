@@ -27,7 +27,7 @@ option go_package = "github.com/PRO-Robotech/kacho/pkg/api/kacho/cloud/iam/v1;ia
 // account_id. За ним ничего не переносится, и это то же самое решение, а не
 // отдельное ограничение.
 //
-// Resource id prefix: `prj-`.
+// Resource id prefix: `prj` (concatenated form, `ids.NewID`).
 message Project {
   // ID of the project.
   string id = 1;

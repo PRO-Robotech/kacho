@@ -277,18 +277,18 @@ type CheckRequest struct {
 	state protoimpl.MessageState `protogen:"open.v1"`
 	// FGA-style subject string. Допустимые форматы:
 	//
-	//	"user:<usr_xxx>"
-	//	"service_account:<sva_xxx>"
-	//	"group:<grp_xxx>#member"
+	//	"user:<usr…>"
+	//	"service_account:<sva…>"
+	//	"group:<grp…>#member"
 	SubjectId string `protobuf:"bytes,1,opt,name=subject_id,json=subjectId,proto3" json:"subject_id,omitempty"`
 	// FGA-relation: "viewer" | "editor" | "admin" | "use" | "member" | etc.
 	// Допустимые значения зависят от authorization-model.
 	Relation string `protobuf:"bytes,2,opt,name=relation,proto3" json:"relation,omitempty"`
 	// FGA-object string. Формат "<type>:<id>", например:
 	//
-	//	"project:<prj_xxx>"
-	//	"vpc_network:<enp_xxx>"
-	//	"account:<acc_xxx>"
+	//	"project:<prj…>"
+	//	"vpc_network:<net…>"
+	//	"account:<acc…>"
 	Object string `protobuf:"bytes,3,opt,name=object,proto3" json:"object,omitempty"`
 	// Trace-id для correlation в логах (optional).
 	TraceId string `protobuf:"bytes,4,opt,name=trace_id,json=traceId,proto3" json:"trace_id,omitempty"`
@@ -440,14 +440,14 @@ type RegisterResourceRequest struct {
 	state protoimpl.MessageState `protogen:"open.v1"`
 	// FGA-subject string. Формат "<type>:<id>", напр.:
 	//
-	//	"user:<usr_xxx>"
-	//	"service_account:<sva_xxx>"
+	//	"user:<usr…>"
+	//	"service_account:<sva…>"
 	//	"<owner-type>:<id>"
 	SubjectId string `protobuf:"bytes,1,opt,name=subject_id,json=subjectId,proto3" json:"subject_id,omitempty"`
 	// FGA-relation для owner-tuple (как правило "admin" / "parent").
 	Relation string `protobuf:"bytes,2,opt,name=relation,proto3" json:"relation,omitempty"`
 	// Объект решения. Формат "<type>:<id>" словарём МОДЕЛИ прав
-	// (НЕ permission-каталог), напр. "vpc_network:<enp_xxx>",
+	// (НЕ permission-каталог), напр. "vpc_network:<net…>",
 	// "compute_instance:<...>".
 	Object string `protobuf:"bytes,3,opt,name=object,proto3" json:"object,omitempty"`
 	// Trace-id для correlation в логах (модуль ↔ IAM ↔ FGA). Optional.
@@ -457,11 +457,11 @@ type RegisterResourceRequest struct {
 	// `bySelector` (matchLabels) и containment. Пусто для legacy-caller'ов
 	// (graceful). IAM делает минимальную sanity-валидацию, не дублируя owner-pattern.
 	Labels map[string]string `protobuf:"bytes,5,rep,name=labels,proto3" json:"labels,omitempty" protobuf_key:"bytes,1,opt,name=key" protobuf_val:"bytes,2,opt,name=value"`
-	// Parent project id ресурса (`prj-…`), если ресурс project-scoped.
+	// Parent project id ресурса (`prj…`), если ресурс project-scoped.
 	// Кладется в mirror ради containment (объект «под scope») SAME-DB, без ребра
 	// iam→owner. Пусто для не-project-scoped объектов.
 	ParentProjectId string `protobuf:"bytes,6,opt,name=parent_project_id,json=parentProjectId,proto3" json:"parent_project_id,omitempty"`
-	// Parent account id ресурса (`acc-…`), если применимо. Mirror /
+	// Parent account id ресурса (`acc…`), если применимо. Mirror /
 	// containment на account-scope.
 	ParentAccountId string `protobuf:"bytes,7,opt,name=parent_account_id,json=parentAccountId,proto3" json:"parent_account_id,omitempty"`
 	// Монотонный per-object source-version. Маркер «версии
@@ -477,7 +477,7 @@ type RegisterResourceRequest struct {
 	//
 	// Каждый элемент — объект в форме `"<type>:<id>"`, той же, что `object` выше:
 	//
-	//	["registry_registry:reg-…", "project:prj-…", "account:acc-…"]
+	//	["registry_registry:reg…", "project:prj…", "account:acc…"]
 	//
 	// ЗАЧЕМ ОТДЕЛЬНОЕ ПОЛЕ ПРИ ДВУХ УЖЕ СУЩЕСТВУЮЩИХ. `parent_project_id` и
 	// `parent_account_id` несут ровно двух предков и ровно этих. Модель прав

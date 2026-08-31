@@ -281,7 +281,7 @@ func (AccessBinding_Scope) EnumDescriptor() ([]byte, []int) {
 // Constraint (DB-level): UNIQUE (subject_type, subject_id, role_id, resource_type,
 // resource_id) — идемпотентный INSERT (дубль возвращает existing).
 //
-// Resource id prefix: `acb-`.
+// Resource id prefix: `acb` (concatenated form, `ids.NewID`).
 type AccessBinding struct {
 	state protoimpl.MessageState `protogen:"open.v1"`
 	// ID of the access binding.

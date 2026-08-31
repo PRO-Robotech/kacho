@@ -38,7 +38,7 @@ option go_package = "github.com/PRO-Robotech/kacho/pkg/api/kacho/cloud/iam/v1;ia
 // aggregationRule (composite roles) — пока не реализовано; будет добавлено
 // append-only позже отдельным tag'ом (tag НЕ зарезервирован заранее).
 //
-// Resource id prefix: `rol-`.
+// Resource id prefix: `rol` (concatenated form, `ids.NewID`).
 message Role {
   // ID of the role.
   string id = 1;

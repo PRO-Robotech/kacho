@@ -54,7 +54,7 @@ const (
 // aggregationRule (composite roles) — пока не реализовано; будет добавлено
 // append-only позже отдельным tag'ом (tag НЕ зарезервирован заранее).
 //
-// Resource id prefix: `rol-`.
+// Resource id prefix: `rol` (concatenated form, `ids.NewID`).
 type Role struct {
 	state protoimpl.MessageState `protogen:"open.v1"`
 	// ID of the role.

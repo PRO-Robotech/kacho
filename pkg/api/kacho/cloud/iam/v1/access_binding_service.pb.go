@@ -551,7 +551,7 @@ type ListAccessBindingsRequest struct {
 	// only through the legacy `ListByAccount`/`ListByRole`, i.e. the recommended
 	// path could not show what the deprecated paths could. Semantics and default
 	// are identical to those two (isomorphic), and it composes with `filter`
-	// (e.g. `filter=subject="usr-…"` + `include_revoked=true` audits one subject's
+	// (e.g. `filter=subject="usr…"` + `include_revoked=true` audits one subject's
 	// revoked grants).
 	IncludeRevoked bool `protobuf:"varint,4,opt,name=include_revoked,json=includeRevoked,proto3" json:"include_revoked,omitempty"`
 	unknownFields  protoimpl.UnknownFields
@@ -1112,7 +1112,7 @@ type ListSubjectPrivilegesRequest struct {
 	// (`derivation=GROUP`, `via_group_id` называет группу). Для "group" ответ —
 	// гранты самой группы (DIRECT); группы не вкладываются друг в друга.
 	SubjectType string `protobuf:"bytes,1,opt,name=subject_type,json=subjectType,proto3" json:"subject_type,omitempty"`
-	// ID subject'а (User id `usr-…` / ServiceAccount id `sva-…`).
+	// ID subject'а (User id `usr…` / ServiceAccount id `sva…`).
 	SubjectId string `protobuf:"bytes,2,opt,name=subject_id,json=subjectId,proto3" json:"subject_id,omitempty"`
 	// The maximum number of results per page to return. Default value: 50,
 	// max 1000.
@@ -1244,9 +1244,9 @@ func (x *ListSubjectPrivilegesResponse) GetNextPageToken() string {
 // данных и никаких condition/builtin_condition-internals (вне scope v1).
 type SubjectPrivilege struct {
 	state protoimpl.MessageState `protogen:"open.v1"`
-	// ID of the underlying AccessBinding (`acb-…`).
+	// ID of the underlying AccessBinding (`acb…`).
 	BindingId string `protobuf:"bytes,1,opt,name=binding_id,json=bindingId,proto3" json:"binding_id,omitempty"`
-	// ID of the Role granted (`rol-…`).
+	// ID of the Role granted (`rol…`).
 	RoleId string `protobuf:"bytes,2,opt,name=role_id,json=roleId,proto3" json:"role_id,omitempty"`
 	// Human-readable Role name, resolved server-side (output-only; empty for a
 	// dangling/deleted role).
@@ -1594,7 +1594,7 @@ func (x *ListAssignableRolesResponse) GetNextPageToken() string {
 // predicate domain, so the client never computes scope.
 type AssignableRole struct {
 	state protoimpl.MessageState `protogen:"open.v1"`
-	// ID of the Role (`rol-…`).
+	// ID of the Role (`rol…`).
 	RoleId string `protobuf:"bytes,1,opt,name=role_id,json=roleId,proto3" json:"role_id,omitempty"`
 	// Human-readable Role name, resolved server-side (no separate
 	// `GET /roles/{id}` round-trip needed).
@@ -1686,7 +1686,7 @@ func (x *AssignableRole) GetCreatedAt() *timestamppb.Timestamp {
 
 type ListAccessBindingsByRoleRequest struct {
 	state protoimpl.MessageState `protogen:"open.v1"`
-	// ID of the Role whose bindings are listed (`rol-…`). Audit "who holds role
+	// ID of the Role whose bindings are listed (`rol…`). Audit "who holds role
 	// R". Malformed id → INVALID_ARGUMENT.
 	RoleId string `protobuf:"bytes,1,opt,name=role_id,json=roleId,proto3" json:"role_id,omitempty"`
 	// The maximum number of results per page to return. Default value: 50,

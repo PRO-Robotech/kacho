@@ -90,7 +90,7 @@ type ListMembershipsRequest struct {
 	PageSize int64 `protobuf:"varint,2,opt,name=page_size,json=pageSize,proto3" json:"page_size,omitempty"`
 	// Page token, opaque. Негодный токен отвергается, а не игнорируется.
 	PageToken string `protobuf:"bytes,3,opt,name=page_token,json=pageToken,proto3" json:"page_token,omitempty"`
-	// Ровно один терм из белого списка: `userId="usr-…"`.
+	// Ровно один терм из белого списка: `userId="usr…"`.
 	//
 	// Оператор — только равенство. Подстрочный поиск (`CONTAINS`) грамматика
 	// разбирает, но эта поверхность его ОТВЕРГАЕТ явно: возможности искать
