@@ -29,12 +29,31 @@ command -v helm >/dev/null || { echo "SKIP: helm не установлен — �
 TMP="$(mktemp -d)"; trap 'rm -rf "$TMP"' EXIT
 ARGS="$(bash tests/helm/stacks.sh --args dev ./helm/umbrella)"
 
+# ── ПРЕДПОСЫЛКА: ЗАВИСИМОСТИ ЧАРТА СОБРАНЫ ──────────────────────────────────
+# Без них `helm template` отказывает ДО первого шаблона — то есть КАЖДАЯ ось
+# краснеет по причине, к стражу отношения не имеющей. Красные оси при этом
+# выглядят исполненными («ждали RED — получили RED»), и доказательство
+# становится вакуумным; от этого спасает только сверка ФРАЗЫ-УЛИКИ, то есть
+# случайно. «Условие не создано» — НЕ вердикт о дереве (e2e-flow.md §6): свой
+# код возврата, свой текст, и он не зачитывается ни в успех, ни в отказ.
+if helm template kacho-umbrella ./helm/umbrella -n kacho >/dev/null 2>"$TMP/dep"; then
+  :
+elif grep -q 'missing in charts/' "$TMP/dep"; then
+  echo "SKIP: зависимости чарта не собраны — доказательство НЕ ВЫПОЛНЕНО (не красное)."
+  echo "      создать условие: helm dependency build ./helm/umbrella"
+  exit 2
+fi
+
 rc=0; red=0; green=0
-assert() { # имя · ожидание(RED|GREEN) · фраза-улика · --set …
-  local name="$1" want="$2" needle="$3"; shift 3
+# assert_rel — то же, но ИМЕНЕМ РЕЛИЗА наружу. Отдельная форма нужна ровно одной
+# оси: имя рабочего объекта приёмника складывается из имени релиза, а узел в
+# полосе — литерал профиля, и расходятся они молча. Проверить это, не меняя
+# релиз, невозможно by construction.
+assert_rel() { # релиз · имя · ожидание(RED|GREEN) · фраза-улика · --set …
+  local rel="$1" name="$2" want="$3" needle="$4"; shift 4
   local got
   # shellcheck disable=SC2086 -- ARGS это намеренно разбиваемая цепочка -f
-  if helm template kacho-umbrella ./helm/umbrella -n kacho $ARGS "$@" >"$TMP/out" 2>&1
+  if helm template "$rel" ./helm/umbrella -n kacho $ARGS "$@" >"$TMP/out" 2>&1
   then got=GREEN; else got=RED; fi
   if [ "$got" != "$want" ]; then
     echo "  ОТКАЗ $name → $got, ожидалось $want"; tail -3 "$TMP/out" | sed 's/^/       /'; rc=1; return
@@ -45,6 +64,9 @@ assert() { # имя · ожидание(RED|GREEN) · фраза-улика · -
   echo "  ok   $name → $got"
   [ "$want" = RED ] && red=$((red+1)) || green=$((green+1))
 }
+
+# Умолчание — имя релиза, которым стенд поднимают рецепты (`STACK_RELEASE ?=`).
+assert() { assert_rel kacho-umbrella "$@"; }
 
 echo "=== контроль: неизменённое дерево рендерится ==="
 assert "контроль" GREEN ""
@@ -70,6 +92,10 @@ assert "узел поднят, полосы нет"        RED "писать в 
   --set global.kacho.identity.smtp.connectionURI= \
   --set global.kacho.identity.smtp.fromAddress= \
   --set global.kacho.identity.smtp.fromName=
+assert "полоса названа на приёмник, а он выключен" RED "приёмник ВЫКЛЮЧЕН" \
+  --set mailpit.enabled=false
+assert_rel kacho "полоса названа на ЧУЖОЙ приёмник"  RED "поднимает приёмник под именем"
+assert_rel stand-a "то же, имя релиза иное вовсе"    RED "поднимает приёмник под именем"
 
 echo "=== законные близнецы: страж обязан молчать ==="
 assert "неявный TLS вместо STARTTLS"    GREEN "" \
@@ -80,9 +106,14 @@ assert "приёмник выключен, полосы нет"  GREEN "" \
   --set global.kacho.identity.smtp.fromAddress= \
   --set global.kacho.identity.smtp.fromName=
 
+assert "полное имя службы приёмника"    GREEN "" \
+  --set 'global.kacho.identity.smtp.connectionURI=smtp://kacho-umbrella-mailpit.kacho.svc:1025/'
+assert "внешний ретранслятор"           GREEN "" \
+  --set 'global.kacho.identity.smtp.connectionURI=smtps://smtp.example.com:465/'
+
 echo "перепись: инъекций красных $red · законных близнецов зелёных $green"
-[ "$red" -ge 12 ] || { echo "ОТКАЗ: красных инъекций $red — доказательство неполно"; rc=1; }
-[ "$green" -ge 3 ] || { echo "ОТКАЗ: зелёных близнецов $green — отрицание не проверено в обратную сторону"; rc=1; }
+[ "$red" -ge 15 ] || { echo "ОТКАЗ: красных инъекций $red — доказательство неполно"; rc=1; }
+[ "$green" -ge 5 ] || { echo "ОТКАЗ: зелёных близнецов $green — отрицание не проверено в обратную сторону"; rc=1; }
 [ "$rc" = 0 ] && echo "ИТОГ: страж почтовой полосы способен упасть и способен смолчать" \
               || echo "ИТОГ: ОТКАЗ"
 exit "$rc"
