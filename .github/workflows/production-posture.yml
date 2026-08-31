@@ -223,6 +223,36 @@ jobs:
             | jq -r '.items[].spec.containers[]?.env[]? | select(.name|test("AUTH_?N?_MODE$")) | "\(.name)=\(.value)"' \
             | sort -u || true
 
+          # ─── ЧТО СКАЗАЛ УПАВШИЙ ШАГ, А НЕ ТОЛЬКО ЧТО ОН УПАЛ ────────────────
+          #
+          # Стражи наших init-контейнеров устроены так, чтобы ГОВОРИТЬ: у шага
+          # подстановки девять именованных отказов, каждый называет причину, ручку
+          # и следующий шаг. Пока их вывод сюда не доезжает, разбор идёт
+          # воспроизведением — извлечь шаг из рендера, собрать карту настроек,
+          # подставить условия, — и это десяток заходов, которые могут дать
+          # ЗЕЛЁНОЕ, потому что воспроизвести удаётся не все условия стенда.
+          # Наблюдалось (#1787): оба пода личности в Init:CrashLoopBackOff, в логе
+          # задания ноль строк с текстом отказа, причина осталась неустановленной.
+          #
+          # `--previous` обязателен: перезапущенный контейнер отдаёт журнал ЖИВОЙ
+          # попытки, а нужна та, что упала. Оба вызова терпимы к отказу — под мог
+          # не дойти до запуска вовсе, и это не повод рушить шаг отчёта.
+          echo "=== журналы НЕготовых подов (включая init) ==="
+          { kubectl -n kacho get pods -o json 2>/dev/null || true; } \
+            | { jq -r '.items[] | select([.status.containerStatuses[]?, .status.initContainerStatuses[]?] | map(.ready) | all | not) | .metadata.name' || true; } \
+            | while read -r pod; do
+                [ -n "$pod" ] || continue
+                echo "--- под $pod ---"
+                kubectl -n kacho describe pod "$pod" 2>/dev/null | sed -n '/^Events:/,$p' | head -30 || true
+                names=$(kubectl -n kacho get pod "$pod" -o jsonpath='{.spec.initContainers[*].name} {.spec.containers[*].name}' 2>/dev/null || true)
+                for c in $names; do
+                  echo "  ·· $pod/$c (текущий) ··"
+                  kubectl -n kacho logs "$pod" -c "$c" --tail=40 2>&1 | head -40 || true
+                  echo "  ·· $pod/$c (предыдущая попытка) ··"
+                  kubectl -n kacho logs "$pod" -c "$c" --previous --tail=40 2>&1 | head -40 || true
+                done
+              done || true
+
       # ─── ВЕРДИКТ ЧИСЛАМИ, В СВОДКУ ПРОГОНА ─────────────────────────────────
       #
       # Гейт, чей вердикт лежит только в логе, ничем не отличается от невызванного:
