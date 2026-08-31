@@ -150,11 +150,18 @@ kratos:
         default_schema_id: default
         # Ссылка на единственный узел тела — см. global.kacho.identity выше.
         schemas: *kachoInheritedIdentitySchemas
-      courier:
-        smtp:
-          connection_uri: "smtp://mailhog.kacho.svc:1025/?disable_starttls=true"
-          from_address: "noreply@kacho.local"
-          from_name: "Kacho"
+      # ─── ВСТРОЕННОГО БЛОКА `courier` ЗДЕСЬ НЕТ (решение Р27) ──────────────
+      #
+      # Он здесь стоял и был ВТОРЫМ объявлением почтовой полосы. Единственное
+      # объявление — наша конфигурация личности (`_kratos-identity.tpl`),
+      # питаемая `global.kacho.identity.smtp.*`; наш файл идёт вторым в цепочке
+      # `--config`, поэтому раздел `courier`, объявленный нами, замещает
+      # одноимённый раздел поставщика ЦЕЛИКОМ. Пока об одной полосе
+      # высказывались два места, какое из них доедет до процесса, решал бы
+      # порядок слияния, а не решение.
+      #
+      # Держит MAIL-54 — deploy/identity_mail_lane_single_declaration_test.go:
+      # возвращённый блок здесь — находка с именем профиля.
 
 # ── Что ОСТАЛОСЬ за пределами этого разделения (названо, чтобы «разделено» не
 #    читалось шире, чем есть) ──

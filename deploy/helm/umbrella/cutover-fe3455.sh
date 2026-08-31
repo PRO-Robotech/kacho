@@ -179,6 +179,19 @@ log "all $(printf '%s\n' $FE_LAYERS | grep -c .) overlay value files present."
 #
 # The allow-list is deliberately a LEAF-PATH list, not a subtree list: allowing
 # `hydra.hydra.config` wholesale would re-admit every posture key under it.
+#
+# THE MAIL COORDINATE IS OURS, NOT THE VENDOR'S — and it used to be the other way
+# round here. This list named `kratos.kratos.config.courier.smtp.connection_uri`,
+# a coordinate that feeds the VENDOR subchart's own config file. The identity
+# process reads SEVERAL config files and merges them in order; ours is second,
+# so the `courier` section we render REPLACES the vendor's wholesale rather than
+# extending it. An operator who put the real relay where this script sent them
+# got a green cutover, running pods and mail going nowhere — with no signal at
+# all. The single declaration is `global.kacho.identity.smtp.*`
+# (_kratos-identity.tpl); the credentials layer is applied LAST in the chain, so
+# a value set there wins over every profile. Held by MAIL-54
+# (deploy/identity_mail_lane_single_declaration_test.go), which fails when this
+# list and that declaration name different coordinates.
 ORY_CRED_PATHS='
 hydra.hydra.config.dsn
 hydra.hydra.config.secrets.system
@@ -186,7 +199,7 @@ hydra.hydra.config.secrets.cookie
 kratos.kratos.config.dsn
 kratos.kratos.config.secrets.cookie
 kratos.kratos.config.secrets.cipher
-kratos.kratos.config.courier.smtp.connection_uri
+global.kacho.identity.smtp.connectionURI
 '
 stray="$(ORY_CRED_PATHS="$ORY_CRED_PATHS" python3 - "$CHART_DIR/values.fe3455-ory.yaml" <<'PY'
 import os, sys, yaml
