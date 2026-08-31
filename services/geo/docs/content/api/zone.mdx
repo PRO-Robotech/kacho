@@ -111,14 +111,14 @@ PK). Зона привязана к региону полем `regionId` — в�
 
 ### Create — создать зону (admin, internal)
 
-<ApiOperation method="POST" endpoint="/geo/v1/zones">
+<ApiOperation method="POST" endpoint="/geo/v1/internal/zones">
 
 Создаёт зону с **явно заданным** id, привязанную к существующему региону (`regionId`).
 Синхронная internal-операция (требует `system_admin`).
 
 <CodeBlock language="bash">
   {dedent`
-    curl -X POST 'http://localhost:19091/geo/v1/zones' \\
+    curl -X POST 'http://localhost:19091/geo/v1/internal/zones' \\
       -H 'Authorization: Bearer <admin-JWT>' \\
       -H 'Content-Type: application/json' \\
       -d '{
@@ -144,7 +144,7 @@ PK). Зона привязана к региону полем `regionId` — в�
 
 ### Update — изменить зону (admin, internal)
 
-<ApiOperation method="PATCH" endpoint="/geo/v1/zones/{id}">
+<ApiOperation method="PATCH" endpoint="/geo/v1/internal/zones/{id}">
 
 Меняет изменяемые поля зоны — `status` и блок `infra` (последний живёт только на админской
 проекции). Привязку к региону (`regionId`) изменить нельзя — она immutable, и **переименовать
@@ -153,7 +153,7 @@ PK). Зона привязана к региону полем `regionId` — в�
 <CodeBlock language="bash">
   {dedent`
     # перевести зону в DOWN
-    curl -X PATCH 'http://localhost:19091/geo/v1/zones/ru-central1-c' \\
+    curl -X PATCH 'http://localhost:19091/geo/v1/internal/zones/ru-central1-c' \\
       -H 'Authorization: Bearer <admin-JWT>' \\
       -H 'Content-Type: application/json' \\
       -d '{ "status": "DOWN" }'
@@ -170,14 +170,14 @@ PK). Зона привязана к региону полем `regionId` — в�
 
 ### Delete — удалить зону (admin, internal)
 
-<ApiOperation method="DELETE" endpoint="/geo/v1/zones/{id}">
+<ApiOperation method="DELETE" endpoint="/geo/v1/internal/zones/{id}">
 
 Удаляет зону. Синхронная internal-операция. Удаление зоны разблокирует удаление её региона
 (если она была последней привязанной зоной).
 
 <CodeBlock language="bash">
   {dedent`
-    curl -X DELETE 'http://localhost:19091/geo/v1/zones/ru-central1-c' \\
+    curl -X DELETE 'http://localhost:19091/geo/v1/internal/zones/ru-central1-c' \\
       -H 'Authorization: Bearer <admin-JWT>'
   `}
 </CodeBlock>
