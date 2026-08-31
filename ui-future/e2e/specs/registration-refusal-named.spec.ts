@@ -194,6 +194,109 @@ test.describe("отказ регистрации назван своим тек�
     ).toBe("");
   });
 
+  test("фикстур входа сообщает отказ провайдера НА ПЕРВОМ шаге, а не отсутствие пароля", async ({
+    page,
+  }) => {
+    // verifies #1740
+    //
+    // ВТОРАЯ ПОЛОСА ТОГО ЖЕ МЕХАНИЗМА. У `register` ДВА ожидания, и отказ
+    // представим на каждом: поле пароля на шаге способа входа · печенье сессии
+    // после него. Первая редакция фикса научила говорить причину только второе,
+    // и это ровно тот случай, о котором `architecture.md` §«Параллельные полосы
+    // одного механизма обязаны сверяться МЕЖДУ СОБОЙ»: обе полосы по отдельности
+    // защитимы, неверна их РАЗНИЦА.
+    //
+    // Замер до правки: отказ на шаге профиля давал «второй шаг регистрации не
+    // предложил пароль» через полные 30 с, тогда как на той же странице лежал
+    // разбор провайдера, а распознаватель, умеющий его назвать, стоял в том же
+    // файле тремя строками ниже и не спрашивался.
+    await page.route("**/*", async (route) => {
+      const url = new URL(route.request().url());
+      if (url.pathname === "/registration") {
+        await route.fulfill({
+          contentType: "text/html",
+          body:
+            '<form action="/error" method="GET">' +
+            '<input name="traits.email"><input name="traits.display_name">' +
+            '<button type="submit">Далее</button></form>',
+        });
+        return;
+      }
+      await route.fulfill({ contentType: "text/html", body: REFUSAL_PAGE });
+    });
+
+    const failure = await register(page).then(
+      () => "",
+      (e: unknown) => (e instanceof Error ? e.message : String(e)),
+    );
+
+    expect(failure, "отвергнутая на первом шаге регистрация обязана уронить фикстур").not.toBe("");
+    expect(
+      failure,
+      "вердикт обязан нести отказ ПРОВАЙДЕРА: без него читатель идёт разбирать " +
+        "неполный поток входа, тогда как поток был ОТВЕРГНУТ и сказал это на экране",
+    ).toContain("webhook failed with status code 401");
+    expect(failure, "и назвать, чей это отказ").toContain("ОТВЕРГНУТА службой личности");
+    expect(
+      failure,
+      "и назвать, ГДЕ он случился: у двух ожиданий разные предметы, и читателю " +
+        "нужно знать, до какого шага поток дошёл",
+    ).toContain("на шаге профиля");
+  });
+
+  test("поле пароля решает РАНЬШЕ распознавателя отказа", async ({ page }) => {
+    // verifies #1740
+    //
+    // ЗАКОННЫЙ БЛИЗНЕЦ полосы выше — тот же, что у полосы печенья. Распознаватель
+    // встаёт на путь КАЖДОГО входа дважды, поэтому без этой половины проба «отказ
+    // назван на первом шаге» зеленела бы и на фикстуре, который роняет исправный
+    // вход: страница второго шага вправе нести и поле пароля, и прозу, похожую на
+    // разбор отказа.
+    await page.route("**/*", async (route) => {
+      const url = new URL(route.request().url());
+      if (url.pathname === "/registration") {
+        await route.fulfill({
+          contentType: "text/html",
+          body:
+            '<form action="/step2" method="GET">' +
+            '<input name="traits.email"><input name="traits.display_name">' +
+            '<button type="submit">Далее</button></form>',
+        });
+        return;
+      }
+      if (url.pathname === "/step2") {
+        // Поле пароля И разбор отказа СТОЯТ ОДНОВРЕМЕННО — иначе вердикт решал бы
+        // не порядок проверок, а наличие единственного признака, и перестановка
+        // порядка пробу не роняла бы.
+        await route.fulfill({
+          contentType: "text/html",
+          body:
+            '<form action="/welcome" method="GET">' +
+            '<input type="password" name="password">' +
+            '<button type="submit">Готово</button></form>' +
+            REFUSAL_PAGE,
+        });
+        return;
+      }
+      await route.fulfill({
+        contentType: "text/html",
+        headers: { "set-cookie": "ory_kratos_session=probe; Path=/" },
+        body: "<main><h1>Консоль</h1></main>",
+      });
+    });
+
+    const failure = await register(page).then(
+      () => "",
+      (e: unknown) => (e instanceof Error ? e.message : String(e)),
+    );
+    expect(
+      failure,
+      "шаг, предложивший пароль, обязан быть пройден, даже если на странице есть " +
+        "разбор отказа: распознаватель стоит на пути каждого входа, и ложное " +
+        "срабатывание здесь остановило бы весь набор",
+    ).toBe("");
+  });
+
   test("разбор берётся из ТЕКСТА страницы, а не из её разметки", async () => {
     // verifies #1740
     // Форма страницы отказа принадлежит провайдеру и меняется с его версией;
