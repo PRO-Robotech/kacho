@@ -749,7 +749,7 @@ func unmarshalTarget(b []byte) (domain.AccessTarget, error) {
 func (w *abWriter) Delete(ctx context.Context, id domain.AccessBindingID) error {
 	tag, err := w.tx.Exec(ctx, `DELETE FROM access_bindings WHERE id = $1`, string(id))
 	if err != nil {
-		return mapErr(err, "", string(id))
+		return mapErr(err, "AccessBinding.Delete", string(id))
 	}
 	if tag.RowsAffected() == 0 {
 		return iamerr.Wrapf(iamerr.ErrNotFound, "AccessBinding %s not found", id)
@@ -767,7 +767,7 @@ func (w *abWriter) DeleteGuarded(ctx context.Context, id domain.AccessBindingID)
 	tag, err := w.tx.Exec(ctx,
 		`DELETE FROM access_bindings WHERE id = $1 AND deletion_protection = false`, string(id))
 	if err != nil {
-		return mapErr(err, "", string(id))
+		return mapErr(err, "AccessBinding.Delete", string(id))
 	}
 	if tag.RowsAffected() > 0 {
 		return nil
@@ -1621,7 +1621,7 @@ func (w *abWriter) DeleteSubject(ctx context.Context, bindingID domain.AccessBin
 		  WHERE binding_id = $1 AND subject_type = $2 AND subject_id = $3`,
 		string(bindingID), string(subject.Type), string(subject.ID))
 	if err != nil {
-		return false, mapErr(err, "", string(bindingID))
+		return false, mapErr(err, "AccessBinding.DeleteSubject", string(bindingID))
 	}
 	return tag.RowsAffected() > 0, nil
 }
