@@ -1349,8 +1349,14 @@ for c in required_fields_matrix("SUB", "/vpc/v1/subnets",
     # зеленел только потому, что принимал успех.
     ["projectId", "networkId", "zoneId"]):
     CASES.append(_wrap_with_net("SUB", "req", c))
+# Имена — КОНТРАКТНЫЕ. Прежде здесь стояли `v4_cidr_blocks` / `v6_cidr_blocks` —
+# поля, которого у подсети нет ни одним сообщением (снято VPC-1 F7, а с kacho#1628
+# имя закрыто `reserved` явно). Матрица утверждает ДОСЛОВНЫЙ текст «<field> is
+# immutable», а снятое имя такого текста не производит: оно не доходит до
+# immutable-switch и отвергается generic-отказом маски. Кейс зеленел лишь потому,
+# что матрица допускает «другую 4xx», — то есть проверял не то, чем назван.
 CASES.extend(immutable_fields_matrix("SUB", "/vpc/v1/subnets",
-    ["project_id", "network_id", "zone_id", "v4_cidr_blocks", "v6_cidr_blocks"]))
+    ["project_id", "network_id", "zone_id", "ipv4_cidr_blocks", "ipv6_cidr_blocks"]))
 
 # === Subnet CIDR expand/shrink pack — каждый кейс в СВОЕЙ сцене ===
 # Обёртка применяется к КАЖДОМУ кейсу набора: своя сеть, своя подсеть с
@@ -1775,8 +1781,14 @@ _RESERVED_LEGAL_2 = "169.255.11.0/24"
 # Текст отказа — ЦЕЛИКОМ и ДОСЛОВНО. Равенство (а не «содержит») здесь несёт
 # второе утверждение: в ответе нет ничего, кроме имени слота и присланного
 # значения, — то есть перечень служебных диапазонов отказом не раскрывается.
-_RESERVED_MSG_V4_INSIDE = (
-    f"v4_cidr_blocks[0] {_RESERVED_INSIDE} overlaps an address range reserved by the platform"
+_RESERVED_MSG_V4_INSIDE_CREATE = (
+    f"ipv4CidrPrimary {_RESERVED_INSIDE} overlaps an address range reserved by the platform"
+)
+# `:add-cidr-blocks` принимает МАССИВ, поэтому его отказ называет слот: вызывающий
+# обязан понять, КОТОРЫЙ из присланных блоков негоден. У `Create` якорь один, и
+# индекс там был бы утверждением о теле, которого вызывающий не отправлял.
+_RESERVED_MSG_V4_INSIDE_ADD = (
+    f"ipv4CidrBlocks[0] {_RESERVED_INSIDE} overlaps an address range reserved by the platform"
 )
 
 
@@ -1811,13 +1823,22 @@ CASES.append(Case(
                 # размера, и от размещения; предмет утверждает текст.
                 *assert_status(400),
                 *assert_grpc_code(3, "INVALID_ARGUMENT"),
-                "pm.test('текст отказа — дословный контракт, и в нём НЕТ ничего, кроме слота и "
+                "pm.test('текст отказа — дословный контракт, и в нём НЕТ ничего, кроме имени поля и "
                 "присланного значения', () => pm.expect(String(pm.response.json().message || ''))"
-                f".to.eql('{_RESERVED_MSG_V4_INSIDE}'));",
+                f".to.eql('{_RESERVED_MSG_V4_INSIDE_CREATE}'));",
                 # Операция не создаётся вовсе: у синхронного отказа нет id, который
                 # можно было бы опросить. Утверждение отделяет «отвергнуто до
                 # записи» от «принято и упало в worker'е».
                 "pm.test('операция не создана', () => pm.expect(pm.response.json().id).to.be.undefined);",
+                # Полоса отказа различима МАШИННО. Без признака автомат, планирующий
+                # адресацию, не может разветвиться: «префикс служебный, бери
+                # следующий кандидат» неотличимо от «ввод негоден по форме». Разбор
+                # прозы контракт запрещает, поэтому утверждается признак, а не текст
+                # (текст утверждается выше — отдельно и дословно).
+                "pm.test('полоса отказа различима машинно — ErrorInfo.reason', () => {"
+                " const d = pm.response.json().details || [];"
+                " pm.expect(d.some(x => x && x.reason === 'SUBNET_CIDR_RESERVED'),"
+                " JSON.stringify(d)).to.eql(true); });",
             ],
         ),
         # ПОЛОЖИТЕЛЬНЫЙ КОНТРОЛЬ — тот же запрос, тот же план сети, отличается ТОЛЬКО
@@ -1875,8 +1896,17 @@ CASES.append(Case(
                 *assert_grpc_code(3, "INVALID_ARGUMENT"),
                 "pm.test('текст отказа — дословный контракт', () => "
                 "pm.expect(String(pm.response.json().message || ''))"
-                f".to.eql('{_RESERVED_MSG_V4_INSIDE}'));",
+                f".to.eql('{_RESERVED_MSG_V4_INSIDE_ADD}'));",
                 "pm.test('операция не создана', () => pm.expect(pm.response.json().id).to.be.undefined);",
+                # Полоса отказа различима МАШИННО. Без признака автомат, планирующий
+                # адресацию, не может разветвиться: «префикс служебный, бери
+                # следующий кандидат» неотличимо от «ввод негоден по форме». Разбор
+                # прозы контракт запрещает, поэтому утверждается признак, а не текст
+                # (текст утверждается выше — отдельно и дословно).
+                "pm.test('полоса отказа различима машинно — ErrorInfo.reason', () => {"
+                " const d = pm.response.json().details || [];"
+                " pm.expect(d.some(x => x && x.reason === 'SUBNET_CIDR_RESERVED'),"
+                " JSON.stringify(d)).to.eql(true); });",
             ])),
         # NB обёртка на ОТРИЦАНИИ — исключение, и оно обосновано: это ПЕРВОЕ
         # обращение к своей только что созданной подсети, то есть окно видимости

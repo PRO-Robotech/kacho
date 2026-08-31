@@ -58,7 +58,7 @@ service InternalAddressService {
   // AllocateExternalIP резолвит pool через cascade:
   //   1. address_pool_address_override (если есть) → использовать этот пул.
   //   2. address_pool_network_default (через subnet→network если у Address-а
-  //      указан subnet, иначе из folder-default association) — этот пул.
+  //      указан subnet, иначе из умолчания проекта) — этот пул.
   //   3. region default pool (AddressPool.is_default=true в данном region).
   // Атомарно вставляет в БД под защитой UNIQUE (pool_id, external_ip) constraint.
   rpc AllocateExternalIP(AllocateExternalIPRequest) returns (AllocateIPResponse) {

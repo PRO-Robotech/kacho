@@ -155,7 +155,7 @@ db:
   existingSecret: kacho-umbrella-pg-registry
   passwordSecretKey: password
   # sslmode for the DSN. dev → disable; prod (production-strict) → require|verify-ca|verify-full.
-  sslmode: disable
+  sslMode: disable
   # maxConns — ширина пула pgx на ОДНУ реплику (KACHO_REGISTRY_DB_MAX_CONNS).
   #
   # ЗДЕСЬ СТОЯЛ НОЛЬ, и это не «ширина ноль», а «действует умолчание драйвера» —

@@ -40,7 +40,7 @@ declare module "dashboard/navigation" {
     requiresProject?: boolean;
     /** Ссылки на документацию по ЭТОМУ типу ресурса — из спецификации ресурса
      *  своего модуля. Второй уровень сайдбара показывает их под перечнем типов. */
-    docs?: { label: string; href: string }[];
+    docs?: string[];
   }
 
   export interface RemoteNavSection {

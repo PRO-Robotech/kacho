@@ -1,5 +1,5 @@
 // NetworkDetailPage — Network detail с табами по дочерним ресурсам.
-// Tabs: Обзор (auto) / Таблицы маршрутизации / Группы безопасности /
+// Tabs: Обзор (auto) / Таблицы маршрутов / Группы безопасности /
 //       DNS зоны / Операции.
 //
 // Per-tab header CTA через ResourceDetailPage.headerActionsByTab.
@@ -200,15 +200,15 @@ export function NetworkDetailPage() {
     () => (): DetailTab[] => [
       {
         id: "route-tables",
-        label: "Таблицы маршрутизации",
+        label: "Таблицы маршрутов",
         count: networkRouteTables.length,
         render: () => (
           <ChildSection
-            title="Таблицы маршрутизации"
+            title="Таблицы маршрутов"
             rows={networkRouteTables}
             scope={rtScope}
             columns={rtColumns}
-            emptyText="К сети не привязано ни одной таблицы маршрутизации."
+            emptyText="К сети не привязано ни одной таблицы маршрутов."
             storageKey="network-route-tables"
           />
         ),
@@ -250,7 +250,7 @@ export function NetworkDetailPage() {
       if (tabId === "route-tables") {
         return (
           <Button type="primary" size="small" icon={<PlusOutlined />} onClick={() => openCreateModal("route-tables")}>
-            Создать таблицу маршрутизации
+            Создать таблицу маршрутов
           </Button>
         );
       }

@@ -820,3 +820,48 @@ func rejectedField(t *testing.T, err error, field string) bool {
 	}
 	return false
 }
+
+// Отказ по output-only полю bootSource обязан НАЗЫВАТЬ то поле, которое клиент
+// прислал, — иначе он не восстанавливает следующий шаг.
+//
+// Условие отказа включало четыре поля, текст перечислял три: клиент, приславший
+// `imageKind`, читал «name/resolvedDigest/materializedVolume are output-only»,
+// снимал названные три, которых он не слал, и получал тот же отказ снова.
+//
+// Проба утверждает СООБЩЕНИЕ, а не только код: по коду она зеленела бы и на
+// прежнем тексте. Рядом — положительный контроль: без output-only полей тот же
+// запрос проходит, иначе «отвергнуто» было бы верно и на страже, отвергающем всё.
+func TestInstance_BootSourceRefusalNamesTheFieldTheCallerSet(t *testing.T) {
+	k := newInstanceSvc(t, true)
+	ctx := context.Background()
+
+	// Положительный контроль: тот же bootSource БЕЗ output-only полей проходит.
+	okOp, err := k.svc.Create(ctx, baseCreateReq())
+	require.NoError(t, err, "положительный контроль: законный bootSource обязан проходить")
+	require.Nil(t, portmock.AwaitOpDone(t, k.ops, okOp.ID).Error)
+
+	// Каждое output-only поле по отдельности: отказ называет ИМЕННО его.
+	for _, tc := range []struct {
+		field string
+		mut   func(*domain.BootSource)
+	}{
+		{"name", func(bs *domain.BootSource) { bs.Name = "ubuntu-22-04" }},
+		{"resolvedDigest", func(bs *domain.BootSource) { bs.ResolvedDigest = "sha256:deadbeef" }},
+		{"materializedVolume", func(bs *domain.BootSource) {
+			bs.MaterializedVolume = &domain.MaterializedVolume{VolumeID: "vol0am5d8q1w4e7r2t6y"}
+		}},
+		{"imageKind", func(bs *domain.BootSource) { bs.ImageKind = domain.ImageKindStorageImage }},
+	} {
+		t.Run(tc.field, func(t *testing.T) {
+			req := baseCreateReq()
+			req.Name = "vm-" + strings.ToLower(tc.field)
+			tc.mut(&req.BootSource)
+
+			_, err := k.svc.Create(ctx, req)
+			require.Equal(t, codes.InvalidArgument, status.Code(err))
+			msg := status.Convert(err).Message()
+			require.Contains(t, msg, tc.field,
+				"отказ обязан назвать поле, которое прислал клиент; получено: %q", msg)
+		})
+	}
+}

@@ -202,7 +202,24 @@ type CreatePlacementGroupRequest struct {
 	// Что группа делает с машинами. Обязательно: группа без стратегии не
 	// описывает ни одного намерения.
 	Strategy PlacementGroup_Strategy `protobuf:"varint,5,opt,name=strategy,proto3,enum=kacho.cloud.compute.v1.PlacementGroup_Strategy" json:"strategy,omitempty"`
-	// Якорь размещения. Обязателен и взаимоисключающ: ровно одна координата.
+	// Якорь размещения. Обязателен и взаимоисключающ: ровно одна координата —
+	// ZONAL требует zone_id и пустой region_id, REGIONAL наоборот.
+	//
+	// ЭТО ОТСТУПЛЕНИЕ ОТ КАНОНА ПЛАТФОРМЫ, и оно названо здесь, чтобы правило не
+	// пришлось выводить по трём сайтам. Канон: дискриминатор ВЫВОДИТСЯ из
+	// координаты и на входе отвергается — так у vpc.Subnet
+	// («placement_type is server-derived; set zone_id or region_id instead») и у
+	// nlb.NetworkLoadBalancer (выводится из отдельного входа `placement`, потому
+	// что там осей размещения две). Пара «координата + дискриминатор» избыточна:
+	// какая из двух координат задана, то и есть дискриминатор, — поэтому
+	// требование поля даёт вызывающему единственную новую возможность,
+	// противоречить самому себе.
+	//
+	// Требование снимается расширением-и-сужением: сперва поле станет
+	// необязательным (незаданное выводится из координаты), затем вход будет
+	// отвергаться. Снятие сегодня ломающее — вызывающий, посылающий поле, начал бы
+	// получать отказ. См. docs/architecture/placement-discriminator-is-derived.md
+	// и PRO-Robotech/kacho#1621.
 	PlacementType PlacementGroup_PlacementType `protobuf:"varint,6,opt,name=placement_type,json=placementType,proto3,enum=kacho.cloud.compute.v1.PlacementGroup_PlacementType" json:"placement_type,omitempty"`
 	ZoneId        string                       `protobuf:"bytes,7,opt,name=zone_id,json=zoneId,proto3" json:"zone_id,omitempty"`
 	RegionId      string                       `protobuf:"bytes,8,opt,name=region_id,json=regionId,proto3" json:"region_id,omitempty"`

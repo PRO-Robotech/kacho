@@ -76,7 +76,7 @@ func (x *GetNetworkInterfaceRequest) GetNetworkInterfaceId() string {
 
 type ListNetworkInterfacesRequest struct {
 	state protoimpl.MessageState `protogen:"open.v1"`
-	// ID of the folder to list network interfaces in.
+	// ID of the project to list network interfaces in.
 	ProjectId string `protobuf:"bytes,1,opt,name=project_id,json=projectId,proto3" json:"project_id,omitempty"`
 	// The maximum number of results per page. Default 100.
 	PageSize int64 `protobuf:"varint,2,opt,name=page_size,json=pageSize,proto3" json:"page_size,omitempty"`
@@ -218,9 +218,9 @@ func (x *ListNetworkInterfacesResponse) GetNextPageToken() string {
 
 type CreateNetworkInterfaceRequest struct {
 	state protoimpl.MessageState `protogen:"open.v1"`
-	// ID of the folder to create the interface in.
+	// ID of the project to create the interface in.
 	ProjectId string `protobuf:"bytes,1,opt,name=project_id,json=projectId,proto3" json:"project_id,omitempty"`
-	// Name. Must be unique within the folder.
+	// Name. Must be unique within the project.
 	Name string `protobuf:"bytes,2,opt,name=name,proto3" json:"name,omitempty"`
 	// Description. 0-256 characters.
 	Description string `protobuf:"bytes,3,opt,name=description,proto3" json:"description,omitempty"`

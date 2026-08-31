@@ -124,12 +124,17 @@ func (u *CreateUseCase) Run(ctx context.Context, req *lbv1.CreateListenerRequest
 	// (single authoritative targetGroupId). Sync-precheck owning-project scope +
 	// object-scoped authz + existence + region-coherence with the parent LB — a
 	// missing TG yields actionable guidance; the direct FK (0018/0023) is the atomic
-	// race backstop. target_group_id takes precedence over the legacy
-	// default_target_group_id (both coexist until CONTRACT).
-	tgID := req.GetTargetGroupId()
-	if tgID == "" {
-		tgID = req.GetDefaultTargetGroupId()
+	// race backstop.
+	//
+	// Ссылка на группу целей — ОДИН вход, `target_group_id` (задача продукта
+	// #1596). `default_target_group_id` СНЯТ со входа и оставлен в запросе ровно
+	// затем, чтобы клиент, который его шлёт, получил внятный отказ вместо
+	// молчаливого отбрасывания на крае (`DiscardUnknown`) — та же идиома, что у
+	// `type`/`placement_type` балансировщика. Отказ наступает ДО любой записи.
+	if req.GetDefaultTargetGroupId() != "" {
+		return nil, status.Error(codes.InvalidArgument, retiredDefaultTargetGroupMsg)
 	}
+	tgID := req.GetTargetGroupId()
 	if err := u.prevalidateTargetGroup(ctx, tgID, string(lb.ProjectID), string(lb.RegionID)); err != nil {
 		return nil, err
 	}

@@ -111,7 +111,7 @@ Used inside config.yaml (Postgres URL); kacho-nlb resolves the env-var via
 viper when the container starts.
 */}}
 {{- define "kacho-nlb.dbDSN" -}}
-postgres://{{ .Values.db.user }}:$(KACHO_NLB_DB_PASSWORD)@{{ .Values.db.host }}:{{ .Values.db.port }}/{{ .Values.db.name }}?sslmode={{ .Values.db.sslmode }}&search_path={{ .Values.db.name }},public
+postgres://{{ .Values.db.user }}:$(KACHO_NLB_DB_PASSWORD)@{{ .Values.db.host }}:{{ .Values.db.port }}/{{ .Values.db.name }}?sslmode={{ include "kacho-nlb.dbSslMode" .Values.db }}&search_path={{ .Values.db.name }},public
 {{- end -}}
 
 {{/*
@@ -119,4 +119,81 @@ ConfigMap name.
 */}}
 {{- define "kacho-nlb.configMapName" -}}
 {{- printf "%s-config" (include "kacho-nlb.fullname" .) -}}
+{{- end -}}
+
+{{/*
+kacho-nlb.dbSslMode — режим TLS до Postgres, ОДНИМ написанием.
+
+Ключ звался в дереве двумя способами: `sslMode` у vpc/compute/iam/storage и
+`sslmode` здесь. Оба означали одно, и оба лежали в одном профиле, поэтому
+проверка «весь ли флот шифрован» одним `grep sslMode values.prod.yaml` молча
+отвечала про половину флота и выглядела исчерпывающей. Это тот вид ошибки,
+который не выдаёт себя ничем: сегодня обе половины стоят в `require`, и ответ
+случайно верен.
+
+Канон — `sslMode` (camelCase, как остальные ключи продукта). Это ПЕРЕИМЕНОВАНИЕ
+ПОД ОХРАНОЙ, а не совместимость: канон объявлен умолчанием чарта, поэтому
+профиль, задающий прежнее написание, даёт РАСХОЖДЕНИЕ и отказ рендера с обоими
+значениями в тексте. Называть это «переходным приёмом» было бы неверно — приём
+срабатывает лишь там, где канон не объявлен умолчанием.
+
+Что механизм гарантирует на самом деле, и ради чего он здесь: молчаливого
+отката к умолчанию чарта НЕ БУДЕТ. Для ключа, чьё умолчание у половины чартов —
+`disable`, такой откат означал бы ОТКРЫТЫЙ ТЕКСТ до базы, то есть отказ, который
+никто не заметит. Оператор вместо этого получает отказ выкатки, называющий оба
+написания и канон; старое имя истекает громко и сразу, а не живёт вечной
+совместимостью.
+
+Заданы оба и различаются — ОТКАЗ РЕНДЕРА, а не выбор одного из двух: угадывать,
+какое из двух написаний оператор считал действующим, значит решать за него
+вопрос про шифрование. Пустое значение — тоже отказ.
+*/}}
+{{- define "kacho-nlb.dbSslMode" -}}
+{{- $canonRaw := dig "sslMode" "" . -}}
+{{- $legacyRaw := dig "sslmode" "" . -}}
+{{- $canon := "" -}}{{- if $canonRaw }}{{ $canon = printf "%v" $canonRaw }}{{ end -}}
+{{- $legacy := "" -}}{{- if $legacyRaw }}{{ $legacy = printf "%v" $legacyRaw }}{{ end -}}
+{{- if and (ne $canon "") (ne $legacy "") (ne $canon $legacy) -}}
+{{- fail (printf "sslMode=%q и устаревшее sslmode=%q заданы одновременно и различаются: какое из двух написаний действует — решает оператор, а не шаблон. Оставьте одно, канон — sslMode" $canon $legacy) -}}
+{{- end -}}
+{{- $v := $canon -}}
+{{- if eq $v "" }}{{ $v = $legacy }}{{ end -}}
+{{- if eq $v "" -}}
+{{- fail "sslMode не задан: канал к Postgres обязан быть объявлен явно (disable|require|verify-ca|verify-full); пустое значение молча дало бы открытый текст" -}}
+{{- end -}}
+{{- $v -}}
+{{- end -}}
+
+{{/*
+kacho-nlb.authMode — посадка безопасности, ОДНИМ адресом.
+
+Ручку звали в дереве шестью разными адресами и двумя именами: `authn.mode`,
+`config.authn.mode`, `auth.mode`, `config.mode`, `config.authMode`, `authMode`.
+Ночью первый вопрос оператора — «в какой посадке работает этот кластер», и
+задать его одной командой по одному ключу было НЕЛЬЗЯ: надо знать семь адресов.
+Ужесточить флот одним `--set` тоже нельзя — путей столько же, сколько сервисов.
+
+Канон — `authMode` в корне значений сервиса (camelCase, как прочие ключи
+продукта; так уже было объявлено у registry и geo).
+
+Это ПЕРЕИМЕНОВАНИЕ ПОД ОХРАНОЙ, а не совместимость: канон объявлен умолчанием
+чарта, поэтому профиль, задающий прежний адрес, даёт расхождение и отказ
+рендера с обоими значениями в тексте. Гарантия здесь одна и ради неё всё:
+молчаливого отката к умолчанию чарта НЕ БУДЕТ. Для ручки, задающей посадку
+безопасности, такой откат означал бы стенд, который называет себя одним, а
+работает другим, — и заметить это можно только по последствиям.
+*/}}
+{{- define "kacho-nlb.authMode" -}}
+{{- $vals := .Values | toYaml | fromYaml -}}
+{{- $canonRaw := .Values.authMode -}}
+{{- $legacyRaw := "" -}}
+{{- $cur := $vals -}}
+{{- if kindIs "map" $cur }}{{ $cur = dig "config" (dict) $cur }}{{ else }}{{ $cur = dict }}{{ end -}}
+{{- if kindIs "map" $cur }}{{ $legacyRaw = dig "mode" "" $cur }}{{ end -}}
+{{- $canon := "" -}}{{- if $canonRaw }}{{ $canon = printf "%v" $canonRaw }}{{ end -}}
+{{- $legacy := "" -}}{{- if $legacyRaw }}{{ $legacy = printf "%v" $legacyRaw }}{{ end -}}
+{{- if and (ne $canon "") (ne $legacy "") (ne $canon $legacy) -}}
+{{- fail (printf "authMode=%q и прежний адрес config.mode=%q заданы одновременно и различаются: какой из двух адресов задаёт посадку — решает оператор, а не шаблон. Оставьте один, канон — authMode" $canon $legacy) -}}
+{{- end -}}
+{{- if ne $canon "" }}{{ $canon }}{{ else }}{{ $legacy }}{{ end -}}
 {{- end -}}

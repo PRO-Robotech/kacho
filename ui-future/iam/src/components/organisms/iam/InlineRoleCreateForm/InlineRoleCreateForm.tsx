@@ -154,7 +154,7 @@ export function InlineRoleCreateForm({
             name="tier_type"
             required
             rules={[{ required: true, message: "Выберите уровень роли" }]}
-            tooltip="Где определена роль: account-уровень (anchor = Account) или project-уровень (anchor = Project)."
+            tooltip="На каком уровне определена роль: аккаунт или проект. Уровень задаёт границу, в которой роль действует."
           >
             <Select
               options={TIER_OPTIONS}
@@ -172,10 +172,10 @@ export function InlineRoleCreateForm({
               label="Якорь (проект)"
               name="tier_id"
               required
-              rules={[{ required: true, message: "Выберите Project" }]}
+              rules={[{ required: true, message: "Выберите проект" }]}
             >
               <Select
-                placeholder="Выберите Project"
+                placeholder="Выберите проект"
                 options={anchorSelectOptions}
                 loading={projects.isLoading}
                 showSearch
@@ -198,10 +198,10 @@ export function InlineRoleCreateForm({
               label="Якорь (аккаунт)"
               name="tier_id"
               required
-              rules={[{ required: true, message: "Выберите Account" }]}
+              rules={[{ required: true, message: "Выберите аккаунт" }]}
             >
               <Select
-                placeholder="Выберите Account"
+                placeholder="Выберите аккаунт"
                 options={anchorSelectOptions}
                 loading={accounts.isLoading}
                 showSearch

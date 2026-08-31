@@ -4,24 +4,17 @@
 package subnet
 
 import (
-	"fmt"
 	"net/netip"
 
 	"github.com/PRO-Robotech/kacho/services/vpc/internal/apps/kacho/shared/serviceerr"
 	"github.com/PRO-Robotech/kacho/services/vpc/internal/domain"
 )
 
-// reservedOverlapMsg — текст отказа. Часть контракта: тон стабилен и меняется
-// только осознанно (api-conventions §Error-format).
-//
-// Называется ИМЯ ПОЛЯ и ПРИСЛАННОЕ ЗНАЧЕНИЕ — то, что вызывающий и так знает и что
-// ему надо править. Служебный диапазон, с которым вышло пересечение, НЕ
-// называется: перечень служебного адресного пространства не выставляется на
-// публичной поверхности (`security.md` §«Инфра-чувствительные данные»), и отказ,
-// печатающий его, стал бы способом получить карту служебных диапазонов по одному
-// пробному запросу. Доменное значение перечня такой печати и не позволяет — у него
-// нет метода, отдающего диапазоны.
-const reservedOverlapMsg = "%s %s overlaps an address range reserved by the platform"
+// Текст отказа и его машинный признак живут ОДНИМ производителем —
+// `serviceerr.ReservedCIDROverlap`. Второй копии здесь нет намеренно: тон
+// сообщения есть контракт, и разойдясь с производителем, копия разошлась бы
+// молча — ровно там, где деталь читают машиной, а не глазом. Почему у этого
+// отказа свой признак и чего он клиенту НЕ даёт — в godoc производителя.
 
 // validateNotReserved — ни один объявляемый диапазон подсети не пересекается с
 // адресным пространством, которое платформа держит за собой.
@@ -47,15 +40,15 @@ const reservedOverlapMsg = "%s %s overlaps an address range reserved by the plat
 // стеку, но проверка, молча пропускающая то, чего не поняла, перестала бы отвечать
 // за свой предмет при первой же перестановке шагов. Тот же приём — у
 // `checkSubnetCIDROverlap`.
-func validateNotReserved(field string, reserved domain.ReservedPrefixes, cidrs []string) error {
+func validateNotReserved(slotOf func(int) string, reserved domain.ReservedPrefixes, cidrs []string) error {
 	for i, c := range cidrs {
-		slot := fmt.Sprintf("%s[%d]", field, i)
+		slot := slotOf(i)
 		prefix, err := netip.ParsePrefix(c)
 		if err != nil {
 			return serviceerr.InvalidArg(slot, slot+" must be a valid CIDR (e.g. 10.0.0.0/24)")
 		}
 		if reserved.Overlaps(prefix) {
-			return serviceerr.InvalidArg(slot, fmt.Sprintf(reservedOverlapMsg, slot, c))
+			return serviceerr.ReservedCIDROverlap(slot, c)
 		}
 	}
 	return nil
@@ -64,9 +57,9 @@ func validateNotReserved(field string, reserved domain.ReservedPrefixes, cidrs [
 // validateSubnetNotReserved — обе семьи одним вызовом: у глаголов, объявляющих
 // диапазоны подсети (`Create`, `:addCidrBlocks`), предмет один, и разное число
 // проверок у них означало бы, что одну из семей где-то забыли.
-func validateSubnetNotReserved(reserved domain.ReservedPrefixes, v4, v6 []string) error {
-	if err := validateNotReserved("v4_cidr_blocks", reserved, v4); err != nil {
+func validateSubnetNotReserved(fields cidrFields, reserved domain.ReservedPrefixes, v4, v6 []string) error {
+	if err := validateNotReserved(fields.V4Slot, reserved, v4); err != nil {
 		return err
 	}
-	return validateNotReserved("v6_cidr_blocks", reserved, v6)
+	return validateNotReserved(fields.V6Slot, reserved, v6)
 }

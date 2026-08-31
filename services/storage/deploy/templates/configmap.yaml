@@ -7,7 +7,7 @@ metadata:
   labels:
     {{- include "storage.labels" . | nindent 4 }}
 data:
-  KACHO_STORAGE_AUTH_MODE: {{ .Values.config.authMode | quote }}
+  KACHO_STORAGE_AUTH_MODE: {{ include "kacho-storage.authMode" . | quote }}
   KACHO_STORAGE_GRPC_PORT: {{ .Values.ports.public | quote }}
   KACHO_STORAGE_INTERNAL_PORT: {{ .Values.ports.internal | quote }}
   KACHO_STORAGE_METRICS_ADDR: {{ printf ":%v" .Values.ports.metrics | quote }}

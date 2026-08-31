@@ -44,10 +44,10 @@ const (
 type NetworkInterfaceServiceClient interface {
 	// Returns the specified NetworkInterface resource.
 	Get(ctx context.Context, in *GetNetworkInterfaceRequest, opts ...grpc.CallOption) (*NetworkInterface, error)
-	// Retrieves the list of NetworkInterface resources in the specified folder,
+	// Retrieves the list of NetworkInterface resources in the specified project,
 	// optionally filtered by instance / subnet / network.
 	List(ctx context.Context, in *ListNetworkInterfacesRequest, opts ...grpc.CallOption) (*ListNetworkInterfacesResponse, error)
-	// Creates a network interface in the specified folder.
+	// Creates a network interface in the specified project.
 	Create(ctx context.Context, in *CreateNetworkInterfaceRequest, opts ...grpc.CallOption) (*operation.Operation, error)
 	// Updates the specified network interface (name/description/labels/security_group_ids).
 	Update(ctx context.Context, in *UpdateNetworkInterfaceRequest, opts ...grpc.CallOption) (*operation.Operation, error)
@@ -140,10 +140,10 @@ func (c *networkInterfaceServiceClient) ListOperations(ctx context.Context, in *
 type NetworkInterfaceServiceServer interface {
 	// Returns the specified NetworkInterface resource.
 	Get(context.Context, *GetNetworkInterfaceRequest) (*NetworkInterface, error)
-	// Retrieves the list of NetworkInterface resources in the specified folder,
+	// Retrieves the list of NetworkInterface resources in the specified project,
 	// optionally filtered by instance / subnet / network.
 	List(context.Context, *ListNetworkInterfacesRequest) (*ListNetworkInterfacesResponse, error)
-	// Creates a network interface in the specified folder.
+	// Creates a network interface in the specified project.
 	Create(context.Context, *CreateNetworkInterfaceRequest) (*operation.Operation, error)
 	// Updates the specified network interface (name/description/labels/security_group_ids).
 	Update(context.Context, *UpdateNetworkInterfaceRequest) (*operation.Operation, error)

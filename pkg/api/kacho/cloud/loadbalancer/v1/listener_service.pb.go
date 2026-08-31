@@ -216,8 +216,11 @@ type CreateListenerRequest struct {
 	// ID of the parent NetworkLoadBalancer. Immutable after Listener.Create.
 	LoadBalancerId string `protobuf:"bytes,1,opt,name=load_balancer_id,json=loadBalancerId,proto3" json:"load_balancer_id,omitempty"`
 	// Name of the Listener. Must be a DNS label (lowercase letters, digits and
-	// hyphens, 1-63 characters) and is unique within the project. Empty on Create
-	// makes the server derive the name from the assigned id.
+	// hyphens, 1-63 characters) and is unique within the PARENT LOAD BALANCER —
+	// NOT within the project. The scope is the one the database enforces:
+	// `listeners_lb_name_uniq (load_balancer_id, name)`, so `https` may be reused
+	// on every load balancer of a project. Empty on Create makes the server derive
+	// the name from the assigned id.
 	Name string `protobuf:"bytes,2,opt,name=name,proto3" json:"name,omitempty"`
 	// Description of the Listener.
 	Description string `protobuf:"bytes,3,opt,name=description,proto3" json:"description,omitempty"`
@@ -227,12 +230,19 @@ type CreateListenerRequest struct {
 	Protocol Listener_Protocol `protobuf:"varint,5,opt,name=protocol,proto3,enum=kacho.cloud.loadbalancer.v1.Listener_Protocol" json:"protocol,omitempty"`
 	// Port the listener accepts traffic on. Must be 1-65535 and unique within the load balancer.
 	Port int64 `protobuf:"varint,6,opt,name=port,proto3" json:"port,omitempty"`
-	// Default target group ID — soft reference to a TG attached to the parent
-	// LB. Optional; can be set later via Update.
+	// default_target_group_id — RETIRED AS AN INPUT (#1596). Retained as a request
+	// field ONLY so that a client that sets it gets an EXPLICIT InvalidArgument
+	// reject rather than a silent drop at the edge (the REST edge runs with
+	// DiscardUnknown by deliberate product decision, so removing the field
+	// outright would turn a wrong-but-well-meant request into a listener created
+	// with NO target group). Same idiom as type/placement_type on
+	// CreateNetworkLoadBalancerRequest.
+	//
+	// Setting it → InvalidArgument naming target_group_id as the replacement.
 	DefaultTargetGroupId string `protobuf:"bytes,11,opt,name=default_target_group_id,json=defaultTargetGroupId,proto3" json:"default_target_group_id,omitempty"`
-	// target_group_id — NLB-1b EXPAND (additive, optional): the target group the
-	// listener wires to. When set it takes precedence over default_target_group_id
-	// (both coexist in EXPAND). resolved_backend_port°/substatus° echo the wired TG.
+	// target_group_id — the target group the listener wires to. THE single input
+	// for the wiring; optional. resolved_backend_port°/substatus° echo the wired
+	// TG. Because there is only one input, no precedence between fields exists.
 	TargetGroupId string `protobuf:"bytes,12,opt,name=target_group_id,json=targetGroupId,proto3" json:"target_group_id,omitempty"`
 	unknownFields protoimpl.UnknownFields
 	sizeCache     protoimpl.SizeCache
@@ -385,19 +395,29 @@ type UpdateListenerRequest struct {
 	// immutable-списка ушли вместе с переездом VIP на LoadBalancer.
 	UpdateMask *fieldmaskpb.FieldMask `protobuf:"bytes,2,opt,name=update_mask,json=updateMask,proto3" json:"update_mask,omitempty"`
 	// Name of the Listener. Must be a DNS label (lowercase letters, digits and
-	// hyphens, 1-63 characters) and is unique within the project. Empty on Create
-	// makes the server derive the name from the assigned id.
+	// hyphens, 1-63 characters) and is unique within the PARENT LOAD BALANCER —
+	// NOT within the project. The scope is the one the database enforces:
+	// `listeners_lb_name_uniq (load_balancer_id, name)`, so `https` may be reused
+	// on every load balancer of a project. Empty on Create makes the server derive
+	// the name from the assigned id.
 	Name string `protobuf:"bytes,3,opt,name=name,proto3" json:"name,omitempty"`
 	// Description of the Listener.
 	Description string `protobuf:"bytes,4,opt,name=description,proto3" json:"description,omitempty"`
 	// Resource labels as “ key:value “ pairs.
 	Labels map[string]string `protobuf:"bytes,5,rep,name=labels,proto3" json:"labels,omitempty" protobuf_key:"bytes,1,opt,name=key" protobuf_val:"bytes,2,opt,name=value"`
-	// ID of the TargetGroup traffic is sent to when no rule matches. Present in
-	// update_mask, it rewires the listener; empty clears the wiring.
+	// default_target_group_id — RETIRED AS AN INPUT (#1596). Retained only for the
+	// explicit reject: SETTING it, or naming it in update_mask, → InvalidArgument
+	// that names target_group_id as the replacement. See CreateListenerRequest for
+	// why the field is kept rather than removed.
+	//
+	// The reject keys on the BODY too, not just the mask, because an empty mask
+	// means a full-object PATCH: target_group_id would then be applied with its
+	// own (empty) body value, so a request that used to WIRE a target group would
+	// silently UNWIRE it instead.
 	DefaultTargetGroupId string `protobuf:"bytes,7,opt,name=default_target_group_id,json=defaultTargetGroupId,proto3" json:"default_target_group_id,omitempty"`
-	// target_group_id — NLB-1b EXPAND (additive, LIVE-mutable): repoint the
-	// listener to another target group. When present in update_mask it takes
-	// precedence over default_target_group_id.
+	// target_group_id — repoint the listener to another target group. THE single
+	// input for the wiring: present in update_mask it rewires the listener, an
+	// empty value clears it. No precedence between fields exists.
 	TargetGroupId string `protobuf:"bytes,8,opt,name=target_group_id,json=targetGroupId,proto3" json:"target_group_id,omitempty"`
 	unknownFields protoimpl.UnknownFields
 	sizeCache     protoimpl.SizeCache

@@ -63,8 +63,8 @@ type InternalAddressPoolServiceClient interface {
 	// UnbindNetworkDefault — снять default-binding для Network. После этого
 	// новые Address будут аллоцировать из zone-default-pool.
 	UnbindNetworkDefault(ctx context.Context, in *UnbindNetworkDefaultRequest, opts ...grpc.CallOption) (*BindResponse, error)
-	// ListAddresses — все Address (cross-folder), которые получили IP из этого
-	// pool. Admin-only (folder/cloud/org info берется из Address.project_id).
+	// ListAddresses — все Address (cross-project), которые получили IP из этого
+	// pool. Admin-only (project/account info берется из Address.project_id).
 	ListAddresses(ctx context.Context, in *ListAddressPoolAddressesRequest, opts ...grpc.CallOption) (*ListAddressPoolAddressesResponse, error)
 	// GetUtilization — статистика использования pool'а.
 	// total_ips = sum(usable_per_cidr) для всех v4_cidr_blocks + v6_cidr_blocks pool'а.
@@ -218,8 +218,8 @@ type InternalAddressPoolServiceServer interface {
 	// UnbindNetworkDefault — снять default-binding для Network. После этого
 	// новые Address будут аллоцировать из zone-default-pool.
 	UnbindNetworkDefault(context.Context, *UnbindNetworkDefaultRequest) (*BindResponse, error)
-	// ListAddresses — все Address (cross-folder), которые получили IP из этого
-	// pool. Admin-only (folder/cloud/org info берется из Address.project_id).
+	// ListAddresses — все Address (cross-project), которые получили IP из этого
+	// pool. Admin-only (project/account info берется из Address.project_id).
 	ListAddresses(context.Context, *ListAddressPoolAddressesRequest) (*ListAddressPoolAddressesResponse, error)
 	// GetUtilization — статистика использования pool'а.
 	// total_ips = sum(usable_per_cidr) для всех v4_cidr_blocks + v6_cidr_blocks pool'а.

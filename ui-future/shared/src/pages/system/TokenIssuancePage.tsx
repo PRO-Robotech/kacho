@@ -478,7 +478,7 @@ export function TokenIssuancePage({ config }: { config: TokenKindConfig }) {
         <Alert
           type="info"
           showIcon
-          message="Список сервисных аккаунтов недоступен без выбранного Account"
+          message="Список сервисных аккаунтов недоступен, пока не выбран аккаунт"
           description="Введите ID сервисного аккаунта вручную в поле выше — выпуск и список ключей работают по прямому ID."
         />
       )}

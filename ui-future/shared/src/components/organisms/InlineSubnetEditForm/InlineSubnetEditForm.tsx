@@ -205,13 +205,13 @@ export function InlineSubnetEditForm({ projectId, subnetId, onCancel, onSuccess 
           <Input value={isRegional ? regionId : zoneId} disabled />
         </Form.Item>
 
-        <Form.Item label="Таблица маршрутизации">
+        <Form.Item label="Таблица маршрутов">
           <Select
             value={routeTableId}
             onChange={(v) => setRouteTableId(v)}
             options={rtOptions}
             allowClear
-            placeholder="Выберите таблицу маршрутизации (опц.)"
+            placeholder="Выберите таблицу маршрутов (опц.)"
           />
         </Form.Item>
 

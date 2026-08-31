@@ -93,6 +93,8 @@ cert-manager:
   enabled: true
 
 api-gateway:
+  # ПОСАДКА БЕЗОПАСНОСТИ — один адрес на весь флот (прежний: authn.mode).
+  authMode: production-strict
   # ─── Объявление приёма токена (Ф1б, задача #926) — НЕ ОБЪЯВЛЕНО НАМЕРЕННО
   #
   # Своя чеканка на этой фазе стенда не включена (см. kacho-iam ниже: блока
@@ -190,7 +192,6 @@ api-gateway:
   # gateway reports and obtains every bearer THROUGH iam (bootstrap mint →
   # SAKeyService.Issue → OAuth2 client_credentials), forging nothing.
   authn:
-    mode: production-strict
     # Apply the per-RPC authentication floor the catalog declares. Stated here
     # and not left to a default: absence is exactly the state in which the floor
     # was declared everywhere and applied nowhere. Machine principals are exempt
@@ -257,6 +258,8 @@ api-gateway:
     adminUrl: "http://kacho-umbrella-hydra-admin.kacho.svc:4445"
 
 compute:
+  # ПОСАДКА БЕЗОПАСНОСТИ — один адрес на весь флот (прежний: auth.mode).
+  authMode: dev
   image: kacho-compute:dev
   imagePullPolicy: IfNotPresent
   # Dev/newman profile deploys iam+vpc+geo but NOT kacho-storage (storage.enabled=false,
@@ -315,18 +318,6 @@ compute:
   # plaintext — exactly like vpc/iam in this dev profile.
   db:
     sslMode: disable
-  # Dev kind stack runs auth.mode=dev (like kacho-geo + vpc/iam): the umbrella
-  # helm install disables server-mTLS for every service (--set
-  # compute.mtls.enable=false), but the compute chart DEFAULTS auth.mode=
-  # production, whose boot-guard REQUIRES server-mTLS on both listeners
-  # (forwarded principal trusted on plaintext → subject spoofing) AND a non-empty
-  # trusted-forwarder list. production + mtls-off = refuse-to-start
-  # CrashLoopBackOff. The chart's deployment.yaml itself notes "dev stand
-  # overrides auth.mode=dev + mtls.enable=false + db.sslMode=disable" — this
-  # supplies the missing auth.mode override (ephemeral CI stand only; prod keeps
-  # production, see values.prod.yaml).
-  auth:
-    mode: dev
   # mTLS: server (gateway/vpc/nlb dial here) + client (compute→iam, compute→vpc, compute→geo, compute→storage).
   mtls:
     enable: true
@@ -358,14 +349,15 @@ compute:
 # MUST run mtls.enable=true (client-mTLS to them is coupled to server-mTLS under
 # one flag). Added to MTLS_SUBCHARTS in deploy/Makefile (phase-1 bootstrap gate).
 storage:
+  # ПОСАДКА БЕЗОПАСНОСТИ — один адрес на весь флот (прежний: config.authMode).
+  # dev relaxes the prod-guard that would force TLS-DB; service→service mTLS stays ON.
+  authMode: dev
   enabled: true
   image:
     repository: kacho-storage   # local kind image (kacho-storage:dev)
     tag: dev
     pullPolicy: IfNotPresent
   config:
-    # dev relaxes the prod-guard that would force TLS-DB; service→service mTLS stays ON.
-    authMode: dev
     geoGrpcAddr: kacho-geo.kacho.svc:9090        # storage→geo ZoneService.Get (zone_id), :9090
     iamGrpcAddr: kacho-iam.kacho.svc:9090        # storage→iam ProjectService.Get, :9090
     authzIamGrpcAddr: kacho-iam-internal.kacho.svc:9091  # per-RPC Check + RegisterResource, :9091
@@ -569,14 +561,11 @@ pg-compute:
 # В dev-стенде disabled (port-forward kachoctl-ipam должен работать).
 # В prod values эту секцию переопределить enabled=true + adminPodsSelector.
 vpc:
+  # ПОСАДКА БЕЗОПАСНОСТИ — один адрес на весь флот (прежний: authn.mode).
+  authMode: dev
   # KAC-127 — local kind-loaded image (см. комментарий у api-gateway выше).
   image: kacho-vpc:dev
   imagePullPolicy: IfNotPresent
-  # ЯВНО dev. Раньше бралось из дефолта чарта, который был `dev`; дефолт
-  # переведён на `production` (secure-by-default, core rule #16), поэтому
-  # dev-профиль обязан declar'ить свою insecure-posture сам, а не наследовать её.
-  authn:
-    mode: dev
   # mTLS: server (gateway/compute/nlb dial here) + client (vpc→iam, vpc→compute, vpc→geo).
   mtls:
     enable: true
@@ -1348,6 +1337,8 @@ kratos-selfservice-ui:
 # kacho-iam — control-plane сервис IAM (Account / Project / User / ServiceAccount /
 # Group / Role / AccessBinding). E0 — skeleton + CRUD; интеграция с Ory — E2/E3.
 kacho-iam:
+  # ПОСАДКА БЕЗОПАСНОСТИ — один адрес на весь флот (прежний: config.authn.mode).
+  authMode: dev
   name: kacho-iam
   replicas: 1
   # In-cluster Hydra ADMIN URL override (deep-merges over the sub-chart's kacho.iam
@@ -1438,7 +1429,6 @@ kacho-iam:
         maxConns: 40
         sslMode: disable
     authn:
-      mode: dev
       # Bootstrap-mint caller allow-list (#58 hardening). MintBootstrapToken is
       # gated ONLY by the caller's client-certificate SPIFFE SAN (no ReBAC Check is
       # possible before the first token exists; no gateway REST route exists), and
@@ -1562,6 +1552,8 @@ opaSidecar:
 #   - networkPolicy disabled in dev for parity with kacho-iam / kacho-vpc dev
 #     overrides (port-forward / kubectl exec convenience).
 kacho-nlb:
+  # ПОСАДКА БЕЗОПАСНОСТИ — один адрес на весь флот (прежний: config.mode).
+  authMode: dev
   enabled: true
   name: kacho-nlb
   replicas: 1
@@ -1601,7 +1593,7 @@ kacho-nlb:
     port: 5432
     user: kacho_nlb
     name: kacho_nlb
-    sslmode: disable
+    sslMode: disable
     existingSecret: kacho-umbrella-pg-nlb
     existingSecretKey: password
   peers:
@@ -1630,7 +1622,6 @@ kacho-nlb:
       dialDeadline: 3s
       requestTimeout: 500ms
   config:
-    mode: dev
     logger:
       level: INFO
     apiServer:

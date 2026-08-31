@@ -1195,8 +1195,15 @@ func validateBootSource(bs domain.BootSource) error {
 			"bootSource.type must be one of storage.image, registry.image")
 	}
 	if bs.Name != "" || bs.ResolvedDigest != "" || bs.MaterializedVolume != nil || bs.ImageKind != domain.ImageKindUnspecified {
+		// Текст перечисляет ВСЕ ЧЕТЫРЕ поля, которые условие выше отвергает.
+		// Прежняя редакция называла три и молчала о четвёртом — `imageKind`,
+		// том самом, который вызывающий вероятнее всего и заполнил: он объявлен
+		// в контракте без пометки output-only и со словарём значений, то есть
+		// выглядит входом. Отказ, не назвавший присланное поле, не
+		// восстанавливает следующий шаг: вызывающий снимает три названных,
+		// которых не слал, и получает тот же отказ снова.
 		return serviceerr.InvalidArg("boot_source",
-			"bootSource name/resolvedDigest/materializedVolume are output-only and must not be set on input")
+			"bootSource name/resolvedDigest/materializedVolume/imageKind are output-only and must not be set on input")
 	}
 	if bs.ID == "" {
 		return serviceerr.InvalidArg("boot_source.id", "bootSource.id is required")

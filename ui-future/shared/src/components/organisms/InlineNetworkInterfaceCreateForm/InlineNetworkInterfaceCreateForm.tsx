@@ -185,7 +185,7 @@ export function InlineNetworkInterfaceCreateForm({ projectId, subnetId: presetSu
   return (
     <FormShell specId="network-interfaces" mode="create" singular={spec.singular}>
       <FormGrid>
-        <Form.Item label={labelWithInfo("Имя", "Имя интерфейса в пределах фолдера.")}>
+        <Form.Item label={labelWithInfo("Имя", "Имя интерфейса в пределах проекта.")}>
           <Input value={name} onChange={(e) => setName(e.target.value)} />
         </Form.Item>
 

@@ -37,15 +37,18 @@ message Address {
   // ID of the address. Generated at creation time.
   string id = 1;
 
-  // ID of the folder that the address belongs to.
+  // ID of the project that the address belongs to.
   string project_id = 2;
 
   // Creation timestamp.
   google.protobuf.Timestamp created_at = 3;
 
   // Name of the address.
-  // The name is unique within the folder.
-  // Value must match the regular expression ``\|[a-zA-Z]([-_a-zA-Z0-9]{0,61}[a-zA-Z0-9])?``.
+  // The name is unique within the project.
+  // Value must match the regular expression `[a-z0-9]([-a-z0-9]{0,61}[a-z0-9])?` —
+  // RFC 1123 DNS label: lowercase letters, digits and hyphens, 1..63 characters.
+  // Empty on Create means "server, name it": a name derived from the id is
+  // substituted. Empty on Update is rejected — a resource has no nameless state.
   string name = 4;
 
   // Description of the address. 0-256 characters long.

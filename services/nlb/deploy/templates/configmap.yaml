@@ -10,7 +10,7 @@ metadata:
     {{- include "kacho-nlb.labels" . | nindent 4 }}
 data:
   config.yaml: |
-    mode: {{ .Values.config.mode | quote }}
+    mode: {{ include "kacho-nlb.authMode" . | quote }}
 
     logger:
       level: {{ .Values.config.logger.level | quote }}

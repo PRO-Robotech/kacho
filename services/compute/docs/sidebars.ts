@@ -33,6 +33,7 @@ const sidebars: SidebarsConfig = {
         'api/guest-access-key',
         'api/placement-group',
         'api/operations',
+        'api/quotas',
       ],
     },
     {

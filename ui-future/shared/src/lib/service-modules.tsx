@@ -86,7 +86,7 @@ export const SERVICE_MODULES: ServiceModule[] = [
     short: "VPC",
     icon: <ApartmentOutlined />,
     color: "#3D8DF5",
-    description: "Облачные сети, подсети, группы безопасности, публичные IP, таблицы маршрутизации.",
+    description: "Облачные сети, подсети, группы безопасности, публичные IP, таблицы маршрутов.",
     requiresProject: true,
     landing: (f) => (f ? `/projects/${f}/vpc/networks` : null),
     stats: [

@@ -85,7 +85,7 @@ spec:
             - name: KACHO_GEO_DB_NAME
               value: "{{ .Values.db.name }}"
             - name: KACHO_GEO_DB_SSLMODE
-              value: "{{ .Values.db.sslmode }}"
+              value: "{{ include "kacho-geo.dbSslMode" .Values.db }}"
             - name: KACHO_GEO_DB_PASSWORD
               valueFrom:
                 secretKeyRef:
@@ -113,7 +113,7 @@ spec:
             - name: KACHO_GEO_DB_NAME
               value: "{{ .Values.db.name }}"
             - name: KACHO_GEO_DB_SSLMODE
-              value: "{{ .Values.db.sslmode }}"
+              value: "{{ include "kacho-geo.dbSslMode" .Values.db }}"
             - name: KACHO_GEO_DB_PASSWORD
               valueFrom:
                 secretKeyRef:

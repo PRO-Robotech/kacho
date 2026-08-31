@@ -169,7 +169,7 @@ sequenceDiagram
         "networkId": "'"$NET"'",
         "zoneId": "'"$ZONE"'",
         "name": "app-subnet",
-        "v4CidrBlocks": ["10.0.0.0/24"]
+        "ipv4CidrPrimary": "10.0.0.0/24"
       }'
   `}
 </CodeBlock>
@@ -184,10 +184,21 @@ sequenceDiagram
 </CodeBlock>
 
 :::note CIDR-блоки подсети
+При создании задаётся **один** адресный якорь — `ipv4CidrPrimary` либо `ipv6CidrPrimary`
+(строка, не список). Пустыми оба быть не могут: из такой подсети нельзя выделить ни один
+адрес. Одно из двух — можно: v4-only и v6-only подсети законны.
+
 Адрес сети должен иметь нулевые host-биты (`10.0.0.0/24`, не `10.0.0.5/24`), иначе
 `INVALID_ARGUMENT`. Подсети одной сети не должны пересекаться по CIDR — иначе
-`FAILED_PRECONDITION "Subnet CIDRs can not overlap"`. После создания набор CIDR меняется не
-через `Update`, а действиями `:add-cidr-blocks` / `:remove-cidr-blocks`.
+`FAILED_PRECONDITION "Subnet CIDRs can not overlap"`. Часть адресного пространства
+платформа держит за собой: префикс, пересекающийся со служебным диапазоном, отвергается
+синхронно (`INVALID_ARGUMENT`, признак отказа — `SUBNET_CIDR_RESERVED`, см.
+[Subnet](/api/subnet)).
+
+**Дополнительные** диапазоны добавляются уже после создания — действиями
+`:add-cidr-blocks` / `:remove-cidr-blocks`, а не через `Update`. В ответах подсеть несёт
+плоский набор `ipv4CidrBlocks` / `ipv6CidrBlocks`, чей нулевой элемент — первичный якорь;
+на **входе** создания списка нет вовсе.
 :::
 
 ## Шаг 3. Выделить Address

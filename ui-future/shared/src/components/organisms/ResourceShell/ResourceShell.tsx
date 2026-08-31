@@ -437,7 +437,7 @@ export function ResourceShell({ spec, mode }: { spec: ResourceSpec; mode?: Resou
   // KAC-242: действия в ШАПКЕ страницы — КОНТЕКСТНЫЕ по активному табу (не
   // глобальные на всех табах):
   //   • «Обзор»        → Редактировать + ⋮Удалить ресурса (DetailOverviewActions)
-  //   • related-child  → «Создать <child>» (подсеть / таблица маршрутизации / SG / …);
+  //   • related-child  → «Создать <child>» (подсеть / таблица маршрутов / SG / …);
   //                       удаление ребёнка — per-row в таблице (RowActionsMenu)
   //   • прочие табы (операции / JSON / ext) → нет
   // Скрыто в edit/child-create (форма уже в зоне 3). Активный таб берём из URL ДО

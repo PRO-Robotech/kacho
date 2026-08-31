@@ -394,7 +394,9 @@ type Rule struct {
 	MatchLabels map[string]string `protobuf:"bytes,5,rep,name=match_labels,json=matchLabels,proto3" json:"match_labels,omitempty" protobuf_key:"bytes,1,opt,name=key" protobuf_val:"bytes,2,opt,name=value"`
 	// Domain-модуль гранта (ровно один). lowercase; грамматика
 	// `^[a-z][a-z0-9-]*$`; член закрытого набора модулей платформы
-	// (`iam`/`vpc`/`compute`/`loadbalancer`). Literal `"*"` — SYSTEM-ONLY
+	// (`iam`/`vpc`/`compute`/`loadbalancer`/`registry`/`storage`). Набор ВЫВОДИТСЯ
+	// из домена (`domain.KnownModules`), а этот перечень его лишь называет —
+	// расхождение между ними держит гейт, а не внимание. Literal `"*"` — SYSTEM-ONLY
 	// (в custom-роли → INVALID_ARGUMENT). `(size)` не переносится из
 	// прежнего repeated `modules` — это cardinality repeated-поля, у scalar ее
 	// нет. tag 6 — первый свободный (1–5 заняты).

@@ -84,7 +84,7 @@ spec:
             - name: KACHO_REGISTRY_DB_NAME
               value: "{{ .Values.db.name }}"
             - name: KACHO_REGISTRY_DB_SSLMODE
-              value: "{{ .Values.db.sslmode }}"
+              value: "{{ include "registry.dbSslMode" .Values.db }}"
             - name: KACHO_REGISTRY_DB_PASSWORD
               valueFrom:
                 secretKeyRef:
@@ -117,7 +117,7 @@ spec:
             - name: KACHO_REGISTRY_DB_NAME
               value: "{{ .Values.db.name }}"
             - name: KACHO_REGISTRY_DB_SSLMODE
-              value: "{{ .Values.db.sslmode }}"
+              value: "{{ include "registry.dbSslMode" .Values.db }}"
             - name: KACHO_REGISTRY_DB_MAX_CONNS
               value: "{{ .Values.db.maxConns }}"
             - name: KACHO_REGISTRY_DB_STATEMENT_TIMEOUT

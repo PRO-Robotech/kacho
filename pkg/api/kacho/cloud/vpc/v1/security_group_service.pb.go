@@ -90,9 +90,12 @@ type ListSecurityGroupsRequest struct {
 	PageToken string `protobuf:"bytes,3,opt,name=page_token,json=pageToken,proto3" json:"page_token,omitempty"`
 	// A filter expression that filters resources listed in the response.
 	// The expression must specify:
-	// 1. The field name. Currently you can use filtering only on the [SecurityGroup.name] field.
-	// 2. An `=` operator.
-	// 3. The value in double quotes (`"`). Must be 3-63 characters long and match the regular expression `[a-z][-a-z0-9]{1,61}[a-z0-9]`.
+	//  1. The field name. Currently you can use filtering only on the [SecurityGroup.name] field.
+	//  2. An `=` operator.
+	//  3. The value in double quotes (`"`). The value is compared to the resource
+	//     name as-is, so only a value in the name form can match anything:
+	//     `[a-z0-9]([-a-z0-9]{0,61}[a-z0-9])?`. The filter itself applies no
+	//     separate length or alphabet rule to the value.
 	Filter        string `protobuf:"bytes,4,opt,name=filter,proto3" json:"filter,omitempty"` //filter by network_id is here
 	unknownFields protoimpl.UnknownFields
 	sizeCache     protoimpl.SizeCache
@@ -221,7 +224,7 @@ type CreateSecurityGroupRequest struct {
 	// To get the project ID, use a [kacho.cloud.iam.v1.ProjectService.List] request.
 	ProjectId string `protobuf:"bytes,1,opt,name=project_id,json=projectId,proto3" json:"project_id,omitempty"`
 	// Name of the security group.
-	// The name must be unique within the folder.
+	// The name must be unique within the project.
 	Name string `protobuf:"bytes,2,opt,name=name,proto3" json:"name,omitempty"`
 	// Description of the security group.
 	Description string `protobuf:"bytes,3,opt,name=description,proto3" json:"description,omitempty"`
@@ -479,7 +482,7 @@ type isSecurityGroupRuleSpec_Target interface {
 }
 
 type SecurityGroupRuleSpec_CidrBlocks struct {
-	// CIDR blocks to allow to recieve or send traffic.
+	// CIDR blocks to allow to receive or send traffic.
 	CidrBlocks *CidrBlocks `protobuf:"bytes,7,opt,name=cidr_blocks,json=cidrBlocks,proto3,oneof"`
 }
 
@@ -555,7 +558,7 @@ type UpdateSecurityGroupRequest struct {
 	// Field mask that specifies which attributes of the Address should be updated.
 	UpdateMask *fieldmaskpb.FieldMask `protobuf:"bytes,2,opt,name=update_mask,json=updateMask,proto3" json:"update_mask,omitempty"`
 	// New name for the security group.
-	// The name must be unique within the folder.
+	// The name must be unique within the project.
 	Name string `protobuf:"bytes,3,opt,name=name,proto3" json:"name,omitempty"`
 	// New description of the security group.
 	Description string `protobuf:"bytes,4,opt,name=description,proto3" json:"description,omitempty"`

@@ -13,6 +13,27 @@
 import { ApiError } from "@shared/api/client";
 import { displayText } from "@shared/lib/display-text";
 import { grpcCodeLabel } from "@shared/lib/grpc-status";
+import { QUOTA_VALUES_SET_BY, kindLabel } from "@shared/lib/quota-view";
+
+/** Полоса отказа по пределу. Различаются ДЕЙСТВИЕМ администратора, не оттенком. */
+export type QuotaLane = "exceeded" | "not_provisioned";
+
+export interface QuotaRefusal {
+  lane: QuotaLane;
+  /** Машинное имя вида, как прислал сервер; `null` — не назван. */
+  kind: string | null;
+  /** Человеческое имя вида; равно `kind`, когда каталог его ещё не знает. */
+  label: string | null;
+  limit: number | null;
+  /** `null` — значения нет вовсе. Ноль — законная величина и не то же самое. */
+  used: number | null;
+  /** Адрес витрины квот; `null` — носитель не назван, и адрес не подделывается. */
+  href: string | null;
+}
+
+/** Куда идти за действующими пределами. */
+export const QUOTA_SHOWCASE_HINT =
+  "Действующие пределы, занятое и источник каждого значения — в разделе «Квоты» проекта.";
 
 export type ErrorStatus = "403" | "404" | "500" | "warning" | "error";
 
@@ -30,6 +51,8 @@ export interface ErrorPresentation {
    */
   devDetail: string | null;
   ambiguousNotFound: boolean;
+  /** Отказ по пределу ресурсов; `null` — отказ не про предел. */
+  quota: QuotaRefusal | null;
 }
 
 /** The only thing a 404 lets us claim. */
@@ -83,6 +106,136 @@ export function looksLikePermissionToken(message: string | null): boolean {
   return /(^|\s)[a-z][a-z0-9_]*(\.[a-z][a-z0-9_]*){2,}\s*$/.test(message.trim()) || /permission denied/i.test(message);
 }
 
+/**
+ * ОТКАЗ ПО ПРЕДЕЛУ ОБЪЯСНЯЕТСЯ, А НЕ ЦИТИРУЕТСЯ (#1605) — тот же ход, что у 403.
+ *
+ * Производитель отказа один на всю платформу и говорит по-английски машинными
+ * именами: `project prj-1 has reached its limit of 5 vpc.network`. Строка точна
+ * и контрактна — и для упёршегося бесполезна: вид назван машинным именем, кто
+ * задал величину, не сказано, куда идти, не сказано. Следующего шага у клиента
+ * не остаётся, а отказ по пределу без следующего шага неотличим от сбоя.
+ *
+ * Текст сервера остаётся контрактом и НЕ ТЕРЯЕТСЯ — уходит в подсказку, туда же,
+ * где уже лежит код протокола.
+ *
+ * ─────────────────────────────────────────────────────────────────────────────
+ * КЛЮЧ — ТОКЕН ПРИЗНАКА, А НЕ HTTP-СТАТУС
+ *
+ * Полосы две, и они приходят РАЗНЫМИ статусами: «место кончилось» —
+ * `RESOURCE_EXHAUSTED` (429), «потолок не назван ни на одной области» —
+ * `FAILED_PRECONDITION` (400). Ключ по 429 потерял бы вторую полосу целиком,
+ * а именно у неё действие администратора другое: не поднять предел, а завести.
+ * По той же причине здесь не разбирается ПРОЗА сообщения: полосы различаются
+ * машинно по `reason` (`api-conventions.md` §By-lane code-split), а вывод вида
+ * из английской фразы молча вернул бы пустоту при первой же смене тона.
+ *
+ * ─────────────────────────────────────────────────────────────────────────────
+ * ДЕГРАДАЦИЯ ОСМЫСЛЕННАЯ, А НЕ ВСЁ-ИЛИ-НИЧЕГО
+ *
+ * Величины (вид, предел, занятое, носитель) приезжают в `metadata` признака.
+ * Сегодня производители присылают признак и НЕ присылают величин. Отказ, умеющий
+ * показать только полный набор, на неполном показал бы хуже прежнего, поэтому
+ * показывается то, что приехало: чего сервер не назвал, то не выдумывается —
+ * ни вид, ни предел, ни адрес витрины.
+ */
+const QUOTA_LANES: Record<string, QuotaLane> = {
+  QUOTA_EXCEEDED: "exceeded",
+  QUOTA_NOT_PROVISIONED: "not_provisioned",
+};
+
+/** Носитель, при котором «занято» относится к проекту, — он же адресует витрину. */
+const CARRIER_PROJECT = "project";
+
+/**
+ * Значение из `metadata` признака.
+ *
+ * Имена ключей выбирает ПРОИЗВОДИТЕЛЬ, а `ErrorInfo.metadata` — `map<string,string>`,
+ * ключи которого protojson отдаёт ДОСЛОВНО (это данные, а не имена полей). Поэтому
+ * читаются оба написания, как это уже делает разбор причин отказа в правах.
+ * Ключа, которого нет, — `null`: неназванное не подменяется догадкой.
+ */
+function metaText(md: Record<string, unknown>, ...keys: string[]): string | null {
+  for (const k of keys) {
+    const v = md[k];
+    if (typeof v === "string" && v !== "") return v;
+    if (typeof v === "number" && Number.isFinite(v)) return String(v);
+  }
+  return null;
+}
+
+/**
+ * Число из `metadata`.
+ *
+ * НОЛЬ — ЗАКОННАЯ ВЕЛИЧИНА и не то же самое, что «не назвали»: приравняв их,
+ * отказ промолчал бы там, где сервер сказал. Нечисловое значение — `null`,
+ * а не `NaN`, который дальше печатался бы на экране арендатора.
+ */
+function metaNumber(md: Record<string, unknown>, ...keys: string[]): number | null {
+  const raw = metaText(md, ...keys);
+  if (raw === null) return null;
+  const n = Number(raw);
+  return Number.isFinite(n) ? n : null;
+}
+
+/** Разбирает отказ по пределу; `null` — отказ не про предел. */
+function quotaRefusalOf(details: unknown): QuotaRefusal | null {
+  if (!Array.isArray(details)) return null;
+  for (const d of details) {
+    if (!d || typeof d !== "object") continue;
+    const reason = (d as { reason?: unknown }).reason;
+    if (typeof reason !== "string") continue;
+    const lane = QUOTA_LANES[reason];
+    if (!lane) continue;
+
+    const rawMd = (d as { metadata?: unknown }).metadata;
+    const md = rawMd && typeof rawMd === "object" ? (rawMd as Record<string, unknown>) : {};
+    const kind = metaText(md, "kind", "quota_kind", "quotaKind");
+    const carrierType = metaText(md, "carrier_type", "carrierType");
+    const carrierId = metaText(md, "carrier_id", "carrierId");
+
+    return {
+      lane,
+      kind,
+      // Человеческое имя берётся из ЕДИНСТВЕННОГО словаря видов (витрина квот),
+      // а не из второй копии рядом: копия разошлась бы с витриной молча, и один
+      // предмет назывался бы на экране двумя словами.
+      label: kind === null ? null : kindLabel(kind),
+      limit: metaNumber(md, "limit"),
+      used: metaNumber(md, "used"),
+      href: carrierType === CARRIER_PROJECT && carrierId ? `/projects/${carrierId}/quotas` : null,
+    };
+  }
+  return null;
+}
+
+const QUOTA_TITLES: Record<QuotaLane, string> = {
+  exceeded: "Предел исчерпан",
+  not_provisioned: "Предел не задан",
+};
+
+/** Сколько именно — ровно из того, что сервер назвал. */
+function quotaAmount(q: QuotaRefusal): string {
+  if (q.limit === null) return "";
+  return q.used === null ? `: ${q.limit}` : `: занято ${q.used} из ${q.limit}`;
+}
+
+/**
+ * Объяснение отказа.
+ *
+ * Действие администратора у полос РАЗНОЕ, и это несущее различие: свести их в
+ * одну фразу значило бы послать читателя искать, что понизить, там, где не
+ * назначено ничего.
+ */
+function quotaExplanation(q: QuotaRefusal): string {
+  const on = q.label === null ? "на этот вид ресурсов" : `на «${q.label}»`;
+  const head =
+    q.lane === "exceeded"
+      ? `В проекте достигнут предел ${on}${quotaAmount(q)}.`
+      : `Предел ${on} не задан ни на одной области — создание отклонено.`;
+  const action = q.lane === "exceeded" ? "поднять предел может он" : "завести предел может он";
+  return `${head} ${QUOTA_VALUES_SET_BY} — ${action}.`;
+}
+
 function statusFromHttp(status: number): ErrorStatus {
   if (status === 404) return "404";
   if (status === 403) return "403";
@@ -119,7 +272,13 @@ function devDetailOf(err: ApiError): string {
  * на экран арендатора. Код теперь живёт в `presentError().devDetail`.
  */
 export function errorText(err: unknown): string {
-  return presentError(err).subTitle ?? "Ошибка";
+  const p = presentError(err);
+  // ТОСТ — САМАЯ ЧАСТАЯ ПОВЕРХНОСТЬ ОТКАЗА ПО ПРЕДЕЛУ: мутации сообщают о себе
+  // им, а не экраном отказа. Поэтому «куда идти» приклеивается здесь, и только
+  // к нему: оговорка на КАЖДОМ отказе (например, о неоднозначности промаха)
+  // превратила бы тост в шум, и её перестали бы читать вместе с полезной.
+  if (p.quota !== null && p.subTitle !== null && p.note !== null) return `${p.subTitle} ${p.note}`;
+  return p.subTitle ?? "Ошибка";
 }
 
 export function presentError(err: unknown): ErrorPresentation {
@@ -131,6 +290,7 @@ export function presentError(err: unknown): ErrorPresentation {
       note: null,
       devDetail: null,
       ambiguousNotFound: false,
+      quota: null,
     };
   }
 
@@ -142,10 +302,26 @@ export function presentError(err: unknown): ErrorPresentation {
       note: null,
       devDetail: null,
       ambiguousNotFound: false,
+      quota: null,
     };
   }
 
   if (err instanceof ApiError) {
+    const quota = quotaRefusalOf(err.details);
+    if (quota !== null) {
+      return {
+        status: statusFromHttp(err.status),
+        title: QUOTA_TITLES[quota.lane],
+        subTitle: quotaExplanation(quota),
+        note: QUOTA_SHOWCASE_HINT,
+        // Текст производителя — контракт, и он не теряется: он в подсказке
+        // рядом с кодом протокола, откуда его достаёт поддержка.
+        devDetail: [devDetailOf(err), err.message].filter(Boolean).join(" · ") || null,
+        ambiguousNotFound: false,
+        quota,
+      };
+    }
+
     const status = statusFromHttp(err.status);
     const ambiguousNotFound = status === "404";
     // Отказ в правах, сообщённый ИМЕНЕМ ВНУТРЕННЕЙ ПРОВЕРКИ, заменяется
@@ -160,6 +336,7 @@ export function presentError(err: unknown): ErrorPresentation {
       note: ambiguousNotFound ? NOT_FOUND_IS_AMBIGUOUS : null,
       devDetail: hideToken ? [dev, err.message].filter(Boolean).join(" · ") || null : dev,
       ambiguousNotFound,
+      quota: null,
     };
   }
 
@@ -170,5 +347,6 @@ export function presentError(err: unknown): ErrorPresentation {
     note: null,
     devDetail: null,
     ambiguousNotFound: false,
+    quota: null,
   };
 }

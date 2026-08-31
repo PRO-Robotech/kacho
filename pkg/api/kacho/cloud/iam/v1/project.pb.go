@@ -55,7 +55,7 @@ type Project struct {
 	// says it. Update rejects account_id in update_mask with "accountId is
 	// immutable after Project.Create".
 	AccountId string `protobuf:"bytes,2,opt,name=account_id,json=accountId,proto3" json:"account_id,omitempty"`
-	// Name of the project. Unique within an Account. 3-63 characters long.
+	// Name of the project. Unique within an Account. 1-63 characters long.
 	Name string `protobuf:"bytes,3,opt,name=name,proto3" json:"name,omitempty"`
 	// Optional description of the project. 0-256 characters long.
 	Description string `protobuf:"bytes,4,opt,name=description,proto3" json:"description,omitempty"`

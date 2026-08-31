@@ -829,8 +829,7 @@ func validateSecurityConfig(cfg config.Config) error {
 		// первым стейтментом снимал и authz-Check, и mTLS на ОБОИХ листенерах в
 		// ЛЮБОМ режиме, включая production-strict. Теперь — fail-closed
 		// (security.md «AuthN+AuthZ ВЕЗДЕ», core rule #16); в dev обход сохранён.
-		switch cfg.AuthMode {
-		case "production", "production-strict":
+		if breakglassRefusedIn(cfg.AuthMode) {
 			return fmt.Errorf("production mode (%s): KACHO_REGISTRY_AUTHZ_BREAKGLASS must not be enabled "+
 				"— it bypasses per-RPC authz Check and mTLS on both listeners; breakglass is a "+
 				"non-production emergency escape only", cfg.AuthMode)
@@ -838,12 +837,62 @@ func validateSecurityConfig(cfg config.Config) error {
 		return nil
 	}
 	if cfg.AuthZIAMGRPCAddr == "" {
-		return errors.New("authz Check required on both listeners: set KACHO_REGISTRY_AUTHZ_IAM_GRPC_ADDR (or KACHO_REGISTRY_AUTHZ_BREAKGLASS=true to bypass)")
+		return fmt.Errorf("%sauthz Check required on both listeners: set "+
+			"KACHO_REGISTRY_AUTHZ_IAM_GRPC_ADDR to the internal endpoint of kacho-iam (:9091)%s",
+			bootRefusalModePrefix(cfg.AuthMode), breakglassBypassHint(cfg.AuthMode))
 	}
 	if !cfg.PublicServerMTLS.Enable || !cfg.InternalServerMTLS.Enable {
-		return errors.New("mTLS required on both listeners: set KACHO_REGISTRY_PUBLIC_SERVER_MTLS_ENABLE and KACHO_REGISTRY_INTERNAL_SERVER_MTLS_ENABLE=true (or KACHO_REGISTRY_AUTHZ_BREAKGLASS=true to bypass)")
+		return fmt.Errorf("%smTLS required on both listeners: set "+
+			"KACHO_REGISTRY_PUBLIC_SERVER_MTLS_ENABLE and KACHO_REGISTRY_INTERNAL_SERVER_MTLS_ENABLE=true%s",
+			bootRefusalModePrefix(cfg.AuthMode), breakglassBypassHint(cfg.AuthMode))
 	}
 	return requirePeerTransport(cfg)
+}
+
+// breakglassRefusedIn — ЕДИНСТВЕННЫЙ предикат «в этом режиме breakglass отвергнут».
+//
+// Он читается обеими сторонами шва: стражем, который breakglass запрещает, и
+// составителем совета, который его предлагает. Пока предикат был один (switch
+// внутри стража), а совет — константой в тексте отказа, стороны разошлись молча:
+// отказ рекомендовал ровно то, чем страж выше по этой же функции валит старт.
+func breakglassRefusedIn(authMode string) bool {
+	switch authMode {
+	case "production", "production-strict":
+		return true
+	}
+	return false
+}
+
+// breakglassBypassHint — хвост «как обойти», приписываемый к отказу посадки.
+//
+// Зависит от режима, и это не косметика. Текст отказа — контракт ОПЕРАТОРА: по
+// нему в три часа ночи выбирают следующий шаг, и другого источника в этот момент
+// нет. В боевом режиме breakglass отвергается, поэтому совет его взвести называет
+// заведомо неисполнимый шаг — цена ошибки измерена в полном цикле выкатки и
+// ожидания раскатки, потраченном, пока сервис лежит (#1592).
+//
+// В боевом режиме хвоста нет ВОВСЕ — не «есть, но с оговоркой». Названная ручка
+// читается как вариант независимо от того, что про неё написано рядом; предупредить
+// о ней — работа отказа САМОГО breakglass-стража (он называет и ручку, и режим) и
+// страницы установки, а не отказа о нехватке чего-то другого.
+func breakglassBypassHint(authMode string) string {
+	if breakglassRefusedIn(authMode) {
+		return ""
+	}
+	return " (or set KACHO_REGISTRY_AUTHZ_BREAKGLASS=true to bypass — non-production only)"
+}
+
+// bootRefusalModePrefix — боевой отказ называет РЕЖИМ.
+//
+// Правила посадки от режима зависят, и без его имени оператор не отличит «здесь
+// так нельзя» от «так нельзя нигде» — то есть не поймёт, почему тот же стенд
+// поднимался вчера. Неизвестный режим сюда не доходит: `validateAuthMode` идёт
+// в композиционном корне РАНЬШЕ и отвергает его по закрытому перечню.
+func bootRefusalModePrefix(authMode string) string {
+	if breakglassRefusedIn(authMode) {
+		return fmt.Sprintf("production mode (%s): ", authMode)
+	}
+	return ""
 }
 
 // requirePeerTransport — в любом боевом режиме транспорт КАЖДОГО поднимаемого

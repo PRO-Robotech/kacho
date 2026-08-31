@@ -107,13 +107,29 @@ func (u *UpdateUseCase) WithCheckClient(c CheckClient) *UpdateUseCase {
 
 // Mutable update_mask paths (single source of truth).
 var listenerMutableMaskPaths = map[string]struct{}{
-	"name":                    {},
-	"description":             {},
-	"labels":                  {},
-	"default_target_group_id": {},
-	// NLB-1b EXPAND (additive): repoint the wired target group (LIVE-mutable).
+	"name":        {},
+	"description": {},
+	// Ссылка на группу целей — ОДИН вход (задача продукта #1596).
 	"target_group_id": {},
+	"labels":          {},
 }
+
+// listenerRetiredMaskPaths — входы, СНЯТЫЕ с контракта, но оставленные в запросе
+// РОВНО ЗАТЕМ, чтобы клиент, который их шлёт, получил внятный отказ вместо
+// молчаливого отбрасывания на крае (край работает с `DiscardUnknown` — осознанное
+// продуктовое решение). Та же идиома, что у `type`/`placement_type` балансировщика.
+//
+// Текст называет ЗАМЕНУ, а не только запрет: отказ, не восстанавливающий
+// следующий шаг клиента, — находка сам по себе.
+var listenerRetiredMaskPaths = map[string]string{
+	"default_target_group_id": retiredDefaultTargetGroupMsg,
+}
+
+// retiredDefaultTargetGroupMsg — verbatim contract text (#1596). Единый для обоих
+// путей записи: Create читает поле тела, Update — путь маски, а отказ обязан быть
+// ОДИН, иначе два текста об одном предмете разойдутся молча.
+const retiredDefaultTargetGroupMsg = "default_target_group_id is output-only; " +
+	"the wired target group is set solely by target_group_id"
 
 // Immutable update_mask paths (in mask → InvalidArgument with фиксированный текст).
 // VIP консолидирован на LoadBalancer: address_id/ip_version/subnet_id/region_id
@@ -147,6 +163,20 @@ func (u *UpdateUseCase) Run(ctx context.Context, req *lbv1.UpdateListenerRequest
 	}
 	if err := validateListenerID(id); err != nil {
 		return nil, err
+	}
+
+	// Снятый вход отвергается по ПРИСУТСТВИЮ В ТЕЛЕ, а не только по пути в маске.
+	// Разница в пустой маске: она означает правку объекта целиком, поэтому
+	// `target_group_id` применяется со своим значением из тела — а у клиента,
+	// пишущего по прежнему справочнику, оно пустое. Без этой проверки запрос,
+	// который раньше ПРИВЯЗЫВАЛ группу, начал бы её СНИМАТЬ, и молча.
+	//
+	// Молчаливое игнорирование, предписанное конвенцией update_mask для
+	// immutable-полей на пустой маске, здесь не годится по той же причине: у
+	// immutable-поля игнорирование ничего не меняет, а тут оно меняет ровно то,
+	// ради чего запрос слали.
+	if req.GetDefaultTargetGroupId() != "" {
+		return nil, status.Error(codes.InvalidArgument, retiredDefaultTargetGroupMsg)
 	}
 
 	mask := req.GetUpdateMask().GetPaths()
@@ -215,20 +245,12 @@ func (u *UpdateUseCase) Run(ctx context.Context, req *lbv1.UpdateListenerRequest
 		}
 		next.Labels = lbls
 	}
-	// NLB-1b EXPAND (additive): target_group_id and the legacy default_target_group_id
-	// both map to the listener's TG reference. Only a field present in the mask is
-	// applied; target_group_id takes precedence when both are applied and non-empty.
-	// An applied field with an empty value clears the reference.
-	applyTG := apply("target_group_id")
-	applyDTG := apply("default_target_group_id")
-	if applyTG || applyDTG {
-		tg := ""
-		switch {
-		case applyTG && req.GetTargetGroupId() != "":
-			tg = req.GetTargetGroupId()
-		case applyDTG && req.GetDefaultTargetGroupId() != "":
-			tg = req.GetDefaultTargetGroupId()
-		}
+	// Ссылка на группу целей — ОДИН вход, `target_group_id` (задача продукта #1596).
+	// Приоритета между полями больше нет BY CONSTRUCTION: второго входного поля не
+	// существует, `default_target_group_id` отвергается разбором маски выше.
+	// Применённое поле с пустым значением снимает привязку.
+	if apply("target_group_id") {
+		tg := req.GetTargetGroupId()
 		if tg == "" {
 			next.DefaultTargetGroupID = option.ValueOf[domain.ResourceID]{}
 		} else {
@@ -325,6 +347,11 @@ func validateListenerMask(paths []string) error {
 	for _, p := range paths {
 		if msg, ok := listenerImmutableMaskPaths[p]; ok {
 			return status.Errorf(codes.InvalidArgument, "%s", msg)
+		}
+		// Снятый вход отвергается ДО «неизвестного поля»: generic-текст не сказал
+		// бы, чем теперь привязывают группу, и клиент остался бы без следующего шага.
+		if msg, ok := listenerRetiredMaskPaths[p]; ok {
+			return status.Error(codes.InvalidArgument, msg)
 		}
 		if _, ok := listenerMutableMaskPaths[p]; ok {
 			continue

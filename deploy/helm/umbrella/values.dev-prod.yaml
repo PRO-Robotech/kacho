@@ -60,6 +60,13 @@ mtls:
 
 # ─── api-gateway (edge) — production-strict authN ───────────────────────────
 api-gateway:
+  # ПОСАДКА БЕЗОПАСНОСТИ — один адрес на весь флот (прежний: authn.mode).
+  # Bearer REQUIRED, verified by signature against published public material;
+  # missing token → 401. The line that used to sit under this one blanked a
+  # shared-signing-key knob — it is gone because the chart no longer has such a knob
+  # to blank, and a value naming a setting that does not exist reads as a decision
+  # while doing nothing.
+  authMode: production-strict
   # ─── Объявление приёма токена (Ф1б, задача #926) ──────────────────────
   #
   # Издатель на крае — МНОЖЕСТВО: платформа чеканит свои токены сама (задача
@@ -137,13 +144,6 @@ api-gateway:
   # DUPLICATE list key → helm strategic-merge `$setElementOrder` patch failure on
   # `helm upgrade` (dev base appEnv=dev + extraEnv=production → two KACHO_APP_ENV).
   appEnv: production
-  authn:
-    # Bearer REQUIRED, verified by signature against published public material;
-    # missing token → 401. The line that used to sit under this one blanked a
-    # shared-signing-key knob — it is gone because the chart no longer has such a knob
-    # to blank, and a value naming a setting that does not exist reads as a decision
-    # while doing nothing.
-    mode: production-strict
   # UNIFICATION: verify RS256 tokens through the iam :9097 JWKS mirror, NOT Hydra :4444
   # directly (iam is the single JWKS facade; a direct-provider dial is forbidden). The
   # mirror is byte-identical and short-TTL; Hydra stays issuer/signer. `issuer` (iss-pin)
@@ -188,8 +188,8 @@ api-gateway:
 
 # ─── kacho-vpc ──────────────────────────────────────────────────────────────
 vpc:
-  authn:
-    mode: production            # anonymous fail-closed
+  # ПОСАДКА БЕЗОПАСНОСТИ — один адрес на весь флот (прежний: authn.mode).
+  authMode: production            # anonymous fail-closed
   repository:
     postgres:
       sslMode: require
@@ -211,8 +211,8 @@ vpc:
 # The compute chart DEFAULTS auth.mode=production (dev flips it to dev). Restore
 # production + require the encrypted DB channel. mTLS + authzIam already wired in dev.
 compute:
-  auth:
-    mode: production
+  # ПОСАДКА БЕЗОПАСНОСТИ — один адрес на весь флот (прежний: auth.mode).
+  authMode: production
   db:
     sslMode: require
 
@@ -220,7 +220,7 @@ compute:
 kacho-geo:
   authMode: production           # anonymous fail-closed on BOTH listeners
   db:
-    sslmode: require
+    sslMode: require
   # ВТОРОЙ клиент базы у этого чарта — Job разовой работы переноса географии. Он
   # ходит НЕ в свою базу, а в pg-compute, и строку соединения собирает из
   # собственного блока `dataMigration.source`, а не из `db` выше. Умолчание чарта
@@ -238,13 +238,14 @@ kacho-geo:
   # (TestProductionStacks_DeclareEncryptedDatabaseChannel), а не этот комментарий.
   dataMigration:
     source:
-      sslmode: require
+      sslMode: require
   # trusted-forwarder-SANs (gateway SPIFFE) inherited from values.dev.yaml env.
 
 # ─── kacho-storage ──────────────────────────────────────────────────────────
 storage:
+  # ПОСАДКА БЕЗОПАСНОСТИ — один адрес на весь флот (прежний: config.authMode).
+  authMode: production
   config:
-    authMode: production
     # Плоскость данных объявлена, потому что посадка БОЕВАЯ: страж старта
     # отказывает в старте боевому сервису без неё — облако, предлагающее API
     # хранения без плоскости данных, не сделает пригодным ни один том, а
@@ -283,9 +284,10 @@ storage:
 
 # ─── kacho-iam (authz authority + identity tier) — production-strict ────────
 kacho-iam:
+  # ПОСАДКА БЕЗОПАСНОСТИ — один адрес на весь флот (прежний: config.authn.mode).
+  authMode: production-strict    # Bearer required + Config.Validate requires hook/jwks secrets
   config:
     authn:
-      mode: production-strict    # Bearer required + Config.Validate requires hook/jwks secrets
       # Hydra's advertised self.issuer on this kind stand is the localhost nodeport
       # (hydra.config.urls.self.issuer = http://localhost:28080/.ory/hydra/public/), NOT
       # the domain-derived https://hydra.api.kacho.cloud. Without this, the private_key_jwt
@@ -458,8 +460,9 @@ kacho-iam:
 
 # ─── kacho-nlb ──────────────────────────────────────────────────────────────
 kacho-nlb:
+  # ПОСАДКА БЕЗОПАСНОСТИ — один адрес на весь флот (прежний: config.mode).
+  authMode: production
   config:
-    mode: production
     authz:
       # Ручки аварийного обхода авторизации у nlb нет — звено решения о доступе
       # ставится безусловно. Стоявшее здесь `breakglass: false` не читал ни
@@ -471,7 +474,7 @@ kacho-nlb:
       trustedForwarderSANs:
         - spiffe://kacho.cloud/ns/kacho/sa/kacho-api-gateway
   db:
-    sslmode: require
+    sslMode: require
 
 # ─── kacho-registry ─────────────────────────────────────────────────────────
 # production-strict: registry's DB-sslmode guard fires ONLY in production-strict (plain
@@ -483,7 +486,7 @@ kacho-nlb:
 registry:
   authMode: production-strict
   db:
-    sslmode: require
+    sslMode: require
   authz:
     breakglass: false
   # Data-plane proxy (KACHO_REGISTRY_DATAPLANE_ADDR is always a non-empty listen addr →

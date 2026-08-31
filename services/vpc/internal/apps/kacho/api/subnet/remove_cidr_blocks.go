@@ -52,7 +52,8 @@ func (u *RemoveCidrBlocksUseCase) Execute(ctx context.Context, id string, v4, v6
 		return nil, status.Error(codes.InvalidArgument, "subnet_id required")
 	}
 	if len(v4) == 0 && len(v6) == 0 {
-		return nil, serviceerr.InvalidArg("v4_cidr_blocks", "v4_cidr_blocks or v6_cidr_blocks is required")
+		return nil, serviceerr.InvalidArg(blocksCidrFields.v4,
+			blocksCidrFields.v4+" or "+blocksCidrFields.v6+" is required")
 	}
 	op, err := operations.NewFromContext(
 		ctx,

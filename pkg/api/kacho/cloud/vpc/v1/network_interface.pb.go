@@ -102,7 +102,10 @@ type NetworkInterface struct {
 	// ID фолдера, которому принадлежит интерфейс.
 	ProjectId string `protobuf:"bytes,2,opt,name=project_id,json=projectId,proto3" json:"project_id,omitempty"`
 	// Имя интерфейса. Уникально в пределах фолдера.
-	// Value must match the regular expression “\|[a-zA-Z]([-_a-zA-Z0-9]{0,61}[a-zA-Z0-9])?“.
+	// Value must match the regular expression `[a-z0-9]([-a-z0-9]{0,61}[a-z0-9])?` —
+	// RFC 1123 DNS label: lowercase letters, digits and hyphens, 1..63 characters.
+	// Empty on Create means "server, name it": a name derived from the id is
+	// substituted. Empty on Update is rejected — a resource has no nameless state.
 	Name string `protobuf:"bytes,4,opt,name=name,proto3" json:"name,omitempty"`
 	// Описание интерфейса. 0-256 символов.
 	Description string `protobuf:"bytes,5,opt,name=description,proto3" json:"description,omitempty"`

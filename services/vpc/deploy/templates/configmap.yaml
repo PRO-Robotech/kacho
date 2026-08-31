@@ -84,7 +84,7 @@ data:
         password-from-env: KACHO_VPC_DB_PASSWORD
 
     authn:
-      mode: {{ default "production" .Values.authn.mode | quote }}
+      mode: {{ default "production" (include "kacho-vpc.authMode" .) | quote }}
       # trusted-forwarder — в production (non-strict) без server-mTLS публичный
       # :9090 listener принимает client-asserted x-kacho-* principal'а только под
       # этим явным подтверждением (оператор гарантирует, что listener стоит за

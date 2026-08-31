@@ -138,10 +138,10 @@ func TestNewmanCollectionsSendNoUnknownEnumValues(t *testing.T) {
 			if !ok {
 				continue
 			}
-			var bad []string
-			walkEnumValueNames(md, obj, "", &bad)
-			for _, entry := range bad {
-				field, value := splitEnumEntry(entry)
+			var found bodyRefusals
+			walkEnumValueNames(md, obj, "", &found)
+			for _, ev := range found.enums {
+				field, value := ev.Path, ev.Value
 				enumValues++
 				if strings.Contains(value, enumTemplateSentinel) {
 					templated++
@@ -226,15 +226,4 @@ func decodeSentinelJSONObject(raw string) (map[string]any, bool) {
 	}
 	obj, ok := v.(map[string]any)
 	return obj, ok
-}
-
-// splitEnumEntry разбирает запись обхода `<путь>: "<значение>"`.
-func splitEnumEntry(entry string) (field, value string) {
-	i := strings.LastIndex(entry, ": ")
-	if i < 0 {
-		return entry, ""
-	}
-	field = entry[:i]
-	value = strings.Trim(entry[i+2:], `"`)
-	return field, value
 }

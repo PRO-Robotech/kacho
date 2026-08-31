@@ -41,7 +41,10 @@ type Cluster struct {
 	state protoimpl.MessageState `protogen:"open.v1"`
 	// ID of the cluster. Must be the literal `cluster_kacho_root`.
 	Id string `protobuf:"bytes,1,opt,name=id,proto3" json:"id,omitempty"`
-	// Display name. Free-form, 3-63 characters.
+	// Display name of the cluster singleton. Output-only: the value is written by
+	// the seed migration and no RPC of this service changes it.
+	// Free-form, 1-64 characters — this is NOT the platform resource-name form
+	// (`pkg/validate/nameform`), because the field is not a client-set name.
 	Name string `protobuf:"bytes,2,opt,name=name,proto3" json:"name,omitempty"`
 	// Description. 0-256 characters.
 	Description string `protobuf:"bytes,3,opt,name=description,proto3" json:"description,omitempty"`

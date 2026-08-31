@@ -53,7 +53,10 @@ describe("IamScopedListShell", () => {
   it("вместо пустой таблицы объясняет, чего не хватает, и называет ресурс", () => {
     const { container } = render(<IamScopedListShell spec={spec} />);
 
-    expect(emptyText(container)).toBe("Выберите Account вверху секции, чтобы увидеть Projects.");
+    // Слово области — то же, что на ручке в шапке, и берётся у словаря подписей.
+    // Здесь пиннилось «Account» латиницей: экран отправлял искать ручку, которая
+    // подписана «Аккаунт» (#1609).
+    expect(emptyText(container)).toBe("Выберите аккаунт вверху секции, чтобы увидеть Projects.");
   });
 
   it("объяснение называет ИМЕННО тот ресурс, о котором речь", () => {
@@ -61,7 +64,7 @@ describe("IamScopedListShell", () => {
       <IamScopedListShell spec={{ id: "service-accounts", plural: "Service Accounts" } as ResourceSpec} />,
     );
 
-    expect(emptyText(container)).toBe("Выберите Account вверху секции, чтобы увидеть Service Accounts.");
+    expect(emptyText(container)).toBe("Выберите аккаунт вверху секции, чтобы увидеть Service Accounts.");
   });
 
   it("с выбранным аккаунтом показывает список, привязанный к этому аккаунту", () => {

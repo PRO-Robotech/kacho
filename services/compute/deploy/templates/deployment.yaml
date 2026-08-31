@@ -100,6 +100,13 @@ spec:
               containerPort: {{ .Values.ports.grpc }}
             - name: grpc-internal
               containerPort: {{ .Values.ports.internalGrpc }}
+            # Диагностическая поверхность (/metrics, /healthz, /readyz). Порт
+            # объявляется здесь, потому что по нему идут пробы: без записи в
+            # `ports:` его нельзя назвать именем, и оператор, ищущий, куда
+            # постучаться за причиной неготовности, не находит его в описании
+            # пода вовсе.
+            - name: metrics
+              containerPort: {{ .Values.metricsScrape.port }}
           env:
             - name: KACHO_COMPUTE_DB_HOST
               value: "{{ .Values.db.host }}"
@@ -129,7 +136,7 @@ spec:
             # production (rules/security.md: every deploy is production-mode); a
             # dev stand overrides auth.mode=dev + mtls.enable=false + db.sslMode=disable.
             - name: KACHO_COMPUTE_AUTH_MODE
-              value: {{ .Values.auth.mode | quote }}
+              value: {{ include "kacho-compute.authMode" . | quote }}
             - name: KACHO_COMPUTE_DB_SSLMODE
               value: {{ .Values.db.sslMode | quote }}
             - name: KACHO_COMPUTE_REQUIRE_IAM
@@ -337,14 +344,26 @@ spec:
             limits:
               cpu: {{ .Values.resources.limits.cpu }}
               memory: {{ .Values.resources.limits.memory }}
+          # ГОТОВНОСТЬ СПРАШИВАЕТСЯ ПО ТОМУ, ЧТО СЕРВИС СТРОИТ. `/readyz` собирает
+          # чекеры критичных зависимостей — коннект к базе, boot-gate дренера
+          # регистраций (KACHO_COMPUTE_REQUIRE_IAM), живой LRO-worker. Страница
+          # развёртывания прямо обещает оператору «сервис NotReady», пока дренер не
+          # связался с kacho-iam; прежде здесь стоял `tcpSocket: grpc`, и обещанное
+          # не наступало ни при каких условиях: compute отвергал каждый мутирующий
+          # Create, а под рапортовал 1/1 Running Ready.
+          #
+          # Живость НЕ включает зависимости намеренно: `/healthz` — чистая живость
+          # (agg.LiveHandler), иначе деградация соседа вызывала бы restart-storm.
           readinessProbe:
-            tcpSocket:
-              port: grpc
+            httpGet:
+              path: /readyz
+              port: metrics
             initialDelaySeconds: 5
             periodSeconds: 10
           livenessProbe:
-            tcpSocket:
-              port: grpc
+            httpGet:
+              path: /healthz
+              port: metrics
             initialDelaySeconds: 10
             periodSeconds: 30
       # volumes БЕЗУСЛОВНЫ: /tmp нужен всегда, потому что rootfs read-only независимо от

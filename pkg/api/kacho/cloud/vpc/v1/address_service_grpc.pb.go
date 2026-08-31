@@ -41,9 +41,9 @@ type AddressServiceClient interface {
 	//
 	// To get the list of all available Address resources, make a [List] request.
 	Get(ctx context.Context, in *GetAddressRequest, opts ...grpc.CallOption) (*Address, error)
-	// Retrieves the list of Address resources in the specified folder.
+	// Retrieves the list of Address resources in the specified project.
 	List(ctx context.Context, in *ListAddressesRequest, opts ...grpc.CallOption) (*ListAddressesResponse, error)
-	// Creates an address in the specified folder and network.
+	// Creates an address in the specified project and network.
 	Create(ctx context.Context, in *CreateAddressRequest, opts ...grpc.CallOption) (*operation.Operation, error)
 	// Updates the specified address.
 	Update(ctx context.Context, in *UpdateAddressRequest, opts ...grpc.CallOption) (*operation.Operation, error)
@@ -131,9 +131,9 @@ type AddressServiceServer interface {
 	//
 	// To get the list of all available Address resources, make a [List] request.
 	Get(context.Context, *GetAddressRequest) (*Address, error)
-	// Retrieves the list of Address resources in the specified folder.
+	// Retrieves the list of Address resources in the specified project.
 	List(context.Context, *ListAddressesRequest) (*ListAddressesResponse, error)
-	// Creates an address in the specified folder and network.
+	// Creates an address in the specified project and network.
 	Create(context.Context, *CreateAddressRequest) (*operation.Operation, error)
 	// Updates the specified address.
 	Update(context.Context, *UpdateAddressRequest) (*operation.Operation, error)

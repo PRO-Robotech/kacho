@@ -26,6 +26,7 @@ const sidebars: SidebarsConfig = {
         'api/listener',
         'api/target-group',
         'api/operations',
+        'api/quotas',
       ],
     },
     {

@@ -12,30 +12,117 @@ import dedent from 'ts-dedent'
 
 **Repository** — OCI-репозиторий (образ) внутри namespace-реестра, например `backend/api`. Это то,
 что пользователь видит как «один образ» с набором тегов. Репозиторий закрывает задачу «показать, что
-лежит в реестре и сколько это весит», не заставляя обходить data-plane вручную.
+лежит в реестре и сколько это весит», не заставляя обходить data-plane вручную, — и задачу «настроить
+образ до первой загрузки»: описание, метки и публичность задаются control-plane-вызовом.
 
-Repository — **read-only проекция из хранилища** (source of truth — zot); он **не хранится** в БД
-kacho-registry и не создаётся отдельным control-plane-вызовом. Репозиторий появляется, когда в него
-делают первый `docker push` (это же материализует его authz-объект `registry_repository`), и исчезает,
-когда удалён его последний тег. Per-repo авторизация — на объекте `registry_repository` (parent —
-`registry_registry`).
+## Репозиторий — ПРОЕКЦИЯ плюс НАЛОЖЕНИЕ, а не одно из двух
+
+У ресурса две половины, и путать их дорого:
+
+<table>
+  <thead><tr><th>Половина</th><th>Источник истины</th><th>Кто её меняет</th></tr></thead>
+  <tbody>
+    <tr>
+      <td><strong>Проекция</strong> — теги, размер, тип артефакта, время последней загрузки и скачивания</td>
+      <td>Хранилище образов (zot)</td>
+      <td><code>docker push</code> / <code>docker pull</code> / <code>DeleteTag</code>. Control-plane её только читает</td>
+    </tr>
+    <tr>
+      <td><strong>Наложение</strong> — <code>description</code>, <code>labels</code>, <code>visibility</code></td>
+      <td>БД kacho-registry (своя строка)</td>
+      <td><code>CreateRepository</code> / <code>UpdateRepository</code> / <code>DeleteRepository</code> / <code>RenameRepository</code></td>
+    </tr>
+  </tbody>
+</table>
+
+Отсюда два следствия, которые видны в работе:
+
+- **репозиторий можно завести и настроить ДО первой загрузки.** `CreateRepository` заводит строку
+  наложения; теги приедут потом. Обратное тоже верно: `docker push` в ненастроенный репозиторий
+  работает как работал — control-plane-вызов не стал обязательным шагом;
+- **`visibility` живёт только здесь.** `Registry.defaultRepositoryVisibility` — это ЗЕРНО для новых
+  репозиториев, а не источник истины: опубликовать образ можно только через наложение конкретного
+  репозитория.
+
+:::info Здесь стояло «read-only проекция; не создаётся отдельным control-plane-вызовом»
+Это было верно до появления наложения и пережило его. Клиент, поверивший той редакции, приходил к
+выводу, что опубликовать образ нечем: единственный признанный путь (`docker push`) заводит
+репозиторий приватным, а `UpdateRepository` на странице отсутствовал. Возможность существовала и была
+объявлена в контракте — не было только страницы, которая бы о ней сказала.
+:::
+
+## Имя репозитория — это АДРЕС, и второго у него нет
+
+Путь загрузки образа:
+
+```
+$домен/$registryId/$репозиторий:$тег
+```
+
+Первый сегмент после домена — **неизменяемый идентификатор реестра** (`reg…`): имя реестра меняется
+свободно и в путь не попадает. Дальше идёт **имя репозитория**, и оно в пути **есть**.
+
+Своего идентификатора у репозитория нет: его адресует пара «реестр + имя», она же первичный ключ.
+Это не упущение и не временное состояние — так устроен сам протокол OCI: `docker` строит запрос
+`GET /v2/<имя>/manifests/<ссылка>` из того имени, которое назвал загружающий. Репозиторий **рождается
+загрузкой**, и момента, в который платформа могла бы выдать ему идентификатор и вручить загружающему
+ДО первой загрузки, не существует. Подставить идентификатор в путь значило бы потребовать вызова API
+перед каждым `docker push` — то есть отменить обычную работу с образами.
+
+:::danger Переименование репозитория ломает КАЖДЫЙ путь загрузки — редиректа нет
+`RenameRepository` — единственный глагол платформы, меняющий внешне-адресуемую координату. После него
+старый путь отвечает **404**, и это происходит немедленно: ни редиректа, ни алиаса, ни переходного
+окна нет.
+
+Практически это значит, что одна успешная операция разом делает недействительными все `FROM` в
+Dockerfile, все зависимости чартов, все манифесты развёртывания и все ссылки конвейеров на старый
+путь. Обнаруживается это **не в момент вызова**, а при следующей выкатке — и, как правило, у чужой
+команды.
+
+Прежде чем переименовывать, найдите потребителей старого пути; если найти их нельзя — не
+переименовывайте. Косметическую правку делают на **реестре**: его имя меняется без последствий,
+потому что в путь не входит.
+:::
 
 ## Поля
 
 <table>
-  <thead><tr><th>Поле</th><th>Тип</th><th>Описание</th></tr></thead>
+  <thead><tr><th>Поле</th><th>Тип</th><th>Половина</th><th>Описание</th></tr></thead>
   <tbody>
-    <tr><td><code>registryId</code></td><td>string</td><td>Реестр-владелец (namespace)</td></tr>
-    <tr><td><code>name</code></td><td>string</td><td>Имя репозитория внутри namespace (может быть multi-segment, напр. <code>backend/api</code>)</td></tr>
-    <tr><td><code>tagCount</code></td><td>int32</td><td>Число тегов</td></tr>
-    <tr><td><code>sizeBytes</code></td><td>int64</td><td>Суммарный размер уникальных блобов репозитория</td></tr>
-    <tr><td><code>updatedAt</code></td><td>timestamp</td><td>Момент последнего push (last-pushed)</td></tr>
-    <tr><td><code>artifactType</code></td><td>enum</td><td>Output-only: доминирующий тип артефакта (первый из <code>artifactTypes</code>) — для обратной совместимости фильтра</td></tr>
-    <tr><td><code>artifactTypes</code></td><td>repeated enum</td><td>Output-only: <strong>набор</strong> типов артефактов среди тегов (mixed-repo несёт несколько значений)</td></tr>
-    <tr><td><code>lastPulledAt</code></td><td>timestamp</td><td>Output-only: момент последнего pull любого тега (нулевой — ни разу не скачивался)</td></tr>
-    <tr><td><code>downloadCount</code></td><td>int64</td><td>Output-only: суммарное число скачиваний тегов (zot download-count)</td></tr>
+    <tr><td><code>registryId</code></td><td>string</td><td>ключ</td><td>Реестр-владелец (namespace). Неизменяемо</td></tr>
+    <tr><td><code>name</code></td><td>string</td><td>ключ</td><td>Имя репозитория внутри namespace, может быть многосегментным (<code>backend/api</code>). Неизменяемо для <code>UpdateRepository</code> — смена только через <code>RenameRepository</code></td></tr>
+    <tr><td><code>description</code></td><td>string</td><td>наложение</td><td>Описание. Пусто у репозитория без наложения. До 256 символов, без управляющих символов</td></tr>
+    <tr><td><code>labels</code></td><td>map&lt;string,string&gt;</td><td>наложение</td><td>Метки. Пусто у репозитория без наложения</td></tr>
+    <tr><td><code>visibility</code></td><td>enum</td><td>наложение</td><td><code>PRIVATE</code> · <code>PUBLIC</code>. Единственный рычаг публичности образа. Умолчание — <code>PRIVATE</code>; при создании наследуется из <code>Registry.defaultRepositoryVisibility</code></td></tr>
+    <tr><td><code>lifecycle</code></td><td>enum</td><td>output-only</td><td><code>DURABLE</code> · <code>EPHEMERAL</code> — исчезаемость репозитория, см. ниже. Управляется системой; в <code>updateMask</code> → <code>INVALID_ARGUMENT</code></td></tr>
+    <tr><td><code>createdAt</code></td><td>timestamp</td><td>output-only</td><td>Момент создания строки наложения. Пусто у репозитория без наложения</td></tr>
+    <tr><td><code>tagCount</code></td><td>int32</td><td>проекция</td><td>Число тегов</td></tr>
+    <tr><td><code>sizeBytes</code></td><td>int64</td><td>проекция</td><td>Суммарный размер уникальных блобов репозитория</td></tr>
+    <tr><td><code>updatedAt</code></td><td>timestamp</td><td>проекция</td><td>Момент последней загрузки (last-pushed)</td></tr>
+    <tr><td><code>artifactType</code></td><td>enum</td><td>проекция</td><td>Output-only: доминирующий тип артефакта (первый из <code>artifactTypes</code>) — для обратной совместимости фильтра</td></tr>
+    <tr><td><code>artifactTypes</code></td><td>repeated enum</td><td>проекция</td><td>Output-only: <strong>набор</strong> типов артефактов среди тегов (mixed-repo несёт несколько значений)</td></tr>
+    <tr><td><code>lastPulledAt</code></td><td>timestamp</td><td>проекция</td><td>Output-only: момент последнего скачивания любого тега (нулевой — ни разу не скачивался)</td></tr>
+    <tr><td><code>downloadCount</code></td><td>int64</td><td>проекция</td><td>Output-only: суммарное число скачиваний тегов</td></tr>
   </tbody>
 </table>
+
+### Исчезаемость (lifecycle)
+
+<table>
+  <thead><tr><th>Значение</th><th>Что означает</th></tr></thead>
+  <tbody>
+    <tr><td><code>DURABLE</code></td><td>Репозиторий переживает опустошение: виден с <code>tagCount: 0</code> и сохраняет описание, метки и публичность. Так выглядит всё, что заведено <code>CreateRepository</code>, а также всё, чего коснулись <code>UpdateRepository</code> / <code>RenameRepository</code></td></tr>
+    <tr><td><code>EPHEMERAL</code></td><td>Репозиторий существует, пока в нём есть теги: появился первой загрузкой, исчезнет с последним тегом. Так выглядит репозиторий, которого control-plane-вызов не касался ни разу</td></tr>
+  </tbody>
+</table>
+
+:::note Переход односторонний, и задать `EPHEMERAL` нельзя
+Любая правка наложения (`UpdateRepository`, `RenameRepository`) переводит `EPHEMERAL → DURABLE`
+автоматически. Обратного перехода нет, и `lifecycle: EPHEMERAL` в теле `CreateRepository`
+отвергается `INVALID_ARGUMENT` — явное создание материализует строку наложения, а репозиторий со
+строкой переживает опустошение **by construction**: просить при этом «исчезни, когда опустеешь»
+значит просить взаимоисключающее.
+:::
 
 ### Тип артефакта (artifactType / artifactTypes)
 
@@ -67,16 +154,57 @@ container-тегах) честно несёт **оба** значения, а н
 
 ## Методы
 
-Репозитории только читаются (проекция). Создание/наполнение — через data-plane `docker push`.
+Чтение — синхронное; каждая мутация возвращает `Operation` и завершается асинхронно.
+
+Все методы репозитория авторизуются **пообъектно**: сначала доступ к namespace, затем право на
+конкретный репозиторий. Нет доступа либо репозитория не существует → **одинаковый** `NOT_FOUND` (не
+`403`): различимый отказ был бы способом выяснить, что существует у соседа.
+
+### GetRepository — один репозиторий
+
+<ApiOperation method="GET" endpoint="/registry/v1/registries/{registryId}/repositories/{repository}">
+
+Возвращает наложение, слитое с проекцией. Имя многосегментное — сегменты идут в путь как есть
+(`…/repositories/backend/api`).
+
+<CodeBlock language="bash">
+  {dedent`
+    curl 'http://localhost:18080/registry/v1/registries/reg7h9x2k4m8p0q1r5/repositories/backend/api' \\
+      -H 'Authorization: Bearer <JWT>'
+  `}
+</CodeBlock>
+
+<CodeBlock language="json">
+  {dedent`
+    {
+      "registryId": "reg7h9x2k4m8p0q1r5",
+      "name": "backend/api",
+      "description": "образы api",
+      "labels": {"team": "backend"},
+      "visibility": "PRIVATE",
+      "lifecycle": "DURABLE",
+      "createdAt": "2026-07-01T09:00:00Z",
+      "tagCount": 4,
+      "sizeBytes": "52428800",
+      "updatedAt": "2026-07-10T10:05:00Z",
+      "artifactType": "ARTIFACT_TYPE_CONTAINER_IMAGE",
+      "artifactTypes": ["ARTIFACT_TYPE_CONTAINER_IMAGE"],
+      "lastPulledAt": "2026-07-10T11:20:00Z",
+      "downloadCount": "37"
+    }
+  `}
+</CodeBlock>
+
+</ApiOperation>
 
 ### ListRepositories — список репозиториев реестра
 
 <ApiOperation method="GET" endpoint="/registry/v1/registries/{registryId}/repositories">
 
-Возвращает репозитории namespace (проекция из zot) с cursor-пагинацией. RPC **scope-filtered**:
-хендлер сначала проверяет доступ к namespace (call-gate), затем row-фильтрует по `registry_repository`
-`v_list` (existence-hiding — недоступные репозитории просто не попадают в выдачу). Доступ к namespace
-отсутствует → `NOT_FOUND` (не `403`).
+Возвращает репозитории namespace с cursor-пагинацией: объединение репозиториев, у которых есть
+наложение, и репозиториев, которые видны только проекцией. Хендлер сначала проверяет доступ к
+namespace, затем построчно фильтрует выдачу (недоступные репозитории просто не попадают в неё).
+Доступ к namespace отсутствует → `NOT_FOUND` (не `403`).
 
 <CodeBlock language="bash">
   {dedent`
@@ -92,6 +220,8 @@ container-тегах) честно несёт **оба** значения, а н
         {
           "registryId": "reg7h9x2k4m8p0q1r5",
           "name": "backend/api",
+          "visibility": "PRIVATE",
+          "lifecycle": "DURABLE",
           "tagCount": 4,
           "sizeBytes": "52428800",
           "updatedAt": "2026-07-10T10:05:00Z",
@@ -103,6 +233,8 @@ container-тегах) честно несёт **оба** значения, а н
         {
           "registryId": "reg7h9x2k4m8p0q1r5",
           "name": "charts/web",
+          "visibility": "PRIVATE",
+          "lifecycle": "EPHEMERAL",
           "tagCount": 2,
           "sizeBytes": "1048576",
           "updatedAt": "2026-07-09T18:00:00Z",
@@ -118,14 +250,154 @@ container-тегах) честно несёт **оба** значения, а н
 
 </ApiOperation>
 
+### CreateRepository — завести репозиторий до первой загрузки
+
+<ApiOperation method="POST" endpoint="/registry/v1/registries/{registryId}/repositories" async>
+
+Заводит строку наложения. Заведённый так репозиторий — `DURABLE`: он виден с `tagCount: 0` и не
+исчезает, когда теги кончаются.
+
+Создание **усыновляет** уже имеющееся содержимое: если образы под этим именем уже загружены,
+счётчик тегов приедет непустым. Повторное создание того же имени → `ALREADY_EXISTS`.
+
+`visibility` не задан → наследуется `Registry.defaultRepositoryVisibility`. Явный `PUBLIC` требует
+прав администратора реестра → иначе `PERMISSION_DENIED` («creating a public repository requires
+registry admin»).
+
+<CodeBlock language="bash">
+  {dedent`
+    curl -X POST 'http://localhost:18080/registry/v1/registries/reg7h9x2k4m8p0q1r5/repositories' \\
+      -H 'Authorization: Bearer <JWT>' -H 'Content-Type: application/json' \\
+      -d '{"repository":"backend/api","description":"образы api","labels":{"team":"backend"}}'
+  `}
+</CodeBlock>
+
+</ApiOperation>
+
+### UpdateRepository — описание, метки, публичность
+
+<ApiOperation method="PATCH" endpoint="/registry/v1/registries/{registryId}/repositories/{repository}" async>
+
+`FieldMask`-PATCH наложения. Изменяемые поля — `description`, `labels`, `visibility`. Пустая маска —
+PATCH всего объекта: применяются все три.
+
+Правка репозитория, у которого наложения ещё не было, **создаёт** его и переводит `EPHEMERAL →
+DURABLE`.
+
+<table>
+  <thead><tr><th>В маске</th><th>Ответ</th></tr></thead>
+  <tbody>
+    <tr><td><code>name</code></td><td><code>INVALID_ARGUMENT</code> — <code>"name is immutable after Repository.Create"</code>. Смена имени — только <code>RenameRepository</code></td></tr>
+    <tr><td><code>registryId</code></td><td><code>INVALID_ARGUMENT</code> — <code>"registryId is immutable after Repository.Create"</code>. Переноса между реестрами нет</td></tr>
+    <tr><td><code>lifecycle</code></td><td><code>INVALID_ARGUMENT</code> — <code>"lifecycle is read-only (system-managed)"</code></td></tr>
+    <tr><td>любое поле проекции (<code>tagCount</code>, <code>sizeBytes</code>, …)</td><td><code>INVALID_ARGUMENT</code> — неизвестное поле маски</td></tr>
+  </tbody>
+</table>
+
+Перевод в `PUBLIC` требует прав администратора реестра → иначе `PERMISSION_DENIED` («changing
+repository visibility requires registry admin»). Гейт действует на **любом** применяющем пути — и
+через маску, и через PATCH всего объекта.
+
+<CodeBlock language="bash">
+  {dedent`
+    curl -X PATCH 'http://localhost:18080/registry/v1/registries/reg7h9x2k4m8p0q1r5/repositories/backend/api' \\
+      -H 'Authorization: Bearer <JWT>' -H 'Content-Type: application/json' \\
+      -d '{"visibility":"PUBLIC","updateMask":"visibility"}'
+  `}
+</CodeBlock>
+
+</ApiOperation>
+
+### DeleteRepository — только пустой
+
+<ApiOperation method="DELETE" endpoint="/registry/v1/registries/{registryId}/repositories/{repository}" async>
+
+Снимает наложение. Репозиторий с тегами **не удаляется**: операция завершается ошибкой
+`FAILED_PRECONDITION` — `"repository is not empty"`. Сначала снимите теги (`DeleteTag`).
+
+Пустота проверяется у хранилища образов в момент исполнения операции, а не при приёме запроса:
+иначе загрузка, случившаяся между проверкой и удалением, потерялась бы. Хранилище недоступно →
+`UNAVAILABLE`, наложение не снимается.
+
+</ApiOperation>
+
+### RenameRepository — смена адреса
+
+<ApiOperation method="POST" endpoint="/registry/v1/registries/{registryId}/repositories/{repository}:rename" async>
+
+Переносит репозиторий под новое имя **внутри того же реестра**: поля целевого реестра в запросе нет,
+перенос между реестрами невыразим. Теги, манифесты и referrer-граф переезжают; **старое имя после
+этого отвечает 404** — см. врезку «Переименование ломает каждый путь загрузки» выше.
+
+Репозиторий без наложения переименовывается тоже: строка наложения при этом заводится, и он
+становится `DURABLE`.
+
+<table>
+  <thead><tr><th>Ситуация</th><th>Код</th></tr></thead>
+  <tbody>
+    <tr><td><code>newName</code> совпадает с текущим именем</td><td><code>INVALID_ARGUMENT</code> — <code>"new name must differ from current name"</code></td></tr>
+    <tr><td><code>newName</code> не проходит грамматику имени</td><td><code>INVALID_ARGUMENT</code> — <code>"invalid repository name '&lt;X&gt;'"</code></td></tr>
+    <tr><td>Целевое имя занято</td><td><code>ALREADY_EXISTS</code></td></tr>
+    <tr><td>Хранилище недоступно посреди переноса</td><td><code>UNAVAILABLE</code> — переноса не происходит, старое имя продолжает резолвиться</td></tr>
+  </tbody>
+</table>
+
+<CodeBlock language="bash">
+  {dedent`
+    curl -X POST 'http://localhost:18080/registry/v1/registries/reg7h9x2k4m8p0q1r5/repositories/backend/api:rename' \\
+      -H 'Authorization: Bearer <JWT>' -H 'Content-Type: application/json' \\
+      -d '{"newName":"backend/api-v2"}'
+  `}
+</CodeBlock>
+
+</ApiOperation>
+
+### ListReferrers — referrer-граф манифеста
+
+<ApiOperation method="GET" endpoint="/registry/v1/registries/{registryId}/repositories/{repository}/referrers">
+
+Перечисляет OCI-referrer'ы одного subject-манифеста — подписи, SBOM, аттестации и прочие артефакты,
+привязанные к нему по digest. `subjectDigest` обязателен; необязательный `artifactType` сужает
+выдачу по типу артефакта.
+
+Ответ — **полный набор** без пагинации (server-side предел), как в OCI `/v2/.../referrers/<digest>`.
+Subject без referrer'ов → `200` и пустой список, а не `404`.
+
+<CodeBlock language="bash">
+  {dedent`
+    curl 'http://localhost:18080/registry/v1/registries/reg7h9x2k4m8p0q1r5/repositories/backend/api/referrers?subjectDigest=sha256:<64-hex>' \\
+      -H 'Authorization: Bearer <JWT>'
+  `}
+</CodeBlock>
+
+</ApiOperation>
+
+## Имя репозитория
+
+Грамматика — OCI: строчные буквы и цифры, сегменты разделяются `/`, внутри сегмента допустимы `.`,
+`_`, `__` и дефисы. Длина всего пути — до 255 символов.
+
+```
+^[a-z0-9]+(?:(?:[._]|__|-+|/)[a-z0-9]+)*$
+```
+
+Имя, не проходящее грамматику, отвергается синхронно: `INVALID_ARGUMENT`,
+`"invalid repository name '<X>'"`.
+
 ## Ошибки и граничные случаи
 
 <table>
   <thead><tr><th>Ситуация</th><th>Код / поведение</th></tr></thead>
   <tbody>
-    <tr><td>Malformed <code>registryId</code></td><td><code>INVALID_ARGUMENT</code> (<code>"invalid registry id '&lt;X&gt;'"</code>)</td></tr>
-    <tr><td>Нет доступа к namespace</td><td><code>NOT_FOUND</code> (existence-hiding, не 403)</td></tr>
-    <tr><td>Репозиторий, к которому нет <code>v_list</code></td><td>Просто не попадает в выдачу (row-filter)</td></tr>
+    <tr><td>Malformed <code>registryId</code></td><td><code>INVALID_ARGUMENT</code> (<code>"invalid registry id '&lt;X&gt;'"</code>) — первым стейтментом, до любой проверки прав</td></tr>
+    <tr><td>Нет доступа к namespace</td><td><code>NOT_FOUND</code> (не 403)</td></tr>
+    <tr><td>Нет доступа к репозиторию либо его нет</td><td><code>NOT_FOUND</code> — один и тот же ответ на оба случая</td></tr>
+    <tr><td>Репозиторий, к которому нет права на перечисление</td><td>Просто не попадает в выдачу <code>ListRepositories</code></td></tr>
+    <tr><td>Создание уже существующего наложения</td><td><code>ALREADY_EXISTS</code></td></tr>
+    <tr><td>Создание в реестре, который удаляется</td><td><code>FAILED_PRECONDITION</code></td></tr>
+    <tr><td>Публичность без прав администратора реестра</td><td><code>PERMISSION_DENIED</code></td></tr>
+    <tr><td>Удаление непустого репозитория</td><td><code>FAILED_PRECONDITION</code> (<code>"repository is not empty"</code>)</td></tr>
+    <tr><td><code>description</code> длиннее 256 символов либо с управляющими символами</td><td><code>INVALID_ARGUMENT</code></td></tr>
     <tr><td>zot недоступен</td><td><code>UNAVAILABLE</code> (fail-closed — список не отдаёт частичную проекцию)</td></tr>
     <tr><td>Реестр пуст / нет репозиториев</td><td><code>200</code> + пустой список</td></tr>
   </tbody>

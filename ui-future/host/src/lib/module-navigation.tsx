@@ -262,14 +262,17 @@ export function normalizeRemoteNavigation(remote: unknown): RailSection[] {
             label: stringField(item.label, stringField(item.key)),
             path: stringField(item.path),
             requiresProject: Boolean(item.requiresProject),
-            // Ссылки приезжают из чужого бандла, поэтому просеиваются так же,
-            // как остальные поля: пункт с негодной ссылкой не вправе обрушить
-            // всю навигацию модуля.
+            // Темы приезжают из чужого бандла, поэтому просеиваются так же, как
+            // остальные поля: пункт с негодной темой не вправе обрушить всю
+            // навигацию модуля.
+            //
+            // Прежде здесь просеивалась ПАРА «подпись + адрес», и условие
+            // требовало непустого адреса. Адрес у всех был «#» — то есть
+            // мёртвое значение оказалось несущим: сними его, и темы пропали бы
+            // из панели, пройдя этот самый отбор. Теперь тема — строка, и
+            // отбор судит ровно то, что показывается (#1611).
             docs: Array.isArray(item.docs)
-              ? item.docs
-                  .filter(isRecord)
-                  .map((doc) => ({ label: stringField(doc.label), href: stringField(doc.href) }))
-                  .filter((doc) => doc.label && doc.href)
+              ? item.docs.map((doc) => stringField(doc)).filter((doc) => doc.length > 0)
               : undefined,
           }))
         : [],

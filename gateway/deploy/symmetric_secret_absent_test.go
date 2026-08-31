@@ -148,15 +148,23 @@ func TestStacks_DeclareAnAsymmetricAuthnPosture(t *testing.T) {
 				t.Fatalf("%s (%s): no api-gateway values at all — an absence-check over this "+
 					"stack would pass for the wrong reason", name, strings.Join(stack, " + "))
 			}
-			authn, _ := gw["authn"].(map[string]any)
-			mode, _ := authn["mode"].(string)
+			// Посадка адресуется каноном `authMode` в корне значений сервиса.
+			// Прежний адрес (`authn.mode`) читается следом и только потому, что
+			// шаблон его тоже пока принимает: стек, оставшийся на нём, обязан
+			// проверяться, а не молча выпадать из проверки.
+			mode, _ := gw["authMode"].(string)
 			if mode == "" {
-				t.Fatalf("%s (%s): api-gateway.authn.mode is not declared — the posture is then "+
+				if authn, ok := gw["authn"].(map[string]any); ok {
+					mode, _ = authn["mode"].(string)
+				}
+			}
+			if mode == "" {
+				t.Fatalf("%s (%s): api-gateway.authMode is not declared — the posture is then "+
 					"whatever a chart default happens to be, which is the state this file exists "+
 					"to make impossible to reach by omission", name, strings.Join(stack, " + "))
 			}
 			if !acceptedAuthnModes[mode] {
-				t.Errorf("%s (%s): api-gateway.authn.mode=%q — a deployed stand must require a "+
+				t.Errorf("%s (%s): api-gateway.authMode=%q — a deployed stand must require a "+
 					"signature it can verify against published public material", name,
 					strings.Join(stack, " + "), mode)
 			}

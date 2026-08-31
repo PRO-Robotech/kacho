@@ -6,6 +6,7 @@ import type { ReactNode } from "react";
 import { Tag, Tooltip, Typography } from "antd";
 import { StopOutlined, UnlockOutlined, UserDeleteOutlined } from "@ant-design/icons";
 import type { FormField } from "./form-schema";
+import { NAME_FORM, NAME_FORM_REGISTRY, NAME_HINT, NAME_HINT_OPTIONAL, NAME_HINT_REGISTRY } from "./name-form";
 import { setByPath, getByPath as getByPathImpl } from "./path";
 import { BoolFact } from "@shared/components/atoms/BoolFact";
 import { CopyableId } from "@shared/components/atoms/CopyableId";
@@ -177,7 +178,7 @@ function narrowExitFromAccount(ctx: RowVerbContext, isSelf: boolean): string {
 // `test/set-replacement-draft-composition`, а перепись мест он берёт обходом
 // дерева: новое такое место без объявления рядом уронит его с координатой.
 
-/** Строки маршрутов формы таблицы маршрутизации (`render` + `sanitize` ниже). */
+/** Строки маршрутов формы таблицы маршрутов (`render` + `sanitize` ниже). */
 export const STATIC_ROUTES_REPLACEMENT: SetReplacementDraft = {
   field: "static_routes",
   contract: "kacho/cloud/vpc/v1/route_table.proto",
@@ -284,72 +285,46 @@ const COL_ID: ResourceColumn = {
   format: "uid-short",
 };
 
-// Strict — для IAM (Account, Project).
-// Совпадает с backend validate.Name (Kachō `/[a-z]([-a-z0-9]{0,61}[a-z0-9])?/`).
+// Форма имени и её подсказка — в `name-form.ts`, в единственном экземпляре.
+// Здесь только то, чем поля различаются между собой: обязательность и владелец
+// формы. Разбор, почему форм две и чем держится совпадение с платформой, — там.
+
+/** Имя обязательное (IAM). */
 const FIELD_NAME: FormField = {
   name: "name",
   label: "Имя",
   type: "string",
   required: true,
   placeholder: "my-resource",
-  description: "Строчные латинские буквы, цифры и дефисы. Должно начинаться с буквы, длина 2–63 символа.",
-  pattern: "^[a-z]([-a-z0-9]{0,61}[a-z0-9])?$",
+  description: NAME_HINT,
+  pattern: NAME_FORM,
 };
 
-// Permissive — для VPC ресурсов (Network/Subnet/Address/RouteTable).
-const FIELD_NAME_VPC: FormField = {
+/**
+ * Имя необязательное — vpc · compute · storage · nlb.
+ *
+ * Отдельной константы на сервис больше нет: форма у них ОДНА, а разное
+ * объявление формы и есть предмет #1604. Различается только обязательность, и
+ * она здесь единственная ось различия.
+ */
+const FIELD_NAME_OPTIONAL: FormField = {
   name: "name",
   label: "Имя",
   type: "string",
-  placeholder: "my-network",
-  description:
-    "Латинские буквы (любой регистр), цифры, «-» и «_». Должно начинаться с буквы, длина до 63 символов. Можно оставить пустым.",
-  pattern: "^([a-zA-Z]([-_a-zA-Z0-9]{0,61}[a-zA-Z0-9])?)?$",
+  placeholder: "my-resource",
+  description: NAME_HINT_OPTIONAL,
+  pattern: NAME_FORM,
 };
 
-// Compute name-regex — lowercase-only (kacho-compute/CLAUDE.md §5).
-// Имя тома / снимка / образа. ОТДЕЛЬНАЯ константа, а не общий `FIELD_NAME`, и
-// это не пропущенная унификация: у storage имя НЕ обязательно (пустое —
-// законный вход, сервер проставляет имя от `id`) и допускает подчёркивание.
-// Свести его к общему значило бы начать отвергать в форме вход, который край
-// принимает, — то есть снять возможность молча, ровно ради чего эти спеки и
-// переносились богатой стороной.
-//
-// Что здесь третья форма имени подряд — предмет ОТДЕЛЬНОЙ задачи продукта
-// (#715, «одна форма имени на дерево»); свести её сведением форка нельзя:
-// одна форма требует решения о том, какая именно, а не выбора из наличных.
-const FIELD_NAME_STORAGE: FormField = {
-  name: "name",
-  label: "Имя",
-  type: "string",
-  placeholder: "my-volume",
-  description:
-    "Строчные латинские буквы, цифры, «-» и «_». Должно начинаться с буквы, длина до 63 символов. Можно оставить пустым.",
-  pattern: "^([a-z]([-_a-z0-9]{0,61}[a-z0-9])?)?$",
-};
-
-const FIELD_NAME_COMPUTE: FormField = {
-  name: "name",
-  label: "Имя",
-  type: "string",
-  placeholder: "my-disk",
-  description:
-    "Строчные латинские буквы, цифры, «-» и «_». Должно начинаться с буквы, длина до 63 символов. Можно оставить пустым.",
-  pattern: "^([a-z]([-_a-z0-9]{0,61}[a-z0-9])?)?$",
-};
-
-// Имя реестра — DNS-safe (строчные + цифры + дефисы). Mutable: сменить можно и
-// после создания — OCI-путь образа строится по ИДЕНТИФИКАТОРУ реестра, не по
-// имени (ban #15), поэтому переименование не ломает docker pull/push.
+// Имя реестра образов судится СВОЕЙ формой — почему, сказано в `name-form.ts`.
 const FIELD_NAME_REGISTRY: FormField = {
   name: "name",
   label: "Имя",
   type: "string",
   required: true,
   placeholder: "my-registry",
-  description:
-    "Строчные латинские буквы, цифры и «-». Должно начинаться с буквы, длина до 63 символов. Можно изменить позже — имя не входит в OCI-путь (тот по идентификатору).",
-  pattern: "^[a-z]([-a-z0-9]{0,61}[a-z0-9])?$",
+  description: `${NAME_HINT_REGISTRY} Можно изменить позже — имя не входит в OCI-путь (тот по идентификатору).`,
+  pattern: NAME_FORM_REGISTRY,
 };
 
 const FIELD_DESCRIPTION: FormField = {
@@ -645,15 +620,11 @@ export const REGISTRY: Record<string, ResourceSpec> = {
       },
       { childId: "groups", filterField: "account_id", label: "Группы" },
     ],
-    docs: [
-      { label: "Аккаунты и организации", href: "#" },
-      { label: "Управление доступом", href: "#" },
-    ],
     emptyState: {
       title: "Создайте первый аккаунт",
       body:
-        "Account — верхнеуровневый tenant Kachō: владелец, проекты, пользователи и роли живут внутри него. " +
-        "Создайте Account, чтобы начать выдавать доступ и заводить проекты.",
+        "Аккаунт — верхний уровень Kachō: владелец, проекты, пользователи и роли живут внутри него. " +
+        "Создайте аккаунт, чтобы начать выдавать доступ и заводить проекты.",
       docs: ["Аккаунты и организации"],
     },
     template: () => ({
@@ -711,10 +682,6 @@ export const REGISTRY: Record<string, ResourceSpec> = {
     ],
     // Клик по проекту в списке ведёт на его IAM-detail (/iam/projects/:id) —
     // без childRoute drill идёт на generic ResourceShell detail, а не на дашборд.
-    docs: [
-      { label: "Проекты", href: "#" },
-      { label: "Управление доступом", href: "#" },
-    ],
     template: ({ accountId }) => ({
       name: "",
       account_id: accountId ?? "",
@@ -752,10 +719,6 @@ export const REGISTRY: Record<string, ResourceSpec> = {
       COL_ID,
     ],
     fields: [FIELD_NAME, FIELD_ACCOUNT_ID, FIELD_DESCRIPTION],
-    docs: [
-      { label: "Сервисные аккаунты", href: "#" },
-      { label: "Управление доступом", href: "#" },
-    ],
     template: ({ accountId }) => ({
       name: "",
       account_id: accountId ?? "",
@@ -776,6 +739,10 @@ export const REGISTRY: Record<string, ResourceSpec> = {
   // экрана ушли оба глагола (#421 → #440).
   // Registry-запись нужна для ref-резолва (Account.owner_user_id) и RefNameLink;
   // отдельная generic-страница не используется — UI остаётся кастомным.
+  // `ops.update: false` здесь про МЕХАНИЗМ, а не про возможность: правку край
+  // обслуживает, и консоль её даёт — своей страницей раздела IAM, мимо общей
+  // формы. Причина названа полем `mutationsNotOffered`, чтобы пара «край умеет ·
+  // ops говорят нет» не читалась как отсутствие возможности (#1593).
   users: {
     id: "users",
     route: "users",
@@ -793,6 +760,11 @@ export const REGISTRY: Record<string, ResourceSpec> = {
     serviceTitle: SERVICES.iam.title,
     scope: "global",
     ops: { create: false, update: false, delete: true },
+    // Край обслуживает правку пользователя, и консоль её ДАЁТ — своей страницей
+    // раздела IAM, мимо общей формы. `ops` здесь говорят про механизм.
+    mutationsNotOffered:
+      "Правка дана своей страницей раздела IAM, а не общей формой: у пользователя " +
+      "свой набор полей и свои ограничения. Общая форма его не выражает.",
     emptyState: {
       title: "Пригласите первого пользователя",
       body:
@@ -967,10 +939,6 @@ export const REGISTRY: Record<string, ResourceSpec> = {
         },
       },
     ],
-    docs: [
-      { label: "Пользователи и приглашения", href: "#" },
-      { label: "Управление доступом", href: "#" },
-    ],
     template: () => ({}),
   },
 
@@ -1007,10 +975,6 @@ export const REGISTRY: Record<string, ResourceSpec> = {
       },
     ],
     fields: [FIELD_NAME, FIELD_ACCOUNT_ID, FIELD_LABELS, FIELD_DESCRIPTION],
-    docs: [
-      { label: "Группы и членство", href: "#" },
-      { label: "Управление доступом", href: "#" },
-    ],
     emptyState: {
       title: "Создайте первую группу",
       body:
@@ -1104,10 +1068,6 @@ export const REGISTRY: Record<string, ResourceSpec> = {
     // generic-поля create/edit — name/description/account_id; permissions —
     // доменная ветка, здесь его нет.
     fields: [FIELD_NAME, FIELD_ACCOUNT_ID, FIELD_DESCRIPTION],
-    docs: [
-      { label: "Роли и разрешения", href: "#" },
-      { label: "Управление доступом", href: "#" },
-    ],
     emptyState: {
       title: "Создайте первую пользовательскую роль",
       body:
@@ -1144,6 +1104,12 @@ export const REGISTRY: Record<string, ResourceSpec> = {
     serviceTitle: SERVICES.iam.title,
     scope: "account",
     ops: { create: false, update: true, delete: true },
+    // Край обслуживает создание привязки, и консоль его ДАЁТ — страницей выдачи
+    // (`/iam/access-bindings/create`): у выдачи свой мастер (субъект → роль →
+    // область), которого общая форма не выражает.
+    mutationsNotOffered:
+      "Создание дано страницей выдачи прав, а не общей формой: предмет выдачи — " +
+      "тройка «субъект · роль · область», и общая форма её не выражает.",
     // ФОРМА ПРАВКИ — РОВНО ПО МАСКЕ КРАЯ, не шире и не уже.
     //
     // Край принимает у привязки два поля: `deletion_protection` и `labels`
@@ -1221,15 +1187,11 @@ export const REGISTRY: Record<string, ResourceSpec> = {
       },
       COL_CREATED,
     ],
-    docs: [
-      { label: "Привязки доступа", href: "#" },
-      { label: "Управление доступом", href: "#" },
-    ],
     emptyState: {
       title: "Нет привязок доступа",
       body:
         "Привязка доступа назначает субъекту (пользователю, сервисному аккаунту или группе) роль на ресурсе " +
-        "(Account, Project или кластер). Создайте привязку, чтобы выдать доступ.",
+        "(аккаунте, проекте или кластере). Создайте привязку, чтобы выдать доступ.",
       docs: ["Привязки доступа"],
     },
     // create — bespoke AccessBindingCreatePage (ops.create=false); template лишь
@@ -1292,16 +1254,10 @@ export const REGISTRY: Record<string, ResourceSpec> = {
         label: "Группы безопасности",
       },
     ],
-    docs: [
-      { label: "Облачные сети и подсети", href: "#" },
-      { label: "Таблицы маршрутизации", href: "#" },
-      { label: "Группы безопасности", href: "#" },
-      { label: "Адреса облачных ресурсов", href: "#" },
-    ],
     emptyState: {
       title: "Создайте вашу первую облачную сеть",
       body:
-        "Облачная сеть Kachō объединяет подсети, таблицы маршрутизации и группы безопасности в единое " +
+        "Облачная сеть Kachō объединяет подсети, таблицы маршрутов и группы безопасности в единое " +
         "изолированное адресное пространство. Внутри сети ресурсы общаются напрямую, а наружу — через шлюзы " +
         "и публичные адреса.",
       docs: ["Облачные сети и подсети"],
@@ -1350,7 +1306,7 @@ export const REGISTRY: Record<string, ResourceSpec> = {
       },
       {
         // VPC-1: system-provisioned default RT (output-only), echoed on create.
-        header: "Таблица маршрутизации по умолчанию",
+        header: "Таблица маршрутов по умолчанию",
         path: "default_route_table_id",
         render: (row) => (
           <RefNameLink specId="route-tables" refId={row.default_route_table_id as string | undefined} maxChars={42} />
@@ -1373,7 +1329,7 @@ export const REGISTRY: Record<string, ResourceSpec> = {
     // on the detail page (editHidden). default-SG + default-RT are provisioned
     // unconditionally by the server (no opt-out flag).
     fields: [
-      FIELD_NAME_VPC,
+      FIELD_NAME_OPTIONAL,
       {
         name: "ipv4_cidr_blocks",
         label: "CIDR IPv4",
@@ -1466,11 +1422,6 @@ export const REGISTRY: Record<string, ResourceSpec> = {
         label: "IP-адреса",
       },
     ],
-    docs: [
-      { label: "Облачные сети и подсети", href: "#" },
-      { label: "CIDR-блоки подсети", href: "#" },
-      { label: "Резервирование внутренних IP-адресов", href: "#" },
-    ],
     emptyState: {
       title: "Создайте вашу первую подсеть",
       body:
@@ -1535,7 +1486,7 @@ export const REGISTRY: Record<string, ResourceSpec> = {
         render: (row) => <LabelsCell labels={row.labels as Record<string, string> | undefined} />,
       },
       {
-        header: "Таблица маршрутизации",
+        header: "Таблица маршрутов",
         path: "route_table_id",
         render: (row) => <RefNameLink specId="route-tables" refId={row.route_table_id as string | undefined} />,
       },
@@ -1547,7 +1498,7 @@ export const REGISTRY: Record<string, ResourceSpec> = {
     // immutable placement anchor (one required); additional ranges live on the
     // detail page (verbs :add/:remove-cidr-blocks), not in this form.
     fields: [
-      FIELD_NAME_VPC,
+      FIELD_NAME_OPTIONAL,
       {
         name: "network_id",
         label: "Облачная сеть",
@@ -1614,7 +1565,7 @@ export const REGISTRY: Record<string, ResourceSpec> = {
         refProjectScoped: true,
         placeholder: "— авто: default сети —",
         description:
-          "Опционально. Если не задано — авто-ассоциируется таблица маршрутизации по умолчанию сети (network.defaultRouteTableId°).",
+          "Опционально. Если не задано — авто-ассоциируется таблица маршрутов по умолчанию сети (network.defaultRouteTableId°).",
       },
       FIELD_LABELS,
       FIELD_DESCRIPTION,
@@ -1673,10 +1624,6 @@ export const REGISTRY: Record<string, ResourceSpec> = {
     // сохраняет ОПЕРАТОР. Сходимость с деревом владельца по обоим условиям —
     // `lib/list-server-search-parity.test.ts`.
     serverSearchField: "name",
-    docs: [
-      { label: "Адреса облачных ресурсов", href: "#" },
-      { label: "Резервирование внутренних IP-адресов", href: "#" },
-    ],
     emptyState: {
       title: "Зарезервируйте первый IP-адрес",
       body:
@@ -1789,7 +1736,7 @@ export const REGISTRY: Record<string, ResourceSpec> = {
       },
     ],
     fields: [
-      FIELD_NAME_VPC,
+      FIELD_NAME_OPTIONAL,
       // Discriminator + spec'ы — create-only (Address spec иммутабелен, см.
       // CLAUDE.md kacho-vpc §4.4). Скрываем в edit-форме.
       {
@@ -1962,15 +1909,10 @@ export const REGISTRY: Record<string, ResourceSpec> = {
     // сохраняет ОПЕРАТОР. Сходимость с деревом владельца по обоим условиям —
     // `lib/list-server-search-parity.test.ts`.
     serverSearchField: "name",
-    docs: [
-      { label: "Таблицы маршрутизации", href: "#" },
-      { label: "Статическая маршрутизация", href: "#" },
-      { label: "Маршрутизация через NAT-инстанс", href: "#" },
-    ],
     emptyState: {
-      title: "Создайте вашу первую таблицу маршрутизации",
+      title: "Создайте вашу первую таблицу маршрутов",
       body:
-        "С помощью таблиц маршрутизации вы можете построить маршруты между облачной сетью Kachō и другими " +
+        "С помощью таблиц маршрутов вы можете построить маршруты между облачной сетью Kachō и другими " +
         "виртуальными или локальными сетями, либо настроить отказоустойчивую схему передачи данных с " +
         "маршрутами в нескольких зонах доступности.",
       docs: ["Статическая маршрутизация", "Маршрутизация через NAT-инстанс"],
@@ -2046,7 +1988,7 @@ export const REGISTRY: Record<string, ResourceSpec> = {
       },
     ],
     fields: [
-      FIELD_NAME_VPC,
+      FIELD_NAME_OPTIONAL,
       {
         name: "network_id",
         label: "Сеть",
@@ -2239,7 +2181,7 @@ export const REGISTRY: Record<string, ResourceSpec> = {
       },
     ],
     fields: [
-      FIELD_NAME_VPC,
+      FIELD_NAME_OPTIONAL,
       {
         name: "subnet_id",
         label: "Подсеть",
@@ -2420,10 +2362,6 @@ export const REGISTRY: Record<string, ResourceSpec> = {
     // сохраняет ОПЕРАТОР. Сходимость с деревом владельца по обоим условиям —
     // `lib/list-server-search-parity.test.ts`.
     serverSearchField: "name",
-    docs: [
-      { label: "Группы безопасности", href: "#" },
-      { label: "Правила групп безопасности", href: "#" },
-    ],
     emptyState: {
       title: "Создайте вашу первую группу безопасности",
       body:
@@ -2465,7 +2403,7 @@ export const REGISTRY: Record<string, ResourceSpec> = {
       COL_ID,
     ],
     fields: [
-      FIELD_NAME_VPC,
+      FIELD_NAME_OPTIONAL,
       {
         name: "network_id",
         // Create-only: UpdateSecurityGroupRequest не несёт network_id.
@@ -2551,7 +2489,7 @@ export const REGISTRY: Record<string, ResourceSpec> = {
       title: "Создайте первый шлюз",
       body:
         "Шлюз — выход из облачной сети наружу: через него ресурсы без публичного адреса обращаются в интернет. " +
-        "Маршрут к шлюзу задаётся в таблице маршрутизации подсети.",
+        "Маршрут к шлюзу задаётся в таблице маршрутов подсети.",
       docs: ["Шлюзы и выход в интернет"],
     },
     columns: [
@@ -2579,7 +2517,7 @@ export const REGISTRY: Record<string, ResourceSpec> = {
       COL_CREATED,
     ],
     fields: [
-      FIELD_NAME_VPC,
+      FIELD_NAME_OPTIONAL,
       FIELD_LABELS,
       FIELD_DESCRIPTION,
       // Вид шлюза — ВЕТВЬ oneof, а не значение поля, поэтому в форме он enum, а на
@@ -2663,10 +2601,6 @@ export const REGISTRY: Record<string, ResourceSpec> = {
     // Мутации отвечают Operation (ban #9): ответ без operation-id — нарушение
     // контракта, а не синхронный успех.
     mutationsReturnOperation: true,
-    docs: [
-      { label: "Наборы префиксов", href: "#" },
-      { label: "Правила групп безопасности", href: "#" },
-    ],
     emptyState: {
       title: "Создайте ваш первый набор префиксов",
       body:
@@ -2716,7 +2650,7 @@ export const REGISTRY: Record<string, ResourceSpec> = {
       COL_CREATED,
     ],
     fields: [
-      FIELD_NAME_VPC,
+      FIELD_NAME_OPTIONAL,
       FIELD_LABELS,
       FIELD_DESCRIPTION,
       {
@@ -2802,6 +2736,12 @@ export const REGISTRY: Record<string, ResourceSpec> = {
     serviceTitle: SERVICES.storage.title,
     scope: "global",
     ops: { create: false, update: false, delete: false },
+    // Каталог типов дисков ведёт оператор платформы, а не арендатор. Край
+    // обслуживает CRUD, но у консоли для него нет admin-плоскости этого ресурса
+    // (`spec.admin` не объявлен), поэтому мутации не выставлены НИКОМУ.
+    mutationsNotOffered:
+      "Каталог ведёт оператор платформы; admin-плоскости этого ресурса в консоли нет " +
+      "(`spec.admin` не объявлен), поэтому мутации не выставлены и администратору.",
     columns: [
       { header: "Имя", path: "name", format: "text", className: "font-medium" },
       // Идентификатор — `uid-short`, а не `text`: этот формат и есть форма
@@ -3071,7 +3011,7 @@ export const REGISTRY: Record<string, ResourceSpec> = {
       },
     ],
     fields: [
-      FIELD_NAME_COMPUTE,
+      FIELD_NAME_OPTIONAL,
       FIELD_DESCRIPTION,
       {
         name: "zone_id",
@@ -3457,7 +3397,7 @@ export const REGISTRY: Record<string, ResourceSpec> = {
       },
     ],
     fields: [
-      FIELD_NAME_STORAGE,
+      FIELD_NAME_OPTIONAL,
       FIELD_DESCRIPTION,
       {
         name: "zone_id",
@@ -3667,7 +3607,7 @@ export const REGISTRY: Record<string, ResourceSpec> = {
         immutable: true,
         description: "Том, с которого снимается копия на момент времени. Неизменяем после создания.",
       },
-      FIELD_NAME_STORAGE,
+      FIELD_NAME_OPTIONAL,
       FIELD_DESCRIPTION,
       FIELD_LABELS,
       FIELD_PROJECT_ID,
@@ -3745,7 +3685,7 @@ export const REGISTRY: Record<string, ResourceSpec> = {
       },
     ],
     fields: [
-      FIELD_NAME_STORAGE,
+      FIELD_NAME_OPTIONAL,
       FIELD_DESCRIPTION,
       {
         name: "region_id",
@@ -3983,7 +3923,6 @@ export const REGISTRY: Record<string, ResourceSpec> = {
     scope: "project",
     ops: { create: true, update: true, delete: true },
     mutationsReturnOperation: true,
-    docs: [{ label: "Группы размещения", href: "#" }],
     emptyState: {
       title: "Создайте вашу первую группу размещения",
       body:
@@ -4028,7 +3967,7 @@ export const REGISTRY: Record<string, ResourceSpec> = {
       COL_CREATED,
     ],
     fields: [
-      FIELD_NAME_COMPUTE,
+      FIELD_NAME_OPTIONAL,
       FIELD_DESCRIPTION,
       FIELD_LABELS,
       {
@@ -4506,7 +4445,9 @@ export const REGISTRY: Record<string, ResourceSpec> = {
         name: "name",
         label: "Имя",
         type: "string",
-        placeholder: "<pool-name>",
+        placeholder: "my-resource",
+        description: NAME_HINT_OPTIONAL,
+        pattern: NAME_FORM,
       },
       { name: "description", label: "Описание", type: "text", rows: 2 },
       {
@@ -4730,7 +4671,7 @@ export const REGISTRY: Record<string, ResourceSpec> = {
         ],
         description: "Режим балансировщика. Неизменяем после создания; сочетания «внешний + зональный» в наборе нет.",
       },
-      FIELD_NAME_COMPUTE, // DNS-1123 — lowercase + цифры + дефисы (как у NLB regex)
+      FIELD_NAME_OPTIONAL, // DNS-1123 — lowercase + цифры + дефисы (как у NLB regex)
       FIELD_DESCRIPTION,
       {
         name: "region_id",
@@ -4998,7 +4939,7 @@ export const REGISTRY: Record<string, ResourceSpec> = {
       { header: "Дата создания", path: "created_at", format: "datetime" },
     ],
     fields: [
-      FIELD_NAME_COMPUTE,
+      FIELD_NAME_OPTIONAL,
       FIELD_DESCRIPTION,
       {
         name: "load_balancer_id",
@@ -5120,7 +5061,7 @@ export const REGISTRY: Record<string, ResourceSpec> = {
         default: 80,
         description: "Порт, на котором таргеты принимают перенаправленный трафик (1..65535).",
       },
-      FIELD_NAME_COMPUTE,
+      FIELD_NAME_OPTIONAL,
       FIELD_DESCRIPTION,
       {
         name: "region_id",
@@ -5310,9 +5251,19 @@ export const REGISTRY: Record<string, ResourceSpec> = {
   },
 
   // ====== repository (OCI-репозиторий) ======
-  // Репозиторий — read-only: репозитории НЕ создаются через API, они
-  // материализуются при первом docker push в реестр. Единственный вход —
-  // ListRepositories(registryId) (path-scoped под реестром). Мутаций нет.
+  //
+  // ЗДЕСЬ СТОЯЛО «репозитории НЕ создаются через API… Мутаций нет» — и это было
+  // НЕВЕРНО о продукте (#1593). Контракт несёт `CreateRepository`,
+  // `UpdateRepository`, `DeleteRepository` и `RenameRepository`, все с публичной
+  // привязкой REST под `/registry/v1/registries/{}/repositories`. Утверждение
+  // консоли повторяло страницу документации, страница повторяла консоль, и обе
+  // расходились с контрактом — три поверхности, из которых верна одна.
+  //
+  // Цена была не теоретической: `visibility` репозитория — ЕДИНСТВЕННЫЙ рычаг,
+  // делающий образ публичным, и меняет его именно `UpdateRepository`. Путь
+  // «опубликовать образ» через `docker push` заканчивался приватным
+  // репозиторием без выхода.
+  //
   // Tenant-facing термин — «репозиторий» (id/route/apiPath/payloadKey =
   // repositories по OCI/REST-контракту).
 
@@ -5329,8 +5280,28 @@ export const REGISTRY: Record<string, ResourceSpec> = {
     genitive: "Репозитория",
     serviceTitle: SERVICES.registry.title,
     scope: "project",
-    // Read-only: репозиторий появляется через docker push, а не через UI.
     ops: { create: false, update: false, delete: false },
+    // ПОЧЕМУ «нет», хотя край обслуживает все три глагола, — препятствие
+    // измерено, а не предположено. Репозиторий адресуется ПАРОЙ «реестр + имя»
+    // (`{registryId}` + `{repository=**}`), тогда как общая оболочка мутаций
+    // строит адрес как `apiPath + "/" + row.id`: у репозитория поля `id` нет
+    // вовсе (`registry.proto`, message Repository), а `{registryId}` в `apiPath`
+    // на пути мутации никем не подставляется — подстановка сегодня живёт только
+    // на пути СПИСКА (`related-list-query`). То есть выставить глаголы значит
+    // сперва научить оболочку адресовать строку по объявленному ключу, а не по
+    // `id`; это работа над общей оболочкой, и она заведена своим предметом.
+    //
+    // Переименование сверх того требует СВОЕЙ церемонии, а не поля формы: имя
+    // репозитория стоит в pull-пути (`$domain/$registryId/$repo:$tag`), движок
+    // перевешивает теги и манифесты, и старое имя после этого отвечает 404 —
+    // ломается каждый уже написанный `docker pull`. Механизм действий-глаголов
+    // консоли (`RowVerb`) несёт подтверждение, но не несёт ввода нового
+    // значения, поэтому и он не подходит как есть.
+    mutationsNotOffered:
+      "Край обслуживает создание, правку и удаление, но общая оболочка адресует строку по " +
+      "полю `id`, которого у репозитория нет: его ключ — пара «реестр + имя». Выставить " +
+      "глаголы можно только вместе с адресацией по объявленному ключу. Переименование " +
+      "сверх того ломает каждый pull-путь и требует своей церемонии.",
     // Теги — дочерний ресурс репозитория (ListTags(registryId, repository)).
     related: [{ childId: "tags", filterField: ["registry_id", "repository"], label: "Теги" }],
     // Facet-фильтр по типу артефакта: отделить docker-образы от helm-чартов.
@@ -5376,11 +5347,17 @@ export const REGISTRY: Record<string, ResourceSpec> = {
       // updated_at — время последнего push (last pushed) в репозиторий.
       { header: "Обновлён", path: "updated_at", format: "datetime" },
     ],
-    // Read-only ресурс — form-schema нет.
+    // Формы нет, пока консоль не выставила глаголы (см. `mutationsNotOffered`).
     template: () => ({}),
     emptyState: {
-      title: "Репозитории появляются автоматически",
-      body: "Репозиторий появляется при первом docker push в этот реестр. Пустой реестр не содержит репозиториев — выполните push, чтобы репозиторий появился здесь.",
+      title: "В этом реестре пока нет репозиториев",
+      // ЗДЕСЬ СТОЯЛО «Репозитории появляются автоматически» — заголовок учил
+      // клиента тому же неверному утверждению, что и снятый комментарий выше:
+      // будто push есть единственный путь. Он не единственный, он лишь
+      // единственный, который сегодня даёт КОНСОЛЬ.
+      body:
+        "Самый короткий путь — docker login к endpoint реестра и docker push: репозиторий " +
+        "появится здесь сразу после первой загрузки образа.",
       docs: ["Публикация образов (docker login / push)"],
     },
   },

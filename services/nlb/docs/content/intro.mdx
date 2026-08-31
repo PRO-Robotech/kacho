@@ -98,15 +98,16 @@ flowchart TD
   tgt["Target[]<br/>instance / nic / in-cloud IP / external IP"]
 
   lb --> lst
-  lb -. "attach / detach (M:N)" .-> tg
   tg --> tgt
-  lst -. "default_target_group_id" .-> tg
+  lst -. "target_group_id" .-> tg
 ```
 
 - **Listener → LoadBalancer** — жёсткая композиция: листенер создаётся под конкретный
   балансировщик (`load_balancer_id`, FK), наследует его VIP и не несёт собственного адреса.
-- **LoadBalancer ↔ TargetGroup** — связь M:N через attach/detach: одну группу можно повесить
-  на несколько балансировщиков, и наоборот. Источник истины членства — DB-pivot.
+- **LoadBalancer → TargetGroup** — связи напрямую **нет**: балансировщик знает о группах
+  только через свои листенеры. Одну группу можно направить трафиком с нескольких листенеров и
+  нескольких балансировщиков; источник истины связи — поле `target_group_id` листенера, и
+  других мест, где она хранится, не существует.
 - **Target** — элемент группы; идентичность задаётся одной из четырёх форм (Instance / NIC /
   внутрицловый IP в подсети / внешний IP), см. [TargetGroup](/api/target-group).
 

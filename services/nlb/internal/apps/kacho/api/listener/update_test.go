@@ -166,9 +166,9 @@ func TestUpdateListener_GWT_LST_021_DefaultTGRegionMismatch(t *testing.T) {
 	suite.repo.seedTG(tg)
 
 	_, err := suite.uc.Run(contextWithSubject("user:test-actor"), &lbv1.UpdateListenerRequest{
-		ListenerId:           string(suite.listener.ID),
-		UpdateMask:           &fieldmaskpb.FieldMask{Paths: []string{"default_target_group_id"}},
-		DefaultTargetGroupId: string(tgID),
+		ListenerId:    string(suite.listener.ID),
+		UpdateMask:    &fieldmaskpb.FieldMask{Paths: []string{"target_group_id"}},
+		TargetGroupId: string(tgID),
 	})
 	require.Error(t, err)
 	require.Equal(t, codes.FailedPrecondition, status.Code(err))
@@ -194,9 +194,9 @@ func TestUpdateListener_DefaultTGSameRegion(t *testing.T) {
 	}
 	suite.repo.seedTG(tg)
 	op, err := suite.uc.Run(contextWithSubject("user:test-actor"), &lbv1.UpdateListenerRequest{
-		ListenerId:           string(suite.listener.ID),
-		UpdateMask:           &fieldmaskpb.FieldMask{Paths: []string{"default_target_group_id"}},
-		DefaultTargetGroupId: string(tgID),
+		ListenerId:    string(suite.listener.ID),
+		UpdateMask:    &fieldmaskpb.FieldMask{Paths: []string{"target_group_id"}},
+		TargetGroupId: string(tgID),
 	})
 	require.NoError(t, err)
 	done := awaitOpDone(t, suite.ops, op.ID, time.Second)
@@ -217,9 +217,9 @@ func TestUpdateListener_ClearDefaultTG(t *testing.T) {
 	suite.repo.seedListener(suite.listener)
 
 	op, err := suite.uc.Run(context.Background(), &lbv1.UpdateListenerRequest{
-		ListenerId:           string(suite.listener.ID),
-		UpdateMask:           &fieldmaskpb.FieldMask{Paths: []string{"default_target_group_id"}},
-		DefaultTargetGroupId: "",
+		ListenerId:    string(suite.listener.ID),
+		UpdateMask:    &fieldmaskpb.FieldMask{Paths: []string{"target_group_id"}},
+		TargetGroupId: "",
 	})
 	require.NoError(t, err)
 	done := awaitOpDone(t, suite.ops, op.ID, time.Second)

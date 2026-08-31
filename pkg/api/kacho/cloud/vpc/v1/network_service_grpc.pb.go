@@ -43,9 +43,9 @@ type NetworkServiceClient interface {
 	//
 	// Get the list of available Network resources by making a [List] request.
 	Get(ctx context.Context, in *GetNetworkRequest, opts ...grpc.CallOption) (*Network, error)
-	// Retrieves the list of Network resources in the specified folder.
+	// Retrieves the list of Network resources in the specified project.
 	List(ctx context.Context, in *ListNetworksRequest, opts ...grpc.CallOption) (*ListNetworksResponse, error)
-	// Creates a network in the specified folder using the data specified in the request.
+	// Creates a network in the specified project using the data specified in the request.
 	// Method starts an asynchronous operation that can be cancelled while it is in progress.
 	Create(ctx context.Context, in *CreateNetworkRequest, opts ...grpc.CallOption) (*operation.Operation, error)
 	// Updates the specified network.
@@ -162,9 +162,9 @@ type NetworkServiceServer interface {
 	//
 	// Get the list of available Network resources by making a [List] request.
 	Get(context.Context, *GetNetworkRequest) (*Network, error)
-	// Retrieves the list of Network resources in the specified folder.
+	// Retrieves the list of Network resources in the specified project.
 	List(context.Context, *ListNetworksRequest) (*ListNetworksResponse, error)
-	// Creates a network in the specified folder using the data specified in the request.
+	// Creates a network in the specified project using the data specified in the request.
 	// Method starts an asynchronous operation that can be cancelled while it is in progress.
 	Create(context.Context, *CreateNetworkRequest) (*operation.Operation, error)
 	// Updates the specified network.

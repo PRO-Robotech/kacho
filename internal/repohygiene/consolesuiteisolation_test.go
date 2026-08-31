@@ -37,7 +37,9 @@
 // # Способность упасть
 //
 // Доказана инъекцией — `consolesuiteisolation_injection_test.go`: запись краснеет с
-// координатой, чтение молчит, а исключение без предмета краснеет само.
+// координатой, чтение молчит, доступ через объект модуля (`fs.rm(`) краснеет,
+// хвост чужого имени (`goDeclaredForm(` для `rm`) молчит, а исключение без
+// предмета краснеет само.
 package repohygiene
 
 import (
@@ -61,9 +63,29 @@ var fsModuleSpecifiers = []string{"node:fs", "fs", "node:fs/promises", "fs/promi
 // — синхронная и промисная — потому что escape через `fs/promises` был бы дырой
 // ровно того же размера.
 //
-// Одноимённость с доменными глаголами консоли (`rename`, `truncate`) обезврежена
-// НЕ выбором имён, а предпосылкой: имя считается только в файле, который вообще
-// импортирует `node:fs`. Проба про переименование ресурса его не импортирует.
+// Одноимённость с доменными глаголами консоли обезврежена ДВУМЯ независимыми
+// условиями, и каждое закрывает то, чего не закрывает второе:
+//
+//  1. ПРЕДПОСЫЛКА — имя считается только в файле, который вообще импортирует
+//     `node:fs`; проба про переименование ресурса его не импортирует;
+//  2. ЦЕЛОСТЬ ИДЕНТИФИКАТОРА — имя обязано совпасть целиком, а не хвостом
+//     чужого имени.
+//
+// # Опровергнутая гипотеза — записана здесь, чтобы её не повторили
+//
+// Считалось, что довольно одной предпосылки (1), и прежняя редакция этого
+// комментария так и утверждала. Не довольно.
+// `ui-future/shared/src/test/console-name-form-tracks-platform.test.ts` импортирует
+// `node:fs` ради `readFileSync` и не пишет ничего — а подстрочный предикат
+// `strings.Contains(code, "rm(")` находил в нём хвост `goDeclaredForm(` и
+// объявлял файл пишущим. Топлива у этой ложной находки в консоли много: среди
+// проб 26 вызовов идентификаторов, кончающихся на `Form(`, в 7 разных именах
+// (`submitForm`, `openForm`, `requiresNameConfirm`, `goDeclaredForm`, …), и
+// каждый станет находкой, как только его файл заведёт чтение через `node:fs`.
+//
+// Цена ложной находки названа в `testing.md` §«Гейт на класс» прямо: гейт,
+// краснеющий на верном коде, отключают первым — а вместе с ним перестаёт
+// работать защита настоящего свойства.
 var fsWriteCalls = []string{
 	"writeFileSync", "appendFileSync", "mkdirSync", "mkdtempSync", "rmSync", "rmdirSync",
 	"unlinkSync", "copyFileSync", "renameSync", "truncateSync", "createWriteStream",
@@ -72,6 +94,23 @@ var fsWriteCalls = []string{
 
 // fsReadCalls — контроль дискриминатора: чтение обязано оставаться законным.
 var fsReadCalls = []string{"readFileSync", "readdirSync", "existsSync", "statSync", "readFile"}
+
+// callsFilesystemName — зовёт ли код функцию с этим именем, где имя совпадает
+// ЦЕЛИКОМ, а не хвостом чужого идентификатора.
+//
+// Своего разбора здесь нет намеренно: `callArgSpans` уже отсекает совпадение в
+// середине имени по `isJSIdentByte`, и вторая копия предиката разошлась бы с
+// первой молча. Точка идентификаторным символом не считается — и это как раз то,
+// что нужно: `fs.rm(` — тот же вызов записи, `goDeclaredForm(` — другое имя.
+//
+// Форма, которую этот предикат НЕ ловит и не ловил раньше: имя, отделённое от
+// скобки пробелом (`rm (path)`), и вызов через псевдоним импорта
+// (`import { writeFileSync as wfs }`). Обеих в дереве сегодня ноль — замер по
+// 442 файлам охвата, — поэтому расширение сюда не вносится: оно было бы
+// изменением без предмета.
+func callsFilesystemName(code, name string) bool {
+	return len(callArgSpans(code, []string{name + "("})) > 0
+}
 
 // usesFilesystemModule — импортирует ли файл `node:fs` (в любой из форм).
 func usesFilesystemModule(literals []string) bool {
@@ -106,28 +145,14 @@ var consoleFilesystemWriterAllowance = map[string]string{
 		"предмет пробы — обходчик реального дерева (перечень приложений ВЫВОДИТСЯ наличием src/), и подмена node:fs сделала бы фикстуру снисходительнее продукта",
 }
 
-// callsByName — вызов ИМЕНИ, а не подстроки. Без границы слева `rm(` совпадает с
-// `byForm(`, `cp(` — с `lookup(`, и гейт объявляет находкой законное имя: ровно
-// тот класс «судить по слову, а не по предмету», который он сам и стережёт.
-// Наблюдалось 2026-08-30: тип `PollForm` в пробе опроса дал ложную находку `rm`.
-func callsByName(code, name string) bool {
-	for i := 0; ; {
-		j := strings.Index(code[i:], name+"(")
-		if j < 0 {
-			return false
-		}
-		at := i + j
-		if at == 0 || !isIdentRune(rune(code[at-1])) {
-			return true
-		}
-		i = at + 1
-	}
-}
-
-func isIdentRune(r rune) bool {
-	return r == '_' || r == '$' || (r >= '0' && r <= '9') ||
-		(r >= 'a' && r <= 'z') || (r >= 'A' && r <= 'Z')
-}
+// Здесь стояла ВТОРАЯ реализация того же предиката — своя, со своим разбором
+// границы имени. Она пришла со ствола, где её независимо написала соседняя
+// линия, и оказалась в одном файле с делегирующей версией выше: два места об
+// одном предмете, ровно тот класс, который эта линия и чинит.
+//
+// Оставлена делегирующая: она зовёт уже существующий `callArgSpans`, поэтому
+// разойтись двум разборам не на чем. Довод ствола («тип PollForm дал ложную
+// находку rm») верен и покрыт — законный близнец такой формы стоит в инъекции.
 
 type fsWriteFinding struct {
 	File string
@@ -138,33 +163,47 @@ type fsWriteFinding struct {
 // Инъекция гоняет ЭТУ ЖЕ функцию, а не свою копию логики.
 //
 // Возвращает находки, число прочитанных проб, число проб, зовущих ЧТЕНИЕ ФС
-// (контроль дискриминатора), и перечень исключений, которым нечего исключать.
+// (контроль дискриминатора), число отвергнутых хвостов чужих имён и перечень
+// исключений, которым нечего исключать.
 func auditConsoleFilesystemWrites(
 	sources map[string]string,
 	allowance map[string]string,
-) (findings []fsWriteFinding, scanned, fsAware, readers int, staleAllowances []string) {
+) (findings []fsWriteFinding, scanned, fsAware, readers, tailRejected int, staleAllowances []string) {
 	writesSeen := map[string]bool{}
 
 	for rel, src := range sources {
 		scanned++
 		code, literals := tsScan(src)
 
-		// Файл, не импортирующий `node:fs`, писать в ФС этими именами не может —
-		// совпадение имени с доменным глаголом консоли отсекается здесь.
+		// Первый из двух заслонов от ложной находки: файл, не импортирующий
+		// `node:fs`, писать в ФС этими именами не может — доменный глагол
+		// консоли (`rename`, `truncate`) отсекается здесь. Второй заслон —
+		// целость идентификатора — ниже; одного этого НЕ хватает.
 		if !usesFilesystemModule(literals) {
 			continue
 		}
 		fsAware++
 
 		for _, name := range fsReadCalls {
-			if callsByName(code, name) {
+			if callsFilesystemName(code, name) {
 				readers++
 				break
 			}
 		}
 
 		for _, name := range fsWriteCalls {
-			if !callsByName(code, name) {
+			// Дешёвый отсев. Подстрочного совпадения ДОСТАТОЧНО, чтобы имя
+			// пропустить, и НЕ достаточно, чтобы засчитать вызов, — решает
+			// `callsFilesystemName` строкой ниже.
+			if !strings.Contains(code, name+"(") {
+				continue
+			}
+			if !callsFilesystemName(code, name) {
+				// Подстрочное совпадение оказалось хвостом ЧУЖОГО имени. Счётчик
+				// здесь не украшение: он показывает, что различение работает на
+				// настоящем дереве, а не только в инъекции. Ноль означал бы, что
+				// сегодня фикс ничем не подтверждён замером.
+				tailRejected++
 				continue
 			}
 			writesSeen[rel] = true
@@ -184,7 +223,7 @@ func auditConsoleFilesystemWrites(
 
 	sort.Slice(findings, func(i, j int) bool { return findings[i].File < findings[j].File })
 	sort.Strings(staleAllowances)
-	return findings, scanned, fsAware, readers, staleAllowances
+	return findings, scanned, fsAware, readers, tailRejected, staleAllowances
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -228,7 +267,7 @@ func TestConsoleProbesDoNotWriteToTheFilesystem(t *testing.T) {
 			"зелёный вердикт ниже был бы получен даром.")
 	}
 
-	findings, scanned, fsAware, readers, stale := auditConsoleFilesystemWrites(sources, consoleFilesystemWriterAllowance)
+	findings, scanned, fsAware, readers, tailRejected, stale := auditConsoleFilesystemWrites(sources, consoleFilesystemWriterAllowance)
 
 	// Предпосылка дискриминатора — две части, и обе обязаны быть непустыми:
 	// кто-то вообще работает с ФС, и среди них кто-то её ЧИТАЕТ. Иначе молчание
@@ -261,7 +300,11 @@ func TestConsoleProbesDoNotWriteToTheFilesystem(t *testing.T) {
 			rel, consoleFilesystemWriterAllowance[rel])
 	}
 
+	// Хвосты чужих имён в перепись выведены, но НЕ роняют прогон: их ноль —
+	// законное состояние дерева (класс исчез), а не поломка гейта. Способность
+	// различать хвост от вызова доказывается инъекцией, а не этим числом.
 	t.Logf("перепись: проб и файлов оснастки осмотрено %d, импортируют node:fs %d, "+
-		"из них читают %d, исключений %d, находок %d",
-		scanned, fsAware, readers, len(consoleFilesystemWriterAllowance), len(findings))
+		"из них читают %d, исключений %d, находок %d, "+
+		"подстрочных совпадений отвергнуто как хвост чужого имени %d (пар файл×имя)",
+		scanned, fsAware, readers, len(consoleFilesystemWriterAllowance), len(findings), tailRejected)
 }

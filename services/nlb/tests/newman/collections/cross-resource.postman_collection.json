@@ -1054,7 +1054,7 @@
             },
             "body": {
               "mode": "raw",
-              "raw": "{\"updateMask\": \"defaultTargetGroupId\", \"defaultTargetGroupId\": \"{{tgId}}\"}",
+              "raw": "{\"updateMask\": \"targetGroupId\", \"targetGroupId\": \"{{tgId}}\"}",
               "options": {
                 "raw": {
                   "language": "json"
@@ -1449,7 +1449,7 @@
             },
             "body": {
               "mode": "raw",
-              "raw": "{\"updateMask\": \"defaultTargetGroupId\", \"defaultTargetGroupId\": \"\"}",
+              "raw": "{\"updateMask\": \"targetGroupId\", \"targetGroupId\": \"\"}",
               "options": {
                 "raw": {
                   "language": "json"
@@ -3086,7 +3086,7 @@
             },
             "body": {
               "mode": "raw",
-              "raw": "{\"updateMask\": \"defaultTargetGroupId\", \"defaultTargetGroupId\": \"{{garbageTgrId}}\"}",
+              "raw": "{\"updateMask\": \"targetGroupId\", \"targetGroupId\": \"{{garbageTgrId}}\"}",
               "options": {
                 "raw": {
                   "language": "json"
@@ -6508,7 +6508,7 @@
             },
             "body": {
               "mode": "raw",
-              "raw": "{\"updateMask\": \"defaultTargetGroupId\", \"defaultTargetGroupId\": \"{{tgId}}\"}",
+              "raw": "{\"updateMask\": \"targetGroupId\", \"targetGroupId\": \"{{tgId}}\"}",
               "options": {
                 "raw": {
                   "language": "json"
@@ -6833,7 +6833,7 @@
             },
             "body": {
               "mode": "raw",
-              "raw": "{\"updateMask\": \"defaultTargetGroupId\", \"defaultTargetGroupId\": \"\"}",
+              "raw": "{\"updateMask\": \"targetGroupId\", \"targetGroupId\": \"\"}",
               "options": {
                 "raw": {
                   "language": "json"

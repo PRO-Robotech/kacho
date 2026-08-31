@@ -12,6 +12,7 @@ import (
 	"github.com/jackc/pgx/v5/pgxpool"
 
 	corequota "github.com/PRO-Robotech/kacho/pkg/quota"
+	"github.com/PRO-Robotech/kacho/pkg/quota/quotadetail"
 	"github.com/PRO-Robotech/kacho/pkg/quota/quotaread"
 	"github.com/PRO-Robotech/kacho/services/compute/internal/ports"
 )
@@ -71,11 +72,18 @@ func classifyQuotaErr(err error) error {
 	if !errors.As(err, &pgErr) {
 		return err
 	}
+	// Величины производителя приклеиваются ЗДЕСЬ — там, где `*pgconn.PgError` ещё
+	// не потерян. Дальше по пути его нет, и прочитать `DETAIL` больше негде:
+	// текст переживает переход, величины — нет. Разбор
+	// общий (`pkg/quota/quotadetail`) по тому же доводу, по которому производитель
+	// один: шесть копий разошлись бы молча.
 	switch pgErr.Code {
 	case sqlStateQuotaExceeded:
-		return fmt.Errorf("%w: %s", ErrQuotaExceeded, pgErr.Message)
+		return quotadetail.Attach(
+			fmt.Errorf("%w: %s", ErrQuotaExceeded, pgErr.Message), pgErr.Detail)
 	case sqlStateQuotaNotProvisioned:
-		return fmt.Errorf("%w: %s", ErrQuotaNotProvisioned, pgErr.Message)
+		return quotadetail.Attach(
+			fmt.Errorf("%w: %s", ErrQuotaNotProvisioned, pgErr.Message), pgErr.Detail)
 	case sqlStateQuotaNoProject:
 		// Строка ресурса без проекта — дефект схемы или пути записи, а не ответ
 		// арендатору. Наружу он идёт фиксированным внутренним отказом: называть

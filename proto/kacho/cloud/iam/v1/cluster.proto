@@ -25,7 +25,10 @@ message Cluster {
   // ID of the cluster. Must be the literal `cluster_kacho_root`.
   string id = 1;
 
-  // Display name. Free-form, 3-63 characters.
+  // Display name of the cluster singleton. Output-only: the value is written by
+  // the seed migration and no RPC of this service changes it.
+  // Free-form, 1-64 characters — this is NOT the platform resource-name form
+  // (`pkg/validate/nameform`), because the field is not a client-set name.
   string name = 2;
 
   // Description. 0-256 characters.

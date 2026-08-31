@@ -29,11 +29,15 @@ import dedent from 'ts-dedent'
     <tr><td><code>id</code></td><td>string</td><td>output-only</td><td>Серверный идентификатор (<code>nlb</code>-префикс)</td></tr>
     <tr><td><code>projectId</code></td><td>string</td><td>immutable*</td><td>Проект-владелец. Меняется только через <code>:move</code></td></tr>
     <tr><td><code>regionId</code></td><td>string</td><td>immutable</td><td>Регион балансировщика (валидируется через kacho-geo)</td></tr>
-    <tr><td><code>name</code></td><td>string</td><td>mutable</td><td>Имя. Шаблон <code>[a-z][-a-z0-9]&#123;1,61&#125;[a-z0-9]</code></td></tr>
+    <tr><td><code>name</code></td><td>string</td><td>mutable</td><td>Имя: DNS label по RFC 1123 — <code>^&#91;a-z0-9&#93;(&#91;-a-z0-9&#93;&#123;0,61&#125;&#91;a-z0-9&#93;)?$</code>, длина 1–63; цифра первым знаком допустима (<code>9lives</code> — валидное имя). Имя обязательно: пустая строка отвергается отдельным отказом <code>name is required</code></td></tr>
     <tr><td><code>description</code></td><td>string</td><td>mutable</td><td>Описание (≤256)</td></tr>
     <tr><td><code>labels</code></td><td>map&lt;string,string&gt;</td><td>mutable</td><td>Метки (≤64 пары)</td></tr>
-    <tr><td><code>type</code></td><td>enum</td><td>immutable</td><td><code>EXTERNAL</code> / <code>INTERNAL</code></td></tr>
-    <tr><td><code>placementType</code></td><td>enum</td><td>immutable</td><td>Только для INTERNAL: <code>ZONAL</code> / <code>REGIONAL</code>. Для EXTERNAL пуст</td></tr>
+    <tr><td><code>placement</code></td><td>enum</td><td>immutable · <strong>обязателен на Create</strong></td><td><code>EXTERNAL_REGIONAL</code> / <code>INTERNAL_REGIONAL</code> / <code>INTERNAL_ZONAL</code>. <strong>Единственный</strong> вход режима балансировщика. Сочетание «внешний зональный» невыразимо by construction — такого значения нет</td></tr>
+    <tr><td><code>type</code></td><td>enum</td><td>output-only, производное</td><td><code>EXTERNAL</code> / <code>INTERNAL</code> — выводится из <code>placement</code>. На входе Create отвергается</td></tr>
+    <tr><td><code>placementType</code></td><td>enum</td><td>output-only, производное</td><td><code>ZONAL</code> / <code>REGIONAL</code> — выводится из <code>placement</code>. На входе Create отвергается</td></tr>
+    <tr><td><code>adminState</code></td><td>enum</td><td>mutable</td><td><code>ADMIN_STATE_ENABLED</code> (умолчание) / <code>ADMIN_STATE_DISABLED</code> — желаемое административное состояние. Заменяет прежние глаголы пуска и остановки</td></tr>
+    <tr><td><code>crossZoneEnabled</code></td><td>bool</td><td>mutable</td><td>Только для REGIONAL: раскладывать ли трафик по целям чужих зон. <code>true</code> на ZONAL-размещении → <code>InvalidArgument</code></td></tr>
+    <tr><td><code>securityGroupIds</code></td><td>string[]</td><td>mutable</td><td>Только для INTERNAL: группы безопасности vpc, фильтрующие VIP. Существование проверяется у vpc (fail-closed). Правка заменяет набор целиком</td></tr>
     <tr><td><code>zoneId</code></td><td>string</td><td>output-only</td><td>Площадка балансировщика. Непуст РОВНО при <code>placementType=ZONAL</code>: у REGIONAL зональной координаты нет (anycast), у EXTERNAL зону подлежащего адреса выбирает платформа и наружу она не выходит. Значение — зона подсети VIP, резолвится у vpc на создании; менять его нельзя</td></tr>
     <tr><td><code>sessionAffinity</code></td><td>enum</td><td>mutable</td><td><code>FIVE_TUPLE</code> (дефолт) / <code>CLIENT_IP_ONLY</code></td></tr>
     <tr><td><code>deletionProtection</code></td><td>bool</td><td>mutable</td><td>Запрет удаления, пока не снят</td></tr>
@@ -59,10 +63,7 @@ Create источник неизменяем; наружу выставляют�
   <thead><tr><th>Статус</th><th>Значение</th></tr></thead>
   <tbody>
     <tr><td><code>CREATING</code></td><td>Создаётся; VIP ещё не привязан</td></tr>
-    <tr><td><code>STARTING</code></td><td>Запускается (после Start)</td></tr>
     <tr><td><code>ACTIVE</code></td><td>Активен, трафик форвардится</td></tr>
-    <tr><td><code>STOPPING</code></td><td>Останавливается (после Stop)</td></tr>
-    <tr><td><code>STOPPED</code></td><td>Остановлен</td></tr>
     <tr><td><code>DELETING</code></td><td>Удаляется</td></tr>
     <tr><td><code>INACTIVE</code></td><td>Нет активных листенеров или привязанных групп; health-check'и не выполняются, трафик не форвардится</td></tr>
   </tbody>
@@ -128,9 +129,13 @@ Create источник неизменяем; наружу выставляют�
 
 <ApiOperation method="POST" endpoint="/nlb/v1/networkLoadBalancers" async>
 
-Создаёт балансировщик. `type` обязателен. Для INTERNAL `placementType` обязателен и явен
-(ZONAL|REGIONAL); для EXTERNAL — запрещён. Требуется хотя бы один `VipSource` (`v4Source` /
-`v6Source`). Ответ — `Operation`.
+Создаёт балансировщик. Обязательны `projectId`, `regionId`, **`placement`** и хотя бы один
+`VipSource` (`v4Source` / `v6Source`). Ответ — `Operation`.
+
+`placement` — **единственный** вход режима: `EXTERNAL_REGIONAL`, `INTERNAL_REGIONAL` или
+`INTERNAL_ZONAL`. Производные `type` и `placementType` приходят в ответе; прислать их в запросе
+**нельзя** — это `InvalidArgument`, а не молчаливое игнорирование, даже когда значение
+согласуется с `placement`.
 
 <CodeBlock language="bash">
   {dedent`
@@ -141,9 +146,11 @@ Create источник неизменяем; наружу выставляют�
             "projectId": "prj-1",
             "name": "web-lb",
             "regionId": "region-1",
-            "type": "INTERNAL",
-            "placementType": "REGIONAL",
+            "placement": "INTERNAL_REGIONAL",
             "sessionAffinity": "CLIENT_IP_ONLY",
+            "adminState": "ADMIN_STATE_ENABLED",
+            "crossZoneEnabled": true,
+            "securityGroupIds": ["sg-1"],
             "v4Source": { "subnetId": "sub-1" }
           }'
   `}
@@ -156,7 +163,8 @@ Create источник неизменяем; наружу выставляют�
 <ApiOperation method="PATCH" endpoint="/nlb/v1/networkLoadBalancers/{id}" async>
 
 Меняет изменяемые поля (`name`, `description`, `labels`, `sessionAffinity`,
-`deletionProtection`, `disabledAnnounceZones`). Immutable-поля (`type`, `placementType`,
+`deletionProtection`, `disabledAnnounceZones`, `adminState`, `crossZoneEnabled`,
+`securityGroupIds`). Immutable-поля (`type`, `placement`, `placementType`,
 `zoneId`, `regionId`, источник и адреса VIP) в `updateMask` отклоняются по имени пути
 (`InvalidArgument`). Пустой mask → full-PATCH всех mutable-полей.
 
@@ -187,29 +195,33 @@ Create источник неизменяем; наружу выставляют�
 
 </ApiOperation>
 
-### Start / Stop — запустить / остановить
+:::note Пуска и остановки отдельными глаголами НЕТ — это `adminState`
+Здесь стояли `:start` и `:stop`. Их в контракте нет: административное включение и выключение
+выражается **полем** `adminState` (`ADMIN_STATE_ENABLED` / `ADMIN_STATE_DISABLED`) через
+обычный `Update`, а вместе с глаголами сняты и переходные статусы `STARTING` / `STOPPING` /
+`STOPPED` (их номера зарезервированы).
 
-<ApiOperation method="POST" endpoint="/nlb/v1/networkLoadBalancers/{id}:start" async>
+Почему полем, а не глаголом: желаемое состояние — это **свойство** балансировщика, и его надо
+уметь прочитать, сравнить и записать декларативно. Глагол читать нечем, поэтому синхронизатору
+состояния приходилось бы помнить, что он делал раньше.
+:::
 
-Переводит балансировщик в активное состояние (`STARTING` → `ACTIVE`).
-
-</ApiOperation>
-
-<ApiOperation method="POST" endpoint="/nlb/v1/networkLoadBalancers/{id}:stop" async>
-
-Останавливает балансировщик (`STOPPING` → `STOPPED`): health-check'и и форвардинг
-приостанавливаются, ресурс сохраняется.
-
-</ApiOperation>
+<CodeBlock language="bash">
+  {dedent`
+    curl -X PATCH 'http://localhost:18080/nlb/v1/networkLoadBalancers/nlb...' \\
+      -H 'Authorization: Bearer <JWT>' \\
+      -H 'Content-Type: application/json' \\
+      -d '{ "updateMask": "adminState", "adminState": "ADMIN_STATE_DISABLED" }'
+  `}
+</CodeBlock>
 
 ### Move — перенести в другой проект
 
 <ApiOperation method="POST" endpoint="/nlb/v1/networkLoadBalancers/{id}:move" async>
 
-Переносит балансировщик в другой проект **того же региона**. Блокируется, если к нему привязана
-хотя бы одна TargetGroup (сначала detach). Дочерние листенеры перенацеливаются в той же
-worker-транзакции (denorm-sync `projectId`). Проверяется доступ и в исходном, и в целевом
-проекте.
+Переносит балансировщик в другой проект **того же региона**. Дочерние листенеры
+перенацеливаются в той же worker-транзакции (denorm-sync `projectId`). Проверяется доступ и в
+исходном, и в целевом проекте.
 
 <CodeBlock language="bash">
   {dedent`
@@ -222,38 +234,19 @@ worker-транзакции (denorm-sync `projectId`). Проверяется д
 
 </ApiOperation>
 
-### AttachTargetGroup / DetachTargetGroup
+:::note Привязки группы отдельным глаголом НЕТ — это `Listener.targetGroupId`
+Здесь стояли `:attachTargetGroup` и `:detachTargetGroup`. Их в контракте нет, и связь
+«балансировщик ↔ группа целей» больше не самостоятельная сущность: балансировщик знает о
+группах **через свои листенеры**, а листенер указывает на группу полем `targetGroupId`
+(см. [Listener](/api/listener)).
 
-<ApiOperation method="POST" endpoint="/nlb/v1/networkLoadBalancers/{id}:attachTargetGroup" async>
+Так и должно быть: трафик приходит на пару (протокол, порт), и решение «куда его отправить»
+принадлежит той же точке приёма. Отдельное членство было вторым местом об одном предмете — и
+вдобавок несимметричным по форме запроса (привязка принимала вложенное тело, отвязка плоское).
 
-Привязывает группу таргетов к балансировщику. Тело — **вложенное** (`attachedTargetGroup`).
-
-<CodeBlock language="bash">
-  {dedent`
-    curl -X POST 'http://localhost:18080/nlb/v1/networkLoadBalancers/nlb...:attachTargetGroup' \\
-      -H 'Authorization: Bearer <JWT>' \\
-      -H 'Content-Type: application/json' \\
-      -d '{ "attachedTargetGroup": { "targetGroupId": "tgr..." } }'
-  `}
-</CodeBlock>
-
-</ApiOperation>
-
-<ApiOperation method="POST" endpoint="/nlb/v1/networkLoadBalancers/{id}:detachTargetGroup" async>
-
-Отвязывает группу. Тело — **плоское** (`targetGroupId`). Обратите внимание на асимметрию форм
-attach (nested) vs detach (flat) — строить payload нужно по proto-форме каждого запроса.
-
-<CodeBlock language="bash">
-  {dedent`
-    curl -X POST 'http://localhost:18080/nlb/v1/networkLoadBalancers/nlb...:detachTargetGroup' \\
-      -H 'Authorization: Bearer <JWT>' \\
-      -H 'Content-Type: application/json' \\
-      -d '{ "targetGroupId": "tgr..." }'
-  `}
-</CodeBlock>
-
-</ApiOperation>
+Чтобы направить трафик в группу, создайте листенер с `targetGroupId`; чтобы перенаправить —
+укажите `targetGroupId` в `updateMask`; чтобы снять привязку — передайте в нём пустое значение.
+:::
 
 ### GetTargetStates — снимок здоровья таргетов
 

@@ -30,7 +30,7 @@ const (
 // does not call compute).
 type AttachNetworkInterfaceRequest struct {
 	state protoimpl.MessageState `protogen:"open.v1"`
-	// ID of the NIC (kacho-vpc NetworkInterface, prefix "enp") to attach.
+	// ID of the NIC (kacho-vpc NetworkInterface, prefix "nic") to attach.
 	NicId string `protobuf:"bytes,1,opt,name=nic_id,json=nicId,proto3" json:"nic_id,omitempty"`
 	// ID of the instance the NIC is attached to (cross-service, no FK).
 	InstanceId string `protobuf:"bytes,2,opt,name=instance_id,json=instanceId,proto3" json:"instance_id,omitempty"`
@@ -360,7 +360,7 @@ func (x *ListNetworkInterfacesByInstanceResponse) GetNetworkInterfaces() []*Netw
 // ListByInstance to build the compute-side Instance.network_interfaces[] mirror.
 type NetworkInterfaceAttachmentInfo struct {
 	state protoimpl.MessageState `protogen:"open.v1"`
-	// ID of the attached NIC (kacho-vpc NetworkInterface, prefix "enp").
+	// ID of the attached NIC (kacho-vpc NetworkInterface, prefix "nic").
 	NicId string `protobuf:"bytes,1,opt,name=nic_id,json=nicId,proto3" json:"nic_id,omitempty"`
 	// ID of the instance the NIC is attached to.
 	InstanceId string `protobuf:"bytes,2,opt,name=instance_id,json=instanceId,proto3" json:"instance_id,omitempty"`

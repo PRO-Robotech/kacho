@@ -31,7 +31,7 @@ service SubnetService {
     option (kacho.iam.authz.v1.required_acr_min) = "1";
   }
 
-  // Retrieves the list of Subnet resources in the specified folder.
+  // Retrieves the list of Subnet resources in the specified project.
   rpc List(ListSubnetsRequest) returns (ListSubnetsResponse) {
     option (google.api.http) = {get: "/vpc/v1/subnets"};
     option (kacho.iam.authz.v1.permission)        = "vpc.subnets.list";
@@ -51,7 +51,7 @@ service SubnetService {
     option (kacho.iam.authz.v1.required_acr_min) = "1";
   }
 
-  // Creates a subnet in the specified folder and network.
+  // Creates a subnet in the specified project and network.
   // Method starts an asynchronous operation that can be cancelled while it is in progress.
   rpc Create(CreateSubnetRequest) returns (operation.Operation) {
     option (google.api.http) = {
@@ -197,7 +197,10 @@ message ListSubnetsRequest {
   // The expression must specify:
   // 1. The field name. Currently you can use filtering only on [Subnet.name] field.
   // 2. An `=` operator.
-  // 3. The value in double quotes (`"`). Must be 3-63 characters long and match the regular expression `[a-z][-a-z0-9]{1,61}[a-z0-9]`.
+  // 3. The value in double quotes (`"`). The value is compared to the resource
+  //    name as-is, so only a value in the name form can match anything:
+  //    `[a-z0-9]([-a-z0-9]{0,61}[a-z0-9])?`. The filter itself applies no
+  //    separate length or alphabet rule to the value.
   string filter = 4;
 }
 
@@ -219,14 +222,21 @@ message CreateSubnetRequest {
   // Create takes the immutable primary anchor only; additional ranges via
   // AddCidrBlocks). 8 — retired oneof slot. 10 — legacy dhcp_options
   // (retired VPC-1-43: DHCP/DNS knobs dropped by design).
+  //
+  // Имена сняты вместе с номерами (api-conventions, «принято-и-проигнорировано»:
+  // снять с контракта = зарезервировать номер И ИМЯ). Прежде стоял только номер,
+  // и это было наблюдаемо дорого: край не мог отличить снятый ключ от опечатки и
+  // отбрасывал `v4CidrBlocks` молча — тело с ним создавало подсеть ВООБЩЕ БЕЗ
+  // диапазона и получало 200. Набор проб этого домена несёт тот же разбор своими
+  // словами: тридцать три создания везли ключ, которого никто не читал.
   reserved 7, 8, 10, 11;
-  reserved "dhcp_options";
+  reserved "dhcp_options", "v4_cidr_blocks", "v6_cidr_blocks";
   // ID of the project to create a subnet in.
   // To get project ID use a [kacho.cloud.iam.v1.ProjectService.List] request.
   string project_id = 1;
 
   // Name of the subnet.
-  // The name must be unique within the folder.
+  // The name must be unique within the project.
   string name = 2;
 
   // Description of the subnet.
@@ -290,7 +300,7 @@ message UpdateSubnetRequest {
   google.protobuf.FieldMask update_mask = 2;
 
   // Name of the subnet.
-  // The name must be unique within the folder.
+  // The name must be unique within the project.
   string name = 3;
 
   // Description of the subnet.
@@ -306,8 +316,10 @@ message UpdateSubnetRequest {
   // design). 8/9 — legacy v4_cidr_blocks/v6_cidr_blocks (retired VPC-1 F7).
   // CIDR is immutable via Update: the primary anchor never changes; additional
   // ranges go through AddCidrBlocks/RemoveCidrBlocks.
+  //
+  // Имена сняты вместе с номерами — см. разбор у `CreateSubnetRequest`.
   reserved 7, 8, 9;
-  reserved "dhcp_options";
+  reserved "dhcp_options", "v4_cidr_blocks", "v6_cidr_blocks";
 }
 
 message UpdateSubnetMetadata {

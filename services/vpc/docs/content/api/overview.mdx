@@ -97,10 +97,28 @@ project-level (обязательный `projectId`), у каждого — св
 </table>
 
 :::note Suffix-action vs sub-resource
-`:verb` (двоеточие в конце пути) — **действие** над ресурсом (`...:add-cidr-blocks`),
-тело которого описывает параметры действия. Сегмент после `/` (`.../subnets`, `.../operations`) —
-**коллекция-ребенок** ресурса. Имя action — `kebab-case` там, где так задано в proto
-(`:add-cidr-blocks`), и `camelCase`/одно слово в остальных.
+`:verb` (двоеточие в конце пути) — **действие** над ресурсом, тело которого описывает
+параметры действия. Сегмент после `/` (`.../subnets`, `.../operations`) — **коллекция-ребёнок**
+ресурса.
+
+**Имя действия — нижний `camelCase`** (`:addCidrBlocks`, `:removeTargets`, `:setLifecycle`),
+однословное действие пишется одним словом (`:stop`, `:move`, `:revoke`). Правило одно на всю
+платформу: зная написание у одного ресурса, стройте по нему путь у соседнего.
+
+**Три ресурса VPC пока отступают от него**, и это известное расхождение, а не второе правило:
+
+| ресурс | действующий адрес | канон |
+|---|---|---|
+| `Network` | `:add-cidr-blocks` / `:remove-cidr-blocks` | `:addCidrBlocks` / `:removeCidrBlocks` |
+| `Subnet` | `:add-cidr-blocks` / `:remove-cidr-blocks` | `:addCidrBlocks` / `:removeCidrBlocks` |
+| `CidrGroup` | `:add-cidr-blocks` / `:remove-cidr-blocks` | `:addCidrBlocks` / `:removeCidrBlocks` |
+
+`AddressPool` тех же действий уже адресуется каноном (`:addCidrBlocks`). Пока расхождение не
+снято, **сверяйтесь со страницей ресурса**, а не переносите написание по памяти: промах даёт
+`404` без тела, и отказ верного написания не подсказывает.
+
+Расхождение снимается **совместимо**: канон станет основным адресом, а нынешняя запись
+останется приниматься как дополнительная привязка — уже отправленные интеграции не сломаются.
 :::
 
 ## Формат JSON
@@ -109,6 +127,25 @@ project-level (обязательный `projectId`), у каждого — св
 `defaultSecurityGroupId`). Это grpc-gateway-проекция proto-полей (которые в `.proto` —
 `snake_case`). Перечисления (`status`, `kind`) сериализуются как строковые константы
 (`ACTIVE`, `EXTERNAL_PUBLIC`). Временные метки — RFC 3339 (`2026-06-06T14:27:00Z`).
+
+:::caution Имя поля с CIDR-блоками различается между ресурсами
+Одни и те же по смыслу блоки называются в теле **двумя способами**, и разделение проходит
+не там, где разделение адресов выше:
+
+| ресурс | адрес действия | ключ тела |
+|---|---|---|
+| `Network` | `:add-cidr-blocks` | `ipv4CidrBlocks` / `ipv6CidrBlocks` |
+| `Subnet` | `:add-cidr-blocks` | `ipv4CidrBlocks` / `ipv6CidrBlocks` |
+| `CidrGroup` | `:add-cidr-blocks` | `v4CidrBlocks` / `v6CidrBlocks` |
+| `AddressPool` | `:addCidrBlocks` | `v4CidrBlocks` / `v6CidrBlocks` |
+
+То есть две оси расходятся **накрест**: `CidrGroup` разделяет адрес с сетью и подсетью, а ключ
+тела — с пулом адресов. Правило «эти три ведут себя одинаково» не работает ни в одну сторону —
+**сверяйтесь со страницей ресурса**.
+
+Обе оси признаны расхождением и снимаются своими изменениями. Переименование ключа тела
+ломающее, поэтому идёт отдельно от адреса и с объявленным окном.
+:::
 
 <CodeBlock language="json">
   {dedent`
@@ -226,7 +263,15 @@ flowchart LR
 сразу в HTTP-ответе мутации. Для **асинхронных** ошибок (FK / state-инварианты в worker'е) мутация
 возвращает `Operation` с HTTP `200`, а ошибка появляется в `operation.error` после `done: true`.
 
-<Codes codes={['invalidArgument', 'notFound', 'alreadyExists', 'failedPrecondition', 'unavailable', 'unauthenticated', 'permissionDenied', 'internal']} />
+<Codes codes={['invalidArgument', 'notFound', 'alreadyExists', 'failedPrecondition', 'resourceExhausted', 'unavailable', 'unauthenticated', 'permissionDenied', 'internal']} />
+
+:::note Исчерпание квоты — два разных отказа
+Потолок на число ресурсов вида даёт **два** отказа, и они требуют разного действия:
+`RESOURCE_EXHAUSTED` / **429** (признак `QUOTA_EXCEEDED`) — предел выбран, его нужно
+**поднять**; `FAILED_PRECONDITION` / **400** (признак `QUOTA_NOT_PROVISIONED`) — предел не
+назван вовсе, его нужно **завести**. Полосы различаются по `reason` в `details`, а не по
+тексту сообщения. Свой предел и потребление — на странице [Квоты](/api/quotas).
+:::
 
 ## Дисциплина update_mask
 
@@ -460,10 +505,12 @@ ephemeral Address по значению / подсети). REST использу
   </tbody>
 </table>
 
-:::note Имя Gateway — strict
-В отличие от остальных ресурсов (permissive-имя), `Gateway.name` подчиняется strict-контракту
-(lowercase, без uppercase/underscore). См. <code>RESTRICTIONS.nameGateway</code> на странице
-[Gateway](/api/gateway).
+:::note Имя Gateway — та же форма, что у остальных ресурсов
+Здесь стояло, что `Gateway.name` подчиняется отдельному strict-контракту «в отличие от
+остальных ресурсов». Отличия **нет** с #715: валидатор имени в дереве один
+(`pkg/validate/nameform`), и все ресурсы платформы подчиняются DNS label по RFC 1123 —
+`^[a-z0-9]([-a-z0-9]{0,61}[a-z0-9])?$`. Соглашение об именовании переносится между
+ресурсами без поправок.
 :::
 
 ### NetworkInterfaceService

@@ -32,10 +32,11 @@ import dedent from 'ts-dedent'
 `cdg-7h2k9m4p1q8r3s5t6`). Он присваивается при создании, **неизменяем всю жизнь ресурса**
 и является единственным, чем набор адресуется — в ссылке правила стоит именно он.
 
-`name` — косметическая метка в пределах проекта: уникальна (`UNIQUE(projectId, name)`),
-может свободно меняться и **никогда** не участвует в ссылке. Пустое имя допустимо и
-дублей не образует — отсутствие имени законное состояние, а не значение, которым можно
-занять слот.
+`name` — косметическая метка в пределах проекта: уникальна (`UNIQUE(projectId, name)`,
+уникальность полная), может свободно меняться и **никогда** не участвует в ссылке. Формой
+имя не отличается от прочих ресурсов платформы — DNS label по RFC 1123. Пустая строка при
+создании означает «назови сам»: сервер проставит имя, производное от `id`, поэтому набора
+без имени не бывает; при `Update` пустое имя отвергается.
 :::
 
 ## Состав: два семейства — два поля
@@ -77,7 +78,7 @@ import dedent from 'ts-dedent'
   <tbody>
     <tr><td><code>id</code></td><td><code>{TYPES.string}</code></td><td>Идентификатор набора: <code>cdg-</code> + 17 символов crockford-base32 (output-only, генерируется сервером; неизменяем)</td></tr>
     <tr><td><code>projectId</code></td><td><code>{TYPES.string}</code></td><td>{DICTIONARY.projectId.short}. Неизменяем после создания</td></tr>
-    <tr><td><code>name</code></td><td><code>{TYPES.string}</code></td><td>{DICTIONARY.name.short}. Уникально в проекте; пустое имя дублей не образует</td></tr>
+    <tr><td><code>name</code></td><td><code>{TYPES.string}</code></td><td>{DICTIONARY.name.short}</td></tr>
     <tr><td><code>description</code></td><td><code>{TYPES.string}</code></td><td>{DICTIONARY.description.short}</td></tr>
     <tr><td><code>labels</code></td><td><code>{TYPES.mapStringString}</code></td><td>{DICTIONARY.labels.short}</td></tr>
     <tr><td><code>createdAt</code></td><td><code>{TYPES.timestamp}</code></td><td>{DICTIONARY.createdAt.short}</td></tr>
@@ -272,7 +273,7 @@ flowchart LR
   <thead><tr><th>Параметр</th><th>Обязательность</th><th>Тип</th><th>Описание</th></tr></thead>
   <tbody>
     <tr><td><code>projectId</code></td><td><strong>да</strong></td><td><code>{TYPES.string}</code></td><td>{DICTIONARY.projectId.short}</td></tr>
-    <tr><td><code>name</code></td><td>нет</td><td><code>{TYPES.string}</code></td><td>Имя набора (permissive-контракт; уникально в проекте)</td></tr>
+    <tr><td><code>name</code></td><td>нет</td><td><code>{TYPES.string}</code></td><td>Имя набора (уникально в проекте; пустое — сервер проставит производное от <code>id</code>)</td></tr>
     <tr><td><code>description</code></td><td>нет</td><td><code>{TYPES.string}</code></td><td>{DICTIONARY.description.short}</td></tr>
     <tr><td><code>labels</code></td><td>нет</td><td><code>{TYPES.mapStringString}</code></td><td>{DICTIONARY.labels.short}</td></tr>
     <tr><td><code>v4CidrBlocks</code></td><td>нет</td><td><code>{TYPES.stringArray}</code></td><td>Начальные IPv4-члены; host-биты = 0, ≤ 64</td></tr>

@@ -236,7 +236,15 @@ must be stopped"`; тексты — часть контракта, меняют�
 worker'е) мутация возвращает `Operation` с HTTP `200`, а ошибка появляется в `operation.error`
 после `done: true`.
 
-<Codes codes={['invalidArgument', 'notFound', 'alreadyExists', 'failedPrecondition', 'unavailable', 'unauthenticated', 'permissionDenied', 'internal']} />
+<Codes codes={['invalidArgument', 'notFound', 'alreadyExists', 'failedPrecondition', 'resourceExhausted', 'unavailable', 'unauthenticated', 'permissionDenied', 'internal']} />
+
+:::note Исчерпание квоты — два разных отказа
+Потолок на число ресурсов вида даёт **два** отказа, и они требуют разного действия:
+`RESOURCE_EXHAUSTED` / **429** (признак `QUOTA_EXCEEDED`) — предел выбран, его нужно
+**поднять**; `FAILED_PRECONDITION` / **400** (признак `QUOTA_NOT_PROVISIONED`) — предел не
+назван вовсе, его нужно **завести**. Полосы различаются по `reason` в `details`, а не по
+тексту сообщения. Свой предел и потребление — на странице [Квоты](/api/quotas).
+:::
 
 ## Дисциплина update_mask
 

@@ -7,7 +7,23 @@
 // A 403, by contrast, is unambiguous and must stay a 403.
 
 import { ApiError } from "@shared/api/client";
-import { NOT_FOUND_IS_AMBIGUOUS, presentError } from "./error-presentation";
+import { NOT_FOUND_IS_AMBIGUOUS, presentError, QUOTA_SHOWCASE_HINT, errorText  } from "./error-presentation";
+
+// ─────────────────────────────────────────────────────────────────────────────
+// ОТКАЗ ПО ПРЕДЕЛУ (#1605)
+//
+// Отказ по исчерпанию предела попадал в общую ветку «прочий 4xx»: заголовок
+// «Внимание» и английская строка производителя дословно — `project prj-1 has
+// reached its limit of 5 vpc.network`. Вид назван машинным именем, кто задаёт
+// величины — не сказано, куда идти — не сказано. Следующего шага у клиента не
+// оставалось.
+//
+// ПОЧЕМУ КЛЮЧ — ТОКЕН ПРИЗНАКА, А НЕ HTTP-СТАТУС. Полос две, и они приходят
+// РАЗНЫМИ статусами: «место кончилось» — `RESOURCE_EXHAUSTED` (429), «потолок не
+// назван вовсе» — `FAILED_PRECONDITION` (400). Ключ по 429 потерял бы вторую
+// полосу целиком, а она и есть та, где действие администратора другое: не
+// поднять предел, а завести его.
+import { QUOTA_VALUES_SET_BY } from "./quota-view";
 
 describe("presentError", () => {
   it("keeps the backend message verbatim (it is the contract tone)", () => {
@@ -88,5 +104,144 @@ describe("отказ в правах не цитирует внутреннюю 
 
   it("отказ по другой причине заголовок не меняет", () => {
     expect(presentError(new ApiError(404, 5, null, "Network net-1 not found")).title).toBe("Не найдено");
+  });
+});
+
+/** Тело отказа в том виде, в каком его собирает край из `google.rpc.Status`. */
+function quotaDetails(reason: string, metadata?: Record<string, string>) {
+  return [
+    {
+      "@type": "type.googleapis.com/google.rpc.ErrorInfo",
+      reason,
+      domain: "vpc.kacho.cloud",
+      ...(metadata ? { metadata } : {}),
+    },
+  ];
+}
+
+describe("отказ по пределу восстанавливает следующий шаг (#1605)", () => {
+  it("«место кончилось» — по-русски, с именем вида, пределом и адресом витрины", () => {
+    const p = presentError(
+      new ApiError(429, 8, quotaDetails("QUOTA_EXCEEDED", {
+        kind: "vpc.network",
+        limit: "5",
+        used: "5",
+        carrier_type: "project",
+        carrier_id: "prj-1",
+      }), "project prj-1 has reached its limit of 5 vpc.network"),
+    );
+
+    expect(p.title).toBe("Предел исчерпан");
+    // Вид назван ЧЕЛОВЕЧЕСКИМ именем из единственного словаря, а не `vpc.network`.
+    expect(p.subTitle).toContain("Облачные сети");
+    expect(p.subTitle).not.toContain("vpc.network");
+    expect(p.subTitle).toContain("занято 5 из 5");
+    // Кто задаёт величины — теми же словами, что на витрине.
+    expect(p.subTitle).toContain(QUOTA_VALUES_SET_BY);
+    // Действие администратора у этой полосы — ПОДНЯТЬ предел.
+    expect(p.subTitle).toContain("поднять");
+    // Куда идти.
+    expect(p.note).toBe(QUOTA_SHOWCASE_HINT);
+    expect(p.quota?.href).toBe("/projects/prj-1/quotas");
+    // Текст сервера НЕ ПОТЕРЯН — он в подсказке, по образцу 403.
+    expect(p.devDetail).toContain("project prj-1 has reached its limit of 5 vpc.network");
+    expect(p.devDetail).toContain("RESOURCE_EXHAUSTED (8)");
+  });
+
+  it("«потолок не назван» — ДРУГАЯ полоса и другое действие, хотя статус 400", () => {
+    const p = presentError(
+      new ApiError(400, 9, quotaDetails("QUOTA_NOT_PROVISIONED", { kind: "vpc.subnet" }),
+        "no limit provisioned for vpc.subnet"),
+    );
+
+    expect(p.quota?.lane).toBe("not_provisioned");
+    expect(p.title).toBe("Предел не задан");
+    expect(p.subTitle).toContain("Подсети");
+    // Завести, а не поднять: свести полосы значило бы послать читателя искать,
+    // что понизить, там, где ничего не назначено.
+    expect(p.subTitle).toContain("завести");
+    expect(p.subTitle).not.toContain("поднять");
+    expect(p.note).toBe(QUOTA_SHOWCASE_HINT);
+  });
+
+  it("величин нет — всё равно по-русски и всё равно с адресом; вид НЕ выдумывается", () => {
+    // Сегодня производители признак присылают, а величины — нет. Отказ, умеющий
+    // показать только полный набор, на неполном показал бы хуже прежнего.
+    const p = presentError(
+      new ApiError(429, 8, quotaDetails("QUOTA_EXCEEDED"), "project prj-1 has reached its limit of 5 vpc.network"),
+    );
+
+    expect(p.title).toBe("Предел исчерпан");
+    expect(p.quota?.kind).toBeNull();
+    expect(p.quota?.limit).toBeNull();
+    expect(p.subTitle).toContain(QUOTA_VALUES_SET_BY);
+    expect(p.subTitle).not.toContain("has reached its limit");
+    expect(p.note).toBe(QUOTA_SHOWCASE_HINT);
+    // Носителя не назвали — адреса нет, и он не подделывается.
+    expect(p.quota?.href).toBeNull();
+  });
+
+  it("занято НОЛЬ отличимо от «занято не назвали»", () => {
+    // Ноль — законная величина. Приравняв её к отсутствию, столбец промолчал бы
+    // там, где сервер сказал.
+    const zero = presentError(
+      new ApiError(400, 9, quotaDetails("QUOTA_NOT_PROVISIONED", { kind: "vpc.network", used: "0" }), "x"),
+    );
+    expect(zero.quota?.used).toBe(0);
+
+    const absent = presentError(
+      new ApiError(400, 9, quotaDetails("QUOTA_NOT_PROVISIONED", { kind: "vpc.network" }), "x"),
+    );
+    expect(absent.quota?.used).toBeNull();
+  });
+
+  it("незнакомый вид показывается СВОИМ именем, а не прячется", () => {
+    const p = presentError(
+      new ApiError(429, 8, quotaDetails("QUOTA_EXCEEDED", { kind: "future.widget" }), "x"),
+    );
+    expect(p.subTitle).toContain("future.widget");
+  });
+
+  it("текст для тоста — тоже русский, а не строка производителя", () => {
+    const t = errorText(
+      new ApiError(429, 8, quotaDetails("QUOTA_EXCEEDED", { kind: "vpc.network" }),
+        "project prj-1 has reached its limit of 5 vpc.network"),
+    );
+    expect(t).toContain("Облачные сети");
+    expect(t).not.toContain("has reached its limit");
+    // Тост — самая частая поверхность этого отказа (мутации сообщают о себе
+    // именно им), и «куда идти» обязано быть в НЁМ, а не только на экране
+    // отказа: иначе половина фикса не доезжает до большинства случаев.
+    expect(t).toContain(QUOTA_SHOWCASE_HINT);
+  });
+
+  it("тост обычного отказа оговорок НЕ обрастает — контроль к утверждению выше", () => {
+    // Без пары «тост уводит на витрину» зеленело бы и на реализации, которая
+    // приклеивает оговорку к КАЖДОМУ отказу.
+    expect(errorText(new ApiError(404, 5, null, "Network net-1 not found"))).toBe("Network net-1 not found");
+  });
+
+  // ─── ПОЛОЖИТЕЛЬНЫЕ КОНТРОЛИ ────────────────────────────────────────────────
+  // Без них «отказ по пределу переодет» зеленело бы и на распознавателе,
+  // который переодевает ЛЮБОЙ 429 и любой 400.
+
+  it("отсечка запросов — тоже 429, но НЕ отказ по пределу", () => {
+    const p = presentError(new ApiError(429, 8, null, "too many authorization checks; retry later"));
+    expect(p.quota).toBeNull();
+    expect(p.title).toBe("Внимание");
+    expect(p.subTitle).toBe("too many authorization checks; retry later");
+  });
+
+  it("обычный 400 остаётся собой", () => {
+    const p = presentError(new ApiError(400, 3, null, "Illegal argument cidr"));
+    expect(p.quota).toBeNull();
+    expect(p.subTitle).toBe("Illegal argument cidr");
+    expect(p.note).toBeNull();
+  });
+
+  it("чужой признак в тех же деталях отказом по пределу не считается", () => {
+    const p = presentError(new ApiError(400, 9, quotaDetails("PEER_RESOURCE_STATE"), "subnet is not ready"));
+    expect(p.quota).toBeNull();
+    expect(p.subTitle).toBe("subnet is not ready");
   });
 });

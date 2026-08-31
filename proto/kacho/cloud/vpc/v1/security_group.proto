@@ -21,15 +21,18 @@ message SecurityGroup {
     // ID of the security group.
     string id = 1;
 
-    // ID of the folder that the security group belongs to.
+    // ID of the project that the security group belongs to.
     string project_id = 2;
 
     // Creation timestamp in [RFC3339](https://www.ietf.org/rfc/rfc3339.txt) text format.
     google.protobuf.Timestamp created_at = 3;
 
     // Name of the security group. 
-    // The name must be unique within the folder. 
-    // Value must match the regular expression ``\|[a-zA-Z]([-_a-zA-Z0-9]{0,61}[a-zA-Z0-9])?``.
+    // The name must be unique within the project. 
+    // Value must match the regular expression `[a-z0-9]([-a-z0-9]{0,61}[a-z0-9])?` —
+    // RFC 1123 DNS label: lowercase letters, digits and hyphens, 1..63 characters.
+    // Empty on Create means "server, name it": a name derived from the id is
+    // substituted. Empty on Update is rejected — a resource has no nameless state.
     string name = 4;
 
     // Description of the security group. 0-256 characters long.
@@ -128,7 +131,7 @@ message SecurityGroupRule {
     oneof target {
         // Target of the security rule.
 
-        // CIDR blocks to allow to recieve or send traffic.
+        // CIDR blocks to allow to receive or send traffic.
         CidrBlocks cidr_blocks = 8;
 
         // ID of the security group to add rule to.

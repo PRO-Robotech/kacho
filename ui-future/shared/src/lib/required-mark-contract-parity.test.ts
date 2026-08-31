@@ -455,7 +455,7 @@ describe("инъекция: гейт краснеет на дефекте и м�
     // по механизму, а не по форме записи.
     const verdict = latch(
       `<FormShell specId="network-interfaces" mode="create">\n` +
-        `  <Form.Item label={labelWithInfo("Имя", "Имя интерфейса в пределах фолдера.")} required>\n` +
+        `  <Form.Item label={labelWithInfo("Имя", "Имя интерфейса в пределах проекта.")} required>\n` +
         `    <Input />\n  </Form.Item>\n</FormShell>\n`,
     );
     expect(verdict.findings).toHaveLength(1);

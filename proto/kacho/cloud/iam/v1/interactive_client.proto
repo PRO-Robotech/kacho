@@ -41,7 +41,7 @@ message InteractiveClient {
 
   // Human-readable name. Unique cluster-wide among interactive clients
   // (enforced by a DB UNIQUE constraint, not a software check-then-act).
-  // 3-63 characters.
+  // 1-63 characters.
   string name = 3;
 
   // Optional description.

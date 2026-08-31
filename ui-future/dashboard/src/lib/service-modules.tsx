@@ -45,7 +45,7 @@ export const SERVICE_MODULES: ServiceModule[] = [
     label: "Virtual Private Cloud",
     icon: <Network size={iconSize} />,
     color: "#3D8DF5",
-    description: "Облачные сети, подсети, группы безопасности, публичные IP, таблицы маршрутизации.",
+    description: "Облачные сети, подсети, группы безопасности, публичные IP, таблицы маршрутов.",
     requiresProject: true,
     landing: (projectId) => (projectId ? `/projects/${projectId}/vpc/networks` : null),
     stats: [

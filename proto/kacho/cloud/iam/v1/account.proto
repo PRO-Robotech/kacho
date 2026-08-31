@@ -23,8 +23,11 @@ message Account {
   string id = 1;
 
   // Name of the account.
-  // The name is unique within the IAM domain. 3-63 characters long.
-  // Value must match the regular expression `[a-z]([-a-z0-9]{0,61}[a-z0-9])?`.
+  // The name is unique within the IAM domain. 1-63 characters long.
+  // Value must match the regular expression `[a-z0-9]([-a-z0-9]{0,61}[a-z0-9])?` —
+  // RFC 1123 DNS label: lowercase letters, digits and hyphens, 1..63 characters.
+  // Empty on Create means "server, name it": a name derived from the id is
+  // substituted. Empty on Update is rejected — a resource has no nameless state.
   string name = 2;
 
   // Optional description of the account. 0-256 characters long.

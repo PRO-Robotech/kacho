@@ -1,7 +1,12 @@
 // AccessPage — «Права доступа» (KAC-125).
 //
 // Layout по скриншотам:
-// - Header: «Права доступа» + табы «Облако» (Account-scope) / «Каталог» (Project-scope).
+// - Header: «Права доступа» + табы «Аккаунт» / «Проект» — по словарю подписей
+//   (`entity-names`), теми же словами, что на пилюле выбора в шапке и в меню.
+//   Здесь стояли «Облако» и «Каталог»: слова из модели, которой в продукте нет
+//   (уровни — Account → Project), причём «Каталог» уже занят админскими
+//   справочниками («Каталог типов дисков»). На экране выдачи прав ошибка выбора
+//   области означает выданный не туда доступ (#1609).
 // - CTA «Настроить доступ» → route-backed grant page with Cascader roles and invite fallback.
 // - Filter: имя/идентификатор, тип аккаунта, наследуемые роли.
 // - Table: пользователь / роли / идентификатор / федерация / actions.
@@ -22,12 +27,13 @@ import { useBreadcrumb, useHeaderRight } from "@shared/components/molecules/Page
 import { ScopeRequiredEmpty } from "@/components/molecules/ScopeRequiredEmpty";
 import { IamListShell, useTableScrollY } from "@/components/organisms/iam/IamListShell";
 import { useContext } from "@shared/lib/context-store";
-import { SERVICES } from "@shared/lib/entity-names";
+import { ENTITIES, SERVICES } from "@shared/lib/entity-names";
 import { errorText } from "@shared/lib/error-presentation";
 import { useDebouncedValue } from "@shared/lib/list-search";
 import { pickerScope } from "@shared/lib/picker-search";
 
-type ScopeTab = "cloud" | "folder";
+/** Уровень выдачи — теми же словами, что у платформы: аккаунт и проект. */
+type ScopeTab = "account" | "project";
 
 /**
  * Чем сужается список пользователей у владельца (#528).
@@ -54,12 +60,12 @@ export function AccessPage() {
   const account = useContext((s) => s.account);
   const project = useContext((s) => s.project);
   const navigate = useNavigate();
-  const [scope, setScope] = useState<ScopeTab>("cloud");
+  const [scope, setScope] = useState<ScopeTab>("account");
 
   const accountId = account?.id ?? "";
   const projectId = project?.id ?? "";
-  const resourceType = scope === "cloud" ? "account" : "project";
-  const resourceId = scope === "cloud" ? accountId : projectId;
+  const resourceType = scope;
+  const resourceId = scope === "account" ? accountId : projectId;
   const { wrapRef, scrollY } = useTableScrollY();
   // Слот шапки приложения ПУСТ: действие стоит последним в ряду ручек списка,
   // как у generic-страницы. Сбросить его всё равно нужно — слот держит состояние
@@ -197,8 +203,8 @@ export function AccessPage() {
           value={scope}
           onChange={(v) => setScope(v as ScopeTab)}
           options={[
-            { label: "Облако", value: "cloud" },
-            { label: "Каталог", value: "folder", disabled: !projectId },
+            { label: ENTITIES.accounts.singular, value: "account" },
+            { label: ENTITIES.projects.singular, value: "project", disabled: !projectId },
           ]}
         />
       }
@@ -208,7 +214,7 @@ export function AccessPage() {
         // Одна форма «область не выбрана» на весь раздел: прежде здесь стоял
         // `Alert` вверху страницы, у списка ресурсов — `Empty` от antd, у групп
         // — голая строка. Три вида одного предмета.
-        <ScopeRequiredEmpty purpose="увидеть права доступа" scope={scope === "cloud" ? "account" : "project"} />
+        <ScopeRequiredEmpty purpose="увидеть права доступа" scope={scope} />
       ) : (
         <>
           <div ref={wrapRef} className="kc-table-fill" style={{ flex: 1, minHeight: 0, minWidth: 0 }}>
@@ -235,7 +241,12 @@ export function AccessGrantPage() {
   const project = useContext((s) => s.project);
   const navigate = useNavigate();
   const [searchParams] = useSearchParams();
-  const scope = searchParams.get("scope") === "folder" ? "folder" : "cloud";
+  // Прежние написания уровня (`cloud`/`folder`) читаются как свои — ссылку с
+  // ними могли сохранить закладкой. Молча свести их к умолчанию нельзя: адрес
+  // с `scope=folder` показал бы выдачи АККАУНТА вместо проекта, то есть не ту
+  // область на экране, где ошибка области и есть цена ошибки.
+  const scopeParam = searchParams.get("scope");
+  const scope: ScopeTab = scopeParam === "project" || scopeParam === "folder" ? "project" : "account";
   const accountId = account?.id ?? "";
   const projectId = project?.id ?? "";
   const [form] = Form.useForm();
@@ -318,9 +329,9 @@ export function AccessGrantPage() {
         return;
       }
 
-      // Anchor-тир гранта: вкладка «Облако» → аккаунт, «Каталог» → проект.
-      const targetScopeTier = scope === "cloud" ? "ACCOUNT" : "PROJECT";
-      const targetScopeId = scope === "cloud" ? accountId : projectId;
+      // Anchor-тир гранта: вкладка «Аккаунт» → аккаунт, «Проект» → проект.
+      const targetScopeTier = scope === "account" ? "ACCOUNT" : "PROJECT";
+      const targetScopeId = scope === "account" ? accountId : projectId;
 
       if (matchedUser) {
         // Existing user — bulk Create AccessBinding (по одной на каждую выбранную роль).
@@ -383,9 +394,11 @@ export function AccessGrantPage() {
     <FormShell specId="access-bindings" mode="create" singular="Доступ" title="Выдача доступа">
       <Form form={form} layout="vertical">
         <Form.Item label="Ресурс">
-          <Tag color={scope === "cloud" ? "blue" : "geekblue"}>{scope === "cloud" ? "Аккаунт" : "Проект"}</Tag>
+          <Tag color={scope === "account" ? "blue" : "geekblue"}>
+            {scope === "account" ? ENTITIES.accounts.singular : ENTITIES.projects.singular}
+          </Tag>
           <Typography.Text type="secondary" style={{ marginLeft: 8 }}>
-            {scope === "cloud" ? accountId : projectId}
+            {scope === "account" ? accountId : projectId}
           </Typography.Text>
         </Form.Item>
 

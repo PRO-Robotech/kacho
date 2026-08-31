@@ -30,7 +30,7 @@ export function MoveStubDialog({ open, onOpenChange, resourceLabel, name, apiPat
           <Typography.Text strong>{name}</Typography.Text>
         </div>
         <Typography.Text type="secondary" style={{ fontSize: 12 }}>
-          UI пока не имеет picker&apos;а целевого Project. Используйте REST API:
+          Выбор проекта-получателя в консоли пока не заведён. Перенести можно запросом:
         </Typography.Text>
         <Typography.Text code copyable style={{ display: "block", whiteSpace: "pre-wrap" }}>
           {`POST ${apiPath}:move\n{ "destination_project_id": "<project-id>" }`}

@@ -54,12 +54,19 @@ import dedent from 'ts-dedent'
 `FailedPrecondition "subnet has dependent resources"`. Сначала удалите шлюз.
 :::
 
-:::note Строгое имя (отличие от прочих VPC-ресурсов)
-Имя Gateway валидируется **строгим** контрактом: только lowercase, **без uppercase и
-underscore** (regex `^([a-z]([-a-z0-9]{0,61}[a-z0-9])?)?$`; пустая строка допустима).
-Остальные ресурсы VPC (`Network` / `Subnet` / …) используют permissive-контракт, где
-дополнительно разрешены uppercase и underscore. Учитывайте это при автоматизации, чтобы
-имя, валидное для сети, не отвалилось на шлюзе.
+:::note Имя — та же форма, что у всех остальных ресурсов
+Имя Gateway подчиняется **общей** форме платформы — DNS label по RFC 1123,
+`^[a-z0-9]([-a-z0-9]{0,61}[a-z0-9])?$`: строчные латинские буквы, цифры и дефис, первый
+и последний знак — буква или цифра, длина 1..63. Цифра первым знаком допустима.
+
+Отдельного правила «строгий шлюз против permissive-сети» **не существует**: до #715
+валидаторов имени было четыре и они разошлись по трём осям; с тех пор валидатор в дереве
+один (`pkg/validate/nameform`), и та же форма продублирована ограничением таблицы. Имя,
+валидное для сети, валидно и для шлюза — переносите соглашение об именовании между
+ресурсами свободно.
+
+Пустая строка при `Create` означает «назови сам»: сервер подставит имя, производное от
+`id`. При `Update` пустое имя отвергается — ресурса без имени не бывает.
 :::
 
 ## Поля ресурса
@@ -69,7 +76,7 @@ underscore** (regex `^([a-z]([-a-z0-9]{0,61}[a-z0-9])?)?$`; пустая стр�
   <tbody>
     <tr><td><code>id</code></td><td><code>{TYPES.string}</code></td><td>{DICTIONARY.id.short} (префикс <code>gtw</code>)</td></tr>
     <tr><td><code>projectId</code></td><td><code>{TYPES.string}</code></td><td>{DICTIONARY.projectId.short}</td></tr>
-    <tr><td><code>name</code></td><td><code>{TYPES.string}</code></td><td>Имя шлюза (strict, lowercase; уникально в пределах проекта)</td></tr>
+    <tr><td><code>name</code></td><td><code>{TYPES.string}</code></td><td>Имя шлюза — общая форма платформы (см. врезку выше); уникально в пределах проекта</td></tr>
     <tr><td><code>description</code></td><td><code>{TYPES.string}</code></td><td>{DICTIONARY.description.short}</td></tr>
     <tr><td><code>labels</code></td><td><code>{TYPES.mapStringString}</code></td><td>{DICTIONARY.labels.short}</td></tr>
     <tr><td><code>createdAt</code></td><td><code>{TYPES.timestamp}</code></td><td>{DICTIONARY.createdAt.short}</td></tr>
@@ -118,7 +125,7 @@ flowchart LR
 found»; есть, но не годится → `FailedPrecondition`. Годится он, когда выполнены все три
 условия:
 
-- **та же сеть** — подсеть привязки шлюза принадлежит сети этой таблицы маршрутизации;
+- **та же сеть** — подсеть привязки шлюза принадлежит сети этой таблицы маршрутов;
 - **когерентное размещение** — зональная подсеть таблицы и зональная подсеть шлюза в
   ОДНОЙ зоне; региональная (anycast) подсеть зоны не несёт и из зональной сверки
   исключена by construction;
@@ -242,9 +249,11 @@ use». Сначала снимите маршрут.
 операции: проверка существования проекта → вставка `Gateway` (вместе с проверкой якоря
 размещения) → запись события в outbox.
 
-Непустое имя должно быть уникальным в пределах проекта. Синхронной проверки имени здесь
-нет — уникальность держит сама база, поэтому дубликат приходит **ошибкой операции**
-(`ALREADY_EXISTS`), а не ответом на запрос. Пустое имя допустимо и дублей не образует.
+Имя должно быть уникальным в пределах проекта — уникальность полная
+(`UNIQUE(projectId, name)`), а не «только для непустых». Синхронной проверки имени здесь
+нет — её держит сама база, поэтому дубликат приходит **ошибкой операции**
+(`ALREADY_EXISTS`), а не ответом на запрос. Пустая строка в запросе означает «назови сам»
+и слот не занимает: сервер проставит имя, производное от `id`.
 
 #### Тело запроса
 
@@ -252,7 +261,7 @@ use». Сначала снимите маршрут.
   <thead><tr><th>Параметр</th><th>Обязательность</th><th>Тип</th><th>Описание</th></tr></thead>
   <tbody>
     <tr><td><code>projectId</code></td><td><strong>да</strong></td><td><code>{TYPES.string}</code></td><td>{DICTIONARY.projectId.short}</td></tr>
-    <tr><td><code>name</code></td><td>нет</td><td><code>{TYPES.string}</code></td><td>Имя шлюза (strict, lowercase; уникально в проекте)</td></tr>
+    <tr><td><code>name</code></td><td>нет</td><td><code>{TYPES.string}</code></td><td>Имя шлюза — общая форма платформы (см. врезку выше); уникально в проекте</td></tr>
     <tr><td><code>description</code></td><td>нет</td><td><code>{TYPES.string}</code></td><td>{DICTIONARY.description.short}</td></tr>
     <tr><td><code>labels</code></td><td>нет</td><td><code>{TYPES.mapStringString}</code></td><td>{DICTIONARY.labels.short}</td></tr>
     <tr><td><code>subnetId</code></td><td><b>да</b></td><td><code>{TYPES.string}</code></td><td>Подсеть привязки и якорь размещения. Неизменяема</td></tr>
@@ -331,7 +340,7 @@ Gateway.Create». Возвращает `Operation` (async). Соблюдаетс
   <thead><tr><th>Параметр</th><th>Обязательность</th><th>Тип</th><th>Описание</th></tr></thead>
   <tbody>
     <tr><td><code>updateMask</code></td><td>нет</td><td><code>{TYPES.fieldMask}</code></td><td>{DICTIONARY.updateMask.short}</td></tr>
-    <tr><td><code>name</code></td><td>нет</td><td><code>{TYPES.string}</code></td><td>Новое имя шлюза (strict, lowercase; уникально в проекте)</td></tr>
+    <tr><td><code>name</code></td><td>нет</td><td><code>{TYPES.string}</code></td><td>Новое имя шлюза — общая форма платформы (см. врезку выше); уникально в проекте</td></tr>
     <tr><td><code>description</code></td><td>нет</td><td><code>{TYPES.string}</code></td><td>{DICTIONARY.description.short}</td></tr>
     <tr><td><code>labels</code></td><td>нет</td><td><code>{TYPES.mapStringString}</code></td><td>{DICTIONARY.labels.short} (полная замена набора)</td></tr>
     <tr><td colSpan="4">Вида шлюза и подсети привязки в запросе изменения <b>нет</b>: оба неизменяемы после <code>Create</code>. Имя <code>natGateway</code> / <code>egressOnlyGateway</code> / <code>subnetId</code> в <code>updateMask</code> → <code>InvalidArgument</code> «&lt;field&gt; is immutable after Gateway.Create»</td></tr>
@@ -507,8 +516,10 @@ Gateway.Create». Возвращает `Operation` (async). Соблюдаетс
   сетей не работает: сети нужен свой. Здесь раньше стояло обратное — «одного достаточно
   для многих сетей»; это было верно, пока у шлюза не было якоря, и перестало быть верным
   вместе с его появлением.
-- **Строгое имя.** Имя шлюза строже, чем у остальных VPC-ресурсов (только lowercase, без
-  underscore). Шаблон имени, валидный для `Network`/`Subnet`, может не подойти шлюзу.
+- **Имя — общее для всей платформы.** Отдельной, более строгой формы у шлюза нет: имя
+  подчиняется тому же DNS label по RFC 1123, что и у `Network`/`Subnet`, поэтому
+  соглашение об именовании переносится между ресурсами без правок (см. врезку «Имя — та
+  же форма, что у всех остальных ресурсов» выше).
 - **Уникальность имени — в пределах проекта.** Повторное `name` → `ALREADY_EXISTS`.
   В разных проектах имена не конфликтуют.
 - **`labels` заменяются целиком.** Частичное обновление меток нужно делать через
@@ -525,5 +536,5 @@ Gateway.Create». Возвращает `Operation` (async). Соблюдаетс
 - Все мутации асинхронные: дожидайтесь `done: true` в `Operation`, прежде чем строить
   на шлюз маршруты в автоматизации.
 - Для воспроизводимых стендов держите создание шлюза в одном описании инфраструктуры
-  рядом с сетями и таблицами маршрутизации проекта.
+  рядом с сетями и таблицами маршрутов проекта.
 :::

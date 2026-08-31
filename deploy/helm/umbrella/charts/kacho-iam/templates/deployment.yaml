@@ -463,14 +463,33 @@ spec:
             - name: {{ $k }}
               value: {{ $v | quote }}
             {{- end }}
+          # ГОТОВНОСТЬ СПРАШИВАЕТСЯ ПО ТОМУ, ЧТО СЕРВИС СТРОИТ. `/readyz` живёт на
+          # слушателе вебхуков (:9092) и отражает коннект к базе и поднятый
+          # LRO-worker (buildHooksMux в cmd/kacho-iam/hooks_mux.go); `/healthz` там
+          # же — чистая живость. Прежде оба слота спрашивали `tcpSocket: grpc`, то
+          # есть «открыт ли порт»: iam с недоступной базой оставался Ready, а он
+          # фронтит authN+authZ каждому сервису платформы.
+          #
+          # Схема следует TLS слушателя вебхуков: та же ручка, что поднимает его
+          # TLS, переключает и пробу. Двух редакций одного решения тут быть не
+          # должно — проба по http на TLS-слушателе не ответит никогда, и под не
+          # станет готовым ни при каких условиях.
           readinessProbe:
-            tcpSocket:
-              port: grpc
+            httpGet:
+              path: /readyz
+              port: http-hooks
+              {{- if (dig "hooksAndMetrics" .Values.mtls.httpListeners .Values.mtls) }}
+              scheme: HTTPS
+              {{- end }}
             initialDelaySeconds: 5
             periodSeconds: 10
           livenessProbe:
-            tcpSocket:
-              port: grpc
+            httpGet:
+              path: /healthz
+              port: http-hooks
+              {{- if (dig "hooksAndMetrics" .Values.mtls.httpListeners .Values.mtls) }}
+              scheme: HTTPS
+              {{- end }}
             initialDelaySeconds: 10
             periodSeconds: 30
           resources:

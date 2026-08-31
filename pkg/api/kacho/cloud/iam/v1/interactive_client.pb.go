@@ -108,7 +108,7 @@ type InteractiveClient struct {
 	CreatedAt *timestamppb.Timestamp `protobuf:"bytes,2,opt,name=created_at,json=createdAt,proto3" json:"created_at,omitempty"`
 	// Human-readable name. Unique cluster-wide among interactive clients
 	// (enforced by a DB UNIQUE constraint, not a software check-then-act).
-	// 3-63 characters.
+	// 1-63 characters.
 	Name string `protobuf:"bytes,3,opt,name=name,proto3" json:"name,omitempty"`
 	// Optional description.
 	Description string `protobuf:"bytes,4,opt,name=description,proto3" json:"description,omitempty"`

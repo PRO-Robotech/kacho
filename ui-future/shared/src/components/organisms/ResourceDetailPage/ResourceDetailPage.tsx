@@ -508,7 +508,7 @@ export function ResourceDetailPage({
     // Network-specific: system-provisioned default RT (VPC-1, echoed on create).
     spec.id === "networks" && getByPath<string>(data, "default_route_table_id")
       ? {
-          label: "Таблица маршрутизации по умолчанию",
+          label: "Таблица маршрутов по умолчанию",
           value: <RefNameLink specId="route-tables" refId={getByPath<string>(data, "default_route_table_id")} copy={false} />, copy: getByPath<string>(data, "default_route_table_id") ?? undefined,
         }
       : null,
@@ -535,7 +535,7 @@ export function ResourceDetailPage({
       : null,
     // Subnet-specific: derived placement (ZONAL zone / REGIONAL region).
     // Якорь — ресурс каталога geo, поэтому он ССЫЛКА, как соседние «Сеть» и
-    // «Таблица маршрутизации». Ветку рисует единственный `PlacementAnchor`:
+    // «Таблица маршрутов». Ветку рисует единственный `PlacementAnchor`:
     // прежде она стояла здесь своей копией и расходилась с двумя другими.
     spec.id === "subnets"
       ? {
@@ -593,7 +593,7 @@ export function ResourceDetailPage({
       : null,
     spec.id === "subnets" && getByPath<string>(data, "route_table_id")
       ? {
-          label: "Таблица маршрутизации",
+          label: "Таблица маршрутов",
           value: <MonoValue value={getByPath<string>(data, "route_table_id")!} />, copy: getByPath<string>(data, "route_table_id")! || undefined,
         }
       : null,

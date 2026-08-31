@@ -719,7 +719,7 @@ CASES.append(Case(
         *_setup_lb("vip-comp"),
         retry_until_authorized(Step(name="cr-likely-fail", method="POST", path=_LST_BASE,
              body={"loadBalancerId": "{{nlbId}}", "name": "vipc-{{runId}}",
-                   "protocol": "TCP", "port": 87, "defaultTargetGroupId": "{{garbageTgrId}}"},
+                   "protocol": "TCP", "port": 87, "targetGroupId": "{{garbageTgrId}}"},
              test_script=[
                  *assert_status(400), *assert_grpc_code(9, "FAILED_PRECONDITION"),
                  "pm.test('refusal guides the caller to create the TargetGroup first', () => "
@@ -819,7 +819,7 @@ CASES.append(Case(
         # be denied while the owner tuple materializes. That is a timing window, not an
         # outcome.
         retry_until_authorized(Step(name="upd-default-tg-mismatch", method="PATCH", path=f"{_LST_BASE}/{{{{lstId}}}}",
-             body={"updateMask": "defaultTargetGroupId", "defaultTargetGroupId": "{{tgAltId}}"},
+             body={"updateMask": "targetGroupId", "targetGroupId": "{{tgAltId}}"},
              test_script=[
                  "pm.test('cross-region repoint refused synchronously (400)', () => "
                  "  pm.expect(pm.response.code, pm.response.text()).to.eql(400));",
@@ -1139,7 +1139,7 @@ CASES.append(Case(
         # there is no branch that lawfully refuses this and nothing for the tolerance to
         # cover. 403 is the read-your-writes window the wrapper already absorbs.
         retry_until_authorized(Step(name="upd-clear", method="PATCH", path=f"{_LST_BASE}/{{{{lstId}}}}",
-             body={"updateMask": "defaultTargetGroupId", "defaultTargetGroupId": ""},
+             body={"updateMask": "targetGroupId", "targetGroupId": ""},
              test_script=[*assert_status(200), *save_from_response("j.id", "opId")])),
         poll_operation_until_done(must_succeed=True),
         # …and the case is named for the CLEAR, which it never checked: it asserted the
@@ -1153,6 +1153,70 @@ CASES.append(Case(
                  "pm.test('the target group reference is actually cleared', () => {",
                  "  const j = pm.response.json();",
                  "  pm.expect(j.targetGroupId || j.defaultTargetGroupId || '', pm.response.text()).to.eql('');",
+                 "});",
+             ])),
+        *_cleanup_lst(),
+        *_cleanup_lb(),
+    ],
+))
+
+CASES.append(Case(
+    id="LST-UPD-VAL-DEFAULT-TG-RETIRED",
+    title="defaultTargetGroupId как ВХОД отвергается явно и называет замену (Verifies #1596)",
+    classes=["VAL", "NEG"], priority="P1",
+    steps=[
+        # У ссылки на группу целей ОДИН вход — `targetGroupId`. Прежде их было два, и
+        # приоритет между ними был молчаливым: `targetGroupId` побеждал, а записанное в
+        # `defaultTargetGroupId` отбрасывалось без признака, из-за чего клиент получал
+        # `200` и `done=true` на изменение, которого не произошло.
+        #
+        # ПОЧЕМУ ЭТО ЧЁРНЫМ ЯЩИКОМ, А НЕ ТОЛЬКО ЮНИТОМ. Отказ обязан доехать до клиента
+        # ЧЕРЕЗ КРАЙ, а край работает с `DiscardUnknown`: поле, снятое с контракта
+        # целиком, он отбросил бы молча — и вместо отказа получился бы слушатель без
+        # группы. Поле поэтому оставлено в контракте ради явного отказа, и проверять надо
+        # именно то, что видит вызывающий по HTTP.
+        *_setup_lb("retired-dtg"),
+        retry_until_authorized(Step(name="cr", method="POST", path=_LST_BASE,
+             body={"loadBalancerId": "{{nlbId}}", "name": "rdtg-{{runId}}",
+                   "protocol": "TCP", "port": 92},
+             test_script=[*assert_status(200), *save_from_response("j.id", "opId"),
+                          *save_from_response("j.metadata && j.metadata.listenerId", "lstId")])),
+        poll_operation_until_done(),
+        # Утверждается ПАРА — HTTP-статус и grpc-код, — плюс то, что отказ
+        # ВОССТАНАВЛИВАЕТ следующий шаг: он называет поле-замену. Отказ, который лишь
+        # запрещает, оставил бы клиента без пути дальше.
+        retry_until_authorized(Step(name="upd-retired-input", method="PATCH",
+             path=f"{_LST_BASE}/{{{{lstId}}}}",
+             # Группа НЕСУЩЕСТВУЮЩАЯ намеренно: отказ по снятому входу обязан
+             # наступать ДО резолва ссылки. Возьми существующую — и проба не
+             # отличила бы «вход снят» от «группа не нашлась».
+             body={"updateMask": "defaultTargetGroupId", "defaultTargetGroupId": "{{garbageTgrId}}"},
+             test_script=[
+                 *assert_status(400), *assert_grpc_code(3, "INVALID_ARGUMENT"),
+                 "pm.test('отказ называет снятое поле', () => "
+                 "  pm.expect(pm.response.json().message || '', pm.response.text())"
+                 "    .to.include('default_target_group_id'));",
+                 "pm.test('отказ называет замену — иначе он не даёт следующего шага', () => "
+                 "  pm.expect(pm.response.json().message || '', pm.response.text())"
+                 "    .to.include('target_group_id'));",
+                 "pm.environment.set('opId', '');",
+             ])),
+        # ПОЛОЖИТЕЛЬНЫЙ КОНТРОЛЬ. Без него отрицание выше зеленело бы и на слушателе,
+        # у которого сломана правка целиком: «отвергается» неотличимо от «не работает
+        # ничего». Заодно это доказывает, что снят именно ВХОД, а не возможность.
+        retry_until_authorized(Step(name="upd-authoritative-input", method="PATCH",
+             path=f"{_LST_BASE}/{{{{lstId}}}}",
+             body={"updateMask": "targetGroupId", "targetGroupId": ""},
+             test_script=[*assert_status(200), *save_from_response("j.id", "opId")])),
+        poll_operation_until_done(must_succeed=True),
+        # И поле остаётся ЧИТАЕМЫМ: снят вход, а не зеркало в ответе.
+        retry_until_authorized(Step(name="get-mirror-still-readable", method="GET",
+             path=f"{_LST_BASE}/{{{{lstId}}}}",
+             test_script=[
+                 *assert_status(200),
+                 "pm.test('defaultTargetGroupId остаётся полем ОТВЕТА', () => {",
+                 "  const j = pm.response.json();",
+                 "  pm.expect(j, pm.response.text()).to.have.property('defaultTargetGroupId');",
                  "});",
              ])),
         *_cleanup_lst(),
@@ -1561,7 +1625,7 @@ CASES.append(Case(
         Step(name="cr-lst-cross-tg-legacy", method="POST", path=_LST_BASE,
              body={"loadBalancerId": "{{nlbId}}", "name": "xtgl-{{runId}}",
                    "protocol": "TCP", "port": 8444,
-                   "defaultTargetGroupId": "{{tgCrossId}}"},
+                   "targetGroupId": "{{tgCrossId}}"},
              test_script=[
                  "pm.test('cross-project target group is refused via the legacy field too', () => "
                  "  pm.expect(pm.response.code).to.be.oneOf([400, 403, 404, 409]));",

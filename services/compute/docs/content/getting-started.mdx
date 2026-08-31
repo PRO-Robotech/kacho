@@ -11,7 +11,7 @@ import dedent from 'ts-dedent'
 
 Это пошаговый онбординг: за несколько запросов вы поднимете рабочее вычислительное
 окружение в Kachō Compute — от выбора типа диска до запущенного инстанса с присоединённым
-диском и снимком. Каждый шаг продолжает предыдущий: id ресурса из ответа подставляется в
+томом и снимком. Каждый шаг продолжает предыдущий: id ресурса из ответа подставляется в
 следующий запрос.
 
 Все примеры — `curl` к REST-поверхности через `api-gateway`. Та же семантика (поля, коды
@@ -19,9 +19,11 @@ import dedent from 'ts-dedent'
 gRPC-контракта.
 
 :::info Что мы построим
-Выбор `DiskType` → отдельный `Disk` (данные) → `Instance` (виртуальная машина с загрузочным
-диском) → `AttachDisk` (подключаем диск данных) → управление жизненным циклом (`Stop` / `Start`)
-→ `Snapshot` (снимок диска). К концу у вас будет запущенная ВМ с диском данных и его снимком.
+Выбор `DiskType` → отдельный `Volume` (данные) → `Instance` (виртуальная машина с загрузочным
+образом) → `AttachDisk` (подключаем том данных) → управление жизненным циклом (`Stop` / `Start`)
+→ `Snapshot` (снимок тома). К концу у вас будет запущенная ВМ с томом данных и его снимком.
+Блочное хранение (`DiskType` / `Volume` / `Image` / `Snapshot`) принадлежит **kacho-storage**:
+шаги 1, 2 и 6 идут к нему, остальные — к kacho-compute.
 :::
 
 ## Предпосылки
@@ -100,9 +102,12 @@ sequenceDiagram
   `}
 </CodeBlock>
 
-:::note Префикс id операции
-Все Compute-операции имеют id с префиксом `epd` (например, `epdk3xe746h019hnz182`). По этому
-префиксу `api-gateway` маршрутизирует `GET /operations/{id}` в kacho-compute.
+:::note Префикс id операции решает, кому достанется полл
+Compute-операции имеют id с префиксом `epd` (например, `epdk3xe746h019hnz182`), операции
+kacho-storage — `sop` (например, `sopa1b2c3d4e5f6g7h8j`). По этому префиксу `api-gateway`
+маршрутизирует `GET /operations/{id}` владельцу операции. Быстрый старт идёт по **двум**
+доменам: том и снимок создаёт kacho-storage, машину — kacho-compute, поэтому `poll` зовётся
+на id **из ответа**, а не на угаданном префиксе.
 :::
 
 ## Шаг 1. Выбрать DiskType
@@ -153,17 +158,18 @@ sequenceDiagram
   `}
 </CodeBlock>
 
-Ответ — `Operation` (мутация async); `metadata.diskId` — id создаваемого диска:
+Ответ — `Operation` (мутация async) **от kacho-storage**; `metadata.volumeId` — id
+создаваемого тома:
 
 <CodeBlock language="json">
   {dedent`
     {
-      "id": "epdk3xe746h019hnz182",
-      "description": "Create disk data-disk",
+      "id": "sopa1b2c3d4e5f6g7h8j",
+      "description": "Create volume vol0am5d8q1w4e7r2t6y",
       "done": false,
       "metadata": {
-        "@type": "type.googleapis.com/kacho.cloud.compute.v1.CreateDiskMetadata",
-        "diskId": "epd0am5d8q1w4e7r2t6y"
+        "@type": "type.googleapis.com/kacho.cloud.storage.v1.CreateVolumeMetadata",
+        "volumeId": "vol0am5d8q1w4e7r2t6y"
       }
     }
   `}
@@ -171,8 +177,8 @@ sequenceDiagram
 
 <CodeBlock language="bash">
   {dedent`
-    poll epdk3xe746h019hnz182
-    export DISK=epd0am5d8q1w4e7r2t6y     # из metadata.diskId
+    poll sopa1b2c3d4e5f6g7h8j
+    export VOL=vol0am5d8q1w4e7r2t6y     # из metadata.volumeId
   `}
 </CodeBlock>
 
@@ -185,9 +191,19 @@ sequenceDiagram
 
 ## Шаг 3. Создать Instance
 
-`Instance` — виртуальная машина. При создании обязательны `instanceKind` (`VM` или
-`CONTAINER`), `machineTypeId` (тип машины из каталога) и `bootSource` (источник загрузки).
-Инстанс принадлежит зоне (`zoneId`, immutable) и проекту.
+`Instance` — виртуальная машина. При создании обязательны `instanceKind`, `machineTypeId`
+(тип машины из каталога) и `bootSource` (источник загрузки). Инстанс принадлежит зоне
+(`zoneId`, immutable) и проекту.
+
+:::caution Создаётся сегодня только `instanceKind: VM`
+Род `CONTAINER` объявлен контрактом, но на создании отвергается синхронно:
+`INVALID_ARGUMENT "instanceKind CONTAINER is not creatable yet: a registry image has no
+durable address today"`. По той же причине отвергается и `bootSource.type: registry.image` —
+у образа реестра сегодня нет неизменяемого адреса, а ссылка на пару «реестр + имя» стала бы
+ложной после чужого переименования. Единственный принимаемый источник загрузки —
+`storage.image`; его `id` — обычный идентификатор образа (`img…`), тег или дайджест не
+требуются.
+:::
 
 Тип машины возьмём из каталога:
 
@@ -195,6 +211,15 @@ sequenceDiagram
   {dedent`
     curl -s "$CMP/compute/v1/machineTypes?family=STANDARD" "\${auth[@]}"
     export MT=mt-k3xe746h019hnz182   # id подходящего типа
+  `}
+</CodeBlock>
+
+Загрузочный образ — ресурс **kacho-storage**; его id берётся из списка образов проекта:
+
+<CodeBlock language="bash">
+  {dedent`
+    curl -s "$STG/storage/v1/images?projectId=$PROJECT" "\${auth[@]}"
+    export IMAGE=img7c1v3b5n7m9k2j4h0   # id образа из ответа
   `}
 </CodeBlock>
 
@@ -236,16 +261,16 @@ NIC автоматически. Сетевые интерфейсы (из дом
 `AttachNetworkInterface` (требует статуса `STOPPED`). Подробнее — [Instance](/api/instance).
 :::
 
-## Шаг 4. Присоединить диск данных
+## Шаг 4. Присоединить том данных
 
-Подключим созданный на шаге 2 диск к инстансу действием `:attachDisk`. Диск обязан быть
+Подключим созданный на шаге 2 том к инстансу действием `:attachDisk`. Том обязан быть
 `READY`, в той же зоне и не присоединённым к другому инстансу.
 
 <CodeBlock language="bash">
   {dedent`
     curl -s -X POST "$CMP/compute/v1/instances/$INST:attachDisk" "\${auth[@]}" \\
       -d '{
-        "attachedDiskSpec": { "diskId": "'"$DISK"'", "autoDelete": false }
+        "attachedDiskSpec": { "volumeId": "'"$VOL"'", "autoDelete": false }
       }'
   `}
 </CodeBlock>
@@ -256,8 +281,8 @@ NIC автоматически. Сетевые интерфейсы (из дом
   `}
 </CodeBlock>
 
-После `done: true` `Get` инстанса покажет диск в `secondaryDisks`, а `Get` диска —
-инстанс в `instanceIds`.
+После `done: true` `Get` инстанса покажет том в `secondaryDisks`, а `Get` тома —
+машину в `usedBy` (`reference.Reference`; поля `instanceIds` у тома нет).
 
 ## Шаг 5. Управлять жизненным циклом
 
@@ -293,7 +318,7 @@ NIC автоматически. Сетевые интерфейсы (из дом
     curl -s -X POST "$STG/storage/v1/snapshots" "\${auth[@]}" \\
       -d '{
         "projectId": "'"$PROJECT"'",
-        "volumeId": "'"$DISK"'",
+        "volumeId": "'"$VOL"'",
         "name": "data-volume-snap"
       }'
   `}
@@ -302,7 +327,7 @@ NIC автоматически. Сетевые интерфейсы (из дом
 <CodeBlock language="bash">
   {dedent`
     poll <operationId>
-    export SNAP=fd83v5x7z9b1d4f6h8j0   # из metadata.snapshotId
+    export SNAP=snp3v5x7z9b1d4f6h8j0   # из metadata.snapshotId
   `}
 </CodeBlock>
 
@@ -319,7 +344,7 @@ NIC автоматически. Сетевые интерфейсы (из дом
 <CodeBlock language="bash">
   {dedent`
     curl -s "$CMP/compute/v1/instances/$INST" "\${auth[@]}"            # инстанс + status, secondaryDisks
-    curl -s "$STG/storage/v1/volumes/$DISK" "\${auth[@]}"              # том + usedBy
+    curl -s "$STG/storage/v1/volumes/$VOL" "\${auth[@]}"              # том + usedBy
     curl -s "$STG/storage/v1/snapshots/$SNAP" "\${auth[@]}"            # снимок + источник
     curl -s "$CMP/compute/v1/instances?projectId=$PROJECT" "\${auth[@]}"  # все инстансы проекта
   `}
@@ -333,7 +358,7 @@ NIC автоматически. Сетевые интерфейсы (из дом
 <CodeBlock language="bash">
   {dedent`
     # 1) отсоединить диск данных
-    curl -s -X POST "$CMP/compute/v1/instances/$INST:detachDisk" "\${auth[@]}" -d '{ "diskId": "'"$DISK"'" }'
+    curl -s -X POST "$CMP/compute/v1/instances/$INST:detachDisk" "\${auth[@]}" -d '{ "volumeId": "'"$VOL"'" }'
     poll <operationId>
 
     # 2) удалить инстанс (тома при этом только отвязываются, см. врезку ниже)
@@ -342,7 +367,7 @@ NIC автоматически. Сетевые интерфейсы (из дом
 
     # 3) удалить снимок и диск данных (в любом порядке — жёсткого FK между ними нет)
     curl -s -X DELETE "$STG/storage/v1/snapshots/$SNAP" "\${auth[@]}"
-    curl -s -X DELETE "$STG/storage/v1/volumes/$DISK" "\${auth[@]}"
+    curl -s -X DELETE "$STG/storage/v1/volumes/$VOL" "\${auth[@]}"
   `}
 </CodeBlock>
 

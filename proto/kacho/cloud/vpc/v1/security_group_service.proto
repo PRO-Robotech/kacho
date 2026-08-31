@@ -30,7 +30,7 @@ service SecurityGroupService {
     option (kacho.iam.authz.v1.required_acr_min) = "1";
   }
 
-    // Retrieves the list of SecurityGroup resources in the specified folder.
+    // Retrieves the list of SecurityGroup resources in the specified project.
     rpc List (ListSecurityGroupsRequest) returns (ListSecurityGroupsResponse) {
       option (google.api.http) = { get: "/vpc/v1/securityGroups" };
     option (kacho.iam.authz.v1.permission)        = "vpc.security_groups.list";
@@ -50,7 +50,7 @@ service SecurityGroupService {
     option (kacho.iam.authz.v1.required_acr_min) = "1";
   }
 
-    // Creates a security group in the specified folder and network.
+    // Creates a security group in the specified project and network.
     rpc Create (CreateSecurityGroupRequest) returns (operation.Operation) {
         option (google.api.http) = { post: "/vpc/v1/securityGroups" body: "*" };
         option (kacho.cloud.api.operation) = {
@@ -170,7 +170,10 @@ message ListSecurityGroupsRequest {
     // The expression must specify:
     // 1. The field name. Currently you can use filtering only on the [SecurityGroup.name] field.
     // 2. An `=` operator.
-    // 3. The value in double quotes (`"`). Must be 3-63 characters long and match the regular expression `[a-z][-a-z0-9]{1,61}[a-z0-9]`.
+    // 3. The value in double quotes (`"`). The value is compared to the resource
+    //    name as-is, so only a value in the name form can match anything:
+    //    `[a-z0-9]([-a-z0-9]{0,61}[a-z0-9])?`. The filter itself applies no
+    //    separate length or alphabet rule to the value.
     string filter = 4; //filter by network_id is here
 }
 
@@ -193,7 +196,7 @@ message CreateSecurityGroupRequest {
     string project_id = 1;
 
     // Name of the security group.
-    // The name must be unique within the folder.
+    // The name must be unique within the project.
     string name = 2;
 
     // Description of the security group.    
@@ -252,7 +255,7 @@ message SecurityGroupRuleSpec {
     oneof target {
         // Target of the security rule.
 
-        // CIDR blocks to allow to recieve or send traffic.
+        // CIDR blocks to allow to receive or send traffic.
         CidrBlocks cidr_blocks = 7;
 
         // ID of the security group to add rule to.
@@ -280,7 +283,7 @@ message UpdateSecurityGroupRequest {
     google.protobuf.FieldMask update_mask = 2;
 
     // New name for the security group.
-    // The name must be unique within the folder.
+    // The name must be unique within the project.
     string name = 3;
 
     // New description of the security group.

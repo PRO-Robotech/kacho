@@ -13,7 +13,7 @@ to keep cross-service cognitive load minimal.
 | Part | Allowed values |
 |---|---|
 | `DOMAIN` | `NLB` / `LST` / `TGR` / `TGT` / `OP` / `AZD` / `XRES` |
-| `KIND` | RPC- or operation-shorthand: `CR` (Create), `GET`, `LST` (List), `UPD` (Update), `DEL` (Delete), `MV` (Move), `START`, `STOP`, `ATT` (AttachTargetGroup), `DET` (DetachTargetGroup), `GTS` (GetTargetStates), `ADD` (AddTargets), `RM` (RemoveTargets), `LOPS` (ListOperations), `CANCEL`. Also `METHOD` (HTTP verb tests), `HEADERS` (Content-Type etc.), `LIFECYCLE` (cross-RPC). |
+| `KIND` | RPC- or operation-shorthand: `CR` (Create), `GET`, `LST` (List), `UPD` (Update), `DEL` (Delete), `MV` (Move), `GTS` (GetTargetStates), `ADD` (AddTargets), `RM` (RemoveTargets), `LOPS` (ListOperations), `CANCEL`. Also `METHOD` (HTTP verb tests), `HEADERS` (Content-Type etc.), `LIFECYCLE` (cross-RPC). |
 | `CLASS` | Primary test class — see §1. |
 | `DETAIL` | Short, kebab/upper-snake mnemonic for the specific scenario (e.g. `OK`, `DUP-NAME`, `MAX-63`, `PERM-DENIED`, `RACE-FK`, `BOGON-LOOPBACK`, …). |
 

@@ -426,15 +426,25 @@ CASES.append(Case(
 
 CASES.append(Case(
     id="INST-RD-CR-VAL-BOOTSOURCE-OUTPUT-FIELDS",
-    title="COMP-1-11: Create с bootSource output-only полем (name) в теле → sync 400 "
-          "'... output-only and must not be set on input' (name°/resolvedDigest°/materializedVolume° "
-          "server-derived). [verifies COMP-1-11 · error-guessing output-field-reject]",
+    title="COMP-1-11: Create с bootSource output-only полем (name; imageKind) в теле → sync 400 "
+          "'... output-only and must not be set on input' (name°/resolvedDigest°/materializedVolume°/"
+          "imageKind° server-derived). [verifies COMP-1-11 · #1625 · error-guessing output-field-reject]",
     classes=["VAL", "NEG"], priority="P1",
     steps=[Step(name="cr-boot-out", method="POST", path=INSTANCES,
                 body=_vm_body("out", mt=_PLACEHOLDER_MT,
                               boot={"type": "storage.image", "id": "img-9k2m4x7q1n8p:22.04-lts", "name": "ubuntu"}),
                 test_script=[*assert_status(400), *assert_grpc_code(3, "INVALID_ARGUMENT"),
-                             "pm.test('text: output-only must not be set on input', () => pm.expect(pm.response.json().message||'', pm.response.text()).to.eql('bootSource name/resolvedDigest/materializedVolume are output-only and must not be set on input'));"])],
+                             "pm.test('text: output-only must not be set on input', () => pm.expect(pm.response.json().message||'', pm.response.text()).to.eql('bootSource name/resolvedDigest/materializedVolume/imageKind are output-only and must not be set on input'));"]),
+           # imageKind — четвёртое отвергаемое поле, и до #1625 отказ о нём МОЛЧАЛ:
+           # условие включало его, текст перечислял три. Шаг утверждает, что имя
+           # присланного поля стоит в ответе, — иначе клиент снимает три чужих
+           # поля и получает тот же отказ снова.
+           Step(name="cr-boot-out-imagekind", method="POST", path=INSTANCES,
+                body=_vm_body("outik", mt=_PLACEHOLDER_MT,
+                              boot={"type": "storage.image", "id": "img-9k2m4x7q1n8p:22.04-lts",
+                                    "imageKind": "STORAGE_IMAGE"}),
+                test_script=[*assert_status(400), *assert_grpc_code(3, "INVALID_ARGUMENT"),
+                             "pm.test('text: imageKind named in the refusal', () => pm.expect(pm.response.json().message||'', pm.response.text()).to.eql('bootSource name/resolvedDigest/materializedVolume/imageKind are output-only and must not be set on input'));"])],
 ))
 
 

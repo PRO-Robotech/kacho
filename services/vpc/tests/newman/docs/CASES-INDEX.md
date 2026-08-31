@@ -433,8 +433,8 @@ Move RPC у Network/Subnet/Address/RouteTable/SecurityGroup/Gateway удален
 | `*-UPD-STATE-IMMUTABLE-PROJECT-ID` | CONF,STATE,VAL | P1 | 6 (add,gat,net,rou,sec,sub) | Update mask='project_id' (immutable) → 400 InvalidArgument (точный текст) |
 | `*-UPD-STATE-IMMUTABLE-INTERNAL-IPV4-ADDRESS-SPEC` | CONF,STATE,VAL | P1 | 1 (add) | Update mask='internal_ipv4_address_spec' (immutable) → 400 InvalidArgument (точный текст) |
 | `*-UPD-STATE-IMMUTABLE-NETWORK-ID` | CONF,STATE,VAL | P1 | 3 (rou,sec,sub) | Update mask='network_id' (immutable) → 400 InvalidArgument (точный текст) |
-| `*-UPD-STATE-IMMUTABLE-V4-CIDR-BLOCKS` | CONF,STATE,VAL | P1 | 1 (sub) | Update mask='v4_cidr_blocks' (immutable) → 400 InvalidArgument (точный текст) |
-| `*-UPD-STATE-IMMUTABLE-V6-CIDR-BLOCKS` | CONF,STATE,VAL | P1 | 1 (sub) | Update mask='v6_cidr_blocks' (immutable) → 400 InvalidArgument (точный текст) |
+| `*-UPD-STATE-IMMUTABLE-IPV4-CIDR-BLOCKS` | CONF,STATE,VAL | P1 | 1 (sub) | Update mask='ipv4_cidr_blocks' (immutable) → 400 InvalidArgument (точный текст) |
+| `*-UPD-STATE-IMMUTABLE-IPV6-CIDR-BLOCKS` | CONF,STATE,VAL | P1 | 1 (sub) | Update mask='ipv6_cidr_blocks' (immutable) → 400 InvalidArgument (точный текст) |
 | `*-UPD-STATE-IMMUTABLE-ZONE-ID` | CONF,STATE,VAL | P1 | 1 (sub) | Update mask='zone_id' (immutable) → 400 InvalidArgument (точный текст) |
 | `*-UPD-VAL-MASK-EMPTY` | STATE,VAL | P2 | 6 (add,gat,net,rou,sec,sub) | Update с пустой mask → full PATCH (200) |
 | `*-UPD-VAL-MASK-MULTIPLE-UNKNOWN` | STATE,VAL | P2 | 6 (add,gat,net,rou,sec,sub) | Update с несколькими unknown полями в mask → 400 |
@@ -531,8 +531,8 @@ NIC-ресурс и `used_by`-колонки сохранены, но через
 
 | Pattern | Classes | P | Apps | Что проверяет |
 |---|---|---|---|---|
-| `SUB-CR-CONF-RESERVED-OVERLAP` | CONF,NEG,VAL | P0 | 1 (sub) | Create Subnet поверх диапазона, зарезервированного посадкой → sync `400 INVALID_ARGUMENT`, текст РАВЕН `"<slot> <value> overlaps an address range reserved by the platform"`, Operation не создаётся; законный префикс той же сети проходит и виден в GET. Verifies REQ-CIDR-11. |
-| `SUB-ACB-CONF-RESERVED-OVERLAP` | CONF,NEG,VAL | P0 | 1 (sub) | `:add-cidr-blocks` служебного диапазона к уже созданной подсети → тот же sync-отказ (второй и последний глагол, объявляющий диапазон); законный блок тем же глаголом проходит, служебного в наборе нет. Verifies REQ-CIDR-11. |
+| `SUB-CR-CONF-RESERVED-OVERLAP` | CONF,NEG,VAL | P0 | 1 (sub) | Create Subnet поверх диапазона, зарезервированного посадкой → sync `400 INVALID_ARGUMENT`, текст РАВЕН `"<slot> <value> overlaps an address range reserved by the platform"`, `ErrorInfo.reason` = `SUBNET_CIDR_RESERVED` (полоса различима машинно, без разбора прозы), Operation не создаётся; законный префикс той же сети проходит и виден в GET. Verifies REQ-CIDR-11. |
+| `SUB-ACB-CONF-RESERVED-OVERLAP` | CONF,NEG,VAL | P0 | 1 (sub) | `:add-cidr-blocks` служебного диапазона к уже созданной подсети → тот же sync-отказ с тем же признаком `SUBNET_CIDR_RESERVED` (второй и последний глагол, объявляющий диапазон); законный блок тем же глаголом проходит, служебного в наборе нет. Verifies REQ-CIDR-11. |
 
 ### Address release / idempotency
 

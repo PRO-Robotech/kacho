@@ -163,7 +163,7 @@ export function InlineNetworkInterfaceEditForm({ projectId, nicId, onCancel, onS
   return (
     <FormShell specId="network-interfaces" mode="edit" singular={spec.singular}>
       <FormGrid>
-        <Form.Item label={labelWithInfo("Имя", "Имя интерфейса в пределах фолдера. Можно изменять.")}>
+        <Form.Item label={labelWithInfo("Имя", "Имя интерфейса в пределах проекта. Можно изменять.")}>
           <Input value={name} onChange={(e) => setName(e.target.value)} />
         </Form.Item>
 

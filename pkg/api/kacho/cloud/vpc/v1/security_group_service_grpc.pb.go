@@ -43,9 +43,9 @@ type SecurityGroupServiceClient interface {
 	//
 	// To get the list of all available SecurityGroup resources, make a [List] request.
 	Get(ctx context.Context, in *GetSecurityGroupRequest, opts ...grpc.CallOption) (*SecurityGroup, error)
-	// Retrieves the list of SecurityGroup resources in the specified folder.
+	// Retrieves the list of SecurityGroup resources in the specified project.
 	List(ctx context.Context, in *ListSecurityGroupsRequest, opts ...grpc.CallOption) (*ListSecurityGroupsResponse, error)
-	// Creates a security group in the specified folder and network.
+	// Creates a security group in the specified project and network.
 	Create(ctx context.Context, in *CreateSecurityGroupRequest, opts ...grpc.CallOption) (*operation.Operation, error)
 	// Updates the specified security group.
 	// Method starts an asynchronous operation that can be cancelled while it is in progress.
@@ -158,9 +158,9 @@ type SecurityGroupServiceServer interface {
 	//
 	// To get the list of all available SecurityGroup resources, make a [List] request.
 	Get(context.Context, *GetSecurityGroupRequest) (*SecurityGroup, error)
-	// Retrieves the list of SecurityGroup resources in the specified folder.
+	// Retrieves the list of SecurityGroup resources in the specified project.
 	List(context.Context, *ListSecurityGroupsRequest) (*ListSecurityGroupsResponse, error)
-	// Creates a security group in the specified folder and network.
+	// Creates a security group in the specified project and network.
 	Create(context.Context, *CreateSecurityGroupRequest) (*operation.Operation, error)
 	// Updates the specified security group.
 	// Method starts an asynchronous operation that can be cancelled while it is in progress.

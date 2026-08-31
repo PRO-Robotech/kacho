@@ -23,7 +23,7 @@ message Group {
   // ID of the Account that this Group belongs to.
   string account_id = 2;
 
-  // Name of the group. Unique within an Account. 3-63 characters long.
+  // Name of the group. Unique within an Account. 1-63 characters long.
   string name = 3;
 
   // Optional description of the group.

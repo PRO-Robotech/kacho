@@ -170,8 +170,11 @@ message CreateListenerRequest {
   string load_balancer_id = 1;
 
   // Name of the Listener. Must be a DNS label (lowercase letters, digits and
-  // hyphens, 1-63 characters) and is unique within the project. Empty on Create
-  // makes the server derive the name from the assigned id.
+  // hyphens, 1-63 characters) and is unique within the PARENT LOAD BALANCER —
+  // NOT within the project. The scope is the one the database enforces:
+  // `listeners_lb_name_uniq (load_balancer_id, name)`, so `https` may be reused
+  // on every load balancer of a project. Empty on Create makes the server derive
+  // the name from the assigned id.
   string name = 2;
   // Description of the Listener.
   string description = 3;
@@ -183,13 +186,20 @@ message CreateListenerRequest {
   // Port the listener accepts traffic on. Must be 1-65535 and unique within the load balancer.
   int64 port = 6;
 
-  // Default target group ID — soft reference to a TG attached to the parent
-  // LB. Optional; can be set later via Update.
+  // default_target_group_id — RETIRED AS AN INPUT (#1596). Retained as a request
+  // field ONLY so that a client that sets it gets an EXPLICIT InvalidArgument
+  // reject rather than a silent drop at the edge (the REST edge runs with
+  // DiscardUnknown by deliberate product decision, so removing the field
+  // outright would turn a wrong-but-well-meant request into a listener created
+  // with NO target group). Same idiom as type/placement_type on
+  // CreateNetworkLoadBalancerRequest.
+  //
+  // Setting it → InvalidArgument naming target_group_id as the replacement.
   string default_target_group_id = 11;
 
-  // target_group_id — NLB-1b EXPAND (additive, optional): the target group the
-  // listener wires to. When set it takes precedence over default_target_group_id
-  // (both coexist in EXPAND). resolved_backend_port°/substatus° echo the wired TG.
+  // target_group_id — the target group the listener wires to. THE single input
+  // for the wiring; optional. resolved_backend_port°/substatus° echo the wired
+  // TG. Because there is only one input, no precedence between fields exists.
   string target_group_id = 12;
 }
 
@@ -214,21 +224,31 @@ message UpdateListenerRequest {
   google.protobuf.FieldMask update_mask = 2;
 
   // Name of the Listener. Must be a DNS label (lowercase letters, digits and
-  // hyphens, 1-63 characters) and is unique within the project. Empty on Create
-  // makes the server derive the name from the assigned id.
+  // hyphens, 1-63 characters) and is unique within the PARENT LOAD BALANCER —
+  // NOT within the project. The scope is the one the database enforces:
+  // `listeners_lb_name_uniq (load_balancer_id, name)`, so `https` may be reused
+  // on every load balancer of a project. Empty on Create makes the server derive
+  // the name from the assigned id.
   string name = 3;
   // Description of the Listener.
   string description = 4;
   // Resource labels as `` key:value `` pairs.
   map<string, string> labels = 5;
 
-  // ID of the TargetGroup traffic is sent to when no rule matches. Present in
-  // update_mask, it rewires the listener; empty clears the wiring.
+  // default_target_group_id — RETIRED AS AN INPUT (#1596). Retained only for the
+  // explicit reject: SETTING it, or naming it in update_mask, → InvalidArgument
+  // that names target_group_id as the replacement. See CreateListenerRequest for
+  // why the field is kept rather than removed.
+  //
+  // The reject keys on the BODY too, not just the mask, because an empty mask
+  // means a full-object PATCH: target_group_id would then be applied with its
+  // own (empty) body value, so a request that used to WIRE a target group would
+  // silently UNWIRE it instead.
   string default_target_group_id = 7;
 
-  // target_group_id — NLB-1b EXPAND (additive, LIVE-mutable): repoint the
-  // listener to another target group. When present in update_mask it takes
-  // precedence over default_target_group_id.
+  // target_group_id — repoint the listener to another target group. THE single
+  // input for the wiring: present in update_mask it rewires the listener, an
+  // empty value clears it. No precedence between fields exists.
   string target_group_id = 8;
 }
 

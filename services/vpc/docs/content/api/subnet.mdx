@@ -39,13 +39,13 @@ import dedent from 'ts-dedent'
 Подсеть принадлежит одной виртуальной сети (`networkId`). Платформа гарантирует, что
 **CIDR-блоки подсетей одной сети не пересекаются** (контроль на уровне БД,
 EXCLUDE-constraint) — это исключает «двойную адресацию» и связанные с ней инциденты еще до
-того, как адрес будет кому-то выдан. Подсеть может быть привязана к таблице маршрутизации
+того, как адрес будет кому-то выдан. Подсеть может быть привязана к таблице маршрутов
 (`routeTableId`); если ее не указать — выполняется авто-ассоциация с самой ранней
 `RouteTable` сети.
 
 `networkId`, `placementType`, `zoneId` и `regionId` — **immutable** после создания
 (сегмент нельзя «переехать» в другую сеть, зону, регион или сменить тип размещения). Набор
-CIDR-блоков меняется **не** через `Update` (там эти поля soft-immutable, no-op), а через
+CIDR-блоков меняется **не** через `Update` (там они отвергаются как immutable), а через
 специальные действия `:add-cidr-blocks` / `:remove-cidr-blocks` — отдельные операции, чтобы
 расширение/сжатие адресного пространства было явным и проходило проверку на пересечения.
 
@@ -71,17 +71,18 @@ ID подсети — префикс `sub` + 17 символов crockford-base3
     <tr><td><code>name</code></td><td><code>{TYPES.string}</code></td><td>{DICTIONARY.name.short}</td></tr>
     <tr><td><code>description</code></td><td><code>{TYPES.string}</code></td><td>{DICTIONARY.description.short}</td></tr>
     <tr><td><code>labels</code></td><td><code>{TYPES.mapStringString}</code></td><td>{DICTIONARY.labels.short}</td></tr>
-    <tr><td><code>ipv4CidrBlocks</code></td><td><code>{TYPES.stringArray}</code></td><td>{DICTIONARY.ipv4CidrBlocks.short} (soft-immutable в Update; меняется через :add-cidr-blocks/:remove-cidr-blocks)</td></tr>
-    <tr><td><code>ipv6CidrBlocks</code></td><td><code>{TYPES.stringArray}</code></td><td>{DICTIONARY.ipv6CidrBlocks.short} (soft-immutable в Update)</td></tr>
+    <tr><td><code>ipv4CidrBlocks</code></td><td><code>{TYPES.stringArray}</code></td><td>{DICTIONARY.ipv4CidrBlocks.short} (в `updateMask` отвергается как immutable; меняется через :add-cidr-blocks/:remove-cidr-blocks)</td></tr>
+    <tr><td><code>ipv6CidrBlocks</code></td><td><code>{TYPES.stringArray}</code></td><td>{DICTIONARY.ipv6CidrBlocks.short} (в `updateMask` отвергается как immutable)</td></tr>
     <tr><td><code>routeTableId</code></td><td><code>{TYPES.string}</code></td><td>id привязанной RouteTable (если не задан — авто-ассоциация с самой ранней RT сети)</td></tr>
     <tr><td><code>createdAt</code></td><td><code>{TYPES.timestamp}</code></td><td>{DICTIONARY.createdAt.short}</td></tr>
   </tbody>
 </table>
 
 :::note CIDR-блоки и immutability
-В теле `Update` поля `v4_cidr_blocks` / `v6_cidr_blocks` принимаются в `update_mask`, но
-их применение — **no-op** (запрос завершается успешно, реального изменения набора CIDR
-нет). Чтобы изменить набор CIDR — используйте `:add-cidr-blocks` / `:remove-cidr-blocks`.
+Диапазоны через `Update` не меняются: `ipv4CidrPrimary` / `ipv6CidrPrimary` /
+`ipv4CidrBlocks` / `ipv6CidrBlocks`, названные в `updateMask`, **отвергаются** —
+`InvalidArgument "<field> is immutable after Subnet.Create"`. Чтобы изменить набор
+CIDR — используйте `:add-cidr-blocks` / `:remove-cidr-blocks`.
 Поля `network_id`, `placement_type`, `zone_id` и `region_id` — hard-immutable: явно в
 `update_mask` → `InvalidArgument`.
 :::
@@ -227,23 +228,51 @@ ID подсети — префикс `sub` + 17 символов crockford-base3
 
 <CodeBlock language="text">
   {dedent`
-    v4_cidr_blocks[0] 192.0.2.0/24 overlaps an address range reserved by the platform
+    ipv4CidrPrimary 192.0.2.0/24 overlaps an address range reserved by the platform
   `}
 </CodeBlock>
 
 Что здесь важно знать:
 
-- **Отказ называет слот и ваше собственное значение.** На `Create` вы присылаете
-  `ipv4CidrPrimary` / `ipv6CidrPrimary`, а слот в тексте — `v4_cidr_blocks[0]` /
-  `v6_cidr_blocks[0]`: это тот же самый диапазон в плоском наборе подсети (первичный якорь —
-  нулевой элемент). Значение в сообщении — ровно то, что вы прислали.
-- **Перечень служебных диапазонов не публикуется** — ни в ответе, ни в этой документации.
-  В отказе присутствует только присланный вами префикс; диапазонов, которых вы не называли,
-  ответ не раскрывает.
+- **Отказ называет ваше поле и ваше собственное значение.** На `Create` вы присылаете
+  `ipv4CidrPrimary` / `ipv6CidrPrimary` — их отказ и называет. Индекса здесь нет и не
+  бывает: это одиночный якорь, а не набор. Значение в сообщении — ровно то, что вы
+  прислали.
+- **Этот отказ различим машинно — не разбирайте прозу.** В `details` ответа приходит
+  `google.rpc.ErrorInfo` с `reason = "SUBNET_CIDR_RESERVED"`, `domain = "vpc.kacho.cloud"` и
+  метаданными `field` / `value` (ваш слот и ваше значение). Автомат, планирующий адресацию,
+  ветвится по нему: `SUBNET_CIDR_RESERVED` означает «префикс служебный, берите следующий
+  кандидат», прочий `INVALID_ARGUMENT` — «ввод негоден по форме, повтор с другим префиксом
+  не поможет». Тон сообщения стабилен, но парсить его не надо и не следует.
+
+<CodeBlock language="json">
+  {dedent`
+    {
+      "code": 3,
+      "message": "ipv4CidrPrimary 192.0.2.0/24 overlaps an address range reserved by the platform",
+      "details": [
+        {
+          "@type": "type.googleapis.com/google.rpc.ErrorInfo",
+          "reason": "SUBNET_CIDR_RESERVED",
+          "domain": "vpc.kacho.cloud",
+          "metadata": { "field": "ipv4CidrPrimary", "value": "192.0.2.0/24" }
+        }
+      ]
+    }
+  `}
+</CodeBlock>
+
+- **Перечень служебных диапазонов не публикуется** — ни в ответе, ни в этой документации,
+  ни отдельным методом. В отказе присутствует только присланный вами префикс; диапазонов,
+  которых вы не называли, ответ не раскрывает. Признак выше кругов **не убавляет** — он
+  делает их различимыми для автомата; это меньше, чем публикация перечня, и это всё, что
+  можно дать, не раскрывая служебную адресацию.
 - **Перечень задаётся посадкой, а не продуктом.** Он зависит от того, как развёрнута
-  платформа, и у разных установок может отличаться; узнать его состав можно у оператора вашей
-  установки. Из этого следует практическое правило: планируйте адресацию так, чтобы не
-  занимать пространство, которое вам не выдавали.
+  платформа, и у разных установок отличается; узнать его состав можно у оператора вашей
+  установки — там он объявлен значением `dataplane.reservedPrefixes` в профиле
+  развёртывания. Из этого следует практическое правило: планируйте адресацию так, чтобы не
+  занимать пространство, которое вам не выдавали, а автоматический подбор стройте на
+  признаке `SUBNET_CIDR_RESERVED`, а не на счёте попыток.
 - **Пересечение ловится в обе стороны вложенности.** Отвергается и подсеть внутри служебного
   диапазона, и подсеть **шире** него — «взять диапазон побольше» служебные адреса не отдаёт.
   Соседство границами пересечением не считается: подсеть, примыкающая к служебному диапазону
@@ -304,7 +333,7 @@ ID подсети — префикс `sub` + 17 символов crockford-base3
         "networkId": "{networkId}",
         "regionId": "region-1",
         "name": "prod-subnet-regional",
-        "ipv4CidrBlocks": ["10.1.0.0/24"]
+        "ipv4CidrPrimary": "10.1.0.0/24"
       }'
   `}
 </CodeBlock>
@@ -357,8 +386,11 @@ ID подсети — префикс `sub` + 17 символов crockford-base3
 Изменяет mutable-поля подсети (`name`, `description`, `labels`, `route_table_id`).
 Поля `network_id`, `placement_type`, `zone_id`, `region_id` —
 hard-immutable (явно в `update_mask` → `InvalidArgument "<field> is immutable after
-Subnet.Create"`). Поля `v4_cidr_blocks` / `v6_cidr_blocks` — soft-immutable (принимаются,
-но no-op).
+Subnet.Create"`).
+
+Диапазоны (`ipv4CidrPrimary`, `ipv6CidrPrimary`, `ipv4CidrBlocks`, `ipv6CidrBlocks`),
+названные в `updateMask`, — тоже `InvalidArgument "<field> is immutable after
+Subnet.Create"`: набор меняется только парой `:add-cidr-blocks` / `:remove-cidr-blocks`.
 
 #### Тело запроса
 
@@ -438,7 +470,7 @@ Subnet.Create"`). Поля `v4_cidr_blocks` / `v6_cidr_blocks` — soft-immutabl
 <ApiOperation method="POST" endpoint="/vpc/v1/subnets/{subnetId}:add-cidr-blocks" async>
 
 Добавляет CIDR-блоки к подсети. Это **штатный** способ расширить адресное пространство
-(в отличие от soft-immutable `v4_cidr_blocks` в `Update`). CIDR'ы внутри запроса не должны
+(в отличие от `Update`, который диапазоны не меняет вовсе). CIDR'ы внутри запроса не должны
 пересекаться между собой (sync-проверка), а также с соседними подсетями той же сети
 (EXCLUDE-constraint → `FailedPrecondition "Subnet CIDRs can not overlap"`).
 
@@ -451,7 +483,7 @@ Subnet.Create"`). Поля `v4_cidr_blocks` / `v6_cidr_blocks` — soft-immutabl
 
 <CodeBlock language="text">
   {dedent`
-    v4_cidr_blocks[0] 192.0.2.0/24 overlaps an address range reserved by the platform
+    ipv4CidrBlocks[0] 192.0.2.0/24 overlaps an address range reserved by the platform
   `}
 </CodeBlock>
 
@@ -659,9 +691,9 @@ placement"`). Сменить тип размещения нельзя — соз
 :::
 
 :::note CIDR не меняются через Update
-В `Update` поля `ipv4CidrBlocks` / `ipv6CidrBlocks` принимаются в `updateMask`, но их
-применение — **no-op** (запрос успешен, набор CIDR не меняется). Единственный способ
-изменить диапазоны — `:add-cidr-blocks` / `:remove-cidr-blocks`. Поля `networkId`,
+В `Update` поля `ipv4CidrBlocks` / `ipv6CidrBlocks`, названные в `updateMask`,
+**отвергаются** (`InvalidArgument "<field> is immutable after Subnet.Create"`).
+Единственный способ изменить диапазоны — `:add-cidr-blocks` / `:remove-cidr-blocks`. Поля `networkId`,
 `placementType`, `zoneId`, `regionId` — hard-immutable: явное указание в `updateMask` →
 `InvalidArgument`.
 :::

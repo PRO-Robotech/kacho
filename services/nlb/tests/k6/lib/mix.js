@@ -6,7 +6,7 @@
 //   60% reads          (NLB.Get / NLB.List / TG.Get)
 //   20% Create+Delete  (short LB / Listener / TG lifecycle)
 //   10% AddTargets / RemoveTargets
-//   10% AttachTG / DetachTG
+//   10% Listener wire / unwire TargetGroup
 //
 // Each VU iteration picks ONE op weighted by these probabilities. The
 // caller (scenario) controls VU count and iteration rate; we only decide
@@ -18,7 +18,7 @@ import {
   createListener, deleteListener,
   createTG, deleteTG,
   addTargets, removeTargets,
-  attachTG, detachTG,
+  wireListenerTG, unwireListenerTG,
 } from './dsl.js';
 import { pollOperation } from './poll-op.js';
 import { FIXTURES, pickOne, validateRequiredOnce } from './fixtures.js';
@@ -46,7 +46,7 @@ export function runMixedIteration() {
   if (r < 0.60) return doRead(r);
   if (r < 0.80) return doShortLifecycle();
   if (r < 0.90) return doTargetsOp();
-  return doAttachOp();
+  return doWireOp();
 }
 
 // --- READ (60%) ----------------------------------------------------------
@@ -110,15 +110,21 @@ function shortLBCycle() {
 function shortListenerCycle() {
   // Requires a parent LB; reuse a created one if any, else fall through to
   // an LB cycle (which still exercises Create+Delete).
+  // Условия «есть адрес» здесь больше нет: собственного адреса листенер не несёт,
+  // он наследует VIP балансировщика. Прежний гейт на `FIXTURES.addressId` уводил
+  // полосу в цикл балансировщика всякий раз, когда адрес не задан, — то есть
+  // ставил условием величину, которая на запрос не влияет вовсе.
   const lbId = pickOne(created.lbs);
-  if (!lbId || !FIXTURES.addressId) return shortLBCycle();
-  const c = createListener({ lbId, addressId: FIXTURES.addressId });
+  if (!lbId) return shortLBCycle();
+  const c = createListener({ lbId });
   check(c, { 'shortListener Create 2xx-or-pre': (r) => r.status < 500 });
   if (c.status >= 300 || !c.opId) return 'Listener.Create';
   const op = pollOperation(c.opId, { tag: 'mix-create-listener', maxAttempts: 30 });
   const lid = op.ok && op.response ? op.response.id : '';
   if (lid) {
-    created.listeners.push(lid);
+    // Id НЕ регистрируется в created.listeners: он удаляется тут же, а перечень
+    // читают другие полосы и teardownAll. Прежде мёртвый id туда попадал, и
+    // уборка повторно удаляла удалённое.
     const d = deleteListener(lid);
     check(d, { 'shortListener Delete 2xx': (r) => r.status >= 200 && r.status < 300 });
   }
@@ -154,17 +160,34 @@ function doTargetsOp() {
   return 'TG.Add+RemoveTargets';
 }
 
-// --- ATTACH (10%) --------------------------------------------------------
+// --- WIRE (10%) ----------------------------------------------------------
 
-function doAttachOp() {
-  const lbId = pickOne(created.lbs) || pickOne(FIXTURES.readLbIds);
+// Привязка группы целей живёт на ЛИСТЕНЕРЕ. Прежде эта полоса звала
+// `:attachTargetGroup` / `:detachTargetGroup`, которых в контракте нет: край
+// отвечал `404`, проверка `status < 500` его принимала, и десять процентов смеси
+// мерили несуществующий глагол, выглядя при этом здоровыми (задача продукта #1617).
+//
+// Порог поднят до `< 400` намеренно: у живого глагола отказ клиента — это отказ,
+// а не «почти успех». Прежний порог не отличил бы починку от её отсутствия.
+function doWireOp() {
+  const lbId = pickOne(created.lbs);
   const tgId = pickOne(created.tgs) || pickOne(FIXTURES.readTgIds);
   if (!lbId || !tgId) return shortLBCycle();
-  const a = attachTG(lbId, tgId);
-  check(a, { 'AttachTG 2xx-or-pre': (r) => r.status < 500 });
-  const d = detachTG(lbId, tgId);
-  check(d, { 'DetachTG 2xx-or-pre': (r) => r.status < 500 });
-  return 'NLB.Attach+DetachTG';
+  // Полоса заводит СВОЙ листенер и снимает его за собой: чужие перечни держат
+  // либо ещё не созданное, либо уже удалённое, и полоса, читающая их, мерила бы
+  // не привязку, а промах по несуществующему ресурсу.
+  const c = createListener({ lbId });
+  if (c.status >= 300 || !c.opId) return 'Listener.Create';
+  const op = pollOperation(c.opId, { tag: 'mix-wire-listener', maxAttempts: 30 });
+  const lstId = op.ok && op.response ? op.response.id : '';
+  if (!lstId) return 'Listener.Create';
+
+  const w = wireListenerTG(lstId, tgId);
+  check(w, { 'Listener wire TG 2xx': (r) => r.status < 400 });
+  const u = unwireListenerTG(lstId);
+  check(u, { 'Listener unwire TG 2xx': (r) => r.status < 400 });
+  deleteListener(lstId);
+  return 'Listener.Wire+UnwireTG';
 }
 
 // teardownAll — best-effort cleanup of resources this VU created.

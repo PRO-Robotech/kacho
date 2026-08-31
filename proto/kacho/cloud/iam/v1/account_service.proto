@@ -180,7 +180,7 @@ message ListAccountsResponse {
 }
 
 message CreateAccountRequest {
-  // Name of the account. Must be unique within the IAM domain. 3-63 characters long.
+  // Name of the account. Must be unique within the IAM domain. 1-63 characters long.
   string name = 1;
 
   // Description of the account.

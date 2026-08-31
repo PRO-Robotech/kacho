@@ -52,6 +52,7 @@ jest.unstable_mockModule("antd", () => {
 const { ApiError } = await import("@shared/api/client");
 const { NOT_FOUND_IS_AMBIGUOUS } = await import("@shared/lib/error-presentation");
 const { ErrorResult } = await import("./ErrorResult");
+const { MemoryRouter } = await import("react-router");
 
 function statusOf(): string | null {
   return screen.getByRole("alert").getAttribute("data-status");
@@ -141,5 +142,80 @@ describe("ErrorResult", () => {
       <ErrorResult error={new ApiError(403, 7, null, "no path")} extra={<button type="button">К списку</button>} />,
     );
     expect(screen.getByRole("button", { name: "К списку" })).toBeInTheDocument();
+  });
+});
+
+// ─────────────────────────────────────────────────────────────────────────────
+// ОТКАЗ ПО ПРЕДЕЛУ ВЕДЁТ НА ВИТРИНУ (#1605)
+//
+// Отказ без адреса витрины оставляет упёршегося ровно там, где он упёрся:
+// он не знает ни каков предел, ни кто его задал. Ссылка — и есть следующий шаг.
+describe("отказ по пределу уводит на витрину квот (#1605)", () => {
+  function quotaError(metadata?: Record<string, string>) {
+    return new ApiError(
+      429,
+      8,
+      [
+        {
+          "@type": "type.googleapis.com/google.rpc.ErrorInfo",
+          reason: "QUOTA_EXCEEDED",
+          domain: "vpc.kacho.cloud",
+          ...(metadata ? { metadata } : {}),
+        },
+      ],
+      "project prj-1 has reached its limit of 5 vpc.network",
+    );
+  }
+
+  it("носитель назван — на экране ссылка на квоты этого проекта", () => {
+    render(
+      <MemoryRouter>
+        <ErrorResult error={quotaError({ kind: "vpc.network", carrier_type: "project", carrier_id: "prj-1" })} />
+      </MemoryRouter>,
+    );
+
+    const link = screen.getByRole("link", { name: /Квоты/ });
+    expect(link).toHaveAttribute("href", "/projects/prj-1/quotas");
+    // Текст производителя на экран не идёт — он в подсказке.
+    expect(screen.getByTestId("subtitle")).toHaveTextContent("Облачные сети");
+    expect(screen.getByTestId("subtitle").textContent ?? "").not.toContain("has reached its limit");
+  });
+
+  it("носителя не назвали — ссылки нет, но экран всё равно называет раздел", () => {
+    // Адрес не подделывается. Положительный контроль к утверждению выше: без
+    // него «ссылка есть» зеленело бы на компоненте, который её рисует всегда.
+    render(
+      <MemoryRouter>
+        <ErrorResult error={quotaError()} />
+      </MemoryRouter>,
+    );
+
+    expect(screen.queryByRole("link")).not.toBeInTheDocument();
+    expect(screen.getByTestId("note")).toHaveTextContent("Квоты");
+  });
+
+  it("отказ НЕ про предел ссылки не получает", () => {
+    render(
+      <MemoryRouter>
+        <ErrorResult error={new ApiError(429, 8, null, "too many authorization checks; retry later")} />
+      </MemoryRouter>,
+    );
+
+    expect(screen.queryByRole("link")).not.toBeInTheDocument();
+    expect(screen.getByTestId("subtitle")).toHaveTextContent("too many authorization checks");
+  });
+
+  it("вызывающий, подставивший своё дополнение, его и получает", () => {
+    render(
+      <MemoryRouter>
+        <ErrorResult
+          error={quotaError({ carrier_type: "project", carrier_id: "prj-1" })}
+          extra={<button type="button">Повторить</button>}
+        />
+      </MemoryRouter>,
+    );
+
+    expect(screen.getByRole("button", { name: "Повторить" })).toBeInTheDocument();
+    expect(screen.queryByRole("link")).not.toBeInTheDocument();
   });
 });

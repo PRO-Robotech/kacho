@@ -34137,11 +34137,11 @@
       ]
     },
     {
-      "name": "SUB-UPD-STATE-IMMUTABLE-V4-CIDR-BLOCKS — Update mask='v4_cidr_blocks' (immutable) → 400 InvalidArgument verbatim",
+      "name": "SUB-UPD-STATE-IMMUTABLE-IPV4-CIDR-BLOCKS — Update mask='ipv4_cidr_blocks' (immutable) → 400 InvalidArgument verbatim",
       "description": "class:STATE | class:VAL | class:CONF | priority:P1",
       "item": [
         {
-          "name": "upd-v4_cidr_blocks",
+          "name": "upd-ipv4_cidr_blocks",
           "request": {
             "method": "PATCH",
             "header": [
@@ -34164,7 +34164,7 @@
             },
             "body": {
               "mode": "raw",
-              "raw": "{\"updateMask\": \"v4_cidr_blocks\"}",
+              "raw": "{\"updateMask\": \"ipv4_cidr_blocks\"}",
               "options": {
                 "raw": {
                   "language": "json"
@@ -34193,11 +34193,11 @@
       ]
     },
     {
-      "name": "SUB-UPD-STATE-IMMUTABLE-V6-CIDR-BLOCKS — Update mask='v6_cidr_blocks' (immutable) → 400 InvalidArgument verbatim",
+      "name": "SUB-UPD-STATE-IMMUTABLE-IPV6-CIDR-BLOCKS — Update mask='ipv6_cidr_blocks' (immutable) → 400 InvalidArgument verbatim",
       "description": "class:STATE | class:VAL | class:CONF | priority:P1",
       "item": [
         {
-          "name": "upd-v6_cidr_blocks",
+          "name": "upd-ipv6_cidr_blocks",
           "request": {
             "method": "PATCH",
             "header": [
@@ -34220,7 +34220,7 @@
             },
             "body": {
               "mode": "raw",
-              "raw": "{\"updateMask\": \"v6_cidr_blocks\"}",
+              "raw": "{\"updateMask\": \"ipv6_cidr_blocks\"}",
               "options": {
                 "raw": {
                   "language": "json"
@@ -55271,8 +55271,9 @@
                   "  let j; try { j = pm.response.json(); } catch (e) { j = {}; }",
                   "  pm.expect(j.code, JSON.stringify(j)).to.eql(3);",
                   "});",
-                  "pm.test('текст отказа — дословный контракт, и в нём НЕТ ничего, кроме слота и присланного значения', () => pm.expect(String(pm.response.json().message || '')).to.eql('v4_cidr_blocks[0] 169.254.10.0/24 overlaps an address range reserved by the platform'));",
-                  "pm.test('операция не создана', () => pm.expect(pm.response.json().id).to.be.undefined);"
+                  "pm.test('текст отказа — дословный контракт, и в нём НЕТ ничего, кроме имени поля и присланного значения', () => pm.expect(String(pm.response.json().message || '')).to.eql('ipv4CidrPrimary 169.254.10.0/24 overlaps an address range reserved by the platform'));",
+                  "pm.test('операция не создана', () => pm.expect(pm.response.json().id).to.be.undefined);",
+                  "pm.test('полоса отказа различима машинно — ErrorInfo.reason', () => { const d = pm.response.json().details || []; pm.expect(d.some(x => x && x.reason === 'SUBNET_CIDR_RESERVED'), JSON.stringify(d)).to.eql(true); });"
                 ]
               }
             }
@@ -56092,8 +56093,9 @@
                   "  let j; try { j = pm.response.json(); } catch (e) { j = {}; }",
                   "  pm.expect(j.code, JSON.stringify(j)).to.eql(3);",
                   "});",
-                  "pm.test('текст отказа — дословный контракт', () => pm.expect(String(pm.response.json().message || '')).to.eql('v4_cidr_blocks[0] 169.254.10.0/24 overlaps an address range reserved by the platform'));",
-                  "pm.test('операция не создана', () => pm.expect(pm.response.json().id).to.be.undefined);"
+                  "pm.test('текст отказа — дословный контракт', () => pm.expect(String(pm.response.json().message || '')).to.eql('ipv4CidrBlocks[0] 169.254.10.0/24 overlaps an address range reserved by the platform'));",
+                  "pm.test('операция не создана', () => pm.expect(pm.response.json().id).to.be.undefined);",
+                  "pm.test('полоса отказа различима машинно — ErrorInfo.reason', () => { const d = pm.response.json().details || []; pm.expect(d.some(x => x && x.reason === 'SUBNET_CIDR_RESERVED'), JSON.stringify(d)).to.eql(true); });"
                 ]
               }
             }

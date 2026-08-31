@@ -35,6 +35,7 @@ const sidebars: SidebarsConfig = {
         'api/disk-type',
         'api/internal',
         'api/operations',
+        'api/quotas',
       ],
     },
     {

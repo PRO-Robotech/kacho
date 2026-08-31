@@ -40,7 +40,7 @@ message Project {
   // immutable after Project.Create".
   string account_id = 2;
 
-  // Name of the project. Unique within an Account. 3-63 characters long.
+  // Name of the project. Unique within an Account. 1-63 characters long.
   string name = 3;
 
   // Optional description of the project. 0-256 characters long.

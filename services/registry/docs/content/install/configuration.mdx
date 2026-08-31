@@ -65,7 +65,7 @@ Kachō Registry конфигурируется через переменные �
     <tr><td><code>KACHO_REGISTRY_IAM_PROJECT_GRPC_ADDR</code></td><td><code>kacho-iam.kacho.svc:9090</code></td><td>PUBLIC endpoint kacho-iam (:9090) для <code>ProjectService.Get</code> (валидация project на Create) — отдельный conn от authz-ребра</td></tr>
     <tr><td><code>KACHO_REGISTRY_AUTH_MODE</code></td><td><code>production</code></td><td>Режим строгости: <code>dev</code> · <code>production</code> · <code>production-strict</code>. Дефолт secure-by-default: незаданная переменная не поднимает сервис в insecure-режиме</td></tr>
     <tr><td><code>KACHO_REGISTRY_AUTHZ_TRUSTED_FORWARDER_SANS</code></td><td><em>(пусто)</em></td><td>Список через запятую тех личностей клиентского сертификата (SPIFFE-SAN), которым разрешено <strong>передавать</strong> личность конечного пользователя (заголовки <code>x-kacho-principal-*</code>). Действует на <strong>обоих</strong> listener'ах. Пусто — это не «никому», а «любому пиру с проверенным сертификатом», поэтому в любом production-режиме пустое значение <strong>отказывает в старте</strong>. Законный отправитель один — api-gateway (<code>spiffe://kacho.cloud/ns/kacho/sa/kacho-api-gateway</code>), он же ходит на оба listener'а</td></tr>
-    <tr><td><code>KACHO_REGISTRY_AUTHZ_BREAKGLASS</code></td><td><code>false</code></td><td>Аварийный обход: пропуск всех RPC без Check + WARN. Единственный способ работать без authz/mTLS</td></tr>
+    <tr><td><code>KACHO_REGISTRY_AUTHZ_BREAKGLASS</code></td><td><code>false</code></td><td>Обход authz/mTLS <strong>только вне production</strong>: пропуск всех RPC без <code>Check</code> + WARN. В <code>production</code> и <code>production-strict</code> взведённое значение <strong>отказывает в старте</strong> — обойти защиту в боевом режиме нечем</td></tr>
     <tr><td><code>KACHO_REGISTRY_AUTHZ_CACHE_TTL</code></td><td><code>2s</code></td><td>TTL positive-кеша authz-<code>Check</code> gRPC-интерсептора (оба listener'а). Ограничивает окно, в котором отозванный субъект держит закешированный <code>allow</code> после удаления AccessBinding (registry не подписан на IAM cache-invalidation). <code>0</code> → positive-кеш выключен (каждый gRPC-RPC — живой <code>Check</code>). data-plane <code>/v2/</code> не кеширует authz — knob влияет только на control-plane</td></tr>
   </tbody>
 </table>
@@ -83,9 +83,17 @@ authz `Check` (через kacho-iam) и mTLS на **обоих** gRPC-listener'�
 и решение о правах принимается от его имени. Список сужает круг до перечисленных отправителей —
 у registry это api-gateway, и только он.
 
-:::warning Единственный обход — breakglass
-`KACHO_REGISTRY_AUTHZ_BREAKGLASS=true` запускает сервис, **пропуская per-RPC Check и не требуя mTLS**.
-Аварийный режим: применять только локально / при инциденте, никогда на рабочем стенде.
+:::warning В боевом режиме обхода НЕТ — breakglass не поднимает сервис, а гарантирует, что он не встанет
+`KACHO_REGISTRY_AUTHZ_BREAKGLASS=true` запускает сервис, **пропуская per-RPC Check и не требуя mTLS**,
+**только** при `KACHO_REGISTRY_AUTH_MODE=dev`. В `production` и `production-strict` взведённая ручка —
+**отказ старта** отдельным стражем: «`production mode (<режим>): KACHO_REGISTRY_AUTHZ_BREAKGLASS must not
+be enabled`».
+
+Отсюда практическое следствие для дежурного: если боевой сервис не встаёт из-за нехватки адреса iam или
+mTLS, **breakglass не является следующим шагом** — он даст второй отказ и ещё один цикл выкатки, пока
+сервис лежит. Следующий шаг называет сам текст отказа: задать `KACHO_REGISTRY_AUTHZ_IAM_GRPC_ADDR` либо
+взвести `KACHO_REGISTRY_PUBLIC_SERVER_MTLS_ENABLE` / `KACHO_REGISTRY_INTERNAL_SERVER_MTLS_ENABLE`. Отказ
+в боевом режиме breakglass **не предлагает** именно поэтому.
 :::
 
 ## Data-plane (OCI auth-proxy)

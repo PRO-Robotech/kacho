@@ -29,11 +29,13 @@ import (
 
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
+	"google.golang.org/genproto/googleapis/rpc/errdetails"
 	"google.golang.org/grpc/codes"
 	"google.golang.org/grpc/status"
 
 	vpcv1 "github.com/PRO-Robotech/kacho/pkg/api/kacho/cloud/vpc/v1"
 	"github.com/PRO-Robotech/kacho/pkg/ids"
+	"github.com/PRO-Robotech/kacho/services/vpc/internal/apps/kacho/shared/serviceerr"
 	"github.com/PRO-Robotech/kacho/services/vpc/internal/domain"
 	"github.com/PRO-Robotech/kacho/services/vpc/internal/repo/kacho/kachomock"
 	"github.com/PRO-Robotech/kacho/services/vpc/internal/repo/repomock"
@@ -110,7 +112,7 @@ func TestSubnetCreate_ReservedV4Overlap_RefusedSynchronously(t *testing.T) {
 
 	st := status.Convert(err)
 	assert.Equal(t, codes.InvalidArgument, st.Code())
-	assert.Contains(t, st.Message(), "v4_cidr_blocks[0]", "отказ обязан назвать поле")
+	assert.Contains(t, st.Message(), createCidrFields.v4, "отказ обязан назвать поле контракта, которое клиент написал")
 	assert.Contains(t, st.Message(), "10.11.12.0/24", "и присланное значение")
 	assert.Contains(t, st.Message(), "reserved")
 
@@ -147,7 +149,7 @@ func TestSubnetCreate_ReservedV6Overlap_Refused(t *testing.T) {
 	require.Nil(t, op)
 	st := status.Convert(err)
 	assert.Equal(t, codes.InvalidArgument, st.Code())
-	assert.Contains(t, st.Message(), "v6_cidr_blocks[0]")
+	assert.Contains(t, st.Message(), createCidrFields.v6)
 	assert.Contains(t, st.Message(), "fd00:dead:beef::/48")
 }
 
@@ -276,7 +278,7 @@ func TestSubnetAddCidrBlocks_ReservedOverlap_RefusedSynchronously(t *testing.T) 
 	require.Nil(t, op, "отказ синхронный: операция не создаётся вовсе")
 	st := status.Convert(aerr)
 	assert.Equal(t, codes.InvalidArgument, st.Code())
-	assert.Contains(t, st.Message(), "v4_cidr_blocks[0]")
+	assert.Contains(t, st.Message(), blocksCidrFields.V4Slot(0))
 	assert.Contains(t, st.Message(), "10.11.12.0/24")
 
 	// ПОЛОЖИТЕЛЬНЫЙ КОНТРОЛЬ рядом: законный блок тем же глаголом проходит.
@@ -311,4 +313,88 @@ func TestSubnetCreate_RefusalDoesNotRevealOtherReservedRanges(t *testing.T) {
 		"отказ не вправе называть служебные диапазоны, которых вызывающий не присылал")
 	assert.NotContains(t, msg, "fd00:dead::/32",
 		"и тем более диапазоны другого семейства")
+}
+
+// RS-05: отказ несёт МАШИННЫЙ признак полосы — и несёт его на ПУТИ ЗАПРОСА,
+// а не только у своего производителя.
+//
+// Проба производителя (`serviceerr.TestReservedCIDROverlap_*`) утверждает, что
+// признак собирается. О том, ДОХОДИТ ли он до вызывающего, она не говорит
+// ничего: use-case мог бы собрать отказ сам, соседней копией текста, и обе
+// пробы остались бы зелёными при неразличимом отказе.
+//
+// Что признак даёт клиенту: планировщик адресации ветвится машинно —
+// `SUBNET_CIDR_RESERVED` означает «префикс служебный, бери следующий кандидат»,
+// прочий `INVALID_ARGUMENT` — «ввод негоден по форме, чинить надо код».
+// Разбирать прозу контракт запрещает.
+func TestSubnetCreate_ReservedOverlap_CarriesMachineReadableReason(t *testing.T) {
+	kr := kachomock.NewRepository()
+	or := repomock.NewOpsRepo()
+	netID := ids.NewID(ids.PrefixNetwork)
+	seedNetworkForReserved(t, kr, "f-rs-reason", netID)
+
+	uc := NewCreateSubnetUseCase(kr, &repomock.ProjectClient{OK: true},
+		repomock.NewZoneRegistry(testZone), repomock.NewRegionRegistry(testRegion), or).
+		WithReservedPrefixes(reservedFixture())
+
+	_, err := uc.Execute(context.Background(), domain.Subnet{
+		ProjectID:    "f-rs-reason",
+		NetworkID:    netID,
+		Name:         domain.RcNameVPC("s-reason"),
+		ZoneID:       testZone,
+		V4CidrBlocks: []string{"10.11.12.0/24"},
+	})
+	require.Error(t, err)
+
+	var info *errdetails.ErrorInfo
+	for _, d := range status.Convert(err).Details() {
+		if ei, ok := d.(*errdetails.ErrorInfo); ok {
+			info = ei
+		}
+	}
+	require.NotNil(t, info,
+		"отказ обязан нести google.rpc.ErrorInfo — иначе полоса различима только прозой")
+	assert.Equal(t, serviceerr.ReasonSubnetCIDRReserved, info.GetReason())
+
+	// Служебный диапазон, с которым вышло пересечение, не раскрывается ни текстом,
+	// ни метаданными: отказ, печатающий его, стал бы способом получить карту
+	// служебного пространства по одному пробному запросу.
+	for _, v := range info.GetMetadata() {
+		assert.NotEqual(t, "fd00:dead::/32", v)
+	}
+}
+
+// RS-06 (ПОЛОЖИТЕЛЬНЫЙ КОНТРОЛЬ к RS-05): отказ ДРУГОЙ полосы этого признака НЕ
+// несёт.
+//
+// Без него утверждение выше зеленело бы и на реализации, приклеивающей
+// `SUBNET_CIDR_RESERVED` к каждому отказу подряд, — то есть признак перестал бы
+// что-либо различать, оставшись на вид рабочим.
+func TestSubnetCreate_UnrelatedRefusal_HasNoReservedReason(t *testing.T) {
+	kr := kachomock.NewRepository()
+	or := repomock.NewOpsRepo()
+	netID := ids.NewID(ids.PrefixNetwork)
+	seedNetworkForReserved(t, kr, "f-rs-ctrl", netID)
+
+	uc := NewCreateSubnetUseCase(kr, &repomock.ProjectClient{OK: true},
+		repomock.NewZoneRegistry(testZone), repomock.NewRegionRegistry(testRegion), or).
+		WithReservedPrefixes(reservedFixture())
+
+	// Ни одного адресного якоря — отказ той же полосы кода (InvalidArgument),
+	// но другого предмета.
+	_, err := uc.Execute(context.Background(), domain.Subnet{
+		ProjectID: "f-rs-ctrl",
+		NetworkID: netID,
+		Name:      domain.RcNameVPC("s-ctrl"),
+		ZoneID:    testZone,
+	})
+	require.Error(t, err)
+	assert.Equal(t, codes.InvalidArgument, status.Convert(err).Code())
+
+	for _, d := range status.Convert(err).Details() {
+		if ei, ok := d.(*errdetails.ErrorInfo); ok {
+			assert.NotEqual(t, serviceerr.ReasonSubnetCIDRReserved, ei.GetReason(),
+				"признак служебного диапазона приклеен к чужому отказу — он перестал различать")
+		}
+	}
 }

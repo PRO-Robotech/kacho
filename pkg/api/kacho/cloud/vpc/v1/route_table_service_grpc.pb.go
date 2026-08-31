@@ -41,9 +41,9 @@ type RouteTableServiceClient interface {
 	//
 	// To get the list of available RouteTable resources, make a [List] request.
 	Get(ctx context.Context, in *GetRouteTableRequest, opts ...grpc.CallOption) (*RouteTable, error)
-	// Retrieves the list of RouteTable resources in the specified folder.
+	// Retrieves the list of RouteTable resources in the specified project.
 	List(ctx context.Context, in *ListRouteTablesRequest, opts ...grpc.CallOption) (*ListRouteTablesResponse, error)
-	// Creates a route table in the specified folder and network.
+	// Creates a route table in the specified project and network.
 	// Method starts an asynchronous operation that can be cancelled while it is in progress.
 	Create(ctx context.Context, in *CreateRouteTableRequest, opts ...grpc.CallOption) (*operation.Operation, error)
 	// Updates the specified route table.
@@ -133,9 +133,9 @@ type RouteTableServiceServer interface {
 	//
 	// To get the list of available RouteTable resources, make a [List] request.
 	Get(context.Context, *GetRouteTableRequest) (*RouteTable, error)
-	// Retrieves the list of RouteTable resources in the specified folder.
+	// Retrieves the list of RouteTable resources in the specified project.
 	List(context.Context, *ListRouteTablesRequest) (*ListRouteTablesResponse, error)
-	// Creates a route table in the specified folder and network.
+	// Creates a route table in the specified project and network.
 	// Method starts an asynchronous operation that can be cancelled while it is in progress.
 	Create(context.Context, *CreateRouteTableRequest) (*operation.Operation, error)
 	// Updates the specified route table.

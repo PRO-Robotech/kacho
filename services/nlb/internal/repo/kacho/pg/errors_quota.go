@@ -9,6 +9,7 @@ import (
 
 	"github.com/jackc/pgx/v5/pgconn"
 
+	"github.com/PRO-Robotech/kacho/pkg/quota/quotadetail"
 	"github.com/PRO-Robotech/kacho/services/nlb/internal/repo/kacho"
 )
 
@@ -49,11 +50,18 @@ func classifyQuotaErr(err error) error {
 	if !errors.As(err, &pgErr) {
 		return nil
 	}
+	// Величины производителя приклеиваются ЗДЕСЬ — там, где `*pgconn.PgError` ещё
+	// не потерян. Дальше по пути его нет, и прочитать `DETAIL` больше негде:
+	// текст переживает переход, величины — нет (задача продукта #1605). Разбор
+	// общий (`pkg/quota/quotadetail`) по тому же доводу, по которому производитель
+	// один: шесть копий разошлись бы молча.
 	switch pgErr.Code {
 	case sqlstateQuotaExceeded:
-		return fmt.Errorf("%w: %s", kacho.ErrQuotaExceeded, pgErr.Message)
+		return quotadetail.Attach(
+			fmt.Errorf("%w: %s", kacho.ErrQuotaExceeded, pgErr.Message), pgErr.Detail)
 	case sqlstateQuotaNotProvisioned:
-		return fmt.Errorf("%w: %s", kacho.ErrQuotaNotProvisioned, pgErr.Message)
+		return quotadetail.Attach(
+			fmt.Errorf("%w: %s", kacho.ErrQuotaNotProvisioned, pgErr.Message), pgErr.Detail)
 	case sqlstateQuotaNoCarrier:
 		return fmt.Errorf("%w: quota accounting: %v", kacho.ErrInternal, err)
 	}

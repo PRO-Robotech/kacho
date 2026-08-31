@@ -222,8 +222,10 @@ enum InstanceKind {
 }
 
 // BootSource — the single OS entry (F3, B13). On INPUT only {type,id} are accepted;
-// name°/resolved_digest°/materialized_volume° are output-only (the resolve/materialize
-// saga is COMP-2). tag/digest live INSIDE id (one grammar for all inputs).
+// name°/resolved_digest°/materialized_volume°/image_kind° are output-only (the
+// resolve/materialize saga is COMP-2). tag/digest live INSIDE id (one grammar for
+// all inputs). A request that sets any of the four is refused synchronously with
+// INVALID_ARGUMENT naming all four — accepted-and-ignored is not a lawful outcome.
 message BootSource {
   // Owner discriminator: "storage.image" (OS/disk image, VM) or "registry.image"
   // (OCI container image, CONTAINER). Routes the resolve to storage vs registry.
@@ -243,7 +245,12 @@ message BootSource {
   // Absent by construction for CONTAINER (ephemeral rootfs).
   MaterializedVolume materialized_volume = 5;
 
-  // Form-only imageKind discriminator (B13): storage.image vs registry.image.
+  // Output-only imageKind discriminator (B13): storage.image vs registry.image.
+  // DERIVED BY THE SERVER from `type`; NOT ACCEPTED ON INPUT — a set value is
+  // refused with INVALID_ARGUMENT. The marker is spelled out because the enum
+  // below publishes a value dictionary, which reads like an input: a caller who
+  // filled it in got a refusal that named the other three output-only fields and
+  // stayed silent about this one, so removing what the text named changed nothing.
   ImageKind image_kind = 6;
 }
 

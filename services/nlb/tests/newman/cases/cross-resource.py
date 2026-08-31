@@ -216,7 +216,7 @@ CASES.append(Case(
         # Step 5: wire the TG into the listener via default_target_group_id — the listener
         # FK is now the TG↔LB link (attach/detach RPCs removed; the TG need only exist).
         Step(name="set-default-tg", method="PATCH", path=f"{_LST_BASE}/{{{{lstId}}}}",
-             body={"updateMask": "defaultTargetGroupId", "defaultTargetGroupId": "{{tgId}}"},
+             body={"updateMask": "targetGroupId", "targetGroupId": "{{tgId}}"},
              test_script=[*assert_status(200), *save_from_response("j.id", "opId")]),
         # Wiring the TG into the listener is step 5 of the chain — the mutation under test.
         # `must_succeed` states its outcome here; previously a failed wiring only removed
@@ -257,7 +257,7 @@ CASES.append(Case(
                           f"  pm.expect(s.status).to.be.oneOf({_VALID_TARGET_STATE_JS})));"])),
         # Teardown (bottom-up; clear the listener default before deleting the TG — FK RESTRICT).
         Step(name="clear-default-tg", method="PATCH", path=f"{_LST_BASE}/{{{{lstId}}}}",
-             body={"updateMask": "defaultTargetGroupId", "defaultTargetGroupId": ""},
+             body={"updateMask": "targetGroupId", "targetGroupId": ""},
              test_script=[*assert_status(200), *save_from_response("j.id", "opId")]),
         poll_operation_until_done(),
         Step(name="remove-instance-target", method="POST",
@@ -337,7 +337,7 @@ CASES.append(Case(
         # rejects it (NOT_FOUND, or authz-first 403 when the scope_extractor cannot resolve the
         # target→project). Never a 200-apply. NOT wrapped in retry (negative — a poll would mask).
         Step(name="set-default-absent", method="PATCH", path=f"{_LST_BASE}/{{{{lstId}}}}",
-             body={"updateMask": "defaultTargetGroupId", "defaultTargetGroupId": "{{garbageTgrId}}"},
+             body={"updateMask": "targetGroupId", "targetGroupId": "{{garbageTgrId}}"},
              test_script=[
                  "pm.test('absent default TG rejected (never 200-apply)', () => "
                  "  pm.expect(pm.response.code).to.be.oneOf([400, 403, 404, 409]));",
@@ -627,7 +627,7 @@ CASES.append(Case(
         # Wire the TG into the listener (default_target_group_id FK) — the listener is now
         # the sole TG↔LB link (attach/detach RPCs removed).
         Step(name="set-default-tg", method="PATCH", path=f"{_LST_BASE}/{{{{lstId}}}}",
-             body={"updateMask": "defaultTargetGroupId", "defaultTargetGroupId": "{{tgId}}"},
+             body={"updateMask": "targetGroupId", "targetGroupId": "{{tgId}}"},
              test_script=[*assert_status(200), *save_from_response("j.id", "opId")]),
         poll_operation_until_done(),
         # Step 1: delete LB while it still owns a listener → rejected ("not empty").
@@ -649,7 +649,7 @@ CASES.append(Case(
                           "  pm.expect(pm.response.json().id).to.eql(pm.environment.get('nlbId')));"]),
         # Step 2: clear listener default (composite FK must be released first).
         Step(name="clear-default", method="PATCH", path=f"{_LST_BASE}/{{{{lstId}}}}",
-             body={"updateMask": "defaultTargetGroupId", "defaultTargetGroupId": ""},
+             body={"updateMask": "targetGroupId", "targetGroupId": ""},
              test_script=[*assert_status(200), *save_from_response("j.id", "opId")]),
         poll_operation_until_done(),
         # Step 3: drain the target (2-phase RemoveTargets, peer-independent).

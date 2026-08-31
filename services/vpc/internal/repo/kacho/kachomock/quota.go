@@ -5,10 +5,12 @@ package kachomock
 
 import (
 	"context"
+	"encoding/json"
 	"fmt"
 	"sort"
 	"sync"
 
+	"github.com/PRO-Robotech/kacho/pkg/quota/quotadetail"
 	"github.com/PRO-Robotech/kacho/services/vpc/internal/repo/helpers"
 	"github.com/PRO-Robotech/kacho/services/vpc/internal/repo/kacho"
 )
@@ -105,14 +107,47 @@ func (q *quotaMock) Admit(_ context.Context, carrierType, carrierID, kind string
 
 	rec, ok := q.store.rows[quotaKey{carrierType, carrierID, kind}]
 	if !ok {
-		return fmt.Errorf("%w: project %s has no ceiling stated for %s",
-			helpers.ErrQuotaNotProvisioned, carrierID, kind)
+		// Величины приклеиваются и здесь: дублёр, отдающий МЕНЬШЕ настоящего,
+		// делает невидимым ровно то, ради чего его подставляют — проба на нём
+		// зеленела бы при потерянных величинах (задача продукта #1605).
+		return quotadetail.Attach(
+			fmt.Errorf("%w: project %s has no ceiling stated for %s",
+				helpers.ErrQuotaNotProvisioned, carrierID, kind),
+			mockRefusalDetail(carrierType, carrierID, kind, nil))
 	}
 	if rec.used >= rec.limit {
-		return fmt.Errorf("%w: project %s has reached its limit of %d %s",
-			helpers.ErrQuotaExceeded, carrierID, rec.limit, kind)
+		limit := rec.limit
+		used := rec.used
+		return quotadetail.Attach(
+			fmt.Errorf("%w: project %s has reached its limit of %d %s",
+				helpers.ErrQuotaExceeded, carrierID, rec.limit, kind),
+			mockRefusalDetail(carrierType, carrierID, kind, []int64{limit, used}))
 	}
 	return nil
+}
+
+// mockRefusalDetail собирает `DETAIL` в той же форме, в какой её производит
+// единственный производитель отказа (`kacho_quota_refuse`). Форма повторяется
+// ДОСЛОВНО: дублёр, чей отказ беднее настоящего, скрывает дефект, который сам же
+// и кормит. `amounts` — пара «предел, занятое» либо nil для полосы, где потолок
+// не назван: величин у неё не существует, и ноль вместо них был бы числом,
+// которого никто не считал.
+func mockRefusalDetail(carrierType, carrierID, kind string, amounts []int64) string {
+	obj := map[string]any{
+		"carrier_type": carrierType,
+		"carrier_id":   carrierID,
+		"kind":         kind,
+	}
+	if len(amounts) == 2 {
+		obj["limit"] = amounts[0]
+		obj["used"] = amounts[1]
+	}
+	b, err := json.Marshal(obj)
+	if err != nil {
+		// Величин не будет — отказ от этого отказом быть не перестаёт.
+		return ""
+	}
+	return string(b)
 }
 
 // Materialize заводит отсутствующие строки и не трогает имеющиеся — та же

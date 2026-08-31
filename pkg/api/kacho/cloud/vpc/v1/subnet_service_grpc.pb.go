@@ -44,9 +44,9 @@ type SubnetServiceClient interface {
 	//
 	// To get the list of available Subnet resources, make a [List] request.
 	Get(ctx context.Context, in *GetSubnetRequest, opts ...grpc.CallOption) (*Subnet, error)
-	// Retrieves the list of Subnet resources in the specified folder.
+	// Retrieves the list of Subnet resources in the specified project.
 	List(ctx context.Context, in *ListSubnetsRequest, opts ...grpc.CallOption) (*ListSubnetsResponse, error)
-	// Creates a subnet in the specified folder and network.
+	// Creates a subnet in the specified project and network.
 	// Method starts an asynchronous operation that can be cancelled while it is in progress.
 	Create(ctx context.Context, in *CreateSubnetRequest, opts ...grpc.CallOption) (*operation.Operation, error)
 	// Updates the specified subnet.
@@ -174,9 +174,9 @@ type SubnetServiceServer interface {
 	//
 	// To get the list of available Subnet resources, make a [List] request.
 	Get(context.Context, *GetSubnetRequest) (*Subnet, error)
-	// Retrieves the list of Subnet resources in the specified folder.
+	// Retrieves the list of Subnet resources in the specified project.
 	List(context.Context, *ListSubnetsRequest) (*ListSubnetsResponse, error)
-	// Creates a subnet in the specified folder and network.
+	// Creates a subnet in the specified project and network.
 	// Method starts an asynchronous operation that can be cancelled while it is in progress.
 	Create(context.Context, *CreateSubnetRequest) (*operation.Operation, error)
 	// Updates the specified subnet.

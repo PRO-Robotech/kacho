@@ -30,7 +30,7 @@ service RouteTableService {
     option (kacho.iam.authz.v1.required_acr_min) = "1";
   }
 
-  // Retrieves the list of RouteTable resources in the specified folder.
+  // Retrieves the list of RouteTable resources in the specified project.
   rpc List (ListRouteTablesRequest) returns (ListRouteTablesResponse) {
     option (google.api.http) = { get: "/vpc/v1/routeTables" };
     option (kacho.iam.authz.v1.permission)        = "vpc.route_tables.list";
@@ -50,7 +50,7 @@ service RouteTableService {
     option (kacho.iam.authz.v1.required_acr_min) = "1";
   }
 
-  // Creates a route table in the specified folder and network.
+  // Creates a route table in the specified project and network.
   // Method starts an asynchronous operation that can be cancelled while it is in progress.
   rpc Create (CreateRouteTableRequest) returns (operation.Operation) {
     option (google.api.http) = { post: "/vpc/v1/routeTables" body: "*" };
@@ -139,7 +139,10 @@ message ListRouteTablesRequest {
   // The expression must specify:
   // 1. The field name. Currently you can use filtering only on [RouteTable.name] field.
   // 2. An `=` operator.
-  // 3. The value in double quotes (`"`). Must be 3-63 characters long and match the regular expression `[a-z][-a-z0-9]{1,61}[a-z0-9]`.
+  // 3. The value in double quotes (`"`). The value is compared to the resource
+  //    name as-is, so only a value in the name form can match anything:
+  //    `[a-z0-9]([-a-z0-9]{0,61}[a-z0-9])?`. The filter itself applies no
+  //    separate length or alphabet rule to the value.
   string filter = 4;
 }
 
@@ -162,7 +165,7 @@ message CreateRouteTableRequest {
   string project_id = 1;
 
   // Name of the route table.
-  // The name must be unique within the folder.
+  // The name must be unique within the project.
   string name = 2;
 
   // Description of the route table.
@@ -191,7 +194,7 @@ message UpdateRouteTableRequest {
   google.protobuf.FieldMask update_mask = 2;
 
   // Name of the route table.
-  // The name must be unique within the folder.
+  // The name must be unique within the project.
   string name = 3;
 
   // Description of the route table.

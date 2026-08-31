@@ -87,7 +87,7 @@ service InternalNetworkInterfaceService {
 // validates its own `network_interfaces` + `subnets` rows against these values; it
 // does not call compute).
 message AttachNetworkInterfaceRequest {
-  // ID of the NIC (kacho-vpc NetworkInterface, prefix "enp") to attach.
+  // ID of the NIC (kacho-vpc NetworkInterface, prefix "nic") to attach.
   string nic_id = 1;
 
   // ID of the instance the NIC is attached to (cross-service, no FK).
@@ -141,7 +141,7 @@ message ListNetworkInterfacesByInstanceResponse {
 // message) and a denormalised mirror of the NIC's addressing. Used by the batched
 // ListByInstance to build the compute-side Instance.network_interfaces[] mirror.
 message NetworkInterfaceAttachmentInfo {
-  // ID of the attached NIC (kacho-vpc NetworkInterface, prefix "enp").
+  // ID of the attached NIC (kacho-vpc NetworkInterface, prefix "nic").
   string nic_id = 1;
 
   // ID of the instance the NIC is attached to.
