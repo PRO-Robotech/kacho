@@ -114,7 +114,7 @@ service AccessBindingService {
   // question this read exists for be asked in ONE call — "what does THIS subject
   // hold in THIS account":
   //
-  //     GET /iam/v1/accessBindings?filter=subject%3D%22usr-…%22&accountId=acc-…
+  //     GET /iam/v1/accessBindings?filter=subject%3D%22usr…%22&accountId=acc…
   rpc List (ListAccessBindingsRequest) returns (ListAccessBindingsResponse) {
     option (google.api.http) = { get: "/iam/v1/accessBindings" };
     // Authorized at the level of the data: kacho-iam reads the page by cursor and
@@ -594,7 +594,7 @@ message ListAccessBindingsRequest {
   // `filter` and with `include_revoked`, which is the same shape already chosen
   // once for `include_revoked` above:
   //
-  //     GET /iam/v1/accessBindings?filter=subject%3D%22usr-…%22&accountId=acc-…
+  //     GET /iam/v1/accessBindings?filter=subject%3D%22usr…%22&accountId=acc…
   //
   // WHY IT IS NOT `scopeId`. `scopeId` matches the row's `resource_id`, so
   // `scope="iam.account"` + `scopeId="<acct>"` returns the bindings attached to
