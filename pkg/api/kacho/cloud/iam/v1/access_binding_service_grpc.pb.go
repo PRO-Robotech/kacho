@@ -77,6 +77,14 @@ type AccessBindingServiceClient interface {
 	// page can never be wider than the read (anonymous → empty; an authorization
 	// error → UNAVAILABLE, never an unfiltered leak). Introspection-merge
 	// (ListSubjectPrivileges/ExpandAccess) stays separate (IAM-4).
+	//
+	// Two narrowings compose with `filter` and are NOT filter keys, because the
+	// expression carries exactly one predicate: `include_revoked` (lifecycle) and
+	// `account_id` (the account⇒child-project fan-out). Together they let the one
+	// question this read exists for be asked in ONE call — "what does THIS subject
+	// hold in THIS account":
+	//
+	//	GET /iam/v1/accessBindings?filter=subject%3D%22usr-…%22&accountId=acc-…
 	List(ctx context.Context, in *ListAccessBindingsRequest, opts ...grpc.CallOption) (*ListAccessBindingsResponse, error)
 	// DEPRECATED — use `List` with `filter=scope="iam.<tier>"` +
 	// `filter=scopeId="<id>"`. Retained for back-compat.
@@ -226,10 +234,21 @@ type AccessBindingServiceClient interface {
 	// Filter by subject_type (optional) and include_revoked (default false).
 	// Ordered by (created_at DESC, id ASC); keyset paginated.
 	//
-	// DEPRECATED — use `List` (`filter=scope="iam.account"` + `scopeId`, or the
-	// caller's whole visible set) with `include_revoked`. Retained for back-compat:
-	// `List` does not reproduce this RPC's account⇒child-project fan-out in one
-	// call. Ordering also differs (`List` is created_at ASC).
+	// DEPRECATED — use `List` with `accountId="<id>"` (plus `include_revoked`, and
+	// `filter=subject="<id>"` to ask about one subject).
+	//
+	// The reason this RPC used to be retained is GONE: it said "`List` does not
+	// reproduce this RPC's account⇒child-project fan-out in one call". `List` now
+	// does — `ListAccessBindingsRequest.account_id` carries exactly that fan-out,
+	// and the two answer with the SAME set of bindings for a caller who administers
+	// the account. Retained now only for back-compat; two differences remain, both
+	// deliberate and neither a reason to keep using it:
+	//
+	//   - ordering — this RPC is created_at DESC, `List` is created_at ASC (part of
+	//     `List`'s contract and not forked for one field), so compare the two BY
+	//     MEMBERSHIP, never by index;
+	//   - `subject_type_filter` — `List` narrows a subject by its exact id, not by
+	//     its class.
 	ListByAccount(ctx context.Context, in *ListAccessBindingsByAccountRequest, opts ...grpc.CallOption) (*ListAccessBindingsResponse, error)
 	// Lists operations for the specified access binding.
 	ListOperations(ctx context.Context, in *ListAccessBindingOperationsRequest, opts ...grpc.CallOption) (*ListAccessBindingOperationsResponse, error)
@@ -439,6 +458,14 @@ type AccessBindingServiceServer interface {
 	// page can never be wider than the read (anonymous → empty; an authorization
 	// error → UNAVAILABLE, never an unfiltered leak). Introspection-merge
 	// (ListSubjectPrivileges/ExpandAccess) stays separate (IAM-4).
+	//
+	// Two narrowings compose with `filter` and are NOT filter keys, because the
+	// expression carries exactly one predicate: `include_revoked` (lifecycle) and
+	// `account_id` (the account⇒child-project fan-out). Together they let the one
+	// question this read exists for be asked in ONE call — "what does THIS subject
+	// hold in THIS account":
+	//
+	//	GET /iam/v1/accessBindings?filter=subject%3D%22usr-…%22&accountId=acc-…
 	List(context.Context, *ListAccessBindingsRequest) (*ListAccessBindingsResponse, error)
 	// DEPRECATED — use `List` with `filter=scope="iam.<tier>"` +
 	// `filter=scopeId="<id>"`. Retained for back-compat.
@@ -588,10 +615,21 @@ type AccessBindingServiceServer interface {
 	// Filter by subject_type (optional) and include_revoked (default false).
 	// Ordered by (created_at DESC, id ASC); keyset paginated.
 	//
-	// DEPRECATED — use `List` (`filter=scope="iam.account"` + `scopeId`, or the
-	// caller's whole visible set) with `include_revoked`. Retained for back-compat:
-	// `List` does not reproduce this RPC's account⇒child-project fan-out in one
-	// call. Ordering also differs (`List` is created_at ASC).
+	// DEPRECATED — use `List` with `accountId="<id>"` (plus `include_revoked`, and
+	// `filter=subject="<id>"` to ask about one subject).
+	//
+	// The reason this RPC used to be retained is GONE: it said "`List` does not
+	// reproduce this RPC's account⇒child-project fan-out in one call". `List` now
+	// does — `ListAccessBindingsRequest.account_id` carries exactly that fan-out,
+	// and the two answer with the SAME set of bindings for a caller who administers
+	// the account. Retained now only for back-compat; two differences remain, both
+	// deliberate and neither a reason to keep using it:
+	//
+	//   - ordering — this RPC is created_at DESC, `List` is created_at ASC (part of
+	//     `List`'s contract and not forked for one field), so compare the two BY
+	//     MEMBERSHIP, never by index;
+	//   - `subject_type_filter` — `List` narrows a subject by its exact id, not by
+	//     its class.
 	ListByAccount(context.Context, *ListAccessBindingsByAccountRequest) (*ListAccessBindingsResponse, error)
 	// Lists operations for the specified access binding.
 	ListOperations(context.Context, *ListAccessBindingOperationsRequest) (*ListAccessBindingOperationsResponse, error)

@@ -302,6 +302,10 @@ type abFakeRepo struct {
 	// lastListFilter — the ListFilter the unified List last received (F11 tests
 	// assert the use-case's VisibleIDs push-down + predicate mapping).
 	lastListFilter ab_repo.ListFilter
+	// projectAccounts — проект → аккаунт, которому он принадлежит. Питает фан-аут
+	// `List(account_id)` в дублёре (rowInAccountScope). Пусто ⇒ ни один проект
+	// ни в каком аккаунте, и это намеренно строгое умолчание.
+	projectAccounts map[string]string
 	// materializedAt — reconciler-ledger fixture backing
 	// ListMaterializedAtForBindings (AccessBinding.materialized_at). Seed via
 	// seedMaterializedAt; an absent binding reports nothing (= not yet live).
@@ -491,6 +495,36 @@ func newABFakeRepo(ownerUserID, accountID, projectID, roleID, roleName string, p
 		roleName:        roleName,
 		rolePermissions: perms,
 	}
+}
+
+// rowInAccountScope — «эта строка лежит в области названного аккаунта»: либо
+// привязана к самому аккаунту, либо к одному из его проектов. Форма ответа —
+// та же, что у SQL-предиката настоящего репозитория (accountScopePredicate).
+//
+// Принадлежность проекта аккаунту берётся из projectAccounts (засевается
+// seedProjectAccount). Незасеянный проект НЕ считается принадлежащим аккаунту:
+// умолчание «раз не знаю — значит наш» отдало бы строку, которой в ответе быть
+// не должно, и проба на исключение чужого зеленела бы по построению.
+func (r *abFakeRepo) rowInAccountScope(b domain.AccessBinding, accountID string) bool {
+	switch b.ResourceType {
+	case "account":
+		return b.ResourceID == accountID
+	case "project":
+		return r.projectAccounts[b.ResourceID] == accountID
+	default:
+		return false
+	}
+}
+
+// seedProjectAccount объявляет, какому аккаунту принадлежит проект (фан-аут
+// List по account_id). Вызывать ДО чтения: карта читается под тем же mutex.
+func seedProjectAccount(repo *abFakeRepo, projectID, accountID string) {
+	repo.mu.Lock()
+	defer repo.mu.Unlock()
+	if repo.projectAccounts == nil {
+		repo.projectAccounts = map[string]string{}
+	}
+	repo.projectAccounts[projectID] = accountID
 }
 
 // drainFGAWritten — captured fga_outbox grant emits since last drain.
@@ -717,6 +751,14 @@ func (a *fakeABRdr) List(_ context.Context, f ab_repo.ListFilter) ([]domain.Acce
 	// rows this returns (internal/authzfilter), mirroring the pg repo.
 	var out []domain.AccessBinding
 	for _, b := range a.repo.lbsRows {
+		// AccountID — фан-аут «аккаунт плюс каждый его проект», ровно как в
+		// настоящем репозитории. Дублёр обязан выполнять контракт настоящего:
+		// пропусти он это поле, проба «поле применено» зеленела бы на
+		// реализации, которая его выбрасывает, — то есть подделка была бы
+		// снисходительнее продукта ровно там, ради чего её и подставляют.
+		if f.AccountID != "" && !a.repo.rowInAccountScope(b, f.AccountID) {
+			continue
+		}
 		if f.SubjectID != "" && string(b.SubjectID) != f.SubjectID {
 			continue
 		}

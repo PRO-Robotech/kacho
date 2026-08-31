@@ -294,6 +294,15 @@ else
   run_one "iam-account-redesign"
   run_one "iam-role-redesign"
   run_one "iam-access-binding-redesign"
+  # iam-access-binding-account-scope — поле `accountId` у канонического List:
+  # «выдачи субъекта в названном аккаунте» одним вызовом (задача #1737, приёмка
+  # docs/engineering/acceptance/subject-grants-within-an-account.md). Строка
+  # обязательна: гейт `assert all suites green` разбирает КАЖДУЮ
+  # collections/*.json, поэтому без неё коллекция не отработает, а гейт доложит
+  # `iam-access-binding-account-scope(no-report)` — фантомный отказ, а не тишину.
+  # Зависимости окружения (jwtAccountAdminA / jwtPureNoBindings / accountAId /
+  # accountBId / projectA1Id / userNOBId) сеются общими authz-фикстурами.
+  run_one "iam-access-binding-account-scope"
   # geo-read — AUTHENTICATED kacho-geo public reads through the api-gateway
   # (gateway->geo "no children to pick from" 503 regression; api-gateway#83 +
   # deploy#99). kacho-geo has no own tests/newman/, so the authenticated geo
