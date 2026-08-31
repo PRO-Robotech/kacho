@@ -52,7 +52,7 @@ import (
 // # Что произойдёт с пробой, заведённой позже
 //
 // Новая проба с неназванной здесь идентичностью получит отказ
-// `quota not provisioned: project <id> has no ceiling stated for <вид>` —
+// `resource count quota not provisioned: project <id> has no ceiling stated for <вид>` —
 // громкий, называющий предмет и указывающий, что делать: либо добавить
 // идентичность сюда, либо (если предмет пробы — сам учёт) завести строку самой.
 //

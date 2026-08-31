@@ -50,13 +50,6 @@ func TestMapDomainErr_AllSentinels(t *testing.T) {
 	}
 }
 
-func TestStripSentinel(t *testing.T) {
-	t.Parallel()
-	err := fmt.Errorf("%w: NetworkLoadBalancer nlb-x not found", domain.ErrNotFound)
-	require.Equal(t, "NetworkLoadBalancer nlb-x not found", stripSentinel(err, "fallback"))
-	require.Equal(t, "fallback", stripSentinel(nil, "fallback"))
-}
-
 func TestOperationToProto(t *testing.T) {
 	t.Parallel()
 	op := &operations.Operation{

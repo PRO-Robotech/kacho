@@ -10,18 +10,40 @@ import (
 	"time"
 )
 
+// Словарь посадок у nlb — ТОТ ЖЕ, что у остальных шести стражей старта.
+//
+// Проба утверждает ОБЕ стороны сведения, потому что расхождение было в обе:
+//
+//   - принимается `production-strict` — значение, в котором работают соседи и
+//     которое nlb прежде отвергал, роняя себя на попытке ужесточить флот одной
+//     командой;
+//   - НЕ принимаются `development`, `prod`, пустая строка, иной регистр и
+//     значение с обрамляющими пробелами. Прежде nlb прощал их все — и вместе с
+//     ними прощал те два алиаса, которых не принимал никто из шестерых.
+//
+// Смягчение написания выглядит вежливым, а означает, что посадка выбирается не
+// тем, что написано в профиле, а тем, что удалось из этого вывести. Решение о
+// точном сравнении принадлежит ДОМУ словаря и здесь не пересматривается: два
+// правила чтения одной ручки — это снова два места об одном предмете.
+//
+// Пустая строка отвергается по той же причине: «пусто → production» выглядело
+// осторожным, а делало неразличимыми «оператор выбрал боевой режим» и «ключ
+// потерялся при сборке профиля». Умолчание живёт там, где его видно, — в
+// `RegisterDefaults` (`mode: production`).
 func TestParseMode(t *testing.T) {
 	cases := []struct {
 		in      string
 		want    ModeEnum
 		wantErr bool
 	}{
-		{"", ModeProduction, false}, // unset/empty fails closed (security.md)
 		{"dev", ModeDev, false},
-		{"DEV", ModeDev, false},
-		{"development", ModeDev, false},
 		{"production", ModeProduction, false},
-		{"PROD", ModeProduction, false},
+		{"production-strict", ModeProductionStrict, false},
+		{"", 0, true},            // посадка, которую никто не выбрал
+		{"development", 0, true}, // алиас, которого нет ни у кого из шести соседей
+		{"prod", 0, true},        // тот же класс
+		{"DEV", 0, true},         // написание, а не значение: решает дом словаря
+		{" production ", 0, true},
 		{"bogus", 0, true},
 	}
 	for _, c := range cases {
@@ -700,5 +722,53 @@ func TestValidate_ProductionIgnoresTheDevOptIn(t *testing.T) {
 	if err := cfg.Validate(); err == nil ||
 		!strings.Contains(err.Error(), "authz.trusted-forwarder-sans") {
 		t.Fatalf("боевой режим обязан отказать на несуженном круге даже с опт-ином: %v", err)
+	}
+}
+
+// Строгая посадка требует ВЗАИМНОЙ проверки сертификата на каждом ребре к
+// соседу; обычная боевая — довольствуется односторонним TLS.
+//
+// Проба утверждает ОБЕ стороны, и это несущее требование, а не аккуратность.
+// Значение `production-strict`, принятое разбором и ничего не меняющее в исходе,
+// было бы «принято-и-проигнорировано» (`api-conventions.md`): оператор написал
+// бы его в профиль, увидел успешный старт и считал бы флот ужесточённым. Ровно
+// это и проверяется — что одна и та же конфигурация ПРОХОДИТ в `production` и
+// ОТВЕРГАЕТСЯ в `production-strict`.
+func TestValidate_ProductionStrict_RequiresMutualTLSOnEveryPeerEdge(t *testing.T) {
+	// Ребро к geo защищено односторонним TLS: канал шифруется, но КЛИЕНТ себя не
+	// доказывает.
+	oneWayGeo := func() Config {
+		cfg := productionSecureConfig()
+		cfg.MTLS.Geo.Enable = false
+		cfg.ExtAPI.Geo.TLS = true
+		return cfg
+	}
+
+	// Положительный контроль: в обычной боевой посадке это законно и обязано
+	// пройти. Без него отрицание ниже зеленело бы на конфигурации, сломанной
+	// чем-то ещё.
+	plain := oneWayGeo()
+	if err := plain.Validate(); err != nil {
+		t.Fatalf("односторонний TLS на ребре к geo законен в production, получено: %v", err)
+	}
+
+	strict := oneWayGeo()
+	strict.ModeRaw = "production-strict"
+	err := strict.Validate()
+	if err == nil {
+		t.Fatal("production-strict принял односторонний TLS на ребре к geo: значение посадки " +
+			"разобрано и ничего не изменило — принято-и-проигнорировано")
+	}
+	for _, want := range []string{"production-strict", "geo", "mtls.geo.enable"} {
+		if !strings.Contains(err.Error(), want) {
+			t.Errorf("отказ не называет %q — оператор чинит не то: %v", want, err)
+		}
+	}
+
+	// И вторая сторона строгости: взаимный TLS на всех рёбрах проходит.
+	full := productionSecureConfig()
+	full.ModeRaw = "production-strict"
+	if err := full.Validate(); err != nil {
+		t.Fatalf("production-strict со взаимным TLS на всех рёбрах обязан проходить, получено: %v", err)
 	}
 }

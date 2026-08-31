@@ -262,7 +262,10 @@ service RegistryService {
   }
 
   // RenameRepository — async, в пределах ОДНОГО реестра (new_name — голое repo-имя;
-  // cross-registry rename структурно невыразим, D-5). Durable → re-key overlay-имя
+  // cross-registry rename структурно невыразим, D-5). Полоса подтверждения:
+  // repo с доказанными потребителями (download_count > 0) БЕЗ confirm_current_name →
+  // FAILED_PRECONDITION с числом скачиваний; confirm_current_name задан и не равен
+  // repository → INVALID_ARGUMENT. Durable → re-key overlay-имя
   // (UPDATE); ephemeral → auto-promote в durable (INSERT). Engine re-home тегов/
   // манифестов/referrers, старое имя → 404. Целевое имя занято → ALREADY_EXISTS;
   // malformed|no-op new_name → INVALID_ARGUMENT; движок недоступен в середине remap →
@@ -481,6 +484,20 @@ message RenameRepositoryRequest {
   // cross-registry rename структурно невыразим, D-5). malformed ИЛИ == repository
   // (no-op) → INVALID_ARGUMENT.
   string new_name = 3;
+  // Подтверждение: ТЕКУЩЕЕ имя репозитория, повторённое вызывающим.
+  //
+  // Переименование — единственный глагол платформы, меняющий внешне-адресуемую
+  // координату: после него `$домен/$registry_id/$repository:$тег` отвечает 404 без
+  // редиректа и алиаса. Поэтому у репозитория с ДОКАЗАННЫМИ потребителями
+  // (download_count > 0) вызов без подтверждения отвергается FAILED_PRECONDITION, и
+  // отказ называет число скачиваний. Потребителей не доказано (download_count = 0)
+  // — подтверждение не требуется: репозиторий, заведённый опечаткой минуту назад,
+  // переименовывается одним вызовом.
+  //
+  // Задано и НЕ равно repository → INVALID_ARGUMENT всегда, независимо от
+  // потребителей: подтверждение, называющее не тот предмет, подтверждением не
+  // является. Поле читается на каждом вызове — молчаливого приёма нет.
+  string confirm_current_name = 4;
 }
 
 message RenameRepositoryMetadata {

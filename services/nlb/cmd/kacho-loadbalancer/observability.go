@@ -20,7 +20,7 @@ import (
 	"github.com/PRO-Robotech/kacho/pkg/outbox/bootgate"
 	"github.com/PRO-Robotech/kacho/pkg/servicecontract"
 
-	"github.com/PRO-Robotech/kacho/services/nlb/internal/observability/health"
+	"github.com/PRO-Robotech/kacho/pkg/observability/health"
 	"github.com/PRO-Robotech/kacho/services/nlb/internal/observability/metrics"
 )
 

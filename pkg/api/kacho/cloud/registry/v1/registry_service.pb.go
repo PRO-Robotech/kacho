@@ -1466,9 +1466,23 @@ type RenameRepositoryRequest struct {
 	// Голое repo-имя внутри ТОГО ЖЕ registry_id (поля целевого реестра НЕТ —
 	// cross-registry rename структурно невыразим, D-5). malformed ИЛИ == repository
 	// (no-op) → INVALID_ARGUMENT.
-	NewName       string `protobuf:"bytes,3,opt,name=new_name,json=newName,proto3" json:"new_name,omitempty"`
-	unknownFields protoimpl.UnknownFields
-	sizeCache     protoimpl.SizeCache
+	NewName string `protobuf:"bytes,3,opt,name=new_name,json=newName,proto3" json:"new_name,omitempty"`
+	// Подтверждение: ТЕКУЩЕЕ имя репозитория, повторённое вызывающим.
+	//
+	// Переименование — единственный глагол платформы, меняющий внешне-адресуемую
+	// координату: после него `$домен/$registry_id/$repository:$тег` отвечает 404 без
+	// редиректа и алиаса. Поэтому у репозитория с ДОКАЗАННЫМИ потребителями
+	// (download_count > 0) вызов без подтверждения отвергается FAILED_PRECONDITION, и
+	// отказ называет число скачиваний. Потребителей не доказано (download_count = 0)
+	// — подтверждение не требуется: репозиторий, заведённый опечаткой минуту назад,
+	// переименовывается одним вызовом.
+	//
+	// Задано и НЕ равно repository → INVALID_ARGUMENT всегда, независимо от
+	// потребителей: подтверждение, называющее не тот предмет, подтверждением не
+	// является. Поле читается на каждом вызове — молчаливого приёма нет.
+	ConfirmCurrentName string `protobuf:"bytes,4,opt,name=confirm_current_name,json=confirmCurrentName,proto3" json:"confirm_current_name,omitempty"`
+	unknownFields      protoimpl.UnknownFields
+	sizeCache          protoimpl.SizeCache
 }
 
 func (x *RenameRepositoryRequest) Reset() {
@@ -1518,6 +1532,13 @@ func (x *RenameRepositoryRequest) GetRepository() string {
 func (x *RenameRepositoryRequest) GetNewName() string {
 	if x != nil {
 		return x.NewName
+	}
+	return ""
+}
+
+func (x *RenameRepositoryRequest) GetConfirmCurrentName() string {
+	if x != nil {
+		return x.ConfirmCurrentName
 	}
 	return ""
 }
@@ -1859,14 +1880,15 @@ const file_kacho_cloud_registry_v1_registry_service_proto_rawDesc = "" +
 	"registryId\x12\x1e\n" +
 	"\n" +
 	"repository\x18\x02 \x01(\tR\n" +
-	"repository\"u\n" +
+	"repository\"\xa7\x01\n" +
 	"\x17RenameRepositoryRequest\x12\x1f\n" +
 	"\vregistry_id\x18\x01 \x01(\tR\n" +
 	"registryId\x12\x1e\n" +
 	"\n" +
 	"repository\x18\x02 \x01(\tR\n" +
 	"repository\x12\x19\n" +
-	"\bnew_name\x18\x03 \x01(\tR\anewName\"v\n" +
+	"\bnew_name\x18\x03 \x01(\tR\anewName\x120\n" +
+	"\x14confirm_current_name\x18\x04 \x01(\tR\x12confirmCurrentName\"v\n" +
 	"\x18RenameRepositoryMetadata\x12\x1f\n" +
 	"\vregistry_id\x18\x01 \x01(\tR\n" +
 	"registryId\x12\x1e\n" +

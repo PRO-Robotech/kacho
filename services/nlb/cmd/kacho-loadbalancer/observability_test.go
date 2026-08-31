@@ -14,7 +14,7 @@ import (
 	"github.com/PRO-Robotech/kacho/pkg/operations"
 	"github.com/PRO-Robotech/kacho/pkg/outbox/bootgate"
 
-	"github.com/PRO-Robotech/kacho/services/nlb/internal/observability/health"
+	"github.com/PRO-Robotech/kacho/pkg/observability/health"
 )
 
 // okPinger — readiness DB-pinger, всегда здоров.

@@ -11,6 +11,8 @@ import (
 	"time"
 
 	"github.com/stretchr/testify/require"
+
+	"github.com/PRO-Robotech/kacho/pkg/servicecontract"
 )
 
 // TestLoad_Defaults — sanity: при пустом path и без ENV-override Load возвращает
@@ -392,7 +394,14 @@ authn:
 `
 	_, err := Load(writeTempYAML(t, yaml))
 	require.Error(t, err)
-	require.Contains(t, err.Error(), "unknown mode")
+	// Отказ обязан назвать НЕГОДНОЕ значение и ВЕСЬ допустимый набор: словарь
+	// объявлен в дереве один раз, и текст отказа берётся у него, а не пишется
+	// здесь заново. Утверждать формулировку целиком нельзя — она принадлежит дому
+	// словаря; утверждается то, ради чего отказ читают в три часа ночи.
+	require.Contains(t, err.Error(), `"xxx-bogus"`)
+	for _, mode := range servicecontract.Modes() {
+		require.Contains(t, err.Error(), mode)
+	}
 }
 
 // TestValidate_BadSSLMode — sslmode=xxx отбивается Validate.

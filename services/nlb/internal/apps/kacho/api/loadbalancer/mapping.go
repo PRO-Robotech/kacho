@@ -24,12 +24,6 @@ func mapDomainErr(err error) error {
 	return shared.MapDomainErr(err)
 }
 
-// stripSentinel убирает sentinel-prefix "<text>: " из строки ошибки. Тонкий
-// wrapper над `shared.StripSentinel` (сохранён для внутренних вызовов/тестов).
-func stripSentinel(err error, fallbackText string) string {
-	return shared.StripSentinel(err, fallbackText)
-}
-
 // operationToProto — прослойка к общему слою: перевод строки операции в контракт
 // объявлен в дереве ОДИН раз (`pkg/operations/operationspb`).
 //

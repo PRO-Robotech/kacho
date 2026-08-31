@@ -38,7 +38,7 @@ func TestRequireZotCredentials(t *testing.T) {
 	}
 	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {
-			err := requireZotCredentials(tc.authMode, tc.zotAddr, tc.user, tc.pass)
+			err := requireZotCredentials(posture(t, tc.authMode), tc.zotAddr, tc.user, tc.pass)
 			if tc.wantErr {
 				if err == nil {
 					t.Fatal("want refusal, got nil")

@@ -5,13 +5,16 @@ package main
 
 import (
 	"context"
+	"errors"
 	"io"
 	"log/slog"
 	"net"
 	"net/http"
+	"strings"
 	"testing"
 	"time"
 
+	"github.com/PRO-Robotech/kacho/pkg/observability/health"
 	"github.com/PRO-Robotech/kacho/pkg/operations"
 	"github.com/PRO-Robotech/kacho/pkg/servicecontract"
 	"github.com/PRO-Robotech/kacho/pkg/servicehost"
@@ -58,7 +61,7 @@ func TestLROWorkerStaysUndispatched(t *testing.T) {
 // сообщает, что не поднимается, НАЗЫВАЕТ причину, и порт остаётся свободен.
 func TestDiagnosticSurfaceDisabledByDeclaration(t *testing.T) {
 	addr := freeAddr(t)
-	d, err := describeDiagnosticSurface("", metrics.New("v", "c"),
+	d, err := describeDiagnosticSurface("", metrics.New("v", "c"), health.New(nil),
 		servicecontract.ModeProduction, discardLogger())
 	if err != nil {
 		t.Fatalf("объявленное выключение отвергнуто: %v", err)
@@ -97,7 +100,8 @@ func TestDiagnosticSurfaceServesMetricsAndReleasesItsPort(t *testing.T) {
 	m := metrics.New("v", "c")
 	m.IncOrphansRecovered("done")
 	addr := freeAddr(t)
-	d, err := describeDiagnosticSurface(addr, m, servicecontract.ModeProduction, discardLogger())
+	d, err := describeDiagnosticSurface(addr, m, health.New(nil),
+		servicecontract.ModeProduction, discardLogger())
 	if err != nil {
 		t.Fatalf("законный профиль отвергнут: %v", err)
 	}
@@ -146,4 +150,71 @@ func TestDiagnosticSurfaceServesMetricsAndReleasesItsPort(t *testing.T) {
 		t.Fatalf("порт %s занят после возврата профиля: %v", addr, berr)
 	}
 	_ = l.Close()
+}
+
+// Диагностическая поверхность geo разводит ЖИВОСТЬ и ГОТОВНОСТЬ.
+//
+// Прежде она обслуживала только `/metrics`, а чарт пробировал открытый сокет —
+// то есть готовности у сервиса не существовало вовсе, и под рапортовал Ready, не
+// умея ответить ни на один запрос. Здесь утверждается наблюдаемое: при
+// недоступной базе живость остаётся 200 (процесс жив — перезапускать его незачем),
+// а готовность становится 503 и НАЗЫВАЕТ упавшую зависимость.
+//
+// Спрашивается ЖИВОЙ слушатель, а не мультиплексор в памяти: между объявлением и
+// поднятой поверхностью стоит профиль носителя, и проба, обходящая его,
+// утверждала бы о наборе маршрутов, а не о том, что отвечает по адресу.
+//
+// Положительный контроль стоит рядом намеренно: без него утверждение зеленело бы
+// на обработчике, отвечающем 503 всегда.
+func TestDiagnosticSurfaceTellsLivenessFromReadiness(t *testing.T) {
+	ask := func(check func(context.Context) error, path string) (int, string) {
+		t.Helper()
+		addr := freeAddr(t)
+		d, err := describeDiagnosticSurface(addr, metrics.New("v", "c"),
+			health.New([]health.Checker{{Name: "database", Check: check}}),
+			servicecontract.ModeProduction, discardLogger())
+		if err != nil {
+			t.Fatalf("законный профиль отвергнут: %v", err)
+		}
+		ctx, cancel := context.WithCancel(context.Background())
+		wait, serr := servicehost.ServeSurface(ctx, d)
+		if serr != nil {
+			t.Fatalf("поверхность не поднялась: %v", serr)
+		}
+		defer func() {
+			cancel()
+			_ = wait()
+		}()
+
+		deadline := time.Now().Add(3 * time.Second)
+		for time.Now().Before(deadline) {
+			resp, e := http.Get("http://" + addr + path) //nolint:noctx // срок держит петля
+			if e != nil {
+				time.Sleep(10 * time.Millisecond)
+				continue
+			}
+			body, _ := io.ReadAll(resp.Body)
+			_ = resp.Body.Close()
+			return resp.StatusCode, string(body)
+		}
+		t.Fatalf("GET %s ни разу не удался", path)
+		return 0, ""
+	}
+
+	poolDown := func(context.Context) error { return errors.New("pool is down") }
+	poolUp := func(context.Context) error { return nil }
+
+	if code, _ := ask(poolDown, "/healthz"); code != http.StatusOK {
+		t.Fatalf("живость при недоступной базе = %d, ожидалось 200: блип зависимости не смерть процесса", code)
+	}
+	code, body := ask(poolDown, "/readyz")
+	if code != http.StatusServiceUnavailable {
+		t.Fatalf("готовность при недоступной базе = %d, ожидалось 503 — иначе это живость под другим адресом", code)
+	}
+	if !strings.Contains(body, "database") {
+		t.Fatalf("ответ не назвал упавшую зависимость: %q", body)
+	}
+	if code, _ := ask(poolUp, "/readyz"); code != http.StatusOK {
+		t.Fatalf("готовность на здоровой базе = %d, ожидалось 200", code)
+	}
 }

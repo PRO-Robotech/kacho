@@ -382,6 +382,26 @@ var hyphenFormPrefixes = []string{
 	"gak",
 	// storage: Volume/Image/Snapshot
 	"vol", "img", "snp",
+	// storage: StorageBackend (`sb-…`) и DiskTypeBinding (`dtb-…`) — оба
+	// admin-only ресурса Internal*-служб, и оба УЖЕ чеканятся дефисной формой:
+	// `services/storage/internal/apps/kacho/api/storagebackend` и
+	// `.../disktypebinding` зовут NewHyphenID с константами своего домена
+	// (`domain.PrefixStorageBackend`, `domain.PrefixDiskTypeBinding`).
+	//
+	// Без записи здесь validate.ResourceID отвергал бы КОРРЕКТНЫЙ id, который сам
+	// же продукт и произвёл, — тот самый класс, о котором предупреждают записи
+	// `lim` и `mbr` выше. Пока storage не зовёт проверку формата ни в одном RPC,
+	// дефект латентен, и латентность здесь — худшее его свойство: он проявится у
+	// первого, кто поступит ПО КОНВЕНЦИИ и поставит malformed-id-check первым
+	// стейтментом (`api-conventions.md` §Gotcha'и).
+	//
+	// Значения — литералы, а не ссылки на константы домена: `pkg/ids` лежит НИЖЕ
+	// сервисов в графе сборки и их `internal/` импортировать не может. Два места
+	// об одном предмете здесь неизбежны, поэтому расхождение держит не
+	// комментарий, а гейт `internal/repohygiene`
+	// `TestEveryHyphenMintedPrefixIsInTheCanon`: он резолвит константу домена по
+	// месту вызова и падает на разнице с этим каноном.
+	"sb", "dtb",
 	// registry: Namespace (Repository/Tag/Image — natural/content-key, без prefix)
 	"ns",
 	// vpc: Network/Subnet/SecurityGroup/RouteTable/Gateway/NetworkInterface/Address/AddressPool.
