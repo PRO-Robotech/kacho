@@ -33,6 +33,7 @@ import (
 	"context"
 	"time"
 
+	"github.com/PRO-Robotech/kacho/pkg/subjectchange"
 	"github.com/PRO-Robotech/kacho/pkg/tokenpolicy"
 )
 
@@ -58,6 +59,12 @@ const (
 	// ВНУТРИ неё — значит строк ровно столько, сколько личностей побывало на
 	// установке за всю её жизнь.
 	SubjectIdentityAdmissionWindows = "identity_admission_windows"
+	// SubjectSubjectChangeJournal — журнал смены субъекта. Темп задаёт арендатор:
+	// строка пишется в той же транзакции, что снятие привязки и смена состава
+	// группы. Читает её КРАЙ курсором по позиции, поэтому порог выводится из
+	// наибольшего допустимого отставания читателя, а не из свойства колонки
+	// срока.
+	SubjectSubjectChangeJournal = "subject_change_outbox"
 )
 
 // SweepFunc — один проход уборщика по одному предмету.
@@ -105,6 +112,11 @@ type AdmissionWindowReaper interface {
 	SweepElapsedAdmissionWindows(ctx context.Context, grace time.Duration, batch int) (int64, bool, error)
 }
 
+// SubjectChangeJournalReaper — порт уборщика журнала смены субъекта.
+type SubjectChangeJournalReaper interface {
+	SweepAgedRows(ctx context.Context, grace time.Duration, batch int) (int64, bool, error)
+}
+
 // Subjects — реестр уборки iam.
 //
 // Пороги — §2.2 приёмки, и повторять их вторым местом нельзя: два места об одном
@@ -114,6 +126,7 @@ type AdmissionWindowReaper interface {
 //	уборка отзывов:      ttl_expires_at <= now()
 //	уборка отсечек:      revoke_before  <  now() − (MaxTokenTTL + ClockSkew + RemovalSlack)
 //	уборка окон темпа:   window_started_at < now() − window_seconds − 0
+//	уборка журнала:      created_at     <  now() − subjectchange.JournalRetention
 //
 // У отзывов слагаемых НЕТ, и это не пропуск: часы уборки и всех четырёх её
 // читателей уже одни — база, — поэтому запасу взяться неоткуда. Ноль здесь
@@ -127,11 +140,17 @@ type AdmissionWindowReaper interface {
 // авторитетом молча и в опасную сторону — уборщик снимал бы строку, чьё окно
 // ещё идёт. Разбор — шапка `SweepElapsedAdmissionWindows`; здесь он не
 // пересказывается.
+// У журнала смены субъекта слагаемых тоже нет, и по той же мерке: `created_at`
+// ставится умолчанием колонки, то есть часами БАЗЫ, и уборка судит теми же
+// часами. Несущая часть его порога — [subjectchange.JournalRetention] — берётся
+// у ЧИТАТЕЛЯ, а не выписывается здесь: копия разошлась бы с ним молча и в
+// опасную сторону, снимая строки, которые читатель ещё вправе получить.
 func Subjects(
 	assertions AssertionReaper,
 	revocations RevocationReaper,
 	cutoffs CutoffReaper,
 	admissionWindows AdmissionWindowReaper,
+	subjectChangeJournal SubjectChangeJournalReaper,
 ) []Subject {
 	return []Subject{
 		{
@@ -153,6 +172,11 @@ func Subjects(
 			Name:  SubjectIdentityAdmissionWindows,
 			Grace: 0,
 			Sweep: admissionWindows.SweepElapsedAdmissionWindows,
+		},
+		{
+			Name:  SubjectSubjectChangeJournal,
+			Grace: subjectchange.JournalRetention,
+			Sweep: subjectChangeJournal.SweepAgedRows,
 		},
 	}
 }

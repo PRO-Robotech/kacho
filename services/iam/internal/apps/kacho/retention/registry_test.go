@@ -16,6 +16,14 @@
 //
 //	уборка окон темпа:   window_started_at < now() − window_seconds − 0
 //
+// Пятый предмет — журнал смены субъекта (задача #1758) — объявлен здесь же:
+//
+//	уборка журнала:      created_at < now() − subjectchange.JournalRetention
+//
+// Величина берётся У ЧИТАТЕЛЯ (`pkg/subjectchange`), а не выписывается: порог
+// удержания есть функция предиката читателя, и копия разошлась бы с ним молча —
+// в опасную сторону, снимая строки, которые читатель ещё вправе получить.
+//
 // `window_seconds` в порог НЕ входит величиной: он читается уборщиком из
 // действующей строки величин тем же оператором, что и читателем-триггером
 // (`identity_admission_window_repo.go`). Реестр объявляет только СЛАГАЕМОЕ
@@ -37,18 +45,20 @@ import (
 	"testing"
 	"time"
 
+	"github.com/PRO-Robotech/kacho/pkg/subjectchange"
 	"github.com/PRO-Robotech/kacho/pkg/tokenpolicy"
 )
 
 // TestRegistryThresholdsAreTheReadersPredicate — RET-SWP-04.
 func TestRegistryThresholdsAreTheReadersPredicate(t *testing.T) {
-	subjects := Subjects(stubReaper{}, stubReaper{}, stubReaper{}, stubReaper{})
+	subjects := Subjects(stubReaper{}, stubReaper{}, stubReaper{}, stubReaper{}, stubReaper{})
 
 	want := map[string]time.Duration{
 		SubjectClientAssertionReplay:    tokenpolicy.ClockSkew + tokenpolicy.RemovalSlack,
 		SubjectSessionRevocations:       0,
 		SubjectMintedTokenCutoffs:       tokenpolicy.MaxTokenTTL + tokenpolicy.ClockSkew + tokenpolicy.RemovalSlack,
 		SubjectIdentityAdmissionWindows: 0,
+		SubjectSubjectChangeJournal:     subjectchange.JournalRetention,
 	}
 
 	if len(subjects) != len(want) {
@@ -84,7 +94,7 @@ func TestRegistryThresholdsAreTheReadersPredicate(t *testing.T) {
 // копия совпадает.
 func TestRegistryThresholdsFollowPolicyRatherThanACopy(t *testing.T) {
 	byName := map[string]time.Duration{}
-	for _, s := range Subjects(stubReaper{}, stubReaper{}, stubReaper{}, stubReaper{}) {
+	for _, s := range Subjects(stubReaper{}, stubReaper{}, stubReaper{}, stubReaper{}, stubReaper{}) {
 		byName[s.Name] = s.Grace
 	}
 
@@ -122,5 +132,9 @@ func (stubReaper) SweepStaleCutoffs(_ context.Context, _ time.Duration, _ int) (
 }
 
 func (stubReaper) SweepElapsedAdmissionWindows(_ context.Context, _ time.Duration, _ int) (int64, bool, error) {
+	return 0, false, nil
+}
+
+func (stubReaper) SweepAgedRows(_ context.Context, _ time.Duration, _ int) (int64, bool, error) {
 	return 0, false, nil
 }
