@@ -99,6 +99,23 @@ func clientDocsDriftOpts(root string) ClientDocsContractDriftOptions {
 	return ClientDocsContractDriftOptions{Root: root, ProtoRoot: "proto"}
 }
 
+// clientDocsTracked делает синтетическое дерево ОТСЛЕЖИВАЕМЫМ и возвращает его
+// корень.
+//
+// Анализатор берёт состав контрактов из индекса git, а не обходом диска: чтение
+// внутри колбэка обхода подвержено подмене пути символической ссылкой, а сам
+// обход захватывал бы игнорируемые каталоги, отчего вердикт стал бы свойством
+// рабочего каталога, а не коммита. Значит фикстура обязана быть закоммичена —
+// и ПОСЛЕ того, как записаны все её файлы, включая страницы, дописанные самой
+// пробой: коммит в конце построения дерева не увидел бы их.
+//
+// Зовётся в точке вызова анализатора именно поэтому, а не в фикстуре.
+func clientDocsTracked(t *testing.T, root string) string {
+	t.Helper()
+	initTinyRepo(t, root)
+	return root
+}
+
 func clientDocsWritePage(t *testing.T, root, rel, body string) {
 	t.Helper()
 	p := filepath.Join(root, filepath.FromSlash(rel))
@@ -128,7 +145,7 @@ func TestRetiredFieldGateFallsOnAnExampleShowingARetiredName(t *testing.T) {
   `+"`"+`}
 </CodeBlock>
 `)
-	findings, census, err := AuditClientDocsRetiredFieldInExample(clientDocsDriftOpts(root), nil)
+	findings, census, err := AuditClientDocsRetiredFieldInExample(clientDocsDriftOpts(clientDocsTracked(t, root)), nil)
 	if err != nil {
 		t.Fatalf("анализатор не отработал: %v", err)
 	}
@@ -170,7 +187,7 @@ func TestRetiredFieldGateStaysSilentOnLawfulTwins(t *testing.T) {
   `+"`"+`}
 </CodeBlock>
 `)
-	findings, census, err := AuditClientDocsRetiredFieldInExample(clientDocsDriftOpts(root), nil)
+	findings, census, err := AuditClientDocsRetiredFieldInExample(clientDocsDriftOpts(clientDocsTracked(t, root)), nil)
 	if err != nil {
 		t.Fatalf("анализатор не отработал: %v", err)
 	}
@@ -189,7 +206,7 @@ func TestRetiredFieldGateReadsBothExampleForms(t *testing.T) {
 	root := clientDocsDriftFixture(t)
 	clientDocsWritePage(t, root, "services/widget/docs/content/api/widget.mdx",
 		"# Widget\n\n```json\n{\n  \"oldShape\": \"round\"\n}\n```\n")
-	findings, _, err := AuditClientDocsRetiredFieldInExample(clientDocsDriftOpts(root), nil)
+	findings, _, err := AuditClientDocsRetiredFieldInExample(clientDocsDriftOpts(clientDocsTracked(t, root)), nil)
 	if err != nil {
 		t.Fatalf("анализатор не отработал: %v", err)
 	}
@@ -210,7 +227,7 @@ func TestDeprecationGateFallsOnADeprecatedVerbShownAsCurrent(t *testing.T) {
 
 </ApiOperation>
 `)
-	findings, census, err := AuditClientDocsDeprecationParity(clientDocsDriftOpts(root), nil)
+	findings, census, err := AuditClientDocsDeprecationParity(clientDocsDriftOpts(clientDocsTracked(t, root)), nil)
 	if err != nil {
 		t.Fatalf("анализатор не отработал: %v", err)
 	}
@@ -249,7 +266,7 @@ func TestDeprecationGateStaysSilentOnLawfulTwins(t *testing.T) {
 
 </ApiOperation>
 `)
-	findings, census, err := AuditClientDocsDeprecationParity(clientDocsDriftOpts(root), nil)
+	findings, census, err := AuditClientDocsDeprecationParity(clientDocsDriftOpts(clientDocsTracked(t, root)), nil)
 	if err != nil {
 		t.Fatalf("анализатор не отработал: %v", err)
 	}
@@ -284,7 +301,7 @@ func TestDeprecationMarkIsNotCountedFromANeighbouringBlock(t *testing.T) {
 
 </ApiOperation>
 `)
-	findings, _, err := AuditClientDocsDeprecationParity(clientDocsDriftOpts(root), nil)
+	findings, _, err := AuditClientDocsDeprecationParity(clientDocsDriftOpts(clientDocsTracked(t, root)), nil)
 	if err != nil {
 		t.Fatalf("анализатор не отработал: %v", err)
 	}
@@ -318,7 +335,7 @@ service WidgetService {
 `), 0o600); err != nil {
 		t.Fatalf("фикстура: %v", err)
 	}
-	paths, _, err := clientDocsDeprecatedPaths(clientDocsDriftOpts(root))
+	paths, _, err := clientDocsDeprecatedPaths(clientDocsDriftOpts(clientDocsTracked(t, root)))
 	if err != nil {
 		t.Fatalf("разбор контракта: %v", err)
 	}
