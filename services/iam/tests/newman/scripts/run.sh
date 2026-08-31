@@ -303,6 +303,17 @@ else
   # Зависимости окружения (jwtAccountAdminA / jwtPureNoBindings / accountAId /
   # accountBId / projectA1Id / userNOBId) сеются общими authz-фикстурами.
   run_one "iam-access-binding-account-scope"
+  # iam-access-binding-include-revoked — флаг `includeRevoked` на ДВУХ остальных
+  # поверхностях, которые его принимают: `accounts/{id}/accessBindings`
+  # (ListByAccount) и `accessBindings:listByRole` (ListByRole). Перечень
+  # поверхностей выведен из контракта (`bool include_revoked` встречается в
+  # трёх запросах), третью — канонический List — покрывает соседняя коллекция.
+  # Порядок: сразу за ней, зависимости окружения те же самые.
+  #
+  # Остаточный проход ниже подобрал бы коллекцию и без этой строки (набор
+  # вердикта выводится из дерева, а не из перечня вызовов), но подхват — сигнал
+  # автору, а не норма: место в порядке у коллекции есть, и оно здесь.
+  run_one "iam-access-binding-include-revoked"
   # geo-read — AUTHENTICATED kacho-geo public reads through the api-gateway
   # (gateway->geo "no children to pick from" 503 regression; api-gateway#83 +
   # deploy#99). kacho-geo has no own tests/newman/, so the authenticated geo

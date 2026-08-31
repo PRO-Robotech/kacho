@@ -64,6 +64,7 @@ from gen_shared import (  # noqa: E402  — импорт после провяз
     generate,
     Run,
     retry_until_authorized,
+    retry_until_present,
     _RYA_SEQ,
     _accepted_http_codes,
     _assert_delete_operation_outcome,
@@ -1232,7 +1233,7 @@ def list_filter_match_block(prefix, create_path, body_create):
                  body={**body_create, "name": f"{prefix.lower()}-flt-{{{{runId}}}}"},
                  test_script=[*assert_status(200), *save_from_response("j.id", "opId")]),
             poll_operation_until_done(capture_id_to="fltId"),
-            retry_until_present(Step(name="list-filtered", method="GET",
+            _rup(Step(name="list-filtered", method="GET",
                  path=f"{create_path}?projectId={{{{_suiteProjectId}}}}&pageSize=100&filter=name%3D%22{prefix.lower()}-flt-{{{{runId}}}}%22",
                  test_script=[*assert_status(200),
                               "const ids = (Object.values(pm.response.json()).find(v => Array.isArray(v)) || []).map(x => x.id);",
@@ -2011,7 +2012,7 @@ def conformance_lifecycle_pack(prefix, create_path, body_create):
             _rya(Step(name="get-1", method="GET", path=f"{create_path}/{{{{lifeId}}}}",
                  test_script=[*assert_status(200),
                               "pm.test('id matches', () => pm.expect(pm.response.json().id).to.eql(pm.environment.get('lifeId')));"])),
-            retry_until_present(Step(name="lst-includes", method="GET",
+            _rup(Step(name="lst-includes", method="GET",
                  path=f"{create_path}?projectId={{{{_suiteProjectId}}}}&pageSize=1000",
                  test_script=[*assert_status(200),
                               "const items = Object.values(pm.response.json()).find(v => Array.isArray(v)) || [];",
@@ -2069,53 +2070,6 @@ def authz_caller_headers_block(prefix, list_path):
 
 
 
-def retry_until_present(step: Step, id_env_var, budget: int = 25,
-                        interval_ms: int = 500) -> Step:
-    """Bounded retry a LIST step until the caller's OWN fresh resource id appears in
-    the returned array (read-your-writes over the list-authz visibility window; opgate
-    removed -> owner-tuple eventual-consistency). The list returns 200 with the id
-    ABSENT until the tuple materializes, so retry_until_authorized (403/404) does not
-    apply -- we retry while the id is missing. Fail-open after budget: the real
-    assertion then runs once and FAILS if still absent (never masked, never infinite).
-    Use ONLY on a list of the caller's OWN just-created resource."""
-    guard = [
-        "// bounded read-your-writes retry until own fresh id is present in the list",
-        "// (opgate removed -> eventual-consistency); retries SELF while id absent.",
-        "if (pm.environment.get('_lstRetryStarted') !== pm.info.requestName) {",
-        "  pm.environment.set('_lstRetryCount', '0');",
-        "  pm.environment.set('_lstRetryStarted', pm.info.requestName);",
-        "}",
-        "const _lrc = parseInt(pm.environment.get('_lstRetryCount') || '0', 10);",
-        "let _present = false;",
-        # УСЛОВИЕ ПОВТОРА ОБЯЗАНО СОВПАДАТЬ С УТВЕРЖДЕНИЕМ, а не быть у́же его.
-        #
-        # Обёртка принимает СПИСОК переменных и ждёт, пока в ответе появятся ВСЕ.
-        # Прежняя форма принимала одну: кейс, утверждающий «все три на странице»,
-        # ждал появления ПЕРВОЙ и падал на второй — она ещё материализовалась.
-        # Дефект наблюдался на кейсе паритета списка и одиночного чтения (снят
-        # вместе со швом исполнителя датаплейна) и виден только на стенде:
-        # локально список отдаёт всё сразу.
-        "const _want = [" + ", ".join(
-            "pm.environment.get('%s')" % v
-            for v in ([id_env_var] if isinstance(id_env_var, str) else list(id_env_var))
-        ) + "];",
-        "try { const _arr = Object.values(pm.response.json()).find(v => Array.isArray(v)) || [];"
-        " const _have = _arr.map(x => x.id);"
-        " _present = _want.every(w => _have.includes(w)); } catch (e) {}",
-        f"if (pm.response.code === 200 && !_present && _lrc < {budget}) {{",
-        "  pm.environment.set('_lstRetryCount', String(_lrc + 1));",
-        f"  const _lrd = Date.now(); while (Date.now() - _lrd < {interval_ms}) {{ /* list-visibility wait */ }}",
-        "  pm.execution.setNextRequest(pm.info.requestName);",
-        "  return;",
-        "}",
-        "pm.environment.unset('_lstRetryCount');",
-        "pm.environment.unset('_lstRetryStarted');",
-    ]
-    _RYA_SEQ[0] += 1
-    return replace(step, name=f"{step.name}-lst{_RYA_SEQ[0]}",
-                   test_script=guard + list(step.test_script))
-
-
 # Окно видимости прав — РЕШЕНИЕ НАБОРА, а не общего слоя (#1379): путь
 # материализации у доменов разный, и одно число за всех было бы решением
 # за них. Здесь — замер vpc. Величина видна
@@ -2126,6 +2080,15 @@ def retry_until_present(step: Step, id_env_var, budget: int = 25,
 # и падает, называя следствие вместо предмета.
 _rya = functools.partial(retry_until_authorized,
                         budget=25, interval_ms=500, lane_head=True)
+# То же окно у СПИСОЧНОГО ожидания — и то же правило: величину называет НАБОР,
+# а не общий слой (#1379). Три копии этой обёртки расходились ещё и телом:
+# одна ждала появления ВСЕХ названных имён, другая вела ведомость исчерпания,
+# третья не делала ни того, ни другого. Общая форма несёт обе починки, а
+# различие набора выражено ЗДЕСЬ — аргументом, видимым на связывании.
+_rup = functools.partial(retry_until_present,
+                        budget=25, interval_ms=500)
+
+
 def retry_until_absent(step: Step, still_present_expr: str, budget: int = 25,
                        interval_ms: int = 500) -> Step:
     """Bounded retry a "must-be-ABSENT/empty" negative read over a read-your-writes-ON-
@@ -2930,7 +2893,7 @@ _INJECTED = {
     "SUBNET_V6_CIDRS": SUBNET_V6_CIDRS,
     "poll_operation_until_done": poll_operation_until_done,
     "retry_until_authorized": _rya,
-    "retry_until_present": retry_until_present,
+    "retry_until_present": _rup,
     "retry_until_absent": retry_until_absent,
     "crud_list_bva_block": crud_list_bva_block,
     "conf_not_found_text": conf_not_found_text,
