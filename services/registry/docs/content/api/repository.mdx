@@ -82,6 +82,11 @@ Dockerfile, все зависимости чартов, все манифест�
 Прежде чем переименовывать, найдите потребителей старого пути; если найти их нельзя — не
 переименовывайте. Косметическую правку делают на **реестре**: его имя меняется без последствий,
 потому что в путь не входит.
+
+У репозитория, который уже скачивали, платформа спросит подтверждение и назовёт число скачиваний
+(`confirmCurrentName`, см. ниже). Это ограждение, а не гарантия: оно считает **доказанных**
+потребителей, поэтому образ, упомянутый в конвейере, который ещё ни разу не запускался, проходит
+молча.
 :::
 
 ## Поля
@@ -332,11 +337,42 @@ repository visibility requires registry admin»). Гейт действует н
 Репозиторий без наложения переименовывается тоже: строка наложения при этом заводится, и он
 становится `DURABLE`.
 
+#### Подтверждение: `confirmCurrentName`
+
+У репозитория, который **уже скачивали** (`downloadCount` больше нуля), вызов без подтверждения
+отвергается, и отказ называет число скачиваний. Чтобы переименовать такой репозиторий, повторите в
+`confirmCurrentName` его **текущее** имя:
+
+<CodeBlock language="json">
+  {dedent`
+    {"newName": "backend/api-v2", "confirmCurrentName": "backend/api"}
+  `}
+</CodeBlock>
+
+Подтверждение — не формальность и не «галочка на всякий случай». Это единственный момент, в который
+платформа может показать цену: дальше старый путь отвечает `404`, а узнают об этом при следующей
+выкатке. Поэтому подтверждение повторяет **имя**, а не выставляет флаг: назвать предмет должен тот,
+кто его меняет.
+
+Границы полосы названы прямо, чтобы на неё не полагались шире, чем она есть:
+
+- она считает **доказанных** потребителей — тех, кто уже скачивал. Образ, загруженный сегодня и
+  упомянутый в конвейере, который ещё не запускался, скачиваний не имеет и проходит **молча**.
+  Врезка «Переименование ломает каждый путь загрузки» выше остаётся в силе для всех случаев;
+- репозиторий, заведённый опечаткой минуту назад, переименовывается одним вызовом — подтверждения
+  он не требует, и это осознанно: наказывать частый безобидный случай ради редкого опасного мы не
+  стали;
+- если число скачиваний узнать **не удалось** (хранилище образов не ответило), вызов тоже
+  отвергается: неполученный ответ — не «потребителей нет». Подтверждение снимает и этот отказ.
+
 <table>
   <thead><tr><th>Ситуация</th><th>Код</th></tr></thead>
   <tbody>
     <tr><td><code>newName</code> совпадает с текущим именем</td><td><code>INVALID_ARGUMENT</code> — <code>"new name must differ from current name"</code></td></tr>
     <tr><td><code>newName</code> не проходит грамматику имени</td><td><code>INVALID_ARGUMENT</code> — <code>"invalid repository name '&lt;X&gt;'"</code></td></tr>
+    <tr><td><code>confirmCurrentName</code> задан и не равен текущему имени</td><td><code>INVALID_ARGUMENT</code> — <code>"confirm_current_name must repeat the current repository name"</code></td></tr>
+    <tr><td>Репозиторий скачивали, <code>confirmCurrentName</code> не задан</td><td><code>FAILED_PRECONDITION</code> — <code>"repository &lt;имя&gt; has &lt;N&gt; recorded pulls: …"</code></td></tr>
+    <tr><td>Число скачиваний узнать не удалось, <code>confirmCurrentName</code> не задан</td><td><code>FAILED_PRECONDITION</code> — <code>"cannot establish whether repository &lt;имя&gt; has pulls: …"</code></td></tr>
     <tr><td>Целевое имя занято</td><td><code>ALREADY_EXISTS</code></td></tr>
     <tr><td>Хранилище недоступно посреди переноса</td><td><code>UNAVAILABLE</code> — переноса не происходит, старое имя продолжает резолвиться</td></tr>
   </tbody>
@@ -346,7 +382,7 @@ repository visibility requires registry admin»). Гейт действует н
   {dedent`
     curl -X POST 'http://localhost:18080/registry/v1/registries/reg7h9x2k4m8p0q1r5/repositories/backend/api:rename' \\
       -H 'Authorization: Bearer <JWT>' -H 'Content-Type: application/json' \\
-      -d '{"newName":"backend/api-v2"}'
+      -d '{"newName":"backend/api-v2","confirmCurrentName":"backend/api"}'
   `}
 </CodeBlock>
 

@@ -22,7 +22,10 @@ import (
 // RenameRepository — async переименование в пределах ОДНОГО реестра (new_name — голое
 // repo-имя; cross-registry rename структурно невыразим, D-5). Sync-часть: format-
 // валидация registry_id/repository + new_name (malformed → INVALID_ARGUMENT, no-op
-// new_name==repository → "new name must differ from current name", A19, ДО Operation).
+// new_name==repository → "new name must differ from current name", A19, ДО Operation)
+// плюс полоса подтверждения (assertRenameConfirmed ниже: доказанные потребители без
+// confirm_current_name → FAILED_PRECONDITION с величиной; негодное подтверждение →
+// INVALID_ARGUMENT — тоже ДО Operation, поэтому отказ следа не оставляет).
 // per-repo v_update@old + v_create@registry Check (deny|absent → NOT_FOUND) — в handler'е.
 //
 // Async worker: (1) класс источника (GetConfig old — durable vs ephemeral); (2) pre-check
@@ -32,7 +35,7 @@ import (
 // (4) durable → RekeyConfig (re-key UPDATE, A16) | ephemeral → InsertConfig под new_name
 // (auto-promote → durable, A23) — одностейтментная запись под PK-backstop (A18); FGA
 // re-register new / unregister old + public-grant governance в той же tx.
-func (u *UseCase) RenameRepository(ctx context.Context, registryID, repository, newName string) (*operations.Operation, error) {
+func (u *UseCase) RenameRepository(ctx context.Context, registryID, repository, newName, confirmCurrentName string) (*operations.Operation, error) {
 	if err := u.assertRepoWired(); err != nil {
 		return nil, err
 	}
@@ -47,6 +50,9 @@ func (u *UseCase) RenameRepository(ctx context.Context, registryID, repository, 
 	}
 	if newName == repository {
 		return nil, failInvalidArg("new name must differ from current name")
+	}
+	if err := u.assertRenameConfirmed(ctx, registryID, repository, confirmCurrentName); err != nil {
+		return nil, err
 	}
 
 	principal := operations.PrincipalFromContext(ctx)
@@ -72,6 +78,57 @@ func (u *UseCase) RenameRepository(ctx context.Context, registryID, repository, 
 	})
 
 	return &op, nil
+}
+
+// assertRenameConfirmed — полоса подтверждения (#1644).
+//
+// Переименование — ЕДИНСТВЕННЫЙ глагол платформы, меняющий внешне-адресуемую
+// координату: после него `$домен/$registryID/$repository:$тег` отвечает 404 без
+// редиректа, алиаса и переходного окна. Обнаруживается это не в момент вызова, а при
+// следующей выкатке — и, как правило, у чужой команды. Поэтому у репозитория с
+// ДОКАЗАННЫМИ потребителями вызов без подтверждения отвергается синхронно, а отказ
+// называет величину и следующий шаг.
+//
+// Порядок веток выбран так, чтобы поле читалось ВСЕГДА. Сперва — согласие
+// подтверждения с предметом (негодное подтверждение отвергается независимо от
+// потребителей: иначе на безопасной полосе поле принималось бы и не читалось, что и
+// есть запрещённое «принято-и-проигнорировано»). И только затем — вопрос о
+// потребителях, который стоит обращения к движку.
+//
+// Мера потребителей — `download_count`, а НЕ наличие тегов. Репозиторий, заведённый
+// опечаткой в `docker push` минуту назад, теги несёт, а потребителей у него нет;
+// наказывать частый безобидный случай ради редкого опасного — тот самый размен,
+// которым в `known-divergences.md` отвергнуто снятие глагола целиком. Чего эта мера
+// НЕ ловит, сказано там же: образ, загруженный сегодня и упомянутый в конвейере,
+// который ещё не запускался, скачиваний не имеет и проходит полосу молча.
+//
+// Ответ движка не получен → потребители НЕИЗВЕСТНЫ, и это не «их нет»: полоса
+// закрывается fail-closed. Подтвердивший вызывающий движка не ждёт вовсе — вопрос,
+// ради которого его спрашивали, уже снят.
+//
+// Размен назван прямо: между чтением `download_count` и переименованием возможна
+// загрузка, поэтому полоса не является инвариантом данных и не претендует на него
+// (ban #10 про инварианты, а это ограждение ВЫЗЫВАЮЩЕГО). Величина, на которой
+// держится инвариант, живёт в движке, а не в нашей базе, и одним оператором не
+// выражается by construction.
+func (u *UseCase) assertRenameConfirmed(ctx context.Context, registryID, repository, confirmCurrentName string) error {
+	if confirmCurrentName != "" {
+		if confirmCurrentName != repository {
+			return failInvalidArg("confirm_current_name must repeat the current repository name")
+		}
+		return nil
+	}
+
+	proj, err := u.zot.RepositoryProjection(ctx, registryID, repository)
+	switch {
+	case err != nil:
+		return failFailedPrecondition("cannot establish whether repository %s has pulls: renaming breaks "+
+			"every pull path to it; repeat the current name in confirm_current_name to proceed", repository)
+	case proj != nil && proj.DownloadCount > 0:
+		return failFailedPrecondition("repository %s has %d recorded pulls: renaming breaks every pull path "+
+			"to it; repeat the current name in confirm_current_name to proceed", repository, proj.DownloadCount)
+	}
+	return nil
 }
 
 // doRename исполняет rename в worker'е: класс источника, collision-precheck, engine

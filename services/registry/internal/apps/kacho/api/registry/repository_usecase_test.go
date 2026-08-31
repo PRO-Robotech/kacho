@@ -335,7 +335,7 @@ func TestRepository_RG1A16_RenameDurable(t *testing.T) {
 	zot := &mockZot{}
 	uc := ucWithRegistry(cfg, zot, ops, domain.VisibilityPrivate)
 
-	op, err := uc.RenameRepository(aliceCtx(), regID, "old/name", "new/name")
+	op, err := uc.RenameRepository(aliceCtx(), regID, "old/name", "new/name", "")
 	require.NoError(t, err)
 	require.Nil(t, awaitOpDone(t, ops, op.ID).Error)
 	require.Contains(t, cfg.byName, "new/name")
@@ -350,7 +350,7 @@ func TestRepository_RG1A23_RenameEphemeralPromote(t *testing.T) {
 	zot := &mockZot{projByName: map[string]*domain.Repository{"push/old": {RegistryID: regID, Name: "push/old", TagCount: 2}}}
 	uc := ucWithRegistry(cfg, zot, ops, domain.VisibilityPrivate)
 
-	op, err := uc.RenameRepository(aliceCtx(), regID, "push/old", "push/new")
+	op, err := uc.RenameRepository(aliceCtx(), regID, "push/old", "push/new", "")
 	require.NoError(t, err)
 	done := awaitOpDone(t, ops, op.ID)
 	require.Nil(t, done.Error)
@@ -365,7 +365,7 @@ func TestRepository_RG1A21_RenameEngineUnavailable(t *testing.T) {
 	zot := &mockZot{renameErr: regerrors.ErrUnavailable}
 	uc := ucWithRegistry(cfg, zot, ops, domain.VisibilityPrivate)
 
-	op, err := uc.RenameRepository(aliceCtx(), regID, "move/src", "move/dst")
+	op, err := uc.RenameRepository(aliceCtx(), regID, "move/src", "move/dst", "")
 	require.NoError(t, err)
 	require.Equal(t, int32(codes.Unavailable), awaitOpDone(t, ops, op.ID).Error.Code)
 	require.Contains(t, cfg.byName, "move/src", "overlay-имя не изменено (A21)")
@@ -379,7 +379,7 @@ func TestRepository_RG1A17_RenameCollision(t *testing.T) {
 	cfg.byName["dst/b"] = &domain.RepositoryConfig{RegistryID: regID, Name: "dst/b", Visibility: domain.VisibilityPrivate}
 	uc := ucWithRegistry(cfg, &mockZot{}, ops, domain.VisibilityPrivate)
 
-	op, err := uc.RenameRepository(aliceCtx(), regID, "src/a", "dst/b")
+	op, err := uc.RenameRepository(aliceCtx(), regID, "src/a", "dst/b", "")
 	require.NoError(t, err)
 	d := awaitOpDone(t, ops, op.ID)
 	require.NotNil(t, d.Error)
@@ -393,11 +393,11 @@ func TestRepository_RG1A19_RenameBadNewName(t *testing.T) {
 	cfg.byName["app/x"] = &domain.RepositoryConfig{RegistryID: regID, Name: "app/x", Visibility: domain.VisibilityPrivate}
 	uc := ucWithRegistry(cfg, &mockZot{}, ops, domain.VisibilityPrivate)
 
-	_, err := uc.RenameRepository(aliceCtx(), regID, "app/x", "Bad Name!")
+	_, err := uc.RenameRepository(aliceCtx(), regID, "app/x", "Bad Name!", "")
 	require.Equal(t, codes.InvalidArgument, status.Code(err))
 	require.Contains(t, status.Convert(err).Message(), "invalid repository name 'Bad Name!'")
 
-	_, err = uc.RenameRepository(aliceCtx(), regID, "app/x", "app/x")
+	_, err = uc.RenameRepository(aliceCtx(), regID, "app/x", "app/x", "")
 	require.Equal(t, codes.InvalidArgument, status.Code(err))
 	require.Equal(t, "new name must differ from current name", status.Convert(err).Message())
 }

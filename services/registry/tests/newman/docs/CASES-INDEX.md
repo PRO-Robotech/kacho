@@ -98,6 +98,7 @@ public-mux registration (отдельный срез) — green after routes wir
 | `REPO-DEL-NEG-ABSENT` | NEG | P1 | DeleteRepository absent → sync 404 "repository not found" (existence-hiding) | RG-1-A15 |
 | `REPO-REN-OK` | CRUD | P1 | RenameRepository durable old→new → Get(new) 200, Get(old) 404 | RG-1-A16 |
 | `REPO-REN-NEG-NOOP` | NEG, VAL | P1 | RenameRepository `newName==repository` → 400 ("new name must differ from current name") | RG-1-A19 |
+| `REPO-REN-NEG-BADCONFIRM` | NEG, VAL | P1 | RenameRepository `confirmCurrentName` != current → 400 ("confirm_current_name must repeat the current repository name"); в паре — верное подтверждение проходит (полоса подтверждения, #1644) | RG-1-A19 |
 | `REPO-REF-EMPTY` | CRUD | P2 | ListReferrers subject без referrer'ов → `referrers=[]` 200 (not 404) | RG-1-C03 |
 | `REPO-REF-NEG-BADDIGEST` | NEG, VAL | P1 | ListReferrers malformed subject_digest → 400 ("invalid subject digest") | RG-1-C04 |
 | `REPO-CLEANUP` | CRUD | P3 | Cleanup: delete shared overlay registry | RG-1-A01 |
