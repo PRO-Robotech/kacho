@@ -20,9 +20,9 @@ import dedent from 'ts-dedent'
 `Instance`, когда приложению нужны процессорные ядра, память и тома, работающие как единый
 управляемый ресурс с понятным жизненным циклом (создан → запущен → остановлен → удалён).
 
-Инстанс задаётся тремя обязательными решениями: **род** (`instanceKind` — `VM` или
-`CONTAINER`), **тип машины** (`machineTypeId` — единственный канал размера) и **источник
-загрузки** (`bootSource` — образ, снимок или том домена kacho-storage). Дальше — сетевые
+Инстанс задаётся тремя обязательными решениями: **род** (`instanceKind` — сегодня
+создаётся только `VM`), **тип машины** (`machineTypeId` — единственный канал размера) и
+**источник загрузки** (`bootSource` — образ домена kacho-storage). Дальше — сетевые
 интерфейсы и конфигурация рода (`vmSpec` / `containerSpec`). Инстанс привязан к зоне
 (`zoneId`) и проекту (`projectId`), а его состояние управляется детерминированной
 **state-машиной** с явными предусловиями переходов.
@@ -31,7 +31,7 @@ import dedent from 'ts-dedent'
 graph TD
   P[Project · kacho-iam] --> I[Instance · ins-…]
   MT[MachineType · mt-…] -->|machine_type_id| I
-  I -->|boot_source| S[Образ / снимок / том · kacho-storage]
+  I -->|boot_source| S[Образ · kacho-storage]
   I -->|network_interfaces| NIC[NIC · kacho-vpc]
   I -->|zone_id| Z[Zone · kacho-geo]
 ```
@@ -125,7 +125,7 @@ Instance](/architecture/instance-lifecycle).
       "instanceKind": "VM",
       "machineTypeId": "mt-k3xe746h019hnz182",
       "effectiveResources": { "vCpu": 2, "memoryMib": "2048" },
-      "bootSource": { "type": "storage.image", "id": "img-9b1d4f6h8j0k2m4n6:stable" },
+      "bootSource": { "type": "storage.image", "id": "img9b1d4f6h8j0k2m4n6" },
       "status": "RUNNING",
       "bootDisk": { "volumeId": "{bootVolumeId}", "autoDelete": true, "mode": "READ_WRITE" },
       "secondaryDisks": [],
@@ -205,11 +205,32 @@ Instance](/architecture/instance-lifecycle).
 </table>
 
 :::note `bootSource` — это `{type, id}`, и только они
-`type` выбирает владельца, к которому уходит резолв: `storage.image` (образ диска — для `VM`)
-или `registry.image` (OCI-образ — для `CONTAINER`). `id` несёт тег или дайджест внутри себя
-(`img-<base32>:<tag>`, `img-<base32>@sha256:<hex>`, `repo/name:tag`). Остальные поля
-`bootSource` — **output-only**: имя и закреплённый дайджест заполняет резолв; передача их на
-вход отвергается.
+`type` выбирает владельца, к которому уходит резолв. Принимается **одно** значение —
+`storage.image` (образ диска домена kacho-storage). `id` — обычный идентификатор образа
+(`img` плюс 17 символов crockford-base32, слитно); тег и дайджест не требуются и внутри
+`id` не передаются: образ адресуется своим неизменяемым идентификатором, поэтому запуск
+через месяц берёт тот же образ без дополнительной фиксации. Остальные поля `bootSource`
+(`name`, `resolvedDigest`, `materializedVolume`, `imageKind`) — **output-only**: их
+заполняет резолв, а передача на вход отвергается
+`INVALID_ARGUMENT "bootSource name/resolvedDigest/materializedVolume/imageKind are
+output-only and must not be set on input"`.
+:::
+
+:::caution `CONTAINER` и `registry.image` объявлены контрактом, но на создании отвергаются
+Род `CONTAINER` отвергается синхронно:
+`INVALID_ARGUMENT "instanceKind CONTAINER is not creatable yet: a registry image has no
+durable address today"`. По той же причине отвергается и `bootSource.type: registry.image`:
+`INVALID_ARGUMENT "bootSource.type registry.image is not accepted yet: a registry image has
+no durable address today"`. Причина — у образа реестра сегодня нет неизменяемого адреса:
+репозиторий адресуется парой «реестр + имя», а имя меняется отдельным глаголом, поэтому
+ссылка, зафиксированная в машине, стала бы ложной после чужого переименования. Ветвь
+открывается вместе с неизменяемым идентификатором репозитория.
+
+Снимок и том **источником загрузки не являются** ни в каком виде: значения
+`storage.snapshot` и `storage.volume` условие не принимает —
+`INVALID_ARGUMENT "bootSource.type must be one of storage.image, registry.image"`. Том
+создаётся из образа при запуске и виден в `bootDisk`; снимок восстанавливается в том
+средствами kacho-storage, а машина загружается уже с образа.
 :::
 
 #### Пример запроса
@@ -225,7 +246,7 @@ Instance](/architecture/instance-lifecycle).
         "zoneId": "region-1-a",
         "instanceKind": "VM",
         "machineTypeId": "mt-k3xe746h019hnz182",
-        "bootSource": { "type": "storage.image", "id": "{imageId}:stable" }
+        "bootSource": { "type": "storage.image", "id": "{imageId}" }
       }'
   `}
 </CodeBlock>
