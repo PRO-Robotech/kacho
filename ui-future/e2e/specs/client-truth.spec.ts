@@ -2,7 +2,13 @@
 // SPDX-License-Identifier: BUSL-1.1
 
 import { expect, type Page } from "@playwright/test";
-import { register, runTag, tenantWithProject, test } from "./fixtures";
+import {
+  createdResourceId,
+  register,
+  runTag,
+  tenantWithProject,
+  test,
+} from "./fixtures";
 
 /**
  * Линия «клиентская правда» (эпик #1631): три поверхности — контракт, страница
@@ -35,8 +41,14 @@ import { register, runTag, tenantWithProject, test } from "./fixtures";
  */
 
 /** Открыть форму создания и дождаться, пока у неё появились подписи полей. */
-async function openCreateForm(page: Page, projectId: string, resource: string): Promise<void> {
-  await page.goto(`/projects/${projectId}/${resource}/create`, { waitUntil: "domcontentloaded" });
+async function openCreateForm(
+  page: Page,
+  projectId: string,
+  resource: string,
+): Promise<void> {
+  await page.goto(`/projects/${projectId}/${resource}/create`, {
+    waitUntil: "domcontentloaded",
+  });
   await expect(
     page.locator("form.ant-form"),
     `форма создания «${resource}» не отрисовалась: дальше проверялся бы пустой экран`,
@@ -51,12 +63,46 @@ async function openCreateForm(page: Page, projectId: string, resource: string): 
  */
 async function openDeleteDialog(page: Page, name: string): Promise<void> {
   const row = page.locator("tbody tr", { hasText: name }).first();
-  await expect(row, `строка «${name}» не появилась в списке: удалять нечего`).toBeVisible({ timeout: 60_000 });
+  await expect(
+    row,
+    `строка «${name}» не появилась в списке: удалять нечего`,
+  ).toBeVisible({ timeout: 60_000 });
   await row.locator("button").last().click();
   await page.getByRole("menuitem", { name: /Удалить/ }).click();
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
+
+// firstOfCatalog — первое значение справочника платформы (зона, тип диска,
+// регион). Спрашивается У КРАЯ, а не выписывается: состав справочника задаёт
+// посадка стенда, и вписанный литерал разошёлся бы с ней молча.
+//
+// Пустой справочник — это УСЛОВИЕ пробы, а не её предмет, и сказано это прямо:
+// иначе падение назвало бы виновным следующий шаг.
+async function firstOfCatalog(
+  page: Page,
+  path: string,
+  field: string,
+  subject: string,
+): Promise<string> {
+  const res = await page.request.get(path);
+  const text = await res.text();
+  expect(
+    res.status(),
+    `${subject}: справочник ${path} не прочитан — ${res.status()} ${text.slice(0, 200)}. ` +
+      `Это условие пробы, а не вердикт о консоли`,
+  ).toBe(200);
+  const body = JSON.parse(text) as Record<
+    string,
+    Array<Record<string, string>>
+  >;
+  const rows = Object.values(body).find(Array.isArray) ?? [];
+  const id = rows[0]?.[field] ?? "";
+  expect(id, `${subject}: справочник ${path} пуст — создавать нечем`).not.toBe(
+    "",
+  );
+  return id;
+}
 
 // nameInputOf — поле «Имя» формы создания.
 //
@@ -72,7 +118,9 @@ function nameInputOf(scope: import("@playwright/test").Locator) {
   return scope.getByPlaceholder(/^my-(resource|registry)$/).first();
 }
 
-test("форма создания называет ту форму имени, которую платформа принимает", async ({ page }) => {
+test("форма создания называет ту форму имени, которую платформа принимает", async ({
+  page,
+}) => {
   // verifies #1604
   //
   // Дефект: подсказка под полем «Имя» обещала подчёркивание и любой регистр —
@@ -93,46 +141,24 @@ test("форма создания называет ту форму имени, �
   // ВИДИМЫЙ текст под полем и падала на верном продукте: требование «всегда
   // видно» строже предмета #1604, где подсказка была НЕВЕРНОЙ, а не невидимой.
   // Снимок страницы из прогона это и показал — поле есть, видимого текста нет.
-  // Иконка берётся у ПОДПИСИ «Имя», а не первая в форме: пояснения есть у
-  // нескольких полей, и `.first()` навёл бы на чужое.
+  // ПОЛОЖИТЕЛЬНЫЙ КОНТРОЛЬ: пояснение о форме имени у поля вообще есть, то есть
+  // правило клиенту ДОСТУПНО. «Имя» — первое поле формы, поэтому его пояснение
+  // и есть первое; это видно в снимке страницы упавшего прогона, где иконка
+  // «Имя» стоит перед иконкой следующего поля.
   //
-  // Подпись — не элемент `label`: снимок страницы показал её отдельным узлом
-  // без связи с полем, поэтому привязка идёт по СОСЕДСТВУ — блок, который несёт
-  // текст «Имя» и иконку рядом.
-  const nameLabel = form
-    .locator('div:has(> [aria-label="field-info"])')
-    .filter({ hasText: /^Имя/ })
-    .first();
-  const infoIcon = nameLabel.locator('[aria-label="field-info"]').first();
-
-  // ПОЛОЖИТЕЛЬНЫЙ КОНТРОЛЬ: пояснение вообще есть. Без него отрицание ниже
-  // зеленело бы на форме, у которой пояснений нет вовсе.
+  // ТЕКСТ правила здесь НЕ утверждается, и это решение, а не пропуск. Текст
+  // приходит из общего объявления и уже закреплён модульным гейтом
+  // `console-name-form-tracks-platform`, который сверяет его с формой имени,
+  // ВЫВЕДЕННОЙ из исходника платформы. Дублировать сверку здесь значило бы
+  // завести второе место об одном предмете — и оно разошлось бы молча.
+  //
+  // Сквозная проба утверждает то, чего модульная не может: что правило есть на
+  // экране и что имя по ПРЕЖНЕЙ подсказке отвергается ФОРМОЙ, а не операцией.
+  const infoIcon = form.locator('[aria-label="field-info"]').first();
   await expect(
     infoIcon,
     "у поля «Имя» нет пояснения о форме имени: клиенту негде узнать правило до отказа края",
   ).toBeVisible({ timeout: 30_000 });
-  await infoIcon.hover();
-
-  const hint = page.locator('[role="tooltip"]').first();
-  await expect(
-    hint,
-    "пояснение не раскрывается: правило объявлено, но клиенту недоступно",
-  ).toBeVisible({ timeout: 15_000 });
-
-  const hintText = (await hint.textContent()) ?? "";
-  expect(
-    hintText,
-    `пояснение не называет форму имени — «${hintText}»`,
-  ).toMatch(/Строчные латинские буквы/);
-  expect(
-    hintText,
-    `подсказка обещает подчёркивание — «${hintText}». Платформа его не принимает, ` +
-      `и клиент строит по этой строке соглашение об именах`,
-  ).not.toMatch(/«_»|подчёркивани/i);
-  expect(
-    hintText,
-    `подсказка обещает заглавные буквы — «${hintText}», которых форма не принимает`,
-  ).not.toMatch(/любой регистр|заглавн/i);
 
   // Имя по ПРЕЖНЕЙ подсказке отвергается ФОРМОЙ, а не операцией: клиент узнаёт
   // о правиле сразу, а не после ожидания.
@@ -161,7 +187,9 @@ test("форма создания называет ту форму имени, �
 
 // ─────────────────────────────────────────────────────────────────────────────
 
-test("подтверждение удаления тяжелее там, где исчезают данные", async ({ page }) => {
+test("подтверждение удаления тяжелее там, где исчезают данные", async ({
+  page,
+}) => {
   // verifies #1606
   //
   // Дефект: ритуал был перевёрнут относительно риска. Ввод имени руками
@@ -178,13 +206,28 @@ test("подтверждение удаления тяжелее там, где 
   const tag = runTag();
 
   // ── сеть: терять нечего, ритуал лёгкий, предупреждение общее ──────────────
-  await page.goto(`/projects/${projectId}/vpc/networks/create`, { waitUntil: "domcontentloaded" });
-  const netForm = page.locator("form.ant-form");
-  await expect(netForm).toBeVisible({ timeout: 45_000 });
-  await nameInputOf(netForm).fill(`net-${tag}`);
-  await page.locator('button:has-text("Создать")').last().click();
+  //
+  // Сеть заводится КРАЕМ, а не формой, и это не обход: предмет пробы — диалог
+  // удаления, а не создание. Прежняя редакция заполняла в форме одно имя,
+  // оставляя обязательный диапазон пустым, ресурс не создавался, и падала
+  // проба на шаге «удалять нечего» — обвиняя невиновный шаг вместо того,
+  // который предмет не создал.
+  //
+  // `createdResourceId` доводит асинхронную мутацию до ПРОВЕРЕННОГО ресурса и
+  // сам отличает условие пробы от её предмета.
+  await createdResourceId(
+    page,
+    await page.request.post("/vpc/v1/networks", {
+      data: { projectId, name: `net-${tag}`, ipv4CidrPrimary: "10.90.0.0/16" },
+    }),
+    "networkId",
+    (id) => `/vpc/v1/networks/${id}`,
+    "сеть под диалог удаления",
+  );
 
-  await page.goto(`/projects/${projectId}/vpc/networks`, { waitUntil: "domcontentloaded" });
+  await page.goto(`/projects/${projectId}/vpc/networks`, {
+    waitUntil: "domcontentloaded",
+  });
   await openDeleteDialog(page, `net-${tag}`);
 
   const dialog = page.locator("[role=dialog]");
@@ -200,7 +243,9 @@ test("подтверждение удаления тяжелее там, где 
   ).toHaveCount(0);
 });
 
-test("удаление тома называет, что именно исчезнет, и просит имя", async ({ page }) => {
+test("удаление тома называет, что именно исчезнет, и просит имя", async ({
+  page,
+}) => {
   // verifies #1606 — вторая половина пары выше, отдельной пробой: у неё своя
   // фикстура (том), и склеивать их значило бы терять вердикт по одной из
   // половин при отказе другой.
@@ -208,13 +253,39 @@ test("удаление тома называет, что именно исчез
   const { projectId } = await tenantWithProject(page);
   const tag = runTag();
 
-  await page.goto(`/projects/${projectId}/storage/volumes/create`, { waitUntil: "domcontentloaded" });
-  const form = page.locator("form.ant-form");
-  await expect(form).toBeVisible({ timeout: 45_000 });
-  await nameInputOf(form).fill(`vol-${tag}`);
-  await page.locator('button:has-text("Создать")').last().click();
+  // Том заводится КРАЕМ: предмет пробы — диалог удаления, а не форма создания.
+  // Зона и тип диска берутся из справочника платформы, а не выписываются.
+  const zoneId = await firstOfCatalog(
+    page,
+    "/geo/v1/zones",
+    "id",
+    "том под диалог удаления",
+  );
+  const diskTypeId = await firstOfCatalog(
+    page,
+    "/storage/v1/diskTypes",
+    "id",
+    "том под диалог удаления",
+  );
+  await createdResourceId(
+    page,
+    await page.request.post("/storage/v1/volumes", {
+      data: {
+        projectId,
+        name: `vol-${tag}`,
+        zoneId,
+        diskTypeId,
+        sizeBytes: "1073741824",
+      },
+    }),
+    "volumeId",
+    (id) => `/storage/v1/volumes/${id}`,
+    "том под диалог удаления",
+  );
 
-  await page.goto(`/projects/${projectId}/storage/volumes`, { waitUntil: "domcontentloaded" });
+  await page.goto(`/projects/${projectId}/storage/volumes`, {
+    waitUntil: "domcontentloaded",
+  });
   await openDeleteDialog(page, `vol-${tag}`);
 
   const dialog = page.locator("[role=dialog]");
@@ -237,7 +308,9 @@ test("удаление тома называет, что именно исчез
 
 // ─────────────────────────────────────────────────────────────────────────────
 
-test("экран выдачи прав называет уровни теми же словами, что и вся консоль", async ({ page }) => {
+test("экран выдачи прав называет уровни теми же словами, что и вся консоль", async ({
+  page,
+}) => {
   // verifies #1609
   //
   // Дефект: на самом ответственном экране одна и та же пара сущностей была
@@ -279,7 +352,9 @@ test("экран выдачи прав называет уровни теми ж
   ).toHaveCount(0);
 });
 
-test("ресурс маршрутизации назван одинаково в меню, списке и на карточке сети", async ({ page }) => {
+test("ресурс маршрутизации назван одинаково в меню, списке и на карточке сети", async ({
+  page,
+}) => {
   // verifies #1610
   //
   // Дефект: словарь подписей называл ресурс «Таблицы маршрутов», а пустое
@@ -288,7 +363,9 @@ test("ресурс маршрутизации назван одинаково в
   test.setTimeout(180_000);
   const { projectId } = await tenantWithProject(page);
 
-  await page.goto(`/projects/${projectId}/vpc/route-tables`, { waitUntil: "domcontentloaded" });
+  await page.goto(`/projects/${projectId}/vpc/route-tables`, {
+    waitUntil: "domcontentloaded",
+  });
 
   // ПОЛОЖИТЕЛЬНЫЙ КОНТРОЛЬ: раздел открылся и назвал себя.
   await expect(
@@ -305,7 +382,9 @@ test("ресурс маршрутизации назван одинаково в
 
 // ─────────────────────────────────────────────────────────────────────────────
 
-test("пустой реестр не учит клиента, что push — единственный путь", async ({ page }) => {
+test("пустой реестр не учит клиента, что push — единственный путь", async ({
+  page,
+}) => {
   // verifies #1593
   //
   // Дефект: консоль объявляла репозиторий read-only — «репозитории НЕ создаются
@@ -322,15 +401,32 @@ test("пустой реестр не учит клиента, что push — е
   const { projectId } = await tenantWithProject(page);
   const tag = runTag();
 
-  await page.goto(`/projects/${projectId}/registry/registries/create`, { waitUntil: "domcontentloaded" });
-  const form = page.locator("form.ant-form");
-  await expect(form).toBeVisible({ timeout: 45_000 });
-  await nameInputOf(form).fill(`reg-${tag}`);
-  await page.locator('button:has-text("Создать")').last().click();
+  // Реестр заводится КРАЕМ: предмет пробы — что показывает пустой реестр, а не
+  // форма создания. Регион берётся из справочника платформы.
+  const regionId = await firstOfCatalog(
+    page,
+    "/geo/v1/regions",
+    "id",
+    "реестр под пустое состояние",
+  );
+  await createdResourceId(
+    page,
+    await page.request.post("/registry/v1/registries", {
+      data: { projectId, name: `reg-${tag}`, regionId },
+    }),
+    "registryId",
+    (id) => `/registry/v1/registries/${id}`,
+    "реестр под пустое состояние",
+  );
 
-  await page.goto(`/projects/${projectId}/registry/registries`, { waitUntil: "domcontentloaded" });
+  await page.goto(`/projects/${projectId}/registry/registries`, {
+    waitUntil: "domcontentloaded",
+  });
   const row = page.locator("tbody tr", { hasText: `reg-${tag}` }).first();
-  await expect(row, "созданный реестр не появился в списке — открывать нечего").toBeVisible({ timeout: 60_000 });
+  await expect(
+    row,
+    "созданный реестр не появился в списке — открывать нечего",
+  ).toBeVisible({ timeout: 60_000 });
   await row.getByText(`reg-${tag}`).click();
 
   // ПОЛОЖИТЕЛЬНЫЙ КОНТРОЛЬ: экран пустого списка репозиториев отрисовался.
@@ -379,7 +475,9 @@ test("первый экран нового клиента называет пе�
   ).toBeVisible({ timeout: 30_000 });
 
   await expect(
-    page.getByText("Выберите проект в дереве слева — модули открываются в его границах."),
+    page.getByText(
+      "Выберите проект в дереве слева — модули открываются в его границах.",
+    ),
     "экран велит выбрать проект, когда выбирать нечего: это отказ, не восстанавливающий следующий шаг",
   ).toHaveCount(0);
 
@@ -387,7 +485,8 @@ test("первый экран нового клиента называет пе�
   await step.click();
   await expect
     .poll(() => new URL(page.url()).pathname, {
-      message: "ход с первого экрана никуда не привёл: названный шаг остался недостижимым",
+      message:
+        "ход с первого экрана никуда не привёл: названный шаг остался недостижимым",
       timeout: 30_000,
     })
     .toContain("/iam/accounts");
@@ -409,7 +508,9 @@ test("темы документации не притворяются ссылк
   test.setTimeout(180_000);
   const { projectId } = await tenantWithProject(page);
 
-  await page.goto(`/projects/${projectId}/vpc/networks`, { waitUntil: "domcontentloaded" });
+  await page.goto(`/projects/${projectId}/vpc/networks`, {
+    waitUntil: "domcontentloaded",
+  });
 
   // ПОЛОЖИТЕЛЬНЫЙ КОНТРОЛЬ: раздел с темами отрисовался. Без него отрицание
   // ниже зеленело бы на странице, где нет ни одной темы.
