@@ -13,19 +13,51 @@
 //
 // Hook-endpoints (token/refresh/provision) require Bearer X-Kacho-Hook-Token.
 // Listener — cluster-internal-only (ban #6: Internal.* not on external endpoint).
+//
+// # Живость и готовность строит ОБЪЯВЛЕННЫЙ носитель, а не этот пакет (#1752)
+//
+// Здесь стояли СВОЙ тип именованной проверки (`{Name string; Check func(ctx) error}`)
+// и свои обработчики `/healthz` / `/readyz`. Форма совпадала с
+// `pkg/observability/health` дословно, а шапка того пакета объявляет его
+// ЕДИНСТВЕННЫМ в дереве носителем разведённых живости и готовности: об одном
+// предмете высказывались два места, и одно из них объявляло себя единственным.
+//
+// Расходиться им было нечем by construction — копии не собираются вместе и друг
+// друга не читают, — поэтому расхождение пришло бы не отказом, а тишиной. И
+// пришло бы оно в том, что общий носитель УЖЕ решил, а своя форма не несла:
+//
+//	срок на чекер            — зависший `Ping` держал обработчик до probe-timeout
+//	                           kubelet'а, а не считался недоступной зависимостью;
+//	«носитель не провязан»   — `health.ErrDependencyNotWired`: окно старта своей
+//	                           формой молча зачитывалось в готовность;
+//	503 на гашении           — `SetShuttingDown` снимает под из ротации ДО
+//	                           остановки серверов; своя форма гасла молча;
+//	зеркало в счётчик        — `WithResultObserver`;
+//	пустой набор проверок    — своя форма отвечала 200 («пусто = готов»),
+//	                           то есть fail-open ровно там, где ответ неизвестен.
+//
+// Держит единственность гейт дерева `internal/repohygiene`
+// `TestEveryServiceServingReadyzBuildsItWithTheDeclaredCarrier`: файл,
+// монтирующий `/readyz`, обязан отдать туда обработчик, произведённый носителем.
 package iamhooks
 
 import (
 	"context"
-	"encoding/json"
+	"errors"
 	"net/http"
+
+	"github.com/PRO-Robotech/kacho/pkg/observability/health"
 )
 
-// ReadinessChecker — именованная проверка критичной зависимости для /readyz.
-type ReadinessChecker struct {
-	Name  string
-	Check func(context.Context) error
-}
+// errHealthCarrierNotWired — носитель готовности не передан композиционным
+// корнем. Это ошибка сборки, а не состояние среды, и ответ на неё —
+// fail-closed: под объявляет себя НЕ готовым и называет причину.
+//
+// Умолчание выбрано так же, как у `health.Slot`: неустановленный носитель есть
+// «ответа нет», а неполученный ответ не является «да». Прежняя форма на пустом
+// наборе проверок отвечала 200 — то есть непровязанная готовность была
+// неотличима от исправной.
+var errHealthCarrierNotWired = errors.New("readiness carrier not wired by the composition root")
 
 // Handlers — bundle всех hook handlers.
 type Handlers struct {
@@ -36,17 +68,31 @@ type Handlers struct {
 	// соседних: до него провайдер бил в легаси gRPC-порт с REST-подобным путём,
 	// и событие не доезжало никогда (см. recovery_hook_handler.go).
 	RecoveryHook http.Handler
-	// Readiness — проверки зависимостей для /readyz (DB-ping, LRO-worker, …).
-	// Пустой список → /readyz деградирует до liveness (200), как было раньше.
-	Readiness []ReadinessChecker
+	// Health — объявленный носитель разведённых живости и готовности. ЧТО именно
+	// проверяет каждая зависимость, знает композиционный корень (он один знает,
+	// какая база своя и к кому сервис ходит); этот пакет только монтирует.
+	//
+	// nil означает «корень не провязал» и даёт fail-closed готовность, а не
+	// молчаливые 200 (см. errHealthCarrierNotWired).
+	Health *health.Aggregator
 }
 
 // NewMux собирает Handlers в один http.ServeMux. Каждый handler уже несет
 // auth-проверку — mux только маршрутизирует.
 func NewMux(h Handlers) *http.ServeMux {
 	mux := http.NewServeMux()
-	mux.HandleFunc("/healthz", livenessHandler)
-	mux.HandleFunc("/readyz", readinessHandler(h.Readiness))
+	agg := h.Health
+	if agg == nil {
+		agg = health.New([]health.Checker{{
+			Name:  "readiness-carrier",
+			Check: func(context.Context) error { return errHealthCarrierNotWired },
+		}})
+	}
+	// Образец с методом (`GET /healthz`) — та же форма, что у шести соседних
+	// сервисов: не-GET получает 405 от самого маршрутизатора, и отдельная ветка
+	// в обработчике не нужна.
+	mux.Handle("GET /healthz", agg.LiveHandler())
+	mux.Handle("GET /readyz", agg.ReadyHandler())
 	if h.TokenHook != nil {
 		mux.Handle("/iam/v1/hooks/token", h.TokenHook)
 	}
@@ -60,39 +106,6 @@ func NewMux(h Handlers) *http.ServeMux {
 		mux.Handle("/iam/v1/hooks/recovery", h.RecoveryHook)
 	}
 	return mux
-}
-
-func livenessHandler(w http.ResponseWriter, r *http.Request) {
-	if r.Method != http.MethodGet {
-		http.Error(w, `{"error":"method_not_allowed"}`, http.StatusMethodNotAllowed)
-		return
-	}
-	w.Header().Set("Content-Type", "application/json")
-	w.WriteHeader(http.StatusOK)
-	_ = json.NewEncoder(w).Encode(map[string]any{"ok": true})
-}
-
-// readinessHandler возвращает 503, если любая зависимость не готова (с ее именем в
-// теле, без leak деталей ошибки), иначе 200. /healthz остается чистым liveness,
-// чтобы деградация зависимости не вызывала restart-storm.
-func readinessHandler(checkers []ReadinessChecker) http.HandlerFunc {
-	return func(w http.ResponseWriter, r *http.Request) {
-		if r.Method != http.MethodGet {
-			http.Error(w, `{"error":"method_not_allowed"}`, http.StatusMethodNotAllowed)
-			return
-		}
-		for _, c := range checkers {
-			if err := c.Check(r.Context()); err != nil {
-				w.Header().Set("Content-Type", "application/json")
-				w.WriteHeader(http.StatusServiceUnavailable)
-				_ = json.NewEncoder(w).Encode(map[string]any{"ready": false, "failed": c.Name})
-				return
-			}
-		}
-		w.Header().Set("Content-Type", "application/json")
-		w.WriteHeader(http.StatusOK)
-		_ = json.NewEncoder(w).Encode(map[string]any{"ready": true})
-	}
 }
 
 // LoggerMiddleware — minimal access log wrapper.

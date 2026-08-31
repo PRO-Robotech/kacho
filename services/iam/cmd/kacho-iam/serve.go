@@ -661,12 +661,16 @@ func runServe(cfg config.Config) error {
 	// (1) Приём вебхуков провайдера личности (Hydra token/refresh, Kratos
 	// provision). Cluster-internal-only (запрет #6), отдельный порт от gRPC.
 	hooksAddr := cfg.AuthN.HooksHTTPListenAddress()
+	// Носитель готовности отдаётся сюда, чтобы гашение переводило `/readyz` в
+	// 503 ДО остановки серверов (см. triggerShutdown ниже). Без этого носитель
+	// был бы, а дёрнуть его было бы некому (#1752).
+	hooksHandler, hooksHealth := buildHooksMux(pool, kachoRepo, opsRepo, svcs.ownGates, metricsReg, cfg, logger)
 	hooksSurface, err := iamHTTPSurface(servicecontract.Surface{
 		Name:    "вебхуки провайдера личности",
 		Mode:    surfaceMode,
 		Logger:  logger,
 		Addr:    addrAxis(hooksAddr, "KACHO_IAM_HOOKS_HTTP_ADDR не задан профилем развёртывания: обогащение токена и заведение пользователя по первому входу на этой посадке не обслуживаются"),
-		Handler: buildHooksMux(pool, kachoRepo, opsRepo, svcs.ownGates, metricsReg, cfg, logger),
+		Handler: hooksHandler,
 		Reach:   servicecontract.ReachClusterInternal,
 		Auth: servicecontract.Value[servicecontract.SurfaceAuthMech](
 			"общий секрет провайдера, проверяется обработчиком на каждом запросе"),
@@ -983,6 +987,10 @@ func runServe(cfg config.Config) error {
 	var shutdownOnce sync.Once
 	triggerShutdown := func() {
 		shutdownOnce.Do(func() {
+			// ПЕРВЫМ делом — снять под из ротации: kubelet перестаёт слать
+			// трафик ДО того, как серверы начнут отказывать. Порядок здесь и
+			// есть предмет: флип после остановки не успевает ничего.
+			hooksHealth.SetShuttingDown()
 			stopAdmission()
 			stopGRPCBounded(internalSrv, gracefulTimeout)
 			stopGRPCBounded(grpcSrv, gracefulTimeout)

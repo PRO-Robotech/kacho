@@ -274,8 +274,17 @@ gRPC-порт (`:9090`); HTTP `/healthz` и `/readyz` доступны для р
 - **Metrics:** `internal/observability/metrics` (Prometheus `client_golang`,
   приватный registry); HTTP-listener и интерсепторы — в composition root
   `cmd/kacho-iam/serve.go`.
-- **Health:** `internal/handler/iamhooks/http_server.go` (`/healthz`, `/readyz`),
-  набор `ReadinessChecker` собирается в `cmd/kacho-iam/hooks_mux.go`.
+- **Health:** живость и готовность строит ОБЩИЙ носитель `pkg/observability/health`
+  (#1752) — тот же, что у шести остальных сервисов; `internal/handler/iamhooks/http_server.go`
+  только монтирует его обработчики на `/healthz` и `/readyz`. Набор именованных
+  проверок (`health.Checker`: база, версия схемы, LRO-worker) собирается в
+  композиционном корне `cmd/kacho-iam/hooks_mux.go`, а `SetShuttingDown` дёргается
+  из `cmd/kacho-iam/serve.go` — готовность уходит в 503 ДО остановки серверов.
+
+  Прежде здесь стоял свой тип `ReadinessChecker` той же формы, объявленный в
+  handler-слое: об одном предмете высказывались два места, и одно из них
+  (шапка `pkg/observability/health`) объявляло себя единственным. Разойтись им
+  было нечем — копии не собираются вместе и друг друга не читают.
 
 ## Связанные компоненты
 

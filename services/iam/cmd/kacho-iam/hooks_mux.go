@@ -13,6 +13,7 @@ import (
 
 	"github.com/jackc/pgx/v5/pgxpool"
 
+	"github.com/PRO-Robotech/kacho/pkg/observability/health"
 	"github.com/PRO-Robotech/kacho/pkg/operations"
 
 	reconcileapp "github.com/PRO-Robotech/kacho/services/iam/internal/apps/kacho/api/access_binding/reconcile"
@@ -30,7 +31,15 @@ import (
 	"github.com/PRO-Robotech/kacho/services/iam/internal/migrations"
 )
 
-// buildHooksMux — собирает HTTP mux для AuthN hooks.
+// buildHooksMux — собирает HTTP mux для AuthN hooks и ВОЗВРАЩАЕТ носитель
+// готовности вместе с ним.
+//
+// Носитель отдаётся наружу, а не остаётся внутри, ровно ради одного: гашение.
+// `SetShuttingDown` переводит `/readyz` в 503 ДО остановки серверов, и знает о
+// начале гашения только тот, кто его запускает (`serve.go`). Оставить носитель
+// здесь значило бы иметь механизм и не иметь того, кто его дёрнет, — у шести
+// соседних сервисов эта провязка есть, и её отсутствие было бы расхождением,
+// которому нечем себя выдать (#1752).
 //
 // kachoRepo / opsRepo / relationStore прокидываются из composition root
 // (serve.go) — provision hook (Kratos user-provisioning, C4) строит
@@ -44,7 +53,7 @@ func buildHooksMux(
 	metricsReg *metrics.Registry,
 	cfg config.Config,
 	logger *slog.Logger,
-) http.Handler {
+) (http.Handler, *health.Aggregator) {
 	hookSecret := cfg.AuthN.ResolveHookSharedSecret()
 	domain := cfg.AuthN.ResolveDomain()
 	hydraIssuer := cfg.AuthN.ResolveHydraIssuer()
@@ -128,41 +137,48 @@ func buildHooksMux(
 		logger,
 	)
 
+	// Готовность строит ОБЪЯВЛЕННЫЙ носитель (`pkg/observability/health`), а не
+	// своя форма в handler-слое (#1752): срок на чекер, различение
+	// «носитель не провязан»/«носитель ответил», перевод в 503 на гашении и
+	// зеркало результата — свойства, которые он уже решил, и решать их второй
+	// раз по месту значило бы завести расхождение, которому нечем себя выдать.
+	//
+	// ЧТО именно проверяется — по-прежнему решает композиционный корень: он один
+	// знает, какая база своя и к кому сервис ходит.
+	healthAgg := health.New([]health.Checker{
+		{Name: "database", Check: pool.Ping},
+		// ВЕРСИЯ СХЕМЫ — ОТДЕЛЬНАЯ ИМЕНОВАННАЯ ЗАВИСИМОСТЬ, а не часть
+		// проверки базы. Мигратор идёт при каждом раскате, поэтому откат
+		// выкатки ставит ПРЕЖНИЙ образ на НОВУЮ схему; база при этом
+		// отвечает на `Ping`, и без этого чекера под объявлялся бы готовым и
+		// получал трафик (`pkg/schemaguard`, задача #1734). Отдельное имя
+		// обязательно: оператор обязан отличить «база недоступна» от «образ
+		// не той версии, что схема», не читая кода.
+		//
+		// Набор миграций читается как встроенные байты, у базы спрашивается
+		// ОДИН `SELECT` применённой версии — least-privilege serve-бинаря
+		// сохраняется, схему он по-прежнему не меняет.
+		{Name: schemaguard.CheckerName, Check: schemaguard.CheckFromFS(
+			migrations.FS, schemaguard.PgxVersionReader(pool))},
+		{Name: "lro-worker", Check: func(context.Context) error {
+			if operations.Ready() {
+				return nil
+			}
+			return errors.New("lro worker not ready")
+		}},
+	})
+
 	mux := handlerinternal.NewMux(handlerinternal.Handlers{
 		TokenHook:     tokenHook,
 		RefreshHook:   refreshHook,
 		ProvisionHook: provisionHook,
 		RecoveryHook:  recoveryHook,
-		// /readyz отражает доступность критичных зависимостей: коннект к БД,
-		// версию схемы под образом и поднятый LRO-worker. /healthz остается
-		// чистым liveness.
-		Readiness: []handlerinternal.ReadinessChecker{
-			{Name: "database", Check: pool.Ping},
-			// ВЕРСИЯ СХЕМЫ — ОТДЕЛЬНАЯ ИМЕНОВАННАЯ ЗАВИСИМОСТЬ, а не часть
-			// проверки базы. Мигратор идёт при каждом раскате, поэтому откат
-			// выкатки ставит ПРЕЖНИЙ образ на НОВУЮ схему; база при этом
-			// отвечает на `Ping`, и без этого чекера под объявлялся бы готовым и
-			// получал трафик (`pkg/schemaguard`, задача #1734). Отдельное имя
-			// обязательно: оператор обязан отличить «база недоступна» от «образ
-			// не той версии, что схема», не читая кода.
-			//
-			// Набор миграций читается как встроенные байты, у базы спрашивается
-			// ОДИН `SELECT` применённой версии — least-privilege serve-бинаря
-			// сохраняется, схему он по-прежнему не меняет.
-			{Name: schemaguard.CheckerName, Check: schemaguard.CheckFromFS(
-				migrations.FS, schemaguard.PgxVersionReader(pool))},
-			{Name: "lro-worker", Check: func(context.Context) error {
-				if operations.Ready() {
-					return nil
-				}
-				return errors.New("lro worker not ready")
-			}},
-		},
+		Health:        healthAgg,
 	})
 	wrapped := handlerinternal.LoggerMiddleware(mux, func(method, path string, status int) {
 		logger.Info("hooks http", "method", method, "path", path, "status", status)
 	})
-	return wrapped
+	return wrapped, healthAgg
 }
 
 // userProvisionAdapter maps the iamhooks.UserProvisioner port to the
