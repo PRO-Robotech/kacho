@@ -97,7 +97,45 @@ assert "полоса названа на приёмник, а он выключ�
 assert_rel kacho "полоса названа на ЧУЖОЙ приёмник"  RED "поднимает приёмник под именем"
 assert_rel stand-a "то же, имя релиза иное вовсе"    RED "поднимает приёмник под именем"
 
+# ── УДОСТОВЕРЕНИЕ: ИСТОЧНИК ОБЪЯВЛЯЕТСЯ, ВЕЛИЧИНА — НЕТ (решение Р6) ────────
+#
+# Каждая ось двигает ОДНУ величину поверх неизменного дерева: инъекция вида
+# «завести ещё один объект» нарушала бы заодно всё, что требуется от объектов
+# вообще, и красное приходило бы от соседа (testing.md §«Гейт на класс», п. 2в).
+#
+# ЗДЕСЬ НЕТ НИ ОДНОГО НАСТОЯЩЕГО УДОСТОВЕРЕНИЯ: пароль в оси «литеральное
+# удостоверение» — заведомо негодная строка, и она нужна лишь затем, чтобы в
+# части адреса до «@» появилось двоеточие.
+echo "=== удостоверение: источник и его половины ==="
+assert "литеральное удостоверение в адресе" RED "УДОСТОВЕРЕНИЕ внутри адреса" \
+  --set 'global.kacho.identity.smtp.connectionURI=smtp://noreply%40kacho.cloud:not-a-secret@kacho-umbrella-mailpit:1025/'
+assert "узел требует удостоверения, источника нет" RED "ИСТОЧНИК удостоверения не объявлен" \
+  --set 'global.kacho.identity.smtp.connectionURI=smtp://noreply%40kacho.cloud@kacho-umbrella-mailpit:1025/'
+assert "источник объявлен, имени пользователя в адресе нет" RED "имени пользователя НЕ несёт" \
+  --set global.kacho.identity.smtp.credentialSecret.name=kacho-identity-smtp \
+  --set global.kacho.identity.smtp.credentialSecret.key=password
+assert "источник объявлен, узла нет" RED "узел НЕ задан" \
+  --set mailpit.enabled=false \
+  --set global.kacho.identity.smtp.connectionURI= \
+  --set global.kacho.identity.smtp.fromAddress= \
+  --set global.kacho.identity.smtp.fromName= \
+  --set global.kacho.identity.smtp.credentialSecret.name=kacho-identity-smtp \
+  --set global.kacho.identity.smtp.credentialSecret.key=password
+# ФРАЗА-УЛИКА БЕЗ ОБРАТНЫХ КАВЫЧЕК: внутри двойных они исполняются оболочкой, и
+# улика молча превратилась бы в пустую строку — то есть ось перестала бы сверять
+# ТЕКСТ отказа, оставаясь на вид исполненной.
+assert "источник объявлен наполовину: имя без ключа" RED 'задано, а' \
+  --set global.kacho.identity.smtp.credentialSecret.name=kacho-identity-smtp
+assert "источник объявлен наполовину: ключ без имени" RED 'задан, а' \
+  --set global.kacho.identity.smtp.credentialSecret.key=password
+
 echo "=== законные близнецы: страж обязан молчать ==="
+# ПАРНЫЙ ПОЛОЖИТЕЛЬНЫЙ К ОСЯМ УДОСТОВЕРЕНИЯ. Без него отрицания выше зеленели бы
+# на страже, отвергающем ЛЮБОЙ адрес с «@», — то есть на сломанном.
+assert "имя пользователя и объявленный источник — законная пара" GREEN "" \
+  --set 'global.kacho.identity.smtp.connectionURI=smtp://noreply%40kacho.cloud@kacho-umbrella-mailpit:1025/' \
+  --set global.kacho.identity.smtp.credentialSecret.name=kacho-identity-smtp \
+  --set global.kacho.identity.smtp.credentialSecret.key=password
 assert "неявный TLS вместо STARTTLS"    GREEN "" \
   --set 'global.kacho.identity.smtp.connectionURI=smtps://kacho-umbrella-mailpit:465/'
 assert "приёмник выключен, полосы нет"  GREEN "" \
@@ -112,8 +150,8 @@ assert "внешний ретранслятор"           GREEN "" \
   --set 'global.kacho.identity.smtp.connectionURI=smtps://smtp.example.com:465/'
 
 echo "перепись: инъекций красных $red · законных близнецов зелёных $green"
-[ "$red" -ge 15 ] || { echo "ОТКАЗ: красных инъекций $red — доказательство неполно"; rc=1; }
-[ "$green" -ge 5 ] || { echo "ОТКАЗ: зелёных близнецов $green — отрицание не проверено в обратную сторону"; rc=1; }
+[ "$red" -ge 21 ] || { echo "ОТКАЗ: красных инъекций $red — доказательство неполно"; rc=1; }
+[ "$green" -ge 6 ] || { echo "ОТКАЗ: зелёных близнецов $green — отрицание не проверено в обратную сторону"; rc=1; }
 [ "$rc" = 0 ] && echo "ИТОГ: страж почтовой полосы способен упасть и способен смолчать" \
               || echo "ИТОГ: ОТКАЗ"
 exit "$rc"
