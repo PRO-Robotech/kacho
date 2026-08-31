@@ -134,12 +134,12 @@ func TestMODMF19EmptyTreeIsVoidNotSuccess(t *testing.T) {
 // обходе, не находящем НИЧЕГО.
 func TestCheckTreeSkipsWhatIsNotOurs(t *testing.T) {
 	root := writeTree(t, map[string]string{
-		"services/vpc/manifest.yaml":              goodManifest(t),
-		"node_modules/pkg/manifest.yaml":          "мусор: не наш",
-		"vendor/foreign/manifest.yaml":            "мусор: не наш",
-		"ui-future/dist/assets/manifest.yaml":     "мусор: не наш",
-		"services/vpc/manifest.yaml.bak":          "мусор: не наш",
-		"services/vpc/deploy/app.manifest.yaml":   "мусор: не наш",
+		"services/vpc/manifest.yaml":            goodManifest(t),
+		"node_modules/pkg/manifest.yaml":        "мусор: не наш",
+		"vendor/foreign/manifest.yaml":          "мусор: не наш",
+		"ui-future/dist/assets/manifest.yaml":   "мусор: не наш",
+		"services/vpc/manifest.yaml.bak":        "мусор: не наш",
+		"services/vpc/deploy/app.manifest.yaml": "мусор: не наш",
 	})
 	// .git отдельно: имя каталога начинается с точки.
 	if err := os.MkdirAll(filepath.Join(root, ".git"), 0o755); err != nil {
