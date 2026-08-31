@@ -56,7 +56,9 @@
 //  2. окно узнаётся по паре сравнений позиции в одном запросе: строго больше
 //     курсора и не больше границы;
 //  3. пол берётся ВЫЗОВОМ в теле той же функции, а не в соседней, и там же
-//     стоит вызов, НАПОЛНЯЮЩИЙ его свежим наблюдением.
+//     стоит вызов, НАПОЛНЯЮЩИЙ его свежим наблюдением;
+//  4. порядок операторов в теле функции отвечает порядку исполнения — по нему
+//     судится, взят ли пол не раньше страницы.
 //
 // Каждая может измениться, поэтому гейт печатает объём КАЖДОЙ полосы и падает на
 // пустом обходе: ноль прочитанных файлов и ноль найденных окон означают слепоту
@@ -94,8 +96,14 @@ const (
 	// subjectChangeJournalTable — имя журнала, как оно стоит в запросе.
 	subjectChangeJournalTable = "subject_change_outbox"
 
-	// floorSelector — чем БЕРУТ нижнюю границу.
+	// floorSelector — чем БЕРУТ нижнюю границу по последнему наблюдению.
 	floorSelector = "Floor"
+
+	// observeFloorSelector — вторая законная форма: наблюдение и ответ ИЗ НЕГО
+	// одним вызовом. Нужна там, где наблюдатель ОБЩИЙ: общее поле пишется каждым
+	// проходом безусловно, поэтому проход, чей запрос отработал раньше, а запись
+	// легла позже, возвращает поле назад — и занизившийся пол отказа не даёт.
+	observeFloorSelector = "ObserveFloor"
 
 	// positionLostProducer / positionLostParser — две стороны шва.
 	positionLostProducer = "PositionLost"
@@ -211,10 +219,13 @@ func AuditSubjectChangeGapDetection(
 				continue
 			}
 			var (
-				sql    strings.Builder
-				asks   = map[string]bool{}
-				calls  []string
-				callAt = map[string]token.Pos{}
+				sql       strings.Builder
+				asks      = map[string]bool{}
+				calls     []string
+				callAt    = map[string]token.Pos{}
+				windowAt  token.Pos
+				floorAt   token.Pos
+				floorLine int
 			)
 			ast.Inspect(fn.Body, func(n ast.Node) bool {
 				switch node := n.(type) {
@@ -223,6 +234,10 @@ func AuditSubjectChangeGapDetection(
 						if s, uerr := strconv.Unquote(node.Value); uerr == nil {
 							sql.WriteString(" ")
 							sql.WriteString(s)
+							// Позиция САМОГО окна: по ней судится порядок.
+							if readsJournalByWindow(s) && !windowAt.IsValid() {
+								windowAt = node.Pos()
+							}
 						}
 					}
 				case *ast.CallExpr:
@@ -233,6 +248,15 @@ func AuditSubjectChangeGapDetection(
 					switch name {
 					case floorSelector:
 						asks[floorSelector] = true
+						if !floorAt.IsValid() || node.Pos() < floorAt {
+							floorAt, floorLine = node.Pos(), fset.Position(node.Pos()).Line
+						}
+					case observeFloorSelector:
+						// Одним вызовом и наблюдение, и ответ из него же.
+						asks[floorSelector], asks[observedFloor] = true, true
+						if !floorAt.IsValid() || node.Pos() < floorAt {
+							floorAt, floorLine = node.Pos(), fset.Position(node.Pos()).Line
+						}
 					case positionLostProducer, positionLostParser:
 						calls = append(calls, name)
 						if _, seen := callAt[name]; !seen {
@@ -269,6 +293,29 @@ func AuditSubjectChangeGapDetection(
 			where := at(fn.Pos()) + " " + fn.Name.Name
 			census.Windows = append(census.Windows, where)
 			if asks[floorSelector] && asks[observedFloor] {
+				// ПОРЯДОК — вторая половина защиты, и без неё первая ничего не
+				// доказывает. Пол и страница суть ДВА запроса, между ними уборка
+				// вправе зафиксироваться; пол, спрошенный РАНЬШЕ, описывает журнал,
+				// которого к моменту чтения уже нет, и отказ не производится. Это
+				// software check-then-act (ban #10): решает не проверка, а
+				// расписание. Порядок «после» делает вывод доказуемым — нижняя
+				// строка непустого журнала монотонна, поэтому пол, взятый не раньше
+				// страницы, не может занизиться.
+				//
+				// Цена ошибки измерена, а не предположена: дофиксовый порядок давал
+				// молчаливый пропуск на 4 прогонах из 20 (проба в один раунд) и на
+				// 10 из 10 (проба в восемь раундов).
+				if windowAt.IsValid() && floorAt.IsValid() && floorAt < windowAt {
+					findings = append(findings, SubjectChangeGapDetectionFinding{
+						What: where + " — пол берётся РАНЬШЕ страницы (строка " +
+							strconv.Itoa(floorLine) + "). Между двумя запросами уборка " +
+							"вправе зафиксироваться: страница придёт без снятых строк, " +
+							"пол о них ещё не знает, отказа не будет — и вызывающий " +
+							"получит страницу с дырой как полную. Пол обязан браться НЕ " +
+							"РАНЬШЕ страницы, иначе доказывает он только расписание",
+					})
+					continue
+				}
 				census.WindowsAskFloor = append(census.WindowsAskFloor, where)
 				continue
 			}

@@ -29,6 +29,7 @@ package pg_test
 import (
 	"context"
 	"errors"
+	"fmt"
 	"sync"
 	"testing"
 
@@ -178,45 +179,84 @@ func TestSubjectChangeRepo_ConcurrentSweepNeverProducesASilentGap(t *testing.T) 
 
 	repo := kachopg.NewSubjectChangeRepo(pool, nil)
 
-	id1 := seedSubjectChange(t, ctx, pool, "usr_race_a", "binding_upsert")
-	id2 := seedSubjectChange(t, ctx, pool, "usr_race_b", "binding_upsert")
-	for _, s := range []string{"usr_race_c", "usr_race_d", "usr_race_e", "usr_race_f"} {
-		seedSubjectChange(t, ctx, pool, s, "binding_upsert")
-	}
-
 	// Граница наблюдается заранее: холодный старт отвечает отказом «позиции ещё
 	// нет», и он к предмету пробы отношения не имеет.
+	seedSubjectChange(t, ctx, pool, "usr_race_warmup", "binding_upsert")
 	_, _, err = repo.PollSubjectChanges(ctx, 0, 10)
 	require.NoError(t, err)
 
-	const readers = 8
-	var wg sync.WaitGroup
-	violations := make(chan string, readers)
+	// РАУНДОВ несколько, и это не «побольше на всякий случай».
+	//
+	// Окно между чтением страницы и наблюдением пола узкое, поэтому ОДИН раунд
+	// ловит дефект не всегда: замер на дофиксовом дереве давал 4 падения на 20
+	// прогонов, то есть инструмент срабатывал в пятой части случаев. Проба,
+	// ловящая свой предмет с такой вероятностью, читается как нестабильная — и
+	// первым же красным её объявляют флейком, а не находкой.
+	//
+	// Раунды берут ту же гонку многократно в ОДНОМ прогоне и поднимают
+	// срабатывание до достоверного, ничего не ослабляя: утверждение в каждом
+	// раунде то же самое.
+	const (
+		rounds  = 8
+		readers = 8
+	)
+	violations := make(chan string, rounds*readers)
 
-	wg.Add(1)
-	go func() {
-		defer wg.Done()
-		_, _ = pool.Exec(ctx, `DELETE FROM kacho_iam.subject_change_outbox WHERE id <= $1`, id2)
-	}()
+	for round := 0; round < rounds; round++ {
+		// Каждый раунд — СВОЯ фикстура: инвариант формулируется про строку,
+		// заведомо закоммиченную до старта читателей, и переиспользование строк
+		// прошлого раунда сделало бы утверждение зависимым от порядка раундов.
+		prefix := fmt.Sprintf("usr_race_r%d_", round)
+		id1 := seedSubjectChange(t, ctx, pool, prefix+"a", "binding_upsert")
+		id2 := seedSubjectChange(t, ctx, pool, prefix+"b", "binding_upsert")
+		for _, suffix := range []string{"c", "d", "e", "f"} {
+			seedSubjectChange(t, ctx, pool, prefix+suffix, "binding_upsert")
+		}
 
-	for i := 0; i < readers; i++ {
+		var wg sync.WaitGroup
 		wg.Add(1)
 		go func() {
 			defer wg.Done()
-			changes, _, perr := repo.PollSubjectChanges(ctx, id1, 10)
-			if perr != nil {
-				var lost *service.SubjectChangePositionLostError
-				if !errors.As(perr, &lost) {
-					violations <- "отказ вне обеих законных полос: " + perr.Error()
-				}
-				return
-			}
-			if len(changes) == 0 || changes[0].ID != id2 {
-				violations <- "удачный ответ начался не со следующей строки — читатель переехал через снятое"
-			}
+			_, _ = pool.Exec(ctx,
+				`DELETE FROM kacho_iam.subject_change_outbox WHERE id <= $1`, id2)
 		}()
+
+		for i := 0; i < readers; i++ {
+			wg.Add(1)
+			go func() {
+				defer wg.Done()
+				changes, headID, perr := repo.PollSubjectChanges(ctx, id1, 10)
+				if perr != nil {
+					var lost *service.SubjectChangePositionLostError
+					if !errors.As(perr, &lost) {
+						violations <- "отказ вне обеих законных полос: " + perr.Error()
+					}
+					return
+				}
+				// ИНВАРИАНТ: читатель не вправе уйти ЗА строку, которой не получил.
+				//
+				// Пустая страница нарушением НЕ является, пока голова не двигает
+				// курсор: граница устоявшегося отстаёт, пока уборщик держит журнал
+				// своей транзакцией, и «пока нечего отдать» — законный исход, при
+				// котором ничего не теряется. Двинуть же курсор ЗА непрочитанное —
+				// ровно тот молчаливый пропуск, ради которого проба написана.
+				if len(changes) == 0 {
+					if headID > id1 {
+						violations <- fmt.Sprintf(
+							"пустая страница ДВИНУЛА курсор: было %d, голова %d — "+
+								"строки между ними не прочитал никто", id1, headID)
+					}
+					return
+				}
+				if changes[0].ID != id2 {
+					violations <- fmt.Sprintf(
+						"страница началась с %d, ожидалось %d (курсор %d, голова %d) — "+
+							"читатель переехал через снятое", changes[0].ID, id2, id1, headID)
+				}
+			}()
+		}
+		wg.Wait()
 	}
-	wg.Wait()
 	close(violations)
 
 	for v := range violations {

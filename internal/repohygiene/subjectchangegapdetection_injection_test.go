@@ -46,6 +46,12 @@ type gapTree struct {
 	secondToken bool
 	// noWindow — журнал окном не читается вовсе (предпосылка разбора).
 	noWindow bool
+	// floorViaObserve — ТРЕТЬЯ законная форма: наблюдение и ответ из него одним
+	// вызовом (нужна там, где наблюдатель общий).
+	floorViaObserve bool
+	// floorBeforePage — пол берётся РАНЬШЕ страницы: дофиксовый порядок, дающий
+	// молчаливый пропуск под конкурентной уборкой.
+	floorBeforePage bool
 }
 
 func writeGapTree(t *testing.T, tree gapTree) string {
@@ -87,6 +93,9 @@ func writeGapTree(t *testing.T, tree gapTree) string {
 	if tree.floorViaAdvance {
 		ask = "\t\th.Advance()\n\t\tfloor := h.Floor()\n\t\t_ = floor\n"
 	}
+	if tree.floorViaObserve {
+		ask = "\t\tfloor, _ := h.ObserveFloor()\n\t\t_ = floor\n"
+	}
 	if tree.noFloor {
 		ask = ""
 	}
@@ -99,18 +108,23 @@ func writeGapTree(t *testing.T, tree gapTree) string {
 	if tree.noProducer {
 		produce = "\t\treturn nil\n"
 	}
+	// Пол стоит ПОСЛЕ страницы — так исполняется дерево после фикса. Инъекция
+	// `floorBeforePage` возвращает дофиксовый порядок, ничего больше не трогая.
+	body := "\t\tif err := q.Query(" + window + "); err != nil {\n" + produce + "\t\t}\n" + ask
+	if tree.floorBeforePage {
+		body = ask + "\t\tif err := q.Query(" + window + "); err != nil {\n" + produce + "\t\t}\n"
+	}
 	write("services/owner/repo.go", ""+
 		"package owner\n\n"+
 		"import \"example.test/pkg/subjectchange\"\n\n"+
 		"type watermark struct{}\n\n"+
 		"func (watermark) RefreshEarliest() {}\n"+
 		"func (watermark) Advance()         {}\n"+
-		"func (watermark) Floor() int64     { return 0 }\n\n"+
+		"func (watermark) Floor() int64     { return 0 }\n"+
+		"func (watermark) ObserveFloor() (int64, error) { return 0, nil }\n\n"+
 		"func Read(h watermark, q interface{ Query(string) error }) error {\n"+
-		ask+
-		"\t\tif err := q.Query("+window+"); err != nil {\n"+
-		produce+
-		"\t\t}\n\t\treturn nil\n}\n")
+		body+
+		"\t\treturn nil\n}\n")
 
 	// ── ЗАКОННЫЙ БЛИЗНЕЦ: тот же журнал, но не окном ────────────────────────
 	write("services/owner/sweep.go", ""+
@@ -261,5 +275,53 @@ func TestGapDetectionInjection_FloorFilledByFullObservationIsSilent(t *testing.T
 	if len(census.WindowsAskFloor) != 1 {
 		t.Errorf("окон, спрашивающих пол, %d — вторая форма не засчитана, то есть невидима",
 			len(census.WindowsAskFloor))
+	}
+}
+
+// TestGapDetectionInjection_FloorTakenByOneObservingCallIsSilent — ТРЕТЬЯ
+// законная форма (`testing.md` §«Гейт на класс», п. 7).
+//
+// Там, где наблюдатель ОБЩИЙ, пол обязан приходить из СВОЕГО наблюдения: общее
+// поле пишется каждым проходом безусловно, поэтому проход, чей запрос отработал
+// раньше, а запись легла позже, возвращает поле назад. Форма «наблюсти и
+// ответить одним вызовом» — законный ответ на это, и распознаватель, её не
+// знающий, объявил бы правильный код нарушением.
+func TestGapDetectionInjection_FloorTakenByOneObservingCallIsSilent(t *testing.T) {
+	findings, census, err := auditGapTree(t, gapTree{floorViaObserve: true})
+	if err != nil {
+		t.Fatalf("обход синтетики: %v", err)
+	}
+	if len(findings) != 0 {
+		t.Fatalf("третья законная форма объявлена нарушением: %v", findings)
+	}
+	if len(census.WindowsAskFloor) != 1 {
+		t.Errorf("окон, спрашивающих пол, %d — форма не засчитана, то есть невидима",
+			len(census.WindowsAskFloor))
+	}
+}
+
+// TestGapDetectionInjection_FloorTakenBeforeThePageIsAFinding — ПОРЯДОК.
+//
+// Это тот самый дефект, который прошёл локальный прогон и упал в конвейере: пол
+// брался раньше страницы, между двумя запросами фиксировалась уборка, и страница
+// со снятым префиксом уезжала как полная. Утверждение о ФОРМЕ его не ловит —
+// вызовы на месте, оба; ловит только порядок.
+//
+// Инъекция трогает РОВНО порядок: тот же вызов пола, та же страница, тот же
+// производитель отказа — переставлены местами два оператора.
+func TestGapDetectionInjection_FloorTakenBeforeThePageIsAFinding(t *testing.T) {
+	findings, census, err := auditGapTree(t, gapTree{floorBeforePage: true})
+	if err != nil {
+		t.Fatalf("обход синтетики: %v", err)
+	}
+	requireOneFindingAbout(t, findings, "пол берётся РАНЬШЕ страницы")
+	// Соседние полосы целы — красное пришло от порядка, а не от них.
+	if len(census.Producers) != 1 || len(census.Parsers) != 1 || len(census.TokenDeclaration) != 1 {
+		t.Errorf("инъекция задела соседние полосы: производителей %d, разборщиков %d, объявлений %d",
+			len(census.Producers), len(census.Parsers), len(census.TokenDeclaration))
+	}
+	// И окно распознано — иначе молчание объяснялось бы слепотой, а не порядком.
+	if len(census.Windows) != 1 {
+		t.Errorf("окон %d, ожидалось 1", len(census.Windows))
 	}
 }
