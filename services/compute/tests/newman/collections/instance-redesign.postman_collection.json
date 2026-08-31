@@ -3800,7 +3800,7 @@
       ]
     },
     {
-      "name": "INST-RD-CR-VAL-BOOTSOURCE-OUTPUT-FIELDS — COMP-1-11: Create с bootSource output-only полем (name; imageKind) в теле → sync 400 '... output-only and must not be set on input' (name°/resolvedDigest°/materializedVolume°/imageKind° server-derived). [verifies COMP-1-11 · #1625 · error-guessing output-field-reject]",
+      "name": "INST-RD-CR-VAL-BOOTSOURCE-OUTPUT-FIELDS — COMP-1-11: Create с output-only подполем bootSource (name; imageKind; оба сразу) → sync 400, и отказ называет ИМЕННО присланное подполе — текстом и путём в fieldViolations, а НЕ обязательного родителя bootSource. [verifies COMP-1-11 · #1625 · #1724 · error-guessing output-field-reject]",
       "description": "class:VAL | class:NEG | priority:P1",
       "item": [
         {
@@ -3845,7 +3845,8 @@
                   "  let j; try { j = pm.response.json(); } catch (e) { j = {}; }",
                   "  pm.expect(j.code, JSON.stringify(j)).to.eql(3);",
                   "});",
-                  "pm.test('text: output-only must not be set on input', () => pm.expect(pm.response.json().message||'', pm.response.text()).to.eql('bootSource name/resolvedDigest/materializedVolume/imageKind are output-only and must not be set on input'));"
+                  "pm.test('text: назван присланный name, и только он', () => pm.expect(pm.response.json().message||'', pm.response.text()).to.eql('bootSource.name is output-only and must not be set on input'));",
+                  "pm.test('деталь несёт путь ПОДПОЛЯ, а не родителя', () => { const d=(pm.response.json().details||[])[0]||{}; const got=(d.fieldViolations||[]).map(v=>v.field); pm.expect(got).to.eql(['boot_source.name']); });"
                 ]
               }
             }
@@ -3893,7 +3894,62 @@
                   "  let j; try { j = pm.response.json(); } catch (e) { j = {}; }",
                   "  pm.expect(j.code, JSON.stringify(j)).to.eql(3);",
                   "});",
-                  "pm.test('text: imageKind named in the refusal', () => pm.expect(pm.response.json().message||'', pm.response.text()).to.eql('bootSource name/resolvedDigest/materializedVolume/imageKind are output-only and must not be set on input'));"
+                  "pm.test('text: назван присланный imageKind, и только он', () => pm.expect(pm.response.json().message||'', pm.response.text()).to.eql('bootSource.imageKind is output-only and must not be set on input'));",
+                  "pm.test('поля, которых клиент не слал, НЕ названы', () => { const m=pm.response.json().message||''; ['name','resolvedDigest','materializedVolume'].forEach(f => pm.expect(m, f).to.not.include('bootSource.'+f)); });",
+                  "pm.test('деталь несёт путь ПОДПОЛЯ, а не родителя', () => { const d=(pm.response.json().details||[])[0]||{}; const got=(d.fieldViolations||[]).map(v=>v.field); pm.expect(got).to.eql(['boot_source.image_kind']); });"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "cr-boot-out-two",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/compute/v1/instances",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "compute",
+                "v1",
+                "instances"
+              ]
+            },
+            "body": {
+              "mode": "raw",
+              "raw": "{\"projectId\": \"{{_suiteProjectId}}\", \"name\": \"insvmouttwo{{runId}}\", \"zoneId\": \"{{existingZoneId}}\", \"instanceKind\": \"VM\", \"machineTypeId\": \"mt-placeholder0000000\", \"bootSource\": {\"type\": \"storage.image\", \"id\": \"img-9k2m4x7q1n8p:22.04-lts\", \"name\": \"ubuntu\", \"imageKind\": \"STORAGE_IMAGE\"}, \"vmSpec\": {\"userData\": \"#cloud-config\\n{}\", \"metadataOptions\": {\"metadataEndpoint\": \"ENABLED\"}}, \"networkInterfaceSpecs\": [{\"subnetId\": \"{{existingSubnetId}}\", \"securityGroupIds\": [\"{{existingSgId}}\"]}], \"acknowledgeUnreachable\": true}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('status 400', () => pm.expect(pm.response.code, JSON.stringify(pm.response.text())).to.eql(400));",
+                  "pm.test('grpc code 3 (INVALID_ARGUMENT)', () => {",
+                  "  let j; try { j = pm.response.json(); } catch (e) { j = {}; }",
+                  "  pm.expect(j.code, JSON.stringify(j)).to.eql(3);",
+                  "});",
+                  "pm.test('оба присланных подполя названы за один заход', () => {",
+                  "  const det = (pm.response.json().details||[]).find(d => (d['@type']||'').includes('BadRequest'));",
+                  "  pm.expect(det, 'BadRequest detail').to.be.an('object');",
+                  "  pm.expect((det.fieldViolations||[]).map(v=>v.field)).to.eql(['boot_source.name','boot_source.image_kind']);",
+                  "});",
+                  "pm.test('родитель bootSource нарушителем не назван', () => { const det=(pm.response.json().details||[]).find(d => (d['@type']||'').includes('BadRequest'))||{}; pm.expect((det.fieldViolations||[]).map(v=>v.field)).to.not.include('boot_source'); });"
                 ]
               }
             }

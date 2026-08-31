@@ -211,9 +211,14 @@ Instance](/architecture/instance-lifecycle).
 `id` не передаются: образ адресуется своим неизменяемым идентификатором, поэтому запуск
 через месяц берёт тот же образ без дополнительной фиксации. Остальные поля `bootSource`
 (`name`, `resolvedDigest`, `materializedVolume`, `imageKind`) — **output-only**: их
-заполняет резолв, а передача на вход отвергается
-`INVALID_ARGUMENT "bootSource name/resolvedDigest/materializedVolume/imageKind are
-output-only and must not be set on input"`.
+заполняет резолв, а передача на вход отвергается `INVALID_ARGUMENT`.
+
+Отказ называет **то поле, которое вы прислали**, а не родителя: для `imageKind` это
+`"bootSource.imageKind is output-only and must not be set on input"`, и путь
+`boot_source.image_kind` стоит в `details[].fieldViolations[].field`. Прислали
+несколько — все они названы в одном отказе, по одному нарушению на поле, поэтому
+снять лишнее можно за один заход. Родитель `bootSource` в отказе не называется: он
+обязателен, и сняв его вы получите отказ уже об обязательности.
 :::
 
 :::caution `CONTAINER` и `registry.image` объявлены контрактом, но на создании отвергаются
