@@ -16,8 +16,8 @@
     "lint:fix": "npm run lint:js:fix && npm run lint:css:fix && npm run format",
     "lint:js": "eslint .",
     "lint:js:fix": "eslint . --fix",
-    "lint:css": "stylelint \"src/**/*.{css,scss}\"",
-    "lint:css:fix": "stylelint \"src/**/*.{css,scss}\" --fix",
+    "lint:css": "stylelint \"src/**/*.{css,scss}\" --allow-empty-input",
+    "lint:css:fix": "stylelint \"src/**/*.{css,scss}\" --fix --allow-empty-input",
     "format": "prettier . --check",
     "format:check": "prettier . --check",
     "format:write": "prettier . --write"
