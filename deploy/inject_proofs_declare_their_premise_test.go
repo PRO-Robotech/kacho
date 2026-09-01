@@ -33,6 +33,33 @@
 //
 // Поэтому гейт требует ДВУХ вещей сразу: вызова предпосылки И подключения по
 // каталогу, снятому абсолютным до `cd`.
+//
+// ─────────────────────────────────────────────────────────────────────────────
+// ПРЕДПОСЫЛКА САМОГО ГЕЙТА ПЕРЕПРОВЕРЕНА ПРИ РАСШИРЕНИИ ПОПУЛЯЦИИ (задача #1803)
+//
+// Гейт писался на популяции, где КАЖДОЕ доказательство доходило до чарта — прямо
+// либо через проверку, которую прогоняет. На ней требование «зови
+// `premise_chart_deps`» было верно и потому невидимо как допущение.
+//
+// Популяция выросла: доказательство отчёта о происхождении величины чарта не
+// рендерит вовсе — оно прогоняет скрипт с подставным `kubectl`, и его
+// предпосылка другая (`python3`). Безусловное требование сделало бы его
+// нарушителем, ничего не нарушившим, а «починка» добавила бы ему пропуск на
+// несобранных зависимостях, которые ему не нужны, — то есть ложное «условие не
+// создано». `testing.md` §«Гейт на класс», п. 3: узкая популяция предпосылку не
+// подтверждает, она её СКРЫВАЕТ.
+//
+// Поэтому требование разведено по признаку: доходит до чарта — зови предпосылку
+// чарта; не доходит — объяви СВОЮ и выйди кодом 2. Не объявить НИКАКОЙ по-прежнему
+// нельзя, и это несущая половина: доказательство без предпосылки краснеет по
+// чужой причине и выглядит исполненным.
+//
+// ПРИЗНАК ЧИТАЕТ ИСПОЛНЯЕМУЮ ЧАСТЬ, А НЕ ТЕКСТ: строки-комментарии снимаются до
+// разбора. Иначе гейт краснел бы на СОБСТВЕННОМ объяснении (`testing.md` §«Гейт
+// на класс», п. 4) — фраза «`helm` здесь не зовётся» читалась бы как зов.
+// Граница названа: снимаются комментарии ЦЕЛОЙ СТРОКОЙ; хвостовой комментарий в
+// строке кода от кода здесь не отделяется — в этом корпусе объяснения пишутся
+// целыми строками, и попытка резать по `#` внутри строки резала бы литералы.
 package deploy_test
 
 import (
@@ -61,6 +88,67 @@ func injectProofs(t *testing.T) []string {
 // Именно эта форма молча не срабатывает после смены рабочего каталога.
 var premiseSourcedFromDollarZero = regexp.MustCompile(`\.\s+"\$\(dirname\s+"\$0"\)/premise\.sh"`)
 
+// injectProofFullLineComment — строка, являющаяся комментарием целиком.
+var injectProofFullLineComment = regexp.MustCompile(`(?m)^[ \t]*#.*$`)
+
+// injectProofCode — исполняемая часть доказательства.
+func injectProofCode(body string) string {
+	return injectProofFullLineComment.ReplaceAllString(body, "")
+}
+
+// injectProofChartTouch — признак «доказательство доходит до чарта»: зовёт
+// `helm`, называет каталог умбреллы либо прогоняет проверку семейства (а те
+// рендерят). Перечня файлов здесь нет намеренно — он не рос бы вместе с деревом.
+var injectProofChartTouch = regexp.MustCompile(`helm/umbrella|(^|[^\w-])helm[ \t]|[\w-]+-test\.sh`)
+
+// injectProofOwnPremise — своя предпосылка: выход кодом 2 с текстом, который
+// читает человек. Код без текста — молчаливый пропуск, он не годится.
+var injectProofOwnPremise = regexp.MustCompile(`exit 2`)
+
+// injectProofFacts — то, что гейт вывел об одном доказательстве.
+type injectProofFacts struct {
+	name         string
+	touchesChart bool
+	chartPremise bool
+	ownPremise   bool
+	unsafeSource bool
+}
+
+func injectProofFactsOf(name, body string) injectProofFacts {
+	code := injectProofCode(body)
+	return injectProofFacts{
+		name:         name,
+		touchesChart: injectProofChartTouch.MatchString(code),
+		chartPremise: strings.Contains(code, "premise_chart_deps"),
+		ownPremise: injectProofOwnPremise.MatchString(code) &&
+			(strings.Contains(code, "SKIP") || strings.Contains(code, "УСЛОВИЕ НЕ СОЗДАНО")),
+		unsafeSource: strings.Contains(body, "premise.sh") && premiseSourcedFromDollarZero.MatchString(body),
+	}
+}
+
+// scanInjectProofPremise — ядро гейта: чистая функция над фактами.
+func scanInjectProofPremise(f injectProofFacts) []string {
+	var out []string
+	switch {
+	case f.touchesChart && !f.chartPremise:
+		out = append(out, f.name+" доходит до чарта и не объявляет предпосылку: несобранные "+
+			"зависимости приедут в вердикт как находка о дереве, а ось, ждущая красного, "+
+			"покраснеет по чужой причине и будет выглядеть исполненной. Подключить: "+
+			"`. \"$INJECT_DIR/premise.sh\"` + `premise_chart_deps`")
+	case !f.touchesChart && !f.chartPremise && !f.ownPremise:
+		out = append(out, f.name+" не объявляет НИКАКОЙ предпосылки: чарта оно не рендерит, "+
+			"но отсутствующий инструмент всё равно даст красное по чужой причине. "+
+			"Объявить свою и выйти кодом 2 с текстом («условие не создано» — не вердикт)")
+	}
+	if f.unsafeSource {
+		out = append(out, f.name+" подключает premise.sh по пути от $0 — после `cd` этот путь "+
+			"указывает не туда, и подключение МОЛЧА не происходит (у доказательств без `set -e` "+
+			"прогон идёт дальше без предпосылки). Снимать каталог абсолютным ДО `cd`: "+
+			"INJECT_DIR=\"$(cd \"$(dirname \"$0\")\" && pwd)\"")
+	}
+	return out
+}
+
 func TestInjectProofsDeclareTheirPremise(t *testing.T) {
 	proofs := injectProofs(t)
 
@@ -69,62 +157,114 @@ func TestInjectProofsDeclareTheirPremise(t *testing.T) {
 		t.Fatal("доказательств инъекцией не найдено НИ ОДНОГО — вердикт беспредметен")
 	}
 
-	var withCall, withSafeSource int
+	var touching, withChartCall, withOwn, withSafeSource int
 	for _, p := range proofs {
-		b, err := os.ReadFile(p)
+		b, err := os.ReadFile(p) // #nosec G304 -- путь получен обходом собственного дерева
 		if err != nil {
 			t.Fatalf("%s: %v", p, err)
 		}
-		body := string(b)
-
-		if strings.Contains(body, "premise_chart_deps") {
-			withCall++
-		} else {
-			t.Errorf("%s не объявляет предпосылку: несобранные зависимости приедут в вердикт "+
-				"как находка о дереве, а ось, ждущая красного, покраснеет по чужой причине и будет "+
-				"выглядеть исполненной. Подключить: `. \"$INJECT_DIR/premise.sh\"` + `premise_chart_deps`", p)
+		f := injectProofFactsOf(p, string(b))
+		if f.touchesChart {
+			touching++
 		}
-
-		if !strings.Contains(body, "premise.sh") {
-			continue
+		if f.chartPremise {
+			withChartCall++
 		}
-		if premiseSourcedFromDollarZero.MatchString(body) {
-			t.Errorf("%s подключает premise.sh по пути от $0 — после `cd` этот путь указывает не туда, "+
-				"и подключение МОЛЧА не происходит (у доказательств без `set -e` прогон идёт дальше без предпосылки). "+
-				"Снимать каталог абсолютным ДО `cd`: INJECT_DIR=\"$(cd \"$(dirname \"$0\")\" && pwd)\"", p)
-		} else {
+		if f.ownPremise {
+			withOwn++
+		}
+		if strings.Contains(string(b), "premise.sh") && !f.unsafeSource {
 			withSafeSource++
+		}
+		for _, msg := range scanInjectProofPremise(f) {
+			t.Errorf("%s", msg)
 		}
 	}
 
 	// Объём осмотренного печатается ВСЕГДА: «ноль находок» обязано быть отличимо
-	// от «ноль прочитанного».
-	t.Logf("перепись: доказательств инъекцией %d · объявляют предпосылку %d · подключают её устойчиво к смене каталога %d",
-		len(proofs), withCall, withSafeSource)
+	// от «ноль прочитанного». Чисел ПЯТЬ, а не одно: расширение признака обязано
+	// быть ВИДНО переписью, иначе «помогло» неотличимо от «ничего не изменило».
+	t.Logf("перепись: доказательств инъекцией %d · доходят до чарта %d · зовут предпосылку чарта %d · "+
+		"объявляют свою предпосылку %d · подключают библиотеку устойчиво к смене каталога %d",
+		len(proofs), touching, withChartCall, withOwn, withSafeSource)
+
+	// Предпосылка расширенного признака: если до чарта не доходит НИ ОДНО
+	// доказательство, требование «зови предпосылку чарта» не проверяется вовсе, и
+	// гейт молчал бы, ничего не измеряя.
+	if touching == 0 {
+		t.Fatalf("ни одно доказательство не доходит до чарта (осмотрено %d) — "+
+			"либо признак ослеп, либо семейство переписано; в обоих случаях "+
+			"несущая половина гейта перестала что-либо требовать", len(proofs))
+	}
 }
 
 // TestInjectPremiseGateFindsBothHalves — доказательство того, что гейт выше
-// СПОСОБЕН упасть по каждой из двух своих половин ОТДЕЛЬНО, и молчит на законной
-// форме. Инъекция подаётся распознавателю входом; вторую половину («вызов есть»)
-// проверяет обычная подстрока, у неё разбора нет.
+// СПОСОБЕН упасть по каждой своей половине ОТДЕЛЬНО, и молчит на законной форме.
+//
+// Осей стало ЧЕТЫРЕ, а не две: расширение признака (задача #1803) завело третье
+// состояние — доказательство, чарта не рендерящее, — и без своей оси оно было бы
+// принято на веру. Инъекция подаётся распознавателю НАСТОЯЩИМ входом.
 func TestInjectPremiseGateFindsBothHalves(t *testing.T) {
+	const safeSource = "INJECT_DIR=\"$(cd \"$(dirname \"$0\")\" && pwd)\"\ncd \"$INJECT_DIR/../..\"\n. \"$INJECT_DIR/premise.sh\"\n"
+
 	cases := []struct {
 		name    string
 		body    string
-		unsafe  bool // подключение по пути от $0?
-		hasCall bool
+		wantHit string // ожидаемая улика в находке; пусто — гейт обязан молчать
 	}{
-		{"законная форма", "INJECT_DIR=\"$(cd \"$(dirname \"$0\")\" && pwd)\"\ncd \"$INJECT_DIR/../..\"\n. \"$INJECT_DIR/premise.sh\"\npremise_chart_deps\n", false, true},
-		{"подключение от $0 (наблюдавшийся дефект)", "cd \"$(dirname \"$0\")/../..\"\n. \"$(dirname \"$0\")/premise.sh\"\npremise_chart_deps\n", true, true},
-		{"предпосылки нет вовсе", "cd \"$(dirname \"$0\")/../..\"\nhelm template ./helm/umbrella\n", false, false},
+		{
+			name:    "законная форма: рендерит чарт и зовёт предпосылку чарта",
+			body:    safeSource + "premise_chart_deps\nhelm template ./helm/umbrella\n",
+			wantHit: "",
+		},
+		{
+			name:    "законная форма: чарта не рендерит, объявляет СВОЮ предпосылку",
+			body:    "command -v python3 >/dev/null || { echo \"SKIP: нет python3\"; exit 2; }\nbash ../../scripts/что-то.sh\n",
+			wantHit: "",
+		},
+		{
+			// Наблюдавшийся дефект: подключение по пути от $0 молча не срабатывает.
+			name:    "подключение от $0",
+			body:    "cd \"$(dirname \"$0\")/../..\"\n. \"$(dirname \"$0\")/premise.sh\"\npremise_chart_deps\nhelm template ./helm/umbrella\n",
+			wantHit: "по пути от $0",
+		},
+		{
+			// Исходный предмет гейта: доходит до чарта, предпосылки нет.
+			name:    "рендерит чарт без предпосылки",
+			body:    "cd \"$(dirname \"$0\")/../..\"\nhelm template ./helm/umbrella\n",
+			wantHit: "доходит до чарта и не объявляет предпосылку",
+		},
+		{
+			// Третье состояние: чарта нет, но и своей предпосылки нет тоже.
+			name:    "ни чарта, ни своей предпосылки",
+			body:    "bash ../../scripts/что-то.sh\necho готово\n",
+			wantHit: "не объявляет НИКАКОЙ предпосылки",
+		},
+		{
+			// АНТИМАСКА: признак обязан читать исполняемую часть. Прежняя форма
+			// (поиск по сырому тексту) объявила бы это доказательство
+			// рендерящим — из-за собственного объяснения — и потребовала бы от
+			// него предпосылки чарта, которая ему не нужна.
+			name:    "слово о чарте живёт в КОММЕНТАРИИ, а не в коде",
+			body:    "# кластер не нужен, helm template здесь не зовётся вовсе\n# и ./helm/umbrella не рендерится\ncommand -v python3 >/dev/null || { echo \"SKIP\"; exit 2; }\n",
+			wantHit: "",
+		},
 	}
+
 	for _, c := range cases {
-		if got := premiseSourcedFromDollarZero.MatchString(c.body); got != c.unsafe {
-			t.Errorf("%s: подключение-от-$0 распознано как %v, ожидалось %v", c.name, got, c.unsafe)
-		}
-		if got := strings.Contains(c.body, "premise_chart_deps"); got != c.hasCall {
-			t.Errorf("%s: вызов предпосылки распознан как %v, ожидалось %v", c.name, got, c.hasCall)
-		}
+		t.Run(c.name, func(t *testing.T) {
+			got := scanInjectProofPremise(injectProofFactsOf("проба.sh", c.body))
+			joined := strings.Join(got, " | ")
+			if c.wantHit == "" {
+				if len(got) != 0 {
+					t.Fatalf("законная форма обязана молчать, получено: %s", joined)
+				}
+				return
+			}
+			if !strings.Contains(joined, c.wantHit) {
+				t.Fatalf("инъекция ПРОПУЩЕНА: ждали улику %q, получено %q", c.wantHit, joined)
+			}
+		})
 	}
-	t.Logf("перепись: входов %d (законных 1, инъекций 2 — по одной на каждую половину гейта)", len(cases))
+	t.Logf("перепись: входов %d (законных 3, инъекций 3 — по одной на каждое требование гейта)", len(cases))
 }
