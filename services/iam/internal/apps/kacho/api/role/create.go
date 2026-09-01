@@ -190,6 +190,20 @@ func (u *CreateRoleUseCase) doCreate(ctx context.Context, r domain.Role, actor s
 				authzmap.RoleVerbsFromSelectors(inserted.Rules.MaterializingSelectors())); verr != nil {
 				return domain.Role{}, verr
 			}
+			// Проекция ОБЪЯВЛЕННЫХ сегментов — третья сторона того же правила, и
+			// пишется она в той же транзакции по той же причине. Отличие от двух
+			// предыдущих в том, ЧТО кладётся: те несут только резолвящееся, эта —
+			// КАЖДЫЙ объявленный сегмент. На ней стоят ключи в каталог, и именно
+			// она отвергает правило, называющее ресурс или глагол, которых на
+			// платформе нет либо больше нет (kacho#1030, миграция 20260901113757).
+			//
+			// Своей проверки каталога здесь НЕТ намеренно: между «спросить» и
+			// «записать» помещается снятие ресурса, и правило пережило бы свой
+			// референт (запрет #10). Судит ОПЕРАТОР ВСТАВКИ.
+			if rerr := w.RolesW().ReplaceRuleRefs(ctx, inserted.ID,
+				domain.RuleRefsOf(inserted.Rules)); rerr != nil {
+				return domain.Role{}, rerr
+			}
 			// Role audit payload carries id + name + actor — NOT the full
 			// permissions matrix (avoid payload blow-up; 5.2-17).
 			if aerr := w.EmitAuditEvent(ctx, service.AuditEvent{

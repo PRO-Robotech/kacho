@@ -178,6 +178,29 @@ type TableGrowthDecl struct {
 // таблицу — поэтому таблицы, которой в дереве нет, здесь нет тоже.
 var tableGrowthRegistry = []TableGrowthDecl{
 	{
+		Owner: "services/iam", Table: "catalog_module",
+		Tempo: tempoOurs, Verdict: verdictBound,
+		Reason: "закрытый словарь платформы: одна строка на МОДУЛЬ, и перечень модулей " +
+			"выводится литералом domain.KnownModules(), а не приходит из запроса. Рост " +
+			"ограничен посевом миграции 20260901113757; согласие посева с литералом держит гейт " +
+			"паритета services/iam/internal/check (IAM-CT-1-14), а не соглашение",
+	},
+	{
+		Owner: "services/iam", Table: "catalog_resource",
+		Tempo: tempoOurs, Verdict: verdictBound,
+		Reason: "закрытый словарь платформы: одна строка на грантуемый ТИП плюс по строке " +
+			"на снятый. Перечень выводится литералом authzmap.objectTypes; арендатор " +
+			"строк здесь не заводит НИ ОДНИМ путём — писателя у таблицы в прод-коде нет " +
+			"вовсе, её наполняет посев миграции 20260901113757",
+	},
+	{
+		Owner: "services/iam", Table: "catalog_verb",
+		Tempo: tempoOurs, Verdict: verdictBound,
+		Reason: "закрытый словарь платформы: одна строка на пару «тип × объявленный глагол», " +
+			"перечень выводится литералом authzmap.typeVerbRelations. Снятие глагола " +
+			"помечает строку, а не заводит новую — рост ограничен числом типов модели",
+	},
+	{
 		Owner: "services/iam", Table: "clusters",
 		Tempo: tempoOurs, Verdict: verdictBound,
 		Reason: "одна строка на установку: CHECK (id = 'cluster_kacho_root') второй не " +

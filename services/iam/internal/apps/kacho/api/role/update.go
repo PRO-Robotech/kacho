@@ -292,6 +292,20 @@ func (u *UpdateRoleUseCase) doUpdate(ctx context.Context, r domain.Role, mask []
 					authzmap.RoleVerbsFromSelectors(upd.Rules.MaterializingSelectors())); verr != nil {
 					return domain.Role{}, verr
 				}
+				// Проекция ОБЪЯВЛЕННЫХ сегментов — третья сторона того же правила, и
+				// пишется она в той же транзакции по той же причине. Отличие от двух
+				// предыдущих в том, ЧТО кладётся: те несут только резолвящееся, эта —
+				// КАЖДЫЙ объявленный сегмент. На ней стоят ключи в каталог, и именно
+				// она отвергает правило, называющее ресурс или глагол, которых на
+				// платформе нет либо больше нет (kacho#1030, миграция 20260901113757).
+				//
+				// Своей проверки каталога здесь НЕТ намеренно: между «спросить» и
+				// «записать» помещается снятие ресурса, и правило пережило бы свой
+				// референт (запрет #10). Судит ОПЕРАТОР ВСТАВКИ.
+				if rerr := w.RolesW().ReplaceRuleRefs(ctx, upd.ID,
+					domain.RuleRefsOf(upd.Rules)); rerr != nil {
+					return domain.Role{}, rerr
+				}
 			}
 			// changed_fields records WHAT changed (e.g. ["permissions"]) — the
 			// full permissions set is intentionally NOT embedded.

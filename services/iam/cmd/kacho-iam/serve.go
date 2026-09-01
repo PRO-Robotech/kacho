@@ -1309,6 +1309,30 @@ func runServe(cfg config.Config) error {
 		if oerr := seed.BackfillOwnerBindings(ctx, pool); oerr != nil {
 			logger.Warn("p8 backfill: owner-binding data-backfill failed (sweep/next boot will retry)", slog.Any("err", oerr))
 		}
+		// Страж расхождения литерала и строк каталога — ДО пересчёта проекции.
+		//
+		// Порядок значим: пересчёт пишет пары, чей тип обязан иметь живую строку
+		// каталога (ключ role_verb_type_fk, миграция 20260901113757). Пойди страж вторым,
+		// расхождение проявилось бы отказом ПЕРЕСЧЁТА — то есть чужой полосой, и
+		// оператор искал бы причину не там.
+		//
+		// Отказ здесь ФАТАЛЕН, а не транзиентен: расхождение не рассасывается
+		// повторами, а снаружи выглядит как «прав не выдали». Пустой каталог —
+		// это «условие не создано» (миграции не применены), и он тоже обязан
+		// назваться прямо, а не отвергать все правила арендатора разом.
+		catalogCensus, catErr := seed.AssertCatalogParity(ctx, pool)
+		logger.Info("перепись каталога модуля",
+			slog.Int("literal_modules", catalogCensus.LiteralModules),
+			slog.Int("literal_resources", catalogCensus.LiteralResources),
+			slog.Int("literal_verbs", catalogCensus.LiteralVerbs),
+			slog.Int("row_modules", catalogCensus.RowModules),
+			slog.Int("row_resources", catalogCensus.RowResources),
+			slog.Int("row_verbs", catalogCensus.RowVerbs),
+			slog.Int("missing", len(catalogCensus.MissingRows)),
+			slog.Int("extra", len(catalogCensus.ExtraRows)))
+		if catErr != nil {
+			return fmt.Errorf("каталог модуля: %w", catErr)
+		}
 		// Пересчёт проекции «роль → тип объекта × глагол» — СВОЯ полоса отказа.
 		//
 		// Проекция есть то, из чего цепь вердикта собирает ответ «разрешено ли

@@ -266,6 +266,12 @@ func (w *rlRoleWtr) ReplaceRoleVerbs(context.Context, domain.RoleID, []domain.Ro
 	return nil
 }
 
+// ReplaceRuleRefs — ТРЕТЬЯ сторона того же правила (kacho#1030). Дублёр умеет и
+// её по тому же доводу: не умеющий делает невидимым путь, ради которого стоит.
+func (w *rlRoleWtr) ReplaceRuleRefs(context.Context, domain.RoleID, []domain.RoleRuleRef) error {
+	return nil
+}
+
 // ── fake ops repo (no-op; the worker runs via operations.Run + Wait) ─────────────
 
 type rlFakeOps struct{}
