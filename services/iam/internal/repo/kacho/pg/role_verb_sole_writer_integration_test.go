@@ -28,9 +28,10 @@ import (
 	stderrors "errors"
 
 	"context"
-	iamerr "github.com/PRO-Robotech/kacho/services/iam/internal/errors"
 	"sort"
 	"testing"
+
+	iamerr "github.com/PRO-Robotech/kacho/services/iam/internal/errors"
 
 	"github.com/jackc/pgx/v5/pgxpool"
 	"github.com/stretchr/testify/require"
