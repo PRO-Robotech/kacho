@@ -73,7 +73,7 @@ func TestCreate_Sync_InvalidName(t *testing.T) {
 			a := domain.Account{
 				Name: tc.val, // F1: owner derived from principal, not body
 			}
-			op, err := uc.Execute(operations.WithPrincipal(context.Background(), operations.Principal{Type: "user", ID: "usr00000000000000abcd"}), a)
+			op, err := uc.Execute(operations.WithPrincipal(context.Background(), operations.Principal{Type: "user", ID: "usr0000000000000abcd"}), a)
 			require.Error(t, err)
 			assert.Nil(t, op, "Operation не должна создаваться при sync-ошибке")
 			st, ok := status.FromError(err)
@@ -89,9 +89,9 @@ func TestCreate_Sync_InvalidName(t *testing.T) {
 // (Comprehensive coverage in TestAccount_IAM_1_02_OwnerInBody_Reject.)
 func TestCreate_Sync_RejectOwnerInBody(t *testing.T) {
 	uc := NewCreateAccountUseCase(newFakeRepo(), newFakeOpsRepo())
-	op, err := uc.Execute(operations.WithPrincipal(context.Background(), operations.Principal{Type: "user", ID: "usr00000000000000abcd"}), domain.Account{
+	op, err := uc.Execute(operations.WithPrincipal(context.Background(), operations.Principal{Type: "user", ID: "usr0000000000000abcd"}), domain.Account{
 		Name:        "acme",
-		OwnerUserID: "usr00000000000000abcd",
+		OwnerUserID: "usr0000000000000abcd",
 	})
 	require.Error(t, err)
 	assert.Nil(t, op)
@@ -112,7 +112,7 @@ func TestCreate_Sync_OK_OpReturned(t *testing.T) {
 		Labels:      domain.Labels{"env": "prod"},
 		// F1: ownerUserId° is derived from the authenticated principal, not body.
 	}
-	op, err := uc.Execute(operations.WithPrincipal(context.Background(), operations.Principal{Type: "user", ID: "usr00000000000000abcd"}), a)
+	op, err := uc.Execute(operations.WithPrincipal(context.Background(), operations.Principal{Type: "user", ID: "usr0000000000000abcd"}), a)
 	require.NoError(t, err)
 	require.NotNil(t, op)
 	assert.True(t, strings.HasPrefix(op.ID, domain.PrefixOperationIAM), "operation id prefix iop")
@@ -170,7 +170,7 @@ func TestCreate_SECL_EmitsOwnerAndClusterTupleInTx(t *testing.T) {
 
 	a := domain.Account{Name: "acme-secl"} // F1: owner derived from principal
 	op, err := uc.Execute(operations.WithPrincipal(context.Background(),
-		operations.Principal{Type: "user", ID: "usr00000000000000abcd"}), a)
+		operations.Principal{Type: "user", ID: "usr0000000000000abcd"}), a)
 	require.NoError(t, err)
 	require.NotNil(t, op)
 
@@ -180,7 +180,7 @@ func TestCreate_SECL_EmitsOwnerAndClusterTupleInTx(t *testing.T) {
 
 	var ownerSeen, clusterSeen bool
 	for _, tup := range repo.fgaTuples() {
-		if tup.Relation == "owner" && tup.User == "user:usr00000000000000abcd" &&
+		if tup.Relation == "owner" && tup.User == "user:usr0000000000000abcd" &&
 			strings.HasPrefix(tup.Object, "account:") {
 			ownerSeen = true
 		}
@@ -212,7 +212,7 @@ func TestCreate_EmitsOwnerBindingHierarchyTuple(t *testing.T) {
 
 	a := domain.Account{Name: "acme-owner-hier"} // F1: owner derived from principal
 	op, err := uc.Execute(operations.WithPrincipal(context.Background(),
-		operations.Principal{Type: "user", ID: "usr00000000000000abcd"}), a)
+		operations.Principal{Type: "user", ID: "usr0000000000000abcd"}), a)
 	require.NoError(t, err)
 	require.NotNil(t, op)
 
@@ -262,7 +262,7 @@ func TestCreate_RecordsOwnerBindingTuplesInLedger(t *testing.T) {
 
 	a := domain.Account{Name: "acme-owner-ledger"} // F1: owner derived from principal
 	op, err := uc.Execute(operations.WithPrincipal(context.Background(),
-		operations.Principal{Type: "user", ID: "usr00000000000000abcd"}), a)
+		operations.Principal{Type: "user", ID: "usr0000000000000abcd"}), a)
 	require.NoError(t, err)
 	require.NotNil(t, op)
 
@@ -279,7 +279,7 @@ func TestCreate_RecordsOwnerBindingTuplesInLedger(t *testing.T) {
 
 	var ownerSelfGrantRecorded, hierarchyRecorded, clusterRecorded bool
 	for _, t := range ledger {
-		if t.Relation == "owner" && t.User == "user:usr00000000000000abcd" &&
+		if t.Relation == "owner" && t.User == "user:usr0000000000000abcd" &&
 			strings.HasPrefix(t.Object, "account:") {
 			ownerSelfGrantRecorded = true
 		}
@@ -316,7 +316,7 @@ func TestCreate_OwnerBindingIsSelfValidating(t *testing.T) {
 
 	a := domain.Account{Name: "acme-owner-valid"} // F1: owner derived from principal
 	op, err := uc.Execute(operations.WithPrincipal(context.Background(),
-		operations.Principal{Type: "user", ID: "usr00000000000000abcd"}), a)
+		operations.Principal{Type: "user", ID: "usr0000000000000abcd"}), a)
 	require.NoError(t, err)
 	require.NotNil(t, op)
 
@@ -333,7 +333,7 @@ func TestCreate_OwnerBindingIsSelfValidating(t *testing.T) {
 	require.NoError(t, ownerBinding.Validate(),
 		"owner-binding handed to Insert must be self-validating")
 	// Granter is recorded (actor is the verified principal, never empty on this path).
-	assert.Equal(t, domain.UserID("usr00000000000000abcd"), ownerBinding.GrantedByUserID,
+	assert.Equal(t, domain.UserID("usr0000000000000abcd"), ownerBinding.GrantedByUserID,
 		"owner-binding records the verified creator as granter")
 }
 
