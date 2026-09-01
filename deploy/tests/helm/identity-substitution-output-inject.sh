@@ -57,16 +57,14 @@ helm template kacho-umbrella ./helm/umbrella -n kacho \
     echo "УСЛОВИЕ НЕ СОЗДАНО: рендер не удался (зависимости умбреллы не материализованы?)"
     tail -3 "$TMP/err"; exit 2; }
 
-python3 - "$TMP/render.yaml" > "$TMP/script.raw" <<'PY'
-import sys, yaml
-for d in yaml.safe_load_all(open(sys.argv[1])):
-    if not d or d.get('kind') not in ('Deployment', 'StatefulSet'):
-        continue
-    for c in d['spec']['template']['spec'].get('initContainers', []):
-        if c['name'] == 'identity-config-render':
-            print(c['args'][0]); raise SystemExit(0)
-raise SystemExit("шаг подстановки не найден в рендере")
-PY
+# ШАГ БЕРЁТСЯ ТАК, КАК ЕГО ПОЛУЧАЕТ ОБОЛОЧКА В ПОДЕ, а не так, как он объявлен:
+# между чартом и оболочкой стоит подстановка Kubernetes над доводом контейнера.
+# Прежде извлечённый текст подавался в `sh` НАПРЯМУЮ, то есть мимо неё, и класс
+# задачи #1786 (удвоенный знак доллара схлопывается, подстановка пишет ИМЯ
+# переменной вместо её величины) в этом доказательстве не воспроизводился
+# НИКОГДА: фикстура была снисходительнее продукта (`e2e-flow.md` §5).
+# Извлечение живёт в ОДНОМ месте на оба доказательства — две копии разошлись бы.
+python3 tests/helm/identity-step-as-kubelet-delivers.py "$TMP/render.yaml" > "$TMP/script.raw"
 [ -s "$TMP/script.raw" ] || { echo "ОТКАЗ: шаг подстановки не извлечён — проверять нечего"; exit 1; }
 
 # Перечень владения берётся ИЗ ТОГО ЖЕ рендера, а не выписывается здесь:
@@ -147,8 +145,66 @@ run "голое имя во вложении"      RED "ГОЛЫМ ИМЕНЕМ"
     - auth:
         value: $OWNED_NAME"
 
+# ─────────────────────────────────────────────────────────────────────────────
+# ИНЪЕКЦИЯ В НАСТОЯЩУЮ КАРТУ НАСТРОЕК, А НЕ В СИНТЕТИКУ
+#
+# Всё выше подаёт шагу карту из трёх строк. Этого достаточно, чтобы утверждать
+# про РАСПОЗНАВАТЕЛЬ, и НЕдостаточно, чтобы утверждать про продукт: настоящая
+# карта несёт 400+ строк, пять ссылок на одну величину, две ЧУЖИЕ ссылки формы
+# `${ИМЯ}` и почтовый раздел. Класс #1786 сидел именно на ней.
+#
+# Карта берётся ИЗ ТОГО ЖЕ РЕНДЕРА — выписанная копия разошлась бы с чартом молча.
+REAL_CM="$TMP/real-kratos.yaml"
+python3 - "$TMP/render.yaml" "$REAL_CM" <<'PYCM'
+import sys, yaml
+for d in yaml.safe_load_all(open(sys.argv[1], encoding="utf-8")):
+    if d and d.get("kind") == "ConfigMap" and d["metadata"]["name"].endswith("kacho-iam-kratos-config"):
+        open(sys.argv[2], "w", encoding="utf-8").write(d["data"]["kratos.yaml"])
+        raise SystemExit(0)
+raise SystemExit("карта настроек службы личности не найдена в рендере")
+PYCM
+[ -s "$REAL_CM" ] || { echo "ОТКАЗ: настоящая карта не извлечена — инъекции не на чем стоять"; exit 1; }
+
+run_real() { # имя · ожидание(RED|GREEN) · улика · файл-карты
+  local name="$1" want="$2" needle="$3" cfg="$4" got out
+  cp "$cfg" "$TMP/src/kratos.yaml"
+  rm -f "$TMP/rendered/kratos.yaml"
+  if out="$(env "$OWNED_NAME=$TOKEN" \
+              COURIER_SMTP_CONNECTION_URI="smtps://kacho-umbrella-mailpit:1025/" \
+              sh -euc "$(cat "$TMP/script.sh")" 2>&1)"
+  then got=GREEN; else got=RED; fi
+  if [ "$got" != "$want" ]; then
+    echo "  ОТКАЗ $name → $got, ожидалось $want"; printf '       %s\n' "$out" | tail -3; rc=1; return
+  fi
+  if [ "$want" = RED ]; then
+    case "$out" in
+      *"$needle"*) : ;;
+      *) echo "  ОТКАЗ $name → RED, но отказ не называет «$needle»"; rc=1; return ;;
+    esac
+    red=$((red+1))
+  else
+    # ВЕЛИЧИНА ОБЯЗАНА ДОЕХАТЬ В ОТДАВАЕМЫЙ ФАЙЛ. Это и есть прямое утверждение
+    # про класс #1786: там подстановка ОТРАБОТАЛА и записала ИМЯ переменной, а
+    # «шаг прошёл» об этом не говорит ничего.
+    if ! grep -qF -- "$TOKEN" "$TMP/rendered/kratos.yaml"; then
+      echo "  ОТКАЗ $name → GREEN, но ВЕЛИЧИНЫ в отдаваемом файле НЕТ — подстановка"
+      echo "         записала не то, и «шаг прошёл» это скрывает"; rc=1; return
+    fi
+    green=$((green+1))
+  fi
+  echo "  ok   $name → $got"
+}
+
+echo "=== настоящая карта настроек: законный близнец и инъекция в него ==="
+run_real "настоящая карта как есть"   GREEN ""              "$REAL_CM"
+sed "s/value: \${$OWNED_NAME}/value: $OWNED_NAME/" "$REAL_CM" > "$TMP/real-bare.yaml"
+if [ "$(grep -c "value: $OWNED_NAME\$" "$TMP/real-bare.yaml")" -lt 1 ]; then
+  echo "ОТКАЗ: инъекция в настоящую карту не создала условия — голого имени в ней нет"; rc=1
+fi
+run_real "голое имя в настоящей карте" RED "ГОЛЫМ ИМЕНЕМ"   "$TMP/real-bare.yaml"
+
 echo "перепись: инъекций красных $red · законных близнецов зелёных $green"
-[ "$red" -ge 3 ] || { echo "ОТКАЗ: красных инъекций $red — доказательство неполно"; rc=1; }
-[ "$green" -ge 4 ] || { echo "ОТКАЗ: зелёных близнецов $green — отрицание не проверено в обратную сторону"; rc=1; }
+[ "$red" -ge 4 ] || { echo "ОТКАЗ: красных инъекций $red — доказательство неполно"; rc=1; }
+[ "$green" -ge 5 ] || { echo "ОТКАЗ: зелёных близнецов $green — отрицание не проверено в обратную сторону"; rc=1; }
 [ "$rc" = 0 ] && echo "ИТОГ: шаг подстановки судит свой ВЫХОД и молчит на законном" || echo "ИТОГ: ОТКАЗ"
 exit "$rc"

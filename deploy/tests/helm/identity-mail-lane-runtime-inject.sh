@@ -34,16 +34,14 @@ helm template kacho-umbrella ./helm/umbrella -n kacho \
   $(bash tests/helm/stacks.sh --args dev-prod ./helm/umbrella) > "$TMP/render.yaml" 2>"$TMP/err" || {
     echo "ОТКАЗ: рендер не удался"; tail -3 "$TMP/err"; exit 1; }
 
-python3 - "$TMP/render.yaml" > "$TMP/script.raw" <<'PY'
-import sys, yaml
-for d in yaml.safe_load_all(open(sys.argv[1])):
-    if not d or d.get('kind') not in ('Deployment', 'StatefulSet'):
-        continue
-    for c in d['spec']['template']['spec'].get('initContainers', []):
-        if c['name'] == 'identity-config-render':
-            print(c['args'][0]); raise SystemExit(0)
-raise SystemExit("шаг подстановки не найден в рендере")
-PY
+# ШАГ БЕРЁТСЯ ТАК, КАК ЕГО ПОЛУЧАЕТ ОБОЛОЧКА В ПОДЕ, а не так, как он объявлен:
+# между чартом и оболочкой стоит подстановка Kubernetes над доводом контейнера.
+# Прежде извлечённый текст подавался в `sh` НАПРЯМУЮ, то есть мимо неё, и класс
+# задачи #1786 (удвоенный знак доллара схлопывается, подстановка пишет ИМЯ
+# переменной вместо её величины) в этом доказательстве не воспроизводился
+# НИКОГДА: фикстура была снисходительнее продукта (`e2e-flow.md` §5).
+# Извлечение живёт в ОДНОМ месте на оба доказательства — две копии разошлись бы.
+python3 tests/helm/identity-step-as-kubelet-delivers.py "$TMP/render.yaml" > "$TMP/script.raw"
 [ -s "$TMP/script.raw" ] || { echo "ОТКАЗ: шаг подстановки не извлечён — проверять нечего"; exit 1; }
 
 # Шаг судит СВОЙ перечень владения и роняет исполнение, если он не объявлен, —
