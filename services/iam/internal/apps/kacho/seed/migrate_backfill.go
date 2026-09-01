@@ -43,7 +43,6 @@ import (
 	"github.com/jackc/pgx/v5/pgconn"
 	"github.com/jackc/pgx/v5/pgxpool"
 
-	"github.com/PRO-Robotech/kacho/services/iam/internal/authzmap"
 	"github.com/PRO-Robotech/kacho/services/iam/internal/domain"
 	"github.com/PRO-Robotech/kacho/services/iam/internal/repo/kacho/pg/fga_outbox"
 )
@@ -165,6 +164,11 @@ WHERE b.role_id       = 'rol' || substr(md5('owner'), 1, 17)
 // reconcile-sweep's chunked concern. Safe to re-run: the active-grant partial-UNIQUE
 // + the NOT EXISTS guards make it a no-op once every account has an owner-binding and
 // its hierarchy pointer is queued/applied.
+//
+// Пересчёт проекции глаголов системных ролей идёт ПОСЛЕ фиксации этой транзакции
+// и СВОИМИ транзакциями — по одной на роль (ReseedSystemRoleVerbs). Прежде он
+// делил транзакцию с выдачами: отказ одной пары откатывал выдачи, к проекции
+// отношения не имеющие, и пересчёт всех прочих ролей заодно.
 func BackfillOwnerBindings(ctx context.Context, pool *pgxpool.Pool) error {
 	tx, err := pool.Begin(ctx)
 	if err != nil {
@@ -192,6 +196,14 @@ func BackfillOwnerBindings(ctx context.Context, pool *pgxpool.Pool) error {
 		return fmt.Errorf("backfill owner-bindings: commit: %w", err)
 	}
 	committed = true
+	// Проекция глаголов пересчитывается ПОСЛЕ фиксации и СВОИМИ транзакциями —
+	// по одной на роль. Прежде она делила транзакцию с выдачами, и отказ одной
+	// пары обнулял досев выдач, к проекции отношения не имеющий. Обе половины
+	// идемпотентны и самолечащи, поэтому общая транзакция давала не
+	// согласованность, а сцепленный отказ.
+	if _, rerr := ReseedSystemRoleVerbs(ctx, pool, nil); rerr != nil {
+		return fmt.Errorf("backfill owner-bindings: %w", rerr)
+	}
 	return nil
 }
 
@@ -208,6 +220,12 @@ func BackfillOwnerBindings(ctx context.Context, pool *pgxpool.Pool) error {
 // (syncAllSystemRoleSelectorsTx) to all system roles. Safe to re-run (idempotent UPSERT +
 // stale-fp self-heal). Boot calls it via BackfillOwnerBindings; exposed standalone for
 // tests + operational re-seed.
+//
+// Пересеивает ОБЕ стороны правила: селекторы (эта транзакция) и проекцию глаголов
+// (ReseedSystemRoleVerbs, после фиксации, по транзакции на роль). Порознь их уже
+// заводили, и тихая сторона пережила громкую на годы: роль с одними селекторами
+// адресует объект и не разрешает на нём ничего, а вердикт по её выдаче отказывает
+// молча.
 func SyncAllSystemRoleSelectors(ctx context.Context, pool *pgxpool.Pool) error {
 	tx, err := pool.Begin(ctx)
 	if err != nil {
@@ -226,6 +244,14 @@ func SyncAllSystemRoleSelectors(ctx context.Context, pool *pgxpool.Pool) error {
 		return fmt.Errorf("sync system role selectors: commit: %w", err)
 	}
 	committed = true
+	// Обе стороны правила пересеиваются ОДНОЙ операционной командой, и это не
+	// удобство: тихий близнец пережил громкого именно потому, что стороны
+	// заводили порознь. Селекторы отвечают «подходит ли объект», проекция
+	// глаголов — «разрешено ли действие»; роль с одной стороной адресует объект
+	// и не разрешает на нём ничего, а вердикт по её выдаче отказывает МОЛЧА.
+	if _, rerr := ReseedSystemRoleVerbs(ctx, pool, nil); rerr != nil {
+		return rerr
+	}
 	return nil
 }
 
@@ -326,57 +352,6 @@ func syncAllSystemRoleSelectorsTx(ctx context.Context, tx pgxQuerierExecer) erro
 			if uerr := upsertRoleSelectorTx(ctx, tx, rr.id, sel); uerr != nil {
 				return uerr
 			}
-		}
-		// ВТОРАЯ СТОРОНА ТОГО ЖЕ ПРАВИЛА, и досевается она здесь по той же причине,
-		// по какой здесь досевается первая: обе пишет ReplaceRuleSelectors /
-		// ReplaceRoleVerbs, то есть путь ПОЛЬЗОВАТЕЛЬСКОЙ роли, а системная роль
-		// заводится сырым SQL миграции и этим путём не проходит никогда.
-		//
-		// Селекторы отвечают «подходит ли объект», проекция глаголов — «разрешено ли
-		// действие». Роль с одной стороной адресует объект и не разрешает на нём
-		// ничего: вердикт по её выдаче — отказ, причём МОЛЧАЛИВЫЙ (пустое соединение
-		// не отличается от честного «права нет»). Именно этот тихий близнец пережил
-		// громкий: досев селекторов завели, когда пообъектная материализация 403-ила
-		// создателя на его же ресурсе, а вторую сторону не завели — потому что её
-		// читатель отвечает не отказом в API, а расхождением в теневом сравнении.
-		//
-		// Замена ПОЛНАЯ и той же функцией, что у пользовательской роли: проекция есть
-		// СОСТОЯНИЕ роли, и глагол, снятый из правил, обязан отсюда исчезнуть.
-		if verr := replaceRoleVerbsTx(ctx, tx, rr.id, authzmap.RoleVerbsFromSelectors(selectors)); verr != nil {
-			return verr
-		}
-	}
-	return nil
-}
-
-// replaceRoleVerbsTx заменяет проекцию «роль → тип объекта × глагол» для одной
-// роли внутри транзакции вызывающего.
-//
-// Тот же порядок и та же форма строки, что у пути пользовательской роли
-// (`roleWriter.ReplaceRoleVerbs`): снять всё, положить текущее. Два места пишут
-// одну таблицу, и разойтись им нельзя — поэтому пары ОБА берут из одной функции
-// домена (`RoleVerbsFromSelectors`) и из одних селекторов, а не вычисляют их
-// каждый по-своему.
-func replaceRoleVerbsTx(ctx context.Context, tx pgxExecer, roleID string, pairs []domain.RoleVerb) error {
-	if _, err := tx.Exec(ctx,
-		`DELETE FROM kacho_iam.role_verb WHERE role_id = $1`, roleID); err != nil {
-		return fmt.Errorf("sync system role verbs: prune %s: %w", roleID, err)
-	}
-	for _, pv := range pairs {
-		if pv.ObjectType == "" || pv.Verb == "" {
-			// Пустая пара — отказ, а не пропуск: она означает, что перевод дал
-			// ничего, и записать «ничего» тихо значит потерять право, которое роль
-			// объявляет.
-			return fmt.Errorf("sync system role verbs: пустая пара (%q,%q) у роли %s",
-				pv.ObjectType, pv.Verb, roleID)
-		}
-		if _, err := tx.Exec(ctx,
-			`INSERT INTO kacho_iam.role_verb (role_id, object_type, verb)
-			 VALUES ($1, $2, $3)
-			 ON CONFLICT (role_id, object_type, verb) DO NOTHING`,
-			roleID, pv.ObjectType, pv.Verb); err != nil {
-			return fmt.Errorf("sync system role verbs: insert (%s,%s) for %s: %w",
-				pv.ObjectType, pv.Verb, roleID, err)
 		}
 	}
 	return nil
