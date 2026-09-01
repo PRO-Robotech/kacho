@@ -40,7 +40,6 @@ import (
 	"github.com/stretchr/testify/require"
 
 	"github.com/PRO-Robotech/kacho/internal/pgtest"
-	"github.com/PRO-Robotech/kacho/services/iam/internal/apps/kacho/seed"
 	"github.com/PRO-Robotech/kacho/services/iam/internal/authzmap"
 )
 
@@ -72,7 +71,7 @@ func TestSystemRoleVerbProjectionIsSeededAlongsideItsSelectors(t *testing.T) {
 	require.NoError(t, err)
 	pgtest.ClosePoolAtEnd(t, pool)
 
-	require.NoError(t, seed.SyncAllSystemRoleSelectors(ctx, pool))
+	require.NoError(t, bootSeedLanes(ctx, pool))
 
 	rows, err := pool.Query(ctx,
 		`SELECT r.id, r.name, s.object_types FROM kacho_iam.role_rule_selectors s
@@ -163,7 +162,7 @@ func TestSystemRoleWithoutMaterializingRulesGetsNoVerbs(t *testing.T) {
 		         'cluster_kacho_root')`)
 	require.NoError(t, err)
 
-	require.NoError(t, seed.SyncAllSystemRoleSelectors(ctx, pool))
+	require.NoError(t, bootSeedLanes(ctx, pool))
 
 	var n int
 	require.NoError(t, pool.QueryRow(ctx,

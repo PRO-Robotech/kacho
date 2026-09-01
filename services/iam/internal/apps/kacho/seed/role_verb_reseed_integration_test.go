@@ -11,11 +11,12 @@ package seed_test
 //
 // # Предмет
 //
-// Сегодня пересчёт проекции системных ролей живёт в ОДНОЙ транзакции с досевом
-// владельческих выдач и идёт по всем ролям сразу. Отсюда два следствия, и оба
-// наблюдаемы отсюда: отказ на одной паре откатывает работу, к проекции отношения
-// не имеющую, и откатывает пересчёт ВСЕХ прочих ролей. Приёмка разводит
-// транзакции и назначает зернистость — одна транзакция НА РОЛЬ.
+// Пересчёт проекции системных ролей жил в ОДНОЙ транзакции с досевом владельческих
+// выдач и шёл по всем ролям сразу. Отсюда два следствия, и оба наблюдаемы отсюда:
+// отказ на одной паре откатывал работу, к проекции отношения не имеющую, и
+// откатывал пересчёт ВСЕХ прочих ролей. Приёмка развела транзакции и назначила
+// зернистость — одна транзакция НА РОЛЬ; полосы зовутся порознь, и эти пробы
+// зовут их так же, как композиционный корень (`bootSeedLanes`).
 //
 // # Как вносится отказ
 //
@@ -50,6 +51,7 @@ import (
 
 	"github.com/PRO-Robotech/kacho/internal/pgtest"
 	"github.com/PRO-Robotech/kacho/services/iam/internal/apps/kacho/seed"
+	kachopg "github.com/PRO-Robotech/kacho/services/iam/internal/repo/kacho/pg"
 )
 
 // reseedProbeCluster — якорь, по которому роль считается системной.
@@ -68,6 +70,36 @@ func newReseedPool(t *testing.T) (context.Context, *pgxpool.Pool) {
 	require.NoError(t, err)
 	pgtest.ClosePoolAtEnd(t, pool)
 	return ctx, pool
+}
+
+// bootSeedLanes — «досев старта» в той части, что касается правил системной роли:
+// селекторы и проекция глаголов, каждая своей полосой, в том же порядке, в каком
+// их зовёт композиционный корень.
+//
+// Полосы разведены НАМЕРЕННО: у пересчёта проекции свой вход (порт записи), своя
+// зернистость (транзакция на роль) и своя полоса отказа, поэтому досев селекторов
+// его не зовёт — иначе на старте пересчёт шёл бы дважды, а его отказ приезжал бы
+// обёрнутым в чужую ошибку. Отсюда и здесь два вызова, а не один.
+//
+// Возвращается отказ ПЕРЕСЧЁТА — та величина, по которой корень отличает
+// транзиентную полосу от структурной.
+func bootSeedLanes(ctx context.Context, pool *pgxpool.Pool) error {
+	if err := seed.SyncAllSystemRoleSelectors(ctx, pool); err != nil {
+		return err
+	}
+	_, err := seed.ReseedSystemRoleVerbs(ctx, kachopg.New(pool, nil), pool, nil)
+	return err
+}
+
+// bootBindingsAndVerbs — досев владельческих выдач и пересчёт проекции: две
+// РАЗНЫЕ полосы, идущие на старте одна за другой. Общей транзакции у них больше
+// нет, и это предмет пробы IAM-RV-1-06, а не её обстановка.
+func bootBindingsAndVerbs(ctx context.Context, pool *pgxpool.Pool) error {
+	if err := seed.BackfillOwnerBindings(ctx, pool); err != nil {
+		return err
+	}
+	_, err := seed.ReseedSystemRoleVerbs(ctx, kachopg.New(pool, nil), pool, nil)
+	return err
 }
 
 // seedProbeSystemRole заводит системную роль сырым SQL — ровно тем путём, каким
@@ -185,9 +217,9 @@ func TestIAMRV104_TwoReseedRunsAgreeAndDoNotInventTypes(t *testing.T) {
 	unknown := seedProbeSystemRole(t, ctx, pool, "rol-rv104-unknown", "probe.rv104.unknown",
 		`[{"module":"iam","resources":["thereisnosuchresource"],"verbs":["get"]}]`)
 
-	require.NoError(t, seed.SyncAllSystemRoleSelectors(ctx, pool))
+	require.NoError(t, bootSeedLanes(ctx, pool))
 	first := wholeProjection(t, ctx, pool)
-	require.NoError(t, seed.SyncAllSystemRoleSelectors(ctx, pool))
+	require.NoError(t, bootSeedLanes(ctx, pool))
 	second := wholeProjection(t, ctx, pool)
 
 	t.Logf("пар в проекции: прогон 1 — %d, прогон 2 — %d; роль с раскрываемым типом — %d пар, "+
@@ -235,7 +267,7 @@ func TestIAMRV105_ReseedLeavesTenantRolesAlone(t *testing.T) {
 	before := projectionSizeOf(t, ctx, pool, "rol-rv105-tenant")
 	require.Equal(t, 1, before)
 
-	require.NoError(t, seed.SyncAllSystemRoleSelectors(ctx, pool))
+	require.NoError(t, bootSeedLanes(ctx, pool))
 
 	after := projectionSizeOf(t, ctx, pool, "rol-rv105-tenant")
 	t.Logf("проекция роли арендатора: до досева %d пар, после %d; системная роль получила %d пар",
@@ -291,7 +323,7 @@ func TestIAMRV106_ProjectionFailureDoesNotUndoTheOwnerBindingBackfill(t *testing
 		ctx2, pool2 := newReseedPool(t)
 		_, acc2 := seedProbeAccountWithoutOwnerBinding(t, ctx2, pool2, "106c")
 		role2 := seedProbeSystemRole(t, ctx2, pool2, "rol-rv106c", "probe.rv106c", materializingRules)
-		require.NoError(t, seed.BackfillOwnerBindings(ctx2, pool2))
+		require.NoError(t, bootBindingsAndVerbs(ctx2, pool2))
 		var n int
 		require.NoError(t, pool2.QueryRow(ctx2,
 			`SELECT count(*) FROM kacho_iam.access_bindings
@@ -302,7 +334,7 @@ func TestIAMRV106_ProjectionFailureDoesNotUndoTheOwnerBindingBackfill(t *testing
 			"проекция не записана и БЕЗ отказа")
 	})
 	refuseRoleVerbInsertFor(t, ctx, pool, bad)
-	err := seed.BackfillOwnerBindings(ctx, pool)
+	err := bootBindingsAndVerbs(ctx, pool)
 
 	reseeded := 0
 	for _, r := range []string{good1, good2} {
@@ -349,12 +381,12 @@ func TestIAMRV107_TransientFailureOfOneRoleDoesNotUndoTheOthers(t *testing.T) {
 	t.Run("положительный контроль: без отказа пересчёт молчит", func(t *testing.T) {
 		ctx2, pool2 := newReseedPool(t)
 		r1 := seedProbeSystemRole(t, ctx2, pool2, "rol-rv107c", "probe.rv107c", materializingRules)
-		require.NoError(t, seed.SyncAllSystemRoleSelectors(ctx2, pool2),
+		require.NoError(t, bootSeedLanes(ctx2, pool2),
 			"успешный пересчёт вернул ошибку — прибор, кричащий всегда, перестают читать")
 		require.Positive(t, projectionSizeOf(t, ctx2, pool2, r1))
 	})
 	refuseRoleVerbInsertFor(t, ctx, pool, bad)
-	err := seed.SyncAllSystemRoleSelectors(ctx, pool)
+	err := bootSeedLanes(ctx, pool)
 
 	reseeded := 0
 	for _, r := range []string{good1, good2} {
@@ -399,7 +431,7 @@ func TestIAMRV108_StructuralFailureNamesBothQuantities(t *testing.T) {
 	t.Run("близнец: без отказа пересчёт проходит", func(t *testing.T) {
 		ctx2, pool2 := newReseedPool(t)
 		seedProbeSystemRole(t, ctx2, pool2, "rol-rv108c", "probe.rv108c", materializingRules)
-		require.NoError(t, seed.SyncAllSystemRoleSelectors(ctx2, pool2))
+		require.NoError(t, bootSeedLanes(ctx2, pool2))
 	})
 
 	// ВТОРОЙ БЛИЗНЕЦ, которого требует зернистость: часть ролей пересеяна, часть
@@ -412,7 +444,7 @@ func TestIAMRV108_StructuralFailureNamesBothQuantities(t *testing.T) {
 		x := seedProbeSystemRole(t, ctx3, pool3, "rol-rv108d-x", "probe.rv108d.x", materializingRules)
 		refuseRoleVerbInsertFor(t, ctx3, pool3, x)
 
-		serr := seed.SyncAllSystemRoleSelectors(ctx3, pool3)
+		serr := bootSeedLanes(ctx3, pool3)
 		done := 0
 		for _, r := range []string{a, b} {
 			if projectionSizeOf(t, ctx3, pool3, r) > 0 {
@@ -428,7 +460,7 @@ func TestIAMRV108_StructuralFailureNamesBothQuantities(t *testing.T) {
 		}
 	})
 	refuseEveryRoleVerbReseed(t, ctx, pool)
-	err := seed.SyncAllSystemRoleSelectors(ctx, pool)
+	err := bootSeedLanes(ctx, pool)
 
 	var reseeded int
 	require.NoError(t, pool.QueryRow(ctx, `SELECT count(DISTINCT role_id) FROM kacho_iam.role_verb`).Scan(&reseeded))
@@ -464,7 +496,7 @@ func TestIAMRV111_ConcurrentReseedsNeverExposeAnEmptyProjection(t *testing.T) {
 
 	// Базовая линия ОДНИМ процессом — она же положительный контроль: без неё
 	// проба не отличила бы «конкуренция безопасна» от «оба прогона ничего не сделали».
-	require.NoError(t, seed.SyncAllSystemRoleSelectors(ctx, pool))
+	require.NoError(t, bootSeedLanes(ctx, pool))
 	baseline := projectionSizeOf(t, ctx, pool, role)
 	require.Positivef(t, baseline, "базовая линия пуста — утверждение о «непустом промежутке» "+
 		"было бы вакуумным")
@@ -507,7 +539,7 @@ func TestIAMRV111_ConcurrentReseedsNeverExposeAnEmptyProjection(t *testing.T) {
 		go func(n int) {
 			defer writers.Done()
 			for r := 0; r < 5; r++ {
-				if err := seed.SyncAllSystemRoleSelectors(ctx, pool); err != nil {
+				if err := bootSeedLanes(ctx, pool); err != nil {
 					mu.Lock()
 					errs = append(errs, fmt.Sprintf("процесс %d, проход %d: %v", n, r, err))
 					mu.Unlock()

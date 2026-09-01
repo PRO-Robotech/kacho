@@ -40,11 +40,25 @@ package seed
 // и попадает в текст отказа: без обеих величин «пересеяно ноль» неотличимо от
 // «пересеяно не всё».
 //
-// # Своего SQL здесь НЕТ
+// # Своего SQL ЗАПИСИ здесь НЕТ — писателя зовут ЧЕРЕЗ ПОРТ
 //
-// Писатель проекции в дереве один и лежит в слое репозитория
-// (`repo/kacho/pg/roleverb`). Досев решает лишь КОГДА и ДЛЯ КАКИХ ролей
-// пересчитывать; решение «как писать» ему не принадлежит.
+// Писатель проекции в дереве один — метод `RolesW().ReplaceRoleVerbs` порта
+// записи, реализованный слоем репозитория. Досев решает лишь КОГДА и ДЛЯ КАКИХ
+// ролей пересчитывать; решение «как писать» — форма строки, отображение отказов,
+// транзакционность — ему не принадлежит и берётся у порта. Прямой импорт
+// пакета-адаптера был бы тем же решением, принятым в чужом слое: писатель при нём
+// остаётся один, а раскладка уже нарушена — это держит гейт дерева
+// `internal/repohygiene/roleverbreseedwiring_test.go`.
+//
+// # Почему пул остаётся рядом с портом — и это НЕ вторая дверь к записи
+//
+// Приёмка (§2.1.6) называет у этого досева один вход — `kachorepo.Repository`.
+// Пул остаётся вторым, и только для ЧТЕНИЯ перечня системных ролей: читающая
+// сторона порта (`Repository.Reader`) предпочитает РЕПЛИКУ, а досев исполняется
+// на старте, когда отставание реплики наиболее вероятно. Прочитанный оттуда
+// пустой перечень дал бы «осмотрено 0, пересеяно 0» — старт прошёл бы, проекция
+// не пересеялась бы вовсе, и сказать об этом было бы некому. Запись при этом
+// идёт ТОЛЬКО через порт: ни одного оператора записи в этом пакете нет.
 
 import (
 	"context"
@@ -53,9 +67,10 @@ import (
 
 	"github.com/jackc/pgx/v5/pgxpool"
 
+	"github.com/PRO-Robotech/kacho/services/iam/internal/apps/kacho/shared"
 	"github.com/PRO-Robotech/kacho/services/iam/internal/authzmap"
 	"github.com/PRO-Robotech/kacho/services/iam/internal/domain"
-	"github.com/PRO-Robotech/kacho/services/iam/internal/repo/kacho/pg/roleverb"
+	kachorepo "github.com/PRO-Robotech/kacho/services/iam/internal/repo/kacho"
 )
 
 // Исходы пересчёта одной роли — закрытый набор, приходит из констант этого
@@ -113,6 +128,7 @@ func (c RoleVerbReseedCensus) Structural() bool {
 // зовут операционные точки входа, у которых реестра метрик нет.
 func ReseedSystemRoleVerbs(
 	ctx context.Context,
+	repo kachorepo.Repository,
 	pool *pgxpool.Pool,
 	obs RoleVerbReseedObserver,
 ) (RoleVerbReseedCensus, error) {
@@ -127,7 +143,7 @@ func ReseedSystemRoleVerbs(
 	var failures []error
 	for _, rr := range roles {
 		pairs := authzmap.RoleVerbsFromSelectors(rr.rules.MaterializingSelectors())
-		if rerr := replaceRoleVerbsInOwnTx(ctx, pool, rr.id, pairs); rerr != nil {
+		if rerr := replaceRoleVerbsInOwnTx(ctx, repo, rr.id, pairs); rerr != nil {
 			census.Failed++
 			failures = append(failures, rerr)
 			if obs != nil {
@@ -149,33 +165,31 @@ func ReseedSystemRoleVerbs(
 		census.Examined, census.Reseeded, census.Failed, errors.Join(failures...))
 }
 
-// replaceRoleVerbsInOwnTx — одна роль, одна транзакция. Замена «снять всё,
-// положить текущее» обязана быть атомарной: читатель цепи вердикта не вправе
-// увидеть пустой промежуток, потому что в этом окне всякий вердикт по роли
+// replaceRoleVerbsInOwnTx — одна роль, одна транзакция порта записи. Замена
+// «снять всё, положить текущее» обязана быть атомарной: читатель цепи вердикта не
+// вправе увидеть пустой промежуток, потому что в этом окне всякий вердикт по роли
 // отказывает, и отказывает молча.
+//
+// Транзакцию открывает и закрывает `shared.DoWithWriteTxVoid` — та же форма, что
+// у соседнего досева этого пакета: одна транзакция на вызов, значит «на роль» —
+// это вызов в цикле по ролям, а не отдельный механизм.
+//
+// Цена формы названа, а не умолчана: обёртка отображает отказ хранилища в ответ
+// сервиса, поэтому в журнал приезжает не текст драйвера, а фиксированный. Полосу
+// это не размывает — транзиентную от структурной отличает ПЕРЕПИСЬ (сколько ролей
+// осмотрено против скольких закоммичено), а не текст отказа.
 func replaceRoleVerbsInOwnTx(
 	ctx context.Context,
-	pool *pgxpool.Pool,
+	repo kachorepo.Repository,
 	roleID string,
 	pairs []domain.RoleVerb,
 ) error {
-	tx, err := pool.Begin(ctx)
-	if err != nil {
-		return fmt.Errorf("пересчёт проекции роли %s: открыть транзакцию: %w", roleID, err)
+	if err := shared.DoWithWriteTxVoid(ctx, repo,
+		func(ctx context.Context, w kachorepo.Writer) error {
+			return w.RolesW().ReplaceRoleVerbs(ctx, domain.RoleID(roleID), pairs)
+		}); err != nil {
+		return fmt.Errorf("пересчёт проекции роли %s: %w", roleID, err)
 	}
-	committed := false
-	defer func() {
-		if !committed {
-			_ = tx.Rollback(ctx)
-		}
-	}()
-	if rerr := roleverb.Replace(ctx, tx, roleID, pairs); rerr != nil {
-		return fmt.Errorf("пересчёт проекции роли %s: %w", roleID, rerr)
-	}
-	if cerr := tx.Commit(ctx); cerr != nil {
-		return fmt.Errorf("пересчёт проекции роли %s: зафиксировать: %w", roleID, cerr)
-	}
-	committed = true
 	return nil
 }
 

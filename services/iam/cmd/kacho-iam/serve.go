@@ -1320,7 +1320,7 @@ func runServe(cfg config.Config) error {
 		// самолечащая, менять ограниченное отставание на полный отказ службы
 		// нельзя); структурная — системные роли есть, пересеяна ни одна —
 		// РОНЯЕТ старт, потому что «повтори позже» на ней есть ложь.
-		verbs, verr := seed.ReseedSystemRoleVerbs(ctx, pool, roleVerbReseed)
+		verbs, verr := seed.ReseedSystemRoleVerbs(ctx, kachoRepo, pool, roleVerbReseed)
 		if verr != nil {
 			logger.Error("пересчёт проекции глаголов роли отказал",
 				slog.Any("err", verr),

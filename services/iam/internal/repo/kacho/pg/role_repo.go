@@ -30,7 +30,6 @@ import (
 
 	"github.com/PRO-Robotech/kacho/services/iam/internal/domain"
 	iamerr "github.com/PRO-Robotech/kacho/services/iam/internal/errors"
-	"github.com/PRO-Robotech/kacho/services/iam/internal/repo/kacho/pg/roleverb"
 	"github.com/PRO-Robotech/kacho/services/iam/internal/repo/kacho/role"
 )
 
@@ -523,12 +522,26 @@ func (w *roleWriter) Delete(ctx context.Context, id domain.RoleID) error {
 // тип модели + глагол» — это код (закрытый каталог типов, приведение имени), и
 // повторять его в SQL значило бы завести второе место, знающее соответствие.
 func (w *roleWriter) ReplaceRoleVerbs(ctx context.Context, roleID domain.RoleID, pairs []domain.RoleVerb) error {
-	// Тело записи живёт в пакете `roleverb` — там оно ОДНО на всё дерево. Здесь
-	// остаётся то, что принадлежит именно этому порту: транзакция вызывающего и
-	// отображение отказа хранилища в сигнальную ошибку сервиса (mapErr), без
-	// которого наружу утёк бы текст pgx.
-	if err := roleverb.Replace(ctx, w.tx, string(roleID), pairs); err != nil {
+	if _, err := w.tx.Exec(ctx,
+		`DELETE FROM kacho_iam.role_verb WHERE role_id = $1`, string(roleID)); err != nil {
 		return mapErr(err, "", string(roleID))
+	}
+	for _, pv := range pairs {
+		if pv.ObjectType == "" || pv.Verb == "" {
+			// Пустая пара — отказ, а не пропуск: она означает, что перевод у
+			// вызывающего дал ничего, и записать «ничего» тихо значит потерять
+			// право, которое роль объявляет.
+			return mapErr(fmt.Errorf("role_verb: пустая пара (%q,%q)", pv.ObjectType, pv.Verb),
+				"", string(roleID))
+		}
+		if _, err := w.tx.Exec(ctx,
+			`INSERT INTO kacho_iam.role_verb (role_id, object_type, verb)
+			 VALUES ($1, $2, $3)
+			 ON CONFLICT (role_id, object_type, verb) DO NOTHING`,
+			string(roleID), pv.ObjectType, pv.Verb,
+		); err != nil {
+			return mapErr(err, "", string(roleID))
+		}
 	}
 	return nil
 }
