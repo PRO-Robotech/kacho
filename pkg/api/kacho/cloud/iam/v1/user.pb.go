@@ -559,8 +559,27 @@ type InviteUserMetadata struct {
 	state     protoimpl.MessageState `protogen:"open.v1"`
 	UserId    string                 `protobuf:"bytes,1,opt,name=user_id,json=userId,proto3" json:"user_id,omitempty"`
 	AccountId string                 `protobuf:"bytes,2,opt,name=account_id,json=accountId,proto3" json:"account_id,omitempty"`
-	// Kratos recovery / magic-link URL. Admin копирует и отправляет вручную
-	// (email-sending не интегрирован). Пустой если re-invite-existing-active.
+	// ВСЕГДА ПУСТО — производителя у поля нет НИ ОДНОГО.
+	//
+	// Предикат: `git grep -n MagicLinkUrl -- services/` → пусто. Use-case,
+	// строящий это сообщение, заполняет только `user_id` и `account_id`:
+	// шаг выпуска ссылки снят вместе с клиентом провайдера входа.
+	//
+	// Пустая строка здесь означает «ссылки НЕ БУДЕТ», а НЕ «ссылки пока
+	// нет»: ветвиться на значении нельзя ни при каком входе.
+	//
+	// Письмо приглашения отправляет НАШ код через очередь
+	// `kacho_iam.invite_mail_outbox`, и ссылки-предъявителя оно не несёт
+	// намеренно: письмо даёт призыв и адрес страницы входа, а не доступ.
+	//
+	// Здесь стояло «админ копирует и отправляет вручную, email-sending не
+	// интегрирован» — неверно обеими половинами и по-разному: отправитель
+	// посажен, а копировать было нечего и до него. Клиент, поверивший первой
+	// половине, строил бы обходной путь на значении, которого не бывает.
+	//
+	// Поле снимается с контракта с резервированием НОМЕРА И ИМЕНИ — решение
+	// владельца, записанное лентой приёмки почты (задача продукта #1774).
+	// До того момента комментарий называет то, что верно СЕГОДНЯ.
 	MagicLinkUrl  string `protobuf:"bytes,3,opt,name=magic_link_url,json=magicLinkUrl,proto3" json:"magic_link_url,omitempty"`
 	unknownFields protoimpl.UnknownFields
 	sizeCache     protoimpl.SizeCache
