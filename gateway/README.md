@@ -21,8 +21,10 @@ public-vs-internal.
   **DPoP** (RFC 9449) и mTLS-bound (`cnf.x5t#S256`); session-cookie Ory Kratos для SPA;
   HMAC-токены для локальной разработки. Невалидный токен → `401`, никогда не
   понижается до anonymous. В `production-strict` анонимный доступ запрещен.
-- **AuthZ.** Каждый RPC проходит per-RPC проверку прав (`AuthorizeService.Check` →
-  OpenFGA) на основе встроенного permission-каталога; deny-by-default, fail-closed.
+- **AuthZ.** Каждый RPC проходит per-RPC проверку прав (`AuthorizeService.Check`
+  в iam) на основе встроенного permission-каталога; deny-by-default, fail-closed.
+  Вердикт складывает база iam — внешнего движка отношений в пути решения нет
+  (снят стадией S6 эпика #747).
   Step-up-гейт требует нужный уровень аутентификации (`acr`) для чувствительных
   операций.
 - **Identity propagation.** Клиентские заголовки `x-kacho-principal-*` /

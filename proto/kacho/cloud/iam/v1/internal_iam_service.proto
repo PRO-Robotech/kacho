@@ -50,10 +50,13 @@ service InternalIAMService {
   // Intentional breaking change (documented in buf.yaml).
 
   // Check — single-tuple authorization check.
-  // Thin wrapper над `openfga.Check(store_id, model_id, subject, relation, object)`.
+  // Вердикт о паре «субъект — отношение — объект». Складывает его реляционная
+  // форма в собственной базе iam: внешний движок отношений, поверх которого этот
+  // метод стоял прежде, снят стадией S6 эпика #747.
   // Используется per-service authz-interceptor'ами kacho-vpc / kacho-compute /
   // kacho-loadbalancer / self (kacho-iam) для проверки прав на write/read RPC.
-  // Latency budget: ≤20ms p95. 1 hop поверх openfga.Check.
+  // Latency budget: ≤20ms p95. Сетевого перехода к соседу больше нет — вопрос
+  // задаётся той же базе, что и остальные чтения службы.
   //
   // REST exposed ONLY on the cluster-internal listener.
   rpc Check (CheckRequest) returns (CheckResponse) {

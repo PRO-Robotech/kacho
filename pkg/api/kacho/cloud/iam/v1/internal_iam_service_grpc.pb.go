@@ -53,10 +53,13 @@ type InternalIAMServiceClient interface {
 	// and authz-public-allowlist permits the <exempt> catalog entry.
 	LookupSubject(ctx context.Context, in *LookupSubjectRequest, opts ...grpc.CallOption) (*LookupSubjectResponse, error)
 	// Check — single-tuple authorization check.
-	// Thin wrapper над `openfga.Check(store_id, model_id, subject, relation, object)`.
+	// Вердикт о паре «субъект — отношение — объект». Складывает его реляционная
+	// форма в собственной базе iam: внешний движок отношений, поверх которого этот
+	// метод стоял прежде, снят стадией S6 эпика #747.
 	// Используется per-service authz-interceptor'ами kacho-vpc / kacho-compute /
 	// kacho-loadbalancer / self (kacho-iam) для проверки прав на write/read RPC.
-	// Latency budget: ≤20ms p95. 1 hop поверх openfga.Check.
+	// Latency budget: ≤20ms p95. Сетевого перехода к соседу больше нет — вопрос
+	// задаётся той же базе, что и остальные чтения службы.
 	//
 	// REST exposed ONLY on the cluster-internal listener.
 	Check(ctx context.Context, in *CheckRequest, opts ...grpc.CallOption) (*CheckResponse, error)
@@ -300,10 +303,13 @@ type InternalIAMServiceServer interface {
 	// and authz-public-allowlist permits the <exempt> catalog entry.
 	LookupSubject(context.Context, *LookupSubjectRequest) (*LookupSubjectResponse, error)
 	// Check — single-tuple authorization check.
-	// Thin wrapper над `openfga.Check(store_id, model_id, subject, relation, object)`.
+	// Вердикт о паре «субъект — отношение — объект». Складывает его реляционная
+	// форма в собственной базе iam: внешний движок отношений, поверх которого этот
+	// метод стоял прежде, снят стадией S6 эпика #747.
 	// Используется per-service authz-interceptor'ами kacho-vpc / kacho-compute /
 	// kacho-loadbalancer / self (kacho-iam) для проверки прав на write/read RPC.
-	// Latency budget: ≤20ms p95. 1 hop поверх openfga.Check.
+	// Latency budget: ≤20ms p95. Сетевого перехода к соседу больше нет — вопрос
+	// задаётся той же базе, что и остальные чтения службы.
 	//
 	// REST exposed ONLY on the cluster-internal listener.
 	Check(context.Context, *CheckRequest) (*CheckResponse, error)
