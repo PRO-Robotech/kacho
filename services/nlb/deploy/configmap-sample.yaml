@@ -114,14 +114,12 @@ authz:
   # обязателен непустой круг (обычно SAN api-gateway).
   trust-any-forwarder: true
 
-# ─── FGA tuple write (D-11 sync hierarchy tuples) ───────────────────────────
-fga:
-  endpoint: ""                # OpenFGA HTTP/gRPC endpoint (если live FGA нужна)
-  store-id: ""
-  model-id: ""                # optional explicit authorization model id
-  tuple-write:
-    timeout: 2s
-    max-retries: 3
+# ─── FGA ────────────────────────────────────────────────────────────────────
+# Секция `fga:` с ключами endpoint / store-id / model-id / tuple-write здесь
+# была и СНЯТА (kacho#1796): это адрес внешнего движка отношений и его
+# параметры, а движок снят целиком (#747). Читателя в Go у них не было ни
+# одного. Что процесс из этой секции ЧИТАЕТ сегодня — `require-iam` и
+# `register-drainer.*`; их умолчания приходят из defaults.go.
 
 # ─── Jobs (background workers) ──────────────────────────────────────────────
 jobs:

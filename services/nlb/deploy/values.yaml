@@ -103,9 +103,10 @@ config:
     # api-gateway SPIFFE SAN, e.g. ["spiffe://kacho.cloud/ns/kacho/sa/api-gateway"].
     trustedForwarderSANs: []
   fga:
-    endpoint: ""              # OpenFGA HTTP/gRPC endpoint (empty → tuple-write disabled)
-    storeId: ""
-    modelId: ""
+    # endpoint / storeId / modelId / tupleWrite здесь были и СНЯТЫ (kacho#1796):
+    # адрес внешнего движка отношений и его параметры. Движок снят целиком
+    # (#747), читателя в Go у этих ключей не было ни одного — оператор задавал
+    # значение, продукт его не применял.
     # requireIam — fail-closed загрузочный гейт. true → мутирующий Create
     # отвергается (UNAVAILABLE), а под остаётся NotReady, пока register-drainer
     # не подключён к kacho-iam: ресурс не создаётся, пока его намерение о
@@ -121,9 +122,6 @@ config:
     # peers.iam.internalAddr — он непуст по умолчанию, поэтому взведённый гейт
     # открывается сразу после старта дренажа.
     requireIam: true
-    tupleWrite:
-      timeout: 2s
-      maxRetries: 3
   jobs:
     targetDrain:
       interval: 10s

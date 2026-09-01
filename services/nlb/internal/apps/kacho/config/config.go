@@ -38,8 +38,18 @@ import (
 // Config — корневой config kacho-nlb. Все вложенные структуры с mapstructure-тегами
 // для viper-биндинга; defaults — в `defaults.go`, validation — в `validate.go`.
 type Config struct {
-	// Mode — общий режим работы (dev / production). Production-mode требует
-	// TLS + не-пустую FGA endpoint + не-пустой Postgres DSN. См. validate.go.
+	// Mode — общий режим работы (dev / production / production-strict).
+	// Production-mode требует TLS на слушателе и на каждом ребре к соседу,
+	// адресованное ребро nlb→iam, включённый fail-closed фильтр видимости
+	// списков и безопасный sslmode у строки подключения к Postgres (сама
+	// строка обязательна в ЛЮБОМ режиме). См. validate.go.
+	//
+	// Здесь стояло «требует не-пустую FGA endpoint» — снято как ложное
+	// (kacho#1796): адреса внешнего движка отношений в описателе настроек
+	// нет вовсе, движок снят целиком (#747), и стражу нечего было проверять.
+	// Комментарий, обещающий отказ старта, читается как действующий контроль
+	// и провоцирует починку кода под несуществующее требование.
+	//
 	// Хранится как строка в YAML (`mode: production` / `mode: dev`), мапится
 	// на enum через `ParseMode`.
 	ModeRaw string `mapstructure:"mode"`

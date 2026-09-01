@@ -1709,13 +1709,11 @@ kacho-nlb:
       # values.dev-prod.yaml, где круг тот же и по той же причине.
       trustedForwarderSANs:
         - spiffe://kacho.cloud/ns/kacho/sa/kacho-api-gateway
-    fga:
-      endpoint: ""
-      storeId: ""
-      modelId: ""
-      tupleWrite:
-        timeout: 2s
-        maxRetries: 3
+    # Секция `fga:` (endpoint / storeId / modelId / tupleWrite) здесь была и
+    # СНЯТА (kacho#1796): адрес внешнего движка отношений и его параметры.
+    # Движок снят целиком (#747), читателя у ключей не осталось ни в шаблоне
+    # чарта, ни в описателе настроек процесса. `fga.requireIam` этот профиль не
+    # переопределял — умолчание сабчарта (true) действует как прежде.
     jobs:
       targetDrain:
         interval: 10s
