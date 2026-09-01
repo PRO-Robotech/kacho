@@ -59,6 +59,10 @@ import (
 // Расти долгу по-прежнему нельзя молча — любой новый селектор вне каталога
 // роняет пробу и называет себя поимённо.
 
+// IAM-RV-1-01 — системная роль получает проекцию на старте (характеризующий
+// замок приёмки `role-verb-projection-sole-writer.md`, §5.0: требовать от него
+// красноты запрещено — поведение дерево уже даёт, и оно обязано ПЕРЕЖИТЬ снятие
+// второй реализации записи).
 func TestSystemRoleVerbProjectionIsSeededAlongsideItsSelectors(t *testing.T) {
 	if testing.Short() {
 		t.Skip("нужен Postgres")
@@ -140,6 +144,8 @@ func TestSystemRoleVerbProjectionIsSeededAlongsideItsSelectors(t *testing.T) {
 // Легаси-роль адресует область целиком уровневым отношением, а не пообъектным
 // глаголом, и досев, раздающий глаголы и ей, расширил бы доступ. Без этого
 // близнеца проба выше зеленела бы на досеве «выдать всем всё».
+// IAM-RV-1-10 — системная роль без материализующих правил получает ПУСТУЮ
+// проекцию, а не отказ (характеризующий замок той же приёмки).
 func TestSystemRoleWithoutMaterializingRulesGetsNoVerbs(t *testing.T) {
 	if testing.Short() {
 		t.Skip("нужен Postgres")
