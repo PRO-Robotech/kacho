@@ -23,10 +23,12 @@ package repohygiene
 //     стоит единственный писатель. Писателя зовут через порт (`kachorepo.Writer`,
 //     `shared.DoWithWriteTxVoid`) — это и есть раскладка `architecture.md`
 //     §«Clean Architecture»: use-case объявляет порт, adapter его реализует;
-//  2. досев проекции НЕ зовётся изнутри другого досева того же пакета. Пока он
-//     спрятан в чужом досеве, у его отказа нет своей полосы (это держит
-//     `roleverbreseedbootlane_test.go`), а на старте, где своя полоса уже
-//     заведена, пересчёт идёт ДВАЖДЫ — и вторая перепись затирает первую.
+//  2. ссылка на пересчёт проекции в ДЕРЕВЕ ровно одна, и стоит она в
+//     композиционном корне. Спрятанный где угодно ещё вызов означает сразу
+//     четыре вещи: его отказ приезжает обёрнутым в чужую ошибку и печатается
+//     уровнем чужой полосы (свою держит `roleverbreseedbootlane_test.go`);
+//     наблюдателя у него нет, поэтому счётчик недосчитывает; на старте пересчёт
+//     идёт больше одного раза; и перепись второго прогона затирает первую.
 //
 // ─────────────────────────────────────────────────────────────────────────────
 // ГРАНИЦА НАЗВАНА
@@ -35,9 +37,19 @@ package repohygiene
 // через третий пакет, который сам импортирует адаптер, гейтом не ловится.
 // Такого пакета в дереве нет, и заводить его ради обхода пришлось бы намеренно.
 //
-// Ось 2 опознаёт досев по ЭКСПОРТИРОВАННОМУ имени, несущему `RoleVerb`, среди
-// функций пакета досева. Ноль таких имён — ОТКАЗ, а не «нарушений нет»: без
-// предмета у гейта нет и вердикта.
+// Ось 2 опознаёт ПРЕДМЕТ по экспортированному имени, несущему `RoleVerb`, среди
+// функций пакета досева, а его СЛЕДЫ ищет по всему непроверочному дереву и в
+// любой форме записи ссылки. Прежняя редакция искала неквалифицированный вызов и
+// только в каталоге досева — то есть стерегла ровно тот каталог, в котором
+// прятать вызов и не нужно: из соседнего пакета форма записи квалифицированная
+// by construction. Ноль точек входа — ОТКАЗ, а не «нарушений нет»: без предмета
+// у гейта нет и вердикта.
+//
+// Граница оси 2, названная честно: она судит ИМЯ, а не смысл. Пересчёт,
+// переехавший под имя без `RoleVerb`, из предмета выпадет — и гейт замолчит,
+// оставаясь зелёным (`testing.md` §«Гейт на класс», п. 9). Исход тогда один из
+// двух: снять гейт вместе с предметом либо перевести на новый признак и
+// доказать заново.
 //
 // Обе оси печатают объём осмотренного: «ноль находок» обязано быть отличимо от
 // «ноль прочитанного».
@@ -265,10 +277,26 @@ func exportedRoleVerbEntryPointsIn(filename, src string) ([]string, error) {
 	return out, nil
 }
 
-// roleVerbReseedCallsInside отдаёт неквалифицированные вызовы точек входа внутри
-// самого пакета досева — с именем объемлющей функции, чтобы находка несла
-// координату, а не только файл.
-func roleVerbReseedCallsInside(filename, src string, entries map[string]bool) ([]string, error) {
+// isBootCompositionRoot — ЕДИНСТВЕННОЕ место дерева, где ссылка на пересчёт
+// законна. Определение «корня» берётся у соседнего гейта (`bootCompositionRoot`),
+// а не выписывается второй раз: два места об одном предмете разошлись бы молча.
+func isBootCompositionRoot(rel string) bool {
+	return filepath.ToSlash(rel) == bootCompositionRoot
+}
+
+// roleVerbReseedRefsIn отдаёт ССЫЛКИ на точки входа пересчёта — в ЛЮБОЙ законной
+// форме записи: неквалифицированный вызов внутри пакета досева,
+// квалифицированный `<пакет>.<Имя>` из любого другого пакета, взятие функции
+// значением. Имя объемлющей функции идёт в находку, чтобы она несла координату.
+//
+// Считаются ССЫЛКИ, а не вызовы, и это не педантизм: вызов прячется одной
+// строкой (`run := ReseedSystemRoleVerbs`, затем `run(...)`) — в позиции вызова
+// оказывается имя переменной, и распознаватель по вызовам молчит. Ссылка так не
+// прячется: чтобы позвать функцию, её надо назвать.
+//
+// Объявление самой точки входа ссылкой НЕ является: иначе гейт краснел бы на
+// всяком дереве, где пересчёт вообще существует, — то есть всегда.
+func roleVerbReseedRefsIn(filename, src string, entries map[string]bool) ([]string, error) {
 	fset := token.NewFileSet()
 	file, err := parser.ParseFile(fset, filename, src, 0)
 	if err != nil {
@@ -279,26 +307,26 @@ func roleVerbReseedCallsInside(filename, src string, entries map[string]bool) ([
 		name     string
 	}
 	var spans []span
+	declNames := make(map[*ast.Ident]bool)
 	for _, decl := range file.Decls {
 		fn, ok := decl.(*ast.FuncDecl)
-		if !ok || fn.Body == nil {
+		if !ok {
 			continue
 		}
-		spans = append(spans, span{from: fn.Body.Pos(), to: fn.Body.End(), name: fn.Name.Name})
+		declNames[fn.Name] = true
+		if fn.Body != nil {
+			spans = append(spans, span{from: fn.Body.Pos(), to: fn.Body.End(), name: fn.Name.Name})
+		}
 	}
 	var out []string
 	ast.Inspect(file, func(n ast.Node) bool {
-		call, ok := n.(*ast.CallExpr)
-		if !ok {
-			return true
-		}
-		ident, ok := call.Fun.(*ast.Ident)
-		if !ok || !entries[ident.Name] {
+		ident, ok := n.(*ast.Ident)
+		if !ok || !entries[ident.Name] || declNames[ident] {
 			return true
 		}
 		owner := "<пакетный уровень>"
 		for _, s := range spans {
-			if call.Pos() >= s.from && call.End() <= s.to {
+			if ident.Pos() >= s.from && ident.End() <= s.to {
 				owner = s.name
 				break
 			}
@@ -309,9 +337,21 @@ func roleVerbReseedCallsInside(filename, src string, entries map[string]bool) ([
 	return out, nil
 }
 
-// TestRoleVerbReseedIsNotCalledFromInsideAnotherSeedLane — досев проекции роли не
-// зовётся изнутри другого досева того же пакета.
-func TestRoleVerbReseedIsNotCalledFromInsideAnotherSeedLane(t *testing.T) {
+// TestRoleVerbReseedHasOneReferenceInTheTreeAndItIsTheBootRoot — пересчёт
+// проекции роли за старт происходит РОВНО ОДИН раз, и зовут его ИЗ КОМПОЗИЦИОННОГО
+// КОРНЯ, где у его отказа есть собственная полоса.
+//
+// Прежняя редакция этой оси стерегла ОДИН КАТАЛОГ — пакет досева — и опознавала
+// лишь неквалифицированный вызов. Обе границы обходятся, не желая того: позови
+// пересчёт из соседнего пакета, и форма записи станет квалифицированной by
+// construction, а файл — вне обхода. Спрятанный так вызов не давал ни красного,
+// ни зелёного: гейт его не видел. Предмет расширен до ДЕРЕВА, а признак — до
+// ссылки в любой форме.
+//
+// Почему «ровно один», а не «хотя бы один в корне»: два прогона за старт — это
+// вдвое больше транзакций на полусотне системных ролей и перепись, затирающая
+// первую. Оба прогона по отдельности выглядят исправно.
+func TestRoleVerbReseedHasOneReferenceInTheTreeAndItIsTheBootRoot(t *testing.T) {
 	root := repoRoot(t)
 	files := treeGoFiles(t, root)
 
@@ -322,27 +362,45 @@ func TestRoleVerbReseedIsNotCalledFromInsideAnotherSeedLane(t *testing.T) {
 	}
 	sort.Strings(names)
 
-	var findings []string
+	var atRoot, elsewhere []string
+	filesRead, filesParsed := 0, 0
 	for _, rel := range files {
-		if filepath.ToSlash(filepath.Dir(rel)) != roleVerbSeedPackageDir {
-			continue
-		}
 		b, err := os.ReadFile(filepath.Join(root, rel)) // #nosec G304 -- путь из индекса своего дерева
 		if err != nil {
 			t.Fatalf("чтение %s: %v", rel, err)
 		}
-		calls, cerr := roleVerbReseedCallsInside(rel, string(b), entries)
-		if cerr != nil {
-			t.Fatalf("разбор %s: %v", rel, cerr)
+		filesRead++
+		src := string(b)
+		// Предфильтр ТОЧЕН, а не эвристичен: точка входа отбирается по наличию
+		// `roleVerbReseedMarker` в имени, поэтому текст всякой ссылки на неё этот
+		// маркер содержит. Пропущенный здесь файл ссылки не несёт by construction.
+		if !strings.Contains(src, roleVerbReseedMarker) {
+			continue
 		}
-		findings = append(findings, calls...)
+		filesParsed++
+		refs, rerr := roleVerbReseedRefsIn(rel, src, entries)
+		if rerr != nil {
+			t.Fatalf("разбор %s: %v", rel, rerr)
+		}
+		if isBootCompositionRoot(rel) {
+			atRoot = append(atRoot, refs...)
+		} else {
+			elsewhere = append(elsewhere, refs...)
+		}
 	}
-	sort.Strings(findings)
+	sort.Strings(atRoot)
+	sort.Strings(elsewhere)
 
-	t.Logf("осмотрено непроверочных файлов пакета досева (%s): %d; точек входа "+
-		"пересчёта найдено: %d %v; внутрипакетных вызовов: %d",
-		roleVerbSeedPackageDir, seedFilesRead, len(names), names, len(findings))
+	t.Logf("осмотрено непроверочных файлов Go дерева: %d; из них разобрано (несут `%s`): %d; "+
+		"файлов пакета досева (%s) прочитано: %d; точек входа пересчёта: %d %v; "+
+		"ссылок в композиционном корне (%s): %d; ссылок вне корня: %d",
+		filesRead, roleVerbReseedMarker, filesParsed, roleVerbSeedPackageDir, seedFilesRead,
+		len(names), names, bootCompositionRoot, len(atRoot), len(elsewhere))
 
+	if filesRead == 0 {
+		t.Fatalf("обход дерева не прочитал ни одного непроверочного файла Go — " +
+			"предпосылка гейта неверна, и «ноль находок» здесь означало бы «ноль прочитанного»")
+	}
 	if seedFilesRead == 0 {
 		t.Fatalf("в каталоге %s не прочитано ни одного непроверочного файла — "+
 			"предпосылка гейта неверна: каталог переехал либо обход его не видит",
@@ -352,13 +410,31 @@ func TestRoleVerbReseedIsNotCalledFromInsideAnotherSeedLane(t *testing.T) {
 		t.Fatalf("в пакете досева нет ни одной экспортированной функции с `%s` в имени — "+
 			"предмета у гейта нет: пересчёт переименован либо снят", roleVerbReseedMarker)
 	}
+	if filesParsed == 0 {
+		t.Fatalf("ни один файл дерева не несёт `%s` — предмет исчез из дерева, "+
+			"и молчание гейта о нём ничего не говорит", roleVerbReseedMarker)
+	}
 
-	for _, f := range findings {
+	for _, f := range elsewhere {
 		t.Errorf("%s\n"+
-			"Пересчёт проекции роли зовётся ИЗНУТРИ другого досева того же пакета. "+
-			"У него уже есть собственная полоса в композиционном корне — значит на "+
-			"старте он идёт ДВАЖДЫ, и перепись второго прогона затирает первую. "+
-			"Отдельно: спрятанный в чужом досеве отказ приезжает вызывающему "+
-			"обёрнутым в чужую ошибку, и различить настройку от сбоя нечем.", f)
+			"Пересчёт проекции роли зовётся ВНЕ композиционного корня. Своя полоса "+
+			"отказа у него есть только там (%s) — значит здесь его отказ приезжает "+
+			"вызывающему обёрнутым в ЧУЖУЮ ошибку и печатается уровнем чужой полосы, "+
+			"а на старте пересчёт идёт БОЛЬШЕ ОДНОГО РАЗА: вдвое больше транзакций и "+
+			"перепись, затирающая первую.", f, bootCompositionRoot)
+	}
+	switch len(atRoot) {
+	case 1:
+	case 0:
+		t.Errorf("в композиционном корне (%s) ссылок на пересчёт проекции роли НЕТ.\n"+
+			"Тогда на старте проекция не пересеивается вовсе: роль с одними селекторами "+
+			"адресует объект и не разрешает на нём ничего, а вердикт по её выдаче "+
+			"отказывает МОЛЧА.", bootCompositionRoot)
+	default:
+		t.Errorf("в композиционном корне (%s) ссылок на пересчёт проекции роли %d, "+
+			"а обязана быть одна: %v\n"+
+			"Пересчёт за старт идёт больше одного раза; перепись второго прогона "+
+			"затирает первую, и оба прогона по отдельности выглядят исправно.",
+			bootCompositionRoot, len(atRoot), atRoot)
 	}
 }

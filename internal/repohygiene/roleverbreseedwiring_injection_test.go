@@ -141,7 +141,7 @@ func BackfillOwnerBindings(ctx context.Context, pool *pgxpool.Pool) error {
 // чужого досева → находка, названная объемлющей функцией.
 func TestReseedWiring_InjectionRedOnAnInPackageReseedCall(t *testing.T) {
 	entries := map[string]bool{"ReseedSystemRoleVerbs": true}
-	got, err := roleVerbReseedCallsInside("migrate_backfill.go", injSeedInsideCallSrc, entries)
+	got, err := roleVerbReseedRefsIn("migrate_backfill.go", injSeedInsideCallSrc, entries)
 	if err != nil {
 		t.Fatalf("разбор синтетики: %v", err)
 	}
@@ -158,7 +158,7 @@ func TestReseedWiring_InjectionRedOnAnInPackageReseedCall(t *testing.T) {
 // тот же пакет зовёт ДРУГОЙ свой досев. Это не предмет оси, и гейт молчит.
 func TestReseedWiring_InjectionSilentOnANeighbouringSeedCall(t *testing.T) {
 	entries := map[string]bool{"ReseedSystemRoleVerbs": true}
-	got, err := roleVerbReseedCallsInside("migrate_backfill.go", injSeedNeighbourCallSrc, entries)
+	got, err := roleVerbReseedRefsIn("migrate_backfill.go", injSeedNeighbourCallSrc, entries)
 	if err != nil {
 		t.Fatalf("разбор синтетики: %v", err)
 	}
@@ -178,7 +178,7 @@ func ReseedSystemRoleVerbs(ctx context.Context, repo kachorepo.Repository) error
 }
 `
 	entries := map[string]bool{"ReseedSystemRoleVerbs": true}
-	got, err := roleVerbReseedCallsInside("role_verb_reseed.go", src, entries)
+	got, err := roleVerbReseedRefsIn("role_verb_reseed.go", src, entries)
 	if err != nil {
 		t.Fatalf("разбор синтетики: %v", err)
 	}
@@ -228,5 +228,99 @@ func BackfillOwnerBindings(ctx context.Context) error { return nil }
 	}
 	if len(got) != 0 {
 		t.Errorf("точки входа найдены там, где предмета нет: %v", got)
+	}
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// РАСПОЗНАВАТЕЛЬ ОБЯЗАН ЗНАТЬ ВСЕ ЗАКОННЫЕ ФОРМЫ ЗАПИСИ ПРЕДМЕТА
+//
+// Оси ниже заведены находкой сведения: гейт искал вызов пересчёта ТОЛЬКО в
+// каталоге досева и ТОЛЬКО в неквалифицированной форме. Обе границы обходятся
+// без всякого умысла — достаточно позвать пересчёт из соседнего пакета, где
+// форма записи квалифицированная by construction. Спрятанный там вызов не
+// становился находкой: он не давал ни красного, ни зелёного — гейт его не видел.
+//
+// `testing.md` §«Гейт на класс», п. 7: форма, о которой распознаватель не знает,
+// не край и не редкость — всё записанное в ней оказывается ВНЕ НАБЛЮДЕНИЯ.
+
+const injReseedQualifiedCallSrc = `package role
+
+func materializeOnCreate(ctx context.Context) error {
+	if _, rerr := seed.ReseedSystemRoleVerbs(ctx, repo, pool, nil); rerr != nil {
+		return rerr
+	}
+	return nil
+}
+`
+
+const injReseedValueCaptureSrc = `package seed
+
+func BackfillOwnerBindings(ctx context.Context) error {
+	run := ReseedSystemRoleVerbs
+	_, err := run(ctx, nil, nil, nil)
+	return err
+}
+`
+
+// TestReseedWiring_InjectionRedOnAQualifiedReseedCallAnywhereInTheTree —
+// квалифицированная форма (`seed.ReseedSystemRoleVerbs`) есть ЕДИНСТВЕННАЯ
+// возможная запись вызова вне пакета досева. Не зная её, гейт стерёг ровно тот
+// каталог, в котором прятать вызов и не нужно.
+func TestReseedWiring_InjectionRedOnAQualifiedReseedCallAnywhereInTheTree(t *testing.T) {
+	entries := map[string]bool{"ReseedSystemRoleVerbs": true}
+	got, err := roleVerbReseedRefsIn(
+		"services/iam/internal/apps/kacho/api/role/create.go", injReseedQualifiedCallSrc, entries)
+	if err != nil {
+		t.Fatalf("разбор синтетики: %v", err)
+	}
+	if len(got) != 1 {
+		t.Fatalf("находок %d, а обязана быть одна: %v\n"+
+			"Пересчёт спрятан в чужом пакете КВАЛИФИЦИРОВАННЫМ вызовом, и гейт его "+
+			"не видит. Тогда на старте пересчёт идёт больше одного раза, а отказ "+
+			"спрятанного приезжает обёрнутым в чужую ошибку — ровно то состояние, "+
+			"ради снятия которого писалась приёмка.", len(got), got)
+	}
+	if !strings.Contains(got[0], "::materializeOnCreate → ReseedSystemRoleVerbs") {
+		t.Errorf("находка не приписана объемлющей функции: %q", got[0])
+	}
+}
+
+// TestReseedWiring_InjectionRedOnAReseedTakenAsAValue — пересчёт, взятый
+// ЗНАЧЕНИЕМ и позванный через переменную. Гейт, считающий только вызовы,
+// молчит: в позиции вызова стоит имя переменной, а не точки входа.
+func TestReseedWiring_InjectionRedOnAReseedTakenAsAValue(t *testing.T) {
+	entries := map[string]bool{"ReseedSystemRoleVerbs": true}
+	got, err := roleVerbReseedRefsIn(
+		"services/iam/internal/apps/kacho/seed/migrate_backfill.go", injReseedValueCaptureSrc, entries)
+	if err != nil {
+		t.Fatalf("разбор синтетики: %v", err)
+	}
+	if len(got) != 1 {
+		t.Fatalf("находок %d, а обязана быть одна: %v\n"+
+			"Пересчёт взят значением (`run := ReseedSystemRoleVerbs`) и позван через "+
+			"переменную. Считать надо ССЫЛКИ на точку входа, а не вызовы: вызов "+
+			"переименовывается одной строкой, ссылка — нет.", len(got), got)
+	}
+}
+
+// TestReseedWiring_BootRootIsTheOnlyPlaceWhereAReferenceIsLegal — законный
+// близнец расширенной оси: ссылка в композиционном корне находкой НЕ является.
+// Без этого утверждения гейт, краснеющий на всякой ссылке вообще, был бы
+// неотличим от исправного — на дереве, где корень зовёт пересчёт, он краснел бы
+// всегда, и его отключили бы первым.
+func TestReseedWiring_BootRootIsTheOnlyPlaceWhereAReferenceIsLegal(t *testing.T) {
+	if !isBootCompositionRoot(bootCompositionRoot) {
+		t.Errorf("композиционный корень (%s) не опознан как законное место ссылки — "+
+			"гейт краснел бы на верном дереве", bootCompositionRoot)
+	}
+	for _, rel := range []string{
+		"services/iam/internal/apps/kacho/seed/migrate_backfill.go",
+		"services/iam/internal/apps/kacho/api/role/create.go",
+		"services/iam/cmd/migrator/main.go",
+	} {
+		if isBootCompositionRoot(rel) {
+			t.Errorf("%s принят за композиционный корень — спрятанный там вызов "+
+				"находкой не станет, и вся ось вакуумна", rel)
+		}
 	}
 }
