@@ -65,15 +65,11 @@ import (
 	"path/filepath"
 	"regexp"
 	"sort"
-	"strings"
 	"testing"
 )
 
 // consoleFormatScript — имя объявляемого пакетом скрипта проверки формата.
 const consoleFormatScript = "format:check"
-
-// consoleFormatCIInvocation — строка, которой конвейер зовёт корневой скрипт.
-const consoleFormatCIInvocation = "npm run format:check"
 
 // consolePrefixCallRe — вызов `npm run <скрипт> --prefix <пакет>` в корневом
 // скрипте. Читается ИМЯ ПАКЕТА, а не порядок слов: цепочку пишут вручную, и
@@ -113,9 +109,10 @@ func TestEveryConsoleFormatCheckHasAProducer(t *testing.T) {
 		t.Errorf("%s", f)
 	}
 
-	if wf := consoleUIWorkflow(t, root); !strings.Contains(wf, consoleFormatCIInvocation) {
-		t.Errorf("ui.yml не содержит %q — корневой скрипт есть, а конвейер его не зовёт: "+
-			"проверка объявлена дважды и не исполняется ни разу", consoleFormatCIInvocation)
+	if !consoleWorkflowCallsScript(consoleUIWorkflowExecutable(t, root), consoleFormatScript) {
+		t.Errorf("исполняемая часть ui.yml не зовёт %q — корневой скрипт есть, а конвейер "+
+			"его не зовёт: проверка объявлена дважды и не исполняется ни разу",
+			"npm run "+consoleFormatScript)
 	}
 
 	t.Logf("перепись: пакетов осмотрено — %d, объявляют %s — %d, названо производителем — %d",
@@ -204,15 +201,4 @@ func consoleRootScript(t *testing.T, uiRoot, name string) string {
 		t.Fatal("не разобран корневой манифест консоли")
 	}
 	return pkg.Scripts[name]
-}
-
-// consoleUIWorkflow — процесс конвейера, отвечающий за консоль.
-func consoleUIWorkflow(t *testing.T, root string) string {
-	t.Helper()
-	// #nosec G304 -- читается объявление процесса этого же репозитория.
-	raw, err := os.ReadFile(filepath.Join(root, ".github", "workflows", "ui.yml"))
-	if err != nil {
-		t.Fatalf("не прочитан ui.yml: %v", err)
-	}
-	return string(raw)
 }

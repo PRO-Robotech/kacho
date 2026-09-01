@@ -11,6 +11,7 @@
   "scripts": {
     "dev": "powershell -ExecutionPolicy Bypass -File ./dev-federation.ps1",
     "typecheck": "npm run typecheck --prefix shared && npm run typecheck --prefix host && npm run typecheck --prefix dashboard && npm run typecheck --prefix vpc && npm run typecheck --prefix compute && npm run typecheck --prefix storage && npm run typecheck --prefix nlb && npm run typecheck --prefix registry && npm run typecheck --prefix iam && npm run typecheck --prefix system && npm run typecheck --prefix e2e",
+    "lint": "npm run lint --prefix host && npm run lint --prefix dashboard && npm run lint --prefix vpc && npm run lint --prefix compute && npm run lint --prefix storage && npm run lint --prefix nlb && npm run lint --prefix registry && npm run lint --prefix iam && npm run lint --prefix system && npm run lint --prefix e2e",
     "format:check": "npm run format:check --prefix host && npm run format:check --prefix dashboard && npm run format:check --prefix vpc && npm run format:check --prefix compute && npm run format:check --prefix storage && npm run format:check --prefix nlb && npm run format:check --prefix registry && npm run format:check --prefix iam && npm run format:check --prefix system",
     "test": "npm test --prefix host && npm test --prefix dashboard && npm test --prefix vpc && npm test --prefix compute && npm test --prefix storage && npm test --prefix nlb && npm test --prefix registry && npm test --prefix iam && npm test --prefix system"
   },

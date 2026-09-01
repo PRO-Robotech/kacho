@@ -45,15 +45,11 @@ package repohygiene
 import (
 	"path/filepath"
 	"sort"
-	"strings"
 	"testing"
 )
 
 // consoleTypecheckScript — имя объявляемого пакетом скрипта проверки типов.
 const consoleTypecheckScript = "typecheck"
-
-// consoleTypecheckCIInvocation — строка, которой конвейер зовёт корневой скрипт.
-const consoleTypecheckCIInvocation = "npm run typecheck"
 
 // TestEveryConsoleTypecheckHasAProducer — вердикт на настоящем дереве.
 func TestEveryConsoleTypecheckHasAProducer(t *testing.T) {
@@ -99,9 +95,10 @@ func TestEveryConsoleTypecheckHasAProducer(t *testing.T) {
 		t.Errorf("%s", f)
 	}
 
-	if wf := consoleUIWorkflow(t, root); !strings.Contains(wf, consoleTypecheckCIInvocation) {
-		t.Errorf("ui.yml не содержит %q — корневой скрипт есть, а конвейер его не зовёт: "+
-			"проверка объявлена дважды и не исполняется ни разу", consoleTypecheckCIInvocation)
+	if !consoleWorkflowCallsScript(consoleUIWorkflowExecutable(t, root), consoleTypecheckScript) {
+		t.Errorf("исполняемая часть ui.yml не зовёт %q — корневой скрипт есть, а конвейер "+
+			"его не зовёт: проверка объявлена дважды и не исполняется ни разу",
+			"npm run "+consoleTypecheckScript)
 	}
 
 	t.Logf("перепись: каталогов осмотрено — %d, со своим tsconfig.json — %d, "+
