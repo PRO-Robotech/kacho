@@ -129,7 +129,7 @@ func TestIssue_PrivateKeyJWT_WhitelistsRegistryAudienceByDefault(t *testing.T) {
 
 	_, err := u.Execute(context.Background(), IssueInput{
 		ServiceAccountID: "sva_docker0000000000",
-		CreatedByUserID:  "usr_admin",
+		CreatedByUserID:  "usr_admin00000000000",
 		// No Audience — the docker/registry use-case that triggered #320.
 	})
 	if err != nil {

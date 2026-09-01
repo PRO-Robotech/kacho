@@ -38,7 +38,7 @@ func TestIssue_PrivateKeyJWT_AudienceOverridesPrefix(t *testing.T) {
 
 	in := IssueInput{
 		ServiceAccountID: "sva_ext0000000000000",
-		CreatedByUserID:  "usr_admin",
+		CreatedByUserID:  "usr_admin00000000000",
 		Audience:         []string{"sts.example.com"},
 	}
 
@@ -84,7 +84,7 @@ func TestIssue_Federated_AudienceOverridesPrefix(t *testing.T) {
 
 	in := IssueInput{
 		ServiceAccountID: "sva_ext2000000000000",
-		CreatedByUserID:  "usr_admin",
+		CreatedByUserID:  "usr_admin00000000000",
 		TrustedSubjects: []domain.TrustedSubject{
 			{
 				Issuer:         "https://token.actions.githubusercontent.com",
@@ -134,7 +134,7 @@ func TestIssue_AudienceDedupAndEmptyDrop(t *testing.T) {
 
 	_, err := u.Execute(context.Background(), IssueInput{
 		ServiceAccountID: "sva_abc0000000000000",
-		CreatedByUserID:  "usr_admin",
+		CreatedByUserID:  "usr_admin00000000000",
 		Audience:         []string{"a.example", "", "a.example", "b.example", ""},
 	})
 	if err != nil {

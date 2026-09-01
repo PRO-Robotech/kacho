@@ -139,8 +139,8 @@ func TestGroupCreate_SyncReconcilesObject(t *testing.T) {
 	uc := NewCreateGroupUseCase(repo, nil).WithObjectReconciler(rec)
 
 	g := domain.Group{
-		ID:        domain.GroupID("grp00000000000000abcd"),
-		AccountID: domain.AccountID("acc00000000000000aaaa"),
+		ID:        domain.GroupID("grp0000000000000abcd"),
+		AccountID: domain.AccountID("acc0000000000000aaaa"),
 		Name:      domain.GroupName("grp-recon"),
 	}
 	_, err := uc.doCreate(context.Background(), g, "usr00000000000000zzzz")
@@ -167,7 +167,7 @@ func TestGroupCreate_SyncReconcilesObject(t *testing.T) {
 	require.Len(t, rec.forwardNoStaleCalls, 1,
 		"group Create must synchronously take the PROVEN forward entry post-commit")
 	assert.Equal(t, "iam.group", rec.forwardNoStaleCalls[0].objectType)
-	assert.Equal(t, "grp00000000000000abcd", rec.forwardNoStaleCalls[0].objectID)
+	assert.Equal(t, "grp0000000000000abcd", rec.forwardNoStaleCalls[0].objectID)
 	assert.Empty(t, rec.forwardCalls,
 		"create hot-path must NOT take the GUARDED forward entry — its member-read is answerable in advance")
 	assert.Empty(t, rec.calls, "create hot-path must NOT take the FULL EXCLUSIVE ReconcileObject (forward only)")

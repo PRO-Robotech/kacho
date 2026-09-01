@@ -187,7 +187,7 @@ func TestIssue_FederatedPath_HydraRequestShape(t *testing.T) {
 
 	in := IssueInput{
 		ServiceAccountID: "sva_test000000000000",
-		CreatedByUserID:  "usr_admin",
+		CreatedByUserID:  "usr_admin00000000000",
 		TrustedSubjects: []domain.TrustedSubject{
 			{
 				Issuer:         "https://token.actions.githubusercontent.com",
@@ -259,7 +259,7 @@ func TestIssue_FederatedPath_InvalidTrustedSubject_Rejected(t *testing.T) {
 
 	_, err := u.Execute(context.Background(), IssueInput{
 		ServiceAccountID: "sva_test000000000000",
-		CreatedByUserID:  "usr_admin",
+		CreatedByUserID:  "usr_admin00000000000",
 		TrustedSubjects: []domain.TrustedSubject{
 			{Issuer: "https://x", SubjectPattern: "(["}, // invalid RE2
 		},
@@ -285,7 +285,7 @@ func TestIssue_PrivateKeyJWT_Path_StillWorks(t *testing.T) {
 
 	_, err := u.Execute(context.Background(), IssueInput{
 		ServiceAccountID: "sva_test000000000000",
-		CreatedByUserID:  "usr_admin",
+		CreatedByUserID:  "usr_admin00000000000",
 	})
 	if err != nil {
 		t.Fatalf("Execute: %v", err)

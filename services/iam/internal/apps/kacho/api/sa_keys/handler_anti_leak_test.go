@@ -36,7 +36,7 @@ func TestSAKey_Issue_SpoofRejected(t *testing.T) {
 
 	_, err := h.Issue(ctx, &iamv1.IssueSAKeyRequest{
 		ServiceAccountId: "sva_xxx0000000000000",
-		CreatedByUserId:  "usr_someone_else",
+		CreatedByUserId:  "usr_someone_else0000",
 		TtlSeconds:       0,
 	})
 	if status.Code(err) != codes.InvalidArgument {

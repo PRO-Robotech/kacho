@@ -87,7 +87,7 @@ func (f *fakeTrustedIssuers) InsertTrustedIssuers(
 func trustedIssuerInput() IssueInput {
 	return IssueInput{
 		ServiceAccountID: "sva_test000000000000",
-		CreatedByUserID:  "usr_admin",
+		CreatedByUserID:  "usr_admin00000000000",
 		TrustedSubjects: []domain.TrustedSubject{{
 			Issuer:         "https://kube.cluster.local",
 			SubjectPattern: "^system:serviceaccount:ci:deployer$",
