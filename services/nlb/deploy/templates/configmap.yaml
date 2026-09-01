@@ -120,9 +120,12 @@ data:
         {{- end }}
 
     fga:
-      endpoint: {{ .Values.config.fga.endpoint | quote }}
-      store-id: {{ .Values.config.fga.storeId | quote }}
-      model-id: {{ .Values.config.fga.modelId | quote }}
+      # endpoint / store-id / model-id / tuple-write здесь были и СНЯТЫ
+      # (kacho#1796): адрес внешнего движка отношений, его стор и модель.
+      # Движок снят целиком (#747), полей под эти ключи в описателе настроек
+      # нет, и viper выбрасывал их молча — оператор задавал значение, процесс
+      # его не применял. Не возвращать без поля-читателя: гейт
+      # TestEveryRenderedConfigKeyHasAFieldThatReadsIt покраснеет.
       # require-iam — fail-closed загрузочный гейт (pkg/outbox/bootgate):
       # мутирующий Create отвергается, а под остаётся NotReady, пока
       # register-drainer не подключён к kacho-iam. Ресурс не создаётся, пока его
@@ -135,9 +138,6 @@ data:
       # выключенный гейт — правка одного values.yaml не имела бы силы. Так же и
       # по той же причине рендерится соседний фильтр видимости.
       require-iam: {{ .Values.config.fga.requireIam }}
-      tuple-write:
-        timeout: {{ .Values.config.fga.tupleWrite.timeout }}
-        max-retries: {{ .Values.config.fga.tupleWrite.maxRetries }}
 
     jobs:
       target-drain:
