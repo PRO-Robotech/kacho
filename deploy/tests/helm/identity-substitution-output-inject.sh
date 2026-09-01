@@ -45,17 +45,34 @@
 # утверждается законным близнецом, а не подразумевается.
 
 set -uo pipefail
-cd "$(dirname "$0")/../.."
+# Каталог доказательства — АБСОЛЮТНЫЙ и снятый ДО смены рабочего: `$0`
+# относителен вызывающему, поэтому после `cd` он указывает уже не туда, и
+# подключение библиотеки по нему МОЛЧА не происходит (`set -e` тут нет).
+INJECT_DIR="$(cd "$(dirname "$0")" && pwd)"
+cd "$INJECT_DIR/../.."
 
-command -v helm >/dev/null || { echo "SKIP: helm не установлен — доказательство не выполнено"; exit 2; }
+# ── ПРЕДПОСЫЛКА: ЗАВИСИМОСТИ УМБРЕЛЛЫ МАТЕРИАЛИЗОВАНЫ (задача #1769) ─────────
+# Без них рендер отказывает ДО первого шаблона, то есть КАЖДАЯ ось краснеет по
+# причине, к проверяемому отношения не имеющей, а выглядит исполненной («ждали
+# RED — получили RED»). «Условие не создано» — НЕ вердикт (e2e-flow.md §6):
+# свой код возврата, свой текст, не зачитывается ни в успех, ни в отказ.
+# Предикат ОДИН на всё семейство: копия у каждого разошлась бы молча.
+# shellcheck source=tests/helm/premise.sh
+. "$INJECT_DIR/premise.sh" || { echo "ОТКАЗ: библиотека предпосылки не подключилась — молчаливый пропуск предпосылки хуже её отсутствия"; exit 1; }
+premise_chart_deps
 
 TMP="$(mktemp -d)"; trap 'rm -rf "$TMP"' EXIT
-mkdir -p "$TMP/src" "$TMP/rendered"
+mkdir -p "$TMP/synth/src" "$TMP/synth/rendered" "$TMP/real/src" "$TMP/real/rendered"
 
+# РЕНДЕР ПОСЛЕ ПРЕДПОСЫЛКИ — ЭТО НАХОДКА, А НЕ УСЛОВИЕ. Прежняя редакция ловила
+# ЛЮБОЙ отказ рендера кодом 2 «зависимости не материализованы?» — с вопросительным
+# знаком, то есть догадкой. Такой катч-олл объявлял бы «условие не создано» и на
+# настоящем дефекте чарта: тот же класс, что и вакуумное красное, только с другой
+# стороны. Предпосылка спрошена выше и выполнена; всё остальное — дерево.
 helm template kacho-umbrella ./helm/umbrella -n kacho \
   $(bash tests/helm/stacks.sh --args dev-prod ./helm/umbrella) > "$TMP/render.yaml" 2>"$TMP/err" || {
-    echo "УСЛОВИЕ НЕ СОЗДАНО: рендер не удался (зависимости умбреллы не материализованы?)"
-    tail -3 "$TMP/err"; exit 2; }
+    echo "ОТКАЗ: рендер профиля стенда не удался ПРИ ВЫПОЛНЕННОЙ предпосылке — это находка о дереве, а не условие прогона"
+    tail -5 "$TMP/err"; exit 1; }
 
 python3 - "$TMP/render.yaml" > "$TMP/script.raw" <<'PY'
 import sys, yaml
@@ -86,69 +103,310 @@ raise SystemExit("перечень владения не объявлен в р�
 PYVARS
 )" || { echo "ОТКАЗ: перечень владения не извлечён из рендера"; exit 1; }
 
+# ── НАСТОЯЩАЯ КАРТА НАСТРОЕК — ТА, ЧТО ПОД МОНТИРУЕТ (задача #1794) ──────────
+#
+# Координата карты ВЫВОДИТСЯ, а не выписывается: у шага берётся его же
+# монтирование по пути `/etc/kacho-identity-src`, у монтирования — том, у тома —
+# карта. Выписанное имя разошлось бы с чартом молча — ровно тот класс, который
+# эти доказательства и ловят.
+python3 - "$TMP/render.yaml" > "$TMP/real/src/kratos.yaml" <<'PYMAP'
+import sys, yaml
+docs = [d for d in yaml.safe_load_all(open(sys.argv[1])) if d]
+want = None
+for d in docs:
+    if d.get('kind') not in ('Deployment', 'StatefulSet'):
+        continue
+    spec = d['spec']['template']['spec']
+    for c in spec.get('initContainers', []):
+        if c['name'] != 'identity-config-render':
+            continue
+        vol = None
+        for m in c.get('volumeMounts', []):
+            if m.get('mountPath') == '/etc/kacho-identity-src':
+                vol = m['name']
+        if vol is None:
+            raise SystemExit("шаг не монтирует исходник настроек — карту взять неоткуда")
+        for v in spec.get('volumes', []):
+            if v.get('name') == vol and 'configMap' in v:
+                want = v['configMap']['name']
+        break
+    if want:
+        break
+if not want:
+    raise SystemExit("том исходника настроек не назвал карту")
+for d in docs:
+    if d.get('kind') == 'ConfigMap' and d['metadata']['name'] == want:
+        sys.stdout.write((d.get('data') or {})['kratos.yaml']); raise SystemExit(0)
+raise SystemExit("карта %s в рендере не найдена" % want)
+PYMAP
+[ -s "$TMP/real/src/kratos.yaml" ] || { echo "ОТКАЗ: настоящая карта настроек не извлечена — доказывать применимость не на чем"; exit 1; }
+REAL_LINES="$(wc -l < "$TMP/real/src/kratos.yaml")"
+REAL_BASE="$(cat "$TMP/real/src/kratos.yaml")"
+
 # Имя, которым шаг владеет, — ПЕРВОЕ из перечня. Оно тоже не выписано: перечень
 # может вырасти, и фикстура обязана расти вместе с ним.
 OWNED_NAME="${SUBST_VARS%% *}"
 [ -n "$OWNED_NAME" ] || { echo "ОТКАЗ: перечень владения пуст — фикстуре не на чём стоять"; exit 1; }
 
 export KACHO_IDENTITY_SUBSTITUTED_VARS="$SUBST_VARS"
-sed "s#/etc/kacho-identity-src#$TMP/src#g; s#/etc/kacho-identity-rendered#$TMP/rendered#g" \
-  "$TMP/script.raw" > "$TMP/script.sh"
+
+# Скрипт готовится ОТДЕЛЬНО под каждую карту: пути каталогов у них свои, и общий
+# каталог сделал бы вердикт одной оси функцией того, что оставила соседняя.
+mkscript() { # <каталог> → путь к исполняемому шагу
+  sed "s#/etc/kacho-identity-src#$1/src#g; s#/etc/kacho-identity-rendered#$1/rendered#g" \
+    "$TMP/script.raw" > "$1/script.sh"
+  printf '%s\n' "$1/script.sh"
+}
+SYNTH_SH="$(mkscript "$TMP/synth")"
+REAL_SH="$(mkscript "$TMP/real")"
 
 # Величина той же формы, что чеканит посев стенда (`openssl rand -hex 24`): 48
 # знаков, ни одного, требующего экранирования. Форма взята оттуда, а не
 # придумана, — иначе доказательство говорило бы о величине, которой не бывает.
 TOKEN="$(printf '%048d' 0 | tr '0' 'a')"
 
-rc=0; red=0; green=0
-run() { # имя · ожидание(RED|GREEN) · улика · добавка к конфигурации
-  local name="$1" want="$2" needle="$3" extra="$4" got out
-  {
-    printf 'dsn: postgres://kratos@pg/kratos\n'
-    printf 'selfservice:\n'
-    printf '  hook_token: "${%s}"\n' "$OWNED_NAME"
-    printf '%s\n' "$extra"
-  } > "$TMP/src/kratos.yaml"
-  if out="$(env "$OWNED_NAME=$TOKEN" \
-              COURIER_SMTP_CONNECTION_URI="smtp://kacho-umbrella-mailpit:1025/" \
-              sh -euc "$(cat "$TMP/script.sh")" 2>&1)"
-  then got=GREEN; else got=RED; fi
+rc=0; red=0; green=0; real_red=0; real_green=0
+
+# step — один запуск шага. Возвращает вывод и код через переменные, потому что
+# `$(…)` съел бы код возврата, а он здесь и есть предмет.
+STEP_OUT=""; STEP_RC=0
+step() { # <путь-к-шагу>
+  STEP_OUT="$(env "$OWNED_NAME=$TOKEN" \
+                COURIER_SMTP_CONNECTION_URI="smtp://kacho-umbrella-mailpit:1025/" \
+                sh -euc "$(cat "$1")" 2>&1)" && STEP_RC=0 || STEP_RC=$?
+}
+# step_nomail — то же БЕЗ переменной почтовой полосы. Отдельная форма нужна ровно
+# одной паре раздела С: без переменной шаг обязан взять полосу ИЗ ФАЙЛА, а такой
+# ветви у синтетики нет вовсе.
+step_nomail() { # <путь-к-шагу>
+  STEP_OUT="$(env "$OWNED_NAME=$TOKEN" sh -euc "$(cat "$1")" 2>&1)" && STEP_RC=0 || STEP_RC=$?
+}
+
+judge() { # имя · ожидание(RED|GREEN) · улика · вывод · код · требовать-ли-имя(1|0)
+  local name="$1" want="$2" needle="$3" out="$4" code="$5" wantname="$6" got
+  [ "$code" = "0" ] && got=GREEN || got=RED
   if [ "$got" != "$want" ]; then
-    echo "  ОТКАЗ $name → $got, ожидалось $want"; printf '       %s\n' "$out" | tail -3; rc=1; return
+    echo "  ОТКАЗ $name → $got, ожидалось $want"; printf '       %s\n' "$out" | tail -3; rc=1; return 1
   fi
   if [ "$want" = RED ]; then
     case "$out" in
       *"$needle"*) : ;;
       *) echo "  ОТКАЗ $name → RED, но отказ не называет «$needle»"
-         printf '       %s\n' "$out" | tail -3; rc=1; return ;;
+         printf '       %s\n' "$out" | tail -3; rc=1; return 1 ;;
     esac
-    case "$out" in
-      *"$OWNED_NAME"*) : ;;
-      *) echo "  ОТКАЗ $name → RED, но отказ не называет саму переменную"
-         printf '       %s\n' "$out" | tail -3; rc=1; return ;;
-    esac
-    red=$((red+1))
-  else
-    green=$((green+1))
+    if [ "$wantname" = 1 ]; then
+      case "$out" in
+        *"$OWNED_NAME"*) : ;;
+        *) echo "  ОТКАЗ $name → RED, но отказ не называет саму переменную"
+           printf '       %s\n' "$out" | tail -3; rc=1; return 1 ;;
+      esac
+    fi
   fi
   echo "  ok   $name → $got"
+  return 0
 }
 
-echo "=== законные близнецы: шаг обязан МОЛЧАТЬ ==="
+# ─────────────────────────────────────────────────────────────────────────────
+# А. СИНТЕТИКА — она проверяет РАЗБОР, и остаётся РЯДОМ, а не вместо
+#
+# Карта из трёх строк даёт полный контроль над входом: в ней ровно одна ссылка и
+# ровно то, что положил случай. Ради этого она и держится. Чего она НЕ может —
+# сказано разделом В: у неё нет ни чужих ссылок, ни почтовой полосы в файле,
+# поэтому целые ветви шага на ней недостижимы by construction.
+run() { # имя · ожидание · улика · добавка к конфигурации
+  local name="$1" want="$2" needle="$3" extra="$4"
+  {
+    printf 'dsn: postgres://kratos@pg/kratos\n'
+    printf 'selfservice:\n'
+    printf '  hook_token: "${%s}"\n' "$OWNED_NAME"
+    printf '%s\n' "$extra"
+  } > "$TMP/synth/src/kratos.yaml"
+  step "$SYNTH_SH"
+  judge "$name" "$want" "$needle" "$STEP_OUT" "$STEP_RC" 1 || return 0
+  [ "$want" = RED ] && red=$((red+1)) || green=$((green+1))
+}
+
+echo "=== А. синтетика (разбор): законные близнецы — шаг обязан МОЛЧАТЬ ==="
 run "только ссылки формы"        GREEN "" "  second: \"\${$OWNED_NAME}\""
 run "имя в комментарии"          GREEN "" "  # источник величины — $OWNED_NAME, подставляется шагом"
 run "имя после подстановки"      GREEN "" "  already: \"$TOKEN\""
 run "чужое имя голым"            GREEN "" "  foreign: KACHO_NOT_OWNED_BY_THIS_STEP"
 
-echo "=== инъекции: голое ИМЯ величиной роняет запуск и называет предмет ==="
+echo "=== А. синтетика: голое ИМЯ величиной роняет запуск и называет предмет ==="
 run "голое имя величиной"        RED "ГОЛЫМ ИМЕНЕМ" "  header_value: $OWNED_NAME"
 run "голое имя в кавычках"       RED "ГОЛЫМ ИМЕНЕМ" "  header_value: \"$OWNED_NAME\""
 run "голое имя во вложении"      RED "ГОЛЫМ ИМЕНЕМ" "  hooks:
     - auth:
         value: $OWNED_NAME"
 
-echo "перепись: инъекций красных $red · законных близнецов зелёных $green"
-[ "$red" -ge 3 ] || { echo "ОТКАЗ: красных инъекций $red — доказательство неполно"; rc=1; }
-[ "$green" -ge 4 ] || { echo "ОТКАЗ: зелёных близнецов $green — отрицание не проверено в обратную сторону"; rc=1; }
-[ "$rc" = 0 ] && echo "ИТОГ: шаг подстановки судит свой ВЫХОД и молчит на законном" || echo "ИТОГ: ОТКАЗ"
+# ── ТРИ ЗАКОННЫЕ ЗАПИСИ ССЫЛКИ, ПО ОДНОЙ ОСИ НА КАЖДУЮ (задача #1795) ────────
+#
+# Распознаватель знал ОДНУ из трёх и на средней давал ЛОЖНУЮ находку: страж звал
+# ГОЛЫМ ИМЕНЕМ то, что является ссылкой с умолчанием. Слепая зона была
+# ЛАТЕНТНОЙ — сегодняшняя карта таких форм не несёт, — и потому не краснела
+# никогда; первая же такая ссылка сделала бы отказ ложным.
+#
+# ИСХОД У СРЕДНЕЙ ФОРМЫ — НЕ МОЛЧАНИЕ, И ЭТО РЕШЕНИЕ. Подстановка бьёт РОВНО
+# литерал `${ИМЯ}`, поэтому запись с умолчанием уехала бы в конфигурацию
+# дословно — тот же дефект #1754, только другой записью. Молчание вернуло бы
+# класс; поэтому форма отвергается ЯВНО и ДРУГОЙ полосой — переписью остатка, с
+# сообщением, называющим саму форму. Ложной находки больше нет: обвинение в
+# голом имени по этой записи не выносится.
+echo "=== А. синтетика: три записи ссылки — каждая в СВОЮ полосу ==="
+run "запись \${ИМЯ} — подставляется"        GREEN "" "  ref: \"\${$OWNED_NAME}\""
+run "запись \${ИМЯ:-умолчание} — не голое имя, а неподставленная ССЫЛКА" \
+    RED "остались НЕПОДСТАВЛЕННЫМИ" "  ref: \"\${$OWNED_NAME:-fallback}\""
+run "запись \$ИМЯ без скобок — голое имя"   RED "ГОЛЫМ ИМЕНЕМ" "  ref: \"\$$OWNED_NAME\""
+
+# Обвинение в голом имени по средней записи ОТДЕЛЬНО отвергается: без этой оси
+# «покраснело» не отличить от «покраснело по прежней, ложной причине».
+{
+  printf 'dsn: postgres://kratos@pg/kratos\n'
+  printf 'selfservice:\n'
+  printf '  hook_token: "${%s}"\n' "$OWNED_NAME"
+  printf '  ref: "${%s:-fallback}"\n' "$OWNED_NAME"
+} > "$TMP/synth/src/kratos.yaml"
+step "$SYNTH_SH"
+case "$STEP_OUT" in
+  *"ГОЛЫМ ИМЕНЕМ"*) echo "  ОТКАЗ ссылка с умолчанием ВСЁ ЕЩЁ зовётся голым именем — ложная находка не снята"; rc=1 ;;
+  *) echo "  ok   ссылка с умолчанием голым именем не зовётся" ;;
+esac
+
+# ─────────────────────────────────────────────────────────────────────────────
+# В. НАСТОЯЩАЯ КАРТА — она проверяет ПРИМЕНИМОСТЬ
+#
+# Доказательство стояло на синтетике из четырёх строк, и это объясняет, почему
+# дефект #1786 дожил до стенда: страж был зелен на синтетике и красен на стенде,
+# и оба состояния устойчивы. Ниже те же обе стороны спрашиваются у карты,
+# которую под монтирует на самом деле.
+runreal() { # имя · ожидание · улика · добавка к настоящей карте
+  local name="$1" want="$2" needle="$3" extra="$4"
+  { printf '%s\n' "$REAL_BASE"; [ -n "$extra" ] && printf '%s\n' "$extra"; } > "$TMP/real/src/kratos.yaml"
+  step "$REAL_SH"
+  judge "$name" "$want" "$needle" "$STEP_OUT" "$STEP_RC" 1 || return 0
+  [ "$want" = RED ] && real_red=$((real_red+1)) || real_green=$((real_green+1))
+}
+
+echo "=== В. настоящая карта ($REAL_LINES строк): контроль и инъекции ==="
+runreal "контроль: карта как есть" GREEN "" ""
+runreal "голое имя величиной"      RED "ГОЛЫМ ИМЕНЕМ" "kacho_probe: $OWNED_NAME"
+runreal "голое имя в кавычках"     RED "ГОЛЫМ ИМЕНЕМ" "kacho_probe: \"$OWNED_NAME\""
+runreal "ссылка с умолчанием"      RED "остались НЕПОДСТАВЛЕННЫМИ" "kacho_probe: \"\${$OWNED_NAME:-fallback}\""
+runreal "имя в комментарии"        GREEN "" "# источник величины — $OWNED_NAME"
+runreal "чужое имя голым"          GREEN "" "kacho_probe: KACHO_NOT_OWNED_BY_THIS_STEP"
+
+# КООРДИНАТА СВЕРЯЕТСЯ ИМЕННО ЗДЕСЬ: на карте из трёх строк «строка 3» ничего не
+# доказывает, на карте из сотен — доказывает, что отказ осмотрел выход, а не
+# пересказал вход.
+{ printf '%s\n' "$REAL_BASE"; printf 'kacho_probe: %s\n' "$OWNED_NAME"; } > "$TMP/real/src/kratos.yaml"
+step "$REAL_SH"
+# СРАВНЕНИЕ БЕЗ ВНЕШНЕГО ПРОЦЕССА: `| grep -q` выходит до конца входа, писатель
+# слева получает SIGPIPE, и под `pipefail` найденное объявляется ненайденным
+# (задача #658). Вердикт не берётся из трубы.
+if [[ "$STEP_OUT" == *"строка $((REAL_LINES + 1)):"* ]]; then
+  echo "  ok   отказ называет КООРДИНАТУ ($((REAL_LINES + 1)) из $((REAL_LINES + 1)) строк)"
+else
+  echo "  ОТКАЗ отказ не назвал координату внесённой строки $((REAL_LINES + 1))"
+  printf '       %s\n' "$STEP_OUT" | tail -4; rc=1
+fi
+
+# ─────────────────────────────────────────────────────────────────────────────
+# С. ПАРА, РАДИ КОТОРОЙ РАЗДЕЛ В ЗАВЕДЁН
+#
+# Без неё раздел В — украшение: он мог бы утверждать ровно то же, что и А, и
+# никто бы не заметил. Здесь дефект вносится В САМ ШАГ и предъявляется ОБЕИМ
+# картам; требуется РАСХОЖДЕНИЕ: настоящая краснеет, синтетика молчит. Молчание
+# синтетики и есть измеренная граница её доверия.
+#
+# Дефект — снятие ГРАНИЦЫ ВЛАДЕНИЯ: перепись остатка перестаёт отделять имена,
+# которыми шаг владеет, от чужих. На настоящей карте чужие ссылки ЕСТЬ (их
+# источник — путь ключа самой службы личности), на синтетике их нет вовсе,
+# поэтому ветвь на ней недостижима by construction.
+echo "=== С. дефект, видимый ТОЛЬКО настоящей картой ==="
+pairdefect() { # имя · как править шаг (sed-выражение через python) · улика
+  local name="$1" py="$2" needle="$3" ro rr so sr
+  python3 - "$TMP/script.raw" "$TMP/broken.raw" "$py" <<'PYFIX'
+import sys, io
+src, dst, mode = sys.argv[1], sys.argv[2], sys.argv[3]
+s = io.open(src, encoding='utf-8').read()
+if mode == 'ownership':
+    # ОБРАЗЕЦ БЕЗ ОТСТУПА: helm снимает отступ блочного скаляра, и извлечённый
+    # шаг лежит от нулевой колонки. Отступ в образце давал бы «не найдено» —
+    # то есть инъекцию, которая не вносится, и зелёный прогон, ничего не
+    # доказавший.
+    old = ('bad=""\n'
+           'for n in $left; do\n'
+           '  for o in $owned $KACHO_IDENTITY_SUBSTITUTED_VARS; do\n'
+           '    if [ "$n" = "$o" ]; then bad="$bad $n"; break; fi\n'
+           '  done\n'
+           'done')
+    new = 'bad="$left"'
+elif mode == 'filelane':
+    i = s.index('MAIL_URI="$(awk')
+    j = s.index('\n', s.index('MAIL_SRC="файл настроек', i))
+    io.open(dst, 'w', encoding='utf-8').write(s[:i] + 'MAIL_URI=""\n' + s[j + 1:])
+    raise SystemExit(0)
+else:
+    raise SystemExit("неизвестный вид дефекта: %s" % mode)
+if old not in s:
+    raise SystemExit("образец дефекта «%s» в шаге не найден — инъекция сядет не туда" % mode)
+io.open(dst, 'w', encoding='utf-8').write(s.replace(old, new, 1))
+PYFIX
+  [ -s "$TMP/broken.raw" ] || { echo "  ОТКАЗ $name: дефект не внесён"; rc=1; return 0; }
+  for d in real synth; do
+    sed "s#/etc/kacho-identity-src#$TMP/$d/src#g; s#/etc/kacho-identity-rendered#$TMP/$d/rendered#g" \
+      "$TMP/broken.raw" > "$TMP/$d/broken.sh"
+  done
+  printf '%s\n' "$REAL_BASE" > "$TMP/real/src/kratos.yaml"
+  step "$TMP/real/broken.sh"; ro="$STEP_OUT"; rr="$STEP_RC"
+  {
+    printf 'dsn: postgres://kratos@pg/kratos\n'
+    printf 'selfservice:\n'
+    printf '  hook_token: "${%s}"\n' "$OWNED_NAME"
+  } > "$TMP/synth/src/kratos.yaml"
+  step "$TMP/synth/broken.sh"; so="$STEP_OUT"; sr="$STEP_RC"
+  if [ "$rr" = 0 ]; then
+    echo "  ОТКАЗ $name: настоящая карта НЕ покраснела — раздел В не видит дефекта"
+    printf '       %s\n' "$ro" | tail -3; rc=1; return 0
+  fi
+  case "$ro" in *"$needle"*) : ;; *)
+    echo "  ОТКАЗ $name: настоящая покраснела, но не назвала «$needle»"
+    printf '       %s\n' "$ro" | tail -3; rc=1; return 0 ;;
+  esac
+  if [ "$sr" = 0 ]; then
+    echo "  ok   $name: настоящая RED («$needle»), синтетика GREEN — граница доверия синтетики измерена"
+  else
+    echo "  ЗАМЕЧАНИЕ $name: обе карты RED — расхождение не показано, ось ничего не доказывает"
+    printf '       %s\n' "$so" | tail -2; rc=1
+  fi
+}
+pairdefect "граница владения снята" ownership "остались НЕПОДСТАВЛЕННЫМИ"
+
+# ВТОРАЯ ПАРА — та же граница, но с другой стороны: не «дефект виден только
+# настоящей карте», а «ВЕТВЬ достижима только на ней». Шаг здесь ЦЕЛ; убрана
+# переменная почтовой полосы, и тогда полосу обязан дать ФАЙЛ. У синтетики
+# строки `connection_uri:` нет вовсе, поэтому та же подача даёт у неё отказ
+# «полоса пуста» — то есть целая ветвь шага на синтетике непроверяема.
+printf '%s\n' "$REAL_BASE" > "$TMP/real/src/kratos.yaml"
+step_nomail "$REAL_SH"; RO="$STEP_OUT"; RR="$STEP_RC"
+{
+  printf 'dsn: postgres://kratos@pg/kratos\n'
+  printf 'selfservice:\n'
+  printf '  hook_token: "${%s}"\n' "$OWNED_NAME"
+} > "$TMP/synth/src/kratos.yaml"
+step_nomail "$SYNTH_SH"; SR="$STEP_RC"
+if [ "$RR" = 0 ] && [ "$SR" != 0 ] && [[ "$RO" == *"файл настроек"* ]]; then
+  echo "  ok   полоса из ФАЙЛА: настоящая GREEN (источник — файл настроек), синтетика RED (полосы нет) — ветвь достижима только на настоящей"
+else
+  echo "  ОТКАЗ полоса из файла: настоящая код $RR, синтетика код $SR — расхождение не показано"
+  printf '       %s\n' "$RO" | tail -2; rc=1
+fi
+
+echo "перепись: синтетика — красных $red, зелёных $green; настоящая карта ($REAL_LINES строк) — красных $real_red, зелёных $real_green"
+[ "$red" -ge 5 ]        || { echo "ОТКАЗ: красных инъекций на синтетике $red — доказательство неполно"; rc=1; }
+[ "$green" -ge 5 ]      || { echo "ОТКАЗ: зелёных близнецов на синтетике $green — отрицание не проверено в обратную сторону"; rc=1; }
+[ "$real_red" -ge 3 ]   || { echo "ОТКАЗ: красных инъекций на настоящей карте $real_red — применимость не доказана"; rc=1; }
+[ "$real_green" -ge 3 ] || { echo "ОТКАЗ: зелёных близнецов на настоящей карте $real_green — молчание не доказано"; rc=1; }
+[ "$rc" = 0 ] && echo "ИТОГ: шаг подстановки судит свой ВЫХОД, молчит на законном, и доказан НА КАРТЕ, КОТОРУЮ МОНТИРУЕТ ПОД" \
+              || echo "ИТОГ: ОТКАЗ"
 exit "$rc"
