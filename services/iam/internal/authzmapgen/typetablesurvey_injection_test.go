@@ -60,19 +60,6 @@ var catalogResourcesWithoutOwnService = map[string]string{
 }
 `
 
-// injSecondTableGenerated — вторая таблица УЕХАЛА в порождённый файл (#1930
-// закрыт). Рукописных ноль, и объявленный остаток обязан покраснеть.
-const injSecondTableGenerated = `package authzmap
-
-var typeVerbRelations = map[string][]string{
-	"vpc_network": {"v_get"},
-}
-
-var objectTypes = map[string]string{
-	"vpc.network": "vpc_network",
-}
-`
-
 // injThirdHandWritten — в пакет ВЕРНУЛАСЬ рукописная таблица типов. Вывод
 // перестал быть единственным источником.
 const injThirdHandWritten = `package authzmap
@@ -131,21 +118,42 @@ func TestTypeTableSurveyCountsBothSidesAndIgnoresNonTypeMaps(t *testing.T) {
 	}
 }
 
-// TestTypeTableSurveyRedsWhenTheSecondTableBecomesGenerated — САМОИСТЕЧЕНИЕ.
+// TestTypeTableSurveyVerdictFollowsTheFileNotTheName — ВЕРДИКТ РЕШАЕТ МЕСТО.
 //
-// Это не «поломка», а цель: остаток обязан упасть до нуля вместе с #1930, и
-// именно этот прогон заставит опустить объявленный остаток и правку прозы шапки.
-func TestTypeTableSurveyRedsWhenTheSecondTableBecomesGenerated(t *testing.T) {
-	s := survey(t, map[string]string{generatedBase(): injSecondTableGenerated})
-	if s.Generated != 2 {
-		t.Fatalf("порождённых таблиц %d из двух — инъекция беспредметна", s.Generated)
+// # Здесь стояло САМОИСТЕЧЕНИЕ, и оно СРАБОТАЛО
+//
+// Прежняя проба подавала обе таблицы в порождённом файле и требовала, чтобы
+// рукописных стало ноль ≠ объявленному остатку (тогда единице). Она заставила
+// опустить остаток вместе с выводом второй таблицы (#1930 → #1092) — и вместе с
+// этим лишилась предмета: остаток теперь ноль, и её отрицание выполняется
+// тождественно. Такая проба не краснеет и не зеленеет — она МОЛЧИТ, а счётчик
+// утверждений продолжает расти (`testing.md` §«Гейт на класс», п.9).
+//
+// Переведена на признак, который дерево ПРОИЗВОДИТ, вместо снятия: свойство,
+// на котором держится вся перепись, — что «порождена» и «рукописна» решает ФАЙЛ,
+// а не имя карты. Контроль выше подаёт в два файла РАЗНЫЕ карты, поэтому
+// разбирает их и по составу тоже; здесь тело карты ОДНО И ТО ЖЕ, и различить его
+// нечем, кроме места.
+func TestTypeTableSurveyVerdictFollowsTheFileNotTheName(t *testing.T) {
+	inGenerated := survey(t, map[string]string{generatedBase(): injHandWritten})
+	if inGenerated.Generated != 1 || inGenerated.HandWritten != 0 {
+		t.Fatalf("та же карта в ПОРОЖДЁННОМ файле: порождено %d, рукописно %d — "+
+			"ожидались 1 и 0 (%v)", inGenerated.Generated, inGenerated.HandWritten,
+			inGenerated.HandWrittenNames)
 	}
-	if s.HandWritten != 0 {
-		t.Fatalf("рукописных %d при нуле ожидаемых (%v)", s.HandWritten, s.HandWrittenNames)
+
+	byHand := survey(t, map[string]string{"fga_types.go": injHandWritten})
+	if byHand.Generated != 0 || byHand.HandWritten != 1 {
+		t.Fatalf("та же карта ВНЕ порождённого файла: порождено %d, рукописно %d — "+
+			"ожидались 0 и 1 (%v)", byHand.Generated, byHand.HandWritten,
+			byHand.HandWrittenNames)
 	}
-	if s.HandWritten == handWrittenTypeTablesRemaining {
-		t.Fatal("объявленный остаток совпал с нулём — самоистечение не сработало бы: " +
-			"вывод второй таблицы прошёл бы молча")
+	if len(byHand.HandWrittenNames) != 1 || byHand.HandWrittenNames[0] != "objectTypes" {
+		t.Errorf("перепись не называет рукописную таблицу по имени: %v", byHand.HandWrittenNames)
+	}
+	if byHand.HandWritten == handWrittenTypeTablesRemaining {
+		t.Fatal("возврат рукописной таблицы совпал с объявленным остатком — " +
+			"гейт остатка прошёл бы молча")
 	}
 }
 

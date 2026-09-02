@@ -108,10 +108,14 @@ var surfaceFiles = []surfaceFile{
 		whatFor: "регистрация REST-мультиплексора",
 	},
 	{
-		path:    "services/iam/internal/authzmap/fga_types.go",
+		// Карта типов прав ПОРОЖДАЕТСЯ из манифестов модулей (#1092) и лежит в
+		// порождённом файле; координата переехала вместе с ней. Маркер жанра —
+		// живой тип этой же карты, поэтому предпосылка отказывает, если карта
+		// переедет снова.
+		path:    "services/iam/internal/authzmap/tables_gen.go",
 		genre:   "iam_access_binding",
 		forbid:  "iam_condition",
-		whatFor: "карта типов прав",
+		whatFor: "карта типов прав (порождается из манифестов)",
 	},
 	{
 		path:    "services/iam/internal/authzcascade/authzcascade.go",

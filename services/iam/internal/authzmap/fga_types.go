@@ -9,27 +9,31 @@
 // anchor instead, and the returned ok is false when the pair is unknown
 // — the caller falls back to the scope-anchor.
 //
-// Extending this table requires declaring the type in the canonical
-// authorization model `proto/kacho/cloud/iam/v1/fga_model.fga` in lockstep. There is
-// nothing left to regenerate from it: the model used to be shipped to an external
-// engine as a ConfigMap, and that engine, its bootstrap chart and the build target
-// that rendered the model are all gone. The unconditional drift-gate
-// (fga_model_drift_test.go) fails the build on any divergence, in either
-// direction. The table is intentionally a closed enumeration: an unknown pair
-// must NOT silently land as an arbitrary FGA type.
+// ОБЕ таблицы типов пакета ПОРОЖДАЮТСЯ из манифестов модулей и лежат в
+// `tables_gen.go`: и набор действий каждого типа (`typeVerbRelations`), и словарь
+// имён каталога (`objectTypes`). Завести ресурс — значит вписать его в
+// `resources` манифеста его модуля; правка Go для этого не требуется, и разбор
+// переноса стоит внизу этого файла, там, где жил литерал.
 //
-// ─── The resource name here is SINGULAR, and the permission token's is PLURAL.
+// Тип обязан быть объявлен в канонической модели
+// `proto/kacho/cloud/iam/v1/fga_model.fga` в такт с манифестом: безусловный гейт
+// дрейфа (fga_model_drift_test.go) роняет сборку на расхождении в любую сторону.
+// Таблица намеренно ЗАКРЫТА — неизвестная пара обязана дать ok=false, а не
+// произвольный тип модели.
 //
-//	authzmap key       vpc.gateway            (this table)
+// ─── The resource name in the table is SINGULAR, and the permission token's is
+// PLURAL.
+//
+//	objectTypes key    vpc.gateway            (the catalog dictionary)
 //	permission token   vpc.gateways.get       (proto authz annotation → catalog)
 //
 // This divergence is DELIBERATE, not drift, and must not be "reconciled" by
 // pluralizing these keys. The two names have different referents:
 //
-//   - the key here names an FGA OBJECT TYPE — the single object a tuple is
+//   - the key names an FGA OBJECT TYPE — the single object a tuple is
 //     written on. The canonical model declares those types in the singular
 //     (`type vpc_gateway` in fga_model.fga), and the unconditional drift-gate
-//     above requires this table to agree with it EXACTLY. Pluralizing a key
+//     above requires the table to agree with it EXACTLY. Pluralizing a key
 //     would either desynchronize the table from the model or force renaming the
 //     model's types — a change to the authorization model, not naming hygiene;
 //   - the permission token names an ACTION ON A COLLECTION and mirrors the REST
@@ -408,78 +412,52 @@ func IsExpandableRelation(relation string) bool {
 	return expandableRelations[relation]
 }
 
-// objectTypes — словарь КАТАЛОГА в словарь МОДЕЛИ ПРАВ, пока ещё рукописный.
+// ─────────────────────────────────────────────────────────────────────────────
+// СЛОВАРЬ ИМЁН `objectTypes` ПОРОЖДАЕТСЯ ИЗ МАНИФЕСТОВ — ОБЕ ТАБЛИЦЫ ИЗ ДВУХ (#1092)
 //
-// # Здесь стояло «порождать нельзя» — ПРЕПЯТСТВИЕ СНЯТО (задача #1930)
+// Здесь стоял рукописный литерал `objectTypes`: точечное имя каталога → тип
+// модели прав. Он лежит теперь в `tables_gen.go` рядом с наборами действий;
+// производитель — `services/iam/internal/authzmapgen`. Замер при переносе: имён
+// 27, и каждое совпало с литералом до последней записи — вывод ничего не
+// изменил, он снял ВТОРОЕ место об одном предмете.
 //
-// Прежняя редакция говорила: вывести эту таблицу из манифестов нельзя, потому
-// что загрузчик проверяет `objectType` каждой записи на членство В НЕЙ ЖЕ, и
-// новый тип не проходит ни одной из двух дверей. Замер был верен, и абзац
-// оставлен разбором, а не удалён: следующий, кто упрётся в тот же круг, обязан
-// найти здесь способ, а не запрет.
+// Завести ресурс — значит вписать его в `resources` манифеста модуля. Правка Go
+// для этого больше не требуется, и «забыть дописать сюда» стало невыразимо.
 //
-// Что теперь верно: у проверки ДВА законных референта, и называет его
-// ВЫЗЫВАЮЩИЙ (`manifest.TypeReferent`). Проход, ПОРОЖДАЮЩИЙ эту таблицу, идёт
-// с референтом «канон» и о существовании типа загрузчика не спрашивает — судит
-// его каноническая модель, сверку с которой в обе стороны ведёт
-// `modelrender.Sweep`. Полоса ПОТРЕБЛЕНИЯ (чтение доставленных манифестов на
-// старте службы) идёт умолчанием, то есть по-прежнему этой таблицей, и там она
-// законный судья: к тому моменту таблица уже произведена.
+// # Круг с загрузчиком, из-за которого вывод откладывался, РАЗОРВАН
 //
-// Проверено подачей входа: ресурс с типом `vpc_probe_resource`, дописанный в
-// манифест модуля, проходит `authzmapgen.Collect` и попадает в порождённое —
-// без единой правки Go. До смены референта тот же вход давал отказ обхода.
+// Прежняя редакция говорила: вывести эту таблицу нельзя, потому что загрузчик
+// проверяет `objectType` каждой записи на членство В НЕЙ ЖЕ, и новый тип не
+// проходит ни одной из двух дверей. Замер был верен; абзац оставлен разбором, а
+// не удалён — следующий, кто упрётся в такой же круг, обязан найти здесь способ,
+// а не запрет.
 //
-// Рукописной таблица остаётся не поэтому: её вывод — своя работа со своим
-// предметом (#1092), и препятствия у неё больше нет.
-var objectTypes = map[string]string{
-	// compute
-	"compute.instance":       "compute_instance",
-	"compute.guestAccessKey": "compute_guest_access_key",
-	"compute.placementGroup": "compute_placement_group",
-
-	// vpc
-	"vpc.network":          "vpc_network",
-	"vpc.subnet":           "vpc_subnet",
-	"vpc.address":          "vpc_address",
-	"vpc.securityGroup":    "vpc_security_group",
-	"vpc.routeTable":       "vpc_route_table",
-	"vpc.gateway":          "vpc_gateway",
-	"vpc.networkInterface": "vpc_network_interface",
-	"vpc.addressPool":      "vpc_address_pool",
-	"vpc.cidrGroup":        "vpc_cidr_group",
-
-	// load balancer (kacho-nlb)
-	"loadbalancer.networkLoadBalancers": "nlb_network_load_balancer",
-	"loadbalancer.targetGroups":         "nlb_target_group",
-	"loadbalancer.listeners":            "nlb_listener",
-
-	// registry (kacho-registry) — object-prefix `registry_` == service name, so
-	// the module-name vocabulary (pkg/platformmodules) declares the two the same.
-	// `registries` is the namespace
-	// resource; `repositories` is the per-repo authz object (docker pull/push).
-	"registry.registries":   "registry_registry",
-	"registry.repositories": "registry_repository",
-
-	// storage (kacho-storage) — object-prefix `storage_` == service name (like
-	// registry), so the vocabulary declares the two the same. Volume / Snapshot /
-	// Image are per-object verb-bearing authz targets: their Get/Update/Delete
-	// scope_extractor anchors on the object itself ({storage_volume,volume_id} etc.),
-	// so RegisterResource mirrors them here → the reconciler materializes per-object
-	// v_* for the creator's project binding (#71). Dotted segments are the plural
-	// catalog form (storage.volumes.*).
-	"storage.volumes":   "storage_volume",
-	"storage.snapshots": "storage_snapshot",
-	"storage.images":    "storage_image",
-
-	// iam — note the hierarchy types `account` and `project` are bare
-	// (no `iam_` prefix) because they're shared hierarchy ancestors in
-	// the FGA model (cluster ▶ account ▶ project ▶ resource).
-	"iam.account":        "account",
-	"iam.project":        "project",
-	"iam.user":           "iam_user",
-	"iam.serviceAccount": "iam_service_account",
-	"iam.group":          "iam_group",
-	"iam.role":           "iam_role",
-	"iam.accessBinding":  "iam_access_binding",
-}
+// Круг разорван сменой РЕФЕРЕНТА проверки (#1930): у неё два законных референта,
+// и называет его вызывающий (`manifest.TypeReferent`). Проход, ПОРОЖДАЮЩИЙ эту
+// таблицу, идёт с референтом «канон» и о существовании типа загрузчика не
+// спрашивает — судит его каноническая модель. Полоса ПОТРЕБЛЕНИЯ (чтение
+// доставленных манифестов на старте службы) идёт умолчанием, то есть этой
+// таблицей, и там она законный судья: к тому моменту таблица уже произведена.
+//
+// # Что переехало вместе с литералом, а что осталось
+//
+// Переехал ФАКТ: какое имя каталога каким типом модели адресуется. Остались
+// РЕШЕНИЯ — они записаны там, где живёт их предмет, у ресурса своего манифеста:
+//
+//   - ярусные предки иерархии объявлены БЕЗ приставки модуля (`account`,
+//     `project`, не `iam_*`): в модели прав это общие предки цепочки
+//     `cluster ▶ account ▶ project ▶ ресурс`, а не ресурсы домена iam;
+//   - у `registry` и `storage` приставка типа совпадает с именем службы, поэтому
+//     словарь модулей объявляет их одинаково, а точечные имена записаны
+//     множественным числом каталога (`storage.volumes`);
+//   - `registry.repositories` — пообъектная цель прав полосы данных docker
+//     (pull/push), а не второе имя реестра;
+//   - `vpc.addressPool` и `registry.repositories` своей аннотации области у
+//     контрактов не имеют: они адресуются через родителя. Перечень ресурсов
+//     выводится ОТСЮДА, а не из аннотаций, и разойтись с ними он вправе.
+//
+// # Гейт дрейфа с моделью НЕ снят, и это решение
+//
+// `fga_model_drift_test.go` сверяет типы с КАНОНИЧЕСКОЙ МОДЕЛЬЮ. Манифест и
+// канон — два рендера одного замысла, и их согласие обязан кто-то проверять;
+// снять гейт вместе с заведением вывода значило бы оставить дерево без обоих.
