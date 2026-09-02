@@ -242,8 +242,8 @@ func validateResources(m *Manifest, doc *yaml.Node) []error {
 	for i := range m.Resources {
 		r := &m.Resources[i]
 
-		switch {
-		case r.Name == "":
+		switch r.Name {
+		case "":
 			faults = append(faults, linkFault{
 				kind:   ErrResourceNameRequired,
 				coord:  locate(doc, "resources", i),
@@ -289,8 +289,8 @@ func validateResources(m *Manifest, doc *yaml.Node) []error {
 func validateResourceAnchors(r *Resource, doc *yaml.Node, i int) []error {
 	var faults []error
 
-	switch {
-	case r.ObjectType == "":
+	switch r.ObjectType {
+	case "":
 		faults = append(faults, linkFault{
 			kind:  ErrObjectTypeRequired,
 			coord: locate(doc, "resources", i, "objectType"),
