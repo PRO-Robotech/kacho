@@ -64,12 +64,26 @@ const iamTreeRel = "services/iam"
 // объявлены». Ответ на любой из этих вопросов может измениться в РАБОТАЮЩЕМ
 // процессе — снятием строки, — поэтому спрашивать его у литерала прод-код не
 // вправе.
+//
+// Перечень ПОЛОН относительно пакета, а не относительно памяти автора, и это
+// держит соседний гейт `TestIAMCT2_CatalogFactRecognizerKnowsEveryLiteralReader`:
+// экспортированная функция `authzmap`, транзитивно достающая до словаря-литерала
+// и не названная ни одним из наборов распознавателя, — находка. Без него имя,
+// добавленное в пакет, оставалось бы ВНЕ НАБЛЮДЕНИЯ: не нарушением и не
+// чистотой, а молчанием.
 var catalogFactSymbols = map[string]bool{
-	"VerbsOfType":            true,
-	"TypeHasVerbRelations":   true,
-	"Catalog":                true,
-	"CommonVerbVocabulary":   true,
-	"AllVerbVocabulary":      true,
+	"VerbsOfType":          true,
+	"TypeHasVerbRelations": true,
+	"Catalog":              true,
+	"CommonVerbVocabulary": true,
+	"AllVerbVocabulary":    true,
+	// VerbRelationsOfType — та же таблица `typeVerbRelations`, что у трёх соседей
+	// выше, только в форме имён отношений. Внесена ревизией предиката #1816: её не
+	// было ни в одном наборе, и прод-файл, позвавший её, гейт не увидел бы. Своим
+	// godoc она объявляет себя «ЕДИНСТВЕННЫМ источником набора для эмиссии» — то
+	// есть приглашает вызывающего ровно на тот путь, который §1.2 приёмки и
+	// переводит на строки. Прод-вызывающих на момент внесения — ноль.
+	"VerbRelationsOfType":    true,
 	"RoleVerbsFromSelectors": true,
 	"GrantedVerbs":           true,
 }
