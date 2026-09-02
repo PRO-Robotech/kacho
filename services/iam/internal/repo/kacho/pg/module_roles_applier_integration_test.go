@@ -525,3 +525,152 @@ func TestMODRD07SystemRoleIDsInTheLiveBaseDeriveFromTheirNames(t *testing.T) {
 		"усечённый идентификатор остаётся верным по форме: расхождение деривации "+
 			"проверкой формы не находится")
 }
+
+// ─────────────────────────────────────────────────────────────────────────────
+// Г11 · MOD-RD-26/27 — ПАРИТЕТ ЯРУСОВ судит и строки ПРИМЕНИТЕЛЯ
+// ─────────────────────────────────────────────────────────────────────────────
+//
+// # Что здесь предмет, а что уже было верно
+//
+// Популяция паритета верна by construction и была верна до этой работы:
+// `systemRolesOfBase` выбирает `WHERE is_system` БЕЗ различения писателя (П21
+// приёмки `roles-come-as-data-not-migrations.md`). Не хватало не выборки —
+// не хватало ТОГО, ЧТОБЫ В НЕЙ ЛЕЖАЛА ХОТЬ ОДНА СТРОКА ПРИМЕНИТЕЛЯ: единственная
+// проба паритета читала базу сразу после миграций, поэтому свойство держалось
+// только на строках миграций, а применитель писал мимо всякого наблюдения.
+//
+// Второй предмет — САМ ПРЕДИКАТ. До задачи #1894 оба свойства стояли внутри тела
+// пробы посева, и позвать их отсюда было нечем. Копия развела бы два места об
+// одном предмете, и разошлись бы они молча — обе зелёные, утверждающие разное.
+// Предикат выделен (`evaluateTierParity`), и обе популяции идут через ОДИН вызов.
+//
+// # Инъекция обязана ронять ТОЛЬКО проверяемое
+//
+// Правила подложенной роли объявляют глаголы, которые тип ОБСЛУЖИВАЕТ
+// (`get`/`list` — набор `iam_user` целиком). Это не осторожность: с глаголом
+// `*` роль дала бы находку и второго свойства (свёрнутое разрешение
+// `iam.user.*.*` относится к распорядителю, а правило — к наблюдателю), и
+// красное перестало бы называть проверяемое. Здесь краснеет РОВНО свойство 1 и
+// ровно один его пункт — тир, которому нечем быть.
+
+// TestMODRD26TierParityRedsOnTheApplierRowPromisingAnUnservableTier —
+// применитель записывает `iam.user.admin`, и паритет ярусов краснеет, называя
+// ярус.
+//
+// Имя выбрано не произвольно: оно СНЯТО применённой миграцией
+// `20260825003504_role_iam_user_admin_promises_a_tier_it_cannot_serve.sql`
+// именно потому, что тип `iam_user` не объявляет ни одного глагола яруса
+// администратора (набор `[get list]`, #1128 и #1189). Держателем снятия та
+// миграция называет ЭТОТ гейт — а гейт до сих пор не видел ни одной строки,
+// которую написал применитель, то есть держал не то, что обещал.
+//
+// Контроль стоит в этой же пробе и в обе стороны: та же популяция ДО
+// применителя молчит, после — краснеет ровно одним пунктом. Без первой половины
+// находка была бы неотличима от красноты посева; без второй — от красноты
+// вообще всего.
+func TestMODRD26TierParityRedsOnTheApplierRowPromisingAnUnservableTier(t *testing.T) {
+	if testing.Short() {
+		t.Skip("skipping integration test")
+	}
+	ctx, pool, applier := applierOnLiveBase(t)
+
+	const roleID = "iam.user.admin"
+	id := domain.SystemRoleID(domain.RoleName(roleID))
+
+	// ── Контроль: популяция ДО применителя ──────────────────────────────────
+	before := evaluateTierParity(systemRolesOfBase(t, ctx, pool))
+	requireTierParityPremise(t, before)
+	require.Empty(t, before.TierGaps,
+		"посев обязан быть чист ДО инъекции — иначе находка ниже принадлежит миграциям, а не применителю:\n%s",
+		strings.Join(before.TierGaps, "\n"))
+	require.Empty(t, before.Mismatches,
+		"то же и о свойстве 2: инъекция обязана ронять только проверяемое:\n%s",
+		strings.Join(before.Mismatches, "\n"))
+	require.Equal(t, 0, countRoleRows(t, ctx, pool, id),
+		"имя снято применённой миграцией — строки быть не должно, иначе краснеет посев, а не запись применителя")
+
+	// ── Инъекция: строку пишет ПРИМЕНИТЕЛЬ, а не миграция и не проба ────────
+	declared := declaredManifest("iam", roleID,
+		"Роль, обещающая ярус, которого тип обслужить не может.",
+		[]manifest.Rule{{Module: "iam", Resources: []string{"user"}, Classes: []string{"get", "list"}}})
+
+	rep, err := applier.Apply(ctx, declared)
+	require.NoError(t, err, "объявленная роль обязана записаться: %s", rep)
+	require.Equal(t, 1, rep.Written, "без записи популяция не изменилась бы, и находка ниже была бы про посев: %s", rep)
+	require.Equal(t, 1, countRoleRows(t, ctx, pool, id), "строка применителя обязана остаться в базе")
+
+	// ── Тот же предикат, та же выборка — популяция теперь несёт строку применителя ──
+	after := evaluateTierParity(systemRolesOfBase(t, ctx, pool))
+	requireTierParityPremise(t, after)
+
+	require.Equal(t, before.Roles+1, after.Roles,
+		"популяция обязана вырасти РОВНО на строку применителя — иначе предикат её не видит, "+
+			"и утверждение ниже было бы о посеве")
+	assert.Equal(t, before.OnAxis+1, after.OnAxis,
+		"подложенное имя стоит на оси тиров: иначе свойство 1 его не рассматривает вовсе")
+	assert.Len(t, after.Families, len(before.Families),
+		"семейство `iam.user` в посеве уже есть — инъекция добавляет ему ТИР, а не заводит новое семейство")
+
+	assert.Contains(t, strings.Join(after.TierGaps, "\n"), `iam.user: tier "admin"`,
+		"паритет обязан НАЗВАТЬ ярус, которому нечем быть, — тем же отказом, каким он краснел до снятия роли;\n"+
+			"находки:\n%s", strings.Join(after.TierGaps, "\n"))
+	assert.Len(t, after.TierGaps, 1,
+		"инъекция обязана ронять РОВНО один пункт: находки:\n%s", strings.Join(after.TierGaps, "\n"))
+	assert.Empty(t, after.Mismatches,
+		"свойство 2 инъекцией не затронуто — глаголы правила тип обслуживает, и ярус правил равен ярусу разрешений;\n"+
+			"иначе красное перестало бы называть проверяемое:\n%s", strings.Join(after.Mismatches, "\n"))
+}
+
+// TestMODRD27TierParityStaysSilentOnTheApplierRowWhoseTierTheTypeServes —
+// парный ПОЛОЖИТЕЛЬНЫЙ: тот же писатель, то же место, ярус обслуживаемый.
+//
+// Без него отрицание выше зеленело бы на предикате, который краснеет на всякой
+// строке применителя, — и «паритет судит записи применителя» доказывалось бы
+// красным, которое ничего не различает.
+//
+// «Строка есть» здесь одна ничего не доказывает: `iam.user.view` — имя ЖИВОЕ,
+// его никто не снимал, и строка стоит в базе до всякого применителя. Поэтому
+// утверждается ЗАПИСЬ: назначение объявлено иным, чем посеянное (`Read User`),
+// значит приведение обязано состояться и `Written` обязан быть единицей.
+func TestMODRD27TierParityStaysSilentOnTheApplierRowWhoseTierTheTypeServes(t *testing.T) {
+	if testing.Short() {
+		t.Skip("skipping integration test")
+	}
+	ctx, pool, applier := applierOnLiveBase(t)
+
+	const roleID = "iam.user.view"
+	id := domain.SystemRoleID(domain.RoleName(roleID))
+
+	before := evaluateTierParity(systemRolesOfBase(t, ctx, pool))
+	requireTierParityPremise(t, before)
+	require.Empty(t, before.TierGaps,
+		"посев обязан быть чист до применителя:\n%s", strings.Join(before.TierGaps, "\n"))
+	require.Equal(t, 1, countRoleRows(t, ctx, pool, id),
+		"имя живое: строка обязана стоять в базе ещё до применителя — поэтому «строка есть» доказательством не является")
+
+	declared := declaredManifest("iam", roleID,
+		"Назначение, объявленное манифестом модуля iam.",
+		[]manifest.Rule{{Module: "iam", Resources: []string{"user"}, Classes: []string{"get", "list"}}})
+
+	rep, err := applier.Apply(ctx, declared)
+	require.NoError(t, err, "роль обязана примениться: %s", rep)
+	require.Equal(t, 1, rep.Written,
+		"назначение отличается от посеянного — приведение обязано состояться; без записи проба зеленела бы "+
+			"на применителе, который не делает НИЧЕГО: %s", rep)
+
+	after := evaluateTierParity(systemRolesOfBase(t, ctx, pool))
+	requireTierParityPremise(t, after)
+
+	assert.Equal(t, before.Roles, after.Roles,
+		"имя живое: применитель ПРИВОДИТ строку, а не заводит вторую")
+	assert.Empty(t, after.TierGaps,
+		"ярус, который тип обслуживает, находкой не является — иначе гейт краснел бы на всякой записи применителя:\n%s",
+		strings.Join(after.TierGaps, "\n"))
+	assert.Empty(t, after.Mismatches,
+		"ярус правил обязан остаться равным ярусу разрешений после приведения:\n%s",
+		strings.Join(after.Mismatches, "\n"))
+	assert.Equal(t, 1, countRoleRows(t, ctx, pool, id),
+		"приведение обязано оставить РОВНО одну строку под тем же идентификатором")
+	assert.Equal(t, 2, countRuleRefs(t, ctx, pool, id),
+		"проекция объявленных сегментов пишется в той же транзакции: два глагола — две строки")
+}
