@@ -1,0 +1,110 @@
+# ==========================================================================
+#  registry — манифест домена: что модуль объявляет платформе о своих правах.
+#
+#  Репозиторий — единственный блок канона, чей указатель НЕ равен своему типу
+#  (`parent: [registry_registry]`), и один из двух ресурсов платформы, чьи ключи
+#  написаны человеком: аннотаций у него нет вовсе, объект составной и резолвится
+#  в обработчике.
+#
+#  Реестр — единственный тип, объявляющий `v_create` ПООБЪЕКТНО: «создать
+#  репозиторий в этом пространстве имён» есть операция над объектом реестра.
+#
+#  Раздел `resources` порождает блоки типов модели доступов; сверка с каноном
+#  `proto/kacho/cloud/iam/v1/fga_model.fga` ПОБАЙТОВАЯ:
+#      make -C services/iam model-canon-check
+#  Форму документа судит один разбор:
+#      make -C services/iam module-manifest-check
+#
+#  Что ВЫВОДИТСЯ и здесь не пишется: класс канонического действия — из его
+#  имени; умолчательный состав субъектов `[user, service_account, group#member]`;
+#  цепочка ярусов admin→editor→viewer от супер-доступа; каскад
+#  `super_admin from <первый указатель>`; источник действия — супер-доступ.
+#  Названо только то, что от умолчания ОТЛИЧАЕТСЯ.
+#
+#  ЧЕГО ЗДЕСЬ НЕТ, и это сказано, чтобы манифест не читался как полный:
+#  разделы `roles` и `seed` не объявлены НИ ОДНИМ манифестом дерева. Роли и
+#  посев у модулей есть — их пишут четырнадцать применённых миграций, и
+#  действующее состояние не лежит нигде одним куском. `resources` выводится из
+#  канона и проверяется побайтовой сверкой, поэтому ошибка в нём невозможна
+#  молча; у двух других разделов такого единственного документа нет, а
+#  применитель пишет ими живые выдачи. Предмет и предикат снятия — задача
+#  продукта #1891.
+#
+#  ИМЯ РЕСУРСА здесь — написание ЗАКРЫТОЙ ТАБЛИЦЫ типов, и оно множественное.
+#  Привязка записей каталога прав выводит имя ресурса из имени СЛУЖБЫ и даёт
+#  единственное, поэтому действия этого модуля с каталогом не сопоставляются:
+#  прогон печатает их числом «не сопоставлено». Совпадения нет ни при каком
+#  написании — одно годно для `objectType`, другое для сопоставления. Предмет —
+#  задача продукта #1884; здесь выбрано написание таблицы, потому что именно её
+#  спрашивает загрузчик и именно её воспроизведёт порождение таблиц (#1092).
+# ==========================================================================
+
+apiVersion: iam/v1
+module: registry
+
+resources:
+
+  - name: registries
+    objectType: registry_registry
+    parents: [project]
+    producer: derived
+    notes:
+      - before: v_get
+        text: |
+          # #64 Defect A: v_* derive from `owner` so a registry's CREATOR/OWNER (the
+          # RegisterResource `owner` tuple) holds the full CRUD verb-set on their own
+          # registry — esp. v_create (create repositories). Without this the owner got
+          # only editor-tier v_get/v_list/v_update/v_delete (the `edit` role authors no
+          # `create` verb) and CreateRepository denied → 404 for the owner. Per-OBJECT
+          # computed relation (like `editor: this or admin`), NOT a hierarchy cascade.
+          #
+          # `v_create` LIVES HERE AND NOWHERE ELSE — do not "restore parity" by adding it
+          # back to the other types. A registry is a CONTAINER: "create a repository in
+          # this namespace" is a real operation on the registry object, and it is really
+          # asked — by the control plane (CreateRepository / RenameRepository) and by the
+          # data plane (docker push to a new repo, cross-repo mount into a new dst, and
+          # the first-push blob-reveal guard). Every other type answered a question no
+          # request ever asks: "create" is not an operation on an already-existing object,
+          # and creating a resource inside a scope is authorized by the write tier on that
+          # scope. Locked by authzmap/verb_relation_has_reader_test.go, which reds with the
+          # type name if a reader-less carrier reappears.
+    relations:
+      - name: owner
+        definition: '[user, service_account]'
+        position: beforeTiers
+    verbs:
+      - {name: get, from: [owner, super_admin]}
+      - {name: list, from: [owner, super_admin]}
+      - {name: create, from: [owner, super_admin]}
+      - {name: update, from: [owner, super_admin]}
+      - {name: delete, from: [owner, super_admin]}
+
+  - name: repositories
+    objectType: registry_repository
+    parents:
+      - {name: parent, type: registry_registry}
+    producer: authored
+    notes:
+      - before: super_admin
+        text: |
+          # A repository has no project pointer of its own — it is a child of its
+          # registry, and the registry is the one anchored to a project.
+      - before: v_get
+        text: |
+          # RG-1 D-7: `user:*` public-read wildcard — anonymous pull of a PUBLIC repo.
+          # The wildcard grants v_get ONLY on repos that ALSO carry an explicit
+          # `user:* v_get` tuple emitted by the registry overlay (visibility=PUBLIC);
+          # absent that tuple `user:*` has no access → uniform 404. ONLY v_get gains
+          # the wildcard — no write relation does (anon is a read-only floor, B14).
+          # #64 Defect A: v_* derive from `owner` (repo creator/pusher owner-tuple) so
+          # the repo owner fully manages their own repository; `user:*` wildcard stays
+          # on v_get ONLY (anonymous public-read floor, B14).
+    relations:
+      - name: owner
+        definition: '[user, service_account]'
+        position: beforeTiers
+    verbs:
+      - {name: get, subjects: ['user:*', user, service_account, 'group#member'], from: [owner, super_admin]}
+      - {name: list, from: [owner, super_admin]}
+      - {name: update, from: [owner, super_admin]}
+      - {name: delete, from: [owner, super_admin]}

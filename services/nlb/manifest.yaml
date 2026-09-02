@@ -1,0 +1,141 @@
+# ==========================================================================
+#  loadbalancer — манифест домена: что модуль объявляет платформе о своих правах.
+#
+#  Токен модуля — `loadbalancer`, каталог сервиса — `nlb`, префикс типов — `nlb_`.
+#  Три написания об одном домене; манифест называет модуль так, как его знает
+#  закрытый набор платформы, иначе загрузчик его отвергнет.
+#
+#  Группа целей — единственный тип платформы, чей набор действий ШИРЕ канонической
+#  пятёрки: `addTargets` и `removeTargets` порождают свои отношения и наследуются
+#  от `v_update`, а не от яруса.
+#
+#  Раздел `resources` порождает блоки типов модели доступов; сверка с каноном
+#  `proto/kacho/cloud/iam/v1/fga_model.fga` ПОБАЙТОВАЯ:
+#      make -C services/iam model-canon-check
+#  Форму документа судит один разбор:
+#      make -C services/iam module-manifest-check
+#
+#  Что ВЫВОДИТСЯ и здесь не пишется: класс канонического действия — из его
+#  имени; умолчательный состав субъектов `[user, service_account, group#member]`;
+#  цепочка ярусов admin→editor→viewer от супер-доступа; каскад
+#  `super_admin from <первый указатель>`; источник действия — супер-доступ.
+#  Названо только то, что от умолчания ОТЛИЧАЕТСЯ.
+#
+#  ЧЕГО ЗДЕСЬ НЕТ, и это сказано, чтобы манифест не читался как полный:
+#  разделы `roles` и `seed` не объявлены НИ ОДНИМ манифестом дерева. Роли и
+#  посев у модулей есть — их пишут четырнадцать применённых миграций, и
+#  действующее состояние не лежит нигде одним куском. `resources` выводится из
+#  канона и проверяется побайтовой сверкой, поэтому ошибка в нём невозможна
+#  молча; у двух других разделов такого единственного документа нет, а
+#  применитель пишет ими живые выдачи. Предмет и предикат снятия — задача
+#  продукта #1891.
+#
+#  ИМЯ РЕСУРСА здесь — написание ЗАКРЫТОЙ ТАБЛИЦЫ типов, и оно множественное.
+#  Привязка записей каталога прав выводит имя ресурса из имени СЛУЖБЫ и даёт
+#  единственное, поэтому действия этого модуля с каталогом не сопоставляются:
+#  прогон печатает их числом «не сопоставлено». Совпадения нет ни при каком
+#  написании — одно годно для `objectType`, другое для сопоставления. Предмет —
+#  задача продукта #1884; здесь выбрано написание таблицы, потому что именно её
+#  спрашивает загрузчик и именно её воспроизведёт порождение таблиц (#1092).
+# ==========================================================================
+
+apiVersion: iam/v1
+module: loadbalancer
+
+resources:
+
+  - name: networkLoadBalancers
+    objectType: nlb_network_load_balancer
+    parents: [project]
+    producer: derived
+    notes:
+      - before: announce_writer
+        text: |
+          # announce_writer — inbound data-plane feedback gate for
+          # `InternalLoadBalancerAnnounceService/ReportAnnounceState` (:9091, mTLS).
+          # The permission catalog REQUIRED this relation on this type while the model
+          # never declared it, so the engine rejected the Check as a model validation
+          # error and the RPC was denied for EVERY subject — a broken-by-construction
+          # gate, not a least-priv default (same defect class as #68 nlb_listener
+          # `project` and #71 storage_* types).
+          #
+          # Bearer — the DATA PLANE announcer only: it is the sole producer of
+          # announce-state (BGP session up/down, route/VRF id, kernel-programming
+          # status, numeric infra id). That state is infra-sensitive (security.md) and
+          # tenants neither produce nor read it. Hence, deliberately:
+          #   * `[service_account]` ONLY — no `user`, no `group#member`, no `user:*`.
+          #     A human/tenant principal cannot even be WRITTEN as the subject of this
+          #     tuple (the engine rejected the write), so it can never be handed out via a
+          #     custom role or a group;
+          #   * NO `or admin|editor|viewer` derivation — a project editor must NOT be
+          #     able to forge the announce-state of a load balancer;
+          #   * nothing derives FROM it — the data-plane writer gains no CRUD.
+          # It is also outside the closed verb set {get,list,create,update,delete} the
+          # iam reconciler materializes from role permissions, so no AccessBinding can
+          # produce it: the only way to hold it is an explicit per-load-balancer tuple
+          # written for the data-plane service account when the data plane is
+          # provisioned. Until then the RPC stays uniformly fail-closed — which is the
+          # correct state, since nothing legitimately reports announce-state yet.
+    relations:
+      - name: announce_writer
+        definition: '[service_account]'
+        position: afterVerbs
+    verbs:
+      - get
+      - list
+      - update
+      - delete
+
+  - name: targetGroups
+    objectType: nlb_target_group
+    parents: [project]
+    producer: derived
+    notes:
+      - before: v_addtargets
+        text: |
+          # NLB-TGT-1 — управление СОСТАВОМ группы отделено от изменения самой группы.
+          # Первый тип платформы, чей набор глаголов ШИРЕ канонического CRUD: набор — атрибут
+          # типа (authzmap.typeVerbRelations), и гейт дрейфа сверяет его с этими строками
+          # потипово (TestDrift_TypeVerbSetsMatchModelExactly).
+          #
+          # Зачем отдельные отношения: роль `loadbalancer.target_manager` объявляет
+          # `addTargets`/`removeTargets` и показывает их как то, что даёт. Пока оба RPC
+          # гейтились на `v_update`, выдать право управлять составом, не выдав права менять
+          # саму группу, было НЕЛЬЗЯ — роль была читательской вопреки своему имени.
+          #
+          # Почему НАДМНОЖЕСТВО `v_update`, а не самостоятельные отношения: у сегодняшнего
+          # редактора лежит прямой кортеж `v_update`, и ветвь `or v_update` разрешает ему
+          # новый вопрос ТЕМ ЖЕ кортежем. Значит переключение гейтинга не требует
+          # ре-материализации ни одной выдачи и не имеет окна, в котором прежний держатель
+          # отказан. `v_update` уже включает `super_admin`, поэтому каскад трёх верхних
+          # уровней наследуется без отдельного упоминания. Надмножество ОДНОСТОРОННЕ:
+          # держатель управления составом права менять саму группу не получает.
+          #
+          # Имена не выбраны, а выведены: реконсайлер собирает имя как
+          # `"v_" + domain.NormalizeVerb(<авторский глагол>)`, поэтому `addTargets` даёт
+          # ровно `v_addtargets`. Написать здесь иначе значило бы объявить отношение, по
+          # которому эмиттер никогда не постучится.
+    verbs:
+      - get
+      - list
+      - update
+      - delete
+      - {name: addTargets, class: addtargets, from: [v_update]}
+      - {name: removeTargets, class: removetargets, from: [v_update]}
+
+  - name: listeners
+    objectType: nlb_listener
+    parents: [project]
+    producer: derived
+    notes:
+      - before: project
+        text: |
+          # #68: nlb emits `nlb_listener #project @project` (fga_intent.go) parity with
+          # nlb_network_load_balancer / nlb_target_group; without this relation the engine
+          # rejected the tuple → drainer dead-lettered it → listener hierarchy never
+          # materialized → listener authz broke. Contract-A direct project link.
+    verbs:
+      - get
+      - list
+      - update
+      - delete
