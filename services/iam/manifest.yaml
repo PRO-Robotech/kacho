@@ -23,30 +23,29 @@
 #
 #  ЧЕГО ЗДЕСЬ НЕТ, и это сказано, чтобы манифест не читался как полный.
 #
-#  Раздел `roles` этот манифест НЕ объявляет, и ПРИЧИНА У ЭТОГО ТЕПЕРЬ ДРУГАЯ.
-#
-#  Прежняя снята вместе со своим основанием (#1904): предел прозы на назначении
-#  роли выносил приговор по длине имени типа (`Admin RouteTable` 16 знаков
-#  проходило, `Edit RouteTable` 15 — нет) и делал 27 живых ролей из 42
-#  невыразимыми ни при каком написании. Предел снят, `compute` (3 из 3) и `vpc`
-#  (18 из 18) объявлены; величина и довод обеими сторонами —
-#  `services/iam/internal/manifest/roles.go`, `minRoleDescriptionRunes`.
-#
-#  Здесь остаётся ДРУГОЙ блокер, найденный тем же изменением: две живые роли
-#  (`iam.role.edit`, `iam.role.view`) называют класс `get` на ресурсе роли, а под
-#  ним нет НИ ОДНОГО пригодного действия — чтение роли освобождено от гейта
-#  доступа, и `v_get` не спрашивает ни одна запись каталога. Применитель кладёт
-#  правила ДОСЛОВНО, поэтому объявить их можно только вместе с пустым классом, и
-#  тогда красен разбор:
-#      make -C services/iam module-manifest-check
-#  Предмет, замер обеими сторонами и предикат снятия — задача продукта #1916; она
-#  требует новой миграции по живым правилам, то есть решения о том, что роль
-#  ГАРАНТИРУЕТ, — другой предмет, чем длина её прозы.
-#
-#  Держатель согласия объявления с живой базой обходит ВСЕ модули:
+#  РАЗДЕЛ `roles` ЗДЕСЬ ЕСТЬ — внизу файла, все девятнадцать живых ролей модуля.
+#  Он объявляет то, что у модуля уже лежит в базе, и согласие с ней доказывается
+#  ПРОГОНОМ, а не чтением:
 #      go test ./services/iam/internal/moduleroleparity/
-#  Пока роли не объявлены, модуль стоит в его ведомости с причиной; запись
-#  снимается тем же изменением, которым раздел появится.
+#
+#  Здесь стояли ДВА основания не объявлять, и оба сняты вместе со своим
+#  предметом, а не обойдены.
+#
+#  Первое (#1904): предел прозы на назначении роли выносил приговор по длине
+#  ИМЕНИ ТИПА (`Admin RouteTable` 16 знаков проходило, `Edit RouteTable` 15 — нет)
+#  и делал 27 живых ролей из 42 невыразимыми ни при каком написании. Величина и
+#  довод обеими сторонами — `services/iam/internal/manifest/roles.go`,
+#  `minRoleDescriptionRunes`.
+#
+#  Второе (#1916): роли `iam.role.edit` и `iam.role.view` несли класс `get` на
+#  ресурсе роли, под которым нет НИ ОДНОГО пригодного действия — чтение роли
+#  сужается на данных вопросом `viewer ∪ v_list`, и `v_get` на `iam_role` не
+#  спрашивает ни одна запись каталога прав края. Правила приведены миграцией
+#  20260902180800; объявление ниже сходится с живой строкой, а не обходит её.
+#
+#  ВЕДОМОСТЬ ГЕЙТА ПАРИТЕТА ПУСТА: живые роли объявили все четыре модуля, у
+#  которых они есть, — `compute` (3 из 3), `iam` (19 из 19), `loadbalancer`
+#  (2 из 2), `vpc` (18 из 18).
 #
 #  Раздел `seed` не объявлен НИ ОДНИМ манифестом дерева: посев модулей пишут
 #  применённые миграции, и его согласие с живой базой ещё никем не сверяется.
@@ -751,3 +750,246 @@ resources:
       - update
       - delete
 
+# --------------------------------------------------------------------------
+#  roles — системные роли модуля, объявленные ДАННЫМИ (#1891, #1904, #1916).
+#
+#  Писатель этих строк — применитель манифеста, а не миграция: он приводит
+#  `kacho_iam.roles` к объявленному здесь состоянию. Согласие объявления с живой
+#  базой держит ПРОГОН, а не чтение:
+#      go test ./services/iam/internal/moduleroleparity/
+#  Гейт поднимает Postgres, играет цепочку миграций дерева и сравнивает строки
+#  с тем, что произвёл бы применитель ИЗ ЭТОГО раздела. Расхождение по
+#  идентификатору, назначению либо праву — находка с именем роли.
+#
+#  Почему `description` по-английски и почему его нельзя «причесать»: текст
+#  сверяется с живой строкой ДОСЛОВНО. Применитель пишет его как есть, поэтому
+#  правка здесь — правка того, что читает арендатор, выбирая роль; она идёт
+#  своим решением и своей миграцией, а не попутно с объявлением.
+#
+#  Почему классы перечислены В ЭТОМ порядке и не отсортированы: `rules` —
+#  упорядоченное поле хранимой формы, и применитель кладёт его дословно.
+#  Пересортировав, объявление разошлось бы со строкой, ничего не изменив по
+#  существу. Отсюда `[list, get]` у чтения и `[get, list, update]` у правки —
+#  так их написала применённая миграция.
+#
+#  У РЕСУРСА `role` КЛАССА `get` НЕТ, И ЭТО НЕ ОПЕЧАТКА. Чтение роли сужается на
+#  данных вопросом `viewer ∪ v_list`, поэтому `v_get` на `iam_role` не спрашивает
+#  ни одна запись каталога прав края: класс не покрывал бы ни одного пригодного
+#  действия, и разбор манифеста отверг бы объявление поимённо. Видимость роли
+#  даёт `list` — он остался у обеих ролей. Живые правила приведены миграцией
+#  20260902180800 (#1916).
+#
+#  Ключ права — `classes`; `verbs` снят и отвергается явно. Подстановка `"*"`
+#  законна ровно потому, что роль системная: у неё она значит «все классы типа».
+# --------------------------------------------------------------------------
+
+roles:
+
+  - id: iam.access_binding.admin
+    name: Полное распоряжение привязками доступа
+    description: "Admin AccessBinding"
+    tier:
+      tierType: iam.cluster
+      tierId: cluster_kacho_root
+    rules:
+      - module: iam
+        resources: [accessBinding]
+        classes: ["*"]
+
+  - id: iam.access_binding.edit
+    name: Правка привязками доступа
+    description: "Edit AccessBinding"
+    tier:
+      tierType: iam.cluster
+      tierId: cluster_kacho_root
+    rules:
+      - module: iam
+        resources: [accessBinding]
+        classes: [get, list, update]
+
+  - id: iam.access_binding.view
+    name: Чтение привязками доступа
+    description: "Read AccessBinding"
+    tier:
+      tierType: iam.cluster
+      tierId: cluster_kacho_root
+    rules:
+      - module: iam
+        resources: [accessBinding]
+        classes: [list, get]
+
+  - id: iam.account.admin
+    name: Полное распоряжение аккаунтами
+    description: "Admin Account (CRUD)"
+    tier:
+      tierType: iam.cluster
+      tierId: cluster_kacho_root
+    rules:
+      - module: iam
+        resources: [account]
+        classes: ["*"]
+
+  - id: iam.account.edit
+    name: Правка аккаунтами
+    description: "Edit Account (update only)"
+    tier:
+      tierType: iam.cluster
+      tierId: cluster_kacho_root
+    rules:
+      - module: iam
+        resources: [account]
+        classes: [get, list, update]
+
+  - id: iam.account.view
+    name: Чтение аккаунтами
+    description: "Read Account"
+    tier:
+      tierType: iam.cluster
+      tierId: cluster_kacho_root
+    rules:
+      - module: iam
+        resources: [account]
+        classes: [list, get]
+
+  - id: iam.group.admin
+    name: Полное распоряжение группами
+    description: "Admin Group"
+    tier:
+      tierType: iam.cluster
+      tierId: cluster_kacho_root
+    rules:
+      - module: iam
+        resources: [group]
+        classes: ["*"]
+
+  - id: iam.group.edit
+    name: Правка группами
+    description: "Edit Group"
+    tier:
+      tierType: iam.cluster
+      tierId: cluster_kacho_root
+    rules:
+      - module: iam
+        resources: [group]
+        classes: [get, list, update]
+
+  - id: iam.group.view
+    name: Чтение группами
+    description: "Read Group"
+    tier:
+      tierType: iam.cluster
+      tierId: cluster_kacho_root
+    rules:
+      - module: iam
+        resources: [group]
+        classes: [list, get]
+
+  - id: iam.project.admin
+    name: Полное распоряжение проектами
+    description: "Admin Project"
+    tier:
+      tierType: iam.cluster
+      tierId: cluster_kacho_root
+    rules:
+      - module: iam
+        resources: [project]
+        classes: ["*"]
+
+  - id: iam.project.edit
+    name: Правка проектами
+    description: "Edit Project"
+    tier:
+      tierType: iam.cluster
+      tierId: cluster_kacho_root
+    rules:
+      - module: iam
+        resources: [project]
+        classes: [get, list, update]
+
+  - id: iam.project.view
+    name: Чтение проектами
+    description: "Read Project"
+    tier:
+      tierType: iam.cluster
+      tierId: cluster_kacho_root
+    rules:
+      - module: iam
+        resources: [project]
+        classes: [list, get]
+
+  - id: iam.role.admin
+    name: Полное распоряжение каталогом ролей
+    description: "Admin Role catalog"
+    tier:
+      tierType: iam.cluster
+      tierId: cluster_kacho_root
+    rules:
+      - module: iam
+        resources: [role]
+        classes: ["*"]
+
+  - id: iam.role.edit
+    name: Правка каталогом ролей
+    description: "Edit Role"
+    tier:
+      tierType: iam.cluster
+      tierId: cluster_kacho_root
+    rules:
+      - module: iam
+        resources: [role]
+        classes: [list, update]
+
+  - id: iam.role.view
+    name: Чтение каталогом ролей
+    description: "Read Role"
+    tier:
+      tierType: iam.cluster
+      tierId: cluster_kacho_root
+    rules:
+      - module: iam
+        resources: [role]
+        classes: [list]
+
+  - id: iam.service_account.admin
+    name: Полное распоряжение служебными учётками
+    description: "Admin ServiceAccount"
+    tier:
+      tierType: iam.cluster
+      tierId: cluster_kacho_root
+    rules:
+      - module: iam
+        resources: [serviceAccount]
+        classes: ["*"]
+
+  - id: iam.service_account.edit
+    name: Правка служебными учётками
+    description: "Edit ServiceAccount"
+    tier:
+      tierType: iam.cluster
+      tierId: cluster_kacho_root
+    rules:
+      - module: iam
+        resources: [serviceAccount]
+        classes: [get, list, update]
+
+  - id: iam.service_account.view
+    name: Чтение служебными учётками
+    description: "Read ServiceAccount"
+    tier:
+      tierType: iam.cluster
+      tierId: cluster_kacho_root
+    rules:
+      - module: iam
+        resources: [serviceAccount]
+        classes: [list, get]
+
+  - id: iam.user.view
+    name: Чтение пользователями
+    description: "Read User"
+    tier:
+      tierType: iam.cluster
+      tierId: cluster_kacho_root
+    rules:
+      - module: iam
+        resources: [user]
+        classes: [list, get]
