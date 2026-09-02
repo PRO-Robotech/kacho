@@ -60,7 +60,7 @@ func NewExistenceProbe(pool *pgxpool.Pool) *ExistenceProbe {
 // верно; ключ входа в машину (`0032_guest_access_keys.sql`) и группа
 // размещения (`0033_placement_groups.sql`) приехали позже, каждый со своими
 // записями каталога прав, и перепись стала другой. Перемер (задача продукта
-// #1931): `catalogderive.ObjectScopedTypes(check.PermissionMap())` даёт **три**
+// решением о скрытии существования): `catalogderive.ObjectScopedTypes(check.PermissionMap())` даёт **три**
 // — `compute_guest_access_key`, `compute_instance`, `compute_placement_group`,
 // — а карта знала один. Два типа отвечали на отказе не тем кодом, что третий,
 // и покраснеть было нечему: обе полосы защитимы по отдельности.

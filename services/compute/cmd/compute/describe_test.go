@@ -109,7 +109,7 @@ func (probeExistence) ObjectExists(context.Context, string, string) (bool, error
 // Подделка не вправе быть снисходительнее продукта: объяви она свой перечень —
 // и сверка охвата на старте (`servicehost`, О5в) судила бы фикстуру вместо
 // пробы, то есть молчала бы ровно там, где таблица настоящей разошлась с картой
-// прав сервиса (задача продукта #1931).
+// прав сервиса.
 func (probeExistence) ProbeableTypes() []string {
 	return (&computerepo.ExistenceProbe{}).ProbeableTypes()
 }

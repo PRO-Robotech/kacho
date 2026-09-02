@@ -2,7 +2,7 @@
 // SPDX-License-Identifier: BUSL-1.1
 
 // existence_probe_coverage_test.go — охват пробы существования против того, о
-// чём её спросят (задача PRO-Robotech/kacho#1931).
+// чём её спросят.
 //
 // # Предмет
 //
@@ -39,9 +39,9 @@ import (
 )
 
 // TestExistenceProbeCoversEveryObjectScopedType — охват пробы покрывает всё, о
-// чём её спросят, и наоборот: запись, которой нечего покрывать, — находка.
+// чём её спросят, и наоборот: запись, которой нечего покрывать, отвергается.
 //
-// Пустой вывод любой из сторон — НАХОДКА, а не чистота: «ноль расхождений» и
+// Пустой вывод любой из сторон — отказ, а не чистота: «ноль расхождений» и
 // «ноль осмотренного» иначе неразличимы.
 func TestExistenceProbeCoversEveryObjectScopedType(t *testing.T) {
 	scoped := catalogderive.ObjectScopedTypes(check.PermissionMap())
