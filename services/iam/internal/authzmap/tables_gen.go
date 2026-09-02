@@ -11,14 +11,11 @@
 // перегенерацией. Объявить действие — значит вписать его в `verbs` ресурса в
 // манифесте его модуля; правка Go для этого больше не требуется.
 //
-// ВТОРАЯ таблица каталога (`objectTypes`) здесь НЕ порождается и осталась
-// рукописной: её вывод замкнул бы круг с загрузчиком манифеста. Причина и замер
-// стоят у самого литерала, в fga_types.go; разрыв круга — задача #1930.
-//
-// «Одна из двух» — не проза, а ИЗМЕРЕНИЕ: таблицы считает обход пакета
-// (authzmapgen TestTypeTablesGeneratedCountIsMeasuredNotClaimed), и объявленный
-// остаток САМОИСТЕКАЕТ — как только вторая таблица начнёт порождаться, гейт
-// покраснеет, и эта строка правится тем же заходом, которым опускают остаток.
+// ЗДЕСЬ ОБЕ таблицы типов пакета: набор действий каждого типа и словарь имён
+// каталога в имена модели прав. Рукописных таблиц типов у пакета не осталось —
+// и это ИЗМЕРЕНИЕ, а не проза: таблицы считает обход пакета
+// (authzmapgen TestTypeTablesGeneratedCountIsMeasuredNotClaimed), объявленный
+// остаток равен нулю, и возвращение рукописной таблицы краснеет с её именем.
 // Перепись производителя: манифестов 6, модулей 6, ресурсов 27, из них глагольных 27, отношений действия 109.
 
 package authzmap
@@ -64,4 +61,52 @@ var typeVerbRelations = map[string][]string{
 	"vpc_route_table":           {"v_delete", "v_get", "v_list", "v_update"},
 	"vpc_security_group":        {"v_delete", "v_get", "v_list", "v_update"},
 	"vpc_subnet":                {"v_delete", "v_get", "v_list", "v_update"},
+}
+
+// objectTypes — словарь КАТАЛОГА (`<модуль>.<ресурс>`) в словарь МОДЕЛИ ПРАВ
+// (`vpc_network`). Закрытая таблица: неизвестная пара обязана дать ok=false у
+// `ObjectType`, а НЕ произвольный тип модели.
+//
+// Обе половины записи объявляет ОДНА строка манифеста — имя ресурса и его
+// `objectType`, — поэтому таблица выводится, а не сверяется. Завести ресурс
+// значит вписать его в манифест модуля; правка Go для этого не требуется.
+//
+// Написание ключа выбирает МАНИФЕСТ МОДУЛЯ и объявляет его дословно — у
+// `storage` и `registry` оно множественное, у `vpc` и `compute` единственное,
+// а у ярусных предков иерархии тип идёт без приставки модуля. Причина каждого
+// написания стоит в манифесте своего модуля; здесь она не повторяется, иначе
+// завелось бы второе место об одном предмете — ровно то, ради снятия которого
+// таблица и выводится.
+//
+// Почему ключ этой таблицы и сегмент токена права записаны РАЗНЫМ числом и
+// почему это не дрейф — в шапке пакета, у объявления `ObjectType`. Разбор
+// живёт там, потому что его предмет — контракт двух имён, а не вывод таблицы.
+var objectTypes = map[string]string{
+	"compute.guestAccessKey":            "compute_guest_access_key",
+	"compute.instance":                  "compute_instance",
+	"compute.placementGroup":            "compute_placement_group",
+	"iam.accessBinding":                 "iam_access_binding",
+	"iam.account":                       "account",
+	"iam.group":                         "iam_group",
+	"iam.project":                       "project",
+	"iam.role":                          "iam_role",
+	"iam.serviceAccount":                "iam_service_account",
+	"iam.user":                          "iam_user",
+	"loadbalancer.listeners":            "nlb_listener",
+	"loadbalancer.networkLoadBalancers": "nlb_network_load_balancer",
+	"loadbalancer.targetGroups":         "nlb_target_group",
+	"registry.registries":               "registry_registry",
+	"registry.repositories":             "registry_repository",
+	"storage.images":                    "storage_image",
+	"storage.snapshots":                 "storage_snapshot",
+	"storage.volumes":                   "storage_volume",
+	"vpc.address":                       "vpc_address",
+	"vpc.addressPool":                   "vpc_address_pool",
+	"vpc.cidrGroup":                     "vpc_cidr_group",
+	"vpc.gateway":                       "vpc_gateway",
+	"vpc.network":                       "vpc_network",
+	"vpc.networkInterface":              "vpc_network_interface",
+	"vpc.routeTable":                    "vpc_route_table",
+	"vpc.securityGroup":                 "vpc_security_group",
+	"vpc.subnet":                        "vpc_subnet",
 }
