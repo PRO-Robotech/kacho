@@ -152,6 +152,58 @@ func ClassOfCanonicalVerb(name string) (string, bool) {
 	return "", false
 }
 
+// verbClassesOf — классы действия, ПРИНИМАЕМЫЕ у ресурса этого типа: канонические
+// пять ПЛЮС глаголы, объявленные самим типом.
+//
+// # Набор классов есть атрибут ТИПА, а не платформенная константа
+//
+// Замер, из которого выведено: `nlb_target_group` объявляет ШЕСТЬ отношений
+// действия — четыре операции над объектом плюс `v_addtargets`/`v_removetargets`,
+// — и запись каталога спрашивает `v_addtargets`. Пока набор классов был пятёркой,
+// это действие не выражалось НИ ОДНИМ входом: длинная форма давала «класс вне
+// набора», короткая — «класс не выводится», а любой другой класс писал бы не то
+// отношение, которого требует гейт. Возможность была объявлена и неисполнима.
+//
+// Второй тип с расширенным набором повторил бы это, поэтому набор ВЫВОДИТСЯ из
+// закрытой таблицы типов, а не выписывается. Тот же союз двух источников строит
+// применитель ролей (`manifest/roleexport`) — сведение их в один вызов
+// принадлежит его владельцу, а не этому разбору.
+//
+// Порядок детерминирован: сперва канонические в объявленном порядке, затем
+// глаголы типа отсортированно (их отдаёт `VerbsOfType`). Отказ печатает этот
+// перечень, и порядок, зависящий от обхода карты, читался бы по-разному от
+// прогона к прогону.
+func verbClassesOf(objectType string) []string {
+	out := CanonicalVerbs()
+	for _, v := range authzmap.VerbsOfType(objectType) {
+		if !contains(out, v) {
+			out = append(out, v)
+		}
+	}
+	return out
+}
+
+// ClassOfVerb — класс действия ресурса, выводимый из ИМЕНИ действия и НАБОРА ЕГО
+// ТИПА, и ok=false, когда не выводится ни тем, ни другим.
+//
+// Правило «класс из канонического имени» здесь НЕ переобъявляется: оно живёт в
+// единственном месте (`ClassOfCanonicalVerb`) и вызывается отсюда. Добавлено
+// второе правило, у которого другой производитель — закрытая таблица типов:
+// действие, чьё имя после приведения к нижнему регистру есть глагол этого типа,
+// и есть свой класс. Приведение то же, каким эмиттер собирает имя отношения
+// (`addTargets` → `v_addtargets`), и другое адресовало бы отношение, по которому
+// никто не постучится.
+func ClassOfVerb(name, objectType string) (string, bool) {
+	if class, ok := ClassOfCanonicalVerb(name); ok {
+		return class, true
+	}
+	lowered := strings.ToLower(name)
+	if contains(authzmap.VerbsOfType(objectType), lowered) {
+		return lowered, true
+	}
+	return "", false
+}
+
 // CanonicalVerbs возвращает КОПИЮ закрытого набора канонических классов действия
 // в объявленном порядке.
 //
@@ -828,28 +880,33 @@ func validateResourceVerbs(r *Resource, doc *yaml.Node, i int) []error {
 			})
 			continue
 		}
+		accepted := verbClassesOf(r.ObjectType)
 		if v.Class == "" {
-			class, ok := ClassOfCanonicalVerb(v.Name)
+			class, ok := ClassOfVerb(v.Name, r.ObjectType)
 			if !ok {
 				faults = append(faults, linkFault{
 					kind:  ErrVerbClassNotDerivable,
 					coord: locate(doc, "resources", i, "verbs", j),
 					detail: fmt.Sprintf("%s: класс действия %q не выводится — из имени класс берётся "+
-						"ТОЛЬКО при точном совпадении с одним из %s; назовите класс явно",
+						"при точном совпадении с одним из %s либо когда имя после приведения к "+
+						"нижнему регистру есть глагол типа %q (%s); назовите класс явно",
 						fmt.Sprintf("resources[%d].verbs[%d].class", i, j), v.Name,
-						strings.Join(canonicalVerbClasses, " · ")),
+						strings.Join(canonicalVerbClasses, " · "), r.ObjectType,
+						strings.Join(accepted, " · ")),
 				})
 				continue
 			}
 			v.Class = class
 		}
-		if !contains(canonicalVerbClasses, v.Class) {
+		if !contains(accepted, v.Class) {
 			faults = append(faults, linkFault{
 				kind:  ErrVerbClassUnknown,
 				coord: locate(doc, "resources", i, "verbs", j),
-				detail: fmt.Sprintf("%s: класс %q вне закрытого набора; принимаются: %s",
-					fmt.Sprintf("resources[%d].verbs[%d].class", i, j), v.Class,
-					strings.Join(canonicalVerbClasses, ", ")),
+				detail: fmt.Sprintf("%s: класс %q вне набора, принимаемого типом %q; принимаются: "+
+					"%s. Набор классов есть атрибут ТИПА: пять канонических плюс глаголы, "+
+					"объявленные самим типом",
+					fmt.Sprintf("resources[%d].verbs[%d].class", i, j), v.Class, r.ObjectType,
+					strings.Join(accepted, ", ")),
 			})
 		}
 	}

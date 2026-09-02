@@ -201,3 +201,71 @@ func TestMODMR31TheLongTierFormIsRefusedWithoutOwnSources(t *testing.T) {
 		manifest.ErrSourceListEmpty, "resources[0].tiers[0].from")
 	mustAccept(t, resourceDoc("    parents: [project]\n    tiers: [admin, viewer]\n"))
 }
+
+// ── Класс действия берётся из набора ТИПА, а не из пятёрки (#1853) ───────────
+
+// targetGroupDoc — манифест балансировщика с ресурсом, чей ТИП объявляет набор
+// шире канонического CRUD: `nlb_target_group` несёт `v_addtargets` и
+// `v_removetargets` сверх четырёх.
+//
+// Токен модуля — `loadbalancer`, а каталог сервиса зовётся `nlb`: два разных
+// словаря, и манифест, названный по каталогу, набором модулей отвергается.
+func targetGroupDoc(verbs string) string {
+	return "apiVersion: iam/v1\nmodule: loadbalancer\nresources:\n  - name: targetGroups\n" +
+		"    objectType: nlb_target_group\n    parents: [project]\n    producer: derived\n" +
+		"    verbs: " + verbs + "\n"
+}
+
+// TestMODMR32AVerbClassOutsideTheFiveIsExpressibleWhenTheTypeCarriesIt — класс
+// действия вне пятёрки выразим ровно там, где ТИП его объявляет.
+//
+// Замер, из которого проба выведена: закрытый набор классов загрузчика был
+// пятёркой, тип `nlb_target_group` объявляет ШЕСТЬ отношений действий, а запись
+// каталога спрашивает `v_addtargets`. Действие `addTargets` не выражалось ни
+// одним входом: длинная форма давала «класс вне закрытого набора», короткая —
+// «класс не выводится», а любой другой класс писал бы не то отношение, которого
+// требует гейт.
+func TestMODMR32AVerbClassOutsideTheFiveIsExpressibleWhenTheTypeCarriesIt(t *testing.T) {
+	// Длинная форма: класс назван явно.
+	m := mustAccept(t, targetGroupDoc("[get, list, update, delete, {name: addTargets, class: addtargets}]"))
+	verbs := m.Resources[0].Verbs
+	last := verbs[len(verbs)-1]
+	if last.Name != "addTargets" || last.Class != "addtargets" {
+		t.Fatalf("класс действия вне пятёрки прочитан неверно: %+v", last)
+	}
+
+	// Короткая форма: класс выводится из набора ТИПА тем же приведением, каким
+	// эмиттер собирает имя отношения (`addTargets` → `v_addtargets`).
+	m = mustAccept(t, targetGroupDoc("[get, list, update, delete, addTargets, removeTargets]"))
+	verbs = m.Resources[0].Verbs
+	if verbs[4].Class != "addtargets" || verbs[5].Class != "removetargets" {
+		t.Fatalf("класс короткой формы не выведен из набора типа: %+v", verbs)
+	}
+}
+
+// TestMODMR32AClassNoTypeCarriesIsStillRefused — контроль в обратную сторону.
+//
+// Набор классов ПО РЕСУРСУ, а не платформенная константа: класс, которого не
+// несёт ни один тип, отвергается по-прежнему, а класс соседнего типа — на этом
+// ресурсе тоже.
+func TestMODMR32AClassNoTypeCarriesIsStillRefused(t *testing.T) {
+	mustRefuse(t, targetGroupDoc("[{name: addTargets, class: frobnicate}]"),
+		manifest.ErrVerbClassUnknown,
+		"resources[0].verbs[0].class", "frobnicate", "addtargets")
+
+	// Тот же класс на ресурсе, чей тип его НЕ объявляет: набор — атрибут типа.
+	mustRefuse(t, resourceDoc("    parents: [project]\n")[:len(resourceDoc("    parents: [project]\n"))-
+		len("    verbs: [get]\n")]+"    verbs: [{name: addTargets, class: addtargets}]\n",
+		manifest.ErrVerbClassUnknown,
+		"resources[0].verbs[0].class", "addtargets")
+
+	// И короткая форма на чужом типе класса по-прежнему не выводит.
+	mustRefuse(t, resourceDoc("    parents: [project]\n")[:len(resourceDoc("    parents: [project]\n"))-
+		len("    verbs: [get]\n")]+"    verbs: [addTargets]\n",
+		manifest.ErrVerbClassNotDerivable,
+		"resources[0].verbs[0].class", "addTargets")
+
+	// Законный близнец: канонический класс принимается у всякого типа.
+	mustAccept(t, targetGroupDoc("[get, list, update, delete]"))
+	mustAccept(t, resourceDoc("    parents: [project]\n"))
+}
