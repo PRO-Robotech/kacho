@@ -41,6 +41,31 @@ package check
 // смотрящий только на тело, объявил бы её нечитателем, и перечень запрещённых
 // разошёлся бы с разбором в первой же строке.
 //
+// # Вердикт живёт в ЧИСТОЙ ФУНКЦИИ, и её зовут ОБА
+//
+// `recognizerVerdictless` · `recognizerFindings` · `reportRecognizerFindings` —
+// единственные места, где решается, что делает прогон беспредметным, что
+// является находкой и как находка ОБЪЯВЛЯЕТСЯ. Все три зовёт и гейт, и его
+// инъекция; своей ветви вердикта у гейта не остаётся ни одной.
+//
+// Слоёв три, а не один, потому что выпотрошить можно каждый по отдельности, и
+// вычислить находку и сказать о ней — разные предметы: красное даёт только
+// объявление. Инъекция подаёт объявителю СВОЙ приёмник и сверяет напечатанное.
+//
+// Иначе доказательство не относится к предмету. Прежняя редакция инъекции звала
+// РАЗБОРЩИК (`authzmapLiteralReaders`), а три ветви вердикта переписывала у себя
+// — `if !tc.classified[r]`, — то есть утверждала «имя отсутствует в локально
+// поданной карте», а не «гейт даёт находку». Выпотрошенный вердикт оставлял её
+// ЗЕЛЁНОЙ: способность гейта объявлять находки не была показана ничем.
+//
+// # Почему находка — ЗНАЧЕНИЕ, а не сразу `t.Errorf`
+//
+// Инъекция сверяет пару «вид находки · символ» — она стабильна и переживает
+// правку прозы. Плюс отдельным утверждением требует, чтобы текст находки НАЗЫВАЛ
+// символ: гейт, покрасневший молча, посылает читателя искать не там
+// (`testing.md` §«Гейт на класс», п. 8 — инъекция проверяет не только
+// «покраснел», но и ЧТО напечатал).
+//
 // # Почему производная переменная пакета читателем НЕ считается
 //
 // `expandableRelations` собирается из `typeVerbRelations` в инициализаторе
@@ -84,12 +109,6 @@ var literalReadersOutOfScope = map[string]string{
 		"дерева сверяют живые строки. Читать литерал — её работа by construction, и запретить " +
 		"это значило бы потребовать, чтобы паритет сверял строки сами с собой (§2.1, §6.4)",
 	"CatalogSeedVerbs": "то же, глагольная половина посева каталога (§6.4)",
-	"PermissionsCoveringType": "спрашивает ПОКРЫТИЕ образца разрешения по закрытой таблице " +
-		"типов — ветвь с подстановочным знаком перебирает `objectTypes` внутри " +
-		"`permissionCoversType`, — а не «какие глаголы объявлены». Классификация СПОРНА и " +
-		"заведена задачей kacho#1874: приёмка §0.2 относит эту функцию к нечитателям, и это " +
-		"утверждение неверно — его и обнажил настоящий гейт. Пока решение не принято, запись " +
-		"есть послабление с названной причиной, а не вывод",
 }
 
 // readerCensus — объём осмотренного. Печатается всегда и независимо от исхода:
@@ -191,8 +210,143 @@ func isExportedName(name string) bool {
 	return unicode.IsUpper([]rune(name)[0])
 }
 
+// recognizerFindingKind — вид находки распознавателя. Инъекция сверяет ВИД и
+// СИМВОЛ, а не прозу: пара стабильна и переживает правку текста.
+type recognizerFindingKind string
+
+const (
+	// findingUnnamedReader — читатель литерала не назван ни одним набором.
+	findingUnnamedReader recognizerFindingKind = "нераспознанный-читатель"
+	// findingStaleClassification — набор называет имя, которого в пакете нет.
+	findingStaleClassification recognizerFindingKind = "имя-набора-без-предмета"
+	// findingStaleExemption — послаблению больше нечего исключать.
+	findingStaleExemption recognizerFindingKind = "послабление-без-предмета"
+)
+
+// recognizerFinding — одна находка: вид, символ и текст, который увидит читатель.
+type recognizerFinding struct {
+	Kind   recognizerFindingKind
+	Symbol string
+	Detail string
+}
+
+// recognizerFindings — ВЕРДИКТ распознавателя целиком, чистой функцией.
+//
+// Зовётся ИЗ ОБОИХ — из гейта и из инъекции, — и своей ветви вердикта у гейта не
+// остаётся. Выпотрошенный вердикт поэтому краснит инъекцию: без этого она
+// утверждала бы про собственную локальную карту, а не про то, что гейт способен
+// объявить находку.
+//
+// Три оси, и третья требует ОБРАТНОГО первым двум:
+//
+//  1. читатель, не названный ни одним набором, — НЕВИДИМОСТЬ;
+//  2. имя набора, которого в пакете нет, — запись пережила свой предмет;
+//  3. послабление, чья функция читателем быть перестала, — предмета нет.
+//
+// Ось 2 НЕ требует, чтобы всякое классифицированное имя было читателем: набор
+// каталожного факта перечисляет то, что прод-коду спрашивать у литерала нельзя,
+// и туда законно попадает функция, ставшая чистой. Ось 3 — про послабление, и у
+// него требование именно обратное.
+func recognizerFindings(
+	readers []string,
+	exported map[string]bool,
+	classified map[string]bool,
+	outOfScope map[string]string,
+) []recognizerFinding {
+	var out []recognizerFinding
+
+	for _, r := range readers {
+		if classified[r] {
+			continue
+		}
+		out = append(out, recognizerFinding{
+			Kind:   findingUnnamedReader,
+			Symbol: r,
+			Detail: fmt.Sprintf("экспортированная функция authzmap.%s читает литерал каталога "+
+				"и НЕ НАЗВАНА ни одним набором распознавателя.\n\n"+
+				"Прод-файл, позвавший её, гейт TestIAMCT2_LiteralIsNotAReadSource не увидит — "+
+				"это не нарушение и не чистота, а НЕВИДИМОСТЬ. Отнесите имя к одному из трёх:\n"+
+				"  catalogFactSymbols        — каталожный факт, прод-коду спрашивать у литерала нельзя;\n"+
+				"  typeDictionarySymbols     — переходник имени типа, остаётся на литерале (§2.2);\n"+
+				"  literalReadersOutOfScope  — вне предмета #1816, с ПРИЧИНОЙ у записи.", r),
+		})
+	}
+
+	for _, name := range sortedKeys(classified) {
+		if exported[name] {
+			continue
+		}
+		out = append(out, recognizerFinding{
+			Kind:   findingStaleClassification,
+			Symbol: name,
+			Detail: fmt.Sprintf("набор распознавателя называет authzmap.%s, а такой "+
+				"экспортированной функции в пакете нет — запись пережила свой предмет и молча "+
+				"сужает наблюдение", name),
+		})
+	}
+
+	readerSet := map[string]bool{}
+	for _, r := range readers {
+		readerSet[r] = true
+	}
+	for _, name := range sortedKeys(outOfScope) {
+		if readerSet[name] {
+			continue
+		}
+		out = append(out, recognizerFinding{
+			Kind:   findingStaleExemption,
+			Symbol: name,
+			Detail: fmt.Sprintf("послабление literalReadersOutOfScope[%q] больше нечего "+
+				"исключать: функция литерал не читает. Снимите запись — послабление без "+
+				"предмета становится слепой зоной, заведённой вперёд", name),
+		})
+	}
+	return out
+}
+
+// recognizerReporter — минимальная поверхность ОБЪЯВЛЕНИЯ находки.
+//
+// Заведена ради того, чтобы инъекция подавала свой приёмник вместо `*testing.T`
+// и убеждалась, что вердикт не только ВЫЧИСЛЯЕТСЯ, но и ОБЪЯВЛЯЕТСЯ. Без этого
+// слоя «гейт посчитал находки и не сказал о них» остаётся непоказанным: вычисление
+// и объявление — разные предметы, и красное даёт только второе.
+type recognizerReporter interface {
+	Errorf(format string, args ...any)
+}
+
+// reportRecognizerFindings — объявляет находки. Единственное место, где вердикт
+// становится КРАСНЫМ; зовётся и гейтом, и инъекцией.
+func reportRecognizerFindings(r recognizerReporter, findings []recognizerFinding) {
+	for _, f := range findings {
+		r.Errorf("[%s] %s", f.Kind, f.Detail)
+	}
+}
+
+// recognizerVerdictless — прогон БЕЗ ВЕРДИКТА: обход не прочитал предмета, и
+// «ноль находок» здесь неотличимо от «ноль прочитанного». Пустая строка означает,
+// что предмет прочитан; непустая — текст отказа.
+//
+// Живёт рядом с вердиктом и по той же причине: инъекция обязана связываться и с
+// этой границей, иначе снятый страж пустого обхода останется непоказанным.
+func recognizerVerdictless(pkg string, c readerCensus, literals []string) string {
+	if c.Files == 0 || c.Funcs == 0 {
+		return fmt.Sprintf("в %s прочитано файлов %d, функций %d — вердикт беспредметен",
+			pkg, c.Files, c.Funcs)
+	}
+	if c.Readers == 0 {
+		return fmt.Sprintf("читателей литерала распознано НОЛЬ при %d экспортированных "+
+			"функциях — это отказ РАЗБОРА, а не пакет без литерала: словари %v объявлены "+
+			"в нём и читаются", c.Exported, literals)
+	}
+	return ""
+}
+
 // TestIAMCT2_CatalogFactRecognizerKnowsEveryLiteralReader — распознаватель
 // соседнего гейта полон относительно ПАКЕТА, а не относительно памяти автора.
+//
+// Своей логики вердикта здесь нет ни одной ветви: гейт собирает вход, печатает
+// перепись и передаёт решение `recognizerVerdictless`/`recognizerFindings`, тем
+// же двум функциям, которые зовёт инъекция.
 func TestIAMCT2_CatalogFactRecognizerKnowsEveryLiteralReader(t *testing.T) {
 	root := catalogRepoRoot(t)
 	files, err := treecorpus.UnderWithSuffix(filepath.Join(root, literalPackageRel), ".go")
@@ -209,50 +363,18 @@ func TestIAMCT2_CatalogFactRecognizerKnowsEveryLiteralReader(t *testing.T) {
 	t.Logf("осмотрено файлов: %d; функций верхнего уровня: %d (экспортированных %d); "+
 		"читателей литерала: %d; классифицировано имён: %d",
 		c.Files, c.Funcs, c.Exported, c.Readers, c.Classified)
+	// Перечень читателей печатается ПОИМЁННО, а не только числом: таблица §0.2
+	// приёмки перечисляет ровно его, и без имён её нечем перемерить. Так она с
+	// пакетом и разошлась — в ЧЕТЫРЁХ ячейках при СОШЕДШЕМСЯ счёте (по
+	// четырнадцать имён с обеих сторон), то есть расхождение не выдавало себя
+	// ничем. Разбор всех четырёх — §И.7 приёмки.
+	t.Logf("читатели литерала поимённо: %s", strings.Join(readers, " · "))
 
-	if c.Files == 0 || c.Funcs == 0 {
-		t.Fatalf("в %s прочитано файлов %d, функций %d — вердикт беспредметен",
-			literalPackageRel, c.Files, c.Funcs)
-	}
-	if c.Readers == 0 {
-		t.Fatalf("читателей литерала распознано НОЛЬ при %d экспортированных функциях — "+
-			"это отказ РАЗБОРА, а не пакет без литерала: словари %v объявлены в нём и читаются",
-			c.Exported, sortedKeys(catalogLiteralNames))
-	}
-
-	for _, r := range readers {
-		if classified[r] {
-			continue
-		}
-		t.Errorf("экспортированная функция authzmap.%s читает литерал каталога и НЕ НАЗВАНА "+
-			"ни одним набором распознавателя.\n\n"+
-			"Прод-файл, позвавший её, гейт TestIAMCT2_LiteralIsNotAReadSource не увидит — "+
-			"это не нарушение и не чистота, а НЕВИДИМОСТЬ. Отнесите имя к одному из трёх:\n"+
-			"  catalogFactSymbols        — каталожный факт, прод-коду спрашивать у литерала нельзя;\n"+
-			"  typeDictionarySymbols     — переходник имени типа, остаётся на литерале (§2.2);\n"+
-			"  literalReadersOutOfScope  — вне предмета #1816, с ПРИЧИНОЙ у записи.", r)
+	if void := recognizerVerdictless(literalPackageRel, c, sortedKeys(catalogLiteralNames)); void != "" {
+		t.Fatalf("%s", void)
 	}
 
-	// Самоистечение: имя, названное набором, обязано существовать в пакете.
-	for _, name := range sortedKeys(classified) {
-		if !exported[name] {
-			t.Errorf("набор распознавателя называет authzmap.%s, а такой экспортированной функции "+
-				"в пакете нет — запись пережила свой предмет и молча сужает наблюдение", name)
-		}
-	}
-
-	// Послаблению — обратное требование: запись без предмета есть находка.
-	readerSet := map[string]bool{}
-	for _, r := range readers {
-		readerSet[r] = true
-	}
-	for _, name := range sortedKeys(literalReadersOutOfScope) {
-		if !readerSet[name] {
-			t.Errorf("послабление literalReadersOutOfScope[%q] больше нечего исключать: "+
-				"функция литерал не читает. Снимите запись — послабление без предмета "+
-				"становится слепой зоной, заведённой вперёд", name)
-		}
-	}
+	reportRecognizerFindings(t, recognizerFindings(readers, exported, classified, literalReadersOutOfScope))
 }
 
 // classifiedLiteralSymbols — объединение трёх наборов распознавателя.
@@ -287,17 +409,29 @@ func sortedKeys[V any](m map[string]V) []string {
 // доказательства нельзя, а утверждение, чью способность падать не показали, от
 // вакуумного неотличимо.
 //
-// Прогонов на ось ТРИ, а не два: контроль (всё цело — молчат оба свойства),
-// инъекция НОВОГО свойства (краснеет только оно) и инъекция транзитивности
-// (разбор, смотрящий только на тело, промолчал бы). Иначе красное могло бы
-// прийти от соседнего утверждения, и вакуумность нового осталась бы непоказанной.
+// # Что здесь исправлено по сравнению с первой редакцией
+//
+// Она звала РАЗБОРЩИК, а вердикт переписывала у себя (`if !tc.classified[r]`), и
+// потому доказывала свойство ЛОКАЛЬНОЙ КАРТЫ, а не гейта: выпотрошенный вердикт
+// оставлял её зелёной. Теперь зовутся ТЕ ЖЕ `recognizerVerdictless` и
+// `recognizerFindings`, что и в гейте, — своей копии решения у инъекции нет.
+//
+// # Оси, и у каждой законный близнец
+//
+// Осей ПЯТЬ: разбор (читатель прямой · транзитивный · производная переменная ·
+// неэкспортированный), нераспознанный читатель, имя набора без предмета,
+// послабление без предмета, беспредметный обход. Первые три ветви вердикта до
+// этой правки не проверялись НИ ОДНА: ось послабления не подавалась вовсе, а две
+// другие судились локальной копией.
 func TestIAMCT2_CatalogFactRecognizerInjection(t *testing.T) {
 	cases := []struct {
-		name        string
-		body        string
-		classified  map[string]bool
-		wantReaders []string
-		wantUnknown []string
+		name         string
+		body         string
+		classified   map[string]bool
+		exemptions   map[string]string
+		wantReaders  []string
+		wantFindings []string // «вид:символ», отсортировано
+		wantVoid     bool     // обход беспредметен
 	}{
 		{
 			name: "контроль: единственный читатель назван набором",
@@ -313,9 +447,9 @@ func TestIAMCT2_CatalogFactRecognizerInjection(t *testing.T) {
 				"var typeVerbRelations = map[string][]string{}\n" +
 				"func VerbsOfType(k string) []string { return typeVerbRelations[k] }\n" +
 				"func VerbRelationsOfType(k string) []string { return typeVerbRelations[k] }\n",
-			classified:  map[string]bool{"VerbsOfType": true},
-			wantReaders: []string{"VerbRelationsOfType", "VerbsOfType"},
-			wantUnknown: []string{"VerbRelationsOfType"},
+			classified:   map[string]bool{"VerbsOfType": true},
+			wantReaders:  []string{"VerbRelationsOfType", "VerbsOfType"},
+			wantFindings: []string{"нераспознанный-читатель:VerbRelationsOfType"},
 		},
 		{
 			name: "инъекция: читатель ТРАНЗИТИВНЫЙ — тело литерала не называет",
@@ -323,9 +457,9 @@ func TestIAMCT2_CatalogFactRecognizerInjection(t *testing.T) {
 				"var typeVerbRelations = map[string][]string{}\n" +
 				"func verbs(k string) []string { return typeVerbRelations[k] }\n" +
 				"func GrantedVerbs(k string) []string { return verbs(k) }\n",
-			classified:  map[string]bool{},
-			wantReaders: []string{"GrantedVerbs"},
-			wantUnknown: []string{"GrantedVerbs"},
+			classified:   map[string]bool{},
+			wantReaders:  []string{"GrantedVerbs"},
+			wantFindings: []string{"нераспознанный-читатель:GrantedVerbs"},
 		},
 		{
 			name: "контроль: производная переменная пакета читателем НЕ делает",
@@ -350,6 +484,45 @@ func TestIAMCT2_CatalogFactRecognizerInjection(t *testing.T) {
 			classified:  map[string]bool{"ObjectType": true},
 			wantReaders: []string{"ObjectType"},
 		},
+		{
+			name: "инъекция: набор называет имя, которого в пакете НЕТ",
+			body: "package authzmap\n" +
+				"var objectTypes = map[string]string{}\n" +
+				"func ObjectType(k string) string { return objectTypes[k] }\n",
+			classified:   map[string]bool{"ObjectType": true, "VerbsOfType": true},
+			wantReaders:  []string{"ObjectType"},
+			wantFindings: []string{"имя-набора-без-предмета:VerbsOfType"},
+		},
+		{
+			name: "инъекция: послаблению больше нечего исключать",
+			body: "package authzmap\n" +
+				"var objectTypes = map[string]string{}\n" +
+				"func ObjectType(k string) string { return objectTypes[k] }\n" +
+				"func CatalogSeedResources() []string { return nil }\n",
+			classified:   map[string]bool{"ObjectType": true, "CatalogSeedResources": true},
+			exemptions:   map[string]string{"CatalogSeedResources": "левая сторона паритета"},
+			wantReaders:  []string{"ObjectType"},
+			wantFindings: []string{"послабление-без-предмета:CatalogSeedResources"},
+		},
+		{
+			name: "контроль: послабление С ПРЕДМЕТОМ молчит",
+			body: "package authzmap\n" +
+				"var objectTypes = map[string]string{}\n" +
+				"func ObjectType(k string) string { return objectTypes[k] }\n" +
+				"func CatalogSeedResources() []string { return []string{objectTypes[\"\"]} }\n",
+			classified:  map[string]bool{"ObjectType": true, "CatalogSeedResources": true},
+			exemptions:  map[string]string{"CatalogSeedResources": "левая сторона паритета"},
+			wantReaders: []string{"CatalogSeedResources", "ObjectType"},
+		},
+		{
+			name: "инъекция: читателей НОЛЬ — вердикта нет, а не чистое дерево",
+			body: "package authzmap\n" +
+				"var objectTypes = map[string]string{}\n" +
+				"func SplitObjectType(t string) string { return t }\n",
+			classified:  map[string]bool{},
+			wantReaders: nil,
+			wantVoid:    true,
+		},
 	}
 
 	for _, tc := range cases {
@@ -370,21 +543,59 @@ func TestIAMCT2_CatalogFactRecognizerInjection(t *testing.T) {
 			if strings.Join(readers, ",") != strings.Join(tc.wantReaders, ",") {
 				t.Fatalf("читатели: получено %v, ожидалось %v", readers, tc.wantReaders)
 			}
-			var unknown []string
-			for _, r := range readers {
-				if !tc.classified[r] {
-					unknown = append(unknown, r)
-				}
+
+			// Граница беспредметного обхода — та же функция, что в гейте.
+			void := recognizerVerdictless("синтетика", c, sortedKeys(catalogLiteralNames))
+			if (void != "") != tc.wantVoid {
+				t.Fatalf("беспредметность обхода: получено %q, ожидалась %v", void, tc.wantVoid)
 			}
-			if strings.Join(unknown, ",") != strings.Join(tc.wantUnknown, ",") {
-				t.Fatalf("нераспознанные: получено %v, ожидалось %v", unknown, tc.wantUnknown)
+			if tc.wantVoid {
+				return // при беспредметном обходе гейт до вердикта не доходит
 			}
-			for name := range tc.classified {
-				if !exported[name] {
-					t.Fatalf("самоистечение: %q объявлено классифицированным, но экспортированной "+
-						"функцией пакета не является", name)
+
+			// ВЕРДИКТ — той же функцией, что в гейте. Своей копии решения здесь
+			// нет: выпотрошив `recognizerFindings`, эту инъекцию не оставить
+			// зелёной, и ровно этого прежней редакции не хватало.
+			findings := recognizerFindings(readers, exported, tc.classified, tc.exemptions)
+			var got []string
+			for _, f := range findings {
+				got = append(got, fmt.Sprintf("%s:%s", f.Kind, f.Symbol))
+			}
+			sort.Strings(got)
+			want := append([]string(nil), tc.wantFindings...)
+			sort.Strings(want)
+			if strings.Join(got, " | ") != strings.Join(want, " | ") {
+				t.Fatalf("находки: получено %v, ожидалось %v", got, want)
+			}
+
+			// ОБЪЯВЛЕНИЕ — тем же объявителем, что в гейте, и в СВОЙ приёмник.
+			// Вычислить находку и не сказать о ней — разные предметы: красное
+			// даёт только второе, и без этой проверки «гейт посчитал и смолчал»
+			// осталось бы непоказанным.
+			var rec recordingReporter
+			reportRecognizerFindings(&rec, findings)
+			if len(rec.lines) != len(findings) {
+				t.Fatalf("объявлено находок %d, а вычислено %d — вердикт вычисляется, "+
+					"но не ОБЪЯВЛЯЕТСЯ", len(rec.lines), len(findings))
+			}
+			for i, f := range findings {
+				// Находка обязана НАЗЫВАТЬ символ и свой вид: покрасневший молча
+				// гейт посылает читателя искать не там.
+				if !strings.Contains(rec.lines[i], f.Symbol) ||
+					!strings.Contains(rec.lines[i], string(f.Kind)) {
+					t.Errorf("объявленная находка не называет вид %q и символ %q: %q",
+						f.Kind, f.Symbol, rec.lines[i])
 				}
 			}
 		})
 	}
+}
+
+// recordingReporter — приёмник объявлений для инъекции: запоминает то, что гейт
+// напечатал бы в прогон. Подаётся вместо `*testing.T`, поэтому инъекция судит
+// ОБЪЯВЛЕНИЕ, а не только вычисление.
+type recordingReporter struct{ lines []string }
+
+func (r *recordingReporter) Errorf(format string, args ...any) {
+	r.lines = append(r.lines, fmt.Sprintf(format, args...))
 }
