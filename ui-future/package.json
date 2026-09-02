@@ -16,7 +16,7 @@
     "test": "npm test --prefix host && npm test --prefix dashboard && npm test --prefix vpc && npm test --prefix compute && npm test --prefix storage && npm test --prefix nlb && npm test --prefix registry && npm test --prefix iam && npm test --prefix system"
   },
   "overrides": {
-    "dompurify": "3.4.11",
+    "dompurify": "3.4.13",
     "js-yaml@3.x": "^3.15.1"
   }
 }
