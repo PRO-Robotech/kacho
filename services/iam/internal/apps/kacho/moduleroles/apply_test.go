@@ -236,7 +236,7 @@ func TestApplierRefusesARoleThatTheDomainRejects(t *testing.T) {
 		t.Fatalf("фикстура отвергнута: %v", err)
 	}
 	// Портим уже разобранное: форму манифеста это не проверяет, а домен — да.
-	m.Roles[0].Rules[0].Verbs = []string{"НЕ-ЛАТИНСКИЙ"}
+	m.Roles[0].Rules[0].Classes = []string{"НЕ-ЛАТИНСКИЙ"}
 
 	store := newStore()
 	_, err = moduleroles.NewApplier(store).Apply(context.Background(), m)
