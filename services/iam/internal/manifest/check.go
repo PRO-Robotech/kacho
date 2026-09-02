@@ -197,7 +197,19 @@ func (r CheckReport) Summary() string {
 // Нечитаемый корень при этом остаётся находкой, а не пустым деревом: опечатка в
 // пути иначе печатала бы успокоительное «проверять нечего».
 func CheckTree(root string) CheckReport {
-	return walkManifests(root, isTreeManifestName)
+	return walkManifests(root, isTreeManifestName, ReferentShippedTable)
+}
+
+// CheckTreeForGeneration — тот же обход для прохода, ПОРОЖДАЮЩЕГО таблицу
+// типов (задача #1930).
+//
+// Существование типа здесь не судится: таблица есть продукт этого прохода, и
+// спрашивать у неё значило бы спрашивать у собственного ответа. Судит его канон
+// — `modelrender.Sweep`, у которого канон есть; форму по-прежнему судит
+// загрузчик. Почему референтов два и почему это один предикат, а не два места об
+// одном предмете — [TypeReferent].
+func CheckTreeForGeneration(root string) CheckReport {
+	return walkManifests(root, isTreeManifestName, ReferentCanon)
 }
 
 // isTreeManifestName — что считается манифестом В ДЕРЕВЕ РАЗРАБОТКИ: базовое имя
@@ -220,7 +232,7 @@ func isDeliveredManifestName(name string) bool { return !strings.HasPrefix(name,
 //
 // Второй обход, написанный рядом, разошёлся бы с первым молча — и разошёлся бы
 // именно в той половине, которую никто не читает глазами.
-func walkManifests(root string, accept func(name string) bool) CheckReport {
+func walkManifests(root string, accept func(name string) bool, referent TypeReferent) CheckReport {
 	var report CheckReport
 
 	// Корень открывается ОДИН раз и служит ГРАНИЦЕЙ чтения: всё, что читается
@@ -282,7 +294,7 @@ func walkManifests(root string, accept func(name string) bool) CheckReport {
 		}
 		report.ManifestsRead++
 		report.Paths = append(report.Paths, rel)
-		m, err := Load(data)
+		m, err := LoadWithReferent(data, referent)
 		if err != nil {
 			report.Findings = append(report.Findings, rel+": "+err.Error())
 			return nil

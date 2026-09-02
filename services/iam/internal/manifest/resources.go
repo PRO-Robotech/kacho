@@ -732,7 +732,7 @@ func (v *Verb) UnmarshalYAML(node *yaml.Node) error {
 //
 // Находки собираются ВСЕ: названная первая заставила бы автора манифеста чинить
 // их по одной, по прогону на каждую, и скрыла бы, сколько их всего.
-func validateResources(m *Manifest, doc *yaml.Node) []error {
+func validateResources(m *Manifest, doc *yaml.Node, referent TypeReferent) []error {
 	var faults []error
 	seen := map[string][]int{}
 
@@ -750,7 +750,7 @@ func validateResources(m *Manifest, doc *yaml.Node) []error {
 			seen[r.Name] = append(seen[r.Name], i)
 		}
 
-		faults = append(faults, validateResourceAnchors(r, doc, i)...)
+		faults = append(faults, validateResourceAnchors(r, doc, i, referent)...)
 		faults = append(faults, validateResourceCascade(r, doc, i)...)
 		faults = append(faults, validateResourceTiers(r, doc, i)...)
 		faults = append(faults, validateResourceBaseRoles(r, doc, i)...)
@@ -787,7 +787,16 @@ func validateResources(m *Manifest, doc *yaml.Node) []error {
 }
 
 // validateResourceAnchors — тип объекта, якорь области и вид ключей записи.
-func validateResourceAnchors(r *Resource, doc *yaml.Node, i int) []error {
+//
+// # Существование типа судит РЕФЕРЕНТ, а не всегда таблица (задача #1930)
+//
+// Форму — «тип назван дословно» — судит эта функция при любом референте: имя
+// пустым не бывает ни в порождении, ни в потреблении. А вот ЧЛЕНСТВО в закрытой
+// таблице спрашивается только тогда, когда таблица уже произведена
+// ([ReferentShippedTable]); в проходе, который её ПОРОЖДАЕТ, тот же вопрос был
+// бы вопросом к собственному ответу, и существование там судит канон
+// (`modelrender.Sweep`).
+func validateResourceAnchors(r *Resource, doc *yaml.Node, i int, referent TypeReferent) []error {
 	var faults []error
 
 	switch r.ObjectType {
@@ -799,7 +808,7 @@ func validateResourceAnchors(r *Resource, doc *yaml.Node, i int) []error {
 				"<модуль>_<ресурс>» снято, оно не действует у 10 записей закрытой таблицы из 27",
 		})
 	default:
-		if _, ok := authzmap.DottedType(r.ObjectType); !ok {
+		if _, ok := authzmap.DottedType(r.ObjectType); referent.judgesTypeExistence() && !ok {
 			faults = append(faults, linkFault{
 				kind:  ErrObjectTypeUnknown,
 				coord: locate(doc, "resources", i, "objectType"),
