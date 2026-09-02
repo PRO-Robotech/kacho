@@ -18,12 +18,29 @@
 // Общий стенд отстаёт от линии и несёт данные чужих прогонов; вердикт по нему
 // был бы вердиктом о ЧУЖОМ дереве. База поднимается из миграций ЭТОГО дерева.
 //
-// # Границу сверки задаёт ФОРМА, и она проверяется отдельной пробой
+// # Судятся ВСЕ ЧЕТЫРЕ подраздела; из-под вердикта выведен один ВИД строки
 //
-// Сверяются служебные записи и вступления; группы и выдачи формой сегодня
-// невыразимы (разбор — в шапке пакета). Это не послабление и не ведомость:
-// проба предпосылки требует, чтобы у выдачи по-прежнему не было ключа для
-// отношения, и краснеет в тот прогон, когда ключ появится.
+// Здесь сверялись два подраздела из четырёх, а два оставшихся объяснялись одним
+// числом на все живые строки — «выдач живых 8, из них выразимых формой 0».
+// Число складывало два разных предмета и потому скрывало ровно тот случай, ради
+// которого граница названа:
+//
+//   - строка БЕЗ модуля-владельца (`kacho-api-gateway`, `kacho-bootstrap-admin`,
+//     `user:*`, владельческая привязка системного аккаунта) манифестом МОДУЛЯ
+//     невыразима by construction — объявлять её некому, и её отсутствие среди
+//     объявленного верно, а не пробел;
+//   - строка С владельцем, которой не умеет ФОРМА, — вот это пробел, и таких из
+//     восьми две (#1936).
+//
+// Сверх того выразимая формой выдача РОЛЬЮ модуля не судилась вовсе: сегодня
+// таких живых строк ноль, и «выразимых формой 0» читалось как «судить нечего»,
+// а перестало бы быть верным в тот прогон, когда первая такая строка появится, —
+// молча.
+//
+// Теперь судятся все четыре подраздела, живое относится к модулю-владельцу, а
+// невыразимое ПЕЧАТАЕТСЯ поимённо и считается по владельцу. Проба предпосылки
+// требует, чтобы у выдачи по-прежнему не было ключа для отношения, и краснеет в
+// тот прогон, когда ключ появится.
 package moduleseedparity_test
 
 import (
@@ -47,14 +64,18 @@ import (
 	"github.com/PRO-Robotech/kacho/services/iam/internal/moduleseedparity"
 )
 
-// liveServiceAccountFloor — служебных записей в базе, ниже которого чтение
-// беспредметно. Их после миграций семь; обвал до нуля означает, что запрос
-// перестал видеть предмет, и молчание гейта сказано ни о чём.
-const liveServiceAccountFloor = 3
+// Пороги чтения: ниже них молчание гейта сказано ни о чём. Числа взяты у живой
+// базы этого дерева с запасом вниз — порог стережёт ОБВАЛ чтения, а не
+// сегодняшнее состояние посева, которое законно меняется миграциями.
+const (
+	liveServiceAccountFloor = 3
+	liveBindingFloor        = 3
+	liveGroupFloor          = 1
+)
 
-// serviceAccountNamePrefix — по этому написанию живая запись переводится в
+// seededNamePrefix — по этому написанию живая строка переводится в
 // модуль-владелец: `kacho-<служба>`, служба — из словаря платформы.
-const serviceAccountNamePrefix = "kacho-"
+const seededNamePrefix = "kacho-"
 
 // TestModuleManifestDeclaresTheSeedTheLiveBaseHolds — сам гейт.
 func TestModuleManifestDeclaresTheSeedTheLiveBaseHolds(t *testing.T) {
@@ -70,36 +91,55 @@ func TestModuleManifestDeclaresTheSeedTheLiveBaseHolds(t *testing.T) {
 	// Перепись — ДО всякого вердикта и независимо от него.
 	t.Logf("перепись: %s", census)
 	for _, st := range states {
-		t.Logf("  модуль %-13s записей объявлено %d · живых %d · вступлений объявлено %d · живых %d · манифест %s",
+		t.Logf("  модуль %-13s записей %d/%d · групп %d/%d · выдач %d/%d · вступлений %d/%d "+
+			"(объявлено/живых) · манифест %s",
 			st.Module, len(st.DeclaredSA), len(st.LiveSA),
+			len(st.DeclaredGroup), len(st.LiveGroup),
+			len(st.DeclaredBinding), len(st.LiveBinding),
 			len(st.DeclaredJoin), len(st.LiveJoin), st.ManifestFile)
 	}
 
 	require.NotZero(t, census.Manifests,
 		"манифестов модулей прочитано ноль — каталог переехал, и гейт стережёт координату, "+
 			"которой больше нет")
-	require.GreaterOrEqual(t, census.LiveSA, liveServiceAccountFloor,
+	require.GreaterOrEqual(t, census.SA.Live, liveServiceAccountFloor,
 		"служебных записей прочитано %d при пороге %d — чтение перестало видеть предмет",
-		census.LiveSA, liveServiceAccountFloor)
-	require.NotZero(t, census.LiveJoin,
+		census.SA.Live, liveServiceAccountFloor)
+	require.NotZero(t, census.Joins.Live,
 		"вступлений прочитано ноль — чтение членства перестало видеть предмет")
+	require.GreaterOrEqual(t, census.Bindings.Live, liveBindingFloor,
+		"выдач прочитано %d при пороге %d — чтение выдач перестало видеть предмет",
+		census.Bindings.Live, liveBindingFloor)
+	require.GreaterOrEqual(t, census.Groups.Live, liveGroupFloor,
+		"групп прочитано %d при пороге %d — чтение групп перестало видеть предмет",
+		census.Groups.Live, liveGroupFloor)
 
-	if findings := moduleseedparity.Diff(states); len(findings) > 0 {
+	res := moduleseedparity.Compare(states)
+
+	// Невыразимое печатается ПОИМЁННО и до вердикта: это остаток #1936, а не
+	// молчание. Числом его называет перепись выше, именами — эти строки.
+	for _, line := range res.Inexpressible {
+		t.Logf("  ВНЕ ВЕРДИКТА: %s", line)
+	}
+
+	if len(res.Findings) > 0 {
 		t.Fatalf("раздел `seed` расходится с живой базой — %d место(а):\n  %s\n\n"+
 			"Снятие: объявить `seed` модуля так, чтобы он сходился со строками, которые уже "+
-			"лежат в базе (#1891). Группы и выдачи сюда НЕ входят: их форма сегодня выразить "+
-			"не может — см. шапку пакета и #1936.",
-			len(findings), strings.Join(findings, "\n  "))
+			"лежат в базе (#1891). Строки, выведенные из-под вердикта, названы выше "+
+			"пометкой «ВНЕ ВЕРДИКТА» — их чинит правка ФОРМЫ манифеста (#1936), а не "+
+			"правка манифеста.",
+			len(res.Findings), strings.Join(res.Findings, "\n  "))
 	}
 }
 
 // TestBindingFormStillCannotExpressARelationGrant — ПРОБА ПРЕДПОСЫЛКИ гейта.
 //
-// Сверка выше намеренно не судит `seed.groups` и `seed.accessBindings`, и
-// основание у этого одно: форма выдачи не несёт ключа, которым выдаётся
-// ОТНОШЕНИЕ, а все живые выдачи посева — именно такие. Основание есть
+// Сверка выше судит все четыре подраздела, но выводит из-под вердикта один ВИД
+// строки — выдачу ОТНОШЕНИЕМ и наделённую только ею группу. Основание одно:
+// форма выдачи не несёт ключа, которым выдаётся отношение. Основание есть
 // утверждение о дереве, и оно обязано истечь само: появится ключ — эта проба
-// покраснеет и потребует расширить сверку, а не оставит слепую зону молча.
+// покраснеет и потребует научить предикат [moduleseedparity.Binding.ExpressibleByForm]
+// новому ключу, а не оставит слепую зону молча.
 func TestBindingFormStillCannotExpressARelationGrant(t *testing.T) {
 	keys := yamlKeysOf(reflect.TypeOf(manifest.AccessBinding{}))
 	require.NotEmpty(t, keys, "у формы выдачи не прочитано ни одного ключа — разбор тегов сломан")
@@ -108,8 +148,9 @@ func TestBindingFormStillCannotExpressARelationGrant(t *testing.T) {
 	for _, k := range keys {
 		require.NotContainsf(t, strings.ToLower(k), "relation",
 			"у выдачи появился ключ %q: форма научилась выражать выдачу ОТНОШЕНИЕМ, а сверка "+
-				"посева про такие строки по-прежнему молчит. Расширьте moduleseedparity на "+
-				"`seed.accessBindings` и `seed.groups` — и снимите эту пробу вместе с её "+
+				"посева по-прежнему выводит такие строки из-под вердикта пометкой «ВНЕ "+
+				"ВЕРДИКТА». Научите предикат Binding.ExpressibleByForm новому ключу, объявите "+
+				"эти строки в манифестах их модулей — и снимите эту пробу вместе с её "+
 				"предметом (#1891, #1936)", k)
 	}
 	require.Containsf(t, keys, "roleId",
@@ -139,14 +180,15 @@ func moduleStates(ctx context.Context, t *testing.T, root string) (
 	pgtest.ClosePoolAtEnd(t, pool)
 
 	liveSA, saByOwner, ownerlessSA := readLiveServiceAccounts(ctx, t, pool)
-	liveJoin, joinByOwner, ownerlessJoin := readLiveJoins(ctx, t, pool, saByOwner)
-	liveGroups, expressibleGroups, liveBindings, expressibleBindings := readFormBoundary(ctx, t, pool)
+	liveJoin, joinByOwner, ownerlessJoin := readLiveJoins(ctx, t, pool)
+	liveGroup, groupByOwner, ownerlessGroup := readLiveGroups(ctx, t, pool)
+	liveBinding, bindingByOwner, ownerlessBinding := readLiveBindings(ctx, t, pool)
 
 	census := moduleseedparity.Census{
-		LiveSA: liveSA, OwnerlessSA: ownerlessSA,
-		LiveJoin: liveJoin, OwnerlessJoin: ownerlessJoin,
-		LiveGroups: liveGroups, ExpressibleGroups: expressibleGroups,
-		LiveBindings: liveBindings, ExpressibleBindings: expressibleBindings,
+		SA:       moduleseedparity.Subsection{Live: liveSA, Ownerless: ownerlessSA},
+		Groups:   moduleseedparity.Subsection{Live: liveGroup, Ownerless: ownerlessGroup},
+		Bindings: moduleseedparity.Subsection{Live: liveBinding, Ownerless: ownerlessBinding},
+		Joins:    moduleseedparity.Subsection{Live: liveJoin, Ownerless: ownerlessJoin},
 	}
 
 	var (
@@ -162,47 +204,100 @@ func moduleStates(ctx context.Context, t *testing.T, root string) (
 		require.NoErrorf(t, lerr, "манифест %s не разобран: сверять нечем", file)
 
 		census.Manifests++
-		sa, joins := declaredSeed(m)
-		census.DeclaredSA += len(sa)
-		census.DeclaredJoin += len(joins)
 		claimed[m.Module] = true
-
-		states = append(states, moduleseedparity.ModuleState{
-			Module:       m.Module,
-			ManifestFile: file,
-			DeclaredSA:   sa,
-			LiveSA:       saByOwner[m.Module],
-			DeclaredJoin: joins,
-			LiveJoin:     joinByOwner[m.Module],
-		})
+		states = append(states, stateOf(m.Module, file, m,
+			saByOwner, groupByOwner, bindingByOwner, joinByOwner, &census))
 	}
 	// Модуль закрытого набора, у которого живой посев есть, а манифеста нет,
 	// молчал бы иначе: его строки не попали бы ни в одно состояние.
 	for _, mod := range authzmap.CatalogSeedModules() {
-		if claimed[mod] || (len(saByOwner[mod]) == 0 && len(joinByOwner[mod]) == 0) {
+		if claimed[mod] {
 			continue
 		}
-		states = append(states, moduleseedparity.ModuleState{
-			Module:       mod,
-			ManifestFile: "(манифеста в дереве нет)",
-			LiveSA:       saByOwner[mod],
-			LiveJoin:     joinByOwner[mod],
-		})
+		if len(saByOwner[mod])+len(groupByOwner[mod])+len(bindingByOwner[mod])+len(joinByOwner[mod]) == 0 {
+			continue
+		}
+		states = append(states, stateOf(mod, "(манифеста в дереве нет)", nil,
+			saByOwner, groupByOwner, bindingByOwner, joinByOwner, &census))
 	}
 	sort.Slice(states, func(i, j int) bool { return states[i].Module < states[j].Module })
+
+	// Величины «с владельцем» и «формой невыразимо» считаются ПО ТОМУ ЖЕ
+	// предикату, что применяет сверка, — не вторым выражением: второй перевод
+	// разошёлся бы с первым молча, и перепись обещала бы не то, что судится.
+	for _, st := range states {
+		census.SA.Owned += len(st.LiveSA)
+		census.Joins.Owned += len(st.LiveJoin)
+		census.Groups.Owned += len(st.LiveGroup)
+		census.Bindings.Owned += len(st.LiveBinding)
+
+		_, inexpressibleBinding := moduleseedparity.SplitBindings(st.LiveBinding)
+		_, inexpressibleGroup := moduleseedparity.SplitGroups(st.LiveGroup, st.LiveBinding)
+		census.Bindings.Inexpressible += len(inexpressibleBinding)
+		census.Groups.Inexpressible += len(inexpressibleGroup)
+	}
 	return states, census
 }
 
-// declaredSeed — сторона манифеста.
-func declaredSeed(m *manifest.Manifest) ([]moduleseedparity.ServiceAccount, []moduleseedparity.Join) {
+// stateOf — обе стороны одного модуля. Объявленное считается ЗДЕСЬ же, поэтому
+// перепись объявленного и вход сверки не могут разойтись.
+func stateOf(module, file string, m *manifest.Manifest,
+	saByOwner map[string][]moduleseedparity.ServiceAccount,
+	groupByOwner map[string][]moduleseedparity.Group,
+	bindingByOwner map[string][]moduleseedparity.Binding,
+	joinByOwner map[string][]moduleseedparity.Join,
+	census *moduleseedparity.Census,
+) moduleseedparity.ModuleState {
+	sa, groups, bindings, joins := declaredSeed(m)
+	census.SA.Declared += len(sa)
+	census.Groups.Declared += len(groups)
+	census.Bindings.Declared += len(bindings)
+	census.Joins.Declared += len(joins)
+
+	return moduleseedparity.ModuleState{
+		Module:          module,
+		ManifestFile:    file,
+		DeclaredSA:      sa,
+		LiveSA:          saByOwner[module],
+		DeclaredGroup:   groups,
+		LiveGroup:       groupByOwner[module],
+		DeclaredBinding: bindings,
+		LiveBinding:     bindingByOwner[module],
+		DeclaredJoin:    joins,
+		LiveJoin:        joinByOwner[module],
+	}
+}
+
+// declaredSeed — сторона манифеста, все четыре подраздела.
+func declaredSeed(m *manifest.Manifest) ([]moduleseedparity.ServiceAccount, []moduleseedparity.Group,
+	[]moduleseedparity.Binding, []moduleseedparity.Join,
+) {
 	if m == nil || m.Seed == nil {
-		return nil, nil
+		return nil, nil, nil, nil
 	}
 	sa := make([]moduleseedparity.ServiceAccount, 0, len(m.Seed.ServiceAccounts))
 	for _, s := range m.Seed.ServiceAccounts {
 		sa = append(sa, moduleseedparity.ServiceAccount{
 			Account: s.Account, Name: s.Name, Description: s.Description,
 		})
+	}
+	groups := make([]moduleseedparity.Group, 0, len(m.Seed.Groups))
+	for _, g := range m.Seed.Groups {
+		groups = append(groups, moduleseedparity.Group{
+			Account: g.Account, Name: g.Name, Description: g.Description,
+		})
+	}
+	// Выдача манифеста несёт СПИСОК субъектов, а в базе каждый субъект — своя
+	// строка со своей линией отзыва. Раскладываем здесь, иначе сверка сравнивала
+	// бы одно объявление с N живыми строками и находила расхождение всегда.
+	var bindings []moduleseedparity.Binding
+	for _, b := range m.Seed.AccessBindings {
+		for _, subj := range b.Subjects {
+			bindings = append(bindings, moduleseedparity.Binding{
+				SubjectType: subj.Type, SubjectName: subj.Name,
+				RoleID: b.RoleID, ScopeType: b.ScopeType, ScopeID: b.ScopeID,
+			})
+		}
 	}
 	joins := make([]moduleseedparity.Join, 0, len(m.Seed.Joins))
 	for _, j := range m.Seed.Joins {
@@ -213,7 +308,7 @@ func declaredSeed(m *manifest.Manifest) ([]moduleseedparity.ServiceAccount, []mo
 			GroupName:    j.Group.Name,
 		})
 	}
-	return sa, joins
+	return sa, groups, bindings, joins
 }
 
 // readLiveServiceAccounts читает служебные записи живой базы и раскладывает их
@@ -236,7 +331,7 @@ func readLiveServiceAccounts(ctx context.Context, t *testing.T, pool *pgxpool.Po
 		require.NoError(t, rows.Scan(&account, &name, &description))
 		total++
 
-		owner, ok := ownerOfServiceAccount(name)
+		owner, ok := ownerOfSeededName(name)
 		if !ok {
 			ownerless++
 			continue
@@ -249,9 +344,14 @@ func readLiveServiceAccounts(ctx context.Context, t *testing.T, pool *pgxpool.Po
 	return total, byOwner, ownerless
 }
 
-// ownerOfServiceAccount — модуль-владелец записи по её имени.
-func ownerOfServiceAccount(name string) (string, bool) {
-	service, ok := strings.CutPrefix(name, serviceAccountNamePrefix)
+// ownerOfSeededName — модуль-владелец заведённой посевом строки по её ИМЕНИ.
+//
+// Правило ОДНО на служебную запись и на группу: имя вида `kacho-<служба>`,
+// служба — из закрытого набора платформы. Второе правило для второго предмета
+// разошлось бы с первым молча, а строка, имени не отвечающая, принадлежит
+// платформе, а не модулю, и считается отдельно.
+func ownerOfSeededName(name string) (string, bool) {
+	service, ok := strings.CutPrefix(name, seededNamePrefix)
 	if !ok {
 		return "", false
 	}
@@ -264,11 +364,10 @@ func ownerOfServiceAccount(name string) (string, bool) {
 
 // readLiveJoins читает членство живой базы и раскладывает его по владельцу
 // ВСТУПАЮЩЕЙ записи: членство заявляет вступающий, а не владелец группы.
-func readLiveJoins(ctx context.Context, t *testing.T, pool *pgxpool.Pool,
-	saByOwner map[string][]moduleseedparity.ServiceAccount,
-) (total int, byOwner map[string][]moduleseedparity.Join, ownerless int) {
+func readLiveJoins(ctx context.Context, t *testing.T, pool *pgxpool.Pool) (
+	total int, byOwner map[string][]moduleseedparity.Join, ownerless int,
+) {
 	t.Helper()
-	_ = saByOwner
 	rows, err := pool.Query(ctx,
 		`SELECT sa_acc.name, sa.name, grp_acc.name, g.name
 		   FROM kacho_iam.group_members gm
@@ -287,7 +386,7 @@ func readLiveJoins(ctx context.Context, t *testing.T, pool *pgxpool.Pool,
 		require.NoError(t, rows.Scan(&j.AccountName, &j.SAName, &j.GroupAccount, &j.GroupName))
 		total++
 
-		owner, ok := ownerOfServiceAccount(j.SAName)
+		owner, ok := ownerOfSeededName(j.SAName)
 		if !ok {
 			ownerless++
 			continue
@@ -298,33 +397,111 @@ func readLiveJoins(ctx context.Context, t *testing.T, pool *pgxpool.Pool,
 	return total, byOwner, ownerless
 }
 
-// readFormBoundary считает ГРАНИЦУ ФОРМЫ обеими величинами: сколько строк
-// живёт и сколько из них форма манифеста способна выразить. Одно число здесь
-// скрывало бы ровно тот случай, ради которого граница названа.
-func readFormBoundary(ctx context.Context, t *testing.T, pool *pgxpool.Pool) (
-	liveGroups, expressibleGroups, liveBindings, expressibleBindings int,
+// readLiveGroups читает группы живой базы и относит их к модулю-владельцу ТЕМ
+// ЖЕ правилом имени, что и служебные записи: другого правила в дереве нет, а
+// второе разошлось бы с первым молча.
+//
+// Сегодня ни одна живая группа этому правилу не отвечает — обе принадлежат
+// платформе (`module-quota-readers`, `module-relation-writers` в аккаунте
+// `kacho-system`) и модулями лишь ИСПОЛЬЗУЮТСЯ, о чём говорит подраздел
+// вступлений. Поэтому «объявлено групп 0» — верное объявление, а не недостача.
+func readLiveGroups(ctx context.Context, t *testing.T, pool *pgxpool.Pool) (
+	total int, byOwner map[string][]moduleseedparity.Group, ownerless int,
 ) {
 	t.Helper()
-	require.NoError(t, pool.QueryRow(ctx,
-		`SELECT count(*) FROM kacho_iam.groups`).Scan(&liveGroups))
-	// Выдача выразима формой, когда она выдаёт РОЛЬ и её субъект — из тех, кого
-	// заводит посев модуля. Выдача отношением ключа в форме не имеет вовсе.
-	require.NoError(t, pool.QueryRow(ctx,
-		`SELECT count(*) FROM kacho_iam.access_bindings`).Scan(&liveBindings))
-	require.NoError(t, pool.QueryRow(ctx,
-		`SELECT count(*) FROM kacho_iam.access_bindings
-		  WHERE COALESCE(role_id, '') <> ''
-		    AND subject_type IN ('service_account', 'group')`).Scan(&expressibleBindings))
-	// Группа выразима, только если её называет выдача, выразимая формой:
-	// валидатор связности требует, чтобы заведённая группа была кому-то выдана.
-	require.NoError(t, pool.QueryRow(ctx,
-		`SELECT count(*) FROM kacho_iam.groups g
-		  WHERE EXISTS (
-		        SELECT 1 FROM kacho_iam.access_bindings ab
-		         WHERE ab.subject_id = g.id
-		           AND ab.subject_type = 'group'
-		           AND COALESCE(ab.role_id, '') <> '')`).Scan(&expressibleGroups))
-	return liveGroups, expressibleGroups, liveBindings, expressibleBindings
+	rows, err := pool.Query(ctx,
+		`SELECT a.name, g.name, g.description
+		   FROM kacho_iam.groups g
+		   JOIN kacho_iam.accounts a ON a.id = g.account_id
+		  ORDER BY a.name, g.name`)
+	require.NoError(t, err)
+	defer rows.Close()
+
+	byOwner = map[string][]moduleseedparity.Group{}
+	for rows.Next() {
+		var g moduleseedparity.Group
+		require.NoError(t, rows.Scan(&g.Account, &g.Name, &g.Description))
+		total++
+
+		owner, ok := ownerOfSeededName(g.Name)
+		if !ok {
+			ownerless++
+			continue
+		}
+		byOwner[owner] = append(byOwner[owner], g)
+	}
+	require.NoError(t, rows.Err())
+	return total, byOwner, ownerless
+}
+
+// readLiveBindings читает выдачи живой базы и относит их к модулю-владельцу по
+// СУБЪЕКТУ: выдачу заводит установка того модуля, чью личность или группу она
+// наделяет. Выдача человеку владельца не имеет никогда — людей посев не заводит.
+func readLiveBindings(ctx context.Context, t *testing.T, pool *pgxpool.Pool) (
+	total int, byOwner map[string][]moduleseedparity.Binding, ownerless int,
+) {
+	t.Helper()
+	rows, err := pool.Query(ctx,
+		`SELECT ab.subject_type,
+		        COALESCE(sa.name, ''), COALESCE(g.name, ''),
+		        COALESCE(ab.role_id, ''), ab.granted_relation,
+		        ab.resource_type, ab.resource_id
+		   FROM kacho_iam.access_bindings ab
+		   LEFT JOIN kacho_iam.service_accounts sa
+		          ON sa.id = ab.subject_id AND ab.subject_type = 'service_account'
+		   LEFT JOIN kacho_iam.groups g
+		          ON g.id = ab.subject_id AND ab.subject_type = 'group'
+		  ORDER BY ab.subject_type, ab.subject_id, ab.role_id, ab.granted_relation`)
+	require.NoError(t, err)
+	defer rows.Close()
+
+	byOwner = map[string][]moduleseedparity.Binding{}
+	for rows.Next() {
+		var subjectType, saName, groupName, bareScope string
+		var b moduleseedparity.Binding
+		require.NoError(t, rows.Scan(&subjectType, &saName, &groupName,
+			&b.RoleID, &b.Relation, &bareScope, &b.ScopeID))
+		total++
+
+		// Якорь области переводится в точечную форму ТЕМ ЖЕ переводчиком, что
+		// применяет край (`domain.ScopeTypeToDotted`): своя копия перевода была
+		// бы вторым словарём об одном предмете.
+		b.ScopeType = domain.ScopeTypeToDotted(bareScope)
+
+		owner, name, ok := ownerOfBindingSubject(subjectType, saName, groupName)
+		if !ok {
+			ownerless++
+			continue
+		}
+		b.SubjectType, b.SubjectName = subjectTypeOfManifest(subjectType), name
+		byOwner[owner] = append(byOwner[owner], b)
+	}
+	require.NoError(t, rows.Err())
+	return total, byOwner, ownerless
+}
+
+// ownerOfBindingSubject — модуль-владелец выдачи по её субъекту.
+func ownerOfBindingSubject(subjectType, saName, groupName string) (owner, name string, ok bool) {
+	switch subjectType {
+	case "service_account":
+		owner, ok = ownerOfSeededName(saName)
+		return owner, saName, ok
+	case "group":
+		owner, ok = ownerOfSeededName(groupName)
+		return owner, groupName, ok
+	default:
+		// Человек и подстановочный субъект посевом модуля не заводятся вовсе.
+		return "", "", false
+	}
+}
+
+// subjectTypeOfManifest — вид субъекта в написании МАНИФЕСТА. Перевод делается
+// здесь, на чтении, один раз: сравнение по месту тащило бы два написания.
+func subjectTypeOfManifest(live string) string {
+	if live == "service_account" {
+		return moduleseedparity.SubjectTypeServiceAccount
+	}
+	return live
 }
 
 // manifestFiles — манифесты модулей, ВЫВЕДЕННЫЕ обходом каталога сервисов.
