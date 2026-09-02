@@ -81,13 +81,13 @@ func (s *fakeStore) ReplaceRuleRefs(_ context.Context, id domain.RoleID, refs []
 }
 
 // vpcManifest — манифест vpc с ролью кластерного яруса.
-func vpcManifest(t *testing.T, id, verb string) *manifest.Manifest {
+func vpcManifest(t *testing.T, id, class string) *manifest.Manifest {
 	t.Helper()
 	doc := "apiVersion: iam/v1\nmodule: vpc\nroles:\n" +
 		"  - id: " + id + "\n    name: Администратор сети\n" +
 		"    description: Распоряжается сетями модуля.\n" +
 		"    tier: {tierType: iam.cluster, tierId: cluster_kacho_root}\n" +
-		"    rules:\n      - {module: vpc, resources: [network], verbs: [" + verb + "]}\n"
+		"    rules:\n      - {module: vpc, resources: [network], classes: [" + class + "]}\n"
 	m, err := manifest.Load([]byte(doc))
 	if err != nil {
 		t.Fatalf("фикстура манифеста отвергнута: %v", err)
@@ -204,7 +204,7 @@ func TestMODRD15AForeignTierOrModuleNeverReachesTheWriter(t *testing.T) {
 	doc := "apiVersion: iam/v1\nmodule: vpc\nroles:\n" +
 		"  - id: vpc.viewer\n    name: Наблюдатель\n    description: Читает сети модуля.\n" +
 		"    tier: {tierType: iam.project, tierId: prj000000000000000}\n" +
-		"    rules:\n      - {module: vpc, resources: [network], verbs: [get]}\n"
+		"    rules:\n      - {module: vpc, resources: [network], classes: [get]}\n"
 	m, err := manifest.Load([]byte(doc))
 	if err != nil {
 		t.Fatalf("фикстура отвергнута: %v", err)
@@ -230,7 +230,7 @@ func TestApplierRefusesARoleThatTheDomainRejects(t *testing.T) {
 		"  - id: vpc.network.admin\n    name: Администратор\n" +
 		"    description: Распоряжается сетями модуля.\n" +
 		"    tier: {tierType: iam.cluster, tierId: cluster_kacho_root}\n" +
-		"    rules:\n      - {module: vpc, resources: [network], verbs: [get]}\n"
+		"    rules:\n      - {module: vpc, resources: [network], classes: [get]}\n"
 	m, err := manifest.Load([]byte(doc))
 	if err != nil {
 		t.Fatalf("фикстура отвергнута: %v", err)
