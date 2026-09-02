@@ -179,7 +179,7 @@ func compiledModuleSetUses(root string, files []string) (uses []compiledSetUse, 
 			continue
 		}
 		c.Files++
-		src, rerr := os.ReadFile(path) //nolint:gosec // путь приходит из индекса дерева
+		src, rerr := os.ReadFile(path) // #nosec G304 -- путь приходит из индекса дерева
 		if rerr != nil {
 			return nil, c, fmt.Errorf("прочитать %s: %w", path, rerr)
 		}
