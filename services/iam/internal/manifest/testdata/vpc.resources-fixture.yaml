@@ -142,7 +142,7 @@ resources:
 
 roles:
 
-  - id: vpc.internalConsumer
+  - id: vpc.internal_consumer
     name: Смежный модуль
     description: >
       Ходит в vpc на пути запроса: аллокация адресов, ссылки, привязка
@@ -153,7 +153,7 @@ roles:
         resources: [address, networkInterface, subnet]
         verbs: [get, list]
 
-  - id: vpc.addressPoolAdmin
+  - id: vpc.address_pool_admin
     name: Администратор адресного пространства
     description: Ведёт адресные пулы облака.
     tier: {tierType: iam.account, tierId: acc000000000000000}
@@ -191,7 +191,7 @@ seed:
   accessBindings:
     - subjects:
         - {type: group, name: vpc-internal-consumers}
-      roleId: vpc.internalConsumer
+      roleId: vpc.internal_consumer
       scopeType: iam.cluster
       scopeId: cluster_kacho_root
       target: allInScope
