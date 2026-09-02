@@ -121,6 +121,8 @@ func readJudgeTargetWiring(root, target string) (judgeTargetWiring, error) {
 		if !e.IsDir() {
 			continue
 		}
+		// #nosec G304 -- имя каталога пришло из перечня services/ ЭТОГО дерева, а
+		// хвост пути — константа: подставить посторонний файл извне нечем.
 		raw, rerr := os.ReadFile(filepath.Join(root, "services", e.Name(), "Makefile"))
 		if rerr != nil {
 			continue
@@ -142,6 +144,8 @@ func readJudgeTargetWiring(root, target string) (judgeTargetWiring, error) {
 		if e.IsDir() || (!strings.HasSuffix(n, ".yml") && !strings.HasSuffix(n, ".yaml")) {
 			continue
 		}
+		// #nosec G304 -- имя файла пришло из перечня .github/workflows ЭТОГО дерева,
+		// корень каталога — константа: подставить посторонний файл извне нечем.
 		raw, rerr := os.ReadFile(filepath.Join(wfDir, n))
 		if rerr != nil {
 			return w, fmt.Errorf("не прочитан %s: %w", n, rerr)
@@ -171,6 +175,8 @@ func readJudgeTargetWiring(root, target string) (judgeTargetWiring, error) {
 		w.CalledByWorkflow[svc] = uniqueStrings(w.CalledByWorkflow[svc])
 	}
 
+	// #nosec G304 -- путь склеен из корня дерева и КОНСТАНТЫ localRunnerRel;
+	// переменной части у него нет вовсе.
 	raw, rerr := os.ReadFile(filepath.Join(root, filepath.FromSlash(localRunnerRel)))
 	if rerr != nil {
 		return w, fmt.Errorf("не прочитан %s: %w", localRunnerRel, rerr)

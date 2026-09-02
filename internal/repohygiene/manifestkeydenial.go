@@ -51,6 +51,21 @@
 // Живой ключ без маркера — находка. Маркер, называющий ключ, которого манифест
 // больше не несёт, — тоже находка: послабление, которому нечего исключать,
 // унаследует следующая слепая зона.
+//
+// # ЧТЕНИЕ — ВНЕ ОБХОДА, и это не стиль
+//
+// Обход сообщает обратному вызову путь, описывающий состояние файловой системы
+// на момент `lstat`, а не на момент чтения: между ними каталог можно подменить
+// ссылкой, и чтение уйдёт наружу дерева. Поэтому обход здесь только СОБИРАЕТ
+// относительные имена, а абсолютный путь склеивается с корнем уже после него —
+// тем же порядком, каким это делает `clienttruth_treefiles.go` для своего
+// семейства.
+//
+// Держится сканером безопасности на пине конвейера: возврат к чтению внутри
+// обхода роняет джобу `gosec` анализатором G122 (файловая операция в обратном
+// вызове обхода). Подавлять G122 здесь нечем — он и есть признак того самого
+// класса, а не ложное срабатывание. G304 (путь-переменная в чтении) остаётся и
+// подавлен по месту с причиной: имя приходит из осмотренного дерева, не извне.
 package repohygiene
 
 import (
@@ -144,7 +159,7 @@ func AuditManifestKeyDenial(opts ManifestKeyDenialOptions, log io.Writer) ([]Man
 	var census ManifestKeyDenialCensus
 
 	live := map[string]bool{}
-	var docs []string
+	var manifests, docs []string
 
 	err := filepath.WalkDir(opts.Root, func(p string, d fs.DirEntry, err error) error {
 		if err != nil {
@@ -166,14 +181,7 @@ func AuditManifestKeyDenial(opts ManifestKeyDenialOptions, log io.Writer) ([]Man
 		switch {
 		case strings.HasSuffix(rel, ".go") && !strings.HasSuffix(rel, "_test.go") &&
 			(strings.HasSuffix(dir, opts.ManifestDirSuffix) || strings.Contains(dir, opts.ManifestDirSuffix+"/")):
-			raw, rderr := os.ReadFile(p)
-			if rderr != nil {
-				return rderr
-			}
-			census.ManifestFiles++
-			for _, m := range reYAMLTag.FindAllStringSubmatch(string(raw), -1) {
-				live[m[1]] = true
-			}
+			manifests = append(manifests, rel)
 		case strings.HasSuffix(rel, ".md") && strings.HasSuffix(dir, opts.AcceptanceDirSuffix):
 			docs = append(docs, rel)
 		}
@@ -181,6 +189,23 @@ func AuditManifestKeyDenial(opts ManifestKeyDenialOptions, log io.Writer) ([]Man
 	})
 	if err != nil {
 		return nil, census, fmt.Errorf("обход дерева %s: %w", opts.Root, err)
+	}
+	sort.Strings(manifests)
+
+	for _, rel := range manifests {
+		// #nosec G304 -- путь склеен из корня осматриваемого дерева и ОТНОСИТЕЛЬНОГО
+		// имени, пришедшего из обхода этого же дерева; подставить посторонний файл
+		// извне нечем.
+		raw, rderr := os.ReadFile(filepath.Join(opts.Root, filepath.FromSlash(rel)))
+		if rderr != nil {
+			// Файл, названный обходом и не прочитанный, — НАХОДКА, а не пропуск:
+			// перепись перестала бы относиться к дереву, которое она назвала.
+			return nil, census, fmt.Errorf("чтение манифеста %s: %w", rel, rderr)
+		}
+		census.ManifestFiles++
+		for _, m := range reYAMLTag.FindAllStringSubmatch(string(raw), -1) {
+			live[m[1]] = true
+		}
 	}
 	census.LiveKeys = len(live)
 	census.DocFiles = len(docs)
@@ -193,7 +218,10 @@ func AuditManifestKeyDenial(opts ManifestKeyDenialOptions, log io.Writer) ([]Man
 	}
 
 	for _, rel := range docs {
-		raw, rderr := os.ReadFile(filepath.Join(opts.Root, rel))
+		// #nosec G304 -- путь склеен из корня осматриваемого дерева и ОТНОСИТЕЛЬНОГО
+		// имени, пришедшего из обхода этого же дерева; подставить посторонний файл
+		// извне нечем.
+		raw, rderr := os.ReadFile(filepath.Join(opts.Root, filepath.FromSlash(rel)))
 		if rderr != nil {
 			return nil, census, rderr
 		}
