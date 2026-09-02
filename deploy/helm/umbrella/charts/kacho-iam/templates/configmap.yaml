@@ -201,3 +201,20 @@ data:
       # must not ship "trust anybody".
       trusted-forwarder-sans:
 {{ toYaml (.Values.config.authn.trustedForwarderSANs | default list) | indent 8 }}
+
+    # ─── Фоновые задания ──────────────────────────────────────────────────────
+    #
+    # Период обновления снимка каталога модуля (kacho#1816). Он И ЕСТЬ верхняя
+    # граница отставания снимка от базы: столько ресурс, снятый в работающем
+    # процессе, продолжает считаться живым. Величина объявляется ПРОФИЛЕМ, а не
+    # вшивается: вшитая — это решение, принятое за оператора и ему не
+    # предъявленное.
+    #
+    # Ноль здесь НЕ выключатель: выключенного обновления у снимка не бывает —
+    # снимок без обновления отстаёт бессрочно и при этом продолжает отвечать, то
+    # есть снаружи выглядит исправным. Непозитивную величину страж старта
+    # ОТВЕРГАЕТ (Config.Validate → CatalogSnapshotConfig.Validate).
+    {{- $cs := (.Values.config.jobs | default dict).catalogSnapshot | default dict }}
+    jobs:
+      catalog-snapshot:
+        refresh-interval: {{ default "1m" $cs.refreshInterval | quote }}

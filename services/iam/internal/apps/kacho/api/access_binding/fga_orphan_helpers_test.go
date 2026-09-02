@@ -18,6 +18,7 @@ import (
 	roleapp "github.com/PRO-Robotech/kacho/services/iam/internal/apps/kacho/api/role"
 	"github.com/PRO-Robotech/kacho/services/iam/internal/domain"
 	ab_repo "github.com/PRO-Robotech/kacho/services/iam/internal/repo/kacho/access_binding"
+	"github.com/PRO-Robotech/kacho/services/iam/internal/testsupport/catalogfixture"
 )
 
 // ─── ordered, deduped emitted-tuple store ────────────────────────────────────
@@ -313,7 +314,7 @@ func (w *fakeRoleWtr) ReplaceRuleRefs(context.Context, domain.RoleID, []domain.R
 // exercises the production reconcile path. fga is wired for backwards-compat
 // surface parity (not used sync).
 func newRoleUpdateUseCaseForTest(repo *abFakeRepo, opsRepo operations.Repo, _ *recordingFGA) *roleapp.UpdateRoleUseCase {
-	return roleapp.NewUpdateRoleUseCase(repo, opsRepo).
+	return roleapp.NewUpdateRoleUseCase(repo, opsRepo, catalogfixture.Source()).
 		WithTupleReconciler(NewRoleTupleReconciler())
 }
 

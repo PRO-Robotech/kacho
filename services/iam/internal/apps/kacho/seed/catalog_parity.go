@@ -34,9 +34,8 @@ import (
 	"sort"
 	"strings"
 
-	"github.com/jackc/pgx/v5/pgxpool"
-
 	"github.com/PRO-Robotech/kacho/services/iam/internal/authzmap"
+	"github.com/PRO-Robotech/kacho/services/iam/internal/catalog"
 	"github.com/PRO-Robotech/kacho/services/iam/internal/domain"
 )
 
@@ -52,6 +51,14 @@ type CatalogParityCensus struct {
 	MissingRows []string
 	// ExtraRows — есть живой строкой, нет в литерале.
 	ExtraRows []string
+	// Live — ЖИВОЕ множество, прочитанное этой сверкой.
+	//
+	// Оно отдаётся наружу затем, чтобы снимок каталога наполнялся ТЕМ ЖЕ
+	// чтением, а не своим: второй запрос об одном предмете — два места, и
+	// разойдутся они молча. Величина, которую утверждает проба `-01`, —
+	// РАВЕНСТВО операторов: за время старта со снимком их уходит ровно столько,
+	// сколько шлёт сам страж.
+	Live catalog.Rows
 }
 
 // Diverged — расхождение найдено хотя бы в одну сторону.
@@ -69,40 +76,41 @@ func (c CatalogParityCensus) Empty() bool {
 // AssertCatalogParity сверяет ЖИВЫЕ строки каталога с литералом-источником и
 // возвращает перепись вместе с исходом. Ошибка означает отказ старта.
 //
-// Читается ПУЛ, а не читающая сторона порта: та предпочитает реплику, а страж
-// исполняется на старте, когда отставание реплики наиболее вероятно.
-// Прочитанный оттуда пустой каталог дал бы отказ старта на исправной службе.
-func AssertCatalogParity(ctx context.Context, pool *pgxpool.Pool) (CatalogParityCensus, error) {
+// Строки приходят через ПОРТ, а не читаются здесь своим запросом. Причина — не
+// слоистость: этим же чтением наполняется снимок каталога (`internal/catalog`),
+// и завести ради него второй запрос об одном предмете значило бы получить два
+// места, которые разойдутся молча. Порт читает ПУЛ, а не реплику: та отстаёт, а
+// страж исполняется на старте, когда отставание наиболее вероятно, — прочитанный
+// оттуда пустой каталог дал бы отказ старта на исправной службе.
+func AssertCatalogParity(ctx context.Context, src catalog.RowSource) (CatalogParityCensus, error) {
 	var c CatalogParityCensus
 
-	wantMod := map[string]bool{}
-	for _, m := range domain.KnownModules() {
-		wantMod[m] = true
-	}
+	want := LiteralRows()
+	wantMod := setOf(want.Modules)
 	wantRes := map[string]bool{}
-	for _, r := range authzmap.CatalogSeedResources() {
-		wantRes[r.Dotted] = true
+	for _, r := range want.Resources {
+		wantRes[r.Module+"."+r.Resource] = true
 	}
 	wantVerb := map[string]bool{}
-	for _, v := range authzmap.CatalogSeedVerbs() {
+	for _, v := range want.Verbs {
 		wantVerb[v.Module+"."+v.Resource+"."+v.Verb] = true
 	}
 	c.LiteralModules, c.LiteralResources, c.LiteralVerbs = len(wantMod), len(wantRes), len(wantVerb)
 
-	gotMod, err := readCatalogSet(ctx, pool,
-		`SELECT module FROM kacho_iam.catalog_module WHERE live`)
+	live, err := src.ReadLiveCatalog(ctx)
 	if err != nil {
-		return c, fmt.Errorf("прочитать каталог модулей: %w", err)
+		return c, fmt.Errorf("прочитать каталог модуля: %w", err)
 	}
-	gotRes, err := readCatalogSet(ctx, pool,
-		`SELECT dotted FROM kacho_iam.catalog_resource WHERE live`)
-	if err != nil {
-		return c, fmt.Errorf("прочитать каталог ресурсов: %w", err)
+	c.Live = live
+
+	gotMod := setOf(live.Modules)
+	gotRes := map[string]bool{}
+	for _, r := range live.Resources {
+		gotRes[r.Module+"."+r.Resource] = true
 	}
-	gotVerb, err := readCatalogSet(ctx, pool,
-		`SELECT module || '.' || resource || '.' || verb FROM kacho_iam.catalog_verb WHERE live`)
-	if err != nil {
-		return c, fmt.Errorf("прочитать каталог глаголов: %w", err)
+	gotVerb := map[string]bool{}
+	for _, v := range live.Verbs {
+		gotVerb[v.Module+"."+v.Resource+"."+v.Verb] = true
 	}
 	c.RowModules, c.RowResources, c.RowVerbs = len(gotMod), len(gotRes), len(gotVerb)
 
@@ -129,6 +137,36 @@ func AssertCatalogParity(ctx context.Context, pool *pgxpool.Pool) (CatalogParity
 	return c, nil
 }
 
+// LiteralRows — каталог, каким его объявляет ЛИТЕРАЛ: тот же перечень, которым
+// миграция посеяла строки и с которым их сверяет страж выше.
+//
+// Производитель перечня ОДИН (`authzmap.CatalogSeed*` + `domain.KnownModules`), и
+// зовут его отсюда трое: посев миграции, гейт паритета дерева и этот страж.
+// Второй производитель разошёлся бы с первым молча — ровно в тот момент, когда
+// расхождение и опасно.
+//
+// Форма — та же `catalog.Rows`, что у живого множества, и это не совпадение: обе
+// стороны сверки обязаны быть выражены одинаково, иначе сравнение начинает
+// зависеть от того, кто как разложил свою сторону.
+func LiteralRows() catalog.Rows {
+	rows := catalog.Rows{Modules: domain.KnownModules()}
+	for _, r := range authzmap.CatalogSeedResources() {
+		rows.Resources = append(rows.Resources, catalog.ResourceRow{Module: r.Module, Resource: r.Resource})
+	}
+	for _, v := range authzmap.CatalogSeedVerbs() {
+		rows.Verbs = append(rows.Verbs, catalog.VerbRow{Module: v.Module, Resource: v.Resource, Verb: v.Verb})
+	}
+	return rows
+}
+
+func setOf(values []string) map[string]bool {
+	out := make(map[string]bool, len(values))
+	for _, v := range values {
+		out[v] = true
+	}
+	return out
+}
+
 // diffInto — расхождение в ОБЕ стороны. Одностороннее сравнение (включение)
 // молчало бы на строке, которой в литерале нет: она даёт правилу референт, по
 // которому оно резолвится, а проекция — нет.
@@ -143,21 +181,4 @@ func diffInto(missing, extra *[]string, kind string, want, got map[string]bool) 
 			*extra = append(*extra, kind+" "+k)
 		}
 	}
-}
-
-func readCatalogSet(ctx context.Context, pool *pgxpool.Pool, q string) (map[string]bool, error) {
-	rows, err := pool.Query(ctx, q)
-	if err != nil {
-		return nil, err
-	}
-	defer rows.Close()
-	out := map[string]bool{}
-	for rows.Next() {
-		var s string
-		if serr := rows.Scan(&s); serr != nil {
-			return nil, serr
-		}
-		out[s] = true
-	}
-	return out, rows.Err()
 }

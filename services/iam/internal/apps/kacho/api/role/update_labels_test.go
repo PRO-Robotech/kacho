@@ -43,6 +43,7 @@ import (
 	"github.com/PRO-Robotech/kacho/services/iam/internal/repo/kacho/user"
 	"github.com/PRO-Robotech/kacho/services/iam/internal/repo/kacho/visibility"
 	"github.com/PRO-Robotech/kacho/services/iam/internal/service"
+	"github.com/PRO-Robotech/kacho/services/iam/internal/testsupport/catalogfixture"
 )
 
 const (
@@ -93,7 +94,7 @@ func TestUpdateRole_T33_UnknownMaskField_Rejected(t *testing.T) {
 
 func TestUpdateRole_T33UPD01_LabelsChangeEmitsReconcileEvent(t *testing.T) {
 	repo := newRlUpdRepo(domain.Labels{"team": "billing"})
-	uc := NewUpdateRoleUseCase(repo, newRlFakeOps())
+	uc := NewUpdateRoleUseCase(repo, newRlFakeOps(), catalogfixture.Source())
 
 	_, err := uc.Execute(ownerCtx(), UpdateRoleInput{
 		ID:         rlUpdRoleID,
@@ -111,7 +112,7 @@ func TestUpdateRole_T33UPD01_LabelsChangeEmitsReconcileEvent(t *testing.T) {
 
 func TestUpdateRole_T33UPD01_LabelsUnchanged_NoReconcileEvent(t *testing.T) {
 	repo := newRlUpdRepo(domain.Labels{"team": "payments"})
-	uc := NewUpdateRoleUseCase(repo, newRlFakeOps())
+	uc := NewUpdateRoleUseCase(repo, newRlFakeOps(), catalogfixture.Source())
 
 	_, err := uc.Execute(ownerCtx(), UpdateRoleInput{
 		ID:         rlUpdRoleID,
