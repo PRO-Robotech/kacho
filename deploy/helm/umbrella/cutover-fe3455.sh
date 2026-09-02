@@ -92,6 +92,12 @@ die()  { printf '\033[1;31m[cutover ABORT]\033[0m %s\n' "$*" >&2; exit 1; }
 # ── 0. tools + cluster context ────────────────────────────────────────────────
 command -v helm    >/dev/null || die "helm not found in PATH"
 command -v kubectl >/dev/null || die "kubectl not found in PATH"
+# make + go: this script now PRODUCES the module-manifests ConfigMap before the
+# upgrade (step 2a). They are checked HERE, before anything is touched, so a
+# missing toolchain is a named refusal instead of a failure discovered halfway
+# through a production cutover.
+command -v make    >/dev/null || die "make not found in PATH — needed for the module-manifests ConfigMap (step 2a)"
+command -v go      >/dev/null || die "go not found in PATH — the module-manifests producer is built from source (step 2a)"
 CTX="$(kubectl config current-context 2>/dev/null || true)"
 APISERVER="$(kubectl config view --minify -o jsonpath='{.clusters[0].cluster.server}' 2>/dev/null || true)"
 log "kubectl context: ${CTX:-<none>}   apiserver: ${APISERVER:-<none>}"
@@ -344,6 +350,37 @@ case "$rb_rc" in
   *) die "заявление об откате не произведено (код $rb_rc) — читать нечего, а раскатывать
        без него значит соглашаться на откат, исход которого никто не называл." ;;
 esac
+
+# ── 3b. module manifests: the delivery ConfigMap — A PRECONDITION, NOT AN AFTER-EFFECT ─
+#
+# kacho-iam mounts a NAMED ConfigMap of module manifests and READS that directory
+# AT START-UP; an empty directory is refused, because a missing manifest is not a
+# module withdrawal (kacho#1027). So the object must exist BEFORE helm rolls the
+# pod, not after: helm below runs with `--wait --timeout 15m`, and an iam that
+# refuses to start would burn the whole window and fail the cutover.
+#
+# WHY THIS STEP EXISTS AT ALL (kacho#1909). `make dev-up` and `make stack-up` have
+# always called the producer; this script did not, and it is the ONLY path onto
+# fe3455 — `stack-up` refuses that stand outright because its chain needs the
+# out-of-tree credentials layer. The production posture was therefore the one
+# posture where module-manifest delivery could not be switched on at all.
+#
+# WHY `make`, NOT AN INLINE go run: the producer's mechanics (derive the profile
+# chain, build, apply, read the four exit codes) are ONE declaration in
+# deploy/Makefile. A second copy here would drift from it silently — and it would
+# drift on the production path, where the drift is most expensive.
+#
+# THE CHAIN READ IS THE TRACKED ONE. The gitignored credentials layer is appended
+# to helm's -f list below but NOT to the producer's: step 1a gates that layer down
+# to credential leaf-paths only, so it cannot declare `configMapName` — reading it
+# could change nothing and would make the producer depend on a file outside git.
+#
+# A stand that does NOT declare delivery is a lawful outcome, not a failure: the
+# target says so on its own exit code 3 and leaves no ConfigMap behind.
+log "module manifests: producing the delivery ConfigMap BEFORE helm (kacho#1901/#1909)…"
+make -C ../.. module-manifests-configmap MODULE_MANIFESTS_STACK=fe3455 STACK_NAMESPACE="$NS" \
+  || die "module-manifests producer failed — refusing to roll iam onto a delivery it cannot read.
+       Re-run after fixing the finding it printed above; delivery is a PRECONDITION of the upgrade."
 
 # ── 4. bitnami pg upgrade-guard --set args, read from pre-created Secrets ───────
 #    Every pg-<svc> sets auth.existingSecret, so the chart already reads the password

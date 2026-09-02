@@ -6,6 +6,8 @@ package repohygiene
 import (
 	"strings"
 	"testing"
+
+	"github.com/PRO-Robotech/kacho/pkg/platformmodules"
 )
 
 func clientDocsResourceOwnerOptions(t *testing.T) ClientDocsResourceOwnerOptions {
@@ -13,11 +15,13 @@ func clientDocsResourceOwnerOptions(t *testing.T) ClientDocsResourceOwnerOptions
 	return ClientDocsResourceOwnerOptions{
 		Root:      repoRoot(t),
 		ProtoRoot: "proto",
-		// Балансировщик — единственный домен, чей каталог контракта и имя в
-		// документации расходятся: контракт `loadbalancer`, короткое имя `nlb`.
-		// Псевдоним объявлен, а не выведен, потому что выводить его не из чего:
-		// расхождение историческое и записано в конфигурации края.
-		DomainAliases: map[string]string{"nlb": "loadbalancer"},
+		// Псевдоним не выписан, а ВЗЯТ у словаря имён модулей
+		// (pkg/platformmodules): выводить его не из чего — расхождение
+		// установлено решением, а не правилом, — но и объявлять его здесь
+		// нельзя: до #1885 то же соответствие жило пятью копиями в этом
+		// корпусе, и каждая объясняла в комментарии, почему вывести его
+		// невозможно.
+		DomainAliases: platformmodules.AliasesByService(),
 	}
 }
 
