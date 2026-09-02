@@ -23,15 +23,18 @@
 #
 #  ЧЕГО ЗДЕСЬ НЕТ, и это сказано, чтобы манифест не читался как полный.
 #
-#  Раздел `roles` этот манифест НЕ объявляет, и это не недосмотр: 14 из 18
-#  живых системных ролей модуля несут назначение короче предела прозы, который
-#  требует загрузчик, — объявить их манифестом невозможно ни при каком написании
-#  (замер и три исхода — задача продукта #1904). Первым объявленным оказался
-#  `loadbalancer`: у него таких ролей ноль. Держатель согласия объявления с живой
-#  базой уже есть и обходит ВСЕ модули:
+#  РАЗДЕЛ `roles` ЗДЕСЬ ЕСТЬ — внизу файла. Он объявляет то, что у модуля уже
+#  лежит в базе, и согласие с ней доказывается ПРОГОНОМ, а не чтением:
 #      go test ./services/iam/internal/moduleroleparity/
-#  Пока роли не объявлены, модуль стоит в его ведомости с причиной; запись
-#  снимается тем же изменением, которым раздел появится.
+#
+#  Здесь стояло «раздел `roles` этот манифест НЕ объявляет, и это не недосмотр:
+#  14 из 18 живых ролей несут назначение короче предела прозы». Утверждение было
+#  верно и снято вместе со своим ОСНОВАНИЕМ, а не обойдено: предел выносил
+#  приговор по длине имени типа (`Admin RouteTable` 16 знаков проходило,
+#  `Edit RouteTable` 15 — нет) и делал 27 живых ролей из 42 невыразимыми ни при
+#  каком написании. Величина предела и довод обеими сторонами —
+#  `services/iam/internal/manifest/roles.go`, `minRoleDescriptionRunes` (#1904).
+#  Ведомость гейта ПУСТА: объявили все четыре модуля с живыми ролями.
 #
 #  Раздел `seed` не объявлен НИ ОДНИМ манифестом дерева: посев модулей пишут
 #  применённые миграции, и его согласие с живой базой ещё никем не сверяется.
@@ -157,3 +160,232 @@ resources:
       - list
       - update
       - delete
+
+# --------------------------------------------------------------------------
+#  roles — системные роли модуля, объявленные ДАННЫМИ (#1891, #1904).
+#
+#  Писатель этих строк — применитель манифеста, а не миграция: он приводит
+#  `kacho_iam.roles` к объявленному здесь состоянию. Согласие объявления с живой
+#  базой держит ПРОГОН, а не чтение:
+#      go test ./services/iam/internal/moduleroleparity/
+#  Гейт поднимает Postgres, играет цепочку миграций дерева и сравнивает строки
+#  с тем, что произвёл бы применитель ИЗ ЭТОГО раздела. Расхождение по
+#  идентификатору, назначению либо праву — находка с именем роли.
+#
+#  Почему `description` по-английски и почему его нельзя «причесать»: текст
+#  сверяется с живой строкой ДОСЛОВНО. Применитель пишет его как есть, поэтому
+#  правка здесь — правка того, что читает арендатор, выбирая роль; она идёт
+#  своим решением и своей миграцией, а не попутно с объявлением. Ровно поэтому
+#  предел длины назначения равен ОДНОМУ знаку, а не шестнадцати, как у прочей
+#  прозы манифеста: длина выносила приговор по длине имени типа и делала
+#  двадцать семь живых ролей из сорока двух невыразимыми (#1904).
+#
+#  Почему правила перечислены В ЭТОМ порядке и не отсортированы: `rules` —
+#  упорядоченное поле хранимой формы, и применитель кладёт его дословно.
+#  Пересортировав, объявление разошлось бы со строкой, ничего не изменив по
+#  существу. По той же причине `classes` у чтения записаны `[list, get]`, а не
+#  `[get, list]`: так их написала применённая миграция.
+#
+#  Ключ права — `classes`; `verbs` снят и отвергается явно. Подстановка `"*"`
+#  законна ровно потому, что роль системная: у неё она значит «все классы типа».
+# --------------------------------------------------------------------------
+
+roles:
+
+  - id: vpc.address.admin
+    name: Полное распоряжение адресами
+    description: "Admin Address"
+    tier:
+      tierType: iam.cluster
+      tierId: cluster_kacho_root
+    rules:
+      - module: vpc
+        resources: [address]
+        classes: ["*"]
+
+  - id: vpc.address.edit
+    name: Правка адресами
+    description: "Edit Address"
+    tier:
+      tierType: iam.cluster
+      tierId: cluster_kacho_root
+    rules:
+      - module: vpc
+        resources: [address]
+        classes: [get, list, update]
+
+  - id: vpc.address.view
+    name: Чтение адресами
+    description: "Read Address"
+    tier:
+      tierType: iam.cluster
+      tierId: cluster_kacho_root
+    rules:
+      - module: vpc
+        resources: [address]
+        classes: [list, get]
+
+  - id: vpc.gateway.admin
+    name: Полное распоряжение шлюзами
+    description: "Admin Gateway"
+    tier:
+      tierType: iam.cluster
+      tierId: cluster_kacho_root
+    rules:
+      - module: vpc
+        resources: [gateway]
+        classes: ["*"]
+
+  - id: vpc.gateway.edit
+    name: Правка шлюзами
+    description: "Edit Gateway"
+    tier:
+      tierType: iam.cluster
+      tierId: cluster_kacho_root
+    rules:
+      - module: vpc
+        resources: [gateway]
+        classes: [get, list, update]
+
+  - id: vpc.gateway.view
+    name: Чтение шлюзами
+    description: "Read Gateway"
+    tier:
+      tierType: iam.cluster
+      tierId: cluster_kacho_root
+    rules:
+      - module: vpc
+        resources: [gateway]
+        classes: [list, get]
+
+  - id: vpc.network.admin
+    name: Полное распоряжение сетями
+    description: "Admin Network"
+    tier:
+      tierType: iam.cluster
+      tierId: cluster_kacho_root
+    rules:
+      - module: vpc
+        resources: [network]
+        classes: ["*"]
+
+  - id: vpc.network.edit
+    name: Правка сетями
+    description: "Edit Network"
+    tier:
+      tierType: iam.cluster
+      tierId: cluster_kacho_root
+    rules:
+      - module: vpc
+        resources: [network]
+        classes: [get, list, update]
+
+  - id: vpc.network.view
+    name: Чтение сетями
+    description: "Read Network"
+    tier:
+      tierType: iam.cluster
+      tierId: cluster_kacho_root
+    rules:
+      - module: vpc
+        resources: [network]
+        classes: [list, get]
+
+  - id: vpc.route_table.admin
+    name: Полное распоряжение таблицами маршрутизации
+    description: "Admin RouteTable"
+    tier:
+      tierType: iam.cluster
+      tierId: cluster_kacho_root
+    rules:
+      - module: vpc
+        resources: [routeTable]
+        classes: ["*"]
+
+  - id: vpc.route_table.edit
+    name: Правка таблицами маршрутизации
+    description: "Edit RouteTable"
+    tier:
+      tierType: iam.cluster
+      tierId: cluster_kacho_root
+    rules:
+      - module: vpc
+        resources: [routeTable]
+        classes: [get, list, update]
+
+  - id: vpc.route_table.view
+    name: Чтение таблицами маршрутизации
+    description: "Read RouteTable"
+    tier:
+      tierType: iam.cluster
+      tierId: cluster_kacho_root
+    rules:
+      - module: vpc
+        resources: [routeTable]
+        classes: [list, get]
+
+  - id: vpc.security_group.admin
+    name: Полное распоряжение группами безопасности
+    description: "Admin SecurityGroup"
+    tier:
+      tierType: iam.cluster
+      tierId: cluster_kacho_root
+    rules:
+      - module: vpc
+        resources: [securityGroup]
+        classes: ["*"]
+
+  - id: vpc.security_group.edit
+    name: Правка группами безопасности
+    description: "Edit SecurityGroup"
+    tier:
+      tierType: iam.cluster
+      tierId: cluster_kacho_root
+    rules:
+      - module: vpc
+        resources: [securityGroup]
+        classes: [get, list, update]
+
+  - id: vpc.security_group.view
+    name: Чтение группами безопасности
+    description: "Read SecurityGroup"
+    tier:
+      tierType: iam.cluster
+      tierId: cluster_kacho_root
+    rules:
+      - module: vpc
+        resources: [securityGroup]
+        classes: [list, get]
+
+  - id: vpc.subnet.admin
+    name: Полное распоряжение подсетями
+    description: "Admin Subnet"
+    tier:
+      tierType: iam.cluster
+      tierId: cluster_kacho_root
+    rules:
+      - module: vpc
+        resources: [subnet]
+        classes: ["*"]
+
+  - id: vpc.subnet.edit
+    name: Правка подсетями
+    description: "Edit Subnet"
+    tier:
+      tierType: iam.cluster
+      tierId: cluster_kacho_root
+    rules:
+      - module: vpc
+        resources: [subnet]
+        classes: [get, list, update]
+
+  - id: vpc.subnet.view
+    name: Чтение подсетями
+    description: "Read Subnet"
+    tier:
+      tierType: iam.cluster
+      tierId: cluster_kacho_root
+    rules:
+      - module: vpc
+        resources: [subnet]
+        classes: [list, get]
