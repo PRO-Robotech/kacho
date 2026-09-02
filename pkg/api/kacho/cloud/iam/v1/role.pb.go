@@ -127,11 +127,23 @@ type Role struct {
 	// the verb; e.g. `verb_notes["delete*"]` explains the editor delete-qualifier.
 	// Output-only derived.
 	VerbNotes map[string]string `protobuf:"bytes,19,rep,name=verb_notes,json=verbNotes,proto3" json:"verb_notes,omitempty" protobuf_key:"bytes,1,opt,name=key" protobuf_val:"bytes,2,opt,name=value"`
-	// Human-facing display name (redesign-2026 F6) — the friendly catalog label
-	// (e.g. "Viewer"). Output-only; for a custom role it defaults to `name`.
+	// Display name of a CANONICAL role (redesign-2026 F6) — the label of the four
+	// catalog names and of nothing else: `view` -> "Viewer", `edit` -> "Editor",
+	// `admin` -> "Admin", `owner` -> "Owner". Output-only.
+	//
+	// For every OTHER role this field equals `name`, and that is the contract
+	// rather than a gap. A role declared by a module manifest reads back its own
+	// identifier here (`vpc.address.admin`), exactly as a custom role does. The
+	// human prose of such a role is carried by `description`: the module author
+	// writes it in the module manifest, and it reaches this response unchanged.
+	// A second carrier for the same prose is deliberately not introduced (#1925).
 	DisplayName string `protobuf:"bytes,20,opt,name=display_name,json=displayName,proto3" json:"display_name,omitempty"`
-	// Human-facing purpose (redesign-2026 F6) — a one-line description of what the
-	// role is for. Output-only; empty for a custom role.
+	// Purpose of a CANONICAL role (redesign-2026 F6) — a one-line statement of
+	// what the role is for, held by the same catalog of four names. Output-only.
+	//
+	// EMPTY for every other role, a module role included, and the empty value
+	// means "this catalog has no entry for that role" — not "the role has no
+	// purpose". A module role states its purpose in `description` (#1925).
 	Purpose       string `protobuf:"bytes,21,opt,name=purpose,proto3" json:"purpose,omitempty"`
 	unknownFields protoimpl.UnknownFields
 	sizeCache     protoimpl.SizeCache
