@@ -60,7 +60,6 @@ import (
 	"fmt"
 	"log/slog"
 	"os"
-	"path/filepath"
 
 	"github.com/PRO-Robotech/kacho/services/iam/internal/apps/kacho/seed"
 	"github.com/PRO-Robotech/kacho/services/iam/internal/manifest"
@@ -165,9 +164,25 @@ func checkRights(root string, paths []string) int {
 		return exitNotRun
 	}
 
+	// Второе чтение идёт ПОД КОРНЕМ и тем же читателем, что и обход. Путь сюда
+	// принёс обход, а между записью каталога и этим открытием лежит окно: в нём
+	// любой сегмент подменяется ссылкой наружу, и чтение ПО ИМЕНИ уходит за
+	// корень, не заметив этого. Через os.Root каждый сегмент разрешает ядро
+	// относительно корня, поэтому свойство держится построением, а не тем, что
+	// вызывающий о нём помнит. Читатель один на всех: вторая реализация
+	// разошлась бы с первой молча — и разошлась бы именно там, где расхождение
+	// не видно, потому что обе дают «прочитано» на честном дереве.
+	treeRoot, err := os.OpenRoot(root)
+	if err != nil {
+		fmt.Fprintf(os.Stderr,
+			"проверка прав НЕ ИСПОЛНЯЛАСЬ: корень обхода не открыт: %v\n", err)
+		return exitNotRun
+	}
+	defer func() { _ = treeRoot.Close() }()
+
 	code := manifest.CheckOK
 	for _, rel := range paths {
-		data, err := os.ReadFile(filepath.Join(root, filepath.FromSlash(rel)))
+		data, err := manifest.ReadUnderRoot(treeRoot, rel)
 		if err != nil {
 			fmt.Fprintf(os.Stderr, "НАХОДКА: %s: повторное чтение: %v\n", rel, err)
 			code = manifest.CheckFailed

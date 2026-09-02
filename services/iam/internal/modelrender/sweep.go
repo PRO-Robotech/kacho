@@ -188,7 +188,20 @@ func Sweep(root string, waivers []Waiver) (Census, []Finding, int) {
 		census.BlocksOwned += len(owned[module])
 	}
 
-	found, unparsable, ferr := findManifests(root)
+	// Корень открывается ОДИН раз на весь обход и служит ГРАНИЦЕЙ чтения обоим
+	// читателям манифеста — тому, что ищет их, и тому, что сверяет блоки.
+	// Путь им приносит обход, а между записью каталога и открытием лежит окно:
+	// в нём любой сегмент подменяется ссылкой наружу, и чтение ПО ИМЕНИ уходит
+	// за корень, не заметив этого. Через os.Root каждый сегмент разрешает ядро
+	// относительно корня, поэтому граница держится построением, а не тем, что
+	// читатель о ней помнит.
+	treeRoot, oerr := os.OpenRoot(root)
+	if oerr != nil {
+		return census, []Finding{{Detail: "корень обхода не открыт: " + oerr.Error()}}, SweepFinding
+	}
+	defer func() { _ = treeRoot.Close() }()
+
+	found, unparsable, ferr := findManifests(treeRoot, root)
 	if ferr != nil {
 		return census, []Finding{{Detail: "обход дерева отказал: " + ferr.Error()}}, SweepFinding
 	}
@@ -237,7 +250,7 @@ func Sweep(root string, waivers []Waiver) (Census, []Finding, int) {
 				"запись ведомости пережила свой предмет: манифест приехал (%s), прощать нечего — "+
 					"снимите запись", path)})
 		}
-		fs, cmp := compareModule(module, path, canon, owned[module])
+		fs, cmp := compareModule(treeRoot, root, module, path, canon, owned[module])
 		findings = append(findings, fs...)
 		census.BlocksCompared += cmp.BlocksCompared
 		census.BytesCompared += cmp.BytesCompared
@@ -268,11 +281,21 @@ func Sweep(root string, waivers []Waiver) (Census, []Finding, int) {
 // Сторона у такой находки — «канон сверх порождённого»: право есть в модели и не
 // имеет источника в манифесте. Перегенерация из манифеста ОТНЯЛА БЫ его, и потому
 // исход именно находка, а не умолчание.
-func compareModule(module, path string, canon map[string]Block, owned []string) ([]Finding, Census) {
+func compareModule(treeRoot *os.Root, root, module, path string,
+	canon map[string]Block, owned []string) ([]Finding, Census) {
 	var findings []Finding
 	var census Census
 
-	raw, err := os.ReadFile(path) // #nosec G304 -- путь порождён обходом дерева
+	// Тот же читатель и та же граница, что у поиска: путь принёс обход, и
+	// читать его ПО ИМЕНИ нельзя по той же причине (окно между записью
+	// каталога и открытием). Вторая реализация чтения разошлась бы с первой
+	// молча — обе дают «прочитано» на честном дереве.
+	rel, relErr := filepath.Rel(root, path)
+	if relErr != nil {
+		return []Finding{{Module: module, Detail: "путь манифеста не приведён к корню: " +
+			relErr.Error()}}, census
+	}
+	raw, err := manifest.ReadUnderRoot(treeRoot, filepath.ToSlash(rel))
 	if err != nil {
 		return []Finding{{Module: module, Detail: "манифест не прочитан: " + err.Error()}}, census
 	}
@@ -425,9 +448,10 @@ func firstDivergence(rendered, canon []byte) string {
 // Форму документа здесь никто не судит второй раз — это предмет одного
 // исполнителя (`make -C services/iam module-manifest-check`). Здесь он лишь не
 // вправе быть засчитан ни модулем, ни его отсутствием.
-func findManifests(root string) (map[string]string, []string, error) {
+func findManifests(treeRoot *os.Root, root string) (map[string]string, []string, error) {
 	out := map[string]string{}
 	var unparsable []string
+
 	err := filepath.WalkDir(root, func(path string, d fs.DirEntry, err error) error {
 		if err != nil {
 			return err
@@ -444,9 +468,22 @@ func findManifests(root string) (map[string]string, []string, error) {
 		if d.Name() != "manifest.yaml" {
 			return nil
 		}
-		raw, rerr := os.ReadFile(path) // #nosec G304 -- путь порождён обходом дерева
+		// Непрочитанный документ уходит в ТУ ЖЕ корзину, что и неразобранный, и
+		// по той же причине: он назвался манифестом и манифестом не стал,
+		// значит не вправе быть засчитан НИ модулем, НИ его отсутствием. Обрыв
+		// всего обхода на одном файле дал бы вместо этого перепись, которой
+		// нет вовсе, — а «ноль прочитанного» неотличимо от «ноль находок».
+		// Читатель — общий с обходом проверки: вторая реализация разошлась бы
+		// с первой молча.
+		rel, relErr := filepath.Rel(root, path)
+		if relErr != nil {
+			unparsable = append(unparsable, path)
+			return nil
+		}
+		raw, rerr := manifest.ReadUnderRoot(treeRoot, filepath.ToSlash(rel))
 		if rerr != nil {
-			return rerr
+			unparsable = append(unparsable, path)
+			return nil
 		}
 		m, lerr := manifest.Load(raw)
 		if lerr != nil {
