@@ -57,13 +57,13 @@ import (
 	kachopg "github.com/PRO-Robotech/kacho/services/iam/internal/repo/kacho/pg"
 )
 
-// probeModule — модуль, на котором ставятся сценарии применителя.
+// applierProbeModule — модуль, на котором ставятся сценарии применителя.
 //
 // Синтетический и НЕ член платформенного набора намеренно: сценарии снятия на
 // поставляемом модуле трогали бы строки, на которые ссылаются посеянные системные
 // роли, и отвергались бы ЧУЖОЙ ссылкой — то есть зеленели бы, даже если бы
 // применитель не записал ничего.
-const probeModule = "probemod"
+const applierProbeModule = "probemod"
 
 // probeManifest — манифест синтетического модуля, собранный В ПАМЯТИ.
 //
@@ -71,7 +71,7 @@ const probeModule = "probemod"
 // отвергает (действие с точкой в имени), и подавать его файлом значило бы
 // заводить в дереве заведомо негодный манифест, который найдёт следующий обход.
 func probeManifest(resources ...manifest.Resource) *manifest.Manifest {
-	return &manifest.Manifest{APIVersion: "iam/v1", Module: probeModule, Resources: resources}
+	return &manifest.Manifest{APIVersion: "iam/v1", Module: applierProbeModule, Resources: resources}
 }
 
 func probeResource(name string, verbs ...string) manifest.Resource {
@@ -255,7 +255,7 @@ func TestModuleCatalogWithdrawalOrderIsHeldByTheKey(t *testing.T) {
 
 	roleID := catalogRole(t, ctx, pool, "mcorder")
 	require.NoError(t, writeRuleRefs(t, ctx, repo, roleID,
-		[]domain.RoleRuleRef{{Module: probeModule, Resource: "gamma", Verb: "get"}}))
+		[]domain.RoleRuleRef{{Module: applierProbeModule, Resource: "gamma", Verb: "get"}}))
 
 	// ПЕРЕСТАНОВКА: снять раньше, чем переселить. Тот же оператор снятия, что и у
 	// применителя, — но без предшествующего переселения.
@@ -267,7 +267,7 @@ func TestModuleCatalogWithdrawalOrderIsHeldByTheKey(t *testing.T) {
 			UPDATE kacho_iam.catalog_verb SET retired_at = now(), live = false,
 			       retired_reason = 'перестановка шагов'
 			 WHERE module = $1 AND resource = $2 AND verb = $3 AND live`,
-			probeModule, "gamma", "get"); eerr != nil {
+			applierProbeModule, "gamma", "get"); eerr != nil {
 			return eerr
 		}
 		return tx.Commit(ctx)
@@ -290,7 +290,7 @@ func TestModuleCatalogWithdrawalOrderIsHeldByTheKey(t *testing.T) {
 	require.NoError(t, pool.QueryRow(ctx, `
 		SELECT count(*) FROM kacho_iam.role_grant_orphan
 		 WHERE role_id = $1 AND object_type = $2 AND verb = $3 AND source = 'rule_ref'`,
-		string(roleID), probeModule+".gamma", "get").Scan(&orphans))
+		string(roleID), applierProbeModule+".gamma", "get").Scan(&orphans))
 	require.Equal(t, 1, orphans, "снятое объявление не записано в сироты — право отобрано молча")
 }
 
@@ -314,15 +314,15 @@ func TestModuleCatalogApplierRefusesToStripASystemRole(t *testing.T) {
 	// `is_system` НЕ перечислен: он вычисляемый (`cluster_id IS NOT NULL`), и
 	// присвоение ему значения отвергается сервером. Системность здесь ставится
 	// якорем кластера — тем же способом, каким её ставит платформа.
-	roleID := "role_mc_sys_" + strings.ReplaceAll(probeModule, "-", "")
+	roleID := "role_mc_sys_" + strings.ReplaceAll(applierProbeModule, "-", "")
 	_, err = pool.Exec(ctx, `
 		INSERT INTO roles (id, cluster_id, name, description, permissions)
 		VALUES ($1, (SELECT id FROM kacho_iam.clusters LIMIT 1), $2, $3, '["iam.users.*.read"]'::jsonb)`,
-		roleID, probeModule+".probe", "probe system role")
+		roleID, applierProbeModule+".probe", "probe system role")
 	require.NoError(t, err)
 	_, err = pool.Exec(ctx, `
 		INSERT INTO kacho_iam.role_rule_ref (role_id, module, resource, verb)
-		VALUES ($1, $2, $3, $4)`, roleID, probeModule, "delta", "get")
+		VALUES ($1, $2, $3, $4)`, roleID, applierProbeModule, "delta", "get")
 	require.NoError(t, err)
 
 	before := stateFingerprint(t, ctx, pool)
@@ -429,11 +429,11 @@ func TestModuleCatalogApplierLeavesUnappliedModulesAlone(t *testing.T) {
 		{"глагол", before.verbs, after.verbs},
 	} {
 		for key := range other.was {
-			if strings.HasPrefix(key, probeModule) {
+			if strings.HasPrefix(key, applierProbeModule) {
 				continue
 			}
 			require.Truef(t, other.now[key],
-				"применение манифеста %s унесло чужую строку (%s %s)", probeModule, other.kind, key)
+				"применение манифеста %s унесло чужую строку (%s %s)", applierProbeModule, other.kind, key)
 		}
 	}
 
@@ -458,26 +458,26 @@ func TestModuleCatalogApplierRoundTripsAModule(t *testing.T) {
 
 	_, err := applier.Apply(ctx, full)
 	require.NoError(t, err)
-	installed := moduleCensus(t, ctx, pool, probeModule)
+	installed := moduleCensus(t, ctx, pool, applierProbeModule)
 
 	shrunk, err := applier.Apply(ctx, probeManifest(probeResource("theta", "get")))
 	require.NoError(t, err)
 	t.Logf("сужение: %s", shrunk)
 	require.Positive(t, shrunk.RetiredResources+shrunk.RetiredVerbs,
 		"сужение не сняло ни строки: сравнивать нечего")
-	require.NotEqual(t, installed, moduleCensus(t, ctx, pool, probeModule))
+	require.NotEqual(t, installed, moduleCensus(t, ctx, pool, applierProbeModule))
 
 	restored, err := applier.Apply(ctx, full)
 	require.NoError(t, err)
 	t.Logf("восстановление: %s", restored)
-	require.Equal(t, installed, moduleCensus(t, ctx, pool, probeModule),
+	require.Equal(t, installed, moduleCensus(t, ctx, pool, applierProbeModule),
 		"повторная установка вернула не то множество, которое было снято")
 
 	// Оживление, а не вставка: строк с этим модулем ровно столько, сколько было.
 	var rows int
 	require.NoError(t, pool.QueryRow(ctx,
 		`SELECT count(*) FROM kacho_iam.catalog_resource WHERE module = $1`,
-		probeModule).Scan(&rows))
+		applierProbeModule).Scan(&rows))
 	require.Equal(t, 2, rows, "снятая строка не ожила, а завелась второй")
 }
 
