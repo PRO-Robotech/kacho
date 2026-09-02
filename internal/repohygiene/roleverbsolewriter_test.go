@@ -59,13 +59,26 @@ import (
 // roleVerbTable — проекция «роль → тип объекта × глагол».
 const roleVerbTable = "kacho_iam.role_verb"
 
-// roleVerbMutations — глаголы ЗАПИСИ. Чтение (`SELECT … FROM`) в перечень не
-// входит намеренно: читателей у таблицы два, оба считают строки, и оба обязаны
-// остаться законными — они и служат близнецом, на котором гейт молчит.
-var roleVerbMutations = []string{
-	"INSERT INTO " + roleVerbTable,
-	"UPDATE " + roleVerbTable,
-	"DELETE FROM " + roleVerbTable,
+// roleRuleRefTable — проекция ОБЪЯВЛЕННЫХ сегментов правила (kacho#1030).
+//
+// ВТОРАЯ проекция того же объявления, и свойство единственного писателя обязано
+// прийти вместе с ней: решение #1028 закрыто наполовину, если новая таблица его
+// не наследует. Предмет у таблиц разный (та несёт резолвящееся, эта — каждый
+// объявленный сегмент), а требование к писателю — одно.
+const roleRuleRefTable = "kacho_iam.role_rule_ref"
+
+// roleProjectionTables — таблицы, у каждой из которых писатель обязан быть один.
+var roleProjectionTables = []string{roleVerbTable, roleRuleRefTable}
+
+// mutationsOf — глаголы ЗАПИСИ. Чтение (`SELECT … FROM`) в перечень не
+// входит намеренно: читателей у таблицы несколько, все считают строки, и все
+// обязаны остаться законными — они и служат близнецом, на котором гейт молчит.
+func mutationsOf(table string) []string {
+	return []string{
+		"INSERT INTO " + table,
+		"UPDATE " + table,
+		"DELETE FROM " + table,
+	}
 }
 
 // roleVerbWriterLayer — слой, которому принадлежит SQL проекции. Писатель вне
@@ -89,6 +102,11 @@ type roleVerbWrite struct {
 // встречается и в комментариях — в том числе в комментариях, ОБЪЯСНЯЮЩИХ эту
 // самую проверку, — и гейт по подстроке краснел бы на собственном объяснении.
 func roleVerbWritesIn(filename, src string) ([]roleVerbWrite, int, error) {
+	return projectionWritesIn(filename, src, roleVerbTable)
+}
+
+// projectionWritesIn — то же для ЛЮБОЙ из таблиц проекции.
+func projectionWritesIn(filename, src, table string) ([]roleVerbWrite, int, error) {
 	fset := token.NewFileSet()
 	file, err := parser.ParseFile(fset, filename, src, 0)
 	if err != nil {
@@ -122,7 +140,7 @@ func roleVerbWritesIn(filename, src string) ([]roleVerbWrite, int, error) {
 		if !ok || lit.Kind != token.STRING {
 			return true
 		}
-		if !strings.Contains(lit.Value, roleVerbTable) {
+		if !strings.Contains(lit.Value, table) {
 			return true
 		}
 		mentions++
@@ -134,7 +152,7 @@ func roleVerbWritesIn(filename, src string) ([]roleVerbWrite, int, error) {
 				break
 			}
 		}
-		for _, verb := range roleVerbMutations {
+		for _, verb := range mutationsOf(table) {
 			if strings.Contains(upper, strings.ToUpper(verb)) {
 				writes = append(writes, roleVerbWrite{Func: owner, Verb: verb})
 			}
@@ -147,6 +165,17 @@ func roleVerbWritesIn(filename, src string) ([]roleVerbWrite, int, error) {
 // TestIAMRV112_RoleVerbProjectionHasASoleWriter — в непроверочном коде Go ровно
 // ОДНА функция пишет проекцию роли, и лежит она в слое репозитория.
 func TestIAMRV112_RoleVerbProjectionHasASoleWriter(t *testing.T) {
+	// Таблиц ДВЕ (kacho#1030, требование Т5 приёмки
+	// rule-segments-have-a-referent): у каждой проекции одного и того же
+	// объявления писатель обязан быть один. Подпроба на таблицу, а не один
+	// проход по обеим: перепись обязана печататься по КАЖДОЙ, иначе «писателей
+	// один» на суммарном счёте зеленело бы при двух и нуле.
+	for _, table := range roleProjectionTables {
+		t.Run(table, func(t *testing.T) { soleWriterOf(t, table) })
+	}
+}
+
+func soleWriterOf(t *testing.T, table string) {
 	root := repoRoot(t)
 	out, err := gitenv.Command(root, "ls-files", "-z", "--", "*.go").Output()
 	if err != nil {
@@ -171,10 +200,10 @@ func TestIAMRV112_RoleVerbProjectionHasASoleWriter(t *testing.T) {
 		}
 		filesRead++
 		body := string(b)
-		if !strings.Contains(body, roleVerbTable) {
+		if !strings.Contains(body, table) {
 			continue
 		}
-		writes, m, perr := roleVerbWritesIn(rel, body)
+		writes, m, perr := projectionWritesIn(rel, body, table)
 		if perr != nil {
 			t.Fatalf("разбор %s: %v — файл индекса не разобран, и его молчание ничего не значит", rel, perr)
 		}
@@ -189,7 +218,7 @@ func TestIAMRV112_RoleVerbProjectionHasASoleWriter(t *testing.T) {
 	}
 
 	t.Logf("осмотрено непроверочных файлов Go: %d; литералов, называющих %s: %d; "+
-		"функций-писателей найдено: %d", filesRead, roleVerbTable, mentions, len(writerKeys))
+		"функций-писателей найдено: %d", filesRead, table, mentions, len(writerKeys))
 
 	if filesRead == 0 {
 		t.Fatal("осмотрено ноль файлов — гейт не читал дерева, и его молчание ничего не значит")
@@ -200,7 +229,7 @@ func TestIAMRV112_RoleVerbProjectionHasASoleWriter(t *testing.T) {
 	// за «нарушений нет»: инъекция подаёт вход сама и исчезновения предмета не видит.
 	if mentions == 0 {
 		t.Fatalf("имя %q не встречается в непроверочном коде НИ РАЗУ — предмета у гейта нет: "+
-			"либо таблица переименована, либо её перестали читать и писать", roleVerbTable)
+			"либо таблица переименована, либо её перестали читать и писать", table)
 	}
 
 	if len(writerKeys) != 1 {

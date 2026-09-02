@@ -142,3 +142,73 @@ func TestIAMRV112_LayerPredicateSeparatesRepoFromSeed(t *testing.T) {
 			"вакуумна", inSeed)
 	}
 }
+
+// ── ВТОРАЯ таблица проекции (kacho#1030, требование Т5) ──────────────────────
+//
+// Расширение охвата обязано быть доказано ЗАНОВО: перепись, сошедшаяся с
+// прежней, о способности краснеть на НОВОЙ таблице не говорит ничего. Пробы
+// ниже подают тот же синтетический вход, но по второй таблице, и требуют от
+// признака того же — красноты на записи и молчания на чтении.
+
+// ruleRefWriteVerbsOf — то же, что writeVerbsOf, но по таблице сегментов.
+func ruleRefWriteVerbsOf(t *testing.T, src string) []string {
+	t.Helper()
+	writes, _, err := projectionWritesIn("zz_injection.go", src, roleRuleRefTable)
+	if err != nil {
+		t.Fatalf("разбор синтетики: %v", err)
+	}
+	out := make([]string, 0, len(writes))
+	for _, w := range writes {
+		out = append(out, w.Func+" → "+w.Verb)
+	}
+	return out
+}
+
+func TestIAMCT105_InjectionRedOnASecondRuleRefWriter(t *testing.T) {
+	src := `package seed
+
+func reseedRuleRefsTx(ctx context.Context, tx pgxExecer, roleID string) error {
+	if _, err := tx.Exec(ctx, ` + "`DELETE FROM kacho_iam.role_rule_ref WHERE role_id = $1`" + `, roleID); err != nil {
+		return err
+	}
+	_, err := tx.Exec(ctx, ` + "`INSERT INTO kacho_iam.role_rule_ref (role_id, module, resource) VALUES ($1,$2,$3)`" + `)
+	return err
+}`
+	got := ruleRefWriteVerbsOf(t, src)
+	if len(got) != 2 {
+		t.Fatalf("второй писатель ВТОРОЙ проекции обязан находиться обоими операторами; "+
+			"найдено: %v", got)
+	}
+	for _, g := range got {
+		if !strings.Contains(g, "reseedRuleRefsTx") {
+			t.Fatalf("находка обязана называть функцию, а не только оператор: %q", g)
+		}
+	}
+}
+
+func TestIAMCT105_InjectionSilentOnARuleRefReader(t *testing.T) {
+	src := `package relverdict
+
+func rulesRefsOfRole(ctx context.Context, q pgxQuerier, roleID string) (int, error) {
+	var n int
+	err := q.QueryRow(ctx, ` + "`SELECT count(*) FROM kacho_iam.role_rule_ref WHERE role_id = $1`" + `, roleID).Scan(&n)
+	return n, err
+}`
+	if got := ruleRefWriteVerbsOf(t, src); len(got) != 0 {
+		t.Fatalf("ЧТЕНИЕ второй проекции законно и обязано молчать — читателей у неё будет "+
+			"несколько; найдено: %v", got)
+	}
+}
+
+func TestIAMCT105_InjectionSilentOnTheOtherProjection(t *testing.T) {
+	src := `package pg
+
+func replaceRoleVerbs(ctx context.Context, tx pgxExecer) error {
+	_, err := tx.Exec(ctx, ` + "`INSERT INTO kacho_iam.role_verb (role_id, object_type, verb) VALUES ($1,$2,$3)`" + `)
+	return err
+}`
+	if got := ruleRefWriteVerbsOf(t, src); len(got) != 0 {
+		t.Fatalf("признак второй таблицы обязан судить ТОЛЬКО её: иначе расширение охвата "+
+			"смешало бы две популяции и находка называла бы не тот предмет; найдено: %v", got)
+	}
+}
