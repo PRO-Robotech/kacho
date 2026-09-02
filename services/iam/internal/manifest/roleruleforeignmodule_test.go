@@ -37,7 +37,7 @@ import (
 // roleRuleModuleFixture — манифест модуля `vpc` с одной ролью своего модуля;
 // модуль ПРАВИЛА подставляется.
 const roleRuleModuleFixture = "apiVersion: iam/v1\nmodule: vpc\nroles:\n" +
-	"  - id: vpc.superuser\n    name: Распорядитель\n" +
+	"  - id: vpc.superuser\n" +
 	"    description: Распоряжается ресурсами проекта.\n" +
 	"    tier: {tierType: iam.project, tierId: prj000000000000000}\n" +
 	"    rules:\n      - {module: %s, resources: [network], classes: [get]}\n"

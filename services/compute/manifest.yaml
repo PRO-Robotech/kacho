@@ -142,7 +142,6 @@ resources:
 roles:
 
   - id: compute.instance.admin
-    name: Полное распоряжение машинами
     description: "Admin Instance"
     tier:
       tierType: iam.cluster
@@ -153,7 +152,6 @@ roles:
         classes: ["*"]
 
   - id: compute.instance.edit
-    name: Правка машинами
     description: "Edit Instance"
     tier:
       tierType: iam.cluster
@@ -164,7 +162,6 @@ roles:
         classes: [get, list, update]
 
   - id: compute.instance.view
-    name: Чтение машинами
     description: "Read Instance"
     tier:
       tierType: iam.cluster

@@ -34,7 +34,7 @@ import (
 // clusterRoleDoc — манифест vpc с одной ролью заданного идентификатора и яруса.
 func clusterRoleDoc(id, tierType, tierID string) []byte {
 	return []byte("apiVersion: iam/v1\nmodule: vpc\nroles:\n" +
-		"  - id: " + id + "\n    name: Администратор сети\n" +
+		"  - id: " + id + "\n" +
 		"    description: Распоряжается сетями модуля.\n" +
 		"    tier: {tierType: " + tierType + ", tierId: " + tierID + "}\n" +
 		"    rules:\n      - {module: vpc, resources: [network], classes: [get]}\n")

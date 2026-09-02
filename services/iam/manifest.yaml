@@ -786,7 +786,6 @@ resources:
 roles:
 
   - id: iam.access_binding.admin
-    name: Полное распоряжение привязками доступа
     description: "Admin AccessBinding"
     tier:
       tierType: iam.cluster
@@ -797,7 +796,6 @@ roles:
         classes: ["*"]
 
   - id: iam.access_binding.edit
-    name: Правка привязками доступа
     description: "Edit AccessBinding"
     tier:
       tierType: iam.cluster
@@ -808,7 +806,6 @@ roles:
         classes: [get, list, update]
 
   - id: iam.access_binding.view
-    name: Чтение привязками доступа
     description: "Read AccessBinding"
     tier:
       tierType: iam.cluster
@@ -819,7 +816,6 @@ roles:
         classes: [list, get]
 
   - id: iam.account.admin
-    name: Полное распоряжение аккаунтами
     description: "Admin Account (CRUD)"
     tier:
       tierType: iam.cluster
@@ -830,7 +826,6 @@ roles:
         classes: ["*"]
 
   - id: iam.account.edit
-    name: Правка аккаунтами
     description: "Edit Account (update only)"
     tier:
       tierType: iam.cluster
@@ -841,7 +836,6 @@ roles:
         classes: [get, list, update]
 
   - id: iam.account.view
-    name: Чтение аккаунтами
     description: "Read Account"
     tier:
       tierType: iam.cluster
@@ -852,7 +846,6 @@ roles:
         classes: [list, get]
 
   - id: iam.group.admin
-    name: Полное распоряжение группами
     description: "Admin Group"
     tier:
       tierType: iam.cluster
@@ -863,7 +856,6 @@ roles:
         classes: ["*"]
 
   - id: iam.group.edit
-    name: Правка группами
     description: "Edit Group"
     tier:
       tierType: iam.cluster
@@ -874,7 +866,6 @@ roles:
         classes: [get, list, update]
 
   - id: iam.group.view
-    name: Чтение группами
     description: "Read Group"
     tier:
       tierType: iam.cluster
@@ -885,7 +876,6 @@ roles:
         classes: [list, get]
 
   - id: iam.project.admin
-    name: Полное распоряжение проектами
     description: "Admin Project"
     tier:
       tierType: iam.cluster
@@ -896,7 +886,6 @@ roles:
         classes: ["*"]
 
   - id: iam.project.edit
-    name: Правка проектами
     description: "Edit Project"
     tier:
       tierType: iam.cluster
@@ -907,7 +896,6 @@ roles:
         classes: [get, list, update]
 
   - id: iam.project.view
-    name: Чтение проектами
     description: "Read Project"
     tier:
       tierType: iam.cluster
@@ -918,7 +906,6 @@ roles:
         classes: [list, get]
 
   - id: iam.role.admin
-    name: Полное распоряжение каталогом ролей
     description: "Admin Role catalog"
     tier:
       tierType: iam.cluster
@@ -929,7 +916,6 @@ roles:
         classes: ["*"]
 
   - id: iam.role.edit
-    name: Правка каталогом ролей
     description: "Edit Role"
     tier:
       tierType: iam.cluster
@@ -940,7 +926,6 @@ roles:
         classes: [list, update]
 
   - id: iam.role.view
-    name: Чтение каталогом ролей
     description: "Read Role"
     tier:
       tierType: iam.cluster
@@ -951,7 +936,6 @@ roles:
         classes: [list]
 
   - id: iam.service_account.admin
-    name: Полное распоряжение служебными учётками
     description: "Admin ServiceAccount"
     tier:
       tierType: iam.cluster
@@ -962,7 +946,6 @@ roles:
         classes: ["*"]
 
   - id: iam.service_account.edit
-    name: Правка служебными учётками
     description: "Edit ServiceAccount"
     tier:
       tierType: iam.cluster
@@ -973,7 +956,6 @@ roles:
         classes: [get, list, update]
 
   - id: iam.service_account.view
-    name: Чтение служебными учётками
     description: "Read ServiceAccount"
     tier:
       tierType: iam.cluster
@@ -984,7 +966,6 @@ roles:
         classes: [list, get]
 
   - id: iam.user.view
-    name: Чтение пользователями
     description: "Read User"
     tier:
       tierType: iam.cluster

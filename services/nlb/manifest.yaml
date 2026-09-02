@@ -187,7 +187,6 @@ resources:
 roles:
 
   - id: loadbalancer.operator
-    name: Оператор балансировщика
     description: "NLB operator (start/stop/getTargetStates/listOperations + viewer on LB hierarchy)"
     tier:
       tierType: iam.cluster
@@ -204,7 +203,6 @@ roles:
         classes: [get, list]
 
   - id: loadbalancer.target_manager
-    name: Распорядитель состава групп целей
     description: "NLB target manager (addTargets/removeTargets/getTargetStates + viewer on LB hierarchy)"
     tier:
       tierType: iam.cluster

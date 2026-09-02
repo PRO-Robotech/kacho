@@ -415,7 +415,7 @@ func TestMODMF07UnknownSectionIsRefusedExplicitly(t *testing.T) {
 	// отрицание зеленело бы на загрузчике, отвергающем всякий раздел.
 	described := "apiVersion: iam/v1\nmodule: vpc\n" +
 		"resources:\n  - {name: network, objectType: vpc_network, parents: [project], producer: derived, verbs: [get]}\n" +
-		"roles:\n  - id: vpc.viewer\n    name: Наблюдатель\n    description: Читает топологию проекта.\n" +
+		"roles:\n  - id: vpc.viewer\n    description: Читает топологию проекта.\n" +
 		"    tier: {tierType: iam.project, tierId: prj000000000000000}\n" +
 		"    rules:\n      - {module: vpc, resources: [network], classes: [get]}\n" +
 		"deprecatedVerbs:\n  read: {class: get, since: \"2026-08-23\", reason: синоним чтения из прежней грамматики, removeWhen: выдач с таким правом ноль}\n" +
