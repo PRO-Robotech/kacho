@@ -42,11 +42,12 @@ import (
 	"go/ast"
 	"go/parser"
 	"go/token"
-	"io/fs"
 	"os"
 	"path/filepath"
 	"strconv"
 	"strings"
+
+	"github.com/PRO-Robotech/kacho/internal/treecorpus"
 )
 
 // rulePolicyTypeName — имя типа политики. Часть предпосылки гейта: тип
@@ -81,7 +82,8 @@ type RulePolicyCensus struct {
 	Derivers  int
 }
 
-// ScanRulePolicySites обходит каталог домена и собирает места сборки политики.
+// ScanRulePolicySites берёт состав каталога домена У ИНДЕКСА git и собирает
+// места сборки политики.
 //
 // Пробные файлы ИСКЛЮЧЕНЫ: проба вправе собрать любую политику — она проверяет
 // поведение, а не объявляет его. Включи их — и гейт запретил бы пробу нулевого
@@ -91,22 +93,27 @@ func ScanRulePolicySites(root string) ([]RulePolicySite, RulePolicyCensus, error
 		sites  []RulePolicySite
 		census RulePolicyCensus
 	)
+	// Состав берётся у ИНДЕКСА git, а не у диска. Обход по диску под
+	// `services/` подбирает то, что лежит на всякой машине, где поднимали стенд
+	// либо собирали фронтенд, — и вердикт становится свойством машины, а не
+	// коммита. Два обхода поддерева уже оказались дефектными по этой причине.
 	dir := filepath.Join(root, filepath.FromSlash(rulePolicyScanRoot))
-	err := filepath.WalkDir(dir, func(path string, d fs.DirEntry, err error) error {
-		if err != nil {
-			return err
+	files, err := treecorpus.UnderWithSuffix(dir, ".go")
+	if err != nil {
+		return nil, census, err
+	}
+	for _, path := range files {
+		if strings.HasSuffix(path, "_test.go") {
+			continue
 		}
-		if d.IsDir() || !strings.HasSuffix(path, ".go") || strings.HasSuffix(path, "_test.go") {
-			return nil
-		}
-		src, rerr := os.ReadFile(path) //nolint:gosec // путь из обхода дерева
+		src, rerr := os.ReadFile(path)
 		if rerr != nil {
-			return rerr
+			return nil, census, rerr
 		}
 		fset := token.NewFileSet()
 		file, perr := parser.ParseFile(fset, path, src, parser.SkipObjectResolution)
 		if perr != nil {
-			return perr
+			return nil, census, perr
 		}
 		census.FilesRead++
 		rel := filepath.ToSlash(strings.TrimPrefix(path, root+string(filepath.Separator)))
@@ -135,10 +142,6 @@ func ScanRulePolicySites(root string) ([]RulePolicySite, RulePolicyCensus, error
 			}
 			return true
 		})
-		return nil
-	})
-	if err != nil {
-		return nil, census, err
 	}
 	return sites, census, nil
 }

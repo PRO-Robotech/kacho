@@ -24,6 +24,8 @@ import (
 	"path/filepath"
 	"strings"
 	"testing"
+
+	"github.com/PRO-Robotech/kacho/internal/gitenv"
 )
 
 // rulePolicyFixture — синтетическое дерево с каталогом домена.
@@ -35,13 +37,33 @@ func rulePolicyFixture(t *testing.T, files map[string]string) string {
 	root := t.TempDir()
 	for rel, body := range files {
 		full := filepath.Join(root, filepath.FromSlash(rel))
-		if err := os.MkdirAll(filepath.Dir(full), 0o755); err != nil {
+		if err := os.MkdirAll(filepath.Dir(full), 0o750); err != nil {
 			t.Fatalf("подготовить каталог %s: %v", rel, err)
 		}
 		if err := os.WriteFile(full, []byte(body), 0o600); err != nil {
 			t.Fatalf("записать %s: %v", rel, err)
 		}
 	}
+
+	// Состав гейт берёт у ИНДЕКСА, значит синтетика обязана быть
+	// РЕПОЗИТОРИЕМ, а не каталогом. Репозиторий заводится ВНУТРИ `t.TempDir()`
+	// и своим окружением: `git init`/`git add`, исполненные в каталоге,
+	// лежащем внутри родительского репозитория, писали бы в ЕГО индекс —
+	// класс «непри­косновенность чужого состояния», уже стоивший четырёх
+	// ложных красных вердиктов.
+	git := func(args ...string) {
+		t.Helper()
+		cmd := gitenv.Command(root, args...)
+		cmd.Env = append(cmd.Env,
+			"GIT_AUTHOR_NAME=t", "GIT_AUTHOR_EMAIL=t@example.invalid",
+			"GIT_COMMITTER_NAME=t", "GIT_COMMITTER_EMAIL=t@example.invalid")
+		if out, err := cmd.CombinedOutput(); err != nil {
+			t.Fatalf("git %s: %v\n%s", strings.Join(args, " "), err, out)
+		}
+	}
+	git("init", "-q")
+	git("add", "-A")
+	git("commit", "-qm", "синтетика инъекции")
 	return root
 }
 
