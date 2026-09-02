@@ -128,7 +128,7 @@ func (u *CreateRoleUseCase) Execute(ctx context.Context, r domain.Role) (*operat
 	// so a malformed rule surfaces its specific error (A-05/A-10/A-13) rather than a
 	// misleading compiled-cap message. Only a well-formed rule set is then compiled;
 	// the compiler enforces the ≤1024 compiled-cap (A-12).
-	if verr := r.Rules.Validate(r.IsSystem); verr != nil {
+	if verr := r.Rules.Validate(domain.PolicyOfRole(r.IsSystem, r.OwnerModule)); verr != nil {
 		return nil, shared.MapValidationErr(verr)
 	}
 	// Grantable-token gate: the resource segment must be a PUBLISHED

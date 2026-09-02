@@ -34,6 +34,18 @@ type Role struct {
 	// rules-roles. Legacy permissions-only roles (no Rules) keep their stored set.
 	Permissions Permissions
 	IsSystem    bool
+	// OwnerModule — модуль, которому роль принадлежит. Пусто у ПЛАТФОРМЕННОЙ
+	// роли (admin/edit/view/owner, kacho-system.*), непусто у роли, объявленной
+	// манифестом этого модуля.
+	//
+	// Носит ровно ОДИН смысл — владение, — и потому отделяет послабление
+	// подстановки от кластерного якоря: `IsSystem` продолжает означать «арендатор
+	// эту роль не правит» и больше не означает «этой роли можно подставлять
+	// звёздочку». Политика выводится из пары ОДНИМ местом — [PolicyOfRole].
+	//
+	// Наружу не проецируется: `Role` публичного контракта этой колонки не несёт
+	// (задача продукта #1032, тип изменения — ВВОДЯЩЕЕ, без нового поля API).
+	OwnerModule string
 	CreatedAt   time.Time
 	// CreatedByUserID — authoring principal (governance/audit). Optional.
 	CreatedByUserID UserID
@@ -52,8 +64,9 @@ type Role struct {
 // authority) OR a legacy compiled Permissions set (back-compat read of
 // pre-rules roles).
 //
-// When Rules is set (a rules-role) it is validated through Rules.Validate
-// (system-context = IsSystem) and the compiled Permissions projection is validated
+// When Rules is set (a rules-role) it is validated through Rules.Validate with
+// the policy derived from the row ([PolicyOfRole] of IsSystem + OwnerModule) and
+// the compiled Permissions projection is validated
 // for the 4-seg grammar + cap ONLY — NOT the ≥1 lower bound (ValidateCompiled): a
 // label-only role (all rules ARM_LABELS) compiles to an EMPTY permission set by
 // design and must be accepted. The ≥1 floor is retained for the LEGACY
@@ -69,7 +82,7 @@ func (r Role) Validate() error {
 	errs = multierr.Append(errs, r.Description.Validate())
 	errs = multierr.Append(errs, r.Labels.Validate())
 	if len(r.Rules) > 0 {
-		errs = multierr.Append(errs, r.Rules.Validate(r.IsSystem))
+		errs = multierr.Append(errs, r.Rules.Validate(PolicyOfRole(r.IsSystem, r.OwnerModule)))
 		// Rules-role: the compiled set may legitimately be empty (label-only).
 		errs = multierr.Append(errs, r.Permissions.ValidateCompiled())
 	} else {

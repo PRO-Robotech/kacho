@@ -300,7 +300,11 @@ func compareModule(treeRoot *os.Root, root, module, path string,
 	if err != nil {
 		return []Finding{{Module: module, Detail: "манифест не прочитан: " + err.Error()}}, census
 	}
-	m, err := manifest.Load(raw)
+	// Референт — КАНОН: существование типа судит эта самая функция ниже
+	// («манифест порождает тип, которого в каноне НЕТ»), и спросить о нём
+	// загрузчика значило бы спросить у закрытой таблицы, которую из этих же
+	// манифестов и порождают (задача #1930).
+	m, err := manifest.LoadWithReferent(raw, manifest.ReferentCanon)
 	if err != nil {
 		return []Finding{{Module: module, Detail: "манифест не разобран: " + err.Error()}}, census
 	}
@@ -486,7 +490,7 @@ func findManifests(treeRoot *os.Root, root string) (map[string]string, []string,
 			unparsable = append(unparsable, path)
 			return nil
 		}
-		m, lerr := manifest.Load(raw)
+		m, lerr := manifest.LoadWithReferent(raw, manifest.ReferentCanon)
 		if lerr != nil {
 			unparsable = append(unparsable, path)
 			return nil

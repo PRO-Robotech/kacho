@@ -230,6 +230,15 @@ type SubjectRef struct {
 // бы шагом, который вызывающий вправе забыть, и манифест с выдачей на
 // несуществующую роль уехал бы дальше, получив «годен».
 func Load(data []byte) (*Manifest, error) {
+	return LoadWithReferent(data, ReferentShippedTable)
+}
+
+// LoadWithReferent — та же загрузка, но referent называет ВЫЗЫВАЮЩИЙ.
+//
+// Предикат один; разница ровно в том, судит ли загрузчик существование типа
+// объекта сам. Почему референтов два и почему это не два места об одном
+// предмете — [TypeReferent].
+func LoadWithReferent(data []byte, referent TypeReferent) (*Manifest, error) {
 	var root yaml.Node
 	if err := yaml.Unmarshal(data, &root); err != nil {
 		return nil, fmt.Errorf("%w: %w", ErrShape, err)
@@ -275,7 +284,7 @@ func Load(data []byte) (*Manifest, error) {
 
 	// Разделы судятся В ПОРЯДКЕ ДОКУМЕНТА, и находки собираются ВСЕ: названная
 	// первая заставила бы автора чинить их по одной, по прогону на каждую.
-	faults := validateResources(&m, doc)
+	faults := validateResources(&m, doc, referent)
 	faults = append(faults, validateRoles(&m, doc)...)
 	faults = append(faults, validateDeprecatedVerbs(&m, doc)...)
 

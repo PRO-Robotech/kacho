@@ -326,7 +326,7 @@ func validateRoles(m *Manifest, doc *yaml.Node) []error {
 			})
 		}
 		for j, rule := range role.Rules {
-			if err := rule.DomainRule().Validate(false); err != nil {
+			if err := rule.DomainRule().Validate(domain.TenantPolicy()); err != nil {
 				faults = append(faults, linkFault{
 					kind:   ErrRoleRuleInvalid,
 					coord:  locate(doc, "roles", i, "rules", j),
