@@ -105,7 +105,7 @@ module: vpc
 resources:
   - name: network
     objectType: vpc_network
-    parent: project
+    parents: [project]
     producer: derived
     verbs: [get, list, create, update, delete, {name: listOperations, class: get}]
 roles:
