@@ -314,3 +314,51 @@ func stripSQLComments(s string) string {
 	}
 	return b.String()
 }
+
+// ─────────────────────────────────────────────────────────────────────────────
+// ЯРУСНАЯ ПОЛОВИНА СЛОВАРЯ (задача #1863)
+//
+// Половин у словаря глаголов две, и посеяны они РАЗНЫМИ миграциями: пообъектная
+// — 20260901113757, ярусная — 20260902062000. Иначе быть не могло: первая
+// применена и правке не подлежит (запрет #5).
+//
+// Отсюда и гейтов два, а не один расширенный: каждый сверяет СВОЙ текст со СВОЕЙ
+// половиной перечня, а перечень у обоих один — `authzmap.CatalogSeedVerbs()`.
+// Свести их в один значило бы склеить два тела и потерять ответ на вопрос
+// «какая миграция разошлась».
+
+// tierOnlyVerbSeedPrefix — оператор посева ярусной половины. Форма кортежа у
+// него ЧЕТЫРЁХПОЛЬНАЯ: признак словаря стоит значением, а не умолчанием, —
+// строка, положенная умолчанием `true`, была бы пообъектной и вернула бы
+// материализацию снятого отношения.
+const tierOnlyVerbSeedPrefix = "INSERT INTO kacho_iam.catalog_verb (module, resource, verb, per_object) VALUES"
+
+// auditTierOnlyVerbSeed — сверка ярусного посева с литералом, в ОБЕ стороны.
+//
+// Проверяются ДВЕ вещи, и вторая не выводится из первой: множество троек и
+// ЗНАЧЕНИЕ признака у каждой. Кортеж с `true` прошёл бы сверку множеств и означал
+// бы ровно обратное тому, ради чего заведён.
+func auditTierOnlyVerbSeed(body string, want []string) (seeded int, findings []string, err error) {
+	rows, err := parseSeedBlock(body, tierOnlyVerbSeedPrefix)
+	if err != nil {
+		return 0, nil, err
+	}
+	got := map[string]bool{}
+	for _, r := range rows {
+		if len(r) != 4 {
+			findings = append(findings, "посев ярусного глагола: кортеж не из четырёх полей: "+
+				strings.Join(r, "|"))
+			continue
+		}
+		if r[3] != "false" {
+			findings = append(findings, fmt.Sprintf(
+				"посев ярусного глагола %s.%s.%s: признак словаря %q, а не false — "+
+					"пообъектная строка вернула бы материализацию снятого отношения",
+				r[0], r[1], r[2], r[3]))
+			continue
+		}
+		got[r[0]+"."+r[1]+"."+r[2]] = true
+	}
+	findings = append(findings, symmetricDiff("ярусный глагол", setOf(want), got)...)
+	return len(got), findings, nil
+}

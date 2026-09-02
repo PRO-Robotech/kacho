@@ -197,6 +197,7 @@ func TestIAMCT104_CatalogSeedMatchesTheLiteralBothWays(t *testing.T) {
 
 	wantRes := map[string]bool{}
 	wantVerb := map[string]bool{}
+	wantTier := map[string]bool{}
 	wantMod := map[string]bool{}
 	for _, m := range domain.KnownModules() {
 		wantMod[m] = true
@@ -209,21 +210,40 @@ func TestIAMCT104_CatalogSeedMatchesTheLiteralBothWays(t *testing.T) {
 			wantVerb[e.Module+"."+e.Resource+"."+v] = true
 		}
 	}
+	// Половин у словаря глаголов ДВЕ (#1863), и сверяются они порознь: слитая
+	// сверка молчала бы на строке, перетёкшей из одной в другую, — а перетекание
+	// в ПООБЪЕКТНУЮ и есть возврат снятого отношения.
+	for _, v := range authzmap.CatalogSeedVerbs() {
+		if v.PerObject {
+			continue
+		}
+		wantTier[v.Module+"."+v.Resource+"."+v.Verb] = true
+	}
 	require.NotEmpty(t, wantRes, "литерал пуст — утверждение равенства было бы вакуумным")
+	require.NotEmpty(t, wantTier, "ярусная половина литерала пуста — вторая сверка была бы вакуумной")
 
 	gotRes := readSet(t, ctx, pool,
 		`SELECT dotted FROM kacho_iam.catalog_resource WHERE live`)
 	gotVerb := readSet(t, ctx, pool,
-		`SELECT module || '.' || resource || '.' || verb FROM kacho_iam.catalog_verb WHERE live`)
+		`SELECT module || '.' || resource || '.' || verb FROM kacho_iam.catalog_verb
+		  WHERE live AND per_object`)
+	gotTier := readSet(t, ctx, pool,
+		`SELECT module || '.' || resource || '.' || verb FROM kacho_iam.catalog_verb
+		  WHERE live AND NOT per_object`)
 	gotMod := readSet(t, ctx, pool,
 		`SELECT module FROM kacho_iam.catalog_module WHERE live`)
 
-	t.Logf("осмотрено: литерал — модулей %d, ресурсов %d, пар %d; посев — модулей %d, ресурсов %d, пар %d",
-		len(wantMod), len(wantRes), len(wantVerb), len(gotMod), len(gotRes), len(gotVerb))
+	t.Logf("осмотрено: литерал — модулей %d, ресурсов %d, пообъектных пар %d, ярусных %d; "+
+		"посев — модулей %d, ресурсов %d, пообъектных пар %d, ярусных %d",
+		len(wantMod), len(wantRes), len(wantVerb), len(wantTier),
+		len(gotMod), len(gotRes), len(gotVerb), len(gotTier))
 
 	require.Equal(t, keysOf(wantMod), keysOf(gotMod), "catalog_module ≠ domain.KnownModules()")
 	require.Equal(t, keysOf(wantRes), keysOf(gotRes), "catalog_resource ≠ authzmap.Catalog()")
-	require.Equal(t, keysOf(wantVerb), keysOf(gotVerb), "catalog_verb ≠ typeVerbRelations")
+	require.Equal(t, keysOf(wantVerb), keysOf(gotVerb),
+		"пообъектная половина catalog_verb ≠ typeVerbRelations")
+	require.Equal(t, keysOf(wantTier), keysOf(gotTier),
+		"ярусная половина catalog_verb ≠ ярусной половине CatalogSeedVerbs()")
 }
 
 // ─────────────────────────────────────────────────────────────────────────────

@@ -190,3 +190,101 @@ func containsSub(xs []string, sub string) bool {
 	}
 	return false
 }
+
+// ── ярусная половина словаря (задача продукта #1863) ──────────────────────────
+//
+// Осей четыре, и по каждой прогон в ОБЕ стороны: контроль молчит, инъекция
+// краснеет. Четвёртая ось — своя у этого гейта и без неё он был бы вдвое слабее
+// сверки множеств: признак словаря стоит ЗНАЧЕНИЕМ, и кортеж с `true` прошёл бы
+// сверку троек, означая ровно обратное тому, ради чего строка заведена.
+
+// goodTierOnlySeed — синтетический ярусный посев, согласный со своим литералом.
+const goodTierOnlySeed = `
+INSERT INTO kacho_iam.catalog_verb (module, resource, verb, per_object) VALUES
+  ('alpha', 'thing', 'create', false),
+  ('beta', 'other', 'create', false);
+`
+
+var wantTierOnly = []string{"alpha.thing.create", "beta.other.create"}
+
+func TestTierOnly_Injection_ControlIsSilent(t *testing.T) {
+	seeded, findings, err := auditTierOnlyVerbSeed(goodTierOnlySeed, wantTierOnly)
+	if err != nil {
+		t.Fatalf("контроль обязан разбираться: %v", err)
+	}
+	t.Logf("осмотрено ярусных пар: %d", seeded)
+	if seeded != len(wantTierOnly) {
+		t.Fatalf("контроль обязан прочитать все пары; прочитано %d из %d", seeded, len(wantTierOnly))
+	}
+	if len(findings) != 0 {
+		t.Fatalf("контроль обязан молчать, найдено: %v", findings)
+	}
+}
+
+func TestTierOnly_Injection_RowMissingFromSeedIsFound(t *testing.T) {
+	_, findings, err := auditTierOnlyVerbSeed(goodTierOnlySeed,
+		append(append([]string{}, wantTierOnly...), "gamma.third.create"))
+	if err != nil {
+		t.Fatalf("разбор: %v", err)
+	}
+	if !containsSub(findings, "gamma.third.create") || !containsSub(findings, "не посеян миграцией") {
+		t.Fatalf("ресурс, которому литерал даёт ярусный глагол, а миграция нет, обязан быть "+
+			"находкой: правило роли на нём продолжает отвергаться ключом; получено: %v", findings)
+	}
+}
+
+func TestTierOnly_Injection_RowBeyondTheLiteralIsFound(t *testing.T) {
+	_, findings, err := auditTierOnlyVerbSeed(goodTierOnlySeed, []string{"alpha.thing.create"})
+	if err != nil {
+		t.Fatalf("разбор: %v", err)
+	}
+	if !containsSub(findings, "beta.other.create") || !containsSub(findings, "нет в литерале") {
+		t.Fatalf("посев сверх литерала обязан быть находкой — ключ пропускал бы глагол, "+
+			"о котором производитель не знает; получено: %v", findings)
+	}
+}
+
+// TestTierOnly_Injection_PerObjectFlagIsTheSubject — ЧЕТВЁРТАЯ ось.
+//
+// Тройка та же, множества сходятся — и строка при этом означает противоположное:
+// пообъектная строка `create` возвращает материализацию отношения, снятого с 23
+// типов осознанно. Сверка множеств этого не видит by construction.
+func TestTierOnly_Injection_PerObjectFlagIsTheSubject(t *testing.T) {
+	bad := strings.Replace(goodTierOnlySeed,
+		"('beta', 'other', 'create', false)", "('beta', 'other', 'create', true)", 1)
+	_, findings, err := auditTierOnlyVerbSeed(bad, wantTierOnly)
+	if err != nil {
+		t.Fatalf("разбор: %v", err)
+	}
+	if !containsSub(findings, "признак словаря") {
+		t.Fatalf("кортеж с пообъектным признаком обязан быть находкой: тройка та же, "+
+			"смысл обратный; получено: %v", findings)
+	}
+}
+
+// TestTierOnly_Injection_LegitimateTwinIsSilent — ЗАКОННЫЙ БЛИЗНЕЦ той же формы.
+//
+// Без него гейт ловил бы форму, а не существо: четырёхпольный кортеж с `false` —
+// нормальная строка ярусной половины, и на ней гейт обязан молчать, каким бы ни
+// был её модуль.
+func TestTierOnly_Injection_LegitimateTwinIsSilent(t *testing.T) {
+	twin := strings.Replace(goodTierOnlySeed,
+		"('beta', 'other', 'create', false)", "('gamma', 'third', 'create', false)", 1)
+	_, findings, err := auditTierOnlyVerbSeed(twin,
+		[]string{"alpha.thing.create", "gamma.third.create"})
+	if err != nil {
+		t.Fatalf("разбор: %v", err)
+	}
+	if len(findings) != 0 {
+		t.Fatalf("законный близнец обязан молчать, найдено: %v", findings)
+	}
+}
+
+func TestTierOnly_Injection_EmptySeedIsNotSilence(t *testing.T) {
+	empty := "INSERT INTO kacho_iam.catalog_verb (module, resource, verb, per_object) VALUES\n-- посева нет\n"
+	_, _, err := auditTierOnlyVerbSeed(empty, wantTierOnly)
+	if err == nil {
+		t.Fatal("пустой обход обязан быть ОТКАЗОМ, а не «расхождений нет»: " +
+			"иначе «ноль находок» неотличимо от «ноль прочитанного»")
+	}
+}

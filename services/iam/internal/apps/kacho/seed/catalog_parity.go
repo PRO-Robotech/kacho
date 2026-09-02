@@ -93,7 +93,7 @@ func AssertCatalogParity(ctx context.Context, src catalog.RowSource) (CatalogPar
 	}
 	wantVerb := map[string]bool{}
 	for _, v := range want.Verbs {
-		wantVerb[v.Module+"."+v.Resource+"."+v.Verb] = true
+		wantVerb[verbKey(v)] = true
 	}
 	c.LiteralModules, c.LiteralResources, c.LiteralVerbs = len(wantMod), len(wantRes), len(wantVerb)
 
@@ -110,7 +110,7 @@ func AssertCatalogParity(ctx context.Context, src catalog.RowSource) (CatalogPar
 	}
 	gotVerb := map[string]bool{}
 	for _, v := range live.Verbs {
-		gotVerb[v.Module+"."+v.Resource+"."+v.Verb] = true
+		gotVerb[verbKey(v)] = true
 	}
 	c.RowModules, c.RowResources, c.RowVerbs = len(gotMod), len(gotRes), len(gotVerb)
 
@@ -154,9 +154,26 @@ func LiteralRows() catalog.Rows {
 		rows.Resources = append(rows.Resources, catalog.ResourceRow{Module: r.Module, Resource: r.Resource})
 	}
 	for _, v := range authzmap.CatalogSeedVerbs() {
-		rows.Verbs = append(rows.Verbs, catalog.VerbRow{Module: v.Module, Resource: v.Resource, Verb: v.Verb})
+		rows.Verbs = append(rows.Verbs, catalog.VerbRow{
+			Module: v.Module, Resource: v.Resource, Verb: v.Verb, PerObject: v.PerObject,
+		})
 	}
 	return rows
+}
+
+// verbKey — ключ сверки строки глагола, несущий ПРИЗНАК СЛОВАРЯ.
+//
+// Признак входит в ключ намеренно: строка, посеянная с неверным признаком,
+// существует в обоих множествах и по тройке (модуль, ресурс, глагол) сверку
+// прошла бы молча — а разошлись бы при этом ровно те две величины, ради которых
+// словари и разделены: что ключ пропускает и что материализуется. Так
+// расхождение видно с ОБЕИХ сторон — «нет строкой» и «нет в литерале» разом.
+func verbKey(v catalog.VerbRow) string {
+	kind := " (ярусный)"
+	if v.PerObject {
+		kind = " (пообъектный)"
+	}
+	return v.Module + "." + v.Resource + "." + v.Verb + kind
 }
 
 func setOf(values []string) map[string]bool {

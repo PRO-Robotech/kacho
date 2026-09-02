@@ -190,3 +190,83 @@ func TestIAMCT2_02_EmptyRowsAreNotASnapshot(t *testing.T) {
 		t.Fatalf("непустые строки отвергнуты: %v", err)
 	}
 }
+
+// ─────────────────────────────────────────────────────────────────────────────
+// Ярусная строка в набор глаголов типа НЕ входит (задача продукта #1863)
+
+// TestTierOnlyRowNeverEntersTheVerbSetOfItsType — обе стороны различия.
+//
+// Строка ярусной половины словаря живёт в каталоге ради КЛЮЧА объявления
+// правила: по ней резолвится `role_rule_ref_verb_fk`, и без неё документированный
+// пример роли (`verbs: ["create", "list"]`) отвергается. Но в набор глаголов ТИПА
+// она входить не вправе: по нему материализуются кортежи, и одна такая строка
+// вернула бы `v_create`, снятый с 23 типов осознанно.
+//
+// Проба подаёт ОДНУ и ту же тройку дважды, различая только признак, — иначе
+// «create отсутствует» зеленело бы на факте, который не знает такой пары вовсе.
+func TestTierOnlyRowNeverEntersTheVerbSetOfItsType(t *testing.T) {
+	const dotted = "vpc.network"
+	fgaType, ok := authzmap.FGAObjectType(dotted)
+	if !ok {
+		t.Fatalf("переходник не знает %q — проба была бы вакуумна", dotted)
+	}
+
+	rows := catalog.Rows{
+		Modules:   []string{"vpc"},
+		Resources: []catalog.ResourceRow{{Module: "vpc", Resource: "network"}},
+		Verbs: []catalog.VerbRow{
+			{Module: "vpc", Resource: "network", Verb: "get", PerObject: true},
+			{Module: "vpc", Resource: "network", Verb: "create"},
+		},
+	}
+	f, err := catalog.NewFacts(rows)
+	if err != nil {
+		t.Fatalf("снимок: %v", err)
+	}
+
+	got := f.VerbsOfType(fgaType)
+	t.Logf("осмотрено строк глаголов: %d; набор типа %q: %v", len(rows.Verbs), fgaType, got)
+
+	// Положительный контроль: пообъектная строка ДОХОДИТ. Без него утверждение
+	// ниже зеленело бы на факте, который не отдаёт ничего.
+	if !containsVerb(got, "get") {
+		t.Fatalf("пообъектная строка обязана входить в набор типа; получено %v", got)
+	}
+	if containsVerb(got, "create") {
+		t.Errorf("ярусная строка попала в набор типа %q: набор типа — то, по чему "+
+			"материализуются кортежи, и одна такая строка возвращает снятое отношение; "+
+			"получено %v", fgaType, got)
+	}
+
+	// Та же величина с другой стороны: словари объединения и пересечения строятся
+	// из наборов типов, и ярусной строки в них тоже быть не должно — иначе
+	// подстановка `*` развернулась бы в неё у якоря без собственного набора.
+	if containsVerb(f.AllVerbVocabulary(), "create") {
+		t.Errorf("ярусная строка попала в объединение словарей: подстановка `*` "+
+			"развернулась бы в неё; получено %v", f.AllVerbVocabulary())
+	}
+	if containsVerb(f.CommonVerbVocabulary(), "create") {
+		t.Errorf("ярусная строка попала в пересечение словарей; получено %v",
+			f.CommonVerbVocabulary())
+	}
+
+	// И то, ради чего признак заведён: правило, назвавшее ярусный глагол, не даёт
+	// пообъектного кортежа, а названный рядом пообъектный — даёт.
+	granted := f.GrantedVerbs(fgaType, []string{"create", "get"}, got)
+	if containsVerb(granted, "create") {
+		t.Errorf("правило с ярусным глаголом дало пообъектную пару: %v", granted)
+	}
+	if !containsVerb(granted, "get") {
+		t.Errorf("положительный контроль: пообъектный глагол правила обязан даваться; "+
+			"получено %v", granted)
+	}
+}
+
+func containsVerb(set []string, verb string) bool {
+	for _, v := range set {
+		if v == verb {
+			return true
+		}
+	}
+	return false
+}
