@@ -51,8 +51,12 @@ import (
 // неотличимо от молчания из-за исправного дерева.
 var (
 	feedRegistryPath = filepath.Join("services", "iam", "internal", "domain", "feed_registry.go")
-	fgaTypesPath     = filepath.Join("services", "iam", "internal", "authzmap", "fga_types.go")
-	labelAxisPath    = filepath.Join("services", "iam", "internal", "repo", "kacho", "pg",
+	// `objectTypes` остаётся РУКОПИСНЫМ и лежит здесь: из манифестов сегодня
+	// порождается только вторая таблица каталога — набор действий типа (#1092),
+	// а вывод этой замкнул бы круг с загрузчиком манифеста (причина и замер —
+	// у самого литерала).
+	fgaTypesPath  = filepath.Join("services", "iam", "internal", "authzmap", "fga_types.go")
+	labelAxisPath = filepath.Join("services", "iam", "internal", "repo", "kacho", "pg",
 		"relverdict", "labelaxis.go")
 	// verdictFormFiles — четыре вопроса формы E. Каждый строит СВОЙ запрос,
 	// поэтому ось обязан подставлять каждый: реестр, на который смотрит один

@@ -288,126 +288,59 @@ func AllVerbVocabulary() []string {
 // форма, в которой глагол попадает в кортеж.
 const VerbRelationPrefix = "v_"
 
-// objectVerbRelations — набор, который объявляет типичный глагольный тип: четыре
-// операции, выполнимые НАД УЖЕ СУЩЕСТВУЮЩИМ объектом. Это НЕ платформенная
-// константа «набор всех глаголов»: это значение, которое 22 типа пока СОВПАДАЮЩЕ
-// объявляют. Тип вправе объявить другой набор — и гейт сверит его с моделью
-// ПОТИПОВО, а не с этим литералом.
-//
-// `v_create` В НЁМ НЕТ, и это решение, а не пропуск. Глагольное отношение
-// называет операцию НАД объектом, на который указывает кортеж; «создать» такой
-// операцией не является — в момент решения объекта ещё нет, поэтому вопрос всегда
-// задают РОДИТЕЛЮ, и Kachō отвечает на него ярусом записи на родителе
-// (`editor@project` гейтит каждый Create в каталоге прав). Пообъектный `v_create`
-// поэтому не спрашивал никто, при том что его объявляли 24 типа и материализовал
-// реконсайлер: 41087 кортежей на эталонном стенде, 9.05% всего хранилища.
-// Единственный оставшийся носитель — `registry_registry` (контейнерная семантика,
-// см. ниже). Обе стороны держит authzmap/verb_relation_has_reader_test.go.
-var objectVerbRelations = []string{"v_delete", "v_get", "v_list", "v_update"}
+//go:generate go run github.com/PRO-Robotech/kacho/services/iam/cmd/authzmap-tables -root ../../../..
 
-// registryNamespaceVerbRelations — набор `registry_registry`: операции над
-// объектом ПЛЮС `v_create`.
+// ─────────────────────────────────────────────────────────────────────────────
+// НАБОРЫ ДЕЙСТВИЙ ПОРОЖДАЮТСЯ ИЗ МАНИФЕСТОВ — ОДНА ТАБЛИЦА ИЗ ДВУХ (#1092)
 //
-// Реестр — КОНТЕЙНЕР, и «создать репозиторий в этом пространстве имён» — операция
-// именно над ним. Её действительно спрашивают: хендлеры CreateRepository /
-// RenameRepository и data-plane docker (push в новый repo, cross-repo mount,
-// раскрытие собственного свежего блоба). Это единственный тип, у которого
-// `v_create` имеет читателя, — не «пока», а по существу семантики.
-var registryNamespaceVerbRelations = []string{
-	"v_create", "v_delete", "v_get", "v_list", "v_update",
-}
-
-// identityVerbRelations — набор `iam_user`: ТОЛЬКО ЧТЕНИЕ.
+// `typeVerbRelations` (набор `v_*` каждого типа) жил здесь рукописным литералом.
+// Теперь он выводится из манифестов модулей и лежит в `tables_gen.go`;
+// производитель — `services/iam/internal/authzmapgen`, команда —
+// `services/iam/cmd/authzmap-tables`. Замер при переносе: глагольных типов 27,
+// отношений действия 109, и набор каждого типа совпал с литералом до последней
+// записи — вывод ничего не изменил, он снял ВТОРОЕ место об одном предмете.
 //
-// Распоряжение строкой личности выражено ИМЕНОВАННЫМИ отношениями, а не глаголами
-// типа: правку содержимого спрашивает `record_writer`, запрет и его снятие —
-// `identity_suspender` (#1102), снятие самой строки — `identity_remover` (#1131).
-// После этих трёх у обоих распоряжающихся глаголов не осталось читателя ни одного,
-// и оба сняты: `v_update` (#1128), `v_delete` (#1189). Это единственный суженный
-// набор в дереве.
+// Объявить действие — значит вписать его в `verbs` ресурса манифеста. Правка Go
+// для этого больше не требуется, и «забыть дописать сюда» стало невыразимо.
 //
-// Сужение стало возможно ровно тогда, когда словарь глаголов стал ПО РЕСУРСУ
-// (`CatalogResource.verbs`, #1128): пока публичное поле каталога было ПЕРЕСЕЧЕНИЕМ
-// наборов всех типов, сужение у одного типа вынимало глагол из выпадающего
-// списка редактора ролей у всех остальных.
+// ВТОРАЯ таблица — `objectTypes` — осталась рукописной, и это НЕ незаконченная
+// работа, а измеренное препятствие: её вывод замыкает круг с загрузчиком
+// манифеста. Причина, замер и способ разрыва стоят у самого литерала ниже.
 //
-// ПОЧЕМУ ЭТО НЕ «АККАУНТ ПОТЕРЯЛ ПРАВА». Участием человека в аккаунте распоряжается
-// аккаунт (`account.member_remover`, #1127); глаголы `iam_user` про ГЛОБАЛЬНУЮ
-// строку личности, одну на все аккаунты человека, и права аккаунта за его границу
-// не выходят.
-var identityVerbRelations = []string{"v_get", "v_list"}
-
-// targetGroupVerbRelations — набор `nlb_target_group`: операции над объектом ПЛЮС
-// два отношения управления составом группы (NLB-TGT-1).
+// # Что переехало вместе с наборами, а что осталось
 //
-// Это первый в дереве набор, отличающийся от `objectVerbRelations`, — то есть
-// первый предъявленный случай того свойства, ради которого набор вообще стал
-// атрибутом типа. Имена выведены приведением авторских глаголов роли
-// (`addTargets` → `v_addtargets`), а не выбраны: имя, написанное иначе, чем его
-// собирает эмиттер, адресовало бы отношение, по которому никто не постучится.
-var targetGroupVerbRelations = []string{
-	"v_addtargets", "v_delete", "v_get", "v_list", "v_removetargets", "v_update",
-}
-
-// typeVerbRelations — НАБОР `v_*`-отношений, объявленный КАЖДЫМ типом.
+// Переехал ФАКТ: какой набор отношений объявляет тип. Остались РЕШЕНИЯ, потому
+// что их предмет — модель прав, а не таблица:
 //
-// Прежняя редакция таблицы была булевой («несёт полный набор либо ни одного»), и
-// это было её СВОЙСТВОМ: набор одного типа не мог отличаться от набора другого,
-// потому что набора у типа не было вовсе — была платформенная константа. Теперь
-// набор объявлен у типа, а его полнота и точное совпадение с канонической моделью —
-// требование ГЕЙТА (fga_model_drift_test.go: TestDrift_TypeVerbSetsMatchModelExactly),
-// а не следствие устройства таблицы. Читателю: НЕ «чините» таблицу обратно в булеву
-// — гейт требует ровно того же свойства, но проверяемо и по каждому типу отдельно.
+//   - `v_create` не входит в набор типичного типа. Создание авторизуется ярусом
+//     записи на РОДИТЕЛЕ: глагольное отношение называет операцию над объектом, на
+//     который указывает кортеж, а в момент решения о создании объекта ещё нет.
+//     Пообъектный `v_create` объявляли 24 типа, материализовал реконсайлер — 41087
+//     кортежей на эталонном стенде, 9.05% хранилища, — и не спрашивал никто.
+//   - `registry_registry` — ЕДИНСТВЕННЫЙ оставшийся носитель `v_create`, и это
+//     семантика контейнера: «создать репозиторий в этом пространстве имён» есть
+//     операция над самим реестром. Её действительно спрашивают — CreateRepository /
+//     RenameRepository и docker-полоса данных.
+//   - `iam_user` — ТОЛЬКО ЧТЕНИЕ, единственное сужение в дереве, и оно двойное:
+//     снят `v_update` (#1128) и снят `v_delete` (#1189). Распоряжение строкой
+//     личности выражено ИМЕНОВАННЫМИ отношениями — `record_writer`,
+//     `identity_suspender` (#1102), `identity_remover` (#1131), — и читателя не
+//     осталось ни у одного из двух глаголов.
+//   - `nlb_target_group` несёт два отношения управления составом группы сверх
+//     операций над объектом (NLB-TGT-1) — первый в дереве набор, отличающийся от
+//     общего, то есть первый предъявленный случай того свойства, ради которого
+//     набор вообще стал атрибутом типа.
 //
-// Типы перечислены явно (не выводятся вычитанием), чтобы новая запись objectTypes
-// НЕ унаследовала глагольность молча — гейт дрейфа вынуждает принять решение здесь.
+// Каждое из четырёх решений сегодня записано ТАМ, где живёт его предмет: в
+// перечне `verbs` соответствующего ресурса манифеста. Здесь они оставлены прозой
+// ровно затем, чтобы снятие литерала не унесло причину вместе с ним.
 //
-// rbac-explicit-model-2026 P3 / D-6: `account` и `project` глагольные (канонический
-// fga_model.fga определяет на обоих полный набор `v_*`, P2). Они ОСТАЮТСЯ ярусными
-// предками иерархии (admin/editor/viewer — якоря write-authz, D-7); глагольность
-// добавлена сверху, а не вместо.
-var typeVerbRelations = map[string][]string{
-	"compute_instance": objectVerbRelations,
-	// Ключ входа: канонический набор. `v_list` спрашивает список операций ключа —
-	// та же форма, что у прочих ресурсов продукта с асинхронными мутациями.
-	"compute_guest_access_key":  objectVerbRelations,
-	"compute_placement_group":   objectVerbRelations,
-	"vpc_network":               objectVerbRelations,
-	"vpc_subnet":                objectVerbRelations,
-	"vpc_address":               objectVerbRelations,
-	"vpc_security_group":        objectVerbRelations,
-	"vpc_route_table":           objectVerbRelations,
-	"vpc_gateway":               objectVerbRelations,
-	"vpc_network_interface":     objectVerbRelations,
-	"vpc_address_pool":          objectVerbRelations,
-	"vpc_cidr_group":            objectVerbRelations,
-	"nlb_network_load_balancer": objectVerbRelations,
-	// NLB-TGT-1: первый тип с набором ШИРЕ канонического CRUD — управление составом
-	// группы целей отделено от изменения самой группы. Литерал `objectVerbRelations`
-	// здесь неприменим по построению: у типа СВОЙ набор, и гейт дрейфа сверяет его с
-	// канонической моделью потипово (TestDrift_TypeVerbSetsMatchModelExactly).
-	"nlb_target_group":    targetGroupVerbRelations,
-	"nlb_listener":        objectVerbRelations,
-	"registry_registry":   registryNamespaceVerbRelations,
-	"registry_repository": objectVerbRelations,
-	// storage (kacho-storage) — Volume/Snapshot/Image per-object authz objects.
-	// Verb-bearing so the reconciler materializes per-object v_* for the creator's
-	// project binding — the model type + these Go tables + knownModules("storage")
-	// are ALL required or owner-GET fail-closes 403 (#71). Parity with nlb (project-
-	// only emitter, DIRECT v_*, no `owner` derivation).
-	"storage_volume":      objectVerbRelations,
-	"storage_snapshot":    objectVerbRelations,
-	"storage_image":       objectVerbRelations,
-	"iam_user":            identityVerbRelations,
-	"iam_service_account": objectVerbRelations,
-	"iam_group":           objectVerbRelations,
-	"iam_role":            objectVerbRelations,
-	"iam_access_binding":  objectVerbRelations,
-	// rbac-2026 P3 / D-6: account/project are now verb-bearing (additive — they
-	// also keep their tier relations as write-authz anchors, D-7).
-	"account": objectVerbRelations,
-	"project": objectVerbRelations,
-}
+// # Гейт дрейфа с моделью НЕ снят, и это решение
+//
+// Он сверяет наборы с КАНОНИЧЕСКОЙ МОДЕЛЬЮ потипово
+// (`fga_model_drift_test.go`: TestDrift_TypeVerbSetsMatchModelExactly). Манифест и
+// канон — два рендера одного замысла, и их согласие обязан кто-то проверять;
+// снять гейт вместе с заведением вывода значило бы оставить дерево без обоих.
 
 // expandableRelations — the closed set of FGA relation names a caller may pass
 // to ExpandAccess ("who can do <relation> on <object>"). It is the user-facing
@@ -475,6 +408,21 @@ func IsExpandableRelation(relation string) bool {
 	return expandableRelations[relation]
 }
 
+// objectTypes — словарь КАТАЛОГА в словарь МОДЕЛИ ПРАВ, ПОКА ЕЩЁ РУКОПИСНЫЙ.
+//
+// Порождать его из манифестов нельзя СЕГОДНЯ, и причина измерена, а не
+// предположена: загрузчик манифеста проверяет `objectType` каждой записи на
+// членство В ЭТОЙ САМОЙ таблице (`manifest.validateResourceAnchors` →
+// `authzmap.DottedType`). Выведи её из манифестов — и круг замкнётся: документ
+// принимался бы ровно тем, что из него же и выводится, а НОВЫЙ тип не прошёл бы
+// ни одной из двух дверей. Замер: дописанный в манифест `vpc_probe_resource`
+// отвергается загрузчиком, поэтому перегенерация не состоится вовсе — «добавить
+// тип» из правки Go превратилось бы в невозможность.
+//
+// Круг разрывается сменой РЕФЕРЕНТА проверки: существование типа объявляет
+// каноническая модель, и сверку манифеста с ней уже ведёт `modelrender.Sweep`
+// («манифест порождает тип, которого в каноне НЕТ»). Это отдельное изменение со
+// своим предметом — см. задачу-преемника в ленте #1092.
 var objectTypes = map[string]string{
 	// compute
 	"compute.instance":       "compute_instance",
