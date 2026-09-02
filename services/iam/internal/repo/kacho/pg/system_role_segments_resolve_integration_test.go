@@ -9,13 +9,16 @@
 // здесь утверждается то, что миграция обязана произвести и обязана НЕ тронуть.
 //
 // Приёмка: services/iam/docs/engineering/acceptance/system-role-segments-resolve.md
-// Сценарии IAM-SV-1-01, -04, -07, -12, -13, -14. Задача продукта kacho#1815.
+// Сценарии IAM-SV-1-01, -04, -07, -12, -13, -14. Задачи продукта kacho#1815,
+// kacho#1867 (приведение каталога к ревизии миграции — см. catalogInput).
 package pg_test
 
 import (
 	"context"
 	"fmt"
+	"regexp"
 	"sort"
+	"strconv"
 	"strings"
 	"testing"
 
@@ -262,7 +265,13 @@ func TestIAMSV104_VerdictProjectionIsUnchanged(t *testing.T) {
 //
 // Текст миграции читается из migrations.FS: копии её SQL здесь нет и быть не
 // должно — она разошлась бы с оригиналом молча.
-func applyMigrationUpBodyInTx(t *testing.T, ctx context.Context, dsn, prefix string) ([]string, error) {
+//
+// КАКОЙ КАТАЛОГ подаётся телу — параметр, а не умолчание: предпосылка миграции
+// читает `catalog_verb`, и состояние каталога есть ЧАСТЬ ВХОДА пробы. См.
+// catalogInput.
+func applyMigrationUpBodyInTx(
+	t *testing.T, ctx context.Context, dsn, prefix string, input catalogInput,
+) ([]string, error) {
 	t.Helper()
 	entries, err := migrations.FS.ReadDir(".")
 	require.NoError(t, err)
@@ -299,18 +308,135 @@ func applyMigrationUpBodyInTx(t *testing.T, ctx context.Context, dsn, prefix str
 	require.NoError(t, err)
 	defer func() { _ = tx.Rollback(ctx) }()
 
+	// Приведение каталога — ВНУТРИ той же транзакции, что и тело: вне её проба
+	// оставила бы базу с погашенной половиной словаря, то есть меняла бы больше,
+	// чем меняет миграция.
+	var restore func()
+	if input == catalogAsOfMigrationRevision {
+		restore = reconstructCatalogAsOfMigrationRevision(
+			t, ctx, tx, segmentMigrationExpectedLiveVerbs(t, prefix, body))
+	}
+
 	for _, stmt := range splitGooseStatements(body) {
 		if strings.TrimSpace(stmt) == "" {
 			continue
 		}
 		if _, execErr := tx.Exec(ctx, stmt); execErr != nil {
+			// Восстановление не зовётся: транзакция уже отменена телом, а её
+			// откат вернёт каталог целиком.
 			return notices, execErr
 		}
+	}
+	if restore != nil {
+		restore()
 	}
 	if commitErr := tx.Commit(ctx); commitErr != nil {
 		return notices, commitErr
 	}
 	return notices, nil
+}
+
+// catalogInput — КАКОЙ каталог глаголов подаётся телу миграции.
+//
+// Предпосылка миграции-предмета (её блок «(0) ПРЕДПОСЫЛКА ПРЕДИКАТА») читает
+// `kacho_iam.catalog_verb` и отказывает, если живых пар не столько, сколько было
+// на ЕЁ ревизии. С #1863 словарь имеет две половины — пообъектную и ярусную, —
+// поэтому в мигрированной базе живых пар больше, и предпосылка отказывает
+// ЗАКОННО. Отказ приходит раньше предмета проб, и без приведения каталога о
+// предмете не известно ничего (kacho#1867).
+type catalogInput int
+
+const (
+	// catalogAsToday — каталог мигрированной базы, обе половины словаря живы.
+	// Предпосылка миграции-предмета на нём НЕ выполнима, и это её задуманный
+	// отказ, а не поломка.
+	catalogAsToday catalogInput = iota
+	// catalogAsOfMigrationRevision — каталог, приведённый к состоянию РЕВИЗИИ
+	// миграции-предмета: ярусная половина (`per_object = false`, заведена #1863
+	// уже ПОСЛЕ неё) погашена, живой остаётся пообъектная — ровно та, из которой
+	// миграция строила свой предикат снятия.
+	catalogAsOfMigrationRevision
+)
+
+// segmentProbeRetireReason — метка строк, погашенных ПРОБОЙ. Восстановление идёт
+// по ней, а не по `NOT per_object`: строка, погашенная не пробой, обязана
+// остаться погашенной, иначе проба воскресила бы снятое кем-то другим.
+const segmentProbeRetireReason = "проба IAM-SV-1: каталог ревизии 20260901231022 (kacho#1867)"
+
+// segmentMigrationPreconditionRe — объявление предпосылки в теле миграции.
+var segmentMigrationPreconditionRe = regexp.MustCompile(`IF\s+live_verbs\s+<>\s+(\d+)\s+THEN`)
+
+// segmentMigrationExpectedLiveVerbs — сколько живых пар каталога ждёт
+// предпосылка САМОЙ миграции, прочитанное из её текста.
+//
+// Число не выписывается в пробу: оно принадлежит миграции, править её нельзя
+// (запрет #5), а копия здесь разошлась бы с оригиналом молча. Разборщик обязан
+// найти РОВНО ОДНО вхождение: форма, которой он не знает, роняет пробу с
+// названной причиной, а не молча даёт ноль.
+func segmentMigrationExpectedLiveVerbs(t *testing.T, prefix, body string) int {
+	t.Helper()
+	m := segmentMigrationPreconditionRe.FindAllStringSubmatch(body, -1)
+	require.Lenf(t, m, 1, "в теле `Up` миграции %s ожидалось РОВНО ОДНО объявление предпосылки "+
+		"вида `IF live_verbs <> N THEN`, найдено %d — разборщик не узнал форму и дал бы неверное "+
+		"число молча", prefix, len(m))
+	n, err := strconv.Atoi(m[0][1])
+	require.NoError(t, err)
+	require.Positivef(t, n, "предпосылка миграции %s ждёт %d живых пар — ноль означал бы, что "+
+		"разборщик прочитал не то место", prefix, n)
+	return n
+}
+
+// reconstructCatalogAsOfMigrationRevision — гасит ярусную половину словаря и
+// УТВЕРЖДАЕТ, что получившийся каталог и есть тот, о котором писалась
+// предпосылка. Возвращает восстановление, которое зовут ПОСЛЕ тела и ДО коммита.
+//
+// Утверждение стоит ЗДЕСЬ, отдельно от предмета проб, и это его назначение:
+// иначе несовпадение снова придёт отказом самой миграции — тем самым, что
+// заслоняет предмет (kacho#1867). Отказ здесь называет, что чинить.
+func reconstructCatalogAsOfMigrationRevision(
+	t *testing.T, ctx context.Context, tx pgx.Tx, want int,
+) func() {
+	t.Helper()
+
+	tag, err := tx.Exec(ctx, `
+		UPDATE kacho_iam.catalog_verb
+		   SET live = false, retired_at = now(), retired_reason = $1
+		 WHERE live AND NOT per_object`, segmentProbeRetireReason)
+	require.NoError(t, err, "ярусную половину словаря не удалось погасить — приведение каталога "+
+		"к ревизии миграции невозможно, и о предмете проб ничего не узнать")
+	suppressed := tag.RowsAffected()
+
+	var live, perObject int64
+	require.NoError(t, tx.QueryRow(ctx, `
+		SELECT count(*) FILTER (WHERE live),
+		       count(*) FILTER (WHERE live AND per_object)
+		  FROM kacho_iam.catalog_verb`).Scan(&live, &perObject))
+
+	// Перепись печатается ВСЕГДА: «предпосылка выполнима» обязано быть отличимо
+	// от «каталог не прочитан».
+	t.Logf("каталог приведён к ревизии миграции: погашено ярусных %d, живых пар %d "+
+		"(из них пообъектных %d), предпосылка миграции ждёт %d",
+		suppressed, live, perObject, want)
+
+	require.Positive(t, live, "предпосылка нарушена в САМОЙ пробе: живых пар ноль — приведение "+
+		"погасило словарь целиком, и предпосылка миграции была бы «выполнена» на пустоте")
+	require.Equalf(t, perObject, live, "погашена не вся ярусная половина: живых %d при "+
+		"пообъектных %d — приведение неполно", live, perObject)
+	require.EqualValuesf(t, want, live, "приведённый каталог не совпал с ревизией миграции: "+
+		"живых пар %d, предпосылка ждёт %d. Пообъектная половина словаря изменилась после "+
+		"ревизии 20260901231022 — приведение обязано погасить и то, что добавила миграция "+
+		"ПОСЛЕ #1863; править число в применённой миграции нельзя (запрет #5)", live, want)
+
+	return func() {
+		back, restoreErr := tx.Exec(ctx, `
+			UPDATE kacho_iam.catalog_verb
+			   SET live = true, retired_at = NULL, retired_reason = NULL
+			 WHERE retired_reason = $1`, segmentProbeRetireReason)
+		require.NoError(t, restoreErr, "каталог не восстановлен — проба оставила бы базу "+
+			"изменённой сверх того, что меняет миграция")
+		require.EqualValues(t, suppressed, back.RowsAffected(),
+			"восстановлено не столько строк, сколько погашено")
+	}
 }
 
 // plantSystemRule — системная роль с заданным набором правил, заведённая ПРЯМОЙ
@@ -359,7 +485,7 @@ func TestIAMSV114_MigrationIsIdempotent(t *testing.T) {
 	before := rulesSnapshot(t, ctx, pool)
 	require.NotEmpty(t, before, "предпосылка нарушена: посев пуст — «ничего не изменилось» даром")
 
-	notices, err := applyMigrationUpBodyInTx(t, ctx, dsn, segmentMigrationPrefix)
+	notices, err := applyMigrationUpBodyInTx(t, ctx, dsn, segmentMigrationPrefix, catalogAsOfMigrationRevision)
 	require.NoError(t, err, "повторное применение обязано проходить: миграция идемпотентна")
 
 	// Перепись печатается ВСЕГДА, а не при находке: «ноль снятых» обязано быть
@@ -416,7 +542,7 @@ func TestIAMSV112_MigrationRefusesRatherThanGuess(t *testing.T) {
 		pgtest.ClosePoolAtEnd(t, pool)
 		plantSystemRule(t, ctx, pool, name, rules)
 
-		_, err = applyMigrationUpBodyInTx(t, ctx, dsn, segmentMigrationPrefix)
+		_, err = applyMigrationUpBodyInTx(t, ctx, dsn, segmentMigrationPrefix, catalogAsOfMigrationRevision)
 		return err
 	}
 
@@ -438,7 +564,7 @@ func TestIAMSV112_MigrationRefusesRatherThanGuess(t *testing.T) {
 		plantSystemRule(t, ctx, pool, "inj.kept.probe",
 			`[{"module":"vpc","resources":["network"],"verbs":["read","get"]}]`)
 
-		_, err = applyMigrationUpBodyInTx(t, ctx, dsn, segmentMigrationPrefix)
+		_, err = applyMigrationUpBodyInTx(t, ctx, dsn, segmentMigrationPrefix, catalogAsOfMigrationRevision)
 		require.NoError(t, err, "законный близнец обязан ПРОХОДИТЬ — иначе отрицание выше вакуумно")
 
 		var got string
@@ -465,7 +591,7 @@ func TestIAMSV112_MigrationRefusesRatherThanGuess(t *testing.T) {
 		plantSystemRule(t, ctx, pool, "inj.full.probe",
 			`[{"module":"*","resources":["*"],"verbs":["read","get"]}]`)
 
-		_, err = applyMigrationUpBodyInTx(t, ctx, dsn, segmentMigrationPrefix)
+		_, err = applyMigrationUpBodyInTx(t, ctx, dsn, segmentMigrationPrefix, catalogAsOfMigrationRevision)
 		require.NoError(t, err, "полная подстановка судится полосой объединения и обязана проходить")
 
 		var got string
@@ -488,7 +614,7 @@ func TestIAMSV112_MigrationRefusesRatherThanGuess(t *testing.T) {
 			{"module":"vpc","resources":["network"],"verbs":["addTargets","get"]},
 			{"module":"loadbalancer","resources":["targetGroups"],"verbs":["addTargets","removeTargets","get"]}]`)
 
-		notices, err := applyMigrationUpBodyInTx(t, ctx, dsn, segmentMigrationPrefix)
+		notices, err := applyMigrationUpBodyInTx(t, ctx, dsn, segmentMigrationPrefix, catalogAsOfMigrationRevision)
 		require.NoError(t, err)
 		t.Logf("перепись: %s", strings.Join(notices, " | "))
 
@@ -502,6 +628,87 @@ func TestIAMSV112_MigrationRefusesRatherThanGuess(t *testing.T) {
 			"loadbalancer.targetGroups: верблюжьи addTargets/removeTargets обязаны УЦЕЛЕТЬ — "+
 				"каталог хранит их строчными, и сравнение без приведения сняло бы живое право")
 	})
+}
+
+// TestSegmentMigrationPreconditionIsAssertedApartFromTheSubject — предпосылка
+// миграции утверждается ОТДЕЛЬНО от её предмета.
+//
+// Сценария приёмки за этой пробой НЕТ, и это сказано прямо: IAM-SV-1-16 —
+// «форма миграции», проверяемая ЧТЕНИЕМ артефакта, а не прогоном; её номер стоит
+// в тексте отказа предпосылки, но предметом пробы не является. Держит она
+// предикат снятия kacho#1867.
+//
+// Пара, а не одиночное утверждение. Отрицание («на сегодняшнем каталоге тело
+// ОТКАЗЫВАЕТ, и отказ называет предпосылку») без положительного было бы
+// вакуумным: тело отказывает и на сломанном приведении, и на пустом каталоге.
+// Положительное («на приведённом каталоге тело ПРОХОДИТ») доказывает, что
+// приведение несущее, а не украшение.
+//
+// Ради чего проба заведена (kacho#1867): без приведения отказ предпосылки
+// приходит РАНЬШЕ предмета проб IAM-SV-1-12/-13/-14 и заслоняет его — они ждут
+// отказа, называющего роль, а получают отказ, называющий число. Это не «красное
+// по существу», а невыполнение, и отличить одно от другого можно только здесь.
+func TestSegmentMigrationPreconditionIsAssertedApartFromTheSubject(t *testing.T) {
+	if testing.Short() {
+		t.Skip("integration: требует Postgres")
+	}
+	ctx := context.Background()
+
+	t.Run("отрицание: сегодняшний каталог — тело отказывает предпосылкой", func(t *testing.T) {
+		dsn := setupTestDB(t)
+		pool, err := pgxpool.New(ctx, dsn)
+		require.NoError(t, err)
+		pgtest.ClosePoolAtEnd(t, pool)
+
+		// Число берётся ИЗ БАЗЫ, а не выписывается: живых пар после #1863 сто
+		// тридцать пять, но это факт ревизии, и копия здесь устарела бы молча.
+		var liveToday int
+		require.NoError(t, pool.QueryRow(ctx,
+			`SELECT count(*) FROM kacho_iam.catalog_verb WHERE live`).Scan(&liveToday))
+		require.Positive(t, liveToday, "предпосылка нарушена: каталог пуст — отказ пришёл бы даром")
+
+		_, err = applyMigrationUpBodyInTx(t, ctx, dsn, segmentMigrationPrefix, catalogAsToday)
+		require.Error(t, err, "на сегодняшнем каталоге тело обязано ОТКАЗАТЬ: его предпосылка "+
+			"писалась о каталоге своей ревизии")
+		require.Contains(t, err.Error(), "предпосылка нарушена",
+			"отказ обязан называть предпосылку, а не предмет")
+		require.Contains(t, err.Error(), fmt.Sprintf("каталога %d", liveToday),
+			"отказ обязан называть ФАКТИЧЕСКОЕ число живых пар — иначе он неотличим от отказа "+
+				"по другой причине")
+		t.Logf("отказ на сегодняшнем каталоге (живых пар %d): %v", liveToday, err)
+	})
+
+	t.Run("положительное: приведённый каталог — тело проходит", func(t *testing.T) {
+		dsn := setupTestDB(t)
+		pool, err := pgxpool.New(ctx, dsn)
+		require.NoError(t, err)
+		pgtest.ClosePoolAtEnd(t, pool)
+
+		before := catalogLiveCensus(t, ctx, pool)
+
+		_, err = applyMigrationUpBodyInTx(t, ctx, dsn, segmentMigrationPrefix, catalogAsOfMigrationRevision)
+		require.NoError(t, err, "на каталоге СВОЕЙ ревизии тело обязано проходить — иначе "+
+			"приведение не воспроизводит ту ревизию, и предмет проб недостижим")
+
+		require.Equal(t, before, catalogLiveCensus(t, ctx, pool),
+			"проба оставила каталог изменённым: приведение обязано быть возвращено ДО коммита, "+
+				"иначе следующий читатель базы получит словарь без ярусной половины")
+	})
+}
+
+// catalogLiveCensus — живые пары словаря обеими половинами.
+func catalogLiveCensus(t *testing.T, ctx context.Context, pool *pgxpool.Pool) [2]int {
+	t.Helper()
+	var perObject, tier int
+	require.NoError(t, pool.QueryRow(ctx, `
+		SELECT count(*) FILTER (WHERE live AND per_object),
+		       count(*) FILTER (WHERE live AND NOT per_object)
+		  FROM kacho_iam.catalog_verb`).Scan(&perObject, &tier))
+	require.Positive(t, perObject, "предпосылка нарушена: пообъектная половина словаря пуста")
+	require.Positive(t, tier, "предпосылка нарушена: ярусной половины нет — гасить нечего, и "+
+		"«каталог не изменён» было бы получено даром")
+	t.Logf("живых пар словаря: пообъектных %d, ярусных %d", perObject, tier)
+	return [2]int{perObject, tier}
 }
 
 // rulesSnapshot — правила всех ролей как сравнимое значение.
