@@ -35,7 +35,7 @@ func TestSectionRefusalsNameTheirFieldAndKind(t *testing.T) {
 		{
 			name: "ресурс не назвал себя",
 			doc: "apiVersion: iam/v1\nmodule: vpc\nresources:\n" +
-				"  - {objectType: vpc_network, parent: project, producer: derived, verbs: [get]}\n",
+				"  - {objectType: vpc_network, parents: [project], producer: derived, verbs: [get]}\n",
 			kind:  manifest.ErrResourceNameRequired,
 			names: []string{"resources[0]"},
 		},
@@ -49,7 +49,7 @@ func TestSectionRefusalsNameTheirFieldAndKind(t *testing.T) {
 		{
 			name: "действие не назвало себя",
 			doc: "apiVersion: iam/v1\nmodule: vpc\nresources:\n" +
-				"  - name: network\n    objectType: vpc_network\n    parent: project\n    producer: derived\n" +
+				"  - name: network\n    objectType: vpc_network\n    parents: [project]\n    producer: derived\n" +
 				"    verbs:\n      - {class: get}\n",
 			kind:  manifest.ErrVerbNameRequired,
 			names: []string{"resources[0].verbs[0]"},
@@ -57,7 +57,7 @@ func TestSectionRefusalsNameTheirFieldAndKind(t *testing.T) {
 		{
 			name: "отношение не назвало себя",
 			doc: "apiVersion: iam/v1\nmodule: vpc\nresources:\n" +
-				"  - name: network\n    objectType: vpc_network\n    parent: project\n    producer: derived\n" +
+				"  - name: network\n    objectType: vpc_network\n    parents: [project]\n    producer: derived\n" +
 				"    relations:\n      - {definition: \"[user]\"}\n    verbs: [get]\n",
 			kind:  manifest.ErrRelationNameRequired,
 			names: []string{"resources[0].relations[0]"},
@@ -67,7 +67,7 @@ func TestSectionRefusalsNameTheirFieldAndKind(t *testing.T) {
 			doc: "apiVersion: iam/v1\nmodule: vpc\nroles:\n" +
 				"  - name: Наблюдатель\n    description: Читает топологию проекта.\n" +
 				"    tier: {tierType: iam.project, tierId: prj000000000000000}\n" +
-				"    rules:\n      - {module: vpc, resources: [network], verbs: [get]}\n",
+				"    rules:\n      - {module: vpc, resources: [network], classes: [get]}\n",
 			kind:  manifest.ErrRoleIDRequired,
 			names: []string{"roles[0]"},
 		},
@@ -76,7 +76,7 @@ func TestSectionRefusalsNameTheirFieldAndKind(t *testing.T) {
 			doc: "apiVersion: iam/v1\nmodule: vpc\nroles:\n" +
 				"  - id: viewer\n    name: Наблюдатель\n    description: Читает топологию проекта.\n" +
 				"    tier: {tierType: iam.project, tierId: prj000000000000000}\n" +
-				"    rules:\n      - {module: vpc, resources: [network], verbs: [get]}\n",
+				"    rules:\n      - {module: vpc, resources: [network], classes: [get]}\n",
 			kind:  manifest.ErrRoleIDMalformed,
 			names: []string{"roles[0].id", "viewer"},
 		},
@@ -85,10 +85,10 @@ func TestSectionRefusalsNameTheirFieldAndKind(t *testing.T) {
 			doc: "apiVersion: iam/v1\nmodule: vpc\nroles:\n" +
 				"  - id: vpc.viewer\n    name: Наблюдатель\n    description: Читает топологию проекта.\n" +
 				"    tier: {tierType: iam.project, tierId: prj000000000000000}\n" +
-				"    rules:\n      - {module: vpc, resources: [network], verbs: [get]}\n" +
+				"    rules:\n      - {module: vpc, resources: [network], classes: [get]}\n" +
 				"  - id: vpc.viewer\n    name: Второй наблюдатель\n    description: Тоже читает топологию.\n" +
 				"    tier: {tierType: iam.account, tierId: acc000000000000000}\n" +
-				"    rules:\n      - {module: vpc, resources: [subnet], verbs: [get]}\n",
+				"    rules:\n      - {module: vpc, resources: [subnet], classes: [get]}\n",
 			kind:  manifest.ErrRoleIDDuplicated,
 			names: []string{"roles[0]", "roles[1]", "vpc.viewer"},
 		},
@@ -96,7 +96,7 @@ func TestSectionRefusalsNameTheirFieldAndKind(t *testing.T) {
 			name: "ярус роли не назван",
 			doc: "apiVersion: iam/v1\nmodule: vpc\nroles:\n" +
 				"  - id: vpc.viewer\n    name: Наблюдатель\n    description: Читает топологию проекта.\n" +
-				"    rules:\n      - {module: vpc, resources: [network], verbs: [get]}\n",
+				"    rules:\n      - {module: vpc, resources: [network], classes: [get]}\n",
 			kind:  manifest.ErrRoleTierRequired,
 			names: []string{"roles[0].tier", "iam.account", "iam.project"},
 		},
@@ -105,7 +105,7 @@ func TestSectionRefusalsNameTheirFieldAndKind(t *testing.T) {
 			doc: "apiVersion: iam/v1\nmodule: vpc\nroles:\n" +
 				"  - id: vpc.viewer\n    name: Наблюдатель\n    description: Читает топологию проекта.\n" +
 				"    tier: {tierType: iam.folder, tierId: fld000000000000000}\n" +
-				"    rules:\n      - {module: vpc, resources: [network], verbs: [get]}\n",
+				"    rules:\n      - {module: vpc, resources: [network], classes: [get]}\n",
 			kind:  manifest.ErrRoleTierUnknown,
 			names: []string{"roles[0].tier.tierType", "iam.folder"},
 		},
@@ -114,7 +114,7 @@ func TestSectionRefusalsNameTheirFieldAndKind(t *testing.T) {
 			doc: "apiVersion: iam/v1\nmodule: vpc\nroles:\n" +
 				"  - id: vpc.viewer\n    name: Наблюдатель\n    description: Читает топологию проекта.\n" +
 				"    tier: {tierType: iam.project, tierId: \"\"}\n" +
-				"    rules:\n      - {module: vpc, resources: [network], verbs: [get]}\n",
+				"    rules:\n      - {module: vpc, resources: [network], classes: [get]}\n",
 			kind:  manifest.ErrRoleTierRequired,
 			names: []string{"roles[0].tier.tierId"},
 		},
@@ -146,13 +146,13 @@ func TestSectionRefusalsNameTheirFieldAndKind(t *testing.T) {
 	// названных выше полей на месте, проходит целиком. Без него весь перечень
 	// зеленел бы на загрузчике, отвергающем всякий вход.
 	whole := "apiVersion: iam/v1\nmodule: vpc\nresources:\n" +
-		"  - name: network\n    objectType: vpc_network\n    parent: project\n    producer: derived\n" +
+		"  - name: network\n    objectType: vpc_network\n    parents: [project]\n    producer: derived\n" +
 		"    relations:\n      - {name: use, definition: \"[user]\"}\n" +
 		"    verbs:\n      - {name: get}\n" +
 		"roles:\n" +
 		"  - id: vpc.viewer\n    name: Наблюдатель\n    description: Читает топологию проекта.\n" +
 		"    tier: {tierType: iam.project, tierId: prj000000000000000}\n" +
-		"    rules:\n      - {module: vpc, resources: [network], verbs: [get]}\n" +
+		"    rules:\n      - {module: vpc, resources: [network], classes: [get]}\n" +
 		"deprecatedVerbs:\n" +
 		"  read: {class: get, since: \"2026-08-23\", reason: синоним чтения из грамматики, removeWhen: выдач с таким правом ноль}\n"
 	if _, err := manifest.Load([]byte(whole)); err != nil {

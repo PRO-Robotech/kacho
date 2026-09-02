@@ -195,12 +195,12 @@ func nonStringKeyInjection(name, literal string, quoted bool) injection {
 // описанием раздела; поле снято.
 const rolesSectionOnlyFirst = `
 roles:
-  - id: vpc.internalConsumer
+  - id: vpc.internal_consumer
     name: Смежный модуль
     description: Ходит в vpc на пути запроса — аллокация адресов и ссылки.
     tier: {tierType: iam.project, tierId: prj000000000000000}
     rules:
-      - {module: vpc, resources: [address], verbs: [get, list]}
+      - {module: vpc, resources: [address], classes: [get, list]}
 `
 
 // manifestInjections — набор целиком. Оси — из §9.2 приёмки; у каждой РЕД-строки
@@ -216,8 +216,8 @@ func manifestInjections() []injection {
 			replacement: "\nseedz:\n", wantErr: ErrShape, needle: "seedz",
 		},
 		{
-			name: "неизвестный ключ на глубине", old: "      roleId: vpc.internalConsumer",
-			replacement: "      rolelD: vpc.internalConsumer", wantErr: ErrShape, needle: "rolelD",
+			name: "неизвестный ключ на глубине", old: "      roleId: vpc.internal_consumer",
+			replacement: "      rolelD: vpc.internal_consumer", wantErr: ErrShape, needle: "rolelD",
 		},
 
 		// ── оболочка ───────────────────────────────────────────────────────

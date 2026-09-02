@@ -168,7 +168,12 @@ func ForbiddenObjectTypes() []string {
 // covered; that was `role` against the model's `iam_role` (#1883), a dead entry
 // that produced neither a red run nor a refusal for the whole of its life. A
 // non-module type with no entry is reachable in exactly the mode the set exists
-// for; that was every other resource type of the iam domain — six of them.
+// for; that was every other resource type of the iam domain — six of them,
+// `iam_fgaproxy` among them (its own reasoning is kept at the entry).
+//
+// `role` USED TO BE HERE AND IS NOT: the model declares `iam_role`, and a bare
+// `role` type it never declared. The entry excluded nothing and the list read as
+// if the type were covered — the gate above now refuses that shape outright.
 //
 // `iam` is deliberately absent from the emitter census (proxyConsumerDomains): iam
 // writes its own links directly, without the proxy. That is what makes its types
@@ -188,7 +193,16 @@ var forbiddenObjectTypes = map[string]struct{}{
 	"iam_group":           {},
 	"iam_role":            {},
 	"iam_access_binding":  {},
-	"iam_fgaproxy":        {},
+	// iam_fgaproxy — служебная вершина, к которой привязано само право модуля
+	// писать факты. Ресурсом модуля она не является ни при какой конфигурации, а
+	// без записи здесь оставалась достижимой в двух посадках: у вызывающего с
+	// коротким именем `iam` (приставка совпадает) и при неизвестном домене, где
+	// связывание по домену отключено. Тип объявлен моделью НЕГРАНТУЕМЫМ, то есть
+	// живой строки в каталоге ресурсов у него нет — регистрация им отвергалась бы
+	// принимающей стороной на каждой доставке. Держится
+	// TestProxyAdmittedObjectTypesAreInTheCatalog: правило приёма не вправе
+	// допускать тип, которого каталог не знает.
+	"iam_fgaproxy": {},
 }
 
 // IsPublicReadGrant reports whether the pair is «anybody reads this resource»
