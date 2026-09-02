@@ -2,21 +2,11 @@
 // SPDX-License-Identifier: BUSL-1.1
 
 // modulemanifestcheckwiring_injection_test.go — доказательство, что гейт
-// провязки СПОСОБЕН упасть и способен смолчать (задача #1851).
+// провязки судьи ФОРМЫ МАНИФЕСТА способен упасть и способен смолчать (#1851).
 //
-// # Почему на синтетике, а не на дереве продукта
-//
-// Гейт обязан быть зелёным на дереве продукта — иначе его нечем читать. Значит
-// его способность краснеть на дереве продукта не наблюдается НИКОГДА, и «зелёный»
-// там неотличим от «мёртвый». Инъекция подаёт вход, которого в дереве нет by
-// construction, и требует обеих способностей по каждой оси отдельно.
-//
-// # Дерево заводится ИЗОЛИРОВАННО
-//
-// Каждый вход — свой `t.TempDir()`. Ни одна проба не пишет в рабочую копию, из
-// которой запущена: испорченный индекс общего клона заставляет гейты, читающие
-// дерево, выдумывать красные вердикты, и отличить это от настоящей находки
-// нельзя ничем.
+// Раскладка синтетического дерева и предпосылки обхода — общие, они живут в
+// gatetargetwiring_injection_support_test.go. Здесь — тела носителей и оси,
+// каждая со своим законным близнецом.
 //
 // # Законный близнец у КАЖДОЙ оси
 //
@@ -27,21 +17,9 @@
 package repohygiene
 
 import (
-	"os"
-	"path/filepath"
 	"strings"
 	"testing"
 )
-
-// manifestWiringTree — что положить в синтетическое дерево.
-type manifestWiringTree struct {
-	// makefiles — сервис → содержимое services/<svc>/Makefile.
-	makefiles map[string]string
-	// workflow — содержимое .github/workflows/ci.yaml.
-	workflow string
-	// localRunner — содержимое scripts/ci-local.sh.
-	localRunner string
-}
 
 // declaringMakefile — Makefile, ОБЪЯВЛЯЮЩИЙ цель, вместе с прозой, которая её
 // объясняет: в настоящем Makefile имя цели стоит и в шапке, и примером вызова.
@@ -73,55 +51,15 @@ manifest_form_check() {
 }
 `
 
-// writeManifestWiringTree раскладывает вход на диск и возвращает корень.
-func writeManifestWiringTree(t *testing.T, tree manifestWiringTree) string {
+// manifestWiringFaultsOn — находки гейта ЭТОЙ цели на синтетическом дереве.
+func manifestWiringFaultsOn(t *testing.T, tree judgeWiringTree) []string {
 	t.Helper()
-	root := t.TempDir()
-
-	for svc, body := range tree.makefiles {
-		dir := filepath.Join(root, "services", svc)
-		if err := os.MkdirAll(dir, 0o755); err != nil {
-			t.Fatalf("не заведён %s: %v", dir, err)
-		}
-		if err := os.WriteFile(filepath.Join(dir, "Makefile"), []byte(body), 0o644); err != nil {
-			t.Fatalf("не записан Makefile %s: %v", svc, err)
-		}
-	}
-	wfDir := filepath.Join(root, ".github", "workflows")
-	if err := os.MkdirAll(wfDir, 0o755); err != nil {
-		t.Fatalf("не заведён %s: %v", wfDir, err)
-	}
-	if err := os.WriteFile(filepath.Join(wfDir, "ci.yaml"), []byte(tree.workflow), 0o644); err != nil {
-		t.Fatalf("не записан workflow: %v", err)
-	}
-	scriptsDir := filepath.Join(root, "scripts")
-	if err := os.MkdirAll(scriptsDir, 0o755); err != nil {
-		t.Fatalf("не заведён %s: %v", scriptsDir, err)
-	}
-	if err := os.WriteFile(filepath.Join(scriptsDir, "ci-local.sh"), []byte(tree.localRunner), 0o644); err != nil {
-		t.Fatalf("не записан прогонщик: %v", err)
-	}
-	return root
-}
-
-// wiringFaultsOn — находки гейта на синтетическом дереве.
-func wiringFaultsOn(t *testing.T, tree manifestWiringTree) []string {
-	t.Helper()
-	w, err := readManifestCheckWiring(writeManifestWiringTree(t, tree))
-	if err != nil {
-		t.Fatalf("синтетическое дерево не прочитано: %v", err)
-	}
-	if w.MakefilesRead == 0 || w.WorkflowsRead == 0 || w.LocalRunnersRead == 0 {
-		t.Fatalf("обход синтетики пуст (Makefile %d · workflow %d · прогонщиков %d) — "+
-			"инъекция подала бы вход, которого гейт не видит, и её зелёное ничего не значило бы",
-			w.MakefilesRead, w.WorkflowsRead, w.LocalRunnersRead)
-	}
-	return findManifestCheckWiringFaults(w)
+	return judgeWiringFaultsOn(t, moduleManifestCheckTarget, tree)
 }
 
 // intactTree — полностью провязанное дерево: контроль для всех осей.
-func intactTree() manifestWiringTree {
-	return manifestWiringTree{
+func intactTree() judgeWiringTree {
+	return judgeWiringTree{
 		makefiles:   map[string]string{"iam": declaringMakefile, "vpc": silentMakefile},
 		workflow:    callingWorkflow,
 		localRunner: callingLocalRunner,
@@ -134,7 +72,7 @@ func TestModuleManifestCheckWiringGate_Injection(t *testing.T) {
 	//
 	// Стоит первым и не является формальностью: без него всякая находка ниже
 	// объяснялась бы гейтом, который краснеет на любом входе.
-	if got := wiringFaultsOn(t, intactTree()); len(got) != 0 {
+	if got := manifestWiringFaultsOn(t, intactTree()); len(got) != 0 {
 		t.Fatalf("КОНТРОЛЬ: на провязанном дереве гейт нашёл %d — он краснеет на исправном "+
 			"входе, и ни одна находка ниже ничего не доказывает:\n  %s",
 			len(got), strings.Join(got, "\n  "))
@@ -148,7 +86,7 @@ func TestModuleManifestCheckWiringGate_Injection(t *testing.T) {
 	{
 		tree := intactTree()
 		tree.workflow = "jobs:\n  authz-artifacts:\n    steps:\n      - name: что-то другое\n        run: go build ./...\n"
-		got := wiringFaultsOn(t, tree)
+		got := manifestWiringFaultsOn(t, tree)
 		if len(got) != 1 {
 			t.Fatalf("ось «конвейер не зовёт»: ожидалась ровно 1 находка, получено %d:\n  %s",
 				len(got), strings.Join(got, "\n  "))
@@ -168,7 +106,7 @@ func TestModuleManifestCheckWiringGate_Injection(t *testing.T) {
 	{
 		tree := intactTree()
 		tree.localRunner = "#!/usr/bin/env bash\nrun \"go build\" go build ./...\n"
-		got := wiringFaultsOn(t, tree)
+		got := manifestWiringFaultsOn(t, tree)
 		if len(got) != 1 {
 			t.Fatalf("ось «прогонщик не зовёт»: ожидалась ровно 1 находка, получено %d:\n  %s",
 				len(got), strings.Join(got, "\n  "))
@@ -188,18 +126,39 @@ func TestModuleManifestCheckWiringGate_Injection(t *testing.T) {
 	{
 		tree := intactTree()
 		tree.workflow = "jobs:\n  authz-artifacts:\n    steps:\n" +
-			"      # здесь когда-то звали: make -C services/iam module-manifest-check\n" +
-			"      - name: что-то другое\n        run: go build ./...\n"
+			"      - name: что-то другое\n        run: |\n" +
+			"          # здесь когда-то звали: make -C services/iam module-manifest-check\n" +
+			"          go build ./...\n"
 		tree.localRunner = "#!/usr/bin/env bash\n" +
 			"# провязка снята: make -C services/iam module-manifest-check\n" +
 			"run \"go build\" go build ./...\n"
-		got := wiringFaultsOn(t, tree)
+		got := manifestWiringFaultsOn(t, tree)
 		if len(got) != 2 {
 			t.Fatalf("ось «проза вместо провязки»: ожидалось 2 находки (оба носителя), получено %d — "+
 				"гейт зачёл комментарий за вызов и остался бы зелёным при снятой провязке:\n  %s",
 				len(got), strings.Join(got, "\n  "))
 		}
 		t.Logf("инъекция «проза вместо провязки»: 2 находки — комментарий за вызов НЕ зачтён")
+	}
+
+	// ── ИНЪЕКЦИЯ НОВОГО, ось 3б: имя цели в НЕИСПОЛНЯЕМОМ поле шага ────────
+	//
+	// Ось заведена вместе с разбором YAML (#1893). Комментарием такая строка не
+	// является — её не отбросил бы прежний, текстовый обход, — а вызовом не
+	// становится: заголовок шага не исполняется ничем. Отличить это от провязки
+	// умеет только разбор.
+	{
+		tree := intactTree()
+		tree.workflow = "jobs:\n  authz-artifacts:\n    steps:\n" +
+			"      - name: 'снято: make -C services/iam module-manifest-check'\n" +
+			"        if: \"contains('make -C services/iam module-manifest-check', 'x')\"\n" +
+			"        run: go build ./...\n"
+		got := manifestWiringFaultsOn(t, tree)
+		if len(got) != 1 {
+			t.Fatalf("ось «имя цели в неисполняемом поле»: ожидалась 1 находка, получено %d — "+
+				"гейт зачёл заголовок шага за вызов:\n  %s", len(got), strings.Join(got, "\n  "))
+		}
+		t.Logf("инъекция «имя цели в заголовке шага»: 1 находка — заголовок за вызов НЕ зачтён")
 	}
 
 	// ── ИНЪЕКЦИЯ НОВОГО, ось 4: обратное направление ──────────────────────
@@ -211,7 +170,7 @@ func TestModuleManifestCheckWiringGate_Injection(t *testing.T) {
 		tree := intactTree()
 		tree.workflow = strings.ReplaceAll(callingWorkflow, "services/iam", "services/storage")
 		tree.localRunner = strings.ReplaceAll(callingLocalRunner, "services/iam", "services/storage")
-		got := wiringFaultsOn(t, tree)
+		got := manifestWiringFaultsOn(t, tree)
 		// iam объявляет и никем не зван (2 находки) + storage зван и не объявляет
 		// у обоих носителей (2 находки).
 		if len(got) != 4 {
@@ -236,7 +195,7 @@ func TestModuleManifestCheckWiringGate_Injection(t *testing.T) {
 	// иначе гейт, смотрящий не туда, отчитывался бы чистым.
 	{
 		root := t.TempDir()
-		if _, err := readManifestCheckWiring(root); err == nil {
+		if _, err := readJudgeTargetWiring(root, moduleManifestCheckTarget); err == nil {
 			t.Error("пустое дерево прочиталось без ошибки — «ноль находок» стало бы неотличимо " +
 				"от «ноль прочитанного»")
 		} else {
