@@ -371,17 +371,8 @@ func clientDocsPageNamesField(page, field string) bool {
 }
 
 // clientDocsCamel — форма имени поля в JSON края: её и видит вызывающий.
-func clientDocsCamel(field string) string {
-	parts := strings.Split(field, "_")
-	out := parts[0]
-	for _, p := range parts[1:] {
-		if p == "" {
-			continue
-		}
-		out += strings.ToUpper(p[:1]) + p[1:]
-	}
-	return out
-}
+// clientDocsCamel живёт в clientdocscontractdrift.go — там она пришла
+// со ствола и строже: ведущий разделитель не даёт заглавной.
 
 // clientDocsPascal — имя сообщения из дефисного имени файла страницы.
 func clientDocsPascal(base string) string {
