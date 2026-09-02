@@ -233,9 +233,9 @@ func AuditManifestKeyDenial(opts ManifestKeyDenialOptions, log io.Writer) ([]Man
 	})
 
 	if log != nil {
-		fmt.Fprintf(log, "перепись: файлов манифеста %d · живых ключей %d · приёмок %d · строк %d\n",
+		_, _ = fmt.Fprintf(log, "перепись: файлов манифеста %d · живых ключей %d · приёмок %d · строк %d\n",
 			census.ManifestFiles, census.LiveKeys, census.DocFiles, census.DocLines)
-		fmt.Fprintf(log, "перепись: строк-утверждений %d · блоков состояния %d · ключей под маркером %d · находок %d\n",
+		_, _ = fmt.Fprintf(log, "перепись: строк-утверждений %d · блоков состояния %d · ключей под маркером %d · находок %d\n",
 			census.ClaimLines, census.MarkerBlocks, census.KeysMarked, len(findings))
 	}
 	return findings, census, nil
