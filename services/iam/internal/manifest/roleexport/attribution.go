@@ -84,6 +84,15 @@ type Action struct {
 	Relation string
 	// Object — тип объекта, на котором отношение спрашивается.
 	Object string
+	// Internal — действие живёт на ВНУТРЕННЕМ слушателе.
+	//
+	// Плоскость видна прямо в записи каталога — приставкой `Internal` у имени
+	// службы, — и правило её чтения объявлено ЗДЕСЬ ЖЕ, единственным местом
+	// (`splitFQN`). Поле заведено потому, что раздел `resources` объявляет ту
+	// же плоскость своим признаком `internal`, и два объявления одного предмета
+	// обязаны сверяться (linkage.go); прежде вычисленная плоскость
+	// отбрасывалась, то есть сверять было нечем.
+	Internal bool
 }
 
 // Exempt — у действия нет гейта вовсе: `required_relation` пуст.
@@ -104,7 +113,7 @@ func Attribute(entries []CatalogEntry) ([]Action, []error) {
 	seen := make(map[string]string, len(entries))
 
 	for _, e := range entries {
-		module, resource, verb, ok := splitFQN(e.FQN)
+		module, resource, verb, internal, ok := splitFQN(e.FQN)
 		if !ok {
 			faults = append(faults, fmt.Errorf("%w: %s", ErrEntryOutsideModuleShape, e.FQN))
 			continue
@@ -123,6 +132,7 @@ func Attribute(entries []CatalogEntry) ([]Action, []error) {
 			FQN:      e.FQN,
 			Relation: e.RequiredRelation,
 			Object:   e.ScopeObjectType,
+			Internal: internal,
 		})
 	}
 
@@ -134,31 +144,31 @@ func Attribute(entries []CatalogEntry) ([]Action, []error) {
 
 // splitFQN — единственное объявление правила «запись каталога → (модуль,
 // ресурс, действие)».
-func splitFQN(fqn string) (module, resource, verb string, ok bool) {
+func splitFQN(fqn string) (module, resource, verb string, internal, ok bool) {
 	head, method, cut := strings.Cut(fqn, "/")
 	if !cut || method == "" {
-		return "", "", "", false
+		return "", "", "", false, false
 	}
 	parts := strings.Split(head, ".")
 	// kacho · cloud · <модуль> · v1 · <Служба>
 	if len(parts) != 5 || parts[0] != "kacho" || parts[1] != "cloud" || parts[3] != "v1" {
-		return "", "", "", false
+		return "", "", "", false, false
 	}
 	module, service := parts[2], parts[4]
 	if module == "" {
-		return "", "", "", false
+		return "", "", "", false, false
 	}
-	internal := strings.HasPrefix(service, "Internal")
+	internal = strings.HasPrefix(service, "Internal")
 	base := strings.TrimPrefix(service, "Internal")
 	if !strings.HasSuffix(base, "Service") || base == "Service" {
-		return "", "", "", false
+		return "", "", "", false, false
 	}
 	resource = lowerFirst(strings.TrimSuffix(base, "Service"))
 	verb = lowerFirst(method)
 	if internal {
 		verb = "internal" + upperFirst(verb)
 	}
-	return module, resource, verb, true
+	return module, resource, verb, internal, true
 }
 
 func lowerFirst(s string) string {
