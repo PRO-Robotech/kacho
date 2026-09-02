@@ -6,8 +6,14 @@
 //
 // Раздел АВТОРСКИЙ: аннотации о ролях не говорят ничего. Зато говорят
 // МИГРАЦИИ — 51 системная роль объявлена применёнными, а применённую миграцию
-// не правят (ban #5). Поэтому манифест объявляет роли уровня аккаунта и
-// проекта, а системную отвергает ЯВНО.
+// не правят (ban #5).
+//
+// Здесь стояло «поэтому манифест объявляет роли уровня аккаунта и проекта, а
+// системную отвергает ЯВНО». Утверждение снято вместе со своим предметом
+// (приёмка `roles-come-as-data-not-migrations.md` §3.2): кластерный ярус
+// ПРИНИМАЕТСЯ, писателем строки становится применитель манифеста, а отказ
+// остаётся у роли ЧУЖОГО модуля. Что при этом не изменилось — ярусы аккаунта и
+// проекта, — утверждает MOD-RD-05 положительным контролем.
 //
 // Форма выдачи изоморфна `domain.Rule` ДОСЛОВНО — имя в имя, число в число.
 // Второе написание того же предмета разошлось бы с первым молча.
@@ -215,39 +221,20 @@ func TestMODMR13ResourceNamesAndMatchLabelsAreMutuallyExclusive(t *testing.T) {
 
 // ── MOD-MR-14 ───────────────────────────────────────────────────────────────
 
-// TestMODMR14SystemRoleIsRefusedExplicitly — системность НЕ отдельный признак, а
-// СЛЕДСТВИЕ яруса: контракт говорит дословно, что `is_system` выводится из
-// `tier_type == iam.cluster`. Поэтому отказ по ярусу и есть отказ системной
-// роли, а не его приближение.
+// ── MOD-MR-14 СНЯТ ВМЕСТЕ СО СВОИМ ПРЕДМЕТОМ ────────────────────────────────
 //
-// Исход 2 запрета «принято-и-проигнорировано»: приняв, мы вернули бы
-// вызывающему успех и уверенность, что его роль заведена, тогда как заводит её
-// миграция, которой в этом изменении нет.
-func TestMODMR14SystemRoleIsRefusedExplicitly(t *testing.T) {
-	base := "apiVersion: iam/v1\nmodule: vpc\nroles:\n" +
-		"  - id: vpc.admin\n    name: Администратор\n    description: Может всё.\n" +
-		"    tier: {tierType: %s, tierId: cluster_kacho_root}\n" +
-		"    rules:\n      - {module: vpc, resources: [network], verbs: [get]}\n"
-
-	_, err := manifest.Load([]byte(strings.Replace(base, "%s", "iam.cluster", 1)))
-	if err == nil {
-		t.Fatalf("системная роль в манифесте принята")
-	}
-	if !errors.Is(err, manifest.ErrSystemRoleNotAuthorable) {
-		t.Errorf("отказ не отнесён к своей причине: %v", err)
-	}
-	for _, want := range []string{
-		"roles[0].tier.tierType", "iam.cluster", "iam.account", "iam.project", "миграц",
-	} {
-		if !strings.Contains(err.Error(), want) {
-			t.Errorf("отказ не называет %q: %v", want, err)
-		}
-	}
-
-	if _, err := manifest.Load([]byte(strings.Replace(base, "%s", "iam.project", 1))); err != nil {
-		t.Fatalf("парный положительный отвергнут: %v", err)
-	}
-}
+// Здесь стояла проба `TestMODMR14SystemRoleIsRefusedExplicitly`, утверждавшая
+// отказ `ErrSystemRoleNotAuthorable` по кластерному ярусу. Её предмет СНЯТ
+// решением приёмки `roles-come-as-data-not-migrations.md` §3.2: отказ ФОРМЫ
+// заменён отказом ВЛАДЕНИЯ, потому что все живые системные роли — кластерные, и
+// исполнимого входа у раздела не существовало ни одного.
+//
+// Проба ЗАМЕНЕНА, а не ослаблена: новое свойство того же предмета утверждают
+// `TestMODRD01ClusterTierRoleOfOwnModuleIsAccepted` (ярус принимается) и
+// `TestMODRD02ClusterTierRoleOfAForeignModuleIsStillRefused` (право объявления
+// не расширилось) в `roles_cluster_tier_test.go`. Убрать утверждение и оставить
+// пробу было бы ослаблением; оставить её как есть — утверждением о том, чего в
+// продукте больше нет.
 
 // ── MOD-MR-15 ───────────────────────────────────────────────────────────────
 
@@ -277,7 +264,7 @@ func TestMODMR15RoleIDOfABindingIsResolvedByTheRolesSection(t *testing.T) {
 		t.Errorf("перепись всё ещё объясняет ноль сверенных отсутствием раздела: %s", census)
 	}
 
-	broken := replaceOnce(t, doc, "roleId: vpc.internalConsumer", "roleId: vpc.nosuchRole")
+	broken := replaceOnce(t, doc, "roleId: vpc.internal_consumer", "roleId: vpc.nosuchRole")
 	_, err = manifest.Load([]byte(broken))
 	if err == nil {
 		t.Fatalf("выдача на роль, которой манифест не объявляет, принята")

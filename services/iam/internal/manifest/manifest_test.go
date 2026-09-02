@@ -47,7 +47,7 @@ seed:
   accessBindings:
     - subjects:
         - {type: group, name: vpc-internal-consumers}
-      roleId: vpc.internalConsumer
+      roleId: vpc.internal_consumer
       scopeType: iam.cluster
       scopeId: cluster_kacho_root
       target: allInScope
@@ -183,7 +183,7 @@ func TestMODMF01RealManifestPassesTheLoader(t *testing.T) {
 		t.Errorf("группы прочитаны неверно: %q, %q", m.Seed.Groups[0].Name, m.Seed.Groups[1].Name)
 	}
 	b := m.Seed.AccessBindings[0]
-	if b.RoleID != "vpc.internalConsumer" || b.ScopeType != "iam.cluster" ||
+	if b.RoleID != "vpc.internal_consumer" || b.ScopeType != "iam.cluster" ||
 		b.ScopeID != "cluster_kacho_root" || b.Target != "allInScope" {
 		t.Errorf("выдача прочитана неверно: %+v", b)
 	}
