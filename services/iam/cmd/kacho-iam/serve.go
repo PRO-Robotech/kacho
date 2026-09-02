@@ -37,6 +37,7 @@ import (
 
 	"github.com/PRO-Robotech/kacho/services/iam/internal/apps/kacho/api/access_binding/reconcile"
 	"github.com/PRO-Robotech/kacho/services/iam/internal/apps/kacho/config"
+	"github.com/PRO-Robotech/kacho/services/iam/internal/apps/kacho/modulecatalog"
 	"github.com/PRO-Robotech/kacho/services/iam/internal/authzguard"
 	"github.com/PRO-Robotech/kacho/services/iam/internal/clients"
 	"github.com/PRO-Robotech/kacho/services/iam/internal/handler/clienttokenhttp"
@@ -216,8 +217,28 @@ func runServe(cfg config.Config) error {
 	// Сорванная доставка обязана назваться своим именем РАНЬШЕ, чем о
 	// расхождении заговорит страж: иначе оператор прочтёт отказ доставки как
 	// расхождение каталога и пойдёт чинить не то.
-	if mErr := loadDeliveredManifests(logger, cfg.Manifests); mErr != nil {
+	deliveredManifests, mErr := loadDeliveredManifests(logger, cfg.Manifests)
+	if mErr != nil {
 		return mErr
+	}
+
+	// ПРИМЕНЕНИЕ ДОСТАВЛЕННОГО — между чтением доставки и стражем паритета
+	// (задача #1034).
+	//
+	// Применитель — ЕДИНСТВЕННЫЙ писатель строк каталога в прод-коде; до этой
+	// провязки его не звал никто, и каталог наполнял посев миграции, то есть
+	// объявленное манифестом состояние доезжало до базы только пересборкой
+	// образа. Довод о месте, порядке и о том, почему отказ фатален, —
+	// `services/iam/docs/engineering/architecture/module-catalog-applier-runs-at-boot.md`;
+	// порядок держит гейт `module_catalog_apply_wiring_test.go`, а не этот
+	// комментарий.
+	//
+	// Страж НИЖЕ судит то, что применитель ТОЛЬКО ЧТО записал: ConfigMap с
+	// манифестами — данные оператора, а не релиза, и в одиночку он не вправе
+	// расширить каталог за пределы того, что знает образ.
+	catalogApplier := modulecatalog.NewApplier(kachopg.NewCatalogWriteRepo(pool))
+	if aErr := applyDeliveredManifests(ctx, logger, catalogApplier, deliveredManifests); aErr != nil {
+		return aErr
 	}
 
 	catalogRepo := kachopg.NewCatalogRepo(pool)
