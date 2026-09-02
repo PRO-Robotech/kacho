@@ -33,7 +33,7 @@ func linkageCatalog() []roleexport.CatalogEntry {
 
 // linkageManifest — раздел, СХОДЯЩИЙСЯ с каталогом выше во всём.
 const linkageManifest = "apiVersion: iam/v1\nmodule: vpc\nresources:\n" +
-	"  - name: network\n    objectType: vpc_network\n    parent: project\n    producer: derived\n" +
+	"  - name: network\n    objectType: vpc_network\n    parents: [project]\n    producer: derived\n" +
 	"    verbs:\n" +
 	"      - {name: getNetwork, class: get}\n" +
 	"      - {name: internalGetNetwork, class: get, internal: true}\n"
@@ -118,7 +118,7 @@ func TestActionLinkageIsCheckedInBothDirections(t *testing.T) {
 
 	t.Run("авторский ресурс из популяции ИСКЛЮЧЁН, а не отвергнут", func(t *testing.T) {
 		doc := linkageManifest +
-			"  - name: addressPool\n    objectType: vpc_address_pool\n    parent: cluster\n" +
+			"  - name: addressPool\n    objectType: vpc_address_pool\n    parents: [cluster]\n" +
 			"    producer: authored\n    verbs: [get, list]\n"
 		faults, census := linkage(t, doc)
 		if len(faults) > 0 {

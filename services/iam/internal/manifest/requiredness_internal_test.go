@@ -300,9 +300,11 @@ func violate(doc *yaml.Node, r requirement) bool {
 
 // requirednessFixtures — фикстуры, на которых производится вход.
 //
-// Их три, потому что разделы и ветки у них разные: оси раздела `seed.joins` в
+// Их четыре, потому что разделы и ветки у них разные: оси раздела `seed.joins` в
 // фикстуре ресурсов места не имеют вовсе, а ветка выдачи с перечнем объектов
-// (`target: resources`) не встречается ни в одной из первых двух. Ось считается
+// (`target: resources`) не встречается ни в одной из первых двух, а указатель,
+// ярус и действие записаны там КОРОТКОЙ формой, у которой обязательных ключей
+// нет вовсе. Ось считается
 // произведённой, если её удалось испортить ХОТЯ БЫ В ОДНОЙ; иначе она попадает
 // в третью категорию под своим именем — и это повод завести фикстуру, а не
 // повод промолчать.
@@ -310,6 +312,7 @@ var requirednessFixtures = []string{
 	"testdata/vpc.resources-fixture.yaml",
 	"testdata/vpc.seed-fixture.yaml",
 	"testdata/vpc.binding-resources-fixture.yaml",
+	"testdata/vpc.long-forms-fixture.yaml",
 }
 
 func readFixtureDoc(t *testing.T, path string) (*yaml.Node, []byte) {

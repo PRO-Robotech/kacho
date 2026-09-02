@@ -167,7 +167,7 @@ func judgeResource(facts VerbFacts, m *manifest.Manifest, roleID string, rule ma
 	fgaType, _ := authzmap.ObjectType(rule.Module, resource)
 	var faults []error
 	judged := 0
-	for _, verb := range rule.Verbs {
+	for _, verb := range rule.Classes {
 		class := classOf(m, verb)
 		judged++
 		if len(Covers(facts, own, fgaType, class)) > 0 {

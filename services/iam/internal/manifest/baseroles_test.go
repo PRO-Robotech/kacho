@@ -36,7 +36,7 @@ const baseRolesDoc = "apiVersion: iam/v1\nmodule: vpc\nresources:\n%s"
 // загрузчике, отвергающем любой ресурс, и утверждала бы о нём ничего.
 func TestBaseRolesOnAnAllInternalResourceIsRefused(t *testing.T) {
 	allInternal := "  - name: addressPool\n    objectType: vpc_address_pool\n" +
-		"    parent: cluster\n    producer: derived\n    baseRoles: true\n" +
+		"    parents: [cluster]\n    producer: derived\n    baseRoles: true\n" +
 		"    verbs:\n" +
 		"      - {name: internalGetAddressPool,  class: get,  internal: true}\n" +
 		"      - {name: internalListAddressPool, class: list, internal: true}\n"
@@ -93,7 +93,8 @@ func TestBaseRoleTiersAreDerivedOnlyFromTheDeclaredFlag(t *testing.T) {
 		},
 		{
 			name: "авторский набор СУЖАЕТ выводимое",
-			res:  manifest.Resource{Name: "addressPool", BaseRoles: true, Tiers: []string{"admin", "viewer"}},
+			res: manifest.Resource{Name: "addressPool", BaseRoles: true,
+				Tiers: []manifest.ResourceTier{{Name: "admin"}, {Name: "viewer"}}},
 			want: []string{"admin", "viewer"},
 		},
 	}
@@ -114,7 +115,7 @@ func TestBaseRoleTiersAreDerivedOnlyFromTheDeclaredFlag(t *testing.T) {
 // тенантские: внутренняя плоскость у них не встречается. Проба утверждает ОБЕ
 // стороны, иначе «принимается» было бы неотличимо от «принимается что угодно».
 func TestInternalVerbKeyIsAcceptedInTheLongFormOnly(t *testing.T) {
-	body := "  - name: network\n    objectType: vpc_network\n    parent: project\n" +
+	body := "  - name: network\n    objectType: vpc_network\n    parents: [project]\n" +
 		"    producer: derived\n    verbs:\n      - {name: internalGetNetwork, class: get, internal: true}\n"
 	m, err := manifest.Load([]byte(strings.Replace(baseRolesDoc, "%s", body, 1)))
 	if err != nil {
