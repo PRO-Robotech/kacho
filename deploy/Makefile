@@ -470,6 +470,12 @@ dev-up: preflight
 	echo "    пустую величину, полосу отвергли бы на первом обращении, а стенд выглядел"; \
 	echo "    бы поднятым (задача #948). Значит секрет — предусловие, а не следствие."; \
 	./scripts/dev-prod-secrets.sh; \
+	echo "=== манифесты модулей: ПРЕДУСЛОВИЕ, а не следствие (задача #1901) ==="; \
+	echo "    Под монтирует именованный ConfigMap с манифестами модулей, а процесс"; \
+	echo "    читает смонтированный каталог на старте и ОТКАЗЫВАЕТСЯ подниматься на"; \
+	echo "    пустом: отсутствие манифеста снятием модуля не является. Значит объект"; \
+	echo "    обязан существовать ДО первого прогона helm, а не появиться после."; \
+	$(MAKE) --no-print-directory module-manifests-configmap MODULE_MANIFESTS_STACK=dev; \
 	echo "=== продукт: ОДИН helm-прогон, сразу в боевой посадке (mTLS включён) ==="; \
 	helm upgrade --install kacho-umbrella ./helm/umbrella -n kacho --create-namespace \
 	  $(call STACK_ARGS,dev) \
@@ -642,6 +648,8 @@ stack-up:
 	  exit 1; }; \
 	echo "=== стенд $(STACK): цепочка ПРОЧИТАНА из stacks.txt ==="; \
 	printf '  %s\n' $$args; \
+	$(MAKE) --no-print-directory module-manifests-configmap \
+	  MODULE_MANIFESTS_STACK=$(STACK) STACK_NAMESPACE=$(STACK_NAMESPACE); \
 	set -x; \
 	helm upgrade --install $(STACK_RELEASE) ./helm/umbrella -n $(STACK_NAMESPACE) --create-namespace \
 	  $$args $(UMBRELLA_OPTS) $(STACK_EXTRA_ARGS) --wait --timeout $(STACK_TIMEOUT)
@@ -1253,6 +1261,44 @@ wipe-iam-db: guard-kind-context
 	    env PGPASSWORD=dev-iam-password psql -U iam -d kacho_iam \
 	    -c "DROP TABLE IF EXISTS public.goose_db_version;" || true
 	@echo "✓ IAM schema wiped; goose state dropped. Next: kubectl rollout restart deploy/kacho-iam"
+
+# ─── МАНИФЕСТЫ МОДУЛЕЙ: ПРОИЗВОДИТЕЛЬ ConfigMap (kacho#1901) ─────────────────
+#
+# Доставка манифестов была заведена целиком (#1875) — чарт монтирует именованный
+# ConfigMap, процесс читает смонтированный каталог, страж старта отказывает на
+# сорванной доставке, — а НАПОЛНИТЬ этот ConfigMap было нечем: ни цели сборки, ни
+# шага стенда, ни объявления внешнего конвейера. Здесь эта половина и заводится.
+#
+# ИМЯ ОБЪЕКТА ЧИТАЕТСЯ ИЗ ТЕХ ЖЕ ПРОФИЛЕЙ, ЧТО И У helm. Производитель получает
+# цепочку стенда из stacks.txt и берёт `kacho-iam.manifests.configMapName`
+# оттуда же, откуда её берёт чарт: второе объявление разошлось бы с первым молча,
+# и каталог доставки приехал бы пустым — снаружи неотличимо от «модулей нет».
+#
+# ПЕРЕЧЕНЬ МАНИФЕСТОВ ВЫВОДИТСЯ ИЗ ДЕРЕВА (`services/*/manifest.yaml`), а служба
+# БЕЗ манифеста называется переписью поимённо: доставка пяти манифестов из шести
+# выглядит снаружи ровно так же, как доставка всех.
+#
+# ИСХОДОВ ЧЕТЫРЕ, И КОД ЧИТАЕТСЯ, А НЕ ВИД ВЫВОДА: 0 — объект применён; 3 —
+# стенд доставку не объявляет (законный исход, идём дальше); 1 и 2 — находка и
+# беспредметный обход, и оба обязаны валить цель. Инструмент СОБИРАЕТСЯ в
+# двоичный файл, а не зовётся через `go run`: `go run` отдаёт свой код 1 на любом
+# ненулевом коде программы, то есть «не объявлено» стало бы неотличимо от находки.
+MODULE_MANIFESTS_STACK ?= dev
+module-manifests-configmap:
+	@set -e; \
+	chain="$$(bash tests/helm/stacks.sh --chain $(MODULE_MANIFESTS_STACK) ' ')"; \
+	[ -n "$$chain" ] || { echo "ABORT: цепочка стенда '$(MODULE_MANIFESTS_STACK)' прочиталась пустой"; exit 1; }; \
+	profiles=""; for f in $$chain; do profiles="$$profiles ./helm/umbrella/$$f"; done; \
+	work="$$(mktemp -d)"; trap 'rm -rf "$$work"' EXIT; \
+	go build -o "$$work/producer" ../tools/modulemanifests/cmd/module-manifests-configmap; \
+	rc=0; "$$work/producer" -root .. $$profiles > "$$work/configmap.yaml" || rc=$$?; \
+	case "$$rc" in \
+	  0) kubectl -n $(STACK_NAMESPACE) apply -f "$$work/configmap.yaml"; \
+	     echo "=== манифесты модулей доставлены стенду $(MODULE_MANIFESTS_STACK) ===" ;; \
+	  3) echo "=== стенд $(MODULE_MANIFESTS_STACK) доставку манифестов не объявляет — ConfigMap не заводится ===" ;; \
+	  *) echo "ABORT: производитель манифестов вернул $$rc — см. перепись выше"; exit "$$rc" ;; \
+	esac
+
 
 # Логи kacho-iam deployment.
 logs-iam:

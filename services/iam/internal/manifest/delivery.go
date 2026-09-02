@@ -19,6 +19,39 @@ import (
 // обход переиспользуется целиком, а превращение его исхода в отказ живёт здесь,
 // а не расползается по композиционному корню.
 //
+// # Почему ИМЯ файла здесь судится иначе, чем в дереве (задача #1901)
+//
+// В дереве манифест опознаётся базовым именем `manifest.yaml`: рядом лежат чужие
+// документы, и судить их нашей формой значило бы выдавать находку там, где её
+// никто не писал. В каталоге доставки чужих документов НЕТ: всё, что там лежит,
+// положила посадка, а имя файла есть КЛЮЧ ConfigMap, а не имя из дерева.
+//
+// И это не вкус, а единственная исполнимая форма. Замерено kubectl, обе стороны:
+//
+//	$ kubectl create configmap probe \
+//	    --from-file=iam/manifest.yaml=services/iam/manifest.yaml --dry-run=client -o yaml
+//	error: "iam/manifest.yaml" is not a valid key name for a ConfigMap: a valid
+//	  config key must consist of alphanumeric characters, '-', '_' or '.'
+//
+//	$ kubectl create configmap probe --from-file=services/iam/manifest.yaml \
+//	    --from-file=services/vpc/manifest.yaml --dry-run=client -o yaml
+//	error: cannot add key "manifest.yaml", another key by that name already exists
+//	  in Data for ConfigMap "probe"
+//
+// То есть в одном ConfigMap ключа `manifest.yaml` может быть только ОДИН, а
+// подкаталога `<модуль>/` не может быть вовсе. Подкаталог через `items[].path`
+// тоже не выручает: том кладёт полезную нагрузку в каталог с ведущими точками, а
+// на верхнем уровне оставляет СИМВОЛЬНУЮ ССЫЛКУ на первый сегмент пути, — обход
+// ссылки не разыменовывает и вглубь не идёт (замер — в deliverymount_test.go).
+//
+// Требуя имени `manifest.yaml`, доставка требовала входа, которого не бывает: та
+// самая «неисполнимая возможность» (`api-conventions.md`), только не в поле
+// запроса, а в форме доставки.
+//
+// Следствие названо прямо: посторонний ключ в каталоге доставки — НАХОДКА, а не
+// то, что читатель вправе молча пропустить. Файл, доставленный и невидимый
+// читателю, есть ровно тот класс, ради которого доставка заводилась.
+//
 // # Почему пустой каталог — ОТКАЗ, а не «модулей нет»
 //
 // Принято `#1034` дословно: отсутствие файла манифеста снятием НЕ является.
@@ -57,7 +90,7 @@ func (r CheckReport) Modules() []string {
 // отличается от «каталог прочитан, и он пуст», а чинятся эти два состояния
 // по-разному.
 func LoadDelivered(root string) (CheckReport, error) {
-	report := CheckTree(root)
+	report := CheckDelivery(root)
 	switch report.ExitCode() {
 	case CheckOK:
 		return report, nil
@@ -74,4 +107,14 @@ func LoadDelivered(root string) (CheckReport, error) {
 			root, report.ManifestsRead, len(report.Findings),
 			strings.Join(report.Findings, "\n\t"))
 	}
+}
+
+// CheckDelivery обходит КАТАЛОГ ДОСТАВКИ: читает каждую доставленную запись,
+// кроме служебных записей тома, и судит её тем же Load, что и манифест дерева.
+//
+// Отдельная точка входа, а не флаг у CheckTree: у полос разные вызывающие и
+// разные предметы, и вызывающий не должен выбирать поведение булевым аргументом,
+// смысл которого читается только по объявлению.
+func CheckDelivery(root string) CheckReport {
+	return walkManifests(root, isDeliveredManifestName)
 }

@@ -10,6 +10,12 @@
 - `make logs-svc SVC=<svc>` — `kubectl logs -f`
 - `make psql SVC=<svc>` — psql в pod-е
 - `make e2e-test` — bash-сценарии в `e2e/` (см. ниже)
+- `make module-manifests-configmap` — положить на стенд ConfigMap с манифестами
+  модулей (`services/*/manifest.yaml`). Зовётся сам из `dev-up` и `stack-up`
+  ПЕРЕД первым прогоном helm: служба читает каталог доставки на старте и на
+  пустом отказывается подниматься. Стенд выбирается `MODULE_MANIFESTS_STACK=`
+  (умолчание `dev`); стенд, не объявивший `kacho-iam.manifests.configMapName`,
+  объект не получает, и цель говорит это вслух, а не отказом.
 
 ### IAM stack (KAC-105, sub-phase 2.0)
 

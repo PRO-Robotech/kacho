@@ -49,7 +49,11 @@ func writeDelivery(t *testing.T, docs map[string]string) string {
 
 func TestBootRefusesWhenDeclaredDeliveryIsEmpty(t *testing.T) {
 	logger, buf := captureBoot()
-	root := writeDelivery(t, map[string]string{"README.md": "манифестов тут нет"})
+	// Каталог ПУСТ, а не «с посторонним файлом»: посторонний файл в каталоге
+	// доставки стал отдельной находкой (задача #1901 — каталог доставки есть
+	// закрытый набор), и отказ по нему утверждал бы о другом предмете, чем
+	// заголовок этой пробы.
+	root := writeDelivery(t, nil)
 
 	err := loadDeliveredManifests(logger, config.ManifestsConfig{Dir: root, Required: true})
 	if err == nil {

@@ -38,11 +38,20 @@ func deliveryDir(t *testing.T, docs map[string]string) string {
 }
 
 func TestLoadDeliveredReadsEveryManifestAndNamesTheModules(t *testing.T) {
+	// Раскладка РЕАЛЬНЫМИ подкаталогами остаётся законной: так выглядит корень,
+	// под которым посадка смонтировала несколько томов. Раскладку одного тома
+	// ConfigMap читает deliverymount_test.go — она другая, и там же замерено,
+	// почему.
+	//
+	// ЗДЕСЬ СТОЯЛ чужой файл рядом («доставка судит имя, а не совпадение слова»),
+	// и это утверждение снято вместе со своим основанием (задача #1901): каталог
+	// доставки — ЗАКРЫТЫЙ НАБОР, чужих документов в нём не бывает, а требование
+	// имени `manifest.yaml` делало доставку неисполнимой — ключа с таким именем в
+	// одном ConfigMap может быть только один. Посторонний ключ теперь находка, и
+	// об этом отдельная проба.
 	root := deliveryDir(t, map[string]string{
 		"vpc/manifest.yaml": compactManifest,
 		"iam/manifest.yaml": "apiVersion: iam/v1\nmodule: iam\n",
-		// Чужой файл рядом: доставка судит имя, а не совпадение слова.
-		"vpc/README.md": "# manifest.yaml — про манифест, но не он",
 	})
 
 	report, err := manifest.LoadDelivered(root)
@@ -67,7 +76,10 @@ func TestLoadDeliveredReadsEveryManifestAndNamesTheModules(t *testing.T) {
 }
 
 func TestLoadDeliveredRefusesAnEmptyDirectoryBecauseAbsenceIsNotWithdrawal(t *testing.T) {
-	root := deliveryDir(t, map[string]string{"README.md": "тут манифестов нет"})
+	// Пустой ConfigMap, а не пустой каталог: том всё равно кладёт свои служебные
+	// записи, и перепись обязана их назвать — иначе «доставка сорвана» не
+	// отличается от «каталога нет вовсе».
+	root := configMapMount(t, nil)
 
 	report, err := manifest.LoadDelivered(root)
 	if err == nil {
