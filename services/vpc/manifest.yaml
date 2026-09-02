@@ -1,0 +1,149 @@
+# ==========================================================================
+#  vpc — манифест домена: что модуль объявляет платформе о своих правах.
+#
+#  Девять адресуемых ресурсов. Десятого — квоты — здесь НЕТ: пообъектной адресации
+#  у неё нет вовсе, право на неё проверяется на проекте, и типа объекта в закрытой
+#  таблице у неё не заведено. Ресурс без типа объекта записи не имеет by
+#  construction: ключ `objectType` обязателен.
+#
+#  Раздел `resources` порождает блоки типов модели доступов; сверка с каноном
+#  `proto/kacho/cloud/iam/v1/fga_model.fga` ПОБАЙТОВАЯ:
+#      make -C services/iam model-canon-check
+#  Форму документа судит один разбор:
+#      make -C services/iam module-manifest-check
+#
+#  Что ВЫВОДИТСЯ и здесь не пишется: класс канонического действия — из его
+#  имени; умолчательный состав субъектов `[user, service_account, group#member]`;
+#  цепочка ярусов admin→editor→viewer от супер-доступа; каскад
+#  `super_admin from <первый указатель>`; источник действия — супер-доступ.
+#  Названо только то, что от умолчания ОТЛИЧАЕТСЯ.
+#
+#  ЧЕГО ЗДЕСЬ НЕТ, и это сказано, чтобы манифест не читался как полный:
+#  разделы `roles` и `seed` не объявлены НИ ОДНИМ манифестом дерева. Роли и
+#  посев у модулей есть — их пишут четырнадцать применённых миграций, и
+#  действующее состояние не лежит нигде одним куском. `resources` выводится из
+#  канона и проверяется побайтовой сверкой, поэтому ошибка в нём невозможна
+#  молча; у двух других разделов такого единственного документа нет, а
+#  применитель пишет ими живые выдачи. Предмет и предикат снятия — задача
+#  продукта #1891.
+# ==========================================================================
+
+apiVersion: iam/v1
+module: vpc
+
+resources:
+
+  - name: network
+    objectType: vpc_network
+    parents: [project]
+    producer: derived
+    verbs:
+      - get
+      - list
+      - update
+      - delete
+
+  - name: subnet
+    objectType: vpc_subnet
+    parents: [project]
+    producer: derived
+    notes:
+      - before: v_get
+        text: |
+          # ЗДЕСЬ СТОЯЛО `use` — «взять подсеть в работу, не правя её», — И ОНО СНЯТО
+          # (#1115) вместе со всем семейством. Причина записана один раз, у
+          # `iam_service_account`, где снято третье объявление того же замысла.
+    verbs:
+      - get
+      - list
+      - update
+      - delete
+
+  - name: address
+    objectType: vpc_address
+    parents: [project]
+    producer: derived
+    notes:
+      - before: v_get
+        text: |
+          # ЗДЕСЬ СТОЯЛО `use` — «взять адрес в работу, не правя его», — И ОНО СНЯТО
+          # (#1115) вместе со всем семейством. Причина записана один раз, у
+          # `iam_service_account`, где снято третье объявление того же замысла.
+    verbs:
+      - get
+      - list
+      - update
+      - delete
+
+  - name: securityGroup
+    objectType: vpc_security_group
+    parents: [project]
+    producer: derived
+    verbs:
+      - get
+      - list
+      - update
+      - delete
+
+  - name: routeTable
+    objectType: vpc_route_table
+    parents: [project]
+    producer: derived
+    verbs:
+      - get
+      - list
+      - update
+      - delete
+
+  - name: gateway
+    objectType: vpc_gateway
+    parents: [project]
+    producer: derived
+    verbs:
+      - get
+      - list
+      - update
+      - delete
+
+  - name: networkInterface
+    objectType: vpc_network_interface
+    parents: [project]
+    producer: derived
+    verbs:
+      - get
+      - list
+      - update
+      - delete
+
+  - name: addressPool
+    objectType: vpc_address_pool
+    parents: [cluster]
+    producer: authored
+    subjects: [user, service_account]
+    tiers: [admin, viewer]
+    cascade:
+      - {relation: any_admin, from: cluster}
+    notes:
+      - before: cluster
+        text: |
+          # kacho:latent — cluster-anchored admin resource; its RPCs gate on
+          # cluster:cluster_kacho_root#system_admin directly, so no module registers an
+          # address pool and nothing writes this pointer today. Declared ahead of that
+          # producer deliberately: the type is admin-curated and the anchor is what the
+          # super-admin cascade below derives over. The marker expires by itself — the
+          # moment a producer appears, the gate demands it be removed.
+    verbs:
+      - get
+      - list
+      - update
+      - delete
+
+  - name: cidrGroup
+    objectType: vpc_cidr_group
+    parents: [project]
+    producer: derived
+    verbs:
+      - get
+      - list
+      - update
+      - delete
