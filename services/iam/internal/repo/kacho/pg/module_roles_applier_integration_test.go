@@ -125,7 +125,7 @@ func TestMODRD13ApplierAgainstTheLiveBaseWritesNothingOnTheSecondRun(t *testing.
 	id := domain.SystemRoleID(domain.RoleName(roleID))
 
 	declared := declaredManifest("vpc", roleID, "Роль, объявленная манифестом модуля.",
-		[]manifest.Rule{{Module: "vpc", Resources: []string{"network"}, Verbs: []string{"get"}}})
+		[]manifest.Rule{{Module: "vpc", Resources: []string{"network"}, Classes: []string{"get"}}})
 
 	// ── 1. Строки не было: применитель её заводит ───────────────────────────
 	rep, err := applier.Apply(ctx, declared)
@@ -148,7 +148,7 @@ func TestMODRD13ApplierAgainstTheLiveBaseWritesNothingOnTheSecondRun(t *testing.
 
 	// ── 3. Манифест правлен: ровно одна запись ──────────────────────────────
 	amended := declaredManifest("vpc", roleID, "Назначение, изменённое манифестом.",
-		[]manifest.Rule{{Module: "vpc", Resources: []string{"network"}, Verbs: []string{"get", "list"}}})
+		[]manifest.Rule{{Module: "vpc", Resources: []string{"network"}, Classes: []string{"get", "list"}}})
 	rep, err = applier.Apply(ctx, amended)
 	require.NoError(t, err, "правка манифеста обязана доехать: %s", rep)
 	assert.Equal(t, 1, rep.Written, "объявление отличается — строка обязана быть приведена: %s", rep)
@@ -192,7 +192,7 @@ func TestMODRD08AGrantSurvivesTheApplierRun(t *testing.T) {
 	id := domain.SystemRoleID(domain.RoleName(roleID))
 
 	declared := declaredManifest("vpc", roleID, "Роль, на которую выдано право.",
-		[]manifest.Rule{{Module: "vpc", Resources: []string{"network"}, Verbs: []string{"get"}}})
+		[]manifest.Rule{{Module: "vpc", Resources: []string{"network"}, Classes: []string{"get"}}})
 	rep, err := applier.Apply(ctx, declared)
 	require.NoError(t, err, "роль обязана появиться до того, как на неё выдадут право: %s", rep)
 	require.Equal(t, 1, rep.Written)
@@ -214,7 +214,7 @@ func TestMODRD08AGrantSurvivesTheApplierRun(t *testing.T) {
 
 	// ── Применение с правкой: то самое место, где идентичность могла бы уехать ──
 	amended := declaredManifest("vpc", roleID, "Назначение, изменённое манифестом.",
-		[]manifest.Rule{{Module: "vpc", Resources: []string{"network"}, Verbs: []string{"get", "list"}}})
+		[]manifest.Rule{{Module: "vpc", Resources: []string{"network"}, Classes: []string{"get", "list"}}})
 	rep, err = applier.Apply(ctx, amended)
 	require.NoError(t, err, "правка обязана примениться поверх выданного права: %s", rep)
 	require.Equal(t, 1, rep.Written)
@@ -281,7 +281,7 @@ func TestMODRD06ARetiredTypeIsRefusedByTheDomainBeforeAnyWrite(t *testing.T) {
 	id := domain.SystemRoleID(domain.RoleName(roleID))
 
 	retired := declaredManifest("vpc", roleID, "Роль, называющая снятый тип.",
-		[]manifest.Rule{{Module: "compute", Resources: []string{"disk"}, Verbs: []string{"get"}}})
+		[]manifest.Rule{{Module: "compute", Resources: []string{"disk"}, Classes: []string{"get"}}})
 
 	rep, err := applier.Apply(ctx, retired)
 	require.Error(t, err,
@@ -344,7 +344,7 @@ func TestMODRD06BAResourceWithdrawnByDataIsRefusedByTheKeyAndNothingLands(t *tes
 	id := domain.SystemRoleID(domain.RoleName(roleID))
 
 	withdrawn := declaredManifest("vpc", roleID, "Роль, называющая снятый каталогом ресурс.",
-		[]manifest.Rule{{Module: "vpc", Resources: []string{withdrawnResource}, Verbs: []string{"*"}}})
+		[]manifest.Rule{{Module: "vpc", Resources: []string{withdrawnResource}, Classes: []string{"*"}}})
 
 	rep, err := applier.Apply(ctx, withdrawn)
 	require.Error(t, err,
@@ -383,7 +383,7 @@ func TestMODRD06BAResourceWithdrawnByDataIsRefusedByTheKeyAndNothingLands(t *tes
 	const liveRoleID = "vpc.probe1870e.admin"
 	liveID := domain.SystemRoleID(domain.RoleName(liveRoleID))
 	live := declaredManifest("vpc", liveRoleID, "Роль на живом ресурсе каталога.",
-		[]manifest.Rule{{Module: "vpc", Resources: []string{"network"}, Verbs: []string{"get"}}})
+		[]manifest.Rule{{Module: "vpc", Resources: []string{"network"}, Classes: []string{"get"}}})
 	rep, err = applier.Apply(ctx, live)
 	require.NoError(t, err, "живой ресурс каталога обязан проходить: %s", rep)
 	assert.Equal(t, 1, countRoleRows(t, ctx, pool, liveID),
