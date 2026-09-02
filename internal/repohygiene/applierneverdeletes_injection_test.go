@@ -257,3 +257,131 @@ func TestTheDeletingImplementationIsHeldWhateverTheVerbIsCalled(t *testing.T) {
 		t.Fatalf("пометка снятия объявлена удалением: %v", f)
 	}
 }
+
+// ─────────────────────────────────────────────────────────────────────────────
+// #1926: ОСЬ 1 ЧИТАЕТ ПРЕДМЕТ ГЛАГОЛА, А НЕ ТОЛЬКО ГЛАГОЛ
+//
+// Удаление ПРОЕКЦИИ правила — штатная работа применителя: `ReplaceRuleRefs`
+// заменяет проекцию объявленных сегментов ПОЛНОСТЬЮ, то есть снимает лишние
+// строки. Ось 2 это разрешает явно (её образец привязан к таблице `roles`, и
+// `role_rule_refs` под него не подпадает by construction). Ось 1 разрешала это
+// СЛУЧАЙНО — только потому, что метод назван `Replace`, а не `Remove`.
+
+// applierPortWithProjectionRemoval — тот же порт, где проекция снимается
+// глаголом `Remove`. Законный близнец оси 1: код НИЧЕГО не нарушает.
+const applierPortWithProjectionRemoval = `package moduleroles
+
+import "context"
+
+type RoleWriter interface {
+	UpsertSystemRole(ctx context.Context, r Role) (Role, bool, error)
+	RemoveRuleRefs(ctx context.Context, id string, refs []Ref) error
+}
+`
+
+// applierPortWithRolesPurge — удаление СТРОКИ РОЛИ другим глаголом и во
+// множественном числе. Ось 1 обязана краснеть: предмет тот же.
+const applierPortWithRolesPurge = `package moduleroles
+
+import "context"
+
+type RoleWriter interface {
+	UpsertSystemRole(ctx context.Context, r Role) (Role, bool, error)
+	ReplaceRuleRefs(ctx context.Context, id string, refs []Ref) error
+	PurgeRoles(ctx context.Context, module string) error
+}
+`
+
+// applierPortWithUnnamedSubject — удаляющий глагол, НЕ НАЗВАВШИЙ предмета.
+// Предмет неизвестен, поэтому вердикт fail-closed: находка.
+const applierPortWithUnnamedSubject = `package moduleroles
+
+import "context"
+
+type RoleWriter interface {
+	UpsertSystemRole(ctx context.Context, r Role) (Role, bool, error)
+	Purge(ctx context.Context) error
+}
+`
+
+// applierPortWithRoleProjections — удаление ДВУХ проекций правила, обе с
+// корнем `Role` в имени. Близнец, отделяющий «предмет — строка роли» от
+// «предмет — что-то РОЛИ принадлежащее»: `role_verbs` и `role_rule_selectors`
+// суть проекции, и их снятие законно ровно так же, как снятие сегментов.
+const applierPortWithRoleProjections = `package moduleroles
+
+import "context"
+
+type RoleWriter interface {
+	UpsertSystemRole(ctx context.Context, r Role) (Role, bool, error)
+	DropRoleVerbs(ctx context.Context, id string) error
+	DeleteRoleRuleSelectors(ctx context.Context, id string) error
+}
+`
+
+// TestApplierDeleteGateReadsTheSubjectOfTheVerbNotOnlyTheVerb — #1926.
+//
+// Пять прогонов ОДНОГО предиката, и каждый снимает своё:
+//
+//	законный близнец   `RemoveRuleRefs`          — молчание (проекция)
+//	законный близнец   `DropRoleVerbs`+`Delete…` — молчание (проекции с корнем `Role`)
+//	инъекция           `PurgeRoles`              — находка (строка роли, другой глагол)
+//	инъекция           `Purge`                   — находка (предмет не назван, fail-closed)
+//	контроль           `DeleteSystemRole`        — находка (ось не выхолощена)
+func TestApplierDeleteGateReadsTheSubjectOfTheVerbNotOnlyTheVerb(t *testing.T) {
+	const rel = applierPackageDir + "apply.go"
+
+	scan := func(t *testing.T, what string, src string, wantMethods int) []string {
+		t.Helper()
+		sites, census, err := ScanApplierDeletes(rel, []byte(src))
+		if err != nil {
+			t.Fatalf("разбор %s: %v", what, err)
+		}
+		if census.InterfaceMethods != wantMethods {
+			t.Fatalf("%s: прочитано %d методов порта из %d — вход беспредметен",
+				what, census.InterfaceMethods, wantMethods)
+		}
+		return applierDeleteFindings(sites)
+	}
+
+	// ── Законный близнец 1: снятие ПРОЕКЦИИ сегментов удаляющим глаголом ─────
+	if f := scan(t, "близнец `RemoveRuleRefs`", applierPortWithProjectionRemoval, 2); len(f) != 0 {
+		t.Errorf("ось 1 читает глагол, но не его ПРЕДМЕТ: снятие проекции правила "+
+			"объявлено находкой — %v\n"+
+			"Удаление проекции есть штатная работа применителя: `ReplaceRuleRefs` заменяет "+
+			"проекцию объявленных сегментов ПОЛНОСТЬЮ, то есть снимает лишние строки, и ось 2 "+
+			"это разрешает явно. Переименование того же метода делало бы гейт красным на коде, "+
+			"который ничего не нарушает, — а гейт, краснеющий на верном коде, отключают "+
+			"первым (#1926)", f)
+	}
+
+	// ── Законный близнец 2: проекции, чьё имя НЕСЁТ корень `Role` ────────────
+	if f := scan(t, "близнец `DropRoleVerbs`", applierPortWithRoleProjections, 3); len(f) != 0 {
+		t.Errorf("предмет опознан по КОРНЮ, а не по существительному: проекции роли "+
+			"(`role_verbs`, `role_rule_selectors`) объявлены строкой роли — %v", f)
+	}
+
+	// ── Инъекция 1: строка роли, ДРУГОЙ глагол, множественное число ──────────
+	f := scan(t, "инъекция `PurgeRoles`", applierPortWithRolesPurge, 3)
+	if len(f) != 1 {
+		t.Fatalf("удаление строки роли НЕ стало находкой (находок %d): предмет тот же, "+
+			"меняется только глагол", len(f))
+	}
+	if !strings.Contains(f[0], "PurgeRoles") || !strings.Contains(f[0], "port-verb") {
+		t.Errorf("находка не называет глагол и ось: %q", f[0])
+	}
+
+	// ── Инъекция 2: предмет НЕ НАЗВАН — вердикт fail-closed ──────────────────
+	f = scan(t, "инъекция `Purge`", applierPortWithUnnamedSubject, 2)
+	if len(f) != 1 {
+		t.Fatalf("удаляющий глагол без предмета НЕ стал находкой (находок %d): предмет "+
+			"неизвестен, и догадка в разрешающую сторону здесь запрещена — по имени нельзя "+
+			"установить, что именно метод удаляет", len(f))
+	}
+
+	// ── Контроль: ось не выхолощена ─────────────────────────────────────────
+	if f := scan(t, "контроль `DeleteSystemRole`", applierPortWithDelete, 3); len(f) != 1 {
+		t.Fatalf("ось 1 выхолощена вместе с чтением предмета: `DeleteSystemRole` перестал "+
+			"быть находкой (находок %d)", len(f))
+	}
+}
