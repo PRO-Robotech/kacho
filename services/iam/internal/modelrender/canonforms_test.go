@@ -408,3 +408,69 @@ resources:
 		t.Fatalf("умолчательное место авторского отношения сдвинулось:\n%s", block)
 	}
 }
+
+// ── Проза блока: примечание с ЯКОРЕМ (#1845) ─────────────────────────────────
+
+// TestMODMR35ProseIsAnchoredToTheRelationItPrecedes — внутриблочная проза стоит
+// там, где её ставит канон, а не в одном месте на весь блок.
+//
+// Замер по канону: примечаний в модульных блоках 15 штук на 634 строки, и
+// якорями им служат ДЕВЯТЬ разных отношений — `project`, `cluster`, `super_admin`,
+// `editor`, `viewer`, `v_get`, `v_addtargets`, `member_remover`,
+// `realization_writer` и другие авторские. Пока `doc` был одним текстом без
+// координаты, рендер обязан был выбрать ОДНУ позицию, и всякий блок с иным
+// расположением прозы был недостижим by construction.
+//
+// Примечания несут самоистекающие маркеры и ссылки на задачи: потерять их
+// перегенерацией значило бы снять условие, о котором никто не решал.
+func TestMODMR35ProseIsAnchoredToTheRelationItPrecedes(t *testing.T) {
+	block := renderFromYAML(t, `apiVersion: iam/v1
+module: vpc
+resources:
+  - name: subnet
+    objectType: vpc_subnet
+    parents: [project]
+    producer: derived
+    notes:
+      - before: project
+        text: |
+          # примечание у указателя
+      - before: v_get
+        text: |
+          # первая строка разбора
+          #
+          # третья строка, со ссылкой #1089
+    verbs: [get, list, update, delete]
+`)
+	mustContainLine(t, block, "    # примечание у указателя\n    define project: [project]\n")
+	mustContainLine(t, block, "    # первая строка разбора\n    #\n"+
+		"    # третья строка, со ссылкой #1089\n    define v_get: ")
+
+	// Знак комментария принадлежит ТЕКСТУ: рендер воспроизводит строку дословно
+	// и своего правила оформления не имеет — иначе оно жило бы в двух местах.
+	if strings.Contains(block, "# # ") {
+		t.Fatalf("рендер добавил свой знак комментария поверх авторского:\n%s", block)
+	}
+}
+
+// TestMODMR35ABlockWithoutProseCarriesNoComment — положительный контроль:
+// отсутствие примечаний не порождает ни одной строки комментария.
+func TestMODMR35ABlockWithoutProseCarriesNoComment(t *testing.T) {
+	block := renderFromYAML(t, `apiVersion: iam/v1
+module: vpc
+resources:
+  - name: gateway
+    objectType: vpc_gateway
+    parents: [project]
+    producer: derived
+    verbs: [get, list, update, delete]
+`)
+	// Ищется ЗНАК КОММЕНТАРИЯ в начале строки, а не символ решётки где угодно:
+	// он законно стоит внутри субъекта `group#member`, и наивная проверка
+	// краснела бы на каждом блоке дерева.
+	for _, line := range strings.Split(block, "\n") {
+		if strings.HasPrefix(strings.TrimSpace(line), "#") {
+			t.Fatalf("блок без примечаний несёт комментарий %q:\n%s", line, block)
+		}
+	}
+}

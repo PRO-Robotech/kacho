@@ -27,7 +27,7 @@ import (
 // человек, и перегенерация обязана сохранить вторые.
 //
 //	порождается    name · objectType · parents[] · verbs[]
-//	объявляется    doc · relations[] · subjects[] · tiers[]
+//	объявляется    notes[] · relations[] · subjects[] · tiers[] · cascade[]
 //
 // Вид ключей записи называет сама запись — ключом `producer` из закрытого набора
 // `derived | authored`. Он не порождается и ресурс не описывает: он говорит, чем
@@ -102,6 +102,19 @@ var (
 	// ErrRelationShadowsVerb — объявленное отношение занимает имя, порождаемое
 	// глаголом. Два объявления одного предмета, из которых верно одно.
 	ErrRelationShadowsVerb = errors.New("manifest: authored relation shadows a generated verb relation")
+	// ErrNoteAnchorRequired — примечание не назвало якоря.
+	ErrNoteAnchorRequired = errors.New("manifest: note anchor is required")
+	// ErrNoteAnchorUnknown — якорь примечания не объявлен блоком: примечание не
+	// напечаталось бы вовсе, а вызывающий получил бы успех.
+	ErrNoteAnchorUnknown = errors.New("manifest: note is anchored to a relation the block does not declare")
+	// ErrNoteAnchorDuplicated — два примечания на одном якоре: порядок между ними
+	// ничем не задан.
+	ErrNoteAnchorDuplicated = errors.New("manifest: two notes share one anchor")
+	// ErrNoteTextRequired — примечание без текста печатать нечего.
+	ErrNoteTextRequired = errors.New("manifest: note text is required")
+	// ErrNoteLineNotAComment — строка текста примечания не начинается со знака
+	// комментария: в блоке модели она перестала бы быть прозой.
+	ErrNoteLineNotAComment = errors.New("manifest: note text line does not start with a comment sign")
 	// ErrRelationPositionUnknown — место отношения вне закрытого набора.
 	ErrRelationPositionUnknown = errors.New("manifest: relation position is outside the closed set")
 	// ErrRelationNameRequired — отношение не назвало себя.
@@ -330,9 +343,9 @@ type Resource struct {
 	// Producer — чем являются ОСТАЛЬНЫЕ ключи записи: `derived` (порождены из
 	// аннотаций) либо `authored` (написаны человеком, аннотаций у ресурса нет).
 	Producer string `yaml:"producer"`
-	// Doc — АВТОРСКИЙ комментарий блока модели. Перегенерация обязана его
-	// сохранить: производителя у него нет.
-	Doc string `yaml:"doc"`
+	// Notes — АВТОРСКИЕ примечания блока модели, каждое со своим ЯКОРЕМ.
+	// Перегенерация обязана их сохранить: производителя у них нет.
+	Notes []Note `yaml:"notes"`
 	// Subjects — АВТОРСКИЙ состав субъектов, когда он уже общего. Умолчание
 	// здесь расширило бы доступ молча.
 	Subjects []string `yaml:"subjects"`
@@ -347,6 +360,40 @@ type Resource struct {
 	Relations []Relation `yaml:"relations"`
 	// Verbs — действия ресурса. Обе формы записи принимаются (см. Verb).
 	Verbs []Verb `yaml:"verbs"`
+}
+
+// Note — АВТОРСКОЕ примечание блока модели: текст и ЯКОРЬ, то есть имя
+// отношения, перед которым примечание стоит.
+//
+// # Якорь обязателен, и это замер, а не осторожность
+//
+// Примечаний в модульных блоках канона 15 на 634 строки, и якорями им служат
+// девять разных отношений: указатель, супер-доступ, ярусы, действия и авторские
+// отношения — в том числе последнее отношение блока. Пока примечание было ОДНИМ
+// текстом без координаты, рендер обязан был выбрать одну позицию, и всякий блок
+// с иным расположением прозы был недостижим by construction.
+//
+// Примечания несут самоистекающие маркеры и ссылки на задачи: потерять их
+// перегенерацией значило бы снять условие, о котором никто не решал.
+//
+// # Знак комментария принадлежит ТЕКСТУ, а не рендеру
+//
+// Замер: отступ у всех 634 строк прозы модульных блоков — четыре пробела, формы
+// `#текст` без пробела нет ни одной, голых решёток 76. Значит рендер строки есть
+// чистое склеивание `"    " + строка`. Хранить текст без решётки и добавлять её
+// рендером — отвергнуто с ценой: 76 голых решёток стали бы пустыми строками
+// YAML, и правило «пустая строка означает решётку» жило бы в ДВУХ местах.
+//
+// Строка без решётки отвергается синхронно, с якорем и номером строки внутри
+// текста: воспроизведённая дословно, она стала бы в блоке объявлением отношения.
+type Note struct {
+	// Before — имя отношения, ПЕРЕД которым стоит примечание. Отношение обязано
+	// быть объявлено этим же блоком: примечание с якорем в пустоту не
+	// напечаталось бы вовсе, а вызывающий получил бы успех.
+	Before string `yaml:"before"`
+	// Text — сам текст, строками, СО знаком комментария у каждой: рендер
+	// воспроизводит его дословно и своего правила оформления не имеет.
+	Text string `yaml:"text"`
 }
 
 // Parent — указатель на объект, под которым живёт ресурс: ИМЯ отношения в блоке
@@ -634,6 +681,7 @@ func validateResources(m *Manifest, doc *yaml.Node) []error {
 		faults = append(faults, validateResourceTiers(r, doc, i)...)
 		faults = append(faults, validateResourceVerbs(r, doc, i)...)
 		faults = append(faults, validateResourceRelations(r, doc, i)...)
+		faults = append(faults, validateResourceNotes(r, doc, i)...)
 	}
 
 	// Дубли называются ОБА, и в порядке документа: отказ, зависящий от обхода
@@ -1061,6 +1109,86 @@ func validateResourceRelations(r *Resource, doc *yaml.Node, i int) []error {
 			detail: fmt.Sprintf("%s: имя %q уже порождается глаголом %q того же ресурса — "+
 				"два объявления одного отношения, из которых верно одно",
 				fmt.Sprintf("resources[%d].relations[%d].name", i, k), rel.Name, verb),
+		})
+	}
+	return faults
+}
+
+// validateResourceNotes — якорь и текст каждого примечания.
+func validateResourceNotes(r *Resource, doc *yaml.Node, i int) []error {
+	var faults []error
+	known := declaredRelationNames(r)
+	seen := map[string]int{}
+	for k := range r.Notes {
+		n := &r.Notes[k]
+		switch {
+		case n.Before == "":
+			faults = append(faults, linkFault{
+				kind:  ErrNoteAnchorRequired,
+				coord: locate(doc, "resources", i, "notes", k),
+				detail: fmt.Sprintf("resources[%d].notes[%d].before: примечание не назвало якоря — "+
+					"печатать его было бы негде, и текст пропал бы молча; объявлены: %s",
+					i, k, strings.Join(sortedNames(known), ", ")),
+			})
+		default:
+			if _, ok := known[n.Before]; !ok {
+				faults = append(faults, linkFault{
+					kind:  ErrNoteAnchorUnknown,
+					coord: locate(doc, "resources", i, "notes", k),
+					detail: fmt.Sprintf("resources[%d].notes[%d].before: отношения %q блок не "+
+						"объявляет; объявлены: %s. Примечание с якорем в пустоту не "+
+						"напечаталось бы вовсе, а вызывающий получил бы успех",
+						i, k, n.Before, strings.Join(sortedNames(known), ", ")),
+				})
+			}
+			if first, dup := seen[n.Before]; dup {
+				faults = append(faults, linkFault{
+					kind:  ErrNoteAnchorDuplicated,
+					coord: locate(doc, "resources", i, "notes", k),
+					detail: fmt.Sprintf("resources[%d].notes[%d].before: якорь %q уже занят "+
+						"примечанием resources[%d].notes[%d] — порядок между двумя текстами "+
+						"на одном якоре ничем не задан; сведите их в одно примечание",
+						i, k, n.Before, i, first),
+				})
+			} else {
+				seen[n.Before] = k
+			}
+		}
+		if strings.TrimSpace(n.Text) == "" {
+			faults = append(faults, linkFault{
+				kind:  ErrNoteTextRequired,
+				coord: locate(doc, "resources", i, "notes", k),
+				detail: fmt.Sprintf("resources[%d].notes[%d].text: примечание без текста печатать "+
+					"нечего, а якорь его при этом объявлен занятым", i, k),
+			})
+			continue
+		}
+		faults = append(faults, validateNoteText(n, doc, i, k)...)
+	}
+	return faults
+}
+
+// validateNoteText — КАЖДАЯ строка текста начинается со знака комментария.
+//
+// Знак принадлежит тексту, а не рендеру (замер: отступ у всех 634 строк прозы
+// модульных блоков — четыре пробела, формы `#текст` без пробела нет ни одной), и
+// рендер строки есть чистое склеивание. Строка без знака перестала бы в блоке
+// быть прозой: модель прочла бы её как объявление отношения — то есть примечание
+// внесло бы в модель ПРАВО, о котором никто не решал.
+func validateNoteText(n *Note, doc *yaml.Node, i, k int) []error {
+	var faults []error
+	for lineNo, line := range strings.Split(strings.TrimRight(n.Text, "\n"), "\n") {
+		if strings.HasPrefix(strings.TrimSpace(line), "#") {
+			continue
+		}
+		faults = append(faults, linkFault{
+			kind:  ErrNoteLineNotAComment,
+			coord: locate(doc, "resources", i, "notes", k),
+			detail: fmt.Sprintf("resources[%d].notes[%d].text, строка %d (якорь %q): %q не "+
+				"начинается со знака комментария. Рендер воспроизводит текст ДОСЛОВНО, "+
+				"поэтому такая строка стала бы в блоке объявлением отношения — примечание "+
+				"внесло бы в модель право, о котором никто не решал",
+				i, k, lineNo+1, n.Before, line),
 		})
 	}
 	return faults

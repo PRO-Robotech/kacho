@@ -195,7 +195,8 @@ type vpc_network
 		if m == "vpc" {
 			body = "apiVersion: iam/v1\nmodule: vpc\nresources:\n" +
 				"  - name: network\n    objectType: vpc_network\n    parents: [project]\n" +
-				"    producer: authored\n    doc: \"# разбор, объявленный автором ресурса\"\n" +
+				"    producer: authored\n" +
+				"    notes:\n      - {before: project, text: '# разбор, объявленный автором ресурса'}\n" +
 				"    verbs:\n      - get\n"
 		}
 		writeManifest(t, root, m, body)

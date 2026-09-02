@@ -325,3 +325,77 @@ func TestMODMR34ARelationPlaceOutsideTheClosedSetIsRefused(t *testing.T) {
 			"    verbs: [get]\n")
 	}
 }
+
+// ── Примечание с якорем (#1845) ──────────────────────────────────────────────
+
+// TestMODMR35ANoteAnchorMustBeDeclaredByTheBlock — примечание с якорем в пустоту
+// не напечаталось бы вовсе, а вызывающий получил бы успех.
+func TestMODMR35ANoteAnchorMustBeDeclaredByTheBlock(t *testing.T) {
+	head := resourceDoc("    parents: [project]\n")
+	head = head[:len(head)-len("    verbs: [get]\n")]
+
+	mustRefuse(t, head+"    notes:\n      - {before: owner, text: '# разбор'}\n    verbs: [get]\n",
+		manifest.ErrNoteAnchorUnknown,
+		"resources[0].notes[0].before", "owner", "super_admin", "v_get")
+
+	// Законные близнецы: якорями служат указатель, супер-доступ, ярус, действие
+	// и авторское отношение — все пять видов, которыми канон пользуется.
+	for _, anchor := range []string{"project", "super_admin", "viewer", "v_get", "owner"} {
+		mustAccept(t, head+"    relations:\n      - {name: owner, definition: \"[user]\"}\n"+
+			"    notes:\n      - {before: "+anchor+", text: '# разбор'}\n    verbs: [get]\n")
+	}
+}
+
+// TestMODMR35TwoNotesOnOneAnchorAreRefused — порядок между двумя текстами на
+// одном якоре ничем не задан.
+func TestMODMR35TwoNotesOnOneAnchorAreRefused(t *testing.T) {
+	head := resourceDoc("    parents: [project]\n")
+	head = head[:len(head)-len("    verbs: [get]\n")]
+
+	mustRefuse(t, head+"    notes:\n      - {before: project, text: '# первый'}\n"+
+		"      - {before: project, text: '# второй'}\n    verbs: [get]\n",
+		manifest.ErrNoteAnchorDuplicated,
+		"resources[0].notes[1].before", "resources[0].notes[0]")
+
+	// Законный близнец: два примечания на РАЗНЫХ якорях.
+	mustAccept(t, head+"    notes:\n      - {before: project, text: '# первый'}\n"+
+		"      - {before: v_get, text: '# второй'}\n    verbs: [get]\n")
+}
+
+// TestMODMR35ANoteWithoutTextIsRefused — печатать нечего, а якорь при этом
+// объявлен занятым.
+func TestMODMR35ANoteWithoutTextIsRefused(t *testing.T) {
+	head := resourceDoc("    parents: [project]\n")
+	head = head[:len(head)-len("    verbs: [get]\n")]
+
+	mustRefuse(t, head+"    notes:\n      - {before: project, text: \"   \"}\n    verbs: [get]\n",
+		manifest.ErrNoteTextRequired, "resources[0].notes[0].text")
+	mustAccept(t, head+"    notes:\n      - {before: project, text: '# разбор'}\n    verbs: [get]\n")
+}
+
+// TestC08ANoteLineWithoutACommentSignIsRefused — инъекция C-08: строка текста
+// примечания без решётки отвергается синхронно, с якорем и номером строки.
+//
+// Рендер воспроизводит текст ДОСЛОВНО, поэтому такая строка стала бы в блоке
+// объявлением отношения — примечание внесло бы в модель право, о котором никто
+// не решал.
+//
+// Законный близнец обязателен ВДВОЙНЕ: все 634 строки прозы модульных блоков
+// канона начинаются с решётки, и без него норма закрывалась бы проверкой,
+// отвергающей ВСЯКИЙ текст, — то есть отрицание зеленело бы на пустом множестве.
+func TestC08ANoteLineWithoutACommentSignIsRefused(t *testing.T) {
+	head := resourceDoc("    parents: [project]\n")
+	head = head[:len(head)-len("    verbs: [get]\n")]
+
+	mustRefuse(t, head+"    notes:\n      - before: project\n        text: |\n"+
+		"          # первая строка\n          define admin: [user:*]\n    verbs: [get]\n",
+		manifest.ErrNoteLineNotAComment,
+		"resources[0].notes[0].text", "строка 2", "project", "define admin: [user:*]")
+
+	// Законный близнец: та же строка С решёткой — принимается.
+	mustAccept(t, head+"    notes:\n      - before: project\n        text: |\n"+
+		"          # первая строка\n          # define admin: [user:*]\n    verbs: [get]\n")
+	// И одинокая решётка (76 таких строк в каноне) — тоже.
+	mustAccept(t, head+"    notes:\n      - before: project\n        text: |\n"+
+		"          # первая\n          #\n          # третья\n    verbs: [get]\n")
+}

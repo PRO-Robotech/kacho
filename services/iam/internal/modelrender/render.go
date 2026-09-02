@@ -18,8 +18,9 @@ import (
 // наследует это различие дословно:
 //
 //	порождается    указатели · super_admin · ярусы · v_<глагол>
-//	объявляется    doc · relations[] (текст определения — ДОСЛОВНО) · cascade[] ·
-//	               источники яруса
+//	объявляется    notes[] (проза с якорем) · relations[] (текст определения —
+//	               ДОСЛОВНО) вместе с их местом · cascade[] · источники яруса и
+//	               действия
 //
 // Текст авторского отношения здесь НЕ разбирается: его грамматика принадлежит
 // модели прав, и второй её разборщик разошёлся бы с первым МОЛЧА — на той самой
@@ -82,23 +83,25 @@ func Render(r manifest.Resource) ([]byte, error) {
 	b.WriteString("type " + r.ObjectType + "\n")
 	b.WriteString("  relations\n")
 
-	// Авторский комментарий стоит СРАЗУ ПОСЛЕ `relations`, и позиция эта ОДНА.
-	// Канон располагает прозу и в других местах блока; выразить это манифест
-	// сегодня не может — `doc` есть один текст без координаты, и формы для
-	// позиционированной прозы (Н-04 приёмки) в схеме нет. Позиция названа здесь,
-	// а остаток сосчитан переписью, чтобы «выражено не всё» не выглядело «всё».
-	for _, line := range docLines(r.Doc) {
-		b.WriteString("    " + line + "\n")
+	// Примечание печатается ПЕРЕД своим якорем, поэтому строку отношения пишет
+	// один вызов на всех: место прозы приходит из манифеста, и второй путь записи
+	// строки разошёлся бы с первым молча — на том отношении, о котором не знает.
+	notes := notesByAnchor(r)
+	define := func(name, definition string) {
+		for _, line := range noteLines(notes[name]) {
+			b.WriteString("    " + line + "\n")
+		}
+		b.WriteString("    define " + name + ": " + definition + "\n")
 	}
 
 	// Указателей бывает больше одного, и порядок их — порядок манифеста: канон
 	// ставит у `iam_access_binding` `project`, затем `account`, затем `cluster`, и
 	// сортировка дала бы другой блок.
 	for _, p := range r.Parents {
-		b.WriteString("    define " + p.Name + ": [" + p.Type + "]\n")
+		define(p.Name, "["+p.Type+"]")
 	}
-	b.WriteString("    define " + manifest.SuperAdminRelation() + ": " + cascadeOf(r) + "\n")
-	writeAuthoredRelations(&b, r, "beforeTiers")
+	define(manifest.SuperAdminRelation(), cascadeOf(r))
+	writeAuthoredRelations(r, "beforeTiers", define)
 
 	subjects := r.Subjects
 	if len(subjects) == 0 {
@@ -122,11 +125,10 @@ func Render(r manifest.Resource) ([]byte, error) {
 		if len(sources) == 0 {
 			sources = []string{previous}
 		}
-		b.WriteString("    define " + tier.Name + ": [" + strings.Join(subjects, ", ") +
-			"] or " + strings.Join(sources, " or ") + "\n")
+		define(tier.Name, "["+strings.Join(subjects, ", ")+"] or "+strings.Join(sources, " or "))
 		previous = tier.Name
 	}
-	writeAuthoredRelations(&b, r, "beforeVerbs")
+	writeAuthoredRelations(r, "beforeVerbs", define)
 
 	// Порядок глаголов задаёт КАНОН, а не манифест: перестановка ресурсов и
 	// глаголов в YAML рендер не меняет (B-04). Субъекты здесь умолчательные —
@@ -141,10 +143,10 @@ func Render(r manifest.Resource) ([]byte, error) {
 		if len(verb.From) > 0 {
 			sources = verb.From
 		}
-		b.WriteString("    define " + manifest.VerbRelationName(verb.Name) + ": [" +
-			strings.Join(subjects, ", ") + "] or " + strings.Join(sources, " or ") + "\n")
+		define(manifest.VerbRelationName(verb.Name),
+			"["+strings.Join(subjects, ", ")+"] or "+strings.Join(sources, " or "))
 	}
-	writeAuthoredRelations(&b, r, "afterVerbs")
+	writeAuthoredRelations(r, "afterVerbs", define)
 
 	return []byte(b.String()), nil
 }
@@ -157,7 +159,7 @@ func Render(r manifest.Resource) ([]byte, error) {
 // Место приходит из манифеста, а не задаётся телом этой функции: раскладок в
 // каноне ТРИ (перед ярусами · после ярусов · после действий), и постоянная
 // объявляла расхождением то, о чём никто не решал.
-func writeAuthoredRelations(b *strings.Builder, r manifest.Resource, place string) {
+func writeAuthoredRelations(r manifest.Resource, place string, define func(name, definition string)) {
 	for _, rel := range r.Relations {
 		at := rel.Position
 		if at == "" {
@@ -166,7 +168,7 @@ func writeAuthoredRelations(b *strings.Builder, r manifest.Resource, place strin
 		if at != place {
 			continue
 		}
-		b.WriteString("    define " + rel.Name + ": " + rel.Definition + "\n")
+		define(rel.Name, rel.Definition)
 	}
 }
 
@@ -189,21 +191,37 @@ func cascadeOf(r manifest.Resource) string {
 	return strings.Join(parts, " or ")
 }
 
-// docLines — строки авторского комментария без хвостовой пустой.
-//
-// Пустая строка внутри блока разделила бы его надвое: единица блока есть тело до
-// ПЕРВОЙ пустой строки, и комментарий, несущий её, породил бы два блока из одного.
-func docLines(doc string) []string {
-	if strings.TrimSpace(doc) == "" {
+// notesByAnchor — примечания ресурса по имени отношения, перед которым они стоят.
+// Якорь у каждого свой: два примечания на одном отвергает загрузчик, потому что
+// порядок между ними ничем не задан.
+func notesByAnchor(r manifest.Resource) map[string]string {
+	if len(r.Notes) == 0 {
 		return nil
 	}
-	out := strings.Split(strings.TrimRight(doc, "\n"), "\n")
-	for i, l := range out {
-		if strings.TrimSpace(l) == "" {
-			out[i] = "#"
-		}
+	out := make(map[string]string, len(r.Notes))
+	for _, n := range r.Notes {
+		out[n.Before] = n.Text
 	}
 	return out
+}
+
+// noteLines — строки примечания ДОСЛОВНО, без хвостовой пустой.
+//
+// Знак комментария принадлежит ТЕКСТУ, а не рендеру, и это замер: отступ у всех
+// 634 строк прозы модульных блоков — четыре пробела, формы `#текст` без пробела
+// нет ни одной, голых решёток 76. Значит рендер строки есть чистое склеивание
+// `"    " + строка`, и правила «добавить решётку» заводить не нужно.
+//
+// Отвергнутая альтернатива названа с ценой: хранить текст БЕЗ решётки и
+// добавлять её здесь. Тогда 76 голых решёток становятся пустыми строками YAML, и
+// правило «пустая строка означает решётку» живёт В ДВУХ местах — у загрузчика и
+// у рендера, — а два места об одном предмете расходятся молча. Строку без
+// решётки отвергает загрузчик, называя якорь и номер строки внутри текста.
+func noteLines(text string) []string {
+	if strings.TrimSpace(text) == "" {
+		return nil
+	}
+	return strings.Split(strings.TrimRight(text, "\n"), "\n")
 }
 
 // canonicalVerbOrder — порядок глаголов канона. Замер по дереву: у 24 блоков из 27
