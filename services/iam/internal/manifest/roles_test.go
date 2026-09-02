@@ -233,3 +233,64 @@ func TestMODMR15RoleIDOfABindingIsResolvedByTheRolesSection(t *testing.T) {
 		}
 	}
 }
+
+// ── MOD-MR-36 ───────────────────────────────────────────────────────────────
+
+// TestMODMR36RoleDescriptionIsJudgedByPresenceNotByLength — назначение роли
+// судится НАЛИЧИЕМ, а не длиной, и обе стороны утверждаются здесь.
+//
+// # Почему длина этому полю не судья — доказано ЖИВЫМ набором, а не доводом
+//
+// Предел длины на этом поле выносит приговор по длине ИМЕНИ ТИПА, а не по
+// пригодности прозы. Четыре живые строки, один шаблон, один автор, одно
+// содержание — и противоположные вердикты при пределе в шестнадцать знаков:
+//
+//	`Admin RouteTable`    16 знаков — прошёл бы
+//	`Edit RouteTable`     15 знаков — не прошёл бы
+//	`Admin SecurityGroup` 19 знаков — прошёл бы
+//	`Admin Subnet`        12 знаков — не прошёл бы
+//
+// Проверка, чей вердикт есть функция чего-то, кроме её предмета, предметом не
+// распоряжается. Отписку («TODO», «-») длина ловит попутно, а платит за это
+// отказом двадцати семи живым ролям из сорока двух — то есть возможностью,
+// объявленной и неисполнимой (`api-conventions.md` §«Неисполнимая
+// возможность»).
+//
+// # Что судит назначение ВМЕСТО длины
+//
+// Применитель пишет назначение ДОСЛОВНО поверх живой строки, поэтому у наших
+// модулей оно закреплено побайтовой сверкой с базой
+// (`moduleroleparity`) — строго сильнее любого предела длины. Загрузчику
+// остаётся то, о чём он вправе судить один: назначение НАЗВАНО.
+func TestMODMR36RoleDescriptionIsJudgedByPresenceNotByLength(t *testing.T) {
+	base := "apiVersion: iam/v1\nmodule: iam\nroles:\n" +
+		"  - id: iam.role.edit\n    name: Правка каталога ролей\n    description: %s\n" +
+		"    tier: {tierType: iam.cluster, tierId: cluster_kacho_root}\n" +
+		"    rules:\n      - {module: iam, resources: [role], classes: [get, list, update]}\n"
+
+	// Положительный: ДОСЛОВНОЕ назначение живой роли `iam.role.edit` — девять
+	// знаков, самое короткое в дереве. Иначе объявить эту роль невозможно ни при
+	// каком написании: длиннее — разошлось бы со строкой, которую применитель
+	// переписал бы молча.
+	for _, live := range []string{`"Edit Role"`, `"Read User"`, `"Admin Subnet"`, `"Edit RouteTable"`} {
+		if _, err := manifest.Load([]byte(strings.Replace(base, "%s", live, 1))); err != nil {
+			t.Errorf("живое назначение %s отвергнуто: %v", live, err)
+		}
+	}
+
+	// Отрицательный: назначения НЕТ. Пустая строка и одни пробелы — оба вида
+	// «не названо», и второй проверяется отдельно: без него отказ зеленел бы на
+	// пробеле, то есть на отписке в её чистейшем виде.
+	for _, absent := range []string{`""`, `"   "`} {
+		_, err := manifest.Load([]byte(strings.Replace(base, "%s", absent, 1)))
+		if err == nil {
+			t.Fatalf("роль без назначения принята (description: %s)", absent)
+		}
+		if !errors.Is(err, manifest.ErrRoleDescriptionTooShort) {
+			t.Errorf("отказ не отнесён к своей причине: %v", err)
+		}
+		if !strings.Contains(err.Error(), "roles[0].description") {
+			t.Errorf("отказ не называет поле: %v", err)
+		}
+	}
+}
