@@ -107,6 +107,14 @@ service AccessBindingService {
   // page can never be wider than the read (anonymous → empty; an authorization
   // error → UNAVAILABLE, never an unfiltered leak). Introspection-merge
   // (ListSubjectPrivileges/ExpandAccess) stays separate (IAM-4).
+  //
+  // Two narrowings compose with `filter` and are NOT filter keys, because the
+  // expression carries exactly one predicate: `include_revoked` (lifecycle) and
+  // `account_id` (the account⇒child-project fan-out). Together they let the one
+  // question this read exists for be asked in ONE call — "what does THIS subject
+  // hold in THIS account":
+  //
+  //     GET /iam/v1/accessBindings?filter=subject%3D%22usr…%22&accountId=acc…
   rpc List (ListAccessBindingsRequest) returns (ListAccessBindingsResponse) {
     option (google.api.http) = { get: "/iam/v1/accessBindings" };
     // Authorized at the level of the data: kacho-iam reads the page by cursor and
@@ -190,15 +198,30 @@ service AccessBindingService {
 
   // Lists the privileges (enriched access bindings) attached to the specified
   // subject (User or ServiceAccount). Sync read (NOT an Operation). It shares
-  // admission with `ListBySubject` (one predicate, see there); unlike it — raw
-  // bindings, no existence-check — this RPC:
+  // admission with `ListBySubject` — ONE predicate, see there. What it does that
+  // `ListBySubject` does not (that verb returns raw bindings and never resolves
+  // existence):
   //   - resolves the human-readable `role_name` server-side via a within-DB
   //     JOIN `access_bindings ⋈ roles` (no N+1 client round-trips);
   //   - returns NOT_FOUND for a well-formed-but-missing subject to a caller who
   //     may read it (existence-resolve is required for authz), where
-  //     `ListBySubject` reports nothing about existence at all;
-  //   - is DIRECT-only in v1 (`derivation=DIRECT`); GROUP-derived (effective)
-  //     roles are reserved forward-compat.
+  //     `ListBySubject` reports nothing about existence at all.
+  //
+  // THE ANSWER INCLUDES GROUP-DERIVED GRANTS, and this line used to say the
+  // opposite — "DIRECT-only in v1; GROUP-derived roles are reserved
+  // forward-compat". That reservation was lifted and the sentence outlived its
+  // subject: for `user` and `service_account` the reply carries BOTH the direct
+  // grants (`derivation=DIRECT`) and the ones held through membership in a group
+  // (`derivation=GROUP`, `via_group_id` names the group), and the request field
+  // twenty lines below said so the whole time. Two statements about one subject,
+  // one of them true, and the reader could not tell which.
+  //
+  // The stale half was the DANGEROUS one to believe: the platform's own rule is
+  // to grant to a GROUP rather than to a list of subjects, so a reader who
+  // trusted "DIRECT-only" would read an empty page for exactly the case we
+  // recommend — and an access review would conclude "nothing to revoke" from a
+  // `200` that means the opposite. For `group` the reply is the grants of the
+  // group itself (DIRECT); groups do not nest.
   //
   // Authorized by kacho-iam: self (for a group subject — a member of it), or
   // `admin`/owner of the HOME ACCOUNT of the subject named in the request, or the
@@ -330,10 +353,21 @@ service AccessBindingService {
   // Filter by subject_type (optional) and include_revoked (default false).
   // Ordered by (created_at DESC, id ASC); keyset paginated.
   //
-  // DEPRECATED — use `List` (`filter=scope="iam.account"` + `scopeId`, or the
-  // caller's whole visible set) with `include_revoked`. Retained for back-compat:
-  // `List` does not reproduce this RPC's account⇒child-project fan-out in one
-  // call. Ordering also differs (`List` is created_at ASC).
+  // DEPRECATED — use `List` with `accountId="<id>"` (plus `include_revoked`, and
+  // `filter=subject="<id>"` to ask about one subject).
+  //
+  // The reason this RPC used to be retained is GONE: it said "`List` does not
+  // reproduce this RPC's account⇒child-project fan-out in one call". `List` now
+  // does — `ListAccessBindingsRequest.account_id` carries exactly that fan-out,
+  // and the two answer with the SAME set of bindings for a caller who administers
+  // the account. Retained now only for back-compat; two differences remain, both
+  // deliberate and neither a reason to keep using it:
+  //
+  //   - ordering — this RPC is created_at DESC, `List` is created_at ASC (part of
+  //     `List`'s contract and not forked for one field), so compare the two BY
+  //     MEMBERSHIP, never by index;
+  //   - `subject_type_filter` — `List` narrows a subject by its exact id, not by
+  //     its class.
   rpc ListByAccount (ListAccessBindingsByAccountRequest) returns (ListAccessBindingsResponse) {
     option (google.api.http) = { get: "/iam/v1/accounts/{account_id}/accessBindings" };
     option (kacho.iam.authz.v1.permission)        = "iam.access_bindings_by_account.list";
@@ -545,9 +579,42 @@ message ListAccessBindingsRequest {
   // only through the legacy `ListByAccount`/`ListByRole`, i.e. the recommended
   // path could not show what the deprecated paths could. Semantics and default
   // are identical to those two (isomorphic), and it composes with `filter`
-  // (e.g. `filter=subject="usr-…"` + `include_revoked=true` audits one subject's
+  // (e.g. `filter=subject="usr…"` + `include_revoked=true` audits one subject's
   // revoked grants).
   bool include_revoked = 4;
+
+  // Optional: narrow the page to the bindings that lie in the scope of ONE
+  // account — those attached to the account itself PLUS those attached to every
+  // project of that account. Empty means "do not narrow" and is a legal input;
+  // it is NOT "an account whose id is the empty string".
+  //
+  // WHY A FIELD AND NOT A FILTER KEY. `filter` carries exactly ONE predicate,
+  // and the question this answers — "what does THIS subject hold in THIS
+  // account" — needs two axes at once. The dedicated field composes with
+  // `filter` and with `include_revoked`, which is the same shape already chosen
+  // once for `include_revoked` above:
+  //
+  //     GET /iam/v1/accessBindings?filter=subject%3D%22usr…%22&accountId=acc…
+  //
+  // WHY IT IS NOT `scopeId`. `scopeId` matches the row's `resource_id`, so
+  // `scope="iam.account"` + `scopeId="<acct>"` returns the bindings attached to
+  // the account ITSELF and none of those on its projects. That is a different
+  // answer, not a narrower one — this field carries the account⇒child-project
+  // fan-out, the one thing `List` could not reproduce and the sole stated reason
+  // the deprecated `ListByAccount` was still being retained.
+  //
+  // IT NARROWS, IT NEVER WIDENS. The field is applied as a row predicate AFTER
+  // the admission decision, which it does not touch: the permission-catalog entry
+  // for `List` is unchanged, and every row still passes the same per-object read
+  // verdict. Naming an account the caller has nothing to do with therefore yields
+  // an EMPTY page — never PERMISSION_DENIED and never NOT_FOUND, so the reply
+  // cannot be used to probe whether an account exists. A well-formed id of a
+  // non-existent account answers byte-identically to one of a foreign account.
+  //
+  // A malformed id, or a well-formed id carrying another resource's prefix, is
+  // rejected synchronously with INVALID_ARGUMENT — by the same producer, with
+  // the same message, that `ListByAccount` uses on its own `account_id`.
+  string account_id = 5;
 }
 
 message ListAccessBindingsByScopeRequest {
@@ -698,7 +765,7 @@ message ListSubjectPrivilegesRequest {
   // гранты самой группы (DIRECT); группы не вкладываются друг в друга.
   string subject_type = 1;
 
-  // ID subject'а (User id `usr-…` / ServiceAccount id `sva-…`).
+  // ID subject'а (User id `usr…` / ServiceAccount id `sva…`).
   string subject_id = 2;
 
   // The maximum number of results per page to return. Default value: 50,
@@ -741,10 +808,10 @@ enum Derivation {
 // only tenant-facing, publicly-safe fields — никаких инфра-чувствительных
 // данных и никаких condition/builtin_condition-internals (вне scope v1).
 message SubjectPrivilege {
-  // ID of the underlying AccessBinding (`acb-…`).
+  // ID of the underlying AccessBinding (`acb…`).
   string binding_id = 1;
 
-  // ID of the Role granted (`rol-…`).
+  // ID of the Role granted (`rol…`).
   string role_id = 2;
 
   // Human-readable Role name, resolved server-side (output-only; empty for a
@@ -873,7 +940,7 @@ enum ScopeGroup {
 // `scope_group` is derived server-side via the shared `isRoleAssignable`
 // predicate domain, so the client never computes scope.
 message AssignableRole {
-  // ID of the Role (`rol-…`).
+  // ID of the Role (`rol…`).
   string role_id = 1;
 
   // Human-readable Role name, resolved server-side (no separate
@@ -895,7 +962,7 @@ message AssignableRole {
 }
 
 message ListAccessBindingsByRoleRequest {
-  // ID of the Role whose bindings are listed (`rol-…`). Audit "who holds role
+  // ID of the Role whose bindings are listed (`rol…`). Audit "who holds role
   // R". Malformed id → INVALID_ARGUMENT.
   string role_id = 1;
 

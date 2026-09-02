@@ -9,7 +9,21 @@
 # Инъекции идут по временным копиям профиля; дерево не трогается.
 
 set -euo pipefail
-cd "$(dirname "$0")/../.."
+# Каталог доказательства — АБСОЛЮТНЫЙ и снятый ДО смены рабочего: `$0`
+# относителен вызывающему, поэтому после `cd` он указывает уже не туда, и
+# подключение библиотеки по нему МОЛЧА не происходит (`set -e` тут нет).
+INJECT_DIR="$(cd "$(dirname "$0")" && pwd)"
+cd "$INJECT_DIR/../.."
+
+# ── ПРЕДПОСЫЛКА: ЗАВИСИМОСТИ УМБРЕЛЛЫ МАТЕРИАЛИЗОВАНЫ (задача #1769) ─────────
+# Без них рендер отказывает ДО первого шаблона, то есть КАЖДАЯ ось краснеет по
+# причине, к проверяемому отношения не имеющей, а выглядит исполненной («ждали
+# RED — получили RED»). «Условие не создано» — НЕ вердикт (e2e-flow.md §6):
+# свой код возврата, свой текст, не зачитывается ни в успех, ни в отказ.
+# Предикат ОДИН на всё семейство: копия у каждого разошлась бы молча.
+# shellcheck source=tests/helm/premise.sh
+. "$INJECT_DIR/premise.sh" || { echo "ОТКАЗ: библиотека предпосылки не подключилась — молчаливый пропуск предпосылки хуже её отсутствия"; exit 1; }
+premise_chart_deps
 
 CHART=./helm/umbrella
 # Синтетические профили живут во ВРЕМЕННОМ каталоге, а не в дереве чарта:
@@ -61,15 +75,28 @@ sed 's|/etc/kacho-identity-rendered/kratos.yaml|/etc/kacho-identity/kratos.yaml|
   "$CHART/values.dev.yaml" > "$TMP/values.inject-oldpath.yaml"
 assert "читает шаблон" RED "$TMP/values.inject-oldpath.yaml"
 
-# (4) отказ перестал быть закрытым: проверка пустой величины снята.
+# (4) отказ перестал быть закрытым: обязательность перечня имён, которыми шаг
+#     владеет, снята — тогда пустая и недоехавшая величина проходят молча.
 python3 - "$CHART/values.dev.yaml" "$TMP/values.inject-open.yaml" <<'PY'
 import io,sys
 s=io.open(sys.argv[1],encoding="utf-8").read()
 s=s.replace('{{- include "kacho.identity.configRenderInitContainer" . | nindent 0 }}',
-            '{{- include "kacho.identity.configRenderInitContainer" . | nindent 0 | replace ":?величина" ":-величина" }}')
+            '{{- include "kacho.identity.configRenderInitContainer" . | nindent 0 | replace ":?перечень" ":-перечень" }}')
 io.open(sys.argv[2],"w",encoding="utf-8").write(s)
 PY
 assert "отказ не закрытый" RED "$TMP/values.inject-open.yaml"
+
+# (4a) шаг снова судит остаток ПО ИМЕНИ, а не по форме — ровно дефект #1677.
+#      Класс символов в поиске заменён конкретным именем: перечень имён растёт
+#      вместе с конфигурацией и не растёт вместе с деревом.
+python3 - "$CHART/values.dev.yaml" "$TMP/values.inject-byname.yaml" <<'PY'
+import io,sys
+s=io.open(sys.argv[1],encoding="utf-8").read()
+s=s.replace('{{- include "kacho.identity.configRenderInitContainer" . | nindent 0 }}',
+            '{{- include "kacho.identity.configRenderInitContainer" . | nindent 0 | replace "[A-Za-z_][A-Za-z0-9_]*" "KACHO_IAM_HOOK_TOKEN" }}')
+io.open(sys.argv[2],"w",encoding="utf-8").write(s)
+PY
+assert "остаток судится по имени" RED "$TMP/values.inject-byname.yaml"
 
 # (5) законный близнец второго рода: профиль БЕЗ службы личности — не находка,
 #     а отсутствие предмета. Проба обязана пройти, сказав об этом.

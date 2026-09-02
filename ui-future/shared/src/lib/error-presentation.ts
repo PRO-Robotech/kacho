@@ -205,6 +205,12 @@ const REFUSALS: Record<string, RefusalVerdict> = {
   // перевод становится сменой одной записи с `passthrough` на `explain`, без
   // единой правки сервиса.
   MEMBERSHIP_CARRIES_RIGHTS: { kind: "passthrough" },
+  // Две полосы отказа по ссылке. Текст сервера различает их сам и называет
+  // следующий шаг клиента: «ссылаемого нет» лечится созданием, «ещё
+  // используется» — освобождением. Поэтому проза уезжает как есть, а признак
+  // нужен тому, кто разбирает отказ машинно.
+  REFERENCE_MISSING: { kind: "passthrough" },
+  REFERENCE_IN_USE: { kind: "passthrough" },
   INVALID_RESOURCE_ID: { kind: "passthrough" },
   RESOURCE_NOT_FOUND: { kind: "passthrough" },
   PEER_RESOURCE_MISSING: { kind: "passthrough" },

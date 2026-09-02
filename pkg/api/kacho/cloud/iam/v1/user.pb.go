@@ -77,13 +77,22 @@ func (User_InviteStatus) EnumDescriptor() ([]byte, []int) {
 	return file_kacho_cloud_iam_v1_user_proto_rawDescGZIP(), []int{0, 0}
 }
 
-// A User resource. Local mirror of Kratos identity per-Account scope.
+// A User resource. Человек — ГЛОБАЛЬНАЯ личность платформы: одна строка на всё
+// облако, в скольких бы аккаунтах он ни состоял. Активируется при первом входе
+// через поставщика удостоверений с матчингом по почте.
 //
-// Per-Account User scope: один Kratos identity = N User-rows (по одному
-// per Account, куда invited). External_id (Kratos sub) уникален per-Account, не
-// глобально. Активируется при первом login через Kratos с матчингом email.
+// > Здесь стояла ПРЕЖНЯЯ модель — «один Kratos identity = N User-rows, по одному
+// > per Account, куда invited; external_id уникален per-Account, не глобально».
+// > Она снята: ключи `users_identity_email_uniq` и
+// > `users_identity_external_id_uniq` (миграция 20260823050000) ГЛОБАЛЬНЫ, а
+// > принадлежность аккаунтам выражают строки `memberships` (`membership.proto`).
+// > Утверждение не удалено, а перевёрнуто на месте: оно стояло ПЕРВЫМ абзацем
+// > определения ресурса, то есть читалось раньше всего остального, — и из него
+// > выводили, что аккаунт человека один, а запрет или приглашение действуют в
+// > пределах одного аккаунта. Ниже это же поправлено у `account_id` (снят) и у
+// > `invite_status` (состояние принадлежит личности).
 //
-// Resource id prefix: `usr-`.
+// Resource id prefix: `usr` (concatenated form, `ids.NewID`).
 type User struct {
 	state protoimpl.MessageState `protogen:"open.v1"`
 	// ID of the user (kacho-iam internal id).
@@ -126,7 +135,21 @@ type User struct {
 	// поле, запретил бы участие каждому, кого коснулся. Поэтому состояние меняют
 	// ДЕЙСТВИЯ, у которых маски нет.
 	InviteStatus User_InviteStatus `protobuf:"varint,7,opt,name=invite_status,json=inviteStatus,proto3,enum=kacho.cloud.iam.v1.User_InviteStatus" json:"invite_status,omitempty"`
-	// User.id того, кто пригласил (nullable для self-signup bootstrap-row).
+	// Кто завёл ЛИЧНОСТЬ на платформе — `User.id` пригласившего. Пусто у строки,
+	// появившейся самозаписью.
+	//
+	// ОБЛАСТЬ — ПЛАТФОРМА, а не аккаунт, и различие названо здесь потому, что по
+	// самому ответу его не увидеть. Значение пишется ОДИН РАЗ, при первом
+	// появлении человека в облаке, и последующие приглашения его НЕ МЕНЯЮТ: у
+	// человека одна строка личности на все его аккаунты. Поэтому у сотрудника,
+	// которого позвал сначала один арендатор, а потом другой, здесь навсегда
+	// остаётся поручитель ПЕРВОГО — то есть, с точки зрения второго, человек из
+	// чужой организации.
+	//
+	// НЕ ПУТАТЬ с `Membership.invited_by`: у того область — АККАУНТ, и именно он
+	// отвечает на вопрос «кто ввёл человека В ЭТУ организацию», на который
+	// ключуются согласование и отчётность. Ошибка здесь тиха: значение верно, а
+	// смысл, который ему приписывают, — нет.
 	InvitedBy string `protobuf:"bytes,8,opt,name=invited_by,json=invitedBy,proto3" json:"invited_by,omitempty"`
 	// Метки человека — ПЛАТФОРМЕННАЯ величина, и владелец у них назван (#1126).
 	//
@@ -536,8 +559,27 @@ type InviteUserMetadata struct {
 	state     protoimpl.MessageState `protogen:"open.v1"`
 	UserId    string                 `protobuf:"bytes,1,opt,name=user_id,json=userId,proto3" json:"user_id,omitempty"`
 	AccountId string                 `protobuf:"bytes,2,opt,name=account_id,json=accountId,proto3" json:"account_id,omitempty"`
-	// Kratos recovery / magic-link URL. Admin копирует и отправляет вручную
-	// (email-sending не интегрирован). Пустой если re-invite-existing-active.
+	// ВСЕГДА ПУСТО — производителя у поля нет НИ ОДНОГО.
+	//
+	// Предикат: `git grep -n MagicLinkUrl -- services/` → пусто. Use-case,
+	// строящий это сообщение, заполняет только `user_id` и `account_id`:
+	// шаг выпуска ссылки снят вместе с клиентом провайдера входа.
+	//
+	// Пустая строка здесь означает «ссылки НЕ БУДЕТ», а НЕ «ссылки пока
+	// нет»: ветвиться на значении нельзя ни при каком входе.
+	//
+	// Письмо приглашения отправляет НАШ код через очередь
+	// `kacho_iam.invite_mail_outbox`, и ссылки-предъявителя оно не несёт
+	// намеренно: письмо даёт призыв и адрес страницы входа, а не доступ.
+	//
+	// Здесь стояло «админ копирует и отправляет вручную, email-sending не
+	// интегрирован» — неверно обеими половинами и по-разному: отправитель
+	// посажен, а копировать было нечего и до него. Клиент, поверивший первой
+	// половине, строил бы обходной путь на значении, которого не бывает.
+	//
+	// Поле снимается с контракта с резервированием НОМЕРА И ИМЕНИ — решение
+	// владельца, записанное лентой приёмки почты (задача продукта #1774).
+	// До того момента комментарий называет то, что верно СЕГОДНЯ.
 	MagicLinkUrl  string `protobuf:"bytes,3,opt,name=magic_link_url,json=magicLinkUrl,proto3" json:"magic_link_url,omitempty"`
 	unknownFields protoimpl.UnknownFields
 	sizeCache     protoimpl.SizeCache

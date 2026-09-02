@@ -48,6 +48,11 @@ var partitionDrainedOutboxes = map[string]string{
 	"fga_register_outbox":         "resource_id", // vpc / nlb / storage (одноимённые таблицы в разных схемах)
 	"compute_fga_register_outbox": "resource_id",
 	"registry_outbox":             "resource_id",
+	// invite_mail_outbox — очередь писем приглашения iam (#1776). Ключ партиции
+	// — строка приглашённого: письма ОДНОМУ человеку уходят в том порядке, в
+	// котором их поставили, и застрявшая доставка задерживает его же следующие
+	// письма, а не чужие.
+	"invite_mail_outbox": "resource_id",
 }
 
 // nonPartitionDrainedOutboxes — очереди, выборка которых НЕ использует ключ

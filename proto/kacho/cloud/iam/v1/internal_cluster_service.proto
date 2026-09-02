@@ -148,7 +148,7 @@ message GrantClusterAdminRequest {
   // return InvalidArgument `"Illegal argument subject_type: only 'user' supported in this version"`.
   ClusterGrantSubjectType subject_type = 1;
 
-  // User id of the new admin. Must match `^usr_[0-9a-hjkmnp-tv-z]{17}$` and
+  // User id of the new admin. Must match `^usr[0-9a-hjkmnp-tv-z]{17}$` and
   // exist in `kacho_iam.users` (missing user returns InvalidArgument).
   string subject_id = 2;
 }
@@ -171,7 +171,7 @@ message RevokeClusterAdminRequest {
   ClusterGrantSubjectType subject_type = 1;
 
   // User id of the admin being revoked. Must match
-  // `^usr_[0-9a-hjkmnp-tv-z]{17}$`. Self-revoke is rejected
+  // `^usr[0-9a-hjkmnp-tv-z]{17}$`. Self-revoke is rejected
   // (FailedPrecondition); last-admin revoke is rejected
   // (FailedPrecondition); non-existent / already-revoked admin returns
   // NotFound.
@@ -214,7 +214,7 @@ message ClusterAdminEntry {
   // Subject type (`USER` only in this version).
   ClusterGrantSubjectType subject_type = 2;
 
-  // User id of the admin (`usr_<17>`).
+  // User id of the admin (`usr<17>`).
   string subject_id = 3;
 
   // Subject email enriched from `kacho_iam.users`. Empty string when the
@@ -226,7 +226,7 @@ message ClusterAdminEntry {
   // the user row is absent.
   string subject_display_name = 5;
 
-  // User id of the granter (`usr_<17>` for a regular admin, or the literal
+  // User id of the granter (`usr<17>` for a regular admin, or the literal
   // `"bootstrap"` for the initial bootstrap-seeded admin).
   string granted_by_user_id = 6;
 

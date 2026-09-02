@@ -110,7 +110,7 @@ describe("первый экран называет первый шаг (#1613)",
   it("список ещё не прочитан — экран не утверждает, что аккаунтов нет", () => {
     // Третье состояние. «Ничего не прочитано» и «прочитано и пусто» — разные
     // вещи, и первое не даёт права на утверждение о втором.
-    jest.spyOn(global, "fetch").mockImplementation(() => new Promise(() => {}) as Promise<Response>);
+    jest.spyOn(global, "fetch").mockImplementation(() => new Promise(() => {}));
     render(<DashboardPage context={emptyContext} />);
 
     expect(screen.queryByTestId("dashboard-first-step-action")).not.toBeInTheDocument();

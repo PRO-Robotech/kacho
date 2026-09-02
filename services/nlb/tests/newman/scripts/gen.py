@@ -67,6 +67,7 @@ from gen_shared import (  # noqa: E402  — импорт после провяз
     generate,
     Run,
     retry_until_authorized,
+    retry_until_present,
     _RYA_SEQ,
     _accepted_http_codes,
     _assert_delete_operation_outcome,
@@ -704,41 +705,6 @@ def assert_operation_envelope(prefix_regex: str = "^(nlb|tgr|lst)[a-z0-9]+$") ->
 
 
 
-def retry_until_present(step: Step, id_env_var: str, budget: int = 25,
-                        interval_ms: int = 500) -> Step:
-    """Bounded retry a LIST step until the caller's OWN fresh resource id appears in
-    the returned array (read-your-writes over the list-authz visibility window; opgate
-    removed -> owner-tuple eventual-consistency). The list returns 200 with the id
-    ABSENT until the tuple materializes, so retry_until_authorized (403/404) does not
-    apply -- we retry while the id is missing. Fail-open after budget: the real
-    assertion then runs once and FAILS if still absent (never masked, never infinite).
-    Use ONLY on a list of the caller's OWN just-created resource."""
-    guard = [
-        "// bounded read-your-writes retry until own fresh id is present in the list",
-        "// (opgate removed -> eventual-consistency); retries SELF while id absent.",
-        "if (pm.environment.get('_lstRetryStarted') !== pm.info.requestName) {",
-        "  pm.environment.set('_lstRetryCount', '0');",
-        "  pm.environment.set('_lstRetryStarted', pm.info.requestName);",
-        "}",
-        "const _lrc = parseInt(pm.environment.get('_lstRetryCount') || '0', 10);",
-        "let _present = false;",
-        "try { const _arr = Object.values(pm.response.json()).find(v => Array.isArray(v)) || [];"
-        " _present = _arr.map(x => x.id).includes(pm.environment.get('" + id_env_var + "')); } catch (e) {}",
-        f"if (pm.response.code === 200 && !_present && _lrc < {budget}) {{",
-        "  pm.environment.set('_lstRetryCount', String(_lrc + 1));",
-        f"  const _lrd = Date.now(); while (Date.now() - _lrd < {interval_ms}) {{ /* list-visibility wait */ }}",
-        "  pm.execution.setNextRequest(pm.info.requestName);",
-        "  return;",
-        "}",
-        *_budget_ledger("pm.response.code === 200 && !_present", "_lrc", budget),
-        "pm.environment.unset('_lstRetryCount');",
-        "pm.environment.unset('_lstRetryStarted');",
-    ]
-    _RYA_SEQ[0] += 1
-    return replace(step, name=f"{step.name}-lst{_RYA_SEQ[0]}",
-                   test_script=guard + list(step.test_script))
-
-
 # ── ВЕДОМОСТЬ ОЖИДАНИЯ: исчерпание бюджета отличимо от его ненадобности ──────
 #
 # ПРЕДМЕТ (задача #1251). У всякой обёртки ожидания концовка была одна: «повторять
@@ -815,6 +781,15 @@ def _budget_ledger(transient_expr: str, count_var: str, budget: int) -> List[str
 # и падает, называя следствие вместо предмета.
 _rya = functools.partial(retry_until_authorized,
                         budget=25, interval_ms=500, ledger=_budget_ledger, lane_head=True)
+# То же окно у СПИСОЧНОГО ожидания — и то же правило: величину называет НАБОР,
+# а не общий слой (#1379). Три копии этой обёртки расходились ещё и телом:
+# одна ждала появления ВСЕХ названных имён, другая вела ведомость исчерпания,
+# третья не делала ни того, ни другого. Общая форма несёт обе починки, а
+# различие набора выражено ЗДЕСЬ — аргументом, видимым на связывании.
+_rup = functools.partial(retry_until_present,
+                        budget=25, interval_ms=500, ledger=_budget_ledger)
+
+
 def warm_peer_fixture(base_path: str, id_var: str, suffix: str,
                       auth: Optional[str] = None) -> Step:
     """Прогреть ЧУЖОЙ свежий ресурс чтением — до того, как его идентификатор уедет в
@@ -1317,7 +1292,7 @@ _INJECTED = {
     "poll_operation_until_done": poll_operation_until_done,
     "retry_until_authorized": _rya,
     "warm_peer_fixture": warm_peer_fixture,
-    "retry_until_present": retry_until_present,
+    "retry_until_present": _rup,
     "retry_until_state": retry_until_state,
     "retry_create_until_present": retry_create_until_present,
     "retry_delete_until_released": retry_delete_until_released,

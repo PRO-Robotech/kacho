@@ -162,26 +162,6 @@ export function csrfToken(ui: UiContainer): string {
   return node?.attributes?.value ? displayText(node.attributes.value) : "";
 }
 
-/** Считать список доступных «методов» для login (по UI-nodes group). */
-export function availableMethods(ui: UiContainer): string[] {
-  const set = new Set<string>();
-  for (const n of ui.nodes) {
-    if (n.group && n.group !== "default") set.add(n.group);
-  }
-  return Array.from(set);
-}
-
-/** Получить UI-сообщения уровня flow (errors / info). */
-export function flowMessages(ui: UiContainer): UiText[] {
-  return ui.messages ?? [];
-}
-
-/** Получить error-сообщения для конкретного node. */
-export function nodeMessages(ui: UiContainer, name: string): UiText[] {
-  const n = findNode(ui, name);
-  return n?.messages ?? [];
-}
-
 // ─────────────────────────────────────────────────────────────────────────────
 // Public API
 // ─────────────────────────────────────────────────────────────────────────────
@@ -270,6 +250,3 @@ export const kratos = {
     return config.webauthnRpName;
   },
 };
-
-/** Re-export для удобства unit-тестов и других модулей. */
-export { kratosUrl };
