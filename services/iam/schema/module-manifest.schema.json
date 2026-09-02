@@ -5,19 +5,26 @@
   "$comment": "ЧЕЙ ЭТО КОНТРАКТ И КТО СУДЬЯ. Эта схема — контракт для АВТОРА манифеста и его редактора, а не второй судья формы. Форму судит ОДИН исполнитель: разбор в Go-структуры services/iam/internal/manifest плюс Decoder.KnownFields(true). Схема и структуры суть два места об одном предмете и разошлись бы МОЛЧА — оба отвечают «валидно» на валидном входе, — поэтому их согласие держит проба равенства множеств ключей (MOD-MF-21), а не надежда. ЧЕГО ЭТА СХЕМА ПРОВЕРИТЬ НЕ МОЖЕТ, и это не недоделка: четыре свойства ей невыразимы by construction и держит их валидатор связности — (1) субъект выдачи заведён ЭТИМ ЖЕ посевом; (2) roleId существует в разделе roles того же манифеста; (3) заведённая группа кому-то выдана, иначе это имя без предмета; (4) ключ остался СТРОКОЙ после разбора YAML — измерено: булев ключ схема отвергает, но текстом про лишнее свойство, то есть ложным диагнозом. Ссылаться на эту схему как на «проверку манифеста» — ошибка того же рода, что «эталон вместо гейта». РАЗДЕЛОВ ЧЕТЫРЕ, и все четыре описаны здесь: resources (что модуль объявляет платформе о своих правах), roles (роли аккаунта и проекта), deprecatedVerbs (принимаем на чтении, не производим) и seed (что заводит установка модуля). ИМЯ ФАЙЛА и $id несут предмет целиком: пока раздел был один, имя схемы называло тот единственный раздел, и описав ещё три, оно стало бы ложью о собственном предмете; второй схемы для одного документа не заводится — две схемы означали бы, что ни одна не судит его целиком.",
   "type": "object",
   "additionalProperties": false,
-  "required": ["apiVersion", "module"],
+  "required": [
+    "apiVersion",
+    "module"
+  ],
   "properties": {
-
     "apiVersion": {
       "const": "iam/v1",
       "description": "По какой версии читать оболочку. Ключ обязателен и назван в схеме явно: манифест, чья оболочка схемой не описана, отвергался бы загрузчиком при любом значении — объявленная возможность, неисполнимая ни при каком входе."
     },
-
     "module": {
-      "enum": ["iam", "vpc", "compute", "loadbalancer", "registry", "storage"],
+      "enum": [
+        "iam",
+        "vpc",
+        "compute",
+        "loadbalancer",
+        "registry",
+        "storage"
+      ],
       "description": "Чей это манифест. Набор ЗАКРЫТ и совпадает с платформенным набором модулей iam (domain.IsKnownModule) — незнакомое имя сегодня означает опечатку либо имя каталога вместо имени модуля. Токен балансировщика — loadbalancer, а каталог сервиса зовётся services/nlb: два разных словаря, и манифест, названный по каталогу, разошёлся бы с набором молча. Перечень истечёт вместе с PRO-Robotech/kacho#1027, который переводит каталог модулей из литерала в строки catalog_module: тогда предмет проверки меняется с «член платформенного набора» на «объявлен каталогом»."
     },
-
     "resources": {
       "type": "array",
       "maxItems": 64,
@@ -26,7 +33,13 @@
       "items": {
         "type": "object",
         "additionalProperties": false,
-        "required": ["name", "objectType", "parent", "producer", "verbs"],
+        "required": [
+          "name",
+          "objectType",
+          "parent",
+          "producer",
+          "verbs"
+        ],
         "properties": {
           "name": {
             "type": "string",
@@ -39,11 +52,18 @@
             "description": "Тип объекта модели прав. ОБЯЗАТЕЛЕН у каждого ресурса: правило вывода «тип = <модуль>_<ресурс>» снято целиком — оно не действует у 10 записей закрытой таблицы из 27 (три рода отступлений: токен модуля не равен префиксу типа, сегмент множественный при единственном типе, иерархический предок без префикса), то есть автор всё равно обязан знать, попадает ли его ресурс в исключение. Значение резолвится закрытой таблицей authzmap; тип вне неё отвергается: селектор роли адресовал бы несуществующий тип и не дал бы НИ ОДНОГО пообъектного права молча, при действующей на вид привязке."
           },
           "parent": {
-            "enum": ["project", "account", "cluster"],
+            "enum": [
+              "project",
+              "account",
+              "cluster"
+            ],
             "description": "Якорь области, под которым живёт ресурс. Набор ЗАКРЫТ и совпадает со словарём якорей выдачи (iam.project | iam.account | iam.cluster) без точечного префикса: здесь называется предок ресурса, а не тип области выдачи."
           },
           "producer": {
-            "enum": ["derived", "authored"],
+            "enum": [
+              "derived",
+              "authored"
+            ],
             "description": "Чем являются ОСТАЛЬНЫЕ ключи записи. derived — порождены из аннотаций, и расхождение с ними есть находка гейта устарелости. authored — написаны человеком, потому что аннотаций у ресурса нет ВОВСЕ; таких типов в закрытой таблице ровно два, и обе причины постоянны: vpc_address_pool — ресурс admin-only, его глаголы живут на внутреннем слушателе (ban #6), registry_repository — объект составной, резолвится в обработчике, и якорю нечего извлекать из поля запроса (анти-BOLA). Ключ обязателен: без него перегенерация не знает, что сохранять, и вопрос «пережил ли авторский ключ» не формулируется."
           },
           "doc": {
@@ -54,14 +74,18 @@
             "type": "array",
             "maxItems": 8,
             "uniqueItems": true,
-            "items": {"type": "string"},
+            "items": {
+              "type": "string"
+            },
             "description": "АВТОРСКИЙ состав субъектов, когда он УЖЕ общего. Пишется только там, где отличается: умолчание, объявленное явно, расходится с общим молча, а неназванное отличие расширяет доступ так же молча."
           },
           "tiers": {
             "type": "array",
             "maxItems": 8,
             "uniqueItems": true,
-            "items": {"type": "string"},
+            "items": {
+              "type": "string"
+            },
             "description": "АВТОРСКИЙ набор ярусов, когда он УЖЕ общего (например, у административного ресурса нет яруса редактора вовсе, и наблюдатель наследуется прямо от администратора)."
           },
           "relations": {
@@ -72,7 +96,10 @@
             "items": {
               "type": "object",
               "additionalProperties": false,
-              "required": ["name", "definition"],
+              "required": [
+                "name",
+                "definition"
+              ],
               "properties": {
                 "name": {
                   "type": "string",
@@ -103,7 +130,9 @@
                 {
                   "type": "object",
                   "additionalProperties": false,
-                  "required": ["name"],
+                  "required": [
+                    "name"
+                  ],
                   "properties": {
                     "name": {
                       "type": "string",
@@ -111,18 +140,31 @@
                       "description": "Имя действия. Сегмент права, по которому его выдают: имя НЕ повторяет имя своего ресурса и НЕ теряет предмет."
                     },
                     "class": {
-                      "enum": ["get", "list", "create", "update", "delete"],
+                      "enum": [
+                        "get",
+                        "list",
+                        "create",
+                        "update",
+                        "delete"
+                      ],
                       "description": "Класс действия. Обязателен, когда имя не совпадает точно ни с одним каноническим; набор классов ТОТ ЖЕ, что и набор канонических имён, и это построение, а не совпадение: класс, невыводимый ни из одного канонического имени, никем не производился бы."
+                    },
+                    "internal": {
+                      "type": "boolean",
+                      "description": "Действие живёт на ВНУТРЕННЕМ слушателе: арендатору оно недоступно by construction. Признак порождается из аннотаций контрактов вместе с остальным разделом и сверяется с каталогом прав: внутренняя плоскость видна в записи каталога приставкой `Internal` у имени службы, и два объявления одной плоскости разошлись бы молча."
                     }
                   }
                 }
               ]
             }
+          },
+          "baseRoles": {
+            "type": "boolean",
+            "description": "Ресурс порождает БАЗОВЫЕ ЯРУСНЫЕ РОЛИ. Отсутствие признака означает «ярусов нет»: наивный вывод трёх ярусов из классов даёт тридцать ролей при живых восемнадцати, а молчаливое заведение двенадцати системных ролей есть необратимая правка каталога прав арендатора. Признак явный именно поэтому: дискриминатора, отделяющего ресурсы с ярусами от ресурсов без них, среди прочих полей НЕ СУЩЕСТВУЕТ — это перепись, а не «не нашли»."
           }
         }
       }
     },
-
     "roles": {
       "type": "array",
       "maxItems": 64,
@@ -131,7 +173,13 @@
       "items": {
         "type": "object",
         "additionalProperties": false,
-        "required": ["id", "name", "description", "tier", "rules"],
+        "required": [
+          "id",
+          "name",
+          "description",
+          "tier",
+          "rules"
+        ],
         "properties": {
           "id": {
             "type": "string",
@@ -151,11 +199,17 @@
           "tier": {
             "type": "object",
             "additionalProperties": false,
-            "required": ["tierType", "tierId"],
+            "required": [
+              "tierType",
+              "tierId"
+            ],
             "description": "Ярус, на котором роль ОПРЕДЕЛЕНА. Изоморфен iam.v1.DefinitionTier дословно. Системность НЕ отдельный признак, а СЛЕДСТВИЕ яруса — контракт говорит это прямо: is_system выводится из tier_type == iam.cluster. Поэтому отказ по ярусу и есть отказ системной роли, а не его приближение.",
             "properties": {
               "tierType": {
-                "enum": ["iam.account", "iam.project"],
+                "enum": [
+                  "iam.account",
+                  "iam.project"
+                ],
                 "description": "Точечный тип яруса. iam.cluster здесь НЕ значится намеренно: системные роли сеются миграцией, и манифест их не замещает. Отказ называет поле, полученное значение, набор принимаемых и причину."
               },
               "tierId": {
@@ -173,7 +227,11 @@
             "items": {
               "type": "object",
               "additionalProperties": false,
-              "required": ["module", "resources", "verbs"],
+              "required": [
+                "module",
+                "resources",
+                "verbs"
+              ],
               "properties": {
                 "module": {
                   "type": "string",
@@ -184,26 +242,34 @@
                   "type": "array",
                   "minItems": 1,
                   "maxItems": 16,
-                  "items": {"type": "string"},
+                  "items": {
+                    "type": "string"
+                  },
                   "description": "Ресурсы модуля. Подстановка `*` здесь СИСТЕМНА by construction — домен отвергает её в несистемной роли дословным текстом, — а манифест системных ролей не объявляет: значит `resources: [\"*\"]` не становится законной ни при каком сопутствующем ключе."
                 },
                 "verbs": {
                   "type": "array",
                   "minItems": 1,
                   "maxItems": 16,
-                  "items": {"type": "string"},
+                  "items": {
+                    "type": "string"
+                  },
                   "description": "Действия. Асимметрия с resources ИЗМЕРЕНА, а не предположена: подстановка `*` в глаголах несистемной роли ЗАКОННА и значит «все глаголы типа», оставаясь единственным элементом списка."
                 },
                 "resourceNames": {
                   "type": "array",
                   "maxItems": 256,
-                  "items": {"type": "string"},
+                  "items": {
+                    "type": "string"
+                  },
                   "description": "Сужение по идентификаторам объектов. Взаимоисключающе с matchLabels — инвариант домена со своим стабильным текстом."
                 },
                 "matchLabels": {
                   "type": "object",
                   "maxProperties": 16,
-                  "additionalProperties": {"type": "string"},
+                  "additionalProperties": {
+                    "type": "string"
+                  },
                   "description": "Сужение по меткам (AND-равенство). Взаимоисключающе с resourceNames. Допустимо ТОЛЬКО на типах, у которых есть источник строк, — это гейт домена, и копии его здесь нет."
                 }
               }
@@ -212,7 +278,6 @@
         }
       }
     },
-
     "deprecatedVerbs": {
       "type": "object",
       "maxProperties": 32,
@@ -220,10 +285,21 @@
       "additionalProperties": {
         "type": "object",
         "additionalProperties": false,
-        "required": ["class", "since", "reason", "removeWhen"],
+        "required": [
+          "class",
+          "since",
+          "reason",
+          "removeWhen"
+        ],
         "properties": {
           "class": {
-            "enum": ["get", "list", "create", "update", "delete"],
+            "enum": [
+              "get",
+              "list",
+              "create",
+              "update",
+              "delete"
+            ],
             "description": "Во что глагол разрешается на чтении. Набор ТОТ ЖЕ, что у класса живого действия: второй словарь классов разошёлся бы с первым молча."
           },
           "since": {
@@ -249,7 +325,6 @@
       "additionalProperties": false,
       "description": "Что заводит УСТАНОВКА модуля. Ни один из четырёх подразделов не обязателен: модуль без своих групп и без вступлений — законный случай, а не неполный манифест. Раздел целиком тоже необязателен, но объявленный пустым (seed: {}) и не объявленный вовсе — РАЗНЫЕ утверждения, и загрузчик их различает; seed: без значения отвергается отдельным отказом.",
       "properties": {
-
         "serviceAccounts": {
           "type": "array",
           "maxItems": 16,
@@ -258,7 +333,11 @@
           "items": {
             "type": "object",
             "additionalProperties": false,
-            "required": ["name", "account", "description"],
+            "required": [
+              "name",
+              "account",
+              "description"
+            ],
             "properties": {
               "name": {
                 "type": "string",
@@ -277,7 +356,6 @@
             }
           }
         },
-
         "groups": {
           "type": "array",
           "maxItems": 32,
@@ -286,7 +364,11 @@
           "items": {
             "type": "object",
             "additionalProperties": false,
-            "required": ["name", "account", "description"],
+            "required": [
+              "name",
+              "account",
+              "description"
+            ],
             "properties": {
               "name": {
                 "type": "string",
@@ -303,7 +385,6 @@
             }
           }
         },
-
         "accessBindings": {
           "type": "array",
           "maxItems": 64,
@@ -311,7 +392,13 @@
           "items": {
             "type": "object",
             "additionalProperties": false,
-            "required": ["subjects", "roleId", "scopeType", "scopeId", "target"],
+            "required": [
+              "subjects",
+              "roleId",
+              "scopeType",
+              "scopeId",
+              "target"
+            ],
             "properties": {
               "subjects": {
                 "type": "array",
@@ -322,10 +409,17 @@
                 "items": {
                   "type": "object",
                   "additionalProperties": false,
-                  "required": ["type", "name"],
+                  "required": [
+                    "type",
+                    "name"
+                  ],
                   "properties": {
                     "type": {
-                      "enum": ["group", "serviceAccount", "user"],
+                      "enum": [
+                        "group",
+                        "serviceAccount",
+                        "user"
+                      ],
                       "description": "Закрытый набор из контракта SubjectType. Посевом заводятся только group и serviceAccount: человека посев не создаёт, поэтому выдача на user проходит форму и отвергается валидатором связности."
                     },
                     "name": {
@@ -349,7 +443,10 @@
                 "description": "Единственный объект уровня кластера."
               },
               "target": {
-                "enum": ["allInScope", "resources"],
+                "enum": [
+                  "allInScope",
+                  "resources"
+                ],
                 "description": "ОБЯЗАТЕЛЕН по контракту: создание без него отвергается синхронно. allInScope покрывает и БУДУЩИЕ объекты — это самая широкая выдача и никогда не умолчание."
               },
               "resources": {
@@ -359,7 +456,10 @@
                 "items": {
                   "type": "object",
                   "additionalProperties": false,
-                  "required": ["type", "id"],
+                  "required": [
+                    "type",
+                    "id"
+                  ],
                   "properties": {
                     "type": {
                       "type": "string",
@@ -376,21 +476,33 @@
             },
             "if": {
               "properties": {
-                "target": {"const": "resources"}
+                "target": {
+                  "const": "resources"
+                }
               },
-              "required": ["target"]
+              "required": [
+                "target"
+              ]
             },
             "then": {
-              "required": ["subjects", "roleId", "scopeType", "scopeId", "target", "resources"]
+              "required": [
+                "subjects",
+                "roleId",
+                "scopeType",
+                "scopeId",
+                "target",
+                "resources"
+              ]
             },
             "else": {
               "not": {
-                "required": ["resources"]
+                "required": [
+                  "resources"
+                ]
               }
             }
           }
         },
-
         "joins": {
           "type": "array",
           "maxItems": 32,
@@ -398,15 +510,24 @@
           "items": {
             "type": "object",
             "additionalProperties": false,
-            "required": ["serviceAccount", "group", "why"],
+            "required": [
+              "serviceAccount",
+              "group",
+              "why"
+            ],
             "properties": {
               "serviceAccount": {
                 "type": "object",
                 "additionalProperties": false,
-                "required": ["account", "name"],
+                "required": [
+                  "account",
+                  "name"
+                ],
                 "description": "КТО вступает: пара (аккаунт, имя). Одно имя не адресует — уникальность в продукте держит пара.",
                 "properties": {
-                  "account": {"const": "system"},
+                  "account": {
+                    "const": "system"
+                  },
                   "name": {
                     "type": "string",
                     "pattern": "^[a-z][a-z0-9-]{0,61}[a-z0-9]$"
@@ -416,7 +537,10 @@
               "group": {
                 "type": "object",
                 "additionalProperties": false,
-                "required": ["account", "name"],
+                "required": [
+                  "account",
+                  "name"
+                ],
                 "description": "КУДА вступает: пара (аккаунт, имя) чужой группы.",
                 "properties": {
                   "account": {
@@ -442,34 +566,48 @@
       "not": {
         "anyOf": [
           {
-            "required": ["serviceAccount"],
+            "required": [
+              "serviceAccount"
+            ],
             "$comment": "Снятый ключ: стало списком serviceAccounts. additionalProperties: false отвергнет его и так, но сообщением про неизвестное свойство — а автор возвращает такие ключи не по злому умыслу, а потому что они выглядят понятными."
           },
           {
-            "required": ["seedTo"],
+            "required": [
+              "seedTo"
+            ],
             "$comment": "Снятый ключ: выдачи переехали в accessBindings."
           },
           {
-            "required": ["bindings"],
+            "required": [
+              "bindings"
+            ],
             "$comment": "Снятый ключ: то же, что seedTo."
           },
           {
-            "required": ["serviceAccounts"],
+            "required": [
+              "serviceAccounts"
+            ],
             "properties": {
               "serviceAccounts": {
                 "contains": {
-                  "required": ["purpose"]
+                  "required": [
+                    "purpose"
+                  ]
                 }
               }
             },
             "$comment": "Снятый ключ purpose — выдуманный синоним: у таблиц groups, roles и service_accounts поле называется description, и второе слово для того же предмета разошлось бы с первым."
           },
           {
-            "required": ["joins"],
+            "required": [
+              "joins"
+            ],
             "properties": {
               "joins": {
                 "contains": {
-                  "required": ["declaredBy"]
+                  "required": [
+                    "declaredBy"
+                  ]
                 }
               }
             },

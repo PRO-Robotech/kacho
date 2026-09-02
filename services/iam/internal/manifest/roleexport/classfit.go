@@ -164,6 +164,18 @@ type ClassCensus struct {
 	Exempt int
 	// Unmatched — каталог такого действия не знает: сверять не с чем.
 	Unmatched int
+	// ResourcesWithBaseRoles — ресурсов, объявивших базовые ярусные роли.
+	ResourcesWithBaseRoles int
+	// BaseRoleTiersDerived — ярусов, ВЫВЕДЕННЫХ из этих объявлений.
+	//
+	// Печатается рядом с числом ресурсов, а не вместо него: приёмка `#1090`
+	// меряет здесь именно расхождение — наивный вывод даёт тридцать ярусов при
+	// живых восемнадцати, и одно число из двух этого расхождения не покажет.
+	// Величина наблюдаема у инструмента, поэтому неверно расставленный признак
+	// виден числом, а не только чтением манифеста.
+	BaseRoleTiersDerived int
+	// InternalVerbs — действий, объявленных на ВНУТРЕННЕЙ плоскости.
+	InternalVerbs int
 }
 
 // Summary — перепись строкой. Печатается ВСЕГДА: молчание проверки, не
@@ -172,9 +184,11 @@ func (c ClassCensus) Summary() string {
 	return fmt.Sprintf(
 		"действий каталога %d · ресурсов манифеста %d · действий раздела %d · "+
 			"класс удовлетворяет %d · отказов %d · непригодно для роли %d · "+
-			"освобождено %d · не сопоставлено %d",
+			"освобождено %d · не сопоставлено %d · ресурсов с базовыми ярусами %d · "+
+			"ярусов выведено %d · действий внутренней плоскости %d",
 		c.ActionsAttributed, c.ResourcesRead, c.VerbsRead,
-		c.ClassSatisfies, c.Findings, c.Unsuitable, c.Exempt, c.Unmatched)
+		c.ClassSatisfies, c.Findings, c.Unsuitable, c.Exempt, c.Unmatched,
+		c.ResourcesWithBaseRoles, c.BaseRoleTiersDerived, c.InternalVerbs)
 }
 
 // CheckResourceClasses судит объявленный класс каждого действия раздела
@@ -198,9 +212,16 @@ func CheckResourceClasses(facts VerbFacts, m *manifest.Manifest, actions []Actio
 	for i := range m.Resources {
 		r := &m.Resources[i]
 		census.ResourcesRead++
+		if tiers := r.BaseRoleTiers(); len(tiers) > 0 {
+			census.ResourcesWithBaseRoles++
+			census.BaseRoleTiersDerived += len(tiers)
+		}
 		fgaType, _ := authzmap.ObjectType(m.Module, r.Name)
 		for _, v := range r.Verbs {
 			census.VerbsRead++
+			if v.Internal {
+				census.InternalVerbs++
+			}
 			note, fault := judgeVerb(facts, m.Module, r.Name, fgaType, v, byKey, &census)
 			if note != nil {
 				notes = append(notes, *note)
