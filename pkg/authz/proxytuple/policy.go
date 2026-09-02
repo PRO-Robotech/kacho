@@ -32,6 +32,7 @@ package proxytuple
 
 import (
 	"errors"
+	"sort"
 	"strings"
 )
 
@@ -134,19 +135,58 @@ var publicReadObjectTypes = map[string]struct{}{
 // PublicReadObjectTypes returns the closed list above, for censuses and gates.
 func PublicReadObjectTypes() []string { return []string{"registry_repository"} }
 
+// ForbiddenObjectTypes returns the closed forbidden set, sorted. Derived from the
+// map the write path evaluates rather than written out a second time: a
+// hand-written copy of a set cannot be compiled against the original and drifts
+// silently — which is the whole reason the rule was moved into this package.
+// Exported for the tree gate that requires every entry to name a type the model
+// actually declares.
+func ForbiddenObjectTypes() []string {
+	out := make([]string, 0, len(forbiddenObjectTypes))
+	for t := range forbiddenObjectTypes {
+		out = append(out, t)
+	}
+	sort.Strings(out)
+	return out
+}
+
 // forbiddenObjectTypes — object types that are never a module's resource and
 // therefore can never be the object of a proxy tuple: the platform singleton
-// `cluster` and the entities of the iam domain. Forbidden even when the caller's
-// domain is unknown, so that these objects are unreachable through the proxy under
-// every configuration.
+// `cluster`, the shared hierarchy and subject types, and the resource types of the
+// iam domain. Forbidden even when the caller's domain is unknown, so that these
+// objects are unreachable through the proxy under every configuration — the empty
+// caller domain switches the domain binding off, and this set is then the only
+// clause standing between a module and an object of somebody else's domain.
+//
+// EVERY ENTRY NAMES A TYPE THE MODEL DECLARES, AND EVERY NON-MODULE TYPE OF THE
+// MODEL IS NAMED HERE. Both halves are held by the tree gate
+// TestForbiddenProxyObjectTypesAgreeWithTheModel, and each half closes a silence of
+// its own. An entry the model does not declare excludes NOTHING — the input it
+// would refuse is not representable — while the list reads as if the type were
+// covered; that was `role` against the model's `iam_role` (#1883), a dead entry
+// that produced neither a red run nor a refusal for the whole of its life. A
+// non-module type with no entry is reachable in exactly the mode the set exists
+// for; that was every other resource type of the iam domain — six of them.
+//
+// `iam` is deliberately absent from the emitter census (proxyConsumerDomains): iam
+// writes its own links directly, without the proxy. That is what makes its types
+// the very class this set has to close.
 var forbiddenObjectTypes = map[string]struct{}{
-	"cluster":         {},
-	"account":         {},
-	"project":         {},
+	// платформенный синглтон и общие предки иерархии
+	"cluster": {},
+	"account": {},
+	"project": {},
+	// типы субъектов
 	"user":            {},
 	"service_account": {},
 	"group":           {},
-	"role":            {},
+	// ресурсные типы домена iam
+	"iam_user":            {},
+	"iam_service_account": {},
+	"iam_group":           {},
+	"iam_role":            {},
+	"iam_access_binding":  {},
+	"iam_fgaproxy":        {},
 }
 
 // moduleObjectDomain maps a module's service short name (from its verified mTLS
