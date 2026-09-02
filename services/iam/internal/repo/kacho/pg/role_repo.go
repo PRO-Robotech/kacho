@@ -78,8 +78,8 @@ func (r *roleReader) Get(ctx context.Context, id domain.RoleID) (domain.Role, er
 // has no version column, so the row's system xmin is the snapshot Role.Update
 // echoes into UpdateCAS for the lost-update guard (the read-modify-write
 // OCC-without-version-column pattern). xmin is selected first, then the canonical
-// roleCols (scanRoleWithVersion reads the leading xmin slot then delegates to
-// scanRole's column order).
+// roleCols — scanRoleWithVersion prepends the xmin slot to the SAME destination
+// list every other roleCols reader uses.
 func (r *roleReader) GetWithVersion(ctx context.Context, id domain.RoleID) (domain.Role, string, error) {
 	var version string
 	row := r.tx.QueryRow(ctx,
@@ -814,53 +814,7 @@ func armText(a domain.Arm) string {
 // ---- helpers ---------------------------------------------------------------
 
 func scanRole(row scanner) (domain.Role, error) {
-	var (
-		ro                       domain.Role
-		clusterID, accID, projID sql.NullString
-		ownerModule              sql.NullString
-		permsJSON, rulesJSON     []byte
-		labelsJSON               []byte
-	)
-	err := row.Scan(
-		(*string)(&ro.ID),
-		&clusterID,
-		&accID,
-		&projID,
-		(*string)(&ro.Name),
-		(*string)(&ro.Description),
-		&permsJSON,
-		&rulesJSON,
-		&ro.IsSystem,
-		&ownerModule,
-		&ro.CreatedAt,
-		&labelsJSON,
-	)
-	if err != nil {
-		return domain.Role{}, err
-	}
-	if clusterID.Valid {
-		ro.ClusterID = domain.ClusterID(clusterID.String)
-	}
-	if accID.Valid {
-		ro.AccountID = domain.AccountID(accID.String)
-	}
-	if projID.Valid {
-		ro.ProjectID = domain.ProjectID(projID.String)
-	}
-	// Пустая колонка означает ПЛАТФОРМЕННУЮ роль, и пустая строка домена
-	// означает ровно то же: `PolicyOfRole` читает непустоту, а не наличие. Второй
-	// формы отсутствия здесь не заводится.
-	if ownerModule.Valid {
-		ro.OwnerModule = ownerModule.String
-	}
-	if err := scanRolePolicy(&ro, permsJSON, rulesJSON); err != nil {
-		return domain.Role{}, err
-	}
-	ro.Labels, err = unmarshalLabels(labelsJSON)
-	if err != nil {
-		return domain.Role{}, err
-	}
-	return ro, nil
+	return scanRoleWithVersion(row)
 }
 
 // scanRolePolicy decodes the permissions + rules JSONB columns into the role.
@@ -882,18 +836,31 @@ func scanRolePolicy(ro *domain.Role, permsJSON, rulesJSON []byte) error {
 	return nil
 }
 
-// scanRoleWithVersion scans a row whose FIRST column is xmin::text (the OCC token)
-// followed by the canonical roleCols projection. The token is read into *versionOut
-// then scanRole's column order is reproduced (GetWithVersion).
-func scanRoleWithVersion(row scanner, versionOut *string) (domain.Role, error) {
+// scanRoleWithVersion — ЕДИНСТВЕННОЕ объявление порядка назначений под roleCols.
+// Без versionOut это обычное чтение проекции (сюда делегирует scanRole); с ним
+// запрос ОБЯЗАН нести ведущую колонку `xmin::text`, и токен пишется в
+// *versionOut[0] — слот версии встаёт первым в тот же список (GetWithVersion).
+//
+// Порядок здесь именно ОДИН, а не «воспроизведён»: прежде список был написан
+// дважды, и вторая копия отстала на колонку `owner_module` — правка любой роли
+// отвечала арендатору INTERNAL, потому что описаний полей приходило 13, а
+// приёмников было 12. Компилятор такое расхождение не ловит, роняет его только
+// живая Postgres. Заводя колонку в roleCols, правь список ЗДЕСЬ; второго места,
+// способного с ним разойтись, больше нет, а остаточную ось «проекция против
+// списка» держит TestProjectionScanArityMatchesItsColumns.
+func scanRoleWithVersion(row scanner, versionOut ...*string) (domain.Role, error) {
 	var (
 		ro                       domain.Role
 		clusterID, accID, projID sql.NullString
+		ownerModule              sql.NullString
 		permsJSON, rulesJSON     []byte
 		labelsJSON               []byte
 	)
-	err := row.Scan(
-		versionOut,
+	dest := make([]any, 0, 13)
+	if len(versionOut) > 0 {
+		dest = append(dest, versionOut[0])
+	}
+	dest = append(dest,
 		(*string)(&ro.ID),
 		&clusterID,
 		&accID,
@@ -903,10 +870,11 @@ func scanRoleWithVersion(row scanner, versionOut *string) (domain.Role, error) {
 		&permsJSON,
 		&rulesJSON,
 		&ro.IsSystem,
+		&ownerModule,
 		&ro.CreatedAt,
 		&labelsJSON,
 	)
-	if err != nil {
+	if err := row.Scan(dest...); err != nil {
 		return domain.Role{}, err
 	}
 	if clusterID.Valid {
@@ -918,9 +886,16 @@ func scanRoleWithVersion(row scanner, versionOut *string) (domain.Role, error) {
 	if projID.Valid {
 		ro.ProjectID = domain.ProjectID(projID.String)
 	}
+	// Пустая колонка означает ПЛАТФОРМЕННУЮ роль, и пустая строка домена
+	// означает ровно то же: `PolicyOfRole` читает непустоту, а не наличие. Второй
+	// формы отсутствия здесь не заводится.
+	if ownerModule.Valid {
+		ro.OwnerModule = ownerModule.String
+	}
 	if err := scanRolePolicy(&ro, permsJSON, rulesJSON); err != nil {
 		return domain.Role{}, err
 	}
+	var err error
 	ro.Labels, err = unmarshalLabels(labelsJSON)
 	if err != nil {
 		return domain.Role{}, err
