@@ -3989,7 +3989,7 @@
       ]
     },
     {
-      "name": "IAM-AB-SIA-12-MALFORMED-NEG — IAM-AB-SIA-12: ?accountId=not-an-id → 400 INVALID_ARGUMENT, тело плоское \"invalid account id 'not-an-id'\" — тот же производитель, что у ListByAccount на этом же поле",
+      "name": "IAM-AB-SIA-12-MALFORMED-NEG — IAM-AB-SIA-12: ?accountId=not-an-id → 400 INVALID_ARGUMENT, тело плоское \"invalid account id 'not-an-id'\" — производитель ВЛАДЕЛЕЦ; у ListByAccount на том же поле производитель ДРУГОЙ (край), и текст его",
       "description": "class:NEG | class:VAL | priority:P0",
       "item": [
         {
@@ -4142,9 +4142,9 @@
                   "  let j; try { j = pm.response.json(); } catch (e) { j = {}; }",
                   "  pm.expect(j.code, JSON.stringify(j)).to.eql(3);",
                   "});",
-                  "pm.test('оба глагола на одном поле отвечают одинаково', () =>",
+                  "pm.test('у цели авторизации отказ формы производит край, и текст его', () =>",
                   "  pm.expect(pm.response.json().message, pm.response.text())",
-                  "    .to.eql(\"invalid account id 'not-an-id'\"));"
+                  "    .to.eql(\"invalid resource id 'not-an-id'\"));"
                 ]
               }
             }
