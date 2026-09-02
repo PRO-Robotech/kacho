@@ -1135,14 +1135,23 @@ build_ledger_split_from_worktree() { # <repo> <where: head|stray>
   echo "ПРАВКА СТВОЛА" > "$r/A.txt"; commit "$r" "C1 линия двигается"
 
   git -C "$r" merge -q --no-commit --no-ff lane >/dev/null 2>&1
-  if [ "$where" = head ]; then
-    # Посадка снимает файл линии И объявляет это — перечень появляется ТОЛЬКО
-    # здесь, на вершине отправки.
-    rm -f "$r/A.txt"
-    mkdir -p "$r/tools/carrydrift"
-    echo "A.txt  снят решением: линия и ствол завели один предмет разными файлами" \
-      > "$r/tools/carrydrift/declared-removals.txt"
-  fi
+  case "$where" in
+    head)
+      # Посадка снимает файл линии И объявляет это — перечень появляется ТОЛЬКО
+      # здесь, на вершине отправки.
+      rm -f "$r/A.txt"
+      mkdir -p "$r/tools/carrydrift"
+      echo "A.txt  снят решением: линия и ствол завели один предмет разными файлами" \
+        > "$r/tools/carrydrift/declared-removals.txt"
+      ;;
+    phantom)
+      # Посадка чистая, а перечень на вершине отправки несёт запись, которой
+      # нечего исключать. Самоистечение обязано её назвать.
+      mkdir -p "$r/tools/carrydrift"
+      echo "never/removed.txt  предмета нет ни в одной посадке этой линии" \
+        > "$r/tools/carrydrift/declared-removals.txt"
+      ;;
+  esac
   git -C "$r" add -A
   git -C "$r" commit -qm "посадка ($where)"
   local landed; landed=$(git -C "$r" rev-parse HEAD)
@@ -1159,8 +1168,8 @@ build_ledger_split_from_worktree() { # <repo> <where: head|stray>
 
   # Рабочая копия НЕ на вершине отправки — в этом весь случай.
   case "$where" in
-    head)  git -C "$r" checkout -q main ;;
-    stray) git -C "$r" checkout -q stray ;;
+    head|phantom) git -C "$r" checkout -q main ;;
+    stray)        git -C "$r" checkout -q stray ;;
   esac
 
   echo "$c0 $landed"
@@ -1222,6 +1231,38 @@ case_ledger_beside_the_push_is_not_read() {
   rm -rf "$r"
 }
 
+# ── Случай 27. Запись без предмета НА ВЕРШИНЕ ОТПРАВКИ роняет гейт ───────────
+#
+# Вторая половина того же шва, и без неё правка неотличима от «перестали читать
+# перечень вовсе»: случаи 25-26 утверждают, что читается вершина отправки, а не
+# рабочая копия, — но оба построены на перечне, у которого предмет есть либо
+# которого на вершине нет. Самоистечение в них не срабатывает ни разу.
+#
+# Здесь перечень лежит ровно там, куда судья теперь смотрит, и его запись
+# исключать нечего. Гейт обязан ответить кодом 3 и назвать запись.
+case_phantom_on_the_pushed_head_still_reds() {
+  cases=$((cases + 1))
+  local r; r=$(newrepo)
+  local revs; revs=$(build_ledger_split_from_worktree "$r" phantom)
+  local c0 landed; read -r c0 landed <<<"$revs"
+
+  if [ -e "$r/tools/carrydrift/declared-removals.txt" ]; then
+    no "предпосылка случая не выполнена: перечень оказался в рабочей копии" ""
+    rm -rf "$r"; return
+  fi
+
+  local out rc
+  out=$(cd "$r" && BEFORE="$c0" HEAD_SHA="$landed" bash "$JUDGE" 2>&1); rc=$?
+  if [ "$rc" -eq 3 ] \
+     && [[ "$out" == *"ПЕРЕЖИЛА ПРЕДМЕТ"* ]] \
+     && [[ "$out" == *"never/removed.txt"* ]]; then
+    ok "запись без предмета на вершине отправки названа и роняет гейт"
+  else
+    no "самоистечение не увидело перечня судимой вершины (rc=$rc)" "$out"
+  fi
+  rm -rf "$r"
+}
+
 echo "проба гейта переноса — синтетические графы"
 case_real_rollback
 case_branch_owns_file
@@ -1249,6 +1290,7 @@ case_declared_adaptation_is_skipped_and_undeclared_is_a_finding
 case_declared_return_to_base_is_refused
 case_ledger_is_read_from_the_pushed_head
 case_ledger_beside_the_push_is_not_read
+case_phantom_on_the_pushed_head_still_reds
 
 echo
 echo "перепись: случаев ${cases}; прошло ${pass}; упало ${fail}"
