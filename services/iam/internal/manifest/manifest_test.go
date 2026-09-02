@@ -415,10 +415,10 @@ func TestMODMF07UnknownSectionIsRefusedExplicitly(t *testing.T) {
 	// отрицание зеленело бы на загрузчике, отвергающем всякий раздел.
 	described := "apiVersion: iam/v1\nmodule: vpc\n" +
 		"resources:\n  - {name: network, objectType: vpc_network, parent: project, producer: derived, verbs: [get]}\n" +
-		"roles:\n  - id: vpc.viewer\n    name: Наблюдатель\n    description: Читает.\n" +
+		"roles:\n  - id: vpc.viewer\n    name: Наблюдатель\n    description: Читает топологию проекта.\n" +
 		"    tier: {tierType: iam.project, tierId: prj000000000000000}\n" +
 		"    rules:\n      - {module: vpc, resources: [network], verbs: [get]}\n" +
-		"deprecatedVerbs:\n  read: {class: get, since: \"2026-08-23\", reason: синоним чтения, removeWhen: выдач ноль}\n" +
+		"deprecatedVerbs:\n  read: {class: get, since: \"2026-08-23\", reason: синоним чтения из прежней грамматики, removeWhen: выдач с таким правом ноль}\n" +
 		"seed: {}\n"
 	if _, err := manifest.Load([]byte(described)); err != nil {
 		t.Fatalf("описанный раздел отвергнут: %v", err)

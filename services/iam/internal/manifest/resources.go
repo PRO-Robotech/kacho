@@ -94,6 +94,11 @@ var (
 	// ErrRelationShadowsVerb — объявленное отношение занимает имя, порождаемое
 	// глаголом. Два объявления одного предмета, из которых верно одно.
 	ErrRelationShadowsVerb = errors.New("manifest: authored relation shadows a generated verb relation")
+	// ErrResourceVerbsRequired — ресурс не назвал ни одного действия.
+	ErrResourceVerbsRequired = errors.New("manifest: resource declares no verbs")
+	// ErrRelationDefinitionRequired — объявленное дословно отношение не сказало,
+	// ЧЕМ оно является.
+	ErrRelationDefinitionRequired = errors.New("manifest: relation has no definition")
 	// ErrRelationNameRequired — отношение не назвало себя.
 	ErrRelationNameRequired = errors.New("manifest: relation name is required")
 )
@@ -371,6 +376,15 @@ func validateResourceAnchors(r *Resource, doc *yaml.Node, i int) []error {
 // восстанавливается ТУТ ЖЕ, единственным вызовом правила.
 func validateResourceVerbs(r *Resource, doc *yaml.Node, i int) []error {
 	var faults []error
+	if len(r.Verbs) == 0 {
+		faults = append(faults, linkFault{
+			kind:  ErrResourceVerbsRequired,
+			coord: locate(doc, "resources", i),
+			detail: fmt.Sprintf("resources[%d].verbs: ресурс не назвал ни одного действия — "+
+				"он не порождает НИ ОДНОГО отношения модели, и роль, назвавшая его в правиле, "+
+				"выдаёт пустоту при действующей на вид привязке", i),
+		})
+	}
 	for j := range r.Verbs {
 		v := &r.Verbs[j]
 		if v.Name == "" {
@@ -420,6 +434,18 @@ func validateResourceRelations(r *Resource, doc *yaml.Node, i int) []error {
 		}
 	}
 	for k, rel := range r.Relations {
+		// Определение судится ОТДЕЛЬНО от имени и до выхода по безымянному:
+		// у отношения, лишённого обоих, автор обязан увидеть обе находки, а не
+		// чинить их по одной, по прогону на каждую.
+		if strings.TrimSpace(rel.Definition) == "" {
+			faults = append(faults, linkFault{
+				kind:  ErrRelationDefinitionRequired,
+				coord: locate(doc, "resources", i, "relations", k),
+				detail: fmt.Sprintf("resources[%d].relations[%d].definition: отношение объявлено "+
+					"дословно и не сказало, чем оно является; отношение объявляют дословно ровно "+
+					"затем, чтобы перегенерация модели его СОХРАНИЛА, а сохранять нечего", i, k),
+			})
+		}
 		if rel.Name == "" {
 			faults = append(faults, linkFault{
 				kind:   ErrRelationNameRequired,
