@@ -215,9 +215,9 @@ func AuditClientDocsFieldCoverage(
 	})
 
 	if log != nil {
-		fmt.Fprintf(log, "перепись: %s\n", census)
+		_, _ = fmt.Fprintf(log, "перепись: %s\n", census)
 		if len(census.OutsidePages) > 0 {
-			fmt.Fprintf(log, "  вне охвата (сообщения с таким именем в домене нет): %s\n",
+			_, _ = fmt.Fprintf(log, "  вне охвата (сообщения с таким именем в домене нет): %s\n",
 				strings.Join(census.OutsidePages, " "))
 		}
 	}

@@ -106,7 +106,7 @@ func ScanRulePolicySites(root string) ([]RulePolicySite, RulePolicyCensus, error
 		if strings.HasSuffix(path, "_test.go") {
 			continue
 		}
-		src, rerr := os.ReadFile(path)
+		src, rerr := os.ReadFile(path) // #nosec G304 -- имя пришло из обхода ЭТОГО дерева, подставить посторонний файл извне нечем
 		if rerr != nil {
 			return nil, census, rerr
 		}

@@ -112,7 +112,7 @@ func SurveyTypeTables(dir string, types map[string]struct{}) (TypeTableSurvey, e
 		if e.IsDir() || !strings.HasSuffix(name, ".go") || strings.HasSuffix(name, "_test.go") {
 			continue
 		}
-		src, err := os.ReadFile(filepath.Join(dir, name))
+		src, err := os.ReadFile(filepath.Join(dir, name)) // #nosec G304 -- имя пришло из обхода ЭТОГО дерева, подставить посторонний файл извне нечем
 		if err != nil {
 			return TypeTableSurvey{}, fmt.Errorf("читаю %s: %w", name, err)
 		}
