@@ -52,9 +52,9 @@ import (
 	kachopg "github.com/PRO-Robotech/kacho/services/iam/internal/repo/kacho/pg"
 )
 
-// probeModule — имя, которого нет НИ В ОДНОМ Go-литерале дерева. Оно и есть
+// membershipProbeModule — имя, которого нет НИ В ОДНОМ Go-литерале дерева. Оно и есть
 // разделитель двух ответов: канон его не знает, строки — знают.
-const probeModule = "probe"
+const membershipProbeModule = "probe"
 
 // factsFromRows читает живой каталог ТЕМ ЖЕ портом, каким его читает служба, и
 // собирает из него каталожный факт.
@@ -96,22 +96,22 @@ func TestIAMMW110_ModuleMembershipIsAnsweredByCatalogRows(t *testing.T) {
 	// когда `probe` попадёт в канон: обе половины стали бы зелёными по причине,
 	// к предмету отношения не имеющей.
 	canon := authzmap.CatalogSeedModules()
-	require.Falsef(t, slices.Contains(canon, probeModule),
+	require.Falsef(t, slices.Contains(canon, membershipProbeModule),
 		"премиса сценария: %q не должен быть в каноне (%v) — иначе проба не различает "+
 			"«домен прочитал поданный набор» и «домен ответил из своего перечня»",
-		probeModule, canon)
+		membershipProbeModule, canon)
 	require.False(t,
-		domain.ModuleSetOf(canon...).IsKnownModule(probeModule),
-		"канон обязан отвергать %q — на этом стоит различие двух ответов", probeModule)
+		domain.ModuleSetOf(canon...).IsKnownModule(membershipProbeModule),
+		"канон обязан отвергать %q — на этом стоит различие двух ответов", membershipProbeModule)
 
 	// ── ПОЛОЖИТЕЛЬНЫЙ КОНТРОЛЬ ДО ЗАВЕДЕНИЯ СТРОКИ ──────────────────────────
 	//
 	// Строки ещё нет, и путь запроса обязан отвергнуть правило. Без этого шага
 	// «принимается после вставки» неотличимо от «принималось всегда».
 	before := factsFromRows(t, ctx, pool)
-	require.False(t, before.IsKnownModule(probeModule),
+	require.False(t, before.IsKnownModule(membershipProbeModule),
 		"строки нет, а факт уже признаёт модуль — читается не каталог")
-	err := ruleNaming(probeModule).Validate(domain.TenantPolicy(), before)
+	err := ruleNaming(membershipProbeModule).Validate(domain.TenantPolicy(), before)
 	require.Error(t, err, "правило, называющее незаведённый модуль, обязано отвергаться")
 	require.Contains(t, err.Error(), "Illegal argument module (unknown module 'probe')",
 		"текст отказа — часть контракта и сдвигаться не вправе")
@@ -127,18 +127,18 @@ func TestIAMMW110_ModuleMembershipIsAnsweredByCatalogRows(t *testing.T) {
 	// представимым (ключ `catalog_resource_module_live_fk` не пускает снять
 	// модуль при живом ресурсе), и предмет пробы — сегмент модуля, а не пара.
 	_, err = pool.Exec(ctx,
-		`INSERT INTO kacho_iam.catalog_module (module) VALUES ($1)`, probeModule)
+		`INSERT INTO kacho_iam.catalog_module (module) VALUES ($1)`, membershipProbeModule)
 	require.NoError(t, err, "заведение модуля строкой")
 	t.Cleanup(func() {
 		_, _ = pool.Exec(context.Background(),
-			`DELETE FROM kacho_iam.catalog_module WHERE module = $1`, probeModule)
+			`DELETE FROM kacho_iam.catalog_module WHERE module = $1`, membershipProbeModule)
 	})
 
 	seeded := factsFromRows(t, ctx, pool)
-	require.True(t, seeded.IsKnownModule(probeModule),
+	require.True(t, seeded.IsKnownModule(membershipProbeModule),
 		"строка заведена, а факт её не видит — членство отвечает не строками")
 	require.NoError(t,
-		ruleNaming(probeModule).Validate(domain.TenantPolicy(), seeded),
+		ruleNaming(membershipProbeModule).Validate(domain.TenantPolicy(), seeded),
 		"модуль, заведённый СТРОКОЙ и отсутствующий в любом Go-литерале, обязан "+
 			"проходить проверку правила на пути запроса — это и есть предмет #1927")
 	require.Len(t, seeded.Modules(), len(livePlatform)+1,
@@ -148,13 +148,13 @@ func TestIAMMW110_ModuleMembershipIsAnsweredByCatalogRows(t *testing.T) {
 	_, err = pool.Exec(ctx, `
 		UPDATE kacho_iam.catalog_module
 		   SET live = false, retired_at = now(), retired_reason = 'проба IAM-MW-1-10'
-		 WHERE module = $1`, probeModule)
+		 WHERE module = $1`, membershipProbeModule)
 	require.NoError(t, err, "снятие модуля строкой")
 
 	retired := factsFromRows(t, ctx, pool)
-	require.False(t, retired.IsKnownModule(probeModule),
+	require.False(t, retired.IsKnownModule(membershipProbeModule),
 		"модуль снят строкой, а факт всё ещё признаёт его живым")
-	err = ruleNaming(probeModule).Validate(domain.TenantPolicy(), retired)
+	err = ruleNaming(membershipProbeModule).Validate(domain.TenantPolicy(), retired)
 	require.Error(t, err,
 		"IAM-MW-1-10: правило, называющее СНЯТЫЙ модуль, обязано отвергаться на пути запроса")
 	require.Contains(t, err.Error(), "Illegal argument module (unknown module 'probe')",
