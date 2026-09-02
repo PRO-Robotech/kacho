@@ -18,6 +18,7 @@ import (
 	"testing"
 
 	"github.com/PRO-Robotech/kacho/services/iam/internal/apps/kacho/moduleroles"
+	"github.com/PRO-Robotech/kacho/services/iam/internal/apps/kacho/shared"
 	"github.com/PRO-Robotech/kacho/services/iam/internal/domain"
 	"github.com/PRO-Robotech/kacho/services/iam/internal/manifest"
 )
@@ -36,8 +37,17 @@ func newStore() *fakeStore {
 	}
 }
 
+// RunInWriteTx — дублёр ИСПОЛНИТЕЛЯ транзакций, а не только хранилища.
+//
+// Приведение отказа к статусу стоит здесь не для красоты: настоящий исполнитель
+// (`NewRepoTxRunner` → `shared.DoWithWriteTx`) зовёт `shared.MapRepoErr` на
+// отказе действия, и цепочка `%w` в этом месте ТЕРЯЕТСЯ. Дублёр, отдающий отказ
+// сырым, СОХРАНЯЛ бы цепочку, которую продукт теряет, — то есть был бы
+// снисходительнее продукта ровно на той оси, которую пробы полосы и измеряют
+// (задача #1880). Границы транзакции у дублёра нет, и он её не изображает:
+// границу проверяет интеграционная проба на настоящей базе.
 func (s *fakeStore) RunInWriteTx(ctx context.Context, fn func(context.Context, moduleroles.RoleWriter) error) error {
-	return fn(ctx, s)
+	return shared.MapRepoErr(fn(ctx, s))
 }
 
 // UpsertSystemRole — то же поведение, что у оператора: приведение ТОЛЬКО при

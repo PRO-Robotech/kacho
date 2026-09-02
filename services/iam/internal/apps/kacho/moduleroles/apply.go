@@ -44,6 +44,8 @@ import (
 	"errors"
 	"fmt"
 
+	"google.golang.org/grpc/codes"
+
 	"github.com/PRO-Robotech/kacho/services/iam/internal/domain"
 	"github.com/PRO-Robotech/kacho/services/iam/internal/manifest"
 )
@@ -59,6 +61,11 @@ var (
 	// инварианты держит БАЗА, и её текст — часть контракта.
 	ErrWriteFailed = errors.New("moduleroles: writing the declared role failed")
 )
+
+// Сентинелы выше — ВТОРОЕ лицо отказа, для вызывающего в процессе. Первое —
+// признак полосы в `google.rpc.ErrorInfo`, и оно единственное переживает
+// приведение к статусу (`refusal.go`). Спрашивать полосу — `RefusalLane`: он
+// знает оба источника, и вызывающему не надо знать, на каком берегу он стоит.
 
 // RoleWriter — то, что применителю нужно от писателя. Порт объявлен ЗДЕСЬ, в
 // use-case: он описывает потребность, а не таблицу.
@@ -133,7 +140,7 @@ func (a *Applier) Apply(ctx context.Context, m *manifest.Manifest) (Report, erro
 			rep.Skipped++
 			continue
 		}
-		r, err := roleOf(mr)
+		r, err := roleOf(m.Module, mr)
 		if err != nil {
 			return rep, err
 		}
@@ -144,10 +151,17 @@ func (a *Applier) Apply(ctx context.Context, m *manifest.Manifest) (Report, erro
 		return rep, nil
 	}
 
+	// failed — чья запись отказала. Величина полосы, а не украшение: без неё
+	// вызывающий, применивший манифест с десятком ролей, узнаёт что «одна из них»
+	// не легла. Имя известно ЗДЕСЬ и нигде больше: исполнитель транзакций о ролях
+	// не знает, а восстанавливать имя разбором прозы — ровно то, против чего
+	// полоса и заводится.
+	var failed domain.RoleName
 	err := a.tx.RunInWriteTx(ctx, func(ctx context.Context, w RoleWriter) error {
 		for _, r := range declared {
 			out, changed, uerr := w.UpsertSystemRole(ctx, r)
 			if uerr != nil {
+				failed = r.Name
 				return fmt.Errorf("%w: %s: %w", ErrWriteFailed, r.Name, uerr)
 			}
 			if !changed {
@@ -160,6 +174,7 @@ func (a *Applier) Apply(ctx context.Context, m *manifest.Manifest) (Report, erro
 			// оставило бы их несогласованными молча. Отказ ключа здесь и есть
 			// производитель отказа «каталог такого ресурса не знает».
 			if rerr := w.ReplaceRuleRefs(ctx, out.ID, domain.RuleRefsOf(out.Rules)); rerr != nil {
+				failed = r.Name
 				return fmt.Errorf("%w: %s: %w", ErrWriteFailed, r.Name, rerr)
 			}
 			rep.Written++
@@ -168,7 +183,11 @@ func (a *Applier) Apply(ctx context.Context, m *manifest.Manifest) (Report, erro
 		return nil
 	})
 	if err != nil {
-		return rep, err
+		// Всякий отказ ОТСЮДА принадлежит полосе писателя by construction:
+		// проверки применителя стоят выше, до открытия транзакции. Отказ самого
+		// исполнителя (открытие, коммит) — тоже отказ записи, и `failed` у него
+		// пуст: имени роли у него нет, и выдумывать его нечем.
+		return rep, writeRefusal(m.Module, string(failed), err)
 	}
 	return rep, nil
 }
@@ -176,7 +195,16 @@ func (a *Applier) Apply(ctx context.Context, m *manifest.Manifest) (Report, erro
 // roleOf — объявленная роль в форме домена. Проверка домена стоит ЗДЕСЬ, до
 // писателя: отказ тогда называет роль и правило, а не приезжает SQLSTATE от
 // оператора вставки.
-func roleOf(mr *manifest.Role) (domain.Role, error) {
+//
+// Полоса называется ЗДЕСЬ ЖЕ, а не восстанавливается вызывающим: обе причины
+// известны в точке отказа, и разбирать собственный сентинел позже значило бы
+// заводить классификатор своего же кода — с корзиной «прочее», которая молча
+// приняла бы третью причину, если она когда-нибудь появится.
+//
+// Класс — INVALID_ARGUMENT: негодна ВХОДЯЩАЯ строка манифеста, а не состояние
+// платформы. Полоса писателя отвечает FAILED_PRECONDITION, поэтому даже клиент,
+// не читающий деталей, различает эти два отказа кодом.
+func roleOf(module string, mr *manifest.Role) (domain.Role, error) {
 	name := domain.RoleName(mr.ID)
 	rules := make(domain.Rules, 0, len(mr.Rules))
 	for _, rule := range mr.Rules {
@@ -184,7 +212,9 @@ func roleOf(mr *manifest.Role) (domain.Role, error) {
 	}
 	compiled, cerr := domain.CompileRules(rules)
 	if cerr != nil {
-		return domain.Role{}, fmt.Errorf("%w: %s: %w", ErrRolePolicyNotCompilable, name, cerr)
+		werr := fmt.Errorf("%w: %s: %w", ErrRolePolicyNotCompilable, name, cerr)
+		return domain.Role{}, refuse(codes.InvalidArgument, werr.Error(),
+			LanePolicyNotCompilable, module, string(name), werr)
 	}
 	r := domain.Role{
 		ID:          domain.SystemRoleID(name),
@@ -196,7 +226,9 @@ func roleOf(mr *manifest.Role) (domain.Role, error) {
 		IsSystem:    true,
 	}
 	if verr := r.Validate(); verr != nil {
-		return domain.Role{}, fmt.Errorf("%w: %s: %w", ErrRoleRejectedByDomain, name, verr)
+		werr := fmt.Errorf("%w: %s: %w", ErrRoleRejectedByDomain, name, verr)
+		return domain.Role{}, refuse(codes.InvalidArgument, werr.Error(),
+			LaneRejectedByDomain, module, string(name), werr)
 	}
 	return r, nil
 }
