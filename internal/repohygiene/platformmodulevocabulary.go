@@ -87,8 +87,8 @@ func judgePlatformVocabulary(declared []platformmodules.Module,
 				"назван неверно")
 		}
 
-		switch {
-		case m.ObjectDomain == "":
+		switch m.ObjectDomain {
+		case "":
 			// Спрашиваем ОБА написания: модуль, чьих типов словарь не признаёт,
 			// мог назвать их и коротким именем, и именем каталога.
 			if found := typesPrefixedByAny(modelTypes, m.Service, m.CatalogModule); len(found) > 0 {
