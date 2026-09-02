@@ -40,6 +40,8 @@ Consumer-сервисы (Compute, VPC и др.) ссылаются на реги
   <thead><tr><th>Поле</th><th>Тип</th><th>Изменяемость</th><th>Описание</th></tr></thead>
   <tbody>
     <tr><td><code>id</code></td><td>string</td><td>immutable (admin-assigned PK)</td><td>Идентификатор региона (например, <code>region-1</code>). Задаётся при создании, не меняется</td></tr>
+    <tr><td><code>openForPlacement</code></td><td>bool</td><td>output-only</td><td><b>Единственный признак, по которому решают, размещать ли здесь.</b> Производен: равен <code>status == UP</code>. Это <b>административная</b> доступность, а не обещание ёмкости или здоровья: создание всё ещё вправе отказать по ёмкости в момент планирования. У региона причина отказа одна by construction (сам регион выключен), поэтому отдельного поля причины здесь нет — оно есть у зоны</td></tr>
+    <tr><td><code>openZoneCountHint</code></td><td>int64</td><td>output-only</td><td><b>Подсказка, а не величина, на которую можно опираться</b>: число зон региона с <code>openForPlacement = true</code>, считаемое на чтении и нигде не хранимое. Авторитетный ответ даёт <code>ZoneService.List?openForPlacement=true</code>; расхождение возможно, и инвариант на этой подсказке строить нельзя</td></tr>
     <tr><td><code>createdAt</code></td><td>timestamp</td><td>output-only</td><td>Момент создания (RFC 3339, усечён до секунд)</td></tr>
   </tbody>
 </table>

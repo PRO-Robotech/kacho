@@ -63,6 +63,9 @@ ID сети — префикс `net` + 17 символов crockford-base32 (н�
     <tr><td><code>labels</code></td><td><code>{TYPES.mapStringString}</code></td><td>{DICTIONARY.labels.short}</td></tr>
     <tr><td><code>createdAt</code></td><td><code>{TYPES.timestamp}</code></td><td>{DICTIONARY.createdAt.short}</td></tr>
     <tr><td><code>defaultSecurityGroupId</code></td><td><code>{TYPES.string}</code></td><td>id default-SG (output-only; устанавливается сервером при Create)</td></tr>
+    <tr><td><code>ipv4CidrBlocks</code></td><td><code>{TYPES.stringArray}</code></td><td>Объявленные супернет-блоки IPv4 сети. <code>ipv4CidrPrimary</code> каждой подсети обязан быть подмножеством одного из них; основного блока на уровне сети <b>не бывает</b> — это чистый набор. Через <code>Update</code> неизменяем, меняется только глаголами <code>:add-cidr-blocks</code> / <code>:remove-cidr-blocks</code>. Необязателен при создании, и следствие сказано прямо: сеть без объявленного супернета IPv4 <b>отвергает</b> подсети IPv4 (<code>INVALID_ARGUMENT</code>) — вырезать их не из чего</td></tr>
+    <tr><td><code>ipv6CidrBlocks</code></td><td><code>{TYPES.stringArray}</code></td><td>То же для IPv6, зеркально <code>ipv4CidrBlocks</code></td></tr>
+    <tr><td><code>defaultRouteTableId</code></td><td><code>{TYPES.string}</code></td><td>Таблица маршрутизации по умолчанию, заводимая платформой при <code>Network.Create</code> и автоматически привязываемая к каждой новой подсети этой сети. Output-only</td></tr>
   </tbody>
 </table>
 
