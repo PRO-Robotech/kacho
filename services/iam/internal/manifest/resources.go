@@ -775,8 +775,8 @@ func validateResourceParents(r *Resource, doc *yaml.Node, i int) []error {
 	seen := map[string]int{}
 	for k := range r.Parents {
 		p := &r.Parents[k]
-		switch {
-		case p.Name == "":
+		switch p.Name {
+		case "":
 			faults = append(faults, linkFault{
 				kind:  ErrParentNameRequired,
 				coord: locate(doc, "resources", i, "parents", k),
@@ -1119,8 +1119,8 @@ func validateResourceNotes(r *Resource, doc *yaml.Node, i int) []error {
 	seen := map[string]int{}
 	for k := range r.Notes {
 		n := &r.Notes[k]
-		switch {
-		case n.Before == "":
+		switch n.Before {
+		case "":
 			faults = append(faults, linkFault{
 				kind:  ErrNoteAnchorRequired,
 				coord: locate(doc, "resources", i, "notes", k),
