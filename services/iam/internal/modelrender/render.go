@@ -17,8 +17,9 @@ import (
 // Раздел `resources` неоднороден (см. шапку manifest/resources.go), и рендер
 // наследует это различие дословно:
 //
-//	порождается    указатель якоря · super_admin · ярусы · v_<глагол>
-//	объявляется    doc · relations[] (текст определения — ДОСЛОВНО)
+//	порождается    указатели · super_admin · ярусы · v_<глагол>
+//	объявляется    doc · relations[] (текст определения — ДОСЛОВНО) · cascade[] ·
+//	               источники яруса
 //
 // Текст авторского отношения здесь НЕ разбирается: его грамматика принадлежит
 // модели прав, и второй её разборщик разошёлся бы с первым МОЛЧА — на той самой
@@ -30,6 +31,17 @@ import (
 // `editor → admin`, `viewer → editor`; у `vpc_address_pool` ярусов ДВА, и цепочка
 // та же со снятым звеном — `admin → super_admin`, `viewer → admin`. Постоянная
 // «viewer от editor» породила бы у второго ссылку на ярус, которого у него нет.
+//
+// Цепочкой дело не исчерпывается: ярус вправе назвать СВОИ источники ключом
+// `from`, и тогда они заменяют звено цепочки целиком. Замер: `account` несёт
+// `or owner or super_admin`, `iam_user` — `or subject or editor`.
+//
+// # Каскад супер-доступа тоже приходит ИЗ МАНИФЕСТА
+//
+// Написаний каскада в каноне четыре сверх умолчания, и восемь модульных блоков
+// несут не умолчание. Форма структурная (`cascade[]` — пары `<relation> from
+// <parent>`), а не текстовая: разбор строки завёл бы второй разборщик грамматики
+// модели прав.
 //
 // # Субъекты сужают ЯРУСЫ и не трогают глаголы — это замер, а не симметрия
 //
@@ -44,13 +56,14 @@ var (
 	ErrParentEmpty = errors.New("modelrender: resource has no parents")
 )
 
-// defaultSubjects — набор субъектов, который канон несёт у ярусов и у глаголов
-// по умолчанию. Ресурс вправе СУЗИТЬ его у ярусов ключом `subjects`.
-var defaultSubjects = []string{"user", "service_account", "group#member"}
-
-// defaultTiers — ярусы по умолчанию, в порядке убывания прав. Порядок несущий:
-// каждый следующий ярус выводится от предыдущего.
-var defaultTiers = []string{"admin", "editor", "viewer"}
+// Умолчания состава субъектов и цепочки ярусов объявлены У ЗАГРУЗЧИКА и берутся
+// оттуда: на них ссылается его проверка источников яруса, и вторая копия здесь
+// разошлась бы с первой молча — обе стороны отвечают одинаково ровно там, где
+// совпадают.
+var (
+	defaultSubjects = manifest.DefaultSubjects()
+	defaultTiers    = manifest.DefaultTiers()
+)
 
 // Render порождает блок типа модели из ресурса манифеста.
 //
@@ -84,7 +97,7 @@ func Render(r manifest.Resource) ([]byte, error) {
 	for _, p := range r.Parents {
 		b.WriteString("    define " + p.Name + ": [" + p.Type + "]\n")
 	}
-	b.WriteString("    define super_admin: " + cascadeOf(r) + "\n")
+	b.WriteString("    define " + manifest.SuperAdminRelation() + ": " + cascadeOf(r) + "\n")
 
 	subjects := r.Subjects
 	if len(subjects) == 0 {
@@ -92,14 +105,25 @@ func Render(r manifest.Resource) ([]byte, error) {
 	}
 	tiers := r.Tiers
 	if len(tiers) == 0 {
-		tiers = defaultTiers
+		tiers = make([]manifest.ResourceTier, 0, len(defaultTiers))
+		for _, name := range defaultTiers {
+			tiers = append(tiers, manifest.ResourceTier{Name: name})
+		}
 	}
 
-	// Каждый следующий ярус выводится от ПРЕДЫДУЩЕГО, а первый — от super_admin.
-	previous := "super_admin"
+	// Каждый следующий ярус выводится от ПРЕДЫДУЩЕГО, а первый — от super_admin;
+	// ярус, назвавший свои источники, берёт их вместо цепочки. Замер: `account`
+	// несёт `or owner or super_admin`, `iam_user` — `or subject or editor`, и
+	// постоянная цепочка не даёт ни того, ни другого.
+	previous := manifest.SuperAdminRelation()
 	for _, tier := range tiers {
-		b.WriteString("    define " + tier + ": [" + strings.Join(subjects, ", ") + "] or " + previous + "\n")
-		previous = tier
+		sources := tier.From
+		if len(sources) == 0 {
+			sources = []string{previous}
+		}
+		b.WriteString("    define " + tier.Name + ": [" + strings.Join(subjects, ", ") +
+			"] or " + strings.Join(sources, " or ") + "\n")
+		previous = tier.Name
 	}
 
 	// Авторское отношение воспроизводится ДОСЛОВНО: грамматика определения
@@ -125,7 +149,17 @@ func Render(r manifest.Resource) ([]byte, error) {
 // блоков канона из 27. Остальные восемь несут иные написания, и они приходят из
 // манифеста ключом `cascade`.
 func cascadeOf(r manifest.Resource) string {
-	return "super_admin from " + r.Parents[0].Name
+	terms := r.Cascade
+	if len(terms) == 0 {
+		terms = []manifest.CascadeTerm{{
+			Relation: manifest.SuperAdminRelation(), From: r.Parents[0].Name,
+		}}
+	}
+	parts := make([]string, 0, len(terms))
+	for _, t := range terms {
+		parts = append(parts, t.Relation+" from "+t.From)
+	}
+	return strings.Join(parts, " or ")
 }
 
 // docLines — строки авторского комментария без хвостовой пустой.

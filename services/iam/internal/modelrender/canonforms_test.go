@@ -133,3 +133,112 @@ resources:
 		t.Fatalf("порядок указателей не совпал с порядком манифеста:\n%s", block)
 	}
 }
+
+// ── Каскад супер-доступа и источники яруса (#1858) ───────────────────────────
+
+// TestMODMR30TheCascadeIsDeclaredByTheManifest — написаний каскада в каноне
+// ЧЕТЫРЕ, и рендер знал одно.
+//
+// Замер по канону: `super_admin from <указатель>` — 19 блоков (это и есть
+// умолчание), `any_admin from cluster` — 2, `admin from account` — 4,
+// `admin from account or any_admin from cluster` — 1,
+// `super_admin from project or admin from account or any_admin from cluster` — 1.
+// Итого восемь блоков несут написание, которого рендер произвести не мог.
+func TestMODMR30TheCascadeIsDeclaredByTheManifest(t *testing.T) {
+	// Одиночный терм, отличный от умолчания: так написан vpc_address_pool.
+	block := renderFromYAML(t, `apiVersion: iam/v1
+module: vpc
+resources:
+  - name: addressPool
+    objectType: vpc_address_pool
+    parents: [cluster]
+    producer: authored
+    cascade:
+      - {relation: any_admin, from: cluster}
+    verbs: [get]
+`)
+	mustContainLine(t, block, "    define super_admin: any_admin from cluster\n")
+
+	// Дизъюнкция термов: так написан iam_access_binding.
+	block = renderFromYAML(t, `apiVersion: iam/v1
+module: iam
+resources:
+  - name: accessBinding
+    objectType: iam_access_binding
+    parents: [project, account, cluster]
+    producer: derived
+    cascade:
+      - {relation: super_admin, from: project}
+      - {relation: admin, from: account}
+      - {relation: any_admin, from: cluster}
+    verbs: [get]
+`)
+	mustContainLine(t, block,
+		"    define super_admin: super_admin from project or admin from account or any_admin from cluster\n")
+}
+
+// TestMODMR30TheDefaultCascadeStaysUnwritten — положительный контроль: 19 блоков
+// канона из 27 несут умолчание, и оно остаётся неписаным.
+func TestMODMR30TheDefaultCascadeStaysUnwritten(t *testing.T) {
+	block := renderFromYAML(t, `apiVersion: iam/v1
+module: vpc
+resources:
+  - name: gateway
+    objectType: vpc_gateway
+    parents: [project]
+    producer: derived
+    verbs: [get, list, update, delete]
+`)
+	mustContainLine(t, block, "    define super_admin: super_admin from project\n")
+}
+
+// TestMODMR31ATierMayDeriveFromMoreThanTheChain — ярус выводится не только от
+// предыдущего.
+//
+// Замер: `account` несёт `define admin: [...] or owner or super_admin`,
+// `iam_user` — `define viewer: [...] or subject or editor`. Цепочка ярусов у
+// рендера была одна, и оба написания она не давала ни при каком входе.
+func TestMODMR31ATierMayDeriveFromMoreThanTheChain(t *testing.T) {
+	block := renderFromYAML(t, `apiVersion: iam/v1
+module: iam
+resources:
+  - name: account
+    objectType: account
+    parents: [cluster]
+    producer: derived
+    cascade:
+      - {relation: any_admin, from: cluster}
+    relations:
+      - {name: owner, definition: "[user]"}
+    tiers:
+      - {name: admin, from: [owner, super_admin]}
+      - editor
+      - viewer
+    verbs: [get]
+`)
+	mustContainLine(t, block,
+		"    define admin: [user, service_account, group#member] or owner or super_admin\n")
+	// Цепочка после нестандартного яруса продолжается от него же.
+	mustContainLine(t, block,
+		"    define editor: [user, service_account, group#member] or admin\n")
+}
+
+// TestMODMR31TheDefaultTierChainStaysAShortString — положительный контроль:
+// ярус, выводимый от предыдущего, пишется именем и ничем больше.
+func TestMODMR31TheDefaultTierChainStaysAShortString(t *testing.T) {
+	block := renderFromYAML(t, `apiVersion: iam/v1
+module: vpc
+resources:
+  - name: addressPool
+    objectType: vpc_address_pool
+    parents: [cluster]
+    producer: authored
+    cascade:
+      - {relation: any_admin, from: cluster}
+    subjects: [user, service_account]
+    tiers: [admin, viewer]
+    verbs: [get]
+`)
+	mustContainLine(t, block, "    define admin: [user, service_account] or super_admin\n")
+	mustContainLine(t, block, "    define viewer: [user, service_account] or admin\n")
+}

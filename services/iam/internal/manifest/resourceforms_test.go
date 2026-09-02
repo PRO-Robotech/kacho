@@ -138,3 +138,66 @@ func TestMODMR29AnUnknownKeyInsideAParentIsRefusedWithItsLine(t *testing.T) {
 		"    objectType: registry_repository\n    producer: authored\n"+
 		"    parents:\n      - {name: parent, type: registry_registry}\n    verbs: [get]\n")
 }
+
+// ── Каскад и ярусы: ссылка обязана иметь предмет (#1858) ─────────────────────
+
+// TestMODMR30ACascadeTermDerivesFromADeclaredParent — вывод по указателю,
+// которого блок не объявляет, дал бы вердикт «нет» всегда.
+func TestMODMR30ACascadeTermDerivesFromADeclaredParent(t *testing.T) {
+	mustRefuse(t, resourceDoc("    parents: [project]\n"+
+		"    cascade:\n      - {relation: any_admin, from: cluster}\n"),
+		manifest.ErrCascadeFromUnknown,
+		"resources[0].cascade[0].from", "cluster", "project")
+
+	// Законный близнец: тот же терм при объявленном указателе.
+	mustAccept(t, resourceDoc("    parents: [project, cluster]\n"+
+		"    cascade:\n      - {relation: any_admin, from: cluster}\n"))
+}
+
+// TestMODMR30AHalfNamedCascadeTermIsRefused — терм есть ПАРА, и названы обе
+// половины либо ни одной.
+func TestMODMR30AHalfNamedCascadeTermIsRefused(t *testing.T) {
+	mustRefuse(t, resourceDoc("    parents: [project]\n"+
+		"    cascade:\n      - {relation: admin}\n"),
+		manifest.ErrCascadeTermIncomplete, "resources[0].cascade[0]", "relation")
+	mustRefuse(t, resourceDoc("    parents: [project]\n"+
+		"    cascade:\n      - {from: project}\n"),
+		manifest.ErrCascadeTermIncomplete, "resources[0].cascade[0]", "from")
+	mustAccept(t, resourceDoc("    parents: [project]\n"+
+		"    cascade:\n      - {relation: admin, from: project}\n"))
+}
+
+// TestMODMR30AnEmptyCascadeIsRefused — пустой перечень неотличим от опущенного
+// ключа, а блока без каскада канон не несёт.
+func TestMODMR30AnEmptyCascadeIsRefused(t *testing.T) {
+	mustRefuse(t, resourceDoc("    parents: [project]\n    cascade: []\n"),
+		manifest.ErrSourceListEmpty, "resources[0].cascade", "опустите ключ")
+	// Законный близнец: ключ опущен — каскад берёт умолчание.
+	mustAccept(t, resourceDoc("    parents: [project]\n"))
+}
+
+// TestMODMR31ATierSourceMustBeDeclaredByTheBlock — ярус, выведенный от
+// несуществующего отношения, остаётся на вид полноценным и не даёт ничего.
+func TestMODMR31ATierSourceMustBeDeclaredByTheBlock(t *testing.T) {
+	mustRefuse(t, resourceDoc("    parents: [project]\n"+
+		"    tiers:\n      - {name: admin, from: [owner, super_admin]}\n      - editor\n      - viewer\n"),
+		manifest.ErrTierSourceUnknown,
+		"resources[0].tiers[0].from[0]", "owner", "super_admin")
+
+	// Законный близнец: то же отношение, объявленное авторским.
+	mustAccept(t, resourceDoc("    parents: [project]\n"+
+		"    relations:\n      - {name: owner, definition: \"[user]\"}\n"+
+		"    tiers:\n      - {name: admin, from: [owner, super_admin]}\n      - editor\n      - viewer\n"))
+}
+
+// TestMODMR31TheLongTierFormIsRefusedWithoutOwnSources — длинная форма без
+// ключа from означает ровно то же, что короткая.
+func TestMODMR31TheLongTierFormIsRefusedWithoutOwnSources(t *testing.T) {
+	mustRefuse(t, resourceDoc("    parents: [project]\n"+
+		"    tiers:\n      - {name: admin}\n      - viewer\n"),
+		manifest.ErrTierFormRedundant, "resources[0].tiers[0]", "- admin")
+	mustRefuse(t, resourceDoc("    parents: [project]\n"+
+		"    tiers:\n      - {name: admin, from: []}\n      - viewer\n"),
+		manifest.ErrSourceListEmpty, "resources[0].tiers[0].from")
+	mustAccept(t, resourceDoc("    parents: [project]\n    tiers: [admin, viewer]\n"))
+}

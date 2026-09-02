@@ -67,7 +67,7 @@ func derived(block modelrender.Block) (manifest.Resource, bool) {
 			if len(r.Tiers) == 0 {
 				r.Subjects = subjects
 			}
-			r.Tiers = append(r.Tiers, name)
+			r.Tiers = append(r.Tiers, manifest.ResourceTier{Name: name})
 			previous = name
 		default:
 			r.Relations = append(r.Relations, manifest.Relation{Name: name, Definition: rhs})

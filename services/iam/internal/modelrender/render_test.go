@@ -188,7 +188,7 @@ func TestTiersNarrowTiersAndNeverTheVerbs(t *testing.T) {
 	got, err := modelrender.Render(manifest.Resource{
 		Name: "addressPool", ObjectType: "vpc_address_pool", Parents: []manifest.Parent{{Name: "cluster", Type: "cluster"}}, Producer: "authored",
 		Subjects: []string{"user", "service_account"},
-		Tiers:    []string{"admin", "viewer"},
+		Tiers:    []manifest.ResourceTier{{Name: "admin"}, {Name: "viewer"}},
 		Verbs:    []manifest.Verb{{Name: "get"}, {Name: "list"}, {Name: "update"}, {Name: "delete"}},
 	})
 	if err != nil {

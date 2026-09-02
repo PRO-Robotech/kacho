@@ -104,6 +104,22 @@ var (
 	ErrRelationShadowsVerb = errors.New("manifest: authored relation shadows a generated verb relation")
 	// ErrRelationNameRequired — отношение не назвало себя.
 	ErrRelationNameRequired = errors.New("manifest: relation name is required")
+	// ErrCascadeTermIncomplete — терм каскада назван наполовину: без отношения
+	// либо без указателя, от которого он выводится.
+	ErrCascadeTermIncomplete = errors.New("manifest: cascade term is incomplete")
+	// ErrCascadeFromUnknown — терм каскада выводится от указателя, которого у
+	// ресурса нет: отношение адресовало бы объект, которого блок не объявляет.
+	ErrCascadeFromUnknown = errors.New("manifest: cascade term derives from an undeclared parent")
+	// ErrTierNameRequired — ярус не назвал себя.
+	ErrTierNameRequired = errors.New("manifest: tier name is required")
+	// ErrTierSourceUnknown — ярус выводится от отношения, которого блок не несёт.
+	ErrTierSourceUnknown = errors.New("manifest: tier derives from a relation the block does not declare")
+	// ErrTierFormRedundant — длинная форма яруса без собственных источников:
+	// одно значение, записанное двумя способами.
+	ErrTierFormRedundant = errors.New("manifest: tier written in the long form while deriving from the chain")
+	// ErrSourceListEmpty — перечень источников объявлен пустым. Пустой перечень
+	// неотличим от опущенного ключа, а формы «без источников вовсе» канон не несёт.
+	ErrSourceListEmpty = errors.New("manifest: an empty source list is not a form of the model")
 )
 
 // canonicalVerbClasses — ЕДИНСТВЕННОЕ в дереве объявление правила «класс из
@@ -178,6 +194,45 @@ func parentTypeIsKnown(typ string) bool {
 	return ok
 }
 
+// superAdminRelation — имя отношения супер-доступа в блоке модели. Объявлено
+// ОДИН раз: имя порождается рендером, а на него ссылаются источники ярусов и
+// якорь примечания, и второе объявление разошлось бы с первым молча.
+const superAdminRelation = "super_admin"
+
+// SuperAdminRelation возвращает имя отношения супер-доступа.
+//
+// Экспортировано ради рендера блоков модели: он порождает это отношение, а
+// загрузчик проверяет ссылки на него, и вторая копия имени разошлась бы с первой.
+func SuperAdminRelation() string { return superAdminRelation }
+
+// defaultTierChain — ярусы по умолчанию, в порядке убывания прав. Порядок
+// НЕСУЩИЙ: каждый следующий ярус выводится от предыдущего, а первый — от
+// супер-доступа.
+var defaultTierChain = []string{"admin", "editor", "viewer"}
+
+// defaultSubjectSet — состав субъектов, который канон несёт у ярусов и у
+// отношений действий по умолчанию.
+var defaultSubjectSet = []string{"user", "service_account", "group#member"}
+
+// DefaultTiers возвращает КОПИЮ умолчательной цепочки ярусов.
+//
+// Импортёров двое — рендер (порождает строки) и загрузчик (проверяет ссылки на
+// ярусы у ресурса, который свой набор не объявил). Вторая копия цепочки
+// разошлась бы с первой молча: обе стороны отвечают одинаково ровно там, где
+// совпадают.
+func DefaultTiers() []string {
+	out := make([]string, len(defaultTierChain))
+	copy(out, defaultTierChain)
+	return out
+}
+
+// DefaultSubjects возвращает КОПИЮ умолчательного состава субъектов.
+func DefaultSubjects() []string {
+	out := make([]string, len(defaultSubjectSet))
+	copy(out, defaultSubjectSet)
+	return out
+}
+
 // resourceProducers — закрытый набор видов ключей записи.
 var resourceProducers = []string{"derived", "authored"}
 
@@ -206,8 +261,12 @@ type Resource struct {
 	// Subjects — АВТОРСКИЙ состав субъектов, когда он уже общего. Умолчание
 	// здесь расширило бы доступ молча.
 	Subjects []string `yaml:"subjects"`
-	// Tiers — АВТОРСКИЙ набор ярусов, когда он уже общего.
-	Tiers []string `yaml:"tiers"`
+	// Tiers — АВТОРСКИЙ набор ярусов, когда он отличается от общего: составом
+	// либо источниками вывода.
+	Tiers []ResourceTier `yaml:"tiers"`
+	// Cascade — правая часть отношения супер-доступа, когда она отличается от
+	// умолчания `super_admin from <первый указатель>`.
+	Cascade []CascadeTerm `yaml:"cascade"`
 	// Relations — АВТОРСКИЕ отношения модели, не выводимые ни из одного
 	// действия: RPC под них нет.
 	Relations []Relation `yaml:"relations"`
@@ -277,6 +336,93 @@ func (p *Parent) UnmarshalYAML(node *yaml.Node) error {
 		return nil
 	default:
 		return fmt.Errorf("line %d: a parent is a string or a mapping, got %s",
+			node.Line, nodeKindName(node.Kind))
+	}
+}
+
+// CascadeTerm — один терм правой части отношения супер-доступа: `<relation> from
+// <from>`. Термы соединяются `or` в порядке объявления.
+//
+// # Написаний каскада в каноне ЧЕТЫРЕ, и это замер, а не осторожность
+//
+//	super_admin from <указатель>                                        19 блоков — умолчание
+//	admin from account                                                   4 блока
+//	any_admin from cluster                                               2 блока
+//	admin from account or any_admin from cluster                         1 блок
+//	super_admin from project or admin from account or any_admin ...      1 блок
+//
+// Восемь блоков несут написание, которого одно умолчание не даёт ни при каком
+// входе. Форма структурная, а не текстовая: разбор строки `admin from account`
+// завёл бы ВТОРОЙ разборщик грамматики модели прав, и он разошёлся бы с первым
+// молча — на той самой форме, которой не знает.
+type CascadeTerm struct {
+	// Relation — отношение НА ОБЪЕКТЕ-ВЛАДЕЛЬЦЕ, от которого выводится каскад.
+	// Загрузчик его существования не проверяет и проверить не может: отношение
+	// принадлежит блоку владельца, а не этому. Проверяет сверка с каноном.
+	Relation string `yaml:"relation"`
+	// From — ИМЯ указателя этого ресурса, по которому идёт вывод. Указатель
+	// обязан быть объявлен: иначе каскад адресует объект, которого блок не несёт.
+	From string `yaml:"from"`
+}
+
+// ResourceTier — ярус прав ресурса.
+//
+// Имя типа несёт слово «ресурс», потому что в этом же пакете живёт ЯРУС РОЛИ
+// (`Tier` в roles.go) — уровень, на котором роль определена. Предметы разные:
+// здесь ступень прав внутри блока модели, там якорь определения роли, — и одно
+// имя на двоих читалось бы как один предмет.
+//
+// # Форм записи ДВЕ, и каждое значение выразимо ровно ОДНОЙ
+//
+//	admin                                короткая: ярус выводится от ПРЕДЫДУЩЕГО
+//	{name: admin, from: [owner, super_admin]}   длинная: источники названы
+//
+// Замер: `account` несёт `define admin: [...] or owner or super_admin`,
+// `iam_user` — `define viewer: [...] or subject or editor`. Постоянная цепочка
+// `admin → editor → viewer` этих двух написаний не даёт ни при каком входе.
+//
+// Длинная форма без собственных источников ОТВЕРГАЕТСЯ: она означала бы ровно то
+// же, что короткая.
+type ResourceTier struct {
+	// Name — имя яруса в блоке модели.
+	Name string `yaml:"name"`
+	// From — отношения, от которых ярус выводится, в порядке правой части. Пусто
+	// означает умолчание: предыдущий ярус, а для первого — супер-доступ.
+	From []string `yaml:"from"`
+
+	// long — запись пришла длинной формой (см. Parent.long).
+	long bool
+}
+
+// UnmarshalYAML принимает обе формы яруса и НЕ теряет строгость к неизвестному
+// ключу (см. Parent.UnmarshalYAML — то же измерено у действия).
+func (tr *ResourceTier) UnmarshalYAML(node *yaml.Node) error {
+	switch node.Kind {
+	case yaml.ScalarNode:
+		if node.Tag != "!!str" {
+			return fmt.Errorf("line %d: a tier written as a scalar must be a string, got %s",
+				node.Line, node.Tag)
+		}
+		tr.Name, tr.From, tr.long = node.Value, nil, false
+		return nil
+	case yaml.MappingNode:
+		for i := 0; i+1 < len(node.Content); i += 2 {
+			key := node.Content[i]
+			if key.Value != "name" && key.Value != "from" {
+				return fmt.Errorf("line %d: field %s not found in type tier", key.Line, key.Value)
+			}
+		}
+		var raw struct {
+			Name string   `yaml:"name"`
+			From []string `yaml:"from"`
+		}
+		if err := node.Decode(&raw); err != nil {
+			return err
+		}
+		tr.Name, tr.From, tr.long = raw.Name, raw.From, true
+		return nil
+	default:
+		return fmt.Errorf("line %d: a tier is a string or a mapping, got %s",
 			node.Line, nodeKindName(node.Kind))
 	}
 }
@@ -368,6 +514,8 @@ func validateResources(m *Manifest, doc *yaml.Node) []error {
 		}
 
 		faults = append(faults, validateResourceAnchors(r, doc, i)...)
+		faults = append(faults, validateResourceCascade(r, doc, i)...)
+		faults = append(faults, validateResourceTiers(r, doc, i)...)
 		faults = append(faults, validateResourceVerbs(r, doc, i)...)
 		faults = append(faults, validateResourceRelations(r, doc, i)...)
 	}
@@ -514,6 +662,152 @@ func validateResourceParents(r *Resource, doc *yaml.Node, i int) []error {
 				detail: fmt.Sprintf("resources[%d].parents[%d]: имя равно типу (%q), а запись "+
 					"длинная — одно значение, записанное двумя способами. Напишите строкой: "+
 					"`parents: [%s]`", i, k, p.Name, p.Name),
+			})
+		}
+	}
+	return faults
+}
+
+// declaredRelationNames — имена ВСЕХ отношений, которые блок этого ресурса
+// объявляет: указатели, супер-доступ, авторские отношения, ярусы и отношения
+// действий.
+//
+// Один перечень на двоих: им проверяются источники яруса (ссылка на отношение,
+// которого блок не несёт, — висячая) и якорь примечания. Второй такой перечень
+// разошёлся бы с первым молча — на том самом виде отношения, о котором не знает.
+func declaredRelationNames(r *Resource) map[string]struct{} {
+	out := make(map[string]struct{}, len(r.Parents)+len(r.Tiers)+len(r.Relations)+len(r.Verbs)+1)
+	for _, p := range r.Parents {
+		if p.Name != "" {
+			out[p.Name] = struct{}{}
+		}
+	}
+	out[superAdminRelation] = struct{}{}
+	for _, rel := range r.Relations {
+		if rel.Name != "" {
+			out[rel.Name] = struct{}{}
+		}
+	}
+	tiers := r.Tiers
+	if len(tiers) == 0 {
+		for _, name := range DefaultTiers() {
+			out[name] = struct{}{}
+		}
+	}
+	for _, t := range tiers {
+		if t.Name != "" {
+			out[t.Name] = struct{}{}
+		}
+	}
+	for _, v := range r.Verbs {
+		if v.Name != "" {
+			out[VerbRelationName(v.Name)] = struct{}{}
+		}
+	}
+	return out
+}
+
+// sortedNames — имена перечня в детерминированном порядке: отказ, зависящий от
+// обхода карты, читался бы по-разному от прогона к прогону.
+func sortedNames(set map[string]struct{}) []string {
+	out := make([]string, 0, len(set))
+	for name := range set {
+		out = append(out, name)
+	}
+	sort.Strings(out)
+	return out
+}
+
+// validateResourceCascade — термы каскада супер-доступа.
+func validateResourceCascade(r *Resource, doc *yaml.Node, i int) []error {
+	var faults []error
+	if r.Cascade == nil {
+		return nil
+	}
+	if len(r.Cascade) == 0 {
+		return []error{linkFault{
+			kind:  ErrSourceListEmpty,
+			coord: locate(doc, "resources", i, "cascade"),
+			detail: fmt.Sprintf("resources[%d].cascade: перечень термов объявлен пустым. Пустой "+
+				"перечень неотличим от опущенного ключа, а блока без каскада канон не несёт: "+
+				"опустите ключ, и каскад возьмёт умолчание `super_admin from <первый указатель>`", i),
+		}}
+	}
+	declaredParents := make(map[string]struct{}, len(r.Parents))
+	for _, p := range r.Parents {
+		if p.Name != "" {
+			declaredParents[p.Name] = struct{}{}
+		}
+	}
+	for k, term := range r.Cascade {
+		if term.Relation == "" || term.From == "" {
+			faults = append(faults, linkFault{
+				kind:  ErrCascadeTermIncomplete,
+				coord: locate(doc, "resources", i, "cascade", k),
+				detail: fmt.Sprintf("resources[%d].cascade[%d]: терм каскада есть пара "+
+					"`<relation> from <from>`, и названы обе половины либо ни одной; "+
+					"получено relation=%q, from=%q", i, k, term.Relation, term.From),
+			})
+			continue
+		}
+		if _, ok := declaredParents[term.From]; !ok {
+			faults = append(faults, linkFault{
+				kind:  ErrCascadeFromUnknown,
+				coord: locate(doc, "resources", i, "cascade", k),
+				detail: fmt.Sprintf("resources[%d].cascade[%d].from: указателя %q у ресурса нет; "+
+					"объявлены: %s. Каскад по необъявленному указателю адресовал бы объект, "+
+					"которого блок не несёт, — и вердикт по нему был бы «нет» всегда",
+					i, k, term.From, strings.Join(sortedNames(declaredParents), ", ")),
+			})
+		}
+	}
+	return faults
+}
+
+// validateResourceTiers — имена ярусов и отношения, от которых они выводятся.
+func validateResourceTiers(r *Resource, doc *yaml.Node, i int) []error {
+	var faults []error
+	known := declaredRelationNames(r)
+	for k := range r.Tiers {
+		t := &r.Tiers[k]
+		if t.Name == "" {
+			faults = append(faults, linkFault{
+				kind:  ErrTierNameRequired,
+				coord: locate(doc, "resources", i, "tiers", k),
+				detail: fmt.Sprintf("resources[%d].tiers[%d].name: ярус не назвал себя — "+
+					"безымянное отношение нечем адресовать в модели", i, k),
+			})
+			continue
+		}
+		if t.long && t.From == nil {
+			faults = append(faults, linkFault{
+				kind:  ErrTierFormRedundant,
+				coord: locate(doc, "resources", i, "tiers", k),
+				detail: fmt.Sprintf("resources[%d].tiers[%d]: длинная форма без ключа from "+
+					"означает ровно то же, что короткая, — одно значение, записанное двумя "+
+					"способами. Напишите именем: `- %s`", i, k, t.Name),
+			})
+		}
+		if t.From != nil && len(t.From) == 0 {
+			faults = append(faults, linkFault{
+				kind:  ErrSourceListEmpty,
+				coord: locate(doc, "resources", i, "tiers", k),
+				detail: fmt.Sprintf("resources[%d].tiers[%d].from: перечень источников объявлен "+
+					"пустым. Яруса без источника канон не несёт: опустите ключ, и ярус "+
+					"выведется от предыдущего", i, k),
+			})
+		}
+		for j, src := range t.From {
+			if _, ok := known[src]; ok {
+				continue
+			}
+			faults = append(faults, linkFault{
+				kind:  ErrTierSourceUnknown,
+				coord: locate(doc, "resources", i, "tiers", k),
+				detail: fmt.Sprintf("resources[%d].tiers[%d].from[%d]: отношения %q блок не "+
+					"объявляет; объявлены: %s. Вывод от несуществующего отношения даёт "+
+					"вердикт «нет» всегда, оставаясь на вид полноценным ярусом",
+					i, k, j, src, strings.Join(sortedNames(known), ", ")),
 			})
 		}
 	}
