@@ -361,7 +361,7 @@ SPDX-License-Identifier: BUSL-1.1
 | П21 | снятый ТИП не грантуем ни на одном плече правила | `domain.IsRetiredType` | `grep -n 'func IsRetiredType' services/iam/internal/domain/retired_types.go` → **60** |
 | П22 | гейт дерева сверяет посев с литералом, инъекция в обе стороны | `TestIAMCT114_CatalogSeedMatchesTheLiteral` + шесть инъекций | `grep -n 'func TestIAMCT114' services/iam/internal/check/catalog_seed_parity_test.go` → **71**; `grep -c '^func TestIAMCT114_Injection' services/iam/internal/check/catalog_seed_parity_injection_test.go` → **6** |
 | П23 | образец миграции снятия БЕЗ обратного пути, с названной причиной | `0077_retire_module_sa_dead_roles.sql` | `sed -n '1,30p' services/iam/internal/migrations/0077_retire_module_sa_dead_roles.sql` |
-| П24 | набор модулей закрыт ЛИТЕРАЛОМ и читается на пути запроса | `domain.IsKnownModule` | `grep -n 'func IsKnownModule' services/iam/internal/domain/module_set.go` → **42** |
+| П24 | набор модулей закрыт ЛИТЕРАЛОМ и читается на пути запроса | **ОТМЕНЁН ЗАДАЧЕЙ `#1927`, и это исход §3.3, а не поправка** — литерал снят, путь запроса читает живые строки. Утверждение верно для ревизии измерения `1b3761d33` и **неверно для дерева**; всё, что на П24 опиралось (§2.2, §3.3, §8), помечено там же | предикат круга даёт **пусто** (`rc=1`); сегодняшний судит ОБЪЯВЛЕНИЕ, а не прозу о нём — `grep -n 'func (f \*Facts) IsKnownModule' services/iam/internal/catalog/facts.go` → **173** |
 | П25 | форма имени новой миграции объявлена в ОДНОМ месте | `docs/architecture/migration-version-namespace.md` | `grep -n 'YYYYMMDDHHMMSS' docs/architecture/migration-version-namespace.md` → **11** |
 | П26 | ведомость приёмок, под которыми ведётся кодирование | `docs/acceptance-ledger.yaml` | `grep -c 'acceptance:' docs/acceptance-ledger.yaml` → **8** |
 
@@ -680,6 +680,18 @@ ALTER TABLE kacho_iam.catalog_resource
 **литералом** — `domain.IsKnownModule` (П24), — а не строками. Снятый модуль
 по-прежнему пройдёт грамматику правила. Перевод этого читателя на строки — предмет
 `#1816` в части, которая до него не дошла, и он назван §3.3, а не сделан здесь молча.
+
+> [!note] Ограничение СНЯТО — абзац выше верен для своей ревизии и неверен для дерева (`#1927`)
+> **Вердикт круга не трогается: это запись об исходе названного остатка.** Абзац честно
+> назвал границу — «снятый модуль по-прежнему пройдёт грамматику правила», — и границы
+> этой больше нет. Читатель набора переведён на строки: `catalog.Facts.IsKnownModule`
+> отвечает по ЖИВОМУ каталогу, поэтому снятие модуля доезжает до пути запроса **в
+> работающем процессе**, а не до перезапуска.
+>
+> Разбор и производитель — во врезке §3.3 (`TestIAMMW110_ModuleMembershipIsAnsweredByCatalogRows`);
+> здесь он не пересказывается, чтобы два места об одном предмете снова не разошлись.
+> Помечено потому, что §2.2 читают отдельно от §3.3, и непомеченный абзац объявляет
+> действующим ограничение, которого нет.
 
 ### 2.3. Права арендатора ПЕРЕСЕЛЯЮТСЯ. Ссылка, не решение
 
@@ -1227,7 +1239,7 @@ resource` (П12).
 | §2.5 оживление | прогон IAM-MW-1-14…17 зелёный; перепись **множеств** совпала |
 | §2.6 идемпотентность | второй отзыв подряд: ноль изменённых строк по **всем** трём таблицам |
 | §2.7 переезд стража (`#1861`) | `grep -n 'LiteralRows' services/iam/internal/apps/kacho/seed/catalog_parity.go` — опорная сторона более не литерал; IAM-MW-1-20 и -21 зелёные **оба** |
-| §3.3 читатель модулей | `grep -n 'func IsKnownModule' services/iam/internal/domain/module_set.go` — либо снят, либо читает строки |
+| §3.3 читатель модулей | `grep -n 'func IsKnownModule' services/iam/internal/domain/module_set.go` — либо снят, либо читает строки. **ПРЕДИКАТ ВЫПОЛНЕН ПЕРВОЙ ВЕТВЬЮ** (`#1927`): даёт пусто, `rc=1` — функция снята вместе с литералом, членство пришло портом, путь запроса читает живые строки. Разбор — врезка §3.3; заказ закрыт |
 
 ---
 
