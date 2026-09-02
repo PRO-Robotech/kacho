@@ -1105,6 +1105,123 @@ case_declared_return_to_base_is_refused() {
   rm -rf "$r"
 }
 
+# ── Случаи 25-26: перечень читается с ВЕРШИНЫ ОТПРАВКИ, а не рабочей копии ────
+#
+# Судья получает голову прогона аргументом `HEAD_SHA`, а перечень читал с
+# литерального `HEAD` — и `DRIFT_DECLARED_REV` в `drift.sh` не передавал, так что
+# и тот брал своё умолчание. Шапка `drift.sh` объявляет предмет иначе: «перечень
+# читается с ВЕРШИНЫ ОТПРАВКИ». Вершина отправки — это `HEAD_SHA`, а не то, на
+# чём стоит рабочая копия.
+#
+# В конвейере они совпадают, поэтому дефект латентный ровно там же, где был
+# #1911, и бьёт по единственному пути, который конвейер рекламирует своим
+# комментарием: «вся логика — в скрипте, его можно прогнать локально тем же
+# вызовом». Вердикт тогда определяется тем, какая ветка выкачана, а не тем, что
+# судили.
+#
+# Граф общий: `main` стоит на базе, накопительная линия ушла вперёд одной
+# посадкой, а рабочая копия НАМЕРЕННО стоит не на ней.
+build_ledger_split_from_worktree() { # <repo> <where: head|stray>
+  local r=$1 where=$2
+  echo keep > "$r/keep.txt"
+  echo "содержимое ствола до правки" > "$r/A.txt"
+  commit "$r" "C0 база"
+  local c0; c0=$(git -C "$r" rev-parse HEAD)
+
+  git -C "$r" checkout -q -b lane "$c0"
+  echo l > "$r/lane.txt"; commit "$r" "полоса правит только своё"
+
+  git -C "$r" checkout -q -b release/l "$c0"
+  echo "ПРАВКА СТВОЛА" > "$r/A.txt"; commit "$r" "C1 линия двигается"
+
+  git -C "$r" merge -q --no-commit --no-ff lane >/dev/null 2>&1
+  if [ "$where" = head ]; then
+    # Посадка снимает файл линии И объявляет это — перечень появляется ТОЛЬКО
+    # здесь, на вершине отправки.
+    rm -f "$r/A.txt"
+    mkdir -p "$r/tools/carrydrift"
+    echo "A.txt  снят решением: линия и ствол завели один предмет разными файлами" \
+      > "$r/tools/carrydrift/declared-removals.txt"
+  fi
+  git -C "$r" add -A
+  git -C "$r" commit -qm "посадка ($where)"
+  local landed; landed=$(git -C "$r" rev-parse HEAD)
+
+  if [ "$where" = stray ]; then
+    # Перечень с записью-ФАНТОМОМ лежит в стороне от отправки: он есть в рабочей
+    # копии и его нет в дереве вершины.
+    git -C "$r" checkout -q -b stray "$c0"
+    mkdir -p "$r/tools/carrydrift"
+    echo "never/removed.txt  предмета нет ни в одной посадке этой линии" \
+      > "$r/tools/carrydrift/declared-removals.txt"
+    commit "$r" "перечень в стороне от отправки"
+  fi
+
+  # Рабочая копия НЕ на вершине отправки — в этом весь случай.
+  case "$where" in
+    head)  git -C "$r" checkout -q main ;;
+    stray) git -C "$r" checkout -q stray ;;
+  esac
+
+  echo "$c0 $landed"
+}
+
+# ── Случай 25. Перечень с ВЕРШИНЫ ОТПРАВКИ читается, хотя копия стоит не там ──
+case_ledger_is_read_from_the_pushed_head() {
+  cases=$((cases + 1))
+  local r; r=$(newrepo)
+  local revs; revs=$(build_ledger_split_from_worktree "$r" head)
+  local c0 landed; read -r c0 landed <<<"$revs"
+
+  # Предпосылка случая: перечня в рабочей копии нет вовсе. Без неё случай зеленел
+  # бы, не коснувшись предмета.
+  if [ -e "$r/tools/carrydrift/declared-removals.txt" ]; then
+    no "предпосылка случая не выполнена: перечень оказался в рабочей копии" ""
+    rm -rf "$r"; return
+  fi
+
+  local out rc
+  out=$(cd "$r" && BEFORE="$c0" HEAD_SHA="$landed" bash "$JUDGE" 2>&1); rc=$?
+  if [ "$rc" -eq 0 ] \
+     && [[ "$out" == *"снято решением: A.txt"* ]] \
+     && [[ "$out" != *"ПЕРЕЖИЛА ПРЕДМЕТ"* ]]; then
+    ok "перечень прочитан с вершины отправки, хотя копия стоит не на ней"
+  else
+    no "перечень читается с рабочей копии, а не с судимой вершины (rc=$rc)" "$out"
+  fi
+  rm -rf "$r"
+}
+
+# ── Случай 26. Близнец к 25: перечень В СТОРОНЕ от отправки не читается ───────
+#
+# Без него правка неотличима от «читаем оба места»: гейт, добравший рабочую
+# копию к вершине, на случае 25 зеленел бы точно так же. Здесь запись-фантом
+# лежит только в рабочей копии, и молчание обязано быть по правильной причине —
+# посадка в прогоне есть, и она сверена чисто.
+case_ledger_beside_the_push_is_not_read() {
+  cases=$((cases + 1))
+  local r; r=$(newrepo)
+  local revs; revs=$(build_ledger_split_from_worktree "$r" stray)
+  local c0 landed; read -r c0 landed <<<"$revs"
+
+  if [ ! -e "$r/tools/carrydrift/declared-removals.txt" ]; then
+    no "предпосылка случая не выполнена: перечня нет и в рабочей копии" ""
+    rm -rf "$r"; return
+  fi
+
+  local out rc
+  out=$(cd "$r" && BEFORE="$c0" HEAD_SHA="$landed" bash "$JUDGE" 2>&1); rc=$?
+  if [ "$rc" -eq 0 ] \
+     && [[ "$out" != *"ПЕРЕЖИЛА ПРЕДМЕТ"* ]] \
+     && [[ "$out" == *"посадок в прогоне 1"* ]] \
+     && [[ "$out" == *"сверено чисто 1"* ]]; then
+    ok "перечень, лежащий в стороне от отправки, вердикта не определяет"
+  else
+    no "чужой перечень из рабочей копии уронил прогон (rc=$rc)" "$out"
+  fi
+  rm -rf "$r"
+}
+
 echo "проба гейта переноса — синтетические графы"
 case_real_rollback
 case_branch_owns_file
@@ -1130,6 +1247,8 @@ case_return_to_base_is_still_named_a_rollback
 case_declared_removal_is_skipped_and_undeclared_is_a_loss
 case_declared_adaptation_is_skipped_and_undeclared_is_a_finding
 case_declared_return_to_base_is_refused
+case_ledger_is_read_from_the_pushed_head
+case_ledger_beside_the_push_is_not_read
 
 echo
 echo "перепись: случаев ${cases}; прошло ${pass}; упало ${fail}"

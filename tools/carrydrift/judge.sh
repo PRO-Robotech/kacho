@@ -64,6 +64,24 @@ for r in refs/remotes/origin/main refs/heads/main; do
     break
   fi
 done
+# ПЕРЕЧЕНЬ ЧИТАЕТСЯ С ВЕРШИНЫ ОТПРАВКИ, а не с того, на чём стоит рабочая копия.
+#
+# Шапка `drift.sh` объявляет это прямо: «объявление описывает ОТПРАВКУ целиком, и
+# каждая посадка в ней судится под ним». Отправка — это `HEAD_SHA`; `HEAD` же
+# говорит лишь о том, какую ветку кто-то выкачал.
+#
+# В конвейере они совпадают (`actions/checkout` берёт `ref` тем же выражением),
+# поэтому дефект был латентный ровно там же, где был диапазон события, — и бил по
+# единственному пути, который конвейер рекламирует своим комментарием: «вся
+# логика в скрипте, его можно прогнать локально тем же вызовом». Локальный прогон
+# судил один граф и читал перечень из другого, а вердикт 3 («запись пережила
+# предмет») определялся тем, какая ветка выкачана.
+#
+# Одно значение на ОБА чтения — своё и `drift.sh`, — иначе они разойдутся молча:
+# судья собирал бы `declared-used` по одной ревизии перечня, а самоистечение
+# судил по другой.
+declared_rev="${head_rev:-${HEAD_SHA}}"
+
 derived=""
 if [ -n "$head_rev" ] && [ -n "$trunk_base_ref" ]; then
   if derived=$(git merge-base "$trunk_base_ref" "$head_rev" 2>/dev/null); then
@@ -239,7 +257,8 @@ for m in $candidates; do
   srcs=$(echo "$rest" | tr ' ' ',' | sed 's/,*$//')
   base=$(git merge-base "$first" $rest)
   rc=0
-  out=$(bash tools/carrydrift/drift.sh "$base" "$srcs" "$first" "$m" 2>&1) || rc=$?
+  out=$(DRIFT_DECLARED_REV="$declared_rev" \
+        bash tools/carrydrift/drift.sh "$base" "$srcs" "$first" "$m" 2>&1) || rc=$?
   printf '%s\n' "$out"
   # Записи перечня, СРАБОТАВШИЕ в этой посадке, копятся на всю отправку: перечень
   # описывает отправку целиком, и судить его посадкой значит требовать, чтобы
@@ -290,7 +309,7 @@ done
 # исключать, остаётся находкой: иначе она молча прикроет следующее снятие.
 stale=0
 DECLARED_FILE=tools/carrydrift/declared-removals.txt
-if [ -n "${candidates}" ] && git rev-parse --quiet --verify "HEAD:$DECLARED_FILE" >/dev/null 2>&1; then
+if [ -n "${candidates}" ] && git rev-parse --quiet --verify "$declared_rev:$DECLARED_FILE" >/dev/null 2>&1; then
   while IFS= read -r line; do
     case "$line" in ''|'#'*) continue ;; esac
     path=${line%%[[:space:]]*}
@@ -301,7 +320,7 @@ if [ -n "${candidates}" ] && git rev-parse --quiet --verify "HEAD:$DECLARED_FILE
       echo "       а ни одна посадка этой отправки его не сняла — удалите запись"
       echo "       тем же изменением, иначе она молча прикроет следующее снятие"
     fi
-  done < <(git show "HEAD:$DECLARED_FILE")
+  done < <(git show "$declared_rev:$DECLARED_FILE")
 fi
 
 # Перепись — отдельное утверждение, и исходы стоят врозь.
