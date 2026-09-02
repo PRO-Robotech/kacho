@@ -53,7 +53,7 @@ func realManifests(t *testing.T) []*manifest.Manifest {
 	}
 	var out []*manifest.Manifest
 	for _, p := range paths {
-		data, rerr := os.ReadFile(p) //nolint:gosec // путь произведён обходом дерева пробы
+		data, rerr := os.ReadFile(p) // #nosec G304 -- путь произведён обходом дерева пробы, подставить посторонний файл извне нечем
 		if rerr != nil {
 			t.Fatalf("манифест %s не прочитан: %v", p, rerr)
 		}
