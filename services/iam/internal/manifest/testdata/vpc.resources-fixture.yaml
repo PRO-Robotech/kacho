@@ -151,7 +151,7 @@ roles:
     rules:
       - module: vpc
         resources: [address, networkInterface, subnet]
-        verbs: [get, list]
+        classes: [get, list]
 
   - id: vpc.address_pool_admin
     name: Администратор адресного пространства
@@ -160,7 +160,7 @@ roles:
     rules:
       - module: vpc
         resources: [addressPool]
-        verbs: [get, list, create, update, delete]
+        classes: [get, list, create, update, delete]
 
 deprecatedVerbs:
   read:
