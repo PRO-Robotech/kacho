@@ -32,7 +32,10 @@ package proxytuple
 
 import (
 	"errors"
+	"sort"
 	"strings"
+
+	"github.com/PRO-Robotech/kacho/pkg/platformmodules"
 )
 
 // ErrRefused is the single verdict this rule produces: the tuple is not one this
@@ -134,19 +137,62 @@ var publicReadObjectTypes = map[string]struct{}{
 // PublicReadObjectTypes returns the closed list above, for censuses and gates.
 func PublicReadObjectTypes() []string { return []string{"registry_repository"} }
 
+// ForbiddenObjectTypes returns the closed forbidden set, sorted. Derived from the
+// map the write path evaluates rather than written out a second time: a
+// hand-written copy of a set cannot be compiled against the original and drifts
+// silently — which is the whole reason the rule was moved into this package.
+// Exported for the tree gate that requires every entry to name a type the model
+// actually declares.
+func ForbiddenObjectTypes() []string {
+	out := make([]string, 0, len(forbiddenObjectTypes))
+	for t := range forbiddenObjectTypes {
+		out = append(out, t)
+	}
+	sort.Strings(out)
+	return out
+}
+
 // forbiddenObjectTypes — object types that are never a module's resource and
 // therefore can never be the object of a proxy tuple: the platform singleton
-// `cluster` and the entities of the iam domain. Forbidden even when the caller's
-// domain is unknown, so that these objects are unreachable through the proxy under
-// every configuration.
+// `cluster`, the shared hierarchy and subject types, and the resource types of the
+// iam domain. Forbidden even when the caller's domain is unknown, so that these
+// objects are unreachable through the proxy under every configuration — the empty
+// caller domain switches the domain binding off, and this set is then the only
+// clause standing between a module and an object of somebody else's domain.
+//
+// EVERY ENTRY NAMES A TYPE THE MODEL DECLARES, AND EVERY NON-MODULE TYPE OF THE
+// MODEL IS NAMED HERE. Both halves are held by the tree gate
+// TestForbiddenProxyObjectTypesAgreeWithTheModel, and each half closes a silence of
+// its own. An entry the model does not declare excludes NOTHING — the input it
+// would refuse is not representable — while the list reads as if the type were
+// covered; that was `role` against the model's `iam_role` (#1883), a dead entry
+// that produced neither a red run nor a refusal for the whole of its life. A
+// non-module type with no entry is reachable in exactly the mode the set exists
+// for; that was every other resource type of the iam domain — six of them,
+// `iam_fgaproxy` among them (its own reasoning is kept at the entry).
+//
+// `role` USED TO BE HERE AND IS NOT: the model declares `iam_role`, and a bare
+// `role` type it never declared. The entry excluded nothing and the list read as
+// if the type were covered — the gate above now refuses that shape outright.
+//
+// `iam` is deliberately absent from the emitter census (proxyConsumerDomains): iam
+// writes its own links directly, without the proxy. That is what makes its types
+// the very class this set has to close.
 var forbiddenObjectTypes = map[string]struct{}{
-	"cluster":         {},
-	"account":         {},
-	"project":         {},
+	// платформенный синглтон и общие предки иерархии
+	"cluster": {},
+	"account": {},
+	"project": {},
+	// типы субъектов
 	"user":            {},
 	"service_account": {},
 	"group":           {},
-	"role":            {},
+	// ресурсные типы домена iam
+	"iam_user":            {},
+	"iam_service_account": {},
+	"iam_group":           {},
+	"iam_role":            {},
+	"iam_access_binding":  {},
 	// iam_fgaproxy — служебная вершина, к которой привязано само право модуля
 	// писать факты. Ресурсом модуля она не является ни при какой конфигурации, а
 	// без записи здесь оставалась достижимой в двух посадках: у вызывающего с
@@ -158,13 +204,6 @@ var forbiddenObjectTypes = map[string]struct{}{
 	// допускать тип, которого каталог не знает.
 	"iam_fgaproxy": {},
 }
-
-// moduleObjectDomain maps a module's service short name (from its verified mTLS
-// SAN, e.g. "nlb") onto the prefix of the object domain its resources actually own,
-// WHEN the two differ. By default (empty map) the domain equals the service name:
-// vpc→`vpc_*`, compute→`compute_*`, nlb→`nlb_*`. Kept as the extension point for a
-// future module whose object domain diverges from its SAN short name.
-var moduleObjectDomain = map[string]string{}
 
 // IsPublicReadGrant reports whether the pair is «anybody reads this resource»
 // (`user:* #v_get`).
@@ -213,13 +252,36 @@ func publicReadAllowed(subject, relation, objType string) bool {
 	return ok
 }
 
-// objectDomainForCaller — the object domain a module may own. Equal to the service
-// name by default; exceptions live in moduleObjectDomain.
-func objectDomainForCaller(callerDomain string) string {
-	if d, ok := moduleObjectDomain[callerDomain]; ok {
-		return d
+// objectDomainForCaller — приставка типов объекта, которые модулю позволено
+// писать. Берётся у СЛОВАРЯ имён модулей, а не выводится из имени вызывающего.
+//
+// ПОЧЕМУ НЕ СОГЛАШЕНИЕ ОБ ИМЕНОВАНИИ. Здесь стояло «домен равен имени службы, а
+// исключения живут в карте», и карта была ПУСТА — то есть «чей это тип» отвечала
+// приставка имени. Полоса при этом превентивна, и это измерено: приставка
+// совпадает с коротким именем у всех пяти сегодняшних эмитентов, поэтому ни один
+// вердикт не менялся. Предмет был в другом: совпадение оставалось УСЛОВИЕМ
+// работы — тип, чьё имя в модели не начинается с имени его модуля, был невыразим
+// (#1885). Наивная же починка «имя службы == модуль каталога» отняла бы у
+// балансировщика три живых типа: у него различны ТРИ написания (`nlb` /
+// `loadbalancer` / `nlb_listener`), и словарь объявляет все три порознь именно
+// затем, чтобы эту ошибку нельзя было выразить.
+//
+// ДВА «нет» РАЗЛИЧАЮТСЯ, и оба отвергают: ok=false — модуля словарь не знает
+// вовсе; пустая строка — модуль объявлен и собственных типов объекта у него нет.
+// Схлопнуть их в одно значило бы вернуть проверку приставкой через заднюю дверь:
+// сравнение с пустым доменом молча отвергает всё, но по НЕ ТОЙ причине, и первый
+// же тип такого домена стал бы достижим без единого решения.
+//
+// ГРАНИЦА НАЗВАНА: это по-прежнему сравнение приставки, а не поиск владельца
+// типа по строке. Полный перечень типов живёт в закрытой таблице iam, за
+// границей видимости пакета, и вторая его копия разошлась бы с первой молча.
+// Переход на словарь типов — предмет эпика #1087.
+func objectDomainForCaller(callerDomain string) (string, bool) {
+	domain, known := platformmodules.ObjectDomainOfService(callerDomain)
+	if !known || domain == "" {
+		return "", false
 	}
-	return callerDomain
+	return domain, true
 }
 
 // ValidateTuple constrains the proxy write path to least privilege: a module writes
@@ -255,11 +317,15 @@ func ValidateTuple(callerDomain, subject, relation, object string) error {
 		return ErrRefused
 	}
 	// Domain binding: the object must belong to the caller's domain (vpc→`vpc_*`,
-	// compute→`compute_*`, nlb→`nlb_*`). An empty callerDomain skips this clause,
-	// while the forbidden set and the relation set above still hold the boundary
-	// against cluster / iam / privilege objects.
-	if callerDomain != "" && !strings.HasPrefix(objType, objectDomainForCaller(callerDomain)+"_") {
-		return ErrRefused
+	// compute→`compute_*`, nlb→`nlb_*`), and WHICH domain that is comes from the
+	// module-name vocabulary — see objectDomainForCaller. An empty callerDomain
+	// skips this clause, while the forbidden set and the relation set above still
+	// hold the boundary against cluster / iam / privilege objects.
+	if callerDomain != "" {
+		domain, ok := objectDomainForCaller(callerDomain)
+		if !ok || !strings.HasPrefix(objType, domain+"_") {
+			return ErrRefused
+		}
 	}
 	return nil
 }

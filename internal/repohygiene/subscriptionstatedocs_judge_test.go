@@ -12,6 +12,8 @@ import (
 	"regexp"
 	"sort"
 	"strings"
+
+	"github.com/PRO-Robotech/kacho/pkg/platformmodules"
 )
 
 // subscriptionstatedocs_judge_test.go — суждение гейта «страница подписки говорит про
@@ -340,13 +342,27 @@ func subscriptionOwnerRows(page string) []ownerRowReport {
 // проверена БИЕКЦИЕЙ (`subscriptionStateFindings`): каждый журнал дерева обязан
 // иметь здесь написание, и каждое написание — журнал. Шестой владелец и
 // переименование пятого краснеют сразу, а не переживают правку.
-var subscriptionOwnerOfService = map[string]string{
-	"compute":  "compute",
-	"nlb":      "loadbalancer",
-	"registry": "registry",
-	"storage":  "storage",
-	"vpc":      "vpc",
-}
+var subscriptionOwnerOfService = func() map[string]string {
+	out := make(map[string]string, len(subscriptionJournalServices))
+	for _, service := range subscriptionJournalServices {
+		owner, ok := platformmodules.CatalogModuleOfService(service)
+		if !ok {
+			// Отсутствие записи не «подставляется по умолчанию»: умолчание
+			// вернуло бы соглашение об именовании, ради снятия которого словарь
+			// и заведён. Пустое написание краснит биекцию ниже с координатой.
+			out[service] = ""
+			continue
+		}
+		out[service] = owner
+	}
+	return out
+}()
+
+// subscriptionJournalServices — службы, несущие журнал изменений. Перечень
+// объявлен ЗДЕСЬ, потому что «есть ли у службы журнал» словарь имён не знает и
+// знать не должен: его предмет — написания, а не возможности модуля. Биекция
+// ниже требует, чтобы перечень сходился с деревом в обе стороны.
+var subscriptionJournalServices = []string{"compute", "nlb", "registry", "storage", "vpc"}
 
 // subscriptionStateFindings — суждение: страница и журнал говорят одно.
 func subscriptionStateFindings(reports []journalStateReport, rows []ownerRowReport) []string {
