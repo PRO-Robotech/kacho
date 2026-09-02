@@ -13,6 +13,7 @@ import (
 
 	"gopkg.in/yaml.v3"
 
+	"github.com/PRO-Robotech/kacho/services/iam/internal/authzmap"
 	"github.com/PRO-Robotech/kacho/services/iam/internal/domain"
 )
 
@@ -325,8 +326,11 @@ func validateRoles(m *Manifest, doc *yaml.Node) []error {
 					"вызывающему нечем: привязка есть, доступа нет", i),
 			})
 		}
+		// Набор модулей — КАНОН, а не живые строки: загрузчика зовёт и оснастка
+		// дерева, у которой базы нет by construction (шапка manifest.go, #1927).
+		canon := domain.ModuleSetOf(authzmap.CatalogSeedModules()...)
 		for j, rule := range role.Rules {
-			if err := rule.DomainRule().Validate(domain.TenantPolicy()); err != nil {
+			if err := rule.DomainRule().Validate(domain.TenantPolicy(), canon); err != nil {
 				faults = append(faults, linkFault{
 					kind:   ErrRoleRuleInvalid,
 					coord:  locate(doc, "roles", i, "rules", j),

@@ -1128,12 +1128,21 @@ SELECT * FROM (VALUES ('vpc','network','v_get'), … ) AS catalog(m,r,verb);
 | `TestReseedWiring_*` | `roleverbreseedwiring_test.go` | посев каталога — новая точка входа; провязка судится этим гейтом |
 | `TestVerbVocabularyLiteralsMatchModel`, `…RosterCoversEveryLiteral`, `…RosterEntriesStillHaveSubject` | `internal/repohygiene/verbvocabulary_test.go` | реестр литеральных словарей глаголов: литерал, ставший источником посева, обязан **остаться** в реестре с новым основанием, а не выпасть из него |
 | `TestClientTruthIAMModuleSetEnumerationsAreComplete` | `internal/repohygiene/clienttruth_iam_moduleset.go` | читает литерал модулей и сверяет с клиентской прозой |
-| `TestModuleSetDrift_AuthzmapVsDomain` | `services/iam/internal/authzmap/module_set_drift_test.go` | согласие двух наборов модулей |
+| проба дрейфа набора модулей (имя прозой — врезка ниже) | `services/iam/internal/authzmap/module_set_drift_test.go` | согласие двух наборов модулей |
 | `TestDrift_ObjectTypesExistInModel`, `TestDrift_TypeVerbSetsMatchModelExactly`, `TestDrift_NonCatalogTypesCarryNoVerbs` | `authzmap/fga_model_drift_test.go` | источник посева обязан остаться согласным с моделью |
 | `TestCatalogTypesExistInTheCanonicalModel` | `authzmap/canonical_model_drift_test.go` | то же с другой стороны |
 | `TestCatalogMatchesTheAnnotationsItWasGeneratedFrom` | `internal/repohygiene/catalogparity_test.go` | **346 = 346**, каталог прав; эта приёмка его не трогает, и он обязан **остаться зелёным** — если покраснел, значит популяции смешали (§2.5) |
 | `TestNewMigrationCitesAnApprovedAcceptance`, `TestAcceptanceLedgerEntriesHaveASubject` | `internal/repohygiene/acceptanceledger_test.go` | миграция обязана цитировать APPROVED-приёмку — §9.2 |
 | `retired_block_storage_test.go` | `services/iam/internal/check/` | синхронность снятия: три снятых типа переезжают строками, и гейт обязан судить **новый** носитель |
+
+> [!note] Имя пробы дрейфа написано ПРОЗОЙ — её предмет снят `#1927`
+> На ревизии измерения проба звалась по двум сверяемым сторонам и сверяла
+> приставки ключей `authzmap.objectTypes` с литералом домена `knownModules`.
+> Литерал снят: набор модулей стал строками каталога, канон дерева выводится из
+> тех же ключей одним производителем, и второго набора, с которым сверять, не
+> стало. Файл остался и несёт ДРУГИЕ утверждения — пин состава и сверку с
+> объявлением написаний `pkg/platformmodules`. Живого адреса здесь не заводится:
+> строка таблицы свидетельствует о круге, а не указывает, куда идти.
 
 **Класс, который здесь обязан быть закрыт поимённо** (`testing.md` §«Гейт на
 класс», п. 9): негативное утверждение **замолкает** вместе с предметом, и молчание

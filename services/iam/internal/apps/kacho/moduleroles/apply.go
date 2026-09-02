@@ -48,6 +48,7 @@ import (
 
 	"google.golang.org/grpc/codes"
 
+	"github.com/PRO-Robotech/kacho/services/iam/internal/authzmap"
 	"github.com/PRO-Robotech/kacho/services/iam/internal/domain"
 	"github.com/PRO-Robotech/kacho/services/iam/internal/manifest"
 )
@@ -249,7 +250,10 @@ func roleOf(module string, mr *manifest.Role) (domain.Role, error) {
 		// в пределах этого модуля, подстановка модуля — не законна вовсе.
 		OwnerModule: module,
 	}
-	if verr := r.Validate(); verr != nil {
+	// Набор модулей — КАНОН: применитель исполняется на старте, до того как
+	// снимок каталога наполнен, и роль модуля объявлена ДЕРЕВОМ, а не строкой
+	// (#1927). Живость модуля судит путь запроса, где она наблюдаема.
+	if verr := r.Validate(domain.ModuleSetOf(authzmap.CatalogSeedModules()...)); verr != nil {
 		werr := fmt.Errorf("%w: %s: %w", ErrRoleRejectedByDomain, name, verr)
 		return domain.Role{}, refuse(codes.InvalidArgument, werr.Error(),
 			LaneRejectedByDomain, module, string(name), werr)

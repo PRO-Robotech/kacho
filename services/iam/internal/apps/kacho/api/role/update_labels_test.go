@@ -65,7 +65,7 @@ func ownerCtx() context.Context {
 // ── sync mask-discipline reject paths (nil repo — pre-checks) ────────────────────
 
 func TestUpdateRole_T33_LabelsMutable_ImmutableFieldRejected(t *testing.T) {
-	uc := &UpdateRoleUseCase{} // nil deps: mask-discipline is a sync pre-check
+	uc := &UpdateRoleUseCase{cat: catalogfixture.Source()} // nil deps: mask-discipline is a sync pre-check
 	roleName := domain.RoleName("x")
 	_, err := uc.Execute(ownerCtx(), UpdateRoleInput{
 		ID:         rlUpdRoleID,
@@ -78,7 +78,7 @@ func TestUpdateRole_T33_LabelsMutable_ImmutableFieldRejected(t *testing.T) {
 }
 
 func TestUpdateRole_T33_UnknownMaskField_Rejected(t *testing.T) {
-	uc := &UpdateRoleUseCase{}
+	uc := &UpdateRoleUseCase{cat: catalogfixture.Source()}
 	_, err := uc.Execute(ownerCtx(), UpdateRoleInput{
 		ID:         rlUpdRoleID,
 		UpdateMask: []string{"bogus_field"},

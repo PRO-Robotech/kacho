@@ -36,7 +36,6 @@ import (
 
 	"github.com/PRO-Robotech/kacho/services/iam/internal/authzmap"
 	"github.com/PRO-Robotech/kacho/services/iam/internal/catalog"
-	"github.com/PRO-Robotech/kacho/services/iam/internal/domain"
 )
 
 // CatalogParityCensus — объём осмотренного и найденное расхождение.
@@ -140,8 +139,11 @@ func AssertCatalogParity(ctx context.Context, src catalog.RowSource) (CatalogPar
 // LiteralRows — каталог, каким его объявляет ЛИТЕРАЛ: тот же перечень, которым
 // миграция посеяла строки и с которым их сверяет страж выше.
 //
-// Производитель перечня ОДИН (`authzmap.CatalogSeed*` + `domain.KnownModules`), и
-// зовут его отсюда трое: посев миграции, гейт паритета дерева и этот страж.
+// Производитель перечня ОДИН (`authzmap.CatalogSeed*`, все три половины), и зовут
+// его отсюда трое: посев миграции, гейт паритета дерева и этот страж. До #1927
+// модульную половину давал отдельный литерал домена — второе место об одном
+// предмете, за согласием которого следил отдельный гейт дрейфа; теперь она
+// выводится из того же `objectTypes`, что и ресурсы.
 // Второй производитель разошёлся бы с первым молча — ровно в тот момент, когда
 // расхождение и опасно.
 //
@@ -149,7 +151,7 @@ func AssertCatalogParity(ctx context.Context, src catalog.RowSource) (CatalogPar
 // стороны сверки обязаны быть выражены одинаково, иначе сравнение начинает
 // зависеть от того, кто как разложил свою сторону.
 func LiteralRows() catalog.Rows {
-	rows := catalog.Rows{Modules: domain.KnownModules()}
+	rows := catalog.Rows{Modules: authzmap.CatalogSeedModules()}
 	for _, r := range authzmap.CatalogSeedResources() {
 		rows.Resources = append(rows.Resources, catalog.ResourceRow{Module: r.Module, Resource: r.Resource})
 	}

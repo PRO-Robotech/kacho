@@ -72,7 +72,9 @@ type Role struct {
 // design and must be accepted. The ≥1 floor is retained for the LEGACY
 // permissions-only path (no Rules) so a degenerate legacy role with an
 // empty set cannot exist.
-func (r Role) Validate() error {
+// `modules` — набор модулей платформы, каким его знает вызывающий: правило роли
+// называет модуль, а домен закрытого набора не объявляет (module_set.go).
+func (r Role) Validate(modules ModuleSet) error {
 	var errs error
 	// Имя судится ПО ЯРУСУ: ограничений в таблице два, и каждое условлено
 	// вычисляемым `is_system`. Ярус берётся оттуда же, откуда его берёт база, —
@@ -82,7 +84,7 @@ func (r Role) Validate() error {
 	errs = multierr.Append(errs, r.Description.Validate())
 	errs = multierr.Append(errs, r.Labels.Validate())
 	if len(r.Rules) > 0 {
-		errs = multierr.Append(errs, r.Rules.Validate(PolicyOfRole(r.IsSystem, r.OwnerModule)))
+		errs = multierr.Append(errs, r.Rules.Validate(PolicyOfRole(r.IsSystem, r.OwnerModule), modules))
 		// Rules-role: the compiled set may legitimately be empty (label-only).
 		errs = multierr.Append(errs, r.Permissions.ValidateCompiled())
 	} else {

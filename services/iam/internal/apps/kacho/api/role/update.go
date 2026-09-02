@@ -172,10 +172,14 @@ func (u *UpdateRoleUseCase) Execute(ctx context.Context, in UpdateRoleInput) (*o
 	// change, recompile the INTERNAL permissions projection (anchor/names; matchLabels
 	// excluded; ≤1024 cap) and store both. permissions itself is immutable input
 	// (rejected in update_mask above).
+	// Набор модулей — ЖИВЫЕ строки каталога (#1927), тот же снимок, которым
+	// ниже строится проекция глаголов: обе стороны правила обязаны судиться
+	// согласованным множеством, а не двумя моментами времени.
+	facts := u.cat.Facts()
 	if in.Rules != nil && shared.MaskAllows(in.UpdateMask, "rules") {
 		// Validate the new rules first (specific cardinality/wildcard/feed errors),
 		// then compile (enforces the ≤1024 compiled-cap).
-		if verr := in.Rules.Validate(domain.PolicyOfRole(current.IsSystem, current.OwnerModule)); verr != nil {
+		if verr := in.Rules.Validate(domain.PolicyOfRole(current.IsSystem, current.OwnerModule), facts); verr != nil {
 			return nil, shared.MapValidationErr(verr)
 		}
 		// Grantable-token gate — parity with Create (see rules_catalog.go). An
@@ -199,7 +203,7 @@ func (u *UpdateRoleUseCase) Execute(ctx context.Context, in UpdateRoleInput) (*o
 		target.Labels = newLabels
 		changed = append(changed, "labels")
 	}
-	if err := target.Validate(); err != nil {
+	if err := target.Validate(facts); err != nil {
 		return nil, shared.MapValidationErr(err)
 	}
 

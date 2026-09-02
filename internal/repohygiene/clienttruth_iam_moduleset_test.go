@@ -12,8 +12,8 @@ func clientTruthIAMModuleSetOptions(t *testing.T) ClientTruthIAMModuleSetOptions
 	t.Helper()
 	return ClientTruthIAMModuleSetOptions{
 		Tree:          clientTruthRepoTree(t),
-		ModuleSetFile: "services/iam/internal/domain/module_set.go",
-		ModuleSetVar:  "knownModules",
+		ModuleSetFile: "services/iam/internal/authzmap/fga_types.go",
+		ModuleSetVar:  "objectTypes",
 		Surfaces:      []string{"services/iam/docs/content", "proto/kacho/cloud/iam"},
 		SurfaceExts:   []string{".mdx", ".md", ".proto"},
 	}
@@ -37,6 +37,10 @@ func TestClientTruthIAMModuleSetEnumerationsAreComplete(t *testing.T) {
 		t.Fatalf("модулей выведено %d — объявление набора не прочитано, судить не по чему",
 			census.Modules)
 	}
+	if census.TypeKeys < 20 {
+		t.Fatalf("ключей типа прочитано %d — таблица прочитана не вся, набор мог выйти неполным",
+			census.TypeKeys)
+	}
 	if census.SurfaceFiles < 20 {
 		t.Fatalf("файлов клиентской поверхности %d — обход пуст, вердикт беспредметен",
 			census.SurfaceFiles)
@@ -59,7 +63,7 @@ func TestClientTruthIAMModuleSetEnumerationsAreComplete(t *testing.T) {
 		"Модуль — то, чем клиент выражает грант (`Rule.module`). Перечень, назвавший меньше, "+
 		"чем принимает сервер, читается как «тонко выдать доступ к недостающему домену нельзя», "+
 		"а единственный выход при таком чтении — системная роль на весь уровень, то есть "+
-		"заведомое расширение доступа. Набор выводится из `domain.knownModules`; правьте "+
-		"перечень, а не набор.",
+		"заведомое расширение доступа. Набор выводится из приставок ключей "+
+		"`authzmap.objectTypes`; правьте перечень, а не набор.",
 		census.Modules, census.Enumerations, strings.Join(lines, "\n"))
 }

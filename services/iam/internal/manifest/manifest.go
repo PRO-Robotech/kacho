@@ -24,12 +24,25 @@
 //
 // # Почему загрузчик живёт внутри services/iam, а не в pkg/
 //
-// Манифест адресован iam (`apiVersion: iam/v1`), читает его iam, и закрытый
-// набор модулей принадлежит домену iam — `domain.IsKnownModule`. Из `pkg/` тот же
+// Манифест адресован iam (`apiVersion: iam/v1`), читает его iam, и набор модулей
+// платформы принадлежит iam — `authzmap.CatalogSeedModules()`. Из `pkg/` тот же
 // вызов не собирается (правило видимости `internal`), и загрузчику пришлось бы
 // нести ВТОРУЮ копию перечня модулей — ровно то, что запрещено абзацем выше.
 // Прод-читателей манифеста вне `services/iam` сегодня ноль; появится второй —
 // переезжает ФОРМА (структуры и разбор), а членство остаётся у iam.
+//
+// # Загрузчик спрашивает КАНОН, а не живые строки — и это решение (#1927)
+//
+// Ответов о членстве модуля два: «объявлен ли модуль платформой» (канон дерева) и
+// «жив ли он прямо сейчас» (строки `catalog_module`). Загрузчик берёт ПЕРВЫЙ, и
+// по той же причине, по которой он же берёт закрытую таблицу типов, а не канон
+// модели (см. typereferent.go): его зовут ТРОЕ, и двое из них — оснастка дерева
+// (`tools/modulemanifestcheck`, `modelrender.Sweep`), у которой базы нет by
+// construction. Сделать форму манифеста функцией чужого состояния значило бы
+// получать разный вердикт на одном и том же дереве.
+//
+// Живость модуля судится там, где она наблюдаема, — на пути запроса
+// (`catalog.Facts.IsKnownModule`); согласие двух ответов держит страж старта.
 //
 // # Два свойства, которые держатся ЗДЕСЬ, а не в валидаторе связности
 //
@@ -65,6 +78,7 @@ import (
 
 	"gopkg.in/yaml.v3"
 
+	"github.com/PRO-Robotech/kacho/services/iam/internal/authzmap"
 	"github.com/PRO-Robotech/kacho/services/iam/internal/domain"
 )
 
@@ -328,16 +342,17 @@ func (m *Manifest) validateEnvelope() error {
 			ErrUnsupportedAPIVersion, m.APIVersion, strings.Join(supportedAPIVersions, ", "))
 	}
 
+	// Набор БЕРЁТСЯ У ВЛАДЕЛЬЦА и выводится, а не выписывается. Своя копия
+	// перечня разошлась бы с ним молча — этот самый набор уже переживал такое,
+	// когда шестое имя добавили, а комментарий рядом остался при пяти.
+	canon := authzmap.CatalogSeedModules()
 	if m.Module == "" {
 		return fmt.Errorf("%w: the platform module set is closed: %s",
-			ErrModuleRequired, strings.Join(domain.KnownModules(), ", "))
+			ErrModuleRequired, strings.Join(canon, ", "))
 	}
-	// Набор БЕРЁТСЯ У ВЛАДЕЛЬЦА. Своя копия перечня разошлась бы с литералом
-	// молча — этот самый набор уже переживал такое, когда шестое имя добавили, а
-	// комментарий рядом остался при пяти.
-	if !domain.IsKnownModule(m.Module) {
+	if !domain.ModuleSetOf(canon...).IsKnownModule(m.Module) {
 		return fmt.Errorf("%w: got %q, the platform module set is closed: %s",
-			ErrUnknownModule, m.Module, strings.Join(domain.KnownModules(), ", "))
+			ErrUnknownModule, m.Module, strings.Join(canon, ", "))
 	}
 	return nil
 }

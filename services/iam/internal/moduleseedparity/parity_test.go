@@ -41,6 +41,7 @@ import (
 	"github.com/PRO-Robotech/kacho/internal/pgtest"
 	"github.com/PRO-Robotech/kacho/pkg/platformmodules"
 
+	"github.com/PRO-Robotech/kacho/services/iam/internal/authzmap"
 	"github.com/PRO-Robotech/kacho/services/iam/internal/domain"
 	"github.com/PRO-Robotech/kacho/services/iam/internal/manifest"
 	"github.com/PRO-Robotech/kacho/services/iam/internal/moduleseedparity"
@@ -177,7 +178,7 @@ func moduleStates(ctx context.Context, t *testing.T, root string) (
 	}
 	// Модуль закрытого набора, у которого живой посев есть, а манифеста нет,
 	// молчал бы иначе: его строки не попали бы ни в одно состояние.
-	for _, mod := range domain.KnownModules() {
+	for _, mod := range authzmap.CatalogSeedModules() {
 		if claimed[mod] || (len(saByOwner[mod]) == 0 && len(joinByOwner[mod]) == 0) {
 			continue
 		}
@@ -255,7 +256,7 @@ func ownerOfServiceAccount(name string) (string, bool) {
 		return "", false
 	}
 	module, ok := platformmodules.CatalogModuleOfService(service)
-	if !ok || !domain.IsKnownModule(module) {
+	if !ok || !domain.ModuleSetOf(authzmap.CatalogSeedModules()...).IsKnownModule(module) {
 		return "", false
 	}
 	return module, true

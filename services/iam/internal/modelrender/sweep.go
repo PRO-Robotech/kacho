@@ -167,7 +167,11 @@ func (f Finding) String() string {
 // снимке — два. Параметризуемый путь канона вернул бы тот же дефект первой же
 // правкой.
 func Sweep(resources []catalog.ResourceRow, root string, waivers []Waiver) (Census, []Finding, int) {
-	modules := domain.KnownModules()
+	// Набор модулей ВЫВОДИТСЯ из тех же строк ресурсов, которые обход и сверяет,
+	// а не спрашивается у второго источника (#1927). Так перепись не может
+	// разойтись с осмотренным: модуль без единой строки ресурса обходить нечем,
+	// а строка ресурса без модуля в наборе невыразима by construction.
+	modules := modulesOf(resources)
 	census := Census{ModulesInSet: len(modules)}
 	var findings []Finding
 
@@ -215,10 +219,11 @@ func Sweep(resources []catalog.ResourceRow, root string, waivers []Waiver) (Cens
 
 	// Ведомость судится ДО обхода: запись без номера и запись на модуль вне
 	// набора не имеют предмета независимо от того, что лежит в дереве.
+	known := domain.ModuleSetOf(modules...)
 	waived := make(map[string]Waiver, len(waivers))
 	for _, w := range waivers {
 		switch {
-		case !domain.IsKnownModule(w.Module):
+		case !known.IsKnownModule(w.Module):
 			findings = append(findings, Finding{Module: w.Module, Detail: fmt.Sprintf(
 				"запись ведомости на модуль вне закрытого набора платформы: обход его не обходит, " +
 					"и прощать ей нечего")})
@@ -500,4 +505,28 @@ func findManifests(treeRoot *os.Root, root string) (map[string]string, []string,
 	})
 	sort.Strings(unparsable)
 	return out, unparsable, err
+}
+
+// modulesOf — РАЗЛИЧНЫЕ модули строк ресурсов, отсортированно.
+//
+// Обход берёт набор здесь, а не у второго источника: строки приходят
+// параметром — той же левой стороной паритета, из которой посеян каталог, — и
+// вывести набор из них значит сделать перепись `ModulesInSet` утверждением о
+// ТОМ ЖЕ множестве, которое обход и сверяет. Второй источник разошёлся бы с
+// первым молча, и разошёлся бы ровно в сторону «модуль есть, а сверять у него
+// нечего».
+func modulesOf(resources []catalog.ResourceRow) []string {
+	seen := make(map[string]struct{}, 8)
+	for _, r := range resources {
+		if r.Module == "" {
+			continue
+		}
+		seen[r.Module] = struct{}{}
+	}
+	out := make([]string, 0, len(seen))
+	for m := range seen {
+		out = append(out, m)
+	}
+	sort.Strings(out)
+	return out
 }

@@ -88,7 +88,12 @@ func (r Rule) Arm() Arm {
 // than by a boolean "system context": the module tier needs a THIRD policy, not
 // a second boolean (see rule_policy.go). Errors carry the stable texts so the
 // API contract is preserved.
-func (r Rule) Validate(policy RulePolicy) error {
+//
+// `modules` — НАБОР МОДУЛЕЙ, каким его знает вызывающий (см. module_set.go).
+// Он приходит параметром, потому что домен закрытого набора не объявляет: на
+// пути запроса это ЖИВЫЕ строки каталога, у оснастки дерева — канон. Отсутствие
+// набора отвергается самой строгой ветвью: «не знаю» не есть «можно».
+func (r Rule) Validate(policy RulePolicy, modules ModuleSet) error {
 	var errs error
 
 	// resource_names XOR match_labels.
@@ -99,7 +104,7 @@ func (r Rule) Validate(policy RulePolicy) error {
 
 	// module — scalar: required + grammar + closed-set membership +
 	// wildcard system-only.
-	errs = multierr.Append(errs, validateModule(r.Module, policy))
+	errs = multierr.Append(errs, validateModule(r.Module, policy, modules))
 	// element lists — non-empty + cardinality + token grammar.
 	errs = multierr.Append(errs, validateRuleList("resources", r.Resources, ruleResRe, r.Module, policy))
 	errs = multierr.Append(errs, validateVerbs(r.Verbs))
@@ -203,7 +208,7 @@ func (r Rule) hasAnyWildcard() bool {
 
 // validateModule validates the scalar module: required non-empty,
 // grammar (ruleModuleRe) OR wildcard `*`, and — when grammar-valid and not `*` —
-// membership in the closed platform module-set (IsKnownModule). The wildcard `*`
+// membership in the platform module-set supplied by the caller. The wildcard `*`
 // is available to the PLATFORM policy only: a tenant role never had it, and a
 // module-owned role cannot have it either, because `*` is in no module and
 // "within my own module" is inexpressible for it. Errors carry the stable texts
@@ -213,7 +218,7 @@ func (r Rule) hasAnyWildcard() bool {
 // is checked independently by Validate, so the two-text case (module:"*" +
 // selector in a custom role) still surfaces BOTH texts via Validate's multierr
 // accumulation.
-func validateModule(module string, policy RulePolicy) error {
+func validateModule(module string, policy RulePolicy, modules ModuleSet) error {
 	if module == "" {
 		return fmt.Errorf("Illegal argument module (must be non-empty)")
 	}
@@ -226,7 +231,14 @@ func validateModule(module string, policy RulePolicy) error {
 	if !ruleModuleRe.MatchString(module) {
 		return fmt.Errorf("Illegal argument module (invalid token %q)", module)
 	}
-	if !IsKnownModule(module) {
+	// Набор НЕ ПРОВЯЗАН — отказ, а не пропуск. Отдельный текст, а не общий
+	// «unknown module»: последний сказал бы арендатору, что виноват его вход,
+	// тогда как виновата провязка, и следующий шаг у этих двух разный.
+	if modules == nil {
+		return fmt.Errorf(
+			"Illegal argument module (platform module set was not supplied to rule validation)")
+	}
+	if !modules.IsKnownModule(module) {
 		return fmt.Errorf("Illegal argument module (unknown module '%s')", module)
 	}
 	return nil
@@ -322,8 +334,9 @@ type Rules []Rule
 // Validate validates the rule set: cardinality 1..64; each rule self-valid.
 //
 // The policy is a single value derived from the row by [PolicyOfRole]; see
-// rule_policy.go for why there are three of them and not two.
-func (rs Rules) Validate(policy RulePolicy) error {
+// rule_policy.go for why there are three of them and not two. `modules` —
+// набор модулей вызывающего, см. module_set.go.
+func (rs Rules) Validate(policy RulePolicy, modules ModuleSet) error {
 	if len(rs) == 0 {
 		return fmt.Errorf("Illegal argument rules (must be non-empty)")
 	}
@@ -332,7 +345,7 @@ func (rs Rules) Validate(policy RulePolicy) error {
 	}
 	var errs error
 	for _, r := range rs {
-		errs = multierr.Append(errs, r.Validate(policy))
+		errs = multierr.Append(errs, r.Validate(policy, modules))
 	}
 	return errs
 }

@@ -46,7 +46,7 @@ func ruleOn(module string, resources ...string) domain.Rule {
 // бы, что подстановка доступна только системным ролям, про роль, которая ею
 // является.
 func TestIAMOM101_ModuleWildcardInAnOwnedRoleCarriesItsOwnText(t *testing.T) {
-	err := ruleOn("*", "network").Validate(domain.PolicyOfRole(true, "vpc"))
+	err := ruleOn("*", "network").Validate(domain.PolicyOfRole(true, "vpc"), fixtureModules())
 	if err == nil {
 		t.Fatal("подстановка модуля в роли с владельцем принята — послабление осталось " +
 			"следствием кластерного якоря")
@@ -69,7 +69,7 @@ func TestIAMOM101_ModuleWildcardInAnOwnedRoleCarriesItsOwnText(t *testing.T) {
 // Без него отрицание выше зеленело бы на политике, отвергающей ВСЯКУЮ
 // подстановку, — то есть на отзыве уже выданного.
 func TestIAMOM102_ResourceWildcardInsideTheOwningModulePasses(t *testing.T) {
-	if err := ruleOn("vpc", "*").Validate(domain.PolicyOfRole(true, "vpc")); err != nil {
+	if err := ruleOn("vpc", "*").Validate(domain.PolicyOfRole(true, "vpc"), fixtureModules()); err != nil {
 		t.Fatalf("подстановка ресурса В СВОЁМ модуле отвергнута: %v", err)
 	}
 }
@@ -79,7 +79,7 @@ func TestIAMOM102_ResourceWildcardInsideTheOwningModulePasses(t *testing.T) {
 // Текст обязан назвать ОБА значения: без второго автор не знает, какое из двух
 // менять — владельца роли или модуль правила.
 func TestIAMOM103_ResourceWildcardOutsideTheOwningModuleNamesBothValues(t *testing.T) {
-	err := ruleOn("compute", "*").Validate(domain.PolicyOfRole(true, "vpc"))
+	err := ruleOn("compute", "*").Validate(domain.PolicyOfRole(true, "vpc"), fixtureModules())
 	if err == nil {
 		t.Fatal("подстановка ресурса при ЧУЖОМ модуле принята")
 	}
@@ -105,7 +105,7 @@ func TestIAMOM104_VerbWildcardIsNotNarrowed(t *testing.T) {
 		{"арендаторская", domain.TenantPolicy()},
 	} {
 		r := domain.Rule{Module: "vpc", Resources: []string{"network"}, Verbs: []string{"*"}}
-		if err := r.Validate(p.policy); err != nil {
+		if err := r.Validate(p.policy, fixtureModules()); err != nil {
 			t.Errorf("%s политика сузила глагол `*`: %v", p.name, err)
 		}
 	}
@@ -117,7 +117,7 @@ func TestIAMOM104_VerbWildcardIsNotNarrowed(t *testing.T) {
 // отзывом уже выданного и сделало бы применённую миграцию невоспроизводимой.
 func TestIAMOM105_PlatformRoleKeepsItsRelaxation(t *testing.T) {
 	r := domain.Rule{Module: "*", Resources: []string{"*"}, Verbs: []string{"*"}}
-	if err := r.Validate(domain.PolicyOfRole(true, "")); err != nil {
+	if err := r.Validate(domain.PolicyOfRole(true, ""), fixtureModules()); err != nil {
 		t.Fatalf("платформенная роль потеряла послабление — это отзыв уже выданного: %v", err)
 	}
 }
@@ -134,7 +134,7 @@ func TestIAMOM117_TenantTextsDoNotMove(t *testing.T) {
 		{ruleOn("*", "network"), "Illegal argument module (wildcard '*' is system-only)"},
 		{ruleOn("vpc", "*"), "Illegal argument resources (wildcard '*' is system-only)"},
 	} {
-		err := c.rule.Validate(domain.TenantPolicy())
+		err := c.rule.Validate(domain.TenantPolicy(), fixtureModules())
 		if err == nil {
 			t.Fatalf("арендаторская политика приняла подстановку: %+v", c.rule)
 		}
@@ -152,7 +152,7 @@ func TestIAMOM117_TenantTextsDoNotMove(t *testing.T) {
 // СВОДИТСЯ к арендаторскому: послабление выдаётся по доказанному признаку, а не
 // по частично совпавшему.
 func TestPolicyIsDerivedFromTheRowInOnePlace(t *testing.T) {
-	err := ruleOn("vpc", "*").Validate(domain.PolicyOfRole(false, "vpc"))
+	err := ruleOn("vpc", "*").Validate(domain.PolicyOfRole(false, "vpc"), fixtureModules())
 	if err == nil {
 		t.Fatal("сочетание «не системная, но с владельцем» получило послабление: " +
 			"признак совпал частично, а послабление выдано целиком")
@@ -175,10 +175,10 @@ func TestPolicyIsDerivedFromTheRowInOnePlace(t *testing.T) {
 // строгое, иначе забытая инициализация открывала бы подстановку молча.
 func TestZeroPolicyIsTheStrictestBranch(t *testing.T) {
 	var zero domain.RulePolicy
-	if err := ruleOn("*", "network").Validate(zero); err == nil {
+	if err := ruleOn("*", "network").Validate(zero, fixtureModules()); err == nil {
 		t.Fatal("нулевая политика приняла подстановку модуля")
 	}
-	if err := ruleOn("vpc", "*").Validate(zero); err == nil {
+	if err := ruleOn("vpc", "*").Validate(zero, fixtureModules()); err == nil {
 		t.Fatal("нулевая политика приняла подстановку ресурса")
 	}
 }
