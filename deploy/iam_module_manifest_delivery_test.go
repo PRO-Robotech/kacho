@@ -194,7 +194,9 @@ func readManifestDeliveryDecls(t *testing.T) manifestDeliveryDecls {
 	t.Helper()
 	read := func(rel string) string {
 		p := filepath.Join(repoRoot, "deploy", iamChartDir, rel)
-		raw, err := os.ReadFile(p) //nolint:gosec // путь собран из констант этого файла
+		// #nosec G304 -- путь собран из констант ЭТОГО файла (repoRoot, iamChartDir
+		// и перечень rel), подставить посторонний файл извне нечем.
+		raw, err := os.ReadFile(p)
 		if err != nil {
 			t.Fatalf("%s: объявление не прочитано: %v — непрочитанное есть НАХОДКА, "+
 				"а не «проверять нечего»", p, err)
