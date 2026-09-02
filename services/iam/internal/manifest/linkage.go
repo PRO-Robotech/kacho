@@ -87,9 +87,13 @@ var (
 	// ErrRelationRecipientKind — объявление отношения не принимает получателя
 	// названного вида. Судится по канону, а не по второму перечню.
 	ErrRelationRecipientKind = errors.New("manifest: relation does not admit this recipient kind")
-	// ErrRelationAnchor — выдача отношением объявлена не на кластерном якоре.
-	// Выдачи ролью НЕ касается: её якорь — предмет задачи продукта #1953.
-	ErrRelationAnchor = errors.New("manifest: relation grant is anchored outside the cluster")
+	// ErrBindingAnchor — выдача посева объявлена не на кластерном singleton'е.
+	//
+	// Вид называет ВЫДАЧУ, а не форму выдачи: якорь есть свойство самой выдачи,
+	// и обе её формы — роль и отношение — судятся им одинаково (#1953). Прежнее
+	// имя (`ErrRelationAnchor`) и его оговорка «выдачи ролью не касается» были
+	// верны ровно до этой работы и стали бы ложью, пережившей свой предмет.
+	ErrBindingAnchor = errors.New("manifest: seed access binding is anchored outside the cluster singleton")
 	// ErrCanonUnparsed — канон модели прав не разобрался, и судить об отношении
 	// нечем. Отдельный вид от ErrRelationNotDeclared: «не объявляет» есть
 	// вердикт о модели, а здесь модели нет вовсе, и уверенный вердикт по
@@ -362,6 +366,13 @@ func validateSeedLinkage(m *Manifest, doc *yaml.Node, roles roleIDs) (LinkageCen
 		// однобоким (#1936).
 		faults = append(faults, validateGrantForm(doc, i, b)...)
 
+		// Якорь судится ПО ЗНАЧЕНИЮ и ОДНИМ судьёй на обе формы выдачи: он есть
+		// свойство самой выдачи, а не того, чем она наделяет (#1953). Тип
+		// объекта разбирается здесь один раз и отдаётся канону ниже — второго
+		// резолва того же значения в дереве нет.
+		anchorObjectType, anchorUsable, anchorFaults := validateGrantAnchor(doc, i, b)
+		faults = append(faults, anchorFaults...)
+
 		for _, need := range []struct{ key, value, why string }{
 			{"scopeType", b.ScopeType, "выдача не сказала, на каком ярусе она действует"},
 			{"scopeId", b.ScopeID, "выдача не сказала, на каком объекте яруса она действует"},
@@ -436,7 +447,14 @@ func validateSeedLinkage(m *Manifest, doc *yaml.Node, roles roleIDs) (LinkageCen
 
 		// Канон спрашивается ПОСЛЕДНИМ и только у формы отношения: у формы роли
 		// предмета нет — роль раздаёт глаголы своими правилами.
-		faults = append(faults, validateRelationGrant(doc, i, b, seededSubjects)...)
+		//
+		// Непригодный якорь канон не спрашивает: тип объекта, у которого
+		// спрашивать, даёт именно он. Спросить всё равно значило бы выдать
+		// второй отказ за одну ошибку — и отправить автора чинить отношение
+		// там, где неверен якорь.
+		if anchorUsable {
+			faults = append(faults, validateRelationGrant(doc, i, b, anchorObjectType, seededSubjects)...)
+		}
 	}
 
 	for i, sa := range seed.ServiceAccounts {
