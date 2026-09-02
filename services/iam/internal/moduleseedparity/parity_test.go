@@ -140,6 +140,18 @@ func TestModuleManifestDeclaresTheSeedTheLiveBaseHolds(t *testing.T) {
 // утверждение о дереве, и оно обязано истечь само: появится ключ — эта проба
 // покраснеет и потребует научить предикат [moduleseedparity.Binding.ExpressibleByForm]
 // новому ключу, а не оставит слепую зону молча.
+//
+// # Половина основания здесь ВТОРАЯ, и одной этой пробы НЕ ДОСТАТОЧНО
+//
+// Ключ отношения сам по себе живые строки объявимыми не делает. §3.5 приёмки-
+// основания (APPROVED) объявляет получателем
+// преднастроенной выдачи ТОЛЬКО группу, а обе живые строки наделяют СЛУЖЕБНУЮ
+// ЗАПИСЬ отношением, которое членства группы не принимает. Поэтому предписание
+// «объявите эти строки в манифестах их модулей» исполнимо лишь вместе с
+// решением о ТИПЕ ПОЛУЧАТЕЛЯ (§10 п. 6 той же приёмки). Приёмка —
+// `services/iam/docs/engineering/acceptance/module-manifest-roles-and-seed-grants.md`.
+// Вторую половину стережёт `TestRelationGrantRecipientTypeMustBeDecidedWithTheKey`
+// (recipient_test.go): она читает канон модели, а не память.
 func TestBindingFormStillCannotExpressARelationGrant(t *testing.T) {
 	keys := yamlKeysOf(reflect.TypeOf(manifest.AccessBinding{}))
 	require.NotEmpty(t, keys, "у формы выдачи не прочитано ни одного ключа — разбор тегов сломан")
@@ -151,7 +163,10 @@ func TestBindingFormStillCannotExpressARelationGrant(t *testing.T) {
 				"посева по-прежнему выводит такие строки из-под вердикта пометкой «ВНЕ "+
 				"ВЕРДИКТА». Научите предикат Binding.ExpressibleByForm новому ключу, объявите "+
 				"эти строки в манифестах их модулей — и снимите эту пробу вместе с её "+
-				"предметом (#1891, #1936)", k)
+				"предметом (#1891, #1936). ОДНОГО ключа мало: §3.5 приёмки-основания даёт "+
+				"преднастроенной выдаче получателем только ГРУППУ, а обе живые строки наделяют "+
+				"служебную запись отношением, которое членства группы не принимает — см. "+
+				"TestRelationGrantRecipientTypeMustBeDecidedWithTheKey", k)
 	}
 	require.Containsf(t, keys, "roleId",
 		"у выдачи пропал ключ roleId — основание границы сверки описывает форму, которой "+
