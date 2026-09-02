@@ -44,7 +44,7 @@ const (
 // helpers).
 //
 // **Subject binding** — every RPC takes a subject identifier in the form
-// `user:<usr_xxx>` / `service_account:<sva_xxx>` / `group:<grp_xxx>#member`.
+// `user:<usr…>` / `service_account:<sva…>` / `group:<grp…>#member`.
 // **Who may ask about whom is decided HERE, in this service, not at the
 // api-gateway.** The edge authenticates the caller and stops: the subject and the
 // queried resource arrive as request fields (the resource as a nested
@@ -216,7 +216,7 @@ func (c *authorizeServiceClient) WhoAmI(ctx context.Context, in *WhoAmIRequest, 
 // helpers).
 //
 // **Subject binding** — every RPC takes a subject identifier in the form
-// `user:<usr_xxx>` / `service_account:<sva_xxx>` / `group:<grp_xxx>#member`.
+// `user:<usr…>` / `service_account:<sva…>` / `group:<grp…>#member`.
 // **Who may ask about whom is decided HERE, in this service, not at the
 // api-gateway.** The edge authenticates the caller and stops: the subject and the
 // queried resource arrive as request fields (the resource as a nested

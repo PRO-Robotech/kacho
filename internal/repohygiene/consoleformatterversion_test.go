@@ -241,6 +241,11 @@ type consolePackageFacts struct {
 	DeclaredPrettier string
 	LockedPrettier   []string
 	HasLock          bool
+	// DependencyNames — имена ОБЪЯВЛЕННЫХ зависимостей пакета (dependencies +
+	// devDependencies). Нужны соседним гейтам консоли, чтобы признак «пакет
+	// настраивает такой-то инструмент» читался ИЗ ДЕРЕВА, а не из выписанного
+	// перечня модулей, который разошёлся бы с деревом молча.
+	DependencyNames []string
 }
 
 // scanConsolePackages — обход каталога консоли. Возвращает факты по КАЖДОМУ
@@ -272,6 +277,13 @@ func scanConsolePackages(t *testing.T, uiRoot string) []consolePackageFacts {
 			t.Fatalf("не разобран package.json пакета %s", e.Name())
 		}
 		f := consolePackageFacts{Name: e.Name(), Scripts: pkg.Scripts}
+		for name := range pkg.Dependencies {
+			f.DependencyNames = append(f.DependencyNames, name)
+		}
+		for name := range pkg.DevDependencies {
+			f.DependencyNames = append(f.DependencyNames, name)
+		}
+		sort.Strings(f.DependencyNames)
 		if _, statErr := os.Stat(filepath.Join(dir, "tsconfig.json")); statErr == nil {
 			f.HasTSConfig = true
 		}

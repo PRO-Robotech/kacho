@@ -551,11 +551,43 @@ type ListAccessBindingsRequest struct {
 	// only through the legacy `ListByAccount`/`ListByRole`, i.e. the recommended
 	// path could not show what the deprecated paths could. Semantics and default
 	// are identical to those two (isomorphic), and it composes with `filter`
-	// (e.g. `filter=subject="usr-…"` + `include_revoked=true` audits one subject's
+	// (e.g. `filter=subject="usr…"` + `include_revoked=true` audits one subject's
 	// revoked grants).
 	IncludeRevoked bool `protobuf:"varint,4,opt,name=include_revoked,json=includeRevoked,proto3" json:"include_revoked,omitempty"`
-	unknownFields  protoimpl.UnknownFields
-	sizeCache      protoimpl.SizeCache
+	// Optional: narrow the page to the bindings that lie in the scope of ONE
+	// account — those attached to the account itself PLUS those attached to every
+	// project of that account. Empty means "do not narrow" and is a legal input;
+	// it is NOT "an account whose id is the empty string".
+	//
+	// WHY A FIELD AND NOT A FILTER KEY. `filter` carries exactly ONE predicate,
+	// and the question this answers — "what does THIS subject hold in THIS
+	// account" — needs two axes at once. The dedicated field composes with
+	// `filter` and with `include_revoked`, which is the same shape already chosen
+	// once for `include_revoked` above:
+	//
+	//	GET /iam/v1/accessBindings?filter=subject%3D%22usr…%22&accountId=acc…
+	//
+	// WHY IT IS NOT `scopeId`. `scopeId` matches the row's `resource_id`, so
+	// `scope="iam.account"` + `scopeId="<acct>"` returns the bindings attached to
+	// the account ITSELF and none of those on its projects. That is a different
+	// answer, not a narrower one — this field carries the account⇒child-project
+	// fan-out, the one thing `List` could not reproduce and the sole stated reason
+	// the deprecated `ListByAccount` was still being retained.
+	//
+	// IT NARROWS, IT NEVER WIDENS. The field is applied as a row predicate AFTER
+	// the admission decision, which it does not touch: the permission-catalog entry
+	// for `List` is unchanged, and every row still passes the same per-object read
+	// verdict. Naming an account the caller has nothing to do with therefore yields
+	// an EMPTY page — never PERMISSION_DENIED and never NOT_FOUND, so the reply
+	// cannot be used to probe whether an account exists. A well-formed id of a
+	// non-existent account answers byte-identically to one of a foreign account.
+	//
+	// A malformed id, or a well-formed id carrying another resource's prefix, is
+	// rejected synchronously with INVALID_ARGUMENT — by the same producer, with
+	// the same message, that `ListByAccount` uses on its own `account_id`.
+	AccountId     string `protobuf:"bytes,5,opt,name=account_id,json=accountId,proto3" json:"account_id,omitempty"`
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
 }
 
 func (x *ListAccessBindingsRequest) Reset() {
@@ -614,6 +646,13 @@ func (x *ListAccessBindingsRequest) GetIncludeRevoked() bool {
 		return x.IncludeRevoked
 	}
 	return false
+}
+
+func (x *ListAccessBindingsRequest) GetAccountId() string {
+	if x != nil {
+		return x.AccountId
+	}
+	return ""
 }
 
 type ListAccessBindingsByScopeRequest struct {
@@ -1112,7 +1151,7 @@ type ListSubjectPrivilegesRequest struct {
 	// (`derivation=GROUP`, `via_group_id` называет группу). Для "group" ответ —
 	// гранты самой группы (DIRECT); группы не вкладываются друг в друга.
 	SubjectType string `protobuf:"bytes,1,opt,name=subject_type,json=subjectType,proto3" json:"subject_type,omitempty"`
-	// ID subject'а (User id `usr-…` / ServiceAccount id `sva-…`).
+	// ID subject'а (User id `usr…` / ServiceAccount id `sva…`).
 	SubjectId string `protobuf:"bytes,2,opt,name=subject_id,json=subjectId,proto3" json:"subject_id,omitempty"`
 	// The maximum number of results per page to return. Default value: 50,
 	// max 1000.
@@ -1244,9 +1283,9 @@ func (x *ListSubjectPrivilegesResponse) GetNextPageToken() string {
 // данных и никаких condition/builtin_condition-internals (вне scope v1).
 type SubjectPrivilege struct {
 	state protoimpl.MessageState `protogen:"open.v1"`
-	// ID of the underlying AccessBinding (`acb-…`).
+	// ID of the underlying AccessBinding (`acb…`).
 	BindingId string `protobuf:"bytes,1,opt,name=binding_id,json=bindingId,proto3" json:"binding_id,omitempty"`
-	// ID of the Role granted (`rol-…`).
+	// ID of the Role granted (`rol…`).
 	RoleId string `protobuf:"bytes,2,opt,name=role_id,json=roleId,proto3" json:"role_id,omitempty"`
 	// Human-readable Role name, resolved server-side (output-only; empty for a
 	// dangling/deleted role).
@@ -1594,7 +1633,7 @@ func (x *ListAssignableRolesResponse) GetNextPageToken() string {
 // predicate domain, so the client never computes scope.
 type AssignableRole struct {
 	state protoimpl.MessageState `protogen:"open.v1"`
-	// ID of the Role (`rol-…`).
+	// ID of the Role (`rol…`).
 	RoleId string `protobuf:"bytes,1,opt,name=role_id,json=roleId,proto3" json:"role_id,omitempty"`
 	// Human-readable Role name, resolved server-side (no separate
 	// `GET /roles/{id}` round-trip needed).
@@ -1686,7 +1725,7 @@ func (x *AssignableRole) GetCreatedAt() *timestamppb.Timestamp {
 
 type ListAccessBindingsByRoleRequest struct {
 	state protoimpl.MessageState `protogen:"open.v1"`
-	// ID of the Role whose bindings are listed (`rol-…`). Audit "who holds role
+	// ID of the Role whose bindings are listed (`rol…`). Audit "who holds role
 	// R". Malformed id → INVALID_ARGUMENT.
 	RoleId string `protobuf:"bytes,1,opt,name=role_id,json=roleId,proto3" json:"role_id,omitempty"`
 	// The maximum number of results per page to return. Default value: 50,
@@ -2004,13 +2043,15 @@ const file_kacho_cloud_iam_v1_access_binding_service_proto_rawDesc = "" +
 	"\x06labels\x18\x04 \x03(\v2:.kacho.cloud.iam.v1.UpdateAccessBindingRequest.LabelsEntryR\x06labels\x1a9\n" +
 	"\vLabelsEntry\x12\x10\n" +
 	"\x03key\x18\x01 \x01(\tR\x03key\x12\x14\n" +
-	"\x05value\x18\x02 \x01(\tR\x05value:\x028\x01\"\x98\x01\n" +
+	"\x05value\x18\x02 \x01(\tR\x05value:\x028\x01\"\xb7\x01\n" +
 	"\x19ListAccessBindingsRequest\x12\x1b\n" +
 	"\tpage_size\x18\x01 \x01(\x03R\bpageSize\x12\x1d\n" +
 	"\n" +
 	"page_token\x18\x02 \x01(\tR\tpageToken\x12\x16\n" +
 	"\x06filter\x18\x03 \x01(\tR\x06filter\x12'\n" +
-	"\x0finclude_revoked\x18\x04 \x01(\bR\x0eincludeRevoked\"\xde\x01\n" +
+	"\x0finclude_revoked\x18\x04 \x01(\bR\x0eincludeRevoked\x12\x1d\n" +
+	"\n" +
+	"account_id\x18\x05 \x01(\tR\taccountId\"\xde\x01\n" +
 	" ListAccessBindingsByScopeRequest\x12#\n" +
 	"\rresource_type\x18\x01 \x01(\tR\fresourceType\x12\x1f\n" +
 	"\vresource_id\x18\x02 \x01(\tR\n" +

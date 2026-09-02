@@ -225,6 +225,77 @@ def js_comment(value: str) -> str:
     return text.replace("\u2028", "\\u2028").replace("\u2029", "\\u2029")
 
 
+
+# _NAME_OK — годная форма имени в порождаемом скрипте. Объявление одно:
+# см. «ОБЪЯВЛЕНИЕ ТОЖЕ ОДНО» в шапке `js_name` ниже.
+_NAME_OK = re.compile(r"\A[A-Za-z0-9_]+\Z")
+
+
+def js_name(value: str, *, where: str) -> str:
+    r"""ИМЯ вызывающего внутри порождаемого скрипта (#1220).
+
+    Здесь вызывающий даёт не текст и не код, а ИМЯ — идентификатор порождаемой
+    переменной либо ключ переменной прогона (`pm.environment.get('_ck_…')`).
+
+    ПОЧЕМУ ИСХОДА «ЭКРАНИРОВАТЬ» НЕТ. Литерал закрывается сериализатором:
+    значение остаётся значением, меняется лишь его запись. Имя так закрыть
+    нельзя — оно либо годно как имя, либо порождаемый файл не разбирается вовсе.
+    А там, где значение — лишь ЧАСТЬ имени, сериализатор хуже отказа: он вернёт
+    разбираемый скрипт с ДРУГИМ именем, и тот, кто имя пишет, разойдётся с тем,
+    кто его читает.
+
+    ТОТ ЖЕ КЛЮЧ ПИШЕТСЯ И ВНЕ JavaScript. Соседние шаги подставляют это же имя в
+    адрес (`/operations/{{_…RevOp}}`), а адрес — не JavaScript: сериализатор
+    строки там неприменим by construction. Экранировать одну сторону и не
+    экранировать другую значит развести писателя и читателя МОЛЧА.
+
+    ПОЧЕМУ ЭТО НЕ ВИДНО В ВЕРДИКТЕ. Негодное имя ломает не текст, а СИНТАКСИС
+    порождаемого файла, которого автор значения не видит. newman пишет отказ
+    разбора в `testScripts`, а НЕ в `assertions.failed`: шаг с неразобранным
+    скриптом даёт НОЛЬ упавших утверждений и отчитывается зелёным по этой
+    величине. Третья категория исхода, зачтённая в «прошло».
+
+    ВЫВОДИТЬ ИМЯ ИЗ ПРОЗЫ — не исход, и это измерено, а не предположено. Шов
+    storage собирал ключ из подписи шага, отображая `-` в `_`; отображение
+    неоднозначно, поэтому подписи `tuple-present-vol` и `tuple_present_vol`
+    давали ОДИН ключ, а скрипт при этом разбирался. Такую подстановку снимают, а
+    не чинят переводом: имя выводится из значения, которое именем УЖЕ является.
+
+    Годное имя возвращается ДОСЛОВНО: помощник ничего не переписывает, кроме
+    объявленного перевода, поэтому его появление на шве байт в байт сохраняет
+    порождаемую коллекцию.
+
+    ЧЕМ ДЕРЖИТСЯ. Проба
+    `services/iam/tests/newman/scripts/js_name_position_test.py` — одна на все
+    генераторы: перепись по дереву (каждая подстановка в позицию имени несёт
+    ЗАПИСАННЫЙ исход), инъекция негодным именем (обязана упасть, назвав место) и
+    положительный контроль законным (обязан пройти молча и остаться ДОСЛОВНЫМ).
+
+    ОБЪЯВЛЕНИЕ ТОЖЕ ОДНО, И ЭТО ПРИШЛОСЬ ЧИНИТЬ ОТДЕЛЬНО (задача #1790). Прежде
+    строка выше говорила «одна на все генераторы» про ПРОБУ, а сам помощник
+    лежал побайтовым форком в двух генераторах — утверждение было истинно про
+    проверку и ложно про то, о чём читатель подумает. Форк помощников в этом
+    дереве уже стоил задачи: копий было четыре, каждая несла СВОЮ починку, и
+    расхождение обнаружилось лишь тем, что одна проба ждала иначе другой.
+    Теперь объявление живёт здесь, рядом с `js_str` и `js_comment`, а
+    единственность держит гейт `TestNewmanSharedHelperIsDeclaredOnce`
+    (`internal/repohygiene/artifactgates/newmansharedhelpers_test.go`): имя,
+    объявленное и здесь, и в генераторе набора, — находка.
+    """
+    if not isinstance(value, str) or value == "":
+        raise ValueError(
+            f"{where}: имя пусто. Пустое имя даёт ключ, склеенный с соседним"
+            f" текстом, — переменную, которую никто не читает, и молчаливый"
+            f" пропуск утверждения вместо отказа")
+    if not _NAME_OK.match(value):
+        bad = sorted({ch for ch in value if not _NAME_OK.match(ch)})
+        raise ValueError(
+            f"{where}: {value!r} именем быть не может — знаки {bad!r} вне"
+            f" [A-Za-z0-9_]. Экранировать имя нельзя: оно либо годно, либо"
+            f" порождаемый скрипт не разбирается, а newman запишет это в"
+            f" testScripts и отчитается НУЛЁМ упавших утверждений")
+    return value
+
 def _strip_js_comments(src: str) -> str:
     """Снять `//`-хвосты и `/* */`-блоки, не трогая строковые литералы.
 
@@ -1659,6 +1730,80 @@ def retry_until_authorized(step, budget: int, interval_ms: int,
     # name repeats would otherwise jump the retry to an earlier same-named step — the
     # exact hazard poll_operation_until_done avoids via its unique poll-op-<n> name.
     return replace(step, name=f"{step.name}-rya{_RYA_SEQ[0]}",
+                   test_script=guard + list(step.test_script))
+
+
+def retry_until_present(step, id_env_var, budget: int, interval_ms: int, ledger=None):
+    """ОКНО ЗАДАЁТ НАБОР, ТЕЛО — ОБЩЕЕ. Зеркало `retry_until_authorized` для
+    СПИСОЧНОГО чтения: там ждут код отказа, здесь — появление своей строки в теле
+    ответа `200`.
+
+    Три копии этой функции (compute · nlb · vpc) разошлись по ТРЁМ осям, и две из
+    трёх были расхождением ПО СУЩЕСТВУ — то есть каждая копия несла починку,
+    которой у двух других не было:
+
+      * ЧИСЛО ОЖИДАЕМЫХ ИМЁН. Две копии принимали ОДНО имя переменной и ждали
+        появления ОДНОЙ строки; третья принимает список и ждёт появления ВСЕХ.
+        Это починка реального дефекта, а не вкус: кейс, утверждающий «все три на
+        странице», ждал появления ПЕРВОЙ и падал на второй — она ещё
+        материализовалась. Общая форма — список; одно имя остаётся законным
+        входом и даёт ТО ЖЕ поведение (`every` над списком из одного).
+      * ВЕДОМОСТЬ ИСЧЕРПАНИЯ (`ledger`). Одна копия разводила «бюджет исчерпан» и
+        «бюджет не понадобился», две — нет, и у них оба исхода выглядели
+        одинаково: никак. Названа полем, как у `retry_until_authorized`, а не
+        вшита в тело.
+      * ВЕЛИЧИНА ОКНА (50×600 против 25×500) — решение НАБОРА, а не общего слоя
+        (#1379): путь материализации у доменов разный. Поэтому окно здесь —
+        ОБЯЗАТЕЛЬНЫЙ аргумент без умолчания: умолчание в общем слое молча стало бы
+        решением за всех, а шапки трёх копий величину уже называли ПРОЗОЙ и уже
+        разошлись с подписью. Здесь величина не называется прозой вовсе — она
+        приходит аргументом и видна на вызове.
+
+    Bounded retry a LIST step until the caller's OWN fresh resource id(s) appear in
+    the returned array (read-your-writes over the list-authz visibility window;
+    opgate removed -> owner-tuple eventual-consistency). The list returns 200 with
+    the id ABSENT until the tuple materializes, so retry_until_authorized (403/404)
+    does not apply -- we retry while an id is missing. Fail-open after budget: the
+    real assertion then runs once and FAILS if still absent (never masked, never
+    infinite).
+
+    Use ONLY on a list of the caller's OWN just-created resource. Do NOT wrap
+    negative / cross-account-deny / absent-id steps: a poll there would wait out
+    exactly the deny the step was written to observe.
+    """
+    want = [id_env_var] if isinstance(id_env_var, str) else list(id_env_var)
+    guard = [
+        "// bounded read-your-writes retry until own fresh id is present in the list",
+        "// (opgate removed -> eventual-consistency); retries SELF while id absent.",
+        "if (pm.environment.get('_lstRetryStarted') !== pm.info.requestName) {",
+        "  pm.environment.set('_lstRetryCount', '0');",
+        "  pm.environment.set('_lstRetryStarted', pm.info.requestName);",
+        "}",
+        "const _lrc = parseInt(pm.environment.get('_lstRetryCount') || '0', 10);",
+        "let _present = false;",
+        # УСЛОВИЕ ПОВТОРА ОБЯЗАНО СОВПАДАТЬ С УТВЕРЖДЕНИЕМ, а не быть у́же его:
+        # ждём появления ВСЕХ названных имён, а не первого из них.
+        "const _want = [" + ", ".join("pm.environment.get(%s)" % js_str(v) for v in want) + "];",
+        "try { const _arr = Object.values(pm.response.json()).find(v => Array.isArray(v)) || [];"
+        " const _have = _arr.map(x => x.id);"
+        " _present = _want.every(w => _have.includes(w)); } catch (e) {}",
+        f"if (pm.response.code === 200 && !_present && _lrc < {budget}) {{",
+        "  pm.environment.set('_lstRetryCount', String(_lrc + 1));",
+        f"  const _lrd = Date.now(); while (Date.now() - _lrd < {interval_ms}) {{ /* list-visibility wait */ }}",
+        "  pm.execution.setNextRequest(pm.info.requestName);",
+        "  return;",
+        "}",
+        # Добавка набора ПЕРЕД снятием счётчика — та же дисциплина, что у
+        # `retry_until_authorized`: без неё «исчерпан» и «не понадобился» неразличимы.
+        *(ledger("pm.response.code === 200 && !_present", "_lrc", budget) if ledger else ()),
+        "pm.environment.unset('_lstRetryCount');",
+        "pm.environment.unset('_lstRetryStarted');",
+    ]
+    _RYA_SEQ[0] += 1
+    # Уникальное имя — по той же причине, что у `retry_until_authorized`: newman
+    # резолвит setNextRequest в ПЕРВЫЙ item с таким именем, и повтор одноимённого
+    # шага уехал бы к чужому.
+    return replace(step, name=f"{step.name}-lst{_RYA_SEQ[0]}",
                    test_script=guard + list(step.test_script))
 
 

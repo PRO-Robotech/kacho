@@ -185,6 +185,19 @@ log "all $(printf '%s\n' $FE_LAYERS | grep -c .) overlay value files present."
 #
 # The allow-list is deliberately a LEAF-PATH list, not a subtree list: allowing
 # `hydra.hydra.config` wholesale would re-admit every posture key under it.
+#
+# THE MAIL COORDINATE IS OURS, NOT THE VENDOR'S — and it used to be the other way
+# round here. This list named `kratos.kratos.config.courier.smtp.connection_uri`,
+# a coordinate that feeds the VENDOR subchart's own config file. The identity
+# process reads SEVERAL config files and merges them in order; ours is second,
+# so the `courier` section we render REPLACES the vendor's wholesale rather than
+# extending it. An operator who put the real relay where this script sent them
+# got a green cutover, running pods and mail going nowhere — with no signal at
+# all. The single declaration is `global.kacho.identity.smtp.*`
+# (_kratos-identity.tpl); the credentials layer is applied LAST in the chain, so
+# a value set there wins over every profile. Held by MAIL-54
+# (deploy/identity_mail_lane_single_declaration_test.go), which fails when this
+# list and that declaration name different coordinates.
 ORY_CRED_PATHS='
 hydra.hydra.config.dsn
 hydra.hydra.config.secrets.system
@@ -192,7 +205,7 @@ hydra.hydra.config.secrets.cookie
 kratos.kratos.config.dsn
 kratos.kratos.config.secrets.cookie
 kratos.kratos.config.secrets.cipher
-kratos.kratos.config.courier.smtp.connection_uri
+global.kacho.identity.smtp.connectionURI
 '
 stray="$(ORY_CRED_PATHS="$ORY_CRED_PATHS" python3 - "$CHART_DIR/values.fe3455-ory.yaml" <<'PY'
 import os, sys, yaml
@@ -218,12 +231,127 @@ if [ -n "$stray" ]; then
 fi
 log "credentials layer carries credentials only (posture is in the tracked layer)."
 
-# ── 2. required Secrets present (NOT created here — they hold creds you provide) ─
-kubectl -n "$NS" get secret zot-s3-creds >/dev/null 2>&1 \
-  || die "Secret 'zot-s3-creds' missing in ns $NS — it holds the Beget S3 access/secret keys zot needs (keys AWS_ACCESS_KEY_ID / AWS_SECRET_ACCESS_KEY). Create it first, then re-run."
-log "Secret zot-s3-creds present."
+# ── 2. re-vendor sub-charts from committed Chart.lock (pins pg -> no data loss) ─
+log "helm dependency build (respects Chart.lock; re-vendors ../kacho-registry@main S3/compat chart)…"
+helm dependency build . >/dev/null \
+  || die "helm dependency build failed. If a sibling chart version changed, run 'helm dependency update' manually, then re-confirm every postgresql pin in Chart.lock is 13.4.4 before re-running."
 
-# ── 2a. module-manifests ConfigMap — A PRECONDITION, NOT AN AFTER-EFFECT ──────
+# ── 3. ПРЕДПОЛЁТ ПО СЕКРЕТАМ: ВСЕ, КОТОРЫХ ТРЕБУЕТ РАСКАТКА, А НЕ ОДИН ─────────
+#
+# Здесь стояла проверка ОДНОГО секрета из четырёх. Остальные три заводит скрипт
+# посева стенда, а на боевой площадке он не вызывается — значит их появление не
+# проверялось и не производилось ничем. Наблюдаемая последовательность была
+# такой: предполёт зелёный → раскатка применяется → под ждёт недостающий секрет →
+# `helm --wait` выстаивает свой предел и падает ПО СРОКУ, а не по причине.
+# Причина видна только в событиях пода, то есть оператор отделял «условие не
+# создано» от «сломан продукт» сам — руками, после пятнадцати минут молчания.
+#
+# ТРЕБУЕМОЕ МНОЖЕСТВО ВЫВОДИТСЯ, А НЕ ВЫПИСЫВАЕТСЯ. Три источника, и каждый
+# закрывает то, чего не видят два других:
+#
+#   (а) ОБЯЗАТЕЛЬНЫЕ `secretKeyRef` отрендеренного стека — их kubelet не
+#       подставит вовсе, контейнер не стартует;
+#   (б) секреты, которые заводит ПОСЕВ СТЕНДА: на боевой площадке он не зовётся,
+#       а ссылки на них НЕОБЯЗАТЕЛЬНЫ — то есть под поднимется и откажет позже,
+#       уже своим стражем старта. Рендер про них молчит by construction;
+#   (в) таблица ниже — те, что заводит только человек.
+#
+# ПОЧЕМУ ТАБЛИЦА ВСЁ-ТАКИ ЕСТЬ. У каждого требуемого секрета обязан быть НАЗВАН
+# производитель на боевой площадке. «Заводит посев» производителем здесь не
+# является: посев на этой площадке не зовётся. Таблица не может разойтись с
+# деревом молча — её сверяет deploy/rollout_preflight_covers_required_secrets_test.go:
+# требуемый секрет без строки и строка без требования одинаково роняют прогон.
+REQUIRED_SECRET_PRODUCERS='
+zot-s3-creds|оператор: ключи объектного хранилища (AWS_ACCESS_KEY_ID / AWS_SECRET_ACCESS_KEY), заводятся до раскатки
+kacho-iam-hook-token|оператор: общий секрет обратных вызовов, ключ token, 24 байта hex; заводится ОДИН раз и не ротируется — перевыпуск разводит отправителя и проверяющую сторону
+kacho-iam-jwks-enc-key|оператор: ключ обёртки приватной половины подписного ключа, ключ enc_key, 32 байта hex; перевыпуск делает уже записанные ключи нечитаемыми НАВСЕГДА
+kacho-iam-bootstrap-sa-key|оператор: приватный ключ ES256 P-256 (PKCS#8) учётки первичной чеканки, ключ private_key_pem; перевыпуск осиротит уже зарегистрированного клиента
+'
+
+log "предполёт: вывожу перечень требуемых секретов (рендер + посев + таблица производителей)…"
+RENDER="$(helm template "$RELEASE" . -n "$NS" "${FE_ARGS[@]}" --set uif.enabled=true)" \
+  || die "helm template того же стека не отработал (его собственный текст — выше) — вывести перечень требуемых секретов не из чего.
+       Это отказ, а не пустой успех: предполёт, который ничего не прочитал, неотличим от предполёта, которому нечего сказать."
+[ -n "$RENDER" ] || die "helm template дал пустой вывод — читать нечего; см. предыдущий абзац."
+
+SEED_SH="$CHART_DIR/../../scripts/dev-prod-secrets.sh"
+[ -f "$SEED_SH" ] || die "скрипт посева $SEED_SH не найден — вторую половину требуемого множества вывести не из чего."
+
+REQUIRED="$(
+  {
+    # (а) обязательные ссылки отрендеренных подов, за вычетом секретов, которые
+    #     создаёт сам рендер.
+    printf '%s\n' "$RENDER" | python3 -c '
+import sys, yaml
+docs=[d for d in yaml.safe_load_all(sys.stdin) if isinstance(d, dict)]
+own={d["metadata"]["name"] for d in docs if d.get("kind")=="Secret"}
+need=set()
+for d in docs:
+    spec=d.get("spec") or {}
+    tpl=spec.get("template") or ((spec.get("jobTemplate") or {}).get("spec") or {}).get("template")
+    if not tpl: continue
+    pod=tpl.get("spec") or {}
+    for c in (pod.get("containers") or [])+(pod.get("initContainers") or []):
+        for e in c.get("env") or []:
+            r=(e.get("valueFrom") or {}).get("secretKeyRef")
+            if r and not r.get("optional", False) and r["name"] not in own:
+                need.add(r["name"])
+    for v in pod.get("volumes") or []:
+        s=v.get("secret")
+        if s and not s.get("optional", False) and s.get("secretName") and s["secretName"] not in own:
+            need.add(s["secretName"])
+print("\n".join(sorted(need)))
+'
+    # (б) секреты, которые на стенде заводит посев: здесь его никто не зовёт.
+    grep -oE 'create secret generic [a-z0-9][a-z0-9-]*' "$SEED_SH" | awk '{print $4}'
+    # (в) те, что заводит только человек.
+    printf '%s\n' "$REQUIRED_SECRET_PRODUCERS" | grep -v '^$' | cut -d'|' -f1
+  } | sort -u
+)" || die "перечень требуемых секретов не выведен — предполёт отказывается судить по неполному списку."
+
+req_n=0; missing=""
+for s in $REQUIRED; do
+  req_n=$((req_n + 1))
+  kubectl -n "$NS" get secret "$s" >/dev/null 2>&1 || missing="$missing $s"
+done
+[ "$req_n" -gt 0 ] || die "требуемых секретов выведено НОЛЬ — обход слеп, а не площадка готова."
+
+if [ -n "$missing" ]; then
+  # shellcheck disable=SC2086  # разделение по словам здесь и есть предмет: $missing — список имён
+  warn "предполёт: требуется $req_n секрет(ов), проверено $req_n, ОТСУТСТВУЕТ $(printf '%s\n' $missing | grep -c .):"
+  for s in $missing; do
+    who="$(printf '%s\n' "$REQUIRED_SECRET_PRODUCERS" | awk -F'|' -v n="$s" '$1==n {print $2}')"
+    printf '  %s — %s\n' "$s" "${who:-производитель на этой площадке НЕ НАЗВАН}" >&2
+  done
+  die "раскатка НЕ применена. Отказ наступает ЗДЕСЬ, до применения, а не через 15 минут ожидания
+       готовности: под, которому не хватает секрета, ждёт молча, и предел --wait истекает по СРОКУ,
+       не называя причины. Заведи перечисленные секреты в ns $NS и повтори."
+fi
+log "предполёт по секретам: требуется $req_n, проверено $req_n, отсутствует 0."
+
+# ── 3a. ЗАЯВЛЕНИЕ ОБ ОТКАТЕ: что откат вернёт, а что нет ──────────────────────
+#
+# Мигратор идёт при КАЖДОМ раскате, поэтому штатный откат выкатки вернул бы
+# ПРЕЖНИЙ ОБРАЗ НА НОВУЮ СХЕМУ. Здесь стояла ровно одна строка совета —
+# `helm rollback` — и о схеме она не говорила ничего: оператор узнавал исход
+# ПОСЛЕ отката, а «не откатывается» — только по отказам работающего продукта.
+#
+# Заявление ПРОИЗВОДИТСЯ из дерева, а не пишется прозой: перепись цепочки, число
+# миграций без секции отката, объявленные необратимыми и точка невозврата. Отказ
+# заявления (код 1) означает миграцию, чья судьба не объявлена нигде, — тогда
+# отсутствие секции неотличимо от обратимости, и раскатывать вслепую нельзя.
+ROLLBACK_STATEMENT="$(python3 "$CHART_DIR/../../scripts/schema-rollback-statement.py" "$CHART_DIR/../../.." 2>&1)" && rb_rc=0 || rb_rc=$?
+printf '%s\n' "$ROLLBACK_STATEMENT"
+case "$rb_rc" in
+  0) log "заявление об откате произведено." ;;
+  1) die "заявление об откате отказано: у миграции без секции отката не объявлена судьба.
+       Пока это так, откат схемы невыразим, и раскатка идёт вслепую. Объяви решение в
+       deploy/schema-rollback.txt (либо в dropguard-манифесте сервиса) и повтори." ;;
+  *) die "заявление об откате не произведено (код $rb_rc) — читать нечего, а раскатывать
+       без него значит соглашаться на откат, исход которого никто не называл." ;;
+esac
+
+# ── 3b. module manifests: the delivery ConfigMap — A PRECONDITION, NOT AN AFTER-EFFECT ─
 #
 # kacho-iam mounts a NAMED ConfigMap of module manifests and READS that directory
 # AT START-UP; an empty directory is refused, because a missing manifest is not a
@@ -254,11 +382,6 @@ make -C ../.. module-manifests-configmap MODULE_MANIFESTS_STACK=fe3455 STACK_NAM
   || die "module-manifests producer failed — refusing to roll iam onto a delivery it cannot read.
        Re-run after fixing the finding it printed above; delivery is a PRECONDITION of the upgrade."
 
-# ── 3. re-vendor sub-charts from committed Chart.lock (pins pg -> no data loss) ─
-log "helm dependency build (respects Chart.lock; re-vendors ../kacho-registry@main S3/compat chart)…"
-helm dependency build . >/dev/null \
-  || die "helm dependency build failed. If a sibling chart version changed, run 'helm dependency update' manually, then re-confirm every postgresql pin in Chart.lock is 13.4.4 before re-running."
-
 # ── 4. bitnami pg upgrade-guard --set args, read from pre-created Secrets ───────
 #    Every pg-<svc> sets auth.existingSecret, so the chart already reads the password
 #    from the Secret; these --set values are a defensive belt for the bitnami
@@ -288,7 +411,17 @@ if ! helm upgrade "$RELEASE" . -n "$NS" \
       --wait --timeout 15m \
       ${PGARGS[@]+"${PGARGS[@]}"}; then
   warn "helm upgrade FAILED."
-  warn "Roll back to the previous good revision:   helm rollback $RELEASE -n $NS"
+  # ОТКАТ ВОЗВРАЩАЕТ ОБРАЗЫ И НЕ ВОЗВРАЩАЕТ СХЕМУ. Здесь стояла одна строка
+  # `helm rollback`, и она молчала о том, что мигратор уже отработал: прежний
+  # образ поднялся бы на новой схеме, и ничто этого не отвергло бы. Заявление,
+  # произведённое выше, печатается ещё раз — оператору оно нужно именно сейчас.
+  warn "ПРЕЖДЕ ЧЕМ ОТКАТЫВАТЬ, ПРОЧТИ ЭТО:"
+  printf '%s\n' "$ROLLBACK_STATEMENT" >&2
+  warn "helm rollback $RELEASE -n $NS вернёт ОБРАЗЫ и НЕ вернёт схему: применённые миграции"
+  warn "останутся применёнными, и прежний образ поднимется на новой схеме. Стража старта,"
+  warn "который бы это отверг, сегодня нет — значит расхождение проявится не отказом, а"
+  warn "неверной работой на первом обращении к колонке, которой в образе ещё нет либо в"
+  warn "схеме уже нет. Ниже точки невозврата (см. заявление) откат схемы невозможен вовсе."
   warn "Inspect:   helm history $RELEASE -n $NS   |   kubectl -n $NS get pods"
   die  "cutover aborted (see above)."
 fi

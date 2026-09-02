@@ -28,7 +28,7 @@ option go_package = "github.com/PRO-Robotech/kacho/pkg/api/kacho/cloud/iam/v1;ia
 // Constraint (DB-level): UNIQUE (subject_type, subject_id, role_id, resource_type,
 // resource_id) — идемпотентный INSERT (дубль возвращает existing).
 //
-// Resource id prefix: `acb-`.
+// Resource id prefix: `acb` (concatenated form, `ids.NewID`).
 message AccessBinding {
   // Lifecycle status. PENDING is reserved for a JIT approval workflow;
   // ACTIVE is the steady state; REVOKED is terminal.

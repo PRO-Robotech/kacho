@@ -76,8 +76,12 @@ REPO_ROOT="$(cd "$DEPLOY_ROOT/.." && pwd)"
 DECLARED="
 deploy/load-tests/restart-verdict-inject.sh
 deploy/scripts/deps-failure-class-inject.sh
+deploy/tests/helm/identity-hook-credential-provenance-inject.sh
 deploy/tests/helm/identity-hook-credential-source-inject.sh
+deploy/tests/helm/identity-mail-lane-guard-inject.sh
+deploy/tests/helm/identity-mail-lane-runtime-inject.sh
 deploy/tests/helm/identity-session-secret-source-inject.sh
+deploy/tests/helm/identity-substitution-output-inject.sh
 deploy/tests/helm/machine-credential-posture-inject.sh
 deploy/tests/helm/outcome-contract-inject.sh
 gateway/deploy/revocation_authority_inject.sh

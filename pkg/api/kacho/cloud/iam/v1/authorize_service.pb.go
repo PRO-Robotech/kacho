@@ -33,7 +33,7 @@ const (
 // `type` mirrors the object-type vocabulary of the authorization model
 // (`cluster` / `account` / `project` / `vpc_network` /
 // `vpc_subnet` / `compute_instance` / …). `id` is the resource id WITHOUT
-// the type prefix (i.e. `enp_xxx`, not `vpc_network:enp_xxx`).
+// the type prefix (i.e. `net…`, not `vpc_network:net…`).
 type ResourceRef struct {
 	state protoimpl.MessageState `protogen:"open.v1"`
 	// FGA object type. 1-32 chars.
@@ -90,8 +90,8 @@ func (x *ResourceRef) GetId() string {
 
 type AuthorizeCheckRequest struct {
 	state protoimpl.MessageState `protogen:"open.v1"`
-	// FGA-style subject string ("user:<usr_xxx>" / "service_account:<sva_xxx>"
-	// / "group:<grp_xxx>#member"). Required.
+	// FGA-style subject string ("user:<usr…>" / "service_account:<sva…>"
+	// / "group:<grp…>#member"). Required.
 	Subject string `protobuf:"bytes,1,opt,name=subject,proto3" json:"subject,omitempty"`
 	// Resource the action is being checked against.
 	Resource *ResourceRef `protobuf:"bytes,2,opt,name=resource,proto3" json:"resource,omitempty"`
@@ -739,7 +739,7 @@ func (*WhoAmIRequest) Descriptor() ([]byte, []int) {
 type WhoAmIResponse struct {
 	state protoimpl.MessageState `protogen:"open.v1"`
 	// FGA-style subject of the authenticated caller. Format:
-	// `user:<usr_xxx>` / `service_account:<sva_xxx>` / `system:<bootstrap>`.
+	// `user:<usr…>` / `service_account:<sva…>` / `system:<bootstrap>`.
 	// Empty for anonymous (but anonymous callers receive Unauthenticated
 	// before reaching this field).
 	Subject string `protobuf:"bytes,1,opt,name=subject,proto3" json:"subject,omitempty"`
@@ -762,10 +762,40 @@ type WhoAmIResponse struct {
 	// distinguish "authenticated tenant" from "system admin" without a
 	// second Check round-trip.
 	ClusterViewer bool `protobuf:"varint,6,opt,name=cluster_viewer,json=clusterViewer,proto3" json:"cluster_viewer,omitempty"`
-	// Per-account membership snapshot. Includes accounts where the caller
-	// is owner, has an ACTIVE user row, or holds an ACTIVE account-scoped
-	// AccessBinding. Empty list is valid (new identity with no account
-	// membership).
+	// The caller's accounts — the tenant switcher of the console reads THIS
+	// field, so its definition is a client-facing contract, not a note.
+	//
+	// An account is listed when AT LEAST ONE of three holds, and each is an
+	// independent source rather than a consequence of another:
+	//
+	//   - the caller holds an ACTIVE MEMBERSHIP of it AND his identity is itself
+	//     ACTIVE. The second half is not redundant: blocking is a property of the
+	//     identity and leaves the memberships ACTIVE by design, so without it a
+	//     blocked person would keep being told which accounts he belongs to. It
+	//     narrows THIS source only — the two below carry no identity-state
+	//     condition, so an account a blocked person owns is still listed to him;
+	//   - the caller OWNS it (`Account.owner_user_id`) — owning is not being a
+	//     member, so it is asked separately;
+	//   - the caller holds an ACTIVE account-scoped AccessBinding on it. This is
+	//     the source that can list an account to an invited person BEFORE his
+	//     first login, whose membership is still PENDING — but only when the
+	//     invitation actually granted a role; an invitation with an empty role
+	//     grants nothing, and then nothing lists the account until he logs in.
+	//
+	// THE PREDICATE USED TO BE STATED AS "has an ACTIVE user row", and that
+	// outlived the model it came from. While a person was a ROW IN an account,
+	// such a row did select one; after the identity was detached there is ONE
+	// global row per person, so the condition is now either true for every account
+	// or for none — it selects nothing at all. The wording stayed and read as
+	// current, and a client building a mental model from it expected the list to
+	// be narrowed by his participation. Membership is what narrows it, and the
+	// word was missing from the definition entirely.
+	//
+	// EMPTY IS VALID AND MEANS TWO DIFFERENT THINGS, both stated rather than left
+	// to be discovered: a person with no memberships, no owned account and no
+	// account-scoped grant; and ANY service-account principal — this snapshot is
+	// filled for `user` principals only, and a service account relies on per-RPC
+	// authorization instead.
 	Accounts []*AccountMembership `protobuf:"bytes,7,rep,name=accounts,proto3" json:"accounts,omitempty"`
 	// Timestamp at which the snapshot was computed (truncated to seconds).
 	CheckedAt     *timestamppb.Timestamp `protobuf:"bytes,8,opt,name=checked_at,json=checkedAt,proto3" json:"checked_at,omitempty"`
@@ -864,7 +894,7 @@ func (x *WhoAmIResponse) GetCheckedAt() *timestamppb.Timestamp {
 // classification — see WhoAmIResponse).
 type AccountMembership struct {
 	state protoimpl.MessageState `protogen:"open.v1"`
-	// Account id (`acc_xxx`).
+	// Account id (`acc…`).
 	AccountId string `protobuf:"bytes,1,opt,name=account_id,json=accountId,proto3" json:"account_id,omitempty"`
 	// Account display name (may be empty when the account row was created
 	// but the name was not set).

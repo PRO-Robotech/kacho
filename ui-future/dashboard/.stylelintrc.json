@@ -2,6 +2,12 @@
   "extends": ["stylelint-config-standard"],
   "rules": {
     "alpha-value-notation": "number",
+    "at-rule-no-unknown": [
+      true,
+      {
+        "ignoreAtRules": ["apply", "config", "layer", "screen", "tailwind"]
+      }
+    ],
     "color-function-notation": "modern",
     "declaration-empty-line-before": null,
     "selector-class-pattern": null

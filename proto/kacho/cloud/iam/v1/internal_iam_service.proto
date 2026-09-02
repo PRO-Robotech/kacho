@@ -278,9 +278,9 @@ message LookupSubjectResponse {
 // CheckRequest — single-tuple authorization check.
 message CheckRequest {
   // FGA-style subject string. Допустимые форматы:
-  //   "user:<usr_xxx>"
-  //   "service_account:<sva_xxx>"
-  //   "group:<grp_xxx>#member"
+  //   "user:<usr…>"
+  //   "service_account:<sva…>"
+  //   "group:<grp…>#member"
   string subject_id = 1;
 
   // FGA-relation: "viewer" | "editor" | "admin" | "use" | "member" | etc.
@@ -288,9 +288,9 @@ message CheckRequest {
   string relation = 2;
 
   // FGA-object string. Формат "<type>:<id>", например:
-  //   "project:<prj_xxx>"
-  //   "vpc_network:<enp_xxx>"
-  //   "account:<acc_xxx>"
+  //   "project:<prj…>"
+  //   "vpc_network:<net…>"
+  //   "account:<acc…>"
   string object = 3;
 
   // Trace-id для correlation в логах (optional).
@@ -341,8 +341,8 @@ message CheckResponse {
 // Форма симметрична CheckRequest.
 message RegisterResourceRequest {
   // FGA-subject string. Формат "<type>:<id>", напр.:
-  //   "user:<usr_xxx>"
-  //   "service_account:<sva_xxx>"
+  //   "user:<usr…>"
+  //   "service_account:<sva…>"
   //   "<owner-type>:<id>"
   string subject_id = 1;
 
@@ -350,7 +350,7 @@ message RegisterResourceRequest {
   string relation = 2;
 
   // Объект решения. Формат "<type>:<id>" словарём МОДЕЛИ прав
-  // (НЕ permission-каталог), напр. "vpc_network:<enp_xxx>",
+  // (НЕ permission-каталог), напр. "vpc_network:<net…>",
   // "compute_instance:<...>".
   string object = 3;
 
@@ -363,12 +363,12 @@ message RegisterResourceRequest {
   // (graceful). IAM делает минимальную sanity-валидацию, не дублируя owner-pattern.
   map<string, string> labels = 5;
 
-  // Parent project id ресурса (`prj-…`), если ресурс project-scoped.
+  // Parent project id ресурса (`prj…`), если ресурс project-scoped.
   // Кладется в mirror ради containment (объект «под scope») SAME-DB, без ребра
   // iam→owner. Пусто для не-project-scoped объектов.
   string parent_project_id = 6;
 
-  // Parent account id ресурса (`acc-…`), если применимо. Mirror /
+  // Parent account id ресурса (`acc…`), если применимо. Mirror /
   // containment на account-scope.
   string parent_account_id = 7;
 
@@ -385,7 +385,7 @@ message RegisterResourceRequest {
   // Цепь родительства регистрируемого объекта, от БЛИЖАЙШЕГО предка к дальнему.
   //
   // Каждый элемент — объект в форме `"<type>:<id>"`, той же, что `object` выше:
-  //   ["registry_registry:reg-…", "project:prj-…", "account:acc-…"]
+  //   ["registry_registry:reg…", "project:prj…", "account:acc…"]
   //
   // ЗАЧЕМ ОТДЕЛЬНОЕ ПОЛЕ ПРИ ДВУХ УЖЕ СУЩЕСТВУЮЩИХ. `parent_project_id` и
   // `parent_account_id` несут ровно двух предков и ровно этих. Модель прав

@@ -33,7 +33,7 @@ const (
 // INVALID_ARGUMENT) and immutable after Create (not in UpdateAccountRequest.update_mask
 // → "ownerUserId is immutable after Account.Create").
 //
-// Resource id prefix: `acc-`.
+// Resource id prefix: `acc` (concatenated form, `ids.NewID`).
 type Account struct {
 	state protoimpl.MessageState `protogen:"open.v1"`
 	// ID of the account.

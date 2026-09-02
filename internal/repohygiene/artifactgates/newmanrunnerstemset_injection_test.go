@@ -236,3 +236,185 @@ func contains(xs []string, want string) bool {
 	}
 	return false
 }
+
+// ─── ДИАГНОСТИКА ЕСТЬ ЧАСТЬ СВОЙСТВА: причина названа, а не симптом (#1780) ──
+//
+// Четыре пробы ниже гоняют ТУ ЖЕ судящую функцию, что и гейт по дереву
+// (`classifySuiteStemDiff`), а левую сторону сравнения получают ИСПОЛНЕНИЕМ
+// настоящего общего слоя (`runSelectorFrom`) над синтетическим набором на диске.
+// Синтетика нужна ровно затем, чтобы «файла нет в индексе» можно было устроить
+// НЕ трогая дерево, из которого проба запущена, — иначе она писала бы в свой же
+// репозиторий (собственная находка гейтов).
+//
+// ОСИ РАЗВЕДЕНЫ И ПРОВЕРЯЮТСЯ ПОРОЗНЬ. Проба, роняющая обе причины разом,
+// оставила бы незамеченным ровно тот дефект, ради которого #1780 заведена:
+// классификатор, сваливающий всё в одну корзину, красным выглядит одинаково.
+
+// nmSynthSuite — синтетический набор newman на диске: `<tmp>/cases/<имя>.py`.
+// Возвращает абсолютный путь каталога набора.
+func nmSynthSuite(t *testing.T, stems ...string) string {
+	t.Helper()
+	dir := t.TempDir()
+	if err := os.MkdirAll(filepath.Join(dir, "cases"), 0o750); err != nil {
+		t.Fatalf("синтетический набор: %v", err)
+	}
+	for _, s := range stems {
+		f := filepath.Join(dir, "cases", s+".py")
+		if err := os.WriteFile(f, []byte("CASES = []\n"), 0o600); err != nil {
+			t.Fatalf("синтетический модуль %s: %v", s, err)
+		}
+	}
+	return dir
+}
+
+// nmIndexOf — предикат «имя в индексе git», собранный из явного перечня.
+// Индекс здесь моделируется, а не спрашивается: предмет проб — РАЗЛИЧЕНИЕ
+// причин, и оно обязано проверяться без поднятия репозитория.
+func nmIndexOf(suite string, stems ...string) func(string) bool {
+	in := map[string]bool{}
+	for _, s := range stems {
+		in[suite+"/cases/"+s+".py"] = true
+	}
+	return func(rel string) bool { return in[rel] }
+}
+
+// ─── причина ИНДЕКС: файл на диске есть, в индексе его нет ──────────────────
+
+func TestSharedStemSelectorUntrackedNameIsNamedByTheIndex(t *testing.T) {
+	// Ровно тот способ воспроизведения, что назван в #1780: модуль кейсов создан
+	// и НЕ добавлен в индекс. Прежняя редакция называла это «расхождением
+	// отбора» и печатала два списка имён — читатель шёл искать дефект в
+	// правилах, которых причина не касается. Цена: полный локальный прогон.
+	root := repoRoot(t)
+	const suite = "services/x/tests/newman"
+	dir := nmSynthSuite(t, "alpha", "beta", "zzz_untracked")
+
+	got := runSelectorFrom(t, filepath.Join(root, sharedStemsRel), stemLaneExpected.fn, dir)
+	if !contains(got, "zzz_untracked") {
+		t.Fatalf("предпосылка пробы не выполняется: слой не вернул неотслеживаемого имени (%v) — "+
+			"тогда различать было бы нечего", got)
+	}
+	want := []string{"alpha", "beta"} // правило генератора по ИНДЕКСУ: третьего файла там нет
+	onDisk := func(rel string) bool {
+		return strings.HasPrefix(rel, suite+"/cases/") && strings.HasSuffix(rel, ".py")
+	}
+
+	v := classifySuiteStemDiff(stemLaneExpected, suite, got, want,
+		nmIndexOf(suite, "alpha", "beta"), onDisk)
+
+	if len(v.index) != 1 {
+		t.Fatalf("неотслеживаемое имя не отнесено к индексу: индекс %v, правила %v", v.index, v.rule)
+	}
+	if !strings.Contains(v.index[0], "ИНДЕКСЕ git ОТСУТСТВУЕТ") ||
+		!strings.Contains(v.index[0], "zzz_untracked") {
+		t.Fatalf("находка есть, но не называет ни индекс, ни имя: %q", v.index[0])
+	}
+	// ОСЬ РАЗВЕДЕНА: правила отбора тут ни при чём, и вторая находка не должна
+	// приезжать заодно — иначе читателя снова пошлют искать не там.
+	if len(v.rule) != 0 {
+		t.Fatalf("неотслеживаемый файл объявлен расхождением ПРАВИЛ отбора: %v", v.rule)
+	}
+}
+
+// ─── причина ИНДЕКС: имя в индексе есть, файла на диске нет ─────────────────
+
+func TestSharedStemSelectorVanishedNameIsNamedByTheIndex(t *testing.T) {
+	// Зеркало предыдущей: `git rm --cached` не делали, а файл из рабочего дерева
+	// исчез. Сторона слоя (диск) о нём молчит, сторона генератора (индекс) — нет.
+	root := repoRoot(t)
+	const suite = "services/x/tests/newman"
+	dir := nmSynthSuite(t, "alpha")
+
+	got := runSelectorFrom(t, filepath.Join(root, sharedStemsRel), stemLaneExpected.fn, dir)
+	want := []string{"alpha", "gone"}
+	onDisk := func(rel string) bool { return rel == suite+"/cases/alpha.py" }
+
+	v := classifySuiteStemDiff(stemLaneExpected, suite, got, want,
+		nmIndexOf(suite, "alpha", "gone"), onDisk)
+
+	if len(v.index) != 1 || len(v.rule) != 0 {
+		t.Fatalf("исчезнувшее из рабочего дерева имя разнесено не по той причине: индекс %v, правила %v",
+			v.index, v.rule)
+	}
+	if !strings.Contains(v.index[0], "числится в ИНДЕКСЕ git и на диске ОТСУТСТВУЕТ") {
+		t.Fatalf("находка не называет причину: %q", v.index[0])
+	}
+}
+
+// ─── причина ПРАВИЛА: обе стороны видят файл одинаково ──────────────────────
+
+func TestSharedStemSelectorRuleDriftIsStillNamedByTheRule(t *testing.T) {
+	// Свойство не снято вместе с симптомом: настоящее расхождение ПРАВИЛ
+	// по-прежнему называется правилами. Инъекция — та же, что у соседней пробы:
+	// узкое правило (`__init__`/`__main__`), при котором помощник становится
+	// ожидаемой коллекцией. Файл при этом ЛЕЖИТ на диске И числится в индексе,
+	// то есть полоса индекса обязана молчать.
+	root := repoRoot(t)
+	src, err := os.ReadFile(filepath.Join(root, sharedStemsRel)) // #nosec G304 -- путь из индекса git этого модуля
+	if err != nil {
+		t.Fatalf("чтение общего слоя: %v", err)
+	}
+	narrow := strings.Replace(string(src),
+		`    [[ "$stem" == _* ]] && continue`,
+		"    case \"$stem\" in __init__|__main__) continue ;; esac", 1)
+	if narrow == string(src) {
+		t.Fatal("инъекция не наложилась: правило отбора записано иначе, чем ждёт проба — " +
+			"чинить надо пробу, а не молча выходить успехом")
+	}
+	lib := filepath.Join(t.TempDir(), "stems.sh")
+	if err := os.WriteFile(lib, []byte(narrow), 0o600); err != nil {
+		t.Fatalf("запись изменённой копии слоя: %v", err)
+	}
+
+	const suite = "services/x/tests/newman"
+	dir := nmSynthSuite(t, "alpha", "_helpers")
+	got := runSelectorFrom(t, lib, stemLaneExpected.fn, dir)
+	if !contains(got, "_helpers") {
+		t.Fatalf("инъекция не поймана: узкое правило не объявило `_helpers` ожидаемой коллекцией (%v)", got)
+	}
+	want := []string{"alpha"} // правило генератора: ведущее подчёркивание — помощник
+	all := func(rel string) bool {
+		return strings.HasPrefix(rel, suite+"/cases/") && strings.HasSuffix(rel, ".py")
+	}
+
+	v := classifySuiteStemDiff(stemLaneExpected, suite, got, want, all, all)
+
+	if len(v.rule) != 1 {
+		t.Fatalf("расхождение ПРАВИЛ не названо правилами: правила %v, индекс %v", v.rule, v.index)
+	}
+	if !strings.Contains(v.rule[0], stemLaneExpected.fn) ||
+		!strings.Contains(v.rule[0], "расходятся имена: _helpers") {
+		t.Fatalf("находка есть, но называет не тот предмет: %q", v.rule[0])
+	}
+	if len(v.index) != 0 {
+		t.Fatalf("расхождение правил отнесено к индексу: %v", v.index)
+	}
+}
+
+// ─── ПОЛОЖИТЕЛЬНЫЙ КОНТРОЛЬ: стороны сходятся — обе полосы молчат ───────────
+
+func TestSharedStemSelectorAgreeingSidesAreSilent(t *testing.T) {
+	// Без этой пробы молчание классификатора на чистом дереве было бы неотличимо
+	// от классификатора, который не смотрит вовсе: обе полосы отрицательные.
+	root := repoRoot(t)
+	const suite = "services/x/tests/newman"
+	dir := nmSynthSuite(t, "alpha", "beta", "_helpers")
+
+	got := runSelectorFrom(t, filepath.Join(root, sharedStemsRel), stemLaneExpected.fn, dir)
+	if len(got) == 0 {
+		t.Fatal("положительный контроль пуст: слой не вернул ни одного имени — " +
+			"тогда молчание обеих полос ничего не доказывает")
+	}
+	if contains(got, "_helpers") {
+		t.Fatalf("слой из дерева объявил помощника коллекцией: %v", got)
+	}
+	all := func(rel string) bool {
+		return strings.HasPrefix(rel, suite+"/cases/") && strings.HasSuffix(rel, ".py")
+	}
+
+	v := classifySuiteStemDiff(stemLaneExpected, suite, got, []string{"alpha", "beta"}, all, all)
+
+	if len(v.rule) != 0 || len(v.index) != 0 {
+		t.Fatalf("сошедшиеся стороны объявлены расхождением: правила %v, индекс %v", v.rule, v.index)
+	}
+}
