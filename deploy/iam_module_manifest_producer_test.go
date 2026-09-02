@@ -32,8 +32,12 @@ package deploy_test
 //	    зеленела бы на дереве, где производителя нет вовсе;
 //	(3) собранный объект РАЗБИРАЕТСЯ обратно в те же байты: производитель
 //	    печатает YAML, и «собрал» обязано означать «применимо», а не «похоже»;
-//	(4) подъём стенда ЗОВЁТ производителя — иначе объект существует только в
-//	    воображении цели сборки, а под монтирует пустоту.
+// А вот «подъём стенда ЗОВЁТ производителя» здесь БОЛЬШЕ НЕ ПРОВЕРЯЕТСЯ, и это
+// перенос, а не снятие: утверждение переехало в
+// iam_module_manifest_bringup_paths_test.go вместе со своим предметом. Здесь оно
+// судило ВЫПИСАННЫЙ перечень из двух целей Makefile и потому было слепо к
+// третьему пути выкатки — скрипту боевой площадки (kacho#1909); там популяция
+// ВЫВОДИТСЯ обходом дерева и покрывает обе законные формы носителя.
 //
 // ─────────────────────────────────────────────────────────────────────────────
 // ПОЧЕМУ ИМЯ ЧИТАЕТСЯ ИЗ ПРОФИЛЯ, А НЕ СВЕРЯЕТСЯ С КОПИЕЙ
@@ -46,11 +50,9 @@ package deploy_test
 // цепочка с другим именем обязана дать другое имя.
 
 import (
-	"fmt"
 	"os"
 	"path/filepath"
 	"sort"
-	"strings"
 	"testing"
 
 	"gopkg.in/yaml.v3"
@@ -258,107 +260,4 @@ func assertRenderRoundTrips(t *testing.T, stack string, d modulemanifests.Delive
 				"доставится не то, что в дереве", stack, dir+".manifest.yaml")
 		}
 	}
-}
-
-// TestStandBringUpCallsTheManifestProducer — производитель ЗОВЁТСЯ подъёмом
-// стенда.
-//
-// Без этого звена производитель существует и не исполняется: под монтирует
-// объект, которого никто не создал, каталог доставки приезжает пустым, а служба
-// отказывается стартовать — то есть цель сборки есть, а стенд не поднимается.
-//
-// Судится ИСПОЛНЯЕМАЯ часть: строки-комментарии снимаются до поиска, иначе
-// проверка зачла бы за исполнение собственное объяснение — об этом шаге в том же
-// файле написана проза, и она называет цель дословно.
-func TestStandBringUpCallsTheManifestProducer(t *testing.T) {
-	raw, err := os.ReadFile("Makefile")
-	if err != nil {
-		t.Fatalf("deploy/Makefile не прочитан: %v — непрочитанное есть НАХОДКА", err)
-	}
-	findings, seen := auditStandBringUpCalls(string(raw))
-	t.Logf("осмотрено: байт Makefile %d · после снятия комментариев %d · целей подъёма %d",
-		len(raw), seen.BytesJudged, seen.Targets)
-	if seen.BytesJudged == 0 {
-		t.Fatal("после снятия комментариев в deploy/Makefile не осталось ни строки — " +
-			"вердикт беспредметен")
-	}
-	if seen.Targets == 0 {
-		t.Fatalf("рецептов целей подъёма стенда не найдено ни одного — предпосылка " +
-			"проверки исчезла, а не Makefile стал чистым")
-	}
-	for _, f := range findings {
-		t.Errorf("доставка манифестов: %s", f)
-	}
-}
-
-// manifestProducerTarget — цель сборки, кладущая ConfigMap на стенд.
-const manifestProducerTarget = "module-manifests-configmap"
-
-// standBringUpTargets — цели, поднимающие стенд. Обе, а не только `dev-up`:
-// `stack-up` поднимает ЛЮБОЙ стенд из таблицы, включая объявившие доставку, и
-// без вызова производителя такой стенд не поднимется.
-var standBringUpTargets = []string{"dev-up", "stack-up"}
-
-// bringUpCensus — объём осмотренного.
-type bringUpCensus struct {
-	BytesJudged int
-	Targets     int
-}
-
-// auditStandBringUpCalls — находки по рецептам подъёма стенда. Функция ЧИСТАЯ:
-// инъекция подаёт ей изменённый текст, не трогая дерева.
-func auditStandBringUpCalls(makefile string) ([]string, bringUpCensus) {
-	recipes := makefileExecutablePart(makefile)
-	census := bringUpCensus{BytesJudged: len(strings.TrimSpace(recipes))}
-
-	var findings []string
-	for _, target := range standBringUpTargets {
-		body := makefileRecipe(recipes, target+":")
-		if body == "" {
-			continue
-		}
-		census.Targets++
-		if !strings.Contains(body, manifestProducerTarget) {
-			findings = append(findings, fmt.Sprintf(
-				"цель %s не зовёт %s — стенд поднимется с пустым каталогом доставки, "+
-					"и служба откажется стартовать (kacho#1901)", target, manifestProducerTarget))
-		}
-	}
-	sort.Strings(findings)
-	return findings, census
-}
-
-// makefileExecutablePart — Makefile без строк-комментариев.
-func makefileExecutablePart(s string) string {
-	var out []string
-	for _, line := range strings.Split(s, "\n") {
-		if strings.HasPrefix(strings.TrimSpace(line), "#") {
-			continue
-		}
-		out = append(out, line)
-	}
-	return strings.Join(out, "\n")
-}
-
-// makefileRecipe — тело цели: строки, начинающиеся с табуляции, до первой
-// строки, которая рецепт не продолжает.
-func makefileRecipe(makefile, target string) string {
-	lines := strings.Split(makefile, "\n")
-	for i, line := range lines {
-		if !strings.HasPrefix(line, target) {
-			continue
-		}
-		var body []string
-		for _, next := range lines[i+1:] {
-			if strings.TrimSpace(next) == "" {
-				continue
-			}
-			if !strings.HasPrefix(next, "\t") {
-				break
-			}
-			body = append(body, next)
-		}
-		return strings.Join(body, "\n")
-	}
-	return ""
 }
