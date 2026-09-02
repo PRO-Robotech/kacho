@@ -170,3 +170,36 @@ roles:
       - module: compute
         resources: [instance]
         classes: [list, get]
+
+# --------------------------------------------------------------------------
+#  seed — что заводит УСТАНОВКА модуля (#1891).
+#
+#  Здесь объявлено то, что у модуля уже лежит в базе, и согласие с ней
+#  доказывается ПРОГОНОМ, а не чтением миграций:
+#      go test ./services/iam/internal/moduleseedparity/
+#
+#  ЧЕГО ЗДЕСЬ НЕТ, и это не недосмотр: `groups` и `accessBindings`. Группы
+#  платформы (`module-quota-readers`, `module-relation-writers`) заводит iam, а
+#  не этот модуль; выдачи же, которыми они наделены, — выдачи ОТНОШЕНИЕМ
+#  (`quota_reader`, `fga_writer`), и ключа для отношения у `seed.accessBindings`
+#  нет ни одного: форма требует `roleId`. Живых выдач РОЛЬЮ, которые завела бы
+#  установка модуля, в базе ноль. Разбор и числа — #1936; гейт паритета считает
+#  такие строки отдельно и печатает их число, поэтому граница видна, а не
+#  подразумевается.
+seed:
+  serviceAccounts:
+    # Личность самого модуля: под ней он ходит к соседям. Назначение взято
+    # ДОСЛОВНО у живой строки — применитель кладёт объявленное поверх неё, и
+    # расхождение здесь было бы переписыванием того, что уже действует.
+    - name: kacho-compute
+      account: kacho-system
+      description: "Module SA: kacho-compute (SEC-C least-priv)"
+  joins:
+    # Вступления в ЧУЖИЕ группы: членство заявляет вступающий, а не
+    # перечисляет владелец группы — владелец своих потребителей не знает.
+    - serviceAccount: {account: kacho-system, name: kacho-compute}
+      group: {account: kacho-system, name: module-quota-readers}
+      why: "читать действующие пределы своего домена перед списанием (#291)"
+    - serviceAccount: {account: kacho-system, name: kacho-compute}
+      group: {account: kacho-system, name: module-relation-writers}
+      why: "писать кортежи владения через iam, не ходя в хранилище прав напрямую (#914)"

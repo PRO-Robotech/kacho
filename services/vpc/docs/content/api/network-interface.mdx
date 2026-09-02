@@ -70,6 +70,7 @@ IP на нагрузку реализуется через **несколько 
     <tr><td><code>macAddress</code></td><td><code>{TYPES.string}</code></td><td>{DICTIONARY.macAddress.short} (префикс <code>0e:</code>, стабилен на жизни NIC, immutable)</td></tr>
     <tr><td><code>bandwidthLimitMbps</code></td><td><code>{TYPES.int64}</code></td><td>Верхняя граница полосы интерфейса, Мбит/с, заданная арендатором. <code>0</code> — ограничения нет. Принимается только на стендах, где исполнитель датаплейна объявил такое умение (см. врезку ниже)</td></tr>
     <tr><td><code>status</code></td><td><code>{TYPES.string}</code></td><td>{DICTIONARY.status.short}</td></tr>
+    <tr><td><code>usedBy</code></td><td><code>{TYPES.reference}</code></td><td>Кто интерфейс использует — например <code>&#123; type: "compute_instance", id &#125;</code>. Output-only зеркало: ставится подключением интерфейса к инстансу, снимается отключением; на вход не принимается. Порядковый номер интерфейса на машине живёт <b>не здесь</b>, а на её собственной проекции интерфейса (<code>compute.v1.NetworkInterface.index</code>)</td></tr>
   </tbody>
 </table>
 
