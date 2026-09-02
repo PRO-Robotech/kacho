@@ -180,17 +180,12 @@ func TestMODRD23MigrationDoesNotWriteARoleOfAManifestBearingModule(t *testing.T)
 		sites = append(sites, s...)
 	}
 
-	// Состав ДОБАВЛЕННОГО — предмет находок; перепись выше остаётся по всему
-	// дереву и стережёт РАЗБОР (см. шапку файла).
-	base := requireTrunkRef(t, root)
-	added := addedMigrationFiles(t, root, base)
-	addedSites := sitesInFiles(sites, added)
-
+	// Перепись ДЕРЕВА и проверки РАЗБОРА идут ДО разрешения ствола: иначе клон
+	// без ствола уходил бы в пропуск, не сказав ни числа, и «ноль находок» снова
+	// стало бы неотличимо от «ноль прочитанного».
 	t.Logf("перепись: файлов YAML осмотрено %d, манифестов модулей найдено %d %v; "+
-		"миграций iam прочитано %d, блоков вставки роли %d, имён ролей извлечено %d; "+
-		"добавлено относительно %s миграций %d, из них вставок роли %d",
-		yamlScanned, len(bearing), manifestModuleNames(bearing), parsedMigrated, blocks, names,
-		base, len(added), len(addedSites))
+		"миграций iam прочитано %d, блоков вставки роли %d, имён ролей извлечено %d",
+		yamlScanned, len(bearing), manifestModuleNames(bearing), parsedMigrated, blocks, names)
 
 	if parsedMigrated == 0 {
 		t.Fatalf("миграций iam прочитано ноль — каталог %s переехал, и гейт стережёт "+
@@ -216,12 +211,21 @@ func TestMODRD23MigrationDoesNotWriteARoleOfAManifestBearingModule(t *testing.T)
 		return
 	}
 
+	// Состав ДОБАВЛЕННОГО — предмет находок. Ствол разрешается ЗДЕСЬ, после
+	// переписи дерева и проверок разбора: его недостижимость есть отказ
+	// предпосылки, и он обязан прийти отдельно от них, а не вместо них.
+	base := requireTrunkRef(t, root)
+	added := addedMigrationFiles(t, root, base)
+	addedSites := sitesInFiles(sites, added)
+
 	// Исторический остаток — ЧИСЛО на каждом прогоне, а не молчание. Его предмет
 	// назван задачей продукта #1891 и прозой каждого манифеста; находкой он быть
 	// не может, потому что применённую миграцию не правят (ban #5).
-	t.Logf("исторический остаток: вставок роли модуля с манифестом в УЖЕ ПРИМЕНЁННЫХ "+
+	t.Logf("добавлено относительно %s миграций %d, из них вставок роли %d; "+
+		"исторический остаток: вставок роли модуля с манифестом в УЖЕ ПРИМЕНЁННЫХ "+
 		"миграциях %d — правке не подлежат (ban #5), их переезд к применителю есть "+
 		"задача продукта #1891",
+		base, len(added), len(addedSites),
 		len(migrationRoleFindings(sites, bearing))-len(migrationRoleFindings(addedSites, bearing)))
 
 	if findings := migrationRoleFindings(addedSites, bearing); len(findings) > 0 {
