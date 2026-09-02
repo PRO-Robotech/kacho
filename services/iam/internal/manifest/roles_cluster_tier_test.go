@@ -37,7 +37,7 @@ func clusterRoleDoc(id, tierType, tierID string) []byte {
 		"  - id: " + id + "\n    name: Администратор сети\n" +
 		"    description: Распоряжается сетями модуля.\n" +
 		"    tier: {tierType: " + tierType + ", tierId: " + tierID + "}\n" +
-		"    rules:\n      - {module: vpc, resources: [network], verbs: [get]}\n")
+		"    rules:\n      - {module: vpc, resources: [network], classes: [get]}\n")
 }
 
 // TestMODRD01ClusterTierRoleOfOwnModuleIsAccepted — MOD-RD-01.
