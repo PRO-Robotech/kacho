@@ -67,7 +67,7 @@ func TestSectionRefusalsNameTheirFieldAndKind(t *testing.T) {
 			doc: "apiVersion: iam/v1\nmodule: vpc\nroles:\n" +
 				"  - name: Наблюдатель\n    description: Читает топологию проекта.\n" +
 				"    tier: {tierType: iam.project, tierId: prj000000000000000}\n" +
-				"    rules:\n      - {module: vpc, resources: [network], verbs: [get]}\n",
+				"    rules:\n      - {module: vpc, resources: [network], classes: [get]}\n",
 			kind:  manifest.ErrRoleIDRequired,
 			names: []string{"roles[0]"},
 		},
@@ -76,7 +76,7 @@ func TestSectionRefusalsNameTheirFieldAndKind(t *testing.T) {
 			doc: "apiVersion: iam/v1\nmodule: vpc\nroles:\n" +
 				"  - id: viewer\n    name: Наблюдатель\n    description: Читает топологию проекта.\n" +
 				"    tier: {tierType: iam.project, tierId: prj000000000000000}\n" +
-				"    rules:\n      - {module: vpc, resources: [network], verbs: [get]}\n",
+				"    rules:\n      - {module: vpc, resources: [network], classes: [get]}\n",
 			kind:  manifest.ErrRoleIDMalformed,
 			names: []string{"roles[0].id", "viewer"},
 		},
@@ -85,10 +85,10 @@ func TestSectionRefusalsNameTheirFieldAndKind(t *testing.T) {
 			doc: "apiVersion: iam/v1\nmodule: vpc\nroles:\n" +
 				"  - id: vpc.viewer\n    name: Наблюдатель\n    description: Читает топологию проекта.\n" +
 				"    tier: {tierType: iam.project, tierId: prj000000000000000}\n" +
-				"    rules:\n      - {module: vpc, resources: [network], verbs: [get]}\n" +
+				"    rules:\n      - {module: vpc, resources: [network], classes: [get]}\n" +
 				"  - id: vpc.viewer\n    name: Второй наблюдатель\n    description: Тоже читает топологию.\n" +
 				"    tier: {tierType: iam.account, tierId: acc000000000000000}\n" +
-				"    rules:\n      - {module: vpc, resources: [subnet], verbs: [get]}\n",
+				"    rules:\n      - {module: vpc, resources: [subnet], classes: [get]}\n",
 			kind:  manifest.ErrRoleIDDuplicated,
 			names: []string{"roles[0]", "roles[1]", "vpc.viewer"},
 		},
@@ -96,7 +96,7 @@ func TestSectionRefusalsNameTheirFieldAndKind(t *testing.T) {
 			name: "ярус роли не назван",
 			doc: "apiVersion: iam/v1\nmodule: vpc\nroles:\n" +
 				"  - id: vpc.viewer\n    name: Наблюдатель\n    description: Читает топологию проекта.\n" +
-				"    rules:\n      - {module: vpc, resources: [network], verbs: [get]}\n",
+				"    rules:\n      - {module: vpc, resources: [network], classes: [get]}\n",
 			kind:  manifest.ErrRoleTierRequired,
 			names: []string{"roles[0].tier", "iam.account", "iam.project"},
 		},
@@ -105,7 +105,7 @@ func TestSectionRefusalsNameTheirFieldAndKind(t *testing.T) {
 			doc: "apiVersion: iam/v1\nmodule: vpc\nroles:\n" +
 				"  - id: vpc.viewer\n    name: Наблюдатель\n    description: Читает топологию проекта.\n" +
 				"    tier: {tierType: iam.folder, tierId: fld000000000000000}\n" +
-				"    rules:\n      - {module: vpc, resources: [network], verbs: [get]}\n",
+				"    rules:\n      - {module: vpc, resources: [network], classes: [get]}\n",
 			kind:  manifest.ErrRoleTierUnknown,
 			names: []string{"roles[0].tier.tierType", "iam.folder"},
 		},
@@ -114,7 +114,7 @@ func TestSectionRefusalsNameTheirFieldAndKind(t *testing.T) {
 			doc: "apiVersion: iam/v1\nmodule: vpc\nroles:\n" +
 				"  - id: vpc.viewer\n    name: Наблюдатель\n    description: Читает топологию проекта.\n" +
 				"    tier: {tierType: iam.project, tierId: \"\"}\n" +
-				"    rules:\n      - {module: vpc, resources: [network], verbs: [get]}\n",
+				"    rules:\n      - {module: vpc, resources: [network], classes: [get]}\n",
 			kind:  manifest.ErrRoleTierRequired,
 			names: []string{"roles[0].tier.tierId"},
 		},
@@ -152,7 +152,7 @@ func TestSectionRefusalsNameTheirFieldAndKind(t *testing.T) {
 		"roles:\n" +
 		"  - id: vpc.viewer\n    name: Наблюдатель\n    description: Читает топологию проекта.\n" +
 		"    tier: {tierType: iam.project, tierId: prj000000000000000}\n" +
-		"    rules:\n      - {module: vpc, resources: [network], verbs: [get]}\n" +
+		"    rules:\n      - {module: vpc, resources: [network], classes: [get]}\n" +
 		"deprecatedVerbs:\n" +
 		"  read: {class: get, since: \"2026-08-23\", reason: синоним чтения из грамматики, removeWhen: выдач с таким правом ноль}\n"
 	if _, err := manifest.Load([]byte(whole)); err != nil {

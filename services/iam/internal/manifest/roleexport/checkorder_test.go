@@ -116,5 +116,5 @@ roles:
     rules:
       - module: vpc
         resources: [network]
-        verbs: [create]
+        classes: [create]
 `

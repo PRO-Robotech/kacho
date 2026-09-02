@@ -180,10 +180,14 @@ func TestNoteKindsAreNamedInWords(t *testing.T) {
 // существующего контроля и не задевать нового.
 func withEmptyClassRule(t *testing.T) string {
 	t.Helper()
-	const anchor = "        verbs: [get, list]\n"
+	// Якорь — ПРАВИЛО РОЛИ, и ключ у него `classes`: право роли пишется им, а
+	// снятый `verbs` загрузчик отвергает явно. Якорь переехал вместе со своим
+	// предметом; оставленный при старом ключе, он ронял бы пробу отказом «якорь
+	// встречается 0 раз» — то есть говорил бы о СЕБЕ, а не о дереве.
+	const anchor = "        classes: [get, list]\n"
 	src := mustFixtureText(t)
 	if strings.Count(src, anchor) != 1 {
 		t.Fatalf("якорь правки встречается %d раз", strings.Count(src, anchor))
 	}
-	return strings.Replace(src, anchor, "        verbs: [get, list, create]\n", 1)
+	return strings.Replace(src, anchor, "        classes: [get, list, create]\n", 1)
 }

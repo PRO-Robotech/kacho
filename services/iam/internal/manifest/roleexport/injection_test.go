@@ -80,9 +80,9 @@ func emptyClassFindings(t *testing.T, m *manifest.Manifest) []roleexport.Finding
 
 const (
 	consumerRule = "        resources: [address, networkInterface, subnet]\n" +
-		"        verbs: [get, list]"
+		"        classes: [get, list]"
 	poolRule = "        resources: [addressPool]\n" +
-		"        verbs: [get, list, create, update, delete]"
+		"        classes: [get, list, create, update, delete]"
 )
 
 // ── Прогон 1: КОНТРОЛЬ ──────────────────────────────────────────────────────
@@ -102,7 +102,7 @@ func TestInjectionControl_LegalTwinIsSilent(t *testing.T) {
 // TestInjection_ClusterRelationIsRefused — ось «прямой userset на кластере».
 func TestInjection_ClusterRelationIsRefused(t *testing.T) {
 	m := injectRules(t, [2]string{consumerRule,
-		"        resources: [addressPool]\n        verbs: [get]"})
+		"        resources: [addressPool]\n        classes: [get]"})
 	var hit *roleexport.Finding
 	for i, f := range emptyClassFindings(t, m) {
 		if f.Role == "vpc.internalConsumer" {
@@ -127,7 +127,7 @@ func TestInjection_ClusterRelationIsRefused(t *testing.T) {
 // `editor` — имя «наше», и по имени оно проходило.
 func TestInjection_ScopeTierIsRefused(t *testing.T) {
 	m := injectRules(t, [2]string{consumerRule,
-		"        resources: [network]\n        verbs: [create]"})
+		"        resources: [network]\n        classes: [create]"})
 	found := false
 	for _, f := range emptyClassFindings(t, m) {
 		if f.Role != "vpc.internalConsumer" {
@@ -157,7 +157,7 @@ func TestInjection_ScopeTierIsRefused(t *testing.T) {
 // реализации, отвергающей ярус ПО ИМЕНИ, — и дефект вернулся бы с другой стороны.
 func TestInjection_SameRelationNameOnTheResourceTypeIsSilent(t *testing.T) {
 	m := injectRules(t, [2]string{consumerRule,
-		"        resources: [networkInterface]\n        verbs: [create]"})
+		"        resources: [networkInterface]\n        classes: [create]"})
 	for _, f := range emptyClassFindings(t, m) {
 		if f.Role == "vpc.internalConsumer" {
 			t.Errorf("законный близнец по имени отношения получил находку: %s", f.Detail)
@@ -172,7 +172,7 @@ func TestInjection_SameRelationNameOnTheResourceTypeIsSilent(t *testing.T) {
 // отказ отправил бы автора искать опечатку в классе.
 func TestInjection_UnknownResourceIsItsOwnRefusal(t *testing.T) {
 	m := injectRules(t, [2]string{consumerRule,
-		"        resources: [networkz]\n        verbs: [get]"})
+		"        resources: [networkz]\n        classes: [get]"})
 	faults, _ := roleexport.CheckRoleRules(catalogfixture.Facts(), m, mustActions(t))
 	kinds := map[string]int{}
 	for _, f := range faults {
@@ -200,7 +200,7 @@ func TestInjection_UnknownResourceIsItsOwnRefusal(t *testing.T) {
 // состояние. Раздел `deprecatedVerbs` фикстуры разрешает `read` в класс `get`.
 func TestInjection_DeprecatedVerbStaysAnAction(t *testing.T) {
 	m := injectRules(t, [2]string{consumerRule,
-		"        resources: [network]\n        verbs: [read, list, get]"})
+		"        resources: [network]\n        classes: [read, list, get]"})
 	for _, f := range emptyClassFindings(t, m) {
 		if f.Role == "vpc.internalConsumer" {
 			t.Errorf("снятый глагол прочитан как несуществующий класс: %s", f.Detail)
@@ -216,7 +216,7 @@ func TestInjection_DeprecatedVerbStaysAnAction(t *testing.T) {
 // молча.
 func TestInjection_VerbWildcardIsExpandedNotRefused(t *testing.T) {
 	m := injectRules(t, [2]string{consumerRule,
-		"        resources: [network]\n        verbs: [\"*\"]"})
+		"        resources: [network]\n        classes: [\"*\"]"})
 	for _, f := range emptyClassFindings(t, m) {
 		if f.Role == "vpc.internalConsumer" {
 			t.Errorf("подстановка в глаголах прочитана как пустой класс: %s", f.Detail)
@@ -239,7 +239,7 @@ func TestResourceWildcardCannotReachTheCheck(t *testing.T) {
 		t.Fatalf("чтение фикстуры: %v", err)
 	}
 	text := strings.Replace(string(data), consumerRule,
-		"        resources: [\"*\"]\n        verbs: [get, list]", 1)
+		"        resources: [\"*\"]\n        classes: [get, list]", 1)
 	if text == string(data) {
 		t.Fatal("инъекция беспредметна: выдачи роли в фикстуре нет")
 	}
@@ -363,7 +363,7 @@ func TestAttribute_InternalPlaneKeepsItsOwnKey(t *testing.T) {
 // искать опечатку в классе, тогда как чинится это не классом вовсе.
 func TestInjection_ResourceWithoutAnObjectTypeSaysSo(t *testing.T) {
 	m := injectRules(t, [2]string{consumerRule,
-		"        resources: [quota]\n        verbs: [list]"})
+		"        resources: [quota]\n        classes: [list]"})
 	found := false
 	for _, f := range emptyClassFindings(t, m) {
 		if f.Role != "vpc.internalConsumer" {
@@ -391,7 +391,7 @@ func TestInjection_ResourceWithoutAnObjectTypeSaysSo(t *testing.T) {
 // мёртвой, и её молчание выглядело бы работой.
 func TestFullyExemptResourceIsNamedAsSuch(t *testing.T) {
 	m := injectRules(t, [2]string{consumerRule,
-		"        resources: [network]\n        verbs: [get]"})
+		"        resources: [network]\n        classes: [get]"})
 	actions, faults := roleexport.Attribute([]roleexport.CatalogEntry{
 		{FQN: "kacho.cloud.vpc.v1.NetworkService/Get"},
 		{FQN: "kacho.cloud.vpc.v1.NetworkService/List"},

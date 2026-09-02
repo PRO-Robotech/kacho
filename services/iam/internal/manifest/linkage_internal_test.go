@@ -50,13 +50,13 @@ roles:
     description: Ходит в vpc на пути запроса — аллокация адресов и ссылки.
     tier: {tierType: iam.project, tierId: prj000000000000000}
     rules:
-      - {module: vpc, resources: [address], verbs: [get, list]}
+      - {module: vpc, resources: [address], classes: [get, list]}
   - id: vpc.addressPoolAdmin
     name: Администратор адресного пространства
     description: Ведёт адресные пулы облака.
     tier: {tierType: iam.account, tierId: acc000000000000000}
     rules:
-      - {module: vpc, resources: [addressPool], verbs: [get, list]}
+      - {module: vpc, resources: [addressPool], classes: [get, list]}
 `
 
 // fixtureWithDeclaredRoles — фикстура посева ПЛЮС раздел ролей: документ, на

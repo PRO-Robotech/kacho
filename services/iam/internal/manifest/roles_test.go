@@ -9,65 +9,40 @@
 // не правят (ban #5). Поэтому манифест объявляет роли уровня аккаунта и
 // проекта, а системную отвергает ЯВНО.
 //
-// Форма выдачи изоморфна `domain.Rule` ДОСЛОВНО — имя в имя, число в число.
-// Второе написание того же предмета разошлось бы с первым молча.
+// Право роли пишется ключом `classes`, и это ЕДИНСТВЕННАЯ его форма. Имена
+// ключей совпадают с полями `domain.Rule` всюду, кроме этого ОДНОГО названного
+// расхождения; объявленность расхождения и тождественность перевода утверждает
+// проба перевода (`ruletranslation_internal_test.go`, MOD-RC-06 … MOD-RC-08),
+// заменившая прежний изоморфизм ПО ИМЕНАМ — см. её шапку, там сказано, почему
+// замена, а не ослабление.
 package manifest_test
 
 import (
 	"errors"
-	"reflect"
-	"sort"
 	"strings"
 	"testing"
-	"unicode"
 
-	"github.com/PRO-Robotech/kacho/services/iam/internal/domain"
 	"github.com/PRO-Robotech/kacho/services/iam/internal/manifest"
 )
 
-// yamlKeysOf — ключи, ОБЪЯВЛЕННЫЕ тегами структуры, а не выписанные списком:
-// выписанный перечень не сдвинулся бы от нового поля.
-func yamlKeysOf(t reflect.Type) []string {
-	var out []string
-	for i := 0; i < t.NumField(); i++ {
-		tag, ok := t.Field(i).Tag.Lookup("yaml")
-		if !ok {
-			continue
-		}
-		if name := strings.Split(tag, ",")[0]; name != "" && name != "-" {
-			out = append(out, name)
-		}
-	}
-	sort.Strings(out)
-	return out
-}
-
-// lowerFirst — имя поля Go в том написании, в каком его несёт ключ YAML.
-func lowerFirst(s string) string {
-	if s == "" {
-		return s
-	}
-	r := []rune(s)
-	// `ResourceNames` → `resourceNames`; `ID` → `id` (аббревиатура целиком).
-	n := 1
-	for n < len(r) && unicode.IsUpper(r[n]) && (n+1 == len(r) || unicode.IsUpper(r[n+1])) {
-		n++
-	}
-	for i := 0; i < n; i++ {
-		r[i] = unicode.ToLower(r[i])
-	}
-	return string(r)
-}
-
 // ── MOD-MR-10 ───────────────────────────────────────────────────────────────
 
-// TestMODMR10RolesSectionLoadsAndRulesAreIsomorphicToDomainRule — положительный
-// контроль полосы `roles` плюс РАВЕНСТВО множеств ключей выдачи и полей
-// `domain.Rule`.
+// TestMODMR10RolesSectionLoadsWhole — положительный контроль полосы `roles`:
+// фикстура читается целиком, и значения ключей доступны вызывающему.
 //
-// Равенство, а не членство: ключ без поля — такая же ложь контракта, как поле
-// без ключа. Обе стороны ВЫВЕДЕНЫ обходом типов.
-func TestMODMR10RolesSectionLoadsAndRulesAreIsomorphicToDomainRule(t *testing.T) {
+// # Здесь же стояло РАВЕНСТВО имён ключей выдачи и полей `domain.Rule` — снято
+//
+// Утверждение снято ВМЕСТЕ СО СВОИМ ПРЕДМЕТОМ: право роли пишется ключом
+// `classes`, у которого поля-тёзки в домене нет и не будет, поэтому равенство
+// имён стало ложным по букве. Ослабить его до членства было бы неверно —
+// ослабленное перестало бы ловить вторую беду, ради которой писалось («поле,
+// выразимое в продукте, невыразимо в манифесте»). Обе половины утверждает
+// теперь проба перевода (`ruletranslation_internal_test.go`): тотальность,
+// непотерянность и ОБЪЯВЛЕННОСТЬ расхождения словарём, который самоистекает.
+//
+// Положительный контроль полосы к изоморфизму отношения не имел и остаётся:
+// проба, снятая вместе с чужим предметом, унесла бы своё.
+func TestMODMR10RolesSectionLoadsWhole(t *testing.T) {
 	m, err := manifest.Load([]byte(mustReadResourcesFixture(t)))
 	if err != nil {
 		t.Fatalf("раздел roles отвергнут: %v", err)
@@ -81,39 +56,10 @@ func TestMODMR10RolesSectionLoadsAndRulesAreIsomorphicToDomainRule(t *testing.T)
 	if len(m.Roles[0].Rules) != 1 || m.Roles[0].Rules[0].Module != "vpc" {
 		t.Errorf("выдача роли прочитана неверно: %+v", m.Roles[0].Rules)
 	}
-
-	manifestKeys := yamlKeysOf(reflect.TypeOf(manifest.Rule{}))
-	var domainKeys []string
-	dt := reflect.TypeOf(domain.Rule{})
-	for i := 0; i < dt.NumField(); i++ {
-		if f := dt.Field(i); f.IsExported() {
-			domainKeys = append(domainKeys, lowerFirst(f.Name))
-		}
+	if got := m.Roles[0].Rules[0].Classes; len(got) == 0 {
+		t.Errorf("право роли прочитано пустым: %+v", m.Roles[0].Rules[0])
 	}
-	sort.Strings(domainKeys)
-
-	inDomain := map[string]bool{}
-	for _, k := range domainKeys {
-		inDomain[k] = true
-	}
-	inManifest := map[string]bool{}
-	for _, k := range manifestKeys {
-		inManifest[k] = true
-	}
-	for _, k := range manifestKeys {
-		if !inDomain[k] {
-			t.Errorf("ключ выдачи %q не имеет поля в domain.Rule: манифест заводит второй "+
-				"словарь для того же предмета", k)
-		}
-	}
-	for _, k := range domainKeys {
-		if !inManifest[k] {
-			t.Errorf("поле domain.Rule %q не имеет ключа в выдаче манифеста: правило, "+
-				"выразимое в продукте, невыразимо в манифесте", k)
-		}
-	}
-	t.Logf("перепись: ключей выдачи манифеста %d (%v) · полей domain.Rule %d (%v)",
-		len(manifestKeys), manifestKeys, len(domainKeys), domainKeys)
+	t.Logf("перепись: ролей %d · правил у первой %d", len(m.Roles), len(m.Roles[0].Rules))
 }
 
 // ── MOD-MR-11 ───────────────────────────────────────────────────────────────
@@ -124,7 +70,7 @@ func TestMODMR11RoleIDOfAForeignModuleIsRefused(t *testing.T) {
 	base := "apiVersion: iam/v1\nmodule: vpc\nroles:\n" +
 		"  - id: %s\n    name: Наблюдатель\n    description: Читает.\n" +
 		"    tier: {tierType: iam.project, tierId: prj000000000000000}\n" +
-		"    rules:\n      - {module: vpc, resources: [network], verbs: [get]}\n"
+		"    rules:\n      - {module: vpc, resources: [network], classes: [get]}\n"
 
 	_, err := manifest.Load([]byte(strings.Replace(base, "%s", "compute.viewer", 1)))
 	if err == nil {
@@ -156,7 +102,7 @@ func TestMODMR12ResourceWildcardIsAlwaysRefusedAndVerbWildcardIsNot(t *testing.T
 	base := "apiVersion: iam/v1\nmodule: vpc\nroles:\n" +
 		"  - id: vpc.viewer\n    name: Наблюдатель\n    description: Читает.\n" +
 		"    tier: {tierType: iam.project, tierId: prj000000000000000}\n" +
-		"    rules:\n      - {module: vpc, resources: [%s], verbs: [%s]}\n"
+		"    rules:\n      - {module: vpc, resources: [%s], classes: [%s]}\n"
 
 	wildcardResources := strings.Replace(strings.Replace(base, "%s", `"*"`, 1), "%s", "get", 1)
 	_, err := manifest.Load([]byte(wildcardResources))
@@ -187,7 +133,7 @@ func TestMODMR13ResourceNamesAndMatchLabelsAreMutuallyExclusive(t *testing.T) {
 	base := "apiVersion: iam/v1\nmodule: vpc\nroles:\n" +
 		"  - id: vpc.viewer\n    name: Наблюдатель\n    description: Читает.\n" +
 		"    tier: {tierType: iam.project, tierId: prj000000000000000}\n" +
-		"    rules:\n      - module: vpc\n        resources: [network]\n        verbs: [get]\n%s"
+		"    rules:\n      - module: vpc\n        resources: [network]\n        classes: [get]\n%s"
 
 	both := "        resourceNames: [net-abc]\n        matchLabels: {env: prod}\n"
 	_, err := manifest.Load([]byte(strings.Replace(base, "%s", both, 1)))
@@ -227,7 +173,7 @@ func TestMODMR14SystemRoleIsRefusedExplicitly(t *testing.T) {
 	base := "apiVersion: iam/v1\nmodule: vpc\nroles:\n" +
 		"  - id: vpc.admin\n    name: Администратор\n    description: Может всё.\n" +
 		"    tier: {tierType: %s, tierId: cluster_kacho_root}\n" +
-		"    rules:\n      - {module: vpc, resources: [network], verbs: [get]}\n"
+		"    rules:\n      - {module: vpc, resources: [network], classes: [get]}\n"
 
 	_, err := manifest.Load([]byte(strings.Replace(base, "%s", "iam.cluster", 1)))
 	if err == nil {
