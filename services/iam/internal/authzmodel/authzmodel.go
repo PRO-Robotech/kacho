@@ -88,14 +88,34 @@ var (
 // пути, которым модель не нужна.
 func Shared() (*Plans, error) {
 	sharedOnce.Do(func() {
-		m, err := authzplan.ParseModel(DSL)
-		if err != nil {
-			sharedErr = fmt.Errorf("authzmodel: разбор вшитой модели: %w", err)
-			return
+		shared, sharedErr = New(DSL)
+		if sharedErr != nil {
+			sharedErr = fmt.Errorf("authzmodel: разбор вшитой модели: %w", sharedErr)
 		}
-		shared = &Plans{model: m, by: map[string]authzplan.Plan{}}
 	})
 	return shared, sharedErr
+}
+
+// New разбирает НАЗВАННУЮ модель.
+//
+// Существует потому, что у вопроса «что принимает объявление отношения» есть
+// вторая сторона, и живого входа у неё нет: чтобы доказать, что судья отвечает
+// «не принимает» там, где не принимает, нужен канон, которого в продукте нет.
+// Подать его можно только текстом.
+//
+// Не «конструктор для проб»: [Shared] выражен через него, поэтому разбор вшитой
+// модели и разбор названной — ОДИН код. Заведи их порознь — и доказательство
+// поехало бы по одной ветке, а продукт по другой.
+//
+// Непонятое НЕ пропускается: вход, каноном не являющийся, даёт ошибку, а не
+// пустую модель. Пустая модель отвечала бы «такого отношения нет» на всякий
+// вопрос — уверенно и о модели, которой не существует.
+func New(dsl string) (*Plans, error) {
+	m, err := authzplan.ParseModel(dsl)
+	if err != nil {
+		return nil, fmt.Errorf("authzmodel: разбор модели: %w", err)
+	}
+	return &Plans{model: m, by: map[string]authzplan.Plan{}}, nil
 }
 
 // Plan отдаёт план вывода для отношения типа.

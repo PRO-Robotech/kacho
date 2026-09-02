@@ -47,7 +47,6 @@ import (
 	"context"
 	"os"
 	"path/filepath"
-	"reflect"
 	"sort"
 	"strings"
 	"testing"
@@ -116,73 +115,31 @@ func TestModuleManifestDeclaresTheSeedTheLiveBaseHolds(t *testing.T) {
 
 	res := moduleseedparity.Compare(states)
 
-	// Невыразимое печатается ПОИМЁННО и до вердикта: это остаток #1936, а не
-	// молчание. Числом его называет перепись выше, именами — эти строки.
-	for _, line := range res.Inexpressible {
-		t.Logf("  ВНЕ ВЕРДИКТА: %s", line)
-	}
-
 	if len(res.Findings) > 0 {
 		t.Fatalf("раздел `seed` расходится с живой базой — %d место(а):\n  %s\n\n"+
 			"Снятие: объявить `seed` модуля так, чтобы он сходился со строками, которые уже "+
-			"лежат в базе (#1891). Строки, выведенные из-под вердикта, названы выше "+
-			"пометкой «ВНЕ ВЕРДИКТА» — их чинит правка ФОРМЫ манифеста (#1936), а не "+
-			"правка манифеста.",
+			"лежат в базе (#1891). Выведенных из-под вердикта строк больше НЕТ: форма "+
+			"научилась выражать выдачу отношением (#1936), и всякая живая строка модуля "+
+			"судится наравне с остальными.",
 			len(res.Findings), strings.Join(res.Findings, "\n  "))
 	}
 }
 
-// TestBindingFormStillCannotExpressARelationGrant — ПРОБА ПРЕДПОСЫЛКИ гейта.
+// ЗДЕСЬ СТОЯЛА ПРОБА ПРЕДПОСЫЛКИ `TestBindingFormStillCannotExpressARelationGrant`
+// — она СНЯТА ВМЕСТЕ СО СВОИМ ПРЕДМЕТОМ (#1936).
 //
-// Сверка выше судит все четыре подраздела, но выводит из-под вердикта один ВИД
-// строки — выдачу ОТНОШЕНИЕМ и наделённую только ею группу. Основание одно:
-// форма выдачи не несёт ключа, которым выдаётся отношение. Основание есть
-// утверждение о дереве, и оно обязано истечь само: появится ключ — эта проба
-// покраснеет и потребует научить предикат [moduleseedparity.Binding.ExpressibleByForm]
-// новому ключу, а не оставит слепую зону молча.
+// Проба утверждала, что у формы выдачи нет ключа, чьё имя содержит `relation`, и
+// сама объявляла своё истечение: «появится ключ — эта проба покраснеет и
+// потребует научить предикат новому ключу, а не оставит слепую зону молча».
+// Предикат сработал ровно так, как обещал: ключ `grantedRelation` заведён, проба
+// покраснела, сверка расширена на весь предмет, и проба снята — не ослаблена.
 //
-// # Половина основания здесь ВТОРАЯ, и одной этой пробы НЕ ДОСТАТОЧНО
+// Оставить её, перевернув утверждение («ключ ЕСТЬ»), значило бы завести проверку
+// без предмета: она стерегла ГРАНИЦУ сверки, а границы больше нет.
 //
-// Ключ отношения сам по себе живые строки объявимыми не делает. §3.5 приёмки-
-// основания (APPROVED) объявляет получателем
-// преднастроенной выдачи ТОЛЬКО группу, а обе живые строки наделяют СЛУЖЕБНУЮ
-// ЗАПИСЬ отношением, которое членства группы не принимает. Поэтому предписание
-// «объявите эти строки в манифестах их модулей» исполнимо лишь вместе с
-// решением о ТИПЕ ПОЛУЧАТЕЛЯ (§10 п. 6 той же приёмки). Приёмка —
-// `services/iam/docs/engineering/acceptance/module-manifest-roles-and-seed-grants.md`.
-// Вторую половину стережёт `TestRelationGrantRecipientTypeMustBeDecidedWithTheKey`
-// (recipient_test.go): она читает канон модели, а не память.
-func TestBindingFormStillCannotExpressARelationGrant(t *testing.T) {
-	keys := yamlKeysOf(reflect.TypeOf(manifest.AccessBinding{}))
-	require.NotEmpty(t, keys, "у формы выдачи не прочитано ни одного ключа — разбор тегов сломан")
-	t.Logf("ключи формы выдачи: %s", strings.Join(keys, " "))
-
-	for _, k := range keys {
-		require.NotContainsf(t, strings.ToLower(k), "relation",
-			"у выдачи появился ключ %q: форма научилась выражать выдачу ОТНОШЕНИЕМ, а сверка "+
-				"посева по-прежнему выводит такие строки из-под вердикта пометкой «ВНЕ "+
-				"ВЕРДИКТА». Научите предикат Binding.ExpressibleByForm новому ключу, объявите "+
-				"эти строки в манифестах их модулей — и снимите эту пробу вместе с её "+
-				"предметом (#1891, #1936). ОДНОГО ключа мало: §3.5 приёмки-основания даёт "+
-				"преднастроенной выдаче получателем только ГРУППУ, а обе живые строки наделяют "+
-				"служебную запись отношением, которое членства группы не принимает — см. "+
-				"TestRelationGrantRecipientTypeMustBeDecidedWithTheKey", k)
-	}
-	require.Containsf(t, keys, "roleId",
-		"у выдачи пропал ключ roleId — основание границы сверки описывает форму, которой "+
-			"больше нет")
-}
-
-func yamlKeysOf(t reflect.Type) []string {
-	var out []string
-	for i := 0; i < t.NumField(); i++ {
-		if tag := t.Field(i).Tag.Get("yaml"); tag != "" {
-			out = append(out, strings.Split(tag, ",")[0])
-		}
-	}
-	sort.Strings(out)
-	return out
-}
+// Вместе с ней снят её помощник `yamlKeysOf`: других вызывающих у него не
+// осталось ни одного, а помощник без вызывающего есть мёртвый код, который
+// следующий читатель примет за действующий.
 
 // moduleStates — обе стороны сверки по каждому модулю.
 func moduleStates(ctx context.Context, t *testing.T, root string) (
@@ -237,19 +194,15 @@ func moduleStates(ctx context.Context, t *testing.T, root string) (
 	}
 	sort.Slice(states, func(i, j int) bool { return states[i].Module < states[j].Module })
 
-	// Величины «с владельцем» и «формой невыразимо» считаются ПО ТОМУ ЖЕ
-	// предикату, что применяет сверка, — не вторым выражением: второй перевод
-	// разошёлся бы с первым молча, и перепись обещала бы не то, что судится.
+	// «С владельцем» считается по ТОМУ ЖЕ множеству, что судит сверка: второе
+	// выражение разошлось бы с первым молча, и перепись обещала бы не то, что
+	// судится. Прежде здесь считалась ещё и «формой невыразимая» часть — она
+	// снята вместе со своим предметом (#1936).
 	for _, st := range states {
 		census.SA.Owned += len(st.LiveSA)
 		census.Joins.Owned += len(st.LiveJoin)
 		census.Groups.Owned += len(st.LiveGroup)
 		census.Bindings.Owned += len(st.LiveBinding)
-
-		_, inexpressibleBinding := moduleseedparity.SplitBindings(st.LiveBinding)
-		_, inexpressibleGroup := moduleseedparity.SplitGroups(st.LiveGroup, st.LiveBinding)
-		census.Bindings.Inexpressible += len(inexpressibleBinding)
-		census.Groups.Inexpressible += len(inexpressibleGroup)
 	}
 	return states, census
 }
@@ -310,7 +263,8 @@ func declaredSeed(m *manifest.Manifest) ([]moduleseedparity.ServiceAccount, []mo
 		for _, subj := range b.Subjects {
 			bindings = append(bindings, moduleseedparity.Binding{
 				SubjectType: subj.Type, SubjectName: subj.Name,
-				RoleID: b.RoleID, ScopeType: b.ScopeType, ScopeID: b.ScopeID,
+				RoleID: b.RoleID, Relation: b.GrantedRelation,
+				ScopeType: b.ScopeType, ScopeID: b.ScopeID,
 			})
 		}
 	}

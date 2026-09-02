@@ -71,9 +71,30 @@ var (
 	// ErrRefNotAPair — сторона вступления адресована не парой (аккаунт, имя).
 	ErrRefNotAPair = errors.New("manifest: reference is not a pair (account, name)")
 	// ErrBindingIncomplete — выдача не назвала, ЧТО она выдаёт, ГДЕ и НА ЧТО.
-	// Схема требует все четыре ключа (`roleId`, `scopeType`, `scopeId`,
-	// `target`); без любого из них выдача неисполнима, а не «частична».
+	// Форм выдачи ДВЕ и они взаимоисключающи (`roleId` либо `grantedRelation`);
+	// сверх ровно одной из них выдача обязана назвать `scopeType`, `scopeId` и
+	// `target`. Без любого из этих ключей выдача неисполнима, а не «частична».
 	ErrBindingIncomplete = errors.New("manifest: accessBinding is incomplete")
+	// ErrRelationNotDeclared — выдача называет отношение, которого канон модели
+	// прав у типа якоря не объявляет. Отличается от ErrRelationComputed: там
+	// отношение есть и выдать его напрямую нечем, здесь его нет вовсе.
+	ErrRelationNotDeclared = errors.New("manifest: accessBinding grants a relation the canon does not declare")
+	// ErrRelationComputed — отношение объявлено ВЫЧИСЛЯЕМЫМ: прямых записей
+	// субъекта у него нет, значит выдать его напрямую нечем. Свой вид, а не
+	// «вид получателя не принят»: схлопнув их, судья назвал бы неверный предмет,
+	// и автор чинил бы получателя там, где чинить надо выбор отношения.
+	ErrRelationComputed = errors.New("manifest: accessBinding grants a computed relation")
+	// ErrRelationRecipientKind — объявление отношения не принимает получателя
+	// названного вида. Судится по канону, а не по второму перечню.
+	ErrRelationRecipientKind = errors.New("manifest: relation does not admit this recipient kind")
+	// ErrRelationAnchor — выдача отношением объявлена не на кластерном якоре.
+	// Выдачи ролью НЕ касается: её якорь — предмет задачи продукта #1953.
+	ErrRelationAnchor = errors.New("manifest: relation grant is anchored outside the cluster")
+	// ErrCanonUnparsed — канон модели прав не разобрался, и судить об отношении
+	// нечем. Отдельный вид от ErrRelationNotDeclared: «не объявляет» есть
+	// вердикт о модели, а здесь модели нет вовсе, и уверенный вердикт по
+	// недочитанному был бы вымыслом.
+	ErrCanonUnparsed = errors.New("manifest: authorization model canon did not parse")
 	// ErrSeededSubjectIncomplete — заведомая запись посева не назвала себя
 	// целиком: имя, аккаунт либо назначение. Отдельный вид от связности:
 	// связность спрашивает, есть ли у названного предмет, а здесь предмет ещё
@@ -334,8 +355,14 @@ func validateSeedLinkage(m *Manifest, doc *yaml.Node, roles roleIDs) (LinkageCen
 		// «роль не объявлена» о ПУСТОМ идентификаторе отправило бы автора
 		// сверять перечень ролей, тогда как роль он просто не назвал. Отказ
 		// обязан называть поле и правило, а не ближайшее следствие.
+		// Форма выдачи судится ОТДЕЛЬНО от остальных ключей: их у неё две, они
+		// взаимоисключающи, и «названы обе» есть находка, а не отсутствие
+		// ключа. Прежде здесь стояло требование именно `roleId` — довод «выдача
+		// не сказала, ЧТО она выдаёт» остался верным, а требование стало
+		// однобоким (#1936).
+		faults = append(faults, validateGrantForm(doc, i, b)...)
+
 		for _, need := range []struct{ key, value, why string }{
-			{"roleId", b.RoleID, "выдача не сказала, ЧТО она выдаёт"},
 			{"scopeType", b.ScopeType, "выдача не сказала, на каком ярусе она действует"},
 			{"scopeId", b.ScopeID, "выдача не сказала, на каком объекте яруса она действует"},
 			{"target", b.Target, "выдача не сказала, распространяется ли она на весь ярус либо на перечень объектов"},
@@ -365,6 +392,13 @@ func validateSeedLinkage(m *Manifest, doc *yaml.Node, roles roleIDs) (LinkageCen
 				})
 			}
 		}
+
+		// seededSubjects — номера субъектов, которых этот же посев ЗАВОДИТ.
+		// Только они доходят до канона: вид, посевом не заводимый (человек),
+		// отвергается ниже, и назвать канон его виновником значило бы отправить
+		// автора чинить не то — канон человека как раз принимает. Порядок двух
+		// проверок объявлен здесь, а не выведен из порядка чтения полей.
+		var seededSubjects []int
 
 		for j, s := range b.Subjects {
 			if s.Type == "group" {
@@ -396,8 +430,13 @@ func validateSeedLinkage(m *Manifest, doc *yaml.Node, roles roleIDs) (LinkageCen
 				})
 			default:
 				census.SubjectsResolved++
+				seededSubjects = append(seededSubjects, j)
 			}
 		}
+
+		// Канон спрашивается ПОСЛЕДНИМ и только у формы отношения: у формы роли
+		// предмета нет — роль раздаёт глаголы своими правилами.
+		faults = append(faults, validateRelationGrant(doc, i, b, seededSubjects)...)
 	}
 
 	for i, sa := range seed.ServiceAccounts {
@@ -420,7 +459,8 @@ func validateSeedLinkage(m *Manifest, doc *yaml.Node, roles roleIDs) (LinkageCen
 			kind:  ErrGroupNeverGranted,
 			coord: locate(doc, "seed", "groups", i),
 			detail: fmt.Sprintf(
-				"группа %q заведена и не названа ни в одной выдаче: имя без предмета — выдайте ей роль в seed.accessBindings либо не заводите",
+				"группа %q заведена и не названа ни в одной выдаче: имя без предмета — "+
+					"выдайте ей роль либо отношение в seed.accessBindings, либо не заводите",
 				g.Name),
 		})
 	}

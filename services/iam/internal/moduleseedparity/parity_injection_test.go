@@ -145,8 +145,9 @@ func injGroupBinding(role, group string) moduleseedparity.Binding {
 	}
 }
 
-// injGroupRelationBinding — та же выдача группе, но ОТНОШЕНИЕМ: форма манифеста
-// такой ключ не несёт, поэтому и сама выдача, и наделённая ею группа невыразимы.
+// injGroupRelationBinding — та же выдача группе, но ОТНОШЕНИЕМ. Прежде форма
+// манифеста такого ключа не несла, и обе строки выводились из-под вердикта;
+// после #1936 они судятся наравне с прочими.
 func injGroupRelationBinding(relation, group string) moduleseedparity.Binding {
 	b := injGroupBinding("", group)
 	b.Relation = relation
@@ -169,8 +170,18 @@ func TestInjectionSeedParityAgreeingBindingsAreSilent(t *testing.T) {
 	b := []moduleseedparity.Binding{injBindingRole("demo.viewer")}
 	res := moduleseedparity.Compare([]moduleseedparity.ModuleState{injBindState(b, b)})
 	require.Emptyf(t, res.Findings, "согласованные выдачи дали находки: %v", res.Findings)
-	require.Emptyf(t, res.Inexpressible,
-		"выдача РОЛЬЮ выразима формой и не смеет попадать в невыразимое: %v", res.Inexpressible)
+}
+
+// Законный близнец ВТОРОЙ формы: согласованная выдача ОТНОШЕНИЕМ так же молчит.
+//
+// Парная к [TestInjectionSeedParityLiveRelationBindingNotDeclaredIsAFinding]:
+// без неё отрицание ниже зеленело бы на сверке, объявляющей находкой всякую
+// выдачу отношением.
+func TestInjectionSeedParityAgreeingRelationBindingsAreSilent(t *testing.T) {
+	b := []moduleseedparity.Binding{injBindingRelation("system_viewer")}
+	res := moduleseedparity.Compare([]moduleseedparity.ModuleState{injBindState(b, b)})
+	require.Emptyf(t, res.Findings,
+		"согласованная выдача ОТНОШЕНИЕМ дала находки: %v", res.Findings)
 }
 
 func TestInjectionSeedParityLiveRoleBindingNotDeclaredIsAFinding(t *testing.T) {
@@ -200,18 +211,24 @@ func TestInjectionSeedParityBindingComparesWhatIsGranted(t *testing.T) {
 	require.Lenf(t, res.Findings, 2, "подмена роли не замечена: %v", res.Findings)
 }
 
-// НЕСУЩЕЕ: выдача ОТНОШЕНИЕМ формой невыразима — она не находка и не молчание,
-// а отдельный названный перечень. Молча отброшенная, она сделала бы пробел
-// неотличимым от согласия.
-func TestInjectionSeedParityRelationBindingIsNamedNotDropped(t *testing.T) {
+// НЕСУЩЕЕ, и утверждение здесь ПЕРЕВЕРНУЛОСЬ вместе со своим предметом (#1936).
+//
+// Прежде проба требовала, чтобы живая выдача ОТНОШЕНИЕМ не была находкой, а
+// попадала в отдельный названный перечень: автор манифеста написать её не мог, и
+// требовать этого было нельзя. Форма научилась — значит написать её теперь
+// можно, и её отсутствие среди объявленных есть ПРОБЕЛ, ровно как у выдачи ролью.
+//
+// Проба не снята, а переведена на признак, который дерево производит: снять её
+// значило бы потерять наблюдение ровно там, где оно впервые стало возможным.
+func TestInjectionSeedParityLiveRelationBindingNotDeclaredIsAFinding(t *testing.T) {
 	res := moduleseedparity.Compare([]moduleseedparity.ModuleState{
 		injBindState(nil, []moduleseedparity.Binding{injBindingRelation("system_viewer")})})
-	require.Emptyf(t, res.Findings,
-		"выдачу отношением автор манифеста написать не может — требовать этого нельзя: %v", res.Findings)
-	require.Lenf(t, res.Inexpressible, 1,
-		"выдача отношением обязана быть НАЗВАНА, а не отброшена: %v", res.Inexpressible)
-	require.Contains(t, res.Inexpressible[0], "system_viewer")
-	require.Contains(t, res.Inexpressible[0], "модуль demo")
+	require.Lenf(t, res.Findings, 1,
+		"живая выдача ОТНОШЕНИЕМ теперь выразима формой — её отсутствие среди объявленных "+
+			"есть пробел: %v", res.Findings)
+	require.Contains(t, res.Findings[0], "выдача ЖИВЁТ и не объявлена")
+	require.Contains(t, res.Findings[0], "system_viewer")
+	require.Contains(t, res.Findings[0], "модуль demo")
 }
 
 // Группа модуля, наделённая выразимой выдачей, сверяется как всё прочее.
@@ -235,20 +252,24 @@ func TestInjectionSeedParityDeclaredGroupNotLiveIsAFinding(t *testing.T) {
 	require.Contains(t, res.Findings[0], "группа ОБЪЯВЛЕНА и не живёт")
 }
 
-// Группа, наделённая ТОЛЬКО отношением, необъявима по следствию: валидатор
-// связности требует, чтобы заведённая группа была названа выдачей манифеста, а
-// выдачи отношением у формы нет. Предикат ВЫВОДИТСЯ из живых выдач этой группы,
-// а не объявлен списком имён.
-func TestInjectionSeedParityGroupGrantedOnlyByRelationIsInexpressible(t *testing.T) {
+// Группа, наделённая ТОЛЬКО отношением, судится наравне с прочими — и это второе
+// утверждение, перевернувшееся вместе с предметом (#1936).
+//
+// Прежде она была необъявима ПО СЛЕДСТВИЮ: валидатор связности требует, чтобы
+// заведённая группа была названа выдачей манифеста, а выдачи отношением у формы
+// не было. Необъявимость группы была следствием правила о выдаче, а не своим
+// правилом, — поэтому она и снялась вместе с ним, без единой правки о группах.
+func TestInjectionSeedParityGroupGrantedOnlyByRelationIsJudgedLikeTheRest(t *testing.T) {
 	res := moduleseedparity.Compare([]moduleseedparity.ModuleState{{
 		Module: "demo", ManifestFile: "services/demo/manifest.yaml",
 		LiveGroup: []moduleseedparity.Group{injGroup("module-quota-readers", "читатели пределов")},
 		LiveBinding: []moduleseedparity.Binding{
 			injGroupRelationBinding("quota_reader", "module-quota-readers")},
 	}})
-	require.Emptyf(t, res.Findings,
-		"группа, которую нечем наделить, автору манифеста недоступна: %v", res.Findings)
-	require.Lenf(t, res.Inexpressible, 2,
-		"невыразимыми обязаны быть названы ОБЕ строки — и группа, и её выдача: %v", res.Inexpressible)
-	require.Contains(t, strings.Join(res.Inexpressible, "\n"), "module-quota-readers")
+	joined := strings.Join(res.Findings, "\n")
+	require.Lenf(t, res.Findings, 2,
+		"объявить обе строки теперь можно, значит обе необъявленные суть пробел: %v", res.Findings)
+	require.Contains(t, joined, "группа ЖИВЁТ и не объявлена")
+	require.Contains(t, joined, "выдача ЖИВЁТ и не объявлена")
+	require.Contains(t, joined, "module-quota-readers")
 }
