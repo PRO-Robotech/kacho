@@ -11,11 +11,14 @@ import (
 func clientTruthIAMModuleSetOptions(t *testing.T) ClientTruthIAMModuleSetOptions {
 	t.Helper()
 	return ClientTruthIAMModuleSetOptions{
-		Tree:          clientTruthRepoTree(t),
-		ModuleSetFile: "services/iam/internal/authzmap/fga_types.go",
-		ModuleSetVar:  "objectTypes",
-		Surfaces:      []string{"services/iam/docs/content", "proto/kacho/cloud/iam"},
-		SurfaceExts:   []string{".mdx", ".md", ".proto"},
+		Tree: clientTruthRepoTree(t),
+		// ПАКЕТ, а не файл: объявление таблицы типов уже дважды переезжало
+		// между файлами пакета, и привязка к имени файла оба раза давала
+		// «анализатор не отработал» вместо вердикта (#1927, #1944).
+		ModuleSetPkg: "services/iam/internal/authzmap",
+		ModuleSetVar: "objectTypes",
+		Surfaces:     []string{"services/iam/docs/content", "proto/kacho/cloud/iam"},
+		SurfaceExts:  []string{".mdx", ".md", ".proto"},
 	}
 }
 
@@ -36,6 +39,11 @@ func TestClientTruthIAMModuleSetEnumerationsAreComplete(t *testing.T) {
 	if census.Modules < 4 {
 		t.Fatalf("модулей выведено %d — объявление набора не прочитано, судить не по чему",
 			census.Modules)
+	}
+	// Премиса разрешения: пакет прочитан не в один файл. Без неё «объявление
+	// найдено» неотличимо от «повезло с первым же файлом».
+	if census.PkgFiles < 5 {
+		t.Fatalf("файлов пакета осмотрено %d — обход пакета пуст или усечён", census.PkgFiles)
 	}
 	if census.TypeKeys < 20 {
 		t.Fatalf("ключей типа прочитано %d — таблица прочитана не вся, набор мог выйти неполным",

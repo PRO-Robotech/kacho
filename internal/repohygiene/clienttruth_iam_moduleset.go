@@ -7,19 +7,44 @@
 // # Предмет
 //
 // Набор модулей закрыт, и его ЕДИНСТВЕННЫЙ источник — приставки ключей закрытой
-// таблицы типов объекта (`objectTypes` в
-// `services/iam/internal/authzmap/fga_types.go`), которые продукт выводит
-// производителем `authzmap.CatalogSeedModules`. Модуль — то, чем клиент выражает
-// грант: `Rule.module`.
+// таблицы типов объекта (`objectTypes` пакета `services/iam/internal/authzmap`),
+// которые продукт выводит производителем `authzmap.CatalogSeedModules`. Модуль —
+// то, чем клиент выражает грант: `Rule.module`.
 //
-// # ИСТОЧНИК ПЕРЕЕХАЛ ВМЕСТЕ С ПРЕДМЕТОМ (задача продукта #1927)
+// # ПРЕДМЕТ — ПАКЕТ, А НЕ ФАЙЛ (задача продукта #1944)
 //
-// До неё анализатор выводил набор из отдельного литерала домена `knownModules`.
+// Таблица типов ПОРОЖДАЕТСЯ из манифестов модулей (#1092) и лежит теперь в
+// `tables_gen.go`; прежде она была рукописной и лежала в `fga_types.go`. Гейт
+// был привязан к имени файла и переезда не пережил: он отказал не находкой, а
+// невозможностью отработать — «не найдено объявление», — то есть третьей
+// категорией, поданной как красное.
+//
+// Здесь чинится КЛАСС, а не его экземпляр: объявление разрешается по ПАКЕТУ
+// (`pkgvardecl.go`), потому что пакет и есть единица области видимости Go —
+// package-level имя в нём ровно одно by construction, и перенос объявления между
+// файлами о нём ничего не меняет. Второй экземпляр того же класса — проверка
+// глаголов фикстур ролей — сломался тем же переездом и переведён тем же образом.
+//
+// Читается ПОРОЖДЁННОЕ объявление, а не манифесты, и это выбор: разбор манифеста
+// завёл бы ВТОРУЮ форму его чтения (первая — загрузчик `services/iam/internal/
+// manifest`, закрытый правилом видимости Go для пакетов вне сервиса), и две формы
+// разошлись бы молча. Текст порождённого файла безопасен: его свежесть сверяется
+// побайтово своим гейтом (`authzmapgen.TestGeneratedTablesAreFresh`), поэтому
+// «текст отстал от манифеста» здесь невыразимо.
+//
+// # ИСТОЧНИК ПЕРЕЕЗЖАЛ ДВАЖДЫ, И ВТОРОЙ РАЗ ГЕЙТ ЗА НИМ НЕ ПОШЁЛ
+//
+// Первый переезд — задача продукта #1927. До неё анализатор выводил набор из
+// отдельного литерала домена `knownModules`.
 // Литерал снят: набор модулей стал строками каталога, а канон дерева выводится
 // из той же таблицы типов, из которой посеяны ресурсы. Анализатор перенесён на
 // новый источник тем же изменением — оставить его на снятой координате значило
 // бы получить гейт, отказывающий по причине, к его предмету отношения не
 // имеющей (`testing.md` §«Гейт на класс», п. 9).
+//
+// Второй переезд — #1092, и вот за ним анализатор НЕ пошёл: см. раздел «предмет —
+// пакет, а не файл» выше. Привязка к пакету заведена именно затем, чтобы третьего
+// раза не было: она переживает перенос объявления внутри пакета by construction.
 //
 // Предмет при этом НЕ изменился: перечень клиентской поверхности по-прежнему
 // обязан назвать набор целиком, и цена неполноты по-прежнему в безопасности, а
@@ -90,13 +115,9 @@ package repohygiene
 
 import (
 	"fmt"
-	"go/ast"
-	"go/parser"
-	"go/token"
 	"io"
 	"regexp"
 	"sort"
-	"strconv"
 	"strings"
 
 	"github.com/PRO-Robotech/kacho/internal/treecorpus"
@@ -108,9 +129,13 @@ type ClientTruthIAMModuleSetOptions struct {
 	// (`treecorpus.NewTree`), инъекционная проба — синтетическое дерево
 	// (`treecorpus.SyntheticTree`). Разбор — clienttruth_treefiles.go.
 	Tree *treecorpus.Tree
-	// ModuleSetFile — путь (от корня дерева) к объявлению закрытой таблицы
-	// типов, приставки ключей которой и есть набор модулей.
-	ModuleSetFile string
+	// ModuleSetPkg — каталог ПАКЕТА (от корня дерева), объявляющего закрытую
+	// таблицу типов, приставки ключей которой и есть набор модулей.
+	//
+	// Пакет, а не файл: объявление уже дважды переезжало между файлами пакета,
+	// и оба раза привязка к имени файла давала отказ «не отработал» вместо
+	// вердикта (#1927, #1944).
+	ModuleSetPkg string
 	// ModuleSetVar — имя переменной, чей составной литерал разбирается.
 	ModuleSetVar string
 	// Surfaces — каталоги клиентских поверхностей (от корня дерева).
@@ -127,6 +152,14 @@ type ClientTruthIAMModuleSetCensus struct {
 	// Modules: приставок мало by construction, и одна их величина не отличила
 	// бы «таблица прочитана» от «прочитаны две строки из двадцати семи».
 	TypeKeys int
+	// PkgFiles — сколько не-тестовых файлов пакета осмотрено в поисках
+	// объявления. Без этой величины «объявление найдено» неотличимо от
+	// «прочитан один файл, и повезло».
+	PkgFiles int
+	// DeclFile — где объявление нашлось. Печатается, потому что именно это
+	// место и переезжало: читатель обязан видеть, О ЧЁМ вынесен вердикт, не
+	// заглядывая в исходник гейта.
+	DeclFile string
 	// SurfaceFiles — сколько файлов поверхности прочитано.
 	SurfaceFiles int
 	// Enumerations — сколько перечней (три имени и более) распознано и рассужено.
@@ -170,15 +203,16 @@ func AuditClientTruthIAMModuleSet(
 ) ([]ClientTruthIAMModuleSetFinding, ClientTruthIAMModuleSetCensus, error) {
 	var census ClientTruthIAMModuleSetCensus
 
-	modules, keys, err := parseModuleSet(opts.Tree, opts.ModuleSetFile, opts.ModuleSetVar)
+	modules, keys, decl, err := parseModuleSet(opts.Tree, opts.ModuleSetPkg, opts.ModuleSetVar)
+	census.Modules, census.TypeKeys = len(modules), keys
+	census.PkgFiles, census.DeclFile = decl.PkgFiles, decl.DeclFile
 	if err != nil {
 		return nil, census, err
 	}
-	census.Modules, census.TypeKeys = len(modules), keys
 	if len(modules) < 3 {
 		return nil, census, fmt.Errorf(
-			"из %s выведено %d имён — набор не прочитан, судить перечни не по чему",
-			opts.ModuleSetFile, len(modules))
+			"из %s (пакет %s) выведено %d имён — набор не прочитан, судить перечни не по чему",
+			decl.DeclFile, opts.ModuleSetPkg, len(modules))
 	}
 
 	alt := make([]string, 0, len(modules))
@@ -241,9 +275,11 @@ func AuditClientTruthIAMModuleSet(
 	}
 
 	if log != nil {
-		_, _ = fmt.Fprintf(log, "перепись: ключей типа прочитано %d · модулей выведено %d (%s) · "+
+		_, _ = fmt.Fprintf(log, "перепись: файлов пакета %s осмотрено %d · объявление в %s · "+
+			"ключей типа прочитано %d · модулей выведено %d (%s) · "+
 			"файлов поверхности %d · перечней рассужено %d · спанов из двух имён встречено %d "+
 			"(НЕ судятся — законная пара)\n",
+			opts.ModuleSetPkg, census.PkgFiles, census.DeclFile,
 			census.TypeKeys, census.Modules, strings.Join(modules, ", "),
 			census.SurfaceFiles, census.Enumerations, census.PairSpans)
 	}
@@ -257,75 +293,49 @@ func AuditClientTruthIAMModuleSet(
 }
 
 // parseModuleSet выводит набор РАЗБОРОМ объявления, а не чтением текста: имена
-// модулей стоят и в комментариях рядом с ним.
+// модулей стоят и в комментариях рядом с ним, и внутри разбора переноса, которым
+// объяснён переезд самого объявления.
 //
-// Возвращает РАЗЛИЧНЫЕ приставки ключей (отсортированно) и число прочитанных
-// ключей. Второе — объём осмотренного: приставок шесть при двадцати семи ключах,
-// и по одному их числу «таблица прочитана» неотличимо от «прочитаны две строки».
-func parseModuleSet(tree *treecorpus.Tree, rel, varName string) ([]string, int, error) {
-	src, rerr := clientTruthReadTreeFile(tree, rel)
-	if rerr != nil {
-		return nil, 0, fmt.Errorf("чтение %s: %w", rel, rerr)
-	}
-	fset := token.NewFileSet()
-	file, err := parser.ParseFile(fset, rel, src, 0)
+// Объявление разрешается по ПАКЕТУ (`findPackageVarLiteral`), а не по файлу: см.
+// раздел «предмет — пакет, а не файл» в шапке. Отказ разрешения возвращается как
+// есть — он уже называет пакет, имя и объём прочитанного.
+//
+// Возвращает РАЗЛИЧНЫЕ приставки ключей (отсортированно), число прочитанных
+// ключей и перепись разрешения. Второе — объём осмотренного: приставок шесть при
+// двадцати семи ключах, и по одному их числу «таблица прочитана» неотличимо от
+// «прочитаны две строки».
+func parseModuleSet(
+	tree *treecorpus.Tree, pkgDir, varName string,
+) ([]string, int, pkgVarDeclCensus, error) {
+	lit, decl, err := findPackageVarLiteral(tree, pkgDir, varName)
 	if err != nil {
-		return nil, 0, fmt.Errorf("разбор %s: %w", rel, err)
+		return nil, 0, decl, err
 	}
+	keysList := pkgVarLiteralStringKeys(lit)
 	seen := map[string]bool{}
 	var out []string
-	keys := 0
-	ast.Inspect(file, func(n ast.Node) bool {
-		vs, ok := n.(*ast.ValueSpec)
-		if !ok {
-			return true
+	for _, key := range keysList {
+		// Приставка — до ПЕРВОЙ точки, то же разбиение, каким его делает
+		// `authzmap.SplitObjectType`. Ключ без точки модуля не даёт: он не
+		// «модуль без ресурса», а ключ неверной формы, и записать его в набор
+		// значило бы объявить модулем то, чем таблица его не называет.
+		dot := strings.IndexByte(key, '.')
+		if dot <= 0 {
+			continue
 		}
-		for i, name := range vs.Names {
-			if name.Name != varName || i >= len(vs.Values) {
-				continue
-			}
-			lit, ok := vs.Values[i].(*ast.CompositeLit)
-			if !ok {
-				continue
-			}
-			for _, el := range lit.Elts {
-				kv, ok := el.(*ast.KeyValueExpr)
-				if !ok {
-					continue
-				}
-				bl, ok := kv.Key.(*ast.BasicLit)
-				if !ok || bl.Kind != token.STRING {
-					continue
-				}
-				key, uerr := strconv.Unquote(bl.Value)
-				if uerr != nil || key == "" {
-					continue
-				}
-				keys++
-				// Приставка — до ПЕРВОЙ точки, то же разбиение, каким его делает
-				// `authzmap.SplitObjectType`. Ключ без точки модуля не даёт: он
-				// не «модуль без ресурса», а ключ неверной формы, и записать его
-				// в набор значило бы объявить модулем то, чем таблица его не
-				// называет.
-				dot := strings.IndexByte(key, '.')
-				if dot <= 0 {
-					continue
-				}
-				if m := key[:dot]; !seen[m] {
-					seen[m] = true
-					out = append(out, m)
-				}
-			}
+		if m := key[:dot]; !seen[m] {
+			seen[m] = true
+			out = append(out, m)
 		}
-		return true
-	})
+	}
 	if len(out) == 0 {
-		return nil, keys, fmt.Errorf(
-			"в %s не найдено объявление %s с ключами вида \"модуль.ресурс\" (ключей прочитано %d)",
-			rel, varName, keys)
+		return nil, len(keysList), decl, fmt.Errorf(
+			"в %s объявление %s не дало НИ ОДНОГО ключа вида \"модуль.ресурс\" "+
+				"(ключей прочитано %d) — форма ключа сменилась",
+			decl.DeclFile, varName, len(keysList))
 	}
 	sort.Strings(out)
-	return out, keys, nil
+	return out, len(keysList), decl, nil
 }
 
 func firstNonEmpty(ss []string) string {
