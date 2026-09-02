@@ -380,29 +380,48 @@ func TestMODMF06ModuleSetIsReadFromItsOwnerNotCopied(t *testing.T) {
 
 // ── MOD-MF-07 ───────────────────────────────────────────────────────────────
 
-// TestMODMF07SectionNotDescribedYetIsRefusedExplicitly — раздел, которого эта
-// под-фаза не описывает, отвергается ЯВНО, а не молча выбрасывается.
+// TestMODMF07UnknownSectionIsRefusedExplicitly — раздел, которого форма не
+// знает, отвергается ЯВНО, а не молча выбрасывается.
 //
 // Это исход 2 запрета «принято-и-проигнорировано»: молча принять и выбросить
 // нельзя — вызывающий получил бы успех и уверенность, что его раздел применён.
-// Отказ называет задачу-преемника НОМЕРОМ: координата в тексте отказа есть часть
-// контракта и обязана резолвиться.
-func TestMODMF07SectionNotDescribedYetIsRefusedExplicitly(t *testing.T) {
-	for _, section := range []string{"resources", "roles", "deprecatedVerbs"} {
+//
+// # Проба ПЕРЕПИСАНА, а не снята (MOD-MR-21)
+//
+// До #1778 три раздела — `resources`, `roles`, `deprecatedVerbs` — были
+// «известными и ещё не описанными», отвергались по имени и называли
+// задачу-преемника НОМЕРОМ. Разделы описаны, и предмет того утверждения исчез.
+// Утверждение, потерявшее вход, ЗАМОЛКАЕТ, а не краснеет (`testing.md` §«Гейт на
+// класс», п. 9), поэтому оно заменено на то, у которого вход есть всегда:
+// неизвестный раздел обязан отвергаться и после, а текст — называть ключ.
+func TestMODMF07UnknownSectionIsRefusedExplicitly(t *testing.T) {
+	for _, section := range []string{"services", "resource", "Roles", "deprecated_verbs"} {
 		t.Run(section, func(t *testing.T) {
 			doc := "apiVersion: iam/v1\nmodule: vpc\n" + section + ": []\n"
 			_, err := manifest.Load([]byte(doc))
 			if err == nil {
 				t.Fatalf("раздел %q принят молча", section)
 			}
-			if !errors.Is(err, manifest.ErrSectionNotDescribed) {
+			if !errors.Is(err, manifest.ErrShape) {
 				t.Errorf("отказ не отнесён к своей причине: %v", err)
 			}
-			namesFieldAndLine(t, err, section, lineOf(t, doc, section+":"))
-			if !strings.Contains(err.Error(), "1778") {
-				t.Errorf("отказ не называет задачу-преемника номером: %v", err)
+			if !strings.Contains(err.Error(), section) {
+				t.Errorf("отказ не называет ключ %q: %v", section, err)
 			}
 		})
+	}
+
+	// Парный положительный: ВСЕ ЧЕТЫРЕ описанных раздела принимаются. Без него
+	// отрицание зеленело бы на загрузчике, отвергающем всякий раздел.
+	described := "apiVersion: iam/v1\nmodule: vpc\n" +
+		"resources:\n  - {name: network, objectType: vpc_network, parent: project, producer: derived, verbs: [get]}\n" +
+		"roles:\n  - id: vpc.viewer\n    name: Наблюдатель\n    description: Читает.\n" +
+		"    tier: {tierType: iam.project, tierId: prj000000000000000}\n" +
+		"    rules:\n      - {module: vpc, resources: [network], verbs: [get]}\n" +
+		"deprecatedVerbs:\n  read: {class: get, since: \"2026-08-23\", reason: синоним чтения, removeWhen: выдач ноль}\n" +
+		"seed: {}\n"
+	if _, err := manifest.Load([]byte(described)); err != nil {
+		t.Fatalf("описанный раздел отвергнут: %v", err)
 	}
 
 	// Парный положительный: тот же документ без этих разделов.

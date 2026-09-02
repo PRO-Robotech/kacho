@@ -301,8 +301,25 @@ func TestNoServiceDeclaresItsPermissionsASecondTime(t *testing.T) {
 			"`catalogderive.MustDerive(protoPackages...)`, а отношение объяви аннотацией метода.", rel)
 	}
 
-	t.Logf("перепись: прочитано не-тестовых файлов %d, выводов карты %d, литеральных карт %d",
-		scanned, derived, len(literals))
+	// Перепись печатает объём ПО КАЖДОЙ ФОРМЕ отдельно (#1813). Одно число
+	// скрыло бы ровно тот случай, ради которого вторая форма заведена: «файлов
+	// Go прочитано много, находок ноль» читалось бы как вердикт и о манифестах,
+	// тогда как YAML этот обход не читает НИ ПРИ КАКОМ УСЛОВИИ — его читает
+	// TestManifestIsNotASecondDeclarationOfARight, и сегодня манифестов в дереве
+	// ноль, то есть у второй формы предмета нет вовсе (третья категория).
+	manifests := 0
+	for rel := range tt.files {
+		if filepath.Base(rel) == manifestBaseName {
+			manifests++
+		}
+	}
+	t.Logf("перепись: прочитано не-тестовых файлов Go %d · манифестов %d, "+
+		"выводов карты %d, литеральных карт %d",
+		scanned, manifests, derived, len(literals))
+	if manifests == 0 {
+		t.Logf("манифестов НОЛЬ — форма YAML предмета не имела: это третья категория " +
+			"(«не с чем сверять»), и в «находок ноль» она НЕ засчитывается")
+	}
 }
 
 // inspectRPCMapConstruction — сколько в файле литералов `authz.RPCMap{…}` с
