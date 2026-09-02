@@ -61,7 +61,11 @@
 //     секция `Down` — откат, её `DROP TABLE` таблицу не снимает;
 //  2. путь снятия строк записывается оператором `DELETE FROM` либо `TRUNCATE`;
 //  3. предел, выраженный схемой, — внешний ключ `ON DELETE CASCADE` НА САМОЙ
-//     таблице: строка умирает вместе с родителем.
+//     таблице: строка умирает вместе с родителем;
+//  4. ВРЕМЕННАЯ таблица (`CREATE TEMP|TEMPORARY TABLE`) живой не является:
+//     она не переживает сессию, применившую миграцию, а `ON COMMIT DROP` —
+//     то же снятие, записанное модификатором создания. Число таких объявлений
+//     печатается отдельной величиной переписи: исключение обязано быть видно.
 //
 // Каждая предпосылка есть факт о дереве, и факт может измениться. Поэтому гейт
 // печатает объём КАЖДОЙ полосы и падает, когда полоса пуста: ноль секций goose,
@@ -182,6 +186,11 @@ type TableGrowthCensus struct {
 	// Creates, Drops — операторов создания и снятия таблиц в секции Up.
 	Creates int
 	Drops   int
+	// TempTables — из числа Creates: объявления ВРЕМЕННОЙ таблицы. Живыми они
+	// не считаются (см. предпосылку 4 в шапке), и потому печатаются ОТДЕЛЬНЫМ
+	// числом: без него исключение было бы молчаливым, а «живых таблиц N»
+	// перестало бы отличаться от «объявлений N».
+	TempTables int
 	// CascadesNamed, CascadesUnnamed — каскадных внешних ключей объявлено:
 	// именованных (отслеживаются точно) и безымянных (снятию по имени не
 	// поддаются, см. остаток 4 в шапке).
@@ -207,6 +216,7 @@ func (c *TableGrowthCensus) Add(o TableGrowthCensus) {
 	c.GoStrings += o.GoStrings
 	c.Creates += o.Creates
 	c.Drops += o.Drops
+	c.TempTables += o.TempTables
 	c.CascadesNamed += o.CascadesNamed
 	c.CascadesUnnamed += o.CascadesUnnamed
 	c.ConstraintDrops += o.ConstraintDrops
@@ -392,6 +402,17 @@ var (
 	dropConstrRe  = regexp.MustCompile(`(?is)\bdrop\s+constraint\s+(?:if\s+exists\s+)?([a-zA-Z0-9_"]+)`)
 	constrNameRe  = regexp.MustCompile(`(?is)\bconstraint\s+([a-zA-Z0-9_"]+)`)
 	cascadeRe     = regexp.MustCompile(`(?is)\bon\s+delete\s+cascade\b`)
+	// tempTableRe — объявление ВРЕМЕННОЙ таблицы. Судится МОДИФИКАТОР между
+	// `create` и `table`, а не подстрока `temp` где угодно: имя `temp_ledger` и
+	// таблица, названная `temp`, — обычные живые таблицы, и признак по слову
+	// снял бы с наблюдения их обе. Обе стороны доказаны инъекцией
+	// (`KnowsEveryFormOfDeclaration`, случаи «близнец: `temp` в ИМЕНИ…»).
+	//
+	// Шумовые слова стандарта `GLOBAL`/`LOCAL` перед `TEMP` Postgres принимает и
+	// игнорирует. `UNLOGGED` временной таблицу НЕ делает: она переживает и
+	// транзакцию, и сессию, и теряется лишь при аварийном перезапуске, — то есть
+	// живая, и случай `UNLOGGED` стоит в инъекции с ожиданием «живых 1».
+	tempTableRe = regexp.MustCompile(`(?is)\bcreate\s+(?:global\s+|local\s+)*(?:temp|temporary)\s+table\b`)
 )
 
 // unquote снимает кавычки и приводит имя к нижнему регистру.
@@ -462,6 +483,21 @@ func ScanMigrationSQL(owner, path string, src []byte) MigrationScan {
 			continue
 		}
 		out.Census.Creates++
+		// ВРЕМЕННАЯ таблица живой не является: `ON COMMIT DROP` — то же снятие,
+		// записанное МОДИФИКАТОРОМ создания, а не отдельным оператором, а без
+		// него таблица не переживает даже сессии, применившей миграцию. Разбор
+		// знал вторую форму снятия (`DROP TABLE`) и не знал первую — и три
+		// временные таблицы одной миграции читались как живые таблицы службы,
+		// у которых «не назван механизм ограничения роста» (kacho#1815).
+		//
+		// Исключение НЕ молчаливое: оно печатается своим числом переписи. И оно
+		// не способно спрятать долговременную таблицу — объявить её словом TEMP
+		// нельзя by construction: Postgres делает такую таблицу видимой только
+		// своей сессии и снимает её в конце.
+		if tempTableRe.Match(top[m[0]:m[1]]) {
+			out.Census.TempTables++
+			continue
+		}
 		out.Created = append(out.Created, TableDecl{
 			TableRef: TableRef{Owner: owner, Name: name},
 			Schema:   schema,

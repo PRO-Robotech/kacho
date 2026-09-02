@@ -916,10 +916,11 @@ func TestLiveTablesNameTheirGrowthLimit(t *testing.T) {
 	t.Logf("перепись запретов на уборку: объявлено %d, из них уборка появилась у %d",
 		counts.Blocked, counts.BlockedRemoval)
 	t.Logf("перепись обхода: миграций прочитано %d (с секциями goose %d), файлов Go %d, "+
-		"строковых значений Go %d; операторов создания таблиц %d, снятия таблиц %d; "+
+		"строковых значений Go %d; операторов создания таблиц %d (из них временных %d — "+
+		"живыми не считаются, предпосылка 4), снятия таблиц %d; "+
 		"каскадных ключей объявлено %d именованных и %d безымянных, снятий ограничений %d",
 		census.MigrationFiles, census.SectionedMigrations, census.GoFiles, census.GoStrings,
-		census.Creates, census.Drops, census.CascadesNamed, census.CascadesUnnamed,
+		census.Creates, census.TempTables, census.Drops, census.CascadesNamed, census.CascadesUnnamed,
 		census.ConstraintDrops)
 	t.Logf("перепись полос снятия строк: прод %d, тело триггера %d, разовая правка миграции %d "+
 		"(механизмом не считается), с неразрешимым именем таблицы %d (слепая зона, названная числом)",
