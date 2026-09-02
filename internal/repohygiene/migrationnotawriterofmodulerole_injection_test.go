@@ -143,3 +143,70 @@ func TestModuleManifestIsRecognisedByContentNotByPath(t *testing.T) {
 		}
 	}
 }
+
+// injMigrationAddedRel / injMigrationAppliedRel — ДВА пути одной и той же
+// вставки: добавленная относительно ствола миграция и применённая.
+const (
+	injMigrationAddedRel   = iamMigrationsDir + "20260902000000_vpc_role.sql"
+	injMigrationAppliedRel = iamMigrationsDir + "0001_initial.sql"
+)
+
+// TestMigrationRoleGateJudgesOnlyAddedMigrations — ось «ДОБАВЛЕННОЕ», введённая
+// приведением гейта к его же приёмке (§6 Г2, §7 — «добавленная миграция»).
+//
+// Инъекция трогает ТОЛЬКО отбор по составу добавленного: вход у обеих сторон
+// побайтово один и тот же, различается лишь перечень файлов, поданный отбору.
+// Поэтому красное не может прийти от соседней оси — ни манифест, ни имя роли,
+// ни привязка к блоку здесь не меняются.
+func TestMigrationRoleGateJudgesOnlyAddedMigrations(t *testing.T) {
+	bearing := map[string]string{"vpc": "services/vpc/manifest.yaml"}
+	added := map[string]bool{injMigrationAddedRel: true}
+
+	addedSites, addedCensus := ScanMigrationRoleInserts(injMigrationAddedRel, []byte(injMigrationVPCRole))
+	appliedSites, appliedCensus := ScanMigrationRoleInserts(injMigrationAppliedRel, []byte(injMigrationVPCRole))
+	if addedCensus.Names != 1 || appliedCensus.Names != 1 {
+		t.Fatalf("инъекция беспредметна: имён извлечено %d и %d — разбор не увидел вставки, "+
+			"и обе стороны ниже утверждали бы о пустом входе",
+			addedCensus.Names, appliedCensus.Names)
+	}
+
+	t.Run("ДОБАВЛЕННАЯ миграция — находка, названы обе стороны", func(t *testing.T) {
+		f := migrationRoleFindings(sitesInFiles(addedSites, added), bearing)
+		if len(f) != 1 {
+			t.Fatalf("вставка роли модуля с манифестом в ДОБАВЛЕННОЙ миграции находкой "+
+				"не стала: находок %d — гейт вооружён ни на что", len(f))
+		}
+		for _, want := range []string{injMigrationAddedRel, "vpc.network.admin", "manifest.yaml"} {
+			if !strings.Contains(f[0], want) {
+				t.Errorf("находка не называет %q: %q — покрасневший молча гейт "+
+					"посылает читателя искать не там", want, f[0])
+			}
+		}
+	})
+
+	t.Run("ПРИМЕНЁННАЯ миграция с той же вставкой — молчание", func(t *testing.T) {
+		f := migrationRoleFindings(sitesInFiles(appliedSites, added), bearing)
+		if len(f) != 0 {
+			t.Fatalf("применённая миграция объявлена находкой: %v\n"+
+				"Править её нельзя (ban #5), значит гейт требовал бы неисполнимого; "+
+				"переезд её строк к применителю — задача продукта #1891", f)
+		}
+	})
+
+	t.Run("перепись видит ОБЕ — сужены находки, а не разбор", func(t *testing.T) {
+		// Порог переписи стережёт РАЗБОР. Сузь его вместе с находками — и ветка,
+		// не добавившая ни одной миграции, роняла бы гейт на достижении его цели.
+		if appliedCensus.Blocks != 1 {
+			t.Errorf("перепись применённой миграции сузилась вместе с находками: блоков %d",
+				appliedCensus.Blocks)
+		}
+	})
+
+	t.Run("пустой перечень добавленного — молчание, а не отказ", func(t *testing.T) {
+		// Ветка без единой добавленной миграции — обычный случай, а не поломка.
+		if f := migrationRoleFindings(sitesInFiles(addedSites, map[string]bool{}), bearing); len(f) != 0 {
+			t.Fatalf("на пустом перечне добавленного гейт нашёл %d — он судил бы дерево, "+
+				"а не изменение", len(f))
+		}
+	})
+}
