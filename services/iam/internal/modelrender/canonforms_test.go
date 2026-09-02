@@ -242,3 +242,93 @@ resources:
 	mustContainLine(t, block, "    define admin: [user, service_account] or super_admin\n")
 	mustContainLine(t, block, "    define viewer: [user, service_account] or admin\n")
 }
+
+// ── Отношение действия сверх умолчания (#1846) ───────────────────────────────
+
+// TestMODMR33AVerbRelationMayCarryItsOwnSubjectsAndSources — `v_*`, отличный от
+// умолчания, выразим манифестом.
+//
+// Замер по канону: `registry_repository` несёт
+// `define v_get: [user:*, user, service_account, group#member] or owner or super_admin`
+// — анонимное чтение публичного репозитория, — и остальные его действия выводятся
+// ещё и от `owner`. Умолчательная форма этого не давала, а объявить `v_get`
+// авторским отношением загрузчик не позволяет (имя порождается глаголом того же
+// ресурса): возможность была объявлена и неисполнима ни одним входом.
+func TestMODMR33AVerbRelationMayCarryItsOwnSubjectsAndSources(t *testing.T) {
+	block := renderFromYAML(t, `apiVersion: iam/v1
+module: registry
+resources:
+  - name: repository
+    objectType: registry_repository
+    parents:
+      - {name: parent, type: registry_registry}
+    producer: authored
+    relations:
+      - {name: owner, definition: "[user, service_account]"}
+    verbs:
+      - {name: get, subjects: ["user:*", user, service_account, "group#member"], from: [owner, super_admin]}
+      - {name: list, from: [owner, super_admin]}
+      - {name: update, from: [owner, super_admin]}
+      - {name: delete, from: [owner, super_admin]}
+`)
+	mustContainLine(t, block,
+		"    define v_get: [user:*, user, service_account, group#member] or owner or super_admin\n")
+	mustContainLine(t, block,
+		"    define v_list: [user, service_account, group#member] or owner or super_admin\n")
+}
+
+// TestMODMR33AVerbMayDeriveFromAnotherVerb — источник действия бывает ДРУГИМ
+// действием, а не только супер-доступом.
+//
+// Замер: `nlb_target_group` несёт
+// `define v_addtargets: [user, service_account, group#member] or v_update` —
+// надмножество права правки, объявленное односторонне. Форма та же, что у пробы
+// выше, поэтому отдельного ключа она не заводит (сам блок целиком — предмет
+// #1091).
+func TestMODMR33AVerbMayDeriveFromAnotherVerb(t *testing.T) {
+	block := renderFromYAML(t, `apiVersion: iam/v1
+module: loadbalancer
+resources:
+  - name: targetGroups
+    objectType: nlb_target_group
+    parents: [project]
+    producer: derived
+    verbs:
+      - get
+      - list
+      - update
+      - delete
+      - {name: addTargets, from: [v_update]}
+      - {name: removeTargets, from: [v_update]}
+`)
+	mustContainLine(t, block,
+		"    define v_addtargets: [user, service_account, group#member] or v_update\n")
+	mustContainLine(t, block,
+		"    define v_removetargets: [user, service_account, group#member] or v_update\n")
+}
+
+// TestMODMR33TheDefaultVerbRelationStaysUnwritten — положительный контроль:
+// умолчательная форма остаётся неписаной, и субъекты действия НЕ сужаются
+// ключом `subjects` ресурса.
+//
+// Замер: у `vpc_address_pool` ярусы несут [user, service_account], а его же
+// `v_get` — полный набор с `group#member`. Сузив заодно действия, рендер отнял
+// бы живое право у групп — молча, при действующей на вид привязке.
+func TestMODMR33TheDefaultVerbRelationStaysUnwritten(t *testing.T) {
+	block := renderFromYAML(t, `apiVersion: iam/v1
+module: vpc
+resources:
+  - name: addressPool
+    objectType: vpc_address_pool
+    parents: [cluster]
+    producer: authored
+    cascade:
+      - {relation: any_admin, from: cluster}
+    subjects: [user, service_account]
+    tiers: [admin, viewer]
+    verbs: [get, list, update, delete]
+`)
+	mustContainLine(t, block, "    define admin: [user, service_account] or super_admin\n")
+	mustContainLine(t, block,
+		"    define v_get: [user, service_account, group#member] or super_admin\n")
+}

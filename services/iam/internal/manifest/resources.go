@@ -112,6 +112,8 @@ var (
 	ErrCascadeFromUnknown = errors.New("manifest: cascade term derives from an undeclared parent")
 	// ErrTierNameRequired — ярус не назвал себя.
 	ErrTierNameRequired = errors.New("manifest: tier name is required")
+	// ErrVerbSourceUnknown — действие выводится от отношения, которого блок не несёт.
+	ErrVerbSourceUnknown = errors.New("manifest: verb derives from a relation the block does not declare")
 	// ErrTierSourceUnknown — ярус выводится от отношения, которого блок не несёт.
 	ErrTierSourceUnknown = errors.New("manifest: tier derives from a relation the block does not declare")
 	// ErrTierFormRedundant — длинная форма яруса без собственных источников:
@@ -496,9 +498,28 @@ type Relation struct {
 //
 // Обычной структурой Go это не разбирается («cannot unmarshal !!str `get` into
 // verb»), поэтому у типа свой UnmarshalYAML.
+//
+// # Отношение действия бывает шире умолчания, и это замер
+//
+// Умолчание — `[user, service_account, group#member] or super_admin`, и его
+// несут 24 модульных блока канона из 27. Остальные три несут иное:
+// `registry_repository` — `[user:*, user, service_account, group#member] or owner
+// or super_admin` (анонимное чтение публичного репозитория), `registry_registry`
+// — вывод от `owner`, `nlb_target_group` — вывод от другого ДЕЙСТВИЯ (`v_update`).
+// Ни одно из трёх не порождалось умолчательной формой, а объявить `v_*`
+// авторским отношением загрузчик не позволяет (имя порождается глаголом того же
+// ресурса) — то есть возможность была объявлена и неисполнима ни одним входом.
 type Verb struct {
 	Name  string `yaml:"name"`
 	Class string `yaml:"class"`
+	// Subjects — состав субъектов ЭТОГО действия, когда он отличается от общего.
+	// Ключ `subjects` РЕСУРСА сюда не относится: он сужает ярусы и действий не
+	// трогает — замер по `vpc_address_pool`, где ярусы несут [user,
+	// service_account], а его же `v_get` — полный набор с `group#member`.
+	Subjects []string `yaml:"subjects"`
+	// From — отношения, от которых действие выводится, в порядке правой части.
+	// Пусто означает умолчание: супер-доступ.
+	From []string `yaml:"from"`
 }
 
 // UnmarshalYAML принимает обе формы и НЕ теряет свойство, которое держит
@@ -520,18 +541,21 @@ func (v *Verb) UnmarshalYAML(node *yaml.Node) error {
 	case yaml.MappingNode:
 		for i := 0; i+1 < len(node.Content); i += 2 {
 			key := node.Content[i]
-			if key.Value != "name" && key.Value != "class" {
+			if key.Value != "name" && key.Value != "class" &&
+				key.Value != "subjects" && key.Value != "from" {
 				return fmt.Errorf("line %d: field %s not found in type verb", key.Line, key.Value)
 			}
 		}
 		var raw struct {
-			Name  string `yaml:"name"`
-			Class string `yaml:"class"`
+			Name     string   `yaml:"name"`
+			Class    string   `yaml:"class"`
+			Subjects []string `yaml:"subjects"`
+			From     []string `yaml:"from"`
 		}
 		if err := node.Decode(&raw); err != nil {
 			return err
 		}
-		v.Name, v.Class = raw.Name, raw.Class
+		v.Name, v.Class, v.Subjects, v.From = raw.Name, raw.Class, raw.Subjects, raw.From
 		return nil
 	default:
 		return fmt.Errorf("line %d: a verb is a string or a mapping, got %s",
@@ -898,6 +922,7 @@ func validateResourceVerbs(r *Resource, doc *yaml.Node, i int) []error {
 			}
 			v.Class = class
 		}
+		faults = append(faults, validateVerbSources(r, v, doc, i, j)...)
 		if !contains(accepted, v.Class) {
 			faults = append(faults, linkFault{
 				kind:  ErrVerbClassUnknown,
@@ -909,6 +934,50 @@ func validateResourceVerbs(r *Resource, doc *yaml.Node, i int) []error {
 					strings.Join(accepted, ", ")),
 			})
 		}
+	}
+	return faults
+}
+
+// validateVerbSources — состав субъектов и источники вывода одного действия.
+//
+// Источник обязан быть объявлен ЭТИМ ЖЕ блоком: вывод от несуществующего
+// отношения даёт вердикт «нет» всегда, оставаясь на вид полноценным действием.
+func validateVerbSources(r *Resource, v *Verb, doc *yaml.Node, i, j int) []error {
+	var faults []error
+	if v.Subjects != nil && len(v.Subjects) == 0 {
+		faults = append(faults, linkFault{
+			kind:  ErrSourceListEmpty,
+			coord: locate(doc, "resources", i, "verbs", j),
+			detail: fmt.Sprintf("resources[%d].verbs[%d].subjects: перечень субъектов объявлен "+
+				"пустым. Пустой перечень неотличим от опущенного ключа, а отношения без "+
+				"субъектов канон не несёт: опустите ключ, и состав возьмёт умолчание (%s)",
+				i, j, strings.Join(defaultSubjectSet, ", ")),
+		})
+	}
+	if v.From != nil && len(v.From) == 0 {
+		faults = append(faults, linkFault{
+			kind:  ErrSourceListEmpty,
+			coord: locate(doc, "resources", i, "verbs", j),
+			detail: fmt.Sprintf("resources[%d].verbs[%d].from: перечень источников объявлен "+
+				"пустым. Опустите ключ, и действие выведется от супер-доступа", i, j),
+		})
+	}
+	if len(v.From) == 0 {
+		return faults
+	}
+	known := declaredRelationNames(r)
+	for k, src := range v.From {
+		if _, ok := known[src]; ok {
+			continue
+		}
+		faults = append(faults, linkFault{
+			kind:  ErrVerbSourceUnknown,
+			coord: locate(doc, "resources", i, "verbs", j),
+			detail: fmt.Sprintf("resources[%d].verbs[%d].from[%d]: отношения %q блок не "+
+				"объявляет; объявлены: %s. Вывод от несуществующего отношения даёт вердикт "+
+				"«нет» всегда, оставаясь на вид полноценным действием",
+				i, j, k, src, strings.Join(sortedNames(known), ", ")),
+		})
 	}
 	return faults
 }

@@ -134,10 +134,19 @@ func Render(r manifest.Resource) ([]byte, error) {
 
 	// Порядок глаголов задаёт КАНОН, а не манифест: перестановка ресурсов и
 	// глаголов в YAML рендер не меняет (B-04). Субъекты здесь умолчательные —
-	// сужение ключом `subjects` трогает ярусы и не трогает глаголы.
+	// сужение ключом `subjects` РЕСУРСА трогает ярусы и не трогает глаголы, —
+	// а своим составом и своими источниками действие распоряжается САМО.
 	for _, verb := range verbsInCanonOrder(r.Verbs) {
-		b.WriteString("    define " + manifest.VerbRelationName(verb) + ": [" +
-			strings.Join(defaultSubjects, ", ") + "] or super_admin\n")
+		subjects := defaultSubjects
+		sources := []string{manifest.SuperAdminRelation()}
+		if len(verb.Subjects) > 0 {
+			subjects = verb.Subjects
+		}
+		if len(verb.From) > 0 {
+			sources = verb.From
+		}
+		b.WriteString("    define " + manifest.VerbRelationName(verb.Name) + ": [" +
+			strings.Join(subjects, ", ") + "] or " + strings.Join(sources, " or ") + "\n")
 	}
 
 	return []byte(b.String()), nil
@@ -196,31 +205,32 @@ func CanonicalVerbOrder() map[string]int {
 	return out
 }
 
-// verbsInCanonOrder — глаголы ресурса в порядке канона: сперва канонические в
-// объявленном порядке, затем прочие в порядке манифеста.
+// verbsInCanonOrder — действия ресурса в порядке канона: сперва канонические в
+// объявленном порядке, затем прочие в порядке манифеста. Возвращается САМО
+// действие, а не его имя: состав субъектов и источники вывода принадлежат ему.
 //
 // Прочие идут ПОСЛЕ и в порядке документа, а не отсортированно: канон ставит
 // `v_addtargets`/`v_removetargets` последними, и сортировка поставила бы первым
 // `addtargets` — то есть рендер разошёлся бы с каноном на единственном блоке,
 // который эту форму несёт.
-func verbsInCanonOrder(verbs []manifest.Verb) []string {
-	present := make(map[string]bool, len(verbs))
+func verbsInCanonOrder(verbs []manifest.Verb) []manifest.Verb {
+	byName := make(map[string]manifest.Verb, len(verbs))
 	for _, v := range verbs {
 		if v.Name != "" {
-			present[v.Name] = true
+			byName[v.Name] = v
 		}
 	}
-	var out []string
+	var out []manifest.Verb
 	for _, canonical := range canonicalVerbOrder {
-		if present[canonical] {
-			out = append(out, canonical)
-			delete(present, canonical)
+		if v, ok := byName[canonical]; ok {
+			out = append(out, v)
+			delete(byName, canonical)
 		}
 	}
 	for _, v := range verbs {
-		if present[v.Name] {
-			out = append(out, v.Name)
-			delete(present, v.Name)
+		if kept, ok := byName[v.Name]; ok {
+			out = append(out, kept)
+			delete(byName, v.Name)
 		}
 	}
 	return out

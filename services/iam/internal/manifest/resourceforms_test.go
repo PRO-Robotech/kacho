@@ -269,3 +269,35 @@ func TestMODMR32AClassNoTypeCarriesIsStillRefused(t *testing.T) {
 	mustAccept(t, targetGroupDoc("[get, list, update, delete]"))
 	mustAccept(t, resourceDoc("    parents: [project]\n"))
 }
+
+// ── Источники и субъекты действия (#1846) ────────────────────────────────────
+
+// TestMODMR33AVerbSourceMustBeDeclaredByTheBlock — действие, выведенное от
+// несуществующего отношения, остаётся на вид полноценным и не даёт ничего.
+func TestMODMR33AVerbSourceMustBeDeclaredByTheBlock(t *testing.T) {
+	mustRefuse(t, resourceDoc("    parents: [project]\n")[:len(resourceDoc("    parents: [project]\n"))-
+		len("    verbs: [get]\n")]+"    verbs:\n      - {name: get, from: [owner]}\n",
+		manifest.ErrVerbSourceUnknown,
+		"resources[0].verbs[0].from[0]", "owner", "super_admin")
+
+	// Законный близнец: то же отношение, объявленное авторским.
+	mustAccept(t, resourceDoc("    parents: [project]\n")[:len(resourceDoc("    parents: [project]\n"))-
+		len("    verbs: [get]\n")]+"    relations:\n      - {name: owner, definition: \"[user]\"}\n"+
+		"    verbs:\n      - {name: get, from: [owner, super_admin]}\n")
+}
+
+// TestMODMR33AnEmptySourceOrSubjectListIsRefused — пустой перечень неотличим от
+// опущенного ключа, а отношения без субъектов и без источников канон не несёт.
+func TestMODMR33AnEmptySourceOrSubjectListIsRefused(t *testing.T) {
+	head := resourceDoc("    parents: [project]\n")
+	head = head[:len(head)-len("    verbs: [get]\n")]
+
+	mustRefuse(t, head+"    verbs:\n      - {name: get, from: []}\n",
+		manifest.ErrSourceListEmpty, "resources[0].verbs[0].from", "пустым")
+	mustRefuse(t, head+"    verbs:\n      - {name: get, subjects: []}\n",
+		manifest.ErrSourceListEmpty, "resources[0].verbs[0].subjects", "опустите ключ")
+
+	// Законный близнец: ключи опущены — состав и источник берут умолчание.
+	mustAccept(t, head+"    verbs: [get]\n")
+	mustAccept(t, head+"    verbs:\n      - {name: get, subjects: [\"user:*\", user]}\n")
+}
