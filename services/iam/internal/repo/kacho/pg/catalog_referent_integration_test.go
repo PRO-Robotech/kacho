@@ -546,7 +546,12 @@ func TestIAMCT111_RetiredAtWithoutLiveIsRefused(t *testing.T) {
 	code, constraint := pgCode(err)
 	t.Logf("отказ проверки живости: SQLSTATE %s, ограничение %q", code, constraint)
 	require.Equal(t, "23514", code)
-	require.Contains(t, constraint, "live")
+	// Имя ограничения — ПОЛНОЕ, а не подстрока: под `Contains(constraint,
+	// "live")` подходят и соседние ограничения той же таблицы
+	// (`catalog_resource_live_uk`, `catalog_resource_dotted_live_uk`), поэтому
+	// прежнее утверждение было слабее сценария IAM-MW-1-06 и молчало бы, ответь
+	// на этот вход другой ключ. Верное имя подтверждено прогоном.
+	require.Equal(t, "catalog_resource_live_matches_retired", constraint)
 
 	var live bool
 	require.NoError(t, pool.QueryRow(ctx, `
