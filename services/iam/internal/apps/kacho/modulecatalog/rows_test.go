@@ -9,7 +9,7 @@ package modulecatalog_test
 // Здесь утверждается свойство, без которого применителя нельзя ни написать, ни
 // посадить: множество строк, выведенное ИЗ ШЕСТИ доставляемых манифестов,
 // совпадает со множеством, которое сегодня производит литерал
-// (`authzmap.CatalogSeed*` + `domain.KnownModules`) и которым посеяны таблицы.
+// (`authzmap.CatalogSeed*`) и которым посеяны таблицы.
 //
 // # Почему это гейт, а не проба одного модуля
 //
@@ -32,7 +32,6 @@ import (
 
 	"github.com/PRO-Robotech/kacho/services/iam/internal/apps/kacho/modulecatalog"
 	"github.com/PRO-Robotech/kacho/services/iam/internal/authzmap"
-	"github.com/PRO-Robotech/kacho/services/iam/internal/domain"
 	"github.com/PRO-Robotech/kacho/services/iam/internal/manifest"
 )
 
@@ -50,7 +49,7 @@ func deliveredManifests(t *testing.T) []*manifest.Manifest {
 	sort.Strings(paths)
 	out := make([]*manifest.Manifest, 0, len(paths))
 	for _, p := range paths {
-		body, rerr := os.ReadFile(p) //nolint:gosec // путь собран обходом дерева проб
+		body, rerr := os.ReadFile(p) // #nosec G304 -- путь собран обходом дерева проб
 		require.NoError(t, rerr, "прочитать %s", p)
 		m, lerr := manifest.Load(body)
 		require.NoError(t, lerr, "разобрать %s", p)
@@ -83,7 +82,7 @@ func TestManifestRowsReproduceTheSeededCatalog(t *testing.T) {
 	}
 
 	wantModules := map[string]bool{}
-	for _, mod := range domain.KnownModules() {
+	for _, mod := range authzmap.CatalogSeedModules() {
 		wantModules[mod] = true
 	}
 	wantResources := map[string]bool{}

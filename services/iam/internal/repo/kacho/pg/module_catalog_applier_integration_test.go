@@ -222,7 +222,7 @@ func TestModuleCatalogApplierAgreesWithTheSeededCatalog(t *testing.T) {
 	before := stateFingerprint(t, ctx, pool)
 	applied := 0
 	for _, p := range paths {
-		body, rerr := os.ReadFile(p) //nolint:gosec // путь собран обходом дерева проб
+		body, rerr := os.ReadFile(p) // #nosec G304 -- путь собран обходом дерева проб
 		require.NoError(t, rerr)
 		m, lerr := manifest.Load(body)
 		require.NoError(t, lerr, "разобрать %s", p)
