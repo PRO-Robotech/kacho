@@ -16,6 +16,14 @@ package domain
 // via the authzmap↔domain drift-test). geo is intentionally absent (Geography is
 // its own service, not in objectTypes); the load-balancer module token is
 // `loadbalancer` (NOT `nlb`).
+//
+// # ЗДЕСЬ ДВА ИСТОЧНИКА ОДНОВРЕМЕННО, И ЭТО ПЕРЕХОДНОЕ СОСТОЯНИЕ (#1927)
+//
+// Литерал ниже — прежний источник, а [ModuleSet] — новый ПОРТ, через который
+// набор приходит извне. Оба стоят рядом ОДНИМ изменением намеренно: снятие
+// литерала прежде появления читателя оставило бы дерево без обоих, а членство
+// модуля читается на ПУТИ ЗАПРОСА — то есть отказом на живом трафике. Читателей
+// переводит следующее изменение, литерал снимается им же.
 
 // knownModules — the closed set of platform modules a rule may grant over. Order
 // is the canonical platform order (iam first, then resource domains).
@@ -48,4 +56,40 @@ func IsKnownModule(m string) bool {
 // order. Used by the authzmap↔domain drift-test to assert lockstep.
 func KnownModules() []string {
 	return append([]string(nil), knownModules...)
+}
+
+// ModuleSet — членство в наборе модулей платформы, каким его знает ВЫЗЫВАЮЩИЙ.
+//
+// Подстановочный знак `*` членом набора не является ни в одной реализации: он не
+// имя модуля, а маркер политики, и разбирается [Rule.Validate] отдельно.
+type ModuleSet interface {
+	// IsKnownModule — состоит ли модуль в наборе.
+	IsKnownModule(module string) bool
+}
+
+// moduleSetOf — набор, собранный из перечня имён.
+type moduleSetOf map[string]struct{}
+
+// IsKnownModule реализует [ModuleSet].
+func (s moduleSetOf) IsKnownModule(module string) bool {
+	_, ok := s[module]
+	return ok
+}
+
+// ModuleSetOf — набор из перечня имён, для вызывающего, у которого перечень уже
+// в руках: канон дерева, фикстура пробы, применитель ролей модуля.
+//
+// Пустой перечень даёт набор, не признающий НИЧЕГО, и это не вырожденный случай,
+// а тот же fail-closed, что у отсутствующего набора ниже: «перечень пуст» не есть
+// «принимаем любой». Разница лишь в том, что здесь отказ приходит с именем
+// модуля, а там — с указанием на непровязанный источник.
+func ModuleSetOf(names ...string) ModuleSet {
+	s := make(moduleSetOf, len(names))
+	for _, n := range names {
+		if n == "" {
+			continue
+		}
+		s[n] = struct{}{}
+	}
+	return s
 }

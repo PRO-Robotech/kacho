@@ -25,6 +25,15 @@ type Facts struct {
 	verbsByFGAType map[string][]string
 	common         []string
 	all            []string
+	// modules — ЖИВЫЕ строки `catalog_module`, индекс членства. Хранится
+	// отдельным набором, а не выводится из `verbsByFGAType`: приставка имени
+	// типа МОДЕЛИ модулю не равна (`nlb_listener` против модуля
+	// `loadbalancer`), и вывод оттуда дал бы третий словарь имени модуля.
+	modules map[string]struct{}
+	// moduleOrder — тот же набор в порядке чтения, для переписей и текстов
+	// отказа. Копия отдаётся наружу, чтобы вызывающий не испортил снимок
+	// сортировкой на месте.
+	moduleOrder []string
 }
 
 // NewFacts собирает факт из живых строк каталога.
@@ -41,6 +50,17 @@ func NewFacts(rows Rows) (*Facts, error) {
 			"а не как непринятые миграции (kacho#1816, IAM-CT-2-02)",
 			len(rows.Modules), len(rows.Resources), len(rows.Verbs))
 	}
+
+	modules := make(map[string]struct{}, len(rows.Modules))
+	moduleOrder := make([]string, 0, len(rows.Modules))
+	for _, m := range rows.Modules {
+		if _, dup := modules[m]; dup {
+			continue
+		}
+		modules[m] = struct{}{}
+		moduleOrder = append(moduleOrder, m)
+	}
+	sort.Strings(moduleOrder)
 
 	live := make(map[string]bool, len(rows.Resources))
 	for _, r := range rows.Resources {
@@ -72,7 +92,11 @@ func NewFacts(rows Rows) (*Facts, error) {
 		byDotted[dotted] = append(byDotted[dotted], v.Verb)
 	}
 
-	f := &Facts{verbsByFGAType: make(map[string][]string, len(byDotted))}
+	f := &Facts{
+		verbsByFGAType: make(map[string][]string, len(byDotted)),
+		modules:        modules,
+		moduleOrder:    moduleOrder,
+	}
 	for dotted, verbs := range byDotted {
 		fgaType, ok := authzmap.FGAObjectType(dotted)
 		if !ok {
@@ -129,6 +153,34 @@ func vocabularies(byType map[string][]string) (common, all []string) {
 	sort.Strings(common)
 	sort.Strings(all)
 	return common, all
+}
+
+// IsKnownModule — членство модуля в ЖИВОМ каталоге. Реализует
+// `domain.ModuleSet`: домен набора не знает и получает его отсюда.
+//
+// # Почему ответ берётся у снимка, а не у запроса к базе
+//
+// Каталог мал и меняется реже всего в схеме, а спрашивают его на горячем пути
+// создания и правки роли. Запрос на каждом обращении оплачивался бы запросом
+// арендатора. Отставание при этом ОГРАНИЧЕНО и НАЗВАНО — оно равно периоду
+// обновления снимка, задаваемому профилем развёртывания (см. [Snapshot]), а не
+// сроку жизни процесса: снятие модуля доезжает до пути запроса за один период,
+// без перезапуска.
+//
+// Подстановочный знак `*` модулем НЕ является: строки с таким именем в каталоге
+// нет и быть не может (`catalog_module_nonempty` плюс грамматика имени), а
+// разрешает его политика правила, а не набор.
+func (f *Facts) IsKnownModule(module string) bool {
+	_, ok := f.modules[module]
+	return ok
+}
+
+// Modules — ЖИВЫЕ модули каталога, отсортированно. Возвращается КОПИЯ: снимок
+// вызывающему не принадлежит.
+func (f *Facts) Modules() []string {
+	out := make([]string, len(f.moduleOrder))
+	copy(out, f.moduleOrder)
+	return out
 }
 
 // VerbsOfType — ГЛАГОЛЫ, объявленные ЖИВЫМ типом, отсортированно; nil у типа,
