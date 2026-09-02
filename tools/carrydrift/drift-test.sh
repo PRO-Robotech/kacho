@@ -1022,6 +1022,89 @@ case_return_to_base_is_still_named_a_rollback() {
   rm -rf "$r"
 }
 
+# ── Случай 22. Ветка «снято решением» — объявлено пропускается, нет — находка ─
+#
+# Первая из трёх ветвей объявления. До этого случая ни одна не утверждалась
+# пробой напрямую: перечня касался один случай 4, и он про МОЛЧАНИЕ механизма
+# (непустой перечень не пачкает чистую посадку), а не про его срабатывание.
+#
+# Пара строится на ОДНОМ графе: перечень лежит на результате, поэтому
+# «объявлено» и «не объявлено» различаются ровно ревизией, с которой перечень
+# читают. Иначе половины пары судили бы разные графы.
+case_declared_removal_is_skipped_and_undeclared_is_a_loss() {
+  cases=$((cases + 1))
+  local r; r=$(newrepo)
+  local revs; revs=$(build_one_file_divergence "$r" removed \
+    "shared.txt  снят решением: ствол и ветка завели один предмет разными файлами")
+  local base br trunk landed; read -r base br trunk landed <<<"$revs"
+
+  local yes no_ rc1 rc2
+  yes=$(cd "$r" && DRIFT_DECLARED_REV="$landed" bash "$DRIFT" "$base" "$br" "$trunk" "$landed" 2>&1); rc1=$?
+  no_=$(cd "$r" && DRIFT_DECLARED_REV="$base"   bash "$DRIFT" "$base" "$br" "$trunk" "$landed" 2>&1); rc2=$?
+  if [ "$rc1" -eq 0 ] && [[ "$yes" == *"снято решением: shared.txt"* ]] \
+     && [ "$rc2" -eq 1 ] && [[ "$no_" == *"УТРАТА: shared.txt"* ]]; then
+    ok "объявленное снятие пропущено по имени, необъявленное названо утратой"
+  else
+    no "ветка «снято решением» не держится (rc1=$rc1 rc2=$rc2)" "$yes
+$no_"
+  fi
+  rm -rf "$r"
+}
+
+# ── Случай 23. Ветка «приспособлено решением» — та же пара на том же графе ────
+#
+# Вторая ветвь. Она и есть то, ради чего перечень нужен на накопительной линии:
+# ветка ввела правило, под которое содержимое ствола перестало быть законным
+# входом, и разрешавший слияние привёл его к новой форме (#1912).
+case_declared_adaptation_is_skipped_and_undeclared_is_a_finding() {
+  cases=$((cases + 1))
+  local r; r=$(newrepo)
+  local revs; revs=$(build_one_file_divergence "$r" adapted \
+    "shared.txt  приспособлено решением: ветка ввела правило, под которое ствол не подходил")
+  local base br trunk landed; read -r base br trunk landed <<<"$revs"
+
+  local yes no_ rc1 rc2
+  yes=$(cd "$r" && DRIFT_DECLARED_REV="$landed" bash "$DRIFT" "$base" "$br" "$trunk" "$landed" 2>&1); rc1=$?
+  no_=$(cd "$r" && DRIFT_DECLARED_REV="$base"   bash "$DRIFT" "$base" "$br" "$trunk" "$landed" 2>&1); rc2=$?
+  if [ "$rc1" -eq 0 ] && [[ "$yes" == *"приспособлено решением: shared.txt"* ]] \
+     && [ "$rc2" -eq 1 ] && [[ "$no_" == *"НЕОБЪЯВЛЕННОЕ ПРИСПОСОБЛЕНИЕ: shared.txt"* ]]; then
+    ok "объявленное приспособление пропущено по имени, необъявленное — находка"
+  else
+    no "ветка «приспособлено решением» не держится (rc1=$rc1 rc2=$rc2)" "$yes
+$no_"
+  fi
+  rm -rf "$r"
+}
+
+# ── Случай 24. Ветка «ВОЗВРАТ К БАЗЕ» — НЕСУЩАЯ, анти-злоупотребительная ─────
+#
+# Третья ветвь. Она и есть то, что мешает строке перечня стать разрешением тихо
+# отменять чужую работу: объявление покрывает снятие и приспособление, но
+# никогда — возврат к содержимому базы. Проба, которой у неё не было, — ровно
+# случай «гейт, потерявший способность падать, на чистом дереве выглядит так же».
+#
+# Близнец здесь — та же ЗАПИСЬ на том же файле, но с новым содержимым: она
+# обязана пропускать (случай 23). Без него отказ был бы неотличим от «запись не
+# работает вовсе».
+case_declared_return_to_base_is_refused() {
+  cases=$((cases + 1))
+  local r; r=$(newrepo)
+  local revs; revs=$(build_one_file_divergence "$r" to-base \
+    "shared.txt  объявлено, но результат равен базе — покрывать это нечем")
+  local base br trunk landed; read -r base br trunk landed <<<"$revs"
+
+  local out rc
+  out=$(cd "$r" && DRIFT_DECLARED_REV="$landed" bash "$DRIFT" "$base" "$br" "$trunk" "$landed" 2>&1); rc=$?
+  if [ "$rc" -eq 1 ] \
+     && [[ "$out" == *"ОБЪЯВЛЕНО, НО ЭТО ВОЗВРАТ К БАЗЕ: shared.txt"* ]] \
+     && [[ "$out" == *"ОТКАТ: shared.txt"* ]]; then
+    ok "объявление не прикрыло возврат к базе — отказ назван и находка осталась"
+  else
+    no "запись перечня прикрыла возврат к базе (rc=$rc)" "$out"
+  fi
+  rm -rf "$r"
+}
+
 echo "проба гейта переноса — синтетические графы"
 case_real_rollback
 case_branch_owns_file
@@ -1044,6 +1127,9 @@ case_coverage_does_not_depend_on_the_event
 case_on_the_trunk_itself_the_event_range_is_used
 case_undeclared_adaptation_is_not_named_a_rollback
 case_return_to_base_is_still_named_a_rollback
+case_declared_removal_is_skipped_and_undeclared_is_a_loss
+case_declared_adaptation_is_skipped_and_undeclared_is_a_finding
+case_declared_return_to_base_is_refused
 
 echo
 echo "перепись: случаев ${cases}; прошло ${pass}; упало ${fail}"
