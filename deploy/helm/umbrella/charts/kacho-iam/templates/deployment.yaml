@@ -104,6 +104,24 @@ spec:
         # Writable scratch for the read-only-rootfs main container.
         - name: tmp
           emptyDir: {}
+        {{- if .Values.manifests.configMapName }}
+        # МАНИФЕСТЫ МОДУЛЕЙ (kacho#1875) — источник ВНЕ релиза образа.
+        #
+        # ConfigMap ведёт тот, кто применяет манифесты, а не этот чарт: правка
+        # его содержимого есть операция над данными и релиза службы не требует.
+        # Именно ради этого доставка заводится — манифест, запечённый в образ,
+        # оставлял бы отзыв модуля релизом iam.
+        #
+        # `optional: true` — НЕ послабление. Отсутствующий ConfigMap без него
+        # держит под в ContainerCreating без объяснения; с ним каталог приезжает
+        # пустым, а отказ произносит САМ ПРОЦЕСС и называет причину
+        # (manifest.LoadDelivered: «отсутствие манифеста снятием НЕ является»).
+        # Диагностируемый отказ дороже недиагностируемого при том же исходе.
+        - name: module-manifests
+          configMap:
+            name: {{ .Values.manifests.configMapName | quote }}
+            optional: true
+        {{- end }}
         {{- if .Values.mtls.enable }}
         # SEC-H mTLS — cert-manager internal-CA server secret (tls.crt/tls.key/ca.crt).
         # IAM is a leaf-owner: server-side only (both listeners), no client edge in scope.
@@ -182,6 +200,14 @@ spec:
               readOnly: true
             - name: tmp
               mountPath: /tmp
+            {{- if .Values.manifests.configMapName }}
+            # Каталог берётся из ТОГО ЖЕ ключа, что и `manifests.dir`
+            # конфигурации процесса (см. configmap.yaml): два литерала об одном
+            # каталоге разошлись бы молча, и процесс читал бы пустой путь.
+            - name: module-manifests
+              mountPath: {{ .Values.manifests.mountPath | quote }}
+              readOnly: true
+            {{- end }}
             {{- if .Values.mtls.enable }}
             - name: mtls-server
               mountPath: {{ printf "%s/server" .Values.mtls.mountPath | quote }}

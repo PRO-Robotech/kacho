@@ -1,0 +1,219 @@
+# Copyright (c) PRO-Robotech
+# SPDX-License-Identifier: BUSL-1.1
+
+# ==========================================================================
+#  loadbalancer — манифест домена: что модуль объявляет платформе о своих правах.
+#
+#  Токен модуля — `loadbalancer`, каталог сервиса — `nlb`, префикс типов — `nlb_`.
+#  Три написания об одном домене; манифест называет модуль так, как его знает
+#  закрытый набор платформы, иначе загрузчик его отвергнет.
+#
+#  Группа целей — единственный тип платформы, чей набор действий ШИРЕ канонической
+#  пятёрки: `addTargets` и `removeTargets` порождают свои отношения и наследуются
+#  от `v_update`, а не от яруса.
+#
+#  Раздел `resources` порождает блоки типов модели доступов; сверка с каноном
+#  `proto/kacho/cloud/iam/v1/fga_model.fga` ПОБАЙТОВАЯ:
+#      make -C services/iam model-canon-check
+#  Форму документа судит один разбор:
+#      make -C services/iam module-manifest-check
+#
+#  Что ВЫВОДИТСЯ и здесь не пишется: класс канонического действия — из его
+#  имени; умолчательный состав субъектов `[user, service_account, group#member]`;
+#  цепочка ярусов admin→editor→viewer от супер-доступа; каскад
+#  `super_admin from <первый указатель>`; источник действия — супер-доступ.
+#  Названо только то, что от умолчания ОТЛИЧАЕТСЯ.
+#
+#  РАЗДЕЛ `roles` ЗДЕСЬ ЕСТЬ. Он объявляет то, что у модуля уже лежит в базе, и
+#  согласие с ней доказывается ПРОГОНОМ:
+#      go test ./services/iam/internal/moduleroleparity/
+#
+#  Здесь стояло «единственный в дереве на сегодня», а потом «три модуля из
+#  четырёх» — оба утверждения пережили свой предмет. Раздел объявляют ВСЕ ЧЕТЫРЕ
+#  модуля с живыми системными ролями: `compute` (3 из 3), `iam` (19 из 19),
+#  `vpc` (18 из 18) и этот (2 из 2) — 42 роли из 48 живых кластерных, остальные
+#  шесть модуля-владельца не имеют by construction. Ведомость гейта ПУСТА.
+#  Оба основания прежних отсрочек сняты вместе с предметом: предел прозы на
+#  назначении роли выносил приговор по длине имени типа (#1904), а две роли iam
+#  называли класс без пригодных действий — правила приведены миграцией
+#  20260902180800 (#1916).
+#
+#  ЧЕГО ЗДЕСЬ НЕТ, и это сказано, чтобы манифест не читался как полный.
+#
+#  Раздел `seed` не объявлен НИ ОДНИМ манифестом дерева: посев модулей пишут
+#  применённые миграции, и его согласие с живой базой ещё никем не сверяется.
+#  Предмет и предикат снятия — задача продукта #1891.
+#
+#  ИМЯ РЕСУРСА здесь — написание ЗАКРЫТОЙ ТАБЛИЦЫ типов, и оно множественное.
+#  Выбрано оно потому, что у него есть ЧИТАТЕЛЬ на пути запроса: проверка правил
+#  роли отвергает правило, назвавшее ресурс иначе, и тем же ключом резолвится тип
+#  объекта. У написания, выведенного из имени службы, читателя нет ни одного.
+#
+#  Прежде здесь стояло, что действия этого модуля с каталогом НЕ сопоставляются
+#  ни при каком написании. Это было верно в день записи и перестало быть верным:
+#  привязка записей каталога переведена на общий словарь (#1884), и не
+#  сопоставлено стало 4 действия из 109 вместо 35.
+# ==========================================================================
+
+apiVersion: iam/v1
+module: loadbalancer
+
+resources:
+
+  - name: networkLoadBalancers
+    objectType: nlb_network_load_balancer
+    parents: [project]
+    producer: derived
+    notes:
+      - before: announce_writer
+        text: |
+          # announce_writer — inbound data-plane feedback gate for
+          # `InternalLoadBalancerAnnounceService/ReportAnnounceState` (:9091, mTLS).
+          # The permission catalog REQUIRED this relation on this type while the model
+          # never declared it, so the engine rejected the Check as a model validation
+          # error and the RPC was denied for EVERY subject — a broken-by-construction
+          # gate, not a least-priv default (same defect class as #68 nlb_listener
+          # `project` and #71 storage_* types).
+          #
+          # Bearer — the DATA PLANE announcer only: it is the sole producer of
+          # announce-state (BGP session up/down, route/VRF id, kernel-programming
+          # status, numeric infra id). That state is infra-sensitive (security.md) and
+          # tenants neither produce nor read it. Hence, deliberately:
+          #   * `[service_account]` ONLY — no `user`, no `group#member`, no `user:*`.
+          #     A human/tenant principal cannot even be WRITTEN as the subject of this
+          #     tuple (the engine rejected the write), so it can never be handed out via a
+          #     custom role or a group;
+          #   * NO `or admin|editor|viewer` derivation — a project editor must NOT be
+          #     able to forge the announce-state of a load balancer;
+          #   * nothing derives FROM it — the data-plane writer gains no CRUD.
+          # It is also outside the closed verb set {get,list,create,update,delete} the
+          # iam reconciler materializes from role permissions, so no AccessBinding can
+          # produce it: the only way to hold it is an explicit per-load-balancer tuple
+          # written for the data-plane service account when the data plane is
+          # provisioned. Until then the RPC stays uniformly fail-closed — which is the
+          # correct state, since nothing legitimately reports announce-state yet.
+    relations:
+      - name: announce_writer
+        definition: '[service_account]'
+        position: afterVerbs
+    verbs:
+      - get
+      - list
+      - update
+      - delete
+
+  - name: targetGroups
+    objectType: nlb_target_group
+    parents: [project]
+    producer: derived
+    notes:
+      - before: v_addtargets
+        text: |
+          # NLB-TGT-1 — управление СОСТАВОМ группы отделено от изменения самой группы.
+          # Первый тип платформы, чей набор глаголов ШИРЕ канонического CRUD: набор — атрибут
+          # типа (authzmap.typeVerbRelations), и гейт дрейфа сверяет его с этими строками
+          # потипово (TestDrift_TypeVerbSetsMatchModelExactly).
+          #
+          # Зачем отдельные отношения: роль `loadbalancer.target_manager` объявляет
+          # `addTargets`/`removeTargets` и показывает их как то, что даёт. Пока оба RPC
+          # гейтились на `v_update`, выдать право управлять составом, не выдав права менять
+          # саму группу, было НЕЛЬЗЯ — роль была читательской вопреки своему имени.
+          #
+          # Почему НАДМНОЖЕСТВО `v_update`, а не самостоятельные отношения: у сегодняшнего
+          # редактора лежит прямой кортеж `v_update`, и ветвь `or v_update` разрешает ему
+          # новый вопрос ТЕМ ЖЕ кортежем. Значит переключение гейтинга не требует
+          # ре-материализации ни одной выдачи и не имеет окна, в котором прежний держатель
+          # отказан. `v_update` уже включает `super_admin`, поэтому каскад трёх верхних
+          # уровней наследуется без отдельного упоминания. Надмножество ОДНОСТОРОННЕ:
+          # держатель управления составом права менять саму группу не получает.
+          #
+          # Имена не выбраны, а выведены: реконсайлер собирает имя как
+          # `"v_" + domain.NormalizeVerb(<авторский глагол>)`, поэтому `addTargets` даёт
+          # ровно `v_addtargets`. Написать здесь иначе значило бы объявить отношение, по
+          # которому эмиттер никогда не постучится.
+    verbs:
+      - get
+      - list
+      - update
+      - delete
+      - {name: addTargets, class: addtargets, from: [v_update]}
+      - {name: removeTargets, class: removetargets, from: [v_update]}
+
+  - name: listeners
+    objectType: nlb_listener
+    parents: [project]
+    producer: derived
+    notes:
+      - before: project
+        text: |
+          # #68: nlb emits `nlb_listener #project @project` (fga_intent.go) parity with
+          # nlb_network_load_balancer / nlb_target_group; without this relation the engine
+          # rejected the tuple → drainer dead-lettered it → listener hierarchy never
+          # materialized → listener authz broke. Contract-A direct project link.
+    verbs:
+      - get
+      - list
+      - update
+      - delete
+
+# ═══════════════════════════════════════════════════════════════════════════
+#  ROLES — системные роли модуля
+# ═══════════════════════════════════════════════════════════════════════════
+#
+#  Раздел ОБЪЯВЛЯЕТ то, что у модуля уже есть. Обе строки пишут ПЯТЬ применённых
+#  миграций, из которых поздние переписывают ранние, — предикат:
+#      grep -l 'loadbalancer.operator' services/iam/internal/migrations/*.sql
+#  Поэтому действующее состояние не лежит нигде одним куском, и объявление
+#  сверяется с ЖИВОЙ базой прогоном, а не чтением миграций:
+#      go test ./services/iam/internal/moduleroleparity/
+#  Гейт поднимает Postgres, играет цепочку миграций дерева и сравнивает строки
+#  `kacho_iam.roles` с тем, что произвёл бы применитель из ЭТОГО раздела.
+#  Расхождение по идентификатору, назначению либо праву — находка с именем роли.
+#
+#  Почему `description` по-английски и почему его нельзя «причесать»: текст
+#  сверяется с живой строкой ДОСЛОВНО. Применитель пишет его как есть, поэтому
+#  правка здесь — правка того, что читает арендатор, выбирая роль; она идёт
+#  своим решением и своей миграцией, а не попутно с объявлением.
+#
+#  Почему правила перечислены В ЭТОМ порядке и не отсортированы: `rules` —
+#  упорядоченное поле хранимой формы, и применитель кладёт его дословно.
+#  Пересортировав, объявление разошлось бы со строкой, ничего не изменив по
+#  существу.
+#
+#  Ключ права — `classes`; `verbs` снят и отвергается явно. Значения `addTargets`
+#  и `removeTargets` — обозначения классов группы целей, объявленных выше в
+#  `resources`, а не канонической пятёрки: набор глаголов принадлежит ТИПУ.
+
+roles:
+
+  - id: loadbalancer.operator
+    description: "NLB operator (start/stop/getTargetStates/listOperations + viewer on LB hierarchy)"
+    tier:
+      tierType: iam.cluster
+      tierId: cluster_kacho_root
+    rules:
+      - module: loadbalancer
+        resources: [networkLoadBalancers]
+        classes: [get, list]
+      - module: loadbalancer
+        resources: [listeners]
+        classes: [get, list]
+      - module: loadbalancer
+        resources: [targetGroups]
+        classes: [get, list]
+
+  - id: loadbalancer.target_manager
+    description: "NLB target manager (addTargets/removeTargets/getTargetStates + viewer on LB hierarchy)"
+    tier:
+      tierType: iam.cluster
+      tierId: cluster_kacho_root
+    rules:
+      - module: loadbalancer
+        resources: [targetGroups]
+        classes: [addTargets, removeTargets, get, list]
+      - module: loadbalancer
+        resources: [networkLoadBalancers]
+        classes: [get, list]
+      - module: loadbalancer
+        resources: [listeners]
+        classes: [get, list]

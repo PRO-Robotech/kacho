@@ -451,6 +451,818 @@ case_blindness_is_still_reachable() {
   rm -rf "$r"
 }
 
+
+# ── Случай 7. «Полоса → линия» с настоящим откатом — гейт ОБЯЗАН заговорить ──
+# Положительный контроль ко всем трём случаям ниже. Пока он красен, молчание
+# случая 8 не значит ничего: оно неотличимо от гейта, разучившегося падать.
+#
+# Форма — штатная посадка полосы в накопительную линию: первый родитель линия,
+# второй полоса. Сторона ствола совпадает с первым родителем, и совпадение это
+# случайно — именно поэтому рядом стоит случай 8, где она НЕ совпадает.
+case_lane_into_line_rollback_is_named() {
+  cases=$((cases + 1))
+  local r; r=$(newrepo)
+  echo "база" > "$r/shared.txt"; echo "прочее" > "$r/other.txt"; commit "$r" "база"
+  local base; base=$(git -C "$r" rev-parse HEAD)
+
+  git -C "$r" checkout -q -b release/line
+  echo "ЛИНИЯ" > "$r/shared.txt"; commit "$r" "линия правит общий файл"
+  local line_before; line_before=$(git -C "$r" rev-parse HEAD)
+
+  git -C "$r" checkout -q -b lane "$base"
+  echo "правка полосы" > "$r/other.txt"; commit "$r" "полоса правит своё"
+  local lane; lane=$(git -C "$r" rev-parse HEAD)
+
+  git -C "$r" checkout -q release/line
+  git -C "$r" merge -q --no-ff --no-commit lane >/dev/null 2>&1
+  echo "база" > "$r/shared.txt"          # ОТКАТ: посадка вернула содержимое базы
+  commit "$r" "посадка полосы в линию"
+  local head; head=$(git -C "$r" rev-parse HEAD)
+  git -C "$r" update-ref refs/remotes/origin/main "$base"
+  git -C "$r" update-ref refs/remotes/origin/release/line "$head"
+
+  # Предпосылка случая: посадка обязана быть слиянием ровно с этими сторонами,
+  # иначе он проверяет не то, что назван проверять.
+  local p1 p2
+  read -r _ p1 p2 <<<"$(git -C "$r" rev-list --parents -n1 "$head")"
+  if [ "$p1" != "$line_before" ] || [ "$p2" != "$lane" ]; then
+    no "предпосылка случая не выполнена: стороны посадки не в нужной форме (p1=$p1 p2=$p2)" ""
+    rm -rf "$r"; return
+  fi
+
+  local out rc
+  out=$(cd "$r" && BEFORE="$base" HEAD_SHA="$head" bash -e -o pipefail "$JUDGE" 2>&1); rc=$?
+  if [ "$rc" -ne 0 ] && [[ "$out" == *"ОТКАТ: shared.txt"* ]]; then
+    ok "посадка полосы в линию: настоящий откат назван, и координата напечатана"
+  else
+    no "настоящий откат на посадке полосы в линию НЕ пойман (rc=$rc)" "$out"
+  fi
+  rm -rf "$r"
+}
+
+# ── Случай 8. «Линия → полоса»: приспособление СВОЕГО файла — молчание ───────
+# Полоса, отставшая от линии, вливает линию В СЕБЯ, чтобы догнать, и заодно
+# приводит собственный файл к формам, которые линия принесла. У такого слияния
+# первый родитель — ПОЛОСА, и порядок родителей означает здесь обратное тому,
+# что он означает в случае 7.
+#
+# Гейт, читающий порядок буквально, объявляет стволом полосу: всякий её
+# собственный файл выглядит «ствол изменил, ветка не касалась», а приспособление
+# — возвратом. Наблюдалось на посадке `3a66c8574e` линии modules-5: три файла
+# названы откаченными, и НИ ОДНОГО из них в стволе не существует вовсе — их
+# завела сама полоса.
+#
+# Различитель по первородительской цепи этого не спасал: он знал одну опорную
+# линию, `origin/main`, а накопительная линия в ствол ещё не влита. На всём том
+# прогоне он молчал «родителей на линии ствола: 0» и отдавал решение обратно
+# порядку родителей — 23 посадки из 24.
+case_line_into_lane_adaptation_is_silent() {
+  cases=$((cases + 1))
+  local r; r=$(newrepo)
+  echo "база" > "$r/common.txt"; commit "$r" "база"
+  local base; base=$(git -C "$r" rev-parse HEAD)
+
+  git -C "$r" checkout -q -b release/line
+  echo "ЛИНИЯ" > "$r/common.txt"; commit "$r" "линия ушла вперёд"
+  local line; line=$(git -C "$r" rev-parse HEAD)
+
+  git -C "$r" checkout -q -b lane "$base"
+  echo "ПОЛОСА" > "$r/lanefile.txt"; commit "$r" "полоса завела свой файл"
+  local lane_before; lane_before=$(git -C "$r" rev-parse HEAD)
+
+  # Полоса догоняет линию и приспосабливает СВОЙ файл к её формам.
+  git -C "$r" merge -q --no-ff --no-commit release/line >/dev/null 2>&1
+  echo "ПОЛОСА, ПРИСПОСОБЛЕНО К ФОРМАМ ЛИНИИ" > "$r/lanefile.txt"
+  commit "$r" "полоса догнала линию и приспособила своё"
+  local head; head=$(git -C "$r" rev-parse HEAD)
+  git -C "$r" update-ref refs/remotes/origin/main "$base"
+  git -C "$r" update-ref refs/remotes/origin/release/line "$line"
+
+  # Предпосылка: сторона ствола обязана быть ВТОРЫМ родителем и лежать на
+  # опорной линии, а первый родитель — не лежать. Иначе случай зеленел бы, не
+  # коснувшись предмета: ровно так прошла первая редакция случая 5.
+  local p1 p2 chain
+  read -r _ p1 p2 <<<"$(git -C "$r" rev-list --parents -n1 "$head")"
+  chain=$(git -C "$r" rev-list --first-parent refs/remotes/origin/release/line)
+  if [ "$p1" != "$lane_before" ] || [ "$p2" != "$line" ] \
+     || ! line_in "$chain" "$p2" || line_in "$chain" "$p1"; then
+    no "предпосылка случая не выполнена: стороны не в нужной форме (p1=$p1 p2=$p2)" ""
+    rm -rf "$r"; return
+  fi
+
+  local out rc
+  out=$(cd "$r" && BEFORE="$base" HEAD_SHA="$head" bash -e -o pipefail "$JUDGE" 2>&1); rc=$?
+  # Молчания МАЛО: судья молчит и тогда, когда сторону установить нечем, —
+  # а это другой исход, и он тут был бы неверным. Поэтому случай требует
+  # молчания ПО ПРАВИЛЬНОЙ ПРИЧИНЕ: стороны обязаны быть определены, и
+  # стволом обязан быть взят не первый родитель.
+  if [ "$rc" -eq 0 ] && [[ "$out" != *"ОТКАТ"* ]] \
+     && [[ "$out" == *"стороны определены по графу"* ]] \
+     && [[ "$out" != *"сторону ствола установить нечем"* ]]; then
+    ok "слияние линии в полосу: приспособление своего файла находкой не названо"
+  else
+    no "файл ПОЛОСЫ назван откатом ствола либо сторона не определена (rc=$rc)" "$out"
+  fi
+  rm -rf "$r"
+}
+
+# ── Случай 9. Сторону ствола установить нечем — ТРЕТЬЯ КАТЕГОРИЯ ─────────────
+# Ни один родитель не лежит на опорной линии: две полосы слиты между собой, и
+# ни одна из них ещё никуда не влита. Граф на вопрос не отвечает.
+#
+# Прежний судья в этом месте говорил «берём первого родителя» и ВЫНОСИЛ вердикт
+# — то есть решал молча ровно там, где сам объявил, что различить не может.
+# Вердикт не выносится: «сторону ствола установить нечем» есть НЕ находка, и
+# перепись обязана назвать такие посадки отдельным числом, иначе они растворятся
+# в «сверено чисто».
+#
+# ПОСАДОК В СЛУЧАЕ ДВЕ, и это не украшение. Прогон, где неразличима ЕДИНСТВЕННАЯ
+# посадка, — другой исход (случай 11): там гейт не высказался вообще ни о чём.
+# Здесь же рядом стоит разрешимая посадка, и случай требует, чтобы соседство
+# неразличимой её не съело: сверено чисто обязано остаться единицей.
+case_trunk_side_undecidable_is_not_a_finding() {
+  cases=$((cases + 1))
+  local r; r=$(newrepo)
+  echo "база" > "$r/shared.txt"; echo "прочее" > "$r/other.txt"; commit "$r" "база"
+  local base; base=$(git -C "$r" rev-parse HEAD)
+
+  git -C "$r" checkout -q -b release/line
+  echo "ЛИНИЯ" > "$r/shared.txt"; commit "$r" "линия правит общий файл"
+
+  git -C "$r" checkout -q -b lane "$base"
+  echo "полоса" > "$r/other.txt"; commit "$r" "полоса правит своё"
+
+  # Посадка первая — разрешимая и чистая.
+  git -C "$r" checkout -q release/line
+  git -C "$r" merge -q --no-ff --no-edit lane -m "посадка полосы в линию" >/dev/null 2>&1
+  local line_tip; line_tip=$(git -C "$r" rev-parse HEAD)
+
+  # Посадка вторая — две полосы, слитые между собой; ни одна не влита никуда.
+  git -C "$r" checkout -q -b first "$line_tip"
+  echo "первая" > "$r/first.txt"; commit "$r" "первая полоса"
+  git -C "$r" checkout -q -b second "$line_tip"
+  echo "вторая" > "$r/second.txt"; commit "$r" "вторая полоса"
+  git -C "$r" checkout -q first
+  git -C "$r" merge -q --no-ff --no-edit second -m "две полосы слиты между собой" >/dev/null 2>&1
+  local head; head=$(git -C "$r" rev-parse HEAD)
+
+  git -C "$r" update-ref refs/remotes/origin/main "$base"
+  git -C "$r" update-ref refs/remotes/origin/release/line "$line_tip"
+
+  # Предпосылка: у второй посадки ни один родитель не лежит на опорных линиях,
+  # а у первой — ровно один. Иначе случай проверяет не то, что назван.
+  local p1 p2 chain
+  read -r _ p1 p2 <<<"$(git -C "$r" rev-list --parents -n1 "$head")"
+  chain="$(git -C "$r" rev-list --first-parent refs/remotes/origin/release/line)"$'\n'"$(git -C "$r" rev-list --first-parent refs/remotes/origin/main)"
+  if line_in "$chain" "$p1" || line_in "$chain" "$p2"; then
+    no "предпосылка случая не выполнена: сторона всё-таки лежит на опорной линии" ""
+    rm -rf "$r"; return
+  fi
+
+  local out rc
+  out=$(cd "$r" && BEFORE="$base" HEAD_SHA="$head" bash -e -o pipefail "$JUDGE" 2>&1); rc=$?
+  if [ "$rc" -eq 0 ] \
+     && [[ "$out" == *"сторону ствола установить нечем"* ]] \
+     && [[ "$out" != *"ОТКАТ"* ]] \
+     && any_line_matches "$out" 'сторона ствола не установлена 1' \
+     && any_line_matches "$out" 'сверено чисто 1'; then
+    ok "неразличимая сторона названа третьей категорией и сосчитана отдельно"
+  else
+    no "судья вынес вердикт там, где сторону ствола установить нечем (rc=$rc)" "$out"
+  fi
+  rm -rf "$r"
+}
+
+# ── Случай 11. НИ ОДНА посадка прогона не получила вердикта ──────────────────
+# Близнец к случаю 9 и граница послабления, которое тот вводит. Там неразличимая
+# посадка стояла рядом с разрешимой, и гейт высказался о второй. Здесь вердикта
+# не получила НИ ОДНА — гейт отработал, ничего не проверив, и остался бы на вид
+# зелёным.
+#
+# Форма не выдумана: ровно так выглядел бы этот гейт, если опорные линии в дереве
+# ссылок есть, а работы прогона на них нет — например, накопительные линии
+# переименовали, а образец опорных ссылок за ними не пошёл. До починки судья в
+# такой раскладке молча «брал первого родителя» и судил не ту сторону; после
+# починки он обязан сказать, что не судил ничего, а не промолчать зелёным.
+case_nothing_judged_at_all_is_loud() {
+  cases=$((cases + 1))
+  local r; r=$(newrepo)
+  echo "база" > "$r/a.txt"; commit "$r" "база"
+  local base; base=$(git -C "$r" rev-parse HEAD)
+
+  git -C "$r" checkout -q -b first "$base"
+  echo "первая" > "$r/first.txt"; commit "$r" "первая полоса"
+  git -C "$r" checkout -q -b second "$base"
+  echo "вторая" > "$r/second.txt"; commit "$r" "вторая полоса"
+  git -C "$r" checkout -q first
+  git -C "$r" merge -q --no-ff --no-edit second -m "две полосы слиты между собой" >/dev/null 2>&1
+  local head; head=$(git -C "$r" rev-parse HEAD)
+  # Опорная линия ЕСТЬ — иначе сработал бы случай 10, другой предмет.
+  git -C "$r" update-ref refs/remotes/origin/main "$base"
+
+  local out rc
+  out=$(cd "$r" && BEFORE="$base" HEAD_SHA="$head" bash -e -o pipefail "$JUDGE" 2>&1); rc=$?
+  if [ "$rc" -ne 0 ] \
+     && [[ "$out" == *"ни одна посадка прогона не получила вердикта"* ]] \
+     && [[ "$out" != *"ОТКАТ"* ]]; then
+    ok "прогон, в котором не судили ничего, назван вслух, а не выдан за чистый"
+  else
+    no "гейт вышел зелёным, не вынеся вердикта ни по одной посадке (rc=$rc)" "$out"
+  fi
+  rm -rf "$r"
+}
+
+# ── Случай 10. Опорных линий НЕТ ВОВСЕ — обход пуст, и гейт падает ───────────
+# Близнец к случаю 9 и граница послабления, которое он вводит. Там граф не
+# отвечал на вопрос о КОНКРЕТНОЙ посадке; здесь спрашивать не у чего вообще:
+# ни `main`, ни накопительной линии в дереве ссылок нет.
+#
+# Если бы этот исход тоже становился третьей категорией, послабление стало бы
+# всеразрешающим: мелкий клон без ссылок дал бы «вердикт не выносится» на КАЖДОЙ
+# посадке, и гейт молчал бы всегда, оставаясь на вид рабочим.
+case_no_trunk_reference_is_an_empty_traversal() {
+  cases=$((cases + 1))
+  local r; r=$(newrepo)
+  echo "база" > "$r/a.txt"; commit "$r" "база"
+  local base; base=$(git -C "$r" rev-parse HEAD)
+
+  git -C "$r" checkout -q -b lane "$base"
+  echo "полоса" > "$r/lane.txt"; commit "$r" "полоса правит своё"
+  git -C "$r" checkout -q -b other "$base"
+  echo "другая" > "$r/other.txt"; commit "$r" "другая полоса"
+  git -C "$r" checkout -q lane
+  git -C "$r" merge -q --no-ff --no-edit other -m "слияние" >/dev/null 2>&1
+  local head; head=$(git -C "$r" rev-parse HEAD)
+
+  # Ни одной опорной ссылки: ни удалённой, ни локальной.
+  git -C "$r" checkout -q --detach "$head"
+  git -C "$r" branch -q -D main lane other >/dev/null 2>&1
+  if [ -n "$(git -C "$r" for-each-ref --format='%(refname)' \
+              refs/heads/main refs/remotes/origin/main \
+              'refs/heads/release/*' 'refs/remotes/origin/release/*')" ]; then
+    no "предпосылка случая не выполнена: опорная ссылка всё-таки осталась" ""
+    rm -rf "$r"; return
+  fi
+
+  local out rc
+  out=$(cd "$r" && BEFORE="$base" HEAD_SHA="$head" bash -e -o pipefail "$JUDGE" 2>&1); rc=$?
+  if [ "$rc" -ne 0 ] && [[ "$out" == *"опорной линии в дереве ссылок нет"* ]]; then
+    ok "пустой обход опорных линий назван, и гейт на нём падает"
+  else
+    no "гейт судил, не имея ни одной опорной линии (rc=$rc)" "$out"
+  fi
+  rm -rf "$r"
+}
+
+# ── Общий граф для случаев 15-17: ЛИНИЯ ИЗ ДВУХ ПОСАДОК, две отправки подряд ─
+#
+# Это раскладка, ради которой гейт и написан: накопительная линия копит посадки,
+# и каждая отправка несёт лишь ПРИРОСТ с прошлого раза. Граф строится один и тот
+# же, различается только то, что делает первая посадка со своим файлом.
+#
+# Возвращает три ревизии через пробел: <C0> <L1> <L2>.
+#   mode=declared — первая посадка СНИМАЕТ A.txt, и перечень это объявляет
+#   mode=rollback — первая посадка ВОЗВРАЩАЕТ содержимое базы (настоящий откат)
+#   mode=clean    — первая посадка ничего не портит
+# ledger — содержимое перечня (пустая строка = перечня нет вовсе).
+build_two_push_line() { # <repo> <mode> <ledger-line>
+  local r=$1 mode=$2 ledger=$3
+  echo keep > "$r/keep.txt"
+  echo "база" > "$r/shared.txt"
+  if [ -n "$ledger" ]; then
+    mkdir -p "$r/tools/carrydrift"
+    printf '%s\n' "$ledger" > "$r/tools/carrydrift/declared-removals.txt"
+  fi
+  commit "$r" "C0 база"
+  local c0; c0=$(git -C "$r" rev-parse HEAD)
+
+  # Полоса 1 отходит от базы и правит ТОЛЬКО своё.
+  git -C "$r" checkout -q -b lane1 "$c0"
+  echo l1 > "$r/lane1.txt"; commit "$r" "полоса 1 правит своё"
+
+  # Линия двигается после того, как полоса от неё отошла, — иначе у гейта нет
+  # области и вердикт беспредметен.
+  git -C "$r" checkout -q -b release/l "$c0"
+  case "$mode" in
+    declared) echo A > "$r/A.txt" ;;
+    *)        echo "ПРАВКА ЛИНИИ" > "$r/shared.txt" ;;
+  esac
+  commit "$r" "C1 линия двигается"
+
+  # ПОСАДКА 1.
+  git -C "$r" merge -q --no-commit --no-ff lane1 >/dev/null 2>&1
+  case "$mode" in
+    declared) rm -f "$r/A.txt" ;;
+    rollback) echo "база" > "$r/shared.txt" ;;
+  esac
+  git -C "$r" add -A
+  git -C "$r" commit -qm "посадка 1 (${mode})"
+  local l1; l1=$(git -C "$r" rev-parse HEAD)
+
+  # Полоса 2 отходит от базы; посадка 2 чистая.
+  git -C "$r" checkout -q -b lane2 "$c0"
+  echo l2 > "$r/lane2.txt"; commit "$r" "полоса 2 правит своё"
+  git -C "$r" checkout -q release/l
+  git -C "$r" merge -q --no-ff -m "посадка 2 (чистая)" lane2 >/dev/null 2>&1
+  local l2; l2=$(git -C "$r" rev-parse HEAD)
+
+  echo "$c0 $l1 $l2"
+}
+
+# run_push <repo> <before|-> <head> — прогон судьи так, как его зовёт конвейер:
+# рабочая копия стоит на голове отправки, а накопительная линия на неё указывает.
+run_push() {
+  local r=$1 before=$2 head=$3
+  git -C "$r" checkout -q "$head"
+  git -C "$r" branch -f release/l "$head"
+  [ "$before" = "-" ] && before=""
+  (cd "$r" && BEFORE="$before" HEAD_SHA="$head" bash "$JUDGE" 2>&1)
+}
+
+# ── Случай 15. Запись перечня живёт, пока жива ПОСАДКА, а не пока её несёт ───
+#              диапазон прогона
+#
+# Перечень объявленных снятий описывает ОТПРАВКУ целиком — так говорит шапка
+# `drift.sh`, и так же устроен сбор `declared-used` по всем посадкам. Но
+# самоистечение судилось ДИАПАЗОНОМ прогона, а диапазон инкрементальной отправки
+# содержит только посадки, добавленные с прошлого раза. Значит запись,
+# сработавшая законно, на СЛЕДУЮЩЕЙ отправке объявлялась пережившей предмет и
+# роняла гейт кодом 3 — при том что не изменилось ничего.
+#
+# Следствие: механизм объявления был неприменим на накопительной линии —
+# единственной раскладке, ради которой он и нужен (задача #1911).
+case_declaration_outlives_the_push_that_used_it() {
+  cases=$((cases + 1))
+  local r; r=$(newrepo)
+  local revs; revs=$(build_two_push_line "$r" declared \
+    "A.txt  снят решением: линия и ствол завели один предмет разными файлами")
+  read -r c0 l1 l2 <<<"$revs"
+
+  local out1 rc1 out2 rc2
+  out1=$(run_push "$r" "$c0" "$l1"); rc1=$?
+  out2=$(run_push "$r" "$l1" "$l2"); rc2=$?
+
+  if [ "$rc1" -eq 0 ] && [[ "$out1" == *"снято решением: A.txt"* ]] \
+     && [ "$rc2" -eq 0 ] && [[ "$out2" != *"ПЕРЕЖИЛА ПРЕДМЕТ"* ]]; then
+    ok "запись перечня пережила отправку, в которой сработала"
+  else
+    no "запись живёт ровно один прогон (rc1=$rc1 rc2=$rc2)" "$out2"
+  fi
+  rm -rf "$r"
+}
+
+# ── Случай 16. Близнец к 15: запись, у которой предмета нет НИ В ОДНОЙ ───────
+#              посадке линии, по-прежнему краснеет
+#
+# Без этого случая починка 15 неотличима от снятия самоистечения вовсе. Запись,
+# которой нечего исключать, обязана оставаться находкой: иначе она молча прикроет
+# следующее снятие — ровно тот класс, ради которого перечень и заведён.
+case_declaration_without_subject_anywhere_still_reds() {
+  cases=$((cases + 1))
+  local r; r=$(newrepo)
+  local revs; revs=$(build_two_push_line "$r" clean \
+    "never/removed.txt  предмета нет ни в одной посадке этой линии")
+  read -r c0 l1 l2 <<<"$revs"
+
+  local out1 rc1 out2 rc2
+  out1=$(run_push "$r" "$c0" "$l1"); rc1=$?
+  out2=$(run_push "$r" "$l1" "$l2"); rc2=$?
+
+  if [ "$rc1" -eq 3 ] && [ "$rc2" -eq 3 ] \
+     && [[ "$out2" == *"ПЕРЕЖИЛА ПРЕДМЕТ"* ]] \
+     && [[ "$out2" == *"never/removed.txt"* ]]; then
+    ok "запись без предмета во всей линии по-прежнему названа и роняет гейт"
+  else
+    no "самоистечение перечня перестало работать (rc1=$rc1 rc2=$rc2)" "$out2"
+  fi
+  rm -rf "$r"
+}
+
+# ── Случай 17. НАХОДКА тоже переживает следующую отправку ────────────────────
+#
+# Та же единица счёта, но цена выше на порядок. Откат, найденный в приросте одной
+# отправки, на следующей не пересматривался вовсе: диапазон его больше не
+# содержал, и линия зеленела, неся живой откат до самого слияния в ствол.
+#
+# То есть дефект работал ДВОЙНЫМ ДНОМ: он же и служил единственным способом
+# погасить красное — достаточно было толкнуть что угодно ещё раз.
+case_finding_outlives_the_push_that_found_it() {
+  cases=$((cases + 1))
+  local r; r=$(newrepo)
+  local revs; revs=$(build_two_push_line "$r" rollback "")
+  read -r c0 l1 l2 <<<"$revs"
+
+  local out1 rc1 out2 rc2
+  out1=$(run_push "$r" "$c0" "$l1"); rc1=$?
+  out2=$(run_push "$r" "$l1" "$l2"); rc2=$?
+
+  if [ "$rc1" -eq 1 ] && [[ "$out1" == *"ОТКАТ: shared.txt"* ]] \
+     && [ "$rc2" -eq 1 ] && [[ "$out2" == *"ОТКАТ: shared.txt"* ]]; then
+    ok "живой откат линии назван и на следующей отправке"
+  else
+    no "находка живёт ровно один прогон (rc1=$rc1 rc2=$rc2)" "$out2"
+  fi
+  rm -rf "$r"
+}
+
+# ── Случай 18. Охват не зависит от того, каким событием пришёл прогон ────────
+#
+# `github.event.before` есть у `push` и у `pull_request` с действием
+# `synchronize`, но НЕ у `opened`/`reopened`. На боевых прогонах наблюдались обе
+# формы: «диапазон прогона: X..Y» и «диапазона нет … судится вершина». То есть
+# охват гейта был функцией события, а не того, что в линии накоплено: на
+# `opened` судилась ОДНА вершина при любом числе посадок.
+case_coverage_does_not_depend_on_the_event() {
+  cases=$((cases + 1))
+  local r; r=$(newrepo)
+  local revs; revs=$(build_two_push_line "$r" clean "")
+  read -r c0 l1 l2 <<<"$revs"
+
+  local out rc
+  out=$(run_push "$r" - "$l2"); rc=$?
+  if [ "$rc" -eq 0 ] && [[ "$out" == *"посадок в прогоне 2"* ]]; then
+    ok "без диапазона в событии судится вся линия, а не одна вершина"
+  else
+    no "охват остался функцией события (rc=$rc)" "$out"
+  fi
+  rm -rf "$r"
+}
+
+# ── Случай 19. Близнец к 18: НА САМОМ СТВОЛЕ выводить диапазон не из чего ────
+#
+# Граница послабления, которое вводит случай 18. Когда голова прогона стоит на
+# стволе, линии, которую она добавляет к стволу, не существует by construction —
+# выведенный диапазон пуст. Тогда и только тогда берётся прирост события, и этот
+# путь обязан остаться живым: иначе push в `main` перестал бы судиться вовсе, а
+# заметить это было бы нечем — гейт остался бы зелёным.
+case_on_the_trunk_itself_the_event_range_is_used() {
+  cases=$((cases + 1))
+  local r; r=$(newrepo)
+  echo "база" > "$r/shared.txt"; commit "$r" "база"
+  local base; base=$(git -C "$r" rev-parse HEAD)
+
+  git -C "$r" checkout -q -b lane "$base"
+  echo l > "$r/lane.txt"; commit "$r" "полоса правит своё"
+  git -C "$r" checkout -q main
+  echo "ПРАВКА СТВОЛА" > "$r/shared.txt"; commit "$r" "ствол двигается"
+  git -C "$r" merge -q --no-ff -m "посадка в ствол" lane >/dev/null 2>&1
+  local head; head=$(git -C "$r" rev-parse HEAD)
+
+  # Голова — сам ствол: `main` указывает на неё, накопительных линий нет.
+  local out rc
+  out=$(cd "$r" && BEFORE="$base" HEAD_SHA="$head" bash "$JUDGE" 2>&1); rc=$?
+  if [ "$rc" -eq 0 ] \
+     && [[ "$out" == *"посадок в прогоне 1"* ]] \
+     && [[ "$out" == *"прирост события"* ]]; then
+    ok "на самом стволе судится прирост события, и это сказано вслух"
+  else
+    no "прирост события на стволе перестал судиться (rc=$rc)" "$out"
+  fi
+  rm -rf "$r"
+}
+
+# ── Общий граф для случаев 20-24: ОДИН расходящийся файл, три исхода ─────────
+#
+# Исходы расхождения различаются ровно СОДЕРЖИМЫМ результата, а граф у них один
+# и тот же: ствол правит файл, ветка его не касается, посадка приносит своё. Так
+# же устроена и сама проверка — `drift.sh` берёт содержимое базы ОДИН раз и
+# ветвится по нему, — поэтому и здесь строится один граф на все случаи.
+#
+# Возвращает четыре ревизии через пробел: <база> <ветка> <ствол> <результат>.
+#   outcome=to-base — результат равен БАЗЕ            (откат)
+#   outcome=adapted — файл на месте, содержимое НОВОЕ (приспособление)
+#   outcome=removed — файла в результате нет вовсе    (снятие)
+# ledger — строка перечня; она коммитится НА РЕЗУЛЬТАТЕ, поэтому один и тот же
+# граф судится и «объявленным» (`DRIFT_DECLARED_REV=<результат>`), и
+# «необъявленным» (`DRIFT_DECLARED_REV=<база>`, где перечня нет вовсе). Пара
+# получается на ОДНОМ графе, и различие между её половинами — ровно перечень.
+build_one_file_divergence() { # <repo> <outcome> <ledger-line>
+  local r=$1 outcome=$2 ledger=$3
+  echo "база" > "$r/shared.txt"; echo "прочее" > "$r/other.txt"
+  commit "$r" "база"
+  local base; base=$(git -C "$r" rev-parse HEAD)
+
+  git -C "$r" checkout -q -b branch "$base"
+  echo "правка ветки" > "$r/other.txt"; commit "$r" "ветка правит только своё"
+  local br; br=$(git -C "$r" rev-parse HEAD)
+
+  git -C "$r" checkout -q main
+  echo "ПРАВКА СТВОЛА" > "$r/shared.txt"; commit "$r" "ствол правит общий файл"
+  local trunk; trunk=$(git -C "$r" rev-parse HEAD)
+
+  git -C "$r" checkout -q -b "landed-$outcome" "$br"
+  case "$outcome" in
+    to-base) echo "база" > "$r/shared.txt" ;;
+    adapted) echo "ПРИВЕДЕНО К ФОРМЕ ВЕТКИ" > "$r/shared.txt" ;;
+    removed) rm -f "$r/shared.txt" ;;
+  esac
+  if [ -n "$ledger" ]; then
+    mkdir -p "$r/tools/carrydrift"
+    printf '%s\n' "$ledger" > "$r/tools/carrydrift/declared-removals.txt"
+  fi
+  # Метка посадки нужна, чтобы у неё БЫЛ свой коммит: у исхода `to-base` дерево
+  # совпадает с деревом ветки, `git commit` отказывается, и результат молча
+  # схлопнулся бы в саму ветку. Случай тогда судил бы другой граф, ничего об
+  # этом не сказав.
+  echo "$outcome" > "$r/landing-marker.txt"
+  commit "$r" "посадка ($outcome)"
+  local landed; landed=$(git -C "$r" rev-parse HEAD)
+
+  echo "$base $br $trunk $landed"
+}
+
+# ── Случай 20. Расхождение, которое к базе НЕ возвращалось, откатом не зовётся ─
+#
+# Слово стоит в тексте отказа, то есть в контракте гейта. Шапка `drift.sh`
+# определяет откат как ВОЗВРАТ СОДЕРЖИМОГО БАЗЫ, а печаталось «ОТКАТ» на любом
+# расхождении со стволом: различитель `base_blob` вычислялся только внутри ветки
+# «объявлено», и необъявленное расхождение через него не проходило вовсе.
+#
+# Цена наблюдалась на живой линии (#1912, #1919): файла в базе не было ВОВСЕ,
+# то есть возвращаться было не к чему, а гейт говорил «откат». Оператор проверял
+# «вернулось ли к базе», получал «нет» и переставал понимать, чего от него хотят.
+case_undeclared_adaptation_is_not_named_a_rollback() {
+  cases=$((cases + 1))
+  local r; r=$(newrepo)
+  local revs; revs=$(build_one_file_divergence "$r" adapted "")
+  local base br trunk landed; read -r base br trunk landed <<<"$revs"
+
+  local out rc
+  out=$(cd "$r" && DRIFT_DECLARED_REV="$landed" bash "$DRIFT" "$base" "$br" "$trunk" "$landed" 2>&1); rc=$?
+  if [ "$rc" -eq 1 ] \
+     && [[ "$out" == *"НЕОБЪЯВЛЕННОЕ ПРИСПОСОБЛЕНИЕ: shared.txt"* ]] \
+     && [[ "$out" != *"ОТКАТ"* ]]; then
+    ok "расхождение, не вернувшееся к базе, названо приспособлением, а не откатом"
+  else
+    no "гейт зовёт откатом то, что к базе не возвращалось (rc=$rc)" "$out"
+  fi
+  rm -rf "$r"
+}
+
+# ── Случай 21. Близнец к 20: настоящий возврат к базе по-прежнему ОТКАТ ──────
+#
+# Без этого случая правка слова неотличима от его снятия: гейт, разучившийся
+# говорить «ОТКАТ», на чистом дереве выглядит точно так же. Граф тот же, что в
+# случае 20, различается ровно содержимое результата.
+case_return_to_base_is_still_named_a_rollback() {
+  cases=$((cases + 1))
+  local r; r=$(newrepo)
+  local revs; revs=$(build_one_file_divergence "$r" to-base "")
+  local base br trunk landed; read -r base br trunk landed <<<"$revs"
+
+  local out rc
+  out=$(cd "$r" && DRIFT_DECLARED_REV="$landed" bash "$DRIFT" "$base" "$br" "$trunk" "$landed" 2>&1); rc=$?
+  if [ "$rc" -eq 1 ] \
+     && [[ "$out" == *"ОТКАТ: shared.txt"* ]] \
+     && [[ "$out" != *"ПРИСПОСОБЛЕНИЕ"* ]]; then
+    ok "возврат к содержимому базы по-прежнему назван откатом"
+  else
+    no "гейт разучился называть настоящий откат (rc=$rc)" "$out"
+  fi
+  rm -rf "$r"
+}
+
+# ── Случай 22. Ветка «снято решением» — объявлено пропускается, нет — находка ─
+#
+# Первая из трёх ветвей объявления. До этого случая ни одна не утверждалась
+# пробой напрямую: перечня касался один случай 4, и он про МОЛЧАНИЕ механизма
+# (непустой перечень не пачкает чистую посадку), а не про его срабатывание.
+#
+# Пара строится на ОДНОМ графе: перечень лежит на результате, поэтому
+# «объявлено» и «не объявлено» различаются ровно ревизией, с которой перечень
+# читают. Иначе половины пары судили бы разные графы.
+case_declared_removal_is_skipped_and_undeclared_is_a_loss() {
+  cases=$((cases + 1))
+  local r; r=$(newrepo)
+  local revs; revs=$(build_one_file_divergence "$r" removed \
+    "shared.txt  снят решением: ствол и ветка завели один предмет разными файлами")
+  local base br trunk landed; read -r base br trunk landed <<<"$revs"
+
+  local yes no_ rc1 rc2
+  yes=$(cd "$r" && DRIFT_DECLARED_REV="$landed" bash "$DRIFT" "$base" "$br" "$trunk" "$landed" 2>&1); rc1=$?
+  no_=$(cd "$r" && DRIFT_DECLARED_REV="$base"   bash "$DRIFT" "$base" "$br" "$trunk" "$landed" 2>&1); rc2=$?
+  if [ "$rc1" -eq 0 ] && [[ "$yes" == *"снято решением: shared.txt"* ]] \
+     && [ "$rc2" -eq 1 ] && [[ "$no_" == *"УТРАТА: shared.txt"* ]]; then
+    ok "объявленное снятие пропущено по имени, необъявленное названо утратой"
+  else
+    no "ветка «снято решением» не держится (rc1=$rc1 rc2=$rc2)" "$yes
+$no_"
+  fi
+  rm -rf "$r"
+}
+
+# ── Случай 23. Ветка «приспособлено решением» — та же пара на том же графе ────
+#
+# Вторая ветвь. Она и есть то, ради чего перечень нужен на накопительной линии:
+# ветка ввела правило, под которое содержимое ствола перестало быть законным
+# входом, и разрешавший слияние привёл его к новой форме (#1912).
+case_declared_adaptation_is_skipped_and_undeclared_is_a_finding() {
+  cases=$((cases + 1))
+  local r; r=$(newrepo)
+  local revs; revs=$(build_one_file_divergence "$r" adapted \
+    "shared.txt  приспособлено решением: ветка ввела правило, под которое ствол не подходил")
+  local base br trunk landed; read -r base br trunk landed <<<"$revs"
+
+  local yes no_ rc1 rc2
+  yes=$(cd "$r" && DRIFT_DECLARED_REV="$landed" bash "$DRIFT" "$base" "$br" "$trunk" "$landed" 2>&1); rc1=$?
+  no_=$(cd "$r" && DRIFT_DECLARED_REV="$base"   bash "$DRIFT" "$base" "$br" "$trunk" "$landed" 2>&1); rc2=$?
+  if [ "$rc1" -eq 0 ] && [[ "$yes" == *"приспособлено решением: shared.txt"* ]] \
+     && [ "$rc2" -eq 1 ] && [[ "$no_" == *"НЕОБЪЯВЛЕННОЕ ПРИСПОСОБЛЕНИЕ: shared.txt"* ]]; then
+    ok "объявленное приспособление пропущено по имени, необъявленное — находка"
+  else
+    no "ветка «приспособлено решением» не держится (rc1=$rc1 rc2=$rc2)" "$yes
+$no_"
+  fi
+  rm -rf "$r"
+}
+
+# ── Случай 24. Ветка «ВОЗВРАТ К БАЗЕ» — НЕСУЩАЯ, анти-злоупотребительная ─────
+#
+# Третья ветвь. Она и есть то, что мешает строке перечня стать разрешением тихо
+# отменять чужую работу: объявление покрывает снятие и приспособление, но
+# никогда — возврат к содержимому базы. Проба, которой у неё не было, — ровно
+# случай «гейт, потерявший способность падать, на чистом дереве выглядит так же».
+#
+# Близнец здесь — та же ЗАПИСЬ на том же файле, но с новым содержимым: она
+# обязана пропускать (случай 23). Без него отказ был бы неотличим от «запись не
+# работает вовсе».
+case_declared_return_to_base_is_refused() {
+  cases=$((cases + 1))
+  local r; r=$(newrepo)
+  local revs; revs=$(build_one_file_divergence "$r" to-base \
+    "shared.txt  объявлено, но результат равен базе — покрывать это нечем")
+  local base br trunk landed; read -r base br trunk landed <<<"$revs"
+
+  local out rc
+  out=$(cd "$r" && DRIFT_DECLARED_REV="$landed" bash "$DRIFT" "$base" "$br" "$trunk" "$landed" 2>&1); rc=$?
+  if [ "$rc" -eq 1 ] \
+     && [[ "$out" == *"ОБЪЯВЛЕНО, НО ЭТО ВОЗВРАТ К БАЗЕ: shared.txt"* ]] \
+     && [[ "$out" == *"ОТКАТ: shared.txt"* ]]; then
+    ok "объявление не прикрыло возврат к базе — отказ назван и находка осталась"
+  else
+    no "запись перечня прикрыла возврат к базе (rc=$rc)" "$out"
+  fi
+  rm -rf "$r"
+}
+
+# ── Случаи 25-26: перечень читается с ВЕРШИНЫ ОТПРАВКИ, а не рабочей копии ────
+#
+# Судья получает голову прогона аргументом `HEAD_SHA`, а перечень читал с
+# литерального `HEAD` — и `DRIFT_DECLARED_REV` в `drift.sh` не передавал, так что
+# и тот брал своё умолчание. Шапка `drift.sh` объявляет предмет иначе: «перечень
+# читается с ВЕРШИНЫ ОТПРАВКИ». Вершина отправки — это `HEAD_SHA`, а не то, на
+# чём стоит рабочая копия.
+#
+# В конвейере они совпадают, поэтому дефект латентный ровно там же, где был
+# #1911, и бьёт по единственному пути, который конвейер рекламирует своим
+# комментарием: «вся логика — в скрипте, его можно прогнать локально тем же
+# вызовом». Вердикт тогда определяется тем, какая ветка выкачана, а не тем, что
+# судили.
+#
+# Граф общий: `main` стоит на базе, накопительная линия ушла вперёд одной
+# посадкой, а рабочая копия НАМЕРЕННО стоит не на ней.
+build_ledger_split_from_worktree() { # <repo> <where: head|stray>
+  local r=$1 where=$2
+  echo keep > "$r/keep.txt"
+  echo "содержимое ствола до правки" > "$r/A.txt"
+  commit "$r" "C0 база"
+  local c0; c0=$(git -C "$r" rev-parse HEAD)
+
+  git -C "$r" checkout -q -b lane "$c0"
+  echo l > "$r/lane.txt"; commit "$r" "полоса правит только своё"
+
+  git -C "$r" checkout -q -b release/l "$c0"
+  echo "ПРАВКА СТВОЛА" > "$r/A.txt"; commit "$r" "C1 линия двигается"
+
+  git -C "$r" merge -q --no-commit --no-ff lane >/dev/null 2>&1
+  case "$where" in
+    head)
+      # Посадка снимает файл линии И объявляет это — перечень появляется ТОЛЬКО
+      # здесь, на вершине отправки.
+      rm -f "$r/A.txt"
+      mkdir -p "$r/tools/carrydrift"
+      echo "A.txt  снят решением: линия и ствол завели один предмет разными файлами" \
+        > "$r/tools/carrydrift/declared-removals.txt"
+      ;;
+    phantom)
+      # Посадка чистая, а перечень на вершине отправки несёт запись, которой
+      # нечего исключать. Самоистечение обязано её назвать.
+      mkdir -p "$r/tools/carrydrift"
+      echo "never/removed.txt  предмета нет ни в одной посадке этой линии" \
+        > "$r/tools/carrydrift/declared-removals.txt"
+      ;;
+  esac
+  git -C "$r" add -A
+  git -C "$r" commit -qm "посадка ($where)"
+  local landed; landed=$(git -C "$r" rev-parse HEAD)
+
+  if [ "$where" = stray ]; then
+    # Перечень с записью-ФАНТОМОМ лежит в стороне от отправки: он есть в рабочей
+    # копии и его нет в дереве вершины.
+    git -C "$r" checkout -q -b stray "$c0"
+    mkdir -p "$r/tools/carrydrift"
+    echo "never/removed.txt  предмета нет ни в одной посадке этой линии" \
+      > "$r/tools/carrydrift/declared-removals.txt"
+    commit "$r" "перечень в стороне от отправки"
+  fi
+
+  # Рабочая копия НЕ на вершине отправки — в этом весь случай.
+  case "$where" in
+    head|phantom) git -C "$r" checkout -q main ;;
+    stray)        git -C "$r" checkout -q stray ;;
+  esac
+
+  echo "$c0 $landed"
+}
+
+# ── Случай 25. Перечень с ВЕРШИНЫ ОТПРАВКИ читается, хотя копия стоит не там ──
+case_ledger_is_read_from_the_pushed_head() {
+  cases=$((cases + 1))
+  local r; r=$(newrepo)
+  local revs; revs=$(build_ledger_split_from_worktree "$r" head)
+  local c0 landed; read -r c0 landed <<<"$revs"
+
+  # Предпосылка случая: перечня в рабочей копии нет вовсе. Без неё случай зеленел
+  # бы, не коснувшись предмета.
+  if [ -e "$r/tools/carrydrift/declared-removals.txt" ]; then
+    no "предпосылка случая не выполнена: перечень оказался в рабочей копии" ""
+    rm -rf "$r"; return
+  fi
+
+  local out rc
+  out=$(cd "$r" && BEFORE="$c0" HEAD_SHA="$landed" bash "$JUDGE" 2>&1); rc=$?
+  if [ "$rc" -eq 0 ] \
+     && [[ "$out" == *"снято решением: A.txt"* ]] \
+     && [[ "$out" != *"ПЕРЕЖИЛА ПРЕДМЕТ"* ]]; then
+    ok "перечень прочитан с вершины отправки, хотя копия стоит не на ней"
+  else
+    no "перечень читается с рабочей копии, а не с судимой вершины (rc=$rc)" "$out"
+  fi
+  rm -rf "$r"
+}
+
+# ── Случай 26. Близнец к 25: перечень В СТОРОНЕ от отправки не читается ───────
+#
+# Без него правка неотличима от «читаем оба места»: гейт, добравший рабочую
+# копию к вершине, на случае 25 зеленел бы точно так же. Здесь запись-фантом
+# лежит только в рабочей копии, и молчание обязано быть по правильной причине —
+# посадка в прогоне есть, и она сверена чисто.
+case_ledger_beside_the_push_is_not_read() {
+  cases=$((cases + 1))
+  local r; r=$(newrepo)
+  local revs; revs=$(build_ledger_split_from_worktree "$r" stray)
+  local c0 landed; read -r c0 landed <<<"$revs"
+
+  if [ ! -e "$r/tools/carrydrift/declared-removals.txt" ]; then
+    no "предпосылка случая не выполнена: перечня нет и в рабочей копии" ""
+    rm -rf "$r"; return
+  fi
+
+  local out rc
+  out=$(cd "$r" && BEFORE="$c0" HEAD_SHA="$landed" bash "$JUDGE" 2>&1); rc=$?
+  if [ "$rc" -eq 0 ] \
+     && [[ "$out" != *"ПЕРЕЖИЛА ПРЕДМЕТ"* ]] \
+     && [[ "$out" == *"посадок в прогоне 1"* ]] \
+     && [[ "$out" == *"сверено чисто 1"* ]]; then
+    ok "перечень, лежащий в стороне от отправки, вердикта не определяет"
+  else
+    no "чужой перечень из рабочей копии уронил прогон (rc=$rc)" "$out"
+  fi
+  rm -rf "$r"
+}
+
+# ── Случай 27. Запись без предмета НА ВЕРШИНЕ ОТПРАВКИ роняет гейт ───────────
+#
+# Вторая половина того же шва, и без неё правка неотличима от «перестали читать
+# перечень вовсе»: случаи 25-26 утверждают, что читается вершина отправки, а не
+# рабочая копия, — но оба построены на перечне, у которого предмет есть либо
+# которого на вершине нет. Самоистечение в них не срабатывает ни разу.
+#
+# Здесь перечень лежит ровно там, куда судья теперь смотрит, и его запись
+# исключать нечего. Гейт обязан ответить кодом 3 и назвать запись.
+case_phantom_on_the_pushed_head_still_reds() {
+  cases=$((cases + 1))
+  local r; r=$(newrepo)
+  local revs; revs=$(build_ledger_split_from_worktree "$r" phantom)
+  local c0 landed; read -r c0 landed <<<"$revs"
+
+  if [ -e "$r/tools/carrydrift/declared-removals.txt" ]; then
+    no "предпосылка случая не выполнена: перечень оказался в рабочей копии" ""
+    rm -rf "$r"; return
+  fi
+
+  local out rc
+  out=$(cd "$r" && BEFORE="$c0" HEAD_SHA="$landed" bash "$JUDGE" 2>&1); rc=$?
+  if [ "$rc" -eq 3 ] \
+     && [[ "$out" == *"ПЕРЕЖИЛА ПРЕДМЕТ"* ]] \
+     && [[ "$out" == *"never/removed.txt"* ]]; then
+    ok "запись без предмета на вершине отправки названа и роняет гейт"
+  else
+    no "самоистечение не увидело перечня судимой вершины (rc=$rc)" "$out"
+  fi
+  rm -rf "$r"
+}
+
 echo "проба гейта переноса — синтетические графы"
 case_real_rollback
 case_branch_owns_file
@@ -461,6 +1273,24 @@ case_trunk_is_second_parent
 case_empty_surface_is_not_blindness
 case_rollback_survives_the_empty_surface_relief
 case_blindness_is_still_reachable
+case_lane_into_line_rollback_is_named
+case_line_into_lane_adaptation_is_silent
+case_trunk_side_undecidable_is_not_a_finding
+case_no_trunk_reference_is_an_empty_traversal
+case_nothing_judged_at_all_is_loud
+case_declaration_outlives_the_push_that_used_it
+case_declaration_without_subject_anywhere_still_reds
+case_finding_outlives_the_push_that_found_it
+case_coverage_does_not_depend_on_the_event
+case_on_the_trunk_itself_the_event_range_is_used
+case_undeclared_adaptation_is_not_named_a_rollback
+case_return_to_base_is_still_named_a_rollback
+case_declared_removal_is_skipped_and_undeclared_is_a_loss
+case_declared_adaptation_is_skipped_and_undeclared_is_a_finding
+case_declared_return_to_base_is_refused
+case_ledger_is_read_from_the_pushed_head
+case_ledger_beside_the_push_is_not_read
+case_phantom_on_the_pushed_head_still_reds
 
 echo
 echo "перепись: случаев ${cases}; прошло ${pass}; упало ${fail}"

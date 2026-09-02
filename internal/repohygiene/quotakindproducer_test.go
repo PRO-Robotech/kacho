@@ -35,6 +35,8 @@ import (
 	"testing"
 
 	"github.com/PRO-Robotech/kacho/internal/treecorpus"
+
+	"github.com/PRO-Robotech/kacho/pkg/platformmodules"
 )
 
 // quotaCatalogueFile — где объявлен закрытый каталог видов.
@@ -473,9 +475,10 @@ var quotaMechanismPieceProbe = map[missingPiece]*regexp.Regexp{
 
 // quotaOwnerAliasDir — расхождения «первый сегмент вида» ↔ «каталог сервиса».
 //
-// Совпадение имени с каталогом — правило, и единственное исключение названо
-// здесь, а не подразумевается: домен `loadbalancer` живёт в `services/nlb`.
-var quotaOwnerAliasDir = map[string]string{"loadbalancer": "nlb"}
+// Совпадение имени с каталогом — правило, а исключения БЕРУТСЯ у словаря имён
+// модулей (pkg/platformmodules), а не выписываются: до #1885 то же соответствие
+// жило пятью копиями в этом корпусе.
+var quotaOwnerAliasDir = platformmodules.AliasesByCatalogModule()
 
 // quotaOwnerDirOfKind — каталог сервиса-владельца по виду.
 func quotaOwnerDirOfKind(kind string) string {
