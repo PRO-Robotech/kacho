@@ -223,6 +223,26 @@ func (w catalogWriter) RetireResource(ctx context.Context, r catalog.ResourceRow
 // который его же роль называет, манифест противоречит сам себе — и это обязано
 // быть отвергнуто ключом, а не улажено молчаливым отбором права у роли, которую
 // применитель не объявлял.
+//
+// # Почему оператор отдаёт ДВЕ величины, а не одну
+//
+// Этот писатель — НЕ автор строки: он её только снимает. Автор один
+// (`roleWriter.ReplaceRoleVerbs` / `ReplaceRuleRefs`), и форму строки знает он.
+// Остаток, который такое разделение оставляет, ровно один: здесь ПОВТОРЁН ключ
+// строки — в предикате `USING … WHERE`. Ключ изменят, предикат разойдётся с
+// отбором, и разойдётся МОЛЧА.
+//
+// Поэтому оператор отдаёт и `doomed` (что отобрано), и `dropped` (что снято), а
+// писатель их сверяет. Обе величины — из ОДНОГО оператора, то есть из одного
+// снимка: это проверка кардинальности по запрету #10, а не software
+// check-then-act — между отбором и снятием ничего не помещается by construction,
+// и действие по расхождению одно, ОТКАЗ. Транзакция применителя откатывается
+// целиком, каталог остаётся прежним.
+//
+// Расхождения не производит сегодня ни один вход — предикат совпадает с ключом.
+// Способность сверки отказать доказана подачей величин напрямую
+// (`resettle_cardinality_test.go`), а то, что оператор действительно отдаёт обе и
+// что сверку зовут, — против живой базы (`module_catalog_applier_integration_test.go`).
 func (w catalogWriter) ResettleTenantProjections(
 	ctx context.Context,
 	resources []catalog.ResourceRow,
@@ -248,6 +268,7 @@ func (w catalogWriter) ResettleTenantProjections(
 
 	// Один оператор на популяцию: перенос и снятие обязаны быть неделимы, иначе
 	// между ними помещается состояние «право отобрано и нигде не записано».
+	var doomedRuleRefs int
 	if err := w.tx.QueryRow(ctx, `
 		WITH stale_res AS (
 		  SELECT * FROM unnest($1::text[], $2::text[]) AS t(module, resource)
@@ -275,12 +296,16 @@ func (w catalogWriter) ResettleTenantProjections(
 		     AND rr.verb IS NOT DISTINCT FROM d.verb
 		  RETURNING 1
 		)
-		SELECT count(*) FROM dropped`,
+		SELECT (SELECT count(*) FROM doomed), (SELECT count(*) FROM dropped)`,
 		resModules, resNames, verbModules, verbResources, verbNames, reason,
-	).Scan(&out.RuleRefs); err != nil {
+	).Scan(&doomedRuleRefs, &out.RuleRefs); err != nil {
 		return out, fmt.Errorf("переселить объявления правил: %w", err)
 	}
+	if err := resettleExactly("role_rule_ref", doomedRuleRefs, out.RuleRefs); err != nil {
+		return out, err
+	}
 
+	var doomedRoleVerbs int
 	if err := w.tx.QueryRow(ctx, `
 		WITH stale_res AS (
 		  SELECT module || '.' || resource AS dotted
@@ -301,12 +326,33 @@ func (w catalogWriter) ResettleTenantProjections(
 		   WHERE rv.role_id = d.role_id AND rv.object_type = d.object_type AND rv.verb = d.verb
 		  RETURNING 1
 		)
-		SELECT count(*) FROM dropped`,
+		SELECT (SELECT count(*) FROM doomed), (SELECT count(*) FROM dropped)`,
 		resModules, resNames, reason,
-	).Scan(&out.RoleVerbs); err != nil {
+	).Scan(&doomedRoleVerbs, &out.RoleVerbs); err != nil {
 		return out, fmt.Errorf("переселить выдачи глаголов: %w", err)
 	}
+	if err := resettleExactly("role_verb", doomedRoleVerbs, out.RoleVerbs); err != nil {
+		return out, err
+	}
 	return out, nil
+}
+
+// resettleExactly сверяет, что снято РОВНО отобранное.
+//
+// Обе величины приходят из одного оператора, поэтому расхождение означает ровно
+// одно: предикат снятия разошёлся с ключом строки. Отказ называет популяцию и обе
+// величины — без них читатель видит «переселение не сошлось» и идёт искать
+// причину, не зная ни таблицы, ни стороны расхождения.
+func resettleExactly(population string, doomed, dropped int) error {
+	if doomed == dropped {
+		return nil
+	}
+	return fmt.Errorf(
+		"переселение %s: отобрано %d, снято %d — предикат снятия разошёлся с ключом строки. "+
+			"Снято меньше отобранного — ключ каталога отвергнет снятие 23503 и назовёт не ту "+
+			"причину; снято больше — у арендатора отобрано право, которого никто не отбирал, и "+
+			"переселением оно НЕ сохранено. Транзакция применителя откачена, каталог прежний",
+		population, doomed, dropped)
 }
 
 // changed исполняет оператор, меняющий не более одной строки, и отвечает,
