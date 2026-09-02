@@ -33,7 +33,23 @@ func ResolveCanonicalModel() (path string, dsl []byte, err error) {
 	if err != nil {
 		return "", nil, err
 	}
-	dir := wd
+	return ResolveCanonicalModelFrom(wd)
+}
+
+// ResolveCanonicalModelFrom walks up from start to the monorepo root and returns
+// the canonical DSL.
+//
+// Обходчик и постоянная относительного пути здесь ОДНИ на обе точки входа: вторая
+// копия обхода разошлась бы с первой молча — например, нашла бы модель во
+// вложенном клоне, — и сравнение форм измеряло бы разные тексты.
+//
+// Параметр — КОРЕНЬ ДЕРЕВА, а не путь канона, и различие несущее (#1089, §2 п. 2):
+// подменить канон снимком, лежащим рядом со сверщиком, нечем — предъявить такой
+// путь этой подписи невозможно. Указать можно лишь целое дерево, у которого канон
+// лежит по каноническому относительному пути; ровно этим и пользуется инъекция,
+// подавая своё дерево намеренно.
+func ResolveCanonicalModelFrom(start string) (path string, dsl []byte, err error) {
+	dir := start
 	for {
 		cand := filepath.Join(dir, fgaModelRelPath)
 		if _, statErr := os.Stat(cand); statErr == nil {
@@ -45,7 +61,7 @@ func ResolveCanonicalModel() (path string, dsl []byte, err error) {
 		}
 		parent := filepath.Dir(dir)
 		if parent == dir {
-			return "", nil, fmt.Errorf("canonical model %s not found walking up from %s", fgaModelRelPath, wd)
+			return "", nil, fmt.Errorf("canonical model %s not found walking up from %s", fgaModelRelPath, start)
 		}
 		dir = parent
 	}

@@ -178,6 +178,29 @@ type TableGrowthDecl struct {
 // таблицу — поэтому таблицы, которой в дереве нет, здесь нет тоже.
 var tableGrowthRegistry = []TableGrowthDecl{
 	{
+		Owner: "services/iam", Table: "catalog_module",
+		Tempo: tempoOurs, Verdict: verdictBound,
+		Reason: "закрытый словарь платформы: одна строка на МОДУЛЬ, и перечень модулей " +
+			"выводится литералом domain.KnownModules(), а не приходит из запроса. Рост " +
+			"ограничен посевом миграции 20260901113757; согласие посева с литералом держит гейт " +
+			"паритета services/iam/internal/check (IAM-CT-1-14), а не соглашение",
+	},
+	{
+		Owner: "services/iam", Table: "catalog_resource",
+		Tempo: tempoOurs, Verdict: verdictBound,
+		Reason: "закрытый словарь платформы: одна строка на грантуемый ТИП плюс по строке " +
+			"на снятый. Перечень выводится литералом authzmap.objectTypes; арендатор " +
+			"строк здесь не заводит НИ ОДНИМ путём — писателя у таблицы в прод-коде нет " +
+			"вовсе, её наполняет посев миграции 20260901113757",
+	},
+	{
+		Owner: "services/iam", Table: "catalog_verb",
+		Tempo: tempoOurs, Verdict: verdictBound,
+		Reason: "закрытый словарь платформы: одна строка на пару «тип × объявленный глагол», " +
+			"перечень выводится литералом authzmap.typeVerbRelations. Снятие глагола " +
+			"помечает строку, а не заводит новую — рост ограничен числом типов модели",
+	},
+	{
 		Owner: "services/iam", Table: "clusters",
 		Tempo: tempoOurs, Verdict: verdictBound,
 		Reason: "одна строка на установку: CHECK (id = 'cluster_kacho_root') второй не " +
@@ -893,10 +916,11 @@ func TestLiveTablesNameTheirGrowthLimit(t *testing.T) {
 	t.Logf("перепись запретов на уборку: объявлено %d, из них уборка появилась у %d",
 		counts.Blocked, counts.BlockedRemoval)
 	t.Logf("перепись обхода: миграций прочитано %d (с секциями goose %d), файлов Go %d, "+
-		"строковых значений Go %d; операторов создания таблиц %d, снятия таблиц %d; "+
+		"строковых значений Go %d; операторов создания таблиц %d (из них временных %d — "+
+		"живыми не считаются, предпосылка 4), снятия таблиц %d; "+
 		"каскадных ключей объявлено %d именованных и %d безымянных, снятий ограничений %d",
 		census.MigrationFiles, census.SectionedMigrations, census.GoFiles, census.GoStrings,
-		census.Creates, census.Drops, census.CascadesNamed, census.CascadesUnnamed,
+		census.Creates, census.TempTables, census.Drops, census.CascadesNamed, census.CascadesUnnamed,
 		census.ConstraintDrops)
 	t.Logf("перепись полос снятия строк: прод %d, тело триггера %d, разовая правка миграции %d "+
 		"(механизмом не считается), с неразрешимым именем таблицы %d (слепая зона, названная числом)",

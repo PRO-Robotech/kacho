@@ -142,6 +142,40 @@ func TestTableGrowthGate_Injection_KnowsEveryFormOfDeclaration(t *testing.T) {
 			want: 1,
 		},
 		{
+			// TEMP-таблица живой не является: она не переживает даже транзакцию
+			// миграции, а `ON COMMIT DROP` — то же снятие, записанное
+			// МОДИФИКАТОРОМ создания, а не отдельным оператором. Разбор знал
+			// вторую форму снятия и не знал первую, и три такие таблицы одной
+			// миграции читались как живые (kacho#1815, §БИ3).
+			name: "TEMP … ON COMMIT DROP живой таблицей НЕ является",
+			src: "-- +goose Up\nCREATE TEMP TABLE _sys_rule (id text) ON COMMIT DROP;\n" +
+				"INSERT INTO _sys_rule SELECT id FROM kacho_synth.roles;\n",
+			want: 0,
+		},
+		{
+			name: "TEMPORARY — та же форма полным словом",
+			src:  "-- +goose Up\nCREATE TEMPORARY TABLE _seg_scan (id text);\n",
+			want: 0,
+		},
+		{
+			name: "GLOBAL TEMPORARY — шумовые слова стандарта",
+			src:  "-- +goose Up\nCREATE GLOBAL TEMPORARY TABLE _trace (id text);\n",
+			want: 0,
+		},
+		{
+			// Близнец, без которого предыдущие три были бы «гейт судит по СЛОВУ»:
+			// `temp` в ИМЕНИ таблицы модификатором не является, и такая таблица
+			// живая. Ровно этой подменой снимается вся полоса разом.
+			name: "близнец: `temp` в ИМЕНИ таблицы — таблица живая",
+			src:  "-- +goose Up\nCREATE TABLE kacho_synth.temp_ledger (id text);\n",
+			want: 1,
+		},
+		{
+			name: "близнец: таблица, НАЗВАННАЯ temp, — живая",
+			src:  "-- +goose Up\nCREATE TABLE kacho_synth.temp (id text);\n",
+			want: 1,
+		},
+		{
 			name: "файл БЕЗ секций goose применяется целиком",
 			src:  "CREATE TABLE kacho_synth.ledger (id text);\n",
 			want: 1,
