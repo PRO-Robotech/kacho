@@ -78,7 +78,9 @@ system-only).
   <tbody>
     <tr><td><code>id</code></td><td>string</td><td>output-only</td><td>Идентификатор (префикс <code>rol</code>)</td></tr>
     <tr><td><code>name</code></td><td>string</td><td>mutable</td><td>Имя, уникальное в активном scope, 1–41 симв.</td></tr>
-    <tr><td><code>description</code></td><td>string</td><td>mutable</td><td>Описание, 0–256 символов</td></tr>
+    <tr><td><code>description</code></td><td>string</td><td>mutable</td><td>Описание, 0–256 символов. Для роли, объявленной манифестом модуля, это <b>единственный</b> носитель человеческой прозы: её пишет автор модуля, и она приходит сюда дословно</td></tr>
+    <tr><td><code>displayName</code></td><td>string</td><td>output-only</td><td>Метка каталога <b>четырёх</b> канонических имён: <code>view</code> → Viewer, <code>edit</code> → Editor, <code>admin</code> → Admin, <code>owner</code> → Owner. У всякой другой роли — в том числе у роли модуля (<code>vpc.address.admin</code>) — <b>равна <code>name</code></b></td></tr>
+    <tr><td><code>purpose</code></td><td>string</td><td>output-only</td><td>Назначение канонической роли одной строкой, из того же каталога четырёх. У всякой другой роли <b>пусто</b>, и пусто означает «записи в каталоге нет», а не «у роли нет назначения»: назначение роли модуля читайте в <code>description</code></td></tr>
     <tr><td><code>rules</code></td><td>Rule[]</td><td>mutable (OCC)</td><td>Авторизованная политика, 1–64 правила</td></tr>
     <tr><td><code>isSystem</code></td><td>bool</td><td>immutable</td><td>true — system-роль (read-only публично)</td></tr>
     <tr><td><code>accountId</code></td><td>string</td><td>immutable</td><td>Аккаунт-scope (XOR с projectId), только для custom</td></tr>
