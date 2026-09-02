@@ -310,6 +310,7 @@ PG_OUTSIDE_SELECTION_PKGS ?= \
 	./services/iam/internal/service \
 	./services/iam/internal/testsupport/accesssnapshot \
 	./services/iam/internal/moduleroleparity \
+	./services/iam/internal/moduleseedparity \
 	./gateway/internal/idempotencypg \
 	./pkg/subscription \
 	./pkg/schemaguard

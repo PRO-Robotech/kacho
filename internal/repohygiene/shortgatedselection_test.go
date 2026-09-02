@@ -414,6 +414,13 @@ var shortGatedRunByOwnCIStep = map[string]string{
 	// прогонах на этой машине (`-count=1`, контейнер общий на пакет, цепочка из
 	// 156 миграций проигрывается однажды в шаблон).
 	"services/iam/internal/moduleroleparity": "make test-pg-outside-selection",
+
+	// Сверка объявленного манифестом ПОСЕВА модуля с ЖИВОЙ базой (#1891, вторая
+	// половина предиката). Довод тот же и по той же причине: действующий посев
+	// есть наложение применённых миграций — запись, заведённая одной, снимается
+	// другой, — и разбором SQL он не восстанавливается. Пакет лежит рядом с
+	// `moduleroleparity` и так же не попадает под отбор интеграционной джобы.
+	"services/iam/internal/moduleseedparity": "make test-pg-outside-selection",
 }
 
 // TestShortGatedPackagesAreEitherSelectedOrCounted — сам гейт против дерева.
