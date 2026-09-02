@@ -6,6 +6,8 @@ package manifest
 import (
 	"errors"
 	"fmt"
+	"regexp"
+	"slices"
 	"strings"
 
 	"gopkg.in/yaml.v3"
@@ -16,26 +18,47 @@ import (
 // roles.go — раздел `roles` (приёмка §2.6, §2.6а; сценарии MOD-MR-10 …
 // MOD-MR-15).
 //
-// # Единственный источник ролей сегодня — МИГРАЦИИ, и манифест их не замещает
+// # Кластерный ярус ПРИНИМАЕТСЯ: отказ ФОРМЫ заменён отказом ВЛАДЕНИЯ
 //
-// Решение эпика говорит, что раздел остаётся авторским, потому что аннотации о
-// нём не говорят ничего. Это верно и недостаточно: аннотации молчат, а миграции
-// ГОВОРЯТ — системных ролей вида `<модуль>.<ресурс>.<ярус>` объявлено
-// применёнными миграциями 51, а применённую миграцию не правят (ban #5).
+// Здесь стоял отказ `ErrSystemRoleNotAuthorable`: кластерный ярус отвергался
+// потому, что системные роли сеет миграция. Довод был верен и предмет пережил:
+// пока писателем остаётся миграция, встроенная в образ iam (`//go:embed`), новый
+// модуль требует пересборки образа iam — то есть его релиза. Приёмка
+// `roles-come-as-data-not-migrations.md` (§2.2, §3.1, §3.2) заводит ТРЕТЬЕГО
+// писателя — применителя манифеста, — и отказ по ярусу становится ложью о
+// продукте.
 //
-// Значит манифест, объявляющий те же роли, был бы ВТОРЫМ объявлением. Поэтому
-// раздел объявляет роли уровня аккаунта и проекта, которые уезжают через
-// существующий RoleService.Create, а системная роль отвергается ЯВНО — с именем
-// поля и причиной. Это исход 2 запрета «принято-и-проигнорировано»: приняв, мы
-// вернули бы вызывающему успех и уверенность, что его роль заведена, тогда как
-// заводит её миграция, которой в изменении нет.
+// Цена прежнего отказа измерена, а не предположена: ВСЕ живые системные роли —
+// кластерные (`is_system` вычисляется ровно из непустого `cluster_id`), поэтому
+// исполнимого входа, которым модуль объявил бы свою роль, не существовало ни
+// одного. Раздел был объявлен, разобран, покрыт типами — и отвергался на
+// единственном ярусе, на котором живут роли продукта. Это дословно класс
+// «Неисполнимая возможность: два правила об одном поле».
+//
+// Что НЕ снимается вместе с ним: роль ЧУЖОГО модуля по-прежнему отвергается
+// (`ErrRoleForeignModule`), и ярусы аккаунта и проекта принимаются с теми же
+// текстами. Снятие, расширившее право объявления или сузившее соседнюю полосу,
+// было бы регрессией, а не переносом.
 //
 // # Системность — СЛЕДСТВИЕ яруса, а не отдельный признак
 //
 // Контракт говорит это дословно (`role.proto`, DefinitionTier): `is_system`
 // ВЫВОДИТСЯ из `tier_type == iam.cluster`, а не хранится отдельным флагом.
-// Поэтому отказ по ярусу и есть отказ системной роли, а не его приближение, и
-// второго ключа «системная ли она» здесь нет by construction.
+// Поэтому второго ключа «системная ли она» здесь нет by construction, и якорь
+// кластерного яруса ЧИТАЕТСЯ: кластер один, и значение, отличное от синглтона,
+// отвергается с именем поля. Молча подставить синглтон — не исход: автор
+// манифеста получил бы успех на объявлении, которого платформа не исполняла.
+//
+// # Форма идентификатора роли объявлена ОДИН раз — `RoleIDForm`
+//
+// Правил о ней в дереве было ЧЕТЫРЕ, и они расходились: опубликованная схема
+// требовала ровно двух сегментов и допускала заглавные; ограничение таблицы
+// `roles_system_name_check` допускает до трёх сегментов и только нижний регистр;
+// разбор проверял лишь наличие точки. Прогон образца схемы по живым именам:
+// выразимо ТРИ из сорока восьми. Здесь форма объявляется однажды и равна
+// ПЕРЕСЕЧЕНИЮ двух действующих правил — ограничения таблицы (верхняя граница,
+// ban #5: её не правят) и требования `<модуль>.<имя>` самого манифеста, — а не
+// третьему правилу.
 //
 // # Выдача ИЗОМОРФНА `domain.Rule` дословно — имя в имя, число в число
 //
@@ -61,6 +84,11 @@ var (
 	ErrRoleIDRequired = errors.New("manifest: role id is required")
 	// ErrRoleIDMalformed — идентификатор роли не той формы `<module>.<name>`.
 	ErrRoleIDMalformed = errors.New("manifest: role id is not `<module>.<name>`")
+	// ErrRoleIDOutOfForm — идентификатор не подчиняется единственной объявленной
+	// форме имени системной роли. Отдельный отказ, а не общий «не той формы»:
+	// чинится он иначе — переписыванием имени под ограничение таблицы, — и автор
+	// обязан узнать ПРАВИЛО, а не только факт отказа.
+	ErrRoleIDOutOfForm = errors.New("manifest: role id is outside the declared system-role name form")
 	// ErrRoleForeignModule — роль чужого модуля: объявление за чужой домен.
 	ErrRoleForeignModule = errors.New("manifest: role belongs to another module")
 	// ErrRoleIDDuplicated — две роли под одним идентификатором.
@@ -69,14 +97,47 @@ var (
 	ErrRoleTierRequired = errors.New("manifest: role tier is required")
 	// ErrRoleTierUnknown — ярус вне закрытого набора.
 	ErrRoleTierUnknown = errors.New("manifest: role tier type is outside the closed set")
-	// ErrSystemRoleNotAuthorable — системная роль в манифесте. Отдельный отказ,
-	// а не общий «ярус неверен»: чинится он другим — не правкой манифеста, а
-	// миграцией, и автор обязан это узнать.
-	ErrSystemRoleNotAuthorable = errors.New("manifest: a system role is not authorable by a manifest")
+	// ErrRoleTierAnchorUnknown — якорь яруса назван и не тот. Сегодня предмет у
+	// него один — кластерный ярус: кластер в продукте СИНГЛТОН, поэтому значение
+	// проверяемо, а «принять и не читать» на нём запрещено.
+	ErrRoleTierAnchorUnknown = errors.New("manifest: role tier anchor is not the one this tier has")
 	// ErrRoleRuleInvalid — выдача не проходит проверку домена. Несёт ДОСЛОВНЫЙ
 	// текст домена: тексты отказов — часть контракта.
 	ErrRoleRuleInvalid = errors.New("manifest: role rule is rejected by the domain")
 )
+
+// RoleIDForm — ЕДИНСТВЕННОЕ объявление формы идентификатора роли манифеста
+// (приёмка §3.2.1). Экспортировано намеренно: опубликованная схема обязана
+// нести ЭТО значение, а не свою копию, и сверяет их гейт Г10
+// (`schemarolesform_internal_test.go`), а не надежда.
+//
+// Форма есть ПЕРЕСЕЧЕНИЕ двух уже действующих правил, а не третье правило:
+//
+//   - верхняя граница — ограничение таблицы `roles_system_name_check`
+//     (`0056_role_definition_tier.sql`, применённая миграция, ban #5: её не
+//     правят): нижний регистр, дефис в первом сегменте, подчёркивание в
+//     сегментах после первого, НЕ БОЛЕЕ ТРЁХ сегментов;
+//   - нижняя граница — сам манифест: идентификатор есть `<модуль>.<имя>`,
+//     поэтому односегментное имя манифестом невыразимо by construction, и
+//     `{1,2}` вместо `{0,2}` — конъюнкция с уже действующим требованием
+//     `validateRoleIdentity`, а не сужение по вкусу.
+//
+// Проверка на живом наборе, обе стороны: образец принимает сорок четыре живых
+// имени из сорока восьми и отвергает четыре — ровно `admin`, `edit`, `view`,
+// `owner`, то есть в точности класс ролей БЕЗ модуля-владельца, недостижимый
+// для любого манифеста (приёмка §3.4). Совпадение двух независимо полученных
+// множеств и есть подтверждение, что граница проведена там.
+const RoleIDForm = `^[a-z][a-z0-9-]*(\.[a-z][a-z0-9_]*){1,2}$`
+
+// roleSystemNameConstraint — имя ограничения таблицы, которое отвергло бы
+// негодное имя у писателя. Стоит в тексте отказа намеренно: без него автор
+// узнаёт ФАКТ отказа и не узнаёт ПРАВИЛА, а SQLSTATE 23514 от писателя не
+// назовёт ни поля, ни координаты.
+const roleSystemNameConstraint = "roles_system_name_check"
+
+// roleIDRe — скомпилированная `RoleIDForm`. Второго образца рядом не заводится:
+// он разошёлся бы с первым молча — оба отвечают «валидно» на валидном входе.
+var roleIDRe = regexp.MustCompile(RoleIDForm)
 
 // Role — роль, объявленная манифестом модуля.
 type Role struct {
@@ -172,6 +233,18 @@ func validateRoleIdentity(role *Role, module string, doc *yaml.Node, i int, seen
 				"объявлять роль за чужой домен манифест не вправе", i, role.ID, owner, module),
 		}}
 	}
+	if !roleIDRe.MatchString(role.ID) {
+		return []error{linkFault{
+			kind:  ErrRoleIDOutOfForm,
+			coord: locate(doc, "roles", i, "id"),
+			detail: fmt.Sprintf("roles[%d].id: получено %q; форма имени роли — %s "+
+				"(ограничение таблицы %s: нижний регистр, дефис в первом сегменте, "+
+				"подчёркивание в последующих, не более трёх сегментов). Приняв такое имя, "+
+				"манифест обещал бы роль, которую писатель отвергнет ограничением таблицы: "+
+				"отказ пришёл бы SQLSTATE 23514 без поля и без координаты",
+				i, role.ID, RoleIDForm, roleSystemNameConstraint),
+		}}
+	}
 	if prev, dup := seen[role.ID]; dup {
 		return []error{linkFault{
 			kind:  ErrRoleIDDuplicated,
@@ -184,36 +257,43 @@ func validateRoleIdentity(role *Role, module string, doc *yaml.Node, i int, seen
 	return nil
 }
 
+// RoleTierTypes — ярусы, которые манифест вправе объявить. Перечень
+// экспортирован и ОДИН: опубликованная схема несёт ЭТИ значения, а не свою
+// копию, и сверяет их гейт Г10. Порядок канонический — от кластера к проекту.
+//
+// `iam.cluster` стоит здесь с этой работы. До неё он отвергался, и следствие
+// было тихим: все живые системные роли — кластерные, значит исполнимого входа у
+// раздела не существовало ни одного.
+var RoleTierTypes = []string{
+	domain.ScopeTypeClusterDotted,
+	domain.ScopeTypeAccountDotted,
+	domain.ScopeTypeProjectDotted,
+}
+
+// roleTierTypesList — перечень для текста отказа. Собирается из RoleTierTypes,
+// а не выписывается: выписанный не сдвинулся бы от нового яруса.
+func roleTierTypesList() string { return strings.Join(RoleTierTypes, " · ") }
+
 // validateRoleTier — ярус определения роли.
 //
-// Порядок проверок — часть контракта: системный ярус отвергается СВОИМ отказом
-// ДО общего «ярус вне набора», иначе автор получил бы «неизвестный ярус» о
-// ярусе, который платформе прекрасно известен и просто не его.
+// Порядок проверок — часть контракта: сперва ярус назван, потом он из набора,
+// потом якорь назван, и только потом якорь ПРОЧИТАН. Иначе автор получил бы
+// отказ о якоре яруса, которого платформа не знает вовсе.
 func validateRoleTier(role *Role, doc *yaml.Node, i int) []error {
 	if role.Tier == nil {
 		return []error{linkFault{
 			kind:  ErrRoleTierRequired,
 			coord: locate(doc, "roles", i),
 			detail: fmt.Sprintf("roles[%d].tier: не сказано, на каком ярусе роль определена; "+
-				"принимаются: %s · %s", i, domain.ScopeTypeAccountDotted, domain.ScopeTypeProjectDotted),
+				"принимаются: %s", i, roleTierTypesList()),
 		}}
 	}
-	if role.Tier.TierType == domain.ScopeTypeClusterDotted {
-		return []error{linkFault{
-			kind:  ErrSystemRoleNotAuthorable,
-			coord: locate(doc, "roles", i, "tier", "tierType"),
-			detail: fmt.Sprintf("roles[%d].tier.tierType: получено %q; принимаются: %s · %s. "+
-				"Системность роли ВЫВОДИТСЯ из яруса, и системные роли сеются миграцией — "+
-				"манифест их не замещает, а применённую миграцию не правят",
-				i, role.Tier.TierType, domain.ScopeTypeAccountDotted, domain.ScopeTypeProjectDotted),
-		}}
-	}
-	if _, _, ok := domain.CustomDefinitionTierToScope(role.Tier.TierType, role.Tier.TierID); !ok {
+	if !slices.Contains(RoleTierTypes, role.Tier.TierType) {
 		return []error{linkFault{
 			kind:  ErrRoleTierUnknown,
 			coord: locate(doc, "roles", i, "tier", "tierType"),
-			detail: fmt.Sprintf("roles[%d].tier.tierType: получено %q; принимаются: %s · %s",
-				i, role.Tier.TierType, domain.ScopeTypeAccountDotted, domain.ScopeTypeProjectDotted),
+			detail: fmt.Sprintf("roles[%d].tier.tierType: получено %q; принимаются: %s",
+				i, role.Tier.TierType, roleTierTypesList()),
 		}}
 	}
 	if role.Tier.TierID == "" {
@@ -222,6 +302,23 @@ func validateRoleTier(role *Role, doc *yaml.Node, i int) []error {
 			coord: locate(doc, "roles", i, "tier", "tierId"),
 			detail: fmt.Sprintf("roles[%d].tier.tierId: якорь яруса не назван — ярус без якоря "+
 				"не адресует ни одного объекта", i),
+		}}
+	}
+	// Якорь кластерного яруса ЧИТАЕТСЯ, а не принимается молча: кластер в
+	// продукте синглтон (`roles_definition_tier_xor` плюс единственная строка
+	// `cluster`), поэтому у поля ровно два законных исхода — прочитать и
+	// отвергнуть чужое значение. Молча подставить синглтон было бы третьим, и
+	// он запрещён: автор манифеста получил бы успех на объявлении, которого
+	// платформа не исполняла.
+	if role.Tier.TierType == domain.ScopeTypeClusterDotted &&
+		role.Tier.TierID != domain.ClusterSingletonID {
+		return []error{linkFault{
+			kind:  ErrRoleTierAnchorUnknown,
+			coord: locate(doc, "roles", i, "tier", "tierId"),
+			detail: fmt.Sprintf("roles[%d].tier.tierId: получено %q; кластер в продукте один, "+
+				"и его якорь — %q. Подставить единственное значение молча нельзя: манифест "+
+				"объявил бы ярус, которого платформа не исполняет",
+				i, role.Tier.TierID, domain.ClusterSingletonID),
 		}}
 	}
 	return nil

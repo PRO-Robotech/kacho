@@ -32,7 +32,7 @@ func TestInjectionThreeRuns_ClassFitAndEmptyClassAreIndependent(t *testing.T) {
 	actions := mustActions(t)
 
 	// Прогон 1 — КОНТРОЛЬ. Фикстура как написана: стадия 1 молчит, стадия 2
-	// говорит (у фикстуры есть свои пустые классы у `vpc.addressPoolAdmin`), и
+	// говорит (у фикстуры есть свои пустые классы у `vpc.address_pool_admin`), и
 	// это состояние берётся ЭТАЛОНОМ, а не «нулём».
 	base := mustFixture(t)
 	baseClassFaults, _, baseClassCensus := roleexport.CheckResourceClasses(catalogfixture.Facts(), base, actions)
@@ -173,7 +173,7 @@ func TestNoteKindsAreNamedInWords(t *testing.T) {
 }
 
 // withEmptyClassRule — фикстура с ОДНОЙ правкой в разделе ролей: роли
-// `vpc.internalConsumer` дописывается класс, пригодного содержимого у которого
+// `vpc.internal_consumer` дописывается класс, пригодного содержимого у которого
 // на её ресурсах нет.
 //
 // Правится роль, а НЕ раздел `resources`: инъекция обязана адресовать предмет

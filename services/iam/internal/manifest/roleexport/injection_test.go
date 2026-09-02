@@ -91,7 +91,7 @@ const (
 // ровно там, где дефект живёт в дереве, и ни одной у законного близнеца.
 func TestInjectionControl_LegalTwinIsSilent(t *testing.T) {
 	for _, f := range emptyClassFindings(t, mustFixture(t)) {
-		if f.Role == "vpc.internalConsumer" {
+		if f.Role == "vpc.internal_consumer" {
 			t.Errorf("контроль красен на законном близнеце: %v", f.Detail)
 		}
 	}
@@ -105,7 +105,7 @@ func TestInjection_ClusterRelationIsRefused(t *testing.T) {
 		"        resources: [addressPool]\n        verbs: [get]"})
 	var hit *roleexport.Finding
 	for i, f := range emptyClassFindings(t, m) {
-		if f.Role == "vpc.internalConsumer" {
+		if f.Role == "vpc.internal_consumer" {
 			hit = &emptyClassFindings(t, m)[i]
 			break
 		}
@@ -130,7 +130,7 @@ func TestInjection_ScopeTierIsRefused(t *testing.T) {
 		"        resources: [network]\n        verbs: [create]"})
 	found := false
 	for _, f := range emptyClassFindings(t, m) {
-		if f.Role != "vpc.internalConsumer" {
+		if f.Role != "vpc.internal_consumer" {
 			continue
 		}
 		found = true
@@ -159,7 +159,7 @@ func TestInjection_SameRelationNameOnTheResourceTypeIsSilent(t *testing.T) {
 	m := injectRules(t, [2]string{consumerRule,
 		"        resources: [networkInterface]\n        verbs: [create]"})
 	for _, f := range emptyClassFindings(t, m) {
-		if f.Role == "vpc.internalConsumer" {
+		if f.Role == "vpc.internal_consumer" {
 			t.Errorf("законный близнец по имени отношения получил находку: %s", f.Detail)
 		}
 	}
@@ -177,7 +177,7 @@ func TestInjection_UnknownResourceIsItsOwnRefusal(t *testing.T) {
 	kinds := map[string]int{}
 	for _, f := range faults {
 		var got roleexport.Finding
-		if !errors.As(f, &got) || got.Role != "vpc.internalConsumer" {
+		if !errors.As(f, &got) || got.Role != "vpc.internal_consumer" {
 			continue
 		}
 		switch {
@@ -202,7 +202,7 @@ func TestInjection_DeprecatedVerbStaysAnAction(t *testing.T) {
 	m := injectRules(t, [2]string{consumerRule,
 		"        resources: [network]\n        verbs: [read, list, get]"})
 	for _, f := range emptyClassFindings(t, m) {
-		if f.Role == "vpc.internalConsumer" {
+		if f.Role == "vpc.internal_consumer" {
 			t.Errorf("снятый глагол прочитан как несуществующий класс: %s", f.Detail)
 		}
 	}
@@ -218,7 +218,7 @@ func TestInjection_VerbWildcardIsExpandedNotRefused(t *testing.T) {
 	m := injectRules(t, [2]string{consumerRule,
 		"        resources: [network]\n        verbs: [\"*\"]"})
 	for _, f := range emptyClassFindings(t, m) {
-		if f.Role == "vpc.internalConsumer" {
+		if f.Role == "vpc.internal_consumer" {
 			t.Errorf("подстановка в глаголах прочитана как пустой класс: %s", f.Detail)
 		}
 	}
@@ -259,19 +259,44 @@ func TestResourceWildcardCannotReachTheCheck(t *testing.T) {
 //
 // Без этого прогона молчание загрузчика неотличимо от молчания мёртвого: новая
 // проверка могла бы оказаться вакуумной и не показать этого ничем.
+//
+// # Инъекция ПЕРЕВЕДЕНА на признак, который дерево ещё производит
+//
+// Здесь инъекцией стоял КЛАСТЕРНЫЙ ЯРУС, и она была верна ровно до тех пор,
+// пока загрузчик его отвергал. Приёмка `roles-come-as-data-not-migrations.md`
+// §3.2 сняла этот отказ: писателем строки становится применитель манифеста, и
+// кластерный ярус — законный вход. Прогон покраснел на том, что перестало быть
+// дефектом, — то есть предмет у инъекции исчез.
+//
+// Исходов было два (`testing.md` §«Гейт на класс», п. 9): снять утверждение
+// вместе с предметом либо перевести его на признак, который дерево ПРОИЗВОДИТ.
+// Выбран второй: назначение прогона — «загрузчик вообще способен отвергнуть», —
+// а не «он отвергает именно ярус. Признак заменён на ФОРМУ идентификатора
+// (`RoleIDForm`): заглавная буква во втором сегменте отвергается ограничением
+// таблицы `roles_system_name_check`, и загрузчик говорит об этом своим отказом.
 func TestInjection_ExistingFormCheckStaysAlive(t *testing.T) {
 	data, err := os.ReadFile("../testdata/vpc.resources-fixture.yaml")
 	if err != nil {
 		t.Fatalf("чтение фикстуры: %v", err)
 	}
-	broken := strings.Replace(string(data),
-		"    tier: {tierType: iam.account, tierId: acc000000000000000}",
-		"    tier: {tierType: iam.cluster, tierId: cluster_kacho_root}", 1)
+	broken := strings.Replace(string(data), "id: vpc.internal_consumer", "id: vpc.internalConsumer", 1)
 	if broken == string(data) {
-		t.Fatal("инъекция беспредметна: строки яруса в фикстуре нет")
+		t.Fatal("инъекция беспредметна: строки идентификатора роли в фикстуре нет")
 	}
-	if _, err := manifest.Load([]byte(broken)); err == nil {
-		t.Error("загрузчик принял системный ярус: существующий контроль формы мёртв")
+	err = nil
+	if _, err = manifest.Load([]byte(broken)); err == nil {
+		t.Fatal("загрузчик принял идентификатор вне объявленной формы: существующий " +
+			"контроль формы мёртв, и молчание новой проверки неотличимо от его молчания")
+	}
+	if !errors.Is(err, manifest.ErrRoleIDOutOfForm) {
+		t.Errorf("отказ пришёл не от контроля формы: %v", err)
+	}
+
+	// Законный близнец той же оси: та же фикстура БЕЗ инъекции обязана
+	// загружаться. Без него утверждение выше зеленело бы на загрузчике,
+	// отвергающем всё.
+	if _, err := manifest.Load(data); err != nil {
+		t.Fatalf("неизменённая фикстура отвергнута — отрицание выше вакуумно: %v", err)
 	}
 }
 
@@ -366,7 +391,7 @@ func TestInjection_ResourceWithoutAnObjectTypeSaysSo(t *testing.T) {
 		"        resources: [quota]\n        verbs: [list]"})
 	found := false
 	for _, f := range emptyClassFindings(t, m) {
-		if f.Role != "vpc.internalConsumer" {
+		if f.Role != "vpc.internal_consumer" {
 			continue
 		}
 		found = true
