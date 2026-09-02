@@ -273,6 +273,14 @@ func (probeExistence) ObjectExists(context.Context, string, string) (bool, error
 	return false, nil
 }
 
+// ProbeableTypes — охват ДЕЛЕГИРУЕТСЯ настоящей пробе сервиса.
+//
+// Подделка не вправе быть снисходительнее продукта: объяви она свой перечень —
+// и сверка охвата на старте (`servicehost`, О5в) судила бы фикстуру вместо
+// пробы, то есть молчала бы ровно там, где таблица настоящей разошлась с картой
+// прав сервиса (задача продукта #1931).
+func (probeExistence) ProbeableTypes() []string { return (&kachopg.ExistenceProbe{}).ProbeableTypes() }
+
 // probeAuthzObserve — приёмник величин кеша вердиктов для проб КОНСТРУКТОРА.
 //
 // Заглушка здесь законна: предмет этих проб — что судит конструктор дескриптора,

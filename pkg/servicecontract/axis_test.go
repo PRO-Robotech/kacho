@@ -16,6 +16,12 @@ type stubProbe struct{}
 
 func (stubProbe) ObjectExists(context.Context, string, string) (bool, error) { return false, nil }
 
+// ProbeableTypes — охват заглушки. Здесь он законно непустой и произвольный:
+// предмет этих проб — что судит КОНСТРУКТОР дескриптора (порт принесён при
+// объявленном скрытии), а охват судит носитель на старте, и своей пробой
+// (`servicehost`, О5в).
+func (stubProbe) ProbeableTypes() []string { return []string{"demo_widget"} }
+
 // stubCheck — решатель владельца модели. Как и порт выше, он ничего не решает:
 // его присутствие судится источником решения, а не его ответами.
 type stubCheck struct{}
