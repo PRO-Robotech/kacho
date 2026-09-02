@@ -41,7 +41,13 @@ type roleReader struct {
 // read populates domain.Role's full scope (ClusterID for system, ProjectID for
 // project-scoped custom) — the isRoleAssignable predicate
 // (domain.IsRoleAssignable / ScopeGroupOf) reads those fields.
-const roleCols = "id, cluster_id, account_id, project_id, name, description, permissions, rules, is_system, created_at, labels"
+//
+// `owner_module` стоит здесь с задачи #1032: без него политика послабления
+// подстановки читалась бы из строки НЕПОЛНО — `PolicyOfRole` получал бы пустого
+// владельца у роли, которая им обладает, и судила бы её платформенной, то есть
+// САМОЙ МЯГКОЙ. Столбец, который пишут и не читают, невидим отовсюду; здесь цена
+// такой невидимости — послабление, выданное молча.
+const roleCols = "id, cluster_id, account_id, project_id, name, description, permissions, rules, is_system, owner_module, created_at, labels"
 
 // rulesToJSON / rulesFromJSON delegate to the domain codec (domain.EncodeRules /
 // domain.DecodeRules) — the single source of truth for the roles.rules JSONB shape
@@ -387,21 +393,30 @@ func (w *roleWriter) UpsertSystemRole(ctx context.Context, r domain.Role) (domai
 	}
 	now := time.Now().UTC()
 	q := fmt.Sprintf(`
-		INSERT INTO roles (id, cluster_id, name, description, permissions, rules, created_at, labels)
-		VALUES ($1, $2, $3, $4, $5, $6, $7, $8)
+		INSERT INTO roles (id, cluster_id, name, description, permissions, rules, owner_module, created_at, labels)
+		VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9)
 		ON CONFLICT (id) DO UPDATE
-		   SET name        = EXCLUDED.name,
-		       description = EXCLUDED.description,
-		       permissions = EXCLUDED.permissions,
-		       rules       = EXCLUDED.rules
-		 WHERE roles.name        IS DISTINCT FROM EXCLUDED.name
-		    OR roles.description IS DISTINCT FROM EXCLUDED.description
-		    OR roles.permissions IS DISTINCT FROM EXCLUDED.permissions
-		    OR roles.rules       IS DISTINCT FROM EXCLUDED.rules
+		   SET name         = EXCLUDED.name,
+		       description  = EXCLUDED.description,
+		       permissions  = EXCLUDED.permissions,
+		       rules        = EXCLUDED.rules,
+		       owner_module = EXCLUDED.owner_module
+		 WHERE roles.name         IS DISTINCT FROM EXCLUDED.name
+		    OR roles.description  IS DISTINCT FROM EXCLUDED.description
+		    OR roles.permissions  IS DISTINCT FROM EXCLUDED.permissions
+		    OR roles.rules        IS DISTINCT FROM EXCLUDED.rules
+		    OR roles.owner_module IS DISTINCT FROM EXCLUDED.owner_module
 		RETURNING %s`, roleCols)
+	// Владелец пишется как ОТСУТСТВИЕ, а не как пустая строка: ключ на каталог
+	// однокомпонентный, и `NULL` под него не подпадает by construction, тогда как
+	// `''` искал бы в каталоге модуль с пустым именем и отвергался бы ключом.
+	var owner *string
+	if r.OwnerModule != "" {
+		owner = &r.OwnerModule
+	}
 	row := w.tx.QueryRow(ctx, q,
 		string(r.ID), string(r.ClusterID), string(r.Name), string(r.Description),
-		permsJSON, rulesJSON, now, labelsJSON,
+		permsJSON, rulesJSON, owner, now, labelsJSON,
 	)
 	out, err := scanRole(row)
 	switch {
@@ -802,6 +817,7 @@ func scanRole(row scanner) (domain.Role, error) {
 	var (
 		ro                       domain.Role
 		clusterID, accID, projID sql.NullString
+		ownerModule              sql.NullString
 		permsJSON, rulesJSON     []byte
 		labelsJSON               []byte
 	)
@@ -815,6 +831,7 @@ func scanRole(row scanner) (domain.Role, error) {
 		&permsJSON,
 		&rulesJSON,
 		&ro.IsSystem,
+		&ownerModule,
 		&ro.CreatedAt,
 		&labelsJSON,
 	)
@@ -829,6 +846,12 @@ func scanRole(row scanner) (domain.Role, error) {
 	}
 	if projID.Valid {
 		ro.ProjectID = domain.ProjectID(projID.String)
+	}
+	// Пустая колонка означает ПЛАТФОРМЕННУЮ роль, и пустая строка домена
+	// означает ровно то же: `PolicyOfRole` читает непустоту, а не наличие. Второй
+	// формы отсутствия здесь не заводится.
+	if ownerModule.Valid {
+		ro.OwnerModule = ownerModule.String
 	}
 	if err := scanRolePolicy(&ro, permsJSON, rulesJSON); err != nil {
 		return domain.Role{}, err

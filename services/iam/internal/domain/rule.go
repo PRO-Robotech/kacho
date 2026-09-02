@@ -19,9 +19,9 @@ package domain
 //   - ARM_LABELS : match_labels set → label-equality selection; reconciler-driven.
 //     NOT compiled to permissions.
 //
-// `Validate(systemCtx)` enforces the wildcard policy, the XOR selector +
+// `Validate(policy)` enforces the wildcard policy, the XOR selector +
 // cardinality bounds and the match_labels feed-gate. The
-// `systemCtx` flag relaxes the module/resource wildcard to system (seed) roles
+// `RulePolicy` value relaxes the module/resource wildcard by OWNER, not by tier
 // only — custom roles reject `*` in module/resource.
 
 import (
@@ -83,10 +83,12 @@ func (r Rule) Arm() Arm {
 	}
 }
 
-// Validate enforces the rule form. systemCtx=true relaxes module/resource
-// wildcards to system (seed) roles. Errors carry the stable texts so the API
-// contract is preserved.
-func (r Rule) Validate(systemCtx bool) error {
+// Validate enforces the rule form. The wildcard relaxation is carried by
+// [RulePolicy] — a single value derived from the row by [PolicyOfRole] — rather
+// than by a boolean "system context": the module tier needs a THIRD policy, not
+// a second boolean (see rule_policy.go). Errors carry the stable texts so the
+// API contract is preserved.
+func (r Rule) Validate(policy RulePolicy) error {
 	var errs error
 
 	// resource_names XOR match_labels.
@@ -97,9 +99,9 @@ func (r Rule) Validate(systemCtx bool) error {
 
 	// module — scalar: required + grammar + closed-set membership +
 	// wildcard system-only.
-	errs = multierr.Append(errs, validateModule(r.Module, systemCtx))
+	errs = multierr.Append(errs, validateModule(r.Module, policy))
 	// element lists — non-empty + cardinality + token grammar.
-	errs = multierr.Append(errs, validateRuleList("resources", r.Resources, ruleResRe, systemCtx))
+	errs = multierr.Append(errs, validateRuleList("resources", r.Resources, ruleResRe, r.Module, policy))
 	errs = multierr.Append(errs, validateVerbs(r.Verbs))
 
 	// resource_names — ≤256, opaque-id 1..64, no literal "*".
@@ -202,19 +204,22 @@ func (r Rule) hasAnyWildcard() bool {
 // validateModule validates the scalar module: required non-empty,
 // grammar (ruleModuleRe) OR wildcard `*`, and — when grammar-valid and not `*` —
 // membership in the closed platform module-set (IsKnownModule). The wildcard `*`
-// is system-only (custom role → INVALID_ARGUMENT). Errors carry the stable texts
-// (module empty / invalid token / unknown module / wildcard
-// system-only). It returns at most ONE module-field violation; the wildcard+selector
-// combination is checked independently by Validate, so the two-text case
-// (module:"*" + selector in a custom role) still surfaces BOTH texts via Validate's
-// multierr accumulation.
-func validateModule(module string, systemCtx bool) error {
+// is available to the PLATFORM policy only: a tenant role never had it, and a
+// module-owned role cannot have it either, because `*` is in no module and
+// "within my own module" is inexpressible for it. Errors carry the stable texts
+// (module empty / invalid token / unknown module / wildcard refusal, whose
+// wording belongs to the policy — see [RulePolicy.moduleWildcardRefusal]). It
+// returns at most ONE module-field violation; the wildcard+selector combination
+// is checked independently by Validate, so the two-text case (module:"*" +
+// selector in a custom role) still surfaces BOTH texts via Validate's multierr
+// accumulation.
+func validateModule(module string, policy RulePolicy) error {
 	if module == "" {
 		return fmt.Errorf("Illegal argument module (must be non-empty)")
 	}
 	if module == wildcard {
-		if !systemCtx {
-			return fmt.Errorf("Illegal argument module (wildcard '*' is system-only)")
+		if !policy.allowsModuleWildcard() {
+			return policy.moduleWildcardRefusal()
 		}
 		return nil
 	}
@@ -228,10 +233,16 @@ func validateModule(module string, systemCtx bool) error {
 }
 
 // validateRuleList validates a resource list: non-empty, ≤16, each token matches
-// its grammar OR is the wildcard `*`. The wildcard is system-only: in a
-// custom role (systemCtx=false) it is rejected. `*` must be the sole element of
-// its list. (The module is scalar — validated by validateModule.)
-func validateRuleList(field string, list []string, tokenRe *regexp.Regexp, systemCtx bool) error {
+// its grammar OR is the wildcard `*`. The wildcard is granted by the policy: a
+// tenant role never has it; a module-owned role has it ONLY when the rule names
+// the owning module; the platform policy has it everywhere. `*` must be the sole
+// element of its list. (The module is scalar — validated by validateModule.)
+//
+// `ruleModule` is the module the RULE names, not the role's owner: the two are
+// compared by the policy, and passing only one of them would make the refusal
+// unable to say which of the two the author must change.
+func validateRuleList(field string, list []string, tokenRe *regexp.Regexp,
+	ruleModule string, policy RulePolicy) error {
 	var errs error
 	if len(list) == 0 {
 		return fmt.Errorf("Illegal argument %s (must be non-empty)", field)
@@ -246,9 +257,8 @@ func validateRuleList(field string, list []string, tokenRe *regexp.Regexp, syste
 				errs = multierr.Append(errs, fmt.Errorf(
 					"Illegal argument %s (wildcard '*' must be sole element)", field))
 			}
-			if !systemCtx {
-				errs = multierr.Append(errs, fmt.Errorf(
-					"Illegal argument %s (wildcard '*' is system-only)", field))
+			if !policy.allowsResourceWildcardIn(ruleModule) {
+				errs = multierr.Append(errs, policy.resourceWildcardRefusal(field, ruleModule))
 			}
 			continue
 		}
@@ -310,7 +320,10 @@ func (r Rule) validateFeedGate() error {
 type Rules []Rule
 
 // Validate validates the rule set: cardinality 1..64; each rule self-valid.
-func (rs Rules) Validate(systemCtx bool) error {
+//
+// The policy is a single value derived from the row by [PolicyOfRole]; see
+// rule_policy.go for why there are three of them and not two.
+func (rs Rules) Validate(policy RulePolicy) error {
 	if len(rs) == 0 {
 		return fmt.Errorf("Illegal argument rules (must be non-empty)")
 	}
@@ -319,7 +332,7 @@ func (rs Rules) Validate(systemCtx bool) error {
 	}
 	var errs error
 	for _, r := range rs {
-		errs = multierr.Append(errs, r.Validate(systemCtx))
+		errs = multierr.Append(errs, r.Validate(policy))
 	}
 	return errs
 }

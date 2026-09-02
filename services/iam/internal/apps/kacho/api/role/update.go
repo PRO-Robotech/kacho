@@ -175,7 +175,7 @@ func (u *UpdateRoleUseCase) Execute(ctx context.Context, in UpdateRoleInput) (*o
 	if in.Rules != nil && shared.MaskAllows(in.UpdateMask, "rules") {
 		// Validate the new rules first (specific cardinality/wildcard/feed errors),
 		// then compile (enforces the ≤1024 compiled-cap).
-		if verr := in.Rules.Validate(current.IsSystem); verr != nil {
+		if verr := in.Rules.Validate(domain.PolicyOfRole(current.IsSystem, current.OwnerModule)); verr != nil {
 			return nil, shared.MapValidationErr(verr)
 		}
 		// Grantable-token gate — parity with Create (see rules_catalog.go). An
