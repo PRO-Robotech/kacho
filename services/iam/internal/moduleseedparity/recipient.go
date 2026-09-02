@@ -20,13 +20,32 @@
 // [LookupRelation] отвечает по объявлению, а проба предпосылки
 // (recipient_test.go) сверяет с ним каждую живую невыразимую выдачу.
 //
-// # Почему разбор текста, а не готовый разборщик модели
+// # Разбор канона здесь НЕ СВОЙ — и здесь стояло обратное
 //
-// Разборщика `.fga` в дереве нет ни одного, и заводить его ради одного вопроса
-// значило бы завести второе место об одном предмете. Предмет чтения здесь узок
-// до одной строки объявления, а его СПОСОБНОСТЬ ошибиться доказана инъекцией по
-// шести осям (recipient_injection_test.go), включая обе изоляции — между
-// отношениями одного типа и между одноимёнными отношениями разных типов.
+// Прежняя редакция этого файла несла собственный построчный разбор `.fga` и
+// объясняла его так: «разборщика `.fga` в дереве нет ни одного, и заводить его
+// ради одного вопроса значило бы завести второе место об одном предмете».
+// Довод верен, а его посылка была ЛОЖНА в день, когда писалась: канон целиком
+// разбирает `internal/authzplan` (`ParseModel` → типы, отношения, термы, прямой
+// userset с его типом, подстановкой, userset'ом и условием), и на него уже
+// опирались четыре пакета iam, один из них прод
+// (`services/iam/internal/authzmodel`). То есть второе место об одном предмете
+// было заведено ровно тем доводом, которым его следовало не заводить.
+//
+// **Расхождение было не гипотетическим, и направление ошибки — худшее.** Прямая
+// запись userset допускает условие (`[user with mfa_fresh]`), и канон такие
+// записи пишет. Свой разбор сравнивал запись со СТРОКОЙ `group#member`, поэтому
+// `group#member with <условие>` читал как «членство группы НЕ принимается» — то
+// есть отвечал «предпосылка жива» там, где она умерла. Проба предпосылки
+// утверждает `require.False(AdmitsGroupMember)` и остаётся ЗЕЛЁНОЙ на такой
+// ошибке, ничем себя не выдав, — при том что её собственная шапка обещает
+// сказать о смене канона сама. Оси и законные близнецы —
+// recipient_conditioned_test.go.
+//
+// Второе, что ушло вместе со своим разбором: он отвечал уверенно по входу,
+// каноном НЕ являющемуся (тип субъекта не объявлен, отношение без термов,
+// пересечение). `ParseModel` такой вход отвергает — «непонятое не пропускается»
+// объявлено его собственной шапкой, — и [LookupRelation] отвечает «не нашёл».
 //
 // # Три ответа, а не два
 //
@@ -36,30 +55,57 @@
 // двух дало бы судью, который на нечитаемом каноне отвечает «предпосылка жива».
 package moduleseedparity
 
-import "strings"
+import (
+	"github.com/PRO-Robotech/kacho/internal/authzplan"
+)
 
 // SubjectGroupMember — запись членства группы в прямом userset канона.
+//
+// Значение остаётся здесь ради ТЕКСТА отказов: судья называет им предмет спора.
+// Решение же принимается по РАЗОБРАННОЙ записи, а не сравнением с этой строкой —
+// именно сравнение строк и было прежней ошибкой.
 const SubjectGroupMember = "group#member"
+
+// groupSubjectType и groupMemberUserset — как членство группы выглядит
+// РАЗОБРАННЫМ. Пара названа, потому что судится именно она.
+const (
+	groupSubjectType   = "group"
+	groupMemberUserset = "member"
+)
 
 // RelationDeclaration — объявление одного отношения у одного типа объекта.
 type RelationDeclaration struct {
 	ObjectType string
 	Relation   string
-	// DirectSubjects — типы субъектов прямого userset (то, что стоит в
-	// квадратных скобках), в порядке объявления.
+	// DirectSubjects — записи прямого userset ТАК, КАК ОНИ СТОЯТ в каноне
+	// (`group#member with mfa_fresh`), в порядке объявления. Поле существует
+	// ради текста отказа: судья показывает автору то, что тот написал.
+	// Решения по нему НЕ принимаются — для этого есть [RelationDeclaration.AdmitsGroupMember].
 	DirectSubjects []string
-	// HasDirectSubjects — были ли скобки вообще. false означает «отношение
-	// вычисляемое», а НЕ «субъектов нет»: разница несущая, см. шапку файла.
+	// HasDirectSubjects — были ли прямые записи вообще. false означает
+	// «отношение вычисляемое», а НЕ «субъектов нет»: разница несущая, см.
+	// шапку файла.
 	HasDirectSubjects bool
+
+	// direct — разобранные записи прямого userset. Неэкспортировано намеренно:
+	// это ИСТИНА объявления, и спрашивать её полагается вопросом
+	// ([AdmitsGroupMember]), а не разбором строки на стороне вызывающего —
+	// иначе второй разбор заведётся снова, уже у потребителя.
+	direct []authzplan.DirectSubject
 }
 
 // AdmitsGroupMember — принимает ли объявление членство группы прямым userset.
 //
+// Судится ПАРА (тип субъекта, userset), а не написание записи. Условие
+// (`group#member with mfa_fresh`) сужает, КОГДА членство действует, и не
+// отменяет того, ЧТО это членство; подстановка (`group:*`) называет тип
+// субъекта и членством не является.
+//
 // У вычисляемого отношения ответ `false` сам по себе ничего не значит —
 // вызывающий обязан сперва спросить [RelationDeclaration.HasDirectSubjects].
 func (d RelationDeclaration) AdmitsGroupMember() bool {
-	for _, s := range d.DirectSubjects {
-		if s == SubjectGroupMember {
+	for _, s := range d.direct {
+		if s.Type == groupSubjectType && s.Userset == groupMemberUserset {
 			return true
 		}
 	}
@@ -68,46 +114,42 @@ func (d RelationDeclaration) AdmitsGroupMember() bool {
 
 // LookupRelation — объявление отношения `relation` у типа `objectType` в каноне.
 //
-// ok=false — такого типа в каноне нет либо у него нет такого отношения. Ответ
-// даётся ПО ОБЪЯВЛЕНИЮ своего типа: одноимённое отношение соседнего типа
-// подменять его не вправе, иначе судья ответил бы про чужой предмет.
+// ok=false — канон не разобрался, либо такого типа в нём нет, либо у типа нет
+// такого отношения. Ответ даётся ПО ОБЪЯВЛЕНИЮ своего типа: одноимённое
+// отношение соседнего типа подменять его не вправе, иначе судья ответил бы про
+// чужой предмет.
+//
+// Разбор — общий (`authzplan.ParseModel`), а не свой: см. шапку файла.
 func LookupRelation(model, objectType, relation string) (RelationDeclaration, bool) {
-	var (
-		inType bool
-		prefix = "define " + relation + ":"
-	)
-	for _, raw := range strings.Split(model, "\n") {
-		line := strings.TrimSpace(raw)
-		if t, isType := strings.CutPrefix(line, "type "); isType {
-			// Блок типа кончается там, где начинается следующий: искать дальше
-			// значило бы отвечать объявлением соседа.
-			if inType {
-				return RelationDeclaration{}, false
-			}
-			inType = strings.TrimSpace(t) == objectType
+	parsed, err := authzplan.ParseModel(model)
+	if err != nil {
+		// Вход каноном не является. «Не нашёл» здесь — единственный честный
+		// ответ: уверенный ответ по недочитанному произвёл бы вердикт о модели,
+		// которой нет.
+		return RelationDeclaration{}, false
+	}
+	t := parsed.Type(objectType)
+	if t == nil {
+		return RelationDeclaration{}, false
+	}
+	rel := t.Rel(relation)
+	if rel == nil {
+		return RelationDeclaration{}, false
+	}
+
+	d := RelationDeclaration{ObjectType: objectType, Relation: relation}
+	// Прямых термов у отношения может быть больше одного (`[a] or admin or [b]`);
+	// собираются ВСЕ. Прежний разбор читал только первые скобки строки, и запись
+	// из второго терма была для него невидима — не нарушением, а невидимостью.
+	for _, term := range rel.Terms {
+		if term.Kind != authzplan.TermDirect {
 			continue
-		}
-		if !inType {
-			continue
-		}
-		rhs, isDefine := strings.CutPrefix(line, prefix)
-		if !isDefine {
-			continue
-		}
-		d := RelationDeclaration{ObjectType: objectType, Relation: relation}
-		open := strings.Index(rhs, "[")
-		closeAt := strings.Index(rhs, "]")
-		if open < 0 || closeAt < open {
-			// Вычисляемое отношение: прямого userset нет.
-			return d, true
 		}
 		d.HasDirectSubjects = true
-		for _, s := range strings.Split(rhs[open+1:closeAt], ",") {
-			if s = strings.TrimSpace(s); s != "" {
-				d.DirectSubjects = append(d.DirectSubjects, s)
-			}
+		for _, s := range term.Direct {
+			d.direct = append(d.direct, s)
+			d.DirectSubjects = append(d.DirectSubjects, s.String())
 		}
-		return d, true
 	}
-	return RelationDeclaration{}, false
+	return d, true
 }
