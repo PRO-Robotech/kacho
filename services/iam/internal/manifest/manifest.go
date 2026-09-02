@@ -191,11 +191,29 @@ type Group struct {
 // `CreateAccessBinding`: иначе манифест заводит второй словарь для того же
 // предмета, и он разойдётся с первым.
 type AccessBinding struct {
-	Subjects  []Subject `yaml:"subjects"`
-	RoleID    string    `yaml:"roleId"`
-	ScopeType string    `yaml:"scopeType"`
-	ScopeID   string    `yaml:"scopeId"`
-	Target    string    `yaml:"target"`
+	Subjects []Subject `yaml:"subjects"`
+	RoleID   string    `yaml:"roleId"`
+	// GrantedRelation — ВТОРАЯ форма выдачи: имя отношения модели прав,
+	// выдаваемое напрямую на якоре области. Взаимоисключающе с RoleID — ровно
+	// одно из двух непусто (задача #1936).
+	//
+	// Имя взято ДОСЛОВНО у предмета, у которого оно уже есть в двух местах и
+	// пишется одинаково: поле чтения публичного контракта
+	// `AccessBinding.granted_relation` (в JSON — `grantedRelation`) и колонка
+	// `access_bindings.granted_relation`. Третье написание было бы вторым
+	// словарём, и он разошёлся бы с первыми молча.
+	//
+	// Оговорка, без которой это читается как противоречие: у RoleID, ScopeType,
+	// ScopeID и Target имя бралось у ЗАПРОСА СОЗДАНИЯ. У формы отношения такого
+	// поля нет by construction — контракт объявляет `granted_relation`
+	// output-only и говорит прямо, что на вход создания оно не принимается ни в
+	// одном запросе. Значит имя берётся у формы ЧТЕНИЯ того же контракта, а не
+	// выдумывается: это исполнение правила при отсутствии первого источника, а
+	// не послабление.
+	GrantedRelation string `yaml:"grantedRelation"`
+	ScopeType       string `yaml:"scopeType"`
+	ScopeID         string `yaml:"scopeId"`
+	Target          string `yaml:"target"`
 	// Resources — закрытый перечень объектов, когда Target назван `resources`.
 	Resources []TargetResource `yaml:"resources"`
 }

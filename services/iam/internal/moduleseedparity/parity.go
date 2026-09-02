@@ -121,13 +121,20 @@ func (b Binding) String() string {
 	return fmt.Sprintf("%s %s → %s на %s/%s", b.SubjectType, b.SubjectName, granted, b.ScopeType, b.ScopeID)
 }
 
-// ExpressibleByForm — умеет ли форма манифеста объявить эту выдачу.
+// ЗДЕСЬ СТОЯЛ ПРЕДИКАТ `ExpressibleByForm` — он СНЯТ ВМЕСТЕ СО СВОИМ ПРЕДМЕТОМ
+// (#1936).
 //
-// Предикат ВЫВЕДЕН из формы, а не перечисляет исключения: у выдачи есть ключ
-// роли и нет ключа отношения, поэтому выдача отношением необъявима при любом
-// написании. Истечёт вместе с формой: появится ключ — проба предпосылки
-// покраснеет, и этот предикат обязан быть снят вместе с ней.
-func (b Binding) ExpressibleByForm() bool { return b.Relation == "" }
+// Предикат отвечал «умеет ли форма манифеста объявить эту выдачу» и был выведен
+// из формы: ключ роли у неё был, ключа отношения не было ни одного. Он сам
+// объявлял своё истечение — «появится ключ, и предикат обязан быть снят вместе
+// с ней», — ключ появился (`grantedRelation`), и предикат снят, а не приведён к
+// тождественному «да». Тождественное «да» осталось бы ветвью, которая ничего не
+// решает, и следующий читатель искал бы у неё смысл.
+//
+// Вместе с ним сняты `SplitBindings`, `SplitGroups` и перечень `Inexpressible`:
+// у них не осталось предмета — невыразимого вида строки больше нет. Оставить их
+// значило бы держать исключение, которому нечего исключать, и оно не истекло бы
+// уже никогда.
 
 // ModuleState — обе стороны сверки по одному модулю.
 //
@@ -148,23 +155,27 @@ type ModuleState struct {
 
 // Subsection — перепись одного подраздела посева.
 //
-// Величин ЧЕТЫРЕ, и ни одну нельзя выбросить, не потеряв различия, ради
-// которого перепись и печатается: `Live` отвечает, читалось ли вообще что-то;
+// Величин ТРИ, и ни одну нельзя выбросить, не потеряв различия, ради которого
+// перепись и печатается: `Live` отвечает, читалось ли вообще что-то;
 // `Ownerless` отделяет невыразимое by construction (объявлять некому) от
-// пробела; `Owned` называет предмет сверки; `Inexpressible` — ту его часть,
-// которой форма не умеет. Одно число вместо четырёх скрывало бы ровно тот
-// случай, ради которого граница названа.
+// пробела; `Owned` называет предмет сверки. Одно число вместо трёх скрывало бы
+// ровно тот случай, ради которого граница названа.
+//
+// ЧЕТВЁРТАЯ величина здесь была — `Inexpressible`, «та часть предмета, которой
+// форма не умеет», — и снята вместе со своим предметом (#1936): форма научилась
+// выражать выдачу отношением, невыразимого вида строки не осталось. Величина,
+// тождественно равная нулю, перепись не уточняет, а разбавляет: читатель ищет у
+// неё смысл и не находит.
 type Subsection struct {
-	Declared      int
-	Live          int
-	Ownerless     int
-	Owned         int
-	Inexpressible int
+	Declared  int
+	Live      int
+	Ownerless int
+	Owned     int
 }
 
 func (s Subsection) String() string {
-	return fmt.Sprintf("объявлено %d · живых %d · без модуля-владельца %d · с владельцем %d, из них формой невыразимы %d",
-		s.Declared, s.Live, s.Ownerless, s.Owned, s.Inexpressible)
+	return fmt.Sprintf("объявлено %d · живых %d · без модуля-владельца %d · с владельцем %d",
+		s.Declared, s.Live, s.Ownerless, s.Owned)
 }
 
 // Census — объём осмотренного. Печатается ВСЕГДА и ДО вердикта: «находок ноль»
@@ -184,18 +195,20 @@ func (c Census) String() string {
 		c.Manifests, c.SA, c.Groups, c.Bindings, c.Joins)
 }
 
-// Result — исход сверки. ДВА перечня, а не один, и это несущее различие:
-// расхождение чинится правкой манифеста, невыразимое — правкой ФОРМЫ, и
-// разными людьми в разных изменениях. Сложив их в один список, гейт требовал бы
-// от автора манифеста починить то, чего он написать не может.
+// Result — исход сверки.
+//
+// Перечень ОДИН. Их было два, и различие было несущим: расхождение чинилось
+// правкой манифеста, невыразимое — правкой ФОРМЫ, разными людьми в разных
+// изменениях, и сложить их значило бы требовать от автора манифеста починить
+// то, чего он написать не может.
+//
+// Второй перечень снят вместе со своим предметом (#1936): форма научилась
+// выражать выдачу отношением, и строк, которых автор написать не может, не
+// осталось. Держать пустой перечень значило бы держать исключение, которому
+// нечего исключать, — оно не истекло бы уже никогда.
 type Result struct {
 	// Findings — расхождения объявленного с живым. Гейт на них падает.
 	Findings []string
-	// Inexpressible — живые строки модуля, которые форма манифеста выразить не
-	// может (#1936). Гейт их ПЕЧАТАЕТ и на них не падает: пока формы нет, автор
-	// манифеста бессилен. Молча отбросить их нельзя — тогда пробел был бы
-	// неотличим от согласия.
-	Inexpressible []string
 }
 
 // Compare сравнивает объявленное с живым по каждому модулю.
@@ -219,26 +232,17 @@ func Compare(states []ModuleState) Result {
 			"вступление ОБЪЯВЛЕНО и не живёт",
 			keysOfJoin(st.DeclaredJoin), keysOfJoin(st.LiveJoin))...)
 
-		expressibleBinding, inexpressibleBinding := SplitBindings(st.LiveBinding)
 		res.Findings = append(res.Findings, diffSet(st,
 			"выдача ЖИВЁТ и не объявлена",
 			"выдача ОБЪЯВЛЕНА и не живёт",
-			keysOfBinding(st.DeclaredBinding), keysOfBinding(expressibleBinding))...)
-		res.Inexpressible = append(res.Inexpressible,
-			nameEach(st, "выдача формой манифеста НЕВЫРАЗИМА (выдача отношением, #1936)",
-				textsOfBinding(inexpressibleBinding))...)
+			keysOfBinding(st.DeclaredBinding), keysOfBinding(st.LiveBinding))...)
 
-		expressibleGroup, inexpressibleGroup := SplitGroups(st.LiveGroup, st.LiveBinding)
 		res.Findings = append(res.Findings, diffSet(st,
 			"группа ЖИВЁТ и не объявлена",
 			"группа ОБЪЯВЛЕНА и не живёт",
-			keysOfGroup(st.DeclaredGroup), keysOfGroup(expressibleGroup))...)
-		res.Inexpressible = append(res.Inexpressible,
-			nameEach(st, "группа формой манифеста НЕВЫРАЗИМА (наделена только отношением, #1936)",
-				textsOfGroup(inexpressibleGroup))...)
+			keysOfGroup(st.DeclaredGroup), keysOfGroup(st.LiveGroup))...)
 	}
 	sort.Strings(res.Findings)
-	sort.Strings(res.Inexpressible)
 	return res
 }
 
@@ -278,48 +282,6 @@ func keysOfJoin(in []Join) map[string]string {
 	return out
 }
 
-// SplitBindings делит живые выдачи модуля на те, что форма манифеста объявить
-// умеет, и те, что не умеет.
-//
-// Предикат ВЫВЕДЕН из формы (см. [Binding.ExpressibleByForm]), а не перечисляет
-// имена: перечень имён пережил бы свой предмет молча, а предикат истечёт вместе
-// с формой.
-func SplitBindings(live []Binding) (expressible, inexpressible []Binding) {
-	for _, b := range live {
-		if b.ExpressibleByForm() {
-			expressible = append(expressible, b)
-			continue
-		}
-		inexpressible = append(inexpressible, b)
-	}
-	return expressible, inexpressible
-}
-
-// SplitGroups делит живые группы модуля тем же вопросом — но ответ на него
-// даёт не сама группа, а её ВЫДАЧИ.
-//
-// Валидатор связности требует, чтобы заведённая группа была названа хотя бы
-// одной выдачей манифеста (`ErrGroupNeverGranted`); значит группа объявима ровно
-// тогда, когда объявима хоть одна выдача на неё. Группа, которую наделяют одним
-// отношением, необъявима по СЛЕДСТВИЮ, а не отдельным правилом, — поэтому здесь
-// нет второго перечня исключений, который разошёлся бы с первым.
-func SplitGroups(live []Group, bindings []Binding) (expressible, inexpressible []Group) {
-	granted := map[string]bool{}
-	for _, b := range bindings {
-		if b.SubjectType == SubjectTypeGroup && b.ExpressibleByForm() {
-			granted[b.SubjectName] = true
-		}
-	}
-	for _, g := range live {
-		if granted[g.Name] {
-			expressible = append(expressible, g)
-			continue
-		}
-		inexpressible = append(inexpressible, g)
-	}
-	return expressible, inexpressible
-}
-
 // SubjectTypeGroup / SubjectTypeServiceAccount — написание вида субъекта,
 // принятое МАНИФЕСТОМ. Живая строка переводится в него ОДИН раз, на чтении:
 // второе написание того же предмета разошлось бы с первым молча.
@@ -327,17 +289,6 @@ const (
 	SubjectTypeGroup          = "group"
 	SubjectTypeServiceAccount = "serviceAccount"
 )
-
-// nameEach — строки, выведенные из-под вердикта, названные ПОИМЁННО и с
-// модулем-владельцем. Число без имён нечитаемо: по нему нельзя ни проверить
-// границу, ни заметить, что она перестала быть верной.
-func nameEach(st ModuleState, what string, texts []string) []string {
-	out := make([]string, 0, len(texts))
-	for _, text := range texts {
-		out = append(out, fmt.Sprintf("модуль %s (%s): %s: %s", st.Module, st.ManifestFile, what, text))
-	}
-	return out
-}
 
 func keysOfBinding(in []Binding) map[string]string {
 	out := map[string]string{}
@@ -347,26 +298,10 @@ func keysOfBinding(in []Binding) map[string]string {
 	return out
 }
 
-func textsOfBinding(in []Binding) []string {
-	out := make([]string, 0, len(in))
-	for _, b := range in {
-		out = append(out, b.String())
-	}
-	return out
-}
-
 func keysOfGroup(in []Group) map[string]string {
 	out := map[string]string{}
 	for _, g := range in {
 		out[strings.Join([]string{g.Account, g.Name, g.Description}, "\x00")] = g.String()
-	}
-	return out
-}
-
-func textsOfGroup(in []Group) []string {
-	out := make([]string, 0, len(in))
-	for _, g := range in {
-		out = append(out, g.String())
 	}
 	return out
 }
