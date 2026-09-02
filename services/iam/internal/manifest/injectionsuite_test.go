@@ -276,7 +276,7 @@ func manifestInjections() []injection {
 		},
 		{
 			name: "заведённая группа без единой выдачи", old: "  groups:\n",
-			replacement: "  groups:\n    - {name: vpc-orphan-group, account: system, description: без выдачи}\n",
+			replacement: "  groups:\n    - {name: vpc-orphan-group, account: system, description: заведена без выдачи намеренно}\n",
 			wantErr:     ErrGroupNeverGranted, needle: "vpc-orphan-group",
 		},
 
@@ -293,7 +293,7 @@ func manifestInjections() []injection {
 		{
 			name:        "законный близнец: описанный раздел принимается",
 			old:         "\nseed:\n",
-			replacement: "\ndeprecatedVerbs:\n  read: {class: get, since: \"2026-08-23\", reason: синоним чтения, removeWhen: выдач ноль}\nseed:\n",
+			replacement: "\ndeprecatedVerbs:\n  read: {class: get, since: \"2026-08-23\", reason: синоним чтения из прежней грамматики, removeWhen: выдач с таким правом ноль}\nseed:\n",
 			wantErr:     nil,
 		},
 

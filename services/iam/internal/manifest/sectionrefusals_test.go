@@ -121,7 +121,7 @@ func TestSectionRefusalsNameTheirFieldAndKind(t *testing.T) {
 		{
 			name: "устаревший глагол не назван",
 			doc: "apiVersion: iam/v1\nmodule: vpc\ndeprecatedVerbs:\n" +
-				"  \"\": {class: get, since: \"2026-08-23\", reason: синоним чтения из грамматики, removeWhen: выдач с таким правом ноль}\n",
+				"  \"\": {class: get, since: \"2026-08-23\", reason: синоним чтения из прежней грамматики, removeWhen: выдач с таким правом ноль}\n",
 			kind:  manifest.ErrDeprecatedVerbNameEmpty,
 			names: []string{"deprecatedVerbs"},
 		},
@@ -154,7 +154,7 @@ func TestSectionRefusalsNameTheirFieldAndKind(t *testing.T) {
 		"    tier: {tierType: iam.project, tierId: prj000000000000000}\n" +
 		"    rules:\n      - {module: vpc, resources: [network], classes: [get]}\n" +
 		"deprecatedVerbs:\n" +
-		"  read: {class: get, since: \"2026-08-23\", reason: синоним чтения из грамматики, removeWhen: выдач с таким правом ноль}\n"
+		"  read: {class: get, since: \"2026-08-23\", reason: синоним чтения из прежней грамматики, removeWhen: выдач с таким правом ноль}\n"
 	if _, err := manifest.Load([]byte(whole)); err != nil {
 		t.Fatalf("парный положительный ко всему перечню отвергнут: %v", err)
 	}

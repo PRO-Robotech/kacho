@@ -117,6 +117,14 @@ var (
 	ErrNoteLineNotAComment = errors.New("manifest: note text line does not start with a comment sign")
 	// ErrRelationPositionUnknown — место отношения вне закрытого набора.
 	ErrRelationPositionUnknown = errors.New("manifest: relation position is outside the closed set")
+	// ErrResourceVerbsRequired — ресурс не назвал ни одного действия.
+	ErrResourceVerbsRequired = errors.New("manifest: resource declares no verbs")
+	// ErrRelationDefinitionRequired — объявленное дословно отношение не сказало,
+	// ЧЕМ оно является.
+	ErrRelationDefinitionRequired = errors.New("manifest: relation has no definition")
+	// ErrBaseRolesWithoutTenantVerb — ресурс объявил базовые ярусные роли, а
+	// арендатору у него доступно ноль действий.
+	ErrBaseRolesWithoutTenantVerb = errors.New("manifest: base roles are declared on a resource with no tenant-facing verb")
 	// ErrRelationNameRequired — отношение не назвало себя.
 	ErrRelationNameRequired = errors.New("manifest: relation name is required")
 	// ErrCascadeTermIncomplete — терм каскада назван наполовину: без отношения
@@ -322,6 +330,16 @@ func DefaultRelationPosition() string { return relationPositions[1] }
 // resourceProducers — закрытый набор видов ключей записи.
 var resourceProducers = []string{"derived", "authored"}
 
+// resourceTiers — ярусы, на которые ресурс порождает базовую роль, когда он об
+// этом сказал. Порядок — от слабого к сильному, как читает его модель прав.
+//
+// Здесь объявлен НАБОР, а не каскад: `roleexport` объявляет тот же перечень
+// именами каскада, и предметы у них разные — там порядок значим (обладатель
+// сильного яруса удовлетворяет гейт слабого), здесь значим только состав.
+// Свести их в одно объявление нельзя по направлению импортов: `roleexport`
+// зависит от разбора, разбор от него — НИКОГДА.
+var resourceTiers = []string{"viewer", "editor", "admin"}
+
 // Resource — один ресурс модуля.
 //
 // Порождённые и авторские ключи лежат В ОДНОЙ структуре намеренно: они
@@ -358,6 +376,44 @@ type Resource struct {
 	Relations []Relation `yaml:"relations"`
 	// Verbs — действия ресурса. Обе формы записи принимаются (см. Verb).
 	Verbs []Verb `yaml:"verbs"`
+	// BaseRoles — ресурс порождает БАЗОВЫЕ ЯРУСНЫЕ РОЛИ.
+	//
+	// Признак ЯВНЫЙ, и это решение, а не умолчание: наивный вывод трёх ярусов
+	// из классов даёт тридцать ролей при живых восемнадцати, то есть двенадцать
+	// системных ролей завелись бы молча — необратимая правка каталога прав
+	// арендатора. Дискриминатора, отделяющего ресурсы с ярусами от ресурсов без
+	// них, среди прочих полей НЕ СУЩЕСТВУЕТ: ни якорь, ни состав субъектов, ни
+	// набор ярусов, ни доля внутренних действий шесть от четырёх не отделяют.
+	// Это перепись приёмки, а не «не нашли».
+	//
+	// Отсутствие признака означает «ярусов нет».
+	BaseRoles bool `yaml:"baseRoles"`
+}
+
+// BaseRoleTiers — ярусы, которые ресурс ПОРОЖДАЕТ базовыми ролями.
+//
+// Пусто, когда признак не объявлен: отсутствие означает «ярусов нет», а не
+// «ярусы по умолчанию». Умолчание здесь и есть та самая молчаливая правка
+// каталога, ради запрета которой признак заведён.
+//
+// Авторский набор `tiers` СУЖАЕТ выводимое: он объявлен ровно там, где состав
+// уже общего (у административного ресурса нет яруса редактора вовсе), и
+// выводить роль на ярус, которого у типа нет, значило бы выдавать право,
+// которого никто не спрашивает.
+func (r Resource) BaseRoleTiers() []string {
+	if !r.BaseRoles {
+		return nil
+	}
+	if len(r.Tiers) > 0 {
+		// Имя яруса, а не запись целиком: базовая роль адресуется именем, а
+		// перечень отношений вывода — предмет блока модели, не роли.
+		named := make([]string, 0, len(r.Tiers))
+		for _, t := range r.Tiers {
+			named = append(named, t.Name)
+		}
+		return named
+	}
+	return append([]string(nil), resourceTiers...)
 }
 
 // Note — АВТОРСКОЕ примечание блока модели: текст и ЯКОРЬ, то есть имя
@@ -605,6 +661,13 @@ type Verb struct {
 	// From — отношения, от которых действие выводится, в порядке правой части.
 	// Пусто означает умолчание: супер-доступ.
 	From []string `yaml:"from"`
+	// Internal — действие живёт на ВНУТРЕННЕМ слушателе: арендатору оно
+	// недоступно by construction (ban #6). Признак порождается из аннотаций
+	// контрактов вместе с остальным разделом, а не пишется рукой, и сверяется с
+	// каталогом прав: там та же плоскость видна приставкой `Internal` у имени
+	// службы. Два объявления одной плоскости разошлись бы молча, поэтому сверка
+	// обязательна, а не факультативна.
+	Internal bool `yaml:"internal"`
 }
 
 // UnmarshalYAML принимает обе формы и НЕ теряет свойство, которое держит
@@ -626,7 +689,7 @@ func (v *Verb) UnmarshalYAML(node *yaml.Node) error {
 	case yaml.MappingNode:
 		for i := 0; i+1 < len(node.Content); i += 2 {
 			key := node.Content[i]
-			if key.Value != "name" && key.Value != "class" &&
+			if key.Value != "name" && key.Value != "class" && key.Value != "internal" &&
 				key.Value != "subjects" && key.Value != "from" {
 				return fmt.Errorf("line %d: field %s not found in type verb", key.Line, key.Value)
 			}
@@ -634,13 +697,15 @@ func (v *Verb) UnmarshalYAML(node *yaml.Node) error {
 		var raw struct {
 			Name     string   `yaml:"name"`
 			Class    string   `yaml:"class"`
+			Internal bool     `yaml:"internal"`
 			Subjects []string `yaml:"subjects"`
 			From     []string `yaml:"from"`
 		}
 		if err := node.Decode(&raw); err != nil {
 			return err
 		}
-		v.Name, v.Class, v.Subjects, v.From = raw.Name, raw.Class, raw.Subjects, raw.From
+		v.Name, v.Class, v.Internal = raw.Name, raw.Class, raw.Internal
+		v.Subjects, v.From = raw.Subjects, raw.From
 		return nil
 	default:
 		return fmt.Errorf("line %d: a verb is a string or a mapping, got %s",
@@ -677,6 +742,7 @@ func validateResources(m *Manifest, doc *yaml.Node) []error {
 		faults = append(faults, validateResourceAnchors(r, doc, i)...)
 		faults = append(faults, validateResourceCascade(r, doc, i)...)
 		faults = append(faults, validateResourceTiers(r, doc, i)...)
+		faults = append(faults, validateResourceBaseRoles(r, doc, i)...)
 		faults = append(faults, validateResourceVerbs(r, doc, i)...)
 		faults = append(faults, validateResourceRelations(r, doc, i)...)
 		faults = append(faults, validateResourceNotes(r, doc, i)...)
@@ -976,10 +1042,50 @@ func validateResourceTiers(r *Resource, doc *yaml.Node, i int) []error {
 	return faults
 }
 
+// validateResourceBaseRoles — базовые ярусные роли объявлены там, где их есть
+// кому выдать.
+//
+// Базовая роль выдаётся АРЕНДАТОРУ, а внутренняя плоскость арендатору
+// недоступна by construction (ban #6). Ресурс, у которого внутренние ВСЕ
+// действия, порождал бы роль, дающую ноль прав и выглядящую действующей: и
+// привязка создаётся, и роль перечисляется, и доступа нет. Отличить такую
+// выдачу от неисполненной вызывающему нечем.
+//
+// Судится ОБЪЯВЛЕННОЕ, а не всякий ресурс с внутренними действиями: без
+// признака ярусов нет вовсе, и запрещать тогда нечего.
+func validateResourceBaseRoles(r *Resource, doc *yaml.Node, i int) []error {
+	if !r.BaseRoles || len(r.Verbs) == 0 {
+		return nil
+	}
+	for _, v := range r.Verbs {
+		if !v.Internal {
+			return nil
+		}
+	}
+	return []error{linkFault{
+		kind:  ErrBaseRolesWithoutTenantVerb,
+		coord: locate(doc, "resources", i, "baseRoles"),
+		detail: fmt.Sprintf("resources[%d].baseRoles: ресурс %q объявил базовые ярусные роли (%s), "+
+			"а арендатору у него доступно НОЛЬ действий из %d — все они живут на внутреннем "+
+			"слушателе. Такая роль выдаётся, перечисляется и не даёт ни одного права: снимите "+
+			"признак либо назовите действие, доступное арендатору",
+			i, r.Name, strings.Join(r.BaseRoleTiers(), ", "), len(r.Verbs)),
+	}}
+}
+
 // validateResourceVerbs — имя и класс каждого действия; класс короткой формы
 // восстанавливается ТУТ ЖЕ, единственным вызовом правила.
 func validateResourceVerbs(r *Resource, doc *yaml.Node, i int) []error {
 	var faults []error
+	if len(r.Verbs) == 0 {
+		faults = append(faults, linkFault{
+			kind:  ErrResourceVerbsRequired,
+			coord: locate(doc, "resources", i),
+			detail: fmt.Sprintf("resources[%d].verbs: ресурс не назвал ни одного действия — "+
+				"он не порождает НИ ОДНОГО отношения модели, и роль, назвавшая его в правиле, "+
+				"выдаёт пустоту при действующей на вид привязке", i),
+		})
+	}
 	for j := range r.Verbs {
 		v := &r.Verbs[j]
 		if v.Name == "" {
@@ -1079,6 +1185,18 @@ func validateResourceRelations(r *Resource, doc *yaml.Node, i int) []error {
 		}
 	}
 	for k, rel := range r.Relations {
+		// Определение судится ОТДЕЛЬНО от имени и до выхода по безымянному:
+		// у отношения, лишённого обоих, автор обязан увидеть обе находки, а не
+		// чинить их по одной, по прогону на каждую.
+		if strings.TrimSpace(rel.Definition) == "" {
+			faults = append(faults, linkFault{
+				kind:  ErrRelationDefinitionRequired,
+				coord: locate(doc, "resources", i, "relations", k),
+				detail: fmt.Sprintf("resources[%d].relations[%d].definition: отношение объявлено "+
+					"дословно и не сказало, чем оно является; отношение объявляют дословно ровно "+
+					"затем, чтобы перегенерация модели его СОХРАНИЛА, а сохранять нечего", i, k),
+			})
+		}
 		if rel.Name == "" {
 			faults = append(faults, linkFault{
 				kind:   ErrRelationNameRequired,

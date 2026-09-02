@@ -83,7 +83,7 @@ func TestMODMR10RolesSectionLoads(t *testing.T) {
 // модуля; чужая роль здесь была бы объявлением за чужой домен.
 func TestMODMR11RoleIDOfAForeignModuleIsRefused(t *testing.T) {
 	base := "apiVersion: iam/v1\nmodule: vpc\nroles:\n" +
-		"  - id: %s\n    name: Наблюдатель\n    description: Читает.\n" +
+		"  - id: %s\n    name: Наблюдатель\n    description: Читает топологию проекта.\n" +
 		"    tier: {tierType: iam.project, tierId: prj000000000000000}\n" +
 		"    rules:\n      - {module: vpc, resources: [network], classes: [get]}\n"
 
@@ -115,7 +115,7 @@ func TestMODMR11RoleIDOfAForeignModuleIsRefused(t *testing.T) {
 // отвергающем всякую подстановку.
 func TestMODMR12ResourceWildcardIsAlwaysRefusedAndVerbWildcardIsNot(t *testing.T) {
 	base := "apiVersion: iam/v1\nmodule: vpc\nroles:\n" +
-		"  - id: vpc.viewer\n    name: Наблюдатель\n    description: Читает.\n" +
+		"  - id: vpc.viewer\n    name: Наблюдатель\n    description: Читает топологию проекта.\n" +
 		"    tier: {tierType: iam.project, tierId: prj000000000000000}\n" +
 		"    rules:\n      - {module: vpc, resources: [%s], classes: [%s]}\n"
 
@@ -146,7 +146,7 @@ func TestMODMR12ResourceWildcardIsAlwaysRefusedAndVerbWildcardIsNot(t *testing.T
 // взаимоисключающий инвариант `domain.Rule` со своим стабильным текстом.
 func TestMODMR13ResourceNamesAndMatchLabelsAreMutuallyExclusive(t *testing.T) {
 	base := "apiVersion: iam/v1\nmodule: vpc\nroles:\n" +
-		"  - id: vpc.viewer\n    name: Наблюдатель\n    description: Читает.\n" +
+		"  - id: vpc.viewer\n    name: Наблюдатель\n    description: Читает топологию проекта.\n" +
 		"    tier: {tierType: iam.project, tierId: prj000000000000000}\n" +
 		"    rules:\n      - module: vpc\n        resources: [network]\n        classes: [get]\n%s"
 

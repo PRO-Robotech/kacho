@@ -9,6 +9,7 @@ import (
 	"regexp"
 	"slices"
 	"strings"
+	"unicode/utf8"
 
 	"gopkg.in/yaml.v3"
 
@@ -131,6 +132,13 @@ var (
 	// Отдельный отказ, а не общий «неизвестное поле»: последний верен и
 	// бесполезен — автор не узнаёт, чем чинится.
 	ErrRoleRuleVerbsRetired = errors.New("manifest: `verbs` is not a form of a role right anymore")
+	// ErrRoleNameRequired — роль не несёт человекочитаемого имени.
+	ErrRoleNameRequired = errors.New("manifest: role name is required")
+	// ErrRoleDescriptionTooShort — описание роли короче предела прозы.
+	ErrRoleDescriptionTooShort = errors.New("manifest: role description is shorter than the declared bound")
+	// ErrRoleRulesRequired — роль не несёт ни одного правила: выданная, она не
+	// даёт НИ ОДНОГО права.
+	ErrRoleRulesRequired = errors.New("manifest: role grants nothing")
 )
 
 // RoleIDForm — ЕДИНСТВЕННОЕ объявление формы идентификатора роли манифеста
@@ -243,7 +251,17 @@ func validateRoles(m *Manifest, doc *yaml.Node) []error {
 	for i := range m.Roles {
 		role := &m.Roles[i]
 		faults = append(faults, validateRoleIdentity(role, m.Module, doc, i, seen)...)
+		faults = append(faults, validateRoleProse(role, doc, i)...)
 		faults = append(faults, validateRoleTier(role, doc, i)...)
+		if len(role.Rules) == 0 {
+			faults = append(faults, linkFault{
+				kind:  ErrRoleRulesRequired,
+				coord: locate(doc, "roles", i),
+				detail: fmt.Sprintf("roles[%d].rules: роль не несёт ни одного правила — выданная, "+
+					"она не даёт НИ ОДНОГО права, и отличить её от неисполненной выдачи "+
+					"вызывающему нечем: привязка есть, доступа нет", i),
+			})
+		}
 		for j, rule := range role.Rules {
 			if err := rule.DomainRule().Validate(false); err != nil {
 				faults = append(faults, linkFault{
@@ -324,6 +342,34 @@ var RoleTierTypes = []string{
 // roleTierTypesList — перечень для текста отказа. Собирается из RoleTierTypes,
 // а не выписывается: выписанный не сдвинулся бы от нового яруса.
 func roleTierTypesList() string { return strings.Join(RoleTierTypes, " · ") }
+
+// validateRoleProse — то, что роль говорит ЧЕЛОВЕКУ: имя и описание.
+//
+// Судится отдельно от идентификатора намеренно: идентификатор адресует роль
+// машинно и уже проверен, а имя с описанием читает тот, кто решает, выдавать ли
+// её. Роль без них выдаётся вслепую, и отказаться от такой выдачи не на чем.
+func validateRoleProse(role *Role, doc *yaml.Node, i int) []error {
+	var faults []error
+	if strings.TrimSpace(role.Name) == "" {
+		faults = append(faults, linkFault{
+			kind:  ErrRoleNameRequired,
+			coord: locate(doc, "roles", i),
+			detail: fmt.Sprintf("roles[%d].name: роль не несёт человекочитаемого имени — "+
+				"идентификатор адресует её машинно, а выбирает роль человек, и выбирать ему нечем", i),
+		})
+	}
+	if proseShorterThan(role.Description, minProseRunes) {
+		faults = append(faults, linkFault{
+			kind:  ErrRoleDescriptionTooShort,
+			coord: locate(doc, "roles", i),
+			detail: fmt.Sprintf("roles[%d].description: %d знаков, требуется не менее %d — "+
+				"описание отвечает на вопрос, кому эту роль выдают; строка короче предела "+
+				"на него не отвечает и стоит ради прохождения проверки",
+				i, utf8.RuneCountInString(strings.TrimSpace(role.Description)), minProseRunes),
+		})
+	}
+	return faults
+}
 
 // validateRoleTier — ярус определения роли.
 //
