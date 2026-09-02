@@ -24,6 +24,7 @@ import (
 
 	"github.com/PRO-Robotech/kacho/services/iam/internal/authzmap"
 	"github.com/PRO-Robotech/kacho/services/iam/internal/domain"
+	"github.com/PRO-Robotech/kacho/services/iam/internal/manifest"
 )
 
 // catalogRepoRoot — корень модуля. Своя копия обхода вверх не заводится: рядом
@@ -49,22 +50,50 @@ func catalogRepoRoot(t *testing.T) string {
 	}
 }
 
-// catalogMigrationPath — единственная миграция, сеющая каталог модуля.
+// catalogMigrationPath — миграция, сеющая каталог модуля и ПООБЪЕКТНУЮ половину
+// словаря глаголов.
 const catalogMigrationPath = "services/iam/internal/migrations/20260901113757_rule_segments_have_a_referent.sql"
+
+// tierOnlyMigrationPath — миграция, сеющая ЯРУСНУЮ половину словаря (#1863).
+//
+// Миграции две, потому что первая применена и правке не подлежит (запрет #5), а
+// не потому, что посев разложили для удобства. Сверяются они порознь: гейт
+// обязан отвечать, КАКАЯ из двух разошлась с литералом.
+const tierOnlyMigrationPath = "services/iam/internal/migrations/20260902062000_authored_verb_dictionary_separates_from_the_per_object_one.sql"
 
 // literalCatalog — перечень, ВЫВЕДЕННЫЙ единственным производителем
 // (`authzmap.CatalogSeed*`), а не выписанный здесь. Второй производитель того же
 // перечня разошёлся бы с первым молча — ровно в тот момент, когда расхождение и
 // опасно.
+//
+// Глаголы отдаются ПООБЪЕКТНЫЕ: с ними сверяется посев `catalogMigrationPath`, и
+// ярусная половина в нём отсутствует by construction — она заведена позже,
+// отдельной миграцией.
 func literalCatalog() (modules, resources, verbs []string) {
 	modules = domain.KnownModules()
 	for _, r := range authzmap.CatalogSeedResources() {
 		resources = append(resources, r.Dotted)
 	}
 	for _, v := range authzmap.CatalogSeedVerbs() {
+		if !v.PerObject {
+			continue
+		}
 		verbs = append(verbs, v.Module+"."+v.Resource+"."+v.Verb)
 	}
 	return modules, resources, verbs
+}
+
+// literalTierOnlyVerbs — ЯРУСНАЯ половина того же перечня, от того же
+// производителя.
+func literalTierOnlyVerbs() []string {
+	var out []string
+	for _, v := range authzmap.CatalogSeedVerbs() {
+		if v.PerObject {
+			continue
+		}
+		out = append(out, v.Module+"."+v.Resource+"."+v.Verb)
+	}
+	return out
 }
 
 // TestIAMCT114_CatalogSeedMatchesTheLiteral — Т6.
@@ -137,4 +166,73 @@ func indexOf(hay, needle string) int {
 		}
 	}
 	return -1
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// Ярусная половина словаря (задача продукта #1863)
+
+// TestTierOnlyVerbSeedMatchesTheLiteral — посев ярусной половины согласен с
+// литералом, в ОБЕ стороны.
+//
+// Односторонняя сверка молчала бы на строке, посеянной СВЕРХ литерала: она
+// открывает авторскому правилу глагол, о котором производитель не знает, — то
+// есть ключ пропускает то, чего в словаре нет.
+func TestTierOnlyVerbSeedMatchesTheLiteral(t *testing.T) {
+	root := catalogRepoRoot(t)
+	body, err := os.ReadFile(filepath.Join(root, tierOnlyMigrationPath))
+	if err != nil {
+		t.Fatalf("прочитать миграцию ярусной половины: %v", err)
+	}
+
+	want := literalTierOnlyVerbs()
+	if len(want) == 0 {
+		t.Fatal("ярусная половина литерала пуста — сверять было бы не с чем, и " +
+			"«расхождений нет» означало бы «ничего не прочитано»")
+	}
+
+	seeded, findings, aerr := auditTierOnlyVerbSeed(string(body), want)
+	if aerr != nil {
+		t.Fatalf("разобрать ярусный посев: %v", aerr)
+	}
+	t.Logf("осмотрено: литерал — ярусных пар %d; посев — ярусных пар %d", len(want), seeded)
+	if seeded == 0 {
+		t.Fatal("ярусных пар не посеяно ни одной — обход пуст, вердикт беспредметен")
+	}
+	for _, f := range findings {
+		t.Error(f)
+	}
+}
+
+// TestTierOnlyVerbClassesArePartOfTheClosedActionSet — ПРЕДПОСЫЛКА гейта выше.
+//
+// Гейт сверяет посев с перечнем и о самом перечне не утверждает ничего: назови
+// ярусным выдуманный токен — обе стороны сойдутся, а правило роли получило бы
+// референт на глагол, которого платформа не знает. Поэтому предпосылка
+// проверяется отдельно и здесь: ярусным вправе быть только КЛАСС ДЕЙСТВИЯ из
+// закрытого набора.
+//
+// Вторая половина — что класс действительно НЕ производит пообъектного
+// отношения у тех типов, которым посеян ярусным, — держится производителем by
+// construction (`CatalogSeedVerbs` кладёт ярусную строку только там, где
+// пообъектной нет) и проверяется самопроверкой миграции на живой базе.
+func TestTierOnlyVerbClassesArePartOfTheClosedActionSet(t *testing.T) {
+	tierOnly := authzmap.TierOnlyVerbClasses()
+	if len(tierOnly) == 0 {
+		t.Fatal("ярусных классов объявлено ноль — предпосылка беспредметна, а ярусная " +
+			"половина словаря при этом посеяна")
+	}
+	canonical := map[string]bool{}
+	for _, c := range manifest.CanonicalVerbs() {
+		canonical[c] = true
+	}
+	if len(canonical) == 0 {
+		t.Fatal("закрытый набор классов действия пуст — сверять не с чем")
+	}
+	t.Logf("осмотрено: ярусных классов %d, канонических классов %d", len(tierOnly), len(canonical))
+	for _, c := range tierOnly {
+		if !canonical[c] {
+			t.Errorf("ярусный класс %q вне закрытого набора классов действия: правило роли "+
+				"получило бы референт на глагол, которого платформа не знает", c)
+		}
+	}
 }

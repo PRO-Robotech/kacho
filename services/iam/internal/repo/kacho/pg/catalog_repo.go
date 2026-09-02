@@ -91,14 +91,18 @@ func (r *CatalogRepo) ReadLiveCatalog(ctx context.Context) (catalog.Rows, error)
 		return out, fmt.Errorf("прочитать каталог ресурсов: %w", err)
 	}
 
+	// `per_object` читается ВМЕСТЕ со строкой, а не выводится читателем: словарей
+	// два (пообъектный и авторский), и признак — единственное, чем строка одного
+	// отличается от строки другого. Прочитать строку без него значило бы вернуть
+	// набору типа глаголы, которые кортежа не производят (#1863).
 	verbRows, err := r.pool.Query(ctx,
-		`SELECT module, resource, verb FROM kacho_iam.catalog_verb WHERE live`)
+		`SELECT module, resource, verb, per_object FROM kacho_iam.catalog_verb WHERE live`)
 	if err != nil {
 		return out, fmt.Errorf("прочитать каталог глаголов: %w", err)
 	}
 	for verbRows.Next() {
 		var row catalog.VerbRow
-		if serr := verbRows.Scan(&row.Module, &row.Resource, &row.Verb); serr != nil {
+		if serr := verbRows.Scan(&row.Module, &row.Resource, &row.Verb, &row.PerObject); serr != nil {
 			verbRows.Close()
 			return out, fmt.Errorf("прочитать каталог глаголов: %w", serr)
 		}
