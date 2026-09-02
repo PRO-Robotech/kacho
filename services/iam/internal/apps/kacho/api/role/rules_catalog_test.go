@@ -44,7 +44,7 @@ import (
 // `compute.instances` is not, and today it silently compiles into a grant that
 // materializes nothing.
 func TestCreateRole_UnknownResourceToken_RejectedSync(t *testing.T) {
-	uc := &CreateRoleUseCase{} // nil repo/opsRepo: the reject must be a sync pre-check
+	uc := &CreateRoleUseCase{cat: catalogfixture.Source()} // nil repo/opsRepo: the reject must be a sync pre-check
 	_, err := uc.Execute(authnCtx(), domain.Role{
 		AccountID: "acc0000000000000abcd",
 		Name:      "typo_role",
@@ -65,7 +65,7 @@ func TestCreateRole_UnknownResourceToken_RejectedSync(t *testing.T) {
 // catalog is plural (`storage.volumes`). Locks that the check is a table lookup,
 // not a pluralisation heuristic.
 func TestCreateRole_UnknownResourceToken_SingularOfPluralType_RejectedSync(t *testing.T) {
-	uc := &CreateRoleUseCase{}
+	uc := &CreateRoleUseCase{cat: catalogfixture.Source()}
 	_, err := uc.Execute(authnCtx(), domain.Role{
 		AccountID: "acc0000000000000abcd",
 		Name:      "typo_role_2",

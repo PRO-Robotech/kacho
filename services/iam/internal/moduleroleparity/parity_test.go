@@ -51,6 +51,7 @@ import (
 	"github.com/PRO-Robotech/kacho/internal/pgtest"
 
 	"github.com/PRO-Robotech/kacho/services/iam/internal/apps/kacho/moduleroles"
+	"github.com/PRO-Robotech/kacho/services/iam/internal/authzmap"
 	"github.com/PRO-Robotech/kacho/services/iam/internal/domain"
 	"github.com/PRO-Robotech/kacho/services/iam/internal/manifest"
 	"github.com/PRO-Robotech/kacho/services/iam/internal/moduleroleparity"
@@ -169,7 +170,7 @@ func moduleStates(ctx context.Context, t *testing.T, root string) (
 	}
 	// Модуль закрытого набора, у которого живые роли есть, а манифеста нет,
 	// молчал бы иначе: его строки не попали бы ни в одно состояние.
-	for _, mod := range domain.KnownModules() {
+	for _, mod := range authzmap.CatalogSeedModules() {
 		if claimed[mod] || len(liveByOwner[mod]) == 0 {
 			continue
 		}
@@ -215,7 +216,7 @@ func readLiveSystemRoles(ctx context.Context, t *testing.T, pool *pgxpool.Pool) 
 		require.NoErrorf(t, derr, "правила роли %q не разобраны кодеком домена", name)
 
 		owner, _, hasDot := strings.Cut(name, ".")
-		if !hasDot || !domain.IsKnownModule(owner) {
+		if !hasDot || !domain.ModuleSetOf(authzmap.CatalogSeedModules()...).IsKnownModule(owner) {
 			ownerless++
 			continue
 		}

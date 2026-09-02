@@ -6,9 +6,24 @@
 //
 // # Предмет
 //
-// Набор модулей закрыт, и его ЕДИНСТВЕННЫЙ источник — литерал `knownModules` в
-// `services/iam/internal/domain/module_set.go`. Модуль — то, чем клиент выражает
-// грант: `Rule.module`. Перечень, назвавший меньше, чем принимает сервер,
+// Набор модулей закрыт, и его ЕДИНСТВЕННЫЙ источник — приставки ключей закрытой
+// таблицы типов объекта (`objectTypes` в
+// `services/iam/internal/authzmap/fga_types.go`), которые продукт выводит
+// производителем `authzmap.CatalogSeedModules`. Модуль — то, чем клиент выражает
+// грант: `Rule.module`.
+//
+// # ИСТОЧНИК ПЕРЕЕХАЛ ВМЕСТЕ С ПРЕДМЕТОМ (задача продукта #1927)
+//
+// До неё анализатор выводил набор из отдельного литерала домена `knownModules`.
+// Литерал снят: набор модулей стал строками каталога, а канон дерева выводится
+// из той же таблицы типов, из которой посеяны ресурсы. Анализатор перенесён на
+// новый источник тем же изменением — оставить его на снятой координате значило
+// бы получить гейт, отказывающий по причине, к его предмету отношения не
+// имеющей (`testing.md` §«Гейт на класс», п. 9).
+//
+// Предмет при этом НЕ изменился: перечень клиентской поверхности по-прежнему
+// обязан назвать набор целиком, и цена неполноты по-прежнему в безопасности, а
+// не в удобстве. Перечень, назвавший меньше, чем принимает сервер,
 // сообщает клиенту, что тонко выдать доступ к недостающему домену НЕЛЬЗЯ, — а
 // единственный документированный выход при таком чтении есть системная роль на
 // весь уровень, то есть заведомое расширение доступа. Цена неполноты здесь не в
@@ -16,23 +31,28 @@
 //
 // Замер на день заведения (kacho#1627): сервер принимал ШЕСТЬ модулей, а называли
 // ЧЕТЫРЕ и справочная страница ролей, и комментарий поля контракта. Рядом,
-// третьим местом, стояла шапка самой функции `IsKnownModule` — она называла ПЯТЬ.
-// То есть разошлись не документ с кодом, а три места об одном предмете, из
-// которых верно было ни одно.
+// третьим местом, стояла шапка функции членства — она называла ПЯТЬ. То есть
+// разошлись не документ с кодом, а три места об одном предмете, из которых верно
+// было ни одно. (Обе координаты того замера — функция и её проба — сняты вместе с
+// литералом задачей #1927 и здесь написаны прозой: свидетельство остаётся, живого
+// адреса не заводится.)
 //
 // # Почему это не удержала проба набора
 //
-// Проба `TestIsKnownModule_ClosedSet` несла собственный перечень и заголовок
-// «EXACTLY», но утверждала ЧЛЕНСТВО каждого имени, а не равенство наборов.
-// Шестое имя добавилось, ничего не покраснив. Точный состав пинит
-// `module_set_drift_test.go` — но он сверяет домен с каталогом типов, а не с
-// ПРОЗОЙ, и о клиентских поверхностях не знает by construction.
+// Проба набора несла собственный перечень и заголовок «EXACTLY», но утверждала
+// ЧЛЕНСТВО каждого имени, а не равенство наборов. Шестое имя добавилось, ничего
+// не покраснив. Точный состав пинит `module_set_drift_test.go` — но он сверяет
+// производителя с объявлением написаний, а не с ПРОЗОЙ, и о клиентских
+// поверхностях не знает by construction.
 //
 // # Что судит анализатор
 //
-// Набор ВЫВОДИТСЯ разбором объявления `knownModules` (узел-литерал, не текст:
-// имена модулей встречаются и в комментариях рядом, и гейт по подстроке краснел
-// бы на собственном объяснении).
+// Набор ВЫВОДИТСЯ разбором объявления таблицы типов: узлы-ключи составного
+// литерала, а не текст (имена модулей встречаются и в комментариях рядом, и гейт
+// по подстроке краснел бы на собственном объяснении). Из каждого ключа берётся
+// приставка до ПЕРВОЙ точки — то же разбиение, каким его делает
+// `authzmap.SplitObjectType`; ключ без точки модуля не даёт, а не даёт себя
+// целиком.
 //
 // В клиентских поверхностях — `services/iam/docs/content/**` и
 // `proto/kacho/cloud/iam/**` — распознаётся ПЕРЕЧЕНЬ: имена модулей в
@@ -56,7 +76,7 @@
 //     не вводится — оно находило бы имена модулей в любом предложении, где они
 //     соседствуют законно.
 //
-//  3. НЕ-КЛИЕНТСКИЕ комментарии Go вне охвата. Шапка `IsKnownModule` чинилась
+//  3. НЕ-КЛИЕНТСКИЕ комментарии Go вне охвата. Шапка функции членства чинилась
 //     руками и здесь не судится: её предмет — реализация, а не то, что обещано
 //     клиенту.
 //
@@ -88,9 +108,10 @@ type ClientTruthIAMModuleSetOptions struct {
 	// (`treecorpus.NewTree`), инъекционная проба — синтетическое дерево
 	// (`treecorpus.SyntheticTree`). Разбор — clienttruth_treefiles.go.
 	Tree *treecorpus.Tree
-	// ModuleSetFile — путь (от корня дерева) к объявлению закрытого набора.
+	// ModuleSetFile — путь (от корня дерева) к объявлению закрытой таблицы
+	// типов, приставки ключей которой и есть набор модулей.
 	ModuleSetFile string
-	// ModuleSetVar — имя переменной, чей литерал и есть набор.
+	// ModuleSetVar — имя переменной, чей составной литерал разбирается.
 	ModuleSetVar string
 	// Surfaces — каталоги клиентских поверхностей (от корня дерева).
 	Surfaces []string
@@ -100,8 +121,12 @@ type ClientTruthIAMModuleSetOptions struct {
 
 // ClientTruthIAMModuleSetCensus — объём осмотренного.
 type ClientTruthIAMModuleSetCensus struct {
-	// Modules — сколько имён выведено из объявления.
+	// Modules — сколько РАЗЛИЧНЫХ приставок выведено из ключей объявления.
 	Modules int
+	// TypeKeys — сколько ключей объявления прочитано. Печатается рядом с
+	// Modules: приставок мало by construction, и одна их величина не отличила
+	// бы «таблица прочитана» от «прочитаны две строки из двадцати семи».
+	TypeKeys int
 	// SurfaceFiles — сколько файлов поверхности прочитано.
 	SurfaceFiles int
 	// Enumerations — сколько перечней (три имени и более) распознано и рассужено.
@@ -145,11 +170,11 @@ func AuditClientTruthIAMModuleSet(
 ) ([]ClientTruthIAMModuleSetFinding, ClientTruthIAMModuleSetCensus, error) {
 	var census ClientTruthIAMModuleSetCensus
 
-	modules, err := parseModuleSet(opts.Tree, opts.ModuleSetFile, opts.ModuleSetVar)
+	modules, keys, err := parseModuleSet(opts.Tree, opts.ModuleSetFile, opts.ModuleSetVar)
 	if err != nil {
 		return nil, census, err
 	}
-	census.Modules = len(modules)
+	census.Modules, census.TypeKeys = len(modules), keys
 	if len(modules) < 3 {
 		return nil, census, fmt.Errorf(
 			"из %s выведено %d имён — набор не прочитан, судить перечни не по чему",
@@ -216,9 +241,10 @@ func AuditClientTruthIAMModuleSet(
 	}
 
 	if log != nil {
-		_, _ = fmt.Fprintf(log, "перепись: модулей выведено %d (%s) · файлов поверхности %d · "+
-			"перечней рассужено %d · спанов из двух имён встречено %d (НЕ судятся — законная пара)\n",
-			census.Modules, strings.Join(modules, ", "),
+		_, _ = fmt.Fprintf(log, "перепись: ключей типа прочитано %d · модулей выведено %d (%s) · "+
+			"файлов поверхности %d · перечней рассужено %d · спанов из двух имён встречено %d "+
+			"(НЕ судятся — законная пара)\n",
+			census.TypeKeys, census.Modules, strings.Join(modules, ", "),
 			census.SurfaceFiles, census.Enumerations, census.PairSpans)
 	}
 	sort.Slice(findings, func(i, j int) bool {
@@ -232,17 +258,23 @@ func AuditClientTruthIAMModuleSet(
 
 // parseModuleSet выводит набор РАЗБОРОМ объявления, а не чтением текста: имена
 // модулей стоят и в комментариях рядом с ним.
-func parseModuleSet(tree *treecorpus.Tree, rel, varName string) ([]string, error) {
+//
+// Возвращает РАЗЛИЧНЫЕ приставки ключей (отсортированно) и число прочитанных
+// ключей. Второе — объём осмотренного: приставок шесть при двадцати семи ключах,
+// и по одному их числу «таблица прочитана» неотличимо от «прочитаны две строки».
+func parseModuleSet(tree *treecorpus.Tree, rel, varName string) ([]string, int, error) {
 	src, rerr := clientTruthReadTreeFile(tree, rel)
 	if rerr != nil {
-		return nil, fmt.Errorf("чтение %s: %w", rel, rerr)
+		return nil, 0, fmt.Errorf("чтение %s: %w", rel, rerr)
 	}
 	fset := token.NewFileSet()
 	file, err := parser.ParseFile(fset, rel, src, 0)
 	if err != nil {
-		return nil, fmt.Errorf("разбор %s: %w", rel, err)
+		return nil, 0, fmt.Errorf("разбор %s: %w", rel, err)
 	}
+	seen := map[string]bool{}
 	var out []string
+	keys := 0
 	ast.Inspect(file, func(n ast.Node) bool {
 		vs, ok := n.(*ast.ValueSpec)
 		if !ok {
@@ -257,21 +289,43 @@ func parseModuleSet(tree *treecorpus.Tree, rel, varName string) ([]string, error
 				continue
 			}
 			for _, el := range lit.Elts {
-				bl, ok := el.(*ast.BasicLit)
+				kv, ok := el.(*ast.KeyValueExpr)
+				if !ok {
+					continue
+				}
+				bl, ok := kv.Key.(*ast.BasicLit)
 				if !ok || bl.Kind != token.STRING {
 					continue
 				}
-				if s, uerr := strconv.Unquote(bl.Value); uerr == nil && s != "" {
-					out = append(out, s)
+				key, uerr := strconv.Unquote(bl.Value)
+				if uerr != nil || key == "" {
+					continue
+				}
+				keys++
+				// Приставка — до ПЕРВОЙ точки, то же разбиение, каким его делает
+				// `authzmap.SplitObjectType`. Ключ без точки модуля не даёт: он
+				// не «модуль без ресурса», а ключ неверной формы, и записать его
+				// в набор значило бы объявить модулем то, чем таблица его не
+				// называет.
+				dot := strings.IndexByte(key, '.')
+				if dot <= 0 {
+					continue
+				}
+				if m := key[:dot]; !seen[m] {
+					seen[m] = true
+					out = append(out, m)
 				}
 			}
 		}
 		return true
 	})
 	if len(out) == 0 {
-		return nil, fmt.Errorf("в %s не найдено объявление %s со строковым литералом", rel, varName)
+		return nil, keys, fmt.Errorf(
+			"в %s не найдено объявление %s с ключами вида \"модуль.ресурс\" (ключей прочитано %d)",
+			rel, varName, keys)
 	}
-	return out, nil
+	sort.Strings(out)
+	return out, keys, nil
 }
 
 func firstNonEmpty(ss []string) string {

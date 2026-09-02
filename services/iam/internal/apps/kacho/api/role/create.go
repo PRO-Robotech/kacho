@@ -128,7 +128,13 @@ func (u *CreateRoleUseCase) Execute(ctx context.Context, r domain.Role) (*operat
 	// so a malformed rule surfaces its specific error (A-05/A-10/A-13) rather than a
 	// misleading compiled-cap message. Only a well-formed rule set is then compiled;
 	// the compiler enforces the ≤1024 compiled-cap (A-12).
-	if verr := r.Rules.Validate(domain.PolicyOfRole(r.IsSystem, r.OwnerModule)); verr != nil {
+	// Набор модулей — ЖИВЫЕ строки каталога, а не литерал: снятый модуль
+	// обязан перестать приниматься без перезапуска службы, а заведённый строкой
+	// — начать приниматься без релиза (#1927). Снимок один и тот же, что у
+	// проекции глаголов ниже, поэтому обе стороны правила судятся согласованным
+	// множеством, а не двумя моментами времени.
+	facts := u.cat.Facts()
+	if verr := r.Rules.Validate(domain.PolicyOfRole(r.IsSystem, r.OwnerModule), facts); verr != nil {
 		return nil, shared.MapValidationErr(verr)
 	}
 	// Grantable-token gate: the resource segment must be a PUBLISHED
@@ -147,7 +153,7 @@ func (u *CreateRoleUseCase) Execute(ctx context.Context, r domain.Role) (*operat
 		return nil, shared.MapValidationErr(cerr)
 	}
 	r.Permissions = compiled
-	if err := r.Validate(); err != nil {
+	if err := r.Validate(facts); err != nil {
 		return nil, shared.MapValidationErr(err)
 	}
 

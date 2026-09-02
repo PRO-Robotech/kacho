@@ -31,13 +31,18 @@ func newModuleSetStand(t *testing.T) *moduleSetStand {
 	// Объявление. В КОММЕНТАРИИ рядом стоит неполный перечень тех же имён —
 	// анализатор, читающий сырой текст вместо узла-литерала, вывел бы набор из
 	// него и разошёлся бы с действительностью, не покраснев ни разу.
-	s.write(t, "svc/domain/module_set.go", `package domain
+	s.write(t, "svc/authzmap/fga_types.go", `package authzmap
 
-// knownModules — набор. Исторически он был {alpha, beta}; эта строка НЕ объявление.
-var knownModules = []string{"alpha", "beta", "gamma", "delta"}
-
-// IsKnownModule …
-func IsKnownModule(m string) bool { return false }
+// objectTypes — таблица типов. Исторически модулей было {alpha, beta}; эта
+// строка НЕ объявление. Ключ "epsilon.ghost" здесь тоже НЕ объявление.
+var objectTypes = map[string]string{
+	"alpha.one":   "alpha_one",
+	"alpha.two":   "alpha_two",
+	"beta.one":    "beta_one",
+	"gamma.one":   "gamma_one",
+	"delta.one":   "delta_one",
+	"noDotAtAll":  "malformed",
+}
 `)
 	// Полный перечень в документации — законное состояние.
 	s.write(t, "docs/role.mdx", `# Роль
@@ -68,8 +73,8 @@ func (s *moduleSetStand) run(t *testing.T) ([]ClientTruthIAMModuleSetFinding, Cl
 	var log strings.Builder
 	f, c, err := AuditClientTruthIAMModuleSet(ClientTruthIAMModuleSetOptions{
 		Tree:          clientTruthSyntheticTree(t, s.root),
-		ModuleSetFile: "svc/domain/module_set.go",
-		ModuleSetVar:  "knownModules",
+		ModuleSetFile: "svc/authzmap/fga_types.go",
+		ModuleSetVar:  "objectTypes",
 		Surfaces:      []string{"docs", "proto"},
 		SurfaceExts:   []string{".mdx", ".proto"},
 	}, &log)
@@ -89,8 +94,14 @@ func TestModuleSetGate_SilentOnCompleteEnumerations(t *testing.T) {
 		t.Fatalf("на законном дереве findings=%d, ожидался 0: %v", len(findings), findings)
 	}
 	if census.Modules != 4 {
-		t.Fatalf("модулей выведено %d, ожидалось 4 — набор берётся из УЗЛА-литерала, "+
+		t.Fatalf("модулей выведено %d, ожидалось 4 — набор берётся из УЗЛОВ-КЛЮЧЕЙ, "+
 			"а не из комментария рядом", census.Modules)
+	}
+	// Ключ без точки типом не является и модуля НЕ даёт: прочитан он всё равно,
+	// и обе величины печатаются, иначе «шесть ключей» и «пять» неразличимы.
+	if census.TypeKeys != 6 {
+		t.Fatalf("ключей прочитано %d, ожидалось 6 (пять типов плюс один без точки)",
+			census.TypeKeys)
 	}
 	if census.Enumerations != 2 {
 		t.Fatalf("перечней рассужено %d, ожидалось 2 (документ + контракт)", census.Enumerations)
@@ -142,8 +153,7 @@ func TestModuleSetGate_RedOnIncompleteProtoEnumeration(t *testing.T) {
 // незаконно; здесь молчание ЗАКОННО, и гейт обязан его сохранить.
 func TestModuleSetGate_SilentWhenSetGrowsAndEnumerationsFollow(t *testing.T) {
 	s := newModuleSetStand(t)
-	s.write(t, "svc/domain/module_set.go",
-		"package domain\n\nvar knownModules = []string{\"alpha\", \"beta\", \"gamma\", \"delta\", \"epsilon\"}\n")
+	s.write(t, "svc/authzmap/fga_types.go", grownTypeTable)
 	s.write(t, "docs/role.mdx",
 		"<code>alpha</code> / <code>beta</code> / <code>gamma</code> / <code>delta</code> / <code>epsilon</code>\n")
 	s.write(t, "proto/role.proto", "// (`alpha`/`beta`/`gamma`/`delta`/`epsilon`)\n")
@@ -160,8 +170,7 @@ func TestModuleSetGate_SilentWhenSetGrowsAndEnumerationsFollow(t *testing.T) {
 // перечни за ней НЕ пошли: ровно дефект #1627. Обязаны покраснеть ОБА места.
 func TestModuleSetGate_RedWhenSetGrowsAndEnumerationsDoNot(t *testing.T) {
 	s := newModuleSetStand(t)
-	s.write(t, "svc/domain/module_set.go",
-		"package domain\n\nvar knownModules = []string{\"alpha\", \"beta\", \"gamma\", \"delta\", \"epsilon\"}\n")
+	s.write(t, "svc/authzmap/fga_types.go", grownTypeTable)
 	findings, _ := s.run(t)
 	if len(findings) != 2 {
 		t.Fatalf("findings=%d, ожидалось 2 (документ и контракт): %v", len(findings), findings)
@@ -177,14 +186,14 @@ func TestModuleSetGate_RedWhenSetGrowsAndEnumerationsDoNot(t *testing.T) {
 // от «прочитано ноль»: объявления нет вовсе.
 func TestModuleSetGate_FailsOnEmptyTraversal(t *testing.T) {
 	s := newModuleSetStand(t)
-	if err := os.Remove(filepath.Join(s.root, "svc/domain/module_set.go")); err != nil {
+	if err := os.Remove(filepath.Join(s.root, "svc/authzmap/fga_types.go")); err != nil {
 		t.Fatal(err)
 	}
 	var log strings.Builder
 	_, _, err := AuditClientTruthIAMModuleSet(ClientTruthIAMModuleSetOptions{
 		Tree:          clientTruthSyntheticTree(t, s.root),
-		ModuleSetFile: "svc/domain/module_set.go",
-		ModuleSetVar:  "knownModules",
+		ModuleSetFile: "svc/authzmap/fga_types.go",
+		ModuleSetVar:  "objectTypes",
 		Surfaces:      []string{"docs", "proto"},
 		SurfaceExts:   []string{".mdx", ".proto"},
 	}, &log)
@@ -202,7 +211,7 @@ func TestModuleSetGate_FailsWhenVarNameIsWrong(t *testing.T) {
 	_, _, err := AuditClientTruthIAMModuleSet(ClientTruthIAMModuleSetOptions{
 		Tree:          clientTruthSyntheticTree(t, s.root),
 		ModuleSetFile: "svc/domain/module_set.go",
-		ModuleSetVar:  "renamedModules",
+		ModuleSetVar:  "renamedTypes",
 		Surfaces:      []string{"docs", "proto"},
 		SurfaceExts:   []string{".mdx", ".proto"},
 	}, &log)
@@ -210,3 +219,18 @@ func TestModuleSetGate_FailsWhenVarNameIsWrong(t *testing.T) {
 		t.Fatal("объявление не найдено по имени, а анализатор вернул успех")
 	}
 }
+
+// grownTypeTable — та же таблица, в которой появился ПЯТЫЙ модуль. Вынесена
+// значением, потому что её пишут два прогона: один — где перечни за ней пошли,
+// другой — где не пошли. Две копии разошлись бы, и «краснеет» с «молчит»
+// перестали бы говорить об одном входе.
+const grownTypeTable = `package authzmap
+
+var objectTypes = map[string]string{
+	"alpha.one":   "alpha_one",
+	"beta.one":    "beta_one",
+	"gamma.one":   "gamma_one",
+	"delta.one":   "delta_one",
+	"epsilon.one": "epsilon_one",
+}
+`

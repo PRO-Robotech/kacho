@@ -5,7 +5,9 @@ package role
 
 // rules_catalog.go — the grantable-token gate for an authored role's rules[].
 //
-// `domain.Rule.Validate` closes the MODULE segment (domain.IsKnownModule). Ни
+// `domain.Rule.Validate` closes the MODULE segment — членством в наборе, который
+// use-case подаёт ему параметром (живой снимок каталога, #1927; прежде это был
+// литерал домена, снятый вместе с функцией `domain.IsKnownModule`). Ни
 // сегмент РЕСУРСА, ни сегмент ГЛАГОЛА словарём НЕ закрыты: оба проверяются лишь
 // грамматикой токена (плюс мощность и одиночность подстановки — `validateVerbs`).
 // Прежняя редакция этого абзаца утверждала, что сегмент глагола закрыт словарём

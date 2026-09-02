@@ -225,7 +225,7 @@ func TestIAMCT104_CatalogSeedMatchesTheLiteralBothWays(t *testing.T) {
 	wantVerb := map[string]bool{}
 	wantTier := map[string]bool{}
 	wantMod := map[string]bool{}
-	for _, m := range domain.KnownModules() {
+	for _, m := range authzmap.CatalogSeedModules() {
 		wantMod[m] = true
 	}
 	for _, e := range authzmap.Catalog() {
@@ -264,7 +264,7 @@ func TestIAMCT104_CatalogSeedMatchesTheLiteralBothWays(t *testing.T) {
 		len(wantMod), len(wantRes), len(wantVerb), len(wantTier),
 		len(gotMod), len(gotRes), len(gotVerb), len(gotTier))
 
-	require.Equal(t, keysOf(wantMod), keysOf(gotMod), "catalog_module ≠ domain.KnownModules()")
+	require.Equal(t, keysOf(wantMod), keysOf(gotMod), "catalog_module ≠ authzmap.CatalogSeedModules()")
 	require.Equal(t, keysOf(wantRes), keysOf(gotRes), "catalog_resource ≠ authzmap.Catalog()")
 	require.Equal(t, keysOf(wantVerb), keysOf(gotVerb),
 		"пообъектная половина catalog_verb ≠ typeVerbRelations")

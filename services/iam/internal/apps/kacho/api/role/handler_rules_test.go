@@ -9,6 +9,8 @@ package role
 // paths return BEFORE reaching the use-case, so a nil use-case is safe.
 
 import (
+	"github.com/PRO-Robotech/kacho/services/iam/internal/testsupport/catalogfixture"
+
 	"context"
 	"testing"
 
@@ -43,7 +45,7 @@ func TestRoleHandler_A02_CreateRejectsPermissions(t *testing.T) {
 // Update whose update_mask carries permissions → sync
 // INVALID_ARGUMENT "permissions is immutable after Role.Create".
 func TestRoleHandler_A08_UpdateRejectsPermissionsMask(t *testing.T) {
-	h := &Handler{update: &UpdateRoleUseCase{}}
+	h := &Handler{update: &UpdateRoleUseCase{cat: catalogfixture.Source()}}
 	_, err := h.Update(context.Background(), &iamv1.UpdateRoleRequest{
 		RoleId:     "rol0000000000000abcd",
 		UpdateMask: &fieldmaskpb.FieldMask{Paths: []string{"permissions"}},

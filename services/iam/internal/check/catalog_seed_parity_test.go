@@ -23,7 +23,6 @@ import (
 	"testing"
 
 	"github.com/PRO-Robotech/kacho/services/iam/internal/authzmap"
-	"github.com/PRO-Robotech/kacho/services/iam/internal/domain"
 	"github.com/PRO-Robotech/kacho/services/iam/internal/manifest"
 )
 
@@ -70,7 +69,7 @@ const tierOnlyMigrationPath = "services/iam/internal/migrations/20260902062000_a
 // ярусная половина в нём отсутствует by construction — она заведена позже,
 // отдельной миграцией.
 func literalCatalog() (modules, resources, verbs []string) {
-	modules = domain.KnownModules()
+	modules = authzmap.CatalogSeedModules()
 	for _, r := range authzmap.CatalogSeedResources() {
 		resources = append(resources, r.Dotted)
 	}
