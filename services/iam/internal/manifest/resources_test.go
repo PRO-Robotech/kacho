@@ -57,7 +57,9 @@ func TestMODMR01GeneratedResourcesSectionLoadsWhole(t *testing.T) {
 	if !ok {
 		t.Fatalf("ресурс network не прочитан: %v", byName)
 	}
-	if net.ObjectType != "vpc_network" || net.Parent != "project" || net.Producer != "derived" {
+	if net.ObjectType != "vpc_network" || len(net.Parents) != 1 ||
+		net.Parents[0].Name != "project" || net.Parents[0].Type != "project" ||
+		net.Producer != "derived" {
 		t.Errorf("порождённые ключи network прочитаны неверно: %+v", net)
 	}
 	if len(net.Verbs) != 8 {
@@ -123,7 +125,7 @@ func TestMODMR02ResourcesSectionMayBeAbsent(t *testing.T) {
 // загрузчик зовёт именно её, а не собственную копию.
 func TestMODMR03VerbsParseInBothFormsAndClassComesFromOneRule(t *testing.T) {
 	doc := "apiVersion: iam/v1\nmodule: vpc\nresources:\n" +
-		"  - name: network\n    objectType: vpc_network\n    parent: project\n    producer: derived\n" +
+		"  - name: network\n    objectType: vpc_network\n    parents: [project]\n    producer: derived\n" +
 		"    verbs:\n      - get\n      - {name: addCidrBlocks, class: update}\n"
 	m, err := manifest.Load([]byte(doc))
 	if err != nil {
@@ -161,7 +163,7 @@ func TestMODMR03VerbsParseInBothFormsAndClassComesFromOneRule(t *testing.T) {
 // `class` обязателен.
 func TestMODMR04NonCanonicalVerbWithoutClassIsRefused(t *testing.T) {
 	base := "apiVersion: iam/v1\nmodule: vpc\nresources:\n" +
-		"  - name: address\n    objectType: vpc_address\n    parent: project\n    producer: derived\n" +
+		"  - name: address\n    objectType: vpc_address\n    parents: [project]\n    producer: derived\n" +
 		"    verbs:\n      - get\n      - {name: allocateExternalIp%s}\n"
 
 	_, err := manifest.Load([]byte(strings.Replace(base, "%s", "", 1)))
@@ -190,7 +192,7 @@ func TestMODMR04NonCanonicalVerbWithoutClassIsRefused(t *testing.T) {
 // но и чем это чинится.
 func TestMODMR05ClassOutsideTheClosedSetIsRefused(t *testing.T) {
 	base := "apiVersion: iam/v1\nmodule: vpc\nresources:\n" +
-		"  - name: network\n    objectType: vpc_network\n    parent: project\n    producer: derived\n" +
+		"  - name: network\n    objectType: vpc_network\n    parents: [project]\n    producer: derived\n" +
 		"    verbs:\n      - {name: get, class: %s}\n"
 
 	_, err := manifest.Load([]byte(strings.Replace(base, "%s", "fetch", 1)))
@@ -219,7 +221,7 @@ func TestMODMR05ClassOutsideTheClosedSetIsRefused(t *testing.T) {
 // резолвится закрытой таблицей.
 func TestMODMR06ObjectTypeIsRequiredAndResolvedByTheClosedTable(t *testing.T) {
 	base := "apiVersion: iam/v1\nmodule: vpc\nresources:\n" +
-		"  - name: gateway\n%s    parent: project\n    producer: derived\n    verbs: [get]\n"
+		"  - name: gateway\n%s    parents: [project]\n    producer: derived\n    verbs: [get]\n"
 
 	_, err := manifest.Load([]byte(strings.Replace(base, "%s", "", 1)))
 	if err == nil {
@@ -261,7 +263,7 @@ func TestMODMR06ObjectTypeIsRequiredAndResolvedByTheClosedTable(t *testing.T) {
 // {project, account, cluster}.
 func TestMODMR07ParentOutsideTheClosedSetIsRefused(t *testing.T) {
 	base := "apiVersion: iam/v1\nmodule: vpc\nresources:\n" +
-		"  - name: network\n    objectType: vpc_network\n    parent: %s\n    producer: derived\n    verbs: [get]\n"
+		"  - name: network\n    objectType: vpc_network\n    parents: [%s]\n    producer: derived\n    verbs: [get]\n"
 
 	_, err := manifest.Load([]byte(strings.Replace(base, "%s", "organization", 1)))
 	if err == nil {
@@ -288,9 +290,9 @@ func TestMODMR07ParentOutsideTheClosedSetIsRefused(t *testing.T) {
 // каждую.
 func TestMODMR08DuplicateResourceNameNamesBothIndices(t *testing.T) {
 	doc := "apiVersion: iam/v1\nmodule: vpc\nresources:\n" +
-		"  - name: network\n    objectType: vpc_network\n    parent: project\n    producer: derived\n    verbs: [get]\n" +
-		"  - name: subnet\n    objectType: vpc_subnet\n    parent: project\n    producer: derived\n    verbs: [get]\n" +
-		"  - name: network\n    objectType: vpc_network\n    parent: project\n    producer: derived\n    verbs: [get]\n"
+		"  - name: network\n    objectType: vpc_network\n    parents: [project]\n    producer: derived\n    verbs: [get]\n" +
+		"  - name: subnet\n    objectType: vpc_subnet\n    parents: [project]\n    producer: derived\n    verbs: [get]\n" +
+		"  - name: network\n    objectType: vpc_network\n    parents: [project]\n    producer: derived\n    verbs: [get]\n"
 
 	_, err := manifest.Load([]byte(doc))
 	if err == nil {
@@ -309,8 +311,8 @@ func TestMODMR08DuplicateResourceNameNamesBothIndices(t *testing.T) {
 	}
 
 	// Парный положительный: разные имена.
-	ok := strings.Replace(doc, "  - name: network\n    objectType: vpc_network\n    parent: project\n    producer: derived\n    verbs: [get]\n"+
-		"  - name: subnet", "  - name: gateway\n    objectType: vpc_gateway\n    parent: project\n    producer: derived\n    verbs: [get]\n"+
+	ok := strings.Replace(doc, "  - name: network\n    objectType: vpc_network\n    parents: [project]\n    producer: derived\n    verbs: [get]\n"+
+		"  - name: subnet", "  - name: gateway\n    objectType: vpc_gateway\n    parents: [project]\n    producer: derived\n    verbs: [get]\n"+
 		"  - name: subnet", 1)
 	if _, err := manifest.Load([]byte(ok)); err != nil {
 		t.Fatalf("парный положительный отвергнут: %v", err)
@@ -326,7 +328,7 @@ func TestMODMR08DuplicateResourceNameNamesBothIndices(t *testing.T) {
 // автор получил бы ДВА объявления одного предмета, из которых верно одно.
 func TestMODMR09AuthoredRelationMayNotShadowAGeneratedVerb(t *testing.T) {
 	base := "apiVersion: iam/v1\nmodule: vpc\nresources:\n" +
-		"  - name: network\n    objectType: vpc_network\n    parent: project\n    producer: derived\n" +
+		"  - name: network\n    objectType: vpc_network\n    parents: [project]\n    producer: derived\n" +
 		"    relations:\n      - {name: %s, definition: \"[user]\"}\n" +
 		"    verbs: [get]\n"
 
@@ -355,7 +357,7 @@ func TestMODMR09AuthoredRelationMayNotShadowAGeneratedVerb(t *testing.T) {
 // «пережил ли авторский ключ перегенерацию».
 func TestMODMR27ProducerIsRequiredAndItsSetIsClosed(t *testing.T) {
 	base := "apiVersion: iam/v1\nmodule: vpc\nresources:\n" +
-		"  - name: network\n    objectType: vpc_network\n    parent: project\n%s    verbs: [get]\n"
+		"  - name: network\n    objectType: vpc_network\n    parents: [project]\n%s    verbs: [get]\n"
 
 	_, err := manifest.Load([]byte(strings.Replace(base, "%s", "", 1)))
 	if err == nil {
@@ -399,7 +401,7 @@ func TestMODMR27ProducerIsRequiredAndItsSetIsClosed(t *testing.T) {
 // заведение двух форм.
 func TestVerbLongFormRejectsAnUnknownKey(t *testing.T) {
 	doc := "apiVersion: iam/v1\nmodule: vpc\nresources:\n" +
-		"  - name: network\n    objectType: vpc_network\n    parent: project\n    producer: derived\n" +
+		"  - name: network\n    objectType: vpc_network\n    parents: [project]\n    producer: derived\n" +
 		"    verbs:\n      - {name: get, clazz: get}\n"
 	_, err := manifest.Load([]byte(doc))
 	if err == nil {

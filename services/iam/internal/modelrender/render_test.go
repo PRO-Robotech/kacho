@@ -36,7 +36,7 @@ func canonBlock(t *testing.T, typ string) string {
 // умолчательные субъекты и ярусы.
 func gatewayResource() manifest.Resource {
 	return manifest.Resource{
-		Name: "gateway", ObjectType: "vpc_gateway", Parent: "project", Producer: "derived",
+		Name: "gateway", ObjectType: "vpc_gateway", Parents: []manifest.Parent{{Name: "project", Type: "project"}}, Producer: "derived",
 		Verbs: []manifest.Verb{{Name: "get"}, {Name: "list"}, {Name: "update"}, {Name: "delete"}},
 	}
 }
@@ -79,7 +79,7 @@ func TestB05TheTrailingNewlineIsAByteToo(t *testing.T) {
 // (снято #1115). Черновик был зелен ровно потому, что сверялся со снимком.
 func TestB02TheRetiredRelationDoesNotComeBack(t *testing.T) {
 	got, err := modelrender.Render(manifest.Resource{
-		Name: "subnet", ObjectType: "vpc_subnet", Parent: "project", Producer: "derived",
+		Name: "subnet", ObjectType: "vpc_subnet", Parents: []manifest.Parent{{Name: "project", Type: "project"}}, Producer: "derived",
 		Verbs: []manifest.Verb{{Name: "get"}, {Name: "list"}, {Name: "update"}, {Name: "delete"}},
 	})
 	if err != nil {
@@ -186,7 +186,7 @@ func TestC03ReturningARetiredTierIsRenderedAndThusDiverges(t *testing.T) {
 // у групп молча.
 func TestTiersNarrowTiersAndNeverTheVerbs(t *testing.T) {
 	got, err := modelrender.Render(manifest.Resource{
-		Name: "addressPool", ObjectType: "vpc_address_pool", Parent: "cluster", Producer: "authored",
+		Name: "addressPool", ObjectType: "vpc_address_pool", Parents: []manifest.Parent{{Name: "cluster", Type: "cluster"}}, Producer: "authored",
 		Subjects: []string{"user", "service_account"},
 		Tiers:    []string{"admin", "viewer"},
 		Verbs:    []manifest.Verb{{Name: "get"}, {Name: "list"}, {Name: "update"}, {Name: "delete"}},
@@ -212,7 +212,7 @@ func TestTiersNarrowTiersAndNeverTheVerbs(t *testing.T) {
 // TestRenderRefusesAResourceWithoutAnObjectType — рендерить нечего: отказ, а не
 // блок с пустым именем типа.
 func TestRenderRefusesAResourceWithoutAnObjectType(t *testing.T) {
-	if _, err := modelrender.Render(manifest.Resource{Name: "x", Parent: "project"}); err == nil {
+	if _, err := modelrender.Render(manifest.Resource{Name: "x", Parents: []manifest.Parent{{Name: "project", Type: "project"}}}); err == nil {
 		t.Fatalf("ресурс без типа объекта отрендерен")
 	}
 	if _, err := modelrender.Render(manifest.Resource{Name: "x", ObjectType: "vpc_network"}); err == nil {

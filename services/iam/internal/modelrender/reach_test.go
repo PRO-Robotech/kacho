@@ -54,9 +54,10 @@ func derived(block modelrender.Block) (manifest.Resource, bool) {
 			return manifest.Resource{}, false
 		}
 		switch {
-		case r.Parent == "" && rhs == "["+name+"]":
-			r.Parent = name
-		case name == "super_admin" && rhs == "super_admin from "+r.Parent:
+		case len(r.Parents) == 0 && rhs == "["+name+"]":
+			r.Parents = append(r.Parents, manifest.Parent{Name: name, Type: name})
+		case name == "super_admin" && len(r.Parents) == 1 &&
+			rhs == "super_admin from "+r.Parents[0].Name:
 			// указатель каскада — порождается, ресурсом не объявляется
 		case strings.HasPrefix(name, "v_"):
 			r.Verbs = append(r.Verbs, manifest.Verb{Name: strings.TrimPrefix(name, "v_"), Class: "get"})
@@ -72,7 +73,7 @@ func derived(block modelrender.Block) (manifest.Resource, bool) {
 			r.Relations = append(r.Relations, manifest.Relation{Name: name, Definition: rhs})
 		}
 	}
-	if r.Parent == "" {
+	if len(r.Parents) == 0 {
 		return manifest.Resource{}, false
 	}
 	return r, true

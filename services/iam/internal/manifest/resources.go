@@ -26,7 +26,7 @@ import (
 // То есть у одних ключей записи есть производитель в дереве, у других автор-
 // человек, и перегенерация обязана сохранить вторые.
 //
-//	порождается    name · objectType · parent · verbs[]
+//	порождается    name · objectType · parents[] · verbs[]
 //	объявляется    doc · relations[] · subjects[] · tiers[]
 //
 // Вид ключей записи называет сама запись — ключом `producer` из закрытого набора
@@ -77,10 +77,18 @@ var (
 	ErrObjectTypeRequired = errors.New("manifest: resource objectType is required")
 	// ErrObjectTypeUnknown — тип объекта вне закрытой таблицы authzmap.
 	ErrObjectTypeUnknown = errors.New("manifest: resource objectType is outside the closed table")
-	// ErrParentRequired — якорь области не назван.
-	ErrParentRequired = errors.New("manifest: resource parent is required")
-	// ErrParentUnknown — якорь области вне закрытого набора.
-	ErrParentUnknown = errors.New("manifest: resource parent is outside the closed set")
+	// ErrParentRequired — указатель на объект-владелец не назван.
+	ErrParentRequired = errors.New("manifest: resource parents are required")
+	// ErrParentUnknown — тип объекта указателя вне закрытого набора.
+	ErrParentUnknown = errors.New("manifest: resource parent type is outside the closed set")
+	// ErrParentNameRequired — указатель не назвал себя.
+	ErrParentNameRequired = errors.New("manifest: resource parent name is required")
+	// ErrParentNameDuplicated — два указателя под одним именем. Второй объявил бы
+	// то же отношение модели во второй раз, и верно из двух было бы одно.
+	ErrParentNameDuplicated = errors.New("manifest: two resource parents share one name")
+	// ErrParentFormRedundant — длинная форма указателя при совпадающих имени и
+	// типе: одно значение, записываемое двумя способами.
+	ErrParentFormRedundant = errors.New("manifest: parent written in the long form while its name equals its type")
 	// ErrProducerRequired — запись не сказала, чем являются её ключи.
 	ErrProducerRequired = errors.New("manifest: resource producer is required")
 	// ErrProducerUnknown — вид ключей вне закрытого набора.
@@ -149,8 +157,26 @@ func CanonicalVerbs() []string {
 	return out
 }
 
-// resourceParents — закрытый набор якорей области ресурса.
-var resourceParents = []string{"project", "account", "cluster"}
+// scopeAnchors — закрытый набор ЯКОРЕЙ ОБЛАСТИ платформы. Тот же словарь, что у
+// областей выдачи (`iam.project | iam.account | iam.cluster`) без точечного
+// префикса, и он ОСТАЁТСЯ закрытым: расширяется тип указателя, а не право.
+var scopeAnchors = []string{"project", "account", "cluster"}
+
+// parentTypeIsKnown — тип объекта, на который указатель вправе указывать.
+//
+// Принимается ДВА словаря, и они разные: якорь области (закрытый набор выше,
+// `cluster` живёт только в нём — записи в таблице типов у него нет вовсе) и тип
+// закрытой таблицы `authzmap`. Слить их одним ключом значило бы объявить, что
+// ресурс-владелец и область выдачи суть одно, — а замер по канону говорит
+// обратное: `registry_repository` указывает на `registry_registry`, который
+// областью выдачи не является ни при каком написании.
+func parentTypeIsKnown(typ string) bool {
+	if contains(scopeAnchors, typ) {
+		return true
+	}
+	_, ok := authzmap.DottedType(typ)
+	return ok
+}
 
 // resourceProducers — закрытый набор видов ключей записи.
 var resourceProducers = []string{"derived", "authored"}
@@ -168,8 +194,9 @@ type Resource struct {
 	// ObjectType — тип объекта модели прав. ОБЯЗАТЕЛЕН: правило вывода из имени
 	// снято целиком (см. шапку файла).
 	ObjectType string `yaml:"objectType"`
-	// Parent — якорь области, под которым живёт ресурс.
-	Parent string `yaml:"parent"`
+	// Parents — указатели на объекты, под которыми живёт ресурс, в порядке
+	// блока модели. Первый — якорь области; остальные структурные.
+	Parents []Parent `yaml:"parents"`
 	// Producer — чем являются ОСТАЛЬНЫЕ ключи записи: `derived` (порождены из
 	// аннотаций) либо `authored` (написаны человеком, аннотаций у ресурса нет).
 	Producer string `yaml:"producer"`
@@ -186,6 +213,72 @@ type Resource struct {
 	Relations []Relation `yaml:"relations"`
 	// Verbs — действия ресурса. Обе формы записи принимаются (см. Verb).
 	Verbs []Verb `yaml:"verbs"`
+}
+
+// Parent — указатель на объект, под которым живёт ресурс: ИМЯ отношения в блоке
+// и ТИП объекта, на который оно указывает.
+//
+// # Имя и тип — разные строки, и это замер, а не осторожность
+//
+// У 26 модульных блоков канона из 27 они совпадают (`define project: [project]`),
+// у одного — нет: `registry_repository` несёт `define parent: [registry_registry]`.
+// Пока имя выводилось из типа, эта пара не порождалась НИ ПРИ КАКОМ значении
+// ключа, то есть блок был недостижим by construction.
+//
+// # Форм записи ДВЕ, и каждое значение выразимо ровно ОДНОЙ
+//
+//	project                                    короткая: имя равно типу
+//	{name: parent, type: registry_registry}    длинная: они различаются
+//
+// Длинная форма при совпадающих имени и типе ОТВЕРГАЕТСЯ: одно значение, два
+// способа записи — ровно тот класс, который манифест и ловит. Тот же приём, что
+// у действия (`Verb`): короткая форма ровно там, где выводить есть из чего.
+type Parent struct {
+	// Name — имя отношения-указателя в блоке модели.
+	Name string `yaml:"name"`
+	// Type — тип объекта, на который указатель указывает.
+	Type string `yaml:"type"`
+
+	// long — запись пришла длинной формой. Неэкспортируемое и без yaml-тега: это
+	// НЕ ключ документа, а форма его записи, и обход полей структур (MOD-MF-21)
+	// его не видит.
+	long bool
+}
+
+// UnmarshalYAML принимает обе формы и НЕ теряет строгость к неизвестному ключу.
+//
+// Библиотека не проносит `Decoder.KnownFields(true)` внутрь собственного
+// UnmarshalYAML (то же измерено у `Verb`), поэтому ключи сверяются здесь, до
+// разбора, и отказ называет ключ и номер строки ровно как это делает библиотека.
+func (p *Parent) UnmarshalYAML(node *yaml.Node) error {
+	switch node.Kind {
+	case yaml.ScalarNode:
+		if node.Tag != "!!str" {
+			return fmt.Errorf("line %d: a parent written as a scalar must be a string, got %s",
+				node.Line, node.Tag)
+		}
+		p.Name, p.Type, p.long = node.Value, node.Value, false
+		return nil
+	case yaml.MappingNode:
+		for i := 0; i+1 < len(node.Content); i += 2 {
+			key := node.Content[i]
+			if key.Value != "name" && key.Value != "type" {
+				return fmt.Errorf("line %d: field %s not found in type parent", key.Line, key.Value)
+			}
+		}
+		var raw struct {
+			Name string `yaml:"name"`
+			Type string `yaml:"type"`
+		}
+		if err := node.Decode(&raw); err != nil {
+			return err
+		}
+		p.Name, p.Type, p.long = raw.Name, raw.Type, true
+		return nil
+	default:
+		return fmt.Errorf("line %d: a parent is a string or a mapping, got %s",
+			node.Line, nodeKindName(node.Kind))
+	}
 }
 
 // Relation — отношение модели прав, объявленное человеком.
@@ -330,22 +423,7 @@ func validateResourceAnchors(r *Resource, doc *yaml.Node, i int) []error {
 		}
 	}
 
-	switch {
-	case r.Parent == "":
-		faults = append(faults, linkFault{
-			kind:  ErrParentRequired,
-			coord: locate(doc, "resources", i, "parent"),
-			detail: fmt.Sprintf("якорь области не назван; принимаются: %s",
-				strings.Join(resourceParents, ", ")),
-		})
-	case !contains(resourceParents, r.Parent):
-		faults = append(faults, linkFault{
-			kind:  ErrParentUnknown,
-			coord: locate(doc, "resources", i, "parent"),
-			detail: fmt.Sprintf("якорь %q вне закрытого набора; принимаются: %s",
-				r.Parent, strings.Join(resourceParents, ", ")),
-		})
-	}
+	faults = append(faults, validateResourceParents(r, doc, i)...)
 
 	switch {
 	case r.Producer == "":
@@ -363,6 +441,81 @@ func validateResourceAnchors(r *Resource, doc *yaml.Node, i int) []error {
 			detail: fmt.Sprintf("вид ключей %q вне закрытого набора; принимаются: %s",
 				r.Producer, strings.Join(resourceProducers, ", ")),
 		})
+	}
+	return faults
+}
+
+// validateResourceParents — указатели ресурса: имя, тип и единственность формы.
+//
+// Находки собираются ВСЕ и по каждому указателю: названная первая заставила бы
+// автора чинить их по одной, по прогону на каждую.
+func validateResourceParents(r *Resource, doc *yaml.Node, i int) []error {
+	var faults []error
+	if len(r.Parents) == 0 {
+		return []error{linkFault{
+			kind:  ErrParentRequired,
+			coord: locate(doc, "resources", i, "parents"),
+			detail: fmt.Sprintf("указатель на объект-владелец не назван ни один; первый из них "+
+				"есть якорь области, и принимаются якоря %s либо тип закрытой таблицы iam. "+
+				"Без указателя блок модели не с чем связать, и каскад супер-доступа "+
+				"выводить не от чего", strings.Join(scopeAnchors, ", ")),
+		}}
+	}
+
+	seen := map[string]int{}
+	for k := range r.Parents {
+		p := &r.Parents[k]
+		switch {
+		case p.Name == "":
+			faults = append(faults, linkFault{
+				kind:  ErrParentNameRequired,
+				coord: locate(doc, "resources", i, "parents", k),
+				detail: fmt.Sprintf("resources[%d].parents[%d].name: указатель не назвал себя — "+
+					"безымянное отношение нечем адресовать в модели", i, k),
+			})
+		default:
+			if first, dup := seen[p.Name]; dup {
+				faults = append(faults, linkFault{
+					kind:  ErrParentNameDuplicated,
+					coord: locate(doc, "resources", i, "parents", k),
+					detail: fmt.Sprintf("resources[%d].parents[%d].name: имя %q уже объявлено "+
+						"указателем resources[%d].parents[%d] — одно отношение модели, "+
+						"объявленное дважды, и верно из двух одно", i, k, p.Name, i, first),
+				})
+			} else {
+				seen[p.Name] = k
+			}
+		}
+
+		switch {
+		case p.Type == "":
+			faults = append(faults, linkFault{
+				kind:  ErrParentUnknown,
+				coord: locate(doc, "resources", i, "parents", k),
+				detail: fmt.Sprintf("resources[%d].parents[%d].type: тип объекта не назван; "+
+					"принимаются якорь области (%s) либо тип закрытой таблицы iam",
+					i, k, strings.Join(scopeAnchors, ", ")),
+			})
+		case !parentTypeIsKnown(p.Type):
+			faults = append(faults, linkFault{
+				kind:  ErrParentUnknown,
+				coord: locate(doc, "resources", i, "parents", k),
+				detail: fmt.Sprintf("resources[%d].parents[%d].type: тип %q вне закрытого набора; "+
+					"принимаются якорь области (%s) либо тип закрытой таблицы iam. Указатель на "+
+					"тип, которого не существует, объявил бы отношение, по которому никто не "+
+					"постучится", i, k, p.Type, strings.Join(scopeAnchors, ", ")),
+			})
+		}
+
+		if p.long && p.Name != "" && p.Name == p.Type {
+			faults = append(faults, linkFault{
+				kind:  ErrParentFormRedundant,
+				coord: locate(doc, "resources", i, "parents", k),
+				detail: fmt.Sprintf("resources[%d].parents[%d]: имя равно типу (%q), а запись "+
+					"длинная — одно значение, записанное двумя способами. Напишите строкой: "+
+					"`parents: [%s]`", i, k, p.Name, p.Name),
+			})
+		}
 	}
 	return faults
 }

@@ -39,8 +39,9 @@ import (
 var (
 	// ErrObjectTypeEmpty — рендерить нечего: тип объекта не назван.
 	ErrObjectTypeEmpty = errors.New("modelrender: resource objectType is empty")
-	// ErrParentEmpty — якорь области не назван; указатель якоря — первая строка блока.
-	ErrParentEmpty = errors.New("modelrender: resource parent is empty")
+	// ErrParentEmpty — указателей нет ни одного; указатель — первая строка блока,
+	// и каскад супер-доступа выводится от его имени.
+	ErrParentEmpty = errors.New("modelrender: resource has no parents")
 )
 
 // defaultSubjects — набор субъектов, который канон несёт у ярусов и у глаголов
@@ -60,7 +61,7 @@ func Render(r manifest.Resource) ([]byte, error) {
 	if r.ObjectType == "" {
 		return nil, ErrObjectTypeEmpty
 	}
-	if r.Parent == "" {
+	if len(r.Parents) == 0 {
 		return nil, ErrParentEmpty
 	}
 
@@ -77,8 +78,13 @@ func Render(r manifest.Resource) ([]byte, error) {
 		b.WriteString("    " + line + "\n")
 	}
 
-	b.WriteString("    define " + r.Parent + ": [" + r.Parent + "]\n")
-	b.WriteString("    define super_admin: super_admin from " + r.Parent + "\n")
+	// Указателей бывает больше одного, и порядок их — порядок манифеста: канон
+	// ставит у `iam_access_binding` `project`, затем `account`, затем `cluster`, и
+	// сортировка дала бы другой блок.
+	for _, p := range r.Parents {
+		b.WriteString("    define " + p.Name + ": [" + p.Type + "]\n")
+	}
+	b.WriteString("    define super_admin: " + cascadeOf(r) + "\n")
 
 	subjects := r.Subjects
 	if len(subjects) == 0 {
@@ -111,6 +117,15 @@ func Render(r manifest.Resource) ([]byte, error) {
 	}
 
 	return []byte(b.String()), nil
+}
+
+// cascadeOf — правая часть отношения супер-доступа.
+//
+// Умолчание — `super_admin from <первый указатель>`: так написаны 19 модульных
+// блоков канона из 27. Остальные восемь несут иные написания, и они приходят из
+// манифеста ключом `cascade`.
+func cascadeOf(r manifest.Resource) string {
+	return "super_admin from " + r.Parents[0].Name
 }
 
 // docLines — строки авторского комментария без хвостовой пустой.
