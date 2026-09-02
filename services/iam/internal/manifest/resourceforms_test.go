@@ -216,57 +216,67 @@ func targetGroupDoc(verbs string) string {
 		"    verbs: " + verbs + "\n"
 }
 
-// TestMODMR32AVerbClassOutsideTheFiveIsExpressibleWhenTheTypeCarriesIt — класс
-// действия вне пятёрки выразим ровно там, где ТИП его объявляет.
+// TestMODMR32AVerbClassOutsideTheFiveIsExpressible — класс действия вне пятёрки
+// выразим длинной формой.
 //
 // Замер, из которого проба выведена: закрытый набор классов загрузчика был
-// пятёркой, тип `nlb_target_group` объявляет ШЕСТЬ отношений действий, а запись
+// пятёркой, тип `nlb_target_group` объявляет ШЕСТЬ отношений действия, а запись
 // каталога спрашивает `v_addtargets`. Действие `addTargets` не выражалось ни
 // одним входом: длинная форма давала «класс вне закрытого набора», короткая —
 // «класс не выводится», а любой другой класс писал бы не то отношение, которого
 // требует гейт.
-func TestMODMR32AVerbClassOutsideTheFiveIsExpressibleWhenTheTypeCarriesIt(t *testing.T) {
-	// Длинная форма: класс назван явно.
-	m := mustAccept(t, targetGroupDoc("[get, list, update, delete, {name: addTargets, class: addtargets}]"))
+func TestMODMR32AVerbClassOutsideTheFiveIsExpressible(t *testing.T) {
+	m := mustAccept(t, targetGroupDoc(
+		"[get, list, update, delete, {name: addTargets, class: addtargets}]"))
 	verbs := m.Resources[0].Verbs
 	last := verbs[len(verbs)-1]
 	if last.Name != "addTargets" || last.Class != "addtargets" {
 		t.Fatalf("класс действия вне пятёрки прочитан неверно: %+v", last)
 	}
-
-	// Короткая форма: класс выводится из набора ТИПА тем же приведением, каким
-	// эмиттер собирает имя отношения (`addTargets` → `v_addtargets`).
-	m = mustAccept(t, targetGroupDoc("[get, list, update, delete, addTargets, removeTargets]"))
-	verbs = m.Resources[0].Verbs
-	if verbs[4].Class != "addtargets" || verbs[5].Class != "removetargets" {
-		t.Fatalf("класс короткой формы не выведен из набора типа: %+v", verbs)
-	}
 }
 
-// TestMODMR32AClassNoTypeCarriesIsStillRefused — контроль в обратную сторону.
+// TestMODMR32TheShortFormStillDerivesOnlyTheFive — контроль в обратную сторону
+// по КОРОТКОЙ форме.
 //
-// Набор классов ПО РЕСУРСУ, а не платформенная константа: класс, которого не
-// несёт ни один тип, отвергается по-прежнему, а класс соседнего типа — на этом
-// ресурсе тоже.
-func TestMODMR32AClassNoTypeCarriesIsStillRefused(t *testing.T) {
-	mustRefuse(t, targetGroupDoc("[{name: addTargets, class: frobnicate}]"),
-		manifest.ErrVerbClassUnknown,
-		"resources[0].verbs[0].class", "frobnicate", "addtargets")
-
-	// Тот же класс на ресурсе, чей тип его НЕ объявляет: набор — атрибут типа.
-	mustRefuse(t, resourceDoc("    parents: [project]\n")[:len(resourceDoc("    parents: [project]\n"))-
-		len("    verbs: [get]\n")]+"    verbs: [{name: addTargets, class: addtargets}]\n",
-		manifest.ErrVerbClassUnknown,
-		"resources[0].verbs[0].class", "addtargets")
-
-	// И короткая форма на чужом типе класса по-прежнему не выводит.
-	mustRefuse(t, resourceDoc("    parents: [project]\n")[:len(resourceDoc("    parents: [project]\n"))-
-		len("    verbs: [get]\n")]+"    verbs: [addTargets]\n",
+// Правило «класс из имени» осталось одним и прежним: оно берёт класс ТОЛЬКО при
+// точном совпадении с каноническим. Расширив его на собственные действия
+// ресурса, загрузчик вывел бы у `listOperations` класс `listoperations`, тогда
+// как гейт этого действия спрашивает `v_list`, — то есть правило стало бы
+// производить неверный класс молча.
+func TestMODMR32TheShortFormStillDerivesOnlyTheFive(t *testing.T) {
+	mustRefuse(t, targetGroupDoc("[get, list, update, delete, addTargets]"),
 		manifest.ErrVerbClassNotDerivable,
-		"resources[0].verbs[0].class", "addTargets")
+		"resources[0].verbs[4].class", "addTargets", "{name: addTargets, class: addtargets}")
 
-	// Законный близнец: канонический класс принимается у всякого типа.
+	// Законный близнец: та же пятёрка короткой формой проходит.
 	mustAccept(t, targetGroupDoc("[get, list, update, delete]"))
+}
+
+// TestMODMR32AClassNoActionOfThisResourceProducesIsRefused — контроль в обратную
+// сторону по ДЛИННОЙ форме.
+//
+// Набор принимаемых классов есть канонические пять ПЛЮС отношения, которые
+// порождают собственные действия ЭТОГО ресурса. Класс, которого не порождает ни
+// одно из них, отвергается с перечнем годных.
+//
+// Несёт ли тип это отношение на самом деле — вопрос СУЩЕСТВА, и его задаёт
+// применитель ролей (`roleexport.judgeVerb`) со снимком каталога в руках:
+// загрузчик снимка не имеет и каталожный факт у литерала не спрашивает
+// (kacho#1816, гейт `internal/check` `TestIAMCT2_LiteralIsNotAReadSource`).
+func TestMODMR32AClassNoActionOfThisResourceProducesIsRefused(t *testing.T) {
+	mustRefuse(t, targetGroupDoc("[get, {name: addTargets, class: frobnicate}]"),
+		manifest.ErrVerbClassUnknown,
+		"resources[0].verbs[1].class", "frobnicate", "addtargets", "targetGroups")
+
+	// Класс соседнего действия, которого этот ресурс НЕ объявляет, — тоже отказ.
+	mustRefuse(t, targetGroupDoc("[get, {name: addTargets, class: removetargets}]"),
+		manifest.ErrVerbClassUnknown,
+		"resources[0].verbs[1].class", "removetargets")
+
+	// Законный близнец: объявите оба действия — и класс каждого принимается.
+	mustAccept(t, targetGroupDoc("[get, {name: addTargets, class: addtargets}, "+
+		"{name: removeTargets, class: removetargets}]"))
+	// И канонический класс принимается у всякого ресурса.
 	mustAccept(t, resourceDoc("    parents: [project]\n"))
 }
 

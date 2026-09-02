@@ -298,8 +298,8 @@ resources:
       - list
       - update
       - delete
-      - {name: addTargets, from: [v_update]}
-      - {name: removeTargets, from: [v_update]}
+      - {name: addTargets, class: addtargets, from: [v_update]}
+      - {name: removeTargets, class: removetargets, from: [v_update]}
 `)
 	mustContainLine(t, block,
 		"    define v_addtargets: [user, service_account, group#member] or v_update\n")
