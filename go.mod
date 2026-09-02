@@ -1,8 +1,8 @@
 module github.com/PRO-Robotech/kacho
 
-go 1.25.7
+go 1.26.0
 
-toolchain go1.25.13
+toolchain go1.26.8
 
 require (
 	dario.cat/mergo v1.0.2 // indirect
@@ -141,7 +141,7 @@ require (
 	github.com/testcontainers/testcontainers-go/modules/postgres v0.44.0
 	go.opentelemetry.io/otel/trace v1.45.0
 	go.uber.org/multierr v1.11.0
-	golang.org/x/crypto v0.55.0
+	golang.org/x/crypto v0.56.0
 	golang.org/x/net v0.58.0
 	golang.org/x/sync v0.22.0
 	google.golang.org/genproto/googleapis/api v0.0.0-20260803160001-6ac0973c030d
