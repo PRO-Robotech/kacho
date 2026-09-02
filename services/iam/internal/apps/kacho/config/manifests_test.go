@@ -60,6 +60,32 @@ func TestManifestsGuardRefusesRequiredWithoutDir(t *testing.T) {
 	}
 }
 
+// TestManifestsGuardRefusesADirWithoutReliance — ВТОРАЯ половина той же пары.
+//
+// Секция `manifests` есть ПАРА: намерение (`required`) и координата (`dir`).
+// Половина пары хуже отсутствия обеих, потому что выглядит настроенной, —
+// поэтому отвергаются ОБА неполных сочетания, а не одно (`security.md`
+// §«Контроль, у которого нет МЕХАНИЗМА исполниться»).
+//
+// До этой правки сочетание «каталог назван, опоры нет» ПРИНИМАЛОСЬ и означало не
+// то, что говорит: чтение включает сам каталог, и сорванную доставку `LoadDelivered`
+// отвергает независимо от значения. То есть исполнимых состояний было два, а
+// объявленных три (#1924).
+func TestManifestsGuardRefusesADirWithoutReliance(t *testing.T) {
+	err := config.ManifestsConfig{Required: false, Dir: "/etc/kacho-iam/manifests"}.Validate()
+	if err == nil {
+		t.Fatal("страж молчит на «каталог назван, опоры нет» — посадка объявила бы величину, " +
+			"которая ничего не меняет: доставка читается и отвергается на сорванном каталоге " +
+			"при любом required, значит объявленное «не опираемся» не исполняется ничем")
+	}
+	// Отказ обязан НАЗЫВАТЬ обе ручки: оператор чинит по тексту, а не по догадке.
+	for _, want := range []string{"manifests.required", "manifests.dir"} {
+		if !strings.Contains(err.Error(), want) {
+			t.Errorf("отказ не называет %q — читатель не узнает, что править: %v", want, err)
+		}
+	}
+}
+
 func TestManifestsGuardStaysSilentOnEveryLawfulShape(t *testing.T) {
 	// ПОЛОЖИТЕЛЬНЫЙ КОНТРОЛЬ к отрицанию выше. Без него «отказ есть» неотличимо
 	// от «страж отвергает любой вход».
@@ -67,8 +93,10 @@ func TestManifestsGuardStaysSilentOnEveryLawfulShape(t *testing.T) {
 		name string
 		cfg  config.ManifestsConfig
 	}{
+		// Сочетаний ВСЕГО четыре, и здесь стоят ОБА законных. Третье
+		// («каталог назван, опоры нет») переехало в отрицание выше вместе со
+		// своим предметом: пара неполна в обе стороны одинаково.
 		{"доставка не заведена", config.ManifestsConfig{}},
-		{"каталог назван, опоры нет", config.ManifestsConfig{Dir: "/etc/kacho-iam/manifests"}},
 		{"каталог назван, опора объявлена",
 			config.ManifestsConfig{Dir: "/etc/kacho-iam/manifests", Required: true}},
 	}
