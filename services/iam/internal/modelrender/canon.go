@@ -36,6 +36,7 @@ import (
 	"sort"
 
 	"github.com/PRO-Robotech/kacho/services/iam/internal/authzmap"
+	"github.com/PRO-Robotech/kacho/services/iam/internal/catalog"
 )
 
 // Block — блок типа канона: имя типа и его байты (единица A).
@@ -96,13 +97,13 @@ func SplitCanon(dsl []byte) []Block {
 // TestTheClosedTableSpeaksTheModuleVocabulary — без неё модуль, чей ключ разошёлся
 // бы с набором, потерял бы все свои типы из ожидаемого МОЛЧА, и сверка перестала
 // бы его видеть, оставаясь зелёной.
-func OwnedTypes(dsl []byte, module string) []string {
+func OwnedTypes(resources []catalog.ResourceRow, dsl []byte, module string) []string {
 	inCanon := make(map[string]struct{})
 	for _, b := range SplitCanon(dsl) {
 		inCanon[b.Type] = struct{}{}
 	}
 	var out []string
-	for _, e := range authzmap.Catalog() {
+	for _, e := range resources {
 		if e.Module != module {
 			continue
 		}
@@ -129,9 +130,9 @@ func OwnedTypes(dsl []byte, module string) []string {
 // молча — шестой блок, дописанный рукой, не заметит НИКТО, а это дословно признак
 // #1089. Годный исход один: перечень объявлен, число печатается переписью,
 // ПРИРОСТ — находка (§2 п. 8, §4 B-06).
-func TypesOutsideModules(dsl []byte) []string {
+func TypesOutsideModules(resources []catalog.ResourceRow, dsl []byte) []string {
 	owned := make(map[string]struct{})
-	for _, e := range authzmap.Catalog() {
+	for _, e := range resources {
 		if typ, ok := authzmap.ObjectType(e.Module, e.Resource); ok {
 			owned[typ] = struct{}{}
 		}

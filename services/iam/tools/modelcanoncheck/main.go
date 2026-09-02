@@ -45,6 +45,7 @@ import (
 	"fmt"
 	"os"
 
+	"github.com/PRO-Robotech/kacho/services/iam/internal/apps/kacho/seed"
 	"github.com/PRO-Robotech/kacho/services/iam/internal/modelrender"
 )
 
@@ -82,7 +83,14 @@ func main() {
 		os.Exit(exitNotRun)
 	}
 
-	census, findings, code := modelrender.Sweep(root, ledger)
+	// Перечень ресурсов берётся СНИМКОМ каталога, а не у литерала (kacho#1816).
+	// Собирается он из того же перечня, которым миграция посеяла строки,
+	// поэтому сборочная проверка остаётся воспроизводимой из ДЕРЕВА: сделать её
+	// функцией состояния чужой базы значило бы получать разный вердикт канона
+	// на одном и том же дереве.
+	rows := seed.LiteralRows()
+
+	census, findings, code := modelrender.Sweep(rows.Resources, root, ledger)
 
 	// Перепись печатается ВСЕГДА и первой: без неё зелёный вердикт неотличим от
 	// вердикта обхода, не прочитавшего ничего.

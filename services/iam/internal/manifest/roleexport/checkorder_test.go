@@ -29,6 +29,7 @@ import (
 	"testing"
 
 	"github.com/PRO-Robotech/kacho/services/iam/internal/manifest/roleexport"
+	"github.com/PRO-Robotech/kacho/services/iam/internal/testsupport/catalogfixture"
 )
 
 // TestStageOneRunsBeforeStageTwoInsideTheSameFunction — порядок и замыкание.
@@ -43,7 +44,7 @@ import (
 //     пригодных действий у которого ноль (гейт `editor@project`).
 func TestStageOneRunsBeforeStageTwoInsideTheSameFunction(t *testing.T) {
 	m := mustLoadManifest(t, bothStagesManifest)
-	rep := roleexport.Check(m, mustActions(t))
+	rep := roleexport.Check(catalogfixture.Facts(), m, mustActions(t))
 
 	t.Logf("перепись: %s", rep.Summary())
 
@@ -74,7 +75,7 @@ func TestStageOneRunsBeforeStageTwoInsideTheSameFunction(t *testing.T) {
 func TestStageTwoRunsWhenStageOneIsGreen(t *testing.T) {
 	m := mustLoadManifest(t, strings.Replace(bothStagesManifest,
 		"{name: listOperations, class: get}", "{name: listOperations, class: list}", 1))
-	rep := roleexport.Check(m, mustActions(t))
+	rep := roleexport.Check(catalogfixture.Facts(), m, mustActions(t))
 
 	t.Logf("перепись: %s", rep.Summary())
 	if !rep.RulesJudged {

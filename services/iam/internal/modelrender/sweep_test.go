@@ -9,6 +9,7 @@ import (
 	"strings"
 	"testing"
 
+	"github.com/PRO-Robotech/kacho/services/iam/internal/apps/kacho/seed"
 	"github.com/PRO-Robotech/kacho/services/iam/internal/domain"
 	"github.com/PRO-Robotech/kacho/services/iam/internal/modelrender"
 )
@@ -87,7 +88,7 @@ func allWaivers(except ...string) []modelrender.Waiver {
 func TestC08NothingToRenderIsVoidNotSuccess(t *testing.T) {
 	root := helperTree(t, twoBlockCanon)
 
-	census, findings, code := modelrender.Sweep(root, allWaivers())
+	census, findings, code := modelrender.Sweep(seed.LiteralRows().Resources, root, allWaivers())
 
 	if code != modelrender.SweepVoid {
 		t.Fatalf("исход %d, ожидался %d (VOID); находки: %v", code, modelrender.SweepVoid, findings)
@@ -109,7 +110,7 @@ func TestC08NothingToRenderIsVoidNotSuccess(t *testing.T) {
 func TestC08NothingToRenderWithoutTheWaiverIsAFinding(t *testing.T) {
 	root := helperTree(t, twoBlockCanon)
 
-	_, findings, code := modelrender.Sweep(root, nil)
+	_, findings, code := modelrender.Sweep(seed.LiteralRows().Resources, root, nil)
 
 	if code != modelrender.SweepFinding {
 		t.Fatalf("исход %d, ожидался %d (находка)", code, modelrender.SweepFinding)
@@ -145,7 +146,7 @@ func TestC09ModuleOfTheClosedSetWithoutAManifestIsNamed(t *testing.T) {
 		writeManifest(t, root, m, body)
 	}
 
-	_, findings, code := modelrender.Sweep(root, nil)
+	_, findings, code := modelrender.Sweep(seed.LiteralRows().Resources, root, nil)
 
 	if code != modelrender.SweepFinding {
 		t.Fatalf("исход %d, ожидался %d (находка)", code, modelrender.SweepFinding)
@@ -172,7 +173,7 @@ func TestC09TheSameMissingManifestWithALedgerRecordPasses(t *testing.T) {
 		writeManifest(t, root, m, body)
 	}
 
-	census, findings, code := modelrender.Sweep(root, []modelrender.Waiver{{Module: missing, Issue: 1091}})
+	census, findings, code := modelrender.Sweep(seed.LiteralRows().Resources, root, []modelrender.Waiver{{Module: missing, Issue: 1091}})
 
 	if code != modelrender.SweepOK {
 		t.Fatalf("исход %d, ожидался %d; находки: %v", code, modelrender.SweepOK, findings)
@@ -197,7 +198,7 @@ func TestC09SixModulesSixManifestsPass(t *testing.T) {
 		writeManifest(t, root, m, body)
 	}
 
-	census, findings, code := modelrender.Sweep(root, nil)
+	census, findings, code := modelrender.Sweep(seed.LiteralRows().Resources, root, nil)
 
 	if code != modelrender.SweepOK {
 		t.Fatalf("исход %d, ожидался %d; находки: %v", code, modelrender.SweepOK, findings)
@@ -226,7 +227,7 @@ func TestN05ALedgerRecordWithNothingToForgiveIsAFinding(t *testing.T) {
 		writeManifest(t, root, m, body)
 	}
 
-	_, findings, code := modelrender.Sweep(root, []modelrender.Waiver{{Module: "vpc", Issue: 1091}})
+	_, findings, code := modelrender.Sweep(seed.LiteralRows().Resources, root, []modelrender.Waiver{{Module: "vpc", Issue: 1091}})
 
 	if code != modelrender.SweepFinding {
 		t.Fatalf("исход %d, ожидался %d: запись ведомости пережила свой предмет", code, modelrender.SweepFinding)
@@ -241,7 +242,7 @@ func TestN05ALedgerRecordWithNothingToForgiveIsAFinding(t *testing.T) {
 func TestN05ALedgerRecordWithoutAnIssueIsAFinding(t *testing.T) {
 	root := helperTree(t, twoBlockCanon)
 
-	_, findings, code := modelrender.Sweep(root, []modelrender.Waiver{{Module: "vpc"}})
+	_, findings, code := modelrender.Sweep(seed.LiteralRows().Resources, root, []modelrender.Waiver{{Module: "vpc"}})
 
 	if code != modelrender.SweepFinding {
 		t.Fatalf("исход %d, ожидался %d: запись без номера прошла", code, modelrender.SweepFinding)
@@ -262,7 +263,7 @@ func TestN05ALedgerRecordWithoutAnIssueIsAFinding(t *testing.T) {
 func TestN05AWaiverForAModuleOutsideTheClosedSetIsAFinding(t *testing.T) {
 	root := helperTree(t, twoBlockCanon)
 
-	_, findings, code := modelrender.Sweep(root, append(allWaivers(),
+	_, findings, code := modelrender.Sweep(seed.LiteralRows().Resources, root, append(allWaivers(),
 		modelrender.Waiver{Module: "geo", Issue: 1091}))
 
 	if code != modelrender.SweepFinding {

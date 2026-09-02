@@ -11,6 +11,7 @@ import (
 	"testing"
 
 	"github.com/PRO-Robotech/kacho/internal/authzplan"
+	"github.com/PRO-Robotech/kacho/services/iam/internal/apps/kacho/seed"
 	"github.com/PRO-Robotech/kacho/services/iam/internal/modelrender"
 )
 
@@ -63,7 +64,7 @@ func TestB06TypesOutsideModulesAreDerivedNotWritten(t *testing.T) {
 	if err != nil {
 		t.Fatalf("канон не резолвится: %v", err)
 	}
-	got := modelrender.TypesOutsideModules(dsl)
+	got := modelrender.TypesOutsideModules(seed.LiteralRows().Resources, dsl)
 	want := []string{"cluster", "group", "iam_fgaproxy", "service_account", "user"}
 	if strings.Join(got, ",") != strings.Join(want, ",") {
 		t.Fatalf("типы вне модулей = %v, ожидалось %v", got, want)
@@ -79,11 +80,11 @@ func TestB06AnAddedTypeOutsideModulesIsAFinding(t *testing.T) {
 	if err != nil {
 		t.Fatalf("канон не резолвится: %v", err)
 	}
-	before := len(modelrender.TypesOutsideModules(dsl))
+	before := len(modelrender.TypesOutsideModules(seed.LiteralRows().Resources, dsl))
 
 	injected := append(append([]byte(nil), dsl...),
 		[]byte("\ntype smuggled_by_hand\n  relations\n    define cluster: [cluster]\n")...)
-	after := modelrender.TypesOutsideModules(injected)
+	after := modelrender.TypesOutsideModules(seed.LiteralRows().Resources, injected)
 
 	if len(after) != before+1 {
 		t.Fatalf("дописанный рукой тип не увеличил перечень: было %d, стало %d", before, len(after))
@@ -104,7 +105,7 @@ func TestB06AKnownTypeIsNotReportedAsOutside(t *testing.T) {
 	if err != nil {
 		t.Fatalf("канон не резолвится: %v", err)
 	}
-	for _, typ := range modelrender.TypesOutsideModules(dsl) {
+	for _, typ := range modelrender.TypesOutsideModules(seed.LiteralRows().Resources, dsl) {
 		if typ == "vpc_network" || typ == "account" || typ == "project" {
 			t.Fatalf("тип %s отнесён закрытой таблицей к модулю, но объявлен вне модулей", typ)
 		}

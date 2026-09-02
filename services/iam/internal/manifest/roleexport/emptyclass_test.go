@@ -34,6 +34,7 @@ import (
 	"github.com/PRO-Robotech/kacho/services/iam/internal/apps/kacho/seed"
 	"github.com/PRO-Robotech/kacho/services/iam/internal/manifest"
 	"github.com/PRO-Robotech/kacho/services/iam/internal/manifest/roleexport"
+	"github.com/PRO-Robotech/kacho/services/iam/internal/testsupport/catalogfixture"
 )
 
 // mustCatalog — встроенный каталог прав, приведённый к порту пакета.
@@ -103,7 +104,7 @@ func mustActions(t *testing.T) []roleexport.Action {
 // находок разных проверок дало бы величину, которую нечем перемерить.
 func TestMODRL05EmptyClassOnANamedResourceIsRefused(t *testing.T) {
 	m := mustFixture(t)
-	faults, census := roleexport.CheckRoleRules(m, mustActions(t))
+	faults, census := roleexport.CheckRoleRules(catalogfixture.Facts(), m, mustActions(t))
 
 	t.Logf("перепись: %s", census.Summary())
 
@@ -144,7 +145,7 @@ func TestMODRL05EmptyClassOnANamedResourceIsRefused(t *testing.T) {
 // `viewer@vpc_network`, а чинятся они разным.
 func TestMODRL05RefusalNamesThePairAndTheWayOut(t *testing.T) {
 	m := mustFixture(t)
-	faults, _ := roleexport.CheckRoleRules(m, mustActions(t))
+	faults, _ := roleexport.CheckRoleRules(catalogfixture.Facts(), m, mustActions(t))
 
 	var refusal string
 	for _, f := range faults {
@@ -176,7 +177,7 @@ func TestMODRL05RefusalNamesThePairAndTheWayOut(t *testing.T) {
 // отвергающий любой вход, отказом не является.
 func TestMODRL05aNonEmptyClassIsSilent(t *testing.T) {
 	m := mustFixture(t)
-	faults, _ := roleexport.CheckRoleRules(m, mustActions(t))
+	faults, _ := roleexport.CheckRoleRules(catalogfixture.Facts(), m, mustActions(t))
 
 	for _, f := range faults {
 		var got roleexport.Finding
@@ -190,7 +191,7 @@ func TestMODRL05aNonEmptyClassIsSilent(t *testing.T) {
 // «ноль прочитанного».
 func TestCensusIsPrintedAndNonEmpty(t *testing.T) {
 	m := mustFixture(t)
-	_, census := roleexport.CheckRoleRules(m, mustActions(t))
+	_, census := roleexport.CheckRoleRules(catalogfixture.Facts(), m, mustActions(t))
 
 	if census.RolesRead != 2 {
 		t.Errorf("ролей осмотрено %d, в фикстуре две", census.RolesRead)

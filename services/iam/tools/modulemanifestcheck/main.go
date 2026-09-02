@@ -62,6 +62,7 @@ import (
 	"os"
 
 	"github.com/PRO-Robotech/kacho/services/iam/internal/apps/kacho/seed"
+	"github.com/PRO-Robotech/kacho/services/iam/internal/catalog"
 	"github.com/PRO-Robotech/kacho/services/iam/internal/manifest"
 	"github.com/PRO-Robotech/kacho/services/iam/internal/manifest/roleexport"
 )
@@ -144,6 +145,18 @@ func checkRights(root string, paths []string) int {
 		fmt.Fprintf(os.Stderr, "проверка прав НЕ ИСПОЛНЯЛАСЬ: каталог прав не прочитан: %v\n", err)
 		return exitNotRun
 	}
+	// Каталожный факт берётся СНИМКОМ, а не у литерала: читатель на литерале
+	// продолжил бы считать снятый тип живым (kacho#1816). Снимок собирается из
+	// того же перечня, которым миграция посеяла строки, поэтому вердикт
+	// команды остаётся воспроизводимым из ДЕРЕВА и базы не требует — иначе
+	// сборочная проверка стала бы функцией состояния чужой базы.
+	facts, ferr := catalog.NewFacts(seed.LiteralRows())
+	if ferr != nil {
+		fmt.Fprintf(os.Stderr,
+			"проверка прав НЕ ИСПОЛНЯЛАСЬ: каталожный факт не собран: %v\n", ferr)
+		return exitNotRun
+	}
+
 	rows := reg.All()
 	entries := make([]roleexport.CatalogEntry, 0, len(rows))
 	for _, r := range rows {
@@ -198,7 +211,7 @@ func checkRights(root string, paths []string) int {
 		// замыкание на красной первой живут в ней, а не здесь. Проверка
 		// порядка, написанная в команде, не защищала бы второго вызывающего той
 		// же связки.
-		rep := roleexport.Check(m, actions)
+		rep := roleexport.Check(facts, m, actions)
 		fmt.Printf("  права ролей %s: %s\n", rel, rep.Summary())
 		// Пометки печатаются в ВЫВОД, а не в поток ошибок, и вердикта не
 		// меняют: состояние, за которое автор манифеста не отвечает, обязано

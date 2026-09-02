@@ -41,6 +41,7 @@ import (
 
 	"github.com/PRO-Robotech/kacho/services/iam/internal/manifest"
 	"github.com/PRO-Robotech/kacho/services/iam/internal/manifest/roleexport"
+	"github.com/PRO-Robotech/kacho/services/iam/internal/testsupport/catalogfixture"
 )
 
 // mustLoadManifest — манифест из текста пробы.
@@ -89,7 +90,7 @@ func noteFor(notes []roleexport.Note, resource, verb string) (roleexport.Note, b
 // «ноль прочитанного», а перепись — от впечатления.
 func TestMODRL22aFixtureAsWrittenHasNoClassMismatch(t *testing.T) {
 	m := mustFixture(t)
-	faults, notes, census := roleexport.CheckResourceClasses(m, mustActions(t))
+	faults, notes, census := roleexport.CheckResourceClasses(catalogfixture.Facts(), m, mustActions(t))
 
 	t.Logf("перепись: %s", census.Summary())
 	for _, f := range faults {
@@ -128,7 +129,7 @@ func TestMODRL22aFixtureAsWrittenHasNoClassMismatch(t *testing.T) {
 // `vpc_network`; правило с классом `get` такого кортежа не пишет.
 func TestMODRL22DeclaredClassMustSatisfyTheGate(t *testing.T) {
 	m := mustLoadManifest(t, withNetworkListOperationsClass(t, "get"))
-	faults, _, census := roleexport.CheckResourceClasses(m, mustActions(t))
+	faults, _, census := roleexport.CheckResourceClasses(catalogfixture.Facts(), m, mustActions(t))
 
 	t.Logf("перепись: %s", census.Summary())
 	found := findingsOf(faults, roleexport.ErrDeclaredClassDoesNotSatisfyGate)
@@ -168,7 +169,7 @@ func TestMODRL22DeclaredClassMustSatisfyTheGate(t *testing.T) {
 // зеленел бы на реализации, роняющей всякую объектную форму.
 func TestMODRL22aFixedClassIsSilent(t *testing.T) {
 	m := mustLoadManifest(t, withNetworkListOperationsClass(t, "list"))
-	faults, _, census := roleexport.CheckResourceClasses(m, mustActions(t))
+	faults, _, census := roleexport.CheckResourceClasses(catalogfixture.Facts(), m, mustActions(t))
 	t.Logf("перепись: %s", census.Summary())
 	if len(faults) != 0 {
 		t.Fatalf("законный близнец получил отказ: %v", faults)
@@ -187,7 +188,7 @@ func TestMODRL22aFixedClassIsSilent(t *testing.T) {
 // проверки, заведённой против ровно этого класса.
 func TestMODRL22UnproducibleGateIsMarkedNotRefused(t *testing.T) {
 	m := mustFixture(t)
-	faults, notes, _ := roleexport.CheckResourceClasses(m, mustActions(t))
+	faults, notes, _ := roleexport.CheckResourceClasses(catalogfixture.Facts(), m, mustActions(t))
 
 	for _, f := range findingsOf(faults, roleexport.ErrDeclaredClassDoesNotSatisfyGate) {
 		if f.Resource == "addressPool" {
@@ -229,7 +230,7 @@ resources:
     producer: derived
     verbs: [{name: internalAttach, class: update}]
 `)
-	faults, notes, census := roleexport.CheckResourceClasses(m, mustActions(t))
+	faults, notes, census := roleexport.CheckResourceClasses(catalogfixture.Facts(), m, mustActions(t))
 	t.Logf("перепись: %s", census.Summary())
 	if len(faults) != 0 {
 		t.Fatalf("ни одно из двух действий отказом не является: %v", faults)
@@ -262,7 +263,7 @@ resources:
     producer: derived
     verbs: [{name: internalListByInstance, class: list}]
 `)
-	faults, notes, census := roleexport.CheckResourceClasses(m, mustActions(t))
+	faults, notes, census := roleexport.CheckResourceClasses(catalogfixture.Facts(), m, mustActions(t))
 	t.Logf("перепись: %s", census.Summary())
 	if len(faults) != 0 {
 		t.Fatalf("освобождённое действие судить нечем, а отказ есть: %v", faults)
@@ -297,7 +298,7 @@ resources:
     producer: derived
     verbs: [get, {name: internalGet, class: get}]
 `)
-	faults, notes, census := roleexport.CheckResourceClasses(m, mustActions(t))
+	faults, notes, census := roleexport.CheckResourceClasses(catalogfixture.Facts(), m, mustActions(t))
 	t.Logf("перепись: %s", census.Summary())
 	if len(faults) != 0 {
 		t.Fatalf("написание действия — контракт генератора раздела, и генератора нет; "+

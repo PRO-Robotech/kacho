@@ -114,7 +114,7 @@ func (c Census) Summary() string {
 //
 // Находки собираются ВСЕ: названная первая заставила бы автора манифеста чинить
 // их по одной, по прогону на каждую, и скрыла бы, сколько их всего.
-func CheckRoleRules(m *manifest.Manifest, actions []Action) ([]error, Census) {
+func CheckRoleRules(facts VerbFacts, m *manifest.Manifest, actions []Action) ([]error, Census) {
 	census := Census{ActionsAttributed: len(actions)}
 	if m == nil {
 		return nil, census
@@ -132,7 +132,7 @@ func CheckRoleRules(m *manifest.Manifest, actions []Action) ([]error, Census) {
 		for _, rule := range role.Rules {
 			census.RulesRead++
 			for _, resource := range rule.Resources {
-				found, judged := judgeResource(m, role.ID, rule, resource, byResource)
+				found, judged := judgeResource(facts, m, role.ID, rule, resource, byResource)
 				faults = append(faults, found...)
 				census.PairsJudged += judged
 			}
@@ -144,7 +144,8 @@ func CheckRoleRules(m *manifest.Manifest, actions []Action) ([]error, Census) {
 
 // judgeResource — вердикт по одному ресурсу правила; вторым значением — сколько
 // пар (ресурс, класс) осмотрено.
-func judgeResource(m *manifest.Manifest, roleID string, rule manifest.Rule, resource string,
+func judgeResource(facts VerbFacts, m *manifest.Manifest, roleID string, rule manifest.Rule,
+	resource string,
 	byResource map[string][]Action) ([]error, int) {
 
 	own := byResource[rule.Module+"."+resource]
@@ -169,7 +170,7 @@ func judgeResource(m *manifest.Manifest, roleID string, rule manifest.Rule, reso
 	for _, verb := range rule.Verbs {
 		class := classOf(m, verb)
 		judged++
-		if len(Covers(own, fgaType, class)) > 0 {
+		if len(Covers(facts, own, fgaType, class)) > 0 {
 			continue
 		}
 		faults = append(faults, Finding{
@@ -178,7 +179,7 @@ func judgeResource(m *manifest.Manifest, roleID string, rule manifest.Rule, reso
 			Module:   rule.Module,
 			Resource: resource,
 			Class:    class,
-			Detail:   emptyClassDetail(roleID, rule.Module, resource, verb, class, fgaType, own),
+			Detail:   emptyClassDetail(facts, roleID, rule.Module, resource, verb, class, fgaType, own),
 		})
 	}
 	return faults, judged
@@ -204,7 +205,8 @@ func classOf(m *manifest.Manifest, verb string) string {
 // (пригодные классы этого ресурса и годный способ выдать то, что классом не
 // выдаётся). Без причины автор прочтёт отказ как «в манифесте опечатка» и пойдёт
 // искать её у себя.
-func emptyClassDetail(roleID, module, resource, verb, class, fgaType string, own []Action) string {
+func emptyClassDetail(facts VerbFacts, roleID, module, resource, verb, class, fgaType string,
+	own []Action) string {
 	var b strings.Builder
 	fmt.Fprintf(&b, "роль %q: класс %q на ресурсе %q модуля %q не покрывает ни одного "+
 		"пригодного действия", roleID, class, resource, module)
@@ -233,7 +235,7 @@ func emptyClassDetail(roleID, module, resource, verb, class, fgaType string, own
 		b.WriteString(". ")
 	}
 
-	if suitable := suitableClasses(own, fgaType); len(suitable) > 0 {
+	if suitable := suitableClasses(facts, own, fgaType); len(suitable) > 0 {
 		fmt.Fprintf(&b, "Пригодные классы этого ресурса: %s. ", strings.Join(suitable, ", "))
 	} else {
 		b.WriteString("Пригодных классов у этого ресурса НЕТ НИ ОДНОГО — ролью модуля он " +
@@ -270,10 +272,10 @@ func gateSummary(own []Action) (exempt int, pairs []string) {
 // первый несёт глаголы, объявленные именно этим типом (`addTargets` и подобные),
 // второй — `create`, у которого пообъектного отношения нет вовсе и который
 // покрывает действие ярусом. Ни один из двух здесь не переобъявляется.
-func suitableClasses(own []Action, fgaType string) []string {
+func suitableClasses(facts VerbFacts, own []Action, fgaType string) []string {
 	seen := map[string]bool{}
 	var candidates []string
-	for _, c := range append(authzmap.VerbsOfType(fgaType), manifest.CanonicalVerbs()...) {
+	for _, c := range append(facts.VerbsOfType(fgaType), manifest.CanonicalVerbs()...) {
 		if !seen[c] {
 			seen[c] = true
 			candidates = append(candidates, c)
@@ -281,7 +283,7 @@ func suitableClasses(own []Action, fgaType string) []string {
 	}
 	var out []string
 	for _, c := range candidates {
-		if len(Covers(own, fgaType, c)) > 0 {
+		if len(Covers(facts, own, fgaType, c)) > 0 {
 			out = append(out, c)
 		}
 	}

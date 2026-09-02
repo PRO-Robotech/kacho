@@ -4,7 +4,6 @@
 package roleexport
 
 import (
-	"github.com/PRO-Robotech/kacho/services/iam/internal/authzmap"
 	"github.com/PRO-Robotech/kacho/services/iam/internal/domain"
 )
 
@@ -43,6 +42,24 @@ import (
 // этот вопрос понизил бы роль-суперпользователя с администратора до
 // наблюдателя — молча.
 
+// VerbFacts — ПОРТ каталожного факта: «какие глаголы объявлены» и «что из
+// затребованного грантуемо».
+//
+// Порт, а не вызов литерала напрямую, по решению kacho#1816: каталожный факт
+// живёт в строках, и читатель на литерале продолжил бы считать снятый тип живым.
+// Здесь предмет тот же, что у остального пакета, — каталог берётся ПОРТОМ, а не
+// встраивается: встроенная копия одна, она у посева, и второй её встраиватель
+// был бы вторым объявлением одного предмета.
+//
+// Удовлетворяется `*catalog.Facts`; сборочная команда строит его из того же
+// перечня, которым миграция посеяла строки, поэтому вердикт остаётся
+// воспроизводимым из дерева и базы не требует.
+type VerbFacts interface {
+	VerbsOfType(fgaType string) []string
+	CommonVerbVocabulary() []string
+	GrantedVerbs(fgaType string, authored, typeVerbs []string) []string
+}
+
 // roleTierCascade — ярусы правила роли от слабого к сильному.
 //
 // Порядок объявлен ЗДЕСЬ один раз, а его согласие с моделью прав держит проба
@@ -64,11 +81,11 @@ func tierRank(tier string) (int, bool) {
 // typeVerbsOf — набор глаголов типа с тем же запасным путём, что у эмиттера
 // кортежей: тип без своего набора получает общий словарь РАДИ ЯРУСА, а
 // глагольных отношений не получает всё равно.
-func typeVerbsOf(fgaType string) []string {
-	if set := authzmap.VerbsOfType(fgaType); len(set) > 0 {
+func typeVerbsOf(facts VerbFacts, fgaType string) []string {
+	if set := facts.VerbsOfType(fgaType); len(set) > 0 {
 		return set
 	}
-	return authzmap.CommonVerbVocabulary()
+	return facts.CommonVerbVocabulary()
 }
 
 // Produces отвечает, пишет ли правило роли с глаголом `verb` на ресурсе типа
@@ -77,7 +94,7 @@ func typeVerbsOf(fgaType string) []string {
 //
 // `fgaType` пуст (пара «модуль, ресурс» вне закрытой таблицы типов) — правило
 // адресовать нечего, и ответ «нет» без исключений: fail-closed.
-func Produces(verb, fgaType, relation, object string) bool {
+func Produces(facts VerbFacts, verb, fgaType, relation, object string) bool {
 	if fgaType == "" || relation == "" {
 		return false
 	}
@@ -89,8 +106,8 @@ func Produces(verb, fgaType, relation, object string) bool {
 	if object != fgaType {
 		return false
 	}
-	typeVerbs := typeVerbsOf(fgaType)
-	for _, granted := range authzmap.GrantedVerbs(fgaType, []string{verb}, typeVerbs) {
+	typeVerbs := typeVerbsOf(facts, fgaType)
+	for _, granted := range facts.GrantedVerbs(fgaType, []string{verb}, typeVerbs) {
 		if relation == "v_"+granted {
 			return true
 		}
@@ -113,13 +130,13 @@ func Produces(verb, fgaType, relation, object string) bool {
 // Освобождённое действие в покрытие не входит: его получает всякий
 // аутентифицированный, а не участник роли, — значит правом оно не выдаётся ни
 // для полноты перечня, ни для покрытия, ни для отказа.
-func Covers(actions []Action, fgaType, verb string) []Action {
+func Covers(facts VerbFacts, actions []Action, fgaType, verb string) []Action {
 	var out []Action
 	for _, a := range actions {
 		if a.Exempt() {
 			continue
 		}
-		if Produces(verb, fgaType, a.Relation, a.Object) {
+		if Produces(facts, verb, fgaType, a.Relation, a.Object) {
 			out = append(out, a)
 		}
 	}

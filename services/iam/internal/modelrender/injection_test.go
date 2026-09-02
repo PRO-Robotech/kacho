@@ -7,6 +7,7 @@ import (
 	"strings"
 	"testing"
 
+	"github.com/PRO-Robotech/kacho/services/iam/internal/apps/kacho/seed"
 	"github.com/PRO-Robotech/kacho/services/iam/internal/domain"
 	"github.com/PRO-Robotech/kacho/services/iam/internal/modelrender"
 )
@@ -40,7 +41,7 @@ func sixModules(t *testing.T, canon string) string {
 // Прогон первый из трёх. Без него краснота двух следующих ничего не доказывает:
 // обход, краснеющий на любом дереве, красен и на сломанном.
 func TestInjectionControlAnUntouchedTreeIsSilent(t *testing.T) {
-	census, findings, code := modelrender.Sweep(sixModules(t, twoBlockCanon), nil)
+	census, findings, code := modelrender.Sweep(seed.LiteralRows().Resources, sixModules(t, twoBlockCanon), nil)
 	if code != modelrender.SweepOK {
 		t.Fatalf("контроль красен: исход %d, находки %v", code, findings)
 	}
@@ -60,7 +61,7 @@ func TestC02InjectionARelationRemovedFromTheCanonNamesTheSide(t *testing.T) {
 		t.Fatalf("инъекция не изменила канон — доказательство беспредметно")
 	}
 
-	_, findings, code := modelrender.Sweep(sixModules(t, broken), nil)
+	_, findings, code := modelrender.Sweep(seed.LiteralRows().Resources, sixModules(t, broken), nil)
 
 	if code != modelrender.SweepFinding {
 		t.Fatalf("снятое объявление канона не замечено: исход %d", code)
@@ -98,7 +99,7 @@ func TestC02InjectionARelationAddedToTheCanonNamesTheOtherSide(t *testing.T) {
 		t.Fatalf("инъекция не изменила канон — доказательство беспредметно")
 	}
 
-	_, findings, code := modelrender.Sweep(sixModules(t, broken), nil)
+	_, findings, code := modelrender.Sweep(seed.LiteralRows().Resources, sixModules(t, broken), nil)
 
 	if code != modelrender.SweepFinding {
 		t.Fatalf("дописанное в канон объявление не замечено: исход %d", code)
@@ -130,7 +131,7 @@ func TestC05InjectionReorderingTwoCanonBlocksIsCaught(t *testing.T) {
 	head, first, second := twoBlockCanon[:i], twoBlockCanon[i:j], twoBlockCanon[j:]
 	swapped := head + strings.TrimRight(second, "\n") + "\n\n" + strings.TrimRight(first, "\n") + "\n"
 
-	_, findings, code := modelrender.Sweep(sixModules(t, swapped), nil)
+	_, findings, code := modelrender.Sweep(seed.LiteralRows().Resources, sixModules(t, swapped), nil)
 
 	if code != modelrender.SweepOK {
 		t.Fatalf("перестановка блоков объявлена расхождением: исход %d, находки %v", code, findings)
@@ -154,7 +155,7 @@ func TestInjectionOfTheExistingPropertyRedsOnlyTheExistingOne(t *testing.T) {
 		writeManifest(t, root, m, body)
 	}
 
-	_, findings, code := modelrender.Sweep(root, nil)
+	_, findings, code := modelrender.Sweep(seed.LiteralRows().Resources, root, nil)
 
 	if code != modelrender.SweepFinding {
 		t.Fatalf("исход %d, ожидалась находка", code)
@@ -200,7 +201,7 @@ type vpc_network
 		writeManifest(t, root, m, body)
 	}
 
-	census, findings, code := modelrender.Sweep(root, nil)
+	census, findings, code := modelrender.Sweep(seed.LiteralRows().Resources, root, nil)
 
 	if code != modelrender.SweepOK {
 		t.Fatalf("законный близнец объявлен расхождением: исход %d, находки %v", code, findings)

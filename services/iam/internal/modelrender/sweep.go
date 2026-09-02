@@ -12,6 +12,7 @@ import (
 	"sort"
 
 	"github.com/PRO-Robotech/kacho/internal/authzplan"
+	"github.com/PRO-Robotech/kacho/services/iam/internal/catalog"
 	"github.com/PRO-Robotech/kacho/services/iam/internal/domain"
 	"github.com/PRO-Robotech/kacho/services/iam/internal/manifest"
 )
@@ -165,7 +166,7 @@ func (f Finding) String() string {
 // нёс два снятых отношения (`define use`, снятое #1115): в дереве их НОЛЬ, в
 // снимке — два. Параметризуемый путь канона вернул бы тот же дефект первой же
 // правкой.
-func Sweep(root string, waivers []Waiver) (Census, []Finding, int) {
+func Sweep(resources []catalog.ResourceRow, root string, waivers []Waiver) (Census, []Finding, int) {
 	modules := domain.KnownModules()
 	census := Census{ModulesInSet: len(modules)}
 	var findings []Finding
@@ -178,13 +179,13 @@ func Sweep(root string, waivers []Waiver) (Census, []Finding, int) {
 	for _, b := range SplitCanon(dsl) {
 		canon[b.Type] = b
 	}
-	census.BlocksOutsideModules = len(TypesOutsideModules(dsl))
+	census.BlocksOutsideModules = len(TypesOutsideModules(resources, dsl))
 
 	// Ожидаемое выводится ОДИН раз на обход: OwnedTypes перечитывает канон, и
 	// второй вызов на тот же модуль дал бы тот же ответ дороже.
 	owned := make(map[string][]string, len(modules))
 	for _, module := range modules {
-		owned[module] = OwnedTypes(dsl, module)
+		owned[module] = OwnedTypes(resources, dsl, module)
 		census.BlocksOwned += len(owned[module])
 	}
 

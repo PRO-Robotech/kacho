@@ -24,6 +24,7 @@ import (
 	"testing"
 
 	"github.com/PRO-Robotech/kacho/services/iam/internal/manifest/roleexport"
+	"github.com/PRO-Robotech/kacho/services/iam/internal/testsupport/catalogfixture"
 )
 
 // TestInjectionThreeRuns_ClassFitAndEmptyClassAreIndependent — три прогона.
@@ -34,8 +35,8 @@ func TestInjectionThreeRuns_ClassFitAndEmptyClassAreIndependent(t *testing.T) {
 	// говорит (у фикстуры есть свои пустые классы у `vpc.addressPoolAdmin`), и
 	// это состояние берётся ЭТАЛОНОМ, а не «нулём».
 	base := mustFixture(t)
-	baseClassFaults, _, baseClassCensus := roleexport.CheckResourceClasses(base, actions)
-	baseRuleFaults, baseRuleCensus := roleexport.CheckRoleRules(base, actions)
+	baseClassFaults, _, baseClassCensus := roleexport.CheckResourceClasses(catalogfixture.Facts(), base, actions)
+	baseRuleFaults, baseRuleCensus := roleexport.CheckRoleRules(catalogfixture.Facts(), base, actions)
 	t.Logf("контроль: стадия 1 — %s", baseClassCensus.Summary())
 	t.Logf("контроль: стадия 2 — %s", baseRuleCensus.Summary())
 	if len(baseClassFaults) != 0 {
@@ -50,8 +51,8 @@ func TestInjectionThreeRuns_ClassFitAndEmptyClassAreIndependent(t *testing.T) {
 	// (класс покрывает хотя бы одно пригодное действие) на месте, снимается
 	// новое — соответствие класса гейту.
 	injected := mustLoadManifest(t, withNetworkListOperationsClass(t, "get"))
-	newFaults, _, newCensus := roleexport.CheckResourceClasses(injected, actions)
-	newRuleFaults, newRuleCensus := roleexport.CheckRoleRules(injected, actions)
+	newFaults, _, newCensus := roleexport.CheckResourceClasses(catalogfixture.Facts(), injected, actions)
+	newRuleFaults, newRuleCensus := roleexport.CheckRoleRules(catalogfixture.Facts(), injected, actions)
 	t.Logf("инъекция новая: стадия 1 — %s", newCensus.Summary())
 	t.Logf("инъекция новая: стадия 2 — %s", newRuleCensus.Summary())
 
@@ -80,8 +81,8 @@ func TestInjectionThreeRuns_ClassFitAndEmptyClassAreIndependent(t *testing.T) {
 	// Прогон 3 — ИНЪЕКЦИЯ СТАРОГО свойства: у роли снимается покрытие класса.
 	// Стадия 2 обязана покраснеть СВЕРХ контроля, стадия 1 — смолчать.
 	old := mustLoadManifest(t, withEmptyClassRule(t))
-	oldClassFaults, _, oldClassCensus := roleexport.CheckResourceClasses(old, actions)
-	oldRuleFaults, oldRuleCensus := roleexport.CheckRoleRules(old, actions)
+	oldClassFaults, _, oldClassCensus := roleexport.CheckResourceClasses(catalogfixture.Facts(), old, actions)
+	oldRuleFaults, oldRuleCensus := roleexport.CheckRoleRules(catalogfixture.Facts(), old, actions)
 	t.Logf("инъекция старая: стадия 1 — %s", oldClassCensus.Summary())
 	t.Logf("инъекция старая: стадия 2 — %s", oldRuleCensus.Summary())
 
@@ -111,8 +112,8 @@ func TestInjectionThreeRuns_ClassFitAndEmptyClassAreIndependent(t *testing.T) {
 // движутся ровно два счётчика — сумма остаётся прежней.
 func TestInjection_CensusMovesWithTheDefect(t *testing.T) {
 	actions := mustActions(t)
-	_, _, before := roleexport.CheckResourceClasses(mustFixture(t), actions)
-	_, _, after := roleexport.CheckResourceClasses(
+	_, _, before := roleexport.CheckResourceClasses(catalogfixture.Facts(), mustFixture(t), actions)
+	_, _, after := roleexport.CheckResourceClasses(catalogfixture.Facts(),
 		mustLoadManifest(t, withNetworkListOperationsClass(t, "get")), actions)
 
 	if before.VerbsRead != after.VerbsRead {
@@ -140,7 +141,7 @@ func TestInjection_CensusMovesWithTheDefect(t *testing.T) {
 // сопоставлено», а не в молчание. Без этого проверка, у которой отвалился порт
 // каталога, зеленела бы уверенно.
 func TestClassCheckOnAnEmptyCatalogIsVoid_NotClean(t *testing.T) {
-	faults, notes, census := roleexport.CheckResourceClasses(mustFixture(t), nil)
+	faults, notes, census := roleexport.CheckResourceClasses(catalogfixture.Facts(), mustFixture(t), nil)
 	t.Logf("перепись: %s", census.Summary())
 	if len(faults) != 0 {
 		t.Errorf("на пустом каталоге отказов быть не может — судить нечем: %v", faults)

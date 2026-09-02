@@ -10,6 +10,7 @@ import (
 	"testing"
 
 	"github.com/PRO-Robotech/kacho/internal/authzplan"
+	"github.com/PRO-Robotech/kacho/services/iam/internal/apps/kacho/seed"
 	"github.com/PRO-Robotech/kacho/services/iam/internal/authzmap"
 	"github.com/PRO-Robotech/kacho/services/iam/internal/domain"
 	"github.com/PRO-Robotech/kacho/services/iam/internal/modelrender"
@@ -43,7 +44,7 @@ func TestCanonBlockOwnedByAModuleButAbsentFromItsManifestIsAFinding(t *testing.T
 		writeManifest(t, root, m, body)
 	}
 
-	census, findings, code := modelrender.Sweep(root, nil)
+	census, findings, code := modelrender.Sweep(seed.LiteralRows().Resources, root, nil)
 
 	if code != modelrender.SweepFinding {
 		t.Fatalf("исход %d, ожидался %d (находка): блок vpc_subnet канона не порождён "+
@@ -73,7 +74,7 @@ func TestTheSameTreeWithTheResourceDeclaredIsSilent(t *testing.T) {
 		writeManifest(t, root, m, body)
 	}
 
-	census, findings, code := modelrender.Sweep(root, nil)
+	census, findings, code := modelrender.Sweep(seed.LiteralRows().Resources, root, nil)
 
 	if code != modelrender.SweepOK {
 		t.Fatalf("исход %d, ожидался %d: ресурсы на месте, находок быть не должно — %v",
@@ -102,7 +103,7 @@ func TestAnUnparsableManifestIsNotReadAsAbsent(t *testing.T) {
 		t.Fatalf("порча манифеста: %v", err)
 	}
 
-	_, findings, code := modelrender.Sweep(root, []modelrender.Waiver{{Module: "vpc", Issue: 1091}})
+	_, findings, code := modelrender.Sweep(seed.LiteralRows().Resources, root, []modelrender.Waiver{{Module: "vpc", Issue: 1091}})
 
 	if code != modelrender.SweepFinding {
 		t.Fatalf("исход %d, ожидался %d: негодный манифест прощён ведомостью как отсутствующий",
@@ -148,7 +149,7 @@ func TestTheClosedTableSpeaksTheModuleVocabulary(t *testing.T) {
 
 	total := 0
 	for _, m := range domain.KnownModules() {
-		owned := modelrender.OwnedTypes(dsl, m)
+		owned := modelrender.OwnedTypes(seed.LiteralRows().Resources, dsl, m)
 		if len(owned) == 0 {
 			t.Errorf("у модуля %s набора нет НИ ОДНОГО типа в каноне: либо ключ таблицы "+
 				"разошёлся с набором, либо блоки модуля исчезли из модели", m)
@@ -159,7 +160,7 @@ func TestTheClosedTableSpeaksTheModuleVocabulary(t *testing.T) {
 		t.Fatal("обход пуст: ожидаемое не выведено ни для одного модуля")
 	}
 	t.Logf("перепись: модулей набора %d · типов, принадлежащих модулям %d · вне модулей %d",
-		len(domain.KnownModules()), total, len(modelrender.TypesOutsideModules(dsl)))
+		len(domain.KnownModules()), total, len(modelrender.TypesOutsideModules(seed.LiteralRows().Resources, dsl)))
 }
 
 // TestASideIsNotClaimedWhenNeitherIsRicher — расхождение, у которого строк
@@ -187,7 +188,7 @@ func TestASideIsNotClaimedWhenNeitherIsRicher(t *testing.T) {
 		writeManifest(t, root, m, body)
 	}
 
-	_, findings, code := modelrender.Sweep(root, nil)
+	_, findings, code := modelrender.Sweep(seed.LiteralRows().Resources, root, nil)
 
 	if code != modelrender.SweepFinding {
 		t.Fatalf("исход %d, ожидался %d: сужённые субъекты — расхождение", code, modelrender.SweepFinding)

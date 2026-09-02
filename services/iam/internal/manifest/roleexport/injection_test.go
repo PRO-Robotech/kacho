@@ -27,6 +27,7 @@ import (
 
 	"github.com/PRO-Robotech/kacho/services/iam/internal/manifest"
 	"github.com/PRO-Robotech/kacho/services/iam/internal/manifest/roleexport"
+	"github.com/PRO-Robotech/kacho/services/iam/internal/testsupport/catalogfixture"
 )
 
 // injectRules — временная копия фикстуры, где выдачи роли заменены дословно.
@@ -66,7 +67,7 @@ func injectRules(t *testing.T, replacements ...[2]string) *manifest.Manifest {
 // emptyClassFindings — находки о пустом классе.
 func emptyClassFindings(t *testing.T, m *manifest.Manifest) []roleexport.Finding {
 	t.Helper()
-	faults, _ := roleexport.CheckRoleRules(m, mustActions(t))
+	faults, _ := roleexport.CheckRoleRules(catalogfixture.Facts(), m, mustActions(t))
 	var out []roleexport.Finding
 	for _, f := range faults {
 		var got roleexport.Finding
@@ -172,7 +173,7 @@ func TestInjection_SameRelationNameOnTheResourceTypeIsSilent(t *testing.T) {
 func TestInjection_UnknownResourceIsItsOwnRefusal(t *testing.T) {
 	m := injectRules(t, [2]string{consumerRule,
 		"        resources: [networkz]\n        verbs: [get]"})
-	faults, _ := roleexport.CheckRoleRules(m, mustActions(t))
+	faults, _ := roleexport.CheckRoleRules(catalogfixture.Facts(), m, mustActions(t))
 	kinds := map[string]int{}
 	for _, f := range faults {
 		var got roleexport.Finding
@@ -282,7 +283,7 @@ func TestInjection_ExistingFormCheckStaysAlive(t *testing.T) {
 // Проверка, судившая роли без единого действия, молчит ровно так же уверенно,
 // как проверившая все; отличает их перепись, и она обязана это показывать.
 func TestCheckOnAnEmptyCatalogIsVoid_NotClean(t *testing.T) {
-	faults, census := roleexport.CheckRoleRules(mustFixture(t), nil)
+	faults, census := roleexport.CheckRoleRules(catalogfixture.Facts(), mustFixture(t), nil)
 	if census.ActionsAttributed != 0 {
 		t.Fatalf("действий привязано %d при пустом каталоге", census.ActionsAttributed)
 	}
@@ -398,7 +399,7 @@ func TestFullyExemptResourceIsNamedAsSuch(t *testing.T) {
 	if len(faults) != 0 {
 		t.Fatalf("синтетический вход дал находки привязки: %v", faults)
 	}
-	found, _ := roleexport.CheckRoleRules(m, actions)
+	found, _ := roleexport.CheckRoleRules(catalogfixture.Facts(), m, actions)
 	if len(found) == 0 {
 		t.Fatal("ресурс, у которого все действия освобождены, не отвергнут: " +
 			"правом они не выдаются вовсе, и молчание обещало бы право, которого нет")
