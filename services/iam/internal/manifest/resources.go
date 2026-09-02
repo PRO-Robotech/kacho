@@ -102,6 +102,8 @@ var (
 	// ErrRelationShadowsVerb — объявленное отношение занимает имя, порождаемое
 	// глаголом. Два объявления одного предмета, из которых верно одно.
 	ErrRelationShadowsVerb = errors.New("manifest: authored relation shadows a generated verb relation")
+	// ErrRelationPositionUnknown — место отношения вне закрытого набора.
+	ErrRelationPositionUnknown = errors.New("manifest: relation position is outside the closed set")
 	// ErrRelationNameRequired — отношение не назвало себя.
 	ErrRelationNameRequired = errors.New("manifest: relation name is required")
 	// ErrCascadeTermIncomplete — терм каскада назван наполовину: без отношения
@@ -286,6 +288,25 @@ func DefaultSubjects() []string {
 	copy(out, defaultSubjectSet)
 	return out
 }
+
+// relationPositions — закрытый набор МЕСТ авторского отношения в блоке, в
+// порядке следования строк. Умолчание — `beforeVerbs`: так стояли все авторские
+// отношения, пока место задавала постоянная рендера.
+var relationPositions = []string{"beforeTiers", "beforeVerbs", "afterVerbs"}
+
+// RelationPositions возвращает КОПИЮ закрытого набора мест.
+//
+// Экспортирован ради рендера: он раскладывает отношения по этим местам, а
+// загрузчик проверяет значение ключа, и второй перечень разошёлся бы с первым
+// молча — на том самом месте, о котором не знает.
+func RelationPositions() []string {
+	out := make([]string, len(relationPositions))
+	copy(out, relationPositions)
+	return out
+}
+
+// DefaultRelationPosition — место, которое отношение занимает, не назвав его.
+func DefaultRelationPosition() string { return relationPositions[1] }
 
 // resourceProducers — закрытый набор видов ключей записи.
 var resourceProducers = []string{"derived", "authored"}
@@ -486,9 +507,28 @@ func (tr *ResourceTier) UnmarshalYAML(node *yaml.Node) error {
 // Текст определения здесь НЕ разбирается: его грамматика принадлежит модели
 // прав, и второй её разборщик разошёлся бы с первым молча. Рендер блоков модели
 // — предмет #1104 → #1089.
+//
+// # Место отношения в блоке приходит ИЗ МАНИФЕСТА, и раскладок в каноне ТРИ
+//
+//	beforeTiers   перед ярусами            5 блоков: owner у account и обоих
+//	                                       registry_*, subject у iam_user,
+//	                                       member у iam_group
+//	beforeVerbs   после ярусов, до действий 1 блок: ssh и console у
+//	                                       compute_instance — УМОЛЧАНИЕ
+//	afterVerbs    после действий           4 блока: member_remover у account,
+//	                                       шесть отношений распоряжения у
+//	                                       iam_user, realization_writer у
+//	                                       compute_instance, announce_writer у
+//	                                       nlb_network_load_balancer
+//
+// Пока место задавала постоянная рендера, побайтовая сверка объявляла
+// расхождением то, о чём никто не решал: канон несёт все три раскладки законно.
 type Relation struct {
 	Name       string `yaml:"name"`
 	Definition string `yaml:"definition"`
+	// Position — МЕСТО отношения в блоке относительно порождаемых строк.
+	// Пусто означает умолчание `beforeVerbs`.
+	Position string `yaml:"position"`
 }
 
 // Verb — действие ресурса. Записывается ДВУМЯ формами:
@@ -1000,6 +1040,16 @@ func validateResourceRelations(r *Resource, doc *yaml.Node, i int) []error {
 				detail: "отношение не назвало себя: безымянное отношение нечем адресовать в модели",
 			})
 			continue
+		}
+		if rel.Position != "" && !contains(relationPositions, rel.Position) {
+			faults = append(faults, linkFault{
+				kind:  ErrRelationPositionUnknown,
+				coord: locate(doc, "resources", i, "relations", k),
+				detail: fmt.Sprintf("resources[%d].relations[%d].position: место %q вне закрытого "+
+					"набора; принимаются: %s. Место, которого рендер не знает, оставило бы "+
+					"отношение там, где его никто не решал ставить",
+					i, k, rel.Position, strings.Join(relationPositions, ", ")),
+			})
 		}
 		verb, shadows := generated[rel.Name]
 		if !shadows {

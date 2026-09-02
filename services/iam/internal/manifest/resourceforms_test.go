@@ -301,3 +301,27 @@ func TestMODMR33AnEmptySourceOrSubjectListIsRefused(t *testing.T) {
 	mustAccept(t, head+"    verbs: [get]\n")
 	mustAccept(t, head+"    verbs:\n      - {name: get, subjects: [\"user:*\", user]}\n")
 }
+
+// ── Место авторского отношения (#1862) ───────────────────────────────────────
+
+// TestMODMR34ARelationPlaceOutsideTheClosedSetIsRefused — место, которого рендер
+// не знает, оставило бы отношение там, где его никто не решал ставить.
+func TestMODMR34ARelationPlaceOutsideTheClosedSetIsRefused(t *testing.T) {
+	head := resourceDoc("    parents: [project]\n")
+	head = head[:len(head)-len("    verbs: [get]\n")]
+
+	mustRefuse(t, head+"    relations:\n      - {name: owner, definition: \"[user]\", position: last}\n"+
+		"    verbs: [get]\n",
+		manifest.ErrRelationPositionUnknown,
+		"resources[0].relations[0].position", "last", "beforeTiers", "beforeVerbs", "afterVerbs")
+
+	// Законные близнецы: все три места и опущенный ключ.
+	for _, place := range append(manifest.RelationPositions(), "") {
+		body := ", position: " + place
+		if place == "" {
+			body = ""
+		}
+		mustAccept(t, head+"    relations:\n      - {name: owner, definition: \"[user]\""+body+"}\n"+
+			"    verbs: [get]\n")
+	}
+}

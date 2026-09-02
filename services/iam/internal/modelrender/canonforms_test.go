@@ -332,3 +332,79 @@ resources:
 	mustContainLine(t, block,
 		"    define v_get: [user, service_account, group#member] or super_admin\n")
 }
+
+// ── Место авторского отношения в блоке (#1862) ───────────────────────────────
+
+// TestMODMR34ThePlaceOfAnAuthoredRelationComesFromTheManifest — раскладок в
+// каноне ТРИ, и постоянная рендера знала одну.
+//
+// Замер по канону: авторское отношение стоит ПЕРЕД ярусами у пяти блоков
+// (`owner` у account, registry_registry и registry_repository, `subject` у
+// iam_user, `member` у iam_group), МЕЖДУ ярусами и действиями у одного
+// (`ssh`/`console` у compute_instance — это и есть постоянная рендера) и ПОСЛЕ
+// действий у четырёх (`member_remover` у account, шесть отношений распоряжения
+// у iam_user, `realization_writer` у compute_instance, `announce_writer` у
+// nlb_network_load_balancer).
+//
+// Пока место задавала постоянная, побайтовая сверка объявляла расхождением то, о
+// чём никто не решал: канон несёт все три раскладки законно.
+func TestMODMR34ThePlaceOfAnAuthoredRelationComesFromTheManifest(t *testing.T) {
+	block := renderFromYAML(t, `apiVersion: iam/v1
+module: iam
+resources:
+  - name: account
+    objectType: account
+    parents: [cluster]
+    producer: derived
+    cascade:
+      - {relation: any_admin, from: cluster}
+    relations:
+      - {name: owner, definition: "[user]", position: beforeTiers}
+      - {name: member_remover, definition: "editor", position: afterVerbs}
+    tiers:
+      - {name: admin, from: [owner, super_admin]}
+      - editor
+      - viewer
+    verbs:
+      - {name: get, from: [owner, super_admin]}
+      - {name: list, from: [owner, super_admin]}
+`)
+	owner := strings.Index(block, "define owner:")
+	admin := strings.Index(block, "define admin:")
+	verb := strings.Index(block, "define v_get:")
+	remover := strings.Index(block, "define member_remover:")
+	if owner < 0 || admin < 0 || verb < 0 || remover < 0 {
+		t.Fatalf("не все отношения порождены:\n%s", block)
+	}
+	if !(owner < admin) {
+		t.Fatalf("отношение с якорем beforeTiers стоит не перед ярусами:\n%s", block)
+	}
+	if !(verb < remover) {
+		t.Fatalf("отношение с якорем afterVerbs стоит не после действий:\n%s", block)
+	}
+}
+
+// TestMODMR34TheDefaultPlaceIsBetweenTiersAndVerbs — положительный контроль:
+// умолчание остаётся тем же, каким было постоянной, и пишется неявно.
+//
+// Замер: так стоят `ssh` и `console` у compute_instance.
+func TestMODMR34TheDefaultPlaceIsBetweenTiersAndVerbs(t *testing.T) {
+	block := renderFromYAML(t, `apiVersion: iam/v1
+module: compute
+resources:
+  - name: instance
+    objectType: compute_instance
+    parents: [project]
+    producer: derived
+    relations:
+      - {name: ssh, definition: "[user with mfa_fresh, service_account] or admin"}
+    tiers: [admin, editor, viewer]
+    verbs: [get, list, update, delete]
+`)
+	viewer := strings.Index(block, "define viewer:")
+	ssh := strings.Index(block, "define ssh:")
+	verb := strings.Index(block, "define v_get:")
+	if !(viewer < ssh && ssh < verb) {
+		t.Fatalf("умолчательное место авторского отношения сдвинулось:\n%s", block)
+	}
+}

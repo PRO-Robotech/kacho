@@ -98,6 +98,7 @@ func Render(r manifest.Resource) ([]byte, error) {
 		b.WriteString("    define " + p.Name + ": [" + p.Type + "]\n")
 	}
 	b.WriteString("    define " + manifest.SuperAdminRelation() + ": " + cascadeOf(r) + "\n")
+	writeAuthoredRelations(&b, r, "beforeTiers")
 
 	subjects := r.Subjects
 	if len(subjects) == 0 {
@@ -125,12 +126,7 @@ func Render(r manifest.Resource) ([]byte, error) {
 			"] or " + strings.Join(sources, " or ") + "\n")
 		previous = tier.Name
 	}
-
-	// Авторское отношение воспроизводится ДОСЛОВНО: грамматика определения
-	// принадлежит модели прав, и второй её разборщик разошёлся бы с первым молча.
-	for _, rel := range r.Relations {
-		b.WriteString("    define " + rel.Name + ": " + rel.Definition + "\n")
-	}
+	writeAuthoredRelations(&b, r, "beforeVerbs")
 
 	// Порядок глаголов задаёт КАНОН, а не манифест: перестановка ресурсов и
 	// глаголов в YAML рендер не меняет (B-04). Субъекты здесь умолчательные —
@@ -148,8 +144,30 @@ func Render(r manifest.Resource) ([]byte, error) {
 		b.WriteString("    define " + manifest.VerbRelationName(verb.Name) + ": [" +
 			strings.Join(subjects, ", ") + "] or " + strings.Join(sources, " or ") + "\n")
 	}
+	writeAuthoredRelations(&b, r, "afterVerbs")
 
 	return []byte(b.String()), nil
+}
+
+// writeAuthoredRelations — авторские отношения ОДНОГО места, в порядке манифеста.
+//
+// Отношение воспроизводится ДОСЛОВНО: грамматика определения принадлежит модели
+// прав, и второй её разборщик разошёлся бы с первым молча.
+//
+// Место приходит из манифеста, а не задаётся телом этой функции: раскладок в
+// каноне ТРИ (перед ярусами · после ярусов · после действий), и постоянная
+// объявляла расхождением то, о чём никто не решал.
+func writeAuthoredRelations(b *strings.Builder, r manifest.Resource, place string) {
+	for _, rel := range r.Relations {
+		at := rel.Position
+		if at == "" {
+			at = manifest.DefaultRelationPosition()
+		}
+		if at != place {
+			continue
+		}
+		b.WriteString("    define " + rel.Name + ": " + rel.Definition + "\n")
+	}
 }
 
 // cascadeOf — правая часть отношения супер-доступа.
