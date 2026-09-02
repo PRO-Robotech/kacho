@@ -34,6 +34,8 @@ import (
 	"errors"
 	"sort"
 	"strings"
+
+	"github.com/PRO-Robotech/kacho/pkg/platformmodules"
 )
 
 // ErrRefused is the single verdict this rule produces: the tuple is not one this
@@ -189,13 +191,6 @@ var forbiddenObjectTypes = map[string]struct{}{
 	"iam_fgaproxy":        {},
 }
 
-// moduleObjectDomain maps a module's service short name (from its verified mTLS
-// SAN, e.g. "nlb") onto the prefix of the object domain its resources actually own,
-// WHEN the two differ. By default (empty map) the domain equals the service name:
-// vpc→`vpc_*`, compute→`compute_*`, nlb→`nlb_*`. Kept as the extension point for a
-// future module whose object domain diverges from its SAN short name.
-var moduleObjectDomain = map[string]string{}
-
 // IsPublicReadGrant reports whether the pair is «anybody reads this resource»
 // (`user:* #v_get`).
 //
@@ -243,13 +238,36 @@ func publicReadAllowed(subject, relation, objType string) bool {
 	return ok
 }
 
-// objectDomainForCaller — the object domain a module may own. Equal to the service
-// name by default; exceptions live in moduleObjectDomain.
-func objectDomainForCaller(callerDomain string) string {
-	if d, ok := moduleObjectDomain[callerDomain]; ok {
-		return d
+// objectDomainForCaller — приставка типов объекта, которые модулю позволено
+// писать. Берётся у СЛОВАРЯ имён модулей, а не выводится из имени вызывающего.
+//
+// ПОЧЕМУ НЕ СОГЛАШЕНИЕ ОБ ИМЕНОВАНИИ. Здесь стояло «домен равен имени службы, а
+// исключения живут в карте», и карта была ПУСТА — то есть «чей это тип» отвечала
+// приставка имени. Полоса при этом превентивна, и это измерено: приставка
+// совпадает с коротким именем у всех пяти сегодняшних эмитентов, поэтому ни один
+// вердикт не менялся. Предмет был в другом: совпадение оставалось УСЛОВИЕМ
+// работы — тип, чьё имя в модели не начинается с имени его модуля, был невыразим
+// (#1885). Наивная же починка «имя службы == модуль каталога» отняла бы у
+// балансировщика три живых типа: у него различны ТРИ написания (`nlb` /
+// `loadbalancer` / `nlb_listener`), и словарь объявляет все три порознь именно
+// затем, чтобы эту ошибку нельзя было выразить.
+//
+// ДВА «нет» РАЗЛИЧАЮТСЯ, и оба отвергают: ok=false — модуля словарь не знает
+// вовсе; пустая строка — модуль объявлен и собственных типов объекта у него нет.
+// Схлопнуть их в одно значило бы вернуть проверку приставкой через заднюю дверь:
+// сравнение с пустым доменом молча отвергает всё, но по НЕ ТОЙ причине, и первый
+// же тип такого домена стал бы достижим без единого решения.
+//
+// ГРАНИЦА НАЗВАНА: это по-прежнему сравнение приставки, а не поиск владельца
+// типа по строке. Полный перечень типов живёт в закрытой таблице iam, за
+// границей видимости пакета, и вторая его копия разошлась бы с первой молча.
+// Переход на словарь типов — предмет эпика #1087.
+func objectDomainForCaller(callerDomain string) (string, bool) {
+	domain, known := platformmodules.ObjectDomainOfService(callerDomain)
+	if !known || domain == "" {
+		return "", false
 	}
-	return callerDomain
+	return domain, true
 }
 
 // ValidateTuple constrains the proxy write path to least privilege: a module writes
@@ -285,11 +303,15 @@ func ValidateTuple(callerDomain, subject, relation, object string) error {
 		return ErrRefused
 	}
 	// Domain binding: the object must belong to the caller's domain (vpc→`vpc_*`,
-	// compute→`compute_*`, nlb→`nlb_*`). An empty callerDomain skips this clause,
-	// while the forbidden set and the relation set above still hold the boundary
-	// against cluster / iam / privilege objects.
-	if callerDomain != "" && !strings.HasPrefix(objType, objectDomainForCaller(callerDomain)+"_") {
-		return ErrRefused
+	// compute→`compute_*`, nlb→`nlb_*`), and WHICH domain that is comes from the
+	// module-name vocabulary — see objectDomainForCaller. An empty callerDomain
+	// skips this clause, while the forbidden set and the relation set above still
+	// hold the boundary against cluster / iam / privilege objects.
+	if callerDomain != "" {
+		domain, ok := objectDomainForCaller(callerDomain)
+		if !ok || !strings.HasPrefix(objType, domain+"_") {
+			return ErrRefused
+		}
 	}
 	return nil
 }

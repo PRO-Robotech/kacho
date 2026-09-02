@@ -23,8 +23,9 @@ import (
 // (decode) без import-цикла и без pgx/grpc в контракте.
 
 // FGAObjectTypeRegistry — FGA object-type namespace-реестра. object-prefix
-// `registry_` РАВЕН имени сервиса kacho-registry → iam-side ValidateProxyTuple
-// domain-binding без moduleObjectDomain-mapping (в отличие от граблей nlb→lb).
+// `registry_` РАВЕН имени сервиса kacho-registry, и словарь имён модулей
+// (pkg/platformmodules) объявляет у него обе колонки одинаковыми — в отличие от
+// балансировщика, у которого различны три написания.
 const FGAObjectTypeRegistry = "registry_registry"
 
 // FGAObjectTypeRepository — FGA object-type конкретного репозитория (parent =
