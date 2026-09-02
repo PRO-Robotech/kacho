@@ -46,13 +46,11 @@ func mustReadSeedFixture(t *testing.T) string {
 const declaredRolesSection = `
 roles:
   - id: vpc.internal_consumer
-    name: Смежный модуль
     description: Ходит в vpc на пути запроса — аллокация адресов и ссылки.
     tier: {tierType: iam.project, tierId: prj000000000000000}
     rules:
       - {module: vpc, resources: [address], classes: [get, list]}
   - id: vpc.address_pool_admin
-    name: Администратор адресного пространства
     description: Ведёт адресные пулы облака.
     tier: {tierType: iam.account, tierId: acc000000000000000}
     rules:

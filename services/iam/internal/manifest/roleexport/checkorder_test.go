@@ -110,7 +110,6 @@ resources:
     verbs: [get, list, create, update, delete, {name: listOperations, class: get}]
 roles:
   - id: vpc.creator
-    name: Создатель сетей
     description: Роль пробы порядка.
     tier: {tierType: iam.project, tierId: prj000000000000000}
     rules:

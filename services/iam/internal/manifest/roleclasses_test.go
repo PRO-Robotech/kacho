@@ -41,7 +41,7 @@ import (
 // знается и до предмета этих проб не доходит вовсе.
 func roleManifest(rule string) string {
 	return "apiVersion: iam/v1\nmodule: vpc\nroles:\n" +
-		"  - id: vpc.viewer\n    name: Наблюдатель\n    description: Читает топологию сетей проекта.\n" +
+		"  - id: vpc.viewer\n    description: Читает топологию сетей проекта.\n" +
 		"    tier: {tierType: iam.project, tierId: prj000000000000000}\n" +
 		"    rules:\n      - " + rule + "\n"
 }
@@ -106,7 +106,7 @@ func migrationRuleVerbs(t *testing.T, roleID string) []string {
 // обязано на этом покраснеть.
 func TestMODRC02TranslationIsWordForWordAgainstTheAppliedMigration(t *testing.T) {
 	m, err := manifest.Load([]byte("apiVersion: iam/v1\nmodule: vpc\nroles:\n" +
-		"  - id: vpc.viewer\n    name: Наблюдатель\n    description: Читает топологию сетей проекта.\n" +
+		"  - id: vpc.viewer\n    description: Читает топологию сетей проекта.\n" +
 		"    tier: {tierType: iam.project, tierId: prj000000000000000}\n" +
 		"    rules:\n" +
 		"      - {module: vpc, resources: [network], classes: [read, list, get]}\n" +

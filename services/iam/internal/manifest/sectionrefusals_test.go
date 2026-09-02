@@ -65,7 +65,7 @@ func TestSectionRefusalsNameTheirFieldAndKind(t *testing.T) {
 		{
 			name: "роль не назвала себя",
 			doc: "apiVersion: iam/v1\nmodule: vpc\nroles:\n" +
-				"  - name: Наблюдатель\n    description: Читает топологию проекта.\n" +
+				"  - description: Читает топологию проекта.\n" +
 				"    tier: {tierType: iam.project, tierId: prj000000000000000}\n" +
 				"    rules:\n      - {module: vpc, resources: [network], classes: [get]}\n",
 			kind:  manifest.ErrRoleIDRequired,
@@ -74,7 +74,7 @@ func TestSectionRefusalsNameTheirFieldAndKind(t *testing.T) {
 		{
 			name: "идентификатор роли не той формы",
 			doc: "apiVersion: iam/v1\nmodule: vpc\nroles:\n" +
-				"  - id: viewer\n    name: Наблюдатель\n    description: Читает топологию проекта.\n" +
+				"  - id: viewer\n    description: Читает топологию проекта.\n" +
 				"    tier: {tierType: iam.project, tierId: prj000000000000000}\n" +
 				"    rules:\n      - {module: vpc, resources: [network], classes: [get]}\n",
 			kind:  manifest.ErrRoleIDMalformed,
@@ -83,10 +83,10 @@ func TestSectionRefusalsNameTheirFieldAndKind(t *testing.T) {
 		{
 			name: "две роли под одним идентификатором",
 			doc: "apiVersion: iam/v1\nmodule: vpc\nroles:\n" +
-				"  - id: vpc.viewer\n    name: Наблюдатель\n    description: Читает топологию проекта.\n" +
+				"  - id: vpc.viewer\n    description: Читает топологию проекта.\n" +
 				"    tier: {tierType: iam.project, tierId: prj000000000000000}\n" +
 				"    rules:\n      - {module: vpc, resources: [network], classes: [get]}\n" +
-				"  - id: vpc.viewer\n    name: Второй наблюдатель\n    description: Тоже читает топологию.\n" +
+				"  - id: vpc.viewer\n    description: Тоже читает топологию.\n" +
 				"    tier: {tierType: iam.account, tierId: acc000000000000000}\n" +
 				"    rules:\n      - {module: vpc, resources: [subnet], classes: [get]}\n",
 			kind:  manifest.ErrRoleIDDuplicated,
@@ -95,7 +95,7 @@ func TestSectionRefusalsNameTheirFieldAndKind(t *testing.T) {
 		{
 			name: "ярус роли не назван",
 			doc: "apiVersion: iam/v1\nmodule: vpc\nroles:\n" +
-				"  - id: vpc.viewer\n    name: Наблюдатель\n    description: Читает топологию проекта.\n" +
+				"  - id: vpc.viewer\n    description: Читает топологию проекта.\n" +
 				"    rules:\n      - {module: vpc, resources: [network], classes: [get]}\n",
 			kind:  manifest.ErrRoleTierRequired,
 			names: []string{"roles[0].tier", "iam.account", "iam.project"},
@@ -103,7 +103,7 @@ func TestSectionRefusalsNameTheirFieldAndKind(t *testing.T) {
 		{
 			name: "ярус роли вне закрытого набора",
 			doc: "apiVersion: iam/v1\nmodule: vpc\nroles:\n" +
-				"  - id: vpc.viewer\n    name: Наблюдатель\n    description: Читает топологию проекта.\n" +
+				"  - id: vpc.viewer\n    description: Читает топологию проекта.\n" +
 				"    tier: {tierType: iam.folder, tierId: fld000000000000000}\n" +
 				"    rules:\n      - {module: vpc, resources: [network], classes: [get]}\n",
 			kind:  manifest.ErrRoleTierUnknown,
@@ -112,7 +112,7 @@ func TestSectionRefusalsNameTheirFieldAndKind(t *testing.T) {
 		{
 			name: "якорь яруса не назван",
 			doc: "apiVersion: iam/v1\nmodule: vpc\nroles:\n" +
-				"  - id: vpc.viewer\n    name: Наблюдатель\n    description: Читает топологию проекта.\n" +
+				"  - id: vpc.viewer\n    description: Читает топологию проекта.\n" +
 				"    tier: {tierType: iam.project, tierId: \"\"}\n" +
 				"    rules:\n      - {module: vpc, resources: [network], classes: [get]}\n",
 			kind:  manifest.ErrRoleTierRequired,
@@ -150,7 +150,7 @@ func TestSectionRefusalsNameTheirFieldAndKind(t *testing.T) {
 		"    relations:\n      - {name: use, definition: \"[user]\"}\n" +
 		"    verbs:\n      - {name: get}\n" +
 		"roles:\n" +
-		"  - id: vpc.viewer\n    name: Наблюдатель\n    description: Читает топологию проекта.\n" +
+		"  - id: vpc.viewer\n    description: Читает топологию проекта.\n" +
 		"    tier: {tierType: iam.project, tierId: prj000000000000000}\n" +
 		"    rules:\n      - {module: vpc, resources: [network], classes: [get]}\n" +
 		"deprecatedVerbs:\n" +

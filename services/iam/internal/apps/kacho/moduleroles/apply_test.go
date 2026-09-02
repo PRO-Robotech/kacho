@@ -94,7 +94,7 @@ func (s *fakeStore) ReplaceRuleRefs(_ context.Context, id domain.RoleID, refs []
 func vpcManifest(t *testing.T, id, class string) *manifest.Manifest {
 	t.Helper()
 	doc := "apiVersion: iam/v1\nmodule: vpc\nroles:\n" +
-		"  - id: " + id + "\n    name: Администратор сети\n" +
+		"  - id: " + id + "\n" +
 		"    description: Распоряжается сетями модуля.\n" +
 		"    tier: {tierType: iam.cluster, tierId: cluster_kacho_root}\n" +
 		"    rules:\n      - {module: vpc, resources: [network], classes: [" + class + "]}\n"
@@ -212,7 +212,7 @@ func TestMODRD09ARenamedRoleIsADifferentRole(t *testing.T) {
 // (RoleService.Create), и её строка кластерным писателем не производится.
 func TestMODRD15AForeignTierOrModuleNeverReachesTheWriter(t *testing.T) {
 	doc := "apiVersion: iam/v1\nmodule: vpc\nroles:\n" +
-		"  - id: vpc.viewer\n    name: Наблюдатель\n    description: Читает сети модуля.\n" +
+		"  - id: vpc.viewer\n    description: Читает сети модуля.\n" +
 		"    tier: {tierType: iam.project, tierId: prj000000000000000}\n" +
 		"    rules:\n      - {module: vpc, resources: [network], classes: [get]}\n"
 	m, err := manifest.Load([]byte(doc))
@@ -237,7 +237,7 @@ func TestMODRD15AForeignTierOrModuleNeverReachesTheWriter(t *testing.T) {
 func TestApplierRefusesARoleThatTheDomainRejects(t *testing.T) {
 	// Правило называет модуль вне закрытого набора платформы.
 	doc := "apiVersion: iam/v1\nmodule: vpc\nroles:\n" +
-		"  - id: vpc.network.admin\n    name: Администратор\n" +
+		"  - id: vpc.network.admin\n" +
 		"    description: Распоряжается сетями модуля.\n" +
 		"    tier: {tierType: iam.cluster, tierId: cluster_kacho_root}\n" +
 		"    rules:\n      - {module: vpc, resources: [network], classes: [get]}\n"

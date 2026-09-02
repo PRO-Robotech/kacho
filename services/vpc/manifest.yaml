@@ -199,7 +199,6 @@ resources:
 roles:
 
   - id: vpc.address.admin
-    name: Полное распоряжение адресами
     description: "Admin Address"
     tier:
       tierType: iam.cluster
@@ -210,7 +209,6 @@ roles:
         classes: ["*"]
 
   - id: vpc.address.edit
-    name: Правка адресами
     description: "Edit Address"
     tier:
       tierType: iam.cluster
@@ -221,7 +219,6 @@ roles:
         classes: [get, list, update]
 
   - id: vpc.address.view
-    name: Чтение адресами
     description: "Read Address"
     tier:
       tierType: iam.cluster
@@ -232,7 +229,6 @@ roles:
         classes: [list, get]
 
   - id: vpc.gateway.admin
-    name: Полное распоряжение шлюзами
     description: "Admin Gateway"
     tier:
       tierType: iam.cluster
@@ -243,7 +239,6 @@ roles:
         classes: ["*"]
 
   - id: vpc.gateway.edit
-    name: Правка шлюзами
     description: "Edit Gateway"
     tier:
       tierType: iam.cluster
@@ -254,7 +249,6 @@ roles:
         classes: [get, list, update]
 
   - id: vpc.gateway.view
-    name: Чтение шлюзами
     description: "Read Gateway"
     tier:
       tierType: iam.cluster
@@ -265,7 +259,6 @@ roles:
         classes: [list, get]
 
   - id: vpc.network.admin
-    name: Полное распоряжение сетями
     description: "Admin Network"
     tier:
       tierType: iam.cluster
@@ -276,7 +269,6 @@ roles:
         classes: ["*"]
 
   - id: vpc.network.edit
-    name: Правка сетями
     description: "Edit Network"
     tier:
       tierType: iam.cluster
@@ -287,7 +279,6 @@ roles:
         classes: [get, list, update]
 
   - id: vpc.network.view
-    name: Чтение сетями
     description: "Read Network"
     tier:
       tierType: iam.cluster
@@ -298,7 +289,6 @@ roles:
         classes: [list, get]
 
   - id: vpc.route_table.admin
-    name: Полное распоряжение таблицами маршрутизации
     description: "Admin RouteTable"
     tier:
       tierType: iam.cluster
@@ -309,7 +299,6 @@ roles:
         classes: ["*"]
 
   - id: vpc.route_table.edit
-    name: Правка таблицами маршрутизации
     description: "Edit RouteTable"
     tier:
       tierType: iam.cluster
@@ -320,7 +309,6 @@ roles:
         classes: [get, list, update]
 
   - id: vpc.route_table.view
-    name: Чтение таблицами маршрутизации
     description: "Read RouteTable"
     tier:
       tierType: iam.cluster
@@ -331,7 +319,6 @@ roles:
         classes: [list, get]
 
   - id: vpc.security_group.admin
-    name: Полное распоряжение группами безопасности
     description: "Admin SecurityGroup"
     tier:
       tierType: iam.cluster
@@ -342,7 +329,6 @@ roles:
         classes: ["*"]
 
   - id: vpc.security_group.edit
-    name: Правка группами безопасности
     description: "Edit SecurityGroup"
     tier:
       tierType: iam.cluster
@@ -353,7 +339,6 @@ roles:
         classes: [get, list, update]
 
   - id: vpc.security_group.view
-    name: Чтение группами безопасности
     description: "Read SecurityGroup"
     tier:
       tierType: iam.cluster
@@ -364,7 +349,6 @@ roles:
         classes: [list, get]
 
   - id: vpc.subnet.admin
-    name: Полное распоряжение подсетями
     description: "Admin Subnet"
     tier:
       tierType: iam.cluster
@@ -375,7 +359,6 @@ roles:
         classes: ["*"]
 
   - id: vpc.subnet.edit
-    name: Правка подсетями
     description: "Edit Subnet"
     tier:
       tierType: iam.cluster
@@ -386,7 +369,6 @@ roles:
         classes: [get, list, update]
 
   - id: vpc.subnet.view
-    name: Чтение подсетями
     description: "Read Subnet"
     tier:
       tierType: iam.cluster

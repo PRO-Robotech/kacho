@@ -46,7 +46,6 @@ resources:
     verbs: [get, list, create, update, delete, {name: listOperations, class: list}]
 roles:
   - id: vpc.viewer
-    name: Наблюдатель сетей
     description: Роль пробы ключа classes.
     tier: {tierType: iam.project, tierId: prj000000000000000}
     rules:

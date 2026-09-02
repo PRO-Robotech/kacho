@@ -196,7 +196,6 @@ func nonStringKeyInjection(name, literal string, quoted bool) injection {
 const rolesSectionOnlyFirst = `
 roles:
   - id: vpc.internal_consumer
-    name: Смежный модуль
     description: Ходит в vpc на пути запроса — аллокация адресов и ссылки.
     tier: {tierType: iam.project, tierId: prj000000000000000}
     rules:

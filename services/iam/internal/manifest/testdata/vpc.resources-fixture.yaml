@@ -147,7 +147,6 @@ resources:
 roles:
 
   - id: vpc.internal_consumer
-    name: Смежный модуль
     description: >
       Ходит в vpc на пути запроса: аллокация адресов, ссылки, привязка
       интерфейсов.
@@ -158,7 +157,6 @@ roles:
         classes: [get, list]
 
   - id: vpc.address_pool_admin
-    name: Администратор адресного пространства
     description: Ведёт адресные пулы облака.
     tier: {tierType: iam.account, tierId: acc000000000000000}
     rules:
