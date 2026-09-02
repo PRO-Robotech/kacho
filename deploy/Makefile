@@ -1284,7 +1284,7 @@ wipe-iam-db: guard-kind-context
 # двоичный файл, а не зовётся через `go run`: `go run` отдаёт свой код 1 на любом
 # ненулевом коде программы, то есть «не объявлено» стало бы неотличимо от находки.
 MODULE_MANIFESTS_STACK ?= dev
-module-manifests-configmap:
+module-manifests-configmap: guard-kind-context
 	@set -e; \
 	chain="$$(bash tests/helm/stacks.sh --chain $(MODULE_MANIFESTS_STACK) ' ')"; \
 	[ -n "$$chain" ] || { echo "ABORT: цепочка стенда '$(MODULE_MANIFESTS_STACK)' прочиталась пустой"; exit 1; }; \
