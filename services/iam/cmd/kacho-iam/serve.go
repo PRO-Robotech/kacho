@@ -1237,6 +1237,18 @@ func runServe(cfg config.Config) error {
 	// исходов, иначе ноль на витрине означал бы сразу и «личностей не было», и
 	// «замер не снят». Это страховка, а не мера: отказ по такому порогу пришёл бы
 	// следующему честному человеку, поэтому порог только наблюдается.
+	// Петля обновления снимка каталога. БЕЗ НЕЁ снимок наполняется однажды на
+	// старте и больше не перечитывается: снятие модуля перестаёт доезжать до
+	// пути запроса до перезапуска службы, и состояние не сходится само (#1945).
+	// Отказ круга петлю не прерывает — он уже сообщён журналом и счётчиком, а
+	// прекращение обновлений сменило бы ограниченное отставание на бессрочное.
+	// Провязку держит гейт `TestIAM1945_CatalogSnapshotBuiltByTheRootIsAlsoStartedByIt`:
+	// построенный корнем снимок обязан быть им же и запущен.
+	tasks = append(tasks, func() error {
+		catalogSnapshot.Run(ctx, catalogSnapshotRefreshPeriod())
+		return nil
+	})
+
 	identityGrowth := newIdentityGrowthSampler(kachopg.NewIdentityGrowthRepo(pool))
 	metricsReg.NewIdentityGrowthCollector(identityGrowth.Counts)
 	tasks = append(tasks, func() error {
