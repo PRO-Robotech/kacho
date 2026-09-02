@@ -714,6 +714,213 @@ case_no_trunk_reference_is_an_empty_traversal() {
   rm -rf "$r"
 }
 
+# ── Общий граф для случаев 15-17: ЛИНИЯ ИЗ ДВУХ ПОСАДОК, две отправки подряд ─
+#
+# Это раскладка, ради которой гейт и написан: накопительная линия копит посадки,
+# и каждая отправка несёт лишь ПРИРОСТ с прошлого раза. Граф строится один и тот
+# же, различается только то, что делает первая посадка со своим файлом.
+#
+# Возвращает три ревизии через пробел: <C0> <L1> <L2>.
+#   mode=declared — первая посадка СНИМАЕТ A.txt, и перечень это объявляет
+#   mode=rollback — первая посадка ВОЗВРАЩАЕТ содержимое базы (настоящий откат)
+#   mode=clean    — первая посадка ничего не портит
+# ledger — содержимое перечня (пустая строка = перечня нет вовсе).
+build_two_push_line() { # <repo> <mode> <ledger-line>
+  local r=$1 mode=$2 ledger=$3
+  echo keep > "$r/keep.txt"
+  echo "база" > "$r/shared.txt"
+  if [ -n "$ledger" ]; then
+    mkdir -p "$r/tools/carrydrift"
+    printf '%s\n' "$ledger" > "$r/tools/carrydrift/declared-removals.txt"
+  fi
+  commit "$r" "C0 база"
+  local c0; c0=$(git -C "$r" rev-parse HEAD)
+
+  # Полоса 1 отходит от базы и правит ТОЛЬКО своё.
+  git -C "$r" checkout -q -b lane1 "$c0"
+  echo l1 > "$r/lane1.txt"; commit "$r" "полоса 1 правит своё"
+
+  # Линия двигается после того, как полоса от неё отошла, — иначе у гейта нет
+  # области и вердикт беспредметен.
+  git -C "$r" checkout -q -b release/l "$c0"
+  case "$mode" in
+    declared) echo A > "$r/A.txt" ;;
+    *)        echo "ПРАВКА ЛИНИИ" > "$r/shared.txt" ;;
+  esac
+  commit "$r" "C1 линия двигается"
+
+  # ПОСАДКА 1.
+  git -C "$r" merge -q --no-commit --no-ff lane1 >/dev/null 2>&1
+  case "$mode" in
+    declared) rm -f "$r/A.txt" ;;
+    rollback) echo "база" > "$r/shared.txt" ;;
+  esac
+  git -C "$r" add -A
+  git -C "$r" commit -qm "посадка 1 (${mode})"
+  local l1; l1=$(git -C "$r" rev-parse HEAD)
+
+  # Полоса 2 отходит от базы; посадка 2 чистая.
+  git -C "$r" checkout -q -b lane2 "$c0"
+  echo l2 > "$r/lane2.txt"; commit "$r" "полоса 2 правит своё"
+  git -C "$r" checkout -q release/l
+  git -C "$r" merge -q --no-ff -m "посадка 2 (чистая)" lane2 >/dev/null 2>&1
+  local l2; l2=$(git -C "$r" rev-parse HEAD)
+
+  echo "$c0 $l1 $l2"
+}
+
+# run_push <repo> <before|-> <head> — прогон судьи так, как его зовёт конвейер:
+# рабочая копия стоит на голове отправки, а накопительная линия на неё указывает.
+run_push() {
+  local r=$1 before=$2 head=$3
+  git -C "$r" checkout -q "$head"
+  git -C "$r" branch -f release/l "$head"
+  [ "$before" = "-" ] && before=""
+  (cd "$r" && BEFORE="$before" HEAD_SHA="$head" bash "$JUDGE" 2>&1)
+}
+
+# ── Случай 15. Запись перечня живёт, пока жива ПОСАДКА, а не пока её несёт ───
+#              диапазон прогона
+#
+# Перечень объявленных снятий описывает ОТПРАВКУ целиком — так говорит шапка
+# `drift.sh`, и так же устроен сбор `declared-used` по всем посадкам. Но
+# самоистечение судилось ДИАПАЗОНОМ прогона, а диапазон инкрементальной отправки
+# содержит только посадки, добавленные с прошлого раза. Значит запись,
+# сработавшая законно, на СЛЕДУЮЩЕЙ отправке объявлялась пережившей предмет и
+# роняла гейт кодом 3 — при том что не изменилось ничего.
+#
+# Следствие: механизм объявления был неприменим на накопительной линии —
+# единственной раскладке, ради которой он и нужен (задача #1911).
+case_declaration_outlives_the_push_that_used_it() {
+  cases=$((cases + 1))
+  local r; r=$(newrepo)
+  local revs; revs=$(build_two_push_line "$r" declared \
+    "A.txt  снят решением: линия и ствол завели один предмет разными файлами")
+  read -r c0 l1 l2 <<<"$revs"
+
+  local out1 rc1 out2 rc2
+  out1=$(run_push "$r" "$c0" "$l1"); rc1=$?
+  out2=$(run_push "$r" "$l1" "$l2"); rc2=$?
+
+  if [ "$rc1" -eq 0 ] && [[ "$out1" == *"снято решением: A.txt"* ]] \
+     && [ "$rc2" -eq 0 ] && [[ "$out2" != *"ПЕРЕЖИЛА ПРЕДМЕТ"* ]]; then
+    ok "запись перечня пережила отправку, в которой сработала"
+  else
+    no "запись живёт ровно один прогон (rc1=$rc1 rc2=$rc2)" "$out2"
+  fi
+  rm -rf "$r"
+}
+
+# ── Случай 16. Близнец к 15: запись, у которой предмета нет НИ В ОДНОЙ ───────
+#              посадке линии, по-прежнему краснеет
+#
+# Без этого случая починка 15 неотличима от снятия самоистечения вовсе. Запись,
+# которой нечего исключать, обязана оставаться находкой: иначе она молча прикроет
+# следующее снятие — ровно тот класс, ради которого перечень и заведён.
+case_declaration_without_subject_anywhere_still_reds() {
+  cases=$((cases + 1))
+  local r; r=$(newrepo)
+  local revs; revs=$(build_two_push_line "$r" clean \
+    "never/removed.txt  предмета нет ни в одной посадке этой линии")
+  read -r c0 l1 l2 <<<"$revs"
+
+  local out1 rc1 out2 rc2
+  out1=$(run_push "$r" "$c0" "$l1"); rc1=$?
+  out2=$(run_push "$r" "$l1" "$l2"); rc2=$?
+
+  if [ "$rc1" -eq 3 ] && [ "$rc2" -eq 3 ] \
+     && [[ "$out2" == *"ПЕРЕЖИЛА ПРЕДМЕТ"* ]] \
+     && [[ "$out2" == *"never/removed.txt"* ]]; then
+    ok "запись без предмета во всей линии по-прежнему названа и роняет гейт"
+  else
+    no "самоистечение перечня перестало работать (rc1=$rc1 rc2=$rc2)" "$out2"
+  fi
+  rm -rf "$r"
+}
+
+# ── Случай 17. НАХОДКА тоже переживает следующую отправку ────────────────────
+#
+# Та же единица счёта, но цена выше на порядок. Откат, найденный в приросте одной
+# отправки, на следующей не пересматривался вовсе: диапазон его больше не
+# содержал, и линия зеленела, неся живой откат до самого слияния в ствол.
+#
+# То есть дефект работал ДВОЙНЫМ ДНОМ: он же и служил единственным способом
+# погасить красное — достаточно было толкнуть что угодно ещё раз.
+case_finding_outlives_the_push_that_found_it() {
+  cases=$((cases + 1))
+  local r; r=$(newrepo)
+  local revs; revs=$(build_two_push_line "$r" rollback "")
+  read -r c0 l1 l2 <<<"$revs"
+
+  local out1 rc1 out2 rc2
+  out1=$(run_push "$r" "$c0" "$l1"); rc1=$?
+  out2=$(run_push "$r" "$l1" "$l2"); rc2=$?
+
+  if [ "$rc1" -eq 1 ] && [[ "$out1" == *"ОТКАТ: shared.txt"* ]] \
+     && [ "$rc2" -eq 1 ] && [[ "$out2" == *"ОТКАТ: shared.txt"* ]]; then
+    ok "живой откат линии назван и на следующей отправке"
+  else
+    no "находка живёт ровно один прогон (rc1=$rc1 rc2=$rc2)" "$out2"
+  fi
+  rm -rf "$r"
+}
+
+# ── Случай 18. Охват не зависит от того, каким событием пришёл прогон ────────
+#
+# `github.event.before` есть у `push` и у `pull_request` с действием
+# `synchronize`, но НЕ у `opened`/`reopened`. На боевых прогонах наблюдались обе
+# формы: «диапазон прогона: X..Y» и «диапазона нет … судится вершина». То есть
+# охват гейта был функцией события, а не того, что в линии накоплено: на
+# `opened` судилась ОДНА вершина при любом числе посадок.
+case_coverage_does_not_depend_on_the_event() {
+  cases=$((cases + 1))
+  local r; r=$(newrepo)
+  local revs; revs=$(build_two_push_line "$r" clean "")
+  read -r c0 l1 l2 <<<"$revs"
+
+  local out rc
+  out=$(run_push "$r" - "$l2"); rc=$?
+  if [ "$rc" -eq 0 ] && [[ "$out" == *"посадок в прогоне 2"* ]]; then
+    ok "без диапазона в событии судится вся линия, а не одна вершина"
+  else
+    no "охват остался функцией события (rc=$rc)" "$out"
+  fi
+  rm -rf "$r"
+}
+
+# ── Случай 19. Близнец к 18: НА САМОМ СТВОЛЕ выводить диапазон не из чего ────
+#
+# Граница послабления, которое вводит случай 18. Когда голова прогона стоит на
+# стволе, линии, которую она добавляет к стволу, не существует by construction —
+# выведенный диапазон пуст. Тогда и только тогда берётся прирост события, и этот
+# путь обязан остаться живым: иначе push в `main` перестал бы судиться вовсе, а
+# заметить это было бы нечем — гейт остался бы зелёным.
+case_on_the_trunk_itself_the_event_range_is_used() {
+  cases=$((cases + 1))
+  local r; r=$(newrepo)
+  echo "база" > "$r/shared.txt"; commit "$r" "база"
+  local base; base=$(git -C "$r" rev-parse HEAD)
+
+  git -C "$r" checkout -q -b lane "$base"
+  echo l > "$r/lane.txt"; commit "$r" "полоса правит своё"
+  git -C "$r" checkout -q main
+  echo "ПРАВКА СТВОЛА" > "$r/shared.txt"; commit "$r" "ствол двигается"
+  git -C "$r" merge -q --no-ff -m "посадка в ствол" lane >/dev/null 2>&1
+  local head; head=$(git -C "$r" rev-parse HEAD)
+
+  # Голова — сам ствол: `main` указывает на неё, накопительных линий нет.
+  local out rc
+  out=$(cd "$r" && BEFORE="$base" HEAD_SHA="$head" bash "$JUDGE" 2>&1); rc=$?
+  if [ "$rc" -eq 0 ] \
+     && [[ "$out" == *"посадок в прогоне 1"* ]] \
+     && [[ "$out" == *"прирост события"* ]]; then
+    ok "на самом стволе судится прирост события, и это сказано вслух"
+  else
+    no "прирост события на стволе перестал судиться (rc=$rc)" "$out"
+  fi
+  rm -rf "$r"
+}
+
 echo "проба гейта переноса — синтетические графы"
 case_real_rollback
 case_branch_owns_file
@@ -729,6 +936,11 @@ case_line_into_lane_adaptation_is_silent
 case_trunk_side_undecidable_is_not_a_finding
 case_no_trunk_reference_is_an_empty_traversal
 case_nothing_judged_at_all_is_loud
+case_declaration_outlives_the_push_that_used_it
+case_declaration_without_subject_anywhere_still_reds
+case_finding_outlives_the_push_that_found_it
+case_coverage_does_not_depend_on_the_event
+case_on_the_trunk_itself_the_event_range_is_used
 
 echo
 echo "перепись: случаев ${cases}; прошло ${pass}; упало ${fail}"
