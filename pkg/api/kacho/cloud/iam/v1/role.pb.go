@@ -68,8 +68,27 @@ type Role struct {
 	// Description of the role.
 	Description string `protobuf:"bytes,4,opt,name=description,proto3" json:"description,omitempty"`
 	// INTERNAL compiled-форма (anchor/resource_names-армы) для FGA-эмиссии. НЕ
-	// часть публичного API-ответа для rules-ролей (пустое в Get/List); на входе
-	// Create/Update игнорируется. Публичная поверхность роли — `rules` (tag 11).
+	// часть публичного API-ответа для rules-ролей (пустое в Get/List).
+	// Публичная поверхность роли — `rules` (tag 11).
+	//
+	// На входе исход зависит от ПУТИ и от МАСКИ, и он ровно один на каждый:
+	//
+	//	Create, значение непусто             -> INVALID_ARGUMENT
+	//	    "Illegal argument permissions (compiled/output-only)";
+	//	Update, поле названо в update_mask   -> INVALID_ARGUMENT
+	//	    "permissions is immutable after Role.Create";
+	//	Update, поле в теле, маска молчит    -> значение не читается вовсе
+	//	    (конвенционный full-object PATCH: immutable из тела не применяются).
+	//
+	// Присланное значение не применяется ни одним путём: два пути отвергают его
+	// синхронно, третий не читает. Прежняя редакция называла все три «на входе
+	// Create/Update игнорируется» — верно только для третьего.
+	//
+	// Три исхода закреплены пробами пакета role (имена, а не координаты — они
+	// переживают вставку строк): TestRoleHandler_A02_CreateRejectsPermissions,
+	// TestRoleHandler_A08_UpdateRejectsPermissionsMask,
+	// TestRoleHandler_UpdatePermissionsInBodyWithoutMask_IsNotRead и парный к
+	// нему TestRoleHandler_UpdatePermissionsDiscriminatorIsTheMask.
 	//
 	// Deprecated: Marked as deprecated in kacho/cloud/iam/v1/role.proto.
 	Permissions []string `protobuf:"bytes,5,rep,name=permissions,proto3" json:"permissions,omitempty"`
