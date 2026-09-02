@@ -921,6 +921,107 @@ case_on_the_trunk_itself_the_event_range_is_used() {
   rm -rf "$r"
 }
 
+# ── Общий граф для случаев 20-24: ОДИН расходящийся файл, три исхода ─────────
+#
+# Исходы расхождения различаются ровно СОДЕРЖИМЫМ результата, а граф у них один
+# и тот же: ствол правит файл, ветка его не касается, посадка приносит своё. Так
+# же устроена и сама проверка — `drift.sh` берёт содержимое базы ОДИН раз и
+# ветвится по нему, — поэтому и здесь строится один граф на все случаи.
+#
+# Возвращает четыре ревизии через пробел: <база> <ветка> <ствол> <результат>.
+#   outcome=to-base — результат равен БАЗЕ            (откат)
+#   outcome=adapted — файл на месте, содержимое НОВОЕ (приспособление)
+#   outcome=removed — файла в результате нет вовсе    (снятие)
+# ledger — строка перечня; она коммитится НА РЕЗУЛЬТАТЕ, поэтому один и тот же
+# граф судится и «объявленным» (`DRIFT_DECLARED_REV=<результат>`), и
+# «необъявленным» (`DRIFT_DECLARED_REV=<база>`, где перечня нет вовсе). Пара
+# получается на ОДНОМ графе, и различие между её половинами — ровно перечень.
+build_one_file_divergence() { # <repo> <outcome> <ledger-line>
+  local r=$1 outcome=$2 ledger=$3
+  echo "база" > "$r/shared.txt"; echo "прочее" > "$r/other.txt"
+  commit "$r" "база"
+  local base; base=$(git -C "$r" rev-parse HEAD)
+
+  git -C "$r" checkout -q -b branch "$base"
+  echo "правка ветки" > "$r/other.txt"; commit "$r" "ветка правит только своё"
+  local br; br=$(git -C "$r" rev-parse HEAD)
+
+  git -C "$r" checkout -q main
+  echo "ПРАВКА СТВОЛА" > "$r/shared.txt"; commit "$r" "ствол правит общий файл"
+  local trunk; trunk=$(git -C "$r" rev-parse HEAD)
+
+  git -C "$r" checkout -q -b "landed-$outcome" "$br"
+  case "$outcome" in
+    to-base) echo "база" > "$r/shared.txt" ;;
+    adapted) echo "ПРИВЕДЕНО К ФОРМЕ ВЕТКИ" > "$r/shared.txt" ;;
+    removed) rm -f "$r/shared.txt" ;;
+  esac
+  if [ -n "$ledger" ]; then
+    mkdir -p "$r/tools/carrydrift"
+    printf '%s\n' "$ledger" > "$r/tools/carrydrift/declared-removals.txt"
+  fi
+  # Метка посадки нужна, чтобы у неё БЫЛ свой коммит: у исхода `to-base` дерево
+  # совпадает с деревом ветки, `git commit` отказывается, и результат молча
+  # схлопнулся бы в саму ветку. Случай тогда судил бы другой граф, ничего об
+  # этом не сказав.
+  echo "$outcome" > "$r/landing-marker.txt"
+  commit "$r" "посадка ($outcome)"
+  local landed; landed=$(git -C "$r" rev-parse HEAD)
+
+  echo "$base $br $trunk $landed"
+}
+
+# ── Случай 20. Расхождение, которое к базе НЕ возвращалось, откатом не зовётся ─
+#
+# Слово стоит в тексте отказа, то есть в контракте гейта. Шапка `drift.sh`
+# определяет откат как ВОЗВРАТ СОДЕРЖИМОГО БАЗЫ, а печаталось «ОТКАТ» на любом
+# расхождении со стволом: различитель `base_blob` вычислялся только внутри ветки
+# «объявлено», и необъявленное расхождение через него не проходило вовсе.
+#
+# Цена наблюдалась на живой линии (#1912, #1919): файла в базе не было ВОВСЕ,
+# то есть возвращаться было не к чему, а гейт говорил «откат». Оператор проверял
+# «вернулось ли к базе», получал «нет» и переставал понимать, чего от него хотят.
+case_undeclared_adaptation_is_not_named_a_rollback() {
+  cases=$((cases + 1))
+  local r; r=$(newrepo)
+  local revs; revs=$(build_one_file_divergence "$r" adapted "")
+  local base br trunk landed; read -r base br trunk landed <<<"$revs"
+
+  local out rc
+  out=$(cd "$r" && DRIFT_DECLARED_REV="$landed" bash "$DRIFT" "$base" "$br" "$trunk" "$landed" 2>&1); rc=$?
+  if [ "$rc" -eq 1 ] \
+     && [[ "$out" == *"НЕОБЪЯВЛЕННОЕ ПРИСПОСОБЛЕНИЕ: shared.txt"* ]] \
+     && [[ "$out" != *"ОТКАТ"* ]]; then
+    ok "расхождение, не вернувшееся к базе, названо приспособлением, а не откатом"
+  else
+    no "гейт зовёт откатом то, что к базе не возвращалось (rc=$rc)" "$out"
+  fi
+  rm -rf "$r"
+}
+
+# ── Случай 21. Близнец к 20: настоящий возврат к базе по-прежнему ОТКАТ ──────
+#
+# Без этого случая правка слова неотличима от его снятия: гейт, разучившийся
+# говорить «ОТКАТ», на чистом дереве выглядит точно так же. Граф тот же, что в
+# случае 20, различается ровно содержимое результата.
+case_return_to_base_is_still_named_a_rollback() {
+  cases=$((cases + 1))
+  local r; r=$(newrepo)
+  local revs; revs=$(build_one_file_divergence "$r" to-base "")
+  local base br trunk landed; read -r base br trunk landed <<<"$revs"
+
+  local out rc
+  out=$(cd "$r" && DRIFT_DECLARED_REV="$landed" bash "$DRIFT" "$base" "$br" "$trunk" "$landed" 2>&1); rc=$?
+  if [ "$rc" -eq 1 ] \
+     && [[ "$out" == *"ОТКАТ: shared.txt"* ]] \
+     && [[ "$out" != *"ПРИСПОСОБЛЕНИЕ"* ]]; then
+    ok "возврат к содержимому базы по-прежнему назван откатом"
+  else
+    no "гейт разучился называть настоящий откат (rc=$rc)" "$out"
+  fi
+  rm -rf "$r"
+}
+
 echo "проба гейта переноса — синтетические графы"
 case_real_rollback
 case_branch_owns_file
@@ -941,6 +1042,8 @@ case_declaration_without_subject_anywhere_still_reds
 case_finding_outlives_the_push_that_found_it
 case_coverage_does_not_depend_on_the_event
 case_on_the_trunk_itself_the_event_range_is_used
+case_undeclared_adaptation_is_not_named_a_rollback
+case_return_to_base_is_still_named_a_rollback
 
 echo
 echo "перепись: случаев ${cases}; прошло ${pass}; упало ${fail}"
