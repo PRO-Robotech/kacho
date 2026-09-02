@@ -283,7 +283,6 @@ func TestInjection_ExistingFormCheckStaysAlive(t *testing.T) {
 	if broken == string(data) {
 		t.Fatal("инъекция беспредметна: строки идентификатора роли в фикстуре нет")
 	}
-	err = nil
 	if _, err = manifest.Load([]byte(broken)); err == nil {
 		t.Fatal("загрузчик принял идентификатор вне объявленной формы: существующий " +
 			"контроль формы мёртв, и молчание новой проверки неотличимо от его молчания")
