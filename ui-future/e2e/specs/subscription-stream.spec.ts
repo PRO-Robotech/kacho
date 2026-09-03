@@ -87,15 +87,51 @@ async function installStreamReader(page: Page): Promise<void> {
       event: string;
       data: string;
     }
-    const store: { frames: StreamFrame[]; failure: string } = { frames: [], failure: "" };
+    /**
+     * СОСТОЯНИЕ СВЯЗИ, А НЕ ТОЛЬКО КАДРЫ (#2016).
+     *
+     * Прежде здесь копились кадры и одна строка отказа, и отказ пробы звучал
+     * «событий 0» — то есть НАЗЫВАЛ ЧИСЛО И МОЛЧАЛ О СОЕДИНЕНИИ. Под этим
+     * молчанием неразличимы три разные беды: строку не отправили, строку не
+     * довезли, и мы не дождались. Разбор поэтому начинался с догадки, а гонку
+     * догадкой не поймать: она проходит и падает на одной ревизии.
+     *
+     * Считается ровно то, чем эти три различаются:
+     *
+     *   — `opened` больше единицы означает ПЕРЕОТКРЫТИЕ: между закрытием и
+     *     новым соединением было окно, и это уже другой разговор, чем молчащий
+     *     открытый поток;
+     *   — `errors` растёт и на временном обрыве, который браузер лечит сам, —
+     *     поэтому он считается ОТДЕЛЬНО от терминального закрытия;
+     *   — отметки времени отвечают на «когда поток в последний раз что-то
+     *     сказал»: открытый поток, молчащий с самого открытия, и открытый
+     *     поток, только что принёсший чужое событие, — разные состояния.
+     */
+    const store: {
+      frames: StreamFrame[];
+      failure: string;
+      opened: number;
+      errors: number;
+      openedAtMs: number;
+      lastFrameAtMs: number;
+      lastErrorAtMs: number;
+    } = { frames: [], failure: "", opened: 0, errors: 0, openedAtMs: 0, lastFrameAtMs: 0, lastErrorAtMs: 0 };
     (window as unknown as Record<string, unknown>).__kachoStream = store;
 
     (window as unknown as Record<string, unknown>).__kachoStreamOpen = (url: string) => {
       const source = new EventSource(url);
+      // Ссылка на само соединение: `readyState` спрашивается У ЖИВОГО ОБЪЕКТА в
+      // момент разбора, а не восстанавливается из накопленных признаков.
+      (window as unknown as Record<string, unknown>).__kachoStreamSource = source;
       (window as unknown as Record<string, unknown>).__kachoStreamClose = () => source.close();
       const take = (name: string) => (evt: Event) => {
         const ev = evt as MessageEvent<string>;
         store.frames.push({ id: ev.lastEventId ?? "", event: name, data: ev.data });
+        store.lastFrameAtMs = Date.now();
+        if (name === "opened") {
+          store.opened += 1;
+          if (store.openedAtMs === 0) store.openedAtMs = Date.now();
+        }
       };
       source.addEventListener("opened", take("opened"));
       source.addEventListener("event", take("event"));
@@ -103,7 +139,30 @@ async function installStreamReader(page: Page): Promise<void> {
         // Разрыв — штатное событие потока, а не отказ: браузер переподключится
         // сам. Записываем его отдельно от кадров, чтобы «поток молчал» было
         // отличимо от «поток не открылся».
+        store.errors += 1;
+        store.lastErrorAtMs = Date.now();
         if (source.readyState === EventSource.CLOSED) store.failure = "поток закрыт краем";
+      };
+    };
+
+    /** Состояние связи глазами страницы — читается в момент разбора отказа. */
+    (window as unknown as Record<string, unknown>).__kachoStreamState = () => {
+      const src = (window as unknown as Record<string, EventSource | undefined>).__kachoStreamSource;
+      const last = store.frames.length > 0 ? store.frames[store.frames.length - 1] : undefined;
+      return {
+        // -1 означает «соединение не открывали вовсе» — это НЕ одно из трёх
+        // состояний `EventSource`, и путать его с «закрыто» нельзя.
+        readyState: src === undefined ? -1 : src.readyState,
+        opened: store.opened,
+        errors: store.errors,
+        failure: store.failure,
+        frames: store.frames.length,
+        events: store.frames.filter((f) => f.event === "event").length,
+        lastEventId: last === undefined ? "" : last.id,
+        openedAtMs: store.openedAtMs,
+        lastFrameAtMs: store.lastFrameAtMs,
+        lastErrorAtMs: store.lastErrorAtMs,
+        nowMs: Date.now(),
       };
     };
 
@@ -251,6 +310,165 @@ async function frames(page: Page): Promise<Frame[]> {
   );
 }
 
+/** Состояние связи глазами страницы. */
+interface StreamState {
+  readyState: number;
+  opened: number;
+  errors: number;
+  failure: string;
+  frames: number;
+  events: number;
+  lastEventId: string;
+  openedAtMs: number;
+  lastFrameAtMs: number;
+  lastErrorAtMs: number;
+  nowMs: number;
+}
+
+async function streamState(page: Page): Promise<StreamState> {
+  return page.evaluate(
+    () => (window as unknown as Record<string, () => StreamState>).__kachoStreamState(),
+  );
+}
+
+/**
+ * Состояние связи СЛОВАМИ — эта строка идёт в отказ пробы.
+ *
+ * Отказ, называющий одно число полученных событий, не даёт разобрать гонку: он
+ * одинаков и когда поток оборвался, и когда он открыт и молчит. Поэтому здесь
+ * называется всё, чем эти случаи различаются.
+ */
+function describeStream(s: StreamState): string {
+  const ready =
+    { [-1]: "НЕ ОТКРЫВАЛОСЬ", 0: "соединяется", 1: "ОТКРЫТО", 2: "ЗАКРЫТО" }[s.readyState] ??
+    `неизвестно (${s.readyState})`;
+  const ago = (t: number) => (t === 0 ? "никогда" : `${Math.round((s.nowMs - t) / 1000)} с назад`);
+  return [
+    `соединение: ${ready}`,
+    `открытий потока: ${s.opened}` +
+      (s.opened > 1 ? " — край ПЕРЕОТКРЫВАЛ поток, между соединениями было окно" : ""),
+    `ошибок связи: ${s.errors}` + (s.errors > 0 ? ` (последняя ${ago(s.lastErrorAtMs)})` : ""),
+    s.failure !== "" ? `край: ${s.failure}` : "",
+    `кадров получено: ${s.frames}, из них событий: ${s.events}`,
+    `последняя позиция: ${s.lastEventId === "" ? "нет" : s.lastEventId}`,
+    `поток открылся ${ago(s.openedAtMs)}, последний кадр ${ago(s.lastFrameAtMs)}`,
+  ]
+    .filter((line) => line !== "")
+    .join("; ");
+}
+
+/**
+ * ЧЕЙ ЭТО ОТКАЗ: строки не было — или строку не довезли.
+ *
+ * ─────────────────────────────────────────────────────────────────────────────
+ * ЭТО НЕ ПОВТОР ПРОБЫ. Вердикт первичного утверждения уже вынесен и НЕ
+ * отменяется: что бы здесь ни выяснилось, проба падает. Здесь перечитывается
+ * журнал С ПОЗИЦИИ ДО СОЗДАНИЯ — вторым соединением, у которого свой курсор, —
+ * чтобы отказ назвал ВИНОВНИКА, а не только число.
+ *
+ * Разбор ставит один вопрос, на который живой поток ответить не может:
+ *
+ *   — перечитывание ПРИНОСИТ предмет ⇒ строка в журнале ЕСТЬ и вызывающему
+ *     ВИДНА. Значит отправлено, а открытый поток не довёз: предмет в ДОСТАВКЕ;
+ *   — перечитывание НЕ приносит ⇒ строки нет либо она вызывающему не видна,
+ *     при том что сам ресурс уже читается по своему адресу (это подтвердил
+ *     `createdResourceId` до сюда). Предмет у ВЛАДЕЛЬЦА ЖУРНАЛА;
+ *   — перечитывание отказано краем ⇒ вердикта нет ВОВСЕ: это условие разбора,
+ *     а не его исход, и подавать его как вывод о потоке нельзя.
+ *
+ * Бюджет здесь короткий намеренно: разбор не вправе съесть срок пробы.
+ */
+async function replayFrom(
+  page: Page,
+  url: string,
+  position: string,
+  wantId: string,
+): Promise<{ found: boolean; frames: number; refusal: string }> {
+  const out = await page.evaluate(
+    async (arg: { url: string; from: string; wantIds: string[] }) =>
+      (
+        window as unknown as Record<
+          string,
+          (
+            u: string,
+            id: string,
+            wantIds: string[],
+            budget: number,
+          ) => Promise<{ frames: Frame[]; refusal: string }>
+        >
+      ).__kachoStreamResume(arg.url, arg.from, arg.wantIds, 20_000),
+    { url, from: position, wantIds: [wantId] },
+  );
+  return {
+    found: out.frames.some((f) => f.data.includes(wantId)),
+    frames: out.frames.length,
+    refusal: out.refusal,
+  };
+}
+
+/**
+ * Дождаться события о предмете — а не дождавшись, НАЗВАТЬ СОСТОЯНИЕ.
+ *
+ * Три беды, которые прежний отказ сваливал в «событий 0», здесь разделены и
+ * каждая названа своим именем. Предикат снятия задачи #2016 — ровно это: по
+ * тексту отказа отличимо «не отправлено» от «не доехало» и от «не дождались».
+ */
+async function expectStreamEvent(
+  page: Page,
+  opts: { url: string; created: string; positionBefore: string; timeout: number; subject: string },
+): Promise<void> {
+  const count = async () =>
+    (await frames(page)).filter((f) => f.event === "event" && f.data.includes(opts.created)).length;
+
+  try {
+    await expect.poll(count, { timeout: opts.timeout }).toBeGreaterThanOrEqual(1);
+    return;
+  } catch {
+    // Вердикт уже вынесен — дальше только разбор, и он его не отменяет.
+  }
+
+  const state = await streamState(page);
+  const replay = await replayFrom(page, opts.url, opts.positionBefore, opts.created);
+  // Живой поток мог принести предмет ПОКА ШЁЛ РАЗБОР: тогда беда не в продукте,
+  // а в отведённом бюджете, и сказать об этом обязано именно сообщение отказа.
+  const late = await count();
+
+  let verdict: string;
+  if (replay.refusal !== "") {
+    verdict =
+      `ВИНОВНИК НЕ УСТАНОВЛЕН: перечитать журнал с позиции «${opts.positionBefore}» не удалось — ` +
+      `${replay.refusal}. Это УСЛОВИЕ разбора, а не вердикт о потоке: о судьбе строки такой ` +
+      `прогон не говорит ничего.`;
+  } else if (late > 0) {
+    verdict =
+      `НЕ ДОЖДАЛИСЬ: поток довёз предмет ПОЗЖЕ отведённых ${Math.round(opts.timeout / 1000)} с — ` +
+      `к концу разбора событий о нём ${late}. Предмет в ВЕЛИЧИНЕ БЮДЖЕТА, а не в продукте; ` +
+      `бюджет поднимать только ЗАМЕРОМ доставки, а не «на всякий случай».`;
+  } else if (replay.found) {
+    verdict =
+      `НЕ ДОЕХАЛО: перечитывание с позиции «${opts.positionBefore}» предмет ПРИНЕСЛО ` +
+      `(кадров ${replay.frames}). Строка в журнале есть и вызывающему видна — значит она ` +
+      `отправлена, а ОТКРЫТЫЙ поток её не довёз. Предмет в ДОСТАВКЕ` +
+      (state.opened > 1 || state.errors > 0
+        ? ": связь рвалась (см. состояние выше), и окно переоткрытия — первое, что надо смотреть."
+        : ": связь не рвалась ни разу, поток всё это время был открыт — значит строку " +
+          "пропустил сам открытый поток, а не разрыв.");
+  } else {
+    verdict =
+      `НЕ ОТПРАВЛЕНО: перечитывание с позиции «${opts.positionBefore}» предмета НЕ принесло ` +
+      `(кадров ${replay.frames}), при том что сам ресурс уже читается по своему адресу. ` +
+      `Значит строки журнала нет вовсе либо она вызывающему не видна. Предмет у ВЛАДЕЛЬЦА ` +
+      `ЖУРНАЛА (запись строки в той же транзакции, построчное сужение по правам), а не в доставке.`;
+  }
+
+  throw new Error(
+    `${opts.subject}: страница не получила события о предмете ${opts.created}, созданном другим ` +
+      `клиентом, за ${Math.round(opts.timeout / 1000)} с.\n` +
+      `  СОСТОЯНИЕ: ${describeStream(state)}\n` +
+      `  ВЕРДИКТ: ${verdict}`,
+  );
+}
+
 /**
  * Создать предмет ОТ ИМЕНИ ДРУГОГО КЛИЕНТА — минуя открытую страницу.
  *
@@ -319,20 +537,18 @@ test("страница узнаёт об изменении, сделанном 
     })
     .toBe(1);
 
+  // Позиция ДО создания: с неё разбор перечитает журнал, если события не будет.
+  // Взять её после создания значило бы просить край повторить то, о чём спор.
+  const positionBefore = (await frames(page)).at(-1)?.id ?? "";
   const created = await createNetwork(page, projectId, `net-stream-${runTag()}`);
 
-  await expect
-    .poll(
-      async () =>
-        (await frames(page)).filter((f) => f.event === "event" && f.data.includes(created)).length,
-      {
-        message:
-          `страница не получила события о предмете ${created}, созданном другим клиентом: ` +
-          `ради этого проекция и заводится`,
-        timeout: 60_000,
-      },
-    )
-    .toBeGreaterThanOrEqual(1);
+  await expectStreamEvent(page, {
+    url,
+    created,
+    positionBefore,
+    timeout: 60_000,
+    subject: "проекция потока в браузер",
+  });
 
   expect(
     loads,
@@ -367,14 +583,18 @@ test("возобновление с позиции не теряет событ�
     })
     .toBe(1);
 
+  const positionBefore = (await frames(page)).at(-1)?.id ?? "";
   const first = await createNetwork(page, projectId, `net-resume-a-${tag}`);
-  await expect
-    .poll(
-      async () =>
-        (await frames(page)).filter((f) => f.event === "event" && f.data.includes(first)).length,
-      { message: `поток не принёс первого предмета ${first}`, timeout: 60_000 },
-    )
-    .toBeGreaterThanOrEqual(1);
+  // Первый предмет здесь — УСЛОВИЕ пробы (нужна позиция, с которой возобновляться),
+  // а не её предмет. Тем важнее, чтобы его отказ называл виновника: иначе разбор
+  // уйдёт в возобновление, до которого дело не дошло.
+  await expectStreamEvent(page, {
+    url,
+    created: first,
+    positionBefore,
+    timeout: 60_000,
+    subject: "якорь возобновления (условие пробы, не её предмет)",
+  });
 
   const seen = await frames(page);
   const anchor = seen.filter((f) => f.event === "event" && f.data.includes(first)).at(-1)!;
