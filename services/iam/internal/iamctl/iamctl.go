@@ -154,18 +154,34 @@ func withService(ctx context.Context, stderr io.Writer, deps Deps, fn func(Modul
 	}
 	svc, closeFn, err := deps.Connect(ctx)
 	if err != nil {
-		fmt.Fprintf(stderr,
-			"НЕ ИСПОЛНЕНО: соединение со службой iam по адресу %s не установлено: %v\n",
-			deps.Endpoint, err)
-		fmt.Fprintf(stderr,
-			"что сделать: проверьте, что служба поднята и адрес %s достижим отсюда; "+
-				"вердикта о каталоге НЕ получено — повтор осмыслен\n", deps.Endpoint)
+		fmt.Fprintf(stderr, "НЕ ИСПОЛНЕНО: соединение со службой iam %s не установлено: %v\n",
+			addressPhrase(deps.Endpoint), err)
+		if deps.Endpoint == "" {
+			fmt.Fprintln(stderr, "что сделать: назовите адрес внутреннего слушателя iam флагом "+
+				"-endpoint (либо переменной KACHO_IAMCTL_ENDPOINT) и удостоверение к нему; "+
+				"вердикта о каталоге НЕ получено")
+		} else {
+			fmt.Fprintf(stderr, "что сделать: проверьте, что служба поднята и адрес %s достижим "+
+				"отсюда; вердикта о каталоге НЕ получено — повтор осмыслен\n", deps.Endpoint)
+		}
 		return ExitNotRun
 	}
 	if closeFn != nil {
 		defer func() { _ = closeFn() }()
 	}
 	return fn(svc)
+}
+
+// addressPhrase — координата в тексте отказа либо СЛОВА о её отсутствии.
+//
+// Пустая строка, подставленная в «по адресу %s», даёт пропуск там, где читатель
+// ждёт координату: он видит опечатку вывода вместо факта «адрес не задан». Тот
+// же класс, что пустое значение, выдающее себя за факт о ресурсе.
+func addressPhrase(endpoint string) string {
+	if endpoint == "" {
+		return "(адрес не задан: -endpoint / KACHO_IAMCTL_ENDPOINT)"
+	}
+	return "по адресу " + endpoint
 }
 
 // --- разбор аргументов ------------------------------------------------------
@@ -251,18 +267,18 @@ func classifyRefusal(stderr io.Writer, endpoint, what string, err error) int {
 		return ExitNotRun
 	case codes.Unauthenticated:
 		fmt.Fprintf(stderr, "НЕ ИСПОЛНЕНО: %s: личность не принята (%s): %s\n", what, st.Code(), msg)
-		fmt.Fprintf(stderr, "что сделать: предъявите годное удостоверение службе по адресу %s; "+
-			"вердикта о каталоге НЕ получено\n", endpoint)
+		fmt.Fprintf(stderr, "что сделать: предъявите годное удостоверение службе %s; "+
+			"вердикта о каталоге НЕ получено\n", addressPhrase(endpoint))
 		return ExitNotRun
 	case codes.Unimplemented:
 		fmt.Fprintf(stderr, "НЕ ИСПОЛНЕНО: %s: служба не несёт этого глагола (%s): %s\n", what, st.Code(), msg)
-		fmt.Fprintf(stderr, "что сделать: образ службы по адресу %s старше инструмента — "+
-			"обновите развёртывание; повтор не поможет\n", endpoint)
+		fmt.Fprintf(stderr, "что сделать: образ службы %s старше инструмента — "+
+			"обновите развёртывание; повтор не поможет\n", addressPhrase(endpoint))
 		return ExitNotRun
 	default:
 		fmt.Fprintf(stderr, "НЕ ИСПОЛНЕНО: %s: вердикта не получено (%s): %s\n", what, st.Code(), msg)
-		fmt.Fprintf(stderr, "что сделать: служба по адресу %s ответа не дала; "+
-			"проверьте её состояние и повторите — вердикта о каталоге НЕ получено\n", endpoint)
+		fmt.Fprintf(stderr, "что сделать: служба %s ответа не дала; "+
+			"проверьте её состояние и повторите — вердикта о каталоге НЕ получено\n", addressPhrase(endpoint))
 		return ExitNotRun
 	}
 }

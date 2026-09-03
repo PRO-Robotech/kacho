@@ -642,3 +642,32 @@ func TestAWellFormedCallDoesReachTheService(t *testing.T) {
 		t.Fatalf("код: получено %d, ожидалось %d\n%s", got.code, ExitOK, got.both())
 	}
 }
+
+// Отказ соединения не вправе печатать ПУСТОЙ адрес.
+//
+// «по адресу ␣ не установлено» не восстанавливает следующий шаг: читатель видит
+// пропуск там, где ожидает координату, и не узнаёт, что адрес и не задавали.
+// Пустое значение обязано означать «не задан» словами.
+func TestConnectRefusalNeverPrintsAnEmptyAddress(t *testing.T) {
+	failing := func(context.Context) (ModuleService, func() error, error) {
+		return nil, nil, errors.New("посадка неполна")
+	}
+
+	t.Run("адрес не задан — сказано словами", func(t *testing.T) {
+		got := exercise(t, Deps{Endpoint: "", Connect: failing}, "plan", "vpc")
+		if got.code != ExitNotRun {
+			t.Fatalf("код: получено %d, ожидалось %d\n%s", got.code, ExitNotRun, got.both())
+		}
+		if strings.Contains(got.stderr, "адресу  ") || strings.Contains(got.stderr, "адрес  ") {
+			t.Fatalf("в отказе стоит ПУСТОЙ адрес:\n%s", got.stderr)
+		}
+		mustContain(t, got.stderr, "-endpoint", "отказ обязан назвать флаг, которым адрес задают")
+	})
+
+	// Положительный близнец: заданный адрес в отказе НАЗЫВАЕТСЯ — иначе
+	// проверка выше зеленела бы на инструменте, не печатающем адрес никогда.
+	t.Run("адрес задан — назван", func(t *testing.T) {
+		got := exercise(t, Deps{Endpoint: "iam-internal.kacho.svc:9091", Connect: failing}, "plan", "vpc")
+		mustContain(t, got.stderr, "iam-internal.kacho.svc:9091", "заданный адрес обязан быть назван")
+	})
+}
