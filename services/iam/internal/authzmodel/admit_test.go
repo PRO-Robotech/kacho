@@ -1063,9 +1063,15 @@ func TestAdmitIndependenceMatrix(t *testing.T) {
 		{"[user, group#nosuchrelation]", row{compose(swapDecl(base,
 			"define v_get: [user, service_account, group#member] or super_admin",
 			"define v_get: [user, service_account, group#nosuchrelation] or super_admin")), []Rule{RuleD4Userset}}},
+		// Условие внесено на отношение-НЕ-глагол намеренно: на глаголе оно меняло бы
+		// ДВА факта сразу — имя условия вне канона (Д4(б)) и условие на прямом
+		// списке глагола, который формой E не выражается (Д5′), — и строка матрицы
+		// перестала бы утверждать независимость клауз. Условие на глаголе есть
+		// самостоятельный предмет, и он проверяется своей пробой
+		// (`TestDeliveredVerbWithConditionIsRefused`), а не здесь.
 		{"[user with nosuch_condition]", row{compose(swapDecl(base,
-			"define v_get: [user, service_account, group#member] or super_admin",
-			"define v_get: [user with nosuch_condition, service_account, group#member] or super_admin")), []Rule{RuleD4Condition}}},
+			"define viewer: [user, service_account, group#member] or editor",
+			"define viewer: [user with nosuch_condition, service_account, group#member] or editor")), []Rule{RuleD4Condition}}},
 		{"or v_get from project", row{compose(swapDecl(base,
 			"define v_get: [user, service_account, group#member] or super_admin",
 			"define v_get: [user, service_account] or v_get from project")), []Rule{RuleD5}}},
