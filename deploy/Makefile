@@ -310,6 +310,60 @@ guard-kind-context:
 	  exit 1; \
 	fi
 
+# guard-declared-context — НЕИНТЕРАКТИВНЫЙ страж цели: писать можно ТОЛЬКО в тот
+# кластер, который вызывающий НАЗВАЛ.
+#
+# ТРЕТИЙ СТРАЖ ЗАВЕДЁН ПОТОМУ, ЧТО ДВУХ ПРЕЖНИХ НЕ ХВАТАЕТ BY CONSTRUCTION, и это
+# измерено, а не предположено. Цель `module-manifests-configmap` применяет объект
+# в кластер активного контекста, и ни один из двух прежних стражей на ней не
+# держится:
+#
+#   • `guard-kind-context` ОТВЕРГАЕТ всякий контекст, кроме нашего локального, —
+#     значит цель, несущая его, неисполнима на боевых путях выкатки (`stack-up`,
+#     `helm/umbrella/cutover-fe3455.sh`). Ровно за это он с неё и был снят
+#     (kacho#1901), и свойство это держит гейт
+#     `TestManifestProducerIsCallableFromEveryBringUpPath`;
+#   • `guard-destructive` требует ТЕРМИНАЛА («подтверждение ввести некому») —
+#     а `make dev-up` идёт в конвейере без stdin-терминала. Он сломал бы каждый
+#     прогон e2e-newman, консоли и посадки.
+#
+# Снятие первого оставило цель БЕЗ гейта вовсе, и это нашёл гейт каталога
+# `deploy/tests/helm/makefile-destructive-guarded-test.sh`: цель пишет в кластер,
+# гейта цели не несёт. Оба вердикта верны, и оба сохранены — вместо того чтобы
+# выбирать между ними, словарь стражей вырос на третий член.
+#
+# ЧТО ОН ПРОВЕРЯЕТ: контекст РАЗРЕШЁН живым kubectl и СОВПАДАЕТ с объявленным.
+# Незаданное объявление — отказ, а не «наверное, тот самый»: у цели, пишущей в
+# кластер активного контекста, умолчания быть не может (тот же довод, по которому
+# `stack-up` требует `STACK`, а `guard-destructive` отказывает на неразрешённой цели).
+#
+# ГРАНИЦА НАЗВАНА ЧЕСТНО, ЧТОБЫ ЕЁ НЕ ПРИНЯЛИ ЗА ВТОРУЮ ПРОВЕРКУ. Его предмет —
+# ПРЯМОЙ вызов цели человеком, у которого подтверждения нет вовсе: там объявление
+# и есть единственный гейт. Там, где вызывающий уже подтвердил цель СВОИМ стражем
+# (`dev-up` → `guard-kind-context`, `stack-up` → `guard-destructive`, cutover →
+# сверка адреса apiserver'а), объявление ПОВТОРЯЕТ подтверждённое. Исключение —
+# `dev-up`: он объявляет имя литералом, и там это полноценная проверка.
+guard-declared-context:
+	@ctx="$$(kubectl config current-context 2>/dev/null)"; \
+	if [ -z "$$ctx" ]; then \
+	  echo "ABORT: активную цель разрешить не удалось (kubectl не отдал контекст)."; \
+	  echo "       Неназванная цель — это отказ, а не «наверное, локально»."; \
+	  exit 1; \
+	fi; \
+	if [ -z "$(EXPECT_CONTEXT)" ]; then \
+	  echo "ABORT: EXPECT_CONTEXT не задан, а цель пишет в кластер активного контекста '$$ctx'."; \
+	  echo "       Умолчания здесь быть не может. Зови через путь выкатки, который несёт"; \
+	  echo "       своего стража (dev-up / stack-up / helm/umbrella/cutover-fe3455.sh),"; \
+	  echo "       либо назови кластер явно:  make <цель> EXPECT_CONTEXT=$$ctx"; \
+	  exit 1; \
+	fi; \
+	if [ "$(EXPECT_CONTEXT)" != "$$ctx" ]; then \
+	  echo "ABORT: объявлен контекст '$(EXPECT_CONTEXT)', активен '$$ctx'."; \
+	  echo "       Цель применяет объекты в кластер АКТИВНОГО контекста — они уехали бы не туда."; \
+	  echo "       Переключись явно:  kubectl config use-context $(EXPECT_CONTEXT)"; \
+	  exit 1; \
+	fi
+
 # guard-destructive — подтверждение вводом для операции, которая что-то РУШИТ,
 # с называнием РЕАЛЬНОЙ цели.
 #
@@ -475,7 +529,8 @@ dev-up: preflight
 	echo "    читает смонтированный каталог на старте и ОТКАЗЫВАЕТСЯ подниматься на"; \
 	echo "    пустом: отсутствие манифеста снятием модуля не является. Значит объект"; \
 	echo "    обязан существовать ДО первого прогона helm, а не появиться после."; \
-	$(MAKE) --no-print-directory module-manifests-configmap MODULE_MANIFESTS_STACK=dev; \
+	$(MAKE) --no-print-directory module-manifests-configmap MODULE_MANIFESTS_STACK=dev \
+	  EXPECT_CONTEXT=kind-$(CLUSTER_NAME); \
 	echo "=== продукт: ОДИН helm-прогон, сразу в боевой посадке (mTLS включён) ==="; \
 	helm upgrade --install kacho-umbrella ./helm/umbrella -n kacho --create-namespace \
 	  $(call STACK_ARGS,dev) \
@@ -648,8 +703,10 @@ stack-up:
 	  exit 1; }; \
 	echo "=== стенд $(STACK): цепочка ПРОЧИТАНА из stacks.txt ==="; \
 	printf '  %s\n' $$args; \
+	ctx="$$(kubectl config current-context 2>/dev/null)"; \
 	$(MAKE) --no-print-directory module-manifests-configmap \
-	  MODULE_MANIFESTS_STACK=$(STACK) STACK_NAMESPACE=$(STACK_NAMESPACE); \
+	  MODULE_MANIFESTS_STACK=$(STACK) STACK_NAMESPACE=$(STACK_NAMESPACE) \
+	  EXPECT_CONTEXT="$$ctx"; \
 	set -x; \
 	helm upgrade --install $(STACK_RELEASE) ./helm/umbrella -n $(STACK_NAMESPACE) --create-namespace \
 	  $$args $(UMBRELLA_OPTS) $(STACK_EXTRA_ARGS) --wait --timeout $(STACK_TIMEOUT)
@@ -1312,7 +1369,7 @@ wipe-iam-db: guard-kind-context
 # разработки в тот кластер, куда сейчас смотрит kubectl. Тот же довод, по которому
 # `stack-up` требует `STACK`. Все три пути выкатки называют стенд явно, поэтому
 # снятие умолчания не трогает ни одного из них.
-module-manifests-configmap:
+module-manifests-configmap: guard-declared-context
 	@[ -n "$(MODULE_MANIFESTS_STACK)" ] || { \
 	  echo "ABORT: MODULE_MANIFESTS_STACK не задан — производить нечего и некуда."; \
 	  echo "       Умолчания здесь быть не может: цель применяет объект в кластер"; \

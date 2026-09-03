@@ -379,6 +379,7 @@ esac
 # target says so on its own exit code 3 and leaves no ConfigMap behind.
 log "module manifests: producing the delivery ConfigMap BEFORE helm (kacho#1901/#1909)…"
 make -C ../.. module-manifests-configmap MODULE_MANIFESTS_STACK=fe3455 STACK_NAMESPACE="$NS" \
+  EXPECT_CONTEXT="$(kubectl config current-context 2>/dev/null)" \
   || die "module-manifests producer failed — refusing to roll iam onto a delivery it cannot read.
        Re-run after fixing the finding it printed above; delivery is a PRECONDITION of the upgrade."
 
