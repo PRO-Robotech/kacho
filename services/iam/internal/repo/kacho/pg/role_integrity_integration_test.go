@@ -19,6 +19,7 @@ import (
 
 	"github.com/stretchr/testify/require"
 
+	"github.com/PRO-Robotech/kacho/internal/pgtest"
 	coredb "github.com/PRO-Robotech/kacho/pkg/db"
 
 	"github.com/PRO-Robotech/kacho/services/iam/internal/domain"
@@ -33,7 +34,10 @@ func TestRoleIntegrity_UnresolvedSegments_AgainstLiveProjection(t *testing.T) {
 	dsn := setupTestDB(t)
 	pool, err := coredb.NewPool(ctx, dsn)
 	require.NoError(t, err)
-	defer pool.Close()
+	// Закрытие С ПРЕДЕЛОМ: отложенное `pool.Close()` ждёт соединение, которого
+	// проба, упавшая внутри открытой транзакции, не вернёт никогда, — и уносит
+	// вердикт всего пакета. Требование дерева, гейт `TestPoolCloseInTestsIsBounded`.
+	pgtest.ClosePoolAtEnd(t, pool)
 	repo := kachopg.New(pool, nil)
 
 	uid := mustSeedUser(t, ctx, pool, "rint")
