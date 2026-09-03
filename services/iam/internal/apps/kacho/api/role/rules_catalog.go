@@ -29,21 +29,60 @@ package role
 // closes it at authoring time: an unknown `(module, resource)` is rejected SYNC with
 // INVALID_ARGUMENT naming the token and the public catalog endpoint.
 //
-// This is a use-case-layer concern by construction — it owns the `authzmap`
+// This is a use-case-layer concern by construction — it owns the catalog
 // dependency, keeping `domain` free of it (same layering as
-// access_binding/reconcile/tuples.go). `authzmap.Catalog()`/`ObjectType` is the ONE
-// closed table, so the gate accepts exactly what
-// `PermissionCatalogService.ListPermissionCatalog` publishes as grantable — no
-// second hand-maintained list that could drift.
+// access_binding/reconcile/tuples.go).
+//
+// # ИСТОЧНИК — ЖИВЫЕ СТРОКИ КАТАЛОГА, А НЕ СЛОВАРЬ СБОРКИ (kacho#1993)
+//
+// Здесь стояло `authzmap.ObjectType` — словарь, ПОРОЖДЁННЫЙ СБОРКОЙ
+// (`authzmap/tables_gen.go` из манифестов дерева). Замысел гейта верен и
+// остаётся; неверен был его ИСТОЧНИК, и неверен в ОБЕ стороны:
+//
+//   - ЗАВЕДЕНИЕ не проходило. Тип, заведённый применением манифеста в
+//     РАБОТАЮЩЕМ процессе, словарю сборки неизвестен, поэтому `Role.Create` и
+//     `Role.Update` отвергали правило над ним синхронно, `INVALID_ARGUMENT`.
+//     Для арендатора это ПЕРВЫЙ шаг после применения манифеста своего модуля:
+//     ниже по цепи чинить нечего — роли нет;
+//   - СНЯТИЕ не отвергалось. Словарь сборки продолжал отвечать «грантуем» про
+//     ресурс, чья живая строка снята, — правило над ним принималось и
+//     материализовалось в ничто, то есть ровно в тот тихий отказ, ради которого
+//     гейт и заведён.
+//
+// Тот же класс уже снят у проекции (#1816), у зеркала (#1982) и у регистрации
+// (#1990): имя типа спрашивается у ЖИВОЙ СТРОКИ каталога, а не у сборки. Снимок
+// берётся ОДИН на всё вычисление и тот же, которым судится сегмент МОДУЛЯ
+// (`domain.Rule.Validate`) и строится проекция глаголов, — обе стороны правила
+// обязаны судиться согласованным множеством, а не двумя моментами времени.
+//
+// # ДВА СЛОВАРЯ ИМЕНИ, и путать их нельзя
+//
+// Имя КАТАЛОГА (`compute.instance`) содержит точку ВСЕГДА; имя МОДЕЛИ ПРАВ
+// (`compute_instance`) — НИКОГДА. Ключ здесь собирается как `<модуль>.<ресурс>`
+// и ищется ТОЧНЫМ совпадением, без разбора по первой точке: сегменты уже
+// разделены запросом, поэтому вопрос «где кончается модуль» здесь не возникает
+// вовсе.
 
 import (
 	"fmt"
 
 	"go.uber.org/multierr"
 
-	"github.com/PRO-Robotech/kacho/services/iam/internal/authzmap"
 	"github.com/PRO-Robotech/kacho/services/iam/internal/domain"
 )
+
+// typeCatalog — ПОРТ живого каталога типов, каким его видит use-case: объявлен
+// ли платформой тип с таким ТОЧЕЧНЫМ именем. Объявлен здесь, у потребителя;
+// реализация — `catalog.Facts` (снимок живых строк).
+//
+// Порт узкий намеренно: гейту нужен ровно один факт — есть ли строка. Имя
+// модели прав он не читает и читать не должен, иначе завёл бы второй переходник
+// об одном предмете.
+type typeCatalog interface {
+	// FGAObjectType — имя типа МОДЕЛИ для точечного имени КАТАЛОГА; ok=false у
+	// ресурса, чья строка снята либо которого в каталоге нет вовсе.
+	FGAObjectType(dotted string) (string, bool)
+}
 
 // catalogEndpoint — where an author reads the grantable taxonomy. Named in the
 // error because the canonical spelling is deliberately NOT uniform across modules
