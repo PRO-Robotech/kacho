@@ -215,6 +215,13 @@ type Report struct {
 	// были уже без проекций, и это другое утверждение о платформе.
 	Resettled int
 
+	// Removed — строк проекций СНЯТО без переселения: отбор и состав цели.
+	//
+	// Число своё, а не часть `Resettled`: переселённое ушло в ведомость и
+	// объяснено арендатору, снятое — нет. Слив их, перепись объявила бы
+	// объяснённым то, чего никто не объяснял.
+	Removed int
+
 	// Census — объём, осмотренный СВЕРКОЙ: сколько живых строк прочитано, сколько
 	// из них принадлежит этому модулю, чужим модулям и никому.
 	//
@@ -235,9 +242,10 @@ func (r Report) String() string {
 		section = "раздел ролей объявлен"
 	}
 	return fmt.Sprintf("модуль %s · %s · объявлено кластерных %d · записано %d · "+
-		"без изменений %d · иного яруса %d · снято %d %v · переселено %d",
+		"без изменений %d · иного яруса %d · снято %d %v · переселено %d · "+
+		"снято без переселения %d",
 		r.Module, section, r.Declared, r.Written, r.Unchanged, r.Skipped,
-		r.Retired, r.RetiredNames, r.Resettled)
+		r.Retired, r.RetiredNames, r.Resettled, r.Removed)
 }
 
 // Apply приводит строки системных ролей модуля к объявленному манифестом
@@ -252,15 +260,19 @@ func (r Report) String() string {
 func (a *Applier) Apply(ctx context.Context, m *manifest.Manifest, actor string) (Report, error) {
 	rep := Report{Module: m.Module, SectionDeclared: m.RolesDeclared()}
 
-	// Автор — ПАРАМЕТР, а не умолчание. Путь старта называет процессного актора
-	// (`BootActorID`), глагол применения — проверенную личность вызывающего.
-	// Подставить здесь «system» значило бы сделать вопрос «кто у меня отобрал»
-	// безответным ровно тогда, когда его задают, — тот же довод, по которому
-	// `applied_by` завели двум ведомостям (20260903215500).
+	// Автор — ПАРАМЕТР, а не умолчание. Подставить здесь «system» значило бы
+	// сделать вопрос «кто у меня отобрал» безответным ровно тогда, когда его
+	// задают, — тот же довод, по которому `applied_by` завели двум ведомостям
+	// (20260903215500).
+	//
+	// ВЫЗЫВАЮЩИЙ СЕГОДНЯ ОДИН — путь старта, и он называет процессного актора
+	// (`BootActorID`). Второй, глагол применения, придёт с `#1034` и назовёт
+	// проверенную личность вызывающего; параметризация заведена ПОД НЕГО, и это
+	// сказано будущим временем намеренно: перепись значений актора по дереву
+	// даёт сегодня одно.
 	if actor == "" {
-		werr := fmt.Errorf("%w: %s", ErrRetirementActorUnnamed, m.Module)
-		return rep, refuse(codes.FailedPrecondition, werr.Error(),
-			LaneRetirementActorUnnamed, m.Module, "", werr)
+		return rep, retirementRefusal(m.Module,
+			fmt.Errorf("%w: %s", ErrRetirementActorUnnamed, m.Module))
 	}
 
 	// Производитель правил спрашивается ПЕРВЫМ: без него ни одна форма права до
@@ -362,7 +374,7 @@ func (a *Applier) Apply(ctx context.Context, m *manifest.Manifest, actor string)
 				rep.Unchanged++
 			}
 		}
-		return a.retire(ctx, w, m, declared, actor, &rep, &failed)
+		return a.retire(ctx, w, m, actor, &rep, &failed)
 	})
 	if err != nil {
 		// Всякий отказ ОТСЮДА принадлежит полосе писателя by construction:

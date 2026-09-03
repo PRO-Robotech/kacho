@@ -110,6 +110,9 @@ type moduleRolesCensus struct {
 	RetiredNames []string
 	// Resettled — строк проекций переселено в ведомость отобранного.
 	Resettled int
+	// Removed — строк проекций снято БЕЗ переселения: отбор и состав цели.
+	// Число своё: переселённое объяснено арендатору, снятое — нет.
+	Removed int
 	// SectionsDeclared — манифестов, назвавших раздел `roles` вообще.
 	//
 	// Печатается отдельно от `Declared`, потому что состояний у раздела ТРИ:
@@ -218,6 +221,7 @@ func applyDeliveredModuleRoles(
 		c.Retired += rep.Retired
 		c.RetiredNames = append(c.RetiredNames, rep.RetiredNames...)
 		c.Resettled += rep.Resettled
+		c.Removed += rep.Removed
 		c.LiveExamined += rep.Census.LiveExamined
 		if rep.SectionDeclared {
 			c.SectionsDeclared++
@@ -242,6 +246,7 @@ func applyDeliveredModuleRoles(
 		slog.Int("live_examined", c.LiveExamined),
 		slog.Int("retired", c.Retired),
 		slog.Int("resettled", c.Resettled),
+		slog.Int("removed_without_resettle", c.Removed),
 		slog.Bool("changed", c.Changed()))
 
 	// Снятое называется ПОИМЁННО и ОТДЕЛЬНОЙ строкой — тем же порядком, каким
@@ -253,7 +258,8 @@ func applyDeliveredModuleRoles(
 	if len(c.RetiredNames) > 0 {
 		logger.Info("роли модуля сняты решением манифеста — старт продолжается",
 			slog.Any("roles", c.RetiredNames),
-			slog.Int("resettled_projection_rows", c.Resettled))
+			slog.Int("resettled_projection_rows", c.Resettled),
+			slog.Int("removed_projection_rows", c.Removed))
 	}
 
 	if applyErr != nil {
