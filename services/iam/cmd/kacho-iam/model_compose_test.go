@@ -13,6 +13,15 @@ package main
 // ПОРЯДОК. Такой класс ловится только сквозным вызовом — обе половины по
 // отдельности зелены (`multi-agent-flow.md` §14, столкновение смыслов).
 //
+// # Почему проба ОДНА, а не две
+//
+// Установка модели процесса необратима в пределах процесса: второй установки не
+// существует, а первое чтение её запрещает. Значит утверждать о ней вправе ровно
+// одна проба бинаря — две делили бы одно состояние и роняли бы друг друга
+// порядком, который никто не объявлял. Поэтому обе половины (замок #2002 и
+// провязка #1969) утверждаются ОДНОЙ последовательностью — той же, что исполняет
+// старт.
+//
 // # Почему собственный тестовый бинарь важен
 //
 // Признак «модель уже прочитана» — состояние ПРОЦЕССА. В одном бинаре пробы
@@ -22,6 +31,11 @@ package main
 // 'services/iam/cmd/kacho-iam/*'` → пусто), значит здесь состояние чистое.
 
 import (
+	"go/ast"
+	"go/parser"
+	"go/token"
+	"io"
+	"log/slog"
 	"strings"
 	"testing"
 
@@ -60,12 +74,33 @@ const deliveryWithoutRelationGrant = `apiVersion: iam/v1
 module: loadbalancer
 `
 
-// TestDeliveryParseDoesNotReadTheProcessModel — разбор доставки НЕ читает модель
-// процесса, поэтому установка ПОСЛЕ разбора проходит.
+// newObjectType — тип, которого канон образа не объявляет. Живёт константой,
+// потому что о нём утверждают трижды: предпосылка (канон его не знает), исход
+// (модель процесса знает) и вердикт (план по нему непуст).
+const newObjectType = "vpc_widget"
+
+// deliveryDeclaringANewType — манифест, объявляющий РЕСУРС нового типа.
+const deliveryDeclaringANewType = `apiVersion: iam/v1
+module: vpc
+resources:
+  - name: widget
+    objectType: ` + newObjectType + `
+    parents: [project]
+    producer: derived
+    verbs:
+      - get
+      - list
+      - update
+      - delete
+`
+
+// TestBootComposesJudgesAndInstallsTheModel — вся последовательность старта:
+// чтение доставки → композиция → допуск → установка → вердикт.
 //
-// Это дословный предикат #2002: композиция ставится ДО первого чтения
-// безусловно, а не «там, где модель читается».
-func TestDeliveryParseDoesNotReadTheProcessModel(t *testing.T) {
+// Утверждаются обе половины сразу, и это не смешение предметов, а единственная
+// возможная форма: установка модели процесса необратима, поэтому вправе быть
+// исполнена ровно один раз за бинарь (см. шапку файла).
+func TestBootComposesJudgesAndInstallsTheModel(t *testing.T) {
 	// Предпосылка: вход и вправду тот, о котором проба. Манифест обязан
 	// разобраться — иначе «установка прошла» означало бы лишь то, что разбор
 	// сорвался раньше, чем дошёл бы до модели.
@@ -85,10 +120,132 @@ func TestDeliveryParseDoesNotReadTheProcessModel(t *testing.T) {
 		t.Fatalf("контроль: манифест без grantedRelation обязан разбираться: %v", err)
 	}
 
-	// СУТЬ: после разбора доставки модель процесса ещё НЕ прочитана, поэтому
-	// установка проходит. До #2002 здесь приезжал ErrModelAlreadyRead.
-	if err := authzmodel.Install(authzmodel.DSL); err != nil {
-		t.Fatalf("установка ПОСЛЕ разбора доставки отвергнута — значит разбор прочитал "+
-			"модель процесса раньше, чем композиция успела её поставить: %v", err)
+	// ── СУТЬ 1 (#2002): замок разомкнут ──────────────────────────────────────
+	//
+	// Разбор доставки прошёл выше и модель процесса НЕ прочитал, поэтому
+	// композиция ещё вправе её поставить. До #2002 здесь приезжал
+	// ErrModelAlreadyRead, и никакого порядка, при котором композиция встаёт, не
+	// существовало.
+	//
+	// ── СУТЬ 2 (#1969): провязка есть, и тип доставки доезжает до вердикта ────
+	//
+	// Манифест несёт ресурс, чьего типа канон образа НЕ объявляет. Он читается
+	// референтом ПОРОЖДЕНИЯ: закрытая таблица типов — продукт сборки, и судить
+	// ею новый тип значило бы спрашивать у ответа (см. manifest.TypeReferent).
+	newType := manifest.LoadWithReferent
+	mNew, err := newType([]byte(deliveryDeclaringANewType), manifest.ReferentCanon)
+	if err != nil {
+		t.Fatalf("предпосылка не создана: манифест с новым типом не разобрался: %v", err)
+	}
+
+	// Предпосылка провязки: канон образа этого типа НЕ объявляет. Без неё проба
+	// зеленела бы на типе, который и так был в каноне, ничего не утверждая о
+	// композиции.
+	canon, cerr := authzmodel.New(authzmodel.DSL)
+	if cerr != nil {
+		t.Fatalf("канон образа не разобран: %v", cerr)
+	}
+	if canon.DeclaresType(newObjectType) {
+		t.Fatalf("предпосылка не создана: тип %q канон образа УЖЕ объявляет — "+
+			"проба обязана брать тип, которого в каноне нет", newObjectType)
+	}
+
+	logger := slog.New(slog.NewTextHandler(io.Discard, nil))
+	if err := installComposedModel(logger, []*manifest.Manifest{m, mNew}); err != nil {
+		t.Fatalf("композиция → допуск → установка отвергнута на пути старта: %v", err)
+	}
+
+	// ── вердикт: синтетический вопрос по типу доставки даёт НЕНУЛЕВОЙ ответ ──
+	//
+	// Утверждается ИСХОД вопроса, а не факт установки: «модель поставлена» верно
+	// и при модели, которая о новом типе не знает.
+	plans, perr := authzmodel.Shared()
+	if perr != nil {
+		t.Fatalf("модель процесса не отдалась после установки: %v", perr)
+	}
+	if !plans.DeclaresType(newObjectType) {
+		t.Fatalf("тип %q объявлен ТОЛЬКО манифестом и до модели процесса не доехал — "+
+			"композиция собрала не то, что поставила", newObjectType)
+	}
+	plan, planErr := plans.Plan(newObjectType, "v_get")
+	if planErr != nil {
+		t.Fatalf("вердикт по типу доставки не строится: %v", planErr)
+	}
+	if len(plan.Atoms) == 0 {
+		t.Fatalf("план по %q.v_get ПУСТ — вердикт по нему не дал бы ни одного права, "+
+			"молча; ответ обязан быть ненулевым", newObjectType)
+	}
+	if !plan.Expressible() {
+		t.Fatalf("план по %q.v_get невыразим целиком (%v) — вердикт по такому давать нельзя",
+			newObjectType, plan.Unclassified)
+	}
+
+	// Отрицание в паре: тип, которого не объявляет НИКТО, по-прежнему отвергается.
+	// Без него «доезжает до вердикта» зеленело бы на модели, объявляющей типом
+	// что угодно.
+	if _, err := plans.Plan("no_such_type_declared_by_nobody", "v_get"); err == nil {
+		t.Fatal("тип, которого не объявляет ни канон, ни доставка, обязан отвергаться")
+	}
+}
+
+// TestServeInstallsTheComposedModelBetweenDeliveryAndItsFirstReader — провязка
+// ПОЗВАНА, и позвана в объявленном порядке.
+//
+// Своя проба у композиции ничего не говорит о том, зовёт ли её композиционный
+// корень: функция, объявленная и не позванная, есть мёртвый страж — служба
+// поднимается, называя себя собранной, и модель остаётся вшитым каноном.
+//
+// Порядок здесь — половина предмета, а не оформление. Окно у установки ровно
+// одно: позже доставки, из которой модель собирается, и раньше первого её
+// читателя, потому что установка после первого чтения запрещена. Проба
+// утверждает ближнюю границу окна (доставка), дальнюю держит сам замок — он
+// отвечает отказом, а не молчанием.
+func TestServeInstallsTheComposedModelBetweenDeliveryAndItsFirstReader(t *testing.T) {
+	fset := token.NewFileSet()
+	file, err := parser.ParseFile(fset, "serve.go", nil, 0)
+	if err != nil {
+		t.Fatalf("serve.go не разобран: %v — непрочитанное есть НАХОДКА", err)
+	}
+
+	var deliveryPos, installPos token.Pos
+	var callsSeen int
+	ast.Inspect(file, func(n ast.Node) bool {
+		call, ok := n.(*ast.CallExpr)
+		if !ok {
+			return true
+		}
+		callsSeen++
+		fn, ok := call.Fun.(*ast.Ident)
+		if !ok {
+			return true
+		}
+		switch {
+		case fn.Name == "loadDeliveredManifests" && !deliveryPos.IsValid():
+			deliveryPos = call.Pos()
+		case fn.Name == "installComposedModel" && !installPos.IsValid():
+			installPos = call.Pos()
+		}
+		return true
+	})
+
+	// Объём осмотренного печатается ВСЕГДА: «ноль находок» обязано быть отличимо
+	// от «ноль прочитанного».
+	t.Logf("осмотрено вызовов в serve.go: %d", callsSeen)
+	if callsSeen == 0 {
+		t.Fatal("обход не нашёл ни одного вызова — вердикт беспредметен")
+	}
+	if !installPos.IsValid() {
+		t.Fatal("serve.go не зовёт installComposedModel — композиция объявлена и не исполняется " +
+			"на пути старта: модель процесса остаётся вшитым каноном, а доставленные типы " +
+			"не доезжают до вердикта вовсе")
+	}
+	if !deliveryPos.IsValid() {
+		t.Fatal("serve.go не зовёт loadDeliveredManifests — предпосылка проверки о порядке " +
+			"исчезла, и порядок больше нечем судить")
+	}
+	if installPos < deliveryPos {
+		t.Errorf("модель собирается РАНЬШЕ чтения доставки (%s против %s) — "+
+			"собирать было бы не из чего",
+			fset.Position(installPos), fset.Position(deliveryPos))
 	}
 }
