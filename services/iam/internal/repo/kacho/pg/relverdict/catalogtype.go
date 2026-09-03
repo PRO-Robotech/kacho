@@ -115,13 +115,23 @@ import (
 //
 // Живое имя и есть то, каким названы `role_verb` и селекторы правил: их ключи
 // живости другого имени не допускают.
+//
+// # ПОЧЕМУ КОЛОНКИ НАЗВАНЫ ПСЕВДОНИМОМ, ХОТЯ ТАБЛИЦА ОДНА
+//
+// Так пишет ВЕСЬ путь вердикта, и на этом стоит гейт ограниченности чтения
+// (`internal/repohygiene` `TestVerdictPathReadsNothingUnbounded`): он признаёт
+// чтение привязанным, когда равенство с параметром стоит рядом с колонкой,
+// названной псевдонимом. Голая колонка привязкой ему не выглядит — и он честно
+// назвал это чтение неограниченным, хотя предел у него есть. Форма приведена к
+// той, какую гейт читает, а не гейт научен новой: второй формы записи на этом
+// пути не заводится.
 func catalogTypeName(ctx context.Context, q pgx.Tx, modelType string) (string, error) {
 	var dotted string
 	err := q.QueryRow(ctx,
-		`SELECT dotted
-		   FROM kacho_iam.catalog_resource
-		  WHERE object_type = $1::text
-		  ORDER BY live DESC, dotted
+		`SELECT r.dotted
+		   FROM kacho_iam.catalog_resource r
+		  WHERE r.object_type = $1::text
+		  ORDER BY r.live DESC, r.dotted
 		  LIMIT 1`, modelType).Scan(&dotted)
 	switch {
 	case errors.Is(err, pgx.ErrNoRows):
