@@ -43,10 +43,10 @@ func roleWithStates(states []domain.RuleState) domain.Role {
 // возвращающем одну и ту же величину на любой вход.
 func TestRoleToPb_MODRS0203_WithdrawnAndUnresolvedAreDistinctOnTheWire(t *testing.T) {
 	withdrawn := mustRolePb(t, roleWithStates([]domain.RuleState{
-		{RuleIndex: 0, State: domain.RuleLifecycleWithdrawn, Declared: 1, Withdrawn: 1},
+		{RuleIndex: 0, State: domain.RuleLifecycleWithdrawn, Segments: 1, Lost: 1, Explained: 1},
 	}))
 	unresolved := mustRolePb(t, roleWithStates([]domain.RuleState{
-		{RuleIndex: 0, State: domain.RuleLifecycleUnresolved, Declared: 1, Unresolved: 1},
+		{RuleIndex: 0, State: domain.RuleLifecycleUnresolved, Segments: 1, Lost: 1},
 	}))
 
 	if len(withdrawn.GetRuleStates()) != 1 || len(unresolved.GetRuleStates()) != 1 {
@@ -70,12 +70,16 @@ func TestRoleToPb_MODRS0203_WithdrawnAndUnresolvedAreDistinctOnTheWire(t *testin
 // слово схлопывало бы состав.
 func TestRoleToPb_MODRS04_MixedCountersReachTheWire(t *testing.T) {
 	pb := mustRolePb(t, roleWithStates([]domain.RuleState{
-		{RuleIndex: 0, State: domain.RuleLifecycleUnresolved, Declared: 2, Withdrawn: 1, Unresolved: 1},
+		{RuleIndex: 0, State: domain.RuleLifecycleUnresolved, Segments: 2, Lost: 2, Explained: 1},
 	}))
 	st := pb.GetRuleStates()[0]
-	if st.GetDeclaredSegments() != 2 || st.GetWithdrawnSegments() != 1 || st.GetUnresolvedSegments() != 1 {
-		t.Fatalf("счётчики %d/%d/%d, ожидалось 2/1/1",
-			st.GetDeclaredSegments(), st.GetWithdrawnSegments(), st.GetUnresolvedSegments())
+	if st.GetSegments() != 2 || st.GetLostSegments() != 2 || st.GetExplainedSegments() != 1 {
+		t.Fatalf("счётчики %d/%d/%d, ожидалось 2/2/1",
+			st.GetSegments(), st.GetLostSegments(), st.GetExplainedSegments())
+	}
+	// Необъяснённое выводится вычитанием — и оно обязано быть видно.
+	if st.GetLostSegments()-st.GetExplainedSegments() != 1 {
+		t.Fatal("необъяснённая потеря исчезла: слово схлопнуло состав")
 	}
 }
 
@@ -83,7 +87,7 @@ func TestRoleToPb_MODRS04_MixedCountersReachTheWire(t *testing.T) {
 func TestRoleToPb_MODRS10_RuleIndexReachesTheWire(t *testing.T) {
 	pb := mustRolePb(t, roleWithStates([]domain.RuleState{
 		{RuleIndex: 0, State: domain.RuleLifecycleActive},
-		{RuleIndex: 1, State: domain.RuleLifecycleWithdrawn, Declared: 1, Withdrawn: 1},
+		{RuleIndex: 1, State: domain.RuleLifecycleWithdrawn, Segments: 1, Lost: 1, Explained: 1},
 	}))
 	got := pb.GetRuleStates()
 	if len(got) != 2 {

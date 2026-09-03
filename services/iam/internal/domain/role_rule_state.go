@@ -70,17 +70,25 @@ type RuleState struct {
 	//
 	// Индекс законен как ключ потому, что `roles.rules` — массив JSONB под одним
 	// кодеком, и порядок сохраняется by construction: правило читается тем же
-	// индексом, каким записано.
+	// индексом, каким записано. Действителен он в пределах ОДНОГО ответа:
+	// `Update` перестраивает массив, и мутацию индекс не переживает.
 	RuleIndex int
 	// State — состояние правила. У вычисленного оно непусто ВСЕГДА.
 	State RuleLifecycle
-	// Declared — сколько АДРЕСУЕМЫХ сегментов объявляет это правило.
+	// Segments — сколько АДРЕСУЕМЫХ сегментов объявляет это правило.
 	// Ноль законен (подстановка в модуле или ресурсе сегментов не даёт).
-	Declared int
-	// Withdrawn — сколько из потерянных ОБЪЯСНЕНЫ ведомостью переселения.
-	Withdrawn int
-	// Unresolved — сколько из потерянных ведомостью НЕ объяснены.
-	Unresolved int
+	//
+	// ЕДИНИЦА ДРУГАЯ, ЧЕМ У [RoleIntegrity.Declared], и потому имя другое:
+	// счётчик роли дедуплицирует сегмент по ВСЕЙ роли, здесь — только внутри
+	// правила. Сумма по правилам счётчику роли НЕ РАВНА, и это разные вопросы.
+	Segments int
+	// Lost — сколько из объявленных сегментов этого правила не дают ни одной
+	// строки проекции, которую читает вердикт.
+	Lost int
+	// Explained — сколько из потерянных ОБЪЯСНЕНЫ ведомостью переселения.
+	// Необъяснённые выводятся вычитанием: третье поле, равное разности двух
+	// соседних, разошлось бы с ними при первой же правке.
+	Explained int
 }
 
 // RuleRefsByRule — объявленные сегменты, разложенные ПО ПРАВИЛАМ.
@@ -139,9 +147,9 @@ func RuleStatesOf(rules Rules, unresolved []RoleSegment, withdrawn []WithdrawnGr
 	if len(rules) == 0 {
 		return nil
 	}
-	lost := make(map[RoleRuleRef]bool, len(unresolved))
+	lostSet := make(map[RoleRuleRef]bool, len(unresolved))
 	for _, s := range unresolved {
-		lost[refOfSegment(s)] = true
+		lostSet[refOfSegment(s)] = true
 	}
 	// Ведомость сверяется ПАРОЙ «тип + глагол», и пустой глагол здесь — ЯКОРЬ,
 	// а не «любой глагол»: якорная строка объясняет якорный сегмент и только
@@ -155,24 +163,23 @@ func RuleStatesOf(rules Rules, unresolved []RoleSegment, withdrawn []WithdrawnGr
 	byRule := RuleRefsByRule(rules)
 	out := make([]RuleState, len(rules))
 	for i, refs := range byRule {
-		st := RuleState{RuleIndex: i, Declared: len(refs)}
+		st := RuleState{RuleIndex: i, Segments: len(refs)}
 		for _, ref := range refs {
-			if !lost[ref] {
+			if !lostSet[ref] {
 				continue
 			}
+			st.Lost++
 			if explained[ref] {
-				st.Withdrawn++
-				continue
+				st.Explained++
 			}
-			st.Unresolved++
 		}
 		switch {
-		case st.Unresolved > 0:
-			st.State = RuleLifecycleUnresolved
-		case st.Withdrawn > 0:
+		case st.Lost == 0:
+			st.State = RuleLifecycleActive
+		case st.Explained == st.Lost:
 			st.State = RuleLifecycleWithdrawn
 		default:
-			st.State = RuleLifecycleActive
+			st.State = RuleLifecycleUnresolved
 		}
 		out[i] = st
 	}

@@ -529,6 +529,12 @@ type Role struct {
 	// ЗАПИСЕЙ РОВНО ПО ЧИСЛУ ПРАВИЛ, включая правила без адресуемых сегментов.
 	// Порядок элементов НЕ ЗНАЧИМ — это набор; адресуются они `rule_index`.
 	//
+	// ПУСТОЙ СПИСОК ОЗНАЧАЕТ ДВА РАЗНЫХ ФАКТА, и различает их `rules`: у роли БЕЗ
+	// правил (унаследованная `permissions`-роль) он пуст на чтении — состояние
+	// есть свойство правила, и у роли без правил его нет; у ответа операции он
+	// пуст потому, что не вычислялся. Спрашивать надо `len(rules)`, а не длину
+	// этого списка.
+	//
 	// ГРАНУЛЯРНОСТЬ — ПРАВИЛО, а не сегмент, и это решение о СТОИМОСТИ СТРАНИЦЫ.
 	// Посегментная запись честнее (у неё нет смешанного случая вовсе) и была
 	// рассмотрена первой; её худший случай — 64 правила × 16 ресурсов × 16
@@ -769,16 +775,38 @@ type RuleState struct {
 	// читается тем же индексом, каким записано. Отпечаток правила ключом НЕ
 	// служит — это содержательный хеш, которого нет ни в одном контракте
 	// платформы (тот же довод, что у `pruned_selector_types`).
+	//
+	// КЛЮЧ ДЕЙСТВИТЕЛЕН В ПРЕДЕЛАХ ОДНОГО ОТВЕТА, и сохранять его нельзя:
+	// `Update` перестраивает `rules` целиком, поэтому индекс мутацию не
+	// переживает. Внешне-адресуемой координатой он не является и таковой не
+	// станет (ban #15) — адресуется роль своим `id`.
 	RuleIndex int32 `protobuf:"varint,1,opt,name=rule_index,json=ruleIndex,proto3" json:"rule_index,omitempty"`
 	// Состояние правила. У вычисленной записи оно непусто ВСЕГДА.
 	State RuleLifecycle `protobuf:"varint,2,opt,name=state,proto3,enum=kacho.cloud.iam.v1.RuleLifecycle" json:"state,omitempty"`
 	// Сколько АДРЕСУЕМЫХ сегментов объявляет ЭТО правило. Ноль законен:
 	// подстановка в модуле или в ресурсе сегментов не даёт — она называет не имя,
 	// а «все», и терять ей нечего.
-	DeclaredSegments int32 `protobuf:"varint,3,opt,name=declared_segments,json=declaredSegments,proto3" json:"declared_segments,omitempty"`
-	// Сколько из потерянных сегментов ОБЪЯСНЕНЫ ведомостью переселения.
-	WithdrawnSegments int32 `protobuf:"varint,4,opt,name=withdrawn_segments,json=withdrawnSegments,proto3" json:"withdrawn_segments,omitempty"`
-	// Сколько из потерянных сегментов ведомостью НЕ объяснены.
+	//
+	// ЕДИНИЦА У НЕЁ ДРУГАЯ, ЧЕМ У `Role.declared_segments`, и потому имя другое.
+	// Счётчик роли дедуплицирует сегмент по ВСЕЙ роли: сегмент, объявленный двумя
+	// правилами, там один. Здесь дедупликация только ВНУТРИ правила — потерян он
+	// у ОБОИХ, и схлопнув, мы объявили бы одно из них действующим. Отсюда:
+	// СУММА `segments` по правилам НЕ РАВНА `Role.declared_segments`, и это не
+	// расхождение, а разные вопросы.
+	Segments int32 `protobuf:"varint,3,opt,name=segments,proto3" json:"segments,omitempty"`
+	// Сколько из объявленных сегментов ЭТОГО правила не дают ни одной строки
+	// проекции, которую читает вердикт.
+	//
+	// Единица та же, что у `segments` рядом (дедупликация внутри правила), и
+	// потому сумма по правилам НЕ РАВНА `Role.unresolved_segments` — у того ещё и
+	// предмет шире: он считает всякую потерю, не спрашивая ведомость.
+	LostSegments int32 `protobuf:"varint,4,opt,name=lost_segments,json=lostSegments,proto3" json:"lost_segments,omitempty"`
+	// Сколько из потерянных ОБЪЯСНЕНЫ ведомостью переселения — то есть сняты
+	// платформой, а не потеряны молча.
+	//
+	// Необъяснённые выводятся вычитанием: `lost_segments - explained_segments`.
+	// Третьим полем они не заводятся намеренно — величина, равная разности двух
+	// соседних, разошлась бы с ними при первой же правке.
 	//
 	// ЭТИ ДВЕ ВЕЛИЧИНЫ И ЕСТЬ ПРИЧИНА, ПО КОТОРОЙ СМЕШАННЫЙ СЛУЧАЙ НЕ СХЛОПНУТ.
 	// Правило, у которого часть потерь объяснена, а часть нет, читается
@@ -786,9 +814,9 @@ type RuleState struct {
 	// величины при этом видны одновременно, поэтому не потеряна ни одна.
 	// Четвёртое значение («частично отозвано») рассмотрено и отвергнуто: у него
 	// нет ни своего действия у арендатора, ни своего производителя.
-	UnresolvedSegments int32 `protobuf:"varint,5,opt,name=unresolved_segments,json=unresolvedSegments,proto3" json:"unresolved_segments,omitempty"`
-	unknownFields      protoimpl.UnknownFields
-	sizeCache          protoimpl.SizeCache
+	ExplainedSegments int32 `protobuf:"varint,5,opt,name=explained_segments,json=explainedSegments,proto3" json:"explained_segments,omitempty"`
+	unknownFields     protoimpl.UnknownFields
+	sizeCache         protoimpl.SizeCache
 }
 
 func (x *RuleState) Reset() {
@@ -835,23 +863,23 @@ func (x *RuleState) GetState() RuleLifecycle {
 	return RuleLifecycle_RULE_LIFECYCLE_UNSPECIFIED
 }
 
-func (x *RuleState) GetDeclaredSegments() int32 {
+func (x *RuleState) GetSegments() int32 {
 	if x != nil {
-		return x.DeclaredSegments
+		return x.Segments
 	}
 	return 0
 }
 
-func (x *RuleState) GetWithdrawnSegments() int32 {
+func (x *RuleState) GetLostSegments() int32 {
 	if x != nil {
-		return x.WithdrawnSegments
+		return x.LostSegments
 	}
 	return 0
 }
 
-func (x *RuleState) GetUnresolvedSegments() int32 {
+func (x *RuleState) GetExplainedSegments() int32 {
 	if x != nil {
-		return x.UnresolvedSegments
+		return x.ExplainedSegments
 	}
 	return 0
 }
@@ -1367,14 +1395,14 @@ const file_kacho_cloud_iam_v1_role_proto_rawDesc = "" +
 	"\x0eVerbNotesEntry\x12\x10\n" +
 	"\x03key\x18\x01 \x01(\tR\x03key\x12\x14\n" +
 	"\x05value\x18\x02 \x01(\tR\x05value:\x028\x01J\x04\b\t\x10\n" +
-	"R\x0forganization_id\"\xf0\x01\n" +
+	"R\x0forganization_id\"\xd3\x01\n" +
 	"\tRuleState\x12\x1d\n" +
 	"\n" +
 	"rule_index\x18\x01 \x01(\x05R\truleIndex\x127\n" +
-	"\x05state\x18\x02 \x01(\x0e2!.kacho.cloud.iam.v1.RuleLifecycleR\x05state\x12+\n" +
-	"\x11declared_segments\x18\x03 \x01(\x05R\x10declaredSegments\x12-\n" +
-	"\x12withdrawn_segments\x18\x04 \x01(\x05R\x11withdrawnSegments\x12/\n" +
-	"\x13unresolved_segments\x18\x05 \x01(\x05R\x12unresolvedSegments\"\xca\x01\n" +
+	"\x05state\x18\x02 \x01(\x0e2!.kacho.cloud.iam.v1.RuleLifecycleR\x05state\x12\x1a\n" +
+	"\bsegments\x18\x03 \x01(\x05R\bsegments\x12#\n" +
+	"\rlost_segments\x18\x04 \x01(\x05R\flostSegments\x12-\n" +
+	"\x12explained_segments\x18\x05 \x01(\x05R\x11explainedSegments\"\xca\x01\n" +
 	"\x12PrunedSelectorType\x12\x1f\n" +
 	"\vobject_type\x18\x01 \x01(\tR\n" +
 	"objectType\x12B\n" +

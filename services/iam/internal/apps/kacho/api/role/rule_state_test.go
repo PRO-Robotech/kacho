@@ -18,6 +18,8 @@ import (
 	"testing"
 
 	"github.com/stretchr/testify/require"
+	"google.golang.org/grpc/codes"
+	"google.golang.org/grpc/status"
 
 	"github.com/PRO-Robotech/kacho/services/iam/internal/domain"
 )
@@ -58,13 +60,13 @@ func TestRuleState_MODRS0203_TwoCausesReadDifferently(t *testing.T) {
 	h.project(never, "vpc.network", "get")
 
 	for _, tc := range []struct {
-		id    string
-		want  domain.RuleLifecycle
-		wdraw int
-		unres int
+		id        string
+		want      domain.RuleLifecycle
+		lost      int
+		explained int
 	}{
-		{taken, domain.RuleLifecycleWithdrawn, 1, 0},
-		{never, domain.RuleLifecycleUnresolved, 0, 1},
+		{taken, domain.RuleLifecycleWithdrawn, 1, 1},
+		{never, domain.RuleLifecycleUnresolved, 1, 0},
 	} {
 		got, err := h.get(tc.id)
 		require.NoError(t, err, "Get %s", tc.id)
@@ -76,8 +78,8 @@ func TestRuleState_MODRS0203_TwoCausesReadDifferently(t *testing.T) {
 
 		st := stateOfRule(t, got, 1)
 		require.Equal(t, tc.want, st.State, "%s: состояние правила 1", tc.id)
-		require.Equal(t, tc.wdraw, st.Withdrawn, "%s: объяснённых потерь", tc.id)
-		require.Equal(t, tc.unres, st.Unresolved, "%s: необъяснённых потерь", tc.id)
+		require.Equal(t, tc.lost, st.Lost, "%s: потерянных сегментов", tc.id)
+		require.Equal(t, tc.explained, st.Explained, "%s: объяснённых потерь", tc.id)
 
 		// Соседнее правило не задето — иначе утверждение было бы односторонним.
 		require.Equal(t, domain.RuleLifecycleActive, stateOfRule(t, got, 0).State,
@@ -128,5 +130,51 @@ func TestRuleState_MODRS05_WildcardRuleIsActiveAndStillGetsARecord(t *testing.T)
 	st := stateOfRule(t, got, 0)
 	require.Equal(t, domain.RuleLifecycleActive, st.State,
 		"правилу `*.*` терять нечего — тревога на нём была бы ложной")
-	require.Equal(t, 0, st.Declared)
+	require.Equal(t, 0, st.Segments)
+}
+
+// MOD-RS-08 — источник каталога не провязан ⇒ ОТКАЗ с НАЗВАННЫМ кодом и
+// фиксированным текстом, а не роль без состояния. Код утверждается замером, а не
+// словом «отказ»: «вернулась ошибка» ожидаемым исходом не является.
+func TestRuleState_MODRS08_UnwiredCatalogRefusesWithInternal(t *testing.T) {
+	h := newIntegrityHarness(t)
+	id := h.addCustomRole("rol0000000000000unw1", ruleOn("vpc", "gateway", "delete"))
+
+	uc := NewGetRoleUseCase(h.repo, nil).WithRelationStore(h.fga)
+	_, err := uc.Execute(h.ctx, domain.RoleID(id))
+	require.Error(t, err, "непровязанный источник обязан ОТКАЗЫВАТЬ, а не молчать")
+	st, ok := status.FromError(err)
+	require.True(t, ok, "отказ обязан быть gRPC-статусом")
+	require.Equal(t, codes.Internal, st.Code())
+	require.Equal(t, "internal error", st.Message(),
+		"текст фиксирован: наружу не течёт ни имя типа, ни устройство каталога")
+}
+
+// MOD-RS-13 — роль БЕЗ правил: список пуст, и это значит «правил нет», а не
+// «не вычислено». Различает `len(rules)`, и здесь он равен нулю.
+//
+// Без этого сценария пустой список означал бы два разных факта, и отличить их
+// было бы нечем — тот же класс, что «проекция, которая поле не заполняет».
+func TestRuleState_MODRS13_RoleWithoutRulesHasNoStatesAndThatMeansNoRules(t *testing.T) {
+	h := newIntegrityHarness(t)
+	id := h.addCustomRole("rol0000000000000nor1") // ни одного правила
+
+	got, err := h.get(id)
+	require.NoError(t, err, "роль без правил читается, а не отказывает")
+	require.Empty(t, got.Rules, "контроль: правил у роли действительно нет")
+	require.Empty(t, got.RuleStates,
+		"состояние есть свойство ПРАВИЛА — у роли без правил его нет")
+	// Положительный контроль рядом: целость при этом ВЫЧИСЛЕНА, то есть пустота
+	// списка не означает «ответ ничего не считал».
+	require.Equal(t, domain.RoleHealthHealthy, got.Integrity.Health,
+		"целость обязана быть вычислена: иначе пустой список читался бы как «не считали»")
+
+	// Второй положительный контроль — на ТОЙ ЖЕ странице: роль С правилом
+	// состояние получает. Без него утверждение о пустоте зеленело бы на
+	// реализации, не заполняющей состояние ВООБЩЕ НИКОМУ.
+	with := h.addCustomRole("rol0000000000000nor2", ruleOn("vpc", "gateway", "delete"))
+	other, oerr := h.get(with)
+	require.NoError(t, oerr)
+	require.Len(t, other.RuleStates, 1,
+		"роль с правилом обязана получить запись — иначе пустота у соседа ничего не значит")
 }

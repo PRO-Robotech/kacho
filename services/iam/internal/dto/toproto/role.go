@@ -246,11 +246,11 @@ func ruleStatesToPb(in []domain.RuleState) []*iamv1.RuleState {
 	out := make([]*iamv1.RuleState, 0, len(in))
 	for _, s := range in {
 		out = append(out, &iamv1.RuleState{
-			RuleIndex:          safeconv.ClampNonNegInt32(int64(s.RuleIndex)),
-			State:              ruleLifecycleToPb(s.State),
-			DeclaredSegments:   safeconv.ClampNonNegInt32(int64(s.Declared)),
-			WithdrawnSegments:  safeconv.ClampNonNegInt32(int64(s.Withdrawn)),
-			UnresolvedSegments: safeconv.ClampNonNegInt32(int64(s.Unresolved)),
+			RuleIndex:         safeconv.ClampNonNegInt32(int64(s.RuleIndex)),
+			State:             ruleLifecycleToPb(s.State),
+			Segments:          safeconv.ClampNonNegInt32(int64(s.Segments)),
+			LostSegments:      safeconv.ClampNonNegInt32(int64(s.Lost)),
+			ExplainedSegments: safeconv.ClampNonNegInt32(int64(s.Explained)),
 		})
 	}
 	return out

@@ -33,12 +33,12 @@ func TestRuleState_MODRS01_NothingLost_IsActive(t *testing.T) {
 		if st.State != RuleLifecycleActive {
 			t.Fatalf("правило %d: состояние %v, ожидалось ACTIVE", i, st.State)
 		}
-		if st.Withdrawn != 0 || st.Unresolved != 0 {
-			t.Fatalf("правило %d: потери %d/%d, ожидалось 0/0", i, st.Withdrawn, st.Unresolved)
+		if st.Lost != 0 || st.Explained != 0 {
+			t.Fatalf("правило %d: потери %d, объяснено %d — ожидалось 0/0", i, st.Lost, st.Explained)
 		}
 	}
-	if got[0].Declared != 2 {
-		t.Fatalf("правило 0 объявляет %d сегментов, ожидалось 2", got[0].Declared)
+	if got[0].Segments != 2 {
+		t.Fatalf("правило 0 объявляет %d сегментов, ожидалось 2", got[0].Segments)
 	}
 }
 
@@ -57,8 +57,8 @@ func TestRuleState_MODRS02_LossExplainedByLedger_IsWithdrawn(t *testing.T) {
 	if got[1].State != RuleLifecycleWithdrawn {
 		t.Fatalf("правило 1: состояние %v, ожидалось WITHDRAWN", got[1].State)
 	}
-	if got[1].Withdrawn != 1 || got[1].Unresolved != 0 {
-		t.Fatalf("правило 1: потери %d/%d, ожидалось 1/0", got[1].Withdrawn, got[1].Unresolved)
+	if got[1].Lost != 1 || got[1].Explained != 1 {
+		t.Fatalf("правило 1: потерь %d, объяснено %d — ожидалось 1/1", got[1].Lost, got[1].Explained)
 	}
 	if got[0].State != RuleLifecycleActive {
 		t.Fatalf("правило 0: состояние %v, ожидалось ACTIVE — соседнее не задето", got[0].State)
@@ -78,8 +78,8 @@ func TestRuleState_MODRS03_LossWithoutLedger_IsUnresolvedNotWithdrawn(t *testing
 	if got[0].State != RuleLifecycleUnresolved {
 		t.Fatalf("состояние %v, ожидалось UNRESOLVED", got[0].State)
 	}
-	if got[0].Unresolved != 1 || got[0].Withdrawn != 0 {
-		t.Fatalf("потери %d/%d, ожидалось 0/1", got[0].Withdrawn, got[0].Unresolved)
+	if got[0].Lost != 1 || got[0].Explained != 0 {
+		t.Fatalf("потерь %d, объяснено %d — ожидалось 1/0", got[0].Lost, got[0].Explained)
 	}
 }
 
@@ -97,11 +97,11 @@ func TestRuleState_MODRS04_MixedLoss_KeepsBothCounters(t *testing.T) {
 	if got[0].State != RuleLifecycleUnresolved {
 		t.Fatalf("состояние %v, ожидалось UNRESOLVED — необъяснённая потеря сильнее", got[0].State)
 	}
-	if got[0].Withdrawn != 1 {
-		t.Fatalf("объяснённых %d, ожидалась 1 — величина потеряна вместе со словом", got[0].Withdrawn)
+	if got[0].Explained != 1 {
+		t.Fatalf("объяснённых %d, ожидалась 1 — величина потеряна вместе со словом", got[0].Explained)
 	}
-	if got[0].Unresolved != 1 {
-		t.Fatalf("необъяснённых %d, ожидалась 1", got[0].Unresolved)
+	if got[0].Lost-got[0].Explained != 1 {
+		t.Fatalf("необъяснённых %d, ожидалась 1", got[0].Lost-got[0].Explained)
 	}
 }
 
@@ -114,8 +114,8 @@ func TestRuleState_MODRS05_NothingAddressable_IsActive(t *testing.T) {
 	}
 	got := RuleStatesOf(rules, nil, nil)
 	for i, st := range got {
-		if st.Declared != 0 {
-			t.Fatalf("правило %d объявляет %d адресуемых сегментов, ожидалось 0", i, st.Declared)
+		if st.Segments != 0 {
+			t.Fatalf("правило %d объявляет %d адресуемых сегментов, ожидалось 0", i, st.Segments)
 		}
 		if st.State != RuleLifecycleActive {
 			t.Fatalf("правило %d: состояние %v, ожидалось ACTIVE", i, st.State)
@@ -160,9 +160,9 @@ func TestRuleState_MODRS10_OneEntryPerRuleKeyedByIndex(t *testing.T) {
 			t.Fatalf("запись %d несёт ключ %d", i, st.RuleIndex)
 		}
 	}
-	if got[0].Declared != 0 || got[1].Declared != 1 || got[2].Declared != 2 {
+	if got[0].Segments != 0 || got[1].Segments != 1 || got[2].Segments != 2 {
 		t.Fatalf("объявлено %d/%d/%d, ожидалось 0/1/2",
-			got[0].Declared, got[1].Declared, got[2].Declared)
+			got[0].Segments, got[1].Segments, got[2].Segments)
 	}
 }
 
@@ -222,5 +222,30 @@ func TestRuleRefsByRule_LengthMatchesInputAlways(t *testing.T) {
 	dup := RuleRefsByRule(Rules{ruleOf("vpc", []string{"network", "network"}, []string{"get"})})
 	if len(dup[0]) != 1 {
 		t.Fatalf("повтор ресурса дал %d сегментов, ожидался 1", len(dup[0]))
+	}
+}
+
+// Единица постатейной величины ДРУГАЯ, чем у счётчика роли, и это утверждается
+// числами, а не комментарием: сегмент, объявленный двумя правилами, у роли один,
+// а у правил — по одному каждому. Сложи мы их в одно имя, арендатор увидел бы
+// два разных числа под одной подписью.
+func TestRuleState_UnitDiffersFromTheRoleCounterOnPurpose(t *testing.T) {
+	rules := Rules{
+		ruleOf("vpc", []string{"gateway"}, []string{"delete"}),
+		ruleOf("vpc", []string{"gateway"}, []string{"delete"}),
+	}
+	roleDeclared := len(RuleRefsOf(rules))
+	if roleDeclared != 1 {
+		t.Fatalf("счётчик роли %d, ожидался 1 — дедупликация по всей роли", roleDeclared)
+	}
+	sum := 0
+	for _, st := range RuleStatesOf(rules, nil, nil) {
+		sum += st.Segments
+	}
+	if sum != 2 {
+		t.Fatalf("сумма по правилам %d, ожидалась 2 — дедупликации между правилами быть не должно", sum)
+	}
+	if sum == roleDeclared {
+		t.Fatal("суммы совпали: единицы схлопнулись, и различие потеряно")
 	}
 }
