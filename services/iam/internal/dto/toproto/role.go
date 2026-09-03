@@ -102,6 +102,10 @@ func (roleObj) toPb(r domain.Role) (*iamv1.Role, error) {
 		// ветвь соседнего: у отбора глагола нет вовсе, а пустой глагол у соседа
 		// уже занят якорем объявления правила.
 		PrunedSelectorTypes: prunedSelectorTypesToPb(r.PrunedSelectorTypes),
+		// Состояние КАЖДОГО правила (#1962). Соседи выше говорят СКОЛЬКО и ЧТО;
+		// это — КАКОЕ правило и по какой из двух причин. Пустой срез приезжает
+		// пустым списком: «этим ответом не вычислено», а не «правила не действуют».
+		RuleStates: ruleStatesToPb(r.RuleStates),
 		// Permissions intentionally omitted (internal compiled; not on the public
 		// API surface — R-7/F5). Read compiled perms via InternalIAMService.GetRoleCompiled.
 	}, nil
@@ -226,5 +230,44 @@ func withdrawnGrantSourceToPb(s domain.WithdrawnGrantSource) iamv1.WithdrawnGran
 		return iamv1.WithdrawnGrantSource_WITHDRAWN_GRANT_SOURCE_RULE_REFERENCE
 	default:
 		return iamv1.WithdrawnGrantSource_WITHDRAWN_GRANT_SOURCE_UNSPECIFIED
+	}
+}
+
+// ruleStatesToPb — ПЕРЕВОД постатейного состояния правил в контрактную форму, и
+// только он. Какое состояние несёт правило, решает домен ([domain.RuleStatesOf]);
+// здесь не судится ничего — иначе завелось бы второе место, знающее ответ.
+//
+// Пустой вход даёт `nil`, а не список нулевых вариантов: «этим ответом не
+// вычислено» обязано быть отличимо от «правило не действует».
+func ruleStatesToPb(in []domain.RuleState) []*iamv1.RuleState {
+	if len(in) == 0 {
+		return nil
+	}
+	out := make([]*iamv1.RuleState, 0, len(in))
+	for _, s := range in {
+		out = append(out, &iamv1.RuleState{
+			RuleIndex:          safeconv.ClampNonNegInt32(int64(s.RuleIndex)),
+			State:              ruleLifecycleToPb(s.State),
+			DeclaredSegments:   safeconv.ClampNonNegInt32(int64(s.Declared)),
+			WithdrawnSegments:  safeconv.ClampNonNegInt32(int64(s.Withdrawn)),
+			UnresolvedSegments: safeconv.ClampNonNegInt32(int64(s.Unresolved)),
+		})
+	}
+	return out
+}
+
+// ruleLifecycleToPb — перевод состояния правила. Нулевой вариант возвращается
+// ТОЛЬКО на нулевой вход: домен его не производит, и подстановка «действует» на
+// неизвестном значении сделала бы отказ перевода неотличимым от исправности.
+func ruleLifecycleToPb(s domain.RuleLifecycle) iamv1.RuleLifecycle {
+	switch s {
+	case domain.RuleLifecycleActive:
+		return iamv1.RuleLifecycle_RULE_LIFECYCLE_ACTIVE
+	case domain.RuleLifecycleWithdrawn:
+		return iamv1.RuleLifecycle_RULE_LIFECYCLE_WITHDRAWN
+	case domain.RuleLifecycleUnresolved:
+		return iamv1.RuleLifecycle_RULE_LIFECYCLE_UNRESOLVED
+	default:
+		return iamv1.RuleLifecycle_RULE_LIFECYCLE_UNSPECIFIED
 	}
 }
