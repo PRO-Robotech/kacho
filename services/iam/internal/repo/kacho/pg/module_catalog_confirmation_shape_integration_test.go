@@ -68,8 +68,8 @@ func TestModuleStateIsBlindToTenantMovementAndSensitiveToCatalogForm(t *testing.
 		baseWide := stateFingerprint(t, ctx, pool)
 
 		tn := seedVerdictTenant(t, ctx, pool)
-		pairs := declareRole(t, ctx, pool, repo, snap.Facts(),
-			"rol-confirm-shape", tn.accountID, anchoredModule, spareResource)
+		roleID, pairs := declareRole(t, ctx, pool, repo, snap,
+			tn.accountID, tn.userID, anchoredModule, spareResource)
 		require.NotEmpty(t, pairs, "проекция роли пуста: движения не произошло, и сверять нечего")
 		t.Logf("арендаторская роль заведена: пар проекции %d", len(pairs))
 
@@ -87,7 +87,7 @@ func TestModuleStateIsBlindToTenantMovementAndSensitiveToCatalogForm(t *testing.
 				"подтверждение такого состава протухало бы от чужого арендатора (`-16`)")
 
 		// Вторая половина того же движения — удаление.
-		_, err = pool.Exec(ctx, `DELETE FROM kacho_iam.roles WHERE id = $1`, "rol-confirm-shape")
+		_, err = pool.Exec(ctx, `DELETE FROM kacho_iam.roles WHERE id = $1`, roleID)
 		require.NoError(t, err, "удалить арендаторскую роль")
 		deletedModule := moduleCatalogSnapshot(t, ctx, pool, anchoredModule)
 		deletedWide := stateFingerprint(t, ctx, pool)

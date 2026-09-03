@@ -49,6 +49,7 @@ import (
 	"github.com/PRO-Robotech/kacho/services/iam/internal/domain"
 	"github.com/PRO-Robotech/kacho/services/iam/internal/manifest"
 	kachopg "github.com/PRO-Robotech/kacho/services/iam/internal/repo/kacho/pg"
+	"github.com/PRO-Robotech/kacho/services/iam/internal/testsupport/rightsfixture"
 )
 
 // applierOnLiveBase — применитель над НАСТОЯЩИМ репозиторием: тот же мост
@@ -64,7 +65,7 @@ func applierOnLiveBase(t *testing.T) (context.Context, *pgxpool.Pool, *modulerol
 	// вердикт ВСЕГО пакета.
 	pgtest.ClosePoolAtEnd(t, pool)
 	repo := kachopg.New(pool, nil)
-	return ctx, pool, moduleroles.NewApplier(moduleroles.NewRepoTxRunner(repo))
+	return ctx, pool, moduleroles.NewApplier(moduleroles.NewRepoTxRunner(repo), rightsfixture.Export())
 }
 
 // declaredManifest — манифест модуля с одной ролью кластерного яруса. Ярус

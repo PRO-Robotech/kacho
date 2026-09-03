@@ -108,7 +108,7 @@ func vpcManifest(t *testing.T, id, class string) *manifest.Manifest {
 // TestMODRD12AppliedRoleIsSystemAndAnchoredAtTheCluster — MOD-RD-12.
 func TestMODRD12AppliedRoleIsSystemAndAnchoredAtTheCluster(t *testing.T) {
 	store := newStore()
-	rep, err := moduleroles.NewApplier(store).Apply(context.Background(), vpcManifest(t, "vpc.network.admin", "get"))
+	rep, err := applierUnderTest(t, store).Apply(context.Background(), vpcManifest(t, "vpc.network.admin", "get"))
 	if err != nil {
 		t.Fatalf("применение отвергнуто: %v", err)
 	}
@@ -139,7 +139,7 @@ func TestMODRD12AppliedRoleIsSystemAndAnchoredAtTheCluster(t *testing.T) {
 // TestMODRD13SecondRunWithoutAnEditWritesNothing — MOD-RD-13.
 func TestMODRD13SecondRunWithoutAnEditWritesNothing(t *testing.T) {
 	store := newStore()
-	ap := moduleroles.NewApplier(store)
+	ap := applierUnderTest(t, store)
 	m := vpcManifest(t, "vpc.network.admin", "get")
 	if _, err := ap.Apply(context.Background(), m); err != nil {
 		t.Fatalf("первое применение отвергнуто: %v", err)
@@ -158,7 +158,7 @@ func TestMODRD13SecondRunWithoutAnEditWritesNothing(t *testing.T) {
 // правило приведено, `id` не изменился, а значит выдачи целы.
 func TestMODRD14RuleEditIsBroughtOverWithoutChangingTheID(t *testing.T) {
 	store := newStore()
-	ap := moduleroles.NewApplier(store)
+	ap := applierUnderTest(t, store)
 	if _, err := ap.Apply(context.Background(), vpcManifest(t, "vpc.network.admin", "get")); err != nil {
 		t.Fatalf("первое применение отвергнуто: %v", err)
 	}
@@ -192,7 +192,7 @@ func TestMODRD14RuleEditIsBroughtOverWithoutChangingTheID(t *testing.T) {
 // бы символом, есть ДРУГАЯ роль, и старая строка цела.
 func TestMODRD09ARenamedRoleIsADifferentRole(t *testing.T) {
 	store := newStore()
-	ap := moduleroles.NewApplier(store)
+	ap := applierUnderTest(t, store)
 	if _, err := ap.Apply(context.Background(), vpcManifest(t, "vpc.network.admin", "get")); err != nil {
 		t.Fatalf("первое применение отвергнуто: %v", err)
 	}
@@ -220,7 +220,7 @@ func TestMODRD15AForeignTierOrModuleNeverReachesTheWriter(t *testing.T) {
 		t.Fatalf("фикстура отвергнута: %v", err)
 	}
 	store := newStore()
-	rep, err := moduleroles.NewApplier(store).Apply(context.Background(), m)
+	rep, err := applierUnderTest(t, store).Apply(context.Background(), m)
 	if err != nil {
 		t.Fatalf("применение отвергнуто: %v", err)
 	}
@@ -249,7 +249,7 @@ func TestApplierRefusesARoleThatTheDomainRejects(t *testing.T) {
 	m.Roles[0].Rules[0].Classes = []string{"НЕ-ЛАТИНСКИЙ"}
 
 	store := newStore()
-	_, err = moduleroles.NewApplier(store).Apply(context.Background(), m)
+	_, err = applierUnderTest(t, store).Apply(context.Background(), m)
 	if err == nil {
 		t.Fatalf("роль, негодная по домену, записана")
 	}

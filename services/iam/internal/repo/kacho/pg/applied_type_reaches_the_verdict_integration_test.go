@@ -46,13 +46,39 @@ package pg_test
 //
 // Утверждается ВЕРДИКТ (`relverdict.Ask`), а не строка таблицы: строки уже
 // утверждают пробы выше, и повторять их значило бы завести два места об одном
-// предмете. Роль заводится ТЕМИ ЖЕ тремя писателями и в том же порядке, каким её
-// заводит use-case создания роли (`apps/kacho/api/role/create.go`:
-// `ReplaceRuleSelectors` → `ReplaceRoleVerbs` от `cat.Facts().RoleVerbsFromSelectors`
-// → `ReplaceRuleRefs`), в одной транзакции записи.
+// предмете.
 //
-// ЧЕГО ПРОБА НЕ ПОКРЫВАЕТ, сказано прямо: транспорт (RPC), операцию, стража прав
-// вызывающего и материализацию кортежей. Их полосы свои, и утверждать о них здесь
+// ─────────────────────────────────────────────────────────────────────────────
+// РОЛЬ ЗАВОДИТСЯ USE-CASE'ОМ, А НЕ ПИСАТЕЛЯМИ РЕПОЗИТОРИЯ (kacho#1999)
+//
+// Здесь стояло «роль заводится ТЕМИ ЖЕ тремя писателями и в том же порядке,
+// каким её заводит use-case создания роли». Про ПИСАТЕЛЕЙ это было верно и про
+// ПРОВЕРКИ — неверно: между входом use-case и первым писателем стоят синхронные
+// гейты, которых у пути писателей нет BY CONSTRUCTION. Один из них — гейт
+// грантуемого токена (`validateRuleCatalog`) — отвергал ровно тот тип, ради
+// которого проба и написана (#1993), а проба оставалась ЗЕЛЁНОЙ: она утверждала
+// про свою половину цепи и не могла увидеть звена, стоящего раньше её точки
+// входа. Класс — не «проба неверна», а «проверка была верной и МИМО».
+//
+// Цена измерена, а не предположена: на инъекции, возвращающей источник гейта к
+// словарю сборки (дефект до #1993), проба звена краснеет тремя утверждениями, а
+// ДОФИКСОВАЯ проба цепи выходит успехом. Теперь роль заводится ТЕМ ЖЕ ПУТЁМ,
+// что у арендатора, — `role.CreateRoleUseCase.Execute` — и на той же инъекции
+// краснеет.
+//
+// Отсюда же и переучёт фикстуры: идентификатор аккаунта проходит синхронную
+// проверку формы (`shared.ValidateResourceID`), поэтому обвязка чеканит его
+// `ids.NewID`, а не пишет короткий литерал. Роль ПЕРЕОБЪЯВЛЯЕТСЯ той же
+// стороной, какой это делает арендатор, — `role.UpdateRoleUseCase` с теми же
+// правилами: у существующей роли второго законного пути пересчитать проекции
+// нет.
+//
+// ЧЕГО ПРОБА НЕ ПОКРЫВАЕТ, сказано прямо: транспорт (RPC), стража прав
+// вызывающего на крае (пообъектная проверка `v_create@iam_role` идёт ДО того,
+// как iam будет вызван) и материализацию кортежей. Операция ИСПОЛНЯЕТСЯ и её
+// терминальный исход утверждается: id роли приходит метаданными, назначенными
+// ДО асинхронного шага, поэтому читать его, не прочитав `error`, значит
+// адресоваться к возможному фантому. Их полосы свои, и утверждать о них здесь
 // значило бы заявлять шире сделанного. Подставлены ВХОДЫ, а не звенья цепи:
 // арендаторская обвязка и строка выдачи кладутся оператором вставки, тогда как
 // каталог, снимок, проекция и вердикт ПРОИЗВОДЯТСЯ. Вопрос задаётся форме `Ask`
@@ -81,11 +107,17 @@ import (
 	"path/filepath"
 	"strings"
 	"testing"
+	"time"
 
 	"github.com/jackc/pgx/v5"
 	"github.com/jackc/pgx/v5/pgxpool"
 	"github.com/stretchr/testify/require"
 
+	iamv1 "github.com/PRO-Robotech/kacho/pkg/api/kacho/cloud/iam/v1"
+	"github.com/PRO-Robotech/kacho/pkg/ids"
+	"github.com/PRO-Robotech/kacho/pkg/operations"
+
+	roleapp "github.com/PRO-Robotech/kacho/services/iam/internal/apps/kacho/api/role"
 	"github.com/PRO-Robotech/kacho/services/iam/internal/apps/kacho/seed"
 	"github.com/PRO-Robotech/kacho/services/iam/internal/authzmap"
 	"github.com/PRO-Robotech/kacho/services/iam/internal/authzmodel"
@@ -168,9 +200,13 @@ type verdictTenant struct {
 
 func seedVerdictTenant(t *testing.T, ctx context.Context, pool *pgxpool.Pool) verdictTenant {
 	t.Helper()
+	// Идентификаторы аккаунта и пользователя ЧЕКАНЯТСЯ, а не пишутся литералом:
+	// путь создания роли судит форму `account_id` синхронно
+	// (`shared.ValidateResourceID` — префикс плюс длина), и короткий литерал
+	// отвергался бы полосой формы, к предмету пробы отношения не имеющей.
 	tn := verdictTenant{
-		accountID: "acc-dod1",
-		userID:    "usr-dod1",
+		accountID: ids.NewID(domain.PrefixAccount),
+		userID:    ids.NewID(domain.PrefixUser),
 		projectID: "prj-dod1",
 		granted:   "sva-dod1-granted",
 		bare:      "sva-dod1-bare",
@@ -199,47 +235,118 @@ func seedVerdictTenant(t *testing.T, ctx context.Context, pool *pgxpool.Pool) ve
 	return tn
 }
 
-// declareRole заводит роль и кладёт ТРИ проекции её правила теми же писателями и
-// в том же порядке, каким это делает use-case создания роли.
+// probeRules — правило роли пробы. Одно объявление на создание и на правку:
+// два разошлись бы молча, и переобъявление писало бы не то, что заведение.
+func probeRules(module, resource string) domain.Rules {
+	return domain.Rules{{Module: module, Resources: []string{resource}, Verbs: []string{"*"}}}
+}
+
+// declarerCtx — контекст ВЫЗЫВАЮЩЕГО, а не служебный: use-case отвергает
+// анонима первым же оператором (`authzguard.RequireAuthenticated`), и подать
+// сюда пустой контекст значило бы получить отказ полосы, к предмету пробы
+// отношения не имеющей.
+func declarerCtx(ctx context.Context, userID string) context.Context {
+	return operations.WithPrincipal(ctx, operations.Principal{
+		Type: "user", ID: userID, DisplayName: "DoD-1",
+	})
+}
+
+// awaitOperation дожидается терминального состояния операции и возвращает её.
 //
-// Проекция глаголов вычисляется СНИМКОМ каталога (`facts`), а не литералом: это и
-// есть звено, ради которого проба написана. Подать сюда готовые пары значило бы
-// обойти его.
+// Ждать обязательно: `Execute` отдаёт операцию ПРИНЯТОЙ, а запись идёт
+// асинхронным исполнителем. Ждать по времени нельзя — `operations.Wait`
+// дожидается СОБЫТИЯ, а не срока.
+func awaitOperation(t *testing.T, ctx context.Context, ops operations.Repo, opID string) *operations.Operation {
+	t.Helper()
+	waitCtx, cancel := context.WithTimeout(ctx, 20*time.Second)
+	defer cancel()
+	require.NoError(t, operations.Wait(waitCtx), "исполнитель операций не завершил очередь")
+	got, err := ops.Get(ctx, opID)
+	require.NoErrorf(t, err, "операция %s не прочитана — это «не выполнилось», а не отказ", opID)
+	require.Truef(t, got.Done, "операция %s не терминальна", opID)
+	return got
+}
+
+// declareRole заводит роль ТЕМ ЖЕ ПУТЁМ, каким её заводит арендатор, —
+// use-case создания (`role.CreateRoleUseCase`), а не тремя писателями
+// репозитория (kacho#1999).
+//
+// Разница не в наборе писателей: их use-case зовёт те же и в том же порядке.
+// Разница в ТОМ, ЧТО СТОИТ ДО НИХ — синхронные гейты входа, среди которых гейт
+// грантуемого токена. У пути писателей их нет by construction, поэтому первое
+// звено цепи оставалось неизмеренным этой пробой.
+//
+// Возвращается ЧЕКАНЕННЫЙ id роли: назначает его use-case, и принять его от
+// вызывающего значило бы вернуть путь, минующий чеканку. Пары проекции
+// вычисляются снимком каталога и служат переписью — сама запись идёт внутри
+// use-case.
 func declareRole(t *testing.T, ctx context.Context, pool *pgxpool.Pool, repo kachorepo.Repository,
-	facts *catalog.Facts, roleID, accountID, module, resource string) []domain.RoleVerb {
+	cat catalog.Source, accountID, userID, module, resource string) (string, []domain.RoleVerb) {
 	t.Helper()
 
-	rules := domain.Rules{{Module: module, Resources: []string{resource}, Verbs: []string{"*"}}}
-	sels := rules.MaterializingSelectors()
-	pairs := facts.RoleVerbsFromSelectors(sels)
+	rules := probeRules(module, resource)
+	pairs := cat.Facts().RoleVerbsFromSelectors(rules.MaterializingSelectors())
+
+	ops := operations.NewRepo(pool, "kacho_iam")
+	uc := roleapp.NewCreateRoleUseCase(repo, ops, cat)
+	op, err := uc.Execute(declarerCtx(ctx, userID), domain.Role{
+		AccountID:   domain.AccountID(accountID),
+		Name:        domain.RoleName(strings.ToLower("dod1_" + module + "_" + resource)),
+		Description: "DoD-1 through the use-case",
+		Rules:       rules,
+	})
+	require.NoErrorf(t, err, "use-case создания роли отверг правило над %s.%s СИНХРОННО — "+
+		"первое звено цепи «клиент завёл тип манифестом → получил права» разомкнуто, и "+
+		"ниже чинить нечего: роли нет", module, resource)
+	require.NotNil(t, op, "Execute вернул nil Operation без ошибки — исход создания не определён")
+
+	done := awaitOperation(t, ctx, ops, op.ID)
+	// Исход операции читается ДО метаданных: id роли назначается ПРИНЯТИЕМ, до
+	// записи, поэтому на упавшей операции он указывает на несуществующую строку.
+	require.Nilf(t, done.Error, "операция создания роли над %s.%s завершилась отказом: %v",
+		module, resource, done.Error)
+
+	var meta iamv1.CreateRoleMetadata
+	require.NoError(t, done.Metadata.UnmarshalTo(&meta), "метаданные операции создания роли")
+	require.NotEmpty(t, meta.GetRoleId(), "операция создания роли не назвала id роли")
 
 	var exists bool
 	require.NoError(t, pool.QueryRow(ctx,
-		`SELECT EXISTS (SELECT 1 FROM roles WHERE id = $1)`, roleID).Scan(&exists))
-	if !exists {
-		_, err := pool.Exec(ctx, `
-			INSERT INTO roles (id, account_id, name, description, permissions)
-			VALUES ($1, $2, $3, 'DoD-1 through probe', '["iam.users.*.read"]'::jsonb)`,
-			roleID, accountID, strings.ToLower("dod1_"+module+"_"+resource))
-		require.NoError(t, err, "завести роль")
-	}
+		`SELECT EXISTS (SELECT 1 FROM roles WHERE id = $1)`, meta.GetRoleId()).Scan(&exists))
+	require.Truef(t, exists, "операция успешна, а строки роли %s нет — метаданные назвали фантом",
+		meta.GetRoleId())
+	return meta.GetRoleId(), pairs
+}
 
-	w, err := repo.Writer(ctx)
-	require.NoError(t, err, "открыть транзакцию записи")
-	committed := false
-	defer func() {
-		if !committed {
-			_ = w.Rollback(ctx)
-		}
-	}()
-	require.NoError(t, w.RolesW().ReplaceRuleSelectors(ctx, domain.RoleID(roleID), sels),
-		"писатель селекторов правила")
-	require.NoError(t, w.RolesW().ReplaceRoleVerbs(ctx, domain.RoleID(roleID), pairs),
-		"писатель проекции глаголов")
-	require.NoError(t, w.RolesW().ReplaceRuleRefs(ctx, domain.RoleID(roleID), domain.RuleRefsOf(rules)),
-		"писатель объявленных сегментов")
-	require.NoError(t, w.Commit(ctx))
-	committed = true
+// redeclareRole ПЕРЕОБЪЯВЛЯЕТ правила уже существующей роли — тем же путём,
+// каким это делает арендатор (`role.UpdateRoleUseCase`).
+//
+// Второго законного пути пересчитать проекции у существующей роли нет: снятие
+// строки каталога вырезало элемент селектора и пары проекции, и вернуть их
+// может только правка правил. Гейт грантуемого токена стоит и здесь — паритет
+// создания и правки несущий: приняв роль над заведённым типом и отвергнув её
+// правку, платформа сделала бы роль неисправимой.
+func redeclareRole(t *testing.T, ctx context.Context, pool *pgxpool.Pool, repo kachorepo.Repository,
+	cat catalog.Source, roleID, userID, module, resource string) []domain.RoleVerb {
+	t.Helper()
+
+	rules := probeRules(module, resource)
+	pairs := cat.Facts().RoleVerbsFromSelectors(rules.MaterializingSelectors())
+
+	ops := operations.NewRepo(pool, "kacho_iam")
+	uc := roleapp.NewUpdateRoleUseCase(repo, ops, cat)
+	op, err := uc.Execute(declarerCtx(ctx, userID), roleapp.UpdateRoleInput{
+		ID:         domain.RoleID(roleID),
+		Rules:      rules,
+		UpdateMask: []string{"rules"},
+	})
+	require.NoErrorf(t, err, "use-case правки роли отверг правило над %s.%s СИНХРОННО — "+
+		"роль над заведённым типом стала неисправимой", module, resource)
+	require.NotNil(t, op, "Execute правки вернул nil Operation без ошибки")
+
+	done := awaitOperation(t, ctx, ops, op.ID)
+	require.Nilf(t, done.Error, "операция правки роли над %s.%s завершилась отказом: %v",
+		module, resource, done.Error)
 	return pairs
 }
 
@@ -365,11 +472,10 @@ func TestDoD1_RuntimeAppliedCatalogRowCarriesTheGrantToTheVerdict(t *testing.T) 
 	t.Logf("перепись каталога: модулей %d, ресурсов %d, действий %d", mods, res, verbs)
 
 	tn := seedVerdictTenant(t, ctx, pool)
-	const roleID = "rol-dod1-shipped"
 
 	// ── (1) ПОЛОЖИТЕЛЬНЫЙ КОНТРОЛЬ: путь работает ──────────────────────────
-	pairs := declareRole(t, ctx, pool, repo, snap.Facts(),
-		roleID, tn.accountID, verdictShippedModule, verdictShippedRes)
+	roleID, pairs := declareRole(t, ctx, pool, repo, snap,
+		tn.accountID, tn.userID, verdictShippedModule, verdictShippedRes)
 	require.NotEmptyf(t, pairs,
 		"проекция по %q пуста ещё до всякого применения — путь не работает НИ ДЛЯ КОГО, "+
 			"и всё, что ниже, было бы беспредметно", verdictShippedDotted)
@@ -382,9 +488,8 @@ func TestDoD1_RuntimeAppliedCatalogRowCarriesTheGrantToTheVerdict(t *testing.T) 
 	// Здесь утверждается только то, что путь соседа работает ДО снятия. Без
 	// этого утверждения контроль ниже был бы двусмыслен: его краснота означала бы
 	// и «снятие унесло соседа», и «сосед не работал никогда».
-	const neighbourRoleID = "rol-dod1-neighbour"
-	npairs := declareRole(t, ctx, pool, repo, snap.Facts(),
-		neighbourRoleID, tn.accountID, verdictShippedModule, verdictNeighbourRes)
+	neighbourRoleID, npairs := declareRole(t, ctx, pool, repo, snap,
+		tn.accountID, tn.userID, verdictShippedModule, verdictNeighbourRes)
 	require.NotEmptyf(t, npairs,
 		"проекция по соседу %q пуста ещё до снятия — контроль живого соседа стал бы "+
 			"беспредметным", verdictNeighbourDotted)
@@ -462,8 +567,8 @@ func TestDoD1_RuntimeAppliedCatalogRowCarriesTheGrantToTheVerdict(t *testing.T) 
 	t.Logf("заведение: %s", rep)
 	require.NoError(t, snap.Refresh(ctx), "обновление снимка каталога")
 
-	pairs = declareRole(t, ctx, pool, repo, snap.Facts(),
-		roleID, tn.accountID, verdictShippedModule, verdictShippedRes)
+	pairs = redeclareRole(t, ctx, pool, repo, snap,
+		roleID, tn.userID, verdictShippedModule, verdictShippedRes)
 	require.NotEmptyf(t, pairs,
 		"строка заведена применением, а проекция по %q пуста: роль создалась бы без отказа, "+
 			"и арендатор не получил бы НИЧЕГО", verdictShippedDotted)
@@ -604,9 +709,8 @@ func TestDoD1_TypeUnknownToTheBuildReachesTheVerdictThroughTheComposedModel(t *t
 	t.Logf("перепись каталога после применения: модулей %d, ресурсов %d, действий %d", mods, res, verbs)
 
 	// (1) ПРОЕКЦИЯ ПОЛНА — предмет #1816.
-	const roleID = "rol-dod1-applied"
-	pairs := declareRole(t, ctx, pool, repo, snap.Facts(),
-		roleID, tn.accountID, applierProbeModule, verdictAppliedRes)
+	roleID, pairs := declareRole(t, ctx, pool, repo, snap,
+		tn.accountID, tn.userID, applierProbeModule, verdictAppliedRes)
 	require.NotEmptyf(t, pairs,
 		"проекция по заведённому типу %q пуста: строки записаны, роль создалась без отказа, "+
 			"а арендатор не получил бы НИЧЕГО — это дословно блокатор, названный эпиком #1027",

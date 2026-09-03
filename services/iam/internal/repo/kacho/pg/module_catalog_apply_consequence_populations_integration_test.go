@@ -74,8 +74,10 @@ func TestApplyMovesThreePopulationsOfConsequenceNotTwo(t *testing.T) {
 	// нельзя: её проекции применитель не переселяет намеренно, и снятие отвергнул
 	// бы КЛЮЧ — проба читала бы чужой отказ как перепись последствий.
 	tn := seedVerdictTenant(t, ctx, pool)
-	pairs := declareRole(t, ctx, pool, repo, snap.Facts(),
-		"rol-populations", tn.accountID, anchoredModule, spareResource)
+	// Роль заводится ТЕМ ЖЕ путём, что у арендатора (use-case создания, #1999);
+	// id чеканит он, а этой пробе он не нужен — её предмет перепись последствий.
+	_, pairs := declareRole(t, ctx, pool, repo, snap,
+		tn.accountID, tn.userID, anchoredModule, spareResource)
 	require.NotEmptyf(t, pairs,
 		"проекция по %s.%s пуста ещё до применения: двигать нечего, и перепись была бы вакуумной",
 		anchoredModule, spareResource)

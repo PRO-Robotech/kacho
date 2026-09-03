@@ -203,8 +203,8 @@ func TestApplyConfirmsTheStateItWasPlannedAgainst(t *testing.T) {
 		// имеет, а обесценив план, запретило бы применение всякому, у кого есть
 		// хоть один активный арендатор.
 		tn := seedVerdictTenant(t, ctx, pool)
-		pairs := declareRole(t, ctx, pool, repo, snap.Facts(),
-			"rol-confirm-cas", tn.accountID, anchoredModule, spareResource)
+		_, pairs := declareRole(t, ctx, pool, repo, snap,
+			tn.accountID, tn.userID, anchoredModule, spareResource)
 		require.NotEmpty(t, pairs, "проекция роли пуста: движения не произошло, и сверять нечего")
 
 		// КОНТРОЛЬ НЕВАКУУМНОСТИ: движение действительно произошло — иначе
@@ -313,8 +313,8 @@ func TestApplyRefusesWhenAResettleCeilingIsExceeded(t *testing.T) {
 	// переселять нечего, и потолок никогда не был бы превышен — отрицание
 	// зеленело бы на пустом входе.
 	tn := seedVerdictTenant(t, ctx, pool)
-	pairs := declareRole(t, ctx, pool, repo, snap.Facts(),
-		"rol-ceiling", tn.accountID, anchoredModule, spareResource)
+	_, pairs := declareRole(t, ctx, pool, repo, snap,
+		tn.accountID, tn.userID, anchoredModule, spareResource)
 	require.NotEmpty(t, pairs, "проекция роли пуста: переселять нечего, и потолок беспредметен")
 
 	rules, verbs, selectors := tenantProjectionsNaming(t, ctx, pool, anchoredModule, spareResource)
