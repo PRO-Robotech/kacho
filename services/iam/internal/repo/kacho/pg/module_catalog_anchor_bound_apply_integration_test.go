@@ -54,6 +54,7 @@ import (
 	"github.com/jackc/pgx/v5/pgxpool"
 	"github.com/stretchr/testify/require"
 
+	"github.com/PRO-Robotech/kacho/services/iam/internal/apps/kacho/modulecatalog"
 	"github.com/PRO-Robotech/kacho/services/iam/internal/apps/kacho/seed"
 	"github.com/PRO-Robotech/kacho/services/iam/internal/manifest"
 	kachopg "github.com/PRO-Robotech/kacho/services/iam/internal/repo/kacho/pg"
@@ -90,7 +91,7 @@ const (
 // делая следующий пуск невозможным.
 func TestApplyBeyondTheParityAnchorIsRefused(t *testing.T) {
 	ctx, pool := catalogPool(t)
-	applier := applierOver(t, pool)
+	applier := verbApplierOver(t, pool)
 
 	// ПРЕДПОСЫЛКА: посеянный каталог сошёлся с опорой. Без неё отказ ниже
 	// приезжал бы неизвестно откуда, а «состояние не изменилось» утверждалось бы
@@ -134,7 +135,7 @@ func TestApplyBeyondTheParityAnchorIsRefused(t *testing.T) {
 // стража эта корзина не входит.
 func TestApplyNarrowingTheCatalogPassesAndTheNextBootStands(t *testing.T) {
 	ctx, pool := catalogPool(t)
-	applier := applierOver(t, pool)
+	applier := verbApplierOver(t, pool)
 
 	census, err := seed.AssertCatalogParity(ctx, kachopg.NewCatalogRepo(pool))
 	require.NoError(t, err, "предпосылка не создана: посеянный каталог уже разошёлся с опорой")
@@ -190,7 +191,7 @@ func TestApplyNarrowingTheCatalogPassesAndTheNextBootStands(t *testing.T) {
 // без него «паритет цел после применения» зеленело бы на страже, молчащем всегда.
 func TestApplyFixingDriftPassesAndLeavesParityWhole(t *testing.T) {
 	ctx, pool := catalogPool(t)
-	applier := applierOver(t, pool)
+	applier := verbApplierOver(t, pool)
 
 	_, err := seed.AssertCatalogParity(ctx, kachopg.NewCatalogRepo(pool))
 	require.NoError(t, err, "предпосылка не создана: посеянный каталог уже разошёлся с опорой")
@@ -225,6 +226,19 @@ func TestApplyFixingDriftPassesAndLeavesParityWhole(t *testing.T) {
 
 // ─────────────────────────────────────────────────────────────────────────────
 // Помощники набора
+
+// verbApplierOver — применитель ПУТИ ГЛАГОЛА над своим пулом.
+//
+// Не `applierOver`, и это предмет набора, а не оформление: полос применения две,
+// и сверку опоры внутри транзакции несёт ТОЛЬКО глагол. На пути старта её делает
+// страж сразу после применения, и его отказ есть отказ пуска — второй рубеж,
+// которого у глагола нет вовсе (`modulecatalog.applyLane`). Позови этот набор
+// применителем старта — он утверждал бы о полосе, у которой этой обязанности
+// нет, и краснел бы на верном коде.
+func verbApplierOver(t *testing.T, pool *pgxpool.Pool) *modulecatalog.VerbApplier {
+	t.Helper()
+	return modulecatalog.NewVerbApplier(kachopg.NewCatalogWriteRepo(pool))
+}
 
 // moduleCatalogSnapshot — НАБЛЮДЕНИЕ пробы: изменилось ли хоть что-нибудь в трёх
 // каталожных таблицах ОДНОГО модуля.
