@@ -95,7 +95,7 @@ func TestRoleHandler_184_ListRejectsPageSizeOverMax(t *testing.T) {
 // would panic if it got past the gate, so we only assert that page_size=0 / 1000 do
 // NOT produce an InvalidArgument from the page_size validation itself.
 func TestRoleHandler_184_ListAcceptsPageSizeAtBoundary(t *testing.T) {
-	h := &Handler{list: NewListRolesUseCase(nil).WithRelationStore(nil)}
+	h := &Handler{list: NewListRolesUseCase(nil, catalogfixture.Source()).WithRelationStore(nil)}
 	// page_size=1000 (max) must pass the validate gate; the downstream nil-FGA path
 	// fails closed Unavailable (not InvalidArgument), proving page_size validation OK.
 	_, err := h.List(ctxUser("usr-u1"), &iamv1.ListRolesRequest{PageSize: 1000})
@@ -114,7 +114,7 @@ func TestRoleHandler_185_ListPassesAccountIdToFilter(t *testing.T) {
 	fga := newRoleFGAStub()
 	fga.set("user:usr-u1", []string{"rol-cA"})
 
-	h := &Handler{list: NewListRolesUseCase(repo).WithRelationStore(fga)}
+	h := &Handler{list: NewListRolesUseCase(repo, catalogfixture.Source()).WithRelationStore(fga)}
 	_, err := h.List(ctxUser("usr-u1"), &iamv1.ListRolesRequest{
 		PageSize:  100,
 		AccountId: "acc0000000000000acca",

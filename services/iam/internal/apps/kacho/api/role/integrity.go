@@ -13,7 +13,11 @@ package role
 import (
 	"context"
 
+	"google.golang.org/grpc/codes"
+	"google.golang.org/grpc/status"
+
 	"github.com/PRO-Robotech/kacho/services/iam/internal/apps/kacho/shared"
+	"github.com/PRO-Robotech/kacho/services/iam/internal/catalog"
 	"github.com/PRO-Robotech/kacho/services/iam/internal/domain"
 	kachorepo "github.com/PRO-Robotech/kacho/services/iam/internal/repo/kacho"
 )
@@ -34,10 +38,21 @@ import (
 //
 // Спрашивать не о чем — значит не спрашивать: иначе каждая страница системного
 // каталога платила бы за вопрос, ответ на который известен заранее.
-func attachIntegrity(ctx context.Context, rd kachorepo.Reader, roles []domain.Role) error {
+func attachIntegrity(ctx context.Context, rd kachorepo.Reader, cat catalog.Source, roles []domain.Role) error {
 	if len(roles) == 0 {
 		return nil
 	}
+	// Набор глаголов типа вешается ЗДЕСЬ же, а не вторым проходом у вызывающего:
+	// оба чтения идут через этого помощника, и второе место разошлось бы с первым
+	// молча — превью читалось бы по-разному в `Get` и в `List` (#1994).
+	//
+	// Источник НЕ провязан — отказ, а не роль без набора: проекция такую роль всё
+	// равно отвергнет, и отказать здесь значит назвать предмет, а не место, где
+	// он проявился.
+	if cat == nil {
+		return status.Error(codes.Internal, "internal error")
+	}
+	lookup := cat.Facts().RolePreviewLookup()
 	declared := make(map[domain.RoleID]int, len(roles))
 	segments := make([]domain.RoleSegment, 0, len(roles))
 	for _, r := range roles {
@@ -85,6 +100,7 @@ func attachIntegrity(ctx context.Context, rd kachorepo.Reader, roles []domain.Ro
 		roles[i].Integrity = domain.HealthOf(declared[id], unresolved[id])
 		roles[i].Withdrawn = withdrawn[id]
 		roles[i].PrunedSelectorTypes = pruned[id]
+		roles[i].TypeVerbs = lookup
 	}
 	return nil
 }

@@ -35,6 +35,7 @@ import (
 	"github.com/PRO-Robotech/kacho/pkg/operations"
 
 	"github.com/PRO-Robotech/kacho/services/iam/internal/apps/kacho/shared"
+	"github.com/PRO-Robotech/kacho/services/iam/internal/catalog"
 	"github.com/PRO-Robotech/kacho/services/iam/internal/clients"
 	"github.com/PRO-Robotech/kacho/services/iam/internal/domain"
 	iamerr "github.com/PRO-Robotech/kacho/services/iam/internal/errors"
@@ -42,14 +43,20 @@ import (
 
 type GetRoleUseCase struct {
 	repo Repo
+	// cat — ЖИВЫЕ строки каталога: набор глаголов типа для превью роли (#1994).
+	// Приходит ОБЯЗАТЕЛЬНЫМ параметром, а не опцией: непровязанный источник даёт
+	// роль без набора, а проекция такую роль отвергает — то есть чтение отказало
+	// бы целиком и в рантайме. Компилятор ловит это раньше.
+	cat catalog.Source
+
 	// relationQueries — FGA ListObjects port resolving the caller's readable-role
 	// (`viewer` tier) set on iam_role. Required for CUSTOM-role Get; when nil
 	// a custom-role Get fails closed (Unavailable). System-role Get never needs it.
 	relationQueries clients.RelationQueries
 }
 
-func NewGetRoleUseCase(r Repo) *GetRoleUseCase {
-	return &GetRoleUseCase{repo: r}
+func NewGetRoleUseCase(r Repo, cat catalog.Source) *GetRoleUseCase {
+	return &GetRoleUseCase{repo: r, cat: cat}
 }
 
 // WithRelationStore wires the FGA ListObjects client used to enforce per-object
@@ -112,7 +119,7 @@ func (u *GetRoleUseCase) Execute(ctx context.Context, id domain.RoleID) (domain.
 	// вовсе: значение не производится для роли, которую вызывающий читать не
 	// вправе.
 	page := []domain.Role{out}
-	if ierr := attachIntegrity(ctx, rd, page); ierr != nil {
+	if ierr := attachIntegrity(ctx, rd, u.cat, page); ierr != nil {
 		return domain.Role{}, ierr
 	}
 	return page[0], nil

@@ -6,6 +6,7 @@ package toproto
 // role.go — Transfer domain.Role → *iamv1.Role.
 
 import (
+	"fmt"
 	"time"
 
 	"google.golang.org/protobuf/types/known/timestamppb"
@@ -14,7 +15,6 @@ import (
 
 	"github.com/PRO-Robotech/kacho/pkg/safeconv"
 
-	"github.com/PRO-Robotech/kacho/services/iam/internal/authzmap"
 	"github.com/PRO-Robotech/kacho/services/iam/internal/domain"
 	"github.com/PRO-Robotech/kacho/services/iam/internal/dto"
 )
@@ -22,6 +22,19 @@ import (
 type roleObj struct{}
 
 func (roleObj) toPb(r domain.Role) (*iamv1.Role, error) {
+	// Набор глаголов типа ОБЯЗАН быть провязан, и его отсутствие — отказ, а не
+	// запасной путь (#1994).
+	//
+	// Тихий запасной путь и был снятым дефектом: превью, собранное словарём,
+	// ПОРОЖДЁННЫМ СБОРКОЙ, выглядит как честное превью и расходится с эмиссией
+	// ровно на типе, заведённом применением манифеста. Отказ виден сразу, называет
+	// предмет и не может доехать до арендатора под видом ответа.
+	if r.TypeVerbs == nil {
+		return nil, fmt.Errorf("проекция роли %s: набор глаголов типа не провязан — "+
+			"превью, собранное словарём сборки, разошлось бы с материализацией на типе, "+
+			"заведённом применением манифеста (kacho#1994)", r.ID)
+	}
+
 	var createdAt *timestamppb.Timestamp
 	if !r.CreatedAt.IsZero() {
 		createdAt = timestamppb.New(r.CreatedAt.Truncate(tsTruncate))
@@ -68,9 +81,9 @@ func (roleObj) toPb(r domain.Role) (*iamv1.Role, error) {
 		Labels:          labelsToStringMap(r.Labels),
 		// redesign-2026 F6: honest effective-verb preview + catalog metadata
 		// (output-only derived; editor's effective set carries `delete*`).
-		AuthoredVerbs:  r.AuthoredVerbs(roleTypeVerbLookup),
-		EffectiveVerbs: r.EffectiveVerbs(roleTypeVerbLookup),
-		VerbNotes:      r.VerbNotes(roleTypeVerbLookup),
+		AuthoredVerbs:  r.AuthoredVerbs(r.TypeVerbs),
+		EffectiveVerbs: r.EffectiveVerbs(r.TypeVerbs),
+		VerbNotes:      r.VerbNotes(r.TypeVerbs),
 		DisplayName:    r.DisplayName(),
 		Purpose:        r.Purpose(),
 		// Целость (#1035) — ТРИ величины вместе или ни одной. Считать здесь
@@ -98,37 +111,23 @@ func init() {
 	dto.RegTransfer(dto.Fn2Face(roleObj{}.toPb))
 }
 
-// roleTypeVerbLookup — набор глаголов ТИПА, который адресует правило роли.
+// ЗДЕСЬ СТОЯЛ `roleTypeVerbLookup` — резолв ПО СЛОВАРЮ, ПОРОЖДЁННОМУ СБОРКОЙ
 //
-// Тот же источник, из которого читает материализация, поэтому превью и эмиссия не
-// могут разойтись: пока превью держало собственный список, роль могла обещать не то,
-// что исполняется, и сверяющего у этого списка не было ни одного во всём дереве.
+// Он резолвил пару `(модуль, ресурс)` закрытой таблицей `authzmap.ObjectType`. На
+// типе, заведённом применением манифеста в РАБОТАЮЩЕМ процессе, таблица отвечала
+// «не знаю», и вызывающий брал запасной набор — глаголы ВСЕЙ платформы. Запасной
+// набор заведён осознанно и для ДРУГОГО входа (форма `*.*`), но молча накрыл и
+// второй, которого при его заведении не существовало (#1994).
 //
-// Правило, не резолвящееся ни в один известный тип (в том числе `*`-форма), берёт
-// ВСЕ глаголы платформы: иначе такая роль показала бы пустой набор и выглядела бы
-// ничего не дающей.
+// Сегодня набор приходит на самой роли (`domain.Role.TypeVerbs`), собранный из
+// ЖИВЫХ строк каталога тем же фактом, которым идёт материализация
+// (`catalog.Facts.RolePreviewLookup`), — поэтому превью и эмиссия не могут
+// разойтись. Запасной набор для `*.*` не отнят, он переехал туда же и стал
+// ОБЪЕДИНЕНИЕМ наборов живых типов.
 //
-// ЗДЕСЬ СТОЯЛО ПЕРЕСЕЧЕНИЕ наборов всех типов, и это была подмена по совпадению:
-// пока наборы типов совпадали, пересечение равнялось «всем глаголам». Пересечение
-// объявлено СУЖАЮЩИМСЯ, поэтому снятие глагола у ОДНОГО типа укорачивало превью
-// роли `*.*` — то есть роль-суперпользователь начинала обещать МЕНЬШЕ, чем даёт, от
-// правки, к ней не относящейся, а превью объявлено ЧЕСТНЫМ показом. Наблюдалось при
-// #1189: пересечение стало `[get list]`, и превью роли `admin` свелось к чтению.
-// Держит `role_superuser_preview_test.go`.
-var roleTypeVerbLookup = domain.WithCommonFallback(
-	func(module, resource string) ([]string, bool) {
-		fgaType, ok := authzmap.ObjectType(module, resource)
-		if !ok {
-			return nil, false
-		}
-		verbs := authzmap.VerbsOfType(fgaType)
-		if len(verbs) == 0 {
-			return nil, false
-		}
-		return verbs, true
-	},
-	authzmap.AllVerbVocabulary(),
-)
+// Этот пакет `authzmap` больше НЕ ИМПОРТИРУЕТ, и это не косметика: пока импорт
+// есть, следующая правка достанет словарь сборки обратно двумя строками, и
+// заметить это будет негде.
 
 // roleHealthToPb — ПЕРЕВОД доменного состояния в контрактное, и только он.
 // Решение о том, какое состояние несёт роль, принимает домен (`HealthOf`);

@@ -458,11 +458,11 @@ func buildServices(pool, slavePool *pgxpool.Pool, opsRepo operations.FullRepo,
 	// CUSTOM roles enforce per-object via the SAME FGA v_list set as List
 	// (read==enforce, D-45). relationStore is always non-nil, so a custom-role Get
 	// fails closed on an FGA outage (Unavailable, D-47) — never a body leak.
-	roleGet := roleapp.NewGetRoleUseCase(kachoRepo).WithRelationStore(relationStore)
+	roleGet := roleapp.NewGetRoleUseCase(kachoRepo, catalogSource).WithRelationStore(relationStore)
 	// roleList — per-object scope-filtered: the FGA v_list set on
 	// iam_role is intersected with the catalog (system roles bypass). relationStore
 	// is always non-nil, so List fails closed on an FGA outage (D-47).
-	roleList := roleapp.NewListRolesUseCase(kachoRepo).WithRelationStore(relationStore).
+	roleList := roleapp.NewListRolesUseCase(kachoRepo, catalogSource).WithRelationStore(relationStore).
 		WithListScanRecorder(listScanRec)
 	roleHandler := roleapp.NewHandler(roleCreate, roleUpdate, roleDelete, roleGet, roleList).
 		WithListOperations(shared.NewListOperationsUseCase(opsRepo))
@@ -842,7 +842,7 @@ func buildServices(pool, slavePool *pgxpool.Pool, opsRepo operations.FullRepo,
 	// ── PermissionCatalogService — RBAC rules-model G public catalog ──
 	// In-code projection (authzmap + domain): no repo, no peer-call. Stateless.
 	permissionCatalogHandler := permissioncatalogapp.NewHandler(
-		permissioncatalogapp.NewListPermissionCatalogUseCase())
+		permissioncatalogapp.NewListPermissionCatalogUseCase(catalogSource))
 
 	return &services{
 		accountHandler:         accountHandler,

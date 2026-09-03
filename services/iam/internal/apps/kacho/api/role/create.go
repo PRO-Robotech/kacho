@@ -292,6 +292,9 @@ func (u *CreateRoleUseCase) doCreate(ctx context.Context, r domain.Role, actor s
 	// async at-least-once backstop, driven by the co-committed reconcile event.
 	u.reconcileObject(ctx, "iam.role", string(created.ID))
 
+	// Эхо мутации проецируется тем же набором, что и чтение: иначе `Create`
+	// вернул бы превью, собранное другим источником, чем последующий `Get`.
+	created.TypeVerbs = u.cat.Facts().RolePreviewLookup()
 	return marshalRole(created)
 }
 
