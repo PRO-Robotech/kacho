@@ -31,6 +31,7 @@
 //  4. переселение проекций арендаторских ролей, теряющих референт
 //  5. снятие глаголов, которых манифест больше не объявляет
 //  6. снятие ресурсов, которых манифест больше не объявляет
+//  7. приведение третьей проекции правила к каталожному факту
 //
 // Шаги 3 и 5-6 разнесены НЕ ради красоты: ключ живости идёт от глагола к ресурсу
 // (`catalog_verb_resource_live_fk`) и от ресурса к модулю
@@ -80,13 +81,13 @@
 //     манифестом; если манифест снимает ресурс, который его же роль называет, то
 //     манифест противоречит сам себе, и это отвергается ключом — а не чинится
 //     молчаливым отбором права у роли, которую применитель не объявлял;
-//  4. **не трогает `role_rule_selectors`.** Закрытый набор источников сироты
-//     (`role_grant_orphan_source_known`) знает две популяции — выдачу и объявление
-//     правила, — и третьей у него нет by construction. Селекторы пересчитываются
-//     досевом из объявления, а вход в них уже стережёт триггер
-//     `role_rule_selectors_types_live`. Что снятие оставляет уже лежащий селектор
-//     без референта — граница, названная вслух, а не умолчанная: предмет и
-//     предикат — задача, заведённая этой полосой.
+//  4. **не заводит третьей популяции сироты.** Закрытый набор
+//     (`role_grant_orphan_source_known`) знает две — выдачу и объявление правила,
+//     — и третьей у него нет by construction. Селекторы применитель ПРИВОДИТ к
+//     каталожному факту (шаг 7), а не переселяет: запись об отобранном праве уже
+//     сделана второй проекцией того же правила, а у подстановочного правила
+//     отбирать нечего — его массив есть рендер платформенного набора типов.
+//     Довод целиком и то, чего это НЕ закрывает, — `prune.go`.
 package modulecatalog
 
 import (
@@ -139,6 +140,29 @@ type CatalogWriter interface {
 	RetireVerb(ctx context.Context, v catalog.VerbRow, reason string) (bool, error)
 	// RetireResource помечает строку ресурса снятой.
 	RetireResource(ctx context.Context, r catalog.ResourceRow, reason string) (bool, error)
+	// PruneRetiredSelectorTypes приводит ТРЕТЬЮ проекцию правила к каталожному
+	// факту: вырезает из `role_rule_selectors.object_types` арендаторских ролей
+	// элементы, не называющие ЖИВОЙ строки каталога. Трогает только строки,
+	// пересекающиеся с названными ресурсами, — предмет вырезания есть снятие,
+	// а не таблица целиком.
+	PruneRetiredSelectorTypes(ctx context.Context, resources []catalog.ResourceRow) (Pruned, error)
+}
+
+// Pruned — сколько вырезано из третьей проекции.
+//
+// Две величины, а не одна: «тронута одна строка» не говорит, вырезан из неё один
+// элемент или пять, а «вырезано пять» не говорит, у одной роли или у пяти. Для
+// того, кто разбирает последствия, это разные ответы.
+type Pruned struct {
+	// Rows — строк селекторов УКОРОЧЕНО (живые типы в них остались).
+	Rows int
+	// Dropped — строк селекторов СНЯТО целиком: живого типа не осталось ни
+	// одного, а пустой массив запрещён ограничением схемы. Отдельная величина, а
+	// не часть Rows: укоротить правило и снять его проекцию — события разного
+	// рода для того, кто разбирает последствия.
+	Dropped int
+	// Elements — элементов массива вырезано суммарно, по обеим ветвям.
+	Elements int
 }
 
 // TxRunner — исполнение под ОДНОЙ транзакцией записи. Все шаги ложатся вместе
@@ -179,6 +203,11 @@ type Report struct {
 	RetiredVerbs     int
 	// Resettled — переселённые проекции арендаторских ролей.
 	Resettled Resettled
+	// PrunedSelectorRows / PrunedSelectorRowsDropped / PrunedSelectorTypes —
+	// приведение ТРЕТЬЕЙ проекции к каталожному факту (см. `prune.go`).
+	PrunedSelectorRows        int
+	PrunedSelectorRowsDropped int
+	PrunedSelectorTypes       int
 }
 
 // Changed — применение изменило хоть одну строку.
@@ -189,19 +218,23 @@ func (r Report) Changed() bool {
 	return r.ModuleWritten ||
 		r.WrittenResources > 0 || r.WrittenVerbs > 0 ||
 		r.RetiredResources > 0 || r.RetiredVerbs > 0 ||
-		r.Resettled.RuleRefs > 0 || r.Resettled.RoleVerbs > 0
+		r.Resettled.RuleRefs > 0 || r.Resettled.RoleVerbs > 0 ||
+		r.PrunedSelectorRows > 0 || r.PrunedSelectorRowsDropped > 0
 }
 
 // String — перепись одной строкой.
 func (r Report) String() string {
 	return fmt.Sprintf(
 		"модуль %s · объявлено ресурсов %d глаголов %d · записано %d/%d · без изменений %d/%d · "+
-			"снято %d/%d · переселено правил %d выдач %d · изменения %t",
+			"снято %d/%d · переселено правил %d выдач %d · селекторов укорочено %d "+
+			"снято %d элементов вырезано %d · изменения %t",
 		r.Module, r.DeclaredResources, r.DeclaredVerbs,
 		r.WrittenResources, r.WrittenVerbs,
 		r.UnchangedResources, r.UnchangedVerbs,
 		r.RetiredResources, r.RetiredVerbs,
-		r.Resettled.RuleRefs, r.Resettled.RoleVerbs, r.Changed())
+		r.Resettled.RuleRefs, r.Resettled.RoleVerbs,
+		r.PrunedSelectorRows, r.PrunedSelectorRowsDropped, r.PrunedSelectorTypes,
+		r.Changed())
 }
 
 // Applier — применитель. Состояния не держит: повторный прогон — штатный режим.
@@ -302,6 +335,21 @@ func (a *Applier) Apply(ctx context.Context, m *manifest.Manifest) (Report, erro
 			if retired {
 				rep.RetiredResources++
 			}
+		}
+
+		// Шаг 7 — ПОСЛЕ снятия, и это несущее: вырезание оставляет в массиве
+		// только элементы, называющие ЖИВУЮ строку каталога. Стой оно раньше,
+		// снимаемая строка была бы ещё жива и уцелела бы ровно та, ради которой
+		// вырезание и делается. Довод целиком — `prune.go`.
+		if len(staleResources) > 0 {
+			pruned, perr := w.PruneRetiredSelectorTypes(ctx, staleResources)
+			if perr != nil {
+				return fmt.Errorf("%w: вырезание снятых типов из селекторов: %w",
+					ErrWriteFailed, perr)
+			}
+			rep.PrunedSelectorRows = pruned.Rows
+			rep.PrunedSelectorRowsDropped = pruned.Dropped
+			rep.PrunedSelectorTypes = pruned.Elements
 		}
 		return nil
 	})

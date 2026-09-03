@@ -234,7 +234,15 @@ func (w catalogWriter) RetireResource(ctx context.Context, r catalog.ResourceRow
 // быть отвергнуто ключом, а не улажено молчаливым отбором права у роли, которую
 // применитель не объявлял.
 //
-// # Почему оператор отдаёт ДВЕ величины, а не одну
+// # Строка, оставшаяся без единого живого типа, СНИМАЕТСЯ целиком
+//
+// Пустой массив запрещён ограничением `role_rule_selectors_types_nonempty`
+// (миграция `0026`): селектор, которому нечего выбирать, строкой быть не вправе.
+// Оба исхода — «вырезать элементы» и «снять строку» — не изобретены здесь: их
+// ВЫПОЛНИЛ ЧЕЛОВЕК двумя отдельными шагами миграции `0074`, ровно по этому
+// признаку. Применитель делает то же самое глаголом, а не рукой.
+//
+// # Почему оператор отдаёт ТРИ величины, а не одну
 //
 // Этот писатель — НЕ автор строки: он её только снимает. Автор один
 // (`roleWriter.ReplaceRoleVerbs` / `ReplaceRuleRefs`), и форму строки знает он.
@@ -384,3 +392,84 @@ var (
 	_ modulecatalog.TxRunner      = (*CatalogWriteRepo)(nil)
 	_ modulecatalog.CatalogWriter = catalogWriter{}
 )
+
+// PruneRetiredSelectorTypes приводит ТРЕТЬЮ проекцию правила к каталожному факту:
+// вырезает из `role_rule_selectors.object_types` арендаторских ролей элементы, не
+// называющие ЖИВОЙ строки каталога (задача продукта #1942).
+//
+// # Почему фильтр «оставить живое», а не «вырезать снятое»
+//
+// Вход триггера `role_rule_selectors_types_live` судит КАЖДЫЙ элемент массива, а
+// не изменённые. Вырежи мы лишь снятое ЭТИМ применением — строка с ранее
+// повисшим элементом была бы отвергнута триггером, и применитель отказал бы по
+// причине, которой в манифесте нет и которую оператору нечем починить. Фильтр
+// «оставить живое» делает правку приемлемой для триггера by construction.
+//
+// # Почему трогаются только пересекающиеся строки
+//
+// Предмет вырезания есть СНЯТИЕ, а не таблица целиком. Отбери мы строки по одному
+// признаку «есть неживой элемент» — всякий подъём службы правил бы селекторы всех
+// арендаторов, и цена применения перестала бы зависеть от размера снятого.
+//
+// # Почему только `is_system = false`
+//
+// Тот же довод, что у переселения: роль системного яруса объявлена манифестом, и
+// манифест, снимающий ресурс, который его же роль называет, противоречит сам
+// себе — это обязано быть отвергнуто ключом, а не улажено молчаливой правкой
+// роли, которую применитель не объявлял.
+//
+// # Почему оператор отдаёт ДВЕ величины
+//
+// «Тронута одна строка» не говорит, вырезан из неё один элемент или пять, а
+// «вырезано пять» не говорит, у одной роли или у пяти; а строка, СНЯТАЯ целиком,
+// есть событие иного рода, чем строка укороченная, и сумма их не различает. Все
+// три приходят из ОДНОГО оператора, то есть из одного снимка.
+func (w catalogWriter) PruneRetiredSelectorTypes(
+	ctx context.Context,
+	resources []catalog.ResourceRow,
+) (modulecatalog.Pruned, error) {
+	var out modulecatalog.Pruned
+	if len(resources) == 0 {
+		return out, nil
+	}
+	dotted := make([]string, 0, len(resources))
+	for _, r := range resources {
+		dotted = append(dotted, r.Module+"."+r.Resource)
+	}
+
+	if err := w.tx.QueryRow(ctx, `
+		WITH touched AS (
+		  SELECT s.role_id, s.rule_fp, s.object_types AS was,
+		         (SELECT coalesce(array_agg(t ORDER BY t), ARRAY[]::text[])
+		            FROM unnest(s.object_types) AS t
+		           WHERE EXISTS (SELECT 1 FROM kacho_iam.catalog_resource cr
+		                          WHERE cr.dotted = t AND cr.live)) AS alive
+		    FROM kacho_iam.role_rule_selectors s
+		    JOIN kacho_iam.roles r ON r.id = s.role_id
+		   WHERE r.is_system = false
+		     AND s.object_types && $1::text[]
+		), changed AS (
+		  SELECT * FROM touched WHERE alive IS DISTINCT FROM was
+		), emptied AS (
+		  DELETE FROM kacho_iam.role_rule_selectors s
+		   USING changed c
+		   WHERE s.role_id = c.role_id AND s.rule_fp = c.rule_fp
+		     AND cardinality(c.alive) = 0
+		  RETURNING 1
+		), stripped AS (
+		  UPDATE kacho_iam.role_rule_selectors s
+		     SET object_types = c.alive
+		    FROM changed c
+		   WHERE s.role_id = c.role_id AND s.rule_fp = c.rule_fp
+		     AND cardinality(c.alive) > 0
+		  RETURNING 1
+		)
+		SELECT (SELECT count(*) FROM stripped),
+		       (SELECT count(*) FROM emptied),
+		       (SELECT coalesce(sum(cardinality(was) - cardinality(alive)), 0) FROM changed)`,
+		dotted,
+	).Scan(&out.Rows, &out.Dropped, &out.Elements); err != nil {
+		return out, fmt.Errorf("вырезать снятые типы из селекторов: %w", err)
+	}
+	return out, nil
+}
