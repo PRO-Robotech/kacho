@@ -8,6 +8,8 @@ import (
 	"path/filepath"
 	"strings"
 	"testing"
+
+	"github.com/PRO-Robotech/kacho/internal/treecorpus"
 )
 
 // singleproducer_injection_test.go — доказательство, что гейт единственной
@@ -56,7 +58,7 @@ func main() { _ = validate(".") }
 	}
 }
 
-func writeTree(t *testing.T, files map[string]string) string {
+func writeTree(t *testing.T, files map[string]string) *treecorpus.Tree {
 	t.Helper()
 	root := t.TempDir()
 	for rel, body := range files {
@@ -68,7 +70,13 @@ func writeTree(t *testing.T, files map[string]string) string {
 			t.Fatalf("подготовка входа: %v", err)
 		}
 	}
-	return root
+	// Синтетическое дерево репозиторием не является: состав у него берётся
+	// отдельным конструктором — осознанно и по имени, а не молчаливым откатом.
+	tree, err := treecorpus.SyntheticTree(root)
+	if err != nil {
+		t.Fatalf("подготовка входа: состав синтетического дерева не собран: %v", err)
+	}
+	return tree
 }
 
 // Законный близнец: гейт молчит, и обход НЕ пуст.

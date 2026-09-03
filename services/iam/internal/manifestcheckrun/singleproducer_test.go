@@ -8,12 +8,13 @@ import (
 	"go/ast"
 	"go/parser"
 	"go/token"
-	"io/fs"
 	"os"
 	"path/filepath"
 	"sort"
 	"strings"
 	"testing"
+
+	"github.com/PRO-Robotech/kacho/internal/treecorpus"
 )
 
 // singleproducer_test.go — у проверки манифестов ОДНА композиция и тонкие
@@ -53,6 +54,19 @@ import (
 // числе в объяснении самого правила. Проверка по подстроке краснела бы на
 // собственной шапке; поэтому судится УЗЕЛ вызова, а не строка.
 //
+// # Состав берётся у ИНДЕКСА, а не у диска
+//
+// Под корнем лежат каталоги, которых в репозитории нет: рабочие копии агентов,
+// отчёты прогонов, сборочные и сгенерированные каталоги. Прочитав их, гейт
+// сделал бы свой вердикт свойством ЧУЖОГО рабочего каталога, а не коммита — и
+// ошибался бы в обе стороны: краснел на файле, которого в репозитории нет, и
+// молчал в свежем checkout там, где обязан говорить. Первая редакция этого
+// гейта шла по диску, и поймал её гейт обходов дерева, а не обзор.
+//
+// Синтетическое дерево инъекции репозиторием не является, поэтому его состав
+// берётся отдельным конструктором — осознанно и по имени, а не молчаливым
+// откатом внутри общего.
+//
 // # Объём осмотренного печатается всегда
 //
 // «Ноль лишних вызывающих» обязано быть отличимо от «ноль прочитанных файлов»:
@@ -82,36 +96,28 @@ type callSite struct {
 //
 // Возвращает вдобавок ЧИСЛО прочитанных файлов: без него вердикт обхода
 // неотличим от вердикта обхода, не прочитавшего ничего.
-func walkCalls(t *testing.T, root string, want map[string]string) (map[string][]callSite, int) {
+func walkCalls(t *testing.T, tree *treecorpus.Tree, want map[string]string) (map[string][]callSite, int) {
 	t.Helper()
 	found := make(map[string][]callSite)
 	filesRead := 0
-	err := filepath.WalkDir(root, func(path string, d fs.DirEntry, err error) error {
-		if err != nil {
-			return err
+	root := tree.Root()
+	for _, rel := range tree.SortedFiles() {
+		if !strings.HasSuffix(rel, ".go") || strings.HasSuffix(rel, "_test.go") {
+			continue
 		}
-		if d.IsDir() {
-			switch d.Name() {
-			case ".git", "node_modules", "testdata", "vendor":
-				return filepath.SkipDir
-			}
-			// Сгенерённые стабы пишет генератор — судить его нечего.
-			if strings.HasSuffix(filepath.ToSlash(path), "pkg/api") {
-				return filepath.SkipDir
-			}
-			return nil
+		// Сгенерённые стабы пишет генератор — судить его нечего.
+		if strings.HasPrefix(rel, "pkg/api/") || strings.Contains(rel, "/testdata/") {
+			continue
 		}
-		if !strings.HasSuffix(path, ".go") || strings.HasSuffix(path, "_test.go") {
-			return nil
-		}
+		path := filepath.Join(root, filepath.FromSlash(rel))
 		fset := token.NewFileSet()
 		f, perr := parser.ParseFile(fset, path, nil, 0)
 		if perr != nil {
 			// Неразобранный файл — «не прочитано», а не «находок нет».
-			t.Fatalf("обход НЕ ИСПОЛНЕН: файл %s не разобран: %v", path, perr)
+			t.Fatalf("обход НЕ ИСПОЛНЕН: файл %s не разобран: %v", rel, perr)
 		}
 		filesRead++
-		rel, _ := filepath.Rel(root, filepath.Dir(path))
+		pkgDir := filepath.ToSlash(filepath.Dir(rel))
 		ast.Inspect(f, func(n ast.Node) bool {
 			sel, ok := n.(*ast.SelectorExpr)
 			if !ok {
@@ -138,16 +144,12 @@ func walkCalls(t *testing.T, root string, want map[string]string) (map[string][]
 				}
 			}
 			found[name] = append(found[name], callSite{
-				pkgDir: filepath.ToSlash(rel),
-				file:   filepath.ToSlash(path),
+				pkgDir: pkgDir,
+				file:   rel,
 				line:   fset.Position(sel.Pos()).Line,
 			})
 			return true
 		})
-		return nil
-	})
-	if err != nil {
-		t.Fatalf("обход НЕ ИСПОЛНЕН: %v", err)
 	}
 	return found, filesRead
 }
@@ -170,13 +172,13 @@ func repoRoot(t *testing.T) string {
 // Вынесены из пробы именно затем, чтобы гейт можно было подать синтетическому
 // дереву: проверка, которую нельзя позвать на подготовленном входе, свою
 // способность упасть не доказывает ничем.
-func auditCallers(t *testing.T, root string) (findings []string, filesRead int) {
+func auditCallers(t *testing.T, tree *treecorpus.Tree) (findings []string, filesRead int) {
 	t.Helper()
 	want := map[string]string{compositionCall: ""}
 	for name, dir := range entryPoints {
 		want[name] = dir
 	}
-	found, filesRead := walkCalls(t, root, want)
+	found, filesRead := walkCalls(t, tree, want)
 
 	for _, name := range sortedKeys(entryPoints) {
 		wantDir := entryPoints[name]
@@ -222,7 +224,11 @@ func sortedKeys(m map[string]string) []string {
 }
 
 func TestManifestCheckKeepsOneCompositionAndTwoThinCallers(t *testing.T) {
-	findings, filesRead := auditCallers(t, repoRoot(t))
+	tree, err := treecorpus.NewTree(repoRoot(t))
+	if err != nil {
+		t.Fatalf("обход НЕ ИСПОЛНЕН: состав дерева не прочитан: %v", err)
+	}
+	findings, filesRead := auditCallers(t, tree)
 
 	t.Logf("перепись: прочитано файлов Go %d · точек входа %d · находок %d",
 		filesRead, len(entryPoints), len(findings))
