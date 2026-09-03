@@ -147,7 +147,7 @@ func TestVerbTokenCollisionIsRefused(t *testing.T) {
 	collided, err := modulecatalog.RowsOf(&manifest.Manifest{
 		APIVersion: "iam/v1", Module: "vpc",
 		Resources: []manifest.Resource{{
-			Name:  "subnet",
+			Name: "subnet", ObjectType: "vpc_subnet",
 			Verbs: []manifest.Verb{{Name: "addCidrBlocks"}, {Name: "addcidrblocks"}},
 		}},
 	})
@@ -160,7 +160,7 @@ func TestVerbTokenCollisionIsRefused(t *testing.T) {
 	legal, err := modulecatalog.RowsOf(&manifest.Manifest{
 		APIVersion: "iam/v1", Module: "vpc",
 		Resources: []manifest.Resource{{
-			Name:  "subnet",
+			Name: "subnet", ObjectType: "vpc_subnet",
 			Verbs: []manifest.Verb{{Name: "addCidrBlocks"}, {Name: "removeCidrBlocks"}},
 		}},
 	})
@@ -177,7 +177,7 @@ func TestDeclaredCreateGetsNoSecondTierRow(t *testing.T) {
 	withCreate, err := modulecatalog.RowsOf(&manifest.Manifest{
 		APIVersion: "iam/v1", Module: "registry",
 		Resources: []manifest.Resource{{
-			Name:  "registries",
+			Name: "registries", ObjectType: "registry_registry",
 			Verbs: []manifest.Verb{{Name: "get"}, {Name: "create"}},
 		}},
 	})
@@ -190,7 +190,7 @@ func TestDeclaredCreateGetsNoSecondTierRow(t *testing.T) {
 	withoutCreate, err := modulecatalog.RowsOf(&manifest.Manifest{
 		APIVersion: "iam/v1", Module: "registry",
 		Resources: []manifest.Resource{{
-			Name:  "registries",
+			Name: "registries", ObjectType: "registry_registry",
 			Verbs: []manifest.Verb{{Name: "get"}},
 		}},
 	})
@@ -206,7 +206,7 @@ func TestDeclaredCreateGetsNoSecondTierRow(t *testing.T) {
 func TestResourceWithoutVerbsYieldsNoTierRow(t *testing.T) {
 	out, err := modulecatalog.RowsOf(&manifest.Manifest{
 		APIVersion: "iam/v1", Module: "vpc",
-		Resources: []manifest.Resource{{Name: "network"}},
+		Resources: []manifest.Resource{{Name: "network", ObjectType: "vpc_network"}},
 	})
 	require.NoError(t, err)
 	require.Len(t, out.Resources, 1, "строка ресурса обязана остаться")
@@ -221,13 +221,51 @@ func TestResourceWithoutVerbsYieldsNoTierRow(t *testing.T) {
 func TestEmptyNamesAreRefused(t *testing.T) {
 	_, err := modulecatalog.RowsOf(&manifest.Manifest{
 		APIVersion: "iam/v1", Module: "vpc",
-		Resources: []manifest.Resource{{Name: "  ", Verbs: []manifest.Verb{{Name: "get"}}}},
+		Resources: []manifest.Resource{{Name: "  ", ObjectType: "vpc_network", Verbs: []manifest.Verb{{Name: "get"}}}},
 	})
 	require.ErrorIs(t, err, modulecatalog.ErrResourceNameEmpty)
 
 	_, err = modulecatalog.RowsOf(&manifest.Manifest{
 		APIVersion: "iam/v1", Module: "vpc",
-		Resources: []manifest.Resource{{Name: "network", Verbs: []manifest.Verb{{Name: " "}}}},
+		Resources: []manifest.Resource{{Name: "network", ObjectType: "vpc_network", Verbs: []manifest.Verb{{Name: " "}}}},
 	})
 	require.ErrorIs(t, err, modulecatalog.ErrVerbNameEmpty)
+}
+
+// TestResourceWithoutObjectTypeIsRefused — ресурс, не назвавший типа модели
+// прав, строкой каталога не становится молча.
+//
+// Отрицание ПАРНОЕ: рядом законный близнец — тот же ресурс с именем типа, — и на
+// нём деривация обязана молчать. Без пары проба зеленела бы на деривации,
+// отвергающей всё.
+//
+// Предмет: без имени типа строка доехала бы до писателя и отверглась бы схемой
+// (`catalog_resource_object_type_form`), то есть отказ пришёл бы ЧУЖОЙ полосой —
+// фразой Postgres про имя ограничения, — и автор манифеста искал бы дефект в
+// базе, а не в своём файле. Хуже того, до заведения колонки такой ресурс
+// записывался БЕЗ отказа и молча не давал ни одной пары проекции (#1816).
+func TestResourceWithoutObjectTypeIsRefused(t *testing.T) {
+	_, err := modulecatalog.RowsOf(&manifest.Manifest{
+		APIVersion: "iam/v1", Module: "vpc",
+		Resources: []manifest.Resource{{Name: "network", Verbs: []manifest.Verb{{Name: "get"}}}},
+	})
+	require.ErrorIs(t, err, modulecatalog.ErrObjectTypeEmpty)
+	require.Contains(t, err.Error(), "vpc.network",
+		"отказ обязан назвать ресурс: без имени автор не знает, какую строку манифеста править")
+
+	_, err = modulecatalog.RowsOf(&manifest.Manifest{
+		APIVersion: "iam/v1", Module: "vpc",
+		Resources: []manifest.Resource{{Name: "network", ObjectType: "  ", Verbs: []manifest.Verb{{Name: "get"}}}},
+	})
+	require.ErrorIs(t, err, modulecatalog.ErrObjectTypeEmpty,
+		"имя из одних пробелов — то же пустое имя: схема отвергла бы его грамматикой")
+
+	legal, err := modulecatalog.RowsOf(&manifest.Manifest{
+		APIVersion: "iam/v1", Module: "vpc",
+		Resources: []manifest.Resource{{Name: "network", ObjectType: "vpc_network", Verbs: []manifest.Verb{{Name: "get"}}}},
+	})
+	require.NoError(t, err, "законный близнец обязан пройти")
+	require.Len(t, legal.Resources, 1)
+	require.Equal(t, "vpc_network", legal.Resources[0].ObjectType,
+		"имя типа обязано доехать ДОСЛОВНО: правила вывода из пары не существует")
 }

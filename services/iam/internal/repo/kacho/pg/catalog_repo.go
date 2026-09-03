@@ -73,14 +73,18 @@ func (r *CatalogRepo) ReadLiveCatalog(ctx context.Context) (catalog.Rows, error)
 		return out, fmt.Errorf("прочитать каталог модулей: %w", err)
 	}
 
+	// `object_type` читается ВМЕСТЕ со строкой, а не спрашивается у словаря,
+	// порождённого сборкой. Иначе ресурс, заведённый применением манифеста в
+	// работающем процессе, оставался бы для читателя безымянным и пропускался
+	// молча (#1816, IAM-CT-2-14).
 	resRows, err := r.pool.Query(ctx,
-		`SELECT module, resource FROM kacho_iam.catalog_resource WHERE live`)
+		`SELECT module, resource, object_type FROM kacho_iam.catalog_resource WHERE live`)
 	if err != nil {
 		return out, fmt.Errorf("прочитать каталог ресурсов: %w", err)
 	}
 	for resRows.Next() {
 		var row catalog.ResourceRow
-		if serr := resRows.Scan(&row.Module, &row.Resource); serr != nil {
+		if serr := resRows.Scan(&row.Module, &row.Resource, &row.ObjectType); serr != nil {
 			resRows.Close()
 			return out, fmt.Errorf("прочитать каталог ресурсов: %w", serr)
 		}

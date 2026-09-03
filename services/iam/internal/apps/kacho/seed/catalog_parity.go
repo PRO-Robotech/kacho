@@ -88,7 +88,7 @@ func AssertCatalogParity(ctx context.Context, src catalog.RowSource) (CatalogPar
 	wantMod := setOf(want.Modules)
 	wantRes := map[string]bool{}
 	for _, r := range want.Resources {
-		wantRes[r.Module+"."+r.Resource] = true
+		wantRes[resourceKey(r)] = true
 	}
 	wantVerb := map[string]bool{}
 	for _, v := range want.Verbs {
@@ -105,7 +105,7 @@ func AssertCatalogParity(ctx context.Context, src catalog.RowSource) (CatalogPar
 	gotMod := setOf(live.Modules)
 	gotRes := map[string]bool{}
 	for _, r := range live.Resources {
-		gotRes[r.Module+"."+r.Resource] = true
+		gotRes[resourceKey(r)] = true
 	}
 	gotVerb := map[string]bool{}
 	for _, v := range live.Verbs {
@@ -153,7 +153,15 @@ func AssertCatalogParity(ctx context.Context, src catalog.RowSource) (CatalogPar
 func LiteralRows() catalog.Rows {
 	rows := catalog.Rows{Modules: authzmap.CatalogSeedModules()}
 	for _, r := range authzmap.CatalogSeedResources() {
-		rows.Resources = append(rows.Resources, catalog.ResourceRow{Module: r.Module, Resource: r.Resource})
+		// Имя типа модели берётся у переходника ЛИТЕРАЛА, и это его законное
+		// место: левая сторона паритета обязана быть выводима ИЗ ДЕРЕВА — её
+		// спрашивает страж старта и оснастка, у которой базы нет by construction.
+		// Правая сторона читает ту же величину КОЛОНКОЙ, и расхождение двух
+		// сторон — предмет стража.
+		fgaType, _ := authzmap.ObjectType(r.Module, r.Resource)
+		rows.Resources = append(rows.Resources, catalog.ResourceRow{
+			Module: r.Module, Resource: r.Resource, ObjectType: fgaType,
+		})
 	}
 	for _, v := range authzmap.CatalogSeedVerbs() {
 		rows.Verbs = append(rows.Verbs, catalog.VerbRow{
@@ -161,6 +169,20 @@ func LiteralRows() catalog.Rows {
 		})
 	}
 	return rows
+}
+
+// resourceKey — ключ сверки строки ресурса, несущий ИМЯ ТИПА МОДЕЛИ.
+//
+// Имя входит в ключ по той же причине, по какой признак словаря входит в ключ
+// глагола ниже: строка, посеянная с ЧУЖИМ именем типа, существует и по паре
+// (модуль, ресурс) сверку прошла бы молча — а разошлась бы ровно та величина,
+// ради которой колонка заведена. Отношение `v_<глагол>` адресуется именно ею, и
+// расхождение здесь означает права, выданные не на тот объект.
+//
+// Так расхождение видно с ОБЕИХ сторон — «нет строкой» и «нет в литерале» разом
+// (`diffInto`).
+func resourceKey(r catalog.ResourceRow) string {
+	return r.Module + "." + r.Resource + " → " + r.ObjectType
 }
 
 // verbKey — ключ сверки строки глагола, несущий ПРИЗНАК СЛОВАРЯ.

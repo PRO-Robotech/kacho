@@ -234,3 +234,109 @@ func TestIAMCT2_06_07_RetiredAfterStartDoesNotReachTheProjection(t *testing.T) {
 			"со строками перестало отказывать в старте")
 	}
 }
+
+// TestIAMCT2_14_AppliedAfterStartReachesTheProjection — `-14`, ЗЕРКАЛО `-06`.
+//
+// `-06` утверждает, что СНЯТЫЙ в работающем процессе тип пар не даёт. Это одна
+// половина, и порознь она выполнима портом, который не производит пар НИКОГДА.
+// Вторая половина — ЗАВЕДЁННЫЙ тип пары ДАЁТ, — не утверждалась ни одним из
+// тринадцати сценариев приёмки переезда, и не по недосмотру: до колонки
+// `catalog_resource.object_type` она была НЕВЫПОЛНИМА. Имя типа модели прав
+// строка не несла, его отдавал словарь, ПОРОЖДЁННЫЙ СБОРКОЙ, и тип, которого
+// сборка не знала, пропускался молча — при живом членстве модуля и роли,
+// созданной без отказа.
+//
+// Проба идёт ЧЕРЕЗ НАСТОЯЩИЙ ПРИМЕНИТЕЛЬ, а не пишет строки сама: предмет
+// сценария — что заведение доезжает от манифеста до проекции ЦЕЛИКОМ, а
+// фикстура, пишущая строки напрямую, обошла бы ровно то звено, где значение
+// терялось (деривация `modulecatalog.RowsOf`).
+//
+// Это пункт 1 DoD эпика #1027: «применить манифест с новым типом → синтетический
+// вопрос вердикту даёт ненулевой ответ». Вердикт (`relverdict`) читает
+// `kacho_iam.role_verb`, а его пишет ровно эта проекция.
+func TestIAMCT2_14_AppliedAfterStartReachesTheProjection(t *testing.T) {
+	if testing.Short() {
+		t.Skip("integration: требует Postgres")
+	}
+	const (
+		appliedModule = "probemod"
+		appliedRes    = "alpha"
+		appliedDotted = appliedModule + "." + appliedRes
+		appliedType   = "probemod_alpha"
+	)
+	sel := []domain.RuleSelector{{ObjectTypes: []string{appliedDotted}, Verbs: []string{"*"}}}
+
+	pool, _, ctx := countedCatalogPool(t)
+	repo := kachopg.NewCatalogRepo(pool)
+
+	// КОНТРОЛЬ ПРЕДПОСЫЛКИ: сборка этого типа не знает. Впиши кто-нибудь его в
+	// манифест — и проба зеленела бы вхолостую, а отличить это от исправного
+	// порта было бы нечем.
+	if _, known := authzmap.FGAObjectType(appliedDotted); known {
+		t.Fatalf("сборка знает %q — предпосылка -14 отпала, проба стала бы вакуумной", appliedDotted)
+	}
+
+	census, err := seed.AssertCatalogParity(ctx, repo)
+	if err != nil {
+		t.Fatalf("страж паритета: %v", err)
+	}
+	snap, err := catalog.NewSnapshot(census.Live, repo, nil, nil)
+	if err != nil {
+		t.Fatalf("снимок: %v", err)
+	}
+
+	// ДО применения — пар нет. Отрицательный контроль: без него «пары есть»
+	// зеленело бы на снимке, который знал тип с самого начала.
+	if got := snap.Facts().RoleVerbsFromSelectors(sel); len(got) != 0 {
+		t.Fatalf("до применения у %q уже %d пар — контроль не выполнен", appliedDotted, len(got))
+	}
+
+	// ЗАВЕДЕНИЕ в РАБОТАЮЩЕМ процессе — настоящим применителем.
+	rep, err := applierOver(t, pool).Apply(ctx, probeManifest(
+		probeResource(appliedRes, "get", "list", "update", "delete"),
+	))
+	if err != nil {
+		t.Fatalf("применение манифеста с новым типом: %v", err)
+	}
+	if !rep.Changed() {
+		t.Fatalf("применение каталог не изменило (%s) — заводить было нечего, вердикт беспредметен", rep)
+	}
+	t.Logf("применение: %s", rep)
+
+	if err := snap.Refresh(ctx); err != nil {
+		t.Fatalf("обновление снимка: %v", err)
+	}
+
+	// Набор глаголов ЖИВОГО типа читается по имени МОДЕЛИ, приехавшему строкой.
+	if got := snap.Facts().VerbsOfType(appliedType); len(got) == 0 {
+		t.Errorf("набор глаголов заведённого типа %q пуст — имя типа не доехало строкой", appliedType)
+	}
+
+	pairs := snap.Facts().RoleVerbsFromSelectors(sel)
+	if len(pairs) == 0 {
+		t.Fatalf("после применения пар по %q ноль: строки каталога записаны, членство модуля "+
+			"живо, роль создалась бы без отказа — и арендатор не получил бы НИЧЕГО", appliedDotted)
+	}
+	got := map[string]bool{}
+	for _, p := range pairs {
+		if p.ObjectType != appliedDotted {
+			t.Errorf("пара названа чужим типом %q, ожидался %q", p.ObjectType, appliedDotted)
+			continue
+		}
+		got[p.Verb] = true
+	}
+	for _, verb := range []string{"get", "list", "update", "delete"} {
+		if !got[verb] {
+			t.Errorf("глагол %q объявлен манифестом и в проекцию не попал (получено %v)", verb, got)
+		}
+	}
+	t.Logf("заведённый тип %q → пар проекции %d, глаголы %v", appliedDotted, len(pairs), got)
+
+	// ЗЕРКАЛО `-07`: читатель, оставленный на литерале, заведённого типа
+	// по-прежнему НЕ знает. Это ожидаемое различие, и оно же — мера сделанного:
+	// снимок отвечает там, где литерал молчит.
+	if got := authzmap.VerbsOfType(appliedType); len(got) != 0 {
+		t.Errorf("литерал знает %q (%v) — тогда различие снимка и литерала неотличимо от "+
+			"общего знания типа, и проба больше ничего не утверждает", appliedType, got)
+	}
+}

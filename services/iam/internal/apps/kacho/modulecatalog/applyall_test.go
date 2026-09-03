@@ -120,8 +120,12 @@ func fixtureManifest(module string, resources ...string) *manifest.Manifest {
 	m := &manifest.Manifest{APIVersion: "iam/v1", Module: module}
 	for _, name := range resources {
 		m.Resources = append(m.Resources, manifest.Resource{
-			Name:  name,
-			Verbs: []manifest.Verb{{Name: "get"}},
+			// `objectType` проставляется всегда: манифест без него негоден —
+			// его отвергают загрузчик, деривация и схема. Фикстура без поля
+			// была снисходительнее продукта (#1816).
+			ObjectType: module + "_" + name,
+			Name:       name,
+			Verbs:      []manifest.Verb{{Name: "get"}},
 		})
 	}
 	return m
@@ -277,7 +281,7 @@ func TestApplyAllRefusesAnUnderivableManifestBeforeOpeningATransaction(t *testin
 	census, err := modulecatalog.NewApplier(tx).ApplyAll(context.Background(),
 		[]*manifest.Manifest{{
 			APIVersion: "iam/v1", Module: "alpha",
-			Resources: []manifest.Resource{{Name: "  ", Verbs: []manifest.Verb{{Name: "get"}}}},
+			Resources: []manifest.Resource{{Name: "  ", ObjectType: "alpha_widgets", Verbs: []manifest.Verb{{Name: "get"}}}},
 		}})
 	require.Error(t, err)
 	require.ErrorIs(t, err, modulecatalog.ErrDerive)
@@ -294,7 +298,7 @@ func TestApplyAllRefusesAnUnderivableManifestBeforeOpeningATransaction(t *testin
 	census2, err2 := modulecatalog.NewApplier(tx2).ApplyAll(context.Background(),
 		[]*manifest.Manifest{{
 			APIVersion: "iam/v1", Module: "alpha",
-			Resources: []manifest.Resource{{Name: "widgets", Verbs: []manifest.Verb{{Name: "get"}}}},
+			Resources: []manifest.Resource{{Name: "widgets", ObjectType: "alpha_widgets", Verbs: []manifest.Verb{{Name: "get"}}}},
 		}})
 	require.NoError(t, err2)
 	require.Equal(t, 1, census2.Applied)

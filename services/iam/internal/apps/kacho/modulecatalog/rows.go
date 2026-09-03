@@ -61,6 +61,15 @@ var (
 	ErrVerbNameEmpty = errors.New("modulecatalog: declared verb has an empty canonical token")
 	// ErrResourceNameEmpty — ресурс объявлен пустым именем, по той же причине.
 	ErrResourceNameEmpty = errors.New("modulecatalog: declared resource has an empty name")
+	// ErrObjectTypeEmpty — ресурс не назвал типа модели прав. Загрузчик такое
+	// отвергает (`manifest.ErrObjectTypeRequired`), и деривация обязана быть
+	// годной по той же причине, что и у двух отказов выше: на манифесте,
+	// собранном В ПАМЯТИ, загрузчика нет by construction.
+	//
+	// Без него безымянный ресурс доехал бы до писателя и отвергся бы схемой —
+	// то есть отказ пришёл бы ЧУЖОЙ полосой, фразой Postgres про имя
+	// ограничения, и автор манифеста искал бы дефект в базе, а не в своём файле.
+	ErrObjectTypeEmpty = errors.New("modulecatalog: declared resource has an empty objectType")
 )
 
 // Declared — каталог ОДНОГО модуля, выведенный из его манифеста.
@@ -99,7 +108,17 @@ func RowsOf(m *manifest.Manifest) (Declared, error) {
 		if strings.TrimSpace(r.Name) == "" {
 			return Declared{}, fmt.Errorf("%w: модуль %s", ErrResourceNameEmpty, m.Module)
 		}
-		out.Resources = append(out.Resources, catalog.ResourceRow{Module: m.Module, Resource: r.Name})
+		if strings.TrimSpace(r.ObjectType) == "" {
+			return Declared{}, fmt.Errorf("%w: %s.%s", ErrObjectTypeEmpty, m.Module, r.Name)
+		}
+		// `objectType` переносится ДОСЛОВНО, а не выводится из имени: правило
+		// вывода `<модуль>_<ресурс>` в дереве снято целиком, и манифест объявляет
+		// имя типа сам (`manifest.Resource.ObjectType`, поле обязательное).
+		// Потеряй деривация это поле — ресурс доехал бы до строки безымянным, и
+		// читатель пропустил бы его молча при действующей на вид роли (#1816).
+		out.Resources = append(out.Resources, catalog.ResourceRow{
+			Module: m.Module, Resource: r.Name, ObjectType: r.ObjectType,
+		})
 
 		// declaredBy — токен → имя, каким его написал манифест. Нужен ИМЕННО для
 		// отказа: без исходного написания столкновение читалось бы как «два
