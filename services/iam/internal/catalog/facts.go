@@ -125,7 +125,7 @@ func NewFacts(rows Rows) (*Facts, error) {
 				dotted)
 		}
 		fgaTypeByDotted[dotted] = r.ObjectType
-		resources = append(resources, ResourceEntry{Module: r.Module, Resource: r.Resource, ObjectType: r.ObjectType})
+		resources = append(resources, ResourceEntry(r))
 	}
 	sort.Slice(resources, func(i, j int) bool {
 		if resources[i].Module != resources[j].Module {
