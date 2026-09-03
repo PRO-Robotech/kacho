@@ -53,7 +53,7 @@ func startPostgresUpTo(t *testing.T, to int64) (*pgxpool.Pool, *sql.DB, string) 
 	t.Helper()
 	ctx := context.Background()
 
-	dsn := appendSearchPathOptions(pgtest.NewEmptyDB(t))
+	dsn := pgtest.NewEmptyDB(t)
 
 	db, err := sql.Open("pgx", dsn)
 	require.NoError(t, err)

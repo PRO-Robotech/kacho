@@ -51,7 +51,7 @@ func replicaPools(t *testing.T, n int) []*pgxpool.Pool {
 	if testing.Short() {
 		t.Skip("integration test (testcontainers Postgres) — skipped with -short")
 	}
-	dsn := pgtest.NewDB(t) + "&options=-c%20search_path%3Dkacho_storage%2Cpublic&pool_max_conns=8"
+	dsn := pgtest.NewDB(t) + "&pool_max_conns=8"
 	pools := make([]*pgxpool.Pool, 0, n)
 	for i := 0; i < n; i++ {
 		pool, err := coredb.NewPool(context.Background(), dsn)

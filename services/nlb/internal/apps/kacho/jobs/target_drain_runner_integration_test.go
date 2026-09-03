@@ -21,7 +21,6 @@ package jobs
 
 import (
 	"context"
-	"strings"
 	"sync"
 	"testing"
 	"time"
@@ -45,19 +44,7 @@ import (
 // search_path=kacho_nlb,public.
 func setupTestDB(t testing.TB) string {
 	t.Helper()
-	return appendSearchPath(pgtest.NewDB(t))
-}
-
-func appendSearchPath(dsn string) string {
-	const optionsParam = "options=-c%20search_path%3Dkacho_nlb%2Cpublic"
-	if strings.Contains(dsn, "options=") || strings.Contains(dsn, "options%3D") {
-		return dsn
-	}
-	sep := "?"
-	if strings.Contains(dsn, "?") {
-		sep = "&"
-	}
-	return dsn + sep + optionsParam
+	return pgtest.NewDB(t)
 }
 
 // newRunner — конструктор для тестов с logger discarded (no stdout noise).

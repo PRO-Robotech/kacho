@@ -11,7 +11,6 @@ package pg_test
 import (
 	"context"
 	"errors"
-	"strings"
 	"sync"
 	"testing"
 	"time"
@@ -41,7 +40,7 @@ func setupTestDB(t testing.TB) *pgxpool.Pool {
 
 	dsn := pgtest.NewDB(t)
 
-	pool, err := coredb.NewPool(context.Background(), withSearchPath(dsn))
+	pool, err := coredb.NewPool(context.Background(), dsn)
 	require.NoError(t, err)
 	pgtest.ClosePoolAtEnd(t, pool)
 
@@ -53,15 +52,6 @@ func setupTestDB(t testing.TB) *pgxpool.Pool {
 	seedFixtureQuotas(t, pool)
 
 	return pool
-}
-
-func withSearchPath(dsn string) string {
-	const opt = "options=-c%20search_path%3Dkacho_registry%2Cpublic"
-	sep := "?"
-	if strings.Contains(dsn, "?") {
-		sep = "&"
-	}
-	return dsn + sep + opt
 }
 
 // newReg строит domain.Registry с сгенерированным id (prefix reg). REG-1 F4:

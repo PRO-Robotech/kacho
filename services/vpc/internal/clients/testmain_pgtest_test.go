@@ -22,9 +22,14 @@ import (
 // integration test here skips itself — still pays nothing.
 func TestMain(m *testing.M) {
 	os.Exit(pgtest.Run(m, pgtest.Config{
-		Name:     "vpc",
-		User:     "vpc",
-		Password: "vpc",
-		Migrate:  pgtest.Goose(migrations.FS),
+		// Приведение схемы — ОДИН раз на пакет, у выдающего базу.
+		// Прежде его приписывал каждый вызывающий своей копией; забывший
+		// получал `relation … does not exist` — отказ, читающийся как дефект
+		// продукта. Довод целиком — `internal/pgtest` §WithSearchPath.
+		SearchPath: "kacho_vpc,public",
+		Name:       "vpc",
+		User:       "vpc",
+		Password:   "vpc",
+		Migrate:    pgtest.Goose(migrations.FS),
 	}))
 }

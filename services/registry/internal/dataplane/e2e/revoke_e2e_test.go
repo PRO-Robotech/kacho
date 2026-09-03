@@ -21,7 +21,6 @@ import (
 	"log/slog"
 	"net/http"
 	"net/http/httptest"
-	"strings"
 	"sync"
 	"testing"
 	"time"
@@ -129,12 +128,9 @@ func e2eSetupPG(t *testing.T) *pgxpool.Pool {
 	require.NoError(t, goose.Up(db, "."))
 	_ = db.Close()
 
-	const searchPath = "options=-c%20search_path%3Dkacho_registry%2Cpublic"
-	sep := "?"
-	if strings.Contains(dsn, "?") {
-		sep = "&"
-	}
-	pool, err := coredb.NewPool(context.Background(), dsn+sep+searchPath)
+	// Свой контейнер, а не база `pgtest.Config`, — приведение схемы дописывается
+	// ОБЩЕЙ реализацией: своя копия разошлась бы с остальными молча.
+	pool, err := coredb.NewPool(context.Background(), pgtest.WithSearchPath(dsn, "kacho_registry,public"))
 	require.NoError(t, err)
 	pgtest.ClosePoolAtEnd(t, pool)
 	return pool

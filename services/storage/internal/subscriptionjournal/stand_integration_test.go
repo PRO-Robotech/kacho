@@ -74,8 +74,8 @@ func newStandWithNarrower(t *testing.T, narrower *listnarrow.Narrower) *stand {
 	// Схема в строке соединения — ТА ЖЕ, что в бою: боевой DSN несёт
 	// `search_path=kacho_storage` (`internal/config`, `baseDSN`), и репозитории
 	// адресуют свои таблицы без схемы. Стенд без неё падал бы на фикстуре, а не
-	// на предмете пробы.
-	dsn := pgtest.NewDB(t) + "&options=-c%20search_path%3Dkacho_storage%2Cpublic"
+	// на предмете пробы; объявлена она `pgtest.Config.SearchPath` этого пакета.
+	dsn := pgtest.NewDB(t)
 	pool, err := pgxpool.New(context.Background(), dsn)
 	if err != nil {
 		t.Fatalf("пул не собрался: %v", err)

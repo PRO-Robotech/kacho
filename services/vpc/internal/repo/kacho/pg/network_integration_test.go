@@ -5,7 +5,6 @@ package pg_test
 
 import (
 	"context"
-	"strings"
 	"testing"
 	"time"
 
@@ -36,11 +35,6 @@ func setupTestDB(t testing.TB) string {
 	t.Helper()
 	dsn := pgtest.NewDB(t)
 
-	// Схема — `kacho_vpc`. Production-DSN получает search_path через
-	// config.baseDSN(); тесты строят DSN из контейнера напрямую, поэтому
-	// добавляем то же значение здесь.
-	dsn = appendSearchPathOptions(dsn)
-
 	// Учёт числа ресурсов: вставка строки ресурса СПИСЫВАЕТ место, и списать его
 	// не с чего, пока у проекта нет строки учёта. На живом пути её заводит
 	// материализация ПЕРЕД writer-транзакцией; проба идёт мимо use-case'а, прямо
@@ -49,20 +43,6 @@ func setupTestDB(t testing.TB) string {
 	seedFixtureQuotas(t, dsn)
 
 	return dsn
-}
-
-// appendSearchPathOptions добавляет libpq `options=-c search_path=kacho_vpc,public`
-// в DSN. См. config.baseDSN — production-эквивалент.
-func appendSearchPathOptions(dsn string) string {
-	const optionsParam = "options=-c%20search_path%3Dkacho_vpc%2Cpublic"
-	if strings.Contains(dsn, "options=") || strings.Contains(dsn, "options%3D") {
-		return dsn
-	}
-	sep := "?"
-	if strings.Contains(dsn, "?") {
-		sep = "&"
-	}
-	return dsn + sep + optionsParam
 }
 
 func newNetwork(projectID, name string) *domain.Network {
