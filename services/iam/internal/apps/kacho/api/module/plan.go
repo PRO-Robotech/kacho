@@ -24,6 +24,7 @@ import (
 	"sort"
 
 	iamv1 "github.com/PRO-Robotech/kacho/pkg/api/kacho/cloud/iam/v1"
+	"github.com/PRO-Robotech/kacho/pkg/safeconv"
 
 	"github.com/PRO-Robotech/kacho/services/iam/internal/apps/kacho/modulecatalog"
 	"github.com/PRO-Robotech/kacho/services/iam/internal/apps/kacho/shared"
@@ -137,19 +138,19 @@ func (uc *PlanUseCase) Execute(ctx context.Context, module string) (*iamv1.PlanM
 		Module:                 module,
 		WithdrawnResources:     resList,
 		WithdrawnVerbs:         verbList,
-		WithdrawnResourceCount: int32(len(withdrawnResourceNames)),
-		WithdrawnVerbCount:     int32(len(withdrawnVerbNames)),
+		WithdrawnResourceCount: safeconv.IntToInt32(len(withdrawnResourceNames)),
+		WithdrawnVerbCount:     safeconv.IntToInt32(len(withdrawnVerbNames)),
 		// Признак усечения — ОДИН на оба перечня: контракт объявляет его одним
 		// полем, и усечение любого из двух означает для оператора одно и то же —
 		// «перечень неполон, счётчик точен».
 		WithdrawnListTruncated:              resTrunc || verbTrunc,
 		WrittenResourceCount:                writtenResources,
 		WrittenVerbCount:                    writtenVerbs,
-		ResettledRuleRefsAtPlanTime:         int32(ps.Resettled.RuleRefs),
-		ResettledRoleVerbsAtPlanTime:        int32(ps.Resettled.RoleVerbs),
-		PrunedSelectorRowsAtPlanTime:        int32(ps.Pruned.Rows),
-		PrunedSelectorRowsDroppedAtPlanTime: int32(ps.Pruned.Dropped),
-		PrunedSelectorTypesAtPlanTime:       int32(ps.Pruned.Elements),
+		ResettledRuleRefsAtPlanTime:         safeconv.IntToInt32(ps.Resettled.RuleRefs),
+		ResettledRoleVerbsAtPlanTime:        safeconv.IntToInt32(ps.Resettled.RoleVerbs),
+		PrunedSelectorRowsAtPlanTime:        safeconv.IntToInt32(ps.Pruned.Rows),
+		PrunedSelectorRowsDroppedAtPlanTime: safeconv.IntToInt32(ps.Pruned.Dropped),
+		PrunedSelectorTypesAtPlanTime:       safeconv.IntToInt32(ps.Pruned.Elements),
 		ExpectedState:                       ps.ExpectedState,
 		BeyondAnchorExtra:                   anchor.BeyondAnchorExtra,
 		BeyondAnchorMissing:                 anchor.BeyondAnchorMissing,

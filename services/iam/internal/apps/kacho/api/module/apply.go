@@ -34,6 +34,7 @@ import (
 	"google.golang.org/protobuf/types/known/anypb"
 
 	"github.com/PRO-Robotech/kacho/pkg/operations"
+	"github.com/PRO-Robotech/kacho/pkg/safeconv"
 
 	iamv1 "github.com/PRO-Robotech/kacho/pkg/api/kacho/cloud/iam/v1"
 	operationpb "github.com/PRO-Robotech/kacho/pkg/api/kacho/cloud/operation"
@@ -198,15 +199,15 @@ func applyOperationPayload(module string, rep modulecatalog.Report) (meta, resp 
 		Module:                    module,
 		Changed:                   rep.Changed(),
 		ModuleWritten:             rep.ModuleWritten,
-		WrittenResources:          int32(rep.WrittenResources),
-		WrittenVerbs:              int32(rep.WrittenVerbs),
-		RetiredResources:          int32(rep.RetiredResources),
-		RetiredVerbs:              int32(rep.RetiredVerbs),
-		ResettledRuleRefs:         int32(rep.Resettled.RuleRefs),
-		ResettledRoleVerbs:        int32(rep.Resettled.RoleVerbs),
-		PrunedSelectorRows:        int32(rep.PrunedSelectorRows),
-		PrunedSelectorRowsDropped: int32(rep.PrunedSelectorRowsDropped),
-		PrunedSelectorTypes:       int32(rep.PrunedSelectorTypes),
+		WrittenResources:          safeconv.IntToInt32(rep.WrittenResources),
+		WrittenVerbs:              safeconv.IntToInt32(rep.WrittenVerbs),
+		RetiredResources:          safeconv.IntToInt32(rep.RetiredResources),
+		RetiredVerbs:              safeconv.IntToInt32(rep.RetiredVerbs),
+		ResettledRuleRefs:         safeconv.IntToInt32(rep.Resettled.RuleRefs),
+		ResettledRoleVerbs:        safeconv.IntToInt32(rep.Resettled.RoleVerbs),
+		PrunedSelectorRows:        safeconv.IntToInt32(rep.PrunedSelectorRows),
+		PrunedSelectorRowsDropped: safeconv.IntToInt32(rep.PrunedSelectorRowsDropped),
+		PrunedSelectorTypes:       safeconv.IntToInt32(rep.PrunedSelectorTypes),
 	})
 	if err != nil {
 		return nil, nil, fmt.Errorf("operation response: %w", err)
