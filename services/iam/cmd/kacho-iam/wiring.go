@@ -598,6 +598,11 @@ func buildServices(pool, slavePool *pgxpool.Pool, opsRepo operations.FullRepo,
 		kachopg.NewFGAOutboxEmitter(),
 		kachopg.NewResourceMirrorEmitter(),
 		kachopg.NewPoolTxBeginner(pool),
+		// Имя типа КАТАЛОГА читается у ЖИВОЙ строки, в транзакции записи зеркала
+		// (kacho#1990). Параметр, а не опция: запасной путь «переводим словарём
+		// сборки» молчалив — верный ответ на посеянных типах и неверный на
+		// заведённых применением манифеста в работающем процессе.
+		kachopg.NewCatalogTypeReader(),
 	).
 		WithReconcile(kachopg.NewReconcileEventEmitter()).
 		WithAccountResolver(kachopg.NewProjectAccountResolver()).
