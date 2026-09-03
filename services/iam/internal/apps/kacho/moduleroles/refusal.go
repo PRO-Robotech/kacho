@@ -89,6 +89,11 @@ const (
 	// строке, и объединять его с предыдущей полосой значило бы послать
 	// вызывающего чинить не то.
 	LaneRightsExportNotWired = "MODULE_ROLE_RIGHTS_EXPORT_NOT_WIRED"
+	// LaneRetirementActorUnnamed — АВТОР снятия не назван вызывающим. Полоса
+	// своя, потому что чинится ПРОВЯЗКОЙ: ни вход манифеста, ни состояние базы
+	// тут ни при чём. Подставить «system» вместо отказа значило бы сделать вопрос
+	// «кто у меня отобрал» безответным ровно тогда, когда его задают (#1913).
+	LaneRetirementActorUnnamed = "MODULE_ROLE_RETIREMENT_ACTOR_UNNAMED"
 )
 
 // refusalDomain — источник отказа в `ErrorInfo.domain`, как его видит клиент.
@@ -127,7 +132,8 @@ func RefusalLane(err error) string {
 			}
 			switch ei.GetReason() {
 			case LaneRejectedByDomain, LanePolicyNotCompilable, LaneWriteFailed,
-				LaneNamedRightIncomplete, LaneRightsExportNotWired:
+				LaneNamedRightIncomplete, LaneRightsExportNotWired,
+				LaneRetirementActorUnnamed:
 				return ei.GetReason()
 			}
 		}
@@ -143,6 +149,8 @@ func RefusalLane(err error) string {
 		return LaneNamedRightIncomplete
 	case errors.Is(err, ErrRightsExportNotWired):
 		return LaneRightsExportNotWired
+	case errors.Is(err, ErrRetirementActorUnnamed):
+		return LaneRetirementActorUnnamed
 	}
 	return ""
 }

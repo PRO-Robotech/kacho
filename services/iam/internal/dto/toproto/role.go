@@ -106,6 +106,12 @@ func (roleObj) toPb(r domain.Role) (*iamv1.Role, error) {
 		// это — КАКОЕ правило и по какой из двух причин. Пустой срез приезжает
 		// пустым списком: «этим ответом не вычислено», а не «правила не действуют».
 		RuleStates: ruleStatesToPb(r.RuleStates),
+		// ОБЪЯВЛЕНА роль сегодня либо СНЯТА (#1913). Отдельно от `health` рядом,
+		// и различие несущее: `EMPTY` даёт и снятая роль, и объявленная, чьи
+		// строки каталога сняты, — а следующий шаг у арендатора разный.
+		// Нулевое состояние приезжает нулевым сообщением: «этим ответом не
+		// вычислено», ровно как `ROLE_HEALTH_UNSPECIFIED` рядом.
+		Lifecycle: roleLifecycleToPb(r.Lifecycle),
 		// Permissions intentionally omitted (internal compiled; not on the public
 		// API surface — R-7/F5). Read compiled perms via InternalIAMService.GetRoleCompiled.
 	}, nil
@@ -172,6 +178,7 @@ func withdrawnGrantsToPb(in []domain.WithdrawnGrant) []*iamv1.WithdrawnGrant {
 			Reason:      g.Reason,
 			WithdrawnAt: timestamppb.New(g.WithdrawnAt.Truncate(time.Second)),
 			AppliedBy:   g.AppliedBy,
+			Cause:       withdrawnGrantCauseToPb(g.Cause),
 		})
 	}
 	return out
@@ -271,5 +278,63 @@ func ruleLifecycleToPb(s domain.RuleLifecycle) iamv1.RuleLifecycle {
 		return iamv1.RuleLifecycle_RULE_LIFECYCLE_UNRESOLVED
 	default:
 		return iamv1.RuleLifecycle_RULE_LIFECYCLE_UNSPECIFIED
+	}
+}
+
+// roleLifecycleToPb — жизненное состояние роли наружу (#1913).
+//
+// Сообщение приезжает ВСЕГДА, и нулевое состояние едет значением
+// `ROLE_LIFECYCLE_STATE_UNSPECIFIED` — «этим ответом не вычислено». Ровно та же
+// дисциплина, что у `health` рядом.
+//
+// ЗДЕСЬ СТОЯЛО ОБРАТНОЕ, и довод был ЛОЖЕН: «сообщение, присутствующее всегда,
+// сливает „не вычислено" и „объявлена"». Перемерено во всех трёх кодировках —
+// `UNSPECIFIED` и `DECLARED` различимы в каждой. Цена прежней формы: у нулевого
+// состояния не было ПРОИЗВОДИТЕЛЯ вовсе, то есть перечисление документировало
+// значение, которого клиент не увидел бы никогда, а страница арендатора обещала
+// его в ответе операции.
+func roleLifecycleToPb(l domain.RoleLifecycle) *iamv1.RoleLifecycle {
+	out := &iamv1.RoleLifecycle{
+		State:         roleLifecycleStateToPb(l.State),
+		RetiredReason: l.RetiredReason,
+		RetiredBy:     l.RetiredBy,
+	}
+	if !l.RetiredAt.IsZero() {
+		out.RetiredAt = timestamppb.New(l.RetiredAt.Truncate(tsTruncate))
+	}
+	return out
+}
+
+// roleLifecycleStateToPb — состояние словарём контракта.
+//
+// Корзины «прочее» здесь НЕТ намеренно: неизвестное состояние приезжает
+// нулевым, то есть «не вычислено», а не выдаётся за одно из двух известных.
+// Молча назвать непонятое объявленным значило бы сказать арендатору, что право
+// действует, — ровно то утверждение, которое дороже всего ошибиться.
+func roleLifecycleStateToPb(s domain.RoleLifecycleState) iamv1.RoleLifecycleState {
+	switch s {
+	case domain.RoleLifecycleDeclared:
+		return iamv1.RoleLifecycleState_ROLE_LIFECYCLE_STATE_DECLARED
+	case domain.RoleLifecycleWithdrawn:
+		return iamv1.RoleLifecycleState_ROLE_LIFECYCLE_STATE_WITHDRAWN
+	default:
+		return iamv1.RoleLifecycleState_ROLE_LIFECYCLE_STATE_UNSPECIFIED
+	}
+}
+
+// withdrawnGrantCauseToPb — причина переселения словарём контракта (#1913).
+//
+// Корзины «прочее» нет намеренно: неизвестная причина едет нулевой, то есть
+// «не вычислено», а не выдаётся за одну из двух известных. Назвать непонятое
+// «снят каталог» значило бы сказать арендатору, что при возврате объявления
+// строка останется, — а этого мы не знаем.
+func withdrawnGrantCauseToPb(c domain.WithdrawnGrantCause) iamv1.WithdrawnGrantCause {
+	switch c {
+	case domain.WithdrawnGrantCauseCatalogRetired:
+		return iamv1.WithdrawnGrantCause_WITHDRAWN_GRANT_CAUSE_CATALOG_RETIRED
+	case domain.WithdrawnGrantCauseRoleRetired:
+		return iamv1.WithdrawnGrantCause_WITHDRAWN_GRANT_CAUSE_ROLE_RETIRED
+	default:
+		return iamv1.WithdrawnGrantCause_WITHDRAWN_GRANT_CAUSE_UNSPECIFIED
 	}
 }

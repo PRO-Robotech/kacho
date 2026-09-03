@@ -353,3 +353,24 @@ func (r *rlRoleRdr) WithdrawnGrants(context.Context, []domain.RoleID) (map[domai
 func (r *rlRoleRdr) PrunedSelectorTypes(context.Context, []domain.RoleID) (map[domain.RoleID][]domain.PrunedSelectorType, error) {
 	return nil, stderrors.New("PrunedSelectorTypes не предмет этих проб")
 }
+
+// Lifecycles — дублёр: жизненное состояние ролей этот путь не спрашивает.
+// Пустая карта означает «не вычислено», и вызывающий оставляет нулевое
+// состояние — ровно то, что дублёр обязан отдавать о величине, которой не
+// владеет.
+func (*rlRoleRdr) Lifecycles(_ context.Context, _ []domain.RoleID) (
+	map[domain.RoleID]domain.RoleLifecycle, error) {
+	return nil, nil
+}
+
+// LiveSystemRoles / RetireRole / ReviveRole — дублёр: отзыв роли этот путь не
+// исполняет. Отдаётся пустое, а не правдоподобное: дублёр, отвечающий «снял»,
+// сделал бы невидимым ровно тот дефект, ради которого его подставляют.
+func (*rlRoleWtr) LiveSystemRoles(_ context.Context) ([]domain.Role, error) { return nil, nil }
+
+func (*rlRoleWtr) RetireRole(_ context.Context, _ domain.RoleID, _, _, _ string) (
+	domain.RoleRetirement, error) {
+	return domain.RoleRetirement{}, nil
+}
+
+func (*rlRoleWtr) ReviveRole(_ context.Context, _ domain.RoleID) (bool, error) { return false, nil }

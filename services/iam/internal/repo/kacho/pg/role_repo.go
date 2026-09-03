@@ -194,20 +194,34 @@ func (r *roleReader) WithdrawnGrants(
 		ids = append(ids, string(id))
 	}
 	rows, err := r.tx.Query(ctx, `
-		SELECT role_id, object_type, verb, source, reason, orphaned_at, applied_by
+		SELECT role_id, object_type, verb, source, reason, orphaned_at, applied_by, cause
 		  FROM kacho_iam.role_grant_orphan
 		 WHERE role_id = ANY($1::text[])
-		 ORDER BY role_id, object_type, verb, source`, ids)
+		 ORDER BY role_id, object_type, verb, source, cause`, ids)
 	if err != nil {
 		return nil, mapErr(err, "", "")
 	}
 	defer rows.Close()
 	for rows.Next() {
-		var id, source string
+		var id, source, cause string
 		var g domain.WithdrawnGrant
 		if serr := rows.Scan(&id, &g.ObjectType, &g.Verb, &source, &g.Reason,
-			&g.WithdrawnAt, &g.AppliedBy); serr != nil {
+			&g.WithdrawnAt, &g.AppliedBy, &cause); serr != nil {
 			return nil, mapErr(serr, "", "")
+		}
+		// Причина читается ЗАКРЫТЫМ набором, без корзины «прочее»: непонятая
+		// строка отвергается, а не выдаётся за невычисленную. Молча назвать её
+		// «снят каталог» значило бы сказать арендатору, что при возврате
+		// объявления она останется, — а этого мы не знаем.
+		switch cause {
+		case "catalog_retired":
+			g.Cause = domain.WithdrawnGrantCauseCatalogRetired
+		case "role_retired":
+			g.Cause = domain.WithdrawnGrantCauseRoleRetired
+		default:
+			return nil, fmt.Errorf("ведомость переселения несёт неизвестную причину %q: "+
+				"закрытый набор схемы разошёлся с разбором, и отдать такую строку "+
+				"нулевой причиной значило бы выдать непонятое за невычисленное", cause)
 		}
 		switch source {
 		case "role_verb":
@@ -1171,7 +1185,23 @@ func scanRolePolicy(ro *domain.Role, permsJSON, rulesJSON []byte) error {
 // живая Postgres. Заводя колонку в roleCols, правь список ЗДЕСЬ; второго места,
 // способного с ним разойтись, больше нет, а остаточную ось «проекция против
 // списка» держит TestProjectionScanArityMatchesItsColumns.
+// scanRoleWithTrailing — те же колонки `roleCols`, за которыми идут ДОПОЛНИТЕЛЬНЫЕ
+// приёмники вызывающего.
+//
+// Заведена ради одного случая: путь реконсиляции читает роль ВМЕСТЕ с её
+// живостью, а `roleCols` живость не несёт намеренно — тот же перечень читают
+// пути ответа операции, а ответ операции жизненного состояния не вычисляет.
+// Второго разбора строки роли при этом не заводится: хвост приклеивается к
+// ЭТОМУ, а копия разошлась бы с ним молча на первой же новой колонке.
+func scanRoleWithTrailing(row scanner, trailing ...any) (domain.Role, error) {
+	return scanRoleWithVersionAndTrailing(row, nil, trailing)
+}
+
 func scanRoleWithVersion(row scanner, versionOut ...*string) (domain.Role, error) {
+	return scanRoleWithVersionAndTrailing(row, versionOut, nil)
+}
+
+func scanRoleWithVersionAndTrailing(row scanner, versionOut []*string, trailing []any) (domain.Role, error) {
 	var (
 		ro                       domain.Role
 		clusterID, accID, projID sql.NullString
@@ -1197,6 +1227,7 @@ func scanRoleWithVersion(row scanner, versionOut ...*string) (domain.Role, error
 		&ro.CreatedAt,
 		&labelsJSON,
 	)
+	dest = append(dest, trailing...)
 	if err := row.Scan(dest...); err != nil {
 		return domain.Role{}, err
 	}

@@ -39,6 +39,7 @@ package moduleroleparity_test
 
 import (
 	"context"
+	"fmt"
 	"os"
 	"path/filepath"
 	"sort"
@@ -233,7 +234,7 @@ func readLiveSystemRoles(ctx context.Context, t *testing.T, pool *pgxpool.Pool) 
 func declaredRoles(ctx context.Context, t *testing.T, m *manifest.Manifest) []moduleroleparity.Role {
 	t.Helper()
 	rec := &recordingTx{}
-	rep, err := moduleroles.NewApplier(rec, rightsfixture.Export()).Apply(ctx, m)
+	rep, err := moduleroles.NewApplier(rec, rightsfixture.Export()).Apply(ctx, m, moduleroles.BootActorID)
 	require.NoErrorf(t, err, "применитель отверг манифест модуля %s: объявление негодно ДО базы",
 		m.Module)
 	require.Equalf(t, rep.Declared, len(rec.written),
@@ -273,6 +274,24 @@ func (r *recordingTx) UpsertSystemRole(_ context.Context, role domain.Role) (dom
 func (r *recordingTx) ReplaceRuleRefs(context.Context, domain.RoleID, []domain.RoleRuleRef) error {
 	return nil
 }
+
+// LiveSystemRoles / RetireRole / ReviveRole — сверка манифестов дерева СНЯТИЯ не
+// проверяет (#1913): её предмет — согласие объявленного с записанным, а не
+// жизненный цикл строки.
+//
+// Живых ролей отдаётся НОЛЬ намеренно, а не «все объявленные»: при пустой
+// популяции сверка расхождений не находит и снимать ей нечего, поэтому
+// запоминающий писатель не может дать зелёное на снятии, которого не делал.
+func (r *recordingTx) LiveSystemRoles(context.Context) ([]domain.Role, error) { return nil, nil }
+
+func (r *recordingTx) RetireRole(_ context.Context, id domain.RoleID, _, _, _ string) (
+	domain.RoleRetirement, error) {
+	return domain.RoleRetirement{}, fmt.Errorf(
+		"запоминающий писатель позван на снятие роли %s: сверка манифестов снятия не "+
+			"делает, и молчаливое согласие здесь скрыло бы вызов, которого быть не должно", id)
+}
+
+func (r *recordingTx) ReviveRole(context.Context, domain.RoleID) (bool, error) { return false, nil }
 
 // manifestFiles — манифесты модулей ВЫВОДЯТСЯ обходом дерева, а не выписываются.
 //

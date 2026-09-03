@@ -38,6 +38,7 @@ import (
 	"github.com/PRO-Robotech/kacho/services/iam/internal/apps/kacho/api/access_binding/reconcile"
 	"github.com/PRO-Robotech/kacho/services/iam/internal/apps/kacho/config"
 	"github.com/PRO-Robotech/kacho/services/iam/internal/apps/kacho/modulecatalog"
+	"github.com/PRO-Robotech/kacho/services/iam/internal/apps/kacho/moduleroles"
 	"github.com/PRO-Robotech/kacho/services/iam/internal/authzguard"
 	"github.com/PRO-Robotech/kacho/services/iam/internal/clients"
 	"github.com/PRO-Robotech/kacho/services/iam/internal/handler/clienttokenhttp"
@@ -300,6 +301,40 @@ func runServe(cfg config.Config) error {
 		return fmt.Errorf("снимок каталога модуля: %w", csErr)
 	}
 
+	// Каталог прав — ОДНО чтение на процесс, и оно здесь, потому что первым его
+	// спрашивает производитель правил роли (ниже). Прежде реестр загружался
+	// перед порогом acr; те три его читателя остались теми же и берут ЭТО
+	// связывание. Второй загрузки не заводится: она разошлась бы с первой молча.
+	permRegistry, err := seed.LoadPermissionRegistry(ctx, logger)
+	if err != nil {
+		return fmt.Errorf("load permission catalog: %w", err)
+	}
+
+	// ПРИМЕНЕНИЕ РОЛЕЙ ДОСТАВЛЕННОГО — ПОСЛЕ стража паритета каталога
+	// (задача #2010).
+	//
+	// Применитель ролей — единственный писатель строк `kacho_iam.roles` в
+	// прод-коде помимо миграции; до этой провязки его не звал никто, и
+	// объявленная манифестом роль доезжала до базы только пересборкой образа.
+	// Довод о месте, порядке и о том, почему отказ фатален, — шапка
+	// `module_roles_apply.go`; порядок держит гейт
+	// `module_roles_apply_wiring_test.go`, а не этот комментарий.
+	//
+	// Каталожный факт берётся из ТЕХ ЖЕ живых строк, которые прочитал страж:
+	// третьего чтения каталога на старте не заводится.
+	rolesRights, rightsActions, rightsUnattributed, rrErr := buildModuleRoleRights(
+		catalogCensus.Live, permRegistry)
+	logger.Info("производитель правил роли модуля",
+		slog.Int("catalog_actions", rightsActions),
+		slog.Int("unattributed_entries", rightsUnattributed))
+	if rrErr != nil {
+		return fmt.Errorf("роли модуля: %w", rrErr)
+	}
+	rolesApplier := moduleroles.NewApplier(moduleroles.NewRepoTxRunner(kachoRepo), rolesRights)
+	if raErr := applyDeliveredModuleRoles(ctx, logger, rolesApplier, deliveredManifests); raErr != nil {
+		return raErr
+	}
+
 	// Подключаем Prometheus-Recorder и логгер к default-registry LRO-worker'а и
 	// поднимаем его dispatcher ДО приема трафика. Без этого default-registry держит
 	// NopRecorder (live terminal-write/inflight метрики мертвы), а operations.Ready()
@@ -534,10 +569,8 @@ func runServe(cfg config.Config) error {
 	// RPC → PermissionDenied with an RFC-9470 step-up signal in the status
 	// details. FQN→acr_min comes from the embedded permission catalog. Chained
 	// AFTER UnaryTrustedPrincipalExtract (sets acr) + internalCallerPolicy.
-	permRegistry, err := seed.LoadPermissionRegistry(ctx, logger)
-	if err != nil {
-		return fmt.Errorf("load permission catalog (acr-floor): %w", err)
-	}
+	// Реестр прав загружен ВЫШЕ, вместе с производителем правил роли: одно
+	// чтение встроенного каталога на процесс, три читателя.
 	internalACRFloor := authzguard.NewACRFloor(permRegistry, authzguard.GatewayFrontedInternalRPCs()).
 		WithProductionMode(productionMode)
 

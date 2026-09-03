@@ -86,12 +86,13 @@ system-only).
     <tr><td><code>authoredVerbs</code></td><td>string[]</td><td>output-only</td><td>Что роль выдаёт <b>по написанному</b>: объединение глаголов её <code>rules[]</code>, без повторов и в каноническом порядке (<code>{'*'}</code> раскрывается в полный CRUD). Пусто у роли, выданной одними метками</td></tr>
     <tr><td><code>effectiveVerbs</code></td><td>string[]</td><td>output-only</td><td>Что роль выдаёт <b>на самом деле</b>, и <b>исполняется именно этот набор</b>. Равен <code>authoredVerbs</code> плюс, у роли-редактора (несёт <code>update</code> и не несёт ни <code>delete</code>, ни <code>{'*'}</code>), производный <code>{'delete*'}</code>: редактор вправе удалить листовые объекты своей области, но <b>не</b> сам аккаунт или проект. У всякой другой роли два набора совпадают</td></tr>
     <tr><td><code>verbNotes</code></td><td>map&lt;string,string&gt;</td><td>output-only</td><td>Пояснение к производным глаголам, ключ — сам глагол. Сегодня объясняет ровно один: <code>verbNotes["delete{'*'}"]</code> говорит, откуда взялось расхождение <code>effectiveVerbs</code> с <code>authoredVerbs</code></td></tr>
-    <tr><td><code>health</code></td><td>enum</td><td>output-only</td><td>Даёт ли роль то, что объявляет: <code>ROLE_HEALTH_HEALTHY</code> — каждый адресуемый сегмент правил имеет выдачу; <code>ROLE_HEALTH_DEGRADED</code> — часть сегментов не даёт ничего; <code>ROLE_HEALTH_EMPTY</code> — не даёт ничего <b>ни один</b>, при том что роль на вид действует. <code>ROLE_HEALTH_UNSPECIFIED</code> означает «этим ответом не вычислено» и <b>никогда</b> «роль здорова»: его несут ответы операций <code>Create</code>/<code>Update</code>, а <code>Get</code> и <code>List</code> заполняют поле всегда</td></tr>
+    <tr><td><code>health</code></td><td>enum</td><td>output-only</td><td>Даёт ли роль то, что объявляет: <code>HEALTHY</code> — каждый адресуемый сегмент правил имеет выдачу; <code>DEGRADED</code> — часть сегментов не даёт ничего; <code>EMPTY</code> — не даёт ничего <b>ни один</b>, при том что роль на вид действует. <code>UNSPECIFIED</code> означает «этим ответом не вычислено» и <b>никогда</b> «роль здорова»: его несут ответы операций <code>Create</code>/<code>Update</code>, а <code>Get</code> и <code>List</code> заполняют поле всегда</td></tr>
     <tr><td><code>declaredSegments</code></td><td>int32</td><td>output-only</td><td>Сколько адресуемых сегментов объявляют правила роли. Сегмент — пара «ресурс × глагол» либо «ресурс × любой глагол» (правило с <code>{'*'}</code> в глаголах даёт <b>один</b> сегмент, а не по одному на глагол). Подстановка в модуле и в ресурсе сегментов не даёт, поэтому у роли <code>{'*.*'}</code> здесь ноль — и это не признак беды</td></tr>
-    <tr><td><code>unresolvedSegments</code></td><td>int32</td><td>output-only</td><td>Сколько из объявленных сегментов не дают <b>ни одной</b> выдачи. Ноль у здоровой роли; равен <code>declaredSegments</code> у роли, не дающей ничего. Значим только когда <code>health</code> не <code>ROLE_HEALTH_UNSPECIFIED</code> — иначе оба счётчика нули просто потому, что их не считали</td></tr>
-    <tr><td><code>withdrawnGrants</code></td><td>array</td><td>output-only</td><td>Что у роли <b>отобрано и почему</b>. Каждый элемент — пара <code>objectType</code> + <code>verb</code> (пустой глагол означает «правило не называло глагол поимённо»), <code>source</code> (<code>WITHDRAWN_GRANT_SOURCE_GRANT</code> — право по паре действовало и перестало; <code>WITHDRAWN_GRANT_SOURCE_RULE_REFERENCE</code> — сегмент правила перестал резолвиться), <code>reason</code> — причина <b>платформы</b>, а не ваше действие, и <code>withdrawnAt</code>. Пустой список означает «отобранного нет». Список <b>объясняет</b> счётчики выше и не определяет их: у роли, пострадавшей от типа, которого платформа не знает, отбирать было нечего — и список пуст при <code>health</code> не <code>ROLE_HEALTH_HEALTHY</code></td></tr>
-    <tr><td><code>prunedSelectorTypes</code></td><td>array</td><td>output-only</td><td>Какие типы ресурсов <b>вырезаны из правил</b> роли, когда платформа сняла их с обслуживания. Каждый элемент — <code>objectType</code>, <code>outcome</code> (<code>SELECTOR_PRUNE_OUTCOME_SHORTENED</code> — правило продолжает действовать, но на меньшем наборе типов; <code>SELECTOR_PRUNE_OUTCOME_DROPPED</code> — у правила не осталось ни одного обслуживаемого типа, и оно не даёт ничего), <code>reason</code> — причина <b>платформы</b>, а не ваше действие, и <code>prunedAt</code>. Пустой список означает «вырезанного нет». Отличается от <code>withdrawnGrants</code> предметом: там пара «тип + глагол», здесь глагола нет вовсе — правило называет типы, а не пары</td></tr>
-    <tr><td><code>ruleStates</code></td><td>array</td><td>output-only</td><td>Состояние <b>каждого</b> вашего правила: <code>RULE_LIFECYCLE_ACTIVE</code> — правило даёт объявленное; <code>RULE_LIFECYCLE_WITHDRAWN</code> — платформа сняла то, на что оно ссылалось, и это записано; <code>RULE_LIFECYCLE_UNRESOLVED</code> — правило ссылается на то, чего сейчас нет, и снятия не было. Записей ровно по числу правил, адресуются <code>ruleIndex</code> — номером правила в <code>rules</code>. Рядом со словом три величины ЭТОГО правила: <code>segments</code> — сколько пар «ресурс × глагол» оно называет, <code>lostSegments</code> — сколько из них перестали действовать, <code>explainedSegments</code> — сколько из потерянных объяснены. Имена отличаются от счётчиков роли намеренно: <b>единица другая</b>. Роль считает сегмент, названный двумя вашими правилами, один раз, а правила — каждое своё, поэтому <b>равенство сумм не гарантировано</b>: оно нарушается ровно тогда, когда сегмент назван дважды, а на прочих ролях суммы совпадают. <code>RULE_LIFECYCLE_UNSPECIFIED</code> и пустой список означают «этим ответом не вычислено», а не «правила не действуют»</td></tr>
+    <tr><td><code>unresolvedSegments</code></td><td>int32</td><td>output-only</td><td>Сколько из объявленных сегментов не дают <b>ни одной</b> выдачи. Ноль у здоровой роли; равен <code>declaredSegments</code> у роли, не дающей ничего. Значим только когда <code>health</code> не <code>UNSPECIFIED</code> — иначе оба счётчика нули просто потому, что их не считали</td></tr>
+    <tr><td><code>withdrawnGrants</code></td><td>array</td><td>output-only</td><td>Что у роли <b>отобрано и почему</b>. Каждый элемент — пара <code>objectType</code> + <code>verb</code> (пустой глагол означает «правило не называло глагол поимённо»), <code>source</code> (<code>GRANT</code> — право по паре действовало и перестало; <code>RULE_REFERENCE</code> — сегмент правила перестал резолвиться), <code>reason</code> — причина <b>платформы</b>, а не ваше действие, <code>withdrawnAt</code> и <code>cause</code> — <b>почему</b> строка переселена: <code>CATALOG_RETIRED</code> — платформа сняла строку каталога, на которую ссылалось ваше правило (роль при этом объявлена и жива); <code>ROLE_RETIRED</code> — снята <b>сама роль</b>, её модуль перестал её объявлять. Различие определяет будущее строки: при возврате объявления роли строки <code>ROLE_RETIRED</code> уходят отсюда, а <code>CATALOG_RETIRED</code> остаются. Пустой список означает «отобранного нет». Список <b>объясняет</b> счётчики выше и не определяет их: у роли, пострадавшей от типа, которого платформа не знает, отбирать было нечего — и список пуст при <code>health</code> не <code>HEALTHY</code></td></tr>
+    <tr><td><code>prunedSelectorTypes</code></td><td>array</td><td>output-only</td><td>Какие типы ресурсов <b>вырезаны из правил</b> роли, когда платформа сняла их с обслуживания. Каждый элемент — <code>objectType</code>, <code>outcome</code> (<code>SHORTENED</code> — правило продолжает действовать, но на меньшем наборе типов; <code>DROPPED</code> — у правила не осталось ни одного обслуживаемого типа, и оно не даёт ничего), <code>reason</code> — причина <b>платформы</b>, а не ваше действие, и <code>prunedAt</code>. Пустой список означает «вырезанного нет». Отличается от <code>withdrawnGrants</code> предметом: там пара «тип + глагол», здесь глагола нет вовсе — правило называет типы, а не пары</td></tr>
+    <tr><td><code>ruleStates</code></td><td>array</td><td>output-only</td><td>Состояние <b>каждого</b> вашего правила: <code>ACTIVE</code> — правило даёт объявленное; <code>WITHDRAWN</code> — платформа сняла то, на что оно ссылалось, и это записано; <code>UNRESOLVED</code> — правило ссылается на то, чего сейчас нет, и снятия не было. Записей ровно по числу правил, адресуются <code>ruleIndex</code> — номером правила в <code>rules</code>. Рядом со словом три величины ЭТОГО правила: <code>segments</code> — сколько пар «ресурс × глагол» оно называет, <code>lostSegments</code> — сколько из них перестали действовать, <code>explainedSegments</code> — сколько из потерянных объяснены. Имена отличаются от счётчиков роли намеренно: <b>единица другая</b>. Роль считает сегмент, названный двумя вашими правилами, один раз, а правила — каждое своё, поэтому <b>равенство сумм не гарантировано</b>: оно нарушается ровно тогда, когда сегмент назван дважды, а на прочих ролях суммы совпадают. <code>UNSPECIFIED</code> и пустой список означают «этим ответом не вычислено», а не «правила не действуют»</td></tr>
+    <tr><td><code>lifecycle</code></td><td>object</td><td>output-only</td><td><b>Стоит ли за ролью объявление её модуля сегодня.</b> <code>state</code>: <code>DECLARED</code> — модуль по-прежнему её объявляет; <code>WITHDRAWN</code> — перестал, и роль <b>снята</b>. У снятой рядом три величины: <code>retiredAt</code> — когда, <code>retiredReason</code> — почему, <code>retiredBy</code> — кто. Отдельно от <code>health</code> намеренно: <code>EMPTY</code> дают <b>оба</b> состояния, а ваш следующий шаг у них разный — снятая роль не заработает <b>никогда</b>, пока модуль не объявит её снова, а объявленная чинится на стороне платформы. Снятая роль <b>остаётся</b> в <code>Get</code> и <code>List</code>, и выданные на неё права <b>переживают</b> снятие — но доступа больше не дают; новую выдачу на неё платформа отвергает. <code>UNSPECIFIED</code> означает «этим ответом не вычислено» и <b>никогда</b> «роль объявлена»: его несут ответы операций <code>Create</code>/<code>Update</code>, а <code>Get</code> и <code>List</code> заполняют состояние всегда</td></tr>
     <tr><td><code>isSystem</code></td><td>bool</td><td>immutable</td><td>true — system-роль (read-only публично)</td></tr>
     <tr><td><code>accountId</code></td><td>string</td><td>immutable</td><td>Аккаунт-scope (XOR с projectId), только для custom</td></tr>
     <tr><td><code>projectId</code></td><td>string</td><td>immutable</td><td>Project-scope (XOR с accountId), только для custom</td></tr>
@@ -133,14 +134,14 @@ system-only).
 ```json
 {
   "id": "rol...",
-  "health": "ROLE_HEALTH_DEGRADED",
+  "health": "DEGRADED",
   "declaredSegments": 12,
   "unresolvedSegments": 3,
   "withdrawnGrants": [
     {
       "objectType": "compute.instances",
       "verb": "start",
-      "source": "WITHDRAWN_GRANT_SOURCE_GRANT",
+      "source": "GRANT",
       "reason": "не объявлен манифестом модуля compute",
       "withdrawnAt": "2026-09-03T13:15:44Z"
     }
@@ -149,7 +150,7 @@ system-only).
 ```
 
 Читается так: роль объявляет двенадцать пар «ресурс × глагол», три из них не дают
-ничего. `ROLE_HEALTH_EMPTY` означает, что не даёт ничего ни одна, — роль выглядит действующей и
+ничего. `EMPTY` означает, что не даёт ничего ни одна, — роль выглядит действующей и
 не действует.
 
 Счётчики говорят **сколько**, `withdrawnGrants` — **что именно и почему**. Без него
@@ -159,8 +160,8 @@ system-only).
 нему собирается разом всё, что унесло одно снятие.
 
 **Список пуст не всегда потому, что ничего не отбирали.** Он наполняется только тем,
-что платформа сняла с обслуживания. У второго пути потери — тип объявлен, а платформа
-его не знает — отбирать было нечего, и список пуст при `health` не `ROLE_HEALTH_HEALTHY`. Судить
+что платформа сняла с обслуживания. У третьего пути потери — тип объявлен, а платформа
+его не знает — отбирать было нечего, и список пуст при `health` не `HEALTHY`. Судить
 по нему о здоровье роли поэтому нельзя: он объясняет счётчики, а не заменяет их.
 
 **Порядок элементов не значим** — это набор. Сверяйте его по составу, а не по номеру
@@ -177,7 +178,7 @@ system-only).
   "prunedSelectorTypes": [
     {
       "objectType": "compute.instances",
-      "outcome": "SELECTOR_PRUNE_OUTCOME_SHORTENED",
+      "outcome": "SHORTENED",
       "reason": "не объявлен манифестом модуля compute",
       "prunedAt": "2026-09-03T13:15:44Z"
     }
@@ -185,8 +186,8 @@ system-only).
 }
 ```
 
-`outcome` различает два исхода, и различие существенное: `SELECTOR_PRUNE_OUTCOME_SHORTENED` — правило
-продолжает действовать, но на меньшем наборе типов; `SELECTOR_PRUNE_OUTCOME_DROPPED` — обслуживаемых типов
+`outcome` различает два исхода, и различие существенное: `SHORTENED` — правило
+продолжает действовать, но на меньшем наборе типов; `DROPPED` — обслуживаемых типов
 у правила не осталось, и оно не даёт **ничего**. Сложенные в одну величину, эти два
 случая неразличимы, а решения по ним разные.
 
@@ -227,11 +228,11 @@ system-only).
     { "module": "probe", "resources": ["thing"], "verbs": ["delete"] }
   ],
   "ruleStates": [
-    { "ruleIndex": 0, "state": "RULE_LIFECYCLE_ACTIVE",
+    { "ruleIndex": 0, "state": "ACTIVE",
       "segments": 1, "lostSegments": 0, "explainedSegments": 0 },
-    { "ruleIndex": 1, "state": "RULE_LIFECYCLE_WITHDRAWN",
+    { "ruleIndex": 1, "state": "WITHDRAWN",
       "segments": 1, "lostSegments": 1, "explainedSegments": 1 },
-    { "ruleIndex": 2, "state": "RULE_LIFECYCLE_UNRESOLVED",
+    { "ruleIndex": 2, "state": "UNRESOLVED",
       "segments": 1, "lostSegments": 1, "explainedSegments": 0 }
   ]
 }
@@ -246,7 +247,7 @@ system-only).
 правил, — включая правила, которым терять нечего.
 
 **Правило, у которого одна потеря объяснена, а другая нет, читается
-`RULE_LIFECYCLE_UNRESOLVED`** — слово называет то состояние, которое требует разбора. Состав при
+`UNRESOLVED`** — слово называет то состояние, которое требует разбора. Состав при
 этом виден: необъяснённых у него `lostSegments − explainedSegments`, и обе
 величины стоят рядом со словом.
 
@@ -256,7 +257,7 @@ system-only).
 расходятся они ровно на таком сегменте — как в примере выше, где его нет и суммы
 равны. Складывать их не надо: они отвечают на разные вопросы.
 
-**Правило без адресуемых сегментов — `RULE_LIFECYCLE_ACTIVE`.** Правило с `*` в модуле или в
+**Правило без адресуемых сегментов — `ACTIVE`.** Правило с `*` в модуле или в
 ресурсе не называет имён, поэтому терять ему нечего, и его `segments` равен нулю.
 
 **Пустой список означает два разных факта, и различает их `rules`.** У роли без
@@ -268,14 +269,14 @@ system-only).
 `rules` целиком, поэтому сохранять индекс между вызовами нельзя: адресуется роль
 своим `id`, а правило — своим содержанием.
 
-**Ревизии и автора у `RULE_LIFECYCLE_WITHDRAWN` здесь нет.** Причина снятия и его момент
+**Ревизии и автора у `WITHDRAWN` здесь нет.** Причина снятия и его момент
 приезжают в `withdrawnGrants`, адресуемом той же парой «тип + глагол».
 
 **`health` и `effectiveVerbs` отвечают на разные вопросы, и расходятся намеренно.**
 `effectiveVerbs` говорит, что роль **обещает** по написанному; `health` — что по ней
 **выдаётся на самом деле**. После снятия модуля первое не меняется, второе меняется;
 у типа, которого платформа не знает, первое покажет весь словарь глаголов, а второе
-будет `ROLE_HEALTH_EMPTY`. Сложение их в одно утверждение даст неверный ответ в обе стороны.
+будет `EMPTY`. Сложение их в одно утверждение даст неверный ответ в обе стороны.
 
 <CodeBlock language="json">
   {dedent`

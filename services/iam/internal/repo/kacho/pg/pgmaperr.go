@@ -517,7 +517,27 @@ func integritySentinel(pgErr *pgconn.PgError, kindHint string) error {
 	return iamerr.ErrFailedPrecondition
 }
 
+// isGrantOnARetiredRole — распознаватель ВТОРОЙ полосы 23000: новая ссылка на
+// снятую роль (#1913).
+//
+// Один распознаватель на текст и на признак, по тому же доводу, что у соседа
+// выше: разъехавшись, они дали бы отказ, машинно заявляющий одно, а прозой
+// другое.
+//
+// Подсказки вызывающего здесь НЕТ намеренно: имя связи ставит сам страж
+// (`access_bindings_role_is_live_trg`, миграция 20260903223304), и оно приходит
+// с сервера. Полоса, опирающаяся на подсказку, молчала бы у всякого писателя,
+// который её не передал, — а писателей у выдачи больше одного.
+func isGrantOnARetiredRole(pgErr *pgconn.PgError) bool {
+	return pgErr.ConstraintName == "access_bindings_role_is_live"
+}
+
 func integrityText(pgErr *pgconn.PgError, kindHint, idHint string) string {
+	if isGrantOnARetiredRole(pgErr) {
+		// Роль называется, состояние называется, текст сервера НЕ эхается: в нём
+		// имя ограничения и значения, то есть разведка схемы.
+		return "Role is retired and cannot receive a new access binding"
+	}
 	if isMembershipCarriesRights(pgErr, kindHint) {
 		user, account, _ := splitBindingHint(idHint)
 		if user != "" && account != "" {

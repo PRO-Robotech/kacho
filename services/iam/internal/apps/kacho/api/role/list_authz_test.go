@@ -536,3 +536,12 @@ type roleUnrestrictedVisibility struct{}
 func (roleUnrestrictedVisibility) ScopeOf(_ context.Context, _ visibility.Subject) (visibility.Scope, error) {
 	return visibility.Scope{Unrestricted: true, GrantedObjects: map[string][]string{}}, nil
 }
+
+// Lifecycles — дублёр: жизненное состояние ролей этот путь не спрашивает.
+// Пустая карта означает «не вычислено», и вызывающий оставляет нулевое
+// состояние — ровно то, что дублёр обязан отдавать о величине, которой не
+// владеет.
+func (*roleListReader) Lifecycles(_ context.Context, _ []domain.RoleID) (
+	map[domain.RoleID]domain.RoleLifecycle, error) {
+	return nil, nil
+}

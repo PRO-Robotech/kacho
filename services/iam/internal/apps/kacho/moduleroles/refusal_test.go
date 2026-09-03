@@ -84,7 +84,7 @@ func TestRefusalLaneOfTheWriterSurvivesTheTxExecutor(t *testing.T) {
 	}
 	_, err := applierUnderTest(t, store).Apply(context.Background(),
 		clusterManifest("vpc", "vpc.network.admin",
-			[]manifest.Rule{{Module: "vpc", Resources: []string{"network"}, Classes: []string{"get"}}}))
+			[]manifest.Rule{{Module: "vpc", Resources: []string{"network"}, Classes: []string{"get"}}}), moduleroles.BootActorID)
 	if err == nil {
 		t.Fatalf("писатель отказал — применение обязано отказать тоже")
 	}
@@ -122,7 +122,7 @@ func TestRefusalLaneOfTheDomainDiffersFromTheWriter(t *testing.T) {
 	domainStore := newStore()
 	_, domainErr := applierUnderTest(t, domainStore).Apply(context.Background(),
 		clusterManifest("vpc", "vpc.network.admin",
-			[]manifest.Rule{{Module: "compute", Resources: []string{"disk"}, Classes: []string{"get"}}}))
+			[]manifest.Rule{{Module: "compute", Resources: []string{"disk"}, Classes: []string{"get"}}}), moduleroles.BootActorID)
 	if domainErr == nil {
 		t.Fatalf("правило называет снятый тип — применение обязано отказать")
 	}
@@ -138,7 +138,7 @@ func TestRefusalLaneOfTheDomainDiffersFromTheWriter(t *testing.T) {
 	}
 	_, writeErr := applierUnderTest(t, writerStore).Apply(context.Background(),
 		clusterManifest("vpc", "vpc.network.admin",
-			[]manifest.Rule{{Module: "vpc", Resources: []string{"network"}, Classes: []string{"get"}}}))
+			[]manifest.Rule{{Module: "vpc", Resources: []string{"network"}, Classes: []string{"get"}}}), moduleroles.BootActorID)
 	if writeErr == nil {
 		t.Fatalf("писатель отказал — применение обязано отказать тоже")
 	}
