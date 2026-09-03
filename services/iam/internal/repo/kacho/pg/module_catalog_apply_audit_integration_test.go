@@ -135,9 +135,16 @@ func TestApplyTakesTheActorFromAVerifiedIdentityOnly(t *testing.T) {
 	t.Run("с проверенной личностью — проходит и называет её", func(t *testing.T) {
 		ctx, pool := catalogPool(t)
 		ctx = operations.WithPrincipal(ctx, auditProbePrincipal)
-		applier := applierOver(t, pool)
+		// Полоса ГЛАГОЛА, а не старта: предмет пробы — личность ВЫЗЫВАЮЩЕГО, а у
+		// пути старта вызывающего нет by construction (применение идёт до подъёма
+		// слушателей, запроса не существует) — там актор процессный и назван
+		// константой. Позови эта проба путь старта, она утверждала бы о личности
+		// там, где её не бывает, и обе её половины стали бы неисполнимы: отказать
+		// старту не за что, а назвать чужую личность ему нечем.
+		applier := verbApplierOver(t, pool)
 
-		rep, err := applier.Apply(ctx, shippedManifest(t, anchoredModule, spareResource))
+		rep, err := applier.Apply(ctx, verbRequest(t, ctx, pool,
+			shippedManifest(t, anchoredModule, spareResource)))
 		require.NoError(t, err, "применение под проверенной личностью отвергнуто: %s", rep)
 		require.True(t, rep.Changed(), "фикстура не изменила каталог: %s", rep)
 
@@ -149,7 +156,7 @@ func TestApplyTakesTheActorFromAVerifiedIdentityOnly(t *testing.T) {
 
 	t.Run("без личности — отказ, и system автором не становится", func(t *testing.T) {
 		ctx, pool := catalogPool(t)
-		applier := applierOver(t, pool)
+		applier := verbApplierOver(t, pool)
 
 		// Контекст БЕЗ личности — тот самый вход, на котором
 		// `PrincipalFromContext` молча возвращает `SystemPrincipal()`.
@@ -159,7 +166,11 @@ func TestApplyTakesTheActorFromAVerifiedIdentityOnly(t *testing.T) {
 			established, anonymous.Type, anonymous.ID)
 		require.False(t, established, "фикстура несёт установленную личность: отрицание стало бы вакуумным")
 
-		rep, err := applier.Apply(ctx, shippedManifest(t, anchoredModule, spareResource))
+		// Вход ПОЛНЫЙ намеренно: подтверждение снято, оба потолка названы. Иначе
+		// отказ пришёл бы по неполному входу, и проба зеленела бы, ничего не
+		// сказав о личности.
+		rep, err := applier.Apply(ctx, verbRequest(t, ctx, pool,
+			shippedManifest(t, anchoredModule, spareResource)))
 		t.Logf("перепись применения: %s", rep)
 		require.Error(t, err,
 			"применение на запросе БЕЗ проверенной личности ПРОШЛО: аудит некому назвать автором, "+

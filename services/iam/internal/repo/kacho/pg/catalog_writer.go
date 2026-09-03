@@ -48,6 +48,7 @@ import (
 
 	"github.com/PRO-Robotech/kacho/services/iam/internal/apps/kacho/modulecatalog"
 	"github.com/PRO-Robotech/kacho/services/iam/internal/catalog"
+	"github.com/PRO-Robotech/kacho/services/iam/internal/service"
 )
 
 // CatalogLockKey — ключ ГЛОБАЛЬНОГО консультативного замка каталога.
@@ -61,6 +62,56 @@ import (
 // незаметно, потому что проба на чужом ключе просто не дождалась бы блокировки и
 // зеленела бы, ничего не проверив.
 const CatalogLockKey = "kacho_iam.module_catalog"
+
+// ModuleStateExpr — ВЫРАЖЕНИЕ отпечатка состояния каталога одного модуля.
+//
+// Скалярное подвыражение SQL, читающее `$1` как имя модуля и отдающее
+// непрозрачную строку. Контракт для вызывающего — ТОЛЬКО равенство: строка не
+// разбирается никем, её состав есть деталь реализации.
+//
+// # Состав ВЫВЕДЕН из `WHERE` писателя, а не выбран
+//
+//	`catalog_module`    `live` — оживление модуля есть изменение
+//	`catalog_resource`  `resource`, `object_type`, `live` — ровно то, что читает
+//	                    условие изменения `UpsertResource`, плюс ключ снятия
+//	`catalog_verb`      `resource`, `verb`, `per_object`, `live` — ровно условие
+//	                    изменения `UpsertVerb`, плюс ключ снятия
+//
+// Причина снятия (`retired_reason` / `retired_at` / `superseded_by`) НЕ входит:
+// исхода применения она не меняет — ни один `WHERE` писателя её не читает, — а
+// войдя, обесценивала бы подтверждение на правке, ничего не решающей.
+//
+// Проекции правил ролей (`role_rule_ref`, `role_verb`, `role_rule_selectors`) НЕ
+// входят: их двигает любой арендатор циклом создания и удаления роли, а их
+// арендаторский писатель замка каталога не берёт вовсе — «CAS» по ним был бы
+// формой без содержания. Довод целиком — `modulecatalog/confirm.go`.
+//
+// # Имя модуля входит БЕЗУСЛОВНО
+//
+// Первая строка агрегата — само имя, а не строка таблицы: модуль, которого в
+// каталоге нет ни одной строкой, иначе давал бы отпечаток пустого агрегата,
+// ОДИН И ТОТ ЖЕ для всех таких модулей, и подтверждение одного пустого модуля
+// проходило бы для другого.
+//
+// # Экспортировано РАДИ ПРОБЫ, и это тот же довод, что у `CatalogLockKey`
+//
+// Проба подтверждения обязана читать состояние ТЕМ ЖЕ выражением, каким его
+// читает CAS: выписанная у неё копия разошлась бы с этой молча — и разошлась бы
+// именно там, где расхождение не видно, потому что на несдвинутом каталоге обе
+// копии отвечают «совпало». Второго объявления состава в дереве не заводится.
+const ModuleStateExpr = `(SELECT md5(coalesce(string_agg(x, '|' ORDER BY x), ''))
+	  FROM (
+	    SELECT 'module:' || $1::text AS x
+	    UNION ALL
+	    SELECT 'm:' || module || ':' || live::text
+	      FROM kacho_iam.catalog_module WHERE module = $1
+	    UNION ALL
+	    SELECT 'r:' || resource || ':' || object_type || ':' || live::text
+	      FROM kacho_iam.catalog_resource WHERE module = $1
+	    UNION ALL
+	    SELECT 'v:' || resource || '.' || verb || ':' || live::text || ':' || per_object::text
+	      FROM kacho_iam.catalog_verb WHERE module = $1
+	  ) s)`
 
 // CatalogWriteRepo — исполнитель транзакций применителя каталога над пулом.
 type CatalogWriteRepo struct {
@@ -404,6 +455,62 @@ func (w catalogWriter) ResettleTenantProjections(
 		return out, fmt.Errorf("переселить выдачи глаголов: %w", err)
 	}
 	return out, nil
+}
+
+// ConfirmModuleState сверяет состояние каталога модуля с подтверждением
+// вызывающего ОДНИМ оператором, кардинальность которого есть вердикт.
+//
+// # Почему это CAS конструкцией базы, а не software check-then-act
+//
+// Сериализует ЗАМОК, взятый первым оператором ЭТОЙ ЖЕ транзакции
+// (`LockCatalog`), а не сравнение: между замком и сверкой второго писателя быть
+// не может — он ждёт на замке, — поэтому состояние, которое сверка признала
+// совпавшим, доживает до коммита by construction. Классический check-then-act
+// оставляет окно между чтением и записью; здесь окна нет, потому что читающий и
+// пишущий — один держатель замка, и оба шага лежат в одной транзакции.
+//
+// Форма — та, которую требует `data-integrity.md` от атомарного сравнения,
+// перенесённая на чтение: не «прочитать, сравнить в коде и записать», а ОДИН
+// оператор, чья кардинальность и есть решение. Ноль строк ⇒ состояние
+// сдвинулось; строка ⇒ то самое.
+//
+// Значение отпечатка наружу НЕ отдаётся намеренно: контракт подтверждения —
+// только равенство, а выдача значения завела бы вход, на котором вызывающий
+// сверяет его сам, вне замка и по частям.
+func (w catalogWriter) ConfirmModuleState(ctx context.Context, module, expected string) (bool, error) {
+	var one int
+	err := w.tx.QueryRow(ctx, `SELECT 1 WHERE `+ModuleStateExpr+` = $2`, module, expected).Scan(&one)
+	if errors.Is(err, pgx.ErrNoRows) {
+		return false, nil
+	}
+	if err != nil {
+		return false, fmt.Errorf("сверить состояние каталога модуля %s: %w", module, err)
+	}
+	return true, nil
+}
+
+// EmitApplied записывает след применения В ТОЙ ЖЕ транзакции.
+//
+// # Шва здесь нет by construction, и второй копии не заводится
+//
+// Путь записи в чужую транзакцию в дереве ОДИН — `insertAuditEventTx`, вход
+// которого есть `pgx.Tx`; транзакция применителя — тот же `pgx.Tx` того же
+// пакета. Значит атомарность следа с применением не требует ни переходника, ни
+// второго объявления формы записи: откат уносит запись вместе с применением,
+// коммит кладёт их вместе.
+//
+// Тело записи собирает USE-CASE (`modulecatalog.AppliedEvent.Payload`), а не
+// этот адаптер: имена ключей — решение того, кто знает предмет события, и
+// `outboxtypes.AuditEvent` говорит это дословно. Адаптер только заворачивает.
+//
+// Арендаторского аккаунта у записи нет и быть не может: каталог — данные
+// ПЛАТФОРМЫ, и приписать применение одному арендатору значило бы утверждать
+// неверное.
+func (w catalogWriter) EmitApplied(ctx context.Context, ev modulecatalog.AppliedEvent) error {
+	return insertAuditEventTx(ctx, w.tx, service.AuditEvent{
+		EventType: modulecatalog.AppliedEventType,
+		Payload:   ev.Payload(),
+	})
 }
 
 // changed исполняет оператор, меняющий не более одной строки, и отвечает,

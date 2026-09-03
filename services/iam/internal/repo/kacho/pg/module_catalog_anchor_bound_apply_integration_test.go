@@ -91,6 +91,9 @@ const (
 // делая следующий пуск невозможным.
 func TestApplyBeyondTheParityAnchorIsRefused(t *testing.T) {
 	ctx, pool := catalogPool(t)
+	// Путь ГЛАГОЛА идёт под проверенной личностью (§2.7): фикстура, зовущая его
+	// анонимно, была бы снисходительнее продукта.
+	ctx = verbCallerCtx(ctx)
 	applier := verbApplierOver(t, pool)
 
 	// ПРЕДПОСЫЛКА: посеянный каталог сошёлся с опорой. Без неё отказ ниже
@@ -109,7 +112,7 @@ func TestApplyBeyondTheParityAnchorIsRefused(t *testing.T) {
 		Verbs:      []manifest.Verb{{Name: "get"}},
 	})
 
-	rep, err := applier.Apply(ctx, m)
+	rep, err := applier.Apply(ctx, verbRequest(t, ctx, pool, m))
 	t.Logf("перепись применения: %s", rep)
 	require.Error(t, err,
 		"применение, объявляющее строку вне опоры, ПРОШЛО: каталог выведен за пределы того, "+
@@ -135,6 +138,9 @@ func TestApplyBeyondTheParityAnchorIsRefused(t *testing.T) {
 // стража эта корзина не входит.
 func TestApplyNarrowingTheCatalogPassesAndTheNextBootStands(t *testing.T) {
 	ctx, pool := catalogPool(t)
+	// Путь ГЛАГОЛА идёт под проверенной личностью (§2.7): фикстура, зовущая его
+	// анонимно, была бы снисходительнее продукта.
+	ctx = verbCallerCtx(ctx)
 	applier := verbApplierOver(t, pool)
 
 	census, err := seed.AssertCatalogParity(ctx, kachopg.NewCatalogRepo(pool))
@@ -155,7 +161,7 @@ func TestApplyNarrowingTheCatalogPassesAndTheNextBootStands(t *testing.T) {
 	require.NotEmpty(t, declaredVerbs, "у снимаемого ресурса нет объявленных действий: снимать нечего")
 	m := shippedManifest(t, anchoredModule, spareResource)
 
-	rep, err := applier.Apply(ctx, m)
+	rep, err := applier.Apply(ctx, verbRequest(t, ctx, pool, m))
 	t.Logf("перепись применения: %s", rep)
 	require.NoError(t, err,
 		"сужение каталога отвергнуто: страж принимает снятие третьей корзиной, "+
@@ -191,6 +197,9 @@ func TestApplyNarrowingTheCatalogPassesAndTheNextBootStands(t *testing.T) {
 // без него «паритет цел после применения» зеленело бы на страже, молчащем всегда.
 func TestApplyFixingDriftPassesAndLeavesParityWhole(t *testing.T) {
 	ctx, pool := catalogPool(t)
+	// Путь ГЛАГОЛА идёт под проверенной личностью (§2.7): фикстура, зовущая его
+	// анонимно, была бы снисходительнее продукта.
+	ctx = verbCallerCtx(ctx)
 	applier := verbApplierOver(t, pool)
 
 	_, err := seed.AssertCatalogParity(ctx, kachopg.NewCatalogRepo(pool))
@@ -204,7 +213,7 @@ func TestApplyFixingDriftPassesAndLeavesParityWhole(t *testing.T) {
 	require.Truef(t, namesRow(drifted.ExtraRows, "ресурс "+anchoredModule+"."+driftResource),
 		"страж не назвал лишнюю строку поимённо: %v", drifted.ExtraRows)
 
-	rep, err := applier.Apply(ctx, shippedManifest(t, anchoredModule, ""))
+	rep, err := applier.Apply(ctx, verbRequest(t, ctx, pool, shippedManifest(t, anchoredModule, "")))
 	t.Logf("перепись применения: %s", rep)
 	require.NoError(t, err, "применение, сходящее дрейф, отвергнуто")
 	require.Equal(t, 1, rep.RetiredResources, "дрейфовая строка не снята: %s", rep)

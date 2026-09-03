@@ -72,13 +72,17 @@ func beyondAnchorManifest(t *testing.T) *manifest.Manifest {
 func TestApplyLaneDecidesWhoChecksTheAnchor(t *testing.T) {
 	t.Run("глагол сверяет сам", func(t *testing.T) {
 		ctx, pool := catalogPool(t)
+		// Путь ГЛАГОЛА идёт под проверенной личностью: без неё он отказывает
+		// раньше сверки опоры (§2.7), и проба читала бы чужой отказ как свойство
+		// полосы.
+		ctx = verbCallerCtx(ctx)
 
 		census, err := seed.AssertCatalogParity(ctx, kachopg.NewCatalogRepo(pool))
 		require.NoError(t, err, "предпосылка не создана: посеянный каталог уже разошёлся с опорой")
 		logParityCensus(t, "предпосылка", census)
 		before := moduleCatalogSnapshot(t, ctx, pool, anchoredModule)
 
-		rep, aerr := verbApplierOver(t, pool).Apply(ctx, beyondAnchorManifest(t))
+		rep, aerr := verbApplierOver(t, pool).Apply(ctx, verbRequest(t, ctx, pool, beyondAnchorManifest(t)))
 		t.Logf("перепись применения (глагол): %s", rep)
 		require.Error(t, aerr,
 			"глагол вывел каталог за опору и не заметил: у этой полосы второго рубежа нет, "+

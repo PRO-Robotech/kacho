@@ -47,6 +47,8 @@ type recordingWriter struct {
 	failOnModule string
 	// unchangedModules — модули, чья строка уже стоит: `changed=false`.
 	unchangedModules map[string]bool
+	// audited — следы применения, дошедшие до писателя.
+	audited []modulecatalog.AppliedEvent
 }
 
 var errWriterRefused = errors.New("подставной писатель отказал")
@@ -115,6 +117,27 @@ func (w *recordingWriter) PruneRetiredSelectorTypes(context.Context,
 	[]catalog.ResourceRow) (modulecatalog.Pruned, error) {
 	w.calls = append(w.calls, "prune")
 	return modulecatalog.Pruned{}, nil
+}
+
+// ConfirmModuleState — вход подтверждения (шаг 2 применителя).
+//
+// Эти пробы идут по пути СТАРТА, а он подтверждения не несёт by construction:
+// доставка применяется целиком, плана не было. Значит метод здесь НЕ ЗОВЁТСЯ —
+// и записывает он это в журнал вызовов намеренно: появись «confirm» в переписи
+// пути старта, полосы перепутаны, и проба скажет об этом, а не промолчит.
+func (w *recordingWriter) ConfirmModuleState(context.Context, string, string) (bool, error) {
+	w.calls = append(w.calls, "confirm")
+	return true, nil
+}
+
+// EmitApplied — след применения (шаг 11).
+//
+// Записывает АКТОРА, а не факт вызова: предмет следа — кто применил, и журнал,
+// хранящий только «emit», зеленел бы на записи с подставленным автором.
+func (w *recordingWriter) EmitApplied(_ context.Context, ev modulecatalog.AppliedEvent) error {
+	w.calls = append(w.calls, "audit:"+ev.Actor+":"+ev.Source)
+	w.audited = append(w.audited, ev)
+	return nil
 }
 
 // recordingTx — исполнитель транзакций над одним писателем. Считает ОТКРЫТЫЕ
