@@ -532,10 +532,12 @@ func (m *Model) walk(p *Plan, cur *ModelType, relation string, path []string, se
 	for _, term := range r.Terms {
 		switch term.Kind {
 		case TermDirect:
+			var termConditions []string
 			for _, d := range term.Direct {
 				if d.Condition != "" {
 					p.Conditioned = append(p.Conditioned,
 						fmt.Sprintf("%s.%s: `%s` — условие %q", cur.Name, relation, d.String(), d.Condition))
+					termConditions = append(termConditions, d.Condition)
 				}
 			}
 			// Прямой список отношения-ГЛАГОЛА на самом объекте — это то, что
@@ -550,7 +552,30 @@ func (m *Model) walk(p *Plan, cur *ModelType, relation string, path []string, se
 			// пришлось бы считать от предка, а не от спрошенного объекта.
 			// Сегодня в модели такого нет — и запись самоистекает: появится —
 			// план станет невыразимым и проба назовёт координату.
+			//
+			// Условие на прямом списке ГЛАГОЛА формой E тоже не выражается, и по
+			// той же причине: списку глагола соответствует ПРИВЯЗКА, а привязка
+			// условия не несёт — роль раздаёт глаголы, места под условие у неё
+			// нет. Отдать здесь безусловную привязку значило бы выдать право при
+			// НЕВЫПОЛНЕННОМ условии, и потребитель, читающий `Expressible()`, об
+			// этом не узнал бы.
+			//
+			// Условие на отношении-НЕ-глаголе невыразимым НЕ объявляется: ему
+			// соответствует атом факта, а строка факта несёт условие на себе
+			// (`condition_name`/`condition_params`) и вычисляется на пути запроса.
+			// Там ничего не теряется, и отказ отобрал бы доступ у трёх живых
+			// отношений канона вместе с их БЕЗУСЛОВНЫМИ источниками.
+			//
+			// В каноне условия на глаголе нет — предмет приходит ДОСТАВЛЕННЫМ
+			// манифестом: имя условия канона доставленному типу доступно, и такой
+			// глагол проходит и разбор, и допуск (#1979).
 			switch {
+			case IsVerb(relation) && parent == "" && len(termConditions) > 0:
+				p.Unclassified = append(p.Unclassified,
+					fmt.Sprintf("%s.%s: условие %q стоит на прямом списке ГЛАГОЛА — форма E такого не "+
+						"выражает: прямому списку глагола соответствует привязка, а привязка условия "+
+						"не несёт, и право было бы выдано при невыполненном условии",
+						cur.Name, relation, strings.Join(termConditions, ", ")))
 			case IsVerb(relation) && parent == "":
 				p.Atoms = append(p.Atoms, Atom{Kind: AtomBinding, Relation: relation,
 					Origin: cur.Name + "." + relation})
