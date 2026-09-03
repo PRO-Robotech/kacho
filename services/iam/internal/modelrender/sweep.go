@@ -12,6 +12,7 @@ import (
 	"sort"
 
 	"github.com/PRO-Robotech/kacho/internal/authzplan"
+	"github.com/PRO-Robotech/kacho/pkg/modulemanifest"
 	"github.com/PRO-Robotech/kacho/services/iam/internal/catalog"
 	"github.com/PRO-Robotech/kacho/services/iam/internal/domain"
 	"github.com/PRO-Robotech/kacho/services/iam/internal/manifest"
@@ -475,7 +476,11 @@ func findManifests(treeRoot *os.Root, root string) (map[string]string, []string,
 			}
 			return nil
 		}
-		if d.Name() != "manifest.yaml" {
+		// Имя берётся у ЕДИНСТВЕННОГО объявления, а не пишется здесь: голый
+		// литерал был третьей копией одного соглашения, и разошёлся бы он МОЛЧА —
+		// обход перестал бы находить часть манифестов, не дав ни одной находки
+		// (задача #1934).
+		if d.Name() != modulemanifest.FileName {
 			return nil
 		}
 		// Непрочитанный документ уходит в ТУ ЖЕ корзину, что и неразобранный, и
