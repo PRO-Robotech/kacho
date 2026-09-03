@@ -7,6 +7,11 @@ import { expect, type Page } from "@playwright/test";
 // каталога ожидания, когда её условие было создано поставкой, и путь помощников —
 // единственное, что переезд в ней изменил.
 import { STREAM_PATH, createdResourceId, runTag, tenantWithProject, test } from "./fixtures";
+// Разбор отказа — ЧИСТЫЙ и потому лежит отдельно: его способность различать три
+// беды доказывается голым `node` до подъёма стенда
+// (`scripts/stream-verdict-selftest.ts`). Останься он здесь, доказывать её
+// пришлось бы подъёмом кластера, то есть никогда.
+import { describeStream, streamVerdict, type StreamState } from "./stream-verdict";
 
 /**
  * Браузер читает поток изменений ЧЕРЕЗ КРАЙ.
@@ -310,51 +315,10 @@ async function frames(page: Page): Promise<Frame[]> {
   );
 }
 
-/** Состояние связи глазами страницы. */
-interface StreamState {
-  readyState: number;
-  opened: number;
-  errors: number;
-  failure: string;
-  frames: number;
-  events: number;
-  lastEventId: string;
-  openedAtMs: number;
-  lastFrameAtMs: number;
-  lastErrorAtMs: number;
-  nowMs: number;
-}
-
 async function streamState(page: Page): Promise<StreamState> {
   return page.evaluate(
     () => (window as unknown as Record<string, () => StreamState>).__kachoStreamState(),
   );
-}
-
-/**
- * Состояние связи СЛОВАМИ — эта строка идёт в отказ пробы.
- *
- * Отказ, называющий одно число полученных событий, не даёт разобрать гонку: он
- * одинаков и когда поток оборвался, и когда он открыт и молчит. Поэтому здесь
- * называется всё, чем эти случаи различаются.
- */
-function describeStream(s: StreamState): string {
-  const ready =
-    { [-1]: "НЕ ОТКРЫВАЛОСЬ", 0: "соединяется", 1: "ОТКРЫТО", 2: "ЗАКРЫТО" }[s.readyState] ??
-    `неизвестно (${s.readyState})`;
-  const ago = (t: number) => (t === 0 ? "никогда" : `${Math.round((s.nowMs - t) / 1000)} с назад`);
-  return [
-    `соединение: ${ready}`,
-    `открытий потока: ${s.opened}` +
-      (s.opened > 1 ? " — край ПЕРЕОТКРЫВАЛ поток, между соединениями было окно" : ""),
-    `ошибок связи: ${s.errors}` + (s.errors > 0 ? ` (последняя ${ago(s.lastErrorAtMs)})` : ""),
-    s.failure !== "" ? `край: ${s.failure}` : "",
-    `кадров получено: ${s.frames}, из них событий: ${s.events}`,
-    `последняя позиция: ${s.lastEventId === "" ? "нет" : s.lastEventId}`,
-    `поток открылся ${ago(s.openedAtMs)}, последний кадр ${ago(s.lastFrameAtMs)}`,
-  ]
-    .filter((line) => line !== "")
-    .join("; ");
 }
 
 /**
@@ -433,39 +397,19 @@ async function expectStreamEvent(
   // а в отведённом бюджете, и сказать об этом обязано именно сообщение отказа.
   const late = await count();
 
-  let verdict: string;
-  if (replay.refusal !== "") {
-    verdict =
-      `ВИНОВНИК НЕ УСТАНОВЛЕН: перечитать журнал с позиции «${opts.positionBefore}» не удалось — ` +
-      `${replay.refusal}. Это УСЛОВИЕ разбора, а не вердикт о потоке: о судьбе строки такой ` +
-      `прогон не говорит ничего.`;
-  } else if (late > 0) {
-    verdict =
-      `НЕ ДОЖДАЛИСЬ: поток довёз предмет ПОЗЖЕ отведённых ${Math.round(opts.timeout / 1000)} с — ` +
-      `к концу разбора событий о нём ${late}. Предмет в ВЕЛИЧИНЕ БЮДЖЕТА, а не в продукте; ` +
-      `бюджет поднимать только ЗАМЕРОМ доставки, а не «на всякий случай».`;
-  } else if (replay.found) {
-    verdict =
-      `НЕ ДОЕХАЛО: перечитывание с позиции «${opts.positionBefore}» предмет ПРИНЕСЛО ` +
-      `(кадров ${replay.frames}). Строка в журнале есть и вызывающему видна — значит она ` +
-      `отправлена, а ОТКРЫТЫЙ поток её не довёз. Предмет в ДОСТАВКЕ` +
-      (state.opened > 1 || state.errors > 0
-        ? ": связь рвалась (см. состояние выше), и окно переоткрытия — первое, что надо смотреть."
-        : ": связь не рвалась ни разу, поток всё это время был открыт — значит строку " +
-          "пропустил сам открытый поток, а не разрыв.");
-  } else {
-    verdict =
-      `НЕ ОТПРАВЛЕНО: перечитывание с позиции «${opts.positionBefore}» предмета НЕ принесло ` +
-      `(кадров ${replay.frames}), при том что сам ресурс уже читается по своему адресу. ` +
-      `Значит строки журнала нет вовсе либо она вызывающему не видна. Предмет у ВЛАДЕЛЬЦА ` +
-      `ЖУРНАЛА (запись строки в той же транзакции, построчное сужение по правам), а не в доставке.`;
-  }
+  const verdict = streamVerdict({
+    state,
+    replay,
+    late,
+    position: opts.positionBefore,
+    timeoutMs: opts.timeout,
+  });
 
   throw new Error(
     `${opts.subject}: страница не получила события о предмете ${opts.created}, созданном другим ` +
       `клиентом, за ${Math.round(opts.timeout / 1000)} с.\n` +
       `  СОСТОЯНИЕ: ${describeStream(state)}\n` +
-      `  ВЕРДИКТ: ${verdict}`,
+      `  ВЕРДИКТ [${verdict.cause}]: ${verdict.text}`,
   );
 }
 
