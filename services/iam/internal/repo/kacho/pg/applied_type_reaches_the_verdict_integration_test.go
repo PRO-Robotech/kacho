@@ -50,7 +50,27 @@ package pg_test
 //
 // ЧЕГО ПРОБА НЕ ПОКРЫВАЕТ, сказано прямо: транспорт (RPC), операцию, стража прав
 // вызывающего и материализацию кортежей. Их полосы свои, и утверждать о них здесь
-// значило бы заявлять шире сделанного.
+// значило бы заявлять шире сделанного. Подставлены ВХОДЫ, а не звенья цепи:
+// арендаторская обвязка и строка выдачи кладутся оператором вставки, тогда как
+// каталог, снимок, проекция и вердикт ПРОИЗВОДЯТСЯ. Вопрос задаётся форме `Ask`
+// (`relverdict/query.go`); `List` и `Expand` соединяют ту же `role_verb` и здесь
+// не спрашиваются.
+//
+// ─────────────────────────────────────────────────────────────────────────────
+// ДВА КОНТРОЛЯ, БЕЗ КОТОРЫХ УТВЕРЖДЕНИЕ ПУСТО
+//
+// Пара «снято → отказ, заведено → разрешение» порознь выполнима двумя способами,
+// не имеющими к предмету отношения, и оба измерены инъекцией, а не выведены:
+//
+//  1. ЖИВОЙ СОСЕД. Отказ в снятом состоянии выполним цепью вердикта, отвечающей
+//     отказом ВСЕМУ. Инъекция — переселение проекций, расширенное со снятого
+//     РЕСУРСА до всего МОДУЛЯ: дофиксовая проба остаётся зелёной и печатает
+//     «сквозной путь СОШЁЛСЯ», дополненная краснеет и называет соседа;
+//  2. ПРИПИСЫВАЕМОСТЬ. Непустая проекция после заведения выполнима снимком,
+//     который снятия не заметил вовсе. Инъекция — `Snapshot.Refresh`, отвечающий
+//     успехом и не подменяющий факт: дофиксовая проба зелена и печатает то же
+//     «СОШЁЛСЯ» на снимке, ни разу не обновившемся; дополненная краснеет на
+//     утверждении о потере.
 
 import (
 	"context"
@@ -81,6 +101,19 @@ const (
 	verdictShippedRes    = "cidrGroup"
 	verdictShippedDotted = verdictShippedModule + "." + verdictShippedRes
 	verdictShippedModel  = "vpc_cidr_group"
+)
+
+// Предмет ЖИВОГО СОСЕДА: ресурс ТОГО ЖЕ модуля, которого снятие не касается.
+//
+// Он нужен как положительный контроль В СНЯТОМ СОСТОЯНИИ, и это не украшение:
+// без него «после снятия — отказ» выполнимо цепью вердикта, отвечающей отказом
+// ВСЕМУ, — то есть шаг снятия зеленел бы на сломанном целиком пути, и отличить
+// это от исправной работы было бы нечем. Сосед поставляемый, живой на всём
+// протяжении пробы, и спрашивается ТЕМ ЖЕ путём.
+const (
+	verdictNeighbourRes    = "network"
+	verdictNeighbourDotted = verdictShippedModule + "." + verdictNeighbourRes
+	verdictNeighbourModel  = "vpc_network"
 )
 
 // Предмет ВТОРОЙ пробы: тип, которого сборка не знает ни одним словарём. Модуль
@@ -186,6 +219,17 @@ func declareRole(t *testing.T, ctx context.Context, pool *pgxpool.Pool, repo kac
 	require.NoError(t, w.Commit(ctx))
 	committed = true
 	return pairs
+}
+
+// snapshotProjectionOf — пары проекции по снимку, БЕЗ записи.
+//
+// Читающий близнец `declareRole`, и он нужен именно в СНЯТОМ состоянии: писать
+// пару по снятому типу нельзя — её отвергнет внешний ключ `role_verb_type_fk`, и
+// отказ пришёл бы ЧУЖОЙ полосой вместо утверждения этой пробы. Спрашивается ровно
+// то, что кладёт писатель, и теми же селекторами.
+func snapshotProjectionOf(facts *catalog.Facts, module, resource string) []domain.RoleVerb {
+	rules := domain.Rules{{Module: module, Resources: []string{resource}, Verbs: []string{"*"}}}
+	return facts.RoleVerbsFromSelectors(rules.MaterializingSelectors())
 }
 
 // grantOnProject выдаёт роль субъекту на проект и кладёт объект под этот проект.
@@ -311,6 +355,28 @@ func TestDoD1_RuntimeAppliedCatalogRowCarriesTheGrantToTheVerdict(t *testing.T) 
 	t.Logf("исходно: тип %q → пар проекции %d, глаголы %v",
 		verdictShippedDotted, len(pairs), verbsOf(pairs))
 
+	// ── (1а) ЖИВОЙ СОСЕД: заводится СЕЙЧАС, спрашивается в СНЯТОМ состоянии ──
+	//
+	// Здесь утверждается только то, что путь соседа работает ДО снятия. Без
+	// этого утверждения контроль ниже был бы двусмыслен: его краснота означала бы
+	// и «снятие унесло соседа», и «сосед не работал никогда».
+	const neighbourRoleID = "rol-dod1-neighbour"
+	npairs := declareRole(t, ctx, pool, repo, snap.Facts(),
+		neighbourRoleID, tn.accountID, verdictShippedModule, verdictNeighbourRes)
+	require.NotEmptyf(t, npairs,
+		"проекция по соседу %q пуста ещё до снятия — контроль живого соседа стал бы "+
+			"беспредметным", verdictNeighbourDotted)
+	grantOnProject(t, ctx, pool, tn, "acb-dod1-nb", neighbourRoleID, verdictNeighbourModel, "net-dod1")
+
+	nGot, nGrounds, nErr := askVerdict(t, ctx, pool, tn.granted, verdictNeighbourModel, "net-dod1", "v_get")
+	require.NoError(t, nErr, "вердикт по соседу не вычислен — это «не выполнилось», а не отказ")
+	require.Equalf(t, relverdict.Allow, nGot,
+		"сосед %q не даёт allow ДО всякого снятия (тип не объявлен моделью: %t) — контроль, "+
+			"который не может быть верен, не отличает ничего",
+		verdictNeighbourDotted, nGrounds.TypeNotDeclared)
+	t.Logf("живой сосед: тип %q → пар проекции %d, вердикт до снятия = %v",
+		verdictNeighbourDotted, len(npairs), nGot)
+
 	got, grounds, aerr := askVerdict(t, ctx, pool, tn.granted, verdictShippedModel, "cg-dod1", "v_get")
 	require.NoErrorf(t, aerr, "вердикт не вычислен — это «не выполнилось», а не отказ")
 	require.Equalf(t, relverdict.Allow, got,
@@ -323,6 +389,21 @@ func TestDoD1_RuntimeAppliedCatalogRowCarriesTheGrantToTheVerdict(t *testing.T) 
 	require.Truef(t, rep.Changed(), "снятие каталог не изменило (%s) — снимать было нечего", rep)
 	t.Logf("снятие: %s", rep)
 	require.NoError(t, snap.Refresh(ctx), "обновление снимка каталога")
+
+	// ПРИПИСЫВАЕМОСТЬ шага (3), и без неё он не утверждает своего предмета:
+	// непустая проекция после заведения получилась бы и у снимка, снятия не
+	// заметившего вовсе. Тогда «заведено ПРИМЕНЕНИЕМ» доказывалось бы состоянием,
+	// которое просто ни разу не менялось, и отставший снимок был бы неотличим от
+	// исправной работы.
+	require.Emptyf(t, snapshotProjectionOf(snap.Facts(), verdictShippedModule, verdictShippedRes),
+		"снимок не потерял снятый тип %q: пары шага заведения тогда не приписываются "+
+			"применению — их дал бы и снимок, ни разу не обновившийся", verdictShippedDotted)
+	// ЗЕРКАЛО к утверждению выше: сосед в снимке остался. Без него «потеряно»
+	// зеленело бы и на снимке, потерявшем ВСЁ, то есть на другой поломке.
+	require.NotEmptyf(t, snapshotProjectionOf(snap.Facts(), verdictShippedModule, verdictNeighbourRes),
+		"снимок после снятия %q потерял и живого соседа %q — утверждение о потере выше "+
+			"зеленело бы на снимке, потерявшем всё",
+		verdictShippedDotted, verdictNeighbourDotted)
 
 	got, grounds, aerr = askVerdict(t, ctx, pool, tn.granted, verdictShippedModel, "cg-dod1", "v_get")
 	require.NoError(t, aerr, "вердикт после снятия не вычислен — «не выполнилось», а не отказ")
@@ -337,6 +418,20 @@ func TestDoD1_RuntimeAppliedCatalogRowCarriesTheGrantToTheVerdict(t *testing.T) 
 			"отказ: модель типа %q знает, снята СТРОКА КАТАЛОГА, и различать их обязательно",
 		verdictShippedModel)
 	t.Logf("после снятия: исход=%v, тип не объявлен моделью=%t", got, grounds.TypeNotDeclared)
+
+	// ЖИВОЙ СОСЕД В СНЯТОМ СОСТОЯНИИ — отказ выше сказан ИМЕННО о снятой строке.
+	// Утверждение `TypeNotDeclared == false` выше говорит, что вердикт ПОНЯЛ
+	// вопрос; оно не говорит, что вердикт кому-нибудь ещё отвечает «да» в этот
+	// самый момент. Разные вопросы, и второй закрывается только соседом.
+	nGot, nGrounds, nErr = askVerdict(t, ctx, pool, tn.granted, verdictNeighbourModel, "net-dod1", "v_get")
+	require.NoError(t, nErr, "вердикт по соседу после снятия не вычислен")
+	require.Equalf(t, relverdict.Allow, nGot,
+		"снятие ресурса %q унесло с собой живого соседа %q (вердикт %v, тип не объявлен "+
+			"моделью: %t): отказ выше тогда сказан не о снятой строке, а о цепи вердикта, "+
+			"отвечающей отказом ВСЕМУ",
+		verdictShippedDotted, verdictNeighbourDotted, nGot, nGrounds.TypeNotDeclared)
+	t.Logf("живой сосед в снятом состоянии: %q → %v — отказ выше принадлежит снятой строке",
+		verdictNeighbourDotted, nGot)
 
 	// ── (3) ЗАВЕДЕНИЕ ПРИМЕНЕНИЕМ: вердикт восстанавливается ───────────────
 	rep, err = applier.Apply(ctx, shippedManifest(t, verdictShippedModule, ""))
