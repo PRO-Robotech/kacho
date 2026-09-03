@@ -25,6 +25,8 @@ import (
 	"database/sql"
 	"testing"
 
+	"github.com/jackc/pgx/v5/pgconn"
+
 	"github.com/stretchr/testify/require"
 )
 
@@ -286,4 +288,92 @@ func seedTargetMemberFixture(db *sql.DB) error {
 		       (binding_id, role_id, rule_fp, object_type, object_id)
 		VALUES ('acb_rw_probe', 'rol_rw_probe', 'fp-rw-probe', 'iam_role', 'rol_rw_probe')`)
 	return err
+}
+
+// TestIntegration_NewGrantOnARetiredRoleIsRefused — IAM-RW-1-16 и IAM-RW-1-31.
+//
+// Три утверждения, и ни одно не выводимо из двух других:
+//
+//	новая выдача на СНЯТУЮ роль    отвергается 23000 с именем связи;
+//	новая выдача на ЖИВУЮ роль     проходит — положительный контроль, без
+//	                               которого отрицание зеленело бы на страже,
+//	                               отвергающем всё;
+//	пережившая выдача              остаётся ПРАВИМОЙ: правка, не меняющая
+//	                               role_id, проходит, а перевод НА снятую роль
+//	                               отвергается — это новая ссылка.
+func TestIntegration_NewGrantOnARetiredRoleIsRefused(t *testing.T) {
+	if testing.Short() {
+		t.Skip("пропуск интеграционной пробы (нужен Docker)")
+	}
+	db := freshIamSchema(t)
+	seedWithdrawalFixture(t, db)
+
+	// Роль снимается: сперва проекции, потом пометка — порядок держит ключ.
+	for _, p := range roleWithdrawalProjections {
+		_, err := db.Exec(`DELETE FROM kacho_iam.` + p.table + ` WHERE role_id = 'rol_rw_probe'`)
+		require.NoErrorf(t, err, "снятие проекции %s отказало", p.table)
+	}
+	_, err := db.Exec(`
+		UPDATE kacho_iam.roles
+		   SET live = false, retired_at = now(), retired_reason = 'проба', retired_by = 'проба'
+		 WHERE id = 'rol_rw_probe'`)
+	require.NoError(t, err, "пометка отказала — предмета для стража не создано")
+
+	// ── отрицание: НОВАЯ выдача на снятую роль отвергается ───────────────────
+	_, err = db.Exec(`
+		INSERT INTO kacho_iam.access_bindings
+		       (id, subject_type, subject_id, role_id, resource_type, resource_id, status)
+		VALUES ('acb_rw_new', 'user', 'usr_rw_probe', 'rol_rw_probe', 'cluster',
+		        'cluster_kacho_root', 'ACTIVE')`)
+	require.Error(t, err, "новая выдача на снятую роль прошла: продукт обещает право, "+
+		"которого не даёт")
+	require.Contains(t, err.Error(), "23000",
+		"отказ обязан прийти классом integrity_constraint_violation, а не иным: "+
+			"23514 отображается в INVALID_ARGUMENT и сказал бы «негоден ввод» там, где "+
+			"негодно СОСТОЯНИЕ платформы: %v", err)
+	require.Equal(t, "access_bindings_role_is_live", constraintNameOf(t, err),
+		"отказ обязан называть связь ПОЛЕМ, а не текстом: по нему маппер выбирает "+
+			"текст, называющий роль, и сообщение сервера наружу не эхается: %v", err)
+
+	// ── положительный контроль: та же операция на ЖИВОЙ роли проходит ────────
+	var liveRole string
+	require.NoError(t, db.QueryRow(
+		`SELECT id FROM kacho_iam.roles WHERE live AND is_system ORDER BY id LIMIT 1`).
+		Scan(&liveRole), "живой системной роли нет — контроль беспредметен")
+	_, err = db.Exec(`
+		INSERT INTO kacho_iam.access_bindings
+		       (id, subject_type, subject_id, role_id, resource_type, resource_id, status)
+		VALUES ('acb_rw_live', 'user', 'usr_rw_probe', $1, 'cluster',
+		        'cluster_kacho_root', 'ACTIVE')`, liveRole)
+	require.NoError(t, err,
+		"выдача на ЖИВУЮ роль отвергнута: страж отвергает всё, и отрицание выше "+
+			"зеленело бы на сломанном")
+
+	// ── IAM-RW-1-31: пережившая выдача остаётся ПРАВИМОЙ ─────────────────────
+	_, err = db.Exec(
+		`UPDATE kacho_iam.access_bindings SET status = 'REVOKED', revoked_at = now()
+		  WHERE id = 'acb_rw_probe'`)
+	require.NoError(t, err,
+		"пережившую выдачу нельзя отозвать: без раннего выхода стража она замерзает, "+
+			"и §2.4 противоречит собственной следующей строке")
+
+	// ── перевод ЖИВОЙ выдачи НА снятую роль — это НОВАЯ ссылка ───────────────
+	_, err = db.Exec(
+		`UPDATE kacho_iam.access_bindings SET role_id = 'rol_rw_probe' WHERE id = 'acb_rw_live'`)
+	require.Error(t, err, "перевод выдачи на снятую роль прошёл: это новая ссылка")
+	require.Equal(t, "access_bindings_role_is_live", constraintNameOf(t, err),
+		"отказ перевода обязан прийти от стража и назвать связь: %v", err)
+}
+
+// constraintNameOf — имя нарушенной связи из ПОЛЯ отказа, а не из его текста.
+//
+// Различие несущее: текст сервера наружу не эхается (в нём значения и имя
+// ограничения — разведка схемы), поэтому маппер выбирает полосу по ПОЛЮ. Проба,
+// читающая текст, утверждала бы о том, чем продукт не пользуется, и молчала бы
+// в день, когда сервер перестанет печатать имя в сообщении.
+func constraintNameOf(t *testing.T, err error) string {
+	t.Helper()
+	var pgErr *pgconn.PgError
+	require.ErrorAs(t, err, &pgErr, "отказ пришёл не от сервера: %v", err)
+	return pgErr.ConstraintName
 }
