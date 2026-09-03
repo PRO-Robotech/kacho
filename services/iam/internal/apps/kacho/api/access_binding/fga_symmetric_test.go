@@ -1253,6 +1253,6 @@ func (r *fakeRoleRdr) PrunedSelectorTypes(context.Context, []domain.RoleID) (map
 	return nil, stderrors.New("PrunedSelectorTypes не предмет этих проб")
 }
 
-func (r *fakeRoleRdr) UnresolvedSegments(context.Context, []domain.RoleSegment) (map[domain.RoleID]int, error) {
+func (r *fakeRoleRdr) UnresolvedSegments(context.Context, []domain.RoleSegment) (map[domain.RoleID][]domain.RoleSegment, error) {
 	return nil, stderrors.New("UnresolvedSegments не предмет этих проб")
 }

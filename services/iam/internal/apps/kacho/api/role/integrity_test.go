@@ -189,6 +189,8 @@ type integrityHarness struct {
 	ctx   context.Context
 	calls int
 	fail  error
+	// wdFail — отказ ведомости переселения (полоса fail-closed, #1962).
+	wdFail error
 }
 
 func newIntegrityHarness(t *testing.T) *integrityHarness {
@@ -238,6 +240,22 @@ func (h *integrityHarness) project(roleID, objectType string, verbs ...string) {
 func (h *integrityHarness) sync() {
 	h.repo.segFail = h.fail
 	h.repo.segCalls = h.calls
+	h.repo.wdFail = h.wdFail
+}
+
+// withdraw кладёт строку ведомости переселения — то, чем платформа ОБЪЯСНЯЕТ
+// потерю сегмента (#1962). Без неё та же потеря остаётся необъяснённой, и это
+// РАЗНЫЕ состояния, а не оттенки одного.
+func (h *integrityHarness) withdraw(roleID, objectType, verb, reason string) {
+	if h.repo.withdrawn == nil {
+		h.repo.withdrawn = map[string][]domain.WithdrawnGrant{}
+	}
+	h.repo.withdrawn[roleID] = append(h.repo.withdrawn[roleID], domain.WithdrawnGrant{
+		ObjectType: objectType,
+		Verb:       verb,
+		Source:     domain.WithdrawnGrantSourceGrant,
+		Reason:     reason,
+	})
 }
 
 func (h *integrityHarness) get(id string) (domain.Role, error) {

@@ -211,6 +211,6 @@ func (inviteRoleReaderRoles) PrunedSelectorTypes(context.Context, []domain.RoleI
 	return nil, stderrors.New("PrunedSelectorTypes не предмет этих проб")
 }
 
-func (inviteRoleReaderRoles) UnresolvedSegments(context.Context, []domain.RoleSegment) (map[domain.RoleID]int, error) {
+func (inviteRoleReaderRoles) UnresolvedSegments(context.Context, []domain.RoleSegment) (map[domain.RoleID][]domain.RoleSegment, error) {
 	return nil, stderrors.New("UnresolvedSegments не предмет этих проб")
 }

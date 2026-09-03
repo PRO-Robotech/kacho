@@ -61,7 +61,10 @@ func attachIntegrity(ctx context.Context, rd kachorepo.Reader, cat catalog.Sourc
 		segments = append(segments, segs...)
 	}
 
-	unresolved := map[domain.RoleID]int{}
+	// Срез, а не счётчик: величину роли даёт его длина, а состав нужен правилу
+	// (#1962). Второй вопрос об одном предмете разошёлся бы с первым молча — оба
+	// возвращают правдоподобные числа на любом входе.
+	unresolved := map[domain.RoleID][]domain.RoleSegment{}
 	if len(segments) > 0 {
 		got, err := rd.Roles().UnresolvedSegments(ctx, segments)
 		if err != nil {
@@ -97,10 +100,15 @@ func attachIntegrity(ctx context.Context, rd kachorepo.Reader, cat catalog.Sourc
 
 	for i := range roles {
 		id := roles[i].ID
-		roles[i].Integrity = domain.HealthOf(declared[id], unresolved[id])
+		roles[i].Integrity = domain.HealthOf(declared[id], len(unresolved[id]))
 		roles[i].Withdrawn = withdrawn[id]
 		roles[i].PrunedSelectorTypes = pruned[id]
 		roles[i].TypeVerbs = lookup
+		// Состояние правила вешается ЗДЕСЬ ЖЕ и из ТЕХ ЖЕ величин, которыми
+		// выведена целость роли выше: иначе слово и счётчики приехали бы из
+		// разных снимков и могли бы не сойтись (#1962). Второго вопроса к
+		// хранилищу это не стоит — ведомость уже прочитана строкой выше.
+		roles[i].RuleStates = domain.RuleStatesOf(roles[i].Rules, unresolved[id], withdrawn[id])
 	}
 	return nil
 }

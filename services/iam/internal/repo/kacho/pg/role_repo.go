@@ -114,8 +114,8 @@ func (r *roleReader) GetWithVersion(ctx context.Context, id domain.RoleID) (doma
 // своего типа. Это `d.verb = ”`, а не NULL: массивы приходят плотными.
 func (r *roleReader) UnresolvedSegments(
 	ctx context.Context, declared []domain.RoleSegment,
-) (map[domain.RoleID]int, error) {
-	out := make(map[domain.RoleID]int, len(declared))
+) (map[domain.RoleID][]domain.RoleSegment, error) {
+	out := make(map[domain.RoleID][]domain.RoleSegment, len(declared))
 	if len(declared) == 0 {
 		return out, nil
 	}
@@ -131,25 +131,24 @@ func (r *roleReader) UnresolvedSegments(
 		WITH d(role_id, object_type, verb) AS (
 		  SELECT * FROM unnest($1::text[], $2::text[], $3::text[])
 		)
-		SELECT d.role_id, count(*)::int
+		SELECT d.role_id, d.object_type, d.verb
 		  FROM d
 		 WHERE NOT EXISTS (
 		   SELECT 1 FROM kacho_iam.role_verb rv
 		    WHERE rv.role_id     = d.role_id
 		      AND rv.object_type = d.object_type
-		      AND (d.verb = '' OR rv.verb = d.verb))
-		 GROUP BY d.role_id`, ids, types, verbs)
+		      AND (d.verb = '' OR rv.verb = d.verb))`, ids, types, verbs)
 	if err != nil {
 		return nil, mapErr(err, "", "")
 	}
 	defer rows.Close()
 	for rows.Next() {
-		var id string
-		var n int
-		if serr := rows.Scan(&id, &n); serr != nil {
+		var id, objectType, verb string
+		if serr := rows.Scan(&id, &objectType, &verb); serr != nil {
 			return nil, mapErr(serr, "", "")
 		}
-		out[domain.RoleID(id)] = n
+		rid := domain.RoleID(id)
+		out[rid] = append(out[rid], domain.RoleSegment{RoleID: rid, ObjectType: objectType, Verb: verb})
 	}
 	if rerr := rows.Err(); rerr != nil {
 		return nil, mapErr(rerr, "", "")

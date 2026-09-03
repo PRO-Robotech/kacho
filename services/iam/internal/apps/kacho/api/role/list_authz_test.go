@@ -148,17 +148,17 @@ func (a *roleListReader) ListAssignable(ctx context.Context, rt, rid string, f r
 // СТРАНИЦУ, как продукт. Пустой набор здесь означает «ни один сегмент не
 // спроецирован», а не «всё в порядке»: ответ «неразрешённых нет» на непустом
 // входе делал бы дублёра снисходительнее продукта.
-func (a *roleListReader) UnresolvedSegments(ctx context.Context, declared []domain.RoleSegment) (map[domain.RoleID]int, error) {
+func (a *roleListReader) UnresolvedSegments(ctx context.Context, declared []domain.RoleSegment) (map[domain.RoleID][]domain.RoleSegment, error) {
 	a.p.segCalls++
 	if a.p.segFail != nil {
 		return nil, a.p.segFail
 	}
-	out := map[domain.RoleID]int{}
+	out := map[domain.RoleID][]domain.RoleSegment{}
 	for _, d := range declared {
 		if a.p.matches(d) {
 			continue
 		}
-		out[d.RoleID]++
+		out[d.RoleID] = append(out[d.RoleID], d)
 	}
 	return out, nil
 }
