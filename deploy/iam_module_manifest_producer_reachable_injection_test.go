@@ -32,12 +32,27 @@ import (
 	"testing"
 )
 
-// guardedProducerHeader — заголовок цели производителя с ВОЗВРАЩЁННЫМ стражем.
+// guardedProducerHeader — заголовок цели производителя с ВОЗВРАЩЁННЫМ kind-стражем.
 // Он и есть инъекция: состояние дерева до починки #1901.
-const guardedProducerHeader = "module-manifests-configmap: guard-kind-context\n"
+//
+// Kind-страж ДОБАВЛЯЕТСЯ к уже стоящему, а не замещает его. Инъекция обязана
+// ронять ТОЛЬКО проверяемое: замести `guard-declared-context` значило бы разом
+// внести второй дефект — цель, пишущую в кластер без гейта цели, — и красное
+// могло бы прийти от гейта каталога
+// (`deploy/tests/helm/makefile-destructive-guarded-test.sh`), а эта проверка
+// осталась бы вакуумной, ничем себя не выдав.
+const guardedProducerHeader = "module-manifests-configmap: guard-declared-context guard-kind-context\n"
 
-// plainProducerHeader — заголовок после починки: страж принадлежит вызывающему.
-const plainProducerHeader = "module-manifests-configmap:\n"
+// plainProducerHeader — заголовок в дереве: НЕ-kind страж, объявляющий кластер.
+//
+// Здесь стояло `module-manifests-configmap:\n` — цель без единого гейта. Так было
+// ровно между починкой #1901 (kind-страж снят: он делал цель неисполнимой на
+// боевых путях выкатки) и возвратом гейта цели третьим стражем: снятие оставило
+// цель, применяющую ConfigMap в кластер активного контекста, вовсе без
+// подтверждения при ПРЯМОМ вызове. `guard-declared-context` чужой контекст не
+// отвергает — значит предмет ЭТОЙ проверки он не задевает, — но требует, чтобы
+// вызывающий назвал кластер.
+const plainProducerHeader = "module-manifests-configmap: guard-declared-context\n"
 
 // TestProducerReachabilityAuditFallsAndStaysSilentOnItsTwin — прогонов три плюс
 // близнецы по каждой законной форме.
