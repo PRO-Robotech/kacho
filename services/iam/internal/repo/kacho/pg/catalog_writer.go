@@ -234,25 +234,54 @@ func (w catalogWriter) RetireResource(ctx context.Context, r catalog.ResourceRow
 // быть отвергнуто ключом, а не улажено молчаливым отбором права у роли, которую
 // применитель не объявлял.
 //
-// # Почему оператор отдаёт ДВЕ величины, а не одну
+// # Почему СНЯТИЕ производит переселяемое, а не отбирает его второй раз
 //
 // Этот писатель — НЕ автор строки: он её только снимает. Автор один
 // (`roleWriter.ReplaceRoleVerbs` / `ReplaceRuleRefs`), и форму строки знает он.
-// Остаток, который такое разделение оставляет, ровно один: здесь ПОВТОРЁН ключ
-// строки — в предикате `USING … WHERE`. Ключ изменят, предикат разойдётся с
-// отбором, и разойдётся МОЛЧА.
+// Остаток, который такое разделение оставляло, ровно один: ключ строки был
+// ПОВТОРЁН — сначала в отборе (`doomed`), потом в предикате снятия
+// (`USING … WHERE`). Ключ изменят, предикат разойдётся с отбором, и разойдётся
+// МОЛЧА, — поэтому оператор отдавал обе величины, а писатель их сверял.
 //
-// Поэтому оператор отдаёт и `doomed` (что отобрано), и `dropped` (что снято), а
-// писатель их сверяет. Обе величины — из ОДНОГО оператора, то есть из одного
-// снимка: это проверка кардинальности по запрету #10, а не software
-// check-then-act — между отбором и снятием ничего не помещается by construction,
-// и действие по расхождению одно, ОТКАЗ. Транзакция применителя откатывается
-// целиком, каталог остаётся прежним.
+// Повтора больше нет: снятие само СТАЛО отбором. `DELETE … RETURNING` — и
+// единственное место, где сказано, что уходит, и производитель того, что
+// переселяется; вставка в сироты читает его выход. Расхождение отбора со снятием
+// перестало быть представимым — не «не производится ни одним входом», а
+// невыразимо by construction, — и вместе с предметом снята сверка кардинальности
+// (`resettleExactly`) и её проба. Оставлять отрицание, чей вход больше не
+// производится, значило бы держать вечно молчащую проверку, неотличимую от
+// исправной (`testing.md` §«Гейт на класс», п. 9).
 //
-// Расхождения не производит сегодня ни один вход — предикат совпадает с ключом.
-// Способность сверки отказать доказана подачей величин напрямую
-// (`resettle_cardinality_test.go`), а то, что оператор действительно отдаёт обе и
-// что сверку зовут, — против живой базы (`module_catalog_applier_integration_test.go`).
+// # Цена повтора была измерена, а не предположена (задача продукта #1959)
+//
+// Повтор ключа стоил не строки кода, а ИСПОЛНИМОСТИ операции. Ключ проекции
+// правила несёт `verb`, допускающий NULL, поэтому предикат снятия сравнивал его
+// через `IS NOT DISTINCT FROM`, а этот оператор не хешируется и не мержится:
+// планировщик сводил соединение к паре `(module, resource)` и отправлял
+// `role_id`/`verb` в фильтр. На тысяче ролей это давало merge join с
+// `Rows Removed by Join Filter: 99 980 000` — то есть сто миллионов пар ради
+// двадцати тысяч снятий, квадратично по числу ролей.
+//
+// Замер на PostgreSQL 16.15 (shared_buffers 128MB, work_mem 4MB), 1000 ролей,
+// 20 000 строк в популяции, `EXPLAIN (ANALYZE, BUFFERS)`:
+//
+//	повтор ключа, свежая статистика	17 054 мс	merge join, 99 980 000 пар
+//	повтор ключа, ПОСЛЕ `ANALYZE`	   824 мс	hash join, 80 000 пар
+//	снятие-производитель		   834 мс	соединения нет вовсе
+//
+// Средняя строка объясняет, почему дефект дожил до порога незамеченным: та же
+// SQL на той же машине быстрее в двадцать раз, если статистика собрана. Разбор,
+// снятый на собранной статистике, называл дорогим не то звено; применитель на
+// свежей установке встречает первый план, а не второй. Соединения в новой форме
+// нет вовсе — значит выбирать планировщику нечего, и разброса нет.
+//
+// Что осталось дорогим и почему это не чинится здесь: 96 % нового оператора —
+// вставка в сироты (420 мс) и пооперационный триггер ключа на `roles` (385 мс).
+// Ключ снимает `FOR KEY SHARE` со строки роли, и это единственная гонко-безопасная
+// конструкция: заменив его проверкой по множеству, мы отдали бы блокировку и
+// пустили гонку «сирота записана — роль удалена» (запрет #10). Замер потолка:
+// та же вставка без ключа — 414 мс против 818 мс, то есть весь возможный выигрыш
+// вдвое, ценой инварианта. Не берём.
 func (w catalogWriter) ResettleTenantProjections(
 	ctx context.Context,
 	resources []catalog.ResourceRow,
@@ -278,91 +307,56 @@ func (w catalogWriter) ResettleTenantProjections(
 
 	// Один оператор на популяцию: перенос и снятие обязаны быть неделимы, иначе
 	// между ними помещается состояние «право отобрано и нигде не записано».
-	var doomedRuleRefs int
+	// Порядок внутри оператора задан ПОТОКОМ ДАННЫХ, а не порядком записи веток:
+	// `moved` читает выход `dropped`, поэтому вставка не может опередить снятие.
 	if err := w.tx.QueryRow(ctx, `
 		WITH stale_res AS (
 		  SELECT * FROM unnest($1::text[], $2::text[]) AS t(module, resource)
 		), stale_verb AS (
 		  SELECT * FROM unnest($3::text[], $4::text[], $5::text[]) AS t(module, resource, verb)
-		), doomed AS (
-		  SELECT rr.role_id, rr.module, rr.resource, rr.verb
-		    FROM kacho_iam.role_rule_ref rr
-		    JOIN kacho_iam.roles r ON r.id = rr.role_id
-		   WHERE r.is_system = false
+		), dropped AS (
+		  DELETE FROM kacho_iam.role_rule_ref rr
+		   WHERE EXISTS (SELECT 1 FROM kacho_iam.roles r
+		                  WHERE r.id = rr.role_id AND r.is_system = false)
 		     AND (EXISTS (SELECT 1 FROM stale_res s
 		                   WHERE s.module = rr.module AND s.resource = rr.resource)
 		       OR EXISTS (SELECT 1 FROM stale_verb s
 		                   WHERE s.module = rr.module AND s.resource = rr.resource
 		                     AND s.verb = rr.verb))
+		  RETURNING rr.role_id, rr.module, rr.resource, rr.verb
 		), moved AS (
 		  INSERT INTO kacho_iam.role_grant_orphan (role_id, object_type, verb, source, reason)
 		  SELECT d.role_id, d.module || '.' || d.resource, COALESCE(d.verb, ''), 'rule_ref', $6
-		    FROM doomed d
+		    FROM dropped d
 		  ON CONFLICT (role_id, object_type, verb, source) DO NOTHING
-		), dropped AS (
-		  DELETE FROM kacho_iam.role_rule_ref rr
-		   USING doomed d
-		   WHERE rr.role_id = d.role_id AND rr.module = d.module AND rr.resource = d.resource
-		     AND rr.verb IS NOT DISTINCT FROM d.verb
-		  RETURNING 1
 		)
-		SELECT (SELECT count(*) FROM doomed), (SELECT count(*) FROM dropped)`,
+		SELECT (SELECT count(*) FROM dropped)`,
 		resModules, resNames, verbModules, verbResources, verbNames, reason,
-	).Scan(&doomedRuleRefs, &out.RuleRefs); err != nil {
+	).Scan(&out.RuleRefs); err != nil {
 		return out, fmt.Errorf("переселить объявления правил: %w", err)
 	}
-	if err := resettleExactly("role_rule_ref", doomedRuleRefs, out.RuleRefs); err != nil {
-		return out, err
-	}
 
-	var doomedRoleVerbs int
 	if err := w.tx.QueryRow(ctx, `
 		WITH stale_res AS (
 		  SELECT module || '.' || resource AS dotted
 		    FROM unnest($1::text[], $2::text[]) AS t(module, resource)
-		), doomed AS (
-		  SELECT rv.role_id, rv.object_type, rv.verb
-		    FROM kacho_iam.role_verb rv
-		    JOIN kacho_iam.roles r ON r.id = rv.role_id
-		   WHERE r.is_system = false
-		     AND rv.object_type IN (SELECT dotted FROM stale_res)
-		), moved AS (
-		  INSERT INTO kacho_iam.role_grant_orphan (role_id, object_type, verb, source, reason)
-		  SELECT d.role_id, d.object_type, d.verb, 'role_verb', $3 FROM doomed d
-		  ON CONFLICT (role_id, object_type, verb, source) DO NOTHING
 		), dropped AS (
 		  DELETE FROM kacho_iam.role_verb rv
-		   USING doomed d
-		   WHERE rv.role_id = d.role_id AND rv.object_type = d.object_type AND rv.verb = d.verb
-		  RETURNING 1
+		   WHERE EXISTS (SELECT 1 FROM kacho_iam.roles r
+		                  WHERE r.id = rv.role_id AND r.is_system = false)
+		     AND rv.object_type IN (SELECT dotted FROM stale_res)
+		  RETURNING rv.role_id, rv.object_type, rv.verb
+		), moved AS (
+		  INSERT INTO kacho_iam.role_grant_orphan (role_id, object_type, verb, source, reason)
+		  SELECT d.role_id, d.object_type, d.verb, 'role_verb', $3 FROM dropped d
+		  ON CONFLICT (role_id, object_type, verb, source) DO NOTHING
 		)
-		SELECT (SELECT count(*) FROM doomed), (SELECT count(*) FROM dropped)`,
+		SELECT (SELECT count(*) FROM dropped)`,
 		resModules, resNames, reason,
-	).Scan(&doomedRoleVerbs, &out.RoleVerbs); err != nil {
+	).Scan(&out.RoleVerbs); err != nil {
 		return out, fmt.Errorf("переселить выдачи глаголов: %w", err)
 	}
-	if err := resettleExactly("role_verb", doomedRoleVerbs, out.RoleVerbs); err != nil {
-		return out, err
-	}
 	return out, nil
-}
-
-// resettleExactly сверяет, что снято РОВНО отобранное.
-//
-// Обе величины приходят из одного оператора, поэтому расхождение означает ровно
-// одно: предикат снятия разошёлся с ключом строки. Отказ называет популяцию и обе
-// величины — без них читатель видит «переселение не сошлось» и идёт искать
-// причину, не зная ни таблицы, ни стороны расхождения.
-func resettleExactly(population string, doomed, dropped int) error {
-	if doomed == dropped {
-		return nil
-	}
-	return fmt.Errorf(
-		"переселение %s: отобрано %d, снято %d — предикат снятия разошёлся с ключом строки. "+
-			"Снято меньше отобранного — ключ каталога отвергнет снятие 23503 и назовёт не ту "+
-			"причину; снято больше — у арендатора отобрано право, которого никто не отбирал, и "+
-			"переселением оно НЕ сохранено. Транзакция применителя откачена, каталог прежний",
-		population, doomed, dropped)
 }
 
 // changed исполняет оператор, меняющий не более одной строки, и отвечает,
