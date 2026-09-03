@@ -127,7 +127,7 @@ func TestSearchPathGateFallsAndStaysSilentOnItsTwin(t *testing.T) {
 //
 // Без этой пробы «находок 0» на сегодняшнем дереве доказывало бы лишь, что
 // функция умеет считать до нуля. Здесь подан дословный текст помощника, стоявший
-// в двадцати восьми пакетах.
+// в десяти файлах дерева до правки.
 func TestSearchPathGateWouldHaveCaughtTheTreeBeforeTheFix(t *testing.T) {
 	const before = `package probe
 
