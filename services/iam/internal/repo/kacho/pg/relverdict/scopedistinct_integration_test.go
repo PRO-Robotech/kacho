@@ -239,9 +239,11 @@ func armScopeRelation(t *testing.T, prod string) string {
 // scopeCensusSQL — перепись набора областей, собранная НА СПИСКЕ CTE ПРОДУКТА.
 //
 // Продуктовым остаётся всё, что производит набор; пробе принадлежит только
-// финальная проекция. Параметры $6, $8 и $9 списком CTE не читаются — они живут
-// в армах, — поэтому связываются заведомо истинным предикатом: без этого число
-// параметров оператора разошлось бы с числом захваченных значений.
+// финальная проекция. Параметры $6 и $8 списком CTE не читаются — они живут в
+// армах, — поэтому связываются заведомо истинным предикатом: без этого число
+// параметров оператора разошлось бы с числом захваченных значений. Девятого
+// параметра больше нет: имя типа в словаре каталога читается у живой строки
+// каталога прямо в запросе (kacho#1986).
 func scopeCensusSQL(t *testing.T, prod, rel string) string {
 	t.Helper()
 	if n := strings.Count(prod, scopeFinalSelectAnchor); n != 1 {
@@ -253,7 +255,7 @@ func scopeCensusSQL(t *testing.T, prod, rel string) string {
 	return cteList + fmt.Sprintf(`
 SELECT count(*)::int, count(DISTINCT (sc.s_type, sc.s_id))::int
   FROM %s sc
- WHERE $6::text[] IS NOT NULL AND $8::int IS NOT NULL AND $9::text IS NOT NULL`, rel)
+ WHERE $6::text[] IS NOT NULL AND $8::int IS NOT NULL`, rel)
 }
 
 // projectOf / accountOf — зеркальные колонки регистрации, выведенные из цепи.

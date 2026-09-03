@@ -57,8 +57,6 @@ import (
 	"strings"
 
 	"github.com/jackc/pgx/v5"
-
-	"github.com/PRO-Robotech/kacho/services/iam/internal/authzmap"
 )
 
 // ListQuery — вопрос «какие объекты этого типа доступны субъекту».
@@ -116,11 +114,13 @@ const DefaultPageSize = 500
 // $1 subject · $2 object_type в словаре МОДЕЛИ · $3 after_id · $4 размер захода ·
 // $5 max_depth ·
 // $6 типы предков атомов-фактов · $7 отношения атомов-фактов · $8 глаголы атомов-выдачи
-// $9 object_type в словаре КАТАЛОГА — им названы `resource_mirror.object_type`,
-// `role_verb.object_type` и `role_rule_selectors.object_types`, тогда как вопрос
-// приходит словарём модели. Перевод делается ОДИН раз, на входе, единственным
-// переходником (`authzmap.CatalogTypeName`); двух словарей в одном соединении
-// быть не должно — соединение по разным написаниям не совпадает НИКОГДА и молча.
+// Имя типа в словаре КАТАЛОГА параметром НЕ приезжает — им названы
+// `resource_mirror.object_type`, `role_verb.object_type` и
+// `role_rule_selectors.object_types`, тогда как вопрос приходит словарём модели.
+// Перевод стоит на месте заполнителя `{{catalog_type}}` и читает ЖИВУЮ строку
+// каталога (`catalogtype.go`): таблица, порождённая сборкой, о типе, заведённом
+// применением манифеста в работающем процессе, не знает, а соединение по разным
+// написаниям не совпадает НИКОГДА и молча.
 const listSQL = `
 WITH RECURSIVE speaker_pair(s_type, s_id, via) AS (
     -- СУБЪЕКТ ВЫДАЧИ — ПАРОЙ КОЛОНОК, а не склейкой.
@@ -293,10 +293,10 @@ SELECT c.object_id,
            AND bs.resource_type = sc.s_type AND bs.resource_id = sc.s_id
           JOIN kacho_iam.access_bindings b ON b.id = bs.binding_id
           JOIN kacho_iam.role_verb rv
-            ON rv.role_id = b.role_id AND rv.object_type = $9::text
+            ON rv.role_id = b.role_id AND rv.object_type = {{catalog_type}}::text
            AND rv.verb = ANY ($8::text[])
           JOIN kacho_iam.role_rule_selectors rs
-            ON rs.role_id = b.role_id AND $9::text = ANY (rs.object_types)
+            ON rs.role_id = b.role_id AND {{catalog_type}}::text = ANY (rs.object_types)
          WHERE b.status = 'ACTIVE'
            AND (b.expires_at IS NULL OR b.expires_at > now())
            AND b.revoked_at IS NULL
@@ -318,8 +318,9 @@ SELECT c.object_id,
 // listQuerySQL — ГОТОВЫЙ запрос перечисления для выбранной оси кандидатов
 // (довод — у expandQuerySQL).
 func listQuerySQL(labelTable string) string {
-	return strings.Replace(listSQL, candidateFromMark,
-		candidateFrom(labelTable, "$9", "$3", "$4"), 1)
+	sql := strings.Replace(listSQL, candidateFromMark,
+		candidateFrom(labelTable, catalogTypeMark, "$3", "$4"), 1)
+	return strings.ReplaceAll(sql, catalogTypeMark, catalogTypeOfLiveRow("$2"))
 }
 
 // List отдаёт страницу доступных объектов и курсор следующей.
@@ -415,7 +416,7 @@ func listSweep(ctx context.Context, q pgx.Tx, sql string, in ListQuery, after st
 	factParents, factRelations, bindVerbs []string) (allowed []string, scanned int, last string, err error) {
 	rows, err := q.Query(ctx, sql,
 		in.Subject, in.ObjectType, after, size, MaxAncestorDepth,
-		factParents, factRelations, bindVerbs, authzmap.CatalogTypeName(in.ObjectType))
+		factParents, factRelations, bindVerbs)
 	if err != nil {
 		return nil, 0, "", fmt.Errorf("relverdict: перечисление: %w", err)
 	}

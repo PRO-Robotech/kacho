@@ -83,7 +83,14 @@ var dictionaryOfColumn = map[string]dictionary{
 	"resource_scope_edge.object_type": dictModel,
 	"resource_scope_edge.parent_type": dictModel,
 
-	"resource_mirror.object_type":      dictCatalog,
+	"resource_mirror.object_type": dictCatalog,
+	// Каталог ресурсов — ЕДИНСТВЕННОЕ место, где два словаря стоят рядом законно:
+	// строка называет один и тот же тип обоими. Выражение перевода
+	// (`catalogtype.go`) спрашивает по колонке словаря МОДЕЛИ и отдаёт колонку
+	// словаря КАТАЛОГА, поэтому обе обязаны быть здесь: невнесённая прошла бы мимо
+	// гейта молча, а перевод — ровно то место, где ошибка словаря и заводится.
+	"catalog_resource.object_type":     dictModel,
+	"catalog_resource.dotted":          dictCatalog,
 	"role_verb.object_type":            dictCatalog,
 	"role_rule_selectors.object_types": dictCatalog,
 }
@@ -94,8 +101,31 @@ var dictionaryOfColumn = map[string]dictionary{
 // И ТОТ ЖЕ тип, поэтому и объявлены рядом: расхождение между ними — это и есть
 // дефект, ради которого гейт написан.
 type paramDictionary struct {
-	model   string // $N с именем типа в словаре модели
-	catalog string // $N с именем типа в словаре каталога
+	model string // $N с именем типа в словаре модели
+}
+
+// catalogTypeToken — чем гейт называет ВЫРАЖЕНИЕ перевода в разобранном запросе.
+//
+// Имя типа в словаре каталога параметром больше не приезжает: оно читается у живой
+// строки каталога прямо в запросе (kacho#1986, `catalogtype.go`). Разбор ищет
+// сравнения по односложной правой части и обрывает подзапрос на первой же скобке —
+// то есть три несущих сравнения ушли бы из-под гейта МОЛЧА, не уронив его. Поэтому
+// выражение приводится к одному слову ПЕРЕД разбором.
+//
+// Приведение берёт текст у САМОГО продукта (`catalogTypeOfLiveRow`), а не копию:
+// сменится форма выражения — приведение перестанет совпадать, и предпосылка ниже
+// уронит гейт вместо того, чтобы тихо сузить его охват.
+const catalogTypeToken = "$catalog_type"
+
+// readableSQL — запрос в том виде, в каком его разбирает гейт.
+//
+// Выражение перевода заменено односложным знаком, а его СОБСТВЕННЫЙ текст дописан
+// в конец: внутри выражения стоит сравнение `catalog_resource.object_type` с
+// параметром словаря модели, и оно судится наравне с остальными — иначе приведение
+// сняло бы с гейта ровно ту строку, где перевод и делается.
+func readableSQL(sql, modelParam string) string {
+	expr := catalogTypeOfLiveRow(modelParam)
+	return strings.ReplaceAll(sql, expr, catalogTypeToken) + "\n" + expr
 }
 
 // queryUnderGate — один судимый запрос: как он собирается и чем названы его
@@ -108,15 +138,15 @@ type queryUnderGate struct {
 
 func queriesUnderGate() []queryUnderGate {
 	return []queryUnderGate{
-		{"вердикт", verdictQuerySQL, paramDictionary{model: "$2", catalog: "$9"}},
+		{"вердикт", verdictQuerySQL, paramDictionary{model: "$2"}},
 		// Вердикт о СТРАНИЦЕ — отдельный запрос и потому отдельный судимый:
 		// он собирает те же ветви, но своими подстановками, и словарь у него
 		// может разойтись независимо. Перечень судимых выписан, поэтому запрос,
 		// сюда не внесённый, остался бы не осмотренным молча.
-		{"вердикт о странице", verdictManyQuerySQL, paramDictionary{model: "$2", catalog: "$9"}},
-		{"разбор оснований", expandQuerySQL, paramDictionary{model: "$1", catalog: "$7"}},
-		{"перечисление субъектов", subjectsQuerySQL, paramDictionary{model: "$1", catalog: "$9"}},
-		{"перечисление объектов", listQuerySQL, paramDictionary{model: "$2", catalog: "$9"}},
+		{"вердикт о странице", verdictManyQuerySQL, paramDictionary{model: "$2"}},
+		{"разбор оснований", expandQuerySQL, paramDictionary{model: "$1"}},
+		{"перечисление субъектов", subjectsQuerySQL, paramDictionary{model: "$1"}},
+		{"перечисление объектов", listQuerySQL, paramDictionary{model: "$2"}},
 	}
 }
 
@@ -193,7 +223,7 @@ func TestEveryTypeColumnIsReadInItsOwnDictionary(t *testing.T) {
 	for _, q := range queriesUnderGate() {
 		for _, axis := range axesUnderGate() {
 			queries++
-			sql := stripSQLComments(q.build(axis.table))
+			sql := readableSQL(stripSQLComments(q.build(axis.table)), q.params.model)
 			aliases := aliasesOf(sql)
 
 			// Словарь стороны: колонка — по перечню, параметр — по объявлению
@@ -203,8 +233,8 @@ func TestEveryTypeColumnIsReadInItsOwnDictionary(t *testing.T) {
 				switch token {
 				case q.params.model:
 					return side{dictModel, "параметр " + token, true}
-				case q.params.catalog:
-					return side{dictCatalog, "параметр " + token, true}
+				case catalogTypeToken:
+					return side{dictCatalog, "перевод по живой строке каталога", true}
 				}
 				if strings.HasSuffix(token, ".s_type") || token == "s_type" {
 					return side{dictModel, "цепь областей (" + token + ")", true}
@@ -281,13 +311,18 @@ func TestEveryTypeColumnIsReadInItsOwnDictionary(t *testing.T) {
 func TestTypeDictionaryGateSeesBothComparisonFormsOnBothAxes(t *testing.T) {
 	for _, q := range queriesUnderGate() {
 		for _, axis := range axesUnderGate() {
-			sql := stripSQLComments(q.build(axis.table))
-			if len(aliasesOf(sql)) == 0 {
+			raw := stripSQLComments(q.build(axis.table))
+			if len(aliasesOf(raw)) == 0 {
 				t.Errorf("%s / %s: ни одного алиаса таблицы не разобрано", q.name, axis.name)
 			}
-			if !strings.Contains(sql, q.params.catalog) {
-				t.Errorf("%s / %s: параметр словаря каталога %s в запросе отсутствует — "+
-					"объявление гейта разошлось с запросом", q.name, axis.name, q.params.catalog)
+			if !strings.Contains(raw, catalogTypeOfLiveRow(q.params.model)) {
+				t.Errorf("%s / %s: выражения перевода по живой строке каталога в запросе "+
+					"нет — объявление гейта разошлось с запросом, и приведение сняло бы три "+
+					"сравнения с гейта молча", q.name, axis.name)
+			}
+			if !strings.Contains(readableSQL(raw, q.params.model), catalogTypeToken) {
+				t.Errorf("%s / %s: приведение не поставило знак словаря каталога",
+					q.name, axis.name)
 			}
 		}
 	}

@@ -26,8 +26,6 @@ import (
 	"strings"
 
 	"github.com/jackc/pgx/v5"
-
-	"github.com/PRO-Robotech/kacho/services/iam/internal/authzmap"
 )
 
 // SubjectsQuery — вопрос «кто может это над этим объектом».
@@ -52,11 +50,13 @@ type SubjectsQuery struct {
 //
 // $1 object_type в словаре МОДЕЛИ · $2 object_id · $3 after · $4 limit · $5 max_depth ·
 // $6 типы предков атомов-фактов · $7 отношения атомов-фактов · $8 глаголы атомов-выдачи
-// $9 object_type в словаре КАТАЛОГА — им названы `resource_mirror.object_type`,
-// `role_verb.object_type` и `role_rule_selectors.object_types`, тогда как вопрос
-// приходит словарём модели. Перевод делается ОДИН раз, на входе, единственным
-// переходником (`authzmap.CatalogTypeName`); двух словарей в одном соединении
-// быть не должно — соединение по разным написаниям не совпадает НИКОГДА и молча.
+// Имя типа в словаре КАТАЛОГА параметром НЕ приезжает — им названы
+// `resource_mirror.object_type`, `role_verb.object_type` и
+// `role_rule_selectors.object_types`, тогда как вопрос приходит словарём модели.
+// Перевод стоит на месте заполнителя `{{catalog_type}}` и читает ЖИВУЮ строку
+// каталога (`catalogtype.go`): таблица, порождённая сборкой, о типе, заведённом
+// применением манифеста в работающем процессе, не знает, а соединение по разным
+// написаниям не совпадает НИКОГДА и молча.
 const subjectsSQL = `
 WITH RECURSIVE
 -- scope — ОБЛАСТИ, на которые может быть сделана действующая выдача: сам объект
@@ -149,10 +149,10 @@ named(subject) AS (
       FROM kacho_iam.access_bindings b
       JOIN kacho_iam.access_binding_subjects bs ON bs.binding_id = b.id
       JOIN kacho_iam.role_verb rv
-        ON rv.role_id = b.role_id AND rv.object_type = $9::text
+        ON rv.role_id = b.role_id AND rv.object_type = {{catalog_type}}::text
        AND rv.verb = ANY ($8::text[])
       JOIN kacho_iam.role_rule_selectors rs
-        ON rs.role_id = b.role_id AND $9::text = ANY (rs.object_types)
+        ON rs.role_id = b.role_id AND {{catalog_type}}::text = ANY (rs.object_types)
       JOIN scope_distinct sc ON sc.s_type = b.resource_type AND sc.s_id = b.resource_id
       -- Метки лежат там, где велит ТИП (labelaxis.go): у чужого ресурса — в
       -- зеркале, у собственного объекта iam — в его таблице.
@@ -184,8 +184,9 @@ SELECT g.subject
 // меток (довод — у expandQuerySQL).
 func subjectsQuerySQL(labelTable string) string {
 	sql := strings.Replace(subjectsSQL, labelsJoinMark,
-		labelsJoinPinned(labelTable, "$9", "$2"), 1)
-	return strings.Replace(sql, membersJoinMark, membersOfNamedGroups("n.subject"), 1)
+		labelsJoinPinned(labelTable, catalogTypeMark, "$2"), 1)
+	sql = strings.Replace(sql, membersJoinMark, membersOfNamedGroups("n.subject"), 1)
+	return strings.ReplaceAll(sql, catalogTypeMark, catalogTypeOfLiveRow("$1"))
 }
 
 // Subjects отдаёт страницу субъектов, имеющих отношение на объекте.
@@ -210,7 +211,7 @@ func Subjects(ctx context.Context, q pgx.Tx, in SubjectsQuery) (subjects []strin
 	}
 	rows, err := q.Query(ctx, subjectsQuerySQL(labelTable),
 		in.ObjectType, in.ObjectID, in.AfterID, limit, MaxAncestorDepth,
-		factParents, factRelations, bindVerbs, authzmap.CatalogTypeName(in.ObjectType))
+		factParents, factRelations, bindVerbs)
 	if err != nil {
 		return nil, "", fmt.Errorf("relverdict: перечисление субъектов: %w", err)
 	}
