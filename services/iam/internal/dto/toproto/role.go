@@ -178,6 +178,7 @@ func withdrawnGrantsToPb(in []domain.WithdrawnGrant) []*iamv1.WithdrawnGrant {
 			Reason:      g.Reason,
 			WithdrawnAt: timestamppb.New(g.WithdrawnAt.Truncate(time.Second)),
 			AppliedBy:   g.AppliedBy,
+			Cause:       withdrawnGrantCauseToPb(g.Cause),
 		})
 	}
 	return out
@@ -282,13 +283,17 @@ func ruleLifecycleToPb(s domain.RuleLifecycle) iamv1.RuleLifecycle {
 
 // roleLifecycleToPb — жизненное состояние роли наружу (#1913).
 //
-// Нулевое состояние даёт `nil`, а не сообщение с нулевым полем: «этим ответом не
-// вычислено» обязано быть отличимо от «вычислено, и роль объявлена», а на проводе
-// эти два неразличимы, если сообщение всегда присутствует.
+// Сообщение приезжает ВСЕГДА, и нулевое состояние едет значением
+// `ROLE_LIFECYCLE_STATE_UNSPECIFIED` — «этим ответом не вычислено». Ровно та же
+// дисциплина, что у `health` рядом.
+//
+// ЗДЕСЬ СТОЯЛО ОБРАТНОЕ, и довод был ЛОЖЕН: «сообщение, присутствующее всегда,
+// сливает „не вычислено" и „объявлена"». Перемерено во всех трёх кодировках —
+// `UNSPECIFIED` и `DECLARED` различимы в каждой. Цена прежней формы: у нулевого
+// состояния не было ПРОИЗВОДИТЕЛЯ вовсе, то есть перечисление документировало
+// значение, которого клиент не увидел бы никогда, а страница арендатора обещала
+// его в ответе операции.
 func roleLifecycleToPb(l domain.RoleLifecycle) *iamv1.RoleLifecycle {
-	if l.State == domain.RoleLifecycleUnknown {
-		return nil
-	}
 	out := &iamv1.RoleLifecycle{
 		State:         roleLifecycleStateToPb(l.State),
 		RetiredReason: l.RetiredReason,
@@ -314,5 +319,22 @@ func roleLifecycleStateToPb(s domain.RoleLifecycleState) iamv1.RoleLifecycleStat
 		return iamv1.RoleLifecycleState_ROLE_LIFECYCLE_STATE_WITHDRAWN
 	default:
 		return iamv1.RoleLifecycleState_ROLE_LIFECYCLE_STATE_UNSPECIFIED
+	}
+}
+
+// withdrawnGrantCauseToPb — причина переселения словарём контракта (#1913).
+//
+// Корзины «прочее» нет намеренно: неизвестная причина едет нулевой, то есть
+// «не вычислено», а не выдаётся за одну из двух известных. Назвать непонятое
+// «снят каталог» значило бы сказать арендатору, что при возврате объявления
+// строка останется, — а этого мы не знаем.
+func withdrawnGrantCauseToPb(c domain.WithdrawnGrantCause) iamv1.WithdrawnGrantCause {
+	switch c {
+	case domain.WithdrawnGrantCauseCatalogRetired:
+		return iamv1.WithdrawnGrantCause_WITHDRAWN_GRANT_CAUSE_CATALOG_RETIRED
+	case domain.WithdrawnGrantCauseRoleRetired:
+		return iamv1.WithdrawnGrantCause_WITHDRAWN_GRANT_CAUSE_ROLE_RETIRED
+	default:
+		return iamv1.WithdrawnGrantCause_WITHDRAWN_GRANT_CAUSE_UNSPECIFIED
 	}
 }

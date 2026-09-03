@@ -11,8 +11,14 @@ package toproto
 // # Что здесь несущее
 //
 // «Не вычислено» обязано быть отличимо от «вычислено, и роль объявлена». На
-// проводе это различие выражается ОТСУТСТВИЕМ сообщения, а не нулевым полем
-// внутри него: сообщение, присутствующее всегда, оба состояния сливает.
+// проводе это различие выражается ЗНАЧЕНИЕМ состояния, и сообщение приезжает
+// ВСЕГДА — ровно как у `health` рядом.
+//
+// ЗДЕСЬ СТОЯЛО ОБРАТНОЕ, и довод был ложен: «сообщение, присутствующее всегда,
+// оба состояния сливает». Перемерено во всех трёх кодировках — `UNSPECIFIED` и
+// `DECLARED` различимы в каждой; отсутствие же сообщения лишало нулевое
+// состояние ПРОИЗВОДИТЕЛЯ, то есть перечисление документировало значение,
+// которого клиент не увидел бы никогда.
 
 import (
 	"testing"
@@ -25,20 +31,29 @@ import (
 	"github.com/PRO-Robotech/kacho/services/iam/internal/domain"
 )
 
-// TestRoleLifecycleUnknownIsAbsentNotZero — IAM-RW-1-20.
+// TestRoleLifecycleUnknownIsUnspecifiedNotDeclared — IAM-RW-1-20.
 //
-// Ответ операции состояния не несёт, и «нулевое значение означает „этим ответом
-// не вычислено"» закрепляется ОТДЕЛЬНЫМ утверждением, а не подразумевается.
-func TestRoleLifecycleUnknownIsAbsentNotZero(t *testing.T) {
-	require.Nil(t, roleLifecycleToPb(domain.RoleLifecycle{}),
-		"невычисленное состояние обязано приезжать ОТСУТСТВИЕМ сообщения: сообщение с "+
-			"нулевым состоянием неотличимо от вычисленного «объявлена»")
+// Ответ операции состояния не вычисляет, и «нулевое значение означает „этим
+// ответом не вычислено"» закрепляется ОТДЕЛЬНЫМ утверждением, а не
+// подразумевается. Пара обязательна: без положительного близнеца отрицание
+// зеленело бы на отображении, не производящем состояния никогда.
+func TestRoleLifecycleUnknownIsUnspecifiedNotDeclared(t *testing.T) {
+	unknown := roleLifecycleToPb(domain.RoleLifecycle{})
+	require.NotNil(t, unknown,
+		"сообщение обязано приезжать ВСЕГДА: у нулевого состояния иначе нет "+
+			"производителя, и перечисление документировало бы значение, которого "+
+			"клиент не увидит никогда")
+	assert.Equal(t, iamv1.RoleLifecycleState_ROLE_LIFECYCLE_STATE_UNSPECIFIED, unknown.GetState(),
+		"невычисленное состояние обязано приезжать UNSPECIFIED, а не DECLARED: "+
+			"читать молчание как «роль объявлена» значит утверждать о праве по молчанию")
 
-	// Положительный контроль. Без него утверждение выше зеленело бы на
-	// отображении, не производящем сообщения НИКОГДА.
+	// Положительный близнец: вычисленное состояние ОТЛИЧАЕТСЯ от нулевого.
 	declared := roleLifecycleToPb(domain.RoleLifecycle{State: domain.RoleLifecycleDeclared})
-	require.NotNil(t, declared, "вычисленное состояние обязано приезжать сообщением")
+	require.NotNil(t, declared)
 	assert.Equal(t, iamv1.RoleLifecycleState_ROLE_LIFECYCLE_STATE_DECLARED, declared.GetState())
+	assert.NotEqual(t, unknown.GetState(), declared.GetState(),
+		"«не вычислено» и «объявлена» обязаны различаться значением: слив их, ответ "+
+			"операции утверждал бы о праве")
 	assert.Nil(t, declared.GetRetiredAt(), "у объявленной роли момента снятия быть не может")
 	assert.Empty(t, declared.GetRetiredReason())
 	assert.Empty(t, declared.GetRetiredBy())

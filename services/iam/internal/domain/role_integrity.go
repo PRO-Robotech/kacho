@@ -166,7 +166,34 @@ type WithdrawnGrant struct {
 	// ПУСТАЯ строка означает «строка переселена ДО заведения колонки», а не
 	// «автора потеряли»: восстановить его у таких строк не из чего.
 	AppliedBy string
+	// Cause — ПОЧЕМУ строка переселена (#1913). Различие наблюдаемо, потому что
+	// от него зависит поведение: оживление роли снимает строки причины
+	// [WithdrawnGrantCauseRoleRetired] и не трогает строк причины
+	// [WithdrawnGrantCauseCatalogRetired].
+	//
+	// Отличается от [WithdrawnGrant.Source] предметом: тот называет, ИЗ КАКОЙ
+	// проекции строка переселена, этот — ПОЧЕМУ. Величины независимы: каждая
+	// причина встречается у обеих популяций.
+	Cause WithdrawnGrantCause
 }
+
+// WithdrawnGrantCause — почему проекция переселена в ведомость.
+//
+// Нулевой вариант означает «этим ответом не вычислено» и НИКОГДА «причина
+// неизвестна»: непонятая строка ведомости отвергается разбором, а не выдаётся
+// за невычисленную.
+type WithdrawnGrantCause uint8
+
+const (
+	// WithdrawnGrantCauseUnknown — не вычислено ЭТИМ ответом.
+	WithdrawnGrantCauseUnknown WithdrawnGrantCause = iota
+	// WithdrawnGrantCauseCatalogRetired — снята строка КАТАЛОГА платформы, на
+	// которую ссылалось правило. Роль при этом объявлена и жива.
+	WithdrawnGrantCauseCatalogRetired
+	// WithdrawnGrantCauseRoleRetired — снята САМА РОЛЬ. Возврат объявления
+	// оживляет её и снимает эти строки.
+	WithdrawnGrantCauseRoleRetired
+)
 
 // SelectorPruneOutcome — что стало со строкой ОТБОРА, из которой вырезан тип.
 //

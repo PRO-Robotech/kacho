@@ -36,6 +36,7 @@ import (
 	"github.com/PRO-Robotech/kacho/services/iam/internal/apps/kacho/moduleroles"
 	"github.com/PRO-Robotech/kacho/services/iam/internal/domain"
 	"github.com/PRO-Robotech/kacho/services/iam/internal/manifest"
+	kachopg "github.com/PRO-Robotech/kacho/services/iam/internal/repo/kacho/pg"
 )
 
 // withdrawalManifest — документ модуля с ПЕРЕЧИСЛЕННЫМИ ролями. Раздел `roles:`
@@ -242,6 +243,14 @@ func TestIAMRW1PlatformRolesAreNeverRetired(t *testing.T) {
 		Scan(&platformBefore))
 	require.Positive(t, platformBefore,
 		"платформенных ролей ноль — отрицание ниже зеленело бы на пустом множестве")
+	// Проекция платформенной роли ЗАВОДИТСЯ пробой: на свежей базе её наполняет
+	// досев старта, которого этот харнесс не запускает, и утверждение о целости
+	// зеленело бы на пустом множестве.
+	seedPlatformProjection(t, ctx, pool)
+	verbsBefore := platformProjectionRows(t, ctx, pool)
+	require.Positive(t, verbsBefore,
+		"строк проекции у платформенных ролей ноль — утверждение об их целости "+
+			"зеленело бы на пустом множестве")
 
 	rep, err = applier.Apply(ctx, withdrawalManifest(t, "vpc"), moduleroles.BootActorID)
 	require.NoError(t, err, "применение обязано пройти: %s", rep)
@@ -258,7 +267,17 @@ func TestIAMRW1PlatformRolesAreNeverRetired(t *testing.T) {
 		Scan(&platformAfter))
 	assert.Equal(t, platformBefore, platformAfter,
 		"ни одна платформенная роль не может быть снята манифестом модуля")
-	t.Logf("перепись: живых платформенных ролей до %d, после %d", platformBefore, platformAfter)
+
+	// ЖИВОСТИ МАЛО, и это находка ревью: снятие уносит ПРОЕКЦИИ, а пометка
+	// ставится последней. Роль, у которой сняли проекции и не пометили, остаётся
+	// живой — счётчик выше её не заметит, — и не даёт при этом НИЧЕГО. «Не
+	// снимаются» обязано включать «проекции целы».
+	assert.Equal(t, verbsBefore, platformProjectionRows(t, ctx, pool),
+		"у платформенных ролей снята проекция: они остались живыми и без прав, а "+
+			"счётчик живости этого не видит")
+	t.Logf("перепись: живых платформенных ролей до %d, после %d; строк их проекции до %d, "+
+		"после %d", platformBefore, platformAfter, verbsBefore,
+		platformProjectionRows(t, ctx, pool))
 }
 
 // TestIAMRW1RevivalReturnsTheSameRowAndClearsItsOwnLedger — IAM-RW-1-04, -14,
@@ -332,4 +351,125 @@ func TestIAMRW1RevivalReturnsTheSameRowAndClearsItsOwnLedger(t *testing.T) {
 		  WHERE role_id = $1 AND cause = 'role_retired'`, string(id)).Scan(&lastBy))
 	assert.Equal(t, "actor-two", lastBy,
 		"ведомость обязана отвечать ПОСЛЕДНЕЙ причиной и последним автором, а не первой")
+}
+
+// TestIAMRW1OwnershipIsDecidedOnceAndProjectionsSurviveDisagreement — находка
+// `db-architect-reviewer` при ревью #1913.
+//
+// # Предмет — ДВА РАЗНЫХ РАЗЛИЧИТЕЛЯ ВЛАДЕНИЯ
+//
+// Сверка классифицирует роль по приставке ИМЕНИ (`strings.Cut(name, ".")`),
+// оператор пометки — по КОЛОНКЕ `owner_module`. Пока сужение стояло только на
+// пометке, а проекции снимались безусловно, расхождение давало худший исход из
+// возможных: роль оставалась ЖИВОЙ и без прав — от исправной не отличить, — а
+// применение возвращало УСПЕХ.
+//
+// # Что перемерено по дороге, и это меняет форму починки
+//
+// Расхождение «колонка называет ЧУЖОЙ модуль» СХЕМОЙ ЗАПРЕЩЕНО:
+// `roles_owner_module_name_prefix` требует, чтобы имя было составлено из
+// владельца, — фикстура такого состояния не ложится вовсе. Единственное
+// представимое расхождение — пустая колонка при точечном имени, и оно ЗАКОННО:
+// на свежем дереве системных ролей 48, с непустым владельцем — НОЛЬ, точечных
+// без владельца — 44. Колонка заведена без обратного заполнения, а проставляет
+// её применитель ровно тем, что роль ОБЪЯВЛЕНА, — то есть у популяции, которую
+// отзыв снимает, она пуста by construction.
+//
+// Поэтому писатель читает пустую колонку ПО ИМЕНИ, тем же признаком, что сверка,
+// а отказ остаётся сторожем для состояния, которого схема не допускает.
+// Проверяется он ПРЯМЫМ вызовом писателя: через применитель такая роль не
+// доходит — сверка относит её в чужой класс.
+func TestIAMRW1OwnershipIsDecidedOnceAndProjectionsSurviveDisagreement(t *testing.T) {
+	if testing.Short() {
+		t.Skip("skipping integration test")
+	}
+	ctx, pool, applier := applierOnLiveBase(t)
+
+	const roleID = "vpc.rwowner.admin"
+	id := domain.SystemRoleID(domain.RoleName(roleID))
+
+	rep, err := applier.Apply(ctx, withdrawalManifest(t, "vpc", roleID), moduleroles.BootActorID)
+	require.NoError(t, err, "роль обязана лечь: %s", rep)
+	require.Equal(t, 1, countRuleRefs(t, ctx, pool, id), "проекция обязана быть заведена")
+
+	runner := moduleroles.NewRepoTxRunner(kachopg.New(pool, nil))
+
+	// ЧУЖОЙ модуль: писатель обязан ОТКАЗАТЬ и не тронуть ни одной проекции.
+	err = runner.RunInWriteTx(ctx, func(ctx context.Context, w moduleroles.RoleWriter) error {
+		_, rerr := w.RetireRole(ctx, id, "compute", "чужой модуль", "проба")
+		return rerr
+	})
+	require.Error(t, err,
+		"писатель снял роль по требованию ЧУЖОГО модуля: сужение по владельцу не "+
+			"держится, и манифест соседа снимал бы наши роли")
+	assert.Equal(t, 1, countRuleRefs(t, ctx, pool, id),
+		"проекция снята при отказе: транзакция обязана откатиться целиком, иначе роль "+
+			"остаётся живой и без прав")
+	live, _, _ := roleLiveness(t, ctx, pool, id)
+	assert.True(t, live, "роль обязана остаться живой: пометка не ставилась")
+
+	var orphans int
+	require.NoError(t, pool.QueryRow(ctx,
+		`SELECT count(*) FROM role_grant_orphan WHERE role_id = $1 AND cause = 'role_retired'`,
+		string(id)).Scan(&orphans))
+	assert.Zero(t, orphans,
+		"ведомость несёт причину «роль снята» у ЖИВОЙ роли: withdrawn_grants говорит "+
+			"настоящим временем неправду, и оживление этих строк не вычистит никогда")
+
+	// ПОЛОЖИТЕЛЬНЫЙ КОНТРОЛЬ, и он же — про ПУСТУЮ колонку: снятие проходит
+	// СВОИМ модулем даже тогда, когда владелец не проставлен. Без него отрицание
+	// выше зеленело бы на писателе, отказывающем всегда.
+	_, err = pool.Exec(ctx, `UPDATE roles SET owner_module = NULL WHERE id = $1`, string(id))
+	require.NoError(t, err, "фикстура пустого владельца не легла")
+
+	rep, err = applier.Apply(ctx, withdrawalManifest(t, "vpc"), moduleroles.BootActorID)
+	require.NoError(t, err,
+		"снятие роли с ПУСТЫМ владельцем отказало: такова вся популяция, заведённая "+
+			"до колонки владельца, и отзыв для неё стал бы невозможен: %s", rep)
+	assert.Equal(t, 1, rep.Retired, "положительный контроль: снятие обязано пройти: %s", rep)
+	live, _, _ = roleLiveness(t, ctx, pool, id)
+	assert.False(t, live, "роль обязана быть помечена снятой")
+}
+
+// platformProjectionRows — строк проекции глаголов у ролей БЕЗ модуля-владельца.
+//
+// Читается проекция, а не живость: пометка ставится последней, поэтому роль,
+// у которой сняли проекции и не пометили, живость сохраняет — и счётчик живости
+// такую потерю не видит вовсе.
+func platformProjectionRows(t *testing.T, ctx context.Context, pool *pgxpool.Pool) int {
+	t.Helper()
+	var n int
+	require.NoError(t, pool.QueryRow(ctx, `
+		SELECT count(*)
+		  FROM kacho_iam.role_verb rv
+		  JOIN kacho_iam.roles r ON r.id = rv.role_id
+		 WHERE r.owner_module IS NULL AND r.is_system`).Scan(&n))
+	return n
+}
+
+// seedPlatformProjection кладёт одну строку проекции глаголов ПЛАТФОРМЕННОЙ роли.
+//
+// Живой каталожный ресурс и глагол спрашиваются у базы, а не выписываются: ключ
+// проекции ссылается на живую строку каталога, и выписанное имя отвергалось бы
+// им — красное пришло бы от соседа.
+func seedPlatformProjection(t *testing.T, ctx context.Context, pool *pgxpool.Pool) {
+	t.Helper()
+	var roleID, dotted, verb string
+	require.NoError(t, pool.QueryRow(ctx, `
+		SELECT id FROM kacho_iam.roles
+		 WHERE owner_module IS NULL AND is_system AND live ORDER BY id LIMIT 1`).Scan(&roleID),
+		"живой платформенной роли нет — фикстуре не на что сослаться")
+	require.NoError(t, pool.QueryRow(ctx, `
+		SELECT cv.module || '.' || cv.resource, cv.verb
+		  FROM kacho_iam.catalog_verb cv
+		  JOIN kacho_iam.catalog_resource cr
+		    ON cr.module = cv.module AND cr.resource = cv.resource AND cr.live
+		 WHERE cv.live
+		 ORDER BY cv.module, cv.resource, cv.verb
+		 LIMIT 1`).Scan(&dotted, &verb),
+		"живого каталожного глагола нет — фикстуре не на что сослаться")
+	_, err := pool.Exec(ctx, `
+		INSERT INTO kacho_iam.role_verb (role_id, object_type, verb)
+		VALUES ($1, $2, $3) ON CONFLICT DO NOTHING`, roleID, dotted, verb)
+	require.NoError(t, err, "фикстура проекции платформенной роли не легла")
 }

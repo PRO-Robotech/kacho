@@ -53,6 +53,7 @@ import (
 	"github.com/jackc/pgx/v5"
 
 	"github.com/PRO-Robotech/kacho/services/iam/internal/domain"
+	iamerr "github.com/PRO-Robotech/kacho/services/iam/internal/errors"
 )
 
 // roleRetirementCause — причина переселения, которой помечает свои строки полоса
@@ -153,6 +154,60 @@ func (w *roleWriter) RetireRole(ctx context.Context, id domain.RoleID, ownerModu
 ) {
 	var out domain.RoleRetirement
 
+	// ВЛАДЕНИЕ РЕШАЕТСЯ ОДИН РАЗ И ДО ПЕРВОЙ ЗАПИСИ — под замком строки.
+	//
+	// Различителей владения в этом дереве ДВА: сверка классифицирует роль по
+	// приставке ИМЕНИ, оператор — по колонке `owner_module`. Связывает их только
+	// `roles_owner_module_name_prefix`, и только в одну сторону («владелец непуст
+	// ⇒ имя составлено из него»), поэтому строка с именем `vpc.*` и ПУСТЫМ
+	// владельцем законна — и все строки, заведённые до `20260902190500`, такие.
+	//
+	// Пока сужение стояло только на пометке, расхождение давало худший исход из
+	// возможных: проекции снимались, пометка не находила строки, применение
+	// возвращало УСПЕХ. Роль оставалась ЖИВОЙ и не давала ничего — от исправной
+	// не отличить, — а ведомость несла причину «роль снята» у живой роли, и
+	// оживление её не вычистило бы никогда.
+	//
+	// Это НЕ check-then-act (ban #10): `FOR NO KEY UPDATE` держит строку до конца
+	// транзакции, поэтому между этим вопросом и пометкой ни владение, ни живость
+	// измениться не могут. Замок именно `FOR NO KEY UPDATE`, а не `FOR UPDATE`:
+	// он ровно тот, который возьмёт сама пометка, и брать сильнее значило бы
+	// сериализовать чужие чтения без предмета.
+	//
+	// ПУСТОЙ ВЛАДЕЛЕЦ ЧИТАЕТСЯ ПО ИМЕНИ — и это не послабление, а единственная
+	// форма, при которой отзыв вообще возможен. Замер на свежем дереве: системных
+	// ролей 48, с непустым `owner_module` — НОЛЬ, точечных без владельца — 44.
+	// Колонка заведена `20260902190500` и обратного заполнения не несёт, а
+	// проставляет её применитель ровно тем, что роль ОБЪЯВЛЕНА, — то есть у той
+	// популяции, которую отзыв и снимает, она пуста by construction.
+	//
+	// Признак берётся ТОТ ЖЕ, которым классифицирует сверка (первый сегмент
+	// имени): второй различитель владения и есть предмет находки. Платформенные
+	// роли им не задеваются — `admin`, `edit`, `view`, `owner` точки не несут
+	// вовсе, а первый сегмент `kacho-system.*` членом набора модулей не является,
+	// поэтому равенству с именем модуля они не удовлетворяют ни при каком входе.
+	var owned string
+	err := w.tx.QueryRow(ctx, `
+		SELECT id FROM kacho_iam.roles
+		 WHERE id = $1
+		   AND live
+		   AND (owner_module = $2
+		     OR (owner_module IS NULL AND split_part(name, '.', 1) = $2))
+		 FOR NO KEY UPDATE`, string(id), ownerModule).Scan(&owned)
+	switch {
+	case errors.Is(err, pgx.ErrNoRows):
+		// ОТКАЗ, а не тихий пропуск. «Роль уже снята» сюда не доходит: перечень
+		// живых прочитан этой же транзакцией под этим же замком. Значит
+		// единственная достижимая причина — роль принадлежит ДРУГОМУ модулю
+		// (колонка называет чужого), и молчать о ней нельзя: молчание оставляет
+		// роль без прав и с виду исправной.
+		return out, iamerr.Wrapf(iamerr.ErrFailedPrecondition,
+			"Role %s is not owned by module %s and cannot be retired by its manifest",
+			id, ownerModule)
+	case err != nil:
+		return out, mapErr(err, "", string(id))
+	}
+
 	if err := w.tx.QueryRow(ctx, retireRoleVerbsSQL, string(id), reason, actor).
 		Scan(&out.ResettledVerbs); err != nil {
 		return out, mapErr(err, "", string(id))
@@ -180,19 +235,23 @@ func (w *roleWriter) RetireRole(ctx context.Context, id domain.RoleID, ownerModu
 	}
 	out.RemovedTargetMembers = int(tag.RowsAffected())
 
-	// Пометка. Сужение по владельцу — часть предиката, а не проверка в коде:
-	// проверка перед оператором была бы check-then-act (ban #10).
+	// Пометка. Сужение по владельцу повторяется в предикате НАМЕРЕННО, хотя
+	// замок выше уже его проверил: оператор обязан быть верным сам по себе, а не
+	// по памяти о том, что кто-то спросил раньше. Ноль строк здесь означал бы,
+	// что замок не удержал строку, — и это отказ, а не штатный исход.
 	var marked string
 	err = w.tx.QueryRow(ctx, `
 		UPDATE kacho_iam.roles
 		   SET live = false, retired_at = now(), retired_reason = $2, retired_by = $3
-		 WHERE id = $1 AND owner_module = $4 AND live
+		 WHERE id = $1
+		   AND live
+		   AND (owner_module = $4
+		     OR (owner_module IS NULL AND split_part(name, '.', 1) = $4))
 		RETURNING id`, string(id), reason, actor, ownerModule).Scan(&marked)
 	switch {
 	case errors.Is(err, pgx.ErrNoRows):
-		// Ноль затронутых строк — штатный исход, а не отказ: роль уже снята либо
-		// владелец не совпал. Оба случая означают «здесь снимать нечего».
-		return out, nil
+		return out, iamerr.Wrapf(iamerr.ErrFailedPrecondition,
+			"Role %s changed under the retirement lock and was not marked", id)
 	case err != nil:
 		return out, mapErr(err, "", string(id))
 	}
