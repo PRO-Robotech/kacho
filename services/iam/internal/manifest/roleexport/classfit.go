@@ -466,6 +466,15 @@ type Report struct {
 	Rules Census
 	// RulesJudged — исполнялась ли стадия 2.
 	RulesJudged bool
+	// Named — перепись стадии 3 (названное вхождение, MOD-RL-19); нулевая,
+	// когда стадия не исполнялась.
+	Named NamedCensus
+	// Export — перепись стадии 4 (полнота поимённого перечня, MOD-RL-18).
+	Export ExportCensus
+	// NamedJudged — исполнялись ли стадии 3 и 4. Отдельно от `RulesJudged`:
+	// «стадия молчит» и «стадия не исполнялась» — разные вещи, и вторая не
+	// вычитается из вердикта и не зачитывается в успех.
+	NamedJudged bool
 }
 
 // Summary — перепись обеих стадий строкой, с прямым указанием на неисполненную.
@@ -475,15 +484,31 @@ func (r Report) Summary() string {
 			"стадия «класс удовлетворяет гейт» красна, и множество, по которому " +
 			"считается полнота, ещё не определено"
 	}
-	return r.Classes.Summary() + " | правила ролей: " + r.Rules.Summary()
+	if !r.NamedJudged {
+		return r.Classes.Summary() + " | правила ролей: " + r.Rules.Summary() +
+			" | поимённая форма: проверка НЕ ИСПОЛНЯЛАСЬ — стадия классов правил красна, " +
+			"и класс, по которому считается полнота, ещё не определён"
+	}
+	return r.Classes.Summary() + " | правила ролей: " + r.Rules.Summary() +
+		" | " + r.Named.Summary() + " | " + r.Export.Summary()
 }
 
-// Check — обе стадии в ОБЪЯВЛЕННОМ порядке (§3.6 п. 6).
+// Check — ЧЕТЫРЕ стадии в ОБЪЯВЛЕННОМ порядке (§3.6 п. 6, MOD-RL-22 Then):
+// класс действия → класс правила → НАЗВАННОЕ → ПОЛНОТА названного.
 //
 // Порядок и замыкание живут ЗДЕСЬ, а не у вызывающего: проверка порядка,
 // написанная в команде обхода дерева, не защищала бы второго вызывающего той же
 // связки, а «валидирует команду» верно лишь для того пути, который до неё
 // доходит.
+//
+// # Почему названное и его полнота идут ПОСЛЕ, а не рядом
+//
+// Обе считаются ПО КЛАССУ: пригодность названного действия и полнота перечня
+// определены относительно класса, объявленного разделом `resources`. Пока стадия
+// 1 красна, класс объявлен не тем, чем его понимает проверка доступа, и «полный»
+// перечень оказался бы неполным по факту. Пока красна стадия 2, у роли есть
+// пустое право, и вердикт о полноте соседнего был бы вердиктом о роли, которая и
+// так не экспортируется.
 func Check(facts VerbFacts, m *manifest.Manifest, actions []Action) Report {
 	faults, notes, classes := CheckResourceClasses(facts, m, actions)
 	rep := Report{Faults: faults, Notes: notes, Classes: classes}
@@ -494,5 +519,21 @@ func Check(facts VerbFacts, m *manifest.Manifest, actions []Action) Report {
 	rep.Faults = append(rep.Faults, ruleFaults...)
 	rep.Rules = ruleCensus
 	rep.RulesJudged = true
+	if len(ruleFaults) > 0 {
+		return rep
+	}
+	namedFaults, namedCensus := CheckNamedVerbs(facts, m, actions)
+	rep.Faults = append(rep.Faults, namedFaults...)
+	rep.Named = namedCensus
+	rep.NamedJudged = true
+	if len(namedFaults) > 0 {
+		// Полнота перечня, часть которого непригодна, считалась бы по классу,
+		// содержащему то, что правом не выдаётся: отказ назвал бы автору
+		// недостающие имена, дописать которые он всё равно не вправе.
+		return rep
+	}
+	_, exportFaults, exportCensus := ExportRoleRules(facts, m, actions)
+	rep.Faults = append(rep.Faults, exportFaults...)
+	rep.Export = exportCensus
 	return rep
 }
