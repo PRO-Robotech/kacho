@@ -48,6 +48,7 @@ import (
 	"sort"
 	"strings"
 
+	"github.com/PRO-Robotech/kacho/pkg/modulemanifest"
 	"gopkg.in/yaml.v3"
 )
 
@@ -56,12 +57,18 @@ import (
 // ни одной находки.
 const servicesDir = "services"
 
-// manifestFileName — имя манифеста В ДЕРЕВЕ. В каталоге доставки имя другое (см.
-// шапку пакета), и это разные предметы, а не одно имя в двух местах.
-const manifestFileName = "manifest.yaml"
-
-// keySuffix — окончание ключа ConfigMap. Полный ключ — `<каталог>` + это.
-const keySuffix = ".manifest.yaml"
+// manifestFileName — имя манифеста В ДЕРЕВЕ. В каталоге доставки имя другое, и
+// это разные предметы, а не одно имя в двух местах; собирает ключ доставки
+// `modulemanifest.DeliveryKey` (см. Source.Key).
+//
+// Значение берётся у ЕДИНСТВЕННОГО объявления (`pkg/modulemanifest`), а не
+// пишется здесь. Читателей у имени трое, и правило `internal` запрещает этому
+// производителю импортировать загрузчик iam, — поэтому «свести к одному
+// объявлению у iam» неисполнимо by construction, и до заведения пакета имя
+// стояло тремя копиями. Расходятся копии МОЛЧА: производитель, разошедшийся с
+// обходом, кладёт в ConfigMap не то множество, и снаружи это неотличимо от
+// «модулей нет» (задача #1934).
+const manifestFileName = modulemanifest.FileName
 
 // ConfigMapDataLimit — сколько байт манифестов помещается в один ConfigMap.
 //
@@ -107,7 +114,7 @@ type Source struct {
 }
 
 // Key — ключ ConfigMap для этого источника.
-func (s Source) Key() string { return s.Dir + keySuffix }
+func (s Source) Key() string { return modulemanifest.DeliveryKey(s.Dir) }
 
 // Census — объём осмотренного. Печатается ВСЕГДА, на всяком исходе: без него
 // «ноль находок» не отличается от «ноль прочитанного».

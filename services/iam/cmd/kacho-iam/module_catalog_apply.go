@@ -97,6 +97,9 @@ func applyDeliveredManifests(
 		slog.Int("retired_verbs", census.RetiredVerbs),
 		slog.Int("resettled_rule_refs", census.Resettled.RuleRefs),
 		slog.Int("resettled_role_verbs", census.Resettled.RoleVerbs),
+		slog.Int("pruned_selector_rows", census.PrunedSelectorRows),
+		slog.Int("pruned_selector_rows_dropped", census.PrunedSelectorRowsDropped),
+		slog.Int("pruned_selector_types", census.PrunedSelectorTypes),
 		slog.Bool("changed", census.Changed()))
 	if err != nil {
 		return fmt.Errorf("каталог модуля: применение доставленных манифестов: %w", err)

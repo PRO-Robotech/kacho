@@ -80,6 +80,11 @@ type Census struct {
 	RetiredVerbs     int
 	// Resettled — переселённые проекции арендаторских ролей, по популяциям.
 	Resettled Resettled
+	// PrunedSelectorRows / PrunedSelectorTypes — приведение третьей проекции
+	// правила к каталожному факту (`prune.go`).
+	PrunedSelectorRows        int
+	PrunedSelectorRowsDropped int
+	PrunedSelectorTypes       int
 }
 
 // Changed — применение доставки сдвинуло каталог хоть в одном модуле.
@@ -94,11 +99,13 @@ func (c Census) String() string {
 	return fmt.Sprintf(
 		"применено манифестов %d (%v) · изменивших каталог %d · записано ресурсов %d "+
 			"глаголов %d · снято ресурсов %d глаголов %d · переселено правил %d выдач %d · "+
-			"изменения %t",
+			"селекторов укорочено %d снято %d элементов вырезано %d · изменения %t",
 		c.Applied, c.Modules, c.ChangedModules,
 		c.WrittenResources, c.WrittenVerbs,
 		c.RetiredResources, c.RetiredVerbs,
-		c.Resettled.RuleRefs, c.Resettled.RoleVerbs, c.Changed())
+		c.Resettled.RuleRefs, c.Resettled.RoleVerbs,
+		c.PrunedSelectorRows, c.PrunedSelectorRowsDropped, c.PrunedSelectorTypes,
+		c.Changed())
 }
 
 // add складывает перепись одного модуля в общую.
@@ -114,6 +121,9 @@ func (c *Census) add(rep Report) {
 	c.RetiredVerbs += rep.RetiredVerbs
 	c.Resettled.RuleRefs += rep.Resettled.RuleRefs
 	c.Resettled.RoleVerbs += rep.Resettled.RoleVerbs
+	c.PrunedSelectorRows += rep.PrunedSelectorRows
+	c.PrunedSelectorRowsDropped += rep.PrunedSelectorRowsDropped
+	c.PrunedSelectorTypes += rep.PrunedSelectorTypes
 }
 
 // ApplyAll применяет доставленные манифесты ПО ОДНОМУ, в порядке подачи, и

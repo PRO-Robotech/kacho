@@ -94,6 +94,12 @@ func (w *recordingWriter) RetireResource(_ context.Context, r catalog.ResourceRo
 	return true, nil
 }
 
+func (w *recordingWriter) PruneRetiredSelectorTypes(context.Context,
+	[]catalog.ResourceRow) (modulecatalog.Pruned, error) {
+	w.calls = append(w.calls, "prune")
+	return modulecatalog.Pruned{}, nil
+}
+
 // recordingTx — исполнитель транзакций над одним писателем. Считает ОТКРЫТЫЕ
 // транзакции: «одна транзакция на модуль» иначе нечем утверждать.
 type recordingTx struct {

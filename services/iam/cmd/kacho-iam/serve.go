@@ -237,6 +237,11 @@ func runServe(cfg config.Config) error {
 	// манифестами — данные оператора, а не релиза, и в одиночку он не вправе
 	// расширить каталог за пределы того, что знает образ.
 	catalogApplier := modulecatalog.NewApplier(kachopg.NewCatalogWriteRepo(pool))
+	// Наблюдатель — ОТДЕЛЬНЫМ оператором, а не цепочкой к конструктору: гейт
+	// провязки (`module_catalog_apply_wiring_test.go`) опознаёт связывание по
+	// вызову конструктора в правой части, и цепочка увела бы применителя
+	// из-под его наблюдения — молча.
+	catalogApplier = catalogApplier.WithObserver(metricsReg.NewModuleCatalogRecorder())
 	if aErr := applyDeliveredManifests(ctx, logger, catalogApplier, deliveredManifests); aErr != nil {
 		return aErr
 	}
