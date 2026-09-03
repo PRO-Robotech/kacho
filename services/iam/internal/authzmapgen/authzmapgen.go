@@ -116,6 +116,14 @@ type Census struct {
 	Resources     int
 	VerbBearing   int
 	VerbRelations int
+	// InternalExcluded — действий ВНУТРЕННЕЙ плоскости, не вошедших в набор.
+	//
+	// В `StableSummary` (а значит и в порождённый файл) НЕ входит намеренно:
+	// туда идут только величины, из которых собран сам файл, а исключённое в
+	// него по построению не попало. Здесь же число несущее — без него
+	// «отношений действия 109» неотличимо от «внутренних действий нет вовсе»,
+	// и снятая ветвь исключения выглядела бы как исправная работа.
+	InternalExcluded int
 }
 
 // Summary — перепись одной строкой, ВКЛЮЧАЯ объём обхода.
@@ -124,8 +132,10 @@ type Census struct {
 // находок» от «ноль прочитанного».
 func (c Census) Summary() string {
 	return fmt.Sprintf("манифестов прочитано %d (осмотрено путей %d), модулей %d, "+
-		"ресурсов %d, из них глагольных %d, отношений действия %d",
-		c.ManifestsRead, c.PathsSeen, c.Modules, c.Resources, c.VerbBearing, c.VerbRelations)
+		"ресурсов %d, из них глагольных %d, отношений действия %d, "+
+		"исключено действий внутренней плоскости %d",
+		c.ManifestsRead, c.PathsSeen, c.Modules, c.Resources, c.VerbBearing,
+		c.VerbRelations, c.InternalExcluded)
 }
 
 // StableSummary — перепись для ПОРОЖДЁННОГО ФАЙЛА: только величины, зависящие от
@@ -187,10 +197,12 @@ func Collect(root string) (Tables, error) {
 						"противоречила бы себе, и какой из двух типов победит, решал бы "+
 						"порядок обхода", dotted, prev.ObjectType, r.ObjectType)
 			}
+			rels, skipped := verbRelationsOf(r)
+			census.InternalExcluded += skipped
 			byDotted[dotted] = TypeEntry{
 				Dotted:        dotted,
 				ObjectType:    r.ObjectType,
-				VerbRelations: verbRelationsOf(r),
+				VerbRelations: rels,
 			}
 			census.Resources++
 		}
@@ -232,13 +244,29 @@ func Collect(root string) (Tables, error) {
 // Класс, а не имя действия: короткая форма записи восстанавливает класс из
 // имени, длинная называет его явно — и разница между `addTargets` и
 // `v_addtargets` живёт ровно в одном месте, у загрузчика.
-func verbRelationsOf(r manifest.Resource) []string {
+func verbRelationsOf(r manifest.Resource) (rels []string, internalExcluded int) {
 	if len(r.Verbs) == 0 {
-		return nil
+		return nil, 0
 	}
 	seen := map[string]bool{}
 	out := make([]string, 0, len(r.Verbs))
 	for _, v := range r.Verbs {
+		// Действие, не порождающее отношения, в набор типа НЕ ВХОДИТ, и правило
+		// объявлено один раз (manifest.VerbProducesRelation).
+		//
+		// ЗДЕСЬ ЦЕНА ОШИБКИ ВЫШЕ, ЧЕМ КАЖЕТСЯ, ПОТОМУ ЧТО КЛЮЧ — КЛАСС. Набор
+		// собирается по `v.Class`, а не по имени, поэтому внутреннее действие
+		// втащило бы в набор класс, которого у ТЕНАНТСКИХ действий ресурса нет
+		// вовсе. Замер на дереве: без этой ветви `vpc_address` и `storage_image`
+		// получали `v_create`, а `iam_user` — `v_update`, при том что модель ни
+		// одного из трёх не объявляет (рендер внутренние действия пропускает).
+		// Тип утверждал бы, что несёт отношение, которого в модели нет, и
+		// правило роли на этот класс резолвилось бы в никуда — выдача, которая
+		// создаётся, перечисляется и не гейтит ничего.
+		if !manifest.VerbProducesRelation(v) {
+			internalExcluded++
+			continue
+		}
 		rel := manifest.VerbRelationName(v.Class)
 		if seen[rel] {
 			continue
@@ -247,7 +275,7 @@ func verbRelationsOf(r manifest.Resource) []string {
 		out = append(out, rel)
 	}
 	sort.Strings(out)
-	return out
+	return out, internalExcluded
 }
 
 // CheckFresh — ОДИН предикат свежести на обоих вызывающих: гейт дерева и
