@@ -111,6 +111,15 @@ func TestDocsExampleKeysGateFallsAndStaysSilentOnItsTwin(t *testing.T) {
 			why:      "ОДИН факт: имя ключа",
 		},
 		{
+			name:   "ответ · полоса объявлена ЯВНО",
+			method: "GET", endpoint: "/iam/v1/roles/{role_id}",
+			titleAttr: ` title="Ответ"`,
+			body:      `    { "id": "rol-1", "descriptionn": "x" }`,
+			wantKeys:  []string{"descriptionn"},
+			why: "запись словаря обязана быть исполнима: объявленная явно полоса судится " +
+				"тем же сообщением, что и взятая умолчанием",
+		},
+		{
 			name:   "ответ · ключа нет во ВЛОЖЕННОМ сообщении",
 			method: "GET", endpoint: "/iam/v1/roles",
 			body: `    { "roles": [ { "id": "rol-1", "nosuchfield": 1 } ] }`,
