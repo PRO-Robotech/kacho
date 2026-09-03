@@ -206,20 +206,26 @@ func nestedMessage(fd protoreflect.FieldDescriptor) protoreflect.MessageDescript
 // authz-middleware: биндинг с бо́льшим числом литеральных сегментов проверяется
 // раньше, `{x=**}` — последним. Иначе catch-all-шаблон репозитория поглотил бы
 // более специфичные под-ресурсы.
+//
+// ВЫБОР ДЕТЕРМИНИРОВАН ПОЛНОСТЬЮ, и это не педантизм. Таблица собирается обходом
+// глобального реестра, порядок которого от прогона к прогону РАЗНЫЙ; пока спор
+// равных решался «кто встретился первым», вердикт читающих её гейтов менялся
+// между прогонами на одном и том же дереве. Наблюдалось на паре
+// `POST /vpc/v1/addressPools`, которую объявляют ДВА сервиса: три прогона подряд
+// дали два разных сообщения ответа.
 func resolveHTTPBinding(method, path string) (httpBinding, bool) {
 	if i := strings.IndexByte(path, '?'); i >= 0 {
 		path = path[:i]
 	}
 	segs := strings.Split(strings.TrimPrefix(path, "/"), "/")
 	best := -1
-	bestScore := -1
 	all := loadedHTTPBindings()
 	for i, b := range all {
 		if !bindingMatches(b, method, segs) {
 			continue
 		}
-		if s := bindingSpecificity(b); s > bestScore {
-			best, bestScore = i, s
+		if best < 0 || moreSpecificBinding(b, all[best]) {
+			best = i
 		}
 	}
 	if best < 0 {
@@ -233,19 +239,70 @@ func bindingMatches(b httpBinding, method string, segs []string) bool {
 	return internalRoute{method: b.method, segs: b.segs}.matches(method, segs)
 }
 
-// bindingSpecificity ранжирует шаблоны: больше литеральных сегментов —
-// специфичнее; не-deep биндинг обходит deep-wildcard; при равенстве длиннее
-// шаблон — специфичнее.
-func bindingSpecificity(b httpBinding) int {
-	literals, deep := 0, 0
+// moreSpecificBinding — СТРОГИЙ порядок: специфичнее ли `a`, чем `b`.
+//
+// Оси перечислены по убыванию веса, и последняя (имя RPC) существует только
+// затем, чтобы порядок был ПОЛНЫМ: два разных биндинга не имеют права оказаться
+// равными, иначе выбор снова отдан порядку обхода реестра.
+func moreSpecificBinding(a, b httpBinding) bool {
+	if av, bv := bindingLiterals(a), bindingLiterals(b); av != bv {
+		return av > bv
+	}
+	if av, bv := bindingConstrainedWilds(a), bindingConstrainedWilds(b); av != bv {
+		return av > bv
+	}
+	if av, bv := bindingHasDeepWild(a), bindingHasDeepWild(b); av != bv {
+		return !av // не-deep биндинг специфичнее deep-wildcard
+	}
+	if av, bv := len(a.segs), len(b.segs); av != bv {
+		return av > bv
+	}
+	// Публичный биндинг обходит внутренний на ТОЙ ЖЕ паре (метод, шаблон).
+	//
+	// Это не тай-брейк «лишь бы детерминированно», а воспроизведение того, как
+	// пару разводит сам край: снаружи обе ветки диспетчера ведут в публичный
+	// мультиплексор, изнутри — во внутренний. Сосуществование объявлено
+	// решением у `AddressPoolService`; страница арендатора документирует
+	// ПУБЛИЧНУЮ поверхность, и сверять её надо с публичным контрактом.
+	if a.internal != b.internal {
+		return !a.internal
+	}
+	return a.fqn < b.fqn
+}
+
+func bindingLiterals(b httpBinding) int {
+	n := 0
 	for _, s := range b.segs {
-		switch {
-		case s.rest:
-			deep = 1
-		case s.wild:
-		default:
-			literals++
+		if !s.wild {
+			n++
 		}
 	}
-	return literals*1000 + (1-deep)*100 + len(b.segs)
+	return n
+}
+
+// bindingConstrainedWilds — число сужённых подстановок (`{id}:verb`, непустая
+// приставка либо окончание).
+//
+// Ось заведена отдельно, потому что без неё спор
+// `/instances/{instance_id}` против `/instances/{instance_id}:serialPortOutput`
+// не решался ничем: литеральных сегментов и длины у них поровну, оба совпадают
+// с одним путём. Следствие было не «иногда не тот биндинг», а находка не о том:
+// пример собственного глагола сверялся с сообщением соседнего RPC.
+func bindingConstrainedWilds(b httpBinding) int {
+	n := 0
+	for _, s := range b.segs {
+		if s.wild && (s.prefix != "" || s.suffix != "") {
+			n++
+		}
+	}
+	return n
+}
+
+func bindingHasDeepWild(b httpBinding) bool {
+	for _, s := range b.segs {
+		if s.rest {
+			return true
+		}
+	}
+	return false
 }
