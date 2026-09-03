@@ -30,6 +30,7 @@ import (
 	"github.com/stretchr/testify/require"
 
 	"github.com/PRO-Robotech/kacho/services/iam/internal/apps/kacho/modulecatalog"
+	"github.com/PRO-Robotech/kacho/services/iam/internal/apps/kacho/seed"
 	"github.com/PRO-Robotech/kacho/services/iam/internal/catalog"
 	"github.com/PRO-Robotech/kacho/services/iam/internal/manifest"
 )
@@ -58,6 +59,20 @@ func (w *recordingWriter) LockCatalog(context.Context) error {
 func (w *recordingWriter) ReadModule(_ context.Context, module string) (catalog.Rows, error) {
 	w.calls = append(w.calls, "read:"+module)
 	return catalog.Rows{}, nil
+}
+
+// ReadCatalog — вход сверки опоры (шаг 8 применителя).
+//
+// Отдаёт каталог, СОШЕДШИЙСЯ с опорой, и это выбор фикстуры, а не умолчание:
+// предмет этих проб — порядок вызовов, транзакция на модуль и остановка на
+// первом отказе, а не сверка опоры. Отдай фикстура пустой каталог — все они
+// падали бы на сверке, то есть измеряли бы чужое свойство. Сверку опоры судят
+// интеграционные пробы над настоящим писателем
+// (`module_catalog_anchor_bound_apply_integration_test.go`), где состояние
+// каталога производит сам применитель, а не подстановка.
+func (w *recordingWriter) ReadCatalog(context.Context) (modulecatalog.CatalogState, error) {
+	w.calls = append(w.calls, "read_catalog")
+	return modulecatalog.NewCatalogState(seed.LiteralRows(), catalog.Rows{}), nil
 }
 
 func (w *recordingWriter) UpsertModule(_ context.Context, module string) (bool, error) {

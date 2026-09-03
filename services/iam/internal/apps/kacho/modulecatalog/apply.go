@@ -32,6 +32,7 @@
 //  5. снятие глаголов, которых манифест больше не объявляет
 //  6. снятие ресурсов, которых манифест больше не объявляет
 //  7. приведение третьей проекции правила к каталожному факту
+//  8. сверка ОПОРЫ стража паритета — до коммита
 //
 // Шаги 3 и 5-6 разнесены НЕ ради красоты: ключ живости идёт от глагола к ресурсу
 // (`catalog_verb_resource_live_fk`) и от ресурса к модулю
@@ -94,6 +95,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"strings"
 
 	"github.com/PRO-Robotech/kacho/services/iam/internal/catalog"
 	"github.com/PRO-Robotech/kacho/services/iam/internal/manifest"
@@ -124,6 +126,15 @@ type CatalogWriter interface {
 	// снят, а его глаголы ещё живы — состояние, которого в базе не бывает ни при
 	// каком порядке применения, и собранный из трёх моментов снимок его выдумал бы.
 	ReadModule(ctx context.Context, module string) (catalog.Rows, error)
+	// ReadCatalog читает ВЕСЬ каталог ОБЕИМИ половинами под той же транзакцией —
+	// вход сверки опоры (шаг 8).
+	//
+	// Весь, а не один модуль: опора есть литерал ПЛАТФОРМЫ целиком, и строки
+	// прочих модулей приехали бы сверке недостающими. Обе половины ОДНИМ методом:
+	// подавший стражу одно живое множество получит законное снятие недостающей
+	// строкой, а `CatalogState` требует обе позиционно — пропустить снятую
+	// сторону нечем.
+	ReadCatalog(ctx context.Context) (CatalogState, error)
 	// UpsertModule заводит либо ОЖИВЛЯЕТ строку модуля. `changed` ложно, когда
 	// объявленное состояние уже стоит в строке.
 	UpsertModule(ctx context.Context, module string) (bool, error)
@@ -350,6 +361,30 @@ func (a *Applier) Apply(ctx context.Context, m *manifest.Manifest) (Report, erro
 			rep.PrunedSelectorRows = pruned.Rows
 			rep.PrunedSelectorRowsDropped = pruned.Dropped
 			rep.PrunedSelectorTypes = pruned.Elements
+		}
+
+		// Шаг 8 — СВЕРКА ОПОРЫ, до коммита. Судится состояние, которое
+		// применение ПРОИЗВЕЛО, а не предсказанное: строки читаются той же
+		// транзакцией, поэтому вердикт относится к тому, что ляжет.
+		state, cerr := w.ReadCatalog(ctx)
+		if cerr != nil {
+			return fmt.Errorf("%w: чтение каталога для сверки опоры: %w", ErrWriteFailed, cerr)
+		}
+		plan, aerr := AnchorVerdictOf(ctx, state)
+		if aerr != nil {
+			return fmt.Errorf("%w: сверка опоры: %w", ErrWriteFailed, aerr)
+		}
+		if plan.Verdict != VerdictWouldApply {
+			return fmt.Errorf("%w: модуль %s: живыми остались бы строки, которых опора не "+
+				"знает [%s]; опора называет, а строки не было бы ни живой, ни снятой [%s]. "+
+				"Снято решением %d строк — они расхождением НЕ считаются. Пройди такое "+
+				"применение, следующий пуск отказал бы страж паритета, и починить это можно "+
+				"было бы только прямым SQL — поэтому оно отвергнуто ДО коммита "+
+				"(kacho#1034, IAM-MA-1-11)",
+				ErrBeyondAnchor, declared.Module,
+				strings.Join(plan.BeyondAnchorExtra, ", "),
+				strings.Join(plan.BeyondAnchorMissing, ", "),
+				len(plan.WithdrawnRows))
 		}
 		return nil
 	})
