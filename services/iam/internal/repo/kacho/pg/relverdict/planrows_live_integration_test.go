@@ -164,12 +164,10 @@ func TestPlanRows_InstrumentReadsTheProductsOwnStatement(t *testing.T) {
 			"и точка мерит два вопроса вместо одного.", len(got))
 	}
 	stmt := got[0]
-	// Имя типа в словаре каталога параметром НЕ приезжает: оно читается у живой
-	// строки каталога прямо в запросе (kacho#1986, `catalogtype.go`).
-	const wantArgs = 8
+	const wantArgs = 9
 	if len(stmt.args) != wantArgs {
 		t.Fatalf("у захваченного оператора %d параметров, ожидалось %d "+
-			"(субъект, тип, id, типы предков, отношения, глаголы, глубина, предел условий=%d)",
+			"(субъект, тип, id, типы предков, отношения, глаголы, глубина, предел условий=%d, тип каталога)",
 			len(stmt.args), wantArgs, relverdict.MaxConditionRowsForTest)
 	}
 

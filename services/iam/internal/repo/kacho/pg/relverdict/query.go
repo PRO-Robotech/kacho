@@ -192,13 +192,11 @@ const maxConditionRows = 256
 // $1 subject · $2 object_type в словаре МОДЕЛИ · $3 object_id ·
 // $4 типы предков атомов-фактов ·
 // $5 отношения атомов-фактов · $6 глаголы атомов-выдачи · $7 max_depth · $8 limit
-// Имя типа в словаре КАТАЛОГА параметром НЕ приезжает — им названы
-// `resource_mirror.object_type`, `role_verb.object_type` и
-// `role_rule_selectors.object_types`, тогда как вопрос приходит словарём модели.
-// Перевод стоит на месте заполнителя `{{catalog_type}}` и читает ЖИВУЮ строку
-// каталога (`catalogtype.go`): таблица, порождённая сборкой, о типе, заведённом
-// применением манифеста в работающем процессе, не знает, а соединение по разным
-// написаниям не совпадает НИКОГДА и молча.
+// $9 object_type в словаре КАТАЛОГА — им названы `resource_mirror.object_type`,
+// `role_verb.object_type` и `role_rule_selectors.object_types`, тогда как вопрос
+// приходит словарём модели. Перевод делается ОДИН раз, на входе, единственным
+// переходником (`authzmap.CatalogTypeName`); двух словарей в одном соединении
+// быть не должно — соединение по разным написаниям не совпадает НИКОГДА и молча.
 const verdictSQL = `
 WITH RECURSIVE
 -- scope — ОБЛАСТИ, на которые может быть сделана действующая выдача: сам объект
@@ -514,10 +512,10 @@ const grantArmSQL = `
        AND bs.resource_type = sc.s_type AND bs.resource_id = sc.s_id
       JOIN kacho_iam.access_bindings b ON b.id = bs.binding_id
       JOIN kacho_iam.role_verb rv
-        ON rv.role_id = b.role_id AND rv.object_type = {{catalog_type}}::text
+        ON rv.role_id = b.role_id AND rv.object_type = $9::text
        AND rv.verb = ANY ($6::text[])
       JOIN kacho_iam.role_rule_selectors rs
-        ON rs.role_id = b.role_id AND {{catalog_type}}::text = ANY (rs.object_types)
+        ON rs.role_id = b.role_id AND $9::text = ANY (rs.object_types)
       -- Метки нужны только ветви меток, и лежат они там, где велит ТИП: у чужого
       -- ресурса — в зеркале, у собственного объекта iam — в его таблице.
       -- Соединение ЛЕВОЕ на обеих осях, чтобы объект без меток не выпадал из
@@ -614,9 +612,8 @@ func verdictQuerySQL(labelTable string) string {
 	grant, fact := armsFor("$3::text", scopeJoinGrantOne, scopeJoinFactOne)
 	sql := strings.Replace(verdictSQL, "{{grant_arm}}", grant, 1)
 	sql = strings.Replace(sql, "{{fact_arm}}", fact, 1)
-	sql = strings.ReplaceAll(sql, labelsJoinMark,
-		labelsJoinPinned(labelTable, catalogTypeMark, "$3"))
-	return withCatalogType(sql, "$2")
+	return strings.ReplaceAll(sql, labelsJoinMark,
+		labelsJoinPinned(labelTable, "$9", "$3"))
 }
 
 func Ask(ctx context.Context, q pgx.Tx, in Query) (Verdict, Grounds, error) {
@@ -645,9 +642,15 @@ func Ask(ctx context.Context, q pgx.Tx, in Query) (Verdict, Grounds, error) {
 	}
 	g.LabelAxisTable = labelTable
 
+	catalogType, err := catalogTypeName(ctx, q, in.ObjectType)
+	if err != nil {
+		return Unknown, g, err
+	}
+
 	rows, err := q.Query(ctx, verdictQuerySQL(labelTable),
 		in.Subject, in.ObjectType, in.ObjectID,
 		factParents, factRelations, bindVerbs, MaxAncestorDepth, maxConditionRows,
+		catalogType,
 	)
 	if err != nil {
 		return Unknown, g, fmt.Errorf("relverdict: запрос: %w", err)
@@ -807,8 +810,9 @@ type QueryMany struct {
 //
 // $1 subject · $2 object_type в словаре МОДЕЛИ · $3 МАССИВ object_id ·
 // $4 типы предков атомов-фактов · $5 отношения атомов-фактов ·
-// $6 глаголы атомов-выдачи · $7 max_depth · $8 предел источников НА ОБЪЕКТ.
-// Имя типа в словаре КАТАЛОГА параметром не приезжает — см. довод у verdictSQL.
+// $6 глаголы атомов-выдачи · $7 max_depth · $8 предел источников НА ОБЪЕКТ ·
+// $9 object_type в словаре КАТАЛОГА (см. довод у verdictSQL: двух словарей в
+// одном соединении быть не должно).
 const verdictManySQL = `
 WITH RECURSIVE
 -- ids — объекты партии С ПОРЯДКОВЫМ НОМЕРОМ.
@@ -914,9 +918,8 @@ func verdictManyQuerySQL(labelTable string) string {
 	// Метки объекта присоединяются К СТРОКЕ партии, а не к параметру запроса:
 	// объект у каждой строки свой. Строитель — тот же самый; расходиться двум
 	// представлениям о том, где лежат метки, негде.
-	sql = strings.ReplaceAll(sql, labelsJoinMark,
-		labelsJoinPinned(labelTable, catalogTypeMark, "o.object_id"))
-	return withCatalogType(sql, "$2")
+	return strings.ReplaceAll(sql, labelsJoinMark,
+		labelsJoinPinned(labelTable, "$9", "o.object_id"))
 }
 
 // AskMany задаёт форме вопрос о СТРАНИЦЕ объектов одного типа — одним запросом.
@@ -966,9 +969,15 @@ func AskMany(ctx context.Context, q pgx.Tx, in QueryMany) ([]Verdict, []Grounds,
 		return nil, nil, err
 	}
 
+	catalogType, err := catalogTypeName(ctx, q, in.ObjectType)
+	if err != nil {
+		return nil, nil, err
+	}
+
 	rows, err := q.Query(ctx, verdictManyQuerySQL(labelTable),
 		in.Subject, in.ObjectType, in.ObjectIDs,
 		factParents, factRelations, bindVerbs, MaxAncestorDepth, maxConditionRows,
+		catalogType,
 	)
 	if err != nil {
 		return nil, nil, fmt.Errorf("relverdict: запрос о странице: %w", err)

@@ -114,13 +114,11 @@ const DefaultPageSize = 500
 // $1 subject · $2 object_type в словаре МОДЕЛИ · $3 after_id · $4 размер захода ·
 // $5 max_depth ·
 // $6 типы предков атомов-фактов · $7 отношения атомов-фактов · $8 глаголы атомов-выдачи
-// Имя типа в словаре КАТАЛОГА параметром НЕ приезжает — им названы
-// `resource_mirror.object_type`, `role_verb.object_type` и
-// `role_rule_selectors.object_types`, тогда как вопрос приходит словарём модели.
-// Перевод стоит на месте заполнителя `{{catalog_type}}` и читает ЖИВУЮ строку
-// каталога (`catalogtype.go`): таблица, порождённая сборкой, о типе, заведённом
-// применением манифеста в работающем процессе, не знает, а соединение по разным
-// написаниям не совпадает НИКОГДА и молча.
+// $9 object_type в словаре КАТАЛОГА — им названы `resource_mirror.object_type`,
+// `role_verb.object_type` и `role_rule_selectors.object_types`, тогда как вопрос
+// приходит словарём модели. Перевод делается ОДИН раз, на входе, единственным
+// переходником (`authzmap.CatalogTypeName`); двух словарей в одном соединении
+// быть не должно — соединение по разным написаниям не совпадает НИКОГДА и молча.
 const listSQL = `
 WITH RECURSIVE speaker_pair(s_type, s_id, via) AS (
     -- СУБЪЕКТ ВЫДАЧИ — ПАРОЙ КОЛОНОК, а не склейкой.
@@ -293,10 +291,10 @@ SELECT c.object_id,
            AND bs.resource_type = sc.s_type AND bs.resource_id = sc.s_id
           JOIN kacho_iam.access_bindings b ON b.id = bs.binding_id
           JOIN kacho_iam.role_verb rv
-            ON rv.role_id = b.role_id AND rv.object_type = {{catalog_type}}::text
+            ON rv.role_id = b.role_id AND rv.object_type = $9::text
            AND rv.verb = ANY ($8::text[])
           JOIN kacho_iam.role_rule_selectors rs
-            ON rs.role_id = b.role_id AND {{catalog_type}}::text = ANY (rs.object_types)
+            ON rs.role_id = b.role_id AND $9::text = ANY (rs.object_types)
          WHERE b.status = 'ACTIVE'
            AND (b.expires_at IS NULL OR b.expires_at > now())
            AND b.revoked_at IS NULL
@@ -318,9 +316,8 @@ SELECT c.object_id,
 // listQuerySQL — ГОТОВЫЙ запрос перечисления для выбранной оси кандидатов
 // (довод — у expandQuerySQL).
 func listQuerySQL(labelTable string) string {
-	sql := strings.Replace(listSQL, candidateFromMark,
-		candidateFrom(labelTable, catalogTypeMark, "$3", "$4"), 1)
-	return withCatalogType(sql, "$2")
+	return strings.Replace(listSQL, candidateFromMark,
+		candidateFrom(labelTable, "$9", "$3", "$4"), 1)
 }
 
 // List отдаёт страницу доступных объектов и курсор следующей.
@@ -373,12 +370,19 @@ func List(ctx context.Context, q pgx.Tx, in ListQuery) (ids []string, nextAfterI
 	//
 	// Метка `{{labels_join}}` отсюда ушла вместе со своим предметом: метки едут
 	// колонкой кандидата, второго чтения того же места больше нет.
+	// Имя типа в словаре КАТАЛОГА — у ЖИВОЙ строки каталога (kacho#1986). Читается
+	// ОДИН раз на вызов, как и сборка запроса: заходов у обхода несколько, а тип у
+	// них один.
+	catalogType, err := catalogTypeName(ctx, q, in.ObjectType)
+	if err != nil {
+		return nil, "", err
+	}
 	sql := listQuerySQL(labelTable)
 
 	after := in.AfterID
 	for {
 		allowed, scanned, last, err := listSweep(ctx, q, sql, in, after, limit,
-			factParents, factRelations, bindVerbs)
+			factParents, factRelations, bindVerbs, catalogType)
 		if err != nil {
 			return nil, "", err
 		}
@@ -413,10 +417,11 @@ func List(ctx context.Context, q pgx.Tx, in ListQuery) (ids []string, nextAfterI
 // живущие в собственных таблицах iam, — то есть перечислял бы пустоту, называя
 // это отказом в правах.
 func listSweep(ctx context.Context, q pgx.Tx, sql string, in ListQuery, after string, size int,
-	factParents, factRelations, bindVerbs []string) (allowed []string, scanned int, last string, err error) {
+	factParents, factRelations, bindVerbs []string, catalogType string,
+) (allowed []string, scanned int, last string, err error) {
 	rows, err := q.Query(ctx, sql,
 		in.Subject, in.ObjectType, after, size, MaxAncestorDepth,
-		factParents, factRelations, bindVerbs)
+		factParents, factRelations, bindVerbs, catalogType)
 	if err != nil {
 		return nil, 0, "", fmt.Errorf("relverdict: перечисление: %w", err)
 	}

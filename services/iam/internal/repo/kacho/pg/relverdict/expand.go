@@ -62,13 +62,11 @@ type Source struct {
 //
 // $1 object_type в словаре МОДЕЛИ · $2 object_id · $3 max_depth ·
 // $4 типы предков атомов-фактов · $5 отношения атомов-фактов · $6 глаголы атомов-выдачи
-// Имя типа в словаре КАТАЛОГА параметром НЕ приезжает — им названы
-// `resource_mirror.object_type`, `role_verb.object_type` и
-// `role_rule_selectors.object_types`, тогда как вопрос приходит словарём модели.
-// Перевод стоит на месте заполнителя `{{catalog_type}}` и читает ЖИВУЮ строку
-// каталога (`catalogtype.go`): таблица, порождённая сборкой, о типе, заведённом
-// применением манифеста в работающем процессе, не знает, а соединение по разным
-// написаниям не совпадает НИКОГДА и молча.
+// $7 object_type в словаре КАТАЛОГА — им названы `resource_mirror.object_type`,
+// `role_verb.object_type` и `role_rule_selectors.object_types`, тогда как вопрос
+// приходит словарём модели. Перевод делается ОДИН раз, на входе, единственным
+// переходником (`authzmap.CatalogTypeName`); двух словарей в одном соединении
+// быть не должно — соединение по разным написаниям не совпадает НИКОГДА и молча.
 const expandSQL = `
 WITH RECURSIVE
 -- scope — ОБЛАСТИ, на которые может быть сделана действующая выдача: сам объект
@@ -168,10 +166,10 @@ ground(kind, subject, detail, scope_type, scope_id) AS (
       FROM kacho_iam.access_bindings b
       JOIN kacho_iam.access_binding_subjects bs ON bs.binding_id = b.id
       JOIN kacho_iam.role_verb rv
-        ON rv.role_id = b.role_id AND rv.object_type = {{catalog_type}}::text
+        ON rv.role_id = b.role_id AND rv.object_type = $7::text
        AND rv.verb = ANY ($6::text[])
       JOIN kacho_iam.role_rule_selectors rs
-        ON rs.role_id = b.role_id AND {{catalog_type}}::text = ANY (rs.object_types)
+        ON rs.role_id = b.role_id AND $7::text = ANY (rs.object_types)
       JOIN scope_distinct sc ON sc.s_type = b.resource_type AND sc.s_id = b.resource_id
       -- Метки лежат там, где велит ТИП (labelaxis.go): у чужого ресурса — в
       -- зеркале, у собственного объекта iam — в его таблице.
@@ -202,9 +200,8 @@ SELECT 'group'::text,
 // ровно потому, что он подставляет свой.
 func expandQuerySQL(labelTable string) string {
 	sql := strings.Replace(expandSQL, labelsJoinMark,
-		labelsJoinPinned(labelTable, catalogTypeMark, "$2"), 1)
-	sql = strings.Replace(sql, membersJoinMark, membersOfNamedGroups("g.subject"), 1)
-	return withCatalogType(sql, "$1")
+		labelsJoinPinned(labelTable, "$7", "$2"), 1)
+	return strings.Replace(sql, membersJoinMark, membersOfNamedGroups("g.subject"), 1)
 }
 
 // Expand перечисляет основания права на объекте.
@@ -223,8 +220,13 @@ func Expand(ctx context.Context, q pgx.Tx, objectType, objectID, relation string
 	if err != nil {
 		return nil, err
 	}
+	// Имя типа в словаре КАТАЛОГА — у ЖИВОЙ строки каталога (kacho#1986).
+	catalogType, err := catalogTypeName(ctx, q, objectType)
+	if err != nil {
+		return nil, err
+	}
 	rows, err := q.Query(ctx, expandQuerySQL(labelTable), objectType, objectID, MaxAncestorDepth,
-		factParents, factRelations, bindVerbs)
+		factParents, factRelations, bindVerbs, catalogType)
 	if err != nil {
 		return nil, fmt.Errorf("relverdict: разбор: %w", err)
 	}
