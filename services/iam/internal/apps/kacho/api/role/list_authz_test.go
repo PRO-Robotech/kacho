@@ -85,6 +85,13 @@ type roleListFakeRepo struct {
 	segCalls int
 	// segFail — отказ выборки целости (полоса fail-closed).
 	segFail error
+	// wdCalls — сколько раз спрошена ведомость отобранного. Единица стоимости
+	// страницы: вопрос обязан быть ОДИН, а не по вопросу на роль.
+	wdCalls int
+	// wdFail — отказ выборки ведомости (полоса fail-closed).
+	wdFail error
+	// withdrawn — что дублёр знает об отобранном, по ролям.
+	withdrawn map[string][]domain.WithdrawnGrant
 }
 
 func newRoleListFakeRepo() *roleListFakeRepo {
@@ -144,6 +151,24 @@ func (a *roleListReader) UnresolvedSegments(ctx context.Context, declared []doma
 			continue
 		}
 		out[d.RoleID]++
+	}
+	return out, nil
+}
+
+// WithdrawnGrants отвечает из набора дублёра — ОДНИМ вопросом на страницу, как
+// продукт. Пустой ответ здесь означает «у этих ролей отобранного нет», и это
+// законное состояние продукта, а не снисходительность: ведомость наполняется
+// только снятием строки каталога, которого в этих пробах не происходит.
+func (a *roleListReader) WithdrawnGrants(ctx context.Context, ids []domain.RoleID) (map[domain.RoleID][]domain.WithdrawnGrant, error) {
+	a.p.wdCalls++
+	if a.p.wdFail != nil {
+		return nil, a.p.wdFail
+	}
+	out := map[domain.RoleID][]domain.WithdrawnGrant{}
+	for _, id := range ids {
+		if g, ok := a.p.withdrawn[string(id)]; ok {
+			out[id] = g
+		}
 	}
 	return out, nil
 }

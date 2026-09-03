@@ -6,6 +6,8 @@ package toproto
 // role.go — Transfer domain.Role → *iamv1.Role.
 
 import (
+	"time"
+
 	"google.golang.org/protobuf/types/known/timestamppb"
 
 	iamv1 "github.com/PRO-Robotech/kacho/pkg/api/kacho/cloud/iam/v1"
@@ -79,6 +81,10 @@ func (roleObj) toPb(r domain.Role) (*iamv1.Role, error) {
 		Health:             roleHealthToPb(r.Integrity.Health),
 		DeclaredSegments:   safeconv.ClampNonNegInt32(int64(r.Integrity.Declared)),
 		UnresolvedSegments: safeconv.ClampNonNegInt32(int64(r.Integrity.Unresolved)),
+		// Что отобрано и почему (#1992). ОБЪЯСНЯЕТ три величины выше и их не
+		// определяет: у роли, пострадавшей вторым путём, переселения не было
+		// вовсе, и список пуст при нездоровом состоянии.
+		WithdrawnGrants: withdrawnGrantsToPb(r.Withdrawn),
 		// Permissions intentionally omitted (internal compiled; not on the public
 		// API surface — R-7/F5). Read compiled perms via InternalIAMService.GetRoleCompiled.
 	}, nil
@@ -136,5 +142,46 @@ func roleHealthToPb(h domain.RoleHealth) iamv1.RoleHealth {
 		return iamv1.RoleHealth_ROLE_HEALTH_EMPTY
 	default:
 		return iamv1.RoleHealth_ROLE_HEALTH_UNSPECIFIED
+	}
+}
+
+// withdrawnGrantsToPb переводит ведомость отобранного (#1992).
+//
+// Пустой вход даёт nil, а не пустой срез: на проводе это одно и то же, и
+// заводить второе написание одного факта незачем.
+//
+// Отметка усечена до СЕКУНД — тем же правилом, что и все прочие отметки
+// контракта: микросекунды базы на провод не текут.
+func withdrawnGrantsToPb(in []domain.WithdrawnGrant) []*iamv1.WithdrawnGrant {
+	if len(in) == 0 {
+		return nil
+	}
+	out := make([]*iamv1.WithdrawnGrant, 0, len(in))
+	for _, g := range in {
+		out = append(out, &iamv1.WithdrawnGrant{
+			ObjectType:  g.ObjectType,
+			Verb:        g.Verb,
+			Source:      withdrawnGrantSourceToPb(g.Source),
+			Reason:      g.Reason,
+			WithdrawnAt: timestamppb.New(g.WithdrawnAt.Truncate(time.Second)),
+		})
+	}
+	return out
+}
+
+// withdrawnGrantSourceToPb — популяция ведомости.
+//
+// Неизвестному доменному значению отвечает UNSPECIFIED тем же доводом, что и у
+// состояния целости: «не вычислено» — единственный честный перевод того, чего
+// перевести нельзя. Прочитанную-но-непонятую строку сюда не доносит читатель:
+// он отказывает раньше.
+func withdrawnGrantSourceToPb(s domain.WithdrawnGrantSource) iamv1.WithdrawnGrantSource {
+	switch s {
+	case domain.WithdrawnGrantSourceGrant:
+		return iamv1.WithdrawnGrantSource_WITHDRAWN_GRANT_SOURCE_GRANT
+	case domain.WithdrawnGrantSourceRuleRef:
+		return iamv1.WithdrawnGrantSource_WITHDRAWN_GRANT_SOURCE_RULE_REFERENCE
+	default:
+		return iamv1.WithdrawnGrantSource_WITHDRAWN_GRANT_SOURCE_UNSPECIFIED
 	}
 }

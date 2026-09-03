@@ -54,9 +54,24 @@ func attachIntegrity(ctx context.Context, rd kachorepo.Reader, roles []domain.Ro
 		}
 		unresolved = got
 	}
+	// Ведомость переселения читается ТЕМ ЖЕ вопросом на страницу и в ТОЙ ЖЕ
+	// транзакции: она ОБЪЯСНЯЕТ состояние, поэтому приехать из другого снимка не
+	// вправе — иначе объяснение относилось бы к другому состоянию, чем счётчики
+	// рядом. Отказ роняет чтение по тому же доводу, что и у счётчиков: «не смог
+	// прочитать» не есть «отобранного нет».
+	ids := make([]domain.RoleID, 0, len(roles))
+	for _, r := range roles {
+		ids = append(ids, r.ID)
+	}
+	withdrawn, err := rd.Roles().WithdrawnGrants(ctx, ids)
+	if err != nil {
+		return shared.MapRepoErr(err)
+	}
+
 	for i := range roles {
 		id := roles[i].ID
 		roles[i].Integrity = domain.HealthOf(declared[id], unresolved[id])
+		roles[i].Withdrawn = withdrawn[id]
 	}
 	return nil
 }
