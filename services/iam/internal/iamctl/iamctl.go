@@ -49,6 +49,7 @@ import (
 	"errors"
 	"flag"
 	"fmt"
+	"github.com/PRO-Robotech/kacho/pkg/safeconv"
 	"io"
 	"strings"
 
@@ -413,10 +414,10 @@ func runApply(ctx context.Context, args []string, stdout, stderr io.Writer, deps
 	fs.Visit(func(f *flag.Flag) {
 		switch f.Name {
 		case "max-resettled-rule-refs":
-			v := int32(*maxRuleRefs)
+			v := safeconv.IntToInt32(*maxRuleRefs)
 			req.MaxResettledRuleRefs = &v
 		case "max-resettled-role-verbs":
-			v := int32(*maxRoleVerbs)
+			v := safeconv.IntToInt32(*maxRoleVerbs)
 			req.MaxResettledRoleVerbs = &v
 		}
 	})
@@ -462,7 +463,7 @@ func reportApply(stdout, stderr io.Writer, module string, op *operationv1.Operat
 	}
 	if e := op.GetError(); e != nil {
 		_, _ = fmt.Fprintf(stderr, "НАХОДКА: применение модуля %s отвергнуто (%s): %s\n",
-			module, codes.Code(uint32(e.GetCode())), e.GetMessage())
+			module, codes.Code(safeconv.IntToUint32(int(e.GetCode()))), e.GetMessage())
 		_, _ = fmt.Fprintf(stderr, "что сделать: перечитайте план — iamctl plan %s — и повторите "+
 			"применение с его отпечатком\n", module)
 		return ExitFinding
@@ -579,7 +580,7 @@ func exportAll(ctx context.Context, stdout, stderr io.Writer, svc ModuleService,
 		resources += len(cat.GetResources())
 		verbs += len(cat.GetVerbs())
 
-		gotRes, gotVerbs := int32(len(cat.GetResources())), int32(len(cat.GetVerbs()))
+		gotRes, gotVerbs := safeconv.IntToInt32(len(cat.GetResources())), safeconv.IntToInt32(len(cat.GetVerbs()))
 		if gotRes != s.GetLiveResourceCount() || gotVerbs != s.GetLiveVerbCount() {
 			_, _ = fmt.Fprintf(stderr, "НАХОДКА: модуль %s: перечень назвал живыми ресурсов %d · глаголов %d, "+
 				"а выгружено %d и %d — выгрузка НЕПОЛНА\n",
