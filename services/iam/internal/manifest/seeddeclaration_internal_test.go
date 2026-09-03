@@ -136,7 +136,7 @@ func findSeedRowProducers(t *testing.T) seedProducerCensus {
 		}
 		census.filesRead++
 
-		src, readErr := os.ReadFile(fsPath) //nolint:gosec // путь получен обходом дерева
+		src, readErr := os.ReadFile(fsPath)
 		if readErr != nil {
 			return readErr
 		}

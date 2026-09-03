@@ -219,7 +219,7 @@ func readTreeManifests(t *testing.T) map[string]any {
 	}
 	out := map[string]any{}
 	for _, p := range paths {
-		raw, err := os.ReadFile(p) //nolint:gosec // путь получен обходом дерева
+		raw, err := os.ReadFile(p)
 		if err != nil {
 			t.Fatalf("манифест %s не прочитан: %v", p, err)
 		}
