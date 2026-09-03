@@ -493,9 +493,12 @@ func TestIAMMW114_RevivalByInsertIsRefused(t *testing.T) {
 	requireNoRefsYet(t, ctx, pool, "vpc", "cidrGroup")
 	require.NoError(t, retireResource(ctx, pool, "vpc", "cidrGroup", "проба IAM-MW-1-14"))
 
+	// Имя типа модели прав подаётся ЯВНО: колонка обязательна (миграция
+	// 20260903112400), и без неё вставку отвергал бы `23502` — то есть проба
+	// утверждала бы про NOT NULL вместо первичного ключа, о котором она.
 	_, err := pool.Exec(ctx, `
-		INSERT INTO kacho_iam.catalog_resource (module, resource, dotted)
-		VALUES ('vpc', 'cidrGroup', 'vpc.cidrGroup')`)
+		INSERT INTO kacho_iam.catalog_resource (module, resource, dotted, object_type)
+		VALUES ('vpc', 'cidrGroup', 'vpc.cidrGroup', 'vpc_cidr_group')`)
 	require.Error(t, err, "повторная установка не вставляет строку заново")
 	code, constraint := pgCode(err)
 	t.Logf("вставка отвергнута: SQLSTATE %s, ограничение %q", code, constraint)

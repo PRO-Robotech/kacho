@@ -341,9 +341,15 @@ func TestMODRD06BAResourceWithdrawnByDataIsRefusedByTheKeyAndNothingLands(t *tes
 
 	// Снятие заводится СТРОКОЙ — тем же путём, каким его заведёт администратор.
 	const withdrawnResource = "probeWithdrawn"
+	// Имя типа модели прав — ОБЯЗАТЕЛЬНАЯ колонка строки каталога (миграция
+	// 20260903112400: NOT NULL плюс проверка формы). Фикстура, её опускавшая,
+	// перестала вставляться вовсе (`23502`), и ключу снова стало нечего
+	// отвергать — то есть проба молчала бы о своём предмете.
 	_, err := pool.Exec(ctx, `
-		INSERT INTO catalog_resource (module, resource, dotted, retired_at, retired_reason, live)
-		VALUES ('vpc', $1, 'vpc.' || $1, now(), 'снят каталогом ради пробы #1870', false)`,
+		INSERT INTO catalog_resource
+		  (module, resource, dotted, object_type, retired_at, retired_reason, live)
+		VALUES ('vpc', $1, 'vpc.' || $1, 'vpc_probewithdrawn',
+		        now(), 'снят каталогом ради пробы #1870', false)`,
 		withdrawnResource)
 	require.NoError(t, err, "фикстура снятия обязана лечь: без неё ключу нечего отвергать")
 
