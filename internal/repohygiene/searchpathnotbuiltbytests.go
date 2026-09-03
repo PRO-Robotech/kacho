@@ -22,6 +22,18 @@
 // приведение один раз на пакет, а пакет со своим контейнером зовёт
 // `pgtest.WithSearchPath`. Реализация в дереве одна.
 //
+// # ВЛАДЕЛЕЦ механизма исключён, и он ВЫВОДИТСЯ, а не выписан
+//
+// Пакет, объявляющий общую реализацию (`func WithSearchPath`), собирает клаузу
+// по определению: его собственные пробы строят ожидаемые строки склейкой, и
+// иначе проверить реализацию нечем. Исключение взято НЕ ведомостью путей —
+// такая запись пережила бы переезд реализации молча, — а обходом: гейт находит
+// каталог, где объявление лежит СЕГОДНЯ.
+//
+// Объявление обязано быть РОВНО ОДНО. Ноль — предпосылка исчезла, и молчание
+// гейта перестало что-либо означать. Больше одного — это ровно тот дефект,
+// который гейт и предотвращает: вторая реализация разойдётся с первой молча.
+//
 // # Что отличает НАХОДКУ от законного упоминания — форма, а не место
 //
 // Ведомость файлов-исключений здесь не заводится: она была бы вторым местом об
@@ -44,6 +56,7 @@ import (
 	"go/ast"
 	"go/parser"
 	"go/token"
+	"sort"
 	"strconv"
 	"strings"
 )
@@ -156,4 +169,40 @@ func isSearchPathLiteral(e ast.Expr) bool {
 		return false
 	}
 	return strings.Contains(s, searchPathMarker)
+}
+
+// SearchPathOwnerName — имя общей реализации приведения схемы.
+const SearchPathOwnerName = "WithSearchPath"
+
+// SearchPathOwnerDirs — каталоги, где объявлена общая реализация.
+//
+// Возвращает каталоги, а не файлы: исключаются пробы ВСЕГО пакета-владельца, а
+// они лежат рядом с объявлением.
+func SearchPathOwnerDirs(files map[string]string) []string {
+	var out []string
+	for path, src := range files {
+		if strings.HasSuffix(path, "_test.go") {
+			continue
+		}
+		fset := token.NewFileSet()
+		f, err := parser.ParseFile(fset, path, src, 0)
+		if err != nil {
+			continue
+		}
+		for _, decl := range f.Decls {
+			fn, ok := decl.(*ast.FuncDecl)
+			if !ok || fn.Recv != nil || fn.Name == nil || fn.Name.Name != SearchPathOwnerName {
+				continue
+			}
+			dir := path
+			if i := strings.LastIndexByte(dir, '/'); i >= 0 {
+				dir = dir[:i]
+			} else {
+				dir = "."
+			}
+			out = append(out, dir)
+		}
+	}
+	sort.Strings(out)
+	return out
 }

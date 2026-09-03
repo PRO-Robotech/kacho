@@ -24,18 +24,42 @@ func TestTestsDoNotBuildTheSearchPathClause(t *testing.T) {
 	root := repoRoot(t)
 	tt := newTrackedTree(t, root)
 
+	// Владелец общей реализации ВЫВОДИТСЯ обходом, а не выписывается: ведомость
+	// путей пережила бы её переезд молча (довод — в шапке разбора).
+	sources := map[string]string{}
+	for rel := range tt.files {
+		if !strings.HasSuffix(rel, ".go") {
+			continue
+		}
+		body, err := os.ReadFile(filepath.Join(root, rel)) // #nosec G304 -- путь из индекса СВОЕГО репозитория
+		if err != nil {
+			t.Fatalf("чтение %s: %v", rel, err)
+		}
+		sources[rel] = string(body)
+	}
+	owners := SearchPathOwnerDirs(sources)
+	t.Logf("файлов Go осмотрено %d; объявлений %s найдено %d: %v",
+		len(sources), SearchPathOwnerName, len(owners), owners)
+	if len(owners) != 1 {
+		t.Fatalf("объявлений %s в дереве %d, ожидается ровно одно: ноль означает, что "+
+			"предпосылка гейта исчезла, больше одного — вторую реализацию, которая "+
+			"разойдётся с первой молча", SearchPathOwnerName, len(owners))
+	}
+	ownerDir := owners[0]
+
 	var findings []SearchPathBuildSite
 	files, withMarker, unparsed, mentions := 0, 0, 0, 0
 	for rel := range tt.files {
 		if !strings.HasSuffix(rel, "_test.go") {
 			continue
 		}
-		files++
-		body, err := os.ReadFile(filepath.Join(root, rel)) // #nosec G304 -- путь из индекса СВОЕГО репозитория
-		if err != nil {
-			t.Fatalf("чтение %s: %v", rel, err)
+		if filepath.Dir(rel) == ownerDir {
+			// Пробы ВЛАДЕЛЬЦА строят ожидаемые строки склейкой — иначе проверить
+			// реализацию нечем.
+			continue
 		}
-		src := string(body)
+		files++
+		src := sources[rel]
 		if !strings.Contains(src, searchPathMarker) {
 			continue
 		}
