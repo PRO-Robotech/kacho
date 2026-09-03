@@ -2,9 +2,9 @@ R7-3 — ПРИБОР ОБЪЁМА: ОДНА ОПЕРАЦИЯ ПРОТИВ НА�
 ==========================================================
 
 ПРОВЕНАНС
-  снято               2026-09-03 15:21:10 MSK
-  ревизия дерева      dccdad24fe7c1290926463e040cf4d14d71cdf3b
-  состояние дерева    ГРЯЗНОЕ: путей с несохранёнными правками 26.
+  снято               2026-09-03 15:48:01 MSK
+  ревизия дерева      d0df5d43d0e6049e074fd8f7863f5a3ca6d979db
+  состояние дерева    ГРЯЗНОЕ: путей с несохранёнными правками 4.
                       Ревизия выше НЕ описывает исполнявшееся дерево целиком —
                       повторение по ней даст другой код. Отчёт остаётся годным
                       как наблюдение и НЕ годится как воспроизводимый замер.
@@ -13,7 +13,7 @@ R7-3 — ПРИБОР ОБЪЁМА: ОДНА ОПЕРАЦИЯ ПРОТИВ НА�
 
 ОТПЕЧАТОК ПРЕДМЕТА ЗАМЕРА (гейт свежести сверяет его с текущим деревом)
   отпечаток состава     b6262bc398e3c4c4
-  отпечаток содержимого c67d740d858bc74e
+  отпечаток содержимого 827e3b30f01e55b1
   файлов под отпечатком 83, таблиц выведено 18 (kacho_iam.access_binding_subjects, kacho_iam.access_bindings, kacho_iam.accounts, kacho_iam.catalog_resource, kacho_iam.clusters, kacho_iam.group_members, kacho_iam.groups, kacho_iam.memberships, kacho_iam.projects, kacho_iam.relation_fact, kacho_iam.resource_mirror, kacho_iam.resource_parent_edge, kacho_iam.resource_scope_edge, kacho_iam.role_rule_selectors, kacho_iam.role_verb, kacho_iam.roles, kacho_iam.service_accounts, kacho_iam.users)
   предикат отпечатка    все не-тестовые .go каталогов services/iam/internal/repo/kacho/pg/relverdict и services/iam/internal/repo/kacho/pg/scalegrid; те .sql каталога services/iam/internal/migrations, что МЕНЯЮТ СТРУКТУРУ (CREATE/ALTER/DROP вне комментариев) хотя бы одной таблицы, которую читает запрос вердикта (имена таблиц ВЫВЕДЕНЫ из кода вердикта по приставке "kacho_iam.", а не выписаны); БЕЗ файлов, объявленных оснасткой отпечатка (они не касаются базы — проверяется разбором, а не перечнем)
   ФАЙЛЫ ПОД ОТПЕЧАТКОМ (пофайлово, чтобы гейт назвал ВИНОВНИКА, а не только факт)
@@ -86,14 +86,14 @@ R7-3 — ПРИБОР ОБЪЁМА: ОДНА ОПЕРАЦИЯ ПРОТИВ НА�
     0f36e1cc4f65d12d  services/iam/internal/migrations/944001_identity_scope_comes_from_membership.sql
     f4b0348d3c007de7  services/iam/internal/repo/kacho/pg/relverdict/asker.go
     41ae4c0d65a7441c  services/iam/internal/repo/kacho/pg/relverdict/asker_gate.go
-    523b10d8d8bef582  services/iam/internal/repo/kacho/pg/relverdict/catalogtype.go
+    430a0396b5bd10b5  services/iam/internal/repo/kacho/pg/relverdict/catalogtype.go
     7690dd1ed78f4b14  services/iam/internal/repo/kacho/pg/relverdict/condition.go
-    4d5f3f76c3530f21  services/iam/internal/repo/kacho/pg/relverdict/expand.go
+    0736acec7faa15ec  services/iam/internal/repo/kacho/pg/relverdict/expand.go
     34e69e5b51a980e6  services/iam/internal/repo/kacho/pg/relverdict/labelaxis.go
-    7b32b1ebdecd3add  services/iam/internal/repo/kacho/pg/relverdict/list.go
+    7573eb81e405f722  services/iam/internal/repo/kacho/pg/relverdict/list.go
     0663db0e37577931  services/iam/internal/repo/kacho/pg/relverdict/membership.go
-    077531daf6d6fd12  services/iam/internal/repo/kacho/pg/relverdict/query.go
-    5379a4bb60aa86d3  services/iam/internal/repo/kacho/pg/relverdict/subjects.go
+    2a6fb49982a0ad53  services/iam/internal/repo/kacho/pg/relverdict/query.go
+    7a9373ad8d4cc57a  services/iam/internal/repo/kacho/pg/relverdict/subjects.go
     6dd100ec78c176ec  services/iam/internal/repo/kacho/pg/scalegrid/census.go
     813a7da914ee5057  services/iam/internal/repo/kacho/pg/scalegrid/dictionary.go
     6138411d3c7dbc10  services/iam/internal/repo/kacho/pg/scalegrid/grid.go
@@ -176,11 +176,11 @@ R7-3 — ПРИБОР ОБЪЁМА: ОДНА ОПЕРАЦИЯ ПРОТИВ НА�
 точка            объектов          рёбер          выдач    строк ВСЕГО        места
 малая                1002           3003           1017           7142      2.9 МиБ
 средняя             10002          30003          10029          61193     16.4 МиБ
-большая            100002         300003         100041         601487    148.2 МиБ
+большая            100002         300003         100041         601487    147.7 МиБ
 предельная        1000002        3000003        1000053        6004211     1.41 ГиБ
 
 ПЕРЕПИСЬ ПО ТАБЛИЦАМ (строк / места) — по каждой точке
-  малая (объектов 1000 × выдач 1000, R=9 F=1) · посев 1.045s
+  малая (объектов 1000 × выдач 1000, R=9 F=1) · посев 1.048s
     resource_mirror                    1002 строк    304.0 КиБ
     resource_parent_edge               3003 строк    568.0 КиБ
     access_bindings                    1017 строк    696.0 КиБ
@@ -193,7 +193,7 @@ R7-3 — ПРИБОР ОБЪЁМА: ОДНА ОПЕРАЦИЯ ПРОТИВ НА�
     users                              1003 строк    720.0 КиБ
     ИТОГО                              7142 строк      2.9 МиБ
     выдач, называющих спрашиваемого 10 · членств в группах 11 · ролей/глаголов/правил 60/12/16 · фактов 1
-  средняя (объектов 10000 × выдач 10000, R=9 F=1) · посев 5.241s
+  средняя (объектов 10000 × выдач 10000, R=9 F=1) · посев 5.139s
     resource_mirror                   10002 строк      2.2 МиБ
     resource_parent_edge              30003 строк      4.9 МиБ
     access_bindings                   10029 строк      5.7 МиБ
@@ -206,10 +206,10 @@ R7-3 — ПРИБОР ОБЪЁМА: ОДНА ОПЕРАЦИЯ ПРОТИВ НА�
     users                              1003 строк    720.0 КиБ
     ИТОГО                             61193 строк     16.4 МиБ
     выдач, называющих спрашиваемого 10 · членств в группах 11 · ролей/глаголов/правил 69/21/25 · фактов 1
-  большая (объектов 100000 × выдач 100000, R=9 F=1) · посев 1m0.064s
+  большая (объектов 100000 × выдач 100000, R=9 F=1) · посев 52.976s
     resource_mirror                  100002 строк     21.6 МиБ
     resource_parent_edge             300003 строк     48.4 МиБ
-    access_bindings                  100041 строк     52.6 МиБ
+    access_bindings                  100041 строк     52.2 МиБ
     access_binding_subjects          100041 строк     24.3 МиБ
     group_members                        11 строк     48.0 КиБ
     roles                               159 строк    216.0 КиБ
@@ -217,10 +217,10 @@ R7-3 — ПРИБОР ОБЪЁМА: ОДНА ОПЕРАЦИЯ ПРОТИВ НА�
     role_rule_selectors                 115 строк    128.0 КиБ
     relation_fact                         1 строк     56.0 КиБ
     users                              1003 строк    752.0 КиБ
-    ИТОГО                            601487 строк    148.2 МиБ
+    ИТОГО                            601487 строк    147.7 МиБ
     выдач, называющих спрашиваемого 10 · членств в группах 11 · ролей/глаголов/правил 159/111/115 · фактов 1
-  предельная (объектов 1000000 × выдач 1000000, R=9 F=1) · посев 9m6.522s
-    resource_mirror                 1000002 строк    180.3 МиБ
+  предельная (объектов 1000000 × выдач 1000000, R=9 F=1) · посев 9m23.624s
+    resource_mirror                 1000002 строк    180.1 МиБ
     resource_parent_edge            3000003 строк    483.2 МиБ
     access_bindings                 1000053 строк    539.5 МиБ
     access_binding_subjects         1000053 строк    242.5 МиБ
@@ -239,13 +239,13 @@ R7-3 — ПРИБОР ОБЪЁМА: ОДНА ОПЕРАЦИЯ ПРОТИВ НА�
 ЗАПИСЬ (СОЗДАТЬ ВЫДАЧУ)
 ------------------------------------------------------------------------------------------------------------------------------
 точка           строк ВСЕГО      строк    отброш.    тронуто   сверочная   обращ.          p50          p95
-малая                  7142          1          0          1           —        3        865µs      1.267ms
-средняя               61193          1          0          1           —        3        818µs          1ms
-большая              601487          1          0          1           —        3        934µs      1.173ms
-предельная          6004211          1          0          1           —        3        844µs      1.275ms
+малая                  7142          1          0          1           —        3      1.002ms      1.451ms
+средняя               61193          1          0          1           —        3        809µs        966µs
+большая              601487          1          0          1           —        3        781µs      1.118ms
+предельная          6004211          1          0          1           —        3        866µs        970µs
 
   отношение верхней точки к нижней:
-    строк(несущая) 1.00 · тронуто 1.00 · p50 0.98
+    строк(несущая) 1.00 · тронуто 1.00 · p50 0.86
     при росте объёма базы в 841 раз
   ВЕРДИКТ по несущей величине: НЕ РАСТЁТ (плоско)
   план по точкам:
@@ -257,32 +257,32 @@ R7-3 — ПРИБОР ОБЪЁМА: ОДНА ОПЕРАЦИЯ ПРОТИВ НА�
 ЧТЕНИЕ (ВЕРДИКТ, ALLOW)
 ------------------------------------------------------------------------------------------------------------------------------
 точка           строк ВСЕГО      строк    отброш.    тронуто   сверочная   обращ.          p50          p95
-малая                  7142         32         22         54          85        2      1.002ms      4.682ms
-средняя               61193         43         46         89         109        2        911µs      1.152ms
-большая              601487         55         58        113         133        2      1.007ms      1.405ms
-предельная          6004211         67         70        137         173        2      4.664ms       4.88ms
+малая                  7142         32         22         54          85        2      1.145ms       4.76ms
+средняя               61193         43         46         89         109        2        889µs      1.349ms
+большая              601487         56         59        115         134        2      1.001ms       1.21ms
+предельная          6004211         67         70        137         173        2      4.737ms      5.161ms
 
   отношение верхней точки к нижней:
-    строк(несущая) 2.09 · тронуто 2.54 · p50 4.65
+    строк(несущая) 2.09 · тронуто 2.54 · p50 4.14
     при росте объёма базы в 841 раз
   ВЕРДИКТ по несущей величине: растёт ЛОГАРИФМИЧЕСКИ
   исход вердикта по точкам: малая→allow средняя→allow большая→allow предельная→allow  (утверждается, а не печатается: несовпадение роняет прогон)
   план по точкам:
     малая        [Index Only Scan→access_bindings Index Only Scan→memberships Index Only Scan→resource_parent_edge Index Only Scan→role_verb Index Scan→access_binding_subjects Index Scan→access_bindings Index Scan→groups Index Scan→resource_mirror Index Scan→resource_parent_edge Index Scan→role_rule_selectors Seq Scan→accounts Seq Scan→clusters Seq Scan→group_members Seq Scan→relation_fact Seq Scan→roles Seq Scan→service_accounts]
     средняя      [Index Only Scan→access_bindings Index Only Scan→memberships Index Only Scan→resource_parent_edge Index Only Scan→role_verb Index Scan→access_binding_subjects Index Scan→access_bindings Index Scan→groups Index Scan→resource_mirror Index Scan→resource_parent_edge Index Scan→role_rule_selectors Seq Scan→accounts Seq Scan→clusters Seq Scan→group_members Seq Scan→relation_fact Seq Scan→roles Seq Scan→service_accounts]
-    большая      [Index Only Scan→access_bindings Index Only Scan→memberships Index Only Scan→resource_parent_edge Index Only Scan→role_verb Index Scan→access_binding_subjects Index Scan→access_bindings Index Scan→groups Index Scan→resource_mirror Index Scan→resource_parent_edge Index Scan→role_rule_selectors Seq Scan→accounts Seq Scan→clusters Seq Scan→group_members Seq Scan→relation_fact Seq Scan→roles Seq Scan→service_accounts]
+    большая      [Index Only Scan→access_bindings Index Only Scan→memberships Index Only Scan→resource_parent_edge Index Scan→access_binding_subjects Index Scan→access_bindings Index Scan→groups Index Scan→resource_mirror Index Scan→resource_parent_edge Index Scan→role_rule_selectors Seq Scan→accounts Seq Scan→clusters Seq Scan→group_members Seq Scan→relation_fact Seq Scan→role_verb Seq Scan→roles Seq Scan→service_accounts]
     предельная   [Index Only Scan→access_bindings Index Only Scan→memberships Index Only Scan→resource_parent_edge Index Only Scan→role_verb Index Scan→access_binding_subjects Index Scan→access_bindings Index Scan→groups Index Scan→resource_mirror Index Scan→resource_parent_edge Index Scan→role_rule_selectors Index Scan→roles Seq Scan→accounts Seq Scan→clusters Seq Scan→group_members Seq Scan→relation_fact Seq Scan→service_accounts]
 
 УДАЛЕНИЕ (ОТОЗВАТЬ ВЫДАЧУ)
 ------------------------------------------------------------------------------------------------------------------------------
 точка           строк ВСЕГО      строк    отброш.    тронуто   сверочная   обращ.          p50          p95
-малая                  7142          2          0          2           —        2        517µs        651µs
-средняя               61193          2          0          2           —        2        482µs        874µs
-большая              601487          2          0          2           —        2        505µs        620µs
-предельная          6004211          2          0          2           —        2        470µs        588µs
+малая                  7142          2          0          2           —        2        565µs        732µs
+средняя               61193          2          0          2           —        2        448µs        733µs
+большая              601487          2          0          2           —        2        494µs        510µs
+предельная          6004211          2          0          2           —        2        469µs        573µs
 
   отношение верхней точки к нижней:
-    строк(несущая) 1.00 · тронуто 1.00 · p50 0.91
+    строк(несущая) 1.00 · тронуто 1.00 · p50 0.83
     при росте объёма базы в 841 раз
   ВЕРДИКТ по несущей величине: НЕ РАСТЁТ (плоско)
   план по точкам:
@@ -294,20 +294,20 @@ R7-3 — ПРИБОР ОБЪЁМА: ОДНА ОПЕРАЦИЯ ПРОТИВ НА�
 ПРОВЕРКА ОТЗЫВА (ВЕРДИКТ, DENY)
 ------------------------------------------------------------------------------------------------------------------------------
 точка           строк ВСЕГО      строк    отброш.    тронуто   сверочная   обращ.          p50          p95
-малая                  7142         28         34         62          84        2      1.059ms      4.911ms
-средняя               61193         40         46         86         108        2        900µs      1.135ms
-большая              601487         52         58        110         132        2      1.026ms      1.148ms
-предельная          6004211         64         70        134         172        2      4.587ms      5.041ms
+малая                  7142         28         34         62          84        2       1.04ms      4.522ms
+средняя               61193         40         46         86         108        2        877µs      1.029ms
+большая              601487         52         58        110         132        2        911µs      1.151ms
+предельная          6004211         64         70        134         172        2      4.702ms      5.617ms
 
   отношение верхней точки к нижней:
-    строк(несущая) 2.29 · тронуто 2.16 · p50 4.33
+    строк(несущая) 2.29 · тронуто 2.16 · p50 4.52
     при росте объёма базы в 841 раз
   ВЕРДИКТ по несущей величине: растёт ЛОГАРИФМИЧЕСКИ
   исход вердикта по точкам: малая→deny средняя→deny большая→deny предельная→deny  (утверждается, а не печатается: несовпадение роняет прогон)
   план по точкам:
     малая        [Index Only Scan→access_bindings Index Only Scan→memberships Index Only Scan→resource_parent_edge Index Only Scan→role_verb Index Scan→access_binding_subjects Index Scan→access_bindings Index Scan→groups Index Scan→resource_mirror Index Scan→resource_parent_edge Index Scan→role_rule_selectors Seq Scan→accounts Seq Scan→clusters Seq Scan→group_members Seq Scan→relation_fact Seq Scan→roles Seq Scan→service_accounts]
     средняя      [Index Only Scan→access_bindings Index Only Scan→memberships Index Only Scan→resource_parent_edge Index Only Scan→role_verb Index Scan→access_binding_subjects Index Scan→access_bindings Index Scan→groups Index Scan→resource_mirror Index Scan→resource_parent_edge Index Scan→role_rule_selectors Seq Scan→accounts Seq Scan→clusters Seq Scan→group_members Seq Scan→relation_fact Seq Scan→roles Seq Scan→service_accounts]
-    большая      [Index Only Scan→access_bindings Index Only Scan→memberships Index Only Scan→resource_parent_edge Index Only Scan→role_verb Index Scan→access_binding_subjects Index Scan→access_bindings Index Scan→groups Index Scan→resource_mirror Index Scan→resource_parent_edge Index Scan→role_rule_selectors Seq Scan→accounts Seq Scan→clusters Seq Scan→group_members Seq Scan→relation_fact Seq Scan→roles Seq Scan→service_accounts]
+    большая      [Index Only Scan→access_bindings Index Only Scan→memberships Index Only Scan→resource_parent_edge Index Scan→access_binding_subjects Index Scan→access_bindings Index Scan→groups Index Scan→resource_mirror Index Scan→resource_parent_edge Index Scan→role_rule_selectors Seq Scan→accounts Seq Scan→clusters Seq Scan→group_members Seq Scan→relation_fact Seq Scan→role_verb Seq Scan→roles Seq Scan→service_accounts]
     предельная   [Index Only Scan→access_bindings Index Only Scan→memberships Index Only Scan→resource_parent_edge Index Only Scan→role_verb Index Scan→access_binding_subjects Index Scan→access_bindings Index Scan→groups Index Scan→resource_mirror Index Scan→resource_parent_edge Index Scan→role_rule_selectors Index Scan→roles Seq Scan→accounts Seq Scan→clusters Seq Scan→group_members Seq Scan→relation_fact Seq Scan→service_accounts]
 
 
@@ -316,10 +316,10 @@ R7-3 — ПРИБОР ОБЪЁМА: ОДНА ОПЕРАЦИЯ ПРОТИВ НА�
   объём базы вырос в 841 раз (7142 → 6004211 строк, 2.9 МиБ → 1.41 ГиБ)
 
 операция                                несущая ×      тронуто ×          p50 ×        вердикт
-запись (создать выдачу)                      1.00           1.00           0.98   НЕ РАСТЁТ (плоско)
-чтение (вердикт, allow)                      2.09           2.54           4.65   растёт ЛОГАРИФМИЧЕСКИ
-удаление (отозвать выдачу)                   1.00           1.00           0.91   НЕ РАСТЁТ (плоско)
-проверка отзыва (вердикт, deny)              2.29           2.16           4.33   растёт ЛОГАРИФМИЧЕСКИ
+запись (создать выдачу)                      1.00           1.00           0.86   НЕ РАСТЁТ (плоско)
+чтение (вердикт, allow)                      2.09           2.54           4.14   растёт ЛОГАРИФМИЧЕСКИ
+удаление (отозвать выдачу)                   1.00           1.00           0.83   НЕ РАСТЁТ (плоско)
+проверка отзыва (вердикт, deny)              2.29           2.16           4.52   растёт ЛОГАРИФМИЧЕСКИ
 
   Потолки объявлены ДО прогона и стоят константами в коде:
     «не растёт» — отношение несущей ≤ 2.0
@@ -331,7 +331,7 @@ R7-3 — ПРИБОР ОБЪЁМА: ОДНА ОПЕРАЦИЯ ПРОТИВ НА�
 ЧАСЫ РАСХОДЯТСЯ С НЕСУЩЕЙ ВЕЛИЧИНОЙ — И ЭТО РЕЗУЛЬТАТ, А НЕ ПОГРЕШНОСТЬ
 ------------------------------------------------------------------------------------------------------------------------------
   На отрицательном чтении несущая величина выросла в 2.29 раза, а p50 —
-  в 4.33 раза. План при этом НЕ МЕНЯЛСЯ ни в одной точке (отпечатки выше
+  в 4.52 раза. План при этом НЕ МЕНЯЛСЯ ни в одной точке (отпечатки выше
   совпадают дословно), то есть запрос делает ту же работу тем же способом.
   Значит разница часов — НЕ про алгоритм: это цена того, что рабочее
   множество перестало помещаться в память, отведённую под кэш страниц.
@@ -370,4 +370,4 @@ R7-3 — ПРИБОР ОБЪЁМА: ОДНА ОПЕРАЦИЯ ПРОТИВ НА�
 
 ОБЪЁМ ОСМОТРЕННОГО
   точек исполнено 4, операций на точку 4, полных циклов на точку 11
-  всего операций исполнено 176, настенное время 10m20s
+  всего операций исполнено 176, настенное время 10m30s
