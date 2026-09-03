@@ -27,14 +27,26 @@
 // объявившая отношение и промолчавшая о допустимом виде получателя, завела бы ту
 // же неисполнимость этажом выше — уже на уровне схемы.
 //
-// # Допустимый вид получателя спрашивается У КАНОНА, а не выписывается
+// # Допустимый вид получателя спрашивается У МОДЕЛИ, а не выписывается
 //
 // Второй перечень разошёлся бы с моделью молча, и разошёлся бы там, где это не
-// видно: оба отвечают «да» на законном входе. Чтение живёт в единственном
-// экземпляре у владельца канона (`internal/authzmodel`), и берётся оттуда ВШИТАЯ
-// копия — не файл и не обход дерева: загрузчик зовут в том числе из оснастки
-// дерева и из работающей службы, а файла канона нет ни у первой гарантированно,
-// ни у второй вовсе.
+// видно: оба отвечают «да» на законном входе. Решение о виде получателя
+// принимает владелец модели своим кодом — здесь оно только спрашивается.
+//
+// # Модель ВНОСИТСЯ вызывающим, а не добывается здесь (#2002)
+//
+// Прежде эта функция САМА добывала общий разбор у владельца модели, и тем самым
+// читала модель
+// ПРОЦЕССА — ту, которая собирается из этих же доставленных манифестов.
+// Установка после первого чтения запрещена (она была бы тихой заменой), поэтому
+// композиция не могла встать ни при каком порядке: старт вставал на первом же
+// манифесте, объявившем `grantedRelation`.
+//
+// Зависимость была УСЛОВНОЙ — модель читалась лишь на части входов, — и это
+// худший её вид, а не смягчение: отказ становился функцией содержимого
+// доставленного YAML. Теперь модель приходит параметром, и порядок «чтение
+// доставки → композиция → допуск → установка» стал выразимым. Довод целиком —
+// `relationoracle.go`.
 //
 // # Якорь судится НЕ ЗДЕСЬ — и это переехало вместе со своим предметом (#1953)
 //
@@ -58,8 +70,6 @@ import (
 	"strings"
 
 	"gopkg.in/yaml.v3"
-
-	"github.com/PRO-Robotech/kacho/services/iam/internal/authzmodel"
 )
 
 // grantFormKeys — два ключа, которыми выдача говорит, ЧТО она выдаёт.
@@ -109,10 +119,12 @@ func validateGrantForm(doc *yaml.Node, i int, b AccessBinding) []error {
 // Порядок проверок ОБЪЯВЛЕН, а не выведен из порядка чтения полей, и каждая
 // следующая опирается на предыдущую:
 //
-//  1. канон разобран — иначе судить нечем, и это отдельный отказ от «не
-//     объявляет»: уверенный вердикт по недочитанному был бы вымыслом;
+//  1. модель ВНЕСЕНА — иначе судить нечем, и это не отказ, а МОЛЧАНИЕ: об
+//     объявлении отношения не утверждается ничего, а существование судится
+//     после композиции, где ответ авторитетен. Уверенный вердикт по невнесённой
+//     модели был бы вымыслом ровно так же, как по недочитанной;
 //  2. отношение у типа якоря объявлено — с перечнем объявленных, взятым У
-//     КАНОНА;
+//     МОДЕЛИ;
 //  3. отношение не вычисляемое — свой отказ, иначе автор чинил бы получателя
 //     там, где чинить надо выбор отношения;
 //  4. вид каждого получателя объявлением принят.
@@ -128,26 +140,31 @@ func validateGrantForm(doc *yaml.Node, i int, b AccessBinding) []error {
 // который посев не заводит вовсе (человек), сюда не доходит: его отвергает
 // прежняя проверка, и назвать канон виновником значило бы отправить автора
 // чинить не то — канон человека как раз принимает.
-func validateRelationGrant(doc *yaml.Node, i int, b AccessBinding, objectType string, seededSubjects []int) []error {
+func validateRelationGrant(doc *yaml.Node, i int, b AccessBinding, objectType string,
+	seededSubjects []int, oracle RelationOracle) []error {
 	relation := strings.TrimSpace(b.GrantedRelation)
 	if relation == "" {
 		return nil
 	}
 
-	canon, err := authzmodel.Shared()
-	if err != nil {
-		return []error{linkFault{
-			kind:  ErrCanonUnparsed,
-			coord: locate(doc, "seed", "accessBindings", i, "grantedRelation"),
-			detail: fmt.Sprintf(
-				"seed.accessBindings[%d].grantedRelation: канон модели прав не разобран — "+
-					"судить об отношении %q нечем: %v", i, relation, err),
-		}}
+	// Модель не внесена — о СУЩЕСТВОВАНИИ отношения не утверждаем ничего.
+	//
+	// Это не послабление и не «пропустить»: форму выдачи уже осудил
+	// validateGrantForm выше, а существование типа, отношения и указателя судит
+	// композиция — ПОСЛЕ того, как модель собрана из этих же манифестов. Судить
+	// здесь было бы нечем: у вызывающего, который модель не внёс, её на этот
+	// момент и не существует.
+	//
+	// Ноль суждённых при этом НЕ молчит: он попадает в перепись связности рядом
+	// с числом прочитанных выдач отношением, иначе читался бы как «сверили и не
+	// нашли расхождений».
+	if oracle == nil {
+		return nil
 	}
 
-	decl, declared := canon.RelationSubjects(objectType, relation)
+	decl, declared := oracle.RelationDeclaration(objectType, relation)
 	if !declared {
-		names, _ := canon.RelationNames(objectType)
+		names := oracle.TypeRelations(objectType)
 		return []error{linkFault{
 			kind:  ErrRelationNotDeclared,
 			coord: locate(doc, "seed", "accessBindings", i, "grantedRelation"),
@@ -156,7 +173,7 @@ func validateRelationGrant(doc *yaml.Node, i int, b AccessBinding, objectType st
 					"не объявляет; объявлены: %s", i, relation, objectType, strings.Join(names, ", ")),
 		}}
 	}
-	if !decl.Direct {
+	if !decl.IsDirect() {
 		return []error{linkFault{
 			kind:  ErrRelationComputed,
 			coord: locate(doc, "seed", "accessBindings", i, "grantedRelation"),
@@ -179,7 +196,7 @@ func validateRelationGrant(doc *yaml.Node, i int, b AccessBinding, objectType st
 			detail: fmt.Sprintf(
 				"seed.accessBindings[%d].subjects[%d]: отношение %q у типа %q получателя вида %q "+
 					"не принимает; объявление принимает: %s",
-				i, j, relation, objectType, s.Type, strings.Join(decl.Accepts, ", ")),
+				i, j, relation, objectType, s.Type, strings.Join(decl.AcceptedKinds(), ", ")),
 		})
 	}
 	return faults

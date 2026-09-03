@@ -65,6 +65,7 @@ import (
 	"github.com/PRO-Robotech/kacho/services/iam/internal/catalog"
 	"github.com/PRO-Robotech/kacho/services/iam/internal/manifest"
 	"github.com/PRO-Robotech/kacho/services/iam/internal/manifest/roleexport"
+	"github.com/PRO-Robotech/kacho/services/iam/internal/manifestoracle"
 )
 
 // exitNotRun — проверка не исполнялась: вызов разобран не был.
@@ -79,7 +80,20 @@ func main() {
 		os.Exit(exitNotRun)
 	}
 
-	report := manifest.CheckTree(root)
+	// Модель прав ВНОСИТСЯ оснасткой (#2002): загрузчик её больше не добывает —
+	// иначе разбор доставки на старте читал бы модель, которая из этих же
+	// манифестов и собирается. Здесь вопрос осмыслен: дерево разработки судится
+	// каноном образа, и тип, о котором спрашивают, уже в нём.
+	//
+	// Канон не разобрался — это «проверка НЕ ИСПОЛНЯЛАСЬ», а не «находок нет»:
+	// молча ослабить обход значило бы напечатать зелёное о непроверенном.
+	relationOracle, oraErr := manifestoracle.Canon()
+	if oraErr != nil {
+		fmt.Fprintf(os.Stderr,
+			"проверка прав НЕ ИСПОЛНЯЛАСЬ: канон модели прав не разобран: %v\n", oraErr)
+		os.Exit(exitNotRun)
+	}
+	report := manifest.CheckTree(root, manifest.WithRelationOracle(relationOracle))
 
 	// Перепись печатается ВСЕГДА и первой: без неё зелёный вердикт неотличим от
 	// вердикта обхода, не прочитавшего ничего.
@@ -92,7 +106,7 @@ func main() {
 		fmt.Fprintf(os.Stderr, "НАХОДКА: %s\n", f)
 	}
 
-	rightsCode := checkRights(root, report.Paths)
+	rightsCode := checkRights(root, report.Paths, relationOracle)
 
 	code := report.ExitCode()
 	if code == manifest.CheckOK && rightsCode != manifest.CheckOK {
@@ -145,7 +159,7 @@ func parseArgs(prog string, args []string) (string, error) {
 //
 // Обход манифестов НЕ повторяется: пути приходят от единственного обходчика.
 // Повторяется только чтение файла — судит его по-прежнему один загрузчик.
-func checkRights(root string, paths []string) int {
+func checkRights(root string, paths []string, relationOracle manifest.RelationOracle) int {
 	if len(paths) == 0 {
 		// Манифестов нет — предмета у этой проверки нет тоже, и молчать об этом
 		// нельзя: «ноль находок» обязано быть отличимо от «ноль прочитанного».
@@ -215,7 +229,7 @@ func checkRights(root string, paths []string) int {
 			code = manifest.CheckFailed
 			continue
 		}
-		m, err := manifest.Load(data)
+		m, err := manifest.Load(data, manifest.WithRelationOracle(relationOracle))
 		if err != nil {
 			// Форму уже осудил обход, и его код возврата это учёл; здесь просто
 			// нечего судить дальше.

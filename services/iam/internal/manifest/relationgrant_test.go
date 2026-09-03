@@ -33,7 +33,27 @@ import (
 	"testing"
 
 	"github.com/PRO-Robotech/kacho/services/iam/internal/manifest"
+	"github.com/PRO-Robotech/kacho/services/iam/internal/manifestoracle"
 )
+
+// canonOracle — модель, ВНЕСЁННАЯ в загрузчик пробой.
+//
+// С #2002 связность выдачи отношением судится не тем, что загрузчик добыл сам, а
+// тем, что внёс вызывающий. Пробы этого файла — про СВЯЗНОСТЬ, поэтому вносят
+// канон образа: он и был судьёй, которого загрузчик прежде добывал.
+//
+// Что при этом стало другим и почему это не ослабление: путь СТАРТА службы
+// оракула не вносит вовсе — там модель ещё собирается из доставленных
+// манифестов, и суждение каноном отвергло бы выдачу на типе нового модуля by
+// construction. Обе полосы держит пара проб в relationoraclereferent_test.go.
+func canonOracle(t *testing.T) manifest.LoadOption {
+	t.Helper()
+	o, err := manifestoracle.Canon()
+	if err != nil {
+		t.Fatalf("канон образа не разобран — судить об отношении нечем: %v", err)
+	}
+	return manifest.WithRelationOracle(o)
+}
 
 // seedWithBinding — оболочка манифеста с одной служебной записью, одной
 // группой и ОДНОЙ выдачей, тело которой подставляет проба.
@@ -104,7 +124,7 @@ const bindingRelationToGroup = `    - subjects:
 // половина доказательства.
 func mustLoadGrantOK(t *testing.T, doc []byte, why string) *manifest.Manifest {
 	t.Helper()
-	m, err := manifest.Load(doc)
+	m, err := manifest.Load(doc, canonOracle(t))
 	if err != nil {
 		t.Fatalf("законный вход отвергнут (%s): %v", why, err)
 	}
@@ -116,7 +136,7 @@ func mustLoadGrantOK(t *testing.T, doc []byte, why string) *manifest.Manifest {
 // «состояние», а текст без вида ломается молча при смене вида.
 func mustRefuseGrant(t *testing.T, doc []byte, kind error, mentions ...string) string {
 	t.Helper()
-	_, err := manifest.Load(doc)
+	_, err := manifest.Load(doc, canonOracle(t))
 	if err == nil {
 		t.Fatalf("ожидался отказ; получен nil")
 	}

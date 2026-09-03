@@ -17,6 +17,7 @@ import (
 	"testing"
 
 	"github.com/PRO-Robotech/kacho/internal/authzplan"
+	"github.com/PRO-Robotech/kacho/internal/treecorpus"
 	"github.com/PRO-Robotech/kacho/services/iam/internal/authzmodel"
 	"github.com/PRO-Robotech/kacho/services/iam/internal/manifest"
 	"github.com/PRO-Robotech/kacho/services/iam/internal/modelcompose"
@@ -125,7 +126,11 @@ func TestIAMMB121_ADegenerateTypeNameIsRefusedNotPanicked(t *testing.T) {
 func deliveredManifests(t *testing.T) []*manifest.Manifest {
 	t.Helper()
 	root := repoRoot(t)
-	paths, err := filepath.Glob(filepath.Join(root, "services", "*", "manifest.yaml"))
+	// Состав берётся у ИНДЕКСА git, а не у диска: под services/ на всякой
+	// машине, где поднимали стенд, лежит игнорируемое (распаковки чартов,
+	// отчёты прогонов), и обход по диску сделал бы вердикт свойством рабочего
+	// каталога. Отбор и семантика образца те же, что у filepath.Glob.
+	paths, err := treecorpus.Glob(filepath.Join(root, "services", "*", "manifest.yaml"))
 	if err != nil {
 		t.Fatalf("обход манифестов: %v", err)
 	}
