@@ -196,6 +196,14 @@ func TestInvite_AbsentRole_IsRefusedWithTheSameText(t *testing.T) {
 func (r *inviteRoleReader) Visibility() visibility.ReaderIface { return nil }
 
 // UnresolvedSegments — см. довод у соседних дублёров: отказ, а не «всё в порядке».
+// WithdrawnGrants — дублёр ОТКАЗЫВАЕТ, а не отвечает «отобранного нет»:
+// заглушка, возвращающая пустое, была бы снисходительнее продукта. Ведомость
+// в этих пробах не предмет, поэтому её путь исполняться не должен — а если
+// исполнится, проба упадёт.
+func (inviteRoleReaderRoles) WithdrawnGrants(context.Context, []domain.RoleID) (map[domain.RoleID][]domain.WithdrawnGrant, error) {
+	return nil, stderrors.New("WithdrawnGrants не предмет этих проб")
+}
+
 func (inviteRoleReaderRoles) UnresolvedSegments(context.Context, []domain.RoleSegment) (map[domain.RoleID]int, error) {
 	return nil, stderrors.New("UnresolvedSegments не предмет этих проб")
 }

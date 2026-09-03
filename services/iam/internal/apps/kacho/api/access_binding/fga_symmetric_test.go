@@ -1238,6 +1238,14 @@ func (w *abFakeWriter) EmitInviteMail(_ context.Context, userID, _, to, _ string
 // заглушка, возвращающая пустое, была бы снисходительнее продукта и молча
 // зеленила бы утверждения о деградации роли. Целость в этих пробах не предмет,
 // поэтому её путь здесь исполняться не должен — а если исполнится, проба упадёт.
+// WithdrawnGrants — дублёр ОТКАЗЫВАЕТ, а не отвечает «отобранного нет»:
+// заглушка, возвращающая пустое, была бы снисходительнее продукта. Ведомость
+// в этих пробах не предмет, поэтому её путь исполняться не должен — а если
+// исполнится, проба упадёт.
+func (r *fakeRoleRdr) WithdrawnGrants(context.Context, []domain.RoleID) (map[domain.RoleID][]domain.WithdrawnGrant, error) {
+	return nil, stderrors.New("WithdrawnGrants не предмет этих проб")
+}
+
 func (r *fakeRoleRdr) UnresolvedSegments(context.Context, []domain.RoleSegment) (map[domain.RoleID]int, error) {
 	return nil, stderrors.New("UnresolvedSegments не предмет этих проб")
 }

@@ -420,6 +420,33 @@ var (
 // «вырезано пять» не говорит, у одной роли или у пяти; а строка, СНЯТАЯ целиком,
 // есть событие иного рода, чем строка укороченная, и сумма их не различает. Все
 // три приходят из ОДНОГО оператора, то есть из одного снимка.
+//
+// # Вырезанное ЗАПИСЫВАЕТСЯ — ТЕМ ЖЕ оператором (#1988)
+//
+// Каждый вырезанный элемент ложится в `kacho_iam.role_selector_prune`: роль,
+// отпечаток правила, тип, исход строки (укорочена либо снята целиком), причина
+// снятия строки каталога и момент. До этого вырезание было НЕОБРАТИМО и не
+// записано нигде — объём был виден только в плане применения.
+//
+// Запись стоит В ТОМ ЖЕ операторе по тому же доводу, что и у переселения:
+// иначе между вырезанием и записью помещается состояние «вырезано и нигде не
+// записано», а восстановить его потом не из чего. Порядок внутри оператора задан
+// ПОТОКОМ ДАННЫХ, а не порядком веток: `cut` читает выход `emptied`/`stripped`,
+// поэтому запись не может опередить вырезание.
+//
+// Ветвь `recorded` ИСПОЛНЯЕТСЯ, хотя итоговый SELECT её не читает: изменяющая
+// ветвь `WITH` исполняется ровно один раз и до конца независимо от того, читает
+// ли её основной запрос. Свойство держит проба на живой базе
+// (`selector_pruning_leaves_a_ledger_integration_test.go`), а не эта строка.
+//
+// Четвёртой величины наружу оператор не отдаёт НАМЕРЕННО: перепись применения
+// уже несёт число вырезанных элементов, а число записанных строк от него
+// отличается лишь на повторы, которых у необратимого вырезания не бывает.
+//
+// ВЕДОМОСТЬ НЕ ВВОДИТ ПОТОЛКА и не подразумевает его. Решение не ставить потолок
+// на эту популяцию остаётся: потолок запрещал бы ПОЧИНКУ — висячий элемент
+// делает строку неприемлемой для стража живости, и арендатор не может её
+// править, пока висяк не вырезан.
 func (w catalogWriter) PruneRetiredSelectorTypes(
 	ctx context.Context,
 	resources []catalog.ResourceRow,
@@ -451,13 +478,28 @@ func (w catalogWriter) PruneRetiredSelectorTypes(
 		   USING changed c
 		   WHERE s.role_id = c.role_id AND s.rule_fp = c.rule_fp
 		     AND cardinality(c.alive) = 0
-		  RETURNING 1
+		  RETURNING s.role_id, s.rule_fp
 		), stripped AS (
 		  UPDATE kacho_iam.role_rule_selectors s
 		     SET object_types = c.alive
 		    FROM changed c
 		   WHERE s.role_id = c.role_id AND s.rule_fp = c.rule_fp
 		     AND cardinality(c.alive) > 0
+		  RETURNING s.role_id, s.rule_fp
+		), cut AS (
+		  SELECT role_id, rule_fp, 'dropped'::text   AS outcome FROM emptied
+		  UNION ALL
+		  SELECT role_id, rule_fp, 'shortened'::text AS outcome FROM stripped
+		), recorded AS (
+		  INSERT INTO kacho_iam.role_selector_prune
+		         (role_id, rule_fp, object_type, outcome, retired_reason)
+		  SELECT k.role_id, k.rule_fp, t, k.outcome, cr.retired_reason
+		    FROM cut k
+		    JOIN changed c ON c.role_id = k.role_id AND c.rule_fp = k.rule_fp
+		    CROSS JOIN LATERAL unnest(c.was) AS t
+		    LEFT JOIN kacho_iam.catalog_resource cr ON cr.dotted = t
+		   WHERE NOT (t = ANY (c.alive))
+		  ON CONFLICT (role_id, rule_fp, object_type) DO NOTHING
 		  RETURNING 1
 		)
 		SELECT (SELECT count(*) FROM stripped),

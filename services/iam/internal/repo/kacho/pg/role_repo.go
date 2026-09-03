@@ -157,6 +157,76 @@ func (r *roleReader) UnresolvedSegments(
 	return out, nil
 }
 
+// WithdrawnGrants — ЕДИНСТВЕННЫЙ путь чтения ведомости переселения (#1992).
+//
+// # Что было неверно
+//
+// Ведомость наполнялась применителем каталога и не читалась НИКЕМ: писателей
+// два, читателей ноль. Заведена она затем, чтобы отобранное право было
+// восстановимо и объяснимо, — и не давала этого, потому что цепочка обрывалась
+// на пути чтения, а обрыв не наблюдался ниоткуда.
+//
+// # Почему ОДИН вопрос на страницу
+//
+// Тем же доводом, что у соседа выше: стоимость обязана следовать СТРАНИЦЕ,
+// величина которой ограничена контрактом, а не популяции ролей, которая не
+// ограничена ничем. Выборка идёт по началу первичного ключа ведомости
+// (`role_id`), дополнительного индекса не требуется.
+//
+// # Почему исходное написание популяции НЕ уезжает наружу
+//
+// Столбец ведомости несёт написание закрытого набора схемы; наружу едет
+// доменное состояние. Отдай мы строку как есть, написание схемы стало бы частью
+// контракта чтения, и переименование столбца сделалось бы ломающим изменением.
+// Неизвестное написание отвергается ОТКАЗОМ, а не молча становится нулевым
+// состоянием: нулевое означает «не прочитано этим ответом», и выдать за него
+// прочитанное-но-непонятое значило бы соврать ровно тем полем, которое эти два
+// случая и разводит.
+func (r *roleReader) WithdrawnGrants(
+	ctx context.Context, roleIDs []domain.RoleID,
+) (map[domain.RoleID][]domain.WithdrawnGrant, error) {
+	out := make(map[domain.RoleID][]domain.WithdrawnGrant, len(roleIDs))
+	if len(roleIDs) == 0 {
+		return out, nil
+	}
+	ids := make([]string, 0, len(roleIDs))
+	for _, id := range roleIDs {
+		ids = append(ids, string(id))
+	}
+	rows, err := r.tx.Query(ctx, `
+		SELECT role_id, object_type, verb, source, reason, orphaned_at
+		  FROM kacho_iam.role_grant_orphan
+		 WHERE role_id = ANY($1::text[])
+		 ORDER BY role_id, object_type, verb, source`, ids)
+	if err != nil {
+		return nil, mapErr(err, "", "")
+	}
+	defer rows.Close()
+	for rows.Next() {
+		var id, source string
+		var g domain.WithdrawnGrant
+		if serr := rows.Scan(&id, &g.ObjectType, &g.Verb, &source, &g.Reason, &g.WithdrawnAt); serr != nil {
+			return nil, mapErr(serr, "", "")
+		}
+		switch source {
+		case "role_verb":
+			g.Source = domain.WithdrawnGrantSourceGrant
+		case "rule_ref":
+			g.Source = domain.WithdrawnGrantSourceRuleRef
+		default:
+			return nil, fmt.Errorf("ведомость переселения несёт неизвестную популяцию %q: "+
+				"закрытый набор схемы разошёлся с разбором, и отдать такую строку "+
+				"нулевым состоянием значило бы выдать непонятое за невычисленное", source)
+		}
+		g.WithdrawnAt = g.WithdrawnAt.Truncate(time.Second)
+		out[domain.RoleID(id)] = append(out[domain.RoleID(id)], g)
+	}
+	if rerr := rows.Err(); rerr != nil {
+		return nil, mapErr(rerr, "", "")
+	}
+	return out, nil
+}
+
 func (r *roleReader) List(ctx context.Context, f role.ListFilter) ([]domain.Role, string, error) {
 	// page_size>MaxPageSize → InvalidArgument (no silent clamp); 0 → default.
 	pageSize, err := effectivePageSize(f.PageSize)
