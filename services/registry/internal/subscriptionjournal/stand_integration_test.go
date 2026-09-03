@@ -8,7 +8,6 @@ import (
 	"io"
 	"log/slog"
 	"net"
-	"strings"
 	"testing"
 	"time"
 
@@ -76,7 +75,7 @@ func newStandWithNarrower(t *testing.T, narrower *listnarrow.Narrower) *stand {
 	}
 
 	dsn := pgtest.NewDB(t)
-	pool, err := coredb.NewPool(context.Background(), withSearchPath(dsn))
+	pool, err := coredb.NewPool(context.Background(), dsn)
 	if err != nil {
 		t.Fatalf("пул не собрался: %v", err)
 	}
@@ -127,16 +126,6 @@ func newStandWithNarrower(t *testing.T, narrower *listnarrow.Narrower) *stand {
 		repo:   kachopg.NewRegistryRepo(pool),
 		client: subscriptionv1.NewInternalSubscriptionServiceClient(conn),
 	}
-}
-
-// withSearchPath — тот же путь поиска, с каким репозиторий работает в бою.
-func withSearchPath(dsn string) string {
-	const opt = "options=-c%20search_path%3Dkacho_registry%2Cpublic"
-	sep := "?"
-	if strings.Contains(dsn, "?") {
-		sep = "&"
-	}
-	return dsn + sep + opt
 }
 
 // seedFixtureQuotas приводит свежую базу в состояние «проекты материализованы».

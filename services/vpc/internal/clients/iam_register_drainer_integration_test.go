@@ -56,15 +56,6 @@ func setupRegisterOutboxDB(t *testing.T) *pgxpool.Pool {
 	// своё пространство advisory-lock и LISTEN/NOTIFY-канала).
 	dsn := pgtest.NewDB(t)
 
-	const optionsParam = "options=-c%20search_path%3Dkacho_vpc%2Cpublic"
-	if !strings.Contains(dsn, "options=") && !strings.Contains(dsn, "options%3D") {
-		if strings.Contains(dsn, "?") {
-			dsn += "&" + optionsParam
-		} else {
-			dsn += "?" + optionsParam
-		}
-	}
-
 	pool, err := coredb.NewPool(ctx, dsn)
 	require.NoError(t, err)
 	pgtest.ClosePoolAtEnd(t, pool)

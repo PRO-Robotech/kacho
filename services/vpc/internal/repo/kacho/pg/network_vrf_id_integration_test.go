@@ -41,7 +41,7 @@ func setupTestDBUpTo(t testing.TB, version int64) string {
 	goose.SetBaseFS(migrations.FS)
 	require.NoError(t, goose.SetDialect("postgres"))
 	require.NoError(t, goose.UpTo(db, ".", version))
-	return appendSearchPathOptions(dsn)
+	return dsn
 }
 
 // Аллокация Network.vrf_id и internal-read: уникальность под concurrency,

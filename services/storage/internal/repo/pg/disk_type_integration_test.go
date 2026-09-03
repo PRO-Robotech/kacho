@@ -103,7 +103,7 @@ func dtTracedPool(t *testing.T) (*pgxpool.Pool, *dtQueryCounter) {
 	if testing.Short() {
 		t.Skip("integration test (testcontainers Postgres) — skipped with -short")
 	}
-	dsn := pgtest.NewDB(t) + "&options=-c%20search_path%3Dkacho_storage%2Cpublic&pool_max_conns=1"
+	dsn := pgtest.NewDB(t) + "&pool_max_conns=1"
 	cfg, err := pgxpool.ParseConfig(dsn)
 	require.NoError(t, err)
 	counter := &dtQueryCounter{}

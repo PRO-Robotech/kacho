@@ -5,13 +5,13 @@ package pg_test
 
 import (
 	"context"
-	"strings"
 	"testing"
 	"time"
 
 	"github.com/jackc/pgx/v5/pgxpool"
 	"github.com/stretchr/testify/require"
 
+	"github.com/PRO-Robotech/kacho/internal/pgtest"
 	coredb "github.com/PRO-Robotech/kacho/pkg/db"
 	"github.com/PRO-Robotech/kacho/pkg/ids"
 
@@ -45,18 +45,11 @@ func setupTestDB(t testing.TB) string {
 	return dsn
 }
 
-// appendSearchPathOptions добавляет libpq `options=-c search_path=kacho_nlb,public`
-// (mirror config.baseDSN поведения).
+// appendSearchPathOptions — приведение схемы для пакета, который собирает DSN САМ:
+// свой контейнер и своя раскладка баз, поэтому `pgtest.Config` его не касается.
+// Реализация — общая (`pgtest.WithSearchPath`), зеркалит поведение config.baseDSN.
 func appendSearchPathOptions(dsn string) string {
-	const optionsParam = "options=-c%20search_path%3Dkacho_nlb%2Cpublic"
-	if strings.Contains(dsn, "options=") || strings.Contains(dsn, "options%3D") {
-		return dsn
-	}
-	sep := "?"
-	if strings.Contains(dsn, "?") {
-		sep = "&"
-	}
-	return dsn + sep + optionsParam
+	return pgtest.WithSearchPath(dsn, "kacho_nlb,public")
 }
 
 // testContext — общий test fixture: pool + repo. Возвращает обоих, чтобы

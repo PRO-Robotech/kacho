@@ -150,7 +150,7 @@ func newPoolWithCatalog(t *testing.T, seed bool) *pgxpool.Pool {
 	// pool_max_conns=16 — даём race-тестам достаточно соединений, чтобы горутины
 	// реально исполнялись параллельно (contended CAS / auto-device-name), а не
 	// сериализовались на пуле (иначе гонка не воспроизводится).
-	poolDSN := baseDSN + "&options=-c%20search_path%3Dkacho_storage%2Cpublic&pool_max_conns=16"
+	poolDSN := baseDSN + "&pool_max_conns=16"
 	pool, err := coredb.NewPool(ctx, poolDSN)
 	require.NoError(t, err)
 	pgtest.ClosePoolAtEnd(t, pool)

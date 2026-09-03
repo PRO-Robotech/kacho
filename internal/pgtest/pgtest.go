@@ -60,6 +60,7 @@ import (
 	"io/fs"
 	"net/url"
 	"os"
+	"strings"
 	"sync"
 	"sync/atomic"
 	"testing"
@@ -94,6 +95,21 @@ type Config struct {
 
 	// Image defaults to postgres:16-alpine, the image every replaced helper used.
 	Image string
+
+	// SearchPath — значение клаузы `search_path`, которое получает КАЖДЫЙ DSN,
+	// выданный этим пакетом (`kacho_iam,public`). Пусто — приведение не
+	// дописывается, и поведение прежнее.
+	//
+	// Предмет принадлежит выдающему базу, а не спрашивающему её: схему создаёт
+	// `Migrate` этого же `Config`, и кто её создал, тот и знает её имя. Пока
+	// клаузу приписывал вызывающий, её приписывали 29 файлов в 25 пакетах —
+	// каждый своей копией, и копии уже разошлись формой (`const`, `+=`,
+	// вычисленный разделитель, проверка на удвоение — то есть, то нет).
+	//
+	// Забывший её получал `relation "roles" does not exist` — отказ, неотличимый
+	// ни от непринятых миграций, ни от неверного имени таблицы в продукте, то
+	// есть дефект ПРОБЫ, наказанный сообщением о дефекте ПРОДУКТА.
+	SearchPath string
 }
 
 // Goose returns a Migrate function that replays an embedded goose directory.
@@ -263,7 +279,34 @@ func (s *state) dsnFor(name string) string {
 		panic(fmt.Sprintf("pgtest: unparseable container DSN %q: %v", s.baseDSN, err))
 	}
 	u.Path = "/" + name
-	return u.String()
+	return WithSearchPath(u.String(), s.cfg.SearchPath)
+}
+
+// WithSearchPath дописывает к DSN клаузу `options` с приведением схемы.
+//
+// Экспортирована ради пакетов, которые собирают DSN САМИ — своим контейнером
+// либо своей раскладкой баз, — и потому не проходят через `Config`. Реализация
+// у приведения одна на дерево: пока её не было, клаузу собирали 29 мест, и
+// копии уже разошлись формой.
+//
+// Собирается строкой, а не `url.Values.Encode()`, намеренно: `Encode` кодирует
+// пробел как `+`, и выданный DSN перестал бы совпадать байт в байт с формой,
+// которая уже проверена на живом сервере всеми прежними местами дерева.
+// Экранируется при этом ЗНАЧЕНИЕ (`url.QueryEscape`), иначе запятая внутри
+// `kacho_iam,public` осталась бы голой и разделила параметры DSN.
+//
+// Клауза, уже стоящая в DSN, не удваивается: двух `options` в одном DSN не
+// бывает — вторая либо молча замещает первую, либо отвергается драйвером, и оба
+// исхода хуже, чем оставить объявленное вызывающим.
+func WithSearchPath(dsn, searchPath string) string {
+	if searchPath == "" || strings.Contains(dsn, "options=") {
+		return dsn
+	}
+	sep := "?"
+	if strings.Contains(dsn, "?") {
+		sep = "&"
+	}
+	return dsn + sep + "options=-c%20search_path%3D" + url.QueryEscape(searchPath)
 }
 
 // quoteIdent renders one database name as a single SQL identifier: wrapped in

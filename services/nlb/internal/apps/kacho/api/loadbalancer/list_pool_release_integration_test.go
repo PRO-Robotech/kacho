@@ -6,7 +6,6 @@ package loadbalancer_test
 import (
 	"context"
 	"strconv"
-	"strings"
 	"testing"
 	"time"
 
@@ -58,11 +57,6 @@ func setupCappedPoolDB(t *testing.T, maxConns int) *kachopg.Repository {
 
 	dsn := pgtest.NewDB(t)
 
-	sep := "?"
-	if strings.Contains(dsn, "?") {
-		sep = "&"
-	}
-	dsn += sep + "options=-c%20search_path%3Dkacho_nlb%2Cpublic"
 	dsn += "&pool_max_conns=" + strconv.Itoa(maxConns)
 
 	pool, err := coredb.NewPool(context.Background(), dsn)

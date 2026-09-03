@@ -37,10 +37,15 @@ import (
 
 func TestMain(m *testing.M) {
 	os.Exit(pgtest.Run(m, pgtest.Config{
-		Name:     "storage",
-		User:     "storage",
-		Password: "secret",
-		Migrate:  pgtest.Goose(migrations.FS),
+		// Приведение схемы — ОДИН раз на пакет, у выдающего базу.
+		// Прежде его приписывал каждый вызывающий своей копией; забывший
+		// получал `relation … does not exist` — отказ, читающийся как дефект
+		// продукта. Довод целиком — `internal/pgtest` §WithSearchPath.
+		SearchPath: "kacho_storage,public",
+		Name:       "storage",
+		User:       "storage",
+		Password:   "secret",
+		Migrate:    pgtest.Goose(migrations.FS),
 	}))
 }
 
@@ -49,7 +54,7 @@ func newPool(t *testing.T) *pgxpool.Pool {
 	if testing.Short() {
 		t.Skip("integration test (testcontainers Postgres) — skipped with -short")
 	}
-	dsn := pgtest.NewDB(t) + "&options=-c%20search_path%3Dkacho_storage%2Cpublic&pool_max_conns=8"
+	dsn := pgtest.NewDB(t) + "&pool_max_conns=8"
 	pool, err := coredb.NewPool(context.Background(), dsn)
 	require.NoError(t, err)
 	pgtest.ClosePoolAtEnd(t, pool)

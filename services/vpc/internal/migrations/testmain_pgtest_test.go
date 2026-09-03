@@ -25,5 +25,5 @@ import (
 // The container starts lazily, so under -short — where the guard reports every drop as
 // uncounted and skips — none is started.
 func TestMain(m *testing.M) {
-	os.Exit(pgtest.Run(m, pgtest.Config{Name: "vpcdrop"}))
+	os.Exit(pgtest.Run(m, pgtest.Config{Name: "vpcdrop", SearchPath: "kacho_vpc,public"}))
 }

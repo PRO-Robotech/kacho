@@ -23,9 +23,14 @@ import (
 // себя, он не стоит ничего.
 func TestMain(m *testing.M) {
 	os.Exit(pgtest.Run(m, pgtest.Config{
-		Name:     "registry_subscription",
-		User:     "registry",
-		Password: "registry",
-		Migrate:  pgtest.Goose(migrations.FS),
+		// Приведение схемы — ОДИН раз на пакет, у выдающего базу.
+		// Прежде его приписывал каждый вызывающий своей копией; забывший
+		// получал `relation … does not exist` — отказ, читающийся как дефект
+		// продукта. Довод целиком — `internal/pgtest` §WithSearchPath.
+		SearchPath: "kacho_registry,public",
+		Name:       "registry_subscription",
+		User:       "registry",
+		Password:   "registry",
+		Migrate:    pgtest.Goose(migrations.FS),
 	}))
 }

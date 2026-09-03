@@ -217,6 +217,13 @@ func TestDocsEnumGateReadsEveryLegalExampleForm(t *testing.T) {
 	// Обе записи считаются НЕЗАВИСИМО от распознавателя — прямым счётом
 	// открывающих строк. Считай их сам распознаватель, проверка сверяла бы его
 	// с самим собой.
+	//
+	// Счёт ведётся по ОТКРЫВАЮЩЕЙ СТРОКЕ, а не по её точному тексту: у блока
+	// бывают атрибуты (`title` объявляет полосу примера, см.
+	// `docs_example_keys_test.go`), и счёт по литералу `<CodeBlock
+	// language="json">` объявил бы такой блок необъявленным. Тогда проверка
+	// краснела бы на РАСШИРЕНИИ распознавателя — то есть ровно там, где
+	// слепая зона закрывается.
 	declaredFence, declaredBlock := 0, 0
 	seenFence, seenBlock := 0, 0
 	for _, page := range pages {
@@ -225,10 +232,12 @@ func TestDocsEnumGateReadsEveryLegalExampleForm(t *testing.T) {
 			t.Fatalf("чтение %s: %v", page, err)
 		}
 		for _, line := range strings.Split(body, "\n") {
-			if strings.TrimSpace(line) == "```json" {
+			trimmed := strings.TrimSpace(line)
+			if rest, ok := strings.CutPrefix(trimmed, "```json"); ok &&
+				(rest == "" || strings.HasPrefix(rest, " ") || strings.HasPrefix(rest, "\t")) {
 				declaredFence++
 			}
-			if strings.Contains(line, `<CodeBlock language="json">`) {
+			if strings.Contains(line, "<CodeBlock") && strings.Contains(line, `language="json"`) {
 				declaredBlock++
 			}
 		}

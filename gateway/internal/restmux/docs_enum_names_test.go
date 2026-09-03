@@ -94,6 +94,11 @@ type docsJSONExample struct {
 	Endpoint string
 	// Form — которой из двух записей пример набран (для переписи).
 	Form string
+	// Title — значение атрибута `title` блока, дословно; пусто, если атрибута
+	// нет. Им ОБЪЯВЛЯЕТСЯ полоса примера (ответ · запрос · отказ) — см.
+	// `docs_example_keys_test.go`. Снимается здесь, а не вторым обходом
+	// страниц: два разбора одной разметки разошлись бы молча.
+	Title string
 	// Body — сам текст примера.
 	Body string
 }
@@ -119,6 +124,13 @@ func (f docsEnumFinding) String() string {
 var (
 	docsApiOperationOpen = regexp.MustCompile(`<ApiOperation\b[^>]*method="([A-Z]+)"[^>]*endpoint="([^"]+)"`)
 	docsPathParam        = regexp.MustCompile(`\{[^{}/]*\}`)
+	// docsCodeBlockJSON / docsJSONFence — открывающая строка каждой из двух
+	// законных записей примера. Регуляркой, а не сравнением со строкой: у блока
+	// есть атрибуты помимо `language`, и запись «```json title="…"» законна для
+	// забора. Прежнее точное сравнение приняло бы за прозу и то и другое.
+	docsCodeBlockJSON = regexp.MustCompile(`<CodeBlock\b[^>]*language="json"[^>]*>`)
+	docsJSONFence     = regexp.MustCompile("^```json(?:[ \t]+(.*))?$")
+	docsTitleAttr     = regexp.MustCompile(`\btitle="([^"]*)"`)
 )
 
 // docsContentRoots — где живут страницы арендатора.
@@ -171,14 +183,14 @@ func extractDocsJSONExamples(rel, text string) []docsJSONExample {
 	var inFence, inBlock bool
 	var buf []string
 	var start int
-	var form string
+	var form, title string
 
 	flush := func() {
 		out = append(out, docsJSONExample{
 			File: rel, Line: start, Method: method, Endpoint: endpoint,
-			Form: form, Body: strings.Join(buf, "\n"),
+			Form: form, Title: title, Body: strings.Join(buf, "\n"),
 		})
-		buf, form = nil, ""
+		buf, form, title = nil, "", ""
 	}
 
 	for i, line := range lines {
@@ -217,17 +229,26 @@ func extractDocsJSONExamples(rel, text string) []docsJSONExample {
 				method, endpoint = "", ""
 				continue
 			}
-			if trimmed == "```json" {
-				inFence, start, form = true, n+1, "fence"
+			if m := docsJSONFence.FindStringSubmatch(trimmed); m != nil {
+				inFence, start, form, title = true, n+1, "fence", docsTitleOf(m[1])
 				continue
 			}
-			if strings.Contains(line, `<CodeBlock language="json">`) {
-				inBlock, start, form = true, n+1, "codeblock"
+			if m := docsCodeBlockJSON.FindString(line); m != "" {
+				inBlock, start, form, title = true, n+1, "codeblock", docsTitleOf(m)
 				continue
 			}
 		}
 	}
 	return out
+}
+
+// docsTitleOf вынимает значение атрибута `title` из открывающей строки блока
+// либо из метастроки забора. Пусто — атрибута нет.
+func docsTitleOf(s string) string {
+	if m := docsTitleAttr.FindStringSubmatch(s); m != nil {
+		return m[1]
+	}
+	return ""
 }
 
 // docsResolveResponseMessage — сообщение ОТВЕТА операции примера.

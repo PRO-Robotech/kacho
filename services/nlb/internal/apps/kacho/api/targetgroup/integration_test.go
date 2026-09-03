@@ -7,7 +7,6 @@ import (
 	"context"
 	"log/slog"
 	"os"
-	"strings"
 	"testing"
 	"time"
 
@@ -41,14 +40,6 @@ func setupDB(t *testing.T) (*pgxpool.Pool, *kachopg.Repository) {
 	}
 
 	dsn := pgtest.NewDB(t)
-
-	if !strings.Contains(dsn, "options=") {
-		sep := "?"
-		if strings.Contains(dsn, "?") {
-			sep = "&"
-		}
-		dsn = dsn + sep + "options=-c%20search_path%3Dkacho_nlb%2Cpublic"
-	}
 
 	pool, err := coredb.NewPool(context.Background(), dsn)
 	require.NoError(t, err)

@@ -46,23 +46,6 @@ import (
 	"github.com/PRO-Robotech/kacho/services/vpc/internal/repo/helpers"
 )
 
-// searchPathOptions — тот же `options=-c search_path=…`, что production-DSN получает
-// из конфигурации сервиса: миграции адресуют объекты без схемы, положившись на путь
-// поиска.
-const searchPathOptions = "options=-c%20search_path%3Dkacho_vpc%2Cpublic"
-
-// withSearchPath дописывает путь поиска в DSN контейнера.
-func withSearchPath(dsn string) string {
-	if strings.Contains(dsn, "options=") || strings.Contains(dsn, "options%3D") {
-		return dsn
-	}
-	sep := "?"
-	if strings.Contains(dsn, "?") {
-		sep = "&"
-	}
-	return dsn + sep + searchPathOptions
-}
-
 // preRetiredContractVersion — последняя миграция ДО 0029.
 const preRetiredContractVersion int64 = 28
 
@@ -101,7 +84,7 @@ func (s *noticeSink) text() string {
 // раньше текущей головы цепочки, чтобы вписать строки, которые 0029 будет править.
 func openChainAt(t testing.TB, version int64) (*sql.DB, *noticeSink) {
 	t.Helper()
-	dsn := withSearchPath(pgtest.NewEmptyDB(t))
+	dsn := pgtest.NewEmptyDB(t)
 
 	cfg, err := pgx.ParseConfig(dsn)
 	require.NoError(t, err)

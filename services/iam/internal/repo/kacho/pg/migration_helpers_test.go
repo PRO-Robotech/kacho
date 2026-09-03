@@ -36,7 +36,7 @@ import (
 // same starting point, without paying for a server start per test.
 func setupTestDBNoUp(t testing.TB) string {
 	t.Helper()
-	return appendSearchPathOptions(pgtest.NewEmptyDB(t))
+	return pgtest.NewEmptyDB(t)
 }
 
 // applyMigrationUpBody reads <prefix>_*.sql, extracts the `-- +goose Up` body and

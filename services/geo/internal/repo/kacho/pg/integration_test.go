@@ -39,11 +39,10 @@ func newTestPool(t *testing.T) *pgxpool.Pool {
 
 	baseDSN := pgtest.NewDB(t)
 
-	// pgxpool с search_path=kacho_geo, чтобы SQL репозитория видел таблицы без
-	// схемы-префикса. Форма libpq runtime-param (URL-query `search_path=` pgx не
-	// учитывает).
-	poolDSN := baseDSN + "&options=-c%20search_path%3Dkacho_geo%2Cpublic"
-	pool, err := coredb.NewPool(ctx, poolDSN)
+	// Приведение схемы уже стоит в DSN: его объявляет `pgtest.Config.SearchPath`
+	// этого пакета. Форма libpq runtime-param (URL-query `search_path=` pgx не
+	// учитывает) — там же.
+	pool, err := coredb.NewPool(ctx, baseDSN)
 	require.NoError(t, err)
 	pgtest.ClosePoolAtEnd(t, pool)
 	return pool
