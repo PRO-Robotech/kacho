@@ -676,18 +676,42 @@ func TestCanonWildcardSetIsTwoOfTwoHundredSeventyThree(t *testing.T) {
 
 // ── ADM-A-23 · Д4(б): условие, которого канон не объявляет ────────────────────
 
+// Условие внесено на отношение-НЕ-глагол НАМЕРЕННО, и это перенос, а не
+// послабление (#2004).
+//
+// Предмет сценария — «условие, которого канон не объявляет», то есть Д4(б). На
+// ГЛАГОЛЕ тот же вход меняет два факта сразу: имя условия вне канона (Д4(б)) и
+// условие на прямом списке глагола, который формой E не выражается (Д5′). Пока
+// проба считала находки одного правила, второе было невидимо — приёмка
+// утверждала «план выразим», план стал невыразим, и не покраснело ничто.
+//
+// Условие на глаголе есть САМОСТОЯТЕЛЬНЫЙ предмет, и он проверяется своей пробой
+// (`TestDeliveredVerbWithConditionIsRefused`), а не здесь. Тот же перенос по тому
+// же доводу уже сделан в матрице независимости ниже.
 func TestAdmitConditionNotDeclaredByCanon(t *testing.T) {
 	block := swapDecl(twin(t),
-		"define v_get: [user, service_account, group#member] or super_admin",
-		"define v_get: [user with nosuch_condition, service_account, group#member] or super_admin")
+		"define viewer: [user, service_account, group#member] or editor",
+		"define viewer: [user with nosuch_condition, service_account, group#member] or editor")
 	rep := mustAdmit(t, compose(block))
 	got := findingsOf(rep, RuleD4Condition)
 	if len(got) != 1 {
 		t.Fatalf("ждали находку Д4(б), получено %v", rules(rep))
 	}
-	if got[0].Type != "acme_widget" || got[0].Relation != "v_get" ||
+	if got[0].Type != "acme_widget" || got[0].Relation != "viewer" ||
 		!strings.Contains(got[0].Text, "nosuch_condition") {
 		t.Fatalf("находка обязана называть тип, отношение и имя условия, получено %+v", got[0])
+	}
+	// ИСКЛЮЧИТЕЛЬНОСТЬ — несущее утверждение сценария, а не украшение (#2004).
+	//
+	// Счёт находок ОДНОГО правила говорит лишь «Д4(б) сработало». Он молчит о
+	// том, что вход поднял ЕЩЁ ОДНО правило, — а вход, поднимающий два, меняет
+	// два факта сразу и сценарием о своём предмете быть перестаёт. Ровно этим
+	// молчанием приёмка разошлась с деревом: она утверждала «план выразим», план
+	// стал невыразим, и не покраснело ничто.
+	if len(rep.Findings) != 1 {
+		t.Fatalf("сценарий обязан поднимать РОВНО Д4(б); поднято %v.\n"+
+			"Второе правило означает, что вход изменил два факта, и утверждение о "+
+			"первом больше не изолировано", rules(rep))
 	}
 }
 

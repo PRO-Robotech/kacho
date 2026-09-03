@@ -171,6 +171,7 @@ func withdrawnGrantsToPb(in []domain.WithdrawnGrant) []*iamv1.WithdrawnGrant {
 			Source:      withdrawnGrantSourceToPb(g.Source),
 			Reason:      g.Reason,
 			WithdrawnAt: timestamppb.New(g.WithdrawnAt.Truncate(time.Second)),
+			AppliedBy:   g.AppliedBy,
 		})
 	}
 	return out
@@ -194,6 +195,7 @@ func prunedSelectorTypesToPb(in []domain.PrunedSelectorType) []*iamv1.PrunedSele
 			Outcome:    selectorPruneOutcomeToPb(p.Outcome),
 			Reason:     p.Reason,
 			PrunedAt:   timestamppb.New(p.PrunedAt.Truncate(time.Second)),
+			AppliedBy:  p.AppliedBy,
 		})
 	}
 	return out

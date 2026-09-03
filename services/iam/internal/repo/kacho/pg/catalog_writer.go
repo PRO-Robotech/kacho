@@ -380,11 +380,16 @@ func (w catalogWriter) RetireResource(ctx context.Context, r catalog.ResourceRow
 // пустили гонку «сирота записана — роль удалена» (запрет #10). Замер потолка:
 // та же вставка без ключа — 414 мс против 818 мс, то есть весь возможный выигрыш
 // вдвое, ценой инварианта. Не берём.
+// Автор снятия — ОБЯЗАТЕЛЬНЫЙ параметр, а не поле писателя и не значение по
+// умолчанию (#2005): применение разрешает актора первым действием, до открытия
+// транзакции, и передать его сюда значением — единственный способ, при котором
+// «строка переселена без автора» невыразимо.
 func (w catalogWriter) ResettleTenantProjections(
 	ctx context.Context,
 	resources []catalog.ResourceRow,
 	verbs []catalog.VerbRow,
 	reason string,
+	appliedBy string,
 ) (modulecatalog.Resettled, error) {
 	var out modulecatalog.Resettled
 
@@ -397,13 +402,13 @@ func (w catalogWriter) ResettleTenantProjections(
 	// Порядок внутри оператора задан ПОТОКОМ ДАННЫХ, а не порядком записи веток:
 	// `moved` читает выход `dropped`, поэтому вставка не может опередить снятие.
 	if err := w.tx.QueryRow(ctx, resettleRuleRefSQL,
-		resModules, resNames, verbModules, verbResources, verbNames, reason,
+		resModules, resNames, verbModules, verbResources, verbNames, reason, appliedBy,
 	).Scan(&out.RuleRefs); err != nil {
 		return out, fmt.Errorf("переселить объявления правил: %w", err)
 	}
 
 	if err := w.tx.QueryRow(ctx, resettleRoleVerbSQL,
-		resModules, resNames, verbModules, verbResources, verbNames, reason,
+		resModules, resNames, verbModules, verbResources, verbNames, reason, appliedBy,
 	).Scan(&out.RoleVerbs); err != nil {
 		return out, fmt.Errorf("переселить выдачи глаголов: %w", err)
 	}
@@ -544,9 +549,13 @@ var (
 // на эту популяцию остаётся: потолок запрещал бы ПОЧИНКУ — висячий элемент
 // делает строку неприемлемой для стража живости, и арендатор не может её
 // править, пока висяк не вырезан.
+// Автор вырезания — обязательный параметр по тому же доводу, что у соседа
+// (#2005): вопрос «кто снял» у обеих ведомостей общий, и арендатор не различает,
+// какой из проекций правила он лишился.
 func (w catalogWriter) PruneRetiredSelectorTypes(
 	ctx context.Context,
 	resources []catalog.ResourceRow,
+	appliedBy string,
 ) (modulecatalog.Pruned, error) {
 	var out modulecatalog.Pruned
 	if len(resources) == 0 {
@@ -577,8 +586,8 @@ func (w catalogWriter) PruneRetiredSelectorTypes(
 		  SELECT role_id, rule_fp, 'shortened'::text AS outcome FROM stripped
 		), recorded AS (
 		  INSERT INTO kacho_iam.role_selector_prune
-		         (role_id, rule_fp, object_type, outcome, retired_reason)
-		  SELECT k.role_id, k.rule_fp, t, k.outcome, cr.retired_reason
+		         (role_id, rule_fp, object_type, outcome, retired_reason, applied_by)
+		  SELECT k.role_id, k.rule_fp, t, k.outcome, cr.retired_reason, $6
 		    FROM cut k
 		    JOIN changed c ON c.role_id = k.role_id AND c.rule_fp = k.rule_fp
 		    CROSS JOIN LATERAL unnest(c.was) AS t
@@ -590,7 +599,7 @@ func (w catalogWriter) PruneRetiredSelectorTypes(
 		SELECT (SELECT count(*) FROM stripped),
 		       (SELECT count(*) FROM emptied),
 		       (SELECT coalesce(sum(cardinality(was) - cardinality(alive)), 0) FROM changed)`,
-		resModules, resNames, verbModules, verbResources, verbNames,
+		resModules, resNames, verbModules, verbResources, verbNames, appliedBy,
 	).Scan(&out.Rows, &out.Dropped, &out.Elements); err != nil {
 		return out, fmt.Errorf("вырезать снятые типы из селекторов: %w", err)
 	}

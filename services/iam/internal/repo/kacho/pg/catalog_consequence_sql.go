@@ -194,8 +194,8 @@ const resettleRuleRefSQL = `
 		                     AND s.verb = rr.verb))
 		  RETURNING rr.role_id, rr.module, rr.resource, rr.verb
 		), moved AS (
-		  INSERT INTO kacho_iam.role_grant_orphan (role_id, object_type, verb, source, reason)
-		  SELECT d.role_id, d.module || '.' || d.resource, COALESCE(d.verb, ''), 'rule_ref', $6
+		  INSERT INTO kacho_iam.role_grant_orphan (role_id, object_type, verb, source, reason, applied_by)
+		  SELECT d.role_id, d.module || '.' || d.resource, COALESCE(d.verb, ''), 'rule_ref', $6, $7
 		    FROM dropped d
 		  ON CONFLICT (role_id, object_type, verb, source) DO NOTHING
 		)
@@ -211,8 +211,8 @@ const resettleRoleVerbSQL = `
 		     AND rv.object_type IN (SELECT dotted FROM stale_dotted)
 		  RETURNING rv.role_id, rv.object_type, rv.verb
 		), moved AS (
-		  INSERT INTO kacho_iam.role_grant_orphan (role_id, object_type, verb, source, reason)
-		  SELECT d.role_id, d.object_type, d.verb, 'role_verb', $6 FROM dropped d
+		  INSERT INTO kacho_iam.role_grant_orphan (role_id, object_type, verb, source, reason, applied_by)
+		  SELECT d.role_id, d.object_type, d.verb, 'role_verb', $6, $7 FROM dropped d
 		  ON CONFLICT (role_id, object_type, verb, source) DO NOTHING
 		)
 		SELECT (SELECT count(*) FROM dropped)`

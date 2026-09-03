@@ -25,6 +25,7 @@
 package authzmodel
 
 import (
+	"sort"
 	"testing"
 
 	"github.com/PRO-Robotech/kacho/internal/authzplan"
@@ -35,18 +36,34 @@ import (
 // Суффикс, а не отдельная модель: допуск судит собранный текст, который обязан
 // начинаться каноном дословно, и форма, поданная вне этого вида, не дошла бы до
 // правил вовсе.
+//
+// # Поле `also` — ОСТАЛЬНЫЕ правила, которые форма поднимает сверх названного
+//
+// Заведено, чтобы §2.8 приёмки перестала расходиться с деревом молча (#2004):
+// счёт находок ОДНОГО правила не говорит, что форма подняла ещё одно, а форма,
+// поднявшая второе, меняет два факта сразу и о своём предмете больше не
+// утверждает. Множество названо ПОЛНЫМ и ПЕРЕМЕРЕНО, а не выписано по памяти:
+// формы 2 и 3 поднимают больше одного правила ЗАКОННО, поэтому исключительность
+// у всех семи была бы ложью.
 var sevenForms = []struct {
 	name   string
 	suffix string
 	rule   Rule
+	also   []Rule
 }{
-	{"1 дубль канонического типа", "\ntype group\n  relations\n    define member: [user, service_account, user:*]\n", RuleD1},
-	{"2 дубль отношения в типе", "\ntype acme_widget\n  relations\n    define v_get: [user]\n    define v_get: [user, user:*]\n", RuleD1},
-	{"3 дубль условия с другим телом", "\ncondition mfa_fresh(x: int) {\n  x > 1\n}\n", RuleD7Suffix},
-	{"4 необъявленное условие", "\ntype acme_widget\n  relations\n    define v_get: [user with nosuch_condition]\n", RuleD4Condition},
-	{"5 имя типа с пробелом", "\ntype acme widget\n  relations\n    define v_get: [user]\n", RuleD7Suffix},
-	{"6 мусор перед типом", "\nсовершенно посторонняя строка\ntype acme_widget\n  relations\n    define v_get: [user]\n", RuleD7Suffix},
-	{"7 мусор после условия", "\nсовершенно посторонняя строка в хвосте\n", RuleD7Suffix},
+	{"1 дубль канонического типа", "\ntype group\n  relations\n    define member: [user, service_account, user:*]\n", RuleD1, nil},
+	// Д3 сверх Д1 — законно: второе объявление вносит подстановку `user:*`.
+	{"2 дубль отношения в типе", "\ntype acme_widget\n  relations\n    define v_get: [user]\n    define v_get: [user, user:*]\n", RuleD1, []Rule{RuleD3}},
+	{"3 дубль условия с другим телом", "\ncondition mfa_fresh(x: int) {\n  x > 1\n}\n", RuleD7Suffix, nil},
+	// Условие стоит на отношении-НЕ-глаголе НАМЕРЕННО (#2004). На глаголе тот же
+	// вход поднимает ещё и Д5′ — план становится невыразим, — и тогда §2.8
+	// приёмки, утверждающая про эту форму «план ВЫРАЗИМ», описывает состояние,
+	// которого нет. Предмет формы — необъявленное условие, а не выразимость
+	// плана глагола: у неё своя проба (`TestDeliveredVerbWithConditionIsRefused`).
+	{"4 необъявленное условие", "\ntype acme_widget\n  relations\n    define viewer: [user with nosuch_condition]\n", RuleD4Condition, nil},
+	{"5 имя типа с пробелом", "\ntype acme widget\n  relations\n    define v_get: [user]\n", RuleD7Suffix, nil},
+	{"6 мусор перед типом", "\nсовершенно посторонняя строка\ntype acme_widget\n  relations\n    define v_get: [user]\n", RuleD7Suffix, nil},
+	{"7 мусор после условия", "\nсовершенно посторонняя строка в хвосте\n", RuleD7Suffix, nil},
 }
 
 // TestSevenFormsParseYetAreCaughtByAdmission — по каждой форме утверждается ПАРА.
@@ -80,6 +97,25 @@ func TestSevenFormsParseYetAreCaughtByAdmission(t *testing.T) {
 			if rep.Admitted() {
 				t.Fatal("допуск обязан отказать")
 			}
+
+			// Половина 3: НИЧЕГО СВЕРХ ОБЪЯВЛЕННОГО (#2004).
+			//
+			// Без неё «форма ловится правилом X» остаётся верным и у формы,
+			// поднявшей сверх X ещё одно правило, — то есть у формы, которая
+			// изменила два факта и перестала быть про свой предмет. Приёмка,
+			// описывающая эти формы, разошлась с деревом ровно на этом молчании.
+			want := map[Rule]bool{c.rule: true}
+			for _, r := range c.also {
+				want[r] = true
+			}
+			for _, f := range rep.Findings {
+				if !want[f.Rule] {
+					t.Fatalf("форма подняла правило СВЕРХ объявленного: %s.\n"+
+						"Поднято %v, объявлено %v. Либо форма изменила два факта — тогда её "+
+						"предмет надо разделить, — либо перечень `also` устарел; молча "+
+						"расходиться им нельзя", f.Rule, rules(rep), keysOf(want))
+				}
+			}
 		})
 	}
 	t.Logf("осмотрено: форм %d; по каждой — разбор принимает, допуск отвергает", len(sevenForms))
@@ -104,4 +140,15 @@ func TestLawfulSuffixParsesAndIsAdmitted(t *testing.T) {
 	}
 	t.Logf("осмотрено: законный суффикс — разбор принимает, допуск допускает, находок %d",
 		len(rep.Findings))
+}
+
+// keysOf — объявленное множество правил в виде, пригодном для текста находки.
+// Порядок приведён, иначе текст отказа флейкует по обходу карты.
+func keysOf(m map[Rule]bool) []Rule {
+	out := make([]Rule, 0, len(m))
+	for r := range m {
+		out = append(out, r)
+	}
+	sort.Slice(out, func(i, j int) bool { return out[i] < out[j] })
+	return out
 }

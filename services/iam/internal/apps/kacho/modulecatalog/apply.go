@@ -160,8 +160,13 @@ type CatalogWriter interface {
 	// ResettleTenantProjections переселяет в `role_grant_orphan` проекции
 	// АРЕНДАТОРСКИХ ролей, теряющих референт вместе со снимаемыми строками.
 	// Системные роли не трогает — см. шапку, п. 3.
+	//
+	// `appliedBy` — АВТОР снятия: инициатор применения, разрешённый до открытия
+	// транзакции. Обязательный параметр, а не поле писателя (#2005): «строка
+	// переселена без автора» обязано быть невыразимо.
 	ResettleTenantProjections(ctx context.Context,
-		resources []catalog.ResourceRow, verbs []catalog.VerbRow, reason string) (Resettled, error)
+		resources []catalog.ResourceRow, verbs []catalog.VerbRow,
+		reason string, appliedBy string) (Resettled, error)
 	// RetireVerb помечает строку действия снятой.
 	RetireVerb(ctx context.Context, v catalog.VerbRow, reason string) (bool, error)
 	// RetireResource помечает строку ресурса снятой.
@@ -171,7 +176,11 @@ type CatalogWriter interface {
 	// элементы, не называющие ЖИВОЙ строки каталога. Трогает только строки,
 	// пересекающиеся с названными ресурсами, — предмет вырезания есть снятие,
 	// а не таблица целиком.
-	PruneRetiredSelectorTypes(ctx context.Context, resources []catalog.ResourceRow) (Pruned, error)
+	//
+	// `appliedBy` — тот же автор и по тому же доводу, что у соседа: вопрос «кто
+	// снял» у обеих ведомостей общий.
+	PruneRetiredSelectorTypes(ctx context.Context,
+		resources []catalog.ResourceRow, appliedBy string) (Pruned, error)
 	// ConfirmModuleState сверяет состояние каталога модуля с подтверждением,
 	// названным вызывающим, ОДНИМ оператором, кардинальность которого есть
 	// вердикт: строка нашлась — состояние то самое, ноль строк — сдвинулось.
@@ -496,7 +505,7 @@ func (a *Applier) apply(ctx context.Context, m *manifest.Manifest, conf *confirm
 
 		staleResources, staleVerbs := Withdrawn(live, declared)
 		if len(staleResources) > 0 || len(staleVerbs) > 0 {
-			resettled, serr := w.ResettleTenantProjections(ctx, staleResources, staleVerbs, reason)
+			resettled, serr := w.ResettleTenantProjections(ctx, staleResources, staleVerbs, reason, who.id)
 			if serr != nil {
 				return fmt.Errorf("%w: переселение проекций: %w", ErrWriteFailed, serr)
 			}
@@ -531,7 +540,7 @@ func (a *Applier) apply(ctx context.Context, m *manifest.Manifest, conf *confirm
 		// снимаемая строка была бы ещё жива и уцелела бы ровно та, ради которой
 		// вырезание и делается. Довод целиком — `prune.go`.
 		if len(staleResources) > 0 {
-			pruned, perr := w.PruneRetiredSelectorTypes(ctx, staleResources)
+			pruned, perr := w.PruneRetiredSelectorTypes(ctx, staleResources, who.id)
 			if perr != nil {
 				return fmt.Errorf("%w: вырезание снятых типов из селекторов: %w",
 					ErrWriteFailed, perr)

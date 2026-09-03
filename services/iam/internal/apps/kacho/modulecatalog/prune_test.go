@@ -48,6 +48,8 @@ type pruningWriter struct {
 	// prunedFor — ресурсы, с которыми звали вырезание. Журнал, а не счётчик:
 	// предмет пробы в том, ЧТО вырезалось, и счётчик об этом молчит.
 	prunedFor []string
+	// appliedBy — автор, с которым звали вырезание (#2005).
+	appliedBy string
 }
 
 func (w *pruningWriter) ReadModule(_ context.Context, module string) (catalog.Rows, error) {
@@ -56,8 +58,9 @@ func (w *pruningWriter) ReadModule(_ context.Context, module string) (catalog.Ro
 }
 
 func (w *pruningWriter) PruneRetiredSelectorTypes(_ context.Context,
-	resources []catalog.ResourceRow) (modulecatalog.Pruned, error) {
+	resources []catalog.ResourceRow, appliedBy string) (modulecatalog.Pruned, error) {
 	w.calls = append(w.calls, "prune")
+	w.appliedBy = appliedBy
 	for _, r := range resources {
 		w.prunedFor = append(w.prunedFor, r.Module+"."+r.Resource)
 	}

@@ -92,7 +92,7 @@ func (w *resettlingWriter) ReadModule(_ context.Context, module string) (catalog
 }
 
 func (w *resettlingWriter) ResettleTenantProjections(context.Context,
-	[]catalog.ResourceRow, []catalog.VerbRow, string) (modulecatalog.Resettled, error) {
+	[]catalog.ResourceRow, []catalog.VerbRow, string, string) (modulecatalog.Resettled, error) {
 	w.calls = append(w.calls, "resettle")
 	return w.resettled, nil
 }
