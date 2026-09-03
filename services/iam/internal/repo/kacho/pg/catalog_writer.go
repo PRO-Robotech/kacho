@@ -396,34 +396,13 @@ func (w catalogWriter) ResettleTenantProjections(
 	// между ними помещается состояние «право отобрано и нигде не записано».
 	// Порядок внутри оператора задан ПОТОКОМ ДАННЫХ, а не порядком записи веток:
 	// `moved` читает выход `dropped`, поэтому вставка не может опередить снятие.
-	if err := w.tx.QueryRow(ctx, `
-		WITH `+catalogStaleInputCTE+`, dropped AS (
-		  DELETE FROM kacho_iam.role_rule_ref rr
-		   WHERE `+catalogStaleRuleRefPredicate+`
-		  RETURNING rr.role_id, rr.module, rr.resource, rr.verb
-		), moved AS (
-		  INSERT INTO kacho_iam.role_grant_orphan (role_id, object_type, verb, source, reason)
-		  SELECT d.role_id, d.module || '.' || d.resource, COALESCE(d.verb, ''), 'rule_ref', $6
-		    FROM dropped d
-		  ON CONFLICT (role_id, object_type, verb, source) DO NOTHING
-		)
-		SELECT (SELECT count(*) FROM dropped)`,
+	if err := w.tx.QueryRow(ctx, resettleRuleRefSQL,
 		resModules, resNames, verbModules, verbResources, verbNames, reason,
 	).Scan(&out.RuleRefs); err != nil {
 		return out, fmt.Errorf("переселить объявления правил: %w", err)
 	}
 
-	if err := w.tx.QueryRow(ctx, `
-		WITH `+catalogStaleInputCTE+`, dropped AS (
-		  DELETE FROM kacho_iam.role_verb rv
-		   WHERE `+catalogStaleRoleVerbPredicate+`
-		  RETURNING rv.role_id, rv.object_type, rv.verb
-		), moved AS (
-		  INSERT INTO kacho_iam.role_grant_orphan (role_id, object_type, verb, source, reason)
-		  SELECT d.role_id, d.object_type, d.verb, 'role_verb', $6 FROM dropped d
-		  ON CONFLICT (role_id, object_type, verb, source) DO NOTHING
-		)
-		SELECT (SELECT count(*) FROM dropped)`,
+	if err := w.tx.QueryRow(ctx, resettleRoleVerbSQL,
 		resModules, resNames, verbModules, verbResources, verbNames, reason,
 	).Scan(&out.RoleVerbs); err != nil {
 		return out, fmt.Errorf("переселить выдачи глаголов: %w", err)

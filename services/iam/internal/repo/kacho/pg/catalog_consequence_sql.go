@@ -152,6 +152,71 @@ const catalogSelectorPruneCTE = `touched AS (
 		  SELECT * FROM touched WHERE alive IS DISTINCT FROM was
 		)`
 
+// ─────────────────────────────────────────────────────────────────────────────
+// ОПЕРАТОРЫ ПИСАТЕЛЯ — ОДНИМ ЛИТЕРАЛОМ ОТ СНЯТИЯ ДО ПЕРЕСЕЛЕНИЯ
+//
+// Здесь предикат стоит НЕ ссылкой, а дословным вложением, и это вынужденно —
+// назову ограничение прямо, иначе следующий «почистит» его обратно и уронит
+// гейт дерева.
+//
+// `internal/repohygiene` `TestIAMRV112_RoleVerbProjectionHasASoleWriter` требует,
+// чтобы СТРОКОВЫЙ ЛИТЕРАЛ, содержащий `DELETE FROM` проекции роли, содержал и
+// `INSERT INTO kacho_iam.role_grant_orphan`. Признак читается по литералу
+// намеренно: снятие и переселение неделимы ровно тогда, когда стоят в одном
+// операторе, и отобранное право иначе неотличимо от никогда не выданного.
+//
+// Предикат лежит в тексте МЕЖДУ снятием и переселением. Значит вставить его
+// ссылкой — значит разрезать литерал ровно там, где гейт требует целости:
+// требования взаимно исключают друг друга by construction, и уступает то, чьё
+// существо мельче. Существо гейта — необратимое право арендатора; существо
+// ссылки — форма записи.
+//
+// Поэтому вложение ДОСЛОВНОЕ, а единственность держит проба
+// `catalog_consequence_sql_test.go`: она требует, чтобы каждый оператор писателя
+// содержал авторитетное объявление предиката побайтово. Дрейф перестаёт быть
+// молчаливым — он перестаёт садиться.
+//
+// Третьей популяции это не касается: `role_rule_selectors` в наборе гейта нет
+// (переселять её нечем — у строки селектора нет пары «тип + глагол», которой
+// адресуются сироты), и её предикат вставляется ссылкой.
+
+// resettleRuleRefSQL — ПЕРВАЯ популяция: снятие объявлений правил арендаторских
+// ролей и переселение снятого в сироты ОДНИМ оператором.
+const resettleRuleRefSQL = `
+		WITH ` + catalogStaleInputCTE + `, dropped AS (
+		  DELETE FROM kacho_iam.role_rule_ref rr
+		   WHERE EXISTS (SELECT 1 FROM kacho_iam.roles r
+		                  WHERE r.id = rr.role_id AND r.is_system = false)
+		     AND (EXISTS (SELECT 1 FROM stale_res s
+		                   WHERE s.module = rr.module AND s.resource = rr.resource)
+		       OR EXISTS (SELECT 1 FROM stale_verb s
+		                   WHERE s.module = rr.module AND s.resource = rr.resource
+		                     AND s.verb = rr.verb))
+		  RETURNING rr.role_id, rr.module, rr.resource, rr.verb
+		), moved AS (
+		  INSERT INTO kacho_iam.role_grant_orphan (role_id, object_type, verb, source, reason)
+		  SELECT d.role_id, d.module || '.' || d.resource, COALESCE(d.verb, ''), 'rule_ref', $6
+		    FROM dropped d
+		  ON CONFLICT (role_id, object_type, verb, source) DO NOTHING
+		)
+		SELECT (SELECT count(*) FROM dropped)`
+
+// resettleRoleVerbSQL — ВТОРАЯ популяция: снятие выдач глаголов и переселение
+// снятого в сироты ОДНИМ оператором.
+const resettleRoleVerbSQL = `
+		WITH ` + catalogStaleInputCTE + `, dropped AS (
+		  DELETE FROM kacho_iam.role_verb rv
+		   WHERE EXISTS (SELECT 1 FROM kacho_iam.roles r
+		                  WHERE r.id = rv.role_id AND r.is_system = false)
+		     AND rv.object_type IN (SELECT dotted FROM stale_dotted)
+		  RETURNING rv.role_id, rv.object_type, rv.verb
+		), moved AS (
+		  INSERT INTO kacho_iam.role_grant_orphan (role_id, object_type, verb, source, reason)
+		  SELECT d.role_id, d.object_type, d.verb, 'role_verb', $6 FROM dropped d
+		  ON CONFLICT (role_id, object_type, verb, source) DO NOTHING
+		)
+		SELECT (SELECT count(*) FROM dropped)`
+
 // staleRowArrays — вход отбора в форме, которую читает `catalogStaleInputCTE`.
 //
 // Один разбор на обе стороны: выписанный у каждой, он разошёлся бы порядком
