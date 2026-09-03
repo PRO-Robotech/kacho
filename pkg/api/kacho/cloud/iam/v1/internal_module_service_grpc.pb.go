@@ -76,13 +76,18 @@
 // option is omitted: an unstated floor would arrive as sensitive by accident
 // rather than by decision.
 //
-// The floor of `Apply` is INERT on this listener today, and that is a decision
-// rather than an oversight: the interceptor that enforces it reads a hand-written
-// roster of gateway-fronted internal RPCs, and the same entry ALSO declares that
-// only the edge may dial the method — while the edge has no REST route to it yet.
-// Entering the roster now would produce a surface reachable by no one. Lowering
-// the declaration to `"1"` instead would be a lie about the requirement:
-// inertness is a property of the PATH, not of what applying costs.
+// THE FLOOR OF `Apply` IS NO LONGER INERT (#1991). Here stood the opposite, and
+// it named its own removal predicate: the floor is enforced by an interceptor
+// reading a hand-written roster of gateway-fronted internal RPCs, the same entry
+// ALSO declares that only the edge may dial the method, and the edge had no REST
+// route — so entering the roster would have produced a surface reachable by no
+// one. The route landed above, the predicate fired, and all four verbs entered
+// the roster in the same change (`authzguard.GatewayFrontedInternalRPCs`).
+//
+// Two consequences, and the second is the point: dialling these verbs directly
+// from any module is now refused — the operator acts through the edge, and the
+// measured set of module callers was empty — and the declared step-up floor is
+// applied, because the interceptor applies it to roster members ONLY.
 //
 // ASYNC CONTRACT — `Operation`, AND THE ENVELOPE IS TERMINAL. `Apply` returns
 // `Operation` (ban #9). The row is saved `done = false` before the mutation so
