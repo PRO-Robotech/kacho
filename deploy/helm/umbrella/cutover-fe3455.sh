@@ -383,6 +383,23 @@ make -C ../.. module-manifests-configmap MODULE_MANIFESTS_STACK=fe3455 STACK_NAM
   || die "module-manifests producer failed — refusing to roll iam onto a delivery it cannot read.
        Re-run after fixing the finding it printed above; delivery is a PRECONDITION of the upgrade."
 
+# THE DIGEST OF WHAT WAS JUST APPLIED (kacho#1981).
+#
+# The manifests arrive as a NAMED ConfigMap and the process reads the mounted
+# directory ONCE, at start-up. Editing the map changes files in the volume and
+# does NOT change the pod template: the pod is not rolled, so the state the
+# operator declared arrives at some unrelated restart instead of at the edit.
+#
+# The producer above writes the digest of the object it applied into this values
+# file; the pod template stamps it. Handing the file to helm below is what makes
+# the binding able to fire at all — without it the annotation renders its "unset"
+# default forever, and the binding sits in the template unable to execute.
+MANIFEST_DIGEST_VALUES="values.module-manifests.yaml"
+[ -f "$CHART_DIR/$MANIFEST_DIGEST_VALUES" ] \
+  || die "the module-manifests producer reported success but left no $MANIFEST_DIGEST_VALUES —
+       helm would then roll iam WITHOUT a binding to the delivery it mounts, and an edit
+       to the map would never reach the running process. Refusing the upgrade."
+
 # ── 4. bitnami pg upgrade-guard --set args, read from pre-created Secrets ───────
 #    Every pg-<svc> sets auth.existingSecret, so the chart already reads the password
 #    from the Secret; these --set values are a defensive belt for the bitnami
@@ -407,6 +424,7 @@ log "built pg upgrade-guard --set args (${#PG_SVCS[@]} services scanned; values 
 log "helm upgrade $RELEASE — CONVERGE onto live images (--take-ownership adopts hand-applied resources)…"
 if ! helm upgrade "$RELEASE" . -n "$NS" \
       "${FE_ARGS[@]}" \
+      -f "$MANIFEST_DIGEST_VALUES" \
       --set uif.enabled=true \
       --take-ownership \
       --wait --timeout 15m \
