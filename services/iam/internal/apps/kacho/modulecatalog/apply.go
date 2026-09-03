@@ -207,6 +207,8 @@ func (r Report) String() string {
 // Applier — применитель. Состояния не держит: повторный прогон — штатный режим.
 type Applier struct {
 	tx TxRunner
+	// obs — наблюдатель применения; nil означает «не наблюдаем» (см. observe.go).
+	obs Observer
 }
 
 // NewApplier собирает применитель над исполнителем транзакций.
@@ -303,6 +305,10 @@ func (a *Applier) Apply(ctx context.Context, m *manifest.Manifest) (Report, erro
 		}
 		return nil
 	})
+	// Доклад — ПОСЛЕ закрытия транзакции и на обоих исходах: строки, сосчитанные
+	// откаченной транзакцией, в базе не появились, а «отказов ноль» без
+	// знаменателя неотличимо от «применений не было вовсе».
+	a.observe(rep, err)
 	if err != nil {
 		return rep, err
 	}
