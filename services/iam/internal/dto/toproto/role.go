@@ -106,6 +106,12 @@ func (roleObj) toPb(r domain.Role) (*iamv1.Role, error) {
 		// это — КАКОЕ правило и по какой из двух причин. Пустой срез приезжает
 		// пустым списком: «этим ответом не вычислено», а не «правила не действуют».
 		RuleStates: ruleStatesToPb(r.RuleStates),
+		// ОБЪЯВЛЕНА роль сегодня либо СНЯТА (#1913). Отдельно от `health` рядом,
+		// и различие несущее: `EMPTY` даёт и снятая роль, и объявленная, чьи
+		// строки каталога сняты, — а следующий шаг у арендатора разный.
+		// Нулевое состояние приезжает нулевым сообщением: «этим ответом не
+		// вычислено», ровно как `ROLE_HEALTH_UNSPECIFIED` рядом.
+		Lifecycle: roleLifecycleToPb(r.Lifecycle),
 		// Permissions intentionally omitted (internal compiled; not on the public
 		// API surface — R-7/F5). Read compiled perms via InternalIAMService.GetRoleCompiled.
 	}, nil
@@ -271,5 +277,42 @@ func ruleLifecycleToPb(s domain.RuleLifecycle) iamv1.RuleLifecycle {
 		return iamv1.RuleLifecycle_RULE_LIFECYCLE_UNRESOLVED
 	default:
 		return iamv1.RuleLifecycle_RULE_LIFECYCLE_UNSPECIFIED
+	}
+}
+
+// roleLifecycleToPb — жизненное состояние роли наружу (#1913).
+//
+// Нулевое состояние даёт `nil`, а не сообщение с нулевым полем: «этим ответом не
+// вычислено» обязано быть отличимо от «вычислено, и роль объявлена», а на проводе
+// эти два неразличимы, если сообщение всегда присутствует.
+func roleLifecycleToPb(l domain.RoleLifecycle) *iamv1.RoleLifecycle {
+	if l.State == domain.RoleLifecycleUnknown {
+		return nil
+	}
+	out := &iamv1.RoleLifecycle{
+		State:         roleLifecycleStateToPb(l.State),
+		RetiredReason: l.RetiredReason,
+		RetiredBy:     l.RetiredBy,
+	}
+	if !l.RetiredAt.IsZero() {
+		out.RetiredAt = timestamppb.New(l.RetiredAt.Truncate(tsTruncate))
+	}
+	return out
+}
+
+// roleLifecycleStateToPb — состояние словарём контракта.
+//
+// Корзины «прочее» здесь НЕТ намеренно: неизвестное состояние приезжает
+// нулевым, то есть «не вычислено», а не выдаётся за одно из двух известных.
+// Молча назвать непонятое объявленным значило бы сказать арендатору, что право
+// действует, — ровно то утверждение, которое дороже всего ошибиться.
+func roleLifecycleStateToPb(s domain.RoleLifecycleState) iamv1.RoleLifecycleState {
+	switch s {
+	case domain.RoleLifecycleDeclared:
+		return iamv1.RoleLifecycleState_ROLE_LIFECYCLE_STATE_DECLARED
+	case domain.RoleLifecycleWithdrawn:
+		return iamv1.RoleLifecycleState_ROLE_LIFECYCLE_STATE_WITHDRAWN
+	default:
+		return iamv1.RoleLifecycleState_ROLE_LIFECYCLE_STATE_UNSPECIFIED
 	}
 }

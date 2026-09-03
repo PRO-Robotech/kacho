@@ -97,12 +97,30 @@ func attachIntegrity(ctx context.Context, rd kachorepo.Reader, cat catalog.Sourc
 	if err != nil {
 		return shared.MapRepoErr(err)
 	}
+	// Жизненное состояние роли читается ТЕМ ЖЕ порядком и в той же транзакции
+	// (#1913). Оно отвечает на вопрос, которого нет ни у одного из трёх соседей:
+	// стоит ли за ролью объявление её модуля ВООБЩЕ. `ROLE_HEALTH_EMPTY` даёт и
+	// снятая роль, и объявленная, чьи строки каталога сняты, — а следующий шаг у
+	// арендатора разный.
+	//
+	// Вопросов на страницу становится четыре, и это названо, а не умолчано:
+	// каждый ограничен страницей, ни один не растёт с популяцией ролей. Отказ
+	// роняет чтение по тому же доводу, что у соседей: «не смог прочитать» не есть
+	// «роль объявлена».
+	lifecycles, err := rd.Roles().Lifecycles(ctx, ids)
+	if err != nil {
+		return shared.MapRepoErr(err)
+	}
 
 	for i := range roles {
 		id := roles[i].ID
 		roles[i].Integrity = domain.HealthOf(declared[id], len(unresolved[id]))
 		roles[i].Withdrawn = withdrawn[id]
 		roles[i].PrunedSelectorTypes = pruned[id]
+		// Ключа нет — строки роли не нашлось, и состояние остаётся нулевым:
+		// «этим ответом не вычислено». Подставить «объявлена» значило бы
+		// утверждать о праве по молчанию.
+		roles[i].Lifecycle = lifecycles[id]
 		roles[i].TypeVerbs = lookup
 		// Состояние правила вешается ЗДЕСЬ ЖЕ и из ТЕХ ЖЕ величин, которыми
 		// выведена целость роли выше: иначе слово и счётчики приехали бы из
