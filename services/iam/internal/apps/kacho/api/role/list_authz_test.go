@@ -45,6 +45,7 @@ import (
 	stderrors "errors"
 	"fmt"
 	"sort"
+	"strings"
 	"sync"
 	"testing"
 	"time"
@@ -74,10 +75,20 @@ import (
 type roleListFakeRepo struct {
 	roles      map[string]domain.Role
 	lastFilter reporole.ListFilter
+
+	// projected — строки проекции, которую читает вердикт: ключ
+	// «роль|точечный-тип|глагол». Дублёр отвечает ИЗ СВОЕГО НАБОРА, а не
+	// «неразрешённых нет»: заглушка, возвращающая пустое, была бы
+	// снисходительнее продукта и молча зеленила бы пробы деградации.
+	projected map[string]bool
+	// segCalls — сколько раз спрошена целость. Единица стоимости страницы.
+	segCalls int
+	// segFail — отказ выборки целости (полоса fail-closed).
+	segFail error
 }
 
 func newRoleListFakeRepo() *roleListFakeRepo {
-	return &roleListFakeRepo{roles: map[string]domain.Role{}}
+	return &roleListFakeRepo{roles: map[string]domain.Role{}, projected: map[string]bool{}}
 }
 
 func (f *roleListFakeRepo) Reader(ctx context.Context) (kachorepo.Reader, error) {
@@ -116,6 +127,39 @@ func (a *roleListReader) GetWithVersion(ctx context.Context, id domain.RoleID) (
 }
 func (a *roleListReader) ListAssignable(ctx context.Context, rt, rid string, f reporole.ListFilter) ([]domain.Role, string, error) {
 	return nil, "", stderrors.New("ListAssignable not used in list tests")
+}
+
+// UnresolvedSegments отвечает из набора проекций дублёра — по одному вопросу на
+// СТРАНИЦУ, как продукт. Пустой набор здесь означает «ни один сегмент не
+// спроецирован», а не «всё в порядке»: ответ «неразрешённых нет» на непустом
+// входе делал бы дублёра снисходительнее продукта.
+func (a *roleListReader) UnresolvedSegments(ctx context.Context, declared []domain.RoleSegment) (map[domain.RoleID]int, error) {
+	a.p.segCalls++
+	if a.p.segFail != nil {
+		return nil, a.p.segFail
+	}
+	out := map[domain.RoleID]int{}
+	for _, d := range declared {
+		if a.p.matches(d) {
+			continue
+		}
+		out[d.RoleID]++
+	}
+	return out, nil
+}
+
+// matches — есть ли у роли строка проекции под этот сегмент. Якорь (глагол не
+// назван) удовлетворяется ЛЮБОЙ строкой своего типа.
+func (f *roleListFakeRepo) matches(d domain.RoleSegment) bool {
+	if d.Verb != "" {
+		return f.projected[string(d.RoleID)+"|"+d.ObjectType+"|"+d.Verb]
+	}
+	for k := range f.projected {
+		if strings.HasPrefix(k, string(d.RoleID)+"|"+d.ObjectType+"|") {
+			return true
+		}
+	}
+	return false
 }
 
 // List mirrors the pg repo's filter contract: AccountID scopes to system +

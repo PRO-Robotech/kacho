@@ -276,6 +276,16 @@ func (u *ListRolesUseCase) collectVisiblePage(
 	// (created_at,id) keyset order is preserved within each rank group; this is a
 	// presentation refinement over the authoritative keyset page.
 	sortCatalogFirst(page)
+
+	// Целость — ОДИН вопрос на СТРАНИЦУ, и задаётся он после её сужения: на
+	// накопителе `visible` он стоил бы на `want+1` строк больше, а внутри цикла
+	// добора — по вопросу на итерацию. Стоимость ответа обязана принадлежать
+	// ответу, а не тому, сколько строк пришлось прочитать, чтобы его собрать.
+	//
+	// Тот же производитель, что у `Get`: расхождение поверхностей непредставимо.
+	if ierr := attachIntegrity(ctx, rd, page); ierr != nil {
+		return nil, "", ierr
+	}
 	return page, next, nil
 }
 

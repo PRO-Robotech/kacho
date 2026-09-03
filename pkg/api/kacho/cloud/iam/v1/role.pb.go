@@ -25,6 +25,71 @@ const (
 	_ = protoimpl.EnforceVersion(protoimpl.MaxVersion - 20)
 )
 
+// RoleHealth — состояние целости роли (#1035): даёт ли она то, что объявляет.
+//
+// Выводится из ТОГО ЖЕ, что читает вердикт: «правило есть, строк проекции нет»
+// ⇒ не HEALTHY, какова бы ни была причина. Каталог и ведомость снятого только
+// ОБЪЯСНЯЮТ и состояния не определяют — иначе роль, чьё написание в каталоге
+// законно, а проекция пуста, читалась бы здоровой (форма инцидента 513001).
+type RoleHealth int32
+
+const (
+	// Не вычислено ЭТИМ ответом. НИКОГДА не означает «роль здорова»: ответы
+	// операций поля не несут, и нулевой вариант отличает их от вычисленного нуля.
+	RoleHealth_ROLE_HEALTH_UNSPECIFIED RoleHealth = 0
+	// Каждый адресуемый сегмент роли имеет строку проекции. Роль без адресуемых
+	// сегментов тоже здорова: терять ей нечего.
+	RoleHealth_ROLE_HEALTH_HEALTHY RoleHealth = 1
+	// Часть сегментов проекции не даёт, часть даёт: роль даёт МЕНЬШЕ объявленного.
+	RoleHealth_ROLE_HEALTH_DEGRADED RoleHealth = 2
+	// Сегменты объявлены, проекции нет ни одной: роль не даёт НИЧЕГО, оставаясь
+	// на вид действующей. Это и есть форма инцидента 513001.
+	RoleHealth_ROLE_HEALTH_EMPTY RoleHealth = 3
+)
+
+// Enum value maps for RoleHealth.
+var (
+	RoleHealth_name = map[int32]string{
+		0: "ROLE_HEALTH_UNSPECIFIED",
+		1: "ROLE_HEALTH_HEALTHY",
+		2: "ROLE_HEALTH_DEGRADED",
+		3: "ROLE_HEALTH_EMPTY",
+	}
+	RoleHealth_value = map[string]int32{
+		"ROLE_HEALTH_UNSPECIFIED": 0,
+		"ROLE_HEALTH_HEALTHY":     1,
+		"ROLE_HEALTH_DEGRADED":    2,
+		"ROLE_HEALTH_EMPTY":       3,
+	}
+)
+
+func (x RoleHealth) Enum() *RoleHealth {
+	p := new(RoleHealth)
+	*p = x
+	return p
+}
+
+func (x RoleHealth) String() string {
+	return protoimpl.X.EnumStringOf(x.Descriptor(), protoreflect.EnumNumber(x))
+}
+
+func (RoleHealth) Descriptor() protoreflect.EnumDescriptor {
+	return file_kacho_cloud_iam_v1_role_proto_enumTypes[0].Descriptor()
+}
+
+func (RoleHealth) Type() protoreflect.EnumType {
+	return &file_kacho_cloud_iam_v1_role_proto_enumTypes[0]
+}
+
+func (x RoleHealth) Number() protoreflect.EnumNumber {
+	return protoreflect.EnumNumber(x)
+}
+
+// Deprecated: Use RoleHealth.Descriptor instead.
+func (RoleHealth) EnumDescriptor() ([]byte, []int) {
+	return file_kacho_cloud_iam_v1_role_proto_rawDescGZIP(), []int{0}
+}
+
 // A Role resource. Named permission bundle.
 //
 // Roles бывают двух типов:
@@ -163,9 +228,44 @@ type Role struct {
 	// EMPTY for every other role, a module role included, and the empty value
 	// means "this catalog has no entry for that role" — not "the role has no
 	// purpose". A module role states its purpose in `description` (#1925).
-	Purpose       string `protobuf:"bytes,21,opt,name=purpose,proto3" json:"purpose,omitempty"`
-	unknownFields protoimpl.UnknownFields
-	sizeCache     protoimpl.SizeCache
+	Purpose string `protobuf:"bytes,21,opt,name=purpose,proto3" json:"purpose,omitempty"`
+	// Целость роли (#1035) — даёт ли роль то, что объявляет. Output-only,
+	// производное; на входе Create/Update поля нет вовсе (перечень полей запроса
+	// его не содержит), поэтому прислать его нельзя ни одним путём.
+	//
+	// ЗАПОЛНЯЮТ ЧТЕНИЯ РЕСУРСА — `Get` и `List`, ОДИНАКОВО и одним производителем.
+	// Ответ операции (`Create`/`Update` → `Operation.response`) его НЕ несёт:
+	// `ROLE_HEALTH_UNSPECIFIED` там означает «этим ответом не вычислено» и
+	// НИКОГДА «роль здорова».
+	//
+	// ИСТОЧНИК У НЕГО ДРУГОЙ, ЧЕМ У `authored_verbs` / `effective_verbs`, и это
+	// решение, а не расхождение. Те считаются от СКОМПИЛИРОВАННОЙ таблицы типов,
+	// это — от строк, которые читает вердикт. Расходятся они в обе стороны:
+	//   - строка каталога снята → те не меняются, это меняется;
+	//   - тип объявлен, но модель его не знает → те показывают ВЕСЬ словарь
+	//     глаголов платформы (запасной словарь неизвестного типа), это — EMPTY.
+	//
+	// Складывать их в один предикат нельзя: они отвечают на разные вопросы —
+	// «что роль обещает» и «что вердикт по ней даёт».
+	Health RoleHealth `protobuf:"varint,22,opt,name=health,proto3,enum=kacho.cloud.iam.v1.RoleHealth" json:"health,omitempty"`
+	// Сколько АДРЕСУЕМЫХ сегментов объявляют правила роли (#1035). Output-only.
+	//
+	// Сегмент — пара «точечный ресурс × глагол» либо «точечный ресурс × любой
+	// глагол» (правило с `verbs: ["*"]` даёт ОДИН сегмент, а не по одному на
+	// глагол типа). Подстановка в модуле и в ресурсе сегментов не даёт: она
+	// называет не имя, а «все», и терять ей нечего.
+	//
+	// Ноль законен (роль `*.*`, унаследованная роль без правил) и от «не считали»
+	// отличается СОСТОЯНИЕМ рядом, а не собственной величиной.
+	DeclaredSegments int32 `protobuf:"varint,23,opt,name=declared_segments,json=declaredSegments,proto3" json:"declared_segments,omitempty"`
+	// Сколько из объявленных сегментов не дают НИ ОДНОЙ строки проекции,
+	// которую читает вердикт (#1035). Output-only.
+	//
+	// Равен нулю у здоровой роли, равен `declared_segments` у роли, не дающей
+	// ничего. Значим только при `health != ROLE_HEALTH_UNSPECIFIED`.
+	UnresolvedSegments int32 `protobuf:"varint,24,opt,name=unresolved_segments,json=unresolvedSegments,proto3" json:"unresolved_segments,omitempty"`
+	unknownFields      protoimpl.UnknownFields
+	sizeCache          protoimpl.SizeCache
 }
 
 func (x *Role) Reset() {
@@ -337,6 +437,27 @@ func (x *Role) GetPurpose() string {
 		return x.Purpose
 	}
 	return ""
+}
+
+func (x *Role) GetHealth() RoleHealth {
+	if x != nil {
+		return x.Health
+	}
+	return RoleHealth_ROLE_HEALTH_UNSPECIFIED
+}
+
+func (x *Role) GetDeclaredSegments() int32 {
+	if x != nil {
+		return x.DeclaredSegments
+	}
+	return 0
+}
+
+func (x *Role) GetUnresolvedSegments() int32 {
+	if x != nil {
+		return x.UnresolvedSegments
+	}
+	return 0
 }
 
 // DefinitionTier is the hierarchy tier a Role is defined at (redesign-2026 F4):
@@ -640,7 +761,7 @@ var File_kacho_cloud_iam_v1_role_proto protoreflect.FileDescriptor
 
 const file_kacho_cloud_iam_v1_role_proto_rawDesc = "" +
 	"\n" +
-	"\x1dkacho/cloud/iam/v1/role.proto\x12\x12kacho.cloud.iam.v1\x1a\x1fgoogle/protobuf/timestamp.proto\"\xda\a\n" +
+	"\x1dkacho/cloud/iam/v1/role.proto\x12\x12kacho.cloud.iam.v1\x1a\x1fgoogle/protobuf/timestamp.proto\"\xf0\b\n" +
 	"\x04Role\x12\x0e\n" +
 	"\x02id\x18\x01 \x01(\tR\x02id\x12\x1d\n" +
 	"\n" +
@@ -668,7 +789,10 @@ const file_kacho_cloud_iam_v1_role_proto_rawDesc = "" +
 	"\n" +
 	"verb_notes\x18\x13 \x03(\v2'.kacho.cloud.iam.v1.Role.VerbNotesEntryR\tverbNotes\x12!\n" +
 	"\fdisplay_name\x18\x14 \x01(\tR\vdisplayName\x12\x18\n" +
-	"\apurpose\x18\x15 \x01(\tR\apurpose\x1a9\n" +
+	"\apurpose\x18\x15 \x01(\tR\apurpose\x126\n" +
+	"\x06health\x18\x16 \x01(\x0e2\x1e.kacho.cloud.iam.v1.RoleHealthR\x06health\x12+\n" +
+	"\x11declared_segments\x18\x17 \x01(\x05R\x10declaredSegments\x12/\n" +
+	"\x13unresolved_segments\x18\x18 \x01(\x05R\x12unresolvedSegments\x1a9\n" +
 	"\vLabelsEntry\x12\x10\n" +
 	"\x03key\x18\x01 \x01(\tR\x03key\x12\x14\n" +
 	"\x05value\x18\x02 \x01(\tR\x05value:\x028\x01\x1a<\n" +
@@ -693,7 +817,13 @@ const file_kacho_cloud_iam_v1_role_proto_rawDesc = "" +
 	"\x12UpdateRoleMetadata\x12\x17\n" +
 	"\arole_id\x18\x01 \x01(\tR\x06roleId\"-\n" +
 	"\x12DeleteRoleMetadata\x12\x17\n" +
-	"\arole_id\x18\x01 \x01(\tR\x06roleIdB@Z>github.com/PRO-Robotech/kacho/pkg/api/kacho/cloud/iam/v1;iamv1b\x06proto3"
+	"\arole_id\x18\x01 \x01(\tR\x06roleId*s\n" +
+	"\n" +
+	"RoleHealth\x12\x1b\n" +
+	"\x17ROLE_HEALTH_UNSPECIFIED\x10\x00\x12\x17\n" +
+	"\x13ROLE_HEALTH_HEALTHY\x10\x01\x12\x18\n" +
+	"\x14ROLE_HEALTH_DEGRADED\x10\x02\x12\x15\n" +
+	"\x11ROLE_HEALTH_EMPTY\x10\x03B@Z>github.com/PRO-Robotech/kacho/pkg/api/kacho/cloud/iam/v1;iamv1b\x06proto3"
 
 var (
 	file_kacho_cloud_iam_v1_role_proto_rawDescOnce sync.Once
@@ -707,32 +837,35 @@ func file_kacho_cloud_iam_v1_role_proto_rawDescGZIP() []byte {
 	return file_kacho_cloud_iam_v1_role_proto_rawDescData
 }
 
+var file_kacho_cloud_iam_v1_role_proto_enumTypes = make([]protoimpl.EnumInfo, 1)
 var file_kacho_cloud_iam_v1_role_proto_msgTypes = make([]protoimpl.MessageInfo, 9)
 var file_kacho_cloud_iam_v1_role_proto_goTypes = []any{
-	(*Role)(nil),                  // 0: kacho.cloud.iam.v1.Role
-	(*DefinitionTier)(nil),        // 1: kacho.cloud.iam.v1.DefinitionTier
-	(*Rule)(nil),                  // 2: kacho.cloud.iam.v1.Rule
-	(*CreateRoleMetadata)(nil),    // 3: kacho.cloud.iam.v1.CreateRoleMetadata
-	(*UpdateRoleMetadata)(nil),    // 4: kacho.cloud.iam.v1.UpdateRoleMetadata
-	(*DeleteRoleMetadata)(nil),    // 5: kacho.cloud.iam.v1.DeleteRoleMetadata
-	nil,                           // 6: kacho.cloud.iam.v1.Role.LabelsEntry
-	nil,                           // 7: kacho.cloud.iam.v1.Role.VerbNotesEntry
-	nil,                           // 8: kacho.cloud.iam.v1.Rule.MatchLabelsEntry
-	(*timestamppb.Timestamp)(nil), // 9: google.protobuf.Timestamp
+	(RoleHealth)(0),               // 0: kacho.cloud.iam.v1.RoleHealth
+	(*Role)(nil),                  // 1: kacho.cloud.iam.v1.Role
+	(*DefinitionTier)(nil),        // 2: kacho.cloud.iam.v1.DefinitionTier
+	(*Rule)(nil),                  // 3: kacho.cloud.iam.v1.Rule
+	(*CreateRoleMetadata)(nil),    // 4: kacho.cloud.iam.v1.CreateRoleMetadata
+	(*UpdateRoleMetadata)(nil),    // 5: kacho.cloud.iam.v1.UpdateRoleMetadata
+	(*DeleteRoleMetadata)(nil),    // 6: kacho.cloud.iam.v1.DeleteRoleMetadata
+	nil,                           // 7: kacho.cloud.iam.v1.Role.LabelsEntry
+	nil,                           // 8: kacho.cloud.iam.v1.Role.VerbNotesEntry
+	nil,                           // 9: kacho.cloud.iam.v1.Rule.MatchLabelsEntry
+	(*timestamppb.Timestamp)(nil), // 10: google.protobuf.Timestamp
 }
 var file_kacho_cloud_iam_v1_role_proto_depIdxs = []int32{
-	9, // 0: kacho.cloud.iam.v1.Role.created_at:type_name -> google.protobuf.Timestamp
-	2, // 1: kacho.cloud.iam.v1.Role.rules:type_name -> kacho.cloud.iam.v1.Rule
-	9, // 2: kacho.cloud.iam.v1.Role.updated_at:type_name -> google.protobuf.Timestamp
-	6, // 3: kacho.cloud.iam.v1.Role.labels:type_name -> kacho.cloud.iam.v1.Role.LabelsEntry
-	1, // 4: kacho.cloud.iam.v1.Role.definition_tier:type_name -> kacho.cloud.iam.v1.DefinitionTier
-	7, // 5: kacho.cloud.iam.v1.Role.verb_notes:type_name -> kacho.cloud.iam.v1.Role.VerbNotesEntry
-	8, // 6: kacho.cloud.iam.v1.Rule.match_labels:type_name -> kacho.cloud.iam.v1.Rule.MatchLabelsEntry
-	7, // [7:7] is the sub-list for method output_type
-	7, // [7:7] is the sub-list for method input_type
-	7, // [7:7] is the sub-list for extension type_name
-	7, // [7:7] is the sub-list for extension extendee
-	0, // [0:7] is the sub-list for field type_name
+	10, // 0: kacho.cloud.iam.v1.Role.created_at:type_name -> google.protobuf.Timestamp
+	3,  // 1: kacho.cloud.iam.v1.Role.rules:type_name -> kacho.cloud.iam.v1.Rule
+	10, // 2: kacho.cloud.iam.v1.Role.updated_at:type_name -> google.protobuf.Timestamp
+	7,  // 3: kacho.cloud.iam.v1.Role.labels:type_name -> kacho.cloud.iam.v1.Role.LabelsEntry
+	2,  // 4: kacho.cloud.iam.v1.Role.definition_tier:type_name -> kacho.cloud.iam.v1.DefinitionTier
+	8,  // 5: kacho.cloud.iam.v1.Role.verb_notes:type_name -> kacho.cloud.iam.v1.Role.VerbNotesEntry
+	0,  // 6: kacho.cloud.iam.v1.Role.health:type_name -> kacho.cloud.iam.v1.RoleHealth
+	9,  // 7: kacho.cloud.iam.v1.Rule.match_labels:type_name -> kacho.cloud.iam.v1.Rule.MatchLabelsEntry
+	8,  // [8:8] is the sub-list for method output_type
+	8,  // [8:8] is the sub-list for method input_type
+	8,  // [8:8] is the sub-list for extension type_name
+	8,  // [8:8] is the sub-list for extension extendee
+	0,  // [0:8] is the sub-list for field type_name
 }
 
 func init() { file_kacho_cloud_iam_v1_role_proto_init() }
@@ -745,13 +878,14 @@ func file_kacho_cloud_iam_v1_role_proto_init() {
 		File: protoimpl.DescBuilder{
 			GoPackagePath: reflect.TypeOf(x{}).PkgPath(),
 			RawDescriptor: unsafe.Slice(unsafe.StringData(file_kacho_cloud_iam_v1_role_proto_rawDesc), len(file_kacho_cloud_iam_v1_role_proto_rawDesc)),
-			NumEnums:      0,
+			NumEnums:      1,
 			NumMessages:   9,
 			NumExtensions: 0,
 			NumServices:   0,
 		},
 		GoTypes:           file_kacho_cloud_iam_v1_role_proto_goTypes,
 		DependencyIndexes: file_kacho_cloud_iam_v1_role_proto_depIdxs,
+		EnumInfos:         file_kacho_cloud_iam_v1_role_proto_enumTypes,
 		MessageInfos:      file_kacho_cloud_iam_v1_role_proto_msgTypes,
 	}.Build()
 	File_kacho_cloud_iam_v1_role_proto = out.File

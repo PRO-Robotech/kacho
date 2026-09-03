@@ -194,3 +194,8 @@ func TestInvite_AbsentRole_IsRefusedWithTheSameText(t *testing.T) {
 // «сузить нечем», и списочный use-case обязан на нём ОТКАЗАТЬ, а не листать
 // ненаречённое.
 func (r *inviteRoleReader) Visibility() visibility.ReaderIface { return nil }
+
+// UnresolvedSegments — см. довод у соседних дублёров: отказ, а не «всё в порядке».
+func (inviteRoleReaderRoles) UnresolvedSegments(context.Context, []domain.RoleSegment) (map[domain.RoleID]int, error) {
+	return nil, stderrors.New("UnresolvedSegments не предмет этих проб")
+}
