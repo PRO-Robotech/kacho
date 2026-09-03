@@ -93,7 +93,7 @@ func Run(root string, stdout, stderr io.Writer) int {
 	// молча ослабить обход значило бы напечатать зелёное о непроверенном.
 	relationOracle, oraErr := manifestoracle.Canon()
 	if oraErr != nil {
-		fmt.Fprintf(stderr,
+		_, _ = fmt.Fprintf(stderr,
 			"проверка прав НЕ ИСПОЛНЯЛАСЬ: канон модели прав не разобран: %v\n", oraErr)
 		return ExitNotRun
 	}
@@ -101,13 +101,13 @@ func Run(root string, stdout, stderr io.Writer) int {
 
 	// Перепись печатается ВСЕГДА и первой: без неё зелёный вердикт неотличим от
 	// вердикта обхода, не прочитавшего ничего.
-	fmt.Fprintf(stdout, "корень обхода: %s\n", root)
-	fmt.Fprintf(stdout, "перепись: %s\n", report.Summary())
+	_, _ = fmt.Fprintf(stdout, "корень обхода: %s\n", root)
+	_, _ = fmt.Fprintf(stdout, "перепись: %s\n", report.Summary())
 	for _, p := range report.Paths {
-		fmt.Fprintf(stdout, "  прочитан: %s\n", p)
+		_, _ = fmt.Fprintf(stdout, "  прочитан: %s\n", p)
 	}
 	for _, f := range report.Findings {
-		fmt.Fprintf(stderr, "НАХОДКА: %s\n", f)
+		_, _ = fmt.Fprintf(stderr, "НАХОДКА: %s\n", f)
 	}
 
 	rightsCode := checkRights(root, report.Paths, relationOracle, stdout, stderr)
@@ -132,7 +132,7 @@ func Run(root string, stdout, stderr io.Writer) int {
 		// оболочка конвейера снимает stderr отдельной строкой, и «смотрите корень
 		// обхода» без корня посылает читателя в пустоту. Держит
 		// TestManifestVoidMessagesNameTheWalkRootInThemselves.
-		fmt.Fprintf(stderr,
+		_, _ = fmt.Fprintf(stderr,
 			"манифестов в дереве нет ни одного — это НЕ успех, а «проверять нечего»: "+
 				"манифесты отслеживаются деревом, поэтому пустой обход означает, что "+
 				"до них не дошли — смотрите корень обхода (%s), а не форму манифеста\n", root)
@@ -169,14 +169,14 @@ func checkRights(root string, paths []string, relationOracle manifest.RelationOr
 	if len(paths) == 0 {
 		// Манифестов нет — предмета у этой проверки нет тоже, и молчать об этом
 		// нельзя: «ноль находок» обязано быть отличимо от «ноль прочитанного».
-		fmt.Fprintln(stdout, "права ролей: манифестов не прочитано ни одного — проверять нечего")
+		_, _ = fmt.Fprintln(stdout, "права ролей: манифестов не прочитано ни одного — проверять нечего")
 		return manifest.CheckOK
 	}
 
 	reg, err := seed.LoadPermissionRegistry(context.Background(),
 		slog.New(slog.NewTextHandler(stderr, &slog.HandlerOptions{Level: slog.LevelWarn})))
 	if err != nil {
-		fmt.Fprintf(stderr, "проверка прав НЕ ИСПОЛНЯЛАСЬ: каталог прав не прочитан: %v\n", err)
+		_, _ = fmt.Fprintf(stderr, "проверка прав НЕ ИСПОЛНЯЛАСЬ: каталог прав не прочитан: %v\n", err)
 		return ExitNotRun
 	}
 	// Каталожный факт берётся СНИМКОМ, а не у литерала: читатель на литерале
@@ -186,7 +186,7 @@ func checkRights(root string, paths []string, relationOracle manifest.RelationOr
 	// сборочная проверка стала бы функцией состояния чужой базы.
 	facts, ferr := catalog.NewFacts(seed.LiteralRows())
 	if ferr != nil {
-		fmt.Fprintf(stderr,
+		_, _ = fmt.Fprintf(stderr,
 			"проверка прав НЕ ИСПОЛНЯЛАСЬ: каталожный факт не собран: %v\n", ferr)
 		return ExitNotRun
 	}
@@ -203,10 +203,10 @@ func checkRights(root string, paths []string, relationOracle manifest.RelationOr
 	actions, outside := roleexport.Attribute(entries)
 	// Записи вне формы модуля НАЗЫВАЮТСЯ: платформенные службы ресурсом модуля
 	// не являются, и отбросить их молча значило бы сделать перепись неверной.
-	fmt.Fprintf(stdout, "каталог прав: записей %d · привязано действий %d · вне формы модуля %d\n",
+	_, _ = fmt.Fprintf(stdout, "каталог прав: записей %d · привязано действий %d · вне формы модуля %d\n",
 		len(entries), len(actions), len(outside))
 	if len(actions) == 0 {
-		fmt.Fprintln(stderr,
+		_, _ = fmt.Fprintln(stderr,
 			"проверка прав НЕ ИСПОЛНЯЛАСЬ: привязано ноль действий — судить нечем")
 		return ExitNotRun
 	}
@@ -221,7 +221,7 @@ func checkRights(root string, paths []string, relationOracle manifest.RelationOr
 	// не видно, потому что обе дают «прочитано» на честном дереве.
 	treeRoot, err := os.OpenRoot(root)
 	if err != nil {
-		fmt.Fprintf(stderr,
+		_, _ = fmt.Fprintf(stderr,
 			"проверка прав НЕ ИСПОЛНЯЛАСЬ: корень обхода не открыт: %v\n", err)
 		return ExitNotRun
 	}
@@ -231,7 +231,7 @@ func checkRights(root string, paths []string, relationOracle manifest.RelationOr
 	for _, rel := range paths {
 		data, err := manifest.ReadUnderRoot(treeRoot, rel)
 		if err != nil {
-			fmt.Fprintf(stderr, "НАХОДКА: %s: повторное чтение: %v\n", rel, err)
+			_, _ = fmt.Fprintf(stderr, "НАХОДКА: %s: повторное чтение: %v\n", rel, err)
 			code = manifest.CheckFailed
 			continue
 		}
@@ -246,7 +246,7 @@ func checkRights(root string, paths []string, relationOracle manifest.RelationOr
 		// порядка, написанная в команде, не защищала бы второго вызывающего той
 		// же связки.
 		rep := roleexport.Check(facts, m, actions)
-		fmt.Fprintf(stdout, "  права ролей %s: %s\n", rel, rep.Summary())
+		_, _ = fmt.Fprintf(stdout, "  права ролей %s: %s\n", rel, rep.Summary())
 		// Соединение «действие раздела ↔ запись каталога» судится ЗДЕСЬ, а не
 		// только пробой пакета. Пока вызова не было, обещание соседней
 		// диагностики («судит несопоставленное действие сверка соединения, и
@@ -254,19 +254,19 @@ func checkRights(root string, paths []string, relationOracle manifest.RelationOr
 		// вызывающего в прод-коде, и направление «каталог → раздел» не
 		// исполнялось нигде.
 		lfaults, lcensus := roleexport.CheckActionLinkage(m, actions)
-		fmt.Fprintf(stdout, "  соединение %s: %s\n", rel, lcensus.Summary())
+		_, _ = fmt.Fprintf(stdout, "  соединение %s: %s\n", rel, lcensus.Summary())
 		for _, f := range lfaults {
-			fmt.Fprintf(stderr, "НАХОДКА: %s: %s\n", rel, f)
+			_, _ = fmt.Fprintf(stderr, "НАХОДКА: %s: %s\n", rel, f)
 			code = manifest.CheckFailed
 		}
 		// Пометки печатаются в ВЫВОД, а не в поток ошибок, и вердикта не
 		// меняют: состояние, за которое автор манифеста не отвечает, обязано
 		// быть названо и обязано быть отличимо от находки.
 		for _, n := range rep.Notes {
-			fmt.Fprintf(stdout, "  пометка (%s): %s: %s\n", n.Kind, rel, n.Detail)
+			_, _ = fmt.Fprintf(stdout, "  пометка (%s): %s: %s\n", n.Kind, rel, n.Detail)
 		}
 		for _, f := range rep.Faults {
-			fmt.Fprintf(stderr, "НАХОДКА: %s: %s\n", rel, f)
+			_, _ = fmt.Fprintf(stderr, "НАХОДКА: %s: %s\n", rel, f)
 			code = manifest.CheckFailed
 		}
 	}
