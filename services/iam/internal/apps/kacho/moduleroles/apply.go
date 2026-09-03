@@ -99,6 +99,14 @@ var (
 	// двух отказов разный.
 	ErrRightsExportNotWired = errors.New(
 		"moduleroles: role rules producer is not wired")
+	// ErrRetirementActorUnnamed — автор снятия не назван вызывающим.
+	//
+	// Отказ, а не умолчание: пометка снятия несёт автора, и подставленный
+	// «system» сделал бы вопрос «кто у меня отобрал» безответным ровно тогда,
+	// когда его задают. Тот же довод, по которому `applied_by` завели двум
+	// ведомостям (#1913, миграция 20260903215500).
+	ErrRetirementActorUnnamed = errors.New(
+		"moduleroles: retirement actor is not named by the caller")
 )
 
 // Сентинелы выше — ВТОРОЕ лицо отказа, для вызывающего в процессе. Первое —
@@ -115,6 +123,19 @@ type RoleWriter interface {
 	// ReplaceRuleRefs заменяет проекцию ОБЪЯВЛЕННЫХ сегментов правила ПОЛНОСТЬЮ:
 	// сегмент, снятый из правил, обязан исчезнуть и отсюда.
 	ReplaceRuleRefs(ctx context.Context, roleID domain.RoleID, refs []domain.RoleRuleRef) error
+
+	// LiveSystemRoles — живые системные роли, какими их видит эта транзакция.
+	// Нужны СВЕРКЕ: без них «живёт, не объявлена» не производится ничем.
+	LiveSystemRoles(ctx context.Context) ([]domain.Role, error)
+
+	// RetireRole снимает роль модуля: переселение, снятие проекций и пометка.
+	// Порядок между ними держит схема, а не порядок этих вызовов.
+	RetireRole(ctx context.Context, id domain.RoleID, ownerModule, reason, actor string) (
+		domain.RoleRetirement, error)
+
+	// ReviveRole оживляет снятую роль и очищает ведомость её собственной
+	// причины. `false` означает «оживлять нечего», а не отказ.
+	ReviveRole(ctx context.Context, id domain.RoleID) (bool, error)
 }
 
 // TxRunner — исполнение под ОДНОЙ транзакцией записи. Строка роли и её проекция
@@ -168,12 +189,55 @@ type Report struct {
 	Skipped int
 	// Names — имена записанных ролей в порядке объявления.
 	Names []string
+
+	// SectionDeclared — назвал ли документ раздел `roles` вообще.
+	//
+	// Печатается ОТДЕЛЬНО от `Declared`, потому что состояний у раздела ТРИ:
+	// «не объявлен» и «объявлен и пуст» дают одинаковый ноль объявленных ролей и
+	// означают ПРОТИВОПОЛОЖНОЕ — «сверять не с чем» против «ролей у модуля нет».
+	SectionDeclared bool
+
+	// Retired — строк помечено снятыми. Счётчик СВОЙ, а не часть `Written`:
+	// снятие и запись — разные события, и «записано 0, снято 3» обязано быть
+	// отличимо от «записано 3».
+	Retired int
+
+	// RetiredNames — имена снятых ролей в порядке сверки.
+	//
+	// Поимённо, а не одним счётчиком: оператору, читающему журнал старта, нужен
+	// не вопрос «сколько», а вопрос «ЧТО именно перестало выдаваться». Снятие
+	// проходит молча by construction — оно и заведено затем, чтобы не ронять
+	// пуск, — поэтому единственное место, где его видно, это перепись.
+	RetiredNames []string
+
+	// Resettled — строк проекций переселено в ведомость отобранного. Число
+	// печатается рядом со снятыми: «снято 3, переселено 0» означает, что роли
+	// были уже без проекций, и это другое утверждение о платформе.
+	Resettled int
+
+	// Census — объём, осмотренный СВЕРКОЙ: сколько живых строк прочитано, сколько
+	// из них принадлежит этому модулю, чужим модулям и никому.
+	//
+	// Печатается рядом со счётчиком снятых, потому что счётчик его не закрывает:
+	// «снято 0» при «живых осмотрено 0» и «снято 0» при «живых осмотрено 48» —
+	// разные утверждения о платформе, а молчание у них одно.
+	//
+	// Нулевая перепись законна и означает, что сверка не звалась: раздел ролей
+	// манифестом не объявлен. Отличить это от «звалась и ничего не нашла»
+	// позволяет [ReconcileCensus.Void].
+	Census ReconcileCensus
 }
 
 // String — перепись одной строкой.
 func (r Report) String() string {
-	return fmt.Sprintf("модуль %s · объявлено кластерных %d · записано %d · без изменений %d · "+
-		"иного яруса %d", r.Module, r.Declared, r.Written, r.Unchanged, r.Skipped)
+	section := "раздел ролей НЕ объявлен"
+	if r.SectionDeclared {
+		section = "раздел ролей объявлен"
+	}
+	return fmt.Sprintf("модуль %s · %s · объявлено кластерных %d · записано %d · "+
+		"без изменений %d · иного яруса %d · снято %d %v · переселено %d",
+		r.Module, section, r.Declared, r.Written, r.Unchanged, r.Skipped,
+		r.Retired, r.RetiredNames, r.Resettled)
 }
 
 // Apply приводит строки системных ролей модуля к объявленному манифестом
@@ -185,8 +249,19 @@ func (r Report) String() string {
 // `id` — функцией имени (`domain.SystemRoleID`), якорь — синглтоном кластера,
 // разрешения — сворачиванием правил. Ничего из выведенного манифест не несёт, и
 // принимать его оттуда было бы вторым объявлением одного предмета.
-func (a *Applier) Apply(ctx context.Context, m *manifest.Manifest) (Report, error) {
-	rep := Report{Module: m.Module}
+func (a *Applier) Apply(ctx context.Context, m *manifest.Manifest, actor string) (Report, error) {
+	rep := Report{Module: m.Module, SectionDeclared: m.RolesDeclared()}
+
+	// Автор — ПАРАМЕТР, а не умолчание. Путь старта называет процессного актора
+	// (`BootActorID`), глагол применения — проверенную личность вызывающего.
+	// Подставить здесь «system» значило бы сделать вопрос «кто у меня отобрал»
+	// безответным ровно тогда, когда его задают, — тот же довод, по которому
+	// `applied_by` завели двум ведомостям (20260903215500).
+	if actor == "" {
+		werr := fmt.Errorf("%w: %s", ErrRetirementActorUnnamed, m.Module)
+		return rep, refuse(codes.FailedPrecondition, werr.Error(),
+			LaneRetirementActorUnnamed, m.Module, "", werr)
+	}
 
 	// Производитель правил спрашивается ПЕРВЫМ: без него ни одна форма права до
 	// строки роли не доезжает в том виде, в каком её объявили, — а отказ по
@@ -222,7 +297,15 @@ func (a *Applier) Apply(ctx context.Context, m *manifest.Manifest) (Report, erro
 		declared = append(declared, r)
 	}
 	rep.Declared = len(declared)
-	if rep.Declared == 0 {
+	// РАННЕГО ВЫХОДА ПО НУЛЮ ЗДЕСЬ БОЛЬШЕ НЕТ, и это несущее.
+	//
+	// Он стоял тут, пока применитель умел только писать: писать нечего — идти
+	// некуда. С появлением отзыва ноль объявленных стал ЗАКОННЫМ входом,
+	// означающим «ролей у модуля нет», и выйти на нём значило бы не снять ни
+	// одной роли ровно в том случае, ради которого §2.2 различает три состояния
+	// раздела.
+	if rep.Declared == 0 && !rep.SectionDeclared {
+		// Раздел не объявлен ВОВСЕ: «сверять не с чем». Ни записи, ни снятия.
 		return rep, nil
 	}
 
@@ -234,28 +317,52 @@ func (a *Applier) Apply(ctx context.Context, m *manifest.Manifest) (Report, erro
 	var failed domain.RoleName
 	err := a.tx.RunInWriteTx(ctx, func(ctx context.Context, w RoleWriter) error {
 		for _, r := range declared {
+			// ОЖИВЛЕНИЕ идёт ПЕРВЫМ, до приведения полей, и это порядок, а не
+			// вкус: проекция сегментов ссылается на «эту роль И она жива», и
+			// запись её под снятой ролью отверг бы ключ.
+			revived, verr := w.ReviveRole(ctx, r.ID)
+			if verr != nil {
+				failed = r.Name
+				return fmt.Errorf("%w: %s: %w", ErrWriteFailed, r.Name, verr)
+			}
 			out, changed, uerr := w.UpsertSystemRole(ctx, r)
 			if uerr != nil {
 				failed = r.Name
 				return fmt.Errorf("%w: %s: %w", ErrWriteFailed, r.Name, uerr)
 			}
-			if !changed {
+			// ОЖИВЛЁННАЯ роль пишет проекцию ДАЖЕ при совпадении полей.
+			// Снятие унесло её строки, поэтому «объявленное состояние уже стоит»
+			// здесь верно про КОЛОНКИ и ложно про ПРОЕКЦИЮ: без этой ветви роль
+			// вернулась бы живой и без единого сегмента, то есть не дающей
+			// ничего, — и отличить это от исправной работы было бы нельзя.
+			if !changed && !revived {
 				rep.Unchanged++
 				continue
+			}
+			// Идентификатор и правила берутся у ОБЪЯВЛЕННОЙ роли, а не у ответа
+			// писателя: при `changed=false` ответ пуст by construction —
+			// предикат отличия не нашёл отличий, и `RETURNING` не отдал строки.
+			id, rules := r.ID, r.Rules
+			if changed {
+				id, rules = out.ID, out.Rules
 			}
 			// Проекция ОБЪЯВЛЕННЫХ сегментов пишется ПОЛНОЙ заменой и в этой же
 			// транзакции: ключи в каталог стоят на ней, а не на колонке `rules`,
 			// поэтому приведение, тронувшее правила и не тронувшее проекцию,
 			// оставило бы их несогласованными молча. Отказ ключа здесь и есть
 			// производитель отказа «каталог такого ресурса не знает».
-			if rerr := w.ReplaceRuleRefs(ctx, out.ID, domain.RuleRefsOf(out.Rules)); rerr != nil {
+			if rerr := w.ReplaceRuleRefs(ctx, id, domain.RuleRefsOf(rules)); rerr != nil {
 				failed = r.Name
 				return fmt.Errorf("%w: %s: %w", ErrWriteFailed, r.Name, rerr)
 			}
-			rep.Written++
-			rep.Names = append(rep.Names, string(r.Name))
+			if changed {
+				rep.Written++
+				rep.Names = append(rep.Names, string(r.Name))
+			} else {
+				rep.Unchanged++
+			}
 		}
-		return nil
+		return a.retire(ctx, w, m, declared, actor, &rep, &failed)
 	})
 	if err != nil {
 		// Всякий отказ ОТСЮДА принадлежит полосе писателя by construction:

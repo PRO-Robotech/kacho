@@ -97,10 +97,34 @@ type moduleRolesCensus struct {
 	Skipped int
 	// Names — имена записанных ролей.
 	Names []string
+
+	// Retired — строк помечено снятыми (#1913). Счётчик СВОЙ, а не часть
+	// `Written`: «записано 0, снято 3» и «записано 3» — разные утверждения о
+	// платформе, а молчание у них одно.
+	Retired int
+	// RetiredNames — имена снятых ролей ПОИМЁННО.
+	//
+	// Не счётчик: оператору, читающему журнал старта, нужен не вопрос «сколько»,
+	// а вопрос «ЧТО именно перестало выдаваться». Снятие проходит молча by
+	// construction — оно и заведено затем, чтобы не ронять пуск.
+	RetiredNames []string
+	// Resettled — строк проекций переселено в ведомость отобранного.
+	Resettled int
+	// SectionsDeclared — манифестов, назвавших раздел `roles` вообще.
+	//
+	// Печатается отдельно от `Declared`, потому что состояний у раздела ТРИ:
+	// «не объявлен» и «объявлен и пуст» дают одинаковый ноль ролей и означают
+	// ПРОТИВОПОЛОЖНОЕ. Без этого числа «снято 0» читалось бы как «снимать было
+	// нечего» и там, где сверка не звалась ни разу.
+	SectionsDeclared int
+	// LiveExamined — живых системных строк, осмотренных сверкой суммарно.
+	LiveExamined int
 }
 
-// Changed — записал ли применитель хоть одну строку.
-func (c moduleRolesCensus) Changed() bool { return c.Written > 0 }
+// Changed — тронул ли применитель хоть одну строку. СНЯТИЕ входит сюда наравне
+// с записью: платформа, у которой перестала действовать роль, изменилась ровно
+// так же, как та, у которой роль появилась.
+func (c moduleRolesCensus) Changed() bool { return c.Written > 0 || c.Retired > 0 }
 
 // buildModuleRoleRights собирает ПРОИЗВОДИТЕЛЯ правил роли над живым каталогом
 // и встроенным каталогом прав.
@@ -177,7 +201,11 @@ func applyDeliveredModuleRoles(
 
 	var applyErr error
 	for _, m := range manifests {
-		rep, err := applier.Apply(ctx, m)
+		// Автор — НАЗВАННЫЙ процессный актор этого пути. Он уезжает в пометку
+		// снятия и в ведомость отобранного, поэтому подставленного «system»
+		// здесь не бывает: применитель отвергает пустого автора до открытия
+		// транзакции.
+		rep, err := applier.Apply(ctx, m, moduleroles.BootActorID)
 		// Перепись копится ДО проверки отказа: числа отказавшего манифеста —
 		// то, чем оператор чинит объявление, и терять их вместе с отказом
 		// значило бы отдать ему один текст вместо текста с объёмом.
@@ -187,6 +215,13 @@ func applyDeliveredModuleRoles(
 		c.Unchanged += rep.Unchanged
 		c.Skipped += rep.Skipped
 		c.Names = append(c.Names, rep.Names...)
+		c.Retired += rep.Retired
+		c.RetiredNames = append(c.RetiredNames, rep.RetiredNames...)
+		c.Resettled += rep.Resettled
+		c.LiveExamined += rep.Census.LiveExamined
+		if rep.SectionDeclared {
+			c.SectionsDeclared++
+		}
 		if err != nil {
 			applyErr = fmt.Errorf("роли модуля %s: %w", m.Module, err)
 			break
@@ -203,7 +238,23 @@ func applyDeliveredModuleRoles(
 		slog.Int("unchanged", c.Unchanged),
 		slog.Int("skipped_other_tier", c.Skipped),
 		slog.Any("names", c.Names),
+		slog.Int("sections_declared", c.SectionsDeclared),
+		slog.Int("live_examined", c.LiveExamined),
+		slog.Int("retired", c.Retired),
+		slog.Int("resettled", c.Resettled),
 		slog.Bool("changed", c.Changed()))
+
+	// Снятое называется ПОИМЁННО и ОТДЕЛЬНОЙ строкой — тем же порядком, каким
+	// это делает каталог модуля этажом выше (`serve.go`, «строки каталога сняты
+	// решением»). Счётчик отвечает на вопрос «сколько», а оператору, читающему
+	// журнал старта, нужен другой: ЧТО именно перестало выдаваться. Снятие
+	// проходит молча by construction — оно и заведено затем, чтобы не ронять
+	// пуск, — поэтому единственное место, где его видно, это здесь.
+	if len(c.RetiredNames) > 0 {
+		logger.Info("роли модуля сняты решением манифеста — старт продолжается",
+			slog.Any("roles", c.RetiredNames),
+			slog.Int("resettled_projection_rows", c.Resettled))
+	}
 
 	if applyErr != nil {
 		return fmt.Errorf("применение ролей доставленных манифестов: %w", applyErr)

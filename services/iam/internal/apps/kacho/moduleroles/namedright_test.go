@@ -73,7 +73,7 @@ func namedRightManifest(t *testing.T, rule string) *manifest.Manifest {
 func appliedRuleRow(t *testing.T, rule string) []byte {
 	t.Helper()
 	store := newStore()
-	rep, err := applierUnderTest(t, store).Apply(context.Background(), namedRightManifest(t, rule))
+	rep, err := applierUnderTest(t, store).Apply(context.Background(), namedRightManifest(t, rule), moduleroles.BootActorID)
 	if err != nil {
 		t.Fatalf("применение правила %q отвергнуто: %v", rule, err)
 	}
@@ -125,7 +125,7 @@ func TestNamedRightReachesTheApplierReducedToItsClass(t *testing.T) {
 func TestIncompleteNamedRightRefusalNamesTheMissingNames(t *testing.T) {
 	store := newStore()
 	_, err := applierUnderTest(t, store).Apply(context.Background(),
-		namedRightManifest(t, "{module: vpc, resources: [subnet], verbs: [addCidrBlocks]}"))
+		namedRightManifest(t, "{module: vpc, resources: [subnet], verbs: [addCidrBlocks]}"), moduleroles.BootActorID)
 	if err == nil {
 		t.Fatal("НЕПОЛНЫЙ поимённый перечень применён без отказа: право выдано ШИРЕ просимого")
 	}
@@ -163,7 +163,7 @@ func TestIncompleteNamedRightRefusalNamesTheMissingNames(t *testing.T) {
 func TestApplierWithoutRightsExportRefusesInsteadOfGuessing(t *testing.T) {
 	store := newStore()
 	_, err := moduleroles.NewApplier(store, nil).Apply(context.Background(),
-		namedRightManifest(t, "{module: vpc, resources: [subnet], classes: [update]}"))
+		namedRightManifest(t, "{module: vpc, resources: [subnet], classes: [update]}"), moduleroles.BootActorID)
 	if err == nil {
 		t.Fatal("применитель без производителя правил применил манифест: проверка полноты " +
 			"снята молча")

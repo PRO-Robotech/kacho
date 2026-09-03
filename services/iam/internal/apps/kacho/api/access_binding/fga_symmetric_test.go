@@ -1256,3 +1256,12 @@ func (r *fakeRoleRdr) PrunedSelectorTypes(context.Context, []domain.RoleID) (map
 func (r *fakeRoleRdr) UnresolvedSegments(context.Context, []domain.RoleSegment) (map[domain.RoleID][]domain.RoleSegment, error) {
 	return nil, stderrors.New("UnresolvedSegments не предмет этих проб")
 }
+
+// Lifecycles — дублёр: жизненное состояние ролей этот путь не спрашивает.
+// Пустая карта означает «не вычислено», и вызывающий оставляет нулевое
+// состояние — ровно то, что дублёр обязан отдавать о величине, которой не
+// владеет.
+func (*fakeRoleRdr) Lifecycles(_ context.Context, _ []domain.RoleID) (
+	map[domain.RoleID]domain.RoleLifecycle, error) {
+	return nil, nil
+}

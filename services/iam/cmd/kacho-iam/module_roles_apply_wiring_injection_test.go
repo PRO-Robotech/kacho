@@ -35,7 +35,7 @@ import "github.com/PRO-Robotech/kacho/services/iam/internal/apps/kacho/modulerol
 
 func serve() error {
 	rolesApplier := moduleroles.NewApplier(txRunner, rights)
-	if _, err := rolesApplier.Apply(ctx, m); err != nil {
+	if _, err := rolesApplier.Apply(ctx, m, moduleroles.BootActorID); err != nil {
 		return err
 	}
 	return nil
@@ -51,7 +51,7 @@ import "github.com/PRO-Robotech/kacho/services/iam/internal/apps/kacho/modulerol
 
 func applyDeliveredModuleRoles(ctx context.Context, applier *moduleroles.Applier) error {
 	for _, m := range manifests {
-		if _, err := applier.Apply(ctx, m); err != nil {
+		if _, err := applier.Apply(ctx, m, moduleroles.BootActorID); err != nil {
 			return err
 		}
 	}
@@ -117,7 +117,7 @@ const rolesApplierHandedToAHelperOfAnotherType = `package main
 import "github.com/PRO-Robotech/kacho/services/iam/internal/apps/kacho/moduleroles"
 
 func applyCatalog(ctx context.Context, applier *modulecatalog.Applier) error {
-	_, err := applier.Apply(ctx, req)
+	_, err := applier.Apply(ctx, req, moduleroles.BootActorID)
 	return err
 }
 
@@ -141,7 +141,7 @@ func probe() { _ = moduleroles.NewApplier(txRunner, rights) }
 const rolesApplierCalledElsewhere = `package main
 
 func startRolesApply() error {
-	_, err := rolesApplier.Apply(ctx, m)
+	_, err := rolesApplier.Apply(ctx, m, moduleroles.BootActorID)
 	return err
 }
 `
