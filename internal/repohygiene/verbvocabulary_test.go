@@ -159,7 +159,8 @@ var verbLiteralRoster = []verbLiteral{
 			"НЕ утверждает. Величина здесь — вход манифеста, и совпадает она с набором " +
 			"поставляемого соседа НАМЕРЕННО: две пробы файла обязаны отличаться ровно тем, что " +
 			"проверяется (знает ли тип сборка), а не ещё и составом действий",
-		checkedBy: "тот же файл: TestDoD1_TypeUnknownToTheBuildStopsAtTheModelAndSaysSo — " +
+		checkedBy: "тот же файл: " +
+			"TestDoD1_TypeUnknownToTheBuildReachesTheVerdictThroughTheComposedModel — " +
 			"проекция роли по заведённому типу обязана нести РОВНО столько пар, сколько " +
 			"объявлено здесь (require.Lenf), то есть литерал сверяется с тем, что произвёл " +
 			"настоящий применитель, а не сам с собой",

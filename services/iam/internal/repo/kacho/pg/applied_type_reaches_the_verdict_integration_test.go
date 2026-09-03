@@ -537,6 +537,15 @@ func TestDoD1_RuntimeAppliedCatalogRowCarriesTheGrantToTheVerdict(t *testing.T) 
 //     отвечающим «да» всем), а тип, которого не объявляет НИКТО — ни канон, ни
 //     доставка, — получает отказ С НАЗВАННЫМ ОСНОВАНИЕМ (иначе п. 2 выполним
 //     моделью, объявляющей типом что угодно).
+//
+// # Приёмка
+//
+// Сценарии `IAM-MB-1-06` (тип нового модуля доезжает до вердикта — дословный
+// предикат снятия #1969) и `IAM-MB-1-08` (тип, которого не объявляет НИКТО, —
+// отказ с основанием) приёмки
+// `services/iam/docs/engineering/acceptance/model-composes-at-boot-from-delivered-manifests.md`.
+// Её §9.3 предписывает эту переписку ТЕМ ЖЕ изменением и называет обе половины;
+// здесь они не пересказываются.
 func TestDoD1_TypeUnknownToTheBuildReachesTheVerdictThroughTheComposedModel(t *testing.T) {
 	ctx, pool := catalogPool(t)
 	catRepo := kachopg.NewCatalogRepo(pool)
