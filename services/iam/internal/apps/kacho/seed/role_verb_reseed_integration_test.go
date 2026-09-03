@@ -234,9 +234,17 @@ func seedProbeCatalogResourceNotInCompiledSet(t *testing.T, ctx context.Context,
 	module, resource string) string {
 	t.Helper()
 	dotted := module + "." + resource
+	// Имя типа модели прав — ОБЯЗАТЕЛЬНАЯ колонка строки каталога
+	// (`catalog_resource.object_type`, миграция 20260903112400: NOT NULL плюс
+	// проверка формы). Фикстура, её опускавшая, была СНИСХОДИТЕЛЬНЕЕ продукта:
+	// она подавала вход, которого в дереве не бывает, и с появлением колонки
+	// перестала вставляться вовсе (`23502`). Значение выводится тем же правилом,
+	// каким его выводит манифест синтетического модуля, — здесь это законно: имя
+	// принадлежит фикстуре, а не каталогу платформы.
+	objectType := module + "_" + strings.ToLower(resource)
 	_, err := pool.Exec(ctx,
-		`INSERT INTO kacho_iam.catalog_resource (module, resource, dotted)
-		 VALUES ($1, $2, $3)`, module, resource, dotted)
+		`INSERT INTO kacho_iam.catalog_resource (module, resource, dotted, object_type)
+		 VALUES ($1, $2, $3, $4)`, module, resource, dotted, objectType)
 	require.NoErrorf(t, err, "посев живой строки каталога %s", dotted)
 	return dotted
 }
