@@ -185,7 +185,10 @@ func (u *UpdateRoleUseCase) Execute(ctx context.Context, in UpdateRoleInput) (*o
 		// Grantable-token gate — parity with Create (see rules_catalog.go). An
 		// Update that swaps a valid token for a typo'd one would otherwise silently
 		// DEMOTE a working grant to an empty one.
-		if verr := validateRuleCatalog(in.Rules, current.IsSystem); verr != nil {
+		// Источник — ТОТ ЖЕ снимок живых строк, что и у сегмента модуля выше
+		// (#1993). Паритет с Create здесь несущий: приняв роль над заведённым
+		// типом и отвергнув её ПРАВКУ, платформа сделала бы роль неисправимой.
+		if verr := validateRuleCatalog(in.Rules, current.IsSystem, facts); verr != nil {
 			return nil, shared.MapValidationErr(verr)
 		}
 		compiled, cerr := domain.CompileRules(in.Rules)

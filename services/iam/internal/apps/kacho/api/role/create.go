@@ -145,7 +145,13 @@ func (u *CreateRoleUseCase) Execute(ctx context.Context, r domain.Role) (*operat
 	// AFTER Rule.Validate so the wildcard/XOR/feed errors surface first (they are
 	// more specific), and BEFORE CompileRules so the compiled projection never
 	// carries an ungrantable token.
-	if verr := validateRuleCatalog(r.Rules, r.IsSystem); verr != nil {
+	// Источник — ТОТ ЖЕ снимок живых строк, которым выше судился сегмент МОДУЛЯ
+	// и ниже строится проекция глаголов (#1993): обе стороны правила обязаны
+	// судиться согласованным множеством, а не двумя моментами времени и не двумя
+	// словарями. Прежде здесь спрашивалась таблица, ПОРОЖДЁННАЯ СБОРКОЙ, и тип,
+	// заведённый применением манифеста в работающем процессе, отвергался ею —
+	// первое звено цепи «клиент завёл тип манифестом → получил права».
+	if verr := validateRuleCatalog(r.Rules, r.IsSystem, facts); verr != nil {
 		return nil, shared.MapValidationErr(verr)
 	}
 	compiled, cerr := domain.CompileRules(r.Rules)

@@ -127,9 +127,19 @@ const ruleWildcard = "*"
 // Урок, ради которого разбор оставлен: комментарий, объясняющий, почему
 // расхождение безвредно, переживает и расхождение, и его починку. Проверять надо
 // то, что он утверждает о дереве, а не то, насколько убедительно он звучит.
-func validateRuleCatalog(rules domain.Rules, systemCtx bool) error {
+func validateRuleCatalog(rules domain.Rules, systemCtx bool, types typeCatalog) error {
 	if systemCtx {
 		return nil
+	}
+	// Каталог НЕ ПРОВЯЗАН — отказ, а не пропуск, и текст отдельный. Пропуск
+	// здесь снял бы гейт целиком и молча: правило над любым токеном проходило бы
+	// и материализовалось в ничто — ровно тот тихий отказ, ради которого гейт
+	// заведён. Общий текст «unknown type» тоже не годится: он сказал бы
+	// арендатору, что виноват его вход, тогда как виновата провязка, и следующий
+	// шаг у этих двух разный (тот же довод, что у `validateModule` в домене).
+	if types == nil {
+		return fmt.Errorf(
+			"Illegal argument resources (platform type catalog was not supplied to rule validation)")
 	}
 	var errs error
 	reported := make(map[string]struct{})
@@ -141,10 +151,12 @@ func validateRuleCatalog(rules domain.Rules, systemCtx bool) error {
 			if res == ruleWildcard {
 				continue
 			}
-			if _, ok := authzmap.ObjectType(r.Module, res); ok {
+			// Ключ КАТАЛОГА — точечное имя; ищется точным совпадением, без
+			// разбора по первой точке: сегменты уже разделены запросом.
+			key := r.Module + "." + res
+			if _, ok := types.FGAObjectType(key); ok {
 				continue
 			}
-			key := r.Module + "." + res
 			if _, dup := reported[key]; dup {
 				continue
 			}
