@@ -34,6 +34,14 @@ type httpBinding struct {
 	fqn string
 	// input — дескриптор сообщения запроса RPC.
 	input protoreflect.MessageDescriptor
+	// output — дескриптор сообщения ОТВЕТА RPC.
+	//
+	// Заведено рядом с `input`, а не выведено потребителем из `fqn`: второй путь
+	// от FQN к дескриптору разошёлся бы с этим молча на первом же биндинге,
+	// который таблица собирает иначе, чем ожидает потребитель. Читает его гейт
+	// примеров страниц арендатора: пример ответа сверяется с тем сообщением,
+	// которое этот биндинг и отдаёт.
+	output protoreflect.MessageDescriptor
 	// body — значение `body` из google.api.http: "" (тела нет), "*" (тело —
 	// всё сообщение запроса) либо имя поля, в которое разбирается тело.
 	body string
@@ -84,6 +92,7 @@ func buildHTTPBindings() []httpBinding {
 						segs:     parsePathTemplate(tmpl),
 						fqn:      fqn,
 						input:    m.Input(),
+						output:   m.Output(),
 						body:     r.GetBody(),
 						internal: internal,
 					})
