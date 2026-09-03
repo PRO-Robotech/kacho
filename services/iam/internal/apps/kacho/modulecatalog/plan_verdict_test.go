@@ -148,7 +148,6 @@ func TestPlanCountersCannotYieldTheVerdict(t *testing.T) {
 	// арифметику, а не дерево.
 	byID := map[string]planState{}
 	for _, s := range states {
-		s := s
 		byID[s.id] = s
 		gotVerdict := verdictByTheAnchor(t, s, false)
 		gotWritten, gotWithdrawn := referenceCounters(s.live, s.declared)
@@ -208,7 +207,6 @@ func TestPlanVerdictMatchesTheAnchorOnEachOfTheFourStates(t *testing.T) {
 		len(states), wouldApply, countWanting(states, wouldApply))
 
 	for _, s := range states {
-		s := s
 		t.Run(s.id, func(t *testing.T) {
 			got, err := planVerdictProducer(s.live, s.retired, s.declared)
 			require.NoErrorf(t, err,

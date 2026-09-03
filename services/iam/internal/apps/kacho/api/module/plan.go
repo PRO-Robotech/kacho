@@ -96,7 +96,19 @@ func (uc *PlanUseCase) Execute(ctx context.Context, module string) (*iamv1.PlanM
 	}
 
 	liveOfModule := rowsOfModule(live, module)
-	staleResources, staleVerbs := withdrawn(liveOfModule, declared)
+	// Отбор — ОБЩИЙ с применителем, а не второй его экземпляр.
+	//
+	// Прежде здесь стояла своя копия, и её довод был честен: «экспортировать
+	// отбор применителя — правка соседнего пакета». Довод ИСТЁК — отбор
+	// экспортирован (`modulecatalog.Withdrawn`) ради производителя плановой
+	// стороны, которому нужно то же множество. Держать копию дальше значило бы
+	// держать её ради причины, которой больше нет.
+	//
+	// Согласие прогоном (плановое число равно фактическому по каждой популяции)
+	// при этом не отменяется и остаётся: оно судит СЧЁТ последствий, а не отбор
+	// строк, и продолжает ловить расхождение предикатов SQL — то, чего общий
+	// символ Go закрыть не может.
+	staleResources, staleVerbs := modulecatalog.Withdrawn(liveOfModule, declared)
 
 	anchor, err := modulecatalog.PlanAgainstAnchor(ctx, state, declared)
 	if err != nil {
@@ -256,45 +268,6 @@ func rowsOfModule(all catalog.Rows, module string) catalog.Rows {
 		}
 	}
 	return out
-}
-
-// withdrawn — живые строки модуля, которых манифест больше не объявляет.
-//
-// Сравнение идёт по ТОМУ ЖЕ ключу, каким строку адресует схема (пара для
-// ресурса, тройка для действия), и форма строки в ключ НЕ входит: строка с тем
-// же именем и другим признаком — та же строка первичного ключа, она приводится
-// оживлением, а не снимается и заводится заново.
-//
-// # Второй экземпляр предиката — и чем он удержан
-//
-// Тот же вопрос решает применитель у себя, в своей транзакции. Экспортировать
-// его отбор — правка соседнего пакета; вместо этого согласие двух производителей
-// держится ПРОГОНОМ, а не общим символом: сценарий равенства требует, чтобы
-// плановое число совпало с фактическим числом применения ПО КАЖДОЙ популяции.
-// Разойдясь, они краснеют, а не расходятся молча.
-func withdrawn(live catalog.Rows, declared modulecatalog.Declared) ([]catalog.ResourceRow, []catalog.VerbRow) {
-	declaredRes := make(map[string]bool, len(declared.Resources))
-	for _, r := range declared.Resources {
-		declaredRes[dottedResource(r)] = true
-	}
-	declaredVerb := make(map[string]bool, len(declared.Verbs))
-	for _, v := range declared.Verbs {
-		declaredVerb[dottedVerb(v)] = true
-	}
-
-	var staleResources []catalog.ResourceRow
-	for _, r := range live.Resources {
-		if !declaredRes[dottedResource(r)] {
-			staleResources = append(staleResources, r)
-		}
-	}
-	var staleVerbs []catalog.VerbRow
-	for _, v := range live.Verbs {
-		if !declaredVerb[dottedVerb(v)] {
-			staleVerbs = append(staleVerbs, v)
-		}
-	}
-	return staleResources, staleVerbs
 }
 
 // writtenCounts — сколько строк применение ЗАВЕЛО БЫ либо ОЖИВИЛО.
