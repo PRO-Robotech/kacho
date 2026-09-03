@@ -249,3 +249,61 @@ func TestServeInstallsTheComposedModelBetweenDeliveryAndItsFirstReader(t *testin
 			fset.Position(installPos), fset.Position(deliveryPos))
 	}
 }
+
+// deliveryWithWildcardSubject — ресурс НОВОГО типа, чей состав субъектов несёт
+// подстановку. Допуск обязан назвать это находкой: подстановка на новом типе
+// раздаёт право всякому аутентифицированному, а сужением это не является вовсе
+// (`security.md` §«Отношение, выполнимое подстановочным знаком»).
+const deliveryWithWildcardSubject = `apiVersion: iam/v1
+module: vpc
+resources:
+  - name: gadget
+    objectType: vpc_gadget
+    parents: [project]
+    producer: derived
+    subjects: ["user", "user:*"]
+    verbs:
+      - get
+      - list
+`
+
+// TestBootRefusesAModelThatDoesNotPassAdmission — провязка FAIL-CLOSED.
+//
+// Проба отдельная и стоит ДО успешной по порядку файла намеренно: она до
+// установки не доходит ни при каком исходе, поэтому состояние процесса не
+// занимает и с успешной не спорит.
+//
+// Без неё «композиция зовёт допуск» доказывалось бы только счастливым путём —
+// то есть провязка, штампующая что угодно, была бы неотличима от судящей.
+func TestBootRefusesAModelThatDoesNotPassAdmission(t *testing.T) {
+	m, err := manifest.LoadWithReferent([]byte(deliveryWithWildcardSubject), manifest.ReferentCanon)
+	if err != nil {
+		t.Fatalf("предпосылка не создана: манифест не разобрался: %v", err)
+	}
+
+	logger := slog.New(slog.NewTextHandler(io.Discard, nil))
+	err = installComposedModel(logger, []*manifest.Manifest{m})
+	if err == nil {
+		t.Fatal("собранная модель с подстановкой на НОВОМ типе пущена в старт — " +
+			"провязка штампует, а не судит: мягкий проход здесь есть контроль, " +
+			"который не откажет ни разу за свою жизнь")
+	}
+	// Отказ обязан прийти от ДОПУСКА, а не от композиции. Различие несущее:
+	// композиция судит СБОРКУ (мощность, множество, неприкосновенность канона),
+	// допуск — СОДЕРЖАНИЕ добавленного. Красное от композиции доказывало бы, что
+	// провязка отвергает негодную сборку, и не говорило бы НИЧЕГО о том,
+	// спрашивают ли допуск вообще, — а именно это здесь и утверждается.
+	if !strings.Contains(err.Error(), "допуск собранной модели прав отверг её") {
+		t.Fatalf("отказ вынесен не допуском — провязка могла отвергнуть и не спросив его: %v", err)
+	}
+	// Отказ обязан называть ПРЕДМЕТ: оператор чинит содержимое карты, и «модель
+	// не собралась» не говорит ему, что править.
+	if !strings.Contains(err.Error(), "vpc_gadget") {
+		t.Fatalf("отказ не называет тип, из-за которого он вынесен: %v", err)
+	}
+	// И перепись обязана ехать вместе с отказом: без неё «находок 3» неотличимо
+	// от «осмотрено 0».
+	if !strings.Contains(err.Error(), "типов осмотрено") {
+		t.Fatalf("отказ не несёт переписи допуска: %v", err)
+	}
+}
