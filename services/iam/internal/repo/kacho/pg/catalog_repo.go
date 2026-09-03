@@ -43,6 +43,88 @@ type CatalogRepo struct {
 // NewCatalogRepo — конструктор порта чтения каталога.
 func NewCatalogRepo(pool *pgxpool.Pool) *CatalogRepo { return &CatalogRepo{pool: pool} }
 
+// ReadRetiredCatalog читает СНЯТОЕ множество каталога — строки, у которых
+// `retired_at` проставлен, а `live` ложен.
+//
+// # Почему снятое читается ОТДЕЛЬНЫМ методом, а не флагом в живом чтении
+//
+// У живого множества один потребитель на пути запроса — снимок каталога, и ему
+// снятые строки не нужны ни для чего: отношение `v_*` на снятом типе не
+// резолвится, кортежа он не производит, а ключ проекции (`role_verb_type_fk` →
+// `catalog_resource(dotted, live)`) такую строку не пропускает. Отдай их снимку
+// вместе с живыми — он обязан был бы их отсеивать сам, то есть завести второе
+// место, где решается, что значит «живо».
+//
+// Спрашивает снятое РОВНО ОДИН вызывающий — страж старта, и спрашивает он ради
+// одного вопроса: строка, которую называет литерал, а живой нет, — СНЯТА
+// решением или НЕ ДОЕХАЛА вовсе? Эти два состояния снаружи выглядят одинаково
+// («прав не выдали»), а чинятся противоположно: первое не чинится вовсе, второе
+// — применением миграций. Различает их наличие строки, и больше ничего.
+//
+// # Форма та же, что у живого множества
+//
+// `catalog.Rows` — не совпадение: обе стороны сверки обязаны быть выражены
+// одинаково, иначе сравнение начинает зависеть от того, кто как разложил свою
+// сторону.
+func (r *CatalogRepo) ReadRetiredCatalog(ctx context.Context) (catalog.Rows, error) {
+	var out catalog.Rows
+
+	modRows, err := r.pool.Query(ctx, `SELECT module FROM kacho_iam.catalog_module WHERE NOT live`)
+	if err != nil {
+		return out, fmt.Errorf("прочитать снятые модули каталога: %w", err)
+	}
+	for modRows.Next() {
+		var m string
+		if serr := modRows.Scan(&m); serr != nil {
+			modRows.Close()
+			return out, fmt.Errorf("прочитать снятые модули каталога: %w", serr)
+		}
+		out.Modules = append(out.Modules, m)
+	}
+	modRows.Close()
+	if err = modRows.Err(); err != nil {
+		return out, fmt.Errorf("прочитать снятые модули каталога: %w", err)
+	}
+
+	resRows, err := r.pool.Query(ctx,
+		`SELECT module, resource, object_type FROM kacho_iam.catalog_resource WHERE NOT live`)
+	if err != nil {
+		return out, fmt.Errorf("прочитать снятые ресурсы каталога: %w", err)
+	}
+	for resRows.Next() {
+		var row catalog.ResourceRow
+		if serr := resRows.Scan(&row.Module, &row.Resource, &row.ObjectType); serr != nil {
+			resRows.Close()
+			return out, fmt.Errorf("прочитать снятые ресурсы каталога: %w", serr)
+		}
+		out.Resources = append(out.Resources, row)
+	}
+	resRows.Close()
+	if err = resRows.Err(); err != nil {
+		return out, fmt.Errorf("прочитать снятые ресурсы каталога: %w", err)
+	}
+
+	verbRows, err := r.pool.Query(ctx,
+		`SELECT module, resource, verb, per_object FROM kacho_iam.catalog_verb WHERE NOT live`)
+	if err != nil {
+		return out, fmt.Errorf("прочитать снятые действия каталога: %w", err)
+	}
+	for verbRows.Next() {
+		var row catalog.VerbRow
+		if serr := verbRows.Scan(&row.Module, &row.Resource, &row.Verb, &row.PerObject); serr != nil {
+			verbRows.Close()
+			return out, fmt.Errorf("прочитать снятые действия каталога: %w", serr)
+		}
+		out.Verbs = append(out.Verbs, row)
+	}
+	verbRows.Close()
+	if err = verbRows.Err(); err != nil {
+		return out, fmt.Errorf("прочитать снятые действия каталога: %w", err)
+	}
+
+	return out, nil
+}
+
 // ReadLiveCatalog читает ЖИВОЕ множество каталога.
 //
 // Три оператора — по одному на таблицу, — и это величина, а не константа кода:

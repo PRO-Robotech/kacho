@@ -252,8 +252,21 @@ func runServe(cfg config.Config) error {
 		slog.Int("row_modules", catalogCensus.RowModules),
 		slog.Int("row_resources", catalogCensus.RowResources),
 		slog.Int("row_verbs", catalogCensus.RowVerbs),
+		slog.Int("retired_modules", catalogCensus.RetiredModules),
+		slog.Int("retired_resources", catalogCensus.RetiredResources),
+		slog.Int("retired_verbs", catalogCensus.RetiredVerbs),
 		slog.Int("missing", len(catalogCensus.MissingRows)),
+		slog.Int("withdrawn", len(catalogCensus.WithdrawnRows)),
 		slog.Int("extra", len(catalogCensus.ExtraRows)))
+	// Снятое называется ПОИМЁННО, а не одним счётчиком. Счётчик отвечает на
+	// вопрос «сколько», а оператору, читающему журнал старта, нужен другой:
+	// ЧТО именно перестало выдаваться. Снятие проходит молча by construction —
+	// оно и заведено затем, чтобы не ронять пуск, — поэтому единственное место,
+	// где его видно, это здесь.
+	if len(catalogCensus.WithdrawnRows) > 0 {
+		logger.Info("строки каталога сняты решением — старт продолжается",
+			slog.Any("rows", catalogCensus.WithdrawnRows))
+	}
 	if catErr != nil {
 		return fmt.Errorf("каталог модуля: %w", catErr)
 	}
