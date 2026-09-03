@@ -864,15 +864,19 @@ func buildServices(pool, slavePool *pgxpool.Pool, opsRepo operations.FullRepo,
 	// сюда стартовый нельзя, и это проверяет сборка.
 	//
 	// Производитель ПЛАНОВОГО состояния (отпечаток модуля и оценки последствий)
-	// приходит отдельным портом. Пока он не провязан, `Plan` ОТКАЗЫВАЕТ, называя
-	// причину: вернуть вместо отпечатка пустую строку, а вместо оценок нули
-	// значило бы утверждать «ни одного права не отберут» — то есть солгать ровно
-	// о том, ради чего план и спрашивают. Отказ `Plan` при этом закрывает и
-	// `Apply`: подтверждения, которое тот требует, взять больше негде.
+	// приходит отдельным портом. Непровязанный, он означает отказ `Plan`, и отказ
+	// этот закрывает и `Apply`: подтверждения, которое тот требует, взять негде.
+	//
+	// Провязан он ЗДЕСЬ и над ТЕМ ЖЕ пулом, что писатель, — иначе отпечаток,
+	// показанный планом, читался бы из другой базы, чем сверяет CAS применения.
+	// Оценка последствий при этом идёт читающей транзакцией (`READ ONLY`), а её
+	// предикаты — те же, что вставляет в свои операторы писатель.
 	moduleApplier := modulecatalog.NewVerbApplier(kachopg.NewCatalogWriteRepo(pool))
+	modulePlanState := kachopg.NewCatalogPlanRepo(pool)
 	moduleDelivery := newManifestDeliverySource(cfg.Manifests)
 	moduleHandler := moduleapp.NewHandler(
-		moduleapp.NewPlanUseCase(moduleDelivery, catalogRows, nil).WithAdminChecker(relationStore),
+		moduleapp.NewPlanUseCase(moduleDelivery, catalogRows, modulePlanState).
+			WithAdminChecker(relationStore),
 		moduleapp.NewApplyUseCase(moduleDelivery, moduleApplier, opsRepo, logger).
 			WithAdminChecker(relationStore),
 		moduleapp.NewGetUseCase(catalogRows).WithAdminChecker(relationStore),

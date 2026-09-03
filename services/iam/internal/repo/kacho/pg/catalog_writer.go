@@ -388,39 +388,18 @@ func (w catalogWriter) ResettleTenantProjections(
 ) (modulecatalog.Resettled, error) {
 	var out modulecatalog.Resettled
 
-	resModules := make([]string, 0, len(resources))
-	resNames := make([]string, 0, len(resources))
-	for _, r := range resources {
-		resModules = append(resModules, r.Module)
-		resNames = append(resNames, r.Resource)
-	}
-	verbModules := make([]string, 0, len(verbs))
-	verbResources := make([]string, 0, len(verbs))
-	verbNames := make([]string, 0, len(verbs))
-	for _, v := range verbs {
-		verbModules = append(verbModules, v.Module)
-		verbResources = append(verbResources, v.Resource)
-		verbNames = append(verbNames, v.Verb)
-	}
+	// Разбор входа — ОБЩИЙ с планом (`catalog_consequence_sql.go`): выписанный
+	// здесь второй раз, он разошёлся бы порядком массивов молча.
+	resModules, resNames, verbModules, verbResources, verbNames := staleRowArrays(resources, verbs)
 
 	// Один оператор на популяцию: перенос и снятие обязаны быть неделимы, иначе
 	// между ними помещается состояние «право отобрано и нигде не записано».
 	// Порядок внутри оператора задан ПОТОКОМ ДАННЫХ, а не порядком записи веток:
 	// `moved` читает выход `dropped`, поэтому вставка не может опередить снятие.
 	if err := w.tx.QueryRow(ctx, `
-		WITH stale_res AS (
-		  SELECT * FROM unnest($1::text[], $2::text[]) AS t(module, resource)
-		), stale_verb AS (
-		  SELECT * FROM unnest($3::text[], $4::text[], $5::text[]) AS t(module, resource, verb)
-		), dropped AS (
+		WITH `+catalogStaleInputCTE+`, dropped AS (
 		  DELETE FROM kacho_iam.role_rule_ref rr
-		   WHERE EXISTS (SELECT 1 FROM kacho_iam.roles r
-		                  WHERE r.id = rr.role_id AND r.is_system = false)
-		     AND (EXISTS (SELECT 1 FROM stale_res s
-		                   WHERE s.module = rr.module AND s.resource = rr.resource)
-		       OR EXISTS (SELECT 1 FROM stale_verb s
-		                   WHERE s.module = rr.module AND s.resource = rr.resource
-		                     AND s.verb = rr.verb))
+		   WHERE `+catalogStaleRuleRefPredicate+`
 		  RETURNING rr.role_id, rr.module, rr.resource, rr.verb
 		), moved AS (
 		  INSERT INTO kacho_iam.role_grant_orphan (role_id, object_type, verb, source, reason)
@@ -435,22 +414,17 @@ func (w catalogWriter) ResettleTenantProjections(
 	}
 
 	if err := w.tx.QueryRow(ctx, `
-		WITH stale_res AS (
-		  SELECT module || '.' || resource AS dotted
-		    FROM unnest($1::text[], $2::text[]) AS t(module, resource)
-		), dropped AS (
+		WITH `+catalogStaleInputCTE+`, dropped AS (
 		  DELETE FROM kacho_iam.role_verb rv
-		   WHERE EXISTS (SELECT 1 FROM kacho_iam.roles r
-		                  WHERE r.id = rv.role_id AND r.is_system = false)
-		     AND rv.object_type IN (SELECT dotted FROM stale_res)
+		   WHERE `+catalogStaleRoleVerbPredicate+`
 		  RETURNING rv.role_id, rv.object_type, rv.verb
 		), moved AS (
 		  INSERT INTO kacho_iam.role_grant_orphan (role_id, object_type, verb, source, reason)
-		  SELECT d.role_id, d.object_type, d.verb, 'role_verb', $3 FROM dropped d
+		  SELECT d.role_id, d.object_type, d.verb, 'role_verb', $6 FROM dropped d
 		  ON CONFLICT (role_id, object_type, verb, source) DO NOTHING
 		)
 		SELECT (SELECT count(*) FROM dropped)`,
-		resModules, resNames, reason,
+		resModules, resNames, verbModules, verbResources, verbNames, reason,
 	).Scan(&out.RoleVerbs); err != nil {
 		return out, fmt.Errorf("переселить выдачи глаголов: %w", err)
 	}
@@ -572,25 +546,13 @@ func (w catalogWriter) PruneRetiredSelectorTypes(
 	if len(resources) == 0 {
 		return out, nil
 	}
-	dotted := make([]string, 0, len(resources))
-	for _, r := range resources {
-		dotted = append(dotted, r.Module+"."+r.Resource)
-	}
+	// Вход — ТОТ ЖЕ, что у переселения и у плана. Действий вырезание не читает,
+	// но берёт их массивы: единственность входного объявления важнее трёх
+	// незачитанных параметров (довод — `catalog_consequence_sql.go`).
+	resModules, resNames, verbModules, verbResources, verbNames := staleRowArrays(resources, nil)
 
 	if err := w.tx.QueryRow(ctx, `
-		WITH touched AS (
-		  SELECT s.role_id, s.rule_fp, s.object_types AS was,
-		         (SELECT coalesce(array_agg(t ORDER BY t), ARRAY[]::text[])
-		            FROM unnest(s.object_types) AS t
-		           WHERE EXISTS (SELECT 1 FROM kacho_iam.catalog_resource cr
-		                          WHERE cr.dotted = t AND cr.live)) AS alive
-		    FROM kacho_iam.role_rule_selectors s
-		    JOIN kacho_iam.roles r ON r.id = s.role_id
-		   WHERE r.is_system = false
-		     AND s.object_types && $1::text[]
-		), changed AS (
-		  SELECT * FROM touched WHERE alive IS DISTINCT FROM was
-		), emptied AS (
+		WITH `+catalogStaleInputCTE+`, `+catalogSelectorPruneCTE+`, emptied AS (
 		  DELETE FROM kacho_iam.role_rule_selectors s
 		   USING changed c
 		   WHERE s.role_id = c.role_id AND s.rule_fp = c.rule_fp
@@ -607,7 +569,7 @@ func (w catalogWriter) PruneRetiredSelectorTypes(
 		SELECT (SELECT count(*) FROM stripped),
 		       (SELECT count(*) FROM emptied),
 		       (SELECT coalesce(sum(cardinality(was) - cardinality(alive)), 0) FROM changed)`,
-		dotted,
+		resModules, resNames, verbModules, verbResources, verbNames,
 	).Scan(&out.Rows, &out.Dropped, &out.Elements); err != nil {
 		return out, fmt.Errorf("вырезать снятые типы из селекторов: %w", err)
 	}

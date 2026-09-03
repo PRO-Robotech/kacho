@@ -494,7 +494,7 @@ func (a *Applier) apply(ctx context.Context, m *manifest.Manifest, conf *confirm
 			}
 		}
 
-		staleResources, staleVerbs := stale(live, declared)
+		staleResources, staleVerbs := Withdrawn(live, declared)
 		if len(staleResources) > 0 || len(staleVerbs) > 0 {
 			resettled, serr := w.ResettleTenantProjections(ctx, staleResources, staleVerbs, reason)
 			if serr != nil {
@@ -616,13 +616,22 @@ func (a *Applier) apply(ctx context.Context, m *manifest.Manifest, conf *confirm
 	return rep, nil
 }
 
-// stale — живые строки модуля, которых манифест больше не объявляет.
+// Withdrawn — живые строки модуля, которых манифест больше не объявляет.
 //
 // Сравнение идёт по ТОМУ ЖЕ ключу, каким строку адресует схема (пара для ресурса,
 // тройка для действия). Признак словаря в ключ снятия НЕ входит намеренно: строка
 // с тем же именем и другим признаком — та же строка первичного ключа, и она
 // приводится оживлением, а не снимается и заводится заново.
-func stale(live catalog.Rows, declared Declared) ([]catalog.ResourceRow, []catalog.VerbRow) {
+//
+// # Экспортировано ради ОДНОГО отбора у плана и применения
+//
+// План обязан оценивать последствия ТОГО ЖЕ множества, которое снимет
+// применение. Второй отбор — хоть выписанный у плана, хоть выписанный пробой —
+// разошёлся бы с этим МОЛЧА: на манифесте, ничего не снимающем, обе копии
+// отвечают «пусто», и расхождение стало бы видно ровно там, где его уже нечем
+// заметить — план обещал бы одно, применение делало другое, и оба были бы
+// «правы».
+func Withdrawn(live catalog.Rows, declared Declared) ([]catalog.ResourceRow, []catalog.VerbRow) {
 	declaredRes := make(map[string]bool, len(declared.Resources))
 	for _, r := range declared.Resources {
 		declaredRes[r.Module+"."+r.Resource] = true
