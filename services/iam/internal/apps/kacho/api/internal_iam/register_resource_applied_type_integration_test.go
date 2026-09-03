@@ -39,6 +39,7 @@ import (
 	"github.com/jackc/pgx/v5/pgxpool"
 	"github.com/stretchr/testify/require"
 
+	"github.com/PRO-Robotech/kacho/internal/pgtest"
 	coredb "github.com/PRO-Robotech/kacho/pkg/db"
 
 	iamv1 "github.com/PRO-Robotech/kacho/pkg/api/kacho/cloud/iam/v1"
@@ -68,7 +69,9 @@ func newRegisterUCApplied(t *testing.T) (*internaliam.RegisterResourceUseCase, *
 	ctx := context.Background()
 	pool, err := coredb.NewPool(ctx, iampgtest.NewTestPostgres(t))
 	require.NoError(t, err)
-	t.Cleanup(pool.Close)
+	// Закрытие С ПРЕДЕЛОМ: отложенное ждёт соединение, которое проба, упавшая
+	// внутри открытой транзакции, не вернёт никогда, и уносит вердикт всего пакета.
+	pgtest.ClosePoolAtEnd(t, pool)
 	uc := internaliam.NewRegisterResourceUseCase(
 		kachopg.NewFGAOutboxEmitter(),
 		kachopg.NewResourceMirrorEmitter(),
