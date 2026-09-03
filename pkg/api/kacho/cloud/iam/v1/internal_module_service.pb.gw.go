@@ -39,9 +39,15 @@ func request_InternalModuleService_Plan_0(ctx context.Context, marshaler runtime
 	var (
 		protoReq PlanModuleRequest
 		metadata runtime.ServerMetadata
+		err      error
 	)
-	if err := marshaler.NewDecoder(req.Body).Decode(&protoReq); err != nil && !errors.Is(err, io.EOF) {
-		return nil, metadata, status.Errorf(codes.InvalidArgument, "%v", err)
+	val, ok := pathParams["module"]
+	if !ok {
+		return nil, metadata, status.Errorf(codes.InvalidArgument, "missing parameter %s", "module")
+	}
+	protoReq.Module, err = runtime.String(val)
+	if err != nil {
+		return nil, metadata, status.Errorf(codes.InvalidArgument, "type mismatch, parameter: %s, error: %v", "module", err)
 	}
 	if req.Body != nil {
 		_, _ = io.Copy(io.Discard, req.Body)
@@ -54,9 +60,15 @@ func local_request_InternalModuleService_Plan_0(ctx context.Context, marshaler r
 	var (
 		protoReq PlanModuleRequest
 		metadata runtime.ServerMetadata
+		err      error
 	)
-	if err := marshaler.NewDecoder(req.Body).Decode(&protoReq); err != nil && !errors.Is(err, io.EOF) {
-		return nil, metadata, status.Errorf(codes.InvalidArgument, "%v", err)
+	val, ok := pathParams["module"]
+	if !ok {
+		return nil, metadata, status.Errorf(codes.InvalidArgument, "missing parameter %s", "module")
+	}
+	protoReq.Module, err = runtime.String(val)
+	if err != nil {
+		return nil, metadata, status.Errorf(codes.InvalidArgument, "type mismatch, parameter: %s, error: %v", "module", err)
 	}
 	msg, err := server.Plan(ctx, &protoReq)
 	return msg, metadata, err
@@ -66,9 +78,18 @@ func request_InternalModuleService_Apply_0(ctx context.Context, marshaler runtim
 	var (
 		protoReq ApplyModuleRequest
 		metadata runtime.ServerMetadata
+		err      error
 	)
 	if err := marshaler.NewDecoder(req.Body).Decode(&protoReq); err != nil && !errors.Is(err, io.EOF) {
 		return nil, metadata, status.Errorf(codes.InvalidArgument, "%v", err)
+	}
+	val, ok := pathParams["module"]
+	if !ok {
+		return nil, metadata, status.Errorf(codes.InvalidArgument, "missing parameter %s", "module")
+	}
+	protoReq.Module, err = runtime.String(val)
+	if err != nil {
+		return nil, metadata, status.Errorf(codes.InvalidArgument, "type mismatch, parameter: %s, error: %v", "module", err)
 	}
 	if req.Body != nil {
 		_, _ = io.Copy(io.Discard, req.Body)
@@ -81,9 +102,18 @@ func local_request_InternalModuleService_Apply_0(ctx context.Context, marshaler 
 	var (
 		protoReq ApplyModuleRequest
 		metadata runtime.ServerMetadata
+		err      error
 	)
 	if err := marshaler.NewDecoder(req.Body).Decode(&protoReq); err != nil && !errors.Is(err, io.EOF) {
 		return nil, metadata, status.Errorf(codes.InvalidArgument, "%v", err)
+	}
+	val, ok := pathParams["module"]
+	if !ok {
+		return nil, metadata, status.Errorf(codes.InvalidArgument, "missing parameter %s", "module")
+	}
+	protoReq.Module, err = runtime.String(val)
+	if err != nil {
+		return nil, metadata, status.Errorf(codes.InvalidArgument, "type mismatch, parameter: %s, error: %v", "module", err)
 	}
 	msg, err := server.Apply(ctx, &protoReq)
 	return msg, metadata, err
@@ -93,9 +123,15 @@ func request_InternalModuleService_Get_0(ctx context.Context, marshaler runtime.
 	var (
 		protoReq GetModuleRequest
 		metadata runtime.ServerMetadata
+		err      error
 	)
-	if err := marshaler.NewDecoder(req.Body).Decode(&protoReq); err != nil && !errors.Is(err, io.EOF) {
-		return nil, metadata, status.Errorf(codes.InvalidArgument, "%v", err)
+	val, ok := pathParams["module"]
+	if !ok {
+		return nil, metadata, status.Errorf(codes.InvalidArgument, "missing parameter %s", "module")
+	}
+	protoReq.Module, err = runtime.String(val)
+	if err != nil {
+		return nil, metadata, status.Errorf(codes.InvalidArgument, "type mismatch, parameter: %s, error: %v", "module", err)
 	}
 	if req.Body != nil {
 		_, _ = io.Copy(io.Discard, req.Body)
@@ -108,9 +144,15 @@ func local_request_InternalModuleService_Get_0(ctx context.Context, marshaler ru
 	var (
 		protoReq GetModuleRequest
 		metadata runtime.ServerMetadata
+		err      error
 	)
-	if err := marshaler.NewDecoder(req.Body).Decode(&protoReq); err != nil && !errors.Is(err, io.EOF) {
-		return nil, metadata, status.Errorf(codes.InvalidArgument, "%v", err)
+	val, ok := pathParams["module"]
+	if !ok {
+		return nil, metadata, status.Errorf(codes.InvalidArgument, "missing parameter %s", "module")
+	}
+	protoReq.Module, err = runtime.String(val)
+	if err != nil {
+		return nil, metadata, status.Errorf(codes.InvalidArgument, "type mismatch, parameter: %s, error: %v", "module", err)
 	}
 	msg, err := server.Get(ctx, &protoReq)
 	return msg, metadata, err
@@ -121,9 +163,6 @@ func request_InternalModuleService_List_0(ctx context.Context, marshaler runtime
 		protoReq ListModulesRequest
 		metadata runtime.ServerMetadata
 	)
-	if err := marshaler.NewDecoder(req.Body).Decode(&protoReq); err != nil && !errors.Is(err, io.EOF) {
-		return nil, metadata, status.Errorf(codes.InvalidArgument, "%v", err)
-	}
 	if req.Body != nil {
 		_, _ = io.Copy(io.Discard, req.Body)
 	}
@@ -136,9 +175,6 @@ func local_request_InternalModuleService_List_0(ctx context.Context, marshaler r
 		protoReq ListModulesRequest
 		metadata runtime.ServerMetadata
 	)
-	if err := marshaler.NewDecoder(req.Body).Decode(&protoReq); err != nil && !errors.Is(err, io.EOF) {
-		return nil, metadata, status.Errorf(codes.InvalidArgument, "%v", err)
-	}
 	msg, err := server.List(ctx, &protoReq)
 	return msg, metadata, err
 }
@@ -149,13 +185,13 @@ func local_request_InternalModuleService_List_0(ctx context.Context, marshaler r
 // Note that using this registration option will cause many gRPC library features to stop working. Consider using RegisterInternalModuleServiceHandlerFromEndpoint instead.
 // GRPC interceptors will not work for this type of registration. To use interceptors, you must use the "runtime.WithMiddlewares" option in the "runtime.NewServeMux" call.
 func RegisterInternalModuleServiceHandlerServer(ctx context.Context, mux *runtime.ServeMux, server InternalModuleServiceServer) error {
-	mux.Handle(http.MethodPost, pattern_InternalModuleService_Plan_0, func(w http.ResponseWriter, req *http.Request, pathParams map[string]string) {
+	mux.Handle(http.MethodGet, pattern_InternalModuleService_Plan_0, func(w http.ResponseWriter, req *http.Request, pathParams map[string]string) {
 		ctx, cancel := context.WithCancel(req.Context())
 		defer cancel()
 		var stream runtime.ServerTransportStream
 		ctx = grpc.NewContextWithServerTransportStream(ctx, &stream)
 		inboundMarshaler, outboundMarshaler := runtime.MarshalerForRequest(mux, req)
-		annotatedContext, err := runtime.AnnotateIncomingContext(ctx, mux, req, "/kacho.cloud.iam.v1.InternalModuleService/Plan", runtime.WithHTTPPathPattern("/kacho.cloud.iam.v1.InternalModuleService/Plan"))
+		annotatedContext, err := runtime.AnnotateIncomingContext(ctx, mux, req, "/kacho.cloud.iam.v1.InternalModuleService/Plan", runtime.WithHTTPPathPattern("/iam/v1/internal/modules/{module}:plan"))
 		if err != nil {
 			runtime.HTTPError(ctx, mux, outboundMarshaler, w, req, err)
 			return
@@ -175,7 +211,7 @@ func RegisterInternalModuleServiceHandlerServer(ctx context.Context, mux *runtim
 		var stream runtime.ServerTransportStream
 		ctx = grpc.NewContextWithServerTransportStream(ctx, &stream)
 		inboundMarshaler, outboundMarshaler := runtime.MarshalerForRequest(mux, req)
-		annotatedContext, err := runtime.AnnotateIncomingContext(ctx, mux, req, "/kacho.cloud.iam.v1.InternalModuleService/Apply", runtime.WithHTTPPathPattern("/kacho.cloud.iam.v1.InternalModuleService/Apply"))
+		annotatedContext, err := runtime.AnnotateIncomingContext(ctx, mux, req, "/kacho.cloud.iam.v1.InternalModuleService/Apply", runtime.WithHTTPPathPattern("/iam/v1/internal/modules/{module}:apply"))
 		if err != nil {
 			runtime.HTTPError(ctx, mux, outboundMarshaler, w, req, err)
 			return
@@ -189,13 +225,13 @@ func RegisterInternalModuleServiceHandlerServer(ctx context.Context, mux *runtim
 		}
 		forward_InternalModuleService_Apply_0(annotatedContext, mux, outboundMarshaler, w, req, resp, mux.GetForwardResponseOptions()...)
 	})
-	mux.Handle(http.MethodPost, pattern_InternalModuleService_Get_0, func(w http.ResponseWriter, req *http.Request, pathParams map[string]string) {
+	mux.Handle(http.MethodGet, pattern_InternalModuleService_Get_0, func(w http.ResponseWriter, req *http.Request, pathParams map[string]string) {
 		ctx, cancel := context.WithCancel(req.Context())
 		defer cancel()
 		var stream runtime.ServerTransportStream
 		ctx = grpc.NewContextWithServerTransportStream(ctx, &stream)
 		inboundMarshaler, outboundMarshaler := runtime.MarshalerForRequest(mux, req)
-		annotatedContext, err := runtime.AnnotateIncomingContext(ctx, mux, req, "/kacho.cloud.iam.v1.InternalModuleService/Get", runtime.WithHTTPPathPattern("/kacho.cloud.iam.v1.InternalModuleService/Get"))
+		annotatedContext, err := runtime.AnnotateIncomingContext(ctx, mux, req, "/kacho.cloud.iam.v1.InternalModuleService/Get", runtime.WithHTTPPathPattern("/iam/v1/internal/modules/{module}"))
 		if err != nil {
 			runtime.HTTPError(ctx, mux, outboundMarshaler, w, req, err)
 			return
@@ -209,13 +245,13 @@ func RegisterInternalModuleServiceHandlerServer(ctx context.Context, mux *runtim
 		}
 		forward_InternalModuleService_Get_0(annotatedContext, mux, outboundMarshaler, w, req, resp, mux.GetForwardResponseOptions()...)
 	})
-	mux.Handle(http.MethodPost, pattern_InternalModuleService_List_0, func(w http.ResponseWriter, req *http.Request, pathParams map[string]string) {
+	mux.Handle(http.MethodGet, pattern_InternalModuleService_List_0, func(w http.ResponseWriter, req *http.Request, pathParams map[string]string) {
 		ctx, cancel := context.WithCancel(req.Context())
 		defer cancel()
 		var stream runtime.ServerTransportStream
 		ctx = grpc.NewContextWithServerTransportStream(ctx, &stream)
 		inboundMarshaler, outboundMarshaler := runtime.MarshalerForRequest(mux, req)
-		annotatedContext, err := runtime.AnnotateIncomingContext(ctx, mux, req, "/kacho.cloud.iam.v1.InternalModuleService/List", runtime.WithHTTPPathPattern("/kacho.cloud.iam.v1.InternalModuleService/List"))
+		annotatedContext, err := runtime.AnnotateIncomingContext(ctx, mux, req, "/kacho.cloud.iam.v1.InternalModuleService/List", runtime.WithHTTPPathPattern("/iam/v1/internal/modules"))
 		if err != nil {
 			runtime.HTTPError(ctx, mux, outboundMarshaler, w, req, err)
 			return
@@ -269,11 +305,11 @@ func RegisterInternalModuleServiceHandler(ctx context.Context, mux *runtime.Serv
 // doesn't go through the normal gRPC flow (creating a gRPC client etc.) then it will be up to the passed in
 // "InternalModuleServiceClient" to call the correct interceptors. This client ignores the HTTP middlewares.
 func RegisterInternalModuleServiceHandlerClient(ctx context.Context, mux *runtime.ServeMux, client InternalModuleServiceClient) error {
-	mux.Handle(http.MethodPost, pattern_InternalModuleService_Plan_0, func(w http.ResponseWriter, req *http.Request, pathParams map[string]string) {
+	mux.Handle(http.MethodGet, pattern_InternalModuleService_Plan_0, func(w http.ResponseWriter, req *http.Request, pathParams map[string]string) {
 		ctx, cancel := context.WithCancel(req.Context())
 		defer cancel()
 		inboundMarshaler, outboundMarshaler := runtime.MarshalerForRequest(mux, req)
-		annotatedContext, err := runtime.AnnotateContext(ctx, mux, req, "/kacho.cloud.iam.v1.InternalModuleService/Plan", runtime.WithHTTPPathPattern("/kacho.cloud.iam.v1.InternalModuleService/Plan"))
+		annotatedContext, err := runtime.AnnotateContext(ctx, mux, req, "/kacho.cloud.iam.v1.InternalModuleService/Plan", runtime.WithHTTPPathPattern("/iam/v1/internal/modules/{module}:plan"))
 		if err != nil {
 			runtime.HTTPError(ctx, mux, outboundMarshaler, w, req, err)
 			return
@@ -290,7 +326,7 @@ func RegisterInternalModuleServiceHandlerClient(ctx context.Context, mux *runtim
 		ctx, cancel := context.WithCancel(req.Context())
 		defer cancel()
 		inboundMarshaler, outboundMarshaler := runtime.MarshalerForRequest(mux, req)
-		annotatedContext, err := runtime.AnnotateContext(ctx, mux, req, "/kacho.cloud.iam.v1.InternalModuleService/Apply", runtime.WithHTTPPathPattern("/kacho.cloud.iam.v1.InternalModuleService/Apply"))
+		annotatedContext, err := runtime.AnnotateContext(ctx, mux, req, "/kacho.cloud.iam.v1.InternalModuleService/Apply", runtime.WithHTTPPathPattern("/iam/v1/internal/modules/{module}:apply"))
 		if err != nil {
 			runtime.HTTPError(ctx, mux, outboundMarshaler, w, req, err)
 			return
@@ -303,11 +339,11 @@ func RegisterInternalModuleServiceHandlerClient(ctx context.Context, mux *runtim
 		}
 		forward_InternalModuleService_Apply_0(annotatedContext, mux, outboundMarshaler, w, req, resp, mux.GetForwardResponseOptions()...)
 	})
-	mux.Handle(http.MethodPost, pattern_InternalModuleService_Get_0, func(w http.ResponseWriter, req *http.Request, pathParams map[string]string) {
+	mux.Handle(http.MethodGet, pattern_InternalModuleService_Get_0, func(w http.ResponseWriter, req *http.Request, pathParams map[string]string) {
 		ctx, cancel := context.WithCancel(req.Context())
 		defer cancel()
 		inboundMarshaler, outboundMarshaler := runtime.MarshalerForRequest(mux, req)
-		annotatedContext, err := runtime.AnnotateContext(ctx, mux, req, "/kacho.cloud.iam.v1.InternalModuleService/Get", runtime.WithHTTPPathPattern("/kacho.cloud.iam.v1.InternalModuleService/Get"))
+		annotatedContext, err := runtime.AnnotateContext(ctx, mux, req, "/kacho.cloud.iam.v1.InternalModuleService/Get", runtime.WithHTTPPathPattern("/iam/v1/internal/modules/{module}"))
 		if err != nil {
 			runtime.HTTPError(ctx, mux, outboundMarshaler, w, req, err)
 			return
@@ -320,11 +356,11 @@ func RegisterInternalModuleServiceHandlerClient(ctx context.Context, mux *runtim
 		}
 		forward_InternalModuleService_Get_0(annotatedContext, mux, outboundMarshaler, w, req, resp, mux.GetForwardResponseOptions()...)
 	})
-	mux.Handle(http.MethodPost, pattern_InternalModuleService_List_0, func(w http.ResponseWriter, req *http.Request, pathParams map[string]string) {
+	mux.Handle(http.MethodGet, pattern_InternalModuleService_List_0, func(w http.ResponseWriter, req *http.Request, pathParams map[string]string) {
 		ctx, cancel := context.WithCancel(req.Context())
 		defer cancel()
 		inboundMarshaler, outboundMarshaler := runtime.MarshalerForRequest(mux, req)
-		annotatedContext, err := runtime.AnnotateContext(ctx, mux, req, "/kacho.cloud.iam.v1.InternalModuleService/List", runtime.WithHTTPPathPattern("/kacho.cloud.iam.v1.InternalModuleService/List"))
+		annotatedContext, err := runtime.AnnotateContext(ctx, mux, req, "/kacho.cloud.iam.v1.InternalModuleService/List", runtime.WithHTTPPathPattern("/iam/v1/internal/modules"))
 		if err != nil {
 			runtime.HTTPError(ctx, mux, outboundMarshaler, w, req, err)
 			return
@@ -341,10 +377,10 @@ func RegisterInternalModuleServiceHandlerClient(ctx context.Context, mux *runtim
 }
 
 var (
-	pattern_InternalModuleService_Plan_0  = runtime.MustPattern(runtime.NewPattern(1, []int{2, 0, 2, 1}, []string{"kacho.cloud.iam.v1.InternalModuleService", "Plan"}, ""))
-	pattern_InternalModuleService_Apply_0 = runtime.MustPattern(runtime.NewPattern(1, []int{2, 0, 2, 1}, []string{"kacho.cloud.iam.v1.InternalModuleService", "Apply"}, ""))
-	pattern_InternalModuleService_Get_0   = runtime.MustPattern(runtime.NewPattern(1, []int{2, 0, 2, 1}, []string{"kacho.cloud.iam.v1.InternalModuleService", "Get"}, ""))
-	pattern_InternalModuleService_List_0  = runtime.MustPattern(runtime.NewPattern(1, []int{2, 0, 2, 1}, []string{"kacho.cloud.iam.v1.InternalModuleService", "List"}, ""))
+	pattern_InternalModuleService_Plan_0  = runtime.MustPattern(runtime.NewPattern(1, []int{2, 0, 2, 1, 2, 2, 2, 3, 1, 0, 4, 1, 5, 4}, []string{"iam", "v1", "internal", "modules", "module"}, "plan"))
+	pattern_InternalModuleService_Apply_0 = runtime.MustPattern(runtime.NewPattern(1, []int{2, 0, 2, 1, 2, 2, 2, 3, 1, 0, 4, 1, 5, 4}, []string{"iam", "v1", "internal", "modules", "module"}, "apply"))
+	pattern_InternalModuleService_Get_0   = runtime.MustPattern(runtime.NewPattern(1, []int{2, 0, 2, 1, 2, 2, 2, 3, 1, 0, 4, 1, 5, 4}, []string{"iam", "v1", "internal", "modules", "module"}, ""))
+	pattern_InternalModuleService_List_0  = runtime.MustPattern(runtime.NewPattern(1, []int{2, 0, 2, 1, 2, 2, 2, 3}, []string{"iam", "v1", "internal", "modules"}, ""))
 )
 
 var (

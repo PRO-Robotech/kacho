@@ -76,6 +76,25 @@ var internalRESTPaths = []struct{ method, path string }{
 	// isInternalRoute to return false for this exact path turns the internal
 	// half of this census red and names the pair.
 	{"POST", "/iam/v1/internal/interactiveClients"},
+	// InternalModuleService (kacho#1991) — Plan/Apply/Get/List над каталогом
+	// прав модуля. ЧЕТЫРЕ строки, а не одна представительная: у биндингов
+	// РАЗНАЯ форма пути, и классифицируются они не одним и тем же куском
+	// предиката. `/iam/v1/internal/modules` попадает под `HasSuffix(path,
+	// "/internal")`? — НЕТ: сегмент `/internal/` здесь СРЕДИННЫЙ, и ловит его
+	// первая ветвь `Contains(path, "/internal/")`. Строка с параметром пути
+	// проверяет, что подстановка значения сегмент не разрывает, а строка с
+	// суффиксом-глаголом (`:plan`, `:apply`) — что двоеточие в хвосте не уводит
+	// путь мимо той же ветви.
+	//
+	// Apply вдобавок единственный здесь POST с телом: он несёт подтверждаемый
+	// отпечаток состояния и два потолка последствий, поэтому у него метод и
+	// форма отличаются от трёх соседей. Метод при этом НЕ дискриминатор — путь
+	// классифицируется по сегменту для любого метода; строка стоит ради формы
+	// пути, а не ради метода.
+	{"GET", "/iam/v1/internal/modules"},
+	{"GET", "/iam/v1/internal/modules/vpc"},
+	{"GET", "/iam/v1/internal/modules/vpc:plan"},
+	{"POST", "/iam/v1/internal/modules/vpc:apply"},
 	// InternalStorageBackendService.List — the representative of the class that
 	// carries NO `/internal` segment and is matched by NONE of the hand-written
 	// path rules. It is classified by the DESCRIPTOR half,
