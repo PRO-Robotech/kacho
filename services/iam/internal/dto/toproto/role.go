@@ -10,6 +10,8 @@ import (
 
 	iamv1 "github.com/PRO-Robotech/kacho/pkg/api/kacho/cloud/iam/v1"
 
+	"github.com/PRO-Robotech/kacho/pkg/safeconv"
+
 	"github.com/PRO-Robotech/kacho/services/iam/internal/authzmap"
 	"github.com/PRO-Robotech/kacho/services/iam/internal/domain"
 	"github.com/PRO-Robotech/kacho/services/iam/internal/dto"
@@ -69,6 +71,14 @@ func (roleObj) toPb(r domain.Role) (*iamv1.Role, error) {
 		VerbNotes:      r.VerbNotes(roleTypeVerbLookup),
 		DisplayName:    r.DisplayName(),
 		Purpose:        r.Purpose(),
+		// Целость (#1035) — ТРИ величины вместе или ни одной. Считать здесь
+		// `declared_segments` из `r.Rules` (они тут видны) в отрыве от остальных
+		// двух запрещено: ответ операции получил бы числовой облик здоровья при
+		// невычисленном состоянии, то есть `declared=2, unresolved=0` рядом с
+		// UNSPECIFIED. Все три приходят с `domain.Role`, заполняет их ЧТЕНИЕ.
+		Health:             roleHealthToPb(r.Integrity.Health),
+		DeclaredSegments:   safeconv.ClampNonNegInt32(int64(r.Integrity.Declared)),
+		UnresolvedSegments: safeconv.ClampNonNegInt32(int64(r.Integrity.Unresolved)),
 		// Permissions intentionally omitted (internal compiled; not on the public
 		// API surface — R-7/F5). Read compiled perms via InternalIAMService.GetRoleCompiled.
 	}, nil
@@ -109,3 +119,22 @@ var roleTypeVerbLookup = domain.WithCommonFallback(
 	},
 	authzmap.AllVerbVocabulary(),
 )
+
+// roleHealthToPb — ПЕРЕВОД доменного состояния в контрактное, и только он.
+// Решение о том, какое состояние несёт роль, принимает домен (`HealthOf`);
+// здесь не судится ничего — иначе завелось бы второе место, знающее ответ.
+//
+// Неизвестному доменному значению отвечает UNSPECIFIED: «не вычислено» —
+// единственный честный перевод того, чего перевести нельзя.
+func roleHealthToPb(h domain.RoleHealth) iamv1.RoleHealth {
+	switch h {
+	case domain.RoleHealthHealthy:
+		return iamv1.RoleHealth_ROLE_HEALTH_HEALTHY
+	case domain.RoleHealthDegraded:
+		return iamv1.RoleHealth_ROLE_HEALTH_DEGRADED
+	case domain.RoleHealthEmpty:
+		return iamv1.RoleHealth_ROLE_HEALTH_EMPTY
+	default:
+		return iamv1.RoleHealth_ROLE_HEALTH_UNSPECIFIED
+	}
+}

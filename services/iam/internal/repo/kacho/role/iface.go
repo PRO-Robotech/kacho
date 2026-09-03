@@ -33,6 +33,20 @@ type ReaderIface interface {
 	// across the filtered set. resourceType is one of account|project|cluster
 	// (caller validates the whitelist + id format first).
 	ListAssignable(ctx context.Context, resourceType, resourceID string, filter ListFilter) ([]domain.Role, string, error)
+
+	// UnresolvedSegments отвечает, сколько из ОБЪЯВЛЕННЫХ сегментов каждой роли
+	// не дают ни одной строки проекции `role_verb` — той единственной таблицы,
+	// которую читает цепь вердикта (#1035).
+	//
+	// Вопрос задаётся ОДИН на страницу: объявленная сторона приходит массивами
+	// от вызывающего, который её уже прочитал, а не вычитывается здесь второй
+	// раз. Стоимость поэтому следует СТРАНИЦЕ (её величина ограничена
+	// контрактом), а не популяции ролей, которая не ограничена ничем.
+	//
+	// Роль, у которой ни один сегмент не остался без проекции, в ответе
+	// ОТСУТСТВУЕТ — ноль выражается отсутствием ключа. Пустой вход законен и
+	// означает «спрашивать не о чем»; вызывающий вправе не звать вовсе.
+	UnresolvedSegments(ctx context.Context, declared []domain.RoleSegment) (map[domain.RoleID]int, error)
 }
 
 type WriterIface interface {

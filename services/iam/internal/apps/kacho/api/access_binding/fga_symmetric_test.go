@@ -1233,3 +1233,11 @@ func (w *abFakeWriter) EmitInviteMail(_ context.Context, userID, _, to, _ string
 	}
 	return nil
 }
+
+// UnresolvedSegments — дублёр ОТКАЗЫВАЕТ, а не отвечает «неразрешённых нет»:
+// заглушка, возвращающая пустое, была бы снисходительнее продукта и молча
+// зеленила бы утверждения о деградации роли. Целость в этих пробах не предмет,
+// поэтому её путь здесь исполняться не должен — а если исполнится, проба упадёт.
+func (r *fakeRoleRdr) UnresolvedSegments(context.Context, []domain.RoleSegment) (map[domain.RoleID]int, error) {
+	return nil, stderrors.New("UnresolvedSegments не предмет этих проб")
+}

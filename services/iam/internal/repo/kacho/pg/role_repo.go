@@ -94,6 +94,69 @@ func (r *roleReader) GetWithVersion(ctx context.Context, id domain.RoleID) (doma
 	return out, version, nil
 }
 
+// UnresolvedSegments — сколько объявленных сегментов роли не имеют строки в
+// проекции, которую читает вердикт.
+//
+// # Почему проба НА СЕГМЕНТ, а не одна выборка проекции страницы
+//
+// Форма выбрана замером, а не первым впечатлением. Хеш-полусоединение (одна
+// выборка на страницу) выглядит вчетверо дешевле по блокам и СКАНИРУЕТ
+// `role_verb` целиком — то есть дорожает с популяцией установки: при росте
+// 2000 → 8000 ролей оно идёт 599 → 2015 блоков, тогда как форма ниже держится
+// 2509 → 2511. Проба на сегмент вернее именно тем, чем на малой установке
+// выглядит хуже: стоимость обязана следовать СТРАНИЦЕ, величина которой
+// ограничена контрактом, а не популяции, которая не ограничена ничем.
+//
+// Каждая проба — поиск по `role_verb_pkey (role_id, object_type, verb)`;
+// дополнительного индекса не требуется, ключ начинается с `role_id`.
+//
+// Пустой глагол — ЯКОРЬ (правило не сузило глаголы): годится любая строка
+// своего типа. Это `d.verb = ”`, а не NULL: массивы приходят плотными.
+func (r *roleReader) UnresolvedSegments(
+	ctx context.Context, declared []domain.RoleSegment,
+) (map[domain.RoleID]int, error) {
+	out := make(map[domain.RoleID]int, len(declared))
+	if len(declared) == 0 {
+		return out, nil
+	}
+	ids := make([]string, 0, len(declared))
+	types := make([]string, 0, len(declared))
+	verbs := make([]string, 0, len(declared))
+	for _, d := range declared {
+		ids = append(ids, string(d.RoleID))
+		types = append(types, d.ObjectType)
+		verbs = append(verbs, d.Verb)
+	}
+	rows, err := r.tx.Query(ctx, `
+		WITH d(role_id, object_type, verb) AS (
+		  SELECT * FROM unnest($1::text[], $2::text[], $3::text[])
+		)
+		SELECT d.role_id, count(*)::int
+		  FROM d
+		 WHERE NOT EXISTS (
+		   SELECT 1 FROM kacho_iam.role_verb rv
+		    WHERE rv.role_id     = d.role_id
+		      AND rv.object_type = d.object_type
+		      AND (d.verb = '' OR rv.verb = d.verb))
+		 GROUP BY d.role_id`, ids, types, verbs)
+	if err != nil {
+		return nil, mapErr(err, "", "")
+	}
+	defer rows.Close()
+	for rows.Next() {
+		var id string
+		var n int
+		if serr := rows.Scan(&id, &n); serr != nil {
+			return nil, mapErr(serr, "", "")
+		}
+		out[domain.RoleID(id)] = n
+	}
+	if rerr := rows.Err(); rerr != nil {
+		return nil, mapErr(rerr, "", "")
+	}
+	return out, nil
+}
+
 func (r *roleReader) List(ctx context.Context, f role.ListFilter) ([]domain.Role, string, error) {
 	// page_size>MaxPageSize → InvalidArgument (no silent clamp); 0 → default.
 	pageSize, err := effectivePageSize(f.PageSize)

@@ -78,3 +78,26 @@ func HealthOf(declared, unresolved int) RoleIntegrity {
 	}
 	return out
 }
+
+// RoleSegment — объявленный сегмент роли в форме, которой спрашивают проекцию.
+//
+// Точечный тип приходит ОДНИМ выражением ([RoleRuleRef.Dotted]) — тем же, каким
+// его строит переселение и каким его хранит каталог. Второе написание разошлось
+// бы молча: соединение по разным словарям не совпадает никогда.
+type RoleSegment struct {
+	RoleID     RoleID
+	ObjectType string
+	// Verb — пустая строка означает ЯКОРЬ (правило не сузило глаголы): годится
+	// любая строка проекции своего типа.
+	Verb string
+}
+
+// SegmentsOf — объявленные сегменты роли в форме вопроса к проекции.
+func SegmentsOf(id RoleID, rules Rules) []RoleSegment {
+	refs := RuleRefsOf(rules)
+	out := make([]RoleSegment, 0, len(refs))
+	for _, ref := range refs {
+		out = append(out, RoleSegment{RoleID: id, ObjectType: ref.Dotted(), Verb: ref.Verb})
+	}
+	return out
+}

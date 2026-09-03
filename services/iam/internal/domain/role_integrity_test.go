@@ -77,7 +77,7 @@ func TestRoleIntegrity_ZeroIsDistinguishableFromNotComputed(t *testing.T) {
 	}
 	computed := HealthOf(0, 0)
 	if computed.Health == RoleHealthUnknown {
-		t.Fatal("вычисленная целость роли без сегментов не имеет права быть UNKNOWN: "+
+		t.Fatal("вычисленная целость роли без сегментов не имеет права быть UNKNOWN: " +
 			"иначе «посчитано, терять нечего» неотличимо от «не считали»")
 	}
 	if notComputed.Declared != computed.Declared || notComputed.Unresolved != computed.Unresolved {

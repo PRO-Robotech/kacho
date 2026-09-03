@@ -56,6 +56,13 @@ type Role struct {
 	// label-selectable наравне с account/project (ARM_LABELS-грант на iam.role →
 	// v_list по `labels @> matchLabels`; List фильтрует viewer ∪ v_list).
 	Labels Labels
+	// Integrity — целость роли: даёт ли она то, что объявляет (#1035).
+	//
+	// ВЫВОДИТСЯ НА ЧТЕНИИ и НЕ ХРАНИТСЯ: колонки у неё нет, в перечень колонок
+	// писателя она не входит и [Role.Validate] её не судит. Нулевое значение
+	// означает «этим путём не вычислено» — так её и видят пути, которые роль не
+	// читают, а возвращают эхом мутации.
+	Integrity RoleIntegrity
 }
 
 // Validate — multi-scope XOR formula + rules/permissions.
