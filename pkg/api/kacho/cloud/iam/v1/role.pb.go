@@ -25,6 +25,64 @@ const (
 	_ = protoimpl.EnforceVersion(protoimpl.MaxVersion - 20)
 )
 
+// SelectorPruneOutcome — что стало со строкой ОТБОРА, из которой вырезан тип.
+//
+// Величины РАЗДЕЛЕНЫ намеренно: строка, потерявшая последний живой тип, снята
+// целиком — правило перестало отбирать вовсе; строка, у которой живой тип
+// остался, укорочена — правило сузилось. Для того, кто разбирает последствия,
+// это события разного рода, и сложив их, мы потеряли бы ровно это различие.
+type SelectorPruneOutcome int32
+
+const (
+	// Не вычислено ЭТИМ ответом. Никогда не означает «исход неизвестен».
+	SelectorPruneOutcome_SELECTOR_PRUNE_OUTCOME_UNSPECIFIED SelectorPruneOutcome = 0
+	// Живой тип у строки остался, она укорочена: правило отбирает меньше.
+	SelectorPruneOutcome_SELECTOR_PRUNE_OUTCOME_SHORTENED SelectorPruneOutcome = 1
+	// Живого типа не осталось, строка снята целиком: правило не отбирает ничего.
+	SelectorPruneOutcome_SELECTOR_PRUNE_OUTCOME_DROPPED SelectorPruneOutcome = 2
+)
+
+// Enum value maps for SelectorPruneOutcome.
+var (
+	SelectorPruneOutcome_name = map[int32]string{
+		0: "SELECTOR_PRUNE_OUTCOME_UNSPECIFIED",
+		1: "SELECTOR_PRUNE_OUTCOME_SHORTENED",
+		2: "SELECTOR_PRUNE_OUTCOME_DROPPED",
+	}
+	SelectorPruneOutcome_value = map[string]int32{
+		"SELECTOR_PRUNE_OUTCOME_UNSPECIFIED": 0,
+		"SELECTOR_PRUNE_OUTCOME_SHORTENED":   1,
+		"SELECTOR_PRUNE_OUTCOME_DROPPED":     2,
+	}
+)
+
+func (x SelectorPruneOutcome) Enum() *SelectorPruneOutcome {
+	p := new(SelectorPruneOutcome)
+	*p = x
+	return p
+}
+
+func (x SelectorPruneOutcome) String() string {
+	return protoimpl.X.EnumStringOf(x.Descriptor(), protoreflect.EnumNumber(x))
+}
+
+func (SelectorPruneOutcome) Descriptor() protoreflect.EnumDescriptor {
+	return file_kacho_cloud_iam_v1_role_proto_enumTypes[0].Descriptor()
+}
+
+func (SelectorPruneOutcome) Type() protoreflect.EnumType {
+	return &file_kacho_cloud_iam_v1_role_proto_enumTypes[0]
+}
+
+func (x SelectorPruneOutcome) Number() protoreflect.EnumNumber {
+	return protoreflect.EnumNumber(x)
+}
+
+// Deprecated: Use SelectorPruneOutcome.Descriptor instead.
+func (SelectorPruneOutcome) EnumDescriptor() ([]byte, []int) {
+	return file_kacho_cloud_iam_v1_role_proto_rawDescGZIP(), []int{0}
+}
+
 // WithdrawnGrantSource — из какой проекции правила переселена строка.
 //
 // Популяции РАЗДЕЛЕНЫ намеренно: «право отобрано» и «правило перестало
@@ -66,11 +124,11 @@ func (x WithdrawnGrantSource) String() string {
 }
 
 func (WithdrawnGrantSource) Descriptor() protoreflect.EnumDescriptor {
-	return file_kacho_cloud_iam_v1_role_proto_enumTypes[0].Descriptor()
+	return file_kacho_cloud_iam_v1_role_proto_enumTypes[1].Descriptor()
 }
 
 func (WithdrawnGrantSource) Type() protoreflect.EnumType {
-	return &file_kacho_cloud_iam_v1_role_proto_enumTypes[0]
+	return &file_kacho_cloud_iam_v1_role_proto_enumTypes[1]
 }
 
 func (x WithdrawnGrantSource) Number() protoreflect.EnumNumber {
@@ -79,7 +137,7 @@ func (x WithdrawnGrantSource) Number() protoreflect.EnumNumber {
 
 // Deprecated: Use WithdrawnGrantSource.Descriptor instead.
 func (WithdrawnGrantSource) EnumDescriptor() ([]byte, []int) {
-	return file_kacho_cloud_iam_v1_role_proto_rawDescGZIP(), []int{0}
+	return file_kacho_cloud_iam_v1_role_proto_rawDescGZIP(), []int{1}
 }
 
 // RoleHealth — состояние целости роли (#1035): даёт ли она то, что объявляет.
@@ -131,11 +189,11 @@ func (x RoleHealth) String() string {
 }
 
 func (RoleHealth) Descriptor() protoreflect.EnumDescriptor {
-	return file_kacho_cloud_iam_v1_role_proto_enumTypes[1].Descriptor()
+	return file_kacho_cloud_iam_v1_role_proto_enumTypes[2].Descriptor()
 }
 
 func (RoleHealth) Type() protoreflect.EnumType {
-	return &file_kacho_cloud_iam_v1_role_proto_enumTypes[1]
+	return &file_kacho_cloud_iam_v1_role_proto_enumTypes[2]
 }
 
 func (x RoleHealth) Number() protoreflect.EnumNumber {
@@ -144,7 +202,7 @@ func (x RoleHealth) Number() protoreflect.EnumNumber {
 
 // Deprecated: Use RoleHealth.Descriptor instead.
 func (RoleHealth) EnumDescriptor() ([]byte, []int) {
-	return file_kacho_cloud_iam_v1_role_proto_rawDescGZIP(), []int{1}
+	return file_kacho_cloud_iam_v1_role_proto_rawDescGZIP(), []int{2}
 }
 
 // A Role resource. Named permission bundle.
@@ -349,8 +407,37 @@ type Role struct {
 	// Порядок элементов НЕ ЗНАЧИМ — это набор; сверять его надо по составу, а не
 	// по индексу.
 	WithdrawnGrants []*WithdrawnGrant `protobuf:"bytes,25,rep,name=withdrawn_grants,json=withdrawnGrants,proto3" json:"withdrawn_grants,omitempty"`
-	unknownFields   protoimpl.UnknownFields
-	sizeCache       protoimpl.SizeCache
+	// Какие точечные типы ВЫРЕЗАНЫ из отбора правил этой роли и почему (#1988).
+	// Output-only, производное.
+	//
+	// Сосед `withdrawn_grants` отвечает про ДВЕ проекции правила, адресуемые парой
+	// «тип + глагол». Эта — про ТРЕТЬЮ, отбор по типам, у которой глагола нет
+	// ВООБЩЕ. Сложить их в одно поле значило бы дать вырезанному пустой глагол, а
+	// пустой глагол у соседа есть ЯКОРЬ объявления правила — уже занятое значение.
+	// Поэтому два поля и две ведомости, а не одна.
+	//
+	// ЗАПОЛНЯЮТ ЧТЕНИЯ РЕСУРСА — `Get` и `List`, ОДИНАКОВО и одним производителем,
+	// тем же, что и поля выше. Ответ операции (`Create`/`Update`) поля не несёт:
+	// пустой список там означает «этим ответом не вычислено».
+	//
+	// ИСТОЧНИК — ведомость вырезания: элемент отбора, потерявший живую строку
+	// каталога, вырезается применителем НЕОБРАТИМО, и до ведомости этого не
+	// помнило ничто. Список ОБЪЯСНЯЕТ состояние и не определяет его — тем же
+	// доводом, что и сосед.
+	//
+	// ПУСТОЙ СПИСОК ОЗНАЧАЕТ «ПУСТО»: у роли, у которой ничего не вырезали,
+	// вырезанного нет. Порядок элементов НЕ ЗНАЧИМ — это набор; сверять его надо
+	// по составу, а не по индексу.
+	//
+	// ОТПЕЧАТОК ПРАВИЛА ЗДЕСЬ НЕ ВЫСТАВЛЕН НАМЕРЕННО: ведомость ключует им строки,
+	// чтобы два правила, потерявшие один тип, не схлопнулись при ЗАПИСИ, — но это
+	// ключ хранения, содержательный хеш, которого нет ни в одном контракте
+	// платформы. Выстави мы его, способ хеширования стал бы частью контракта, а
+	// арендатору он не даёт ничего: своё правило он знает содержанием. Следствие
+	// названо прямо: записи, различавшиеся ТОЛЬКО отпечатком, приезжают ОДНОЙ.
+	PrunedSelectorTypes []*PrunedSelectorType `protobuf:"bytes,26,rep,name=pruned_selector_types,json=prunedSelectorTypes,proto3" json:"pruned_selector_types,omitempty"`
+	unknownFields       protoimpl.UnknownFields
+	sizeCache           protoimpl.SizeCache
 }
 
 func (x *Role) Reset() {
@@ -552,6 +639,91 @@ func (x *Role) GetWithdrawnGrants() []*WithdrawnGrant {
 	return nil
 }
 
+func (x *Role) GetPrunedSelectorTypes() []*PrunedSelectorType {
+	if x != nil {
+		return x.PrunedSelectorTypes
+	}
+	return nil
+}
+
+// PrunedSelectorType — точечный тип, ВЫРЕЗАННЫЙ из отбора правила роли при
+// снятии строки ресурса платформы (#1988).
+type PrunedSelectorType struct {
+	state protoimpl.MessageState `protogen:"open.v1"`
+	// Точечный тип объекта (`<модуль>.<ресурс>`), чью строку каталога сняли.
+	ObjectType string `protobuf:"bytes,1,opt,name=object_type,json=objectType,proto3" json:"object_type,omitempty"`
+	// Что стало со строкой отбора, из которой тип вырезан.
+	Outcome SelectorPruneOutcome `protobuf:"varint,2,opt,name=outcome,proto3,enum=kacho.cloud.iam.v1.SelectorPruneOutcome" json:"outcome,omitempty"`
+	// Причина снятия строки каталога, записанная применителем манифеста.
+	// Это причина ПЛАТФОРМЫ, а не действие арендатора: своё правило он не менял.
+	// ПУСТАЯ строка означает «строка каталога причины не несла» (снята ранней
+	// миграцией), а не «причину потеряли».
+	Reason string `protobuf:"bytes,3,opt,name=reason,proto3" json:"reason,omitempty"`
+	// Момент вырезания. Время ТРАНЗАКЦИИ применения: у всего, что вырезано одним
+	// применением, он совпадает дословно.
+	PrunedAt      *timestamppb.Timestamp `protobuf:"bytes,4,opt,name=pruned_at,json=prunedAt,proto3" json:"pruned_at,omitempty"`
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
+}
+
+func (x *PrunedSelectorType) Reset() {
+	*x = PrunedSelectorType{}
+	mi := &file_kacho_cloud_iam_v1_role_proto_msgTypes[1]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *PrunedSelectorType) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*PrunedSelectorType) ProtoMessage() {}
+
+func (x *PrunedSelectorType) ProtoReflect() protoreflect.Message {
+	mi := &file_kacho_cloud_iam_v1_role_proto_msgTypes[1]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use PrunedSelectorType.ProtoReflect.Descriptor instead.
+func (*PrunedSelectorType) Descriptor() ([]byte, []int) {
+	return file_kacho_cloud_iam_v1_role_proto_rawDescGZIP(), []int{1}
+}
+
+func (x *PrunedSelectorType) GetObjectType() string {
+	if x != nil {
+		return x.ObjectType
+	}
+	return ""
+}
+
+func (x *PrunedSelectorType) GetOutcome() SelectorPruneOutcome {
+	if x != nil {
+		return x.Outcome
+	}
+	return SelectorPruneOutcome_SELECTOR_PRUNE_OUTCOME_UNSPECIFIED
+}
+
+func (x *PrunedSelectorType) GetReason() string {
+	if x != nil {
+		return x.Reason
+	}
+	return ""
+}
+
+func (x *PrunedSelectorType) GetPrunedAt() *timestamppb.Timestamp {
+	if x != nil {
+		return x.PrunedAt
+	}
+	return nil
+}
+
 // WithdrawnGrant — одна проекция правила роли, потерявшая референт при снятии
 // строки каталога платформы (#1992).
 //
@@ -578,7 +750,7 @@ type WithdrawnGrant struct {
 
 func (x *WithdrawnGrant) Reset() {
 	*x = WithdrawnGrant{}
-	mi := &file_kacho_cloud_iam_v1_role_proto_msgTypes[1]
+	mi := &file_kacho_cloud_iam_v1_role_proto_msgTypes[2]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -590,7 +762,7 @@ func (x *WithdrawnGrant) String() string {
 func (*WithdrawnGrant) ProtoMessage() {}
 
 func (x *WithdrawnGrant) ProtoReflect() protoreflect.Message {
-	mi := &file_kacho_cloud_iam_v1_role_proto_msgTypes[1]
+	mi := &file_kacho_cloud_iam_v1_role_proto_msgTypes[2]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -603,7 +775,7 @@ func (x *WithdrawnGrant) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use WithdrawnGrant.ProtoReflect.Descriptor instead.
 func (*WithdrawnGrant) Descriptor() ([]byte, []int) {
-	return file_kacho_cloud_iam_v1_role_proto_rawDescGZIP(), []int{1}
+	return file_kacho_cloud_iam_v1_role_proto_rawDescGZIP(), []int{2}
 }
 
 func (x *WithdrawnGrant) GetObjectType() string {
@@ -659,7 +831,7 @@ type DefinitionTier struct {
 
 func (x *DefinitionTier) Reset() {
 	*x = DefinitionTier{}
-	mi := &file_kacho_cloud_iam_v1_role_proto_msgTypes[2]
+	mi := &file_kacho_cloud_iam_v1_role_proto_msgTypes[3]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -671,7 +843,7 @@ func (x *DefinitionTier) String() string {
 func (*DefinitionTier) ProtoMessage() {}
 
 func (x *DefinitionTier) ProtoReflect() protoreflect.Message {
-	mi := &file_kacho_cloud_iam_v1_role_proto_msgTypes[2]
+	mi := &file_kacho_cloud_iam_v1_role_proto_msgTypes[3]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -684,7 +856,7 @@ func (x *DefinitionTier) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use DefinitionTier.ProtoReflect.Descriptor instead.
 func (*DefinitionTier) Descriptor() ([]byte, []int) {
-	return file_kacho_cloud_iam_v1_role_proto_rawDescGZIP(), []int{2}
+	return file_kacho_cloud_iam_v1_role_proto_rawDescGZIP(), []int{3}
 }
 
 func (x *DefinitionTier) GetTierType() string {
@@ -740,7 +912,7 @@ type Rule struct {
 
 func (x *Rule) Reset() {
 	*x = Rule{}
-	mi := &file_kacho_cloud_iam_v1_role_proto_msgTypes[3]
+	mi := &file_kacho_cloud_iam_v1_role_proto_msgTypes[4]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -752,7 +924,7 @@ func (x *Rule) String() string {
 func (*Rule) ProtoMessage() {}
 
 func (x *Rule) ProtoReflect() protoreflect.Message {
-	mi := &file_kacho_cloud_iam_v1_role_proto_msgTypes[3]
+	mi := &file_kacho_cloud_iam_v1_role_proto_msgTypes[4]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -765,7 +937,7 @@ func (x *Rule) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use Rule.ProtoReflect.Descriptor instead.
 func (*Rule) Descriptor() ([]byte, []int) {
-	return file_kacho_cloud_iam_v1_role_proto_rawDescGZIP(), []int{3}
+	return file_kacho_cloud_iam_v1_role_proto_rawDescGZIP(), []int{4}
 }
 
 func (x *Rule) GetResources() []string {
@@ -813,7 +985,7 @@ type CreateRoleMetadata struct {
 
 func (x *CreateRoleMetadata) Reset() {
 	*x = CreateRoleMetadata{}
-	mi := &file_kacho_cloud_iam_v1_role_proto_msgTypes[4]
+	mi := &file_kacho_cloud_iam_v1_role_proto_msgTypes[5]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -825,7 +997,7 @@ func (x *CreateRoleMetadata) String() string {
 func (*CreateRoleMetadata) ProtoMessage() {}
 
 func (x *CreateRoleMetadata) ProtoReflect() protoreflect.Message {
-	mi := &file_kacho_cloud_iam_v1_role_proto_msgTypes[4]
+	mi := &file_kacho_cloud_iam_v1_role_proto_msgTypes[5]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -838,7 +1010,7 @@ func (x *CreateRoleMetadata) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use CreateRoleMetadata.ProtoReflect.Descriptor instead.
 func (*CreateRoleMetadata) Descriptor() ([]byte, []int) {
-	return file_kacho_cloud_iam_v1_role_proto_rawDescGZIP(), []int{4}
+	return file_kacho_cloud_iam_v1_role_proto_rawDescGZIP(), []int{5}
 }
 
 func (x *CreateRoleMetadata) GetRoleId() string {
@@ -858,7 +1030,7 @@ type UpdateRoleMetadata struct {
 
 func (x *UpdateRoleMetadata) Reset() {
 	*x = UpdateRoleMetadata{}
-	mi := &file_kacho_cloud_iam_v1_role_proto_msgTypes[5]
+	mi := &file_kacho_cloud_iam_v1_role_proto_msgTypes[6]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -870,7 +1042,7 @@ func (x *UpdateRoleMetadata) String() string {
 func (*UpdateRoleMetadata) ProtoMessage() {}
 
 func (x *UpdateRoleMetadata) ProtoReflect() protoreflect.Message {
-	mi := &file_kacho_cloud_iam_v1_role_proto_msgTypes[5]
+	mi := &file_kacho_cloud_iam_v1_role_proto_msgTypes[6]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -883,7 +1055,7 @@ func (x *UpdateRoleMetadata) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use UpdateRoleMetadata.ProtoReflect.Descriptor instead.
 func (*UpdateRoleMetadata) Descriptor() ([]byte, []int) {
-	return file_kacho_cloud_iam_v1_role_proto_rawDescGZIP(), []int{5}
+	return file_kacho_cloud_iam_v1_role_proto_rawDescGZIP(), []int{6}
 }
 
 func (x *UpdateRoleMetadata) GetRoleId() string {
@@ -903,7 +1075,7 @@ type DeleteRoleMetadata struct {
 
 func (x *DeleteRoleMetadata) Reset() {
 	*x = DeleteRoleMetadata{}
-	mi := &file_kacho_cloud_iam_v1_role_proto_msgTypes[6]
+	mi := &file_kacho_cloud_iam_v1_role_proto_msgTypes[7]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -915,7 +1087,7 @@ func (x *DeleteRoleMetadata) String() string {
 func (*DeleteRoleMetadata) ProtoMessage() {}
 
 func (x *DeleteRoleMetadata) ProtoReflect() protoreflect.Message {
-	mi := &file_kacho_cloud_iam_v1_role_proto_msgTypes[6]
+	mi := &file_kacho_cloud_iam_v1_role_proto_msgTypes[7]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -928,7 +1100,7 @@ func (x *DeleteRoleMetadata) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use DeleteRoleMetadata.ProtoReflect.Descriptor instead.
 func (*DeleteRoleMetadata) Descriptor() ([]byte, []int) {
-	return file_kacho_cloud_iam_v1_role_proto_rawDescGZIP(), []int{6}
+	return file_kacho_cloud_iam_v1_role_proto_rawDescGZIP(), []int{7}
 }
 
 func (x *DeleteRoleMetadata) GetRoleId() string {
@@ -942,7 +1114,8 @@ var File_kacho_cloud_iam_v1_role_proto protoreflect.FileDescriptor
 
 const file_kacho_cloud_iam_v1_role_proto_rawDesc = "" +
 	"\n" +
-	"\x1dkacho/cloud/iam/v1/role.proto\x12\x12kacho.cloud.iam.v1\x1a\x1fgoogle/protobuf/timestamp.proto\"\xbf\t\n" +
+	"\x1dkacho/cloud/iam/v1/role.proto\x12\x12kacho.cloud.iam.v1\x1a\x1fgoogle/protobuf/timestamp.proto\"\x9b\n" +
+	"\n" +
 	"\x04Role\x12\x0e\n" +
 	"\x02id\x18\x01 \x01(\tR\x02id\x12\x1d\n" +
 	"\n" +
@@ -974,14 +1147,21 @@ const file_kacho_cloud_iam_v1_role_proto_rawDesc = "" +
 	"\x06health\x18\x16 \x01(\x0e2\x1e.kacho.cloud.iam.v1.RoleHealthR\x06health\x12+\n" +
 	"\x11declared_segments\x18\x17 \x01(\x05R\x10declaredSegments\x12/\n" +
 	"\x13unresolved_segments\x18\x18 \x01(\x05R\x12unresolvedSegments\x12M\n" +
-	"\x10withdrawn_grants\x18\x19 \x03(\v2\".kacho.cloud.iam.v1.WithdrawnGrantR\x0fwithdrawnGrants\x1a9\n" +
+	"\x10withdrawn_grants\x18\x19 \x03(\v2\".kacho.cloud.iam.v1.WithdrawnGrantR\x0fwithdrawnGrants\x12Z\n" +
+	"\x15pruned_selector_types\x18\x1a \x03(\v2&.kacho.cloud.iam.v1.PrunedSelectorTypeR\x13prunedSelectorTypes\x1a9\n" +
 	"\vLabelsEntry\x12\x10\n" +
 	"\x03key\x18\x01 \x01(\tR\x03key\x12\x14\n" +
 	"\x05value\x18\x02 \x01(\tR\x05value:\x028\x01\x1a<\n" +
 	"\x0eVerbNotesEntry\x12\x10\n" +
 	"\x03key\x18\x01 \x01(\tR\x03key\x12\x14\n" +
 	"\x05value\x18\x02 \x01(\tR\x05value:\x028\x01J\x04\b\t\x10\n" +
-	"R\x0forganization_id\"\xde\x01\n" +
+	"R\x0forganization_id\"\xca\x01\n" +
+	"\x12PrunedSelectorType\x12\x1f\n" +
+	"\vobject_type\x18\x01 \x01(\tR\n" +
+	"objectType\x12B\n" +
+	"\aoutcome\x18\x02 \x01(\x0e2(.kacho.cloud.iam.v1.SelectorPruneOutcomeR\aoutcome\x12\x16\n" +
+	"\x06reason\x18\x03 \x01(\tR\x06reason\x127\n" +
+	"\tpruned_at\x18\x04 \x01(\v2\x1a.google.protobuf.TimestampR\bprunedAt\"\xde\x01\n" +
 	"\x0eWithdrawnGrant\x12\x1f\n" +
 	"\vobject_type\x18\x01 \x01(\tR\n" +
 	"objectType\x12\x12\n" +
@@ -1006,7 +1186,11 @@ const file_kacho_cloud_iam_v1_role_proto_rawDesc = "" +
 	"\x12UpdateRoleMetadata\x12\x17\n" +
 	"\arole_id\x18\x01 \x01(\tR\x06roleId\"-\n" +
 	"\x12DeleteRoleMetadata\x12\x17\n" +
-	"\arole_id\x18\x01 \x01(\tR\x06roleId*\x8b\x01\n" +
+	"\arole_id\x18\x01 \x01(\tR\x06roleId*\x88\x01\n" +
+	"\x14SelectorPruneOutcome\x12&\n" +
+	"\"SELECTOR_PRUNE_OUTCOME_UNSPECIFIED\x10\x00\x12$\n" +
+	" SELECTOR_PRUNE_OUTCOME_SHORTENED\x10\x01\x12\"\n" +
+	"\x1eSELECTOR_PRUNE_OUTCOME_DROPPED\x10\x02*\x8b\x01\n" +
 	"\x14WithdrawnGrantSource\x12&\n" +
 	"\"WITHDRAWN_GRANT_SOURCE_UNSPECIFIED\x10\x00\x12 \n" +
 	"\x1cWITHDRAWN_GRANT_SOURCE_GRANT\x10\x01\x12)\n" +
@@ -1030,40 +1214,45 @@ func file_kacho_cloud_iam_v1_role_proto_rawDescGZIP() []byte {
 	return file_kacho_cloud_iam_v1_role_proto_rawDescData
 }
 
-var file_kacho_cloud_iam_v1_role_proto_enumTypes = make([]protoimpl.EnumInfo, 2)
-var file_kacho_cloud_iam_v1_role_proto_msgTypes = make([]protoimpl.MessageInfo, 10)
+var file_kacho_cloud_iam_v1_role_proto_enumTypes = make([]protoimpl.EnumInfo, 3)
+var file_kacho_cloud_iam_v1_role_proto_msgTypes = make([]protoimpl.MessageInfo, 11)
 var file_kacho_cloud_iam_v1_role_proto_goTypes = []any{
-	(WithdrawnGrantSource)(0),     // 0: kacho.cloud.iam.v1.WithdrawnGrantSource
-	(RoleHealth)(0),               // 1: kacho.cloud.iam.v1.RoleHealth
-	(*Role)(nil),                  // 2: kacho.cloud.iam.v1.Role
-	(*WithdrawnGrant)(nil),        // 3: kacho.cloud.iam.v1.WithdrawnGrant
-	(*DefinitionTier)(nil),        // 4: kacho.cloud.iam.v1.DefinitionTier
-	(*Rule)(nil),                  // 5: kacho.cloud.iam.v1.Rule
-	(*CreateRoleMetadata)(nil),    // 6: kacho.cloud.iam.v1.CreateRoleMetadata
-	(*UpdateRoleMetadata)(nil),    // 7: kacho.cloud.iam.v1.UpdateRoleMetadata
-	(*DeleteRoleMetadata)(nil),    // 8: kacho.cloud.iam.v1.DeleteRoleMetadata
-	nil,                           // 9: kacho.cloud.iam.v1.Role.LabelsEntry
-	nil,                           // 10: kacho.cloud.iam.v1.Role.VerbNotesEntry
-	nil,                           // 11: kacho.cloud.iam.v1.Rule.MatchLabelsEntry
-	(*timestamppb.Timestamp)(nil), // 12: google.protobuf.Timestamp
+	(SelectorPruneOutcome)(0),     // 0: kacho.cloud.iam.v1.SelectorPruneOutcome
+	(WithdrawnGrantSource)(0),     // 1: kacho.cloud.iam.v1.WithdrawnGrantSource
+	(RoleHealth)(0),               // 2: kacho.cloud.iam.v1.RoleHealth
+	(*Role)(nil),                  // 3: kacho.cloud.iam.v1.Role
+	(*PrunedSelectorType)(nil),    // 4: kacho.cloud.iam.v1.PrunedSelectorType
+	(*WithdrawnGrant)(nil),        // 5: kacho.cloud.iam.v1.WithdrawnGrant
+	(*DefinitionTier)(nil),        // 6: kacho.cloud.iam.v1.DefinitionTier
+	(*Rule)(nil),                  // 7: kacho.cloud.iam.v1.Rule
+	(*CreateRoleMetadata)(nil),    // 8: kacho.cloud.iam.v1.CreateRoleMetadata
+	(*UpdateRoleMetadata)(nil),    // 9: kacho.cloud.iam.v1.UpdateRoleMetadata
+	(*DeleteRoleMetadata)(nil),    // 10: kacho.cloud.iam.v1.DeleteRoleMetadata
+	nil,                           // 11: kacho.cloud.iam.v1.Role.LabelsEntry
+	nil,                           // 12: kacho.cloud.iam.v1.Role.VerbNotesEntry
+	nil,                           // 13: kacho.cloud.iam.v1.Rule.MatchLabelsEntry
+	(*timestamppb.Timestamp)(nil), // 14: google.protobuf.Timestamp
 }
 var file_kacho_cloud_iam_v1_role_proto_depIdxs = []int32{
-	12, // 0: kacho.cloud.iam.v1.Role.created_at:type_name -> google.protobuf.Timestamp
-	5,  // 1: kacho.cloud.iam.v1.Role.rules:type_name -> kacho.cloud.iam.v1.Rule
-	12, // 2: kacho.cloud.iam.v1.Role.updated_at:type_name -> google.protobuf.Timestamp
-	9,  // 3: kacho.cloud.iam.v1.Role.labels:type_name -> kacho.cloud.iam.v1.Role.LabelsEntry
-	4,  // 4: kacho.cloud.iam.v1.Role.definition_tier:type_name -> kacho.cloud.iam.v1.DefinitionTier
-	10, // 5: kacho.cloud.iam.v1.Role.verb_notes:type_name -> kacho.cloud.iam.v1.Role.VerbNotesEntry
-	1,  // 6: kacho.cloud.iam.v1.Role.health:type_name -> kacho.cloud.iam.v1.RoleHealth
-	3,  // 7: kacho.cloud.iam.v1.Role.withdrawn_grants:type_name -> kacho.cloud.iam.v1.WithdrawnGrant
-	0,  // 8: kacho.cloud.iam.v1.WithdrawnGrant.source:type_name -> kacho.cloud.iam.v1.WithdrawnGrantSource
-	12, // 9: kacho.cloud.iam.v1.WithdrawnGrant.withdrawn_at:type_name -> google.protobuf.Timestamp
-	11, // 10: kacho.cloud.iam.v1.Rule.match_labels:type_name -> kacho.cloud.iam.v1.Rule.MatchLabelsEntry
-	11, // [11:11] is the sub-list for method output_type
-	11, // [11:11] is the sub-list for method input_type
-	11, // [11:11] is the sub-list for extension type_name
-	11, // [11:11] is the sub-list for extension extendee
-	0,  // [0:11] is the sub-list for field type_name
+	14, // 0: kacho.cloud.iam.v1.Role.created_at:type_name -> google.protobuf.Timestamp
+	7,  // 1: kacho.cloud.iam.v1.Role.rules:type_name -> kacho.cloud.iam.v1.Rule
+	14, // 2: kacho.cloud.iam.v1.Role.updated_at:type_name -> google.protobuf.Timestamp
+	11, // 3: kacho.cloud.iam.v1.Role.labels:type_name -> kacho.cloud.iam.v1.Role.LabelsEntry
+	6,  // 4: kacho.cloud.iam.v1.Role.definition_tier:type_name -> kacho.cloud.iam.v1.DefinitionTier
+	12, // 5: kacho.cloud.iam.v1.Role.verb_notes:type_name -> kacho.cloud.iam.v1.Role.VerbNotesEntry
+	2,  // 6: kacho.cloud.iam.v1.Role.health:type_name -> kacho.cloud.iam.v1.RoleHealth
+	5,  // 7: kacho.cloud.iam.v1.Role.withdrawn_grants:type_name -> kacho.cloud.iam.v1.WithdrawnGrant
+	4,  // 8: kacho.cloud.iam.v1.Role.pruned_selector_types:type_name -> kacho.cloud.iam.v1.PrunedSelectorType
+	0,  // 9: kacho.cloud.iam.v1.PrunedSelectorType.outcome:type_name -> kacho.cloud.iam.v1.SelectorPruneOutcome
+	14, // 10: kacho.cloud.iam.v1.PrunedSelectorType.pruned_at:type_name -> google.protobuf.Timestamp
+	1,  // 11: kacho.cloud.iam.v1.WithdrawnGrant.source:type_name -> kacho.cloud.iam.v1.WithdrawnGrantSource
+	14, // 12: kacho.cloud.iam.v1.WithdrawnGrant.withdrawn_at:type_name -> google.protobuf.Timestamp
+	13, // 13: kacho.cloud.iam.v1.Rule.match_labels:type_name -> kacho.cloud.iam.v1.Rule.MatchLabelsEntry
+	14, // [14:14] is the sub-list for method output_type
+	14, // [14:14] is the sub-list for method input_type
+	14, // [14:14] is the sub-list for extension type_name
+	14, // [14:14] is the sub-list for extension extendee
+	0,  // [0:14] is the sub-list for field type_name
 }
 
 func init() { file_kacho_cloud_iam_v1_role_proto_init() }
@@ -1076,8 +1265,8 @@ func file_kacho_cloud_iam_v1_role_proto_init() {
 		File: protoimpl.DescBuilder{
 			GoPackagePath: reflect.TypeOf(x{}).PkgPath(),
 			RawDescriptor: unsafe.Slice(unsafe.StringData(file_kacho_cloud_iam_v1_role_proto_rawDesc), len(file_kacho_cloud_iam_v1_role_proto_rawDesc)),
-			NumEnums:      2,
-			NumMessages:   10,
+			NumEnums:      3,
+			NumMessages:   11,
 			NumExtensions: 0,
 			NumServices:   0,
 		},

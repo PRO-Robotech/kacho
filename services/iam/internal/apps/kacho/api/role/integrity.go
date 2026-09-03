@@ -67,11 +67,24 @@ func attachIntegrity(ctx context.Context, rd kachorepo.Reader, roles []domain.Ro
 	if err != nil {
 		return shared.MapRepoErr(err)
 	}
+	// Ведомость ВЫРЕЗАНИЯ читается тем же порядком и в той же транзакции. Она
+	// про ТРЕТЬЮ проекцию правила, у которой глагола нет вовсе, — поэтому она
+	// отдельный вопрос, а не ветвь соседнего: сложи мы их, вырезанное поехало бы
+	// с пустым глаголом, а пустой глагол у соседа есть ЯКОРЬ объявления правила,
+	// то есть уже занятое значение.
+	//
+	// Вопросов на страницу становится три, и это названо, а не умолчано: каждый
+	// ограничен страницей, ни один не растёт с популяцией ролей.
+	pruned, err := rd.Roles().PrunedSelectorTypes(ctx, ids)
+	if err != nil {
+		return shared.MapRepoErr(err)
+	}
 
 	for i := range roles {
 		id := roles[i].ID
 		roles[i].Integrity = domain.HealthOf(declared[id], unresolved[id])
 		roles[i].Withdrawn = withdrawn[id]
+		roles[i].PrunedSelectorTypes = pruned[id]
 	}
 	return nil
 }
