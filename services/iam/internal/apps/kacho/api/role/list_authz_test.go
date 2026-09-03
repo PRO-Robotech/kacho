@@ -68,6 +68,7 @@ import (
 	"github.com/PRO-Robotech/kacho/services/iam/internal/repo/kacho/service_account"
 	"github.com/PRO-Robotech/kacho/services/iam/internal/repo/kacho/user"
 	"github.com/PRO-Robotech/kacho/services/iam/internal/repo/kacho/visibility"
+	"github.com/PRO-Robotech/kacho/services/iam/internal/testsupport/catalogfixture"
 )
 
 // ───────────── fake repo (Roles().List only) ─────────────
@@ -316,7 +317,7 @@ func TestListRoles_UsesViewerAndVListRelationsOnIamRole(t *testing.T) {
 	fga := newRoleFGAStub()
 	fga.set("user:usr-u1", []string{"rol-c1"})
 
-	uc := NewListRolesUseCase(repo).WithRelationStore(fga)
+	uc := NewListRolesUseCase(repo, catalogfixture.Source()).WithRelationStore(fga)
 	_, _, err := uc.Execute(ctxUser("usr-u1"), reporole.ListFilter{PageSize: 100})
 	require.NoError(t, err)
 	require.GreaterOrEqual(t, fga.relations["viewer"], 1,
@@ -336,7 +337,7 @@ func TestListRoles_D40_SystemRolesAlwaysVisible_CustomFiltered(t *testing.T) {
 	seedCustomRole(repo, "rol-c1", "acc-A000000000000000")
 
 	fga := newRoleFGAStub() // empty grant-set for the caller
-	uc := NewListRolesUseCase(repo).WithRelationStore(fga)
+	uc := NewListRolesUseCase(repo, catalogfixture.Source()).WithRelationStore(fga)
 
 	out, _, err := uc.Execute(ctxUser("usr-u1"), reporole.ListFilter{PageSize: 100})
 	require.NoError(t, err)
@@ -356,7 +357,7 @@ func TestListRoles_D41_D43_CustomByGrant_Union(t *testing.T) {
 	fga := newRoleFGAStub()
 	fga.set("user:usr-u1", []string{"rol-c1", "rol-c2"})
 
-	uc := NewListRolesUseCase(repo).WithRelationStore(fga)
+	uc := NewListRolesUseCase(repo, catalogfixture.Source()).WithRelationStore(fga)
 	out, _, err := uc.Execute(ctxUser("usr-u1"), reporole.ListFilter{PageSize: 100})
 	require.NoError(t, err)
 	require.ElementsMatch(t, []string{"rol-sys1", "rol-c1", "rol-c2"}, roleIDs(out),
@@ -369,7 +370,7 @@ func TestListRoles_D44_NoLeak_UngrantedCustomAbsent(t *testing.T) {
 	seedCustomRole(repo, "rol-cZ", "acc-A000000000000000") // foreign / ungranted
 
 	fga := newRoleFGAStub() // no grant
-	uc := NewListRolesUseCase(repo).WithRelationStore(fga)
+	uc := NewListRolesUseCase(repo, catalogfixture.Source()).WithRelationStore(fga)
 
 	out, _, err := uc.Execute(ctxUser("usr-u1"), reporole.ListFilter{PageSize: 100})
 	require.NoError(t, err)
@@ -388,7 +389,7 @@ func TestListRoles_185_AccountScope_ForeignCustomHidden(t *testing.T) {
 	fga := newRoleFGAStub()
 	fga.set("user:usr-u1", []string{"rol-cA", "rol-cB"}) // even if the model would allow both
 
-	uc := NewListRolesUseCase(repo).WithRelationStore(fga)
+	uc := NewListRolesUseCase(repo, catalogfixture.Source()).WithRelationStore(fga)
 	out, _, err := uc.Execute(ctxUser("usr-u1"), reporole.ListFilter{PageSize: 100, AccountID: domain.AccountID("acc-A000000000000000")})
 	require.NoError(t, err)
 	require.ElementsMatch(t, []string{"rol-sys1", "rol-cA"}, roleIDs(out),
@@ -407,7 +408,7 @@ func TestListRoles_D47_FGAUnavailable_FailClosed(t *testing.T) {
 	fga := newRoleFGAStub()
 	fga.err = stderrors.New("relation form did not answer: connection closed")
 
-	uc := NewListRolesUseCase(repo).WithRelationStore(fga)
+	uc := NewListRolesUseCase(repo, catalogfixture.Source()).WithRelationStore(fga)
 	out, _, err := uc.Execute(ctxUser("usr-u1"), reporole.ListFilter{PageSize: 100})
 	require.Error(t, err, "an unanswered question must NOT return a (degraded) list")
 	require.Empty(t, out)
@@ -421,7 +422,7 @@ func TestListRoles_D47_NilFGA_FailClosed(t *testing.T) {
 	repo := newRoleListFakeRepo()
 	seedCustomRole(repo, "rol-c1", "acc-A000000000000000")
 
-	uc := NewListRolesUseCase(repo) // NO WithRelationStore
+	uc := NewListRolesUseCase(repo, catalogfixture.Source()) // NO WithRelationStore
 	out, _, err := uc.Execute(ctxUser("usr-u1"), reporole.ListFilter{PageSize: 100})
 	require.Error(t, err)
 	require.Empty(t, out)

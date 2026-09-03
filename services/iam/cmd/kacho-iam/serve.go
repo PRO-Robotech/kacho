@@ -305,7 +305,7 @@ func runServe(cfg config.Config) error {
 	// Orphan-reconciler backstop: разрешает осиротевшие done=false операции умершего
 	// процесса (kill-9 / истекший terminal-write budget) в терминал по
 	// committed-реальности ресурса. Boot-sweep + периодический фон; non-fatal.
-	startLROReconciler(ctx, pool, kachoRepo, lroRec, logger)
+	startLROReconciler(ctx, pool, kachoRepo, catalogSnapshot, lroRec, logger)
 
 	// Durable backstop for one-shot credentials staged in FINISHED operation
 	// responses. The reconciler above cannot cover them: its claim is done=false and

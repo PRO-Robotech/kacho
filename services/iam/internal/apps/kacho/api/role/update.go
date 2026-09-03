@@ -417,5 +417,8 @@ func (u *UpdateRoleUseCase) doUpdate(ctx context.Context, r domain.Role, mask []
 			}
 		})
 	}
+	// Эхо мутации проецируется тем же набором, что и чтение: иначе `Create`
+	// вернул бы превью, собранное другим источником, чем последующий `Get`.
+	updated.TypeVerbs = u.cat.Facts().RolePreviewLookup()
 	return marshalRole(updated)
 }

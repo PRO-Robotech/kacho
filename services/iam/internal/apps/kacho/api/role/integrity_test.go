@@ -29,6 +29,7 @@ import (
 
 	"github.com/PRO-Robotech/kacho/services/iam/internal/domain"
 	reporole "github.com/PRO-Robotech/kacho/services/iam/internal/repo/kacho/role"
+	"github.com/PRO-Robotech/kacho/services/iam/internal/testsupport/catalogfixture"
 )
 
 // ruleOn — правило с названными глаголами на одном точечном ресурсе.
@@ -241,7 +242,7 @@ func (h *integrityHarness) sync() {
 
 func (h *integrityHarness) get(id string) (domain.Role, error) {
 	h.sync()
-	uc := NewGetRoleUseCase(h.repo).WithRelationStore(h.fga)
+	uc := NewGetRoleUseCase(h.repo, catalogfixture.Source()).WithRelationStore(h.fga)
 	out, err := uc.Execute(h.ctx, domain.RoleID(id))
 	h.calls = h.repo.segCalls
 	return out, err
@@ -249,7 +250,7 @@ func (h *integrityHarness) get(id string) (domain.Role, error) {
 
 func (h *integrityHarness) list() ([]domain.Role, string, error) {
 	h.sync()
-	uc := NewListRolesUseCase(h.repo).WithRelationStore(h.fga)
+	uc := NewListRolesUseCase(h.repo, catalogfixture.Source()).WithRelationStore(h.fga)
 	rows, next, err := uc.Execute(h.ctx, reporole.ListFilter{PageSize: 100})
 	h.calls = h.repo.segCalls
 	return rows, next, err
