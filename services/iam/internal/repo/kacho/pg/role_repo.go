@@ -23,6 +23,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"sort"
 	"strings"
 	"time"
 
@@ -980,7 +981,48 @@ func splitRuleRefHint(hint string) (resource, verb string) {
 	return hint, ""
 }
 
+// ReplaceRuleSelectors заменяет проекцию селекторов правила роли ПОЛНОСТЬЮ.
+//
+// # Замки на строки каталога берутся ПЕРВЫМИ (задача продукта #1996)
+//
+// Страж живости селектора читает строку каталога под `FOR KEY SHARE` (миграция
+// `20260903181000`), и без этого предварительного запроса замок на неё
+// брался бы ВНУТРИ вставки — то есть ПОСЛЕ замка на строках селекторов, снятых
+// удалением выше. Порядок оказывался обратным порядку применителя каталога
+// (строка каталога → строки селекторов), и пара давала взаимную блокировку.
+//
+// Цена инверсии измерена, а не предположена: Postgres обнаруживал пару и
+// отвергал СТОРОНУ АРЕНДАТОРА — применитель доходил до конца, а правка правил
+// роли получала `40P01`, приезжавший вызывающему как `ABORTED`
+// «conflicting concurrent change, retry the request». То есть цену платил не
+// тот, кто инверсию создаёт, повтор без правки условия ничего не менял, а
+// условие наступления от арендатора не зависело вовсе.
+//
+// # Это НЕ вторая проверка живости, и путать нельзя
+//
+// Запрос ничего не отвергает: ноль строк — законный исход, и решение о нём
+// принимает страж, как и раньше. Берётся РОВНО ТОТ ЖЕ набор строк, что возьмёт
+// страж (`dotted = <элемент> AND live`), поэтому второго словаря живости здесь
+// не заводится, а замок, взятый вперёд, к моменту вставки уже держится.
+//
+// Порядок внутри набора — по `dotted`: `ORDER BY` стоит под захватом строк,
+// поэтому набор берётся детерминированно, а не в порядке обхода индекса.
+//
+// # Граница названа: перекрёстный порядок по НЕСКОЛЬКИМ типам не закрыт
+//
+// Снятие идёт по одной строке за оператор (`catalogWriter.RetireResource`), и
+// порядок этих операторов задаёт разница манифестов. Выравнивание порядка на
+// стороне ПРИМЕНИТЕЛЯ — его предмет, не этого писателя.
 func (w *roleWriter) ReplaceRuleSelectors(ctx context.Context, roleID domain.RoleID, selectors []domain.RuleSelector) error {
+	if types := lockedCatalogTypesOf(selectors); len(types) > 0 {
+		if _, err := w.tx.Exec(ctx, `
+			SELECT 1 FROM kacho_iam.catalog_resource
+			 WHERE dotted = ANY($1) AND live
+			 ORDER BY dotted
+			   FOR KEY SHARE`, types); err != nil {
+			return mapErr(err, "", string(roleID))
+		}
+	}
 	if _, err := w.tx.Exec(ctx,
 		`DELETE FROM kacho_iam.role_rule_selectors WHERE role_id = $1`, string(roleID)); err != nil {
 		// Route SQLSTATE → sentinel (mapErr) rather than bare fmt.Errorf(%w) so a
@@ -1027,6 +1069,37 @@ func (w *roleWriter) ReplaceRuleSelectors(ctx context.Context, roleID domain.Rol
 		}
 	}
 	return nil
+}
+
+// lockedCatalogTypesOf — точечные имена, чьи строки каталога возьмёт страж
+// живости: объединение `ObjectTypes` тех селекторов, которые действительно
+// пойдут во вставку.
+//
+// Селектор с пустым набором типов пропускается вставкой (правило-подстановка
+// проецируется в ноль типов), поэтому его имена сюда не попадают: замок на
+// строку, которую никто не спросит, был бы лишней сериализацией.
+//
+// Набор отсортирован и лишён повторов: правило вправе назвать один тип дважды,
+// а замок на него один.
+func lockedCatalogTypesOf(selectors []domain.RuleSelector) []string {
+	seen := make(map[string]struct{})
+	for _, sel := range selectors {
+		if len(sel.ObjectTypes) == 0 {
+			continue
+		}
+		for _, t := range sel.ObjectTypes {
+			seen[t] = struct{}{}
+		}
+	}
+	if len(seen) == 0 {
+		return nil
+	}
+	out := make([]string, 0, len(seen))
+	for t := range seen {
+		out = append(out, t)
+	}
+	sort.Strings(out)
+	return out
 }
 
 // armText maps the domain Arm to the role_rule_selectors.arm enum text.
