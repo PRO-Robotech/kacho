@@ -393,6 +393,6 @@ func TestMODRG23RelationGrantOnANonClusterAnchorIsRefused(t *testing.T) {
       scopeId: prj-something
       target: allInScope
 `)
-	mustRefuseGrant(t, doc, manifest.ErrRelationAnchor,
+	mustRefuseGrant(t, doc, manifest.ErrBindingAnchor,
 		`якоре "iam.cluster"`, `получено "iam.project"`)
 }
