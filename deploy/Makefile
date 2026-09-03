@@ -703,7 +703,7 @@ stack-up:
 	  exit 1; }; \
 	echo "=== стенд $(STACK): цепочка ПРОЧИТАНА из stacks.txt ==="; \
 	printf '  %s\n' $$args; \
-	ctx="$$(kubectl config current-context 2>/dev/null)"; \
+	ctx="$$(kubectl config current-context 2>/dev/null || true)"; \
 	$(MAKE) --no-print-directory module-manifests-configmap \
 	  MODULE_MANIFESTS_STACK=$(STACK) STACK_NAMESPACE=$(STACK_NAMESPACE) \
 	  EXPECT_CONTEXT="$$ctx"; \
