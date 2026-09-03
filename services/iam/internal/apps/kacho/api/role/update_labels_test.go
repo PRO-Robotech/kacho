@@ -346,3 +346,10 @@ func (r *rlRoleRdr) UnresolvedSegments(context.Context, []domain.RoleSegment) (m
 func (r *rlRoleRdr) WithdrawnGrants(context.Context, []domain.RoleID) (map[domain.RoleID][]domain.WithdrawnGrant, error) {
 	return nil, stderrors.New("WithdrawnGrants не предмет этих проб")
 }
+
+// PrunedSelectorTypes — дублёр ОТКАЗЫВАЕТ по тому же доводу, что и сосед выше:
+// заглушка, возвращающая пустое, была бы снисходительнее продукта и молча
+// прятала бы лишний вопрос к ведомости.
+func (r *rlRoleRdr) PrunedSelectorTypes(context.Context, []domain.RoleID) (map[domain.RoleID][]domain.PrunedSelectorType, error) {
+	return nil, stderrors.New("PrunedSelectorTypes не предмет этих проб")
+}

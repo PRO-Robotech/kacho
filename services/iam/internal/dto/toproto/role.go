@@ -85,6 +85,10 @@ func (roleObj) toPb(r domain.Role) (*iamv1.Role, error) {
 		// определяет: у роли, пострадавшей вторым путём, переселения не было
 		// вовсе, и список пуст при нездоровом состоянии.
 		WithdrawnGrants: withdrawnGrantsToPb(r.Withdrawn),
+		// Что ВЫРЕЗАНО из отбора правил и почему (#1988). Отдельное поле, а не
+		// ветвь соседнего: у отбора глагола нет вовсе, а пустой глагол у соседа
+		// уже занят якорем объявления правила.
+		PrunedSelectorTypes: prunedSelectorTypesToPb(r.PrunedSelectorTypes),
 		// Permissions intentionally omitted (internal compiled; not on the public
 		// API surface — R-7/F5). Read compiled perms via InternalIAMService.GetRoleCompiled.
 	}, nil
@@ -167,6 +171,46 @@ func withdrawnGrantsToPb(in []domain.WithdrawnGrant) []*iamv1.WithdrawnGrant {
 		})
 	}
 	return out
+}
+
+// prunedSelectorTypesToPb — ведомость ВЫРЕЗАННОГО на провод.
+//
+// Пустой вход даёт nil, а не пустой срез: на проводе это одно и то же, и
+// заводить второе написание одного факта незачем.
+//
+// Отметка усечена до СЕКУНД — тем же правилом, что и все прочие отметки
+// контракта: микросекунды базы на провод не текут.
+func prunedSelectorTypesToPb(in []domain.PrunedSelectorType) []*iamv1.PrunedSelectorType {
+	if len(in) == 0 {
+		return nil
+	}
+	out := make([]*iamv1.PrunedSelectorType, 0, len(in))
+	for _, p := range in {
+		out = append(out, &iamv1.PrunedSelectorType{
+			ObjectType: p.ObjectType,
+			Outcome:    selectorPruneOutcomeToPb(p.Outcome),
+			Reason:     p.Reason,
+			PrunedAt:   timestamppb.New(p.PrunedAt.Truncate(time.Second)),
+		})
+	}
+	return out
+}
+
+// selectorPruneOutcomeToPb — исход строки отбора.
+//
+// Неизвестному доменному значению отвечает UNSPECIFIED тем же доводом, что и у
+// соседа ниже: «не вычислено» — единственный честный перевод того, чего
+// перевести нельзя. Прочитанную-но-непонятую строку сюда не доносит читатель:
+// он отказывает раньше.
+func selectorPruneOutcomeToPb(o domain.SelectorPruneOutcome) iamv1.SelectorPruneOutcome {
+	switch o {
+	case domain.SelectorPruneOutcomeShortened:
+		return iamv1.SelectorPruneOutcome_SELECTOR_PRUNE_OUTCOME_SHORTENED
+	case domain.SelectorPruneOutcomeDropped:
+		return iamv1.SelectorPruneOutcome_SELECTOR_PRUNE_OUTCOME_DROPPED
+	default:
+		return iamv1.SelectorPruneOutcome_SELECTOR_PRUNE_OUTCOME_UNSPECIFIED
+	}
 }
 
 // withdrawnGrantSourceToPb — популяция ведомости.

@@ -92,6 +92,13 @@ type roleListFakeRepo struct {
 	wdFail error
 	// withdrawn — что дублёр знает об отобранном, по ролям.
 	withdrawn map[string][]domain.WithdrawnGrant
+	// psCalls — сколько раз спрошена ведомость ВЫРЕЗАННОГО. Та же единица
+	// стоимости, что у соседа: один вопрос на страницу, а не на роль.
+	psCalls int
+	// psFail — отказ выборки ведомости вырезанного (полоса fail-closed).
+	psFail error
+	// pruned — что дублёр знает о вырезанном, по ролям.
+	pruned map[string][]domain.PrunedSelectorType
 }
 
 func newRoleListFakeRepo() *roleListFakeRepo {
@@ -167,6 +174,24 @@ func (a *roleListReader) WithdrawnGrants(ctx context.Context, ids []domain.RoleI
 	out := map[domain.RoleID][]domain.WithdrawnGrant{}
 	for _, id := range ids {
 		if g, ok := a.p.withdrawn[string(id)]; ok {
+			out[id] = g
+		}
+	}
+	return out, nil
+}
+
+// PrunedSelectorTypes отвечает из набора дублёра — ОДНИМ вопросом на страницу,
+// как продукт. Пустой ответ означает «у этих ролей вырезанного нет», и это
+// законное состояние: ведомость наполняется только снятием строки каталога,
+// которого в этих пробах не происходит.
+func (a *roleListReader) PrunedSelectorTypes(ctx context.Context, ids []domain.RoleID) (map[domain.RoleID][]domain.PrunedSelectorType, error) {
+	a.p.psCalls++
+	if a.p.psFail != nil {
+		return nil, a.p.psFail
+	}
+	out := map[domain.RoleID][]domain.PrunedSelectorType{}
+	for _, id := range ids {
+		if g, ok := a.p.pruned[string(id)]; ok {
 			out[id] = g
 		}
 	}
