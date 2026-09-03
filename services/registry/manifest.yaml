@@ -91,6 +91,8 @@ resources:
       - {name: create, from: [owner, super_admin]}
       - {name: update, from: [owner, super_admin]}
       - {name: delete, from: [owner, super_admin]}
+      - {name: internalGetRegistryStats, class: get, internal: true}
+      - {name: internalTriggerGarbageCollection, class: delete, internal: true}
 
   - name: repositories
     objectType: registry_repository

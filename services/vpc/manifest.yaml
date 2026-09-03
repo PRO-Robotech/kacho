@@ -61,6 +61,8 @@ resources:
       - list
       - update
       - delete
+      - {name: internalGetNetwork, class: get, internal: true}
+      - {name: internalSetDefaultSecurityGroupId, class: update, internal: true}
 
   - name: subnet
     objectType: vpc_subnet
@@ -93,6 +95,16 @@ resources:
       - list
       - update
       - delete
+      - {name: internalAllocateExternalIP, class: update, internal: true}
+      - {name: internalAllocateExternalIPv6, class: update, internal: true}
+      - {name: internalAllocateInternalIP, class: update, internal: true}
+      - {name: internalAllocateInternalIPv6, class: update, internal: true}
+      - {name: internalClearAddressReference, class: update, internal: true}
+      - {name: internalCreateOwnedAddress, class: create, internal: true}
+      - {name: internalGetAddressReference, class: get, internal: true}
+      - {name: internalMarkAddressEphemeralInUse, class: update, internal: true}
+      - {name: internalReleaseOwnedAddress, class: delete, internal: true}
+      - {name: internalSetAddressReference, class: update, internal: true}
 
   - name: securityGroup
     objectType: vpc_security_group
@@ -133,6 +145,9 @@ resources:
       - list
       - update
       - delete
+      - {name: internalAttach, class: update, internal: true}
+      - {name: internalDetach, class: update, internal: true}
+      - {name: internalListByInstance, class: list, internal: true}
 
   - name: addressPool
     objectType: vpc_address_pool

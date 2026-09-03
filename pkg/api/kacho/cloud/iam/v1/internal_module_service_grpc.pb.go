@@ -28,12 +28,24 @@
 // = ∅`, and the service is registered on the cluster-internal listener of iam
 // only.
 //
-// NO REST BINDING IN THIS SUB-PHASE — SAID, NOT OMITTED. None of the four RPCs
-// carries a `google.api.http` annotation: REST routes on the edge internal mux
-// are a named successor task, deliberately out of scope. The verbs are reachable
-// over native gRPC on the internal listener, which is what an operator tool
-// needs; the route arrives together with the successor, and with it the step-up
-// floor below stops being inert (see AUTHENTICATION FLOOR).
+// REST ROUTES ON THE EDGE INTERNAL MUX — LANDED BY THE NAMED SUCCESSOR (#1991).
+// Here stood "no REST binding in this sub-phase", and it was true when written:
+// the routes were deliberately out of scope so that the route table would not
+// move together with the contract. They are in scope now, and all four verbs
+// carry a `google.api.http` annotation under `/iam/v1/internal/modules`, the
+// prefix `InternalClusterService` already uses for the same gate.
+//
+// THE PLANE DOES NOT CHANGE WITH THE ROUTE. The `Internal` prefix keeps the
+// verbs off the external router by construction (see BAN #6 above): the edge
+// mounts these bindings on its INTERNAL mux only, and the descriptor-computed
+// gates assert both sides — every internal binding is routable there, and none
+// of them is reachable on the external listener.
+//
+// WHY GET FOR `Plan`. It writes nothing — not a catalog row, not an orphan row,
+// not an audit record — and its whole input is the module name, which the path
+// carries. A verb that changes nothing and reads one named thing is a read.
+// `Apply` takes the confirmed fingerprint and the two ceilings, so it is a POST
+// with a body.
 //
 // THE INPUT IS A MODULE NAME, NEVER A MANIFEST BODY. `Plan` and `Apply` re-read
 // the manifest from the DELIVERY directory at request time. A manifest carried

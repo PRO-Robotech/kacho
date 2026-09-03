@@ -28,12 +28,24 @@
 // = ∅`, and the service is registered on the cluster-internal listener of iam
 // only.
 //
-// NO REST BINDING IN THIS SUB-PHASE — SAID, NOT OMITTED. None of the four RPCs
-// carries a `google.api.http` annotation: REST routes on the edge internal mux
-// are a named successor task, deliberately out of scope. The verbs are reachable
-// over native gRPC on the internal listener, which is what an operator tool
-// needs; the route arrives together with the successor, and with it the step-up
-// floor below stops being inert (see AUTHENTICATION FLOOR).
+// REST ROUTES ON THE EDGE INTERNAL MUX — LANDED BY THE NAMED SUCCESSOR (#1991).
+// Here stood "no REST binding in this sub-phase", and it was true when written:
+// the routes were deliberately out of scope so that the route table would not
+// move together with the contract. They are in scope now, and all four verbs
+// carry a `google.api.http` annotation under `/iam/v1/internal/modules`, the
+// prefix `InternalClusterService` already uses for the same gate.
+//
+// THE PLANE DOES NOT CHANGE WITH THE ROUTE. The `Internal` prefix keeps the
+// verbs off the external router by construction (see BAN #6 above): the edge
+// mounts these bindings on its INTERNAL mux only, and the descriptor-computed
+// gates assert both sides — every internal binding is routable there, and none
+// of them is reachable on the external listener.
+//
+// WHY GET FOR `Plan`. It writes nothing — not a catalog row, not an orphan row,
+// not an audit record — and its whole input is the module name, which the path
+// carries. A verb that changes nothing and reads one named thing is a read.
+// `Apply` takes the confirmed fingerprint and the two ceilings, so it is a POST
+// with a body.
 //
 // THE INPUT IS A MODULE NAME, NEVER A MANIFEST BODY. `Plan` and `Apply` re-read
 // the manifest from the DELIVERY directory at request time. A manifest carried
@@ -87,6 +99,7 @@ import (
 	_ "github.com/PRO-Robotech/kacho/pkg/api/kacho/cloud/api"
 	operation "github.com/PRO-Robotech/kacho/pkg/api/kacho/cloud/operation"
 	_ "github.com/PRO-Robotech/kacho/pkg/api/kacho/iam/authz/v1"
+	_ "google.golang.org/genproto/googleapis/api/annotations"
 	protoreflect "google.golang.org/protobuf/reflect/protoreflect"
 	protoimpl "google.golang.org/protobuf/runtime/protoimpl"
 	reflect "reflect"
@@ -1210,7 +1223,7 @@ var File_kacho_cloud_iam_v1_internal_module_service_proto protoreflect.FileDescr
 
 const file_kacho_cloud_iam_v1_internal_module_service_proto_rawDesc = "" +
 	"\n" +
-	"0kacho/cloud/iam/v1/internal_module_service.proto\x12\x12kacho.cloud.iam.v1\x1a\x1fkacho/cloud/api/operation.proto\x1a%kacho/cloud/operation/operation.proto\x1a&kacho/iam/authz/v1/authz_options.proto\"+\n" +
+	"0kacho/cloud/iam/v1/internal_module_service.proto\x12\x12kacho.cloud.iam.v1\x1a\x1cgoogle/api/annotations.proto\x1a\x1fkacho/cloud/api/operation.proto\x1a%kacho/cloud/operation/operation.proto\x1a&kacho/iam/authz/v1/authz_options.proto\"+\n" +
 	"\x11PlanModuleRequest\x12\x16\n" +
 	"\x06module\x18\x01 \x01(\tR\x06module\"\xff\a\n" +
 	"\x12PlanModuleResponse\x12\x16\n" +
@@ -1283,17 +1296,17 @@ const file_kacho_cloud_iam_v1_internal_module_service_proto_rawDesc = "" +
 	"\x11ModulePlanVerdict\x12#\n" +
 	"\x1fMODULE_PLAN_VERDICT_UNSPECIFIED\x10\x00\x12#\n" +
 	"\x1fMODULE_PLAN_VERDICT_WOULD_APPLY\x10\x01\x126\n" +
-	"2MODULE_PLAN_VERDICT_WOULD_BE_REFUSED_BEYOND_ANCHOR\x10\x022\x88\x05\n" +
-	"\x15InternalModuleService\x12\x90\x01\n" +
-	"\x04Plan\x12%.kacho.cloud.iam.v1.PlanModuleRequest\x1a&.kacho.cloud.iam.v1.PlanModuleResponse\"9\x8a\xb5\x18\x10iam.modules.plan\x92\xb5\x18\fsystem_admin\x9a\xb5\x18\f\n" +
-	"\acluster\x12\x01*\xa2\xb5\x18\x011\x12\xbb\x01\n" +
-	"\x05Apply\x12&.kacho.cloud.iam.v1.ApplyModuleRequest\x1a .kacho.cloud.operation.Operation\"h\x8a\xb5\x18\x11iam.modules.apply\x92\xb5\x18\fsystem_admin\x9a\xb5\x18\f\n" +
+	"2MODULE_PLAN_VERDICT_WOULD_BE_REFUSED_BEYOND_ANCHOR\x10\x022\xb2\x06\n" +
+	"\x15InternalModuleService\x12\xbe\x01\n" +
+	"\x04Plan\x12%.kacho.cloud.iam.v1.PlanModuleRequest\x1a&.kacho.cloud.iam.v1.PlanModuleResponse\"g\x8a\xb5\x18\x10iam.modules.plan\x92\xb5\x18\fsystem_admin\x9a\xb5\x18\f\n" +
+	"\acluster\x12\x01*\xa2\xb5\x18\x011\x82\xd3\xe4\x93\x02(\x12&/iam/v1/internal/modules/{module}:plan\x12\xee\x01\n" +
+	"\x05Apply\x12&.kacho.cloud.iam.v1.ApplyModuleRequest\x1a .kacho.cloud.operation.Operation\"\x9a\x01\x8a\xb5\x18\x11iam.modules.apply\x92\xb5\x18\fsystem_admin\x9a\xb5\x18\f\n" +
 	"\acluster\x12\x01*\xa2\xb5\x18\x012\xb2\xd2**\n" +
-	"\x13ApplyModuleMetadata\x12\x13ApplyModuleResponse\x12\x88\x01\n" +
-	"\x03Get\x12$.kacho.cloud.iam.v1.GetModuleRequest\x1a!.kacho.cloud.iam.v1.ModuleCatalog\"8\x8a\xb5\x18\x0fiam.modules.get\x92\xb5\x18\fsystem_admin\x9a\xb5\x18\f\n" +
-	"\acluster\x12\x01*\xa2\xb5\x18\x011\x12\x92\x01\n" +
-	"\x04List\x12&.kacho.cloud.iam.v1.ListModulesRequest\x1a'.kacho.cloud.iam.v1.ListModulesResponse\"9\x8a\xb5\x18\x10iam.modules.list\x92\xb5\x18\fsystem_admin\x9a\xb5\x18\f\n" +
-	"\acluster\x12\x01*\xa2\xb5\x18\x011B@Z>github.com/PRO-Robotech/kacho/pkg/api/kacho/cloud/iam/v1;iamv1b\x06proto3"
+	"\x13ApplyModuleMetadata\x12\x13ApplyModuleResponse\x82\xd3\xe4\x93\x02,:\x01*\"'/iam/v1/internal/modules/{module}:apply\x12\xb1\x01\n" +
+	"\x03Get\x12$.kacho.cloud.iam.v1.GetModuleRequest\x1a!.kacho.cloud.iam.v1.ModuleCatalog\"a\x8a\xb5\x18\x0fiam.modules.get\x92\xb5\x18\fsystem_admin\x9a\xb5\x18\f\n" +
+	"\acluster\x12\x01*\xa2\xb5\x18\x011\x82\xd3\xe4\x93\x02#\x12!/iam/v1/internal/modules/{module}\x12\xb2\x01\n" +
+	"\x04List\x12&.kacho.cloud.iam.v1.ListModulesRequest\x1a'.kacho.cloud.iam.v1.ListModulesResponse\"Y\x8a\xb5\x18\x10iam.modules.list\x92\xb5\x18\fsystem_admin\x9a\xb5\x18\f\n" +
+	"\acluster\x12\x01*\xa2\xb5\x18\x011\x82\xd3\xe4\x93\x02\x1a\x12\x18/iam/v1/internal/modulesB@Z>github.com/PRO-Robotech/kacho/pkg/api/kacho/cloud/iam/v1;iamv1b\x06proto3"
 
 var (
 	file_kacho_cloud_iam_v1_internal_module_service_proto_rawDescOnce sync.Once

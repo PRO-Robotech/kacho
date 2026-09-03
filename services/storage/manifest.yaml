@@ -58,6 +58,10 @@ resources:
       - list
       - update
       - delete
+      - {name: internalAttach, class: update, internal: true}
+      - {name: internalDetach, class: update, internal: true}
+      - {name: internalGetInternal, class: get, internal: true}
+      - {name: internalListAttachments, class: list, internal: true}
 
   - name: snapshots
     objectType: storage_snapshot
@@ -78,6 +82,8 @@ resources:
       - list
       - update
       - delete
+      - {name: internalGetInternal, class: get, internal: true}
+      - {name: internalRegister, class: create, internal: true}
 
 # --------------------------------------------------------------------------
 #  seed — что заводит УСТАНОВКА модуля (#1891).

@@ -99,6 +99,12 @@
 //     об одном предмете, из которых верно одно. `ListPermissions` в той же строке —
 //     tombstone, RPC удалён (см. internal_iam_service.proto), поэтому регистрировать его
 //     нечего вовсе. Строка была не устаревшей наполовину, а неверной в обеих половинах.
+//     InternalModuleService (kacho#1991): Plan/Apply/Get/List под
+//     `/iam/v1/internal/modules` — тот же префикс и тот же гейт, что у
+//     InternalClusterService. Маршрутов не было вовсе по записанному решению
+//     под-фазы (контракт заводился без http-аннотаций); теперь они есть, и
+//     оживлённая ими ступень подтверждения личности у `Apply` — в
+//     `authzguard.GatewayFrontedInternalRPCs`.
 //   - operation (без v1!): OperationService (in-process OpsProxy)
 package restmux
 
@@ -856,6 +862,28 @@ func NewMux(
 			// runs its own per-RPC authz-Check.
 			if err := iampb.RegisterInternalOperationsServiceHandlerFromEndpoint(ctx, mux, iamInternalAddr, optsFor("iamInternal")); err != nil {
 				return nil, fmt.Errorf("register iam InternalOperationsService: %w", err)
+			}
+			// InternalModuleService — Plan/Apply/Get/List над каталогом прав модуля
+			// под /iam/v1/internal/modules (kacho#1991). Тот же префикс и тот же
+			// гейт, что у InternalClusterService: system_admin на singleton-объекте
+			// `cluster`, а у Apply вдобавок ступень подтверждения личности (acr 2).
+			//
+			// Здесь маршрута не было ВОВСЕ, и это было записанным решением
+			// под-фазы: контракт заводился без http-аннотаций, чтобы таблица
+			// маршрутов не сдвинулась вместе с ним. Глаголы были достижимы по
+			// gRPC на внутреннем слушателе, но привычный оператору путь — REST
+			// через этот мукс, как у всех соседних Internal*-служб.
+			//
+			// Плоскость от маршрута не меняется: приставка `Internal` держит
+			// глаголы вне внешнего маршрутизатора by construction — allowlist
+			// края считается из дескрипторов и утверждает
+			// `AllowedMethods ∩ Internal* = ∅`, а isInternalRoute уводит
+			// /iam/v1/internal/* на этот sub-mux. Обе стороны утверждаются
+			// вычисляемыми гейтами (internal_binding_routability_test.go —
+			// маршрут есть здесь; external_isolation_test.go — его нет там),
+			// поэтому односторонним зелёным это закрыть нельзя.
+			if err := iampb.RegisterInternalModuleServiceHandlerFromEndpoint(ctx, mux, iamInternalAddr, optsFor("iamInternal")); err != nil {
+				return nil, fmt.Errorf("register iam InternalModuleService: %w", err)
 			}
 			// InternalBootstrapTokenService.MintBootstrapToken (#58) is DELIBERATELY
 			// NOT registered here — do not add it back.
