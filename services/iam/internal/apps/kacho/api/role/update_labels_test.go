@@ -335,7 +335,7 @@ func (w *rlUpdWriter) EmitInviteMail(_ context.Context, userID, _, to, _ string)
 // заглушка, возвращающая пустое, была бы снисходительнее продукта и молча
 // зеленила бы утверждения о деградации роли. Целость в этих пробах не предмет,
 // поэтому её путь здесь исполняться не должен — а если исполнится, проба упадёт.
-func (r *rlRoleRdr) UnresolvedSegments(context.Context, []domain.RoleSegment) (map[domain.RoleID]int, error) {
+func (r *rlRoleRdr) UnresolvedSegments(context.Context, []domain.RoleSegment) (map[domain.RoleID][]domain.RoleSegment, error) {
 	return nil, stderrors.New("UnresolvedSegments не предмет этих проб")
 }
 

@@ -434,6 +434,6 @@ func (r *strictDupRoleReader) PrunedSelectorTypes(context.Context, []domain.Role
 	return nil, stderrors.New("PrunedSelectorTypes не предмет этих проб")
 }
 
-func (r *strictDupRoleReader) UnresolvedSegments(context.Context, []domain.RoleSegment) (map[domain.RoleID]int, error) {
+func (r *strictDupRoleReader) UnresolvedSegments(context.Context, []domain.RoleSegment) (map[domain.RoleID][]domain.RoleSegment, error) {
 	return nil, stderrors.New("UnresolvedSegments не предмет этих проб")
 }
