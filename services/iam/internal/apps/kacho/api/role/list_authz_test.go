@@ -100,6 +100,23 @@ type roleListFakeRepo struct {
 	psFail error
 	// pruned — что дублёр знает о вырезанном, по ролям.
 	pruned map[string][]domain.PrunedSelectorType
+
+	// ─── ручки ИНЪЕКЦИИ (`ledger_read_cost_injection_test.go`) ───
+	//
+	// Ими вносится дефект, от которого пробы стоимости и fail-closed обязаны
+	// краснеть. Держать их у дублёра, а не у пробы, приходится потому, что
+	// наблюдаемое у обоих свойств — ПОВЕДЕНИЕ ЧИТАТЕЛЯ, а подменить читателя
+	// прод-кода проба не может, не тронув прод (ban #13).
+	//
+	// В штатных прогонах обе — нулевые, поэтому дублёр остаётся тем же.
+
+	// ledgerPerRole — считать вопрос ПО РОЛИ, как считал бы поролевой читатель.
+	// Наблюдаемое совпадает с настоящим дефектом дословно: счётчик равен числу
+	// ролей страницы вместо единицы.
+	ledgerPerRole bool
+	// ledgerSwallow — проглотить отказ ведомости и ответить пустым, как ответил
+	// бы помощник, логирующий ошибку вместо возврата.
+	ledgerSwallow bool
 }
 
 func newRoleListFakeRepo() *roleListFakeRepo {
@@ -169,7 +186,10 @@ func (a *roleListReader) UnresolvedSegments(ctx context.Context, declared []doma
 // только снятием строки каталога, которого в этих пробах не происходит.
 func (a *roleListReader) WithdrawnGrants(ctx context.Context, ids []domain.RoleID) (map[domain.RoleID][]domain.WithdrawnGrant, error) {
 	a.p.wdCalls++
-	if a.p.wdFail != nil {
+	if a.p.ledgerPerRole {
+		a.p.wdCalls += len(ids) - 1
+	}
+	if a.p.wdFail != nil && !a.p.ledgerSwallow {
 		return nil, a.p.wdFail
 	}
 	out := map[domain.RoleID][]domain.WithdrawnGrant{}
@@ -187,7 +207,10 @@ func (a *roleListReader) WithdrawnGrants(ctx context.Context, ids []domain.RoleI
 // которого в этих пробах не происходит.
 func (a *roleListReader) PrunedSelectorTypes(ctx context.Context, ids []domain.RoleID) (map[domain.RoleID][]domain.PrunedSelectorType, error) {
 	a.p.psCalls++
-	if a.p.psFail != nil {
+	if a.p.ledgerPerRole {
+		a.p.psCalls += len(ids) - 1
+	}
+	if a.p.psFail != nil && !a.p.ledgerSwallow {
 		return nil, a.p.psFail
 	}
 	out := map[domain.RoleID][]domain.PrunedSelectorType{}

@@ -189,6 +189,16 @@ type integrityHarness struct {
 	ctx   context.Context
 	calls int
 	fail  error
+	// wdCalls / wdFail — та же пара, что `calls`/`fail`, но для ведомости
+	// ПЕРЕСЕЛЕНИЯ; psCalls / psFail — для ведомости ВЫРЕЗАНИЯ.
+	//
+	// Ручки заведены здесь, а не у каждой пробы: единица стоимости и полоса
+	// fail-closed у трёх ведомостей ОДНИ И ТЕ ЖЕ, и три харнесса разошлись бы
+	// молча — ровно тем классом, который эти пробы и закрывают (#2001).
+	wdCalls int
+	wdFail  error
+	psCalls int
+	psFail  error
 }
 
 func newIntegrityHarness(t *testing.T) *integrityHarness {
@@ -238,13 +248,28 @@ func (h *integrityHarness) project(roleID, objectType string, verbs ...string) {
 func (h *integrityHarness) sync() {
 	h.repo.segFail = h.fail
 	h.repo.segCalls = h.calls
+	h.repo.wdFail = h.wdFail
+	h.repo.wdCalls = h.wdCalls
+	h.repo.psFail = h.psFail
+	h.repo.psCalls = h.psCalls
+}
+
+// readBack снимает счётчики ВСЕХ трёх ведомостей одним заходом.
+//
+// Порознь у каждого чтения они разъехались бы: пробе, читающей один счётчик,
+// два других остались бы от прошлого прогона, и «вопрос один» зеленело бы на
+// несброшенном счётчике.
+func (h *integrityHarness) readBack() {
+	h.calls = h.repo.segCalls
+	h.wdCalls = h.repo.wdCalls
+	h.psCalls = h.repo.psCalls
 }
 
 func (h *integrityHarness) get(id string) (domain.Role, error) {
 	h.sync()
 	uc := NewGetRoleUseCase(h.repo, catalogfixture.Source()).WithRelationStore(h.fga)
 	out, err := uc.Execute(h.ctx, domain.RoleID(id))
-	h.calls = h.repo.segCalls
+	h.readBack()
 	return out, err
 }
 
@@ -252,6 +277,6 @@ func (h *integrityHarness) list() ([]domain.Role, string, error) {
 	h.sync()
 	uc := NewListRolesUseCase(h.repo, catalogfixture.Source()).WithRelationStore(h.fga)
 	rows, next, err := uc.Execute(h.ctx, reporole.ListFilter{PageSize: 100})
-	h.calls = h.repo.segCalls
+	h.readBack()
 	return rows, next, err
 }
