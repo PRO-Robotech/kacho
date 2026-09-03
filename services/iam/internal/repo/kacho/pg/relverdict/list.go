@@ -320,7 +320,7 @@ SELECT c.object_id,
 func listQuerySQL(labelTable string) string {
 	sql := strings.Replace(listSQL, candidateFromMark,
 		candidateFrom(labelTable, catalogTypeMark, "$3", "$4"), 1)
-	return strings.ReplaceAll(sql, catalogTypeMark, catalogTypeOfLiveRow("$2"))
+	return withCatalogType(sql, "$2")
 }
 
 // List отдаёт страницу доступных объектов и курсор следующей.

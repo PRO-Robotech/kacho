@@ -3,6 +3,8 @@
 
 package relverdict
 
+import "strings"
+
 // catalogtype.go — ИМЯ ТИПА В СЛОВАРЕ КАТАЛОГА БЕРЁТСЯ У ЖИВОЙ СТРОКИ КАТАЛОГА,
 // а не у таблицы, ПОРОЖДЁННОЙ СБОРКОЙ (kacho#1986).
 //
@@ -95,10 +97,36 @@ const catalogTypeMark = "{{catalog_type}}"
 // Возвращается ВЫРАЖЕНИЕ, а не имя параметра: вызывающий подставляет его на
 // место заполнителя в собранном запросе, и приведение `::text` рядом с
 // заполнителем остаётся законным.
-func catalogTypeOfLiveRow(modelTypeParam string) string {
-	return "COALESCE((SELECT r.dotted" +
+// catalogTypeRef — ЧЕМ запрос называет переведённое имя.
+//
+// Ссылка на общий раздел, а не повтор выражения: мест, где имя каталога нужно,
+// в запросе ТРИ (проекция глаголов роли, селекторы правил, ось меток либо
+// источник кандидатов). Три копии выражения планировщик вычисляет ТРИЖДЫ, и это
+// измерено прибором объёма, а не выведено: на средней точке сетки тронутых строк
+// становилось 179 против 89 — по одному обходу каталога на копию.
+const catalogTypeRef = "(SELECT dotted FROM catalog_type)"
+
+// catalogTypeCTE — раздел запроса, дающий имя типа в словаре КАТАЛОГА для имени
+// словаря МОДЕЛИ, пришедшего параметром `modelTypeParam`.
+//
+// `MATERIALIZED` объявлено ЯВНО, а не оставлено умолчанию. Умолчание («раздел,
+// на который ссылаются дважды и более, вычисляется один раз») — поведение
+// версии, а не контракт: свернись раздел в место ссылки, вернулись бы те же три
+// обхода, и вернулись бы МОЛЧА — ответ от этого не меняется, меняется только
+// цена, которую никто не смотрит на каждом запросе.
+func catalogTypeCTE(modelTypeParam string) string {
+	return "catalog_type AS MATERIALIZED (" +
+		"SELECT COALESCE((SELECT r.dotted" +
 		" FROM kacho_iam.catalog_resource r" +
 		" WHERE r.object_type = " + modelTypeParam + "::text" +
 		" ORDER BY r.live DESC, r.dotted" +
-		" LIMIT 1), " + modelTypeParam + "::text)"
+		" LIMIT 1), " + modelTypeParam + "::text) AS dotted),\n"
+}
+
+// withCatalogType — подставить раздел перевода и ссылки на него в собранный
+// запрос. Зовётся ПОСЛЕДНЕЙ подстановкой: до неё заполнитель мог приехать
+// внутри фрагмента оси меток или источника кандидатов.
+func withCatalogType(sql, modelTypeParam string) string {
+	sql = strings.Replace(sql, "WITH RECURSIVE", "WITH RECURSIVE "+catalogTypeCTE(modelTypeParam), 1)
+	return strings.ReplaceAll(sql, catalogTypeMark, catalogTypeRef)
 }

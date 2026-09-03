@@ -186,7 +186,7 @@ func subjectsQuerySQL(labelTable string) string {
 	sql := strings.Replace(subjectsSQL, labelsJoinMark,
 		labelsJoinPinned(labelTable, catalogTypeMark, "$2"), 1)
 	sql = strings.Replace(sql, membersJoinMark, membersOfNamedGroups("n.subject"), 1)
-	return strings.ReplaceAll(sql, catalogTypeMark, catalogTypeOfLiveRow("$1"))
+	return withCatalogType(sql, "$1")
 }
 
 // Subjects отдаёт страницу субъектов, имеющих отношение на объекте.

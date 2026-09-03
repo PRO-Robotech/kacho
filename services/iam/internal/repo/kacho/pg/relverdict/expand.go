@@ -204,7 +204,7 @@ func expandQuerySQL(labelTable string) string {
 	sql := strings.Replace(expandSQL, labelsJoinMark,
 		labelsJoinPinned(labelTable, catalogTypeMark, "$2"), 1)
 	sql = strings.Replace(sql, membersJoinMark, membersOfNamedGroups("g.subject"), 1)
-	return strings.ReplaceAll(sql, catalogTypeMark, catalogTypeOfLiveRow("$1"))
+	return withCatalogType(sql, "$1")
 }
 
 // Expand перечисляет основания права на объекте.

@@ -616,7 +616,7 @@ func verdictQuerySQL(labelTable string) string {
 	sql = strings.Replace(sql, "{{fact_arm}}", fact, 1)
 	sql = strings.ReplaceAll(sql, labelsJoinMark,
 		labelsJoinPinned(labelTable, catalogTypeMark, "$3"))
-	return strings.ReplaceAll(sql, catalogTypeMark, catalogTypeOfLiveRow("$2"))
+	return withCatalogType(sql, "$2")
 }
 
 func Ask(ctx context.Context, q pgx.Tx, in Query) (Verdict, Grounds, error) {
@@ -916,7 +916,7 @@ func verdictManyQuerySQL(labelTable string) string {
 	// представлениям о том, где лежат метки, негде.
 	sql = strings.ReplaceAll(sql, labelsJoinMark,
 		labelsJoinPinned(labelTable, catalogTypeMark, "o.object_id"))
-	return strings.ReplaceAll(sql, catalogTypeMark, catalogTypeOfLiveRow("$2"))
+	return withCatalogType(sql, "$2")
 }
 
 // AskMany задаёт форме вопрос о СТРАНИЦЕ объектов одного типа — одним запросом.

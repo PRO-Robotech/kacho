@@ -119,13 +119,12 @@ const catalogTypeToken = "$catalog_type"
 
 // readableSQL — запрос в том виде, в каком его разбирает гейт.
 //
-// Выражение перевода заменено односложным знаком, а его СОБСТВЕННЫЙ текст дописан
-// в конец: внутри выражения стоит сравнение `catalog_resource.object_type` с
-// параметром словаря модели, и оно судится наравне с остальными — иначе приведение
-// сняло бы с гейта ровно ту строку, где перевод и делается.
-func readableSQL(sql, modelParam string) string {
-	expr := catalogTypeOfLiveRow(modelParam)
-	return strings.ReplaceAll(sql, expr, catalogTypeToken) + "\n" + expr
+// Ссылка на раздел перевода заменена односложным знаком. Само сравнение
+// `catalog_resource.object_type` с параметром словаря модели живёт В РАЗДЕЛЕ, то
+// есть остаётся в тексте запроса и судится наравне с остальными: приведение
+// трогает только ССЫЛКУ.
+func readableSQL(sql, _ string) string {
+	return strings.ReplaceAll(sql, catalogTypeRef, catalogTypeToken)
 }
 
 // queryUnderGate — один судимый запрос: как он собирается и чем названы его
@@ -315,8 +314,8 @@ func TestTypeDictionaryGateSeesBothComparisonFormsOnBothAxes(t *testing.T) {
 			if len(aliasesOf(raw)) == 0 {
 				t.Errorf("%s / %s: ни одного алиаса таблицы не разобрано", q.name, axis.name)
 			}
-			if !strings.Contains(raw, catalogTypeOfLiveRow(q.params.model)) {
-				t.Errorf("%s / %s: выражения перевода по живой строке каталога в запросе "+
+			if !strings.Contains(raw, catalogTypeCTE(q.params.model)) {
+				t.Errorf("%s / %s: раздела перевода по живой строке каталога в запросе "+
 					"нет — объявление гейта разошлось с запросом, и приведение сняло бы три "+
 					"сравнения с гейта молча", q.name, axis.name)
 			}
