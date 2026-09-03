@@ -164,15 +164,9 @@ func AssertCatalogParity(ctx context.Context, src CatalogSource) (CatalogParityC
 	var c CatalogParityCensus
 
 	want := LiteralRows()
-	wantMod := setOf(want.Modules)
-	wantRes := map[string]bool{}
-	for _, r := range want.Resources {
-		wantRes[resourceKey(r)] = true
-	}
-	wantVerb := map[string]bool{}
-	for _, v := range want.Verbs {
-		wantVerb[verbKey(v)] = true
-	}
+	wantMod := keysOfModules(want.Modules)
+	wantRes := keysOfResources(want.Resources)
+	wantVerb := keysOfVerbs(want.Verbs)
 	c.LiteralModules, c.LiteralResources, c.LiteralVerbs = len(wantMod), len(wantRes), len(wantVerb)
 
 	live, err := src.ReadLiveCatalog(ctx)
@@ -181,24 +175,41 @@ func AssertCatalogParity(ctx context.Context, src CatalogSource) (CatalogParityC
 	}
 	c.Live = live
 
-	gotMod := setOf(live.Modules)
-	gotRes := map[string]bool{}
-	for _, r := range live.Resources {
-		gotRes[resourceKey(r)] = true
-	}
-	gotVerb := map[string]bool{}
-	for _, v := range live.Verbs {
-		gotVerb[verbKey(v)] = true
-	}
+	gotMod := keysOfModules(live.Modules)
+	gotRes := keysOfResources(live.Resources)
+	gotVerb := keysOfVerbs(live.Verbs)
 	c.RowModules, c.RowResources, c.RowVerbs = len(gotMod), len(gotRes), len(gotVerb)
 
-	diffInto(&c.MissingRows, &c.ExtraRows, "модуль", wantMod, gotMod)
-	diffInto(&c.MissingRows, &c.ExtraRows, "ресурс", wantRes, gotRes)
-	diffInto(&c.MissingRows, &c.ExtraRows, "глагол", wantVerb, gotVerb)
+	// СНЯТОЕ читается ВСЕГДА, а не только при найденном расхождении. Читай его
+	// «по необходимости» — и на исправном каталоге страж не сходил бы за ним ни
+	// разу, то есть отказ порта снятого впервые обнаружился бы в тот момент,
+	// когда от ответа что-то зависит. Отказ здесь ФАТАЛЕН: непрочитанное снятое
+	// множество не есть «ничего не снято», а без ответа отличить снятую строку
+	// от непроехавшей нечем.
+	retired, rerr := src.ReadRetiredCatalog(ctx)
+	if rerr != nil {
+		return c, fmt.Errorf("прочитать снятые строки каталога модуля: %w", rerr)
+	}
+	retiredMod := keysOfModules(retired.Modules)
+	retiredRes := keysOfResources(retired.Resources)
+	retiredVerb := keysOfVerbs(retired.Verbs)
+	c.RetiredModules, c.RetiredResources, c.RetiredVerbs = len(retiredMod), len(retiredRes), len(retiredVerb)
+
+	diffInto(&c, "модуль", wantMod, gotMod, identitiesOf(retiredMod))
+	diffInto(&c, "ресурс", wantRes, gotRes, identitiesOf(retiredRes))
+	diffInto(&c, "глагол", wantVerb, gotVerb, identitiesOf(retiredVerb))
 	sort.Strings(c.MissingRows)
 	sort.Strings(c.ExtraRows)
+	sort.Strings(c.WithdrawnRows)
 
 	switch {
+	case c.WhollyRetired():
+		return c, fmt.Errorf("каталог модуля снят ЦЕЛИКОМ: живых строк "+
+			"catalog_module/catalog_resource/catalog_verb 0/0/0, снятых %d/%d/%d при %d/%d/%d "+
+			"в литерале. Каталог без единой живой строки отверг бы ВСЕ правила разом, поэтому "+
+			"старт отказан; чинится это возвратом снятого, а не посевом (kacho#1861)",
+			c.RetiredModules, c.RetiredResources, c.RetiredVerbs,
+			c.LiteralModules, c.LiteralResources, c.LiteralVerbs)
 	case c.Empty():
 		return c, fmt.Errorf("каталог модуля пуст: строк catalog_module/catalog_resource/catalog_verb "+
 			"прочитано 0/0/0 при %d/%d/%d в литерале — пустой каталог отверг бы ВСЕ правила разом, "+
@@ -206,11 +217,14 @@ func AssertCatalogParity(ctx context.Context, src CatalogSource) (CatalogParityC
 			c.LiteralModules, c.LiteralResources, c.LiteralVerbs)
 	case c.Diverged():
 		return c, fmt.Errorf("литерал и строки каталога разошлись: нет строкой [%s]; нет в литерале [%s]. "+
-			"Прочитано из литерала %d/%d/%d, строками %d/%d/%d. Расхождение снаружи выглядит как "+
-			"«прав не выдали», поэтому старт отказан, а не продолжен (kacho#1030, IAM-CT-1-15)",
+			"Прочитано из литерала %d/%d/%d, живыми строками %d/%d/%d, снятыми %d/%d/%d; "+
+			"снято решением %d строк — эти расхождением НЕ считаются. Оставшееся снаружи выглядит "+
+			"как «прав не выдали», поэтому старт отказан, а не продолжен (kacho#1030, IAM-CT-1-15)",
 			strings.Join(c.MissingRows, ", "), strings.Join(c.ExtraRows, ", "),
 			c.LiteralModules, c.LiteralResources, c.LiteralVerbs,
-			c.RowModules, c.RowResources, c.RowVerbs)
+			c.RowModules, c.RowResources, c.RowVerbs,
+			c.RetiredModules, c.RetiredResources, c.RetiredVerbs,
+			len(c.WithdrawnRows))
 	}
 	return c, nil
 }
@@ -264,6 +278,20 @@ func resourceKey(r catalog.ResourceRow) string {
 	return r.Module + "." + r.Resource + " → " + r.ObjectType
 }
 
+// resourceIdentity — ИМЯ строки ресурса без её формы: то, чем строка адресуется
+// первичным ключом `catalog_resource_pkey (module, resource)`.
+//
+// Идентичность отделена от ключа сверки НАМЕРЕННО, и различие несущее.
+// Свидетельство о снятии ищется по ИДЕНТИЧНОСТИ: снятая строка сохраняет ту
+// форму, какая была у неё в момент снятия, а форма снятой строки ничего уже не
+// значит — отношение `v_*` на ней не резолвится, ключ проекции требует `live`.
+// Ищи страж свидетельство по ПОЛНОМУ ключу — снятая строка с устаревшим именем
+// типа читалась бы как «строки нет вовсе», то есть решение оператора выглядело
+// бы непринятой миграцией.
+func resourceIdentity(r catalog.ResourceRow) string {
+	return r.Module + "." + r.Resource
+}
+
 // verbKey — ключ сверки строки глагола, несущий ПРИЗНАК СЛОВАРЯ.
 //
 // Признак входит в ключ намеренно: строка, посеянная с неверным признаком,
@@ -276,29 +304,91 @@ func verbKey(v catalog.VerbRow) string {
 	if v.PerObject {
 		kind = " (пообъектный)"
 	}
-	return v.Module + "." + v.Resource + "." + v.Verb + kind
+	return verbIdentity(v) + kind
 }
 
-func setOf(values []string) map[string]bool {
-	out := make(map[string]bool, len(values))
+// verbIdentity — ИМЯ строки действия без признака словаря: то, чем строка
+// адресуется первичным ключом `catalog_verb_pkey (module, resource, verb)`.
+// Причина отделения — та же, что у ресурса выше.
+func verbIdentity(v catalog.VerbRow) string {
+	return v.Module + "." + v.Resource + "." + v.Verb
+}
+
+// keysOfModules / keysOfResources / keysOfVerbs — множество строк одного вида в
+// форме «ключ сверки → идентичность строки».
+//
+// Две величины, а не одна: КЛЮЧ несёт форму (имя типа модели у ресурса, признак
+// словаря у действия) и решает, СОШЛИСЬ ли стороны; ИДЕНТИЧНОСТЬ несёт только
+// имя строки и решает, ЕСТЬ ли о ней свидетельство снятия. Схлопни их в одну —
+// и одно из двух решений начнёт приниматься неверно (см. `resourceIdentity`).
+//
+// У модуля форма и имя совпадают: у `catalog_module` кроме имени и живости
+// колонок нет.
+func keysOfModules(values []string) map[string]string {
+	out := make(map[string]string, len(values))
 	for _, v := range values {
-		out[v] = true
+		out[v] = v
 	}
 	return out
 }
 
-// diffInto — расхождение в ОБЕ стороны. Одностороннее сравнение (включение)
-// молчало бы на строке, которой в литерале нет: она даёт правилу референт, по
-// которому оно резолвится, а проекция — нет.
-func diffInto(missing, extra *[]string, kind string, want, got map[string]bool) {
-	for k := range want {
-		if !got[k] {
-			*missing = append(*missing, kind+" "+k)
+func keysOfResources(rows []catalog.ResourceRow) map[string]string {
+	out := make(map[string]string, len(rows))
+	for _, r := range rows {
+		out[resourceKey(r)] = resourceIdentity(r)
+	}
+	return out
+}
+
+func keysOfVerbs(rows []catalog.VerbRow) map[string]string {
+	out := make(map[string]string, len(rows))
+	for _, v := range rows {
+		out[verbKey(v)] = verbIdentity(v)
+	}
+	return out
+}
+
+// identitiesOf — множество ИДЕНТИЧНОСТЕЙ, по которым ищется свидетельство снятия.
+func identitiesOf(keyed map[string]string) map[string]bool {
+	out := make(map[string]bool, len(keyed))
+	for _, identity := range keyed {
+		out[identity] = true
+	}
+	return out
+}
+
+// diffInto — расхождение в ОБЕ стороны, с ТРЕМЯ исходами у пропавшей строки.
+//
+// Сравнение остаётся двусторонним: одностороннее (включение) молчало бы на
+// строке, которой в литерале нет, — а она даёт правилу референт, по которому оно
+// резолвится, при том что проекция такой строки не производит.
+//
+// Новое здесь — разбор той половины, где живых строк МЕНЬШЕ. У пропавшей строки
+// исходов два, и они противоположны по способу починки:
+//
+//	есть СНЯТАЯ строка той же идентичности   решение оператора → WithdrawnRows,
+//	                                         старт продолжается
+//	строки нет НИ ЖИВОЙ, НИ СНЯТОЙ           посев не доехал → MissingRows,
+//	                                         старт отказан
+//
+// Свидетельство действует ТОЛЬКО в эту сторону. Живая строка вне литерала
+// остаётся отказом при любом снятом множестве: снятие сужает доступ, а лишняя
+// живая строка его расширяет, и расширять каталог за пределы того, что знает
+// образ, доставка оператора не вправе.
+func diffInto(c *CatalogParityCensus, kind string, want, got map[string]string, retiredIDs map[string]bool) {
+	for k, identity := range want {
+		if _, live := got[k]; live {
+			continue
 		}
+		if retiredIDs[identity] {
+			c.WithdrawnRows = append(c.WithdrawnRows, kind+" "+k)
+			continue
+		}
+		c.MissingRows = append(c.MissingRows, kind+" "+k)
 	}
 	for k := range got {
-		if !want[k] {
-			*extra = append(*extra, kind+" "+k)
+		if _, declared := want[k]; !declared {
+			c.ExtraRows = append(c.ExtraRows, kind+" "+k)
 		}
 	}
 }
