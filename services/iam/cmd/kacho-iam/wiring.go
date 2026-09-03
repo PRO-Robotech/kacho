@@ -30,6 +30,7 @@ import (
 	internaloperationsapp "github.com/PRO-Robotech/kacho/services/iam/internal/apps/kacho/api/internal_operations"
 	limitapp "github.com/PRO-Robotech/kacho/services/iam/internal/apps/kacho/api/limit"
 	membershipapp "github.com/PRO-Robotech/kacho/services/iam/internal/apps/kacho/api/membership"
+	moduleapp "github.com/PRO-Robotech/kacho/services/iam/internal/apps/kacho/api/module"
 	permissioncatalogapp "github.com/PRO-Robotech/kacho/services/iam/internal/apps/kacho/api/permission_catalog"
 	projectapp "github.com/PRO-Robotech/kacho/services/iam/internal/apps/kacho/api/project"
 	roleapp "github.com/PRO-Robotech/kacho/services/iam/internal/apps/kacho/api/role"
@@ -39,6 +40,7 @@ import (
 	userapp "github.com/PRO-Robotech/kacho/services/iam/internal/apps/kacho/api/user"
 	usertokensapp "github.com/PRO-Robotech/kacho/services/iam/internal/apps/kacho/api/user_tokens"
 	"github.com/PRO-Robotech/kacho/services/iam/internal/apps/kacho/config"
+	"github.com/PRO-Robotech/kacho/services/iam/internal/apps/kacho/modulecatalog"
 	"github.com/PRO-Robotech/kacho/services/iam/internal/apps/kacho/shared"
 	"github.com/PRO-Robotech/kacho/services/iam/internal/authzcascade"
 	"github.com/PRO-Robotech/kacho/services/iam/internal/authzguard"
@@ -95,6 +97,15 @@ type services struct {
 	// interactiveClientHandler — InternalInteractiveClientService: lifecycle of
 	// the OAuth2 client a HUMAN signs in through (IAM-INT-1). Internal-only.
 	interactiveClientHandler *interactiveclientapp.Handler
+
+	// moduleHandler — InternalModuleService: четыре глагола над строками
+	// каталога прав ОДНОГО модуля (план, применение, два чтения). Internal-only
+	// (запрет #6), регистрируется на :9091 и НИКОГДА на внешнем слушателе.
+	//
+	// Гейт права стоит в use-case первым стейтментом и является ЕДИНСТВЕННОЙ
+	// авторизацией этой поверхности: ступень подтверждения личности к ней
+	// сегодня не применяется — решение записано в приёмке, а не умолчание.
+	moduleHandler *moduleapp.Handler
 
 	// limitHandler — InternalLimitService: the ceiling on how many resources of
 	// one kind a tenant may hold, plus the two reads owner-services live on
@@ -208,6 +219,12 @@ func buildServices(pool, slavePool *pgxpool.Pool, opsRepo operations.FullRepo,
 	// в работающем процессе — снятием строки, — и читатель на литерале
 	// продолжил бы считать снятый тип живым до следующего перезапуска.
 	catalogSource catalog.Source,
+	// catalogRows — ЧИТАТЕЛЬ строк каталога, тот же экземпляр, что прочитал их
+	// страж паритета на старте. Приходит параметром, а не собирается здесь
+	// заново: читатель живого множества в дереве ОДИН, и второй его экземпляр
+	// был бы вторым местом об одном предмете — расходиться им нечем сегодня и
+	// есть чем завтра.
+	catalogRows moduleapp.CatalogStateSource,
 	metricsReg *metrics.Registry,
 	cfg config.Config, tokenSigner *tokensigner.Signer, logger *slog.Logger) *services {
 	_ = slavePool // kachoRepo is built and passed in by main()
@@ -839,6 +856,29 @@ func buildServices(pool, slavePool *pgxpool.Pool, opsRepo operations.FullRepo,
 	permissionCatalogHandler := permissioncatalogapp.NewHandler(
 		permissioncatalogapp.NewListPermissionCatalogUseCase())
 
+	// ── InternalModuleService — каталог прав ОДНОГО модуля (задача #1034) ──
+	//
+	// Применитель здесь — ГЛАГОЛЬНЫЙ (`NewVerbApplier`), а не тот, которым
+	// пользуется путь старта: он сверяет опору БЕЗУСЛОВНО и требует
+	// подтверждения с обоими потолками. Различает их ТИП, а не флаг — подать
+	// сюда стартовый нельзя, и это проверяет сборка.
+	//
+	// Производитель ПЛАНОВОГО состояния (отпечаток модуля и оценки последствий)
+	// приходит отдельным портом. Пока он не провязан, `Plan` ОТКАЗЫВАЕТ, называя
+	// причину: вернуть вместо отпечатка пустую строку, а вместо оценок нули
+	// значило бы утверждать «ни одного права не отберут» — то есть солгать ровно
+	// о том, ради чего план и спрашивают. Отказ `Plan` при этом закрывает и
+	// `Apply`: подтверждения, которое тот требует, взять больше негде.
+	moduleApplier := modulecatalog.NewVerbApplier(kachopg.NewCatalogWriteRepo(pool))
+	moduleDelivery := newManifestDeliverySource(cfg.Manifests)
+	moduleHandler := moduleapp.NewHandler(
+		moduleapp.NewPlanUseCase(moduleDelivery, catalogRows, nil).WithAdminChecker(relationStore),
+		moduleapp.NewApplyUseCase(moduleDelivery, moduleApplier, opsRepo, logger).
+			WithAdminChecker(relationStore),
+		moduleapp.NewGetUseCase(catalogRows).WithAdminChecker(relationStore),
+		moduleapp.NewListUseCase(catalogRows).WithAdminChecker(relationStore),
+	)
+
 	return &services{
 		accountHandler:         accountHandler,
 		projectHandler:         projectHandler,
@@ -854,6 +894,9 @@ func buildServices(pool, slavePool *pgxpool.Pool, opsRepo operations.FullRepo,
 
 		// interactive-login client lifecycle.
 		interactiveClientHandler: interactiveClientHandler,
+
+		// каталог прав одного модуля — план, применение, два чтения.
+		moduleHandler: moduleHandler,
 
 		// resource-count ceilings (admin CRUD + owner-facing resolve/delta).
 		limitHandler:       limitHandler,

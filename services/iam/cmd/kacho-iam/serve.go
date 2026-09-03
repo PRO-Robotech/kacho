@@ -337,6 +337,9 @@ func runServe(cfg config.Config) error {
 	}
 
 	svcs := buildServices(pool, slavePool, opsRepo, kachoRepo, kachoRepo, catalogSnapshot,
+		// Тот же экземпляр читателя, что прочитал строки для стража паритета
+		// и для снимка: третьего чтения каталога на старте не заводится.
+		catalogRepo,
 		metricsReg, cfg, tokenSigner, logger)
 
 	// gRPC servers. PrincipalExtract-interceptor читает
