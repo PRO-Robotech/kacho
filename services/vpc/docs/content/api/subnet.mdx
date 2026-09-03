@@ -596,7 +596,11 @@ Subnet.Create"`: набор меняется только парой `:add-cidr-
           "address": "10.0.0.5",
           "ipVersion": "IPV4",
           "references": [
-            { "type": "network_interface", "id": "{networkInterfaceId}" }
+            {
+              "referrer": { "type": "network_interface", "id": "{networkInterfaceId}", "name": "" },
+              "type": "USED_BY",
+              "owned": false
+            }
           ]
         }
       ],
