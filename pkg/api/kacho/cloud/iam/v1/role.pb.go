@@ -661,7 +661,14 @@ type PrunedSelectorType struct {
 	Reason string `protobuf:"bytes,3,opt,name=reason,proto3" json:"reason,omitempty"`
 	// Момент вырезания. Время ТРАНЗАКЦИИ применения: у всего, что вырезано одним
 	// применением, он совпадает дословно.
-	PrunedAt      *timestamppb.Timestamp `protobuf:"bytes,4,opt,name=pruned_at,json=prunedAt,proto3" json:"pruned_at,omitempty"`
+	PrunedAt *timestamppb.Timestamp `protobuf:"bytes,4,opt,name=pruned_at,json=prunedAt,proto3" json:"pruned_at,omitempty"`
+	// АВТОР применения, вырезавшего этот тип (#2005). Та же величина и тот же
+	// источник, что у соседа `WithdrawnGrant.applied_by`: вопрос «кто снял» у
+	// обеих ведомостей общий — арендатор не различает, какой из проекций правила
+	// он лишился.
+	//
+	// ПУСТАЯ строка означает «строка вырезана ДО заведения колонки».
+	AppliedBy     string `protobuf:"bytes,5,opt,name=applied_by,json=appliedBy,proto3" json:"applied_by,omitempty"`
 	unknownFields protoimpl.UnknownFields
 	sizeCache     protoimpl.SizeCache
 }
@@ -724,6 +731,13 @@ func (x *PrunedSelectorType) GetPrunedAt() *timestamppb.Timestamp {
 	return nil
 }
 
+func (x *PrunedSelectorType) GetAppliedBy() string {
+	if x != nil {
+		return x.AppliedBy
+	}
+	return ""
+}
+
 // WithdrawnGrant — одна проекция правила роли, потерявшая референт при снятии
 // строки каталога платформы (#1992).
 //
@@ -743,7 +757,21 @@ type WithdrawnGrant struct {
 	Reason string `protobuf:"bytes,4,opt,name=reason,proto3" json:"reason,omitempty"`
 	// Момент переселения. Время ТРАНЗАКЦИИ применения: у всего, что отобрано
 	// одним применением, он совпадает дословно.
-	WithdrawnAt   *timestamppb.Timestamp `protobuf:"bytes,5,opt,name=withdrawn_at,json=withdrawnAt,proto3" json:"withdrawn_at,omitempty"`
+	WithdrawnAt *timestamppb.Timestamp `protobuf:"bytes,5,opt,name=withdrawn_at,json=withdrawnAt,proto3" json:"withdrawn_at,omitempty"`
+	// АВТОР применения, снявшего эту строку (#2005).
+	//
+	// Проверенная личность вызывающего на пути глагола либо названный процессный
+	// актор на пути старта. НЕ учётка, под которой исполнялась транзакция: на
+	// вопрос «кто у меня отобрал» ответ «iam» ответом не является.
+	//
+	// Рядом с `reason` намеренно: причина называет, ЧТО случилось с платформой,
+	// автор — КТО это сделал. Для разбора потери права это второй по важности
+	// вопрос после первого.
+	//
+	// ПУСТАЯ строка означает «строка переселена ДО заведения колонки», а НЕ
+	// «автора потеряли»: у таких строк его не записывал никто, и восстановить его
+	// не из чего.
+	AppliedBy     string `protobuf:"bytes,6,opt,name=applied_by,json=appliedBy,proto3" json:"applied_by,omitempty"`
 	unknownFields protoimpl.UnknownFields
 	sizeCache     protoimpl.SizeCache
 }
@@ -811,6 +839,13 @@ func (x *WithdrawnGrant) GetWithdrawnAt() *timestamppb.Timestamp {
 		return x.WithdrawnAt
 	}
 	return nil
+}
+
+func (x *WithdrawnGrant) GetAppliedBy() string {
+	if x != nil {
+		return x.AppliedBy
+	}
+	return ""
 }
 
 // DefinitionTier is the hierarchy tier a Role is defined at (redesign-2026 F4):
@@ -1155,20 +1190,24 @@ const file_kacho_cloud_iam_v1_role_proto_rawDesc = "" +
 	"\x0eVerbNotesEntry\x12\x10\n" +
 	"\x03key\x18\x01 \x01(\tR\x03key\x12\x14\n" +
 	"\x05value\x18\x02 \x01(\tR\x05value:\x028\x01J\x04\b\t\x10\n" +
-	"R\x0forganization_id\"\xca\x01\n" +
+	"R\x0forganization_id\"\xe9\x01\n" +
 	"\x12PrunedSelectorType\x12\x1f\n" +
 	"\vobject_type\x18\x01 \x01(\tR\n" +
 	"objectType\x12B\n" +
 	"\aoutcome\x18\x02 \x01(\x0e2(.kacho.cloud.iam.v1.SelectorPruneOutcomeR\aoutcome\x12\x16\n" +
 	"\x06reason\x18\x03 \x01(\tR\x06reason\x127\n" +
-	"\tpruned_at\x18\x04 \x01(\v2\x1a.google.protobuf.TimestampR\bprunedAt\"\xde\x01\n" +
+	"\tpruned_at\x18\x04 \x01(\v2\x1a.google.protobuf.TimestampR\bprunedAt\x12\x1d\n" +
+	"\n" +
+	"applied_by\x18\x05 \x01(\tR\tappliedBy\"\xfd\x01\n" +
 	"\x0eWithdrawnGrant\x12\x1f\n" +
 	"\vobject_type\x18\x01 \x01(\tR\n" +
 	"objectType\x12\x12\n" +
 	"\x04verb\x18\x02 \x01(\tR\x04verb\x12@\n" +
 	"\x06source\x18\x03 \x01(\x0e2(.kacho.cloud.iam.v1.WithdrawnGrantSourceR\x06source\x12\x16\n" +
 	"\x06reason\x18\x04 \x01(\tR\x06reason\x12=\n" +
-	"\fwithdrawn_at\x18\x05 \x01(\v2\x1a.google.protobuf.TimestampR\vwithdrawnAt\"F\n" +
+	"\fwithdrawn_at\x18\x05 \x01(\v2\x1a.google.protobuf.TimestampR\vwithdrawnAt\x12\x1d\n" +
+	"\n" +
+	"applied_by\x18\x06 \x01(\tR\tappliedBy\"F\n" +
 	"\x0eDefinitionTier\x12\x1b\n" +
 	"\ttier_type\x18\x01 \x01(\tR\btierType\x12\x17\n" +
 	"\atier_id\x18\x02 \x01(\tR\x06tierId\"\x96\x02\n" +

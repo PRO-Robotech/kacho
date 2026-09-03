@@ -194,7 +194,7 @@ func (r *roleReader) WithdrawnGrants(
 		ids = append(ids, string(id))
 	}
 	rows, err := r.tx.Query(ctx, `
-		SELECT role_id, object_type, verb, source, reason, orphaned_at
+		SELECT role_id, object_type, verb, source, reason, orphaned_at, applied_by
 		  FROM kacho_iam.role_grant_orphan
 		 WHERE role_id = ANY($1::text[])
 		 ORDER BY role_id, object_type, verb, source`, ids)
@@ -205,7 +205,8 @@ func (r *roleReader) WithdrawnGrants(
 	for rows.Next() {
 		var id, source string
 		var g domain.WithdrawnGrant
-		if serr := rows.Scan(&id, &g.ObjectType, &g.Verb, &source, &g.Reason, &g.WithdrawnAt); serr != nil {
+		if serr := rows.Scan(&id, &g.ObjectType, &g.Verb, &source, &g.Reason,
+			&g.WithdrawnAt, &g.AppliedBy); serr != nil {
 			return nil, mapErr(serr, "", "")
 		}
 		switch source {
@@ -263,6 +264,14 @@ func (r *roleReader) WithdrawnGrants(
 // селектора, называющего неживой тип, отвергает страж живости. Значит две
 // строки с одним типом и одним исходом совпадают и по остальным колонкам.
 //
+// АВТОР (#2005) входит в набор различения и кардинальности НЕ МЕНЯЕТ — по тому
+// же доводу и в силу того же факта: он есть свойство ТРАНЗАКЦИИ применения, то
+// есть функционально зависит от момента, который в наборе уже стоит. Две строки,
+// совпавшие по типу, исходу и моменту, пришли из одного применения, а у одного
+// применения автор один. Добавь он различий — это означало бы, что момент их не
+// различил, то есть что вырезание одного типа случилось дважды в одну
+// транзакцию; такого входа нет by construction.
+//
 // # Почему написание исхода НЕ уезжает наружу
 //
 // Столбец несёт написание закрытого набора схемы; наружу едет доменное
@@ -291,7 +300,7 @@ func (r *roleReader) PrunedSelectorTypes(
 	}
 	rows, err := r.tx.Query(ctx, `
 		SELECT DISTINCT role_id, object_type, outcome,
-		       coalesce(retired_reason, ''), pruned_at
+		       coalesce(retired_reason, ''), pruned_at, applied_by
 		  FROM kacho_iam.role_selector_prune
 		 WHERE role_id = ANY($1::text[])
 		 ORDER BY role_id, object_type, outcome`, ids)
@@ -302,7 +311,8 @@ func (r *roleReader) PrunedSelectorTypes(
 	for rows.Next() {
 		var id, outcome string
 		var p domain.PrunedSelectorType
-		if serr := rows.Scan(&id, &p.ObjectType, &outcome, &p.Reason, &p.PrunedAt); serr != nil {
+		if serr := rows.Scan(&id, &p.ObjectType, &outcome, &p.Reason, &p.PrunedAt,
+			&p.AppliedBy); serr != nil {
 			return nil, mapErr(serr, "", "")
 		}
 		switch outcome {

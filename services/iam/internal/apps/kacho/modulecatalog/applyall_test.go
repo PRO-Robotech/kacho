@@ -49,6 +49,11 @@ type recordingWriter struct {
 	unchangedModules map[string]bool
 	// audited — следы применения, дошедшие до писателя.
 	audited []modulecatalog.AppliedEvent
+	// resettleAuthor / pruneAuthor — АВТОР, с которым звали обе ведомости (#2005).
+	// Захватывается, а не игнорируется: «автор доехал до писателя» и «автор
+	// записан в строку» — разные факты, и первый проверяется здесь, без базы.
+	resettleAuthor string
+	pruneAuthor    string
 }
 
 var errWriterRefused = errors.New("подставной писатель отказал")
@@ -97,9 +102,10 @@ func (w *recordingWriter) UpsertVerb(_ context.Context, v catalog.VerbRow) (bool
 	return !w.unchangedModules[v.Module], nil
 }
 
-func (w *recordingWriter) ResettleTenantProjections(context.Context,
-	[]catalog.ResourceRow, []catalog.VerbRow, string) (modulecatalog.Resettled, error) {
+func (w *recordingWriter) ResettleTenantProjections(_ context.Context,
+	_ []catalog.ResourceRow, _ []catalog.VerbRow, _ string, appliedBy string) (modulecatalog.Resettled, error) {
 	w.calls = append(w.calls, "resettle")
+	w.resettleAuthor = appliedBy
 	return modulecatalog.Resettled{}, nil
 }
 
@@ -113,9 +119,10 @@ func (w *recordingWriter) RetireResource(_ context.Context, r catalog.ResourceRo
 	return true, nil
 }
 
-func (w *recordingWriter) PruneRetiredSelectorTypes(context.Context,
-	[]catalog.ResourceRow) (modulecatalog.Pruned, error) {
+func (w *recordingWriter) PruneRetiredSelectorTypes(_ context.Context,
+	_ []catalog.ResourceRow, appliedBy string) (modulecatalog.Pruned, error) {
 	w.calls = append(w.calls, "prune")
+	w.pruneAuthor = appliedBy
 	return modulecatalog.Pruned{}, nil
 }
 
