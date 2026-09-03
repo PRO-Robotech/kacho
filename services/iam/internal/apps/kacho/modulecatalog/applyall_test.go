@@ -63,6 +63,11 @@ func (w *recordingWriter) LockCatalog(context.Context) error {
 	return nil
 }
 
+func (w *recordingWriter) LockModuleResources(_ context.Context, module string) error {
+	w.calls = append(w.calls, "lock_resources:"+module)
+	return nil
+}
+
 func (w *recordingWriter) ReadModule(_ context.Context, module string) (catalog.Rows, error) {
 	w.calls = append(w.calls, "read:"+module)
 	return catalog.Rows{}, nil
