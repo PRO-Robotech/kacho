@@ -69,9 +69,11 @@ func TestManifestRowsReproduceTheSeededCatalog(t *testing.T) {
 	gotModules := map[string]bool{}
 	gotResources := map[string]bool{}
 	gotVerbs := map[string]bool{}
+	internalExcluded := 0
 	for _, m := range manifests {
 		declared, err := modulecatalog.RowsOf(m)
 		require.NoError(t, err, "вывести строки каталога модуля %s", m.Module)
+		internalExcluded += declared.InternalExcluded
 		gotModules[declared.Module] = true
 		for _, r := range declared.Resources {
 			gotResources[r.Module+"."+r.Resource] = true
@@ -94,10 +96,23 @@ func TestManifestRowsReproduceTheSeededCatalog(t *testing.T) {
 		wantVerbs[verbKey(v.Module, v.Resource, v.Verb, v.PerObject)] = true
 	}
 
+	// Перепись называет ОБЕ величины — выведенное и исключённое. Одно число
+	// сделало бы «расхождений 0» неотличимым от «исключено всё, сравнивать было
+	// нечего»: деривация вправе не давать строки внутреннему действию, и без
+	// второго числа неверная ветвь исключения выглядела бы как согласие сторон.
 	t.Logf("перепись: манифестов %d · модулей %d (литерал %d) · ресурсов %d (литерал %d) · "+
-		"глаголов %d (литерал %d)",
+		"глаголов %d (литерал %d) · исключено действий внутренней плоскости %d",
 		len(manifests), len(gotModules), len(wantModules),
-		len(gotResources), len(wantResources), len(gotVerbs), len(wantVerbs))
+		len(gotResources), len(wantResources), len(gotVerbs), len(wantVerbs),
+		internalExcluded)
+
+	// Исключение обязано иметь ПРЕДМЕТ: ноль исключённых при объявленных
+	// внутренних действиях означал бы, что ветвь не исполняется, и сверка
+	// сошлась бы по другой причине, чем думает читатель.
+	require.NotZero(t, internalExcluded,
+		"исключено ноль действий внутренней плоскости: либо манифесты дерева их больше не "+
+			"объявляют (тогда предмет исключения исчез), либо ветвь исключения не исполняется "+
+			"— в обоих случаях согласие сторон достигнуто не тем, чем объявлено")
 
 	requireSameSets(t, "модуль", wantModules, gotModules)
 	requireSameSets(t, "ресурс", wantResources, gotResources)
