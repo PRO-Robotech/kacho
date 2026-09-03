@@ -73,9 +73,9 @@ func TestRoleIntegrity_UnresolvedSegments_AgainstLiveProjection(t *testing.T) {
 			seg("vpc.network", "get"), seg("vpc.network", "list"),
 		})
 		require.NoError(t, gerr)
-		require.Zero(t, got[role.ID],
+		require.Empty(t, got[role.ID],
 			"обе пары лежат в проекции — неразрешённых быть не может; "+
-				"ненулевой ответ означает, что вопрос задан не той формой имени")
+				"непустой ответ означает, что вопрос задан не той формой имени")
 	})
 
 	t.Run("форма 513001: объявлено, не спроецировано ни одного", func(t *testing.T) {
@@ -83,8 +83,15 @@ func TestRoleIntegrity_UnresolvedSegments_AgainstLiveProjection(t *testing.T) {
 			seg("probe.thing", "get"), seg("probe.thing", "list"),
 		})
 		require.NoError(t, gerr)
-		require.Equal(t, 2, got[role.ID],
+		require.Len(t, got[role.ID], 2,
 			"тип, которого проекция не знает, обязан дать неразрешённые сегменты")
+		// СОСТАВ, а не только число: срез заведён ради того, чтобы состояние
+		// правила знало, КАКОЙ сегмент потерян (#1962). Сверка по числу
+		// зеленела бы на выборке, вернувшей два любых сегмента.
+		require.ElementsMatch(t,
+			[]domain.RoleSegment{seg("probe.thing", "get"), seg("probe.thing", "list")},
+			got[role.ID],
+			"срез обязан называть ИМЕННО те сегменты, которые не разрешились")
 	})
 
 	t.Run("часть спроецирована, часть нет", func(t *testing.T) {
@@ -92,20 +99,23 @@ func TestRoleIntegrity_UnresolvedSegments_AgainstLiveProjection(t *testing.T) {
 			seg("vpc.network", "get"), seg("probe.thing", "get"),
 		})
 		require.NoError(t, gerr)
-		require.Equal(t, 1, got[role.ID])
+		require.Len(t, got[role.ID], 1)
+		require.Equal(t, []domain.RoleSegment{seg("probe.thing", "get")}, got[role.ID],
+			"неразрешённым обязан быть НЕ спроецированный, а не любой из двух")
 	})
 
 	t.Run("якорь удовлетворяется любой строкой своего типа", func(t *testing.T) {
 		got, gerr := rd.Roles().UnresolvedSegments(ctx, []domain.RoleSegment{seg("vpc.network", "")})
 		require.NoError(t, gerr)
-		require.Zero(t, got[role.ID],
+		require.Empty(t, got[role.ID],
 			"правило `verbs: [\"*\"]` даёт ОДИН сегмент, и он разрешается любой строкой типа")
 	})
 
 	t.Run("якорь на типе без единой строки неразрешён", func(t *testing.T) {
 		got, gerr := rd.Roles().UnresolvedSegments(ctx, []domain.RoleSegment{seg("probe.thing", "")})
 		require.NoError(t, gerr)
-		require.Equal(t, 1, got[role.ID])
+		require.Equal(t, []domain.RoleSegment{seg("probe.thing", "")}, got[role.ID],
+			"якорь обязан вернуться ЯКОРЕМ — с пустым глаголом, а не с подставленным")
 	})
 
 	t.Run("пустой вход законен и вопроса не задаёт", func(t *testing.T) {
