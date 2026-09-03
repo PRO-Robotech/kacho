@@ -39,18 +39,38 @@
 //  4. **не трогает роли без модуля-владельца** (`admin`, `edit`, `view`,
 //     `owner`, `kacho-system.*`): их первый сегмент не член закрытого набора
 //     модулей платформы, поэтому манифестом они невыразимы by construction.
+//
+// # Правила роли ПРОИЗВОДИТ ЭКСПОРТЁР, а не перевод манифеста (#1998)
+//
+// Форм записи права две, и к классу сводится только ПРОВЕРЕННЫЙ поимённый
+// перечень: сведение требует каталога прав, которого у загрузчика нет. Значит у
+// поимённой формы ровно один законный производитель — `roleexport.ExportRoleRules`,
+// и применитель берёт правила у него.
+//
+// Здесь стоял прямой перевод (`manifest.Rule.DomainRule()`), и поимённое право
+// он отдавал ПУСТЫМ. Дырой это не было — домен отвергает правило без глаголов, —
+// но отказ говорил не о том: «политика роли не компилируется» посылает автора
+// править форму правила, тогда как править надо перечень. И, что дороже: у
+// полноты перечня не было читателя на пути ПРИМЕНЕНИЯ вовсе — она жила в
+// исполнителе обхода дерева, а работающий процесс её не спрашивал.
+//
+// Следствие, названное прямо: `DomainRule()` перестал быть путём поимённой
+// формы by construction — через применитель она проходит уже сведённой либо не
+// проходит вовсе.
 package moduleroles
 
 import (
 	"context"
 	"errors"
 	"fmt"
+	"strings"
 
 	"google.golang.org/grpc/codes"
 
 	"github.com/PRO-Robotech/kacho/services/iam/internal/authzmap"
 	"github.com/PRO-Robotech/kacho/services/iam/internal/domain"
 	"github.com/PRO-Robotech/kacho/services/iam/internal/manifest"
+	"github.com/PRO-Robotech/kacho/services/iam/internal/manifest/roleexport"
 )
 
 var (
@@ -63,6 +83,22 @@ var (
 	// ErrWriteFailed — писатель отказал. Несёт дословный отказ оператора:
 	// инварианты держит БАЗА, и её текст — часть контракта.
 	ErrWriteFailed = errors.New("moduleroles: writing the declared role failed")
+	// ErrNamedRightIncomplete — поимённый перечень права роли не полон по своему
+	// классу, и роль не произведена ЦЕЛИКОМ.
+	//
+	// Отдельный сентинел, а не «политика не компилируется»: у них разные
+	// починки. Несворачиваемость правит ФОРМУ правила, неполнота — ПЕРЕЧЕНЬ, и
+	// один отказ на два предмета отправил бы автора не туда.
+	ErrNamedRightIncomplete = errors.New(
+		"moduleroles: declared role named right is incomplete for its class")
+	// ErrRightsExportNotWired — производитель правил роли не провязан.
+	//
+	// Отказ, а не пропуск: без экспортёра поимённое право либо не сводится, либо
+	// сводится молча, и оба исхода означают право, отличное от просимого.
+	// Виновата ПРОВЯЗКА, а не вход, поэтому полоса своя — следующий шаг у этих
+	// двух отказов разный.
+	ErrRightsExportNotWired = errors.New(
+		"moduleroles: role rules producer is not wired")
 )
 
 // Сентинелы выше — ВТОРОЕ лицо отказа, для вызывающего в процессе. Первое —
@@ -88,13 +124,32 @@ type TxRunner interface {
 	RunInWriteTx(ctx context.Context, fn func(ctx context.Context, w RoleWriter) error) error
 }
 
-// Applier — применитель. Состояния не держит: повторный прогон — штатный режим.
-type Applier struct {
-	tx TxRunner
+// RightsExport — ПРОИЗВОДИТЕЛЬ правил роли из манифеста. Порт объявлен ЗДЕСЬ, в
+// use-case: он описывает потребность применителя, а не каталог прав.
+//
+// Возвращает правила по идентификатору роли и находки. Роль, чьё право
+// произвести нельзя, в карту НЕ ПОПАДАЕТ ЦЕЛИКОМ — частичное производство дало
+// бы роль ýже объявленной, и отличить её от работающей можно было бы только
+// вызовом.
+type RightsExport interface {
+	ExportRoleRules(m *manifest.Manifest) (rules map[string][]domain.Rule, faults []error)
 }
 
-// NewApplier собирает применитель над исполнителем транзакций.
-func NewApplier(tx TxRunner) *Applier { return &Applier{tx: tx} }
+// Applier — применитель. Состояния не держит: повторный прогон — штатный режим.
+type Applier struct {
+	tx     TxRunner
+	rights RightsExport
+}
+
+// NewApplier собирает применитель над исполнителем транзакций и производителем
+// правил.
+//
+// Производитель — параметр КОНСТРУКТОРА, а не необязательное дополнение: без
+// него применитель обязан отказать, и делать отказ следствием забытого вызова
+// «с...» значило бы держать режим, в котором проверка полноты снята молча.
+func NewApplier(tx TxRunner, rights RightsExport) *Applier {
+	return &Applier{tx: tx, rights: rights}
+}
 
 // Report — перепись применения. Печатается числами, потому что «применено»
 // без чисел неотличимо от «прошло мимо»: применитель, не нашедший ни одной
@@ -133,6 +188,16 @@ func (r Report) String() string {
 func (a *Applier) Apply(ctx context.Context, m *manifest.Manifest) (Report, error) {
 	rep := Report{Module: m.Module}
 
+	// Производитель правил спрашивается ПЕРВЫМ: без него ни одна форма права до
+	// строки роли не доезжает в том виде, в каком её объявили, — а отказ по
+	// дороге сказал бы о форме правила вместо провязки.
+	if a.rights == nil {
+		werr := fmt.Errorf("%w: %s", ErrRightsExportNotWired, m.Module)
+		return rep, refuse(codes.FailedPrecondition, werr.Error(),
+			LaneRightsExportNotWired, m.Module, "", werr)
+	}
+	exported, faults := a.rights.ExportRoleRules(m)
+
 	declared := make([]domain.Role, 0, len(m.Roles))
 	for i := range m.Roles {
 		mr := &m.Roles[i]
@@ -143,7 +208,14 @@ func (a *Applier) Apply(ctx context.Context, m *manifest.Manifest) (Report, erro
 			rep.Skipped++
 			continue
 		}
-		r, err := roleOf(m.Module, mr)
+		rules, produced := exported[mr.ID]
+		if !produced {
+			// Роль отвергнута производителем целиком. Находки СВОЕЙ роли и есть
+			// отказ: они называют недостающие имена, а собственного текста у
+			// применителя тут быть не может — перечень классов знает экспортёр.
+			return rep, namedRightRefusal(m.Module, mr.ID, faults)
+		}
+		r, err := roleOf(m.Module, mr, rules)
 		if err != nil {
 			return rep, err
 		}
@@ -199,6 +271,11 @@ func (a *Applier) Apply(ctx context.Context, m *manifest.Manifest) (Report, erro
 // писателя: отказ тогда называет роль и правило, а не приезжает SQLSTATE от
 // оператора вставки.
 //
+// Правила приходят ПАРАМЕТРОМ, от производителя (#1998), а не переводятся здесь:
+// поимённая форма сводится к классу только после проверки полноты, и второй
+// перевод разошёлся бы с первым молча — оба отвечают одинаково на форме классов,
+// то есть на всяком входе, который сюда доезжал раньше.
+//
 // Полоса называется ЗДЕСЬ ЖЕ, а не восстанавливается вызывающим: обе причины
 // известны в точке отказа, и разбирать собственный сентинел позже значило бы
 // заводить классификатор своего же кода — с корзиной «прочее», которая молча
@@ -225,12 +302,9 @@ func (a *Applier) Apply(ctx context.Context, m *manifest.Manifest) (Report, erro
 // Различие двух предметов названо, чтобы его не свели: #1902 отвечает на «вправе
 // ли модуль раздавать права в ЧУЖОМ домене» (не вправе), #1032 — на «докуда
 // достаёт ПОДСТАНОВКА в роли, которой модуль владеет» (до границы его модуля).
-func roleOf(module string, mr *manifest.Role) (domain.Role, error) {
+func roleOf(module string, mr *manifest.Role, produced []domain.Rule) (domain.Role, error) {
 	name := domain.RoleName(mr.ID)
-	rules := make(domain.Rules, 0, len(mr.Rules))
-	for _, rule := range mr.Rules {
-		rules = append(rules, rule.DomainRule())
-	}
+	rules := domain.Rules(produced)
 	compiled, cerr := domain.CompileRules(rules)
 	if cerr != nil {
 		werr := fmt.Errorf("%w: %s: %w", ErrRolePolicyNotCompilable, name, cerr)
@@ -259,4 +333,29 @@ func roleOf(module string, mr *manifest.Role) (domain.Role, error) {
 			LaneRejectedByDomain, module, string(name), werr)
 	}
 	return r, nil
+}
+
+// namedRightRefusal — отказ полосы неполного поимённого перечня.
+//
+// Текст собирается из находок ИМЕННО ЭТОЙ роли: находки соседних принадлежат
+// своим ролям, и приложить их сюда значило бы назвать автору починку, которая
+// его роли не касается. Если находки по роли нет ни одной, отказ говорит об
+// этом прямо — молчаливое «роль не произведена» без причины отправило бы
+// читателя искать её перебором.
+func namedRightRefusal(module, roleID string, faults []error) error {
+	var own []string
+	for _, f := range faults {
+		var finding roleexport.Finding
+		if errors.As(f, &finding) && finding.Role == roleID {
+			own = append(own, finding.Detail)
+		}
+	}
+	detail := strings.Join(own, "; ")
+	if detail == "" {
+		detail = fmt.Sprintf("роль %q не произведена производителем правил, и находки по ней "+
+			"не названо ни одной", roleID)
+	}
+	werr := fmt.Errorf("%w: %s: %s", ErrNamedRightIncomplete, roleID, detail)
+	return refuse(codes.InvalidArgument, werr.Error(),
+		LaneNamedRightIncomplete, module, roleID, werr)
 }

@@ -55,6 +55,7 @@ import (
 	"github.com/PRO-Robotech/kacho/services/iam/internal/domain"
 	"github.com/PRO-Robotech/kacho/services/iam/internal/manifest"
 	"github.com/PRO-Robotech/kacho/services/iam/internal/moduleroleparity"
+	"github.com/PRO-Robotech/kacho/services/iam/internal/testsupport/rightsfixture"
 )
 
 // liveRoleFloor — системных ролей кластерного яруса, ниже которого чтение
@@ -232,7 +233,7 @@ func readLiveSystemRoles(ctx context.Context, t *testing.T, pool *pgxpool.Pool) 
 func declaredRoles(ctx context.Context, t *testing.T, m *manifest.Manifest) []moduleroleparity.Role {
 	t.Helper()
 	rec := &recordingTx{}
-	rep, err := moduleroles.NewApplier(rec).Apply(ctx, m)
+	rep, err := moduleroles.NewApplier(rec, rightsfixture.Export()).Apply(ctx, m)
 	require.NoErrorf(t, err, "применитель отверг манифест модуля %s: объявление негодно ДО базы",
 		m.Module)
 	require.Equalf(t, rep.Declared, len(rec.written),
