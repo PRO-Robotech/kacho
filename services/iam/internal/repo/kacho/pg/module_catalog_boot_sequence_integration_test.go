@@ -176,7 +176,7 @@ func TestModuleCatalogApplyAllIsRefusedByTheKeyOnAnEmptyModuleName(t *testing.T)
 	before := stateFingerprint(t, ctx, pool)
 	_, err := applier.ApplyAll(ctx, []*manifest.Manifest{{
 		APIVersion: "iam/v1", Module: "",
-		Resources: []manifest.Resource{{Name: "widgets", Verbs: []manifest.Verb{{Name: "get"}}}},
+		Resources: []manifest.Resource{{Name: "widgets", ObjectType: "bootmod_widgets", Verbs: []manifest.Verb{{Name: "get"}}}},
 	}})
 	require.Error(t, err, "манифест без имени модуля применён — строка каталога с пустым "+
 		"модулем адресуема ничем")
@@ -192,7 +192,7 @@ func TestModuleCatalogApplyAllIsRefusedByTheKeyOnAnEmptyModuleName(t *testing.T)
 	// Без него отрицание выше зеленело бы на базе, отвергающей всякую запись.
 	twin, terr := applier.ApplyAll(ctx, []*manifest.Manifest{{
 		APIVersion: "iam/v1", Module: applierProbeModule,
-		Resources: []manifest.Resource{{Name: "widgets", Verbs: []manifest.Verb{{Name: "get"}}}},
+		Resources: []manifest.Resource{{Name: "widgets", ObjectType: "bootmod_widgets", Verbs: []manifest.Verb{{Name: "get"}}}},
 	}})
 	require.NoError(t, terr, "законный близнец отвергнут — проба утверждала бы об отказе "+
 		"всякой записи, а не о пустом имени")

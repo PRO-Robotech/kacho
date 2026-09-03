@@ -110,14 +110,15 @@ func (w catalogWriter) ReadModule(ctx context.Context, module string) (catalog.R
 	}
 
 	resRows, err := w.tx.Query(ctx,
-		`SELECT module, resource FROM kacho_iam.catalog_resource WHERE module = $1 AND live
+		`SELECT module, resource, object_type FROM kacho_iam.catalog_resource
+		  WHERE module = $1 AND live
 		  ORDER BY resource`, module)
 	if err != nil {
 		return out, fmt.Errorf("прочитать ресурсы модуля %s: %w", module, err)
 	}
 	out.Resources, err = pgx.CollectRows(resRows, func(row pgx.CollectableRow) (catalog.ResourceRow, error) {
 		var r catalog.ResourceRow
-		return r, row.Scan(&r.Module, &r.Resource)
+		return r, row.Scan(&r.Module, &r.Resource, &r.ObjectType)
 	})
 	if err != nil {
 		return out, fmt.Errorf("прочитать ресурсы модуля %s: %w", module, err)
@@ -158,14 +159,23 @@ func (w catalogWriter) UpsertModule(ctx context.Context, module string) (bool, e
 // `superseded_by` снимается вместе с оживлением: преемник объявлен ровно у снятой
 // строки (`catalog_resource_successor_only_when_retired`), и оставить его на живой
 // нельзя ни при каком порядке.
+//
+// `object_type` входит в условие изменения наравне со снятостью: строка, лежащая
+// с ЧУЖИМ именем типа, живёт и по паре (модуль, ресурс) сверку прошла бы молча —
+// а расходилась бы при этом ровно та величина, ради которой колонка заведена
+// (какое отношение `v_*` адресует ресурс). Правка манифеста, меняющая
+// `objectType`, обязана доезжать до строки; иначе она была бы принята и
+// проигнорирована.
 func (w catalogWriter) UpsertResource(ctx context.Context, r catalog.ResourceRow) (bool, error) {
 	return w.changed(ctx, `
-		INSERT INTO kacho_iam.catalog_resource (module, resource, dotted)
-		VALUES ($1, $2, $1 || '.' || $2)
+		INSERT INTO kacho_iam.catalog_resource (module, resource, dotted, object_type)
+		VALUES ($1, $2, $1 || '.' || $2, $3)
 		ON CONFLICT (module, resource) DO UPDATE
-		   SET retired_at = NULL, live = true, retired_reason = NULL, superseded_by = NULL
+		   SET retired_at = NULL, live = true, retired_reason = NULL, superseded_by = NULL,
+		       object_type = EXCLUDED.object_type
 		 WHERE catalog_resource.live IS DISTINCT FROM true
-		RETURNING 1`, r.Module, r.Resource)
+		    OR catalog_resource.object_type IS DISTINCT FROM EXCLUDED.object_type
+		RETURNING 1`, r.Module, r.Resource, r.ObjectType)
 }
 
 // UpsertVerb заводит, оживляет либо приводит признак словаря.

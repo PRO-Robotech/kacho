@@ -150,7 +150,12 @@ var (
 func costManifest(n int) *manifest.Manifest {
 	m := &manifest.Manifest{APIVersion: "iam/v1", Module: costModule}
 	for i := 0; i < n; i++ {
-		r := manifest.Resource{Name: fmt.Sprintf("res%02d", i)}
+		// `objectType` проставляется, потому что манифест без него негоден:
+		// загрузчик, схема и деривация отвергают такой ресурс каждый своим
+		// отказом. Фикстура, оставлявшая поле пустым, была снисходительнее
+		// продукта (#1816).
+		name := fmt.Sprintf("res%02d", i)
+		r := manifest.Resource{Name: name, ObjectType: costModule + "_" + name}
 		for v := 0; v < costVerbs; v++ {
 			r.Verbs = append(r.Verbs, manifest.Verb{Name: fmt.Sprintf("verb%02d", v)})
 		}

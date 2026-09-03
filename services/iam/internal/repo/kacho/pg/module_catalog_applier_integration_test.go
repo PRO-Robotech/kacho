@@ -74,8 +74,20 @@ func probeManifest(resources ...manifest.Resource) *manifest.Manifest {
 	return &manifest.Manifest{APIVersion: "iam/v1", Module: applierProbeModule, Resources: resources}
 }
 
+// probeResource — ресурс синтетического модуля.
+//
+// `objectType` проставляется ВСЕГДА, потому что манифест без него негоден:
+// загрузчик отвергает такой ресурс (`manifest.ErrObjectTypeRequired`), схема —
+// грамматикой колонки, а деривация — `modulecatalog.ErrObjectTypeEmpty`.
+// Фикстура, оставлявшая поле пустым, была СНИСХОДИТЕЛЬНЕЕ продукта: она подавала
+// вход, которого в дереве не бывает, и делала невидимым ровно то, ради чего
+// колонка заведена (#1816).
+//
+// Имя типа выводится из пары синтетического модуля — здесь это законно: имя
+// принадлежит фикстуре, а не каталогу платформы, и правила вывода оно не
+// объявляет.
 func probeResource(name string, verbs ...string) manifest.Resource {
-	r := manifest.Resource{Name: name}
+	r := manifest.Resource{Name: name, ObjectType: applierProbeModule + "_" + strings.ToLower(name)}
 	for _, v := range verbs {
 		r.Verbs = append(r.Verbs, manifest.Verb{Name: v})
 	}
