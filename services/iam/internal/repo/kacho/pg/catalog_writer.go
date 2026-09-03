@@ -48,6 +48,7 @@ import (
 
 	"github.com/PRO-Robotech/kacho/services/iam/internal/apps/kacho/modulecatalog"
 	"github.com/PRO-Robotech/kacho/services/iam/internal/catalog"
+	"github.com/PRO-Robotech/kacho/services/iam/internal/service"
 )
 
 // CatalogLockKey — ключ ГЛОБАЛЬНОГО консультативного замка каталога.
@@ -61,6 +62,56 @@ import (
 // незаметно, потому что проба на чужом ключе просто не дождалась бы блокировки и
 // зеленела бы, ничего не проверив.
 const CatalogLockKey = "kacho_iam.module_catalog"
+
+// ModuleStateExpr — ВЫРАЖЕНИЕ отпечатка состояния каталога одного модуля.
+//
+// Скалярное подвыражение SQL, читающее `$1` как имя модуля и отдающее
+// непрозрачную строку. Контракт для вызывающего — ТОЛЬКО равенство: строка не
+// разбирается никем, её состав есть деталь реализации.
+//
+// # Состав ВЫВЕДЕН из `WHERE` писателя, а не выбран
+//
+//	`catalog_module`    `live` — оживление модуля есть изменение
+//	`catalog_resource`  `resource`, `object_type`, `live` — ровно то, что читает
+//	                    условие изменения `UpsertResource`, плюс ключ снятия
+//	`catalog_verb`      `resource`, `verb`, `per_object`, `live` — ровно условие
+//	                    изменения `UpsertVerb`, плюс ключ снятия
+//
+// Причина снятия (`retired_reason` / `retired_at` / `superseded_by`) НЕ входит:
+// исхода применения она не меняет — ни один `WHERE` писателя её не читает, — а
+// войдя, обесценивала бы подтверждение на правке, ничего не решающей.
+//
+// Проекции правил ролей (`role_rule_ref`, `role_verb`, `role_rule_selectors`) НЕ
+// входят: их двигает любой арендатор циклом создания и удаления роли, а их
+// арендаторский писатель замка каталога не берёт вовсе — «CAS» по ним был бы
+// формой без содержания. Довод целиком — `modulecatalog/confirm.go`.
+//
+// # Имя модуля входит БЕЗУСЛОВНО
+//
+// Первая строка агрегата — само имя, а не строка таблицы: модуль, которого в
+// каталоге нет ни одной строкой, иначе давал бы отпечаток пустого агрегата,
+// ОДИН И ТОТ ЖЕ для всех таких модулей, и подтверждение одного пустого модуля
+// проходило бы для другого.
+//
+// # Экспортировано РАДИ ПРОБЫ, и это тот же довод, что у `CatalogLockKey`
+//
+// Проба подтверждения обязана читать состояние ТЕМ ЖЕ выражением, каким его
+// читает CAS: выписанная у неё копия разошлась бы с этой молча — и разошлась бы
+// именно там, где расхождение не видно, потому что на несдвинутом каталоге обе
+// копии отвечают «совпало». Второго объявления состава в дереве не заводится.
+const ModuleStateExpr = `(SELECT md5(coalesce(string_agg(x, '|' ORDER BY x), ''))
+	  FROM (
+	    SELECT 'module:' || $1::text AS x
+	    UNION ALL
+	    SELECT 'm:' || module || ':' || live::text
+	      FROM kacho_iam.catalog_module WHERE module = $1
+	    UNION ALL
+	    SELECT 'r:' || resource || ':' || object_type || ':' || live::text
+	      FROM kacho_iam.catalog_resource WHERE module = $1
+	    UNION ALL
+	    SELECT 'v:' || resource || '.' || verb || ':' || live::text || ':' || per_object::text
+	      FROM kacho_iam.catalog_verb WHERE module = $1
+	  ) s)`
 
 // CatalogWriteRepo — исполнитель транзакций применителя каталога над пулом.
 type CatalogWriteRepo struct {
@@ -138,6 +189,43 @@ func (w catalogWriter) ReadModule(ctx context.Context, module string) (catalog.R
 		return out, fmt.Errorf("прочитать действия модуля %s: %w", module, err)
 	}
 	return out, nil
+}
+
+// ReadCatalog читает ВЕСЬ каталог ОБЕИМИ половинами — живой и снятой — под ТОЙ
+// ЖЕ транзакцией, в которой применитель уже писал.
+//
+// # Почему транзакцией, а не пулом
+//
+// Сверка опоры судит состояние, которое применение ПРОИЗВЕЛО, а из пула этих
+// строк не видно: они ещё не закоммичены. Прочитанное пулом дало бы вердикт о
+// состоянии ДО применения — то есть проверку, которая на своём предмете молчит
+// всегда.
+//
+// # Почему ВЕСЬ каталог, а не один модуль
+//
+// Опора — литерал ПЛАТФОРМЫ целиком, и «нет в литерале» с «нет строкой»
+// считаются по всем модулям сразу. Подай сверке один модуль — строки остальных
+// приехали бы недостающими, и всякое применение отвергалось бы by construction.
+//
+// # Почему ОБЕ половины одним методом
+//
+// Порт стража двухметодный, и подавший ему одно живое множество получит законное
+// снятие недостающей строкой. Один метод, отдающий обе половины, делает пропуск
+// невыразимым: `modulecatalog.NewCatalogState` требует их позиционно, и
+// «забыть» снятую сторону здесь нечем.
+//
+// Шесть операторов под одной транзакцией — то есть ОДИН снимок: собранный из
+// разных моментов, он показал бы состояние, которого в базе не бывает.
+func (w catalogWriter) ReadCatalog(ctx context.Context) (modulecatalog.CatalogState, error) {
+	live, err := readCatalogHalf(ctx, w.tx, liveCatalogHalf)
+	if err != nil {
+		return modulecatalog.CatalogState{}, err
+	}
+	retired, err := readCatalogHalf(ctx, w.tx, retiredCatalogHalf)
+	if err != nil {
+		return modulecatalog.CatalogState{}, err
+	}
+	return modulecatalog.NewCatalogState(live, retired), nil
 }
 
 // UpsertModule заводит либо ОЖИВЛЯЕТ строку модуля.
@@ -300,73 +388,82 @@ func (w catalogWriter) ResettleTenantProjections(
 ) (modulecatalog.Resettled, error) {
 	var out modulecatalog.Resettled
 
-	resModules := make([]string, 0, len(resources))
-	resNames := make([]string, 0, len(resources))
-	for _, r := range resources {
-		resModules = append(resModules, r.Module)
-		resNames = append(resNames, r.Resource)
-	}
-	verbModules := make([]string, 0, len(verbs))
-	verbResources := make([]string, 0, len(verbs))
-	verbNames := make([]string, 0, len(verbs))
-	for _, v := range verbs {
-		verbModules = append(verbModules, v.Module)
-		verbResources = append(verbResources, v.Resource)
-		verbNames = append(verbNames, v.Verb)
-	}
+	// Разбор входа — ОБЩИЙ с планом (`catalog_consequence_sql.go`): выписанный
+	// здесь второй раз, он разошёлся бы порядком массивов молча.
+	resModules, resNames, verbModules, verbResources, verbNames := staleRowArrays(resources, verbs)
 
 	// Один оператор на популяцию: перенос и снятие обязаны быть неделимы, иначе
 	// между ними помещается состояние «право отобрано и нигде не записано».
 	// Порядок внутри оператора задан ПОТОКОМ ДАННЫХ, а не порядком записи веток:
 	// `moved` читает выход `dropped`, поэтому вставка не может опередить снятие.
-	if err := w.tx.QueryRow(ctx, `
-		WITH stale_res AS (
-		  SELECT * FROM unnest($1::text[], $2::text[]) AS t(module, resource)
-		), stale_verb AS (
-		  SELECT * FROM unnest($3::text[], $4::text[], $5::text[]) AS t(module, resource, verb)
-		), dropped AS (
-		  DELETE FROM kacho_iam.role_rule_ref rr
-		   WHERE EXISTS (SELECT 1 FROM kacho_iam.roles r
-		                  WHERE r.id = rr.role_id AND r.is_system = false)
-		     AND (EXISTS (SELECT 1 FROM stale_res s
-		                   WHERE s.module = rr.module AND s.resource = rr.resource)
-		       OR EXISTS (SELECT 1 FROM stale_verb s
-		                   WHERE s.module = rr.module AND s.resource = rr.resource
-		                     AND s.verb = rr.verb))
-		  RETURNING rr.role_id, rr.module, rr.resource, rr.verb
-		), moved AS (
-		  INSERT INTO kacho_iam.role_grant_orphan (role_id, object_type, verb, source, reason)
-		  SELECT d.role_id, d.module || '.' || d.resource, COALESCE(d.verb, ''), 'rule_ref', $6
-		    FROM dropped d
-		  ON CONFLICT (role_id, object_type, verb, source) DO NOTHING
-		)
-		SELECT (SELECT count(*) FROM dropped)`,
+	if err := w.tx.QueryRow(ctx, resettleRuleRefSQL,
 		resModules, resNames, verbModules, verbResources, verbNames, reason,
 	).Scan(&out.RuleRefs); err != nil {
 		return out, fmt.Errorf("переселить объявления правил: %w", err)
 	}
 
-	if err := w.tx.QueryRow(ctx, `
-		WITH stale_res AS (
-		  SELECT module || '.' || resource AS dotted
-		    FROM unnest($1::text[], $2::text[]) AS t(module, resource)
-		), dropped AS (
-		  DELETE FROM kacho_iam.role_verb rv
-		   WHERE EXISTS (SELECT 1 FROM kacho_iam.roles r
-		                  WHERE r.id = rv.role_id AND r.is_system = false)
-		     AND rv.object_type IN (SELECT dotted FROM stale_res)
-		  RETURNING rv.role_id, rv.object_type, rv.verb
-		), moved AS (
-		  INSERT INTO kacho_iam.role_grant_orphan (role_id, object_type, verb, source, reason)
-		  SELECT d.role_id, d.object_type, d.verb, 'role_verb', $3 FROM dropped d
-		  ON CONFLICT (role_id, object_type, verb, source) DO NOTHING
-		)
-		SELECT (SELECT count(*) FROM dropped)`,
-		resModules, resNames, reason,
+	if err := w.tx.QueryRow(ctx, resettleRoleVerbSQL,
+		resModules, resNames, verbModules, verbResources, verbNames, reason,
 	).Scan(&out.RoleVerbs); err != nil {
 		return out, fmt.Errorf("переселить выдачи глаголов: %w", err)
 	}
 	return out, nil
+}
+
+// ConfirmModuleState сверяет состояние каталога модуля с подтверждением
+// вызывающего ОДНИМ оператором, кардинальность которого есть вердикт.
+//
+// # Почему это CAS конструкцией базы, а не software check-then-act
+//
+// Сериализует ЗАМОК, взятый первым оператором ЭТОЙ ЖЕ транзакции
+// (`LockCatalog`), а не сравнение: между замком и сверкой второго писателя быть
+// не может — он ждёт на замке, — поэтому состояние, которое сверка признала
+// совпавшим, доживает до коммита by construction. Классический check-then-act
+// оставляет окно между чтением и записью; здесь окна нет, потому что читающий и
+// пишущий — один держатель замка, и оба шага лежат в одной транзакции.
+//
+// Форма — та, которую требует `data-integrity.md` от атомарного сравнения,
+// перенесённая на чтение: не «прочитать, сравнить в коде и записать», а ОДИН
+// оператор, чья кардинальность и есть решение. Ноль строк ⇒ состояние
+// сдвинулось; строка ⇒ то самое.
+//
+// Значение отпечатка наружу НЕ отдаётся намеренно: контракт подтверждения —
+// только равенство, а выдача значения завела бы вход, на котором вызывающий
+// сверяет его сам, вне замка и по частям.
+func (w catalogWriter) ConfirmModuleState(ctx context.Context, module, expected string) (bool, error) {
+	var one int
+	err := w.tx.QueryRow(ctx, `SELECT 1 WHERE `+ModuleStateExpr+` = $2`, module, expected).Scan(&one)
+	if errors.Is(err, pgx.ErrNoRows) {
+		return false, nil
+	}
+	if err != nil {
+		return false, fmt.Errorf("сверить состояние каталога модуля %s: %w", module, err)
+	}
+	return true, nil
+}
+
+// EmitApplied записывает след применения В ТОЙ ЖЕ транзакции.
+//
+// # Шва здесь нет by construction, и второй копии не заводится
+//
+// Путь записи в чужую транзакцию в дереве ОДИН — `insertAuditEventTx`, вход
+// которого есть `pgx.Tx`; транзакция применителя — тот же `pgx.Tx` того же
+// пакета. Значит атомарность следа с применением не требует ни переходника, ни
+// второго объявления формы записи: откат уносит запись вместе с применением,
+// коммит кладёт их вместе.
+//
+// Тело записи собирает USE-CASE (`modulecatalog.AppliedEvent.Payload`), а не
+// этот адаптер: имена ключей — решение того, кто знает предмет события, и
+// `outboxtypes.AuditEvent` говорит это дословно. Адаптер только заворачивает.
+//
+// Арендаторского аккаунта у записи нет и быть не может: каталог — данные
+// ПЛАТФОРМЫ, и приписать применение одному арендатору значило бы утверждать
+// неверное.
+func (w catalogWriter) EmitApplied(ctx context.Context, ev modulecatalog.AppliedEvent) error {
+	return insertAuditEventTx(ctx, w.tx, service.AuditEvent{
+		EventType: modulecatalog.AppliedEventType,
+		Payload:   ev.Payload(),
+	})
 }
 
 // changed исполняет оператор, меняющий не более одной строки, и отвечает,
@@ -455,25 +552,13 @@ func (w catalogWriter) PruneRetiredSelectorTypes(
 	if len(resources) == 0 {
 		return out, nil
 	}
-	dotted := make([]string, 0, len(resources))
-	for _, r := range resources {
-		dotted = append(dotted, r.Module+"."+r.Resource)
-	}
+	// Вход — ТОТ ЖЕ, что у переселения и у плана. Действий вырезание не читает,
+	// но берёт их массивы: единственность входного объявления важнее трёх
+	// незачитанных параметров (довод — `catalog_consequence_sql.go`).
+	resModules, resNames, verbModules, verbResources, verbNames := staleRowArrays(resources, nil)
 
 	if err := w.tx.QueryRow(ctx, `
-		WITH touched AS (
-		  SELECT s.role_id, s.rule_fp, s.object_types AS was,
-		         (SELECT coalesce(array_agg(t ORDER BY t), ARRAY[]::text[])
-		            FROM unnest(s.object_types) AS t
-		           WHERE EXISTS (SELECT 1 FROM kacho_iam.catalog_resource cr
-		                          WHERE cr.dotted = t AND cr.live)) AS alive
-		    FROM kacho_iam.role_rule_selectors s
-		    JOIN kacho_iam.roles r ON r.id = s.role_id
-		   WHERE r.is_system = false
-		     AND s.object_types && $1::text[]
-		), changed AS (
-		  SELECT * FROM touched WHERE alive IS DISTINCT FROM was
-		), emptied AS (
+		WITH `+catalogStaleInputCTE+`, `+catalogSelectorPruneCTE+`, emptied AS (
 		  DELETE FROM kacho_iam.role_rule_selectors s
 		   USING changed c
 		   WHERE s.role_id = c.role_id AND s.rule_fp = c.rule_fp
@@ -505,7 +590,7 @@ func (w catalogWriter) PruneRetiredSelectorTypes(
 		SELECT (SELECT count(*) FROM stripped),
 		       (SELECT count(*) FROM emptied),
 		       (SELECT coalesce(sum(cardinality(was) - cardinality(alive)), 0) FROM changed)`,
-		dotted,
+		resModules, resNames, verbModules, verbResources, verbNames,
 	).Scan(&out.Rows, &out.Dropped, &out.Elements); err != nil {
 		return out, fmt.Errorf("вырезать снятые типы из селекторов: %w", err)
 	}

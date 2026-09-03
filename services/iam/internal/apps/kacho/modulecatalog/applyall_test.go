@@ -30,6 +30,7 @@ import (
 	"github.com/stretchr/testify/require"
 
 	"github.com/PRO-Robotech/kacho/services/iam/internal/apps/kacho/modulecatalog"
+	"github.com/PRO-Robotech/kacho/services/iam/internal/apps/kacho/seed"
 	"github.com/PRO-Robotech/kacho/services/iam/internal/catalog"
 	"github.com/PRO-Robotech/kacho/services/iam/internal/manifest"
 )
@@ -46,6 +47,8 @@ type recordingWriter struct {
 	failOnModule string
 	// unchangedModules — модули, чья строка уже стоит: `changed=false`.
 	unchangedModules map[string]bool
+	// audited — следы применения, дошедшие до писателя.
+	audited []modulecatalog.AppliedEvent
 }
 
 var errWriterRefused = errors.New("подставной писатель отказал")
@@ -58,6 +61,22 @@ func (w *recordingWriter) LockCatalog(context.Context) error {
 func (w *recordingWriter) ReadModule(_ context.Context, module string) (catalog.Rows, error) {
 	w.calls = append(w.calls, "read:"+module)
 	return catalog.Rows{}, nil
+}
+
+// ReadCatalog — вход сверки опоры (шаг 8 применителя).
+//
+// Эти пробы идут по пути СТАРТА (`modulecatalog.NewApplier`), а он сверку опоры
+// не делает: её делает страж сразу после применения, и его отказ есть отказ
+// пуска. Значит метод здесь НЕ ЗОВЁТСЯ — и записывает он это в журнал вызовов
+// намеренно: появись «read_catalog» в переписи пути старта, полосы перепутаны, и
+// проба скажет об этом, а не промолчит.
+//
+// Отдаёт при этом каталог, СОШЕДШИЙСЯ с опорой: если полосы всё же перепутают,
+// падать проба обязана на журнале вызовов — по предмету, — а не на сверке, до
+// которой её предмет не касается.
+func (w *recordingWriter) ReadCatalog(context.Context) (modulecatalog.CatalogState, error) {
+	w.calls = append(w.calls, "read_catalog")
+	return modulecatalog.NewCatalogState(seed.LiteralRows(), catalog.Rows{}), nil
 }
 
 func (w *recordingWriter) UpsertModule(_ context.Context, module string) (bool, error) {
@@ -98,6 +117,27 @@ func (w *recordingWriter) PruneRetiredSelectorTypes(context.Context,
 	[]catalog.ResourceRow) (modulecatalog.Pruned, error) {
 	w.calls = append(w.calls, "prune")
 	return modulecatalog.Pruned{}, nil
+}
+
+// ConfirmModuleState — вход подтверждения (шаг 2 применителя).
+//
+// Эти пробы идут по пути СТАРТА, а он подтверждения не несёт by construction:
+// доставка применяется целиком, плана не было. Значит метод здесь НЕ ЗОВЁТСЯ —
+// и записывает он это в журнал вызовов намеренно: появись «confirm» в переписи
+// пути старта, полосы перепутаны, и проба скажет об этом, а не промолчит.
+func (w *recordingWriter) ConfirmModuleState(context.Context, string, string) (bool, error) {
+	w.calls = append(w.calls, "confirm")
+	return true, nil
+}
+
+// EmitApplied — след применения (шаг 11).
+//
+// Записывает АКТОРА, а не факт вызова: предмет следа — кто применил, и журнал,
+// хранящий только «emit», зеленел бы на записи с подставленным автором.
+func (w *recordingWriter) EmitApplied(_ context.Context, ev modulecatalog.AppliedEvent) error {
+	w.calls = append(w.calls, "audit:"+ev.Actor+":"+ev.Source)
+	w.audited = append(w.audited, ev)
+	return nil
 }
 
 // recordingTx — исполнитель транзакций над одним писателем. Считает ОТКРЫТЫЕ
