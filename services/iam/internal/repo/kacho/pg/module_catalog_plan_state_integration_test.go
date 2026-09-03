@@ -119,8 +119,8 @@ func TestPlanStateCountsWhatApplyWithdrawsAndWritesNothing(t *testing.T) {
 	// брать нельзя — её проекции применитель не переселяет намеренно, и снятие
 	// отвергнул бы КЛЮЧ.
 	tn := seedVerdictTenant(t, ctx, pool)
-	pairs := declareRole(t, ctx, pool, repo, snap.Facts(),
-		"rol-planstate", tn.accountID, anchoredModule, spareResource)
+	_, pairs := declareRole(t, ctx, pool, repo, snap,
+		tn.accountID, tn.userID, anchoredModule, spareResource)
 	require.NotEmptyf(t, pairs,
 		"проекция по %s.%s пуста ещё до плана: оценивать нечего, и перепись была бы вакуумной",
 		anchoredModule, spareResource)
@@ -219,8 +219,8 @@ func TestPlanStateReportsZeroWhenNothingIsWithdrawn(t *testing.T) {
 	// Фикстура ТА ЖЕ, что у положительной пробы: популяции непусты. Различается
 	// РОВНО ОДИН факт — манифест ничего не снимает.
 	tn := seedVerdictTenant(t, ctx, pool)
-	pairs := declareRole(t, ctx, pool, repo, snap.Facts(),
-		"rol-planstate-zero", tn.accountID, anchoredModule, spareResource)
+	_, pairs := declareRole(t, ctx, pool, repo, snap,
+		tn.accountID, tn.userID, anchoredModule, spareResource)
 	require.NotEmpty(t, pairs, "проекция пуста: отрицание зеленело бы на пустой таблице")
 
 	rows := consequenceRowsOf(t, ctx, pool)

@@ -62,8 +62,8 @@ func TestAppliedAuditRowCarriesAllThreeConsequencePopulations(t *testing.T) {
 	// ОБЕИМ популяциям переселения И третьей — селектор правила называет ту же
 	// строку каталога.
 	tn := seedVerdictTenant(t, ctx, pool)
-	pairs := declareRole(t, ctx, pool, repo, snap.Facts(),
-		"rol-audit-populations", tn.accountID, anchoredModule, spareResource)
+	_, pairs := declareRole(t, ctx, pool, repo, snap,
+		tn.accountID, tn.userID, anchoredModule, spareResource)
 	require.NotEmpty(t, pairs, "проекция роли пуста: последствий не будет, и след был бы о нулях")
 
 	rules, verbs, selectors := tenantProjectionsNaming(t, ctx, pool, anchoredModule, spareResource)
