@@ -13,6 +13,7 @@ import (
 	"strings"
 	"testing"
 
+	"github.com/grpc-ecosystem/grpc-gateway/v2/runtime"
 	"google.golang.org/protobuf/reflect/protoreflect"
 	"google.golang.org/protobuf/reflect/protoregistry"
 	"google.golang.org/protobuf/types/dynamicpb"
@@ -74,6 +75,13 @@ import (
 // адресовать нечем: слово в тексте не привязано ни к полю, ни к сообщению.
 // Согласие прозы с примерами держится обзором, и это сказано прямо, чтобы
 // зелёное этого гейта не читалось шире сделанного.
+
+// osReadFile — чтение файла дерева. Обёртка нужна одна на пакет: соседняя проба
+// охвата читает те же страницы, и второй вызов с иным набором аннотаций линтера
+// разошёлся бы с этим молча.
+func osReadFile(path string) ([]byte, error) {
+	return os.ReadFile(path) // #nosec G304 -- путь получен обходом СОБСТВЕННОГО дерева репозитория
+}
 
 // docsJSONExample — один пример ответа со страницы арендатора.
 type docsJSONExample struct {
@@ -237,6 +245,31 @@ func docsResolveResponseMessage(method, endpoint string) (protoreflect.MessageDe
 	return b.output, b.fqn, true
 }
 
+// docsExampleEnumFindings — суждение по ОДНОМУ примеру: какие имена значений
+// перечислений в нём не объявлены их полем.
+//
+// Вынесено отдельной функцией не ради красоты: ею правится проба инъекции, и
+// правится ТА ЖЕ, что исполняется обходом дерева. Проверка, собранная в пробе
+// иначе, чем в боевом пути, — форма без содержания.
+//
+// Второе возвращаемое — БЫЛ ЛИ пример обойдён. Ложь означает «сверять не с
+// чем» (фрагмент, не-объект), и это отдельная величина переписи, а не чистота.
+func docsExampleEnumFindings(md protoreflect.MessageDescriptor, fqn string, ex docsJSONExample) ([]docsEnumFinding, bool) {
+	var obj map[string]any
+	if err := json.Unmarshal([]byte(ex.Body), &obj); err != nil || obj == nil {
+		return nil, false
+	}
+	var found bodyRefusals
+	walkEnumValueNames(md, obj, "", &found)
+	out := make([]docsEnumFinding, 0, len(found.enums))
+	for _, ev := range found.enums {
+		out = append(out, docsEnumFinding{
+			Example: ex, FQN: fqn, Field: ev.Path, Value: ev.Value, Allowed: ev.Allowed,
+		})
+	}
+	return out, true
+}
+
 func TestTenantDocExamplesUseDeclaredEnumValueNames(t *testing.T) {
 	root := repoRoot(t)
 	pages := docsContentPages(t, root)
@@ -249,7 +282,7 @@ func TestTenantDocExamplesUseDeclaredEnumValueNames(t *testing.T) {
 	unbound, unparsed, walked, enumValues := 0, 0, 0, 0
 
 	for _, page := range pages {
-		body, err := os.ReadFile(page) // #nosec G304 -- путь получен обходом СОБСТВЕННОГО дерева репозитория
+		body, err := osReadFile(page)
 		if err != nil {
 			t.Fatalf("чтение %s: %v", page, err)
 		}
@@ -267,8 +300,8 @@ func TestTenantDocExamplesUseDeclaredEnumValueNames(t *testing.T) {
 				unbound++
 				continue
 			}
-			var obj map[string]any
-			if err := json.Unmarshal([]byte(ex.Body), &obj); err != nil || obj == nil {
+			got, ok := docsExampleEnumFindings(md, fqn, ex)
+			if !ok {
 				// Фрагмент с многоточием или не-объект: сверять не с чем.
 				// Считается отдельно — «не обойдено» не растворяется в
 				// «обойдено и чисто».
@@ -276,14 +309,8 @@ func TestTenantDocExamplesUseDeclaredEnumValueNames(t *testing.T) {
 				continue
 			}
 			walked++
-			var found bodyRefusals
-			walkEnumValueNames(md, obj, "", &found)
-			for _, ev := range found.enums {
-				enumValues++
-				findings = append(findings, docsEnumFinding{
-					Example: ex, FQN: fqn, Field: ev.Path, Value: ev.Value, Allowed: ev.Allowed,
-				})
-			}
+			enumValues += len(got)
+			findings = append(findings, got...)
 		}
 	}
 
@@ -325,8 +352,30 @@ func TestTenantDocExamplesUseDeclaredEnumValueNames(t *testing.T) {
 // Сообщение строится `dynamicpb` по дескриптору РЕАЛЬНОГО поля дерева, а не по
 // синтетическому: синтетика доказала бы свойство protojson, а не свойство края.
 func TestEdgeMarshalerEmitsDeclaredEnumValueNames(t *testing.T) {
-	marshaler := newPublicJSONPb()
+	probes, marshaled, mismatched, report := edgeEnumNameMismatches(newPublicJSONPb())
 
+	t.Logf("перечислений в контрактах kacho.* %d; прогнано через маршаллер края %d; расхождений %d",
+		probes, marshaled, mismatched)
+
+	if probes == 0 {
+		t.Fatal("перечислений в контрактах не найдено: обход пуст, и вердикт беспредметен")
+	}
+	if marshaled == 0 {
+		t.Fatal("маршаллер не отдал ни одного значения: прогон беспредметен, и его молчание не есть согласие")
+	}
+	if mismatched > 0 {
+		t.Fatalf("%d перечислени(й) край отдаёт не объявленным именем — "+
+			"примеры страниц арендатора, показывающие имена, стали ложью:\n%s", mismatched, report)
+	}
+}
+
+// edgeEnumNameMismatches прогоняет каждое перечисление контрактов через
+// ПЕРЕДАННЫЙ маршаллер и возвращает перепись плюс расхождения.
+//
+// Маршаллер — параметр, а не литерал по месту, чтобы проба инъекции могла
+// подать сюда собранный иначе (`UseEnumNumbers`) и увидеть красное: без этого
+// «расхождений 0» доказывало бы лишь, что функция умеет считать до нуля.
+func edgeEnumNameMismatches(marshaler *runtime.JSONPb) (probeCount, marshaled, mismatched int, report string) {
 	type probe struct {
 		field protoreflect.FieldDescriptor
 		value protoreflect.EnumValueDescriptor
@@ -376,11 +425,6 @@ func TestEdgeMarshalerEmitsDeclaredEnumValueNames(t *testing.T) {
 		return probes[i].field.FullName() < probes[j].field.FullName()
 	})
 
-	if len(probes) == 0 {
-		t.Fatal("перечислений в контрактах не найдено: обход пуст, и вердикт беспредметен")
-	}
-
-	marshaled, mismatched := 0, 0
 	var b strings.Builder
 	for _, p := range probes {
 		msg := dynamicpb.NewMessage(p.field.ContainingMessage())
@@ -404,14 +448,5 @@ func TestEdgeMarshalerEmitsDeclaredEnumValueNames(t *testing.T) {
 		}
 	}
 
-	t.Logf("перечислений в контрактах kacho.* %d; прогнано через маршаллер края %d; расхождений %d",
-		len(probes), marshaled, mismatched)
-
-	if marshaled == 0 {
-		t.Fatal("маршаллер не отдал ни одного значения: прогон беспредметен, и его молчание не есть согласие")
-	}
-	if mismatched > 0 {
-		t.Fatalf("%d перечислени(й) край отдаёт не объявленным именем — "+
-			"примеры страниц арендатора, показывающие имена, стали ложью:\n%s", mismatched, b.String())
-	}
+	return len(probes), marshaled, mismatched, b.String()
 }
