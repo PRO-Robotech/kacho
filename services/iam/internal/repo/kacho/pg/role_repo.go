@@ -227,6 +227,15 @@ func (r *roleReader) WithdrawnGrants(
 	return out, nil
 }
 
+// PrunedSelectorTypes — ЗАГЛУШКА ЭТАПА RED. Настоящий оператор ставится
+// следующим шагом; сейчас она нужна лишь затем, чтобы проба ИСПОЛНИЛАСЬ и упала
+// на своём утверждении, а не на сборке.
+func (r *roleReader) PrunedSelectorTypes(
+	ctx context.Context, roleIDs []domain.RoleID,
+) (map[domain.RoleID][]domain.PrunedSelectorType, error) {
+	return map[domain.RoleID][]domain.PrunedSelectorType{}, nil
+}
+
 func (r *roleReader) List(ctx context.Context, f role.ListFilter) ([]domain.Role, string, error) {
 	// page_size>MaxPageSize → InvalidArgument (no silent clamp); 0 → default.
 	pageSize, err := effectivePageSize(f.PageSize)

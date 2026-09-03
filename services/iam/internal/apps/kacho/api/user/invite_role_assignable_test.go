@@ -204,6 +204,13 @@ func (inviteRoleReaderRoles) WithdrawnGrants(context.Context, []domain.RoleID) (
 	return nil, stderrors.New("WithdrawnGrants не предмет этих проб")
 }
 
+// PrunedSelectorTypes — дублёр ОТКАЗЫВАЕТ по тому же доводу, что и сосед выше:
+// заглушка, возвращающая пустое, была бы снисходительнее продукта и молча
+// прятала бы лишний вопрос к ведомости.
+func (inviteRoleReaderRoles) PrunedSelectorTypes(context.Context, []domain.RoleID) (map[domain.RoleID][]domain.PrunedSelectorType, error) {
+	return nil, stderrors.New("PrunedSelectorTypes не предмет этих проб")
+}
+
 func (inviteRoleReaderRoles) UnresolvedSegments(context.Context, []domain.RoleSegment) (map[domain.RoleID]int, error) {
 	return nil, stderrors.New("UnresolvedSegments не предмет этих проб")
 }
