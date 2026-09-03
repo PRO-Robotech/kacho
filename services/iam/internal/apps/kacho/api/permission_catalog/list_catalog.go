@@ -21,6 +21,7 @@ package permission_catalog
 
 import (
 	"context"
+	"fmt"
 
 	"github.com/PRO-Robotech/kacho/services/iam/internal/authzguard"
 	"github.com/PRO-Robotech/kacho/services/iam/internal/authzmap"
@@ -112,7 +113,25 @@ func (u *ListPermissionCatalogUseCase) Execute(ctx context.Context) (Catalog, er
 	var modules []Module
 	idxByModule := make(map[string]int)
 	for _, e := range authzmap.Catalog() {
-		fgaType, _ := authzmap.ObjectType(e.Module, e.Resource)
+		// `ok` читается, а не отбрасывается (#1980). Промах здесь невозможен by
+		// construction — пара пришла из `Catalog()`, а он производит её разбиением
+		// ключа ЭТОЙ ЖЕ таблицы по первой точке, обратным склейке, которой ищет
+		// `ObjectType` (предпосылка держится пробой
+		// `TestCatalogPairsAlwaysResolveBackToTheirType`). Но отброшенный `ok` дал бы
+		// тип `""`, а `""` — не «пары нет», а полноценное значение: оно уезжает в
+		// `TypeHasVerbRelations` и `VerbsOfType`, возвращается оттуда «глаголов нет»
+		// и попадает арендатору в витрину неотличимо от честного ответа.
+		//
+		// Отказ, а не пропуск: витрина объявляет, что проецирует `Catalog()` ТОЧНО —
+		// без добавлений и без изъятий. Молча выронив пару, она нарушила бы
+		// собственный контракт и сузилась бы невидимо; отказ виден сразу и
+		// fail-closed.
+		fgaType, ok := authzmap.ObjectType(e.Module, e.Resource)
+		if !ok {
+			return Catalog{}, fmt.Errorf("каталог разрешений: пара %q.%q названа перечнем "+
+				"типов и не резолвится в тип модели прав — разбиение ключа таблицы и склейка "+
+				"перестали быть обратными", e.Module, e.Resource)
+		}
 		res := Resource{
 			Resource:         e.Resource,
 			HasVerbRelations: authzmap.TypeHasVerbRelations(fgaType),
