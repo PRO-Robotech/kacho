@@ -191,19 +191,22 @@ func applyOperationPayload(module string, rep modulecatalog.Report) (meta, resp 
 	if err != nil {
 		return nil, nil, fmt.Errorf("operation metadata: %w", err)
 	}
+	// Ширина чисел — 32 бита, и её хватает с запасом в два порядка: бюджет одного
+	// применения исчерпывается сотнями тысяч строк переселения, а строк каталога
+	// у платформы низкие сотни.
 	resp, err = anypb.New(&iamv1.ApplyModuleResponse{
 		Module:                    module,
 		Changed:                   rep.Changed(),
 		ModuleWritten:             rep.ModuleWritten,
-		WrittenResources:          int32(rep.WrittenResources),          //nolint:gosec // популяция каталога — низкие сотни
-		WrittenVerbs:              int32(rep.WrittenVerbs),              //nolint:gosec // то же
-		RetiredResources:          int32(rep.RetiredResources),          //nolint:gosec // то же
-		RetiredVerbs:              int32(rep.RetiredVerbs),              //nolint:gosec // то же
-		ResettledRuleRefs:         int32(rep.Resettled.RuleRefs),        //nolint:gosec // бюджет оператора исчерпывается сотнями тысяч строк
-		ResettledRoleVerbs:        int32(rep.Resettled.RoleVerbs),       //nolint:gosec // то же
-		PrunedSelectorRows:        int32(rep.PrunedSelectorRows),        //nolint:gosec // то же
-		PrunedSelectorRowsDropped: int32(rep.PrunedSelectorRowsDropped), //nolint:gosec // то же
-		PrunedSelectorTypes:       int32(rep.PrunedSelectorTypes),       //nolint:gosec // то же
+		WrittenResources:          int32(rep.WrittenResources),
+		WrittenVerbs:              int32(rep.WrittenVerbs),
+		RetiredResources:          int32(rep.RetiredResources),
+		RetiredVerbs:              int32(rep.RetiredVerbs),
+		ResettledRuleRefs:         int32(rep.Resettled.RuleRefs),
+		ResettledRoleVerbs:        int32(rep.Resettled.RoleVerbs),
+		PrunedSelectorRows:        int32(rep.PrunedSelectorRows),
+		PrunedSelectorRowsDropped: int32(rep.PrunedSelectorRowsDropped),
+		PrunedSelectorTypes:       int32(rep.PrunedSelectorTypes),
 	})
 	if err != nil {
 		return nil, nil, fmt.Errorf("operation response: %w", err)

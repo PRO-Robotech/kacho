@@ -128,23 +128,28 @@ func (uc *PlanUseCase) Execute(ctx context.Context, module string) (*iamv1.PlanM
 	resList, resTrunc := capNames(withdrawnResourceNames)
 	verbList, verbTrunc := capNames(withdrawnVerbNames)
 
+	// Ширина чисел на проводе — 32 бита, и её хватает с запасом в два порядка:
+	// каталог платформы измеряется единицами модулей, десятками ресурсов и низкой
+	// сотней действий, а бюджет одного применения (`statement_timeout` пула)
+	// исчерпывается сотнями тысяч строк переселения. Приведение поэтому не
+	// теряет значения ни на одной величине.
 	return &iamv1.PlanModuleResponse{
 		Module:                 module,
 		WithdrawnResources:     resList,
 		WithdrawnVerbs:         verbList,
-		WithdrawnResourceCount: int32(len(withdrawnResourceNames)), //nolint:gosec // популяция каталога — низкие сотни
-		WithdrawnVerbCount:     int32(len(withdrawnVerbNames)),     //nolint:gosec // то же
+		WithdrawnResourceCount: int32(len(withdrawnResourceNames)),
+		WithdrawnVerbCount:     int32(len(withdrawnVerbNames)),
 		// Признак усечения — ОДИН на оба перечня: контракт объявляет его одним
 		// полем, и усечение любого из двух означает для оператора одно и то же —
 		// «перечень неполон, счётчик точен».
 		WithdrawnListTruncated:              resTrunc || verbTrunc,
 		WrittenResourceCount:                writtenResources,
 		WrittenVerbCount:                    writtenVerbs,
-		ResettledRuleRefsAtPlanTime:         int32(ps.Resettled.RuleRefs),  //nolint:gosec // см. шапку контракта: 32 бит с запасом
-		ResettledRoleVerbsAtPlanTime:        int32(ps.Resettled.RoleVerbs), //nolint:gosec // то же
-		PrunedSelectorRowsAtPlanTime:        int32(ps.Pruned.Rows),         //nolint:gosec // то же
-		PrunedSelectorRowsDroppedAtPlanTime: int32(ps.Pruned.Dropped),      //nolint:gosec // то же
-		PrunedSelectorTypesAtPlanTime:       int32(ps.Pruned.Elements),     //nolint:gosec // то же
+		ResettledRuleRefsAtPlanTime:         int32(ps.Resettled.RuleRefs),
+		ResettledRoleVerbsAtPlanTime:        int32(ps.Resettled.RoleVerbs),
+		PrunedSelectorRowsAtPlanTime:        int32(ps.Pruned.Rows),
+		PrunedSelectorRowsDroppedAtPlanTime: int32(ps.Pruned.Dropped),
+		PrunedSelectorTypesAtPlanTime:       int32(ps.Pruned.Elements),
 		ExpectedState:                       ps.ExpectedState,
 		BeyondAnchorExtra:                   anchor.BeyondAnchorExtra,
 		BeyondAnchorMissing:                 anchor.BeyondAnchorMissing,
