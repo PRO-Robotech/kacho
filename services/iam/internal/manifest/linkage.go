@@ -94,11 +94,16 @@ var (
 	// имя (`ErrRelationAnchor`) и его оговорка «выдачи ролью не касается» были
 	// верны ровно до этой работы и стали бы ложью, пережившей свой предмет.
 	ErrBindingAnchor = errors.New("manifest: seed access binding is anchored outside the cluster singleton")
-	// ErrCanonUnparsed — канон модели прав не разобрался, и судить об отношении
-	// нечем. Отдельный вид от ErrRelationNotDeclared: «не объявляет» есть
-	// вердикт о модели, а здесь модели нет вовсе, и уверенный вердикт по
-	// недочитанному был бы вымыслом.
-	ErrCanonUnparsed = errors.New("manifest: authorization model canon did not parse")
+	// ЗДЕСЬ СТОЯЛ ErrCanonUnparsed — сигнал «канон модели прав не разобрался».
+	// Он снят ВМЕСТЕ СО СВОИМ ПРЕДМЕТОМ (#2002): загрузчик больше не добывает
+	// модель сам, поэтому состояния «пошли за моделью и не получили её» у него
+	// не существует ни при каком входе. Модель либо внесена вызывающим и
+	// разобрана им, либо не внесена — и тогда об объявлении отношения не
+	// утверждается ничего.
+	//
+	// Оставленный сигнал был бы вариантом, которого код никогда не производит:
+	// он документировал бы контракт, не имеющий входа, и следующий читатель
+	// чинил бы под него ветку, которой нет.
 	// ErrSeededSubjectIncomplete — заведомая запись посева не назвала себя
 	// целиком: имя, аккаунт либо назначение. Отдельный вид от связности:
 	// связность спрашивает, есть ли у названного предмет, а здесь предмет ещё
@@ -193,13 +198,24 @@ type LinkageCensus struct {
 	RoleRefsChecked int
 	// RolesDeclared — объявлял ли манифест раздел ролей вообще.
 	RolesDeclared bool
+	// RelationGrantsRead — выдач ОТНОШЕНИЕМ прочитано.
+	RelationGrantsRead int
+	// RelationGrantsJudged — из них суждено против ВНЕСЁННОЙ модели.
+	//
+	// Две величины стоят рядом намеренно. Модель вносит вызывающий (#2002), и на
+	// пути старта она не вносится вовсе — там существование судит композиция,
+	// у которой ответ авторитетен. Одно число скрыло бы ровно этот случай: ноль
+	// суждённых читался бы как «сверили и не нашли расхождений», тогда как он
+	// означает «не сверяли, и это решено».
+	RelationGrantsJudged int
 }
 
 // String — перепись одной строкой; её печатает потребитель загрузчика.
 func (c LinkageCensus) String() string {
 	s := fmt.Sprintf(
-		"выдач прочитано %d · субъектов разрешено %d · групп заведено %d · вступлений прочитано %d · roleId сверено %d из %d",
-		c.BindingsRead, c.SubjectsResolved, c.GroupsDeclared, c.JoinsRead, c.RoleRefsChecked, c.RoleRefsRead)
+		"выдач прочитано %d · субъектов разрешено %d · групп заведено %d · вступлений прочитано %d · roleId сверено %d из %d · выдач отношением суждено %d из %d",
+		c.BindingsRead, c.SubjectsResolved, c.GroupsDeclared, c.JoinsRead, c.RoleRefsChecked, c.RoleRefsRead,
+		c.RelationGrantsJudged, c.RelationGrantsRead)
 	if !c.RolesDeclared {
 		// Ноль сверенных обязан объяснять СЕБЯ: иначе он читается как «сверили
 		// и не нашли расхождений». Раздел `roles` описан загрузчиком (#1778),
@@ -333,7 +349,7 @@ func seqItem(n *yaml.Node, i int) *yaml.Node {
 // Порядок обхода — порядок документа: выдачи (роль, затем субъекты) · группы ·
 // вступления. Он детерминирован, поэтому отказ на одном и том же документе
 // читается одинаково от прогона к прогону.
-func validateSeedLinkage(m *Manifest, doc *yaml.Node, roles roleIDs) (LinkageCensus, []error) {
+func validateSeedLinkage(m *Manifest, doc *yaml.Node, roles roleIDs, oracle RelationOracle) (LinkageCensus, []error) {
 	census := LinkageCensus{RolesDeclared: roles.declared}
 	if m == nil || m.Seed == nil {
 		return census, nil
@@ -452,8 +468,14 @@ func validateSeedLinkage(m *Manifest, doc *yaml.Node, roles roleIDs) (LinkageCen
 		// спрашивать, даёт именно он. Спросить всё равно значило бы выдать
 		// второй отказ за одну ошибку — и отправить автора чинить отношение
 		// там, где неверен якорь.
+		if strings.TrimSpace(b.GrantedRelation) != "" {
+			census.RelationGrantsRead++
+			if oracle != nil {
+				census.RelationGrantsJudged++
+			}
+		}
 		if anchorUsable {
-			faults = append(faults, validateRelationGrant(doc, i, b, anchorObjectType, seededSubjects)...)
+			faults = append(faults, validateRelationGrant(doc, i, b, anchorObjectType, seededSubjects, oracle)...)
 		}
 	}
 

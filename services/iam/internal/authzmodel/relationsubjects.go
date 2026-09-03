@@ -109,6 +109,24 @@ type RelationSubjects struct {
 	direct []authzplan.DirectSubject
 }
 
+// IsDirect — были ли у отношения прямые записи субъекта ВООБЩЕ.
+//
+// Метод-зеркало поля [RelationSubjects.Direct]. Существует не ради удобства: он
+// вместе с [RelationSubjects.AcceptedKinds] и [RelationSubjects.AcceptsKind]
+// составляет то, что спрашивает загрузчик манифестов, и позволяет ему задавать
+// вопрос ИНТЕРФЕЙСОМ, не импортируя владельца модели (#2002).
+//
+// Разворот ребра здесь несущий, а не стилистический: загрузчик доставки читался
+// бы иначе моделью, которая из его же результата и собирается.
+func (s RelationSubjects) IsDirect() bool { return s.Direct }
+
+// AcceptedKinds — виды субъекта, принимаемые прямо, в написании канона.
+//
+// Метод-зеркало поля [RelationSubjects.Accepts]; предназначено ТЕКСТУ отказа.
+// Решения по нему не принимаются — для этого есть [RelationSubjects.AcceptsKind]:
+// сравнение со строкой и было прежней ошибкой.
+func (s RelationSubjects) AcceptedKinds() []string { return s.Accepts }
+
 // AcceptsKind — принимает ли объявление получателя названного вида.
 //
 // Вид называется В НАПИСАНИИ МАНИФЕСТА (`serviceAccount`), перевод делается

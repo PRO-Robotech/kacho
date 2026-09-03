@@ -301,8 +301,8 @@ type SubjectRef struct {
 // ПОСЛЕ формы и внутри той же загрузки: вынесенная отдельным вызовом, она стала
 // бы шагом, который вызывающий вправе забыть, и манифест с выдачей на
 // несуществующую роль уехал бы дальше, получив «годен».
-func Load(data []byte) (*Manifest, error) {
-	return LoadWithReferent(data, ReferentShippedTable)
+func Load(data []byte, opts ...LoadOption) (*Manifest, error) {
+	return LoadWithReferent(data, ReferentShippedTable, opts...)
 }
 
 // LoadWithReferent — та же загрузка, но referent называет ВЫЗЫВАЮЩИЙ.
@@ -310,7 +310,8 @@ func Load(data []byte) (*Manifest, error) {
 // Предикат один; разница ровно в том, судит ли загрузчик существование типа
 // объекта сам. Почему референтов два и почему это не два места об одном
 // предмете — [TypeReferent].
-func LoadWithReferent(data []byte, referent TypeReferent) (*Manifest, error) {
+func LoadWithReferent(data []byte, referent TypeReferent, opts ...LoadOption) (*Manifest, error) {
+	loadOpts := newLoadOptions(opts)
 	var root yaml.Node
 	if err := yaml.Unmarshal(data, &root); err != nil {
 		return nil, fmt.Errorf("%w: %w", ErrShape, err)
@@ -372,7 +373,7 @@ func LoadWithReferent(data []byte, referent TypeReferent) (*Manifest, error) {
 	// вызовом, сказано в шапке Load. Перечень ролей приезжает ИЗ РАЗОБРАННОГО
 	// ДОКУМЕНТА: послабление #1088, при котором он подавался параметром, истекло
 	// вместе с описанием раздела.
-	census, linkFaults := validateSeedLinkage(&m, doc, roleIDsOf(doc, &m))
+	census, linkFaults := validateSeedLinkage(&m, doc, roleIDsOf(doc, &m), loadOpts.oracle)
 	faults = append(faults, linkFaults...)
 	if len(faults) > 0 {
 		return nil, errors.Join(faults...)

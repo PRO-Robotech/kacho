@@ -201,8 +201,11 @@ func (r CheckReport) Summary() string {
 // много, и вызывающему нужен не первый отказ, а ПЕРЕЧЕНЬ вместе с переписью.
 // Нечитаемый корень при этом остаётся находкой, а не пустым деревом: опечатка в
 // пути иначе печатала бы успокоительное «проверять нечего».
-func CheckTree(root string) CheckReport {
-	return walkManifests(root, isTreeManifestName, ReferentShippedTable)
+// Модель прав ВНОСИТ вызывающий (#2002): у оснастки дерева канон есть, и он
+// авторитетен — тип, о котором она спрашивает, уже в нём. Не внесена — связность
+// выдачи отношением не судится, и перепись связности это говорит.
+func CheckTree(root string, opts ...LoadOption) CheckReport {
+	return walkManifests(root, isTreeManifestName, ReferentShippedTable, opts...)
 }
 
 // CheckTreeForGeneration — тот же обход для прохода, ПОРОЖДАЮЩЕГО таблицу
@@ -213,6 +216,9 @@ func CheckTree(root string) CheckReport {
 // — `modelrender.Sweep`, у которого канон есть; форму по-прежнему судит
 // загрузчик. Почему референтов два и почему это один предикат, а не два места об
 // одном предмете — [TypeReferent].
+// Оракул связности здесь не вносится, и это ТОТ ЖЕ довод, что у референта: тип,
+// ради которого идёт порождение, канон образа не объявляет by construction —
+// суждение каноном отвергло бы законную выдачу на нём (#2002).
 func CheckTreeForGeneration(root string) CheckReport {
 	return walkManifests(root, isTreeManifestName, ReferentCanon)
 }
@@ -237,7 +243,8 @@ func isDeliveredManifestName(name string) bool { return !strings.HasPrefix(name,
 //
 // Второй обход, написанный рядом, разошёлся бы с первым молча — и разошёлся бы
 // именно в той половине, которую никто не читает глазами.
-func walkManifests(root string, accept func(name string) bool, referent TypeReferent) CheckReport {
+func walkManifests(root string, accept func(name string) bool, referent TypeReferent,
+	opts ...LoadOption) CheckReport {
 	var report CheckReport
 
 	// Корень открывается ОДИН раз и служит ГРАНИЦЕЙ чтения: всё, что читается
@@ -299,7 +306,7 @@ func walkManifests(root string, accept func(name string) bool, referent TypeRefe
 		}
 		report.ManifestsRead++
 		report.Paths = append(report.Paths, rel)
-		m, err := LoadWithReferent(data, referent)
+		m, err := LoadWithReferent(data, referent, opts...)
 		if err != nil {
 			report.Findings = append(report.Findings, rel+": "+err.Error())
 			return nil
