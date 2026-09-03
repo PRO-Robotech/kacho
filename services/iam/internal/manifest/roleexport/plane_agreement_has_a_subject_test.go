@@ -82,7 +82,7 @@ func TestPlaneAgreementJudgesADifferingInputOnTheTree(t *testing.T) {
 		declaring       []string
 	)
 	for _, p := range paths {
-		body, rerr := os.ReadFile(p) //nolint:gosec // путь получен обходом дерева репозитория
+		body, rerr := os.ReadFile(p)
 		if rerr != nil {
 			t.Fatalf("%s: %v", p, rerr)
 		}
@@ -149,7 +149,7 @@ var namedByMODRL19 = []struct{ resource, verb string }{
 // несёт. Утверждается ровно то, что оси не выдуманы — их действия в дереве есть.
 func TestMODRL19InternalAxesHaveAnInputInTheTree(t *testing.T) {
 	const rel = "../../../../vpc/manifest.yaml"
-	body, err := os.ReadFile(rel) //nolint:gosec // фиксированный путь внутри репозитория
+	body, err := os.ReadFile(rel)
 	if err != nil {
 		t.Fatalf("поставляемый манифест vpc не прочитан: %v", err)
 	}
