@@ -842,7 +842,7 @@ func buildServices(pool, slavePool *pgxpool.Pool, opsRepo operations.FullRepo,
 	// ── PermissionCatalogService — RBAC rules-model G public catalog ──
 	// In-code projection (authzmap + domain): no repo, no peer-call. Stateless.
 	permissionCatalogHandler := permissioncatalogapp.NewHandler(
-		permissioncatalogapp.NewListPermissionCatalogUseCase())
+		permissioncatalogapp.NewListPermissionCatalogUseCase(catalogSource))
 
 	return &services{
 		accountHandler:         accountHandler,

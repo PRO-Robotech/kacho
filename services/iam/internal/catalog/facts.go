@@ -48,6 +48,32 @@ type Facts struct {
 	// читается из строки, куда его положил манифест модуля. Согласие с таблицей
 	// сборки на посеянных строках держит страж старта.
 	fgaTypeByDotted map[string]string
+	// resources — ЖИВЫЕ пары каталога в порядке точечного ключа.
+	//
+	// Хранится перечнем, а не выводится из `fgaTypeByDotted` обходом карты:
+	// обход карты в Go не упорядочен, а порядок здесь — часть контракта витрины
+	// разрешений, которая эти пары показывает арендатору.
+	//
+	// Пара хранится РАЗОБРАННОЙ, хотя точечный ключ её и определяет: разбор по
+	// первой точке — правило, знать которое есть работа сборщика факта, а не
+	// каждого читателя. Второе место, знающее это правило, разошлось бы с первым
+	// на ресурсе, чьё имя содержит точку.
+	resources []ResourceEntry
+}
+
+// ResourceEntry — одна ЖИВАЯ пара каталога вместе с именем её типа в словаре
+// МОДЕЛИ ПРАВ.
+//
+// Три величины отдаются ВМЕСТЕ намеренно. Имя типа не выводится из пары
+// (правила `<модуль>_<ресурс>`, верного на всех строках, не существует — см.
+// `ResourceRow.ObjectType`), поэтому читатель, получивший пару без имени, пошёл
+// бы за ним к словарю, ПОРОЖДЁННОМУ СБОРКОЙ, — то есть ровно туда, откуда его
+// уводит этот перечень.
+type ResourceEntry struct {
+	Module   string
+	Resource string
+	// ObjectType — имя типа в словаре МОДЕЛИ ПРАВ (`vpc_network`, `account`).
+	ObjectType string
 }
 
 // NewFacts собирает факт из живых строк каталога.
@@ -78,6 +104,7 @@ func NewFacts(rows Rows) (*Facts, error) {
 
 	live := make(map[string]bool, len(rows.Resources))
 	fgaTypeByDotted := make(map[string]string, len(rows.Resources))
+	resources := make([]ResourceEntry, 0, len(rows.Resources))
 	for _, r := range rows.Resources {
 		dotted := r.Module + "." + r.Resource
 		live[dotted] = true
@@ -98,7 +125,14 @@ func NewFacts(rows Rows) (*Facts, error) {
 				dotted)
 		}
 		fgaTypeByDotted[dotted] = r.ObjectType
+		resources = append(resources, ResourceEntry{Module: r.Module, Resource: r.Resource, ObjectType: r.ObjectType})
 	}
+	sort.Slice(resources, func(i, j int) bool {
+		if resources[i].Module != resources[j].Module {
+			return resources[i].Module < resources[j].Module
+		}
+		return resources[i].Resource < resources[j].Resource
+	})
 
 	byDotted := make(map[string][]string, len(rows.Resources))
 	for _, v := range rows.Verbs {
@@ -130,6 +164,7 @@ func NewFacts(rows Rows) (*Facts, error) {
 		modules:         modules,
 		moduleOrder:     moduleOrder,
 		fgaTypeByDotted: fgaTypeByDotted,
+		resources:       resources,
 	}
 	for dotted, verbs := range byDotted {
 		// Имя типа есть у КАЖДОЙ живой строки: строка без него отвергнута выше,
@@ -227,6 +262,17 @@ func (f *Facts) Modules() []string {
 //
 // Вторым переходником это не является: соответствие не вычисляется, а читается
 // из строки, куда его положил манифест модуля.
+// Resources — ЖИВЫЕ пары каталога в порядке точечного ключа.
+//
+// Отдаётся КОПИЯ по той же причине, что и у `Modules`: перечень принадлежит
+// неизменяемому факту, и сортировка на месте у вызывающего испортила бы снимок
+// для всех остальных.
+func (f *Facts) Resources() []ResourceEntry {
+	out := make([]ResourceEntry, len(f.resources))
+	copy(out, f.resources)
+	return out
+}
+
 func (f *Facts) FGAObjectType(dotted string) (string, bool) {
 	fgaType, ok := f.fgaTypeByDotted[dotted]
 	return fgaType, ok
