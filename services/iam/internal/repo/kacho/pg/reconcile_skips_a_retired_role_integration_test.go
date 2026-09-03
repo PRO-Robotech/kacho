@@ -34,6 +34,7 @@ import (
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 
+	"github.com/PRO-Robotech/kacho/internal/pgtest"
 	coredb "github.com/PRO-Robotech/kacho/pkg/db"
 	"github.com/PRO-Robotech/kacho/services/iam/internal/domain"
 )
@@ -52,7 +53,11 @@ func TestReconcileSkipsARetiredRole(t *testing.T) {
 	ctx := context.Background()
 	pool, err := coredb.NewPool(ctx, setupTestDB(t))
 	require.NoError(t, err)
-	defer pool.Close()
+	// Закрытие С ПРЕДЕЛОМ, а не отложенное: проба, упавшая внутри открытой
+	// транзакции, соединение не вернёт, и `defer pool.Close()` ждал бы его вечно,
+	// унося вердикт ВСЕГО пакета — то есть стирая и ту находку, которая
+	// сработала. Гейт `TestPoolCloseInTestsIsBounded` держит это по дереву.
+	pgtest.ClosePoolAtEnd(t, pool)
 
 	fx := setupGamma(t, ctx, pool, "retsk")
 	rec, _ := newReconciler(pool)
