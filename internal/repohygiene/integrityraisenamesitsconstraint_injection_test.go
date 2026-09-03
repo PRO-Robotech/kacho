@@ -127,7 +127,6 @@ func TestIntegrityRaiseGateFallsAndStaysSilentOnItsTwin(t *testing.T) {
 	}
 
 	for _, c := range cases {
-		c := c
 		t.Run(c.name, func(t *testing.T) {
 			got := integrityUnnamedLiveSites(c.files)
 			if len(got) != c.wantUnnamed {

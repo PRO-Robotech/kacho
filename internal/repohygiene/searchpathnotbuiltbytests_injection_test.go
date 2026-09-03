@@ -98,7 +98,6 @@ func TestSearchPathGateFallsAndStaysSilentOnItsTwin(t *testing.T) {
 	}
 
 	for _, c := range cases {
-		c := c
 		t.Run(c.name, func(t *testing.T) {
 			src := strings.Replace(searchPathInjectionSource, "%[1]s", c.body, 1)
 			sites, ok := SearchPathBuildSitesIn("services/probe/x_test.go", src)

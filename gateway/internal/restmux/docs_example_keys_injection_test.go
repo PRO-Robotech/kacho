@@ -205,7 +205,6 @@ func TestDocsExampleKeysGateFallsAndStaysSilentOnItsTwin(t *testing.T) {
 	}
 
 	for _, c := range cases {
-		c := c
 		t.Run(c.name, func(t *testing.T) {
 			keys, unjudgeable, walked := runDocsKeysInjection(t, c)
 			if unjudgeable != c.wantUnjudgeable {

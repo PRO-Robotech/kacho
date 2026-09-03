@@ -69,7 +69,6 @@ func TestWithSearchPath(t *testing.T) {
 	}
 
 	for _, c := range cases {
-		c := c
 		t.Run(c.name, func(t *testing.T) {
 			if got := WithSearchPath(c.dsn, c.searchPath); got != c.want {
 				t.Fatalf("получено %q, ожидалось %q (%s)", got, c.want, c.why)
