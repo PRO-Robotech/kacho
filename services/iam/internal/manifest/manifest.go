@@ -330,9 +330,17 @@ func LoadWithReferent(data []byte, referent TypeReferent) (*Manifest, error) {
 	if err := refuseNullSeed(doc); err != nil {
 		return nil, err
 	}
-	if err := refuseRuleVerbs(doc); err != nil {
-		return nil, err
-	}
+	// ЗДЕСЬ СТОЯЛ пред-разборный отказ по ключу `verbs` в правиле роли. Он снят
+	// ВМЕСТЕ СО СВОИМ ПРЕДМЕТОМ (kacho#1844): поимённая форма права вернулась —
+	// вместе с проверкой её полноты по классу, как и предписывал §10 п. 2
+	// приёмки `classes-form-of-role-right.md`, снимавшей ключ. Проверка,
+	// оставленная без предмета, замолчала бы и была бы неотличима от исправной
+	// (`testing.md` §«Снимая ПРЕДМЕТ, разбери проверки по ЗНАКУ утверждения»).
+	//
+	// Что заняло его место: `validateRuleRightForm` (две записи права рядом не
+	// стоят) и `validateRuleNamedVerbs` (названное действие объявлено этим
+	// манифестом) — обе ПОСЛЕ разбора, потому что судят разобранное значение, а
+	// не сырой узел, и строгость `KnownFields` не трогают.
 
 	dec := yaml.NewDecoder(bytes.NewReader(data))
 	dec.KnownFields(true)
@@ -426,56 +434,6 @@ func refuseNullSeed(doc *yaml.Node) error {
 		return fmt.Errorf(
 			"%w: line %d: write `seed: {}` to declare an empty seed, or omit the key entirely",
 			ErrSeedDeclaredNull, key.Line)
-	}
-	return nil
-}
-
-// refuseRuleVerbs — правило роли, записанное СНЯТЫМ ключом `verbs`.
-//
-// # Почему отказ СВОЙ, а не общий «неизвестное поле»
-//
-// Поля `Verbs` у `Rule` не остаётся, поэтому `dec.Decode` упал бы на `verbs:`
-// сам — общим `ErrShape` «field verbs not found in type manifest.Rule». Это
-// верно и бесполезно: автор не узнаёт, чем чинится. Здесь он узнаёт ключ,
-// номер строки, преемника `classes` и то, где заводится поимённая форма.
-//
-// # Почему ДО разбора, на сыром узле, а НЕ в `Rule.UnmarshalYAML`
-//
-// Библиотека НЕ проносит `Decoder.KnownFields(true)` внутрь собственного
-// `UnmarshalYAML` (тот же факт записан в шапке `resources.go`). Свой разбор
-// правила снял бы строгость со ВСЕХ его ключей сразу, и опечатка вроде
-// `resourceNamez:` уехала бы молча — «принято-и-проигнорировано» ровно там, где
-// оно запрещено. Пред-разборная проверка сырого узла не трогает `KnownFields`
-// вовсе; сохранённую строгость стережёт своя проба (MOD-RC-11).
-//
-// Пост-разборный отказ был бы НЕДОСТИЖИМОЙ ветвью: до `validateRoles`
-// исполнение с таким документом не доходит никогда.
-func refuseRuleVerbs(doc *yaml.Node) error {
-	roles := mapValue(doc, "roles")
-	if roles == nil || roles.Kind != yaml.SequenceNode {
-		return nil
-	}
-	for i, role := range roles.Content {
-		rules := mapValue(role, "rules")
-		if rules == nil || rules.Kind != yaml.SequenceNode {
-			continue
-		}
-		for j, rule := range rules.Content {
-			verbs := mapValue(rule, "verbs")
-			if verbs == nil {
-				continue
-			}
-			coord := locate(doc, "roles", i, "rules", j, "verbs")
-			return linkFault{
-				kind:  ErrRoleRuleVerbsRetired,
-				coord: coord,
-				detail: fmt.Sprintf("roles[%d].rules[%d]: ключ `verbs` снят — право роли "+
-					"записывается ключом `classes` тем же перечнем обозначений класса. "+
-					"Поимённый перечень ДЕЙСТВИЙ формой права роли не является и "+
-					"возвращается вместе с проверкой его полноты (#1844): принять его "+
-					"сейчас значило бы свести его к классу молча", i, j),
-			}
-		}
 	}
 	return nil
 }

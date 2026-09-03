@@ -135,61 +135,25 @@ func TestMODRC02TranslationIsWordForWordAgainstTheAppliedMigration(t *testing.T)
 		len(m.Roles[0].Rules), 2)
 }
 
-// ── MOD-RC-03 ───────────────────────────────────────────────────────────────
-
-// TestMODRC03VerbsKeyInARoleRuleIsRefusedAndNamesItsSuccessor — ключ `verbs:` в
-// правиле роли отвергается, и отказ называет починку.
-func TestMODRC03VerbsKeyInARoleRuleIsRefusedAndNamesItsSuccessor(t *testing.T) {
-	_, err := manifest.Load([]byte(roleManifest("{module: vpc, resources: [network], verbs: [get]}")))
-	if err == nil {
-		t.Fatal("ключ verbs в правиле роли принят: форма права роли одна, и она — classes")
-	}
-	if !errors.Is(err, manifest.ErrRoleRuleVerbsRetired) {
-		t.Errorf("отказ не отнесён к своей причине (ожидался ErrRoleRuleVerbsRetired): %v", err)
-	}
-	for _, want := range []string{"verbs", "classes", "#1844", "roles[0].rules[0]"} {
-		if !strings.Contains(err.Error(), want) {
-			t.Errorf("отказ не называет %q: %v", want, err)
-		}
-	}
-	if !strings.Contains(err.Error(), "line ") {
-		t.Errorf("отказ не называет номер строки: %v", err)
-	}
-
-	// Парный положительный: без него односторонний отказ зеленел бы на
-	// загрузчике, отвергающем всё.
-	m, err := manifest.Load([]byte(roleManifest("{module: vpc, resources: [network], classes: [get]}")))
-	if err != nil {
-		t.Fatalf("парный положительный отвергнут: %v", err)
-	}
-	if m == nil || len(m.Roles) != 1 {
-		t.Fatalf("парный положительный принят, но ролей прочитано %d", len(m.Roles))
-	}
-}
-
-// ── MOD-RC-04 ───────────────────────────────────────────────────────────────
-
-// TestMODRC04ClassesDoesNotLegalizeVerbs — наличие `classes:` не делает
-// `verbs:` законным.
+// ── MOD-RC-03 и MOD-RC-04 — СНЯТЫ ВМЕСТЕ СО СВОИМ ПРЕДМЕТОМ (kacho#1844) ────
 //
-// Сценарий отвергает прочтение «`classes` победил, `verbs` проигнорирован»:
-// молча выброшенный ключ — запрещённый исход.
-func TestMODRC04ClassesDoesNotLegalizeVerbs(t *testing.T) {
-	_, err := manifest.Load([]byte(roleManifest(
-		"{module: vpc, resources: [network], classes: [get], verbs: [get]}")))
-	if err == nil {
-		t.Fatal("правило с обоими ключами принято: снятый ключ уехал бы молча")
-	}
-	if !errors.Is(err, manifest.ErrRoleRuleVerbsRetired) {
-		t.Errorf("отказ не отнесён к своей причине: %v", err)
-	}
-
-	// Парный положительный: отказ вызывает именно снятый ключ, а не соседство двух.
-	if _, err := manifest.Load([]byte(roleManifest(
-		"{module: vpc, resources: [network], classes: [get]}"))); err != nil {
-		t.Fatalf("парный положительный отвергнут: %v", err)
-	}
-}
+// Оба утверждали ОТСУТСТВИЕ: ключ `verbs` в правиле роли отвергается, и наличие
+// `classes` его не легализует. Предмет обоих — пред-разборный отказ
+// `refuseRuleVerbs` — снят: поимённая форма права вернулась вместе с проверкой
+// её полноты по классу, ровно как предписывал §10 п. 2 приёмки
+// `classes-form-of-role-right.md`, снимавшей ключ.
+//
+// Снято, а не ослаблено, и это ВАЖНО: негативное утверждение, лишившееся
+// предмета, ЗАМОЛКАЕТ — вход, на котором оно находит нарушение, перестаёт быть
+// представимым, ветвь остаётся, счётчик утверждений растёт, вердикт зелёный.
+// Отличить это от исправной работы нельзя ничем (`testing.md` §«Снимая ПРЕДМЕТ,
+// разбери проверки по ЗНАКУ утверждения»).
+//
+// Что от них ОСТАЛОСЬ и где живёт: взаимоисключаемость двух форм (§3.1) —
+// `rolenamedverbs_test.go`, `TestNamedAndClassFormsDoNotStandTogether`, с двумя
+// парными положительными по одному на форму. Она и есть наследник MOD-RC-04:
+// его предмет («вторая запись не уезжает молча») жив, сменился лишь отвергаемый
+// вход.
 
 // ── MOD-RC-05 ───────────────────────────────────────────────────────────────
 
