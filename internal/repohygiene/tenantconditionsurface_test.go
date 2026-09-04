@@ -339,23 +339,32 @@ func TestTenantConditionSurface_IsGone(t *testing.T) {
 			t.Fatal("в каталоге миграций нет ни одного .sql — вердикт беспредметен")
 		}
 		body := all.String()
-		for _, tbl := range []string{"kacho_iam.conditions", "kacho_iam.access_binding_conditions"} {
-			if !strings.Contains(body, "DROP TABLE IF EXISTS "+tbl) {
-				t.Errorf("ни одна миграция не сносит %s — таблица снятой поверхности осталась бы в базе", tbl)
+
+		// Судится ОТСУТСТВИЕ объекта в схеме, а не наличие оператора сноса в
+		// истории. Это не ослабление, а усиление, и разница видна на предельном
+		// случае: «какая-то миграция сносила» верно и тогда, когда следующая
+		// завела таблицу заново, а «в схеме её нет» — нет.
+		//
+		// Прежняя редакция спрашивала про `DROP TABLE IF EXISTS` и про запись в
+		// ведомости снятий, и обе половины были верны, пока цепочка iam состояла
+		// из 171 инкрементальной миграции. Свод (2026-09-04) историю унёс: у него
+		// нет ни «до», ни «после», снятая поверхность в нём просто ОТСУТСТВУЕТ.
+		// Спрашивать у свода про оператор сноса — спрашивать про то, чего у
+		// артефакта этого рода не бывает by construction.
+		//
+		// Половина про число уничтоженных строк снята вместе со своим предметом:
+		// она утверждала о РАЗОВОМ уничтожении данных, случившемся один раз в
+		// истории, и повторить это утверждение по конечному состоянию нельзя.
+		for _, tbl := range []string{"conditions", "access_binding_conditions"} {
+			if strings.Contains(body, "CREATE TABLE kacho_iam."+tbl+" ") ||
+				strings.Contains(body, "CREATE TABLE IF NOT EXISTS kacho_iam."+tbl+" ") {
+				t.Errorf("схема заводит %s — таблица снятой поверхности жива", tbl)
 			}
 		}
-		if !strings.Contains(body, "DROP COLUMN IF EXISTS condition_id") {
-			t.Error("ни одна миграция не снимает колонку access_bindings.condition_id")
+		if reAccessBindingsConditionColumn.MatchString(body) {
+			t.Error("схема несёт колонку access_bindings.condition_id — ссылка снятой поверхности жива")
 		}
-		// Снос обязан быть ОБЪЯВЛЕН со своим числом строк, иначе он не проверен.
-		guard := readTreeFile(t, root, "services/iam/internal/migrations/dropguard.json")
-		for _, tbl := range []string{"kacho_iam.conditions", "kacho_iam.access_binding_conditions"} {
-			if !strings.Contains(guard, `"`+tbl+`"`) {
-				t.Errorf("dropguard.json не объявляет снос %s — число уничтожаемых строк не названо, "+
-					"значит не измерено", tbl)
-			}
-		}
-		t.Logf("перепись: прочитано %d файлов миграций", files)
+		t.Logf("перепись: прочитано %d файлов миграций, длина корпуса %d байт", files, len(body))
 	})
 }
 
@@ -392,3 +401,12 @@ func TestTupleConditionMechanism_StaysLive(t *testing.T) {
 	// объявлением разрыва либо назвать причину, по которой он остаётся), и оно
 	// принимается не здесь.
 }
+
+// reAccessBindingsConditionColumn — объявление колонки `condition_id` в теле
+// `CREATE TABLE kacho_iam.access_bindings`.
+//
+// Ищется ОБЪЯВЛЕНИЕ, а не упоминание: имя `condition_id` законно встречается в
+// снятых архивах и в прозе, и предикат по подстроке краснел бы на собственном
+// объяснении.
+var reAccessBindingsConditionColumn = regexp.MustCompile(
+	`(?s)CREATE TABLE (?:IF NOT EXISTS )?kacho_iam\.access_bindings \([^;]*?\n\s*condition_id\s`)
