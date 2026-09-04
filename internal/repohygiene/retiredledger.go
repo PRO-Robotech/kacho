@@ -47,6 +47,8 @@ type RetiredLedger struct {
 // Отсутствие файла — НЕ ошибка и не находка: каталог, который не сводили,
 // надгробия не несёт, и это норма. Возвращается (nil, nil).
 func ReadRetiredLedger(dir string) (*RetiredLedger, error) {
+	// #nosec G304 — путь собирается из каталога, названного вызывающим, и КОНСТАНТЫ
+	// имени надгробия: пользовательской части в нём нет by construction.
 	b, err := os.ReadFile(filepath.Join(dir, RetiredLedgerName))
 	if os.IsNotExist(err) {
 		return nil, nil
