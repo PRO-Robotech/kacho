@@ -49,7 +49,9 @@ package repohygiene
 
 import (
 	"fmt"
+	"io"
 	"os"
+	"path/filepath"
 	"regexp"
 	"strings"
 )
@@ -95,7 +97,22 @@ var recipePrefixRe = regexp.MustCompile(`^[-@+]+`)
 // Отказ возвращается, а не роняет прогон: этой же функцией пользуется инъекция,
 // а она обязана НАБЛЮДАТЬ исход, а не завершать процесс.
 func parseMakefileRecipes(path string) (makefileRecipes, error) {
-	raw, err := os.ReadFile(path) //nolint:gosec // путь приходит из индекса git, не от пользователя
+	// Чтение — через корень дерева, а не по склейке пути: `os.Root` не выпускает
+	// за корень ни по «..», ни по символической ссылке. Прежде здесь стояло
+	// подавление в диалекте, которого в этом репозитории не читает никто, —
+	// то есть предмет не снимался, а объявлялся снятым.
+	dir, name := filepath.Split(path)
+	root, err := os.OpenRoot(filepath.Clean(dir))
+	if err != nil {
+		return makefileRecipes{}, fmt.Errorf("не открыт корень %s: %w", dir, err)
+	}
+	defer func() { _ = root.Close() }()
+	f, err := root.Open(name)
+	if err != nil {
+		return makefileRecipes{}, fmt.Errorf("не прочитан %s: %w", path, err)
+	}
+	defer func() { _ = f.Close() }()
+	raw, err := io.ReadAll(f)
 	if err != nil {
 		return makefileRecipes{}, fmt.Errorf("не прочитан %s: %w", path, err)
 	}

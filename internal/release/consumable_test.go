@@ -54,8 +54,8 @@
 package release
 
 import (
+	"github.com/PRO-Robotech/kacho/pkg/gitenv"
 	"os"
-	"os/exec"
 	"path/filepath"
 	"strings"
 	"testing"
@@ -139,7 +139,7 @@ func modulePathOf(t *testing.T, root string) string {
 func gitRootFor(t *testing.T, root string) string {
 	t.Helper()
 	dst := filepath.Join(t.TempDir(), "vcs")
-	cmd := exec.Command("git", "clone", "--quiet", "--depth", "1", "--no-tags",
+	cmd := gitenv.Command(filepath.Dir(dst), "clone", "--quiet", "--depth", "1", "--no-tags",
 		"--single-branch", "file://"+root, dst)
 	cmd.Env = cleanGitEnv()
 	if out, err := cmd.CombinedOutput(); err != nil {

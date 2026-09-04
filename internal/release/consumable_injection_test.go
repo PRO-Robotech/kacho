@@ -32,8 +32,8 @@
 package release
 
 import (
+	"github.com/PRO-Robotech/kacho/pkg/gitenv"
 	"os"
-	"os/exec"
 	"path/filepath"
 	"strings"
 	"testing"
@@ -69,8 +69,7 @@ func buildSynthetic(t *testing.T, s synthetic) string {
 
 	env := cleanGitEnv()
 	git := func(args ...string) {
-		c := exec.Command("git", args...)
-		c.Dir = dir
+		c := gitenv.Command(dir, args...)
 		c.Env = append(env,
 			"GIT_AUTHOR_NAME=probe", "GIT_AUTHOR_EMAIL=probe@invalid",
 			"GIT_COMMITTER_NAME=probe", "GIT_COMMITTER_EMAIL=probe@invalid")
