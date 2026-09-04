@@ -4,6 +4,7 @@
 package repohygiene
 
 import (
+	"io"
 	"io/fs"
 	"os"
 	"path/filepath"
@@ -227,16 +228,24 @@ func DiskLicenseProbe(cache string) LicenseProbe {
 				spdxCandidates = append(spdxCandidates, e)
 			}
 		}
+		if len(spdxCandidates) == 0 {
+			return ev
+		}
+		// Чтение — ТОЛЬКО через корень каталога модуля: `os.Root` не выпускает
+		// за него ни по `..`, ни по символической ссылке. Выход за корень здесь
+		// невозможен by construction, а не по договорённости с вызывающим — и
+		// это не формальность: имена приходят с диска, из чужого кэша.
+		root, rerr := os.OpenRoot(dir)
+		if rerr != nil {
+			return ev
+		}
+		defer func() { _ = root.Close() }()
 		for _, e := range spdxCandidates {
 			info, ierr := e.Info()
 			if ierr != nil || info.Size() > spdxScanCap {
 				continue
 			}
-			body, rerr := os.ReadFile(filepath.Join(dir, e.Name()))
-			if rerr != nil {
-				continue
-			}
-			if strings.Contains(string(body), spdxTag) {
+			if declaresSpdx(root, e.Name()) {
 				ev.Licensed, ev.Marker = true, e.Name()+": "+spdxTag
 				return ev
 			}
@@ -268,4 +277,20 @@ func ScanDependencyLicenses(deps []DirectDependency, probe LicenseProbe) ([]Unli
 	}
 	sort.Slice(findings, func(i, j int) bool { return findings[i].Dep.Path < findings[j].Dep.Path })
 	return findings, census
+}
+
+// declaresSpdx — корневой файл модуля несёт заголовок SPDX. Читается не больше
+// потолка: заголовок стоит в шапке, и многомегабайтные данные ради него в
+// память не поднимаются.
+func declaresSpdx(root *os.Root, name string) bool {
+	f, err := root.Open(name)
+	if err != nil {
+		return false
+	}
+	defer func() { _ = f.Close() }()
+	body, err := io.ReadAll(io.LimitReader(f, spdxScanCap))
+	if err != nil {
+		return false
+	}
+	return strings.Contains(string(body), spdxTag)
 }
