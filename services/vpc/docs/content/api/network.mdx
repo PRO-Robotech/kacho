@@ -298,152 +298,48 @@ writer-транзакции вместе с outbox-событиями. **Неп�
 
 ---
 
-## ListSubnets
+## Дочерние ресурсы сети
 
-<ApiOperation method="GET" endpoint="/vpc/v1/networks/{networkId}/subnets">
-
-Список подсетей (`Subnet`), принадлежащих указанной сети, с cursor-пагинацией. Удобный
-дочерний list-RPC: фильтрует по `networkId` без необходимости передавать `projectId`.
-
-#### Параметры запроса
+Своих адресов у списков «подсети сети», «группы безопасности сети» и «таблицы маршрутов
+сети» **нет**: у каждого из трёх ресурсов один список — коллекционный, — и сеть в нём
+задаётся сужением `filter`.
 
 <table>
-  <thead><tr><th>Параметр</th><th>Обязательность</th><th>Тип</th><th>Описание</th></tr></thead>
+  <thead><tr><th>Что перечислить</th><th>Запрос</th></tr></thead>
   <tbody>
-    <tr><td><code>networkId</code></td><td><strong>да</strong></td><td><code>{TYPES.string}</code></td><td>{DICTIONARY.networkId.short} (path-параметр)</td></tr>
-    <tr><td><code>pageSize</code></td><td>нет</td><td><code>{TYPES.int64}</code></td><td>{DICTIONARY.pageSize.short}</td></tr>
-    <tr><td><code>pageToken</code></td><td>нет</td><td><code>{TYPES.string}</code></td><td>{DICTIONARY.pageToken.short}</td></tr>
+    <tr>
+      <td>Подсети сети</td>
+      <td><code>GET /vpc/v1/subnets?projectId=&#123;projectId&#125;&amp;filter=network_id="&#123;networkId&#125;"</code></td>
+    </tr>
+    <tr>
+      <td>Группы безопасности сети</td>
+      <td><code>GET /vpc/v1/securityGroups?projectId=&#123;projectId&#125;&amp;filter=network_id="&#123;networkId&#125;"</code></td>
+    </tr>
+    <tr>
+      <td>Таблицы маршрутов сети</td>
+      <td><code>GET /vpc/v1/routeTables?projectId=&#123;projectId&#125;&amp;filter=network_id="&#123;networkId&#125;"</code></td>
+    </tr>
   </tbody>
 </table>
+
+Значение фильтра — в двойных кавычках, поэтому в строке запроса оно кодируется:
+`filter=network_id%3D%22{networkId}%22`.
 
 #### Пример запроса
 
 <CodeBlock language="bash">
   {dedent`
-    curl http://localhost:18080/vpc/v1/networks/{networkId}/subnets \\
+    curl 'http://localhost:18080/vpc/v1/subnets?projectId={projectId}&filter=network_id%3D%22{networkId}%22' \\
       -H 'Authorization: Bearer <JWT>'
   `}
 </CodeBlock>
 
-#### Пример ответа
-
-<CodeBlock language="json">
-  {dedent`
-    {
-      "subnets": [
-        { "id": "{subnetId}", "networkId": "{networkId}", "zoneId": "zone-a", "name": "prod-subnet-a", "v4CidrBlocks": ["10.0.0.0/24"] }
-      ],
-      "nextPageToken": ""
-    }
-  `}
-</CodeBlock>
-
-<Restrictions items={[
-  { label: 'networkId', rules: RESTRICTIONS.resourceId },
-  { label: 'pagination', rules: RESTRICTIONS.pagination },
-]} />
-<Codes codes={['invalidArgument', 'notFound', 'permissionDenied', 'internal']} />
-
-</ApiOperation>
-
----
-
-## ListSecurityGroups
-
-<ApiOperation method="GET" endpoint="/vpc/v1/networks/{networkId}/security_groups">
-
-Список групп безопасности (`SecurityGroup`) указанной сети, включая default-SG, с
-cursor-пагинацией.
-
-#### Параметры запроса
-
-<table>
-  <thead><tr><th>Параметр</th><th>Обязательность</th><th>Тип</th><th>Описание</th></tr></thead>
-  <tbody>
-    <tr><td><code>networkId</code></td><td><strong>да</strong></td><td><code>{TYPES.string}</code></td><td>{DICTIONARY.networkId.short} (path-параметр)</td></tr>
-    <tr><td><code>pageSize</code></td><td>нет</td><td><code>{TYPES.int64}</code></td><td>{DICTIONARY.pageSize.short}</td></tr>
-    <tr><td><code>pageToken</code></td><td>нет</td><td><code>{TYPES.string}</code></td><td>{DICTIONARY.pageToken.short}</td></tr>
-  </tbody>
-</table>
-
-#### Пример запроса
-
-<CodeBlock language="bash">
-  {dedent`
-    curl http://localhost:18080/vpc/v1/networks/{networkId}/security_groups \\
-      -H 'Authorization: Bearer <JWT>'
-  `}
-</CodeBlock>
-
-#### Пример ответа
-
-<CodeBlock language="json">
-  {dedent`
-    {
-      "securityGroups": [
-        { "id": "{securityGroupId}", "networkId": "{networkId}", "name": "default-sg-{net8}" }
-      ],
-      "nextPageToken": ""
-    }
-  `}
-</CodeBlock>
-
-<Restrictions items={[
-  { label: 'networkId', rules: RESTRICTIONS.resourceId },
-  { label: 'pagination', rules: RESTRICTIONS.pagination },
-]} />
-<Codes codes={['invalidArgument', 'notFound', 'permissionDenied', 'internal']} />
-
-</ApiOperation>
-
----
-
-## ListRouteTables
-
-<ApiOperation method="GET" endpoint="/vpc/v1/networks/{networkId}/route_tables">
-
-Список таблиц маршрутов (`RouteTable`) указанной сети с cursor-пагинацией.
-
-#### Параметры запроса
-
-<table>
-  <thead><tr><th>Параметр</th><th>Обязательность</th><th>Тип</th><th>Описание</th></tr></thead>
-  <tbody>
-    <tr><td><code>networkId</code></td><td><strong>да</strong></td><td><code>{TYPES.string}</code></td><td>{DICTIONARY.networkId.short} (path-параметр)</td></tr>
-    <tr><td><code>pageSize</code></td><td>нет</td><td><code>{TYPES.int64}</code></td><td>{DICTIONARY.pageSize.short}</td></tr>
-    <tr><td><code>pageToken</code></td><td>нет</td><td><code>{TYPES.string}</code></td><td>{DICTIONARY.pageToken.short}</td></tr>
-  </tbody>
-</table>
-
-#### Пример запроса
-
-<CodeBlock language="bash">
-  {dedent`
-    curl http://localhost:18080/vpc/v1/networks/{networkId}/route_tables \\
-      -H 'Authorization: Bearer <JWT>'
-  `}
-</CodeBlock>
-
-#### Пример ответа
-
-<CodeBlock language="json">
-  {dedent`
-    {
-      "routeTables": [
-        { "id": "{routeTableId}", "networkId": "{networkId}", "name": "rt-main" }
-      ],
-      "nextPageToken": ""
-    }
-  `}
-</CodeBlock>
-
-<Restrictions items={[
-  { label: 'networkId', rules: RESTRICTIONS.resourceId },
-  { label: 'pagination', rules: RESTRICTIONS.pagination },
-]} />
-<Codes codes={['invalidArgument', 'notFound', 'permissionDenied', 'internal']} />
-
-</ApiOperation>
+:::note Почему не дочерний путь
+Дочерний адрес вида `/vpc/v1/networks/{networkId}/subnets` завёл бы вторую внешне-адресуемую
+координату для вопроса, у которого уже есть ответ, и второй способ вывести область прав —
+из сети вместо `projectId`. Сужение коллекционного списка отвечает на тот же вопрос,
+проверяя права построчно на той же полосе, что и остальные списки сервиса.
+:::
 
 ---
 

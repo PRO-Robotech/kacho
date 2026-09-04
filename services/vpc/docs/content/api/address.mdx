@@ -194,6 +194,15 @@ IP можно создать заранее, переиспользовать, �
 относится ко **всему** списку, а не к загруженной странице, и цена страницы не растёт вместе с
 числом адресов подсети.
 
+:::note Поиск адреса по значению
+Вопрос «чей это адрес» задаётся этому же списку: `ipAddress=<IP>` в пределах `projectId`.
+Отдельного метода поиска по значению не существует — область запроса берётся из `projectId`,
+который вызывающий и так обязан назвать, а страница проверяется по правам построчно. Сужение
+применяется к обеим формам владения — внутреннему адресу подсети и внешнему из пула.
+
+Перечисление адресов одной подсети — тот же список с `subnetId=<id>`.
+:::
+
 `subnetId` — ссылка на ресурс этого же сервиса, поэтому её форма проверяется синхронно: строка,
 которая идентификатором подсети быть не может, отвергается как `InvalidArgument`
 (`invalid subnet id '<X>'`), а не возвращает пустую страницу. Пустое значение означает «без
@@ -207,6 +216,7 @@ IP можно создать заранее, переиспользовать, �
     <tr><td><code>projectId</code></td><td><strong>да</strong></td><td><code>{TYPES.string}</code></td><td>{DICTIONARY.projectId.short}</td></tr>
     <tr><td><code>filter</code></td><td>нет</td><td><code>{TYPES.string}</code></td><td>{DICTIONARY.filter.short}</td></tr>
     <tr><td><code>subnetId</code></td><td>нет</td><td><code>{TYPES.string}</code></td><td>Только адреса, выделенные из этой подсети — обе внутренние семьи</td></tr>
+    <tr><td><code>ipAddress</code></td><td>нет</td><td><code>{TYPES.string}</code></td><td>Только адрес, чьё выданное значение равно этому IP — обе семьи (внутренняя и внешняя)</td></tr>
     <tr><td><code>pageSize</code></td><td>нет</td><td><code>{TYPES.int64}</code></td><td>{DICTIONARY.pageSize.short}</td></tr>
     <tr><td><code>pageToken</code></td><td>нет</td><td><code>{TYPES.string}</code></td><td>{DICTIONARY.pageToken.short}</td></tr>
   </tbody>
@@ -453,112 +463,6 @@ generic `"address <id> is in use"`. Сначала отвяжите адрес �
 
 </ApiOperation>
 
----
-
-## GetByValue
-
-<ApiOperation method="GET" endpoint="/vpc/v1/addresses:byValue">
-
-Возвращает адрес по его **значению** (текстовому IP), а не по id. Удобно для ref-валидации в
-peer-сервисах. Указывается один из вариантов значения (`externalIpv4Address` /
-`internalIpv4Address`); для internal-адреса дополнительно задается область поиска `subnetId`.
-
-#### Параметры запроса
-
-<table>
-  <thead><tr><th>Параметр</th><th>Обязательность</th><th>Тип</th><th>Описание</th></tr></thead>
-  <tbody>
-    <tr><td><code>externalIpv4Address</code></td><td>oneof</td><td><code>{TYPES.string}</code></td><td>Значение внешнего IPv4-адреса для поиска</td></tr>
-    <tr><td><code>internalIpv4Address</code></td><td>oneof</td><td><code>{TYPES.string}</code></td><td>Значение внутреннего IPv4-адреса для поиска</td></tr>
-    <tr><td><code>subnetId</code></td><td>нет</td><td><code>{TYPES.string}</code></td><td>{DICTIONARY.subnetId.short} — область поиска internal-адреса</td></tr>
-  </tbody>
-</table>
-
-#### Пример запроса
-
-<CodeBlock language="bash">
-  {dedent`
-    curl 'http://localhost:18080/vpc/v1/addresses:byValue?internalIpv4Address=10.0.0.5&subnetId={subnetId}' \\
-      -H 'Authorization: Bearer <JWT>'
-  `}
-</CodeBlock>
-
-#### Пример ответа
-
-<CodeBlock language="json">
-  {dedent`
-    {
-      "id": "{addressId}",
-      "projectId": "{projectId}",
-      "name": "web-internal",
-      "internalIpv4Address": { "address": "10.0.0.5", "subnetId": "{subnetId}" },
-      "type": "INTERNAL",
-      "ipVersion": "IPV4",
-      "used": true
-    }
-  `}
-</CodeBlock>
-
-<Codes codes={['invalidArgument', 'notFound', 'permissionDenied', 'internal']} />
-
-</ApiOperation>
-
----
-
-## ListBySubnet
-
-<ApiOperation method="GET" endpoint="/vpc/v1/addresses:bySubnet">
-
-Список адресов, выделенных из указанной подсети (`subnetId` обязателен). Используется для
-ref-валидации и UI-выбора адресов в пределах конкретной `Subnet`.
-
-#### Параметры запроса
-
-<table>
-  <thead><tr><th>Параметр</th><th>Обязательность</th><th>Тип</th><th>Описание</th></tr></thead>
-  <tbody>
-    <tr><td><code>subnetId</code></td><td><strong>да</strong></td><td><code>{TYPES.string}</code></td><td>{DICTIONARY.subnetId.short}</td></tr>
-    <tr><td><code>pageSize</code></td><td>нет</td><td><code>{TYPES.int64}</code></td><td>{DICTIONARY.pageSize.short}</td></tr>
-    <tr><td><code>pageToken</code></td><td>нет</td><td><code>{TYPES.string}</code></td><td>{DICTIONARY.pageToken.short}</td></tr>
-  </tbody>
-</table>
-
-#### Пример запроса
-
-<CodeBlock language="bash">
-  {dedent`
-    curl 'http://localhost:18080/vpc/v1/addresses:bySubnet?subnetId={subnetId}' \\
-      -H 'Authorization: Bearer <JWT>'
-  `}
-</CodeBlock>
-
-#### Пример ответа
-
-<CodeBlock language="json">
-  {dedent`
-    {
-      "addresses": [
-        {
-          "id": "{addressId}",
-          "internalIpv4Address": { "address": "10.0.0.5", "subnetId": "{subnetId}" },
-          "type": "INTERNAL",
-          "ipVersion": "IPV4"
-        }
-      ],
-      "nextPageToken": ""
-    }
-  `}
-</CodeBlock>
-
-<Restrictions items={[
-  { label: 'resourceId', rules: RESTRICTIONS.resourceId },
-  { label: 'pagination', rules: RESTRICTIONS.pagination },
-]} />
-<Codes codes={['invalidArgument', 'permissionDenied', 'internal']} />
-
-</ApiOperation>
-
----
 
 ## ListOperations
 
@@ -641,7 +545,7 @@ flowchart LR
     </tr>
     <tr>
       <td>Найти адрес по значению IP</td>
-      <td><code>GetByValue</code> (для internal — с <code>subnetId</code> как областью поиска); для перечисления в пределах подсети — <code>ListBySubnet</code>.</td>
+      <td><code>List</code> с <code>projectId</code> и <code>ipAddress=&lt;IP&gt;</code>; для перечисления в пределах подсети — тот же <code>List</code> с <code>subnetId</code>.</td>
     </tr>
   </tbody>
 </table>

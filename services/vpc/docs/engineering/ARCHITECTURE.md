@@ -264,7 +264,7 @@ Pgx-адаптеры. Один файл на таблицу. Использую�
 |---|---|
 | `kacho/pg/network.go` | `NetworkRepo` |
 | `kacho/pg/subnet.go` | `SubnetRepo` (включая `SetCidrBlocks`, `SetZoneID`, `AddressesBySubnet`) |
-| `kacho/pg/address.go` | чтение/запись адреса, включая `GetByValue` и аллокацию из книги учёта |
+| `kacho/pg/address.go` | чтение/запись адреса, включая сужения списка по `subnet_id`/`ip_address` и аллокацию из книги учёта |
 | `kacho/pg/route_table.go` | `RouteTableRepo` |
 | `kacho/pg/security_group.go` | `SecurityGroupRepo` (включая `UpdateRules` с xmin-OCC, `UpdateRule`) |
 | `kacho/pg/gateway.go` | `GatewayRepo` |
@@ -855,12 +855,12 @@ selector_priority)` — резолв возвращает первый по phys
 
 | Service | RPC | Тип | Описание |
 |---|---|---|---|
-| `NetworkService` | Get, List, ListSubnets, ListSecurityGroups, ListRouteTables, ListOperations | sync | Чтения |
+| `NetworkService` | Get, List, ListOperations | sync | Чтения |
 | `NetworkService` | AddCidrBlocks, RemoveCidrBlocks | async | Правка объявленного супернета сети |
 | `NetworkService` | Create, Update, Delete | async | Мутации, возвращают `Operation` |
 | `SubnetService` | Get, List, ListOperations, ListUsedAddresses | sync | Чтения |
 | `SubnetService` | Create, Update, Delete, AddCidrBlocks, RemoveCidrBlocks | async | Мутации |
-| `AddressService` | Get, List (фильтр `subnet_id` матчит `internal_ipv4`/`internal_ipv6`), GetByValue, ListBySubnet, ListOperations (переживает удаление) | sync | Чтения |
+| `AddressService` | Get, List (сужения: `subnet_id` матчит `internal_ipv4`/`internal_ipv6`, `ip_address` — значение адреса обеих семей), ListOperations (переживает удаление) | sync | Чтения |
 | `AddressService` | Create (+ `internal_ipv6_address_spec`), Update, Delete (used-адрес у NIC → `FailedPrecondition`) | async | Мутации |
 | `SubnetService` (доп.) | AddCidrBlocks / RemoveCidrBlocks принимают обе семьи (`ipv4_cidr_blocks`/`ipv6_cidr_blocks`); на Create — только якоря `ipv4_cidr_primary`/`ipv6_cidr_primary`, immutable; в `Update` CIDR-полей нет (номера зарезервированы) | async | — |
 | `NetworkInterfaceService` | Get, List, ListOperations (переживает удаление) | sync | Чтения |
