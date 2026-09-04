@@ -17,9 +17,9 @@
 
 | Сервис | RPC | Что делает |
 |---|---|---|
-| `NetworkService` | CRUD + AddCidrBlocks + RemoveCidrBlocks + ListSubnets + ListSecurityGroups + ListRouteTables + ListOperations | публичная проекция `Network` инфра-полей не несёт; `vrf_id` отдаётся только `InternalNetworkService`. `Network` объявляет супернет (`ipv4_cidr_blocks`/`ipv6_cidr_blocks`) и системный `default_route_table_id` |
+| `NetworkService` | CRUD + AddCidrBlocks + RemoveCidrBlocks + ListOperations | публичная проекция `Network` инфра-полей не несёт; `vrf_id` отдаётся только `InternalNetworkService`. `Network` объявляет супернет (`ipv4_cidr_blocks`/`ipv6_cidr_blocks`) и системный `default_route_table_id` |
 | `SubnetService` | CRUD + AddCidrBlocks + RemoveCidrBlocks + ListUsedAddresses + ListOperations | `placement_type` обязателен (`ZONAL`→`zone_id` / `REGIONAL`→`region_id`), immutable; CIDR на Create — **якорь** `ipv4_cidr_primary`/`ipv6_cidr_primary` (immutable), дополнительные диапазоны — только через `:add/:remove-cidr-blocks` (`ipv4_cidr_blocks`/`ipv6_cidr_blocks`); в `UpdateSubnet` CIDR-полей нет вовсе — номера зарезервированы |
-| `AddressService` | CRUD + GetByValue + ListBySubnet + ListOperations | `CreateAddressRequest` получил `internal_ipv6_address_spec`; `ListAddressesRequest.subnet_id` матчит `internal_ipv4`/`internal_ipv6`; `Delete` адреса в использовании у NIC → `FailedPrecondition` |
+| `AddressService` | CRUD + ListOperations | `CreateAddressRequest` получил `internal_ipv6_address_spec`; `ListAddressesRequest.subnet_id` матчит `internal_ipv4`/`internal_ipv6`; `Delete` адреса в использовании у NIC → `FailedPrecondition` |
 | `RouteTableService` | CRUD + ListOperations. Три verb-RPC — AddRoutes / RemoveRoutes / UpdateRoute — **объявлены контрактом, но не обслуживаются**: вызов получает `UNIMPLEMENTED`. Гранулярной правкой маршрутов пользоваться нельзя; рабочий путь — полная замена набора через `Update` с `update_mask: ["static_routes"]` | Почему так и при каком условии запись снимается — [07-known-divergences.md](07-known-divergences.md) §26. Здесь намеренно назван **исход** (что получит вызывающий), а не механизм отказа: механизм у записи один владелец, и два места об одном предмете разошлись бы на первой же правке |
 | `SecurityGroupService` | CRUD + UpdateRules + UpdateRule + ListOperations | `network_id` **обязателен** на Create (пустой → `InvalidArgument "network_id required"`, синхронно в use-case) и immutable после него; `List?filter=network_id="<id>"` |
 | `GatewayService` | CRUD + ListOperations | |
@@ -54,10 +54,9 @@ PATCH  /vpc/v1/networks/{network_id}                 → Operation
 DELETE /vpc/v1/networks/{network_id}                 → Operation
 POST   /vpc/v1/networks/{network_id}:add-cidr-blocks    → Operation  # расширение супернета
 POST   /vpc/v1/networks/{network_id}:remove-cidr-blocks → Operation
-GET    /vpc/v1/networks/{network_id}/subnets
-GET    /vpc/v1/networks/{network_id}/security_groups   # snake_case в child-list!
-GET    /vpc/v1/networks/{network_id}/route_tables      # snake_case!
 GET    /vpc/v1/networks/{network_id}/operations
+#   дочерних списков у сети НЕТ: подсети, группы безопасности и таблицы маршрутов
+#   перечисляются своими коллекционными списками с сужением filter=network_id="<id>"
 
 # Subnet
 GET/POST/PATCH/DELETE /vpc/v1/subnets[/{id}]
@@ -70,9 +69,8 @@ POST   /vpc/v1/subnets/{subnet_id}:remove-cidr-blocks # body: {ipv4CidrBlocks?, 
 
 # Address
 GET/POST/PATCH/DELETE /vpc/v1/addresses[/{id}]   # POST принимает internalIpv6AddressSpec
-GET    /vpc/v1/addresses:byValue?value=<ip>
-GET    /vpc/v1/addresses:bySubnet?subnetId=<id>  # ListBySubnet
 GET    /vpc/v1/addresses?subnetId=<id>           # фильтр по internal_ipv4 ИЛИ internal_ipv6
+GET    /vpc/v1/addresses?ipAddress=<ip>          # «чей это адрес» — обе семьи, замена снятому GetByValue
 
 # NetworkInterface (top-level camelCase networkInterfaces)
 GET/POST/PATCH/DELETE /vpc/v1/networkInterfaces[/{id}]   # POST: subnet_id; v4_address_ids/v6_address_ids/security_group_ids опциональны
@@ -91,8 +89,8 @@ GET/POST/PATCH/DELETE /vpc/v1/gateways[/{id}]
 ```
 
 > ⚠️ REST-пути неоднородны (наследие proto-аннотаций, proto-decided; см.
-> [`07-known-divergences.md`](07-known-divergences.md)): child-list `security_groups`/`route_tables` —
-> snake_case, top-level `routeTables`/`securityGroups`/`addressPools` — camelCase,
+> [`07-known-divergences.md`](07-known-divergences.md)): top-level
+> `routeTables`/`securityGroups`/`addressPools` — camelCase,
 > custom-методы — kebab с двоеточием (`:add-cidr-blocks`),
 > `OperationService.Get` — `/operations/{id}` (без `/vpc/v1/`).
 
