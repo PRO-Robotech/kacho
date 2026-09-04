@@ -1,5 +1,5 @@
 // Copyright (c) PRO-Robotech
-// SPDX-License-Identifier: BUSL-1.1
+// SPDX-License-Identifier: AGPL-3.0-or-later
 
 // identity_merge_integration_test.go — свойства ЛИЧНОСТИ, ЧЬИХ ЧЛЕНСТВ БОЛЬШЕ
 // ОДНОГО (задача kacho#472, стадия S2 перехода IAM-ID-1).

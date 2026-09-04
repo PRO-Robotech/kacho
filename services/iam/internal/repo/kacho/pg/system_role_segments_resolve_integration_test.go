@@ -1,5 +1,5 @@
 // Copyright (c) PRO-Robotech
-// SPDX-License-Identifier: BUSL-1.1
+// SPDX-License-Identifier: AGPL-3.0-or-later
 
 // system_role_segments_resolve_integration_test.go — ИСХОД приведения правил
 // системных ролей к словарю глаголов, утверждённый на конечном состоянии базы.

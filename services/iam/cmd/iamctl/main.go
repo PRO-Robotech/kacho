@@ -1,5 +1,5 @@
 // Copyright (c) PRO-Robotech
-// SPDX-License-Identifier: BUSL-1.1
+// SPDX-License-Identifier: AGPL-3.0-or-later
 
 // Команда iamctl — инструмент оператора над каталогом прав модуля: пять
 // действий, не двенадцать (задача #1036).

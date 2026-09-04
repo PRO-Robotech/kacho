@@ -1,5 +1,5 @@
 // Copyright (c) PRO-Robotech
-// SPDX-License-Identifier: BUSL-1.1
+// SPDX-License-Identifier: AGPL-3.0-or-later
 
 // migration_0005_integration_test.go — инварианты грамматики прав RBAC v2 и
 // области выдачи (`access_bindings.scope`).

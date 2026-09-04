@@ -1,5 +1,5 @@
 // Copyright (c) PRO-Robotech
-// SPDX-License-Identifier: BUSL-1.1
+// SPDX-License-Identifier: AGPL-3.0-or-later
 
 // list_scan_observability_test.go — величина «сколько строк рассмотрено ради
 // одной страницы» снимается В USE-CASE, на выходе из цикла догрузки (#653).

@@ -1,5 +1,5 @@
 // Copyright (c) PRO-Robotech
-// SPDX-License-Identifier: BUSL-1.1
+// SPDX-License-Identifier: AGPL-3.0-or-later
 
 // internal_verb_renders_no_relation_test.go — действие ВНУТРЕННЕЙ плоскости не
 // порождает отношения модели, а действие тенантской — порождает.

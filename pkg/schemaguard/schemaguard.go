@@ -1,5 +1,5 @@
 // Copyright (c) PRO-Robotech
-// SPDX-License-Identifier: BUSL-1.1
+// SPDX-License-Identifier: Apache-2.0
 
 // Package schemaguard — ЧИТАТЕЛЬ точки невозврата НА ПУТИ СТАРТА: слот
 // готовности отвечает «не готов», когда схема под образом не та, которую образ

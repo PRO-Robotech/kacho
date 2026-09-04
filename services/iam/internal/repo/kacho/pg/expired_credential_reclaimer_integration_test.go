@@ -1,5 +1,5 @@
 // Copyright (c) PRO-Robotech
-// SPDX-License-Identifier: BUSL-1.1
+// SPDX-License-Identifier: AGPL-3.0-or-later
 
 // expired_credential_reclaimer_integration_test.go — ПЕРВАЯ ПОЛОВИНА задачи
 // #1264: истёкшее удостоверение перестаёт занимать место под потолком без

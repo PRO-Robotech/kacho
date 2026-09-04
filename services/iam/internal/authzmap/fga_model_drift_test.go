@@ -1,5 +1,5 @@
 // Copyright (c) PRO-Robotech
-// SPDX-License-Identifier: BUSL-1.1
+// SPDX-License-Identifier: AGPL-3.0-or-later
 
 // fga_model_drift_test.go — CI drift-gate (system-design W-1, KAC #177
 // follow-up). Closes the fail-open risk that re-opened #177: the FGA emitter

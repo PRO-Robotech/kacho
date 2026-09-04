@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 # Copyright (c) PRO-Robotech
-# SPDX-License-Identifier: BUSL-1.1
+# SPDX-License-Identifier: AGPL-3.0-or-later
 
 # model-canon-check.sh — блоки модели доступов сверяются с манифестами модулей
 # ПОБАЙТОВО: обход закрытого набора порождает блоки типов из манифеста каждого

@@ -1,5 +1,5 @@
 // Copyright (c) PRO-Robotech
-// SPDX-License-Identifier: BUSL-1.1
+// SPDX-License-Identifier: AGPL-3.0-or-later
 
 // usecase_revoke_idempotent_test.go — BAT-1-44 на УРОВНЕ ГЛАГОЛА.
 //

@@ -1,5 +1,5 @@
 // Copyright (c) PRO-Robotech
-// SPDX-License-Identifier: BUSL-1.1
+// SPDX-License-Identifier: AGPL-3.0-or-later
 
 // register_module_internal_only_test.go — `IAM-MA-1-26`: служба
 // `InternalModuleService` НЕ достижима на публичном слушателе (запрет #6).

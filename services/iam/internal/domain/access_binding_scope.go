@@ -1,5 +1,5 @@
 // Copyright (c) PRO-Robotech
-// SPDX-License-Identifier: BUSL-1.1
+// SPDX-License-Identifier: AGPL-3.0-or-later
 
 // access_binding_scope.go — typed Scope enum for the RBAC v2 AccessBinding
 // shape. The Scope tier anchors the binding in the

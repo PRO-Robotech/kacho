@@ -1,5 +1,5 @@
 // Copyright (c) PRO-Robotech
-// SPDX-License-Identifier: BUSL-1.1
+// SPDX-License-Identifier: AGPL-3.0-or-later
 
 // Package listvisibility_test holds the RED-phase probes for
 // docs/specs/sub-phase-IAM-645-list-page-is-a-page-of-the-visible-acceptance.md

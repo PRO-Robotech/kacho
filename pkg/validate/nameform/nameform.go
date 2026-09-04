@@ -1,5 +1,5 @@
 // Copyright (c) PRO-Robotech
-// SPDX-License-Identifier: BUSL-1.1
+// SPDX-License-Identifier: Apache-2.0
 
 // Package nameform несёт ЕДИНСТВЕННУЮ форму имени ресурса Kachō и чистый
 // предикат к ней — без транспорта.

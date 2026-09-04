@@ -1,5 +1,5 @@
 // Copyright (c) PRO-Robotech
-// SPDX-License-Identifier: BUSL-1.1
+// SPDX-License-Identifier: AGPL-3.0-or-later
 
 // retention_sweep_integration_test.go — уборка таблиц iam, чей рост задаёт
 // внешний (приёмка `retention-sweep-has-a-caller.md`, сценарии RET-SWP-01…03,

@@ -1,5 +1,5 @@
 // Copyright (c) PRO-Robotech
-// SPDX-License-Identifier: BUSL-1.1
+// SPDX-License-Identifier: Apache-2.0
 
 // Package bootgate is the fail-closed boot gate for services that must have a
 // working IAM-register delivery path before they accept mutating Creates.

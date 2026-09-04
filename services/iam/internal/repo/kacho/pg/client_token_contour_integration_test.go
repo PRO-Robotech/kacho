@@ -1,5 +1,5 @@
 // Copyright (c) PRO-Robotech
-// SPDX-License-Identifier: BUSL-1.1
+// SPDX-License-Identifier: AGPL-3.0-or-later
 
 // client_token_contour_integration_test.go — положительный путь ЦЕЛИКОМ, против
 // настоящей базы (приёмка F2, сценарии F2-39 и F2-40).

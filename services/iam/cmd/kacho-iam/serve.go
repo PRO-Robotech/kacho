@@ -1,5 +1,5 @@
 // Copyright (c) PRO-Robotech
-// SPDX-License-Identifier: BUSL-1.1
+// SPDX-License-Identifier: AGPL-3.0-or-later
 
 // serve.go — runServe: full lifecycle of the kacho-iam binary.
 // Wires pools → repos → services → gRPC servers + HTTP listeners + drainers,

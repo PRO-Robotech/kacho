@@ -1,5 +1,5 @@
 // Copyright (c) PRO-Robotech
-// SPDX-License-Identifier: BUSL-1.1
+// SPDX-License-Identifier: AGPL-3.0-or-later
 
 // membership_carries_rights_integration_test.go — стадия S2 перехода IAM-ID-1
 // (задача kacho#472), сценарий IAM-ID-1-60: осиротить право снятием членства

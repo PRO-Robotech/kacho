@@ -1,5 +1,5 @@
 // Copyright (c) PRO-Robotech
-// SPDX-License-Identifier: BUSL-1.1
+// SPDX-License-Identifier: AGPL-3.0-or-later
 
 // wiring.go — composition-builder for the kacho-iam service bundle.
 // Holds the `services` struct (single composition point), buildServices

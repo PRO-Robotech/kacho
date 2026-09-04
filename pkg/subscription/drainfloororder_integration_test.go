@@ -1,5 +1,5 @@
 // Copyright (c) PRO-Robotech
-// SPDX-License-Identifier: BUSL-1.1
+// SPDX-License-Identifier: Apache-2.0
 
 // drainfloororder_integration_test.go — ПОЛ БЕРЁТСЯ НЕ РАНЬШЕ СТРАНИЦЫ
 // (задача #1764).

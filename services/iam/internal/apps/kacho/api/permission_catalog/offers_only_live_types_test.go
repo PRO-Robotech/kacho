@@ -1,5 +1,5 @@
 // Copyright (c) PRO-Robotech
-// SPDX-License-Identifier: BUSL-1.1
+// SPDX-License-Identifier: AGPL-3.0-or-later
 
 // offers_only_live_types_test.go — витрина не предлагает того, на что ключ
 // выдачу не примет (#1976).

@@ -1,5 +1,5 @@
 // Copyright (c) PRO-Robotech
-// SPDX-License-Identifier: BUSL-1.1
+// SPDX-License-Identifier: Apache-2.0
 
 // provider_gate_test.go — сценарий F4d-03 приёмки Ф4д: перечень законных
 // значений посадки личности ВЫВОДИТСЯ из типа и объявлен ровно один раз на всё

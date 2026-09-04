@@ -1,5 +1,5 @@
 // Copyright (c) PRO-Robotech
-// SPDX-License-Identifier: BUSL-1.1
+// SPDX-License-Identifier: AGPL-3.0-or-later
 
 // removing_the_identity_is_not_an_account_right_test.go — гейт на КЛАСС:
 // СТЕРЕТЬ СТРОКУ ЛИЧНОСТИ не вправе тот, кто распоряжается аккаунтом.

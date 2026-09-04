@@ -1,5 +1,5 @@
 // Copyright (c) PRO-Robotech
-// SPDX-License-Identifier: BUSL-1.1
+// SPDX-License-Identifier: AGPL-3.0-or-later
 
 // membership_removal_integration_test.go — исключение человека из аккаунта
 // (#1127): что оно снимает, чего не трогает и что его не отменяет.

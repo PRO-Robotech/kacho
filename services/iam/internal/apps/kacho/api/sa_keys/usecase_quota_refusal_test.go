@@ -1,5 +1,5 @@
 // Copyright (c) PRO-Robotech
-// SPDX-License-Identifier: BUSL-1.1
+// SPDX-License-Identifier: AGPL-3.0-or-later
 
 // usecase_quota_refusal_test.go — отказ учёта доезжает до вызывающего ПАРОЙ
 // «код + признак» (задача #1191, приёмка сценарий CRED-CAP-19).

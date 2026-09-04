@@ -1,5 +1,5 @@
 // Copyright (c) PRO-Robotech
-// SPDX-License-Identifier: BUSL-1.1
+// SPDX-License-Identifier: AGPL-3.0-or-later
 
 // build_test.go — сборка токен-эндпоинта отказывает на вырожденной величине
 // (приёмка F2, F2-22 сторона стража, F2-43 сторона стража, §9.4 предел времени).

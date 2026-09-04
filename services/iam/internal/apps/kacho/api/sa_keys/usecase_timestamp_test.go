@@ -1,5 +1,5 @@
 // Copyright (c) PRO-Robotech
-// SPDX-License-Identifier: BUSL-1.1
+// SPDX-License-Identifier: AGPL-3.0-or-later
 
 // usecase_timestamp_test.go — Wave T conformance: SAOAuthClient proto-response
 // timestamps (CreatedAt / ExpiresAt / LastUsedAt) must be truncated to whole

@@ -1,5 +1,5 @@
 // Copyright (c) PRO-Robotech
-// SPDX-License-Identifier: BUSL-1.1
+// SPDX-License-Identifier: AGPL-3.0-or-later
 
 // subject_change_service_test.go — unit tests for SubjectChangeService clamp logic.
 // Uses a fake SubjectChangeReader (records the limit argument received) so no

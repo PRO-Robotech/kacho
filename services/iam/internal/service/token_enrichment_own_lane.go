@@ -1,5 +1,5 @@
 // Copyright (c) PRO-Robotech
-// SPDX-License-Identifier: BUSL-1.1
+// SPDX-License-Identifier: AGPL-3.0-or-later
 
 // token_enrichment_own_lane.go — вторая точка входа в ОДНО объявление состава
 // утверждений (задача #898, приёмка F2 §2.11).

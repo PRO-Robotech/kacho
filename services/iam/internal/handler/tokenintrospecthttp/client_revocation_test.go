@@ -1,5 +1,5 @@
 // Copyright (c) PRO-Robotech
-// SPDX-License-Identifier: BUSL-1.1
+// SPDX-License-Identifier: AGPL-3.0-or-later
 
 // client_revocation_test.go — второй ключ отсечки: КЛИЕНТ (приёмка F2, F2-32,
 // сторона авторитета).

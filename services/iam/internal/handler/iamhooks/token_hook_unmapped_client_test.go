@@ -1,5 +1,5 @@
 // Copyright (c) PRO-Robotech
-// SPDX-License-Identifier: BUSL-1.1
+// SPDX-License-Identifier: AGPL-3.0-or-later
 
 // token_hook_unmapped_client_test.go — a token request whose credential IS the
 // OAuth client must resolve to a kacho principal or be refused.

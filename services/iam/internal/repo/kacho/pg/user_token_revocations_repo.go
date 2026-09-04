@@ -1,5 +1,5 @@
 // Copyright (c) PRO-Robotech
-// SPDX-License-Identifier: BUSL-1.1
+// SPDX-License-Identifier: AGPL-3.0-or-later
 
 // user_token_revocations_repo.go — pool-scoped repo for the per-user
 // "revoke-all-before" cutoff (migration 0012). Backs admin ForceLogout +

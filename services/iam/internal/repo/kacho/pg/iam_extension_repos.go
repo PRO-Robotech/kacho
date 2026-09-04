@@ -1,5 +1,5 @@
 // Copyright (c) PRO-Robotech
-// SPDX-License-Identifier: BUSL-1.1
+// SPDX-License-Identifier: AGPL-3.0-or-later
 
 // iam_extension_repos.go — repository for the non-core IAM extension
 // service_account_oauth_clients (SAKey — Class A static keys via Hydra).

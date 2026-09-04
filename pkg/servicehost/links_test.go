@@ -1,5 +1,5 @@
 // Copyright (c) PRO-Robotech
-// SPDX-License-Identifier: BUSL-1.1
+// SPDX-License-Identifier: Apache-2.0
 
 // links_test.go — доказательство того, что пять измерений контура ПРОВЯЗАНЫ, а
 // не объявлены.

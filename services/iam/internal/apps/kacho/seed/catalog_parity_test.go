@@ -1,5 +1,5 @@
 // Copyright (c) PRO-Robotech
-// SPDX-License-Identifier: BUSL-1.1
+// SPDX-License-Identifier: AGPL-3.0-or-later
 
 // catalog_parity_test.go — СВОЯ проба стража старта (приёмка
 // services/iam/docs/engineering/acceptance/module-withdrawal-is-described.md,

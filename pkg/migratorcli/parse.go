@@ -1,5 +1,5 @@
 // Copyright (c) PRO-Robotech
-// SPDX-License-Identifier: BUSL-1.1
+// SPDX-License-Identifier: Apache-2.0
 
 // Package migratorcli — разбор командной строки мигратора, ОДИН на все точки
 // наката прямой формы.

@@ -1,5 +1,5 @@
 // Copyright (c) PRO-Robotech
-// SPDX-License-Identifier: BUSL-1.1
+// SPDX-License-Identifier: AGPL-3.0-or-later
 
 // Package operationresolver implements the IAM operations.Resolver: given the
 // metadata of an orphaned operation (a row left done=false because the worker

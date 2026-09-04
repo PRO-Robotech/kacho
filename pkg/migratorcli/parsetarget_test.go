@@ -1,5 +1,5 @@
 // Copyright (c) PRO-Robotech
-// SPDX-License-Identifier: BUSL-1.1
+// SPDX-License-Identifier: Apache-2.0
 
 // parsetarget_test.go — разбор `--target` строг на ОБЕИХ осях, и это union
 // строгостей двух прежних форм, а не пересечение.

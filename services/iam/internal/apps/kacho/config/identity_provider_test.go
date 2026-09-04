@@ -1,5 +1,5 @@
 // Copyright (c) PRO-Robotech
-// SPDX-License-Identifier: BUSL-1.1
+// SPDX-License-Identifier: AGPL-3.0-or-later
 
 // identity_provider_test.go — сценарии F4d-01 и F4d-02 приёмки Ф4д: поле
 // посадки личности есть ЗАКРЫТЫЙ словарь без умолчания в коде.

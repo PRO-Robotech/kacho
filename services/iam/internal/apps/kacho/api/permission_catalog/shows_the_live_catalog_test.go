@@ -1,5 +1,5 @@
 // Copyright (c) PRO-Robotech
-// SPDX-License-Identifier: BUSL-1.1
+// SPDX-License-Identifier: AGPL-3.0-or-later
 
 // shows_the_live_catalog_test.go — витрина разрешений отвечает СТРОКАМИ каталога,
 // а не перечнем, порождённым сборкой (#1976, #1816).

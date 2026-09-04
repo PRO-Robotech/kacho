@@ -1,5 +1,5 @@
 // Copyright (c) PRO-Robotech
-// SPDX-License-Identifier: BUSL-1.1
+// SPDX-License-Identifier: AGPL-3.0-or-later
 
 // plane_agreement_has_a_subject_test.go — сверка плоскости на ДЕРЕВЕ судит
 // различающийся вход, а не сравнивает `false` с `false`.

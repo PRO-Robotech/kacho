@@ -1,5 +1,5 @@
 // Copyright (c) PRO-Robotech
-// SPDX-License-Identifier: BUSL-1.1
+// SPDX-License-Identifier: AGPL-3.0-or-later
 
 // assertion_issuance_harness_test.go — общая оснастка проб выдачи по учётным
 // данным клиента против НАСТОЯЩЕЙ базы (приёмка F2, сценарии F2-31, F2-32).

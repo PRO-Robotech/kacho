@@ -1,5 +1,5 @@
 // Copyright (c) PRO-Robotech
-// SPDX-License-Identifier: BUSL-1.1
+// SPDX-License-Identifier: AGPL-3.0-or-later
 
 // Package auditlistfilter states how kacho-iam is laid out for the public-List
 // gate. The analysis itself — and why it parses instead of grepping — lives in

@@ -1,5 +1,5 @@
 // Copyright (c) PRO-Robotech
-// SPDX-License-Identifier: BUSL-1.1
+// SPDX-License-Identifier: AGPL-3.0-or-later
 
 // parity_test.go — держатель #1891: манифест модуля ОБЪЯВЛЯЕТ системные роли,
 // которые у модуля есть, и объявление сходится с живой базой.

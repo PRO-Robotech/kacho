@@ -1,5 +1,5 @@
 // Copyright (c) PRO-Robotech
-// SPDX-License-Identifier: BUSL-1.1
+// SPDX-License-Identifier: AGPL-3.0-or-later
 
 // grantanchor_test.go — ЯКОРЬ выдачи посева судится ПО ЗНАЧЕНИЮ, и одинаково
 // для обеих форм выдачи (задача продукта #1953).

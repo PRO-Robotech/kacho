@@ -1,5 +1,5 @@
 // Copyright (c) PRO-Robotech
-// SPDX-License-Identifier: BUSL-1.1
+// SPDX-License-Identifier: AGPL-3.0-or-later
 
 // reading_a_persons_session_history_test.go — гейт на КЛАСС: ИСТОРИЮ СЕССИЙ
 // ЧЕЛОВЕКА не читает тот, кто распоряжается его аккаунтом.

@@ -1,5 +1,5 @@
 // Copyright (c) PRO-Robotech
-// SPDX-License-Identifier: BUSL-1.1
+// SPDX-License-Identifier: AGPL-3.0-or-later
 
 // provider_compensation_wiring.go — дренаж очереди компенсаций частично
 // исполненной саги «зарегистрировать OAuth-клиента у провайдера → закоммитить

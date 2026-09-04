@@ -1,5 +1,5 @@
 // Copyright (c) PRO-Robotech
-// SPDX-License-Identifier: BUSL-1.1
+// SPDX-License-Identifier: Apache-2.0
 
 // Package operations — Long-Running Operations primitive: bounded Worker для
 // async-исполнения мутаций + Repo для durable-перехода `done=false → true`.

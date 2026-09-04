@@ -1,5 +1,5 @@
 // Copyright (c) PRO-Robotech
-// SPDX-License-Identifier: BUSL-1.1
+// SPDX-License-Identifier: AGPL-3.0-or-later
 
 // expandable_derived_test.go — поверхность развёртки доступа ВЫВОДИТСЯ из наборов
 // типов, а не перечисляется отдельно.

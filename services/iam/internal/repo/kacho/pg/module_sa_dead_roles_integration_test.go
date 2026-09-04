@@ -1,5 +1,5 @@
 // Copyright (c) PRO-Robotech
-// SPDX-License-Identifier: BUSL-1.1
+// SPDX-License-Identifier: AGPL-3.0-or-later
 
 // module_sa_dead_roles_integration_test.go — гейт на снятие МЁРТВЫХ объявлений
 // ШЕСТИ служебных учёток модулей, и — отдельным утверждением — на сохранность

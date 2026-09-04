@@ -1,5 +1,5 @@
 // Copyright (c) PRO-Robotech
-// SPDX-License-Identifier: BUSL-1.1
+// SPDX-License-Identifier: AGPL-3.0-or-later
 
 // keystore_test.go — сценарии F1-01, F1-02, F1-04, F1-05 приёмки F1.
 package signingkeys_test

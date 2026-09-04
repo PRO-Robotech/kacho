@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 # Copyright (c) PRO-Robotech
-# SPDX-License-Identifier: BUSL-1.1
+# SPDX-License-Identifier: AGPL-3.0-or-later
 
 # audit-list-filter.sh — CI gate for kacho-iam's listing surface: every method that
 # hands a page to a caller must narrow it, and must declare HOW.

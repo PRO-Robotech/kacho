@@ -1,5 +1,5 @@
 // Copyright (c) PRO-Robotech
-// SPDX-License-Identifier: BUSL-1.1
+// SPDX-License-Identifier: Apache-2.0
 
 // Package validate содержит общие валидаторы полей API Kachō, общие для всех
 // сервисов (Folder.Name, Network.Name, Subnet.Name и т. п.).

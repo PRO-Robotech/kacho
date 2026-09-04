@@ -1,5 +1,5 @@
 // Copyright (c) PRO-Robotech
-// SPDX-License-Identifier: BUSL-1.1
+// SPDX-License-Identifier: AGPL-3.0-or-later
 
 // cascade_from_committed_rows_integration_test.go — три уровня супер-доступа
 // РЕШАЮТСЯ ИЗ ЗАКОММИЧЕННЫХ СТРОК, на той поверхности, которую спрашивает край.

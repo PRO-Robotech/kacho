@@ -1,5 +1,5 @@
 // Copyright (c) PRO-Robotech
-// SPDX-License-Identifier: BUSL-1.1
+// SPDX-License-Identifier: AGPL-3.0-or-later
 
 // usecase_federation_out_test.go — Phase 3c Federation OUT: end-to-end
 // IssueSAKeyUseCase.Execute() coverage that asserts caller-supplied audience

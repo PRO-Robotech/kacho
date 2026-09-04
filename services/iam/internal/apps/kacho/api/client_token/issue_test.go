@@ -1,5 +1,5 @@
 // Copyright (c) PRO-Robotech
-// SPDX-License-Identifier: BUSL-1.1
+// SPDX-License-Identifier: AGPL-3.0-or-later
 
 // issue_test.go — выдача по учётным данным клиента (приёмка F2, §11 E, G).
 package client_token_test

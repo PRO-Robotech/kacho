@@ -1,5 +1,5 @@
 // Copyright (c) PRO-Robotech
-// SPDX-License-Identifier: BUSL-1.1
+// SPDX-License-Identifier: AGPL-3.0-or-later
 
 // signing_wrapping_key_refusal_test.go — текст отказа старта при смене ключа
 // обёртки (задача #1062).

@@ -1,5 +1,5 @@
 // Copyright (c) PRO-Robotech
-// SPDX-License-Identifier: BUSL-1.1
+// SPDX-License-Identifier: Apache-2.0
 
 // Package listnarrow — реализация сужения списочной выдачи по правам для служб,
 // чья видимость строки определяется ОДНИМ действием.

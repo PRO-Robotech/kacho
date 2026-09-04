@@ -1,5 +1,5 @@
 // Copyright (c) PRO-Robotech
-// SPDX-License-Identifier: BUSL-1.1
+// SPDX-License-Identifier: AGPL-3.0-or-later
 
 // tuples_module_sa_branch_test.go — ПРОБА, устанавливающая, В КАКУЮ ВЕТВЬ
 // эмиттера уходит роль служебной учётки модуля до и после мыслимой правки.

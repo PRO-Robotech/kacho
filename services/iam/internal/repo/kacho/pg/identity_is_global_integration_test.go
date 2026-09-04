@@ -1,5 +1,5 @@
 // Copyright (c) PRO-Robotech
-// SPDX-License-Identifier: BUSL-1.1
+// SPDX-License-Identifier: AGPL-3.0-or-later
 
 // identity_is_global_integration_test.go — писатели строки пользователя
 // перестают опираться на парные ключи с аккаунтом (IAM-ID-1, задача kacho#981).

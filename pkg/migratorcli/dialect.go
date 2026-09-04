@@ -1,5 +1,5 @@
 // Copyright (c) PRO-Robotech
-// SPDX-License-Identifier: BUSL-1.1
+// SPDX-License-Identifier: Apache-2.0
 
 // dialect.go — шаг «открыть базу, дождаться её готовности и настроить goose под
 // диалект», объявленный ОДИН раз на дерево.

@@ -1,5 +1,5 @@
 // Copyright (c) PRO-Robotech
-// SPDX-License-Identifier: BUSL-1.1
+// SPDX-License-Identifier: AGPL-3.0-or-later
 
 // Command audit-list-filter is the CI entry point of kacho-iam's public-List gate.
 // What is checked lives in package listfiltergate; how this service is laid out

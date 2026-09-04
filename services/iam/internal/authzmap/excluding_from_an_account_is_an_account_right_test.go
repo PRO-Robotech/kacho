@@ -1,5 +1,5 @@
 // Copyright (c) PRO-Robotech
-// SPDX-License-Identifier: BUSL-1.1
+// SPDX-License-Identifier: AGPL-3.0-or-later
 
 // excluding_from_an_account_is_an_account_right_test.go — гейт на КЛАСС:
 // ИСКЛЮЧИТЬ ЧЕЛОВЕКА ИЗ СВОЕГО АККАУНТА — право уровня АККАУНТА, и оно есть

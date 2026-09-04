@@ -1,5 +1,5 @@
 // Copyright (c) PRO-Robotech
-// SPDX-License-Identifier: BUSL-1.1
+// SPDX-License-Identifier: AGPL-3.0-or-later
 
 // service_tx.go — materializes the service layer's opaque transaction handle
 // (service.Tx) back into a concrete *pgx.Tx inside repo adapters.

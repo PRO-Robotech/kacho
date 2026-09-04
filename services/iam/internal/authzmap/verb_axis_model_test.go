@@ -1,5 +1,5 @@
 // Copyright (c) PRO-Robotech
-// SPDX-License-Identifier: BUSL-1.1
+// SPDX-License-Identifier: AGPL-3.0-or-later
 
 // verb_axis_model_test.go — ось ГЛАГОЛОВ привязана к модели ПО КАЖДОМУ ТИПУ, по
 // образцу TestDrift_GuardMatchesModel, который так же привязывает ось ТИПОВ.

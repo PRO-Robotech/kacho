@@ -1,5 +1,5 @@
 // Copyright (c) PRO-Robotech
-// SPDX-License-Identifier: BUSL-1.1
+// SPDX-License-Identifier: AGPL-3.0-or-later
 
 // usecase_createdby_test.go — DEFECT (b) regression (#60 / UTM-12): Issue must
 // SYNC-reject an invalid `created_by_user_id` BEFORE creating the async

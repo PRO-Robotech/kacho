@@ -1,5 +1,5 @@
 // Copyright (c) PRO-Robotech
-// SPDX-License-Identifier: BUSL-1.1
+// SPDX-License-Identifier: AGPL-3.0-or-later
 
 // user_pool_repo.go — pool-scoped read-only adapter для UserLookupPort
 // (used by stateless hook handlers).

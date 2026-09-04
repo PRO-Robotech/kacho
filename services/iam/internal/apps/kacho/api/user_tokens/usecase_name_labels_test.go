@@ -1,5 +1,5 @@
 // Copyright (c) PRO-Robotech
-// SPDX-License-Identifier: BUSL-1.1
+// SPDX-License-Identifier: AGPL-3.0-or-later
 
 // usecase_name_labels_test.go — unit-тесты create-only name + labels на
 // user-token Issue (маппинг проходит в persisted row + proto-response) и

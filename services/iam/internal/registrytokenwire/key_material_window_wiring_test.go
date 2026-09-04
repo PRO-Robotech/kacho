@@ -1,5 +1,5 @@
 // Copyright (c) PRO-Robotech
-// SPDX-License-Identifier: BUSL-1.1
+// SPDX-License-Identifier: AGPL-3.0-or-later
 
 // key_material_window_wiring_test.go — ОКНО ПЕРЕХОДА #1143 ДОЕЗЖАЕТ ДО ПОЛОСЫ.
 //

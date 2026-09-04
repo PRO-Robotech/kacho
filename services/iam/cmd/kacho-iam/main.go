@@ -1,5 +1,5 @@
 // Copyright (c) PRO-Robotech
-// SPDX-License-Identifier: BUSL-1.1
+// SPDX-License-Identifier: AGPL-3.0-or-later
 
 // Package main — single-purpose binary `kacho-iam`.
 // Этот binary обслуживает только `serve` (gRPC API + internal endpoint);

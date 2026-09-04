@@ -1,5 +1,5 @@
 // Copyright (c) PRO-Robotech
-// SPDX-License-Identifier: BUSL-1.1
+// SPDX-License-Identifier: AGPL-3.0-or-later
 
 // federated_grant_test.go — эндпоинт принимает федеративную выдачу (задача
 // #1124, RFC 7523 §2.1).

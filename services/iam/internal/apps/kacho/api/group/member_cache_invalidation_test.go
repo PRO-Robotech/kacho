@@ -1,5 +1,5 @@
 // Copyright (c) PRO-Robotech
-// SPDX-License-Identifier: BUSL-1.1
+// SPDX-License-Identifier: AGPL-3.0-or-later
 
 // member_cache_invalidation_test.go — membership change must invalidate the
 // member's cached verdicts, not only rewrite the relation store.

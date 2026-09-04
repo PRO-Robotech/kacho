@@ -1,5 +1,5 @@
 // Copyright (c) PRO-Robotech
-// SPDX-License-Identifier: BUSL-1.1
+// SPDX-License-Identifier: AGPL-3.0-or-later
 
 // registry_token_audience_guard_test.go — страж старта докерной полосы выдачи
 // (задача #1184).

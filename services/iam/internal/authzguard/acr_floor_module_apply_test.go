@@ -1,5 +1,5 @@
 // Copyright (c) PRO-Robotech
-// SPDX-License-Identifier: BUSL-1.1
+// SPDX-License-Identifier: AGPL-3.0-or-later
 
 // acr_floor_module_apply_test.go — ступень подтверждения личности у
 // `InternalModuleService/Apply` ДЕЙСТВУЕТ, а не объявлена (задача #1991, Д9

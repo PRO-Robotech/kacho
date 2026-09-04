@@ -1,5 +1,5 @@
 // Copyright (c) PRO-Robotech
-// SPDX-License-Identifier: BUSL-1.1
+// SPDX-License-Identifier: AGPL-3.0-or-later
 
 // Package clienttokenhttp — токен-эндпоинт платформы (задача #898, приёмка F2
 // §9.1 п. 1).

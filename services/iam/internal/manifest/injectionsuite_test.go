@@ -1,5 +1,5 @@
 // Copyright (c) PRO-Robotech
-// SPDX-License-Identifier: BUSL-1.1
+// SPDX-License-Identifier: AGPL-3.0-or-later
 
 // injectionsuite_test.go — НАБОР ИНЪЕКЦИЙ, исполняемый обычным `go test` без
 // единого аргумента (приёмка §9.1, §9.2, §9.3; сценарий MOD-MF-27).

@@ -1,5 +1,5 @@
 // Copyright (c) PRO-Robotech
-// SPDX-License-Identifier: BUSL-1.1
+// SPDX-License-Identifier: AGPL-3.0-or-later
 
 // revocation_at_issuance_test.go — the revoke-all cutoff, asserted where a token
 // is MINTED and against the body the provider actually posts.

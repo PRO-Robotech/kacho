@@ -1,5 +1,5 @@
 // Copyright (c) PRO-Robotech
-// SPDX-License-Identifier: BUSL-1.1
+// SPDX-License-Identifier: Apache-2.0
 
 // policy_test.go — F1-34 (арифметика отсрочки держится ГЕЙТОМ, а не
 // комментарием) и F1-28 (перечень обязательных проверок объявлен и полон).

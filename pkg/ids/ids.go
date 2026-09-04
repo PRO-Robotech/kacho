@@ -1,5 +1,5 @@
 // Copyright (c) PRO-Robotech
-// SPDX-License-Identifier: BUSL-1.1
+// SPDX-License-Identifier: Apache-2.0
 
 // Package ids — генератор short-form идентификаторов ресурсов в формате
 // "<3-char prefix><17-char crockford-base32>" (всего 20 символов).

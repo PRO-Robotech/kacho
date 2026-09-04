@@ -1,5 +1,5 @@
 // Copyright (c) PRO-Robotech
-// SPDX-License-Identifier: BUSL-1.1
+// SPDX-License-Identifier: AGPL-3.0-or-later
 
 // check_test.go — ТРИ исхода проверки дерева (MOD-MF-17, 18, 19; приёмка §5.5).
 //

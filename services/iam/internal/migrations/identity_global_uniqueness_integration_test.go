@@ -1,5 +1,5 @@
 // Copyright (c) PRO-Robotech
-// SPDX-License-Identifier: BUSL-1.1
+// SPDX-License-Identifier: AGPL-3.0-or-later
 
 // identity_global_uniqueness_integration_test.go — принадлежность аккаунту
 // перестаёт входить в ключ идентичности (IAM-ID-1, задача kacho#470).

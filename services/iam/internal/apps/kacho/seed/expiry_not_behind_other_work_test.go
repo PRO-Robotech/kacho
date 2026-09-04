@@ -1,5 +1,5 @@
 // Copyright (c) PRO-Robotech
-// SPDX-License-Identifier: BUSL-1.1
+// SPDX-License-Identifier: AGPL-3.0-or-later
 
 // expiry_not_behind_other_work_test.go — a grant whose term has ended must stop
 // answering "allowed" without waiting for unrelated work.

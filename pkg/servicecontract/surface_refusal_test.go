@@ -1,5 +1,5 @@
 // Copyright (c) PRO-Robotech
-// SPDX-License-Identifier: BUSL-1.1
+// SPDX-License-Identifier: Apache-2.0
 
 // surface_refusal_test.go — доказательство того, что отказы ПРОФИЛЯ не-gRPC
 // поверхности способны упасть, и падают на существе.

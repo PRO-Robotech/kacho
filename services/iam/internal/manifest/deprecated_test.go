@@ -1,5 +1,5 @@
 // Copyright (c) PRO-Robotech
-// SPDX-License-Identifier: BUSL-1.1
+// SPDX-License-Identifier: AGPL-3.0-or-later
 
 // deprecated_test.go — раздел `deprecatedVerbs` (приёмка §2.7; сценарии
 // MOD-MR-16 … MOD-MR-18).

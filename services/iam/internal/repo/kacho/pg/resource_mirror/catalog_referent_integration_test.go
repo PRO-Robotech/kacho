@@ -1,5 +1,5 @@
 // Copyright (c) PRO-Robotech
-// SPDX-License-Identifier: BUSL-1.1
+// SPDX-License-Identifier: AGPL-3.0-or-later
 
 // catalog_referent_integration_test.go — у типа объекта регистрации есть
 // РЕФЕРЕНТ: живая строка каталога ресурсов, а не приставка имени.

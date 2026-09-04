@@ -1,5 +1,5 @@
 // Copyright (c) PRO-Robotech
-// SPDX-License-Identifier: BUSL-1.1
+// SPDX-License-Identifier: AGPL-3.0-or-later
 
 // register_resource_mirror_integration_test.go — IAM (callee) side of
 // resource-scoped AccessBinding registration: RegisterResource UPSERTs a

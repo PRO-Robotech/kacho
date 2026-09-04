@@ -1,5 +1,5 @@
 // Copyright (c) PRO-Robotech
-// SPDX-License-Identifier: BUSL-1.1
+// SPDX-License-Identifier: AGPL-3.0-or-later
 
 // handler_seed_test.go — #60 (SA-key analog): an acr-exempt system_admin
 // ServiceAccount caller (the #58 bootstrap-admin SA) seeds an SA-key for another

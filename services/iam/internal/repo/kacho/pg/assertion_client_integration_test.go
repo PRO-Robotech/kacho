@@ -1,5 +1,5 @@
 // Copyright (c) PRO-Robotech
-// SPDX-License-Identifier: BUSL-1.1
+// SPDX-License-Identifier: AGPL-3.0-or-later
 
 // assertion_client_integration_test.go — реестр, способный к утверждению
 // (приёмка F2, сценарии F2-14, F2-17, F2-29, F2-30, F2-44).

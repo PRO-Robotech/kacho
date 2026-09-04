@@ -1,5 +1,5 @@
 // Copyright (c) PRO-Robotech
-// SPDX-License-Identifier: BUSL-1.1
+// SPDX-License-Identifier: AGPL-3.0-or-later
 
 // Package clientassertion — принимающая сторона аутентификации клиента
 // подписанным утверждением (RFC 7523 §2.2, задача #898).

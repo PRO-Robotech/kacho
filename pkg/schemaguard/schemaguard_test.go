@@ -1,5 +1,5 @@
 // Copyright (c) PRO-Robotech
-// SPDX-License-Identifier: BUSL-1.1
+// SPDX-License-Identifier: Apache-2.0
 
 // schemaguard_test.go — решение проверяется БЕЗ БАЗЫ (предикат 3 задачи #1734):
 // вердикт есть чистая функция двух чисел и объявленных точек невозврата.

@@ -1,5 +1,5 @@
 // Copyright (c) PRO-Robotech
-// SPDX-License-Identifier: BUSL-1.1
+// SPDX-License-Identifier: AGPL-3.0-or-later
 
 // checkorder_test.go — §3.6 п. 6: три проверки идут в ОБЪЯВЛЕННОМ порядке, и
 // первая решает, что такое класс.

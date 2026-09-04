@@ -1,5 +1,5 @@
 // Copyright (c) PRO-Robotech
-// SPDX-License-Identifier: BUSL-1.1
+// SPDX-License-Identifier: AGPL-3.0-or-later
 
 // usecase_hydra_unavailable_test.go — a failed Hydra-admin CreateOAuthClient on
 // the async SAKeyService.Issue worker path must be reported to the client as a

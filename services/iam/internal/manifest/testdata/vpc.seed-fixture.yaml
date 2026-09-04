@@ -1,4 +1,4 @@
-# SPDX-License-Identifier: BUSL-1.1
+# SPDX-License-Identifier: AGPL-3.0-or-later
 #
 # Фикстура пробы: оболочка манифеста плюс раздел `seed` ДОСЛОВНО из черновика
 # (kacho-workspace/docs/manifest-dcl/vpc.manifest.yaml, 2026-08-31). Отличия от

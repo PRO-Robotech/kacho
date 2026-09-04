@@ -1,5 +1,5 @@
 // Copyright (c) PRO-Robotech
-// SPDX-License-Identifier: BUSL-1.1
+// SPDX-License-Identifier: AGPL-3.0-or-later
 
 // caller_authority.go — the authority gate for
 // AuthorizeService.{Check,BatchCheck,ListObjects,ListSubjects,ExpandRelations}.

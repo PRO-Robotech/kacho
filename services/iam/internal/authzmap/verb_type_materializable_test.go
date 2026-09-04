@@ -1,5 +1,5 @@
 // Copyright (c) PRO-Robotech
-// SPDX-License-Identifier: BUSL-1.1
+// SPDX-License-Identifier: AGPL-3.0-or-later
 
 // verb_type_materializable_test.go — гейт против глагольного типа, которого нет
 // в проекции системных ролей.

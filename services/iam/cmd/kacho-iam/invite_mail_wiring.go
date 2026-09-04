@@ -1,5 +1,5 @@
 // Copyright (c) PRO-Robotech
-// SPDX-License-Identifier: BUSL-1.1
+// SPDX-License-Identifier: AGPL-3.0-or-later
 
 // invite_mail_wiring.go — дренаж очереди писем приглашения, возврат отравленных
 // строк и наблюдаемость этой очереди.

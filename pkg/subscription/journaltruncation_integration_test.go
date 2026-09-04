@@ -1,5 +1,5 @@
 // Copyright (c) PRO-Robotech
-// SPDX-License-Identifier: BUSL-1.1
+// SPDX-License-Identifier: Apache-2.0
 
 // journaltruncation_integration_test.go — что происходит с подписчиком, чья
 // позиция снята уборкой ПОД РАБОТАЮЩИМ ПОТОКОМ.

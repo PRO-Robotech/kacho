@@ -1,5 +1,5 @@
 // Copyright (c) PRO-Robotech
-// SPDX-License-Identifier: BUSL-1.1
+// SPDX-License-Identifier: AGPL-3.0-or-later
 
 // Пакет manifestcheckrun — ЕДИНСТВЕННЫЙ производитель локальной проверки
 // манифестов модуля: обход дерева, разбор каждого `manifest.yaml` тем же Load,

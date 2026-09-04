@@ -1,5 +1,5 @@
 // Copyright (c) PRO-Robotech
-// SPDX-License-Identifier: BUSL-1.1
+// SPDX-License-Identifier: AGPL-3.0-or-later
 
 // seed_rule_verb_resolvability_integration_test.go — гейт на класс «посеянная
 // роль называет ГЛАГОЛ, которого объявивший её тип не несёт».

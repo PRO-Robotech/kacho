@@ -1,5 +1,5 @@
 // Copyright (c) PRO-Robotech
-// SPDX-License-Identifier: BUSL-1.1
+// SPDX-License-Identifier: AGPL-3.0-or-later
 
 // minted_token_revocation_integration_test.go — хранилище отзывов токенов,
 // отчеканенных платформой (F1-25, сторона хранилища).

@@ -1,5 +1,5 @@
 // Copyright (c) PRO-Robotech
-// SPDX-License-Identifier: BUSL-1.1
+// SPDX-License-Identifier: AGPL-3.0-or-later
 
 // emitter_integration_test.go — integration tests for the resource_mirror
 // emit-in-tx helper. Mirror of the fga_outbox emitter tests.

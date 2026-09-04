@@ -1,5 +1,5 @@
 // Copyright (c) PRO-Robotech
-// SPDX-License-Identifier: BUSL-1.1
+// SPDX-License-Identifier: AGPL-3.0-or-later
 
 // expired_credential_reclaim_defaults_integration_test.go — ВЕЛИЧИНЫ УМОЛЧАНИЯ
 // потолка после пересмотра (задача #1264, приёмка
