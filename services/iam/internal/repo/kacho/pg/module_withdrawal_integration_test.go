@@ -132,7 +132,7 @@ func relocateModuleGrants(t *testing.T, ctx context.Context, tx pgx.Tx, module, 
 		  FROM kacho_iam.role_verb rv
 		  JOIN kacho_iam.catalog_resource cr ON cr.dotted = rv.object_type
 		 WHERE cr.module = $1
-		ON CONFLICT (role_id, object_type, verb, source)
+		ON CONFLICT (role_id, object_type, verb, source, cause)
 		DO UPDATE SET reason = EXCLUDED.reason, orphaned_at = now()`, module, reason)
 	require.NoError(t, err)
 	verbs = int(tag.RowsAffected())
@@ -148,7 +148,7 @@ func relocateModuleGrants(t *testing.T, ctx context.Context, tx pgx.Tx, module, 
 		SELECT rr.role_id, rr.module || '.' || rr.resource, COALESCE(rr.verb, ''), 'rule_ref', $2
 		  FROM kacho_iam.role_rule_ref rr
 		 WHERE rr.module = $1
-		ON CONFLICT (role_id, object_type, verb, source)
+		ON CONFLICT (role_id, object_type, verb, source, cause)
 		DO UPDATE SET reason = EXCLUDED.reason, orphaned_at = now()`, module, reason)
 	require.NoError(t, err)
 	refs = int(tag.RowsAffected())

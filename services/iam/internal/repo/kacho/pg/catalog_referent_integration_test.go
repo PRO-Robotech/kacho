@@ -541,7 +541,7 @@ func relocateGrants(t *testing.T, ctx context.Context, tx pgx.Tx, module, resour
 		INSERT INTO kacho_iam.role_grant_orphan (role_id, object_type, verb, source, reason)
 		SELECT role_id, object_type, verb, 'role_verb', $2
 		  FROM kacho_iam.role_verb WHERE object_type = $1
-		ON CONFLICT (role_id, object_type, verb, source)
+		ON CONFLICT (role_id, object_type, verb, source, cause)
 		DO UPDATE SET reason = EXCLUDED.reason, orphaned_at = now()`, dotted, reason)
 	require.NoError(t, err)
 	moved := int(tag.RowsAffected())
