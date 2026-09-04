@@ -328,28 +328,42 @@ housekeeping-VIP-release/target-drain). Дрейф дублированных ou
 raw-SQL» vs. слой косвенности через Repository, без выигрыша в тестируемости
 (sec-hardening r8b, ARCH-finding «jobs bypass CQRS»).
 
-## `domain/` импортирует сторонние value-библиотеки (не только stdlib + стабы контракта)
+## `domain/` импортирует value-библиотеки (не только stdlib + стабы контракта)
 
 **Что.** `architecture.md` предписывает `domain/` импортировать ТОЛЬКО stdlib +
 сгенерённые стабы `pkg/api/...`. Фактически `internal/domain/` импортирует
-`github.com/H-BF/corlib/pkg/{dict,option}` (`types.go`, `target.go`, `listener.go`),
 `go.uber.org/multierr` (`loadbalancer.go`, `target.go`, `health_check.go`,
 `target_group.go`, `listener.go`) и
-`github.com/PRO-Robotech/kacho/pkg/{errors,ids}` (`types.go`, `status.go`,
-`builders.go`).
+`github.com/PRO-Robotech/kacho/pkg/{errors,ids,option}` (`types.go`, `status.go`,
+`builders.go`, `target.go`, `listener.go`).
 
-**Почему by-design (а не заменять на stdlib).** Все три — чистые value-библиотеки
-(`dict`/`option` — generic-контейнеры, `multierr` — агрегация ошибок, corelib
-`errors`/`ids` — in-org error-builder + ID-генерация); НИ pgx, НИ grpc-stubs, НИ
-sqlc-типов, НИ adapter-зависимостей domain не тянет — дух dependency-rule (нет
-утечки адаптера в entity-слой) соблюдён. `corelib/errors` даёт единый
-gRPC-совместимый `InvalidArgument().AddFieldViolation`-формат (часть
-error-контракта, см. `api-conventions.md`), а `option`/`dict` устраняют голые
-`*T`/`map`-обёртки в self-validating newtype'ах. Замена на stdlib-эквиваленты
-продублировала бы эти утилиты внутри сервиса без выигрыша в чистоте (те же
-value-типы, но hand-rolled). Sanctioned location для этого отклонения — здесь
-(git-youtrack.md «by-design → docs/architecture»), а не только inline-комментарий в
-`types.go` (sec-hardening r8b, ARCH-finding «domain imports third-party»).
+**Почему by-design (а не заменять на stdlib).** Обе — чистые value-библиотеки
+(`multierr` — агрегация ошибок, фундамент `errors`/`ids`/`option` — in-org
+error-builder, ID-генерация и величина, которой может не быть); НИ pgx, НИ
+grpc-stubs, НИ sqlc-типов, НИ adapter-зависимостей domain не тянет — дух
+dependency-rule (нет утечки адаптера в entity-слой) соблюдён. `pkg/errors` даёт
+единый gRPC-совместимый `InvalidArgument().AddFieldViolation`-формат (часть
+error-контракта, см. `api-conventions.md`), а `pkg/option` устраняет голые
+`*T`-обёртки в self-validating newtype'ах. Sanctioned location для этого
+отклонения — здесь (git-issues.md «by-design → docs/architecture»), а не только
+inline-комментарий в `types.go` (sec-hardening r8b, ARCH-finding «domain imports
+third-party»).
+
+> [!note] Здесь стоял СТОРОННИЙ модуль — снят 2026-09-04 вместе с его пином
+> Прежняя редакция называла by-design'ом импорт `dict`/`option` из модуля,
+> который не нёс лицензии НИ ОДНИМ файлом, и обосновывала это тем, что замена
+> «продублировала бы утилиты внутри сервиса без выигрыша в чистоте». Довод не
+> пережил проверки предпосылки: выигрыш был не в чистоте, а в ПРАВЕ —
+> отсутствие лицензии означает «все права защищены», и публичный репозиторий с
+> таким пином распространял чужой код без разрешения.
+>
+> Что стало с каждым из двух: `option` переехал в собственный фундамент
+> (`pkg/option`) поверхностью, которую дерево ЧИТАЛО; `dict` снят вовсе —
+> `LbLabels` стал обычной картой, потому что из тринадцати методов контейнера
+> здесь читались четыре, и все четыре есть в языке.
+>
+> Держится гейтом `internal/repohygiene` `TestEveryPinnedModuleCarriesALicense`:
+> он судит ОТСУТСТВИЕ ЛИЦЕНЗИИ у модуля, а не членство имени в перечне.
 
 ## `Target` служит и запросом, и ответом: состояние слива — output-only, но отвергается только на путях создания
 

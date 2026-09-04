@@ -15,9 +15,9 @@ import (
 	"syscall"
 	"time"
 
-	"github.com/H-BF/corlib/pkg/parallel"
 	"github.com/jackc/pgx/v5/pgxpool"
 	_ "github.com/jackc/pgx/v5/stdlib"
+	"golang.org/x/sync/errgroup"
 	"google.golang.org/grpc"
 
 	"github.com/PRO-Robotech/kacho/pkg/authz/authzmetrics"
@@ -32,7 +32,6 @@ import (
 	"github.com/PRO-Robotech/kacho/pkg/outbox/drainer"
 	"github.com/PRO-Robotech/kacho/pkg/outbox/metrics"
 	"github.com/PRO-Robotech/kacho/pkg/outbox/reconciler"
-	"github.com/PRO-Robotech/kacho/pkg/safeconv"
 	"github.com/PRO-Robotech/kacho/pkg/servicehost"
 
 	iamv1 "github.com/PRO-Robotech/kacho/pkg/api/kacho/cloud/iam/v1"
@@ -706,15 +705,15 @@ func runServe(cfg config.Config) error {
 	// срока штатного завершения ниже.
 	serveDone := make(chan struct{})
 
-	// Параллельный запуск слушателей + shutdown-waiter через `parallel.ExecAbstract`
-	// (`github.com/H-BF/corlib/pkg/parallel`). Failure-isolation: первая ошибка /
+	// Параллельный запуск слушателей + shutdown-waiter через `errgroup.Group`
+	// (`golang.org/x/sync/errgroup`). Failure-isolation: первая ошибка /
 	// SIGTERM / SIGINT триггерит гашение ВСЕГО — умерший носитель не оставляет
 	// диагностический слушатель крутиться.
 	//
 	// shutdownCh закрывается ВНУТРИ triggerShutdown — он будит shutdown-waiter не
 	// только по SIGTERM/SIGINT (ctx.Done), но и когда гашение инициировано крахом
 	// слушателей. Без этого waiter висел бы на `<-ctx.Done()` навечно (ctx —
-	// только сигнальный), и `parallel.ExecAbstract` никогда бы не вернулся —
+	// только сигнальный), и `group.Wait()` никогда бы не вернулся —
 	// процесс-зомби.
 	shutdownCh := make(chan struct{})
 	var shutdownOnce sync.Once
@@ -815,13 +814,21 @@ func runServe(cfg config.Config) error {
 		return nil
 	})
 
-	// ExecAbstract(taskCount, maxConcurrency, fn): запускает все задачи
-	// параллельно; собирает первую ошибку. maxConcurrency=len(tasks)-1 дает
-	// схему «1 + (N-1)» — основная горутина + N-1 дополнительных, все
-	// задачи реально параллельны (см. corlib/pkg/parallel/exec-in-parallel.go).
-	err = parallel.ExecAbstract(len(tasks), safeconv.IntToInt32(len(tasks)-1), func(i int) error {
-		return tasks[i]()
-	})
+	// `errgroup.Group` БЕЗ SetLimit: горутина на задачу, все N реально
+	// параллельны, `Wait` возвращает ПЕРВУЮ ненулевую ошибку и не возвращается,
+	// пока не завершились все.
+	//
+	// Прежде здесь стоял `ExecAbstract(len(tasks), len(tasks)-1, …)` из модуля,
+	// не несущего лицензии (снят). Предел там задавал ДОПОЛНИТЕЛЬНЫЕ горутины
+	// сверх вызывающей, то есть «1 + (N-1)» — те же N. Наблюдаемое поведение
+	// совпадает by construction: на полном параллелизме отличие ExecAbstract
+	// (перестаёт БРАТЬ невзятые задачи после первой ошибки) предмета не имеет —
+	// к этому моменту взяты все.
+	var group errgroup.Group
+	for _, task := range tasks {
+		group.Go(task)
+	}
+	err = group.Wait()
 	cancel()
 	return err
 }

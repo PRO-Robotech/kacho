@@ -21,9 +21,9 @@ import (
 	"syscall"
 	"time"
 
-	"github.com/H-BF/corlib/pkg/parallel"
 	"github.com/jackc/pgx/v5/pgxpool"
 	_ "github.com/jackc/pgx/v5/stdlib"
+	"golang.org/x/sync/errgroup"
 	"google.golang.org/grpc"
 
 	"github.com/PRO-Robotech/kacho/pkg/authz"
@@ -31,7 +31,6 @@ import (
 	"github.com/PRO-Robotech/kacho/pkg/grpcsrv"
 	"github.com/PRO-Robotech/kacho/pkg/observability"
 	"github.com/PRO-Robotech/kacho/pkg/operations"
-	"github.com/PRO-Robotech/kacho/pkg/safeconv"
 	"github.com/PRO-Robotech/kacho/pkg/servicecontract"
 	"github.com/PRO-Robotech/kacho/pkg/servicehost"
 
@@ -1123,7 +1122,7 @@ func runServe(cfg config.Config) error {
 
 	// Параллельный запуск
 	// public-сервера + internal-сервера + shutdown-waiter через
-	// `parallel.ExecAbstract` (`github.com/H-BF/corlib/pkg/parallel`).
+	// `errgroup.Group` (`golang.org/x/sync/errgroup`).
 	// Failure-isolation: первая ошибка / SIGTERM / SIGINT триггерит
 	// graceful-stop ОБОИХ серверов. sync.Once гарантирует, что параллельные
 	// триггеры (SIGTERM пришел одновременно с crash internal'а) не сделают
@@ -1603,9 +1602,11 @@ func runServe(cfg config.Config) error {
 		return nil
 	})
 
-	err = parallel.ExecAbstract(len(tasks), safeconv.IntToInt32(len(tasks)-1), func(i int) error {
-		return tasks[i]()
-	})
+	var group errgroup.Group
+	for _, task := range tasks {
+		group.Go(task)
+	}
+	err = group.Wait()
 	cancel()
 	return err
 }

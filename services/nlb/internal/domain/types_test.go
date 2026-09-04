@@ -143,9 +143,9 @@ func TestValidateLabels(t *testing.T) {
 
 	t.Run("64 pairs OK", func(t *testing.T) {
 		t.Parallel()
-		var d domain.LbLabels
+		d := domain.LbLabels{}
 		for i := 0; i < 64; i++ {
-			d.Put(domain.LbLabelKey("k"+itoa(i)), "v")
+			d[domain.LbLabelKey("k"+itoa(i))] = "v"
 		}
 		if err := domain.ValidateLabels(d); err != nil {
 			t.Fatalf("64 pairs: %v", err)
@@ -154,9 +154,9 @@ func TestValidateLabels(t *testing.T) {
 
 	t.Run("65 pairs rejected", func(t *testing.T) {
 		t.Parallel()
-		var d domain.LbLabels
+		d := domain.LbLabels{}
 		for i := 0; i < 65; i++ {
-			d.Put(domain.LbLabelKey("k"+itoa(i)), "v")
+			d[domain.LbLabelKey("k"+itoa(i))] = "v"
 		}
 		if err := domain.ValidateLabels(d); err == nil {
 			t.Fatal("65 pairs: expected error")

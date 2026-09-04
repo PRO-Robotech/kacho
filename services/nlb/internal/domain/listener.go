@@ -4,7 +4,7 @@
 package domain
 
 import (
-	"github.com/H-BF/corlib/pkg/option"
+	"github.com/PRO-Robotech/kacho/pkg/option"
 	"go.uber.org/multierr"
 )
 

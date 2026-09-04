@@ -6,7 +6,7 @@ package targetgroup
 import (
 	"fmt"
 
-	"github.com/H-BF/corlib/pkg/option"
+	"github.com/PRO-Robotech/kacho/pkg/option"
 	"google.golang.org/protobuf/types/known/anypb"
 
 	lbv1 "github.com/PRO-Robotech/kacho/pkg/api/kacho/cloud/loadbalancer/v1"

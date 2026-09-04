@@ -9,7 +9,7 @@ import (
 	"sync"
 	"testing"
 
-	"github.com/H-BF/corlib/pkg/option"
+	"github.com/PRO-Robotech/kacho/pkg/option"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 
@@ -41,7 +41,7 @@ func TestLB_CRUD(t *testing.T) {
 	require.NoError(t, err)
 	assert.Equal(t, "demo-lb-1", string(got.Name))
 	assert.Equal(t, domain.LBTypeExternal, got.Type)
-	val, ok := got.Labels.Get("test")
+	val, ok := got.Labels["test"]
 	require.True(t, ok)
 	assert.Equal(t, domain.LbLabelVal("1"), val)
 }
@@ -179,7 +179,7 @@ func TestLB_Update_MutatesMutable(t *testing.T) {
 		require.NoError(t, err)
 		assert.Equal(t, domain.LbName("u-lb-new"), rec.Name)
 		assert.Equal(t, domain.LbDescription("updated"), rec.Description)
-		val, ok := rec.Labels.Get("env")
+		val, ok := rec.Labels["env"]
 		require.True(t, ok)
 		assert.Equal(t, domain.LbLabelVal("prod"), val)
 	})

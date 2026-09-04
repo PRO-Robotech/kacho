@@ -8,7 +8,7 @@ import (
 	"fmt"
 	"strings"
 
-	"github.com/H-BF/corlib/pkg/option"
+	"github.com/PRO-Robotech/kacho/pkg/option"
 	"github.com/jackc/pgx/v5"
 
 	"github.com/PRO-Robotech/kacho/pkg/ids"

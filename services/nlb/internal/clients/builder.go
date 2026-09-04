@@ -3,14 +3,12 @@
 
 // Package clients — cross-service gRPC client builder для kacho-nlb.
 //
-// Единая точка сборки gRPC-клиентских соединений к peer-сервисам согласно
-// «`dial<Peer>` заменить на
-// `H-BF/corlib/client/grpc/client-builder.go` — единый паттерн для всех
-// gRPC-клиентов (retries, LB, TLS, metrics)».
+// Единая точка сборки gRPC-клиентских соединений к peer-сервисам: retries, LB,
+// TLS — один паттерн на всех.
 //
-// Builder — обёртка над corlib `ClientFromAddress` с дефолтами kacho-nlb
-// (retries=3, dialTimeout=10s, KeepAlive 30s, userAgent="kacho-nlb").
-// Pattern скопирован с kacho-vpc/internal/clients/builder.go.
+// Builder — обёртка над `grpcclient.DialPeer` (`pkg/grpcclient/dial.go`) с
+// дефолтами kacho-nlb (retries=3, dialTimeout=10s, KeepAlive 30s,
+// userAgent="kacho-nlb"). Тот же фундамент зовёт kacho-vpc.
 //
 // Этот файл — building block. Конкретные peer-клиенты живут в подпакетах
 // `internal/clients/{iam,compute,vpc}` — тонкие обёртки поверх Build,
@@ -26,15 +24,14 @@ import (
 	"strings"
 	"time"
 
-	corlibgrpc "github.com/H-BF/corlib/client/grpc"
+	"github.com/PRO-Robotech/kacho/pkg/grpcclient"
 	"google.golang.org/grpc"
 	"google.golang.org/grpc/credentials"
 	"google.golang.org/grpc/credentials/insecure"
-	"google.golang.org/grpc/keepalive"
 )
 
 // Conn — то, что нужно generated proto-клиентам (`grpc.ClientConnInterface`)
-// плюс возможность Close. Подходит и corlib `ClientConn`, и `*grpc.ClientConn`.
+// плюс возможность Close.
 type Conn interface {
 	grpc.ClientConnInterface
 	io.Closer
@@ -80,10 +77,15 @@ func (o BuildOptions) withDefaults() BuildOptions {
 	return o
 }
 
-// Build открывает gRPC-клиентское соединение через corlib client-builder
-// (единый паттерн). Возвращает Conn (`grpc.ClientConnInterface +
-// io.Closer`), который принимают generated proto-клиенты.
-func Build(ctx context.Context, opts BuildOptions) (Conn, error) {
+// Build открывает gRPC-клиентское соединение (единый паттерн). Возвращает Conn
+// (`grpc.ClientConnInterface + io.Closer`), который принимают generated
+// proto-клиенты.
+//
+// ctx принимается ради формы вызова и НЕ участвует в наборе: `grpc.NewClient`
+// откладывает соединение до первого вызова, поэтому набирать здесь нечего.
+// Прежний сторонний строитель звал `DialContext` — тоже без блокировки, — так
+// что наблюдаемое поведение не меняется.
+func Build(_ context.Context, opts BuildOptions) (Conn, error) {
 	if strings.TrimSpace(opts.Endpoint) == "" {
 		return nil, fmt.Errorf("clients.Build: empty Endpoint")
 	}
@@ -95,19 +97,16 @@ func Build(ctx context.Context, opts BuildOptions) (Conn, error) {
 		creds = buildCreds(opts.TLS)
 	}
 
-	cc, err := corlibgrpc.ClientFromAddress(opts.Endpoint).
-		WithCreds(creds).
-		WithDialDuration(opts.DialTimeout).
-		WithMaxRetries(opts.Retries).
-		WithUserAgent(opts.UserAgent).
-		WithKeepAlive(keepalive.ClientParameters{
-			Time:                opts.KeepAliveTime,
-			Timeout:             opts.KeepAliveTime / 3, // ack within 1/3 of ping interval
-			PermitWithoutStream: false,
-		}).
-		New(ctx)
+	cc, err := grpcclient.DialPeer(grpcclient.PeerDialOptions{
+		Endpoint:      opts.Endpoint,
+		Creds:         creds,
+		Retries:       opts.Retries,
+		DialTimeout:   opts.DialTimeout,
+		KeepAliveTime: opts.KeepAliveTime,
+		UserAgent:     opts.UserAgent,
+	})
 	if err != nil {
-		return nil, fmt.Errorf("clients.Build: corlib dial %q: %w", opts.Endpoint, err)
+		return nil, fmt.Errorf("clients.Build: dial %q: %w", opts.Endpoint, err)
 	}
 	return cc, nil
 }
