@@ -379,9 +379,6 @@ cluster-internal listener.
     <tr><td><strong>Create</strong></td><td><code>POST /vpc/v1/networks</code></td><td>async</td></tr>
     <tr><td><strong>Update</strong></td><td><code>PATCH /vpc/v1/networks/&#123;id&#125;</code></td><td>async</td></tr>
     <tr><td><strong>Delete</strong></td><td><code>DELETE /vpc/v1/networks/&#123;id&#125;</code></td><td>async</td></tr>
-    <tr><td><code>ListSubnets</code></td><td><code>GET /vpc/v1/networks/&#123;id&#125;/subnets</code></td><td>sync</td></tr>
-    <tr><td><code>ListSecurityGroups</code></td><td><code>GET /vpc/v1/networks/&#123;id&#125;/security_groups</code></td><td>sync</td></tr>
-    <tr><td><code>ListRouteTables</code></td><td><code>GET /vpc/v1/networks/&#123;id&#125;/route_tables</code></td><td>sync</td></tr>
     <tr><td><code>ListOperations</code></td><td><code>GET /vpc/v1/networks/&#123;id&#125;/operations</code></td><td>sync</td></tr>
   </tbody>
 </table>
@@ -414,9 +411,7 @@ suffix-actions `:add-cidr-blocks` / `:remove-cidr-blocks`.
   <thead><tr><th>RPC</th><th>REST</th><th>Тип</th></tr></thead>
   <tbody>
     <tr><td><code>Get</code></td><td><code>GET /vpc/v1/addresses/&#123;id&#125;</code></td><td>sync</td></tr>
-    <tr><td><code>GetByValue</code></td><td><code>GET /vpc/v1/addresses:byValue</code></td><td>sync</td></tr>
     <tr><td><code>List</code></td><td><code>GET /vpc/v1/addresses</code></td><td>sync</td></tr>
-    <tr><td><code>ListBySubnet</code></td><td><code>GET /vpc/v1/addresses:bySubnet</code></td><td>sync</td></tr>
     <tr><td><strong>Create</strong></td><td><code>POST /vpc/v1/addresses</code></td><td>async</td></tr>
     <tr><td><strong>Update</strong></td><td><code>PATCH /vpc/v1/addresses/&#123;id&#125;</code></td><td>async</td></tr>
     <tr><td><strong>Delete</strong></td><td><code>DELETE /vpc/v1/addresses/&#123;id&#125;</code></td><td>async</td></tr>
@@ -424,10 +419,11 @@ suffix-actions `:add-cidr-blocks` / `:remove-cidr-blocks`.
   </tbody>
 </table>
 
-:::note byValue / bySubnet
-`GetByValue` и `ListBySubnet` — read-RPC для ref-валидации в peer-сервисах (Compute ищет
-ephemeral Address по значению / подсети). REST использует suffix-query (`:byValue`, `:bySubnet`)
-вместо path-id, т.к. ключ поиска — не id ресурса.
+:::note Поиск адреса по значению и по подсети
+Отдельных методов для этого нет: у ресурса один список, и оба вопроса задаются ему сужением —
+`GET /vpc/v1/addresses?projectId=…&ipAddress=<IP>` и `…&subnetId=<id>`. Область запроса берётся
+из `projectId`, который вызывающий и так обязан назвать, а страница проверяется по правам
+построчно.
 :::
 
 ### RouteTableService

@@ -73,10 +73,10 @@ Relation выводится из gRPC-метода. Действие над **с
 <table>
   <thead><tr><th>RPC</th><th>Relation</th><th>Объект проверки</th></tr></thead>
   <tbody>
-    <tr><td><code>Get</code> / <code>GetByValue</code></td><td><code>v&#95;get</code></td><td>Сам ресурс</td></tr>
+    <tr><td><code>Get</code></td><td><code>v&#95;get</code></td><td>Сам ресурс</td></tr>
     <tr><td><code>Update</code>, <code>AddCidrBlocks</code>, <code>UpdateRules</code> и прочие <code>:verb</code>-мутации</td><td><code>v&#95;update</code></td><td>Сам ресурс</td></tr>
     <tr><td><code>Delete</code></td><td><code>v&#95;delete</code></td><td>Сам ресурс</td></tr>
-    <tr><td>Вложенный список (<code>ListBySubnet</code>, <code>ListOperations</code>, …)</td><td><code>v&#95;list</code></td><td>Объект-контейнер</td></tr>
+    <tr><td>Вложенный список (<code>ListOperations</code>, <code>ListUsedAddresses</code>, …)</td><td><code>v&#95;list</code></td><td>Объект-контейнер</td></tr>
     <tr><td><code>Create</code></td><td><code>editor</code></td><td><strong>Родитель</strong> (project / network) — ресурса ещё нет</td></tr>
     <tr><td>Top-level <code>List</code></td><td><code>viewer</code></td><td>Проект; выдача дополнительно фильтруется построчно</td></tr>
   </tbody>
@@ -106,7 +106,12 @@ Top-level `List` возвращает `200` и только доступные �
 отдаётся.
 
 `v_list` при этом остаётся живым отношением: им гейтятся списки, вложенные **в** объект
-(`NetworkService/ListSubnets` → `v_list` на `vpc_network`) — там у вопроса есть единый объект.
+(`SubnetService/ListUsedAddresses` → `v_list` на `vpc_subnet`) — там у вопроса есть единый объект.
+
+Списка «дочерние ресурсы сети» среди них нет: подсети, группы безопасности и таблицы маршрутов
+перечисляются своими коллекционными списками с сужением `filter=network_id="<id>"`, и вопрос о
+правах у них тот же, что у остальных top-level-списков, — построчный по `v_get`. Дочерний путь
+завёл бы второй способ вывести область прав, из сети вместо `projectId`.
 
 ### Object — на чем проверяется
 
