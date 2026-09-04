@@ -76,19 +76,61 @@ permission-catalog-apply: permission-catalog
 	cp $(PERMISSION_CATALOG_BUILD) $(PERMISSION_CATALOG_TARGET)
 	@echo "Applied regenerated catalog to $(PERMISSION_CATALOG_TARGET)."
 
+IAM_CATALOG := ../services/iam/internal/apps/kacho/seed/embedded/permission_catalog.json
+
+# Сверка ДВУХ вшитых копий каталога прав — отдельная цель, и исполняется она
+# БЕЗУСЛОВНО.
+#
+# Здесь стояло `if [ -f $(IAM_CATALOG) ]; then diff …; fi`, и это было
+# послаблением, которое НЕ ИСТЕЧЁТ САМО: пока копия iam на месте, обёртка ничего
+# не пропускает, но в день, когда копия уедет — а её уезд ЗАПЛАНИРОВАН выносом
+# iam отдельным продуктом, — условие становится ложным навсегда. Сверка перестаёт исполняться вовсе, а цель остаётся зелёной и
+# неотличимой от исправной. Цена расхождения копий не косметическая: RPC без
+# записи в каталоге даёт `catalog: no entry for method` → AUTHZ_DENIED на КАЖДЫЙ
+# вызов, независимо от выданных прав.
+#
+# Зеркальная цель у iam (`make -C services/iam sync-permission-catalog`)
+# отказывала явно с самого начала. Односторонняя строгость на одном шве и была тем
+# перекосом, по которому класс виден: один и тот же вопрос две стороны решали
+# по-разному, и никто этого не решал.
+#
+# ОТДЕЛЬНАЯ цель, а не строка внутри permission-catalog-check, — намеренно:
+# сравнение двух закоммиченных файлов не требует ни buf, ни proto-дерева, поэтому
+# исполнимо и там, где генерация недоступна, а его поведение проверяется
+# ЗАПУСКОМ (internal/repohygiene/catalogcopyparity_test.go), а не прочтением
+# рецепта. Тот же гейт держит КЛАСС обёртки по всему дереву: ни одна сверка ни в
+# одном Makefile не смеет исполняться условно по наличию файла.
+#
+# После выноса iam у этой цели ровно два законных исхода, и оба требуют решения
+# человека: переопределить операнд (`make … IAM_CATALOG=<путь к копии вынесенного
+# iam>`) либо снять сверку вместе с копией. Третьего, молчаливого — «условие
+# перестало выполняться» — больше нет.
+#
+# Переопределять операнд можно АРГУМЕНТОМ make, но не переменной окружения:
+# присваивание жёсткое (`:=`), а не `?=`. С `?=` унаследованное из окружения
+# значение молча увело бы сверку на чужой файл, а такое решение обязано быть
+# заявлено явно.
+.PHONY: permission-catalog-copies-in-sync
+permission-catalog-copies-in-sync:
+	@test -f "$(PERMISSION_CATALOG_TARGET)" || { echo "::error::нет копии края: $(PERMISSION_CATALOG_TARGET) — сверять не с чем. Нужен полный чекаут монорепо; пропустить сверку нельзя — расхождение копий даёт AUTHZ_DENIED на каждый вызов"; exit 1; }
+	@test -f "$(IAM_CATALOG)" || { echo "::error::нет копии iam: $(IAM_CATALOG) — сверять не с чем. Нужен полный чекаут монорепо; если копия уехала с выносом iam отдельным продуктом — переопредели IAM_CATALOG=<путь> либо сними сверку вместе с копией, но НЕ оставляй её пропускаемой"; exit 1; }
+	@diff -u "$(IAM_CATALOG)" "$(PERMISSION_CATALOG_TARGET)" \
+	  || { echo "::error::IAM embedded catalog drifted from api-gateway copy — re-sync both from the regenerated catalog"; exit 1; }
+	@entries=$$(grep -c '"fqn"' "$(PERMISSION_CATALOG_TARGET)" || true); \
+	  test "$$entries" -gt 0 || { echo "::error::в каталоге ноль записей ($(PERMISSION_CATALOG_TARGET)) — копии равны, но сверять было НЕЧЕГО; пустой каталог неотличим от сошедшихся копий"; exit 1; }; \
+	  echo "перепись: копий каталога сверено 2 · записей $$entries · байт $$(wc -c < "$(PERMISSION_CATALOG_TARGET)") · побайтово равны"
+
 # CI GATE: fail if the embedded catalog is STALE vs the proto surface. Catches the
 # class of regression where a new/renamed RPC ships without a catalog entry → the
 # per-RPC authz middleware returns "catalog: no entry for method" (AUTHZ_DENIED) at
 # runtime. Requires a full monorepo checkout (in-repo proto/) + buf. The IAM embedded
-# copy MUST byte-match this one (single source of truth) — also asserted here.
-IAM_CATALOG := ../services/iam/internal/apps/kacho/seed/embedded/permission_catalog.json
+# copy MUST byte-match this one (single source of truth) — asserted by the
+# permission-catalog-copies-in-sync prerequisite above, unconditionally.
 .PHONY: permission-catalog-check
-permission-catalog-check:
+permission-catalog-check: permission-catalog-copies-in-sync
 	./scripts/gen-permission-catalog.sh $(PERMISSION_CATALOG_BUILD)
 	@diff -u $(PERMISSION_CATALOG_TARGET) $(PERMISSION_CATALOG_BUILD) \
 	  || { echo "::error::permission_catalog.json (api-gateway embed) is STALE vs proto — run 'make permission-catalog-apply' + sync IAM copy, then commit"; exit 1; }
-	@if [ -f $(IAM_CATALOG) ]; then diff -u $(IAM_CATALOG) $(PERMISSION_CATALOG_TARGET) \
-	  || { echo "::error::IAM embedded catalog drifted from api-gateway copy — re-sync both from the regenerated catalog"; exit 1; }; fi
 	@echo "permission catalog is complete and both copies are in sync."
 
 # Регенерация REST route-table из `google.api.http`-аннотаций proto в
