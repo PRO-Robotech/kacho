@@ -1,5 +1,5 @@
 // Copyright (c) PRO-Robotech
-// SPDX-License-Identifier: BUSL-1.1
+// SPDX-License-Identifier: Apache-2.0
 
 // cachedverdictmain_test.go — пакет проверок ДЕРЕВА отказывается работать на прогоне,
 // результат которого `go test` положит в кеш.

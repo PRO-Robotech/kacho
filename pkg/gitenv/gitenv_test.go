@@ -1,5 +1,5 @@
 // Copyright (c) PRO-Robotech
-// SPDX-License-Identifier: BUSL-1.1
+// SPDX-License-Identifier: Apache-2.0
 
 // gitenv_test.go — проба СВОЙСТВА, ради которого пакет написан: фикстура,
 // заводящая свой репозиторий, не трогает репозиторий прогона.

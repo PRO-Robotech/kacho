@@ -1,5 +1,5 @@
 // Copyright (c) PRO-Robotech
-// SPDX-License-Identifier: BUSL-1.1
+// SPDX-License-Identifier: Apache-2.0
 
 // declaredcount_injection_test.go — доказательство в ОБЕ стороны для двух суждений,
 // перенесённых из оснастки прогона в библиотеку.

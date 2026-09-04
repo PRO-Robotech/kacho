@@ -1,5 +1,5 @@
 // Copyright (c) PRO-Robotech
-// SPDX-License-Identifier: BUSL-1.1
+// SPDX-License-Identifier: Apache-2.0
 
 // poolclose.go — почему интеграционная проба закрывает пул ЧЕРЕЗ этот пакет, а не
 // через `defer pool.Close()`.

@@ -1,5 +1,5 @@
 // Copyright (c) PRO-Robotech
-// SPDX-License-Identifier: BUSL-1.1
+// SPDX-License-Identifier: Apache-2.0
 
 // Package option — величина, которой может НЕ БЫТЬ, причём отдельно от того,
 // какое значение она принимает, когда есть.

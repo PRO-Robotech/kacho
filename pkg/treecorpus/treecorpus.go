@@ -1,5 +1,5 @@
 // Copyright (c) PRO-Robotech
-// SPDX-License-Identifier: BUSL-1.1
+// SPDX-License-Identifier: Apache-2.0
 
 // Package treecorpus отвечает на вопрос «какие файлы содержит этот
 // репозиторий» — для проверок, вердикт которых обязан быть свойством КОММИТА, а

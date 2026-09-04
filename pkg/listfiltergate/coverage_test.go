@@ -1,5 +1,5 @@
 // Copyright (c) PRO-Robotech
-// SPDX-License-Identifier: BUSL-1.1
+// SPDX-License-Identifier: Apache-2.0
 
 // coverage_test.go answers the question no individual analyser can answer about
 // itself: which services are judged at all.

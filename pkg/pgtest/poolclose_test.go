@@ -1,5 +1,5 @@
 // Copyright (c) PRO-Robotech
-// SPDX-License-Identifier: BUSL-1.1
+// SPDX-License-Identifier: Apache-2.0
 
 // poolclose_test.go — предмет: закрытие пула, которому некого дождаться, обязано
 // СДАТЬСЯ и НАЗВАТЬ причину, а не висеть до предела прогона.

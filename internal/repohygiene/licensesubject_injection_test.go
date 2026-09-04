@@ -317,8 +317,11 @@ func TestLicenseSubjectGate_SilentOnAVendoredLicenseCopy(t *testing.T) {
 // Та же копия ВНЕ корня вендоренного пространства — по-прежнему находка.
 // Контроль послабления: оно не течёт за пределы своего предмета.
 func TestLicenseSubjectGate_RedsOnTheSameCopyOutsideAVendorRoot(t *testing.T) {
+	// Место выбрано так, чтобы объявленная уровнем лицензия ОТЛИЧАЛАСЬ от чужой
+	// копии: у pkg/ соседняя полоса объявила Apache-2.0, и копия Apache там стала
+	// законной — предмет инъекции от этого не изменился, изменилось место.
 	findings, census := injLicenseScanVendored(injLicenseCorpus{
-		"pkg/LICENSE": injApacheCopy,
+		"services/vpc/LICENSE": injApacheCopy,
 	}, "proto/google")
 	if len(findings) != 1 {
 		t.Fatalf("чужая копия вне корня обязана быть находкой, получено %d (перепись: %s)",
@@ -371,7 +374,9 @@ func TestLicenseSubjectGate_VendoredExemptionExpiresWithItsSubject(t *testing.T)
 		t.Fatalf("послабление пережило свой предмет: находок %d (перепись: %s)",
 			len(findings), census)
 	}
-	if !strings.Contains(findings[0].String(), "предмет не объявлен") {
+	// Причина та же, формулировка сменилась вместе с переходом гейта на отображение
+	// путь→лицензия: раньше «предмет не объявлен», теперь «лицензия не объявлена».
+	if !strings.Contains(findings[0].String(), "лицензия не объявлена") {
 		t.Fatalf("находка не называет причину: %s", findings[0])
 	}
 }

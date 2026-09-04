@@ -1,5 +1,5 @@
 // Copyright (c) PRO-Robotech
-// SPDX-License-Identifier: BUSL-1.1
+// SPDX-License-Identifier: Apache-2.0
 
 // Package dropguard decides whether dropping a table is safe by MEASURING the
 // table, not by arguing about it.

@@ -1,5 +1,5 @@
 // Copyright (c) PRO-Robotech
-// SPDX-License-Identifier: BUSL-1.1
+// SPDX-License-Identifier: Apache-2.0
 
 // census_test.go asserts a property that is separate from, and easy to mistake for,
 // the one the analysers assert: that every transport listing method in a service is

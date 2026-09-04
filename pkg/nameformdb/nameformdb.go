@@ -1,5 +1,5 @@
 // Copyright (c) PRO-Robotech
-// SPDX-License-Identifier: BUSL-1.1
+// SPDX-License-Identifier: Apache-2.0
 
 // Package nameformdb — общий двигатель пробы «ограничение формы имени ДЕЙСТВУЕТ на
 // живой базе».

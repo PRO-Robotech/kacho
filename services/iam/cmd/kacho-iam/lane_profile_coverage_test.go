@@ -1,5 +1,5 @@
 // Copyright (c) PRO-Robotech
-// SPDX-License-Identifier: BUSL-1.1
+// SPDX-License-Identifier: AGPL-3.0-or-later
 
 // lane_profile_coverage_test.go — ГЕЙТ КЛАССА: полоса посадки личности, которую
 // процесс УМЕЕТ поднять, обязана быть объявлена профилем развёртывания; полоса,

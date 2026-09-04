@@ -1,5 +1,5 @@
 // Copyright (c) PRO-Robotech
-// SPDX-License-Identifier: BUSL-1.1
+// SPDX-License-Identifier: Apache-2.0
 
 // Package pgtest gives a test binary ONE Postgres and hands each test its own
 // database cloned from a migrated template.

@@ -1,5 +1,5 @@
 // Copyright (c) PRO-Robotech
-// SPDX-License-Identifier: BUSL-1.1
+// SPDX-License-Identifier: Apache-2.0
 
 // Package listfiltergate is the analyser behind `make -C services/<svc>
 // audit-list-filter` for the services whose listing surface is a set of pages handed
