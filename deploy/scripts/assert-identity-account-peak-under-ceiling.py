@@ -62,7 +62,7 @@ SUITE = "services/iam/tests/newman"
 CEREMONY_DECL = "tests/authz-fixtures/ceremony_credentials.py"
 CEREMONY_SEED = "tests/authz-fixtures/prodseed_ceremony.py"
 NEIGHBOUR_GATE = "deploy/scripts/assert-cocreated-child-is-torn-down.py"
-QUOTA_MIGRATION = "services/iam/internal/migrations/484002_account_quota_identity_carrier.sql"
+QUOTA_MIGRATIONS_DIR = "services/iam/internal/migrations"
 BOOTSTRAP_SOURCE = "services/iam/internal/apps/kacho/api/user/internal_upsert.go"
 
 # Предъявители ОДНОГО человека церемонии. Оба обязаны стоять в объявлении церемонии —
@@ -75,10 +75,29 @@ CEREMONY_IDENTITY_BEARERS = ("jwtHumanCeremony", "jwtHumanCeremonyStepUp")
 BEARER = re.compile(r"bearer from env '([A-Za-z0-9_]+)'")
 
 # Величина потолка — там, где она НАЗНАЧАЕТСЯ, а не там, где её ожидают тексты
-# отказов. Прецедент чтения этой же миграции гейтом уже есть
-# (`identity_quota_carrier_test.go`).
+# отказов.
+#
+# ИЩЕТСЯ ПО СОДЕРЖИМОМУ, А НЕ ПО ИМЕНИ ФАЙЛА. Прежняя редакция открывала
+# `484002_account_quota_identity_carrier.sql` по имени; сведение цепочки iam в
+# одну первичную миграцию это имя растворило, и гейт стал падать ПРЕДПОСЫЛКОЙ —
+# то есть вердикт о ДЕРЕВЕ подменился отказом собственного чтения.
+#
+# Форм записи строки в дереве ДВЕ, и распознаватель обязан знать обе, иначе
+# следующая правка формы снова сделает его слепым молча:
+#   • форма дампа (сегодняшняя, из pg_dump --column-inserts):
+#       INSERT INTO kacho_iam.limits (id, created_at, scope, scope_id, kind,
+#         limit_value, ...) VALUES ('lim-…', now(), 'DEFAULT', '', 'iam.account', 5, …);
+#   • форма рукописной миграции (её пишут, правя величину одной строкой):
+#       ('lim-…', 'DEFAULT', '', 'iam.account', 5)
+#
+# Общий у обеих хвост — `'DEFAULT', '', 'iam.account', <N>`, и якорь взят ИМЕННО
+# по нему. Сужение до `'DEFAULT', ''` не косметика: без него регулярка ловит
+# соседнюю строку ПРЕДЕЛА ЧАСТОТЫ
+#   INSERT INTO kacho_iam.account_admission_rate_limits (…) VALUES (1, 'iam.account', 3, 3600, …)
+# и вердикт выносился бы по числу 3 — величине другого предмета, выглядящей как
+# потолок. Обе стороны доказаны инъекцией (см. шапку функции ниже).
 CEILING = re.compile(
-    r"\('lim-\d+',\s*'DEFAULT',\s*'',\s*'iam\.account',\s*(\d+)\)")
+    r"'DEFAULT',\s*'',\s*'iam\.account',\s*(\d+)")
 
 # Базовый уровень выводится из ДВУХ источников, и оба самоистекают.
 BOOTSTRAP_ON_FIRST_LOGIN = re.compile(r"ownedAccounts == 0")
@@ -131,18 +150,44 @@ def load_declarations(root: str):
     return _load(decl, "kacho_ceremony_decl"), _load(gate, "kacho_teardown_gate")
 
 
-def read_ceiling(root: str) -> int:
-    p = os.path.join(root, QUOTA_MIGRATION)
+def read_ceiling(root: str) -> tuple[int, str, int]:
+    """Потолок аккаунтов личности → (величина, где найдена, файлов осмотрено).
+
+    Осмотренное едет ВМЕСТЕ с величиной: «объявление не найдено» и «не прочитано
+    ни одного файла» — разные исходы, и вызывающий обязан их различать.
+    """
+    d = os.path.join(root, QUOTA_MIGRATIONS_DIR)
     try:
-        text = open(p, encoding="utf-8").read()
+        names = sorted(n for n in os.listdir(d) if n.endswith(".sql"))
     except OSError as exc:
-        raise PremiseError(f"потолок не прочитан: {exc}") from exc
-    m = CEILING.search(text)
-    if not m:
+        raise PremiseError(f"каталог миграций не прочитан: {exc}") from exc
+    if not names:
         raise PremiseError(
-            f"величина потолка не найдена в {QUOTA_MIGRATION} — форма объявления "
-            f"изменилась, и вердикт был бы о выдуманном числе")
-    return int(m.group(1))
+            f"в {QUOTA_MIGRATIONS_DIR} ноль файлов .sql — обход пуст, и «потолок "
+            f"не объявлен» неотличимо от «читать было нечего»")
+
+    found: list[tuple[str, int]] = []
+    for n in names:
+        try:
+            text = open(os.path.join(d, n), encoding="utf-8").read()
+        except OSError as exc:
+            raise PremiseError(f"миграция {n} не прочитана: {exc}") from exc
+        for m in CEILING.finditer(text):
+            found.append((n, int(m.group(1))))
+
+    if not found:
+        raise PremiseError(
+            f"величина потолка не найдена ни в одной из {len(names)} миграций "
+            f"{QUOTA_MIGRATIONS_DIR} — форма объявления изменилась, и вердикт "
+            f"был бы о выдуманном числе")
+    # Две РАЗНЫЕ живые величины об одном пределе — не повод взять первую: какая
+    # из них действует, решает человек. Отказ здесь честнее догадки.
+    if len({v for _, v in found}) > 1:
+        where = ", ".join(f"{n}:{v}" for n, v in found)
+        raise PremiseError(
+            f"потолок объявлен НЕОДНОЗНАЧНО ({where}) — вердикт зависел бы от "
+            f"порядка обхода, а не от дерева")
+    return found[0][1], found[0][0], len(names)
 
 
 def read_base_components(root: str) -> tuple[int, int, list[str]]:
@@ -343,7 +388,7 @@ def audit(root: str):
                 raise PremiseError(
                     f"предъявитель {b!r} (личность {name!r}) не объявлен в "
                     f"CEREMONY_ONLY_ENV — счёт видел бы не все создания этой личности")
-    ceiling = read_ceiling(root)
+    ceiling, ceiling_at, ceiling_files = read_ceiling(root)
     common, seeded_total, why = read_base_components(root)
     seeded = seeded_by_identity(decl, seeded_total)
     for name in seeded:
@@ -377,7 +422,7 @@ def audit(root: str):
         "identities": per_identity,
         "order": [stem for stem, _ in wave],
     }
-    return worst[1], worst[2], ceiling, base, why, census
+    return worst[1], worst[2], ceiling, base, why, census, (ceiling_at, ceiling_files)
 
 
 def main(argv=None) -> int:
@@ -390,7 +435,7 @@ def main(argv=None) -> int:
         return self_test()
 
     try:
-        peak, at, ceiling, base, why, census = audit(a.root)
+        peak, at, ceiling, base, why, census, (ceiling_at, ceiling_files) = audit(a.root)
     except PremiseError as exc:
         print(f"ОТКАЗ (предпосылка): {exc}", file=sys.stderr)
         return 2
@@ -404,7 +449,8 @@ def main(argv=None) -> int:
     for name, ipeak, _iat, icreated, ireleased in census["identities"]:
         print(f"  личность {name}: создани(й) {icreated}, освобождени(й) {ireleased}, "
               f"пик {ipeak}, запас {ceiling - ipeak}")
-    print(f"потолок {ceiling} ({QUOTA_MIGRATION}); наибольший пик одновременно живых "
+    print(f"потолок {ceiling} ({QUOTA_MIGRATIONS_DIR}/{ceiling_at}, "
+          f"миграций осмотрено {ceiling_files}); наибольший пик одновременно живых "
           f"{peak}, наименьший запас {ceiling - peak}")
 
     code, finding = decide(peak, ceiling)
@@ -602,7 +648,7 @@ def self_test() -> int:
 
     print("── настоящее дерево читается, перепись непуста")
     try:
-        _peak, _at, ceiling, base, _why, census = audit(REPO)
+        _peak, _at, ceiling, base, _why, census, _cw = audit(REPO)
         for label, got in (("коллекций", census["collections"]), ("шагов", census["steps"]),
                            ("созданий", census["created"]), ("потолок", ceiling),
                            ("базовый уровень", base)):
