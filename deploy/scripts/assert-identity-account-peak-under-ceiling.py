@@ -275,7 +275,8 @@ def seeded_rows(root: str, table: str) -> tuple[list[dict[str, str]], dict[str, 
 
 
 def read_seeded_value(root: str, table: str, where: dict[str, str],
-                      want: tuple[str, ...], what: str) -> tuple[str, ...]:
+                      want: tuple[str, ...], what: str
+                      ) -> tuple[tuple[str, ...], dict[str, int]]:
     """Значения колонок `want` у ЕДИНСТВЕННОЙ строки затравки, подходящей под `where`.
 
     Побеждает ПОСЛЕДНЯЯ подходящая строка — тот же порядок, что у самой базы, —
@@ -298,17 +299,24 @@ def read_seeded_value(root: str, table: str, where: dict[str, str],
         raise PremiseError(
             f"{what}: у строки {table} нет колонок {missing} — состав колонок "
             f"изменился, и вердикт был бы о выдуманном числе")
-    return tuple(row[c] for c in want)
+    census = dict(census)
+    census["matched"] = len(hit)
+    return tuple(row[c] for c in want), census
 
 
 def read_ceiling(root: str) -> int:
-    (value,) = read_seeded_value(root, QUOTA_TABLE, QUOTA_WHERE,
-                                 ("limit_value",), "потолок")
+    """Величина потолка. Перепись прочитанного — `ceiling_census`."""
+    return read_ceiling_with_census(root)[0]
+
+
+def read_ceiling_with_census(root: str) -> tuple[int, dict[str, int]]:
+    (value,), census = read_seeded_value(root, QUOTA_TABLE, QUOTA_WHERE,
+                                         ("limit_value",), "потолок")
     if not value.isdigit():
         raise PremiseError(
             f"потолок прочитан как {value!r} — не число, вердикт был бы о "
             f"выдуманной величине")
-    return int(value)
+    return int(value), census
 
 
 def read_base_components(root: str) -> tuple[int, int, list[str]]:
@@ -509,7 +517,7 @@ def audit(root: str):
                 raise PremiseError(
                     f"предъявитель {b!r} (личность {name!r}) не объявлен в "
                     f"CEREMONY_ONLY_ENV — счёт видел бы не все создания этой личности")
-    ceiling = read_ceiling(root)
+    ceiling, mig_census = read_ceiling_with_census(root)
     common, seeded_total, why = read_base_components(root)
     seeded = seeded_by_identity(decl, seeded_total)
     for name in seeded:
@@ -542,6 +550,10 @@ def audit(root: str):
         "released": sum(row[4] for row in per_identity),
         "identities": per_identity,
         "order": [stem for stem, _ in wave],
+        # Перепись ЧТЕНИЯ ВЕЛИЧИНЫ — две числа по каждой оси, осмотрено и найдено.
+        # Печатается и на ЗЕЛЁНОМ пути: «ноль находок» обязано быть отличимо от
+        # «ноль прочитанного» до того, как что-нибудь сломается, а не после.
+        "migrations": mig_census,
     }
     return worst[1], worst[2], ceiling, base, why, census
 
@@ -570,6 +582,10 @@ def main(argv=None) -> int:
     for name, ipeak, _iat, icreated, ireleased in census["identities"]:
         print(f"  личность {name}: создани(й) {icreated}, освобождени(й) {ireleased}, "
               f"пик {ipeak}, запас {ceiling - ipeak}")
+    mc = census["migrations"]
+    print(f"величина потолка: осмотрено файлов миграций {mc['files']}, операторов "
+          f"затравки {mc['inserts']}, из них строк {QUOTA_TABLE} {mc['rows']}, "
+          f"подошло под условие {mc['matched']}")
     print(f"потолок {ceiling} ({QUOTA_TABLE} @ {IAM_MIGRATIONS}); "
           f"наибольший пик одновременно живых "
           f"{peak}, наименьший запас {ceiling - peak}")

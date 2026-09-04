@@ -56,7 +56,6 @@ from __future__ import annotations
 import argparse
 import ast
 import os
-import re
 import sys
 
 HERE = os.path.dirname(os.path.abspath(__file__))
@@ -66,16 +65,21 @@ REPO = os.path.abspath(os.path.join(HERE, "..", ".."))
 # а не переписывается: переписанная копия разошлась бы с ним молча.
 PEAK_GATE = "deploy/scripts/assert-identity-account-peak-under-ceiling.py"
 
-RATE_MIGRATION = ("services/iam/internal/migrations/"
-                  "20260822231600_account_admission_rate.sql")
-
 # Величина темпа — там, где она НАЗНАЧАЕТСЯ, а не там, где её ожидают тексты отказов.
-# Форма — оператор затравки миграции; изменится форма, гейт скажет об этом, а не
-# вынесет вердикт о выдуманном числе.
-RATE = re.compile(
-    r"INSERT INTO kacho_iam\.account_admission_rate_limits\s*"
-    r"\(kind,\s*max_events,\s*window_seconds\)\s*"
-    r"SELECT\s*'iam\.account',\s*(\d+),\s*(\d+)")
+#
+# АДРЕСУЕТСЯ ПО ТОМУ, ЧТО ДЕРЕВО ПРОИЗВОДИТ (2026-09-04). Здесь стояло имя одной
+# миграции и её форма записи — `INSERT … (kind, max_events, window_seconds)
+# SELECT 'iam.account', N, M`. Свод миграций iam отнял оба: файла с таким именем
+# нет, а уцелевшая затравка записана `VALUES` с другим составом колонок. Величина
+# при этом ЖИВА — исчез её адрес, а не предмет.
+#
+# РАЗБОРЩИК БЕРЁТСЯ У СОСЕДА, а не переписывается: он уже умеет обходить весь
+# каталог миграций и читать значения ПО ИМЕНИ КОЛОНКИ, а вторая копия того же
+# разбора разошлась бы с первой молча — и разошлась бы именно там, где обе
+# отвечают «валидно» на валидном входе. Ровно тем же доводом сосед объявлен
+# единственным источником форм заведения и порядка волны.
+RATE_TABLE = "kacho_iam.account_admission_rate_limits"
+RATE_WHERE = {"kind": "iam.account", "withdrawn_at": "NULL"}
 
 # ТРЕБУЕМЫЙ ЗАПАС. Одна единица, а не две, как у объёма, и различие обосновано: у
 # объёма запас тратится на ОДНОВРЕМЕННОСТЬ, поэтому перестановка кейсов способна
@@ -116,7 +120,8 @@ def load_peak_gate(root: str):
     mod = importlib.util.module_from_spec(spec)
     spec.loader.exec_module(mod)
     for want in ("load_declarations", "identities_of", "wave_collections",
-                 "timeline_of", "read_base_components", "seeded_by_identity"):
+                 "timeline_of", "read_base_components", "seeded_by_identity",
+                 "read_seeded_value"):
         if not hasattr(mod, want):
             raise PremiseError(
                 f"у соседнего гейта нет `{want}` — его форма изменилась, и вердикт "
@@ -125,25 +130,34 @@ def load_peak_gate(root: str):
 
 
 def read_rate(root: str) -> tuple[int, int]:
-    """Пара «сколько заведений и за сколько секунд» из миграции темпа."""
-    p = os.path.join(root, RATE_MIGRATION)
+    """Пара «сколько заведений и за сколько секунд» из затравки миграций iam.
+
+    Читает разборщиком СОСЕДА — того же, что читает потолок объёма. Своей копии
+    здесь нет намеренно: два разбора одной формы расходятся молча.
+    """
+    return read_rate_with_census(root)[:2]
+
+
+def read_rate_with_census(root: str) -> tuple[int, int, dict[str, int]]:
+    peak = load_peak_gate(root)
     try:
-        text = open(p, encoding="utf-8").read()
-    except OSError as exc:
-        raise PremiseError(f"потолок темпа не прочитан: {exc}") from exc
-    m = RATE.search(text)
-    if not m:
+        (events, window), census = peak.read_seeded_value(
+            root, RATE_TABLE, RATE_WHERE, ("max_events", "window_seconds"),
+            "потолок темпа")
+    except peak.PremiseError as exc:            # чужой отказ — наш отказ
+        raise PremiseError(str(exc)) from exc
+    if not (events.isdigit() and window.isdigit()):
         raise PremiseError(
-            f"величина темпа не найдена в {RATE_MIGRATION} — форма объявления "
-            f"изменилась, и вердикт был бы о выдуманном числе")
-    return int(m.group(1)), int(m.group(2))
+            f"темп прочитан как ({events!r}, {window!r}) — не числа, вердикт был "
+            f"бы о выдуманной величине")
+    return int(events), int(window), census
 
 
 def audit(root: str):
     peak_gate = load_peak_gate(root)
     decl, forms = peak_gate.load_declarations(root)
     identities = peak_gate.identities_of(decl)
-    ceiling, window = read_rate(root)
+    ceiling, window, mig_census = read_rate_with_census(root)
     common, seeded_total, why = peak_gate.read_base_components(root)
     seeded = peak_gate.seeded_by_identity(decl, seeded_total)
     base = common + max(seeded.values(), default=0)
@@ -167,6 +181,10 @@ def audit(root: str):
         "collections": len(wave), "cases": cases, "steps": steps,
         "created": total, "identities": per_identity,
         "order": [stem for stem, _ in wave], "window": window,
+        # Перепись ЧТЕНИЯ ВЕЛИЧИНЫ — две числа по каждой оси, и печатается она на
+        # ЗЕЛЁНОМ пути тоже: «ноль найденных» обязано быть отличимо от «ноль
+        # прочитанных» до поломки, а не после неё.
+        "migrations": mig_census,
     }
     return worst, ceiling, base, why, census
 
@@ -195,8 +213,12 @@ def main(argv=None) -> int:
     for name, created, charged in census["identities"]:
         print(f"  личность {name}: заведени(й) пробами {created}, списаний всего "
               f"{charged}, запас {ceiling - charged}")
+    mc = census["migrations"]
+    print(f"величина темпа: осмотрено файлов миграций {mc['files']}, "
+          f"операторов затравки {mc['inserts']}, из них строк {RATE_TABLE} "
+          f"{mc['rows']}, подошло под условие {mc['matched']}")
     print(f"потолок темпа {ceiling} заведени(й) за {census['window']} с "
-          f"({RATE_MIGRATION}); наибольшее списание {worst[2]} (личность {worst[0]}), "
+          f"({RATE_TABLE}); наибольшее списание {worst[2]} (личность {worst[0]}), "
           f"наименьший запас {ceiling - worst[2]}")
 
     code, finding = decide(worst[2], ceiling)
@@ -341,6 +363,56 @@ def self_test() -> int:
         note(False, "соседнего гейта нет: прошло молча")
     except PremiseError:
         note(True, "соседнего гейта нет: ОТКАЗ")
+
+    # ЧТЕНИЕ ВЕЛИЧИНЫ ТЕМПА — СВОЙ случай, а не следствие предыдущего. Пока сосед
+    # брался из того же корня, «корня нет» роняло загрузку соседа РАНЬШЕ чтения, и
+    # отказ читателя величины не был доказан ничем: одно утверждение закрывало два
+    # разных предмета и об одном из них молчало. Ниже сосед НА МЕСТЕ, а меняется
+    # ровно один факт — затравка темпа.
+    import shutil, tempfile  # noqa: PLC0415 — нужны только здесь
+
+    _RATE_ROW = ("INSERT INTO kacho_iam.account_admission_rate_limits "
+                 "(id, kind, max_events, window_seconds, withdrawn_at, created_at) "
+                 "VALUES (1, 'iam.account', 3, 3600, NULL, now());\n")
+
+    def _root_with(body: str) -> str:
+        d = tempfile.mkdtemp(prefix="kacho-rate-")
+        os.makedirs(os.path.join(d, os.path.dirname(PEAK_GATE)), exist_ok=True)
+        shutil.copy(os.path.join(REPO, PEAK_GATE), os.path.join(d, PEAK_GATE))
+        mig = os.path.join(d, "services/iam/internal/migrations")
+        os.makedirs(mig, exist_ok=True)
+        with open(os.path.join(mig, "0001_initial.sql"), "w", encoding="utf-8") as fh:
+            fh.write(body)
+        return d
+
+    # Законный близнец: сосед на месте, затравка на месте — величина читается.
+    try:
+        note(read_rate(_root_with(_RATE_ROW)) == (3, 3600),
+             "сосед и затравка на месте → (3, 3600)")
+    except PremiseError as exc:
+        note(False, f"законный близнец: {exc}")
+
+    # Та же ось, что сломала гейт: колонки переставлены — величина обязана уцелеть.
+    _shuffled = ("INSERT INTO kacho_iam.account_admission_rate_limits "
+                 "(window_seconds, kind, created_at, max_events, id, withdrawn_at) "
+                 "VALUES (3600, 'iam.account', now(), 3, 1, NULL);\n")
+    try:
+        note(read_rate(_root_with(_shuffled)) == (3, 3600),
+             "колонки переставлены → всё ещё (3, 3600)")
+    except PremiseError as exc:
+        note(False, f"перестановка колонок: {exc}")
+
+    # Отказы: сосед на месте, изменён РОВНО ОДИН факт затравки.
+    for label, body in (
+        ("затравки темпа нет вовсе", "-- миграция без затравки темпа\n"),
+        ("вид сменён", _RATE_ROW.replace("'iam.account'", "'iam.project'")),
+        ("затравка отозвана", _RATE_ROW.replace("NULL, now()", "now(), now()")),
+    ):
+        try:
+            got = read_rate(_root_with(body))
+            note(False, f"{label}: прошло молча (вернул {got})")
+        except PremiseError:
+            note(True, f"{label}: ОТКАЗ")
 
     print("── настоящее дерево читается, перепись непуста")
     try:
