@@ -75,6 +75,10 @@ func loadDeliveredManifests(logger *slog.Logger, cfg config.ManifestsConfig) ([]
 		slog.Int("dirs_skipped", report.DirsSkipped),
 		slog.Int("manifests_read", report.ManifestsRead),
 		slog.Int("findings", len(report.Findings)),
+		// Чем была таблица типов для этого чтения. «Находок ноль» и «владение
+		// не охранялось» — РАЗНЫЕ утверждения о доставке, и различить их
+		// оператору нечем, если перепись об этом молчит.
+		slog.String("type_table", report.Referent.String()),
 		slog.Any("modules", report.Modules()))
 	if err != nil {
 		return nil, fmt.Errorf("доставка манифестов модулей: %w", err)

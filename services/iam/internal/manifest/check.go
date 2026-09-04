@@ -166,6 +166,14 @@ type CheckReport struct {
 	// Findings — находки: негодный манифест либо непрочитанный путь. Каждая
 	// называет место и предмет.
 	Findings []string
+	// Referent — ЧЕМ была таблица типов для этого обхода: образом, чьи
+	// объявления охраняются, либо продуктом порождающего прохода.
+	//
+	// Печатается вместе с объёмом осмотренного и находками (см. [CheckReport.Summary]).
+	// Без него «находок ноль» неотличимо от «владение не охранялось» — а это
+	// РАЗНЫЕ утверждения о доставке, и второе законно ровно в одном проходе.
+	// Требование к переписи стоит в приёмке композиции (`IAM-MB-1-05`).
+	Referent TypeReferent
 }
 
 // ExitCode — один из трёх исходов; порядок ветвления есть часть контракта:
@@ -186,8 +194,9 @@ func (r CheckReport) ExitCode() int {
 // возврата читает оболочка, а человек читает строку, и она не вправе выглядеть
 // успехом.
 func (r CheckReport) Summary() string {
-	s := fmt.Sprintf("осмотрено файлов %d · каталогов пропущено %d · манифестов прочитано %d · находок %d",
-		r.PathsSeen, r.DirsSkipped, r.ManifestsRead, len(r.Findings))
+	s := fmt.Sprintf("осмотрено файлов %d · каталогов пропущено %d · манифестов прочитано %d · "+
+		"находок %d · таблица типов: %s",
+		r.PathsSeen, r.DirsSkipped, r.ManifestsRead, len(r.Findings), r.Referent)
 	if r.ManifestsRead == 0 && len(r.Findings) == 0 {
 		s += " — проверять нечего: манифеста нет ни одного"
 	}
@@ -260,7 +269,7 @@ func isDeliveredManifestName(name string) bool { return !strings.HasPrefix(name,
 // которыми ограничена ступень первая.
 func walkManifests(root string, accept func(name string) bool, referent TypeReferent,
 	opts ...LoadOption) CheckReport {
-	var report CheckReport
+	report := CheckReport{Referent: referent}
 	// docs — прочитанное, в порядке report.Paths.
 	var docs [][]byte
 

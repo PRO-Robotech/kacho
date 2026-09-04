@@ -30,6 +30,16 @@ package manifest_test
 //
 // Без пары «отказ есть» неотличимо от «загрузчик отвергает всё», а близнец,
 // отличающийся двумя фактами, не говорит, который из них дал красное.
+//
+// # Чему этот файл СЛУЖИТ ДЕРЖАТЕЛЕМ
+//
+// Сценарий `IAM-MB-1-05` приёмки композиции
+// (`docs/engineering/acceptance/model-composes-at-boot-from-delivered-manifests.md`)
+// требует, чтобы манифест, задевающий ЧЕТЫРЕ судьи ступеней 1–4 разом, читался
+// без единой находки. Ступени 1 и 4 — имя модуля и модуль правила роли — закрыты
+// соседней полосой (`openmoduleset_test.go`); ступени 2 и 3 — тип объекта и тип
+// указателя — закрыты здесь, вместе с четырьмя положительными контролями,
+// отрицанием формы и переписью, называющей, охранялось ли владение.
 
 import (
 	"errors"
@@ -354,4 +364,37 @@ resources:
 	if _, err := manifest.LoadDelivered(okRoot); err != nil {
 		t.Fatalf("законный близнец отвергнут — типы разные: %v", err)
 	}
+}
+
+// TestDeliveryCensusSaysWhetherOwnershipWasGuarded — перепись обхода называет,
+// ЧЕМ была таблица типов.
+//
+// Требование стоит в приёмке композиции (`IAM-MB-1-05`) и держится здесь:
+// «находок ноль» и «владение не охранялось» суть разные утверждения о доставке,
+// и различить их оператору нечем, если перепись об этом молчит.
+//
+// Утверждается РАЗЛИЧИЕ двух текстов, а не их содержимое: закрепи проба слова
+// дословно — она бы краснела на всякой правке формулировки, ничего не говоря о
+// свойстве. А совпади два текста, перепись перестала бы различать полосы, оставаясь
+// на вид полноценной.
+func TestDeliveryCensusSaysWhetherOwnershipWasGuarded(t *testing.T) {
+	root := deliveryDir(t, map[string]string{"acme/manifest.yaml": acmeResourceManifest})
+
+	guarded := manifest.CheckDelivery(root).Summary()
+	generating := manifest.CheckTreeForGeneration(root).Summary()
+
+	if guarded == generating {
+		t.Fatalf("перепись обеих полос совпала дословно — она не различает, "+
+			"охранялось ли владение:\n%s", guarded)
+	}
+	for name, got := range map[string]string{"доставка": guarded, "порождение": generating} {
+		if !strings.Contains(got, "таблица типов:") {
+			t.Errorf("перепись полосы %s не называет таблицу типов вовсе: %s", name, got)
+		}
+		if !strings.Contains(got, "манифестов прочитано") {
+			t.Errorf("перепись полосы %s потеряла объём осмотренного: %s", name, got)
+		}
+	}
+	t.Logf("перепись доставки:   %s", guarded)
+	t.Logf("перепись порождения: %s", generating)
 }
