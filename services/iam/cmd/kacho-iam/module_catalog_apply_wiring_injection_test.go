@@ -260,7 +260,7 @@ func serve() error {
 	if aErr := applyDeliveredManifests(ctx, logger, catalogApplier, deliveredManifests); aErr != nil {
 		return aErr
 	}
-	catalogCensus, catErr := seed.AssertCatalogParity(ctx, catalogRepo)
+	catalogCensus, catErr := seed.AssertCatalogParity(ctx, catalogRepo, seed.ImageAnchor())
 	return catErr
 }
 `
@@ -273,7 +273,7 @@ func serve() error {
 		return mErr
 	}
 	use(deliveredManifests)
-	catalogCensus, catErr := seed.AssertCatalogParity(ctx, catalogRepo)
+	catalogCensus, catErr := seed.AssertCatalogParity(ctx, catalogRepo, seed.ImageAnchor())
 	return catErr
 }
 `
@@ -285,7 +285,7 @@ func serve() error {
 	if mErr != nil {
 		return mErr
 	}
-	catalogCensus, catErr := seed.AssertCatalogParity(ctx, catalogRepo)
+	catalogCensus, catErr := seed.AssertCatalogParity(ctx, catalogRepo, seed.ImageAnchor())
 	if catErr != nil {
 		return catErr
 	}
@@ -304,7 +304,7 @@ func serve() error {
 		return mErr
 	}
 	use(deliveredManifests)
-	return seed.AssertCatalogParity(ctx, catalogRepo)
+	return seed.AssertCatalogParity(ctx, catalogRepo, seed.ImageAnchor())
 }
 `
 

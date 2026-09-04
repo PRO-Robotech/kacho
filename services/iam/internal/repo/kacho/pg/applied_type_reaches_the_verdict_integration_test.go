@@ -463,7 +463,7 @@ func TestDoD1_RuntimeAppliedCatalogRowCarriesTheGrantToTheVerdict(t *testing.T) 
 	repo := kachopg.New(pool, nil)
 	applier := applierOver(t, pool)
 
-	census, err := seed.AssertCatalogParity(ctx, catRepo)
+	census, err := seed.AssertCatalogParity(ctx, catRepo, seed.ImageAnchor())
 	require.NoError(t, err, "страж паритета каталога")
 	snap, err := catalog.NewSnapshot(census.Live, catRepo, nil, nil)
 	require.NoError(t, err, "снимок каталога")
@@ -691,7 +691,7 @@ func TestDoD1_TypeUnknownToTheBuildReachesTheVerdictThroughTheComposedModel(t *t
 			"собранную модель в TestMain (installHarnessComposedModel) — это обстановка "+
 			"пробы, а не предмет её утверждения", verdictAppliedModel)
 
-	census, err := seed.AssertCatalogParity(ctx, catRepo)
+	census, err := seed.AssertCatalogParity(ctx, catRepo, seed.ImageAnchor())
 	require.NoError(t, err, "страж паритета каталога")
 	snap, err := catalog.NewSnapshot(census.Live, catRepo, nil, nil)
 	require.NoError(t, err, "снимок каталога")

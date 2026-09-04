@@ -116,7 +116,7 @@ func TestApplyConfirmsTheStateItWasPlannedAgainst(t *testing.T) {
 		ctx = verbCallerCtx(ctx)
 		applier := verbApplierOver(t, pool)
 
-		census, err := seed.AssertCatalogParity(ctx, kachopg.NewCatalogRepo(pool))
+		census, err := seed.AssertCatalogParity(ctx, kachopg.NewCatalogRepo(pool), seed.ImageAnchor())
 		require.NoError(t, err, "предпосылка не создана: посеянный каталог уже разошёлся с опорой")
 		logParityCensus(t, "предпосылка", census)
 
@@ -150,7 +150,7 @@ func TestApplyConfirmsTheStateItWasPlannedAgainst(t *testing.T) {
 		ctx = verbCallerCtx(ctx)
 		applier := verbApplierOver(t, pool)
 
-		_, err := seed.AssertCatalogParity(ctx, kachopg.NewCatalogRepo(pool))
+		_, err := seed.AssertCatalogParity(ctx, kachopg.NewCatalogRepo(pool), seed.ImageAnchor())
 		require.NoError(t, err, "предпосылка не создана: посеянный каталог уже разошёлся с опорой")
 
 		stale := moduleStateOf(t, ctx, pool, anchoredModule)
@@ -191,7 +191,7 @@ func TestApplyConfirmsTheStateItWasPlannedAgainst(t *testing.T) {
 		repo := kachopg.New(pool, nil)
 		applier := verbApplierOver(t, pool)
 
-		census, err := seed.AssertCatalogParity(ctx, catRepo)
+		census, err := seed.AssertCatalogParity(ctx, catRepo, seed.ImageAnchor())
 		require.NoError(t, err, "предпосылка не создана: посеянный каталог уже разошёлся с опорой")
 		snap, err := catalog.NewSnapshot(census.Live, catRepo, nil, nil)
 		require.NoError(t, err, "снимок каталога")
@@ -234,7 +234,7 @@ func TestApplyByVerbRequiresConfirmationAndBothCeilings(t *testing.T) {
 	ctx = verbCallerCtx(ctx)
 	applier := verbApplierOver(t, pool)
 
-	_, err := seed.AssertCatalogParity(ctx, kachopg.NewCatalogRepo(pool))
+	_, err := seed.AssertCatalogParity(ctx, kachopg.NewCatalogRepo(pool), seed.ImageAnchor())
 	require.NoError(t, err, "предпосылка не создана: посеянный каталог уже разошёлся с опорой")
 
 	before := moduleCatalogSnapshot(t, ctx, pool, anchoredModule)
@@ -304,7 +304,7 @@ func TestApplyRefusesWhenAResettleCeilingIsExceeded(t *testing.T) {
 	repo := kachopg.New(pool, nil)
 	applier := verbApplierOver(t, pool)
 
-	census, err := seed.AssertCatalogParity(ctx, catRepo)
+	census, err := seed.AssertCatalogParity(ctx, catRepo, seed.ImageAnchor())
 	require.NoError(t, err, "предпосылка не создана: посеянный каталог уже разошёлся с опорой")
 	snap, err := catalog.NewSnapshot(census.Live, catRepo, nil, nil)
 	require.NoError(t, err, "снимок каталога")

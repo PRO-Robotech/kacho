@@ -137,13 +137,13 @@ func TestModuleCatalogBootSequenceConvergesTheCatalogAndKeepsTheParityGuardGreen
 		modsAfter, resAfter, verbsAfter)
 
 	// ── шаг 3: страж паритета — ПОСЛЕ применителя, как в serve.go ───────────
-	parity, perr := seed.AssertCatalogParity(ctx, repo)
+	parity, perr := seed.AssertCatalogParity(ctx, repo, seed.ImageAnchor())
 	require.NoError(t, perr,
 		"страж паритета отверг каталог ПОСЛЕ применения — провязка ломала бы старт, "+
 			"а не чинила его (недостаёт %d, лишних %d)",
 		len(parity.MissingRows), len(parity.ExtraRows))
 	t.Logf("страж: литерал %d/%d/%d · строки %d/%d/%d · недостаёт %d · лишних %d",
-		parity.LiteralModules, parity.LiteralResources, parity.LiteralVerbs,
+		parity.AnchorModules, parity.AnchorResources, parity.AnchorVerbs,
 		parity.RowModules, parity.RowResources, parity.RowVerbs,
 		len(parity.MissingRows), len(parity.ExtraRows))
 
@@ -157,7 +157,7 @@ func TestModuleCatalogBootSequenceConvergesTheCatalogAndKeepsTheParityGuardGreen
 			"каталог: %s", second)
 	require.Equal(t, before, stateFingerprint(t, ctx, pool),
 		"второе применение сдвинуло состояние")
-	_, perr2 := seed.AssertCatalogParity(ctx, repo)
+	_, perr2 := seed.AssertCatalogParity(ctx, repo, seed.ImageAnchor())
 	require.NoError(t, perr2, "страж отверг каталог после ВТОРОГО применения")
 }
 

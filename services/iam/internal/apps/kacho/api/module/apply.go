@@ -86,9 +86,17 @@ func (uc *ApplyUseCase) Execute(
 			"применитель каталога не провязан"))
 	}
 
-	m, err := manifestFromDelivery(ctx, uc.delivery, module)
+	m, delivery, err := manifestFromDelivery(ctx, uc.delivery, module)
 	if err != nil {
 		return nil, err
+	}
+	// ОПОРА — из ТОЙ ЖЕ доставки, которой взят манифест (#1861), и она едет
+	// ЗАПРОСОМ: применитель один на процесс, а запросов у него много
+	// одновременно.
+	deliveredAnchor, aerr := modulecatalog.AnchorOfDelivery(delivery)
+	if aerr != nil {
+		return nil, shared.MapRepoErr(iamerr.Wrapf(iamerr.ErrFailedPrecondition,
+			"опора паритета не собрана из доставки: %v", aerr))
 	}
 
 	// Потолки и подтверждение проверяет САМ применитель — вторая копия проверки
@@ -102,6 +110,7 @@ func (uc *ApplyUseCase) Execute(
 		ExpectedState:         expectedState,
 		MaxResettledRuleRefs:  intFromOptional(maxResettledRuleRefs),
 		MaxResettledRoleVerbs: intFromOptional(maxResettledRoleVerbs),
+		Anchor:                deliveredAnchor,
 	}
 
 	op, oerr := operations.NewFromContext(ctx,

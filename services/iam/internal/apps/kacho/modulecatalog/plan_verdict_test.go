@@ -97,7 +97,7 @@ const planVerdictSpareResource = "addressPool"
 // и утверждает `TestPlanHypotheticalStateCarriesTheRetiredSideToo`.
 func planVerdictProducer(live, retired catalog.Rows, declared modulecatalog.Declared) (planVerdict, error) {
 	plan, err := modulecatalog.PlanAgainstAnchor(
-		context.Background(), modulecatalog.NewCatalogState(live, retired), declared)
+		context.Background(), modulecatalog.NewCatalogState(live, retired), declared, seed.ImageAnchor())
 	return planVerdict(plan.Verdict), err
 }
 
@@ -443,7 +443,7 @@ func verdictByTheAnchor(t *testing.T, s planState, naive bool) planVerdict {
 	if naive {
 		nextRetired = catalog.Rows{}
 	}
-	census, _ := seed.AssertCatalogParity(context.Background(), &planStubSource{live: nextLive, retired: nextRetired})
+	census, _ := seed.AssertCatalogParity(context.Background(), &planStubSource{live: nextLive, retired: nextRetired}, seed.ImageAnchor())
 	return refusedIf(census.Diverged())
 }
 

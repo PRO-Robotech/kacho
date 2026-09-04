@@ -112,7 +112,7 @@ func TestIAMRW110AGrantOnARetiredRoleYieldsNoVerdict(t *testing.T) {
 	repo := kachopg.New(pool, nil)
 	catRepo := kachopg.NewCatalogRepo(pool)
 
-	census, err := seed.AssertCatalogParity(ctx, catRepo)
+	census, err := seed.AssertCatalogParity(ctx, catRepo, seed.ImageAnchor())
 	require.NoError(t, err, "страж паритета каталога")
 	snap, err := catalog.NewSnapshot(census.Live, catRepo, nil, nil)
 	require.NoError(t, err, "снимок каталога")
