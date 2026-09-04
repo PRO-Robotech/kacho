@@ -605,7 +605,7 @@ func (a *Applier) apply(ctx context.Context, m *manifest.Manifest, conf *confirm
 			if cerr != nil {
 				return fmt.Errorf("%w: чтение каталога для сверки опоры: %w", ErrWriteFailed, cerr)
 			}
-			plan, aerr := AnchorVerdictOf(ctx, state)
+			plan, aerr := AnchorVerdictOf(ctx, state, conf.anchor)
 			if aerr != nil {
 				return fmt.Errorf("%w: сверка опоры: %w", ErrWriteFailed, aerr)
 			}

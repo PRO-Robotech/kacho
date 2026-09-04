@@ -244,8 +244,15 @@ var _ seed.CatalogSource = anchorSource{}
 // собранным из строк пула, применитель — ФАКТИЧЕСКИМ, прочитанным в своей
 // транзакции после записи. Вопрос у обоих один, и потому производитель ответа
 // тоже один.
-func AnchorVerdictOf(ctx context.Context, state CatalogState) (AnchorPlan, error) {
-	census, err := seed.MeasureCatalogParity(ctx, anchorSource{state: state}, seed.ImageAnchor())
+//
+// ОПОРА приходит параметром, а не спрашивается здесь (#1861). Причина не
+// слоистость: опора складывается из образа и ДОСТАВКИ, а доставку читает
+// вызывающий — у глагола своим запросом, у старта один раз при пуске. Спроси её
+// эта функция сама, и вердикт строился бы по одному составу доставки, а
+// применение шло бы по другому, прочитанному вызывающим, — два места об одном
+// предмете. Нулевое значение = опора одного образа, то есть самая узкая.
+func AnchorVerdictOf(ctx context.Context, state CatalogState, a seed.Anchor) (AnchorPlan, error) {
+	census, err := seed.MeasureCatalogParity(ctx, anchorSource{state: state}, a)
 	if err != nil {
 		// Недостижимо by construction (см. `anchorSource`) — и написано ИМЕННО
 		// поэтому: проглоченный отказ выглядит одинаково при живом источнике и
@@ -286,8 +293,8 @@ func AnchorVerdictOf(ctx context.Context, state CatalogState) (AnchorPlan, error
 // объявленных строк к текущему.
 //
 // Ни записи, ни второго диффа: состояние строится значениями, сверка — та же.
-func PlanAgainstAnchor(ctx context.Context, current CatalogState, d Declared) (AnchorPlan, error) {
-	return AnchorVerdictOf(ctx, current.AfterApplying(d))
+func PlanAgainstAnchor(ctx context.Context, current CatalogState, d Declared, a seed.Anchor) (AnchorPlan, error) {
+	return AnchorVerdictOf(ctx, current.AfterApplying(d), a)
 }
 
 // resourcePair / verbTriple — ключи, которыми строку адресует СХЕМА
