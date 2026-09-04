@@ -62,7 +62,7 @@ SUITE = "services/iam/tests/newman"
 CEREMONY_DECL = "tests/authz-fixtures/ceremony_credentials.py"
 CEREMONY_SEED = "tests/authz-fixtures/prodseed_ceremony.py"
 NEIGHBOUR_GATE = "deploy/scripts/assert-cocreated-child-is-torn-down.py"
-QUOTA_MIGRATION = "services/iam/internal/migrations/484002_account_quota_identity_carrier.sql"
+IAM_MIGRATIONS = "services/iam/internal/migrations"
 BOOTSTRAP_SOURCE = "services/iam/internal/apps/kacho/api/user/internal_upsert.go"
 
 # Предъявители ОДНОГО человека церемонии. Оба обязаны стоять в объявлении церемонии —
@@ -75,10 +75,44 @@ CEREMONY_IDENTITY_BEARERS = ("jwtHumanCeremony", "jwtHumanCeremonyStepUp")
 BEARER = re.compile(r"bearer from env '([A-Za-z0-9_]+)'")
 
 # Величина потолка — там, где она НАЗНАЧАЕТСЯ, а не там, где её ожидают тексты
-# отказов. Прецедент чтения этой же миграции гейтом уже есть
-# (`identity_quota_carrier_test.go`).
-CEILING = re.compile(
-    r"\('lim-\d+',\s*'DEFAULT',\s*'',\s*'iam\.account',\s*(\d+)\)")
+# отказов.
+#
+# АДРЕСУЕТСЯ ПО ТОМУ, ЧТО ДЕРЕВО ПРОИЗВОДИТ, А НЕ ПО ИМЕНИ ФАЙЛА (2026-09-04).
+# Здесь стояло имя одной миграции и ПОЗИЦИОННЫЙ разбор её значений
+# (`('lim-N', 'DEFAULT', '', 'iam.account', N)`). Свод 171 миграции iam в одну
+# первичную (`c0114fffe1`) отнял у гейта ОБА допущения разом: файла с таким
+# именем больше нет, а у сохранившейся строки другой порядок колонок — между
+# идентификатором и областью встала `created_at`. Величина при этом ЖИВА и
+# по-прежнему назначается затравкой; предмет не исчез, исчез его адрес.
+#
+# Поэтому: обход ВСЕГО каталога миграций и разбор ПО ИМЕНИ КОЛОНКИ. Первое
+# переживает переименование и свод файлов, второе — перестановку колонок,
+# то есть ровно те два способа, которыми гейт уже сломался.
+QUOTA_TABLE = "kacho_iam.limits"
+QUOTA_WHERE = {"scope": "DEFAULT", "scope_id": "", "kind": "iam.account",
+               "withdrawn_at": "NULL"}
+
+# Затравка миграции — оператор ОДНОЙ СТРОКОЙ со списком колонок. Форма измерена,
+# а не предположена: в каталоге 449 операторов вставки, все этой формы, ноль без
+# списка колонок и ноль `INSERT … SELECT`. Оператор, который разбор НЕ ПРОЧЁЛ, —
+# находка, а не молчание: иначе новая форма записи увела бы величину из-под
+# наблюдения, оставив гейт зелёным.
+_INSERT = re.compile(
+    r"^INSERT\s+INTO\s+(?P<table>[\w.]+)\s*\((?P<cols>[^)]*)\)\s*"
+    r"VALUES\s*\((?P<vals>.*)\)\s*;\s*$")
+_INSERT_HEAD = re.compile(r"^INSERT\s+INTO\s", re.I)
+
+# ТЕЛО ФУНКЦИИ — НЕ ЗАТРАВКА, и различать их обязательно. Внутри `$$ … $$` лежат
+# операторы вставки ВРЕМЕНИ ИСПОЛНЕНИЯ (журнал личности, окно допуска, списание
+# квоты): они многострочны, значений не несут и строкой затравки не являются.
+# Их девять на 458 вхождений, и без этого различения разбор честно объявлял бы
+# каждое из них незнакомой формой.
+#
+# Разделяем по ТОМУ, ЧТО ЭТО ТАКОЕ (тело функции против верхнего уровня), а не по
+# отступу: отступ — соглашение об оформлении, и первый же переформатированный
+# файл увёл бы затравку из-под наблюдения молча. Форм долларовой кавычки в
+# каталоге две — `$$` и `$_$`, — обе закрываются своей же меткой.
+_DOLLAR_TAG = re.compile(r"\$[A-Za-z_]*\$")
 
 # Базовый уровень выводится из ДВУХ источников, и оба самоистекают.
 BOOTSTRAP_ON_FIRST_LOGIN = re.compile(r"ownedAccounts == 0")
@@ -131,18 +165,150 @@ def load_declarations(root: str):
     return _load(decl, "kacho_ceremony_decl"), _load(gate, "kacho_teardown_gate")
 
 
-def read_ceiling(root: str) -> int:
-    p = os.path.join(root, QUOTA_MIGRATION)
-    try:
-        text = open(p, encoding="utf-8").read()
-    except OSError as exc:
-        raise PremiseError(f"потолок не прочитан: {exc}") from exc
-    m = CEILING.search(text)
-    if not m:
+def _split_values(s: str) -> list[str]:
+    """Значения оператора вставки по ВЕРХНЕМУ уровню запятых.
+
+    Наивный `split(",")` рвёт `now()` и строку с запятой внутри; после свода
+    миграций такие значения в затравке есть (`now()` стоит второй колонкой).
+    """
+    out, cur, depth, quote = [], [], 0, False
+    i = 0
+    while i < len(s):
+        ch = s[i]
+        if quote:
+            cur.append(ch)
+            if ch == "'":
+                if i + 1 < len(s) and s[i + 1] == "'":   # '' — экранированная кавычка
+                    cur.append(s[i + 1])
+                    i += 2
+                    continue
+                quote = False
+        elif ch == "'":
+            quote = True
+            cur.append(ch)
+        elif ch == "(":
+            depth += 1
+            cur.append(ch)
+        elif ch == ")":
+            depth -= 1
+            cur.append(ch)
+        elif ch == "," and depth == 0:
+            out.append("".join(cur).strip())
+            cur = []
+        else:
+            cur.append(ch)
+        i += 1
+    out.append("".join(cur).strip())
+    return out
+
+
+def _unquote(v: str) -> str:
+    v = v.strip()
+    if len(v) >= 2 and v[0] == "'" and v[-1] == "'":
+        return v[1:-1].replace("''", "'")
+    return v
+
+
+def seeded_rows(root: str, table: str) -> tuple[list[dict[str, str]], dict[str, int]]:
+    """Строки затравки таблицы `table` из ВСЕХ миграций iam + перепись.
+
+    Возвращает `(строки, перепись)`; перепись несёт ДВЕ величины по каждой оси —
+    осмотрено и найдено, — потому что «ноль найденных» обязано быть отличимо от
+    «ноль прочитанных». Оператор вставки, который разбор не прочёл, — ОТКАЗ:
+    молчание на незнакомой форме и есть тот способ, которым величина уходит
+    из-под наблюдения незамеченной.
+    """
+    d = os.path.join(root, IAM_MIGRATIONS)
+    if not os.path.isdir(d):
         raise PremiseError(
-            f"величина потолка не найдена в {QUOTA_MIGRATION} — форма объявления "
-            f"изменилась, и вердикт был бы о выдуманном числе")
-    return int(m.group(1))
+            f"каталога миграций iam нет: {d} — читать величину неоткуда, и это "
+            f"ОТКАЗ, а не «чисто»")
+    files = sorted(f for f in os.listdir(d) if f.endswith(".sql"))
+    census = {"files": len(files), "inserts": 0, "rows": 0}
+    if not files:
+        raise PremiseError(
+            f"в {IAM_MIGRATIONS} ноль файлов .sql — обход пуст, вердикт был бы "
+            f"о непрочитанном дереве")
+    rows: list[dict[str, str]] = []
+    census["bodies"] = 0
+    for name in files:
+        body: str | None = None
+        with open(os.path.join(d, name), encoding="utf-8") as fh:
+            for lineno, line in enumerate(fh, 1):
+                tags = _DOLLAR_TAG.findall(line)
+                inside_at_start = body is not None
+                for t in tags:
+                    if body is None:
+                        body = t
+                        census["bodies"] += 1
+                    elif body == t:
+                        body = None
+                if inside_at_start or body is not None:
+                    continue          # тело функции — не затравка
+                line = line.strip()
+                if not _INSERT_HEAD.match(line):
+                    continue
+                census["inserts"] += 1
+                m = _INSERT.match(line)
+                if not m:
+                    raise PremiseError(
+                        f"{IAM_MIGRATIONS}/{name}:{lineno}: оператор вставки не "
+                        f"разобран — форма записи затравки изменилась. Это ОТКАЗ, "
+                        f"а не пропуск: непрочитанный оператор увёл бы величину "
+                        f"из-под наблюдения, оставив гейт зелёным")
+                if m.group("table") != table:
+                    continue
+                cols = [c.strip() for c in m.group("cols").split(",")]
+                vals = _split_values(m.group("vals"))
+                if len(cols) != len(vals):
+                    raise PremiseError(
+                        f"{IAM_MIGRATIONS}/{name}:{lineno}: колонок {len(cols)}, "
+                        f"значений {len(vals)} — разбор неверен, а не строка")
+                rows.append({c: _unquote(v) for c, v in zip(cols, vals)})
+                census["rows"] += 1
+        if body is not None:
+            raise PremiseError(
+                f"{IAM_MIGRATIONS}/{name}: долларовая кавычка {body} не закрыта — "
+                f"разбор потерял границу тела функции, и часть дерева осталась "
+                f"неосмотренной")
+    return rows, census
+
+
+def read_seeded_value(root: str, table: str, where: dict[str, str],
+                      want: tuple[str, ...], what: str) -> tuple[str, ...]:
+    """Значения колонок `want` у ЕДИНСТВЕННОЙ строки затравки, подходящей под `where`.
+
+    Побеждает ПОСЛЕДНЯЯ подходящая строка — тот же порядок, что у самой базы, —
+    и число подошедших называется: две затравки одной величины расходятся молча,
+    и здесь такое уже оплачено соседним гейтом (`assert-alt-fixtures-are-another`).
+    """
+    rows, census = seeded_rows(root, table)
+    hit = [r for r in rows
+           if all(r.get(k, "\0") == v for k, v in where.items())]
+    if not hit:
+        raise PremiseError(
+            f"{what} не найден: ни одна миграция iam не заводит строку {table} "
+            f"по условию {where}. Осмотрено файлов {census['files']}, операторов "
+            f"вставки {census['inserts']}, строк {table} {census['rows']}. "
+            f"Либо величина снята вместе со своим предметом, либо изменилось "
+            f"условие — вердикт был бы о выдуманном числе")
+    row = hit[-1]
+    missing = [c for c in want if c not in row]
+    if missing:
+        raise PremiseError(
+            f"{what}: у строки {table} нет колонок {missing} — состав колонок "
+            f"изменился, и вердикт был бы о выдуманном числе")
+    return tuple(row[c] for c in want)
+
+
+def read_ceiling(root: str) -> int:
+    (value,) = read_seeded_value(root, QUOTA_TABLE, QUOTA_WHERE,
+                                 ("limit_value",), "потолок")
+    if not value.isdigit():
+        raise PremiseError(
+            f"потолок прочитан как {value!r} — не число, вердикт был бы о "
+            f"выдуманной величине")
+    return int(value)
 
 
 def read_base_components(root: str) -> tuple[int, int, list[str]]:
@@ -404,7 +570,8 @@ def main(argv=None) -> int:
     for name, ipeak, _iat, icreated, ireleased in census["identities"]:
         print(f"  личность {name}: создани(й) {icreated}, освобождени(й) {ireleased}, "
               f"пик {ipeak}, запас {ceiling - ipeak}")
-    print(f"потолок {ceiling} ({QUOTA_MIGRATION}); наибольший пик одновременно живых "
+    print(f"потолок {ceiling} ({QUOTA_TABLE} @ {IAM_MIGRATIONS}); "
+          f"наибольший пик одновременно живых "
           f"{peak}, наименьший запас {ceiling - peak}")
 
     code, finding = decide(peak, ceiling)
@@ -572,6 +739,88 @@ def self_test() -> int:
           [e[1] for e in events], ["accX", "accX"])
     check("кейсов прочитано", cases, 1)
     check("шагов прочитано", steps, 4)
+
+    # ── чтение величины: инъекции в РАЗБОРЩИК ────────────────────────────────
+    # Гейт сломался ДВАЖДЫ одним изменением — свод миграций отнял и имя файла, и
+    # порядок колонок, — поэтому каждая из двух осей проверяется отдельно, а
+    # рядом стоит законный близнец. Каждый случай меняет РОВНО ОДИН факт против
+    # него: иначе неизвестно, какой из двух дал отказ.
+    import tempfile  # noqa: PLC0415 — нужен только здесь
+
+    _CANON = ("INSERT INTO kacho_iam.limits (id, created_at, scope, scope_id, "
+              "kind, limit_value, withdrawn_at, revision) VALUES "
+              "('lim-00000000000000032', now(), 'DEFAULT', '', 'iam.account', "
+              "5, NULL, 32);\n")
+
+    def _tree(body: str) -> str:
+        d = tempfile.mkdtemp(prefix="kacho-mig-")
+        os.makedirs(os.path.join(d, IAM_MIGRATIONS), exist_ok=True)
+        with open(os.path.join(d, IAM_MIGRATIONS, "0001_initial.sql"), "w",
+                  encoding="utf-8") as fh:
+            fh.write(body)
+        return d
+
+    print("── величина читается по ИМЕНИ КОЛОНКИ и по всему каталогу миграций")
+    # Законный близнец: канонический оператор затравки читается.
+    try:
+        note(read_ceiling(_tree(_CANON)) == 5, "канонический оператор → 5")
+    except PremiseError as exc:
+        note(False, f"канонический оператор: {exc}")
+
+    # ОСЬ 1 — перестановка колонок. Ровно тот факт, на котором гейт сломался:
+    # позиционный разбор вернул бы чужое число либо промолчал.
+    _shuffled = ("INSERT INTO kacho_iam.limits (kind, limit_value, scope, "
+                 "scope_id, withdrawn_at, id, revision, created_at) VALUES "
+                 "('iam.account', 5, 'DEFAULT', '', NULL, "
+                 "'lim-00000000000000032', 32, now());\n")
+    try:
+        note(read_ceiling(_tree(_shuffled)) == 5, "колонки переставлены → всё ещё 5")
+    except PremiseError as exc:
+        note(False, f"перестановка колонок: {exc}")
+
+    # ОСЬ 2 — имя файла. Величина в файле с ДРУГИМ именем обязана читаться:
+    # адрес — каталог, а не имя, иначе следующий свод отнимет предмет снова.
+    _renamed = tempfile.mkdtemp(prefix="kacho-mig-")
+    os.makedirs(os.path.join(_renamed, IAM_MIGRATIONS), exist_ok=True)
+    with open(os.path.join(_renamed, IAM_MIGRATIONS, "99999_other_name.sql"), "w",
+              encoding="utf-8") as _fh:
+        _fh.write(_CANON)
+    try:
+        note(read_ceiling(_renamed) == 5, "файл переименован → всё ещё 5")
+    except PremiseError as exc:
+        note(False, f"переименование файла: {exc}")
+
+    # Дубль затравки: побеждает ПОСЛЕДНЯЯ строка — тот же порядок, что у базы.
+    _dup = _CANON + _CANON.replace(", 5, NULL, 32)", ", 9, NULL, 33)")
+    try:
+        note(read_ceiling(_tree(_dup)) == 9, "две затравки → побеждает последняя (9)")
+    except PremiseError as exc:
+        note(False, f"дубль затравки: {exc}")
+
+    # Отказы: у каждого свой ОДИН изменённый факт против канонического близнеца.
+    for label, body in (
+        # Незнакомая форма записи — ОТКАЗ, а не молчаливый пропуск: пропуск увёл
+        # бы величину из-под наблюдения, оставив гейт зелёным.
+        ("оператор без списка колонок",
+         "INSERT INTO kacho_iam.limits VALUES ('lim-1', now(), 'DEFAULT', '', "
+         "'iam.account', 5, NULL, 32);\n"),
+        # Строка есть, но условие не подходит — величины нет.
+        ("вид сменён", _CANON.replace("'iam.account'", "'iam.project'")),
+        ("затравка отозвана", _CANON.replace(", 5, NULL, 32)", ", 5, now(), 32)")),
+        # Тело функции затравкой НЕ является.
+        ("оператор внутри тела функции",
+         "CREATE FUNCTION f() RETURNS void AS $$\nBEGIN\n    " + _CANON
+         + "END;\n$$ LANGUAGE plpgsql;\n"),
+        ("в каталоге ноль файлов .sql", ""),
+    ):
+        d = _tree(body) if body else tempfile.mkdtemp(prefix="kacho-mig-")
+        if not body:
+            os.makedirs(os.path.join(d, IAM_MIGRATIONS), exist_ok=True)
+        try:
+            got = read_ceiling(d)
+            note(False, f"{label}: прошло молча (вернул {got})")
+        except PremiseError:
+            note(True, f"{label}: ОТКАЗ")
 
     print("── предпосылки: пустое и нечитаемое суть ОТКАЗ, а не «чисто»")
     for label, fn in (
