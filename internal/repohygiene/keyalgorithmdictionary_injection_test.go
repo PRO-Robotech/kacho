@@ -174,3 +174,87 @@ func TestAlgorithmScannerReadsTheLastDeclaration(t *testing.T) {
 		t.Fatalf("прочитано не последнее объявление: %v", algorithms)
 	}
 }
+
+// algInjectedDumpForm — тот же словарь, записанный формой `pg_dump`.
+//
+// Соседи — способы обмануть разбор именно ЭТОЙ формы:
+//
+//   - `<> ALL (ARRAY[…])` перечисляет ЗАПРЕЩЁННОЕ, а не допустимое: засчитав
+//     его словарём, гейт сравнил бы дополнение множества с самим множеством;
+//   - столбец, чьё имя ОКАНЧИВАЕТСЯ на наше, со своим словарём;
+//   - приведение типа на каждом литерале — значением оно не является.
+const algInjectedDumpForm = `-- +goose Up
+CREATE TABLE kacho_iam.user_oauth_clients (
+    key_algorithm text DEFAULT ''::text NOT NULL,
+    legacy_key_algorithm text DEFAULT ''::text NOT NULL,
+    CONSTRAINT user_oauth_clients_key_algorithm_check CHECK ((key_algorithm = ANY (ARRAY[''::text, 'ES256'::text, 'RS256'::text, 'EdDSA'::text]))),
+    CONSTRAINT user_oauth_clients_legacy_alg_check CHECK ((legacy_key_algorithm = ANY (ARRAY[''::text, 'RS1'::text]))),
+    CONSTRAINT user_oauth_clients_key_algorithm_not_hs CHECK ((key_algorithm <> ALL (ARRAY['HS256'::text, 'HS384'::text])))
+);
+`
+
+// algInjectedDumpFormWider — форма `pg_dump`, словарь ШИРЕ перечня кода.
+const algInjectedDumpFormWider = `-- +goose Up
+ALTER TABLE ONLY kacho_iam.user_oauth_clients
+    ADD CONSTRAINT user_oauth_clients_key_algorithm_check CHECK ((key_algorithm = ANY (ARRAY[''::text, 'ES256'::text, 'RS256'::text, 'EdDSA'::text, 'HS256'::text])));
+`
+
+// TestAlgorithmScannerReadsTheDumpForm — словарь, записанный формой `pg_dump`,
+// читается наравне с рукописным.
+//
+// # Зачем отдельная проба
+//
+// Форм записи членства ДВЕ, и обе законны: рука пишет `IN (…)`, инструмент —
+// `= ANY (ARRAY[…])`. Вторая пришла со сводом миграций iam 2026-09-04 и стала в
+// этом сервисе ЕДИНСТВЕННОЙ: свод написан `pg_dump`, и три объявления словаря из
+// трёх записаны ею.
+//
+// Разбор, знавший одну форму, не краснел и не молчал — он ОСЛЕП: находил ноль
+// объявлений и сообщал об этом словами «столбец не сужен ничем», то есть
+// утверждал о схеме то, что было верно о нём самом.
+//
+// Обе половины В ОДНОЙ пробе: форма дампа обязана читаться, а её соседи —
+// перечень запрещённого и чужой столбец — обязаны в словарь НЕ попасть.
+func TestAlgorithmScannerReadsTheDumpForm(t *testing.T) {
+	found, _, census := ScanKeyAlgorithmConstraints(
+		"synthetic/0001_initial.sql", algInjectedDumpForm, keyAlgorithmColumn)
+	if census.Statements != 1 || len(found) != 1 {
+		t.Fatalf("объявлений найдено %d (перепись %d), ожидалось 1: %+v.\n\n"+
+			"Ноль означает, что форма `= ANY (ARRAY[…])` не читается; больше одного — "+
+			"что в словарь попал перечень ЗАПРЕЩЁННОГО (`<> ALL`) либо чужой столбец "+
+			"`legacy_key_algorithm`", len(found), census.Statements, found)
+	}
+	c := found[0]
+	if c.Name != "user_oauth_clients_key_algorithm_check" {
+		t.Fatalf("находка называет не то ограничение: %+v", c)
+	}
+	algorithms, hasEmpty := SplitAlgorithmValues(c.Values)
+	if !hasEmpty {
+		t.Fatalf("пустое значение потеряно разбором формы дампа: %+v", c.Values)
+	}
+	// Приведение типа значением не является: `'ES256'::text` — это `ES256`.
+	if len(setDifference(algorithms, []string{"ES256", "EdDSA", "RS256"})) != 0 ||
+		len(setDifference([]string{"ES256", "EdDSA", "RS256"}, algorithms)) != 0 {
+		t.Fatalf("словарь разобран как %v, ожидалось совпадение с кодом — вероятно, "+
+			"приведение типа прочитано как значение", algorithms)
+	}
+}
+
+// TestAlgorithmScannerFindsAWiderDictionaryInTheDumpForm — сторона (а) для формы
+// дампа: расхождение в ней обязано находиться так же, как в рукописной.
+//
+// Без этой половины «форма читается» было бы неотличимо от «форма читается, но
+// расхождение в ней не ловится».
+func TestAlgorithmScannerFindsAWiderDictionaryInTheDumpForm(t *testing.T) {
+	found, _, _ := ScanKeyAlgorithmConstraints(
+		"synthetic/0900_wider.sql", algInjectedDumpFormWider, keyAlgorithmColumn)
+	if len(found) != 1 {
+		t.Fatalf("объявлений найдено %d, ожидалось 1: %+v", len(found), found)
+	}
+	algorithms, _ := SplitAlgorithmValues(found[0].Values)
+	extra := setDifference(algorithms, []string{"ES256", "EdDSA", "RS256"})
+	if len(extra) != 1 || extra[0] != "HS256" {
+		t.Fatalf("расхождение вычислено как %v, ожидалось [HS256] — гейт на этом дефекте "+
+			"остался бы зелёным", extra)
+	}
+}
