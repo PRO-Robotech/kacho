@@ -295,7 +295,7 @@ else
     if [ "$PACK_RC" != "0" ]; then
         finding 8 "модуль не собирается у внешнего потребителя (go test ./internal/release -run $PACK_TEST → $PACK_RC)"
         printf '%s\n' "$PACK_OUT" | tail -20 | sed 's/^/       | /'
-    elif ! printf '%s\n' "$PACK_OUT" | grep -q -- '--- PASS: TestExternalConsumerCanBuildTheModule'; then
+    elif [[ "$PACK_OUT" != *'--- PASS: TestExternalConsumerCanBuildTheModule'* ]]; then
         finding 8 "гейт упаковки не исполнился: прохождения по имени в выводе нет — вердикта об упаковке НЕТ"
     else
         ok 8 "модуль упаковывается и собирается у внешнего потребителя"

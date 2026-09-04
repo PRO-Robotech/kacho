@@ -106,7 +106,7 @@ after="$(snapshot "$w")"
 sha="$(git -C "$w" rev-parse HEAD)"
 if [ "$RC" = "0" ]; then pass "A1 законный близнец: код 0"
 else fail "A1 законный близнец: код 0" "получен $RC; вывод:\n$OUT"; fi
-if printf '%s' "$OUT" | grep -qF "git push origin $sha:refs/tags/v0.1.0"; then
+if [[ "$OUT" == *"git push origin $sha:refs/tags/v0.1.0"* ]]; then
     pass "A2 напечатана ровно та команда, что создаёт ссылку сразу на origin"
 else
     fail "A2 напечатана команда владельца" "в выводе нет 'git push origin $sha:refs/tags/v0.1.0':\n$OUT"
@@ -118,7 +118,9 @@ else
 fi
 # Отдельным утверждением — что тега нет НИ ГДЕ. Совпадение снимков доказывает
 # неизменность, но не отсутствие: обе стороны могли содержать тег изначально.
-if ! git -C "$w" tag -l | grep -q . && ! git -C "$w" ls-remote --tags origin | grep -q .; then
+local_tags="$(git -C "$w" tag -l)"
+remote_tags="$(git -C "$w" ls-remote --tags origin)"
+if [[ -z "$local_tags" && -z "$remote_tags" ]]; then
     pass "A4 тегов нет ни локально, ни на origin"
 else
     fail "A4 тегов нет ни локально, ни на origin" "локальные: $(git -C "$w" tag -l | tr '\n' ' ')"
@@ -127,7 +129,7 @@ fi
 # ── B. П1: форма версии ──────────────────────────────────────────────────────
 w="$(mk form)"
 run "$w" 0.1.0
-if [ "$RC" = "1" ] && printf '%s' "$OUT" | grep -q 'нарушены:.*П1'; then
+if [ "$RC" = "1" ] && [[ "$OUT" =~ нарушены:.*П1 ]]; then
     pass "B  П1 форма версии: код 1 и назван П1"
 else fail "B  П1 форма версии" "код $RC; вывод:\n$OUT"; fi
 
@@ -135,14 +137,14 @@ else fail "B  П1 форма версии" "код $RC; вывод:\n$OUT"; fi
 # Один факт против близнеца: путь модуля тот же, версия — мажор 2.
 w="$(mk major)"
 run "$w" v2.0.0
-if [ "$RC" = "1" ] && printf '%s' "$OUT" | grep -q 'нарушены:.*П2'; then
+if [ "$RC" = "1" ] && [[ "$OUT" =~ нарушены:.*П2 ]]; then
     pass "C  П2 мажор без суффикса /v2: код 1 и назван П2"
 else fail "C  П2 мажор без суффикса" "код $RC; вывод:\n$OUT"; fi
 
 # ── C'. П2 наоборот: путь с суффиксом, версия мажора 0 ───────────────────────
 w="$(mk majorback example.com/synthetic/v2)"
 run "$w" v0.1.0
-if [ "$RC" = "1" ] && printf '%s' "$OUT" | grep -q 'нарушены:.*П2'; then
+if [ "$RC" = "1" ] && [[ "$OUT" =~ нарушены:.*П2 ]]; then
     pass "C' П2 путь /v2 при мажоре 0: код 1 и назван П2"
 else fail "C' П2 путь /v2 при мажоре 0" "код $RC; вывод:\n$OUT"; fi
 
@@ -150,7 +152,7 @@ else fail "C' П2 путь /v2 при мажоре 0" "код $RC; вывод:\n
 w="$(mk taken)"
 git -C "$w" push --quiet origin "$(git -C "$w" rev-parse HEAD):refs/tags/v0.1.0"
 run "$w" v0.1.0
-if [ "$RC" = "1" ] && printf '%s' "$OUT" | grep -q 'нарушены:.*П3'; then
+if [ "$RC" = "1" ] && [[ "$OUT" =~ нарушены:.*П3 ]]; then
     pass "D  П3 версия уже на origin: код 1 и назван П3"
 else fail "D  П3 версия уже на origin" "код $RC; вывод:\n$OUT"; fi
 
@@ -158,7 +160,7 @@ else fail "D  П3 версия уже на origin" "код $RC; вывод:\n$OU
 w="$(mk older)"
 git -C "$w" push --quiet origin "$(git -C "$w" rev-parse HEAD):refs/tags/v0.9.0"
 run "$w" v0.2.0
-if [ "$RC" = "1" ] && printf '%s' "$OUT" | grep -q 'нарушены:.*П4'; then
+if [ "$RC" = "1" ] && [[ "$OUT" =~ нарушены:.*П4 ]]; then
     pass "E  П4 версия не старше опубликованной: код 1 и назван П4"
 else fail "E  П4 версия не старше опубликованной" "код $RC; вывод:\n$OUT"; fi
 
@@ -178,7 +180,7 @@ else fail "E' выпуск вслед за предвыпуском → код 0
 w="$(mk prerelease-back)"
 git -C "$w" push --quiet origin "$(git -C "$w" rev-parse HEAD):refs/tags/v1.0.0"
 run "$w" v1.0.0-rc2
-if [ "$RC" = "1" ] && printf '%s' "$OUT" | grep -q 'нарушены:.*П4'; then
+if [ "$RC" = "1" ] && [[ "$OUT" =~ нарушены:.*П4 ]]; then
     pass "E'' предвыпуск после выпуска: код 1 и назван П4"
 else fail "E'' предвыпуск после выпуска" "код $RC; вывод:\n$OUT"; fi
 
@@ -188,7 +190,7 @@ echo "правка после публикации ствола" > "$w/NOTE.md"
 git -C "$w" add NOTE.md
 git -C "$w" -c user.name=probe -c user.email=probe@invalid commit --quiet -m ahead
 run "$w" v0.1.0
-if [ "$RC" = "1" ] && printf '%s' "$OUT" | grep -q 'нарушены:.*П5'; then
+if [ "$RC" = "1" ] && [[ "$OUT" =~ нарушены:.*П5 ]]; then
     pass "F  П5 HEAD впереди вершины ствола: код 1 и назван П5"
 else fail "F  П5 HEAD впереди вершины ствола" "код $RC; вывод:\n$OUT"; fi
 
@@ -203,7 +205,7 @@ git -C "$w" -c user.name=probe -c user.email=probe@invalid commit --quiet -m sid
 git -C "$w" tag v9.9.9
 git -C "$w" checkout --quiet main
 run "$w" v0.1.0
-if [ "$RC" = "1" ] && printf '%s' "$OUT" | grep -q 'нарушены:.*П6'; then
+if [ "$RC" = "1" ] && [[ "$OUT" =~ нарушены:.*П6 ]]; then
     pass "G  П6 локальный v* вне ствола: код 1 и назван П6"
 else fail "G  П6 локальный v* вне ствола" "код $RC; вывод:\n$OUT"; fi
 
@@ -224,7 +226,7 @@ git -C "$w" add go.mod
 git -C "$w" -c user.name=probe -c user.email=probe@invalid commit --quiet -m replace
 git -C "$w" push --quiet origin main
 run "$w" v0.1.0
-if [ "$RC" = "1" ] && printf '%s' "$OUT" | grep -q 'нарушены:.*П7'; then
+if [ "$RC" = "1" ] && [[ "$OUT" =~ нарушены:.*П7 ]]; then
     pass "H  П7 replace в go.mod: код 1 и назван П7"
 else fail "H  П7 replace в go.mod" "код $RC; вывод:\n$OUT"; fi
 
@@ -240,7 +242,7 @@ git -C "$w" add -A
 git -C "$w" -c user.name=probe -c user.email=probe@invalid commit --quiet -m renamed
 git -C "$w" push --quiet origin main
 run "$w" v0.1.0
-if [ "$RC" = "1" ] && printf '%s' "$OUT" | grep -q 'нарушены:.*П8'; then
+if [ "$RC" = "1" ] && [[ "$OUT" =~ нарушены:.*П8 ]]; then
     pass "I  П8 гейт упаковки не исполнился при коде 0: код 1 и назван П8"
 else fail "I  П8 гейт упаковки не исполнился" "код $RC; вывод:\n$OUT"; fi
 
@@ -250,7 +252,8 @@ else fail "I  П8 гейт упаковки не исполнился" "код $
 w="$(mk void)"
 OUT="$(cd "$w" && KACHO_RELEASE_REMOTE=nosuchremote KACHO_RELEASE_TRUNK=main \
     bash "$SUBJECT" v0.1.0 --skip-pack 2>&1)"; RC=$?
-if [ "$RC" = "3" ] && printf '%s' "$OUT" | grep -q 'не спрошены:.*П3'; then
+re='не спрошены:.*П3'
+if [ "$RC" = "3" ] && [[ "$OUT" =~ $re ]]; then
     pass "J  недоступный origin: код 3 (НЕ выполнилось), предпосылки в «не спрошено»"
 else fail "J  недоступный origin даёт код 3" "код $RC; вывод:\n$OUT"; fi
 
