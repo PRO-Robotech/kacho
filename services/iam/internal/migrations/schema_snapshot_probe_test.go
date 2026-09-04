@@ -90,6 +90,41 @@ func TestSchemaSnapshot(t *testing.T) {
 		t.Logf("дамп схемы: байт %d → %s", len(out), dumpTo)
 	}
 
+	// ПОЛНЫЙ дамп — исходник сведённой миграции, и берётся он ОДНИМ вызовом, а
+	// не склейкой схемы с данными. Порядок здесь несущий: pg_dump кладёт данные
+	// МЕЖДУ созданием таблиц и созданием ограничений, индексов и триггеров.
+	// Склеив два дампа руками, получаешь триггеры до вставок — и они дописывают
+	// производные строки поверх тех, что дамп уже несёт. Расхождение переписи
+	// приходит не оттуда, где его ищут.
+	if fullTo := os.Getenv("KACHO_SCHEMA_FULL_OUT"); fullTo != "" {
+		cmd := exec.Command("pg_dump", "--no-owner", "--no-privileges",
+			"--column-inserts", "--schema=kacho_iam", dsn)
+		out, derr := cmd.Output()
+		if derr != nil {
+			t.Fatalf("снять полный дамп: %v", derr)
+		}
+		if werr := os.WriteFile(fullTo, out, 0o644); werr != nil {
+			t.Fatalf("запись полного дампа: %v", werr)
+		}
+		t.Logf("полный дамп: байт %d → %s", len(out), fullTo)
+	}
+
+	// Дамп ДАННЫХ: перепись говорит СКОЛЬКО строк, но не ЧТО в них. Различить
+	// справочник продукта («обязана ли строка существовать у арендатора») от
+	// данных стенда по одному счётчику нельзя — нужно увидеть сами строки.
+	if dataTo := os.Getenv("KACHO_SCHEMA_DATA_OUT"); dataTo != "" {
+		cmd := exec.Command("pg_dump", "--data-only", "--no-owner", "--no-privileges",
+			"--column-inserts", "--schema=kacho_iam", dsn)
+		out, derr := cmd.Output()
+		if derr != nil {
+			t.Fatalf("снять дамп данных: %v", derr)
+		}
+		if werr := os.WriteFile(dataTo, out, 0o644); werr != nil {
+			t.Fatalf("запись дампа данных: %v", werr)
+		}
+		t.Logf("дамп данных: байт %d → %s", len(out), dataTo)
+	}
+
 	// Перепись СТРОК: дамп структуры их не несёт, а 47 миграций сеют. Различить
 	// справочник продукта и данные стенда можно только увидев, что осталось.
 	if rowsTo := os.Getenv("KACHO_SCHEMA_ROWS_OUT"); rowsTo != "" {
