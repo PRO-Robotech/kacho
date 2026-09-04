@@ -41,6 +41,8 @@ import (
 
 	"github.com/stretchr/testify/require"
 
+	"github.com/PRO-Robotech/kacho/internal/pgtest"
+
 	coredb "github.com/PRO-Robotech/kacho/pkg/db"
 	"github.com/PRO-Robotech/kacho/pkg/ids"
 
@@ -75,7 +77,10 @@ func TestRoleRulesConstraintAcceptsScalarModuleAndRejectsTheArrayForm(t *testing
 
 	pool, err := coredb.NewPool(ctx, setupTestDB(t))
 	require.NoError(t, err)
-	defer pool.Close()
+	// Закрытие С ПРЕДЕЛОМ: голый `defer pool.Close()` на удерживаемом соединении
+	// висит без срока, пакет умирает по таймауту целиком, и вердикта не остаётся
+	// НИ У ОДНОЙ пробы — включая прошедшие.
+	pgtest.ClosePoolAtEnd(t, pool)
 
 	// Предпосылка: ограничение, о котором проба говорит, в схеме ЕСТЬ. Без этой
 	// строки снятие ограничения превратило бы отрицания ниже в утверждения о
