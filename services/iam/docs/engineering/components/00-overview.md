@@ -67,7 +67,7 @@
 
 `kacho-iam` (бинарник `cmd/kacho-iam`) поднимает четыре сетевых слушателя и набор
 фоновых worker'ов в одном процессе. Параллельный запуск — через
-`github.com/H-BF/corlib/pkg/parallel.ExecAbstract` с общим shutdown-триггером
+`golang.org/x/sync/errgroup` с общим shutdown-триггером
 (SIGTERM / SIGINT или первая ошибка задачи).
 
 ```mermaid
@@ -274,7 +274,7 @@ sequenceDiagram
   доменные proto-stubs (генерируются локально из `proto/`).
 - `github.com/jackc/pgx/v5` — Postgres driver.
 - `github.com/spf13/viper` — конфиг.
-- `github.com/H-BF/corlib/pkg/parallel` — параллельный запуск задач.
+- `golang.org/x/sync/errgroup` — параллельный запуск задач.
 - `go.uber.org/multierr` — cumulative validation errors.
 
 **Runtime-зависимости (peer):**

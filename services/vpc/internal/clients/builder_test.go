@@ -97,29 +97,48 @@ func TestBuild_DNSLB_RespectsExistingScheme(t *testing.T) {
 	}
 }
 
-func TestDNSLBServiceConfig_MirrorsCorlibRetries(t *testing.T) {
+func TestBuild_DNSLBFlagPicksTheResolverAndBalancing(t *testing.T) {
 	t.Parallel()
-	// Parity guard (audit R6): the DNSLB path must carry the same retry-on-Unavailable
-	// intent as the corlib path (WithMaxRetries). The service-config must therefore
-	// embed a retryPolicy whose maxAttempts derives from opts.Retries and whose
-	// retryable set is UNAVAILABLE (same code as corlib grpc_retry.WithCodes).
-	sc := dnslbServiceConfigJSON(3)
-	require.Contains(t, sc, `"round_robin"`, "round_robin LB must remain")
-	require.Contains(t, sc, `"retryPolicy"`, "DNSLB path must apply a transport retry policy")
-	require.Contains(t, sc, `"maxAttempts":4`, "maxAttempts must be Retries+1 (config counts original attempt)")
-	require.Contains(t, sc, `"retryableStatusCodes":["UNAVAILABLE"]`, "must retry Unavailable, mirroring corlib WithCodes")
+	// Предмет ЭТОГО пакета — провязка флага, а не содержимое конфигурации
+	// службы: политика повтора и объявление round_robin переехали в
+	// `pkg/grpcclient` вместе со сборкой соединения и утверждаются там
+	// (`TestPeerServiceConfigRetriesOnUnavailableOnly`,
+	// `TestPeerServiceConfigDeclaresRoundRobinWhenAsked`). Здесь остаётся то,
+	// что vpc по-прежнему решает сам: какой флаг какой резолвер выбирает.
+	//
+	// Прежде на этом месте стояла проба, звавшая `dnslbServiceConfigJSON`
+	// напрямую. Функция была ЗЕРКАЛОМ стороннего строителя (модуль без
+	// лицензии, снят) и исчезла вместе с ним — вместе с предметом уходит и
+	// утверждение о нём.
+	type targeter interface{ Target() string }
 
-	// Retries is honoured (not a hardcoded constant).
-	require.Contains(t, dnslbServiceConfigJSON(5), `"maxAttempts":6`)
+	for _, c := range []struct {
+		name       string
+		dnslb      bool
+		wantPrefix string
+	}{
+		// Распределение требует резолвера, отдающего ВСЕ адреса Headless Service.
+		{"с распределением — dns", true, "dns:///"},
+		// Без распределения адрес отдаётся набирателю как есть — та же схема,
+		// что была у снятого строителя.
+		{"без распределения — passthrough", false, "passthrough:///"},
+	} {
+		t.Run(c.name, func(t *testing.T) {
+			conn, err := Build(context.Background(), BuildOptions{
+				Endpoint: "kacho-iam.kacho.svc:9090",
+				Retries:  3,
+				DNSLB:    c.dnslb,
+			})
+			require.NoError(t, err)
+			require.NotNil(t, conn)
+			defer func() { _ = conn.Close() }()
 
-	// And the assembled config parses cleanly inside grpc.NewClient (DNSLB Build).
-	conn, err := Build(context.Background(), BuildOptions{
-		Endpoint: "kacho-iam.kacho.svc:9090",
-		DNSLB:    true,
-	})
-	require.NoError(t, err)
-	require.NotNil(t, conn)
-	_ = conn.Close()
+			tg, ok := conn.(targeter)
+			require.True(t, ok, "соединение не сообщает своего адреса")
+			require.True(t, strings.HasPrefix(tg.Target(), c.wantPrefix),
+				"DNSLB=%v дал адрес %q, ожидался префикс %q", c.dnslb, tg.Target(), c.wantPrefix)
+		})
+	}
 }
 
 func TestBuildOptions_WithDefaults(t *testing.T) {

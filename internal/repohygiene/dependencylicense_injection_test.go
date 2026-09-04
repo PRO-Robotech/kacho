@@ -200,7 +200,9 @@ func TestDependencyLicenseGate_EmptyParseIsAnEmptyTraversal(t *testing.T) {
 // ---- ось 5: кодировка пути модуля ------------------------------------------
 
 func TestDependencyLicenseGate_EscapesUppercaseInTheModulePath(t *testing.T) {
-	if got := EscapeModulePath("github.com/H-BF/corlib"); got != "github.com/!h-!b!f/corlib" {
+	// Путь синтетический намеренно: имя снятого модуля, оставленное здесь
+	// «просто как данные пробы», пережило бы свой предмет.
+	if got := EscapeModulePath("example.com/H-BF/ToolKit"); got != "example.com/!h-!b!f/!tool!kit" {
 		t.Fatalf("кодировка пути: %q", got)
 	}
 	if got := EscapeModulePath("golang.org/x/sync"); got != "golang.org/x/sync" {
@@ -210,32 +212,55 @@ func TestDependencyLicenseGate_EscapesUppercaseInTheModulePath(t *testing.T) {
 
 // ---- ось 6: НАСТОЯЩЕЕ дерево, обе стороны ----------------------------------
 
-// Возврат дефекта в текст go.mod настоящего дерева: гейт обязан покраснеть и
-// назвать координату. Текст синтетический, файл дерева не трогается.
-func TestDependencyLicenseGate_RedsWhenTheUnlicensedModuleIsPutBack(t *testing.T) {
+// chainProbe — свидетельство из НЕСКОЛЬКИХ источников: первый, который смог
+// прочитать каталог, и отвечает. Нужен ровно для инъекции по настоящему дереву:
+// подставной модуль живёт во временном кэше, все остальные — в настоящем.
+func chainProbe(probes ...LicenseProbe) LicenseProbe {
+	return func(dep DirectDependency) LicenseEvidence {
+		for _, probe := range probes {
+			if ev := probe(dep); ev.Resolved {
+				return ev
+			}
+		}
+		return LicenseEvidence{}
+	}
+}
+
+// Возврат дефекта в НАСТОЯЩИЙ текст go.mod: гейт обязан покраснеть и назвать
+// координату — номер строки, путь и версию.
+//
+// Подставной модуль СИНТЕТИЧЕСКИЙ, а не снятый: имя снятого пришлось бы держать
+// в дереве ради самой пробы, и оно пережило бы свой предмет — тот самый класс,
+// который гейт и стережёт. Сверх того снятый модуль уходит из кэша вместе с
+// пином, и проба, опирающаяся на его каталог, стала бы беспредметной там, где
+// снятие как раз и удалось.
+func TestDependencyLicenseGate_RedsWhenAnUnlicensedModuleIsPutIntoTheRealGoMod(t *testing.T) {
 	root := repoRoot(t)
 	body, err := os.ReadFile(filepath.Join(root, "go.mod"))
 	if err != nil {
 		t.Fatalf("чтение go.mod: %v", err)
 	}
-	const unlicensed = "github.com/H-BF/corlib"
-	injected := string(body)
-	if !strings.Contains(injected, unlicensed) {
-		injected = strings.Replace(injected, "require (", "require (\n\t"+unlicensed+" v1.2.31-dev", 1)
-	}
+	injected := strings.Replace(string(body), "require (",
+		"require (\n\t"+depUnlicensed.Path+" "+depUnlicensed.Version, 1)
+
+	fake := fakeModuleCache(t, map[DirectDependency]map[string]string{
+		depUnlicensed: {"go.mod": "module " + depUnlicensed.Path + "\n", "README.md": "# toolkit\n"},
+	})
 	deps := ParseGoModRequires(injected)
-	findings, census := ScanDependencyLicenses(deps, DiskLicenseProbe(moduleCacheDir(t)))
-	var named bool
-	for _, f := range findings {
-		if f.Dep.Path == unlicensed {
-			named = true
-		}
-	}
-	if !named {
-		t.Fatalf("возвращённый дефект не найден гейтом; находки=%v\n%s", findings, census)
-	}
+	findings, census := ScanDependencyLicenses(deps,
+		chainProbe(DiskLicenseProbe(moduleCacheDir(t)), DiskLicenseProbe(fake)))
+
 	if census.Resolved == 0 {
 		t.Fatalf("условие не создано: кэш модулей не наполнен\n%s", census)
+	}
+	if len(findings) != 1 {
+		t.Fatalf("находок %d, ожидалась ровно 1 — внесённая\n%s", len(findings), census)
+	}
+	got := findings[0].String()
+	for _, want := range []string{"go.mod:", depUnlicensed.Path, depUnlicensed.Version} {
+		if !strings.Contains(got, want) {
+			t.Fatalf("находка не называет координату %q: %s", want, got)
+		}
 	}
 }
 
