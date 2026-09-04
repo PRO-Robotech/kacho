@@ -1,3 +1,6 @@
+// Copyright (c) PRO-Robotech
+// SPDX-License-Identifier: BUSL-1.1
+
 //go:build integration_snapshot
 
 // Снимок схемы — ЭТАЛОН для сведения миграций.
@@ -39,6 +42,30 @@ func TestSchemaSnapshot(t *testing.T) {
 		t.Fatalf("соединение: %v", err)
 	}
 	defer func() { _ = db.Close() }()
+
+	// СНЯТИЕ ЛЕГАСИ выполняет СЕРВЕР, а не правка текста.
+	//
+	// Свод — преемник цепочки, а не её копия: то, что он снимает, обязано уйти
+	// вместе со ВСЕМИ зависимыми объектами — ключами, индексами, ограничениями,
+	// внешними ссылками. Перечислить их руками значит завести перечень, который
+	// разойдётся с деревом молча; `DROP TABLE … CASCADE` знает их точно.
+	//
+	// Снятие идёт ДО слепка намеренно: тогда слепок есть «эталон минус
+	// названные снятия», и равенство свода ему проверяется тем же побайтовым
+	// сравнением, что и равенство без снятий. Разность двух слепков —
+	// эталонного и этого — и есть поимённый перечень снятого.
+	if retire := os.Getenv("KACHO_SCHEMA_RETIRE"); retire != "" {
+		for _, name := range strings.Split(retire, ",") {
+			name = strings.TrimSpace(name)
+			if name == "" {
+				continue
+			}
+			if _, derr := db.Exec(`DROP TABLE kacho_iam.` + name + ` CASCADE`); derr != nil {
+				t.Fatalf("снять %s: %v", name, derr)
+			}
+			t.Logf("снято: kacho_iam.%s", name)
+		}
+	}
 
 	var lines []string
 	add := func(q string) {

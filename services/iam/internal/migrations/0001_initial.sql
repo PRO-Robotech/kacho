@@ -47,6 +47,30 @@
 --   #8  database-per-service — да (схема kacho_iam в собственной БД).
 --   #10 within-service инварианты — FK / UNIQUE / partial UNIQUE / CHECK /
 --       EXCLUDE / триггеры, здесь же.
+--
+-- ── Трасса приёмок, перенесённая из снятой цепочки ─────────────────────────
+--
+-- Цитаты ниже выписаны из 171 миграции перед сведением. Дамп их не несёт:
+-- он переносит структуру и данные, а не комментарии. Схема осталась — значит
+-- и санкция на неё осталась, и её след обязан пережить сведение.
+--
+-- Приёмки воркспейса (3):
+--
+--   sub-phase-IAM-ID-2-membership-read-acceptance.md
+--   sub-phase-ID-MAIL-1-mail-delivery-acceptance.md
+--   sub-phase-quota-v2-materialised-usage-acceptance.md
+--
+-- Сценарии приёмок дерева продукта и воркспейса (43):
+--
+--   BAT-1-08  IAM-1-10  IAM-1-21  IAM-1-29  IAM-CT-1-01  IAM-CT-1-04
+--   IAM-CT-1-09  IAM-CT-1-10  IAM-CT-1-16  IAM-CT-2-06  IAM-CT-2-14  IAM-ID-1-04
+--   IAM-ID-1-08  IAM-ID-1-13  IAM-ID-1-50  IAM-ID-1-51  IAM-ID-1-52  IAM-ID-1-72
+--   IAM-ID-2-05  IAM-MW-1-07  IAM-MW-1-08  IAM-MW-1-09  IAM-OM-1-06  IAM-RM-1-08
+--   IAM-RW-1-01  IAM-RW-1-02  IAM-RW-1-03  IAM-RW-1-04  IAM-RW-1-12  IAM-RW-1-16
+--   IAM-RW-1-26  IAM-RW-1-28  IAM-RW-1-29  IAM-RW-1-30  IAM-RW-1-31  IAM-SV-1-01
+--   IAM-SV-1-02  IAM-SV-1-04  IAM-SV-1-05  IAM-SV-1-12  IAM-SV-1-13  IAM-SV-1-14
+--   IAM-SV-1-16
+--
 -- ─────────────────────────────────────────────────────────────────────────────
 
 -- +goose Up
@@ -1462,45 +1486,6 @@ SET default_tablespace = '';
 SET default_table_access_method = heap;
 
 --
--- Name: _pre_rbac_v2_access_bindings; Type: TABLE; Schema: kacho_iam; Owner: -
---
-
-CREATE TABLE kacho_iam._pre_rbac_v2_access_bindings (
-    id text NOT NULL,
-    subject_type text NOT NULL,
-    subject_id text NOT NULL,
-    role_id text NOT NULL,
-    resource_type text NOT NULL,
-    resource_id text NOT NULL,
-    created_at timestamp with time zone DEFAULT now() NOT NULL,
-    status text DEFAULT 'ACTIVE'::text NOT NULL,
-    condition_id text,
-    expires_at timestamp with time zone,
-    granted_by_user_id text DEFAULT ''::text NOT NULL,
-    revoked_at timestamp with time zone,
-    revoked_by_user_id text
-);
-
-
---
--- Name: _pre_rbac_v2_roles; Type: TABLE; Schema: kacho_iam; Owner: -
---
-
-CREATE TABLE kacho_iam._pre_rbac_v2_roles (
-    id text NOT NULL,
-    account_id text,
-    name text NOT NULL,
-    description text DEFAULT ''::text NOT NULL,
-    permissions jsonb NOT NULL,
-    is_system boolean DEFAULT false NOT NULL,
-    created_at timestamp with time zone DEFAULT now() NOT NULL,
-    cluster_id text,
-    organization_id text,
-    project_id text
-);
-
-
---
 -- Name: access_binding_emitted_tuples; Type: TABLE; Schema: kacho_iam; Owner: -
 --
 
@@ -2317,21 +2302,6 @@ COMMENT ON TABLE kacho_iam.recovery_completions IS 'Idempotency ledger for the K
 
 
 --
--- Name: refresh_token_counters; Type: TABLE; Schema: kacho_iam; Owner: -
---
-
-CREATE TABLE kacho_iam.refresh_token_counters (
-    user_id text NOT NULL,
-    family_id text NOT NULL,
-    refresh_count bigint DEFAULT 0 NOT NULL,
-    last_refresh_at timestamp with time zone,
-    family_started_at timestamp with time zone DEFAULT now() NOT NULL,
-    CONSTRAINT refresh_token_counters_count_check CHECK ((refresh_count >= 0)),
-    CONSTRAINT refresh_token_counters_family_check CHECK (((length(family_id) >= 1) AND (length(family_id) <= 128)))
-);
-
-
---
 -- Name: relation_fact; Type: TABLE; Schema: kacho_iam; Owner: -
 --
 
@@ -3134,76 +3104,6 @@ ALTER TABLE ONLY kacho_iam.subject_change_outbox ALTER COLUMN id SET DEFAULT nex
 
 
 --
--- Data for Name: _pre_rbac_v2_access_bindings; Type: TABLE DATA; Schema: kacho_iam; Owner: -
---
-
-
-
---
--- Data for Name: _pre_rbac_v2_roles; Type: TABLE DATA; Schema: kacho_iam; Owner: -
---
-
-INSERT INTO kacho_iam._pre_rbac_v2_roles (id, account_id, name, description, permissions, is_system, created_at, cluster_id, organization_id, project_id) VALUES ('rol21232f297a57a5a74', NULL, 'admin', 'Global super-admin (all modules, all resources, all verbs)', '["*.*.*"]', true, now(), 'cluster_kacho_root', NULL, NULL);
-INSERT INTO kacho_iam._pre_rbac_v2_roles (id, account_id, name, description, permissions, is_system, created_at, cluster_id, organization_id, project_id) VALUES ('rolde95b43bceeb4b998', NULL, 'edit', 'Global edit-only (update operations on all resources, no create/delete/admin)', '["*.*.update"]', true, now(), 'cluster_kacho_root', NULL, NULL);
-INSERT INTO kacho_iam._pre_rbac_v2_roles (id, account_id, name, description, permissions, is_system, created_at, cluster_id, organization_id, project_id) VALUES ('rol1bda80f2be4d3658e', NULL, 'view', 'Global read-only (read/list/get all)', '["*.*.read", "*.*.list", "*.*.get"]', true, now(), 'cluster_kacho_root', NULL, NULL);
-INSERT INTO kacho_iam._pre_rbac_v2_roles (id, account_id, name, description, permissions, is_system, created_at, cluster_id, organization_id, project_id) VALUES ('rol6307d201bf18e6763', NULL, 'iam.account.admin', 'Admin Account (CRUD)', '["iam.account.*"]', true, now(), 'cluster_kacho_root', NULL, NULL);
-INSERT INTO kacho_iam._pre_rbac_v2_roles (id, account_id, name, description, permissions, is_system, created_at, cluster_id, organization_id, project_id) VALUES ('rol34c4d5f1c7c722230', NULL, 'iam.account.edit', 'Edit Account (update only)', '["iam.account.update"]', true, now(), 'cluster_kacho_root', NULL, NULL);
-INSERT INTO kacho_iam._pre_rbac_v2_roles (id, account_id, name, description, permissions, is_system, created_at, cluster_id, organization_id, project_id) VALUES ('rol41dd066874f699c17', NULL, 'iam.account.view', 'Read Account', '["iam.account.read", "iam.account.list", "iam.account.get"]', true, now(), 'cluster_kacho_root', NULL, NULL);
-INSERT INTO kacho_iam._pre_rbac_v2_roles (id, account_id, name, description, permissions, is_system, created_at, cluster_id, organization_id, project_id) VALUES ('rol674f6a6d7e4eeb3b6', NULL, 'iam.project.admin', 'Admin Project', '["iam.project.*"]', true, now(), 'cluster_kacho_root', NULL, NULL);
-INSERT INTO kacho_iam._pre_rbac_v2_roles (id, account_id, name, description, permissions, is_system, created_at, cluster_id, organization_id, project_id) VALUES ('rol7b4c84039b79327e5', NULL, 'iam.project.edit', 'Edit Project', '["iam.project.update"]', true, now(), 'cluster_kacho_root', NULL, NULL);
-INSERT INTO kacho_iam._pre_rbac_v2_roles (id, account_id, name, description, permissions, is_system, created_at, cluster_id, organization_id, project_id) VALUES ('rol7ad445624b1d0e9a1', NULL, 'iam.project.view', 'Read Project', '["iam.project.read", "iam.project.list", "iam.project.get"]', true, now(), 'cluster_kacho_root', NULL, NULL);
-INSERT INTO kacho_iam._pre_rbac_v2_roles (id, account_id, name, description, permissions, is_system, created_at, cluster_id, organization_id, project_id) VALUES ('rol18d136235973ae22d', NULL, 'iam.user.admin', 'Admin User mirror', '["iam.user.*"]', true, now(), 'cluster_kacho_root', NULL, NULL);
-INSERT INTO kacho_iam._pre_rbac_v2_roles (id, account_id, name, description, permissions, is_system, created_at, cluster_id, organization_id, project_id) VALUES ('rol0c2788a7d71f44bed', NULL, 'iam.user.edit', 'Edit User', '["iam.user.update"]', true, now(), 'cluster_kacho_root', NULL, NULL);
-INSERT INTO kacho_iam._pre_rbac_v2_roles (id, account_id, name, description, permissions, is_system, created_at, cluster_id, organization_id, project_id) VALUES ('role2f47108d41b38f39', NULL, 'iam.user.view', 'Read User', '["iam.user.read", "iam.user.list", "iam.user.get"]', true, now(), 'cluster_kacho_root', NULL, NULL);
-INSERT INTO kacho_iam._pre_rbac_v2_roles (id, account_id, name, description, permissions, is_system, created_at, cluster_id, organization_id, project_id) VALUES ('rol38306aa220559b1f6', NULL, 'iam.service_account.admin', 'Admin ServiceAccount', '["iam.service_account.*"]', true, now(), 'cluster_kacho_root', NULL, NULL);
-INSERT INTO kacho_iam._pre_rbac_v2_roles (id, account_id, name, description, permissions, is_system, created_at, cluster_id, organization_id, project_id) VALUES ('rol5e145d87ee378211f', NULL, 'iam.service_account.edit', 'Edit ServiceAccount', '["iam.service_account.update"]', true, now(), 'cluster_kacho_root', NULL, NULL);
-INSERT INTO kacho_iam._pre_rbac_v2_roles (id, account_id, name, description, permissions, is_system, created_at, cluster_id, organization_id, project_id) VALUES ('rolfc25814dc6989172d', NULL, 'iam.service_account.view', 'Read ServiceAccount', '["iam.service_account.read", "iam.service_account.list", "iam.service_account.get"]', true, now(), 'cluster_kacho_root', NULL, NULL);
-INSERT INTO kacho_iam._pre_rbac_v2_roles (id, account_id, name, description, permissions, is_system, created_at, cluster_id, organization_id, project_id) VALUES ('rol6a079e6a177963990', NULL, 'iam.group.admin', 'Admin Group', '["iam.group.*"]', true, now(), 'cluster_kacho_root', NULL, NULL);
-INSERT INTO kacho_iam._pre_rbac_v2_roles (id, account_id, name, description, permissions, is_system, created_at, cluster_id, organization_id, project_id) VALUES ('rold4f364618280185aa', NULL, 'iam.group.edit', 'Edit Group', '["iam.group.update"]', true, now(), 'cluster_kacho_root', NULL, NULL);
-INSERT INTO kacho_iam._pre_rbac_v2_roles (id, account_id, name, description, permissions, is_system, created_at, cluster_id, organization_id, project_id) VALUES ('rolc98b067591ded99e5', NULL, 'iam.group.view', 'Read Group', '["iam.group.read", "iam.group.list", "iam.group.get"]', true, now(), 'cluster_kacho_root', NULL, NULL);
-INSERT INTO kacho_iam._pre_rbac_v2_roles (id, account_id, name, description, permissions, is_system, created_at, cluster_id, organization_id, project_id) VALUES ('role6859cc35f67d659e', NULL, 'iam.role.admin', 'Admin Role catalog', '["iam.role.*"]', true, now(), 'cluster_kacho_root', NULL, NULL);
-INSERT INTO kacho_iam._pre_rbac_v2_roles (id, account_id, name, description, permissions, is_system, created_at, cluster_id, organization_id, project_id) VALUES ('rol672f1ac772fab8697', NULL, 'iam.role.edit', 'Edit Role', '["iam.role.update"]', true, now(), 'cluster_kacho_root', NULL, NULL);
-INSERT INTO kacho_iam._pre_rbac_v2_roles (id, account_id, name, description, permissions, is_system, created_at, cluster_id, organization_id, project_id) VALUES ('rolee27bb5ba1efb68cb', NULL, 'iam.role.view', 'Read Role', '["iam.role.read", "iam.role.list", "iam.role.get"]', true, now(), 'cluster_kacho_root', NULL, NULL);
-INSERT INTO kacho_iam._pre_rbac_v2_roles (id, account_id, name, description, permissions, is_system, created_at, cluster_id, organization_id, project_id) VALUES ('role1eb529620e1ff235', NULL, 'iam.access_binding.admin', 'Admin AccessBinding', '["iam.access_binding.*"]', true, now(), 'cluster_kacho_root', NULL, NULL);
-INSERT INTO kacho_iam._pre_rbac_v2_roles (id, account_id, name, description, permissions, is_system, created_at, cluster_id, organization_id, project_id) VALUES ('rol213ce142e75132019', NULL, 'iam.access_binding.edit', 'Edit AccessBinding', '["iam.access_binding.update"]', true, now(), 'cluster_kacho_root', NULL, NULL);
-INSERT INTO kacho_iam._pre_rbac_v2_roles (id, account_id, name, description, permissions, is_system, created_at, cluster_id, organization_id, project_id) VALUES ('rolb18c533133af2f130', NULL, 'iam.access_binding.view', 'Read AccessBinding', '["iam.access_binding.read", "iam.access_binding.list", "iam.access_binding.get"]', true, now(), 'cluster_kacho_root', NULL, NULL);
-INSERT INTO kacho_iam._pre_rbac_v2_roles (id, account_id, name, description, permissions, is_system, created_at, cluster_id, organization_id, project_id) VALUES ('rol8ed48ecc3878c2e73', NULL, 'vpc.network.admin', 'Admin Network', '["vpc.network.*"]', true, now(), 'cluster_kacho_root', NULL, NULL);
-INSERT INTO kacho_iam._pre_rbac_v2_roles (id, account_id, name, description, permissions, is_system, created_at, cluster_id, organization_id, project_id) VALUES ('rol4d942f110ed3d7c47', NULL, 'vpc.network.edit', 'Edit Network', '["vpc.network.update"]', true, now(), 'cluster_kacho_root', NULL, NULL);
-INSERT INTO kacho_iam._pre_rbac_v2_roles (id, account_id, name, description, permissions, is_system, created_at, cluster_id, organization_id, project_id) VALUES ('rolfe683216e63311d3f', NULL, 'vpc.network.view', 'Read Network', '["vpc.network.read", "vpc.network.list", "vpc.network.get"]', true, now(), 'cluster_kacho_root', NULL, NULL);
-INSERT INTO kacho_iam._pre_rbac_v2_roles (id, account_id, name, description, permissions, is_system, created_at, cluster_id, organization_id, project_id) VALUES ('rol68b2520862bf7a921', NULL, 'vpc.subnet.admin', 'Admin Subnet', '["vpc.subnet.*"]', true, now(), 'cluster_kacho_root', NULL, NULL);
-INSERT INTO kacho_iam._pre_rbac_v2_roles (id, account_id, name, description, permissions, is_system, created_at, cluster_id, organization_id, project_id) VALUES ('rol91e90d7a1d4d02658', NULL, 'vpc.subnet.edit', 'Edit Subnet', '["vpc.subnet.update"]', true, now(), 'cluster_kacho_root', NULL, NULL);
-INSERT INTO kacho_iam._pre_rbac_v2_roles (id, account_id, name, description, permissions, is_system, created_at, cluster_id, organization_id, project_id) VALUES ('rol31f5c2b4e7b3ee06c', NULL, 'vpc.subnet.view', 'Read Subnet', '["vpc.subnet.read", "vpc.subnet.list", "vpc.subnet.get"]', true, now(), 'cluster_kacho_root', NULL, NULL);
-INSERT INTO kacho_iam._pre_rbac_v2_roles (id, account_id, name, description, permissions, is_system, created_at, cluster_id, organization_id, project_id) VALUES ('rol88958a1dfa5ddf047', NULL, 'vpc.security_group.admin', 'Admin SecurityGroup', '["vpc.security_group.*"]', true, now(), 'cluster_kacho_root', NULL, NULL);
-INSERT INTO kacho_iam._pre_rbac_v2_roles (id, account_id, name, description, permissions, is_system, created_at, cluster_id, organization_id, project_id) VALUES ('rola227db99b2e9bd131', NULL, 'vpc.security_group.edit', 'Edit SecurityGroup', '["vpc.security_group.update"]', true, now(), 'cluster_kacho_root', NULL, NULL);
-INSERT INTO kacho_iam._pre_rbac_v2_roles (id, account_id, name, description, permissions, is_system, created_at, cluster_id, organization_id, project_id) VALUES ('rol1469d1a633ceae4b5', NULL, 'vpc.security_group.view', 'Read SecurityGroup', '["vpc.security_group.read", "vpc.security_group.list", "vpc.security_group.get"]', true, now(), 'cluster_kacho_root', NULL, NULL);
-INSERT INTO kacho_iam._pre_rbac_v2_roles (id, account_id, name, description, permissions, is_system, created_at, cluster_id, organization_id, project_id) VALUES ('rol8df6147b3aa962b57', NULL, 'vpc.address.admin', 'Admin Address', '["vpc.address.*"]', true, now(), 'cluster_kacho_root', NULL, NULL);
-INSERT INTO kacho_iam._pre_rbac_v2_roles (id, account_id, name, description, permissions, is_system, created_at, cluster_id, organization_id, project_id) VALUES ('rolca0d037b77856bea8', NULL, 'vpc.address.edit', 'Edit Address', '["vpc.address.update"]', true, now(), 'cluster_kacho_root', NULL, NULL);
-INSERT INTO kacho_iam._pre_rbac_v2_roles (id, account_id, name, description, permissions, is_system, created_at, cluster_id, organization_id, project_id) VALUES ('rol096a471229217fbcf', NULL, 'vpc.address.view', 'Read Address', '["vpc.address.read", "vpc.address.list", "vpc.address.get"]', true, now(), 'cluster_kacho_root', NULL, NULL);
-INSERT INTO kacho_iam._pre_rbac_v2_roles (id, account_id, name, description, permissions, is_system, created_at, cluster_id, organization_id, project_id) VALUES ('rolddd484b2677346167', NULL, 'vpc.route_table.admin', 'Admin RouteTable', '["vpc.route_table.*"]', true, now(), 'cluster_kacho_root', NULL, NULL);
-INSERT INTO kacho_iam._pre_rbac_v2_roles (id, account_id, name, description, permissions, is_system, created_at, cluster_id, organization_id, project_id) VALUES ('rold8267982db70ea7f0', NULL, 'vpc.route_table.edit', 'Edit RouteTable', '["vpc.route_table.update"]', true, now(), 'cluster_kacho_root', NULL, NULL);
-INSERT INTO kacho_iam._pre_rbac_v2_roles (id, account_id, name, description, permissions, is_system, created_at, cluster_id, organization_id, project_id) VALUES ('rolab84e08ef4b5e0b22', NULL, 'vpc.route_table.view', 'Read RouteTable', '["vpc.route_table.read", "vpc.route_table.list", "vpc.route_table.get"]', true, now(), 'cluster_kacho_root', NULL, NULL);
-INSERT INTO kacho_iam._pre_rbac_v2_roles (id, account_id, name, description, permissions, is_system, created_at, cluster_id, organization_id, project_id) VALUES ('rol9aeb6b9c5d5b01ec0', NULL, 'vpc.gateway.admin', 'Admin Gateway', '["vpc.gateway.*"]', true, now(), 'cluster_kacho_root', NULL, NULL);
-INSERT INTO kacho_iam._pre_rbac_v2_roles (id, account_id, name, description, permissions, is_system, created_at, cluster_id, organization_id, project_id) VALUES ('rol9d5dc5ed6308cee2a', NULL, 'vpc.gateway.edit', 'Edit Gateway', '["vpc.gateway.update"]', true, now(), 'cluster_kacho_root', NULL, NULL);
-INSERT INTO kacho_iam._pre_rbac_v2_roles (id, account_id, name, description, permissions, is_system, created_at, cluster_id, organization_id, project_id) VALUES ('rol26a49318d88632af2', NULL, 'vpc.gateway.view', 'Read Gateway', '["vpc.gateway.read", "vpc.gateway.list", "vpc.gateway.get"]', true, now(), 'cluster_kacho_root', NULL, NULL);
-INSERT INTO kacho_iam._pre_rbac_v2_roles (id, account_id, name, description, permissions, is_system, created_at, cluster_id, organization_id, project_id) VALUES ('rolfe4e91e8c9f6542a6', NULL, 'compute.instance.admin', 'Admin Instance', '["compute.instance.*"]', true, now(), 'cluster_kacho_root', NULL, NULL);
-INSERT INTO kacho_iam._pre_rbac_v2_roles (id, account_id, name, description, permissions, is_system, created_at, cluster_id, organization_id, project_id) VALUES ('rol79a7325eb0d31fad4', NULL, 'compute.instance.edit', 'Edit Instance', '["compute.instance.update"]', true, now(), 'cluster_kacho_root', NULL, NULL);
-INSERT INTO kacho_iam._pre_rbac_v2_roles (id, account_id, name, description, permissions, is_system, created_at, cluster_id, organization_id, project_id) VALUES ('rol6be01c0948936754b', NULL, 'compute.instance.view', 'Read Instance', '["compute.instance.read", "compute.instance.list", "compute.instance.get"]', true, now(), 'cluster_kacho_root', NULL, NULL);
-INSERT INTO kacho_iam._pre_rbac_v2_roles (id, account_id, name, description, permissions, is_system, created_at, cluster_id, organization_id, project_id) VALUES ('rol87d72eceae2c13668', NULL, 'compute.disk.admin', 'Admin Disk', '["compute.disk.*"]', true, now(), 'cluster_kacho_root', NULL, NULL);
-INSERT INTO kacho_iam._pre_rbac_v2_roles (id, account_id, name, description, permissions, is_system, created_at, cluster_id, organization_id, project_id) VALUES ('rol1dc11606436343c6f', NULL, 'compute.disk.edit', 'Edit Disk', '["compute.disk.update"]', true, now(), 'cluster_kacho_root', NULL, NULL);
-INSERT INTO kacho_iam._pre_rbac_v2_roles (id, account_id, name, description, permissions, is_system, created_at, cluster_id, organization_id, project_id) VALUES ('rol9a3dd327d920fa17e', NULL, 'compute.disk.view', 'Read Disk', '["compute.disk.read", "compute.disk.list", "compute.disk.get"]', true, now(), 'cluster_kacho_root', NULL, NULL);
-INSERT INTO kacho_iam._pre_rbac_v2_roles (id, account_id, name, description, permissions, is_system, created_at, cluster_id, organization_id, project_id) VALUES ('role4b568c07caa8bb66', NULL, 'compute.image.admin', 'Admin Image', '["compute.image.*"]', true, now(), 'cluster_kacho_root', NULL, NULL);
-INSERT INTO kacho_iam._pre_rbac_v2_roles (id, account_id, name, description, permissions, is_system, created_at, cluster_id, organization_id, project_id) VALUES ('rol1c4fda072b27ee567', NULL, 'compute.image.edit', 'Edit Image', '["compute.image.update"]', true, now(), 'cluster_kacho_root', NULL, NULL);
-INSERT INTO kacho_iam._pre_rbac_v2_roles (id, account_id, name, description, permissions, is_system, created_at, cluster_id, organization_id, project_id) VALUES ('rol476d7ebc2bfc4f94a', NULL, 'compute.image.view', 'Read Image', '["compute.image.read", "compute.image.list", "compute.image.get"]', true, now(), 'cluster_kacho_root', NULL, NULL);
-INSERT INTO kacho_iam._pre_rbac_v2_roles (id, account_id, name, description, permissions, is_system, created_at, cluster_id, organization_id, project_id) VALUES ('rol60f87d221a3f601fb', NULL, 'compute.snapshot.admin', 'Admin Snapshot', '["compute.snapshot.*"]', true, now(), 'cluster_kacho_root', NULL, NULL);
-INSERT INTO kacho_iam._pre_rbac_v2_roles (id, account_id, name, description, permissions, is_system, created_at, cluster_id, organization_id, project_id) VALUES ('rol5d9e1879b1a46c635', NULL, 'compute.snapshot.edit', 'Edit Snapshot', '["compute.snapshot.update"]', true, now(), 'cluster_kacho_root', NULL, NULL);
-INSERT INTO kacho_iam._pre_rbac_v2_roles (id, account_id, name, description, permissions, is_system, created_at, cluster_id, organization_id, project_id) VALUES ('rolf4adecb58e7988aa5', NULL, 'compute.snapshot.view', 'Read Snapshot', '["compute.snapshot.read", "compute.snapshot.list", "compute.snapshot.get"]', true, now(), 'cluster_kacho_root', NULL, NULL);
-INSERT INTO kacho_iam._pre_rbac_v2_roles (id, account_id, name, description, permissions, is_system, created_at, cluster_id, organization_id, project_id) VALUES ('rol000000000sysadmin', NULL, 'kacho-system.admin', 'Built-in system administrator (all permissions across all scopes)', '["*.*.*"]', true, now(), 'cluster_kacho_root', NULL, NULL);
-INSERT INTO kacho_iam._pre_rbac_v2_roles (id, account_id, name, description, permissions, is_system, created_at, cluster_id, organization_id, project_id) VALUES ('rol000000000sysviewer', NULL, 'kacho-system.viewer', 'Built-in system viewer (read-only)', '["*.*.read", "*.*.list", "*.*.get"]', true, now(), 'cluster_kacho_root', NULL, NULL);
-INSERT INTO kacho_iam._pre_rbac_v2_roles (id, account_id, name, description, permissions, is_system, created_at, cluster_id, organization_id, project_id) VALUES ('rolecba563ba8698e792', NULL, 'loadbalancer.operator', 'NLB operator (start/stop/getTargetStates/listOperations + viewer on LB hierarchy)', '["loadbalancer.networkLoadBalancers.start", "loadbalancer.networkLoadBalancers.stop", "loadbalancer.networkLoadBalancers.getTargetStates", "loadbalancer.networkLoadBalancers.listOperations", "loadbalancer.networkLoadBalancers.get", "loadbalancer.networkLoadBalancers.list", "loadbalancer.listeners.get", "loadbalancer.listeners.list", "loadbalancer.listeners.listOperations", "loadbalancer.targetGroups.get", "loadbalancer.targetGroups.list", "loadbalancer.targetGroups.listOperations", "loadbalancer.operations.get"]', true, now(), 'cluster_kacho_root', NULL, NULL);
-INSERT INTO kacho_iam._pre_rbac_v2_roles (id, account_id, name, description, permissions, is_system, created_at, cluster_id, organization_id, project_id) VALUES ('role563eb4128875f8d1', NULL, 'loadbalancer.target_manager', 'NLB target manager (addTargets/removeTargets/getTargetStates + viewer on LB hierarchy)', '["loadbalancer.targetGroups.addTargets", "loadbalancer.targetGroups.removeTargets", "loadbalancer.networkLoadBalancers.getTargetStates", "loadbalancer.targetGroups.get", "loadbalancer.targetGroups.list", "loadbalancer.targetGroups.listOperations", "loadbalancer.networkLoadBalancers.get", "loadbalancer.networkLoadBalancers.list", "loadbalancer.listeners.get", "loadbalancer.listeners.list", "loadbalancer.operations.get"]', true, now(), 'cluster_kacho_root', NULL, NULL);
-
-
---
 -- Data for Name: access_binding_emitted_tuples; Type: TABLE DATA; Schema: kacho_iam; Owner: -
 --
 
@@ -3653,12 +3553,6 @@ INSERT INTO kacho_iam.project_resource_quotas (carrier_type, carrier_id, kind, u
 
 --
 -- Data for Name: recovery_completions; Type: TABLE DATA; Schema: kacho_iam; Owner: -
---
-
-
-
---
--- Data for Name: refresh_token_counters; Type: TABLE DATA; Schema: kacho_iam; Owner: -
 --
 
 
@@ -4310,14 +4204,6 @@ ALTER TABLE ONLY kacho_iam.recovery_completions
 
 
 --
--- Name: refresh_token_counters refresh_token_counters_pkey; Type: CONSTRAINT; Schema: kacho_iam; Owner: -
---
-
-ALTER TABLE ONLY kacho_iam.refresh_token_counters
-    ADD CONSTRAINT refresh_token_counters_pkey PRIMARY KEY (user_id, family_id);
-
-
---
 -- Name: relation_fact relation_fact_pkey; Type: CONSTRAINT; Schema: kacho_iam; Owner: -
 --
 
@@ -4845,13 +4731,6 @@ CREATE INDEX projects_labels_gin ON kacho_iam.projects USING gin (labels jsonb_p
 --
 
 CREATE INDEX provider_compensation_outbox_pending_idx ON kacho_iam.provider_compensation_outbox USING btree (attempt_count, id) WHERE (sent_at IS NULL);
-
-
---
--- Name: refresh_token_counters_user_idx; Type: INDEX; Schema: kacho_iam; Owner: -
---
-
-CREATE INDEX refresh_token_counters_user_idx ON kacho_iam.refresh_token_counters USING btree (user_id, last_refresh_at);
 
 
 --
@@ -5563,14 +5442,6 @@ ALTER TABLE ONLY kacho_iam.memberships
 
 ALTER TABLE ONLY kacho_iam.projects
     ADD CONSTRAINT projects_account_fk FOREIGN KEY (account_id) REFERENCES kacho_iam.accounts(id) ON DELETE RESTRICT;
-
-
---
--- Name: refresh_token_counters refresh_token_counters_user_fk; Type: FK CONSTRAINT; Schema: kacho_iam; Owner: -
---
-
-ALTER TABLE ONLY kacho_iam.refresh_token_counters
-    ADD CONSTRAINT refresh_token_counters_user_fk FOREIGN KEY (user_id) REFERENCES kacho_iam.users(id) ON DELETE CASCADE;
 
 
 --

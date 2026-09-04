@@ -170,11 +170,19 @@ var frozenLegacyMigrations = map[string]string{
 	"services/compute/internal/migrations":      "1-34,36-38",
 	"services/compute/migrations":               "1",
 	"services/geo/internal/migrations":          "1-4",
-	"services/iam/internal/migrations":          "1-100",
-	"services/nlb/internal/migrations":          "1-35",
-	"services/registry/internal/migrations":     "1-17",
-	"services/storage/internal/migrations":      "1-25",
-	"services/vpc/internal/migrations":          "1-45",
+	// iam — СВЕДЁН в одну первичную (2026-09-04, разрешение владельца: прода
+	// нет). Порядковых номеров было 1-100; в дереве остался один — сама
+	// первичная. Убыль здесь ОСОЗНАННА, и правится она тем же изменением,
+	// которым ушли файлы, ровно как велит текст находки этого гейта.
+	//
+	// Запись не снимается в пустую: «1» говорит «каталог под надзором, из
+	// порядковой эры остался свод», тогда как пустая означала бы «legacy-номеров
+	// нет вовсе» — а он есть, и это его номер.
+	"services/iam/internal/migrations":      "1",
+	"services/nlb/internal/migrations":      "1-35",
+	"services/registry/internal/migrations": "1-17",
+	"services/storage/internal/migrations":  "1-25",
+	"services/vpc/internal/migrations":      "1-45",
 }
 
 // migrationVersionCensus — объём осмотренного. Отдельное утверждение: «ноль
