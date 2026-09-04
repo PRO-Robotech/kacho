@@ -17,12 +17,12 @@
 -- порядка вывода и версии инструмента, структура — нет. Сравнивается РЕЗУЛЬТАТ
 -- применения, а не текст, которым его записали.
 --
---   go test ./services/iam/internal/schemasnapshot/ \
+--   go test ./services/iam/internal/repo/kacho/pg/schemasnapshot/ \
 --     -run TestSchemaSnapshot -count=1
 --
 -- Прибор лежит ОТДЕЛЬНЫМ пакетом, а не рядом с этим файлом, и признака сборки
 -- у него нет: обоснование обеих сторон — в шапке
--- services/iam/internal/schemasnapshot/snapshot_test.go. Здесь оно не
+-- services/iam/internal/repo/kacho/pg/schemasnapshot/snapshot_test.go. Здесь оно не
 -- пересказывается, чтобы два места об одном предмете не разошлись.
 --
 -- с переменными KACHO_SCHEMA_SNAPSHOT_OUT (слепок: колонки с типами и
