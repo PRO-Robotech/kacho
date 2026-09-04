@@ -448,8 +448,8 @@ func TestMODRD07SystemRoleIDsInTheLiveBaseDeriveFromTheirNames(t *testing.T) {
 	// Предикат её пополнения:
 	//   grep -ohE "\(\s*'rol[A-Za-z0-9]{5,}'" services/iam/internal/migrations/*.sql | sort -u
 	handRolled := map[string]string{
-		"rol000000000sysadmin":  "kacho-system.admin",
-		"rol000000000sysviewer": "kacho-system.viewer",
+		"rol000000000sysadmin":    "kacho-system.admin",
+		domain.SystemViewerRoleID: "kacho-system.viewer",
 	}
 
 	rows, err := pool.Query(ctx, `SELECT id, name FROM roles WHERE is_system ORDER BY name`)
