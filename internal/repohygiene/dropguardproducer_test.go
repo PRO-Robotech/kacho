@@ -65,7 +65,7 @@ const dropGuardManifest = "dropguard.json"
 
 // dropGuardRunner — пакет общего стража. Проба, которая его не зовёт, манифест
 // не читает, сколько бы файлов ни лежало рядом.
-const dropGuardRunner = "internal/dropguard/dropguardtest"
+const dropGuardRunner = "pkg/dropguard/dropguardtest"
 
 // dropGuardOwner — служба, объявившая сносы манифестом, и то, что при ней есть.
 type dropGuardOwner struct {
@@ -261,7 +261,7 @@ func TestDropGuardProducerJudgeFiresAndStaysSilent(t *testing.T) {
 		//
 		// Если служба начнёт сносить таблицы, не заведя манифеста, ЭТОТ гейт
 		// промолчит: его вход — манифест. Такую полосу закрывает страж дерева
-		// (internal/dropguard), а не он.
+		// (pkg/dropguard), а не он.
 		if got := judgeDropGuardProducers(nil, map[string]string{}, nil); len(got) != 0 {
 			t.Fatalf("пустой обход дал находки: %v", got)
 		}

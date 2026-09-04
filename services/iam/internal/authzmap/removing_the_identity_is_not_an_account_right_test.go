@@ -76,7 +76,7 @@ import (
 
 	"github.com/stretchr/testify/require"
 
-	"github.com/PRO-Robotech/kacho/internal/authzplan"
+	"github.com/PRO-Robotech/kacho/services/iam/internal/authzplan"
 )
 
 // identityRemovalRPC — RPC, чей предмет есть СНЯТИЕ СТРОКИ ЛИЧНОСТИ.

@@ -7,7 +7,7 @@ import (
 	"os"
 	"testing"
 
-	"github.com/PRO-Robotech/kacho/internal/pgtest"
+	"github.com/PRO-Robotech/kacho/pkg/pgtest"
 	"github.com/PRO-Robotech/kacho/services/nlb/internal/migrations"
 )
 
@@ -21,7 +21,7 @@ import (
 // and each caller gets its own database cloned from it. The clone is a genuinely
 // separate database — own rows, own sequences, own advisory-lock space — so the
 // VIP-pool and CAS proofs are unchanged, and the capped-pool test still owns the
-// only pool pointed at its own database. See internal/pgtest for the full
+// only pool pointed at its own database. See pkg/pgtest for the full
 // argument.
 //
 // It also removes the reason gooseMu existed: goose's package-level globals are
@@ -34,7 +34,7 @@ func TestMain(m *testing.M) {
 		// Приведение схемы — ОДИН раз на пакет, у выдающего базу.
 		// Прежде его приписывал каждый вызывающий своей копией; забывший
 		// получал `relation … does not exist` — отказ, читающийся как дефект
-		// продукта. Довод целиком — `internal/pgtest` §searchpath.
+		// продукта. Довод целиком — `pkg/pgtest` §searchpath.
 		SearchPath: "kacho_nlb,public",
 		Name:       "nlb",
 		Migrate:    pgtest.Goose(migrations.FS),

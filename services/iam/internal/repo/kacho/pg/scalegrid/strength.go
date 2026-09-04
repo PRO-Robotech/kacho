@@ -12,7 +12,7 @@ import (
 	"sort"
 	"strings"
 
-	"github.com/PRO-Robotech/kacho/internal/gitenv"
+	"github.com/PRO-Robotech/kacho/pkg/gitenv"
 )
 
 // СЕТКА ПРЕДЕЛА ПРОЧНОСТИ — ПЯТЬ НОВЫХ ОСЕЙ И ИСХОД ВЕРДИКТА НА КАЖДОЙ ТОЧКЕ

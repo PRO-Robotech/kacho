@@ -58,7 +58,7 @@ import (
 	"testing"
 	"time"
 
-	"github.com/PRO-Robotech/kacho/internal/gitenv"
+	"github.com/PRO-Robotech/kacho/pkg/gitenv"
 	"github.com/PRO-Robotech/kacho/services/iam/internal/repo/kacho/pg/scalegrid"
 )
 
@@ -349,7 +349,7 @@ func TestScaleGridFreshnessGateCanFailAndCanStaySilent(t *testing.T) {
 
 // repoRoot — корень дерева.
 //
-// Спрашивается у git через `internal/gitenv`, а не собирается из `..`: число
+// Спрашивается у git через `pkg/gitenv`, а не собирается из `..`: число
 // шагов вверх зависит от того, где лежит вызывающий, и переезд файла молча увёл
 // бы гейт смотреть в другой каталог. Прямой `exec.Command("git", …)` в этом
 // дереве — находка отдельного гейта: унаследованные `GIT_DIR`/`GIT_INDEX_FILE`

@@ -7,13 +7,13 @@ import (
 	"os"
 	"testing"
 
-	"github.com/PRO-Robotech/kacho/internal/pgtest"
+	"github.com/PRO-Robotech/kacho/pkg/pgtest"
 	"github.com/PRO-Robotech/kacho/services/iam/internal/migrations"
 )
 
 // TestMain hands this package ONE Postgres instead of one per test — the same
 // wiring readauthz uses. Each test still gets its own database, cloned from a
-// template migrated once (internal/pgtest).
+// template migrated once (pkg/pgtest).
 //
 // Nothing starts here: the container boots on the first NewDB, so a run where
 // every test skips pays nothing.

@@ -7,7 +7,7 @@ import (
 	"os"
 	"testing"
 
-	"github.com/PRO-Robotech/kacho/internal/pgtest"
+	"github.com/PRO-Robotech/kacho/pkg/pgtest"
 	"github.com/PRO-Robotech/kacho/services/nlb/internal/migrations"
 )
 
@@ -22,7 +22,7 @@ import (
 // isolation a separate container gave: a clone has its own rows, its own
 // sequences and its own advisory-lock space, so the multi-replica FOR UPDATE SKIP
 // LOCKED proofs are unchanged — concurrent goroutines inside one test still
-// contend on the same real rows. See internal/pgtest for the full argument.
+// contend on the same real rows. See pkg/pgtest for the full argument.
 //
 // The container starts lazily, so a run whose selected tests all skip pays for
 // nothing.
@@ -31,7 +31,7 @@ func TestMain(m *testing.M) {
 		// Приведение схемы — ОДИН раз на пакет, у выдающего базу.
 		// Прежде его приписывал каждый вызывающий своей копией; забывший
 		// получал `relation … does not exist` — отказ, читающийся как дефект
-		// продукта. Довод целиком — `internal/pgtest` §searchpath.
+		// продукта. Довод целиком — `pkg/pgtest` §searchpath.
 		SearchPath: "kacho_nlb,public",
 		Name:       "nlb",
 		Migrate:    pgtest.Goose(migrations.FS),

@@ -28,7 +28,7 @@ import (
 	"sort"
 	"testing"
 
-	"github.com/PRO-Robotech/kacho/internal/authzplan"
+	"github.com/PRO-Robotech/kacho/services/iam/internal/authzplan"
 )
 
 // sevenForms — семь суффиксов канона, каждый несёт РОВНО ОДНУ форму.

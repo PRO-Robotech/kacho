@@ -22,7 +22,7 @@ func TestMigratorApplyProducerJudgeFiresAndStaysSilent(t *testing.T) {
 	// Дерево, на котором свойство ДЕРЖИТСЯ. Каждый случай ниже отличается от него
 	// ровно одной осью.
 	migrators := []string{"services/geo/cmd/migrator", "services/vpc/cmd/migrator"}
-	named := []string{"internal/dropguard", migratorApplyProofPkg, "pkg/subscription"}
+	named := []string{"pkg/dropguard", migratorApplyProofPkg, "pkg/subscription"}
 
 	t.Run("молчит: доказательство есть и производитель его называет", func(t *testing.T) {
 		if f := judgeMigratorApplyProducer(migrators, 2, named); len(f) != 0 {
@@ -31,7 +31,7 @@ func TestMigratorApplyProducerJudgeFiresAndStaysSilent(t *testing.T) {
 	})
 
 	t.Run("краснеет: проба есть, производителя нет — находка #1637", func(t *testing.T) {
-		without := []string{"internal/dropguard", "pkg/subscription"}
+		without := []string{"pkg/dropguard", "pkg/subscription"}
 		f := judgeMigratorApplyProducer(migrators, 2, without)
 		if len(f) != 1 {
 			t.Fatalf("ожидалась ровно одна находка, получено %d: %v", len(f), f)
@@ -46,7 +46,7 @@ func TestMigratorApplyProducerJudgeFiresAndStaysSilent(t *testing.T) {
 	})
 
 	t.Run("краснеет: доказательства нет вовсе", func(t *testing.T) {
-		without := []string{"internal/dropguard"}
+		without := []string{"pkg/dropguard"}
 		f := judgeMigratorApplyProducer(migrators, 0, without)
 		if len(f) != 1 || !strings.Contains(f[0], "доказательства наката нет вовсе") {
 			t.Fatalf("исчезнувшее доказательство не найдено: %v", f)
@@ -66,7 +66,7 @@ func TestMigratorApplyProducerJudgeFiresAndStaysSilent(t *testing.T) {
 	})
 
 	t.Run("краснеет: обход пуст — вердикт беспредметен", func(t *testing.T) {
-		f := judgeMigratorApplyProducer(nil, 2, []string{"internal/dropguard"})
+		f := judgeMigratorApplyProducer(nil, 2, []string{"pkg/dropguard"})
 		if len(f) != 1 || !strings.Contains(f[0], "обход пуст") {
 			t.Fatalf("пустой обход принят за свойство: %v", f)
 		}

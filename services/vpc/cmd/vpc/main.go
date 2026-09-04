@@ -82,7 +82,7 @@ const configPathEnv = "KACHO_VPC_CONFIG_PATH"
 
 func main() {
 	// kacho-vpc — single-purpose binary: только обслуживает API. Миграции живут в
-	// отдельном `cmd/migrator` (cobra-based; сам накат — internal/migratorrun).
+	// отдельном `cmd/migrator` (cobra-based; сам накат — pkg/migratorrun).
 	// Subcommand-проверка — в switch ниже.
 
 	cfg, err := config.Load(os.Getenv(configPathEnv))

@@ -16,7 +16,7 @@ import (
 	"strconv"
 	"strings"
 
-	"github.com/PRO-Robotech/kacho/internal/treecorpus"
+	"github.com/PRO-Robotech/kacho/pkg/treecorpus"
 )
 
 // Разбор дерева для гейта «курсорное чтение страницы обязано получать ПОРЯДОК из

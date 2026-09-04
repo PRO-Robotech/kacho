@@ -7,7 +7,7 @@ import (
 	"os"
 	"testing"
 
-	"github.com/PRO-Robotech/kacho/internal/pgtest"
+	"github.com/PRO-Robotech/kacho/pkg/pgtest"
 	"github.com/PRO-Robotech/kacho/services/storage/internal/migrations"
 )
 
@@ -23,7 +23,7 @@ import (
 // UNIQUE / EXCLUDE / SKIP LOCKED proofs depend on is unchanged: a clone is a
 // separate database, and concurrent goroutines inside one test still contend on
 // the same real rows. Nothing here needs the SERVER to itself. See
-// internal/pgtest for the full argument.
+// pkg/pgtest for the full argument.
 //
 // The container starts lazily, so under -short — where every test above skips —
 // none is started.
@@ -32,7 +32,7 @@ func TestMain(m *testing.M) {
 		// Приведение схемы — ОДИН раз на пакет, у выдающего базу.
 		// Прежде его приписывал каждый вызывающий своей копией; забывший
 		// получал `relation … does not exist` — отказ, читающийся как дефект
-		// продукта. Довод целиком — `internal/pgtest` §WithSearchPath.
+		// продукта. Довод целиком — `pkg/pgtest` §WithSearchPath.
 		SearchPath: "kacho_storage,public",
 		Name:       "storage",
 		User:       "storage",

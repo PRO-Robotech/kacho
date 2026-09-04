@@ -38,7 +38,7 @@ import (
 	"github.com/PRO-Robotech/kacho/services/registry/internal/migrations"
 	kachopg "github.com/PRO-Robotech/kacho/services/registry/internal/repo/kacho/pg"
 
-	"github.com/PRO-Robotech/kacho/internal/pgtest"
+	"github.com/PRO-Robotech/kacho/pkg/pgtest"
 )
 
 // ---- минимальные адаптеры под exported-порты dataplane ----------------------

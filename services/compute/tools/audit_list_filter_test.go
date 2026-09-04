@@ -40,7 +40,7 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/PRO-Robotech/kacho/internal/treecorpus"
+	"github.com/PRO-Robotech/kacho/pkg/treecorpus"
 )
 
 // anchorDir is the directory holding the transport declarations this gate reads.
@@ -90,7 +90,7 @@ func runGate(t *testing.T, root string, args ...string) (string, error) {
 }
 
 // copyTree materialises one tracked tree into dst and returns how many files it
-// wrote. The file set comes from the git INDEX (internal/treecorpus), not from a
+// wrote. The file set comes from the git INDEX (pkg/treecorpus), not from a
 // disk walk: under services/ a walk also reads what the repository does not contain
 // — agent working copies, generated directories, run reports.
 func copyTree(t *testing.T, base, tree, dst string) int {

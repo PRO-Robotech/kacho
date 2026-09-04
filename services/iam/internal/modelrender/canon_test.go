@@ -10,8 +10,8 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/PRO-Robotech/kacho/internal/authzplan"
 	"github.com/PRO-Robotech/kacho/services/iam/internal/apps/kacho/seed"
+	"github.com/PRO-Robotech/kacho/services/iam/internal/authzplan"
 	"github.com/PRO-Robotech/kacho/services/iam/internal/modelrender"
 )
 

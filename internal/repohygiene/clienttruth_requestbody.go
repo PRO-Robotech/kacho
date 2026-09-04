@@ -211,7 +211,7 @@ import (
 	"google.golang.org/protobuf/reflect/protoreflect"
 	"google.golang.org/protobuf/reflect/protoregistry"
 
-	"github.com/PRO-Robotech/kacho/internal/treecorpus"
+	"github.com/PRO-Robotech/kacho/pkg/treecorpus"
 
 	// Регистрация дескрипторов ВСЕХ доменов: источник путей, методов и сообщений.
 	// Пакет контракта и имя каталога сервиса — РАЗНЫЕ словари: балансировщик

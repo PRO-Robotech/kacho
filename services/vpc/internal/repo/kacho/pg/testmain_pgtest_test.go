@@ -7,7 +7,7 @@ import (
 	"os"
 	"testing"
 
-	"github.com/PRO-Robotech/kacho/internal/pgtest"
+	"github.com/PRO-Robotech/kacho/pkg/pgtest"
 	"github.com/PRO-Robotech/kacho/services/vpc/internal/migrations"
 )
 
@@ -18,7 +18,7 @@ import (
 // budget on its harness rather than on its tests, and `go test` without an
 // explicit -timeout was heading for the tool's own 600s default. The container now
 // starts once, the chain runs once into a template, and each caller gets its own
-// database cloned from it. See internal/pgtest for why a clone is the same
+// database cloned from it. See pkg/pgtest for why a clone is the same
 // isolation a separate container gave: the CAS / UNIQUE / EXCLUDE / SKIP LOCKED
 // and IPAM-allocation proofs in this package still run their goroutines against
 // the same real rows of the same real database.
@@ -34,7 +34,7 @@ func TestMain(m *testing.M) {
 		// Приведение схемы — ОДИН раз на пакет, у выдающего базу.
 		// Прежде его приписывал каждый вызывающий своей копией; забывший
 		// получал `relation … does not exist` — отказ, читающийся как дефект
-		// продукта. Довод целиком — `internal/pgtest` §WithSearchPath.
+		// продукта. Довод целиком — `pkg/pgtest` §WithSearchPath.
 		SearchPath: "kacho_vpc,public",
 		Name:       "vpc",
 		User:       "vpc",

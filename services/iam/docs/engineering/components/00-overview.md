@@ -26,7 +26,7 @@
 - **Реляционная форма** (`internal/repo/kacho/pg/relverdict`) — единственный источник
   решения. Вердикт складывается запросом к собственной базе `kacho_iam` из четырёх
   источников: прямой факт, выдача роли на область, выдача по меткам, членство в группе.
-  Вывод отношений компилируется из модели прав (`internal/authzplan`). Внешнего движка
+  Вывод отношений компилируется из модели прав (`services/iam/internal/authzplan`). Внешнего движка
   отношений нет — см. [`29-relational-verdict.md`](29-relational-verdict.md).
 - **AuthorizeService** (публичный) — sync-проверка решений: `Check` / `BatchCheck` /
   `ListSubjects` / `ExpandRelations` / `WhoAmI`.

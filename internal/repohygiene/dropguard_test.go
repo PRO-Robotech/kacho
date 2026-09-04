@@ -27,7 +27,7 @@ import (
 	"sort"
 	"testing"
 
-	"github.com/PRO-Robotech/kacho/internal/dropguard"
+	"github.com/PRO-Robotech/kacho/pkg/dropguard"
 )
 
 // migrationDirs — каждая директория миграций в дереве. Список ВЫЧИСЛЯЕТСЯ, а не

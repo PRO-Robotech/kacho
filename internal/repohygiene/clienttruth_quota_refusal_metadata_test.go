@@ -6,8 +6,8 @@ package repohygiene
 import (
 	"testing"
 
-	"github.com/PRO-Robotech/kacho/internal/treecorpus"
 	"github.com/PRO-Robotech/kacho/pkg/quota"
+	"github.com/PRO-Robotech/kacho/pkg/treecorpus"
 )
 
 // TestQuotaRefusalAmountsReachTheClient — величины, посчитанные единственным

@@ -41,7 +41,7 @@ package grpcsrv_test
 //
 // # Состав берётся у индекса, а не с диска
 //
-// `internal/treecorpus` — то же множество файлов, что увидит свежий клон и CI.
+// `pkg/treecorpus` — то же множество файлов, что увидит свежий клон и CI.
 // Обход диска читал бы и то, чего в репозитории нет: рабочие копии агентов под
 // `.claude/worktrees/`, сборочные и сгенерированные каталоги, отчёты прогонов, —
 // и вердикт стал бы свойством чужого рабочего каталога, а не коммита. Следствие
@@ -62,7 +62,7 @@ import (
 
 	"github.com/stretchr/testify/require"
 
-	"github.com/PRO-Robotech/kacho/internal/treecorpus"
+	"github.com/PRO-Robotech/kacho/pkg/treecorpus"
 )
 
 // tlsGuardScopeDir — каталог фундамента, о котором говорит страж, от корня

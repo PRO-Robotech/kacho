@@ -35,7 +35,7 @@ import (
 
 	"github.com/PRO-Robotech/kacho/pkg/listnarrow/narrowtest"
 
-	"github.com/PRO-Robotech/kacho/internal/pgtest"
+	"github.com/PRO-Robotech/kacho/pkg/pgtest"
 )
 
 // ---- helpers ----

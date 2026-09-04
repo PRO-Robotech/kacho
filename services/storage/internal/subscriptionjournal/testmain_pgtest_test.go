@@ -7,7 +7,7 @@ import (
 	"os"
 	"testing"
 
-	"github.com/PRO-Robotech/kacho/internal/pgtest"
+	"github.com/PRO-Robotech/kacho/pkg/pgtest"
 	"github.com/PRO-Robotech/kacho/services/storage/internal/migrations"
 )
 
@@ -26,7 +26,7 @@ func TestMain(m *testing.M) {
 		// Приведение схемы — ОДИН раз на пакет, у выдающего базу.
 		// Прежде его приписывал каждый вызывающий своей копией; забывший
 		// получал `relation … does not exist` — отказ, читающийся как дефект
-		// продукта. Довод целиком — `internal/pgtest` §WithSearchPath.
+		// продукта. Довод целиком — `pkg/pgtest` §WithSearchPath.
 		SearchPath: "kacho_storage,public",
 		Name:       "storage_subscription",
 		User:       "storage",

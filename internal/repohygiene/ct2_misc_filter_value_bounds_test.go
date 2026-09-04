@@ -8,8 +8,8 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/PRO-Robotech/kacho/internal/treecorpus"
 	"github.com/PRO-Robotech/kacho/pkg/filter"
+	"github.com/PRO-Robotech/kacho/pkg/treecorpus"
 )
 
 // TestContractsAgreeWithTheFilterValueLimitTheParserApplies — контракт не

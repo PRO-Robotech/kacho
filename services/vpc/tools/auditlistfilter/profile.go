@@ -3,7 +3,7 @@
 
 // Package auditlistfilter states how kacho-vpc is laid out for the public-List
 // gate. The analysis itself — and why it parses instead of grepping — lives in
-// tools/listfiltergate.
+// pkg/listfiltergate.
 //
 // # This service's shape
 //
@@ -65,7 +65,7 @@
 //     so separately.
 package auditlistfilter
 
-import "github.com/PRO-Robotech/kacho/tools/listfiltergate"
+import "github.com/PRO-Robotech/kacho/pkg/listfiltergate"
 
 // parentGate is the shape of every child listing in this service: read the
 // containing resource first, return on its error, then read the page.

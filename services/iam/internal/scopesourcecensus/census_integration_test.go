@@ -52,8 +52,8 @@ import (
 
 	"github.com/jackc/pgx/v5"
 
-	"github.com/PRO-Robotech/kacho/internal/gitenv"
-	"github.com/PRO-Robotech/kacho/internal/pgtest"
+	"github.com/PRO-Robotech/kacho/pkg/gitenv"
+	"github.com/PRO-Robotech/kacho/pkg/pgtest"
 )
 
 const censusScript = "deploy/load-tests/iam-scope-source-census.sh"

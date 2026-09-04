@@ -49,7 +49,7 @@ import (
 //
 // Отбор кандидатов доказательством НЕ является: попавший в кандидаты файл всё
 // равно проходит разбор, и упоминание пути в комментарии даст ноль вызовов.
-const nameFormEnginePkgPath = "internal/nameformdb"
+const nameFormEnginePkgPath = "pkg/nameformdb"
 
 // nameFormEngineType — тип двигателя, вызов метода которого и есть
 // доказательство.
@@ -138,7 +138,7 @@ func (c nameFormDBCoverage) Unproven() []string {
 // синтетическое дерево тем же входом, каким гейт получает настоящее.
 //
 // entryMethods — входные методы двигателя. Приезжают ПАРАМЕТРОМ из самого
-// двигателя (гейт выводит их разбором `internal/nameformdb`), а не выписаны
+// двигателя (гейт выводит их разбором `pkg/nameformdb`), а не выписаны
 // здесь: выписанный перечень разошёлся бы с двигателем молча — переименовали бы
 // `Run`, и гейт перестал бы видеть все пробы разом, объявив дерево сломанным.
 func analyseNameFormDBCoverage(files map[string]string, canonPattern string, entryMethods map[string]bool) nameFormDBCoverage {

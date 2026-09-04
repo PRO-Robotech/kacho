@@ -11,7 +11,7 @@
 // деревом печатается `ok (cached)`. Поэтому пакет ОТКАЗЫВАЕТСЯ работать на
 // прогоне, результат которого пойдёт в кеш (TestMain в cachedverdictmain_test.go);
 // прогонять — с `-count=1` либо целями Makefile, которые его уже несут. Разбор
-// класса и замеры — internal/treecorpus, cachedverdict.go.
+// класса и замеры — pkg/treecorpus, cachedverdict.go.
 //
 // license_test.go — каждый source-файл репозитория
 // обязан нести SPDX-копирайт-хедер, а в корне должен лежать файл LICENSE.

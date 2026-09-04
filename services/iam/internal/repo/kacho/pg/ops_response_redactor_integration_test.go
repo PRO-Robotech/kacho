@@ -29,9 +29,9 @@ import (
 	"google.golang.org/protobuf/types/known/anypb"
 	"google.golang.org/protobuf/types/known/timestamppb"
 
-	"github.com/PRO-Robotech/kacho/internal/pgtest"
 	coredb "github.com/PRO-Robotech/kacho/pkg/db"
 	"github.com/PRO-Robotech/kacho/pkg/operations"
+	"github.com/PRO-Robotech/kacho/pkg/pgtest"
 
 	iamv1 "github.com/PRO-Robotech/kacho/pkg/api/kacho/cloud/iam/v1"
 
@@ -43,7 +43,7 @@ import (
 //
 // Раньше на каждый вызов поднимался отдельный контейнер и заново проигрывалась
 // вся цепочка миграций. Теперь база клонируется из шаблона, смигрированного
-// TestMain'ом один раз, — состояние и изоляция те же (см. internal/pgtest).
+// TestMain'ом один раз, — состояние и изоляция те же (см. pkg/pgtest).
 func setupRedactorPG(t *testing.T) string {
 	t.Helper()
 	return pgtest.NewDB(t)

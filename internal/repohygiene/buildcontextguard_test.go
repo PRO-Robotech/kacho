@@ -53,7 +53,7 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/PRO-Robotech/kacho/internal/gitenv"
+	"github.com/PRO-Robotech/kacho/pkg/gitenv"
 )
 
 // dockerIgnorePatterns — исполняемые строки `.dockerignore` (без комментариев).

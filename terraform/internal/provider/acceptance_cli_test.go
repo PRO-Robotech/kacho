@@ -40,7 +40,7 @@ import (
 	"regexp"
 	"testing"
 
-	"github.com/PRO-Robotech/kacho/internal/treecorpus"
+	"github.com/PRO-Robotech/kacho/pkg/treecorpus"
 )
 
 // accProviderNamespace — пространство имён провайдера в адресе source.

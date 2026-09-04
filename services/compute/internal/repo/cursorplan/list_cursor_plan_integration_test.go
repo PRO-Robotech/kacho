@@ -9,7 +9,7 @@
 // настоящей цепочке миграций compute берёт порядок страницы ИЗ ЭТОГО индекса и не
 // содержит узла сортировки. Разбор обоих вопросов, довод в пользу
 // детерминированной постановки и требование контроля — в шапке
-// `internal/listcursorplan`.
+// `pkg/listcursorplan`.
 //
 // Проба красна на состоянии ДО фикса: без миграции
 // `708001_operations_cursor_index.sql` план несёт узел сортировки, потому что
@@ -22,7 +22,7 @@ package cursorplan_test
 import (
 	"testing"
 
-	"github.com/PRO-Robotech/kacho/internal/listcursorplan"
+	"github.com/PRO-Robotech/kacho/pkg/listcursorplan"
 	"github.com/PRO-Robotech/kacho/services/compute/internal/migrations"
 )
 

@@ -10,9 +10,9 @@ import (
 
 	"github.com/stretchr/testify/require"
 
-	"github.com/PRO-Robotech/kacho/internal/nameformdb"
-	"github.com/PRO-Robotech/kacho/internal/pgtest"
 	coredb "github.com/PRO-Robotech/kacho/pkg/db"
+	"github.com/PRO-Robotech/kacho/pkg/nameformdb"
+	"github.com/PRO-Robotech/kacho/pkg/pgtest"
 )
 
 // TestIntegration_Compute_NameFormConstraintIsEnforced — действие ограничения
@@ -25,7 +25,7 @@ import (
 //
 // Миграция 715001 ставит форму имени четырём таблицам compute; доказательство
 // того, что форма ДЕЙСТВУЕТ, было только у vpc. Разбор класса, перечень
-// утверждений и почему положительный контроль обязателен — `internal/nameformdb`.
+// утверждений и почему положительный контроль обязателен — `pkg/nameformdb`.
 //
 // Строки вставляются НАПРЯМУЮ в таблицу, минуя домен и use-case: предмет — то,
 // что отвергнет сервер, когда слоя над ним не окажется.

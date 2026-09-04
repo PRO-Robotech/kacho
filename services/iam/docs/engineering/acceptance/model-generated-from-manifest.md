@@ -700,7 +700,7 @@ PY
 
 | # | производитель | координата | что производит | проверено |
 |---|---|---|---|---|
-| **П-01** | `authzplan.ResolveCanonicalModel()` | `internal/authzplan/canonical.go:31` | путь и байты канона, обходом вверх от cwd | чтение файла |
+| **П-01** | `authzplan.ResolveCanonicalModel()` | `services/iam/internal/authzplan/canonical.go:31` | путь и байты канона, обходом вверх от cwd | чтение файла |
 | **П-02** | `TestEmbeddedModelIsByteIdenticalToCanonical` | `services/iam/internal/authzmodel/identity_test.go` | отказ при расхождении вшитой копии с каноном; называет обе длины | чтение файла |
 | **П-03** | `manifest.refuseSectionsNotDescribedYet` | `services/iam/internal/manifest/manifest.go:317`, перечень — `:108` | **отказ** на разделе `resources`/`roles`/`deprecatedVerbs` с текстом `…schema lands with PRO-Robotech/kacho#1778` | чтение файла |
 | **П-04** | проба TestMODMF07SectionNotDescribedYetIsRefusedExplicitly (прозой — врезка под таблицей) | `services/iam/internal/manifest/manifest_test.go:381` | утверждает отказ П-03 **и** наличие «1778» в тексте | чтение файла |
@@ -1664,7 +1664,7 @@ grep -rn 'contains(sectionsNotDescribedYet' --include='*_test.go' services/
 | §1 врезка | ролей 51 всего, 11 снято `DELETE`, живых 40 | **51 · 11 · 40**; живых `iam 19 · vpc 18 · compute 3`; ярусы `admin 13 · edit 13 · view 14` | ✅ |
 | §1 врезка | у `nlb`/`registry`/`storage` ролей ноль | по миграциям ноль **и** под написанием `loadbalancer` — тоже ноль | ✅ |
 | §1 врезка | каталог держит глагол нижним; правил ролей с верблюжьим — четыре | `catalog_verb_canonical CHECK (verb = lower(btrim(verb)))`; ровно `addTargets`, `getTargetStates`, `listOperations`, `removeTargets` | ✅ |
-| §3.1 | П-01 | `internal/authzplan/canonical.go:31`, `func ResolveCanonicalModel()` | ✅ |
+| §3.1 | П-01 | `services/iam/internal/authzplan/canonical.go:31`, `func ResolveCanonicalModel()` | ✅ |
 | шапка | вердикт машинночитаем | `_lib.verdict` → `('CHANGES REQUESTED', …)` | ✅ |
 | §12.7 | счёт: A 5 · B 8 · норм 7 · инъекций 8 при зарезервированном `C-07` | **5 · 8 · 7 · 8**, `C-07` вычеркнут, номера не переиспользованы | ✅ |
 | §12 | заявление не шире сделанного | `git diff HEAD~1 --name-only` → **один** файл, тот самый; §11 ниже врезки — **байт-в-байт** прежний | ✅ |
@@ -2105,6 +2105,14 @@ PY
 блокирующему, затем не блокирующее и не проверенное.
 
 ### 15.1 Моя опровергнутая гипотеза — называется первой, и она моя же
+
+
+> [!note] Пакет с тех пор ПЕРЕЕХАЛ — разбор ниже описывает прошлое и правится не текстом
+> Абзац записан, когда `authzplan` лежал в **корне монорепо**. Линия выноса iam
+> отдельным продуктом перенесла его в `services/iam/internal/authzplan/`, потому что
+> потребители у него только iam и его же прибор. Координаты ниже оставлены
+> ДОСЛОВНО: они свидетельствуют о замере своей ревизии, и правка пути превратила бы
+> разбор чужой ошибки в утверждение, которого никто не делал.
 
 Сверяя перепись производителей §3.1, я прогнал координаты пакетной командой и получил
 `services/iam/internal/authzplan/canonical.go:31 → NO FILE`. Готовый вывод — «`П-01`

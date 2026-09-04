@@ -14,7 +14,7 @@ package scopesourcecensus_test
 import (
 	"testing"
 
-	"github.com/PRO-Robotech/kacho/internal/pgtest"
+	"github.com/PRO-Robotech/kacho/pkg/pgtest"
 	"github.com/PRO-Robotech/kacho/services/iam/internal/migrations"
 )
 

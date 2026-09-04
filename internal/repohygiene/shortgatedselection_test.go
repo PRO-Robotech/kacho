@@ -109,7 +109,7 @@
 // Наивный предикат «в файлах пакета есть `testing.Short()`» НЕДОСТАТОЧЕН, и это
 // измерено, а не предположено: он находит 27 пакетов из 32. Пять пропускают
 // тесты через ОБЩИЙ хелпер, в котором и стоит `testing.Short()`
-// (`internal/dropguard/dropguardtest`, `services/iam/internal/testsupport/fgatest`),
+// (`pkg/dropguard/dropguardtest`, `services/iam/internal/testsupport/fgatest`),
 // а в самих пакетах этого литерала нет ни разу. `services/iam/internal/authzmap`
 // — крайний случай: ноль вхождений литерала и девять пропущенных тестов.
 // Поэтому предикат замыкается на один уровень: пакет считается краткогейтящим,
@@ -158,7 +158,7 @@ var shortGatedOutsideSelection = []string{
 	// контейнера именно потому, что здесь доказано «сервер один, области разные,
 	// данные не ходят». Это доказательство не исполняется НИГДЕ: под кратким оно
 	// пропускается (нужен Docker), а отбор интеграционной джобы смотрит только
-	// внутрь services/<svc>/internal/(repo|clients|reconciler) — internal/pgtest лежит в корне
+	// внутрь services/<svc>/internal/(repo|clients|reconciler) — pkg/pgtest лежит в корне
 	// и в тот обход не входит вовсе.
 	//
 	// То есть санкция стоит на утверждении, которое конвейер не проверяет. Это долг,
@@ -171,7 +171,7 @@ var shortGatedOutsideSelection = []string{
 	// решением владельца, у OpenFGA-половины оказалась переоценённой на два порядка
 	// (см. замер в шапке файла), а у Postgres-половины НЕ перемерена — переносить на
 	// неё чужой вывод было бы ровно тем классом, который этот файл ловит.
-	"internal/pgtest",
+	"pkg/pgtest",
 	"pkg/audit",
 	"pkg/authz",
 	"pkg/db",
@@ -213,9 +213,9 @@ var shortGatedRunByOwnCIStep = map[string]string{
 	// Перепись «анализатор видит КАЖДЫЙ списочный метод дерева» — единственный
 	// краткогейтящий тест пакета (остальные десять идут в быстрой джобе). Пропуск
 	// под кратким у неё осмысленный: она запускает анализатор каждого сервиса.
-	// Свой шаг + tools/listfiltergate (TestCIRunsThisCensus), как у четырёх
+	// Свой шаг + pkg/listfiltergate (TestCIRunsThisCensus), как у четырёх
 	// соседних гейтов tools/.
-	"tools/listfiltergate": "go test ./tools/listfiltergate/ -run TestCensus_EveryTransportListingIsSeenByItsAnalyser",
+	"pkg/listfiltergate": "go test ./pkg/listfiltergate/ -run TestCensus_EveryTransportListingIsSeenByItsAnalyser",
 
 	// Инструмент сравнительного замера форм модели прав. Под кратким пропускает
 	// себя (поднимает контейнеры), в отбор интеграционной джобы не входит — `tools/`
@@ -225,7 +225,7 @@ var shortGatedRunByOwnCIStep = map[string]string{
 	// последнее держит санкцию гейта containerperpackage, и без исполнения та
 	// санкция стояла бы на непроверяемом утверждении. Сам замер требует переменной
 	// окружения и часов: он ручной по построению.
-	"tools/authzformbench": "go test ./tools/authzformbench/ -count=1",
+	"services/iam/tools/authzformbench": "go test ./services/iam/tools/authzformbench/ -count=1",
 
 	// Шесть носителей поведенческих проб модели прав: пакет спрашивает НАСТОЯЩИЙ
 	// OpenFGA, а не читает текст модели. Цель test-authz-fga гонит их целиком (без
@@ -255,7 +255,7 @@ var shortGatedRunByOwnCIStep = map[string]string{
 	// смотрит внутрь services/<svc>/internal/(repo|clients|reconciler). Долгом это
 	// быть не может: предмет задачи #1376 — «шаг, у которого нет производителя»,
 	// и доказательство этого шага, не исполняемое нигде, было бы тем же классом.
-	"internal/dropguard": "make test-pg-outside-selection",
+	"pkg/dropguard": "make test-pg-outside-selection",
 
 	// Доказательство наката: собирает бинарь КАЖДОЙ точки наката дерева и гоняет
 	// его против пустой базы, сверяя число применённых миграций с длиной цепочки.
@@ -551,7 +551,7 @@ func TestShortGateSelectionJudgeFiresAndStaysSilent(t *testing.T) {
 // ПРОВЕРЯЕТСЯ, а не принимается на слово.
 //
 // Третий исход добавлен потому, что двух не хватало, и нехватка была не
-// теоретической. tools/listfiltergate держит перепись «анализатор видит каждый
+// теоретической. pkg/listfiltergate держит перепись «анализатор видит каждый
 // списочный метод» — единственный краткогейтящий тест пакета. Ни отбор его не
 // брал, ни в переписи долга его не было, и гейт краснел, предлагая ровно два
 // выхода: расширить отбор (цена — за владельцем) или записать долг. Но у

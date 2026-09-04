@@ -599,7 +599,7 @@ gh issue list -R PRO-Robotech/kacho --state open --search 'манифест' --l
 | §2.6: `gateway/Makefile` несёт тройку `permission-catalog` на строках 68 · 75 · 86 | `grep -nE '^permission-catalog' gateway/Makefile` | **верно** |
 | §5.5, §6: `TestNamedMakeTargetExists` — строка 190 | `grep -n '^func TestNamedMakeTargetExists'` | **верно** |
 | §3: `catalogparity_test.go` несёт три утверждения на строках 132 · 244 · 354 | `grep -n '^func Test'` | **верно** |
-| §8: `internal/treecorpus` `cachedverdictmain` существует | `git ls-files internal/treecorpus` | **верно** (`cachedverdictmain_test.go`) |
+| §8: `pkg/treecorpus` `cachedverdictmain` существует | `git ls-files pkg/treecorpus` | **верно** (`cachedverdictmain_test.go`) |
 | §4: манифестов в дереве ноль | `git ls-files \| grep -cE '/manifest\.yaml$'` → **0** | **верно** |
 | вердикт читается машинно | `_lib.verdict` на этой шапке → `('APPROVED', …)` | **верно** |
 | §8: `TestNoDeferredWorkInTheTree` зелёный со staged-документом | `go test ./internal/repohygiene -run 'TestNoDeferredWorkInTheTree\|TestNamedMakeTargetExists' -count=1` → **ok** | **верно** |
@@ -1535,7 +1535,7 @@ MOD-MF-16. Замер — §0.2; коротко: вступают в **чужу�
 | `internal/repohygiene` `TestNamedMakeTargetExists` | цель `module-manifest-check` существует **к моменту, когда её называют готовой командой**. Приёмка садится первой и называет цель именем, поэтому предмета гейту не даёт; готовую команду вносит изменение, заводящее цель (§5.5, MOD-MF-20). Измерено: три готовые команды в приёмке дают **три** находки |
 | `internal/repohygiene/catalogparity_test.go` | **не увидит манифест by construction** (§3) — назван, чтобы его молчание не приняли за подтверждение |
 | `scripts/docs-gate/check-04` | вердикт этой приёмки читается машинно |
-| `internal/treecorpus` `cachedverdictmain` | всякий новый гейт дерева наследует `-count=1`: состав берётся у индекса git подпроцессом, которого инструмент кэширования не видит |
+| `pkg/treecorpus` `cachedverdictmain` | всякий новый гейт дерева наследует `-count=1`: состав берётся у индекса git подпроцессом, которого инструмент кэширования не видит |
 
 ---
 

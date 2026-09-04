@@ -31,7 +31,7 @@ import (
 
 	"github.com/PRO-Robotech/kacho/pkg/outbox/drainer"
 
-	"github.com/PRO-Robotech/kacho/internal/pgtest"
+	"github.com/PRO-Robotech/kacho/pkg/pgtest"
 )
 
 // Test_1_4_04_LongTransientOutage_NoPoison — a transient outage longer than

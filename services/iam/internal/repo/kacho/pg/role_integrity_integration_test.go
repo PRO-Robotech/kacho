@@ -19,7 +19,7 @@ import (
 
 	"github.com/stretchr/testify/require"
 
-	"github.com/PRO-Robotech/kacho/internal/pgtest"
+	"github.com/PRO-Robotech/kacho/pkg/pgtest"
 	// Закрытие С ПРЕДЕЛОМ, а не «когда-нибудь»: отложенное `pool.Close()` ждёт
 	// возврата ВСЕХ соединений, а проба, упавшая внутри открытой транзакции, своё
 	// не вернёт — её горутину завершает `FailNow`. Пакет тогда упирается в

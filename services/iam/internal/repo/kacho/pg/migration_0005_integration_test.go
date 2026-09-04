@@ -62,8 +62,8 @@ import (
 	_ "github.com/jackc/pgx/v5/stdlib"
 	"github.com/stretchr/testify/require"
 
-	"github.com/PRO-Robotech/kacho/internal/pgtest"
 	coredb "github.com/PRO-Robotech/kacho/pkg/db"
+	"github.com/PRO-Robotech/kacho/pkg/pgtest"
 )
 
 // ЗДЕСЬ ЛЕЖАЛИ ДВА ПОМОЩНИКА ЛЕСТНИЦЫ ВЕРСИЙ — startPostgresUpTo и applyOneMore.

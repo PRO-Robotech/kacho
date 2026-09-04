@@ -88,7 +88,7 @@ import (
 	"testing"
 	"unicode"
 
-	"github.com/PRO-Robotech/kacho/internal/treecorpus"
+	"github.com/PRO-Robotech/kacho/pkg/treecorpus"
 )
 
 // catalogLiteralNames — словари-литералы каталога. Ровно те два, которые называет

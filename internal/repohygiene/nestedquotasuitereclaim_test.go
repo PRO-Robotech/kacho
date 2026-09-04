@@ -15,7 +15,7 @@ import (
 
 	"github.com/stretchr/testify/require"
 
-	"github.com/PRO-Robotech/kacho/internal/gitenv"
+	"github.com/PRO-Robotech/kacho/pkg/gitenv"
 )
 
 // Набор сквозных проб, заводящий ребёнка под ВЛОЖЕННЫМ потолком в ЧУЖОМ

@@ -29,10 +29,10 @@ import (
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 
-	"github.com/PRO-Robotech/kacho/internal/pgtest"
 	coredb "github.com/PRO-Robotech/kacho/pkg/db"
 	"github.com/PRO-Robotech/kacho/pkg/ids"
 	"github.com/PRO-Robotech/kacho/pkg/observability"
+	"github.com/PRO-Robotech/kacho/pkg/pgtest"
 	kachorepo "github.com/PRO-Robotech/kacho/services/nlb/internal/repo/kacho"
 	kachopg "github.com/PRO-Robotech/kacho/services/nlb/internal/repo/kacho/pg"
 	"github.com/jackc/pgx/v5/pgxpool"
@@ -40,7 +40,7 @@ import (
 
 // setupTestDB выдаёт тесту СОБСТВЕННУЮ базу на одном контейнере пакета — клон
 // шаблона, в который embedded migrations FS из internal/migrations накатан один
-// раз (см. TestMain и internal/pgtest). Возвращает DSN с
+// раз (см. TestMain и pkg/pgtest). Возвращает DSN с
 // search_path=kacho_nlb,public.
 func setupTestDB(t testing.TB) string {
 	t.Helper()

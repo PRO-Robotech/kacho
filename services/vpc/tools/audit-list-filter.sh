@@ -7,7 +7,7 @@
 # kacho-iam BatchCheck), not merely to their project.
 #
 # This is a THIN wrapper. What is checked, and why the analysis parses the tree
-# instead of searching its text, is documented on tools/listfiltergate; how this
+# instead of searching its text, is documented on pkg/listfiltergate; how this
 # service is laid out is documented on services/vpc/tools/auditlistfilter. Only
 # the invocation lives here.
 #

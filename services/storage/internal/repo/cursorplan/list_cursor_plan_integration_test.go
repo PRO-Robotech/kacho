@@ -8,7 +8,7 @@
 // настоящей цепочке миграций storage берёт порядок страницы ИЗ ЭТОГО индекса и не
 // содержит узла сортировки. Разбор обоих вопросов, довод в пользу
 // детерминированной постановки и требование контроля — в шапке
-// `internal/listcursorplan`.
+// `pkg/listcursorplan`.
 //
 // Проба красна на состоянии ДО фикса: без `708001` план несёт узел сортировки,
 // потому что порядок брать неоткуда.
@@ -17,7 +17,7 @@ package cursorplan_test
 import (
 	"testing"
 
-	"github.com/PRO-Robotech/kacho/internal/listcursorplan"
+	"github.com/PRO-Robotech/kacho/pkg/listcursorplan"
 	"github.com/PRO-Robotech/kacho/services/storage/internal/migrations"
 )
 

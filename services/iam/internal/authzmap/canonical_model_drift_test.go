@@ -40,8 +40,8 @@ package authzmap_test
 import (
 	"testing"
 
-	"github.com/PRO-Robotech/kacho/internal/authzplan"
 	"github.com/PRO-Robotech/kacho/services/iam/internal/authzmap"
+	"github.com/PRO-Robotech/kacho/services/iam/internal/authzplan"
 )
 
 func TestCatalogTypesExistInTheCanonicalModel(t *testing.T) {

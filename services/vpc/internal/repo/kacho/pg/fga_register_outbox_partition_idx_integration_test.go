@@ -12,7 +12,7 @@ import (
 
 	coredb "github.com/PRO-Robotech/kacho/pkg/db"
 
-	"github.com/PRO-Robotech/kacho/internal/pgtest"
+	"github.com/PRO-Robotech/kacho/pkg/pgtest"
 )
 
 // TestFGARegisterOutbox_PartitionHeadIndexCreated — миграция 0018 применяется и

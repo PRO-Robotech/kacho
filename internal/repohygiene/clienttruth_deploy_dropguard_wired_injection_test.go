@@ -52,7 +52,7 @@ func TestDropguardCallDetectorSeesCodeAndIgnoresProse(t *testing.T) {
 	"database/sql"
 	"os"
 
-	"github.com/PRO-Robotech/kacho/internal/dropguard"
+	"github.com/PRO-Robotech/kacho/pkg/dropguard"
 )
 
 func (r *Runner) preflight(ctx context.Context, db *sql.DB) error {

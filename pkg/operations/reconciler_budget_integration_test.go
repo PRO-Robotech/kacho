@@ -22,7 +22,7 @@ import (
 
 	"github.com/PRO-Robotech/kacho/pkg/operations"
 
-	"github.com/PRO-Robotech/kacho/internal/pgtest"
+	"github.com/PRO-Robotech/kacho/pkg/pgtest"
 )
 
 // TestReconciler_SweepBudget_BoundsClaimTx проверяет, что при медленном Resolver'е

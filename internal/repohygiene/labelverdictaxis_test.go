@@ -45,7 +45,7 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/PRO-Robotech/kacho/internal/treecorpus"
+	"github.com/PRO-Robotech/kacho/pkg/treecorpus"
 )
 
 // Координаты трёх переписей — ПАКЕТЫ, а не файлы (задача продукта #1944).

@@ -39,7 +39,7 @@ import (
 
 	"github.com/stretchr/testify/require"
 
-	"github.com/PRO-Robotech/kacho/internal/authzplan"
+	"github.com/PRO-Robotech/kacho/services/iam/internal/authzplan"
 )
 
 // injectedDefine — объявление, снятое задачей #1101. Возвращается дословно.

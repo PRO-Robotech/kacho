@@ -9,7 +9,7 @@ import (
 	"slices"
 	"strings"
 
-	"github.com/PRO-Robotech/kacho/internal/authzplan"
+	"github.com/PRO-Robotech/kacho/services/iam/internal/authzplan"
 )
 
 // admit.go — ДОПУСК собранной модели прав: чистая функция, отвечающая на один

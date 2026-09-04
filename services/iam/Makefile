@@ -50,7 +50,7 @@ lint:
 
 # audit-list-filter — CI gate for kacho-iam's listing surface: every method that
 # hands a page to a caller must narrow it, and must declare HOW. What is checked
-# lives in tools/listfiltergate; how this service is laid out lives in
+# lives in pkg/listfiltergate; how this service is laid out lives in
 # services/iam/tools/auditlistfilter.
 #
 # iam carries the widest listing surface in the repository — 30 methods across 21
@@ -61,7 +61,7 @@ lint:
 #
 # The check parses the tree, so a resource is recognised by what its declaration IS —
 # a package declaring a listing method on the transport type — and never by which
-# file holds it; see tools/listfiltergate for the whole contract.
+# file holds it; see pkg/listfiltergate for the whole contract.
 #
 # The run always prints its census (files, packages, resources, listing methods,
 # undeclared, cluster-scoped): "zero findings" must be distinguishable from "zero
@@ -73,7 +73,7 @@ lint:
 # Invoked by CI as `make -C services/iam audit-list-filter`. That it is invoked at
 # all is locked twice over: internal/repohygiene/listfiltergatewiring_test.go
 # derives the service list from this Makefile and from the workflow and compares
-# them in both directions, and tools/listfiltergate/coverage_test.go reports an
+# them in both directions, and pkg/listfiltergate/coverage_test.go reports an
 # unanalysed service as a finding.
 audit-list-filter:
 	@./tools/audit-list-filter.sh

@@ -41,7 +41,7 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/PRO-Robotech/kacho/internal/treecorpus"
+	"github.com/PRO-Robotech/kacho/pkg/treecorpus"
 )
 
 // catalogEntry — запись каталога прав в том виде, в каком она лежит в дереве.

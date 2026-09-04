@@ -14,7 +14,7 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/PRO-Robotech/kacho/internal/treecorpus"
+	"github.com/PRO-Robotech/kacho/pkg/treecorpus"
 )
 
 // singleproducer_test.go — у проверки манифестов ОДНА композиция и тонкие

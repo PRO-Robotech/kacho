@@ -17,7 +17,7 @@ import (
 	"github.com/PRO-Robotech/kacho/services/vpc/internal/repo/helpers"
 	kachopg "github.com/PRO-Robotech/kacho/services/vpc/internal/repo/kacho/pg"
 
-	"github.com/PRO-Robotech/kacho/internal/pgtest"
+	"github.com/PRO-Robotech/kacho/pkg/pgtest"
 )
 
 // DB-уровневый CHECK на JSONB `labels`-поле всех 8 VPC-таблиц через

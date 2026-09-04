@@ -71,7 +71,7 @@ package repohygiene
 // ОМОНИМ, НА КОТОРОМ СПОТКНЁТСЯ СЛЕДУЮЩИЙ ЧИТАТЕЛЬ
 //
 // Предикат по голому имени `resource_mirror` даёт ЧЕТВЁРТОГО «писателя» —
-// `tools/authzformbench`. Он им НЕ является: прибор заводит СВОЮ таблицу этого
+// `services/iam/tools/authzformbench`. Он им НЕ является: прибор заводит СВОЮ таблицу этого
 // имени в СВОЕЙ временной схеме (`CREATE TABLE resource_mirror`, `search_path`
 // на неё же) и меряет форму реляционного вердикта, а не продуктовую строку.
 // Совпадение имени — не свойство дерева. Гейт судит имя ВМЕСТЕ СО СХЕМОЙ
@@ -92,7 +92,7 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/PRO-Robotech/kacho/internal/gitenv"
+	"github.com/PRO-Robotech/kacho/pkg/gitenv"
 )
 
 // resourceMirrorTable — зеркало каталога ресурсов.

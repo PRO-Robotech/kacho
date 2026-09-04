@@ -100,8 +100,8 @@ import (
 
 	"github.com/jackc/pgx/v5"
 
-	"github.com/PRO-Robotech/kacho/internal/authzplan"
 	"github.com/PRO-Robotech/kacho/services/iam/internal/authzmodel"
+	"github.com/PRO-Robotech/kacho/services/iam/internal/authzplan"
 )
 
 // MaxAncestorDepth — предел обхода цепи предков.

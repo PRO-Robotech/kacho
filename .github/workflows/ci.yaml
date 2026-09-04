@@ -333,7 +333,7 @@ jobs:
   # красное там, где ничего не сломано (шапка корневого Makefile: «под -p 12
   # контейнерные пакеты голодают друг у друга»), и ровно это наблюдалось дважды
   # за день на пробах iam. Плюс быстрая джоба задумана как обходящаяся без
-  # Docker, а internal/pgtest по построению ОТКАЗЫВАЕТ, когда демона нет.
+  # Docker, а pkg/pgtest по построению ОТКАЗЫВАЕТ, когда демона нет.
   #
   # Перечень пакетов и числовой вердикт — в корневом Makefile (цель
   # test-pg-outside-selection), а не здесь: команда обязана быть ОДНОЙ у
@@ -604,7 +604,7 @@ jobs:
       # iam, а geo не было ни разу. Сверку делают ДВА независимых гейта, и оба
       # выводят перечни, а не хранят их: internal/repohygiene/
       # listfiltergatewiring_test.go сверяет «кто объявляет цель в Makefile» с
-      # «кого обходит этот цикл» в обе стороны, а tools/listfiltergate/
+      # «кого обходит этот цикл» в обе стороны, а pkg/listfiltergate/
       # coverage_test.go считает НАХОДКОЙ и сервис без анализатора, и запись без
       # сервиса. Рукописность и была причиной каждого из трёх пропусков.
       #
@@ -647,9 +647,9 @@ jobs:
       # `/internal/(repo|clients|reconciler)` под `services/<svc>/...` (этого пакета там нет).
       # Из одиннадцати тестов пакета под `-short` пропускался ровно один — этот, —
       # поэтому зелёное самого пакета о переписи не говорило ничего.
-      # Провязка залочена тестом tools/listfiltergate (TestCIRunsThisCensus).
+      # Провязка залочена тестом pkg/listfiltergate (TestCIRunsThisCensus).
       - name: listauthz — анализатор видит КАЖДЫЙ списочный метод дерева
-        run: go test ./tools/listfiltergate/ -run TestCensus_EveryTransportListingIsSeenByItsAnalyser -count=1 -v
+        run: go test ./pkg/listfiltergate/ -run TestCensus_EveryTransportListingIsSeenByItsAnalyser -count=1 -v
 
       # Форму манифеста домена судит ОДИН исполнитель — загрузчик
       # services/iam/internal/manifest, и второго заводить нельзя (решение #1778).
@@ -781,7 +781,7 @@ jobs:
       # матрицы требует переменной окружения и часов: он ручной по построению и в
       # конвейере ему не место.
       - name: authzformbench — доказательства харнесса замера форм модели прав
-        run: go test ./tools/authzformbench/ -count=1 -timeout 25m
+        run: go test ./services/iam/tools/authzformbench/ -count=1 -timeout 25m
 
       # Сюита обязана говорить правду О СЕБЕ, иначе её зелёное нечем читать.
       #

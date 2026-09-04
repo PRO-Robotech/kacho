@@ -11,9 +11,9 @@ import (
 	"github.com/jackc/pgx/v5/pgxpool"
 	"github.com/stretchr/testify/require"
 
-	"github.com/PRO-Robotech/kacho/internal/nameformdb"
-	"github.com/PRO-Robotech/kacho/internal/pgtest"
 	coredb "github.com/PRO-Robotech/kacho/pkg/db"
+	"github.com/PRO-Robotech/kacho/pkg/nameformdb"
+	"github.com/PRO-Robotech/kacho/pkg/pgtest"
 	"github.com/PRO-Robotech/kacho/services/iam/internal/domain"
 )
 
@@ -26,7 +26,7 @@ import (
 //
 // «Миграция применилась» и «ограничение отвергает негодную строку» — разные
 // утверждения; здесь доказывается второе. Разбор класса, перечень значений и
-// почему положительный контроль обязателен — `internal/nameformdb`.
+// почему положительный контроль обязателен — `pkg/nameformdb`.
 func TestIntegration_IAM_NameFormConstraintIsEnforced(t *testing.T) {
 	if testing.Short() {
 		t.Skip("skipping integration test (requires Docker)")

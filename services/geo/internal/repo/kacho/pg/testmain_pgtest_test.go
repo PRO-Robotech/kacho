@@ -7,7 +7,7 @@ import (
 	"os"
 	"testing"
 
-	"github.com/PRO-Robotech/kacho/internal/pgtest"
+	"github.com/PRO-Robotech/kacho/pkg/pgtest"
 	"github.com/PRO-Robotech/kacho/services/geo/internal/migrations"
 )
 
@@ -17,7 +17,7 @@ import (
 // every call, and it is called 55 times here — so the package spent its budget on
 // its harness rather than on its tests. The container now starts once, the chain
 // runs once into a template, and each caller gets its own database cloned from it.
-// See internal/pgtest for why a clone is the same isolation a separate container
+// See pkg/pgtest for why a clone is the same isolation a separate container
 // gave.
 //
 // The template is the empty catalogue newTestPool always handed back: geo seeds no
@@ -30,7 +30,7 @@ func TestMain(m *testing.M) {
 		// Приведение схемы — ОДИН раз на пакет, у выдающего базу.
 		// Прежде его приписывал каждый вызывающий своей копией; забывший
 		// получал `relation … does not exist` — отказ, читающийся как дефект
-		// продукта. Довод целиком — `internal/pgtest` §searchpath.
+		// продукта. Довод целиком — `pkg/pgtest` §searchpath.
 		SearchPath: "kacho_geo,public",
 		Name:       "geo",
 		User:       "geo",

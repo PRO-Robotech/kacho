@@ -14,7 +14,7 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/PRO-Robotech/kacho/internal/treecorpus"
+	"github.com/PRO-Robotech/kacho/pkg/treecorpus"
 )
 
 // subscriptionownerdocs_test.go — гейт «владелец журнала говорит об этом В СВОЕЙ

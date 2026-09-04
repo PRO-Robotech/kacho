@@ -42,7 +42,7 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/PRO-Robotech/kacho/internal/treecorpus"
+	"github.com/PRO-Robotech/kacho/pkg/treecorpus"
 )
 
 // tableGrowthRoots — где ищутся миграции и операторы снятия строк.

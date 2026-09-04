@@ -39,7 +39,7 @@
 // # Санкционированные поставщики
 //
 // Их два, и оба устроены одинаково: контейнер стартует под `sync.Once`, а тест
-// получает собственную область внутри него — `internal/pgtest` выдаёт СВОЮ БАЗУ,
+// получает собственную область внутри него — `pkg/pgtest` выдаёт СВОЮ БАЗУ,
 // склонированную из мигрированного шаблона, `…/testsupport/fgatest` — СВОЙ STORE на
 // общем сервере OpenFGA. Поэтому вызовы к ним за старт не считаются.
 //
@@ -78,7 +78,7 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/PRO-Robotech/kacho/internal/gitenv"
+	"github.com/PRO-Robotech/kacho/pkg/gitenv"
 )
 
 // modulePath переехал в operationtimestamptruncation.go — НЕтестовый файл того
@@ -102,19 +102,19 @@ import (
 // Доказательство OpenFGA-половины конвейер ИСПОЛНЯЕТ с 2026-08-06: пакет входит в
 // перечень цели test-authz-fga (см. authzfgaproofs_test.go). Доказательство
 // Postgres-половины не исполняется ни одной джобой — под кратким режимом оно
-// пропускается, а отбор интеграционной джобы до `internal/pgtest` не достаёт, — и
+// пропускается, а отбор интеграционной джобы до `pkg/pgtest` не достаёт, — и
 // пакет остаётся названным долгом в shortgatedselection_test.go. То есть санкция
 // здесь стоит на проверяемом утверждении для одного поставщика и на непроверяемом
 // для другого; закрывается это тем же способом, что и для первого.
 var sanctionedProviders = map[string]string{
-	"internal/pgtest": "internal/pgtest/pgtest_test.go: TestOneContainerManyDatabases + " +
+	"pkg/pgtest": "pkg/pgtest/pgtest_test.go: TestOneContainerManyDatabases + " +
 		"TestRowsDoNotCrossBetweenDatabases",
 	// Инструмент сравнительного замера форм модели прав: тот же приём, что у двух
 	// соседей выше — стек под `sync.Once`, СВОЙ store на кейс, — и та же половинчатая
 	// проверка: «сервер один» И «области разные», обе в одном тесте. Пакет не выдаёт
 	// область чужим, он единственный свой потребитель; в списке он потому, что предмет
 	// санкции — устройство старта, а не число потребителей.
-	"tools/authzformbench": "tools/authzformbench/isolation_test.go: TestOneStackManyStores",
+	"services/iam/tools/authzformbench": "services/iam/tools/authzformbench/isolation_test.go: TestOneStackManyStores",
 }
 
 // containerStartAPIs — вызовы, стартующие контейнер, по ПУТИ ИМПОРТА и имени.
@@ -275,7 +275,7 @@ func judgePerTestContainers(reaching map[string]int, declared map[string]string)
 				"`go test` даёт пакету 600 с по умолчанию, и такой пакет упирается в них тем "+
 				"вернее, чем параллельнее прогон. Переведи пакет на один контейнер: TestMain → "+
 				"pgtest.Run(m, pgtest.Config{…}), а хелпер — на pgtest.NewDB(t) / NewEmptyDB(t) "+
-				"(тела тестов при этом не трогаются; см. internal/pgtest). Если пакету нужен "+
+				"(тела тестов при этом не трогаются; см. pkg/pgtest). Если пакету нужен "+
 				"именно свой контейнер на тест — назови его в perTestContainerExceptions "+
 				"с причиной, долгом с именем, а не умолчанием")
 		}
@@ -549,7 +549,7 @@ import (
 	"os"
 	"testing"
 	tcpostgres "github.com/testcontainers/testcontainers-go/modules/postgres"
-	"github.com/PRO-Robotech/kacho/internal/pgtest"
+	"github.com/PRO-Robotech/kacho/pkg/pgtest"
 )
 func bootOnce() { _, _ = tcpostgres.Run(nil, "postgres:16-alpine") }
 func TestMain(m *testing.M) { bootOnce(); os.Exit(m.Run()) }
@@ -726,7 +726,7 @@ func TestScannerClassifiesKnownStartersInTheTree(t *testing.T) {
 	}
 	// Про вторую половину каталога (modules/postgres) положительной пробы на дереве
 	// НЕТ, и это названо, а не умолчано: после перехода на общий контейнер прямой
-	// `postgres.Run` остаётся только внутри internal/pgtest, где он лежит в МЕТОДЕ, а
+	// `postgres.Run` остаётся только внутри pkg/pgtest, где он лежит в МЕТОДЕ, а
 	// методы в граф не входят (см. шапку). Эту половину держат подставная фикстура
 	// выше и TestContainerStartAPIsStillExistInTheTree ниже.
 	for _, k := range must {

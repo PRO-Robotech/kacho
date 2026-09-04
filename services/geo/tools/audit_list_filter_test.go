@@ -48,7 +48,7 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/PRO-Robotech/kacho/internal/treecorpus"
+	"github.com/PRO-Robotech/kacho/pkg/treecorpus"
 )
 
 // anchorDir is the directory holding the transport declarations this gate reads.
@@ -87,7 +87,7 @@ func runGate(t *testing.T, root string, args ...string) (string, error) {
 // copyTrees materialises a throwaway copy of everything the gate reads, so an
 // injection can be made against the REAL declarations without touching the repo.
 //
-// The file set comes from the git INDEX (internal/treecorpus), not from a disk
+// The file set comes from the git INDEX (pkg/treecorpus), not from a disk
 // walk: under services/ a walk also reads what the repository does not contain —
 // agent working copies, generated directories, run reports — every one of them
 // already declared out of the tree by .gitignore.

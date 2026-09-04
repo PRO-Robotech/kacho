@@ -31,9 +31,9 @@ import (
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 
-	"github.com/PRO-Robotech/kacho/internal/pgtest"
 	coredb "github.com/PRO-Robotech/kacho/pkg/db"
 	"github.com/PRO-Robotech/kacho/pkg/ids"
+	"github.com/PRO-Robotech/kacho/pkg/pgtest"
 
 	"github.com/PRO-Robotech/kacho/services/iam/internal/apps/kacho/seed"
 	"github.com/PRO-Robotech/kacho/services/iam/internal/domain"
@@ -46,7 +46,7 @@ import (
 //
 // It used to boot a container and replay the whole migration chain per call, which
 // this package paid seven times over. The caller still gets a database of its own —
-// see internal/pgtest for why a clone of a migrated template is the isolation a
+// see pkg/pgtest for why a clone of a migrated template is the isolation a
 // separate container gave.
 func setupBootstrapDB(t *testing.T) string {
 	t.Helper()

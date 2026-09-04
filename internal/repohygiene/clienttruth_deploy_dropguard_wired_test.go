@@ -37,13 +37,13 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/PRO-Robotech/kacho/internal/dropguard"
+	"github.com/PRO-Robotech/kacho/pkg/dropguard"
 )
 
 // sharedMigratorRunnerRel — общий накат, сведённый из семи форков. Координата
 // объявлена ЗДЕСЬ, а не по местам вызова: литерал, повторённый вызывающими,
 // разъезжается молча.
-const sharedMigratorRunnerRel = "internal/migratorrun"
+const sharedMigratorRunnerRel = "pkg/migratorrun"
 
 // migratorPackageDirs — каталоги, в которых у сервиса живёт накат.
 //

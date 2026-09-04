@@ -14,7 +14,7 @@ import (
 	"strings"
 	"time"
 
-	"github.com/PRO-Robotech/kacho/internal/gitenv"
+	"github.com/PRO-Robotech/kacho/pkg/gitenv"
 	"github.com/PRO-Robotech/kacho/services/iam/internal/repo/kacho/pg/scalegrid"
 )
 
@@ -22,7 +22,7 @@ import (
 //
 // Корень спрашивается у git, а не собирается из `..`: рабочая копия может быть
 // где угодно, и относительный путь уехал бы мимо дерева молча. Команда идёт
-// через `internal/gitenv` — прямой вызов git унаследовал бы `GIT_DIR` и увёл бы
+// через `pkg/gitenv` — прямой вызов git унаследовал бы `GIT_DIR` и увёл бы
 // вопрос в чужой репозиторий.
 func matrixReportAbsPath() (string, error) {
 	out, err := gitenv.Command("", "rev-parse", "--show-toplevel").Output()

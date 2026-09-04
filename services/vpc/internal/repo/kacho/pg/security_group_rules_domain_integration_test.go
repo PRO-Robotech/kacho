@@ -24,7 +24,7 @@ import (
 	"github.com/PRO-Robotech/kacho/services/vpc/internal/repo"
 	kachopg "github.com/PRO-Robotech/kacho/services/vpc/internal/repo/kacho/pg"
 
-	"github.com/PRO-Robotech/kacho/internal/pgtest"
+	"github.com/PRO-Robotech/kacho/pkg/pgtest"
 )
 
 // Область значений правила SG на уровне БД.

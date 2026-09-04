@@ -53,7 +53,7 @@ import (
 
 	"github.com/PRO-Robotech/kacho/pkg/outbox/drainer"
 
-	"github.com/PRO-Robotech/kacho/internal/pgtest"
+	"github.com/PRO-Robotech/kacho/pkg/pgtest"
 )
 
 // iamPartitionKey mirrors the partition key kacho-iam ships for

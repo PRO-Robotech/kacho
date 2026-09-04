@@ -42,7 +42,7 @@
 права редактора, право редактора — из права администратора, право администратора
 аккаунта распространяется на всё внутри аккаунта. Форма, ищущая имя отношения
 буквально, ответила бы «нет» держателю права, которое модель ему даёт. Поэтому
-вопрос сначала компилируется в набор источников (`internal/authzplan`, план
+вопрос сначала компилируется в набор источников (`services/iam/internal/authzplan`, план
 выводится из `fga_model.fga`), и запрос спрашивает про каждый из них.
 
 **Одна раскладка на все четыре вопроса.** `Check` (можно ли), `ListSubjects`
@@ -276,7 +276,7 @@ iam о крае не знает и на этот срок не влияет. П�
 `internal/repo/kacho/pg/relverdict`: `query.go` (прямой вердикт), `list.go`
 (перечисление объектов), `subjects.go` (перечисление субъектов), `expand.go`
 (разбор оснований), `labelaxis.go` (меточная ветвь), `condition.go` (условия).
-План вывода компилируется из модели — `internal/authzplan`.
+План вывода компилируется из модели — `services/iam/internal/authzplan`.
 
 Дверь решения для собственных стражей `kacho-iam` — `internal/authzcascade`:
 композиционный корень выдаёт **одно** значение каждому стражу, поэтому страж не
@@ -342,7 +342,7 @@ iam только **дописывает** строку в `subject_change_outbox
 
 - `internal/repo/kacho/pg/relverdict/` — реляционная форма
 - `internal/authzcascade/` — дверь решения
-- `internal/authzplan/` — компиляция плана вывода из модели
+- `services/iam/internal/authzplan/` — компиляция плана вывода из модели
 - `internal/repo/kacho/pg/fga_outbox/` — эмиссия намерения
 - `internal/repo/kacho/pg/creator_tuple_writer.go` — кортеж создателя строкой журнала
 - `internal/clients/cache_invalidation_applier.go`

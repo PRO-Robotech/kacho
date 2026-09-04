@@ -60,9 +60,9 @@ import (
 
 	"gopkg.in/yaml.v3"
 
-	"github.com/PRO-Robotech/kacho/internal/treecorpus"
+	manifestproducer "github.com/PRO-Robotech/kacho/pkg/modulemanifest/producer"
+	"github.com/PRO-Robotech/kacho/pkg/treecorpus"
 	"github.com/PRO-Robotech/kacho/services/iam/internal/manifest"
-	"github.com/PRO-Robotech/kacho/tools/modulemanifests"
 )
 
 // stacksTablePath — единственное объявление состава стендов, от корня дерева.
@@ -185,8 +185,8 @@ func auditDeliveryRoundTrip(t *testing.T, stacks []deliveryStack) ([]string, rou
 	modules := map[string]bool{}
 
 	for _, s := range stacks {
-		delivery, err := modulemanifests.Collect(s.Root, s.Profiles)
-		if errors.Is(err, modulemanifests.ErrNotDeclared) {
+		delivery, err := manifestproducer.Collect(s.Root, s.Profiles)
+		if errors.Is(err, manifestproducer.ErrNotDeclared) {
 			continue
 		}
 		census.Declaring++
@@ -196,7 +196,7 @@ func auditDeliveryRoundTrip(t *testing.T, stacks []deliveryStack) ([]string, rou
 				s.Name, err, delivery.Census.Summary()))
 			continue
 		}
-		rendered, err := modulemanifests.Render(delivery)
+		rendered, err := manifestproducer.Render(delivery)
 		if err != nil {
 			findings = append(findings, fmt.Sprintf("%s: объект не напечатан: %v", s.Name, err))
 			continue

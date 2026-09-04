@@ -12,11 +12,11 @@ import (
 	_ "github.com/jackc/pgx/v5/stdlib"
 	"github.com/stretchr/testify/require"
 
-	"github.com/PRO-Robotech/kacho/internal/pgtest"
 	lbv1 "github.com/PRO-Robotech/kacho/pkg/api/kacho/cloud/loadbalancer/v1"
 	coredb "github.com/PRO-Robotech/kacho/pkg/db"
 	"github.com/PRO-Robotech/kacho/pkg/ids"
 	"github.com/PRO-Robotech/kacho/pkg/operations"
+	"github.com/PRO-Robotech/kacho/pkg/pgtest"
 
 	iamv1 "github.com/PRO-Robotech/kacho/pkg/api/kacho/cloud/iam/v1"
 	"github.com/PRO-Robotech/kacho/pkg/listnarrow"
@@ -42,7 +42,7 @@ import (
 
 // setupCappedPoolDB hands the test its own database on the package's one
 // container, applies nothing (the template is already migrated — see TestMain and
-// internal/pgtest), and returns a repository over a pool of EXACTLY maxConns
+// pkg/pgtest), and returns a repository over a pool of EXACTLY maxConns
 // connections.
 //
 // It does not reuse setupDB from integration_test.go on purpose: that one hands

@@ -68,7 +68,7 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/PRO-Robotech/kacho/internal/treecorpus"
+	"github.com/PRO-Robotech/kacho/pkg/treecorpus"
 )
 
 // consoleUIRoot — корень консоли относительно корня репозитория.
@@ -178,7 +178,7 @@ func consoleMutationScan(t *testing.T) (findings []consoleMutationSite, stale []
 	// Состав дерева берётся у ИНДЕКСА, а не с диска. Под `ui-future/` на всякой
 	// машине, где собирали фронтенд, лежат `node_modules` и сборочные каталоги;
 	// обход диска сделал бы вердикт свойством рабочего каталога, а не коммита.
-	// Требование и его причина — `internal/treecorpus`.
+	// Требование и его причина — `pkg/treecorpus`.
 	tracked, err := treecorpus.UnderWithSuffix(uiRoot, ".ts", ".tsx")
 	if err != nil {
 		t.Fatalf("состав дерева консоли взять неоткуда: %v", err)

@@ -20,7 +20,7 @@ const (
 	srcDelegating = `package main
 import (
 	_ "github.com/jackc/pgx/v5/stdlib"
-	"github.com/PRO-Robotech/kacho/internal/migratorrun"
+	"github.com/PRO-Robotech/kacho/pkg/migratorrun"
 )
 func main() { _ = migratorrun.New }`
 
@@ -46,7 +46,7 @@ func main() { _ = db.Open }`
 	srcBothForms = `package main
 import (
 	"github.com/pressly/goose/v3"
-	"github.com/PRO-Robotech/kacho/internal/migratorrun"
+	"github.com/PRO-Robotech/kacho/pkg/migratorrun"
 )
 func main() { _, _ = goose.Up, migratorrun.New }`
 
@@ -57,7 +57,7 @@ func main() { _, _ = goose.Up, migratorrun.New }`
 	srcGooseOnlyInComment = `package main
 // Накат идёт через общий пакет. Прямой github.com/pressly/goose/v3 здесь НЕ
 // импортируется намеренно: форма делегирующая, см. docs/architecture.
-import "github.com/PRO-Robotech/kacho/internal/migratorrun"
+import "github.com/PRO-Robotech/kacho/pkg/migratorrun"
 func main() { _ = migratorrun.New }`
 )
 

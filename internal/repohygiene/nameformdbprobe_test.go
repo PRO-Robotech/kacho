@@ -19,7 +19,7 @@
 // # Что гейт требует
 //
 // Сервис, чья миграция объявляет канон формы, обязан нести ИСПОЛНЯЕМЫЙ вызов
-// общего двигателя `internal/nameformdb`. Гейт про НАЛИЧИЕ доказательства; его
+// общего двигателя `pkg/nameformdb`. Гейт про НАЛИЧИЕ доказательства; его
 // СОДЕРЖАНИЕ (перечень таблиц, отказ именно от формы, положительный контроль)
 // держит сам двигатель, а его способность упасть — инъекция у geo.
 //
@@ -74,7 +74,7 @@ import (
 
 // nameFormEnginePkgDir — дом двигателя. Гейт читает его, чтобы узнать входные
 // методы; отсутствие каталога — отказ судить, а не тихий пропуск.
-const nameFormEnginePkgDir = "internal/nameformdb"
+const nameFormEnginePkgDir = "pkg/nameformdb"
 
 func TestNameFormConstraintIsProvenWhereItIsDeclared(t *testing.T) {
 	tt := newTrackedTree(t, repoRoot(t))

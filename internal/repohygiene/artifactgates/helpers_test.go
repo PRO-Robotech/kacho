@@ -14,9 +14,9 @@ import (
 	"path/filepath"
 	"testing"
 
-	"github.com/PRO-Robotech/kacho/internal/treecorpus"
+	"github.com/PRO-Robotech/kacho/pkg/treecorpus"
 
-	"github.com/PRO-Robotech/kacho/internal/gitenv"
+	"github.com/PRO-Robotech/kacho/pkg/gitenv"
 )
 
 // repoRoot — поднимаемся от каталога теста до каталога с go.mod (корень репо).
@@ -57,7 +57,7 @@ func synthTrack(t *testing.T, root string) {
 	}
 }
 
-// trackedTree — тестовая обёртка над составом дерева (`internal/treecorpus`):
+// trackedTree — тестовая обёртка над составом дерева (`pkg/treecorpus`):
 // отказ превращается в `t.Fatalf`, потому что гейт, не сумевший назвать дерево,
 // обязан упасть, а не выдать «ноль находок».
 //

@@ -26,7 +26,7 @@ import (
 	// blank-import регистрирует трансферы repo-запись → proto.
 	_ "github.com/PRO-Robotech/kacho/services/vpc/internal/dto/toproto"
 
-	"github.com/PRO-Robotech/kacho/internal/pgtest"
+	"github.com/PRO-Robotech/kacho/pkg/pgtest"
 )
 
 // Обратная ссылка группы правил — «кем используется» — читается ЗАПРОСОМ по тем

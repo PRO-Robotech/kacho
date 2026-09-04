@@ -49,7 +49,7 @@ import (
 	"path/filepath"
 	"strings"
 
-	"github.com/PRO-Robotech/kacho/internal/treecorpus"
+	"github.com/PRO-Robotech/kacho/pkg/treecorpus"
 )
 
 // clientTruthTreeFiles — отслеживаемые файлы под каталогом dirRel с одним из

@@ -46,7 +46,7 @@ import (
 	"sync"
 	"testing"
 
-	"github.com/PRO-Robotech/kacho/internal/treecorpus"
+	"github.com/PRO-Robotech/kacho/pkg/treecorpus"
 )
 
 // outboxDirectionSplitExempt — очереди, у которых разложение по направлению не

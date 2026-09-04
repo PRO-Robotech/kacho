@@ -49,7 +49,7 @@ import (
 	"context"
 	"testing"
 
-	"github.com/PRO-Robotech/kacho/internal/nameformdb"
+	"github.com/PRO-Robotech/kacho/pkg/nameformdb"
 )
 
 func TestIntegration_NameForm(t *testing.T) {
@@ -140,7 +140,7 @@ import (
 	"context"
 	"testing"
 
-	"github.com/PRO-Robotech/kacho/internal/nameformdb"
+	"github.com/PRO-Robotech/kacho/pkg/nameformdb"
 )
 
 func deadHelper(ctx context.Context, t *testing.T) {
@@ -172,7 +172,7 @@ import (
 	"context"
 	"testing"
 
-	"github.com/PRO-Robotech/kacho/internal/nameformdb"
+	"github.com/PRO-Robotech/kacho/pkg/nameformdb"
 )
 
 func liveHelper(ctx context.Context, t *testing.T) {
@@ -200,7 +200,7 @@ func TestIntegration_NameForm(t *testing.T) {
 			mig: body,
 			"services/zeta/internal/repo/probe_fixture_test.go": `package repo_test
 
-import "github.com/PRO-Robotech/kacho/internal/nameformdb"
+import "github.com/PRO-Robotech/kacho/pkg/nameformdb"
 
 func zetaProbe() nameformdb.Probe {
 	return nameformdb.Probe{Schema: "kacho_zeta"}
@@ -245,7 +245,7 @@ import (
 	"context"
 	"testing"
 
-	nf "github.com/PRO-Robotech/kacho/internal/nameformdb"
+	nf "github.com/PRO-Robotech/kacho/pkg/nameformdb"
 )
 
 func TestIntegration_NameForm(t *testing.T) {
@@ -277,7 +277,7 @@ func TestIntegration_NameForm(t *testing.T) {
 import (
 	"testing"
 
-	"github.com/PRO-Robotech/kacho/internal/nameformdb"
+	"github.com/PRO-Robotech/kacho/pkg/nameformdb"
 )
 
 func TestIntegration_NameForm(t *testing.T) {
@@ -453,8 +453,8 @@ func TestIntegration_NameForm(t *testing.T) {
 		// Иначе перепись завела бы фантомный «сервис» с именем каталога, и
 		// гейт потребовал бы пробу у того, у кого схемы нет.
 		files := map[string]string{
-			"pkg/db/migrations/0001_x.sql":           "CHECK (name ~ '" + injCanon + "')",
-			"internal/nameformdb/nameformdb_test.go": injProbeSource("nameformdb_test"),
+			"pkg/db/migrations/0001_x.sql":      "CHECK (name ~ '" + injCanon + "')",
+			"pkg/nameformdb/nameformdb_test.go": injProbeSource("nameformdb_test"),
 		}
 		cov := analyseNameFormDBCoverage(files, injCanon, injEntry)
 		if len(cov.Constrained) != 0 || len(cov.Probed) != 0 {
@@ -470,7 +470,7 @@ func TestIntegration_NameForm(t *testing.T) {
 		files := map[string]string{
 			mig: body,
 			"services/nu/internal/repo/name_form_constraint_integration_test.go": `package repo_test
-это не Go, но путь пакета-двигателя тут есть: internal/nameformdb
+это не Go, но путь пакета-двигателя тут есть: pkg/nameformdb
 `,
 		}
 		cov := analyseNameFormDBCoverage(files, injCanon, injEntry)

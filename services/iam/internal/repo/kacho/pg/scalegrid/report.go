@@ -11,7 +11,7 @@ import (
 	"strings"
 	"time"
 
-	"github.com/PRO-Robotech/kacho/internal/gitenv"
+	"github.com/PRO-Robotech/kacho/pkg/gitenv"
 )
 
 // ПРОВЕНАНС ЗАМЕРА — И ПОЧЕМУ В НЁМ ПОЯВИЛСЯ ПРИЗНАК ЧИСТОТЫ ДЕРЕВА
@@ -55,7 +55,7 @@ type Provenance struct {
 
 // TakeProvenance — провенанс из окружения прогона.
 //
-// Git зовётся ТОЛЬКО через `internal/gitenv`: прямой `exec.Command("git", …)` в
+// Git зовётся ТОЛЬКО через `pkg/gitenv`: прямой `exec.Command("git", …)` в
 // этом дереве — находка гейта, потому что унаследованные `GIT_DIR`/`GIT_INDEX_FILE`
 // увели бы команду в чужой репозиторий и ревизия относилась бы не к тому дереву.
 func TakeProvenance(runCommand string, grid [][]Point) Provenance {
@@ -139,7 +139,7 @@ func ReportAbsPath() (string, error) {
 // Header — шапка отчёта.
 //
 // Отчёт БЕЗ строки воспроизведения считается невалидным, и это не украшение:
-// перепись по соседнему прибору того же дерева (`tools/authzformbench`,
+// перепись по соседнему прибору того же дерева (`services/iam/tools/authzformbench`,
 // 10 отчётов) даёт 7 с командой и 3 без — и эти три невоспроизводимы ничем,
 // потому что их писатель строку повторения не печатает вовсе.
 func (p Provenance) Header(title string) (string, error) {

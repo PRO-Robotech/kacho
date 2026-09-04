@@ -19,9 +19,9 @@ import (
 	_ "github.com/jackc/pgx/v5/stdlib"
 	"github.com/stretchr/testify/require"
 
-	"github.com/PRO-Robotech/kacho/internal/pgtest"
 	coredb "github.com/PRO-Robotech/kacho/pkg/db"
 	"github.com/PRO-Robotech/kacho/pkg/ids"
+	"github.com/PRO-Robotech/kacho/pkg/pgtest"
 
 	registry "github.com/PRO-Robotech/kacho/services/registry/internal/apps/kacho/api/registry"
 	"github.com/PRO-Robotech/kacho/services/registry/internal/domain"
@@ -31,7 +31,7 @@ import (
 
 // setupTestDB выдаёт тесту СОБСТВЕННУЮ базу на одном контейнере пакета — клон
 // шаблона, в который миграции накатаны один раз (см. TestMain и
-// internal/pgtest) — и возвращает pool с search_path=kacho_registry,public.
+// pkg/pgtest) — и возвращает pool с search_path=kacho_registry,public.
 func setupTestDB(t testing.TB) *pgxpool.Pool {
 	t.Helper()
 	if testing.Short() {

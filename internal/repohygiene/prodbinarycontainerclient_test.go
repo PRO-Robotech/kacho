@@ -21,7 +21,7 @@
 // # Где наблюдалось
 //
 // Задача #1484. `services/iam/internal/repo/kacho/pg/testhelpers.go` — непроверочный
-// файл пакета, который импортирует прод-код, — тянул `internal/pgtest`, а тот
+// файл пакета, который импортирует прод-код, — тянул `pkg/pgtest`, а тот
 // `testcontainers-go` вместе с клиентом Docker. Задеты были два бинаря:
 // `services/iam/cmd/kacho-iam` и
 // `services/iam/internal/scopesourcecensus/cmd/scope-source-census-sql` — по 54
@@ -43,7 +43,7 @@
 // # Чего гейт НЕ утверждает
 //
 // Он судит ТОЛЬКО пакеты `main`. Библиотека проб, законно импортирующая
-// `testcontainers`, — `internal/pgtest` — под него не подпадает и подпадать не
+// `testcontainers`, — `pkg/pgtest` — под него не подпадает и подпадать не
 // должна: предмет запрета не «эта зависимость есть в дереве», а «она доезжает до
 // боевого процесса».
 //

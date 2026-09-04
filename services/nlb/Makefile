@@ -98,7 +98,7 @@ proto-gen: proto-vendor
 #
 # The check parses the tree, so a resource is recognised by what its declaration IS —
 # a package declaring `List` on the transport type — and never by which file holds
-# the use-case; see tools/listfiltergate for the whole contract.
+# the use-case; see pkg/listfiltergate for the whole contract.
 #
 # The run always prints its census (files, packages, resources, checked,
 # whitelisted): "zero findings" must be distinguishable from "zero read", so a tree

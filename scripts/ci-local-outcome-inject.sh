@@ -164,7 +164,7 @@ mk finding-signal "$(emit 'go test -short' 1 \
 mk finding-import "$(emit 'go build' 1 \
     'main.go:2:8: package fmtx is not in std (/usr/lib/go-1.22/src/fmtx)')"
 # Проба, чей текст УПОМИНАЕТ каталог кэша сборки, но не в форме «файла нет»:
-# литералы `/tmp/go-build/...` живут в дереве (internal/treecorpus), и признак,
+# литералы `/tmp/go-build/...` живут в дереве (pkg/treecorpus), и признак,
 # берущий их, глотал бы настоящее падение этой пробы.
 mk finding-gobuild-prose "$(emit 'go test -short' 1 \
     '--- FAIL: TestCachedVerdictReadsTestlog' \
