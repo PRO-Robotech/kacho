@@ -25,6 +25,373 @@ const (
 	_ = protoimpl.EnforceVersion(protoimpl.MaxVersion - 20)
 )
 
+// RoleLifecycleState — стоит ли за ролью объявление её модуля.
+type RoleLifecycleState int32
+
+const (
+	// Не вычислено ЭТИМ ответом. НИКОГДА не «объявлена»: ответ операции состояния
+	// не несёт, и читать его молчание как «всё в порядке» значило бы принять
+	// отсутствие вопроса за ответ.
+	RoleLifecycleState_ROLE_LIFECYCLE_STATE_UNSPECIFIED RoleLifecycleState = 0
+	// Строка жива: объявление манифеста за ней стоит.
+	RoleLifecycleState_ROLE_LIFECYCLE_STATE_DECLARED RoleLifecycleState = 1
+	// Строка помечена снятой: манифест модуля перестал объявлять эту роль.
+	// Выдачи на неё ПЕРЕЖИВАЮТ снятие — на этом стоит обратимость, — но доступа
+	// больше не дают: проекции, которые читает вердикт, сняты.
+	RoleLifecycleState_ROLE_LIFECYCLE_STATE_WITHDRAWN RoleLifecycleState = 2
+)
+
+// Enum value maps for RoleLifecycleState.
+var (
+	RoleLifecycleState_name = map[int32]string{
+		0: "ROLE_LIFECYCLE_STATE_UNSPECIFIED",
+		1: "ROLE_LIFECYCLE_STATE_DECLARED",
+		2: "ROLE_LIFECYCLE_STATE_WITHDRAWN",
+	}
+	RoleLifecycleState_value = map[string]int32{
+		"ROLE_LIFECYCLE_STATE_UNSPECIFIED": 0,
+		"ROLE_LIFECYCLE_STATE_DECLARED":    1,
+		"ROLE_LIFECYCLE_STATE_WITHDRAWN":   2,
+	}
+)
+
+func (x RoleLifecycleState) Enum() *RoleLifecycleState {
+	p := new(RoleLifecycleState)
+	*p = x
+	return p
+}
+
+func (x RoleLifecycleState) String() string {
+	return protoimpl.X.EnumStringOf(x.Descriptor(), protoreflect.EnumNumber(x))
+}
+
+func (RoleLifecycleState) Descriptor() protoreflect.EnumDescriptor {
+	return file_kacho_cloud_iam_v1_role_proto_enumTypes[0].Descriptor()
+}
+
+func (RoleLifecycleState) Type() protoreflect.EnumType {
+	return &file_kacho_cloud_iam_v1_role_proto_enumTypes[0]
+}
+
+func (x RoleLifecycleState) Number() protoreflect.EnumNumber {
+	return protoreflect.EnumNumber(x)
+}
+
+// Deprecated: Use RoleLifecycleState.Descriptor instead.
+func (RoleLifecycleState) EnumDescriptor() ([]byte, []int) {
+	return file_kacho_cloud_iam_v1_role_proto_rawDescGZIP(), []int{0}
+}
+
+// RuleLifecycle — состояние правила роли (#1962).
+//
+// Отзыв и неразрешённость РАЗДЕЛЕНЫ намеренно: это разные события с разными
+// причинами и разным следующим шагом. Отозванное объясняет ведомость (кто снял и
+// почему); неразрешённое не объясняет ничто, и разбирать надо именно его.
+//
+// РЕВИЗИИ И АВТОРА У `WITHDRAWN` ЗДЕСЬ НЕТ — и это НЕ пропуск. Ревизии каталога
+// в платформе не существует, автора ведомость не несёт; поле, объявленное и не
+// заполняемое, было бы «принято-и-проигнорировано» на уровне контракта. Причина
+// снятия и его момент приезжают соседним `withdrawn_grants`, адресуемым той же
+// парой «тип + глагол».
+type RuleLifecycle int32
+
+const (
+	// Не вычислено ЭТИМ ответом. НИКОГДА не означает «правило действует».
+	RuleLifecycle_RULE_LIFECYCLE_UNSPECIFIED RuleLifecycle = 0
+	// Ни один адресуемый сегмент правила не потерян. Правило без адресуемых
+	// сегментов тоже действует: терять ему нечего, и тревога на нём была бы
+	// ложной.
+	RuleLifecycle_RULE_LIFECYCLE_ACTIVE RuleLifecycle = 1
+	// Потерянные сегменты есть, и КАЖДЫЙ объяснён ведомостью переселения:
+	// объявление сняла платформа. Своё правило арендатор не менял.
+	RuleLifecycle_RULE_LIFECYCLE_WITHDRAWN RuleLifecycle = 2
+	// Потерянные сегменты есть, и ХОТЯ БЫ ОДИН не объяснён: правило ссылается на
+	// то, чего сейчас нет, и переселения не было.
+	RuleLifecycle_RULE_LIFECYCLE_UNRESOLVED RuleLifecycle = 3
+)
+
+// Enum value maps for RuleLifecycle.
+var (
+	RuleLifecycle_name = map[int32]string{
+		0: "RULE_LIFECYCLE_UNSPECIFIED",
+		1: "RULE_LIFECYCLE_ACTIVE",
+		2: "RULE_LIFECYCLE_WITHDRAWN",
+		3: "RULE_LIFECYCLE_UNRESOLVED",
+	}
+	RuleLifecycle_value = map[string]int32{
+		"RULE_LIFECYCLE_UNSPECIFIED": 0,
+		"RULE_LIFECYCLE_ACTIVE":      1,
+		"RULE_LIFECYCLE_WITHDRAWN":   2,
+		"RULE_LIFECYCLE_UNRESOLVED":  3,
+	}
+)
+
+func (x RuleLifecycle) Enum() *RuleLifecycle {
+	p := new(RuleLifecycle)
+	*p = x
+	return p
+}
+
+func (x RuleLifecycle) String() string {
+	return protoimpl.X.EnumStringOf(x.Descriptor(), protoreflect.EnumNumber(x))
+}
+
+func (RuleLifecycle) Descriptor() protoreflect.EnumDescriptor {
+	return file_kacho_cloud_iam_v1_role_proto_enumTypes[1].Descriptor()
+}
+
+func (RuleLifecycle) Type() protoreflect.EnumType {
+	return &file_kacho_cloud_iam_v1_role_proto_enumTypes[1]
+}
+
+func (x RuleLifecycle) Number() protoreflect.EnumNumber {
+	return protoreflect.EnumNumber(x)
+}
+
+// Deprecated: Use RuleLifecycle.Descriptor instead.
+func (RuleLifecycle) EnumDescriptor() ([]byte, []int) {
+	return file_kacho_cloud_iam_v1_role_proto_rawDescGZIP(), []int{1}
+}
+
+// SelectorPruneOutcome — что стало со строкой ОТБОРА, из которой вырезан тип.
+//
+// Величины РАЗДЕЛЕНЫ намеренно: строка, потерявшая последний живой тип, снята
+// целиком — правило перестало отбирать вовсе; строка, у которой живой тип
+// остался, укорочена — правило сузилось. Для того, кто разбирает последствия,
+// это события разного рода, и сложив их, мы потеряли бы ровно это различие.
+type SelectorPruneOutcome int32
+
+const (
+	// Не вычислено ЭТИМ ответом. Никогда не означает «исход неизвестен».
+	SelectorPruneOutcome_SELECTOR_PRUNE_OUTCOME_UNSPECIFIED SelectorPruneOutcome = 0
+	// Живой тип у строки остался, она укорочена: правило отбирает меньше.
+	SelectorPruneOutcome_SELECTOR_PRUNE_OUTCOME_SHORTENED SelectorPruneOutcome = 1
+	// Живого типа не осталось, строка снята целиком: правило не отбирает ничего.
+	SelectorPruneOutcome_SELECTOR_PRUNE_OUTCOME_DROPPED SelectorPruneOutcome = 2
+)
+
+// Enum value maps for SelectorPruneOutcome.
+var (
+	SelectorPruneOutcome_name = map[int32]string{
+		0: "SELECTOR_PRUNE_OUTCOME_UNSPECIFIED",
+		1: "SELECTOR_PRUNE_OUTCOME_SHORTENED",
+		2: "SELECTOR_PRUNE_OUTCOME_DROPPED",
+	}
+	SelectorPruneOutcome_value = map[string]int32{
+		"SELECTOR_PRUNE_OUTCOME_UNSPECIFIED": 0,
+		"SELECTOR_PRUNE_OUTCOME_SHORTENED":   1,
+		"SELECTOR_PRUNE_OUTCOME_DROPPED":     2,
+	}
+)
+
+func (x SelectorPruneOutcome) Enum() *SelectorPruneOutcome {
+	p := new(SelectorPruneOutcome)
+	*p = x
+	return p
+}
+
+func (x SelectorPruneOutcome) String() string {
+	return protoimpl.X.EnumStringOf(x.Descriptor(), protoreflect.EnumNumber(x))
+}
+
+func (SelectorPruneOutcome) Descriptor() protoreflect.EnumDescriptor {
+	return file_kacho_cloud_iam_v1_role_proto_enumTypes[2].Descriptor()
+}
+
+func (SelectorPruneOutcome) Type() protoreflect.EnumType {
+	return &file_kacho_cloud_iam_v1_role_proto_enumTypes[2]
+}
+
+func (x SelectorPruneOutcome) Number() protoreflect.EnumNumber {
+	return protoreflect.EnumNumber(x)
+}
+
+// Deprecated: Use SelectorPruneOutcome.Descriptor instead.
+func (SelectorPruneOutcome) EnumDescriptor() ([]byte, []int) {
+	return file_kacho_cloud_iam_v1_role_proto_rawDescGZIP(), []int{2}
+}
+
+// WithdrawnGrantCause — ПОЧЕМУ проекция переселена в ведомость (#1913).
+//
+// Причины разделены намеренно: у них разное будущее. Строку причины «снята
+// роль» снимает оживление роли; строку причины «снят каталог» не снимает ничто,
+// пока платформа не вернёт свою строку.
+type WithdrawnGrantCause int32
+
+const (
+	// Не вычислено ЭТИМ ответом. Никогда не означает «причина неизвестна».
+	WithdrawnGrantCause_WITHDRAWN_GRANT_CAUSE_UNSPECIFIED WithdrawnGrantCause = 0
+	// Снята строка КАТАЛОГА платформы, на которую ссылалось правило роли.
+	// Роль при этом объявлена и жива.
+	WithdrawnGrantCause_WITHDRAWN_GRANT_CAUSE_CATALOG_RETIRED WithdrawnGrantCause = 1
+	// Снята САМА РОЛЬ: манифест её модуля перестал её объявлять. Возврат
+	// объявления оживляет роль и снимает эти строки.
+	WithdrawnGrantCause_WITHDRAWN_GRANT_CAUSE_ROLE_RETIRED WithdrawnGrantCause = 2
+)
+
+// Enum value maps for WithdrawnGrantCause.
+var (
+	WithdrawnGrantCause_name = map[int32]string{
+		0: "WITHDRAWN_GRANT_CAUSE_UNSPECIFIED",
+		1: "WITHDRAWN_GRANT_CAUSE_CATALOG_RETIRED",
+		2: "WITHDRAWN_GRANT_CAUSE_ROLE_RETIRED",
+	}
+	WithdrawnGrantCause_value = map[string]int32{
+		"WITHDRAWN_GRANT_CAUSE_UNSPECIFIED":     0,
+		"WITHDRAWN_GRANT_CAUSE_CATALOG_RETIRED": 1,
+		"WITHDRAWN_GRANT_CAUSE_ROLE_RETIRED":    2,
+	}
+)
+
+func (x WithdrawnGrantCause) Enum() *WithdrawnGrantCause {
+	p := new(WithdrawnGrantCause)
+	*p = x
+	return p
+}
+
+func (x WithdrawnGrantCause) String() string {
+	return protoimpl.X.EnumStringOf(x.Descriptor(), protoreflect.EnumNumber(x))
+}
+
+func (WithdrawnGrantCause) Descriptor() protoreflect.EnumDescriptor {
+	return file_kacho_cloud_iam_v1_role_proto_enumTypes[3].Descriptor()
+}
+
+func (WithdrawnGrantCause) Type() protoreflect.EnumType {
+	return &file_kacho_cloud_iam_v1_role_proto_enumTypes[3]
+}
+
+func (x WithdrawnGrantCause) Number() protoreflect.EnumNumber {
+	return protoreflect.EnumNumber(x)
+}
+
+// Deprecated: Use WithdrawnGrantCause.Descriptor instead.
+func (WithdrawnGrantCause) EnumDescriptor() ([]byte, []int) {
+	return file_kacho_cloud_iam_v1_role_proto_rawDescGZIP(), []int{3}
+}
+
+// WithdrawnGrantSource — из какой проекции правила переселена строка.
+//
+// Популяции РАЗДЕЛЕНЫ намеренно: «право отобрано» и «правило перестало
+// резолвиться» — разные события для того, кто разбирает последствия, и сложив
+// их, мы потеряли бы именно это различие.
+type WithdrawnGrantSource int32
+
+const (
+	// Не вычислено ЭТИМ ответом. Никогда не означает «популяция неизвестна».
+	WithdrawnGrantSource_WITHDRAWN_GRANT_SOURCE_UNSPECIFIED WithdrawnGrantSource = 0
+	// Выдача глагола: право по этой паре действовало и перестало.
+	WithdrawnGrantSource_WITHDRAWN_GRANT_SOURCE_GRANT WithdrawnGrantSource = 1
+	// Объявление правила: сегмент правила перестал резолвиться в каталог.
+	WithdrawnGrantSource_WITHDRAWN_GRANT_SOURCE_RULE_REFERENCE WithdrawnGrantSource = 2
+)
+
+// Enum value maps for WithdrawnGrantSource.
+var (
+	WithdrawnGrantSource_name = map[int32]string{
+		0: "WITHDRAWN_GRANT_SOURCE_UNSPECIFIED",
+		1: "WITHDRAWN_GRANT_SOURCE_GRANT",
+		2: "WITHDRAWN_GRANT_SOURCE_RULE_REFERENCE",
+	}
+	WithdrawnGrantSource_value = map[string]int32{
+		"WITHDRAWN_GRANT_SOURCE_UNSPECIFIED":    0,
+		"WITHDRAWN_GRANT_SOURCE_GRANT":          1,
+		"WITHDRAWN_GRANT_SOURCE_RULE_REFERENCE": 2,
+	}
+)
+
+func (x WithdrawnGrantSource) Enum() *WithdrawnGrantSource {
+	p := new(WithdrawnGrantSource)
+	*p = x
+	return p
+}
+
+func (x WithdrawnGrantSource) String() string {
+	return protoimpl.X.EnumStringOf(x.Descriptor(), protoreflect.EnumNumber(x))
+}
+
+func (WithdrawnGrantSource) Descriptor() protoreflect.EnumDescriptor {
+	return file_kacho_cloud_iam_v1_role_proto_enumTypes[4].Descriptor()
+}
+
+func (WithdrawnGrantSource) Type() protoreflect.EnumType {
+	return &file_kacho_cloud_iam_v1_role_proto_enumTypes[4]
+}
+
+func (x WithdrawnGrantSource) Number() protoreflect.EnumNumber {
+	return protoreflect.EnumNumber(x)
+}
+
+// Deprecated: Use WithdrawnGrantSource.Descriptor instead.
+func (WithdrawnGrantSource) EnumDescriptor() ([]byte, []int) {
+	return file_kacho_cloud_iam_v1_role_proto_rawDescGZIP(), []int{4}
+}
+
+// RoleHealth — состояние целости роли (#1035): даёт ли она то, что объявляет.
+//
+// Выводится из ТОГО ЖЕ, что читает вердикт: «правило есть, строк проекции нет»
+// ⇒ не HEALTHY, какова бы ни была причина. Каталог и ведомость снятого только
+// ОБЪЯСНЯЮТ и состояния не определяют — иначе роль, чьё написание в каталоге
+// законно, а проекция пуста, читалась бы здоровой (форма инцидента 513001).
+type RoleHealth int32
+
+const (
+	// Не вычислено ЭТИМ ответом. НИКОГДА не означает «роль здорова»: ответы
+	// операций поля не несут, и нулевой вариант отличает их от вычисленного нуля.
+	RoleHealth_ROLE_HEALTH_UNSPECIFIED RoleHealth = 0
+	// Каждый адресуемый сегмент роли имеет строку проекции. Роль без адресуемых
+	// сегментов тоже здорова: терять ей нечего.
+	RoleHealth_ROLE_HEALTH_HEALTHY RoleHealth = 1
+	// Часть сегментов проекции не даёт, часть даёт: роль даёт МЕНЬШЕ объявленного.
+	RoleHealth_ROLE_HEALTH_DEGRADED RoleHealth = 2
+	// Сегменты объявлены, проекции нет ни одной: роль не даёт НИЧЕГО, оставаясь
+	// на вид действующей. Это и есть форма инцидента 513001.
+	RoleHealth_ROLE_HEALTH_EMPTY RoleHealth = 3
+)
+
+// Enum value maps for RoleHealth.
+var (
+	RoleHealth_name = map[int32]string{
+		0: "ROLE_HEALTH_UNSPECIFIED",
+		1: "ROLE_HEALTH_HEALTHY",
+		2: "ROLE_HEALTH_DEGRADED",
+		3: "ROLE_HEALTH_EMPTY",
+	}
+	RoleHealth_value = map[string]int32{
+		"ROLE_HEALTH_UNSPECIFIED": 0,
+		"ROLE_HEALTH_HEALTHY":     1,
+		"ROLE_HEALTH_DEGRADED":    2,
+		"ROLE_HEALTH_EMPTY":       3,
+	}
+)
+
+func (x RoleHealth) Enum() *RoleHealth {
+	p := new(RoleHealth)
+	*p = x
+	return p
+}
+
+func (x RoleHealth) String() string {
+	return protoimpl.X.EnumStringOf(x.Descriptor(), protoreflect.EnumNumber(x))
+}
+
+func (RoleHealth) Descriptor() protoreflect.EnumDescriptor {
+	return file_kacho_cloud_iam_v1_role_proto_enumTypes[5].Descriptor()
+}
+
+func (RoleHealth) Type() protoreflect.EnumType {
+	return &file_kacho_cloud_iam_v1_role_proto_enumTypes[5]
+}
+
+func (x RoleHealth) Number() protoreflect.EnumNumber {
+	return protoreflect.EnumNumber(x)
+}
+
+// Deprecated: Use RoleHealth.Descriptor instead.
+func (RoleHealth) EnumDescriptor() ([]byte, []int) {
+	return file_kacho_cloud_iam_v1_role_proto_rawDescGZIP(), []int{5}
+}
+
 // A Role resource. Named permission bundle.
 //
 // Roles бывают двух типов:
@@ -48,8 +415,14 @@ const (
 //     (anchor/resource_names-армы, 4-сегмент `module.resource.resourceName.verb`);
 //     matchLabels-правила в `permissions` НЕ компилируются. Помечено
 //     `[deprecated=true]`: нельзя удалить (buf-breaking), но это внутренняя
-//     проекция — в `Get`/`List`-ответах для rules-ролей НЕ заполняется (пустое),
-//     на входе `Create`/`Update` ИГНОРИРУЕТСЯ (client-sent → INVALID_ARGUMENT).
+//     проекция — в `Get`/`List`-ответах для rules-ролей НЕ заполняется (пустое).
+//     Исход ПРИСЛАННОГО значения зависит от пути и от маски, и он ровно один на
+//     каждый — назван в комментарии самого поля (tag 5) и здесь НАМЕРЕННО НЕ
+//     пересказывается: пересказ и есть второе место об одном предмете. Оно уже
+//     разошлось однажды — фикс #1949 правил комментарий поля, а эта шапка
+//     пережила его и продолжала называть один вход двумя взаимоисключающими
+//     исходами сразу («игнорируется» и «отвергается»), причём ПЕРВОЙ: читатель,
+//     открывший файл сверху, доходил до неё раньше, чем до поля (#1973).
 //
 // aggregationRule (composite roles) — пока не реализовано; будет добавлено
 // append-only позже отдельным tag'ом (tag НЕ зарезервирован заранее).
@@ -68,8 +441,27 @@ type Role struct {
 	// Description of the role.
 	Description string `protobuf:"bytes,4,opt,name=description,proto3" json:"description,omitempty"`
 	// INTERNAL compiled-форма (anchor/resource_names-армы) для FGA-эмиссии. НЕ
-	// часть публичного API-ответа для rules-ролей (пустое в Get/List); на входе
-	// Create/Update игнорируется. Публичная поверхность роли — `rules` (tag 11).
+	// часть публичного API-ответа для rules-ролей (пустое в Get/List).
+	// Публичная поверхность роли — `rules` (tag 11).
+	//
+	// На входе исход зависит от ПУТИ и от МАСКИ, и он ровно один на каждый:
+	//
+	//	Create, значение непусто             -> INVALID_ARGUMENT
+	//	    "Illegal argument permissions (compiled/output-only)";
+	//	Update, поле названо в update_mask   -> INVALID_ARGUMENT
+	//	    "permissions is immutable after Role.Create";
+	//	Update, поле в теле, маска молчит    -> значение не читается вовсе
+	//	    (конвенционный full-object PATCH: immutable из тела не применяются).
+	//
+	// Присланное значение не применяется ни одним путём: два пути отвергают его
+	// синхронно, третий не читает. Прежняя редакция называла все три «на входе
+	// Create/Update игнорируется» — верно только для третьего.
+	//
+	// Три исхода закреплены пробами пакета role (имена, а не координаты — они
+	// переживают вставку строк): TestRoleHandler_A02_CreateRejectsPermissions,
+	// TestRoleHandler_A08_UpdateRejectsPermissionsMask,
+	// TestRoleHandler_UpdatePermissionsInBodyWithoutMask_IsNotRead и парный к
+	// нему TestRoleHandler_UpdatePermissionsDiscriminatorIsTheMask.
 	//
 	// Deprecated: Marked as deprecated in kacho/cloud/iam/v1/role.proto.
 	Permissions []string `protobuf:"bytes,5,rep,name=permissions,proto3" json:"permissions,omitempty"`
@@ -127,12 +519,190 @@ type Role struct {
 	// the verb; e.g. `verb_notes["delete*"]` explains the editor delete-qualifier.
 	// Output-only derived.
 	VerbNotes map[string]string `protobuf:"bytes,19,rep,name=verb_notes,json=verbNotes,proto3" json:"verb_notes,omitempty" protobuf_key:"bytes,1,opt,name=key" protobuf_val:"bytes,2,opt,name=value"`
-	// Human-facing display name (redesign-2026 F6) — the friendly catalog label
-	// (e.g. "Viewer"). Output-only; for a custom role it defaults to `name`.
+	// Display name of a CANONICAL role (redesign-2026 F6) — the label of the four
+	// catalog names and of nothing else: `view` -> "Viewer", `edit` -> "Editor",
+	// `admin` -> "Admin", `owner` -> "Owner". Output-only.
+	//
+	// For every OTHER role this field equals `name`, and that is the contract
+	// rather than a gap. A role declared by a module manifest reads back its own
+	// identifier here (`vpc.address.admin`), exactly as a custom role does. The
+	// human prose of such a role is carried by `description`: the module author
+	// writes it in the module manifest, and it reaches this response unchanged.
+	// A second carrier for the same prose is deliberately not introduced (#1925).
 	DisplayName string `protobuf:"bytes,20,opt,name=display_name,json=displayName,proto3" json:"display_name,omitempty"`
-	// Human-facing purpose (redesign-2026 F6) — a one-line description of what the
-	// role is for. Output-only; empty for a custom role.
-	Purpose       string `protobuf:"bytes,21,opt,name=purpose,proto3" json:"purpose,omitempty"`
+	// Purpose of a CANONICAL role (redesign-2026 F6) — a one-line statement of
+	// what the role is for, held by the same catalog of four names. Output-only.
+	//
+	// EMPTY for every other role, a module role included, and the empty value
+	// means "this catalog has no entry for that role" — not "the role has no
+	// purpose". A module role states its purpose in `description` (#1925).
+	Purpose string `protobuf:"bytes,21,opt,name=purpose,proto3" json:"purpose,omitempty"`
+	// Целость роли (#1035) — даёт ли роль то, что объявляет. Output-only,
+	// производное; на входе Create/Update поля нет вовсе (перечень полей запроса
+	// его не содержит), поэтому прислать его нельзя ни одним путём.
+	//
+	// ЗАПОЛНЯЮТ ЧТЕНИЯ РЕСУРСА — `Get` и `List`, ОДИНАКОВО и одним производителем.
+	// Ответ операции (`Create`/`Update` → `Operation.response`) его НЕ несёт:
+	// `ROLE_HEALTH_UNSPECIFIED` там означает «этим ответом не вычислено» и
+	// НИКОГДА «роль здорова».
+	//
+	// ИСТОЧНИК У НЕГО ДРУГОЙ, ЧЕМ У `authored_verbs` / `effective_verbs`, и это
+	// решение, а не расхождение. Те считаются от СКОМПИЛИРОВАННОЙ таблицы типов,
+	// это — от строк, которые читает вердикт. Расходятся они в обе стороны:
+	//   - строка каталога снята → те не меняются, это меняется;
+	//   - тип объявлен, но модель его не знает → те показывают ВЕСЬ словарь
+	//     глаголов платформы (запасной словарь неизвестного типа), это — EMPTY.
+	//
+	// Складывать их в один предикат нельзя: они отвечают на разные вопросы —
+	// «что роль обещает» и «что вердикт по ней даёт».
+	Health RoleHealth `protobuf:"varint,22,opt,name=health,proto3,enum=kacho.cloud.iam.v1.RoleHealth" json:"health,omitempty"`
+	// Сколько АДРЕСУЕМЫХ сегментов объявляют правила роли (#1035). Output-only.
+	//
+	// Сегмент — пара «точечный ресурс × глагол» либо «точечный ресурс × любой
+	// глагол» (правило с `verbs: ["*"]` даёт ОДИН сегмент, а не по одному на
+	// глагол типа). Подстановка в модуле и в ресурсе сегментов не даёт: она
+	// называет не имя, а «все», и терять ей нечего.
+	//
+	// Ноль законен (роль `*.*`, унаследованная роль без правил) и от «не считали»
+	// отличается СОСТОЯНИЕМ рядом, а не собственной величиной.
+	DeclaredSegments int32 `protobuf:"varint,23,opt,name=declared_segments,json=declaredSegments,proto3" json:"declared_segments,omitempty"`
+	// Сколько из объявленных сегментов не дают НИ ОДНОЙ строки проекции,
+	// которую читает вердикт (#1035). Output-only.
+	//
+	// Равен нулю у здоровой роли, равен `declared_segments` у роли, не дающей
+	// ничего. Значим только при `health != ROLE_HEALTH_UNSPECIFIED`.
+	UnresolvedSegments int32 `protobuf:"varint,24,opt,name=unresolved_segments,json=unresolvedSegments,proto3" json:"unresolved_segments,omitempty"`
+	// Что у роли ОТОБРАНО и почему (#1992). Output-only, производное.
+	//
+	// `unresolved_segments` говорит СКОЛЬКО сегментов перестало проецироваться и
+	// не говорит, ЧТО именно и по какой причине. Со стороны арендатора «право
+	// отобрали» без этого неотличимо от «права не было».
+	//
+	// ЗАПОЛНЯЮТ ЧТЕНИЯ РЕСУРСА — `Get` и `List`, ОДИНАКОВО и одним производителем,
+	// тем же, что и три поля выше. Ответ операции (`Create`/`Update`) поля не
+	// несёт: пустой список там означает «этим ответом не вычислено», ровно как
+	// `ROLE_HEALTH_UNSPECIFIED` рядом.
+	//
+	// ИСТОЧНИК — ведомость переселения, и причин у переселения ДВЕ (#1913):
+	//
+	//	снята строка КАТАЛОГА  правило роли перестало резолвиться;
+	//	снята сама РОЛЬ        объявление модуля убрано, право отобрано целиком.
+	//
+	// Здесь названа была только первая, и это делало поле ýже, чем оно
+	// используется: строки второй причины приезжают в этот же список. Обе
+	// ПЕРЕСЕЛЯЮТСЯ, а не отбираются молча.
+	//
+	// Поэтому список ОБЪЯСНЯЕТ состояние и не определяет его: у роли, пострадавшей
+	// третьим путём (тип объявлен, а модель прав его не знает), переселения не было
+	// вовсе, и список пуст при `health != HEALTHY`. Судить целость по этому списку
+	// значило бы читать такую роль здоровой.
+	//
+	// ОЖИВЛЕНИЕ роли снимает отсюда строки СВОЕЙ причины и не трогает строк
+	// причины «снят каталог»: те по-прежнему описывают действительность, и роль
+	// после оживления законно остаётся деградированной, если её сегменты
+	// по-прежнему не резолвятся.
+	//
+	// ПУСТОЙ СПИСОК ОЗНАЧАЕТ «ПУСТО»: у роли, ничего не терявшей, отобранного нет.
+	// Порядок элементов НЕ ЗНАЧИМ — это набор; сверять его надо по составу, а не
+	// по индексу.
+	WithdrawnGrants []*WithdrawnGrant `protobuf:"bytes,25,rep,name=withdrawn_grants,json=withdrawnGrants,proto3" json:"withdrawn_grants,omitempty"`
+	// Какие точечные типы ВЫРЕЗАНЫ из отбора правил этой роли и почему (#1988).
+	// Output-only, производное.
+	//
+	// Сосед `withdrawn_grants` отвечает про ДВЕ проекции правила, адресуемые парой
+	// «тип + глагол». Эта — про ТРЕТЬЮ, отбор по типам, у которой глагола нет
+	// ВООБЩЕ. Сложить их в одно поле значило бы дать вырезанному пустой глагол, а
+	// пустой глагол у соседа есть ЯКОРЬ объявления правила — уже занятое значение.
+	// Поэтому два поля и две ведомости, а не одна.
+	//
+	// ЗАПОЛНЯЮТ ЧТЕНИЯ РЕСУРСА — `Get` и `List`, ОДИНАКОВО и одним производителем,
+	// тем же, что и поля выше. Ответ операции (`Create`/`Update`) поля не несёт:
+	// пустой список там означает «этим ответом не вычислено».
+	//
+	// ИСТОЧНИК — ведомость вырезания: элемент отбора, потерявший живую строку
+	// каталога, вырезается применителем НЕОБРАТИМО, и до ведомости этого не
+	// помнило ничто. Список ОБЪЯСНЯЕТ состояние и не определяет его — тем же
+	// доводом, что и сосед.
+	//
+	// ПУСТОЙ СПИСОК ОЗНАЧАЕТ «ПУСТО»: у роли, у которой ничего не вырезали,
+	// вырезанного нет. Порядок элементов НЕ ЗНАЧИМ — это набор; сверять его надо
+	// по составу, а не по индексу.
+	//
+	// ОТПЕЧАТОК ПРАВИЛА ЗДЕСЬ НЕ ВЫСТАВЛЕН НАМЕРЕННО: ведомость ключует им строки,
+	// чтобы два правила, потерявшие один тип, не схлопнулись при ЗАПИСИ, — но это
+	// ключ хранения, содержательный хеш, которого нет ни в одном контракте
+	// платформы. Выстави мы его, способ хеширования стал бы частью контракта, а
+	// арендатору он не даёт ничего: своё правило он знает содержанием. Следствие
+	// названо прямо: записи, различавшиеся ТОЛЬКО отпечатком, приезжают ОДНОЙ.
+	PrunedSelectorTypes []*PrunedSelectorType `protobuf:"bytes,26,rep,name=pruned_selector_types,json=prunedSelectorTypes,proto3" json:"pruned_selector_types,omitempty"`
+	// Состояние КАЖДОГО правила роли (#1962). Output-only, производное.
+	//
+	// Соседи выше отвечают СКОЛЬКО сегментов роль потеряла (`unresolved_segments`)
+	// и ЧТО именно (`withdrawn_grants`). Между ними остаётся вопрос, на который не
+	// отвечает ни один: КАКОЕ правило пострадало и — что важнее — по КАКОЙ ИЗ ДВУХ
+	// причин. Причин ровно две, и картина счётчиков у них ОДИНАКОВА:
+	//   - объявление СНЯТО платформой — ведомость переселения это записала;
+	//   - правило НЕ РАЗРЕШИЛОСЬ — оно называет то, чего модель прав не знает, и
+	//     переселения не было ВОВСЕ (форма инцидента 513001).
+	//
+	// Без слова второе неотличимо от первого: у него `withdrawn_grants` пуст, и
+	// «право отобрали» читается ровно так же, как «права не было никогда».
+	//
+	// ЗАПОЛНЯЮТ ЧТЕНИЯ РЕСУРСА — `Get` и `List`, ОДИНАКОВО и одним производителем,
+	// тем же, что и поля выше. Ответ операции (`Create`/`Update`) поля не несёт:
+	// ПУСТОЙ СПИСОК там означает «этим ответом не вычислено», ровно как
+	// `ROLE_HEALTH_UNSPECIFIED` рядом. У роли БЕЗ правил список пуст и на чтении —
+	// состояние есть свойство правила, и у роли без правил его нет.
+	//
+	// ЗАПИСЕЙ РОВНО ПО ЧИСЛУ ПРАВИЛ, включая правила без адресуемых сегментов.
+	// Порядок элементов НЕ ЗНАЧИМ — это набор; адресуются они `rule_index`.
+	//
+	// ПУСТОЙ СПИСОК ОЗНАЧАЕТ ДВА РАЗНЫХ ФАКТА, и различает их `rules`: у роли БЕЗ
+	// правил (унаследованная `permissions`-роль) он пуст на чтении — состояние
+	// есть свойство правила, и у роли без правил его нет; у ответа операции он
+	// пуст потому, что не вычислялся. Спрашивать надо `len(rules)`, а не длину
+	// этого списка.
+	//
+	// ГРАНУЛЯРНОСТЬ — ПРАВИЛО, а не сегмент, и это решение о СТОИМОСТИ СТРАНИЦЫ.
+	// Посегментная запись честнее (у неё нет смешанного случая вовсе) и была
+	// рассмотрена первой; её худший случай — 64 правила × 16 ресурсов × 16
+	// глаголов = 16 384 записи на роль, при `page_size` до 1000 это ответ, который
+	// не отдают. Смешанный случай назван вместо этого счётчиками — см. RuleState.
+	RuleStates []*RuleState `protobuf:"bytes,27,rep,name=rule_states,json=ruleStates,proto3" json:"rule_states,omitempty"`
+	// ОБЪЯВЛЕНА ли роль манифестом своего модуля СЕГОДНЯ — либо СНЯТА (#1913).
+	// Output-only, производное.
+	//
+	// ПОЧЕМУ ЭТО ОТДЕЛЬНОЕ ПОЛЕ, А НЕ ЗНАЧЕНИЕ `health`.
+	//
+	// `ROLE_HEALTH_EMPTY` даёт ДВА разных состояния сразу: роль снята, и роль
+	// объявлена, а строки каталога под её сегментами сняты. Для арендатора
+	// различие несущее, и следующий шаг у него разный:
+	//
+	//	снята      роль не заработает НИКОГДА, пока модуль не объявит её снова;
+	//	объявлена  роль остаётся объявленной, и чинится это на стороне платформы.
+	//
+	// Сложить два состояния в одно значение — тот же класс, что сложить
+	// «не вычислено» и «здорова».
+	//
+	// ЗАПОЛНЯЮТ ЧТЕНИЯ РЕСУРСА — `Get` и `List`, ОДИНАКОВО и одним производителем,
+	// тем же, что и поля целости выше. Ответ операции (`Create`/`Update` →
+	// `Operation.response`) несёт `state = ROLE_LIFECYCLE_STATE_UNSPECIFIED`, и это
+	// означает «этим ответом не вычислено», НИКОГДА «роль объявлена», — ровно та
+	// же дисциплина, что у `ROLE_HEALTH_UNSPECIFIED` выше.
+	//
+	// Сообщение приезжает ВСЕГДА, а не только у вычисленного состояния. Здесь
+	// стояло обратное с доводом «сообщение, присутствующее всегда, сливает „не
+	// вычислено" и „объявлена"» — довод ЛОЖЕН, и это перемерено во всех трёх
+	// кодировках: `UNSPECIFIED` и `DECLARED` различимы в каждой. Отсутствие
+	// сообщения при этом лишало нулевое состояние ПРОИЗВОДИТЕЛЯ: перечисление
+	// документировало значение, которого клиент не увидел бы никогда.
+	//
+	// СНЯТАЯ РОЛЬ ОСТАЁТСЯ В `Get` И В `List`. Спрятать её значило бы сделать
+	// «право отобрали» неотличимым от «роли не было никогда» — то есть вернуть
+	// ровно ту неразличимость, ради устранения которой заведены `health` и
+	// `withdrawn_grants`. Сверх того у арендатора ОСТАЁТСЯ выдача на снятую роль:
+	// ресурс, на который ссылается его собственная строка, обязан читаться.
+	Lifecycle     *RoleLifecycle `protobuf:"bytes,28,opt,name=lifecycle,proto3" json:"lifecycle,omitempty"`
 	unknownFields protoimpl.UnknownFields
 	sizeCache     protoimpl.SizeCache
 }
@@ -308,6 +878,495 @@ func (x *Role) GetPurpose() string {
 	return ""
 }
 
+func (x *Role) GetHealth() RoleHealth {
+	if x != nil {
+		return x.Health
+	}
+	return RoleHealth_ROLE_HEALTH_UNSPECIFIED
+}
+
+func (x *Role) GetDeclaredSegments() int32 {
+	if x != nil {
+		return x.DeclaredSegments
+	}
+	return 0
+}
+
+func (x *Role) GetUnresolvedSegments() int32 {
+	if x != nil {
+		return x.UnresolvedSegments
+	}
+	return 0
+}
+
+func (x *Role) GetWithdrawnGrants() []*WithdrawnGrant {
+	if x != nil {
+		return x.WithdrawnGrants
+	}
+	return nil
+}
+
+func (x *Role) GetPrunedSelectorTypes() []*PrunedSelectorType {
+	if x != nil {
+		return x.PrunedSelectorTypes
+	}
+	return nil
+}
+
+func (x *Role) GetRuleStates() []*RuleState {
+	if x != nil {
+		return x.RuleStates
+	}
+	return nil
+}
+
+func (x *Role) GetLifecycle() *RoleLifecycle {
+	if x != nil {
+		return x.Lifecycle
+	}
+	return nil
+}
+
+// RoleLifecycle — объявлена роль манифестом модуля либо снята, и при каких
+// обстоятельствах (#1913).
+//
+// Три сопутствующие величины непусты ТОЛЬКО у снятой роли, и это свойство
+// СХЕМЫ, а не кода: состояние «снята и жива» неконструируемо.
+type RoleLifecycle struct {
+	state protoimpl.MessageState `protogen:"open.v1"`
+	// Состояние. У вычисленного ответа оно непусто ВСЕГДА.
+	State RoleLifecycleState `protobuf:"varint,1,opt,name=state,proto3,enum=kacho.cloud.iam.v1.RoleLifecycleState" json:"state,omitempty"`
+	// Когда роль снята. Пусто у объявленной роли.
+	RetiredAt *timestamppb.Timestamp `protobuf:"bytes,2,opt,name=retired_at,json=retiredAt,proto3" json:"retired_at,omitempty"`
+	// ПОЧЕМУ роль снята — то, что арендатор читает у отобранного права. Без
+	// причины «отобрали» неотличимо от «сломалось». Пусто у объявленной роли.
+	RetiredReason string `protobuf:"bytes,3,opt,name=retired_reason,json=retiredReason,proto3" json:"retired_reason,omitempty"`
+	// КТО снял: названный процессный актор пути старта либо проверенная личность
+	// вызывающего глагола применения.
+	//
+	// Пустая строка у СНЯТОЙ роли означает «помечено до заведения этой величины»,
+	// а не «автора потеряли»: на вопрос «кто у меня отобрал» ответ «платформа»
+	// ответом не является.
+	RetiredBy     string `protobuf:"bytes,4,opt,name=retired_by,json=retiredBy,proto3" json:"retired_by,omitempty"`
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
+}
+
+func (x *RoleLifecycle) Reset() {
+	*x = RoleLifecycle{}
+	mi := &file_kacho_cloud_iam_v1_role_proto_msgTypes[1]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *RoleLifecycle) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*RoleLifecycle) ProtoMessage() {}
+
+func (x *RoleLifecycle) ProtoReflect() protoreflect.Message {
+	mi := &file_kacho_cloud_iam_v1_role_proto_msgTypes[1]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use RoleLifecycle.ProtoReflect.Descriptor instead.
+func (*RoleLifecycle) Descriptor() ([]byte, []int) {
+	return file_kacho_cloud_iam_v1_role_proto_rawDescGZIP(), []int{1}
+}
+
+func (x *RoleLifecycle) GetState() RoleLifecycleState {
+	if x != nil {
+		return x.State
+	}
+	return RoleLifecycleState_ROLE_LIFECYCLE_STATE_UNSPECIFIED
+}
+
+func (x *RoleLifecycle) GetRetiredAt() *timestamppb.Timestamp {
+	if x != nil {
+		return x.RetiredAt
+	}
+	return nil
+}
+
+func (x *RoleLifecycle) GetRetiredReason() string {
+	if x != nil {
+		return x.RetiredReason
+	}
+	return ""
+}
+
+func (x *RoleLifecycle) GetRetiredBy() string {
+	if x != nil {
+		return x.RetiredBy
+	}
+	return ""
+}
+
+// RuleState — состояние ОДНОГО правила роли (#1962) и три величины, из которых
+// оно выведено.
+//
+// Состояние ВЫВОДИТСЯ из того же, что читает вердикт, и хранимой колонки у него
+// нет: двенадцать ролей инцидента 513001 заведены МИГРАЦИЕЙ, и колонку не
+// проставил бы никто — то есть хранимое состояние не поймало бы тот самый
+// случай, ради которого заводится. Ведомость переселения только ОБЪЯСНЯЕТ.
+type RuleState struct {
+	state protoimpl.MessageState `protogen:"open.v1"`
+	// Индекс правила в `Role.rules`. КЛЮЧ записи: порядок самих записей не значим,
+	// сверять надо по нему.
+	//
+	// Индекс законен как ключ потому, что авторские правила хранятся ОДНИМ
+	// массивом под одним кодеком и порядок сохраняется by construction: правило
+	// читается тем же индексом, каким записано. Отпечаток правила ключом НЕ
+	// служит — это содержательный хеш, которого нет ни в одном контракте
+	// платформы (тот же довод, что у `pruned_selector_types`).
+	//
+	// КЛЮЧ ДЕЙСТВИТЕЛЕН В ПРЕДЕЛАХ ОДНОГО ОТВЕТА, и сохранять его нельзя:
+	// `Update` перестраивает `rules` целиком, поэтому индекс мутацию не
+	// переживает. Внешне-адресуемой координатой он не является и таковой не
+	// станет (ban #15) — адресуется роль своим `id`.
+	RuleIndex int32 `protobuf:"varint,1,opt,name=rule_index,json=ruleIndex,proto3" json:"rule_index,omitempty"`
+	// Состояние правила. У вычисленной записи оно непусто ВСЕГДА.
+	State RuleLifecycle `protobuf:"varint,2,opt,name=state,proto3,enum=kacho.cloud.iam.v1.RuleLifecycle" json:"state,omitempty"`
+	// Сколько АДРЕСУЕМЫХ сегментов объявляет ЭТО правило. Ноль законен:
+	// подстановка в модуле или в ресурсе сегментов не даёт — она называет не имя,
+	// а «все», и терять ей нечего.
+	//
+	// ЕДИНИЦА У НЕЁ ДРУГАЯ, ЧЕМ У `Role.declared_segments`, и потому имя другое.
+	// Счётчик роли дедуплицирует сегмент по ВСЕЙ роли: сегмент, объявленный двумя
+	// правилами, там один. Здесь дедупликация только ВНУТРИ правила — потерян он
+	// у ОБОИХ, и схлопнув, мы объявили бы одно из них действующим.
+	//
+	// Отсюда: РАВЕНСТВО суммы `segments` счётчику роли НЕ ГАРАНТИРОВАНО и
+	// нарушается РОВНО ТОГДА, когда один сегмент назван двумя правилами. На роли,
+	// где такого нет, суммы совпадают — и это совпадение, а не инвариант.
+	Segments int32 `protobuf:"varint,3,opt,name=segments,proto3" json:"segments,omitempty"`
+	// Сколько из объявленных сегментов ЭТОГО правила не дают ни одной строки
+	// проекции, которую читает вердикт.
+	//
+	// ПРЕДМЕТ СЧЁТА ТОТ ЖЕ, что у `Role.unresolved_segments`: «строки проекции
+	// нет», ведомость не спрашивается ни там, ни здесь. Различает их ТОЛЬКО
+	// единица — дедупликация внутри правила против дедупликации по всей роли
+	// (см. `segments` выше), поэтому и здесь равенство сумм не гарантировано и
+	// нарушается ровно в том же случае.
+	LostSegments int32 `protobuf:"varint,4,opt,name=lost_segments,json=lostSegments,proto3" json:"lost_segments,omitempty"`
+	// Сколько из потерянных ОБЪЯСНЕНЫ ведомостью переселения — то есть сняты
+	// платформой, а не потеряны молча.
+	//
+	// Необъяснённые выводятся вычитанием: `lost_segments - explained_segments`.
+	// Третьим полем они не заводятся намеренно — величина, равная разности двух
+	// соседних, разошлась бы с ними при первой же правке.
+	//
+	// ЭТИ ДВЕ ВЕЛИЧИНЫ И ЕСТЬ ПРИЧИНА, ПО КОТОРОЙ СМЕШАННЫЙ СЛУЧАЙ НЕ СХЛОПНУТ.
+	// Правило, у которого часть потерь объяснена, а часть нет, читается
+	// `UNRESOLVED` — слово называет состояние, ТРЕБУЮЩЕЕ разбора, — и обе
+	// величины при этом видны одновременно, поэтому не потеряна ни одна.
+	// Четвёртое значение («частично отозвано») рассмотрено и отвергнуто: у него
+	// нет ни своего действия у арендатора, ни своего производителя.
+	ExplainedSegments int32 `protobuf:"varint,5,opt,name=explained_segments,json=explainedSegments,proto3" json:"explained_segments,omitempty"`
+	unknownFields     protoimpl.UnknownFields
+	sizeCache         protoimpl.SizeCache
+}
+
+func (x *RuleState) Reset() {
+	*x = RuleState{}
+	mi := &file_kacho_cloud_iam_v1_role_proto_msgTypes[2]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *RuleState) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*RuleState) ProtoMessage() {}
+
+func (x *RuleState) ProtoReflect() protoreflect.Message {
+	mi := &file_kacho_cloud_iam_v1_role_proto_msgTypes[2]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use RuleState.ProtoReflect.Descriptor instead.
+func (*RuleState) Descriptor() ([]byte, []int) {
+	return file_kacho_cloud_iam_v1_role_proto_rawDescGZIP(), []int{2}
+}
+
+func (x *RuleState) GetRuleIndex() int32 {
+	if x != nil {
+		return x.RuleIndex
+	}
+	return 0
+}
+
+func (x *RuleState) GetState() RuleLifecycle {
+	if x != nil {
+		return x.State
+	}
+	return RuleLifecycle_RULE_LIFECYCLE_UNSPECIFIED
+}
+
+func (x *RuleState) GetSegments() int32 {
+	if x != nil {
+		return x.Segments
+	}
+	return 0
+}
+
+func (x *RuleState) GetLostSegments() int32 {
+	if x != nil {
+		return x.LostSegments
+	}
+	return 0
+}
+
+func (x *RuleState) GetExplainedSegments() int32 {
+	if x != nil {
+		return x.ExplainedSegments
+	}
+	return 0
+}
+
+// PrunedSelectorType — точечный тип, ВЫРЕЗАННЫЙ из отбора правила роли при
+// снятии строки ресурса платформы (#1988).
+type PrunedSelectorType struct {
+	state protoimpl.MessageState `protogen:"open.v1"`
+	// Точечный тип объекта (`<модуль>.<ресурс>`), чью строку каталога сняли.
+	ObjectType string `protobuf:"bytes,1,opt,name=object_type,json=objectType,proto3" json:"object_type,omitempty"`
+	// Что стало со строкой отбора, из которой тип вырезан.
+	Outcome SelectorPruneOutcome `protobuf:"varint,2,opt,name=outcome,proto3,enum=kacho.cloud.iam.v1.SelectorPruneOutcome" json:"outcome,omitempty"`
+	// Причина снятия строки каталога, записанная применителем манифеста.
+	// Это причина ПЛАТФОРМЫ, а не действие арендатора: своё правило он не менял.
+	// ПУСТАЯ строка означает «строка каталога причины не несла» (снята ранней
+	// миграцией), а не «причину потеряли».
+	Reason string `protobuf:"bytes,3,opt,name=reason,proto3" json:"reason,omitempty"`
+	// Момент вырезания. Время ТРАНЗАКЦИИ применения: у всего, что вырезано одним
+	// применением, он совпадает дословно.
+	PrunedAt *timestamppb.Timestamp `protobuf:"bytes,4,opt,name=pruned_at,json=prunedAt,proto3" json:"pruned_at,omitempty"`
+	// АВТОР применения, вырезавшего этот тип (#2005). Та же величина и тот же
+	// источник, что у соседа `WithdrawnGrant.applied_by`: вопрос «кто снял» у
+	// обеих ведомостей общий — арендатор не различает, какой из проекций правила
+	// он лишился.
+	//
+	// ПУСТАЯ строка означает «строка вырезана ДО заведения колонки».
+	AppliedBy     string `protobuf:"bytes,5,opt,name=applied_by,json=appliedBy,proto3" json:"applied_by,omitempty"`
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
+}
+
+func (x *PrunedSelectorType) Reset() {
+	*x = PrunedSelectorType{}
+	mi := &file_kacho_cloud_iam_v1_role_proto_msgTypes[3]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *PrunedSelectorType) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*PrunedSelectorType) ProtoMessage() {}
+
+func (x *PrunedSelectorType) ProtoReflect() protoreflect.Message {
+	mi := &file_kacho_cloud_iam_v1_role_proto_msgTypes[3]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use PrunedSelectorType.ProtoReflect.Descriptor instead.
+func (*PrunedSelectorType) Descriptor() ([]byte, []int) {
+	return file_kacho_cloud_iam_v1_role_proto_rawDescGZIP(), []int{3}
+}
+
+func (x *PrunedSelectorType) GetObjectType() string {
+	if x != nil {
+		return x.ObjectType
+	}
+	return ""
+}
+
+func (x *PrunedSelectorType) GetOutcome() SelectorPruneOutcome {
+	if x != nil {
+		return x.Outcome
+	}
+	return SelectorPruneOutcome_SELECTOR_PRUNE_OUTCOME_UNSPECIFIED
+}
+
+func (x *PrunedSelectorType) GetReason() string {
+	if x != nil {
+		return x.Reason
+	}
+	return ""
+}
+
+func (x *PrunedSelectorType) GetPrunedAt() *timestamppb.Timestamp {
+	if x != nil {
+		return x.PrunedAt
+	}
+	return nil
+}
+
+func (x *PrunedSelectorType) GetAppliedBy() string {
+	if x != nil {
+		return x.AppliedBy
+	}
+	return ""
+}
+
+// WithdrawnGrant — одна проекция правила роли, ПЕРЕСЕЛЁННАЯ в ведомость
+// отобранного (#1992).
+//
+// Пара «тип объекта + глагол» адресует ровно то, что перестало действовать.
+// Пустой `verb` — ЯКОРЬ: строка пришла из объявления правила, у которого глагол
+// не назван поимённо.
+//
+// ПРИЧИН ПЕРЕСЕЛЕНИЯ ДВЕ, и их называет `cause` (#1913). Здесь стояло, что
+// причина одна — снятие строки каталога, — и это перестало быть верным в день,
+// когда у роли появился путь снятия: строки второй причины приезжают в ЭТОТ ЖЕ
+// список.
+type WithdrawnGrant struct {
+	state protoimpl.MessageState `protogen:"open.v1"`
+	// Точечный тип объекта (`<модуль>.<ресурс>`), чья проекция переселена.
+	ObjectType string `protobuf:"bytes,1,opt,name=object_type,json=objectType,proto3" json:"object_type,omitempty"`
+	// Глагол. ПУСТАЯ строка — якорь объявления правила, а не «любой глагол».
+	Verb string `protobuf:"bytes,2,opt,name=verb,proto3" json:"verb,omitempty"`
+	// Из какой проекции правила переселена строка.
+	Source WithdrawnGrantSource `protobuf:"varint,3,opt,name=source,proto3,enum=kacho.cloud.iam.v1.WithdrawnGrantSource" json:"source,omitempty"`
+	// Причина, записанная применителем манифеста. Это причина ПЛАТФОРМЫ, а не
+	// действие арендатора: свою роль он не менял.
+	Reason string `protobuf:"bytes,4,opt,name=reason,proto3" json:"reason,omitempty"`
+	// Момент переселения. Время ТРАНЗАКЦИИ применения: у всего, что отобрано
+	// одним применением, он совпадает дословно.
+	WithdrawnAt *timestamppb.Timestamp `protobuf:"bytes,5,opt,name=withdrawn_at,json=withdrawnAt,proto3" json:"withdrawn_at,omitempty"`
+	// АВТОР применения, снявшего эту строку (#2005).
+	//
+	// Проверенная личность вызывающего на пути глагола либо названный процессный
+	// актор на пути старта. НЕ учётка, под которой исполнялась транзакция: на
+	// вопрос «кто у меня отобрал» ответ «iam» ответом не является.
+	//
+	// Рядом с `reason` намеренно: причина называет, ЧТО случилось с платформой,
+	// автор — КТО это сделал. Для разбора потери права это второй по важности
+	// вопрос после первого.
+	//
+	// ПУСТАЯ строка означает «строка переселена ДО заведения колонки», а НЕ
+	// «автора потеряли»: у таких строк его не записывал никто, и восстановить его
+	// не из чего.
+	AppliedBy string `protobuf:"bytes,6,opt,name=applied_by,json=appliedBy,proto3" json:"applied_by,omitempty"`
+	// ПОЧЕМУ строка переселена (#1913). Output-only.
+	//
+	// Различие НАБЛЮДАЕМО, потому что от него зависит поведение: оживление роли
+	// снимает из ведомости строки причины `ROLE_RETIRED` и НЕ трогает строк
+	// причины `CATALOG_RETIRED` — те по-прежнему описывают действительность, и
+	// роль после оживления законно остаётся деградированной, если её сегменты не
+	// резолвятся. Без этого поля арендатор не может ответить, вернётся ли строка
+	// при возврате объявления.
+	//
+	// Отличается от `source` предметом, и путать их дорого: `source` называет, ИЗ
+	// КАКОЙ проекции строка переселена (выдача либо объявление), `cause` — ПОЧЕМУ.
+	// Обе величины независимы: каждая причина встречается у обеих популяций.
+	Cause         WithdrawnGrantCause `protobuf:"varint,7,opt,name=cause,proto3,enum=kacho.cloud.iam.v1.WithdrawnGrantCause" json:"cause,omitempty"`
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
+}
+
+func (x *WithdrawnGrant) Reset() {
+	*x = WithdrawnGrant{}
+	mi := &file_kacho_cloud_iam_v1_role_proto_msgTypes[4]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *WithdrawnGrant) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*WithdrawnGrant) ProtoMessage() {}
+
+func (x *WithdrawnGrant) ProtoReflect() protoreflect.Message {
+	mi := &file_kacho_cloud_iam_v1_role_proto_msgTypes[4]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use WithdrawnGrant.ProtoReflect.Descriptor instead.
+func (*WithdrawnGrant) Descriptor() ([]byte, []int) {
+	return file_kacho_cloud_iam_v1_role_proto_rawDescGZIP(), []int{4}
+}
+
+func (x *WithdrawnGrant) GetObjectType() string {
+	if x != nil {
+		return x.ObjectType
+	}
+	return ""
+}
+
+func (x *WithdrawnGrant) GetVerb() string {
+	if x != nil {
+		return x.Verb
+	}
+	return ""
+}
+
+func (x *WithdrawnGrant) GetSource() WithdrawnGrantSource {
+	if x != nil {
+		return x.Source
+	}
+	return WithdrawnGrantSource_WITHDRAWN_GRANT_SOURCE_UNSPECIFIED
+}
+
+func (x *WithdrawnGrant) GetReason() string {
+	if x != nil {
+		return x.Reason
+	}
+	return ""
+}
+
+func (x *WithdrawnGrant) GetWithdrawnAt() *timestamppb.Timestamp {
+	if x != nil {
+		return x.WithdrawnAt
+	}
+	return nil
+}
+
+func (x *WithdrawnGrant) GetAppliedBy() string {
+	if x != nil {
+		return x.AppliedBy
+	}
+	return ""
+}
+
+func (x *WithdrawnGrant) GetCause() WithdrawnGrantCause {
+	if x != nil {
+		return x.Cause
+	}
+	return WithdrawnGrantCause_WITHDRAWN_GRANT_CAUSE_UNSPECIFIED
+}
+
 // DefinitionTier is the hierarchy tier a Role is defined at (redesign-2026 F4):
 // `tier_type` dotted (`iam.cluster` | `iam.account` | `iam.project`) + `tier_id`
 // the anchor object id. A projection over the within-service typed scope columns
@@ -326,7 +1385,7 @@ type DefinitionTier struct {
 
 func (x *DefinitionTier) Reset() {
 	*x = DefinitionTier{}
-	mi := &file_kacho_cloud_iam_v1_role_proto_msgTypes[1]
+	mi := &file_kacho_cloud_iam_v1_role_proto_msgTypes[5]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -338,7 +1397,7 @@ func (x *DefinitionTier) String() string {
 func (*DefinitionTier) ProtoMessage() {}
 
 func (x *DefinitionTier) ProtoReflect() protoreflect.Message {
-	mi := &file_kacho_cloud_iam_v1_role_proto_msgTypes[1]
+	mi := &file_kacho_cloud_iam_v1_role_proto_msgTypes[5]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -351,7 +1410,7 @@ func (x *DefinitionTier) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use DefinitionTier.ProtoReflect.Descriptor instead.
 func (*DefinitionTier) Descriptor() ([]byte, []int) {
-	return file_kacho_cloud_iam_v1_role_proto_rawDescGZIP(), []int{1}
+	return file_kacho_cloud_iam_v1_role_proto_rawDescGZIP(), []int{5}
 }
 
 func (x *DefinitionTier) GetTierType() string {
@@ -407,7 +1466,7 @@ type Rule struct {
 
 func (x *Rule) Reset() {
 	*x = Rule{}
-	mi := &file_kacho_cloud_iam_v1_role_proto_msgTypes[2]
+	mi := &file_kacho_cloud_iam_v1_role_proto_msgTypes[6]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -419,7 +1478,7 @@ func (x *Rule) String() string {
 func (*Rule) ProtoMessage() {}
 
 func (x *Rule) ProtoReflect() protoreflect.Message {
-	mi := &file_kacho_cloud_iam_v1_role_proto_msgTypes[2]
+	mi := &file_kacho_cloud_iam_v1_role_proto_msgTypes[6]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -432,7 +1491,7 @@ func (x *Rule) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use Rule.ProtoReflect.Descriptor instead.
 func (*Rule) Descriptor() ([]byte, []int) {
-	return file_kacho_cloud_iam_v1_role_proto_rawDescGZIP(), []int{2}
+	return file_kacho_cloud_iam_v1_role_proto_rawDescGZIP(), []int{6}
 }
 
 func (x *Rule) GetResources() []string {
@@ -480,7 +1539,7 @@ type CreateRoleMetadata struct {
 
 func (x *CreateRoleMetadata) Reset() {
 	*x = CreateRoleMetadata{}
-	mi := &file_kacho_cloud_iam_v1_role_proto_msgTypes[3]
+	mi := &file_kacho_cloud_iam_v1_role_proto_msgTypes[7]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -492,7 +1551,7 @@ func (x *CreateRoleMetadata) String() string {
 func (*CreateRoleMetadata) ProtoMessage() {}
 
 func (x *CreateRoleMetadata) ProtoReflect() protoreflect.Message {
-	mi := &file_kacho_cloud_iam_v1_role_proto_msgTypes[3]
+	mi := &file_kacho_cloud_iam_v1_role_proto_msgTypes[7]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -505,7 +1564,7 @@ func (x *CreateRoleMetadata) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use CreateRoleMetadata.ProtoReflect.Descriptor instead.
 func (*CreateRoleMetadata) Descriptor() ([]byte, []int) {
-	return file_kacho_cloud_iam_v1_role_proto_rawDescGZIP(), []int{3}
+	return file_kacho_cloud_iam_v1_role_proto_rawDescGZIP(), []int{7}
 }
 
 func (x *CreateRoleMetadata) GetRoleId() string {
@@ -525,7 +1584,7 @@ type UpdateRoleMetadata struct {
 
 func (x *UpdateRoleMetadata) Reset() {
 	*x = UpdateRoleMetadata{}
-	mi := &file_kacho_cloud_iam_v1_role_proto_msgTypes[4]
+	mi := &file_kacho_cloud_iam_v1_role_proto_msgTypes[8]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -537,7 +1596,7 @@ func (x *UpdateRoleMetadata) String() string {
 func (*UpdateRoleMetadata) ProtoMessage() {}
 
 func (x *UpdateRoleMetadata) ProtoReflect() protoreflect.Message {
-	mi := &file_kacho_cloud_iam_v1_role_proto_msgTypes[4]
+	mi := &file_kacho_cloud_iam_v1_role_proto_msgTypes[8]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -550,7 +1609,7 @@ func (x *UpdateRoleMetadata) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use UpdateRoleMetadata.ProtoReflect.Descriptor instead.
 func (*UpdateRoleMetadata) Descriptor() ([]byte, []int) {
-	return file_kacho_cloud_iam_v1_role_proto_rawDescGZIP(), []int{4}
+	return file_kacho_cloud_iam_v1_role_proto_rawDescGZIP(), []int{8}
 }
 
 func (x *UpdateRoleMetadata) GetRoleId() string {
@@ -570,7 +1629,7 @@ type DeleteRoleMetadata struct {
 
 func (x *DeleteRoleMetadata) Reset() {
 	*x = DeleteRoleMetadata{}
-	mi := &file_kacho_cloud_iam_v1_role_proto_msgTypes[5]
+	mi := &file_kacho_cloud_iam_v1_role_proto_msgTypes[9]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -582,7 +1641,7 @@ func (x *DeleteRoleMetadata) String() string {
 func (*DeleteRoleMetadata) ProtoMessage() {}
 
 func (x *DeleteRoleMetadata) ProtoReflect() protoreflect.Message {
-	mi := &file_kacho_cloud_iam_v1_role_proto_msgTypes[5]
+	mi := &file_kacho_cloud_iam_v1_role_proto_msgTypes[9]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -595,7 +1654,7 @@ func (x *DeleteRoleMetadata) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use DeleteRoleMetadata.ProtoReflect.Descriptor instead.
 func (*DeleteRoleMetadata) Descriptor() ([]byte, []int) {
-	return file_kacho_cloud_iam_v1_role_proto_rawDescGZIP(), []int{5}
+	return file_kacho_cloud_iam_v1_role_proto_rawDescGZIP(), []int{9}
 }
 
 func (x *DeleteRoleMetadata) GetRoleId() string {
@@ -609,7 +1668,7 @@ var File_kacho_cloud_iam_v1_role_proto protoreflect.FileDescriptor
 
 const file_kacho_cloud_iam_v1_role_proto_rawDesc = "" +
 	"\n" +
-	"\x1dkacho/cloud/iam/v1/role.proto\x12\x12kacho.cloud.iam.v1\x1a\x1fgoogle/protobuf/timestamp.proto\"\xda\a\n" +
+	"\x1dkacho/cloud/iam/v1/role.proto\x12\x12kacho.cloud.iam.v1\x1a\x1fgoogle/protobuf/timestamp.proto\"\x9c\v\n" +
 	"\x04Role\x12\x0e\n" +
 	"\x02id\x18\x01 \x01(\tR\x02id\x12\x1d\n" +
 	"\n" +
@@ -637,14 +1696,54 @@ const file_kacho_cloud_iam_v1_role_proto_rawDesc = "" +
 	"\n" +
 	"verb_notes\x18\x13 \x03(\v2'.kacho.cloud.iam.v1.Role.VerbNotesEntryR\tverbNotes\x12!\n" +
 	"\fdisplay_name\x18\x14 \x01(\tR\vdisplayName\x12\x18\n" +
-	"\apurpose\x18\x15 \x01(\tR\apurpose\x1a9\n" +
+	"\apurpose\x18\x15 \x01(\tR\apurpose\x126\n" +
+	"\x06health\x18\x16 \x01(\x0e2\x1e.kacho.cloud.iam.v1.RoleHealthR\x06health\x12+\n" +
+	"\x11declared_segments\x18\x17 \x01(\x05R\x10declaredSegments\x12/\n" +
+	"\x13unresolved_segments\x18\x18 \x01(\x05R\x12unresolvedSegments\x12M\n" +
+	"\x10withdrawn_grants\x18\x19 \x03(\v2\".kacho.cloud.iam.v1.WithdrawnGrantR\x0fwithdrawnGrants\x12Z\n" +
+	"\x15pruned_selector_types\x18\x1a \x03(\v2&.kacho.cloud.iam.v1.PrunedSelectorTypeR\x13prunedSelectorTypes\x12>\n" +
+	"\vrule_states\x18\x1b \x03(\v2\x1d.kacho.cloud.iam.v1.RuleStateR\n" +
+	"ruleStates\x12?\n" +
+	"\tlifecycle\x18\x1c \x01(\v2!.kacho.cloud.iam.v1.RoleLifecycleR\tlifecycle\x1a9\n" +
 	"\vLabelsEntry\x12\x10\n" +
 	"\x03key\x18\x01 \x01(\tR\x03key\x12\x14\n" +
 	"\x05value\x18\x02 \x01(\tR\x05value:\x028\x01\x1a<\n" +
 	"\x0eVerbNotesEntry\x12\x10\n" +
 	"\x03key\x18\x01 \x01(\tR\x03key\x12\x14\n" +
 	"\x05value\x18\x02 \x01(\tR\x05value:\x028\x01J\x04\b\t\x10\n" +
-	"R\x0forganization_id\"F\n" +
+	"R\x0forganization_id\"\xce\x01\n" +
+	"\rRoleLifecycle\x12<\n" +
+	"\x05state\x18\x01 \x01(\x0e2&.kacho.cloud.iam.v1.RoleLifecycleStateR\x05state\x129\n" +
+	"\n" +
+	"retired_at\x18\x02 \x01(\v2\x1a.google.protobuf.TimestampR\tretiredAt\x12%\n" +
+	"\x0eretired_reason\x18\x03 \x01(\tR\rretiredReason\x12\x1d\n" +
+	"\n" +
+	"retired_by\x18\x04 \x01(\tR\tretiredBy\"\xd3\x01\n" +
+	"\tRuleState\x12\x1d\n" +
+	"\n" +
+	"rule_index\x18\x01 \x01(\x05R\truleIndex\x127\n" +
+	"\x05state\x18\x02 \x01(\x0e2!.kacho.cloud.iam.v1.RuleLifecycleR\x05state\x12\x1a\n" +
+	"\bsegments\x18\x03 \x01(\x05R\bsegments\x12#\n" +
+	"\rlost_segments\x18\x04 \x01(\x05R\flostSegments\x12-\n" +
+	"\x12explained_segments\x18\x05 \x01(\x05R\x11explainedSegments\"\xe9\x01\n" +
+	"\x12PrunedSelectorType\x12\x1f\n" +
+	"\vobject_type\x18\x01 \x01(\tR\n" +
+	"objectType\x12B\n" +
+	"\aoutcome\x18\x02 \x01(\x0e2(.kacho.cloud.iam.v1.SelectorPruneOutcomeR\aoutcome\x12\x16\n" +
+	"\x06reason\x18\x03 \x01(\tR\x06reason\x127\n" +
+	"\tpruned_at\x18\x04 \x01(\v2\x1a.google.protobuf.TimestampR\bprunedAt\x12\x1d\n" +
+	"\n" +
+	"applied_by\x18\x05 \x01(\tR\tappliedBy\"\xbc\x02\n" +
+	"\x0eWithdrawnGrant\x12\x1f\n" +
+	"\vobject_type\x18\x01 \x01(\tR\n" +
+	"objectType\x12\x12\n" +
+	"\x04verb\x18\x02 \x01(\tR\x04verb\x12@\n" +
+	"\x06source\x18\x03 \x01(\x0e2(.kacho.cloud.iam.v1.WithdrawnGrantSourceR\x06source\x12\x16\n" +
+	"\x06reason\x18\x04 \x01(\tR\x06reason\x12=\n" +
+	"\fwithdrawn_at\x18\x05 \x01(\v2\x1a.google.protobuf.TimestampR\vwithdrawnAt\x12\x1d\n" +
+	"\n" +
+	"applied_by\x18\x06 \x01(\tR\tappliedBy\x12=\n" +
+	"\x05cause\x18\a \x01(\x0e2'.kacho.cloud.iam.v1.WithdrawnGrantCauseR\x05cause\"F\n" +
 	"\x0eDefinitionTier\x12\x1b\n" +
 	"\ttier_type\x18\x01 \x01(\tR\btierType\x12\x17\n" +
 	"\atier_id\x18\x02 \x01(\tR\x06tierId\"\x96\x02\n" +
@@ -662,7 +1761,34 @@ const file_kacho_cloud_iam_v1_role_proto_rawDesc = "" +
 	"\x12UpdateRoleMetadata\x12\x17\n" +
 	"\arole_id\x18\x01 \x01(\tR\x06roleId\"-\n" +
 	"\x12DeleteRoleMetadata\x12\x17\n" +
-	"\arole_id\x18\x01 \x01(\tR\x06roleIdB@Z>github.com/PRO-Robotech/kacho/pkg/api/kacho/cloud/iam/v1;iamv1b\x06proto3"
+	"\arole_id\x18\x01 \x01(\tR\x06roleId*\x81\x01\n" +
+	"\x12RoleLifecycleState\x12$\n" +
+	" ROLE_LIFECYCLE_STATE_UNSPECIFIED\x10\x00\x12!\n" +
+	"\x1dROLE_LIFECYCLE_STATE_DECLARED\x10\x01\x12\"\n" +
+	"\x1eROLE_LIFECYCLE_STATE_WITHDRAWN\x10\x02*\x87\x01\n" +
+	"\rRuleLifecycle\x12\x1e\n" +
+	"\x1aRULE_LIFECYCLE_UNSPECIFIED\x10\x00\x12\x19\n" +
+	"\x15RULE_LIFECYCLE_ACTIVE\x10\x01\x12\x1c\n" +
+	"\x18RULE_LIFECYCLE_WITHDRAWN\x10\x02\x12\x1d\n" +
+	"\x19RULE_LIFECYCLE_UNRESOLVED\x10\x03*\x88\x01\n" +
+	"\x14SelectorPruneOutcome\x12&\n" +
+	"\"SELECTOR_PRUNE_OUTCOME_UNSPECIFIED\x10\x00\x12$\n" +
+	" SELECTOR_PRUNE_OUTCOME_SHORTENED\x10\x01\x12\"\n" +
+	"\x1eSELECTOR_PRUNE_OUTCOME_DROPPED\x10\x02*\x8f\x01\n" +
+	"\x13WithdrawnGrantCause\x12%\n" +
+	"!WITHDRAWN_GRANT_CAUSE_UNSPECIFIED\x10\x00\x12)\n" +
+	"%WITHDRAWN_GRANT_CAUSE_CATALOG_RETIRED\x10\x01\x12&\n" +
+	"\"WITHDRAWN_GRANT_CAUSE_ROLE_RETIRED\x10\x02*\x8b\x01\n" +
+	"\x14WithdrawnGrantSource\x12&\n" +
+	"\"WITHDRAWN_GRANT_SOURCE_UNSPECIFIED\x10\x00\x12 \n" +
+	"\x1cWITHDRAWN_GRANT_SOURCE_GRANT\x10\x01\x12)\n" +
+	"%WITHDRAWN_GRANT_SOURCE_RULE_REFERENCE\x10\x02*s\n" +
+	"\n" +
+	"RoleHealth\x12\x1b\n" +
+	"\x17ROLE_HEALTH_UNSPECIFIED\x10\x00\x12\x17\n" +
+	"\x13ROLE_HEALTH_HEALTHY\x10\x01\x12\x18\n" +
+	"\x14ROLE_HEALTH_DEGRADED\x10\x02\x12\x15\n" +
+	"\x11ROLE_HEALTH_EMPTY\x10\x03B@Z>github.com/PRO-Robotech/kacho/pkg/api/kacho/cloud/iam/v1;iamv1b\x06proto3"
 
 var (
 	file_kacho_cloud_iam_v1_role_proto_rawDescOnce sync.Once
@@ -676,32 +1802,56 @@ func file_kacho_cloud_iam_v1_role_proto_rawDescGZIP() []byte {
 	return file_kacho_cloud_iam_v1_role_proto_rawDescData
 }
 
-var file_kacho_cloud_iam_v1_role_proto_msgTypes = make([]protoimpl.MessageInfo, 9)
+var file_kacho_cloud_iam_v1_role_proto_enumTypes = make([]protoimpl.EnumInfo, 6)
+var file_kacho_cloud_iam_v1_role_proto_msgTypes = make([]protoimpl.MessageInfo, 13)
 var file_kacho_cloud_iam_v1_role_proto_goTypes = []any{
-	(*Role)(nil),                  // 0: kacho.cloud.iam.v1.Role
-	(*DefinitionTier)(nil),        // 1: kacho.cloud.iam.v1.DefinitionTier
-	(*Rule)(nil),                  // 2: kacho.cloud.iam.v1.Rule
-	(*CreateRoleMetadata)(nil),    // 3: kacho.cloud.iam.v1.CreateRoleMetadata
-	(*UpdateRoleMetadata)(nil),    // 4: kacho.cloud.iam.v1.UpdateRoleMetadata
-	(*DeleteRoleMetadata)(nil),    // 5: kacho.cloud.iam.v1.DeleteRoleMetadata
-	nil,                           // 6: kacho.cloud.iam.v1.Role.LabelsEntry
-	nil,                           // 7: kacho.cloud.iam.v1.Role.VerbNotesEntry
-	nil,                           // 8: kacho.cloud.iam.v1.Rule.MatchLabelsEntry
-	(*timestamppb.Timestamp)(nil), // 9: google.protobuf.Timestamp
+	(RoleLifecycleState)(0),       // 0: kacho.cloud.iam.v1.RoleLifecycleState
+	(RuleLifecycle)(0),            // 1: kacho.cloud.iam.v1.RuleLifecycle
+	(SelectorPruneOutcome)(0),     // 2: kacho.cloud.iam.v1.SelectorPruneOutcome
+	(WithdrawnGrantCause)(0),      // 3: kacho.cloud.iam.v1.WithdrawnGrantCause
+	(WithdrawnGrantSource)(0),     // 4: kacho.cloud.iam.v1.WithdrawnGrantSource
+	(RoleHealth)(0),               // 5: kacho.cloud.iam.v1.RoleHealth
+	(*Role)(nil),                  // 6: kacho.cloud.iam.v1.Role
+	(*RoleLifecycle)(nil),         // 7: kacho.cloud.iam.v1.RoleLifecycle
+	(*RuleState)(nil),             // 8: kacho.cloud.iam.v1.RuleState
+	(*PrunedSelectorType)(nil),    // 9: kacho.cloud.iam.v1.PrunedSelectorType
+	(*WithdrawnGrant)(nil),        // 10: kacho.cloud.iam.v1.WithdrawnGrant
+	(*DefinitionTier)(nil),        // 11: kacho.cloud.iam.v1.DefinitionTier
+	(*Rule)(nil),                  // 12: kacho.cloud.iam.v1.Rule
+	(*CreateRoleMetadata)(nil),    // 13: kacho.cloud.iam.v1.CreateRoleMetadata
+	(*UpdateRoleMetadata)(nil),    // 14: kacho.cloud.iam.v1.UpdateRoleMetadata
+	(*DeleteRoleMetadata)(nil),    // 15: kacho.cloud.iam.v1.DeleteRoleMetadata
+	nil,                           // 16: kacho.cloud.iam.v1.Role.LabelsEntry
+	nil,                           // 17: kacho.cloud.iam.v1.Role.VerbNotesEntry
+	nil,                           // 18: kacho.cloud.iam.v1.Rule.MatchLabelsEntry
+	(*timestamppb.Timestamp)(nil), // 19: google.protobuf.Timestamp
 }
 var file_kacho_cloud_iam_v1_role_proto_depIdxs = []int32{
-	9, // 0: kacho.cloud.iam.v1.Role.created_at:type_name -> google.protobuf.Timestamp
-	2, // 1: kacho.cloud.iam.v1.Role.rules:type_name -> kacho.cloud.iam.v1.Rule
-	9, // 2: kacho.cloud.iam.v1.Role.updated_at:type_name -> google.protobuf.Timestamp
-	6, // 3: kacho.cloud.iam.v1.Role.labels:type_name -> kacho.cloud.iam.v1.Role.LabelsEntry
-	1, // 4: kacho.cloud.iam.v1.Role.definition_tier:type_name -> kacho.cloud.iam.v1.DefinitionTier
-	7, // 5: kacho.cloud.iam.v1.Role.verb_notes:type_name -> kacho.cloud.iam.v1.Role.VerbNotesEntry
-	8, // 6: kacho.cloud.iam.v1.Rule.match_labels:type_name -> kacho.cloud.iam.v1.Rule.MatchLabelsEntry
-	7, // [7:7] is the sub-list for method output_type
-	7, // [7:7] is the sub-list for method input_type
-	7, // [7:7] is the sub-list for extension type_name
-	7, // [7:7] is the sub-list for extension extendee
-	0, // [0:7] is the sub-list for field type_name
+	19, // 0: kacho.cloud.iam.v1.Role.created_at:type_name -> google.protobuf.Timestamp
+	12, // 1: kacho.cloud.iam.v1.Role.rules:type_name -> kacho.cloud.iam.v1.Rule
+	19, // 2: kacho.cloud.iam.v1.Role.updated_at:type_name -> google.protobuf.Timestamp
+	16, // 3: kacho.cloud.iam.v1.Role.labels:type_name -> kacho.cloud.iam.v1.Role.LabelsEntry
+	11, // 4: kacho.cloud.iam.v1.Role.definition_tier:type_name -> kacho.cloud.iam.v1.DefinitionTier
+	17, // 5: kacho.cloud.iam.v1.Role.verb_notes:type_name -> kacho.cloud.iam.v1.Role.VerbNotesEntry
+	5,  // 6: kacho.cloud.iam.v1.Role.health:type_name -> kacho.cloud.iam.v1.RoleHealth
+	10, // 7: kacho.cloud.iam.v1.Role.withdrawn_grants:type_name -> kacho.cloud.iam.v1.WithdrawnGrant
+	9,  // 8: kacho.cloud.iam.v1.Role.pruned_selector_types:type_name -> kacho.cloud.iam.v1.PrunedSelectorType
+	8,  // 9: kacho.cloud.iam.v1.Role.rule_states:type_name -> kacho.cloud.iam.v1.RuleState
+	7,  // 10: kacho.cloud.iam.v1.Role.lifecycle:type_name -> kacho.cloud.iam.v1.RoleLifecycle
+	0,  // 11: kacho.cloud.iam.v1.RoleLifecycle.state:type_name -> kacho.cloud.iam.v1.RoleLifecycleState
+	19, // 12: kacho.cloud.iam.v1.RoleLifecycle.retired_at:type_name -> google.protobuf.Timestamp
+	1,  // 13: kacho.cloud.iam.v1.RuleState.state:type_name -> kacho.cloud.iam.v1.RuleLifecycle
+	2,  // 14: kacho.cloud.iam.v1.PrunedSelectorType.outcome:type_name -> kacho.cloud.iam.v1.SelectorPruneOutcome
+	19, // 15: kacho.cloud.iam.v1.PrunedSelectorType.pruned_at:type_name -> google.protobuf.Timestamp
+	4,  // 16: kacho.cloud.iam.v1.WithdrawnGrant.source:type_name -> kacho.cloud.iam.v1.WithdrawnGrantSource
+	19, // 17: kacho.cloud.iam.v1.WithdrawnGrant.withdrawn_at:type_name -> google.protobuf.Timestamp
+	3,  // 18: kacho.cloud.iam.v1.WithdrawnGrant.cause:type_name -> kacho.cloud.iam.v1.WithdrawnGrantCause
+	18, // 19: kacho.cloud.iam.v1.Rule.match_labels:type_name -> kacho.cloud.iam.v1.Rule.MatchLabelsEntry
+	20, // [20:20] is the sub-list for method output_type
+	20, // [20:20] is the sub-list for method input_type
+	20, // [20:20] is the sub-list for extension type_name
+	20, // [20:20] is the sub-list for extension extendee
+	0,  // [0:20] is the sub-list for field type_name
 }
 
 func init() { file_kacho_cloud_iam_v1_role_proto_init() }
@@ -714,13 +1864,14 @@ func file_kacho_cloud_iam_v1_role_proto_init() {
 		File: protoimpl.DescBuilder{
 			GoPackagePath: reflect.TypeOf(x{}).PkgPath(),
 			RawDescriptor: unsafe.Slice(unsafe.StringData(file_kacho_cloud_iam_v1_role_proto_rawDesc), len(file_kacho_cloud_iam_v1_role_proto_rawDesc)),
-			NumEnums:      0,
-			NumMessages:   9,
+			NumEnums:      6,
+			NumMessages:   13,
 			NumExtensions: 0,
 			NumServices:   0,
 		},
 		GoTypes:           file_kacho_cloud_iam_v1_role_proto_goTypes,
 		DependencyIndexes: file_kacho_cloud_iam_v1_role_proto_depIdxs,
+		EnumInfos:         file_kacho_cloud_iam_v1_role_proto_enumTypes,
 		MessageInfos:      file_kacho_cloud_iam_v1_role_proto_msgTypes,
 	}.Build()
 	File_kacho_cloud_iam_v1_role_proto = out.File

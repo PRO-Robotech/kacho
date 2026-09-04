@@ -58,6 +58,10 @@ resources:
       - list
       - update
       - delete
+      - {name: internalAttach, class: update, internal: true}
+      - {name: internalDetach, class: update, internal: true}
+      - {name: internalGetInternal, class: get, internal: true}
+      - {name: internalListAttachments, class: list, internal: true}
 
   - name: snapshots
     objectType: storage_snapshot
@@ -78,3 +82,37 @@ resources:
       - list
       - update
       - delete
+      - {name: internalGetInternal, class: get, internal: true}
+      - {name: internalRegister, class: create, internal: true}
+
+# --------------------------------------------------------------------------
+#  seed — что заводит УСТАНОВКА модуля (#1891).
+#
+#  Здесь объявлено то, что у модуля уже лежит в базе, и согласие с ней
+#  доказывается ПРОГОНОМ, а не чтением миграций:
+#      go test ./services/iam/internal/moduleseedparity/
+#
+#  ЧЕГО ЗДЕСЬ НЕТ, и это не недосмотр: `groups` и `accessBindings`. Живых строк
+#  этих двух видов у модуля НЕТ ни одной, и это утверждение ПРОВЕРЯЕТСЯ: гейт
+#  паритета судит все четыре подраздела и печатает по каждому «с владельцем 0».
+#
+#  `module-quota-readers` и `module-relation-writers` заводит платформа, а модуль
+#  в них лишь ВСТУПАЕТ — об этом говорит подраздел `joins` ниже. Почему выдача
+#  ОТНОШЕНИЕМ необъявима вовсе, — #1936.
+seed:
+  serviceAccounts:
+    # Личность самого модуля: под ней он ходит к соседям. Назначение взято
+    # ДОСЛОВНО у живой строки — применитель кладёт объявленное поверх неё, и
+    # расхождение здесь было бы переписыванием того, что уже действует.
+    - name: kacho-storage
+      account: kacho-system
+      description: "Module SA: kacho-storage (SEC-C least-priv)"
+  joins:
+    # Вступления в ЧУЖИЕ группы: членство заявляет вступающий, а не
+    # перечисляет владелец группы — владелец своих потребителей не знает.
+    - serviceAccount: {account: kacho-system, name: kacho-storage}
+      group: {account: kacho-system, name: module-quota-readers}
+      why: "читать действующие пределы своего домена перед списанием (#291)"
+    - serviceAccount: {account: kacho-system, name: kacho-storage}
+      group: {account: kacho-system, name: module-relation-writers}
+      why: "писать кортежи владения через iam, не ходя в хранилище прав напрямую (#914)"

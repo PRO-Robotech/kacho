@@ -49,6 +49,7 @@ import dedent from 'ts-dedent'
     <tr><td><code>description</code></td><td><code>{TYPES.string}</code></td><td>{DICTIONARY.description.short}</td></tr>
     <tr><td><code>labels</code></td><td><code>{TYPES.mapStringString}</code></td><td>{DICTIONARY.labels.short}</td></tr>
     <tr><td><code>regionId</code></td><td><code>{TYPES.string}</code></td><td>{DICTIONARY.regionId.short}</td></tr>
+    <tr><td><code>placementType</code></td><td><code>PlacementType</code></td><td>Вид якоря размещения, output-only. У образа хранилища он <b>всегда</b> <code>REGIONAL</code>: образ регионален (anycast), поля зоны у него нет вовсе. Поле стоит в ответе ради единообразия с прочими размещаемыми ресурсами платформы, а не потому, что у образа бывает второе значение</td></tr>
     <tr><td><code>sourceSnapshotId</code></td><td><code>{TYPES.string}</code></td><td>{DICTIONARY.sourceSnapshotId.short}</td></tr>
     <tr><td><code>sourceVolumeId</code></td><td><code>{TYPES.string}</code></td><td>{DICTIONARY.sourceVolumeId.short}</td></tr>
     <tr><td><code>sourceImageId</code></td><td><code>{TYPES.string}</code></td><td>Образ, с которого этот <b>скопирован</b> (заполняет <code>:copy</code>, на вход не принимается); immutable. Третий вид происхождения рядом со снимком и томом — взаимоисключающий с ними</td></tr>

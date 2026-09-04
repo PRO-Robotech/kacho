@@ -18,7 +18,6 @@
 package servicehost
 
 import (
-	"context"
 	"strings"
 	"testing"
 	"time"
@@ -413,9 +412,12 @@ func TestO5_FormForATypeTheCatalogNeverHidesIsRefused(t *testing.T) {
 
 // probedSpec — дескриптор сервиса, ПРИНЁСШЕГО порт существования. Пока порта
 // нет, спрашивать некого и отказ молчит по построению.
-func probedSpec() servicecontract.Spec {
+// covering — типы, которые объявляет охватом подделка пробы. Пусто у неё быть
+// не может: пустой охват — отдельная находка О5в, и подставлять его молча
+// значило бы красить соседние оси чужой причиной.
+func probedSpec(covering ...string) servicecontract.Spec {
 	s := naAxes()
-	s.Existence = probeFunc(func(context.Context, string, string) (bool, error) { return true, nil })
+	s.Existence = typedProbe{types: covering}
 	return s
 }
 
@@ -461,7 +463,7 @@ func TestO5b_ProbedTypeWithoutAnOwnerVoiceRefusesStart(t *testing.T) {
 	if _, ok := authz.OwnerNotFoundFormat(absent); ok {
 		t.Fatalf("тип %q завели в таблицу промахов владельцев — проба потеряла предмет", absent)
 	}
-	msg := refusesAudit(t, probedSpec(), probedServed(), probedCatalog(), mapScopedOn(absent),
+	msg := refusesAudit(t, probedSpec(absent), probedServed(), probedCatalog(), mapScopedOn(absent),
 		absent, "Existence")
 	t.Logf("О5б красный: %s", msg)
 }
@@ -473,7 +475,7 @@ func TestO5b_ProbedTypeWithoutAnOwnerVoiceRefusesStart(t *testing.T) {
 // говорить»), и закрыл бы перевод любому сервису со сверкой существования.
 func TestO5b_ProbedTypeWithAnOwnerVoiceIsAccepted(t *testing.T) {
 	ot, _ := ownerVoicedType(t)
-	c, err := audit(probedSpec(), probedServed(), probedCatalog(), mapScopedOn(string(ot)))
+	c, err := audit(probedSpec(string(ot)), probedServed(), probedCatalog(), mapScopedOn(string(ot)))
 	if err != nil {
 		t.Fatalf("тип с голосом владельца объявлен находкой: %v", err)
 	}
@@ -494,7 +496,7 @@ func TestO5b_SilentWhenNoProbeIsBrought(t *testing.T) {
 // TestO5b_ProbeWithNothingToAskAboutRefusesStart — ноль целей есть отказ: порт
 // принесён, а пообъектных типов из карты не вывелось ни одного.
 func TestO5b_ProbeWithNothingToAskAboutRefusesStart(t *testing.T) {
-	refusesAudit(t, probedSpec(), lawfulServed(), lawfulCatalog(), lawfulMap(), "Existence")
+	refusesAudit(t, probedSpec("vpc_network"), lawfulServed(), lawfulCatalog(), lawfulMap(), "Existence")
 }
 
 // ── О11: служимые серверные стримы против оси срока жизни подписки ──────────
@@ -647,4 +649,150 @@ func TestDomainIsDerivedNotDeclared(t *testing.T) {
 // — предмет конформанса, и это названо остаточным риском, а не закрыто).
 func stubNarrower() servicecontract.ListNarrower {
 	return listnarrow.New(nil, listnarrow.Config{})
+}
+
+// ── О5в: ОХВАТ пробы против того, о чём её спросят ──────────────────────────
+//
+// Предмет отдельный от О5б. Там судится, есть ли у пообъектного типа ГОЛОС
+// владельца; здесь — умеет ли проба вообще о нём ответить. Тип, прошедший О5б и
+// не прошедший О5в, доезжает до сверки, получает ошибку «неизвестный тип», и
+// вызывающий отрабатывает fail-closed: отказ в правах там, где соседний тип того
+// же сервиса отвечает промахом владельца (задача продукта #1931).
+//
+// Четыре ветви, каждая своим входом: охват покрывает всё (молчание) · охват уже
+// карты (находка по имени непокрытого) · охват шире карты (находка по имени
+// лишнего) · охват пуст (находка об охвате, без поимённого перечня поверх неё).
+
+// mapScopedOnTwo — карта прав с ДВУМЯ пообъектными методами, каждый на своём
+// типе. Нужна ровно затем, чтобы инъекция роняла ТОЛЬКО проверяемое: при одном
+// типе «охват уже карты» неотличим от «охват пуст», и обе половины О5в
+// краснели бы одним входом.
+//
+// Имена методов НАСТОЯЩИЕ: вывод пообъектных типов резолвит запрос через
+// глобальный реестр, поэтому синтетическое имя дало бы пустой набор.
+func mapScopedOnTwo(first, second string) authz.RPCMap {
+	return authz.RPCMap{
+		"/kacho.cloud.vpc.v1.NetworkService/Update": {
+			Relation: "v_update",
+			Extract: authz.StaticExtractor(first, func(req any) (string, error) {
+				id, _ := req.(string)
+				return id, nil
+			}),
+		},
+		"/kacho.cloud.vpc.v1.SubnetService/Update": {
+			Relation: "v_update",
+			Extract: authz.StaticExtractor(second, func(req any) (string, error) {
+				id, _ := req.(string)
+				return id, nil
+			}),
+		},
+	}
+}
+
+func twoScopedServed() servedSet {
+	return servedSet{methods: []servicecontract.MethodFQN{
+		"/kacho.cloud.vpc.v1.NetworkService/Update",
+		"/kacho.cloud.vpc.v1.SubnetService/Update",
+	}}
+}
+
+func twoScopedCatalog() catalogView {
+	return catalogView{rows: map[servicecontract.MethodFQN]catalogRow{
+		"/kacho.cloud.vpc.v1.NetworkService/Update": {
+			Method: "/kacho.cloud.vpc.v1.NetworkService/Update",
+			Domain: "kacho.cloud.vpc.v1",
+		},
+		"/kacho.cloud.vpc.v1.SubnetService/Update": {
+			Method: "/kacho.cloud.vpc.v1.SubnetService/Update",
+			Domain: "kacho.cloud.vpc.v1",
+		},
+	}}
+}
+
+// twoOwnerVoicedTypes — два ДЕЙСТВУЮЩИХ типа с голосом владельца. Оба обязаны
+// его иметь: иначе инъекция О5в роняла бы заодно О5б, и красное приходило бы от
+// соседа.
+func twoOwnerVoicedTypes(t *testing.T) (string, string) {
+	t.Helper()
+	const a, b = "vpc_network", "vpc_subnet"
+	for _, ot := range []string{a, b} {
+		if _, ok := authz.OwnerNotFoundFormat(ot); !ok {
+			t.Fatalf("тип %q выбыл из таблицы промахов владельцев — инъекция О5в уронила бы О5б, "+
+				"и красное пришло бы от соседней оси", ot)
+		}
+	}
+	return a, b
+}
+
+// TestO5v_ControlBothCoveredIsAccepted — КОНТРОЛЬ: всё цело, молчат обе половины
+// О5в. Без него отказ ниже ловил бы форму («порт принесён»), а не существо.
+func TestO5v_ControlBothCoveredIsAccepted(t *testing.T) {
+	a, b := twoOwnerVoicedTypes(t)
+	c, err := audit(probedSpec(a, b), twoScopedServed(), twoScopedCatalog(), mapScopedOnTwo(a, b))
+	if err != nil {
+		t.Fatalf("полный охват объявлен находкой: %v", err)
+	}
+	if c.probed != 2 || c.covered != 2 {
+		t.Fatalf("перепись не сошлась: спрашиваемых %d, охваченных %d — обе величины обязаны быть "+
+			"напечатаны, иначе «охват шире» и «охват уже» неразличимы", c.probed, c.covered)
+	}
+	t.Logf("О5в контроль: %s", c)
+}
+
+// TestO5v_TypeOutsideTheProbeCoverageRefusesStart — инъекция НОВОГО свойства:
+// охват уже карты. Красное обязано назвать непокрытый тип поимённо — иначе по
+// находке нечего чинить.
+func TestO5v_TypeOutsideTheProbeCoverageRefusesStart(t *testing.T) {
+	a, b := twoOwnerVoicedTypes(t)
+	msg := refusesAudit(t, probedSpec(a), twoScopedServed(), twoScopedCatalog(),
+		mapScopedOnTwo(a, b), b, "Existence")
+	if strings.Contains(msg, "Existence "+a) {
+		t.Fatalf("отказ обвинил покрытый тип %q — инъекция уронила не только проверяемое:\n%s", a, msg)
+	}
+}
+
+// TestO5v_CoverageWithNothingToCoverRefusesStart — ЗЕРКАЛЬНАЯ половина: запись
+// охвата, которой больше нечего покрывать. Без неё запись пережила бы снятие
+// своего типа молча.
+func TestO5v_CoverageWithNothingToCoverRefusesStart(t *testing.T) {
+	a, b := twoOwnerVoicedTypes(t)
+	const ghost = "vpc_totally_retired"
+	msg := refusesAudit(t, probedSpec(a, b, ghost), twoScopedServed(), twoScopedCatalog(),
+		mapScopedOnTwo(a, b), ghost, "Existence")
+	if strings.Contains(msg, "Existence "+a) || strings.Contains(msg, "Existence "+b) {
+		t.Fatalf("отказ обвинил живые типы — зеркальная половина уронила не только проверяемое:\n%s", msg)
+	}
+}
+
+// TestO5v_EmptyCoverageRefusesStart — пустой охват означает «ни о чём», а не
+// «обо всём»: тот же класс, что пустой круг доверенных отправителей.
+//
+// Поимённого перечня поверх него быть не должно — второе обвинение об одном
+// предмете посылало бы чинить каждый тип по отдельности там, где не объявлен
+// охват целиком.
+func TestO5v_EmptyCoverageRefusesStart(t *testing.T) {
+	a, b := twoOwnerVoicedTypes(t)
+	msg := refusesAudit(t, probedSpec(), twoScopedServed(), twoScopedCatalog(),
+		mapScopedOnTwo(a, b), "ОХВАТ не объявлен")
+	if strings.Contains(msg, "Existence "+a) || strings.Contains(msg, "Existence "+b) {
+		t.Fatalf("поверх отказа об охвате встал поимённый перечень — два обвинения об одном "+
+			"предмете:\n%s", msg)
+	}
+}
+
+// TestO5v_InjectingTheExistingAxisRedsOnlyIt — ТРЕТИЙ прогон пары: инъекция
+// СУЩЕСТВУЮЩЕГО свойства (тип без голоса владельца, О5б) при целом охвате.
+// Краснеет только прежняя ось; без этого прогона её молчание в двух проверках
+// выше неотличимо от её смерти.
+func TestO5v_InjectingTheExistingAxisRedsOnlyIt(t *testing.T) {
+	a, _ := twoOwnerVoicedTypes(t)
+	const voiceless = "vpc_totally_invented"
+	if _, ok := authz.OwnerNotFoundFormat(voiceless); ok {
+		t.Fatalf("тип %q завели в таблицу промахов владельцев — инъекция потеряла предмет", voiceless)
+	}
+	msg := refusesAudit(t, probedSpec(a, voiceless), twoScopedServed(), twoScopedCatalog(),
+		mapScopedOnTwo(a, voiceless), voiceless, "голоса владельца")
+	if strings.Contains(msg, "в охват\nпробы он не входит") || strings.Contains(msg, "охват\nпробы") {
+		t.Fatalf("красное пришло от новой оси, а не от прежней:\n%s", msg)
+	}
 }

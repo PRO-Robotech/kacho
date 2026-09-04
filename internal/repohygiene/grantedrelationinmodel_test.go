@@ -149,12 +149,29 @@ type relationGrant struct {
 }
 
 var (
-	// Блок кортежа. Форма записи в дереве — `jsonb_build_object('user', …,
-	// 'relation', …, 'object', …)`; блок ограничивается СЛЕДУЮЩИМ таким же
+	// Блок кортежа, ФОРМА ПЕРВАЯ — конструктор: `jsonb_build_object('user', …,
+	// 'relation', …, 'object', …)`. Блок ограничивается СЛЕДУЮЩИМ таким же
 	// вызовом, поэтому пары не перетекают между соседними кортежами одного INSERT.
 	tupleBlockRe = regexp.MustCompile(`jsonb_build_object`)
 	grantRelRe   = regexp.MustCompile(`'relation'\s*,\s*'([a-z_]+)'`)
 	grantObjRe   = regexp.MustCompile(`'object'\s*,\s*'([a-z_]+):`)
+
+	// Блок кортежа, ФОРМА ВТОРАЯ — готовый объект JSON: `{"user": …, "object":
+	// "iam_fgaproxy:system", "relation": "fga_writer"}`.
+	//
+	// Её производит сведённая первичная миграция: `pg_dump` печатает ЗНАЧЕНИЕ
+	// столбца, а не выражение, которым его когда-то собрали. Конструктора в
+	// таком файле нет ни одного, поэтому распознаватель, знающий только первую
+	// форму, не находит НИЧЕГО — и это молчание, а не находка: гейт остаётся на
+	// вид рабочим, ничего не осмотрев. Ловит это предпосылка `NotEmpty(grants)`;
+	// она и покраснела на первом же сведённом сервисе.
+	//
+	// Форма ограничивается фигурными скобками одного объекта — по той же
+	// причине, по какой первая ограничивается следующим конструктором: иначе
+	// пары перетекают между соседними кортежами одной вставки.
+	tupleJSONRe    = regexp.MustCompile(`\{[^{}]*"relation"[^{}]*\}`)
+	grantRelJSONRe = regexp.MustCompile(`"relation"\s*:\s*"([a-z_]+)"`)
+	grantObjJSONRe = regexp.MustCompile(`"object"\s*:\s*"([a-z_]+):`)
 )
 
 // grantsFromMigrations — пары «тип объекта + отношение» из миграций, пишущих в
@@ -193,6 +210,22 @@ func grantsFromMigrations(t testing.TB, files []string) (grants []relationGrant,
 				// Тип объекта собран выражением, а не литералом — деревом он не
 				// разрешается. Такой блок пропускается ОСОЗНАННО и виден в переписи
 				// как разница между блоками и парами.
+				continue
+			}
+			grants = append(grants, relationGrant{objectType: om[1], relation: rm[1], where: rel})
+		}
+
+		// Вторая форма — готовый объект JSON. Обходится ОТДЕЛЬНО, а не общим
+		// образцом: у форм разные разделители блока, и один образец на обе дал бы
+		// блок, перетекающий за границу кортежа.
+		for _, chunk := range tupleJSONRe.FindAllString(body, -1) {
+			rm := grantRelJSONRe.FindStringSubmatch(chunk)
+			if rm == nil {
+				continue
+			}
+			blocksSeen++
+			om := grantObjJSONRe.FindStringSubmatch(chunk)
+			if om == nil {
 				continue
 			}
 			grants = append(grants, relationGrant{objectType: om[1], relation: rm[1], where: rel})

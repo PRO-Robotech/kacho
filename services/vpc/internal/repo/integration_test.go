@@ -5,7 +5,6 @@ package repo_test
 
 import (
 	"context"
-	"strings"
 	"testing"
 
 	"github.com/stretchr/testify/assert"
@@ -43,16 +42,12 @@ func setupTestDB(t testing.TB) string {
 	return appendSearchPathOptions(newSharedDatabase(t, true))
 }
 
+// appendSearchPathOptions — приведение схемы для пакета, который собирает DSN САМ:
+// свой контейнер и своя раскладка баз, поэтому `pgtest.Config` его не касается.
+// Реализация — общая (`pgtest.WithSearchPath`): своя копия здесь уже была и
+// разошлась бы с остальными молча.
 func appendSearchPathOptions(dsn string) string {
-	const optionsParam = "options=-c%20search_path%3Dkacho_vpc%2Cpublic"
-	if strings.Contains(dsn, "options=") || strings.Contains(dsn, "options%3D") {
-		return dsn
-	}
-	sep := "?"
-	if strings.Contains(dsn, "?") {
-		sep = "&"
-	}
-	return dsn + sep + optionsParam
+	return pgtest.WithSearchPath(dsn, "kacho_vpc,public")
 }
 
 func legacyWithTx(t *testing.T, ctx context.Context, r kacho.Repository, fn func(kacho.RepositoryWriter) error) error {

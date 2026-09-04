@@ -73,43 +73,17 @@ type verbLiteral struct {
 // держится обнаружением (TestVerbVocabularyRosterCoversEveryLiteral), а не
 // добросовестностью того, кто сюда дописывает.
 var verbLiteralRoster = []verbLiteral{
-	{
-		path: "services/iam/internal/authzmap/fga_types.go", varName: "objectVerbRelations",
-		claims: "набор операций НАД УЖЕ СУЩЕСТВУЮЩИМ объектом, который совпадающе объявляют 22 типа; " +
-			"НЕ «все глаголы платформы». `create` в него не входит намеренно: создание авторизуется " +
-			"ярусом записи на РОДИТЕЛЕ, а не пообъектным глаголом",
-		checkedBy:  "authzmap: TestDrift_TypeVerbSetsMatchModelExactly — потиповое равенство набора и модели",
-		retireWhen: "объявление удалено (типы перечисляют наборы поштучно)",
-	},
-	{
-		path: "services/iam/internal/authzmap/fga_types.go", varName: "registryNamespaceVerbRelations",
-		claims: "набор ОДНОГО типа — registry_registry: операции над объектом плюс `v_create` " +
-			"(контейнерная семантика «создать репозиторий в этом пространстве имён»); полноты " +
-			"платформы НЕ утверждает — это единственный носитель `v_create` в модели",
-		checkedBy: "authzmap: TestDrift_TypeVerbSetsMatchModelExactly (потиповое равенство) + " +
-			"TestVerbRelation_CreateIsDeclaredOnlyWhereEnforced (у носителя есть читатель)",
-		retireWhen: "объявление удалено (тип вернулся к общему набору либо перечисляет его иначе)",
-	},
-	{
-		path: "services/iam/internal/authzmap/fga_types.go", varName: "identityVerbRelations",
-		claims: "набор ОДНОГО типа — iam_user: ТОЛЬКО ЧТЕНИЕ. Полноты платформы НЕ утверждает; " +
-			"это единственное в дереве СУЖЕНИЕ набора, и оно двойное — снят `v_update` (#1128) и " +
-			"снят `v_delete` (#1189). Распоряжение строкой личности выражено именованными " +
-			"отношениями: правку спрашивает `record_writer`, запрет — `identity_suspender` (#1102), " +
-			"снятие строки — `identity_remover` (#1131), и читателя не осталось ни у одного из " +
-			"двух глаголов",
-		checkedBy: "authzmap: TestDrift_TypeVerbSetsMatchModelExactly (потиповое равенство набора и " +
-			"модели) + TestVerbRelation_DeclaredOnlyWhereRead (у объявленного есть читатель)",
-		retireWhen: "объявление удалено (тип вернулся к общему набору либо перечисляет его иначе)",
-	},
-	{
-		path: "services/iam/internal/authzmap/fga_types.go", varName: "targetGroupVerbRelations",
-		claims: "набор ОДНОГО типа — nlb_target_group: операции над объектом плюс два отношения " +
-			"управления составом группы (NLB-TGT-1); полноты платформы НЕ утверждает — это первый " +
-			"в дереве набор, отличающийся от общего",
-		checkedBy:  "authzmap: TestDrift_TypeVerbSetsMatchModelExactly — потиповое равенство набора и модели",
-		retireWhen: "объявление удалено (тип вернулся к общему набору либо перечисляет его иначе)",
-	},
+	// ЗДЕСЬ СТОЯЛИ ЧЕТЫРЕ ЗАПИСИ — наборы `v_*` пакета authzmap. Их предмет снят
+	// вместе с литералами: обе таблицы типов ПОРОЖДАЮТСЯ из манифестов модулей
+	// (#1092, `services/iam/internal/authzmapgen`), и наборы перечислены в
+	// порождённом `tables_gen.go` поштучно у каждого типа — то есть ровно то
+	// условие снятия, которое эти записи и называли.
+	//
+	// Записи сняты, а не поправлены: реестр стережёт РУКОПИСНЫЙ литерал, который
+	// кто-то может разойтись с моделью. У порождённого литерала автора нет —
+	// свежесть его сверяет побайтово гейт производителя
+	// (authzmapgen: TestGeneratedTablesAreFresh), а согласие наборов с моделью
+	// по-прежнему требует гейт дрейфа (TestDrift_TypeVerbSetsMatchModelExactly).
 	{
 		path:    "services/iam/internal/apps/kacho/api/permission_catalog/resource_verbs_test.go",
 		varName: "previouslyOfferedToEveryResource",
@@ -176,6 +150,22 @@ var verbLiteralRoster = []verbLiteral{
 		claims:     "то же во внешнем тестовом пакете домена",
 		checkedBy:  "тот же файл: вывод яруса на якоре",
 		retireWhen: "объявление удалено",
+	},
+	{
+		path:    "services/iam/internal/repo/kacho/pg/applied_type_reaches_the_verdict_integration_test.go",
+		varName: "verdictProbeVerbs",
+		claims: "набор действий СИНТЕТИЧЕСКОГО ресурса, объявляемого манифестом в пробе " +
+			"последней мили DoD-1 (#1968); ни полноты словаря платформы, ни набора живого типа " +
+			"НЕ утверждает. Величина здесь — вход манифеста, и совпадает она с набором " +
+			"поставляемого соседа НАМЕРЕННО: две пробы файла обязаны отличаться ровно тем, что " +
+			"проверяется (знает ли тип сборка), а не ещё и составом действий",
+		checkedBy: "тот же файл: " +
+			"TestDoD1_TypeUnknownToTheBuildReachesTheVerdictThroughTheComposedModel — " +
+			"проекция роли по заведённому типу обязана нести РОВНО столько пар, сколько " +
+			"объявлено здесь (require.Lenf), то есть литерал сверяется с тем, что произвёл " +
+			"настоящий применитель, а не сам с собой",
+		retireWhen: "объявление удалено (проба снята либо берёт набор действий у манифеста, " +
+			"а не объявляет его)",
 	},
 	{
 		path: "services/iam/internal/repo/kacho/pg/relverdict/xc12f5_labelcost_test.go", varName: "f5Verbs",

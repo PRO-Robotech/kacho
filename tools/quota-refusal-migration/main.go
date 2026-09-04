@@ -36,8 +36,18 @@ func run() error {
 		return fmt.Errorf("перечень владельцев пуст — генерировать нечего")
 	}
 
-	written, unchanged := 0, 0
+	written, unchanged, consolidated := 0, 0, 0
 	for _, o := range owners {
+		// Владельцу со сведённой цепью файл НЕ рендерится, и это не пропуск.
+		// Отказ стоит в его первичной миграции; рендер завёл бы отдельный файл с
+		// версией НИЖЕ уже применённой первичной — то есть версию, которую
+		// мигратор не применит вовсе, а гейт номеров назовёт находкой. Тело
+		// функции у такого владельца сверяется наравне с остальными, просто по
+		// другому референту (`quota.RefusalFunctionBodies`).
+		if !o.RendersOwnFile() {
+			consolidated++
+			continue
+		}
 		body, err := quota.RenderRefusalMigration(o)
 		if err != nil {
 			return err
@@ -61,7 +71,9 @@ func run() error {
 		written++
 	}
 
-	fmt.Printf("владельцев %d; записано %d; без изменений %d\n",
-		len(owners), written, unchanged)
+	// Перепись называет и тех, кому не рендерится: «ноль записанных» обязано быть
+	// отличимо от «ноль рассмотренных», а «пропущен» — от «нечего было писать».
+	fmt.Printf("владельцев %d; записано %d; без изменений %d; со сведённой цепью (файл не рендерится) %d\n",
+		len(owners), written, unchanged, consolidated)
 	return nil
 }

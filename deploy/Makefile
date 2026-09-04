@@ -163,6 +163,27 @@ include ../provenance.mk
 # Файл генерируется build-services и НЕ хранится в git (значения машинно-локальны).
 IMAGE_IDS_VALUES := helm/umbrella/values.image-ids.yaml
 
+# MODULE_MANIFESTS_VALUES — отпечаток СОДЕРЖИМОГО доставки манифестов (kacho#1981).
+#
+# Зачем. Манифесты приезжают в под именованным ConfigMap и читаются процессом ОДИН
+# РАЗ, на старте. Правка карты меняет файлы в томе и НЕ меняет шаблон пода: под не
+# перекатывается, и объявленное оператором состояние наступает не в момент правки,
+# а при постороннем перезапуске. Ровно тот же разрыв, что у неизменного тега
+# образа выше, и лечится он так же — привязкой к содержимому.
+#
+# Почему НЕ аннотацией целостности формы, как у трёх соседних карт iam. Те
+# считаются по ШАБЛОНУ чарта; у этой карты шаблона нет by construction — объект
+# порождается ВНЕ чарта (цель `module-manifests-configmap` ниже) и применяется до
+# helm, потому что его содержимое есть данные, а не релиз службы.
+#
+# Файл ОБЪЯВЛЯЕТСЯ ОДИН РАЗ и здесь: вторая копия имени разошлась бы с первой
+# молча, и путь выкатки отдал бы helm файл, которого никто не пишет.
+#
+# Пишется целью `module-manifests-configmap` на ОБОИХ её законных исходах и НЕ
+# хранится в git: значение — отпечаток дерева на момент выкатки, а не состояние
+# дерева.
+MODULE_MANIFESTS_VALUES := helm/umbrella/values.module-manifests.yaml
+
 build-services:
 	@echo "=== provenance: $(GIT_REF) @ $(GIT_COMMIT)$(GIT_DIRTY) ==="
 	@for svc in $(IMAGES); do \
@@ -307,6 +328,60 @@ guard-kind-context:
 	  echo "       kind-$(CLUSTER_NAME) на самом деле → $$want"; \
 	  echo "       Имя контекста выбирает автор kubeconfig; совпадение имён ничего не доказывает."; \
 	  echo "       Восстанови:  kind export kubeconfig --name $(CLUSTER_NAME)"; \
+	  exit 1; \
+	fi
+
+# guard-declared-context — НЕИНТЕРАКТИВНЫЙ страж цели: писать можно ТОЛЬКО в тот
+# кластер, который вызывающий НАЗВАЛ.
+#
+# ТРЕТИЙ СТРАЖ ЗАВЕДЁН ПОТОМУ, ЧТО ДВУХ ПРЕЖНИХ НЕ ХВАТАЕТ BY CONSTRUCTION, и это
+# измерено, а не предположено. Цель `module-manifests-configmap` применяет объект
+# в кластер активного контекста, и ни один из двух прежних стражей на ней не
+# держится:
+#
+#   • `guard-kind-context` ОТВЕРГАЕТ всякий контекст, кроме нашего локального, —
+#     значит цель, несущая его, неисполнима на боевых путях выкатки (`stack-up`,
+#     `helm/umbrella/cutover-fe3455.sh`). Ровно за это он с неё и был снят
+#     (kacho#1901), и свойство это держит гейт
+#     `TestManifestProducerIsCallableFromEveryBringUpPath`;
+#   • `guard-destructive` требует ТЕРМИНАЛА («подтверждение ввести некому») —
+#     а `make dev-up` идёт в конвейере без stdin-терминала. Он сломал бы каждый
+#     прогон e2e-newman, консоли и посадки.
+#
+# Снятие первого оставило цель БЕЗ гейта вовсе, и это нашёл гейт каталога
+# `deploy/tests/helm/makefile-destructive-guarded-test.sh`: цель пишет в кластер,
+# гейта цели не несёт. Оба вердикта верны, и оба сохранены — вместо того чтобы
+# выбирать между ними, словарь стражей вырос на третий член.
+#
+# ЧТО ОН ПРОВЕРЯЕТ: контекст РАЗРЕШЁН живым kubectl и СОВПАДАЕТ с объявленным.
+# Незаданное объявление — отказ, а не «наверное, тот самый»: у цели, пишущей в
+# кластер активного контекста, умолчания быть не может (тот же довод, по которому
+# `stack-up` требует `STACK`, а `guard-destructive` отказывает на неразрешённой цели).
+#
+# ГРАНИЦА НАЗВАНА ЧЕСТНО, ЧТОБЫ ЕЁ НЕ ПРИНЯЛИ ЗА ВТОРУЮ ПРОВЕРКУ. Его предмет —
+# ПРЯМОЙ вызов цели человеком, у которого подтверждения нет вовсе: там объявление
+# и есть единственный гейт. Там, где вызывающий уже подтвердил цель СВОИМ стражем
+# (`dev-up` → `guard-kind-context`, `stack-up` → `guard-destructive`, cutover →
+# сверка адреса apiserver'а), объявление ПОВТОРЯЕТ подтверждённое. Исключение —
+# `dev-up`: он объявляет имя литералом, и там это полноценная проверка.
+guard-declared-context:
+	@ctx="$$(kubectl config current-context 2>/dev/null)"; \
+	if [ -z "$$ctx" ]; then \
+	  echo "ABORT: активную цель разрешить не удалось (kubectl не отдал контекст)."; \
+	  echo "       Неназванная цель — это отказ, а не «наверное, локально»."; \
+	  exit 1; \
+	fi; \
+	if [ -z "$(EXPECT_CONTEXT)" ]; then \
+	  echo "ABORT: EXPECT_CONTEXT не задан, а цель пишет в кластер активного контекста '$$ctx'."; \
+	  echo "       Умолчания здесь быть не может. Зови через путь выкатки, который несёт"; \
+	  echo "       своего стража (dev-up / stack-up / helm/umbrella/cutover-fe3455.sh),"; \
+	  echo "       либо назови кластер явно:  make <цель> EXPECT_CONTEXT=$$ctx"; \
+	  exit 1; \
+	fi; \
+	if [ "$(EXPECT_CONTEXT)" != "$$ctx" ]; then \
+	  echo "ABORT: объявлен контекст '$(EXPECT_CONTEXT)', активен '$$ctx'."; \
+	  echo "       Цель применяет объекты в кластер АКТИВНОГО контекста — они уехали бы не туда."; \
+	  echo "       Переключись явно:  kubectl config use-context $(EXPECT_CONTEXT)"; \
 	  exit 1; \
 	fi
 
@@ -475,11 +550,13 @@ dev-up: preflight
 	echo "    читает смонтированный каталог на старте и ОТКАЗЫВАЕТСЯ подниматься на"; \
 	echo "    пустом: отсутствие манифеста снятием модуля не является. Значит объект"; \
 	echo "    обязан существовать ДО первого прогона helm, а не появиться после."; \
-	$(MAKE) --no-print-directory module-manifests-configmap MODULE_MANIFESTS_STACK=dev; \
+	$(MAKE) --no-print-directory module-manifests-configmap MODULE_MANIFESTS_STACK=dev \
+	  EXPECT_CONTEXT=kind-$(CLUSTER_NAME); \
 	echo "=== продукт: ОДИН helm-прогон, сразу в боевой посадке (mTLS включён) ==="; \
 	helm upgrade --install kacho-umbrella ./helm/umbrella -n kacho --create-namespace \
 	  $(call STACK_ARGS,dev) \
 	  -f ./$(IMAGE_IDS_VALUES) \
+	  -f ./$(MODULE_MANIFESTS_VALUES) \
 	  $(UMBRELLA_OPTS) $(DEV_UP_VALUES) \
 	  --wait --timeout 10m; \
 	echo "Waiting for ingress-nginx admission webhook..."; \
@@ -488,6 +565,7 @@ dev-up: preflight
 	helm upgrade kacho-umbrella ./helm/umbrella -n kacho \
 	  $(call STACK_ARGS,dev-prod) \
 	  -f ./$(IMAGE_IDS_VALUES) \
+	  -f ./$(MODULE_MANIFESTS_VALUES) \
 	  $(UMBRELLA_OPTS) $(DEV_UP_VALUES) \
 	  --wait --timeout 12m; \
 	kubectl -n kacho rollout status deploy/kacho-iam --timeout=180s || true; \
@@ -648,11 +726,14 @@ stack-up:
 	  exit 1; }; \
 	echo "=== стенд $(STACK): цепочка ПРОЧИТАНА из stacks.txt ==="; \
 	printf '  %s\n' $$args; \
+	ctx="$$(kubectl config current-context 2>/dev/null || true)"; \
 	$(MAKE) --no-print-directory module-manifests-configmap \
-	  MODULE_MANIFESTS_STACK=$(STACK) STACK_NAMESPACE=$(STACK_NAMESPACE); \
+	  MODULE_MANIFESTS_STACK=$(STACK) STACK_NAMESPACE=$(STACK_NAMESPACE) \
+	  EXPECT_CONTEXT="$$ctx"; \
 	set -x; \
 	helm upgrade --install $(STACK_RELEASE) ./helm/umbrella -n $(STACK_NAMESPACE) --create-namespace \
-	  $$args $(UMBRELLA_OPTS) $(STACK_EXTRA_ARGS) --wait --timeout $(STACK_TIMEOUT)
+	  $$args -f ./$(MODULE_MANIFESTS_VALUES) \
+	  $(UMBRELLA_OPTS) $(STACK_EXTRA_ARGS) --wait --timeout $(STACK_TIMEOUT)
 
 
 # assert-rollout-ready — КАЖДЫЙ workload в ns kacho обязан быть rollout-complete.
@@ -1283,8 +1364,43 @@ wipe-iam-db: guard-kind-context
 # беспредметный обход, и оба обязаны валить цель. Инструмент СОБИРАЕТСЯ в
 # двоичный файл, а не зовётся через `go run`: `go run` отдаёт свой код 1 на любом
 # ненулевом коде программы, то есть «не объявлено» стало бы неотличимо от находки.
-MODULE_MANIFESTS_STACK ?= dev
-module-manifests-configmap: guard-kind-context
+# СТРАЖ ПРИНАДЛЕЖИТ ВЫЗЫВАЮЩЕМУ, А НЕ ЭТОЙ ЦЕЛИ (kacho#1901).
+#
+# Здесь стояла предпосылка `guard-kind-context` — аварийный стоп, отвергающий
+# всякий контекст, кроме нашего kind-кластера. Она делала цель НЕИСПОЛНИМОЙ на
+# двух путях выкатки из трёх: `stack-up` по замыслу работает на настоящем
+# кластере (прод / prorobotech / a8f60d — рецепт прямо это объявляет и потому
+# гейтится `guard-destructive`), а `helm/umbrella/cutover-fe3455.sh` поднимает
+# боевую площадку. Оба зовут производителя ПЕРЕД helm — и оба получали отказ до
+# единой его команды.
+#
+# Цена измерена, а не предположена (подставной kubectl, настоящий рецепт):
+# контекст `fe3455-prod` → «ABORT: активный kube-контекст … НЕ kind-kacho», код 2;
+# контекст `kind-kacho` → «ConfigMap "kacho-module-manifests", ключей 6», код 0.
+# То есть на боевом пути доставка не заводилась НИКОГДА, а `values.prod.yaml`
+# объявляет `manifests.required: true` — служба на такой посадке не поднимается.
+#
+# Каждый путь выкатки уже пинит себя САМ, и стражем, подходящим ЕГО стенду:
+# `dev-up` зовёт `guard-kind-context` первой же строкой рецепта; `stack-up` —
+# `guard-destructive` (человек видит контекст, кластер, адрес apiserver'а и
+# подтверждает их); cutover-скрипт сверяет активный apiserver с адресом площадки.
+# Второй страж внутри этой цели ничего к ним не добавил бы, а один из них —
+# kind-only — отменял бы два остальных.
+#
+# ВЗАМЕН СНЯТОГО СТРАЖА: СТЕНД ОБЯЗАН БЫТЬ НАЗВАН. Умолчания `?= dev` здесь быть
+# не может — цель ПРИМЕНЯЕТ объект в кластер активного контекста, и «наверное,
+# dev» не есть выбор стенда: прямой вызов без аргумента положил бы объекты стенда
+# разработки в тот кластер, куда сейчас смотрит kubectl. Тот же довод, по которому
+# `stack-up` требует `STACK`. Все три пути выкатки называют стенд явно, поэтому
+# снятие умолчания не трогает ни одного из них.
+module-manifests-configmap: guard-declared-context
+	@[ -n "$(MODULE_MANIFESTS_STACK)" ] || { \
+	  echo "ABORT: MODULE_MANIFESTS_STACK не задан — производить нечего и некуда."; \
+	  echo "       Умолчания здесь быть не может: цель применяет объект в кластер"; \
+	  echo "       активного контекста, а «наверное, dev» — не выбор стенда."; \
+	  echo "       Объявленные стенды:"; \
+	  bash tests/helm/stacks.sh --names | sed 's/^/         /'; \
+	  exit 2; }
 	@set -e; \
 	chain="$$(bash tests/helm/stacks.sh --chain $(MODULE_MANIFESTS_STACK) ' ')"; \
 	[ -n "$$chain" ] || { echo "ABORT: цепочка стенда '$(MODULE_MANIFESTS_STACK)' прочиталась пустой"; exit 1; }; \
@@ -1294,10 +1410,33 @@ module-manifests-configmap: guard-kind-context
 	rc=0; "$$work/producer" -root .. $$profiles > "$$work/configmap.yaml" || rc=$$?; \
 	case "$$rc" in \
 	  0) kubectl -n $(STACK_NAMESPACE) apply -f "$$work/configmap.yaml"; \
+	     digest="$$(sha256sum "$$work/configmap.yaml" | cut -d' ' -f1)"; \
 	     echo "=== манифесты модулей доставлены стенду $(MODULE_MANIFESTS_STACK) ===" ;; \
-	  3) echo "=== стенд $(MODULE_MANIFESTS_STACK) доставку манифестов не объявляет — ConfigMap не заводится ===" ;; \
+	  3) digest="unset"; \
+	     echo "=== стенд $(MODULE_MANIFESTS_STACK) доставку манифестов не объявляет — ConfigMap не заводится ===" ;; \
 	  *) echo "ABORT: производитель манифестов вернул $$rc — см. перепись выше"; exit "$$rc" ;; \
-	esac
+	esac; \
+	printf '%s\n' \
+	  "# generated by 'make module-manifests-configmap' — не редактировать, не коммитить" \
+	  "global:" \
+	  "  kachoModuleManifests:" \
+	  "    digest: \"$$digest\"" > $(MODULE_MANIFESTS_VALUES); \
+	echo "=== отпечаток доставки: $(MODULE_MANIFESTS_VALUES) = $$digest ==="
+
+# ОТПЕЧАТОК ПИШЕТСЯ НА ОБОИХ ЗАКОННЫХ ИСХОДАХ И НИ НА ОДНОМ ОТКАЗЕ (kacho#1981).
+#
+# Величина есть отпечаток ПРИМЕНЁННОГО объекта, а не намерения его применить:
+# считается она по тому самому тексту, который ушёл в кластер строкой выше.
+# Правка любого `services/*/manifest.yaml` меняет её, шаблон пода её штампует —
+# и под перекатывается в момент правки, а не при постороннем перезапуске.
+#
+# «Доставка не объявлена» (код 3) — законный исход, и величина честно говорит
+# "unset": привязывать не к чему, тома в поде тоже нет. Тем же словом отвечает
+# привязка к содержимому образа, когда её карту не наложили.
+#
+# На ОТКАЗЕ (коды 1 и 2) файл не пишется вовсе: ветка выходит раньше. Записать
+# туда что-нибудь значило бы отдать helm отпечаток объекта, которого в кластере
+# нет, — а путь выкатки на отказе производителя не идёт дальше by construction.
 
 
 # Логи kacho-iam deployment.

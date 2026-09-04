@@ -57,11 +57,25 @@ const oracleProtoDir = "proto/kacho/cloud/iam/v1"
 // oracleFilterRoots — прод-код, где объявляются белые списки фильтра.
 var oracleFilterRoots = []string{"services/iam/internal"}
 
-// oracleMembershipIDSQL — предпосылка полосы C: идентификатор членства
-// ВЫЧИСЛЯЕТСЯ из пары, а не чеканится.
+// Предпосылка полосы C: идентификатор членства ВЫЧИСЛЯЕТСЯ из пары, а не
+// чеканится.
+//
+// # Ищется по КОРПУСУ, а не по имени файла
+//
+// Здесь стояла координата одной миграции, и она умерла 2026-09-04: свод (171
+// файл → один, написанный `pg_dump`) снял файл, в котором деривация была
+// заведена. Само выражение при этом ЖИВО и переехало в свод байт-в-байт — оно
+// стоит в теле функции, — то есть предпосылка была верна, а гейт объявлял её
+// ложной. Так выглядит утверждение, привязанное к координате вместо предмета:
+// оно переживает не факт, а раскладку файлов.
+//
+// Предмет предпосылки — «схема iam выводит идентификатор членства из пары», и
+// принадлежит он КОРПУСУ миграций сервиса, а не какому-то его файлу.
+// Применённую миграцию не правят (ban #5), поэтому деривация переезжает вместе
+// со сводами и будет переезжать впредь; координата на неё указывать не вправе.
 const (
-	oracleMembershipIDMigration = "services/iam/internal/migrations/470001_memberships_expand.sql"
-	oracleMembershipIDMark      = "substr(md5('membership:'"
+	oracleMembershipIDCorpus = "services/iam/internal/migrations"
+	oracleMembershipIDMark   = "substr(md5('membership:'"
 )
 
 // oracleAccountDictionary — по каким именам полей ответ считается «называющим
@@ -140,6 +154,10 @@ type OracleCensus struct {
 	Dictionary   []string
 	Whitelists   []OracleFilterWhitelist
 	IDComputable bool
+	// IDCorpusFiles — файлов корпуса миграций прочитано при проверке
+	// предпосылки полосы C. Ноль означает «читать было нечего», а не «признака
+	// нет», и путать эти два ответа нельзя.
+	IDCorpusFiles int
 
 	Findings []OracleFinding
 	// Allowed — объявленные послабления, СРАБОТАВШИЕ на этом дереве. Запись,
@@ -236,7 +254,7 @@ func SurveyMembershipOracle(tree *treecorpus.Tree) (OracleCensus, error) {
 		}
 	}
 
-	c.IDComputable = oracleIDIsComputable(tree)
+	c.IDComputable, c.IDCorpusFiles = oracleIDIsComputable(tree)
 
 	// Послабления разводятся с находками ПОСЛЕ обхода, а не вычитаются из него:
 	// вычет перед решением скрыл бы, что послабление сработало.
@@ -758,10 +776,31 @@ func oracleIsAllowed(fqn string) bool {
 
 // oracleIDIsComputable — ПРЕДПОСЫЛКА полосы C, и она проверяется, а не
 // предполагается.
-func oracleIDIsComputable(tree *treecorpus.Tree) bool {
-	body, err := os.ReadFile(filepath.Join(tree.Root(), filepath.FromSlash(oracleMembershipIDMigration)))
-	if err != nil {
-		return false
+//
+// Обходится ВЕСЬ корпус миграций сервиса: деривация переезжает между файлами при
+// каждом своде, и координата на неё указывать не вправе (см. комментарий у
+// [oracleMembershipIDCorpus]). Второе возвращаемое — сколько файлов прочитано:
+// «признака нет» обязано быть отличимо от «читать было нечего».
+//
+// Состав берётся у УЖЕ СОСТАВЛЕННОГО дерева, а не отдельным обходом: дерево
+// приходит сюда из одного источника со всеми полосами, и второй обход дал бы
+// вердикт о другом множестве файлов, чем тот, который гейт объявляет переписью.
+func oracleIDIsComputable(tree *treecorpus.Tree) (bool, int) {
+	prefix := oracleMembershipIDCorpus + "/"
+	read := 0
+	found := false
+	for _, rel := range tree.SortedFiles() {
+		if !strings.HasPrefix(rel, prefix) || !strings.HasSuffix(rel, ".sql") {
+			continue
+		}
+		body, err := os.ReadFile(filepath.Join(tree.Root(), filepath.FromSlash(rel)))
+		if err != nil {
+			continue
+		}
+		read++
+		if strings.Contains(string(body), oracleMembershipIDMark) {
+			found = true
+		}
 	}
-	return strings.Contains(string(body), oracleMembershipIDMark)
+	return found, read
 }

@@ -34,6 +34,13 @@ type oracleFixture struct {
 	whitelistTerms string
 	// dropIDMark — снять предпосылку полосы C.
 	dropIDMark bool
+	// idMigrationName — имя файла корпуса, в котором стоит деривация.
+	//
+	// Параметр, а не константа: предпосылка ищется по КОРПУСУ, и привязка к
+	// имени файла её уже однажды убила — свод миграций iam (2026-09-04) снял
+	// файл, в котором деривация была заведена, при том что само выражение
+	// переехало в свод байт-в-байт. Пустое значение — имя по умолчанию.
+	idMigrationName string
 }
 
 // oracleInjectionTree собирает дерево: базовая поверхность плюс правка.
@@ -158,7 +165,11 @@ service WidgetService {
 	if f.dropIDMark {
 		mark = "-- предпосылка снята"
 	}
-	write(t, filepath.Join(migDir, "470001_memberships_expand.sql"), mark+" || p_user_id)\n")
+	idFile := f.idMigrationName
+	if idFile == "" {
+		idFile = "470001_memberships_expand.sql"
+	}
+	write(t, filepath.Join(migDir, idFile), mark+" || p_user_id)\n")
 
 	tree, err := treecorpus.SyntheticTree(root)
 	if err != nil {
@@ -323,6 +334,31 @@ func TestOracleGate_LaneC_PremiseIsCheckedNotAssumed(t *testing.T) {
 	if c2.IDComputable {
 		t.Fatal("предпосылка полосы C снята с дерева, а гейт этого НЕ ЗАМЕТИЛ — " +
 			"запрет остался бы по наследству, без основания")
+	}
+
+	// ТРЕТЬЯ ОСЬ: та же деривация в файле с ДРУГИМ именем.
+	//
+	// Прежде предпосылка читала один файл по координате, и координата умерла
+	// 2026-09-04: свод миграций iam снял файл, в котором деривация была
+	// заведена, — а само выражение переехало в свод байт-в-байт. Гейт объявил
+	// предпосылку ложной, будучи неправ: он пережил не факт, а раскладку файлов.
+	//
+	// Применённую миграцию не правят (ban #5), поэтому деривация переезжает при
+	// каждом своде и будет переезжать впредь. Ось стережёт ровно это.
+	c3, err := SurveyMembershipOracle(oracleInjectionTree(t, oracleFixture{
+		idMigrationName: "0001_initial.sql",
+	}))
+	if err != nil {
+		t.Fatalf("обход: %v", err)
+	}
+	if !c3.IDComputable {
+		t.Fatal("деривация переехала в файл с другим именем, а гейт объявил предпосылку " +
+			"ложной — он привязан к КООРДИНАТЕ вместо предмета и переживает не факт, " +
+			"а раскладку файлов")
+	}
+	if c3.IDCorpusFiles == 0 {
+		t.Fatal("корпус объявлен непрочитанным при найденной деривации — «читать было " +
+			"нечего» и «признака нет» перестали различаться")
 	}
 }
 

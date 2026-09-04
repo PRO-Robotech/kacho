@@ -75,6 +75,24 @@ func TestEveryQuotaChargingOwnerIsAQuotaReader(t *testing.T) {
 		}
 
 		if strings.HasPrefix(rel, "services/iam/") {
+			// ФОРМА ВТОРАЯ — сведённая первичная миграция.
+			//
+			// В ней имени группы нет вовсе, а членство записано ИДЕНТИФИКАТОРАМИ:
+			// `pg_dump` печатает значения столбцов, а не выражения, которыми их
+			// когда-то вывели. Предикат по имени группы («файл упоминает
+			// module.quota_readers») на таком файле не срабатывает НИ РАЗУ — и это
+			// молчание, а не находка: гейт объявил бы, что читателей ноль, при
+			// пяти живых членах группы. Так он и объявил на первом же сведённом
+			// сервисе.
+			//
+			// Разрешение идёт ВНУТРИ одного файла и потому не требует базы: свод
+			// несёт и группу с её именем, и членов, и служебные учётки с их
+			// именами. Домен читается из имени учётки `kacho-<домен>` — того же
+			// предмета, что и в первой форме.
+			for domain := range quotaReaderDomainsByID(body) {
+				readers[domain] = rel
+			}
+
 			// Владелец ВЕЛИЧИН исключён из множества списывающих НАМЕРЕННО, а не
 			// по устройству цикла: с задачи #484 он тоже списывает (число
 			// аккаунтов на личность), но членства в группе читателей ему не
@@ -146,3 +164,64 @@ func joinKeys(m map[string]string) string {
 	sort.Strings(out)
 	return strings.Join(out, ", ")
 }
+
+// quotaReaderDomainsByID — домены, чьи служебные учётки состоят в группе
+// читателей пределов, когда членство записано ИДЕНТИФИКАТОРАМИ.
+//
+// Это вторая законная форма записи того же предмета, и появилась она вместе со
+// сведением цепочки миграций в одну первичную: `pg_dump` печатает значения, а не
+// выражения. Первая форма (имя группы и имена служб литералами) остаётся и
+// разбирается там, где стояла, — обе живут рядом, потому что «предмета нет» и
+// «предмет записан иначе» обязаны различаться.
+//
+// Разрешение замкнуто на один файл: свод несёт группу, её членов и служебные
+// учётки разом. Базы для этого не нужно, и гейт остаётся проверкой ДЕРЕВА.
+func quotaReaderDomainsByID(body string) map[string]string {
+	out := map[string]string{}
+
+	var groupID string
+	for _, m := range reSquashGroupRow.FindAllStringSubmatch(body, -1) {
+		if m[2] == quotaReaderGroupName {
+			groupID = m[1]
+			break
+		}
+	}
+	if groupID == "" {
+		return out
+	}
+
+	accounts := map[string]string{} // id учётки → её имя
+	for _, m := range reSquashServiceAccountRow.FindAllStringSubmatch(body, -1) {
+		accounts[m[1]] = m[2]
+	}
+
+	for _, m := range reSquashGroupMemberRow.FindAllStringSubmatch(body, -1) {
+		if m[1] != groupID || m[2] != "service_account" {
+			continue
+		}
+		name, ok := accounts[m[3]]
+		if !ok {
+			continue
+		}
+		d := strings.TrimPrefix(name, "kacho-")
+		if d == name || d == "system" {
+			continue
+		}
+		out[d] = name
+	}
+	return out
+}
+
+// quotaReaderGroupName — имя группы читателей пределов в СТРОКЕ, а не в
+// выражении. Вывод идентификатора из имени (`substr(md5(…))`) остался в первой
+// форме; здесь имя читается прямо со строки, которую напечатал дамп.
+const quotaReaderGroupName = "module-quota-readers"
+
+var (
+	reSquashGroupRow = regexp.MustCompile(
+		`INSERT INTO kacho_iam\.groups \([^)]*\) VALUES \('([^']+)', '[^']*', '([^']+)'`)
+	reSquashServiceAccountRow = regexp.MustCompile(
+		`INSERT INTO kacho_iam\.service_accounts \([^)]*\) VALUES \('([^']+)', '[^']*', '([^']+)'`)
+	reSquashGroupMemberRow = regexp.MustCompile(
+		`INSERT INTO kacho_iam\.group_members \([^)]*\) VALUES \('([^']+)', '([^']+)', '([^']+)'`)
+)

@@ -8,6 +8,8 @@ import (
 	"path/filepath"
 	"strings"
 	"testing"
+
+	"github.com/PRO-Robotech/kacho/pkg/platformmodules"
 )
 
 func clientDocsContractDriftOptions(t *testing.T) ClientDocsContractDriftOptions {
@@ -18,8 +20,10 @@ func clientDocsContractDriftOptions(t *testing.T) ClientDocsContractDriftOptions
 		// Балансировщик — единственный домен, чей каталог сайта и каталог
 		// контракта расходятся: `services/nlb/docs` против
 		// `proto/kacho/cloud/loadbalancer`. Псевдоним объявлен, а не выведен:
-		// выводить его не из чего, расхождение историческое.
-		DomainAliases: map[string]string{"nlb": "loadbalancer"},
+		// выводить его не из чего, расхождение историческое. Берётся у
+		// ЕДИНСТВЕННОГО объявления, а не выписывается здесь: выписанная копия
+		// разошлась бы с деревом молча, и гейт судил бы не тот каталог (#1885).
+		DomainAliases: platformmodules.AliasesByService(),
 	}
 }
 

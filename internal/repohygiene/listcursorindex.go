@@ -1046,12 +1046,34 @@ func trimOuterParens(s string) string {
 }
 
 // normalizeSQLText приводит текст к сравнимому виду: комментарии сняты, пробелы
-// схлопнуты, регистр опущен ВНЕ строковых литералов.
+// схлопнуты, регистр опущен ВНЕ строковых литералов, явное приведение типа СНЯТО
+// с строкового литерала.
 //
-// Каждое из трёх — необходимость, а не удобство. Комментарий не исполняется, и
+// Каждое из четырёх — необходимость, а не удобство. Комментарий не исполняется, и
 // предикат, стоящий в нём, обслуживанием не является. Регистр внутри литерала
 // СОХРАНЯЕТСЯ: `'SENT'` и `'sent'` — разные значения, и опускать их к одному
 // значило бы засчитывать индекс, построенный по другому множеству строк.
+//
+// Четвёртое заведено 2026-09-04 вместе со сводом миграций iam и стоит объяснения,
+// потому что снимает РАЗЛИЧИЕ, а всякое снятие различия рискует расширить
+// засчитываемое. Предикат частичного индекса объявляют двумя формами одного и
+// того же: рука пишет `WHERE status <> 'sent'`, `pg_dump` — `WHERE (status <>
+// 'sent'::text)`. Форма дампа не редкость и не край: свод — файл, который написал
+// инструмент, и на 2026-09-04 в предикатах индексов дерева 45 приведений `::text`,
+// 4 `::jsonb`, по одному `::inet` и `::timestamp with time zone`. Разбор, знающий
+// одну форму, объявляет обслуживающий индекс не обслуживающим — и находка
+// указывает на схему, которая ни в чём не виновата (наблюдалось: `iam.audit_outbox`,
+// индекс с точно теми же ключами и тем же предикатом, что и чтение).
+//
+// Снятие УЗКОЕ намеренно: приведение снимается ТОЛЬКО стоящее непосредственно на
+// строковом литерале. Приведение на колонке смысл предиката меняет — `created_at::date
+// = $1` и `created_at = $1` отбирают разные строки, — и снять его значило бы вернуть
+// тот самый класс «шире починки», против которого написан [partialIndexApplies].
+// Предикат узости проверяемый: на 2026-09-04 приведений НЕ на литерале в предикатах
+// индексов дерева ноль, то есть узкое правило покрывает весь наблюдаемый корпус.
+// Различие значений при этом уцелевает: `'SENT'::text` и `'sent'` остаются разными
+// (проба Test_CursorIndexGate_PredicateComparisonKeepsLiteralCase и её близнец
+// Test_CursorIndexGate_CastStrippingDoesNotEquateDifferentLiterals).
 func normalizeSQLText(s string) string {
 	var b strings.Builder
 	inStr, line, block, pendingSpace := false, false, false, false
@@ -1103,7 +1125,128 @@ func normalizeSQLText(s string) string {
 		}
 		b.WriteByte(c)
 	}
-	return strings.TrimSpace(b.String())
+	return stripCastsOnLiterals(strings.TrimSpace(b.String()))
+}
+
+// stripCastsOnLiterals снимает явное приведение типа, стоящее НЕПОСРЕДСТВЕННО на
+// строковом литерале: `'sent'::text` → `'sent'`.
+//
+// Работает по УЖЕ нормализованному тексту (пробелы схлопнуты, регистр вне литералов
+// опущен) — поэтому лексика проста и разбор не повторяет работу [normalizeSQLText].
+//
+// Границы, каждая из которых удерживает узость:
+//
+//   - приведение засчитывается только сразу за ЗАКРЫВАЮЩЕЙ кавычкой литерала;
+//     `created_at::date` не трогается вовсе, потому что перед `::` стоит имя;
+//   - многословные имена типов берутся из ЗАКРЫТОГО списка ([castTypeTails]) —
+//     иначе `'x'::text and y` съело бы `and` и разорвало конъюнкт;
+//   - неузнанный хвост оставляется на месте: разбор возвращает исходную позицию,
+//     и различие уцелевает — то есть ошибка идёт в сторону находки, а не молчания.
+func stripCastsOnLiterals(s string) string {
+	var b strings.Builder
+	inStr := false
+	for k := 0; k < len(s); k++ {
+		c := s[k]
+		b.WriteByte(c)
+		if c != '\'' {
+			continue
+		}
+		if !inStr {
+			inStr = true
+			continue
+		}
+		inStr = false
+		if end, ok := castAfterLiteral(s, k+1); ok {
+			k = end - 1
+		}
+	}
+	return b.String()
+}
+
+// castTypeTails — продолжения многословных имён типов Postgres. Список ЗАКРЫТ:
+// слово за именем типа съедается, только если оно принадлежит имени, а не запросу.
+var castTypeTails = map[string][][]string{
+	"timestamp": {{"with", "time", "zone"}, {"without", "time", "zone"}},
+	"time":      {{"with", "time", "zone"}, {"without", "time", "zone"}},
+	"double":    {{"precision"}},
+	"character": {{"varying"}},
+	"bit":       {{"varying"}},
+}
+
+// castAfterLiteral — конец приведения типа, начинающегося в позиции i (сразу за
+// закрывающей кавычкой), и признак того, что приведение там вообще стоит.
+func castAfterLiteral(s string, i int) (int, bool) {
+	j := skipCastSpace(s, i)
+	if j+1 >= len(s) || s[j] != ':' || s[j+1] != ':' {
+		return i, false
+	}
+	j = skipCastSpace(s, j+2)
+	word, next := castWordAt(s, j)
+	if word == "" {
+		return i, false
+	}
+	j = next
+	// Схемное уточнение имени типа: `pg_catalog.text`.
+	if j < len(s) && s[j] == '.' {
+		w2, n2 := castWordAt(s, j+1)
+		if w2 == "" {
+			return i, false
+		}
+		word, j = w2, n2
+	}
+	for _, tail := range castTypeTails[word] {
+		if n, ok := matchCastWords(s, j, tail); ok {
+			j = n
+			break
+		}
+	}
+	// Модификатор точности: `numeric(10,2)`, `character varying(64)`.
+	if j < len(s) && s[j] == '(' {
+		if k := strings.IndexByte(s[j:], ')'); k >= 0 {
+			j += k + 1
+		}
+	}
+	// Массив: `text[]`, `text[][]`.
+	for j+1 < len(s) && s[j] == '[' && s[j+1] == ']' {
+		j += 2
+	}
+	return j, true
+}
+
+// skipCastSpace — позиция за пробелами (текст уже нормализован, поэтому только ' ').
+func skipCastSpace(s string, i int) int {
+	for i < len(s) && s[i] == ' ' {
+		i++
+	}
+	return i
+}
+
+// castWordAt — слово имени типа, стоящее в позиции i, и позиция за ним.
+func castWordAt(s string, i int) (string, int) {
+	j := i
+	for j < len(s) {
+		c := s[j]
+		if c == '_' || (c >= 'a' && c <= 'z') || (c >= '0' && c <= '9') {
+			j++
+			continue
+		}
+		break
+	}
+	return s[i:j], j
+}
+
+// matchCastWords — стоят ли в позиции i подряд названные слова (через пробел).
+func matchCastWords(s string, i int, words []string) (int, bool) {
+	j := i
+	for _, w := range words {
+		j = skipCastSpace(s, j)
+		got, n := castWordAt(s, j)
+		if got != w {
+			return i, false
+		}
+		j = n
+	}
+	return j, true
 }
 
 // normalizeSQLTable отбрасывает схему, кавычки и глаголы форматирования:

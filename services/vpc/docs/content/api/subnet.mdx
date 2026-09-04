@@ -245,7 +245,7 @@ CIDR — используйте `:add-cidr-blocks` / `:remove-cidr-blocks`.
   кандидат», прочий `INVALID_ARGUMENT` — «ввод негоден по форме, повтор с другим префиксом
   не поможет». Тон сообщения стабилен, но парсить его не надо и не следует.
 
-<CodeBlock language="json">
+<CodeBlock language="json" title="Отказ">
   {dedent`
     {
       "code": 3,
@@ -596,7 +596,11 @@ Subnet.Create"`: набор меняется только парой `:add-cidr-
           "address": "10.0.0.5",
           "ipVersion": "IPV4",
           "references": [
-            { "type": "network_interface", "id": "{networkInterfaceId}" }
+            {
+              "referrer": { "type": "network_interface", "id": "{networkInterfaceId}", "name": "" },
+              "type": "USED_BY",
+              "owned": false
+            }
           ]
         }
       ],

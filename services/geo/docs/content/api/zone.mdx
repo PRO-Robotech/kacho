@@ -32,7 +32,9 @@ PK). Зона привязана к региону полем `regionId` — в�
   <tbody>
     <tr><td><code>id</code></td><td>string</td><td>immutable (admin-assigned PK)</td><td>Идентификатор зоны (например, <code>ru-central1-a</code>)</td></tr>
     <tr><td><code>regionId</code></td><td>string</td><td>immutable (FK → Region.id)</td><td>Регион, которому принадлежит зона. FK <code>ON DELETE RESTRICT</code></td></tr>
-    <tr><td><code>status</code></td><td>enum</td><td>mutable</td><td>Доступность зоны: <code>UP</code> / <code>DOWN</code> / <code>STATUS_UNSPECIFIED</code></td></tr>
+    <tr><td><code>status</code></td><td>enum</td><td>mutable, <b>только админская поверхность</b></td><td>Сырая административная доступность зоны: <code>UP</code> / <code>DOWN</code> / <code>STATUS_UNSPECIFIED</code>. <b>Публичное чтение это поле не отдаёт</b> — его номер и имя в публичной проекции зарезервированы, и разбор ответа на него полагаться не может. Оно принимается в теле админского <code>Create</code>/<code>Update</code> и читается через <code>InternalZoneService</code>; арендатору тот же факт адресован производным <code>openForPlacement</code></td></tr>
+    <tr><td><code>openForPlacement</code></td><td>bool</td><td>output-only</td><td><b>Единственный признак, по которому решают, размещать ли здесь.</b> Производен: равен <code>zone.status == UP &amp;&amp; region.status == UP</code>, то есть выключённый регион закрывает свои зоны. Доступность <b>административная</b>, а не обещание ёмкости: создание всё ещё вправе отказать по ёмкости в момент планирования</td></tr>
+    <tr><td><code>placementBlockedReason</code></td><td>enum</td><td>output-only</td><td>Почему <code>openForPlacement</code> ложно — <b>одним чтением, без второго запроса к региону</b>. Старшинство: выключена сама зона ⇒ <code>ZONE_DOWN</code>; иначе выключен регион ⇒ <code>REGION_DOWN</code></td></tr>
     <tr><td><code>createdAt</code></td><td>timestamp</td><td>output-only</td><td>Момент создания (RFC 3339, усечён до секунд)</td></tr>
   </tbody>
 </table>
@@ -72,9 +74,9 @@ PK). Зона привязана к региону полем `regionId` — в�
 <CodeBlock language="json">
   {dedent`
     {
-      "id": "region-1-a",
-      "regionId": "region-1",
-      "status": "UP",
+      "id": "ru-central1-a",
+      "regionId": "ru-central1",
+      "openForPlacement": true,
       "createdAt": "2026-06-24T10:00:00Z"
     }
   `}
@@ -99,8 +101,8 @@ PK). Зона привязана к региону полем `regionId` — в�
   {dedent`
     {
       "zones": [
-        { "id": "ru-central1-a", "regionId": "ru-central1", "status": "UP", "createdAt": "2026-06-24T10:00:00Z" },
-        { "id": "ru-central1-b", "regionId": "ru-central1", "status": "UP", "createdAt": "2026-06-24T10:00:00Z" }
+        { "id": "ru-central1-a", "regionId": "ru-central1", "openForPlacement": true, "createdAt": "2026-06-24T10:00:00Z" },
+        { "id": "ru-central1-b", "regionId": "ru-central1", "openForPlacement": false, "placementBlockedReason": "ZONE_DOWN", "createdAt": "2026-06-24T10:00:00Z" }
       ],
       "nextPageToken": ""
     }
@@ -114,7 +116,10 @@ PK). Зона привязана к региону полем `regionId` — в�
 <ApiOperation method="POST" endpoint="/geo/v1/internal/zones">
 
 Создаёт зону с **явно заданным** id, привязанную к существующему региону (`regionId`).
-Синхронная internal-операция (требует `system_admin`).
+Требует `system_admin`. Мутация асинхронная (запрет 9): ответ — `Operation`, а нагрузка,
+которая приедет в её `response`, — **публичная** проекция `Zone`. Присланный `status`
+принимается и применяется, но в нагрузке его нет: обратно его читают через
+`InternalZoneService`.
 
 <CodeBlock language="bash">
   {dedent`
@@ -129,12 +134,12 @@ PK). Зона привязана к региону полем `regionId` — в�
   `}
 </CodeBlock>
 
-<CodeBlock language="json">
+<CodeBlock language="json" title="Ответ операции">
   {dedent`
     {
       "id": "ru-central1-c",
       "regionId": "ru-central1",
-      "status": "UP",
+      "openForPlacement": true,
       "createdAt": "2026-06-24T10:10:00Z"
     }
   `}

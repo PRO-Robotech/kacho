@@ -6,6 +6,7 @@ package pg
 import (
 	"context"
 	"fmt"
+	"sort"
 
 	"github.com/jackc/pgx/v5/pgxpool"
 )
@@ -68,4 +69,24 @@ func (p *ExistenceProbe) ObjectExists(ctx context.Context, objectType, objectID 
 		return false, err
 	}
 	return exists, nil
+}
+
+// ProbeableTypes — типы, о которых проба умеет ответить.
+//
+// Перечень обязан покрывать ВСЕ пообъектные типы карты прав сервиса; сверяет
+// это носитель на старте (`servicehost`, О5в) сравнением с
+// `catalogderive.ObjectScopedTypes` — обе стороны выведены, ни одна не
+// выписана в месте сравнения. Тип, попавший в карту и не попавший сюда,
+// отвечает на отказе ошибкой пробы, а она fail-closed: `403` там, где соседний
+// тип того же сервиса отвечает `404` (задача продукта #1931).
+//
+// Возвращается свежий срез: носитель читает перечень и не вправе зависеть от
+// того, что за ним стоит карта пакета.
+func (p *ExistenceProbe) ProbeableTypes() []string {
+	out := make([]string, 0, len(objectTypeTable))
+	for ot := range objectTypeTable {
+		out = append(out, ot)
+	}
+	sort.Strings(out)
+	return out
 }

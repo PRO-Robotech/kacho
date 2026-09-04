@@ -81,6 +81,10 @@ var relationBeforeObject = regexp.MustCompile(`['"]relation['"]\s*[:,]\s*['"]([a
 // clusterObjectMention — упоминание кластерного объекта в полезной нагрузке.
 var clusterObjectMention = regexp.MustCompile(`['"]object['"]\s*[:,]\s*['"]cluster:`)
 
+// clusterRelationRow — выдача на кластере, записанная СТОЛБЦАМИ: тип объекта,
+// его идентификатор, отношение. Так её печатает сведённая первичная миграция.
+var clusterRelationRow = regexp.MustCompile(`VALUES \('cluster', '[^']+', '([a-z_]+)'`)
+
 // relationsProducedOnCluster — отношения, которые дерево заводит на кластерном
 // объекте, и сколько раз каждое встречено. Отношение считается произведённым,
 // если оно названо в пределах 400 байт ПЕРЕД упоминанием кластерного объекта:
@@ -104,12 +108,41 @@ func relationsProducedOnCluster(files []string) (map[string]int, int, error) {
 			if from < 0 {
 				from = 0
 			}
-			window := text[from:loc[0]]
-			m := relationBeforeObject.FindAllStringSubmatch(window, -1)
-			if len(m) == 0 {
+			if m := relationBeforeObject.FindAllStringSubmatch(text[from:loc[0]], -1); len(m) > 0 {
+				produced[m[len(m)-1][1]]++
 				continue
 			}
-			produced[m[len(m)-1][1]]++
+			// ВПЕРЁД — вторая законная форма, и она не редкость, а умолчание
+			// сведённой миграции. `jsonb` хранит ключи в порядке «сначала
+			// короткие»: `user`(4) · `object`(6) · `relation`(8), — поэтому в
+			// напечатанном дампом объекте отношение стоит ПОСЛЕ объекта всегда,
+			// а не иногда. Разбор, смотрящий только назад, на таком файле не
+			// находит НИЧЕГО и объявляет отношение непроизводимым при живой
+			// выдаче.
+			//
+			// Окно ограничено концом объекта JSON, а не длиной: иначе отношение
+			// перетекло бы из СЛЕДУЮЩЕГО кортежа той же вставки.
+			to := loc[1] + 400
+			if to > len(text) {
+				to = len(text)
+			}
+			ahead := text[loc[1]:to]
+			if end := strings.IndexByte(ahead, '}'); end >= 0 {
+				ahead = ahead[:end]
+			}
+			if m := relationBeforeObject.FindStringSubmatch(ahead); m != nil {
+				produced[m[1]]++
+			}
+		}
+
+		// ФОРМА ТРЕТЬЯ — столбцовая строка журнала отношений.
+		//
+		// У неё нет ни конструктора, ни объекта JSON: тип объекта, его
+		// идентификатор и отношение стоят соседними значениями одной вставки.
+		// Дамп печатает выдачу именно так, и по обеим прежним формам она
+		// невидима целиком.
+		for _, m := range clusterRelationRow.FindAllStringSubmatch(text, -1) {
+			produced[m[1]]++
 		}
 	}
 	return produced, read, nil

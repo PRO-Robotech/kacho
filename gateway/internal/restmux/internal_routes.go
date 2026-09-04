@@ -130,8 +130,7 @@ func (r internalRoute) matches(method string, segs []string) bool {
 	}
 	for i, tmplSeg := range r.segs {
 		if tmplSeg.rest {
-			// `**` обязан покрыть хотя бы один оставшийся сегмент.
-			return len(segs) > i
+			return matchesRestOfTemplate(tmplSeg, r.segs[i+1:], segs[min(i, len(segs)):])
 		}
 		if i >= len(segs) {
 			return false
@@ -141,6 +140,46 @@ func (r internalRoute) matches(method string, segs []string) bool {
 		}
 	}
 	return len(segs) == len(r.segs)
+}
+
+// matchesRestOfTemplate — совпадение глубокой подстановки `{x=**}` вместе с ТЕМ,
+// что стоит в шаблоне после неё.
+//
+// `**` поглощает сегменты, но не весь остаток пути: шаблон вправе нести за ней
+// литеральный хвост (`{repository=**}/referrers`), а сама подстановка — своё
+// окончание (`{repository=**}:rename`). Прежняя редакция отвечала «совпало», как
+// только оставался хотя бы один сегмент, и ни хвоста, ни окончания не сверяла —
+// поэтому `GET …/repositories/x` совпадал с биндингом `…/referrers`, а
+// `POST …/repositories/x` — с биндингом `:rename`.
+//
+// Правка СУЖАЕТ совпадение до верного и расширить его не может: точное
+// совпадение не пропускается ни на одной оси. У классификатора внутренних
+// маршрутов предмета этой ошибки не было — глубоких подстановок с хвостом среди
+// них ноль (замер печатает `TestHTTPBindingTemplateShapesAreStillPresent`),
+// поэтому его вердикт правкой не меняется.
+func matchesRestOfTemplate(rest internalRouteSegment, tail []internalRouteSegment, remaining []string) bool {
+	// Хвост шаблона обязан совпасть с хвостом пути сегмент в сегмент.
+	if len(remaining) < len(tail)+1 { // `**` обязана покрыть хотя бы один сегмент
+		return false
+	}
+	covered := remaining[:len(remaining)-len(tail)]
+	for i, ts := range tail {
+		if ts.rest {
+			// Второй `**` в одном шаблоне grpc-gateway не допускает; форма,
+			// которую разбор не описывает, совпадением не считается.
+			return false
+		}
+		if !ts.matchesSegment(remaining[len(covered)+i]) {
+			return false
+		}
+	}
+	// Приставка и окончание относятся к покрытому УЧАСТКУ целиком: первая — к
+	// его началу, второе — к его концу.
+	joined := strings.Join(covered, "/")
+	if len(joined) <= len(rest.prefix)+len(rest.suffix) {
+		return false
+	}
+	return strings.HasPrefix(joined, rest.prefix) && strings.HasSuffix(joined, rest.suffix)
 }
 
 func (s internalRouteSegment) matchesSegment(actual string) bool {

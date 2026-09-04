@@ -270,6 +270,113 @@ func Test_CursorIndexGate_PredicateComparisonKeepsLiteralCase(t *testing.T) {
 	}
 }
 
+// Test_CursorIndexGate_SilentOnPredicateWrittenInTheDumpForm — предикат,
+// объявленный формой `pg_dump`, засчитывается наравне с рукописным.
+//
+// # Зачем отдельная проба
+//
+// Форма записи предиката в этом дереве ДВЕ, и обе законны: рука пишет
+// `WHERE status <> 'sent'`, инструмент — `WHERE (status <> 'sent'::text)`. Вторая
+// пришла со сводом миграций iam 2026-09-04 (файл написан `pg_dump`) и накрывает
+// не край, а весь свод: приведений `::text` в предикатах индексов дерева 45.
+//
+// Разбор, знающий одну форму, объявляет обслуживающий индекс не обслуживающим —
+// то есть даёт находку о схеме, которая ни в чём не виновата. Наблюдалось на
+// `iam.audit_outbox`: те же ключи, тот же предикат, находка.
+//
+// Обе половины В ОДНОЙ пробе: форма дампа обязана засчитаться, а тот же индекс
+// с ИНЫМ предикатом — остаться находкой. Иначе «засчитан» было бы неотличимо
+// от «приведение снимает различие вообще».
+func Test_CursorIndexGate_SilentOnPredicateWrittenInTheDumpForm(t *testing.T) {
+	// Скобки вокруг предиката и приведение на литерале — ровно то, что пишет `pg_dump`.
+	const dumpIdx = "CREATE INDEX widgets_live_cursor_idx ON kacho_alpha.widgets " +
+		"USING btree (created_at, id) WHERE (project_id <> ''::text);"
+
+	handWritten := cursorInjectionTree(t, dumpIdx,
+		"SELECT id FROM kacho_alpha.widgets WHERE project_id <> '' "+
+			"ORDER BY created_at ASC, id ASC LIMIT $1")
+	if got := findingNames(t, handWritten); len(got) != 0 {
+		t.Fatalf("форма дампа объявляет ТОТ ЖЕ предикат — индекс обязан засчитаться; получено %v", got)
+	}
+
+	// Зеркало: чтение тоже в форме дампа — приведение снимается с ОБЕИХ сторон.
+	bothDump := cursorInjectionTree(t, dumpIdx,
+		"SELECT id FROM kacho_alpha.widgets WHERE project_id <> ''::text "+
+			"ORDER BY created_at ASC, id ASC LIMIT $1")
+	if got := findingNames(t, bothDump); len(got) != 0 {
+		t.Fatalf("обе стороны в форме дампа — индекс обязан засчитаться; получено %v", got)
+	}
+
+	// Законный близнец: тот же индекс формы дампа, чтение с ИНЫМ предикатом.
+	other := cursorInjectionTree(t, dumpIdx,
+		"SELECT id FROM kacho_alpha.widgets WHERE project_id <> $1 "+
+			"ORDER BY created_at ASC, id ASC LIMIT $2")
+	if got := findingNames(t, other); len(got) != 1 || got[0] != "alpha.widgets" {
+		t.Fatalf("иной предикат покрытием не является и в форме дампа; получено %v", got)
+	}
+}
+
+// Test_CursorIndexGate_CastStrippingDoesNotEquateDifferentLiterals — снятие
+// приведения НЕ ШИРЕ того, что оно доказывает.
+//
+// # Зачем отдельная проба
+//
+// Снятие приведения — единственное место разбора, где различие в тексте
+// намеренно ГАСИТСЯ. Всякое такое гашение рискует расширить засчитываемое, и
+// проверяется это не прочтением, а входом: значение, тип и предмет сравнения
+// обязаны уцелеть. Три оси, каждая своим случаем.
+func Test_CursorIndexGate_CastStrippingDoesNotEquateDifferentLiterals(t *testing.T) {
+	cases := []struct {
+		name, idx, read string
+		covered         bool
+	}{{
+		name: "приведение снято — значение то же",
+		idx:  "WHERE (status <> 'sent'::text)",
+		read: "WHERE status <> 'sent'", covered: true,
+	}, {
+		// Регистр внутри литерала значим и после снятия приведения.
+		name: "иной регистр литерала остаётся иным множеством",
+		idx:  "WHERE (status <> 'SENT'::text)",
+		read: "WHERE status <> 'sent'", covered: false,
+	}, {
+		name: "иное значение литерала остаётся иным",
+		idx:  "WHERE (status <> 'sent'::text)",
+		read: "WHERE status <> 'draft'", covered: false,
+	}, {
+		// Приведение на КОЛОНКЕ смысл предиката меняет — и не снимается.
+		name: "приведение на колонке не снимается",
+		idx:  "WHERE (created_at::date = '2026-01-01')",
+		read: "WHERE created_at = '2026-01-01'", covered: false,
+	}, {
+		// Многословное имя типа съедается целиком и не утаскивает соседний конъюнкт.
+		name: "многословный тип не утаскивает соседний конъюнкт",
+		idx:  "WHERE (revoked_at > '2000-01-01'::timestamp with time zone)",
+		read: "WHERE revoked_at > '2000-01-01' AND status <> 'sent'", covered: true,
+	}, {
+		// Слово за литералом, приведением НЕ являющееся, остаётся на месте.
+		name: "слово за литералом не съедается",
+		idx:  "WHERE (status <> 'sent'::text)",
+		read: "WHERE status <> 'sent' AND kind = 'a'", covered: true,
+	}}
+
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			tree := cursorInjectionTree(t,
+				"CREATE INDEX widgets_live_cursor_idx ON kacho_alpha.widgets "+
+					"USING btree (created_at, id) "+tc.idx+";",
+				"SELECT id FROM kacho_alpha.widgets "+tc.read+
+					" ORDER BY created_at ASC, id ASC LIMIT $1")
+			got := findingNames(t, tree)
+			if tc.covered && len(got) != 0 {
+				t.Fatalf("предикат тот же — индекс обязан засчитаться; получено %v", got)
+			}
+			if !tc.covered && (len(got) != 1 || got[0] != "alpha.widgets") {
+				t.Fatalf("предикат ИНОЙ — индекс засчитываться не должен; получено %v", got)
+			}
+		})
+	}
+}
+
 // Test_CursorIndexGate_RedsOnDeepEqualityPrefix — префикс глубже одной колонки
 // обслуживает обход только тогда, когда запрос несёт ОБА равенства. Зачесть его
 // общему списку значило бы объявить покрытым то, что покрыто не будет (в дереве

@@ -448,6 +448,22 @@ func (f probeFunc) ObjectExists(ctx context.Context, ot, id string) (bool, error
 	return f(ctx, ot, id)
 }
 
+// ProbeableTypes — охват подделки. `probeFunc` отвечает на ЛЮБОЙ тип, поэтому
+// перечень у неё открытый: `nil` означает «охват не объявлен».
+//
+// Это законно только для проб пути отказа, где предмет — исход сверки, а не её
+// охват. Пробы охвата (О5в) подставляют `typedProbe`, у которой перечень свой.
+func (f probeFunc) ProbeableTypes() []string { return nil }
+
+// typedProbe — подделка, объявляющая ОХВАТ. Нужна там, где предмет — сравнение
+// объявленного охвата с пообъектными типами карты прав.
+type typedProbe struct {
+	types []string
+}
+
+func (t typedProbe) ObjectExists(context.Context, string, string) (bool, error) { return true, nil }
+func (t typedProbe) ProbeableTypes() []string                                   { return t.types }
+
 const hiddenProbeType = "vpc_network"
 
 // hidingChecker собирает решателя РУКАМИ — и это надо знать, читая пробы ниже.

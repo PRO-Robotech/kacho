@@ -82,31 +82,107 @@ VERB_WILDCARD = "*"
 # Закрытая таблица (module.resource) → тип модели прав. Один источник с прод-кодом:
 # гейт читает ТУ ЖЕ карту, по которой строит объекты реконсайлер, поэтому «глагол
 # законен» решается набором ЕГО типа, а не общим словарём.
-TYPES_REL = "services/iam/internal/authzmap/fga_types.go"
+#
+# ПРЕДМЕТ — ПАКЕТ, А НЕ ФАЙЛ (задача продукта #1944). Прежде здесь стоял путь к
+# `fga_types.go`. Таблица стала ПОРОЖДАЕМОЙ из манифестов модулей (#1092) и
+# уехала в `tables_gen.go`; гейт остался на прежнем имени и начал отвечать
+# «FATAL: не прочитана закрытая таблица типов» — то есть третьей категорией
+# («не выполнилось»), поданной как отказ. Пакет — единица области видимости Go:
+# package-level имя в нём ровно одно by construction, поэтому перенос объявления
+# между файлами пакета больше ничего здесь не ломает.
+TYPES_PKG_REL = "services/iam/internal/authzmap"
+TYPES_VAR = "objectTypes"
 
 
 def repo_root():
     return os.path.abspath(os.path.join(os.path.dirname(os.path.abspath(__file__)), "..", ".."))
 
 
-def object_types(types_path):
-    """{"module.resource": "тип_модели"} — из закрытой таблицы прод-кода.
+# Открывающая часть объявления карты. Тело берётся БАЛАНСОМ СКОБОК, а не
+# образцом «до перевода строки и закрывающей»: однострочная запись
+# `var X = map[string]string{"a": "b"}` — законная форма Go, и образец,
+# знающий лишь многострочную, её не находит. Распознаватель, не знающий одной
+# из законных форм, не даёт ни красного, ни зелёного — он МОЛЧИТ, и записанное
+# в неизвестной ему форме оказывается вне наблюдения
+# (`testing.md` §«Гейт на класс», п. 7). Разбор Go-стороны этого же предмета
+# (`internal/repohygiene/pkgvardecl.go`) идёт по узлам и обе формы знает: два
+# читателя одного предмета обязаны сходиться по форме, иначе они разойдутся
+# молча.
+#
+# Начало строки (`^` при re.M) обязательно и несёт СМЫСЛ: package-level `var` в
+# gofmt-дереве стоит в нулевой колонке, а закомментированное объявление
+# начинается с `//`. Без якоря распознаватель находит объявление в ПРОЗЕ,
+# объясняющей его переезд, — краснеет на собственном объяснении. Слепая зона
+# названа: объявление внутри группы `var ( … )` идёт с отступом и здесь не
+# распознаётся; исход такого — ОТКАЗ с объёмом прочитанного, а не молчание.
+_MAP_HEAD = r"^var\s+{}\s*=\s*map\[string\]string\s*\{{"
+
+
+def _map_literal_body(src, var_name):
+    """Тело литерала карты var_name, либо None. Балансом скобок."""
+    m = re.search(_MAP_HEAD.format(re.escape(var_name)), src, re.M)
+    if not m:
+        return None
+    depth, i = 1, m.end()
+    while i < len(src) and depth:
+        c = src[i]
+        if c == "{":
+            depth += 1
+        elif c == "}":
+            depth -= 1
+        i += 1
+    if depth:
+        return None
+    return src[m.end():i - 1]
+
+
+def object_types(pkg_dir, var_name=TYPES_VAR):
+    """({"module.resource": "тип_модели"}, файл, сколько файлов пакета прочитано).
 
     ПОЧЕМУ ИЗ КОДА, А НЕ СПИСКОМ ЗДЕСЬ. Копия таблицы в гейте разъехалась бы с
     прод-кодом молча: новый ресурс появился бы у реконсайлера и не появился бы
     у проверки, и та начала бы считать законный глагол несуществующим.
+
+    ПОЧЕМУ ПО ПАКЕТУ, А НЕ ПО ФАЙЛУ — см. TYPES_PKG_REL.
+
+    Тестовые файлы не читаются: синтетика проб держит собственные литералы того
+    же имени, и счёт их сделал бы предмет функцией числа проб.
+
+    Три отказа, и все три — отказы, а не пустой словарь: пакета нет · объявления
+    нет · объявлений больше одного (два места об одном предмете). Возвращается
+    (None, причина, сколько прочитано), и вызывающий печатает причину — «не
+    найдено» обязано быть отличимо от «не читано».
     """
     try:
-        src = open(types_path, encoding="utf-8").read()
+        names = sorted(n for n in os.listdir(pkg_dir)
+                       if n.endswith(".go") and not n.endswith("_test.go"))
     except OSError:
-        return None
-    m = re.search(r"var objectTypes = map\[string\]string\{(.*?)\n\}", src, re.S)
-    if not m:
-        return None
+        return None, f"каталога пакета {pkg_dir} нет", 0
+    if not names:
+        return None, f"в пакете {pkg_dir} нет не-тестовых файлов Go", 0
+    found = []
+    for name in names:
+        try:
+            src = open(os.path.join(pkg_dir, name), encoding="utf-8").read()
+        except OSError:
+            continue
+        body = _map_literal_body(src, var_name)
+        if body is not None:
+            found.append((name, body))
+    if not found:
+        return None, (f"в пакете {pkg_dir} нет объявления {var_name} "
+                      f"(не-тестовых файлов прочитано {len(names)})"), len(names)
+    if len(found) > 1:
+        return None, (f"в пакете {pkg_dir} объявление {var_name} встречено "
+                      f"{len(found)} раза ({', '.join(n for n, _ in found)}) — "
+                      "два места об одном предмете"), len(names)
+    decl_file, body = found[0]
     out = {}
-    for k, v in re.findall(r'"([^"]+)"\s*:\s*"([^"]+)"', m.group(1)):
+    for k, v in re.findall(r'"([^"]+)"\s*:\s*"([^"]+)"', body):
         out[k] = v
-    return out or None
+    if not out:
+        return None, (f"объявление {var_name} в {decl_file} не дало ни одной пары"), len(names)
+    return out, decl_file, len(names)
 
 
 def model_verb_sets(model_path):
@@ -310,11 +386,13 @@ def run(root, files, verb_sets, label="дерево", excused=None):
     for v in verb_sets.values():
         fallback |= set(v)
 
-    types_map = object_types(os.path.join(root, TYPES_REL))
+    types_map, types_where, types_files = object_types(os.path.join(root, TYPES_PKG_REL))
     if not types_map:
-        print(f"FATAL: не прочитана закрытая таблица типов {TYPES_REL} — "
-              "разрешать пару (module, resource) нечем, и молчание ничего не доказывает.")
+        print(f"FATAL: не прочитана закрытая таблица типов: {types_where}. "
+              "Разрешать пару (module, resource) нечем, и молчание ничего не доказывает.")
         return 2
+    print(f"перепись источника: пакет {TYPES_PKG_REL}, не-тестовых файлов прочитано "
+          f"{types_files}, объявление {TYPES_VAR} в {types_where}, пар {len(types_map)}")
 
     if files is None:
         print("FATAL: состав фикстур не читается (git ls-files не отработал). "
@@ -418,8 +496,11 @@ def self_test():
     # засчитывала это за «пустой состав — провал» (ждала любой ненулевой): два
     # разных отказа под одним именем, то есть подпроверка проходила по причине,
     # которую не проверяла.
-    os.makedirs(os.path.join(tmp, os.path.dirname(TYPES_REL)), exist_ok=True)
-    shutil.copyfile(os.path.join(root, TYPES_REL), os.path.join(tmp, TYPES_REL))
+    os.makedirs(os.path.join(tmp, TYPES_PKG_REL), exist_ok=True)
+    for _n in os.listdir(os.path.join(root, TYPES_PKG_REL)):
+        if _n.endswith(".go") and not _n.endswith("_test.go"):
+            shutil.copyfile(os.path.join(root, TYPES_PKG_REL, _n),
+                            os.path.join(tmp, TYPES_PKG_REL, _n))
 
     def write(name, body):
         p = os.path.join(tmp, "tests", "authz-fixtures", name)
@@ -455,9 +536,9 @@ def self_test():
     # у разбора нет с тех пор, как глагол стали сверять с набором СВОЕГО типа.
     # Самопроверка падала исключением ДО первой инъекции, то есть гейт не мог
     # доказать, что краснеет, — и его зелёный обычный проход ничего не значил.
-    types_map = object_types(os.path.join(root, TYPES_REL))
+    types_map, types_where, _ = object_types(os.path.join(root, TYPES_PKG_REL))
     if not types_map:
-        print(f"  ПРОВАЛ закрытая таблица {TYPES_REL} не читается — "
+        print(f"  ПРОВАЛ закрытая таблица не читается ({types_where}) — "
               f"самопроверке не на чем стоять")
         return 1
     findings, triples, _unresolved, _unmapped, _used = scan(
@@ -492,6 +573,77 @@ def self_test():
         rc = 1
     else:
         print(f"  ОК  перепись видит все формы: определений {triples}")
+
+    # ── ИСТОЧНИК РАЗРЕШАЕТСЯ ПО ПАКЕТУ — обе стороны (задача продукта #1944) ──
+    # Гейт уже ломался ровно здесь: таблица уехала в порождённый файл, а он ждал
+    # прежнего имени и отвечал «не прочитана» — «не выполнилось», поданное как
+    # отказ. Ниже — четыре прогона по одному синтетическому пакету: находит после
+    # переезда · молчит на прозе · отказывает без объявления · отказывает на двух.
+    pkgtmp = os.path.join(tmp, "pkgprobe")
+    os.makedirs(pkgtmp, exist_ok=True)
+
+    def _pkg_write(name, body):
+        with open(os.path.join(pkgtmp, name), "w", encoding="utf-8") as fh:
+            fh.write(body)
+
+    def _pkg_rm(name):
+        pth = os.path.join(pkgtmp, name)
+        if os.path.exists(pth):
+            os.remove(pth)
+
+    # ПРОЗА в прежнем файле: имя и «объявление» стоят под комментарием. Читатель,
+    # судящий по тексту без разбора формы, взял бы его за источник.
+    _pkg_write("fga_types.go",
+               "package authzmap\n\n"
+               "// objectTypes переехал; строка ниже НЕ объявление.\n"
+               '// var objectTypes = map[string]string{"ghost.one": "ghost_one"}\n')
+    _pkg_write("tables_gen.go",
+               "package authzmap\n\n"
+               "var objectTypes = map[string]string{\n"
+               '\t"alpha.one": "alpha_one",\n'
+               '\t"beta.one":  "beta_one",\n'
+               "}\n")
+    # Тестовый файл того же имени НЕ читается: иначе объявлений стало бы два.
+    _pkg_write("tables_gen_test.go",
+               "package authzmap\n\n"
+               'var objectTypes = map[string]string{"synthetic.one": "synthetic_one"}\n')
+
+    m_moved, where_moved, files_moved = object_types(pkgtmp)
+    if m_moved and where_moved == "tables_gen.go" and files_moved == 2 and len(m_moved) == 2:
+        print("  ОК  объявление найдено после переезда внутрь пакета "
+              f"(файлов {files_moved}, в {where_moved}, пар {len(m_moved)})")
+    else:
+        print(f"  ПРОВАЛ после переезда источник не разрешён: {where_moved}")
+        rc = 1
+
+    _pkg_rm("tables_gen.go")
+    m_gone, where_gone, _f = object_types(pkgtmp)
+    if m_gone is None and "прочитано" in where_gone:
+        print(f"  ОК  без объявления — отказ с объёмом осмотренного: {where_gone}")
+    else:
+        print("  ПРОВАЛ проза принята за объявление либо отказ не назвал объём "
+              f"прочитанного: {where_gone}")
+        rc = 1
+
+    _pkg_write("tables_gen.go",
+               "package authzmap\n\n"
+               'var objectTypes = map[string]string{"alpha.one": "alpha_one"}\n')
+    _pkg_write("fga_types.go",
+               "package authzmap\n\n"
+               'var objectTypes = map[string]string{"gamma.one": "gamma_one"}\n')
+    m_two, where_two, _f = object_types(pkgtmp)
+    if m_two is None and "два места" in where_two:
+        print("  ОК  два объявления одного имени — отказ, а не произвольное из них")
+    else:
+        print(f"  ПРОВАЛ два объявления приняты молча: {where_two}")
+        rc = 1
+
+    m_absent, where_absent, _f = object_types(os.path.join(pkgtmp, "nosuch"))
+    if m_absent is None:
+        print("  ОК  пакета нет — отказ, а не пустой словарь")
+    else:
+        print(f"  ПРОВАЛ несуществующий пакет дал словарь: {where_absent}")
+        rc = 1
 
     # ПУСТОЙ СОСТАВ — провал, а не тишина.
     _empty_rc = run(tmp, [], verb_sets, label="самопроверка/пустой состав")

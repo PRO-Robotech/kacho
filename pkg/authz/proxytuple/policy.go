@@ -252,6 +252,45 @@ func publicReadAllowed(subject, relation, objType string) bool {
 	return ok
 }
 
+// TypeOwner — ПОРТ: чей это тип объекта. Владельца подаёт ВЫЗЫВАЮЩИЙ.
+//
+// Порт, а не таблица здесь: полный перечень типов живёт в закрытой таблице iam
+// (`services/iam/internal/authzmap`), за границей видимости этого пакета, и
+// вторая его копия разошлась бы с первой МОЛЧА. Пакет импортируют все семь
+// служб, поэтому «перенести правило туда, где перечень виден» невыразимо;
+// вызывающий у ValidateTuple в прод-коде ровно ОДИН, и он в iam — значит подать
+// словарь может он.
+//
+// Ответ — МОДУЛЬ КАТАЛОГА, а не короткое имя службы: у балансировщика они
+// различны (`nlb` / `loadbalancer`), и сравнение по имени службы не совпало бы
+// для него НИКОГДА, отняв три живых типа. Наблюдаемо это было бы как «ресурс
+// создан, доступа нет».
+//
+// ok=false означает «платформа этого типа не знает» — и это НЕ отказ: см.
+// ValidateTuple, ветвь возврата к приставке.
+type TypeOwner interface {
+	CatalogModuleOfObjectType(objType string) (string, bool)
+}
+
+// Option — необязательная настройка правила.
+//
+// Вариативная форма, а не второй аргумент: подпись ValidateTuple читают семь
+// служб и пять наборов проб, и её смена ради необязательной величины сделала бы
+// ломающим изменением то, что ломающим не является.
+type Option func(*policy)
+
+// policy — то, чем правило располагает сверх самого кортежа.
+type policy struct{ owner TypeOwner }
+
+// WithTypeOwner подаёт правилу словарь владения типом.
+//
+// Не подан — владение судится ПРИСТАВКОЙ, как и раньше. Сделав словарь
+// обязательным, мы отвергли бы всё у всякого вызывающего, его не завёдшего, —
+// причём отказом ОПАКОВЫМ by design, то есть с худшей возможной диагностикой.
+func WithTypeOwner(o TypeOwner) Option {
+	return func(p *policy) { p.owner = o }
+}
+
 // objectDomainForCaller — приставка типов объекта, которые модулю позволено
 // писать. Берётся у СЛОВАРЯ имён модулей, а не выводится из имени вызывающего.
 //
@@ -272,10 +311,33 @@ func publicReadAllowed(subject, relation, objType string) bool {
 // сравнение с пустым доменом молча отвергает всё, но по НЕ ТОЙ причине, и первый
 // же тип такого домена стал бы достижим без единого решения.
 //
-// ГРАНИЦА НАЗВАНА: это по-прежнему сравнение приставки, а не поиск владельца
-// типа по строке. Полный перечень типов живёт в закрытой таблице iam, за
-// границей видимости пакета, и вторая его копия разошлась бы с первой молча.
-// Переход на словарь типов — предмет эпика #1087.
+// ЭТО ПОЛОВИНА ПРАВИЛА, А НЕ ВСЁ ОНО. Приставка судит владение там, где словаря
+// нет либо он типа не знает; там, где знает, — судит СЛОВАРЬ, и судит по строке
+// (см. TypeOwner и ValidateTuple). Полный перечень типов живёт в закрытой таблице
+// iam, за границей видимости пакета, и вторая его копия разошлась бы с первой
+// молча — поэтому здесь ПОРТ, а таблицу подаёт вызывающий.
+//
+// ПЕРЕЕЗД ПАКЕТА ЭТОГО НЕ РЕШИЛ БЫ — измерено, а не предположено. Пакет импортируют
+// ВСЕ семь служб (`git grep -ln 'pkg/authz/proxytuple' -- '*.go' | sed 's#/[^/]*$##'
+// | sort -u` → 21 каталог, из них шесть служб сверх iam), поэтому «перенести его
+// туда, где перечень виден» невыразимо: перечень виден только внутри
+// `services/iam/`. Вызывающий у `ValidateTuple` в прод-коде ровно ОДИН, и он в iam
+// (`services/iam/internal/apps/kacho/api/internal_iam/handler.go`, предикат:
+// `git grep -n 'ValidateTuple(' -- '*.go' ':!*_test.go'`), — он словарь и подаёт.
+//
+// ПОРЯДОК БЫЛ НАЗВАН ЗАРАНЕЕ И СОБЛЮДЁН. Здесь стояло «порт сегодня не заводится»,
+// и довод был про ПОРЯДОК, а не про возможность: сделать РУКОПИСНУЮ таблицу
+// несущей на пути запроса значило бы требовать правки Go в iam прежде, чем модуль
+// сможет зарегистрировать свой новый ресурс, — при отказе ОПАКОВОМ by design
+// (ниже: «без утечки того, какая оговорка отвергла»), то есть с худшей возможной
+// диагностикой. Таблица перестала быть рукописной (#1930, #1092): её порождает
+// манифест того же модуля, поэтому объявление ресурса и право на его регистрацию
+// приезжают ОДНИМ изменением. Препятствие снято — и порт заведён (#1885).
+//
+// ЧТО ОСТАЛОСЬ ПРИСТАВКЕ. Тип, которого закрытая таблица не знает, судится ею
+// по-прежнему: отвергнуть его значило бы вернуть тот самый опаковый отказ на
+// вход, у которого вызывающему нечего чинить. Граница держится пробой
+// (`type_owner_test.go`, «неизвестный словарю тип»), а не этой строкой.
 func objectDomainForCaller(callerDomain string) (string, bool) {
 	domain, known := platformmodules.ObjectDomainOfService(callerDomain)
 	if !known || domain == "" {
@@ -291,7 +353,11 @@ func objectDomainForCaller(callerDomain string) (string, bool) {
 // (domain unknown) disables the domain binding, while the relation set, the subject
 // narrowing of a publication and the forbidden object types apply always. Any
 // violation → PermissionDenied, fail-closed, without leaking which clause refused.
-func ValidateTuple(callerDomain, subject, relation, object string) error {
+func ValidateTuple(callerDomain, subject, relation, object string, opts ...Option) error {
+	var p policy
+	for _, opt := range opts {
+		opt(&p)
+	}
 	subject = strings.TrimSpace(subject)
 	rel := Relation(strings.TrimSpace(relation))
 	object = strings.TrimSpace(object)
@@ -322,6 +388,23 @@ func ValidateTuple(callerDomain, subject, relation, object string) error {
 	// skips this clause, while the forbidden set and the relation set above still
 	// hold the boundary against cluster / iam / privilege objects.
 	if callerDomain != "" {
+		// Словарь ЗАМЕЩАЕТ приставку там, где он тип знает: иначе тип, чьё имя в
+		// модели не начинается с домена его модуля, остался бы невыразим, а
+		// «чей это тип» продолжало бы отвечать соглашение об именовании.
+		if p.owner != nil {
+			if module, known := p.owner.CatalogModuleOfObjectType(objType); known {
+				mine, ok := platformmodules.CatalogModuleOfService(callerDomain)
+				if !ok || module != mine {
+					return ErrRefused
+				}
+				return nil
+			}
+		}
+		// Тип, которого словарь не знает, судится приставкой — по-прежнему.
+		// Отвергнуть его значило бы требовать правки Go в iam прежде, чем модуль
+		// сможет зарегистрировать свой новый ресурс, и отказ был бы ОПАКОВЫМ: у
+		// вызывающего нет ни причины, ни того, что чинить. Граница названа, а не
+		// умолчана, и держится пробой (`type_owner_test.go`).
 		domain, ok := objectDomainForCaller(callerDomain)
 		if !ok || !strings.HasPrefix(objType, domain+"_") {
 			return ErrRefused

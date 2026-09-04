@@ -78,7 +78,8 @@ immutable — меняется только через Relocate).
     <tr><td><code>secondaryDisks</code></td><td><code>repeated AttachedDisk</code></td><td>{DICTIONARY.secondaryDisks.short}</td></tr>
     <tr><td><code>placementGroupId</code></td><td><code>{TYPES.string}</code></td><td>{DICTIONARY.placementGroupId.short}</td></tr>
     <tr><td><code>networkInterfaces</code></td><td><code>repeated NetworkInterface</code></td><td>{DICTIONARY.networkInterfaces.short}</td></tr>
-    <tr><td><code>serviceAccountId</code></td><td><code>{TYPES.string}</code></td><td>{DICTIONARY.serviceAccountId.short}</td></tr>
+    <tr><td><code>serviceAccount</code></td><td><code>Referrer</code></td><td>Служебная учётка, под которой работает сам инстанс, — <b>ссылка</b> вида <code>&#123; type: "iam.service_account", id &#125;</code>, а не голая строка. Ссылка мягкая: удаление учётки инстанс не роняет, связь становится висячей. Задаётся полем запроса <code>serviceAccountId</code>, читается — этим полем. Пусто у инстанса из публичного образа</td></tr>
+    <tr><td><code>guestAccessKeyIds</code></td><td><code>{TYPES.stringArray}</code></td><td>Ключи гостевого доступа — <b>ссылками по неизменяемому идентификатору</b>, а не материалом ключа: материал, положенный сюда, жил бы ровно столько, сколько машина, и его нельзя было бы ни отозвать, ни заменить, ни узнать, где ещё он используется. Сам ключ — отдельный ресурс (<code>GuestAccessKeyService</code>). Набор <b>заменяется целиком</b> при правке: «добавить один» выразимо через полный набор, а частичные глаголы на списке ссылок дали бы два способа сказать одно</td></tr>
     <tr><td><code>fqdn</code></td><td><code>{TYPES.string}</code></td><td>{DICTIONARY.fqdn.short}</td></tr>
   </tbody>
 </table>

@@ -31,6 +31,7 @@ import (
 
 	"github.com/PRO-Robotech/kacho/services/vpc/internal/apps/kacho/config"
 	"github.com/PRO-Robotech/kacho/services/vpc/internal/check"
+	vpcpg "github.com/PRO-Robotech/kacho/services/vpc/internal/repo/kacho/pg"
 )
 
 // probeExistence — порт сверки существования для проб. Реальный живёт на пуле, а
@@ -39,6 +40,14 @@ import (
 type probeExistence struct{}
 
 func (probeExistence) ObjectExists(_ context.Context, _, _ string) (bool, error) { return false, nil }
+
+// ProbeableTypes — охват ДЕЛЕГИРУЕТСЯ настоящей пробе сервиса.
+//
+// Подделка не вправе быть снисходительнее продукта: объяви она свой перечень —
+// и сверка охвата на старте (`servicehost`, О5в) судила бы фикстуру вместо
+// пробы, то есть молчала бы ровно там, где таблица настоящей разошлась с картой
+// прав сервиса (задача продукта #1931).
+func (probeExistence) ProbeableTypes() []string { return (&vpcpg.ExistenceProbe{}).ProbeableTypes() }
 
 // describeCfg — посадка vpc в минимально-полной форме: всё, что судит конструктор
 // дескриптора, задано, и ничего сверх.

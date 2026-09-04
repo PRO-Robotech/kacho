@@ -27,15 +27,32 @@
 // не действует вовсе. Разбор читает файлы в порядке их номера — том же, в
 // котором их применяет накат.
 //
+// # Какие формы записи словаря разбор ЗНАЕТ
+//
+// Их две, и обе законны в этом дереве (перечень — предмет [dictionaryListOpensAt]):
+//
+//	key_algorithm IN ('', 'ES256', 'RS256', 'EdDSA')                       -- рука
+//	key_algorithm = ANY (ARRAY[''::text, 'ES256'::text, 'RS256'::text])    -- pg_dump
+//
+// Вторая заведена 2026-09-04 вместе со сводом миграций iam: свод написан
+// инструментом, и членство он записывает только так — то есть в этом сервисе
+// форма дампа стала ЕДИНСТВЕННОЙ (три объявления из трёх). Разбор, знавший одну
+// форму, не краснел и не молчал, а ослеп: находил ноль объявлений и сообщал об
+// этом словами «столбец не сужен ничем» — утверждение о СЕБЕ, сказанное о схеме.
+//
 // # Чего разбор НЕ видит — названо, а не спрятано
 //
-//  1. **ограничение, наложенное функцией или триггером**, а не выражением `IN`.
+//  1. **ограничение, наложенное функцией или триггером**, а не перечнем значений.
 //     Форма другая, и предмет у неё другой.
 //  2. **словарь, собранный из значений другой таблицы** (внешний ключ на
 //     справочник): тогда объявления в тексте миграции нет вовсе, и сверять
 //     нечего — счётчик найденных ограничений это покажет.
-//  3. **значение, записанное иначе, чем строковым литералом** — приведение
-//     типа, конкатенация.
+//  3. **значение, собранное выражением** — конкатенация, вызов функции. Приведение
+//     типа на литерале (`'ES256'::text`) в этот пункт НЕ входит: имя типа стоит за
+//     кавычками, поэтому значением оно не становится, а значение читается целым.
+//  4. **перечень ЗАПРЕЩЁННОГО** (`<> ALL (ARRAY[…])`) — не по слепоте, а по
+//     решению: гейт сверяет словарь с перечнем ДОПУСТИМОГО кода, и засчитать
+//     дополнение множества значило бы сравнить его с самим множеством.
 package repohygiene
 
 import (
@@ -73,20 +90,29 @@ func ScanKeyAlgorithmConstraints(path, body, column string) (
 	found []AlgorithmConstraint, dropped []string, census AlgorithmDictionaryCensus,
 ) {
 	up := migrationUpSection(body)
-	needle := column + " IN ("
 	lower := strings.ToLower(up)
-	lowerNeedle := strings.ToLower(needle)
+	lowerColumn := strings.ToLower(column)
 
 	for idx := 0; ; {
-		rel := strings.Index(lower[idx:], lowerNeedle)
+		rel := strings.Index(lower[idx:], lowerColumn)
 		if rel < 0 {
 			break
 		}
 		at := idx + rel
-		open := at + len(needle) - 1
+		after := at + len(lowerColumn)
+		idx = after
+		// Имя столбца берётся ЦЕЛИКОМ: `old_key_algorithm IN (…)` объявляет
+		// словарь другого столбца, и засчитать его значило бы сверять с кодом
+		// не тот предмет.
+		if !sqlWholeWordAt(lower, at, len(lowerColumn)) {
+			continue
+		}
+		open, ok := dictionaryListOpensAt(lower, after)
+		if !ok {
+			continue
+		}
 		values, end := sqlQuotedListAt(up, open)
 		if end < 0 {
-			idx = at + len(needle)
 			continue
 		}
 		census.Statements++
@@ -115,8 +141,70 @@ func ScanKeyAlgorithmConstraints(path, body, column string) (
 	return found, dropped, census
 }
 
+// dictionaryListOpensAt — стоит ли сразу за именем столбца объявление словаря, и
+// где открывается его скобка.
+//
+// Форм ДВЕ, и обе законны в этом дереве:
+//
+//	key_algorithm IN ('', 'ES256', 'RS256', 'EdDSA')                       -- рука
+//	key_algorithm = ANY (ARRAY[''::text, 'ES256'::text, 'RS256'::text])    -- pg_dump
+//
+// Вторая пришла со сводом миграций iam 2026-09-04: свод написан `pg_dump`, и
+// членство он записывает только так. Разбор, знавший одну форму, объявлял словарь
+// невыраженным — то есть говорил о СЕБЕ, а не о схеме, и говорил это словами
+// «столбец не сужен ничем».
+//
+// Форма `<> ALL (ARRAY[…])` словарём НЕ является намеренно: она перечисляет
+// запрещённое, а сверяется гейт с перечнем допустимого. Засчитав её, гейт сравнил
+// бы дополнение множества с самим множеством.
+func dictionaryListOpensAt(lower string, i int) (int, bool) {
+	j := sqlSkipSpace(lower, i)
+	switch {
+	case strings.HasPrefix(lower[j:], "in"):
+		if !sqlWholeWordAt(lower, j, len("in")) {
+			return 0, false
+		}
+		j = sqlSkipSpace(lower, j+len("in"))
+	case strings.HasPrefix(lower[j:], "="):
+		j = sqlSkipSpace(lower, j+1)
+		if !strings.HasPrefix(lower[j:], "any") || !sqlWholeWordAt(lower, j, len("any")) {
+			return 0, false
+		}
+		j = sqlSkipSpace(lower, j+len("any"))
+	default:
+		return 0, false
+	}
+	if j >= len(lower) || lower[j] != '(' {
+		return 0, false
+	}
+	return j, true
+}
+
+// sqlWholeWordAt — стоит ли в [i, i+n) слово ЦЕЛИКОМ, а не часть идентификатора.
+func sqlWholeWordAt(s string, i, n int) bool {
+	ident := func(c byte) bool {
+		return c == '_' || (c >= 'a' && c <= 'z') || (c >= '0' && c <= '9')
+	}
+	if i > 0 && ident(s[i-1]) {
+		return false
+	}
+	return i+n >= len(s) || !ident(s[i+n])
+}
+
+// sqlSkipSpace — позиция за пробельными символами.
+func sqlSkipSpace(s string, i int) int {
+	for i < len(s) && (s[i] == ' ' || s[i] == '\t' || s[i] == '\n' || s[i] == '\r') {
+		i++
+	}
+	return i
+}
+
 // sqlQuotedListAt читает список строковых литералов из скобки, открытой в
 // позиции open. Возвращает значения и позицию сразу за закрывающей скобкой.
+//
+// Приведение типа на литерале (`'ES256'::text`, форма `pg_dump`) значением не
+// является и в список не попадает: разбор собирает только то, что стоит В
+// КАВЫЧКАХ, а имя типа стоит за ними.
 func sqlQuotedListAt(s string, open int) ([]string, int) {
 	if open >= len(s) || s[open] != '(' {
 		return nil, -1

@@ -35,6 +35,7 @@ import (
 	"github.com/PRO-Robotech/kacho/services/compute/internal/authzfilter"
 	"github.com/PRO-Robotech/kacho/services/compute/internal/config"
 	"github.com/PRO-Robotech/kacho/services/compute/internal/handler"
+	computerepo "github.com/PRO-Robotech/kacho/services/compute/internal/repo"
 )
 
 // describeCfg — конфигурация, на которой дескриптор ОБЯЗАН приниматься.
@@ -101,6 +102,16 @@ type probeExistence struct{}
 
 func (probeExistence) ObjectExists(context.Context, string, string) (bool, error) {
 	return false, nil
+}
+
+// ProbeableTypes — охват ДЕЛЕГИРУЕТСЯ настоящей пробе сервиса.
+//
+// Подделка не вправе быть снисходительнее продукта: объяви она свой перечень —
+// и сверка охвата на старте (`servicehost`, О5в) судила бы фикстуру вместо
+// пробы, то есть молчала бы ровно там, где таблица настоящей разошлась с картой
+// прав сервиса.
+func (probeExistence) ProbeableTypes() []string {
+	return (&computerepo.ExistenceProbe{}).ProbeableTypes()
 }
 
 // TestDescriptorIsAcceptedForCompute — дескриптор проходит ВСЕ отказы, которые

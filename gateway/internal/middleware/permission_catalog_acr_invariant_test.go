@@ -42,6 +42,15 @@ package middleware_test
 // (ConditionsService Update/Delete) is GONE — not downgraded, removed. The
 // resource those two mutated no longer exists, so there is no policy artifact of
 // that kind left to step up for. 26 → 24.
+//
+// Set revision (module-catalog application): category K —
+// InternalModuleService/Apply JOINED. It brings the permission-catalog rows of
+// one module to what its manifest declares, and doing so resettles the tenant
+// projections that named a withdrawn row — a right taken away, irreversibly.
+// 32 → 33. The routine band moved with it, and by THREE rather than by nothing:
+// the same contract declares "1" explicitly on Plan / Get / List, which moves
+// them out of the no-floor band the generator's default would have put them in.
+// 287 → 290, catalog total 346 → 350.
 
 import (
 	"os"
@@ -55,7 +64,7 @@ import (
 	"github.com/PRO-Robotech/kacho/gateway/internal/middleware"
 )
 
-// sensitiveACR2Set — the 32 FQNs that MUST carry required_acr_min="2" after the
+// sensitiveACR2Set — the 33 FQNs that MUST carry required_acr_min="2" after the
 // refinement (grant-surface + credential + tenancy-root + shared-resource
 // ceiling, domain-agnostic). Any drift (an RPC added or dropped) fails this
 // test. Categories A–J per the APPROVED acceptance docs.
@@ -189,6 +198,32 @@ func sensitiveACR2Set() map[string]struct{} {
 		"kacho.cloud.iam.v1.LimitService/Create",
 		"kacho.cloud.iam.v1.LimitService/Update",
 		"kacho.cloud.iam.v1.LimitService/Delete",
+
+		// K — module-catalog application (1). kacho#1034.
+		//
+		// Sensitive because applying WITHDRAWS TENANT RIGHTS and does so
+		// irreversibly: bringing the catalog rows of a module to what its manifest
+		// declares resettles the tenant projections that named a withdrawn row —
+		// the row of the live projection is MOVED OUT, not copied, and no
+		// production reader of the orphan ledger exists. That is a change of the
+		// security posture, in the same sense category B is: it changes what a
+		// principal may do, and the next read does not undo it.
+		//
+		// Plan / Get / List are deliberately NOT here — a read withdraws nothing —
+		// and they declare "1" EXPLICITLY in the .proto rather than by omission,
+		// because the generator stamps "2" for an unstated floor and all three
+		// would otherwise have arrived in this band by accident. Their exclusion is
+		// asserted by the complement test below.
+		//
+		// Inert on the path it is served on today, and that is a decision recorded
+		// in the acceptance doc rather than an oversight: the interceptor enforcing
+		// the floor on the internal listener reads a hand-written roster of
+		// gateway-fronted internal RPCs, the same entry ALSO narrows the caller to
+		// the edge, and the edge has no REST route to this method yet — entering it
+		// now would produce a surface reachable by no one. The catalog entry states
+		// what the act COSTS; lowering it to "1" because nothing enforces it today
+		// would be a lie about the requirement.
+		"kacho.cloud.iam.v1.InternalModuleService/Apply",
 	}
 	set := make(map[string]struct{}, len(fqns))
 	for _, f := range fqns {
@@ -216,7 +251,7 @@ func TestPermissionCatalog_ACR_SetInvariant(t *testing.T) {
 	// «чувствительное» — назначение, изменение и отзыв предела. Число утверждается,
 	// а не выводится из списка: молчаливое сокращение — ровно то, что произошло бы
 	// при случайно выпавшей записи.
-	require.Len(t, sensitive, 32, "the acceptance-doc sensitive set must contain exactly 32 FQNs")
+	require.Len(t, sensitive, 33, "the acceptance-doc sensitive set must contain exactly 33 FQNs")
 
 	got2 := map[string]struct{}{}
 	for _, fqn := range c.FQNs() {
@@ -237,7 +272,7 @@ func TestPermissionCatalog_ACR_SetInvariant(t *testing.T) {
 		_, want := sensitive[fqn]
 		assert.True(t, want, "FQN carries acr=2 but is NOT in the sensitive allowlist (over-inclusion): %s", fqn)
 	}
-	assert.Len(t, got2, 32, "exactly 32 FQNs must carry required_acr_min=2")
+	assert.Len(t, got2, 33, "exactly 33 FQNs must carry required_acr_min=2")
 }
 
 // TestPermissionCatalog_ACR_ComplementNotTwo — SEC-ACR-13 / I1: explicit
@@ -655,7 +690,7 @@ func TestPermissionCatalog_ACR_CountsAndByteIdentity(t *testing.T) {
 	// (`UserService/RemoveFromAccount`, #1127) — вторая половина пары к Invite,
 	// и порог у неё тот же, что у Invite и у отзыва выдачи: обе меняют СОСТАВ
 	// участников аккаунта.
-	assert.Equal(t, 32, n2, "sensitive count")
+	assert.Equal(t, 33, n2, "sensitive count")
 	// ТРИ линии завели по одной записи каждая, и объяснения всех трёх остаются —
 	// они про разные глаголы. Числа ниже ЗАМЕРЕНЫ по дереву после слияния,
 	// а не сложены в уме: арифметика трёх переписей даёт совпадение, которое
@@ -722,9 +757,9 @@ func TestPermissionCatalog_ACR_CountsAndByteIdentity(t *testing.T) {
 	// освобождённую запись (#1450), линия — две записи полосы рутины (IAM-ID-2 S1).
 	// Числа ниже ЗАМЕРЕНЫ по вшитому каталогу ПОСЛЕ слияния, а не сложены в уме:
 	// n2=32 (не двигалась), n1=287, nEmpty=27, итог 346.
-	assert.Equal(t, 287, n1, "routine count")
+	assert.Equal(t, 290, n1, "routine count")
 	assert.Equal(t, 27, nEmpty, "no-acr-requirement count (подмножество `<exempt>`, не равное ему)")
-	assert.Equal(t, 346, n2+n1+nEmpty, "catalog total")
+	assert.Equal(t, 350, n2+n1+nEmpty, "catalog total")
 
 	// Byte-identity of the two embedded copies.
 	gw := middleware.EmbeddedPermissionCatalogJSON()
