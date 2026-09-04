@@ -102,6 +102,7 @@ var modelOwnerRubicons = map[string]string{
 	"NewSystemViewerFloor":  rubiconSystemViewerFloor,
 	"NewACRFloor":           rubiconStepUpFloor,
 	"DenyDetailUnary":       rubiconDenyReason,
+	"NewOwnDoor":            rubiconOwnDoor,
 }
 
 // Рубежи владельца модели — те самые, на которых стоит решение оставить iam вне
@@ -112,6 +113,11 @@ const (
 	rubiconSystemViewerFloor = "этаж system_viewer на читающих RPC"
 	rubiconStepUpFloor       = "этаж step-up (required_acr_min)"
 	rubiconDenyReason        = "машиночитаемая причина отказа на полосе, где край не проверяет"
+	// Шестой рубеж — СОБСТВЕННАЯ ДВЕРЬ: пообъектный вопрос о доступе на
+	// публичном слушателе. Появился последним и не от роста, а от закрытия дыры:
+	// до него пообъектного вопроса на своих слушателях iam не задавал ВОВСЕ,
+	// полагаясь на край. Вынесенный в чужое облако iam края не имеет.
+	rubiconOwnDoor = "собственная дверь: пообъектный вопрос о доступе на публичном слушателе"
 )
 
 // modelOwnerRubiconCount — сколько рубежей называет ОСНОВАНИЕ решения.
@@ -120,7 +126,7 @@ const (
 // подтверждала бы сама себя и молчала бы ровно тогда, когда состав рубежей
 // поехал. Разойдётся с картой — красное, и чинится это перечитыванием решения,
 // а не правкой числа.
-const modelOwnerRubiconCount = 5
+const modelOwnerRubiconCount = 6
 
 // TestModelOwnerStillCarriesTheRubiconsTheDecisionRestsOn — сама проба.
 //
