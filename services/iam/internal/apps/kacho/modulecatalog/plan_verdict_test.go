@@ -443,7 +443,7 @@ func verdictByTheAnchor(t *testing.T, s planState, naive bool) planVerdict {
 	if naive {
 		nextRetired = catalog.Rows{}
 	}
-	census, _ := seed.AssertCatalogParity(context.Background(), &planStubSource{live: nextLive, retired: nextRetired})
+	census, _ := seed.AssertCatalogParity(context.Background(), &planStubSource{live: nextLive, retired: nextRetired}, seed.ImageAnchor())
 	return refusedIf(census.Diverged())
 }
 

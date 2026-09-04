@@ -222,6 +222,33 @@ func runServe(cfg config.Config) error {
 		return mErr
 	}
 
+	// ОПОРА ПАРИТЕТА — сразу за чтением доставки и ДО первой записи (#1861).
+	//
+	// Опора складывается из ДВУХ слагаемых: перечень, порождённый сборкой, и то,
+	// что объявила доставка. Пока слагаемое было одно, живая строка, которой
+	// образ не несёт, отвергалась при любом входе — то есть объявить свой модуль
+	// данными было нельзя, и установка в чужом облаке требовала пересборки
+	// образа. При этом соседняя половина того же старта — композиция модели
+	// прав — новый тип уже принимает; две половины противоречили друг другу.
+	//
+	// Отказ ФАТАЛЕН и приходит РАНЬШЕ применения: он означает ровно одно —
+	// доставка ПЕРЕОПРЕДЕЛЯЕТ форму строки, которую образ уже объявил. Мягкий
+	// проход здесь отдал бы данным оператора власть переписывать имя типа, по
+	// которому выдаются права.
+	catalogAnchor, anErr := modulecatalog.AnchorOfDelivery(deliveredManifests)
+	if anErr != nil {
+		return anErr
+	}
+	// Расширение опоры называется ПОИМЁННО, а не одним счётчиком: оно законно,
+	// но молчаливым быть не вправе — по той же причине, по какой поимённо
+	// называется снятое. Строка, которой образ не несёт, есть решение оператора,
+	// и оператор обязан видеть его в журнале старта.
+	if added := catalogAnchor.AddedRows(); len(added) > 0 {
+		logger.Info("доставка расширила опору паритета сверх образа",
+			slog.Int("added", len(added)),
+			slog.Any("rows", added))
+	}
+
 	// МОДЕЛЬ ПРАВ — сразу за чтением доставки и ДО всего, что её читает
 	// (задачи #1969, #2002).
 	//
@@ -263,13 +290,13 @@ func runServe(cfg config.Config) error {
 	}
 
 	catalogRepo := kachopg.NewCatalogRepo(pool)
-	catalogCensus, catErr := seed.AssertCatalogParity(ctx, catalogRepo)
+	catalogCensus, catErr := seed.AssertCatalogParity(ctx, catalogRepo, catalogAnchor)
 	// Перепись печатается ВСЕГДА, независимо от исхода: без неё «ноль
 	// расхождений» неотличимо от «ноль прочитанного».
 	logger.Info("перепись каталога модуля",
-		slog.Int("literal_modules", catalogCensus.LiteralModules),
-		slog.Int("literal_resources", catalogCensus.LiteralResources),
-		slog.Int("literal_verbs", catalogCensus.LiteralVerbs),
+		slog.Int("anchor_modules", catalogCensus.AnchorModules),
+		slog.Int("anchor_resources", catalogCensus.AnchorResources),
+		slog.Int("anchor_verbs", catalogCensus.AnchorVerbs),
 		slog.Int("row_modules", catalogCensus.RowModules),
 		slog.Int("row_resources", catalogCensus.RowResources),
 		slog.Int("row_verbs", catalogCensus.RowVerbs),
@@ -278,7 +305,8 @@ func runServe(cfg config.Config) error {
 		slog.Int("retired_verbs", catalogCensus.RetiredVerbs),
 		slog.Int("missing", len(catalogCensus.MissingRows)),
 		slog.Int("withdrawn", len(catalogCensus.WithdrawnRows)),
-		slog.Int("extra", len(catalogCensus.ExtraRows)))
+		slog.Int("extra", len(catalogCensus.ExtraRows)),
+		slog.Int("anchor_added_by_delivery", len(catalogCensus.AnchorAdded)))
 	// Снятое называется ПОИМЁННО, а не одним счётчиком. Счётчик отвечает на
 	// вопрос «сколько», а оператору, читающему журнал старта, нужен другой:
 	// ЧТО именно перестало выдаваться. Снятие проходит молча by construction —

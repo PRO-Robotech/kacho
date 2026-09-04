@@ -245,7 +245,7 @@ var _ seed.CatalogSource = anchorSource{}
 // транзакции после записи. Вопрос у обоих один, и потому производитель ответа
 // тоже один.
 func AnchorVerdictOf(ctx context.Context, state CatalogState) (AnchorPlan, error) {
-	census, err := seed.MeasureCatalogParity(ctx, anchorSource{state: state})
+	census, err := seed.MeasureCatalogParity(ctx, anchorSource{state: state}, seed.ImageAnchor())
 	if err != nil {
 		// Недостижимо by construction (см. `anchorSource`) — и написано ИМЕННО
 		// поэтому: проглоченный отказ выглядит одинаково при живом источнике и
@@ -256,13 +256,13 @@ func AnchorVerdictOf(ctx context.Context, state CatalogState) (AnchorPlan, error
 	// НЕПУСТОТА — прежде вердикта. `Diverged()` ложен и на переписи, в которой
 	// сравнения не было вовсе, поэтому «расхождений нет» обязано быть отличимо
 	// от «сравнивать было нечего».
-	if census.LiteralResources == 0 || census.Empty() {
+	if census.AnchorResources == 0 || census.Empty() {
 		return AnchorPlan{}, fmt.Errorf(
 			"%w: опора %d/%d/%d, живых строк %d/%d/%d — одна из сторон сравнения пуста, "+
 				"и вердикт по такой переписи означал бы «расхождений нет» там, где верно "+
 				"«сравнивать было нечего»",
 			ErrAnchorCensusVoid,
-			census.LiteralModules, census.LiteralResources, census.LiteralVerbs,
+			census.AnchorModules, census.AnchorResources, census.AnchorVerbs,
 			census.RowModules, census.RowResources, census.RowVerbs)
 	}
 
