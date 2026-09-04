@@ -32,7 +32,34 @@ type Options struct {
 	FS fs.FS
 	// ManifestPath is the path to dropguard.json, usually "dropguard.json"
 	// relative to the migrations package under test.
+	//
+	// A chain that drops nothing owes no declarations, so an absent manifest is
+	// accepted for such a chain and only for it — the same rule the repo-wide
+	// static gate already applies to a service that has never dropped a table.
 	ManifestPath string
+	// DropsExpected is how many Up-section DROP TABLE statements the CALLER says
+	// its chain holds. It is declared here rather than inferred, and that is the
+	// whole of its value: it cannot move on its own, so a drop that appeared
+	// without it moving is a drop nobody looked at.
+	//
+	// ZERO IS A LEGITIMATE VALUE, and saying so is the point. This used to be an
+	// unstated assumption inside the harness — a chain with no drops was refused
+	// outright, on the reasoning that the run would then assert nothing. That
+	// reasoning was true of the population the harness was written for, where
+	// every caller had drops, and it stopped being true when a service squashed
+	// its chain into one primary migration: a consolidated chain is one STATE, and
+	// a state has no history of drops to count. The refusal then fired on the
+	// correct answer.
+	//
+	// What the run still asserts at zero is not nothing: the chain replays to head
+	// against a real database, the manifest is reconciled against the migrations
+	// (so a declaration that outlived its drop is still refused), and this number
+	// still ratchets — add a drop and the count moves off zero and goes red.
+	//
+	// The undeclared zero value is safe in the only direction that matters: a
+	// caller who forgets the field declares zero, and a chain that actually drops
+	// something goes red rather than quiet.
+	DropsExpected int
 	// Seed, when set, runs each time the chain reaches a version at which
 	// something is about to be counted, and is given the version actually
 	// reached. It exists so the guard can be proved to fail on a table that is
@@ -81,15 +108,28 @@ func Measure(t *testing.T, opts Options) dropguard.Report {
 	// are the two things that are always possible.
 	inv, err := dropguard.Inventory(opts.Service, opts.FS)
 	if err != nil {
+		// Inventory itself refuses a scan that read no files, so "nothing was
+		// read" is already fatal and does not need repeating here. What is left
+		// below is a claim about DROPS, which is a different thing entirely.
 		t.Fatalf("inventory: %v", err)
 	}
-	if len(inv.Drops) == 0 {
-		t.Fatalf("%s: no Up-section DROP TABLE found in %d migration file(s) — this gate would assert nothing",
-			opts.Service, inv.FilesScanned)
+	// The judgement lives in the library, not here, so that it can be handed
+	// numbers directly by an injection: a comparison exercisable only by breaking a
+	// real service's chain is a comparison nobody exercises.
+	if finding := dropguard.AdjudicateDeclaredDropCount(
+		opts.Service, len(inv.Drops), inv.FilesScanned, opts.DropsExpected); finding != "" {
+		t.Error(finding)
 	}
+
 	man, err := dropguard.LoadManifest(opts.ManifestPath)
 	if err != nil {
-		t.Fatalf("manifest: %v", err)
+		// A chain that drops nothing has nothing to declare, so its manifest may
+		// be absent — and only then. Any other unreadable manifest is fatal: a
+		// guard that cannot read what it is checking against has not checked.
+		if !dropguard.ManifestAbsenceIsLegitimate(len(inv.Drops), err) {
+			t.Fatalf("manifest: %v", err)
+		}
+		man = dropguard.Manifest{Service: opts.Service}
 	}
 	staticViolations := dropguard.Reconcile(inv, man)
 
@@ -104,6 +144,10 @@ func Measure(t *testing.T, opts Options) dropguard.Report {
 		rep.WriteCensus(os.Stdout)
 		for _, v := range staticViolations {
 			t.Errorf("%s", v.Error())
+		}
+		if rep.DropsInChain == 0 {
+			t.Skipf("%s: -short reaches no database; the chain holds no drops, so nothing was owed a count, but neither was the chain replayed to head",
+				opts.Service)
 		}
 		t.Skipf("%s: -short leaves %d drop(s) uncounted; the declarations were checked, the rows were not",
 			opts.Service, rep.DropsInChain)

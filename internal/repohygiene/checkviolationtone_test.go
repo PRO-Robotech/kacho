@@ -36,8 +36,6 @@ import (
 	"strconv"
 	"strings"
 	"testing"
-
-	"github.com/PRO-Robotech/kacho/internal/treecorpus"
 )
 
 // dbTonePhrase — фраза, которой о своём отказе говорит Postgres. Ищется именно
@@ -50,17 +48,6 @@ const dbTonePhrase = "violates check constraint"
 // Здесь оно ВЫПИСАНО намеренно: гейт сверяет константу пакета с деревом
 // миграций, и взяв её из того же пакета, он сверял бы значение сам с собой.
 const nameFormConstraintSuffix = "_name_check"
-
-// migrationNameFormSuffix — ХВОСТ имени файла, которым форма имени пришла в
-// схему сервиса.
-//
-// Отбор идёт по ПРЕДМЕТУ миграции, а не по её номеру. Пять первых схем несут
-// номер задачи (`715001_…`), iam пришёл позже и обязан нести метку времени:
-// номер задачи меньше уже применённых у него версий, и мигратор такую версию не
-// применит вовсе (гейт `TestNewMigrationOutranksEveryAppliedOne`). Предикат по
-// номеру объявил бы шестую схему несуществующей — то есть «ноль находок» стало
-// бы «ноль прочитанного» ровно на той схеме, которая пришла последней.
-const migrationNameFormSuffix = "_resource_name_single_form.sql"
 
 // TestCheckViolationNeverSpeaksTheDBTone — ни один прод-файл не собирает
 // сообщение для вызывающего из фразы Postgres.
@@ -102,47 +89,60 @@ func TestCheckViolationNeverSpeaksTheDBTone(t *testing.T) {
 
 // TestNameFormConstraintSuffixMatchesMigrations — предпосылка разбора полос.
 //
-// Каждая из схем, прошедших 715001, обязана строить имя ограничения тем же
-// суффиксом, который читает отображение ошибки. Гейт падает и когда суффикс
-// разошёлся, и когда файлов миграции не нашлось вовсе: «ноль находок» обязано
+// Каждая схема, принявшая канон формы имени (#715), обязана строить имя
+// ограничения тем же суффиксом, который читает отображение ошибки. Гейт падает и
+// когда суффикс разошёлся, и когда схем не нашлось вовсе: «ноль находок» обязано
 // быть отличимо от «ноль прочитанного».
+//
+// # Признак отбора — СОДЕРЖИМОЕ схемы, а не имя файла
+//
+// Прежде схемы отбирались по хвосту имени файла `*_resource_name_single_form.sql`.
+// Имя файла — прокси: настоящий признак это ограничение формы имени В СХЕМЕ, а
+// файл лишь то место, откуда оно однажды туда попало. Прокси пережил свой предмет,
+// когда цепь iam была сведена в одну первичную миграцию — ограничение на месте,
+// файла нет, — и гейт стал считать пять схем вместо шести. Вывод из содержимого
+// живёт в `nameformcanon.go` и общий с гейтом имён фикстур: два места об одном
+// предмете разошлись бы молча, и разошлись бы они именно так, как разошлись.
 func TestNameFormConstraintSuffixMatchesMigrations(t *testing.T) {
 	root := repoRoot(t)
 
-	tracked, err := treecorpus.Under(root)
+	adoptions, err := nameFormCanonAdoptions(root)
 	if err != nil {
 		t.Fatalf("состав дерева не читается: %v", err)
 	}
 
-	var seen []string
-	for _, abs := range tracked {
-		if !strings.HasSuffix(filepath.Base(abs), migrationNameFormSuffix) {
-			continue
-		}
-		src, rerr := os.ReadFile(abs)
+	var (
+		seen         []string
+		findings     []string
+		materialised int
+	)
+	for _, a := range adoptions {
+		src, rerr := os.ReadFile(filepath.Join(root, a.File)) // #nosec G304 -- путь из индекса репозитория
 		if rerr != nil {
-			t.Fatalf("read %s: %v", abs, rerr)
+			t.Fatalf("read %s: %v", a.File, rerr)
 		}
-		rel, e := filepath.Rel(root, abs)
-		if e != nil {
-			rel = abs
-		}
-		if !strings.Contains(string(src), nameFormConstraintSuffix) {
-			t.Errorf("%s: миграция не строит имя ограничения суффиксом %q — "+
-				"отображение ошибки перестанет узнавать полосу формы имени",
-				rel, nameFormConstraintSuffix)
-		}
-		seen = append(seen, rel)
+		findings = append(findings, adjudicateNameFormConstraintNaming(a, string(src), nameFormConstraintSuffix)...)
+		materialised += len(nameFormMaterialisedConstraint.FindAllString(string(src), -1))
+		seen = append(seen, a.Service+" ("+a.File+")")
 	}
 
-	t.Logf("осмотрено миграций *%s: %d — %s", migrationNameFormSuffix, len(seen), strings.Join(seen, ", "))
+	// Перепись печатает ДВЕ величины отдельно: сколько схем осмотрено и сколько
+	// среди них материализованных ограничений. Одно число не отличило бы схему,
+	// у которой имена строятся в рантайме, от схемы, где их можно прочесть.
+	t.Logf("осмотрено схем, принявших канон формы имени: %d — %s; материализованных ограничений с формой: %d",
+		len(seen), strings.Join(seen, ", "), materialised)
+
+	for _, f := range findings {
+		t.Error(f)
+	}
+
 	// iam пришёл к канону последним (#1279): его форма имени была объявлена
 	// СВОИМ текстом, поэтому гейт единственности формы её не видел, а разбор
 	// полос ничего не знал о шестой схеме. Число обязано двигаться вместе с
 	// деревом — оно и есть перепись, а не украшение.
 	const want = 6 // vpc, compute, storage, nlb, geo, iam
 	if len(seen) != want {
-		t.Fatalf("миграций формы имени найдено %d, ожидалось %d: перепись беспредметна "+
+		t.Fatalf("схем под каноном формы имени найдено %d, ожидалось %d: перепись беспредметна "+
 			"либо схема прибавилась/убыла, и разбор полос про неё ничего не знает", len(seen), want)
 	}
 }

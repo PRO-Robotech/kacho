@@ -37,19 +37,6 @@ services/compute/internal/migrations/0016_instance_redesign.sql|DROP COLUMN|20
 services/compute/internal/migrations/0023_drop_nic_dns_records.sql|DROP COLUMN|2
 services/compute/internal/migrations/0034_drop_instance_metadata.sql|DROP COLUMN|1
 services/geo/internal/migrations/716001_geo_name_drop.sql|DROP COLUMN|2
-services/iam/internal/migrations/0005_rbac_v2_grammar_and_scope.sql|SET NOT NULL|1
-services/iam/internal/migrations/0008_drop_organizations.sql|DROP COLUMN|3
-services/iam/internal/migrations/0027_target_members_rule_rekey.sql|SET NOT NULL|2
-services/iam/internal/migrations/0056_role_definition_tier.sql|DROP COLUMN|1
-services/iam/internal/migrations/0070_conditions_folder_to_project.sql|RENAME COLUMN|1
-services/iam/internal/migrations/0071_service_accounts_drop_project_id.sql|DROP COLUMN|1
-services/iam/internal/migrations/0075_retire_tenant_condition_surface.sql|DROP COLUMN|1
-services/iam/internal/migrations/0097_subject_change_outbox_undecodable_row_unwritable.sql|SET NOT NULL|1
-services/iam/internal/migrations/20260822160000_journal_without_delivery_columns.sql|DROP COLUMN|4
-services/iam/internal/migrations/20260824210000_basic_access_token_credential_kind.sql|SET NOT NULL|2
-services/iam/internal/migrations/20260829124512_subject_change_journal_drops_the_unread_scope_hint.sql|DROP COLUMN|2
-services/iam/internal/migrations/20260829181500_subject_change_journal_drops_the_delivery_columns.sql|DROP COLUMN|4
-services/iam/internal/migrations/732001_binding_subject_carries_its_scope.sql|SET NOT NULL|2
 services/nlb/internal/migrations/0011_loadbalancer_placement_link_model.sql|DROP COLUMN|3
 services/nlb/internal/migrations/0028_drop_dead_listener_address_columns.sql|DROP COLUMN|5
 services/nlb/internal/migrations/0030_drop_listener_proxy_protocol_v2.sql|DROP COLUMN|1

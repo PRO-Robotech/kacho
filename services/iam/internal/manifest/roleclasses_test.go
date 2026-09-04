@@ -74,14 +74,20 @@ func TestMODRC01ClassesKeyIsTheFormOfARoleRight(t *testing.T) {
 // реально кладёт в строку.
 func migrationRuleVerbs(t *testing.T, roleID string) []string {
 	t.Helper()
-	const path = "../migrations/0031_reseed_system_roles_rules.sql"
+	// Ожидание берётся у ПРИМЕНЁННОЙ схемы, и координата у неё теперь одна:
+	// цепочка iam сведена в первичную миграцию (2026-09-04). Прежде здесь стоял
+	// файл `0031_reseed_system_roles_rules.sql`, который правил столбец
+	// оператором `UPDATE … SET rules = … WHERE id = 'rol' || substr(md5(…))`.
+	// Свод несёт КОНЕЧНОЕ состояние: роль вставляется разом, идентификатор уже
+	// вычислен, а правило стоит значением столбца. Разбор поэтому ищет роль по
+	// ИМЕНИ — величине, которая не зависит ни от способа вывода
+	// идентификатора, ни от того, каким оператором строка получила своё правило.
+	const path = "../migrations/0001_initial.sql"
 	body, err := os.ReadFile(path)
 	if err != nil {
 		t.Fatalf("применённая миграция не прочитана: %v", err)
 	}
-	re := regexp.MustCompile(`rules = '(\[.*?\])'::jsonb\s+WHERE id = 'rol' \|\| substr\(md5\('` +
-		regexp.QuoteMeta(roleID) + `'\)`)
-	hit := re.FindStringSubmatch(string(body))
+	hit := roleRulesFromSeed(string(body), roleID)
 	if hit == nil {
 		t.Fatalf("в миграции %s не найдено строки роли %q — ожидание брать неоткуда, "+
 			"и «ноль расхождений» стало бы свойством разбора, а не дерева", path, roleID)
@@ -105,12 +111,22 @@ func migrationRuleVerbs(t *testing.T, roleID string) []string {
 // классу дало бы `["get","list","get"]` — не равно строке миграции, и сравнение
 // обязано на этом покраснеть.
 func TestMODRC02TranslationIsWordForWordAgainstTheAppliedMigration(t *testing.T) {
+	// Классы фикстуры взяты у ЖИВЫХ ролей посева, а не у промежуточного шага.
+	//
+	// Прежде ожидание бралось из `0031_reseed_system_roles_rules.sql` — снимка
+	// СЕРЕДИНЫ цепочки. Более поздние миграции правили тот же столбец (у `view`
+	// снят снятый глагол `read`, у `edit` прибавились `get` и `list`), и файл
+	// перестал быть живой правдой ещё тогда. Проба этого не замечала: она читала
+	// замороженный файл и потому оставалась зелёной, сверяясь с состоянием,
+	// которого в базе давно нет, — утверждение, пережившее свой предмет.
+	// Сведение цепочки (2026-09-04) сделало это видимым: координата исчезла, а
+	// живой посев назвал другие глаголы.
 	m, err := manifest.Load([]byte("apiVersion: iam/v1\nmodule: vpc\nroles:\n" +
 		"  - id: vpc.viewer\n    description: Читает топологию сетей проекта.\n" +
 		"    tier: {tierType: iam.project, tierId: prj000000000000000}\n" +
 		"    rules:\n" +
-		"      - {module: vpc, resources: [network], classes: [read, list, get]}\n" +
-		"      - {module: vpc, resources: [network], classes: [update]}\n" +
+		"      - {module: vpc, resources: [network], classes: [list, get]}\n" +
+		"      - {module: vpc, resources: [network], classes: [get, list, update]}\n" +
 		"deprecatedVerbs:\n" +
 		"  read:\n    class: get\n    since: \"2026-08-23\"\n" +
 		"    reason: Синоним чтения из прежней грамматики.\n" +
@@ -131,8 +147,35 @@ func TestMODRC02TranslationIsWordForWordAgainstTheAppliedMigration(t *testing.T)
 				"к классу сделало бы строку невоспроизводимой", i, got, roleID, want)
 		}
 	}
-	t.Logf("перепись: правил переведено %d · ожиданий взято у миграции %d",
+	t.Logf("перепись: правил переведено %d · ожиданий взято у посева %d",
 		len(m.Roles[0].Rules), 2)
+
+	// ОТРИЦАТЕЛЬНЫЙ КОНТРОЛЬ — отдельным утверждением, а не входом сверки выше.
+	//
+	// Он про то, что перевод НЕ приводит снятый глагол к его классу: `read`
+	// объявлен снятым с классом `get`, и схлопывание дало бы `["get","list"]`
+	// вместо `["read","list"]`. Прежде контроль ехал внутри той же фикстуры и
+	// потому требовал, чтобы `read` стоял в живой роли; живая роль его больше не
+	// несёт — и это правильно, глагол снимается. Свойство переводчика от этого
+	// не изменилось, поэтому контроль остаётся, но со СВОИМ входом: он про
+	// перевод, а не про согласие с посевом.
+	dep, derr := manifest.Load([]byte("apiVersion: iam/v1\nmodule: vpc\nroles:\n" +
+		"  - id: vpc.legacy\n    description: Несёт снятый глагол дословно.\n" +
+		"    tier: {tierType: iam.project, tierId: prj000000000000000}\n" +
+		"    rules:\n" +
+		"      - {module: vpc, resources: [network], classes: [read, list]}\n" +
+		"deprecatedVerbs:\n" +
+		"  read:\n    class: get\n    since: \"2026-08-23\"\n" +
+		"    reason: Синоним чтения из прежней грамматики.\n" +
+		"    removeWhen: Выдач с правом `.read` ноль.\n"))
+	if derr != nil {
+		t.Fatalf("манифест со снятым глаголом отвергнут: %v", derr)
+	}
+	if got, want := dep.Roles[0].Rules[0].DomainRule().Verbs, []string{"read", "list"}; !reflect.DeepEqual(got, want) {
+		t.Errorf("снятый глагол приведён к своему классу: перевод дал %#v, ожидалось %#v — "+
+			"строка стала бы невоспроизводимой, а посев неотличим от того, что его породило",
+			got, want)
+	}
 }
 
 // ── MOD-RC-03 и MOD-RC-04 — СНЯТЫ ВМЕСТЕ СО СВОИМ ПРЕДМЕТОМ (kacho#1844) ────
@@ -207,4 +250,24 @@ func TestMODRC11UnknownKeyInsideARoleRuleIsStillRefused(t *testing.T) {
 		"{module: vpc, resources: [network], classes: [get], resourceNames: [ntw-1]}"))); err != nil {
 		t.Fatalf("парный положительный отвергнут: %v", err)
 	}
+}
+
+// reSeededRole — строка посева роли: `pg_dump` печатает по одной на запись, все
+// колонки перечислены, значения готовы. Захватываются ИМЯ (третье значение) и
+// правило — единственный на строке массив объектов JSON.
+var reSeededRole = regexp.MustCompile(
+	`INSERT INTO kacho_iam\.roles \([^)]*\) VALUES \('[^']*', [^,]*, '([^']*)'.*?'(\[\{.*?\}\])'`)
+
+// roleRulesFromSeed — правило роли по её ИМЕНИ, из посева сведённой миграции.
+//
+// Возвращает срез той же формы, что прежний разбор по образцу: nil, когда роли
+// нет, иначе элемент [1] — текст массива правил. Форма сохранена намеренно,
+// чтобы вызывающий и его сообщение об отсутствии остались прежними.
+func roleRulesFromSeed(body, roleID string) []string {
+	for _, m := range reSeededRole.FindAllStringSubmatch(body, -1) {
+		if m[1] == roleID {
+			return []string{m[0], m[2]}
+		}
+	}
+	return nil
 }

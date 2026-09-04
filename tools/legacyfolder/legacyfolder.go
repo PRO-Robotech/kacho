@@ -196,9 +196,6 @@ var exemptFiles = map[string]string{
 
 	"services/compute/internal/migrations/0001_initial.sql":                       "applied migration: the baseline that created the column under its original name; applied migrations are never edited (ban #5)",
 	"services/compute/internal/migrations/0009_rename_folder_to_project.sql":      "applied migration: the record of the rename itself — it must keep naming what it renamed",
-	"services/iam/internal/migrations/0001_initial.sql":                           "applied migration: the baseline that created conditions.folder_id; applied migrations are never edited (ban #5)",
-	"services/iam/internal/migrations/0070_conditions_folder_to_project.sql":      "applied migration: the record of the last rename — it must keep naming what it renamed",
-	"services/iam/internal/migrations/0075_retire_tenant_condition_surface.sql":   "applied migration: its Down block cites 0070 by what that migration did, to say why the column it recreates is project_id; the SQL itself carries only the new name, and an applied migration is never edited (ban #5)",
 	"services/compute/internal/handler/tenant_interceptor_project_header_test.go": "conformance test: it sends the retired header to prove the server does not honour it; removing the name would remove the proof",
 
 	// Newman cases that ASSERT the retired word is absent from a response, and the

@@ -20,6 +20,13 @@ type StepTo func(version int64) error
 // returned alongside the verdict and callers are expected to assert on it.
 type Report struct {
 	Service string
+	// FilesScanned is how many migration files the inventory read to produce this
+	// report. It is carried so the census can tell "the chain holds no drops" from
+	// "nothing was read": those are different states, and a verdict that spells
+	// them the same way turns a legitimate one into an alarm. A consolidated chain
+	// — one squashed into a single primary migration — legitimately holds zero
+	// drops while having been read in full.
+	FilesScanned int
 	// DropsInChain is how many Up-section drops the migrations contain.
 	DropsInChain int
 	// Measured is how many of them this run actually put a question to the
@@ -45,8 +52,17 @@ func (r Report) OK() bool { return r.Measured == r.DropsInChain && len(r.Violati
 func (r Report) Summary() string {
 	verdict := "OK"
 	switch {
-	case r.DropsInChain == 0:
+	case r.FilesScanned == 0:
+		// Nothing was read. This is the state the census exists to make loud, and
+		// it is refused upstream by Inventory — reaching it here means the report
+		// was built from something other than a scan.
 		verdict = "NOTHING READ"
+	case r.DropsInChain == 0:
+		// Read in full, and the chain drops nothing. Legitimate — a consolidated
+		// chain is one state, not a history — and deliberately spelled apart from
+		// NOTHING READ: the two used to share a word, so a chain that had been
+		// read completely was announced as a scan of nothing.
+		verdict = "NO DROPS"
 	case r.Measured == 0:
 		verdict = "NOT VERIFIED"
 	case r.Measured < r.DropsInChain:
@@ -54,8 +70,8 @@ func (r Report) Summary() string {
 	case len(r.Violations) > 0:
 		verdict = "REFUSED"
 	}
-	return fmt.Sprintf("drop-guard %s: %s — measured %d of %d drop(s), %d observed absent, %d violation(s)",
-		r.Service, verdict, r.Measured, r.DropsInChain, len(r.AbsentAt), len(r.Violations))
+	return fmt.Sprintf("drop-guard %s: %s — read %d migration file(s), measured %d of %d drop(s), %d observed absent, %d violation(s)",
+		r.Service, verdict, r.FilesScanned, r.Measured, r.DropsInChain, len(r.AbsentAt), len(r.Violations))
 }
 
 // WriteCensus prints what the run read and what it decided, unconditionally.
@@ -96,7 +112,7 @@ func (r Report) WriteCensus(w io.Writer) {
 // rather than a quiet something. A guard whose only two outcomes are "green" and
 // "green because it did not run" has one outcome.
 func NothingMeasured(inv Inv) Report {
-	rep := Report{Service: inv.Service, DropsInChain: len(inv.Drops), Rows: map[string]int64{}}
+	rep := Report{Service: inv.Service, FilesScanned: inv.FilesScanned, DropsInChain: len(inv.Drops), Rows: map[string]int64{}}
 	for _, d := range inv.Drops {
 		rep.Unmeasured = append(rep.Unmeasured, fmt.Sprintf("%04d/%s", d.Version, d.Table))
 	}
@@ -111,7 +127,7 @@ func NothingMeasured(inv Inv) Report {
 // cannot reach some version stops there and says so, rather than reporting the
 // drops it never got to as clean.
 func MeasureChain(ctx context.Context, db Querier, inv Inv, m Manifest, step StepTo) (Report, error) {
-	rep := Report{Service: inv.Service, DropsInChain: len(inv.Drops), Rows: map[string]int64{}}
+	rep := Report{Service: inv.Service, FilesScanned: inv.FilesScanned, DropsInChain: len(inv.Drops), Rows: map[string]int64{}}
 
 	decls := map[string]Declaration{}
 	for _, d := range m.Drops {
