@@ -203,14 +203,21 @@ modelrender → manifest → authzmodel → authzplan;  authzmap, catalog
 
 ### 0.7 ПОДТВЕРЖДЕНО: шов для композиции УЖЕ объявлен в дереве
 
-`services/iam/internal/manifest/typereferent.go:57` объявляет два референта:
+`services/iam/internal/manifest/typereferent.go` объявляет два референта:
 `ReferentShippedTable` (ПОТРЕБЛЕНИЕ, нулевое значение) и `ReferentCanon`
 (ПОРОЖДЕНИЕ — «таблица есть ПРОДУКТ этого прохода, и судить им вход значит
-спрашивать у ответа»). Предикат — `judgesTypeExistence()` на `:66`.
+спрашивать у ответа»).
 
-**Условность отказа проверена прогоном, а не чтением:** ресурс с `objectType`
-`vpc_probe_thing` при `ReferentShippedTable` отвергается, при `ReferentCanon` —
-**проходит** (`err=<nil>, resources=1`).
+> **Замер этого раздела ПЕРЕЖИЛ свой предмет — снят задачей `#2015`.**
+> Здесь стояло: «ресурс с `objectType` `vpc_probe_thing` при
+> `ReferentShippedTable` отвергается, при `ReferentCanon` — проходит», и предикат
+> назывался `judgesTypeExistence()`. Таблица типов разомкнута: новый тип
+> принимается ОБОИМИ референтами, и приведённый прогон дал бы сегодня
+> `err=<nil>` в обеих полосах. Шов для композиции при этом никуда не делся —
+> референт остался, но различает он теперь ВЛАДЕНИЕ, а не существование
+> (`guardsImageOwnership()`), и условность отказа проверяется входом «тип образа
+> у ЧУЖОЙ строки». Решение —
+> `services/iam/docs/engineering/architecture/object-type-table-is-open-to-the-operator.md`.
 
 ### 0.8 ПОДТВЕРЖДЕНО: круг «таблица ← манифесты ← таблица» замкнут в дереве
 
@@ -705,8 +712,8 @@ $ go list -deps ./services/iam/cmd/kacho-iam | grep -c modelrender
 | П-05 | `authzplan.ParseModel` | `services/iam/internal/authzplan/compile.go:171` | `len(m.Types)` — **мощность**, растущая на повторе (§0.9) |
 | П-06 | `ParseModel` default-ветвь | `services/iam/internal/authzplan/compile.go:223` | `строка %d: нераспознанная строка внутри типа %q: %q` — fail-closed на `type` с отступом |
 | П-07 | `loadDeliveredManifests` | `services/iam/cmd/kacho-iam/module_manifests.go:58` | `[]*manifest.Manifest`; перепись `slog` (`dir`, `paths_seen`, `dirs_skipped`, `manifests_read`, `findings`, `modules`) печатается **до** ветвления на ошибку |
-| П-08 | `manifest.TypeReferent` | `services/iam/internal/manifest/typereferent.go:57` | два референта; `judgesTypeExistence()` (`:66`); `String()` печатает «канон …» / «закрытая таблица типов» |
-| П-09 | `ErrUnknownModule` · `ErrObjectTypeUnknown` | `manifest.go:116` (формат `:400`) · `resources.go:79` (формат `:811-818`) | тексты отказа Д-доставки; второй **условен** по референту |
+| П-08 | `manifest.TypeReferent` | `services/iam/internal/manifest/typereferent.go` | два референта. **Предмет сменился (`#2015`):** референт различает не «чем судится существование», а «является ли таблица образом» — `guardsImageOwnership()`; `String()` печатает «порождение …» / «образ …» |
+| П-09 | `ErrMalformedModule` · `ErrObjectTypeMalformed` · `ErrObjectTypeRedefinesImage` · `ErrObjectTypeCollision` | `moduleset.go` · `resources.go` | тексты отказа Д-доставки. **`ErrUnknownModule` и `ErrObjectTypeUnknown` СНЯТЫ вместе со своим предметом** (`#1927`, `#2015`): наборы модулей и типов разомкнуты, членство не спрашивается, и производителя у обоих отказов не осталось ни одного. Пришедшие на их место судят ФОРМУ, ВЛАДЕНИЕ и СТОЛКНОВЕНИЕ — то, что автор манифеста читает в тексте и может исправить; отказ владения **условен** по референту |
 | П-10 | `seed.AssertCatalogParity` | `catalog_parity.go:84`; отказы `:124`, `:129`; `LiteralRows()` `:153` | `ExtraRows`/`MissingRows` + перепись `literal_*`/`row_*`/`missing`/`extra` (`serve.go:247-255`) |
 | П-11 | `catalog.Facts.FGAObjectType(dotted) (string, bool)` | `services/iam/internal/catalog/facts.go:230` | тот же вопрос по **ЖИВЫМ строкам**; шапка `:221` это объявляет дословно |
 | П-12 | `validateRuleCatalog` | `rules_catalog.go:91`, судья `:105` | текущий отказ Д-роли по таблице сборки |
