@@ -331,6 +331,12 @@ func walkManifests(root string, accept func(name string) bool, referent TypeRefe
 	// вердикт по каждому документу больше не зависит от порядка обхода.
 	declared, collisions := declaredModules(report.Paths, docs)
 	report.Findings = append(report.Findings, collisions...)
+	// Столкновение ТИПОВ через обход — предмет, который одному документу не
+	// виден by construction: два манифеста РАЗНЫХ модулей вправе назвать один и
+	// тот же тип объекта, и решать, чья строка каталога переживёт применение,
+	// стал бы порядок обхода. Внутридокументное столкновение сюда не приходит —
+	// его называет [Load], у которого есть индексы ресурсов (objecttype.go).
+	report.Findings = append(report.Findings, declaredObjectTypes(report.Paths, docs)...)
 	judgeOpts := append(append([]LoadOption(nil), opts...), WithModuleSet(declared))
 	for i, data := range docs {
 		m, err := LoadWithReferent(data, referent, judgeOpts...)

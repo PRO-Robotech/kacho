@@ -150,6 +150,25 @@ func executeInjections(fixture string, set []injection) injectionRun {
 
 func quote(s string) string { return "«" + strings.TrimSpace(s) + "»" }
 
+// resourcesSection / resourceEntry — раздел `resources` с одним ресурсом и
+// приписка к нему второго.
+//
+// Собираются функцией, а не константой: у оси типа пять утверждений, и каждое
+// отличается от соседа РОВНО ОДНИМ фактом — именем ресурса либо именем типа.
+// Пять выписанных документов разошлись бы между собой в чём-нибудь ещё, и
+// красное перестало бы говорить, который факт его дал.
+func resourcesSection(name, objectType string) string {
+	return "\nresources:\n" + resourceEntry(name, objectType)
+}
+
+func resourceEntry(name, objectType string) string {
+	return "  - name: " + name + "\n" +
+		"    objectType: " + objectType + "\n" +
+		"    parents: [project]\n" +
+		"    producer: derived\n" +
+		"    verbs: [get]\n"
+}
+
 // nonStringKeyInjection — ключ-нестрока, вписанный первым ключом раздела `seed`.
 //
 // Место выбрано не случайно: тип ключа судится ДО приведения к типизированной
@@ -239,6 +258,41 @@ func manifestInjections() []injection {
 		{
 			name: "законный близнец: модуль ВНЕ порождённой таблицы", old: "module: vpc",
 			replacement: "module: acme", wantErr: nil,
+		},
+
+		// ── ТИП ОБЪЕКТА: форма, владение, столкновение (#2015) ─────────────
+		//
+		// Ось заведена вместе с размыканием таблицы типов. У неё ТРИ отрицания
+		// и ДВА законных близнеца, и близнецы несущие: без первого «отказ есть»
+		// означало бы «загрузчик отвергает всякий тип, которого нет в образе» —
+		// то есть снятый предмет; без второго — «отвергает всякий тип образа».
+		//
+		// Раздел вносится ИНЪЕКЦИЕЙ, а не дописывается к фикстуре: фикстура
+		// раздела `resources` не несёт, и дописав его, набор отнял бы вход у
+		// самих этих утверждений.
+		{
+			name: "законный близнец: НОВЫЙ тип модуля принимается", old: "\nseed:\n",
+			replacement: resourcesSection("widget", "vpc_widget") + "\nseed:\n", wantErr: nil,
+		},
+		{
+			name: "законный близнец: тип ОБРАЗА у ЕГО ЖЕ строки", old: "\nseed:\n",
+			replacement: resourcesSection("network", "vpc_network") + "\nseed:\n", wantErr: nil,
+		},
+		{
+			name: "имя типа не той формы", old: "\nseed:\n",
+			replacement: resourcesSection("widget", "vpc-widget") + "\nseed:\n",
+			wantErr:     ErrObjectTypeMalformed, needle: "vpc-widget",
+		},
+		{
+			name: "тип ОБРАЗА присвоен ЧУЖОЙ строке", old: "\nseed:\n",
+			replacement: resourcesSection("widget", "vpc_network") + "\nseed:\n",
+			wantErr:     ErrObjectTypeRedefinesImage, needle: "vpc.network",
+		},
+		{
+			name: "один тип объявлен ДВУМЯ ресурсами документа", old: "\nseed:\n",
+			replacement: resourcesSection("widget", "vpc_widget") +
+				resourceEntry("gadget", "vpc_widget") + "\nseed:\n",
+			wantErr: ErrObjectTypeCollision, needle: "resources[1]",
 		},
 
 		// ── ключ-нестрока: шесть форм и шесть кавычечных близнецов ──────────

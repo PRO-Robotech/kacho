@@ -66,11 +66,17 @@ func mustContainLine(t *testing.T, block, line string) {
 // `define parent: [registry_registry]` — единственный блок канона, у которого имя
 // указателя не равно типу. Пока имя выводилось из типа, эта пара не порождалась
 // НИ ПРИ КАКОМ значении ключа, то есть блок был недостижим by construction.
+// ЗДЕСЬ ФИКСТУРЫ НАЗЫВАЛИ РЕСУРС `repository` при типе `registry_repository`.
+// После размыкания таблицы типов (#2015) это стало НАХОДКОЙ: образ адресует
+// `registry_repository` строкой `registry.repositories`, то есть фикстура
+// присваивала чужой тип ДРУГОЙ строке, и загрузчик такое отвергает. Имя
+// приведено к тому, каким его несёт образ; предмет проб — форма указателя и
+// форма отношения действия — не изменился, и изменённый факт ровно один.
 func TestMODMR28APointerWhoseNameDiffersFromItsTypeIsExpressible(t *testing.T) {
 	block := renderFromYAML(t, `apiVersion: iam/v1
 module: registry
 resources:
-  - name: repository
+  - name: repositories
     objectType: registry_repository
     parents:
       - {name: parent, type: registry_registry}
@@ -258,7 +264,7 @@ func TestMODMR33AVerbRelationMayCarryItsOwnSubjectsAndSources(t *testing.T) {
 	block := renderFromYAML(t, `apiVersion: iam/v1
 module: registry
 resources:
-  - name: repository
+  - name: repositories
     objectType: registry_repository
     parents:
       - {name: parent, type: registry_registry}
