@@ -10,10 +10,14 @@
 //
 // ГРАНИЦА ЗАДАЧИ НАЗВАНА ОТДЕЛЬНЫМ СЛУЧАЕМ. Из края переезжает ТОЛЬКО
 // административный адрес: он нужен ровно затем, чтобы выход человека снял
-// сессию на стороне поставщика, а под `own` такой сессии не существует. Полоса
-// интроспекции остаётся обязательной на ОБЕИХ полосах — её предмет принадлежит
-// соседней задаче, и снять требование заодно значило бы убрать защиту побочным
-// эффектом смены посадки.
+// сессию на стороне поставщика, а под `own` такой сессии не существует.
+//
+// ЗДЕСЬ СТОЯЛО «полоса интроспекции остаётся обязательной на ОБЕИХ полосах —
+// её предмет принадлежит соседней задаче». Соседняя задача исполнена: под `own`
+// адреса интроспекции поставщика не существует ни одного законного (пусто —
+// отказ, наш собственный авторитет — отказ по пути), то есть возможность была
+// объявлена и неисполнима. Требование не СНЯТО, а ЗАМЕЩЕНО нашим авторитетом
+// отзыва — `own_lane_revocation_authority_test.go`.
 package main
 
 import (
@@ -52,19 +56,21 @@ func TestF4d06_ExternalLaneStillDemandsTheProviderAdminAddress(t *testing.T) {
 
 // F4d-06 — под `own` край стартует БЕЗ административного адреса поставщика.
 func TestF4d06_OwnLaneStartsWithoutTheProviderAdminAddress(t *testing.T) {
-	err := validateProductionRevocationConfig("production", RevocationConfig{
-		IdentityProvider: identityposture.Own,
-		IntrospectionURL: tlsIntrospectURL,
-		AdminCAFile:      testAdminCA,
-		AdminURL:         "",
-	})
-	if err != nil {
+	cfg := ownLane()
+	cfg.IntrospectionURL = tlsIntrospectURL
+	cfg.AdminCAFile = testAdminCA
+	cfg.AdminURL = ""
+	if err := validateProductionRevocationConfig("production", cfg); err != nil {
 		t.Fatalf("под own административный адрес поставщика не требуется, получено: %v", err)
 	}
 }
 
 // F4d-06 — ПОЛОЖИТЕЛЬНЫЙ КОНТРОЛЬ того, что полосность не сняла защиту заодно:
 // под `own` край по-прежнему требует своего — авторитета отзыва.
+//
+// НАМЕРЕНИЕ СЛУЧАЯ СОХРАНЕНО ДОСЛОВНО, изменилось имя ручки: авторитет отзыва
+// под `own` — НАШ, и требование к нему теперь называет его собственную ручку, а
+// не ручку поставщика, которой под этой посадкой нечего адресовать.
 func TestF4d06_OwnLaneDoesNotStopDemandingItsOwn(t *testing.T) {
 	err := validateProductionRevocationConfig("production", RevocationConfig{
 		IdentityProvider: identityposture.Own,
@@ -74,7 +80,7 @@ func TestF4d06_OwnLaneDoesNotStopDemandingItsOwn(t *testing.T) {
 	if err == nil {
 		t.Fatal("под own авторитет отзыва обязан оставаться обязательным")
 	}
-	if !strings.Contains(err.Error(), "KACHO_HYDRA_INTROSPECTION_URL is empty") {
+	if !strings.Contains(err.Error(), "KACHO_API_GATEWAY_PLATFORM_TOKEN_REVOCATION_URL is empty") {
 		t.Fatalf("отказ обязан называть оставшееся требование, получено: %q", err.Error())
 	}
 }
