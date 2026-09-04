@@ -69,11 +69,115 @@ type RevocationConfig struct {
 	// this hop TLS without a pinned anchor is not a partial improvement — see
 	// validateAdminHopTransport.
 	AdminCAFile string
+
+	// ─── НАШ авторитет отзыва: ось, которой полоса `own` ЗАМЕЩАЕТ поставщика ──
+	//
+	// Полоса не СНИМАЕТ требование читать отзыв на предъявлении — она меняет
+	// того, у кого спрашивают. Под `own` токены чеканим мы, поставщик о них не
+	// знает by construction, и его ответ был бы утверждением о предмете,
+	// которого у него нет.
+
+	// PlatformRevocationURL — адрес НАШЕГО авторитета отзыва
+	// (KACHO_API_GATEWAY_PLATFORM_TOKEN_REVOCATION_URL; пусто ⇒ не задан).
+	PlatformRevocationURL string
+	// PlatformRevocationCAFile — якорь доверия хопа к нашему авторитету.
+	PlatformRevocationCAFile string
+	// PlatformRevocationCertFile / PlatformRevocationKeyFile — ЧЕМ край
+	// представляется нашему авторитету. Авторитет спрашивает клиентский
+	// сертификат, поэтому хоп без пары — контроль, отказывающий ВСЕГДА и по
+	// одной и той же причине.
+	PlatformRevocationCertFile string
+	PlatformRevocationKeyFile  string
 }
 
 // adminHopCAKnob — the setting naming the admin hop's trust anchor. Named in the
 // refusal so an operator can act on it without reading this file.
 const adminHopCAKnob = "KACHO_HYDRA_ADMIN_CA_FILE"
+
+// Ручки НАШЕГО авторитета отзыва. Объявлены здесь ИМЕНАМИ, потому что их
+// называет текст отказа: оператор обязан узнать, что править, не открывая
+// исходник (одно из трёх мест, выведенных из-под запрета на публичный разбор,
+// `security.md` §«Публичные артефакты»).
+const (
+	platformRevocationURLKnob  = "KACHO_API_GATEWAY_PLATFORM_TOKEN_REVOCATION_URL"
+	platformRevocationCAKnob   = "KACHO_API_GATEWAY_PLATFORM_TOKEN_REVOCATION_CA_FILE"
+	platformRevocationCertKnob = "KACHO_API_GATEWAY_PLATFORM_TOKEN_REVOCATION_CERT_FILE"
+	platformRevocationKeyKnob  = "KACHO_API_GATEWAY_PLATFORM_TOKEN_REVOCATION_KEY_FILE"
+)
+
+// judgeOurRevocationAuthority — ось НАШЕГО авторитета отзыва.
+//
+// # Почему это ЗАМЕЩЕНИЕ, а не послабление
+//
+// Отзыв, действующий на выдаче и не действующий на предъявлении, отзывом не
+// является: предъявленное продолжает проходить до истечения срока, и это
+// состояние не сходится само (`security.md` §«Контроль, действующий на ВЫДАЧЕ,
+// но не на ПРЕДЪЯВЛЕНИИ»). Если бы полоса `own` только СНИМАЛА требование
+// поставщика, смена посадки стала бы способом выключить чтение отзыва, ничего
+// об этом не объявляя.
+//
+// # Требование НАЛИЧИЯ разведено полосой, требования ТРАНСПОРТА — нет
+//
+// Наличие адреса требуется под `own`. Заданный адрес судится теми же правилами
+// на ЛЮБОЙ полосе: край, объявивший наш авторитет под `external`, тоже его
+// спрашивает, и негодный хоп там так же нерабочий.
+//
+// # Пара предъявления обязательна вместе с адресом
+//
+// Авторитет спрашивает клиентский сертификат. Хоп, которому нечего предъявить,
+// получает отказ на КАЖДОМ запросе и по одной и той же причине — то есть
+// контроль, объявленный, провязанный и не отказавший ни разу по существу
+// (`security.md` §«Контроль, у которого нет МЕХАНИЗМА исполниться»). Половина
+// пары отвергается отдельно: она хуже отсутствия обеих, потому что выглядит
+// настроенной.
+func judgeOurRevocationAuthority(cfg RevocationConfig) []string {
+	addr := strings.TrimSpace(cfg.PlatformRevocationURL)
+	if addr == "" {
+		if cfg.IdentityProvider != identityposture.Own {
+			// Под `external` предмета у этой оси нет: отзыв читает поставщик.
+			return nil
+		}
+		return []string{
+			platformRevocationURLKnob + " is empty — on this posture we mint the tokens and " +
+				"nobody else can be asked whether one was revoked, so a revoked token would " +
+				"keep working until it expires on its own [required because " +
+				config.IdentityProviderKnob + "=own; on external the provider's introspection " +
+				"endpoint answers instead]",
+		}
+	}
+
+	var problems []string
+	if err := validateAdminEndpoint(addr, ""); err != nil {
+		problems = append(problems, platformRevocationURLKnob+" "+err.Error())
+	} else if p := validateAdminHopTransport(
+		platformRevocationURLKnob, platformRevocationCAKnob, addr, cfg.PlatformRevocationCAFile); p != "" {
+		// ТОТ ЖЕ предикат, что у административного хопа, а не его копия: ручка
+		// подаётся параметром. Второй экземпляр правила разъехался бы молча — и
+		// разъехался бы тот, где дефект ещё не нашли.
+		problems = append(problems, p)
+	}
+
+	cert := strings.TrimSpace(cfg.PlatformRevocationCertFile)
+	key := strings.TrimSpace(cfg.PlatformRevocationKeyFile)
+	switch {
+	case cert == "" && key == "":
+		problems = append(problems,
+			platformRevocationCertKnob+" and "+platformRevocationKeyKnob+" are both empty — "+
+				"our revocation authority asks the caller for a client certificate, so a hop "+
+				"with nothing to present is answered the same way every time and the check "+
+				"refuses every presenter of our own minting; declare the pair together with "+
+				platformRevocationURLKnob)
+	case key == "":
+		problems = append(problems,
+			platformRevocationCertKnob+" is set without "+platformRevocationKeyKnob+
+				" — half a pair presents nothing")
+	case cert == "":
+		problems = append(problems,
+			platformRevocationKeyKnob+" is set without "+platformRevocationCertKnob+
+				" — a key with no certificate has nothing to present")
+	}
+	return problems
+}
 
 // validateAdminHopTransport refuses a production-class admin hop that carries a
 // credential readable on the wire, and a TLS one that verifies nothing.
@@ -98,7 +202,7 @@ const adminHopCAKnob = "KACHO_HYDRA_ADMIN_CA_FILE"
 // The scheme is read from the address itself rather than from a separate switch:
 // a switch could disagree with the address, and then the two would have to be
 // kept in step by hand.
-func validateAdminHopTransport(knob, raw, caFile string) string {
+func validateAdminHopTransport(knob, caKnob, raw, caFile string) string {
 	u, err := url.Parse(strings.TrimSpace(raw))
 	if err != nil || u.Scheme == "" {
 		return "" // shape is reported by validateAdminEndpoint
@@ -110,8 +214,8 @@ func validateAdminHopTransport(knob, raw, caFile string) string {
 			"can read and reuse it; address the provider's admin API over https"
 	}
 	if u.Scheme == "https" && strings.TrimSpace(caFile) == "" {
-		return knob + " is https (" + raw + ") but " + adminHopCAKnob + " is empty — the " +
-			"provider's in-cluster certificate is issued by the internal CA and this process " +
+		return knob + " is https (" + raw + ") but " + caKnob + " is empty — the " +
+			"peer's in-cluster certificate is issued by the internal CA and this process " +
 			"trusts the system roots, so every handshake fails with an unknown authority; the " +
 			"introspection layer treats that as a permanent misconfiguration and then refuses " +
 			"EVERY request. Pin the bundle together with the address"
@@ -145,17 +249,31 @@ func validateProductionRevocationConfig(env string, cfg RevocationConfig) error 
 			"revocation path invalid in %q env: %v (refuse to start)",
 			env, identityposture.NotDeclared(config.IdentityProviderKnob))
 	}
+	// ─── ОСЬ ПОСТАВЩИКА ───────────────────────────────────────────────────────
+	//
+	// Требуется под `external` и НЕ требуется под `own`: под `own` токены
+	// чеканим мы, поставщик о них не знает by construction, и его ответ был бы
+	// утверждением о предмете, которого у него нет. Требование не снимается, а
+	// ЗАМЕЩАЕТСЯ осью ниже.
 	if strings.TrimSpace(cfg.IntrospectionURL) == "" {
-		problems = append(problems,
-			"KACHO_HYDRA_INTROSPECTION_URL is empty — with no introspection endpoint the "+
-				"gateway never asks whether an access token was revoked, so a revoked token "+
-				"keeps working until it expires on its own")
+		if cfg.IdentityProvider != identityposture.Own {
+			problems = append(problems,
+				"KACHO_HYDRA_INTROSPECTION_URL is empty — with no introspection endpoint the "+
+					"gateway never asks whether an access token was revoked, so a revoked token "+
+					"keeps working until it expires on its own [required because "+
+					config.IdentityProviderKnob+"=external; declare "+config.IdentityProviderKnob+
+					"=own and this requirement moves to "+platformRevocationURLKnob+"]")
+		}
 	} else if err := validateAdminEndpoint(cfg.IntrospectionURL, introspectionAdminPath); err != nil {
+		// Заданный адрес судится ОДИНАКОВО на обеих полосах: полосность снимает
+		// требование НАЛИЧИЯ, а не правила формы и транспорта.
 		problems = append(problems, "KACHO_HYDRA_INTROSPECTION_URL "+err.Error())
 	} else if p := validateAdminHopTransport(
-		"KACHO_HYDRA_INTROSPECTION_URL", cfg.IntrospectionURL, cfg.AdminCAFile); p != "" {
+		"KACHO_HYDRA_INTROSPECTION_URL", adminHopCAKnob, cfg.IntrospectionURL, cfg.AdminCAFile); p != "" {
 		problems = append(problems, p)
 	}
+
+	problems = append(problems, judgeOurRevocationAuthority(cfg)...)
 
 	if strings.TrimSpace(cfg.AdminURL) == "" && cfg.IdentityProvider != identityposture.Own {
 		problems = append(problems,
@@ -170,7 +288,7 @@ func validateProductionRevocationConfig(env string, cfg RevocationConfig) error 
 	} else if err := validateAdminEndpoint(cfg.AdminURL, ""); err != nil {
 		problems = append(problems, "KACHO_HYDRA_ADMIN_URL "+err.Error())
 	} else if p := validateAdminHopTransport(
-		"KACHO_HYDRA_ADMIN_URL", cfg.AdminURL, cfg.AdminCAFile); p != "" {
+		"KACHO_HYDRA_ADMIN_URL", adminHopCAKnob, cfg.AdminURL, cfg.AdminCAFile); p != "" {
 		problems = append(problems, p)
 	}
 
