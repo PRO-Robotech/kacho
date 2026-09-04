@@ -127,9 +127,11 @@ func TestRetiredBlockStorageIsGoneFromMigratedSchema(t *testing.T) {
 		require.Zerof(t, n, "access_bindings still reference retired role %q", name)
 	}
 
-	// (4) resource_mirror carries no retired type. On a fresh database this is
-	// vacuous by itself — TestRetireMigrationRemovesRetiredRowsOnly below is what
-	// proves the statement behind it.
+	// (4) resource_mirror carries no retired type. Прежде рядом стояла проба,
+	// переигрывавшая тело отставки, и она держала это утверждение от вакуума;
+	// её предмет — статементы миграции — снят сводом. Сегодня от вакуума держит
+	// схема: `role_rule_selector_types_live` отвергает снятый тип на записи, и
+	// это свойство утверждают свои пробы.
 	for _, ty := range retiredDottedTypes {
 		var n int
 		require.NoError(t, pool.QueryRow(ctx,
