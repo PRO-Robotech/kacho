@@ -15,6 +15,7 @@ import (
 	"strings"
 	"testing"
 
+	"github.com/PRO-Robotech/kacho/pkg/treecorpus"
 	"github.com/stretchr/testify/require"
 )
 
@@ -59,6 +60,14 @@ import (
 // `INSERT`, ему невидима — и это сказано вслух, а не оставлено умолчанием: перепись
 // печатает объём осмотренного, поэтому «ноль находок» отличимо от «ноль
 // прочитанного».
+//
+// # СОСТАВ ДЕРЕВА БЕРЁТСЯ ИЗ ИНДЕКСА, А НЕ ОБХОДОМ ДИСКА
+//
+// Обход диска прочитал бы и то, чего в репозитории нет — рабочие копии агентов,
+// отчёты прогонов, локальные распаковки, — и вердикт стал бы свойством ЧУЖОГО
+// рабочего каталога, а не коммита. Ошибается такой обход в обе стороны: красным на
+// файле, которого в репозитории нет, и молчанием в свежем checkout там, где обязан
+// говорить.
 const (
 	// accountProbeDirRel — дом интеграционных проб, заводящих аккаунты.
 	accountProbeDirRel = "services/iam/internal/repo/kacho/pg"
@@ -407,18 +416,15 @@ func TestProbesOutgrowingTheRateCeilingLiftIt(t *testing.T) {
 	root := monorepoRoot(t)
 	dir := filepath.Join(root, accountProbeDirRel)
 
-	entries, err := os.ReadDir(dir)
+	paths, err := treecorpus.UnderWithSuffix(dir, "_test.go")
 	require.NoError(t, err)
 
 	var findings []string
 	var total rateCensus
-	for _, e := range entries {
-		if e.IsDir() || !strings.HasSuffix(e.Name(), "_test.go") {
-			continue
-		}
-		raw, err := os.ReadFile(filepath.Join(dir, e.Name())) // #nosec G304 -- путь собран из корня собственного модуля
+	for _, p := range paths {
+		raw, err := os.ReadFile(p) // #nosec G304 -- путь пришёл из индекса собственного репозитория
 		require.NoError(t, err)
-		f, c, err := auditProbeFile(e.Name(), string(raw))
+		f, c, err := auditProbeFile(filepath.Base(p), string(raw))
 		require.NoError(t, err)
 		findings = append(findings, f...)
 		total.filesRead += c.filesRead
