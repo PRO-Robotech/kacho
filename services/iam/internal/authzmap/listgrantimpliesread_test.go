@@ -180,6 +180,7 @@ func TestSeededRole_ListGrantImpliesRead(t *testing.T) {
 		resolvable   int      // (модуль, ресурс) резолвится закрытой таблицей типов
 		listAndGet   int      // положительный контроль: даёт список И чтение
 		unresolvable []string // грант, которому не на что материализоваться
+		exemptNoVGet []string // тип, чьё чтение не гейтится `v_get` ни одной записью каталога
 		findings     []string
 	)
 
@@ -202,6 +203,34 @@ func TestSeededRole_ListGrantImpliesRead(t *testing.T) {
 					continue
 				}
 				resolvable++
+
+				// ИСКЛЮЧЕНИЕ, ВЫВЕДЕННОЕ ИЗ КАТАЛОГА, А НЕ ВЫПИСАННОЕ.
+				//
+				// Запрет держится на следствии: «реконсайлер напишет v_list, но не
+				// v_get, а членство в странице публичного List равно праву
+				// прочитать строку по id». Следствие наступает только там, где
+				// чтение ГЕЙТИТСЯ отношением `v_get`. Есть типы, где оно не
+				// гейтится им НИКОГДА: их чтение сужается на данных
+				// (`scope_filtered`), а `required_relation` у Get и List пуст.
+				// Для такого типа «list без get» ничего не ломает, и требовать
+				// `get` значило бы требовать отношение, которого не спрашивает
+				// ни одна запись каталога.
+				//
+				// Исключение ВЫВОДИТСЯ из каталога разрешений и потому истекает
+				// само: появится запись, требующая `v_get` на этом типе, — пара
+				// вернётся под запрет без правки этого файла.
+				//
+				// Замер на дереве: записей каталога 350, из них с
+				// `required_relation = "v_get"` — 27 на 24 типах; `iam_role`
+				// среди них нет, а записей с этим типом — три (Update, Delete,
+				// ListOperations). Это и есть решение kacho#1916, принятое
+				// ИНАЧЕ и с замером, а не пропущенное: у ресурса `role` модуля
+				// `iam` нет ни одного действия, чей гейт спрашивал бы `v_get`.
+				if typ, ok := ObjectType(mod, res); ok && !typesGatedByVGet(t)[typ] {
+					exemptNoVGet = append(exemptNoVGet, dotted)
+					continue
+				}
+
 				switch {
 				case r.hasVerb("list") && !r.hasVerb("get"):
 					findings = append(findings, fmt.Sprintf(
@@ -233,9 +262,11 @@ func TestSeededRole_ListGrantImpliesRead(t *testing.T) {
 		t.Fatalf("ни одно резолвящееся правило не даёт `list` вместе с `get` — предикат запрета "+
 			"не различает искомое состояние от любого другого (резолвится правил: %d)", resolvable)
 	}
+	sort.Strings(exemptNoVGet)
 	t.Logf("перепись: пар (модуль, ресурс) резолвится закрытой таблицей типов = %d; из них дают `list` "+
-		"вместе с `get` = %d; правил «список без чтения» на НЕрезолвящейся паре = %d",
-		resolvable, listAndGet, len(unresolvable))
+		"вместе с `get` = %d; правил «список без чтения» на НЕрезолвящейся паре = %d; "+
+		"пар, освобождённых каталогом (чтение не гейтится `v_get` ни одной записью) = %d %v",
+		resolvable, listAndGet, len(unresolvable), len(exemptNoVGet), uniqStrings(exemptNoVGet))
 
 	// Открытый предмет, НЕ этого запрета: правило даёт список без чтения, и пары нет в
 	// закрытой таблице типов — тип объекта для кортежа по нему не выводится. Называется
@@ -295,4 +326,60 @@ func TestSeededRole_ListGrantImpliesRead_GateDiscriminates(t *testing.T) {
 	if classify([]string{"*"}) {
 		t.Errorf("правило-суперпользователь разворачивается в полный набор глаголов типа — `get` там есть")
 	}
+}
+
+// typesGatedByVGet — типы объектов, чьё чтение гейтится отношением `v_get` хотя
+// бы одной записью каталога разрешений.
+//
+// Читается ВСТРОЕННАЯ копия каталога того же сервиса — та, которую iam сеет; её
+// байт-в-байт согласие с копией края держит отдельный гейт, и второй разбор
+// здесь не заводится.
+//
+// Пустой результат — ОТКАЗ, а не «освободить всех»: разбор, переставший видеть
+// каталог, освободил бы от запрета каждую пару и остался бы зелёным.
+func typesGatedByVGet(t *testing.T) map[string]bool {
+	t.Helper()
+	const rel = "../apps/kacho/seed/embedded/permission_catalog.json"
+	b, err := os.ReadFile(rel)
+	if err != nil {
+		t.Fatalf("каталог разрешений не прочитан (%s): %v — без него исключение ниже "+
+			"освободило бы от запрета КАЖДУЮ пару", rel, err)
+	}
+	var entries []struct {
+		RequiredRelation string `json:"required_relation"`
+		ScopeExtractor   struct {
+			ObjectType string `json:"object_type"`
+		} `json:"scope_extractor"`
+	}
+	if err := json.Unmarshal(b, &entries); err != nil {
+		t.Fatalf("каталог разрешений не разобран: %v", err)
+	}
+	if len(entries) == 0 {
+		t.Fatal("каталог разрешений пуст — освобождение стало бы всеобщим")
+	}
+	out := map[string]bool{}
+	for _, e := range entries {
+		if e.RequiredRelation == "v_get" && e.ScopeExtractor.ObjectType != "" {
+			out[e.ScopeExtractor.ObjectType] = true
+		}
+	}
+	if len(out) == 0 {
+		t.Fatalf("в каталоге (%d записей) НИ ОДНА не требует `v_get` — предикат "+
+			"освобождения выродился и снял бы запрет со всех пар", len(entries))
+	}
+	return out
+}
+
+// uniqStrings — перечень без повторов: одна пара встречается в правилах многих
+// ролей, и перепись печатала бы её столько же раз.
+func uniqStrings(in []string) []string {
+	seen := map[string]bool{}
+	var out []string
+	for _, s := range in {
+		if !seen[s] {
+			seen[s] = true
+			out = append(out, s)
+		}
+	}
+	return out
 }

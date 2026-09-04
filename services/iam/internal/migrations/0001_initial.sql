@@ -3794,10 +3794,10 @@ INSERT INTO kacho_iam.roles (id, account_id, name, description, permissions, cre
 INSERT INTO kacho_iam.roles (id, account_id, name, description, permissions, created_at, cluster_id, project_id, rules, labels, owner_module, retired_at, retired_reason, retired_by, live) VALUES ('rol68b2520862bf7a921', NULL, 'vpc.subnet.admin', 'Admin Subnet', '["vpc.subnet.*.*"]', now(), 'cluster_kacho_root', NULL, '[{"verbs": ["*"], "module": "vpc", "resources": ["subnet"]}]', '{}', NULL, NULL, NULL, NULL, true);
 INSERT INTO kacho_iam.roles (id, account_id, name, description, permissions, created_at, cluster_id, project_id, rules, labels, owner_module, retired_at, retired_reason, retired_by, live) VALUES ('rol9aeb6b9c5d5b01ec0', NULL, 'vpc.gateway.admin', 'Admin Gateway', '["vpc.gateway.*.*"]', now(), 'cluster_kacho_root', NULL, '[{"verbs": ["*"], "module": "vpc", "resources": ["gateway"]}]', '{}', NULL, NULL, NULL, NULL, true);
 INSERT INTO kacho_iam.roles (id, account_id, name, description, permissions, created_at, cluster_id, project_id, rules, labels, owner_module, retired_at, retired_reason, retired_by, live) VALUES ('rold4f364618280185aa', NULL, 'iam.group.edit', 'Edit Group', '["iam.group.*.update"]', now(), 'cluster_kacho_root', NULL, '[{"verbs": ["get", "list", "update"], "module": "iam", "resources": ["group"]}]', '{}', NULL, NULL, NULL, NULL, true);
-INSERT INTO kacho_iam.roles (id, account_id, name, description, permissions, created_at, cluster_id, project_id, rules, labels, owner_module, retired_at, retired_reason, retired_by, live) VALUES ('rol672f1ac772fab8697', NULL, 'iam.role.edit', 'Edit Role', '["iam.role.*.update"]', now(), 'cluster_kacho_root', NULL, '[{"verbs": ["get", "list", "update"], "module": "iam", "resources": ["role"]}]', '{}', NULL, NULL, NULL, NULL, true);
+INSERT INTO kacho_iam.roles (id, account_id, name, description, permissions, created_at, cluster_id, project_id, rules, labels, owner_module, retired_at, retired_reason, retired_by, live) VALUES ('rol672f1ac772fab8697', NULL, 'iam.role.edit', 'Edit Role', '["iam.role.*.update"]', now(), 'cluster_kacho_root', NULL, '[{"verbs": ["list", "update"], "module": "iam", "resources": ["role"]}]', '{}', NULL, NULL, NULL, NULL, true);
 INSERT INTO kacho_iam.roles (id, account_id, name, description, permissions, created_at, cluster_id, project_id, rules, labels, owner_module, retired_at, retired_reason, retired_by, live) VALUES ('rol5e145d87ee378211f', NULL, 'iam.service_account.edit', 'Edit ServiceAccount', '["iam.serviceAccount.*.update"]', now(), 'cluster_kacho_root', NULL, '[{"verbs": ["get", "list", "update"], "module": "iam", "resources": ["serviceAccount"]}]', '{}', NULL, NULL, NULL, NULL, true);
 INSERT INTO kacho_iam.roles (id, account_id, name, description, permissions, created_at, cluster_id, project_id, rules, labels, owner_module, retired_at, retired_reason, retired_by, live) VALUES ('role1eb529620e1ff235', NULL, 'iam.access_binding.admin', 'Admin AccessBinding', '["iam.accessBinding.*.*"]', now(), 'cluster_kacho_root', NULL, '[{"verbs": ["*"], "module": "iam", "resources": ["accessBinding"]}]', '{}', NULL, NULL, NULL, NULL, true);
-INSERT INTO kacho_iam.roles (id, account_id, name, description, permissions, created_at, cluster_id, project_id, rules, labels, owner_module, retired_at, retired_reason, retired_by, live) VALUES ('rolee27bb5ba1efb68cb', NULL, 'iam.role.view', 'Read Role', '["iam.role.*.read", "iam.role.*.list", "iam.role.*.get"]', now(), 'cluster_kacho_root', NULL, '[{"verbs": ["get", "list"], "module": "iam", "resources": ["role"]}]', '{}', NULL, NULL, NULL, NULL, true);
+INSERT INTO kacho_iam.roles (id, account_id, name, description, permissions, created_at, cluster_id, project_id, rules, labels, owner_module, retired_at, retired_reason, retired_by, live) VALUES ('rolee27bb5ba1efb68cb', NULL, 'iam.role.view', 'Read Role', '["iam.role.*.read", "iam.role.*.list", "iam.role.*.get"]', now(), 'cluster_kacho_root', NULL, '[{"verbs": ["list"], "module": "iam", "resources": ["role"]}]', '{}', NULL, NULL, NULL, NULL, true);
 INSERT INTO kacho_iam.roles (id, account_id, name, description, permissions, created_at, cluster_id, project_id, rules, labels, owner_module, retired_at, retired_reason, retired_by, live) VALUES ('rol213ce142e75132019', NULL, 'iam.access_binding.edit', 'Edit AccessBinding', '["iam.accessBinding.*.update"]', now(), 'cluster_kacho_root', NULL, '[{"verbs": ["get", "list", "update"], "module": "iam", "resources": ["accessBinding"]}]', '{}', NULL, NULL, NULL, NULL, true);
 INSERT INTO kacho_iam.roles (id, account_id, name, description, permissions, created_at, cluster_id, project_id, rules, labels, owner_module, retired_at, retired_reason, retired_by, live) VALUES ('rol88958a1dfa5ddf047', NULL, 'vpc.security_group.admin', 'Admin SecurityGroup', '["vpc.securityGroup.*.*"]', now(), 'cluster_kacho_root', NULL, '[{"verbs": ["*"], "module": "vpc", "resources": ["securityGroup"]}]', '{}', NULL, NULL, NULL, NULL, true);
 INSERT INTO kacho_iam.roles (id, account_id, name, description, permissions, created_at, cluster_id, project_id, rules, labels, owner_module, retired_at, retired_reason, retired_by, live) VALUES ('rol096a471229217fbcf', NULL, 'vpc.address.view', 'Read Address', '["vpc.address.*.read", "vpc.address.*.list", "vpc.address.*.get"]', now(), 'cluster_kacho_root', NULL, '[{"verbs": ["list", "get"], "module": "vpc", "resources": ["address"]}]', '{}', NULL, NULL, NULL, NULL, true);
@@ -5638,19 +5638,36 @@ ALTER TABLE ONLY kacho_iam.session_revocations
 
 
 --
--- Name: user_oauth_clients user_oauth_clients_created_by_fk; Type: FK CONSTRAINT; Schema: kacho_iam; Owner: -
+-- ПОРЯДОК ЭТИХ ДВУХ КЛЮЧЕЙ — ПОВЕДЕНИЕ, А НЕ ОФОРМЛЕНИЕ.
 --
-
-ALTER TABLE ONLY kacho_iam.user_oauth_clients
-    ADD CONSTRAINT user_oauth_clients_created_by_fk FOREIGN KEY (created_by_user_id) REFERENCES kacho_iam.users(id) ON DELETE RESTRICT;
-
-
+-- Оба смотрят на `users(id)`, но по-разному: `user_fk` снимает строку каскадом,
+-- `created_by_fk` запрещает снятие. Проверки ссылочной целостности исполняются
+-- в порядке СОЗДАНИЯ ограничений, и запрет, созданный первым, срабатывает до
+-- каскада — то есть видит строку, которую каскад к тому моменту уже снял бы.
+-- Удаление человека, создавшего СВОЁ удостоверение, отвергалось бы `23503`.
+--
+-- `pg_dump` печатает ключи по алфавиту, и `created_by_fk` встал бы перед
+-- `user_fk`. В снятой цепочке порядок обратный, поэтому здесь он восстановлен
+-- РУКАМИ: свод обязан воспроизводить не только определения, но и поведение.
+--
+-- Слепок схемы этого класса не ловит by construction: он сверяет определения
+-- ограничений, а не порядок их создания. Ловят две интеграционные пробы —
+-- TestUserOAuthClient_09c_UserDelete_CascadesTokens и
+-- TestBAT1_47_EveryCascadeCauseTakesTheCredentialDown.
 --
 -- Name: user_oauth_clients user_oauth_clients_user_fk; Type: FK CONSTRAINT; Schema: kacho_iam; Owner: -
 --
 
 ALTER TABLE ONLY kacho_iam.user_oauth_clients
     ADD CONSTRAINT user_oauth_clients_user_fk FOREIGN KEY (user_id) REFERENCES kacho_iam.users(id) ON DELETE CASCADE;
+
+
+--
+-- Name: user_oauth_clients user_oauth_clients_created_by_fk; Type: FK CONSTRAINT; Schema: kacho_iam; Owner: -
+--
+
+ALTER TABLE ONLY kacho_iam.user_oauth_clients
+    ADD CONSTRAINT user_oauth_clients_created_by_fk FOREIGN KEY (created_by_user_id) REFERENCES kacho_iam.users(id) ON DELETE RESTRICT;
 
 
 --
