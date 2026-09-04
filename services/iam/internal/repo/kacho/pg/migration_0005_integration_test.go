@@ -54,67 +54,33 @@ package pg_test
 
 import (
 	"context"
-	"database/sql"
 	"fmt"
 	"testing"
 
 	"github.com/jackc/pgx/v5/pgconn"
 	"github.com/jackc/pgx/v5/pgxpool"
 	_ "github.com/jackc/pgx/v5/stdlib"
-	"github.com/pressly/goose/v3"
 	"github.com/stretchr/testify/require"
 
 	"github.com/PRO-Robotech/kacho/internal/pgtest"
 	coredb "github.com/PRO-Robotech/kacho/pkg/db"
-
-	"github.com/PRO-Robotech/kacho/services/iam/internal/migrations"
 )
 
-// startPostgresUpTo hands the caller an EMPTY database on the package's shared
-// Postgres, applies migrations up to and including version `to`, and returns a
-// connection pool.
+// ЗДЕСЬ ЛЕЖАЛИ ДВА ПОМОЩНИКА ЛЕСТНИЦЫ ВЕРСИЙ — startPostgresUpTo и applyOneMore.
 //
-// # ВНИМАНИЕ: лестницы версий больше нет
+// Оба писались под цепочку из 171 миграции: первый останавливался НЕ ДОХОДЯ до
+// последней, чтобы вызывающий посеял состояние «до», второй шагал ровно один
+// раз. Свод оставил одну миграцию, и лестницы не стало: `to` любой величины
+// даёт всю схему целиком, а шагать после неё некуда.
 //
-// Помощник писался под цепочку из 171 миграции: он останавливался НЕ ДОХОДЯ до
-// последней, чтобы вызывающий посеял состояние «до» и шагнул `applyOneMore`.
-// Свод оставил один файл, поэтому `to` любой величины даёт ОДНО И ТО ЖЕ — всю
-// схему целиком, — а `applyOneMore` после него применять нечего.
+// Их оставляли ради проб соседних миграций (0010, 0014, 0081), правившихся
+// своим изменением. Те пробы сняты вместе со своим предметом — снятой личностью
+// сетевого оператора (см. retired_operator_identity_integration_test.go), —
+// и вызывающих у помощников не осталось НИ ОДНОГО.
 //
-// Помощник оставлен, потому что на него ссылаются пробы соседних миграций
-// (0010, 0014, 0081), а они правятся своим изменением. Пробы ЭТОГО файла им
-// больше не пользуются: конечное состояние даёт `setupTestDB`, клонирующий
-// приведённый шаблон, и это дешевле.
-func startPostgresUpTo(t *testing.T, to int64) (*pgxpool.Pool, *sql.DB, string) {
-	t.Helper()
-	ctx := context.Background()
-
-	dsn := pgtest.NewEmptyDB(t)
-
-	db, err := sql.Open("pgx", dsn)
-	require.NoError(t, err)
-	t.Cleanup(func() { _ = db.Close() })
-
-	goose.SetBaseFS(migrations.FS)
-	require.NoError(t, goose.SetDialect("postgres"))
-	require.NoError(t, goose.UpTo(db, ".", to))
-
-	pool, err := coredb.NewPool(ctx, dsn)
-	require.NoError(t, err)
-	t.Cleanup(func() { pool.Close() })
-
-	return pool, db, dsn
-}
-
-// applyOneMore advances goose by exactly one migration.
-//
-// После свода следующей миграции не существует, и вызов отвечает
-// `goose.ErrNoNextVersion`. Оставлен по той же причине, что и помощник выше:
-// на него ссылается проба соседней миграции (0081).
-func applyOneMore(t *testing.T, db *sql.DB) error {
-	t.Helper()
-	return goose.UpByOne(db, ".")
-}
+// Мёртвый помощник хуже отсутствующего: он выглядит рабочим, и следующий,
+// кому понадобится «состояние до», позовёт его и получит состояние ПОСЛЕ, не
+// узнав об этом ничем. Конечное состояние даёт setupTestDB.
 
 // ─────────────────────────────────────────────────────────────────────────────
 // Фикстура
