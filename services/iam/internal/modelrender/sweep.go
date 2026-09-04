@@ -218,11 +218,11 @@ func Sweep(resources []catalog.ResourceRow, root string, waivers []Waiver) (Cens
 	if ferr != nil {
 		return census, []Finding{{Detail: "обход дерева отказал: " + ferr.Error()}}, SweepFinding
 	}
-	for _, path := range unparsable {
+	for _, u := range unparsable {
 		findings = append(findings, Finding{Detail: fmt.Sprintf(
-			"манифест не разобран: %s — документ назвался манифестом и модуля не объявил, "+
-				"поэтому он не засчитан НИ модулем, НИ его отсутствием; форму судит "+
-				"`make -C services/iam module-manifest-check`", path)})
+			"%s: %s — %v; документ назвался манифестом и манифестом не стал, поэтому он не "+
+				"засчитан НИ модулем, НИ его отсутствием; форму судит "+
+				"`make -C services/iam module-manifest-check`", u.Cause, u.Path, u.Err)})
 	}
 
 	// Ведомость судится ДО обхода: запись без номера и запись на модуль вне
@@ -466,9 +466,34 @@ func firstDivergence(rendered, canon []byte) string {
 // Форму документа здесь никто не судит второй раз — это предмет одного
 // исполнителя (`make -C services/iam module-manifest-check`). Здесь он лишь не
 // вправе быть засчитан ни модулем, ни его отсутствием.
-func findManifests(treeRoot *os.Root, root string) (map[string]string, []string, error) {
+// unusableManifest — документ, назвавшийся манифестом и манифестом не ставший.
+//
+// Причин ТРИ, и они означают разное: путь не приведён к корню обхода (наша
+// ошибка) · файл не прочитан (документа по имени нет либо он недоступен) ·
+// документ не разобран (текст есть, форма негодна). Прежде они сваливались в
+// одну корзину строк, ошибка КАЖДОЙ выбрасывалась, а печаталось по ним одно
+// сообщение, утверждавшее одну конкретную причину — «модуля не объявил», — в
+// общем случае неверную (задача #1905).
+//
+// Ошибка носится САМА, а не пересказывается: пересказ есть второе место об одном
+// предмете, и расходится он молча.
+//
+// # Границы доказанного, названные честно
+//
+// Производителя красного имеют ДВЕ причины из трёх: «не прочитан» и «не
+// разобран». Приведение пути к корню обхода отказать здесь не может — путь
+// приходит от обхода ТОГО ЖЕ корня, — поэтому ветвь оборонительная и пробы у неё
+// нет. Это сказано, а не выдано за проверенное: молчание пробы, которой нет,
+// неотличимо от молчания пробы, которая не падает.
+type unusableManifest struct {
+	Path  string
+	Cause string
+	Err   error
+}
+
+func findManifests(treeRoot *os.Root, root string) (map[string]string, []unusableManifest, error) {
 	out := map[string]string{}
-	var unparsable []string
+	var unparsable []unusableManifest
 
 	err := filepath.WalkDir(root, func(path string, d fs.DirEntry, err error) error {
 		if err != nil {
@@ -499,23 +524,26 @@ func findManifests(treeRoot *os.Root, root string) (map[string]string, []string,
 		// с первой молча.
 		rel, relErr := filepath.Rel(root, path)
 		if relErr != nil {
-			unparsable = append(unparsable, path)
+			unparsable = append(unparsable, unusableManifest{Path: path,
+				Cause: "путь манифеста не приведён к корню обхода", Err: relErr})
 			return nil
 		}
 		raw, rerr := manifest.ReadUnderRoot(treeRoot, filepath.ToSlash(rel))
 		if rerr != nil {
-			unparsable = append(unparsable, path)
+			unparsable = append(unparsable, unusableManifest{Path: path,
+				Cause: "манифест не прочитан", Err: rerr})
 			return nil
 		}
 		m, lerr := manifest.LoadWithReferent(raw, manifest.ReferentCanon)
 		if lerr != nil {
-			unparsable = append(unparsable, path)
+			unparsable = append(unparsable, unusableManifest{Path: path,
+				Cause: "манифест не разобран", Err: lerr})
 			return nil
 		}
 		out[m.Module] = path
 		return nil
 	})
-	sort.Strings(unparsable)
+	sort.Slice(unparsable, func(i, j int) bool { return unparsable[i].Path < unparsable[j].Path })
 	return out, unparsable, err
 }
 
