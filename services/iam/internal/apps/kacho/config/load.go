@@ -164,6 +164,8 @@ func applyLegacyEnv(v *viper.Viper) {
 		{"KACHO_IAM_SAKEY_MAX_TTL", "authn.sakey-max-ttl"},
 		{"KACHO_IAM_SAKEY_ACCESS_TOKEN_TTL", "authn.sakey-access-token-ttl"},
 		{"KACHO_IAM_SAKEY_BIND_DPOP", "authn.sakey-bind-dpop"},
+		// Окно отзыва собственной двери. Величина Go-длительности ("5s").
+		{"KACHO_IAM_AUTHZ_CACHE_TTL", "authz.cache-ttl"},
 	}
 	for _, m := range simple {
 		if val, ok := os.LookupEnv(m.env); ok {
