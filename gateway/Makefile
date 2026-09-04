@@ -27,7 +27,8 @@ REST_ROUTE_TABLE_TARGET := internal/middleware/rest_route_table_gen.go
 REST_ROUTE_TABLE_BUILD  := build/rest_route_table_gen.go
 
 .PHONY: build test vet lint docker helm-lint permission-catalog permission-catalog-apply \
-        rest-route-table rest-route-table-apply
+        rest-route-table rest-route-table-apply \
+        domain-generation-check domain-generation-inject
 
 build:
 	CGO_ENABLED=0 go build -o bin/$(BINARY) $(CMD)
@@ -157,3 +158,19 @@ rest-route-table-check:
 	@diff -u $(REST_ROUTE_TABLE_TARGET) $(REST_ROUTE_TABLE_BUILD) \
 	  || { echo "::error::rest_route_table_gen.go is STALE vs proto — run 'make rest-route-table-apply', then commit"; exit 1; }
 	@echo "REST route table is complete and in sync with proto."
+
+# CI GATE разреза на отдельные продукты: порождение каталога прав и таблицы
+# маршрутов ДЛЯ ОБЪЯВЛЕННОГО ПЕРЕЧНЯ ДОМЕНОВ выполнимо вне дерева монорепо и даёт
+# ПОБАЙТОВО то же, что даёт порождение по всему дереву. Ловит класс, при котором
+# вынесенный в свой репозиторий домен не может породить своего каталога — а без
+# записи каталога средний слой отвечает «catalog: no entry for method», то есть
+# отказом в доступе в рантайме. Коды: 0 — находок нет · 1 — находка · 2 — предмета
+# нет (нет buf/go/дерева контрактов).
+domain-generation-check:
+	./scripts/check-domain-generation.sh
+
+# Доказательство, что гейт выше СПОСОБЕН упасть: по одной оси за раз дефект
+# возвращается, рядом стоит законный близнец той же формы. Правя гейт или
+# генераторы, зови эту цель РУКАМИ — способность падать в диффе не видна.
+domain-generation-inject:
+	./scripts/inject-domain-generation-defects.sh
