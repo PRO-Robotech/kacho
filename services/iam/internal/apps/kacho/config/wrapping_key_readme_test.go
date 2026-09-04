@@ -1,5 +1,5 @@
 // Copyright (c) PRO-Robotech
-// SPDX-License-Identifier: BUSL-1.1
+// SPDX-License-Identifier: AGPL-3.0-or-later
 
 // wrapping_key_readme_test.go — пример, которым оператор чеканит ключ обёртки,
 // ПРОГОНЯЕТСЯ и скармливается настоящему резолву (задача #1065).

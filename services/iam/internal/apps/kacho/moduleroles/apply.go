@@ -1,5 +1,5 @@
 // Copyright (c) PRO-Robotech
-// SPDX-License-Identifier: BUSL-1.1
+// SPDX-License-Identifier: AGPL-3.0-or-later
 
 // Package moduleroles — ПРИМЕНИТЕЛЬ ролей модуля: читает манифест как данные и
 // приводит строки системных ролей своего модуля к объявленному состоянию

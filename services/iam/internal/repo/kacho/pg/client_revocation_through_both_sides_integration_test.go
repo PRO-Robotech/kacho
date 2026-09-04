@@ -1,5 +1,5 @@
 // Copyright (c) PRO-Robotech
-// SPDX-License-Identifier: BUSL-1.1
+// SPDX-License-Identifier: AGPL-3.0-or-later
 
 // client_revocation_through_both_sides_integration_test.go — F2-32: отзыв
 // доходит и до ВЫДАЧИ, и до ПРЕДЪЯВЛЕНИЯ, и вопрос ставится сквозь обе стороны

@@ -1,5 +1,5 @@
 // Copyright (c) PRO-Robotech
-// SPDX-License-Identifier: BUSL-1.1
+// SPDX-License-Identifier: AGPL-3.0-or-later
 
 // governance_ports.go — narrow port-iface definitions for the writer-tx outbox
 // emitters. TxBeginner opens the transaction; RelationOutboxEmitter (fga_outbox),

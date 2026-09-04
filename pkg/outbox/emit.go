@@ -1,5 +1,5 @@
 // Copyright (c) PRO-Robotech
-// SPDX-License-Identifier: BUSL-1.1
+// SPDX-License-Identifier: Apache-2.0
 
 // Package outbox реализует транзакционный outbox-паттерн: каждое мутирующее
 // действие на ресурс пишет строку в per-service outbox-таблицу в ТОЙ ЖЕ

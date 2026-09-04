@@ -1,5 +1,5 @@
 // Copyright (c) PRO-Robotech
-// SPDX-License-Identifier: BUSL-1.1
+// SPDX-License-Identifier: AGPL-3.0-or-later
 
 // binding_test.go — F1-44 (замок «только внутри» на КАЖДОМ пути публикации) и
 // F1-46 (привязка «издатель → путь» на стороне публикатора, включая стража

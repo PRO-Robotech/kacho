@@ -1,5 +1,5 @@
 // Copyright (c) PRO-Robotech
-// SPDX-License-Identifier: BUSL-1.1
+// SPDX-License-Identifier: AGPL-3.0-or-later
 
 // Команда module-manifest-check — сборочная цель, судящая манифесты модулей
 // дерева разработки. Её зовёт конвейер через `make -C services/iam

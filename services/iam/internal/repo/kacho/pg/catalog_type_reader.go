@@ -1,5 +1,5 @@
 // Copyright (c) PRO-Robotech
-// SPDX-License-Identifier: BUSL-1.1
+// SPDX-License-Identifier: AGPL-3.0-or-later
 
 // catalog_type_reader.go — pg-адаптер: точечное имя КАТАЛОГА по имени типа
 // МОДЕЛИ, из строк `kacho_iam.catalog_resource` (kacho#1990).

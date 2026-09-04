@@ -1,5 +1,5 @@
 // Copyright (c) PRO-Robotech
-// SPDX-License-Identifier: BUSL-1.1
+// SPDX-License-Identifier: AGPL-3.0-or-later
 
 // form_test.go — ОБЪЯВЛЕНИЕ ФОРМЫ базового удостоверения, которым пользуется
 // сквозная проба, сверяется с тем, что ЧЕКАНИТ ПРОДУКТ (задача #1253).

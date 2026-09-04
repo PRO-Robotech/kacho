@@ -1,5 +1,5 @@
 // Copyright (c) PRO-Robotech
-// SPDX-License-Identifier: BUSL-1.1
+// SPDX-License-Identifier: AGPL-3.0-or-later
 
 // Package sa_keys — SAKeyService use-cases (Class A static SA-keys via
 // OAuth2 client_credentials + private_key_jwt).

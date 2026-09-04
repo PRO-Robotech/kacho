@@ -1,5 +1,5 @@
 // Copyright (c) PRO-Robotech
-// SPDX-License-Identifier: BUSL-1.1
+// SPDX-License-Identifier: AGPL-3.0-or-later
 
 // whoami.go — WhoAmIUseCase: aggregate caller identity + permission
 // snapshot for `AuthorizeService.WhoAmI` (GET /iam/v1/me).

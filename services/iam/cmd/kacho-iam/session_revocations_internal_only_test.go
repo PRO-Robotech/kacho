@@ -1,5 +1,5 @@
 // Copyright (c) PRO-Robotech
-// SPDX-License-Identifier: BUSL-1.1
+// SPDX-License-Identifier: AGPL-3.0-or-later
 
 // session_revocations_internal_only_test.go — pins the gRPC-registration
 // contract for InternalSessionRevocationsService (ban #6: internal-only).

@@ -1,5 +1,5 @@
 // Copyright (c) PRO-Robotech
-// SPDX-License-Identifier: BUSL-1.1
+// SPDX-License-Identifier: AGPL-3.0-or-later
 
 // permission_test.go — unit tests for the RBAC v2 4-segment permission
 // grammar `module.resource.resourceName.verb` (migration 0005).

@@ -1,5 +1,5 @@
 // Copyright (c) PRO-Robotech
-// SPDX-License-Identifier: BUSL-1.1
+// SPDX-License-Identifier: AGPL-3.0-or-later
 
 // bootstrap_admin.go — startup-time bootstrap admin grant + fga_outbox enqueue.
 //

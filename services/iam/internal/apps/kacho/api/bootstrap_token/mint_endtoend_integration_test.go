@@ -1,5 +1,5 @@
 // Copyright (c) PRO-Robotech
-// SPDX-License-Identifier: BUSL-1.1
+// SPDX-License-Identifier: AGPL-3.0-or-later
 
 // mint_endtoend_integration_test.go — бутстрап-удостоверение выпускается НА
 // ПОДНЯТОЙ С НУЛЯ базе, без внешней стороны, и оно того вида, который принимает

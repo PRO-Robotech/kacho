@@ -1,5 +1,5 @@
 // Copyright (c) PRO-Robotech
-// SPDX-License-Identifier: BUSL-1.1
+// SPDX-License-Identifier: AGPL-3.0-or-later
 
 // serve_client_token_wiring_test.go — приземление токен-эндпоинта платформы
 // (приёмка F2, F2-45 сторона поверхности, §9.1 п. 11).

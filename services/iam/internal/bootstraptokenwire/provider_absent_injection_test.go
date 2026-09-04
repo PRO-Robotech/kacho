@@ -1,5 +1,5 @@
 // Copyright (c) PRO-Robotech
-// SPDX-License-Identifier: BUSL-1.1
+// SPDX-License-Identifier: AGPL-3.0-or-later
 
 // provider_absent_injection_test.go — доказательство, что разбор дороги к
 // поставщику СПОСОБЕН упасть и способен смолчать.

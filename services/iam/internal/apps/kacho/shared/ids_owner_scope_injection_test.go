@@ -1,5 +1,5 @@
 // Copyright (c) PRO-Robotech
-// SPDX-License-Identifier: BUSL-1.1
+// SPDX-License-Identifier: AGPL-3.0-or-later
 
 // ids_owner_scope_injection_test.go — ДОКАЗАТЕЛЬСТВО того, что гейт границы
 // владения способен упасть и способен смолчать.

@@ -1,5 +1,5 @@
 // Copyright (c) PRO-Robotech
-// SPDX-License-Identifier: BUSL-1.1
+// SPDX-License-Identifier: AGPL-3.0-or-later
 
 // list_operations_classification_test.go — the per-resource ListOperations feed
 // must report WHAT FAILED, not WHAT THE CALLER SENT.

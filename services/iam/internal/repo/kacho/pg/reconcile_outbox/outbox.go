@@ -1,5 +1,5 @@
 // Copyright (c) PRO-Robotech
-// SPDX-License-Identifier: BUSL-1.1
+// SPDX-License-Identifier: AGPL-3.0-or-later
 
 // Package reconcile_outbox — emit + drain helpers for
 // kacho_iam.resource_reconcile_outbox.

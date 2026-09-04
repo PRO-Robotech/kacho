@@ -1,5 +1,5 @@
 // Copyright (c) PRO-Robotech
-// SPDX-License-Identifier: BUSL-1.1
+// SPDX-License-Identifier: AGPL-3.0-or-later
 
 // usecase_revoke_idempotent_test.go — зеркало user_tokens для полосы машинного
 // принципала. Полосы выдачи удостоверений две, и свойство, обязательное для

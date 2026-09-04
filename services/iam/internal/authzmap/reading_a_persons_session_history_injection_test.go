@@ -1,5 +1,5 @@
 // Copyright (c) PRO-Robotech
-// SPDX-License-Identifier: BUSL-1.1
+// SPDX-License-Identifier: AGPL-3.0-or-later
 
 // reading_a_persons_session_history_injection_test.go — доказательство, что
 // соседний гейт СПОСОБЕН упасть и СПОСОБЕН смолчать.

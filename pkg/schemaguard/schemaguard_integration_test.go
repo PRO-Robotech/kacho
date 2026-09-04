@@ -1,5 +1,5 @@
 // Copyright (c) PRO-Robotech
-// SPDX-License-Identifier: BUSL-1.1
+// SPDX-License-Identifier: Apache-2.0
 
 // schemaguard_integration_test.go — НАБЛЮДАЕМОЕ поведение, а не только вердикт:
 // образ на схеме следующей версии готовым НЕ объявляется, на совместимой —

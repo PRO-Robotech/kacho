@@ -1,5 +1,5 @@
 // Copyright (c) PRO-Robotech
-// SPDX-License-Identifier: BUSL-1.1
+// SPDX-License-Identifier: AGPL-3.0-or-later
 
 // sectionrefusals_test.go — отказы трёх разделов, у которых нет собственного
 // сценария приёмки, но есть производитель в прод-коде.

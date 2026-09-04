@@ -1,5 +1,5 @@
 // Copyright (c) PRO-Robotech
-// SPDX-License-Identifier: BUSL-1.1
+// SPDX-License-Identifier: Apache-2.0
 
 // conformance_test.go — свойства КОНТУРА, которые до носителя каждый сервис
 // держал у себя своей пробой.

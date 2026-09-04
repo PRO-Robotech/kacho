@@ -1,5 +1,5 @@
 // Copyright (c) PRO-Robotech
-// SPDX-License-Identifier: BUSL-1.1
+// SPDX-License-Identifier: AGPL-3.0-or-later
 
 // upstream_trust_test.go — the keyset this mirror re-serves is the data-plane's
 // only anchor for deciding whether a token was signed by the provider. So the

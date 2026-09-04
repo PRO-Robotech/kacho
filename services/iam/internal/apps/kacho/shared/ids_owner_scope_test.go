@@ -1,5 +1,5 @@
 // Copyright (c) PRO-Robotech
-// SPDX-License-Identifier: BUSL-1.1
+// SPDX-License-Identifier: AGPL-3.0-or-later
 
 // ids_owner_scope_test.go — ГЕЙТ по дереву на границу применимости строгой
 // проверки формата идентификатора (`ValidateResourceID`, ids.go).

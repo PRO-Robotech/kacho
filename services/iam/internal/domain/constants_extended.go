@@ -1,5 +1,5 @@
 // Copyright (c) PRO-Robotech
-// SPDX-License-Identifier: BUSL-1.1
+// SPDX-License-Identifier: AGPL-3.0-or-later
 
 // constants_extended.go — id-префиксы и константы.
 // Стиль формата отличается от corelib `ids.NewID` (3-char prefix +

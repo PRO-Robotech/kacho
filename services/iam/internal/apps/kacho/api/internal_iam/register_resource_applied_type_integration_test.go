@@ -1,5 +1,5 @@
 // Copyright (c) PRO-Robotech
-// SPDX-License-Identifier: BUSL-1.1
+// SPDX-License-Identifier: AGPL-3.0-or-later
 
 // register_resource_applied_type_integration_test.go — РЕГИСТРАЦИЯ ОБЪЕКТА ТИПА,
 // ЗАВЕДЁННОГО ПРИМЕНЕНИЕМ МАНИФЕСТА В РАБОТАЮЩЕМ ПРОЦЕССЕ (kacho#1990).

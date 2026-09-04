@@ -1,5 +1,5 @@
 // Copyright (c) PRO-Robotech
-// SPDX-License-Identifier: BUSL-1.1
+// SPDX-License-Identifier: AGPL-3.0-or-later
 
 // proxy_admitted_types_in_catalog_test.go — ПРАВИЛО ПРИЁМА И КАТАЛОГ СХОДЯТСЯ.
 //

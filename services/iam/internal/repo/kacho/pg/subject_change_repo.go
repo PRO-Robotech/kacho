@@ -1,5 +1,5 @@
 // Copyright (c) PRO-Robotech
-// SPDX-License-Identifier: BUSL-1.1
+// SPDX-License-Identifier: AGPL-3.0-or-later
 
 // subject_change_repo.go — pgxpool adapter implementing service.SubjectChangeReader.
 // Drains kacho_iam.subject_change_outbox for the InternalIAMService.PollSubjectChanges

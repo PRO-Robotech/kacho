@@ -1,5 +1,5 @@
 // Copyright (c) PRO-Robotech
-// SPDX-License-Identifier: BUSL-1.1
+// SPDX-License-Identifier: AGPL-3.0-or-later
 
 // credential_ceiling_anchor_test.go — АНКЕР второго источника имён (задача
 // #1191, приёмка §3.3, утверждения G5, G6, G7).

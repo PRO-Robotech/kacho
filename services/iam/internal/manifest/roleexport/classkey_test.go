@@ -1,5 +1,5 @@
 // Copyright (c) PRO-Robotech
-// SPDX-License-Identifier: BUSL-1.1
+// SPDX-License-Identifier: AGPL-3.0-or-later
 
 // classkey_test.go — стадия 1 судит значение НОВОГО ключа права роли
 // (приёмка `classes-form-of-role-right.md`, §3.1 и §4.3; сценарии

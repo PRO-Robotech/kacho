@@ -1,5 +1,5 @@
 // Copyright (c) PRO-Robotech
-// SPDX-License-Identifier: BUSL-1.1
+// SPDX-License-Identifier: AGPL-3.0-or-later
 
 // acting_as_a_person_integration_test.go — «действовать ОТ ИМЕНИ человека» и
 // «править ЕГО ЗАПИСЬ» решаются РАЗНО, на той двери, куда приходит каждый запрос

@@ -1,5 +1,5 @@
 // Copyright (c) PRO-Robotech
-// SPDX-License-Identifier: BUSL-1.1
+// SPDX-License-Identifier: AGPL-3.0-or-later
 
 // handler.go — gRPC handler для kacho.cloud.iam.v1.UserTokenService.
 package user_tokens

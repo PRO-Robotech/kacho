@@ -1,5 +1,5 @@
 // Copyright (c) PRO-Robotech
-// SPDX-License-Identifier: BUSL-1.1
+// SPDX-License-Identifier: AGPL-3.0-or-later
 
 // noncanonical_bindings_census_integration_test.go — IAM-ID-1-36 (задача
 // kacho#472): неканонические привязки переписаны поимённо.

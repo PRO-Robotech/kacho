@@ -1,5 +1,5 @@
 // Copyright (c) PRO-Robotech
-// SPDX-License-Identifier: BUSL-1.1
+// SPDX-License-Identifier: AGPL-3.0-or-later
 
 // issue_audience_narrowing_test.go — сужение адресатов, объявленное САМИМ
 // ключом, действует на выпуске (задача #1136).

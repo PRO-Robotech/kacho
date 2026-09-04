@@ -1,5 +1,5 @@
 // Copyright (c) PRO-Robotech
-// SPDX-License-Identifier: BUSL-1.1
+// SPDX-License-Identifier: AGPL-3.0-or-later
 
 // cluster_admin_grant_writer.go — atomic-CAS Writer for cluster admin
 // Grant/Revoke RPCs.

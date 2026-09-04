@@ -1,5 +1,5 @@
 // Copyright (c) PRO-Robotech
-// SPDX-License-Identifier: BUSL-1.1
+// SPDX-License-Identifier: AGPL-3.0-or-later
 
 // credential_ceiling_test.go — каталог знает потолок числа удостоверений на
 // принципала (задача #1191, приёмка

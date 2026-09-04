@@ -1,5 +1,5 @@
 // Copyright (c) PRO-Robotech
-// SPDX-License-Identifier: BUSL-1.1
+// SPDX-License-Identifier: AGPL-3.0-or-later
 
 // usecase_audience_narrowing_test.go — перечень адресатов, названный заказчиком
 // при выдаче, ЗАПИСЫВАЕТСЯ на строку ключа (задача #1136).

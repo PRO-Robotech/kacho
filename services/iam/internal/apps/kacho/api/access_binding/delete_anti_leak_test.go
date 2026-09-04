@@ -1,5 +1,5 @@
 // Copyright (c) PRO-Robotech
-// SPDX-License-Identifier: BUSL-1.1
+// SPDX-License-Identifier: AGPL-3.0-or-later
 
 // delete_w1_6_test.go — Delete uses requireGrantAuthority (mirror Create's
 // authority rule — admin on resource can both grant and revoke). A self-only

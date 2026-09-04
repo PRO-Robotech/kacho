@@ -1,5 +1,5 @@
 // Copyright (c) PRO-Robotech
-// SPDX-License-Identifier: BUSL-1.1
+// SPDX-License-Identifier: AGPL-3.0-or-later
 
 // Package shared — errors.go: единый sentinel → gRPC status mapping для всех
 // api-слайсов (account / project / user / service_account / group / role /

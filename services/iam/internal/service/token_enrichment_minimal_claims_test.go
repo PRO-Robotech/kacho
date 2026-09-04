@@ -1,5 +1,5 @@
 // Copyright (c) PRO-Robotech
-// SPDX-License-Identifier: BUSL-1.1
+// SPDX-License-Identifier: AGPL-3.0-or-later
 
 // token_enrichment_minimal_claims_test.go — what the reduced claim set says
 // about its bearer, and what the platform does with that.

@@ -1,5 +1,5 @@
 // Copyright (c) PRO-Robotech
-// SPDX-License-Identifier: BUSL-1.1
+// SPDX-License-Identifier: AGPL-3.0-or-later
 
 // usecase_test.go — unit-тесты use-case'ов UserTokenService на mock-портах.
 // Зеркалит sa_keys usecase-тесты. Трассируются в account-tokens-tab-USR-*.

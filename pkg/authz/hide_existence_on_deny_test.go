@@ -1,5 +1,5 @@
 // Copyright (c) PRO-Robotech
-// SPDX-License-Identifier: BUSL-1.1
+// SPDX-License-Identifier: Apache-2.0
 
 // hide_existence_on_deny_test.go — отказ пообъектного чтения обязан звучать
 // голосом ВЛАДЕЛЬЦА, а не голосом стража.

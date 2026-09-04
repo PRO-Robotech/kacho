@@ -1,5 +1,5 @@
 // Copyright (c) PRO-Robotech
-// SPDX-License-Identifier: BUSL-1.1
+// SPDX-License-Identifier: AGPL-3.0-or-later
 
 // Package toproto — DTO transfer implementations domain/repo → proto for
 // kacho-iam. Transfers are registered at init time (parity with kacho-vpc).

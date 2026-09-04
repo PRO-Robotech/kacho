@@ -1,5 +1,5 @@
 // Copyright (c) PRO-Robotech
-// SPDX-License-Identifier: BUSL-1.1
+// SPDX-License-Identifier: AGPL-3.0-or-later
 
 // Package tools_regression locks the behaviour of kacho-iam's audit-list-filter
 // gate against the REAL tree.

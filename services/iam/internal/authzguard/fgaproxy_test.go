@@ -1,5 +1,5 @@
 // Copyright (c) PRO-Robotech
-// SPDX-License-Identifier: BUSL-1.1
+// SPDX-License-Identifier: AGPL-3.0-or-later
 
 // fgaproxy_test.go — the FGA-proxy authz ReBAC gate + cert-SAN→SA mapping.
 //

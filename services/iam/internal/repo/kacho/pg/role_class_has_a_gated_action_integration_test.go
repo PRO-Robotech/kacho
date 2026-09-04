@@ -1,5 +1,5 @@
 // Copyright (c) PRO-Robotech
-// SPDX-License-Identifier: BUSL-1.1
+// SPDX-License-Identifier: AGPL-3.0-or-later
 
 // role_class_has_a_gated_action_integration_test.go — ИСХОД миграции
 // 20260902180800_role_rules_name_only_classes_with_a_gated_action.

@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 # Copyright (c) PRO-Robotech
-# SPDX-License-Identifier: BUSL-1.1
+# SPDX-License-Identifier: AGPL-3.0-or-later
 
 # module-manifest-check.sh — форму манифеста КАЖДОГО модуля судит один
 # исполнитель: обход дерева читает каждый `manifest.yaml` и разбирает его тем

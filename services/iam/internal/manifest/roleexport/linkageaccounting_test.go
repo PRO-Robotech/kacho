@@ -1,5 +1,5 @@
 // Copyright (c) PRO-Robotech
-// SPDX-License-Identifier: BUSL-1.1
+// SPDX-License-Identifier: AGPL-3.0-or-later
 
 // linkageaccounting_test.go — СЧЁТ обратной стороны сверки: запись каталога,
 // которую раздел `resources` не называет действием, обязана быть ОТНЕСЕНА к

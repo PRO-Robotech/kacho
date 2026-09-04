@@ -1,5 +1,5 @@
 // Copyright (c) PRO-Robotech
-// SPDX-License-Identifier: BUSL-1.1
+// SPDX-License-Identifier: Apache-2.0
 
 // preconditions_test.go — предусловия наката объявлены ОДИН раз, а источник DSN
 // у них параметр, а не текст.

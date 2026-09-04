@@ -1,5 +1,5 @@
 // Copyright (c) PRO-Robotech
-// SPDX-License-Identifier: BUSL-1.1
+// SPDX-License-Identifier: AGPL-3.0-or-later
 
 // Package modulecatalog — ПРИМЕНИТЕЛЬ КАТАЛОГА модуля: читает манифест как данные
 // и приводит строки `kacho_iam.catalog_module` / `catalog_resource` /

@@ -1,5 +1,5 @@
 // Copyright (c) PRO-Robotech
-// SPDX-License-Identifier: BUSL-1.1
+// SPDX-License-Identifier: Apache-2.0
 
 // Package ownerregister — ОДНА форма синхронной регистрации ресурса у владельца
 // прав, общая для всех сервисов-потребителей.

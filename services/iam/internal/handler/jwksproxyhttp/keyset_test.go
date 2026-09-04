@@ -1,5 +1,5 @@
 // Copyright (c) PRO-Robotech
-// SPDX-License-Identifier: BUSL-1.1
+// SPDX-License-Identifier: AGPL-3.0-or-later
 
 // keyset_test.go — сценарии F1-29 (на ответе эндпоинта), F1-32, F1-36, F1-37,
 // F1-44 и F1-46 приёмки F1: НАША запись публикуемого набора.

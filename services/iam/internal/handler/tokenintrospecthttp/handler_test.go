@@ -1,5 +1,5 @@
 // Copyright (c) PRO-Robotech
-// SPDX-License-Identifier: BUSL-1.1
+// SPDX-License-Identifier: AGPL-3.0-or-later
 
 // handler_test.go — F1-25 (сторона авторитета отзыва): отзыв читается НА
 // ПРЕДЪЯВЛЕНИИ, а не только на выдаче.

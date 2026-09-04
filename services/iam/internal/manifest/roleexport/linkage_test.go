@@ -1,5 +1,5 @@
 // Copyright (c) PRO-Robotech
-// SPDX-License-Identifier: BUSL-1.1
+// SPDX-License-Identifier: AGPL-3.0-or-later
 
 // linkage_test.go — способность сверки «действие манифеста ↔ запись каталога»
 // УПАСТЬ, доказанная инъекцией по каждой оси (задача PRO-Robotech/kacho#1844).

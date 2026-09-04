@@ -1,5 +1,5 @@
 // Copyright (c) PRO-Robotech
-// SPDX-License-Identifier: BUSL-1.1
+// SPDX-License-Identifier: AGPL-3.0-or-later
 
 // both_lanes_agree_test.go — свойство, обязательное для одной полосы выдачи,
 // утверждается СРАВНЕНИЕМ полос (задача #1184).

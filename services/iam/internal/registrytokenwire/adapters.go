@@ -1,5 +1,5 @@
 // Copyright (c) PRO-Robotech
-// SPDX-License-Identifier: BUSL-1.1
+// SPDX-License-Identifier: AGPL-3.0-or-later
 
 // Package registrytokenwire — composition-root adapters binding the registry
 // `/iam/token` shim use-case to iam infrastructure:

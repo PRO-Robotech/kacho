@@ -1,5 +1,5 @@
 // Copyright (c) PRO-Robotech
-// SPDX-License-Identifier: BUSL-1.1
+// SPDX-License-Identifier: AGPL-3.0-or-later
 
 // audience_refusal_test.go — что ПОЛУЧАЕТ предъявитель, когда адресат отвергнут
 // (задача #1184).

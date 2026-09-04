@@ -1,5 +1,5 @@
 // Copyright (c) PRO-Robotech
-// SPDX-License-Identifier: BUSL-1.1
+// SPDX-License-Identifier: AGPL-3.0-or-later
 
 // Package authzmapgen — ПРОИЗВОДИТЕЛЬ двух таблиц типов пакета `authzmap` из
 // манифестов модулей (задача #1092).

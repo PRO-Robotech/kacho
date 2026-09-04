@@ -1,5 +1,5 @@
 // Copyright (c) PRO-Robotech
-// SPDX-License-Identifier: BUSL-1.1
+// SPDX-License-Identifier: AGPL-3.0-or-later
 
 // token_hook_provider_body_test.go — the hook is driven with the body the
 // provider actually posts, key for key.

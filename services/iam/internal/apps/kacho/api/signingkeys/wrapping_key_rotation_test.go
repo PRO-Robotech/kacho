@@ -1,5 +1,5 @@
 // Copyright (c) PRO-Robotech
-// SPDX-License-Identifier: BUSL-1.1
+// SPDX-License-Identifier: AGPL-3.0-or-later
 
 // wrapping_key_rotation_test.go — смена ключа ОБЁРТКИ не теряет ни одного
 // подписного ключа (задача #1065).

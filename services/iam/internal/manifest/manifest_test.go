@@ -1,5 +1,5 @@
 // Copyright (c) PRO-Robotech
-// SPDX-License-Identifier: BUSL-1.1
+// SPDX-License-Identifier: AGPL-3.0-or-later
 
 // manifest_test.go — форму манифеста домена судит ОДИН исполнитель (задача #1088,
 // приёмка services/iam/docs/engineering/acceptance/module-manifest-seed-contract.md).

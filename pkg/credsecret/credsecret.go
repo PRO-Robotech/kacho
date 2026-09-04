@@ -1,5 +1,5 @@
 // Copyright (c) PRO-Robotech
-// SPDX-License-Identifier: BUSL-1.1
+// SPDX-License-Identifier: Apache-2.0
 
 // Package credsecret — ЕДИНСТВЕННОЕ объявленное место, где живёт форма базового
 // удостоверения Kachō: чеканка строки, её разбор, вычисление и сверка

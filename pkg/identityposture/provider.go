@@ -1,5 +1,5 @@
 // Copyright (c) PRO-Robotech
-// SPDX-License-Identifier: BUSL-1.1
+// SPDX-License-Identifier: Apache-2.0
 
 // Package identityposture — ПОСАДКА ЛИЧНОСТИ: кто проверяет, что перед
 // платформой именно этот человек (задача #1125, подфаза Ф4д эпика #896).

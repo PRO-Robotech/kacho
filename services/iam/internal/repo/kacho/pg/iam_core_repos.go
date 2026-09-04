@@ -1,5 +1,5 @@
 // Copyright (c) PRO-Robotech
-// SPDX-License-Identifier: BUSL-1.1
+// SPDX-License-Identifier: AGPL-3.0-or-later
 
 // iam_core_repos.go — repository layer for the Cluster singleton plus the
 // shared ClusterAdminGrant row scanner (scanCAG, consumed by the live

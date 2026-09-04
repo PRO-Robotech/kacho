@@ -1,5 +1,5 @@
 // Copyright (c) PRO-Robotech
-// SPDX-License-Identifier: BUSL-1.1
+// SPDX-License-Identifier: AGPL-3.0-or-later
 
 // apply_test.go — применитель ролей модуля (приёмка
 // `services/iam/docs/engineering/acceptance/roles-come-as-data-not-migrations.md`

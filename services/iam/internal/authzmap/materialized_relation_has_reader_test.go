@@ -1,5 +1,5 @@
 // Copyright (c) PRO-Robotech
-// SPDX-License-Identifier: BUSL-1.1
+// SPDX-License-Identifier: AGPL-3.0-or-later
 
 // materialized_relation_has_reader_test.go — гейт на КЛАСС: отношение, которое
 // материализация ПРОИЗВОДИТ, обязано кем-то ЧИТАТЬСЯ при решении о доступе.

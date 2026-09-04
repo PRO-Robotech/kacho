@@ -1,5 +1,5 @@
 // Copyright (c) PRO-Robotech
-// SPDX-License-Identifier: BUSL-1.1
+// SPDX-License-Identifier: AGPL-3.0-or-later
 
 // registry_token.go — config for the Docker Registry v2 `/iam/token`
 // auth-server HTTP listener (the `/iam/token` endpoint only). There is NO JWKS

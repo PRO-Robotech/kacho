@@ -1,5 +1,5 @@
 // Copyright (c) PRO-Robotech
-// SPDX-License-Identifier: BUSL-1.1
+// SPDX-License-Identifier: AGPL-3.0-or-later
 
 // parity_injection_test.go — доказательство того, что сверка СПОСОБНА упасть, и
 // того, что она молчит на законном близнеце.

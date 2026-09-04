@@ -1,5 +1,5 @@
 // Copyright (c) PRO-Robotech
-// SPDX-License-Identifier: BUSL-1.1
+// SPDX-License-Identifier: AGPL-3.0-or-later
 
 // roles_cluster_tier_test.go — раздел `roles` принимает КЛАСТЕРНЫЙ ярус
 // (приёмка `services/iam/docs/engineering/acceptance/roles-come-as-data-not-migrations.md`

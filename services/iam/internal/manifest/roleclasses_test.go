@@ -1,5 +1,5 @@
 // Copyright (c) PRO-Robotech
-// SPDX-License-Identifier: BUSL-1.1
+// SPDX-License-Identifier: AGPL-3.0-or-later
 
 // roleclasses_test.go — ГЛАВНАЯ ФОРМА права роли: ключ `classes`
 // (приёмка `classes-form-of-role-right.md`, §3.1–§3.3, сценарии

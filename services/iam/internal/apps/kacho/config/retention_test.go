@@ -1,5 +1,5 @@
 // Copyright (c) PRO-Robotech
-// SPDX-License-Identifier: BUSL-1.1
+// SPDX-License-Identifier: AGPL-3.0-or-later
 
 // retention_test.go — величины уборки объявлены и проверяются при СТАРТЕ
 // (приёмка `retention-sweep-has-a-caller.md` §3.3).

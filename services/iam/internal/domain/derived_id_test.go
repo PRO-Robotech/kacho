@@ -1,5 +1,5 @@
 // Copyright (c) PRO-Robotech
-// SPDX-License-Identifier: BUSL-1.1
+// SPDX-License-Identifier: AGPL-3.0-or-later
 
 // derived_id_test.go — деривация детерминированного идентификатора (приёмка
 // `roles-come-as-data-not-migrations.md` §3.3; сценарии MOD-RD-07 … MOD-RD-11).

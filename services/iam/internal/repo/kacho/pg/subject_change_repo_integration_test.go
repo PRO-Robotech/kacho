@@ -1,5 +1,5 @@
 // Copyright (c) PRO-Robotech
-// SPDX-License-Identifier: BUSL-1.1
+// SPDX-License-Identifier: AGPL-3.0-or-later
 
 // subject_change_repo_integration_test.go — integration tests for SubjectChangeRepo.
 // Verifies PollSubjectChanges returns ascending rows, honours limit, and

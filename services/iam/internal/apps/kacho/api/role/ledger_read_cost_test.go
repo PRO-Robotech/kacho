@@ -1,5 +1,5 @@
 // Copyright (c) PRO-Robotech
-// SPDX-License-Identifier: BUSL-1.1
+// SPDX-License-Identifier: AGPL-3.0-or-later
 
 // ledger_read_cost_test.go — стоимость страницы и полоса fail-closed у ДВУХ
 // ведомостей, объясняющих потерю права: переселения (#1992) и вырезания (#1988).

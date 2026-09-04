@@ -1,5 +1,5 @@
 // Copyright (c) PRO-Robotech
-// SPDX-License-Identifier: BUSL-1.1
+// SPDX-License-Identifier: AGPL-3.0-or-later
 
 // ops_secret_sweeper_integration_test.go — the one-shot credential is cleaned even
 // when nothing in this process is left to clean it.

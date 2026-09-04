@@ -1,5 +1,5 @@
 // Copyright (c) PRO-Robotech
-// SPDX-License-Identifier: BUSL-1.1
+// SPDX-License-Identifier: AGPL-3.0-or-later
 
 // Package bootstraptokenwire — composition-root wiring for the
 // InternalBootstrapTokenService handler (#58). Assembles the bootstrap-token

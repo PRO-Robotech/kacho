@@ -1,5 +1,5 @@
 // Copyright (c) PRO-Robotech
-// SPDX-License-Identifier: BUSL-1.1
+// SPDX-License-Identifier: AGPL-3.0-or-later
 
 // usecase_id_length_test.go — ПОЛОСА ОТКАЗА для задачи #1791 на полосе
 // персонального токена. Полоса-близнец — `sa_keys/usecase_id_length_test.go`;

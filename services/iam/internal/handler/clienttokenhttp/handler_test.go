@@ -1,5 +1,5 @@
 // Copyright (c) PRO-Robotech
-// SPDX-License-Identifier: BUSL-1.1
+// SPDX-License-Identifier: AGPL-3.0-or-later
 
 // handler_test.go — токен-эндпоинт (приёмка F2, сценарии F2-02, F2-11, F2-33,
 // F2-43, F2-45).

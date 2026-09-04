@@ -1,5 +1,5 @@
 // Copyright (c) PRO-Robotech
-// SPDX-License-Identifier: BUSL-1.1
+// SPDX-License-Identifier: AGPL-3.0-or-later
 
 // local_mint_test.go — приземление подписанта на НАСТОЯЩИЙ путь выдачи
 // (приёмка F1 §9.1 п. 5).

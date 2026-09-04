@@ -1,5 +1,5 @@
 // Copyright (c) PRO-Robotech
-// SPDX-License-Identifier: BUSL-1.1
+// SPDX-License-Identifier: AGPL-3.0-or-later
 
 // signing_key_rotation_integration_test.go — сценарии F1-06, F1-07, F1-29,
 // F1-31 приёмки F1: инвариант «подписывает ровно один» и машина состояний.
