@@ -134,14 +134,14 @@ system-only).
 ```json
 {
   "id": "rol...",
-  "health": "DEGRADED",
+  "health": "ROLE_HEALTH_DEGRADED",
   "declaredSegments": 12,
   "unresolvedSegments": 3,
   "withdrawnGrants": [
     {
       "objectType": "compute.instances",
       "verb": "start",
-      "source": "GRANT",
+      "source": "WITHDRAWN_GRANT_SOURCE_GRANT",
       "reason": "не объявлен манифестом модуля compute",
       "withdrawnAt": "2026-09-03T13:15:44Z"
     }
@@ -178,7 +178,7 @@ system-only).
   "prunedSelectorTypes": [
     {
       "objectType": "compute.instances",
-      "outcome": "SHORTENED",
+      "outcome": "SELECTOR_PRUNE_OUTCOME_SHORTENED",
       "reason": "не объявлен манифестом модуля compute",
       "prunedAt": "2026-09-03T13:15:44Z"
     }
@@ -228,11 +228,11 @@ system-only).
     { "module": "probe", "resources": ["thing"], "verbs": ["delete"] }
   ],
   "ruleStates": [
-    { "ruleIndex": 0, "state": "ACTIVE",
+    { "ruleIndex": 0, "state": "RULE_LIFECYCLE_ACTIVE",
       "segments": 1, "lostSegments": 0, "explainedSegments": 0 },
-    { "ruleIndex": 1, "state": "WITHDRAWN",
+    { "ruleIndex": 1, "state": "RULE_LIFECYCLE_WITHDRAWN",
       "segments": 1, "lostSegments": 1, "explainedSegments": 1 },
-    { "ruleIndex": 2, "state": "UNRESOLVED",
+    { "ruleIndex": 2, "state": "RULE_LIFECYCLE_UNRESOLVED",
       "segments": 1, "lostSegments": 1, "explainedSegments": 0 }
   ]
 }

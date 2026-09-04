@@ -37,7 +37,6 @@ import (
 	"context"
 	"log/slog"
 	"os"
-	"strings"
 	"testing"
 
 	"github.com/jackc/pgx/v5/pgxpool"
@@ -61,18 +60,13 @@ import (
 // существует» — отказ, который читается как дефект продукта, а является
 // дефектом ПРОБЫ: схема сервиса `kacho_iam`, и адресуется она путём поиска, а не
 // именем в каждом запросе.
+//
+// Клауза берётся у ОБЩЕГО помощника, а не собирается здесь: собранная на месте,
+// она разошлась бы с ним молча — и разошлась бы именно там, где расхождение не
+// видно, потому что обе формы дают рабочее соединение на исправном дереве.
 func bootRolesTestDSN(t testing.TB) string {
 	t.Helper()
-	dsn := pgtest.NewDB(t)
-	const optionsParam = "options=-c%20search_path%3Dkacho_iam%2Cpublic"
-	if strings.Contains(dsn, "options=") || strings.Contains(dsn, "options%3D") {
-		return dsn
-	}
-	sep := "?"
-	if strings.Contains(dsn, "?") {
-		sep = "&"
-	}
-	return dsn + sep + optionsParam
+	return pgtest.WithSearchPath(pgtest.NewDB(t), "kacho_iam,public")
 }
 
 // bootRolesOnLiveBase — то, что собирает путь старта, собранное ТЕМИ ЖЕ
