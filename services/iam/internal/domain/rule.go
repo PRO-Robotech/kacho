@@ -228,7 +228,7 @@ func validateModule(module string, policy RulePolicy, modules ModuleSet) error {
 		}
 		return nil
 	}
-	if !ruleModuleRe.MatchString(module) {
+	if !IsWellFormedModuleName(module) {
 		return fmt.Errorf("Illegal argument module (invalid token %q)", module)
 	}
 	// Набор НЕ ПРОВЯЗАН — отказ, а не пропуск. Отдельный текст, а не общий

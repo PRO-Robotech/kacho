@@ -243,9 +243,26 @@ func isDeliveredManifestName(name string) bool { return !strings.HasPrefix(name,
 //
 // Второй обход, написанный рядом, разошёлся бы с первым молча — и разошёлся бы
 // именно в той половине, которую никто не читает глазами.
+//
+// # Ступеней ДВЕ, и порядок между ними несущий
+//
+// Ступень первая ЧИТАЕТ каждый принятый путь и снимает с него имя модуля
+// (moduleset.go, peekModule). Ступень вторая СУДИТ прочитанное, внося в
+// загрузчик перечень модулей, объявленных ЭТИМ ЖЕ обходом.
+//
+// Одной ступенью это невыразимо: правило роли, называющее модуль СОСЕДА по
+// доставке, отвергалось бы или принималось в зависимости от того, чей манифест
+// обход прочёл раньше, — то есть вердикт стал бы функцией порядка каталога.
+//
+// Байты держатся в памяти между ступенями, а не читаются дважды: между двумя
+// чтениями одного пути лежит окно, и второе чтение вернуло бы другой документ,
+// не сказав об этом ничего. Объём ограничен теми же manifestSizeLimit на путь,
+// которыми ограничена ступень первая.
 func walkManifests(root string, accept func(name string) bool, referent TypeReferent,
 	opts ...LoadOption) CheckReport {
 	var report CheckReport
+	// docs — прочитанное, в порядке report.Paths.
+	var docs [][]byte
 
 	// Корень открывается ОДИН раз и служит ГРАНИЦЕЙ чтения: всё, что читается
 	// дальше, разрешается ядром относительно него, а не по имени, собранному
@@ -306,14 +323,23 @@ func walkManifests(root string, accept func(name string) bool, referent TypeRefe
 		}
 		report.ManifestsRead++
 		report.Paths = append(report.Paths, rel)
-		m, err := LoadWithReferent(data, referent, opts...)
-		if err != nil {
-			report.Findings = append(report.Findings, rel+": "+err.Error())
-			return nil
-		}
-		report.Manifests = append(report.Manifests, m)
+		docs = append(docs, data)
 		return nil
 	})
+
+	// Ступень вторая. Перечень объявленных модулей известен ЦЕЛИКОМ, поэтому
+	// вердикт по каждому документу больше не зависит от порядка обхода.
+	declared, collisions := declaredModules(report.Paths, docs)
+	report.Findings = append(report.Findings, collisions...)
+	judgeOpts := append(append([]LoadOption(nil), opts...), WithModuleSet(declared))
+	for i, data := range docs {
+		m, err := LoadWithReferent(data, referent, judgeOpts...)
+		if err != nil {
+			report.Findings = append(report.Findings, report.Paths[i]+": "+err.Error())
+			continue
+		}
+		report.Manifests = append(report.Manifests, m)
+	}
 
 	return report
 }

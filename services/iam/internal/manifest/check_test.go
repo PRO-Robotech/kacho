@@ -29,6 +29,8 @@ import (
 	"path/filepath"
 	"strings"
 	"testing"
+
+	"github.com/PRO-Robotech/kacho/services/iam/internal/domain"
 )
 
 // writeTree — синтетическое дерево: путь относительно корня → содержимое.
@@ -79,15 +81,23 @@ func TestMODMF17GoodTreeExitsZeroAndNamesTheVolume(t *testing.T) {
 
 // TestMODMF18BadManifestFailsTheRunAndNamesTheFix — негодный манифест роняет
 // прогон и называет путь, предмет и способ починки.
+//
+// # Порча ПЕРЕПИСАНА вместе со своим предметом
+//
+// Здесь портили ИМЯ МОДУЛЯ на «не из закрытого набора» (`nlb` против токена
+// `loadbalancer`). Набор РАЗОМКНУТ (moduleset.go), и такой порчи больше не
+// существует: `nlb` — годное имя. Порча заменена на негодную ФОРМУ имени, у
+// которой вход есть всегда; предмет пробы (обход не обрывается · находка
+// называет место и способ починки) не изменился.
 func TestMODMF18BadManifestFailsTheRunAndNamesTheFix(t *testing.T) {
 	root := writeTree(t, map[string]string{
 		"services/vpc/manifest.yaml": goodManifest(t),
-		"services/nlb/manifest.yaml": strings.Replace(goodManifest(t), "module: vpc", "module: nlb", 1),
+		"services/nlb/manifest.yaml": strings.Replace(goodManifest(t), "module: vpc", "module: NLB", 1),
 	})
 
 	report := CheckTree(root)
 	if report.ExitCode() != CheckFailed {
-		t.Fatalf("дерево с незнакомым модулем дало код %d, ожидался %d",
+		t.Fatalf("дерево с негодным именем модуля дало код %d, ожидался %d",
 			report.ExitCode(), CheckFailed)
 	}
 	if report.ManifestsRead != 2 {
@@ -98,7 +108,7 @@ func TestMODMF18BadManifestFailsTheRunAndNamesTheFix(t *testing.T) {
 		t.Fatalf("находок %d, ожидалась 1: %v", len(report.Findings), report.Findings)
 	}
 	fault := report.Findings[0]
-	for _, want := range []string{"services/nlb/manifest.yaml", "nlb", "loadbalancer"} {
+	for _, want := range []string{"services/nlb/manifest.yaml", "NLB", domain.ModuleNameGrammar()} {
 		if !strings.Contains(fault, want) {
 			t.Errorf("находка не называет %q — читателю нечем чинить: %q", want, fault)
 		}

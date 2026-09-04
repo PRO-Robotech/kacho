@@ -3,6 +3,8 @@
 
 package manifest
 
+import "github.com/PRO-Robotech/kacho/services/iam/internal/domain"
+
 // relationoracle.go — модель прав ВНОСИТСЯ в загрузчик вызывающим (задача
 // продукта #2002; приёмка
 // `services/iam/docs/engineering/acceptance/model-composes-at-boot-from-delivered-manifests.md`,
@@ -92,6 +94,8 @@ type LoadOption func(*loadOptions)
 // вердикт по недочитанному был бы вымыслом.
 type loadOptions struct {
 	oracle RelationOracle
+	// modules — набор модулей, внесённый вызывающим; см. [WithModuleSet].
+	modules domain.ModuleSet
 }
 
 // WithRelationOracle вносит модель, против которой судится связность выдачи

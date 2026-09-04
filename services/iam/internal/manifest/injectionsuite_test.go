@@ -224,13 +224,21 @@ func manifestInjections() []injection {
 			name: "версия оболочки вне поддерживаемых", old: "apiVersion: iam/v1",
 			replacement: "apiVersion: iam/v2", wantErr: ErrUnsupportedAPIVersion, needle: "iam/v1",
 		},
+		// Ось «имя модуля» переписана вместе со своим предметом: набор
+		// РАЗОМКНУТ (moduleset.go), и отказ по канону образа невыразим. Судится
+		// теперь ФОРМА имени, а два законных близнеца разводят два разных
+		// утверждения — «другое имя ИЗ таблицы образа» и «имя ВНЕ неё».
 		{
-			name: "модуль вне закрытого набора", old: "module: vpc",
-			replacement: "module: nlb", wantErr: ErrUnknownModule, needle: "loadbalancer",
+			name: "имя модуля не той формы", old: "module: vpc",
+			replacement: "module: Vpc", wantErr: ErrMalformedModule, needle: "Vpc",
 		},
 		{
-			name: "законный близнец: другой модуль ИЗ набора", old: "module: vpc",
+			name: "законный близнец: другой модуль ИЗ порождённой таблицы", old: "module: vpc",
 			replacement: "module: loadbalancer", wantErr: nil,
+		},
+		{
+			name: "законный близнец: модуль ВНЕ порождённой таблицы", old: "module: vpc",
+			replacement: "module: acme", wantErr: nil,
 		},
 
 		// ── ключ-нестрока: шесть форм и шесть кавычечных близнецов ──────────
@@ -369,7 +377,7 @@ func TestMODMF27SuiteGoesRedWhenAnAssertionLosesItsInput(t *testing.T) {
 	fixture := string(mustReadFixture(t))
 
 	set := []injection{
-		{name: "законное утверждение", old: "module: vpc", replacement: "module: nlb", wantErr: ErrUnknownModule},
+		{name: "законное утверждение", old: "module: vpc", replacement: "module: Vpc", wantErr: ErrMalformedModule},
 		{name: "утверждение без входа", old: "образца-которого-нет", replacement: "неважно", wantErr: ErrShape},
 	}
 	run := executeInjections(fixture, set)
