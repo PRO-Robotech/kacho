@@ -59,8 +59,25 @@ func (c injLicenseCorpus) read(rel string) ([]byte, error) {
 }
 
 func injLicenseScan(c injLicenseCorpus) ([]licenseSubjectFinding, licenseSubjectCensus) {
-	return scanLicenseSubjects(c.paths(), c.read)
+	return scanLicenseSubjects(c.paths(), c.read, nil)
 }
+
+// injLicenseScanVendored — тот же разбор, но каталог объявлен корнем
+// вендоренного пространства. Корень подаётся ВХОДОМ, а не выводится тут заново:
+// деривация живёт в единственном экземпляре (vendorednotice.go).
+func injLicenseScanVendored(c injLicenseCorpus, roots ...string) ([]licenseSubjectFinding, licenseSubjectCensus) {
+	set := map[string]bool{}
+	for _, r := range roots {
+		set[r] = true
+	}
+	return scanLicenseSubjects(c.paths(), c.read, set)
+}
+
+// injApacheCopy — копия ЧУЖОЙ лицензии: строки предмета в ней нет и быть не может.
+const injApacheCopy = "\n" +
+	"                                 Apache License\n" +
+	"                           Version 2.0, January 2004\n" +
+	"                        http://www.apache.org/licenses/\n"
 
 // ── сторона (а): дефект краснеет и называет координату ───────────────────────
 
@@ -195,5 +212,83 @@ func TestLicenseSubjectGate_CensusSeparatesCleanFromUnread(t *testing.T) {
 	_, seen := injLicenseScan(injLicenseCorpus{"LICENSE": injLicenseBody("Kachō (kacho)")})
 	if seen.licenses != 1 {
 		t.Fatalf("перепись не отличает прочитанное от пустого: %s", seen)
+	}
+}
+
+// ── ось: копия ЧУЖОЙ лицензии в корне вендоренного пространства ──────────────
+
+// Законный близнец: чужая копия там, где ей и место. Требовать от неё нашей
+// строки предмета нельзя — она не наша.
+func TestLicenseSubjectGate_SilentOnAVendoredLicenseCopy(t *testing.T) {
+	findings, census := injLicenseScanVendored(injLicenseCorpus{
+		"proto/google/LICENSE": injApacheCopy,
+	}, "proto/google")
+	if len(findings) != 0 {
+		t.Fatalf("копия чужой лицензии объявлена находкой: %v", findings)
+	}
+	if census.vendored != 1 || census.derived != 0 {
+		t.Fatalf("пропуск не назван переписью: %s", census)
+	}
+}
+
+// Та же копия ВНЕ корня вендоренного пространства — по-прежнему находка.
+// Контроль послабления: оно не течёт за пределы своего предмета.
+func TestLicenseSubjectGate_RedsOnTheSameCopyOutsideAVendorRoot(t *testing.T) {
+	findings, census := injLicenseScanVendored(injLicenseCorpus{
+		"pkg/LICENSE": injApacheCopy,
+	}, "proto/google")
+	if len(findings) != 1 {
+		t.Fatalf("чужая копия вне корня обязана быть находкой, получено %d (перепись: %s)",
+			len(findings), census)
+	}
+	if census.vendored != 0 {
+		t.Fatalf("послабление применилось не к своему предмету: %s", census)
+	}
+}
+
+// НАШ файл, положенный в корень вендоренного пространства, послаблением НЕ
+// накрывается: он несёт строку предмета, то есть объявляет НАШУ лицензию на
+// чужой код. Вторая половина двойного признака — ради этой оси она и заведена.
+func TestLicenseSubjectGate_RedsWhenOurLicenseSitsInAVendorRoot(t *testing.T) {
+	findings, census := injLicenseScanVendored(injLicenseCorpus{
+		"proto/google/LICENSE": injLicenseBody("Kachō (kacho)"),
+	}, "proto/google")
+	if len(findings) != 1 {
+		t.Fatalf("наш файл в чужом корне обязан быть находкой, получено %d (перепись: %s)",
+			len(findings), census)
+	}
+	if census.vendored != 0 {
+		t.Fatalf("наш файл принят за чужую копию: %s", census)
+	}
+}
+
+// Проба антимаски: рядом с законным пропуском находка объявляется по-прежнему.
+func TestLicenseSubjectGate_VendoredExemptionDoesNotMaskAFinding(t *testing.T) {
+	findings, census := injLicenseScanVendored(injLicenseCorpus{
+		"proto/google/LICENSE": injApacheCopy,
+		"LICENSE":              injLicenseBody("Kachō Compute (kacho-compute)"),
+	}, "proto/google")
+	if len(findings) != 1 || findings[0].file != "LICENSE" {
+		t.Fatalf("послабление замаскировало находку: %v", findings)
+	}
+	if census.vendored != 1 || census.licenses != 2 {
+		t.Fatalf("перепись разошлась: %s", census)
+	}
+}
+
+// Послабление ИСТЕКАЕТ САМО: уехал вендоренный код — корня больше нет, и
+// оставшийся файл снова находка. Без этой оси запись пережила бы свой предмет.
+func TestLicenseSubjectGate_VendoredExemptionExpiresWithItsSubject(t *testing.T) {
+	corpus := injLicenseCorpus{"proto/google/LICENSE": injApacheCopy}
+	if findings, _ := injLicenseScanVendored(corpus, "proto/google"); len(findings) != 0 {
+		t.Fatalf("предпосылка оси: при живом корне пропуск обязан быть: %v", findings)
+	}
+	findings, census := injLicenseScanVendored(corpus) // корней больше нет
+	if len(findings) != 1 {
+		t.Fatalf("послабление пережило свой предмет: находок %d (перепись: %s)",
+			len(findings), census)
+	}
+	if !strings.Contains(findings[0].String(), "предмет не объявлен") {
+		t.Fatalf("находка не называет причину: %s", findings[0])
 	}
 }
