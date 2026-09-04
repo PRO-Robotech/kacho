@@ -20,7 +20,7 @@ apiVersion: v1
 kind: ConfigMap
 metadata:
   name: {{ .Values.name }}-config
-  namespace: kacho
+  namespace: {{ .Release.Namespace }}
 data:
   config.yaml: |
     logger:
