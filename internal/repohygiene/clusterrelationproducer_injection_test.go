@@ -127,3 +127,94 @@ func TestClusterRelationProducerGate_TestFilesAreNotProducers(t *testing.T) {
 			"фикстура пробы маскировала бы отсутствие посева", read, produced)
 	}
 }
+
+// ── Формы СВОДА: инъекция по каждой названной форме отдельно ────────────────
+//
+// Расширение распознавателя доказывается не тем, что настоящее дерево зелено, а
+// тем, что на СИНТЕТИКЕ каждая новая форма и находится, и, будучи убранной,
+// перестаёт находиться. Без этого «гейт зелен» и «гейт ослеп на настоящем
+// дереве и зелен поэтому» неразличимы.
+
+// injSeedDumpJSON — форма сведённой миграции: готовый объект JSON, где ключи
+// стоят в порядке jsonb (по длине), то есть ОТНОШЕНИЕ ПОСЛЕ ОБЪЕКТА.
+const injSeedDumpJSON = `INSERT INTO kacho_iam.fga_outbox (id, event_type, payload, created_at) VALUES ` +
+	`(1, 'fga.tuple.write', '{"user": "service_account:svaX", "object": "cluster:cluster_kacho_root", "relation": "system_admin"}', now());`
+
+// injSeedDumpRow — форма сведённой миграции: столбцовая строка журнала отношений.
+const injSeedDumpRow = `INSERT INTO kacho_iam.relation_fact (object_type, object_id, relation, subject) VALUES ` +
+	`('cluster', 'cluster_kacho_root', 'system_admin', 'group:grpX#member');`
+
+func TestClusterRelationProducerGate_ReadsTheDumpJSONOrder(t *testing.T) {
+	dir := t.TempDir()
+	produced, read, err := relationsProducedOnCluster([]string{
+		writeInj(t, dir, "0001_initial.sql", injSeedDumpJSON),
+	})
+	if err != nil {
+		t.Fatalf("обход фикстуры: %v", err)
+	}
+	if read != 1 {
+		t.Fatalf("прочитано файлов %d, ожидался 1 — обход беспредметен", read)
+	}
+	if produced["system_admin"] == 0 {
+		t.Fatalf("отношение, записанное ПОСЛЕ объекта (порядок ключей jsonb), не найдено: %v.\n"+
+			"Так выглядит распознаватель, смотрящий только назад: на сведённой миграции он "+
+			"объявляет непроизводимым КАЖДОЕ отношение, при живой выдаче", produced)
+	}
+}
+
+func TestClusterRelationProducerGate_ReadsTheColumnarRelationRow(t *testing.T) {
+	dir := t.TempDir()
+	produced, _, err := relationsProducedOnCluster([]string{
+		writeInj(t, dir, "0001_initial.sql", injSeedDumpRow),
+	})
+	if err != nil {
+		t.Fatalf("обход фикстуры: %v", err)
+	}
+	if produced["system_admin"] == 0 {
+		t.Fatalf("выдача, записанная столбцами, не найдена: %v", produced)
+	}
+}
+
+// TestClusterRelationProducerGate_DumpFormsStillMissWhatIsAbsent — контроль в
+// обратную сторону по КАЖДОЙ новой форме.
+//
+// Без него расширение неотличимо от предиката, который засчитывает что угодно:
+// обе пробы выше зеленели бы и на разборе, объявляющем произведённым всякое
+// отношение, какое встретит.
+func TestClusterRelationProducerGate_DumpFormsStillMissWhatIsAbsent(t *testing.T) {
+	dir := t.TempDir()
+	produced, _, err := relationsProducedOnCluster([]string{
+		writeInj(t, dir, "0001_initial.sql", injSeedDumpJSON+"\n"+injSeedDumpRow),
+	})
+	if err != nil {
+		t.Fatalf("обход фикстуры: %v", err)
+	}
+	if produced["ghost_relation"] != 0 {
+		t.Fatalf("отношение, которого в фикстуре НЕТ, объявлено произведённым: %v", produced)
+	}
+}
+
+// TestClusterRelationProducerGate_JSONWindowStopsAtTheObjectEnd — окно вперёд не
+// перетекает в СЛЕДУЮЩИЙ кортеж той же вставки.
+//
+// Проба существует потому, что без границы по концу объекта отношение соседа
+// зачлось бы объекту, у которого своего отношения нет вовсе, — и гейт молчал бы
+// ровно там, где обязан находить.
+func TestClusterRelationProducerGate_JSONWindowStopsAtTheObjectEnd(t *testing.T) {
+	dir := t.TempDir()
+	// Первый кортеж называет кластерный объект и НЕ несёт отношения; второй
+	// несёт отношение, но объект у него другой.
+	body := `INSERT INTO kacho_iam.fga_outbox (payload) VALUES ` +
+		`('{"user": "user:u1", "object": "cluster:cluster_kacho_root"}'), ` +
+		`('{"user": "user:u2", "object": "group:grpX", "relation": "member"}');`
+	produced, _, err := relationsProducedOnCluster([]string{
+		writeInj(t, dir, "0001_initial.sql", body),
+	})
+	if err != nil {
+		t.Fatalf("обход фикстуры: %v", err)
+	}
+	if produced["member"] != 0 {
+		t.Fatalf("отношение соседнего кортежа зачлось кластерному объекту: %v.\n"+
+			"Окно вперёд обязано кончаться на закрывающей скобке объекта", produced)
+	}
+}
