@@ -66,16 +66,30 @@ REPO = os.path.abspath(os.path.join(HERE, "..", ".."))
 # а не переписывается: переписанная копия разошлась бы с ним молча.
 PEAK_GATE = "deploy/scripts/assert-identity-account-peak-under-ceiling.py"
 
-RATE_MIGRATION = ("services/iam/internal/migrations/"
-                  "20260822231600_account_admission_rate.sql")
+RATE_MIGRATIONS_DIR = "services/iam/internal/migrations"
 
 # Величина темпа — там, где она НАЗНАЧАЕТСЯ, а не там, где её ожидают тексты отказов.
-# Форма — оператор затравки миграции; изменится форма, гейт скажет об этом, а не
-# вынесет вердикт о выдуманном числе.
+#
+# ИЩЕТСЯ ПО СОДЕРЖИМОМУ, А НЕ ПО ИМЕНИ ФАЙЛА — тот же класс, что у соседа:
+# сведение цепочки iam в одну первичную миграцию растворило имя
+# `20260822231600_account_admission_rate.sql`, и гейт падал СВОЕЙ предпосылкой.
+#
+# Форм записи ДВЕ, распознаватель обязан знать обе:
+#   • форма дампа (сегодняшняя):
+#       INSERT INTO kacho_iam.account_admission_rate_limits
+#         (id, kind, max_events, window_seconds, ...) VALUES (1, 'iam.account', 3, 3600, ...);
+#   • форма рукописной миграции (прежняя, INSERT … SELECT):
+#       INSERT INTO kacho_iam.account_admission_rate_limits (kind, max_events, window_seconds)
+#       SELECT 'iam.account', 3, 3600
+#
+# Якорь — имя таблицы плюс хвост `'iam.account', <заведений>, <секунд>`. Имя
+# таблицы обязательно: без него регулярка поймала бы строку ОБЪЁМНОГО потолка
+# (kacho_iam.limits), у которой за видом стоит одно число, а не пара. `[^;]*?`
+# держит поиск внутри ОДНОГО оператора — иначе якорь одного INSERT дотянулся бы
+# до значений следующего.
 RATE = re.compile(
-    r"INSERT INTO kacho_iam\.account_admission_rate_limits\s*"
-    r"\(kind,\s*max_events,\s*window_seconds\)\s*"
-    r"SELECT\s*'iam\.account',\s*(\d+),\s*(\d+)")
+    r"kacho_iam\.account_admission_rate_limits\b[^;]*?"
+    r"'iam\.account',\s*(\d+),\s*(\d+)", re.S)
 
 # ТРЕБУЕМЫЙ ЗАПАС. Одна единица, а не две, как у объёма, и различие обосновано: у
 # объёма запас тратится на ОДНОВРЕМЕННОСТЬ, поэтому перестановка кейсов способна
@@ -124,26 +138,49 @@ def load_peak_gate(root: str):
     return mod
 
 
-def read_rate(root: str) -> tuple[int, int]:
-    """Пара «сколько заведений и за сколько секунд» из миграции темпа."""
-    p = os.path.join(root, RATE_MIGRATION)
+def read_rate(root: str) -> tuple[int, int, str, int]:
+    """Темп → (заведений, секунд окна, где найдено, файлов осмотрено).
+
+    Осмотренное едет ВМЕСТЕ с величиной: «объявление не найдено» и «не прочитано
+    ни одного файла» — разные исходы, и вызывающий обязан их различать.
+    """
+    d = os.path.join(root, RATE_MIGRATIONS_DIR)
     try:
-        text = open(p, encoding="utf-8").read()
+        names = sorted(n for n in os.listdir(d) if n.endswith(".sql"))
     except OSError as exc:
-        raise PremiseError(f"потолок темпа не прочитан: {exc}") from exc
-    m = RATE.search(text)
-    if not m:
+        raise PremiseError(f"каталог миграций не прочитан: {exc}") from exc
+    if not names:
         raise PremiseError(
-            f"величина темпа не найдена в {RATE_MIGRATION} — форма объявления "
-            f"изменилась, и вердикт был бы о выдуманном числе")
-    return int(m.group(1)), int(m.group(2))
+            f"в {RATE_MIGRATIONS_DIR} ноль файлов .sql — обход пуст, и «темп не "
+            f"объявлен» неотличимо от «читать было нечего»")
+
+    found: list[tuple[str, int, int]] = []
+    for n in names:
+        try:
+            text = open(os.path.join(d, n), encoding="utf-8").read()
+        except OSError as exc:
+            raise PremiseError(f"миграция {n} не прочитана: {exc}") from exc
+        for m in RATE.finditer(text):
+            found.append((n, int(m.group(1)), int(m.group(2))))
+
+    if not found:
+        raise PremiseError(
+            f"величина темпа не найдена ни в одной из {len(names)} миграций "
+            f"{RATE_MIGRATIONS_DIR} — форма объявления изменилась, и вердикт "
+            f"был бы о выдуманном числе")
+    if len({(a, b) for _, a, b in found}) > 1:
+        where = ", ".join(f"{n}:{a}/{b}" for n, a, b in found)
+        raise PremiseError(
+            f"темп объявлен НЕОДНОЗНАЧНО ({where}) — вердикт зависел бы от "
+            f"порядка обхода, а не от дерева")
+    return found[0][1], found[0][2], found[0][0], len(names)
 
 
 def audit(root: str):
     peak_gate = load_peak_gate(root)
     decl, forms = peak_gate.load_declarations(root)
     identities = peak_gate.identities_of(decl)
-    ceiling, window = read_rate(root)
+    ceiling, window, rate_at, rate_files = read_rate(root)
     common, seeded_total, why = peak_gate.read_base_components(root)
     seeded = peak_gate.seeded_by_identity(decl, seeded_total)
     base = common + max(seeded.values(), default=0)
@@ -167,6 +204,7 @@ def audit(root: str):
         "collections": len(wave), "cases": cases, "steps": steps,
         "created": total, "identities": per_identity,
         "order": [stem for stem, _ in wave], "window": window,
+        "rate_at": rate_at, "rate_files": rate_files,
     }
     return worst, ceiling, base, why, census
 
@@ -196,7 +234,8 @@ def main(argv=None) -> int:
         print(f"  личность {name}: заведени(й) пробами {created}, списаний всего "
               f"{charged}, запас {ceiling - charged}")
     print(f"потолок темпа {ceiling} заведени(й) за {census['window']} с "
-          f"({RATE_MIGRATION}); наибольшее списание {worst[2]} (личность {worst[0]}), "
+          f"({RATE_MIGRATIONS_DIR}/{census['rate_at']}, миграций осмотрено "
+          f"{census['rate_files']}); наибольшее списание {worst[2]} (личность {worst[0]}), "
           f"наименьший запас {ceiling - worst[2]}")
 
     code, finding = decide(worst[2], ceiling)
@@ -290,7 +329,7 @@ def self_test() -> int:
     check("мест сравнения", sites, ["decide"])
 
     print("── величина темпа читается из миграции, а не выписана")
-    rate, window = read_rate(REPO)
+    rate, window, _at, _files = read_rate(REPO)
     note(rate > 0 and window > 0, f"потолок {rate} заведени(й) за {window} с")
     try:
         read_rate(os.path.join(REPO, "нет-такого"))
