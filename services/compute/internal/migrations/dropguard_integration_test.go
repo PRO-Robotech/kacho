@@ -33,6 +33,11 @@ func computeOptions() dropguardtest.Options {
 		Service:      "compute",
 		FS:           migrations.FS,
 		ManifestPath: "dropguard.json",
+
+		// Ratchet, declared by the caller because it cannot move on its own:
+		// a drop that appeared without this number moving is a drop nobody
+		// looked at. Asserted by the harness — see Options.DropsExpected.
+		DropsExpected: 11,
 	}
 }
 
@@ -46,9 +51,6 @@ func TestIntegration_ComputeDropsAreMeasured(t *testing.T) {
 		if _, ok := rep.Rows[key]; !ok {
 			t.Errorf("%s was never counted — the retire of compute's block-storage duplicate rests on a number this run did not produce", key)
 		}
-	}
-	if rep.DropsInChain != 11 {
-		t.Errorf("compute chain holds %d Up-section drop(s), expected 11; a drop that appeared without this number moving is a drop nobody looked at", rep.DropsInChain)
 	}
 }
 

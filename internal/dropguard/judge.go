@@ -7,6 +7,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"io/fs"
 	"os"
 	"sort"
 	"strings"
@@ -306,4 +307,59 @@ func rowCountAdvice(got, want int64) string {
 
 func declKey(version int64, table string) string {
 	return fmt.Sprintf("%d\x00%s", version, strings.ToLower(table))
+}
+
+// AdjudicateDeclaredDropCount compares the number of drops a chain HOLDS with the
+// number its caller DECLARES, and returns the finding, or "" when they agree.
+//
+// # Why this is a function and not four lines inside the harness
+//
+// While the comparison lived inside the harness it could only be exercised by
+// making a real service's chain wrong, which is to say it could not be exercised at
+// all: a check that cannot be made to fail on purpose is indistinguishable from one
+// that cannot fail. Splitting the JUDGEMENT from the GATHERING is what lets the
+// injection hand it numbers directly.
+//
+// # Why the caller declares a number at all
+//
+// Because the number cannot move on its own. Reconcile already refuses a drop whose
+// row count is unstated, so a drop can never land alone — but a drop and its
+// declaration land together in one commit and internally agree, and nothing outside
+// the migrations directory moves. This number is the thing outside.
+//
+// ZERO IS A NUMBER LIKE ANY OTHER, and that is the correction this function carries.
+// The harness used to refuse a chain with no drops outright, reasoning that such a
+// run would assert nothing. That was true of the population it was written for —
+// every caller had drops — and it stopped being true the moment a service squashed
+// its chain into one primary migration: a squashed chain is a STATE, and a state has
+// no history of drops. The refusal then fired on the correct answer. What remains
+// asserted at zero is the ratchet itself: add a drop and the count moves off zero.
+//
+// filesScanned is named in the finding rather than checked here: "the chain holds no
+// drops" and "nothing was read" are different states, Inventory already refuses the
+// second, and a reader looking at a mismatch needs to know how much was read to act
+// on it.
+func AdjudicateDeclaredDropCount(service string, found, filesScanned, declared int) string {
+	if found == declared {
+		return ""
+	}
+	return fmt.Sprintf("%s: the chain holds %d Up-section DROP TABLE statement(s) across %d migration file(s), and the caller declares %d.\n"+
+		"    This number cannot move by itself. A drop that appeared without it moving is a drop nobody looked at; "+
+		"a drop that disappeared without it moving is a declaration about a chain that no longer exists.",
+		service, found, filesScanned, declared)
+}
+
+// ManifestAbsenceIsLegitimate says whether an unreadable manifest is acceptable.
+//
+// It is acceptable in exactly one case: the file is not there AND the chain drops
+// nothing, so there is nothing to declare. This is the same rule the repo-wide
+// static gate already applies to a service that has never dropped a table, and
+// stating it in one place is the point — two mechanisms disagreeing about when a
+// manifest is owed would disagree silently.
+//
+// Every other unreadable manifest stays fatal, including an unparseable one for a
+// chain with no drops: a guard that could not read what it checks against has not
+// checked, and "the file is malformed" must never resolve to "nothing was owed".
+func ManifestAbsenceIsLegitimate(dropsInChain int, err error) bool {
+	return err != nil && dropsInChain == 0 && errors.Is(err, fs.ErrNotExist)
 }

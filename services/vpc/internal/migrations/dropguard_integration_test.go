@@ -24,18 +24,12 @@ func TestIntegration_VpcDropsAreMeasured(t *testing.T) {
 		Service:      "vpc",
 		FS:           migrations.FS,
 		ManifestPath: "dropguard.json",
-	})
 
-	// The count is a ratchet on the chain, and it catches something Reconcile
-	// cannot. Reconcile refuses a drop whose number is unstated, so a drop can
-	// never land alone — but a drop and its declaration land together in one
-	// commit, and internally they agree. Nothing outside the migrations directory
-	// moves, so nothing in the diff says the chain grew. This number is that
-	// something: it cannot change by itself, so a drop that appeared without it
-	// moving is a drop nobody looked at.
-	if rep.DropsInChain != 6 {
-		t.Errorf("vpc chain holds %d Up-section drop(s), expected 6; a drop that appeared without this number moving is a drop nobody looked at", rep.DropsInChain)
-	}
+		// Ratchet, declared by the caller because it cannot move on its own:
+		// a drop that appeared without this number moving is a drop nobody
+		// looked at. Asserted by the harness — see Options.DropsExpected.
+		DropsExpected: 6,
+	})
 
 	// And the retire of the subscription-cursor table is named, so that removing
 	// the migration together with its declaration cannot leave the gate green on
