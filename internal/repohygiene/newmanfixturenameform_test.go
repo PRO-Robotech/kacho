@@ -83,30 +83,33 @@ var nameFormOtherReferents = map[string]string{
 // неё подставляется образец, отвечающий канону: судим ФОРМУ обрамления, а не значение.
 var reMustache = regexp.MustCompile(`\{\{[^}]*\}\}`)
 
-// canonMigratedServices — сервисы, чья схема приведена к канону. Выводится из дерева
-// по имени миграции, а не выписывается.
+// canonMigratedServices — сервисы, чья схема приведена к канону.
+//
+// Выводится из СОДЕРЖИМОГО миграций общей функцией `nameFormCanonAdoptions`, а не
+// из имени файла. Прежде здесь стоял предикат по имени — `strings.Contains(f.Name(),
+// "resource_name_single_form")`, — и он был ПРОКСИ: настоящий признак это форма
+// имени, объявленная в схеме, а имя файла лишь место, откуда она однажды туда
+// попала.
+//
+// Прокси пережил свой предмет ровно так, как проксям и положено. Цепь iam сведена
+// в одну первичную миграцию: форма на месте, файла нет — и iam молча выпал из
+// перечня. Наблюдалось это не как «сервис не проверен», а с другого конца и
+// непохоже: освобождение `/iam/v1/roles` перестало освобождать хоть один шаг,
+// потому что коллекции iam вообще не читались, и гейт объявил находкой ЕГО —
+// запись, у которой предмет был на месте всё это время.
+//
+// Тот же вывод читает гейт суффикса ограничения (`checkviolationtone_test.go`).
+// Два места об одном предмете разошлись бы молча — и разошлись бы они именно так,
+// как разошлись здесь.
 func canonMigratedServices(t *testing.T, root string) map[string]bool {
 	t.Helper()
-	out := map[string]bool{}
-	entries, err := os.ReadDir(filepath.Join(root, "services"))
+	adoptions, err := nameFormCanonAdoptions(root)
 	if err != nil {
-		t.Fatalf("каталог сервисов не читается (%v) — предпосылка гейта не установлена", err)
+		t.Fatalf("состав дерева не читается (%v) — предпосылка гейта не установлена", err)
 	}
-	for _, e := range entries {
-		if !e.IsDir() {
-			continue
-		}
-		migDir := filepath.Join(root, "services", e.Name(), "internal", "migrations")
-		files, err := os.ReadDir(migDir)
-		if err != nil {
-			continue
-		}
-		for _, f := range files {
-			if strings.Contains(f.Name(), "resource_name_single_form") {
-				out[e.Name()] = true
-				break
-			}
-		}
+	out := map[string]bool{}
+	for _, a := range adoptions {
+		out[a.Service] = true
 	}
 	return out
 }
