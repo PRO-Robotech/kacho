@@ -70,6 +70,23 @@
 // владельца его закрыло, и расхождение двух гейтов снято ровно так: оба читают
 // одно отображение.
 //
+// # Вторая разновидность файла LICENSE — КОПИЯ ЧУЖОЙ лицензии
+//
+// Вендоренный чужой код обязан нести копию СВОЕЙ лицензии рядом (Apache-2.0
+// §4(a)), и требовать от неё нашей строки предмета нельзя: она не наша, и
+// `Licensed Work` в ней не бывает by construction. Такой файл судит ДРУГОЙ
+// держатель — [TestVendoredContractsCarryTheirUpstreamNotice].
+//
+// Признак — ВЫВОДИТСЯ, а не выписывается: файл лежит в корне вендоренного
+// пространства ([VendorRoots], единственная деривация — vendorednotice.go) И не
+// объявляет нашей строки предмета. Записи в карте псевдонимов такой файл НЕ
+// получает: запись прощала бы и НАШ файл, положенный туда по ошибке, — то есть
+// разрешала бы объявить нашу лицензию на чужой код.
+//
+// Послабление ИСТЕКАЕТ САМО: уедет вендоренный код — каталог перестанет быть
+// корнем пространства, и оставшийся файл снова станет находкой «место, для
+// которого предмет не объявлен».
+//
 // # Перепись
 //
 // Печатается: записей индекса осмотрено, файлов LICENSE найдено, ожидание
@@ -81,6 +98,7 @@ package repohygiene
 import (
 	"fmt"
 	"os"
+	"path"
 	"path/filepath"
 	"regexp"
 	"sort"
@@ -105,17 +123,24 @@ type licenseSubjectCensus struct {
 	licenses int
 	derived  int
 	withSubj int
+	// vendored — копий ЧУЖОЙ лицензии в корнях вендоренных пространств. Судит их
+	// другой держатель, и число печатается отдельно: «пропущено» обязано быть
+	// отличимо от «сошлось».
+	vendored int
 }
 
 func (c licenseSubjectCensus) String() string {
-	return fmt.Sprintf("записей индекса %d, файлов LICENSE %d, ожидание выведено у %d "+
-		"(из них форм с предметом %d)", c.indexed, c.licenses, c.derived, c.withSubj)
+	return fmt.Sprintf("записей индекса %d, файлов LICENSE %d "+
+		"(из них копий чужой лицензии %d, судит держатель уведомлений), "+
+		"ожидание выведено у %d (из них форм с предметом %d)",
+		c.indexed, c.licenses, c.vendored, c.derived, c.withSubj)
 }
 
 // scanLicenseSubjects — чистая функция над перечнем путей и читателем, чтобы
 // доказательство способности упасть шло по синтетическому корпусу и НЕ писало
 // в живое дерево.
-func scanLicenseSubjects(paths []string, read func(string) ([]byte, error)) ([]licenseSubjectFinding, licenseSubjectCensus) {
+func scanLicenseSubjects(paths []string, read func(string) ([]byte, error),
+	vendorRoots map[string]bool) ([]licenseSubjectFinding, licenseSubjectCensus) {
 	var findings []licenseSubjectFinding
 	census := licenseSubjectCensus{indexed: len(paths)}
 
@@ -124,6 +149,20 @@ func scanLicenseSubjects(paths []string, read func(string) ([]byte, error)) ([]l
 			continue
 		}
 		census.licenses++
+
+		// Копия ЧУЖОЙ лицензии в корне вендоренного пространства — предмет другого
+		// держателя. Признак ДВОЙНОЙ, и второй половиной закрыт очевидный обход:
+		// НАШ файл, положенный в тот же каталог, строку предмета несёт — и потому
+		// проходит дальше, к обычному суждению, где и становится находкой.
+		if vendorRoots[path.Dir(rel)] {
+			body, err := read(rel)
+			if err == nil {
+				if _, ours := licensedWorkLine(string(body)); !ours {
+					census.vendored++
+					continue
+				}
+			}
+		}
 
 		want, known := licenseFileWantFor(rel)
 		if !known {
@@ -224,9 +263,25 @@ func TestLicenseSubjectMatchesItsDirectory(t *testing.T) {
 		}
 	}
 
-	findings, census := scanLicenseSubjects(paths, func(rel string) ([]byte, error) {
-		return os.ReadFile(filepath.Join(root, rel))
-	})
+	read := func(rel string) ([]byte, error) {
+		return os.ReadFile(filepath.Join(root, filepath.FromSlash(rel)))
+	}
+
+	// Корни вендоренных пространств выводятся ЕДИНСТВЕННОЙ деривацией
+	// (vendorednotice.go), а не вторым перечнем путей.
+	var contracts []VendoredFile
+	for _, rel := range paths {
+		if filepath.Ext(rel) != ".proto" {
+			continue
+		}
+		b, err := read(rel)
+		if err != nil {
+			t.Fatalf("чтение %s: %v", rel, err)
+		}
+		contracts = append(contracts, VendoredFile{Rel: rel, Source: string(b)})
+	}
+
+	findings, census := scanLicenseSubjects(paths, read, VendorRoots(contracts))
 
 	t.Logf("осмотрено: %s; расхождений %d", census, len(findings))
 
