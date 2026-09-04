@@ -24,5 +24,10 @@ func TestIntegration_StorageDropsAreMeasured(t *testing.T) {
 		Service:      "storage",
 		FS:           migrations.FS,
 		ManifestPath: "dropguard.json",
+
+		// Ratchet, declared by the caller because it cannot move on its own:
+		// a drop that appeared without this number moving is a drop nobody
+		// looked at. Asserted by the harness — see Options.DropsExpected.
+		DropsExpected: 1,
 	})
 }
