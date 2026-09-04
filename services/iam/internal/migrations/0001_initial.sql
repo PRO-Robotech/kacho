@@ -5684,10 +5684,71 @@ ALTER TABLE ONLY kacho_iam.users
 -- +goose StatementEnd
 
 -- +goose Down
--- +goose StatementBegin
 
 -- Свод откатывается только целиком: пошагово воспроизвести 171 миграцию из
 -- одного файла нельзя, и притворяться, что можно, хуже, чем сказать прямо.
+--
+-- НО «целиком» не значит «молча». Страж ниже пережил сведение НАМЕРЕННО: он
+-- стоял в откатной половине одной из снятых миграций, и вместе с ней исчез бы
+-- бесшумно — а обратный ход свода разрушительнее того, что он стерёг.
+--
+-- Он стоит ПЕРВЫМ, до единого разрушающего оператора: отказ после первого
+-- DROP оставил бы схему разобранной, и оператор чинил бы две беды вместо одной.
+--
+-- Почему отказ, а не удаление. Секрет вида SECRET предъявляется арендатору
+-- ОДИН раз; в хранилище лежит только его свёртка. Удалённая строка не
+-- восстанавливается НИЧЕМ: резервной копии секрета не существует by
+-- construction, а повторная выдача даёт другое удостоверение с другим
+-- идентификатором — то есть работу по перенастройке каждого предъявителя.
+-- Обычная потеря данных обратима восстановлением; эта — нет.
+--
+-- Почему не комментарий. Обратный ход описан штатной процедурой на странице
+-- развёртывания, то есть набирается не задумываясь. Комментарий в этот момент
+-- не читают, и он ничего не останавливает: останавливает только отказ.
+
+-- +goose StatementBegin
+DO $$
+DECLARE
+    sa_secrets   bigint;
+    user_secrets bigint;
+BEGIN
+    IF to_regclass('kacho_iam.service_account_oauth_clients') IS NULL THEN
+        RETURN;  -- схемы нет: сносить нечего, и считать не в чем
+    END IF;
+
+    SELECT count(*) INTO sa_secrets
+      FROM kacho_iam.service_account_oauth_clients WHERE credential_kind = 'SECRET';
+    SELECT count(*) INTO user_secrets
+      FROM kacho_iam.user_oauth_clients WHERE credential_kind = 'SECRET';
+
+    -- Перепись печатается ВСЕГДА, включая ноль: иначе «удостоверений вида
+    -- SECRET нет» неотличимо от «их не считали».
+    RAISE NOTICE 'обратный ход свода: удостоверений вида SECRET — service_account_oauth_clients %, user_oauth_clients %',
+        sa_secrets, user_secrets;
+
+    IF sa_secrets > 0 OR user_secrets > 0 THEN
+        -- ВСЁ СУЩЕСТВЕННОЕ — В ОСНОВНОМ СООБЩЕНИИ: goose доносит до оператора
+        -- только его, DETAIL и HINT в его вывод не попадают.
+        RAISE EXCEPTION
+            'REFUSING to roll back the iam baseline: it would IRREVERSIBLY destroy % live SECRET credential(s) '
+            '(service_account_oauth_clients %, user_oauth_clients %). Such a credential is shown to the tenant '
+            'ONCE and only its digest is stored, so a deleted row cannot be restored from any backup, and '
+            're-issuing yields a DIFFERENT credential every holder must be reconfigured for. WAY OUT: revoke '
+            'these credentials deliberately through the product verb first (so their holders learn about it), '
+            'then roll back — with zero SECRET rows the baseline rolls back cleanly. The rollback is safe '
+            'exactly when both counts above are 0.',
+            sa_secrets + user_secrets, sa_secrets, user_secrets
+        USING
+            DETAIL =
+                'A SECRET credential is shown to the tenant exactly once and only its digest is stored. '
+                'This is not ordinary data loss — it is irreversible.',
+            HINT =
+                'Revoke the credentials through the product verb, then roll back. Safe when both counts are 0.';
+    END IF;
+END $$;
+-- +goose StatementEnd
+
+-- +goose StatementBegin
 DROP SCHEMA IF EXISTS kacho_iam CASCADE;
 
 -- +goose StatementEnd
