@@ -210,3 +210,103 @@ func TestMigrationRoleGateJudgesOnlyAddedMigrations(t *testing.T) {
 		}
 	})
 }
+
+// injMigrationDumpForm — вставка роли в форме `pg_dump`: идентификатор уже
+// вычислен, колонки перечислены явно, `NULL` и вложенные структуры на местах.
+//
+// Значение колонки `rules` несёт запятые ВНУТРИ литерала и внутри скобок — без
+// счёта уровней разбор разорвал бы кортеж посередине и сдвинул бы все
+// последующие колонки, то есть прочитал бы имя не той роли.
+const injMigrationDumpForm = `-- +goose Up
+INSERT INTO kacho_iam.roles (id, account_id, name, description, permissions, created_at, cluster_id, project_id, rules, labels, owner_module, live) VALUES ('rol6307d201bf18e6763', NULL, 'vpc.network.admin', 'Admin Network', '["vpc.network.*.*"]', now(), 'cluster_kacho_root', NULL, '[{"verbs": ["*"], "module": "vpc", "resources": ["network"]}]', '{}', NULL, true);
+`
+
+// injMigrationDumpFormNoColumnList — вставка БЕЗ перечня колонок.
+//
+// Имени такая вставка не называет ничем, что разбор вправе прочесть: позиция
+// колонки `name` держится только перечнем, а угадывать её по порядку колонок
+// таблицы — значит завести второе место об одном предмете, которое разойдётся
+// с первой же миграцией, меняющей порядок.
+const injMigrationDumpFormNoColumnList = `-- +goose Up
+INSERT INTO kacho_iam.roles VALUES ('rol6307d201bf18e6763', NULL, 'vpc.network.admin');
+`
+
+// TestMigrationRoleScannerReadsBothFormsOfTheName — РАСПОЗНАВАТЕЛЬ ЗНАЕТ ОБЕ
+// ЗАКОННЫЕ ФОРМЫ записи имени роли.
+//
+// # Зачем отдельная проба
+//
+// Имя роли записывают двояко: рукописная миграция ВЫВОДИТ идентификатор из
+// имени (`md5('vpc.network.admin')`), а `pg_dump` подставляет уже вычисленный
+// идентификатор и перечисляет колонки явно. Вторая форма пришла со сводом
+// миграций iam 2026-09-04 и стала в этом сервисе ЕДИНСТВЕННОЙ: деривации в своде
+// нет ни одной.
+//
+// Разбор, знавший одну форму, извлёк ноль имён при сорока восьми блоках — это не
+// находка и не молчание, а НЕВИДИМОСТЬ: каждая вставленная роль оказалась вне
+// наблюдения, при том что обход, перепись и диагностика были целы.
+func TestMigrationRoleScannerReadsBothFormsOfTheName(t *testing.T) {
+	for _, tc := range []struct {
+		name, body string
+	}{
+		{"рукописная — идентификатор выводится из имени", injMigrationVPCRole},
+		{"форма pg_dump — идентификатор вычислен, колонки перечислены", injMigrationDumpForm},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			sites, census := ScanMigrationRoleInserts("synthetic.sql", []byte(tc.body))
+			if census.Blocks != 1 {
+				t.Fatalf("блоков прочитано %d, ожидался 1", census.Blocks)
+			}
+			if census.Unreadable != 0 {
+				t.Fatalf("блок объявлен непрочитанным (%d) — форма записи имени не узнана",
+					census.Unreadable)
+			}
+			if census.Names != 1 || len(sites) != 1 {
+				t.Fatalf("имён извлечено %d (мест %d), ожидалось 1: %+v",
+					census.Names, len(sites), sites)
+			}
+			if sites[0].Name != "vpc.network.admin" {
+				t.Fatalf("имя прочитано как %q — вероятно, кортеж разорван по запятой "+
+					"внутри литерала и колонки сдвинулись", sites[0].Name)
+			}
+			if sites[0].Owner != "vpc" {
+				t.Fatalf("владелец выведен как %q, ожидался vpc", sites[0].Owner)
+			}
+		})
+	}
+}
+
+// TestMigrationRoleScannerCountsABlockItCannotRead — блок, имя которого прочесть
+// не удалось, считается ОТДЕЛЬНО и молча не пропускается.
+//
+// # Зачем отдельная проба
+//
+// Прежде слепоту ловила предпосылка «имён извлечено ноль», и поймала она только
+// потому, что свод сменил форму РАЗОМ у всех сорока восьми блоков. Смени форму
+// один блок — сорок семь имён скрыли бы сорок восьмое, и гейт остался бы зелёным
+// при роли, о которой он не судил.
+//
+// Пара обязательна: непрочитанный блок обязан считаться, прочитанный — нет.
+func TestMigrationRoleScannerCountsABlockItCannotRead(t *testing.T) {
+	sites, census := ScanMigrationRoleInserts(
+		"synthetic.sql", []byte(injMigrationDumpFormNoColumnList))
+	if census.Blocks != 1 {
+		t.Fatalf("блоков прочитано %d, ожидался 1", census.Blocks)
+	}
+	if census.Unreadable != 1 {
+		t.Fatalf("непрочитанных блоков %d, ожидался 1 — вставка без перечня колонок имени "+
+			"не называет, и пропустить её молча значит не судить о вставленной роли",
+			census.Unreadable)
+	}
+	if census.Names != 0 || len(sites) != 0 {
+		t.Fatalf("имён извлечено %d — позиция колонки УГАДАНА, а угадывать её нельзя: "+
+			"порядок колонок держится только перечнем: %+v", census.Names, sites)
+	}
+
+	// ЗАКОННЫЙ БЛИЗНЕЦ: та же форма, но перечень колонок на месте.
+	_, ok := ScanMigrationRoleInserts("synthetic.sql", []byte(injMigrationDumpForm))
+	if ok.Unreadable != 0 || ok.Names != 1 {
+		t.Fatalf("вставка С перечнем колонок обязана читаться: непрочитанных %d, имён %d",
+			ok.Unreadable, ok.Names)
+	}
+}

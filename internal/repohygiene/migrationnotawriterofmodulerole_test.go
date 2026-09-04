@@ -157,10 +157,10 @@ func TestMODRD23MigrationDoesNotWriteARoleOfAManifestBearingModule(t *testing.T)
 	bearing, yamlScanned := manifestBearingModules(t, root, tt)
 
 	var (
-		rels           []string
-		blocks, names  int
-		sites          []MigrationRoleSite
-		parsedMigrated int
+		rels                      []string
+		blocks, names, unreadable int
+		sites                     []MigrationRoleSite
+		parsedMigrated            int
 	)
 	for rel := range tt.files {
 		if strings.HasPrefix(rel, iamMigrationsDir) && strings.HasSuffix(rel, ".sql") {
@@ -177,6 +177,7 @@ func TestMODRD23MigrationDoesNotWriteARoleOfAManifestBearingModule(t *testing.T)
 		s, census := ScanMigrationRoleInserts(rel, src)
 		blocks += census.Blocks
 		names += census.Names
+		unreadable += census.Unreadable
 		sites = append(sites, s...)
 	}
 
@@ -184,8 +185,10 @@ func TestMODRD23MigrationDoesNotWriteARoleOfAManifestBearingModule(t *testing.T)
 	// без ствола уходил бы в пропуск, не сказав ни числа, и «ноль находок» снова
 	// стало бы неотличимо от «ноль прочитанного».
 	t.Logf("перепись: файлов YAML осмотрено %d, манифестов модулей найдено %d %v; "+
-		"миграций iam прочитано %d, блоков вставки роли %d, имён ролей извлечено %d",
-		yamlScanned, len(bearing), manifestModuleNames(bearing), parsedMigrated, blocks, names)
+		"миграций iam прочитано %d, блоков вставки роли %d, имён ролей извлечено %d, "+
+		"блоков с НЕПРОЧИТАННЫМ именем %d",
+		yamlScanned, len(bearing), manifestModuleNames(bearing), parsedMigrated,
+		blocks, names, unreadable)
 
 	if parsedMigrated == 0 {
 		t.Fatalf("миграций iam прочитано ноль — каталог %s переехал, и гейт стережёт "+
@@ -198,6 +201,20 @@ func TestMODRD23MigrationDoesNotWriteARoleOfAManifestBearingModule(t *testing.T)
 	if names == 0 {
 		t.Fatalf("имён ролей извлечено ноль при %d блоках — форма записи имени сменилась, "+
 			"и разбор МОЛЧИТ вместо того чтобы находить", blocks)
+	}
+	// Блок, вставляющий роль, у которого имя прочитать не удалось, — НЕВИДИМОСТЬ,
+	// а не находка и не молчание: роль вставлена, а гейт о ней не судил.
+	//
+	// Проверка заведена 2026-09-04 вместе с чтением второй формы записи имени.
+	// Прежде её место занимало `names == 0`, и оно ловило только ПОЛНУЮ слепоту:
+	// свод миграций iam сменил форму разом у всех сорока восьми блоков, поэтому
+	// разбор дал ровно ноль и предпосылка сработала. Смени форму ОДИН блок —
+	// сорок семь имён скрыли бы сорок восьмое, и гейт остался бы зелёным.
+	if unreadable > 0 {
+		t.Fatalf("блоков вставки роли, из которых имя прочитать НЕ УДАЛОСЬ, %d при %d "+
+			"прочитанных именах. Роль вставлена, а гейт о ней не судил: это не находка и "+
+			"не молчание, а невидимость. Форма записи имени — предмет ScanMigrationRoleInserts; "+
+			"неизвестную форму надо ЗАВЕСТИ в разбор, а не пропустить", unreadable, names)
 	}
 
 	if len(bearing) == 0 {

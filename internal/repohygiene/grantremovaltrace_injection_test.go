@@ -4,6 +4,7 @@
 package repohygiene
 
 import (
+	"fmt"
 	"strings"
 	"testing"
 )
@@ -18,18 +19,29 @@ import (
 //
 // Оси — каждая с обеими сторонами:
 //
-//	перебор     седьмой файл без следа → находка С ИМЕНЕМ; без него → молчание
-//	недобор     у одного из шести дописан след → находка с числом 5
+//	перебор     лишний файл без следа → находка С ИМЕНЕМ; без него → молчание
+//	след        тот же файл СО следом → молчание (половина предиката различает)
 //	половина    удаление в ОТКАТНОЙ половине → не считается (снимает свою вставку)
 //	маска       оператор в комментарии и в литерале → не считается
 //	терпимость  иное написание того же оператора → считается
+//	недобор     текст находки требует сознательного движения храповика ВНИЗ
+//
+// # Синтетика РАЗМЕРЯЕТСЯ храповиком, а не числом 6
+//
+// Прежняя редакция строила базу из шести файлов — по числу прощённых на день
+// заведения. Свод миграций iam (2026-09-04) опустил храповик до нуля: прощать
+// стало нечего, файлов больше нет. База, выписанная числом, пережила бы свой
+// предмет и краснела бы на исправном гейте — тот самый класс, который эта
+// инъекция и стережёт. Поэтому база строится ПО КОНСТАНТЕ и следует за ней сама.
 func TestGrantRemovalTraceGateInjection(t *testing.T) {
-	// Шесть прощённых сегодня — минимальные тела, несущие ровно предмет.
+	// Прощённые сегодня — минимальные тела, несущие ровно предмет. Их РОВНО
+	// столько, сколько объявляет храповик: при нуле база пуста, и все оси ниже
+	// остаются осмысленными, потому что каждая считает ОТНОСИТЕЛЬНО базы.
 	base := func() []grantMigrationSource {
-		var out []grantMigrationSource
-		for _, n := range []string{"a", "b", "c", "d", "e", "f"} {
+		out := make([]grantMigrationSource, 0, grantRemovalRatchet)
+		for i := 0; i < grantRemovalRatchet; i++ {
 			out = append(out, grantMigrationSource{
-				Name: "00" + n + "_retire.sql",
+				Name: fmt.Sprintf("00%02d_retire.sql", i),
 				Body: "-- +goose Up\nDELETE FROM kacho_iam.access_bindings WHERE role_id = 'r';\n" +
 					"-- +goose Down\nSELECT 1;\n",
 			})
@@ -43,9 +55,13 @@ func TestGrantRemovalTraceGateInjection(t *testing.T) {
 		t.Fatalf("контроль: ожидалось %d прощённых, получено %d (%v)",
 			grantRemovalRatchet, len(silent), silent)
 	}
-	if c.FilesRead == 0 || c.WithDelete == 0 || c.InUpHalf == 0 {
-		t.Fatalf("контроль: перепись пуста (%+v) — «ноль находок» стало бы "+
-			"неотличимо от «ноль прочитанного»", c)
+	// Перепись контроля сверяется с базой, а не с нулём: при храповике 0 база
+	// пуста by construction, и требовать от неё непустоты значило бы требовать
+	// прощённых там, где их нет.
+	if c.FilesRead != grantRemovalRatchet || c.WithDelete != grantRemovalRatchet ||
+		c.InUpHalf != grantRemovalRatchet {
+		t.Fatalf("контроль: перепись (%+v) разошлась с базой в %d файлов — «ноль находок» "+
+			"стало бы неотличимо от «ноль прочитанного»", c, grantRemovalRatchet)
 	}
 
 	// ОСЬ «перебор»: седьмой файл, снимающий выдачи без следа.
@@ -66,18 +82,43 @@ func TestGrantRemovalTraceGateInjection(t *testing.T) {
 		t.Errorf("перебор: находка не отличает перебор от недобора: %s", msg)
 	}
 
-	// ОСЬ «недобор»: у одного из шести дописан след. Это единственное
-	// доказательство того, что половина предиката «без записи в журнал» вообще
-	// различает: на корпусе дерева она сегодня отсекает ноль файлов.
-	under := base()
-	under[0].Body = "-- +goose Up\nDELETE FROM kacho_iam.access_bindings WHERE role_id = 'r';\n" +
-		"INSERT INTO kacho_iam.audit_outbox (event_type) VALUES ('AccessBindingDeleted');\n" +
-		"-- +goose Down\nSELECT 1;\n"
-	got, _ = auditGrantRemovalTrace(under)
-	if len(got) != grantRemovalRatchet-1 {
-		t.Errorf("недобор: ожидалось %d, получено %d (%v)", grantRemovalRatchet-1, len(got), got)
+	// ОСЬ «след»: ТОТ ЖЕ файл, но со следом в журнале, находкой не является.
+	//
+	// Это единственное доказательство того, что половина предиката «без записи в
+	// журнал» вообще РАЗЛИЧАЕТ: на корпусе дерева она отсекает ноль файлов —
+	// прежде потому, что след не оставляла ни одна миграция, теперь ещё и потому,
+	// что удалений в корпусе нет вовсе. Ось не зависит от храповика намеренно:
+	// она о предикате, а не о числе прощённых.
+	traced := append(base(), grantMigrationSource{
+		Name: "0099_seventh.sql",
+		Body: "-- +goose Up\nDELETE FROM kacho_iam.access_bindings WHERE subject_id = 's';\n" +
+			"INSERT INTO kacho_iam.audit_outbox (event_type) VALUES ('AccessBindingDeleted');\n" +
+			"-- +goose Down\nSELECT 1;\n",
+	})
+	got, _ = auditGrantRemovalTrace(traced)
+	if len(got) != grantRemovalRatchet {
+		t.Errorf("след: удаление СО следом посчитано находкой — половина предиката "+
+			"«без записи в журнал» не различает: %v", got)
 	}
-	msg = grantRemovalFinding(len(got), got)
+
+	// ОСЬ «недобор»: текст находки требует двигать храповик ВНИЗ сознательно.
+	//
+	// При храповике 0 эта ветвь из гейта НЕДОСТИЖИМА by construction: числом
+	// прощённых меньше нуля не бывает. Ветвь не снимается, потому что храповик —
+	// подвижная величина: подняв его, следующий получит нижнюю сторону обратно
+	// вместе с её проверкой. Условие ниже самоистекает — оно начнёт гонять ось
+	// через гейт в тот день, когда храповик поднимут.
+	if grantRemovalRatchet > 0 {
+		under := base()
+		under[0].Body = "-- +goose Up\nDELETE FROM kacho_iam.access_bindings WHERE role_id = 'r';\n" +
+			"INSERT INTO kacho_iam.audit_outbox (event_type) VALUES ('AccessBindingDeleted');\n" +
+			"-- +goose Down\nSELECT 1;\n"
+		got, _ = auditGrantRemovalTrace(under)
+		if len(got) != grantRemovalRatchet-1 {
+			t.Errorf("недобор: ожидалось %d, получено %d (%v)", grantRemovalRatchet-1, len(got), got)
+		}
+	}
+	msg = grantRemovalFinding(grantRemovalRatchet-1, []string{"0000_retire.sql"})
 	if !strings.Contains(msg, "стало меньше") || !strings.Contains(msg, "СОЗНАТЕЛЬНО") {
 		t.Errorf("недобор: находка не требует сознательного движения храповика: %s", msg)
 	}
