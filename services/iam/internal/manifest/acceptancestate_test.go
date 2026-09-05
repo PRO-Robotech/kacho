@@ -68,7 +68,7 @@ func landedScenarios(dir string) (map[string]string, int, error) {
 	}
 	read := 0
 	for _, f := range files {
-		body, err := os.ReadFile(f) //nolint:gosec // путь собран из литерала каталога проб
+		body, err := os.ReadFile(f)
 		if err != nil {
 			return nil, read, err
 		}
@@ -132,7 +132,7 @@ func auditAcceptanceState(docPath, probeDir string) (findings []string, rows, re
 	}
 	probes = len(landed)
 
-	body, err := os.ReadFile(docPath) //nolint:gosec // путь — литерал приёмки
+	body, err := os.ReadFile(docPath)
 	if err != nil {
 		return []string{"приёмка не прочитана: " + err.Error()}, 0, 0, probes
 	}

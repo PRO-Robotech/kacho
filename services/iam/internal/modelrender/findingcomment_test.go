@@ -119,7 +119,7 @@ func auditFindingComment(constDoc, headerRow, normPath string) (findings []strin
 	if judged == 0 {
 		return findings, judged
 	}
-	body, err := os.ReadFile(normPath) //nolint:gosec // путь — литерал приёмки
+	body, err := os.ReadFile(normPath)
 	if err != nil {
 		findings = append(findings, "координата не разрешается: приёмка "+normPath+" не читается: "+err.Error())
 		return findings, judged
