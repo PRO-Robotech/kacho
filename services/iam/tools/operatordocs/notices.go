@@ -77,6 +77,10 @@ func ListModules(root string) ([]Module, error) {
 	args := append([]string{"list", "-C", root, "-deps",
 		"-f", "{{if .Module}}{{.Module.Path}}|{{.Module.Version}}|{{.Module.Dir}}{{end}}"},
 		ShippedPackages...)
+	// #nosec G204 -- бинарь — литерал "go"; шаблон аргументов — литерал этой функции;
+	// перечень пакетов — закрытый набор уровня пакета (ShippedPackages). Из переменных
+	// в строку попадает только root, и попадает значением -C: корень собственного
+	// дерева, отвергаемый вызывающим (Run), если в нём нет LICENSE.
 	cmd := exec.Command("go", args...)
 	cmd.Stderr = os.Stderr
 	out, err := cmd.Output()
@@ -201,6 +205,15 @@ func Identify(m Module) Module {
 }
 
 func readCapped(path string) (string, error) {
+	// #nosec G304,G703 -- путь построен как filepath.Join(m.Dir, name) вызывающим
+	// (Identify), где name пришло из os.ReadDir(m.Dir) — то есть это ИМЯ ЗАПИСИ
+	// каталога, а оно сепаратора не содержит by construction. Выйти за m.Dir такой
+	// join не может; сам m.Dir назван сборщиком (`go list -deps`), а не вводом.
+	//
+	// filepath.Clean здесь НЕ ставится намеренно, хотя он гасит оба правила: обхода
+	// он не предотвращает (Clean("/a/../../etc/passwd") == "/etc/passwd"), то есть
+	// снял бы находку, ничего не ограничив, и подавление стало бы подавлением
+	// пустоты — ровно тот класс, который стережёт TestNoInertGosecSuppressions.
 	f, err := os.Open(path)
 	if err != nil {
 		return "", err

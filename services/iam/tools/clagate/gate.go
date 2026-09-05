@@ -170,7 +170,21 @@ const (
 func Inspect(repoRoot, ledgerRel, revRange string) (Report, error) {
 	rep := Report{LedgerPath: ledgerRel, RevRange: revRange}
 
-	raw, err := os.ReadFile(filepath.Join(repoRoot, ledgerRel))
+	// Путь ведомости сводится ПОД КОРЕНЬ судимого дерева. Без этого единственным,
+	// что удерживало чтение внутри дерева, была добросовестность вызывающего:
+	// `ledgerRel` приезжает строкой, а `..` в ней уводит чтение за корень. Гейт,
+	// прочитавший документ снаружи, выносит вердикт о дереве по ведомости, которой
+	// в этом дереве нет, — и вердикт выглядит обычным.
+	root := filepath.Clean(repoRoot)
+	ledgerAbs := filepath.Join(root, ledgerRel)
+	inside, rerr := filepath.Rel(root, ledgerAbs)
+	if rerr != nil || inside == ".." || strings.HasPrefix(inside, ".."+string(filepath.Separator)) {
+		return rep, fmt.Errorf("ведомость %s лежит вне судимого дерева %s: "+
+			"читать за корнем гейт не станет", ledgerRel, repoRoot)
+	}
+	// #nosec G304 -- путь сведён под корень судимого дерева проверкой строкой выше:
+	// всё, что `filepath.Rel` относит за пределы root, отвергается до чтения.
+	raw, err := os.ReadFile(ledgerAbs)
 	if err != nil {
 		return rep, fmt.Errorf("ведомость %s не прочитана: %w", ledgerRel, err)
 	}

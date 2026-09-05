@@ -125,6 +125,10 @@ func Run(o Options) int {
 // (для целиком порождаемого файла).
 func syncFile(o Options, name, whole string, want func(disk string) (string, error)) []string {
 	path := filepath.Join(o.Root, name)
+	// #nosec G304 -- name приходит от вызывающего одним из ДВУХ значений, и оба —
+	// константы этого пакета (NoticesFile, InstallFile); третьего вызова syncFile в
+	// пакете нет. o.Root отвергнут выше в Run, если в нём нет LICENSE, то есть если
+	// это не дерево iam.
 	disk, err := os.ReadFile(path)
 	if err != nil {
 		if os.IsNotExist(err) {
@@ -136,7 +140,7 @@ func syncFile(o Options, name, whole string, want func(disk string) (string, err
 				return []string{name + " — документа в дереве нет, а его проза не порождается: " +
 					"заведите файл с метками блока и повторите"}
 			}
-			if err := os.WriteFile(path, []byte(whole), 0o644); err != nil {
+			if err := os.WriteFile(path, []byte(whole), 0o600); err != nil {
 				return []string{fmt.Sprintf("%s — не записан: %v", name, err)}
 			}
 			_, _ = fmt.Fprintf(o.Out, "%s — записан\n", name)
@@ -153,7 +157,7 @@ func syncFile(o Options, name, whole string, want func(disk string) (string, err
 		return nil
 	}
 	if o.Write {
-		if err := os.WriteFile(path, []byte(wanted), 0o644); err != nil {
+		if err := os.WriteFile(path, []byte(wanted), 0o600); err != nil {
 			return []string{fmt.Sprintf("%s — не записан: %v", name, err)}
 		}
 		_, _ = fmt.Fprintf(o.Out, "%s — обновлён\n", name)
