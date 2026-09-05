@@ -158,9 +158,7 @@ func (c Config) Validate() error {
 	if dsn := strings.TrimSpace(c.Repository.Postgres.URL); dsn == "" {
 		errs = multierr.Append(errs,
 			fmt.Errorf("repository.postgres.url is empty"))
-	} else if parsed, parseErr := url.Parse(dsn); parseErr == nil &&
-		(parsed.Scheme == "postgres" || parsed.Scheme == "postgresql") &&
-		strings.TrimSpace(parsed.Hostname()) == "" {
+	} else if !DSNNamesAHost(dsn) {
 		errs = multierr.Append(errs,
 			fmt.Errorf("repository.postgres.url=%q names no host: the database address is not set, "+
 				"and waiting for it would never converge; set the chart's db.host (or the host part of the DSN)",
@@ -537,4 +535,35 @@ func (c Config) InsecureDevWarnings() []string {
 			"repository.postgres.ssl-mode=disable — DB plaintext (dev only)")
 	}
 	return out
+}
+
+// DSNNamesAHost — называет ли строка подключения хост, к которому идти.
+//
+// ПРЕДИКАТ ОДИН НА ДВУХ ВЫЗЫВАЮЩИХ, и это несущее свойство, а не удобство: его
+// зовут страж старта службы (`Config.Validate` выше) и точка наката миграций,
+// которая в поставке исполняется ПЕРВОЙ. Своя редакция у каждого разошлась бы
+// молча — и разошлась бы там, где расхождение не видно: обе стороны отвечают
+// «годно» на годном входе.
+//
+// СУДИТСЯ ХОСТ, А НЕ ПУСТОТА СТРОКИ. Шаблон чарта собирает строку из частей,
+// поэтому при незаданном адресе базы она выходит НЕПУСТОЙ и с пустым хостом
+// (`postgres://iam@:5432/kacho_iam`). Предикат «строка непуста» по этому пути не
+// срабатывает НИ ПРИ КАКОМ входе.
+//
+// ФОРМА `ключ=значение` (её тоже принимает драйвер) считается называющей хост:
+// чарт её не производит, а разбирать её вторым способом значило бы завести
+// второй кодек. Предикат отвечает на один вопрос и не притворяется разбором DSN.
+func DSNNamesAHost(dsn string) bool {
+	trimmed := strings.TrimSpace(dsn)
+	if trimmed == "" {
+		return false
+	}
+	parsed, err := url.Parse(trimmed)
+	if err != nil {
+		return true
+	}
+	if parsed.Scheme != "postgres" && parsed.Scheme != "postgresql" {
+		return true
+	}
+	return strings.TrimSpace(parsed.Hostname()) != ""
 }
