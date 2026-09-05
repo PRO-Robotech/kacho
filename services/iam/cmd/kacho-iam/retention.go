@@ -62,6 +62,10 @@ func startRetentionSweeper(
 			// наблюдённая до оператора, остаётся нижней оценкой — снимется не
 			// больше, чем позволено.
 			kachopg.NewSubjectChangeJournalSweeper(pool, logger),
+			// Шестым предметом — очередь сверки прав (#2050). Её дренированные
+			// строки не снимались никогда, при том что приём уборки уже был и
+			// применён к соседней очереди.
+			kachopg.NewReconcileOutboxSweeper(pool),
 		),
 		logger.With(slog.String("component", "retention_sweep")),
 	)

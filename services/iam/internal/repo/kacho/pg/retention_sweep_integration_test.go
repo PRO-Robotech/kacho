@@ -429,13 +429,14 @@ func TestRetentionSweep_ReportsEachSubjectSeparately(t *testing.T) {
 	cutoffs := kachopg.NewMintedTokenRevocationRepo(pool)
 	windows := kachopg.NewIdentityAdmissionWindowRepo(pool)
 	journal := kachopg.NewSubjectChangeJournalSweeper(pool, nil)
+	reconcileQ := kachopg.NewReconcileOutboxSweeper(pool)
 	uid := mustSeedUser(t, ctx, pool, "ret-15")
 
 	// По отзывам — есть что снять; по утверждениям и отсечкам — нечего.
 	putRevocationAt(t, ctx, pool, uid, "ret15-"+ids.NewID(domain.PrefixUser), -time.Hour)
 
 	sw, err := retention.New(retention.Config{Interval: time.Minute, Batch: sweepBatch, MaxBatchesPerPass: 2},
-		retention.Subjects(assertions, revocations, cutoffs, windows, journal), nil)
+		retention.Subjects(assertions, revocations, cutoffs, windows, journal, reconcileQ), nil)
 	require.NoError(t, err)
 	res := sw.Pass(ctx)
 	require.NoError(t, res.Err())
@@ -446,6 +447,7 @@ func TestRetentionSweep_ReportsEachSubjectSeparately(t *testing.T) {
 	require.Contains(t, res.Removed, retention.SubjectMintedTokenCutoffs)
 	require.Contains(t, res.Removed, retention.SubjectIdentityAdmissionWindows)
 	require.Contains(t, res.Removed, retention.SubjectSubjectChangeJournal)
+	require.Contains(t, res.Removed, retention.SubjectReconcileOutbox)
 	require.EqualValues(t, 1, res.Removed[retention.SubjectSessionRevocations])
 
 	// Величина имеет читателя: накопитель прохода виден снаружи.

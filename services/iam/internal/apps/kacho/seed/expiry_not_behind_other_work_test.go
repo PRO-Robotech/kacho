@@ -100,6 +100,15 @@ func (q *exQueue) ClaimReconcileEvents(context.Context, int) ([]reconcile_outbox
 	return nil, nil
 }
 func (q *exQueue) MarkReconcileEventSent(context.Context, int64) error { return nil }
+
+// RecordReconcileEventFailure — порт учёта отказа (#2050). Здесь он не предмет:
+// сверка в этих пробах не отказывает, поэтому дублёр обязан молчать, а не
+// считать. Вызов на успешном пути — находка, и её ловит
+// `TestReconcileDrain_SuccessIsNotCounted`.
+func (q *exQueue) RecordReconcileEventFailure(context.Context, int64, string) (int, error) {
+	return 0, nil
+}
+
 func (q *exQueue) ListSelectorBindingIDs(context.Context) ([]domain.AccessBindingID, error) {
 	return q.selectors, nil
 }

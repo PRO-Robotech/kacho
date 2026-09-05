@@ -47,11 +47,13 @@ import (
 
 	"github.com/PRO-Robotech/kacho/pkg/subjectchange"
 	"github.com/PRO-Robotech/kacho/pkg/tokenpolicy"
+
+	"github.com/PRO-Robotech/kacho-iam/internal/repo/kacho/pg/reconcile_outbox"
 )
 
 // TestRegistryThresholdsAreTheReadersPredicate — RET-SWP-04.
 func TestRegistryThresholdsAreTheReadersPredicate(t *testing.T) {
-	subjects := Subjects(stubReaper{}, stubReaper{}, stubReaper{}, stubReaper{}, stubReaper{})
+	subjects := Subjects(stubReaper{}, stubReaper{}, stubReaper{}, stubReaper{}, stubReaper{}, stubReaper{})
 
 	want := map[string]time.Duration{
 		SubjectClientAssertionReplay:    tokenpolicy.ClockSkew + tokenpolicy.RemovalSlack,
@@ -59,6 +61,7 @@ func TestRegistryThresholdsAreTheReadersPredicate(t *testing.T) {
 		SubjectMintedTokenCutoffs:       tokenpolicy.MaxTokenTTL + tokenpolicy.ClockSkew + tokenpolicy.RemovalSlack,
 		SubjectIdentityAdmissionWindows: 0,
 		SubjectSubjectChangeJournal:     subjectchange.JournalRetention,
+		SubjectReconcileOutbox:          reconcile_outbox.DrainedRetention,
 	}
 
 	if len(subjects) != len(want) {
@@ -94,7 +97,7 @@ func TestRegistryThresholdsAreTheReadersPredicate(t *testing.T) {
 // копия совпадает.
 func TestRegistryThresholdsFollowPolicyRatherThanACopy(t *testing.T) {
 	byName := map[string]time.Duration{}
-	for _, s := range Subjects(stubReaper{}, stubReaper{}, stubReaper{}, stubReaper{}, stubReaper{}) {
+	for _, s := range Subjects(stubReaper{}, stubReaper{}, stubReaper{}, stubReaper{}, stubReaper{}, stubReaper{}) {
 		byName[s.Name] = s.Grace
 	}
 
@@ -132,6 +135,10 @@ func (stubReaper) SweepStaleCutoffs(_ context.Context, _ time.Duration, _ int) (
 }
 
 func (stubReaper) SweepElapsedAdmissionWindows(_ context.Context, _ time.Duration, _ int) (int64, bool, error) {
+	return 0, false, nil
+}
+
+func (stubReaper) SweepDrainedReconcileEvents(_ context.Context, _ time.Duration, _ int) (int64, bool, error) {
 	return 0, false, nil
 }
 

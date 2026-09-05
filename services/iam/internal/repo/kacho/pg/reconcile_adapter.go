@@ -1431,6 +1431,16 @@ func (a *ReconcileAdapter) MarkReconcileEventSent(ctx context.Context, id int64)
 	return tx.Commit(ctx)
 }
 
+// RecordReconcileEventFailure учитывает один отказ сверки по строке очереди:
+// увеличивает счётчик попыток и записывает причину.
+//
+// Пулом, а не транзакцией сверки: та откатывается целиком при отказе, и учёт
+// попытки откатился бы вместе с ней — счётчик не двигался бы никогда, а отсечка
+// была бы недостижима by construction (#2050).
+func (a *ReconcileAdapter) RecordReconcileEventFailure(ctx context.Context, id int64, cause string) (int, error) {
+	return reconcile_outbox.RecordFailure(ctx, a.pool, id, cause)
+}
+
 // ListSelectorBindingIDs returns the ids of all bindings whose ROLE carries an
 // ARM_LABELS selector (the periodic sweep target). RBAC rules-model 2026:
 // the legacy per-binding access_binding_selector arm is gone

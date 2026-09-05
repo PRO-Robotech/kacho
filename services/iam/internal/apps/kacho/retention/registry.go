@@ -35,6 +35,8 @@ import (
 
 	"github.com/PRO-Robotech/kacho/pkg/subjectchange"
 	"github.com/PRO-Robotech/kacho/pkg/tokenpolicy"
+
+	"github.com/PRO-Robotech/kacho-iam/internal/repo/kacho/pg/reconcile_outbox"
 )
 
 // Имена предметов уборки. Совпадают с именами таблиц: имя предмета попадает в
@@ -65,6 +67,14 @@ const (
 	// наибольшего допустимого отставания читателя, а не из свойства колонки
 	// срока.
 	SubjectSubjectChangeJournal = "subject_change_outbox"
+	// SubjectReconcileOutbox — очередь сверки прав. Темп задаёт арендатор:
+	// строка пишется в той же транзакции, что смена состояния зеркала ресурса,
+	// то есть на каждую регистрацию и снятие регистрации.
+	//
+	// До #2050 дренированные строки не снимались НИКОГДА: таблица росла
+	// неограниченно под штатным потоком регистраций, при том что приём уборки в
+	// дереве уже был и применён к соседней очереди.
+	SubjectReconcileOutbox = "resource_reconcile_outbox"
 )
 
 // SweepFunc — один проход уборщика по одному предмету.
@@ -117,6 +127,11 @@ type SubjectChangeJournalReaper interface {
 	SweepAgedRows(ctx context.Context, grace time.Duration, batch int) (int64, bool, error)
 }
 
+// ReconcileOutboxReaper — порт уборщика очереди сверки прав.
+type ReconcileOutboxReaper interface {
+	SweepDrainedReconcileEvents(ctx context.Context, grace time.Duration, batch int) (int64, bool, error)
+}
+
 // Subjects — реестр уборки iam.
 //
 // Пороги — §2.2 приёмки, и повторять их вторым местом нельзя: два места об одном
@@ -127,6 +142,7 @@ type SubjectChangeJournalReaper interface {
 //	уборка отсечек:      revoke_before  <  now() − (MaxTokenTTL + ClockSkew + RemovalSlack)
 //	уборка окон темпа:   window_started_at < now() − window_seconds − 0
 //	уборка журнала:      created_at     <  now() − subjectchange.JournalRetention
+//	уборка очереди сверки: sent_at      <  now() − reconcile_outbox.DrainedRetention
 //
 // У отзывов слагаемых НЕТ, и это не пропуск: часы уборки и всех четырёх её
 // читателей уже одни — база, — поэтому запасу взяться неоткуда. Ноль здесь
@@ -151,6 +167,7 @@ func Subjects(
 	cutoffs CutoffReaper,
 	admissionWindows AdmissionWindowReaper,
 	subjectChangeJournal SubjectChangeJournalReaper,
+	reconcileOutbox ReconcileOutboxReaper,
 ) []Subject {
 	return []Subject{
 		{
@@ -177,6 +194,11 @@ func Subjects(
 			Name:  SubjectSubjectChangeJournal,
 			Grace: subjectchange.JournalRetention,
 			Sweep: subjectChangeJournal.SweepAgedRows,
+		},
+		{
+			Name:  SubjectReconcileOutbox,
+			Grace: reconcile_outbox.DrainedRetention,
+			Sweep: reconcileOutbox.SweepDrainedReconcileEvents,
 		},
 	}
 }
