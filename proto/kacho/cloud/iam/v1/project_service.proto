@@ -109,8 +109,10 @@ service ProjectService {
   //
   // Blocking a non-empty project is decided and specified — the live tally must
   // reach IAM from the resource owners, because IAM is a leaf of the call graph
-  // and may not call them back. See docs/architecture/project-deletion-and-live-resources.md
-  // and PRO-Robotech/kacho#1594.
+  // and may not call them back. See docs/architecture/project-deletion-and-live-resources.md;
+  // the OPEN successor carrying the mechanism is PRO-Robotech/kacho#1231.
+  // (The decision itself was taken under #1594, which is closed — a reader sent
+  // there would read "closed" as "done".)
   rpc Delete (DeleteProjectRequest) returns (operation.Operation) {
     option (google.api.http) = { delete: "/iam/v1/projects/{project_id}" };
     option (kacho.cloud.api.operation) = {
