@@ -50,8 +50,8 @@ type Config struct {
 	// kubelet-проба /readyz). Пустое значение явно отключает listener (back-compat).
 	MetricsAddr string `envconfig:"KACHO_COMPUTE_METRICS_ADDR" default:":9095"`
 
-	// IAMGRPCAddr — адрес kacho-iam (ProjectService.Get — project-existence-check).
-	IAMGRPCAddr string `envconfig:"KACHO_COMPUTE_IAM_GRPC_ADDR" default:"kacho-iam.kacho.svc:9090"`
+	// IAMGRPCAddr — адрес kaname (ProjectService.Get — project-existence-check).
+	IAMGRPCAddr string `envconfig:"KACHO_COMPUTE_IAM_GRPC_ADDR" default:"kaname.kacho.svc:9090"`
 
 	// GeoGRPCAddr — адрес kacho-geo (geo.v1.ZoneService.Get, public :9090) для
 	// валидации Instance/Disk.zone_id. Geography (Region/Zone) — leaf-сервис
@@ -82,7 +82,7 @@ type Config struct {
 	StorageInternalGRPCAddr string `envconfig:"KACHO_COMPUTE_STORAGE_INTERNAL_GRPC_ADDR" default:"kacho-storage.kacho.svc:9091"`
 
 	// SkipPeerValidation — отключить cross-service existence-check (project в
-	// kacho-iam, zone_id в kacho-geo) → no-op. Для unit/newman/load-тестов без
+	// kaname, zone_id в kacho-geo) → no-op. Для unit/newman/load-тестов без
 	// поднятых peer-сервисов.
 	SkipPeerValidation bool `envconfig:"KACHO_COMPUTE_SKIP_PEER_VALIDATION" default:"false"`
 
@@ -93,12 +93,12 @@ type Config struct {
 	// dev-профиля стенда (values.dev.yaml выставляет его явно).
 	AuthMode string `envconfig:"KACHO_COMPUTE_AUTH_MODE" default:"production"`
 
-	// AuthZIAMGRPCAddr — gRPC адрес kacho-iam internal-port'а для Check.
+	// AuthZIAMGRPCAddr — gRPC адрес kaname internal-port'а для Check.
 	//
 	// ОБЯЗАТЕЛЕН в любом режиме, включая dev: пустое значение — отказ старта в
 	// конструкторе дескриптора (ребро решения о доступе обязано быть объявлено
 	// ЯВНО, адрес и транспорт вместе). Прежняя редакция обещала обратное —
-	// «interceptor не навешивается, graceful start без kacho-iam в dev», — и это
+	// «interceptor не навешивается, graceful start без kaname в dev», — и это
 	// было верно, пока звено собирал сам композиционный корень: процесс поднимался
 	// и обслуживал запросы, не спрашивая ни о чьих правах. Такой ветки у носителя
 	// контура нет.
@@ -153,7 +153,7 @@ type Config struct {
 	// AuthZDenyBudgetPerSec — устойчивый темп (в секунду на принципала) проверок,
 	// чей исход кэш НЕ поглощает: отказ, сокрытие существования, промах «нет
 	// пути», недоступность модели. По исчерпании звено отвечает
-	// `ResourceExhausted`, не обращаясь к kacho-iam, — то есть сбрасывает шторм с
+	// `ResourceExhausted`, не обращаясь к kaname, — то есть сбрасывает шторм с
 	// него.
 	//
 	// Величина 100 не выдумана: это то же число, которое платформа уже выбрала
@@ -162,7 +162,7 @@ type Config struct {
 	// поэтому число обязано быть названо здесь.
 	//
 	// Изъятия («ронять некого») у compute быть не может: решение о доступе он
-	// принимает не у себя, а вопросом к kacho-iam — сетевой сосед, которого шторм
+	// принимает не у себя, а вопросом к kaname — сетевой сосед, которого шторм
 	// отказов уронит, у него ЕСТЬ, и на том же соединении живут пообъектный
 	// сужатель видимости и регистрация владельца.
 	AuthZDenyBudgetPerSec float64 `envconfig:"KACHO_COMPUTE_AUTHZ_DENY_BUDGET_PER_SEC" default:"100"`
@@ -259,7 +259,7 @@ type Config struct {
 	// форвардить end-user principal в x-kacho-principal-* metadata (обычно
 	// единственный — api-gateway SA, SAN spiffe://kacho.cloud/ns/<ns>/sa/kacho-api-gateway).
 	// Принимает comma-separated список. Пусто (default) → любой mTLS-verified peer
-	// доверен как форвардер (паритет с insecure dev back-compat и kacho-iam) — допустимо
+	// доверен как форвардер (паритет с insecure dev back-compat и kaname) — допустимо
 	// ТОЛЬКО в dev: validateAuthMode() fail-closed отвергает пустой список в любом
 	// production-режиме (Config.Validate). Задаётся
 	// в production для defense-in-depth против confused-deputy: внутренний сервис со
@@ -285,7 +285,7 @@ type Config struct {
 	//
 	// Все ListFilter* — production-edition: configurable, no hardcoded.
 	// Reuses AuthZIAMGRPCAddr (+ per-edge IAMAuthzMTLS creds) as the iam-authorize
-	// endpoint (kacho-iam internal :9091 — AuthorizeService.BatchCheck).
+	// endpoint (kaname internal :9091 — AuthorizeService.BatchCheck).
 	//
 	// NB: результирующего «размера allow-list» здесь БОЛЬШЕ НЕТ (прежний
 	// MaxResults): видимость спрашивается per-object по прочитанной СТРАНИЦЕ, так
@@ -335,7 +335,7 @@ type Config struct {
 	// называется (`listnarrow.Counts`).
 	ListFilterBreakglass bool `envconfig:"KACHO_COMPUTE_LIST_FILTER_BREAKGLASS" default:"false"`
 
-	// ===== register-drainer (FGA owner-tuple через kacho-iam) =====
+	// ===== register-drainer (FGA owner-tuple через kaname) =====
 	//
 	// FGARegisterDrainerEnabled — включает register-drainer (corelib outbox/drainer):
 	// дренит compute_fga_register_outbox, применяя intent через
@@ -345,7 +345,7 @@ type Config struct {
 	FGARegisterDrainerEnabled bool `envconfig:"KACHO_COMPUTE_FGA_REGISTER_DRAINER_ENABLED" default:"true"`
 
 	// FGARegisterApplyConcurrency — сколько owner-tuple register-intent'ов одного
-	// claim-батча drainer применяет ПАРАЛЛЕЛЬНО через kacho-iam RegisterResource
+	// claim-батча drainer применяет ПАРАЛЛЕЛЬНО через kaname RegisterResource
 	// (corelib drainer.Config.ApplyConcurrency). Последовательный drainer упирается
 	// в ~1/apply_latency: под write-burst RegisterResource таймаутит (~5s) →
 	// ceiling ~0.2–0.5 tuple/s, что на порядок НИЖЕ create-throughput воркера
@@ -384,16 +384,16 @@ type Config struct {
 	// требует RequireAndVerifyClientCert на обоих listener'ах, такой dial падает на
 	// TLS-handshake — оба ребра ОБЯЗАНЫ предъявлять kacho-compute-client-tls cert
 	// (completeness-инвариант). Два отдельных поля, т.к. ServerName различается
-	// per-listener: ProjectService.Get → :9090 (kacho-iam), Check/list-filter →
-	// :9091 (kacho-iam-internal); один общий TLSClient не несёт оба ServerName.
+	// per-listener: ProjectService.Get → :9090 (kaname), Check/list-filter →
+	// :9091 (kaname-internal); один общий TLSClient не несёт оба ServerName.
 
 	// IAMProjectMTLS — client-creds для ребра compute→iam ProjectService.Get
-	// (existence + leaf-owner, public :9090). ServerName = kacho-iam.*.
+	// (existence + leaf-owner, public :9090). ServerName = kaname.*.
 	IAMProjectMTLS grpcclient.TLSClient `envconfig:"IAM_PROJECT_MTLS"`
 
 	// IAMAuthzMTLS — client-creds для ребра compute→iam per-RPC
 	// InternalIAMService.Check + FGA-filtered List (один conn → AuthZIAMGRPCAddr,
-	// internal :9091). ServerName = kacho-iam-internal.*.
+	// internal :9091). ServerName = kaname-internal.*.
 	IAMAuthzMTLS grpcclient.TLSClient `envconfig:"IAM_AUTHZ_MTLS"`
 
 	// GeoMTLS — client-creds для ребра compute→geo (geo.v1.ZoneService.Get,

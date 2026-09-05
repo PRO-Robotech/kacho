@@ -16,7 +16,7 @@ const config: Config = {
   onBrokenAnchors: 'throw',
 
   organizationName: 'PRO-Robotech',
-  projectName: 'kacho-iam',
+  projectName: 'kaname',
 
   i18n: {
     defaultLocale: 'ru',

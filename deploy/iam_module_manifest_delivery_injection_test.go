@@ -63,7 +63,7 @@ func TestManifestDeliveryAuditFallsOnEachAxisAndStaysSilentOnItsTwin(t *testing.
 			name: "каталог пода стал вторым литералом",
 			decls: mutate(base, func(d *manifestDeliveryDecls) {
 				d.deployment = strings.ReplaceAll(d.deployment,
-					"{{ .Values.manifests.mountPath | quote }}", `"/etc/kacho-iam/manifests"`)
+					"{{ .Values.manifests.mountPath | quote }}", `"/etc/kaname/manifests"`)
 			}),
 			wantSub: "templates/deployment.yaml: `.Values.manifests.mountPath` не читается",
 		},
@@ -71,7 +71,7 @@ func TestManifestDeliveryAuditFallsOnEachAxisAndStaysSilentOnItsTwin(t *testing.
 			name: "каталог процесса стал вторым литералом",
 			decls: mutate(base, func(d *manifestDeliveryDecls) {
 				d.configmap = strings.ReplaceAll(d.configmap,
-					"{{ .Values.manifests.mountPath | quote }}", `"/etc/kacho-iam/manifests"`)
+					"{{ .Values.manifests.mountPath | quote }}", `"/etc/kaname/manifests"`)
 			}),
 			wantSub: "templates/configmap.yaml: `manifests.dir` не выводится",
 		},
@@ -86,7 +86,7 @@ func TestManifestDeliveryAuditFallsOnEachAxisAndStaysSilentOnItsTwin(t *testing.
 			name: "посадка не объявляет каталога",
 			decls: mutate(base, func(d *manifestDeliveryDecls) {
 				d.values = strings.ReplaceAll(d.values,
-					"  mountPath: /etc/kacho-iam/manifests", "  mountPath: \"\"")
+					"  mountPath: /etc/kaname/manifests", "  mountPath: \"\"")
 			}),
 			wantSub: "values.yaml: `manifests.mountPath` не объявлен",
 		},
@@ -110,7 +110,7 @@ func TestManifestDeliveryAuditFallsOnEachAxisAndStaysSilentOnItsTwin(t *testing.
 				d.configmap = strings.ReplaceAll(d.configmap,
 					"      dir: {{ .Values.manifests.mountPath | quote }}",
 					"      # каталог берётся из .Values.manifests.mountPath\n"+
-						`      dir: "/etc/kacho-iam/manifests"`)
+						`      dir: "/etc/kaname/manifests"`)
 			}),
 			wantSub: "templates/configmap.yaml: `manifests.dir` не выводится",
 		},
@@ -158,7 +158,7 @@ func TestManifestDeliveryAuditFallsOnEachAxisAndStaysSilentOnItsTwin(t *testing.
 			name: "каталог доставки переименован",
 			decls: mutate(base, func(d *manifestDeliveryDecls) {
 				d.values = strings.ReplaceAll(d.values,
-					"mountPath: /etc/kacho-iam/manifests", "mountPath: /var/lib/kacho/manifests")
+					"mountPath: /etc/kaname/manifests", "mountPath: /var/lib/kacho/manifests")
 			}),
 		},
 		{

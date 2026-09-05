@@ -45,7 +45,7 @@ type auditEmitter interface {
 //   - actor             — the VERIFIED caller principal, sourced from
 //     PrincipalFromContext upstream, never from the request body (anti-spoofing).
 //   - service_account_id — the SA the key belongs to.
-//   - key_id            — the kacho-iam SA-OAuth-client id (soc_…), NOT a secret.
+//   - key_id            — the kaname SA-OAuth-client id (soc_…), NOT a secret.
 //   - key_algorithm     — JOSE alg of the registered public key ("ES256", or ""
 //     for a federated key that carries no kacho-held material).
 //

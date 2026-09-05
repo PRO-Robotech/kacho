@@ -6,7 +6,7 @@ package clients_test
 // Integration lock for the register-drainer's per-resource apply ORDER over the
 // REAL compute_fga_register_outbox table + the REAL partition-head index
 // (migration 0018), with the REAL applier (clients.IAMRegisterApplier) and a fake
-// kacho-iam that models the resource_mirror it feeds.
+// kaname that models the resource_mirror it feeds.
 //
 // The modelled mirror is faithful to services/iam/.../resource_mirror/emitter.go:
 //
@@ -43,7 +43,7 @@ import (
 	"github.com/PRO-Robotech/kacho/services/compute/internal/fgaintent"
 )
 
-// ---- fake kacho-iam modelling the resource_mirror ------------------------
+// ---- fake kaname modelling the resource_mirror ------------------------
 
 type mirrorIAM struct {
 	mu      sync.Mutex

@@ -9,7 +9,7 @@
 // Dependency boundary (Clean Architecture): corelib stays dependency-light — the
 // concrete Prometheus client is NOT imported here. Instead the package defines a
 // small Recorder interface; the service wires a Prometheus-backed Recorder at
-// its composition root (mirroring kacho-iam internal/observability/metrics), and
+// its composition root (mirroring kaname internal/observability/metrics), and
 // tests use the in-memory MemRecorder. The Collector periodically scans an
 // outbox table (DB-side) and feeds the gauges into whatever Recorder it is given.
 //

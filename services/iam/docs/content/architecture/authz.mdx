@@ -58,7 +58,7 @@ scope привязки — и ровно их.
 ```mermaid
 flowchart LR
   rpc["RPC Get(project prj7mfpj2my52k5a06kg)"] --> gw["gateway authz-middleware"]
-  gw -->|"Check(user:usrbr69ze0ftz3jf7396, v_get, project:prj7mfpj2my52k5a06kg)"| iam["kacho-iam: реляционная форма"]
+  gw -->|"Check(user:usrbr69ze0ftz3jf7396, v_get, project:prj7mfpj2my52k5a06kg)"| iam["kaname: реляционная форма"]
   iam -->|"allow"| ok["выполнить"]
   iam -->|"deny"| no["403 PERMISSION_DENIED"
 ```

@@ -1,6 +1,6 @@
 name: iam-docs
 replicas: 1
-image: kacho-iam-docs:dev
+image: kaname-docs:dev
 imagePullPolicy: IfNotPresent
 port: 8080
 

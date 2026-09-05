@@ -158,7 +158,7 @@ spec:
               value: {{ printf "%s/ca.crt" $srv | quote }}
             {{- if .Values.mtls.edges.iamAuthz }}
             # geo→iam Check (internal :9091) client-creds — grpcclient.TLSClient.
-            # ServerName = kacho-iam-internal (∈ iam server-SAN).
+            # ServerName = kaname-internal (∈ iam server-SAN).
             - name: KACHO_GEO_IAM_AUTHZ_MTLS_ENABLE
               value: "true"
             - name: KACHO_GEO_IAM_AUTHZ_MTLS_CERTFILE

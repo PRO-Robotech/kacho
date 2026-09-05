@@ -16,7 +16,7 @@ Self-contained: each policy selects ONLY its own pg pod, so it can never break
 non-datastore traffic. Rendering an entry whose pg instance is not deployed is harmless
 (the podSelector matches no pod). The `from` selectors are cluster-tunable DEFAULTS —
 verify they cover every legitimate consumer (service pod + init-migrator + rotator/init
-Jobs) for your cluster before enabling. The kacho-iam consumer label `app: kacho-iam`
+Jobs) for your cluster before enabling. The kaname consumer label `app: kaname`
 covers its Deployment and the `migrate` init-container (both
 carry it); the compute→geo `geo-data-migration` Job selector is included on pg-compute
 (source) and pg-geo (target). Third-party auth-tier stores (pg-kratos / pg-hydra) are

@@ -50,7 +50,7 @@ var useCaseLayerDirNames = []string{"service", "services", "usecase", "usecases"
 // разбор — отдельная работа, а НЕ потому что она признана допустимой.
 //
 // `services/iam/internal/service` — 26 файлов, и его собственный godoc называет
-// себя «use-case-слой kacho-iam (Clean Architecture, service-слой)», то есть
+// себя «use-case-слой kaname (Clean Architecture, service-слой)», то есть
 // расхождение здесь ровно того же класса, что было у storage и compute.
 // Механической перекладкой оно не берётся: тот же пакет держит ПОРТЫ границы
 // транзакции и outbox-эмиттеров (`Tx`, `TxBeginner`, `AuditOutboxEmitter`,

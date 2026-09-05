@@ -74,7 +74,7 @@ FIXTURE_CM="${FIXTURE_CM:-k6-iam-check-fixture}"
 CERT_SECRET="${CERT_SECRET:-kacho-compute-client-tls}"
 K6_IMAGE="${K6_IMAGE:-grafana/k6:2.1.0}"
 MAX_PER_TYPE="${MAX_PER_TYPE:-60}"
-FIXTURE_OUT="${FIXTURE_OUT:-${TMPDIR:-/tmp}/kacho-iam-allow-tuples.json}"
+FIXTURE_OUT="${FIXTURE_OUT:-${TMPDIR:-/tmp}/kaname-allow-tuples.json}"
 TREE_SCRIPT="$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)/services/iam/tests/k6/internal_check.js"
 
 k() { kubectl -n "$NS" "$@"; }

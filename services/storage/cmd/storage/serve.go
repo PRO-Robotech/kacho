@@ -371,7 +371,7 @@ func runServe(cfg config.Config) error {
 	imageUC.WithListFilter(narrower)
 
 	// ── совещательная полоса учёта числа ресурсов (приёмка квот, DoD S4 п.1) ──
-	// Величину назначает kacho-iam и разрешает старшинство областей У СЕБЯ
+	// Величину назначает kaname и разрешает старшинство областей У СЕБЯ
 	// (`InternalLimitService.Resolve` на том же внутреннем соединении, которым мы
 	// уже спрашиваем права, — нового ребра работа не заводит). Строку учёта
 	// заводит владелец типа: ребро «владелец величин → владелец типа» замкнуло бы
@@ -416,7 +416,7 @@ func runServe(cfg config.Config) error {
 	// ── FGA owner-tuple register-drainer + sync-registrar (SEC-D, анти-BOLA) ──
 	// Volume/Snapshot/Image Create/Delete эмитят register/unregister-intent в
 	// kacho_storage.fga_register_outbox (writer-TX). register-drainer применяет их
-	// через kacho-iam RegisterResource/UnregisterResource (тот же :9091 mTLS-conn,
+	// через kaname RegisterResource/UnregisterResource (тот же :9091 mTLS-conn,
 	// что и вопрос о правах — RegisterResource Internal-only, ban #6). sync-registrar
 	// регистрирует owner-tuple сразу после Create-commit (immediate анти-BOLA-резолв,
 	// без гонки с async drainer'ом; drainer — at-least-once backstop). authzConn nil
@@ -427,7 +427,7 @@ func runServe(cfg config.Config) error {
 		}
 		// Отравление обязано быть паузой, а не потерей: без периодического
 		// redrive недоставленная регистрация оставляет ресурс без mirror-строки в
-		// kacho-iam, а значит без owner-tuple и без материализованных глаголов —
+		// kaname, а значит без owner-tuple и без материализованных глаголов —
 		// невидимым для authz до ручной правки БД. См. redrive_backstop.go.
 		if derr := startRedriveBackstop(ctx, pool, logger); derr != nil {
 			return fmt.Errorf("start redrive backstop: %w", derr)
@@ -452,7 +452,7 @@ func runServe(cfg config.Config) error {
 	// подстраховка. Без него строка операции, пережившая смерть процесса (перекат,
 	// OOM, исчерпание бюджета терминальной записи) или так и не дождавшаяся места в
 	// очереди исполнителя, остаётся «в процессе» НАВСЕГДА, и клиент не узнаёт исхода
-	// ни разу. Не зависит ни от kacho-iam, ни от дренажа регистраций: это сверка со
+	// ни разу. Не зависит ни от kaname, ни от дренажа регистраций: это сверка со
 	// СВОЕЙ БД. См. recovery.go.
 	lroReconciler := startLRORecovery(ctx, pool, operationresolver.Readers{
 		Volume:   volumeRepo,
@@ -685,7 +685,7 @@ func describe(
 		StreamBudget: servicecontract.Value(cfg.SubscriptionStreamBudget),
 
 		// Бюджет отказов объявляется ВЕЛИЧИНОЙ, а не изъятием: решение о доступе
-		// storage принимает не у себя, а вопросом к kacho-iam, — то есть сетевой
+		// storage принимает не у себя, а вопросом к kaname, — то есть сетевой
 		// сосед, которого шторм отказов может уронить, у него ЕСТЬ, и на том же
 		// соединении живут пообъектный сужатель и регистрация владельца. Изъятие
 		// («ронять некого») законно только у владельца модели, решающего в своём
@@ -997,7 +997,7 @@ func authzConnHealth(conn *grpc.ClientConn) error {
 // внутренних деталей наружу.
 var (
 	errLROWorkerDown   = errors.New("LRO dispatcher loop not running")
-	errIAMConnShutdown = errors.New("connection to kacho-iam is shut down")
+	errIAMConnShutdown = errors.New("connection to kaname is shut down")
 )
 
 // Сроки диагностической поверхности. Названы константами, а не вписаны в
@@ -1052,7 +1052,7 @@ func describeDiagnosticSurface(endpoint string, m *metrics.Metrics, agg *health.
 	})
 }
 
-// buildListFilter собирает пообъектный сужатель видимости (kacho-iam
+// buildListFilter собирает пообъектный сужатель видимости (kaname
 // AuthorizeService.BatchCheck по id ПРОЧИТАННОЙ страницы).
 //
 // Возвращается КОНКРЕТНЫЙ тип: один и тот же сужатель обслуживает обе двери

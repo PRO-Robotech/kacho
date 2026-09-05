@@ -489,7 +489,7 @@ func TestAZD016_CacheInvalidation_BySubject(t *testing.T) {
 
 // ────────────────────────────────────────────────────────────────────────────
 // Custom role with unknown permission → InvalidArgument.
-// Это валидация iam.Role.Create (kacho-iam-side); здесь — sanity test через
+// Это валидация iam.Role.Create (kaname-side); здесь — sanity test через
 // Catalog.
 // ────────────────────────────────────────────────────────────────────────────
 
@@ -500,7 +500,7 @@ func TestAZD018_UnknownPermission_NotInCatalog(t *testing.T) {
 			"hypothetical garbage permission must NOT be in catalog")
 	}
 	// iam.Role.Create rejects permission strings absent в Catalog — это
-	// проверяется в kacho-iam unit-тестах; здесь sanity что Catalog не содержит
+	// проверяется в kaname unit-тестах; здесь sanity что Catalog не содержит
 	// мусора.
 }
 
@@ -519,7 +519,7 @@ func TestAZD019_CatalogCount_26(t *testing.T) {
 }
 
 // ────────────────────────────────────────────────────────────────────────────
-// Predefined system role seeds — проверяется в kacho-iam
+// Predefined system role seeds — проверяется в kaname
 // migration tests. Здесь — sanity: Catalog содержит виды permissions, которые
 // system-роли должны покрывать.
 // ────────────────────────────────────────────────────────────────────────────

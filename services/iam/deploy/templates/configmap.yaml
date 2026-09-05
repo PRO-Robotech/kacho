@@ -2,9 +2,9 @@
 # SPDX-License-Identifier: AGPL-3.0-or-later
 
 {{/*
-ConfigMap с YAML-конфигом kacho-iam.
+ConfigMap с YAML-конфигом kaname.
 
-Сервис читает config из /etc/kacho-iam/config.yaml; конкретные поля можно
+Сервис читает config из /etc/kaname/config.yaml; конкретные поля можно
 override'ить через ENV (`KACHO_IAM_REPOSITORY__POSTGRES__URL` и т.п.).
 
 DB-пароль НЕ кладется сюда (secret); подтягивается через
@@ -59,7 +59,7 @@ data:
         password-from-env: KACHO_IAM_DB_PASSWORD
 
     authn:
-      mode: {{ default "production" (include "kacho-iam-svc.authMode" .) | quote }}
+      mode: {{ default "production" (include "kaname-svc.authMode" .) | quote }}
       {{- $authn := .Values.authn | default dict }}
       {{- with $authn.identityProvider }}
       # ПОСАДКА ЛИЧНОСТИ. Умолчания у ключа нет намеренно (см. defaults.go службы):

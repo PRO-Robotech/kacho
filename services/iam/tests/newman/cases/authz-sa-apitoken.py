@@ -1,7 +1,7 @@
 # Copyright (c) PRO-Robotech
 # SPDX-License-Identifier: AGPL-3.0-or-later
 
-"""Case-set authz-sa-apitoken для kacho-iam.
+"""Case-set authz-sa-apitoken для kaname.
 
 The SA/api-token ALLOW cases (service-account vpc-editor@project-A1: NET-GT-A1,
 NET-CR-A1, APITOK-NET-GT-A1) require the fixture's vpc-editor grant on project-A1

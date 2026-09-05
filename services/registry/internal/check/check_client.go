@@ -34,16 +34,16 @@ import (
 // ВНУТРИ клиента, чтобы одной правкой покрыть оба call-site'а uniformly.
 const CheckTimeout = 2 * time.Second
 
-// IAMCheckClient адаптирует kacho-iam.InternalIAMService.Check под authz.CheckClient.
+// IAMCheckClient адаптирует kaname.InternalIAMService.Check под authz.CheckClient.
 type IAMCheckClient struct {
 	cli iamv1.InternalIAMServiceClient
 	// narrower — общий сужатель списков поверх ТОГО ЖЕ соединения: `AuthorizeService`
-	// зарегистрирован и на внутреннем листенере kacho-iam, поэтому второго дозвона не
+	// зарегистрирован и на внутреннем листенере kaname, поэтому второго дозвона не
 	// заводится.
 	narrower *listnarrow.Narrower
 }
 
-// NewIAMCheckClient строит адаптер поверх conn к internal-листенеру kacho-iam (:9091).
+// NewIAMCheckClient строит адаптер поверх conn к internal-листенеру kaname (:9091).
 func NewIAMCheckClient(conn grpc.ClientConnInterface) *IAMCheckClient {
 	return &IAMCheckClient{
 		cli: iamv1.NewInternalIAMServiceClient(conn),

@@ -267,7 +267,7 @@ func (u *MoveLoadBalancerUseCase) doMove(ctx context.Context, id, srcProject, ds
 	//
 	// unregister(src) stays bare (IAM uses only object + source_version on
 	// unregister). register(dst) must carry full lbMirrorIntent semantics (Labels
-	// from the moved record + ParentProjectID=dst) so the kacho-iam resource_mirror
+	// from the moved record + ParentProjectID=dst) so the kaname resource_mirror
 	// feeding the γ label/parent selector is re-created intact.
 	if _, err := w.FGARegisterOutbox().Emit(ctx, domain.FGAEventUnregister,
 		lbUnregisterIntent(id, srcProject)); err != nil {

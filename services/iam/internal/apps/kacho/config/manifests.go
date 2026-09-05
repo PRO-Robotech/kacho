@@ -199,7 +199,7 @@ func (c ManifestsConfig) Validate() error {
 // страж мёртв ровно так же, как ненаписанный
 //
 // ManifestsConfig.Validate ← Config.Validate (`validate.go`, слагаемое multierr)
-// ← main (`cmd/kacho-iam`, `cfg.Validate()` → `os.Exit(1)`). То есть отказ здесь
+// ← main (`cmd/kaname`, `cfg.Validate()` → `os.Exit(1)`). То есть отказ здесь
 // есть отказ В ПУСКЕ, а не предупреждение. Координаты названы ИМЕНАМИ, а не
 // номерами строк: номер устаревает молча, имя — нет.
 //

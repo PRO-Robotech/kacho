@@ -6,7 +6,7 @@ package drainer
 // Integration test: the partition-head-only CLAIM must stay CONSTANT-cost in
 // backlog depth.
 //
-// # Root cause this locks (throughput inversion of kacho-iam fga_outbox)
+// # Root cause this locks (throughput inversion of kaname fga_outbox)
 //
 //	The partition-head-only claim (Config.PartitionColumn) reads
 //
@@ -71,7 +71,7 @@ import (
 )
 
 // claimPlanTable is the canonical outbox table under test, created with EXACTLY
-// the index set kacho-iam ships for kacho_iam.fga_outbox (migrations 0002 + 0063 +
+// the index set kaname ships for kacho_iam.fga_outbox (migrations 0002 + 0063 +
 // 0067). Kept in sync with services/iam/internal/migrations — the iam side owns
 // the migration, this mirror lets the drainer prove the claim plan the index set
 // produces.
@@ -204,7 +204,7 @@ func Test_ClaimPlan_DoesNotScaleWithBacklogDepth(t *testing.T) {
 //	Sort present ⟺ early stop lost ⟺ O(backlog) claim.
 //
 // RED if a decoy partial index over `sent_at IS NULL` is (re)introduced on this
-// table; GREEN with the two-index set kacho-iam ships.
+// table; GREEN with the two-index set kaname ships.
 func Test_ClaimPlan_StaleStatistics_DoesNotCollapse(t *testing.T) {
 	if testing.Short() || os.Getenv("SKIP_INTEGRATION") == "1" {
 		t.Skip("integration tests skipped (SKIP_INTEGRATION=1)")
@@ -269,7 +269,7 @@ func setupClaimPlanPG(ctx context.Context, t *testing.T) *pgxpool.Pool {
 // decides, because "how fresh are the planner's statistics" is itself one of the
 // properties under test (see Test_ClaimPlan_StaleStatistics_DoesNotCollapse).
 //
-// The partition key is materialised on the row exactly as kacho-iam's trigger
+// The partition key is materialised on the row exactly as kaname's trigger
 // does it (`user || ' ' || relation || ' ' || object`), so the seeded shape has a
 // realistic tuple/object ratio: many subjects per object, few rows per tuple.
 func seedBacklog(ctx context.Context, t *testing.T, pool *pgxpool.Pool, from, to, rowsPerPartition int) {
@@ -310,7 +310,7 @@ func seedDrained(ctx context.Context, t *testing.T, pool *pgxpool.Pool, from, to
 }
 
 // analyzeOutbox refreshes planner statistics — what a healthy autovacuum does
-// DURING a burst (kacho-iam pins the per-table analyze threshold in migration 0064
+// DURING a burst (kaname pins the per-table analyze threshold in migration 0064
 // precisely to make that happen).
 func analyzeOutbox(ctx context.Context, t *testing.T, pool *pgxpool.Pool) {
 	t.Helper()

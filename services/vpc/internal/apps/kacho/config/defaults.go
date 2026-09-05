@@ -78,7 +78,7 @@ func RegisterDefaults(v *viper.Viper) {
 	v.SetDefault("api-server.rate-limit.internal.in-flight", 0)
 
 	// metrics / healthcheck — cluster-internal diagnostic listener (/metrics +
-	// /healthz + /readyz). endpoint=:9095 зеркалит kacho-iam; enable=false ИЛИ
+	// /healthz + /readyz). endpoint=:9095 зеркалит kaname; enable=false ИЛИ
 	// пустой endpoint → listener не поднимается.
 	v.SetDefault("metrics.enable", true)
 	v.SetDefault("metrics.endpoint", ":9095")
@@ -114,7 +114,7 @@ func RegisterDefaults(v *viper.Viper) {
 	v.SetDefault("authn.trusted-forwarder", false)
 
 	// extapi
-	// project-existence peer — kacho-iam (ProjectService.Get).
+	// project-existence peer — kaname (ProjectService.Get).
 	v.SetDefault("extapi.def-dial-duration", 10*time.Second)
 	v.SetDefault("extapi.iam.endpoint", "iam.kacho.svc:9090")
 	v.SetDefault("extapi.iam.tls.enable", false)
@@ -128,7 +128,7 @@ func RegisterDefaults(v *viper.Viper) {
 
 	// authz. По умолчанию iam-endpoint пустой → interceptor не навешивается;
 	// включается через values.yaml / ENV. В dev-стенде — values-dev.yaml
-	// выставит iam-endpoint=kacho-iam.kacho.svc:9091.
+	// выставит iam-endpoint=kaname.kacho.svc:9091.
 	v.SetDefault("authz.iam-endpoint", "")
 	v.SetDefault("authz.iam-tls.enable", false)
 	v.SetDefault("authz.check-timeout", 2*time.Second)
@@ -165,7 +165,7 @@ func RegisterDefaults(v *viper.Viper) {
 	// посадка без модели не поднимается вовсе — отказ даёт `ValidateListFilter` на
 	// любой посадке, поэтому объявлять было нечего.
 
-	// iam — интеграция с kacho-iam. require — fail-closed boot-gate (default off:
+	// iam — интеграция с kaname. require — fail-closed boot-gate (default off:
 	// dev/Create разрешён, только Warn). register-drainer-enabled — default-on
 	// (owner-tuple publisher). Ранее оба читались os.LookupEnv в cmd/; теперь —
 	// типизированные ключи со строгой bool-валидацией на decode.

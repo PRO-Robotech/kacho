@@ -4,7 +4,7 @@
 // Package bootstraptokenwire — composition-root wiring for the
 // InternalBootstrapTokenService handler (#58). Assembles the bootstrap-token
 // mint use-case (BootstrapStore pg adapter + НАШ подписант) and its thin gRPC
-// handler. Single wire-up call for cmd/kacho-iam.
+// handler. Single wire-up call for cmd/kaname.
 //
 // ─────────────────────────────────────────────────────────────────────────────
 // ЧТО ЗДЕСЬ ИЗМЕНИЛОСЬ И ПОЧЕМУ ЭТО ГЛАВНОЕ (задача #1119, Ф4б эпика #896)

@@ -1,11 +1,11 @@
 // Copyright (c) PRO-Robotech
 // SPDX-License-Identifier: BUSL-1.1
 
-// register_applier.go — register-drainer applier поверх kacho-iam
+// register_applier.go — register-drainer applier поверх kaname
 // InternalIAMService.RegisterResource / UnregisterResource (fga-proxy). Это
 // consumer-half transactional-outbox owner-tuple реле: writer-tx Create/Delete/
 // Update пишет domain.RegisterIntent в registry_outbox, а drainer (corelib
-// outbox/drainer) читает каждую строку и применяет её tuple-набор через kacho-iam
+// outbox/drainer) читает каждую строку и применяет её tuple-набор через kaname
 // по mTLS, мапя gRPC-ответ на three-way классификацию drainer'а:
 //
 //	nil                       → sent_at (happy path / идемпотентный повтор)
@@ -46,7 +46,7 @@ type RegisterResourceClient interface {
 	UnregisterResource(ctx context.Context, in *iamv1.UnregisterResourceRequest, opts ...grpc.CallOption) (*iamv1.UnregisterResourceResponse, error)
 }
 
-// NewRegisterResourceClient оборачивает grpc-conn к kacho-iam internal-листенеру
+// NewRegisterResourceClient оборачивает grpc-conn к kaname internal-листенеру
 // (:9091 — RegisterResource/UnregisterResource Internal-only) в порт. nil → nil.
 func NewRegisterResourceClient(conn grpc.ClientConnInterface) RegisterResourceClient {
 	if conn == nil {
@@ -107,7 +107,7 @@ func NewRegisterApplier(cli RegisterResourceClient) drainer.Applier[domain.Regis
 
 		// Монотонный source_version, застампленный БД внутри writer-tx (миграция
 		// 0011). На register-пути он делает применение зеркала
-		// last-source-state-wins И даёт kacho-iam положительное доказательство
+		// last-source-state-wins И даёт kaname положительное доказательство
 		// редоставки: синхронный registrar штампует свою версию уже ПОСЛЕ commit'а,
 		// поэтому эта — заведомо не новее, зеркало не меняется, и iam пропускает
 		// повторную материализацию. На unregister-пути это TOMBSTONE: iam удаляет
@@ -188,14 +188,14 @@ func NewRegisterApplier(cli RegisterResourceClient) drainer.Applier[domain.Regis
 }
 
 // sourceVersionStep — шаг версии между tuple'ами ОДНОЙ доставки. Ровно микросекунда:
-// это разрешение timestamptz, в котором kacho-iam хранит маркер, — меньший шаг
+// это разрешение timestamptz, в котором kaname хранит маркер, — меньший шаг
 // схлопнулся бы при записи, больший без нужды съедал бы зазор до версии следующей
 // мутации.
 const sourceVersionStep = time.Microsecond
 
 // stepSourceVersion — версия seq-го tuple доставки, стартующей с base. Нулевой base
 // (версии нет — строка, поставленная в очередь до миграции 0011, где лежал BIGSERIAL)
-// остаётся nil на ВСЕХ tuple'ах: kacho-iam трактует nil как '-infinity', а gate
+// остаётся nil на ВСЕХ tuple'ах: kaname трактует nil как '-infinity', а gate
 // редоставки при отсутствии версии обязан открыться в сторону работы для ВСЕГО набора,
 // а не для его части.
 func stepSourceVersion(base time.Time, seq int) *timestamppb.Timestamp {
@@ -233,7 +233,7 @@ func classifyRegisterErr(err error) error {
 	// переживший удаление ресурса. Отравление, наоборот, отказывает закрыто:
 	// отвергнутая запись не состоялась, партиция разблокирована. Само по себе оно
 	// НЕ самоисцеляется — недоставленная регистрация оставляет объект без
-	// mirror-строки в kacho-iam, — поэтому идёт в паре с периодическим
+	// mirror-строки в kaname, — поэтому идёт в паре с периодическим
 	// redrive-бэкстопом (cmd/kacho-registry/redrive_backstop.go).
 	switch st.Code() {
 	case codes.AlreadyExists:

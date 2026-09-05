@@ -53,12 +53,12 @@ type Config struct {
 	// GeoGRPCAddr — public endpoint kacho-geo для валидации zone_id
 	// (ребро storage→geo, ZoneService.Get). Пусто → GeoClient fail-closed.
 	GeoGRPCAddr string `envconfig:"KACHO_STORAGE_GEO_GRPC_ADDR" default:""`
-	// IAMGRPCAddr — endpoint kacho-iam для валидации project_id
+	// IAMGRPCAddr — endpoint kaname для валидации project_id
 	// (ребро storage→iam, ProjectService.Get). Пусто → IAMClient fail-closed.
 	IAMGRPCAddr string `envconfig:"KACHO_STORAGE_IAM_GRPC_ADDR" default:""`
-	// AuthZIAMGRPCAddr — internal endpoint kacho-iam для per-RPC Check
+	// AuthZIAMGRPCAddr — internal endpoint kaname для per-RPC Check
 	// (ребро storage→iam authz, InternalIAMService.Check). Пусто → authz-интерсептор
-	// не подключается (грациозный dev-старт без kacho-iam). Тот же endpoint несёт
+	// не подключается (грациозный dev-старт без kaname). Тот же endpoint несёт
 	// InternalIAMService.RegisterResource/UnregisterResource (FGA-proxy, Internal-only
 	// :9091) — его переиспользует register-drainer + sync-registrar.
 	AuthZIAMGRPCAddr string `envconfig:"KACHO_STORAGE_AUTHZ_IAM_GRPC_ADDR" default:""`
@@ -128,7 +128,7 @@ type Config struct {
 	// AuthZDenyBudgetPerSec — устойчивый темп (в секунду на принципала) проверок,
 	// чей исход кэш НЕ поглощает: отказ, сокрытие существования, промах «нет
 	// пути», недоступность модели. По исчерпании звено отвечает
-	// `ResourceExhausted`, не обращаясь к kacho-iam, — то есть сбрасывает шторм с
+	// `ResourceExhausted`, не обращаясь к kaname, — то есть сбрасывает шторм с
 	// него.
 	//
 	// Величина 100 не выдумана: это то же число, которое платформа уже выбрала
@@ -138,7 +138,7 @@ type Config struct {
 	// названо здесь.
 	//
 	// Изъятия («ронять некого») у storage быть не может: решение о доступе он
-	// принимает не у себя, а вопросом к kacho-iam — сетевой сосед, которого шторм
+	// принимает не у себя, а вопросом к kaname — сетевой сосед, которого шторм
 	// отказов уронит, у него ЕСТЬ, и на том же соединении живут пообъектный фильтр
 	// видимости и регистрация владельца.
 	AuthZDenyBudgetPerSec float64 `envconfig:"KACHO_STORAGE_AUTHZ_DENY_BUDGET_PER_SEC" default:"100"`
@@ -232,7 +232,7 @@ type Config struct {
 	SubscriptionIdlePoll time.Duration `envconfig:"KACHO_STORAGE_SUBSCRIPTION_IDLE_POLL" default:"2s"`
 
 	// FGARegisterDrainerEnabled — включает register-drainer owner-tuple'ов (SEC-D):
-	// применяет fga_register_outbox-intents через kacho-iam RegisterResource/
+	// применяет fga_register_outbox-intents через kaname RegisterResource/
 	// UnregisterResource по ребру storage→iam (AuthZIAMGRPCAddr, mTLS). Default true;
 	// без него созданные Volume/Snapshot не получают owner-tuple → анти-BOLA
 	// scope_extractor не резолвит target→project. false → intents копятся
@@ -242,7 +242,7 @@ type Config struct {
 	// ===== per-object filtered List =====
 	//
 	// Все ListFilter* — production-edition: configurable, без хардкода. Адрес
-	// authorize-эндпоинта переиспользует AuthZIAMGRPCAddr (kacho-iam internal :9091,
+	// authorize-эндпоинта переиспользует AuthZIAMGRPCAddr (kaname internal :9091,
 	// AuthorizeService.BatchCheck) и те же per-edge creds IAMClientMTLS.
 	//
 	// NB: knob'а «размер allow-list» здесь НЕТ и быть не может: видимость

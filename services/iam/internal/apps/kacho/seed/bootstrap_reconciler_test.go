@@ -9,7 +9,7 @@ package seed
 // RunBootstrapAdmin is idempotent + graceful: it skips when the bootstrap
 // user is not yet registered (the Kratos identity is mirrored into
 // kacho_iam.users only on first login / fixture upsert, which happens AFTER
-// kacho-iam boots). A single startup invocation therefore races the user
+// kaname boots). A single startup invocation therefore races the user
 // row and usually skips — the cluster-admin tuple is never written.
 //
 // BootstrapReconciler closes that gap: it re-runs the seed on an interval

@@ -40,7 +40,7 @@ type SessionRevocationsAdapter struct {
 }
 
 // NewSessionRevocationsAdapter wires the adapter onto an existing gRPC
-// connection to kacho-iam:9091.
+// connection to kaname:9091.
 func NewSessionRevocationsAdapter(cc grpc.ClientConnInterface) *SessionRevocationsAdapter {
 	return &SessionRevocationsAdapter{
 		client: iamv1.NewInternalSessionRevocationsServiceClient(cc),
@@ -91,7 +91,7 @@ func (a *SessionRevocationsAdapter) Revoke(ctx context.Context, in *iamv1.Revoke
 	return err
 }
 
-// IsSessionRevoked asks kacho-iam whether the credential with this identifier
+// IsSessionRevoked asks kaname whether the credential with this identifier
 // has been revoked in OUR record — the one written by sign-out and by the
 // administrative force-logout.
 //

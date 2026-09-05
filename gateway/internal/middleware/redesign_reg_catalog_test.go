@@ -89,7 +89,7 @@ func TestPermissionCatalog_RedesignReg(t *testing.T) {
 		})
 	}
 
-	// The unified AccessBindings List declares the scope-filtered lane: kacho-iam
+	// The unified AccessBindings List declares the scope-filtered lane: kaname
 	// reads the page and narrows it per row (`viewer ∪ v_list` on each
 	// `iam_access_binding`), so there is no single object the edge could check.
 	//

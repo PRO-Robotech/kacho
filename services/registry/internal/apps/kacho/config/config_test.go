@@ -28,13 +28,13 @@ func baseEnv() map[string]string {
 func TestConfig_IAMProjectEdge_DefaultAndDistinctFromAuthz(t *testing.T) {
 	env := baseEnv()
 	// AuthZ edge (internal :9091) как в helm-профиле.
-	env["KACHO_REGISTRY_AUTHZ_IAM_GRPC_ADDR"] = "kacho-iam-internal.kacho.svc:9091"
+	env["KACHO_REGISTRY_AUTHZ_IAM_GRPC_ADDR"] = "kaname-internal.kacho.svc:9091"
 
 	var c Config
 	require.NoError(t, LoadInto(&c, env))
 
 	// Дефолт project-ребра — iam public :9090.
-	assert.Equal(t, "kacho-iam.kacho.svc:9090", c.IAMProjectGRPCAddr,
+	assert.Equal(t, "kaname.kacho.svc:9090", c.IAMProjectGRPCAddr,
 		"ProjectService.Get edge must default to iam PUBLIC :9090")
 	// Два ребра обязаны быть разными endpoint'ами (public :9090 ≠ internal :9091).
 	assert.NotEqual(t, c.AuthZIAMGRPCAddr, c.IAMProjectGRPCAddr,
@@ -109,7 +109,7 @@ func TestConfig_AnonymousSubject_DefaultDisabled(t *testing.T) {
 }
 
 // TestConfig_AnonymousSubject_Override (RG-1 D-7) — the anon principal id is
-// env-configurable (KACHO_REGISTRY_ANONYMOUS_SUBJECT_ID) and MUST match kacho-iam's
+// env-configurable (KACHO_REGISTRY_ANONYMOUS_SUBJECT_ID) and MUST match kaname's
 // AnonymousClientID; the data-plane resolves a token with this sub to user:*.
 func TestConfig_AnonymousSubject_Override(t *testing.T) {
 	env := baseEnv()
@@ -133,10 +133,10 @@ func TestConfig_TokenAcceptance_Override(t *testing.T) {
 	env := baseEnv()
 	env["KACHO_REGISTRY_TOKEN_ISSUERS"] = "https://iam.kacho.local,https://hydra.api.kacho.cloud"
 	env["KACHO_REGISTRY_TOKEN_ISSUER_KEYSETS"] =
-		"https://iam.kacho.local=https://kacho-iam-internal.example:9097/.well-known/kacho/jwks.json," +
-			"https://hydra.api.kacho.cloud=https://kacho-iam-internal.example:9097/.well-known/jwks.json"
+		"https://iam.kacho.local=https://kaname-internal.example:9097/.well-known/kacho/jwks.json," +
+			"https://hydra.api.kacho.cloud=https://kaname-internal.example:9097/.well-known/jwks.json"
 	env["KACHO_REGISTRY_PLATFORM_TOKEN_ISSUER"] = "https://iam.kacho.local"
-	env["KACHO_REGISTRY_TOKEN_REVOCATION_URL"] = "https://kacho-iam-internal.example:9097/internal/tokens/introspect"
+	env["KACHO_REGISTRY_TOKEN_REVOCATION_URL"] = "https://kaname-internal.example:9097/internal/tokens/introspect"
 	// Снятые с контракта имена — умышленно выставлены: они не должны ничего менять.
 	env["KACHO_REGISTRY_IAM_JWKS_URL"] = "http://hydra.example:4444/.well-known/jwks.json"
 	env["KACHO_REGISTRY_HYDRA_ISSUER"] = "https://hydra.example"
@@ -152,7 +152,7 @@ func TestConfig_TokenAcceptance_Override(t *testing.T) {
 	bindings, err := c.TokenIssuerBindings()
 	require.NoError(t, err)
 	require.Len(t, bindings, 2)
-	assert.Equal(t, "https://kacho-iam-internal.example:9097/.well-known/kacho/jwks.json", bindings[0].KeySetURL,
+	assert.Equal(t, "https://kaname-internal.example:9097/.well-known/kacho/jwks.json", bindings[0].KeySetURL,
 		"адрес набора берётся из объявленной привязки")
 	assert.Equal(t, TokenTypePlatform, bindings[0].TokenType,
 		"полоса нашей чеканки несёт свой тип токена")
@@ -169,7 +169,7 @@ func TestConfig_TokenAcceptance_Override(t *testing.T) {
 // издателя, то есть отказывает в старте, а не работает вслепую.
 func TestConfig_RetiredTokenEnvsAreNotConsulted(t *testing.T) {
 	env := baseEnv()
-	env["KACHO_REGISTRY_IAM_JWKS_URL"] = "https://kacho-iam-internal.example:9097/.well-known/jwks.json"
+	env["KACHO_REGISTRY_IAM_JWKS_URL"] = "https://kaname-internal.example:9097/.well-known/jwks.json"
 	env["KACHO_REGISTRY_HYDRA_ISSUER"] = "https://hydra.api.kacho.cloud"
 	env["KACHO_REGISTRY_HYDRA_JWKS_URL"] = "http://hydra.example:4444/.well-known/jwks.json"
 
@@ -191,14 +191,14 @@ func TestConfig_IAMProjectEdge_Override(t *testing.T) {
 	env := baseEnv()
 	env["KACHO_REGISTRY_IAM_PROJECT_GRPC_ADDR"] = "iam.example.local:9090"
 	env["KACHO_REGISTRY_IAM_PROJECT_MTLS_ENABLE"] = "true"
-	env["KACHO_REGISTRY_IAM_PROJECT_MTLS_SERVERNAME"] = "kacho-iam.kacho.svc"
+	env["KACHO_REGISTRY_IAM_PROJECT_MTLS_SERVERNAME"] = "kaname.kacho.svc"
 
 	var c Config
 	require.NoError(t, LoadInto(&c, env))
 
 	assert.Equal(t, "iam.example.local:9090", c.IAMProjectGRPCAddr)
 	assert.True(t, c.IAMProjectMTLS.Enable, "IAM_PROJECT_MTLS_ENABLE must bind to the project edge creds")
-	assert.Equal(t, "kacho-iam.kacho.svc", c.IAMProjectMTLS.ServerName,
+	assert.Equal(t, "kaname.kacho.svc", c.IAMProjectMTLS.ServerName,
 		"project edge ServerName = iam PUBLIC SAN (distinct from authz edge internal SAN)")
 }
 

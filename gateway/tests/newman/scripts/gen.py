@@ -333,7 +333,7 @@ def poll_operation(op_var: str = "opId", auth: str = "jwtBootstrap",
     healthy (testing.md — the class that looks like a materialization lag but is really
     a probe that never waited).
 
-    OperationService is `<exempt>` in the gateway authz catalog, but kacho-iam still
+    OperationService is `<exempt>` in the gateway authz catalog, but kaname still
     rejects unauthenticated callers, so the poll carries a Bearer.
     """
     return Step(

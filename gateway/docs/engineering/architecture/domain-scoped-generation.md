@@ -80,7 +80,7 @@ Go. Вместо неё:
 
 iam поднимает не только свои службы: `OperationService` (`kacho.cloud.operation`)
 и `IdentityQuotaService` (`kacho.cloud.quota`) регистрируются в его композиционном
-корне (`services/iam/cmd/kacho-iam/grpc_register.go`). Отбор поэтому —
+корне (`services/iam/cmd/kaname/grpc_register.go`). Отбор поэтому —
 `iam operation quota`, и это ОБЪЯВЛЕНИЕ, а не вывод из импортов: `quota` в
 импортное замыкание контрактов iam не входит вовсе, и порождение «по замыканию»
 оставило бы её службу без записи каталога.

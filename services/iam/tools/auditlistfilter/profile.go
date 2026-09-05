@@ -1,7 +1,7 @@
 // Copyright (c) PRO-Robotech
 // SPDX-License-Identifier: AGPL-3.0-or-later
 
-// Package auditlistfilter states how kacho-iam is laid out for the public-List
+// Package auditlistfilter states how kaname is laid out for the public-List
 // gate. The analysis itself — and why it parses instead of grepping — lives in
 // pkg/listfiltergate.
 //
@@ -87,7 +87,7 @@ var (
 	subjectScoped = listfiltergate.Listing{Shape: listfiltergate.SubjectScoped}
 )
 
-// Profile describes kacho-iam to the analyser.
+// Profile describes kaname to the analyser.
 var Profile = listfiltergate.Profile{
 	Service:    "iam",
 	AnchorRoot: "internal/apps/kacho/api",

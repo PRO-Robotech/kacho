@@ -58,7 +58,7 @@ spec:
         # и тогда привязки нет, что честно: привязывать не к чему.
         kacho.cloud/image-id: {{ dig "kachoImageIds" "compute" "unset" (.Values.global | default dict) | quote }}
     spec:
-      # INFRA sec-hardening (2026-07-16) — единый floor, идентичный kacho-iam.
+      # INFRA sec-hardening (2026-07-16) — единый floor, идентичный kaname.
       securityContext:
         {{- toYaml .Values.podSecurityContext | nindent 8 }}
       initContainers:
@@ -145,7 +145,7 @@ spec:
             - name: KACHO_COMPUTE_AUTHZ_TRUSTED_FORWARDER_SANS
               value: {{ . | quote }}
             {{- end }}
-            # KAC-106 (E1): peer for project-existence switched to kacho-iam.
+            # KAC-106 (E1): peer for project-existence switched to kaname.
             - name: KACHO_COMPUTE_IAM_GRPC_ADDR
               value: "{{ .Values.iamAddr }}"
             {{- if .Values.mtls.enable }}
@@ -184,7 +184,7 @@ spec:
             {{- end }}
             {{- if .Values.mtls.edges.iamProject }}
             # SEC-I compute→iam ProjectService.Get (existence/leaf-owner, public
-            # :9090) client-creds — grpcclient.TLSClient. ServerName=kacho-iam (∈ SAN).
+            # :9090) client-creds — grpcclient.TLSClient. ServerName=kaname (∈ SAN).
             - name: KACHO_COMPUTE_IAM_PROJECT_MTLS_ENABLE
               value: "true"
             - name: KACHO_COMPUTE_IAM_PROJECT_MTLS_CERTFILE
@@ -198,7 +198,7 @@ spec:
             {{- end }}
             {{- if .Values.mtls.edges.iamAuthz }}
             # SEC-I compute→iam Check + FGA-filtered List (internal :9091)
-            # client-creds. ServerName=kacho-iam-internal (∈ SAN).
+            # client-creds. ServerName=kaname-internal (∈ SAN).
             - name: KACHO_COMPUTE_IAM_AUTHZ_MTLS_ENABLE
               value: "true"
             - name: KACHO_COMPUTE_IAM_AUTHZ_MTLS_CERTFILE
@@ -348,7 +348,7 @@ spec:
           # чекеры критичных зависимостей — коннект к базе, boot-gate дренера
           # регистраций (KACHO_COMPUTE_REQUIRE_IAM), живой LRO-worker. Страница
           # развёртывания прямо обещает оператору «сервис NotReady», пока дренер не
-          # связался с kacho-iam; прежде здесь стоял `tcpSocket: grpc`, и обещанное
+          # связался с kaname; прежде здесь стоял `tcpSocket: grpc`, и обещанное
           # не наступало ни при каких условиях: compute отвергал каждый мутирующий
           # Create, а под рапортовал 1/1 Running Ready.
           #

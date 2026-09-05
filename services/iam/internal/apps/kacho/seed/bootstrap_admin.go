@@ -64,7 +64,7 @@ type BootstrapAdminResult struct {
 
 // RunBootstrapAdmin — execute the bootstrap flow.
 //
-// Pool — kacho-iam master pgxpool (post-migration). Logger — slog.Default-
+// Pool — kaname master pgxpool (post-migration). Logger — slog.Default-
 // compatible. Returns nil error in all graceful-skip / happy / 23505-race
 // cases; error only on unexpected DB-failure (fail-closed for unknown state).
 func RunBootstrapAdmin(ctx context.Context, pool *pgxpool.Pool, logger *slog.Logger, in BootstrapAdminInput) (BootstrapAdminResult, error) {

@@ -1,6 +1,6 @@
-# kacho-iam — Документация компонентов (RU)
+# kaname — Документация компонентов (RU)
 
-Полная техническая документация всех компонентов сервиса `kacho-iam` —
+Полная техническая документация всех компонентов сервиса `kaname` —
 identity & access management платформы Kachō. Целевая аудитория — оператор,
 devops, архитектор: все, что нужно, чтобы поднять, настроить, обслужить и
 расширить сервис в проде, **без чтения исходников**.
@@ -10,7 +10,7 @@ devops, архитектор: все, что нужно, чтобы поднят
 
 ## Capability map
 
-`kacho-iam` поднимает 4 сетевых слушателя (порты конфигурируются):
+`kaname` поднимает 4 сетевых слушателя (порты конфигурируются):
 
 | Слушатель      | Порт  | Протокол  | Назначение                                                                       |
 |----------------|-------|-----------|----------------------------------------------------------------------------------|
@@ -64,6 +64,6 @@ devops, архитектор: все, что нужно, чтобы поднят
 - `internal/repo/kacho/pg/*.go` — SQL, scan-функции, error-mapping.
 - `internal/apps/kacho/api/*/` — use-cases (slice-per-RPC).
 - `internal/handler/*.go` + `internal/apps/kacho/api/*/handler.go` — gRPC transport.
-- `cmd/kacho-iam/{main,wiring,serve,...}.go` — composition root.
+- `cmd/kaname/{main,wiring,serve,...}.go` — composition root.
 - `internal/migrations/0001_initial.sql` — squashed schema (46 таблиц, 101 индекс, 7 триггеров, 62 FK).
 - `README.md` (корень репозитория) — высокоуровневый overview.

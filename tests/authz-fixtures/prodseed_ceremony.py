@@ -548,7 +548,7 @@ def stage_mirror(admin: str, ext_id: str, email: str) -> str:
         вопрос, который задаёт обогащение состава.
       * Направление видимости у резолва КОНСЕРВАТИВНОЕ: `LookupSubject` читает
         `Reader` (реплику, если она есть), а обогащение состава — мастер-пул
-        (`services/iam/cmd/kacho-iam/serve.go`: `kachopg.New(pool, slavePool)`
+        (`services/iam/cmd/kaname/serve.go`: `kachopg.New(pool, slavePool)`
         против `buildHooksMux(pool, …)`). Значит положительный ответ пробы не
         может прийти РАНЬШЕ, чем строку увидит обогащение; у опроса операции
         такого свойства нет.

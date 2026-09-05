@@ -10,7 +10,7 @@ SPDX-License-Identifier: AGPL-3.0-or-later
   Числа §5.2 и §9 перемерены на ней теми же предикатами
 - **Задача:** `PRO-Robotech/kacho#1737`
 - **Тип изменения:** АДДИТИВНОЕ — новое поле запроса; ни один существующий вход не меняет смысла
-- **Сервис:** `kacho-iam`; затрагивает `proto/kacho/cloud/iam/v1/access_binding_service.proto`,
+- **Сервис:** `kaname`; затрагивает `proto/kacho/cloud/iam/v1/access_binding_service.proto`,
   `services/iam/internal/apps/kacho/api/access_binding`, `services/iam/internal/repo/kacho`,
   `services/iam/tests/newman`
 - **Предмет приёмки — ВЫБОР** (нужен ли новый глагол); реализация заведена **той же** задачей

@@ -1,7 +1,7 @@
 // Copyright (c) PRO-Robotech
 // SPDX-License-Identifier: AGPL-3.0-or-later
 
-// main_test.go — разбор командной строки мигратора kacho-iam. БД не
+// main_test.go — разбор командной строки мигратора kaname. БД не
 // открывается: пробы быстрые и не зависят от docker. Настоящий накат — предмет
 // integration-проб репозитория.
 package main

@@ -298,7 +298,7 @@ func TestGateway_KAC105_IamActive(t *testing.T) {
 	// TestAllowlist_NoEntryWithoutAnRPC (parity_test.go) для ЛЮБОГО такого пути.
 
 	// InternalIAMService / InternalUserService — internal-only (не на external).
-	// auth-interceptor api-gateway зовет kacho-iam:9091 напрямую через gRPC-client.
+	// auth-interceptor api-gateway зовет kaname:9091 напрямую через gRPC-client.
 	// ListPermissions из этого перечня убран: такого метода у InternalIAMService
 	// нет, то есть строка проверяла отсутствие того, чего не существует.
 	internalMethods := []string{

@@ -4,7 +4,7 @@
 // Package clients — iam_register_applier.go.
 //
 // IAMRegisterApplier is the register-drainer Applier (corelib outbox/drainer):
-// it replays a decoded FGA register/unregister intent by calling kacho-iam
+// it replays a decoded FGA register/unregister intent by calling kaname
 // InternalIAMService.RegisterResource / UnregisterResource over (optionally) mTLS.
 //
 // kacho-compute никогда не ходит в FGA напрямую; FGA спрятан за IAM.
@@ -50,7 +50,7 @@ type IAMRegisterClient interface {
 }
 
 // IAMRegisterApplier applies fgaintent.Payload register/unregister intents to
-// kacho-iam. Build with NewIAMRegisterApplier; use Apply as the drainer.Applier.
+// kaname. Build with NewIAMRegisterApplier; use Apply as the drainer.Applier.
 type IAMRegisterApplier struct {
 	cli IAMRegisterClient
 }
@@ -81,7 +81,7 @@ func (a *IAMRegisterApplier) Apply(ctx context.Context, eventType string, p fgai
 	switch eventType {
 	case fgaintent.EventRegister:
 		for _, tpl := range p.Tuples {
-			// RSAB β: forward the owner labels + parent-scope so kacho-iam can
+			// RSAB β: forward the owner labels + parent-scope so kaname can
 			// populate its output-only resource_mirror (label+parent sync). Fields
 			// are additive/optional — empty values mirror gracefully.
 			// β-hardening: forward source_version (monotonic per-object) so the
@@ -158,7 +158,7 @@ func sourceVersionPB(t time.Time) *timestamppb.Timestamp {
 // behind its registration — so the wedge lets a grant outlive the resource it
 // grants. Poisoning fails closed instead: the refused write never happened and the
 // partition unblocks. It is not self-healing by itself — an undelivered registration
-// leaves the resource without a mirror row in kacho-iam, hence without an owner
+// leaves the resource without a mirror row in kaname, hence without an owner
 // tuple — so it is paired with the periodic redrive backstop, which turns a poisoned
 // row into a bounded pause rather than a permanent loss.
 func classifyApplyErr(err error) error {

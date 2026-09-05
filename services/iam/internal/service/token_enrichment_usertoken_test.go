@@ -7,7 +7,7 @@ package service
 // (UserOAuthClient) claim-minting branch of TokenEnrichmentService.
 //
 // 5th-audit TEST-medium: userTokenClaims + the user-token lookup branch of
-// EnrichClaims (wired in prod via cmd/kacho-iam/hooks_mux.go .WithUserTokenPort)
+// EnrichClaims (wired in prod via cmd/kaname/hooks_mux.go .WithUserTokenPort)
 // had ZERO test coverage — no test anywhere wired a UserTokenPort into the
 // enrichment service. This is the security-relevant path that stamps
 // kacho_principal_id / kacho_account_id / the DPoP-binding kacho_jkt / x5t_s256

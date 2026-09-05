@@ -7,8 +7,8 @@
 client_credentials** (Ory Hydra) по выпущенным SA-ключам (private_key_jwt,
 см. [`05-sa-keys.md`](05-sa-keys.md)).
 
-Каждый SA backed Hydra OAuth client'ом (хранится в Hydra, не в kacho-iam).
-kacho-iam держит только запись с id, именем и account_id.
+Каждый SA backed Hydra OAuth client'ом (хранится в Hydra, не в kaname).
+kaname держит только запись с id, именем и account_id.
 
 **Use-cases:**
 - Сервисная учетка для CI/CD pipeline (терраформ применяет ресурсы как SA).
@@ -53,7 +53,7 @@ sequenceDiagram
     autonumber
     participant Admin
     participant GW as api-gateway
-    participant IAM as kacho-iam :9090
+    participant IAM as kaname :9090
     participant DB as Postgres
     participant Hydra as Ory Hydra
     participant Out as fga_outbox

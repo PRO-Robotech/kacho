@@ -19,7 +19,7 @@
 #
 # Sub-chart propagation: Helm пропагирует автоматически только `global.*`. Для
 # sub-chart'ов, которым нужны umbrella-значения, дублируем структуру в namespace'е
-# sub-chart'а (`kacho-iam.*`, `kratos-selfservice-ui.*`).
+# sub-chart'а (`kaname.*`, `kratos-selfservice-ui.*`).
 
 # INFRA sec-hardening — optional Helm-owned Namespace carrying Pod Security
 # Admission labels (restricted, warn+audit). Default FALSE: the dev/CI flow
@@ -31,32 +31,32 @@ namespace:
 
 # ЗДЕСЬ ЛЕЖИТ ТОЛЬКО ТО, ЧТО ЧИТАЮТ ШАБЛОНЫ САМОГО ЗОНТИКА.
 #
-# Ключи сабчарта адресуются через его имя (`kacho-iam.kacho.*`) и в этот блок не
+# Ключи сабчарта адресуются через его имя (`kaname.kacho.*`) и в этот блок не
 # попадают: helm не пропагирует верхний уровень внутрь сабчарта. Прежде блок нёс
 # копию всей ветки `kacho.*` «для документации» — восемь ключей, которых не читал
 # ни один шаблон. Копия выглядела главной: оператор правил `--set kacho.subdomains.app=…`
 # либо `--set kacho.iam.jwks.encKeySecretName=…`, рендер проходил, ничего не менялось.
 #
 # Действующие адреса тех же настроек: имена секретов JWKS и хука, а также
-# префиксы поддоменов — `kacho-iam.kacho.*` (ниже). Размеры кэшей отзыва сессий и
+# префиксы поддоменов — `kaname.kacho.*` (ниже). Размеры кэшей отзыва сессий и
 # повторов DPoP настраиваются переменными окружения ПРОЦЕССА края
 # (`api-gateway.extraEnv`), а не этой веткой: их читает api-gateway, и никогда не
-# читал kacho-iam.
+# читал kaname.
 kacho:
   # Корневой домен Kachō Cloud. Читается шаблонами зонтика (ingress, сертификаты).
   # Override per-cluster:
   #   helm upgrade … --set kacho.domain=test.example.com \
-  #                  --set kacho-iam.kacho.domain=test.example.com
+  #                  --set kaname.kacho.domain=test.example.com
   domain: api.kacho.cloud
 
-# ─── kacho-iam sub-chart ─────────────────────────────────────────────────
+# ─── kaname sub-chart ─────────────────────────────────────────────────
 # Helm не пропагирует top-level `kacho.*` в sub-chart автоматически — дублируем
-# в namespace'е sub-chart'а (sub-chart держит fallback в charts/kacho-iam/values.yaml).
-kacho-iam:
-  # kacho-iam использует структуру image.{repository,tag,pullPolicy}; dev-стенд
-  # override'ит в values.dev.yaml на local kacho-iam:dev.
+# в namespace'е sub-chart'а (sub-chart держит fallback в charts/kaname/values.yaml).
+kaname:
+  # kaname использует структуру image.{repository,tag,pullPolicy}; dev-стенд
+  # override'ит в values.dev.yaml на local kaname:dev.
   image:
-    repository: docker.io/prorobotech/kacho-iam
+    repository: docker.io/prorobotech/kaname
     tag: main-be5a45a2
     pullPolicy: IfNotPresent
   kacho:
@@ -64,17 +64,17 @@ kacho-iam:
     subdomains:
       # `app` и `kratos` ПЕРЕЕХАЛИ в `global.kacho.identity` вместе с содержимым
       # настроек службы личности: оно обязано вычисляться и в контексте подчарта
-      # провайдера, где значений kacho-iam нет. Здесь остаётся только то, что
+      # провайдера, где значений kaname нет. Здесь остаётся только то, что
       # читают шаблоны САМОГО подчарта, — иначе ключ до процесса не доедет,
       # а оператор прочтёт строку как заявление о посадке.
       hydra: hydra
     iam:
       # Ротатора нет (см. выше) — остаются только реально потребляемые ключи.
       jwks:
-        encKeySecretName: kacho-iam-jwks-enc-key
+        encKeySecretName: kaname-jwks-enc-key
         encKeySecretKey: enc_key
       # saKey — lifetime discipline for the machine credential (see the
-      # kacho-iam sub-chart values for the full rationale). accessTokenTtl is
+      # kaname sub-chart values for the full rationale). accessTokenTtl is
       # empty by default: the env is then omitted and the provider-global token
       # TTL applies, so no existing deployment changes on upgrade. Production
       # pins it (values.prod.yaml) as defence-in-depth against a future
@@ -91,23 +91,23 @@ kacho-iam:
         # every service-account token.
         #
         # Its reader is the client MIRROR at the previous issuer, so a profile
-        # that translates the contour (`kacho-iam.config.authn.clientToken.enabled`)
+        # that translates the contour (`kaname.config.authn.clientToken.enabled`)
         # has no reader for it at all: iam refuses to start with both set (#1137).
         bindDpop: false
     hooks:
-      tokenHookSecretName: kacho-iam-hook-token
+      tokenHookSecretName: kaname-hook-token
       tokenHookSecretKey: token
   # OPA sidecar pipeline (deny-only Rego guardrails + signed bundle pulled from
-  # kacho-iam Internal RPC). Full defaults live in charts/kacho-iam/values.yaml;
+  # kaname Internal RPC). Full defaults live in charts/kaname/values.yaml;
   # this override block flips the dev-relevant knobs. Disabled by default — the
-  # whole opa/jwks ConfigMap set (now owned by the kacho-iam sub-chart) renders
+  # whole opa/jwks ConfigMap set (now owned by the kaname sub-chart) renders
   # only when opaSidecar.enabled=true.
   opaSidecar:
     enabled: false
     image: openpolicyagent/opa:1.0.0-rootless
     logLevel: info
     jwks:
-      configMapName: kacho-iam-jwks
+      configMapName: kaname-jwks
     resources:
       requests:
         cpu: 20m
@@ -117,24 +117,24 @@ kacho-iam:
         memory: 256Mi
 
 # ─── Cross-cutting authz NetworkPolicy (umbrella template networkpolicy-authz) ─
-# Defense-in-depth pod-to-pod allowlist spanning kacho-iam + api-gateway
+# Defense-in-depth pod-to-pod allowlist spanning kaname + api-gateway
 # + backends — no single owning chart, so the selectors live at umbrella level.
 # Disabled by default (would block :9091 port-forward debugging in dev). The rest
-# of the OPA sidecar config now lives in the kacho-iam sub-chart.
+# of the OPA sidecar config now lives in the kaname sub-chart.
 opaSidecar:
   networkPolicy:
     enabled: false
     iamPodSelector:
       matchLabels:
-        app.kubernetes.io/name: kacho-iam
+        app.kubernetes.io/name: kaname
     apiGatewayPodSelector:
       matchLabels:
         app: api-gateway
-    # Backend services that dial kacho-iam :9091 (per-RPC Check + fga-register).
+    # Backend services that dial kaname :9091 (per-RPC Check + fga-register).
     # A service missing from this list is fail-CLOSED on every RPC once
     # these policies are enforced — it is an allowlist, not a hint. `kacho-storage` is
     # the storage control-plane pod label (chart fullnameOverride, `app: kacho-storage`).
-    # `kacho-geo` and `registry` dial kacho-iam :9091 exactly like the others
+    # `kacho-geo` and `registry` dial kaname :9091 exactly like the others
     # (per-RPC Check; registry additionally uses the fga-register edge). Both were
     # missing, so once these policies are enforced every geo and registry RPC was
     # refused at the network layer — the same fail-closed omission storage had.
@@ -147,7 +147,7 @@ opaSidecar:
           values: [vpc, compute, kacho-nlb, kacho-storage, kacho-geo, registry]
     # Egress-сторона (policy 3). NetworkPolicy действует на ПОД, а не на контейнер,
     # поэтому список исходящих правил обязан покрывать зависимости ОСНОВНОГО
-    # контейнера помеченного пода, а не только OPA-сайдкара. Для kacho-iam это его
+    # контейнера помеченного пода, а не только OPA-сайдкара. Для kaname это его
     # собственная Postgres и Hydra, фасадом к которой он является; без них политика
     # не «сужает трафик», а роняет весь authN/authZ-ярус.
     datastorePodSelector:
@@ -184,9 +184,9 @@ networkPolicy:
               matchLabels: { kacho.cloud/job: geo-data-migration }
       - name: pg-iam
         from:
-          # covers kacho-iam Deployment и `migrate` init-container.
+          # covers kaname Deployment и `migrate` init-container.
           - podSelector:
-              matchLabels: { app: kacho-iam }
+              matchLabels: { app: kaname }
       - name: pg-geo
         from:
           - podSelector:
@@ -222,7 +222,7 @@ networkPolicy:
 #     (templates/certificate.yaml, gated by that component's `mtls.enable`),
 #     signed by kacho-internal-ca. Client-cert URI-SANs are SPIRE-format
 #     spiffe://kacho.cloud/ns/kacho/sa/kacho-<svc> and MUST match the IAM
-#     module-SA seed (kacho-iam SEC-C migration 0009) so the fgaproxy ReBAC gate
+#     module-SA seed (kaname SEC-C migration 0009) so the fgaproxy ReBAC gate
 #     resolves them. Base default OFF; values.dev.yaml turns it ON.
 mtls:
   enabled: false
@@ -270,14 +270,14 @@ mtls:
     secretName: ""
   # ─── bootstrap-operator identity (templates/bootstrap-operator-certificate.yaml) ─
   # A client-auth-ONLY internal-CA leaf whose sole purpose is to call
-  # iam.v1.InternalBootstrapTokenService/MintBootstrapToken on kacho-iam :9091
+  # iam.v1.InternalBootstrapTokenService/MintBootstrapToken on kaname :9091
   # (the cluster-admin token mint has no ReBAC gate and no gateway REST route —
   # its ONLY credential is the caller's client certificate). Deliberately NOT the
   # api-gateway identity: "is the api-gateway" must never be a licence to mint
   # cluster-admin.
   #
-  # Issuing it grants NOTHING by itself — kacho-iam must also carry this exact SAN
-  # in `kacho-iam.config.authn.bootstrapMint.allowedClientSANs` (empty list ⇒ the
+  # Issuing it grants NOTHING by itself — kaname must also carry this exact SAN
+  # in `kaname.config.authn.bootstrapMint.allowedClientSANs` (empty list ⇒ the
   # mint denies everyone, in every mode). Rendered only when mtls.enabled, so the
   # base profile (mTLS off) emits nothing.
   bootstrapOperator:
@@ -407,7 +407,7 @@ global:
     # то же расхождение означает отказ во входе на КАЖДОМ запросе арендатора.
     #
     # Живёт в `global`, потому что читается из ДВУХ контекстов сабчартов
-    # (`registry` и `kacho-iam`), а общим для них является только `.Values.global`
+    # (`registry` и `kaname`), а общим для них является только `.Values.global`
     # — тот же довод, что у формирующих значений службы личности ниже.
     #
     # Объявить вторую сторону ОТДЕЛЬНО по-прежнему можно (одиночная установка
@@ -453,7 +453,7 @@ global:
     # `extraEnv`; в аннотации sha256 вычислить не из чего.
     #
     # Содержимое собирается из этих значений ОДНИМ объявлением —
-    # charts/kacho-iam/templates/_kratos-identity.tpl. Второго текста нет
+    # charts/kaname/templates/_kratos-identity.tpl. Второго текста нет
     # намеренно: разойдясь, карта и отпечаток дали бы ЛОЖНУЮ привязку — та,
     # что не перекатывает под именно тогда, когда содержимое изменилось.
     identity:
@@ -519,7 +519,7 @@ global:
         # Транспорт обратных вызовов — решение ПРОФИЛЯ, не константа шаблона.
         # Боевой профиль объявляет `https`; пустое значение роняет рендер.
         scheme: http
-        # Пусто ⇒ `kacho-iam-internal.<namespace>.svc`.
+        # Пусто ⇒ `kaname-internal.<namespace>.svc`.
         host: ""
         # Пусто ⇒ 9092 (порт слушателя хуков на внутреннем Service).
         port: ""
@@ -621,7 +621,7 @@ global:
 # дерева одним заходом, либо снимаются в пользу `global.imageTag`. До тех пор
 # каждая ссылка обязана называть себя невыводимой — иначе она неотличима от
 # выведенной. Держит это deploy/managed_cluster_profile_test.go.
-# без-вывода: kacho-vpc kacho-compute kacho-api-gateway kacho-iam — коммит прежнего полирепозитория, в этом дереве не разрешается
+# без-вывода: kacho-vpc kacho-compute kacho-api-gateway kaname — коммит прежнего полирепозитория, в этом дереве не разрешается
 # без-вывода: kacho-geo kacho-storage — тег-заглушка `main-latest`, коммита не называет; настоящий тег приходит профилем
 vpc:
   image: docker.io/prorobotech/kacho-vpc:main-3b48f99b

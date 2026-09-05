@@ -76,7 +76,7 @@ spec:
         # and pg_stat_ssl showed its DB backends on plaintext.
         checksum/config: {{ include (print $.Template.BasePath "/configmap.yaml") . | sha256sum }}
     spec:
-      # INFRA sec-hardening (2026-07-16) — единый floor, идентичный kacho-iam.
+      # INFRA sec-hardening (2026-07-16) — единый floor, идентичный kaname.
       securityContext:
         {{- toYaml .Values.podSecurityContext | nindent 8 }}
       volumes:
@@ -191,8 +191,8 @@ spec:
             {{- if .Values.mtls.edges.iam }}
             # storage→iam client-creds — ОДИН leaf на все iam-дозвоны: ProjectService.Get
             # (:9090), per-RPC Check (:9091) и RegisterResource/UnregisterResource
-            # (fga-register owner-tuple, :9091, Internal-only ban #6). ServerName=kacho-iam
-            # ∈ iam server-cert SAN (serverHosts ["kacho-iam","kacho-iam-internal"]) →
+            # (fga-register owner-tuple, :9091, Internal-only ban #6). ServerName=kaname
+            # ∈ iam server-cert SAN (serverHosts ["kaname","kaname-internal"]) →
             # валиден и для :9090, и для internal :9091.
             - name: KACHO_STORAGE_IAM_CLIENT_MTLS_ENABLE
               value: "true"

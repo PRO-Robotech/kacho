@@ -79,7 +79,7 @@ prescribes.
 
 **Why it is not a geo-local defect.** This is the **platform-wide** config
 mechanism: `pkg/config` exposes `LoadPrefixed`, and every kacho service
-(`kacho-vpc`, `kacho-compute`, `kacho-iam`, `kacho-nlb`, …) uses it identically.
+(`kacho-vpc`, `kacho-compute`, `kaname`, `kacho-nlb`, …) uses it identically.
 Env-only 12-factor config is a deliberate cross-service decision; per-edge TLS
 blocks are expressed via env-name prefixing. Migrating to a YAML/viper loader is a
 workspace-wide corelib change, not a per-service one — it would be made once in
@@ -139,7 +139,7 @@ is not there". That is now backwards: the descriptor declares the budget as a **
 principal), and the axis has **no "not applicable" form** for geo — the contract refuses
 to start both when the budget is left undeclared and when it is declared non-positive.
 The in-code rationale is at the assignment site: geo does not decide access in its own
-process, it asks kacho-iam, so the network peer a deny-storm could knock over exists, and
+process, it asks kaname, so the network peer a deny-storm could knock over exists, and
 an exemption ("nobody to knock over") is only open to the model owner.
 
 Predicate, so this entry can be re-checked instead of believed:

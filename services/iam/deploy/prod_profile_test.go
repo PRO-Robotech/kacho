@@ -118,29 +118,29 @@ var restatedDeliberately = map[string]string{
 	// докерной полосы ниже: страж живёт в композиционном корне, отсюда
 	// недостижимом by construction.
 	"env.KACHO_IAM_HOOKS_SERVER_MTLS_ENABLE": "ручка НЕСУЩАЯ, но её страж живёт в " +
-		"композиционном корне (requireHTTPEdgeTLS в cmd/kacho-iam), а не в Config.Validate, " +
+		"композиционном корне (requireHTTPEdgeTLS в cmd/kaname), а не в Config.Validate, " +
 		"который зовёт эта проба, — то есть недостижим отсюда by construction: пакет main не " +
 		"импортируется. Снятие ручки роняет не посадку, а СТАРТ: слушатель вебхуков " +
 		"поднимается умолчанием процесса, и боевой режим отказывается пускать открытым текстом " +
 		"хоп, по которому идёт общий секрет поставщика личности. Держит это " +
-		"TestProductionProfileSatisfiesTheStartupGuards в services/iam/cmd/kacho-iam",
+		"TestProductionProfileSatisfiesTheStartupGuards в services/iam/cmd/kaname",
 	"env.KACHO_IAM_JWKSPROXY_SERVER_MTLS_ENABLE": "ручка НЕСУЩАЯ, но её страж живёт в " +
-		"композиционном корне (requireHTTPEdgeTLS в cmd/kacho-iam) и отсюда недостижим. " +
+		"композиционном корне (requireHTTPEdgeTLS в cmd/kaname) и отсюда недостижим. " +
 		"Снятие роняет СТАРТ: аутентификация с этой поверхности снята задокументированно, и " +
 		"обоснование опирается на одностороннюю TLS — без неё предпосылка собственного " +
 		"исключения ложна. Держит это TestProductionProfileSatisfiesTheStartupGuards",
 	"env.KACHO_IAM_METRICS_SERVER_MTLS_ENABLE": "ручка НЕСУЩАЯ, но её страж живёт в " +
-		"композиционном корне (requireHTTPEdgeTLS в cmd/kacho-iam) и отсюда недостижим. " +
+		"композиционном корне (requireHTTPEdgeTLS в cmd/kaname) и отсюда недостижим. " +
 		"Снятие роняет СТАРТ: счётчики процесса суть внутренняя кардинальность, и открытый " +
 		"текст выносит её всякому, кто слушает сеть пода. Держит это " +
 		"TestProductionProfileSatisfiesTheStartupGuards",
 	"env.KACHO_IAM_REGISTRYTOKEN_SERVER_MTLS_ENABLE": "ручка НЕСУЩАЯ, но её страж живёт в " +
-		"композиционном корне (requireRegistryTokenTLS в cmd/kacho-iam), а не в Config.Validate, " +
+		"композиционном корне (requireRegistryTokenTLS в cmd/kaname), а не в Config.Validate, " +
 		"который зовёт эта проба, — то есть недостижим отсюда by construction: пакет main не " +
 		"импортируется. Снятие ручки роняет не посадку, а СТАРТ: слушатель докерной полосы " +
 		"поднимается умолчанием процесса, и боевой режим отказывается пускать его открытым " +
 		"текстом. Держит это TestProductionProfileSatisfiesTheStartupGuards в " +
-		"services/iam/cmd/kacho-iam — она зовёт того самого стража. Соседние две ручки этой " +
+		"services/iam/cmd/kaname — она зовёт того самого стража. Соседние две ручки этой " +
 		"ноги (CERTFILE/KEYFILE) записи не требуют: их снятие ловит разбор посадки транспорта, " +
 		"достижимый отсюда",
 }
@@ -319,7 +319,7 @@ func TestConfigBridge_MirrorsTheChartTemplate(t *testing.T) {
 //   - `config.Config.Validate` — страж старта службы;
 //   - `coredb.SSLModeFromDSN` + `SSLModeSecure` — ось шифрования до своей базы
 //     (О8 центрального дескриптора посадки; те же две функции зовёт
-//     композиционный корень, `cmd/kacho-iam/posture.go`);
+//     композиционный корень, `cmd/kaname/posture.go`);
 //   - `config.LoadMTLS` + `MTLSConfig.Validate` — посадка транспорта обоих
 //     слушателей (О8, поля PublicCreds/InternalCreds).
 //

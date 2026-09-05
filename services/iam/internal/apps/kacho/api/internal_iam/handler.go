@@ -141,7 +141,7 @@ func NewHandler(l *LookupSubjectUseCase, authz Authorizer) *Handler {
 }
 
 // WithSubjectChange — attaches the SubjectChangeService to the handler.
-// Called from the composition root (cmd/kacho-iam/main.go).
+// Called from the composition root (cmd/kaname/main.go).
 func (h *Handler) WithLogger(l *slog.Logger) *Handler {
 	h.logger = l
 	return h

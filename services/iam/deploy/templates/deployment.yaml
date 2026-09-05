@@ -34,7 +34,7 @@ spec:
         kacho.cloud/config-checksum: {{ include (print $.Template.BasePath "/configmap.yaml") . | sha256sum }}
         # Объявления сбора здесь НЕТ, и это не пропуск. Этот каталог чарта не
         # разворачивается ничем: умбрелла тянет iam каталогом сабчарта
-        # (`deploy/helm/umbrella/charts/kacho-iam`), и объявление, стоявшее
+        # (`deploy/helm/umbrella/charts/kaname`), и объявление, стоявшее
         # здесь, не рендерилось ни в одном профиле — то есть было ровно тем
         # классом, ради которого заведена перепись накопителей: артефакт,
         # выглядящий как работа, у которого нет потребителя.
@@ -84,11 +84,11 @@ spec:
               drop: ["ALL"]
           volumeMounts:
             - name: config
-              mountPath: /etc/kacho-iam
+              mountPath: /etc/kaname
               readOnly: true
           env:
             - name: KACHO_IAM_CONFIG_PATH
-              value: /etc/kacho-iam/config.yaml
+              value: /etc/kaname/config.yaml
             - name: KACHO_IAM_DB_PASSWORD
               valueFrom:
                 secretKeyRef:
@@ -98,7 +98,7 @@ spec:
         - name: {{ .Values.name }}
           image: "{{ .Values.image }}"
           imagePullPolicy: {{ .Values.imagePullPolicy }}
-          command: ["/usr/local/bin/kacho-iam", "serve"]
+          command: ["/usr/local/bin/kaname", "serve"]
           securityContext:
             allowPrivilegeEscalation: false
             readOnlyRootFilesystem: true
@@ -120,7 +120,7 @@ spec:
               containerPort: {{ .Values.ports.hooksHttp | default 9092 }}
           volumeMounts:
             - name: config
-              mountPath: /etc/kacho-iam
+              mountPath: /etc/kaname
               readOnly: true
             {{- if $tls.secretName }}
             - name: tls-server
@@ -129,7 +129,7 @@ spec:
             {{- end }}
           env:
             - name: KACHO_IAM_CONFIG_PATH
-              value: /etc/kacho-iam/config.yaml
+              value: /etc/kaname/config.yaml
             - name: KACHO_IAM_DB_PASSWORD
               valueFrom:
                 secretKeyRef:

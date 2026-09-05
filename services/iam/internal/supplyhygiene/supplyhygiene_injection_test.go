@@ -198,13 +198,13 @@ func TestInjection_DockerfileBuildPathWithLeadingDotIsRecognised(t *testing.T) {
 	// Слепая зона первой редакции: ведущая точка снималась вместе с прочей
 	// пунктуацией, путь становился абсолютным и отбрасывался как принадлежащий
 	// файловой системе контейнера. Обе строки сборки проходили мимо наблюдения.
-	bad := goodDockerfile + "RUN go build ./services/iam/cmd/kacho-iam\n"
+	bad := goodDockerfile + "RUN go build ./services/iam/cmd/kaname\n"
 	root := syntheticServiceRoot(t, goodGoMod, goodGoFile, bad)
 
 	_, findings, err := scanDockerfileCoordinates(root)
 	require.NoError(t, err)
 	require.Len(t, findings, 1, "путь сборки, записанный через ./, не распознан как координата")
-	require.Equal(t, "services/iam/cmd/kacho-iam", findings[0].token)
+	require.Equal(t, "services/iam/cmd/kaname", findings[0].token)
 }
 
 func TestInjection_DockerfileNonCoordinateTokensStaySilent(t *testing.T) {
@@ -212,7 +212,7 @@ func TestInjection_DockerfileNonCoordinateTokensStaySilent(t *testing.T) {
 	// монтирования и путь модуля координатами дерева НЕ являются. Ни один из
 	// них в корне не существует, поэтому ложное распознавание немедленно дало
 	// бы находку.
-	noise := goodDockerfile + `COPY --from=builder /nowhere/kacho-iam /usr/local/bin/kacho-iam
+	noise := goodDockerfile + `COPY --from=builder /nowhere/kaname /usr/local/bin/kaname
 # образ mirror.gcr.io/library/alpine:3.24, монтирование target=/go/pkg/mod
 # модуль github.com/PRO-Robotech/kacho-nowhere/pkg/thing
 `

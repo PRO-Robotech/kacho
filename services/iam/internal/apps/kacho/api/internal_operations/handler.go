@@ -25,7 +25,7 @@ type Handler struct {
 	list *ListIamOperationsUseCase
 }
 
-// NewHandler assembles the Handler. Composition root: cmd/kacho-iam/wiring.go.
+// NewHandler assembles the Handler. Composition root: cmd/kaname/wiring.go.
 func NewHandler(list *ListIamOperationsUseCase) *Handler {
 	return &Handler{list: list}
 }

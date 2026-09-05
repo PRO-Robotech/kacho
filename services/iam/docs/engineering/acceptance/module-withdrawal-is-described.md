@@ -314,7 +314,7 @@ SPDX-License-Identifier: AGPL-3.0-or-later
   выбирает форму отзыва, называет производителя каждому ответу и **заказывает**
   недостающее задачами-преемниками с предикатом у каждой. Реализация —
   §3 и §10
-- **Сервис:** `kacho-iam` — предмет целиком. Затрагивает (заказами, не правкой)
+- **Сервис:** `kaname` — предмет целиком. Затрагивает (заказами, не правкой)
   `services/iam/internal/migrations/`, `services/iam/internal/apps/kacho/seed/`,
   `services/iam/internal/repo/kacho/pg/`. **`proto/` не затрагивает** в этой
   под-фазе: глагол отзыва — предмет `#1034`, и второй контракт об одном предмете
@@ -347,7 +347,7 @@ SPDX-License-Identifier: AGPL-3.0-or-later
 | П7 | снятый ресурс несёт преемника, и преемник — живая строка | `TestIAMCT110_RetiredResourceCarriesItsSuccessor` | тот же файл, строка **541** |
 | П8 | конкуренция снятия и выдачи не оставляет висячей строки | `TestIAMCT112_ConcurrentRetireAndGrantLeaveNoDanglingRow` | тот же файл, строка **573** |
 | П9 | снятая строка не доезжает до проекции В РАБОТАЮЩЕМ процессе, **и страж СЛЕДУЮЩЕГО старта это ловит** | `TestIAMCT2_06_07_RetiredAfterStartDoesNotReachTheProjection` | `grep -n 'func TestIAMCT2_06_07' services/iam/internal/repo/kacho/pg/catalog_snapshot_integration_test.go` → **167** |
-| П10 | страж старта сверяет ЖИВЫЕ строки с литералом и отказывает | `seed.AssertCatalogParity`, зовётся из `serve.go` | `grep -n 'func AssertCatalogParity' services/iam/internal/apps/kacho/seed/catalog_parity.go` → **85**; `grep -n 'AssertCatalogParity' services/iam/cmd/kacho-iam/serve.go` → **214** |
+| П10 | страж старта сверяет ЖИВЫЕ строки с литералом и отказывает | `seed.AssertCatalogParity`, зовётся из `serve.go` | `grep -n 'func AssertCatalogParity' services/iam/internal/apps/kacho/seed/catalog_parity.go` → **85**; `grep -n 'AssertCatalogParity' services/iam/cmd/kaname/serve.go` → **214** |
 | П11 | пустой каталог отличается от расхождения отдельным отказом | `CatalogParityCensus.Empty` | тот же файл, строка **72** |
 | П12 | тексты отказа ключей проекции существуют и разведены по полосам | `pgmaperr.go` — три ветки | `grep -n 'role_rule_ref_res_fk\|role_rule_ref_verb_fk\|role_verb_type_fk' services/iam/internal/repo/kacho/pg/pgmaperr.go` → **337**, **355**, **361** |
 | П13 | писатель проекции объявленных сегментов ОДИН | `roleWriter.ReplaceRuleRefs` | `grep -n 'func (w \*roleWriter) ReplaceRuleRefs' services/iam/internal/repo/kacho/pg/role_repo.go` → **590** |

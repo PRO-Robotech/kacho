@@ -67,7 +67,7 @@ func TestCheckClient_NoPath(t *testing.T) {
 }
 
 func TestCheckClient_NoPath_AlternateMarker(t *testing.T) {
-	// kacho-iam may emit "no_path" instead of "no path"
+	// kaname may emit "no_path" instead of "no path"
 	fake := &fakeInternalIAMForCheck{resp: &iampb.CheckResponse{Allowed: false, Reason: "no_path: tuple missing"}}
 	conn := startFakeIAM(t, nil, fake)
 	c := NewCheckClient(conn)

@@ -71,10 +71,10 @@ func heldInTransaction(t *testing.T, observer *pgxpool.Pool, appName string) int
 // машины, ни от объёма данных.
 func TestShadowDeadlineLeavesNoOpenTransaction(t *testing.T) {
 	dsn := pgtest.NewDB(t)
-	const appName = "kacho-iam-shadow-probe"
+	const appName = "kaname-shadow-probe"
 
 	shadowPool := poolTagged(t, dsn, appName)
-	observer := poolTagged(t, dsn, "kacho-iam-shadow-observer")
+	observer := poolTagged(t, dsn, "kaname-shadow-observer")
 	asker := relverdict.NewAsker(shadowPool)
 
 	ctx := context.Background()
@@ -195,7 +195,7 @@ func TestRollbackOfAnExpiredQuestionKeepsTheConnection(t *testing.T) {
 	}
 
 	t.Run("снятие живым контекстом связь сохраняет", func(t *testing.T) {
-		before, after := openTxThenAbandon(t, "kacho-iam-rollback-live", relverdict.RollbackForTest)
+		before, after := openTxThenAbandon(t, "kaname-rollback-live", relverdict.RollbackForTest)
 		if before != after {
 			t.Fatalf("связь потеряна: backend %d сменился на %d. Снятие транзакции обязано "+
 				"идти контекстом, который жив: иначе каждый сорванный по сроку вопрос стоит "+
@@ -205,7 +205,7 @@ func TestRollbackOfAnExpiredQuestionKeepsTheConnection(t *testing.T) {
 	})
 
 	t.Run("положительный контроль: снятие мёртвым контекстом связь теряет", func(t *testing.T) {
-		before, after := openTxThenAbandon(t, "kacho-iam-rollback-dead",
+		before, after := openTxThenAbandon(t, "kaname-rollback-dead",
 			func(ctx context.Context, tx pgx.Tx) error { return tx.Rollback(ctx) })
 		if before == after {
 			t.Fatalf("мёртвый контекст связь НЕ потерял (backend %d) — проба не различает "+
@@ -235,13 +235,13 @@ func TestShadowDeadlineDoesNotCostTheConnection(t *testing.T) {
 	}
 	ctx := context.Background()
 	shadowPool, err := coredb.NewPool(ctx,
-		dsn+sep+"pool_max_conns=1&application_name=kacho-iam-shadow-churn")
+		dsn+sep+"pool_max_conns=1&application_name=kaname-shadow-churn")
 	if err != nil {
 		t.Fatalf("пул: %v", err)
 	}
 	pgtest.ClosePoolAtEnd(t, shadowPool)
 
-	observer := poolTagged(t, dsn, "kacho-iam-shadow-observer")
+	observer := poolTagged(t, dsn, "kaname-shadow-observer")
 	asker := relverdict.NewAsker(shadowPool)
 
 	backendPID := func() int32 {

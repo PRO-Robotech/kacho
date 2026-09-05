@@ -81,7 +81,7 @@ sequenceDiagram
     autonumber
     participant Cli
     participant GW as api-gateway
-    participant IAM as kacho-iam
+    participant IAM as kaname
     participant DB as Postgres
 
     Cli->>GW: POST /iam/v1/projects<br/>{"account_id":"acc_..","name":"prod"}
@@ -204,7 +204,7 @@ go test -short -count=1 -timeout 120s -run TestProject \
 ## Gotchas / известные ограничения
 
 - **Delete не cascade'ит cross-service** — Compute / VPC / LB будут сообщать
-  «project имеет workload»; на стороне kacho-iam Delete пройдет без проблем,
+  «project имеет workload»; на стороне kaname Delete пройдет без проблем,
   но workload останется orphan-ed (consumer-сервис обязан грациозно переживать
   dangling-ref — деградированный статус, не паника).
 

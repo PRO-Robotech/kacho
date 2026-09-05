@@ -18,7 +18,7 @@ import (
 )
 
 // Клиент владельца величин: `InternalLimitService.Resolve` на ВНУТРЕННЕМ
-// слушателе kacho-iam.
+// слушателе kaname.
 //
 // ПОЧЕМУ СТАРШИНСТВО РАЗРЕШАЕТСЯ ТАМ, А НЕ ЗДЕСЬ. Правило PROJECT > ACCOUNT >
 // DEFAULT требует знать аккаунт проекта, а владелец типа его не знает — у него
@@ -49,7 +49,7 @@ type LimitClient struct {
 	timeout time.Duration
 }
 
-// NewLimitClient создаёт клиента поверх conn ВНУТРЕННЕГО слушателя kacho-iam.
+// NewLimitClient создаёт клиента поверх conn ВНУТРЕННЕГО слушателя kaname.
 func NewLimitClient(conn grpc.ClientConnInterface) *LimitClient {
 	return &LimitClient{cli: iamv1.NewInternalLimitServiceClient(conn), timeout: limitCallTimeout}
 }

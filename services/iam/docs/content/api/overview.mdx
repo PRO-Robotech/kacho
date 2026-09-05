@@ -173,7 +173,7 @@ fail-closed. Полная модель — [Авторизация](/architectur
 flowchart LR
   cli["Клиент"] -->|"Bearer JWT"| agw["api-gateway"]
   agw -->|"verify JWT"| agw
-  agw -->|"iam.v1.* + subject"| iam["kacho-iam"]
+  agw -->|"iam.v1.* + subject"| iam["kaname"]
   iam -->|"Check(subject, relation, object)"| pg[("PostgreSQL<br/>kacho_iam")]
   pg -->|"allow / deny"| iam
 ```

@@ -1,7 +1,7 @@
 // Copyright (c) PRO-Robotech
 // SPDX-License-Identifier: AGPL-3.0-or-later
 
-// Package errors — pgx-free sentinel error family for kacho-iam.
+// Package errors — pgx-free sentinel error family for kaname.
 //
 // Every use-case returns a sentinel-family error (ErrNotFound /
 // ErrAlreadyExists / ErrFailedPrecondition / ErrInvalidArg / ErrInternal /

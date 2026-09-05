@@ -43,7 +43,7 @@ func (f *fakeProjectService) Get(_ context.Context, req *iamv1.GetProjectRequest
 }
 
 // fakeInternalIAM — in-memory InternalIAMServiceServer (симулирует iam internal :9091).
-// НЕ несёт ProjectService — ровно как реальный :9091 листенер kacho-iam, где
+// НЕ несёт ProjectService — ровно как реальный :9091 листенер kaname, где
 // ProjectService зарегистрирован ТОЛЬКО на public :9090.
 type fakeInternalIAM struct {
 	iamv1.UnimplementedInternalIAMServiceServer

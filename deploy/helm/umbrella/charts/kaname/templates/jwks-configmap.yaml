@@ -1,0 +1,62 @@
+# Copyright (c) PRO-Robotech
+# SPDX-License-Identifier: BUSL-1.1
+{{- if .Values.opaSidecar.enabled }}
+{{/*
+KAC-127 Phase 3 (acceptance §5.6, P3-D8) — public-key ConfigMap for OPA JWS
+verification of kaname-signed bundles.
+==========================================================================
+
+This ConfigMap holds the **public** half of the kaname JWKS signing key.
+OPA sidecars (across api-gateway / iam / vpc / compute / lb pods) mount this
+ConfigMap as a volume at `/jwks/` and reference the PEM in their `opa-sidecar-config`
+`keys[].key` field.
+
+ВНИМАНИЕ: наполнять этот ConfigMap НЕКОМУ. Прежний «источник истины» —
+JWKS-ротатор — удалён как вестигиальный; подкоманда, которую он звал, никогда не
+существовала, и подписи бандлов в коде iam тоже нет. Здесь остаётся ПУСТОЙ
+placeholder-PEM, а OPA при включённом sidecar fail-closed'ит проверку подписи
+бандла.
+
+Здесь стояло объяснение «iam не владеет ключом подписи: издатель и подписант —
+Hydra». С задачи #897 это НЕВЕРНО: платформа чеканит свои токены сама, и у iam
+есть ключница подписных ключей со своим сроком, ротацией и публикуемым набором
+(`config.authn.tokenSigning.*`). На этот ConfigMap смена ничего не переносит, и
+переносить нельзя: подпись БАНДЛА и подпись ТОКЕНА — разные предметы с разными
+адресатами и разной ротацией. Ключница токенов под подпись бандлов не
+переиспользуется; реализация подписи бандлов заводит свой ключ и свой lifecycle.
+
+`resource-policy: keep` сохранён на случай, когда подпись бандлов будет
+реализована и у неё появится собственный key-lifecycle.
+
+Configurable values:
+  opaSidecar.jwks.configMapName  — Name of ConfigMap (default `kaname-jwks`).
+  opaSidecar.signingKeyId        — kid that identifies the PEM file in this CM.
+  opaSidecar.jwks.bootstrapKeyPem — base64-or-PEM seed value. Empty by default;
+                                    Phase 2 rotator writes the real key.
+
+Multi-JWK support: during a key rotation grace window this ConfigMap may contain
+BOTH `<old-kid>.pem` and `<new-kid>.pem` entries — OPA loads both keys per
+`opaSidecar.signingKeyId` mapping; bundle signature verifies against whichever
+JWK has the matching kid in the JWS header.
+*/}}
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: {{ .Values.opaSidecar.jwks.configMapName | default "kaname-jwks" }}
+  namespace: {{ .Release.Namespace }}
+  labels:
+    app.kubernetes.io/managed-by: helm
+    app.kubernetes.io/part-of: kacho
+    kacho.cloud/component: jwks-public
+    kacho.cloud/phase: "3"
+    kacho.cloud/kac-ticket: KAC-127
+  annotations:
+    "helm.sh/resource-policy": keep
+    "kacho.cloud/managed-by-rotator": "true"
+data:
+  # Placeholder PEM, который НИКТО не перезаписывает (ротатор удалён, см. выше).
+  # Пустой PEM ⇒ OPA fail-closed по проверке подписи бандла — это осознанное
+  # состояние до реализации bundle-signing, а не временный лаг сидинга.
+  {{ .Values.opaSidecar.signingKeyId | default "kaname-signing-key-current" }}.pem: |
+{{ .Values.opaSidecar.jwks.bootstrapKeyPem | default "" | indent 4 }}
+{{- end }}

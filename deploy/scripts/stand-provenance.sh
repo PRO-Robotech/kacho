@@ -385,8 +385,8 @@ STUB
 
   echo "7. законный близнец: реплики одного образа спрашиваются ОДИН раз"
   fixture_two_good
-  printf 'iam-1\tkacho-iam\tdocker.io/library/kacho-iam:dev\tsha256:ddd\niam-2\tkacho-iam\tdocker.io/library/kacho-iam:dev\tsha256:ddd\niam-3\tkacho-iam\tdocker.io/library/kacho-iam:dev\tsha256:ddd\n' > "$work/pods.tsv"
-  printf '%s\n' "$rev40" > "$work/exec.kacho-iam"
+  printf 'iam-1\tkaname\tdocker.io/library/kaname:dev\tsha256:ddd\niam-2\tkaname\tdocker.io/library/kaname:dev\tsha256:ddd\niam-3\tkaname\tdocker.io/library/kaname:dev\tsha256:ddd\n' > "$work/pods.tsv"
+  printf '%s\n' "$rev40" > "$work/exec.kaname"
   out="$(report kacho)"; rc=$?
   if [ "$rc" -eq 0 ] && [[ "$out" == *"продукта 3 (различных образов 1)"* ]]; then
     ok "перепись назвала ОБЕ величины — поды и образы"

@@ -132,13 +132,13 @@ if sender:
         },
     })
 items.append({
-    "metadata": {"name": "kacho-iam-0"},
+    "metadata": {"name": "kaname-0"},
     "status": {"phase": "Running"},
     "spec": {"initContainers": [], "containers": [{
         "name": "iam",
         "volumeMounts": [],
         "env": [{"name": "KACHO_IAM_HOOK_TOKEN", "valueFrom": {
-            "secretKeyRef": {"name": "kacho-iam-hook-token", "key": "token"}}}],
+            "secretKeyRef": {"name": "kaname-hook-token", "key": "token"}}}],
     }]},
 })
 json.dump({"items": items}, open(out, "w"))

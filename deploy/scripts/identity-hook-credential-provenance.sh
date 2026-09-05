@@ -73,7 +73,7 @@
 set -uo pipefail
 
 NS="${1:-kacho}"
-SECRET_NAME="${KACHO_HOOK_SECRET_NAME:-kacho-iam-hook-token}"
+SECRET_NAME="${KACHO_HOOK_SECRET_NAME:-kaname-hook-token}"
 SECRET_KEY="${KACHO_HOOK_SECRET_KEY:-token}"
 HEADER_NAME="${KACHO_HOOK_HEADER_NAME:-X-Kacho-Hook-Token}"
 RENDERED="${KACHO_IDENTITY_RENDERED_PATH:-/etc/kacho-identity-rendered/kratos.yaml}"

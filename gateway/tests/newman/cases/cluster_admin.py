@@ -122,7 +122,7 @@ CASES.append(Case(
 # ---------------------------------------------------------------------------
 # CLUSTER-ADMIN-GET-403-ORDINARY
 # ---------------------------------------------------------------------------
-# The gateway authz middleware refuses BEFORE the request reaches kacho-iam: the
+# The gateway authz middleware refuses BEFORE the request reaches kaname: the
 # catalog entry `required_relation=system_admin` fails the OpenFGA Check against
 # `cluster:cluster_kacho_root`. Non-admins must not observe the cluster resource.
 CASES.append(Case(

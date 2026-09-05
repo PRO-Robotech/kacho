@@ -155,9 +155,9 @@ func TestValidate_Production_AcceptsDeclaredPlaintextPublicHops(t *testing.T) {
 func TestValidate_Production_AcceptsTLSPublicHopsWithAnchor(t *testing.T) {
 	cfg := publicHopCfg(config.ModeProduction)
 	cfg.AuthN.HydraJWKSURL = "https://kacho-umbrella-hydra-public.kacho.svc:4444/.well-known/jwks.json"
-	cfg.AuthN.HydraJWKSCAFile = "/etc/kacho-iam/tls/server/ca.crt"
+	cfg.AuthN.HydraJWKSCAFile = "/etc/kaname/tls/server/ca.crt"
 	cfg.AuthN.HydraTokenURL = "https://kacho-umbrella-hydra-public.kacho.svc:4444/oauth2/token"
-	cfg.AuthN.HydraTokenCAFile = "/etc/kacho-iam/tls/server/ca.crt"
+	cfg.AuthN.HydraTokenCAFile = "/etc/kaname/tls/server/ca.crt"
 	if err := cfg.Validate(); err != nil {
 		t.Fatalf("Validate() = %v, want nil for https public hops with pinned anchors", err)
 	}

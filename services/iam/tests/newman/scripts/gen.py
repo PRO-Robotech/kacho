@@ -1681,8 +1681,8 @@ def poll_operation_until_done(auth: str = AUTH_INHERIT_OP, required: bool = True
 
 
 _EMIT = Emit(
-    id_slug="kacho-iam",
-    display_name="kacho-iam / newman",
+    id_slug="kaname",
+    display_name="kaname / newman",
     pre_global=lambda key: PRE_GLOBAL,
     post_global=POST_GLOBAL,
     steps_of=_iam_case_steps,

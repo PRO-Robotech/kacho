@@ -2,12 +2,12 @@
 // SPDX-License-Identifier: Apache-2.0
 
 // Package proxytuple holds the ONE declaration of what a resource-owning module
-// may write into the authorization model through kacho-iam's FGA proxy —
+// may write into the authorization model through kaname's FGA proxy —
 // RegisterResource / UnregisterResource. (A third RPC, WriteCreatorTuple, shared
 // this rule and was retired with zero callers — #788.)
 //
 // WHY THIS LIVES IN THE SHARED FOUNDATION AND NOT UNDER THE OWNER'S `internal/`.
-// The rule has two sides that must never disagree: kacho-iam decides whether to
+// The rule has two sides that must never disagree: kaname decides whether to
 // ACCEPT a delivered tuple, and five consumers decide what to EMIT. While the rule
 // lived under `services/iam/internal/`, Go's visibility rule forbade a consumer
 // from importing it, so every consumer knew the rule only as prose — six files

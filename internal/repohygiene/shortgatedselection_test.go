@@ -434,7 +434,7 @@ var shortGatedRunByOwnCIStep = map[string]string{
 	// (`services/<svc>/internal/(repo|clients|reconciler|subscriptionjournal)`) до
 	// него не достаёт by construction, а перенести пробу внутрь отбора нельзя:
 	// проверяемое — сам композиционный корень, и он `package main`.
-	"services/iam/cmd/kacho-iam": pgOutsideMakeTarget,
+	"services/iam/cmd/kaname": pgOutsideMakeTarget,
 
 	// Сверка объявленного манифестом ПОСЕВА модуля с ЖИВОЙ базой (#1891, вторая
 	// половина предиката). Довод тот же и по той же причине: действующий посев

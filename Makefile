@@ -334,7 +334,7 @@ PG_OUTSIDE_SELECTION_PKGS_IAM ?= \
 	./internal/moduleroleparity \
 	./internal/moduleseedparity \
 	./internal/observability/metrics \
-	./cmd/kacho-iam
+	./cmd/kaname
 
 # ─── Хуки git ────────────────────────────────────────────────────────────────
 #

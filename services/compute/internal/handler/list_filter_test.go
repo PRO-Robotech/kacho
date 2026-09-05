@@ -69,7 +69,7 @@ func seedInstances(t *testing.T, r *portmock.InstanceRepo, projectID string, nam
 	return out
 }
 
-// mockAuthCli — handler-test stub of kacho-iam AuthorizeService.BatchCheck.
+// mockAuthCli — handler-test stub of kaname AuthorizeService.BatchCheck.
 //
 // The grant set stays keyed by "<subject>|<resourceType>|<action>" (as it was
 // under the old enumeration API) so a per-object verdict is looked up in the same
@@ -318,7 +318,7 @@ func verbOf(action string) string {
 }
 
 // read==enforce: действие, которое публичный List шлёт в iam, обязано нести verb
-// "list" (его kacho-iam валидирует и записывает в аудит), а РЕШАЮЩЕЕ отношение,
+// "list" (его kaname валидирует и записывает в аудит), а РЕШАЮЩЕЕ отношение,
 // пинуемое на проверке, — быть тем же, которым per-RPC Check гейтит Get
 // (`InstanceService/Get` → `v_get`, permission_map.go).
 //
@@ -343,7 +343,7 @@ func TestListHandlers_PinTheReadRelationOnPerObjectCheck(t *testing.T) {
 		require.NoError(t, err)
 		require.Equal(t, "compute_instance", cli.lastResType)
 		require.Equal(t, "list", verbOf(cli.lastAction),
-			"instance List must send a list verb kacho-iam resolves (read==enforce); got action %q", cli.lastAction)
+			"instance List must send a list verb kaname resolves (read==enforce); got action %q", cli.lastAction)
 		require.Equal(t, "v_get", cli.lastRelation,
 			"пообъектная проверка страницы обязана пинить ТО ЖЕ отношение, которым гейтится Get")
 	})

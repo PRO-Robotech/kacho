@@ -195,7 +195,7 @@ func (uc *InviteUserUseCase) Execute(ctx context.Context, in InviteUserInput) (*
 	}
 
 	// 3. Peer-check project (если указан) — он должен принадлежать тому же
-	// Account. Same-DB read (Project — ресурс kacho-iam, нет cross-service hop).
+	// Account. Same-DB read (Project — ресурс kaname, нет cross-service hop).
 	if in.ProjectID != "" {
 		rd, rerr := uc.repo.Reader(ctx)
 		if rerr != nil {

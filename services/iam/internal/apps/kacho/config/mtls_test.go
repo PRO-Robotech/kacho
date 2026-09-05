@@ -30,12 +30,12 @@ func writeTestCert(t *testing.T) (certFile, keyFile, caFile string) {
 	require.NoError(t, err)
 	tmpl := &x509.Certificate{
 		SerialNumber:          big.NewInt(1),
-		Subject:               pkix.Name{CommonName: "kacho-iam-test"},
+		Subject:               pkix.Name{CommonName: "kaname-test"},
 		NotBefore:             time.Now().Add(-time.Hour),
 		NotAfter:              time.Now().Add(time.Hour),
 		KeyUsage:              x509.KeyUsageDigitalSignature | x509.KeyUsageCertSign,
 		ExtKeyUsage:           []x509.ExtKeyUsage{x509.ExtKeyUsageServerAuth, x509.ExtKeyUsageClientAuth},
-		DNSNames:              []string{"kacho-iam.kacho.svc"},
+		DNSNames:              []string{"kaname.kacho.svc"},
 		IsCA:                  true,
 		BasicConstraintsValid: true,
 	}

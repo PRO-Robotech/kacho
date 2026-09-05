@@ -89,7 +89,7 @@ func (uc *GrantAdminUseCase) WithSubjectStateReader(c subjectStateReader) *Grant
 }
 
 // WithAdminChecker — wires the defense-in-depth ReBAC system_admin gate.
-// Composition-root only (cmd/kacho-iam/wiring.go). nil checker stays
+// Composition-root only (cmd/kaname/wiring.go). nil checker stays
 // fail-closed.
 func (uc *GrantAdminUseCase) WithAdminChecker(c adminChecker) *GrantAdminUseCase {
 	uc.adminCheck = c

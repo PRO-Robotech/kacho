@@ -37,7 +37,7 @@
 //
 // Drainer параметризован generic-типом T (decoded payload). Один Drainer[T] —
 // один outbox-table + один applier. Для двух outbox-таблиц (e.g. fga_outbox +
-// subject_change_outbox в kacho-iam) запускайте две независимые Drainer-инстанции.
+// subject_change_outbox в kaname) запускайте две независимые Drainer-инстанции.
 //
 // LISTEN использует dedicated pgx-connection, hijacked из переданного pool'а.
 // Hijack необходим, потому что LISTEN-state не выживает pool's idle-conn recycle.
@@ -47,7 +47,7 @@
 // random для HA-fairness). Транзакция держит row-lock от claim до mark'а,
 // исключая race-window «claim → apply done, но markSuccess не успел» при HA.
 //
-// # Пример (kacho-iam fga_outbox)
+// # Пример (kaname fga_outbox)
 //
 //	type FGAOutboxEvent struct {
 //	    User, Relation, Object string

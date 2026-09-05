@@ -126,7 +126,7 @@ case "${STUB_MODE:-live}" in
   none) exit 0 ;;
   narrow)
     case "$sel" in
-      app.kubernetes.io/name=kacho-iam) echo "kacho-iam-1 10.0.0.4 9102" ;;
+      app.kubernetes.io/name=kaname) echo "kaname-1 10.0.0.4 9102" ;;
       app.kubernetes.io/name=kacho-nlb) echo "kacho-nlb-1 10.0.0.5 9102" ;;
       *) : ;;
     esac ;;
@@ -138,7 +138,7 @@ case "${STUB_MODE:-live}" in
       app=vpc)                          echo "vpc-1 10.0.0.6 9102" ;;
       app=kacho-geo)                    echo "geo-1 10.0.0.7 9102" ;;
       app=kacho-storage)                echo "storage-1 10.0.0.8 9102" ;;
-      app.kubernetes.io/name=kacho-iam) echo "kacho-iam-1 10.0.0.4 9102" ;;
+      app.kubernetes.io/name=kaname) echo "kaname-1 10.0.0.4 9102" ;;
       app.kubernetes.io/name=kacho-nlb) echo "kacho-nlb-1 10.0.0.5 9102" ;;
       *) : ;;
     esac ;;

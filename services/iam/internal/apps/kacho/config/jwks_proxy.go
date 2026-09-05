@@ -7,7 +7,7 @@
 // The listener is a short-TTL caching reverse-proxy of Hydra's PUBLIC JWKS: the
 // data-plane (kacho-registry) fetches its verification keys from iam instead of
 // dialing Hydra directly, while Hydra stays the token issuer/signer (iam mints
-// nothing). It is served ONLY on the cluster-internal `kacho-iam-internal` Service
+// nothing). It is served ONLY on the cluster-internal `kaname-internal` Service
 // (never external, ban #6) over one-way server-TLS (internal-CA leaf) — the
 // Service wiring lives in kacho-deploy. The upstream Hydra JWKS URL is resolved
 // via AuthNConfig.ResolveHydraJWKSURL (env KACHO_IAM_HYDRA_JWKS_URL).

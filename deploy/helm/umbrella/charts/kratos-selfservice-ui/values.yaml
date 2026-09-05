@@ -22,7 +22,7 @@ kratosSelfServiceUI:
   # There is NO committed default: a chart that ships one runs every install
   # (incl. production) on a git-known, world-readable signing key (CWE-798).
   #   - prod: set .existingSecret → operator-provisioned Secret (mirrors the
-  #     kacho-iam hook-token pattern), consumed via secretKeyRef.
+  #     kaname hook-token pattern), consumed via secretKeyRef.
   #   - dev : set .value → a throwaway inline secret for the kind stand.
   # Neither set (while enabled) → the template FAILS render (fail-closed).
   cookieSecret:
@@ -38,7 +38,7 @@ kratosSelfServiceUI:
     secretName: ""
     key: ca.crt
     mountPath: /etc/kratos-ui-ca
-  # Restricted securityContext floor (parity with kacho-iam / kacho-geo). The
+  # Restricted securityContext floor (parity with kaname / kacho-geo). The
   # Ory kratos-selfservice-ui-node image runs as UID 10000; readOnlyRootFilesystem
   # is satisfied by redirecting HOME + npm cache into the emptyDir /tmp.
   podSecurityContext:

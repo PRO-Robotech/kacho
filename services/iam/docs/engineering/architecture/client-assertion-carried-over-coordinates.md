@@ -48,7 +48,7 @@ git grep -l 'ResolveAssertionClient' -- 'services/iam' ':!*_test.go'
 | 2 | `services/iam/internal/repo/kacho/pg/iam_extension_repos.go` | обратный резолв по зеркальному значению для **обратного вызова** прежнего провайдера | **оставлено как путь к прежнему эндпоинту** |
 | 3 | `services/iam/internal/repo/kacho/pg/user_oauth_clients_repos.go` | то же для клиента пользовательского токена | **оставлено как путь к прежнему эндпоинту** |
 | 4 | `services/iam/internal/service/token_enrichment_service.go` | зеркало как **значение** утверждения и обратный резолв прежнего пути | **оставлено**: §2.11 требует, чтобы множества утверждений двух путей выдачи совпадали, поэтому значение остаётся, пока жив второй путь |
-| 5 | `services/iam/cmd/kacho-iam/hooks_mux.go` | провязка адаптеров обратного вызова | **оставлено как путь к прежнему эндпоинту** |
+| 5 | `services/iam/cmd/kaname/hooks_mux.go` | провязка адаптеров обратного вызова | **оставлено как путь к прежнему эндпоинту** |
 | 6 | `services/iam/internal/clients/hydra_oauth_clients.go` | заведение клиента во внешнем сервере | **оставлено**: предмет снятия — сам внешний сервер |
 | 7 | `services/iam/internal/domain/service_account_oauth_client.go` | проверка формы зеркального значения | **оставлено**: колонка `NOT NULL`, значение обязано быть законным, пока колонка есть |
 | 8 | `services/iam/internal/apps/kacho/api/sa_keys/usecases.go` | шапка глагола называет запись маппинга | **оставлено**, вместе с самой записью |

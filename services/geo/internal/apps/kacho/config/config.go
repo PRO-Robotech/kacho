@@ -56,7 +56,7 @@ type Config struct {
 	// production-mode; KACHO_*_AUTH_MODE=dev на кластере — security-долг»).
 	AuthMode string `envconfig:"KACHO_GEO_AUTH_MODE" default:"production"`
 
-	// AuthZIAMGRPCAddr — internal endpoint kacho-iam для per-RPC Check
+	// AuthZIAMGRPCAddr — internal endpoint kaname для per-RPC Check
 	// (ребро geo→iam authz), обычно iam-internal :9091.
 	//
 	// Пустое значение — ОТКАЗ СТАРТА, а не грациозный подъём без проверки прав:
@@ -133,7 +133,7 @@ type Config struct {
 	// Почему отсечка нужна и geo, хотя его читает каждый тенант: бюджет тратят
 	// ТОЛЬКО непоглощаемые кэшем исходы, а законное чтение справочника
 	// разрешается и кэшируется — то есть штатный тенант её не видит вовсе.
-	// Платит ровно тот, кто штурмует отказами, и платит за него не kacho-iam.
+	// Платит ровно тот, кто штурмует отказами, и платит за него не kaname.
 	AuthZDenyBudgetPerSec float64 `envconfig:"KACHO_GEO_AUTHZ_DENY_BUDGET_PER_SEC" default:"100"`
 
 	// AdmissionPublic / AdmissionInternal — ПОТОЛОК ТЕМПА и ОДНОВРЕМЕННОСТИ на

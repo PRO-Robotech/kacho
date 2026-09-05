@@ -36,7 +36,7 @@ func writeCmdTestCert(t *testing.T) (certFile, keyFile, caFile string) {
 		NotAfter:              time.Now().Add(time.Hour),
 		KeyUsage:              x509.KeyUsageDigitalSignature | x509.KeyUsageCertSign,
 		ExtKeyUsage:           []x509.ExtKeyUsage{x509.ExtKeyUsageServerAuth, x509.ExtKeyUsageClientAuth},
-		DNSNames:              []string{"kacho-iam-internal.kacho.svc"},
+		DNSNames:              []string{"kaname-internal.kacho.svc"},
 		IsCA:                  true,
 		BasicConstraintsValid: true,
 	}
@@ -109,7 +109,7 @@ func TestSEC_I_IAMAuthzDialCreds_ClientCert_Enabled(t *testing.T) {
 		"KACHO_COMPUTE_IAM_AUTHZ_MTLS_CERTFILE":   certFile,
 		"KACHO_COMPUTE_IAM_AUTHZ_MTLS_KEYFILE":    keyFile,
 		"KACHO_COMPUTE_IAM_AUTHZ_MTLS_CAFILES":    caFile,
-		"KACHO_COMPUTE_IAM_AUTHZ_MTLS_SERVERNAME": "kacho-iam-internal.kacho.svc",
+		"KACHO_COMPUTE_IAM_AUTHZ_MTLS_SERVERNAME": "kaname-internal.kacho.svc",
 	})
 	creds, err := grpcclient.TLSClientTransportCreds(cfg.IAMAuthzMTLS)
 	require.NoError(t, err, "valid trio → client-cert creds")

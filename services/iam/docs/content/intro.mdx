@@ -133,7 +133,7 @@ flowchart LR
     agw["api-gateway<br/>gRPC-proxy + REST + JWT"]
   end
   subgraph cp["Control plane"]
-    iam["kacho-iam<br/>:9090 public · :9091 internal"]
+    iam["kaname<br/>:9090 public · :9091 internal"]
     peers["kacho-vpc · kacho-compute<br/>kacho-geo · kacho-nlb"]
   end
   subgraph idp["Identity providers"]
@@ -152,7 +152,7 @@ flowchart LR
   peers -->|"InternalIAMService.Check"| iam
 ```
 
-Система построена по принципу **database-per-service**: kacho-iam владеет схемой `kacho_iam` и
+Система построена по принципу **database-per-service**: kaname владеет схемой `kacho_iam` и
 общается с другими доменами только по API. Права хранятся в той же схеме, и проверка `Check`
 складывает вердикт запросом к ней — отдельного хранилища отношений нет. Подробнее —
 [Модель авторизации](/architecture/authz).

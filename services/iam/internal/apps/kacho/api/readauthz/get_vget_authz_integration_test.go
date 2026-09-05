@@ -102,7 +102,7 @@ func newReadAuthzFixture(t *testing.T) *readAuthzFixture {
 	t.Cleanup(pool.Close)
 	repo := kachopg.New(pool, nil)
 
-	// ТА ЖЕ дверь, что провязывает композиционный корень (cmd/kacho-iam:
+	// ТА ЖЕ дверь, что провязывает композиционный корень (cmd/kaname:
 	// authzcascade.Wrap(relverdict.NewAsker(pool))). Собрать её здесь иначе
 	// значило бы проверять не тот путь, по которому идёт продукт.
 	f := &readAuthzFixture{pool: pool, repo: repo, gates: authzcascade.Wrap(relverdict.NewAsker(pool))}

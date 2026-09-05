@@ -32,7 +32,7 @@ import (
 // SystemPrincipal). Поэтому запрос с реальным principal тут = trusted principal и
 // НЕ anonymous, даже если tenant-headers пусты. Project-scoping энфорсится ниже —
 // per-object authz-интерсептором (FGA Check) + listFilter, а не этим guard'ом.
-// Зеркалит kacho-iam `authzguard.IsAnonymous` и kacho-vpc `principalForwarded`.
+// Зеркалит kaname `authzguard.IsAnonymous` и kacho-vpc `principalForwarded`.
 func principalForwarded(ctx context.Context) bool {
 	p := operations.PrincipalFromContext(ctx)
 	if p.ID == "" || p.Type == "" {

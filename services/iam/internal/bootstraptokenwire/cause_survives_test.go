@@ -83,7 +83,7 @@ func mintWith(t *testing.T, s TokenSigner, c ClaimsComposer) (bootstraptoken.Min
 
 func TestUnavailabilityKeepsItsCauseForTheLog(t *testing.T) {
 	// Форма, в которой причину отдаёт ключница: признак + текст зависимости.
-	cause := errors.New("dial tcp: lookup kacho-iam-db.kacho.svc: no such host")
+	cause := errors.New("dial tcp: lookup kaname-db.kacho.svc: no such host")
 	wrapped := errors.Join(tokensigner.ErrNoSigningKey, cause)
 
 	_, err := mintWith(t, signerStub{err: wrapped}, claimsStub{claims: map[string]any{}})

@@ -63,7 +63,7 @@ func goodEndpoints(mode config.Mode, sslMode string) config.Config {
 			IdentityProvider:     config.IdentityProviderExternal,
 			TrustedForwarderSANs: []string{"spiffe://kacho.cloud/ns/kacho/sa/kacho-api-gateway"},
 			HydraAdminURL:        "https://kacho-umbrella-hydra-admin.kacho.svc:4445",
-			HydraAdminCAFile:     "/etc/kacho-iam/tls/server/ca.crt",
+			HydraAdminCAFile:     "/etc/kaname/tls/server/ca.crt",
 			// Both hops to the provider's PUBLIC listener declared, in the plain
 			// http the provider actually serves there — the shape the deployed
 			// profiles carry. They are part of the fixture, not of any test's
@@ -160,7 +160,7 @@ func TestValidate_Production_SecretFromEnv_OK(t *testing.T) {
 // require/verify-ca/verify-full принимаются). Ось судит теперь центральный
 // дескриптор посадки — один перечень безопасных значений на всё дерево вместо
 // копии у каждого сервиса (задача продукта #1406), — и пробы переехали за ней в
-// `cmd/kacho-iam/posture_test.go`, к тому месту, которое эту ось решает.
+// `cmd/kaname/posture_test.go`, к тому месту, которое эту ось решает.
 //
 // Оставить их здесь значило бы утверждать про `Validate()` то, чего она больше
 // не делает: они стали бы либо красными без предмета, либо (после ослабления)

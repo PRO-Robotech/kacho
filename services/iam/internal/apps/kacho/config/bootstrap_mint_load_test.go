@@ -16,7 +16,7 @@ package config_test
 //	    allowed-client-sans:
 //	      - spiffe://kacho.cloud/ns/kacho/sa/kacho-bootstrap-operator
 //
-// into kacho-iam's config.yaml (charts/kacho-iam/templates/configmap.yaml), and
+// into kaname's config.yaml (charts/kaname/templates/configmap.yaml), and
 // authzguard.CallerPolicy admits exactly those SANs. A silent mismatch between
 // the YAML key and the mapstructure tag would not fail any build: it would render
 // an allow-list nobody reads, the mint would deny EVERY caller (fail-closed, so no
@@ -31,7 +31,7 @@ import (
 	"github.com/PRO-Robotech/kacho-iam/internal/apps/kacho/config"
 )
 
-// chartShapedConfig — the exact YAML shape charts/kacho-iam/templates/configmap.yaml
+// chartShapedConfig — the exact YAML shape charts/kaname/templates/configmap.yaml
 // emits for the authn section (mode + the bootstrap-mint allow-list).
 const chartShapedConfig = `
 authn:
@@ -98,7 +98,7 @@ func TestLoad_BootstrapMintAllowlist_DefaultEmpty(t *testing.T) {
 // TestLoad_BootstrapMintSigningKeyEnv_Default — the mint's ENABLEMENT switch is
 // the presence of the signing key in the named env var; the default name is the
 // one the chart's secretKeyRef populates
-// (charts/kacho-iam/templates/deployment.yaml).
+// (charts/kaname/templates/deployment.yaml).
 func TestLoad_BootstrapMintSigningKeyEnv_Default(t *testing.T) {
 	cfg, err := config.Load("")
 	if err != nil {

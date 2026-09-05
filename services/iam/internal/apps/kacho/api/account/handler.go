@@ -40,7 +40,7 @@ type Handler struct {
 }
 
 // NewHandler собирает Handler из готовых use-case'ов. Composition root —
-// `cmd/kacho-iam/main.go::buildServices`.
+// `cmd/kaname/main.go::buildServices`.
 func NewHandler(c *CreateAccountUseCase, u *UpdateAccountUseCase, d *DeleteAccountUseCase, g *GetAccountUseCase, l *ListAccountsUseCase) *Handler {
 	return &Handler{create: c, update: u, delete: d, get: g, list: l}
 }

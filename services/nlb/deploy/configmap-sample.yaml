@@ -94,7 +94,7 @@ authz:
     ttl: 5s                   # NFR KAC-108: ≤ 10s — выдерживается с margin
     size: 10000               # LRU capacity (entries)
   deny-budget-per-sec: 100  # отсечка шторма непоглощаемых кэшем проверок (на принципала)
-  # RBAC sub-phase D §11 (issue #111): per-object filtered List через kacho-iam
+  # RBAC sub-phase D §11 (issue #111): per-object filtered List через kaname
   # AuthorizeService.BatchCheck (reuse iam conn). default on,
   # fail-closed (security.md). ENV: KACHO_NLB_AUTHZ__LIST_FILTER__ENABLED etc.
   list-filter:

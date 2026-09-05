@@ -46,14 +46,14 @@ SQL запрещён.
                          gateway/         
                           /              \
                          v                v
-              kacho-iam               kacho-vpc
+              kaname               kacho-vpc
                   (Account/Project)    (этот сервис)
                          ^                ^
                          |                |
                          +-- gRPC ref-validation
 ```
 
-`kacho-vpc` зависит от `kacho-iam` через порт-интерфейс
+`kacho-vpc` зависит от `kaname` через порт-интерфейс
 (`ProjectClient`) — проверяет существование project (DB-колонка `project_id` =
 id владельца-проекта) и достает `account_id` (parent-scope) для
 IPAM-cascade. Никакой прямой доступ к чужой БД.
@@ -63,7 +63,7 @@ IPAM-cascade. Никакой прямой доступ к чужой БД.
 | Сосед | Канал | Что делает |
 |---|---|---|
 | `gateway/` | gRPC `:9090` → REST | Маршрутизирует публичные RPC, преобразует ошибки в HTTP-status |
-| `kacho-iam` | gRPC client | `ProjectClient.Exists(projectID)`, `ProjectClient.GetCloudIDFromProject(projectID)` (project existence + account-id lookup; `projectID` = id владельца-проекта) |
+| `kaname` | gRPC client | `ProjectClient.Exists(projectID)`, `ProjectClient.GetCloudIDFromProject(projectID)` (project existence + account-id lookup; `projectID` = id владельца-проекта) |
 | `kacho-compute`, прочие IP-потребители | gRPC `:9091` | `InternalAddressService.AllocateInternalIP` / `AllocateInternalIPv6` / `AllocateExternalIP` + referrer-tracking; валидация NIC-spec (Subnet/SG) |
 | `kacho-geo` (Geography owner, leaf) | gRPC client (исходящий) | `geo.v1.ZoneService.Get` — валидация `zone_id` (Region/Zone — leaf-домен geo) |
 | Внутрикластерные потребители событий | Postgres `LISTEN/NOTIFY` (`vpc_outbox`) | Транзакционный outbox-журнал доменных мутаций |
@@ -114,7 +114,7 @@ vpc serve                        — запуск gRPC-серверов
   in-flight LRO; пул не явный.
 - Подключение к Postgres через `pgxpool` (один пул).
 - FGA register-drainer (`pkg/outbox/drainer`) — слушает
-  `kacho_vpc_fga_register_outbox` и применяет owner-tuple intents через `kacho-iam`.
+  `kacho_vpc_fga_register_outbox` и применяет owner-tuple intents через `kaname`.
 
 ### 2.2 Хранилище
 
@@ -168,8 +168,8 @@ IPAM-allocate и default-SG creation выполняются inline в service-с
 | `KACHO_VPC_DB_MAX_CONNS` | `0` (pgx default = `max(4, NumCPU)`) | Размер pgx pool'а. Прокидывается в DSN как `pool_max_conns` **только** для pgxpool — миграции используют DSN без него (иначе `database/sql` передает `pool_max_conns` серверу как unknown PG-параметр → fatal) |
 | `KACHO_VPC_GRPC_PORT` | `9090` | Публичный gRPC |
 | `KACHO_VPC_INTERNAL_PORT` | `9091` | Internal gRPC |
-| `KACHO_VPC_IAM_GRPC_ADDR` | `iam.kacho.svc:9090` | Endpoint kacho-iam (`extapi.iam.endpoint`) |
-| `KACHO_VPC_IAM_TLS` | `false` | TLS на канале к kacho-iam (`extapi.iam.tls.enable`) |
+| `KACHO_VPC_IAM_GRPC_ADDR` | `iam.kacho.svc:9090` | Endpoint kaname (`extapi.iam.endpoint`) |
+| `KACHO_VPC_IAM_TLS` | `false` | TLS на канале к kaname (`extapi.iam.tls.enable`) |
 
 | `KACHO_VPC_AUTH_MODE` | `dev` | `dev / production / production-strict` |
 
@@ -320,7 +320,7 @@ Cross-cutting и internal transport (`internal/handler/`):
 ### 3.6 Слой `clients/`
 
 `iam_client.go` (+ `project_cache.go`): реализует `ProjectClient` поверх
-`grpc.ClientConn` к `kacho-iam`. Используется в worker'ах сервисов
+`grpc.ClientConn` к `kaname`. Используется в worker'ах сервисов
 для existence-check project и lookup `cloud_id`.
 
 ### 3.7 Слой `config/` и `migrations/`
@@ -347,7 +347,7 @@ Cross-cutting и internal transport (`internal/handler/`):
 1. Чтение `Config`.
 2. Открытие `pgxpool.Pool`.
 3. Создание `operations.Repo` (corelib).
-4. Открытие gRPC-клиента к kacho-iam (`ProjectClient`).
+4. Открытие gRPC-клиента к kaname (`ProjectClient`).
 5. Инстанцирование `*Repo` объектов.
 6. Инстанцирование `*Service` объектов с проброшенными портами.
 7. Инстанцирование двух gRPC-слушателей (публичный `:9090` и internal `:9091`)
@@ -1084,7 +1084,7 @@ umbrella-чартом `kacho-umbrella` (`deploy/helm/umbrella/`) для dev-ст
 
 | Уровень | Защита |
 |---|---|
-| Транспорт (cross-service) | TLS на gRPC к kacho-iam (`KACHO_VPC_IAM_TLS`) |
+| Транспорт (cross-service) | TLS на gRPC к kaname (`KACHO_VPC_IAM_TLS`) |
 | Транспорт (cross-service DB) | sslmode для pgx DSN |
 | AuthN | Сейчас не реализован — IAM scaffolding через metadata headers, future — JWT |
 | AuthZ (object-scope) | per-RPC FGA-Check из `internal/check.PermissionMap` на обоих листенерах (fail-closed для RPC вне карты) |
@@ -1318,7 +1318,7 @@ baseline в `tests/k6/results/BASELINE.md`.)
 
 1. Load config.
 2. Whitelist AuthMode (`dev/production/production-strict`); strict-проверки TLS+sslmode.
-3. Pool + opsRepo + projectClient (gRPC к kacho-iam) + zoneClient (gRPC к kacho-geo).
+3. Pool + opsRepo + projectClient (gRPC к kaname) + zoneClient (gRPC к kacho-geo).
 4. Все `*Repo` и `*Service`.
 5. Два `*grpc.Server` с interceptor-ами.
 6. Регистрация handler-ов на нужный сервер.
@@ -1391,7 +1391,7 @@ kacho-vpc/
 │   │   ├── repository.go          — общий pool/transactor
 │   │   └── *_integration_test.go  — testcontainers
 │   ├── clients/
-│   │   └── iam_client.go (+ project_cache.go) — ProjectClient через gRPC к kacho-iam
+│   │   └── iam_client.go (+ project_cache.go) — ProjectClient через gRPC к kaname
 │   ├── handler/                   — cross-cutting / internal transport (см. §3.5)
 │   │   │   (OperationService.Get/Cancel сведён в pkg/operations/operationspb)
 │   │   ├── internal_address_allocate_handler.go — InternalAddressService (IPAM)

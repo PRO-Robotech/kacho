@@ -218,7 +218,7 @@ SPDX-License-Identifier: AGPL-3.0-or-later
 | О5 use-case четырёх глаголов, О16 гейт права, О4 регистрация | `4576d8c911` | `git ls-files services/iam/internal/apps/kacho/api/module/` → **7** файлов: `apply.go authz.go authz_order_test.go handler.go plan.go ports.go read.go` |
 | О15 запись метаданных операции в реестр резолвера | `b29f26f4da` | — |
 | О11 **гейт Г1** | `08c8f57cd4` | `internal/repohygiene/catalogwriterlock{,_test,_injection_test}.go` |
-| О10 гейт провязки видит **второго** вызывающего | `96b3f1fea7` | `services/iam/cmd/kacho-iam/module_catalog_verb_wiring{,_injection}_test.go` |
+| О10 гейт провязки видит **второго** вызывающего | `96b3f1fea7` | `services/iam/cmd/kaname/module_catalog_verb_wiring{,_injection}_test.go` |
 
 **Четыре требования к Г1 (§7) исполнены, и каждое перемерено, а не объявлено:**
 судит по узлу разбора (`grep -cE 'go/ast\|go/parser\|ast\.'` по телу гейта → **38**,
@@ -316,7 +316,7 @@ SPDX-License-Identifier: AGPL-3.0-or-later
 | **П43** | строки каталога пишет ровно ОДИН исполняющий прод-файл | `catalog_writer.go`. Текстовый предикат даёт **2**, но `internal/check/catalog_seed_parity.go` операторов не ИСПОЛНЯЕТ: `grep -cE 'Exec\|Query'` → **0** |
 | **П44** | записанное отвержение счётчика ревизии каталога с предикатом переоткрытия | `rule-segments-have-a-referent.md` §4.2 п. 6 |
 | **П45** | **дерево само называет класс «расхождение появляется, когда строка снята в РАБОТАЮЩЕМ процессе»** | `services/iam/internal/catalog/rows.go:18-22`, дословно |
-| **П46** | **гейт провязки применителя и объявленная им ГРАНИЦА** | `services/iam/cmd/kacho-iam/module_catalog_apply_wiring_test.go:41-46`, дословно: «Применитель, переданный чужому пакету, который позвал бы применение у себя, этим гейтом не виден; такой формы в дереве нет, а появившись, **она обязана быть учтена своим изменением**» |
+| **П46** | **гейт провязки применителя и объявленная им ГРАНИЦА** | `services/iam/cmd/kaname/module_catalog_apply_wiring_test.go:41-46`, дословно: «Применитель, переданный чужому пакету, который позвал бы применение у себя, этим гейтом не виден; такой формы в дереве нет, а появившись, **она обязана быть учтена своим изменением**» |
 | **П47** | **раскладка домов**: `api/<resource>/` — дом ГЛАГОЛА, `apps/kacho/<предмет>/` — дом механизма | `ls services/iam/internal/apps/kacho/api/ \| wc -l` → **27** (среди них `cluster`, `limit`, `internal_iam`, `internal_operations`); вне `api/` — **9**, и `modulecatalog` среди них |
 | **П49** | **порт стража ДВУХметодный**: живое множество **и снятое**, множества не пересекаются by construction | `catalog_parity.go:87-94`. Предикат смены формы: `git show 9b738ac148:…/catalog_parity.go \| grep -c ReadRetiredCatalog` → **0**, на `d4fb573a06` → **3** |
 | **П50** | **сверка отдаёт расхождение ТРЕМЯ корзинами и вердикт по двум из них** | `MissingRows` (:110), `ExtraRows`, **`WithdrawnRows`** (:120), и `Diverged()` (:132) = `len(MissingRows) > 0 \|\| len(ExtraRows) > 0` — снятое в вердикт **не входит** |
@@ -1270,15 +1270,15 @@ Production-complete в своих границах (ban #14).
 | О1 | контракт `InternalModuleService` — `Plan`, `Apply`, `Get`, `List`; ступени объявлены **явно у всех четырёх** | `proto/kacho/cloud/iam/v1/internal_module_service.proto` |
 | О2 | регенерация каталога прав; обе встроенные копии побайтово равны | порождённый артефакт, §4.3 |
 | О3 | **шесть правок одного файла, а не одна** (В1(2)): запись `Apply` в `sensitiveACR2Set()` + **четыре числа** — 32→33 трижды, 287→290 «рутина», 346→350 «итог каталога» | `gateway/internal/middleware/permission_catalog_acr_invariant_test.go`, §4.3 |
-| О4 | регистрация службы **только** на внутреннем слушателе + проба ban #6 | `services/iam/cmd/kacho-iam/grpc_register.go` |
+| О4 | регистрация службы **только** на внутреннем слушателе + проба ban #6 | `services/iam/cmd/kaname/grpc_register.go` |
 | О5 | use-case `Plan`, `Apply`, `Get`, `List` | `services/iam/internal/apps/kacho/api/module/` |
 | О6 | производитель отпечатка; сверка отпечатка ОДНИМ оператором после замка; сверка потолков | `services/iam/internal/repo/kacho/pg/catalog_writer.go` |
 | О7 | сверка паритета **внутри транзакции** — **той же** функцией (П33) через порт над транзакцией (П35) | там же |
 | О8 | счёт переселяемого на пути `Plan` — **общим выражением** с отбором применителя (В2) | `catalog_writer.go` |
 | О9 | аудит в транзакции применителя; актор от вызывающего; процессный актор на пути старта | `catalog_writer.go` + `module_catalog_apply.go` |
-| О10 | **расширение гейта провязки** на второго вызывающего (В3, П46) | `services/iam/cmd/kacho-iam/module_catalog_apply_wiring_test.go` |
+| О10 | **расширение гейта провязки** на второго вызывающего (В3, П46) | `services/iam/cmd/kaname/module_catalog_apply_wiring_test.go` |
 | О11 | **гейт Г1**: всякий прод-писатель строк каталога берёт замок | `internal/repohygiene/` |
-| О12 | интеграционные пробы + пробы регистрации | `services/iam/internal/repo/kacho/pg/`, `services/iam/cmd/kacho-iam/` |
+| О12 | интеграционные пробы + пробы регистрации | `services/iam/internal/repo/kacho/pg/`, `services/iam/cmd/kaname/` |
 | О14 | **классификация четырёх методов относительно `GatewayFrontedInternalRPCs()`** — решение принято и записано (§2.12), а не оставлено умолчанием | `services/iam/internal/authzguard/caller_policy.go` — правка **не вносится**, см. §2.12 |
 | О15 | **запись метаданных операции в реестр резолвера** с разбором, почему осиротеть ей негде | `services/iam/internal/apps/kacho/operationresolver/metadata_coverage_test.go` |
 | О16 | **гейт `system_admin@cluster` в хендлере, первым стейтментом** — на каждом из четырёх глаголов | `services/iam/internal/apps/kacho/api/module/` |

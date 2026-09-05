@@ -259,7 +259,7 @@ func runServe(cfg config.Config) error {
 		}
 		authzConn, err = dialPeerCreds(cfg.AuthZIAMGRPCAddr, authzCreds, true)
 		if err != nil {
-			return fmt.Errorf("dial kacho-iam (authz): %w", err)
+			return fmt.Errorf("dial kaname (authz): %w", err)
 		}
 		defer authzConn.Close()
 		logger.Info("compute→iam read/authz mTLS state",
@@ -268,7 +268,7 @@ func runServe(cfg config.Config) error {
 		)
 	}
 
-	// Резолв величин квоты идёт на ВНУТРЕННИЙ слушатель kacho-iam — по тому же
+	// Резолв величин квоты идёт на ВНУТРЕННИЙ слушатель kaname — по тому же
 	// адресу, что уже объявлен оператором для проверки прав.
 	//
 	// Это НЕ вывод адреса из чужого: адрес внутреннего контура объявлен
@@ -300,7 +300,7 @@ func runServe(cfg config.Config) error {
 		}
 		defer stopQuotaSync()
 	} else {
-		logger.Warn("resource-count quota: no internal kacho-iam endpoint, limits resolver is OFF " +
+		logger.Warn("resource-count quota: no internal kaname endpoint, limits resolver is OFF " +
 			"and the limit snapshot will NEVER catch up with the authority. " +
 			"The charging trigger still enforces, so creates are refused with " +
 			"\"no ceiling stated\" until the endpoint is configured, and an administrator " +
@@ -432,7 +432,7 @@ func runServe(cfg config.Config) error {
 
 	// register-drainer — applies FGA owner-tuple register/unregister intents
 	// (compute_fga_register_outbox, written transactionally by repo.Insert/Delete)
-	// via kacho-iam InternalIAMService.RegisterResource/UnregisterResource over the
+	// via kaname InternalIAMService.RegisterResource/UnregisterResource over the
 	// (optionally mTLS) compute→iam edge. Idempotent + retry-on-Unavailable; the
 	// owner-tuple is never lost. Default-on; without it created resources get no
 	// per-resource FGA tuple. Drainer Run-loop + outbox backstop (reconciler +
@@ -910,11 +910,11 @@ func insecureEdgesInProductionStrict(cfg config.Config) error {
 	return fmt.Errorf("production-strict mode requires per-edge mTLS on all live transport edges; insecure (Enable=false): %s", strings.Join(insecure, ", "))
 }
 
-// dialPeers открывает gRPC-клиенты к peer-сервисам (kacho-iam — public :9090 для
+// dialPeers открывает gRPC-клиенты к peer-сервисам (kaname — public :9090 для
 // project-existence-check; kacho-geo — public :9090 для zone_id-валидации Instance)
 // либо возвращает no-op-заглушки при KACHO_COMPUTE_SKIP_PEER_VALIDATION=true.
 //
-// project-existence-check идёт в kacho-iam.ProjectService.Get.
+// project-existence-check идёт в kaname.ProjectService.Get.
 //
 // zone_id-валидация Instance идёт через geo.v1.ZoneService.Get (clients.GeoClient);
 // Geography (Region/Zone) принадлежит kacho-geo — compute их больше не обслуживает,
@@ -1191,7 +1191,7 @@ func buildListFilter(cfg config.Config, authzConn *grpc.ClientConn, logger *slog
 	return f
 }
 
-// startRegisterDrainer dials the kacho-iam internal endpoint over the
+// startRegisterDrainer dials the kaname internal endpoint over the
 // compute→iam edge (mTLS opt-in via cfg.IAMRegisterClientCreds — enable=false →
 // insecure dev) and starts a corelib outbox/drainer over
 // compute_fga_register_outbox. Each pending intent is replayed through
@@ -1222,7 +1222,7 @@ func startRegisterDrainer(cfg config.Config, pool *pgxpool.Pool, rec metrics.Rec
 	// idle pings keep the conn warm.
 	conn, cerr := grpc.NewClient(addr, creds, grpcclient.KeepaliveDialOption(true))
 	if cerr != nil {
-		return nil, nil, fmt.Errorf("dial kacho-iam (register-drainer): %w", cerr)
+		return nil, nil, fmt.Errorf("dial kaname (register-drainer): %w", cerr)
 	}
 
 	applier := clients.NewIAMRegisterApplier(conn)
@@ -1301,7 +1301,7 @@ func startRegisterDrainer(cfg config.Config, pool *pgxpool.Pool, rec metrics.Rec
 	return d.Run, func() { _ = conn.Close() }, nil
 }
 
-// buildSyncRegistrar дилит kacho-iam internal :9091 (InternalIAMService.
+// buildSyncRegistrar дилит kaname internal :9091 (InternalIAMService.
 // RegisterResource) тем же compute→iam fga-proxy ребром (mTLS opt-in через
 // cfg.IAMRegisterClientCreds — enable=false → insecure dev) и собирает синхронный
 // owner-tuple registrar (owner-tuple op-gating P4). Отдельный dial-conn
@@ -1319,7 +1319,7 @@ func buildSyncRegistrar(cfg config.Config, logger *slog.Logger) (*ownerregister.
 	}
 	conn, cerr := grpc.NewClient(addr, creds, grpcclient.KeepaliveDialOption(true))
 	if cerr != nil {
-		return nil, nil, fmt.Errorf("dial kacho-iam (sync registrar): %w", cerr)
+		return nil, nil, fmt.Errorf("dial kaname (sync registrar): %w", cerr)
 	}
 	logger.Info("owner-tuple sync-registrar dialed", "iam_addr", addr, "mtls", cfg.IAMRegisterMTLS.Enable)
 	// Форма доставки — ОДНА на все сервисы (pkg/ownerregister): своего

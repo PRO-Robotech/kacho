@@ -125,7 +125,7 @@ NetworkInterface, AddressPool и связные таблицы):
   `UPDATE … WHERE <invariant> RETURNING …` (CAS).
 
 **Cross-service** (ссылка на ресурс в чужой БД — `project_id` из
-`kacho-iam`, `zone_id` из `kacho-geo`, `instance_id` из
+`kaname`, `zone_id` из `kacho-geo`, `instance_id` из
 `kacho-compute`, и т.п.):
 
 - **FK запрещен** — database-per-service не допускает cross-DB ссылок на уровне

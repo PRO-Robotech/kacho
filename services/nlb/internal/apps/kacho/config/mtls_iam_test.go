@@ -19,14 +19,14 @@ import (
 // Ground truth: NLB уже предъявляет client-cert на обоих
 // iam conn'ах (iam-public ProjectService.Get :9090 и iam-internal Check+Register
 // :9091), но ОБА наследуют единственный ServerName register-ребра
-// (cfg.MTLS.IAMRegister.ServerName = kacho-iam-internal.*). Под это валит
-// ServerName-SAN-проверку на public :9090 ребре (его dial-host = kacho-iam, не
-// kacho-iam-internal) — latent-bug (два ServerName на iam).
+// (cfg.MTLS.IAMRegister.ServerName = kaname-internal.*). Под это валит
+// ServerName-SAN-проверку на public :9090 ребре (его dial-host = kaname, не
+// kaname-internal) — latent-bug (два ServerName на iam).
 //
 // (b): per-listener split. Внутренний iam-conn (9091, Check+Register)
-// продолжает использовать cfg.MTLS.IAMRegister (ServerName=kacho-iam-internal);
+// продолжает использовать cfg.MTLS.IAMRegister (ServerName=kaname-internal);
 // public iam-conn (9090, ProjectService.Get) получает СВОЁ поле
-// cfg.MTLS.IAMProject (ServerName=kacho-iam). Так оба conn'а проходят
+// cfg.MTLS.IAMProject (ServerName=kaname). Так оба conn'а проходят
 // ServerName-SAN-проверку под.
 
 // TestMTLS_SECI_IAMProjectEdgeExistsDisabledByDefault — новое read-
@@ -46,8 +46,8 @@ func TestMTLS_SECI_IAMProjectEdgeExistsDisabledByDefault(t *testing.T) {
 
 // TestMTLS_SECI_IAMProjectPerListenerServerName verifies per-listener ServerName:
 // when both iam edges are enabled, the public read edge (iam-project, :9090) must
-// carry ServerName=kacho-iam while the internal edge (iam-register, :9091) carries
-// ServerName=kacho-iam-internal. A single shared ServerName cannot be correct for
+// carry ServerName=kaname while the internal edge (iam-register, :9091) carries
+// ServerName=kaname-internal. A single shared ServerName cannot be correct for
 // both listeners under strict client-cert verification — this is the latent bug it fixes.
 func TestMTLS_SECI_IAMProjectPerListenerServerName(t *testing.T) {
 	minimalEnv(t)
@@ -58,14 +58,14 @@ func TestMTLS_SECI_IAMProjectPerListenerServerName(t *testing.T) {
 	t.Setenv("KACHO_NLB_MTLS__IAM-REGISTER__CERTFILE", certFile)
 	t.Setenv("KACHO_NLB_MTLS__IAM-REGISTER__KEYFILE", keyFile)
 	t.Setenv("KACHO_NLB_MTLS__IAM-REGISTER__CAFILES", caFile)
-	t.Setenv("KACHO_NLB_MTLS__IAM-REGISTER__SERVERNAME", "kacho-iam-internal.kacho.svc")
+	t.Setenv("KACHO_NLB_MTLS__IAM-REGISTER__SERVERNAME", "kaname-internal.kacho.svc")
 
 	// Public read edge (9090, ProjectService.Get) — NEW per-listener field.
 	t.Setenv("KACHO_NLB_MTLS__IAM-PROJECT__ENABLE", "true")
 	t.Setenv("KACHO_NLB_MTLS__IAM-PROJECT__CERTFILE", certFile)
 	t.Setenv("KACHO_NLB_MTLS__IAM-PROJECT__KEYFILE", keyFile)
 	t.Setenv("KACHO_NLB_MTLS__IAM-PROJECT__CAFILES", caFile)
-	t.Setenv("KACHO_NLB_MTLS__IAM-PROJECT__SERVERNAME", "kacho-iam.kacho.svc")
+	t.Setenv("KACHO_NLB_MTLS__IAM-PROJECT__SERVERNAME", "kaname.kacho.svc")
 
 	cfg, err := config.Load("")
 	require.NoError(t, err)
@@ -73,13 +73,13 @@ func TestMTLS_SECI_IAMProjectPerListenerServerName(t *testing.T) {
 	require.True(t, cfg.MTLS.IAMProject.Enable)
 	require.True(t, cfg.MTLS.IAMRegister.Enable)
 
-	// the two iam listeners need DISTINCT ServerNames (kacho-iam vs
-	// kacho-iam-internal). The public read edge must NOT inherit the internal
+	// the two iam listeners need DISTINCT ServerNames (kaname vs
+	// kaname-internal). The public read edge must NOT inherit the internal
 	// edge's ServerName (latent-bug).
-	assert.Equal(t, "kacho-iam.kacho.svc", cfg.MTLS.IAMProject.ServerName,
-		"iam-project (public :9090) ServerName must be the :9090 dial-host kacho-iam")
-	assert.Equal(t, "kacho-iam-internal.kacho.svc", cfg.MTLS.IAMRegister.ServerName,
-		"iam-register (internal :9091) ServerName must be the :9091 dial-host kacho-iam-internal")
+	assert.Equal(t, "kaname.kacho.svc", cfg.MTLS.IAMProject.ServerName,
+		"iam-project (public :9090) ServerName must be the :9090 dial-host kaname")
+	assert.Equal(t, "kaname-internal.kacho.svc", cfg.MTLS.IAMRegister.ServerName,
+		"iam-register (internal :9091) ServerName must be the :9091 dial-host kaname-internal")
 	assert.NotEqual(t, cfg.MTLS.IAMRegister.ServerName, cfg.MTLS.IAMProject.ServerName,
 		"per-listener split: public and internal iam edges carry different ServerNames (I6/D-04)")
 

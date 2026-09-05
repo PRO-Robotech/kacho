@@ -14,7 +14,7 @@ import dedent from 'ts-dedent'
 **метрики**, **трейсинг** — плюс **health/readiness-пробы** и **доменные сигналы** (backlog
 операций, лаг outbox). Cross-cutting-инфраструктура вынесена в `pkg/observability`
 и переиспользуется всеми сервисами платформы, поэтому формат логов, имена сигналов и
-конвенции одинаковы в kacho-vpc, kacho-iam, kacho-geo, kacho-compute и api-gateway.
+конвенции одинаковы в kacho-vpc, kaname, kacho-geo, kacho-compute и api-gateway.
 
 :::info Уровень зрелости
 Часть подсистем уже в проде (структурные slog-логи, gRPC Health), часть — на скелете
@@ -98,7 +98,7 @@ kacho-vpc логирует через стандартный `log/slog` с JSON-
   <thead><tr><th>Уровень</th><th>Когда</th></tr></thead>
   <tbody>
     <tr><td><code>ERROR</code></td><td>Сбой worker'а операции, недоступность peer-сервиса (fail-closed), ошибка БД</td></tr>
-    <tr><td><code>WARN</code></td><td>Fail-open authz при недоступном kacho-iam (если включен), деградации, ретраи</td></tr>
+    <tr><td><code>WARN</code></td><td>Fail-open authz при недоступном kaname (если включен), деградации, ретраи</td></tr>
     <tr><td><code>INFO</code></td><td>Старт/останов сервиса, привязка listener'ов, ключевые переходы состояний</td></tr>
     <tr><td><code>DEBUG</code></td><td>Подробная трассировка request-path (только в dev)</td></tr>
   </tbody>
@@ -146,7 +146,7 @@ Prometheus / VictoriaMetrics. Включение — секция `metrics` ко
   <tbody>
     <tr><td><strong>gRPC RED</strong></td><td>Rate / Errors / Duration по RPC-методам (через interceptor): счетчик запросов, доля ненулевых gRPC-кодов, гистограмма латентности</td></tr>
     <tr><td><strong>Operations</strong></td><td>Количество незавершенных (<code>done=false</code>) операций, время до <code>done</code>, доля failed</td></tr>
-    <tr><td><strong>Register-outbox</strong></td><td>Незадоставленные register-intents, число «отравленных» записей (<code>outbox\_poisoned\_total</code>), лаг доставки owner-tuple в kacho-iam</td></tr>
+    <tr><td><strong>Register-outbox</strong></td><td>Незадоставленные register-intents, число «отравленных» записей (<code>outbox\_poisoned\_total</code>), лаг доставки owner-tuple в kaname</td></tr>
     <tr><td><strong>pgxpool</strong></td><td>Занятые / свободные / ожидающие соединения пула к <code>kacho\_vpc</code></td></tr>
     <tr><td><strong>Go runtime</strong></td><td>Стандартные <code>go\_\*</code> / <code>process\_\*</code> (heap, goroutines, GC, открытые fd)</td></tr>
   </tbody>
@@ -186,7 +186,7 @@ sequenceDiagram
   participant C as Клиент
   participant GW as api-gateway
   participant VPC as kacho-vpc
-  participant IAM as kacho-iam (authz)
+  participant IAM as kaname (authz)
   participant GEO as kacho-geo (Zone)
 
   C->>GW: POST /vpc/v1/subnets (trace_id=T)
@@ -236,7 +236,7 @@ sequenceDiagram
 :::tip Liveness vs readiness
 **Liveness** = процесс жив и gRPC-сервер отвечает (Health = `SERVING`). **Readiness** дополнительно
 подразумевает готовность зависимостей: миграции применены, пул к `kacho_vpc` поднят, доступен
-internal-listener kacho-iam (для authz-gate). HTTP-проба `/healthz` (секция `healthcheck.enable`) —
+internal-listener kaname (для authz-gate). HTTP-проба `/healthz` (секция `healthcheck.enable`) —
 зарезервированный контракт для оркестраторов, которым удобнее HTTP, а не gRPC-проба.
 :::
 
@@ -271,13 +271,13 @@ Worker помечает операцию `done=true` и при успехе (`Ma
 а не нормальное долгое выполнение. Механика LRO — [Операции](/architecture/operations).
 :::
 
-### Register-outbox (доставка owner-tuple в kacho-iam)
+### Register-outbox (доставка owner-tuple в kaname)
 
 При создании / удалении ресурса kacho-vpc публикует **register-intent** в таблицу
 `fga_register_outbox` — и делает это **в той же writer-транзакции**, что и сама DML-мутация.
 Так гарантируется co-commit: либо ресурс создан И регистрация его владения поставлена в
 очередь, либо ни то ни другое. Фоновый **drainer** (corelib
-`outbox/drainer`) дренирует очередь через `kacho-iam.InternalIAMService.RegisterResource`,
+`outbox/drainer`) дренирует очередь через `kaname.InternalIAMService.RegisterResource`,
 **reconciler** возвращает «застрявшие» записи в claimable, а **metrics-collector**
 (`outbox/metrics`) считает backlog и «отравленные» (исчерпавшие ретраи) записи.
 
@@ -295,11 +295,11 @@ Worker помечает операцию `done=true` и при успехе (`Ma
   `}
 </CodeBlock>
 
-:::caution Drainer должен быть подключен к kacho-iam
+:::caution Drainer должен быть подключен к kaname
 Если `authz.iam-endpoint` не задан, register-drainer **не стартует**: intents остаются
-durable в таблице, но владение не регистрируется в kacho-iam → per-resource `Check` уходит
+durable в таблице, но владение не регистрируется в kaname → per-resource `Check` уходит
 в deny (нет пути к ресурсу). Readiness сервиса в этом режиме сигнализирует `NotReady` до подключения
-drainer'а к kacho-iam. Метрика `outbox_poisoned_total` отражает записи, исчерпавшие ретраи.
+drainer'а к kaname. Метрика `outbox_poisoned_total` отражает записи, исчерпавшие ретраи.
 :::
 
 ### Change-log `vpc_outbox`
@@ -320,7 +320,7 @@ durable change-log домена (transactional outbox): он накаплива�
   <thead><tr><th>Сигнал</th><th>Норма</th><th>Тревога</th></tr></thead>
   <tbody>
     <tr><td>Backlog операций (<code>done=false</code>)</td><td>около нуля, быстро дренируется</td><td>растет / старые операции «висят»</td></tr>
-    <tr><td>Register-outbox backlog (<code>sent\_at IS NULL</code>)</td><td>малый, быстро дренируется drainer'ом</td><td>монотонно растет (drainer не подключен / kacho-iam недоступен)</td></tr>
+    <tr><td>Register-outbox backlog (<code>sent\_at IS NULL</code>)</td><td>малый, быстро дренируется drainer'ом</td><td>монотонно растет (drainer не подключен / kaname недоступен)</td></tr>
     <tr><td><code>outbox\_poisoned\_total</code></td><td>0</td><td>&gt; 0 — intents исчерпали ретраи (нужен разбор)</td></tr>
   </tbody>
 </table>
@@ -335,9 +335,9 @@ durable change-log домена (transactional outbox): он накаплива�
   <thead><tr><th>Симптом</th><th>Где смотреть</th><th>Вероятная причина</th></tr></thead>
   <tbody>
     <tr><td>«Тупит» / пустые списки на свежем стенде</td><td>логи peer-conn, gRPC keepalive</td><td>idle inter-service conn в half-open (keepalive)</td></tr>
-    <tr><td><code>UNAVAILABLE</code> на Create/Update</td><td>логи + Health peer-сервиса</td><td>недоступен kacho-iam / kacho-geo (fail-closed валидация project / zone)</td></tr>
+    <tr><td><code>UNAVAILABLE</code> на Create/Update</td><td>логи + Health peer-сервиса</td><td>недоступен kaname / kacho-geo (fail-closed валидация project / zone)</td></tr>
     <tr><td>Операции «висят» <code>done=false</code></td><td>backlog-запрос + ERROR-логи worker'а</td><td>паника / зависшая зависимость в worker'е</td></tr>
-    <tr><td>Регистрация владения не доходит до kacho-iam (per-resource <code>Check</code> = deny)</td><td>register-outbox backlog + <code>outbox\_poisoned\_total</code></td><td>drainer не подключен / kacho-iam недоступен</td></tr>
+    <tr><td>Регистрация владения не доходит до kaname (per-resource <code>Check</code> = deny)</td><td>register-outbox backlog + <code>outbox\_poisoned\_total</code></td><td>drainer не подключен / kaname недоступен</td></tr>
     <tr><td><code>INTERNAL "internal database error"</code></td><td>ERROR-логи (детали БД не утекают в ответ)</td><td>ошибка pgx / нарушение неотображенного constraint</td></tr>
   </tbody>
 </table>

@@ -41,7 +41,7 @@ type auditEmitter interface {
 //   - actor         — ВЕРИФИЦИРОВАННЫЙ принципал вызывающего (из
 //     PrincipalFromContext), никогда из тела запроса (anti-spoofing).
 //   - user_id       — User, которому принадлежит токен.
-//   - token_id      — kacho-iam UserOAuthClient id (uoc_…), НЕ секрет.
+//   - token_id      — kaname UserOAuthClient id (uoc_…), НЕ секрет.
 //   - key_algorithm — JOSE alg зарегистрированного публичного ключа ("ES256").
 //
 // НИКОГДА не несёт private_key_pem / любой токен — credential-материал не попадает

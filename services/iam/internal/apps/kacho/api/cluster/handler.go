@@ -34,7 +34,7 @@ type Handler struct {
 }
 
 // NewHandler assembles the Handler from the four use-cases.
-// Composition root: cmd/kacho-iam/wiring.go.
+// Composition root: cmd/kaname/wiring.go.
 func NewHandler(
 	get *GetClusterUseCase,
 	grant *GrantAdminUseCase,

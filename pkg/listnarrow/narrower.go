@@ -25,7 +25,7 @@ import (
 // (>100 → InvalidArgument). Партии режутся по нему.
 const MaxBatchSize = 100
 
-// DefaultParallelism — сколько партий ОДНОГО отношения летят в kacho-iam
+// DefaultParallelism — сколько партий ОДНОГО отношения летят в kaname
 // одновременно (ограниченный пул исполнителей, не «горутина на партию»).
 //
 // 5 выбрано из арифметики контракта, а не на глаз: оно РОВНО делит максимум партий
@@ -53,7 +53,7 @@ const (
 // равно объявлен, а не спрятан в теле функции.
 const defaultRelationsKey = ""
 
-// AuthorizeClient — узкий порт к kacho-iam `AuthorizeService`. Сигнатура совпадает со
+// AuthorizeClient — узкий порт к kaname `AuthorizeService`. Сигнатура совпадает со
 // сгенерированным клиентом, поэтому боевая реализация — тонкий проброс.
 type AuthorizeClient interface {
 	BatchCheck(ctx context.Context, in *iamv1.BatchAuthorizeCheckRequest,

@@ -66,7 +66,7 @@ REPO_ROOT="$(cd "$(dirname "$0")/../.." && pwd)"
 UMBRELLA="$REPO_ROOT/helm/umbrella"
 PROD="$UMBRELLA/values.prod.yaml"
 DEV="$UMBRELLA/values.dev.yaml"
-IAM_TPL="$UMBRELLA/charts/kacho-iam/templates/deployment.yaml"
+IAM_TPL="$UMBRELLA/charts/kaname/templates/deployment.yaml"
 GW_TPL="$REPO_ROOT/../gateway/deploy/templates/deployment.yaml"
 GW_VALUES="$REPO_ROOT/../gateway/deploy/values.yaml"
 
@@ -92,8 +92,8 @@ while IFS= read -r _p; do PROFILES+=("$_p"); done < <(ls -1 "$PROFILE_DIR"/value
 
 # bind_of / translated_of — ОДИН предикат на обе секции. Две копии одного
 # условия разошлись бы там, где расхождение не видно.
-bind_of()       { yq '.["kacho-iam"].kacho.iam.saKey.bindDpop // false' "$1"; }
-translated_of() { yq '.["kacho-iam"].config.authn.clientToken.enabled // false' "$1"; }
+bind_of()       { yq '.["kaname"].kacho.iam.saKey.bindDpop // false' "$1"; }
+translated_of() { yq '.["kaname"].config.authn.clientToken.enabled // false' "$1"; }
 enforce_of()    { yq '.["api-gateway"].authn.requireMachineTokenBinding // false' "$1"; }
 
 # yq MUST be mikefarah v4. On many machines /usr/bin/yq is the python jq-wrapper
@@ -106,7 +106,7 @@ require_helm
 require_mikefarah_yq
 [ -f "$PROD" ]    || fatal "values.prod.yaml нет на диске ($PROD)"
 [ -f "$DEV" ]     || fatal "values.dev.yaml нет на диске ($DEV)"
-[ -f "$IAM_TPL" ] || fatal "шаблона kacho-iam нет на диске ($IAM_TPL)"
+[ -f "$IAM_TPL" ] || fatal "шаблона kaname нет на диске ($IAM_TPL)"
 [ -f "$GW_TPL" ]  || fatal "шаблона api-gateway нет на диске ($GW_TPL)"
 
 # render_only <values> <show-only-template> — результат в $HELM_OUT.
@@ -135,23 +135,23 @@ ok
 # ── 2. PROD machine-credential lifetime envs ─────────────────────────────────
 # The SA key IS the machine's credential; machine principals are exempt from
 # step-up, which holds only while the credential is time-bounded.
-render_only "$PROD" charts/kacho-iam/templates/deployment.yaml; IAM_PROD="$HELM_OUT"
-[ -n "$IAM_PROD" ] || fail "kacho-iam deployment did not render in prod profile"
+render_only "$PROD" charts/kaname/templates/deployment.yaml; IAM_PROD="$HELM_OUT"
+[ -n "$IAM_PROD" ] || fail "kaname deployment did not render in prod profile"
 [[ "$IAM_PROD" == *'KACHO_IAM_SAKEY_DEFAULT_TTL'* ]] \
   || fail "prod: KACHO_IAM_SAKEY_DEFAULT_TTL absent — an omitted ttl_seconds would mint a never-expiring key"
 [[ "$IAM_PROD" == *'KACHO_IAM_SAKEY_MAX_TTL'* ]] \
   || fail "prod: KACHO_IAM_SAKEY_MAX_TTL absent — no ceiling on how long a machine credential may live"
-prod_atl="$(yq '.["kacho-iam"].kacho.iam.saKey.accessTokenTtl // ""' "$PROD")"
+prod_atl="$(yq '.["kaname"].kacho.iam.saKey.accessTokenTtl // ""' "$PROD")"
 [ -n "$prod_atl" ] \
-  || fail "prod: kacho-iam.kacho.iam.saKey.accessTokenTtl unset — SA-key clients would inherit the global TTL with no second layer"
+  || fail "prod: kaname.kacho.iam.saKey.accessTokenTtl unset — SA-key clients would inherit the global TTL with no second layer"
 ok
 
 # ── 3. DEV keeps bounded keys but does NOT pin the per-client token lifespan ──
-render_only "$DEV" charts/kacho-iam/templates/deployment.yaml; IAM_DEV="$HELM_OUT"
-[ -n "$IAM_DEV" ] || fail "kacho-iam deployment did not render in dev profile"
+render_only "$DEV" charts/kaname/templates/deployment.yaml; IAM_DEV="$HELM_OUT"
+[ -n "$IAM_DEV" ] || fail "kaname deployment did not render in dev profile"
 [[ "$IAM_DEV" == *'KACHO_IAM_SAKEY_MAX_TTL'* ]] \
   || fail "dev: the SA-key ceiling must apply on the local stand too"
-dev_atl="$(yq '.["kacho-iam"].kacho.iam.saKey.accessTokenTtl // ""' "$DEV")"
+dev_atl="$(yq '.["kaname"].kacho.iam.saKey.accessTokenTtl // ""' "$DEV")"
 [ -z "$dev_atl" ] \
   || fail "dev: saKey.accessTokenTtl='$dev_atl' — the local stand deliberately inherits the widened global TTL; pinning it 401s late newman collections"
 ok
@@ -184,7 +184,7 @@ ok
 for name in KACHO_IAM_SAKEY_DEFAULT_TTL KACHO_IAM_SAKEY_MAX_TTL \
             KACHO_IAM_SAKEY_ACCESS_TOKEN_TTL KACHO_IAM_SAKEY_BIND_DPOP; do
   grep -q "name: $name" "$IAM_TPL" \
-    || fail "capability: kacho-iam template no longer emits $name — the values knob would be silently inert"
+    || fail "capability: kaname template no longer emits $name — the values knob would be silently inert"
 done
 for name in KACHO_API_GATEWAY_AUTHN_ENABLE_DPOP \
             KACHO_API_GATEWAY_AUTHN_REQUIRE_MACHINE_TOKEN_BINDING; do

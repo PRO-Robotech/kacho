@@ -2,7 +2,7 @@
 .vscode/
 .DS_Store
 # helm-dep артефакты (Bitnami / OCI / external charts) — большие, скачиваются `helm dep up`.
-# kacho-iam — наш local sub-chart, source-of-truth, поэтому НЕ игнорируем его и его файлы.
+# kaname — наш local sub-chart, source-of-truth, поэтому НЕ игнорируем его и его файлы.
 # `helm dep update` распаковывает зависимости в helm/umbrella/tmpcharts-<pid>/ и
 # удаляет каталог сам — но при обрыве (или при `git add` во время прогона) он
 # остаётся, и архивы зависимостей уезжают в коммит. Один такой уже уехал.

@@ -309,7 +309,7 @@ func TestAuthorize_BatchCheck_PerItemFailureDoesNotAbort(t *testing.T) {
 // фикстура прячет дефект, который сама же и кормит, поэтому подставляется та
 // форма, которую производит настоящий отказ.
 func TestAuthorize_BatchCheck_UnavailableFailsWholeBatchNoLeak(t *testing.T) {
-	const storeTransportLeak = "failed to connect to host=kacho-iam-pg.kacho.svc user=kacho_iam " +
+	const storeTransportLeak = "failed to connect to host=kaname-pg.kacho.svc user=kacho_iam " +
 		"database=kacho_iam: dial error (dial tcp 10.0.0.5:5432: connect: connection refused)"
 	svc := NewAuthorizeService(AuthorizeServiceConfig{
 		Relations: &mockRelations{checkErr: errors.New(storeTransportLeak)},
@@ -328,7 +328,7 @@ func TestAuthorize_BatchCheck_UnavailableFailsWholeBatchNoLeak(t *testing.T) {
 	}
 	for _, r := range results {
 		for _, dr := range r.DenyReasons {
-			if strings.Contains(dr, "kacho-iam-pg") || strings.Contains(dr, "10.0.0.5") {
+			if strings.Contains(dr, "kaname-pg") || strings.Contains(dr, "10.0.0.5") {
 				t.Errorf("УТЕЧКА: текст отказа несёт координаты хранилища: %q", dr)
 			}
 		}

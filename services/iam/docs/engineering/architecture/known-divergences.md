@@ -1,7 +1,7 @@
-# Known divergences — kacho-iam
+# Known divergences — kaname
 
 Deliberate, reviewed deviations from a project-wide convention that are **not**
-defects. Each entry states the convention, why kacho-iam diverges, why it is
+defects. Each entry states the convention, why kaname diverges, why it is
 safe, and what would be required to converge.
 
 ---
@@ -23,7 +23,7 @@ tags (it is a plain cross-service value type), so it cannot be populated through
 the viper/`mapstructure` decoder without either (a) adding `mapstructure` tags to
 a corelib type — a workspace-wide change to a shared horizontal package, owned by
 corelib's release cadence, out of scope for a single service — or (b) hand-writing
-a parallel tagged mirror struct in kacho-iam and copying field-by-field (its own
+a parallel tagged mirror struct in kaname and copying field-by-field (its own
 drift risk). `envconfig` reads the corelib fields directly from the environment
 with zero corelib change, and each mTLS edge is **default-off** (`Enable=false`
 → plaintext, byte-identical to prior behaviour), so the second mechanism governs
@@ -229,7 +229,7 @@ Tracked as a dedicated refactor-only change.
 
 ---
 
-## 8. `cmd/kacho-iam/serve.go` `runServe` is a single ~780-line composition root (accepted)
+## 8. `cmd/kaname/serve.go` `runServe` is a single ~780-line composition root (accepted)
 
 **Convention** (Clean-Architecture composition-root rule): `cmd/<svc>/main.go` is
 the single legitimate wiring place; but a function this long cannot be unit-covered
@@ -1150,7 +1150,7 @@ git grep -c 'sent_at' -- 'proto/kacho/cloud/iam/**'   # 0
 ### Почему величина не выносится на контракт: она ЭФЕМЕРНА ПО ПОСТРОЕНИЮ
 
 Доставленную строку снимает уборка — она провязана для этой очереди
-(`StartQueueRetentionSweep` в `cmd/kacho-iam/invite_mail_wiring.go`), и это не
+(`StartQueueRetentionSweep` в `cmd/kaname/invite_mail_wiring.go`), и это не
 частность посадки, а необходимость: строка пишется на КАЖДОЕ приглашение, темп
 задаёт арендатор, снятия не было бы ни на одном пути.
 

@@ -113,7 +113,7 @@ go list -f '{{join .Imports " "}}' ./services/iam/... \
 | `pkg/api/kacho/cloud/quota/v1` | 2 | 7 | 2 |
 
 `quota/v1` здесь не случайность: iam **служит** `IdentityQuotaService` — читатели
-`services/iam/cmd/kacho-iam/grpc_register.go` и
+`services/iam/cmd/kaname/grpc_register.go` и
 `services/iam/internal/apps/kacho/api/identityquota/handler.go`.
 
 ### 1.3 Что нужно ТОЛЬКО пробам
@@ -443,7 +443,7 @@ geo 3 · subscription 1 · quota 1 · operation 1 · api 1.
 
 ### Чего эта перепись НЕ покрывает
 
-- **Не-Go поверхность.** Чарт `deploy/helm/umbrella/charts/kacho-iam` (42 файла с `iam`
+- **Не-Go поверхность.** Чарт `deploy/helm/umbrella/charts/kaname` (42 файла с `iam`
   в пути под `deploy/`), консоль (141 файл под `ui-future/`), документация. Консоль по
   решению владельца остаётся в `kacho` — значит появляется ещё одна связь «продукт iam ↔
   его консоль в чужом репозитории», и она здесь не разобрана.

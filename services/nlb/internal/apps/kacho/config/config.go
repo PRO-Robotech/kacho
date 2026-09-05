@@ -315,7 +315,7 @@ type AuthzConfig struct {
 	// DenyBudgetPerSec — устойчивый темп (в секунду на принципала) тех проверок
 	// прав, чей исход кэш НЕ поглощает: отказ, промах «нет пути», недоступность
 	// модели. По исчерпании звено решения отвечает `ResourceExhausted`, не
-	// обращаясь к kacho-iam, — то есть сбрасывает шторм отказов с соседа.
+	// обращаясь к kaname, — то есть сбрасывает шторм отказов с соседа.
 	//
 	// 100/с — та же величина, что до перевода на носитель стояла в композиционном
 	// корне литералом (`DenyRateLimitPerSec: 100`). Штатную работу тенанта она не
@@ -333,7 +333,7 @@ type AuthzConfig struct {
 	// форвардить end-user principal-metadata (обычно единственный — api-gateway SA).
 	// Пробрасывается в grpcsrv.UnaryTrustedPrincipalExtract(WithTrustedForwarders)
 	// на ОБОИХ листенерах. Пусто (default) → любой mTLS-verified peer доверен как
-	// форвардер (паритет с insecure dev back-compat и kacho-iam internal); задаётся в
+	// форвардер (паритет с insecure dev back-compat и kaname internal); задаётся в
 	// production для defense-in-depth против confused-deputy (внутренний сервис со
 	// своим валидным cert'ом не может выдать себя за пользователя). ENV
 	// `KACHO_NLB_AUTHZ__TRUSTED_FORWARDER_SANS` (comma-separated).
@@ -377,7 +377,7 @@ type AuthzListFilterConfig struct {
 	FailOpen bool `mapstructure:"fail-open"`
 
 	// Breakglass — аварийный режим: когда модели прав на этой посадке нет вовсе
-	// (`enabled=false` либо соединение с kacho-iam не собрано), списки отдаются
+	// (`enabled=false` либо соединение с kaname не собрано), списки отдаются
 	// НЕсуженными вместо отказа.
 	//
 	// Он остаётся явным исключением, а не умолчанием: прежде «фильтр выключен» само
@@ -409,7 +409,7 @@ type AuthzCacheConfig struct {
 // Прямой best-effort tuple-write (адрес прежнего движка, его стор и модель) удалён;
 // вместо него
 // owner-hierarchy tuple пишется register-intent'ом в `fga_register_outbox` в той же
-// writer-tx (Вариант A), а register-drainer применяет его через kacho-iam
+// writer-tx (Вариант A), а register-drainer применяет его через kaname
 // InternalIAMService.RegisterResource/UnregisterResource по mTLS.
 type FGAConfig struct {
 	// RegisterDrainer — register-drainer (fga_register_outbox → IAM
@@ -465,15 +465,15 @@ type MTLSConfig struct {
 	// IAMRegister — client-cert на ВНУТРЕННЕМ ребре nlb→iam-internal (9091):
 	// InternalIAMService.Check (per-RPC authz-gate) + RegisterResource/
 	// UnregisterResource (register-drainer). ServerName =
-	// kacho-iam-internal.* (фактический :9091 dial-host).:
+	// kaname-internal.* (фактический :9091 dial-host).:
 	// этот же conn несёт Check, поэтому read/authz authz-ребро покрыто им.
 	IAMRegister grpcclient.TLSClient `mapstructure:"iam-register"`
 	// IAMProject — client-cert на ПУБЛИЧНОМ ребре nlb→iam (9090):
 	// ProjectService.Get (existence + leaf-owner). ((b),
 	// per-listener split): отдельное поле, потому что public dial-host =
-	// kacho-iam.* (≠ kacho-iam-internal.*) и единый ServerName не может быть
+	// kaname.* (≠ kaname-internal.*) и единый ServerName не может быть
 	// корректен для обоих listener'ов под RequireAndVerifyClientCert (
-	// latent-bug). ServerName = kacho-iam.* (фактический :9090 dial-host).
+	// latent-bug). ServerName = kaname.* (фактический :9090 dial-host).
 	IAMProject grpcclient.TLSClient `mapstructure:"iam-project"`
 	// VPC — client-cert на ребре nlb→vpc (Address/Subnet/NIC IPAM).
 	VPC grpcclient.TLSClient `mapstructure:"vpc"`

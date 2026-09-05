@@ -8,7 +8,7 @@
 # ─────────────────────────────────────────────────────────────────────────────
 # ПОЧЕМУ ПРОВЕРКА ПО ПРОФИЛЯМ, А НЕ ПО СЕРВИСАМ
 #
-# Круг отправителей уже проверяется у kacho-iam и registry — каждым своим
+# Круг отправителей уже проверяется у kaname и registry — каждым своим
 # скриптом, и каждый смотрит СВОЙ чарт. Такая нарезка не отвечает на вопрос
 # «есть ли хоть один сервис на этом стенде, который никого не сузил»: чарт может
 # нести здоровое умолчание, а профиль — переопределить его пустым, и наоборот.
@@ -80,7 +80,7 @@ kacho-storage|storage|env:KACHO_STORAGE_AUTHZ_TRUSTED_FORWARDER_SANS
 registry|registry|env:KACHO_REGISTRY_AUTHZ_TRUSTED_FORWARDER_SANS
 vpc|vpc|cm:vpc-config:authz.trusted-forwarder-sans
 kacho-nlb|nlb|cm:kacho-nlb-config:authz.trusted-forwarder-sans
-kacho-iam|iam|cm:kacho-iam-config:authn.trusted-forwarder-sans
+kaname|iam|cm:kaname-config:authn.trusted-forwarder-sans
 "
 
 # Профили, которыми РЕАЛЬНО поднимается стенд, — из ЕДИНСТВЕННОЙ таблицы дерева

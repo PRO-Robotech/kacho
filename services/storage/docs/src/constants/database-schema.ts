@@ -62,7 +62,7 @@ Table "kacho_storage"."disk_type_bindings" {
 
 Table "kacho_storage"."volumes" {
   "id" text [pk, not null, note: 'vol + 17 crockford-base32']
-  "project_id" text [not null, note: 'ссылка через границу сервиса → kacho-iam (без FK)']
+  "project_id" text [not null, note: 'ссылка через границу сервиса → kaname (без FK)']
   "created_at" timestamptz [not null]
   "updated_at" timestamptz [not null]
   "name" text [note: "partial UNIQUE (project_id, name) WHERE name<>''"]

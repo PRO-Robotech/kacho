@@ -76,7 +76,7 @@ func prodCfg(forwarders ...string) config.Config {
 	c := config.Config{
 		AuthMode:                  "production",
 		DBSSLMode:                 "require",
-		AuthZIAMGRPCAddr:          "kacho-iam-internal:9091",
+		AuthZIAMGRPCAddr:          "kaname-internal:9091",
 		ListFilterEnabled:         true,
 		AuthZTrustedForwarderSANs: forwarders,
 		// Величины, которые конструктор дескриптора требует названными. Литералы

@@ -161,7 +161,7 @@ func runServe(configPath string) error {
 
 	// Fail-closed boot-gate: при KACHO_NLB_REQUIRE_IAM=true мутирующий Create
 	// отвергается (UNAVAILABLE), а готовность пода остаётся NotReady, пока дренаж
-	// регистраций не подключён к kacho-iam, — ни один ресурс не создаётся без
+	// регистраций не подключён к kaname, — ни один ресурс не создаётся без
 	// доставляемого намерения о владельце. Стартует НЕ подключённым;
 	// SetConnected(true) вызывается ниже, когда дренаж собран с живым пиром.
 	//
@@ -170,7 +170,7 @@ func runServe(configPath string) error {
 	bootGate := bootgate.New(bootgate.Config{RequireIAM: cfg.FGA.RequireIAM, Service: "kacho-nlb"})
 
 	// Peer-gRPC clients (corlib client-builder) — ДО дескриптора: из соединения с
-	// внутренним листенером kacho-iam строится сужатель списочной выдачи, а он
+	// внутренним листенером kaname строится сужатель списочной выдачи, а он
 	// объявляется осью дескриптора (`Spec.Narrowers`).
 	peerConns, peers, err := dialPeers(ctx, cfg, logger)
 	if err != nil {
@@ -658,7 +658,7 @@ func peerDialSpecs(cfg *config.Config) []peerDialSpec {
 // use-case'ы при отсутствующем adapter'е возвращают Unavailable).
 //
 // Внутренняя топология:
-//   - kacho-iam: один conn на InternalAddr — ProjectService.Get живёт и
+//   - kaname: один conn на InternalAddr — ProjectService.Get живёт и
 //     на public, и (через scope-filter) на internal; InternalIAMService.{Check,
 //     RegisterResource, UnregisterResource} — только на internal. Используем
 //     internal listener.
@@ -723,7 +723,7 @@ func dialPeers(
 	// root. A dial error closes everything opened so far and propagates.
 	//
 	// Топология (см. peerDialSpecs doc):
-	//   - kacho-iam: два conn'а ПЕР-LISTENER. PUBLIC (9090) — ProjectService.Get;
+	//   - kaname: два conn'а ПЕР-LISTENER. PUBLIC (9090) — ProjectService.Get;
 	//     INTERNAL (9091) — InternalIAMService.{Check,RegisterResource,Unregister}.
 	//     Раздельные mTLS-поля (IAMProject vs IAMRegister) обязательны: единый
 	//     ServerName не корректен для обоих listener'ов под

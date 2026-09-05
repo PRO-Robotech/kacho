@@ -118,7 +118,7 @@ type CreateAddressUseCase struct {
 }
 
 // WithRegistrar подключает синхронный owner-tuple registrar (Decision 2): после
-// commit Address owner-tuple синхронно регистрируется в kacho-iam. Nil →
+// commit Address owner-tuple синхронно регистрируется в kaname. Nil →
 // sync-путь пропускается (только async drainer).
 func (u *CreateAddressUseCase) WithRegistrar(r fgaregister.Registrar) *CreateAddressUseCase {
 	u.registrar = r
@@ -644,7 +644,7 @@ func (u *CreateAddressUseCase) doCreate(ctx context.Context, addrID string, in C
 	// (atomic с Insert + IPAM allocate). Так intent не теряется при ошибке,
 	// в отличие от best-effort emit после commit. В mirror-feed несем labels
 	// Address + parent_project_id (ProjectHierarchyItem), а не голый tuple — иначе
-	// resource_mirror в kacho-iam остается без labels и ARM_LABELS-селектор не
+	// resource_mirror в kaname остается без labels и ARM_LABELS-селектор не
 	// матчит даже свежесозданный Address. Симметрично network/subnet/securitygroup.
 	items := []fgaregister.Item{
 		fgaregister.ProjectHierarchyItem(in.ProjectID, "vpc_address", created.ID,

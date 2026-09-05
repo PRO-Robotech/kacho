@@ -49,7 +49,7 @@ import (
 )
 
 // newRegisterUCWired builds the RegisterResource use-case wired exactly like the
-// composition-root (cmd/kacho-iam): fga_outbox emitter + resource_mirror emitter
+// composition-root (cmd/kaname): fga_outbox emitter + resource_mirror emitter
 // + tx beginner + reconcile-event emitter + account resolver.
 // The reconcile-event wiring is what lets a label-change RegisterResource enqueue
 // the resource_reconcile_outbox event the worker drains.

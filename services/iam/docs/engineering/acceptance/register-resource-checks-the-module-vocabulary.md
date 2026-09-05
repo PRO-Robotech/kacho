@@ -42,7 +42,7 @@ SPDX-License-Identifier: AGPL-3.0-or-later
   меняется ни одной строкой (§2.7). **`proto/` не затрагивается** — ни одно поле,
   ни один глагол, ни одна аннотация каталога прав. `gateway/` не затрагивается:
   обе RPC живут только на внутреннем слушателе `:9091`
-- **Сервис:** `kacho-iam` — предмет почти целиком. **Общий фундамент
+- **Сервис:** `kaname` — предмет почти целиком. **Общий фундамент
   (`pkg/authz/proxytuple`) трогается ровно одной записью запретительного
   набора** — правка круга 4, довод и границы в §4; предикат чистоты фундамента
   остаётся пустым, и landed-гейт намерений от неё не краснеет (измерено)
@@ -2253,7 +2253,7 @@ awk '/INSERT INTO kacho_iam.catalog_verb/,/;/' <миграция> \
    grep -n 'func (c CatalogParityCensus) Diverged' -A2 \
      services/iam/internal/apps/kacho/seed/catalog_parity.go
    # return len(c.MissingRows) > 0 || len(c.ExtraRows) > 0
-   grep -n 'AssertCatalogParity' services/iam/cmd/kacho-iam/serve.go   # :1323
+   grep -n 'AssertCatalogParity' services/iam/cmd/kaname/serve.go   # :1323
    ```
    Сверка **двусторонняя** (`ExtraRows`), а её отказ **фатален** (`return
    fmt.Errorf`, и комментарий рядом объявляет фатальность намеренной).
@@ -2322,15 +2322,15 @@ sed -n '22p' services/iam/internal/domain/module_set.go
 
 git grep -ohE "'kacho-[a-z-]+'" -- services/iam/internal/migrations | sort -u
 # kacho-api-gateway · kacho-bootstrap-admin · kacho-bootstrap-grant · kacho-compute
-# kacho-iam-bootstrap · kacho-nlb · kacho-registry · kacho-root · kacho-storage
+# kaname-bootstrap · kacho-nlb · kacho-registry · kacho-root · kacho-storage
 # kacho-system · kacho-vpc · kacho-vpc-operator
 
-git grep -c "'kacho-iam'" -- services/iam/internal/migrations    # → пусто
+git grep -c "'kaname'" -- services/iam/internal/migrations    # → пусто
 ```
 
-**Модульной учётки `kacho-iam` не существует ни в одной миграции** — и не должна:
+**Модульной учётки `kaname` не существует ни в одной миграции** — и не должна:
 `iam` собственную проксируемую RPC не зовёт, домена SAN у него в этой роли нет, а
-`ServiceAccountIDForService("iam")` называл бы `sva`+md5(`kacho-iam`), строки под
+`ServiceAccountIDForService("iam")` называл бы `sva`+md5(`kaname`), строки под
 который нет. Значит для модуля `iam` строка identity **неконструируема ключом
 `service_accounts(id)`**, который §2.2 сама и требует.
 
@@ -2359,7 +2359,7 @@ git grep -c "'kacho-iam'" -- services/iam/internal/migrations    # → пуст�
 identity полагается модулю, у которого есть модульная учётка и домен SAN, — и
 предикат этого признака поставить в §2.10 вместо `domain.KnownModules()`.
 Соответственно правятся §2.7 п. 3, §2.10 п. 1, число `IAM-MV-14`, строка §6 «у
-каждого модуля есть identity» и ось инъекции §7.2. Заводить строку `kacho-iam`
+каждого модуля есть identity» и ось инъекции §7.2. Заводить строку `kaname`
 ради счёта — **не исход**: это принципал, которого никто не предъявляет, то есть
 расширение поверхности ради зелёного гейта.
 
@@ -2569,9 +2569,9 @@ Go**». Заводить вторую задачу об одном предме�
 ### 16.2. Б5 — ПРИНЯТО. Набор носителей identity назван ПРИЗНАКОМ
 
 **Оба прогона проверяющего воспроизведены, оба подтверждены:**
-`domain.KnownModules()` — шесть имён, включая `iam`; модульной учётки `kacho-iam`
+`domain.KnownModules()` — шесть имён, включая `iam`; модульной учётки `kaname`
 в миграциях **ноль** (мой предикат считал вхождения по каждому имени, а не
-`sort -u`: `kacho-iam-bootstrap` есть, `kacho-iam` — нет).
+`sort -u`: `kaname-bootstrap` есть, `kaname` — нет).
 
 **Признак назван и он не перечень:** строка identity полагается модулю, чья учётка
 **состоит в группе писателей отношений**, то есть держит `fga_writer` на кластере
@@ -2615,7 +2615,7 @@ Go**». Заводить вторую задачу об одном предме�
 | §2.10 п. 1 и `IAM-MV-14` неконструируемы | набор **выводится** обходом миграций; перепись печатает **обе** величины; ожидание — пять, и оно помечено ориентиром |
 | инъекция §7.2 проверяет не ту сторону | ось разбита на две — «нет строки у писателя» и «есть строка без выдачи», плюс отдельная ось предпосылки (пустой обход роняет гейт) |
 
-**Заводить `kacho-iam` ради счёта — не исход**, и это записано в §2.2: принципал,
+**Заводить `kaname` ради счёта — не исход**, и это записано в §2.2: принципал,
 которого никто не предъявляет, есть расширение поверхности ради зелёного гейта.
 
 **Ослабление названо вслух** (§6): признак держат оператор и гейт, а **не** ключ —

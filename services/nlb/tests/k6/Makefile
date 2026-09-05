@@ -7,8 +7,8 @@
 # with `make k6-baseline K6_BASE_URL=http://api-gateway.kacho.svc:8080`.
 #
 # Required env (see ../README.md):
-#   IAM_TOKEN              - Bearer token from kacho-iam (CreateToken RPC)
-#   EXISTING_PROJECT_ID    - kacho-iam project id (editor scope on it)
+#   IAM_TOKEN              - Bearer token from kaname (CreateToken RPC)
+#   EXISTING_PROJECT_ID    - kaname project id (editor scope on it)
 #   EXISTING_REGION_ID     - e.g. ru-central1
 #   EXISTING_SUBNET_ID     - vpc subnet for INTERNAL listeners + ip_ref targets
 #   EXISTING_ADDRESS_ID    - kacho-vpc Address for BYO VIP listener tests

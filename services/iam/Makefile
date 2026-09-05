@@ -1,12 +1,12 @@
 # Copyright (c) PRO-Robotech
 # SPDX-License-Identifier: AGPL-3.0-or-later
 
-BINARY         := kacho-iam
-CMD            := ./cmd/kacho-iam
+BINARY         := kaname
+CMD            := ./cmd/kaname
 # Отдельный binary мигратора.
 MIGRATOR_BIN   := kacho-migrator
 MIGRATOR_CMD   := ./cmd/migrator
-IMAGE          := kacho-iam:dev
+IMAGE          := kaname:dev
 
 # Ревизия дерева уезжает в образ аргументом сборки (IMAGE_BUILD_ARGS).
 # Объявление одно на дерево — см. разбор в самом файле.
@@ -48,7 +48,7 @@ export GOLANGCI_LINT_CACHE
 lint:
 	golangci-lint run ./...
 
-# audit-list-filter — CI gate for kacho-iam's listing surface: every method that
+# audit-list-filter — CI gate for kaname's listing surface: every method that
 # hands a page to a caller must narrow it, and must declare HOW. What is checked
 # lives in pkg/listfiltergate; how this service is laid out lives in
 # services/iam/tools/auditlistfilter.
@@ -264,7 +264,7 @@ proto-install-plugins:
 
 # proto-vendor — подтягивает универсальные инфра-протосы из kacho-corelib (единственный
 # источник) в proto/ ТОЛЬКО для buf-резолва импортов доменного proto. В git этих файлов
-# нет (gitignored) — их Go-stubs живут в kacho-corelib / canonical genproto, kacho-iam их
+# нет (gitignored) — их Go-stubs живут в kacho-corelib / canonical genproto, kaname их
 # не владеет и не дублирует. Цель идемпотентна: копирует поверх локальной копии.
 CORELIB_PROTO  := ../kacho-corelib/proto
 VENDORED_PROTOS := \

@@ -17,7 +17,7 @@ import (
 )
 
 // manifestsChartShapedConfig — ТА ЖЕ форма, которую рендерит
-// charts/kacho-iam/templates/configmap.yaml при объявленном источнике.
+// charts/kaname/templates/configmap.yaml при объявленном источнике.
 //
 // Ключ YAML и тег структуры — два места об одном предмете, и расхождение между
 // ними НЕ РОНЯЕТ НИ ОДНОЙ СБОРКИ: виперу нет дела до незнакомой секции, он молча
@@ -25,7 +25,7 @@ import (
 // путь, и оператор увидел бы «манифесты не доехали» при верной посадке.
 const manifestsChartShapedConfig = `
 manifests:
-  dir: "/etc/kacho-iam/manifests"
+  dir: "/etc/kaname/manifests"
   required: true
 `
 
@@ -36,7 +36,7 @@ func TestLoadReadsTheManifestsSectionTheChartWrites(t *testing.T) {
 	if err != nil {
 		t.Fatalf("Load: %v", err)
 	}
-	if cfg.Manifests.Dir != "/etc/kacho-iam/manifests" {
+	if cfg.Manifests.Dir != "/etc/kaname/manifests" {
 		t.Errorf("manifests.dir не доехал до структуры: получено %q — "+
 			"ключ объявлен посадкой и отброшен разбором молча", cfg.Manifests.Dir)
 	}
@@ -72,7 +72,7 @@ func TestManifestsGuardRefusesRequiredWithoutDir(t *testing.T) {
 // отвергает независимо от значения. То есть исполнимых состояний было два, а
 // объявленных три (#1924).
 func TestManifestsGuardRefusesADirWithoutReliance(t *testing.T) {
-	err := config.ManifestsConfig{Required: false, Dir: "/etc/kacho-iam/manifests"}.Validate()
+	err := config.ManifestsConfig{Required: false, Dir: "/etc/kaname/manifests"}.Validate()
 	if err == nil {
 		t.Fatal("страж молчит на «каталог назван, опоры нет» — посадка объявила бы величину, " +
 			"которая ничего не меняет: доставка читается и отвергается на сорванном каталоге " +
@@ -98,7 +98,7 @@ func TestManifestsGuardStaysSilentOnEveryLawfulShape(t *testing.T) {
 		// своим предметом: пара неполна в обе стороны одинаково.
 		{"доставка не заведена", config.ManifestsConfig{}},
 		{"каталог назван, опора объявлена",
-			config.ManifestsConfig{Dir: "/etc/kacho-iam/manifests", Required: true}},
+			config.ManifestsConfig{Dir: "/etc/kaname/manifests", Required: true}},
 	}
 	for _, c := range lawful {
 		t.Run(c.name, func(t *testing.T) {
@@ -201,7 +201,7 @@ func TestManifestEnvNamesAreNotBoundToAValue(t *testing.T) {
 // то есть второй способ писать одно и то же.
 const manifestsComposeChartShapedConfig = `
 manifests:
-  dir: "/etc/kacho-iam/manifests"
+  dir: "/etc/kaname/manifests"
   required: true
   compose-model: true
   admission: "content"
@@ -234,7 +234,7 @@ func TestLoadReadsTheCompositionKeysTheChartWrites(t *testing.T) {
 // допуска нет (тот же довод, что у `Dir` в шапке manifests.go).
 func TestManifestsGuardRefusesCompositionWithoutAdmission(t *testing.T) {
 	err := config.ManifestsConfig{
-		Dir: "/etc/kacho-iam/manifests", Required: true,
+		Dir: "/etc/kaname/manifests", Required: true,
 		ComposeModel: true, Admission: "",
 	}.Validate()
 	if err == nil {
@@ -256,7 +256,7 @@ func TestManifestsGuardRefusesCompositionWithoutAdmission(t *testing.T) {
 func TestManifestsGuardRefusesAnAdmissionOutsideTheClosedSet(t *testing.T) {
 	const bogus = "trust-the-cluster-map"
 	err := config.ManifestsConfig{
-		Dir: "/etc/kacho-iam/manifests", Required: true,
+		Dir: "/etc/kaname/manifests", Required: true,
 		ComposeModel: true, Admission: bogus,
 	}.Validate()
 	if err == nil {
@@ -328,12 +328,12 @@ func TestManifestsGuardStaysSilentOnEveryLawfulCompositionShape(t *testing.T) {
 		// не заводится.
 		{"сборка выключена, доставки нет", config.ManifestsConfig{}},
 		{"сборка выключена, доставка объявлена целиком",
-			config.ManifestsConfig{Dir: "/etc/kacho-iam/manifests", Required: true}},
+			config.ManifestsConfig{Dir: "/etc/kaname/manifests", Required: true}},
 		// ADM-B-05: сборка включена целиком — допуск из закрытого набора, пара
 		// доставки объявлена.
 		{"сборка включена целиком",
 			config.ManifestsConfig{
-				Dir: "/etc/kacho-iam/manifests", Required: true,
+				Dir: "/etc/kaname/manifests", Required: true,
 				ComposeModel: true, Admission: config.AdmissionByContent,
 			}},
 	}
@@ -359,7 +359,7 @@ func TestManifestsGuardStaysSilentOnEveryLawfulCompositionShape(t *testing.T) {
 func TestConfigValidateCarriesTheCompositionRefusal(t *testing.T) {
 	cfg := config.Config{}
 	cfg.Manifests = config.ManifestsConfig{
-		Dir: "/etc/kacho-iam/manifests", Required: true, ComposeModel: true,
+		Dir: "/etc/kaname/manifests", Required: true, ComposeModel: true,
 	}
 	err := cfg.Validate()
 	if err == nil || !strings.Contains(err.Error(), "manifests.admission") {

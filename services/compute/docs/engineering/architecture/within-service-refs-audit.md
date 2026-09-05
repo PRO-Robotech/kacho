@@ -35,7 +35,7 @@
 > Парный аудит для kacho-vpc — `services/vpc/docs/engineering/architecture/within-service-refs-audit.md`
 > (KAC-84).
 >
-> **Cross-service ссылки** (`project_id` → kacho-iam;
+> **Cross-service ссылки** (`project_id` → kaname;
 > `instance_network_interfaces.subnet_id` / `security_group_ids` /
 > `primary_v4_nat.address_id` → kacho-vpc) — **out of scope**: для них DB-уровневые
 > FK невозможны (`database-per-service` запрет #8), валидация делается через
@@ -127,7 +127,7 @@
 | Resource.field / invariant | Что гарантируется | DB constraint | Software check | Решение |
 |---|---|---|---|---|
 | `id` PK | уникальный | `disks_pkey` ✅ | n/a | OK |
-| `project_id` (id владельца-проекта) | существует в kacho-iam | N/A (cross-service) | `ProjectClient.Exists` в `service.checkProject` | OK (cross-service) |
+| `project_id` (id владельца-проекта) | существует в kaname | N/A (cross-service) | `ProjectClient.Exists` в `service.checkProject` | OK (cross-service) |
 | `(project_id, name)` | уникальный non-empty | `disks_project_name_uniq` partial UNIQUE WHERE `name <> ''` ✅ | n/a | OK |
 | `zone_id` | существует, RESTRICT удаления зоны | ❌ **нет FK** | sync `zones.GetZone` в `DiskService.doCreate` | **G4** |
 | `type_id` | существует в `disk_types(id)` | ❌ **нет FK** | sync `diskTypeRepo.Get` в `DiskService.doCreate` | **G5** |
@@ -143,7 +143,7 @@
 | Resource.field / invariant | Что гарантируется | DB constraint | Software check | Решение |
 |---|---|---|---|---|
 | `id` PK | уникальный | `images_pkey` ✅ | n/a | OK |
-| `project_id` (id владельца-проекта) | существует в kacho-iam | N/A (cross-service) | `ProjectClient.Exists` | OK (cross-service) |
+| `project_id` (id владельца-проекта) | существует в kaname | N/A (cross-service) | `ProjectClient.Exists` | OK (cross-service) |
 | `(project_id, name)` | уникальный non-empty | `images_project_name_uniq` partial UNIQUE WHERE `name <> ''` ✅ | n/a | OK |
 | `(project_id, family, created_at desc)` ordering для GetLatestByFamily | индекс есть | `images_family_idx` ✅ | n/a | OK |
 | `family` | regex `^([a-z][-a-z0-9]{1,61}[a-z0-9])?$` | ❌ нет CHECK | sync `validateImageFamily` в `ImageService.Create` | acceptable (immutable после Create; нет raw-INSERT admin-path) |
@@ -158,7 +158,7 @@
 | Resource.field / invariant | Что гарантируется | DB constraint | Software check | Решение |
 |---|---|---|---|---|
 | `id` PK | уникальный | `snapshots_pkey` ✅ | n/a | OK |
-| `project_id` (id владельца-проекта) | существует в kacho-iam | N/A (cross-service) | `ProjectClient.Exists` | OK (cross-service) |
+| `project_id` (id владельца-проекта) | существует в kaname | N/A (cross-service) | `ProjectClient.Exists` | OK (cross-service) |
 | `(project_id, name)` | уникальный non-empty | `snapshots_project_name_uniq` partial UNIQUE WHERE `name <> ''` ✅ | n/a | OK |
 | `source_disk_id` | existed at create time, Disk был READY | ❌ нет FK (by-design soft-ref: source disk can be deleted) | sync `diskRepo.Get` + status check в `SnapshotService.doCreate` | **G8** (by-design) |
 | `source_disk_idx` для observability | `snapshots_source_disk_idx` partial WHERE `source_disk_id <> ''` ✅ | n/a | OK |
@@ -169,7 +169,7 @@
 | Resource.field / invariant | Что гарантируется | DB constraint | Software check | Решение |
 |---|---|---|---|---|
 | `id` PK | уникальный | `instances_pkey` ✅ | n/a | OK |
-| `project_id` (id владельца-проекта) | существует в kacho-iam | N/A (cross-service) | `ProjectClient.Exists` в `service.checkProject` | OK (cross-service) |
+| `project_id` (id владельца-проекта) | существует в kaname | N/A (cross-service) | `ProjectClient.Exists` в `service.checkProject` | OK (cross-service) |
 | `(project_id, name)` | уникальный non-empty | `instances_project_name_uniq` partial UNIQUE WHERE `name <> ''` ✅ | n/a | OK |
 | `zone_id` | существует, immutable после Create | ❌ **нет FK** | sync `zones.GetZone` в `doCreate` | **G3** |
 | `status` (TEXT: PROVISIONING/RUNNING/STOPPING/STOPPED/STARTING/RESTARTING/UPDATING/ERROR/CRASHED/DELETING) | значение из state-машины (см. CLAUDE.md §8) | ❌ нет CHECK на enum; ❌ переходы делаются `Get → if status != from → SetStatus` без CAS | sync precondition-check в `InstanceService.lifecycle/AttachDisk/DetachDisk/AddOneToOneNat/RemoveOneToOneNat/Update touchesCompute` | **G2** + **G9** (TOCTOU на state + missing CHECK) |

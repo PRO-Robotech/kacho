@@ -155,7 +155,7 @@ func (r *SessionRevocationRepo) Insert(ctx context.Context, tx pgx.Tx, s domain.
 // Здесь стояло «cron-cleanup». Расписания в этом дереве не существует, а
 // вызывающего у метода не было НИ ОДНОГО — то есть комментарий называл механизм,
 // которого нет, у функции, которую никто не звал. Вызывающий живёт теперь в
-// `retention.Sweeper.Start` (провязан в `cmd/kacho-iam/retention.go`); свойство
+// `retention.Sweeper.Start` (провязан в `cmd/kaname/retention.go`); свойство
 // «у объявленного уборщика есть прод-вызывающий» держит гейт дерева
 // `internal/repohygiene` `TestDeclaredRetentionSweepersHaveAProductionCaller`.
 //

@@ -10,7 +10,7 @@ package drainer_test
 // Test design constraints:
 //   - testcontainers-go Postgres 16, one container per PACKAGE; each test gets
 //     its own database on it (no shared state, parallel-safe — see TestMain).
-//   - Inline copy of the kacho-iam `fga_outbox` DDL (see fgaOutboxSchema in
+//   - Inline copy of the kaname `fga_outbox` DDL (see fgaOutboxSchema in
 //     drainer_testhelpers_test.go, which names the migrations it mirrors).
 //     corelib doesn't own iam migrations.
 //   - Fake-Applier (a recorder; the drainer's consumer is a port, not a

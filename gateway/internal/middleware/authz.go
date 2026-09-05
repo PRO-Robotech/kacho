@@ -574,7 +574,7 @@ const (
 	// outcomeNotFound — an authz deny on a hide-existence read RPC (catalog
 	// HideExistence / IAM verb-bearing `v_get` read). Maps to gRPC NotFound(5) /
 	// HTTP 404 with NO deny reasons. The gateway Check runs BEFORE the resource
-	// owner (kacho-iam), which itself returns NotFound for a denied read; surfacing
+	// owner (kaname), which itself returns NotFound for a denied read; surfacing
 	// a 403 here would override that hide-existence contract and leak both existence
 	// and the deny reasons. Enforcement is unchanged — the deny still blocks the
 	// request and the handler is never reached; only the surfaced code/body differ.
@@ -692,7 +692,7 @@ func (m *AuthzMiddleware) phaseAllowlist(dr decisionRequest) (decision, bool) {
 
 // phaseInternalOriginExempt admits an `<exempt>` Internal* RPC ONLY when it
 // arrived on the cluster-internal listener (not the advertised external TLS
-// listener). Internal callers (api-gateway self-call, kacho-iam drainer,
+// listener). Internal callers (api-gateway self-call, kaname drainer,
 // port-forward admin) carry no external user JWT, so the catalog's authN-
 // enforcing exempt path would otherwise 401 them. Gated Internal* RPCs (a real
 // `required_relation`, e.g. InternalClusterService) are NOT bypassed — they run
@@ -1058,7 +1058,7 @@ func (m *AuthzMiddleware) phaseResource(dr decisionRequest, entry CatalogEntry, 
 	// см. kacho-iam/internal/domain/cluster.go::ClusterSingletonID).
 	// Catalog для reference-data (compute.Region/Zone, etc.) задает
 	// scope_extractor: {object_type: cluster, from_request_field: '*'}.
-	// Extractor выдает ResourceID("*") → object="cluster:*" → kacho-iam
+	// Extractor выдает ResourceID("*") → object="cluster:*" → kaname
 	// AuthorizeService.Check отбивает с "no path: unscoped resource"
 	// (authorize_service.go блокирует req.Resource.ID == "*"). Тут
 	// substitute'им wildcard на канонический singleton id, чтобы Check

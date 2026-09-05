@@ -53,7 +53,7 @@ cpu_usec() {
   esac
 }
 
-iam_pods()  { k get pod -l app.kubernetes.io/name=kacho-iam -o jsonpath='{range .items[*]}{.metadata.name}{"\n"}{end}'; }
+iam_pods()  { k get pod -l app.kubernetes.io/name=kaname -o jsonpath='{range .items[*]}{.metadata.name}{"\n"}{end}'; }
 # snapshot <файл> — состояние всех участников в один момент.
 #
 # Участников стало меньше: внешний движок отношений и его база сняты вместе с
@@ -63,7 +63,7 @@ snapshot() {
   local f="$1"
   {
     echo "ts_ns=$(date +%s%N)"
-    for p in $(iam_pods); do echo "iam:$p=$(cpu_usec "$p" kacho-iam)"; done
+    for p in $(iam_pods); do echo "iam:$p=$(cpu_usec "$p" kaname)"; done
     echo "pgiam=$(cpu_usec kacho-umbrella-pg-iam-0 postgresql)"
     echo "k6=$(cpu_usec k6-iam-runner k6)"
   } > "$f"
@@ -73,7 +73,7 @@ snapshot() {
 # Читаются с внутреннего порта метрик, суммарно по репликам.
 pool_stats() {
   for p in $(iam_pods); do
-    k exec "$p" -c kacho-iam -- sh -c \
+    k exec "$p" -c kaname -- sh -c \
       'wget -qO- http://127.0.0.1:9095/metrics 2>/dev/null | grep -E "^kacho_iam_db_pool_|^kacho_iam_authz_check_duration_seconds_count|^kacho_iam_shadow" || true' \
       2>/dev/null | sed "s|^|$p |"
   done
@@ -94,7 +94,7 @@ pool_stats() {
 
 restarts() {
   k get pod -o jsonpath='{range .items[*]}{.metadata.name}={.status.containerStatuses[0].restartCount}{"\n"}{end}' 2>/dev/null \
-    | grep -E 'kacho-iam|pg-iam' || true
+    | grep -E 'kaname|pg-iam' || true
 }
 
 pg_conns() {
@@ -104,11 +104,11 @@ pg_conns() {
      \"select count(*), count(*) filter (where state='active'), count(*) filter (where wait_event_type='Lock') from pg_stat_activity where datname='kacho_iam';\"" 2>/dev/null || echo "NA"
 }
 
-REPLICAS=$(k get deploy kacho-iam -o jsonpath='{.spec.replicas}')
+REPLICAS=$(k get deploy kaname -o jsonpath='{.spec.replicas}')
 echo "=== прогон '$LABEL': реплик службы прав=$REPLICAS · ступени=$STEPS · длительность=$DUR · повторов=$REPEATS ==="
 echo "replicas=$REPLICAS" > "$OUT/meta.txt"
 echo "steps=$STEPS duration=$DUR repeats=$REPEATS allow_ratio=$ALLOW_RATIO" >> "$OUT/meta.txt"
-k get pod -l app.kubernetes.io/name=kacho-iam -o jsonpath='{range .items[*]}{.metadata.name}{" "}{.status.containerStatuses[0].imageID}{"\n"}{end}' >> "$OUT/meta.txt"
+k get pod -l app.kubernetes.io/name=kaname -o jsonpath='{range .items[*]}{.metadata.name}{" "}{.status.containerStatuses[0].imageID}{"\n"}{end}' >> "$OUT/meta.txt"
 
 # ПРОГРЕВ, РЕЗУЛЬТАТ КОТОРОГО ВЫБРАСЫВАЕТСЯ. Первая ступень после переката или
 # смены числа реплик меряет не продукт, а холодный старт: пулы пусты, соединения

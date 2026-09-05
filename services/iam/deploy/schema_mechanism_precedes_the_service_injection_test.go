@@ -98,7 +98,7 @@ func replaceOnce(t *testing.T, body, old, new string) string {
 
 const (
 	migratorCommandLine = `          command: ["/usr/local/bin/kacho-migrator", "up"]`
-	serviceCommandLine  = `          command: ["/usr/local/bin/kacho-iam", "serve"]`
+	serviceCommandLine  = `          command: ["/usr/local/bin/kaname", "serve"]`
 	initImageLine       = `          image: "{{ .Values.image }}"`
 	dockerfileCopyLine  = `COPY --from=builder /kacho-migrator /usr/local/bin/kacho-migrator`
 )

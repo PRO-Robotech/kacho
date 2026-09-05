@@ -40,7 +40,7 @@ type InstanceFilter struct {
 	Filter string
 }
 
-// OwnerRegistrar — синхронная post-commit регистрация owner-tuple в kacho-iam
+// OwnerRegistrar — синхронная post-commit регистрация owner-tuple в kaname
 // (`InternalIAMService.RegisterResource`), зеркалящая тот же register-intent, что
 // эмитится транзакционно в `compute_fga_register_outbox` — и НЕСЁТ ТУ ЖЕ ВЕРСИЮ,
 // которой БД проштамповала эту строку внутри writer-транзакции (её возвращает
@@ -224,7 +224,7 @@ type GuestAccessKeyUpdate struct {
 // Touched сообщает, называет ли правка хоть одну колонку.
 func (u GuestAccessKeyUpdate) Touched() bool { return u.Name != nil || u.LabelsSet }
 
-// ProjectClient — port для проверки существования Project в kacho-iam
+// ProjectClient — port для проверки существования Project в kaname
 // (ProjectService.Get). Аргумент projectID — id владельца-проекта; в схеме
 // kacho-compute он лежит в колонке `project_id`.
 type ProjectClient interface {

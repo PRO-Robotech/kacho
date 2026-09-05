@@ -30,7 +30,7 @@ type Handler struct {
 	changed *ListChangedUseCase
 }
 
-// NewHandler assembles the Handler. Composition root: cmd/kacho-iam/wiring.go.
+// NewHandler assembles the Handler. Composition root: cmd/kaname/wiring.go.
 func NewHandler(
 	g *GetUseCase, l *ListUseCase, c *CreateUseCase, u *UpdateUseCase, d *DeleteUseCase,
 	r *ResolveUseCase, ch *ListChangedUseCase,

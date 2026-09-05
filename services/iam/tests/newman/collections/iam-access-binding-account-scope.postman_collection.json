@@ -1,7 +1,7 @@
 {
   "info": {
     "_postman_id": "2f443515-aca2-57c1-b53d-ec3983a902ac",
-    "name": "kacho-iam / newman / iam-access-binding-account-scope",
+    "name": "kaname / newman / iam-access-binding-account-scope",
     "schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json"
   },
   "event": [

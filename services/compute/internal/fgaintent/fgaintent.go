@@ -8,7 +8,7 @@
 // resource Create/Delete it records an
 // "intent" row IN THE SAME writer-tx as the resource Insert/Delete. A separate
 // register-drainer (corelib outbox/drainer) later replays each intent by calling
-// kacho-iam InternalIAMService.RegisterResource / UnregisterResource over mTLS —
+// kaname InternalIAMService.RegisterResource / UnregisterResource over mTLS —
 // idempotent, at-least-once, IAM-Unavailable → retry, the owner-tuple is never
 // lost (the dual-write bug N5 is gone: no best-effort post-commit FGA write).
 //
@@ -52,7 +52,7 @@ type Tuple struct {
 //
 // Epic Resource-scoped-AccessBinding β: the payload also carries the owner's
 // labels + parent-scope (project / account). The register-drainer forwards them
-// to IAM.RegisterResource so kacho-iam can populate its output-only
+// to IAM.RegisterResource so kaname can populate its output-only
 // resource_mirror (label+parent mirror that feeds the γ selector / containment
 // gate, SAME-DB in IAM, without an iam→compute edge — data is pushed by the
 // consumer, IAM never pulls). These fields are additive and optional — older
@@ -72,7 +72,7 @@ type Payload struct {
 	// the SAME writer-tx as the resource mutation. For sequential mutations of one
 	// object a later mutation's tx commits-after the earlier, so its now() is
 	// strictly greater → monotonic per-object. The register-drainer forwards it as
-	// RegisterResourceRequest.source_version so kacho-iam applies the mirror UPSERT
+	// RegisterResourceRequest.source_version so kaname applies the mirror UPSERT
 	// last-SOURCE-state-wins (a reordered stale intent → no-op, not an overwrite).
 	// Compute has no per-row updated_at column, and the intent-emit now() is the
 	// exact instant the source-state is recorded — a correct, least-invasive marker.

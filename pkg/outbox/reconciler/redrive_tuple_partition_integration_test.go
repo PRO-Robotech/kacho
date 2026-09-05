@@ -229,7 +229,7 @@ func newTupleRedriver(t *testing.T, pool *pgxpool.Pool) *reconciler.Reconciler {
 		Channel:         tupleChannel,
 		MaxAttempts:     tupleMaxAtt,
 		PartitionColumn: tupleKeyColumn,
-		// The same coverage rule iam wires (cmd/kacho-iam/fga_outbox_redrive_backstop.go):
+		// The same coverage rule iam wires (cmd/kaname/fga_outbox_redrive_backstop.go):
 		// a delivered successor voids a poisoned row only if it re-determined everything
 		// that row named. Without it, a partition key that covers a SET reads "somebody
 		// restated something nearby" as "somebody restated this".
@@ -241,7 +241,7 @@ func newTupleRedriver(t *testing.T, pool *pgxpool.Pool) *reconciler.Reconciler {
 }
 
 // drainTupleOutbox runs a real drainer over the tuple outbox with the production
-// wiring of kacho-iam (PartitionColumn = tuple_key) and stops once nothing is
+// wiring of kaname (PartitionColumn = tuple_key) and stops once nothing is
 // deliverable. The revival is only worth anything if the drainer then DELIVERS,
 // so the assertions below read the target, not the row.
 func drainTupleOutbox(t *testing.T, ctx context.Context, pool *pgxpool.Pool, s *tupleStore) {

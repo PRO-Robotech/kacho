@@ -24,7 +24,7 @@ sequenceDiagram
   participant U as Client
   participant H as NetworkHandler (gRPC)
   participant S as NetworkService
-  participant RM as kacho-iam (ProjectClient)
+  participant RM as kaname (ProjectClient)
   participant DB as pg-vpc
 
   U->>H: Create(project_id, name, …)
@@ -72,7 +72,7 @@ sequenceDiagram
   autonumber
   participant U as Client
   participant S as SubnetService
-  participant RM as kacho-iam
+  participant RM as kaname
   participant N as NetworkService.repo
   participant DB as pg-vpc
 
@@ -113,7 +113,7 @@ sequenceDiagram
   autonumber
   participant U as Client
   participant AS as AddressService
-  participant RM as kacho-iam
+  participant RM as kaname
   participant ALC as AddressAllocator
   participant POOL as AddressPoolService
   participant DB as pg-vpc
@@ -201,7 +201,7 @@ sequenceDiagram
 
 ## 5. Cross-service: project existence check
 
-Межсервисная зависимость VPC на `kacho-iam`. Используется на request-path
+Межсервисная зависимость VPC на `kaname`. Используется на request-path
 каждой Create-мутации — проверить, что владелец-проект существует
 (`project_id` — legacy-имя колонки = id владельца-проекта).
 
@@ -209,7 +209,7 @@ sequenceDiagram
 sequenceDiagram
   participant S as <Resource>Service (worker)
   participant FC as ProjectClient (gRPC adapter)
-  participant RM as kacho-iam :9090
+  participant RM as kaname :9090
   participant Retry as corelib/retry
 
   S->>FC: Exists(project_id)
@@ -327,7 +327,7 @@ sequenceDiagram
   autonumber
   participant U as Client
   participant S as NetworkInterfaceService
-  participant RM as kacho-iam
+  participant RM as kaname
   participant DB as pg-vpc
 
   U->>S: Create(project_id, subnet_id, v4_address_ids?, v6_address_ids?, security_group_ids?)

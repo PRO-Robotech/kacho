@@ -83,7 +83,7 @@ func laneSingleSource(profile, base map[string]any) string {
 // проверки не заводили каждая свою копию — разойдясь, копии молча судили бы о
 // разных величинах.
 func laneAddressee(profile, base map[string]any) string {
-	if s, _ := dig(profile, "kacho-iam", "config", "apiServer", "registryToken", "service").(string); strings.TrimSpace(s) != "" {
+	if s, _ := dig(profile, "kaname", "config", "apiServer", "registryToken", "service").(string); strings.TrimSpace(s) != "" {
 		return strings.TrimSpace(s)
 	}
 	return laneSingleSource(profile, base)
@@ -108,7 +108,7 @@ func scanRegistryLaneSides(profiles map[string]map[string]any, base map[string]a
 		if on, present := reg["enabled"].(bool); present && !on {
 			continue
 		}
-		if iam, _ := dig(profiles[name], "kacho-iam").(map[string]any); iam == nil {
+		if iam, _ := dig(profiles[name], "kaname").(map[string]any); iam == nil {
 			continue
 		}
 		census.serving++
@@ -128,10 +128,10 @@ func scanRegistryLaneSides(profiles map[string]map[string]any, base map[string]a
 				"registry.serviceAud объявлен отдельно (" + regSide + ") и расходится с " +
 					laneSourceKeyPath + " (" + source + ") — рендер откажет, стенд не поднимется"})
 		}
-		iamSide, _ := dig(profiles[name], "kacho-iam", "config", "apiServer", "registryToken", "service").(string)
+		iamSide, _ := dig(profiles[name], "kaname", "config", "apiServer", "registryToken", "service").(string)
 		if iamSide = strings.TrimSpace(iamSide); iamSide != "" && iamSide != source {
 			findings = append(findings, laneSideFinding{name,
-				"kacho-iam.config.apiServer.registryToken.service объявлен отдельно (" + iamSide +
+				"kaname.config.apiServer.registryToken.service объявлен отдельно (" + iamSide +
 					") и расходится с " + laneSourceKeyPath + " (" + source + ") — рендер откажет, стенд не поднимется"})
 		}
 	}
@@ -180,7 +180,7 @@ func TestRegistryLaneSidesScannerSeesEachDivergenceAndIsSilentOnTheLink(t *testi
 	profile := func(source, regSide, iamSide string) map[string]any {
 		p := map[string]any{
 			"registry":  map[string]any{"enabled": true},
-			"kacho-iam": map[string]any{},
+			"kaname": map[string]any{},
 		}
 		if source != "" {
 			p["global"] = map[string]any{"kacho": map[string]any{
@@ -191,7 +191,7 @@ func TestRegistryLaneSidesScannerSeesEachDivergenceAndIsSilentOnTheLink(t *testi
 			p["registry"].(map[string]any)["serviceAud"] = regSide
 		}
 		if iamSide != "" {
-			p["kacho-iam"] = map[string]any{"config": map[string]any{
+			p["kaname"] = map[string]any{"config": map[string]any{
 				"apiServer": map[string]any{"registryToken": map[string]any{"service": iamSide}},
 			}}
 		}
@@ -250,7 +250,7 @@ func TestRegistryLaneSidesScannerSeesEachDivergenceAndIsSilentOnTheLink(t *testi
 func TestBothLaneTemplatesReadTheSingleSource(t *testing.T) {
 	sides := map[string]string{
 		"сторона реестра":  filepath.Join("..", "services", "registry", "deploy", "templates", "_helpers.tpl"),
-		"сторона личности": filepath.Join("helm", "umbrella", "charts", "kacho-iam", "templates", "_helpers.tpl"),
+		"сторона личности": filepath.Join("helm", "umbrella", "charts", "kaname", "templates", "_helpers.tpl"),
 	}
 	read := 0
 	for side, path := range sides {

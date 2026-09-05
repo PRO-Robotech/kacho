@@ -30,14 +30,14 @@ import dedent from 'ts-dedent'
 <table>
   <thead><tr><th>Форма удостоверения</th><th>Как выглядит</th><th>Где взять</th></tr></thead>
   <tbody>
-    <tr><td><strong>Базовый токен доступа</strong></td><td><code>kacho&#95;&lt;id&gt;&#95;&lt;32 знака&gt;</code> — предъявляется как есть</td><td>kacho-iam, <code>Issue</code> с видом <code>CREDENTIAL&#95;KIND&#95;SECRET</code></td></tr>
+    <tr><td><strong>Базовый токен доступа</strong></td><td><code>kacho&#95;&lt;id&gt;&#95;&lt;32 знака&gt;</code> — предъявляется как есть</td><td>kaname, <code>Issue</code> с видом <code>CREDENTIAL&#95;KIND&#95;SECRET</code></td></tr>
     <tr><td><strong>Подписанный JWT</strong></td><td>compact JWS (RS256 / ES256 / EdDSA)</td><td>обмен подписанного <code>client&#95;assertion</code> на токен — либо интерактивный OIDC-флоу</td></tr>
   </tbody>
 </table>
 
 Полоса выбирается **по марке** `kacho_`, а не по неудаче разбора JWT; детали обеих —
 [Аутентификация](/architecture/authn). Как получить **первое** удостоверение, если его ещё
-нет, — «Первое удостоверение» в документации kacho-iam.
+нет, — «Первое удостоверение» в документации kaname.
 
 Режимы отличаются тем, что гейтвей соглашается принять:
 
@@ -65,7 +65,7 @@ JWT нужен там, где удостоверение не должно хо�
 ## 2. Проверить, что гейтвей жив
 
 `/healthz` — liveness (всегда `200`, если процесс запущен). `/readyz` — readiness: `200`, если
-доступен критичный backend (`kacho-iam`, он фронтит AuthN/AuthZ), иначе `503`.
+доступен критичный backend (`kaname`, он фронтит AuthN/AuthZ), иначе `503`.
 
 <CodeBlock language="bash">
   {dedent`
@@ -86,7 +86,7 @@ JWT нужен там, где удостоверение не должно хо�
   `}
 </CodeBlock>
 
-Гейтвей маршрутизирует запрос в `kacho-iam` по domain-prefix пути (`/iam/v1/...`). Список —
+Гейтвей маршрутизирует запрос в `kaname` по domain-prefix пути (`/iam/v1/...`). Список —
 курсорный: ответ несёт `nextPageToken` (пустая строка — последняя страница).
 
 ## 4. Запустить мутацию (async → Operation)

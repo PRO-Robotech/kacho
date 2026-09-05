@@ -93,7 +93,7 @@ func describe(
 	if err != nil {
 		return servicecontract.Descriptor{}, fmt.Errorf("build server TLS creds: %w", err)
 	}
-	// Ребро решения о доступе идёт на ВНУТРЕННИЙ листенер kacho-iam: там живёт
+	// Ребро решения о доступе идёт на ВНУТРЕННИЙ листенер kaname: там живёт
 	// InternalIAMService.Check. Ручка его транспорта — `mtls.iam-register`, та же,
 	// что закрывает соединение дренажа регистраций (это одно соединение). Адрес
 	// резолвится ровно тем же правилом, что в таблице соединений (`peerDialSpecs`,
@@ -143,7 +143,7 @@ func describe(
 		// Верхняя граница обработки вызова и бюджет отказов — обе ВЕЛИЧИНЫ, обе с
 		// обоснованием у своих ручек конфигурации (`api-server.handling-budget`,
 		// `authz.deny-budget-per-sec`). «Не применимо» здесь незаконно: решение о
-		// доступе nlb принимает не у себя, а вопросом к kacho-iam, — то есть
+		// доступе nlb принимает не у себя, а вопросом к kaname, — то есть
 		// сетевой сосед, которого шторм отказов может уронить, у него ЕСТЬ.
 		HandlingBudget: cfg.APIServer.HandlingBudget,
 		DenyBudget:     servicecontract.Value(cfg.Authz.DenyBudgetPerSec),

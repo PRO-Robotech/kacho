@@ -62,7 +62,7 @@ const authzguardPkgPath = "github.com/PRO-Robotech/kacho-iam/internal/authzguard
 
 // modelOwnerRoot — композиционный корень владельца модели, относительно
 // `services/`.
-const modelOwnerRoot = "iam/cmd/kacho-iam"
+const modelOwnerRoot = "iam/cmd/kaname"
 
 // modelOwnerRubicons — проводки, которыми рубежи владельца модели попадают в
 // цепочку.

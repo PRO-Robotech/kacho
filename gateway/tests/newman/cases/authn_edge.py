@@ -79,7 +79,7 @@ newman НЕ отменяет запрос: он уходит БЕЗ заголо
   завести вторую выдачу ключа на каждый прогон — течь фикстур ради имени кейса.
 * **IBT-06** (у RPC нет REST-двери) — держится двумя Go-пробами:
   `gateway/internal/restmux/bootstrap_token_no_rest_route_test.go` и
-  `services/iam/cmd/kacho-iam/bootstrap_token_internal_only_test.go`. Они судят
+  `services/iam/cmd/kaname/bootstrap_token_internal_only_test.go`. Они судят
   по РЕГИСТРАЦИИ маршрута, то есть по тому, чего в дереве нет; e2e-проба на
   `404` слабее — `404` приходит и от опечатки в адресе.
 * **Подделка RS256 своим ключом** (нападающий чеканит собственную пару) —

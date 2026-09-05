@@ -47,7 +47,7 @@ type CreateRouteTableUseCase struct {
 }
 
 // WithRegistrar подключает синхронный owner-tuple registrar (Decision 2): после
-// commit RouteTable owner-tuple синхронно регистрируется в kacho-iam. Nil →
+// commit RouteTable owner-tuple синхронно регистрируется в kaname. Nil →
 // sync-путь пропускается (только async drainer).
 func (u *CreateRouteTableUseCase) WithRegistrar(r fgaregister.Registrar) *CreateRouteTableUseCase {
 	u.registrar = r
@@ -222,7 +222,7 @@ func (u *CreateRouteTableUseCase) doCreate(ctx context.Context, rtID string, rt 
 	// Записываем INTENT на owner-hierarchy-tuple vpc_route_table→project в той же
 	// writer-TX — at-least-once через transactional-outbox, без best-effort-потери
 	// при ошибке. В mirror-feed несем labels RouteTable + parent_project_id
-	// (ProjectHierarchyItem), а не голый tuple — иначе resource_mirror в kacho-iam
+	// (ProjectHierarchyItem), а не голый tuple — иначе resource_mirror в kaname
 	// остается без labels и ARM_LABELS-селектор не матчит даже свежесозданную
 	// RouteTable. Симметрично network/subnet/securitygroup create.
 	items := []fgaregister.Item{

@@ -57,7 +57,7 @@ import (
 // iamChartDir — вендоренная копия чарта службы прав внутри умбреллы. Ставят
 // стеки именно её (см. соседний iam_pool_declaration_parity_test.go); второй
 // чарт (services/iam/deploy) не ставит ни один стек и здесь не судится.
-const iamChartDir = "helm/umbrella/charts/kacho-iam"
+const iamChartDir = "helm/umbrella/charts/kaname"
 
 // manifestDeliveryDecls — объявления, из которых складывается доставка.
 //

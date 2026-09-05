@@ -146,7 +146,7 @@ type GeoClient interface {
 	ZonesOfRegion(ctx context.Context, regionID string) ([]string, error)
 }
 
-// IAMClient — порт peer-валидации project_id через kacho-iam (ProjectService.Get,
+// IAMClient — порт peer-валидации project_id через kaname (ProjectService.Get,
 // fail-closed). Ребро storage→iam (one-way).
 type IAMClient interface {
 	EnsureProjectExists(ctx context.Context, projectID string) error
@@ -201,7 +201,7 @@ type UseCase struct {
 	// dataPlane — объявлена ли плоскость данных. Тот же признак, что читает
 	// проводка сверщика: два решения об одном предмете не должны разъезжаться.
 	dataPlane bool
-	// listFilter — per-object фильтр видимости страницы List (kacho-iam
+	// listFilter — per-object фильтр видимости страницы List (kaname
 	// AuthorizeService.BatchCheck). nil → passthrough (dev / list-filter disabled;
 	// production boot-guard такую посадку запрещает). Инжектится WithListFilter.
 	listFilter *listnarrow.Narrower

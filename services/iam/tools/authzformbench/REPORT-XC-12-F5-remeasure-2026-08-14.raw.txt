@@ -207,7 +207,7 @@ L5-правило-отозвано-ОТЗЫВ    форма E (relverdict, та�
 этих слагаемых к измеренному не прибавлено — правило отнесения п.7.
 Форму E это не касается ни на одном из двух путей: у неё между изменением метки и
 вердиктом нет очереди вовсе, и её окно измерено целиком.
-предикат: grep -rn 'KACHO_IAM_RECONCILE_DRAIN_INTERVAL_MS|PollFallback|pg_notify' services/iam/cmd/kacho-iam/serve.go services/iam/cmd/kacho-iam/fga_outbox_drainer.go services/iam/internal/repo/kacho/pg/reconcile_notify.go
+предикат: grep -rn 'KACHO_IAM_RECONCILE_DRAIN_INTERVAL_MS|PollFallback|pg_notify' services/iam/cmd/kaname/serve.go services/iam/cmd/kaname/fga_outbox_drainer.go services/iam/internal/repo/kacho/pg/reconcile_notify.go
 
 
 ИСХОДЫ ЯЧЕЕК

@@ -1,7 +1,7 @@
 # Copyright (c) PRO-Robotech
 # SPDX-License-Identifier: AGPL-3.0-or-later
 
-"""Case-set authz-deny для kacho-iam.
+"""Case-set authz-deny для kaname.
 
 Проверяет default-deny matrix для 6 субъектов на Account/Project/Group/SA/AB/User/Role,
 плюс UserService.Invite (CanInviteUsers) и UserService.List scope-filter.
@@ -69,7 +69,7 @@ EXPECT = {
     "invite-to-account-A":    {"ANON":"DENY","NOB":"DENY","PA1":"DENY","AAA":"ALLOW","AAB":"DENY","INV":"DENY"},
     "invite-to-account-B":    {"ANON":"DENY","NOB":"DENY","PA1":"DENY","AAA":"DENY","AAB":"ALLOW","INV":"ALLOW"},
     # User.List is a scope-filter RPC (exempt at the gateway). The
-    # kacho-iam handler returns 200 with only the Users of Accounts where the
+    # kaname handler returns 200 with only the Users of Accounts where the
     # principal is a member — EMPTY (200, zero users) when the caller is not a
     # member of the requested Account; never 403. Anonymous → DENY (IAM
     # anti-anonymous interceptor). So a non-member account-admin (e.g. AAB on
@@ -77,7 +77,7 @@ EXPECT = {
     "user-list-account-A":    {"ANON":"DENY","NOB":"EMPTY","PA1":"EMPTY","AAA":"ALLOW","AAB":"EMPTY","INV":"ALLOW"},
     "user-list-account-B":    {"ANON":"DENY","NOB":"EMPTY","PA1":"EMPTY","AAA":"EMPTY","AAB":"ALLOW","INV":"ALLOW"},
     # ServiceAccount.List is a scope-filter RPC (exempt at the
-    # gateway, like User.List). The kacho-iam handler returns 200
+    # gateway, like User.List). The kaname handler returns 200
     # with only the ServiceAccounts of Accounts where the principal is a
     # member — EMPTY (200, zero serviceAccounts) for a non-member; never 403.
     # Membership semantics are identical to user-list-account-*.
@@ -105,7 +105,7 @@ EXPECT = {
     # caller's member-Accounts). Every authenticated subject gets a non-403.
     "account-list":           {"ANON":"DENY","NOB":"ALLOW","PA1":"ALLOW","AAA":"ALLOW","AAB":"ALLOW","INV":"ALLOW"},
     # User.List WITHOUT accountId is a scope-filter RPC — the
-    # kacho-iam handler returns 200 with only the Users of Accounts the
+    # kaname handler returns 200 with only the Users of Accounts the
     # principal is a member of (its own user at minimum). Returning the
     # caller's own user is not a data leak. Every authenticated subject → ALLOW
     # (non-403, non-empty); anonymous → DENY.

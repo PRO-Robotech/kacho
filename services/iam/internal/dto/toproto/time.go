@@ -2,7 +2,7 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
 
 // Package toproto — DTO transfer implementations domain/repo → proto for
-// kacho-iam. Transfers are registered at init time (parity with kacho-vpc).
+// kaname. Transfers are registered at init time (parity with kacho-vpc).
 package toproto
 
 import (
@@ -14,7 +14,7 @@ import (
 )
 
 // tsTruncate — the single truncation granularity for every proto timestamp in
-// kacho-iam: the API contract truncates created_at/added_at to whole SECONDS
+// kaname: the API contract truncates created_at/added_at to whole SECONDS
 // (api-conventions.md: "в proto-ответе truncate до секунд"); the DB keeps
 // microseconds. Use this constant for all `.Truncate(...)` calls in this
 // package instead of a hardcoded `1_000_000_000` ns literal (DRY — the literal

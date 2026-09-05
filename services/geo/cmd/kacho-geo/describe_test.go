@@ -51,7 +51,7 @@ func bootConfig(t *testing.T, env map[string]string) config.Config {
 	t.Helper()
 	base := map[string]string{
 		"KACHO_GEO_DB_PASSWORD":                  "secret",
-		"KACHO_GEO_AUTHZ_IAM_GRPC_ADDR":          "kacho-iam-internal:9091",
+		"KACHO_GEO_AUTHZ_IAM_GRPC_ADDR":          "kaname-internal:9091",
 		"KACHO_GEO_AUTHZ_TRUSTED_FORWARDER_SANS": "spiffe://kacho.cloud/ns/kacho/sa/kacho-api-gateway",
 		"KACHO_GEO_AUTH_MODE":                    "dev",
 	}

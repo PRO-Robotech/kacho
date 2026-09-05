@@ -268,7 +268,7 @@ spec:
         - name: gw
           env:
             - name: KACHO_API_GATEWAY_IAM_GRPC
-              value: "kacho-iam.kacho.svc.cluster.local:9090"' 1 "kacho-iam.kacho.svc.cluster.local"
+              value: "kaname.kacho.svc.cluster.local:9090"' 1 "kaname.kacho.svc.cluster.local"
 
   probe "дефект: полная форма в data настроек → красный" \
 'apiVersion: v1
@@ -293,7 +293,7 @@ spec:
         - name: gw
           env:
             - name: KACHO_API_GATEWAY_IAM_GRPC
-              value: "kacho-iam.kacho.svc:9090"' 0
+              value: "kaname.kacho.svc:9090"' 0
 
   probe "законно: абсолютная форма (точка в конце) → молчит" \
 'apiVersion: apps/v1
@@ -307,7 +307,7 @@ spec:
         - name: gw
           env:
             - name: KACHO_API_GATEWAY_IAM_GRPC
-              value: "kacho-iam.kacho.svc.cluster.local.:9090"' 0
+              value: "kaname.kacho.svc.cluster.local.:9090"' 0
 
   # САМЫЙ ВАЖНЫЙ БЛИЗНЕЦ: SAN обязан остаться полной формой.
   # Без этой пробы гейт потребовал бы снять имя, которое обязано быть в
@@ -316,12 +316,12 @@ spec:
 'apiVersion: cert-manager.io/v1
 kind: Certificate
 metadata:
-  name: kacho-iam-server
+  name: kaname-server
 spec:
   dnsNames:
-    - kacho-iam.kacho.svc.cluster.local
-    - kacho-iam.kacho.svc
-    - kacho-iam.kacho' 0
+    - kaname.kacho.svc.cluster.local
+    - kaname.kacho.svc
+    - kaname.kacho' 0
 
   probe "законно: внешний издатель kubernetes.default → молчит (внешний контракт)" \
 'apiVersion: v1

@@ -87,9 +87,9 @@ type TokenEnrichmentUserPort interface {
 // external OIDC assertion `(iss, sub)` plus its own `client_id`; we recover
 // the SA mapping by matching `trusted_subjects[*].issuer` + regex on `sub`).
 type TokenEnrichmentSAPort interface {
-	// LookupByOAuthClientID resolves the kacho-iam SA + OAuth-client mapping
+	// LookupByOAuthClientID resolves the kaname SA + OAuth-client mapping
 	// from a Hydra `client_id`. Returns iamerr.ErrNotFound when the client
-	// id is unknown (e.g. legacy Hydra registration outside kacho-iam).
+	// id is unknown (e.g. legacy Hydra registration outside kaname).
 	LookupByOAuthClientID(ctx context.Context, hydraClientID domain.OAuthClientID) (domain.ServiceAccountOAuthClient, error)
 	// GetServiceAccount fetches the SA referenced by a mapping row.
 	GetServiceAccount(ctx context.Context, id domain.ServiceAccountID) (domain.ServiceAccount, error)
@@ -106,7 +106,7 @@ type TokenEnrichmentSAPort interface {
 // principal_type=user + principal_id/account_id claims — the net-new mapping that
 // lets a personal token authenticate as `user:<id>` rather than a service account).
 type TokenEnrichmentUserTokenPort interface {
-	// LookupByOAuthClientID resolves the kacho-iam User-token (UserOAuthClient)
+	// LookupByOAuthClientID resolves the kaname User-token (UserOAuthClient)
 	// mapping from a Hydra `client_id`. Returns iamerr.ErrNotFound when the
 	// client id is not a User-token client.
 	LookupByOAuthClientID(ctx context.Context, hydraClientID domain.OAuthClientID) (domain.UserOAuthClient, error)
@@ -138,7 +138,7 @@ type TokenHookContext struct {
 	CnfX5tS256 string
 	// OAuthClientID — `request.client_id` as Hydra knows it. For
 	// client_credentials this equals `subject`; for jwt-bearer (Phase 3b
-	// federation IN) this is the kacho-iam-issued client_id while `subject`
+	// federation IN) this is the kaname-issued client_id while `subject`
 	// is the EXTERNAL assertion sub (e.g. `repo:acme/infra:ref:refs/heads/
 	// main`). Empty when the handler cannot recover it.
 	OAuthClientID string

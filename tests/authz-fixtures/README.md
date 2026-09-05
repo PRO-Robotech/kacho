@@ -52,7 +52,7 @@ security-ручки приезжают через `envFrom` и читаются 
 Production-путь (`prodseed_all.py` → `prodseed_matrix.py` → `mint_rs256.py`):
 
 1. **admin** — iam `InternalBootstrapTokenService.MintBootstrapToken`, прямой mTLS-gRPC
-   на `kacho-iam :9091` с **bootstrap-operator** client-cert (у mint нет REST-маршрута;
+   на `kaname :9091` с **bootstrap-operator** client-cert (у mint нет REST-маршрута;
    credential — SPIFFE SAN сертификата вызывающего);
 2. **каждый субъект** — iam `SAKeyService.Issue` (iam заводит Hydra OAuth-клиента и
    ОДИН раз отдаёт ES256-ключ) → подписываем `private_key_jwt` client_assertion →

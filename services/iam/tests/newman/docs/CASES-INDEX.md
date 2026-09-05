@@ -1,4 +1,4 @@
-# kacho-iam — CASES-INDEX
+# kaname — CASES-INDEX
 
 Каталог кейсов newman-набора iam. Источник истины — модули `cases/*.py`;
 коллекции в `collections/` **генерируются** `scripts/gen.py`. Этот файл —
@@ -78,7 +78,7 @@
 
 ## `cases/authz-deny.py` — 293 кейсов
 
-> Case-set authz-deny для kacho-iam.
+> Case-set authz-deny для kaname.
 
 - `AUTHZ-ACCT-GT-OWN-ANON`
 - `AUTHZ-ACCT-GT-CROSS-ANON`
@@ -384,7 +384,7 @@
 
 ## `cases/authz-sa-apitoken.py` — 30 кейсов
 
-> Case-set authz-sa-apitoken для kacho-iam.
+> Case-set authz-sa-apitoken для kaname.
 
 - `AUTHZ-SA-NET-GT-A1`
 - `AUTHZ-SA-NET-LS-A1`

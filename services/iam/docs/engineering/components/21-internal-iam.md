@@ -4,7 +4,7 @@
 
 **InternalIAMService** — основной internal-only RPC, через который **все
 остальные** Kachō-сервисы (api-gateway, kacho-vpc, kacho-compute,
-kacho-loadbalancer) общаются с kacho-iam:
+kacho-loadbalancer) общаются с kaname:
 
 - `LookupSubject(by external_id | id | email)` — api-gateway auth-interceptor
   ищет User/SA по subject из JWT.
@@ -130,7 +130,7 @@ sequenceDiagram
 ## Как пользоваться
 
 ```bash
-kubectl -n kacho port-forward svc/kacho-iam 9091:9091 &
+kubectl -n kacho port-forward svc/kaname 9091:9091 &
 
 # LookupSubject by external_id (OIDC sub from Ory).
 grpcurl -plaintext -d '{"external_id":"ory-sub-xyz"}' localhost:9091 \

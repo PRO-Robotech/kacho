@@ -15,7 +15,7 @@ package middleware
 // moved the revocation check here (see auth_revocation.go).
 //
 // The token context below travels for the same reason. The cluster-internal arm
-// (kacho-iam authzguard.ACRFloor) decides on the `acr` this gateway forwards, and
+// (kaname authzguard.ACRFloor) decides on the `acr` this gateway forwards, and
 // its only producer sat in that unmounted middleware — so the internal floor read
 // an absent value on every request for its whole life. A control whose input has
 // no producer that runs is not a strict control; it is an unread one.

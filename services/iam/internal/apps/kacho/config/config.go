@@ -12,7 +12,7 @@ import (
 	"github.com/PRO-Robotech/kacho/pkg/grpcsrv"
 )
 
-// Config — root configuration struct for kacho-iam.
+// Config — root configuration struct for kaname.
 //
 // YAML hierarchy:
 //
@@ -22,7 +22,7 @@ import (
 //	authn:         { mode, domain, hydra-issuer, hooks, jwks, dpop }
 //
 // The gateway-internal drainer is configured from KACHO_IAM_* env vars in the
-// composition root (cmd/kacho-iam), not from this YAML.
+// composition root (cmd/kaname), not from this YAML.
 //
 // Every section is `mapstructure`-tagged (viper uses mapstructure for
 // Unmarshal by default). Defaults live in defaults.go.
@@ -111,7 +111,7 @@ type APIServerConfig struct {
 	// (`GET /.well-known/jwks.json`; default `tcp://0.0.0.0:9097`). A short-TTL
 	// caching reverse-proxy of Hydra's PUBLIC JWKS: the data-plane fetches its
 	// verification keys from iam (never dialing Hydra directly) while Hydra stays
-	// the issuer/signer. Served ONLY on the cluster-internal `kacho-iam-internal`
+	// the issuer/signer. Served ONLY on the cluster-internal `kaname-internal`
 	// Service (never external, ban #6) over one-way server-TLS. Empty disables it.
 	JWKSProxy JWKSProxyConfig `mapstructure:"jwks-proxy"`
 
@@ -305,7 +305,7 @@ type AuthNConfig struct {
 	// TrustedForwarderSANs — EXACT client-certificate SPIFFE SAN URIs allowed to
 	// FORWARD an end-user identity (`x-kacho-principal-*` metadata) to iam. Fed
 	// into grpcsrv.WithTrustedForwarders on BOTH gRPC listeners
-	// (cmd/kacho-iam/serve.go identityUnary/identityStream).
+	// (cmd/kaname/serve.go identityUnary/identityStream).
 	//
 	// Why this is a knob and not a constant: the corelib contract
 	// (pkg/grpcsrv principalIsTrusted) narrows the circle of senders ONLY when the
@@ -343,9 +343,9 @@ type AuthNConfig struct {
 // TrustedForwarders — the circle of senders that REALLY reaches
 // grpcsrv.WithTrustedForwarders on both listeners.
 //
-// Single source of this value per process: the wiring (cmd/kacho-iam/serve.go),
+// Single source of this value per process: the wiring (cmd/kaname/serve.go),
 // the boot guard (validateProductionTrustedForwarders) and the boot self-report
-// (cmd/kacho-iam/bootposture.go) all read this one object and ask its ONE
+// (cmd/kaname/bootposture.go) all read this one object and ask its ONE
 // predicate. So "the guard passed" ⟺ "the circle is really narrowed" — by
 // construction, not by three separately written bodies happening to agree.
 //
@@ -425,7 +425,7 @@ func (b BootstrapMintConfig) AllowedSANs() []string {
 
 // schemaOptionsParam — URL-encoded libpq parameter `options=-c search_path=…`.
 // Appended to baseDSN automatically so every connection (pgxpool, dedicated
-// pgx.Conn for LISTEN, goose via database/sql) sees kacho-iam tables under
+// pgx.Conn for LISTEN, goose via database/sql) sees kaname tables under
 // their unqualified names.
 //
 // search_path is "kacho_iam, public":

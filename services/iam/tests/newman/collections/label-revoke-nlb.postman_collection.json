@@ -1,7 +1,7 @@
 {
   "info": {
     "_postman_id": "f43112e7-572c-59d4-9c6a-00ca3f5fe9f3",
-    "name": "kacho-iam / newman / label-revoke-nlb",
+    "name": "kaname / newman / label-revoke-nlb",
     "schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json"
   },
   "event": [

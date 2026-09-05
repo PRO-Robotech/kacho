@@ -1,7 +1,7 @@
 {
   "info": {
     "_postman_id": "2998d042-a314-54b5-bd8c-03db3c2f63f5",
-    "name": "kacho-iam / newman / iam-read-authz-vget",
+    "name": "kaname / newman / iam-read-authz-vget",
     "schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json"
   },
   "event": [

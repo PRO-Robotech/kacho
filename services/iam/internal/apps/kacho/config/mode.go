@@ -1,7 +1,7 @@
 // Copyright (c) PRO-Robotech
 // SPDX-License-Identifier: AGPL-3.0-or-later
 
-// Package config — configuration for kacho-iam.
+// Package config — configuration for kaname.
 //
 // YAML + viper. Defaults are kept in defaults.go (not in struct-tags).
 // ENV-binding lives in load.go via `viper.SetEnvPrefix("KACHO_IAM")` +

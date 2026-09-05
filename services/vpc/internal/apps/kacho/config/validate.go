@@ -19,7 +19,7 @@ import (
 // меняются только осознанно. %s подставляет Mode.String() (production|production-strict).
 const (
 	errAuthzEndpointRequired = "production mode (%s): authz.iam-endpoint is required " +
-		"(set the kacho-iam internal endpoint; there is no knob that turns authz off)"
+		"(set the kaname internal endpoint; there is no knob that turns authz off)"
 	errPublicMTLSRequired = "production mode (%s): public listener mTLS required " +
 		"(set KACHO_VPC_PUBLIC_SERVER_MTLS_ENABLE=true with cert/key/ca) — the public :9090 " +
 		"listener derives the authorization principal from client-asserted x-kacho-* metadata; " +

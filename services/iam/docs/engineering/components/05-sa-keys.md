@@ -9,9 +9,9 @@
 Каждый ключ — это **kacho-выпущенная** пара (`private_key`, `public_jwk`):
 
 - **`private_key_pem`** — отдается клиенту ОДИН РАЗ в ответе `IssueSAKey`,
-  никогда не хранится в kacho-iam.
+  никогда не хранится в kaname.
 - **`public_key`** — регистрируется в Hydra как JWK при создании OAuth-клиента
-  (`jwks={keys:[...]}`); kacho-iam держит SPKI-PEM-копию в
+  (`jwks={keys:[...]}`); kaname держит SPKI-PEM-копию в
   `service_account_oauth_clients.public_key_pem` для диагностики ротаций.
 
 Hydra **не получает** `client_secret` — его в системе больше нет. Запрос
@@ -119,7 +119,7 @@ sequenceDiagram
     autonumber
     participant Admin
     participant GW as api-gateway
-    participant IAM as kacho-iam :9090
+    participant IAM as kaname :9090
     participant DB as Postgres
     participant Hydra as Ory Hydra
     participant Redactor as OpsResponseRedactor
@@ -354,7 +354,7 @@ go test -short -count=1 -timeout 120s \
   `response.client_secret` всегда пуст и тоже редактируется
   для wire-compat.
 - **Hydra restart loses clients?** — нет, Hydra хранит в собственной БД;
-  kacho-iam держит `hydra_client_id` для ссылки + `public_key_pem` для
+  kaname держит `hydra_client_id` для ссылки + `public_key_pem` для
   диагностики ротаций.
 - **Алгоритм фиксирован `ES256`** — domain.Validate допускает RS256/EdDSA
   для будущих расширений, но текущая ECDSA P-256-only генерация
@@ -389,4 +389,4 @@ go test -short -count=1 -timeout 120s \
 - `internal/service/token_enrichment_service.go` — SA-claims path
   (`kacho_principal_type=service_account`, `kacho_principal_id`,
   `kacho_account_id`).
-- `cmd/kacho-iam/hooks_mux.go` — `tokenEnrichSAAdapter` wiring.
+- `cmd/kaname/hooks_mux.go` — `tokenEnrichSAAdapter` wiring.

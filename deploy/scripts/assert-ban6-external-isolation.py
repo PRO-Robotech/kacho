@@ -182,7 +182,7 @@ INCONCLUSIVE = "INCONCLUSIVE"
 # монтировать службу. Носители домена ВЫВОДЯТСЯ из дерева
 # (`e2e-ban6-domains.py`, `hosts`), поэтому шестой носитель войдёт в перебор сам.
 INTERNAL_ENDPOINTS = {
-    "iam": ("svc/kacho-iam-internal", 9091, "kacho-iam-internal.kacho.svc.cluster.local"),
+    "iam": ("svc/kaname-internal", 9091, "kaname-internal.kacho.svc.cluster.local"),
     "geo": ("svc/kacho-geo-internal", 9091, "kacho-geo-internal.kacho.svc.cluster.local"),
     "nlb": ("svc/kacho-nlb-internal", 9091, "kacho-nlb-internal.kacho.svc.cluster.local"),
     "registry": ("svc/registry-internal", 9091, "registry-internal.kacho.svc.cluster.local"),

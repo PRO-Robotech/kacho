@@ -5,7 +5,7 @@
 //
 // Clean Architecture: the use-case depends on these; concrete adapters live in
 // internal/repo/kacho/pg (BootstrapStore) and internal/bootstraptokenwire
-// (LocalMinter, over the platform token signer), wired in cmd/kacho-iam. No
+// (LocalMinter, over the platform token signer), wired in cmd/kaname. No
 // pgx / grpc imports here (only the domain DTOs, mirroring sa_keys).
 //
 // ─────────────────────────────────────────────────────────────────────────────

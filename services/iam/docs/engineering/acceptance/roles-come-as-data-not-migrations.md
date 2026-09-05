@@ -39,7 +39,7 @@ SPDX-License-Identifier: AGPL-3.0-or-later
   модульной системной роли, не являющийся миграцией**, и снимается отказ разбора
   на кластерном ярусе. **Ни одного нового поля публичного контракта**: `Role`,
   `Rule`, `RoleService` не трогаются ни одной строкой
-- **Сервис:** `kacho-iam` — предмет целиком внутри него, поэтому документ живёт
+- **Сервис:** `kaname` — предмет целиком внутри него, поэтому документ живёт
   рядом с кодом. `proto/` не затрагивает, `gateway/` не затрагивает
 - **Миграции:** данных ролей изменение не трогает **ни одной** строкой (§5).
   Понадобится ли миграция **вообще** — зависит от носителя ведомости послаблений
@@ -87,11 +87,11 @@ SPDX-License-Identifier: AGPL-3.0-or-later
 | **П8** | **Go-близнец** этой деривации уже существует и объявлен обязанным совпадать | `services/iam/internal/apps/kacho/api/bootstrap_token/ids.go:45` — `md5Suffix`, godoc: «identical to Postgres `substr(md5(s),1,17)`»; `DeriveIdentity` — чистая функция | `grep -n 'func md5Suffix' services/iam/internal/apps/kacho/api/bootstrap_token/ids.go` → `45` |
 | **П9** | роль с выдачами **нельзя удалить** — это инвариант БД, а не проверка кода | `access_bindings_role_fk … REFERENCES kacho_iam.roles(id) ON DELETE RESTRICT`, `0001_initial.sql:1733` | `grep -n 'access_bindings_role_fk' services/iam/internal/migrations/0001_initial.sql` |
 | **П10** | проекции роли снимаются каскадом вместе с ролью | `ON DELETE CASCADE` в `0026:41` (селекторы), `0027:59` (материализованные члены цели выдачи), `0085:35` (проекция глаголов), `20260901113757:390` и `:430` (сегменты правила и их глаголы, П19) — **пять** | `git grep -n 'REFERENCES kacho_iam.roles' -- 'services/iam/internal/migrations/*.sql'` → **7** строк: **5** `CASCADE` (проекции) и **2** `RESTRICT` — `access_bindings_role_fk` (`0001:1733`, **выдача**, П9) и `organizations_initial_role_fk` (`0001:1849`, **начальная роль организации**, а не выдача) |
-| **П11** | проекция глаголов **самолечится на старте** для КАЖДОЙ системной роли, читая `roles.rules` | `seed.ReseedSystemRoleVerbs` (`role_verb_reseed.go:134`), вызов — `services/iam/cmd/kacho-iam/serve.go:1380` | `git grep -n 'seed.ReseedSystemRoleVerbs' -- 'services/iam/cmd'` |
+| **П11** | проекция глаголов **самолечится на старте** для КАЖДОЙ системной роли, читая `roles.rules` | `seed.ReseedSystemRoleVerbs` (`role_verb_reseed.go:134`), вызов — `services/iam/cmd/kaname/serve.go:1380` | `git grep -n 'seed.ReseedSystemRoleVerbs' -- 'services/iam/cmd'` |
 | **П12** | то же для селекторов | `seed.SyncAllSystemRoleSelectors` (`migrate_backfill.go:231`) | `grep -n 'func SyncAllSystemRoleSelectors' services/iam/internal/apps/kacho/seed/migrate_backfill.go` |
 | **П13** | **системная роль путём пользовательской роли не проходит НИКОГДА** — это сказано в дереве, а не выведено мной | `role_verb_reseed.go:13-14`, дословно: «системная роль заводится сырым SQL миграции и этим путём не проходит НИКОГДА» | `sed -n '11,18p' services/iam/internal/apps/kacho/seed/role_verb_reseed.go` |
 | **П14** | каталог ресурсов существует **строками** (`#1030`) | `kacho_iam.catalog_resource`, посев — `20260901113757_rule_segments_have_a_referent.sql:198` и `:231` | §2.3 — перепись по **обеим** формам |
-| **П15** | миграции **встроены в образ** | `//go:embed *.sql` → `migrations.FS` (`migrations.go:11`); читает `cmd/migrator/main.go:84`; исполняет initContainer `migrate` **того же образа** (`deploy/helm/umbrella/charts/kacho-iam/templates/deployment.yaml:129`) | `grep -n 'go:embed' services/iam/internal/migrations/migrations.go` |
+| **П15** | миграции **встроены в образ** | `//go:embed *.sql` → `migrations.FS` (`migrations.go:11`); читает `cmd/migrator/main.go:84`; исполняет initContainer `migrate` **того же образа** (`deploy/helm/umbrella/charts/kaname/templates/deployment.yaml:129`) | `grep -n 'go:embed' services/iam/internal/migrations/migrations.go` |
 | **П16** | новая миграция обязана цитировать APPROVED-приёмку | `internal/repohygiene/acceptanceledger_test.go:116`, ведомость `docs/acceptance-ledger.yaml` (8 записей, ключ `entries`) | `grep -n 'func TestNewMigrationCitesAnApprovedAcceptance' internal/repohygiene/acceptanceledger_test.go` |
 | **П17** | вердикт приёмки дерева продукта читается машинно | `scripts/docs-gate/_lib.py` `verdict` + `check-04-product-acceptance-verdict.py` (судит по `origin/main` продукта, отставание копии называет числом) | §10 п. 1 |
 | **П18** | опубликованная схема несёт **значения** формы, которых Go-судья не сверяет | `services/iam/schema/module-manifest.schema.json`: `roles[].id.pattern` = `^[a-z][a-z0-9-]*\.[a-zA-Z][a-zA-Z0-9]*$` и `roles[].tier.tierType.enum` = `["iam.account","iam.project"]`. Проба согласия `schemaagreement_internal_test.go` сверяет **множества ключей**, а `pattern` и `enum` стоят у неё в `annotationKeywords` — то есть значения вне наблюдения | `python3 -c "import json;s=json.load(open('services/iam/schema/module-manifest.schema.json'))['properties']['roles']['items']['properties'];print(s['id']['pattern'], s['tier']['properties']['tierType']['enum'])"` |
@@ -324,7 +324,7 @@ E · F · G · H, уникальные `md5('…')` во всех миграци
   → //go:embed *.sql                      (migrations.go:11)
   → migrations.FS                         (cmd/migrator/main.go:84)
   → бинарь kacho-migrator
-  → тот же образ, что и kacho-iam         (deployment.yaml:129, include "kacho-iam.image")
+  → тот же образ, что и kaname         (deployment.yaml:129, include "kaname.image")
   → initContainer `migrate`
 ```
 
@@ -1392,7 +1392,7 @@ kacho_iam.roles` таких колонок ноль, снятие — `DELETE`. 
 
 **Перемерено сверх того и сошлось:** П1–П17 и О1–О6 **все** своими командами; §2.2 —
 цепочка `//go:embed` (`migrations.go:11`) → `cmd/migrator/main.go:84` → `include
-"kacho-iam.image"` (`deployment.yaml:129`); §2.4 — четыре замены `513001` на строках
+"kaname.image"` (`deployment.yaml:129`); §2.4 — четыре замены `513001` на строках
 87 · 94 · 101 · 108 и пустой `SET name` по всем миграциям; З5 — `0040:58`
 (`["update"]` → `["get","list","update"]`); ведомость приёмок — 8 записей.
 
@@ -1689,7 +1689,7 @@ kacho_iam.roles`, разбирает список колонок и берёт �
 `0027:59`, `0085:35`, `20260901113757:390` и `:430`; 2 `RESTRICT` —
 `access_bindings_role_fk` `0001:1733` и `organizations_initial_role_fk` `0001:1849`,
 Н4 закрыто верно), П15 (`//go:embed` → `migrator/main.go:84` → `include
-"kacho-iam.image"`, `deployment.yaml:129`), П16 (ведомость, **8** записей, префикса
+"kaname.image"`, `deployment.yaml:129`), П16 (ведомость, **8** записей, префикса
 `MOD-RD` в ней пока нет — и это верно, §10 п. 2 требует его **к слиянию**), П18
 (`pattern` и `enum` стоят в `annotationKeywords` — значения вне наблюдения), П19,
 П20 (`knownModules` — шесть имён), П21 (`tier_parity_integration_test.go:266`), О1

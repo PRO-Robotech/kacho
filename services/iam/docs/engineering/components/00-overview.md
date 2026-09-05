@@ -1,8 +1,8 @@
-# 00. Обзор сервиса kacho-iam
+# 00. Обзор сервиса kaname
 
 ## Назначение
 
-`kacho-iam` — **identity & access management** сервис платформы Kachō. Он владеет
+`kaname` — **identity & access management** сервис платформы Kachō. Он владеет
 полной ресурсной моделью identity и поверх нее реализует runtime-авторизацию для
 всего кластера.
 
@@ -58,21 +58,21 @@
 
 - не валидирует JWT — это работа `api-gateway` (Hydra JWKS) и самой Ory Hydra;
 - не управляет паролями пользователей — Ory Kratos;
-- не хранит OAuth `client_secret` в plaintext — Hydra хранит, kacho-iam отдает один раз
+- не хранит OAuth `client_secret` в plaintext — Hydra хранит, kaname отдает один раз
   и redact'ит;
 - не выносит решение о доступе за пределы своей базы — вердикт складывается там же,
   где лежат выдачи, одной транзакцией с ними.
 
 ## Топология процесса
 
-`kacho-iam` (бинарник `cmd/kacho-iam`) поднимает четыре сетевых слушателя и набор
+`kaname` (бинарник `cmd/kaname`) поднимает четыре сетевых слушателя и набор
 фоновых worker'ов в одном процессе. Параллельный запуск — через
 `golang.org/x/sync/errgroup` с общим shutdown-триггером
 (SIGTERM / SIGINT или первая ошибка задачи).
 
 ```mermaid
 flowchart LR
-    subgraph iam[kacho-iam process]
+    subgraph iam[kaname process]
         direction TB
         gRPCpub[":9090 public gRPC<br/>TLS-terminated<br/>tenant API"]
         gRPCint[":9091 internal gRPC<br/>mTLS<br/>admin/peer API"]
@@ -129,7 +129,7 @@ production: internal :9091 и public :9090 обязаны нести mTLS/TLS, �
 
 ```mermaid
 C4Context
-    title kacho-iam — C4 Context
+    title kaname — C4 Context
 
     Person(tenant, "Tenant user / Service account", "Через api-gateway")
     Person(admin, "Cluster admin / oncall", "Через internal-tooling")
@@ -138,7 +138,7 @@ C4Context
 
     System_Boundary(kacho, "Kachō cluster") {
         System(apigw, "kacho-api-gateway", "Edge REST/gRPC, JWT")
-        System(iam, "kacho-iam", "Identity & access")
+        System(iam, "kaname", "Identity & access")
         System(vpc, "kacho-vpc", "Network")
         System(compute, "kacho-compute", "Compute")
         System(nlb, "kacho-nlb", "Load balancing")
@@ -236,7 +236,7 @@ errors/              # sentinel + WrapPgErr.
 **Состав таблицы держит гейт, а не внимание.** Перечень уже расходился с деревом —
 и расходился на ОБОИХ слушателях сразу. `services/iam/internal/check`
 `TestOverviewPortTableMatchesRegistration` берёт регистрации РАЗБОРОМ
-`cmd/kacho-iam/grpc_register.go` (узлами дерева, а не поиском по образцу: имя
+`cmd/kaname/grpc_register.go` (узлами дерева, а не поиском по образцу: имя
 `Register…ServiceServer` законно стоит и в прозе) и требует совпадения по каждому
 слушателю в обе стороны — служба без строки и строка без службы одинаково красные.
 
@@ -253,7 +253,7 @@ errors/              # sentinel + WrapPgErr.
 sequenceDiagram
     participant Cli as Tenant CLI / UI
     participant GW as api-gateway
-    participant IAM as kacho-iam :9090
+    participant IAM as kaname :9090
     participant DB as Postgres
 
     Cli->>GW: POST /iam/v1/accounts<br/>Authorization: Bearer <JWT>

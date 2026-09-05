@@ -4,8 +4,8 @@
 {{- if .Values.opa.enabled }}
 # OPA sidecar configuration.
 #
-# Bundle pulled from kacho-iam Internal :9091 endpoint
-# `/v1/bundles/kacho-iam-guardrails` with signed JWS verification.
+# Bundle pulled from kaname Internal :9091 endpoint
+# `/v1/bundles/kaname-guardrails` with signed JWS verification.
 apiVersion: v1
 kind: ConfigMap
 metadata:
@@ -14,7 +14,7 @@ metadata:
 data:
   config.yaml: |
     services:
-      kacho-iam-bundle:
+      kaname-bundle:
         url: {{ .Values.opa.bundleSource.url | quote }}
         {{- if .Values.opa.bundleSource.headers }}
         headers:
@@ -23,9 +23,9 @@ data:
           {{- end }}
         {{- end }}
     bundles:
-      kacho-iam-guardrails:
-        resource: "/v1/bundles/kacho-iam-guardrails"
-        service: kacho-iam-bundle
+      kaname-guardrails:
+        resource: "/v1/bundles/kaname-guardrails"
+        service: kaname-bundle
         polling:
           min_delay_seconds: {{ .Values.opa.bundlePolling.minDelaySeconds }}
           max_delay_seconds: {{ .Values.opa.bundlePolling.maxDelaySeconds }}

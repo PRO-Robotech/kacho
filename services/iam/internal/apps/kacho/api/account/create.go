@@ -120,7 +120,7 @@ func ownerBindingLedgerTuples(a domain.Account, bindingID domain.AccessBindingID
 
 // CreateAccountUseCase инициирует создание Account.
 //
-// Скоупный гэп с kacho-vpc-pattern: kacho-iam НЕ имеет folder/parent peer-check
+// Скоупный гэп с kacho-vpc-pattern: kaname НЕ имеет folder/parent peer-check
 // на request-path (Account — top-level), поэтому FolderClient-аналога нет.
 type CreateAccountUseCase struct {
 	repo    Repo

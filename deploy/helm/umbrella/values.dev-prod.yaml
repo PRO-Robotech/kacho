@@ -42,8 +42,8 @@
 #
 # ── Prerequisite secrets (provisioned out-of-band by scripts/dev-prod-secrets.sh) ─
 # iam production-strict Config.Validate fails fast without these (defense-in-depth):
-#   - kacho-iam-hook-token       (key: token)    — Hydra token-hook HMAC
-#   - kacho-iam-jwks-enc-key      (key: enc_key)  — JWKS private-key encryption
+#   - kaname-hook-token       (key: token)    — Hydra token-hook HMAC
+#   - kaname-jwks-enc-key      (key: enc_key)  — JWKS private-key encryption
 # On the insecure-dev stand both are optional secretKeyRefs (absent) → dev iam
 # boots without them; production iam MUST have them.
 
@@ -87,18 +87,18 @@ api-gateway:
     # предъявителя, и производный адрес получался бы у ВСЯКОГО издателя —
     # состояние «записи нет» не наступало бы никогда, а страж старта стал бы
     # тождественно истинным.
-    issuerKeySets: "https://iam.kacho.local=https://kacho-iam-internal.kacho.svc:9097/.well-known/kacho/jwks.json,https://localhost:28080/.ory/hydra/public=https://kacho-iam-internal.kacho.svc:9097/.well-known/jwks.json"
+    issuerKeySets: "https://iam.kacho.local=https://kaname-internal.kacho.svc:9097/.well-known/kacho/jwks.json,https://localhost:28080/.ory/hydra/public=https://kaname-internal.kacho.svc:9097/.well-known/jwks.json"
     # Наш издатель выбирает полосу приёма: строгий тип at+jwt и чтение отзыва на
     # предъявлении. Вне issuers — отказ в старте.
     platformIssuer: "https://iam.kacho.local"
     # НАШ авторитет отзыва. Прежний провайдер о наших токенах не знает by
     # construction: спрошенный про наш токен, он отвечает не «действует» и не
     # «отозван», а утверждение о предмете, которого у него нет.
-    revocationUrl: "https://kacho-iam-internal.kacho.svc:9097/internal/tokens/introspect"
+    revocationUrl: "https://kaname-internal.kacho.svc:9097/internal/tokens/introspect"
     # Якорь доверия хопа к авторитету: по нему едет ПРЕДЪЯВЛЕННЫЙ токен, а не
     # только административный вызов. Та же связка, что у хопа за ключами.
     revocationCa:
-      secretName: kacho-iam-server-tls
+      secretName: kaname-server-tls
       key: ca.crt
       mountPath: /etc/api-gateway/platform-revocation-ca
     # ЧЕМ край предъявляет СЕБЯ авторитету. Якоря выше НЕ ДОСТАТОЧНО: он
@@ -134,7 +134,7 @@ api-gateway:
   # здесь поэтому не осталось — настраивать нечего.
   #
   # Круг законных отправителей, который этот профиль объявлял ЯВНО и НЕ равным
-  # умолчанию чарта (модуль iam в пространстве имён kacho-iam), снят вместе с
+  # умолчанию чарта (модуль iam в пространстве имён kaname), снят вместе с
   # листенером: круг сужает доступ к поверхности, а поверхности нет. Это НЕ смена
   # круга — предмет сужения исчез.
 
@@ -282,8 +282,8 @@ storage:
   db:
     sslMode: require
 
-# ─── kacho-iam (authz authority + identity tier) — production-strict ────────
-kacho-iam:
+# ─── kaname (authz authority + identity tier) — production-strict ────────
+kaname:
   # ПОСАДКА БЕЗОПАСНОСТИ — один адрес на весь флот (прежний: config.authn.mode).
   authMode: production-strict    # Bearer required + Config.Validate requires hook/jwks secrets
   config:
@@ -312,7 +312,7 @@ kacho-iam:
       # In production Config.Validate REFUSES TO START on "mint enabled + empty
       # allow-list" (core rule #16 — an enabled-yet-uncallable mint invites the
       # "fix" of reopening the hole), so this list is not optional here: without it
-      # kacho-iam CrashLoopBackOffs and `values.dev-prod` stops being a bootable
+      # kaname CrashLoopBackOffs and `values.dev-prod` stops being a bootable
       # production profile.
       #
       # The identity is the dedicated operator leaf the umbrella issues
@@ -438,7 +438,7 @@ kacho-iam:
       # that signs the provider's admin certificate. dev's plaintext value is
       # deep-merged over here; leaving it would refuse the start on this stand.
       hydraAdminUrl: "https://kacho-umbrella-hydra-admin-tls.kacho.svc:4445"
-      hydraAdminCaFile: /etc/kacho-iam/tls/server/ca.crt
+      hydraAdminCaFile: /etc/kaname/tls/server/ca.crt
       hydraTokenURL: "http://kacho-umbrella-hydra-public.kacho.svc:4444/oauth2/token"
       # UNIFICATION FIX (dev-masked): the iam :9097 JWKS proxy — the endpoint every
       # service is supposed to verify RS256 tokens through (registry-iam-jwks-unify) —
@@ -455,7 +455,7 @@ kacho-iam:
       # LOCAL kind secret by scripts/dev-prod-secrets.sh (generated fresh, NOT
       # committed — a real cluster provisions it out-of-band / external-secrets).
       bootstrapToken:
-        signingKeySecretName: kacho-iam-bootstrap-sa-key
+        signingKeySecretName: kaname-bootstrap-sa-key
         signingKeySecretKey: private_key_pem
 
 # ─── kacho-nlb ──────────────────────────────────────────────────────────────
@@ -516,7 +516,7 @@ registry:
     # предъявителя, и производный адрес получался бы у ВСЯКОГО издателя —
     # состояние «записи нет» не наступало бы никогда, а страж старта стал бы
     # тождественно истинным.
-    issuerKeySets: "https://iam.kacho.local=https://kacho-iam-internal.kacho.svc:9097/.well-known/kacho/jwks.json,https://localhost:28080/.ory/hydra/public=https://kacho-iam-internal.kacho.svc:9097/.well-known/jwks.json"
+    issuerKeySets: "https://iam.kacho.local=https://kaname-internal.kacho.svc:9097/.well-known/kacho/jwks.json,https://localhost:28080/.ory/hydra/public=https://kaname-internal.kacho.svc:9097/.well-known/jwks.json"
     # Наш издатель выбирает полосу приёма: тип at+jwt и чтение отзыва на
     # предъявлении. Вне issuers — отказ в старте.
     platformIssuer: "https://iam.kacho.local"
@@ -524,7 +524,7 @@ registry:
     # предъявлении, отзывом не является: он лишь не выдаёт нового, а
     # предъявленное проходит до истечения срока, и это состояние не сходится
     # само.
-    revocationUrl: "https://kacho-iam-internal.kacho.svc:9097/internal/tokens/introspect"
+    revocationUrl: "https://kaname-internal.kacho.svc:9097/internal/tokens/introspect"
   # Ребро к авторитету отзыва (F1, задача #897). Ему присылают ПРЕДЪЯВЛЕННЫЙ
   # токен, поэтому хоп идёт под клиентским сертификатом. Набор проверочных
   # ключей с того же слушателя по-прежнему берётся БЕЗ сертификата: его
@@ -1039,12 +1039,12 @@ hydra:
       - name: OAUTH2_TOKEN_HOOK_AUTH_CONFIG_VALUE
         valueFrom:
           secretKeyRef:
-            name: kacho-iam-hook-token
+            name: kaname-hook-token
             key: token
       - name: OAUTH2_REFRESH_TOKEN_HOOK_AUTH_CONFIG_VALUE
         valueFrom:
           secretKeyRef:
-            name: kacho-iam-hook-token
+            name: kaname-hook-token
             key: token
 
 # ─── Kratos self-service UI — provider ADMIN hop over TLS ───────────────────

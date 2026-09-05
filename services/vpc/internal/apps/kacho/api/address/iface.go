@@ -61,7 +61,7 @@ type SubnetReader interface {
 }
 
 // ProjectClient — то, что use-case'ам Address нужно от peer-сервиса
-// kacho-iam: проверка существования project'а на request-path /
+// kaname: проверка существования project'а на request-path /
 // в worker'е Create.
 type ProjectClient interface {
 	Exists(ctx context.Context, projectID string) (bool, error)

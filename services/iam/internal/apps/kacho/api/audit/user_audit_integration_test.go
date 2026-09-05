@@ -30,7 +30,7 @@ func TestUserAudit_5_2_14_UpsertInsertEmitsCreated(t *testing.T) {
 
 	// No caller principal → Kratos-provision bootstrap path. actor = system/bootstrap.
 	bootstrapCtx := operations.WithPrincipal(context.Background(),
-		operations.Principal{Type: "system", ID: "bootstrap", DisplayName: "kacho-iam-bootstrap"})
+		operations.Principal{Type: "system", ID: "bootstrap", DisplayName: "kaname-bootstrap"})
 
 	uc := user.NewUpsertFromIdentityUseCase(env.repo, env.opsRepo)
 	_, err := uc.Execute(bootstrapCtx, user.UpsertFromIdentityInput{
@@ -72,7 +72,7 @@ func TestUserAudit_5_2_14_UpsertActivateEmitsUpdated(t *testing.T) {
 	require.NoError(t, err)
 
 	bootstrapCtx := operations.WithPrincipal(context.Background(),
-		operations.Principal{Type: "system", ID: "bootstrap", DisplayName: "kacho-iam-bootstrap"})
+		operations.Principal{Type: "system", ID: "bootstrap", DisplayName: "kaname-bootstrap"})
 
 	uc := user.NewUpsertFromIdentityUseCase(env.repo, env.opsRepo)
 	_, err = uc.Execute(bootstrapCtx, user.UpsertFromIdentityInput{

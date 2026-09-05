@@ -2,9 +2,9 @@
 
 ## Назначение
 
-Гайд по развертыванию `kacho-iam`: образ и бинарники, listener-порты,
+Гайд по развертыванию `kaname`: образ и бинарники, listener-порты,
 helm-chart, config + секреты, миграции и порядок запуска. Все факты сверены
-с `deploy/` и `cmd/kacho-iam/`.
+с `deploy/` и `cmd/kaname/`.
 
 ## Состав образа
 
@@ -12,16 +12,16 @@ helm-chart, config + секреты, миграции и порядок запу
 
 | Бинарник | Назначение |
 |---|---|
-| `kacho-iam` | gRPC API-сервер (`serve`) — основной процесс Deployment'а |
+| `kaname` | gRPC API-сервер (`serve`) — основной процесс Deployment'а |
 | `kacho-migrator` | CLI миграций БД (`up`/`down`/`status`/`create`), запускается init-контейнером |
 
-`kacho-iam` обслуживает только `serve` — миграции вынесены в отдельный
+`kaname` обслуживает только `serve` — миграции вынесены в отдельный
 `kacho-migrator` (cmd-binary не смешивает обязанности). Попытка
-`kacho-iam migrate ...` падает с подсказкой использовать `kacho-migrator`.
+`kaname migrate ...` падает с подсказкой использовать `kacho-migrator`.
 
 ## Listener-порты
 
-`kacho-iam serve` поднимает шесть независимых listener'ов:
+`kaname serve` поднимает шесть независимых listener'ов:
 
 | Порт | Протокол | Назначение | TLS |
 |---|---|---|---|
@@ -94,14 +94,14 @@ taxonomy), `SAKeyService` (SA OAuth-ключи через Ory Hydra).
 
 ## Архитектура deployment'а
 
-`kacho-iam` — Deployment в namespace `kacho` (одна реплика на dev-стенде,
+`kaname` — Deployment в namespace `kacho` (одна реплика на dev-стенде,
 несколько на production).
 
 ```mermaid
 flowchart TB
     Tenant -- HTTPS/REST --> APIGW[api-gateway]
     subgraph KachoNS[Namespace kacho]
-        APIGW -- gRPC :9090 / :9091 --> IAM[Deployment kacho-iam]
+        APIGW -- gRPC :9090 / :9091 --> IAM[Deployment kaname]
         IAM -- pgx master + read-replica --> PG[(Postgres kacho_iam)]
         Kratos[Ory Kratos] -- provision-hook :9092 --> IAM
         Hydra[Ory Hydra] -- token/refresh-hook :9092 --> IAM
@@ -127,7 +127,7 @@ helm upgrade --install iam ./deploy -n kacho --create-namespace \
 ```yaml
 name: iam
 replicas: 1
-image: kacho-iam:dev
+image: kaname:dev
 imagePullPolicy: IfNotPresent
 ports:
   grpc: 9090
@@ -157,7 +157,7 @@ authn:
 ```
 
 `templates/deployment.yaml` запускает init-контейнер `migrate`
-(`kacho-migrator up`) перед основным контейнером `iam` (`kacho-iam serve`).
+(`kacho-migrator up`) перед основным контейнером `iam` (`kaname serve`).
 Pod hardened: `runAsNonRoot` (uid 65532), `readOnlyRootFilesystem`,
 `drop: ["ALL"]`, `seccompProfile: RuntimeDefault`. Readiness/liveness — TCP-probe
 на gRPC-порт. `Service` публикует `grpc` (9090) и `grpc-internal` (9091).
@@ -165,13 +165,13 @@ Pod hardened: `runAsNonRoot` (uid 65532), `readOnlyRootFilesystem`,
 База chart'а — dev-профиль для локального kind-стенда (`authn.mode: dev`,
 `sslMode: disable`, mTLS выключен). Production-деплой обязан переопределить:
 `authn.mode: production` (или `production-strict`), включить server-side mTLS
-обоих gRPC-listener'ов (иначе `kacho-iam` fail-fast'ит на старте и отказывается
+обоих gRPC-listener'ов (иначе `kaname` fail-fast'ит на старте и отказывается
 подниматься на незащищенных `:9090`/`:9091`) и задать `sslMode: require` (или
 `verify-full`).
 
 ## Config + ENV-override
 
-`kacho-iam` читает YAML-config из `/etc/kacho-iam/config.yaml` (рендерится
+`kaname` читает YAML-config из `/etc/kaname/config.yaml` (рендерится
 `templates/configmap.yaml`). Любой ключ переопределяется ENV по схеме
 `KACHO_IAM_<SECTION>__<KEY>` (двойное подчеркивание между секцией и ключом).
 Отрендеренный config:
@@ -259,7 +259,7 @@ anonymous fail-closed); dev-стенд явно опускает его до `de
 
 ## In-process worker'ы
 
-`kacho-iam serve` поднимает фоновые задачи параллельно с listener'ами; падение
+`kaname serve` поднимает фоновые задачи параллельно с listener'ами; падение
 критичной задачи триггерит graceful-shutdown всего пода:
 
 - **LRO worker** (`operations`-таблица из corelib) — async-исполнение мутаций +
@@ -292,7 +292,7 @@ kacho-migrator status
 # Откат на одну версию назад.
 kacho-migrator down
 
-# Источник DSN: --dsn > ENV KACHO_MIGRATOR_DSN > viper-config kacho-iam.
+# Источник DSN: --dsn > ENV KACHO_MIGRATOR_DSN > viper-config kaname.
 KACHO_IAM_DB_PASSWORD=secret kacho-migrator up
 ```
 
@@ -424,7 +424,7 @@ stored signing keys: 1 of 1 keys in the key set do not open (kacho-…)
 declared keys=N`), чтобы рост был виден снаружи, а не обнаруживался при разборе.
 
 Порядок смены для оператора и то, что происходит при смене значения внешним
-источником, — README чарта `kacho-iam`, раздел «Changing the wrapping key».
+источником, — README чарта `kaname`, раздел «Changing the wrapping key».
 
 ### Ротация: порядок, который обязан соблюдаться
 
@@ -501,12 +501,12 @@ sequenceDiagram
     participant Helm
     participant Init as initContainer kacho-migrator
     participant PG as Postgres
-    participant Pod as kacho-iam Pod
+    participant Pod as kaname Pod
 
     Helm->>Init: start init-container
     Init->>PG: goose up (схема kacho_iam)
     PG-->>Init: success
-    Init-->>Pod: init complete → старт kacho-iam serve
+    Init-->>Pod: init complete → старт kaname serve
     Pod->>Pod: load config.yaml + ENV-override
     Pod->>PG: pgxpool master (+ опц. read-replica)
     Pod->>Pod: gRPC :9090/:9091 + HTTP :9092/:9095 + worker'ы
@@ -542,7 +542,7 @@ grpcurl -plaintext -d '{"external_id":"bootstrap-admin","email":"admin@kacho.clo
 
 ## Ссылки на код
 
-- `cmd/kacho-iam/{main,serve,wiring,env,grpc_register,hooks_mux}.go`
+- `cmd/kaname/{main,serve,wiring,env,grpc_register,hooks_mux}.go`
 - `cmd/migrator/main.go`
 - `internal/apps/kacho/config/`
 - `internal/migrations/0001_initial.sql`

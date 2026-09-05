@@ -6,7 +6,7 @@ package user
 // internal_on_recovery.go — InternalUserService.OnRecoveryCompleted.
 //
 // Ory Kratos delivers this webhook (via api-gateway) after a successful
-// self-service password-recovery flow. kacho-iam:
+// self-service password-recovery flow. kaname:
 //
 //   1. validates the payload (all three fields required + length) — sync,
 //      before spawning the Operation (malformed → INVALID_ARGUMENT);

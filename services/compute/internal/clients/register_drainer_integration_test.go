@@ -291,7 +291,7 @@ func TestRegisterDrainer_SEC_D_14_PermanentPoison(t *testing.T) {
 
 // TestRegisterDrainer_Beta01_ForwardsLabelsAndParent — β-01: the applier maps the
 // intent payload's mirror fields (labels + parent-scope) onto the forwarded
-// IAM.RegisterResourceRequest, so kacho-iam can populate resource_mirror.
+// IAM.RegisterResourceRequest, so kaname can populate resource_mirror.
 func TestRegisterDrainer_Beta01_ForwardsLabelsAndParent(t *testing.T) {
 	if testing.Short() {
 		t.Skip("skipping integration test")

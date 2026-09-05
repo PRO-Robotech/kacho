@@ -54,9 +54,9 @@ erDiagram
 
 | Ссылка | Owner | Валидация |
 |---|---|---|
-| `instances.project_id` | kacho-iam | `ProjectService.Get` на Create |
+| `instances.project_id` | kaname | `ProjectService.Get` на Create |
 | `instances.zone_id` | kacho-geo | `ZoneService.Get` на Create |
-| `instances.service_account_id` | kacho-iam | резолв на Create |
+| `instances.service_account_id` | kaname | резолв на Create |
 | источник загрузки (`boot_source`) и присоединённые тома | kacho-storage | резолв на Create / attach; связь хранится у владельца-storage |
 | `instance_network_interfaces.subnet_id` / `security_group_ids` | kacho-vpc | валидация NIC-spec на Create; зона подсети обязана совпадать с зоной инстанса |
 

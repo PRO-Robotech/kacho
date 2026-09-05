@@ -3,7 +3,7 @@ Copyright (c) PRO-Robotech
 SPDX-License-Identifier: AGPL-3.0-or-later
 -->
 
-# Соглашение о вкладе в kacho-iam
+# Соглашение о вкладе в kaname
 
 > [!important] Статус документа: текст ЮРИСТОМ НЕ ПРОВЕРЕН
 > Условия ниже описывают намерение правообладателя и уже связывают процесс:

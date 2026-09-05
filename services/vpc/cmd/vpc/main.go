@@ -366,9 +366,9 @@ func runServe(cfg config.Config) error {
 	// Ребро vpc→iam ProjectService.Get — клиентский mTLS. При
 	// KACHO_VPC_IAM_PROJECT_MTLS_ENABLE=true дилим с corelib client-cert creds
 	// (предъявляем kacho-vpc-client-tls, проверяем iam server-cert против internal-CA +
-	// ServerName=kacho-iam, fail-closed на плохой тройке); enable=false → insecure/
+	// ServerName=kaname, fail-closed на плохой тройке); enable=false → insecure/
 	// server-auth путь через clients.Build (dev backward-compat). Обязателен, когда
-	// kacho-iam требует и проверяет client-cert — иначе TLS-handshake этого dial падает.
+	// kaname требует и проверяет client-cert — иначе TLS-handshake этого dial падает.
 	iamPeer := cfg.ExtAPI.IAM
 	iamConn, err := dialPeer(ctx, "vpc→iam project", mtlsCfg.IAMProjectMTLS.Enable,
 		mtlsCfg.IAMProjectClientCreds, false, clients.BuildOptions{
@@ -382,7 +382,7 @@ func runServe(cfg config.Config) error {
 	defer iamConn.Close()
 	logger.Info("vpc→iam ProjectService.Get edge configured",
 		"endpoint", iamPeer.Endpoint, "mtls", mtlsCfg.IAMProjectMTLS.Enable)
-	// TTL+LRU кеш: снимает gRPC-hop в kacho-iam из hot-path Network.Create при
+	// TTL+LRU кеш: снимает gRPC-hop в kaname из hot-path Network.Create при
 	// burst-нагрузке. См. internal/clients/project_cache.go.
 	rawProjectClient := clients.NewProjectClient(iamConn)
 	projectClient := clients.NewCachedProjectClient(rawProjectClient, clients.ProjectCacheConfig{
@@ -412,7 +412,7 @@ func runServe(cfg config.Config) error {
 	geoClient := clients.NewGeoZoneClient(geoConn)
 	geoRegionClient := clients.NewGeoRegionClient(geoConn)
 
-	// authz internal IAM conn: cfg.AuthZ.IAMEndpoint → **internal** listener kacho-iam
+	// authz internal IAM conn: cfg.AuthZ.IAMEndpoint → **internal** listener kaname
 	// (:9091), единственный, что обслуживает InternalIAMService.Check. Пустой endpoint
 	// → nil conn (dev / no-authz: per-RPC gate пропускается).
 	//
@@ -424,7 +424,7 @@ func runServe(cfg config.Config) error {
 	// утверждения неверны с тех пор, как у фильтра появился собственный дозвон.
 	//
 	// Ребро vpc→iam Check — клиентский mTLS. При KACHO_VPC_IAM_AUTHZ_MTLS_ENABLE=true дилим с
-	// corelib client-cert creds (ServerName=kacho-iam-internal — SAN dial-host'а :9091;
+	// corelib client-cert creds (ServerName=kaname-internal — SAN dial-host'а :9091;
 	// fail-closed на плохой тройке); enable=false → insecure/server-auth путь через
 	// clients.Build (dev).
 	var authzConn clients.Conn
@@ -435,7 +435,7 @@ func runServe(cfg config.Config) error {
 				TLS:      cfg.AuthZ.IAMTLS.Enable,
 			})
 		if err != nil {
-			return fmt.Errorf("dial kacho-iam (authz): %w", err)
+			return fmt.Errorf("dial kaname (authz): %w", err)
 		}
 		defer authzConn.Close()
 		logger.Info("vpc→iam Check edge configured (per-RPC gate)",
@@ -443,7 +443,7 @@ func runServe(cfg config.Config) error {
 	}
 
 	// Per-page фильтр видимости для List. Каждый List RPC читает СТРАНИЦУ из своей
-	// БД и спрашивает kacho-iam AuthorizeService.BatchCheck, какие её id видимы
+	// БД и спрашивает kaname AuthorizeService.BatchCheck, какие её id видимы
 	// caller'у (viewer ∪ v_list; read == enforce). Единичный Get фильтр НЕ
 	// использует — его авторизует прямой per-object Check в authz-interceptor'е.
 	//
@@ -486,7 +486,7 @@ func runServe(cfg config.Config) error {
 	}, authzCache.Read)
 
 	// Sync-primary owner-tuple registrar (Decision 2): create-flow синхронно
-	// регистрирует owner-tuple в kacho-iam после commit — грант доступен сразу, без
+	// регистрирует owner-tuple в kaname после commit — грант доступен сразу, без
 	// гонки с async register-drainer'ом. Тот же iam-internal endpoint :9091 +
 	// register-creds, что и у drainer'а. Пустой endpoint / drainer disabled → nil
 	// (dev/no-iam: остается только async-путь).
@@ -504,7 +504,7 @@ func runServe(cfg config.Config) error {
 	// `docs/specs/sub-phase-quota-v2-materialised-usage-acceptance.md`
 	// (APPROVED, раунд 2), DoD S2 п.3 и п.5.
 	//
-	// Величины живут у kacho-iam и разрешаются ТАМ: старшинство PROJECT >
+	// Величины живут у kaname и разрешаются ТАМ: старшинство PROJECT >
 	// ACCOUNT > DEFAULT требует знать аккаунт проекта, а владелец типа его не
 	// знает (у него только зеркало, заводимое из того же обращения).
 	//
@@ -535,7 +535,7 @@ func runServe(cfg config.Config) error {
 		}
 		defer stopQuotaSync()
 	} else {
-		logger.Warn("resource-count quota: no internal kacho-iam endpoint, advisory band is OFF " +
+		logger.Warn("resource-count quota: no internal kaname endpoint, advisory band is OFF " +
 			"and the limit snapshot will NEVER catch up with the authority. " +
 			"Limits are still enforced by the charging trigger, but the tenant learns of " +
 			"exhaustion from the operation instead of a synchronous refusal, and an " +
@@ -597,7 +597,7 @@ func runServe(cfg config.Config) error {
 
 	// register-drainer: применяет FGA owner-tuple register/unregister intents
 	// (kacho_vpc.fga_register_outbox, записанные транзакционно в writer-TX ресурса)
-	// через kacho-iam InternalIAMService.RegisterResource по ребру vpc→iam (mTLS
+	// через kaname InternalIAMService.RegisterResource по ребру vpc→iam (mTLS
 	// opt-in). Default-on: без него созданные ресурсы не получают owner-tuple →
 	// per-resource Check DENY. Дилит iam-internal listener :9091 (cfg.AuthZ.IAMEndpoint
 	// — RegisterResource Internal-only, ban #6). Пустой endpoint → drainer не стартует
@@ -605,7 +605,7 @@ func runServe(cfg config.Config) error {
 	if cfg.IAM.RegisterDrainerEnabled {
 		if cfg.AuthZ.IAMEndpoint == "" {
 			logger.Warn("FGA register-drainer NOT started — authz.iam-endpoint unset " +
-				"(no kacho-iam internal endpoint to apply register-intents); intents stay durable until configured")
+				"(no kaname internal endpoint to apply register-intents); intents stay durable until configured")
 		} else {
 			closeDrainer, derr := startRegisterDrainer(ctx, cfg.AuthZ.IAMEndpoint, mtlsCfg, pool, outboxRec, logger)
 			if derr != nil {
@@ -833,7 +833,7 @@ func runServe(cfg config.Config) error {
 	return err
 }
 
-// buildAuthorizeConn — дилит endpoint kacho-iam AuthorizeService для per-object
+// buildAuthorizeConn — дилит endpoint kaname AuthorizeService для per-object
 // List/Get-фильтра. Соединение ОТДЕЛЬНОЕ от ребра per-RPC
 // InternalIAMService.Check (его держит authzConn): у него свой адрес и свой
 // транспорт. Endpoint = authz.list-filter.authorize-endpoint, с fallback на
@@ -843,7 +843,7 @@ func runServe(cfg config.Config) error {
 // НА КАКОЙ СЛУШАТЕЛЬ iam приходит этот адрес — свойство ПРОФИЛЯ, а не этого кода:
 // AuthorizeService зарегистрирована на ОБОИХ слушателях iam, поэтому законны и
 // публичный адрес, и внутренний. Состав слушателей описан в ОДНОМ месте —
-// services/iam/cmd/kacho-iam/grpc_register.go (registerPublicServices /
+// services/iam/cmd/kaname/grpc_register.go (registerPublicServices /
 // registerInternalServices), — и здесь он намеренно не пересказывается: пересказ
 // разошёлся бы с ним молча.
 //
@@ -852,7 +852,7 @@ func runServe(cfg config.Config) error {
 // ложна безусловно: регистрация на внутреннем слушателе есть. Первая верна лишь
 // там, где профиль задал authorize-endpoint явно; при пустом значении адрес
 // наследуется от authz.iam-endpoint, чьё умолчание в чарте — внутренний
-// kacho-iam-internal:9091. Снято потому, что по этому комментарию делали вывод
+// kaname-internal:9091. Снято потому, что по этому комментарию делали вывод
 // «публичных служб на внутреннем слушателе нет», и вывод был неверен.
 //
 // mTLS — opt-in через authz.list-filter.authorize-tls; когда выключен, переиспользует
@@ -874,7 +874,7 @@ func buildAuthorizeConn(ctx context.Context, cfg config.Config, mtlsCfg config.M
 			TLS:      cfg.AuthZ.ListFilter.AuthorizeTLS.Enable,
 		})
 	if err != nil {
-		return nil, fmt.Errorf("dial kacho-iam (authorize/list-filter): %w", err)
+		return nil, fmt.Errorf("dial kaname (authorize/list-filter): %w", err)
 	}
 	logger.Info("per-object list-filter authorize edge configured", "endpoint", endpoint, "mtls", useMTLS)
 	return conn, nil
@@ -952,7 +952,7 @@ func buildListFilter(cfg config.Config, conn clients.Conn, logger *slog.Logger) 
 	return f
 }
 
-// startRegisterDrainer — дилит internal endpoint kacho-iam по ребру vpc→iam (mTLS
+// startRegisterDrainer — дилит internal endpoint kaname по ребру vpc→iam (mTLS
 // opt-in через mtlsCfg.IAMRegisterClientCreds — enable=false → insecure dev) и
 // запускает corelib outbox/drainer поверх kacho_vpc.fga_register_outbox. Каждый
 // pending intent переигрывается через InternalIAMService.RegisterResource /
@@ -970,7 +970,7 @@ func buildSyncRegistrar(iamAddr string, mtlsCfg config.MTLSConfig) (*clients.Syn
 	}
 	conn, err := grpc.NewClient(iamAddr, creds, grpcclient.KeepaliveDialOption(true))
 	if err != nil {
-		return nil, nil, fmt.Errorf("dial kacho-iam (sync registrar): %w", err)
+		return nil, nil, fmt.Errorf("dial kaname (sync registrar): %w", err)
 	}
 	reg, err := clients.NewSyncRegistrar(iamv1.NewInternalIAMServiceClient(conn))
 	if err != nil {
@@ -989,7 +989,7 @@ func startRegisterDrainer(ctx context.Context, iamAddr string, mtlsCfg config.MT
 	// idle-склонное ребро (drainer почти все время ждет NOTIFY) → keepalive idle pings.
 	conn, err := grpc.NewClient(iamAddr, creds, grpcclient.KeepaliveDialOption(true))
 	if err != nil {
-		return nil, fmt.Errorf("dial kacho-iam (register-drainer): %w", err)
+		return nil, fmt.Errorf("dial kaname (register-drainer): %w", err)
 	}
 
 	iamClient := iamv1.NewInternalIAMServiceClient(conn)
@@ -1070,7 +1070,7 @@ func startRegisterDrainer(ctx context.Context, iamAddr string, mtlsCfg config.MT
 func buildServices(pool, slavePool *pgxpool.Pool, projectClient repo.ProjectClient, geoClient repo.ZoneRegistry, regionClient repo.RegionRegistry, listFilter *authzfilter.Narrower, opsRepo operations.Repo, registrar fgaregister.Registrar, quotaLimits quota.LimitResolver, quotaAccounts quota.AccountLocator, cfg config.Config, logger *slog.Logger) *services {
 	// Прямой write-side FGA убран: каждый Create/Delete ресурса эмитит FGA
 	// owner-tuple register/unregister INTENT в своей writer-TX (один commit, без
-	// dual-write); register-drainer применяет каждый intent через kacho-iam
+	// dual-write); register-drainer применяет каждый intent через kaname
 	// InternalIAMService.RegisterResource по mTLS. Писателя кортежей прав в
 	// use-case'ах больше нет вовсе: права пишет владелец, и только он.
 

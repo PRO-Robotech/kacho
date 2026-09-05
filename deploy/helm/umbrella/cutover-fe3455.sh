@@ -11,7 +11,7 @@
 #
 #     workload      old (live)                              new (forward)     why
 #     ───────────   ─────────────────────────────────────  ────────────────  ─────────────────────────
-#     kacho-iam     KAC-registry-docker-auth-c3000530       main-c744f956     #321 audience + :9097 JWKS + #325 RG-1 418-catalog + #326 issued_at
+#     kaname     KAC-registry-docker-auth-c3000530       main-c744f956     #321 audience + :9097 JWKS + #325 RG-1 418-catalog + #326 issued_at
 #     api-gateway   main-a7c82963                            main-c7dce40d     #145 RG-1 6 routes + 418-catalog
 #     registry      main-5eb21d25                            main-af0eacae     #43 RG-1 Repository persistence (strict fwd; 5eb21d25 ∈ af0eacae)
 #     kacho-storage — NOT installed (storage.enabled=false): the kacho-storage chart is
@@ -23,7 +23,7 @@
 #
 #   COHERENCE (verified via `helm template` of the 4-overlay stack, 0 stderr, diff
 #   vs live shows ONLY these image lines change):
-#     • JWKS-flip: registry.iam.jwksUrl → https://kacho-iam-internal:9097 (merged #171).
+#     • JWKS-flip: registry.iam.jwksUrl → https://kaname-internal:9097 (merged #171).
 #       iam-on-main (b3d23769, #323) SERVES :9097 → the flip is coherent (no 401-storm).
 #       `helm --wait` brings iam Ready before returning; the registry Bearer verifier
 #       fetches JWKS lazily on first token-verify → single upgrade is safe.
@@ -56,7 +56,7 @@
 #   parses it via time.Time.UnmarshalJSON, which accepts ONLY a JSON string — a bare Unix
 #   number breaks `docker login` ("Time.UnmarshalJSON: input is not a JSON string") → no
 #   bearer → all pull/push 401. The earlier forward target main-b3d23769 REVERTED that fix
-#   (kacho-iam c300053), so it was a hard blocker. kacho-iam#326 re-applied c300053 onto
+#   (kaname c300053), so it was a hard blocker. kacho-iam#326 re-applied c300053 onto
 #   main (+ a wire-shape regression test locking the string) → main c744f95 → CI published
 #   main-c744f956, the tag pinned above. The preflight below stays as a KNOWN-BAD-TAG
 #   denylist: main-b3d23769 remains a broken image, so repinning back to it must not be
@@ -135,16 +135,16 @@ fi
 log "target cluster confirmed by apiserver address (not by context name)."
 
 # ── 0b. KNOWN-BAD-TAG GUARD: the iam image must carry the issued_at RFC3339 fix ────
-#    main-b3d23769 reverts kacho-iam c300053 (issued_at RFC3339 string) → `docker login`
+#    main-b3d23769 reverts kaname c300053 (issued_at RFC3339 string) → `docker login`
 #    breaks. The current pin (main-c744f956, kacho-iam#326) carries the fix, so this guard
 #    is a denylist against a silent repin BACK to the broken image.
 if grep -qE '^\s*tag:\s*main-b3d23769\s*$' "$CHART_DIR/values.fe3455-prod.yaml" 2>/dev/null; then
   if [ "${ACK_IAM_ISSUED_AT_REVERT:-0}" != "1" ]; then
-    die "BLOCKER: kacho-iam pinned to main-b3d23769, which REVERTS the docker-login
-       issued_at RFC3339 fix (kacho-iam commit c300053). Rolling iam to this image breaks
+    die "BLOCKER: kaname pinned to main-b3d23769, which REVERTS the docker-login
+       issued_at RFC3339 fix (kaname commit c300053). Rolling iam to this image breaks
        'docker login' (Time.UnmarshalJSON: input is not a JSON string) → the registry
        data-plane cannot mint a bearer token → all docker pull/push 401.
-       RESOLUTION: pin kacho-iam.image.tag to main-c744f956 or later (main c744f95 carries
+       RESOLUTION: pin kaname.image.tag to main-c744f956 or later (main c744f95 carries
        c300053 re-applied via kacho-iam#326) in BOTH values.fe3455.yaml and
        values.fe3455-prod.yaml → re-run.
        To knowingly ship the docker-login break anyway: ACK_IAM_ISSUED_AT_REVERT=1 $0"
@@ -263,9 +263,9 @@ helm dependency build . >/dev/null \
 # требуемый секрет без строки и строка без требования одинаково роняют прогон.
 REQUIRED_SECRET_PRODUCERS='
 zot-s3-creds|оператор: ключи объектного хранилища (AWS_ACCESS_KEY_ID / AWS_SECRET_ACCESS_KEY), заводятся до раскатки
-kacho-iam-hook-token|оператор: общий секрет обратных вызовов, ключ token, 24 байта hex; заводится ОДИН раз и не ротируется — перевыпуск разводит отправителя и проверяющую сторону
-kacho-iam-jwks-enc-key|оператор: ключ обёртки приватной половины подписного ключа, ключ enc_key, 32 байта hex; перевыпуск делает уже записанные ключи нечитаемыми НАВСЕГДА
-kacho-iam-bootstrap-sa-key|оператор: приватный ключ ES256 P-256 (PKCS#8) учётки первичной чеканки, ключ private_key_pem; перевыпуск осиротит уже зарегистрированного клиента
+kaname-hook-token|оператор: общий секрет обратных вызовов, ключ token, 24 байта hex; заводится ОДИН раз и не ротируется — перевыпуск разводит отправителя и проверяющую сторону
+kaname-jwks-enc-key|оператор: ключ обёртки приватной половины подписного ключа, ключ enc_key, 32 байта hex; перевыпуск делает уже записанные ключи нечитаемыми НАВСЕГДА
+kaname-bootstrap-sa-key|оператор: приватный ключ ES256 P-256 (PKCS#8) учётки первичной чеканки, ключ private_key_pem; перевыпуск осиротит уже зарегистрированного клиента
 '
 
 log "предполёт: вывожу перечень требуемых секретов (рендер + посев + таблица производителей)…"
@@ -353,7 +353,7 @@ esac
 
 # ── 3b. module manifests: the delivery ConfigMap — A PRECONDITION, NOT AN AFTER-EFFECT ─
 #
-# kacho-iam mounts a NAMED ConfigMap of module manifests and READS that directory
+# kaname mounts a NAMED ConfigMap of module manifests and READS that directory
 # AT START-UP; an empty directory is refused, because a missing manifest is not a
 # module withdrawal (kacho#1027). So the object must exist BEFORE helm rolls the
 # pod, not after: helm below runs with `--wait --timeout 15m`, and an iam that
@@ -473,12 +473,12 @@ log "smoke: iam :9097 JWKS proxy (GET /.well-known/jwks.json — expect 200 with
 # a keys set" while the endpoint served 200 with Hydra kids moments later. Hence: wait for
 # the rollout, then re-establish a FRESH forward per attempt (one dead tunnel must not
 # doom the whole check).
-kubectl -n "$NS" rollout status deploy/kacho-iam --timeout=120s >/dev/null 2>&1 \
-  || warn "kacho-iam rollout not complete — the JWKS probe below may be unreliable."
+kubectl -n "$NS" rollout status deploy/kaname --timeout=120s >/dev/null 2>&1 \
+  || warn "kaname rollout not complete — the JWKS probe below may be unreliable."
 
 jwks=""
 for _attempt in 1 2 3 4 5; do
-  kubectl -n "$NS" port-forward svc/kacho-iam-internal 19097:9097 >/dev/null 2>&1 &
+  kubectl -n "$NS" port-forward svc/kaname-internal 19097:9097 >/dev/null 2>&1 &
   pf_pid=$!
   for _ in 1 2 3 4 5 6; do
     curl -sk --max-time 3 https://127.0.0.1:19097/.well-known/jwks.json >/dev/null 2>&1 && break
@@ -493,7 +493,7 @@ done
 if [[ "$jwks" == *'"keys"'* ]]; then
   log "iam :9097 JWKS OK (serves a keys set — JWKS-flip is coherent)."
 else
-  warn "iam :9097 JWKS did NOT return a keys set — registry token-verify will 401. Check kacho-iam is on main-c744f956 (serves :9097, #323) and the jwks-proxy listener."
+  warn "iam :9097 JWKS did NOT return a keys set — registry token-verify will 401. Check kaname is on main-c744f956 (serves :9097, #323) and the jwks-proxy listener."
   rc=1
 fi
 

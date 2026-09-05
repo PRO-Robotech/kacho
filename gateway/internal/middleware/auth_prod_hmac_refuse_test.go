@@ -80,7 +80,7 @@ func TestAuth_Production_HMACServiceAccountForgery_Rejected(t *testing.T) {
 	assert.False(t, called, "a forged HMAC service_account principal must never reach the backend in production")
 }
 
-// gRPC — even a well-formed HMAC USER token whose subject resolves in kacho-iam
+// gRPC — even a well-formed HMAC USER token whose subject resolves in kaname
 // must be refused in production-strict: the symmetric-key path is off entirely,
 // only the asymmetric JWKS verifier is accepted. RED before the fix: the token
 // validates, the subject resolves, the handler runs with a real user principal.

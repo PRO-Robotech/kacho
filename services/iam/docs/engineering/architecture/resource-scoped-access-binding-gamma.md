@@ -6,7 +6,7 @@ resource-scoped AccessBinding. Builds on the per-object targets
 (`resource-mirror-source-version.md`).
 
 > [!warning] Состояние на 2026-08-11: описанный здесь механизм СНЯТ миграцией 0030
-> Заголовок обещает «by-design notes … записывают решения реализации kacho-iam», то есть
+> Заголовок обещает «by-design notes … записывают решения реализации kaname», то есть
 > настоящее время. По дереву это уже не так, и перепись по четырём осям это показывает:
 >
 > - **таблицы**: `access_binding_targets` (заводилась миграцией 0018) и

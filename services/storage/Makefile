@@ -56,7 +56,7 @@ lint:
 #   (1) project-scope: repo.List сужает строки по project_id + use-case требует
 #       непустой projectId (listauthz posture, INV-10 — кросс-проектной утечки нет);
 #   (2) per-object видимость: use-case List прогоняет ПРОЧИТАННУЮ страницу через
-#       authzfilter.FilterVisiblePage (kacho-iam BatchCheck на `viewer` — том же
+#       authzfilter.FilterVisiblePage (kaname BatchCheck на `viewer` — том же
 #       отношении, что энфорсит Get: видно в списке ровно то, что Get отдаст).
 # (1) без (2) — ровно то слепое пятно, с которым storage отгрузил List, показывавший
 # любому члену проекта каждый том/снимок/образ. DiskType (cluster-catalog) whitelisted.

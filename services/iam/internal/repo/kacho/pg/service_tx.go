@@ -23,7 +23,7 @@ import (
 func txAsPgx(tx service.Tx) pgx.Tx {
 	pt, ok := tx.(pgx.Tx)
 	if !ok {
-		panic("kacho-iam/repo/pg: service.Tx is not a pgx.Tx — composition root wired a non-pg transaction handle")
+		panic("kaname/repo/pg: service.Tx is not a pgx.Tx — composition root wired a non-pg transaction handle")
 	}
 	return pt
 }

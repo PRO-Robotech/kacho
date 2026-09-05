@@ -58,7 +58,7 @@ func lawful() servicecontract.Spec {
 			TrustAny: "KACHO_DEMO_AUTHZ_TRUST_ANY_FORWARDER",
 		},
 		Authz:          servicecontract.AuthzViaIAM,
-		CheckEdge:      servicecontract.NewPeerEdge("kacho-iam-internal:9091", tlsLike{}),
+		CheckEdge:      servicecontract.NewPeerEdge("kaname-internal:9091", tlsLike{}),
 		CacheWindow:    5 * time.Second,
 		ClientBudget:   5 * time.Second,
 		HandlingBudget: 30 * time.Second,
@@ -190,7 +190,7 @@ func TestO6_CheckEdgeWithoutAddressRefusesStart(t *testing.T) {
 // взведена, а креды выродились» им не проходит.
 func TestO8_CheckEdgeOnInsecureTransportRefusesProductionStart(t *testing.T) {
 	s := lawful()
-	s.CheckEdge = servicecontract.NewPeerEdge("kacho-iam-internal:9091", insecure.NewCredentials())
+	s.CheckEdge = servicecontract.NewPeerEdge("kaname-internal:9091", insecure.NewCredentials())
 	refuses(t, s, "CheckEdge")
 
 	// Законный близнец: вне боевой посадки тот же транспорт принимается. Без

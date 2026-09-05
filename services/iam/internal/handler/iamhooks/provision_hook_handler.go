@@ -42,7 +42,7 @@ type ProvisionInput struct {
 }
 
 // UserProvisioner — narrow port. Реализуется adapter'ом из
-// cmd/kacho-iam, который вызывает UpsertFromIdentityUseCase.Execute. Handler
+// cmd/kaname, который вызывает UpsertFromIdentityUseCase.Execute. Handler
 // не зависит от transport / use-case / operations-типов.
 type UserProvisioner interface {
 	Provision(ctx context.Context, in ProvisionInput) error

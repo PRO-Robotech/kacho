@@ -28,13 +28,13 @@ gRPC-контракта.
 
 | Нужно | Зачем |
 |---|---|
-| Развернутый стенд Kachō (`api-gateway` + `kacho-vpc` + `kacho-iam` + `kacho-geo`) | Принимает запросы и выполняет authz/валидацию |
-| `projectId` существующего проекта | Все ресурсы VPC — project-level; владелец проекта живет в kacho-iam |
+| Развернутый стенд Kachō (`api-gateway` + `kacho-vpc` + `kaname` + `kacho-geo`) | Принимает запросы и выполняет authz/валидацию |
+| `projectId` существующего проекта | Все ресурсы VPC — project-level; владелец проекта живет в kaname |
 | Удостоверение с правами на проект | `api-gateway` проверяет `Authorization: Bearer <token>`; годятся и базовый токен доступа, и JWT |
 | Доступная зона (`zoneId`), напр. `zone-a` | Подсеть и адреса привязаны к зоне (валидируется через kacho-geo) |
 | `curl` + `jq` (опционально, для удобного парсинга ответов) | Поллинг `Operation` и извлечение id |
 
-Удостоверения ещё нет? Путь от учётной записи до строки, которую кладут в `Authorization: Bearer`, описан страницей «Первое удостоверение» документации kacho-iam.
+Удостоверения ещё нет? Путь от учётной записи до строки, которую кладут в `Authorization: Bearer`, описан страницей «Первое удостоверение» документации kaname.
 
 Поднять стенд локально — раздел [Развертывание](/install/deploy); параметры сервиса —
 [Конфигурация](/install/configuration). Ниже предполагается, что `api-gateway` доступен на
@@ -152,7 +152,7 @@ sequenceDiagram
 :::caution Ключевые ошибки
 `INVALID_ARGUMENT` — некорректное тело/имя. `UNAUTHENTICATED` (401) — нет/невалиден JWT.
 `PERMISSION_DENIED` (403) — нет прав на проект. Если проект не существует —
-`"Project with id <id> not found"`; если kacho-iam недоступен — `UNAVAILABLE`.
+`"Project with id <id> not found"`; если kaname недоступен — `UNAVAILABLE`.
 :::
 
 ## Шаг 2. Создать Subnet

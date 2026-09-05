@@ -150,7 +150,7 @@ echo "[parallel] port-forward api-gateway :$GW_PORT/:$GW_INTERNAL_PORT/:$GW_TLS_
 kubectl -n "$NS" port-forward svc/api-gateway "$GW_PORT:8080" >/tmp/e2e-pp-gw.log 2>&1 &            PF_PIDS+=($!); PF_WHAT+=("$GW_PORT|api-gateway public (:8080)|/tmp/e2e-pp-gw.log")
 kubectl -n "$NS" port-forward svc/api-gateway "$GW_INTERNAL_PORT:8081" >/tmp/e2e-pp-gwint.log 2>&1 & PF_PIDS+=($!); PF_WHAT+=("$GW_INTERNAL_PORT|api-gateway internal (:8081)|/tmp/e2e-pp-gwint.log")
 kubectl -n "$NS" port-forward svc/api-gateway "$GW_TLS_PORT:8443" >/tmp/e2e-pp-gwtls.log 2>&1 &     PF_PIDS+=($!); PF_WHAT+=("$GW_TLS_PORT|api-gateway external TLS (:8443)|/tmp/e2e-pp-gwtls.log")
-kubectl -n "$NS" port-forward svc/kacho-iam-internal "$IAM_INTERNAL_PORT:9091" >/tmp/e2e-pp-iam.log 2>&1 & PF_PIDS+=($!); PF_WHAT+=("$IAM_INTERNAL_PORT|iam internal gRPC (:9091)|/tmp/e2e-pp-iam.log")
+kubectl -n "$NS" port-forward svc/kaname-internal "$IAM_INTERNAL_PORT:9091" >/tmp/e2e-pp-iam.log 2>&1 & PF_PIDS+=($!); PF_WHAT+=("$IAM_INTERNAL_PORT|iam internal gRPC (:9091)|/tmp/e2e-pp-iam.log")
 # Hydra public — the POST target of the OAuth2 client_credentials exchange that turns an
 # iam-issued SA key into the RS256 Bearer a production-posture stand accepts. ClusterIP
 # with no ingress route here, so the exchange needs this forward. Harmless in dev (the
@@ -169,8 +169,8 @@ kubectl -n "$NS" port-forward svc/kacho-umbrella-kratos-admin "$KRATOS_ADMIN_POR
 kubectl -n "$NS" port-forward svc/kacho-umbrella-hydra-admin-tls "$HYDRA_ADMIN_PORT:4445" >/tmp/e2e-pp-hydra-adm.log 2>&1 & PF_PIDS+=($!); PF_WHAT+=("$HYDRA_ADMIN_PORT|hydra admin TLS (:4445)|/tmp/e2e-pp-hydra-adm.log")
 # Полоса фасада (#59). Каждый проброс попадает в PF_WHAT, поэтому не вставший
 # проброс останавливает прогон тем же блоком ниже, а не отдаёт «кейс не смог».
-kubectl -n "$NS" port-forward svc/kacho-iam-internal "$IAM_JWKS_PORT:9097" >/tmp/e2e-pp-iam-jwks.log 2>&1 & PF_PIDS+=($!); PF_WHAT+=("$IAM_JWKS_PORT|iam JWKS-proxy (:9097)|/tmp/e2e-pp-iam-jwks.log")
-kubectl -n "$NS" port-forward svc/kacho-iam "$IAM_REGTOKEN_PORT:9096" >/tmp/e2e-pp-iam-regtoken.log 2>&1 & PF_PIDS+=($!); PF_WHAT+=("$IAM_REGTOKEN_PORT|iam docker-token handle (:9096)|/tmp/e2e-pp-iam-regtoken.log")
+kubectl -n "$NS" port-forward svc/kaname-internal "$IAM_JWKS_PORT:9097" >/tmp/e2e-pp-iam-jwks.log 2>&1 & PF_PIDS+=($!); PF_WHAT+=("$IAM_JWKS_PORT|iam JWKS-proxy (:9097)|/tmp/e2e-pp-iam-jwks.log")
+kubectl -n "$NS" port-forward svc/kaname "$IAM_REGTOKEN_PORT:9096" >/tmp/e2e-pp-iam-regtoken.log 2>&1 & PF_PIDS+=($!); PF_WHAT+=("$IAM_REGTOKEN_PORT|iam docker-token handle (:9096)|/tmp/e2e-pp-iam-regtoken.log")
 
 # ─── ПРОБРОСЫ К КОМПОНЕНТАМ — ОТКРЫВАЮТСЯ ПО СПРОСУ, А НЕ ВСЕГДА ─────────────
 #

@@ -37,7 +37,7 @@
 | Что | Значение | Чем установлено |
 |---|---|---|
 | Кластер | локальный kind `kacho`, узел `kacho-control-plane`, 12 ядер / 64 ГиБ | `kubectl config` + `docker ps` |
-| Образ службы | `kacho-iam:dev`, `sha256:2cda8485f29f`, собран 2026-08-19 22:13:58 MSK | `docker images`, `imageID` **запущенных** подов |
+| Образ службы | `kaname:dev`, `sha256:2cda8485f29f`, собран 2026-08-19 22:13:58 MSK | `docker images`, `imageID` **запущенных** подов |
 | Ревизия | клеймо VCS отсутствует (`(devel)`) — образ собран с рабочего дерева, не с коммита | `go version -m` по двоичному файлу из образа |
 | Наблюдаемость пула | **присутствует** в этом образе | эмпирически: под отдаёт `kacho_iam_db_pool_*` на `:9095` |
 | Посадка | шифрование до базы включено | `pg_stat_ssl` со стороны базы: `t\|48` |
@@ -56,9 +56,9 @@
 
 ```sh
 kubectl config use-context kind-kacho                       # НЕ чужой кластер
-kubectl -n kacho scale deploy kacho-iam --replicas=<1|3|5>
-kubectl -n kacho rollout restart deploy/kacho-iam            # пулы с нуля
-kubectl -n kacho rollout status deploy/kacho-iam
+kubectl -n kacho scale deploy kaname --replicas=<1|3|5>
+kubectl -n kacho rollout restart deploy/kaname            # пулы с нуля
+kubectl -n kacho rollout status deploy/kaname
 
 # лестница своя для каждой посадки — она обязана накрыть точку насыщения
 ./deploy/load-tests/iam-check-rps-step.sh r1 "200,300,400,600" 60s 1   # 1 реплика

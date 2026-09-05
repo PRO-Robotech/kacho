@@ -59,7 +59,7 @@ func mustB64URL(b []byte) string {
 }
 
 // mkUnsignedJWT builds a `header.payload.<empty>` token. Hydra has already
-// verified the signature; the kacho-iam handler decodes the claim body only.
+// verified the signature; the kaname handler decodes the claim body only.
 func mkUnsignedJWT(t *testing.T, claims map[string]any) string {
 	t.Helper()
 	hdr, err := json.Marshal(map[string]any{"alg": "RS256", "typ": "JWT"})

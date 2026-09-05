@@ -52,7 +52,7 @@ var (
 	argsLine    = regexp.MustCompile(`^\s*args:\s*\[(.+)\]\s*$`)
 )
 
-// subchartKey — ключ подчарта в наложении значений зонта (`kacho-iam:` в нулевой
+// subchartKey — ключ подчарта в наложении значений зонта (`kaname:` в нулевой
 // колонке). Им наложение называет службу, которую настраивает.
 var subchartKey = regexp.MustCompile(`^kacho-([a-z0-9]+):`)
 

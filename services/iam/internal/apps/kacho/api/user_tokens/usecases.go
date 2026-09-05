@@ -24,7 +24,7 @@
 // На Issue:
 //
 //  1. Генерируем пару ключей ECDSA P-256 локально; приватная половина НИКОГДА не
-//     покидает response kacho-iam и НИКОГДА не хранится в БД.
+//     покидает response kaname и НИКОГДА не хранится в БД.
 //  2. Персистим строку `user_oauth_clients` (public PEM + algorithm; зеркало
 //     поставщика пусто).
 //  3. Возвращаем IssueUserTokenResponse с plaintext приватным PEM + kid в

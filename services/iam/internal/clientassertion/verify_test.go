@@ -501,7 +501,7 @@ func TestF2_15_AudienceIsOurIssuerIdentifierNotTheEndpointAddress(t *testing.T) 
 	for _, aud := range []any{
 		testIssuerID + "/oauth2/token",
 		testIssuerID + "/iam/v1/token",
-		"http://kacho-iam.kacho-system.svc:9096/iam/v1/token",
+		"http://kaname.kacho-system.svc:9096/iam/v1/token",
 		"",
 	} {
 		res, err := f.verify(t, sign(aud, "jti-15"))

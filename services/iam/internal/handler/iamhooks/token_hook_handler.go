@@ -488,7 +488,7 @@ func firstFormValue(m map[string][]string, key string) string {
 // decodeAssertionIssuer extracts the `iss` claim from an unverified JWT
 // assertion. Hydra has ALREADY validated the assertion's signature against
 // the configured trusted-issuer JWKS by the time it calls the token-hook;
-// kacho-iam only needs the issuer to disambiguate which external IdP this
+// kaname only needs the issuer to disambiguate which external IdP this
 // federated SA-token was minted for so the (iss, sub) lookup can target the
 // right `trusted_subjects` row. Failure returns "" — caller falls through to
 // the non-federated paths.

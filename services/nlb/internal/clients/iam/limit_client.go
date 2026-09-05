@@ -18,7 +18,7 @@ import (
 )
 
 // Клиент владельца величин: `InternalLimitService.Resolve` на ВНУТРЕННЕМ
-// слушателе kacho-iam.
+// слушателе kaname.
 //
 // Приёмка `docs/specs/sub-phase-quota-v2-materialised-usage-acceptance.md`
 // (APPROVED, раунд 2), V2-1 и DoD S4 п.1.
@@ -50,7 +50,7 @@ type LimitClient struct {
 // Compile-time проверка: клиент удовлетворяет порту совещательной полосы.
 var _ quota.LimitResolver = (*LimitClient)(nil)
 
-// NewLimitClient создаёт клиента поверх conn ВНУТРЕННЕГО слушателя kacho-iam.
+// NewLimitClient создаёт клиента поверх conn ВНУТРЕННЕГО слушателя kaname.
 //
 // nil conn → nil клиент: сборка без соседа величин законна (полоса тогда не
 // собирается), и «полосы нет» обязано быть отличимо от «полоса есть и молчит».

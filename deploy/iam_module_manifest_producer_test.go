@@ -129,7 +129,7 @@ func declaredNameInChain(t *testing.T, chain []string) string {
 		if err := yaml.Unmarshal(raw, &tree); err != nil {
 			t.Fatalf("профиль %s не разобран: %v", p, err)
 		}
-		if v, ok := nestedString(tree, "kacho-iam", "manifests", "configMapName"); ok {
+		if v, ok := nestedString(tree, "kaname", "manifests", "configMapName"); ok {
 			name = v
 		}
 	}

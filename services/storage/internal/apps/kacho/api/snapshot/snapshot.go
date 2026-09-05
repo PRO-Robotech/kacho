@@ -7,7 +7,7 @@
 // — sync; Create/Update/Delete — async Operation (ban #9). source_volume_id —
 // within-service ссылка на volumes (same-DB FK SET NULL); existence + READY-check
 // делает repo атомарным INSERT…SELECT (не TOCTOU). project_id — cross-service →
-// kacho-iam (peer-validate на request-path, fail-closed). immutable source_volume_id.
+// kaname (peer-validate на request-path, fail-closed). immutable source_volume_id.
 package snapshot
 
 import (
@@ -90,7 +90,7 @@ type GeoClient interface {
 	EnsureZoneExists(ctx context.Context, zoneID string) error
 }
 
-// IAMClient — peer-валидация project_id через kacho-iam (fail-closed).
+// IAMClient — peer-валидация project_id через kaname (fail-closed).
 type IAMClient interface {
 	EnsureProjectExists(ctx context.Context, projectID string) error
 }
@@ -135,7 +135,7 @@ type UseCase struct {
 	// registrar — синхронная регистрация owner-tuple после commit (immediate
 	// анти-BOLA; nil → только async register-drainer). Инжектится WithRegistrar.
 	registrar fgaregister.Registrar
-	// listFilter — per-object фильтр видимости страницы List (kacho-iam
+	// listFilter — per-object фильтр видимости страницы List (kaname
 	// AuthorizeService.BatchCheck). nil → passthrough (dev / list-filter disabled;
 	// production boot-guard такую посадку запрещает). Инжектится WithListFilter.
 	listFilter *listnarrow.Narrower
@@ -279,7 +279,7 @@ func (u *UseCase) List(ctx context.Context, p Pagination) ([]*domain.Snapshot, s
 }
 
 // Create создаёт Snapshot тома (async Operation). Sync-фаза: domain-validate
-// (source_volume_id обязателен, name-длина) → project_id peer-validate (kacho-iam,
+// (source_volume_id обязателен, name-длина) → project_id peer-validate (kaname,
 // fail-closed Unavailable). Async-worker: repo.Insert — атомарный INSERT…SELECT
 // (source volume существует В ТОМ ЖЕ проекте И state=READY; size_bytes=
 // volumes.size_bytes; state→READY сразу). Не-READY/отсутствующий источник → Operation

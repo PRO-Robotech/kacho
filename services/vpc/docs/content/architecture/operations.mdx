@@ -164,13 +164,13 @@ flowchart LR
 Подробнее — [Архитектура](/architecture/overview).
 :::
 
-:::note Второй outbox — регистрация владения в kacho-iam
+:::note Второй outbox — регистрация владения в kaname
 Помимо доменного `vpc_outbox` (журнал событий) worker на Create/Delete пишет — **в той же
 writer-TX** — строку-намерение в отдельную таблицу `fga_register_outbox`: «зарегистрировать /
 снять владение ресурсом и его место в цепи областей». Отдельный register-drainer применяет каждое намерение
-через `kacho-iam.InternalIAMService.RegisterResource` / `UnregisterResource` (idempotent,
+через `kaname.InternalIAMService.RegisterResource` / `UnregisterResource` (idempotent,
 at-least-once, retry на `Unavailable`). Так per-resource authz-Check разрешается по каскаду «от
-проекта», а намерение durable и не теряется при transient-сбое kacho-iam. Подробнее —
+проекта», а намерение durable и не теряется при transient-сбое kaname. Подробнее —
 [Авторизация и приватность](/architecture/authz).
 :::
 
@@ -333,7 +333,7 @@ Sync-фаза и async-фаза используют один и тот же н�
     <tr><td><code>NOT\_FOUND</code></td><td>sync / async</td><td>Parent-ресурс в БД VPC не существует (<code>repo.Get</code>) — sync; Project не существует (<code>ProjectService.Get</code> в worker'е) — async</td></tr>
     <tr><td><code>ALREADY\_EXISTS</code></td><td>sync / async</td><td>Дубликат имени — sync-precheck; UNIQUE <code>(project\_id, name)</code> (SQLSTATE <code>23505</code>) — async DB-backstop при гонке</td></tr>
     <tr><td><code>FAILED\_PRECONDITION</code></td><td>sync / async</td><td>Пересечение CIDR — sync-precheck (+ EXCLUDE <code>23P01</code> async-backstop); непустая сеть (<code>"network is not empty"</code>), FK-блокировка (<code>23503</code>), <code>deletion\_protection</code> — async</td></tr>
-    <tr><td><code>UNAVAILABLE</code></td><td>async</td><td>Peer-сервис (kacho-iam — проект; kacho-geo — зона) недоступен при валидации — fail-closed для мутаций (с retry)</td></tr>
+    <tr><td><code>UNAVAILABLE</code></td><td>async</td><td>Peer-сервис (kaname — проект; kacho-geo — зона) недоступен при валидации — fail-closed для мутаций (с retry)</td></tr>
     <tr><td><code>INTERNAL</code></td><td>обе</td><td>Непредвиденная ошибка / panic в worker'е — без утечки текста БД (<code>"internal database error"</code>)</td></tr>
   </tbody>
 </table>

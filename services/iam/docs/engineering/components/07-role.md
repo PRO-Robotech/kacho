@@ -13,7 +13,7 @@
 > разворачиваются в доступ — см.
 > [`../architecture/explicit-rbac-model.md`](../architecture/explicit-rbac-model.md).
 
-В `kacho-iam` 64 system-роли (58 catalog + 5 module-SA + net-new `owner`)
+В `kaname` 64 system-роли (58 catalog + 5 module-SA + net-new `owner`)
 seed'ятся миграциями с детерминированными id формата `rol<md5(name)[0..17]>` —
 так, что повторное применение миграции дает те же id (parity для
 cross-environment ссылок).

@@ -504,7 +504,7 @@ func (c Config) validateMode() error {
 //
 // Secrets resolve from the YAML field OR the ENV indirection
 // (hook-shared-secret-env / jwks-encryption-key-hex-env) — the same precedence
-// the composition root uses (cmd/kacho-iam/hooks_mux.go). Only os.Getenv is read
+// the composition root uses (cmd/kaname/hooks_mux.go). Only os.Getenv is read
 // (no other side-effects), consistent with the Resolve* methods.
 //
 // Errors name WHICH setting is missing — never the secret value (security.md).

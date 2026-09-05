@@ -342,7 +342,7 @@ func knobResolveSubchart(parentDir string, dep knobDep, byDir map[string]*knobCh
 }
 
 // knobOwningChartDir — каталог чарта, которому принадлежит файл: САМЫЙ ДЛИННЫЙ
-// подходящий префикс. Иначе `charts/kacho-iam/templates/…` засчитался бы
+// подходящий префикс. Иначе `charts/kaname/templates/…` засчитался бы
 // родителю, и ссылки сабчарта стали бы ссылками родителя — гейт замолчал бы
 // ровно там, где вложенность глубже.
 func knobOwningChartDir(abs string, byDir map[string]*knobChart) string {

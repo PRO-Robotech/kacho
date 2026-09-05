@@ -52,7 +52,7 @@ CRUD fixture dependency:
 
 Operation envelope:
   Mutations return `operation.Operation` with id prefix `iop`.
-  Poll hits /operations/{id} via OpsProxy (iop* → kacho-iam).
+  Poll hits /operations/{id} via OpsProxy (iop* → kaname).
 
 Case IDs follow the IAM-USR-<RPC>-<CLASS>[-detail] scheme.
 

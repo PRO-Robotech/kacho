@@ -38,7 +38,7 @@ func prodCfgSecurePeers(mode Mode, iamEndpoint string) (Config, MTLSConfig) {
 // исходящий authz Check edge полностью незашифрован — то есть сервис «загрузился бы».
 // Именно ValidatePeerTransport теперь отклоняет такой старт.
 func TestPeerTransport_GapDemonstration_S1S2Pass(t *testing.T) {
-	c := prodCfg(ModeProduction, "kacho-iam:9091") // ExtAPI.IAM.TLS.Enable=true
+	c := prodCfg(ModeProduction, "kaname:9091") // ExtAPI.IAM.TLS.Enable=true
 	c.Repository.Postgres.SSLMode = "verify-full"
 	var m MTLSConfig
 	// Листенеры защищены (S2 удовлетворён), но исходящий authz Check edge — нет.
@@ -56,7 +56,7 @@ func TestPeerTransport_GapDemonstration_S1S2Pass(t *testing.T) {
 
 // vpc9-C-01: production + authz Check edge cleartext (нет ни mTLS, ни server-TLS) → отказ.
 func TestValidatePeerTransport_Production_AuthzEdgeInsecure_Fails(t *testing.T) {
-	c := prodCfg(ModeProduction, "kacho-iam:9091") // project edge ok (server-TLS)
+	c := prodCfg(ModeProduction, "kaname:9091") // project edge ok (server-TLS)
 	var m MTLSConfig                               // IAMAuthzMTLS off; c.AuthZ.IAMTLS off
 	err := c.ValidatePeerTransport(m)
 	require.Error(t, err)
@@ -68,7 +68,7 @@ func TestValidatePeerTransport_Production_AuthzEdgeInsecure_Fails(t *testing.T) 
 
 // vpc9-C-02: production-strict + authz Check edge cleartext → тот же отказ (любой IsProduction()).
 func TestValidatePeerTransport_ProductionStrict_AuthzEdgeInsecure_Fails(t *testing.T) {
-	c := prodCfg(ModeProductionStrict, "kacho-iam:9091")
+	c := prodCfg(ModeProductionStrict, "kaname:9091")
 	var m MTLSConfig
 	err := c.ValidatePeerTransport(m)
 	require.Error(t, err)
@@ -78,7 +78,7 @@ func TestValidatePeerTransport_ProductionStrict_AuthzEdgeInsecure_Fails(t *testi
 
 // vpc9-C-03: production + authz Check edge через client-mTLS → проходит.
 func TestValidatePeerTransport_Production_AuthzEdgeMTLS_Passes(t *testing.T) {
-	c, m := prodCfgSecurePeers(ModeProduction, "kacho-iam:9091")
+	c, m := prodCfgSecurePeers(ModeProduction, "kaname:9091")
 	require.True(t, m.IAMAuthzMTLS.Enable)
 	require.NoError(t, c.ValidatePeerTransport(m))
 }
@@ -86,7 +86,7 @@ func TestValidatePeerTransport_Production_AuthzEdgeMTLS_Passes(t *testing.T) {
 // vpc9-C-04: production + authz Check edge через verified server-TLS (authz.iam-tls.enable)
 // → проходит даже без client-mTLS.
 func TestValidatePeerTransport_Production_AuthzEdgeServerTLS_Passes(t *testing.T) {
-	c := prodCfg(ModeProduction, "kacho-iam:9091")
+	c := prodCfg(ModeProduction, "kaname:9091")
 	c.AuthZ.IAMTLS.Enable = true // verified server-TLS вместо mTLS
 	var m MTLSConfig             // client-mTLS выключен
 	require.NoError(t, c.ValidatePeerTransport(m))
@@ -101,7 +101,7 @@ func TestValidatePeerTransport_Production_AuthzEdgeServerTLS_Passes(t *testing.T
 // несёт решение на КАЖДОЙ посадке, и предметом стал сам этот факт: тот же
 // незашифрованный транспорт теперь отвергается.
 func TestValidatePeerTransport_Production_AuthzEdgeHasNoExemptionLeft(t *testing.T) {
-	c := prodCfg(ModeProduction, "kacho-iam:9091") // project edge ok
+	c := prodCfg(ModeProduction, "kaname:9091") // project edge ok
 	var m MTLSConfig                               // authz edge cleartext
 	err := c.ValidatePeerTransport(m)
 	require.Error(t, err, "ребро решения о доступе больше нечем освободить")
@@ -122,7 +122,7 @@ func TestValidatePeerTransport_Production_NoEndpoint_AuthzEdgeNotDialled(t *test
 // vpc9-C-06: production + ProjectService.Get edge cleartext (extapi.iam.tls.enable=false,
 // IAMProjectMTLS выключен) → отказ (тот же класс гарда). authz edge изолирован через mTLS.
 func TestValidatePeerTransport_Production_ProjectEdgeInsecure_Fails(t *testing.T) {
-	c := prodCfg(ModeProduction, "kacho-iam:9091")
+	c := prodCfg(ModeProduction, "kaname:9091")
 	c.ExtAPI.IAM.TLS.Enable = false // project edge cleartext
 	var m MTLSConfig
 	m.IAMAuthzMTLS.Enable = true // authz edge удовлетворён → изолируем project
@@ -135,7 +135,7 @@ func TestValidatePeerTransport_Production_ProjectEdgeInsecure_Fails(t *testing.T
 
 // vpc9-C-07: production + ProjectService.Get edge через client-mTLS (server-TLS off) → проходит.
 func TestValidatePeerTransport_Production_ProjectEdgeMTLS_Passes(t *testing.T) {
-	c := prodCfg(ModeProduction, "kacho-iam:9091")
+	c := prodCfg(ModeProduction, "kaname:9091")
 	c.ExtAPI.IAM.TLS.Enable = false
 	var m MTLSConfig
 	m.IAMAuthzMTLS.Enable = true   // authz edge ok
@@ -145,14 +145,14 @@ func TestValidatePeerTransport_Production_ProjectEdgeMTLS_Passes(t *testing.T) {
 
 // vpc9-C-08: production + ProjectService.Get edge через verified server-TLS → проходит.
 func TestValidatePeerTransport_Production_ProjectEdgeServerTLS_Passes(t *testing.T) {
-	c, m := prodCfgSecurePeers(ModeProduction, "kacho-iam:9091") // ExtAPI.IAM.TLS.Enable=true
+	c, m := prodCfgSecurePeers(ModeProduction, "kaname:9091") // ExtAPI.IAM.TLS.Enable=true
 	require.True(t, c.ExtAPI.IAM.TLS.Enable)
 	require.NoError(t, c.ValidatePeerTransport(m))
 }
 
 // vpc9-C-09: production + ОБА ребра cleartext → оба сообщения агрегируются в один multierr.
 func TestValidatePeerTransport_Production_BothEdgesInsecure_AggregatesBoth(t *testing.T) {
-	c := prodCfg(ModeProduction, "kacho-iam:9091")
+	c := prodCfg(ModeProduction, "kaname:9091")
 	c.ExtAPI.IAM.TLS.Enable = false // project edge cleartext
 	var m MTLSConfig                // authz edge cleartext
 	err := c.ValidatePeerTransport(m)
@@ -163,7 +163,7 @@ func TestValidatePeerTransport_Production_BothEdgesInsecure_AggregatesBoth(t *te
 
 // vpc9-C-10: dev-режим гардом не затронут (исходящие рёбра могут быть insecure).
 func TestValidatePeerTransport_Dev_NoGuard(t *testing.T) {
-	c := prodCfg(ModeDev, "kacho-iam:9091")
+	c := prodCfg(ModeDev, "kaname:9091")
 	c.ExtAPI.IAM.TLS.Enable = false
 	var m MTLSConfig // всё insecure
 	require.NoError(t, c.ValidatePeerTransport(m))
@@ -179,7 +179,7 @@ func TestValidatePeerTransport_Dev_NoGuard(t *testing.T) {
 
 // vpc9b-C-01: production + vpc→geo edge cleartext (нет ни mTLS, ни server-TLS) → отказ.
 func TestValidatePeerTransport_Production_GeoEdgeInsecure_Fails(t *testing.T) {
-	c := prodCfg(ModeProduction, "kacho-iam:9091")
+	c := prodCfg(ModeProduction, "kaname:9091")
 	c.ExtAPI.Geo.TLS.Enable = false // geo edge cleartext
 	var m MTLSConfig
 	m.IAMAuthzMTLS.Enable = true // authz edge удовлетворён → изолируем geo
@@ -193,7 +193,7 @@ func TestValidatePeerTransport_Production_GeoEdgeInsecure_Fails(t *testing.T) {
 
 // vpc9b-C-02: production-strict + geo edge cleartext → тот же отказ (любой IsProduction()).
 func TestValidatePeerTransport_ProductionStrict_GeoEdgeInsecure_Fails(t *testing.T) {
-	c := prodCfg(ModeProductionStrict, "kacho-iam:9091")
+	c := prodCfg(ModeProductionStrict, "kaname:9091")
 	c.ExtAPI.Geo.TLS.Enable = false
 	var m MTLSConfig
 	m.IAMAuthzMTLS.Enable = true
@@ -205,7 +205,7 @@ func TestValidatePeerTransport_ProductionStrict_GeoEdgeInsecure_Fails(t *testing
 
 // vpc9b-C-03: production + geo edge через client-mTLS (server-TLS off) → проходит.
 func TestValidatePeerTransport_Production_GeoEdgeMTLS_Passes(t *testing.T) {
-	c := prodCfg(ModeProduction, "kacho-iam:9091")
+	c := prodCfg(ModeProduction, "kaname:9091")
 	c.ExtAPI.Geo.TLS.Enable = false
 	var m MTLSConfig
 	m.IAMAuthzMTLS.Enable = true
@@ -215,7 +215,7 @@ func TestValidatePeerTransport_Production_GeoEdgeMTLS_Passes(t *testing.T) {
 
 // vpc9b-C-04: production + geo edge через verified server-TLS → проходит (default prodCfg).
 func TestValidatePeerTransport_Production_GeoEdgeServerTLS_Passes(t *testing.T) {
-	c := prodCfg(ModeProduction, "kacho-iam:9091") // ExtAPI.Geo.TLS.Enable=true
+	c := prodCfg(ModeProduction, "kaname:9091") // ExtAPI.Geo.TLS.Enable=true
 	require.True(t, c.ExtAPI.Geo.TLS.Enable)
 	var m MTLSConfig
 	m.IAMAuthzMTLS.Enable = true
@@ -226,7 +226,7 @@ func TestValidatePeerTransport_Production_GeoEdgeServerTLS_Passes(t *testing.T) 
 // (IAMRegisterMTLS off) → отказ. Ребро использует ТОЛЬКО client-mTLS (нет server-TLS
 // варианта), поэтому гард требует именно IAMRegisterMTLS.Enable.
 func TestValidatePeerTransport_Production_RegisterEdgeInsecure_Fails(t *testing.T) {
-	c := prodCfg(ModeProduction, "kacho-iam:9091")
+	c := prodCfg(ModeProduction, "kaname:9091")
 	c.IAM.RegisterDrainerEnabled = true // register edge активен (endpoint задан)
 	var m MTLSConfig
 	m.IAMAuthzMTLS.Enable = true // authz edge удовлетворён → изолируем register
@@ -239,7 +239,7 @@ func TestValidatePeerTransport_Production_RegisterEdgeInsecure_Fails(t *testing.
 
 // vpc9b-C-06: production + register edge через client-mTLS → проходит.
 func TestValidatePeerTransport_Production_RegisterEdgeMTLS_Passes(t *testing.T) {
-	c := prodCfg(ModeProduction, "kacho-iam:9091")
+	c := prodCfg(ModeProduction, "kaname:9091")
 	c.IAM.RegisterDrainerEnabled = true
 	var m MTLSConfig
 	m.IAMAuthzMTLS.Enable = true
@@ -250,7 +250,7 @@ func TestValidatePeerTransport_Production_RegisterEdgeMTLS_Passes(t *testing.T) 
 // vpc9b-C-07: register-drainer выключен → register edge неактивен → нет требования,
 // даже если IAMRegisterMTLS off.
 func TestValidatePeerTransport_Production_RegisterDisabled_NoRequirement(t *testing.T) {
-	c := prodCfg(ModeProduction, "kacho-iam:9091")
+	c := prodCfg(ModeProduction, "kaname:9091")
 	c.IAM.RegisterDrainerEnabled = false // register edge НЕ дилится
 	var m MTLSConfig
 	m.IAMAuthzMTLS.Enable = true
@@ -273,7 +273,7 @@ func TestValidatePeerTransport_Production_RegisterEnabled_NoEndpoint_NoRequireme
 
 // vpc9b-C-09: все четыре ребра cleartext → все сообщения агрегируются в один multierr.
 func TestValidatePeerTransport_Production_AllEdgesInsecure_AggregatesAll(t *testing.T) {
-	c := prodCfg(ModeProduction, "kacho-iam:9091")
+	c := prodCfg(ModeProduction, "kaname:9091")
 	c.ExtAPI.IAM.TLS.Enable = false // project edge cleartext
 	c.ExtAPI.Geo.TLS.Enable = false // geo edge cleartext
 	c.IAM.RegisterDrainerEnabled = true
@@ -288,7 +288,7 @@ func TestValidatePeerTransport_Production_AllEdgesInsecure_AggregatesAll(t *test
 
 // vpc9b-C-10: dev-режим гардом не затронут (geo/register рёбра могут быть insecure).
 func TestValidatePeerTransport_Dev_GeoRegister_NoGuard(t *testing.T) {
-	c := prodCfg(ModeDev, "kacho-iam:9091")
+	c := prodCfg(ModeDev, "kaname:9091")
 	c.ExtAPI.Geo.TLS.Enable = false
 	c.IAM.RegisterDrainerEnabled = true
 	var m MTLSConfig
@@ -309,10 +309,10 @@ func TestValidatePeerTransport_Dev_GeoRegister_NoGuard(t *testing.T) {
 // удовлетворены, а фильтр видимости включён со своим адресом. База, чтобы
 // изолировать проверяемое ребро.
 func prodCfgListFilterEdge(mode Mode) (Config, MTLSConfig) {
-	c := prodCfg(mode, "kacho-iam-internal:9091")
+	c := prodCfg(mode, "kaname-internal:9091")
 	c.AuthZ.IAMTLS.Enable = true // authz Check edge — verified server-TLS
 	c.AuthZ.ListFilter.Enabled = true
-	c.AuthZ.ListFilter.AuthorizeEndpoint = "kacho-iam:9090"
+	c.AuthZ.ListFilter.AuthorizeEndpoint = "kaname:9090"
 	var m MTLSConfig // client-mTLS выключен на всех рёбрах
 	return c, m
 }
@@ -472,7 +472,7 @@ func TestListFilterAuthorizeEndpoint_ResolutionOrder(t *testing.T) {
 // vpc9-C-11: ValidateBoot агрегирует S4 — insecure authz edge в production всплывает
 // в едином boot-валидаторе (single-shot gate).
 func TestValidateBoot_Production_IncludesPeerTransport(t *testing.T) {
-	c := prodCfg(ModeProduction, "kacho-iam:9091")
+	c := prodCfg(ModeProduction, "kaname:9091")
 	var m MTLSConfig
 	m.PublicServerMTLS.Enable = true   // S2 public ok
 	m.InternalServerMTLS.Enable = true // S2 internal ok
@@ -491,10 +491,10 @@ func TestValidateBoot_Production_IncludesPeerTransport(t *testing.T) {
 // контроля, а приведение его к тому, что он объявляет: ослаблено по-прежнему ноль
 // измерений, просто измерений стало на одно больше.
 func TestValidateBoot_Production_AllSecure_Passes(t *testing.T) {
-	c := prodCfg(ModeProduction, "kacho-iam:9091") // project edge server-TLS
+	c := prodCfg(ModeProduction, "kaname:9091") // project edge server-TLS
 	c.Repository.Postgres.SSLMode = "verify-full"
 	c.AuthZ.ListFilter.Enabled = true
-	c.AuthZ.ListFilter.AuthorizeEndpoint = "kacho-iam:9090"
+	c.AuthZ.ListFilter.AuthorizeEndpoint = "kaname:9090"
 	var m MTLSConfig
 	m.PublicServerMTLS.Enable = true
 	m.InternalServerMTLS.Enable = true

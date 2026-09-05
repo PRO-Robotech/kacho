@@ -230,7 +230,7 @@ func runServe(cfg config.Config) error {
 			grpc.WithTransportCredentials(authzCreds),
 			grpcclient.KeepaliveDialOption(true))
 		if err != nil {
-			return fmt.Errorf("dial kacho-iam internal: %w", err)
+			return fmt.Errorf("dial kaname internal: %w", err)
 		}
 		defer func() { _ = authzConn.Close() }()
 		// Носитель зависимости, объявленной посадкой выше. До этой строки
@@ -242,7 +242,7 @@ func runServe(cfg config.Config) error {
 	// ── ребро registry→iam PUBLIC (:9090, mTLS): ProjectService.Get (existence-
 	// валидация project на Create). ОТДЕЛЬНЫЙ conn — ProjectService зарегистрирован
 	// только на public :9090; вызов на :9091 (authzConn) вернул бы Unimplemented →
-	// фикс. INTERNAL на Create. ServerName public dial-host'а (kacho-iam.*) ≠ internal,
+	// фикс. INTERNAL на Create. ServerName public dial-host'а (kaname.*) ≠ internal,
 	// поэтому раздельные mTLS-creds (IAMProjectMTLS vs IAMAuthzMTLS) обязательны.
 	var projectConn *grpc.ClientConn
 	if cfg.IAMProjectGRPCAddr != "" {
@@ -254,7 +254,7 @@ func runServe(cfg config.Config) error {
 			grpc.WithTransportCredentials(projectCreds),
 			grpcclient.KeepaliveDialOption(true))
 		if err != nil {
-			return fmt.Errorf("dial kacho-iam project: %w", err)
+			return fmt.Errorf("dial kaname project: %w", err)
 		}
 		defer func() { _ = projectConn.Close() }()
 	}
@@ -330,7 +330,7 @@ func runServe(cfg config.Config) error {
 	}
 
 	// ── совещательная полоса учёта числа ресурсов ────────────────────────────
-	// Величины живут у kacho-iam на ВНУТРЕННЕМ слушателе (:9091) — админская
+	// Величины живут у kaname на ВНУТРЕННЕМ слушателе (:9091) — админская
 	// поверхность, которой на публичном нет и быть не должно. Зеркало аккаунта
 	// берётся из УЖЕ существующего вызова к соседу за проектом (:9090), новым
 	// ребром работа не обзаводится.
@@ -382,7 +382,7 @@ func runServe(cfg config.Config) error {
 	go lroReconciler.Run(ctx)
 
 	// ── register-drainer: owner-tuple register/unregister intent из registry_outbox
-	// применяется через kacho-iam fga-proxy (:9091, mTLS, идемпотентно, at-least-once,
+	// применяется через kaname fga-proxy (:9091, mTLS, идемпотентно, at-least-once,
 	// exactly-once claim FOR UPDATE SKIP LOCKED между репликами). iam недоступен →
 	// intent durable + retry (owner-tuple не теряется). Без него созданные реестры не
 	// получат owner/project-tuple → невидимы в authz-filtered List.
@@ -449,7 +449,7 @@ func runServe(cfg config.Config) error {
 		}
 	}()
 	// Отравление обязано быть паузой, а не потерей: без периодического redrive
-	// недоставленная регистрация оставляет объект без mirror-строки в kacho-iam, а
+	// недоставленная регистрация оставляет объект без mirror-строки в kaname, а
 	// значит без owner-tuple и без материализованных глаголов — невидимым в
 	// authz-фильтрованном List до ручной правки БД. См. redrive_backstop.go.
 	if rerr := startRedriveBackstop(ctx, pool, logger); rerr != nil {
@@ -879,7 +879,7 @@ func validateAuthMode(cfg config.Config, logger *slog.Logger) error {
 }
 
 // validateSecurityConfig — secure-by-default: операции без авторизации и mTLS
-// запрещены. Per-RPC authz Check (адрес kacho-iam) и mTLS на ОБОИХ листенерах
+// запрещены. Per-RPC authz Check (адрес kaname) и mTLS на ОБОИХ листенерах
 // обязательны; обойти их можно ТОЛЬКО в dev через
 // KACHO_REGISTRY_AUTHZ_BREAKGLASS=true.
 //
@@ -901,7 +901,7 @@ func validateSecurityConfig(cfg config.Config) error {
 	}
 	if cfg.AuthZIAMGRPCAddr == "" {
 		return fmt.Errorf("%sauthz Check required on both listeners: set "+
-			"KACHO_REGISTRY_AUTHZ_IAM_GRPC_ADDR to the internal endpoint of kacho-iam (:9091)%s",
+			"KACHO_REGISTRY_AUTHZ_IAM_GRPC_ADDR to the internal endpoint of kaname (:9091)%s",
 			bootRefusalModePrefix(cfg.Posture()), breakglassBypassHint(cfg.Posture()))
 	}
 	if !cfg.PublicServerMTLS.Enable || !cfg.InternalServerMTLS.Enable {
@@ -1119,7 +1119,7 @@ func describe(cfg config.Config, mode servicecontract.Mode, logger *slog.Logger,
 		StreamBudget: servicecontract.Value(cfg.SubscriptionStreamBudget),
 
 		// Бюджет отказов объявляется ВЕЛИЧИНОЙ, а не изъятием: решение о доступе
-		// реестр принимает не у себя, а вопросом к kacho-iam, — то есть сетевой
+		// реестр принимает не у себя, а вопросом к kaname, — то есть сетевой
 		// сосед, которого шторм отказов может уронить, у него ЕСТЬ. До носителя
 		// этой отсечки у реестра не было вовсе (поле не заполнялось, а механизм
 		// читает неположительное как «ограничения нет»).

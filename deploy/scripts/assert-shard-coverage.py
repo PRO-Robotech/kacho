@@ -700,7 +700,7 @@ def _self_test() -> int:
 
     # (г) компонент объявлен включённым, но выключить его нечем
     m = copy.deepcopy(base)
-    m["shards"][0]["components"] = m["shards"][0]["components"] + ["kacho-iam"]
+    m["shards"][0]["components"] = m["shards"][0]["components"] + ["kaname"]
     run(m, "(г) компонент вне gates", want_red=True)
 
     # (д) предпосылка гейта: gates обязаны быть условны в Chart.yaml

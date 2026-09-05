@@ -6,7 +6,7 @@ ARG TARGETOS
 ARG TARGETARCH
 WORKDIR /src
 
-# Single-repo build: зависимости (kacho-corelib, kacho-iam, kacho-geo) тянутся
+# Single-repo build: зависимости (kacho-corelib, kaname, kacho-geo) тянутся
 # как versioned-модули из GitHub (go.mod без replace), build-context — этот репо.
 COPY . .
 # КЭШ КОМПИЛЯЦИИ — ОБЩИЙ НА ВСЕ ОБРАЗЫ ЭТОГО МОДУЛЯ.

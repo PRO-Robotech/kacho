@@ -31,9 +31,9 @@ import (
 // Сентинелы readiness-чекеров: причина «down» в логах/ответе /readyz без leak'а
 // внутренних деталей наружу (имена зависимостей — operational, cluster-internal).
 var (
-	errDrainerNotConnected = errors.New("register-drainer not connected to kacho-iam")
+	errDrainerNotConnected = errors.New("register-drainer not connected to kaname")
 	errLROWorkerDown       = errors.New("LRO dispatcher loop not running")
-	errIAMConnShutdown     = errors.New("kacho-iam authz connection is shut down")
+	errIAMConnShutdown     = errors.New("kaname authz connection is shut down")
 )
 
 // build-info — инжектится через -ldflags "-X main.buildVersion=… -X main.buildCommit=…";
@@ -107,7 +107,7 @@ func buildReadinessCheckers(db readinessPinger, gate *bootgate.Gate, authzConn *
 	return checkers
 }
 
-// authzConnHealth — best-effort проверка состояния gRPC-conn в kacho-iam. Shutdown
+// authzConnHealth — best-effort проверка состояния gRPC-conn в kaname. Shutdown
 // → down; прочие состояния (Idle/Connecting/Ready/TransientFailure) считаем «up»:
 // gRPC лениво переподключается, а readiness-down при кратком TransientFailure дал
 // бы ложный flap.

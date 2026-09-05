@@ -17,7 +17,7 @@ import (
 )
 
 // Клиент владельца величин: `InternalLimitService.Resolve` на ВНУТРЕННЕМ
-// слушателе kacho-iam.
+// слушателе kaname.
 //
 // Приёмка `docs/specs/sub-phase-quota-v2-materialised-usage-acceptance.md`
 // (APPROVED, раунд 2), V2-1 и DoD S2 п.5.
@@ -42,7 +42,7 @@ type LimitClient struct {
 // Compile-time проверка: клиент удовлетворяет порту совещательной полосы.
 var _ quota.LimitResolver = (*LimitClient)(nil)
 
-// NewLimitClient создаёт клиента поверх conn ВНУТРЕННЕГО слушателя kacho-iam.
+// NewLimitClient создаёт клиента поверх conn ВНУТРЕННЕГО слушателя kaname.
 func NewLimitClient(conn grpc.ClientConnInterface) *LimitClient {
 	return &LimitClient{cli: iamv1.NewInternalLimitServiceClient(conn)}
 }

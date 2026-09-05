@@ -32,7 +32,7 @@ type Handler struct {
 }
 
 // NewHandler собирает хендлер из четырёх use-case'ов.
-// Композиционный корень: cmd/kacho-iam/wiring.go.
+// Композиционный корень: cmd/kaname/wiring.go.
 func NewHandler(plan *PlanUseCase, apply *ApplyUseCase, get *GetUseCase, list *ListUseCase) *Handler {
 	return &Handler{plan: plan, apply: apply, get: get, list: list}
 }

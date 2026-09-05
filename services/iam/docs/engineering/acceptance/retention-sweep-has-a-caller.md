@@ -22,8 +22,8 @@ SPDX-License-Identifier: AGPL-3.0-or-later
 - **Тип изменения:** вводит фоновое поведение, удаляющее строки, и **меняет наблюдаемый
   исход в двух местах**, оба названы замером: `UserService.Delete` (§5) и приём
   `ttl_expires_at` у `InternalSessionRevocationsService.Revoke` (§2.5)
-- **Сервис:** `kacho-iam`; затрагивает `services/iam/internal/apps/kacho/`,
-  `services/iam/internal/repo/kacho/pg/`, `services/iam/cmd/kacho-iam/`,
+- **Сервис:** `kaname`; затрагивает `services/iam/internal/apps/kacho/`,
+  `services/iam/internal/repo/kacho/pg/`, `services/iam/cmd/kaname/`,
   `internal/repohygiene`, миграции iam
 - **Соседняя приёмка:** `expired-credential-reclaim.md` (задача #1264, APPROVED, **не
   реализована**). Её §1.4 нашла эту пару и вынесла из своего объёма; её §9.12 планировала
@@ -248,7 +248,7 @@ for P in "$WIDE" "$D" "$E"; do git grep -niE "$P" $REV -- $NAMED | wc -l; done  
 |---|---:|
 | `docs/engineering/acceptance/expired-credential-reclaim.md` | 277 |
 | `internal/migrations/0001_initial.sql` | 76 |
-| `cmd/kacho-iam/wiring.go` | 56 |
+| `cmd/kaname/wiring.go` | 56 |
 | `internal/migrations/20260822234500_identity_rows_merge_and_rights_travel.sql` | 54 |
 | `docs/engineering/architecture/known-divergences.md` | 47 |
 | `internal/migrations/898002_client_revocation_reaches_presentation.sql` | 28 |
@@ -303,7 +303,7 @@ via `Internal*` API; no public surface»), значит исправляется
 | | писатель | провязан ли писатель |
 |---|---|---|
 | `client_assertion_replay` | `Redeem` ← `internal/clientassertion/verifier.go:532` | да, на пути выдачи токена |
-| `session_revocations` | `Revoke`/`RevokeTx` ← адаптер, провязанный в `cmd/kacho-iam/wiring.go:603` и `hooks_mux.go:52` | да |
+| `session_revocations` | `Revoke`/`RevokeTx` ← адаптер, провязанный в `cmd/kaname/wiring.go:603` и `hooks_mux.go:52` | да |
 
 Снятие уборщика означало бы объявить рост приемлемым — но темп задаёт внешний (§1.2), и
 такое объявление было бы решением за того, кто его не принимает. Плюс два из восьми
@@ -337,7 +337,7 @@ via `Internal*` API; no public surface»), значит исправляется
 **уже нет**. Погашение судит по НАЛИЧИЮ строки (`INSERT … ON CONFLICT DO NOTHING`,
 `client_assertion_replay_repo.go:63`) и `expires_at` не читает вовсе — значит повтор в этом
 окне принимается как впервые предъявленное. Ширина окна — ровно `ClockSkew`, 60 с
-(`pkg/tokenpolicy/policy.go:167`, провязано в прод `cmd/kacho-iam/client_token.go:83`).
+(`pkg/tokenpolicy/policy.go:167`, провязано в прод `cmd/kaname/client_token.go:83`).
 
 ##### Дефект второй: источник часов. Величина совпала, источники — нет
 

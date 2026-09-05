@@ -328,7 +328,7 @@ func NewOwnDoor(opts OwnDoorOptions) (*OwnDoor, error) {
 		bypass[method] = full[method].Extract
 	}
 	return &OwnDoor{inner: authz.NewInterceptor(authz.InterceptorOptions{
-		ServiceName:         "kacho-iam",
+		ServiceName:         "kaname",
 		Map:                 full,
 		Client:              checkAdapter{inner: opts.SelfCheck},
 		Cache:               authz.NewCache(opts.PositiveTTL),

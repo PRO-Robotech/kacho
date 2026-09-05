@@ -58,7 +58,7 @@ func (r *SAOAuthClientRepo) Get(ctx context.Context, id domain.SAOAuthClientID) 
 }
 
 // GetByOAuthClientID — reverse lookup for token-hook claim enrichment:
-// Hydra hands kacho-iam the `client_id` (== hydra_client_id) of the OAuth
+// Hydra hands kaname the `client_id` (== hydra_client_id) of the OAuth
 // client doing client_credentials; we need the owning ServiceAccount.
 func (r *SAOAuthClientRepo) GetByOAuthClientID(ctx context.Context, hydraClientID domain.OAuthClientID) (domain.ServiceAccountOAuthClient, error) {
 	row := r.pool.QueryRow(ctx,

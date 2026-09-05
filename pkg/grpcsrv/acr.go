@@ -8,7 +8,7 @@
 //
 //   - the public front door — api-gateway `middleware.StepUpGate.Check`
 //     (RFC 9470 `401` + `WWW-Authenticate: acr_values`);
-//   - the cluster-internal listener — kacho-iam `authzguard.ACRFloor` (:9091,
+//   - the cluster-internal listener — kaname `authzguard.ACRFloor` (:9091,
 //     gateway-fronted internal RPCs → `PERMISSION_DENIED` + step-up detail),
 //     because the gateway re-dials :9091 and "internal = trusted" is a forbidden
 //     assumption.

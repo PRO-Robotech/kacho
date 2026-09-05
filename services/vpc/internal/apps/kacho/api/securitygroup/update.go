@@ -148,7 +148,7 @@ func (u *UpdateSecurityGroupUseCase) doUpdate(ctx context.Context, in UpdateInpu
 	}
 	// Если labels попали в update_mask (или это full-object PATCH) — повторно
 	// эмитим register-intent с обновленными labels в ТОЙ ЖЕ writer-TX, чтобы
-	// kacho-iam держал resource_mirror актуальным для label-based селектора
+	// kaname держал resource_mirror актуальным для label-based селектора
 	// (label-change reconcile / revoke). Update без labels → re-emit не делаем.
 	// Полное снятие labels → upsert с пустыми labels (не Unregister).
 	var syncItems []fgaregister.Item

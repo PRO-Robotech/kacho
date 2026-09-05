@@ -6,7 +6,7 @@
 //
 // Clean Architecture: this package defines the narrow ports below and depends on
 // nothing but domain + the corelib operation envelope. The concrete adapter (pgx)
-// lives in internal/repo and is wired in cmd/kacho-iam/wiring.go.
+// lives in internal/repo and is wired in cmd/kaname/wiring.go.
 package limit
 
 import (

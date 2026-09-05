@@ -64,7 +64,7 @@ auth:
   # forwarder). Set empty only when auth.mode=dev.
   trustedForwarderSANs: "spiffe://kacho.cloud/ns/kacho/sa/kacho-api-gateway"
 
-iamAddr: "kacho-iam.kacho.svc:9090"
+iamAddr: "kaname.kacho.svc:9090"
 vpcAddr: "vpc.kacho.svc:9090"
 # vpcInternalAddr — внутренний листенер kacho-vpc (:9091):
 # InternalNetworkInterfaceService (Attach/Detach/ListByInstance) — привязка
@@ -143,9 +143,9 @@ mtls:
     geo: false           # compute→geo ZoneService.Get (Instance.zone_id, :9090) — kacho-geo epic S4
     storage: false       # compute→storage InternalVolumeService (attach-saga, :9091) — compute/storage split
   serverName:
-    iamRegister: kacho-iam-internal.kacho.svc
-    iamProject: kacho-iam.kacho.svc            # :9090 ProjectService.Get dial-host
-    iamAuthz: kacho-iam-internal.kacho.svc     # :9091 Check/list-filter dial-host
+    iamRegister: kaname-internal.kacho.svc
+    iamProject: kaname.kacho.svc            # :9090 ProjectService.Get dial-host
+    iamAuthz: kaname-internal.kacho.svc     # :9091 Check/list-filter dial-host
     vpc: vpc.kacho.svc
     geo: kacho-geo.kacho.svc                   # :9090 ZoneService.Get dial-host
     storage: kacho-storage.kacho.svc           # :9091 InternalVolumeService dial-host (∈ storage server-SAN)
@@ -187,9 +187,9 @@ listFilter:
   failOpen: false
 
 # authzIam — per-object List filtering + per-RPC Check both target the same
-# kacho-iam internal listener.
+# kaname internal listener.
 authzIam:
-  # gRPC address of kacho-iam internal port (AuthorizeService.{Check,BatchCheck}).
+  # gRPC address of kaname internal port (AuthorizeService.{Check,BatchCheck}).
   #
   # ОБЯЗАТЕЛЕН в любом профиле. Пустая строка ⇒ процесс НЕ СТАРТУЕТ: ребро решения
   # о доступе обязано быть объявлено явно, и отказ приходит из конструктора
@@ -200,7 +200,7 @@ authzIam:
   # собирал сам композиционный корень; после переезда контура на общий носитель
   # такой ветки не существует, и оператор, поверивший комментарию, получил бы
   # неподнимающийся стенд вместо «отключённой проверки».
-  grpcAddr: "kacho-iam.kacho.svc:9091"
+  grpcAddr: "kaname.kacho.svc:9091"
 
 # Sidecar внутриподовых политик УДАЛЁН (был `opa.*`). Он тянул подписанный bundle с
 # эндпоинта iam, которого больше нет — сервис выдачи bundle'ов из iam удалён, — и ни
@@ -210,11 +210,11 @@ authzIam:
 # касался.
 
 
-# INFRA sec-hardening — единый security-floor, идентичный kacho-iam/geo/nlb/registry.
+# INFRA sec-hardening — единый security-floor, идентичный kaname/geo/nlb/registry.
 #
 # Заведён 2026-07-16: trivy config-скан впервые покрыл ВЕСЬ репозиторий и нашёл, что
 # securityContext есть лишь у половины сервисов. В polyrepo IaC-скан был ТОЛЬКО у
-# kacho-iam, а в том репо нет ни одного k8s-манифеста (чарты жили в kacho-deploy) —
+# kaname, а в том репо нет ни одного k8s-манифеста (чарты жили в kacho-deploy) —
 # гейт зеленел, не проверяя ничего.
 #
 # runAsUser 65532 совпадает с `USER 65532` в Dockerfile — образ уже собран под nonroot.

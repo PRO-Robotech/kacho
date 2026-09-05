@@ -8,7 +8,7 @@ package pg
 //
 // The returned pgx.Tx satisfies service.Tx because service.Tx is defined as
 // `interface{}` (opaque) and txAsPgx recovers the concrete type via type
-// assertion. Composition root (cmd/kacho-iam/wiring.go) passes a
+// assertion. Composition root (cmd/kaname/wiring.go) passes a
 // *PoolTxBeginner to the cluster use-cases.
 
 import (

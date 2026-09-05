@@ -43,7 +43,7 @@ cd services/iam && go test ./internal/repo/kacho/pg/ \
 
 **Величина отставания — 15 с**, и она объявлена ручкой
 `KACHO_IAM_CATALOG_SNAPSHOT_REFRESH_INTERVAL_MS`, а не вшита; умолчание живёт в
-композиционном корне (`cmd/kacho-iam/catalog_snapshot_wiring.go`).
+композиционном корне (`cmd/kaname/catalog_snapshot_wiring.go`).
 
 ## Что из этого следует — арифметика, а не догадка
 

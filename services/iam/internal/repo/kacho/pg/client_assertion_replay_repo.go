@@ -110,7 +110,7 @@ func (r *ClientAssertionReplayRepo) Redeem(ctx context.Context, clientID, assert
 // хранилище росло бы без границы, а темп роста выбирал бы предъявитель.
 //
 // Вызывающий живёт в фоновой петле сервиса — `retention.Sweeper.Start`,
-// провязан в `cmd/kacho-iam/retention.go`. Координата названа здесь затем, чтобы
+// провязан в `cmd/kaname/retention.go`. Координата названа здесь затем, чтобы
 // следующий читатель проверял провязку предикатом, а не верой; само свойство
 // «у объявленного уборщика есть прод-вызывающий» держит гейт дерева
 // `internal/repohygiene` `TestDeclaredRetentionSweepersHaveAProductionCaller`.

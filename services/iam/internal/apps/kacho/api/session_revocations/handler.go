@@ -20,7 +20,7 @@
 //   - ListByUser— sync admin/audit enumeration.
 //
 // Why this exists: before this handler the api-gateway logout called Revoke but
-// kacho-iam never registered the service → codes.Unimplemented → token
+// kaname never registered the service → codes.Unimplemented → token
 // revocation was INERT. Регистрация закрыла первую половину, ЭНФОРСМЕНТ —
 // вторую, и он появился позже: до #1122 запись писалась и читалась только
 // административными путями.

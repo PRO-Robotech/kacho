@@ -232,7 +232,7 @@ jobs:
           # версии, поэтому её контекст — собственный каталог. Дай ей корень —
           # соберётся тоже, но контекст будет на порядок больше нужного, а шапка
           # её Dockerfile утверждает обратное, и утверждение стало бы ложным.
-          images="kacho-iam:services/iam:services/iam
+          images="kaname:services/iam:services/iam
           kacho-vpc:services/vpc:.
           kacho-compute:services/compute:.
           kacho-geo:services/geo:.

@@ -135,7 +135,7 @@ func TestPermissionMapCoversEveryServedRPC(t *testing.T) {
 		}
 		own++
 		if entry.Permission == "" && !entry.Public {
-			t.Errorf("%s: строка права пуста — аудит kacho-iam не отличит этот вызов ни от чего", fullMethod)
+			t.Errorf("%s: строка права пуста — аудит kaname не отличит этот вызов ни от чего", fullMethod)
 		}
 
 		// `scope_filtered` — авторизация ПЕРЕЕХАЛА на данные (пообъектное сужение

@@ -29,7 +29,7 @@ import (
 )
 
 // fga_register_drainer_integration_test.go — register-drainer applies
-// FGA-register/unregister intents through kacho-iam InternalIAMService.Register-
+// FGA-register/unregister intents through kaname InternalIAMService.Register-
 // Resource / UnregisterResource by mTLS. Scenarios.
 //
 // The drainer mechanics themselves (claim / mark / poison / NOTIFY) are covered

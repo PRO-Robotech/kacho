@@ -31,7 +31,7 @@ const (
 // через InternalIAMService.RegisterResource / UnregisterResource (idempotent;
 // Unavailable → retry с backoff; InvalidArgument → poison). Run-loop drainer'а владеет
 // claim-CAS (FOR UPDATE SKIP LOCKED) для exactly-once между репликами. Дренаж живёт до
-// ctx.Done() (graceful shutdown). iamConn — тот же mTLS-conn к kacho-iam :9091, что и
+// ctx.Done() (graceful shutdown). iamConn — тот же mTLS-conn к kaname :9091, что и
 // authz-Check (RegisterResource Internal-only, ban #6).
 func startRegisterDrainer(ctx context.Context, pool *pgxpool.Pool, iamConn *grpc.ClientConn, m *metrics.Metrics, logger *slog.Logger) error {
 	iamClient := iamv1.NewInternalIAMServiceClient(iamConn)

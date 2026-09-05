@@ -63,7 +63,7 @@ authn:
   #
   # ЗНАЧЕНИЕ `own` СЕГОДНЯ НЕ ПОДНИМАЕТСЯ, и это измерено, а не предположено:
   # композиционный корень объявляет провязку своих способов входа человека и
-  # своей сессии ложью прямо (`cmd/kacho-iam/laneposture.go`, поля
+  # своей сессии ложью прямо (`cmd/kaname/laneposture.go`, поля
   # `HumanCredentialsWired`/`HumanSessionsWired`), потому что ни того, ни другого
   # в дереве ещё нет. Полоса `own`, объявленная здесь, дала бы профиль, который
   # рендерится и не стартует НИ ПРИ КАКОМ входе. Появятся хранилища — предикат
@@ -98,7 +98,7 @@ authn:
 # базовые значения чарта, и вторая строка о том же предмете разошлась бы молча.
 # Пути в карте `env` ниже обязаны лежать под ним — это утверждает проба.
 tls:
-  secretName: kacho-iam-server-tls
+  secretName: kaname-server-tls
 
 # ── ВЕЛИЧИНЫ ИЗ СЕКРЕТА ─────────────────────────────────────────────────────
 #
@@ -109,11 +109,11 @@ tls:
 secrets:
   # Общий сговор, которым подписаны вебхуки поставщика личности.
   KACHO_IAM_HOOK_TOKEN:
-    secretName: kacho-iam-authn
+    secretName: kaname-authn
     secretKey: hook-shared-secret
   # Ключ обёртки приватной половины подписного ключа в ключнице.
   KACHO_IAM_JWKS_ENC_KEY:
-    secretName: kacho-iam-authn
+    secretName: kaname-authn
     secretKey: jwks-encryption-key-hex
 
 # ── ПЕРЕМЕННЫЕ ОКРУЖЕНИЯ ────────────────────────────────────────────────────
@@ -130,13 +130,13 @@ env:
   # их с требованием проверенного клиентского сертификата, поэтому якорь клиента
   # обязателен на обоих.
   KACHO_IAM_PUBLIC_SERVER_MTLS_ENABLE: "true"
-  KACHO_IAM_PUBLIC_SERVER_MTLS_CERTFILE: /etc/kacho-iam/tls/server/tls.crt
-  KACHO_IAM_PUBLIC_SERVER_MTLS_KEYFILE: /etc/kacho-iam/tls/server/tls.key
-  KACHO_IAM_PUBLIC_SERVER_MTLS_CLIENTCAFILES: /etc/kacho-iam/tls/server/ca.crt
+  KACHO_IAM_PUBLIC_SERVER_MTLS_CERTFILE: /etc/kaname/tls/server/tls.crt
+  KACHO_IAM_PUBLIC_SERVER_MTLS_KEYFILE: /etc/kaname/tls/server/tls.key
+  KACHO_IAM_PUBLIC_SERVER_MTLS_CLIENTCAFILES: /etc/kaname/tls/server/ca.crt
   KACHO_IAM_INTERNAL_SERVER_MTLS_ENABLE: "true"
-  KACHO_IAM_INTERNAL_SERVER_MTLS_CERTFILE: /etc/kacho-iam/tls/server/tls.crt
-  KACHO_IAM_INTERNAL_SERVER_MTLS_KEYFILE: /etc/kacho-iam/tls/server/tls.key
-  KACHO_IAM_INTERNAL_SERVER_MTLS_CLIENTCAFILES: /etc/kacho-iam/tls/server/ca.crt
+  KACHO_IAM_INTERNAL_SERVER_MTLS_CERTFILE: /etc/kaname/tls/server/tls.crt
+  KACHO_IAM_INTERNAL_SERVER_MTLS_KEYFILE: /etc/kaname/tls/server/tls.key
+  KACHO_IAM_INTERNAL_SERVER_MTLS_CLIENTCAFILES: /etc/kaname/tls/server/ca.crt
 
   # ── ДОКЕРНАЯ ПОЛОСА (`/iam/token`, :9096) ────────────────────────────────
   #
@@ -160,8 +160,8 @@ env:
   # Незаданный режим проверки клиента процесс читает как `server-tls-only`,
   # поэтому четвёртой строки у этой ноги нет и быть не должно.
   KACHO_IAM_REGISTRYTOKEN_SERVER_MTLS_ENABLE: "true"
-  KACHO_IAM_REGISTRYTOKEN_SERVER_MTLS_CERTFILE: /etc/kacho-iam/tls/server/tls.crt
-  KACHO_IAM_REGISTRYTOKEN_SERVER_MTLS_KEYFILE: /etc/kacho-iam/tls/server/tls.key
+  KACHO_IAM_REGISTRYTOKEN_SERVER_MTLS_CERTFILE: /etc/kaname/tls/server/tls.crt
+  KACHO_IAM_REGISTRYTOKEN_SERVER_MTLS_KEYFILE: /etc/kaname/tls/server/tls.key
 
   # ── ТРАНСПОРТ ОСТАЛЬНЫХ HTTP-РЁБЕР ───────────────────────────────────────
   #
@@ -196,16 +196,16 @@ env:
   # не посадку, а СТАРТ — `requireHTTPEdgeTLS` в композиционном корне называет
   # ручку, адрес и то, что по этому проводу едет.
   KACHO_IAM_HOOKS_SERVER_MTLS_ENABLE: "true"
-  KACHO_IAM_HOOKS_SERVER_MTLS_CERTFILE: /etc/kacho-iam/tls/server/tls.crt
-  KACHO_IAM_HOOKS_SERVER_MTLS_KEYFILE: /etc/kacho-iam/tls/server/tls.key
+  KACHO_IAM_HOOKS_SERVER_MTLS_CERTFILE: /etc/kaname/tls/server/tls.crt
+  KACHO_IAM_HOOKS_SERVER_MTLS_KEYFILE: /etc/kaname/tls/server/tls.key
 
   KACHO_IAM_JWKSPROXY_SERVER_MTLS_ENABLE: "true"
-  KACHO_IAM_JWKSPROXY_SERVER_MTLS_CERTFILE: /etc/kacho-iam/tls/server/tls.crt
-  KACHO_IAM_JWKSPROXY_SERVER_MTLS_KEYFILE: /etc/kacho-iam/tls/server/tls.key
+  KACHO_IAM_JWKSPROXY_SERVER_MTLS_CERTFILE: /etc/kaname/tls/server/tls.crt
+  KACHO_IAM_JWKSPROXY_SERVER_MTLS_KEYFILE: /etc/kaname/tls/server/tls.key
 
   KACHO_IAM_METRICS_SERVER_MTLS_ENABLE: "true"
-  KACHO_IAM_METRICS_SERVER_MTLS_CERTFILE: /etc/kacho-iam/tls/server/tls.crt
-  KACHO_IAM_METRICS_SERVER_MTLS_KEYFILE: /etc/kacho-iam/tls/server/tls.key
+  KACHO_IAM_METRICS_SERVER_MTLS_CERTFILE: /etc/kaname/tls/server/tls.crt
+  KACHO_IAM_METRICS_SERVER_MTLS_KEYFILE: /etc/kaname/tls/server/tls.key
 
   # ── ТРИ КОНТУРА К ПОСТАВЩИКУ ЛИЧНОСТИ ────────────────────────────────────
   #
@@ -227,8 +227,8 @@ env:
   # чей поставщик отвечает по http, меняет схему сам — страж якоря тогда не
   # требует, и профиль остаётся исполнимым.
   KACHO_IAM_HYDRA_ADMIN_URL: "https://hydra-admin.example.invalid:4445"
-  KACHO_IAM_HYDRA_ADMIN_CA_FILE: /etc/kacho-iam/tls/server/ca.crt
+  KACHO_IAM_HYDRA_ADMIN_CA_FILE: /etc/kaname/tls/server/ca.crt
   KACHO_IAM_HYDRA_JWKS_URL: "https://hydra-public.example.invalid:4444/.well-known/jwks.json"
-  KACHO_IAM_HYDRA_JWKS_CA_FILE: /etc/kacho-iam/tls/server/ca.crt
+  KACHO_IAM_HYDRA_JWKS_CA_FILE: /etc/kaname/tls/server/ca.crt
   KACHO_IAM_HYDRA_TOKEN_URL: "https://hydra-public.example.invalid:4444/oauth2/token"
-  KACHO_IAM_HYDRA_TOKEN_CA_FILE: /etc/kacho-iam/tls/server/ca.crt
+  KACHO_IAM_HYDRA_TOKEN_CA_FILE: /etc/kaname/tls/server/ca.crt

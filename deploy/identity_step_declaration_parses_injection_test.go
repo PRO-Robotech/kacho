@@ -95,7 +95,7 @@ func TestStepDeclarationGateFailsOnAReturnedDefect(t *testing.T) {
 				"          optional: true    - name: KACHO_IAM_HOOK_TOKEN\n"+
 				"      valueFrom:\n"+
 				"        secretKeyRef:\n"+
-				"          name: kacho-iam-hook-token\n"+
+				"          name: kaname-hook-token\n"+
 				"          key: token\n"+
 				"          optional: true")
 		got := f.findings(t)

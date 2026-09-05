@@ -20,7 +20,7 @@ func secureProd() config.Config {
 	return config.Config{
 		AuthMode:          "production",
 		DBSSLMode:         "require",
-		AuthZIAMGRPCAddr:  "kacho-iam-internal:9091",
+		AuthZIAMGRPCAddr:  "kaname-internal:9091",
 		ListFilterEnabled: true,
 		// Круг отправителей, которым разрешено передавать личность конечного
 		// пользователя, обязан быть сужен — пустой список для corelib означает
@@ -66,7 +66,7 @@ func TestLoad_defaultAuthModeProduction(t *testing.T) {
 }
 
 // TestValidate_devTolerant — dev-режим осознанно терпит insecure-дефолты (plaintext
-// DB, mTLS off, authz off): локальные фикстуры стартуют без kacho-iam. Остаток
+// DB, mTLS off, authz off): локальные фикстуры стартуют без kaname. Остаток
 // стражи НЕ отказывает старту в dev (WARN эмитит serve.go, не fatal).
 //
 // Круг отправителей здесь БОЛЬШЕ НЕ считается: его стража переехала в конструктор

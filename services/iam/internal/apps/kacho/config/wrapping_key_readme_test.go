@@ -37,7 +37,7 @@ import (
 )
 
 // chartREADME — координата раздела о выдаче этого секрета.
-const chartREADME = "deploy/helm/umbrella/charts/kacho-iam/README.md"
+const chartREADME = "deploy/helm/umbrella/charts/kaname/README.md"
 
 // sealedSecretHeading — заголовок раздела. Раздел, а не весь файл: в README
 // чарта чеканятся и другие величины, у которых своя форма.

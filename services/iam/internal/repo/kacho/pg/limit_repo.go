@@ -47,7 +47,7 @@ type LimitRepo struct {
 	pool *pgxpool.Pool
 }
 
-// NewLimitRepo — constructor. Composition root: cmd/kacho-iam/wiring.go.
+// NewLimitRepo — constructor. Composition root: cmd/kaname/wiring.go.
 func NewLimitRepo(pool *pgxpool.Pool) *LimitRepo { return &LimitRepo{pool: pool} }
 
 // Get — direct-read lane: this is iam's OWN resource, so a well-formed id with no

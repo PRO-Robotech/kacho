@@ -4,7 +4,7 @@
 #
 # iam: кто вправе передавать чужую личность — и видит ли это гейт посадки.
 #
-# Предмет. Оба листенера kacho-iam строили доверенную пару CertIdentityExtract →
+# Предмет. Оба листенера kaname строили доверенную пару CertIdentityExtract →
 # TrustedPrincipalExtract, но с ПУСТЫМ списком отправителей, что по контракту
 # corelib означает не «никому», а «любому пиру с проверенным сертификатом». Цена
 # именно у iam выше, чем у соседей: на :9090 он СОЗНАТЕЛЬНО не перепроверяет права
@@ -39,7 +39,7 @@ line_in() { [[ $'\n'"$1"$'\n' == *$'\n'"$2"$'\n'* ]]; }
 HERE="$(cd "$(dirname "$0")" && pwd)"
 DEPLOY_ROOT="$(cd "$HERE/../.." && pwd)"
 REPO_ROOT="$(cd "$DEPLOY_ROOT/.." && pwd)"
-CHART="$DEPLOY_ROOT/helm/umbrella/charts/kacho-iam"
+CHART="$DEPLOY_ROOT/helm/umbrella/charts/kaname"
 PROD="$DEPLOY_ROOT/helm/umbrella/values.prod.yaml"
 GATE="$DEPLOY_ROOT/scripts/assert-production-posture.sh"
 
@@ -197,12 +197,12 @@ POD_ANNOT_B="$(first_matching "$RENDER_B" 'kacho.cloud/config-checksum:')"
 ok
 
 # ── 4. Боевой профиль повторяет ручку явно ───────────────────────────────────
-# Профиль читается через ЕГО СОБСТВЕННЫЙ блок kacho-iam (под-чарт рендерится
+# Профиль читается через ЕГО СОБСТВЕННЫЙ блок kaname (под-чарт рендерится
 # отдельно, umbrella требует vendored-зависимостей). Сверяем поимённо, а не по
 # счётчику: «стало на одну меньше» должно называть, кого именно потеряли.
 IAM_BLOCK="$(mktemp)"; trap 'rm -f "$IAM_BLOCK"' EXIT
-awk '/^kacho-iam:[[:space:]]*$/{i=1;next} i&&/^[A-Za-z0-9_.-]+:/{exit} i{sub(/^  /,"");print}' "$PROD" > "$IAM_BLOCK"
-[ -s "$IAM_BLOCK" ] || fail "в $PROD нет блока kacho-iam — тест разошёлся с профилем"
+awk '/^kaname:[[:space:]]*$/{i=1;next} i&&/^[A-Za-z0-9_.-]+:/{exit} i{sub(/^  /,"");print}' "$PROD" > "$IAM_BLOCK"
+[ -s "$IAM_BLOCK" ] || fail "в $PROD нет блока kaname — тест разошёлся с профилем"
 helm_try iam "$CHART" -f "$IAM_BLOCK" --show-only templates/configmap.yaml
 render_or_fatal "чарт iam с боевым профилем"
 PROD_RENDER="$HELM_OUT"

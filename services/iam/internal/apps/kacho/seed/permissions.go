@@ -1,7 +1,7 @@
 // Copyright (c) PRO-Robotech
 // SPDX-License-Identifier: AGPL-3.0-or-later
 
-// Package seed — startup-time idempotent seed for kacho-iam.
+// Package seed — startup-time idempotent seed for kaname.
 //
 // Provides:
 //   - PermissionRegistry: in-memory permissions catalog, loaded via embed
@@ -10,7 +10,7 @@
 //   - BootstrapAdminRunner: creates cluster_admin_grant + fga_outbox when
 //     KACHO_IAM_BOOTSTRAP_ROOT_EMAIL env is set.
 //
-// The composition root (cmd/kacho-iam/main.go) invokes seed.Run() after
+// The composition root (cmd/kaname/main.go) invokes seed.Run() after
 // `migrator.Up()` and before the gRPC listener starts.
 //
 // ─── Bootstrap-state expectation: empty annotation fields ────────────────────
@@ -73,9 +73,9 @@ type PermissionEntry struct {
 // ⚠️ **MIRROR — NOT runtime source-of-truth.**
 // The runtime catalog consumed by the api-gateway authz-interceptor lives in
 // `kacho-api-gateway/internal/middleware/embed/permission_catalog.json` and
-// is read by api-gateway middleware. This mirror is used ONLY by kacho-iam
+// is read by api-gateway middleware. This mirror is used ONLY by kaname
 // integration tests (verifying JSON-schema and embed-parsing infrastructure);
-// it is NOT used by the kacho-iam runtime (there is no per-RPC catalog lookup
+// it is NOT used by the kaname runtime (there is no per-RPC catalog lookup
 // inside the IAM service — that responsibility lives in api-gateway).
 //
 // The file is committed and embedded directly; the full catalog over the

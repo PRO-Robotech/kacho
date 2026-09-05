@@ -90,7 +90,7 @@
 //     все RPC public под /iam/v1/*.
 //   - iam.v1 admin (kacho-only): InternalUserService.Get — для admin tooling; зарегистрирован
 //     в internal mux pro-forma (proto-аннотации `google.api.http` отсутствуют → real-трафик
-//     идет только через gRPC-direct до kacho-iam:9091) + REST для UpsertFromIdentity.
+//     идет только через gRPC-direct до kaname:9091) + REST для UpsertFromIdentity.
 //     InternalIAMService: LookupSubject и Check ИМЕЮТ http-аннотации, поэтому
 //     RegisterInternalIAMServiceHandlerFromEndpoint (ниже, ветка internalMux) заводит им
 //     REST-маршруты `/iam/v1/internal/iam:lookupSubject` и `:check` — они есть в
@@ -295,8 +295,8 @@ func isInternalPath(path string) bool {
 //
 // addrs — карта domain → адрес gRPC backend:
 //
-//	"iam"                  → kacho-iam.kacho.svc:9090
-//	"iamInternal"          → kacho-iam.kacho.svc:9091
+//	"iam"                  → kaname.kacho.svc:9090
+//	"iamInternal"          → kaname.kacho.svc:9091
 //	"vpc"                  → vpc.kacho.svc:9090
 //	"vpcInternal"          → vpc.kacho.svc:9091 (admin internal-порт)
 //	"compute"              → compute.kacho.svc:9090
@@ -708,7 +708,7 @@ func NewMux(
 			// Квоты личности — сколько аккаунтов вызывающему позволено и сколько
 			// уже занято. Публичная поверхность и ТОЛЬКО чтение о себе: величину
 			// меняет администратор облака через iam.v1.InternalLimitService на
-			// внутреннем слушателе. Обслуживает её kacho-iam, поэтому адрес тот же.
+			// внутреннем слушателе. Обслуживает её kaname, поэтому адрес тот же.
 			if err := quotapb.RegisterIdentityQuotaServiceHandlerFromEndpoint(ctx, mux, iamAddr, optsFor("iam")); err != nil {
 				return nil, fmt.Errorf("register iam IdentityQuotaService: %w", err)
 			}
@@ -900,7 +900,7 @@ func NewMux(
 			// Network position is not a credential (security.md — "internal = trusted"
 			// is a forbidden assumption).
 			//
-			// The mint keeps exactly ONE door: a direct mTLS gRPC dial to kacho-iam
+			// The mint keeps exactly ONE door: a direct mTLS gRPC dial to kaname
 			// :9091, where authzguard.CallerPolicy checks the caller's verified
 			// client-certificate SAN against an explicit allow-list
 			// (`authn.bootstrap-mint.allowed-client-sans`). The proto carries no

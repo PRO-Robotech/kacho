@@ -88,7 +88,7 @@ global:
       # (задача #1184). Реестр называет его докер-клиенту в вызове на
       # аутентификацию, iam чеканит его в `aud` и всё прочее отвергает; отсюда
       # его читают оба подчарта. Прежде здесь стояли ДВЕ копии —
-      # `registry.serviceAud` и `kacho-iam.config.apiServer.registryToken.service`
+      # `registry.serviceAud` и `kaname.config.apiServer.registryToken.service`
       # — и разойтись им мешало только внимание.
       #
       # Значение то же, что действовало прежде: посадка не меняется.
@@ -284,7 +284,7 @@ kacho-geo:
   # Состав круга и почему он не «только шлюз» — см. values.prod.yaml (#916).
   env:
     KACHO_GEO_AUTHZ_TRUSTED_FORWARDER_SANS: "spiffe://kacho.cloud/ns/kacho/sa/kacho-api-gateway,spiffe://kacho.cloud/ns/kacho/sa/kacho-vpc,spiffe://kacho.cloud/ns/kacho/sa/kacho-compute,spiffe://kacho.cloud/ns/kacho/sa/kacho-nlb,spiffe://kacho.cloud/ns/kacho-storage/sa/kacho-storage,spiffe://kacho.cloud/ns/kacho/sa/kacho-registry"
-kacho-iam:
+kaname:
   # Слушатель :9097 несёт ДВЕ поверхности с разными требованиями. Набор
   # проверочных ключей обязан оставаться доступен без клиентского сертификата
   # (потребитель origin-agnostic), а авторитет отзыва принимает предъявленный
@@ -294,10 +294,10 @@ kacho-iam:
   mtls:
     jwksProxyClientAuthMode: optional-mutual
   image:
-    # ── FORWARD ROLL: main-c744f956 (kacho-iam main c744f95, multiarch, Docker Hub-
+    # ── FORWARD ROLL: main-c744f956 (kaname main c744f95, multiarch, Docker Hub-
     #    verified 2026-07-15) supersedes the live feature build KAC-registry-docker-auth-
     #    c3000530. The tag drives BOTH the main container AND the kacho-migrator init
-    #    (chart helper "kacho-iam.image"). Carries:
+    #    (chart helper "kaname.image"). Carries:
     #      • #321 SA-key registry-audience union — the audience bug this cutover fixes;
     #      • #319 token name/labels;
     #      • #322/#323 cluster-internal Hydra-JWKS proxy listener (:9097) — REQUIRED so
@@ -312,7 +312,7 @@ kacho-iam:
     #    /iam/token (:9096) emits `issued_at`, which the docker client parses via
     #    time.Time.UnmarshalJSON — that accepts ONLY a JSON string, so a bare int64 breaks
     #    `docker login` ("Time.UnmarshalJSON: input is not a JSON string") → no bearer →
-    #    all pull/push 401. The live feature build carries that fix (kacho-iam c300053) but
+    #    all pull/push 401. The live feature build carries that fix (kaname c300053) but
     #    main-b3d23769 REVERTED it, which made rolling to main a hard blocker. kacho-iam#326
     #    re-applied c300053 onto main (RFC3339 STRING, locked by a wire-shape regression
     #    test) → main c744f95 → CI published main-c744f956. Blocker resolved: this image is
@@ -331,7 +331,7 @@ kacho-iam:
   #           by the OAuth 2.0 Client" (400) → shim отдаёт 401.
   # Диагностика 2026-07-15: падали и старый, и свежевыпущенный ключ; в логах iam —
   # тишина (все причины схлопнуты в ErrUnauthenticated без лога), реальную причину
-  # назвала Hydra. Требует kacho-iam#… (чарт научился рендерить эту секцию).
+  # назвала Hydra. Требует kaname#… (чарт научился рендерить эту секцию).
   #
   # `issuer` = realm в WWW-Authenticate; совпадает с KACHO_REGISTRY_TOKEN_REALM
   # data-plane'а (registry.dataplane ниже).
@@ -339,9 +339,9 @@ kacho-iam:
   # ⚠ audience фиксируется в Hydra-клиенте В МОМЕНТ выпуска ключа → SA-ключи,
   # выпущенные ДО этой правки, надо ПЕРЕВЫПУСТИТЬ (задним числом allowlist не появится).
   #
-  # NB: umbrella вендорит iam-чарт из ./charts/kacho-iam (копия ВНУТРИ kacho-deploy),
-  # а НЕ из ../kacho-iam/deploy — у копии values вложены под `config`. Правка нужна в
-  # обеих (kacho-iam#… — sibling-копия, чтобы standalone-чарт не отстал).
+  # NB: umbrella вендорит iam-чарт из ./charts/kaname (копия ВНУТРИ kacho-deploy),
+  # а НЕ из ../kaname/deploy — у копии values вложены под `config`. Правка нужна в
+  # обеих (kaname#… — sibling-копия, чтобы standalone-чарт не отстал).
   config:
     apiServer:
       registryToken:
@@ -412,7 +412,7 @@ kacho-iam:
       # config.validateProductionProviderAdminHop; so is https with no anchor.
       # The SAN list on the serving certificate covers this `.svc` spelling.
       hydraAdminUrl: https://kacho-umbrella-hydra-admin-tls.kacho.svc:4445
-      hydraAdminCaFile: /etc/kacho-iam/tls/server/ca.crt
+      hydraAdminCaFile: /etc/kaname/tls/server/ca.crt
 kacho-nlb:
   image:
     tag: main-b622b388
@@ -454,18 +454,18 @@ api-gateway:
     # предъявителя, и производный адрес получался бы у ВСЯКОГО издателя —
     # состояние «записи нет» не наступало бы никогда, а страж старта стал бы
     # тождественно истинным.
-    issuerKeySets: "https://iam.kacho.local=https://kacho-iam-internal.kacho.svc:9097/.well-known/kacho/jwks.json,https://hydra.api.kacho.cloud=https://kacho-iam-internal.kacho.svc:9097/.well-known/jwks.json"
+    issuerKeySets: "https://iam.kacho.local=https://kaname-internal.kacho.svc:9097/.well-known/kacho/jwks.json,https://hydra.api.kacho.cloud=https://kaname-internal.kacho.svc:9097/.well-known/jwks.json"
     # Наш издатель выбирает полосу приёма: строгий тип at+jwt и чтение отзыва на
     # предъявлении. Вне issuers — отказ в старте.
     platformIssuer: "https://iam.kacho.local"
     # НАШ авторитет отзыва. Прежний провайдер о наших токенах не знает by
     # construction: спрошенный про наш токен, он отвечает не «действует» и не
     # «отозван», а утверждение о предмете, которого у него нет.
-    revocationUrl: "https://kacho-iam-internal.kacho.svc:9097/internal/tokens/introspect"
+    revocationUrl: "https://kaname-internal.kacho.svc:9097/internal/tokens/introspect"
     # Якорь доверия хопа к авторитету: по нему едет ПРЕДЪЯВЛЕННЫЙ токен, а не
     # только административный вызов. Та же связка, что у хопа за ключами.
     revocationCa:
-      secretName: kacho-iam-server-tls
+      secretName: kaname-server-tls
       key: ca.crt
       mountPath: /etc/api-gateway/platform-revocation-ca
     # ЧЕМ край предъявляет СЕБЯ авторитету. Якоря выше НЕ ДОСТАТОЧНО: он
@@ -534,8 +534,8 @@ registry:
   db:
     sslMode: disable
   authz:
-    iamGrpcAddr: kacho-iam-internal.kacho.svc:9091
-    iamProjectGrpcAddr: kacho-iam.kacho.svc:9090
+    iamGrpcAddr: kaname-internal.kacho.svc:9091
+    iamProjectGrpcAddr: kaname.kacho.svc:9090
   zot:
     # ─── Аутентификация хранилища слоёв ───────────────────────────────────────
     # zot не различает тенантов: пока его порт отвечал любому в сети подов, весь
@@ -635,7 +635,7 @@ registry:
             algorithm: ""
             size: ""
   # registry-iam-jwks-unify — the data-plane docker-Bearer verifier now fetches JWKS
-  # from the cluster-INTERNAL kacho-iam JWKS proxy (:9097) instead of dialing Hydra.
+  # from the cluster-INTERNAL kaname JWKS proxy (:9097) instead of dialing Hydra.
   # iam serves a byte-for-byte mirror of Hydra's PUBLIC JWKS over one-way server-TLS
   # (internal-CA leaf) — kids/alg match Hydra-signed tokens; the registry pod trusts
   # the internal-CA via SSL_CERT_DIR. This is an https in-cluster Service, so
@@ -643,11 +643,11 @@ registry:
   # terminator. Hydra stays the SIGNER/ISSUER — only the key-DISTRIBUTION URL moved.
   #
   # ⚠ IAM-FIRST DEPLOY SEQUENCING (fail-closed — do NOT flip prematurely):
-  #   the kacho-iam :9097 JWKS endpoint MUST be live and smoke-verified serving
+  #   the kaname :9097 JWKS endpoint MUST be live and smoke-verified serving
   #   (GET /.well-known/jwks.json → 200 with Hydra kids) BEFORE this key-set flip
   #   (registry.tokenAcceptance.issuerKeySets) reaches a rolling registry pod. A premature flip (iam endpoint not yet
   #   serving) fails every signature verify CLOSED → HTTP 401 on ALL prod docker pulls.
-  #   Runbook: roll kacho-iam first (this chart adds the :9097 listener), curl the
+  #   Runbook: roll kaname first (this chart adds the :9097 listener), curl the
   #   in-cluster endpoint, THEN let the registry pod pick up this URL.
   # Приём identity-JWT: издатель — МНОЖЕСТВО (F1, задача #897)
   #
@@ -668,7 +668,7 @@ registry:
     # предъявителя, и производный адрес получался бы у ВСЯКОГО издателя —
     # состояние «записи нет» не наступало бы никогда, а страж старта стал бы
     # тождественно истинным.
-    issuerKeySets: "https://iam.kacho.local=https://kacho-iam-internal.kacho.svc:9097/.well-known/kacho/jwks.json,https://hydra.api.kacho.cloud=https://kacho-iam-internal.kacho.svc:9097/.well-known/jwks.json"
+    issuerKeySets: "https://iam.kacho.local=https://kaname-internal.kacho.svc:9097/.well-known/kacho/jwks.json,https://hydra.api.kacho.cloud=https://kaname-internal.kacho.svc:9097/.well-known/jwks.json"
     # Наш издатель выбирает полосу приёма: тип at+jwt и чтение отзыва на
     # предъявлении. Вне issuers — отказ в старте.
     platformIssuer: "https://iam.kacho.local"
@@ -676,7 +676,7 @@ registry:
     # предъявлении, отзывом не является: он лишь не выдаёт нового, а
     # предъявленное проходит до истечения срока, и это состояние не сходится
     # само.
-    revocationUrl: "https://kacho-iam-internal.kacho.svc:9097/internal/tokens/introspect"
+    revocationUrl: "https://kaname-internal.kacho.svc:9097/internal/tokens/introspect"
   dataplaneTLSTerminatedExternally: true
   mtls:
     enable: true
@@ -745,8 +745,8 @@ storage:
     # storage→geo (zone_id) + storage→iam PUBLIC (ProjectService.Get, :9090) +
     # INTERNAL (Check + RegisterResource fga-register, :9091).
     geoGrpcAddr: kacho-geo.kacho.svc:9090
-    iamGrpcAddr: kacho-iam.kacho.svc:9090
-    authzIamGrpcAddr: kacho-iam-internal.kacho.svc:9091
+    iamGrpcAddr: kaname.kacho.svc:9090
+    authzIamGrpcAddr: kaname-internal.kacho.svc:9091
     # fga-register drainer (SEC-D / CS-1 GAP-D). Chart default already true; restated
     # for prod-explicitness. Requires authzIamGrpcAddr (set) + mtls.edges.iam (below).
     fgaRegisterDrainerEnabled: true
@@ -759,7 +759,7 @@ storage:
     passwordSecretKey: password
   # server-mTLS on both listeners + per-edge client-mTLS storage→{geo,iam}. Один
   # client-leaf (kacho-storage-client-tls) на все storage→iam-дозвоны; serverName
-  # default kacho-iam.kacho.svc ∈ iam server-cert SAN (валиден и для
+  # default kaname.kacho.svc ∈ iam server-cert SAN (валиден и для
   # :9090, и для internal :9091).
   mtls:
     enable: true

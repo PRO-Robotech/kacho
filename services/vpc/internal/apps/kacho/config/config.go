@@ -41,7 +41,7 @@ type Config struct {
 	Dataplane   DataplaneConfig   `mapstructure:"dataplane"`
 }
 
-// IAMConfig — секция iam: интеграция с kacho-iam (fail-closed boot-gate +
+// IAMConfig — секция iam: интеграция с kaname (fail-closed boot-gate +
 // register-drainer owner-tuple publisher).
 //
 // Оба флага раньше читались ad-hoc через os.LookupEnv прямо в cmd/ (requireIAM /
@@ -52,14 +52,14 @@ type Config struct {
 // на decode (нераспознанное значение → Load-ошибка, а не тихий false).
 type IAMConfig struct {
 	// Require — fail-closed boot-gate. true → мутирующий Create отвергается и
-	// сервис отдаёт NotReady, пока register-drainer не подключится к kacho-iam.
+	// сервис отдаёт NotReady, пока register-drainer не подключится к kaname.
 	// Default false (dev: Create разрешён, только Warn).
 	// Legacy env: KACHO_VPC_REQUIRE_IAM. Новый ключ: iam.require /
 	// KACHO_VPC_IAM__REQUIRE.
 	Require bool `mapstructure:"require"`
 
 	// RegisterDrainerEnabled — register-drainer default-on: дренит
-	// kacho_vpc.fga_register_outbox в kacho-iam (owner-tuple на каждый Create).
+	// kacho_vpc.fga_register_outbox в kaname (owner-tuple на каждый Create).
 	// Без него созданные ресурсы не получат owner-tuple. Отключается только явным
 	// false. Legacy env: KACHO_VPC_FGA_REGISTER_DRAINER_ENABLED. Новый ключ:
 	// iam.register-drainer-enabled / KACHO_VPC_IAM__REGISTER_DRAINER_ENABLED.
@@ -78,13 +78,13 @@ type IAMConfig struct {
 // доставляет, поведение не меняется, и узнать об этом можно только по
 // последствиям. Снятие держит `retired_knobs_test.go`.
 type AuthZConfig struct {
-	// IAMEndpoint — gRPC адрес kacho-iam internal-port'а (обычно
-	// `kacho-iam.kacho.svc:9091`). Обязателен на ЛЮБОЙ посадке:
+	// IAMEndpoint — gRPC адрес kaname internal-port'а (обычно
+	// `kaname.kacho.svc:9091`). Обязателен на ЛЮБОЙ посадке:
 	// ребро решения о доступе объявляется дескриптором явно, и незаданный адрес
 	// отвергает конструктор дескриптора (не только в боевом режиме).
 	IAMEndpoint string `mapstructure:"iam-endpoint"`
 
-	// IAMTLS — TLS на peer-вызов в kacho-iam.
+	// IAMTLS — TLS на peer-вызов в kaname.
 	IAMTLS TLSClient `mapstructure:"iam-tls"`
 
 	// CheckTimeout — таймаут на один Check-вызов (default 2s).
@@ -189,14 +189,14 @@ func (c Config) ListFilterEdgeUsesMTLS(m MTLSConfig) bool {
 //
 // Source: yaml `authz.list-filter.{enabled,timeout-ms,cache-ttl,max-entries,fail-open}`.
 //
-// Версию модели авторизации сюда не передают: её закрепляет за собой kacho-iam —
+// Версию модели авторизации сюда не передают: её закрепляет за собой kaname —
 // единственный, кто ходит в хранилище прав, — и запрос BatchCheck поля под неё не
 // несёт. Ручка `model-id` здесь принималась и не читалась никем, поэтому снята с
 // контракта целиком (вместе с ключом чарта и мостом из окружения).
 // ENV-override: `KACHO_VPC_AUTHZ__LIST_FILTER__ENABLED=true`, etc.
 //
 // Когда Enabled=true И authz.iam-endpoint выставлен → каждая List-RPC спрашивает
-// kacho-iam `AuthorizeService.BatchCheck` о видимости id прочитанной СТРАНИЦЫ
+// kaname `AuthorizeService.BatchCheck` о видимости id прочитанной СТРАНИЦЫ
 // (батчи ≤100). Прежний вопрос «перечисли все разрешенные ids»
 // (`AuthorizeService.ListObjects`) снят — у него жесткий server-side предел без
 // continuation-token'а, см. package-doc `internal/authzfilter`. Вместе с ним ушел
@@ -206,7 +206,7 @@ type ListFilterConfig struct {
 	// В production: true.
 	Enabled bool `mapstructure:"enabled"`
 
-	// AuthorizeEndpoint — gRPC адрес kacho-iam, по которому спрашивается
+	// AuthorizeEndpoint — gRPC адрес kaname, по которому спрашивается
 	// `AuthorizeService.BatchCheck`. Пустая строка → fallback на
 	// AuthZConfig.IAMEndpoint; резолв — в ListFilterAuthorizeEndpoint выше, и на
 	// этот fallback штатно опирается умолчание чарта.
@@ -214,13 +214,13 @@ type ListFilterConfig struct {
 	// Слушатель здесь НЕ называется намеренно: AuthorizeService зарегистрирована на
 	// ОБОИХ слушателях iam, поэтому законны оба адреса, а выбор делает профиль.
 	// Состав слушателей описан в одном месте —
-	// services/iam/cmd/kacho-iam/grpc_register.go. Здесь стояло «адрес **public**
+	// services/iam/cmd/kaname/grpc_register.go. Здесь стояло «адрес **public**
 	// listener'а (AuthorizeService на :9090, в отличие от InternalIAMService на
 	// :9091)»: вторая половина подразумевала, что на внутреннем слушателе службы нет,
 	// и это неверно.
 	AuthorizeEndpoint string `mapstructure:"authorize-endpoint"`
 
-	// AuthorizeTLS — TLS на peer-вызов в kacho-iam AuthorizeService.
+	// AuthorizeTLS — TLS на peer-вызов в kaname AuthorizeService.
 	AuthorizeTLS TLSClient `mapstructure:"authorize-tls"`
 
 	// TimeoutMs — таймаут одного BatchCheck-вызова (default 500ms):
@@ -426,7 +426,7 @@ type TLSServer struct {
 
 // ExtAPIConfig — секция extapi (peer-сервисы).
 //
-// Project-existence peer — kacho-iam (ProjectService.Get); поддерживается
+// Project-existence peer — kaname (ProjectService.Get); поддерживается
 // только `extapi.iam`. zone_id валидируется через kacho-geo (`extapi.geo`) —
 // leaf-домен Geography, а не kacho-compute.
 type ExtAPIConfig struct {

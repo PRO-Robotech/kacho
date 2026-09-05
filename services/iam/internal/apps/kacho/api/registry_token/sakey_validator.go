@@ -31,7 +31,7 @@ var errInvalidPEM = errors.New("registry token: invalid key PEM")
 
 // RegisteredKey — the SA-key registered for a Hydra client_id: its PUBLIC half
 // (SPKI PEM), the JWK kid (the SA-OAuth-client id) and owning ServiceAccount,
-// plus an optional expiry. kacho-iam never stores the private half. A federated
+// plus an optional expiry. kaname never stores the private half. A federated
 // client carries no key material (PublicKeyPEM empty) — the docker path rejects it.
 type RegisteredKey struct {
 	ClientID     string

@@ -71,7 +71,7 @@ flowchart TD
       <td><strong>clients</strong></td>
       <td><code>internal/clients/</code></td>
       <td>grpc-stubs + <code>domain</code></td>
-      <td>Adapter: реализует peer-порты (<code>ProjectClient</code> → kacho-iam, <code>ZoneRegistry</code> → kacho-geo) поверх gRPC-стабов. Здесь же FGA-register-applier — drainer, применяющий owner-tuple через kacho-iam.</td>
+      <td>Adapter: реализует peer-порты (<code>ProjectClient</code> → kaname, <code>ZoneRegistry</code> → kacho-geo) поверх gRPC-стабов. Здесь же FGA-register-applier — drainer, применяющий owner-tuple через kaname.</td>
     </tr>
     <tr>
       <td><strong>handler</strong></td>
@@ -148,7 +148,7 @@ flowchart LR
     intl["internal :9091<br/>Internal*Service (admin/peer)"]
   end
   subgraph peers["Доменные сервисы"]
-    iam["kacho-iam<br/>Project · authz · FGA-proxy"]
+    iam["kaname<br/>Project · authz · FGA-proxy"]
     geo["kacho-geo<br/>Geography (Zone)"]
     cmp["kacho-compute<br/>NIC-spec · IPAM-consumer"]
   end
@@ -177,13 +177,13 @@ flowchart LR
     <tr>
       <td><code>vpc → iam</code> (lookup + authz)</td>
       <td>исходящее</td>
-      <td><code>ProjectService.Get</code> — существование проекта (owner-lookup на Create). <code>InternalIAMService.Check</code> — per-RPC authz-gate. kacho-iam — leaf-owner, обратно не зовет.</td>
+      <td><code>ProjectService.Get</code> — существование проекта (owner-lookup на Create). <code>InternalIAMService.Check</code> — per-RPC authz-gate. kaname — leaf-owner, обратно не зовет.</td>
       <td>peer-call (sync)</td>
     </tr>
     <tr>
       <td><code>vpc → iam</code> (регистрация ресурсов)</td>
       <td>исходящее</td>
-      <td><code>InternalIAMService.RegisterResource</code> / <code>UnregisterResource</code> — регистрация/снятие владения и места ресурса в цепи областей <strong>через kacho-iam</strong> (модули в модель прав напрямую не пишут). Намерение пишется в transactional-outbox в той же TX, что и ресурс; отдельный drainer применяет его idempotent / at-least-once.</td>
+      <td><code>InternalIAMService.RegisterResource</code> / <code>UnregisterResource</code> — регистрация/снятие владения и места ресурса в цепи областей <strong>через kaname</strong> (модули в модель прав напрямую не пишут). Намерение пишется в transactional-outbox в той же TX, что и ресурс; отдельный drainer применяет его idempotent / at-least-once.</td>
       <td>outbox-drainer (async)</td>
     </tr>
     <tr>
@@ -197,7 +197,7 @@ flowchart LR
 
 :::note Owner-сервис на каждый тип ресурса
 Каждый тип ресурса хранится ровно у одного владельца: **Geography (Region/Zone)** → kacho-geo
-(leaf platform-topology домен); **Account / Project** → kacho-iam (leaf-owner); **Network /
+(leaf platform-topology домен); **Account / Project** → kaname (leaf-owner); **Network /
 Subnet / SG / RouteTable / Address / Gateway / NetworkInterface / CidrGroup** → kacho-vpc;
 **Instance / MachineType** → kacho-compute; **Volume / Snapshot / Image / DiskType** →
 kacho-storage. Consumer ссылается по id и валидирует через API владельца — mirror-таблицы и
@@ -277,7 +277,7 @@ flowchart TD
   end
 
   pg[("PostgreSQL kacho_vpc<br/>+ outbox / LISTEN-NOTIFY")]
-  iam["kacho-iam<br/>(Project · authz · FGA-proxy)"]
+  iam["kaname<br/>(Project · authz · FGA-proxy)"]
   geo["kacho-geo<br/>(Zone)"]
   cmp["kacho-compute"]
 

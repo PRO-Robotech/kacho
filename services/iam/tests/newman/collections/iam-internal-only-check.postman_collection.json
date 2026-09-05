@@ -1,7 +1,7 @@
 {
   "info": {
     "_postman_id": "9495f9ae-2065-5db3-8a49-8306970ad103",
-    "name": "kacho-iam / newman / iam-internal-only-check",
+    "name": "kaname / newman / iam-internal-only-check",
     "schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json"
   },
   "event": [

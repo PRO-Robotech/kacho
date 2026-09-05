@@ -36,7 +36,7 @@ flowchart TD
     <tr><td><strong>clients (adapter)</strong></td><td><code>internal/clients/</code></td><td>Hydra (OAuth-клиенты), Kratos (identity), сброс кэша прав на краю</td></tr>
     <tr><td><strong>handler</strong></td><td><code>internal/handler/</code></td><td>Тонкий transport: parse → use-case → format. Без бизнес-логики</td></tr>
     <tr><td><strong>authz</strong></td><td><code>internal/authzguard</code>, <code>authzmap</code>, <code>authztypes</code></td><td>Интерсепторы, permission-map, verb→relation, объектные типы</td></tr>
-    <tr><td><strong>composition root</strong></td><td><code>cmd/kacho-iam/</code></td><td>Единственное место wiring (serve.go); <code>cmd/migrator/</code> — миграции</td></tr>
+    <tr><td><strong>composition root</strong></td><td><code>cmd/kaname/</code></td><td>Единственное место wiring (serve.go); <code>cmd/migrator/</code> — миграции</td></tr>
   </tbody>
 </table>
 
@@ -109,7 +109,7 @@ UserToken — маппинг на Hydra-клиентов. Детали и пот
 
 ```mermaid
 flowchart LR
-  vpc["kacho-vpc"] -->|"Check + RegisterResource"| iam["kacho-iam"]
+  vpc["kacho-vpc"] -->|"Check + RegisterResource"| iam["kaname"]
   cmp["kacho-compute"] -->|"Check + RegisterResource"| iam
   geo["kacho-geo"] -->|"Check"| iam
   nlb["kacho-nlb"] -->|"Check"| iam

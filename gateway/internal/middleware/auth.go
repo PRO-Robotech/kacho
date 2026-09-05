@@ -21,14 +21,14 @@
 //     JWKS по alg); HMAC-subject (external_id) не найден в kacho_iam → fallback на
 //     anonymous, чтобы не ломать существующие newman-сценарии. Bad token (любая
 //     стратегия) → reject Unauthenticated, НИКОГДА anonymous.
-//   - **production**: Subject lookup → kacho-iam; NotFound → reject.
+//   - **production**: Subject lookup → kaname; NotFound → reject.
 //   - **production-strict**: Bearer обязателен **всегда** (`Unauthenticated`
 //     без него); все остальные правила — как в production.
 //
 // Архитектура:
 //
 //	┌─ parse Bearer ─┐    ┌─ JWT validate ─┐    ┌─ SubjectLookup ─┐    ┌─ Principal in ctx ─┐
-//	│ Authorization │ → │ JWKS/HMAC      │ → │ kacho-iam:9091  │ → │ x-kacho-principal-* │
+//	│ Authorization │ → │ JWKS/HMAC      │ → │ kaname:9091  │ → │ x-kacho-principal-* │
 //	└────────────────┘    └─────────────────┘    └─────────────────┘    └─────────────────────┘
 //
 // Loop-prevention: InternalIAMService.LookupSubject зовется **gRPC-direct**
@@ -89,7 +89,7 @@ const (
 const authFailedMsg = "authentication failed"
 
 // SubjectLookuper — port-интерфейс для subject-резолва. Реализация —
-// `internal/clients/iam_subject_client.go` (gRPC-direct к kacho-iam:9091).
+// `internal/clients/iam_subject_client.go` (gRPC-direct к kaname:9091).
 // Декларирован тут, чтобы не тащить proto-dep в middleware (Clean
 // Architecture — handler/middleware layer).
 type SubjectLookuper interface {
@@ -514,7 +514,7 @@ func (a *AuthInterceptor) authorize(ctx context.Context, fullMethod string) (con
 		return nil, status.Error(codes.Unauthenticated, authFailedMsg)
 	}
 
-	// Resolve subject via kacho-iam (gRPC-direct).
+	// Resolve subject via kaname (gRPC-direct).
 	subjectID, _ := claims["sub"].(string)
 	if subjectID == "" {
 		return nil, status.Error(codes.Unauthenticated, "token missing subject")
@@ -566,16 +566,16 @@ func (a *AuthInterceptor) authorizeViaLookup(ctx context.Context, fullMethod, su
 		switch a.mode {
 		case AuthModeProductionStrict, AuthModeProduction:
 			// production[-strict]: у токена обязан быть принципал, которому
-			// kacho-iam разрешает аутентифицироваться. Настоящая причина (нет
+			// kaname разрешает аутентифицироваться. Настоящая причина (нет
 			// такой личности либо она есть и запрещена) пишется в лог как есть;
 			// наружу уходит постоянный текст, чтобы валидно подписанный токен
 			// без принципала был неотличим от токена с плохой подписью (никакого
 			// перебора личностей и утечки текста ошибки iam).
-			a.logger.Warn("auth: principal not usable per kacho-iam (rejecting)",
+			a.logger.Warn("auth: principal not usable per kaname (rejecting)",
 				"method", fullMethod, "external_id", subjectID, "err", err)
 			return nil, status.Error(codes.Unauthenticated, authFailedMsg)
 		default: // dev
-			a.logger.Debug("auth: principal not usable per kacho-iam, fallback to anonymous",
+			a.logger.Debug("auth: principal not usable per kaname, fallback to anonymous",
 				"method", fullMethod, "external_id", subjectID, "err", err)
 			return a.injectAnonymous(ctx), nil
 		}

@@ -15,7 +15,7 @@ import (
 	"github.com/PRO-Robotech/kacho/pkg/retry"
 )
 
-// Публичный ProjectService.Get в kacho-iam несет tenant scope-filter: он
+// Публичный ProjectService.Get в kaname несет tenant scope-filter: он
 // возвращает NOT_FOUND, если caller — не owner владеющего Account'а, и сразу
 // NOT_FOUND для анонимного caller'а. kacho-vpc валидирует project Network'а через
 // ProjectService.Get на hot-path Network.Create; вызов идет внутри Operation
@@ -24,7 +24,7 @@ import (
 // auth.PropagateOutgoing, иначе peer увидит анонимный/системный вызов, вернет
 // NOT_FOUND, и Network.Create провалит свою project-exists-проверку.
 
-// ProjectClient реализует service.ProjectClient через gRPC к kacho-iam.
+// ProjectClient реализует service.ProjectClient через gRPC к kaname.
 //
 // Кеширование живет в декораторе CachedProjectClient (project_cache.go) —
 // bounded TTL+LRU поверх Exists, которым оборачивается raw-клиент в composition
@@ -41,7 +41,7 @@ func NewProjectClient(conn grpc.ClientConnInterface) *ProjectClient {
 	return &ProjectClient{cli: iamv1.NewProjectServiceClient(conn), timeout: defaultPeerCallTimeout}
 }
 
-// Exists проверяет существование Project через kacho-iam.ProjectService.Get.
+// Exists проверяет существование Project через kaname.ProjectService.Get.
 // Кеш — в CachedProjectClient (bounded LRU); тут только gRPC + retry.
 func (c *ProjectClient) Exists(ctx context.Context, projectID string) (bool, error) {
 	exists, _, err := c.describe(ctx, projectID)

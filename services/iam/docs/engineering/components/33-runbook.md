@@ -2,7 +2,7 @@
 
 ## Назначение
 
-Реакция на типичные инциденты в production kacho-iam. Каждая запись
+Реакция на типичные инциденты в production kaname. Каждая запись
 включает: симптом → быстрая диагностика → действия → escalation.
 
 Карта listener'ов (чтобы быстро ориентироваться в портах):
@@ -26,7 +26,7 @@ Readiness/liveness — TCP-проба на `:9090`.
 
 ```bash
 # Pod alive?
-kubectl -n kacho get pod -l app=kacho-iam
+kubectl -n kacho get pod -l app=kaname
 
 # DB reachable? (от корня репозитория)
 make -C deploy psql SVC=iam   # либо nc -zv <db-host> 5432
@@ -37,7 +37,7 @@ kubectl -n kacho exec deploy/postgres -- \
   psql -c "SELECT count(*) AS rows, max(created_at) AS last FROM kacho_iam.fga_outbox;"
 
 # Логи последние 5min.
-kubectl -n kacho logs -l app=kacho-iam --since=5m | grep -E "ERROR|FATAL|authz|verdict"
+kubectl -n kacho logs -l app=kaname --since=5m | grep -E "ERROR|FATAL|authz|verdict"
 ```
 
 **Действия:**
@@ -48,7 +48,7 @@ kubectl -n kacho logs -l app=kacho-iam --since=5m | grep -E "ERROR|FATAL|authz|v
    [`../architecture/failure-domains.md`](../architecture/failure-domains.md).
 2. **Реплика для чтения отстаёт** → вердикт читает master; проверить, не
    переключён ли пул на реплику.
-3. **kacho-iam OOM/crash** → `kubectl rollout restart deploy/kacho-iam`;
+3. **kaname OOM/crash** → `kubectl rollout restart deploy/kaname`;
    проверить memory limits.
 4. **subject_change_outbox — НЕ очередь, и «backlog» по ней не считается.** Это
    журнал с курсором: строки не помечаются доставленными, поэтому «pending» по
@@ -184,13 +184,13 @@ AuthN-хуки слушают на cluster-internal HTTP `:9092`: Hydra `token`/
 
 **Симптомы:**
 - Новый пользователь логинится, но не видит свой Account/Project.
-- Hydra/Kratos логи показывают 5xx с webhook-эндпоинта kacho-iam.
+- Hydra/Kratos логи показывают 5xx с webhook-эндпоинта kaname.
 
 **Диагностика:**
 
 ```bash
 # Хуки-листенер поднят?
-kubectl -n kacho logs -l app=kacho-iam --since=10m | grep -E "iamhooks|provision|UpsertFromIdentity"
+kubectl -n kacho logs -l app=kaname --since=10m | grep -E "iamhooks|provision|UpsertFromIdentity"
 
 # Identity уже отзеркалена?
 kubectl -n kacho exec deploy/postgres -- \
@@ -199,10 +199,10 @@ kubectl -n kacho exec deploy/postgres -- \
 
 **Действия:**
 
-1. **kacho-iam down/restarting** → хук-вызовы Hydra/Kratos падают;
-   восстановить pod (`kubectl rollout restart deploy/kacho-iam`).
+1. **kaname down/restarting** → хук-вызовы Hydra/Kratos падают;
+   восстановить pod (`kubectl rollout restart deploy/kaname`).
 2. **HMAC/секрет хука разошелся** → провижн-хук отвергает запрос; сверить
-   webhook-секрет на стороне Kratos/Hydra и в config kacho-iam.
+   webhook-секрет на стороне Kratos/Hydra и в config kaname.
 3. **Provision прошел частично** → `UpsertFromIdentity` идемпотентен по
    `external_id` (Kratos/Hydra `sub`); повторный login досоздаст недостающее.
    Admin-tooling может вызвать тот же `InternalUserService.UpsertFromIdentity`
@@ -246,7 +246,7 @@ kubectl -n kacho exec deploy/kacho-umbrella-hydra -- \
   wget -qO- http://127.0.0.1:4444/.well-known/jwks.json | jq '.keys[].kid'
 
 # 2. Что отдаёт зеркало iam (:9097)? kid'ы обязаны СОВПАДАТЬ с п.1.
-kubectl -n kacho exec deploy/kacho-iam -- \
+kubectl -n kacho exec deploy/kaname -- \
   wget -qO- --no-check-certificate https://127.0.0.1:9097/.well-known/jwks.json | jq '.keys[].kid'
 ```
 
@@ -285,7 +285,7 @@ kubectl -n kacho exec deploy/kacho-iam -- \
 
 ```bash
 # Лог старта — ошибки миграции/схемы.
-kubectl -n kacho logs -l app=kacho-iam --tail=200 | grep -iE "migrat|goose|schema|relation .* does not exist"
+kubectl -n kacho logs -l app=kaname --tail=200 | grep -iE "migrat|goose|schema|relation .* does not exist"
 
 # Текущая версия goose.
 kubectl -n kacho exec deploy/postgres -- \
@@ -311,7 +311,7 @@ Cluster-admin-привязки выдаются через internal-only `Intern
 
 ```bash
 # Текущие активные cluster-admin (denormalized snapshot).
-grpcurl -d '{}' <mTLS-flags> kacho-iam:9091 \
+grpcurl -d '{}' <mTLS-flags> kaname:9091 \
   kacho.cloud.iam.v1.InternalClusterService/ListAdmins
 
 # Либо напрямую в БД.
@@ -366,7 +366,7 @@ ORDER BY granted_at DESC;
 make -C deploy psql SVC=iam
 
 # Tail logs.
-kubectl -n kacho logs -l app=kacho-iam -f --tail=200
+kubectl -n kacho logs -l app=kaname -f --tail=200
 
 # Состояние очередей. ВНИМАНИЕ: во второй колонке РАЗНЫЕ величины. У audit это
 # непринятые строки; у fga и subject_change — ВЕСЬ УДЕРЖАННЫЙ журнал (пометки доставки
@@ -381,14 +381,14 @@ UNION ALL SELECT 'audit (pending)',   count(*) FILTER (WHERE status='pending'), 
 "
 
 # LRO in-flight (метрика на :9095).
-kubectl -n kacho exec deploy/kacho-iam -- curl -s http://localhost:9095/metrics | grep kacho_iam_lro_inflight
+kubectl -n kacho exec deploy/kaname -- curl -s http://localhost:9095/metrics | grep kacho_iam_lro_inflight
 
 # Решения authz (rate/итог) — деградация видна по росту deny.
-kubectl -n kacho exec deploy/kacho-iam -- curl -s http://localhost:9095/metrics | grep kacho_iam_authz_check_decisions_total
+kubectl -n kacho exec deploy/kaname -- curl -s http://localhost:9095/metrics | grep kacho_iam_authz_check_decisions_total
 
 # Graceful restart Deployment.
-kubectl rollout restart deploy/kacho-iam -n kacho
-kubectl rollout status  deploy/kacho-iam -n kacho --timeout=120s
+kubectl rollout restart deploy/kaname -n kacho
+kubectl rollout status  deploy/kaname -n kacho --timeout=120s
 ```
 
 ## Запреты в инцидентах

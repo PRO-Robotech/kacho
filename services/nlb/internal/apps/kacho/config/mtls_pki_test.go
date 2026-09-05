@@ -33,7 +33,7 @@ func writeTestPKI(t *testing.T) (caFile, certFile, keyFile string) {
 	tmpl := &x509.Certificate{
 		SerialNumber:          big.NewInt(1),
 		Subject:               pkix.Name{CommonName: "kacho-nlb-test"},
-		DNSNames:              []string{"kacho-iam.kacho.svc", "kacho-nlb.kacho.svc"},
+		DNSNames:              []string{"kaname.kacho.svc", "kacho-nlb.kacho.svc"},
 		NotBefore:             time.Now().Add(-time.Hour),
 		NotAfter:              time.Now().Add(24 * time.Hour),
 		KeyUsage:              x509.KeyUsageDigitalSignature | x509.KeyUsageCertSign,

@@ -38,7 +38,7 @@ func TestMTLS_SEC_I_C01_IAMReadAuthzDisabledDefaultInsecure(t *testing.T) {
 }
 
 // TestMTLS_SEC_I_C02_IAMProjectEnabledClientCredsBuild — C-02: enable=true with a
-// valid cert/key/ca trio + ServerName=kacho-iam (public :9090 dial-host) builds
+// valid cert/key/ca trio + ServerName=kaname (public :9090 dial-host) builds
 // client transport creds.
 func TestMTLS_SEC_I_C02_IAMProjectEnabledClientCredsBuild(t *testing.T) {
 	certFile, keyFile, caFile := writeTestCert(t)
@@ -48,17 +48,17 @@ func TestMTLS_SEC_I_C02_IAMProjectEnabledClientCredsBuild(t *testing.T) {
 		"KACHO_COMPUTE_IAM_PROJECT_MTLS_CERTFILE":   certFile,
 		"KACHO_COMPUTE_IAM_PROJECT_MTLS_KEYFILE":    keyFile,
 		"KACHO_COMPUTE_IAM_PROJECT_MTLS_CAFILES":    caFile,
-		"KACHO_COMPUTE_IAM_PROJECT_MTLS_SERVERNAME": "kacho-iam.kacho.svc",
+		"KACHO_COMPUTE_IAM_PROJECT_MTLS_SERVERNAME": "kaname.kacho.svc",
 	})
 	assert.True(t, cfg.IAMProjectMTLS.Enable)
-	assert.Equal(t, "kacho-iam.kacho.svc", cfg.IAMProjectMTLS.ServerName)
+	assert.Equal(t, "kaname.kacho.svc", cfg.IAMProjectMTLS.ServerName)
 	opt, err := cfg.IAMProjectClientCreds()
 	require.NoError(t, err, "valid cert trio → ProjectService.Get client creds build")
 	require.NotNil(t, opt)
 }
 
 // TestMTLS_SEC_I_C03_IAMAuthzEnabledClientCredsBuild — C-03: enable=true with a
-// valid cert/key/ca trio + ServerName=kacho-iam-internal (internal :9091
+// valid cert/key/ca trio + ServerName=kaname-internal (internal :9091
 // dial-host, Check + list-filter) builds client transport creds.
 func TestMTLS_SEC_I_C03_IAMAuthzEnabledClientCredsBuild(t *testing.T) {
 	certFile, keyFile, caFile := writeTestCert(t)
@@ -68,10 +68,10 @@ func TestMTLS_SEC_I_C03_IAMAuthzEnabledClientCredsBuild(t *testing.T) {
 		"KACHO_COMPUTE_IAM_AUTHZ_MTLS_CERTFILE":   certFile,
 		"KACHO_COMPUTE_IAM_AUTHZ_MTLS_KEYFILE":    keyFile,
 		"KACHO_COMPUTE_IAM_AUTHZ_MTLS_CAFILES":    caFile,
-		"KACHO_COMPUTE_IAM_AUTHZ_MTLS_SERVERNAME": "kacho-iam-internal.kacho.svc",
+		"KACHO_COMPUTE_IAM_AUTHZ_MTLS_SERVERNAME": "kaname-internal.kacho.svc",
 	})
 	assert.True(t, cfg.IAMAuthzMTLS.Enable)
-	assert.Equal(t, "kacho-iam-internal.kacho.svc", cfg.IAMAuthzMTLS.ServerName)
+	assert.Equal(t, "kaname-internal.kacho.svc", cfg.IAMAuthzMTLS.ServerName)
 	opt, err := cfg.IAMAuthzClientCreds()
 	require.NoError(t, err, "valid cert trio → Check/list-filter client creds build")
 	require.NotNil(t, opt)
@@ -116,7 +116,7 @@ func TestMTLS_SEC_I_PerEdgeIndependence(t *testing.T) {
 		"KACHO_COMPUTE_IAM_PROJECT_MTLS_CERTFILE":   certFile,
 		"KACHO_COMPUTE_IAM_PROJECT_MTLS_KEYFILE":    keyFile,
 		"KACHO_COMPUTE_IAM_PROJECT_MTLS_CAFILES":    caFile,
-		"KACHO_COMPUTE_IAM_PROJECT_MTLS_SERVERNAME": "kacho-iam.kacho.svc",
+		"KACHO_COMPUTE_IAM_PROJECT_MTLS_SERVERNAME": "kaname.kacho.svc",
 	})
 	assert.True(t, cfg.IAMProjectMTLS.Enable, "project edge on")
 	assert.False(t, cfg.IAMAuthzMTLS.Enable, "authz edge independently off")

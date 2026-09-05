@@ -108,7 +108,7 @@ func (h *Handler) WithProviderSessions(p providerSessions, r externalIDResolver)
 }
 
 // WithSessionRevoker — attaches the session-revocation writer used by
-// ForceLogout. Composition-root only (cmd/kacho-iam/wiring.go).
+// ForceLogout. Composition-root only (cmd/kaname/wiring.go).
 func (h *Handler) WithSessionRevoker(r sessionRevoker) *Handler {
 	h.sessionRevoker = r
 	return h

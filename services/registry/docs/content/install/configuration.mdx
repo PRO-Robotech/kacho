@@ -61,8 +61,8 @@ Kachō Registry конфигурируется через переменные �
 <table>
   <thead><tr><th>Переменная</th><th>По умолчанию</th><th>Описание</th></tr></thead>
   <tbody>
-    <tr><td><code>KACHO_REGISTRY_AUTHZ_IAM_GRPC_ADDR</code></td><td><em>(пусто)</em></td><td>Internal endpoint kacho-iam (:9091) для per-RPC <code>Check</code> + fga-proxy <code>RegisterResource</code>. Пусто + не breakglass → интерсептор не подключается</td></tr>
-    <tr><td><code>KACHO_REGISTRY_IAM_PROJECT_GRPC_ADDR</code></td><td><code>kacho-iam.kacho.svc:9090</code></td><td>PUBLIC endpoint kacho-iam (:9090) для <code>ProjectService.Get</code> (валидация project на Create) — отдельный conn от authz-ребра</td></tr>
+    <tr><td><code>KACHO_REGISTRY_AUTHZ_IAM_GRPC_ADDR</code></td><td><em>(пусто)</em></td><td>Internal endpoint kaname (:9091) для per-RPC <code>Check</code> + fga-proxy <code>RegisterResource</code>. Пусто + не breakglass → интерсептор не подключается</td></tr>
+    <tr><td><code>KACHO_REGISTRY_IAM_PROJECT_GRPC_ADDR</code></td><td><code>kaname.kacho.svc:9090</code></td><td>PUBLIC endpoint kaname (:9090) для <code>ProjectService.Get</code> (валидация project на Create) — отдельный conn от authz-ребра</td></tr>
     <tr><td><code>KACHO_REGISTRY_AUTH_MODE</code></td><td><code>production</code></td><td>Режим строгости: <code>dev</code> · <code>production</code> · <code>production-strict</code>. Дефолт secure-by-default: незаданная переменная не поднимает сервис в insecure-режиме</td></tr>
     <tr><td><code>KACHO_REGISTRY_AUTHZ_TRUSTED_FORWARDER_SANS</code></td><td><em>(пусто)</em></td><td>Список через запятую тех личностей клиентского сертификата (SPIFFE-SAN), которым разрешено <strong>передавать</strong> личность конечного пользователя (заголовки <code>x-kacho-principal-*</code>). Действует на <strong>обоих</strong> listener'ах. Пусто — это не «никому», а «любому пиру с проверенным сертификатом», поэтому в любом production-режиме пустое значение <strong>отказывает в старте</strong>. Законный отправитель один — api-gateway (<code>spiffe://kacho.cloud/ns/kacho/sa/kacho-api-gateway</code>), он же ходит на оба listener'а</td></tr>
     <tr><td><code>KACHO_REGISTRY_AUTHZ_BREAKGLASS</code></td><td><code>false</code></td><td>Обход authz/mTLS <strong>только вне production</strong>: пропуск всех RPC без <code>Check</code> + WARN. В <code>production</code> и <code>production-strict</code> взведённое значение <strong>отказывает в старте</strong> — обойти защиту в боевом режиме нечем</td></tr>
@@ -73,7 +73,7 @@ Kachō Registry конфигурируется через переменные �
 ### Secure by default
 
 По умолчанию (`breakglass=false`) операции control-plane **без авторизации и mTLS запрещены**: per-RPC
-authz `Check` (через kacho-iam) и mTLS на **обоих** gRPC-listener'ах обязательны — иначе сервис
+authz `Check` (через kaname) и mTLS на **обоих** gRPC-listener'ах обязательны — иначе сервис
 **откажется стартовать**. Это инвариант «AuthN + AuthZ везде» (internal `:9091` не освобождён).
 
 В любом production-режиме к этому добавляется **непустой список доверенных отправителей**
@@ -119,7 +119,7 @@ Data-plane аутентифицирует `docker`/`helm` по identity-JWT. **�
     <tr><td><code>KACHO_REGISTRY_TOKEN_REVOCATION_URL</code></td><td><em>(пусто)</em></td><td>Адрес авторитета отзыва (интроспекция RFC 7662) на cluster-internal слушателе iam. Обязателен, когда наш издатель принимается. В production обязан быть <code>https</code></td></tr>
     <tr><td><code>KACHO_REGISTRY_TOKEN_REVOCATION_MTLS_*</code></td><td><em>(выключено)</em></td><td>Учётные данные ребра к авторитету отзыва (<code>ENABLE</code>/<code>CERTFILE</code>/<code>KEYFILE</code>/<code>CAFILES</code>/<code>SERVERNAME</code>). Якорь объявлен и непригоден → <strong>отказ в старте</strong>, а не откат на системные корни</td></tr>
     <tr><td><code>KACHO_REGISTRY_SERVICE_AUD</code></td><td><code>registry.kacho.local</code></td><td>Ожидаемый <code>aud</code> identity-JWT. Токен обязан нести <code>aud ⊇ ServiceAud</code> (иначе federation-out не даёт доступа)</td></tr>
-    <tr><td><code>KACHO_REGISTRY_TOKEN_REALM</code></td><td><code>https://api.kacho.local/iam/token</code></td><td>realm для <code>WWW-Authenticate</code> — docker идёт туда за Bearer-токеном (token-шим kacho-iam)</td></tr>
+    <tr><td><code>KACHO_REGISTRY_TOKEN_REALM</code></td><td><code>https://api.kacho.local/iam/token</code></td><td>realm для <code>WWW-Authenticate</code> — docker идёт туда за Bearer-токеном (token-шим kaname)</td></tr>
     <tr><td><code>KACHO_REGISTRY_DATAPLANE_TLS_TERMINATED_EXTERNALLY</code></td><td><code>false</code></td><td>Подтверждение, что data-plane стоит за внешней TLS-терминацией. В production/production-strict обязан быть <code>true</code></td></tr>
   </tbody>
 </table>
@@ -151,8 +151,8 @@ Data-plane аутентифицирует `docker`/`helm` по identity-JWT. **�
 <table>
   <thead><tr><th>Ребро</th><th>ENV-сегмент</th><th>Назначение</th></tr></thead>
   <tbody>
-    <tr><td>registry → iam internal (Check + fga-proxy, client)</td><td><code>KACHO_REGISTRY_IAM_AUTHZ_MTLS_&lt;NAME&gt;</code></td><td>Client-creds на iam :9091 (ServerName <code>kacho-iam-internal.&#42;</code>)</td></tr>
-    <tr><td>registry → iam public (ProjectService.Get, client)</td><td><code>KACHO_REGISTRY_IAM_PROJECT_MTLS_&lt;NAME&gt;</code></td><td>Client-creds на iam :9090 (ServerName <code>kacho-iam.&#42;</code>)</td></tr>
+    <tr><td>registry → iam internal (Check + fga-proxy, client)</td><td><code>KACHO_REGISTRY_IAM_AUTHZ_MTLS_&lt;NAME&gt;</code></td><td>Client-creds на iam :9091 (ServerName <code>kaname-internal.&#42;</code>)</td></tr>
+    <tr><td>registry → iam public (ProjectService.Get, client)</td><td><code>KACHO_REGISTRY_IAM_PROJECT_MTLS_&lt;NAME&gt;</code></td><td>Client-creds на iam :9090 (ServerName <code>kaname.&#42;</code>)</td></tr>
     <tr><td>public listener (server)</td><td><code>KACHO_REGISTRY_PUBLIC_SERVER_MTLS_&lt;NAME&gt;</code></td><td>Server-creds для публичного control-plane (:9090)</td></tr>
     <tr><td>internal listener (server)</td><td><code>KACHO_REGISTRY_INTERNAL_SERVER_MTLS_&lt;NAME&gt;</code></td><td>Server-creds для cluster-internal listener (:9091)</td></tr>
   </tbody>
@@ -182,18 +182,18 @@ internal ребёр к iam различаются, поэтому это **дв�
     KACHO_REGISTRY_ENDPOINT_BASE: registry.kacho.local
 
     KACHO_REGISTRY_AUTH_MODE: production-strict
-    KACHO_REGISTRY_AUTHZ_IAM_GRPC_ADDR: kacho-iam-internal.kacho.svc:9091
-    KACHO_REGISTRY_IAM_PROJECT_GRPC_ADDR: kacho-iam.kacho.svc:9090
+    KACHO_REGISTRY_AUTHZ_IAM_GRPC_ADDR: kaname-internal.kacho.svc:9091
+    KACHO_REGISTRY_IAM_PROJECT_GRPC_ADDR: kaname.kacho.svc:9090
     KACHO_REGISTRY_AUTHZ_TRUSTED_FORWARDER_SANS: spiffe://kacho.cloud/ns/kacho/sa/kacho-api-gateway
     KACHO_REGISTRY_AUTHZ_BREAKGLASS: "false"
 
     # data-plane: приём identity-JWT — издатель множество, у каждого своя запись
     KACHO_REGISTRY_TOKEN_ISSUERS: https://iam.kacho.local,https://hydra.api.kacho.cloud
     KACHO_REGISTRY_TOKEN_ISSUER_KEYSETS: >-
-      https://iam.kacho.local=https://kacho-iam-internal.kacho.svc:9097/.well-known/kacho/jwks.json,
-      https://hydra.api.kacho.cloud=https://kacho-iam-internal.kacho.svc:9097/.well-known/jwks.json
+      https://iam.kacho.local=https://kaname-internal.kacho.svc:9097/.well-known/kacho/jwks.json,
+      https://hydra.api.kacho.cloud=https://kaname-internal.kacho.svc:9097/.well-known/jwks.json
     KACHO_REGISTRY_PLATFORM_TOKEN_ISSUER: https://iam.kacho.local
-    KACHO_REGISTRY_TOKEN_REVOCATION_URL: https://kacho-iam-internal.kacho.svc:9097/internal/tokens/introspect
+    KACHO_REGISTRY_TOKEN_REVOCATION_URL: https://kaname-internal.kacho.svc:9097/internal/tokens/introspect
     KACHO_REGISTRY_SERVICE_AUD: registry.kacho.local
     KACHO_REGISTRY_DATAPLANE_TLS_TERMINATED_EXTERNALLY: "true"
 

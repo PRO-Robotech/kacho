@@ -56,7 +56,7 @@ REST-примеры идут через `api-gateway` (порт указан к�
 
 <CodeBlock language="bash">
   {dedent`
-    # API-сервер → bin/kacho-iam
+    # API-сервер → bin/kaname
     make build
 
     # мигратор → bin/kacho-migrator
@@ -97,7 +97,7 @@ cluster-internal (`:9091`, `InternalIAMService.Check` для peer-сервисо
 <CodeBlock language="bash">
   {dedent`
     KACHO_IAM_DB_PASSWORD=secret \\
-    bin/kacho-iam serve
+    bin/kaname serve
   `}
 </CodeBlock>
 

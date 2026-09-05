@@ -28,7 +28,7 @@ import (
 // Сентинелы readiness-чекеров: причина «down» в логах/ответе /readyz без leak'а
 // внутренних деталей наружу (имена зависимостей — operational, cluster-internal).
 var (
-	errDrainerNotConnected = errors.New("register-drainer not connected to kacho-iam")
+	errDrainerNotConnected = errors.New("register-drainer not connected to kaname")
 	errLROWorkerDown       = errors.New("LRO dispatcher loop not running")
 )
 

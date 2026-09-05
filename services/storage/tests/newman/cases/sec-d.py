@@ -1,7 +1,7 @@
 # Copyright (c) PRO-Robotech
 # SPDX-License-Identifier: BUSL-1.1
 
-"""Case-set для SEC-D (kacho-storage): owner-hierarchy tuple через kacho-iam
+"""Case-set для SEC-D (kacho-storage): owner-hierarchy tuple через kaname
 (transactional-outbox) на всех трёх ресурсах, которые его эмитят.
 
 storage не ходит в OpenFGA напрямую. На каждый Create/Delete Volume/Snapshot/Image
@@ -40,7 +40,7 @@ project`), одинаково требуют, чтобы структурная 
 existingProjectId (_suiteProjectId из env); имена суффиксуются {{runId}}; свои
 ресурсы кейс удаляет за собой. id-префиксы: Volume `vol`, Snapshot `snp`, Image `img`.
 
-# requires: umbrella-стенд (kacho-storage + kacho-iam + kacho-geo за gateway) и
+# requires: umbrella-стенд (kacho-storage + kaname + kacho-geo за gateway) и
 # {{internalBaseUrl}} (инжектится deploy/scripts/newman-e2e.sh; в шаблоне env есть
 # дефолт :18081). mTLS-mismatch и iam-peer-down — инфраструктурные негативы
 # (dedicated chaos/TLS-профиль), здесь их нет намеренно.

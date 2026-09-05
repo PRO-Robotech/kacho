@@ -59,7 +59,7 @@ func main() {
 	switch {
 	case errors.Is(err, manifestproducer.ErrNotDeclared):
 		fmt.Fprintf(os.Stderr,
-			"доставка манифестов этой цепочкой не объявлена (kacho-iam.manifests.configMapName "+
+			"доставка манифестов этой цепочкой не объявлена (kaname.manifests.configMapName "+
 				"пусто) — ConfigMap не заводится, и это решение посадки, а не отказ\n")
 		os.Exit(3)
 	case errors.Is(err, manifestproducer.ErrNoManifests):

@@ -70,7 +70,7 @@ func describeDescs(t *testing.T, c prometheus.Collector) []*prometheus.Desc {
 }
 
 // TestPoolStatsCollectorNilPoolEmitsNothing — композиционный корень, у которого
-// пула нет (у kacho-iam это реплика при ненастроенном slave-url), не обязан
+// пула нет (у kaname это реплика при ненастроенном slave-url), не обязан
 // ронять всю диагностическую поверхность процесса.
 //
 // Проверяется ИСХОД сбора, а не отсутствие паники само по себе: коллектор,

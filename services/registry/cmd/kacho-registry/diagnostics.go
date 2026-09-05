@@ -102,7 +102,7 @@ func authzConnHealth(conn *grpc.ClientConn) error {
 }
 
 // errIAMConnShutdown — причина «не готов» без раскрытия внутренних деталей наружу.
-var errIAMConnShutdown = errors.New("connection to kacho-iam is shut down")
+var errIAMConnShutdown = errors.New("connection to kaname is shut down")
 
 // Сроки диагностической поверхности. Названы константами, а не вписаны в
 // объявление: они одинаковы у всех диагностических поверхностей платформы, и

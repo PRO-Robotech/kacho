@@ -93,7 +93,7 @@ type CatalogEntry struct {
 	// HideExistence — when true, an authz deny on this RPC is surfaced as
 	// NotFound (gRPC 5 / HTTP 404) with no deny reasons, instead of
 	// PermissionDenied (gRPC 7 / HTTP 403). Used for read RPCs whose owner
-	// (kacho-iam) returns NotFound for a denied caller — the gateway Check runs
+	// (kaname) returns NotFound for a denied caller — the gateway Check runs
 	// BEFORE the owner, so a 403 here would override the owner's hide-existence
 	// contract and leak both existence and the deny reasons. The flag keeps
 	// enforcement intact (the deny still blocks the request) while removing the

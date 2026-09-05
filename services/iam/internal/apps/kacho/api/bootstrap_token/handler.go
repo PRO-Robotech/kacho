@@ -23,7 +23,7 @@ type Handler struct {
 	mint *MintUseCase
 }
 
-// NewHandler assembles the handler. Composition root: cmd/kacho-iam/wiring.go.
+// NewHandler assembles the handler. Composition root: cmd/kaname/wiring.go.
 func NewHandler(mint *MintUseCase) *Handler { return &Handler{mint: mint} }
 
 // MintBootstrapToken mints the bootstrap RS256 Bearer (synchronous — not an

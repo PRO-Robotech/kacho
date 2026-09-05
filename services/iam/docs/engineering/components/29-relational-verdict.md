@@ -5,7 +5,7 @@
 Это самый важный сквозной поток: **как именно** `AccessBinding.Create`
 превращается в `allowed=true` для последующего `Check` на затронутую область.
 
-Решение о доступе вычисляет **реляционная форма в собственной базе `kacho-iam`**
+Решение о доступе вычисляет **реляционная форма в собственной базе `kaname`**
 (`internal/repo/kacho/pg/relverdict`). Внешнего движка отношений, к которому
 прежде уходил вопрос, **нет**: ни клиента, ни его хранилища, ни очереди к нему,
 ни окна рассогласования между «выдача закоммичена» и «выдача действует».
@@ -136,7 +136,7 @@
 sequenceDiagram
     autonumber
     participant Admin as Admin tool
-    participant IAM as kacho-iam :9090
+    participant IAM as kaname :9090
     participant DB as Postgres kacho_iam
     participant GW as api-gateway authz-cache
     participant Caller
@@ -288,7 +288,7 @@ iam о крае не знает и на этот срок не влияет. П�
 (разбор оснований), `labelaxis.go` (меточная ветвь), `condition.go` (условия).
 План вывода компилируется из модели — `services/iam/internal/authzplan`.
 
-Дверь решения для собственных стражей `kacho-iam` — `internal/authzcascade`:
+Дверь решения для собственных стражей `kaname` — `internal/authzcascade`:
 композиционный корень выдаёт **одно** значение каждому стражу, поэтому страж не
 может спросить мимо формы.
 

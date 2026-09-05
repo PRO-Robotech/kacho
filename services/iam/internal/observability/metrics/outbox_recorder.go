@@ -9,7 +9,7 @@ import (
 	outboxmetrics "github.com/PRO-Robotech/kacho/pkg/outbox/metrics"
 )
 
-// OutboxRecorder — состояние ВСЕХ очередей kacho-iam, снимаемое периодическим
+// OutboxRecorder — состояние ВСЕХ очередей kaname, снимаемое периодическим
 // сканом таблицы, а не логом дренажа.
 //
 // # Почему это отдельный тип, а не поля в CompensationRecorder

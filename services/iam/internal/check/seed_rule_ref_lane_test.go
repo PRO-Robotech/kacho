@@ -85,7 +85,7 @@ const (
 	seedPackageDir = "services/iam/internal/apps/kacho/seed"
 
 	// compositionRootDir — каталог композиционного корня службы.
-	compositionRootDir = "services/iam/cmd/kacho-iam"
+	compositionRootDir = "services/iam/cmd/kaname"
 )
 
 // goSourcesOfDir — непробные файлы Go каталога, взятые ПО ИНДЕКСУ git.

@@ -32,7 +32,7 @@
 #
 # ─── What this profile flips (vs the dev/insecure default) ──────────────────
 #   1. AuthN mode → production / production-strict on every service that has a
-#      mode knob (api-gateway, kacho-iam, kacho-vpc, kacho-nlb, kacho-geo,
+#      mode knob (api-gateway, kaname, kacho-vpc, kacho-nlb, kacho-geo,
 #      kacho-storage, kacho-registry). kacho-compute has no `mode` knob: it is a
 #      pure cluster-internal backend whose posture is per-RPC IAM Check (authzIam)
 #      + fail-closed list-filter + mTLS, all set below.
@@ -52,7 +52,7 @@
 #      `require` — not `verify-full` — because the in-cluster Postgres TLS server
 #      cert + CA trust bundle are an infra concern provisioned per-cluster, not a
 #      chart value. Operators that wire a server-cert CA can override to
-#      `verify-full` per service. kacho-iam production-strict ALSO enforces
+#      `verify-full` per service. kaname production-strict ALSO enforces
 #      `ssl-mode ∈ {require, verify-ca, verify-full}` at config-validate time.
 #   3. mTLS → ON, reusing the SEC-F internal-CA ClusterIssuer + the per-service
 #      leaf Certificates already shipped (kacho-<svc>-server-tls /
@@ -66,14 +66,14 @@
 # ─── Secrets discipline (workspace rule: no secrets in values) ──────────────
 # This file contains NO secret material. AuthN secrets the production binaries
 # require are consumed from Secrets the chart already wires via secretKeyRef:
-#   - kacho-iam: KACHO_IAM_HOOK_TOKEN  ← kacho.hooks.tokenHookSecretName
+#   - kaname: KACHO_IAM_HOOK_TOKEN  ← kacho.hooks.tokenHookSecretName
 #                KACHO_IAM_JWKS_ENC_KEY ← kacho.iam.jwks.encKeySecretName
 #   - per-service DB password           ← <svc>.db.passwordSecretName
 #   - kratos-selfservice-ui COOKIE_SECRET/CSRF_COOKIE_SECRET
 #                                       ← kratosSelfServiceUI.cookieSecret.existingSecret
 #     (render fails fast if unset — no git-committed cookie/CSRF signing key)
 # The operator MUST provision those Secrets out-of-band (or via external-secrets)
-# BEFORE rollout — kacho-iam Config.Validate fails fast in production if the hook
+# BEFORE rollout — kaname Config.Validate fails fast in production if the hook
 # secret / JWKS encryption key are missing (defense-in-depth, fail-closed).
 # Image tags + the kacho.domain root come from a layered per-cluster overlay.
 
@@ -90,7 +90,7 @@
 # --cluster-resource-namespace (see values.fe3455.yaml) via a per-cluster overlay.
 # ─── Обратные вызовы службы личности — под тем же TLS, что и слушатель ────────
 #
-# Слушатель хуков этого стенда работает под TLS (kacho-iam.mtls.httpListeners
+# Слушатель хуков этого стенда работает под TLS (kaname.mtls.httpListeners
 # ниже), значит и полосы к нему обязаны идти https. Прежде две из четырёх полос
 # (заведение пользователя и завершение восстановления доступа) были выписаны в
 # шаблоне чарта буквой `http`, и профиль переопределить их не мог ВООБЩЕ — то
@@ -182,18 +182,18 @@ api-gateway:
     # предъявителя, и производный адрес получался бы у ВСЯКОГО издателя —
     # состояние «записи нет» не наступало бы никогда, а страж старта стал бы
     # тождественно истинным.
-    issuerKeySets: "https://iam.kacho.local=https://kacho-iam-internal.kacho.svc:9097/.well-known/kacho/jwks.json,https://hydra.api.kacho.cloud=https://kacho-iam-internal.kacho.svc:9097/.well-known/jwks.json"
+    issuerKeySets: "https://iam.kacho.local=https://kaname-internal.kacho.svc:9097/.well-known/kacho/jwks.json,https://hydra.api.kacho.cloud=https://kaname-internal.kacho.svc:9097/.well-known/jwks.json"
     # Наш издатель выбирает полосу приёма: строгий тип at+jwt и чтение отзыва на
     # предъявлении. Вне issuers — отказ в старте.
     platformIssuer: "https://iam.kacho.local"
     # НАШ авторитет отзыва. Прежний провайдер о наших токенах не знает by
     # construction: спрошенный про наш токен, он отвечает не «действует» и не
     # «отозван», а утверждение о предмете, которого у него нет.
-    revocationUrl: "https://kacho-iam-internal.kacho.svc:9097/internal/tokens/introspect"
+    revocationUrl: "https://kaname-internal.kacho.svc:9097/internal/tokens/introspect"
     # Якорь доверия хопа к авторитету: по нему едет ПРЕДЪЯВЛЕННЫЙ токен, а не
     # только административный вызов. Та же связка, что у хопа за ключами.
     revocationCa:
-      secretName: kacho-iam-server-tls
+      secretName: kaname-server-tls
       key: ca.crt
       mountPath: /etc/api-gateway/platform-revocation-ca
     # ЧЕМ край предъявляет СЕБЯ авторитету. Якоря выше НЕ ДОСТАТОЧНО: он
@@ -282,7 +282,7 @@ api-gateway:
     # Unreadable or certificate-less ⇒ REFUSES THE START, exactly like the admin hop —
     # falling back to the system roots would read as configured and verify nothing.
     jwksCa:
-      secretName: kacho-iam-server-tls
+      secretName: kaname-server-tls
       key: ca.crt
       mountPath: /etc/api-gateway/hydra-jwks-ca
     issuer: ""  # СНЯТ вместе с приходом tokenAcceptance выше: два объявления об одном
@@ -374,7 +374,7 @@ vpc:
   networkPolicy:
     enabled: true
     adminPodsSelector: {}
-  # AuthZ: per-RPC IAM Check (default iamEndpoint kacho-iam-internal:9091),
+  # AuthZ: per-RPC IAM Check (default iamEndpoint kaname-internal:9091),
   # FGA-filtered List ON + fail-closed, write-side FGA ON. Ручки обхода у vpc
   # больше нет: контур поднимает общий носитель (pkg/servicehost), который ставит
   # звено решения о доступе всегда, поэтому отменять его нечем.
@@ -447,7 +447,7 @@ compute:
   auth:
     trustedForwarderSANs: "spiffe://kacho.cloud/ns/kacho/sa/kacho-api-gateway"
   authzIam:
-    grpcAddr: kacho-iam-internal.kacho.svc:9091
+    grpcAddr: kaname-internal.kacho.svc:9091
   listFilter:
     enabled: true
     failOpen: false
@@ -519,8 +519,8 @@ kacho-geo:
     source:
       sslMode: require
 
-# ─── kacho-iam (authz authority + identity tier) ────────────────────────────
-kacho-iam:
+# ─── kaname (authz authority + identity tier) ────────────────────────────
+kaname:
   # ПОСАДКА БЕЗОПАСНОСТИ — один адрес на весь флот (прежний: config.authn.mode).
   authMode: production-strict
   # mTLS: server-only (authz authority; gateway/vpc/compute/nlb dial iam).
@@ -547,7 +547,7 @@ kacho-iam:
     # (RequireAndVerifyClientCert) stays available per edge via {hooks,metrics}
     # ClientAuthMode when a client cert is provisioned. The prod Hydra OAuth2
     # token/refresh webhook URLs are flipped to https://…:9092 and the Hydra pod
-    # mounts the internal-CA bundle so it trusts the kacho-iam server cert (below).
+    # mounts the internal-CA bundle so it trusts the kaname server cert (below).
     httpListeners: true
     # Both HTTP edges run server-tls-only (default; restated here for prod clarity).
     hooksClientAuthMode: server-tls-only
@@ -566,7 +566,7 @@ kacho-iam:
       # nobody. The anchor is the internal-CA bundle already mounted for mTLS —
       # the same CA that signs the provider's admin certificate.
       hydraAdminUrl: "https://kacho-umbrella-hydra-admin-tls.kacho.svc:4445"
-      hydraAdminCaFile: /etc/kacho-iam/tls/server/ca.crt
+      hydraAdminCaFile: /etc/kaname/tls/server/ca.crt
       # The two hops to the provider's PUBLIC listener, DECLARED for the same
       # reason and by the same rule as the admin one above — and they were the
       # half this profile still left to the derivation.
@@ -847,10 +847,10 @@ storage:
     # region, which is never derived from the zone name) and storage→iam PUBLIC
     # :9090 (ProjectService.Get) — both fail-closed when unset.
     geoGrpcAddr: kacho-geo.kacho.svc:9090
-    iamGrpcAddr: kacho-iam.kacho.svc:9090
+    iamGrpcAddr: kaname.kacho.svc:9090
     # iam INTERNAL :9091 — carries BOTH the per-RPC Check and the fga-register
     # RegisterResource/UnregisterResource owner-tuple edge.
-    authzIamGrpcAddr: kacho-iam-internal.kacho.svc:9091
+    authzIamGrpcAddr: kaname-internal.kacho.svc:9091
     # Who may forward an end-user identity (x-kacho-principal-*) into storage.
     # Restated (it IS the chart default) so that no future edit to this profile can
     # silently drop it: an EMPTY list does not mean "nobody" — corelib narrows the
@@ -915,7 +915,7 @@ storage:
     passwordSecretKey: password
   # server-mTLS on both listeners (gateway + compute dial here) + client-mTLS
   # storage→{geo,iam}. One client leaf (kacho-storage-client-tls) serves every
-  # storage→iam dial: serverName kacho-iam.kacho.svc is in the iam
+  # storage→iam dial: serverName kaname.kacho.svc is in the iam
   # server-cert SAN, valid for :9090 and internal :9091 alike.
   mtls:
     enable: true
@@ -973,8 +973,8 @@ registry:
   authz:
     # Restated (they ARE the chart defaults) because all three are fail-closed:
     # an empty address does not degrade, it refuses to boot or refuses the call.
-    iamGrpcAddr: kacho-iam-internal.kacho.svc:9091
-    iamProjectGrpcAddr: kacho-iam.kacho.svc:9090
+    iamGrpcAddr: kaname-internal.kacho.svc:9091
+    iamProjectGrpcAddr: kaname.kacho.svc:9090
     geoGrpcAddr: kacho-geo.kacho.svc:9090
     # Who may forward an end-user identity (x-kacho-principal-*) into registry.
     # Restated (it IS the chart default) so that no future edit to this profile can
@@ -989,7 +989,7 @@ registry:
     # production mode refuses to start with it on. Pinned off explicitly.
     breakglass: false
   # Data-plane docker-Bearer verification: keys come from the cluster-INTERNAL
-  # kacho-iam JWKS proxy (:9097) over https — NOT from Hydra directly. iam is the
+  # kaname JWKS proxy (:9097) over https — NOT from Hydra directly. iam is the
   # single facade to Hydra (core rule #16); Hydra remains the token SIGNER, only
   # key DISTRIBUTION goes through iam. https is required by requireSecureJWKSURL,
   # and the chart default is http:// — which fails the guard.
@@ -1012,7 +1012,7 @@ registry:
     # предъявителя, и производный адрес получался бы у ВСЯКОГО издателя —
     # состояние «записи нет» не наступало бы никогда, а страж старта стал бы
     # тождественно истинным.
-    issuerKeySets: "https://iam.kacho.local=https://kacho-iam-internal.kacho.svc:9097/.well-known/kacho/jwks.json,https://hydra.api.kacho.cloud=https://kacho-iam-internal.kacho.svc:9097/.well-known/jwks.json"
+    issuerKeySets: "https://iam.kacho.local=https://kaname-internal.kacho.svc:9097/.well-known/kacho/jwks.json,https://hydra.api.kacho.cloud=https://kaname-internal.kacho.svc:9097/.well-known/jwks.json"
     # Наш издатель выбирает полосу приёма: тип at+jwt и чтение отзыва на
     # предъявлении. Вне issuers — отказ в старте.
     platformIssuer: "https://iam.kacho.local"
@@ -1020,7 +1020,7 @@ registry:
     # предъявлении, отзывом не является: он лишь не выдаёт нового, а
     # предъявленное проходит до истечения срока, и это состояние не сходится
     # само.
-    revocationUrl: "https://kacho-iam-internal.kacho.svc:9097/internal/tokens/introspect"
+    revocationUrl: "https://kaname-internal.kacho.svc:9097/internal/tokens/introspect"
   # Operator acknowledgement that the plaintext data-plane :8080 listener sits
   # behind external TLS termination — bearer identity-JWTs must not transit
   # cleartext. Required by requireDataplaneTLSAck in any production mode.
@@ -1374,7 +1374,7 @@ kratos:
   # состоится, а служба личности сочтёт вызов сделанным и промолчит.
   #
   # Монтируется тот же корень, что уже смонтирован провайдеру рядом (ca.crt
-  # секрета kacho-iam-server-tls) — новой инфраструктуры ключей не заводится.
+  # секрета kaname-server-tls) — новой инфраструктуры ключей не заводится.
   #
   # ЦЕНА НАЗВАНА ТЕМ, ЧТО ПЕРЕМЕННАЯ ДЕЛАЕТ, А НЕ ТЕМ, ЧТО О НЕЙ ДУМАЛИ (#1753).
   #
@@ -1411,7 +1411,7 @@ kratos:
   deployment:
     # ─── КОНФИГУРАЦИЯ ДОЛЖНА ДОЕЗЖАТЬ ДО ПРОЦЕССА, А НЕ ТОЛЬКО РЕНДЕРИТЬСЯ ─────
     #
-    # Карты настроек `kacho-iam-kratos-{config,hooks,identity-schema}` собирает
+    # Карты настроек `kaname-kratos-{config,hooks,identity-schema}` собирает
     # наш подчарт, и до этой провязки их НИКТО не монтировал: служба личности
     # работала на СОКРАЩЁННОЙ конфигурации подчарта поставщика (перечень её
     # разделов здесь не воспроизводится — он был бы вторым местом об одном
@@ -1480,7 +1480,7 @@ kratos:
       # список каталогов продолжает читаться. Обоснование выбора — в шапке блока
       # `kratos:` выше; механизм измерен соседним тестом каталога deploy.
       - name: SSL_CERT_FILE
-        value: /etc/kacho-iam-ca/ca.crt
+        value: /etc/kaname-ca/ca.crt
       - name: KACHO_IDENTITY_CONFIG_SHA256
         value: '{{ printf "%s\n" (include "kacho.identity.configYaml" .) | sha256sum }}'
       - name: KACHO_IDENTITY_SCHEMA_SHA256
@@ -1490,19 +1490,19 @@ kratos:
     extraVolumes:
       - name: kacho-identity-config
         configMap:
-          name: kacho-iam-kratos-config
+          name: kaname-kratos-config
       # Отрендеренная конфигурация: её пишет init-контейнер, читает процесс.
       - name: kacho-identity-rendered
         emptyDir: {}
       - name: kacho-identity-hooks
         configMap:
-          name: kacho-iam-kratos-hooks
+          name: kaname-kratos-hooks
       - name: kacho-identity-schema
         configMap:
-          name: kacho-iam-kratos-identity-schema
-      - name: kacho-iam-internal-ca
+          name: kaname-kratos-identity-schema
+      - name: kaname-internal-ca
         secret:
-          secretName: kacho-iam-server-tls
+          secretName: kaname-server-tls
           items:
             - key: ca.crt
               path: ca.crt
@@ -1520,8 +1520,8 @@ kratos:
       - name: kacho-identity-hooks
         mountPath: /etc/kacho-identity/hooks
         readOnly: true
-      - name: kacho-iam-internal-ca
-        mountPath: /etc/kacho-iam-ca
+      - name: kaname-internal-ca
+        mountPath: /etc/kaname-ca
         readOnly: true
   # ─── ПОЧТОВЫЙ ПРОЦЕСС ЧИТАЕТ ТО ЖЕ, ЧТО ОСНОВНОЙ ─────────────────────────
   #
@@ -1603,8 +1603,8 @@ hydra:
   # Sub-phase 5.5 (kacho-iam#137) — prod transport hardening for the :9092 hooks
   # listener. The OAuth2 token/refresh webhooks now go over https://…:9092 (the
   # listener runs server-tls-only) and the Hydra pod mounts the SEC-F internal-CA
-  # bundle (ca.crt of the kacho-iam-server-tls secret — no new PKI) so its webhook
-  # client trusts the kacho-iam server cert. HMAC (X-Kacho-Hook-Token) is
+  # bundle (ca.crt of the kaname-server-tls secret — no new PKI) so its webhook
+  # client trusts the kaname server cert. HMAC (X-Kacho-Hook-Token) is
   # UNCHANGED — only the transport scheme moves http→https. (Kratos provision-URL
   # routing is OUT OF SCOPE here — tracked as kacho-deploy#91.)
   # Hydra OAuth2 webhook config (under the subchart's nested `hydra.config` key).
@@ -1728,7 +1728,7 @@ hydra:
         id_token: 15m
         auth_code: 1m
       oauth2:
-        # token/refresh webhooks → https on the kacho-iam-internal Service :9092
+        # token/refresh webhooks → https on the kaname-internal Service :9092
         # HTTP hooks listener (NOT the gRPC :9091). api_key HMAC header unchanged.
         #
         # ─── ВЕЛИЧИНА УЧЁТНЫХ ДАННЫХ ЗДЕСЬ ПУСТА НАМЕРЕННО (задача #948) ──────
@@ -1755,7 +1755,7 @@ hydra:
         # templates/identity-callback-credential-guard.yaml роняет рендер с
         # текстом, называющим ручку.
         token_hook:
-          url: "https://kacho-iam-internal.kacho.svc:9092/iam/v1/hooks/token"
+          url: "https://kaname-internal.kacho.svc:9092/iam/v1/hooks/token"
           auth:
             type: api_key
             config:
@@ -1763,7 +1763,7 @@ hydra:
               name: X-Kacho-Hook-Token
               value: ""
         refresh_token_hook:
-          url: "https://kacho-iam-internal.kacho.svc:9092/iam/v1/hooks/refresh"
+          url: "https://kaname-internal.kacho.svc:9092/iam/v1/hooks/refresh"
           auth:
             type: api_key
             config:
@@ -1882,19 +1882,19 @@ hydra:
       - name: OAUTH2_TOKEN_HOOK_AUTH_CONFIG_VALUE
         valueFrom:
           secretKeyRef:
-            name: kacho-iam-hook-token
+            name: kaname-hook-token
             key: token
       - name: OAUTH2_REFRESH_TOKEN_HOOK_AUTH_CONFIG_VALUE
         valueFrom:
           secretKeyRef:
-            name: kacho-iam-hook-token
+            name: kaname-hook-token
             key: token
       # ДОВЕРИЕ: ДОПОЛНЯЕТ
       # Тот же якорь и та же посадка, что у соседа по службе личности: под
       # проверяет лист внутреннего удостоверяющего, НЕ отказываясь от публичных
       # корней. Замещается только список ФАЙЛОВ (#1753).
       - name: SSL_CERT_FILE
-        value: /etc/kacho-iam-ca/ca.crt
+        value: /etc/kaname-ca/ca.crt
     extraVolumes:
       # Serving keypair for the ADMIN listener — потребляет его ТЕРМИНАТОР
       # (templates/hydra-admin-certificate.yaml выписывает SAN'ы соседа).
@@ -1910,11 +1910,11 @@ hydra:
         emptyDir: {}
       - name: hydra-admin-tls-cache
         emptyDir: {}
-      - name: kacho-iam-internal-ca
+      - name: kaname-internal-ca
         secret:
           # Reuse the SEC-F server secret — its ca.crt is the internal-CA bundle
-          # that signed the kacho-iam :9092 server cert (no new PKI).
-          secretName: kacho-iam-server-tls
+          # that signed the kaname :9092 server cert (no new PKI).
+          secretName: kaname-server-tls
           items:
             - key: ca.crt
               path: ca.crt
@@ -1923,14 +1923,14 @@ hydra:
     # путём, существующим ИМЕННО ПОТОМУ, что она не работает, значит пригласить
     # следующего снять терминатор, поверив ей. Секрет монтируется соседу.
     extraVolumeMounts:
-      - name: kacho-iam-internal-ca
-        mountPath: /etc/kacho-iam-ca
+      - name: kaname-internal-ca
+        mountPath: /etc/kaname-ca
         readOnly: true
 kratos-selfservice-ui:
   kratosSelfServiceUI:
     enabled: true
     # Session + CSRF cookie signing secret — operator-provisioned Secret
-    # (mirrors the kacho-iam hook-token pattern). There is NO committed default:
+    # (mirrors the kaname hook-token pattern). There is NO committed default:
     # the sub-chart FAILS render if this is unset while enabled, so a bare prod
     # install can never fall back to a git-known signing key (CWE-798). The
     # operator MUST provision this Secret out-of-band (or via external-secrets)

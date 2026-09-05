@@ -19,7 +19,7 @@
 //	                                     (здесь) — строка отравляется, а не крутится вечно;
 //	                                     сама величина приезжает из объявления и проверена
 //	                                     Test_InviteMailDrainerConfig_CarriesBothValuesSeparately
-//	                                     (services/iam/cmd/kacho-iam/invite_mail_wiring_test.go)
+//	                                     (services/iam/cmd/kaname/invite_mail_wiring_test.go)
 //	второго письма не порождается        Test_InviteMailQueue_SurvivesTheDeathOfTheProcessThatEmitted
 //	                                     (здесь) — отправка ровно одна, клетка «сдано» ровно одна,
 //	                                     и очередь ПУСТЕЕТ: непустевшая очередь и есть второе письмо

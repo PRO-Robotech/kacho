@@ -25,7 +25,7 @@ flowchart LR
   agw["api-gateway<br/>gRPC-proxy + REST"]
   subgraph cp["Control plane"]
     cmp["kacho-compute<br/>:9090 public · :9091 internal"]
-    iam["kacho-iam"]
+    iam["kaname"]
     vpc["kacho-vpc"]
     geo["kacho-geo"]
     stg["kacho-storage"]
@@ -42,7 +42,7 @@ flowchart LR
 
 | Ребро | Зачем | Тип |
 |---|---|---|
-| compute → kacho-iam | authz-Check на каждом RPC; `ProjectService.Get` (существование проекта); регистрация владения ресурсом (`RegisterResource`) | sync, request-path |
+| compute → kaname | authz-Check на каждом RPC; `ProjectService.Get` (существование проекта); регистрация владения ресурсом (`RegisterResource`) | sync, request-path |
 | compute → kacho-vpc | валидация NIC-spec (Subnet / SecurityGroup / Address); зона подсети обязана совпадать с зоной инстанса | sync, request-path |
 | compute → kacho-geo | валидация `zoneId` (`ZoneService.Get`) при Create Instance | sync, request-path |
 | compute → kacho-storage | резолв источника загрузки (образ; снимок и том источником не являются) и attach / detach тома | sync, request-path |
@@ -93,7 +93,7 @@ sequenceDiagram
   participant DB as kacho_compute
   C->>G: POST /compute/v1/instances (JWT)
   G->>H: Create + subject
-  H->>H: authz Check (kacho-iam)
+  H->>H: authz Check (kaname)
   H->>S: CreateInstanceReq
   S->>S: SYNC-валидация (имя, ресурсы, размер)
   S->>DB: INSERT operations (done=false)

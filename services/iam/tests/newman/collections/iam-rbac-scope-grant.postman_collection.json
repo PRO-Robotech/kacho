@@ -1,7 +1,7 @@
 {
   "info": {
     "_postman_id": "ad00917d-2128-595d-bcc5-0fb70d31ea1f",
-    "name": "kacho-iam / newman / iam-rbac-scope-grant",
+    "name": "kaname / newman / iam-rbac-scope-grant",
     "schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json"
   },
   "event": [

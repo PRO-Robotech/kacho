@@ -27,7 +27,7 @@ Grant-идентичность AccessBinding (5-tuple subject↔role↔resource)
 **Ограничения:**
 - Grant-идентичность (5-tuple) immutable; для смены — Delete+Create.
   Mutable метаданные (`labels`, `deletion_protection`) — через `Update`.
-- `resource_id` — opaque (cross-service id, не валидируется на kacho-iam стороне).
+- `resource_id` — opaque (cross-service id, не валидируется на kaname стороне).
 - `status`: `PENDING` (reserved) / `ACTIVE` (steady) / `REVOKED` (terminal);
   обычный Create сразу дает `ACTIVE`.
 
@@ -77,7 +77,7 @@ atomic CAS UPDATE с `WHERE status IN ('PENDING','ACTIVE')`. REVOKED irreversibl
 sequenceDiagram
     autonumber
     participant Caller as Admin / Service
-    participant IAM as kacho-iam :9090
+    participant IAM as kaname :9090
     participant Guard as authzguard
     participant FGAGate as Grant authority check
     participant DB as Postgres
@@ -316,7 +316,7 @@ go test -short -count=1 -timeout 120s \
 - **Strict-create — контракт**: повторный Create активного гранта → `ALREADY_EXISTS`
   (не silent no-op). Идемпотентность grant-retry — на стороне caller'а
   (повтор видит `ALREADY_EXISTS`, не скрытый upsert).
-- **resource_id не валидируется** — kacho-iam не знает про конкретные id
+- **resource_id не валидируется** — kaname не знает про конкретные id
   VPC/Compute ресурсов. Dangling-ref переживается (Check на удаленном
   ресурсе даёт `allowed=false`: прямого факта о нём в `relation_fact` нет).
 - **Re-grant после revoke** — partial UNIQUE `access_bindings_active_grant_uniq`

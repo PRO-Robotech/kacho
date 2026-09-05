@@ -18,7 +18,7 @@ import (
 	"github.com/PRO-Robotech/kacho/pkg/listnarrow/narrowtest"
 )
 
-// vpc публикует labels+parent в FGA register-intent, чтобы kacho-iam
+// vpc публикует labels+parent в FGA register-intent, чтобы kaname
 // материализовал resource_mirror для label-селектора. Эти use-case-тесты
 // фиксируют наблюдаемую emit-политику:
 //   - Create Subnet с labels → register intent несет labels + parent_project_id.

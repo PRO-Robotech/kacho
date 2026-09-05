@@ -14,13 +14,13 @@ import (
 )
 
 // IAMCheckClient — gRPC adapter, реализующий port `authz.CheckClient`
-// поверх `kacho-iam.InternalIAMService.Check`.
+// поверх `kaname.InternalIAMService.Check`.
 type IAMCheckClient struct {
 	cli iamv1.InternalIAMServiceClient
 }
 
 // NewIAMCheckClient создаёт adapter. conn — `*grpc.ClientConn`/`ClientConnInterface`
-// к internal-port'у kacho-iam (обычно `kacho-iam.kacho.svc:9091`).
+// к internal-port'у kaname (обычно `kaname.kacho.svc:9091`).
 func NewIAMCheckClient(conn grpc.ClientConnInterface) *IAMCheckClient {
 	return &IAMCheckClient{cli: iamv1.NewInternalIAMServiceClient(conn)}
 }

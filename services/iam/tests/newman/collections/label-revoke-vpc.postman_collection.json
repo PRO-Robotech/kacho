@@ -1,7 +1,7 @@
 {
   "info": {
     "_postman_id": "cd736210-3f8e-576a-9a58-b32b5f3a2156",
-    "name": "kacho-iam / newman / label-revoke-vpc",
+    "name": "kaname / newman / label-revoke-vpc",
     "schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json"
   },
   "event": [

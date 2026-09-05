@@ -123,7 +123,7 @@ SERVICES="
 api-gateway|api-gateway|
 compute|compute|kacho-umbrella-pg-compute
 kacho-geo|geo|kacho-umbrella-pg-geo
-kacho-iam|iam|kacho-umbrella-pg-iam
+kaname|iam|kacho-umbrella-pg-iam
 kacho-nlb|nlb|kacho-umbrella-pg-nlb
 kacho-storage|storage|kacho-umbrella-pg-storage
 registry|registry|kacho-umbrella-pg-registry

@@ -134,7 +134,7 @@ type Reconciler struct {
 // unblocks immediately — that is what stops one refused intent from silencing every
 // later intent for the same resource. But the row itself then stays undelivered
 // forever unless something re-drives it, and an undelivered registration means the
-// resource has no mirror row in kacho-iam, hence no owner tuple and no materialized
+// resource has no mirror row in kaname, hence no owner tuple and no materialized
 // verbs: invisible to authz until someone edits the database by hand. The redrive
 // is what makes poisoning a bounded pause rather than a permanent loss — on a
 // timer for the register-outboxes, on the authorization-model-change event for
@@ -179,7 +179,7 @@ func NewRedriveOnly(pool *pgxpool.Pool, cfg Config, logger *slog.Logger) (*Recon
 // partition», which stops being the same statement the moment a row carries a set.
 // Reviving past a delivered successor replays an outdated intent
 // on top of the current state — and for a register-outbox that is precisely the
-// over-grant the partition ordering exists to prevent: the target (kacho-iam's
+// over-grant the partition ordering exists to prevent: the target (kaname's
 // resource_mirror) versions only its update branch, deregistration is a hard
 // delete that keeps no tombstone, so a replayed registration finds nothing to
 // compare against, takes the insert branch and resurrects the mirror row of a

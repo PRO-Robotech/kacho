@@ -7,7 +7,7 @@
 // On Issue (private_key_jwt mode):
 //
 //  1. Generate an ECDSA P-256 keypair locally; the private half NEVER
-//     leaves kacho-iam's response and is NEVER stored in DB.
+//     leaves kaname's response and is NEVER stored in DB.
 //  2. Name the client. НА ПЕРЕВЕДЁННОМ КОНТУРЕ имя назначаем МЫ и оно совпадает
 //     с идентификатором нашей строки; к прежнему издателю обращения нет вовсе
 //     (задача #1120, разбор — `nameClient` ниже и
@@ -730,7 +730,7 @@ func (u *IssueSAKeyUseCase) hydraUnavailable(ctx context.Context, action string,
 // nameClient), persist mapping with PublicKeyPEM + KeyAlgorithm, return
 // PrivateKeyPEM exactly once.
 func (u *IssueSAKeyUseCase) doIssuePrivateKeyJWT(ctx context.Context, keyID domain.SAOAuthClientID, in IssueInput, actor string) (*anypb.Any, error) {
-	// 1. Mint ECDSA P-256 keypair locally. The JWK `kid` is the kacho-iam
+	// 1. Mint ECDSA P-256 keypair locally. The JWK `kid` is the kaname
 	//    SA-OAuth-client id (`soc_*`) so caller→Hydra assertions are
 	//    self-describing.
 	key, err := generateES256Key(string(keyID))
@@ -1040,7 +1040,7 @@ func (u *IssueSAKeyUseCase) doIssueFederated(ctx context.Context, keyID domain.S
 		Description:     domain.Description(in.Description),
 		CreatedByUserID: domain.UserID(in.CreatedByUserID),
 		// PublicKeyPEM + KeyAlgorithm intentionally empty — no key
-		// material in kacho-iam for federated rows.
+		// material in kaname for federated rows.
 		TrustedSubjects: append([]domain.TrustedSubject(nil), in.TrustedSubjects...),
 		Name:            domain.OAuthClientName(in.Name),
 		Labels:          in.Labels,
@@ -1225,7 +1225,7 @@ func (u *IssueSAKeyUseCase) commitMapping(ctx context.Context, row domain.Servic
 
 // ───────────────── Revoke use-case ─────────────────
 
-// RevokeSAKeyUseCase deletes both the kacho-iam mapping row and the Hydra
+// RevokeSAKeyUseCase deletes both the kaname mapping row and the Hydra
 // OAuth2 client.
 type RevokeSAKeyUseCase struct {
 	repo    SAClientRepo

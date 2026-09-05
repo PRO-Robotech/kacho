@@ -43,7 +43,7 @@ type IdentityQuotaRepo struct {
 	pool *pgxpool.Pool
 }
 
-// NewIdentityQuotaRepo — constructor. Composition root: cmd/kacho-iam/wiring.go.
+// NewIdentityQuotaRepo — constructor. Composition root: cmd/kaname/wiring.go.
 func NewIdentityQuotaRepo(pool *pgxpool.Pool) *IdentityQuotaRepo {
 	return &IdentityQuotaRepo{pool: pool}
 }

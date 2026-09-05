@@ -14,7 +14,7 @@
 //  4. Allow.
 //
 // Clean Architecture: domain.* + port-ifaces only. Adapter wiring lives in
-// cmd/kacho-iam/main.go.
+// cmd/kaname/main.go.
 //
 // The OPA guardrail overlay step (`data.kacho.iam.guardrails.deny`) was removed.
 // FGA is the sole policy gate; the OPA sidecar and bundle wiring are gone.

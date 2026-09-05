@@ -1,9 +1,9 @@
 # Copyright (c) PRO-Robotech
 # SPDX-License-Identifier: AGPL-3.0-or-later
 
-name: iam
+name: kaname
 replicas: 1
-image: kacho-iam:dev
+image: kaname:dev
 imagePullPolicy: IfNotPresent
 ports:
   grpc: 9090
@@ -20,7 +20,7 @@ db:
   passwordSecretKey: password
 
 # ─── Config sections (viper YAML, parity с kacho-vpc) ───────────────────
-# Все ключи ниже рендерятся в /etc/kacho-iam/config.yaml через
+# Все ключи ниже рендерятся в /etc/kaname/config.yaml через
 # deploy/templates/configmap.yaml. Любой ключ можно override через
 # ENV KACHO_IAM_<SECTION>__<KEY>=... (см. internal/apps/kacho/config).
 logger:
@@ -54,7 +54,7 @@ apiServer:
 repository:
   postgres:
     # Ширина пула на ОДНУ реплику. Число обязано совпадать с тем, что объявляет
-    # вендоренный чарт умбреллы (deploy/helm/umbrella/charts/kacho-iam) — там же
+    # вендоренный чарт умбреллы (deploy/helm/umbrella/charts/kaname) — там же
     # лежит и его обоснование арифметикой предела базы.
     #
     # ЭТОТ ЧАРТ НЕ УСТАНАВЛИВАЕТ НИ ОДИН СТЕК (deploy/stacks.txt), поэтому его
@@ -93,8 +93,8 @@ env: {}
 # сговор с провайдером личности и ключ обёртки ключницы непустыми.
 #
 #   secrets:
-#     KACHO_IAM_HOOK_TOKEN:   { secretName: kacho-iam-authn, secretKey: hook-shared-secret }
-#     KACHO_IAM_JWKS_ENC_KEY: { secretName: kacho-iam-authn, secretKey: jwks-encryption-key-hex }
+#     KACHO_IAM_HOOK_TOKEN:   { secretName: kaname-authn, secretKey: hook-shared-secret }
+#     KACHO_IAM_JWKS_ENC_KEY: { secretName: kaname-authn, secretKey: jwks-encryption-key-hex }
 secrets: {}
 
 # ── МАТЕРИАЛ TLS СЛУШАТЕЛЕЙ ─────────────────────────────────────────────────
@@ -104,7 +104,7 @@ secrets: {}
 # боевой посадки.
 tls:
   secretName: ""
-  mountPath: /etc/kacho-iam/tls
+  mountPath: /etc/kaname/tls
 
 # ── ПОСАДКА ЛИЧНОСТИ И КРУГ ОТПРАВИТЕЛЕЙ ────────────────────────────────────
 # Обе величины умолчания НЕ ИМЕЮТ намеренно: пустой круг означает «доверяем

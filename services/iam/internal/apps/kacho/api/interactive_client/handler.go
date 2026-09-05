@@ -26,7 +26,7 @@ type Handler struct {
 	del    *DeleteUseCase
 }
 
-// NewHandler assembles the Handler. Composition root: cmd/kacho-iam/wiring.go.
+// NewHandler assembles the Handler. Composition root: cmd/kaname/wiring.go.
 func NewHandler(g *GetUseCase, l *ListUseCase, c *CreateUseCase, u *UpdateUseCase, d *DeleteUseCase) *Handler {
 	return &Handler{get: g, list: l, create: c, update: u, del: d}
 }

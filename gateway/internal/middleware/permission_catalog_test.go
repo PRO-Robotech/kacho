@@ -289,7 +289,7 @@ func TestPermissionCatalog_LookupKnownEntries_FromEmbed(t *testing.T) {
 	// The three AuthorizeService reads that answer "may X do Y to Z" and
 	// "who can reach Z" declare the scope-filtered lane: the subject arrives
 	// as an ARN and the resource as a nested ref carrying its own type, so the edge
-	// can build no object at all. kacho-iam decides — self-query, cluster
+	// can build no object at all. kaname decides — self-query, cluster
 	// administrator, or `admin` on the resource actually named.
 	//
 	// A fourth read used to stand here — "what can X reach". It is gone from the

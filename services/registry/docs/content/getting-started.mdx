@@ -20,7 +20,7 @@ Go-тулчейн (для сборки из исходников), доступ�
 подставьте свой). Data-plane — через host `registry.kacho.local` (ingress/port-forward).
 
 Control-plane-примеры подставляют ваше удостоверение вместо `<JWT>`; для `docker login` нужен
-**базовый токен доступа** (шаг 5). Удостоверения ещё нет? Путь от учётной записи до строки, которую кладут в `Authorization: Bearer`, описан страницей «Первое удостоверение» документации kacho-iam.
+**базовый токен доступа** (шаг 5). Удостоверения ещё нет? Путь от учётной записи до строки, которую кладут в `Authorization: Bearer`, описан страницей «Первое удостоверение» документации kaname.
 :::
 
 ## 1. Собрать сервис и мигратор
@@ -73,7 +73,7 @@ admin gRPC (`:9091`) и data-plane OCI-листенер (`:8080`, за host `reg
 </CodeBlock>
 
 В dev-режиме (по умолчанию `KACHO_REGISTRY_AUTH_MODE=dev`) сервис может стартовать без mTLS.
-В production обязательны mTLS на обоих gRPC-listener'ах, сконфигурированный адрес kacho-iam для
+В production обязательны mTLS на обоих gRPC-listener'ах, сконфигурированный адрес kaname для
 per-RPC Check, а для data-plane — https-JWKS, pinned issuer и подтверждённая внешняя TLS-терминация;
 иначе сервис откажется стартовать. Детали — [Конфигурация](/install/configuration).
 
@@ -141,7 +141,7 @@ per-RPC Check, а для data-plane — https-JWKS, pinned issuer и подтв�
 
 Data-plane аутентифицирует клиента по identity-JWT (Bearer). `docker login` при первом
 push/pull сам сходит за токеном по `WWW-Authenticate`-realm: предъявляет **базовый токен
-доступа** token-шиму kacho-iam (`/iam/token`), шим выпускает identity-JWT, docker предъявляет
+доступа** token-шиму kaname (`/iam/token`), шим выпускает identity-JWT, docker предъявляет
 его data-plane.
 
 <CodeBlock language="bash">
@@ -160,7 +160,7 @@ push/pull сам сходит за токеном по `WWW-Authenticate`-realm:
 Для CI/CD доступ в реестр выдаётся сервис-аккаунту (SA). Удостоверение выпускается в IAM
 (`SAKeyService.Issue` с видом `CREDENTIAL_KIND_SECRET`, одноразовая строка при создании), а
 нужный доступ к реестру — grant роли на реестр/проект. Виды удостоверений описаны страницей
-«Токены и удостоверения» документации kacho-iam; о токен-обмене —
+«Токены и удостоверения» документации kaname; о токен-обмене —
 [Data-plane](/architecture/data-plane).
 :::
 

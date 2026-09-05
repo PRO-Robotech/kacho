@@ -102,10 +102,10 @@ kubeconfig*
 deploy/helm/*/charts
 # бинари сервисов от локального `go build` — имя совпадает с именем каталога
 /bin
-/kacho-iam
+/kaname
 services/*/vpc
 services/*/compute
-services/*/kacho-iam
+services/*/kaname
 gateway/bin
 # кэш инкрементальной сборки TypeScript
 **/*.tsbuildinfo

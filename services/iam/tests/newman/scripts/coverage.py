@@ -4,7 +4,7 @@
 # SPDX-License-Identifier: AGPL-3.0-or-later
 
 """
-coverage.py — newman RPC→case-id coverage gate for kacho-iam.
+coverage.py — newman RPC→case-id coverage gate for kaname.
 
 Parses kacho-proto IAM .proto files for `service X { rpc Y(...) ... }` blocks
 and their `option (google.api.http) = { <verb>: "<path>" … };` annotations,

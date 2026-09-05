@@ -3,7 +3,7 @@
 ## Назначение
 
 **User** — mirror identity-сущности из внешнего IdP (Ory Kratos). В Kachō
-у User'а нет паролей и MFA-настроек — этим занимается IdP. Сервис `kacho-iam`
+у User'а нет паролей и MFA-настроек — этим занимается IdP. Сервис `kaname`
 хранит только то, что нужно для авторизации и audit'a: `external_id` (subject
 из OIDC-токена), `email`, `display_name`, `account_id`, `invite_status`.
 
@@ -64,7 +64,7 @@ sequenceDiagram
     autonumber
     participant Admin as Tenant admin
     participant GW as api-gateway
-    participant IAM as kacho-iam :9090
+    participant IAM as kaname :9090
     participant DB as Postgres
     participant Kratos as Kratos
     participant Invitee as Invitee inbox
@@ -106,7 +106,7 @@ sequenceDiagram
     participant User as Browser
     participant GW as api-gateway
     participant Ory
-    participant IAM as kacho-iam :9091
+    participant IAM as kaname :9091
     participant DB as Postgres
 
     User->>Ory: OIDC login (first time)

@@ -19,7 +19,7 @@ import (
 )
 
 // Project — единый cross-service existence-check владельца-Project через
-// ProjectClient (kacho-iam ProjectService.Get). Раньше был byte-for-byte
+// ProjectClient (kaname ProjectService.Get). Раньше был byte-for-byte
 // продублирован в instance/image/disk (метод `checkFolder`) + inline в snapshot;
 // сведён в один helper (rule 11), чтобы маппинг (peer-недоступен → Unavailable,
 // не-найдено → NotFound) не расходился между ресурсами.

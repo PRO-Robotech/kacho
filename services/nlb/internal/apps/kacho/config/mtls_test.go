@@ -65,13 +65,13 @@ func TestMTLS_SECD17_EnabledClientCredsBuild(t *testing.T) {
 	t.Setenv("KACHO_NLB_MTLS__IAM-REGISTER__CERTFILE", certFile)
 	t.Setenv("KACHO_NLB_MTLS__IAM-REGISTER__KEYFILE", keyFile)
 	t.Setenv("KACHO_NLB_MTLS__IAM-REGISTER__CAFILES", caFile)
-	t.Setenv("KACHO_NLB_MTLS__IAM-REGISTER__SERVERNAME", "kacho-iam.kacho.svc")
+	t.Setenv("KACHO_NLB_MTLS__IAM-REGISTER__SERVERNAME", "kaname.kacho.svc")
 
 	cfg, err := config.Load("")
 	require.NoError(t, err)
 	require.True(t, cfg.MTLS.IAMRegister.Enable)
 	require.Equal(t, certFile, cfg.MTLS.IAMRegister.CertFile)
-	require.Equal(t, "kacho-iam.kacho.svc", cfg.MTLS.IAMRegister.ServerName)
+	require.Equal(t, "kaname.kacho.svc", cfg.MTLS.IAMRegister.ServerName)
 
 	opt, err := grpcclient.TLSClientCreds(cfg.MTLS.IAMRegister)
 	require.NoError(t, err)

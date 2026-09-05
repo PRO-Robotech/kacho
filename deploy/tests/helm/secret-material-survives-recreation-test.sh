@@ -281,16 +281,16 @@ self_test() {
 #!/usr/bin/env bash
 NS=kacho
 ENC_KEY="$(openssl rand -hex 32)"
-kubectl -n "$NS" create secret generic kacho-iam-jwks-enc-key \
+kubectl -n "$NS" create secret generic kaname-jwks-enc-key \
   --from-literal=enc_key="$ENC_KEY" \
   --dry-run=client -o yaml | kubectl apply -f - >/dev/null
 HOOK_TOKEN="$(openssl rand -hex 24)"
-kubectl -n "$NS" create secret generic kacho-iam-hook-token \
+kubectl -n "$NS" create secret generic kaname-hook-token \
   --from-literal=token="$HOOK_TOKEN" \
   --dry-run=client -o yaml | kubectl apply -f - >/dev/null
 INJ
   out="$(verdict "$tmp/a" | grep -v '^#' || true)"
-  if [[ "$out" == *"kacho-iam-jwks-enc-key"* && "$out" == *"НЕ ПЕРЕЖИВАЕТ"* ]]; then
+  if [[ "$out" == *"kaname-jwks-enc-key"* && "$out" == *"НЕ ПЕРЕЖИВАЕТ"* ]]; then
     echo "  (A) ключ обёртки создаётся безусловно      → КРАСНЫЙ с координатой"
   else echo "  (A) ключ обёртки создаётся безусловно      → ПРОПУСТИЛ: $out"; rc=1; fi
 
@@ -301,11 +301,11 @@ INJ
   cat > "$tmp/b/dev-prod-secrets.sh" <<'INJ'
 #!/usr/bin/env bash
 NS=kacho
-if kubectl -n "$NS" get secret kacho-iam-jwks-enc-key >/dev/null 2>&1; then
+if kubectl -n "$NS" get secret kaname-jwks-enc-key >/dev/null 2>&1; then
   echo reusing
 else
   ENC_KEY="$(openssl rand -hex 32)"
-  kubectl -n "$NS" create secret generic kacho-iam-jwks-enc-key \
+  kubectl -n "$NS" create secret generic kaname-jwks-enc-key \
     --from-literal=enc_key="$ENC_KEY" \
     --dry-run=client -o yaml | kubectl apply -f - >/dev/null
 fi
@@ -389,12 +389,12 @@ INJ
   cat > "$tmp/g/dev-prod-secrets.sh" <<'INJ'
 #!/usr/bin/env bash
 NS=kacho
-NAME=kacho-iam-jwks-enc-key
+NAME=kaname-jwks-enc-key
 kubectl -n "$NS" create secret generic "$NAME" \
   --from-literal=enc_key="$(openssl rand -hex 32)" \
   --dry-run=client -o yaml | kubectl apply -f - >/dev/null
 HOOK_TOKEN="$(openssl rand -hex 24)"
-kubectl -n "$NS" create secret generic kacho-iam-hook-token \
+kubectl -n "$NS" create secret generic kaname-hook-token \
   --from-literal=token="$HOOK_TOKEN" \
   --dry-run=client -o yaml | kubectl apply -f - >/dev/null
 INJ

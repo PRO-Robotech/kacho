@@ -34,7 +34,7 @@ CRUD fixture dependency:
 
 Operation envelope:
   All mutations return `operation.Operation` with id prefix `iop`.
-  Poll hits /operations/{id} via OpsProxy (iop* → kacho-iam).
+  Poll hits /operations/{id} via OpsProxy (iop* → kaname).
 
 Gotchas:
   - AddMember with non-existent user/SA → FailedPrecondition (9) via
@@ -80,7 +80,7 @@ Acceptance scenarios:
 
 Test-first note (strict TDD):
   These cases are written RED-first. They will fail until the corresponding
-  GroupService RPCs are correctly implemented in kacho-iam. Do not weaken
+  GroupService RPCs are correctly implemented in kaname. Do not weaken
   assertions — fix the implementation instead.
 """
 

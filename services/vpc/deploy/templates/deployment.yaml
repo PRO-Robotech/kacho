@@ -68,7 +68,7 @@ spec:
         kacho.cloud/opa-config-checksum: {{ include (print $.Template.BasePath "/opa-configmap.yaml") . | sha256sum }}
         {{- end }}
     spec:
-      # INFRA sec-hardening (2026-07-16) — единый floor, идентичный kacho-iam.
+      # INFRA sec-hardening (2026-07-16) — единый floor, идентичный kaname.
       securityContext:
         {{- toYaml .Values.podSecurityContext | nindent 8 }}
       volumes:
@@ -89,7 +89,7 @@ spec:
             secretName: {{ .Values.mtls.clientSecretName | quote }}
         {{- end }}
         {{- if .Values.opa.enabled }}
-        # OPA sidecar для guardrails. Bundle подтягивается с kacho-iam Internal :9091
+        # OPA sidecar для guardrails. Bundle подтягивается с kaname Internal :9091
         # + signed JWS verification.
         - name: opa-config
           configMap:
@@ -199,7 +199,7 @@ spec:
             {{- if .Values.mtls.edges.iamProject }}
             # vpc→iam ProjectService.Get (existence/leaf-owner) client-creds —
             # grpcclient.TLSClient. Reuses the SAME already-mounted client secret
-            # ($cli = kacho-vpc-client-tls); ServerName = kacho-iam (:9090 dial-host).
+            # ($cli = kacho-vpc-client-tls); ServerName = kaname (:9090 dial-host).
             - name: KACHO_VPC_IAM_PROJECT_MTLS_ENABLE
               value: "true"
             - name: KACHO_VPC_IAM_PROJECT_MTLS_CERTFILE
@@ -214,7 +214,7 @@ spec:
             {{- if .Values.mtls.edges.iamAuthz }}
             # vpc→iam InternalIAMService.Check (per-RPC authz gate +
             # project-level list-filter — one conn) client-creds. Reuses the SAME
-            # $cli secret; ServerName = kacho-iam-internal (:9091 dial-host).
+            # $cli secret; ServerName = kaname-internal (:9091 dial-host).
             - name: KACHO_VPC_IAM_AUTHZ_MTLS_ENABLE
               value: "true"
             - name: KACHO_VPC_IAM_AUTHZ_MTLS_CERTFILE
@@ -277,13 +277,13 @@ spec:
         {{- if .Values.opa.enabled }}
         # OPA sidecar.
         #
-        # Pull-mode: signed bundle from kacho-iam Internal :9091 endpoint
-        # `/v1/bundles/kacho-iam-guardrails`. Decision logs → stdout
+        # Pull-mode: signed bundle from kaname Internal :9091 endpoint
+        # `/v1/bundles/kaname-guardrails`. Decision logs → stdout
         # (`decision_logs.console=true`).
         #
         # Sidecar accessible from kacho-vpc on localhost:{{ .Values.opa.port }} for OPA-based
         # checks beyond FGA (rate-limit guardrails, complex conditions); FGA-filtered
-        # List handlers использует kacho-iam AuthorizeService directly, не OPA.
+        # List handlers использует kaname AuthorizeService directly, не OPA.
         - name: opa
           image: "{{ .Values.opa.image }}"
           imagePullPolicy: {{ .Values.opa.imagePullPolicy }}

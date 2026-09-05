@@ -171,7 +171,7 @@ api-gateway:
   authMode: production-strict
   # ─── Объявление приёма токена (Ф1б, задача #926) — НЕ ОБЪЯВЛЕНО НАМЕРЕННО
   #
-  # Своя чеканка на этой фазе стенда не включена (см. kacho-iam ниже: блока
+  # Своя чеканка на этой фазе стенда не включена (см. kaname ниже: блока
   # tokenSigning здесь нет вовсе), поэтому принимать нашего издателя краю
   # нечего, и объявлять перечень не требуется.
   #
@@ -237,8 +237,8 @@ api-gateway:
     vpcInternal: vpc.kacho.svc:9091
     compute: compute.kacho.svc:9090
     computeInternal: compute.kacho.svc:9091
-    iam: kacho-iam.kacho.svc:9090
-    iamInternal: kacho-iam-internal.kacho.svc:9091
+    iam: kaname.kacho.svc:9090
+    iamInternal: kaname-internal.kacho.svc:9091
     nlb: kacho-nlb.kacho.svc:9090
     nlbInternal: kacho-nlb-internal.kacho.svc:9091
     # registry Service is `registry` / `registry-internal` (registry chart .Values.name),
@@ -327,7 +327,7 @@ api-gateway:
     # runs production posture — where the gateway refuses to start without both.
     #
     # Same in-cluster Service the identity service already uses for its own
-    # admin calls (kacho-iam.hydraAdminUrl below). Never routed outside.
+    # admin calls (kaname.hydraAdminUrl below). Never routed outside.
     introspectionUrl: "http://kacho-umbrella-hydra-admin.kacho.svc:4445/admin/oauth2/introspect"
     adminUrl: "http://kacho-umbrella-hydra-admin.kacho.svc:4445"
 
@@ -403,15 +403,15 @@ compute:
       geo: true        # compute→geo zone_id validation (geo cutover, kacho-workspace#82)
       storage: true    # compute→storage InternalVolumeService (attach/detach) over mTLS;
                        # serverName.storage chart default kacho-storage.kacho.svc ∈ storage SAN
-  # KAC-178 follow-up: compute authzIam.grpcAddr дефолт `kacho-iam:9091` в
-  # kacho-compute/deploy/values.yaml неверный — Service `kacho-iam`
+  # KAC-178 follow-up: compute authzIam.grpcAddr дефолт `kaname:9091` в
+  # kacho-compute/deploy/values.yaml неверный — Service `kaname`
   # экспонирует только port 9090 (public AuthorizeService);
-  # `InternalIAMService.Check` живёт на `kacho-iam-internal:9091`. Без этого
+  # `InternalIAMService.Check` живёт на `kaname-internal:9091`. Без этого
   # override compute per-RPC authz interceptor бил в closed port → i/o
   # timeout → "authorization service unavailable" на каждом list/get RPC
   # (instances/disks/images/snapshots, и т.п.).
   authzIam:
-    grpcAddr: kacho-iam-internal.kacho.svc:9091
+    grpcAddr: kaname-internal.kacho.svc:9091
 
 # ─── kacho-storage — Storage control-plane (Volume/Snapshot/Image/DiskType) ───
 # Enabled for the dev/newman stand. Base values.yaml keeps it OFF and pins the
@@ -433,8 +433,8 @@ storage:
     pullPolicy: IfNotPresent
   config:
     geoGrpcAddr: kacho-geo.kacho.svc:9090        # storage→geo ZoneService.Get (zone_id), :9090
-    iamGrpcAddr: kacho-iam.kacho.svc:9090        # storage→iam ProjectService.Get, :9090
-    authzIamGrpcAddr: kacho-iam-internal.kacho.svc:9091  # per-RPC Check + RegisterResource, :9091
+    iamGrpcAddr: kaname.kacho.svc:9090        # storage→iam ProjectService.Get, :9090
+    authzIamGrpcAddr: kaname-internal.kacho.svc:9091  # per-RPC Check + RegisterResource, :9091
     # Materialize owner-tuples so gateway scope_extractors {storage_volume,volume_id}/
     # {storage_snapshot,snapshot_id} resolve target→project (own-resource authz).
     # Requires authzIamGrpcAddr + mtls.edges.iam + iam seed 0057_storage_sa_least_priv.
@@ -446,7 +446,7 @@ storage:
     passwordSecretName: kacho-umbrella-pg-storage
     passwordSecretKey: password
   # server-mTLS both listeners + client-mTLS storage→{geo,iam}. serverName.geo/iam
-  # chart defaults (kacho-geo… / kacho-iam.kacho.svc) are in the peer SANs.
+  # chart defaults (kacho-geo… / kaname.kacho.svc) are in the peer SANs.
   mtls:
     enable: true
     edges:
@@ -670,11 +670,11 @@ vpc:
     # matrix *-LS-*-EMPTY scope-filter cases.
     listFilter:
       enabled: true
-      authorizeEndpoint: kacho-iam.kacho.svc:9090
+      authorizeEndpoint: kaname.kacho.svc:9090
 
 # ─── KAC-105: IAM stack (sub-phase 2.0) ─────────────────────────────────
 # Отдельные Postgres-инстансы (запрет #8: database-per-service):
-#   pg-iam      → kacho-iam (схема kacho_iam)
+#   pg-iam      → kaname (схема kacho_iam)
 # В dev — emptyDir (без persistence), небольшие resource-лимиты.
 # KAC-127: pg-zitadel удалён — auth-tier (identity/OIDC) на Ory (Kratos/Hydra).
 
@@ -810,7 +810,7 @@ pg-nlb:
       repository: bitnamilegacy/os-shell
 
 # KAC-127: Zitadel chart + конфиг удалены — auth-tier (identity/OIDC) на Ory
-# Kratos + Hydra. OIDC issuer для kacho-iam теперь Hydra.
+# Kratos + Hydra. OIDC issuer для kaname теперь Hydra.
 
 # KAC-115: Ory stack — Kratos (identity) + Hydra (OIDC) + Keto (REBAC).
 # Включаются вместо Zitadel через overrides.yaml.
@@ -857,7 +857,7 @@ kratos:
   deployment:
     # ─── КОНФИГУРАЦИЯ ДОЛЖНА ДОЕЗЖАТЬ ДО ПРОЦЕССА, А НЕ ТОЛЬКО РЕНДЕРИТЬСЯ ─────
     #
-    # Карты настроек `kacho-iam-kratos-{config,hooks,identity-schema}` собирает
+    # Карты настроек `kaname-kratos-{config,hooks,identity-schema}` собирает
     # наш подчарт, и до этой провязки их НИКТО не монтировал: служба личности
     # работала на СОКРАЩЁННОЙ конфигурации подчарта поставщика (перечень её
     # разделов здесь не воспроизводится — он был бы вторым местом об одном
@@ -976,7 +976,7 @@ kratos:
     extraVolumes:
       - name: kacho-identity-config
         configMap:
-          name: kacho-iam-kratos-config
+          name: kaname-kratos-config
       # Отрендеренная конфигурация: её пишет init-контейнер, читает процесс.
       # Том пода, а не карта настроек, — величина обратного вызова не обязана
       # существовать нигде, кроме памяти этих двух контейнеров.
@@ -984,10 +984,10 @@ kratos:
         emptyDir: {}
       - name: kacho-identity-hooks
         configMap:
-          name: kacho-iam-kratos-hooks
+          name: kaname-kratos-hooks
       - name: kacho-identity-schema
         configMap:
-          name: kacho-iam-kratos-identity-schema
+          name: kaname-kratos-identity-schema
       # Якорь проверки сертификата почтового узла. Проецируется ОДИН ключ:
       # секрет несёт ещё и закрытый ключ приёмника, а он службе личности не
       # нужен ни для чего. Ключ, смонтированный «за компанию», — это доступ,
@@ -1074,7 +1074,7 @@ kratos:
         # получает ДВА файла настроек и сливает их по порядку; наш идёт ВТОРЫМ, а
         # список под общим ключом не дополняется — он ЗАМЕЩАЕТСЯ целиком. Значит
         # действует ОДНА запись из тела продукта
-        # (charts/kacho-iam/templates/_kratos-identity.tpl), а эти десять —
+        # (charts/kaname/templates/_kratos-identity.tpl), а эти десять —
         # умолчание, которое к процессу не относится.
         #
         # Сужение решено и записано: решение и его цена — в ведомости
@@ -1096,7 +1096,7 @@ kratos:
         # ─── МЕТОДЫ ВХОДА ЗДЕСЬ НЕ ОБЪЯВЛЯЮТСЯ (#1213) ────────────────────────
         #
         # Здесь стоял перечень методов, и он ПРОТИВОРЕЧИЛ единственному
-        # объявлению продукта (`charts/kacho-iam/templates/_kratos-identity.tpl`):
+        # объявлению продукта (`charts/kaname/templates/_kratos-identity.tpl`):
         # там одноразовый код по времени включён, здесь — выключен. Процесс
         # получает оба файла и сливает их по порядку, то есть какая из двух
         # величин победит, решал ПОРЯДОК, которого никто не выбирал.
@@ -1189,7 +1189,7 @@ kratos:
 # KAC-127 Phase 2 — Hydra OAuth 2.1 + DPoP + mTLS-bound + JWT-strategy.
 # Acceptance §5.2: refresh rotation (force-rotate, 1s race window), PKCE mandatory,
 # Implicit + ROPC grants disabled, TTLs (access 15min / refresh 30d / id 15min / auth_code 1min),
-# JWT signing (RS256 / ES256 / EdDSA), token_hook + refresh_hook → kacho-iam :9091.
+# JWT signing (RS256 / ES256 / EdDSA), token_hook + refresh_hook → kaname :9091.
 #
 # Dev-стенд (kind, kacho.local) — `enabled: false` по умолчанию; включается через
 # overrides.yaml в clusters/<cluster>/. URLs используют intentional dev-IP
@@ -1327,10 +1327,10 @@ hydra:
         #   - mTLS (RFC 8705)   — через client `tls_client_auth_*` /
         #     `tls_client_certificate_bound_access_tokens`.
         # Acceptance §6.4/§6.5 — enforcement переезжает на per-client регистрацию
-        # (см. kacho-iam client-bootstrap); глобального config-knob нет.
-        # token_hook + refresh_hook → kacho-iam HTTP hooks listener (acceptance §5.4).
+        # (см. kaname client-bootstrap); глобального config-knob нет.
+        # token_hook + refresh_hook → kaname HTTP hooks listener (acceptance §5.4).
         # KAC-127 (deploy#39): URL исправлен — webhook'и обслуживает HTTP-listener
-        # на :9092 Service'а `kacho-iam-internal` (НЕ gRPC :9091 на `kacho-iam`).
+        # на :9092 Service'а `kaname-internal` (НЕ gRPC :9091 на `kaname`).
         #
         # ─── ВЕЛИЧИНА УЧЁТНЫХ ДАННЫХ ПУСТА НАМЕРЕННО (задача #948) ────────────
         #
@@ -1353,7 +1353,7 @@ hydra:
         # никогда не читается как рабочее — в отличие от ссылки, обещающей
         # подстановку, которой не будет.
         token_hook:
-          url: "http://kacho-iam-internal.kacho.svc:9092/iam/v1/hooks/token"
+          url: "http://kaname-internal.kacho.svc:9092/iam/v1/hooks/token"
           auth:
             type: api_key
             config:
@@ -1361,7 +1361,7 @@ hydra:
               name: X-Kacho-Hook-Token
               value: ""
         refresh_token_hook:
-          url: "http://kacho-iam-internal.kacho.svc:9092/iam/v1/hooks/refresh"
+          url: "http://kaname-internal.kacho.svc:9092/iam/v1/hooks/refresh"
           auth:
             type: api_key
             config:
@@ -1410,12 +1410,12 @@ hydra:
       - name: OAUTH2_TOKEN_HOOK_AUTH_CONFIG_VALUE
         valueFrom:
           secretKeyRef:
-            name: kacho-iam-hook-token
+            name: kaname-hook-token
             key: token
       - name: OAUTH2_REFRESH_TOKEN_HOOK_AUTH_CONFIG_VALUE
         valueFrom:
           secretKeyRef:
-            name: kacho-iam-hook-token
+            name: kaname-hook-token
             key: token
 
   # Phase 3c — Federation OUT: public Hydra ingress for external IdP federation.
@@ -1486,9 +1486,9 @@ kratos-selfservice-ui:
 # KAC-127: zitadelOidcBootstrap удалён — identity/OIDC tier перешёл на Ory
 # Kratos + Hydra (см. секции pg-kratos / pg-hydra выше).
 
-# kacho-iam — control-plane сервис IAM (Account / Project / User / ServiceAccount /
+# kaname — control-plane сервис IAM (Account / Project / User / ServiceAccount /
 # Group / Role / AccessBinding). E0 — skeleton + CRUD; интеграция с Ory — E2/E3.
-kacho-iam:
+kaname:
   # ПОСАДКА БЕЗОПАСНОСТИ — один адрес на весь флот (прежний: config.authn.mode).
   authMode: dev
   # ── ДОСТАВКА МАНИФЕСТОВ МОДУЛЕЙ (kacho#1901) ──────────────────────────────
@@ -1511,7 +1511,7 @@ kacho-iam:
   manifests:
     configMapName: kacho-module-manifests
     required: true
-  name: kacho-iam
+  name: kaname
   replicas: 1
   # In-cluster Hydra ADMIN URL override (deep-merges over the sub-chart's kacho.iam
   # defaults). Without it ResolveHydraAdminURL() derives `https://hydra-admin.api.kacho.cloud`
@@ -1525,7 +1525,7 @@ kacho-iam:
   mtls:
     enable: true
   image:
-    repository: kacho-iam
+    repository: kaname
     tag: dev
     pullPolicy: IfNotPresent
   ports:
@@ -1636,7 +1636,7 @@ kacho-iam:
     # ListObjects to resolve the caller's allowed-id set; without this the RPC
     # returns Unimplemented and the handler-side scope-filter fails 503.
     KACHO_AUTHZ_LISTOBJECTS: "on"
-    # Bug B fix: bootstrap cluster-admin. kacho-iam's startup reconciler grants
+    # Bug B fix: bootstrap cluster-admin. kaname's startup reconciler grants
     # `system_admin@cluster_kacho_root` to this user and enqueues the FGA tuple
     # via the transactional fga_outbox (replacing the former setup.sh SQL-seed
     # backdoor that bypassed the drainer). The user row is mirrored on first
@@ -1644,20 +1644,20 @@ kacho-iam:
     # authz-fixtures bootstrap user is admin@prorobotech.ru.
     KACHO_IAM_BOOTSTRAP_ROOT_EMAIL: "admin@prorobotech.ru"
   # KAC-127 Phase 3: OPA sidecar config propagated from umbrella to sub-chart.
-  # KAC-127 (deploy#39 fix): включён — kacho-iam отдаёт OPA-bundle по HTTP на
+  # KAC-127 (deploy#39 fix): включён — kaname отдаёт OPA-bundle по HTTP на
   # :9092; см. комментарий у top-level `opaSidecar` ниже.
-  # OPA sidecar config — read by the kacho-iam sub-chart (deployment.yaml injects
-  # the sidecar; the opa/jwks ConfigMaps now live in charts/kacho-iam/templates/).
+  # OPA sidecar config — read by the kaname sub-chart (deployment.yaml injects
+  # the sidecar; the opa/jwks ConfigMaps now live in charts/kaname/templates/).
   # Disabled in dev (the OPA bundle-over-HTTP delivery on :9092 is wired but the
-  # sidecar is off until the bundle pipeline is finalized — see kacho-iam chart).
+  # sidecar is off until the bundle pipeline is finalized — see kaname chart).
   opaSidecar:
     enabled: false
     # `1.0.0-rootless` тег не существует. Нужен ИМЕННО opa-envoy вариант —
-    # kacho-iam Deployment передаёт OPA-сайдкару `--set=plugins.envoy_ext_authz_grpc.*`;
+    # kaname Deployment передаёт OPA-сайдкару `--set=plugins.envoy_ext_authz_grpc.*`;
     # плагин есть только в opa-envoy-сборке. `-static` = rootless static-build.
     image: openpolicyagent/opa:1.0.0-envoy-static
     logLevel: info
-    # OPA pulls the bundle from kacho-iam IN THE SAME pod via loopback
+    # OPA pulls the bundle from kaname IN THE SAME pod via loopback
     # (127.0.0.1:9092 HTTP) — not via Service (Service routes only to Ready pods,
     # but the pod is Ready only after the bundle loads → rollout deadlock).
     # Отсюда и отсутствие имени хоста: шаблон подставляет петлю, а стоявший
@@ -1665,15 +1665,15 @@ kacho-iam:
     # строке и не читался ничем.
     iamInternalPort: 9092
     bundleResource: bundle.tar.gz
-    # kacho-iam OpaBundleService currently produces an UNSIGNED tarball, so OPA
+    # kaname OpaBundleService currently produces an UNSIGNED tarball, so OPA
     # must not require in-bundle `.signatures.json`. Hardening follow-up: flip true.
     bundleSigningEnabled: false
     # Shorter poll interval on dev for faster iteration on Rego changes.
     bundlePollMinSec: 60   # ~1min
     bundlePollMaxSec: 90
-    signingKeyId: kacho-iam-signing-key-current
+    signingKeyId: kaname-signing-key-current
     jwks:
-      configMapName: kacho-iam-jwks
+      configMapName: kaname-jwks
       bootstrapKeyPem: ""
     policiesFallback:
       enabled: false
@@ -1686,17 +1686,17 @@ kacho-iam:
         memory: 256Mi
 
 # ─── Cross-cutting authz NetworkPolicy (umbrella template networkpolicy-authz) ─
-# The OPA sidecar config itself now lives in the kacho-iam sub-chart
-# (kacho-iam.opaSidecar above). Only the cross-cutting pod-to-pod allowlist stays
+# The OPA sidecar config itself now lives in the kaname sub-chart
+# (kaname.opaSidecar above). Only the cross-cutting pod-to-pod allowlist stays
 # at umbrella level. Disabled on dev (would break port-forward debugging of :9091).
 opaSidecar:
   networkPolicy:
     enabled: false
 
-# Sub-chart propagation note: opaSidecar is propagated to the kacho-iam
-# sub-chart via the kacho-iam.opaSidecar block above (inside the kacho-iam:
+# Sub-chart propagation note: opaSidecar is propagated to the kaname
+# sub-chart via the kaname.opaSidecar block above (inside the kaname:
 # top-level mapping). Duplicate top-level
-# `kacho-iam:` block would last-wins-overwrite — see KAC-127 PR review.
+# `kaname:` block would last-wins-overwrite — see KAC-127 PR review.
 
 # ─── KAC-NLB: kacho-nlb L4 NLB control-plane (sub-phase 4.0) ─────────────
 #
@@ -1716,12 +1716,12 @@ opaSidecar:
 #     domains (vpc public 9090 + internal 9091, compute public 9090, iam
 #     internal 9091 — kacho-nlb resolves ProjectService through the iam
 #     internal listener because it ALSO carries InternalIAMService.Check used
-#     by the per-RPC authz interceptor; same dual-purpose port as in kacho-iam
+#     by the per-RPC authz interceptor; same dual-purpose port as in kaname
 #     values block above).
 #   - `config.mode=dev` relaxes the production-only config validation rules
 #     (breakglass=false guard, listenInvalidator.iamDsn required, ...). Prod
 #     overrides to `production` in values.prod.yaml.
-#   - networkPolicy disabled in dev for parity with kacho-iam / kacho-vpc dev
+#   - networkPolicy disabled in dev for parity with kaname / kacho-vpc dev
 #     overrides (port-forward / kubectl exec convenience).
 kacho-nlb:
   # ПОСАДКА БЕЗОПАСНОСТИ — один адрес на весь флот (прежний: config.mode).
@@ -1771,8 +1771,8 @@ kacho-nlb:
   peers:
     iam:
       # KAC-178 §2: ProjectService на PUBLIC (9090); InternalIAMService на INTERNAL (9091).
-      addr: kacho-iam.kacho.svc:9090
-      internalAddr: kacho-iam-internal.kacho.svc:9091
+      addr: kaname.kacho.svc:9090
+      internalAddr: kaname-internal.kacho.svc:9091
       tls: false
       dialDuration: 10s
     vpc:
@@ -1863,7 +1863,7 @@ kacho-nlb:
 # (Makefile SERVICES → kacho-registry:dev); only the zot backend is pulled from
 # ghcr.io (dev-up pre-pulls + kind-loads it to avoid an egress race in helm --wait).
 # db.* and authz.* chart defaults are already dev-correct (pg-registry Service +
-# kacho-iam-internal:9091 / kacho-iam:9090 / kacho-geo:9090). iam/geo run
+# kaname-internal:9091 / kaname:9090 / kacho-geo:9090). iam/geo run
 # server-mTLS → registry MUST run mtls.enable=true (client edges to iam/geo).
 # Added to MTLS_SUBCHARTS in deploy/Makefile. Docker DATA-plane (push/pull) is
 # out-of-scope on kind (dataplaneLB disabled) — the registry newman suite is
@@ -1913,7 +1913,7 @@ registry:
   # предъявителя, и производный адрес получался бы у всякого.
   tokenAcceptance:
     issuers: "http://localhost:28080/.ory/hydra/public/"
-    issuerKeySets: "http://localhost:28080/.ory/hydra/public/=http://kacho-iam-internal.kacho.svc:9097/.well-known/jwks.json"
+    issuerKeySets: "http://localhost:28080/.ory/hydra/public/=http://kaname-internal.kacho.svc:9097/.well-known/jwks.json"
     platformIssuer: ""
     revocationUrl: ""
   mtls:

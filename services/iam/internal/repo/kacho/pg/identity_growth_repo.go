@@ -33,7 +33,7 @@ type IdentityGrowthRepo struct {
 	pool *pgxpool.Pool
 }
 
-// NewIdentityGrowthRepo — constructor. Composition root: cmd/kacho-iam/serve.go.
+// NewIdentityGrowthRepo — constructor. Composition root: cmd/kaname/serve.go.
 func NewIdentityGrowthRepo(pool *pgxpool.Pool) *IdentityGrowthRepo {
 	return &IdentityGrowthRepo{pool: pool}
 }

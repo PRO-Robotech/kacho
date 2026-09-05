@@ -48,7 +48,7 @@ Kachō Geo конфигурируется через переменные окр
 <table>
   <thead><tr><th>Переменная</th><th>По умолчанию</th><th>Описание</th></tr></thead>
   <tbody>
-    <tr><td><code>KACHO_GEO_AUTHZ_IAM_GRPC_ADDR</code></td><td><em>(пусто)</em></td><td>Internal-адрес kacho-iam для per-RPC Check (обычно iam-internal <code>:9091</code>)</td></tr>
+    <tr><td><code>KACHO_GEO_AUTHZ_IAM_GRPC_ADDR</code></td><td><em>(пусто)</em></td><td>Internal-адрес kaname для per-RPC Check (обычно iam-internal <code>:9091</code>)</td></tr>
     <tr><td><code>KACHO_GEO_AUTHZ_CHECK_TIMEOUT</code></td><td><code>2s</code></td><td>Срок ОДНОГО вопроса о правах владельцу модели. Неотвечающий сосед без срока вешает горутину навсегда</td></tr>
     <tr><td><code>KACHO_GEO_AUTH_MODE</code></td><td><code>production</code></td><td>Posture старта: <code>dev</code> · <code>production</code> · <code>production-strict</code>. Дефолт — <code>production</code> (secure by default)</td></tr>
     <tr><td><code>KACHO_GEO_AUTHZ_TRUSTED_FORWARDER_SANS</code></td><td><em>(пусто)</em></td><td>Allow-list SAN&apos;ов, которым разрешено передавать личность конечного пользователя (SA api-gateway). В production обязателен непустой</td></tr>
@@ -57,8 +57,8 @@ Kachō Geo конфигурируется через переменные окр
 
 ### Secure by default
 
-Операции **без авторизации запрещены**: per-RPC authz Check (через kacho-iam) идёт на
-**обоих** listener'ах. Если адрес kacho-iam не задан — сервис **откажется стартовать**.
+Операции **без авторизации запрещены**: per-RPC authz Check (через kaname) идёт на
+**обоих** listener'ах. Если адрес kaname не задан — сервис **откажется стартовать**.
 Это инвариант «AuthN + AuthZ везде» (internal `:9091` не освобождён).
 
 :::warning Обхода нет — и это построение, а не правило
@@ -70,7 +70,7 @@ Kachō Geo конфигурируется через переменные окр
 
 `KACHO_GEO_AUTH_MODE` по умолчанию `production`, и в этой posture стартовать нельзя:
 с plaintext-соединением к БД (`KACHO_GEO_DB_SSLMODE` пуст или `disable`), с непроверенным
-транспортом любого из listener'ов или ребра к kacho-iam, и с пустым allow-list'ом
+транспортом любого из listener'ов или ребра к kaname, и с пустым allow-list'ом
 доверенных форвардеров. `production-strict` дополнительно сужает `KACHO_GEO_DB_SSLMODE`
 до {`require`, `verify-ca`, `verify-full`}.
 
@@ -91,7 +91,7 @@ Kachō Geo конфигурируется через переменные окр
 <table>
   <thead><tr><th>Ребро</th><th>ENV-сегмент</th><th>Назначение</th></tr></thead>
   <tbody>
-    <tr><td>geo → iam (authz Check, client)</td><td><code>KACHO_GEO_IAM_AUTHZ_MTLS_&lt;NAME&gt;</code></td><td>Client-creds для дозвона в kacho-iam (:9091)</td></tr>
+    <tr><td>geo → iam (authz Check, client)</td><td><code>KACHO_GEO_IAM_AUTHZ_MTLS_&lt;NAME&gt;</code></td><td>Client-creds для дозвона в kaname (:9091)</td></tr>
     <tr><td>public listener (server)</td><td><code>KACHO_GEO_PUBLIC_SERVER_MTLS_&lt;NAME&gt;</code></td><td>Server-creds для публичного listener (:9090)</td></tr>
     <tr><td>internal listener (server)</td><td><code>KACHO_GEO_INTERNAL_SERVER_MTLS_&lt;NAME&gt;</code></td><td>Server-creds для cluster-internal listener (:9091)</td></tr>
   </tbody>
@@ -115,7 +115,7 @@ dev). В production оба server-флага должны быть `true`.
     KACHO_GEO_INTERNAL_PORT: "9091"
 
     KACHO_GEO_AUTH_MODE: production-strict
-    KACHO_GEO_AUTHZ_IAM_GRPC_ADDR: kacho-iam.kacho.svc:9091
+    KACHO_GEO_AUTHZ_IAM_GRPC_ADDR: kaname.kacho.svc:9091
 
     # per-edge mTLS (включить в production)
     KACHO_GEO_PUBLIC_SERVER_MTLS_ENABLE: "true"
@@ -127,5 +127,5 @@ dev). В production оба server-флага должны быть `true`.
 :::tip Локальный dev
 Для локального запуска достаточно `KACHO_GEO_DB_PASSWORD` (остальное берёт дефолты):
 `KACHO_GEO_DB_PASSWORD=secret bin/kacho-geo serve`. Режим `dev` поднимет сервис без mTLS и без
-kacho-iam. Сборка и миграции — в [Быстром старте](/getting-started).
+kaname. Сборка и миграции — в [Быстром старте](/getting-started).
 :::

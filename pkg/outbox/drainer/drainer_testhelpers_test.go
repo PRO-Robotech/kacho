@@ -7,10 +7,10 @@ package drainer_test
 //
 // Each test owns its own Postgres DATABASE on the package's single container
 // (no shared state, parallel-safe — see TestMain).
-// Schema is an inline copy of the kacho-iam `fga_outbox` DDL — corelib doesn't
-// own kacho-iam migrations; copying the DDL here keeps the drainer package
+// Schema is an inline copy of the kaname `fga_outbox` DDL — corelib doesn't
+// own kaname migrations; copying the DDL here keeps the drainer package
 // self-contained for testing without depending on another service's tree.
-// If the schema changes in kacho-iam, this constant must be re-synced
+// If the schema changes in kaname, this constant must be re-synced
 // (intentional duplication, documented). fgaOutboxSchema below names the
 // migrations each piece comes from.
 
@@ -77,7 +77,7 @@ CREATE TABLE kacho_iam.fga_outbox (
         CHECK (event_type IN ('fga.tuple.write', 'fga.tuple.delete'))
 );
 
--- Mirrors kacho-iam migration 0067: the ordering partition key is the FULL tuple
+-- Mirrors kaname migration 0067: the ordering partition key is the FULL tuple
 -- identity (user, relation, object) — the narrowest key over which the target's
 -- events fail to commute — materialised on INSERT by a trigger.
 CREATE OR REPLACE FUNCTION kacho_iam.fga_outbox_tuple_key() RETURNS trigger
@@ -95,20 +95,20 @@ CREATE TRIGGER fga_outbox_tuple_key_trigger
     BEFORE INSERT ON kacho_iam.fga_outbox
     FOR EACH ROW EXECUTE FUNCTION kacho_iam.fga_outbox_tuple_key();
 
--- Mirrors kacho-iam migration 0067: partition-head-only claim NOT EXISTS support
+-- Mirrors kaname migration 0067: partition-head-only claim NOT EXISTS support
 -- (PartitionColumn = tuple_key). Partial (sent_at IS NULL) so it stays as small as
 -- the pending backlog.
 CREATE INDEX fga_outbox_tuple_head_idx
     ON kacho_iam.fga_outbox (tuple_key, id) WHERE sent_at IS NULL;
 
--- Mirrors kacho-iam migration 0063: the claim's OUTER ordered scan
+-- Mirrors kaname migration 0063: the claim's OUTER ordered scan
 -- ORDER BY (attempt_count, id). Required TOGETHER with the partition-head index —
 -- without it the planner cannot use that index at all and the claim degrades to a
 -- double seq-scan of the whole pending backlog (see Config.PartitionColumn).
 CREATE INDEX fga_outbox_claim_order_idx
     ON kacho_iam.fga_outbox (attempt_count, id) WHERE sent_at IS NULL;
 
--- NOTE (mirrors kacho-iam migration 0067): there is deliberately NO further
+-- NOTE (mirrors kaname migration 0067): there is deliberately NO further
 -- partial index over sent_at IS NULL in any other order. A (created_at) one used
 -- to exist; under the empty-queue statistics a queue table carries into a burst it
 -- offered the planner an unordered pending scan + Sort, which discards the LIMIT's

@@ -6,7 +6,7 @@ bin/
 dist/
 coverage.out
 coverage-full.out
-/kacho-iam
+/kaname
 /kacho-migrator
 
 # Newman snapshots and run logs (audit trail, локально, не commit)

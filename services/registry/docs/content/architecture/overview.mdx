@@ -31,7 +31,7 @@ flowchart TB
     dp["data-plane HTTP<br/>OCI Distribution"]
   end
   subgraph deps["Зависимости"]
-    iam["kacho-iam<br/>Check · Project · fga-proxy · token-shim"]
+    iam["kaname<br/>Check · Project · fga-proxy · token-shim"]
     zot[("zot<br/>блобы + манифесты")]
     pg[("PostgreSQL<br/>kacho_registry")]
   end
@@ -133,8 +133,8 @@ erDiagram
 ## Регистрация владения через transactional-outbox {#owner-registration}
 
 При создании реестра сервис должен зарегистрировать владение и место реестра в цепи областей
-(`RegisterResource` в kacho-iam), чтобы создатель видел реестр в authz-фильтрованном списке.
-Прямая запись в модель прав из сервиса запрещена (модули пишут только через kacho-iam) —
+(`RegisterResource` в kaname), чтобы создатель видел реестр в authz-фильтрованном списке.
+Прямая запись в модель прав из сервиса запрещена (модули пишут только через kaname) —
 используется **transactional-outbox**:
 
 1. `Create` в одной writer-транзакции пишет строку в `registries` **и** intent в `registry_outbox`
@@ -168,11 +168,11 @@ cross-tenant leak. Подробнее — [Data-plane](/architecture/data-plane)
 ## Место в платформе
 
 Kachō Registry по сборке зависит только от `pkg/` и `proto/`. В runtime у него исходящие
-рёбра в `kacho-iam` и в zot; **входящих** cross-service рёбер от других доменов нет. Циклов в графе нет.
+рёбра в `kaname` и в zot; **входящих** cross-service рёбер от других доменов нет. Циклов в графе нет.
 
 ```mermaid
 flowchart LR
-  reg["kacho-registry"] -->|"InternalIAMService.Check (per-RPC authz)"| iam["kacho-iam"]
+  reg["kacho-registry"] -->|"InternalIAMService.Check (per-RPC authz)"| iam["kaname"]
   reg -->|"ProjectService.Get (валидация project на Create)"| iam
   reg -->|"RegisterResource / UnregisterResource (owner-tuple)"| iam
   reg -->|"blob/manifest read + push/pull proxy"| zot[("zot")]
@@ -190,7 +190,7 @@ flowchart LR
 </table>
 
 :::note ProjectService — на public :9090, authz — на internal :9091
-`ProjectService.Get` зарегистрирован только на public listener kacho-iam (`:9090`); authz-Check и
+`ProjectService.Get` зарегистрирован только на public listener kaname (`:9090`); authz-Check и
 fga-proxy — на internal (`:9091`). Поэтому registry держит **два** клиентских соединения к iam с
 разными ServerName-mTLS: одно для валидации проекта, другое для Check/register.
 :::

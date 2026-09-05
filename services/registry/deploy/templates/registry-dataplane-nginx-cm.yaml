@@ -7,7 +7,7 @@ nginx-конфиг data-plane TLS-sidecar. Терминирует TLS на :8443
     куда docker идёт за Bearer-токеном по WWW-Authenticate realm;
   - `/` → data-plane OCI-прокси registry (127.0.0.1:8080), плейнтекст в том же pod.
 registry-iam-jwks-unify — sidecar БОЛЬШЕ НЕ проксирует `/.well-known/jwks.json`: JWKS-
-верификация тянет ключи напрямую из cluster-internal kacho-iam JWKS-proxy (:9097, TLS),
+верификация тянет ключи напрямую из cluster-internal kaname JWKS-proxy (:9097, TLS),
 доверие к internal-CA — через SSL_CERT_DIR (см. deployment.yaml). Upstream iam-token-shim
 параметризован через values (tlsSidecar.iamTokenShimUpstream); loopback на data-plane
 фиксирован (один pod). Рендерится только при включённом LB + TLS-sidecar.

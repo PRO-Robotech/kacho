@@ -289,7 +289,7 @@ st=0
 [ $rc -eq 0 ] && echo "  ОК  (0) дерево как есть → МОЛЧИТ" \
               || { echo "  ПРОВАЛ (0) дерево как есть уже красное"; st=1; }
 
-IAM_DEP="$UMBRELLA/charts/kacho-iam/templates/deployment.yaml"
+IAM_DEP="$UMBRELLA/charts/kaname/templates/deployment.yaml"
 GEO_DEP="$UMBRELLA/charts/kacho-geo/templates/deployment.yaml"
 # КООРДИНАТА ПАТЧА ВНОСИТСЯ ТУДА, ОТКУДА ЕЁ БЕРЁТ РЕНДЕР. Гейт читает исполняемую
 # часть рендера (`command` + `args` контейнера), а тело задания приезжает в `args`
@@ -362,7 +362,7 @@ elif ! run_with_injection "$IAM_DEP" \
   show "$INJ_ERR"; st=1
 elif [ $INJ_RC -ne 0 ] \
      && [[ "$INJ_OUT" == *'openfga-model-id-rev'* ]] \
-     && [[ "$INJ_OUT" == *'kacho-iam'* ]]; then
+     && [[ "$INJ_OUT" == *'kaname'* ]]; then
   echo "  ОК  (A) второй писатель → КРАСНЫЙ с ключом и координатой"
 else
   echo "  ПРОВАЛ (A) двойное владение не поймано (exit=$INJ_RC)"

@@ -95,7 +95,7 @@ func (u *CreateNetworkInterfaceUseCase) WithBandwidthLimitPolicy(p domain.Bandwi
 }
 
 // WithRegistrar подключает синхронный owner-tuple registrar (Decision 2): после
-// commit NIC owner-tuple синхронно регистрируется в kacho-iam. Nil → sync-путь
+// commit NIC owner-tuple синхронно регистрируется в kaname. Nil → sync-путь
 // пропускается (только async drainer).
 func (u *CreateNetworkInterfaceUseCase) WithRegistrar(r fgaregister.Registrar) *CreateNetworkInterfaceUseCase {
 	u.registrar = r
@@ -353,7 +353,7 @@ func (u *CreateNetworkInterfaceUseCase) doCreate(ctx context.Context, niID strin
 		// Публикуем intent на owner-hierarchy-tuple vpc_network_interface→project
 		// в той же writer-TX — чтобы он не терялся при ошибке после commit. В
 		// mirror-feed несем labels NIC + parent_project_id (ProjectHierarchyItem),
-		// а не голый tuple — иначе resource_mirror в kacho-iam остается без labels и
+		// а не голый tuple — иначе resource_mirror в kaname остается без labels и
 		// ARM_LABELS-селектор не матчит даже свежесозданный NIC. Симметрично
 		// network/subnet/securitygroup create.
 		items := []fgaregister.Item{

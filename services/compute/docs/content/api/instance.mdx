@@ -29,7 +29,7 @@ import dedent from 'ts-dedent'
 
 ```mermaid
 graph TD
-  P[Project · kacho-iam] --> I[Instance · ins-…]
+  P[Project · kaname] --> I[Instance · ins-…]
   MT[MachineType · mt-…] -->|machine_type_id| I
   I -->|boot_source| S[Образ · kacho-storage]
   I -->|network_interfaces| NIC[NIC · kacho-vpc]
@@ -38,7 +38,7 @@ graph TD
 
 :::info Идентификатор и владелец
 ID инстанса — `ins-` + 17 символов crockford-base32 (например, `ins-7t4w9e2x5h8mz0c3v`).
-Инстанс принадлежит проекту `kacho-iam` (`projectId`, immutable) и зоне `kacho-geo` (`zoneId`,
+Инстанс принадлежит проекту `kaname` (`projectId`, immutable) и зоне `kacho-geo` (`zoneId`,
 immutable — меняется только через Relocate).
 :::
 
@@ -522,7 +522,7 @@ running"`). Конечный статус — `STOPPED`; `response` — `google.
 Причина отсутствия — **решение о владельце**, и она прежняя: адрес, NAT и группы
 безопасности суть свойства ресурса `NetworkInterface` домена **kacho-vpc** и правятся там;
 перенос машины в другую зону требует переноса её томов, а тома принадлежат
-**kacho-storage**; права выдаёт **kacho-iam** своими привязками. Инстанс сетевой интерфейс
+**kacho-storage**; права выдаёт **kaname** своими привязками. Инстанс сетевой интерфейс
 зеркалит, а не владеет им.
 
 Возможность появится у владельца — и вызывать её будут у него, а не через машину.

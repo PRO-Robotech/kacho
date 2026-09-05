@@ -14,7 +14,7 @@ import (
 )
 
 // clusterRootID — singleton cluster object id (FGA object `cluster:cluster_kacho_root`),
-// дублирует константу из kacho-iam (source of truth). Internal cluster-scoped RPC'и
+// дублирует константу из kaname (source of truth). Internal cluster-scoped RPC'и
 // vpc гейтятся на этом объекте.
 const clusterRootID = "cluster_kacho_root"
 

@@ -67,7 +67,7 @@ var stacks = map[string][]string{
 type hop struct {
 	name      string
 	knob      []string // path under the merged umbrella tree
-	env       string   // raw env spelling under kacho-iam.env
+	env       string   // raw env spelling under kaname.env
 	anchor    []string // path to the trust-anchor knob
 	anchorEnv string
 }
@@ -75,23 +75,23 @@ type hop struct {
 var providerHops = []hop{
 	{
 		name:      "admin API",
-		knob:      []string{"kacho-iam", "kacho", "iam", "hydraAdminUrl"},
+		knob:      []string{"kaname", "kacho", "iam", "hydraAdminUrl"},
 		env:       "KACHO_IAM_HYDRA_ADMIN_URL",
-		anchor:    []string{"kacho-iam", "kacho", "iam", "hydraAdminCaFile"},
+		anchor:    []string{"kaname", "kacho", "iam", "hydraAdminCaFile"},
 		anchorEnv: "KACHO_IAM_HYDRA_ADMIN_CA_FILE",
 	},
 	{
 		name:      "JWKS upstream",
-		knob:      []string{"kacho-iam", "kacho", "iam", "hydraJwksUrl"},
+		knob:      []string{"kaname", "kacho", "iam", "hydraJwksUrl"},
 		env:       "KACHO_IAM_HYDRA_JWKS_URL",
-		anchor:    []string{"kacho-iam", "kacho", "iam", "hydraJwksCaFile"},
+		anchor:    []string{"kaname", "kacho", "iam", "hydraJwksCaFile"},
 		anchorEnv: "KACHO_IAM_HYDRA_JWKS_CA_FILE",
 	},
 	{
 		name:      "token endpoint",
-		knob:      []string{"kacho-iam", "kacho", "iam", "hydraTokenURL"},
+		knob:      []string{"kaname", "kacho", "iam", "hydraTokenURL"},
 		env:       "KACHO_IAM_HYDRA_TOKEN_URL",
-		anchor:    []string{"kacho-iam", "kacho", "iam", "hydraTokenCaFile"},
+		anchor:    []string{"kaname", "kacho", "iam", "hydraTokenCaFile"},
 		anchorEnv: "KACHO_IAM_HYDRA_TOKEN_CA_FILE",
 	},
 }
@@ -133,7 +133,7 @@ func TestStacks_ProviderHopsAreDeclaredAndTheirTransportIsAccountedFor(t *testin
 		t.Run(name, func(t *testing.T) {
 			merged := mergeProfiles(t, stack)
 			if !isProductionClass(merged) {
-				t.Skipf("%s is dev-class by its own declaration (kacho-iam.authMode) — "+
+				t.Skipf("%s is dev-class by its own declaration (kaname.authMode) — "+
 					"the requirement rides the same exemption as iam's boot guard", name)
 			}
 			examinedStacks++
@@ -258,14 +258,14 @@ func declaredAddress(tree map[string]any, h hop) (string, bool) {
 	if v, ok := stringAt(tree, h.knob...); ok {
 		return v, true
 	}
-	return stringAt(tree, "kacho-iam", "env", h.env)
+	return stringAt(tree, "kaname", "env", h.env)
 }
 
 func declaredAnchor(tree map[string]any, h hop) (string, bool) {
 	if v, ok := stringAt(tree, h.anchor...); ok {
 		return v, true
 	}
-	return stringAt(tree, "kacho-iam", "env", h.anchorEnv)
+	return stringAt(tree, "kaname", "env", h.anchorEnv)
 }
 
 // isProductionClass reads what the stack declares about ITSELF, rather than
@@ -278,7 +278,7 @@ func isProductionClass(tree map[string]any) bool {
 
 // declaredPosture — посадка, объявленная стеком о САМОМ СЕБЕ.
 //
-// Адрес канонический — `kacho-iam.authMode` в корне значений сервиса. Прежний
+// Адрес канонический — `kaname.authMode` в корне значений сервиса. Прежний
 // (`config.authn.mode`) читается следом и ровно потому, что шаблон чарта его тоже
 // пока принимает: стек, оставшийся на нём, обязан проверяться, а не выпадать из
 // проверки молча.
@@ -289,9 +289,9 @@ func isProductionClass(tree map[string]any) bool {
 // успехом при любом содержимом профилей. Отбор по ключу, который переехал, не
 // краснеет: он тихо перестаёт находить предмет.
 func declaredPosture(tree map[string]any) string {
-	if v, ok := stringAt(tree, "kacho-iam", "authMode"); ok {
+	if v, ok := stringAt(tree, "kaname", "authMode"); ok {
 		return v
 	}
-	v, _ := stringAt(tree, "kacho-iam", "config", "authn", "mode")
+	v, _ := stringAt(tree, "kaname", "config", "authn", "mode")
 	return v
 }

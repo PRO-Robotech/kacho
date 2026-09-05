@@ -1,7 +1,7 @@
 // Copyright (c) PRO-Robotech
 // SPDX-License-Identifier: AGPL-3.0-or-later
 
-// Package dto — pg ↔ domain mapping для kacho-iam.
+// Package dto — pg ↔ domain mapping для kaname.
 //
 // Структура (per resource):
 //

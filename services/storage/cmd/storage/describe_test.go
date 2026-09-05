@@ -77,7 +77,7 @@ func bootConfig(t *testing.T, env map[string]string) config.Config {
 	t.Helper()
 	base := map[string]string{
 		"KACHO_STORAGE_DB_PASSWORD":                  "secret",
-		"KACHO_STORAGE_AUTHZ_IAM_GRPC_ADDR":          "kacho-iam-internal:9091",
+		"KACHO_STORAGE_AUTHZ_IAM_GRPC_ADDR":          "kaname-internal:9091",
 		"KACHO_STORAGE_AUTHZ_TRUSTED_FORWARDER_SANS": gatewaySAN + "," + computeSAN,
 		"KACHO_STORAGE_AUTH_MODE":                    "dev",
 	}
@@ -123,7 +123,7 @@ func TestDescribeIsAcceptedByTheConstructor(t *testing.T) {
 	}
 	if budget, ok := s.DenyBudget.Get(); !ok || budget <= 0 {
 		t.Fatalf("бюджет отказов объявлен изъятием либо нулём (%v, ok=%v), а решение о доступе storage "+
-			"принимает вопросом к kacho-iam — шторм отказов есть кому ронять", budget, ok)
+			"принимает вопросом к kaname — шторм отказов есть кому ронять", budget, ok)
 	}
 	if !s.BootGate.Declared() {
 		t.Fatal("ось загрузочного гейта не объявлена вовсе")

@@ -15,7 +15,7 @@ db:
   name: kacho_vpc
   passwordSecretName: kacho-umbrella-pg-vpc
   passwordSecretKey: password
-iamAddr: "kacho-iam.kacho.svc:9090"
+iamAddr: "kaname.kacho.svc:9090"
 
 # ─── Config sections (viper YAML config) ──────────────────────────────
 # Все ключи ниже рендерятся в /etc/kacho-vpc/config.yaml через
@@ -135,14 +135,14 @@ authn:
   # (client identity терминируется до listener'а). Иначе production-старт без
   # public-mTLS отвергается (fail-closed, CWE-290). production-strict игнорирует.
   trustedForwarder: false
-# per-RPC Check — kacho-iam.InternalIAMService.Check по адресу authz.iamEndpoint.
+# per-RPC Check — kaname.InternalIAMService.Check по адресу authz.iamEndpoint.
 #
 # Фильтр видимости (listFilter) идёт ОТДЕЛЬНЫМ соединением и ДРУГИМ глаголом —
 # AuthorizeService.BatchCheck. Его адрес задаёт listFilter.authorizeEndpoint, а
 # пустое значение означает «взять authz.iamEndpoint». На какой слушатель iam этот
 # адрес приходит, решает ПРОФИЛЬ, а не сервис: AuthorizeService зарегистрирована на
 # ОБОИХ слушателях iam. Состав слушателей описан в одном месте —
-# services/iam/cmd/kacho-iam/grpc_register.go, — и здесь не пересказывается.
+# services/iam/cmd/kaname/grpc_register.go, — и здесь не пересказывается.
 #
 # Здесь стояло «list-filter тоже идёт через InternalIAMService.Check на INTERNAL
 # :9091 — НЕ на public :9090»: неверно названы и глагол, и соединение. Снято потому,
@@ -157,7 +157,7 @@ authn:
 # «не используется», а «взять iamEndpoint». Пометка «код не читает» на ручке,
 # от которой зависит решение о доступе, — прямое приглашение её удалить.
 authz:
-  iamEndpoint: ""           # default cluster-internal kacho-iam-internal:9091
+  iamEndpoint: ""           # default cluster-internal kaname-internal:9091
   checkTimeout: 2s
   cacheTtl: 5s
   denyRateLimitPerSec: 100
@@ -187,7 +187,7 @@ authz:
   listFilter:
     enabled: true
     # Адрес iam AuthorizeService. Пусто → берётся authz.iamEndpoint, чьё умолчание —
-    # внутренний kacho-iam-internal:9091; публичный адрес тоже законен (служба стоит
+    # внутренний kaname-internal:9091; публичный адрес тоже законен (служба стоит
     # на обоих слушателях, см. шапку раздела).
     # Соединение поднимается ОТДЕЛЬНО от ребра per-RPC Check и требует проверяемого
     # транспорта: боевая посадка без authorizeTls.enable (или без общего с Check
@@ -201,11 +201,11 @@ authz:
     # Мягкий проход. Для ScopeFiltered RPC фильтр — единственная авторизация, и
     # боевая посадка с failOpen: true на таких методах НЕ СТАРТУЕТ.
     failOpen: false
-# iam — путь доставки намерения о владении ресурсом (register-drainer → kacho-iam).
+# iam — путь доставки намерения о владении ресурсом (register-drainer → kaname).
 iam:
   # require — fail-closed загрузочный гейт. true → мутирующий Create отвергается
   # (UNAVAILABLE), а под остаётся NotReady, пока register-drainer не подключён к
-  # kacho-iam: ресурс не создаётся, пока его намерение о владении некуда
+  # kaname: ресурс не создаётся, пока его намерение о владении некуда
   # доставить. Иначе созданный в этом окне ресурс остаётся без владельца, а его
   # создатель получает отказ на собственном ресурсе.
   #
@@ -219,7 +219,7 @@ iam:
   # умолчанию, поэтому взведённый гейт открывается сразу после старта дренажа.
   require: true
 extapi:
-  # peer kacho-iam.ProjectService.Get.
+  # peer kaname.ProjectService.Get.
   iam:
     tls:
       enable: false
@@ -357,8 +357,8 @@ env: {}
 #       vpc→iam (Check+list-filter):  KACHO_VPC_IAM_AUTHZ_MTLS_*    (:9091)
 #       vpc→geo (zone_id):          KACHO_VPC_GEO_MTLS_*
 #   - serverName на dial-стороне = фактический dial-host (SAN из cert-manager
-#     server-cert): iam-register/iam-authz=kacho-iam-internal (:9091),
-#     iam-project=kacho-iam (:9090), geo=kacho-geo (:9090).
+#     server-cert): iam-register/iam-authz=kaname-internal (:9091),
+#     iam-project=kaname (:9090), geo=kacho-geo (:9090).
 mtls:
   enable: false
   # ─── internal-CA leaf-cert issuance (этот чарт владеет своим Certificate) ─
@@ -386,11 +386,11 @@ mtls:
     iamAuthz: false      # vpc→iam InternalIAMService.Check (per-RPC gate + list-filter, :9091)
     geo: false           # vpc→geo geo.v1.ZoneService.Get (zone_id validation)
   # serverName на dial-стороне = реальный dial-host (∈ server-SAN пира).
-  # iam server-cert SAN покрывает оба host'а: kacho-iam (:9090) + kacho-iam-internal (:9091).
+  # iam server-cert SAN покрывает оба host'а: kaname (:9090) + kaname-internal (:9091).
   serverName:
-    iamRegister: kacho-iam-internal.kacho.svc
-    iamProject: kacho-iam.kacho.svc           # :9090 public dial-host
-    iamAuthz: kacho-iam-internal.kacho.svc    # :9091 internal dial-host
+    iamRegister: kaname-internal.kacho.svc
+    iamProject: kaname.kacho.svc           # :9090 public dial-host
+    iamAuthz: kaname-internal.kacho.svc    # :9091 internal dial-host
     geo: kacho-geo.kacho.svc                  # vpc→geo dial-host (= Service kacho-geo + cert SAN)
 
 resources:
@@ -420,11 +420,11 @@ autoscaling:
   targetCPUUtilizationPercentage: 70
 
 # ─── OPA Sidecar ───────────────────────────────────────────────────────
-# OPA sidecar для guardrails. Bundle pulled from kacho-iam Internal :9091
+# OPA sidecar для guardrails. Bundle pulled from kaname Internal :9091
 # с signed JWS verification.
 #
 # Decision-logs → stdout (collected by cluster log aggregator).
-# Resource limits 256MB / 100m matching kacho-iam baseline.
+# Resource limits 256MB / 100m matching kaname baseline.
 opa:
   enabled: false                       # production: true
   image: "openpolicyagent/opa:0.62.0"
@@ -432,16 +432,16 @@ opa:
   port: 8181
   logLevel: info
   bundleSource:
-    # kacho-iam Internal :9091 — OpaBundleService.
-    url: "http://kacho-iam-internal.kacho.svc:9091"
+    # kaname Internal :9091 — OpaBundleService.
+    url: "http://kaname-internal.kacho.svc:9091"
     headers: {}                        # e.g. {Authorization: "Bearer <sa-token>"}
   bundlePolling:
     minDelaySeconds: 60
     maxDelaySeconds: 120
   bundleSigning:
-    keyID: "kacho-iam-bundle-key-v1"
+    keyID: "kaname-bundle-key-v1"
     algorithm: "RS256"
-    # publicKey — PEM-encoded RSA public key (provided by kacho-iam admin).
+    # publicKey — PEM-encoded RSA public key (provided by kaname admin).
     # В production загружается из Secret + mounted; placeholder здесь —
     # values-prod.yaml override обязателен.
     publicKey: |
@@ -462,11 +462,11 @@ opa:
       cpu: 100m
       memory: 256Mi
 
-# INFRA sec-hardening — единый security-floor, идентичный kacho-iam/geo/nlb/registry.
+# INFRA sec-hardening — единый security-floor, идентичный kaname/geo/nlb/registry.
 #
 # Заведён 2026-07-16: trivy config-скан впервые покрыл ВЕСЬ репозиторий и нашёл, что
 # securityContext есть лишь у половины сервисов. В polyrepo IaC-скан был ТОЛЬКО у
-# kacho-iam, а в том репо нет ни одного k8s-манифеста (чарты жили в kacho-deploy) —
+# kaname, а в том репо нет ни одного k8s-манифеста (чарты жили в kacho-deploy) —
 # гейт зеленел, не проверяя ничего.
 #
 # runAsUser 65532 совпадает с `USER 65532` в Dockerfile — образ уже собран под nonroot.

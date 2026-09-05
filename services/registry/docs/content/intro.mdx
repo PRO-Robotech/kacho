@@ -113,7 +113,7 @@ namespace живут репозитории, в репозиториях — т�
 ## Как с сервисом общаться
 
 Kachō Registry — доменный сервис платформы. По сборке он зависит только от `pkg/` и
-`proto/`; в runtime у него исходящие рёбра в `kacho-iam` (авторизация, валидация проекта,
+`proto/`; в runtime у него исходящие рёбра в `kaname` (авторизация, валидация проекта,
 регистрация владения) и в бэкенд хранилища образов (zot). Tenant-запросы control-plane идут
 через `api-gateway`; data-plane push/pull — на отдельный OCI-endpoint `registry.kacho.local`.
 
@@ -129,7 +129,7 @@ flowchart LR
   end
   subgraph cp["Control plane"]
     reg["kacho-registry<br/>:9090 · :9091 · data-plane"]
-    iam["kacho-iam<br/>authz · project · fga-proxy"]
+    iam["kaname<br/>authz · project · fga-proxy"]
   end
   subgraph store["Хранилище"]
     pg[("PostgreSQL<br/>kacho_registry · outbox")]
@@ -147,7 +147,7 @@ flowchart LR
 
 Система построена по принципу **database-per-service**: kacho-registry владеет схемой
 `kacho_registry` и общается с другими доменами только по API (никаких cross-service FK). Реестр
-хранит `projectId` как обычный текст и валидирует его через API kacho-iam на Create. Подробнее —
+хранит `projectId` как обычный текст и валидирует его через API kaname на Create. Подробнее —
 [Архитектура](/architecture/overview).
 
 ## Ключевые возможности
@@ -161,7 +161,7 @@ flowchart LR
   <div className={hero.featureCard}>
     <span className={hero.featureIcon}>🔑</span>
     <span className={hero.featureTitle}>Авторизация через IAM</span>
-    <span className={hero.featureBody}>Каждый push/pull проходит per-request Check в kacho-iam. Права — на уровне реестра и репозитория.</span>
+    <span className={hero.featureBody}>Каждый push/pull проходит per-request Check в kaname. Права — на уровне реестра и репозитория.</span>
   </div>
   <div className={hero.featureCard}>
     <span className={hero.featureIcon}>⇄</span>
@@ -181,7 +181,7 @@ flowchart LR
   <div className={hero.featureCard}>
     <span className={hero.featureIcon}>⛓</span>
     <span className={hero.featureTitle}>Owner-tuple через outbox</span>
-    <span className={hero.featureBody}>При создании реестра владение регистрируется в kacho-iam через транзакционный outbox (at-least-once).</span>
+    <span className={hero.featureBody}>При создании реестра владение регистрируется в kaname через транзакционный outbox (at-least-once).</span>
   </div>
 </div>
 
@@ -196,7 +196,7 @@ flowchart LR
     <tr><td>zot</td><td>OCI-совместимый registry-бэкенд (блобы/манифесты, S3-backed) — source of truth образов</td></tr>
     <tr><td>OCI Distribution / Docker Registry v2</td><td>Data-plane push/pull (<code>registry.kacho.local</code>)</td></tr>
     <tr><td>Goose</td><td>Версионирование схемы (миграции <code>0001</code>, <code>0002</code>)</td></tr>
-    <tr><td>Ory Hydra</td><td>OAuth2/OIDC — identity-JWT для data-plane; авторизация — per-RPC / per-request Check через kacho-iam</td></tr>
+    <tr><td>Ory Hydra</td><td>OAuth2/OIDC — identity-JWT для data-plane; авторизация — per-RPC / per-request Check через kaname</td></tr>
     <tr><td>grpc-gateway</td><td>REST-проекция control-plane gRPC</td></tr>
   </tbody>
 </table>

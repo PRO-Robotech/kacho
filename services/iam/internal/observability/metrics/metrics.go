@@ -1,10 +1,10 @@
 // Copyright (c) PRO-Robotech
 // SPDX-License-Identifier: AGPL-3.0-or-later
 
-// Package metrics is the kacho-iam Prometheus observability adapter.
+// Package metrics is the kaname Prometheus observability adapter.
 //
 // It lives at the cmd/adapter boundary (Clean Architecture): the prometheus
-// client is imported ONLY here and in the composition root (cmd/kacho-iam) —
+// client is imported ONLY here and in the composition root (cmd/kaname) —
 // never in domain/ or in the AuthorizeService use-case. The use-case stays a
 // pure FGA-Check pipeline; instrumentation is layered on via the
 // InstrumentedAuthorizer decorator (authz_decorator.go) and a gRPC server
@@ -39,7 +39,7 @@ import (
 	coredb "github.com/PRO-Robotech/kacho/pkg/db"
 )
 
-// Registry owns a private *prometheus.Registry and the kacho-iam collectors.
+// Registry owns a private *prometheus.Registry and the kaname collectors.
 // It is created once in the composition root and shared by the metrics HTTP
 // listener, the authz decorator and the gRPC interceptors. A private registry
 // (not the global default) keeps tests hermetic and avoids duplicate-register
@@ -69,7 +69,7 @@ type Registry struct {
 	compensation     *CompensationRecorder
 
 	// outboxOnce/outbox — единственный экземпляр коллекторов состояния очередей.
-	// Очередей у kacho-iam три (fga_outbox, subject_change_outbox,
+	// Очередей у kaname три (fga_outbox, subject_change_outbox,
 	// provider_compensation_outbox), их сканеры собираются в разных местах
 	// композиционного корня, а серии у них ОБЩИЕ и различаются лейблом `table`.
 	// Второй конструктор уронил бы старт на duplicate-register.
@@ -102,7 +102,7 @@ type Registry struct {
 }
 
 // NewRegistry constructs the registry, registers the Go + process runtime
-// collectors and the kacho-iam collectors.
+// collectors and the kaname collectors.
 func NewRegistry() *Registry {
 	reg := prometheus.NewRegistry()
 	reg.MustRegister(
@@ -278,5 +278,5 @@ func (r *Registry) ObserveAuthzStoreAttempt(op, outcome string, reused bool) {
 // Теперь iam берёт тот же измеритель, что и остальные шесть сервисов, и его
 // ряды лежат в общем семействе платформы: вопрос «где во всей платформе вырос
 // хвост» стал одним запросом, а не семью. Провязка — в композиционном корне
-// (`cmd/kacho-iam/serve.go`), потому что слушателей iam строит сам, минуя
+// (`cmd/kaname/serve.go`), потому что слушателей iam строит сам, минуя
 // носитель входящего пути.

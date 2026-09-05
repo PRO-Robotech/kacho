@@ -54,8 +54,8 @@ import (
 //   - prefixOperationVPCSubnet ("e9b"): vpc's secondary op-prefix
 //     (Subnet/Address). It exists only as a validate-package literal in
 //     kacho-vpc — no exported ids.* constant yet.
-//   - prefixOperationIAM ("iop"): mirrors kacho-iam domain.PrefixOperationIAM;
-//     the gateway must not import kacho-iam internal packages, so it is pinned
+//   - prefixOperationIAM ("iop"): mirrors kaname domain.PrefixOperationIAM;
+//     the gateway must not import kaname internal packages, so it is pinned
 //     here.
 //   - prefixOperationGeo ("geo"): mirrors kacho-geo lro.OperationPrefix; geo has
 //     no exported ids.PrefixOperation* constant (its op-prefix lives as an

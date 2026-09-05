@@ -53,7 +53,7 @@ labels) on Update-when-labels-changed.
 The observable contract: visibility is probed through
 InternalIAMService.Check on {subject, relation=v_list, object="<fgaType>:<id>"}.
 A `[get,list]` rule on a verb-bearing type emits per-object `v_list` (+ `v_get`,
-+ tier `viewer`) tuples (kacho-iam reconcile/tuples.go ruleObjectTuples). `v_list`
++ tier `viewer`) tuples (kaname reconcile/tuples.go ruleObjectTuples). `v_list`
 is used as the probe because it cascades ONLY via `g_vlist_<type> from project`
 (fga_model.fga) — i.e. ONLY through a vlist-tier label grant, never through a
 generic account/project viewer cascade — so a True/False v_list verdict isolates
@@ -79,7 +79,7 @@ CLEAN SUBJECT + assignability — green by the RIGHT reason
 ─────────────────────────────────────────────────────────────────────────────
 DEPLOYMENT SCOPE — full-umbrella stack (cross-service)
 ─────────────────────────────────────────────────────────────────────────────
-These cases require kacho-vpc deployed alongside kacho-iam behind the gateway so
+These cases require kacho-vpc deployed alongside kaname behind the gateway so
 that vpc.NetworkService.Create/Update actually emits RegisterResource into
 kacho_iam.resource_mirror (the `vpc→iam` :9091 edge). The umbrella newman-e2e
 brings up the FULL stack (all services, mtls off) and runs this shared iam suite,

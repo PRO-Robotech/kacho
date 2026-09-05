@@ -35,15 +35,15 @@ package check
 //  3. довод в пользу сужения ПРОВЕРЕН и не устоял. Задача называла пять
 //     недостижимых пакетов и опиралась на то, что `internal/manifest/roleexport`
 //     и `internal/modelrender` живут только в сборочных командах. Сегодня оба
-//     ДОСТИЖИМЫ из `cmd/kacho-iam` (`moduleroles/rightsexport.go` и `apply.go`
-//     → `cmd/kacho-iam/module_roles_apply.go`), то есть сужение, применённое
+//     ДОСТИЖИМЫ из `cmd/kaname` (`moduleroles/rightsexport.go` и `apply.go`
+//     → `cmd/kaname/module_roles_apply.go`), то есть сужение, применённое
 //     тогда, дало бы слепую зону ВНУТРИ бинаря сегодня — ровно ту
 //     необратимость, о которой предупреждал п. 2.
 //
 // Величины на момент решения (единица — КАТАЛОГ; ориентир, не гейт, и
 // перемеряются этими же командами из `services/iam`):
 //
-//	go list -deps ./cmd/kacho-iam | grep '^github.com/PRO-Robotech/kacho-iam' | sort
+//	go list -deps ./cmd/kaname | grep '^github.com/PRO-Robotech/kacho-iam' | sort
 //	# → 87 пакетов достижимо из бинаря сервиса
 //	grep -rl 'kacho-iam/internal/authzmap"' --include=*.go . | grep -v '_test.go' \
 //	  | xargs -n1 dirname | sort -u

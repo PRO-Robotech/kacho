@@ -34,8 +34,8 @@ func armedProdCfg(mode string) config.Config {
 	return config.Config{
 		AuthMode:                  mode,
 		DBSSLMode:                 "require",
-		AuthZIAMGRPCAddr:          "kacho-iam-internal.kacho.svc:9091",
-		IAMProjectGRPCAddr:        "kacho-iam.kacho.svc:9090",
+		AuthZIAMGRPCAddr:          "kaname-internal.kacho.svc:9091",
+		IAMProjectGRPCAddr:        "kaname.kacho.svc:9090",
 		GeoGRPCAddr:               "kacho-geo.kacho.svc:9090",
 		PublicServerMTLS:          grpcsrv.TLSServer{Enable: true},
 		InternalServerMTLS:        grpcsrv.TLSServer{Enable: true},

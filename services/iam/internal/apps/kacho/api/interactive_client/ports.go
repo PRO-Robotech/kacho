@@ -8,7 +8,7 @@
 // Clean Architecture: this package defines the narrow ports below and depends on
 // nothing but domain + the corelib operation envelope. Concrete adapters (pgx,
 // the identity provider's admin API) live in internal/repo and internal/clients
-// and are wired in cmd/kacho-iam/wiring.go.
+// and are wired in cmd/kaname/wiring.go.
 package interactiveclient
 
 import (

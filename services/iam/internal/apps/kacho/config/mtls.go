@@ -31,7 +31,7 @@ const mtlsEnvPrefix = "KACHO_IAM"
 // IAM — leaf-owner ресурсной модели (vpc/compute/nlb дилят IAM как клиенты, сам
 // IAM исходящих peer-дилов на ресурсы не делает), поэтому здесь только
 // server-edges. subject_change-drainer → api-gateway internal — отдельный
-// client-edge, конфигурируется в composition root (cmd/kacho-iam/
+// client-edge, конфигурируется в composition root (cmd/kaname/
 // снятым дренажом смены субъекта) и вне scope.
 //
 // Каждое ребро независимо: env-имена выводятся из тега родительского поля.

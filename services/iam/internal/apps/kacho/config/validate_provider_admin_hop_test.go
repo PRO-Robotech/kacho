@@ -81,7 +81,7 @@ func TestValidate_Production_RefusesPlaintextProviderAdminURL(t *testing.T) {
 // on a correct configuration, or the first false refusal gets it deleted.
 func TestValidate_Production_AcceptsDeclaredTLSProviderAdminURL(t *testing.T) {
 	cfg := adminHopCfg(config.ModeProduction, "https://kacho-umbrella-hydra-admin.kacho.svc:4445")
-	cfg.AuthN.HydraAdminCAFile = "/etc/kacho-iam/tls/server/ca.crt"
+	cfg.AuthN.HydraAdminCAFile = "/etc/kaname/tls/server/ca.crt"
 	if err := cfg.Validate(); err != nil {
 		t.Fatalf("Validate() = %v, want nil for a declared https provider-admin hop", err)
 	}

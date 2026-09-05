@@ -34,7 +34,7 @@ export const CODES = {
   unavailable: {
     grpc: 'UNAVAILABLE',
     http: '503',
-    when: 'Недоступен peer-сервис (kacho-iam / kacho-geo) на пути запроса — отказ закрытый: мутация не выполняется, страница списка не отдаётся нефильтрованной',
+    when: 'Недоступен peer-сервис (kaname / kacho-geo) на пути запроса — отказ закрытый: мутация не выполняется, страница списка не отдаётся нефильтрованной',
   },
   unauthenticated: {
     grpc: 'UNAUTHENTICATED',

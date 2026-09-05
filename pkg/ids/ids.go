@@ -234,7 +234,7 @@ func IsValid(id, prefix string) bool {
 }
 
 // domainStringPrefixes — 3-символьные prefix'ы доменов, чьи prefix-КОНСТАНТЫ
-// живут не в ids, а в internal/ соответствующего сервиса (kacho-iam — downstream
+// живут не в ids, а в internal/ соответствующего сервиса (kaname — downstream
 // в build-графе, его internal-константы сюда не импортируются, см. запрет
 // «internal не importable»). Перечислены литералами, чтобы ids оставался ЕДИНЫМ
 // источником истины и для HasKnownPrefix, и для validate.baseResourceIDPrefixes

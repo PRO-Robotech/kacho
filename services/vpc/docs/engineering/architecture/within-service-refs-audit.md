@@ -17,7 +17,7 @@
 > - Service-слой `internal/apps/kacho/api/<resource>/*.go` (software-prechecks как UX-layer).
 > - Repo-слой `internal/repo/kacho/pg/*.go` (DDL-маппинг ошибок в sentinel-errors).
 >
-> **Cross-service ссылки** (`project_id` → kacho-iam, `zone_id` → kacho-geo,
+> **Cross-service ссылки** (`project_id` → kaname, `zone_id` → kacho-geo,
 > `nic.used_by_id` → kacho-compute) — **out of scope**: для них DB-уровневые FK невозможны
 > (database-per-service), валидация делается на request-path через peer-API + грациозный
 > dangling-ref. Audit касается **только** ребер графа в пределах одной БД `kacho_vpc`.
@@ -71,7 +71,7 @@
 | Resource.field / invariant | Что гарантируется | DB constraint | Software check | Решение |
 |---|---|---|---|---|
 | `id` PK | уникальный | `networks_pkey` ✅ | n/a | OK |
-| `project_id` | существует в `kacho-iam` | N/A (cross-service) | `ProjectClient.Exists` | OK (cross-service) |
+| `project_id` | существует в `kaname` | N/A (cross-service) | `ProjectClient.Exists` | OK (cross-service) |
 | `(project_id, name)` | уникальный name на project | `networks_project_id_name_key` UNIQUE — полный ✅ (715001) | redundant List+name check (для UX) | OK |
 | `default_security_group_id` | если не пустой — указывает на существующий SG | `networks_default_security_group_fk` FK ON DELETE SET NULL ✅ (0005) | inline в `internal/apps/kacho/api/network/create.go`.`doCreate` | OK |
 | `vrf_id` | уникальный per-network | `networks_vrf_id_key` UNIQUE ✅ (0007) + sequence-backed | n/a (DB-allocated) | OK |
@@ -81,7 +81,7 @@
 | Resource.field / invariant | Что гарантируется | DB constraint | Software check | Решение |
 |---|---|---|---|---|
 | `id` PK | уникальный | `subnets_pkey` ✅ | n/a | OK |
-| `project_id` | существует в `kacho-iam` | N/A (cross-service) | `ProjectClient.Exists` | OK (cross-service) |
+| `project_id` | существует в `kaname` | N/A (cross-service) | `ProjectClient.Exists` | OK (cross-service) |
 | `(project_id, name)` | уникальный name | `subnets_project_id_name_key` UNIQUE — полный ✅ (715001) | n/a | OK |
 | `network_id` | существует, не nullable | `subnets_network_id_fkey` FK (NO ACTION = RESTRICT) ✅ + `NOT NULL` ✅ | redundant `networkRepo.Get` в `doCreate` | OK |
 | `zone_id` | существует в kacho-geo | N/A (cross-service) | `geo.ZoneService.Get` через `ZoneRegistry` | OK (cross-service) |
@@ -96,7 +96,7 @@
 | Resource.field / invariant | Что гарантируется | DB constraint | Software check | Решение |
 |---|---|---|---|---|
 | `id` PK | уникальный | `addresses_pkey` ✅ | n/a | OK |
-| `project_id` | существует в `kacho-iam` | N/A (cross-service) | `ProjectClient.Exists` | OK (cross-service) |
+| `project_id` | существует в `kaname` | N/A (cross-service) | `ProjectClient.Exists` | OK (cross-service) |
 | `(project_id, name)` | уникальный non-empty | `addresses_project_id_name_key` partial UNIQUE WHERE `name <> ''` ✅ | n/a | OK |
 | `internal_subnet_id` (generated col) | если internal v4/v6 задан — subnet существует, RESTRICT удаления | `addresses_internal_subnet_fkey` FK ON DELETE RESTRICT ✅ (generated col покрывает v4+v6) | sync `AddressesBySubnet` precheck в `SubnetService.Delete` | OK |
 | `external_ipv4 ->> 'address'` | глобально уникальный | `addresses_external_ip_uniq` partial UNIQUE ✅ | retry на 23505 в allocator | OK |
@@ -125,7 +125,7 @@
 | Resource.field / invariant | Что гарантируется | DB constraint | Software check | Решение |
 |---|---|---|---|---|
 | `id` PK | уникальный | `network_interfaces_pkey` ✅ | n/a | OK |
-| `project_id` | существует в `kacho-iam` | N/A (cross-service) | `ProjectClient.Exists` | OK (cross-service) |
+| `project_id` | существует в `kaname` | N/A (cross-service) | `ProjectClient.Exists` | OK (cross-service) |
 | `(project_id, name)` | уникальный non-empty | `network_interfaces_project_id_name_key` partial UNIQUE WHERE `name <> ''` ✅ | n/a | OK |
 | `subnet_id` | существует, RESTRICT удаления Subnet | FK ON DELETE RESTRICT ✅ | sync precheck `CountBySubnet` в `SubnetService.Delete` (порт объявлен в `subnet/iface.go`) | OK |
 | `mac_address` | cloud-wide UNIQUE, NOT NULL, формат | `network_interfaces_mac_address_key` UNIQUE ✅ + `NOT NULL` ✅ + CHECK regex ✅ | retry on 23505 collision (`ErrMacCollision`) | OK |
@@ -142,7 +142,7 @@
 | Resource.field / invariant | Что гарантируется | DB constraint | Software check | Решение |
 |---|---|---|---|---|
 | `id` PK | уникальный | `route_tables_pkey` ✅ | n/a | OK |
-| `project_id` | существует в `kacho-iam` | N/A (cross-service) | `ProjectClient.Exists` | OK (cross-service) |
+| `project_id` | существует в `kaname` | N/A (cross-service) | `ProjectClient.Exists` | OK (cross-service) |
 | `(project_id, name)` | уникальный non-empty | `route_tables_project_id_name_key` partial UNIQUE WHERE `name <> ''` ✅ | n/a | OK |
 | `network_id` | существует, RESTRICT удаления | `route_tables_network_id_fkey` FK ✅ (NO ACTION = RESTRICT) | sync `checkNetworkEmpty` в `Network.Delete` | OK |
 | INSERT новой RT не трогает subnets | привязка ставится один раз на `Subnet.Create`; вторая RT сети не переклеивает существующие подсети (VPC-1 F8) | `rt_auto_assoc_subnets_trg` **снят** миграцией 0019 (был единственным DB-механизмом переклейки) | n/a | OK |
@@ -153,7 +153,7 @@
 | Resource.field / invariant | Что гарантируется | DB constraint | Software check | Решение |
 |---|---|---|---|---|
 | `id` PK | уникальный | `security_groups_pkey` ✅ | n/a | OK |
-| `project_id` | существует в `kacho-iam` | N/A (cross-service) | `ProjectClient.Exists` | OK (cross-service) |
+| `project_id` | существует в `kaname` | N/A (cross-service) | `ProjectClient.Exists` | OK (cross-service) |
 | `(project_id, name)` | уникальный non-empty | `security_groups_project_id_name_key` partial UNIQUE WHERE `name <> ''` ✅ | n/a | OK |
 | `network_id` | если задан — существует, RESTRICT удаления | `security_groups_network_id_fkey` FK ON DELETE RESTRICT ✅; nullable (unbound SG) | sync через `Get(networkID)` в `doCreate` | OK |
 | `(network_id) WHERE default_for_network = true` | один default SG на сеть | `security_groups_one_default_per_network` partial UNIQUE ✅ (0005) | inline в `internal/apps/kacho/api/network/create.go`.`doCreate` | OK |
@@ -165,7 +165,7 @@
 | Resource.field / invariant | Что гарантируется | DB constraint | Software check | Решение |
 |---|---|---|---|---|
 | `id` PK | уникальный | `gateways_pkey` ✅ | n/a | OK |
-| `project_id` | существует в `kacho-iam` | N/A (cross-service) | `ProjectClient.Exists` | OK (cross-service) |
+| `project_id` | существует в `kaname` | N/A (cross-service) | `ProjectClient.Exists` | OK (cross-service) |
 | `(project_id, name)` | уникальный non-empty | `gateways_project_id_name_key` partial UNIQUE WHERE `name <> ''` ✅ | n/a | OK |
 | `gateway_type` (TEXT, без DEFAULT) | значение из enum | ✅ CHECK `gateways_type_chk` (0030) | вид обязателен на Create, неизменяем | закрыто |
 | `subnet_id` (TEXT NOT NULL) | подсеть-якорь | ✅ FK `gateways_subnet_fk` ON DELETE RESTRICT (0030) | сверка семейства внутри INSERT-CAS | закрыто |

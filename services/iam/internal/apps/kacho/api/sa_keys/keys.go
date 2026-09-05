@@ -5,7 +5,7 @@
 //
 // Generates ECDSA P-256 keypairs, encodes them as PKCS#8 / SPKI PEM, and
 // projects the public key to a JWK suitable for Hydra client registration.
-// The private key never persists in kacho-iam DB; we only keep the public
+// The private key never persists in kaname DB; we only keep the public
 // PEM for rotation diagnostics and the algorithm string.
 package sa_keys
 

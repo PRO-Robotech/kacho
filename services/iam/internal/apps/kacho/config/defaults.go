@@ -50,7 +50,7 @@ func RegisterDefaults(v *viper.Viper) {
 	v.SetDefault("api-server.registry-token.key-material-window-until", "")
 	// Cluster-INTERNAL Hydra-JWKS proxy HTTP listener (`GET /.well-known/jwks.json`)
 	// — a SEPARATE cluster-internal port (default `tcp://0.0.0.0:9097`), served ONLY
-	// on the kacho-iam-internal Service (never external, ban #6) over one-way
+	// on the kaname-internal Service (never external, ban #6) over one-way
 	// server-TLS. Short-TTL caching reverse-proxy of Hydra's PUBLIC JWKS so the
 	// data-plane fetches verification keys from iam (Hydra stays the signer).
 	// Override via KACHO_IAM_API_SERVER__JWKS_PROXY__ENDPOINT.

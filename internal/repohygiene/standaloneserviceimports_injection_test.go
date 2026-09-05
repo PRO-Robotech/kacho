@@ -67,7 +67,7 @@ func injStandaloneScan(t *testing.T, c injStandaloneCorpus) ([]standaloneImportF
 // До разреза так импортировали 145 файлов iam — это и был вес отвязки.
 func TestStandaloneGate_RedsOnTheRootInternalImportItWasBuiltFor(t *testing.T) {
 	corpus := injStandaloneCorpus{
-		"services/iam/cmd/kacho-iam/testmain_pgtest_test.go": injGoFile("main_test",
+		"services/iam/cmd/kaname/testmain_pgtest_test.go": injGoFile("main_test",
 			"testing",
 			injStandaloneModule+"/internal/pgtest",
 		),
@@ -78,7 +78,7 @@ func TestStandaloneGate_RedsOnTheRootInternalImportItWasBuiltFor(t *testing.T) {
 	}
 	got := findings[0].String()
 	for _, want := range []string{
-		"services/iam/cmd/kacho-iam/testmain_pgtest_test.go",
+		"services/iam/cmd/kaname/testmain_pgtest_test.go",
 		":5", // строка импорта, а не файла: `package`, пустая, `import (`, "testing", затем он
 		injStandaloneModule + "/internal/pgtest",
 	} {
@@ -159,10 +159,10 @@ func TestStandaloneGate_RedsEvenWhenLawfulImportsStandBeside(t *testing.T) {
 // ── сторона (б): законный близнец обязан молчать ─────────────────────────────
 
 // Тот же файл дерева ПОСЛЕ отвязки — дословная форма из
-// services/iam/cmd/kacho-iam/testmain_pgtest_test.go.
+// services/iam/cmd/kaname/testmain_pgtest_test.go.
 func TestStandaloneGate_SilentOnTheSharedFoundation(t *testing.T) {
 	corpus := injStandaloneCorpus{
-		"services/iam/cmd/kacho-iam/testmain_pgtest_test.go": injGoFile("main_test",
+		"services/iam/cmd/kaname/testmain_pgtest_test.go": injGoFile("main_test",
 			"testing",
 			injStandaloneModule+"/pkg/pgtest",
 		),

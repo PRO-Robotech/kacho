@@ -44,7 +44,7 @@ func allEdgesSecured() config.Config {
 		AuthZTrustedForwarderSANs: []string{"spiffe://kacho.cloud/ns/kacho-system/sa/kacho-api-gateway"},
 		// per-object FGA List-filter active (production fail-closed gate).
 		ListFilterEnabled: true,
-		AuthZIAMGRPCAddr:  "kacho-iam.kacho.svc:9091",
+		AuthZIAMGRPCAddr:  "kaname.kacho.svc:9091",
 	}
 }
 
@@ -309,7 +309,7 @@ func securedProduction() config.Config {
 		AuthZTrustedForwarderSANs: []string{"spiffe://kacho.cloud/ns/kacho-system/sa/kacho-api-gateway"},
 		// per-object FGA List-filter active (production fail-closed gate).
 		ListFilterEnabled: true,
-		AuthZIAMGRPCAddr:  "kacho-iam.kacho.svc:9091",
+		AuthZIAMGRPCAddr:  "kaname.kacho.svc:9091",
 		// Транспорт ребра проверки прав: с тех пор как страж требует его в ОБОИХ
 		// боевых режимах, окружение без этой ручки боевым не является. Фикстура,
 		// снисходительнее продукта, делает невидимым ровно тот дефект, ради

@@ -1,7 +1,7 @@
 // Copyright (c) PRO-Robotech
 // SPDX-License-Identifier: AGPL-3.0-or-later
 
-// Package tools_regression locks the behaviour of kacho-iam's audit-list-filter
+// Package tools_regression locks the behaviour of kaname's audit-list-filter
 // gate against the REAL tree.
 //
 // The fixtures in pkg/listfiltergate assert the analyser's discrimination on

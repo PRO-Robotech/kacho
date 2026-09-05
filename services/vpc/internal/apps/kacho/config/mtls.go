@@ -34,14 +34,14 @@ type MTLSConfig struct {
 	// IAMProjectMTLS — client-creds для read-ребра vpc→iam (ProjectService.Get:
 	// existence + leaf-owner-lookup на Network.Create / Address.Create). Dial-host —
 	// iam **public** listener (:9090). Зеркало IAMRegisterMTLS, но свой ServerName
-	// (`kacho-iam.*`, :9090 SAN — НЕ совпадает с :9091 register-ребром).
+	// (`kaname.*`, :9090 SAN — НЕ совпадает с :9091 register-ребром).
 	// → KACHO_VPC_IAM_PROJECT_MTLS_{ENABLE,CERTFILE,KEYFILE,CAFILES,SERVERNAME}.
 	IAMProjectMTLS grpcclient.TLSClient `envconfig:"IAM_PROJECT_MTLS"`
 
 	// IAMAuthzMTLS — client-creds для authz-ребра vpc→iam (InternalIAMService.Check:
 	// per-RPC authz-gate И project-level list-filter — оба делят ОДИН authzConn).
 	// Dial-host — iam **internal** listener (:9091, Internal-only Check, ban #6).
-	// ServerName `kacho-iam-internal.*` (:9091 SAN).
+	// ServerName `kaname-internal.*` (:9091 SAN).
 	// → KACHO_VPC_IAM_AUTHZ_MTLS_{ENABLE,CERTFILE,KEYFILE,CAFILES,SERVERNAME}.
 	IAMAuthzMTLS grpcclient.TLSClient `envconfig:"IAM_AUTHZ_MTLS"`
 

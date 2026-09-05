@@ -578,7 +578,7 @@ dev-up: preflight
 	  -f ./$(MODULE_MANIFESTS_VALUES) \
 	  $(UMBRELLA_OPTS) $(DEV_UP_VALUES) \
 	  --wait --timeout 12m; \
-	kubectl -n kacho rollout status deploy/kacho-iam --timeout=180s || true; \
+	kubectl -n kacho rollout status deploy/kaname --timeout=180s || true; \
 	kubectl -n kacho rollout status deploy/api-gateway --timeout=180s || true; \
 	$(MAKE) --no-print-directory assert-forwarder-narrowing; \
 	echo "=== базовый каталог geo (Region/Zone) ==="; \
@@ -644,7 +644,7 @@ dev-down:
 # он ровно тот, который эта цель исполняла и раньше, просто на шаг раньше по файлу.
 #
 # ПРЕДУСЛОВИЕ — СЕКРЕТЫ, И ОНО ИСПОЛНЯЕТСЯ, А НЕ ОПИСЫВАЕТСЯ. На
-# `kacho-iam-hook-token` ОБЯЗАТЕЛЬНОЙ ссылкой (secretKeyRef без optional) из пода
+# `kaname-hook-token` ОБЯЗАТЕЛЬНОЙ ссылкой (secretKeyRef без optional) из пода
 # провайдера и его automigrate-контейнера ссылается уже БАЗОВЫЙ профиль
 # values.dev.yaml — с задачи #948, потому что необязательная ссылка дала бы пустую
 # величину обратного вызова и полосу отвергли бы на первом обращении; профиль
@@ -794,8 +794,8 @@ assert-rollout-ready:
 
 # assert-jobs-healthy — периодические/разовые задания тоже часть готовности стенда.
 #
-# Зачем (реальный случай: `kacho-iam-jwks-rotator` падал в 100% запусков —
-# CronJob звал несуществующий subcommand `kacho-iam jwks rotate`): гейт смотрел
+# Зачем (реальный случай: `kaname-jwks-rotator` падал в 100% запусков —
+# CronJob звал несуществующий subcommand `kaname jwks rotate`): гейт смотрел
 # ТОЛЬКО на Deployment/StatefulSet, поэтому сорванное задание не красило его
 # вообще никак — стенд считался готовым, а задание тихо копило по одному
 # упавшему Job в день. Ровно та невидимость, ради которой эта цель и заведена.
@@ -1249,7 +1249,7 @@ endif
 		echo "ERROR: unknown service '$(SVC)'"; exit 1; \
 	fi; \
 	DEPLOY_NAME=$(SVC); \
-	if [ "$(SVC)" = "iam" ]; then DEPLOY_NAME=kacho-iam; fi; \
+	if [ "$(SVC)" = "iam" ]; then DEPLOY_NAME=kaname; fi; \
 	if [ "$(SVC)" = "ui" ]; then DEPLOY_NAME=ui; fi; \
 	if [ "$(SVC)" = "nlb" ]; then DEPLOY_NAME=kacho-nlb; fi; \
 	if [ "$(SVC)" = "storage" ]; then DEPLOY_NAME=kacho-storage; fi; \
@@ -1315,9 +1315,9 @@ loadtest-address-allocate-clean: guard-kind-context
 	@kubectl -n kacho delete job k6-address-allocate --ignore-not-found
 	@kubectl -n kacho delete cm k6-address-allocate --ignore-not-found
 
-# ─── KAC-105: IAM stack (kacho-iam; KAC-127: Zitadel → Ory) ──────────────────────
+# ─── KAC-105: IAM stack (kaname; KAC-127: Zitadel → Ory) ──────────────────────
 
-# alias для reload-svc SVC=iam — пересобрать и перезагрузить kacho-iam.
+# alias для reload-svc SVC=iam — пересобрать и перезагрузить kaname.
 reload-svc-iam:
 	@$(MAKE) reload-svc SVC=iam
 
@@ -1352,7 +1352,7 @@ wipe-iam-db: guard-kind-context
 	@kubectl exec -n kacho kacho-umbrella-pg-iam-0 -- \
 	    env PGPASSWORD=dev-iam-password psql -U iam -d kacho_iam \
 	    -c "DROP TABLE IF EXISTS public.goose_db_version;" || true
-	@echo "✓ IAM schema wiped; goose state dropped. Next: kubectl rollout restart deploy/kacho-iam"
+	@echo "✓ IAM schema wiped; goose state dropped. Next: kubectl rollout restart deploy/kaname"
 
 # ─── МАНИФЕСТЫ МОДУЛЕЙ: ПРОИЗВОДИТЕЛЬ ConfigMap (kacho#1901) ─────────────────
 #
@@ -1362,7 +1362,7 @@ wipe-iam-db: guard-kind-context
 # шага стенда, ни объявления внешнего конвейера. Здесь эта половина и заводится.
 #
 # ИМЯ ОБЪЕКТА ЧИТАЕТСЯ ИЗ ТЕХ ЖЕ ПРОФИЛЕЙ, ЧТО И У helm. Производитель получает
-# цепочку стенда из stacks.txt и берёт `kacho-iam.manifests.configMapName`
+# цепочку стенда из stacks.txt и берёт `kaname.manifests.configMapName`
 # оттуда же, откуда её берёт чарт: второе объявление разошлось бы с первым молча,
 # и каталог доставки приехал бы пустым — снаружи неотличимо от «модулей нет».
 #
@@ -1450,9 +1450,9 @@ module-manifests-configmap: guard-declared-context
 # нет, — а путь выкатки на отказе производителя не идёт дальше by construction.
 
 
-# Логи kacho-iam deployment.
+# Логи kaname deployment.
 logs-iam:
-	kubectl logs -n kacho -f deploy/kacho-iam
+	kubectl logs -n kacho -f deploy/kaname
 
 # KAC-127: zitadel-admin target удалён — Zitadel заменён на Ory Kratos + Hydra.
 

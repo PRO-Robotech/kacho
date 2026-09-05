@@ -32,14 +32,14 @@ SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 
 OUT_DIR="${OUT_DIR:-$SCRIPT_DIR/out}"
 
-# Транспорт для grpcurl к kacho-iam-internal. По умолчанию (kind / mTLS-off CI)
+# Транспорт для grpcurl к kaname-internal. По умолчанию (kind / mTLS-off CI)
 # — plaintext. На mTLS-стенде (например fe3455, KACHO_IAM_INTERNAL_SERVER_MTLS_ENABLE=true)
 # internal-listener требует client-cert: задай IAM_INTERNAL_GRPC_MTLS_CERT/_KEY
 # (PEM client-cert/key, принимаемые ClientCAFiles internal-листенера) — тогда grpcurl
 # идёт mTLS. -insecure пропускает проверку server-SAN (порт-форвард меняет hostname),
 # client-cert всё равно предъявляется.
 #
-# SELF-PROVISIONING (not just "if the caller passed one"): kacho-iam's internal listener
+# SELF-PROVISIONING (not just "if the caller passed one"): kaname's internal listener
 # requires a verified client certificate in EVERY posture — security.md is explicit that
 # :9091 is NOT exempt and that «internal = trusted» is a forbidden assumption. A seed
 # that only carries a cert when its driver happened to export one works from

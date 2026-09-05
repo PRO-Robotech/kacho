@@ -2,7 +2,7 @@
 
 ## Назначение
 
-Гайд по metrics и logs для kacho-iam. Две плоскости:
+Гайд по metrics и logs для kaname. Две плоскости:
 
 - **Logs** — структурированный slog (JSON), общий пакет `pkg/observability`.
 - **Metrics** — Prometheus (`client_golang`), собственный adapter
@@ -47,10 +47,10 @@
 
 ```bash
 # Tail подов.
-kubectl -n kacho logs -l app=kacho-iam -f --max-log-requests 10
+kubectl -n kacho logs -l app=kaname -f --max-log-requests 10
 
 # Loki query — только записи дренажа сброса кэша уровня WARN и выше.
-{namespace="kacho",app="kacho-iam"} |= "subject_change_drainer" | json | level="WARN"
+{namespace="kacho",app="kaname"} |= "subject_change_drainer" | json | level="WARN"
 ```
 
 ## Metrics
@@ -92,7 +92,7 @@ Registry приватный (`prometheus.NewRegistry()`, не глобальны
 {public, internal, unknown} различает два слушателя: `OperationService` и пара
 `Internal*` служатся обоими, и слитый ряд был бы средним двух разных величин.
 
-Провязка — в композиционном корне (`cmd/kacho-iam/serve.go`): слушателей iam
+Провязка — в композиционном корне (`cmd/kaname/serve.go`): слушателей iam
 строит сам, минуя носитель входящего пути, поэтому отказ старта О13
 (`servicecontract.New`) сюда не достаёт. Свойство держит обход дерева
 `internal/repohygiene.TestEveryGRPCListenerObservesItsLatency`.
@@ -259,7 +259,7 @@ HTTP-пробы поднимаются на cluster-internal hooks-listener (`:9
 | `GET /readyz`    | Readiness — ping БД и поднятый LRO-worker; при падении → 503.     |
 
 ```bash
-curl http://kacho-iam:9092/healthz
+curl http://kaname:9092/healthz
 # → 200 OK
 ```
 
@@ -270,16 +270,16 @@ gRPC-порт (`:9090`); HTTP `/healthz` и `/readyz` доступны для р
 ## Подробности реализации
 
 - **Logger:** `observability.NewSloggerLevel(os.Stdout, level)` (corelib) — JSON,
-  `slog.SetDefault` в `cmd/kacho-iam/serve.go`.
+  `slog.SetDefault` в `cmd/kaname/serve.go`.
 - **Metrics:** `internal/observability/metrics` (Prometheus `client_golang`,
   приватный registry); HTTP-listener и интерсепторы — в composition root
-  `cmd/kacho-iam/serve.go`.
+  `cmd/kaname/serve.go`.
 - **Health:** живость и готовность строит ОБЩИЙ носитель `pkg/observability/health`
   (#1752) — тот же, что у шести остальных сервисов; `internal/handler/iamhooks/http_server.go`
   только монтирует его обработчики на `/healthz` и `/readyz`. Набор именованных
   проверок (`health.Checker`: база, версия схемы, LRO-worker) собирается в
-  композиционном корне `cmd/kacho-iam/hooks_mux.go`, а `SetShuttingDown` дёргается
-  из `cmd/kacho-iam/serve.go` — готовность уходит в 503 ДО остановки серверов.
+  композиционном корне `cmd/kaname/hooks_mux.go`, а `SetShuttingDown` дёргается
+  из `cmd/kaname/serve.go` — готовность уходит в 503 ДО остановки серверов.
 
   Прежде здесь стоял свой тип `ReadinessChecker` той же формы, объявленный в
   handler-слое: об одном предмете высказывались два места, и одно из них
@@ -296,5 +296,5 @@ gRPC-порт (`:9090`); HTTP `/healthz` и `/readyz` доступны для р
 
 - общий фундамент: `pkg/observability/` (slog + OTel), `pkg/operations/` (Recorder).
 - `internal/observability/metrics/{metrics,lro_recorder,authz_decorator}.go`
-- `cmd/kacho-iam/serve.go` — wiring logger / metrics-listener / интерсепторов.
+- `cmd/kaname/serve.go` — wiring logger / metrics-listener / интерсепторов.
 - `internal/handler/iamhooks/http_server.go` — `/healthz` / `/readyz`.

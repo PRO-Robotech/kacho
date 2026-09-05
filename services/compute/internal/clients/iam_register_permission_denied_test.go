@@ -4,7 +4,7 @@
 package clients_test
 
 // iam_register_permission_denied_test.go — a denial on authorization grounds from
-// kacho-iam is TERMINAL for the register drainer.
+// kaname is TERMINAL for the register drainer.
 //
 // Repeating an identical request IAM refused on authorization grounds cannot start
 // succeeding: the decision is a function of (caller, relation, object) and a retry

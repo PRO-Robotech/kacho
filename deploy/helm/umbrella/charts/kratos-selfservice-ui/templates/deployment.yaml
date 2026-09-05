@@ -65,7 +65,7 @@ spec:
             {{- end }}
             {{- $csKey := $cs.existingSecretKey | default "cookieSecret" }}
             # Session + CSRF cookie signing secret. Prod: operator-provisioned
-            # Secret via .existingSecret (mirrors the kacho-iam hook-token pattern).
+            # Secret via .existingSecret (mirrors the kaname hook-token pattern).
             # Dev: throwaway inline .value. Neither set → render fails fast (no
             # git-committed default ships into any environment).
             {{- if $cs.existingSecret }}

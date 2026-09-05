@@ -329,7 +329,7 @@ func listenAddress(endpoint string) string {
 	return endpoint
 }
 
-// ListenAddress — public wrapper over listenAddress (for cmd/kacho-iam/main.go).
+// ListenAddress — public wrapper over listenAddress (for cmd/kaname/main.go).
 func (c APIServerConfig) ListenAddress() string         { return listenAddress(c.Endpoint) }
 func (c APIServerConfig) InternalListenAddress() string { return listenAddress(c.InternalEndpoint) }
 

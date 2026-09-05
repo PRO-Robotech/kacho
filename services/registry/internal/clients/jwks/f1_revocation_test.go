@@ -318,7 +318,7 @@ func TestF1_25_DeclaredControlWithoutAReaderIsRefused(t *testing.T) {
 // в никуда, и ни один профиль развёртывания не обязан был бы ничего задавать,
 // чтобы это заметить.
 func TestF1_25_AuthorityURLIsDeclaredNeverDerived(t *testing.T) {
-	for _, bad := range []string{"", "   ", "/introspect", "not a url", "kacho-iam-internal:9097"} {
+	for _, bad := range []string{"", "   ", "/introspect", "not a url", "kaname-internal:9097"} {
 		_, err := NewIntrospectionReader(bad, RevocationTransport{})
 		require.Errorf(t, err, "адрес авторитета %q не является объявленным абсолютным адресом", bad)
 	}
@@ -329,13 +329,13 @@ func TestF1_25_AuthorityURLIsDeclaredNeverDerived(t *testing.T) {
 	// исключение из аутентификации, которым живёт маршрут набора ключей, туда не
 	// распространяется.
 	pki := issueTestPKI(t)
-	r, err := NewIntrospectionReader("https://kacho-iam-internal.kacho.svc:9097/internal/tokens/introspect",
+	r, err := NewIntrospectionReader("https://kaname-internal.kacho.svc:9097/internal/tokens/introspect",
 		RevocationTransport{
 			Enable:     true,
 			CAFiles:    []string{pki.caFile},
 			CertFile:   pki.clientCert,
 			KeyFile:    pki.clientKey,
-			ServerName: "kacho-iam-internal",
+			ServerName: "kaname-internal",
 		})
 	require.NoError(t, err)
 	require.NotNil(t, r)

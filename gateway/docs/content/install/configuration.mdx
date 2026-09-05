@@ -89,7 +89,7 @@ Kachō API Gateway конфигурируется через переменны�
   <tbody>
     <tr><td><code>KACHO&#95;API&#95;GATEWAY&#95;AUTHZ&#95;ENABLED</code></td><td><code>false</code></td><td>Per-RPC authz-middleware (в production обязан быть <code>true</code>)</td></tr>
     <tr><td><code>KACHO&#95;API&#95;GATEWAY&#95;AUTHZ&#95;FAIL&#95;OPEN</code></td><td><code>false</code></td><td>Разрешать при ошибке Check (запрещён в production)</td></tr>
-    <tr><td><code>KACHO&#95;API&#95;GATEWAY&#95;IAM&#95;AUTHORIZE&#95;URL</code></td><td><em>(пусто)</em></td><td>Адрес <code>AuthorizeService</code> в kacho-iam</td></tr>
+    <tr><td><code>KACHO&#95;API&#95;GATEWAY&#95;IAM&#95;AUTHORIZE&#95;URL</code></td><td><em>(пусто)</em></td><td>Адрес <code>AuthorizeService</code> в kaname</td></tr>
     <tr><td><code>KACHO&#95;API&#95;GATEWAY&#95;AUTHZ&#95;CACHE&#95;TTL&#95;SECONDS</code> / <code>&#95;MAX&#95;ENTRIES</code></td><td><code>5</code> / <code>10000</code></td><td>TTL / размер кэша решений</td></tr>
     <tr><td><code>KACHO&#95;API&#95;GATEWAY&#95;AUTHZ&#95;CHECK&#95;TIMEOUT&#95;MS</code></td><td><code>200</code></td><td>Таймаут вызова <code>Check</code> (истёк → deny)</td></tr>
     <tr><td><code>KACHO&#95;API&#95;GATEWAY&#95;PERMISSION&#95;CATALOG&#95;FILE</code></td><td><em>(встроен)</em></td><td>Переопределение файла permission-каталога</td></tr>
@@ -145,7 +145,7 @@ Kachō API Gateway конфигурируется через переменны�
 Здесь стоял раздел с ручками отдельного cluster-internal gRPC-listener'а края — его адресом,
 включением mTLS, серверной парой и списком законных отправителей. Ни одной из этих переменных
 **больше не существует**: listener снят вместе с единственной службой, которую он подавал
-(сброс authz-кэша по вызову от `kacho-iam`). Выставленная в профиле, любая из них сегодня
+(сброс authz-кэша по вызову от `kaname`). Выставленная в профиле, любая из них сегодня
 ничего не настраивает.
 
 Урок, ради которого раздел не удалён молча, стоит сохранить: там же объяснялось, почему у
@@ -153,7 +153,7 @@ gRPC server-reflection **нет собственной ручки** — пере
 совпадает с посадкой, либо избыточен, либо однажды будет выставлен так, что откроет перечисление
 схемы на порту, который никого не авторизует. Правило остаётся; его прежний предмет — нет.
 
-Кэш решений край гасит сам, читая журнал смены субъекта у `kacho-iam`
+Кэш решений край гасит сам, читая журнал смены субъекта у `kaname`
 (`KACHO_API_GATEWAY_SUBJECT_CHANGE_POLL_INTERVAL` выше) — см.
 [Авторизация](/architecture/authz).
 
@@ -193,9 +193,9 @@ gRPC server-reflection **нет собственной ручки** — пере
     # на переходе остаётся, и у каждого СВОЯ запись источника ключей. Один набор
     # на двоих означал бы, что ключ одного проверяет токен другого.
     KACHO_API_GATEWAY_TOKEN_ISSUERS: "https://iam.kacho.local,https://auth.kacho.cloud"
-    KACHO_API_GATEWAY_TOKEN_ISSUER_KEYSETS: "https://iam.kacho.local=https://kacho-iam-internal.kacho.svc:9097/.well-known/kacho/jwks.json,https://auth.kacho.cloud=https://kacho-iam-internal.kacho.svc:9097/.well-known/jwks.json"
+    KACHO_API_GATEWAY_TOKEN_ISSUER_KEYSETS: "https://iam.kacho.local=https://kaname-internal.kacho.svc:9097/.well-known/kacho/jwks.json,https://auth.kacho.cloud=https://kaname-internal.kacho.svc:9097/.well-known/jwks.json"
     KACHO_API_GATEWAY_PLATFORM_TOKEN_ISSUER: "https://iam.kacho.local"
-    KACHO_API_GATEWAY_PLATFORM_TOKEN_REVOCATION_URL: "https://kacho-iam-internal.kacho.svc:9097/internal/tokens/introspect"
+    KACHO_API_GATEWAY_PLATFORM_TOKEN_REVOCATION_URL: "https://kaname-internal.kacho.svc:9097/internal/tokens/introspect"
     # Прежний скалярный пин при этом СНЯТ: два объявления об одном предмете дают
     # отказ в старте, а не молчаливое старшинство.
 

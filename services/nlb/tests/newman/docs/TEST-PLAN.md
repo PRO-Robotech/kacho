@@ -118,7 +118,7 @@ AZD case (`AZD-LIFECYCLE-INTERNAL-MTLS-ONLY`).
 ## 8. Test-execution dependencies (data fixtures)
 
 The suite assumes the following pre-seeded fixtures in the kind-stand /
-production-like environment (populated by `kacho-iam` and `kacho-vpc` fixtures
+production-like environment (populated by `kaname` and `kacho-vpc` fixtures
 before newman runs):
 
 | Env var | Role |

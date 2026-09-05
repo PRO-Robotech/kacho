@@ -8,7 +8,7 @@
 // commits atomically with the mutation that produced it.
 //
 // Service layer defines these ports; adapters in repo/kacho/pg and clients/
-// implement them. Composition root (cmd/kacho-iam/main.go) injects concrete
+// implement them. Composition root (cmd/kaname/main.go) injects concrete
 // implementations.
 package service
 

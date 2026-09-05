@@ -15,7 +15,7 @@ import (
 )
 
 // Проверяет, что register-applier прокидывает labels/parent_project_id/source_version
-// из outbox-payload в kacho-iam RegisterResourceRequest, чтобы IAM материализовал
+// из outbox-payload в kaname RegisterResourceRequest, чтобы IAM материализовал
 // resource_mirror для селектора.
 
 // register-payload: labels+parent+source_version прокинуты в IAM.

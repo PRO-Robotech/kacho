@@ -32,7 +32,7 @@ type InteractiveClientRepo struct {
 	pool *pgxpool.Pool
 }
 
-// NewInteractiveClientRepo — constructor. Composition root: cmd/kacho-iam/wiring.go.
+// NewInteractiveClientRepo — constructor. Composition root: cmd/kaname/wiring.go.
 func NewInteractiveClientRepo(pool *pgxpool.Pool) *InteractiveClientRepo {
 	return &InteractiveClientRepo{pool: pool}
 }

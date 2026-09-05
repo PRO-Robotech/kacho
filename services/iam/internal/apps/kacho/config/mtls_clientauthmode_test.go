@@ -232,7 +232,7 @@ func TestMTLS_55_12_HooksServerTLSOnly_HandshakeOK_HMACIndependent(t *testing.T)
 	const expectedToken = "test-hook-secret"
 	srv := &http.Server{Handler: http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		if r.Header.Get("X-Kacho-Hook-Token") != expectedToken {
-			w.Header().Set("WWW-Authenticate", `Bearer realm="kacho-iam-hooks"`)
+			w.Header().Set("WWW-Authenticate", `Bearer realm="kaname-hooks"`)
 			http.Error(w, `{"error":"invalid_hook_token"}`, http.StatusUnauthorized)
 			return
 		}
@@ -251,7 +251,7 @@ func TestMTLS_55_12_HooksServerTLSOnly_HandshakeOK_HMACIndependent(t *testing.T)
 		Timeout: 2 * time.Second,
 		Transport: &http.Transport{TLSClientConfig: &tls.Config{
 			RootCAs:    pool,
-			ServerName: "kacho-iam.kacho.svc",
+			ServerName: "kaname.kacho.svc",
 			MinVersion: tls.VersionTLS12,
 			// NO Certificates → no client cert presented.
 		}},
@@ -272,7 +272,7 @@ func TestMTLS_55_12_HooksServerTLSOnly_HandshakeOK_HMACIndependent(t *testing.T)
 	defer respNoAuth.Body.Close()
 	assert.Equal(t, http.StatusUnauthorized, respNoAuth.StatusCode,
 		"TLS does NOT replace HMAC — no token → 401")
-	assert.Equal(t, `Bearer realm="kacho-iam-hooks"`, respNoAuth.Header.Get("WWW-Authenticate"))
+	assert.Equal(t, `Bearer realm="kaname-hooks"`, respNoAuth.Header.Get("WWW-Authenticate"))
 }
 
 // ── Scenario 5.5-13 (Go-httptest analogue) — plaintext http against the
@@ -334,7 +334,7 @@ func TestMTLS_55_14b_ProvisionNoHMAC_401(t *testing.T) {
 	srv := &http.Server{Handler: http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		// provision uses the SAME requireHookAuth contract as token/refresh.
 		if r.Header.Get("X-Kacho-Hook-Token") == "" {
-			w.Header().Set("WWW-Authenticate", `Bearer realm="kacho-iam-hooks"`)
+			w.Header().Set("WWW-Authenticate", `Bearer realm="kaname-hooks"`)
 			http.Error(w, `{"error":"invalid_hook_token"}`, http.StatusUnauthorized)
 			return
 		}
@@ -351,7 +351,7 @@ func TestMTLS_55_14b_ProvisionNoHMAC_401(t *testing.T) {
 		Timeout: 2 * time.Second,
 		Transport: &http.Transport{TLSClientConfig: &tls.Config{
 			RootCAs:    pool,
-			ServerName: "kacho-iam.kacho.svc",
+			ServerName: "kaname.kacho.svc",
 			MinVersion: tls.VersionTLS12,
 		}},
 	}
@@ -397,7 +397,7 @@ func TestMTLS_55_15_MetricsServerTLSOnly_ScrapeNoClientCert(t *testing.T) {
 		Timeout: 2 * time.Second,
 		Transport: &http.Transport{TLSClientConfig: &tls.Config{
 			RootCAs:    pool,
-			ServerName: "kacho-iam.kacho.svc",
+			ServerName: "kaname.kacho.svc",
 			MinVersion: tls.VersionTLS12,
 		}},
 	}
@@ -456,7 +456,7 @@ func TestMTLS_55_16_MetricsMutual_ClientCertRequired(t *testing.T) {
 		Transport: &http.Transport{TLSClientConfig: &tls.Config{
 			RootCAs:      pool,
 			Certificates: []tls.Certificate{clientCert},
-			ServerName:   "kacho-iam.kacho.svc",
+			ServerName:   "kaname.kacho.svc",
 			MinVersion:   tls.VersionTLS12,
 		}},
 	}
@@ -470,7 +470,7 @@ func TestMTLS_55_16_MetricsMutual_ClientCertRequired(t *testing.T) {
 		Timeout: 2 * time.Second,
 		Transport: &http.Transport{TLSClientConfig: &tls.Config{
 			RootCAs:    pool,
-			ServerName: "kacho-iam.kacho.svc",
+			ServerName: "kaname.kacho.svc",
 			MinVersion: tls.VersionTLS12,
 		}},
 	}

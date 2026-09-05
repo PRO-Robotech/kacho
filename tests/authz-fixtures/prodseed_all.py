@@ -20,7 +20,7 @@ because any of it is still reachable. Do not read it as a description of the har
 This module is the production path setup.sh delegates to. Nothing is forged here:
 
   * the admin Bearer comes from iam `InternalBootstrapTokenService.MintBootstrapToken`,
-    reached by a direct mTLS gRPC dial to kacho-iam :9091 with the dedicated
+    reached by a direct mTLS gRPC dial to kaname :9091 with the dedicated
     bootstrap-operator client certificate (the mint has no REST route, and the caller's
     SPIFFE SAN IS the credential);
   * every subject Bearer comes from iam `SAKeyService.Issue` — iam provisions the Hydra
@@ -86,7 +86,7 @@ def log(msg: str) -> None:
 def ensure_certs() -> None:
     """Provision BOTH client identities the seed needs on the internal port.
 
-    kacho-iam :9091 requires a verified client certificate in EVERY posture
+    kaname :9091 requires a verified client certificate in EVERY posture
     (security.md: «Internal (:9091) НЕ освобождён»), so a seed that dials it must carry
     one. Two DISTINCT leaves, deliberately not interchangeable:
 
@@ -120,7 +120,7 @@ def ensure_certs() -> None:
             f"at pre-extracted material.")
     if not ok_gw:
         raise SystemExit(
-            f"[prodseed] FATAL: no client certificate for kacho-iam :9091. Expected secret "
+            f"[prodseed] FATAL: no client certificate for kaname :9091. Expected secret "
             f"'{m.GATEWAY_CLIENT_SECRET}' in ns/{NS} or IAM_INTERNAL_GRPC_MTLS_CERT/_KEY.")
     # Корень внутреннего удостоверяющего — для обмена у НАШЕГО издателя (#1014).
     # Материал ПУБЛИЧНЫЙ и нужен ровно затем, чтобы проверка подписи сертификата

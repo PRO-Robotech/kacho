@@ -1,7 +1,7 @@
 {
   "info": {
     "_postman_id": "3f93ef8c-3b59-5d53-b3b1-d99f6b680b18",
-    "name": "kacho-iam / newman / authz-sa-apitoken",
+    "name": "kaname / newman / authz-sa-apitoken",
     "schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json"
   },
   "event": [

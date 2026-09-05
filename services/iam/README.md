@@ -1,4 +1,4 @@
-# kacho-iam
+# kaname
 
 IAM-сервис Kachō: control-plane для identity & access. Управляет ресурсной
 моделью **Account, Project, User, ServiceAccount, Group, Role, AccessBinding** и
@@ -45,7 +45,7 @@ make -C deploy psql SVC=iam            # psql kacho_iam
 
 ## Архитектура
 
-Clean Architecture (`domain → service/api → handler/repo/clients`); `cmd/kacho-iam/main.go` —
+Clean Architecture (`domain → service/api → handler/repo/clients`); `cmd/kaname/main.go` —
 composition root, `cmd/migrator/main.go` — отдельный CLI миграций.
 Структура `internal/`:
 

@@ -30,7 +30,7 @@ import (
 // поднимает и рёбра geo/project — там они не заданы, и потому не проверяются.
 func armedProd() config.Config {
 	c := secureProd()
-	c.IAMGRPCAddr = "kacho-iam:9090"
+	c.IAMGRPCAddr = "kaname:9090"
 	c.GeoGRPCAddr = "kacho-geo:9090"
 	c.IAMClientMTLS = grpcclient.TLSClient{Enable: true}
 	c.GeoClientMTLS = grpcclient.TLSClient{Enable: true}

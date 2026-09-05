@@ -26,7 +26,7 @@
 // вовсе. Предикаты, которыми перемерено (#2010):
 //
 //	git grep -c 'moduleroles.Reconcile' -- 'services/iam/**/*.go' ':!*_test.go'  → 0
-//	git grep -n 'AssertRoleParity\|TierParity' -- 'services/iam/cmd/kacho-iam/*.go' → пусто
+//	git grep -n 'AssertRoleParity\|TierParity' -- 'services/iam/cmd/kaname/*.go' → пусто
 //
 // `Apply` о снятии не знает by construction, поэтому роль, убранная из раздела,
 // пуск НЕ роняет — она просто остаётся жить, и это первый абзац выше.

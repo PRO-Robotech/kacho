@@ -84,7 +84,7 @@ type secondReaderProbe struct {
 
 var _ listnarrow.AuthorizeClient = (*secondReaderProbe)(nil)
 
-// BatchCheck стоит там, где стоит kacho-iam: наблюдение переехало на СОСЕДА, потому
+// BatchCheck стоит там, где стоит kaname: наблюдение переехало на СОСЕДА, потому
 // что сужатель теперь один на дерево, и подставлять его целиком значило бы наблюдать
 // не тот момент. Момент здесь — сетевой вопрос о правах со страницей на руках.
 func (p *secondReaderProbe) BatchCheck(_ context.Context, in *iamv1.BatchAuthorizeCheckRequest,

@@ -47,7 +47,7 @@ func TestSubnetOfTarget(t *testing.T) {
 // exactly the project-hierarchy tuple, independent of the principal.
 //
 // It used to append a creator (`admin`) tuple for an authenticated user, and that
-// tuple could never land: kacho-iam's least-privilege proxy policy accepts only
+// tuple could never land: kaname's least-privilege proxy policy accepts only
 // ownership/parent relations declared in pkg/authz/proxytuple and reserves
 // privilege relations like `admin` for the AccessBinding flow, so every delivery
 // was refused. Worse, the refusal costs the whole registration: it is TERMINAL

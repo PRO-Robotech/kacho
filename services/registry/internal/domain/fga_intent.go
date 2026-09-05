@@ -16,7 +16,7 @@ import (
 // реле через IAM. Вместо прямой записи прав на стороне владельца после commit'а
 // (dual-write) writer-tx Create/Delete/Update пишет RegisterIntent строкой в
 // registry_outbox В ТОЙ ЖЕ tx (один commit). Отдельный register-drainer применяет
-// каждый intent через kacho-iam InternalIAMService.RegisterResource /
+// каждый intent через kaname InternalIAMService.RegisterResource /
 // UnregisterResource по mTLS — идемпотентно, at-least-once, owner-tuple не теряется.
 //
 // Файл — leaf (только stdlib): импортируется и writer-side (emit), и client-side
@@ -34,7 +34,7 @@ const FGAObjectTypeRegistry = "registry_registry"
 // verb-tuple, namespace-viewer НЕ видит все repos автоматически.
 const FGAObjectTypeRepository = "registry_repository"
 
-// FGAObjectTypeProject — FGA object-type parent-проекта (владелец в модели kacho-iam
+// FGAObjectTypeProject — FGA object-type parent-проекта (владелец в модели kaname
 // — тип `project`). Единый источник для обоих planes: project-hierarchy tuple
 // (FGAProjectTuple) и create-child interceptor-Check (check.PermissionMap). Раньше
 // check держал независимый литерал `iam_project` — тип, которого НЕТ в FGA-модели →
@@ -48,7 +48,7 @@ const FGAObjectTypeProject = "project"
 // (registry_repository #parent @registry_registry).
 //
 // Все три НАЗЫВАЮТСЯ из объявления приёмной стороны (pkg/authz/proxytuple), а не
-// пишутся здесь литералом: закрытый набор принадлежит kacho-iam, и второе написание
+// пишутся здесь литералом: закрытый набор принадлежит kaname, и второе написание
 // чужого набора — копия, которая разойдётся молча. Цена расхождения не «красный
 // тест»: отвергнутое отношение отвергается на КАЖДОЙ доставке, а очередь считает
 // отказ временным и заклинивает голову партиции на всё окно повторов.
@@ -59,7 +59,7 @@ const (
 )
 
 // FGA register-intent event-types (parity с CHECK-constraint registry_outbox и с
-// kacho-iam RegisterResource/UnregisterResource).
+// kaname RegisterResource/UnregisterResource).
 const (
 	FGAEventRegister   = "fga.register"
 	FGAEventUnregister = "fga.unregister"
@@ -112,7 +112,7 @@ const FGARelationEditor = "editor"
 // register/unregister по ИТОГОВОМУ visibility overlay-строки (B01/B06/B12).
 const FGASubjectPublicWildcard = FGASubjectTypeUser + ":*"
 
-// FGA subject-type namespaces аутентифицированного principal (parity с kacho-iam
+// FGA subject-type namespaces аутентифицированного principal (parity с kaname
 // FGA-моделью). Разделяемы обоими encoders (FGASubjectFromPrincipal — control-plane
 // по Principal.Type; FGASubjectFromID — data-plane по id-prefix), чтобы тип-строка
 // жила в одном месте.
@@ -121,7 +121,7 @@ const (
 	FGASubjectTypeServiceAccount = "service_account"
 )
 
-// Kachō principal id-prefix'ы (parity с kacho-iam domain PrefixUser/PrefixServiceAccount).
+// Kachō principal id-prefix'ы (parity с kaname domain PrefixUser/PrefixServiceAccount).
 // Data-plane имеет только id из верифицированного JWT (без Principal.Type), поэтому
 // выводит subject-тип по этим префиксам — единственный доступный ему дискриминатор.
 const (
@@ -145,7 +145,7 @@ func (t FGATuple) Valid() bool {
 }
 
 // SourceVersion — монотонный per-object маркер регистрации, общий для ОБОИХ путей её
-// доставки в kacho-iam: BEFORE-INSERT-триггер registry_outbox штампует его
+// доставки в kaname: BEFORE-INSERT-триггер registry_outbox штампует его
 // clock_timestamp()'ом внутри writer-tx (миграция 0011), а синхронный registrar
 // штампует wall-clock уже после commit'а — то есть строго не раньше. iam применяет
 // зеркало last-source-state-wins (`source_version < EXCLUDED.source_version`), поэтому

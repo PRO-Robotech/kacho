@@ -23,7 +23,7 @@
 // on :9091): their authz contract is "a verified module MAY query authz
 // decisions" (NOT "the module has access to the objects"), gated by the
 // internal listener's CallerPolicy verified-cert floor — see
-// cmd/kacho-iam/grpc_register.go. Gating them here would break every peer PDP
+// cmd/kaname/grpc_register.go. Gating them here would break every peer PDP
 // query, so they pass through and the outer cert floor governs them.
 
 package authorize

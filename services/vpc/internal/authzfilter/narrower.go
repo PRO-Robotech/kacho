@@ -27,7 +27,7 @@ type Narrower = listnarrow.Narrower
 // Config — посадка сужателя без предиката: предикат у сервиса ОДИН и объявлен
 // PageRelations, поэтому композиционный корень его не выбирает и не может ошибиться.
 type Config struct {
-	// Timeout — срок одного запроса к kacho-iam.
+	// Timeout — срок одного запроса к kaname.
 	Timeout time.Duration
 	// CacheTTL — окно жизни положительного вердикта.
 	CacheTTL time.Duration
@@ -40,7 +40,7 @@ type Config struct {
 	Breakglass bool
 }
 
-// New собирает сужатель поверх соединения с kacho-iam. conn == nil означает, что
+// New собирает сужатель поверх соединения с kaname. conn == nil означает, что
 // спросить негде: без аварийного режима такой сужатель ОТКАЗЫВАЕТ.
 func New(conn grpc.ClientConnInterface, cfg Config) *Narrower {
 	var cli listnarrow.AuthorizeClient

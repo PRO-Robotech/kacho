@@ -3,7 +3,7 @@
 
 // Package main — отдельный binary `kacho-migrator`: единая точка сборки CLI
 // миграций (cmd-binary не смешивает обязанности). Обслуживает миграции БД
-// сервиса kacho-iam (схема `kacho_iam`).
+// сервиса kaname (схема `kacho_iam`).
 //
 // API совпадает с goose-flavour:
 //
@@ -73,7 +73,7 @@ const serviceName = "iam"
 // перечисляются намеренно: их печатает сам общий пакет, поэтому умолчать
 // источник, который перебивает названные, нельзя by construction. Ровно это и
 // случилось однажды — текст отказа называл третий источник и умалчивал второй.
-var dsnExtraSources = []string{"kacho-iam config (KACHO_IAM_CONFIG_PATH)"}
+var dsnExtraSources = []string{"kaname config (KACHO_IAM_CONFIG_PATH)"}
 
 // rootOptions — shared параметры всех subcommand'ов, накапливаются persistent-флагами.
 type rootOptions struct {
@@ -96,8 +96,8 @@ func newRootCmd(migrationsFS fs.FS) *cobra.Command {
 
 	root := &cobra.Command{
 		Use:   "kacho-migrator",
-		Short: "Database migrations runner for kacho-iam",
-		Long: "kacho-migrator — отдельный CLI для управления миграциями БД сервиса kacho-iam.\n" +
+		Short: "Database migrations runner for kaname",
+		Long: "kacho-migrator — отдельный CLI для управления миграциями БД сервиса kaname.\n" +
 			"Одна точка сборки на use-case (cmd-binary не смешивает обязанности).\n\n" +
 			"Новая миграция заводится РУКОЙ: internal/migrations/YYYYMMDDHHMMSS_<что>.sql\n" +
 			"(метка времени заведения: date -u +%Y%m%d%H%M%S).\n" +
@@ -120,7 +120,7 @@ func newRootCmd(migrationsFS fs.FS) *cobra.Command {
 	root.PersistentFlags().StringVar(&opts.dialect, "dialect", defaultDialect,
 		"SQL dialect (postgres)")
 	root.PersistentFlags().StringVar(&opts.dsn, "dsn", "",
-		"database DSN; if empty — read ENV "+envDSN+", then fall back to kacho-iam config (viper)")
+		"database DSN; if empty — read ENV "+envDSN+", then fall back to kaname config (viper)")
 
 	root.AddCommand(
 		newUpCmd(opts, migrationsFS),
@@ -216,7 +216,7 @@ func buildRunner(opts *rootOptions, migrationsFS fs.FS) (*migratorrun.Runner, er
 	}
 
 	// Запасная конфигурация iam — тот же DB_HOST/PORT/USER/PASSWORD/NAME/SSLMODE,
-	// что и у kacho-iam.
+	// что и у kaname.
 	//
 	// ЗДЕСЬ СТОЯЛО «config.Load проваливает Validate» — это неверно, и неверно
 	// было всё время. `config.Load` стража НЕ зовёт: его шапка прямо говорит, что

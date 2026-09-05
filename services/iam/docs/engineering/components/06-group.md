@@ -85,7 +85,7 @@ trigger: users(id) | service_accounts(id) ←── group_members.member_id (mem
 sequenceDiagram
     autonumber
     participant Admin
-    participant IAM as kacho-iam :9090
+    participant IAM as kaname :9090
     participant DB as Postgres
 
     Admin->>IAM: GroupService.Create {account_id, name:"devops"}

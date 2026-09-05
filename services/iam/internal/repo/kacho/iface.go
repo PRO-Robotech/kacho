@@ -1,7 +1,7 @@
 // Copyright (c) PRO-Robotech
 // SPDX-License-Identifier: AGPL-3.0-or-later
 
-// Package kacho — CQRS Repository корень для kacho-iam.
+// Package kacho — CQRS Repository корень для kaname.
 //
 // Repository.Reader(ctx) → ReadTX (read-only, может работать на slave-pool);
 // Repository.Writer(ctx) → WriteTX (read-write, всегда на master).

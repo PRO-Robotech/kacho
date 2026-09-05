@@ -11,7 +11,7 @@ package pg_test
 // Проба последней мили (#1969) утверждает вердикт над моделью процесса, которую
 // ставит `installHarnessComposedModel`. Утверждение это осмысленно ровно постольку,
 // поскольку харнесс приводит процесс к тому состоянию, в котором его поднимает
-// корень (`cmd/kacho-iam/model_compose.go`, `installComposedModel`). Разойдись
+// корень (`cmd/kaname/model_compose.go`, `installComposedModel`). Разойдись
 // они — и проба доказывала бы работу цепи, которой продукт не исполняет: харнесс,
 // пропустивший допуск, поставил бы модель, которую старт отверг бы, то есть
 // фикстура стала бы СНИСХОДИТЕЛЬНЕЕ ПРОДУКТА.
@@ -110,7 +110,7 @@ func orderedModelStepsIn(t *testing.T, path, funcName string) (steps []string, c
 // совпадают.
 func TestHarnessComposesTheModelTheCompositionRootWouldInstall(t *testing.T) {
 	const (
-		rootPath    = "../../../../cmd/kacho-iam/model_compose.go"
+		rootPath    = "../../../../cmd/kaname/model_compose.go"
 		rootFunc    = "installComposedModel"
 		harnessPath = "harness_composed_model_test.go"
 		harnessFunc = "installHarnessComposedModel"

@@ -45,7 +45,7 @@ type CheckClient interface {
 	//   - allowed=false, err=authz.ErrNoPath — нет hierarchy-tuple для object'а
 	//     (ресурс скорее всего не существует; interceptor → DecisionNoPath →
 	//     handler вернёт NOT_FOUND из DB).
-	//   - allowed=false, err=domain.ErrUnavailable — FGA / kacho-iam недоступен
+	//   - allowed=false, err=domain.ErrUnavailable — FGA / kaname недоступен
 	//     (fail-closed: interceptor → DecisionUnavailable → UNAVAILABLE; это не
 	//     решение о правах, поэтому и код не тот, которым отвечает отказ).
 	//   - allowed=false, err=domain.ErrInvalidArg — bad subject/relation/object.
@@ -59,7 +59,7 @@ type checkClient struct {
 }
 
 // NewCheckClient оборачивает grpc-conn в typed adapter. conn должен быть к
-// kacho-iam **internal**-listener (`:9091`) — InternalIAMService.Check не
+// kaname **internal**-listener (`:9091`) — InternalIAMService.Check не
 // публикуется на external endpoint (Internal-only). Per-call timeout —
 // DefaultCheckTimeout; композиционный root, у которого есть configured
 // `cfg.Authz.IAM.RequestTimeout`, обязан использовать
@@ -150,7 +150,7 @@ func (c *checkClient) check(ctx context.Context, subjectID, relation, object str
 	}
 	// Passthrough `no-path` reason: interceptor → DecisionNoPath →
 	// handler вернёт NOT_FOUND из DB. Reason-формат — substring "no path"
-	// (kacho-iam emits "no FGA path: <object>") либо явный prefix.
+	// (kaname emits "no FGA path: <object>") либо явный prefix.
 	if isNoPathReason(resp.GetReason()) {
 		return false, authz.ErrNoPath
 	}

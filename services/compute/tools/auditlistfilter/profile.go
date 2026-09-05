@@ -11,7 +11,7 @@
 // flat package, each resource has its own handler type (`InstanceHandler`,
 // `MachineTypeHandler`), and its `List` runs the page it just read through the
 // generic `filterVisible` helper of internal/handler/list_filter.go, which calls
-// kacho-iam BatchCheck. So the resource is told apart by the receiver TYPE, and the
+// kaname BatchCheck. So the resource is told apart by the receiver TYPE, and the
 // proof of filtering is a call reachable from the List body.
 //
 // # What the previous gate keyed on, and why that was two defects
@@ -100,14 +100,14 @@ var Profile = listfiltergate.Profile{
 	// Copying iam's answer here would have been wrong twice over: iam's sources are
 	// its own — the store's port and a paged verdict resolver over its own tables —
 	// and kacho-compute has neither. It holds grants nowhere; every authorization
-	// question it asks goes to kacho-iam, through the ports below.
+	// question it asks goes to kaname, through the ports below.
 	EnumerationSources: []listfiltergate.EnumerationSource{
-		// The service's own client to kacho-iam: "may this subject act on this
+		// The service's own client to kaname: "may this subject act on this
 		// object" (InternalIAMService.Check). One method along from it is "which
 		// objects may this subject act on", and that is the form the ban must
 		// already refuse when it is written.
 		{Dir: "internal/check", Type: "IAMCheckClient", Role: listfiltergate.AsksVerdicts},
-		// The SHARED narrow port to kacho-iam's AuthorizeService, resolved from the
+		// The SHARED narrow port to kaname's AuthorizeService, resolved from the
 		// module root because it is foundation rather than service code. It is the
 		// shortest path from "narrow this page" to "enumerate the universe": the RPC
 		// it fronts is the one that enumerates (AuthorizeService.ListObjects), so a

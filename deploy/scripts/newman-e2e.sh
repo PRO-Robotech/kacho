@@ -6,7 +6,7 @@
 # Replaces the manual "seed tokens by hand" path with a deterministic,
 # committed flow:
 #   1. port-forward api-gateway public (:18080) + internal-rest (:18081) +
-#      kacho-iam-internal (:19091)
+#      kaname-internal (:19091)
 #   2. seed auth fixtures via tests/authz-fixtures/setup.sh (idempotent):
 #      mints non-expiring dev JWTs, upserts users, accounts/projects, grants
 #      cluster-admin (SQL backdoor), seeds VPC networks, and PATCHES every
@@ -71,7 +71,7 @@ cleanup() {
 }
 trap cleanup EXIT
 
-echo "[e2e] port-forward api-gateway :$GW_PORT (public) / :$GW_INTERNAL_PORT (internal-rest) / :$GW_TLS_PORT (external TLS) + kacho-iam-internal :$IAM_INTERNAL_PORT"
+echo "[e2e] port-forward api-gateway :$GW_PORT (public) / :$GW_INTERNAL_PORT (internal-rest) / :$GW_TLS_PORT (external TLS) + kaname-internal :$IAM_INTERNAL_PORT"
 kubectl -n "$NS" port-forward svc/api-gateway "$GW_PORT:8080" >/tmp/e2e-pf-gw.log 2>&1 &
 PF_PIDS+=($!)
 # internal-rest (:8081) — ОТДЕЛЬНЫЙ листенер для Internal*-RPC. На публичном :8080 их
@@ -84,7 +84,7 @@ PF_PIDS+=($!)
 # ({{externalBaseUrl}}): Internal*-пути обязаны быть недостижимы на нём.
 kubectl -n "$NS" port-forward svc/api-gateway "$GW_TLS_PORT:8443" >/tmp/e2e-pf-gw-tls.log 2>&1 &
 PF_PIDS+=($!)
-kubectl -n "$NS" port-forward svc/kacho-iam-internal "$IAM_INTERNAL_PORT:9091" >/tmp/e2e-pf-iam.log 2>&1 &
+kubectl -n "$NS" port-forward svc/kaname-internal "$IAM_INTERNAL_PORT:9091" >/tmp/e2e-pf-iam.log 2>&1 &
 PF_PIDS+=($!)
 # Hydra public — POST target of the OAuth2 client_credentials exchange that turns an
 # iam-issued SA key into the RS256 Bearer a production-posture stand accepts. ClusterIP
@@ -92,9 +92,9 @@ PF_PIDS+=($!)
 kubectl -n "$NS" port-forward svc/kacho-umbrella-hydra-public "${HYDRA_PUBLIC_PORT:-14444}:4444" >/tmp/e2e-pf-hydra.log 2>&1 &
 PF_PIDS+=($!)
 # Полоса фасада (#59): JWKS-прокси iam, ручка docker-токена iam и data-plane реестра.
-kubectl -n "$NS" port-forward svc/kacho-iam-internal "$IAM_JWKS_PORT:9097" >/tmp/e2e-pf-iam-jwks.log 2>&1 &
+kubectl -n "$NS" port-forward svc/kaname-internal "$IAM_JWKS_PORT:9097" >/tmp/e2e-pf-iam-jwks.log 2>&1 &
 PF_PIDS+=($!)
-kubectl -n "$NS" port-forward svc/kacho-iam "$IAM_REGTOKEN_PORT:9096" >/tmp/e2e-pf-iam-regtoken.log 2>&1 &
+kubectl -n "$NS" port-forward svc/kaname "$IAM_REGTOKEN_PORT:9096" >/tmp/e2e-pf-iam-regtoken.log 2>&1 &
 PF_PIDS+=($!)
 
 # ПРОБРОС К КОМПОНЕНТУ — ПО СПРОСУ, ТЕМ ЖЕ ПРЕДИКАТОМ, ЧТО У newman-parallel.sh.
@@ -118,7 +118,7 @@ while IFS='|' read -r _ovar _osvc _otport _oportenv _odport _oscheme _owhy; do
 done < <(python3 "$(dirname "${BASH_SOURCE[0]}")/e2e-optional-transports.py" --suites "$SVC" --census)
 sleep 4
 
-# mTLS для grpcurl → kacho-iam-internal:9091.
+# mTLS для grpcurl → kaname-internal:9091.
 #
 # dev-стенд идёт с mtls.enabled=true (фаза 2 dev-up), поэтому internal-листенер iam
 # требует client-cert: plaintext-grpcurl просто ВИСНЕТ на хендшейке (не падает внятно —
@@ -141,7 +141,7 @@ if kubectl -n "$NS" get secret api-gateway-client-tls >/dev/null 2>&1; then
 else
   echo "[e2e] iam-internal: mTLS-секрета нет — grpcurl пойдёт plaintext (mTLS-off стенд)"
 fi
-# Bootstrap-operator leaf — a DIFFERENT identity, the only SPIFFE SAN kacho-iam
+# Bootstrap-operator leaf — a DIFFERENT identity, the only SPIFFE SAN kaname
 # allow-lists for MintBootstrapToken (the production seed's entry point). Deliberately
 # not the api-gateway one: the gateway fronts tenant traffic, so "is the api-gateway"
 # must never be a licence to mint a cluster admin.

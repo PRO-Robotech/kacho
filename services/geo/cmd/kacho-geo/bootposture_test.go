@@ -46,7 +46,7 @@ func TestBootPosture_Production(t *testing.T) {
 	cfg := config.Config{
 		AuthMode:         "production",
 		DBSSLMode:        "verify-full",
-		AuthZIAMGRPCAddr: "kacho-iam-internal:9091",
+		AuthZIAMGRPCAddr: "kaname-internal:9091",
 	}
 	cfg.PublicServerMTLS.Enable = true
 	cfg.InternalServerMTLS.Enable = true

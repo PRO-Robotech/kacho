@@ -11,7 +11,7 @@ SPDX-License-Identifier: AGPL-3.0-or-later
 - **Ревизия измерения:** `aef1ef8ff` (ветка `w/1191`, база `release/identity-4`)
 - **Задача:** `PRO-Robotech/kacho#1191` (вынесено из BAT-1 решением круга 1 ревью)
 - **Тип изменения:** ЛОМАЮЩЕЕ для принципала, у которого удостоверений больше умолчания
-- **Сервис:** `kacho-iam`; затрагивает `services/iam/internal/domain`,
+- **Сервис:** `kaname`; затрагивает `services/iam/internal/domain`,
   `services/iam/internal/authzmap`, миграции iam, use-case обоих глаголов выдачи
 
 ---

@@ -128,7 +128,7 @@ noted in `docs/engineering/architecture/08-known-divergences.md` of kacho-nlb.
 | **REQ-AZD-LIFECYCLE-DEL** | `DELETED` lifecycle event (D-13 stream) MUST cause `openfga.DeleteByObject(<resource>)` within ≤10s; subsequent Check MUST return DecisionNoPath → fail-closed. | AZD-022 | `AZD-LIFECYCLE-DELETED-TUPLE-CLEANUP` |
 | **REQ-AZD-CACHE-INVAL** | Revoking an AccessBinding MUST propagate to the FGA Check cache within ≤10s (via `pg_notify('kacho_iam_subjects', '<id>')`); subject's next Check MUST deny. | AZD-016 | `AZD-CACHE-INVALIDATION-REVOKE` |
 | **REQ-AZD-OWNER** | The creator of any resource MUST have an `owner` tuple written synchronously (D-11) before the worker commits its TX; failure to write MUST abort the operation. | AZD-021 | `AZD-OWNER-RELATION-CREATOR` |
-| **REQ-AZD-INTERNAL-MTLS** | `InternalResourceLifecycleService.Subscribe` MUST only be reachable from mTLS-authenticated identities matching the kacho-iam SPIFFE ID; external clients MUST be rejected. | AZD-025 | `AZD-LIFECYCLE-INTERNAL-MTLS-ONLY` |
+| **REQ-AZD-INTERNAL-MTLS** | `InternalResourceLifecycleService.Subscribe` MUST only be reachable from mTLS-authenticated identities matching the kaname SPIFFE ID; external clients MUST be rejected. | AZD-025 | `AZD-LIFECYCLE-INTERNAL-MTLS-ONLY` |
 
 ## REQ-DB-* — Storage invariants (covered indirectly via newman)
 

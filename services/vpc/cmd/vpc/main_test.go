@@ -128,7 +128,7 @@ func TestBuildListFilter_EnabledWithConn_Narrows(t *testing.T) {
 // completeness-gate. Composition root ОБЯЗАН протянуть per-edge client-cert mTLS
 // creds в КАЖДЫЙ vpc→iam dial: public ProjectService.Get conn (`iamConn`) и internal
 // InternalIAMService.Check conn (`authzConn`, общий с list-filter). Если любой
-// read/authz iam-dial оставить server-auth-only/plaintext, то, когда kacho-iam
+// read/authz iam-dial оставить server-auth-only/plaintext, то, когда kaname
 // требует и проверяет client-cert, handshake падает — guard запрещает эту регрессию,
 // проверяя, что оба dial'а консультируются с mTLS-хелперами.
 //

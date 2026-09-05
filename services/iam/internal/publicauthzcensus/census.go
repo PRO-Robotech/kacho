@@ -10,7 +10,7 @@
 // задаёт пообъектный вопрос по записи каталога прав, а сам сервис на своих
 // слушателях этот вопрос по большей части не повторяет. Код iam говорит это
 // прямым текстом — «iam does NOT re-ReBAC the end user on its own listeners»
-// (services/iam/cmd/kacho-iam/serve.go, оба слушателя).
+// (services/iam/cmd/kaname/serve.go, оба слушателя).
 //
 // Пока iam стоит за нашим краем, это защитимо. Вынесенный в чужое облако iam
 // края не имеет by construction, и каждый публичный RPC без собственного
@@ -258,7 +258,7 @@ const relationPortArgs = 4
 func Collect(root string) (Census, error) {
 	return CollectFrom(
 		filepath.Join(root, "proto", "kacho", "cloud", "iam", "v1"),
-		filepath.Join(root, "services", "iam", "cmd", "kacho-iam"),
+		filepath.Join(root, "services", "iam", "cmd", "kaname"),
 		root,
 	)
 }

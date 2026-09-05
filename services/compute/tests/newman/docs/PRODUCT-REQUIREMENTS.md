@@ -209,7 +209,7 @@ Disk / Image / Snapshot / Instance / Disk type / Zone / Operation.
 
 ## F. Cross-service refs (`REF`)
 
-### REQ-REF-01 — `project_id` в Create валидируется gRPC-вызовом к kacho-iam → `NotFound` если нет   [P0]
+### REQ-REF-01 — `project_id` в Create валидируется gRPC-вызовом к kaname → `NotFound` если нет   [P0]
 worker каждого Create: `projectClient.Exists(project_id)`; error → `Unavailable "project check: upstream project service unavailable"`; false → `NotFound "Project <X> not found"`.
 - Validated-by: `*-CR-NEG-PROJECT-NOTFOUND`, `OP-GET-CRUD-FAILED-OP`
 - Agent-check: `internal/clients/iam_client.go`; вызов в `do*` worker'ах. ⚠️ `KACHO_COMPUTE_SKIP_PEER_VALIDATION=true` → no-op (test-config).

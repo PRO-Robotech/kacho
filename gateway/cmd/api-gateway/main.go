@@ -76,7 +76,7 @@ func main() {
 
 	// --- Backend connections: один постоянный ClientConn на backend ---
 	// Активные backends: iam + vpc + compute (+ их internal-порты).
-	// Account/Project обслуживает kacho-iam.
+	// Account/Project обслуживает kaname.
 	// loadbalancer заморожен — dial не выполняется. grpc.NewClient ленив:
 	// фактическое соединение устанавливается при первом RPC, поэтому отсутствие
 	// еще-не-задеплоенного backend не валит запуск.
@@ -92,7 +92,7 @@ func main() {
 	}
 	defer closeBackends()
 
-	// --- IAM subject client (gRPC-direct к kacho-iam:9091 для LookupSubject) ---
+	// --- IAM subject client (gRPC-direct к kaname:9091 для LookupSubject) ---
 	// gRPC-direct ЗДЕСЬ — чтобы не рекурсировать через собственный middleware:
 	// этот клиент зовут из auth-интерсептора, и пойти к себе же по REST значило бы
 	// снова войти в цепочку, которая его и вызвала (loop-prevention).

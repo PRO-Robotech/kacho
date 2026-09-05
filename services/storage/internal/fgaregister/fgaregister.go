@@ -14,7 +14,7 @@
 //
 // INTENT на tuple пишется outbox-строкой (kacho_storage.fga_register_outbox) в ТОЙ
 // ЖЕ writer-TX, что вставляет/удаляет ресурс (один commit, без dual-write). Отдельный
-// register-drainer (corelib outbox/drainer) применяет каждый intent через kacho-iam
+// register-drainer (corelib outbox/drainer) применяет каждый intent через kaname
 // InternalIAMService.RegisterResource/UnregisterResource по mTLS (idempotent,
 // at-least-once, retry на Unavailable — tuple durable и не теряется). Writer-сторона —
 // emit в internal/repo/pg; drainer-сторона — IAM register-applier в internal/clients.
@@ -92,7 +92,7 @@ type Item struct {
 	ParentProjectID string
 }
 
-// Registrar — порт синхронной регистрации owner-tuple'ов в kacho-iam. Create-flow
+// Registrar — порт синхронной регистрации owner-tuple'ов в kaname. Create-flow
 // после успешного коммита ресурса синхронно регистрирует те же Item'ы, что эмитятся
 // в outbox-intent, чтобы owner-grant (и анти-BOLA-резолв) был доступен сразу — без
 // гонки с async register-drainer'ом. Реализация — adapter поверх
@@ -105,7 +105,7 @@ type Registrar interface {
 // Payload — JSONB-форма одной строки fga_register_outbox: tuple, развёрнутый на
 // верхний уровень (back-compat с «голой» tuple-строкой), плюс mirror-feed (labels +
 // parent_project_id + монотонный source_version). На эту форму опираются и
-// repo-writer (emit), и clients-applier (forward в kacho-iam).
+// repo-writer (emit), и clients-applier (forward в kaname).
 type Payload struct {
 	Tuple
 	// Labels — копия labels владельца-ресурса (mirror для селектора iam).

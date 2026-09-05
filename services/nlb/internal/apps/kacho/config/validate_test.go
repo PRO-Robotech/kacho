@@ -181,8 +181,8 @@ func productionSecureConfig() Config {
 	cfg.ExtAPI.VPC.InternalAddr = "vpc.kacho.svc:9091"
 	cfg.ExtAPI.Compute.Addr = "compute.kacho.svc:9090"
 	cfg.ExtAPI.Geo.Addr = "kacho-geo.kacho.svc:9090"
-	cfg.ExtAPI.IAM.Addr = "kacho-iam.kacho.svc:9090"
-	cfg.ExtAPI.IAM.InternalAddr = "kacho-iam-internal.kacho.svc:9091"
+	cfg.ExtAPI.IAM.Addr = "kaname.kacho.svc:9090"
+	cfg.ExtAPI.IAM.InternalAddr = "kaname-internal.kacho.svc:9091"
 	cfg.MTLS.VPC.Enable = true
 	cfg.MTLS.Compute.Enable = true
 	cfg.MTLS.Geo.Enable = true

@@ -16,7 +16,7 @@
 //	permanent-ошибка (InvalidArgument) → poison, очередь не заблокирована
 //
 // testcontainers Postgres 16 + реальный corelib-drainer + реальный applier поверх
-// fake InternalIAMServiceClient (процесс kacho-iam не нужен). Пропускается под -short.
+// fake InternalIAMServiceClient (процесс kaname не нужен). Пропускается под -short.
 package clients_test
 
 import (

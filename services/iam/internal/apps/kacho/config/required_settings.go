@@ -244,7 +244,7 @@ var RequiredSettings = []RequiredSetting{
 		Supply:      SupplyEnv,
 		Lanes:       []IdentityProvider{IdentityProviderExternal},
 		Conditional: true,
-		Sample:      "/etc/kacho-iam/tls/server/ca.crt",
+		Sample:      "/etc/kaname/tls/server/ca.crt",
 		Why: "корень доверия для административной дороги. Обязателен, КОГДА адрес выше объявлен по " +
 			"https: сертификат поставщика внутри кластера выпущен внутренним удостоверяющим центром, " +
 			"а процесс доверяет системным корням — без этой связки каждый вызов падает на неизвестном центре",

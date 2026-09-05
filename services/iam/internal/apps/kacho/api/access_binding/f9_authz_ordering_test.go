@@ -6,7 +6,7 @@ package access_binding
 // f9_authz_ordering_test.go — AccessBinding.Create must be AUTHZ-FIRST.
 //
 // The RPC is `permission = "<exempt>"` in proto: the api-gateway runs NO per-RPC
-// Check for it, and the kacho-iam handler is the authoritative gate. So every
+// Check for it, and the kaname handler is the authoritative gate. So every
 // statement that READS another tenant's object (the F9 structural gates read the
 // role, and the hierarchy-down resolution reads the scope project) must run AFTER
 // requireGrantAuthority — otherwise ANY authenticated principal can probe foreign

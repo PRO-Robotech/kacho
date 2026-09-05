@@ -3,7 +3,7 @@ _helpers.tpl — именованные шаблоны чарта.
 */}}
 
 {{/*
-kacho-iam-svc.authMode — посадка безопасности, ОДНИМ адресом.
+kaname-svc.authMode — посадка безопасности, ОДНИМ адресом.
 
 Ручку звали в дереве шестью разными адресами и двумя именами: `authn.mode`,
 `config.authn.mode`, `auth.mode`, `config.mode`, `config.authMode`, `authMode`.
@@ -21,7 +21,7 @@ kacho-iam-svc.authMode — посадка безопасности, ОДНИМ �
 безопасности, такой откат означал бы стенд, который называет себя одним, а
 работает другим, — и заметить это можно только по последствиям.
 */}}
-{{- define "kacho-iam-svc.authMode" -}}
+{{- define "kaname-svc.authMode" -}}
 {{- $vals := .Values | toYaml | fromYaml -}}
 {{- $canonRaw := .Values.authMode -}}
 {{- $legacyRaw := "" -}}

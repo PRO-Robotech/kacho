@@ -51,7 +51,7 @@ SPDX-License-Identifier: AGPL-3.0-or-later
   `/tmp/claude-1000/wt-m9`, ветка `lane/m9` от `release/modules-6`. Линия в ствол
   не влита: предикаты по `origin/main` о ней не знают by construction. **Все**
   числа и координаты §0…§9 сняты на ней. Дерево двигалось во время замера
-  (родительская сессия коммитила в `services/iam/cmd/kacho-iam/`), поэтому
+  (родительская сессия коммитила в `services/iam/cmd/kaname/`), поэтому
   несущие предикаты §0.1 перемерены на этой ревизии повторно — §0.6
 - **Ревизия измерения (воркспейс):** `4ed9059f` — отдельный репозиторий, оттуда
   взяты только тексты правил
@@ -70,7 +70,7 @@ SPDX-License-Identifier: AGPL-3.0-or-later
 - **Тип изменения:** ВВОДЯЩЕЕ (аддитивное). Заводятся пометка снятия у
   `kacho_iam.roles`, её производитель и **одно output-only поле контракта**.
   Ни одного нового ВХОДА; смысл ни одного существующего поля не меняется
-- **Сервис:** `kacho-iam` — предмет целиком внутри него, поэтому документ живёт
+- **Сервис:** `kaname` — предмет целиком внутри него, поэтому документ живёт
   рядом с кодом, а не в воркспейсе. `gateway/` не затрагивает
 - **Контракт:** ТРЕБУЕТ — одно поле `Role` (§2.6). Это **сознательное расхождение
   с APPROVED-приёмкой `roles-pointing-at-moved-resources.md` §2.7**, и оно
@@ -253,13 +253,13 @@ SQL); происхождение ложной посылки подтвержд�
 
 | # | утверждение | предикат · единица счёта | значение |
 |---|---|---|---|
-| Е1 | применитель ролей **приводится в действие** в проде | гейт `TestWithdrawalProducerArrivesWithTheApplier`, строка переписи; единица — узел разбора `пакет.Имя` | **1** (`services/iam/cmd/kacho-iam/serve.go:333`, `NewApplier`) |
+| Е1 | применитель ролей **приводится в действие** в проде | гейт `TestWithdrawalProducerArrivesWithTheApplier`, строка переписи; единица — узел разбора `пакет.Имя` | **1** (`services/iam/cmd/kaname/serve.go:333`, `NewApplier`) |
 | Е2 | операторов записи над `roles` в прод-Go iam | та же перепись; единица — оператор в строковом литерале | **4** |
 | Е3 | сверка `Reconcile` объявляет ОБА вида расхождения | `services/iam/internal/apps/kacho/moduleroles/reconcile.go`, константы `LiveNotDeclared` / `DeclaredNotLive` | **2** вида |
 | Е4 | таблиц каталога прав, несущих пометку снятия | `CREATE TABLE` в `20260901113757_rule_segments_have_a_referent.sql`; единица — таблица | **3** (`catalog_module`, `catalog_resource`, `catalog_verb`) |
 | Е5 | форма пометки объявлена дословно | там же, `catalog_module`: `retired_at timestamptz` · `retired_reason text` · `live boolean NOT NULL DEFAULT true` · `CHECK (live = (retired_at IS NULL))` · `UNIQUE (module, live)` как референт | форма **есть** |
 | Е6 | писатель пометки у каталога | `services/iam/internal/repo/kacho/pg/catalog_writer.go`: `RetireVerb` (`SET retired_at = now(), live = false, retired_reason = $4`), `RetireResource`; обратные — `UpsertModule`/`UpsertResource`/`UpsertVerb` (`SET retired_at = NULL, live = true`) | **2** снятия + **3** оживления |
-| Е7 | путь старта СНИМАЕТ строки каталога и **продолжает пуск**, называя снятое поимённо | `services/iam/cmd/kacho-iam/serve.go:288-290` — условие `len(catalogCensus.WithdrawnRows) > 0` и под ним `logger.Info("строки каталога сняты решением — старт продолжается", slog.Any("rows", …))` | прецедент **есть** |
+| Е7 | путь старта СНИМАЕТ строки каталога и **продолжает пуск**, называя снятое поимённо | `services/iam/cmd/kaname/serve.go:288-290` — условие `len(catalogCensus.WithdrawnRows) > 0` и под ним `logger.Info("строки каталога сняты решением — старт продолжается", slog.Any("rows", …))` | прецедент **есть** |
 | Е8 | ключей, ссылающихся на `roles`, объявлено | `git grep -cE 'REFERENCES kacho_iam\.roles' -- services/iam/internal/migrations/*.sql`; единица — объявление ключа | **8** (из них 1 на дропнутой `organizations`, 0008 → живых **7**) |
 | Е9 | из них `ON DELETE RESTRICT` · `ON DELETE CASCADE` | тот же вывод, разбор по действию | **1** живой RESTRICT (`access_bindings_role_fk`) · **6** CASCADE |
 | Е10 | `roles` в прод-коде вердикта вне комментария | обход `services/iam/internal/repo/kacho/pg/relverdict/*.go` без `_test.go`; единица — вхождение вне строки-комментария | **1**, и это **ось меток** (`labelaxis.go:66`, `iamDirectLabelTable["iam_role"]`) |
@@ -388,7 +388,7 @@ apply.go`, — и до неё я успел написать неверный а
   `catalog_apply_cost_integration_test.go`, то есть это **чужой замер**, снятый
   автором `#1959`. Я его не воспроизводил; посадка названа там же;
 - **дерево двигалось во время замера.** Родительская сессия коммитила в
-  `services/iam/cmd/kacho-iam/`: между началом чтения и концом HEAD прошёл
+  `services/iam/cmd/kaname/`: между началом чтения и концом HEAD прошёл
   `c70ba78ff7` → `d94d7b9af6`. Несущие предикаты (Е1, Н1, Н2, Н3, Н4, Е14)
   перемерены на `d94d7b9af6` повторно и дали те же значения; остальные сняты
   один раз и на своей ревизии верны;

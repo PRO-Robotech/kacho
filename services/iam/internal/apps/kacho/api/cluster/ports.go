@@ -6,7 +6,7 @@ package cluster
 // ports.go — narrow port-interfaces for InternalClusterService use-cases.
 //
 // Clean Architecture: use-cases depend on these interfaces; concrete adapters
-// live in internal/repo/kacho/pg and are wired via cmd/kacho-iam/wiring.go.
+// live in internal/repo/kacho/pg and are wired via cmd/kaname/wiring.go.
 // No pgx / grpc imports here.
 
 import (

@@ -1,11 +1,11 @@
 # Resource-scoped AccessBinding — per-object targets (by-design)
 
 By-design notes for targeting one concrete object (or a set of named objects)
-from a reusable role. Records the design decisions of the kacho-iam
+from a reusable role. Records the design decisions of the kaname
 implementation.
 
 > [!warning] Состояние на 2026-08-11: описанный здесь механизм СНЯТ миграцией 0030
-> Заголовок обещает «by-design notes … записывают решения реализации kacho-iam», то есть
+> Заголовок обещает «by-design notes … записывают решения реализации kaname», то есть
 > настоящее время. По дереву это уже не так, и перепись по четырём осям это показывает:
 >
 > - **таблицы**: `access_binding_targets` (заводилась миграцией 0018) и

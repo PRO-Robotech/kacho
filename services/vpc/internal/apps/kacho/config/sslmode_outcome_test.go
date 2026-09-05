@@ -33,7 +33,7 @@ import (
 // контроль стоит рядом и утверждает вторую сторону той же оси.
 func TestValidateProductionJudgesTheSSLModeThatReachesThePool(t *testing.T) {
 	t.Run("режим из URL перевешивает поле: disable в URL отвергается", func(t *testing.T) {
-		c := prodCfg(ModeProduction, "kacho-iam:9091")
+		c := prodCfg(ModeProduction, "kaname:9091")
 		// Поле объявляет безопасный режим…
 		c.Repository.Postgres.SSLMode = "require"
 		// …а в пул уходит открытый канал: composeDSN уже заданный sslmode не трогает.
@@ -47,7 +47,7 @@ func TestValidateProductionJudgesTheSSLModeThatReachesThePool(t *testing.T) {
 	})
 
 	t.Run("режим задан только в URL, поле пусто: старт проходит", func(t *testing.T) {
-		c := prodCfg(ModeProduction, "kacho-iam:9091")
+		c := prodCfg(ModeProduction, "kaname:9091")
 		c.Repository.Postgres.SSLMode = ""
 		c.Repository.Postgres.URL = "postgres://u@h:5432/db?sslmode=verify-full"
 
@@ -56,7 +56,7 @@ func TestValidateProductionJudgesTheSSLModeThatReachesThePool(t *testing.T) {
 	})
 
 	t.Run("положительный контроль: поле disable по-прежнему отвергается", func(t *testing.T) {
-		c := prodCfg(ModeProduction, "kacho-iam:9091")
+		c := prodCfg(ModeProduction, "kaname:9091")
 		c.Repository.Postgres.SSLMode = "disable"
 
 		err := c.Validate()

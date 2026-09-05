@@ -69,7 +69,7 @@ sequenceDiagram
     autonumber
     participant Cli as Tenant CLI
     participant GW as api-gateway :18080
-    participant IAM as kacho-iam :9090
+    participant IAM as kaname :9090
     participant DB as Postgres (kacho_iam)
     participant Out as fga_outbox (журнал намерений)
 

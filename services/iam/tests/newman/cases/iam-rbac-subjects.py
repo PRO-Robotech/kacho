@@ -82,7 +82,7 @@ POLL_CAP = 30
 # (group→member userset / group-binding tuple materializing in OpenFGA), as
 # opposed to the LRO operation-poll which only waits on the in-process worker.
 #
-# The drainer (cmd/kacho-iam/serve.go) is LISTEN/NOTIFY-driven with
+# The drainer (cmd/kaname/serve.go) is LISTEN/NOTIFY-driven with
 # PollFallback=30s and BackoffMin/Max=1s/30s. On the happy NOTIFY path the
 # tuple lands sub-second; but if a NOTIFY is missed (listener reconnect, the
 # row committed mid-batch) the next attempt is only the 30s fallback poll, and
