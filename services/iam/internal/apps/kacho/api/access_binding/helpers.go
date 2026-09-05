@@ -175,6 +175,25 @@ func requireGrantAuthority(ctx context.Context, repo Repo, relations clients.Rel
 		return nil
 	}
 
+	return grantAuthorityBeyondClusterAdmin(ctx, repo, relations, resourceType, resourceID)
+}
+
+// grantAuthorityBeyondClusterAdmin — та же полоса, что и у requireGrantAuthority,
+// НО без Пути 0: вызывающий уже спросил супер-гейт и промахнулся.
+//
+// # Зачем это отдельная функция
+//
+// Вопрос супер-гейта не зависит ни от типа области, ни от её идентификатора —
+// он про ЛИЧНОСТЬ вызывающего. На одиночном глаголе (Create / Delete) разницы
+// нет, и там полоса зовётся целиком. На СТРАНИЦЕ разница и есть предмет: вопрос,
+// одинаковый для всех её строк, обязан задаваться однажды за запрос, а не по
+// разу на строку. Стоимость страницы принадлежит ЗАПРОСУ (`security.md`
+// §«Фильтрация — страница → проверка страницы»), а `page_size` доходит до 1000.
+//
+// Исход этой функции для строки ТОТ ЖЕ, что у requireGrantAuthority, когда
+// супер-гейт ответил «не админ, ошибки нет»: вызывающий обязан воспроизвести
+// Путь 0 сам и различить три его исхода — да · нет · спросить не удалось.
+func grantAuthorityBeyondClusterAdmin(ctx context.Context, repo Repo, relations clients.RelationStore, resourceType, resourceID string) error {
 	var ownerUserID string
 	// The owner-path resolves the owning Account via the DB reader. It is only
 	// relevant for the hierarchy scope-types (account/project); for every other

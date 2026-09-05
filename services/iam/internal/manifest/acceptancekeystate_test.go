@@ -120,7 +120,7 @@ func keyStateUnquote(raw string) string {
 // `properties`. Обход рекурсивный: ключ глагола лежит внутри `oneOf`, и путь к
 // нему выписывать нельзя — он переедет вместе с формой.
 func schemaDeclaredProperties(path string) (map[string]bool, error) {
-	body, err := os.ReadFile(path) //nolint:gosec // путь — константа пакета
+	body, err := os.ReadFile(path) // #nosec G304 -- путь — константа пакета
 	if err != nil {
 		return nil, err
 	}
@@ -203,7 +203,7 @@ func goIdentifierIsDeclared(root, qualified string) (bool, int, error) {
 		if found {
 			return nil
 		}
-		body, rerr := os.ReadFile(p) //nolint:gosec // обход дерева модуля
+		body, rerr := os.ReadFile(p) // #nosec G304 -- обход дерева модуля
 		if rerr != nil {
 			return nil
 		}
@@ -224,7 +224,7 @@ func keyStateFindings(docPath, schemaPath, goRoot string) (findings []string, ro
 	}
 	props = len(declared)
 
-	body, err := os.ReadFile(docPath) //nolint:gosec // путь — константа пакета
+	body, err := os.ReadFile(docPath) // #nosec G304 -- путь — константа пакета
 	if err != nil {
 		return []string{"приёмка не прочитана: " + err.Error()}, 0, nil, props, 0
 	}
