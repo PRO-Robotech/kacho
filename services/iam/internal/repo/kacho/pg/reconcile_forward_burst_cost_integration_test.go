@@ -53,6 +53,8 @@ import (
 	"github.com/jackc/pgx/v5/pgxpool"
 	"github.com/stretchr/testify/require"
 
+	"github.com/PRO-Robotech/kacho/pkg/pgtest"
+
 	"github.com/PRO-Robotech/kacho-iam/internal/apps/kacho/api/access_binding/reconcile"
 	"github.com/PRO-Robotech/kacho-iam/internal/domain"
 )
@@ -106,7 +108,7 @@ func TestReconcileForward_BurstOnOneOwnerBindingDoesNotSerialize(t *testing.T) {
 	cfg.MaxConns = 32
 	pool, err := pgxpool.NewWithConfig(ctx, cfg)
 	require.NoError(t, err)
-	defer pool.Close()
+	pgtest.ClosePoolAtEnd(t, pool)
 
 	fx := setupGamma(t, ctx, pool, "burst")
 	rule := forwardAnchorRule()

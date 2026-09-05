@@ -44,6 +44,7 @@ import (
 	"github.com/stretchr/testify/require"
 
 	coredb "github.com/PRO-Robotech/kacho/pkg/db"
+	"github.com/PRO-Robotech/kacho/pkg/pgtest"
 )
 
 // Запросы страницы — обе полосы пути чтения ролей: порядок по курсору, окно
@@ -142,7 +143,7 @@ func TestRolesPage_CostBelongsToThePageNotToThePopulation(t *testing.T) {
 	ctx := context.Background()
 	pool, err := coredb.NewPool(ctx, setupTestDB(t))
 	require.NoError(t, err)
-	defer pool.Close()
+	pgtest.ClosePoolAtEnd(t, pool)
 
 	// Точки сетки — те же три, на которых задача #1964 назвала рост.
 	populations := []int{1000, 2000, 4000}

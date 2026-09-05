@@ -150,7 +150,7 @@ func TestOutboxScan_HealthyEmptyQueueDiffersFromAFailingScan(t *testing.T) {
 
 	pool, err := pgxpool.New(ctx, pgtest.NewDB(t))
 	require.NoError(t, err)
-	defer pool.Close()
+	pgtest.ClosePoolAtEnd(t, pool)
 
 	var rows int
 	require.NoError(t, pool.QueryRow(ctx,

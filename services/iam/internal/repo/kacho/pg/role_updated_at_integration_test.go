@@ -29,6 +29,7 @@ import (
 
 	coredb "github.com/PRO-Robotech/kacho/pkg/db"
 	"github.com/PRO-Robotech/kacho/pkg/ids"
+	"github.com/PRO-Robotech/kacho/pkg/pgtest"
 
 	"github.com/PRO-Robotech/kacho-iam/internal/domain"
 	kachopg "github.com/PRO-Robotech/kacho-iam/internal/repo/kacho/pg"
@@ -41,7 +42,7 @@ func TestRoleUpdatedAt_IsProducedAndMovesOnMutation(t *testing.T) {
 	ctx := context.Background()
 	pool, err := coredb.NewPool(ctx, setupTestDB(t))
 	require.NoError(t, err)
-	defer pool.Close()
+	pgtest.ClosePoolAtEnd(t, pool)
 	repo := kachopg.New(pool, nil)
 
 	owner := mustSeedUser(t, ctx, pool, "rua")

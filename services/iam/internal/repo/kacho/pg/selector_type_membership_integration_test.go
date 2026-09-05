@@ -39,6 +39,7 @@ import (
 	"github.com/stretchr/testify/require"
 
 	coredb "github.com/PRO-Robotech/kacho/pkg/db"
+	"github.com/PRO-Robotech/kacho/pkg/pgtest"
 )
 
 // selectorMembershipSources — исходники, где живёт отбор селекторов по типу.
@@ -109,7 +110,7 @@ func TestSelectorTypeMembership_GinServesContainmentNotScalarAny(t *testing.T) {
 	ctx := context.Background()
 	pool, err := coredb.NewPool(ctx, setupTestDB(t))
 	require.NoError(t, err)
-	defer pool.Close()
+	pgtest.ClosePoolAtEnd(t, pool)
 
 	const (
 		// Тип, по которому идёт отбор, — РЕДКИЙ в населении: на типе,
