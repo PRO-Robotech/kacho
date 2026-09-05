@@ -923,7 +923,11 @@ func (s *reconcileStore) SelectorBindingsMatchingObject(ctx context.Context, obj
 		     ON m.object_type = $1 AND m.object_id = $2
 		   LEFT JOIN kacho_iam.projects pj ON pj.id = m.parent_project_id
 		  WHERE b.status = 'ACTIVE'
-		    AND $1 = ANY(rrs.object_types)
+		    -- Форма ЧЛЕНСТВА, а не "скаляр = ANY(массив)": под столбцом стоит
+		    -- GIN, а он обслуживает @> / && / = и НЕ обслуживает вторую форму —
+		    -- планировщик на ней индекс не берёт и читает столбец
+		    -- последовательно. Семантика одна, путь доступа разный (#2053).
+		    AND rrs.object_types @> ARRAY[$1::text]
 		    AND ( (rrs.arm = 'anchor' AND (
 		                b.resource_type = 'cluster'
 		             OR (b.resource_type = 'account'
@@ -1022,7 +1026,9 @@ func (s *reconcileStore) IAMDirectSelectorBindingsMatchingObject(ctx context.Con
 	        JOIN kacho_iam.access_bindings b ON b.role_id = rrs.role_id
 	        JOIN ` + spec.table + ` o ON o.id = $2 ` + spec.join + `
 	       WHERE b.status = 'ACTIVE'
-	         AND $1 = ANY(rrs.object_types)
+	         -- Форма ЧЛЕНСТВА — см. соседний отбор выше: GIN не обслуживает
+	         -- "скаляр = ANY(массив)" (#2053).
+	         AND rrs.object_types @> ARRAY[$1::text]
 	         AND ( ` + anchorBranch + `
 	            OR (rrs.arm = 'names'  AND $2 = ANY(rrs.resource_names))` + labelsBranch + ` )
 	       ORDER BY b.id ASC`

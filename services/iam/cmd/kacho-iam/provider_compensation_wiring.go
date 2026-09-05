@@ -22,6 +22,8 @@ import (
 	"github.com/PRO-Robotech/kacho/pkg/outbox/drainer"
 	outboxmetrics "github.com/PRO-Robotech/kacho/pkg/outbox/metrics"
 
+	"github.com/PRO-Robotech/kacho-iam/internal/observability/metrics"
+
 	"github.com/PRO-Robotech/kacho-iam/internal/apps/kacho/config"
 	"github.com/PRO-Robotech/kacho-iam/internal/clients"
 )
@@ -113,14 +115,14 @@ func buildProviderCompensationDrainer(
 // редакция этого комментария перечень пересказывала — «событие ровно одного
 // вида» — и стала ложной в тот день, когда приехал второй вид.
 func runProviderCompensationMetrics(
-	ctx context.Context, pool *pgxpool.Pool, rec outboxmetrics.Recorder, logger *slog.Logger,
+	ctx context.Context, pool *pgxpool.Pool, rec *metrics.OutboxRecorder, logger *slog.Logger,
 ) {
 	collector := outboxmetrics.NewCollector(pool, rec, outboxmetrics.CollectorConfig{
 		Table:       clients.ProviderCompensationTable,
 		MaxAttempts: compensationMaxAttempts,
 		Interval:    15 * time.Second,
 	})
-	collector.Run(ctx, func(err error) {
-		logger.Warn("provider compensation outbox metrics scan failed", "err", err)
-	})
+	// Исход скана — через единственного производителя (#2062).
+	collector.Run(ctx, metrics.OutboxScanObserver(rec, clients.ProviderCompensationTable, logger,
+		"provider compensation outbox metrics scan failed"))
 }

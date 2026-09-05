@@ -39,6 +39,8 @@ import (
 	"github.com/PRO-Robotech/kacho/pkg/outbox"
 	"github.com/PRO-Robotech/kacho/pkg/outbox/drainer"
 	outboxmetrics "github.com/PRO-Robotech/kacho/pkg/outbox/metrics"
+
+	"github.com/PRO-Robotech/kacho-iam/internal/observability/metrics"
 	"github.com/PRO-Robotech/kacho/pkg/outbox/reconciler"
 	"github.com/PRO-Robotech/kacho/pkg/retention"
 
@@ -210,7 +212,7 @@ func valueFromEnvName(name string) string {
 // в это окно.
 func startInviteMailBackstop(
 	ctx context.Context, pool *pgxpool.Pool, cfg config.Config,
-	rec outboxmetrics.Recorder, logger *slog.Logger,
+	rec *metrics.OutboxRecorder, logger *slog.Logger,
 ) error {
 	rc, err := reconciler.NewRedriveOnly(pool, reconciler.Config{
 		Table:   clients.InviteMailTable,
@@ -238,9 +240,9 @@ func startInviteMailBackstop(
 		MaxAttempts: cfg.InviteMail.MaxAttemptsOrDefault(),
 		Interval:    15 * time.Second,
 	})
-	go col.Run(ctx, func(serr error) {
-		logger.Warn("invite mail outbox metrics scan failed", "err", serr)
-	})
+	// Исход скана — через единственного производителя (#2062).
+	go col.Run(ctx, metrics.OutboxScanObserver(rec, clients.InviteMailTable, logger,
+		"invite mail outbox metrics scan failed"))
 
 	// УБОРКА ДОСТАВЛЕННЫХ. Строка пишется на каждое приглашение, то есть темп
 	// задаёт арендатор, а снятия строк не было бы ни на одном пути: рост был бы

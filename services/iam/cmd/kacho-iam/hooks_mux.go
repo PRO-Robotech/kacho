@@ -104,6 +104,9 @@ func buildHooksMux(
 			HydraIssuer:      hydraIssuer,
 		},
 		users,
+		// The SAME producer the token hook enriches with. One claim set per
+		// principal, whichever lane asks for it.
+		tokenEnricher,
 		revsPg,
 		auditAdapter,
 		logger,
