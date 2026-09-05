@@ -7,8 +7,9 @@ package role
 //
 // Semantics:
 //   - System roles (is_system) are the tenant-wide reference catalog floor: every
-//     authenticated principal sees them (RoleService.Get is <exempt>; the catalog
-//     of built-in roles is shared). They are NOT subject to the per-object filter.
+//     authenticated principal sees them (the catalog of built-in roles is shared;
+//     both reads are declared `scope_filtered`, so the per-object decision is the
+//     service's). They are NOT subject to the per-object filter.
 //   - CUSTOM roles are filtered by a DIRECT per-object question about each row of
 //     the page — `viewer` on `iam_role:<id>`, then `v_list` for what `viewer`
 //     denied (authzfilter.RelationsFor("iam_role")). The `viewer` tier cascades

@@ -7,8 +7,10 @@ package role
 //
 // The Role catalog has TWO visibility layers:
 //   - System roles (is_system) are the tenant-wide reference floor — every
-//     authenticated principal sees them (RoleService.Get is <exempt>). They are
-//     NOT subject to the per-object filter.
+//     authenticated principal sees them. Both reads are declared
+//     `scope_filtered` in the contract, so the gateway asks nothing per-object
+//     and this use-case decides; system roles are NOT subject to the per-object
+//     filter.
 //   - CUSTOM roles are filtered per-object via the UNION of the FGA `viewer` and
 //     `v_list` relations on iam_role, asked DIRECTLY for the roles ON THE PAGE —
 //     parity with account/project List. The `viewer` tier on
@@ -23,9 +25,16 @@ package role
 //     Design-B (flat-authz verb-bearing complete): v_* are DECOUPLED from the tier
 //     relations (no viewer ⊇ v_list union in the FGA model), so a v_list-only
 //     selector grant does NOT resolve `viewer`. A viewer-only filter therefore hid
-//     such a grant from its grantee; the viewer ∪ v_list union surfaces it while
-//     content (v_get) stays gated. The owner sees their own role via the viewer
-//     branch (account-tier cascade).
+//     such a grant from its grantee; the viewer ∪ v_list union surfaces it.
+//     Content follows the SAME union rather than a second relation: Get asks the
+//     very question this page asks (read==enforce), so `iam_role` carries no
+//     separate content predicate — `v_get` in particular gates nothing here, no
+//     catalog entry names it for this type. The predicate is declared in ONE
+//     place (`pageRelations`, internal/authzfilter) and held against the
+//     permission catalog type by type by a repo-wide gate; whether this type
+//     ought to carry a content relation at all is an open decision, tracked as
+//     #1922. The owner sees their own role via the viewer branch (account-tier
+//     cascade).
 //
 // # A page of this list is a page of the VISIBLE (task #645)
 //
