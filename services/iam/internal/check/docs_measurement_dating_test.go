@@ -15,6 +15,7 @@ import (
 
 	"github.com/stretchr/testify/require"
 
+	"github.com/PRO-Robotech/kacho/pkg/gitenv"
 	"github.com/PRO-Robotech/kacho/pkg/treecorpus"
 )
 
@@ -214,8 +215,11 @@ func gitAncestry(t *testing.T, root string) func(string) ancestryVerdict {
 		t.Logf("git недоступен — половина «предок» НЕ ВЫПОЛНЯЛАСЬ")
 		return func(string) ancestryVerdict { return ancestryUnjudged }
 	}
+	// Вызов идёт через общий помощник, а НЕ через exec.Command напрямую:
+	// `cmd.Dir` не выбирает репозиторий, когда в окружении есть GIT_DIR —
+	// переменная сильнее рабочего каталога, и проба писала бы в чужую копию.
 	git := func(args ...string) (string, error) {
-		out, err := exec.Command("git", append([]string{"-C", root}, args...)...).Output() // #nosec G204 -- аргументы собраны здесь же, хеш сверен образцом
+		out, err := gitenv.Command(root, args...).Output()
 		return strings.TrimSpace(string(out)), err
 	}
 	shallowOut, err := git("rev-parse", "--is-shallow-repository")
