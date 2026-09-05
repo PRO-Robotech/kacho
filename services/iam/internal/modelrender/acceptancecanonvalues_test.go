@@ -121,7 +121,7 @@ func auditAcceptanceCanonValues(dir string, m canonCensus) (findings []string, f
 	sort.Strings(names)
 
 	for _, name := range names {
-		body, rerr := os.ReadFile(filepath.Join(dir, name)) //nolint:gosec // обход корпуса приёмок
+		body, rerr := os.ReadFile(filepath.Join(dir, name)) // #nosec G304 -- обход корпуса приёмок
 		if rerr != nil {
 			findings = append(findings, "приёмка "+name+" не прочитана: "+rerr.Error())
 			continue
