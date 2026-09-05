@@ -199,18 +199,11 @@ func TestSeededRoleRulesResolveOrArePinned(t *testing.T) {
 
 	// Самоистечение: запись пина, которой больше нечего описывать, — находка.
 	// Иначе перечень переживает свой предмет и становится ложным утверждением о
-	// дереве.
-	var stale []string
-	for key := range knownUnresolvableSeedPairs {
-		if !seen[key] {
-			stale = append(stale, key)
-		}
-	}
-	sort.Strings(stale)
-	for _, key := range stale {
-		t.Errorf("запись пина без предмета: «%s» перечислена, но такой неразрешимой пары в посеве нет.\n"+
-			"Имя привели к словарю, роль удалили либо правило сняли — сними и запись, иначе "+
-			"перечень описывает мир, которого нет.", key)
+	// дереве. Разбор ОБЩИЙ с гейтом-близнецом (seed_pin_self_expiry_test.go), и
+	// там же лежит доказательство его способности упасть и смолчать.
+	for _, f := range stalePinFindings("knownUnresolvableSeedPairs",
+		"неразрешимой пары", knownUnresolvableSeedPairs, seen) {
+		t.Error(f)
 	}
 }
 
