@@ -256,6 +256,13 @@ func emptyClassDetail(facts VerbFacts, roleID, module, resource, verb, class, fg
 			module, resource)
 	}
 
+	if skipped := SkippedByPlane(facts, own, fgaType, class); len(skipped) > 0 {
+		fmt.Fprintf(&b, "Действий этого ресурса, которые класс покрыл бы, но которые живут на "+
+			"ПЛОСКОСТИ ИСПОЛНЕНИЯ, — %d: %s. Арендатору они недоступны by construction "+
+			"(внутренний слушатель), поэтому ролью арендатора не выдаются ни при каком классе; "+
+			"это запрет, а не пропуск. ", len(skipped), strings.Join(fqnsOf(skipped), ", "))
+	}
+
 	exempt, pairs := gateSummary(own)
 	switch {
 	case len(pairs) == 0 && exempt > 0:
@@ -277,6 +284,19 @@ func emptyClassDetail(facts VerbFacts, roleID, module, resource, verb, class, fg
 	}
 	b.WriteString(wayOut(own, fgaType))
 	return b.String()
+}
+
+// fqnsOf — записи каталога названных действий, В ПОРЯДКЕ ДОКУМЕНТА.
+//
+// Порядок не от обхода карты: перечень, зависящий от него, читался бы по-разному
+// от прогона к прогону, и отказ нельзя было бы сверить с прошлым.
+func fqnsOf(actions []Action) []string {
+	out := make([]string, 0, len(actions))
+	for _, a := range actions {
+		out = append(out, a.FQN)
+	}
+	sort.Strings(out)
+	return out
 }
 
 // gateSummary — сколько действий ресурса освобождено и какие пары «отношение +
