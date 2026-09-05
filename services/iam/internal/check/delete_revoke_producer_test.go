@@ -23,7 +23,7 @@ import (
 // TestDeletingAnOwnObjectHasARevokeProducer — гейт по дереву.
 func TestDeletingAnOwnObjectHasARevokeProducer(t *testing.T) {
 	root := catalogRepoRoot(t)
-	apiDir := filepath.Join(root, "services", "iam", "internal", "apps", "kacho", "api")
+	apiDir := filepath.Join(root, "services", "iam", "internal", "apps", "kaname", "api")
 
 	census, findings, err := ScanDeleteRevokeProducers(apiDir)
 	if err != nil {

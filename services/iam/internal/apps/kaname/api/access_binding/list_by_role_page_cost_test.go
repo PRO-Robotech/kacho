@@ -79,7 +79,7 @@ func bindingsOnScopes(rows int, scopeIDs []string) []domain.AccessBinding {
 		out = append(out, domain.AccessBinding{
 			ID:           domain.AccessBindingID("acb_cost_" + string(rune('a'+i))),
 			SubjectType:  domain.SubjectTypeUser,
-			SubjectID:    "usr_member",
+			SubjectID:    "usr_member0000000000",
 			RoleID:       domain.RoleID(pageCostRoleID),
 			ResourceType: "compute.instance",
 			ResourceID:   scopeIDs[i%len(scopeIDs)],

@@ -84,9 +84,20 @@ linters:
       # proto-API.
       # proto-mirror naming (IpVersion / OutgoingSmtpCapability / SetDefaultSecurityGroupId):
       # поля и методы — точные копии proto, переименование = breaking change API.
-      # Путь расширен на apps/kaname/{api,services}: там ровно тот же зеркальный naming,
-      # а прежний список (domain|handler|service) его не покрывал.
-      - path: 'internal/(domain|handler|service|apps/kaname/(api|services))/'
+      # Путь расширен на apps/{kacho,kaname}/{api,services}: там ровно тот же
+      # зеркальный naming, а прежний список (domain|handler|service) его не покрывал.
+      #
+      # ОБА написания каталога названы намеренно, и это НЕ подстраховка «на всякий
+      # случай»: собственное имя продукта получила ОДНА служба — iam
+      # (`internal/apps/kaname/`), — а шесть остальных (compute, geo, nlb, registry,
+      # storage, vpc) остались на `internal/apps/kacho/`. Правило репо-широкое: оно
+      # не заякорено ни на службу, ни на начало пути, поэтому написание, выпавшее
+      # отсюда, снимает послабление СРАЗУ со всех, кто на нём стоит. Замер на день
+      # правки: под `apps/kacho/(api|services)` — 487 файлов, и первым же покраснел
+      # `SetDefaultSecurityGroupId`, ради которого это исключение и написано.
+      # Ровно так оно и наблюдалось: сплошная замена `kacho`→`kaname` увела путь с
+      # того кода, который здесь назван примером.
+      - path: 'internal/(domain|handler|service|apps/(kacho|kaname)/(api|services))/'
         linters: [revive]
         text: 'var-naming'
       # Из конфига api-gateway: косметические staticcheck-quickfix'ы. QF1011 вдобавок
