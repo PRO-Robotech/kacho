@@ -192,8 +192,10 @@ type PostgresConfig struct {
 //	                        Used by token_hook to build issuer/audience.
 //	HydraIssuer           — Ory Hydra issuer (default `https://hydra.<Domain>`).
 //	HookSharedSecret      — Bearer-token Hydra uses to authenticate calls to
-//	                        token_hook/refresh_hook. If empty — accepted
-//	                        without auth (dev mode only).
+//	                        token_hook/refresh_hook. Пустое значение обхода НЕ
+//	                        даёт: обработчик отвечает 500 и запрос не
+//	                        обслуживает; в production-посадке страж старта
+//	                        отказывает в пуске.
 //	JWKSEncryptionKeyHex  — 32-байтовый ключ ОБЁРТКИ приватной половины
 //	                        подписного ключа, в hex (64 символа). Ею
 //	                        оборачивается приватная половина в ключнице
