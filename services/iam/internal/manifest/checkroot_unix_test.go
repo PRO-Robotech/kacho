@@ -38,7 +38,7 @@ func checkTreeWithin(t *testing.T, root string, limit time.Duration) CheckReport
 	t.Helper()
 	type result struct{ r CheckReport }
 	done := make(chan result, 1)
-	go func() { done <- result{CheckTree(root)} }()
+	go func() { done <- result{CheckSyntheticTree(root)} }()
 	select {
 	case res := <-done:
 		return res.r

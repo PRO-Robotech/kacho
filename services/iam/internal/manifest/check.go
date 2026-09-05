@@ -8,11 +8,13 @@ import (
 	"io"
 	"io/fs"
 	"os"
+	"path"
 	"path/filepath"
 	"strings"
 	"syscall"
 
 	"github.com/PRO-Robotech/kacho/pkg/modulemanifest"
+	"github.com/PRO-Robotech/kacho/pkg/treecorpus"
 )
 
 // check.go — проверка ДЕРЕВА: каждый найденный манифест разбирается тем же
@@ -214,7 +216,7 @@ func (r CheckReport) Summary() string {
 // авторитетен — тип, о котором она спрашивает, уже в нём. Не внесена — связность
 // выдачи отношением не судится, и перепись связности это говорит.
 func CheckTree(root string, opts ...LoadOption) CheckReport {
-	return walkManifests(root, isTreeManifestName, ReferentShippedTable, opts...)
+	return walkManifestsFromIndex(root, isTreeManifestName, ReferentShippedTable, opts...)
 }
 
 // CheckTreeForGeneration — тот же обход для прохода, ПОРОЖДАЮЩЕГО таблицу
@@ -229,7 +231,36 @@ func CheckTree(root string, opts ...LoadOption) CheckReport {
 // ради которого идёт порождение, канон образа не объявляет by construction —
 // суждение каноном отвергло бы законную выдачу на нём (#2002).
 func CheckTreeForGeneration(root string) CheckReport {
-	return walkManifests(root, isTreeManifestName, ReferentCanon)
+	return walkManifestsFromIndex(root, isTreeManifestName, ReferentCanon)
+}
+
+// CheckSyntheticTree — тот же обход по дереву, РЕПОЗИТОРИЕМ НЕ ЯВЛЯЮЩЕМУСЯ:
+// правило «что считается манифестом» и таблица типов те же, что у [CheckTree],
+// источник перечня — диск.
+//
+// # Почему отдельное имя, а не откат внутри CheckTree
+//
+// Откат «индекса нет — иду по диску» невидим вызывающему: на машине без git и
+// на распакованном архиве проверка продолжала бы «работать», читая всё подряд, и
+// вердикт снова стал бы свойством рабочего каталога. Полосу выбирают ПО ИМЕНИ и
+// осознанно — тот же довод, по которому у состава дерева два конструктора
+// (treecorpus.NewTree и treecorpus.SyntheticTree), а не один с догадкой внутри.
+//
+// # Прод-вызывающего у полосы сегодня НЕТ, и это сказано прямо
+//
+// Её зовут пробы — свои и соседних пакетов (порождение таблиц), — собирающие
+// дерево во временном каталоге, где индекса нет by construction. Экспорт нужен
+// именно поэтому: объявление в `_test.go` видно только своему каталогу, а
+// синтетику через эту полосу гоняет и авторский пакет порождения.
+func CheckSyntheticTree(root string, opts ...LoadOption) CheckReport {
+	return walkManifestsOnDisk(root, isTreeManifestName, ReferentShippedTable, opts...)
+}
+
+// CheckSyntheticTreeForGeneration — [CheckSyntheticTree] для прохода,
+// ПОРОЖДАЮЩЕГО таблицу типов: референт канонический, как у
+// [CheckTreeForGeneration].
+func CheckSyntheticTreeForGeneration(root string) CheckReport {
+	return walkManifestsOnDisk(root, isTreeManifestName, ReferentCanon)
 }
 
 // isTreeManifestName — что считается манифестом В ДЕРЕВЕ РАЗРАБОТКИ: базовое имя
@@ -246,12 +277,158 @@ func isTreeManifestName(name string) bool { return name == manifestFileName }
 // он кладёт рядом с ключами и ожидает, что потребитель их не читает.
 func isDeliveredManifestName(name string) bool { return !strings.HasPrefix(name, "..") }
 
-// walkManifests — общий обход: РАЗЛИЧАЮТСЯ у него только правило «что здесь
-// считается манифестом», всё остальное (граница чтения, перепись, три исхода,
-// необрываемость) одно на обе полосы.
+// ─── ПЕРЕЧИСЛЕНИЕ: у каждой полосы СВОЙ источник, названный по имени ─────────
+
+// manifestListing — исход ПЕРЕЧИСЛЕНИЯ: пути, принятые правилом полосы (от корня
+// обхода, слэш-разделённые), вместе с переписью осмотренного и находками самого
+// перечисления.
 //
-// Второй обход, написанный рядом, разошёлся бы с первым молча — и разошёлся бы
+// Перепись возвращается ВСЕГДА, в том числе на отказе: «ноль находок» обязано
+// быть отличимо от «ноль прочитанного» именно там, где перечисление сорвалось.
+type manifestListing struct {
+	Paths       []string
+	PathsSeen   int
+	DirsSkipped int
+	Findings    []string
+}
+
+// listManifestsInIndex — перечень у ИНДЕКСА git: полоса ДЕРЕВА РАЗРАБОТКИ.
+//
+// # Почему индекс, а не диск
+//
+// Под корнем репозитория лежат каталоги, которых в репозитории НЕТ: рабочие
+// копии агентов, отчёты прогонов, локальные накладки, сборочные и
+// сгенерированные каталоги. Прочитав их, проверка сделала бы свой вердикт
+// свойством ЧУЖОГО РАБОЧЕГО КАТАЛОГА, а не коммита, — и ошибалась бы в обе
+// стороны: краснела на файле, которого в репозитории нет, и молчала в свежем
+// клоне там, где сказать обязана.
+//
+// # Недоступность индекса — НАХОДКА, а не откат на диск
+//
+// Молчаливый откат «индекса нет — иду по диску» вернул бы ровно тот дефект,
+// ради которого полоса заведена, и вернул бы его невидимо: на машине без git
+// проверка продолжала бы «работать». Полосу выбирает вызывающий ПО ИМЕНИ, и
+// сама она не переключается.
+func listManifestsInIndex(root string, accept func(name string) bool) manifestListing {
+	var out manifestListing
+	tree, err := treecorpus.NewTree(root)
+	if err != nil {
+		out.Findings = append(out.Findings, fmt.Sprintf(
+			"%s: перечень путей не взят у индекса: %v — непрочитанное есть НАХОДКА, "+
+				"а не «проверять нечего»: полоса дерева читает состав КОММИТА, и откат "+
+				"на диск отдал бы вердикт, зависящий от рабочего каталога", root, err))
+		return out
+	}
+	// Слепая зона считается КАТАЛОГАМИ, а не файлами под ними: перепись обеих
+	// полос обязана отвечать на один и тот же вопрос, иначе числа несравнимы.
+	skipped := map[string]bool{}
+	for _, rel := range tree.SortedFiles() {
+		if dir, hit := skippedAncestor(rel); hit {
+			skipped[dir] = true
+			continue
+		}
+		out.PathsSeen++
+		if !accept(path.Base(rel)) {
+			continue
+		}
+		out.Paths = append(out.Paths, rel)
+	}
+	out.DirsSkipped = len(skipped)
+	return out
+}
+
+// skippedAncestor — первый каталог-предок пути, в который обход не заходит.
+//
+// Возвращает его путь и признак попадания: имя каталога нужно самой находке, а
+// признак — чтобы «предка нет» не путалось с «предок назван пустой строкой».
+func skippedAncestor(rel string) (string, bool) {
+	segs := strings.Split(rel, "/")
+	for i := 0; i < len(segs)-1; i++ {
+		if isSkippedDir(segs[i]) {
+			return strings.Join(segs[:i+1], "/"), true
+		}
+	}
+	return "", false
+}
+
+// listManifestsOnDisk — перечень с ДИСКА: полоса КАТАЛОГА ДОСТАВКИ и
+// синтетического дерева пробы.
+//
+// Индекса у обоих нет BY CONSTRUCTION: доставку собирает посадка в рантайме, а
+// синтетику заводит проба во временном каталоге. Диск здесь не откат, а
+// единственный возможный авторитет.
+func listManifestsOnDisk(root string, accept func(name string) bool) manifestListing {
+	var out manifestListing
+	//nolint:errcheck // исход обхода уже разложен по находкам перечисления.
+	_ = filepath.WalkDir(root, func(p string, d fs.DirEntry, walkErr error) error {
+		if walkErr != nil {
+			// Место называется ОТ КОРНЯ, а сам корень — как он назван
+			// вызывающим: относительный путь корня к себе есть «.», и такая
+			// координата не адресует ничего.
+			where := displayPath(root, p)
+			if p == root {
+				where = root
+			}
+			out.Findings = append(out.Findings, fmt.Sprintf(
+				"%s: путь не прочитан: %v — непрочитанное есть НАХОДКА, а не «проверять нечего»: "+
+					"проверьте существование и права на путь", where, walkErr))
+			if d == nil {
+				// Корень не открылся: обходить нечего, и делать вид, что
+				// обошли, нельзя.
+				return walkErr
+			}
+			return nil
+		}
+
+		if d.IsDir() {
+			if p == root {
+				return nil
+			}
+			if isSkippedDir(d.Name()) {
+				out.DirsSkipped++
+				return fs.SkipDir
+			}
+			return nil
+		}
+
+		out.PathsSeen++
+		if !accept(d.Name()) {
+			return nil
+		}
+		out.Paths = append(out.Paths, displayPath(root, p))
+		return nil
+	})
+	return out
+}
+
+// ─── ПОЛОСЫ: различаются ИСТОЧНИКОМ ПЕРЕЧНЯ, и только им ─────────────────────
+
+// walkManifestsFromIndex — полоса дерева разработки.
+//
+// # Почему полосы разведены ФУНКЦИЯМИ, а не ветвью внутри общей
+//
+// Ветвь читается только по объявлению вызывающего; разведённые вызовы видны
+// РАЗБОРОМ — в том числе гейту дерева, который требует, чтобы обход от корня
+// репозитория спрашивал индекс. Слитая ветвь оставила бы дисковый обход на пути
+// дерева невидимым для него: гейт судит достижимость, а не исполнение.
+//
+// Всё, что не есть источник перечня — граница чтения, перепись, три исхода,
+// необрываемость, обе ступени суждения, — общее и живёт в readAndJudge. Второй
+// обход, написанный рядом целиком, разошёлся бы с первым молча, и разошёлся бы
 // именно в той половине, которую никто не читает глазами.
+func walkManifestsFromIndex(root string, accept func(name string) bool, referent TypeReferent,
+	opts ...LoadOption) CheckReport {
+	return readAndJudge(root, listManifestsInIndex(root, accept), referent, opts...)
+}
+
+// walkManifestsOnDisk — полоса доставки и синтетического дерева пробы.
+func walkManifestsOnDisk(root string, accept func(name string) bool, referent TypeReferent,
+	opts ...LoadOption) CheckReport {
+	return readAndJudge(root, listManifestsOnDisk(root, accept), referent, opts...)
+}
+
+// readAndJudge — ЧТЕНИЕ перечисленного и СУЖДЕНИЕ о прочитанном: общее у обеих
+// полос.
 //
 // # Ступеней ДВЕ, и порядок между ними несущий
 //
@@ -267,16 +444,23 @@ func isDeliveredManifestName(name string) bool { return !strings.HasPrefix(name,
 // чтениями одного пути лежит окно, и второе чтение вернуло бы другой документ,
 // не сказав об этом ничего. Объём ограничен теми же manifestSizeLimit на путь,
 // которыми ограничена ступень первая.
-func walkManifests(root string, accept func(name string) bool, referent TypeReferent,
+func readAndJudge(root string, listing manifestListing, referent TypeReferent,
 	opts ...LoadOption) CheckReport {
-	report := CheckReport{Referent: referent}
+	// Перепись перечисления переносится в отчёт ДО всякого отказа: без неё
+	// «перечислять было нечего» неотличимо от «перечисление сорвалось».
+	report := CheckReport{
+		Referent:    referent,
+		PathsSeen:   listing.PathsSeen,
+		DirsSkipped: listing.DirsSkipped,
+		Findings:    append([]string(nil), listing.Findings...),
+	}
 	// docs — прочитанное, в порядке report.Paths.
 	var docs [][]byte
 
 	// Корень открывается ОДИН раз и служит ГРАНИЦЕЙ чтения: всё, что читается
 	// дальше, разрешается ядром относительно него, а не по имени, собранному
-	// обходом. Не открылся — находка того же вида, что и непрочитанный путь:
-	// обходить нечего, и делать вид, что обошли, нельзя.
+	// перечислением. Не открылся — находка того же вида, что и непрочитанный
+	// путь: читать нечего, и делать вид, что прочли, нельзя.
 	treeRoot, err := os.OpenRoot(root)
 	if err != nil {
 		report.Findings = append(report.Findings, fmt.Sprintf(
@@ -286,55 +470,17 @@ func walkManifests(root string, accept func(name string) bool, referent TypeRefe
 	}
 	defer func() { _ = treeRoot.Close() }()
 
-	//nolint:errcheck // исход обхода уже разложен по находкам отчёта.
-	_ = filepath.WalkDir(root, func(path string, d fs.DirEntry, walkErr error) error {
-		if walkErr != nil {
-			// Место называется ОТ КОРНЯ, а сам корень — как он назван
-			// вызывающим: относительный путь корня к себе есть «.», и такая
-			// координата не адресует ничего.
-			where := displayPath(root, path)
-			if path == root {
-				where = root
-			}
-			report.Findings = append(report.Findings, fmt.Sprintf(
-				"%s: путь не прочитан: %v — непрочитанное есть НАХОДКА, а не «проверять нечего»: "+
-					"проверьте существование и права на путь", where, walkErr))
-			if d == nil {
-				// Корень не открылся: обходить нечего, и делать вид, что
-				// обошли, нельзя.
-				return walkErr
-			}
-			return nil
-		}
-
-		if d.IsDir() {
-			if path == root {
-				return nil
-			}
-			if isSkippedDir(d.Name()) {
-				report.DirsSkipped++
-				return fs.SkipDir
-			}
-			return nil
-		}
-
-		report.PathsSeen++
-		if !accept(d.Name()) {
-			return nil
-		}
-
-		rel := displayPath(root, path)
+	for _, rel := range listing.Paths {
 		data, err := ReadUnderRoot(treeRoot, rel)
 		if err != nil {
 			report.Findings = append(report.Findings, fmt.Sprintf(
 				"%s: манифест не прочитан: %v", rel, err))
-			return nil
+			continue
 		}
 		report.ManifestsRead++
 		report.Paths = append(report.Paths, rel)
 		docs = append(docs, data)
-		return nil
-	})
+	}
 
 	// Ступень вторая. Перечень объявленных модулей известен ЦЕЛИКОМ, поэтому
 	// вердикт по каждому документу больше не зависит от порядка обхода.

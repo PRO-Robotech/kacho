@@ -381,7 +381,7 @@ func TestDeliveryCensusSaysWhetherOwnershipWasGuarded(t *testing.T) {
 	root := deliveryDir(t, map[string]string{"acme/manifest.yaml": acmeResourceManifest})
 
 	guarded := manifest.CheckDelivery(root).Summary()
-	generating := manifest.CheckTreeForGeneration(root).Summary()
+	generating := manifest.CheckSyntheticTreeForGeneration(root).Summary()
 
 	if guarded == generating {
 		t.Fatalf("перепись обеих полос совпала дословно — она не различает, "+

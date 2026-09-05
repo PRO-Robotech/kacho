@@ -64,7 +64,7 @@ func TestMODMF17GoodTreeExitsZeroAndNamesTheVolume(t *testing.T) {
 		"services/vpc/README.md":         "не манифест",
 	})
 
-	report := CheckTree(root)
+	report := CheckSyntheticTree(root)
 	if report.ExitCode() != CheckOK {
 		t.Fatalf("годное дерево дало код %d, ожидался %d; находки: %v",
 			report.ExitCode(), CheckOK, report.Findings)
@@ -95,7 +95,7 @@ func TestMODMF18BadManifestFailsTheRunAndNamesTheFix(t *testing.T) {
 		"services/nlb/manifest.yaml": strings.Replace(goodManifest(t), "module: vpc", "module: NLB", 1),
 	})
 
-	report := CheckTree(root)
+	report := CheckSyntheticTree(root)
 	if report.ExitCode() != CheckFailed {
 		t.Fatalf("дерево с негодным именем модуля дало код %d, ожидался %d",
 			report.ExitCode(), CheckFailed)
@@ -124,7 +124,7 @@ func TestMODMF19EmptyTreeIsVoidNotSuccess(t *testing.T) {
 		"deploy/values.prod.yaml": "manifest: не то, что ищем\n",
 	})
 
-	report := CheckTree(root)
+	report := CheckSyntheticTree(root)
 	code := report.ExitCode()
 	if code == CheckOK || code == CheckFailed {
 		t.Fatalf("пустое дерево дало код %d — он обязан отличаться и от %d, и от %d: "+
@@ -138,7 +138,7 @@ func TestMODMF19EmptyTreeIsVoidNotSuccess(t *testing.T) {
 	// Текст обязан ОТЛИЧАТЬСЯ от текста годного дерева: код возврата читает
 	// оболочка, а человек читает строку, и она не вправе выглядеть успехом.
 	good := writeTree(t, map[string]string{"services/vpc/manifest.yaml": goodManifest(t)})
-	if report.Summary() == CheckTree(good).Summary() {
+	if report.Summary() == CheckSyntheticTree(good).Summary() {
 		t.Errorf("итог пустого дерева дословно совпал с итогом годного: %q", report.Summary())
 	}
 	if !strings.Contains(report.Summary(), "нечего") {
@@ -169,7 +169,7 @@ func TestCheckTreeSkipsWhatIsNotOurs(t *testing.T) {
 		t.Fatalf("файл в .git: %v", err)
 	}
 
-	report := CheckTree(root)
+	report := CheckSyntheticTree(root)
 	if report.ManifestsRead != 1 {
 		t.Fatalf("прочитано манифестов %d, положен 1 — обход берёт лишнее либо "+
 			"не берёт своего: %v", report.ManifestsRead, report.Paths)

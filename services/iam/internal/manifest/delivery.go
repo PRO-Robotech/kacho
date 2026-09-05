@@ -124,5 +124,5 @@ func CheckDelivery(root string, opts ...LoadOption) CheckReport {
 	// селектор роли адресовал бы несуществующий тип и не дал бы ни одного
 	// пообъектного права, молча. Смена референта в порождающем проходе
 	// (#1930) старту службы не отнимает НИЧЕГО: он идёт этой полосой.
-	return walkManifests(root, isDeliveredManifestName, ReferentShippedTable, opts...)
+	return walkManifestsOnDisk(root, isDeliveredManifestName, ReferentShippedTable, opts...)
 }

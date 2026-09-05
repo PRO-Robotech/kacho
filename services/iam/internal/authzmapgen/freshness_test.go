@@ -40,7 +40,7 @@ const repoRoot = "../../../.."
 
 func renderTree(t *testing.T, root string) ([]byte, authzmapgen.Census) {
 	t.Helper()
-	tables, err := authzmapgen.Collect(root)
+	tables, err := authzmapgen.CollectSynthetic(root)
 	if err != nil {
 		t.Fatalf("обход манифестов %s не состоялся (%v) — предпосылка гейта исчезла, "+
 			"а не дерево стало чистым", root, err)
