@@ -104,3 +104,30 @@ func TestValidate_StillRefusesAWhollyEmptyDSN(t *testing.T) {
 		t.Fatalf("отказ обязан называть ручку repository.postgres.url, получено: %q", err.Error())
 	}
 }
+
+// TestValidate_RefusalDoesNotEchoTheDBPassword — зеркало пробы точки наката:
+// текст отказа стража службы тоже не несёт пароля.
+//
+// По пути чарта строка подключения в конфигурации пароля НЕ содержит (он
+// приезжает переменной окружения и подставляется позже), но страж принимает
+// строку из любого источника, а «сегодня она без пароля» — свойство сегодняшнего
+// шаблона, а не стража. Обеззараживание судится здесь, чтобы оно не зависело от
+// того, кто именно собрал величину.
+func TestValidate_RefusalDoesNotEchoTheDBPassword(t *testing.T) {
+	const password = "s3cret-never-in-a-log"
+	cfg := goodEndpoints(config.ModeProduction, "require")
+	cfg.AuthN.HookSharedSecret = "hook-secret"
+	cfg.AuthN.JWKSEncryptionKeyHex = strings.Repeat("ab", 32)
+	cfg.Repository.Postgres.URL = "postgres://iam:" + password + "@:5432/kacho_iam"
+
+	err := cfg.Validate()
+	if err == nil {
+		t.Fatal("Validate() = nil, want refusal for a hostless DSN")
+	}
+	if strings.Contains(err.Error(), password) {
+		t.Fatalf("текст отказа несёт пароль базы — он уезжает в журнал пода: %q", err.Error())
+	}
+	if !strings.Contains(err.Error(), "repository.postgres.url") {
+		t.Fatalf("обеззараживание не должно съедать имя ручки, получено: %q", err.Error())
+	}
+}

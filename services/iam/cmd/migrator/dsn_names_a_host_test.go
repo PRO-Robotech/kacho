@@ -71,3 +71,28 @@ func TestBuildRunner_AcceptsADSNWithAHost(t *testing.T) {
 		t.Fatalf("buildRunner() = %q, want nil: адрес базы называет хост, отвергать нечего", err.Error())
 	}
 }
+
+// TestBuildRunner_RefusalDoesNotEchoTheDBPassword — текст отказа НЕ несёт пароля.
+//
+// Строка подключения, которую собирает запасная конфигурация, содержит пароль
+// базы: он приезжает из объекта Secret и подставляется в DSN. Текст отказа
+// уезжает в журнал пода, а журнал читают все, у кого есть доступ к кластеру, —
+// поэтому величина, названная в отказе, обязана быть обеззаражена.
+//
+// Проба заведена ПОСЛЕ наблюдения: первая редакция отказа печатала DSN целиком,
+// и в журнале init-контейнера стоял пароль открытым текстом.
+func TestBuildRunner_RefusalDoesNotEchoTheDBPassword(t *testing.T) {
+	const password = "s3cret-never-in-a-log"
+	opts := &rootOptions{dialect: defaultDialect, dsn: "postgres://iam:" + password + "@:5432/kacho_iam"}
+
+	_, err := buildRunner(opts, fstest.MapFS{})
+	if err == nil {
+		t.Fatal("buildRunner() = nil error, want refusal for a hostless DSN")
+	}
+	if strings.Contains(err.Error(), password) {
+		t.Fatalf("текст отказа несёт пароль базы — он уезжает в журнал пода: %q", err.Error())
+	}
+	if !strings.Contains(err.Error(), "host") {
+		t.Fatalf("обеззараживание не должно съедать причину, получено: %q", err.Error())
+	}
+}

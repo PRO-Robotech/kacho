@@ -262,7 +262,7 @@ func buildRunner(opts *rootOptions, migrationsFS fs.FS) (*migratorrun.Runner, er
 	// установку.
 	if !config.DSNNamesAHost(dsn) {
 		return nil, fmt.Errorf("database address %q names no host: it is not set, and waiting for "+
-			"the database would never converge; set --dsn, ENV %s, or the chart's db.host", dsn, envDSN)
+			"the database would never converge; set --dsn, ENV %s, or the chart's db.host", config.RedactDSN(dsn), envDSN)
 	}
 
 	return migratorrun.New(migratorrun.Config{

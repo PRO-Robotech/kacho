@@ -162,7 +162,7 @@ func (c Config) Validate() error {
 		errs = multierr.Append(errs,
 			fmt.Errorf("repository.postgres.url=%q names no host: the database address is not set, "+
 				"and waiting for it would never converge; set the chart's db.host (or the host part of the DSN)",
-				dsn))
+				RedactDSN(dsn)))
 	}
 
 	// Круг отправителей чужой личности проверяется на ЛЮБОМ старте, а не только в
@@ -566,4 +566,31 @@ func DSNNamesAHost(dsn string) bool {
 		return true
 	}
 	return strings.TrimSpace(parsed.Hostname()) != ""
+}
+
+// RedactDSN — строка подключения, годная для ЖУРНАЛА и текста отказа.
+//
+// Строка подключения несёт пароль базы: он приезжает из объекта Secret и
+// подставляется в DSN перед употреблением. Текст отказа уезжает в журнал пода, а
+// журнал читает всякий, у кого есть доступ к кластеру, — поэтому величина,
+// названная оператору, обязана быть обеззаражена.
+//
+// ПОЧЕМУ ОБЕЗЗАРАЖИВАНИЕ, А НЕ УМОЛЧАНИЕ ЗНАЧЕНИЯ. Отказ, не назвавший адреса
+// вовсе, отправляет оператора искать, какой из трёх источников подставил
+// негодную величину. Обеззараженная строка называет всё, кроме пароля: хост,
+// пользователя, базу и параметры — то есть ровно то, чем оператор чинит.
+//
+// Нечитаемая строка возвращается ЗАМЕНЁННОЙ ЦЕЛИКОМ: раз разобрать её не
+// удалось, то и найти в ней пароль нельзя, а печатать неразобранное значило бы
+// печатать возможный секрет.
+func RedactDSN(dsn string) string {
+	trimmed := strings.TrimSpace(dsn)
+	if trimmed == "" {
+		return ""
+	}
+	parsed, err := url.Parse(trimmed)
+	if err != nil {
+		return "(строка подключения не разобрана; не печатается, чтобы не раскрыть пароль)"
+	}
+	return parsed.Redacted()
 }
