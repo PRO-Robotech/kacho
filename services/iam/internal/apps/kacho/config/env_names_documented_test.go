@@ -8,7 +8,7 @@ import (
 
 	"github.com/stretchr/testify/require"
 
-	"github.com/PRO-Robotech/kacho/services/iam/internal/apps/kacho/config"
+	"github.com/PRO-Robotech/kacho-iam/internal/apps/kacho/config"
 )
 
 // Имена ENV этого сервиса НЕ ВСТРЕЧАЮТСЯ В КОДЕ КАК ЛИТЕРАЛЫ — они выводятся

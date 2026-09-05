@@ -6,8 +6,8 @@ package moduleroles
 import (
 	"context"
 
-	"github.com/PRO-Robotech/kacho/services/iam/internal/apps/kacho/shared"
-	kachorepo "github.com/PRO-Robotech/kacho/services/iam/internal/repo/kacho"
+	"github.com/PRO-Robotech/kacho-iam/internal/apps/kacho/shared"
+	kachorepo "github.com/PRO-Robotech/kacho-iam/internal/repo/kacho"
 )
 
 // repotx.go — мост между портом применителя и репозиторием сервиса.

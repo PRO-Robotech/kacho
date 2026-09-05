@@ -50,9 +50,9 @@ import (
 
 	"github.com/PRO-Robotech/kacho/pkg/operations"
 
-	"github.com/PRO-Robotech/kacho/services/iam/internal/clients"
-	"github.com/PRO-Robotech/kacho/services/iam/internal/domain"
-	repoab "github.com/PRO-Robotech/kacho/services/iam/internal/repo/kacho/access_binding"
+	"github.com/PRO-Robotech/kacho-iam/internal/clients"
+	"github.com/PRO-Robotech/kacho-iam/internal/domain"
+	repoab "github.com/PRO-Robotech/kacho-iam/internal/repo/kacho/access_binding"
 )
 
 const (

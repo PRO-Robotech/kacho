@@ -39,7 +39,7 @@ import (
 
 	iamv1 "github.com/PRO-Robotech/kacho/pkg/api/kacho/cloud/iam/v1"
 
-	"github.com/PRO-Robotech/kacho/services/iam/internal/authzguard"
+	"github.com/PRO-Robotech/kacho-iam/internal/authzguard"
 )
 
 // callerAuthorityRelations — FGA relations on the queried resource that grant a

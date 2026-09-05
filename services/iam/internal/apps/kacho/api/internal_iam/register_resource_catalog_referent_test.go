@@ -31,9 +31,9 @@ import (
 	"google.golang.org/grpc/codes"
 	"google.golang.org/grpc/status"
 
-	"github.com/PRO-Robotech/kacho/services/iam/internal/apps/kacho/shared"
-	iamerr "github.com/PRO-Robotech/kacho/services/iam/internal/errors"
-	"github.com/PRO-Robotech/kacho/services/iam/internal/service"
+	"github.com/PRO-Robotech/kacho-iam/internal/apps/kacho/shared"
+	iamerr "github.com/PRO-Robotech/kacho-iam/internal/errors"
+	"github.com/PRO-Robotech/kacho-iam/internal/service"
 )
 
 // recordingEmitter — очередь намерений, которая ЗАПОМИНАЕТ положенное.

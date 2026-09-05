@@ -11,11 +11,11 @@ import (
 	"path/filepath"
 	"sort"
 
+	"github.com/PRO-Robotech/kacho-iam/internal/authzplan"
+	"github.com/PRO-Robotech/kacho-iam/internal/catalog"
+	"github.com/PRO-Robotech/kacho-iam/internal/domain"
+	"github.com/PRO-Robotech/kacho-iam/internal/manifest"
 	"github.com/PRO-Robotech/kacho/pkg/modulemanifest"
-	"github.com/PRO-Robotech/kacho/services/iam/internal/authzplan"
-	"github.com/PRO-Robotech/kacho/services/iam/internal/catalog"
-	"github.com/PRO-Robotech/kacho/services/iam/internal/domain"
-	"github.com/PRO-Robotech/kacho/services/iam/internal/manifest"
 )
 
 // sweep.go — обход ЗАКРЫТОГО НАБОРА модулей и сверка порождённого с каноном

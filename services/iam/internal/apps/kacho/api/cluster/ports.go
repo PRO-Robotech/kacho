@@ -12,9 +12,9 @@ package cluster
 import (
 	"context"
 
+	"github.com/PRO-Robotech/kacho-iam/internal/domain"
+	"github.com/PRO-Robotech/kacho-iam/internal/service"
 	"github.com/PRO-Robotech/kacho/pkg/operations"
-	"github.com/PRO-Robotech/kacho/services/iam/internal/domain"
-	"github.com/PRO-Robotech/kacho/services/iam/internal/service"
 )
 
 // operationRepo — Operation-порт cluster-мутаций. Шире operations.Repo ровно на

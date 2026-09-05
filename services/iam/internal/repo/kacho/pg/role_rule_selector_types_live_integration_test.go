@@ -33,9 +33,9 @@ import (
 	"github.com/jackc/pgx/v5/pgxpool"
 	"github.com/stretchr/testify/require"
 
-	"github.com/PRO-Robotech/kacho/services/iam/internal/apps/kacho/seed"
-	"github.com/PRO-Robotech/kacho/services/iam/internal/domain"
-	"github.com/PRO-Robotech/kacho/services/iam/internal/migrations"
+	"github.com/PRO-Robotech/kacho-iam/internal/apps/kacho/seed"
+	"github.com/PRO-Robotech/kacho-iam/internal/domain"
+	"github.com/PRO-Robotech/kacho-iam/internal/migrations"
 )
 
 // selectorTrigger — имя триггера-предмета. ИМЯ, А НЕ КООРДИНАТА: файл, в котором

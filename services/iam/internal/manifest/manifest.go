@@ -111,7 +111,7 @@ import (
 
 	"gopkg.in/yaml.v3"
 
-	"github.com/PRO-Robotech/kacho/services/iam/internal/domain"
+	"github.com/PRO-Robotech/kacho-iam/internal/domain"
 )
 
 // Отказы различаются не ради красоты: «документ не той формы», «ключ не строка»,

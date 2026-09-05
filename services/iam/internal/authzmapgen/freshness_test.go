@@ -32,7 +32,7 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/PRO-Robotech/kacho/services/iam/internal/authzmapgen"
+	"github.com/PRO-Robotech/kacho-iam/internal/authzmapgen"
 )
 
 // repoRoot — корень репозитория от каталога этого пакета.

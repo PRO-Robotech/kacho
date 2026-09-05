@@ -74,7 +74,7 @@ import (
 	"context"
 	"strings"
 
-	"github.com/PRO-Robotech/kacho/services/iam/internal/service"
+	"github.com/PRO-Robotech/kacho-iam/internal/service"
 )
 
 // catalogTypeReader — узкий порт чтения: точечное имя КАТАЛОГА по имени типа

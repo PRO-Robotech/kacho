@@ -32,7 +32,7 @@ import (
 
 	iamv1 "github.com/PRO-Robotech/kacho/pkg/api/kacho/cloud/iam/v1"
 
-	"github.com/PRO-Robotech/kacho/services/iam/internal/service"
+	"github.com/PRO-Robotech/kacho-iam/internal/service"
 )
 
 // stubSubjectChanger отвечает названным отказом.

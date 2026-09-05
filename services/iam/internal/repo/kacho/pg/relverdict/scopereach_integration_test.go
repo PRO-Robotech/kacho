@@ -41,9 +41,9 @@ import (
 
 	"github.com/jackc/pgx/v5"
 
+	"github.com/PRO-Robotech/kacho-iam/internal/repo/kacho/pg/relverdict"
+	"github.com/PRO-Robotech/kacho-iam/internal/repo/kacho/pg/resource_mirror"
 	"github.com/PRO-Robotech/kacho/pkg/ownerregister"
-	"github.com/PRO-Robotech/kacho/services/iam/internal/repo/kacho/pg/relverdict"
-	"github.com/PRO-Robotech/kacho/services/iam/internal/repo/kacho/pg/resource_mirror"
 )
 
 // registerThroughProducer — ОДНА регистрация, проведённая единственным

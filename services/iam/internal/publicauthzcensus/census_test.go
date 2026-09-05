@@ -17,7 +17,7 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/PRO-Robotech/kacho/services/iam/internal/publicauthzcensus"
+	"github.com/PRO-Robotech/kacho-iam/internal/publicauthzcensus"
 )
 
 func TestEveryPublicRPCCarriesAnObjectQuestion(t *testing.T) {

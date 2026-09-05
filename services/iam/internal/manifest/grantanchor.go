@@ -52,7 +52,7 @@ import (
 
 	"gopkg.in/yaml.v3"
 
-	"github.com/PRO-Robotech/kacho/services/iam/internal/domain"
+	"github.com/PRO-Robotech/kacho-iam/internal/domain"
 )
 
 // seedGrantAnchorScopeType — ярус, на котором объявляется выдача посева.

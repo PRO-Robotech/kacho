@@ -32,9 +32,9 @@ import (
 
 	coredb "github.com/PRO-Robotech/kacho/pkg/db"
 
+	"github.com/PRO-Robotech/kacho-iam/internal/repo/kacho/pg/resource_mirror"
+	"github.com/PRO-Robotech/kacho-iam/internal/testsupport/iampgtest"
 	"github.com/PRO-Robotech/kacho/pkg/pgtest"
-	"github.com/PRO-Robotech/kacho/services/iam/internal/repo/kacho/pg/resource_mirror"
-	"github.com/PRO-Robotech/kacho/services/iam/internal/testsupport/iampgtest"
 )
 
 // Цепь записана словарём МОДЕЛИ, хотя регистрация назвала объект каталогом.

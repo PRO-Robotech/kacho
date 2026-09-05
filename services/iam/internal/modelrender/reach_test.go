@@ -7,10 +7,10 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/PRO-Robotech/kacho/services/iam/internal/authzmap"
-	"github.com/PRO-Robotech/kacho/services/iam/internal/authzplan"
-	"github.com/PRO-Robotech/kacho/services/iam/internal/manifest"
-	"github.com/PRO-Robotech/kacho/services/iam/internal/modelrender"
+	"github.com/PRO-Robotech/kacho-iam/internal/authzmap"
+	"github.com/PRO-Robotech/kacho-iam/internal/authzplan"
+	"github.com/PRO-Robotech/kacho-iam/internal/manifest"
+	"github.com/PRO-Robotech/kacho-iam/internal/modelrender"
 )
 
 // reach_test.go — ОСТАТОК называется числом, а не умалчивается (приёмка B-07).

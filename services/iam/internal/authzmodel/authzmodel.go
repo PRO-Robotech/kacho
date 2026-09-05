@@ -56,7 +56,7 @@ import (
 	"fmt"
 	"sync"
 
-	"github.com/PRO-Robotech/kacho/services/iam/internal/authzplan"
+	"github.com/PRO-Robotech/kacho-iam/internal/authzplan"
 )
 
 // DSL — каноническая модель.

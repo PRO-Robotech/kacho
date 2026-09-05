@@ -35,10 +35,10 @@ import (
 
 	corevalidate "github.com/PRO-Robotech/kacho/pkg/validate"
 
+	"github.com/PRO-Robotech/kacho-iam/internal/apps/kacho/shared"
+	iamerr "github.com/PRO-Robotech/kacho-iam/internal/errors"
+	"github.com/PRO-Robotech/kacho-iam/internal/service"
 	"github.com/PRO-Robotech/kacho/pkg/authz/proxytuple"
-	"github.com/PRO-Robotech/kacho/services/iam/internal/apps/kacho/shared"
-	iamerr "github.com/PRO-Robotech/kacho/services/iam/internal/errors"
-	"github.com/PRO-Robotech/kacho/services/iam/internal/service"
 )
 
 // relationOutboxEmitter — narrow write port: emit FGA tuple

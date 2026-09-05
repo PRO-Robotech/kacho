@@ -31,8 +31,8 @@ import (
 	"strings"
 	"testing"
 
-	registrytokenuc "github.com/PRO-Robotech/kacho/services/iam/internal/apps/kacho/api/registry_token"
-	"github.com/PRO-Robotech/kacho/services/iam/internal/handler/registrytokenhttp"
+	registrytokenuc "github.com/PRO-Robotech/kacho-iam/internal/apps/kacho/api/registry_token"
+	"github.com/PRO-Robotech/kacho-iam/internal/handler/registrytokenhttp"
 )
 
 // issuerStub — выдача, отвечающая заданной ошибкой на ОБОИХ путях.

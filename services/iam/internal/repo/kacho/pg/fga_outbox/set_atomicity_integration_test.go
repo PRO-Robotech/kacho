@@ -39,9 +39,9 @@ import (
 	coredb "github.com/PRO-Robotech/kacho/pkg/db"
 	"github.com/PRO-Robotech/kacho/pkg/pgtest"
 
-	"github.com/PRO-Robotech/kacho/services/iam/internal/clients"
-	"github.com/PRO-Robotech/kacho/services/iam/internal/repo/kacho/pg/fga_outbox"
-	"github.com/PRO-Robotech/kacho/services/iam/internal/testsupport/iampgtest"
+	"github.com/PRO-Robotech/kacho-iam/internal/clients"
+	"github.com/PRO-Robotech/kacho-iam/internal/repo/kacho/pg/fga_outbox"
+	"github.com/PRO-Robotech/kacho-iam/internal/testsupport/iampgtest"
 )
 
 // Здесь стояла проба TestOutboxPartitionKeyCoversTheWholeGrantSet — она

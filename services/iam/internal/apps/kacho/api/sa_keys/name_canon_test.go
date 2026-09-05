@@ -9,7 +9,7 @@ import (
 	"context"
 	"testing"
 
-	"github.com/PRO-Robotech/kacho/services/iam/internal/domain"
+	"github.com/PRO-Robotech/kacho-iam/internal/domain"
 )
 
 // issueSAKeyNamed выпускает ключ с заданным именем и возвращает строку, которую

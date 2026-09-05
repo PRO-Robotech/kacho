@@ -28,8 +28,8 @@ import (
 	// Требование дерева, держится гейтом `TestPoolCloseInTestsIsBounded`.
 	coredb "github.com/PRO-Robotech/kacho/pkg/db"
 
-	"github.com/PRO-Robotech/kacho/services/iam/internal/domain"
-	kachopg "github.com/PRO-Robotech/kacho/services/iam/internal/repo/kacho/pg"
+	"github.com/PRO-Robotech/kacho-iam/internal/domain"
+	kachopg "github.com/PRO-Robotech/kacho-iam/internal/repo/kacho/pg"
 )
 
 func TestRoleIntegrity_UnresolvedSegments_AgainstLiveProjection(t *testing.T) {

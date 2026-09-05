@@ -49,16 +49,32 @@ const pgOutsideMakeTarget = "make test-pg-outside-selection"
 // TestPGOutsideOwnStepDeclarationsPointAtTheList — шов с соседним гейтом.
 func TestPGOutsideOwnStepDeclarationsPointAtTheList(t *testing.T) {
 	root := repoRoot(t)
+	// ПЕРЕЧНЕЙ ДВА, И ЧИТАТЬ НАДО ОБА.
+	//
+	// Служба iam несёт свой `go.mod`, поэтому её пакеты не резолвятся из корня и
+	// вынесены в отдельную величину с путями ОТНОСИТЕЛЬНО каталога службы. Гейт
+	// сверяет освобождения по путям ДЕРЕВА, значит вторую половину надо привести
+	// к тому же виду. Читать одну половину — значит объявить вторую
+	// «отсутствующей в перечне», ничего в ней не изменив: тринадцать ложных
+	// находок и ни одной настоящей.
 	declared := makefileListedPkgs(t, root, "PG_OUTSIDE_SELECTION_PKGS")
-	if len(declared) == 0 {
-		t.Fatal("PG_OUTSIDE_SELECTION_PKGS в корневом Makefile не прочитан или пуст — " +
-			"сверять не с чем, а молчание такого гейта неотличимо от согласия")
+	rootNamed := len(declared)
+	iamNamed := 0
+	for _, rel := range makefileListedPkgs(t, root, "PG_OUTSIDE_SELECTION_PKGS_IAM") {
+		declared = append(declared, strings.TrimSuffix(iamTreePrefix, "/")+"/"+rel)
+		iamNamed++
+	}
+	sort.Strings(declared)
+	if rootNamed == 0 || iamNamed == 0 {
+		t.Fatalf("перечень пуст с одной из сторон (корень %d, модуль службы iam %d) — "+
+			"сверять не с чем, а молчание такого гейта неотличимо от согласия", rootNamed, iamNamed)
 	}
 	for _, f := range judgePGOutsideSeam(shortGatedRunByOwnCIStep, declared) {
 		t.Errorf("%s", f)
 	}
-	t.Logf("сверено: освобождений со ссылкой на цель — %d, записей перечня — %d",
-		countPGOutsideExemptions(shortGatedRunByOwnCIStep), len(declared))
+	t.Logf("сверено: освобождений со ссылкой на цель — %d, записей перечня — %d "+
+		"(корневой модуль %d, модуль службы iam %d)",
+		countPGOutsideExemptions(shortGatedRunByOwnCIStep), len(declared), rootNamed, iamNamed)
 }
 
 // judgePGOutsideSeam — решающая часть, вынесенная из вердикта, чтобы её можно

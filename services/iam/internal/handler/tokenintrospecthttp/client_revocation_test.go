@@ -24,8 +24,8 @@ import (
 
 	"github.com/golang-jwt/jwt/v5"
 
-	"github.com/PRO-Robotech/kacho/services/iam/internal/domain"
-	"github.com/PRO-Robotech/kacho/services/iam/internal/signingkeygen"
+	"github.com/PRO-Robotech/kacho-iam/internal/domain"
+	"github.com/PRO-Robotech/kacho-iam/internal/signingkeygen"
 )
 
 // errAuthorityDown — недоступность источника отсечек.

@@ -15,9 +15,9 @@ import (
 	"github.com/PRO-Robotech/kacho/pkg/operations"
 	"github.com/PRO-Robotech/kacho/pkg/safeconv"
 
-	"github.com/PRO-Robotech/kacho/services/iam/internal/apps/kacho/shared"
-	"github.com/PRO-Robotech/kacho/services/iam/internal/authzguard"
-	"github.com/PRO-Robotech/kacho/services/iam/internal/domain"
+	"github.com/PRO-Robotech/kacho-iam/internal/apps/kacho/shared"
+	"github.com/PRO-Robotech/kacho-iam/internal/authzguard"
+	"github.com/PRO-Robotech/kacho-iam/internal/domain"
 )
 
 // Handler — gRPC server impl.

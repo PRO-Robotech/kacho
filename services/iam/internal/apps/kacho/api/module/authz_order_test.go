@@ -37,8 +37,8 @@ import (
 
 	"github.com/PRO-Robotech/kacho/pkg/operations"
 
-	moduleapp "github.com/PRO-Robotech/kacho/services/iam/internal/apps/kacho/api/module"
-	"github.com/PRO-Robotech/kacho/services/iam/internal/domain"
+	moduleapp "github.com/PRO-Robotech/kacho-iam/internal/apps/kacho/api/module"
+	"github.com/PRO-Robotech/kacho-iam/internal/domain"
 )
 
 // clusterSingleton — синглтон назван ОДИН раз на всё дерево; проба спрашивает

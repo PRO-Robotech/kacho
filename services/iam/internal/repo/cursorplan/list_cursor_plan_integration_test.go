@@ -17,8 +17,8 @@ package cursorplan_test
 import (
 	"testing"
 
+	"github.com/PRO-Robotech/kacho-iam/internal/migrations"
 	"github.com/PRO-Robotech/kacho/pkg/listcursorplan"
-	"github.com/PRO-Robotech/kacho/services/iam/internal/migrations"
 )
 
 func TestIntegration_IAM_CursorPagesTakeTheirOrderFromAnIndex(t *testing.T) {

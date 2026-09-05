@@ -26,7 +26,7 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/PRO-Robotech/kacho/services/iam/internal/apps/kacho/config"
+	"github.com/PRO-Robotech/kacho-iam/internal/apps/kacho/config"
 )
 
 // cloneTable — копия действующей таблицы. Инъекция правит копию: правка

@@ -92,9 +92,20 @@ const (
 	rawEdgeWriteMarker = "INSERT INTO kacho_iam.resource_parent_edge"
 	edgeProducerCall   = "UpsertTx"
 
-	// Пакет-производитель. Хвост, а не полный путь: модуль переименуют — гейт
-	// продолжит указывать на то же место в дереве.
-	edgeProducerPkg = "services/iam/internal/repo/kacho/pg/resource_mirror"
+	// Пакет-производитель назван ДВАЖДЫ, и это не дубль: у двух величин разные
+	// предметы, и они разошлись ровно там, где прежняя редакция считала их одним.
+	//
+	//   edgeProducerDir    — КАТАЛОГ в дереве, от корня монорепо;
+	//   edgeProducerImport — ХВОСТ пути ИМПОРТА.
+	//
+	// Пока служба лежала в единственном модуле дерева, хвост импорта совпадал с
+	// каталогом, и одной константы хватало. Служба получила свой модуль
+	// (`github.com/PRO-Robotech/kacho-iam`), и сегмент `services/iam` из пути
+	// импорта пропал: хвост перестал совпадать с каталогом. Прежний комментарий
+	// обещал устойчивость к переименованию модуля — обещание было верно
+	// наполовину, потому что величина несла оба смысла сразу.
+	edgeProducerDir    = "services/iam/internal/repo/kacho/pg/resource_mirror"
+	edgeProducerImport = "kacho-iam/internal/repo/kacho/pg/resource_mirror"
 )
 
 // censusFileFacts — то, что гейт узнаёт об одном файле.
@@ -115,11 +126,11 @@ type censusFileFacts struct {
 // настоящего класса, и разбирают его дольше, чем оно того стоит.
 func producerPackageName(t *testing.T, root string) string {
 	t.Helper()
-	dir := filepath.Join(root, filepath.FromSlash(edgeProducerPkg))
+	dir := filepath.Join(root, filepath.FromSlash(edgeProducerDir))
 	files, err := treecorpus.UnderWithSuffix(dir, ".go")
 	if err != nil {
 		t.Fatalf("пакет-производитель %s не прочитан (%v): предпосылка гейта не выполнена, "+
-			"и его молчание ничего не значило бы", edgeProducerPkg, err)
+			"и его молчание ничего не значило бы", edgeProducerDir, err)
 	}
 	for _, p := range files {
 		if strings.HasSuffix(p, "_test.go") {
@@ -138,7 +149,7 @@ func producerPackageName(t *testing.T, root string) string {
 	}
 	t.Fatalf("в пакете %s нет функции %s: производитель переименован или переехал. "+
 		"Гейт обязан упасть здесь ГРОМКО — иначе он перестал бы узнавать вызовы и "+
-		"объявил бы находкой каждую пробу-перепись сразу", edgeProducerPkg, edgeProducerCall)
+		"объявил бы находкой каждую пробу-перепись сразу", edgeProducerDir, edgeProducerCall)
 	return ""
 }
 
@@ -158,7 +169,7 @@ func censusFactsOf(t *testing.T, rel string, body []byte, producerPkg string) ce
 	producerNames := map[string]bool{}
 	for _, im := range file.Imports {
 		p, uerr := strconv.Unquote(im.Path.Value)
-		if uerr != nil || !strings.HasSuffix(p, edgeProducerPkg) {
+		if uerr != nil || !strings.HasSuffix(p, edgeProducerImport) {
 			continue
 		}
 		// Неалиасированный импорт виден под ИМЕНЕМ ПАКЕТА, а не под именем
@@ -240,7 +251,7 @@ func judgeCensusFixtures(byDir map[string][]censusFileFacts) []string {
 			if !producerInPackage {
 				findings = append(findings, f.rel+
 					" — проба пересчитывает все строки зеркала, но НИ ОДИН файл её тестового "+
-					"пакета не зовёт производителя ("+edgeProducerPkg+"."+edgeProducerCall+
+					"пакета не зовёт производителя ("+edgeProducerDir+"."+edgeProducerCall+
 					"): непонятно, чьё свойство она утверждает")
 			}
 		}

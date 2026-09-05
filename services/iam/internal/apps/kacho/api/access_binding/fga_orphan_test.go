@@ -36,8 +36,8 @@ import (
 
 	"github.com/PRO-Robotech/kacho/pkg/operations"
 
-	"github.com/PRO-Robotech/kacho/services/iam/internal/domain"
-	ab_repo "github.com/PRO-Robotech/kacho/services/iam/internal/repo/kacho/access_binding"
+	"github.com/PRO-Robotech/kacho-iam/internal/domain"
+	ab_repo "github.com/PRO-Robotech/kacho-iam/internal/repo/kacho/access_binding"
 )
 
 // Well-formed 20-char crockford-base32 role ids (shared.ValidateResourceID in

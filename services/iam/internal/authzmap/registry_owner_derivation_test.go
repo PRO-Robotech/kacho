@@ -10,7 +10,7 @@ import (
 
 	"github.com/stretchr/testify/require"
 
-	"github.com/PRO-Robotech/kacho/services/iam/internal/authzmap"
+	"github.com/PRO-Robotech/kacho-iam/internal/authzmap"
 )
 
 // registry_owner_derivation_test.go — regression lock for #64 Defect A.

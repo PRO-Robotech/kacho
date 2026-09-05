@@ -109,11 +109,27 @@ jobs:
       - name: go mod download
         run: go mod download
 
+      # МОДУЛЬ СЛУЖБЫ IAM — ОТДЕЛЬНЫЙ ПРОГОН, А НЕ ПОДРАЗУМЕВАЕМЫЙ.
+      #
+      # Служба iam несёт свой `go.mod` (она выносится отдельным репозиторием),
+      # поэтому корневой `./...` её пакетов НЕ ВИДИТ: модуль-родитель кончается
+      # там, где начинается вложенный. Без второго прогона джоба осталась бы
+      # зелёной, перестав проверять службу вовсе, — а «ноль находок» здесь было
+      # бы неотличимо от «ноль прочитанного».
+      - name: go mod download (модуль службы iam)
+        run: go mod download -C services/iam
+
       - name: build
         run: go build ./...
 
+      - name: build (модуль службы iam)
+        run: go build -C services/iam ./...
+
       - name: vet
         run: go vet ./...
+
+      - name: vet (модуль службы iam)
+        run: go vet -C services/iam ./...
 
       - name: gofmt
         run: |
@@ -790,7 +806,7 @@ jobs:
       # матрицы требует переменной окружения и часов: он ручной по построению и в
       # конвейере ему не место.
       - name: authzformbench — доказательства харнесса замера форм модели прав
-        run: go test ./services/iam/tools/authzformbench/ -count=1 -timeout 25m
+        run: go test -C services/iam ./tools/authzformbench/ -count=1 -timeout 25m
 
       # Сюита обязана говорить правду О СЕБЕ, иначе её зелёное нечем читать.
       #
@@ -1295,6 +1311,15 @@ jobs:
           GOLANGCI_LINT_CACHE: ${{ github.workspace }}/.cache/golangci-lint
         run: golangci-lint run --timeout=10m
 
+      - name: golangci-lint (модуль службы iam)
+        # Линтер работает В ГРАНИЦАХ МОДУЛЯ. Служба несёт свой `go.mod`, поэтому
+        # прогон выше её пакетов не осматривает вовсе — второй прогон обязателен,
+        # иначе линт целого продукта молча перестал бы её видеть.
+        env:
+          GOLANGCI_LINT_CACHE: ${{ github.workspace }}/.cache/golangci-lint
+        working-directory: services/iam
+        run: golangci-lint run --timeout=10m --config=${{ github.workspace }}/.golangci.yml
+
   govulncheck:
     name: govulncheck
     runs-on: ubuntu-latest
@@ -1308,6 +1333,9 @@ jobs:
         run: |
           go install golang.org/x/vuln/cmd/govulncheck@latest
           govulncheck ./...
+          # Модуль службы iam — свой граф зависимостей, свой прогон: корневой
+          # `./...` в него не спускается.
+          govulncheck -C services/iam ./...
 
   helm:
     name: helm lint · template (dev + prod)

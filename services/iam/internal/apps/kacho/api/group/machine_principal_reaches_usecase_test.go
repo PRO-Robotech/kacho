@@ -33,7 +33,7 @@ import (
 
 	"github.com/PRO-Robotech/kacho/pkg/operations"
 
-	"github.com/PRO-Robotech/kacho/services/iam/internal/domain"
+	"github.com/PRO-Robotech/kacho-iam/internal/domain"
 )
 
 // machineCtx — a service-account principal, i.e. one that can never equal

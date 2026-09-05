@@ -33,9 +33,9 @@ import (
 	"google.golang.org/grpc/codes"
 	"google.golang.org/grpc/status"
 
-	"github.com/PRO-Robotech/kacho/services/iam/internal/authzmap"
-	"github.com/PRO-Robotech/kacho/services/iam/internal/domain"
-	"github.com/PRO-Robotech/kacho/services/iam/internal/testsupport/catalogfixture"
+	"github.com/PRO-Robotech/kacho-iam/internal/authzmap"
+	"github.com/PRO-Robotech/kacho-iam/internal/domain"
+	"github.com/PRO-Robotech/kacho-iam/internal/testsupport/catalogfixture"
 )
 
 // ── Create: unknown (module,resource) → sync INVALID_ARGUMENT ────────────────────

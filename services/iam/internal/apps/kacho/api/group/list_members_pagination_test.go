@@ -29,16 +29,16 @@ import (
 
 	iamv1 "github.com/PRO-Robotech/kacho/pkg/api/kacho/cloud/iam/v1"
 
-	"github.com/PRO-Robotech/kacho/services/iam/internal/domain"
-	kachorepo "github.com/PRO-Robotech/kacho/services/iam/internal/repo/kacho"
-	"github.com/PRO-Robotech/kacho/services/iam/internal/repo/kacho/access_binding"
-	"github.com/PRO-Robotech/kacho/services/iam/internal/repo/kacho/account"
-	repogroup "github.com/PRO-Robotech/kacho/services/iam/internal/repo/kacho/group"
-	"github.com/PRO-Robotech/kacho/services/iam/internal/repo/kacho/project"
-	"github.com/PRO-Robotech/kacho/services/iam/internal/repo/kacho/role"
-	"github.com/PRO-Robotech/kacho/services/iam/internal/repo/kacho/service_account"
-	"github.com/PRO-Robotech/kacho/services/iam/internal/repo/kacho/user"
-	"github.com/PRO-Robotech/kacho/services/iam/internal/repo/kacho/visibility"
+	"github.com/PRO-Robotech/kacho-iam/internal/domain"
+	kachorepo "github.com/PRO-Robotech/kacho-iam/internal/repo/kacho"
+	"github.com/PRO-Robotech/kacho-iam/internal/repo/kacho/access_binding"
+	"github.com/PRO-Robotech/kacho-iam/internal/repo/kacho/account"
+	repogroup "github.com/PRO-Robotech/kacho-iam/internal/repo/kacho/group"
+	"github.com/PRO-Robotech/kacho-iam/internal/repo/kacho/project"
+	"github.com/PRO-Robotech/kacho-iam/internal/repo/kacho/role"
+	"github.com/PRO-Robotech/kacho-iam/internal/repo/kacho/service_account"
+	"github.com/PRO-Robotech/kacho-iam/internal/repo/kacho/user"
+	"github.com/PRO-Robotech/kacho-iam/internal/repo/kacho/visibility"
 )
 
 const pageGroupID = "grp0000000000000page"

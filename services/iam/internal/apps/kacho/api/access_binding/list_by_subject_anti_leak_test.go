@@ -32,7 +32,7 @@ import (
 
 	"github.com/PRO-Robotech/kacho/pkg/operations"
 
-	repoab "github.com/PRO-Robotech/kacho/services/iam/internal/repo/kacho/access_binding"
+	repoab "github.com/PRO-Robotech/kacho-iam/internal/repo/kacho/access_binding"
 )
 
 // userCtxAB builds a context with a user principal for AB tests.

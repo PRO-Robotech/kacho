@@ -38,10 +38,10 @@ import (
 	"github.com/PRO-Robotech/kacho/pkg/ids"
 	"github.com/PRO-Robotech/kacho/pkg/pgtest"
 
-	"github.com/PRO-Robotech/kacho/services/iam/internal/domain"
-	iamerr "github.com/PRO-Robotech/kacho/services/iam/internal/errors"
-	"github.com/PRO-Robotech/kacho/services/iam/internal/repo/kacho/account"
-	kachopg "github.com/PRO-Robotech/kacho/services/iam/internal/repo/kacho/pg"
+	"github.com/PRO-Robotech/kacho-iam/internal/domain"
+	iamerr "github.com/PRO-Robotech/kacho-iam/internal/errors"
+	"github.com/PRO-Robotech/kacho-iam/internal/repo/kacho/account"
+	kachopg "github.com/PRO-Robotech/kacho-iam/internal/repo/kacho/pg"
 )
 
 // setupTestDB hands the caller its own migrated database on the package's shared

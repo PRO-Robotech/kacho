@@ -38,7 +38,7 @@ import (
 	"google.golang.org/grpc/status"
 	"google.golang.org/protobuf/proto"
 
-	"github.com/PRO-Robotech/kacho/services/iam/internal/authzguard"
+	"github.com/PRO-Robotech/kacho-iam/internal/authzguard"
 )
 
 // grantRequirement извлекает нарушение предусловия, называющее недостающую

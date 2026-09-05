@@ -9,8 +9,8 @@ import (
 
 	"gopkg.in/yaml.v3"
 
-	"github.com/PRO-Robotech/kacho/services/iam/internal/authzmap"
-	"github.com/PRO-Robotech/kacho/services/iam/internal/domain"
+	"github.com/PRO-Robotech/kacho-iam/internal/authzmap"
+	"github.com/PRO-Robotech/kacho-iam/internal/domain"
 )
 
 // objecttype.go — таблица ТИПОВ ОБЪЕКТА разомкнута: оператор чужого облака

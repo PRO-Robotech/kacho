@@ -49,10 +49,10 @@ import (
 	"github.com/jackc/pgx/v5/pgxpool"
 	"github.com/stretchr/testify/require"
 
+	"github.com/PRO-Robotech/kacho-iam/internal/apps/kacho/seed"
+	kachopg "github.com/PRO-Robotech/kacho-iam/internal/repo/kacho/pg"
+	"github.com/PRO-Robotech/kacho-iam/internal/testsupport/catalogfixture"
 	"github.com/PRO-Robotech/kacho/pkg/pgtest"
-	"github.com/PRO-Robotech/kacho/services/iam/internal/apps/kacho/seed"
-	kachopg "github.com/PRO-Robotech/kacho/services/iam/internal/repo/kacho/pg"
-	"github.com/PRO-Robotech/kacho/services/iam/internal/testsupport/catalogfixture"
 )
 
 // reseedProbeCluster — якорь, по которому роль считается системной.

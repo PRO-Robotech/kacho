@@ -55,12 +55,12 @@ import (
 	"github.com/jackc/pgx/v5"
 	"github.com/stretchr/testify/require"
 
+	"github.com/PRO-Robotech/kacho-iam/internal/domain"
+	iamerr "github.com/PRO-Robotech/kacho-iam/internal/errors"
+	kachopg "github.com/PRO-Robotech/kacho-iam/internal/repo/kacho/pg"
 	coredb "github.com/PRO-Robotech/kacho/pkg/db"
 	"github.com/PRO-Robotech/kacho/pkg/ids"
 	"github.com/PRO-Robotech/kacho/pkg/pgtest"
-	"github.com/PRO-Robotech/kacho/services/iam/internal/domain"
-	iamerr "github.com/PRO-Robotech/kacho/services/iam/internal/errors"
-	kachopg "github.com/PRO-Robotech/kacho/services/iam/internal/repo/kacho/pg"
 )
 
 // censusQuerier — общий знаменатель пула и транзакции.

@@ -32,12 +32,12 @@ import (
 	"strings"
 	"time"
 
+	"github.com/PRO-Robotech/kacho-iam/internal/audiencepolicy"
+	"github.com/PRO-Robotech/kacho-iam/internal/clientassertion"
+	"github.com/PRO-Robotech/kacho-iam/internal/domain"
+	"github.com/PRO-Robotech/kacho-iam/internal/service"
+	"github.com/PRO-Robotech/kacho-iam/internal/tokensigner"
 	"github.com/PRO-Robotech/kacho/pkg/tokenpolicy"
-	"github.com/PRO-Robotech/kacho/services/iam/internal/audiencepolicy"
-	"github.com/PRO-Robotech/kacho/services/iam/internal/clientassertion"
-	"github.com/PRO-Robotech/kacho/services/iam/internal/domain"
-	"github.com/PRO-Robotech/kacho/services/iam/internal/service"
-	"github.com/PRO-Robotech/kacho/services/iam/internal/tokensigner"
 )
 
 // Signer — порт подписанта. Определён здесь, у вызывающего.

@@ -29,8 +29,8 @@ import (
 	coredb "github.com/PRO-Robotech/kacho/pkg/db"
 	"github.com/PRO-Robotech/kacho/pkg/operations"
 
-	userapp "github.com/PRO-Robotech/kacho/services/iam/internal/apps/kacho/api/user"
-	kachopg "github.com/PRO-Robotech/kacho/services/iam/internal/repo/kacho/pg"
+	userapp "github.com/PRO-Robotech/kacho-iam/internal/apps/kacho/api/user"
+	kachopg "github.com/PRO-Robotech/kacho-iam/internal/repo/kacho/pg"
 )
 
 // TestOnRecoveryCompleted_BlockedStaysBlocked — наблюдаемый исход: запрет

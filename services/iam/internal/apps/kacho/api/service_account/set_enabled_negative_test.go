@@ -28,8 +28,8 @@ import (
 
 	"github.com/PRO-Robotech/kacho/pkg/operations"
 
-	"github.com/PRO-Robotech/kacho/services/iam/internal/domain"
-	iamerr "github.com/PRO-Robotech/kacho/services/iam/internal/errors"
+	"github.com/PRO-Robotech/kacho-iam/internal/domain"
+	iamerr "github.com/PRO-Robotech/kacho-iam/internal/errors"
 )
 
 // setEnabledExec — the pair under test, addressed uniformly so every case runs

@@ -67,11 +67,11 @@ import (
 	"fmt"
 	"log/slog"
 
-	"github.com/PRO-Robotech/kacho/services/iam/internal/apps/kacho/moduleroles"
-	"github.com/PRO-Robotech/kacho/services/iam/internal/apps/kacho/seed"
-	"github.com/PRO-Robotech/kacho/services/iam/internal/catalog"
-	"github.com/PRO-Robotech/kacho/services/iam/internal/manifest"
-	"github.com/PRO-Robotech/kacho/services/iam/internal/manifest/roleexport"
+	"github.com/PRO-Robotech/kacho-iam/internal/apps/kacho/moduleroles"
+	"github.com/PRO-Robotech/kacho-iam/internal/apps/kacho/seed"
+	"github.com/PRO-Robotech/kacho-iam/internal/catalog"
+	"github.com/PRO-Robotech/kacho-iam/internal/manifest"
+	"github.com/PRO-Robotech/kacho-iam/internal/manifest/roleexport"
 )
 
 // moduleRolesCensus — перепись применения ролей по всем доставленным манифестам.

@@ -54,9 +54,9 @@ import (
 
 	"github.com/jackc/pgx/v5/pgxpool"
 
+	"github.com/PRO-Robotech/kacho-iam/internal/authzmap"
+	"github.com/PRO-Robotech/kacho-iam/internal/repo/kacho/pg/resource_mirror"
 	"github.com/PRO-Robotech/kacho/pkg/pgtest"
-	"github.com/PRO-Robotech/kacho/services/iam/internal/authzmap"
-	"github.com/PRO-Robotech/kacho/services/iam/internal/repo/kacho/pg/resource_mirror"
 )
 
 // rootLevelTypes — типы, у которых предка нет по построению.

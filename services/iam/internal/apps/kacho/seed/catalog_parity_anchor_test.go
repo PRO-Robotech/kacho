@@ -45,8 +45,8 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/PRO-Robotech/kacho/services/iam/internal/apps/kacho/seed"
-	"github.com/PRO-Robotech/kacho/services/iam/internal/catalog"
+	"github.com/PRO-Robotech/kacho-iam/internal/apps/kacho/seed"
+	"github.com/PRO-Robotech/kacho-iam/internal/catalog"
 )
 
 // Имена строки, которую объявляет ДОСТАВКА и не несёт образ. Взяты заведомо

@@ -10,8 +10,8 @@ import (
 	"google.golang.org/grpc/codes"
 	"google.golang.org/grpc/status"
 
+	iamerr "github.com/PRO-Robotech/kacho-iam/internal/errors"
 	"github.com/PRO-Robotech/kacho/pkg/quota/quotadetail"
-	iamerr "github.com/PRO-Robotech/kacho/services/iam/internal/errors"
 )
 
 // Отказ учёта числа ресурсов на пути наружу.

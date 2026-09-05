@@ -15,7 +15,7 @@ package membership
 import (
 	"github.com/PRO-Robotech/kacho/pkg/filter"
 
-	iamerr "github.com/PRO-Robotech/kacho/services/iam/internal/errors"
+	iamerr "github.com/PRO-Robotech/kacho-iam/internal/errors"
 )
 
 // FilterFieldUserID — единственный терм белого списка.

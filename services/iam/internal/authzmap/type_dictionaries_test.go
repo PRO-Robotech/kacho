@@ -13,7 +13,7 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/PRO-Robotech/kacho/services/iam/internal/authzmap"
+	"github.com/PRO-Robotech/kacho-iam/internal/authzmap"
 )
 
 // Перевод обратим на КАЖДОЙ записи каталога, и перепись объявляется числом:

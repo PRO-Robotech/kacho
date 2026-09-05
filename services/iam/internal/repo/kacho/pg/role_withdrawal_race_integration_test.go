@@ -46,9 +46,9 @@ import (
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 
-	"github.com/PRO-Robotech/kacho/services/iam/internal/apps/kacho/moduleroles"
-	"github.com/PRO-Robotech/kacho/services/iam/internal/domain"
-	kachopg "github.com/PRO-Robotech/kacho/services/iam/internal/repo/kacho/pg"
+	"github.com/PRO-Robotech/kacho-iam/internal/apps/kacho/moduleroles"
+	"github.com/PRO-Robotech/kacho-iam/internal/domain"
+	kachopg "github.com/PRO-Robotech/kacho-iam/internal/repo/kacho/pg"
 )
 
 // raceRole — живая роль модуля со своими проекциями, субъектом и аккаунтом.

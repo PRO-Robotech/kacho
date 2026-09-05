@@ -37,7 +37,7 @@ import (
 	"testing"
 	"time"
 
-	"github.com/PRO-Robotech/kacho/services/iam/internal/clients"
+	"github.com/PRO-Robotech/kacho-iam/internal/clients"
 )
 
 // testCA — a generated certificate authority plus the material to serve and to

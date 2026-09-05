@@ -22,9 +22,9 @@ import (
 	"sync"
 	"testing"
 
-	"github.com/PRO-Robotech/kacho/services/iam/internal/clients"
-	"github.com/PRO-Robotech/kacho/services/iam/internal/domain"
-	"github.com/PRO-Robotech/kacho/services/iam/internal/service"
+	"github.com/PRO-Robotech/kacho-iam/internal/clients"
+	"github.com/PRO-Robotech/kacho-iam/internal/domain"
+	"github.com/PRO-Robotech/kacho-iam/internal/service"
 )
 
 // failingInsertRepo — репозиторий, чей Insert отказывает (канонический повод:

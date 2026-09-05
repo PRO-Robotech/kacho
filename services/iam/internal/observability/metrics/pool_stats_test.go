@@ -6,7 +6,7 @@ package metrics_test
 import (
 	"testing"
 
-	"github.com/PRO-Robotech/kacho/services/iam/internal/observability/metrics"
+	"github.com/PRO-Robotech/kacho-iam/internal/observability/metrics"
 )
 
 // TestRegisterPoolStats_RepeatDoesNotKillTheProcess — повторная регистрация того

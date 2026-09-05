@@ -8,7 +8,7 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/PRO-Robotech/kacho/services/iam/internal/observability/metrics"
+	"github.com/PRO-Robotech/kacho-iam/internal/observability/metrics"
 )
 
 // Набор шагов пост-коммитной материализации объявлен ОДИН раз — у коллектора,

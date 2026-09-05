@@ -44,11 +44,11 @@ import (
 	"github.com/jackc/pgx/v5/pgxpool"
 	"github.com/stretchr/testify/require"
 
+	"github.com/PRO-Robotech/kacho-iam/internal/domain"
+	iampg "github.com/PRO-Robotech/kacho-iam/internal/repo/kacho/pg"
 	coredb "github.com/PRO-Robotech/kacho/pkg/db"
 	"github.com/PRO-Robotech/kacho/pkg/ids"
 	"github.com/PRO-Robotech/kacho/pkg/pgtest"
-	"github.com/PRO-Robotech/kacho/services/iam/internal/domain"
-	iampg "github.com/PRO-Robotech/kacho/services/iam/internal/repo/kacho/pg"
 )
 
 // newIdentityGrowthDB — своя база и пул на пробу.

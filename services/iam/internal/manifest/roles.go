@@ -13,7 +13,7 @@ import (
 
 	"gopkg.in/yaml.v3"
 
-	"github.com/PRO-Robotech/kacho/services/iam/internal/domain"
+	"github.com/PRO-Robotech/kacho-iam/internal/domain"
 )
 
 // roles.go — раздел `roles` (приёмка §2.6, §2.6а; сценарии MOD-MR-10 …

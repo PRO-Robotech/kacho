@@ -42,19 +42,33 @@ jobs:
       fail-fast: false
       matrix:
         include:
-          - { target: FuzzPermissionCatalogLookup, pkg: ./services/iam/internal/fuzz }
-          - { target: FuzzCIDRParse,               pkg: ./services/vpc/internal/fuzz }
-          - { target: FuzzInstanceSpecValidate,    pkg: ./services/compute/internal/fuzz }
+          # ПОЛЕЙ ТРИ, И ЭТО НЕ ИЗБЫТОК.
+          #
+          #   mod — каталог МОДУЛЯ (`go test -C`). Модуль в дереве больше не один:
+          #         служба iam несёт свой `go.mod`, потому что выносится отдельным
+          #         репозиторием, и её пакеты корневым `./…` не резолвятся вовсе;
+          #   pkg — путь пакета ВНУТРИ своего модуля (аргумент `go test`);
+          #   dir — путь от корня дерева. Им адресуются корпус и артефакты: они
+          #         лежат в рабочей копии, а не в модуле, и склейка `mod`+`pkg`
+          #         давала бы `././…` — форму, на которой действия кэша и выгрузки
+          #         молчаливо промахиваются мимо каталога.
+          #
+          # Свести три поля в два нельзя ни одним способом, который не вычислял бы
+          # путь в шаге, — а вычисленный путь в объявлении не виден глазом.
+          - { target: FuzzPermissionCatalogLookup, mod: services/iam, pkg: ./internal/fuzz, dir: services/iam/internal/fuzz }
+          - { target: FuzzCIDRParse, mod: ., pkg: ./services/vpc/internal/fuzz, dir: services/vpc/internal/fuzz }
+          - { target: FuzzInstanceSpecValidate, mod: ., pkg: ./services/compute/internal/fuzz, dir: services/compute/internal/fuzz }
+          - { target: FuzzJWTVerify, mod: ., pkg: ./gateway/internal/fuzz, dir: gateway/internal/fuzz }
+          - { target: FuzzDPoPProof, mod: ., pkg: ./gateway/internal/fuzz, dir: gateway/internal/fuzz }
+          - { target: FuzzAuthzMiddleware, mod: ., pkg: ./gateway/internal/fuzz, dir: gateway/internal/fuzz }
+          - { target: FuzzKeyIDNeverReachesTheKeySetSource, mod: ., pkg: ./services/registry/internal/clients/jwks, dir: services/registry/internal/clients/jwks }
           # Верификатор токена живёт в gateway — цель стоит рядом с предметом.
           # Раньше она лежала в дереве iam и звала заглушку, которая на посевы
           # `alg=none` и `alg=HS256` отвечала «годен» вопреки собственной пометке.
-          - { target: FuzzJWTVerify,               pkg: ./gateway/internal/fuzz }
-          - { target: FuzzDPoPProof,               pkg: ./gateway/internal/fuzz }
-          - { target: FuzzAuthzMiddleware,         pkg: ./gateway/internal/fuzz }
+          #
           # Идентификатор ключа приходит из заголовка предъявленного токена и
           # читается ДО проверки подписи — цель гоняет прод-путь плоскости данных
           # реестра целиком, а не отдельную проверку формы.
-          - { target: FuzzKeyIDNeverReachesTheKeySetSource, pkg: ./services/registry/internal/clients/jwks }
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1  # v7
       - uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e  # v7
@@ -76,7 +90,7 @@ jobs:
       - name: restore fuzz corpus
         uses: actions/cache/restore@55cc8345863c7cc4c66a329aec7e433d2d1c52a9  # v6
         with:
-          path: ${{ matrix.pkg }}/testdata/fuzz/${{ matrix.target }}
+          path: ${{ matrix.dir }}/testdata/fuzz/${{ matrix.target }}
           key: fuzz-corpus-${{ matrix.target }}-${{ github.run_id }}
           restore-keys: |
             fuzz-corpus-${{ matrix.target }}-
@@ -92,7 +106,7 @@ jobs:
           # выходит с 0, с pipefail — с 1. Залочено
           # TestFuzzWorkflowDoesNotSwallowExitCode.
           set -o pipefail
-          go test -run='^$' -fuzz='^${{ matrix.target }}$' -fuzztime="${FUZZTIME}" \
+          go test -C '${{ matrix.mod }}' -run='^$' -fuzz='^${{ matrix.target }}$' -fuzztime="${FUZZTIME}" \
             ${{ matrix.pkg }} 2>&1 | tee fuzz-output.log
 
       # Сохранение НА КРАСНОМ — не оговорка, а предмет: `always()` обязателен,
@@ -104,7 +118,7 @@ jobs:
         if: ${{ always() }}
         uses: actions/cache/save@55cc8345863c7cc4c66a329aec7e433d2d1c52a9  # v6
         with:
-          path: ${{ matrix.pkg }}/testdata/fuzz/${{ matrix.target }}
+          path: ${{ matrix.dir }}/testdata/fuzz/${{ matrix.target }}
           key: fuzz-corpus-${{ matrix.target }}-${{ github.run_id }}
 
       - name: upload failure artifacts
@@ -113,7 +127,7 @@ jobs:
         with:
           name: fuzz-failure-${{ matrix.target }}
           path: |
-            ${{ matrix.pkg }}/testdata/fuzz/${{ matrix.target }}/
+            ${{ matrix.dir }}/testdata/fuzz/${{ matrix.target }}/
             fuzz-output.log
 
   # Сверка матрицы с деревом ЖИВЁТ НЕ ЗДЕСЬ, и это осознанно.

@@ -32,9 +32,9 @@ import (
 
 	"github.com/stretchr/testify/require"
 
-	"github.com/PRO-Robotech/kacho/services/iam/internal/domain"
-	kachorepo "github.com/PRO-Robotech/kacho/services/iam/internal/repo/kacho"
-	kachopg "github.com/PRO-Robotech/kacho/services/iam/internal/repo/kacho/pg"
+	"github.com/PRO-Robotech/kacho-iam/internal/domain"
+	kachorepo "github.com/PRO-Robotech/kacho-iam/internal/repo/kacho"
+	kachopg "github.com/PRO-Robotech/kacho-iam/internal/repo/kacho/pg"
 )
 
 // TestWithdrawnGrantsAreReachableByReading — ведомость ЧИТАЕТСЯ.

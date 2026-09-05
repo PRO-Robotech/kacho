@@ -29,10 +29,10 @@ import (
 
 	"github.com/stretchr/testify/require"
 
-	"github.com/PRO-Robotech/kacho/services/iam/internal/apps/kacho/shared"
-	"github.com/PRO-Robotech/kacho/services/iam/internal/domain"
-	kachorepo "github.com/PRO-Robotech/kacho/services/iam/internal/repo/kacho"
-	repoaccount "github.com/PRO-Robotech/kacho/services/iam/internal/repo/kacho/account"
+	"github.com/PRO-Robotech/kacho-iam/internal/apps/kacho/shared"
+	"github.com/PRO-Robotech/kacho-iam/internal/domain"
+	kachorepo "github.com/PRO-Robotech/kacho-iam/internal/repo/kacho"
+	repoaccount "github.com/PRO-Robotech/kacho-iam/internal/repo/kacho/account"
 )
 
 // ───────────── пагинирующий фейк: уважает курсор и размер порции ─────────────

@@ -49,12 +49,12 @@ import (
 
 	"github.com/PRO-Robotech/kacho/pkg/operations"
 
-	"github.com/PRO-Robotech/kacho/services/iam/internal/apps/kacho/shared"
-	"github.com/PRO-Robotech/kacho/services/iam/internal/domain"
-	kachorepo "github.com/PRO-Robotech/kacho/services/iam/internal/repo/kacho"
-	accountrepo "github.com/PRO-Robotech/kacho/services/iam/internal/repo/kacho/account"
-	grouprepo "github.com/PRO-Robotech/kacho/services/iam/internal/repo/kacho/group"
-	"github.com/PRO-Robotech/kacho/services/iam/internal/service"
+	"github.com/PRO-Robotech/kacho-iam/internal/apps/kacho/shared"
+	"github.com/PRO-Robotech/kacho-iam/internal/domain"
+	kachorepo "github.com/PRO-Robotech/kacho-iam/internal/repo/kacho"
+	accountrepo "github.com/PRO-Robotech/kacho-iam/internal/repo/kacho/account"
+	grouprepo "github.com/PRO-Robotech/kacho-iam/internal/repo/kacho/group"
+	"github.com/PRO-Robotech/kacho-iam/internal/service"
 )
 
 const (

@@ -12,10 +12,10 @@ import (
 
 	"github.com/PRO-Robotech/kacho/pkg/operations"
 
+	"github.com/PRO-Robotech/kacho-iam/internal/domain"
+	iamerr "github.com/PRO-Robotech/kacho-iam/internal/errors"
+	"github.com/PRO-Robotech/kacho-iam/internal/testsupport/catalogfixture"
 	iamv1 "github.com/PRO-Robotech/kacho/pkg/api/kacho/cloud/iam/v1"
-	"github.com/PRO-Robotech/kacho/services/iam/internal/domain"
-	iamerr "github.com/PRO-Robotech/kacho/services/iam/internal/errors"
-	"github.com/PRO-Robotech/kacho/services/iam/internal/testsupport/catalogfixture"
 )
 
 func getPresent(_ context.Context, id domain.RoleID) (domain.Role, error) {

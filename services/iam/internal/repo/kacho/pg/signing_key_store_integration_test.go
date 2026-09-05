@@ -25,10 +25,10 @@ import (
 	coredb "github.com/PRO-Robotech/kacho/pkg/db"
 	"github.com/PRO-Robotech/kacho/pkg/pgtest"
 
-	"github.com/PRO-Robotech/kacho/services/iam/internal/domain"
-	"github.com/PRO-Robotech/kacho/services/iam/internal/keywrap"
-	kachopg "github.com/PRO-Robotech/kacho/services/iam/internal/repo/kacho/pg"
-	"github.com/PRO-Robotech/kacho/services/iam/internal/signingkeygen"
+	"github.com/PRO-Robotech/kacho-iam/internal/domain"
+	"github.com/PRO-Robotech/kacho-iam/internal/keywrap"
+	kachopg "github.com/PRO-Robotech/kacho-iam/internal/repo/kacho/pg"
+	"github.com/PRO-Robotech/kacho-iam/internal/signingkeygen"
 )
 
 // TestSigningKeyStore_F1_08_ReadBackPrivateHalfIsFitToSign — F1-08.

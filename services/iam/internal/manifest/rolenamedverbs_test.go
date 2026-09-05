@@ -35,7 +35,7 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/PRO-Robotech/kacho/services/iam/internal/manifest"
+	"github.com/PRO-Robotech/kacho-iam/internal/manifest"
 )
 
 // namedVerbManifest — манифест с ОДНИМ ресурсом и одной ролью, записанными

@@ -9,7 +9,7 @@ import (
 
 	"github.com/jackc/pgx/v5"
 
-	"github.com/PRO-Robotech/kacho/services/iam/internal/repo/kacho/pg/relverdict"
+	"github.com/PRO-Robotech/kacho-iam/internal/repo/kacho/pg/relverdict"
 )
 
 // Глагол на САМОМ проекте выводится из выдачи, привязанной к этому проекту (#884).

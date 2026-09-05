@@ -61,7 +61,7 @@ import (
 
 	"github.com/PRO-Robotech/kacho/pkg/pgtest"
 
-	"github.com/PRO-Robotech/kacho/services/iam/internal/domain"
+	"github.com/PRO-Robotech/kacho-iam/internal/domain"
 )
 
 // declarationCensus — объём осмотренного. Четыре величины, и ни одна не лишняя:

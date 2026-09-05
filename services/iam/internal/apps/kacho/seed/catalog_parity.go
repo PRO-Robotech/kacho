@@ -74,8 +74,8 @@ import (
 	"sort"
 	"strings"
 
-	"github.com/PRO-Robotech/kacho/services/iam/internal/authzmap"
-	"github.com/PRO-Robotech/kacho/services/iam/internal/catalog"
+	"github.com/PRO-Robotech/kacho-iam/internal/authzmap"
+	"github.com/PRO-Robotech/kacho-iam/internal/catalog"
 )
 
 // ErrAnchorRedefinesImage — доставка переопределяет форму строки, которую образ

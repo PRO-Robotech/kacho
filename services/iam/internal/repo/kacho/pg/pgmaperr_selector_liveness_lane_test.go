@@ -35,7 +35,7 @@ import (
 	"github.com/jackc/pgx/v5/pgconn"
 	"github.com/stretchr/testify/require"
 
-	iamerr "github.com/PRO-Robotech/kacho/services/iam/internal/errors"
+	iamerr "github.com/PRO-Robotech/kacho-iam/internal/errors"
 )
 
 func TestSelectorLivenessRefusalNamesTheElementAndTheRole(t *testing.T) {

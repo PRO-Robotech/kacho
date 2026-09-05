@@ -16,9 +16,9 @@ import (
 	gstatus "google.golang.org/genproto/googleapis/rpc/status"
 	"google.golang.org/protobuf/types/known/anypb"
 
+	"github.com/PRO-Robotech/kacho-iam/internal/domain"
 	iamv1 "github.com/PRO-Robotech/kacho/pkg/api/kacho/cloud/iam/v1"
 	"github.com/PRO-Robotech/kacho/pkg/operations"
-	"github.com/PRO-Robotech/kacho/services/iam/internal/domain"
 )
 
 // nameCanonOps — записывающий дублёр реестра операций: нужен ИМЕННО

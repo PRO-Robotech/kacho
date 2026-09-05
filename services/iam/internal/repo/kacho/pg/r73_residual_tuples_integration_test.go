@@ -35,9 +35,9 @@ import (
 
 	"github.com/jackc/pgx/v5/pgxpool"
 
+	"github.com/PRO-Robotech/kacho-iam/internal/clients"
+	kachopg "github.com/PRO-Robotech/kacho-iam/internal/repo/kacho/pg"
 	"github.com/PRO-Robotech/kacho/pkg/pgtest"
-	"github.com/PRO-Robotech/kacho/services/iam/internal/clients"
-	kachopg "github.com/PRO-Robotech/kacho/services/iam/internal/repo/kacho/pg"
 )
 
 func TestR7_3_27_ResidualReaderNamesOwnObjectOnly(t *testing.T) {

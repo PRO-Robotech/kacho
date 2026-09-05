@@ -23,7 +23,7 @@ package membership
 import (
 	"context"
 
-	repomembership "github.com/PRO-Robotech/kacho/services/iam/internal/repo/kacho/membership"
+	repomembership "github.com/PRO-Robotech/kacho-iam/internal/repo/kacho/membership"
 )
 
 // Repo / Session — порты, объявленные ЗДЕСЬ, в use-case, и узкие намеренно:

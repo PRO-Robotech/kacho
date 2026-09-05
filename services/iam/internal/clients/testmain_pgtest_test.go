@@ -10,7 +10,7 @@ import (
 
 	"github.com/PRO-Robotech/kacho/pkg/pgtest"
 
-	"github.com/PRO-Robotech/kacho/services/iam/internal/migrations"
+	"github.com/PRO-Robotech/kacho-iam/internal/migrations"
 )
 
 // TestMain hands this package one Postgres instead of one per test.

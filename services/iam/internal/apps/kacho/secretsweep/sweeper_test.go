@@ -13,7 +13,7 @@ import (
 	"testing"
 	"time"
 
-	"github.com/PRO-Robotech/kacho/services/iam/internal/apps/kacho/secretsweep"
+	"github.com/PRO-Robotech/kacho-iam/internal/apps/kacho/secretsweep"
 )
 
 type fakeStore struct {

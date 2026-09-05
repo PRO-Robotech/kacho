@@ -10,7 +10,7 @@ import (
 	"strings"
 	"unicode"
 
-	"github.com/PRO-Robotech/kacho/services/iam/internal/authzmap"
+	"github.com/PRO-Robotech/kacho-iam/internal/authzmap"
 )
 
 // attribution.go — привязка записи каталога прав к ДЕЙСТВИЮ модуля.

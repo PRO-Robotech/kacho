@@ -20,7 +20,7 @@ import (
 	"strings"
 	"time"
 
-	"github.com/PRO-Robotech/kacho/services/iam/internal/audiencepolicy"
+	"github.com/PRO-Robotech/kacho-iam/internal/audiencepolicy"
 )
 
 // Built-in policy defaults. viper also registers them (defaults.go); the

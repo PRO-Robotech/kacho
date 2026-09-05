@@ -34,8 +34,8 @@ import (
 	"sync"
 	"time"
 
-	"github.com/PRO-Robotech/kacho/services/iam/internal/domain"
-	"github.com/PRO-Robotech/kacho/services/iam/internal/repo/kacho/pg/reconcile_outbox"
+	"github.com/PRO-Robotech/kacho-iam/internal/domain"
+	"github.com/PRO-Robotech/kacho-iam/internal/repo/kacho/pg/reconcile_outbox"
 )
 
 // ReconcileEngine — the reconcile use-case surface the worker drives.

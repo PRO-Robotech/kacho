@@ -28,8 +28,8 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/PRO-Robotech/kacho/services/iam/internal/manifest/roleexport"
-	"github.com/PRO-Robotech/kacho/services/iam/internal/testsupport/catalogfixture"
+	"github.com/PRO-Robotech/kacho-iam/internal/manifest/roleexport"
+	"github.com/PRO-Robotech/kacho-iam/internal/testsupport/catalogfixture"
 )
 
 // TestStageOneRunsBeforeStageTwoInsideTheSameFunction — порядок и замыкание.

@@ -225,7 +225,10 @@ var shortGatedRunByOwnCIStep = map[string]string{
 	// последнее держит санкцию гейта containerperpackage, и без исполнения та
 	// санкция стояла бы на непроверяемом утверждении. Сам замер требует переменной
 	// окружения и часов: он ручной по построению.
-	"services/iam/tools/authzformbench": "go test ./services/iam/tools/authzformbench/ -count=1",
+	// Служба iam несёт свой `go.mod`, поэтому её пакеты зовутся через `-C`:
+	// корневой `./services/iam/…` не резолвится вовсе. Строка обязана совпадать
+	// с шагом конвейера ДОСЛОВНО — этим гейт и держится.
+	"services/iam/tools/authzformbench": "go test -C services/iam ./tools/authzformbench/ -count=1",
 
 	// Шесть носителей поведенческих проб модели прав: пакет спрашивает НАСТОЯЩИЙ
 	// OpenFGA, а не читает текст модели. Цель test-authz-fga гонит их целиком (без

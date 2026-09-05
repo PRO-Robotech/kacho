@@ -46,9 +46,9 @@ import (
 	"context"
 	"fmt"
 
-	"github.com/PRO-Robotech/kacho/services/iam/internal/authzguard"
-	"github.com/PRO-Robotech/kacho/services/iam/internal/catalog"
-	"github.com/PRO-Robotech/kacho/services/iam/internal/domain"
+	"github.com/PRO-Robotech/kacho-iam/internal/authzguard"
+	"github.com/PRO-Robotech/kacho-iam/internal/catalog"
+	"github.com/PRO-Robotech/kacho-iam/internal/domain"
 )
 
 // Catalog — the grantable taxonomy projection (use-case DTO; the handler maps

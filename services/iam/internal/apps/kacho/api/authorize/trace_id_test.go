@@ -11,8 +11,8 @@ import (
 
 	"github.com/stretchr/testify/require"
 
+	"github.com/PRO-Robotech/kacho-iam/internal/service"
 	iamv1 "github.com/PRO-Robotech/kacho/pkg/api/kacho/cloud/iam/v1"
-	"github.com/PRO-Robotech/kacho/services/iam/internal/service"
 )
 
 // `trace_id` объявлен на проверках доступа как «Correlation id for downstream logs /

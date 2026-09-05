@@ -11,7 +11,7 @@ import (
 	"sync"
 	"testing"
 
-	iamerr "github.com/PRO-Robotech/kacho/services/iam/internal/errors"
+	iamerr "github.com/PRO-Robotech/kacho-iam/internal/errors"
 )
 
 // mockRelations — minimal Authorizer for unit tests.

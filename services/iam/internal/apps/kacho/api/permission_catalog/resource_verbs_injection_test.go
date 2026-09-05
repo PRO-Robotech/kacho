@@ -31,7 +31,7 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/PRO-Robotech/kacho/services/iam/internal/authzmap"
+	"github.com/PRO-Robotech/kacho-iam/internal/authzmap"
 )
 
 // injectionTargets — по кому ставится опыт. Имена настоящие и выбраны по роли в

@@ -30,7 +30,7 @@ package module
 import (
 	"context"
 
-	"github.com/PRO-Robotech/kacho/services/iam/internal/authzguard"
+	"github.com/PRO-Robotech/kacho-iam/internal/authzguard"
 )
 
 // requireClusterSystemAdmin — гейт: вызывающий обязан держать `system_admin` на

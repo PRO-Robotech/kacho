@@ -30,10 +30,10 @@ import (
 
 	"github.com/jackc/pgx/v5/pgxpool"
 
-	"github.com/PRO-Robotech/kacho/services/iam/internal/apps/kacho/config"
-	"github.com/PRO-Robotech/kacho/services/iam/internal/apps/kacho/retention"
-	"github.com/PRO-Robotech/kacho/services/iam/internal/observability/metrics"
-	kachopg "github.com/PRO-Robotech/kacho/services/iam/internal/repo/kacho/pg"
+	"github.com/PRO-Robotech/kacho-iam/internal/apps/kacho/config"
+	"github.com/PRO-Robotech/kacho-iam/internal/apps/kacho/retention"
+	"github.com/PRO-Robotech/kacho-iam/internal/observability/metrics"
+	kachopg "github.com/PRO-Robotech/kacho-iam/internal/repo/kacho/pg"
 )
 
 // startRetentionSweeper поднимает фоновую уборку и подключает её величины к

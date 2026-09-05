@@ -39,9 +39,9 @@ import (
 	coredb "github.com/PRO-Robotech/kacho/pkg/db"
 	"github.com/PRO-Robotech/kacho/pkg/ids"
 
-	"github.com/PRO-Robotech/kacho/services/iam/internal/domain"
-	kachopg "github.com/PRO-Robotech/kacho/services/iam/internal/repo/kacho/pg"
-	"github.com/PRO-Robotech/kacho/services/iam/internal/repo/kacho/service_account"
+	"github.com/PRO-Robotech/kacho-iam/internal/domain"
+	kachopg "github.com/PRO-Robotech/kacho-iam/internal/repo/kacho/pg"
+	"github.com/PRO-Robotech/kacho-iam/internal/repo/kacho/service_account"
 )
 
 // seedSAWithEnabled writes a service account row directly, stating `enabled`

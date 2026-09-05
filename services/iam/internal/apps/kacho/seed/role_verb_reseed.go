@@ -67,10 +67,10 @@ import (
 
 	"github.com/jackc/pgx/v5/pgxpool"
 
-	"github.com/PRO-Robotech/kacho/services/iam/internal/apps/kacho/shared"
-	"github.com/PRO-Robotech/kacho/services/iam/internal/catalog"
-	"github.com/PRO-Robotech/kacho/services/iam/internal/domain"
-	kachorepo "github.com/PRO-Robotech/kacho/services/iam/internal/repo/kacho"
+	"github.com/PRO-Robotech/kacho-iam/internal/apps/kacho/shared"
+	"github.com/PRO-Robotech/kacho-iam/internal/catalog"
+	"github.com/PRO-Robotech/kacho-iam/internal/domain"
+	kachorepo "github.com/PRO-Robotech/kacho-iam/internal/repo/kacho"
 )
 
 // Исходы пересчёта одной роли — закрытый набор, приходит из констант этого

@@ -7,9 +7,9 @@ import (
 	"fmt"
 	"log/slog"
 
-	"github.com/PRO-Robotech/kacho/services/iam/internal/authzmodel"
-	"github.com/PRO-Robotech/kacho/services/iam/internal/manifest"
-	"github.com/PRO-Robotech/kacho/services/iam/internal/modelcompose"
+	"github.com/PRO-Robotech/kacho-iam/internal/authzmodel"
+	"github.com/PRO-Robotech/kacho-iam/internal/manifest"
+	"github.com/PRO-Robotech/kacho-iam/internal/modelcompose"
 )
 
 // model_compose.go — модель процесса СОБИРАЕТСЯ из доставленного, СУДИТСЯ и

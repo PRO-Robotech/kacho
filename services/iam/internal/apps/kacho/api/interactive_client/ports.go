@@ -14,7 +14,7 @@ package interactiveclient
 import (
 	"context"
 
-	"github.com/PRO-Robotech/kacho/services/iam/internal/domain"
+	"github.com/PRO-Robotech/kacho-iam/internal/domain"
 )
 
 // clientRepo — persistence port.

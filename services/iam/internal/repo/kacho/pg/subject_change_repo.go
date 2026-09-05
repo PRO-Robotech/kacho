@@ -37,7 +37,7 @@ import (
 
 	"github.com/PRO-Robotech/kacho/pkg/subscription"
 
-	"github.com/PRO-Robotech/kacho/services/iam/internal/service"
+	"github.com/PRO-Robotech/kacho-iam/internal/service"
 )
 
 // Имена журнала — КОНСТАНТЫ этого пакета, а не строки, пришедшие снаружи:

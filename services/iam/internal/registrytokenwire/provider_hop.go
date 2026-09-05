@@ -44,8 +44,8 @@ import (
 	"context"
 	"fmt"
 
-	registrytokenuc "github.com/PRO-Robotech/kacho/services/iam/internal/apps/kacho/api/registry_token"
-	"github.com/PRO-Robotech/kacho/services/iam/internal/clients"
+	registrytokenuc "github.com/PRO-Robotech/kacho-iam/internal/apps/kacho/api/registry_token"
+	"github.com/PRO-Robotech/kacho-iam/internal/clients"
 )
 
 // retiredProviderExchange — обменник на месте снятой дороги к прежнему издателю.

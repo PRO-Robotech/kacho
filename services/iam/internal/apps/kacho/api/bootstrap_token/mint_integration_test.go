@@ -10,8 +10,8 @@ import (
 
 	"github.com/stretchr/testify/require"
 
+	kachopg "github.com/PRO-Robotech/kacho-iam/internal/repo/kacho/pg"
 	coredb "github.com/PRO-Robotech/kacho/pkg/db"
-	kachopg "github.com/PRO-Robotech/kacho/services/iam/internal/repo/kacho/pg"
 )
 
 // countingMinter — НАШ подписант, считающий выпуски, потокобезопасно.

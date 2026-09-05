@@ -15,9 +15,9 @@ import (
 	operationpb "github.com/PRO-Robotech/kacho/pkg/api/kacho/cloud/operation"
 	"github.com/PRO-Robotech/kacho/pkg/safeconv"
 
-	"github.com/PRO-Robotech/kacho/services/iam/internal/apps/kacho/shared"
-	"github.com/PRO-Robotech/kacho/services/iam/internal/domain"
-	repouser "github.com/PRO-Robotech/kacho/services/iam/internal/repo/kacho/user"
+	"github.com/PRO-Robotech/kacho-iam/internal/apps/kacho/shared"
+	"github.com/PRO-Robotech/kacho-iam/internal/domain"
+	repouser "github.com/PRO-Robotech/kacho-iam/internal/repo/kacho/user"
 )
 
 // Handler — публичный UserService (Get/List/Invite/Update/Delete).

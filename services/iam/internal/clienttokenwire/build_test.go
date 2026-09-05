@@ -21,13 +21,13 @@ import (
 
 	"github.com/stretchr/testify/require"
 
+	"github.com/PRO-Robotech/kacho-iam/internal/apps/kacho/api/client_token"
+	"github.com/PRO-Robotech/kacho-iam/internal/clientassertion"
+	"github.com/PRO-Robotech/kacho-iam/internal/clienttokenwire"
+	"github.com/PRO-Robotech/kacho-iam/internal/domain"
+	"github.com/PRO-Robotech/kacho-iam/internal/service"
+	"github.com/PRO-Robotech/kacho-iam/internal/tokensigner"
 	"github.com/PRO-Robotech/kacho/pkg/tokenpolicy"
-	"github.com/PRO-Robotech/kacho/services/iam/internal/apps/kacho/api/client_token"
-	"github.com/PRO-Robotech/kacho/services/iam/internal/clientassertion"
-	"github.com/PRO-Robotech/kacho/services/iam/internal/clienttokenwire"
-	"github.com/PRO-Robotech/kacho/services/iam/internal/domain"
-	"github.com/PRO-Robotech/kacho/services/iam/internal/service"
-	"github.com/PRO-Robotech/kacho/services/iam/internal/tokensigner"
 )
 
 // ── дублёры портов ──────────────────────────────────────────────────────────

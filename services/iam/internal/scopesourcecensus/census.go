@@ -66,10 +66,10 @@ import (
 	"sort"
 	"strings"
 
-	"github.com/PRO-Robotech/kacho/services/iam/internal/authzcascade"
-	"github.com/PRO-Robotech/kacho/services/iam/internal/authzmap"
-	"github.com/PRO-Robotech/kacho/services/iam/internal/domain"
-	"github.com/PRO-Robotech/kacho/services/iam/internal/repo/kacho/pg"
+	"github.com/PRO-Robotech/kacho-iam/internal/authzcascade"
+	"github.com/PRO-Robotech/kacho-iam/internal/authzmap"
+	"github.com/PRO-Robotech/kacho-iam/internal/domain"
+	"github.com/PRO-Robotech/kacho-iam/internal/repo/kacho/pg"
 )
 
 // TypePlan — что перепись знает об одном типе, и откуда.

@@ -22,7 +22,7 @@ import (
 
 	"github.com/jackc/pgx/v5"
 
-	"github.com/PRO-Robotech/kacho/services/iam/internal/repo/kacho/pg/relverdict"
+	"github.com/PRO-Robotech/kacho-iam/internal/repo/kacho/pg/relverdict"
 )
 
 // seedConditionedFact кладёт факт, действующий только при выполненном условии.

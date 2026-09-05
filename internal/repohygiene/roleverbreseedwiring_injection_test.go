@@ -49,7 +49,7 @@ func TestReseedWiring_WriterPackageIsRecognisedAndReaderIsNot(t *testing.T) {
 		t.Fatal("признак МОЛЧИТ на файле, который пишет проекцию, — гейт не способен " +
 			"найти предмет, и его зелёный на дереве ничего не значит")
 	}
-	if want := modulePathPrefix + "services/iam/internal/repo/kacho/pg"; pkg != want {
+	if want := importOfTreeRel("services/iam/internal/repo/kacho/pg"); pkg != want {
 		t.Errorf("путь пакета писателя %q, а ожидался %q — находка укажет не туда", pkg, want)
 	}
 
@@ -64,13 +64,13 @@ func TestReseedWiring_WriterPackageIsRecognisedAndReaderIsNot(t *testing.T) {
 // импортирующий пакет писателя, → находка С КООРДИНАТОЙ.
 func TestReseedWiring_InjectionRedOnAUseCaseImportingTheWriter(t *testing.T) {
 	writerPkgs := map[string]string{
-		modulePathPrefix + "services/iam/internal/repo/kacho/pg/roleverb": "services/iam/internal/repo/kacho/pg/roleverb/roleverb.go",
+		importOfTreeRel("services/iam/internal/repo/kacho/pg/roleverb"): "services/iam/internal/repo/kacho/pg/roleverb/roleverb.go",
 	}
 	apps := []useCaseFileImports{{
 		Rel: "services/iam/internal/apps/kacho/seed/role_verb_reseed.go",
 		Imports: []string{
 			"context",
-			modulePathPrefix + "services/iam/internal/repo/kacho/pg/roleverb",
+			importOfTreeRel("services/iam/internal/repo/kacho/pg/roleverb"),
 		},
 	}}
 	got := useCaseWriterImportFindings(apps, writerPkgs)
@@ -89,14 +89,14 @@ func TestReseedWiring_InjectionRedOnAUseCaseImportingTheWriter(t *testing.T) {
 // не являющийся. Гейт обязан молчать: он запрещает импорт ПИСАТЕЛЯ, а не слоя.
 func TestReseedWiring_InjectionSilentOnANeighbouringAdapterImport(t *testing.T) {
 	writerPkgs := map[string]string{
-		modulePathPrefix + "services/iam/internal/repo/kacho/pg": "services/iam/internal/repo/kacho/pg/role_repo.go",
+		importOfTreeRel("services/iam/internal/repo/kacho/pg"): "services/iam/internal/repo/kacho/pg/role_repo.go",
 	}
 	apps := []useCaseFileImports{{
 		Rel: "services/iam/internal/apps/kacho/seed/migrate_backfill.go",
 		Imports: []string{
-			modulePathPrefix + "services/iam/internal/repo/kacho/pg/fga_outbox",
-			modulePathPrefix + "services/iam/internal/repo/kacho",
-			modulePathPrefix + "services/iam/internal/apps/kacho/shared",
+			importOfTreeRel("services/iam/internal/repo/kacho/pg/fga_outbox"),
+			importOfTreeRel("services/iam/internal/repo/kacho"),
+			importOfTreeRel("services/iam/internal/apps/kacho/shared"),
 		},
 	}}
 	if got := useCaseWriterImportFindings(apps, writerPkgs); len(got) != 0 {

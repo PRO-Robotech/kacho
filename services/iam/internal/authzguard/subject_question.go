@@ -31,7 +31,7 @@ package authzguard
 import (
 	"context"
 
-	"github.com/PRO-Robotech/kacho/services/iam/internal/domain"
+	"github.com/PRO-Robotech/kacho-iam/internal/domain"
 )
 
 // ContextRelationChecker — narrow port: ONE relation question, carrying a

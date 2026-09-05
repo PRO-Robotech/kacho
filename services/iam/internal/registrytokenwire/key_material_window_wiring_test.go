@@ -28,9 +28,9 @@ import (
 	"testing"
 	"time"
 
-	registrytokenuc "github.com/PRO-Robotech/kacho/services/iam/internal/apps/kacho/api/registry_token"
-	"github.com/PRO-Robotech/kacho/services/iam/internal/handler/registrytokenhttp"
-	"github.com/PRO-Robotech/kacho/services/iam/internal/registrytokenwire"
+	registrytokenuc "github.com/PRO-Robotech/kacho-iam/internal/apps/kacho/api/registry_token"
+	"github.com/PRO-Robotech/kacho-iam/internal/handler/registrytokenhttp"
+	"github.com/PRO-Robotech/kacho-iam/internal/registrytokenwire"
 )
 
 type countingObserver struct{ seen map[string]int }

@@ -26,7 +26,7 @@ import (
 	"github.com/PRO-Robotech/kacho/pkg/operations"
 	corevalidate "github.com/PRO-Robotech/kacho/pkg/validate"
 
-	"github.com/PRO-Robotech/kacho/services/iam/internal/apps/kacho/shared"
+	"github.com/PRO-Robotech/kacho-iam/internal/apps/kacho/shared"
 )
 
 // storePageTokenErr / storePageSizeErr — byte-for-byte what pkg/operations

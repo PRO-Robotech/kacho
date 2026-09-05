@@ -53,11 +53,11 @@ import (
 	"strings"
 	"testing"
 
+	"github.com/PRO-Robotech/kacho-iam/internal/authzcascade"
+	"github.com/PRO-Robotech/kacho-iam/internal/authzmap"
+	"github.com/PRO-Robotech/kacho-iam/internal/domain"
+	"github.com/PRO-Robotech/kacho-iam/internal/repo/kacho/pg"
 	"github.com/PRO-Robotech/kacho/pkg/gitenv"
-	"github.com/PRO-Robotech/kacho/services/iam/internal/authzcascade"
-	"github.com/PRO-Robotech/kacho/services/iam/internal/authzmap"
-	"github.com/PRO-Robotech/kacho/services/iam/internal/domain"
-	"github.com/PRO-Robotech/kacho/services/iam/internal/repo/kacho/pg"
 )
 
 // scopeEdgeMigrationDir — каталог миграций сервиса.

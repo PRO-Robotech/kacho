@@ -12,9 +12,9 @@ import (
 	"google.golang.org/grpc/codes"
 	"google.golang.org/grpc/status"
 
+	"github.com/PRO-Robotech/kacho-iam/internal/apps/kacho/shared"
+	iamerr "github.com/PRO-Robotech/kacho-iam/internal/errors"
 	coreerrors "github.com/PRO-Robotech/kacho/pkg/errors"
-	"github.com/PRO-Robotech/kacho/services/iam/internal/apps/kacho/shared"
-	iamerr "github.com/PRO-Robotech/kacho/services/iam/internal/errors"
 )
 
 // TestMapRepoErrFailureBandsCharacterization records the code AND the exact wire

@@ -19,10 +19,10 @@ import (
 	"testing"
 	"time"
 
-	"github.com/PRO-Robotech/kacho/services/iam/internal/apps/kacho/moduleroles"
-	"github.com/PRO-Robotech/kacho/services/iam/internal/apps/kacho/shared"
-	"github.com/PRO-Robotech/kacho/services/iam/internal/domain"
-	"github.com/PRO-Robotech/kacho/services/iam/internal/manifest"
+	"github.com/PRO-Robotech/kacho-iam/internal/apps/kacho/moduleroles"
+	"github.com/PRO-Robotech/kacho-iam/internal/apps/kacho/shared"
+	"github.com/PRO-Robotech/kacho-iam/internal/domain"
+	"github.com/PRO-Robotech/kacho-iam/internal/manifest"
 )
 
 // fakeStore — строки ролей и их проекция сегментов. Ключ — `id`.

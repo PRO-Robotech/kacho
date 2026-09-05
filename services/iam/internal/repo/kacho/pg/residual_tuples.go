@@ -50,7 +50,7 @@ import (
 
 	"github.com/jackc/pgx/v5/pgxpool"
 
-	"github.com/PRO-Robotech/kacho/services/iam/internal/outboxtypes"
+	"github.com/PRO-Robotech/kacho-iam/internal/outboxtypes"
 )
 
 // errResidualListingUnbounded — перечисление объекта не сошлось за отведённые

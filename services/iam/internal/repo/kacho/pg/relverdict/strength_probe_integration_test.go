@@ -50,9 +50,9 @@ import (
 
 	"github.com/jackc/pgx/v5"
 
-	"github.com/PRO-Robotech/kacho/services/iam/internal/repo/kacho/pg/planrows"
-	"github.com/PRO-Robotech/kacho/services/iam/internal/repo/kacho/pg/relverdict"
-	"github.com/PRO-Robotech/kacho/services/iam/internal/repo/kacho/pg/scalegrid"
+	"github.com/PRO-Robotech/kacho-iam/internal/repo/kacho/pg/planrows"
+	"github.com/PRO-Robotech/kacho-iam/internal/repo/kacho/pg/relverdict"
+	"github.com/PRO-Robotech/kacho-iam/internal/repo/kacho/pg/scalegrid"
 )
 
 // strengthEnv — ручка «запускать сетку предела прочности», и только это.

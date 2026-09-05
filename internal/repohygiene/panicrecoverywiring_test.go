@@ -847,24 +847,34 @@ func importMapOfFile(f *ast.File) map[string]string {
 	return out
 }
 
-// dirOfModuleImport — каталог пакета внутри этого модуля; чужие модули не наши.
+// dirOfModuleImport — каталог пакета ДЕРЕВА по пути импорта; чужие модули не наши.
+//
+// Корнем берётся САМЫЙ ВНЕШНИЙ `go.mod` на пути вверх, а не первый встречный.
+// Разница появилась вместе со вторым модулем: служба iam несёт свой `go.mod`,
+// и подъём «до первого» останавливался бы внутри неё — тогда путь пакета
+// склеивался бы из её каталога и хвоста ЧУЖОГО префикса, то есть указывал бы в
+// никуда, а функция отвечала бы «нашёл». Отображение самого пути отдано
+// treeRelOfImport: оно знает оба модуля.
 func dirOfModuleImport(fromDir, importPath string) (string, bool) {
-	const mod = "github.com/PRO-Robotech/kacho/"
-	if !strings.HasPrefix(importPath, mod) {
+	rel, own := treeRelOfImport(importPath)
+	if !own {
 		return "", false
 	}
-	root := fromDir
+	root, cur := "", fromDir
 	for {
-		if _, err := os.Stat(filepath.Join(root, "go.mod")); err == nil {
+		if _, err := os.Stat(filepath.Join(cur, "go.mod")); err == nil {
+			root = cur
+		}
+		parent := filepath.Dir(cur)
+		if parent == cur {
 			break
 		}
-		parent := filepath.Dir(root)
-		if parent == root {
-			return "", false
-		}
-		root = parent
+		cur = parent
 	}
-	return filepath.Join(root, filepath.FromSlash(strings.TrimPrefix(importPath, mod))), true
+	if root == "" {
+		return "", false
+	}
+	return filepath.Join(root, filepath.FromSlash(rel)), true
 }
 
 // walkGoASTFilesForPanicGate обходит прод-исходники под root и отдаёт каждый

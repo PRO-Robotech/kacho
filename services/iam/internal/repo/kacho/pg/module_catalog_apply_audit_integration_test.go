@@ -51,8 +51,8 @@ import (
 	"github.com/jackc/pgx/v5/pgxpool"
 	"github.com/stretchr/testify/require"
 
+	"github.com/PRO-Robotech/kacho-iam/internal/manifest"
 	"github.com/PRO-Robotech/kacho/pkg/operations"
-	"github.com/PRO-Robotech/kacho/services/iam/internal/manifest"
 )
 
 // moduleCatalogAppliedEvent — вид события, который называет §2.7. Форма

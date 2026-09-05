@@ -92,7 +92,7 @@ import (
 )
 
 // applierImportPath — пакет применителя ролей модуля.
-const applierImportPath = "github.com/PRO-Robotech/kacho/services/iam/internal/apps/kacho/moduleroles"
+const applierImportPath = "github.com/PRO-Robotech/kacho-iam/internal/apps/kacho/moduleroles"
 
 // applierDriveNames — имена, которыми применитель ПРИВОДИТСЯ В ДЕЙСТВИЕ.
 // Перечень выведен из объявлений пакета, а не угадан: `NewApplier` собирает

@@ -35,8 +35,8 @@ import (
 
 	"github.com/PRO-Robotech/kacho/pkg/subjectchange"
 
-	kachopg "github.com/PRO-Robotech/kacho/services/iam/internal/repo/kacho/pg"
-	"github.com/PRO-Robotech/kacho/services/iam/internal/service"
+	kachopg "github.com/PRO-Robotech/kacho-iam/internal/repo/kacho/pg"
+	"github.com/PRO-Robotech/kacho-iam/internal/service"
 )
 
 // journalGrace — порог проб. Берётся у ЧИТАТЕЛЯ, а не выписывается числом: копия

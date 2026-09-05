@@ -487,6 +487,16 @@ go_group() {
     run "go build" go build ./...
     run "go vet" go vet ./...
     run "go test -short" go test ./... -short -count=1
+    # МОДУЛЬ СЛУЖБЫ IAM — ВТОРОЙ ПРОГОН, А НЕ ПОДРАЗУМЕВАЕМЫЙ.
+    #
+    # Служба iam несёт свой `go.mod`: она выносится отдельным репозиторием и
+    # обязана собираться без дерева монорепо на диске. Следствие — корневой
+    # `./...` её пакетов НЕ ВИДИТ. Без трёх строк ниже прогон остался бы зелёным,
+    # перестав проверять службу вовсе: «ноль находок» стало бы неотличимо от
+    # «ноль прочитанного», причём по целому модулю сразу.
+    run "iam: go build" go build -C services/iam ./...
+    run "iam: go vet" go vet -C services/iam ./...
+    run "iam: go test -short" go test -C services/iam ./... -short -count=1
     # Инъекция ЧТЕНИЯ ИСХОДОВ судей-целей (#1851, #1893) — доли секунды, и предмет
     # у неё свой: шаги ниже проверяют, что судей зовут, а этот — что их ответ
     # читают ЧЕТЫРЬМЯ исходами, а не двумя. Способность различать наблюдается на
@@ -512,9 +522,15 @@ go_group() {
     model_canon_check
     # Здесь стояли ещё три «провайдер: …» — те же build/vet/test, вызванные из
     # terraform/, — и объяснялись тем, что провайдер живёт ОТДЕЛЬНЫМ модулем, куда
-    # корневой ./... не спускается. Модуль в дереве один (предикат: `git ls-files
-    # '*go.mod'` → одна строка), поэтому команды выше провайдера уже видят, а те три
-    # были повтором, оправданным утверждением, пережившим свой предмет.
+    # корневой ./... не спускается. Провайдер сведён в общий модуль, поэтому
+    # команды выше его уже видят, а те три стали повтором.
+    #
+    # Утверждение «модуль в дереве один» здесь стояло рядом и БОЛЬШЕ НЕВЕРНО:
+    # модулей два (предикат: `git ls-files '*go.mod'` → две строки, корень и
+    # services/iam). Довод от этого не пострадал — он был про провайдера, — но
+    # само утверждение пережило свой предмет и потому переписано, а не оставлено
+    # «почти верным»: следующий читатель вывел бы из него, что второго прогона не
+    # требуется.
     #
     # Цикл terraform ими всё равно не исполнялся: он в группе terraform ниже.
 
@@ -524,6 +540,12 @@ go_group() {
         # чужому дереву, и «зелено» перестаёт что-либо значить.
         mkdir -p "$ROOT/.cache/golangci-lint"
         GOLANGCI_LINT_CACHE=$PWD/.cache/golangci-lint run "golangci-lint" golangci-lint run
+        # Линтер работает В ГРАНИЦАХ МОДУЛЯ: прогон выше пакетов службы iam не
+        # осматривает вовсе, и позвать его из корня нельзя — путь `services/iam/...`
+        # корневым модулем не резолвится. Поэтому прогон идёт ИЗ каталога службы,
+        # с той же — единственной на дерево — конфигурацией по абсолютному пути.
+        GOLANGCI_LINT_CACHE=$PWD/.cache/golangci-lint run "iam: golangci-lint" \
+            bash -c 'cd "$1/services/iam" && golangci-lint run --config "$1/.golangci.yml"' _ "$ROOT"
     else
         skip "golangci-lint" "не установлен"
     fi
@@ -572,21 +594,28 @@ go_group() {
             # ниже порога, то есть отвечает на другой вопрос.
             "$gosec_bin/gosec" -exclude-dir=pkg/api -fmt sarif -out "$WORK/gosec.sarif" ./... \
                 > "$WORK/gosec-run.txt" 2>&1 || true
-            if [ ! -s "$WORK/gosec.sarif" ]; then
-                echo "   ОТКАЗ: отчёта нет — сканер не дошёл до вердикта, и это НЕ «находок нет»"
+            # Модуль службы iam сканируется ОТДЕЛЬНО: сканер работает в границах
+            # модуля, и корневой `./...` в него не спускается. Отчёты сливаются
+            # ниже одним `jq` по обоим файлам — иначе перепись назвала бы объём
+            # одного модуля, выдав его за объём дерева.
+            ( cd services/iam && "$gosec_bin/gosec" -fmt sarif -out "$WORK/gosec-iam.sarif" ./... ) \
+                >> "$WORK/gosec-run.txt" 2>&1 || true
+            if [ ! -s "$WORK/gosec.sarif" ] || [ ! -s "$WORK/gosec-iam.sarif" ]; then
+                echo "   ОТКАЗ: отчёт есть не по обоим модулям — сканер не дошёл до вердикта,"
+                echo "   и это НЕ «находок нет». Пустая половина неотличима от чистой."
                 tail -5 "$WORK/gosec-run.txt" | sed 's/^/   | /'
                 fails+=("gosec: отчёт не создан")
             else
                 local errs total
-                errs=$(jq '[.runs[].results[]|select(.level=="error")]|length' "$WORK/gosec.sarif")
-                total=$(jq '[.runs[].results[]]|length' "$WORK/gosec.sarif")
+                errs=$(jq -s '[.[].runs[].results[]|select(.level=="error")]|length' "$WORK/gosec.sarif" "$WORK/gosec-iam.sarif")
+                total=$(jq -s '[.[].runs[].results[]]|length' "$WORK/gosec.sarif" "$WORK/gosec-iam.sarif")
                 # Перепись — отдельное утверждение: «ноль ошибок» обязано быть
                 # отличимо от «ноль прочитанного».
                 echo "   осмотрено результатов ${total}; из них level=error: ${errs}"
                 if [ "$errs" -eq 0 ]; then
                     echo "   ok"
                 else
-                    jq -r '.runs[].results[]|select(.level=="error")|"   | \(.ruleId) \(.locations[0].physicalLocation.artifactLocation.uri):\(.locations[0].physicalLocation.region.startLine)"' "$WORK/gosec.sarif"
+                    jq -r -s '.[].runs[].results[]|select(.level=="error")|"   | \(.ruleId) \(.locations[0].physicalLocation.artifactLocation.uri):\(.locations[0].physicalLocation.region.startLine)"' "$WORK/gosec.sarif" "$WORK/gosec-iam.sarif"
                     fails+=("gosec (level=error)")
                 fi
             fi

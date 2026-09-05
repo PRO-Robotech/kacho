@@ -23,7 +23,7 @@ import (
 	"strings"
 	"testing"
 
-	iamerr "github.com/PRO-Robotech/kacho/services/iam/internal/errors"
+	iamerr "github.com/PRO-Robotech/kacho-iam/internal/errors"
 )
 
 // TestWrapPgErrClassifiesTheRateRefusal — оба SQLSTATE'а темпа опознаются, и

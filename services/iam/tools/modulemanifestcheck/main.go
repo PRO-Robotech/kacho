@@ -20,7 +20,7 @@ import (
 	"fmt"
 	"os"
 
-	"github.com/PRO-Robotech/kacho/services/iam/internal/manifestcheckrun"
+	"github.com/PRO-Robotech/kacho-iam/internal/manifestcheckrun"
 )
 
 func main() {

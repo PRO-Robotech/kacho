@@ -111,9 +111,9 @@ import (
 
 	"github.com/PRO-Robotech/kacho/pkg/ids"
 
-	"github.com/PRO-Robotech/kacho/services/iam/internal/apps/kacho/modulecatalog"
-	"github.com/PRO-Robotech/kacho/services/iam/internal/domain"
-	"github.com/PRO-Robotech/kacho/services/iam/internal/manifest"
+	"github.com/PRO-Robotech/kacho-iam/internal/apps/kacho/modulecatalog"
+	"github.com/PRO-Robotech/kacho-iam/internal/domain"
+	"github.com/PRO-Robotech/kacho-iam/internal/manifest"
 )
 
 // fullCostGridEnv / stressCostGridEnv — ручки «какую ОБЪЯВЛЕННУЮ сетку гнать», и

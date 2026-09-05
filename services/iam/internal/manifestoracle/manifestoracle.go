@@ -24,8 +24,8 @@
 package manifestoracle
 
 import (
-	"github.com/PRO-Robotech/kacho/services/iam/internal/authzmodel"
-	"github.com/PRO-Robotech/kacho/services/iam/internal/manifest"
+	"github.com/PRO-Robotech/kacho-iam/internal/authzmodel"
+	"github.com/PRO-Robotech/kacho-iam/internal/manifest"
 )
 
 // fromPlans — разобранная модель в роли оракула загрузчика.

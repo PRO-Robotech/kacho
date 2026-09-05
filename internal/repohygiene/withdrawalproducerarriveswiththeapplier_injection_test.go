@@ -22,7 +22,7 @@ const withdrawalDriveWired = `package serve
 import (
 	"context"
 
-	"github.com/PRO-Robotech/kacho/services/iam/internal/apps/kacho/moduleroles"
+	"github.com/PRO-Robotech/kacho-iam/internal/apps/kacho/moduleroles"
 )
 
 func wire(ctx context.Context, tx moduleroles.TxRunner) error {
@@ -38,7 +38,7 @@ func wire(ctx context.Context, tx moduleroles.TxRunner) error {
 const withdrawalDriveAliased = `package serve
 
 import (
-	mr "github.com/PRO-Robotech/kacho/services/iam/internal/apps/kacho/moduleroles"
+	mr "github.com/PRO-Robotech/kacho-iam/internal/apps/kacho/moduleroles"
 )
 
 func wire(declared []mr.Role) {

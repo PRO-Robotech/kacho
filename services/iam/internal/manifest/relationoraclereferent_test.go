@@ -26,7 +26,7 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/PRO-Robotech/kacho/services/iam/internal/manifest"
+	"github.com/PRO-Robotech/kacho-iam/internal/manifest"
 )
 
 // grantOfRelationCanonDoesNotDeclare — выдача отношением, которого канон у

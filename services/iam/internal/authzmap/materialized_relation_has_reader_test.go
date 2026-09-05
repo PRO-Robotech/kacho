@@ -74,8 +74,8 @@ import (
 
 	"github.com/stretchr/testify/require"
 
+	"github.com/PRO-Robotech/kacho-iam/internal/authzmap"
 	"github.com/PRO-Robotech/kacho/pkg/treecorpus"
-	"github.com/PRO-Robotech/kacho/services/iam/internal/authzmap"
 )
 
 // typeOwner — сервис, которому принадлежит FGA-тип. Нужен, чтобы искать читателя

@@ -58,11 +58,11 @@ import (
 	"github.com/PRO-Robotech/kacho/pkg/pgtest"
 	"github.com/PRO-Robotech/kacho/pkg/subjectchange"
 
-	"github.com/PRO-Robotech/kacho/services/iam/internal/apps/kacho/api/internal_iam"
-	"github.com/PRO-Robotech/kacho/services/iam/internal/repo/kacho/access_binding"
-	kachopg "github.com/PRO-Robotech/kacho/services/iam/internal/repo/kacho/pg"
-	"github.com/PRO-Robotech/kacho/services/iam/internal/service"
-	"github.com/PRO-Robotech/kacho/services/iam/internal/testsupport/iampgtest"
+	"github.com/PRO-Robotech/kacho-iam/internal/apps/kacho/api/internal_iam"
+	"github.com/PRO-Robotech/kacho-iam/internal/repo/kacho/access_binding"
+	kachopg "github.com/PRO-Robotech/kacho-iam/internal/repo/kacho/pg"
+	"github.com/PRO-Robotech/kacho-iam/internal/service"
+	"github.com/PRO-Robotech/kacho-iam/internal/testsupport/iampgtest"
 )
 
 // verdictCache — наблюдаемое потребителя: держит ли он ещё закешированный

@@ -11,8 +11,8 @@ import (
 	"errors"
 	"testing"
 
-	"github.com/PRO-Robotech/kacho/services/iam/internal/domain"
-	abrepo "github.com/PRO-Robotech/kacho/services/iam/internal/repo/kacho/access_binding"
+	"github.com/PRO-Robotech/kacho-iam/internal/domain"
+	abrepo "github.com/PRO-Robotech/kacho-iam/internal/repo/kacho/access_binding"
 )
 
 func recordingEmitter(out *[]abrepo.SubjectChangeEvent) subjectChangeEmitter {

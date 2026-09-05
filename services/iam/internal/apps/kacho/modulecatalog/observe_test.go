@@ -38,8 +38,8 @@ import (
 
 	"github.com/stretchr/testify/require"
 
-	"github.com/PRO-Robotech/kacho/services/iam/internal/apps/kacho/modulecatalog"
-	"github.com/PRO-Robotech/kacho/services/iam/internal/catalog"
+	"github.com/PRO-Robotech/kacho-iam/internal/apps/kacho/modulecatalog"
+	"github.com/PRO-Robotech/kacho-iam/internal/catalog"
 )
 
 // countingObserver — подставной наблюдатель. Считает по меткам, а не суммой:

@@ -55,7 +55,7 @@ import (
 	"context"
 	"fmt"
 
-	"github.com/PRO-Robotech/kacho/services/iam/internal/manifest"
+	"github.com/PRO-Robotech/kacho-iam/internal/manifest"
 )
 
 // Census — перепись применения ВСЕЙ доставки.

@@ -26,10 +26,10 @@ import (
 
 	"github.com/stretchr/testify/require"
 
+	"github.com/PRO-Robotech/kacho-iam/internal/apps/kacho/api/signingkeys"
+	"github.com/PRO-Robotech/kacho-iam/internal/domain"
+	"github.com/PRO-Robotech/kacho-iam/internal/keywrap"
 	"github.com/PRO-Robotech/kacho/pkg/tokenpolicy"
-	"github.com/PRO-Robotech/kacho/services/iam/internal/apps/kacho/api/signingkeys"
-	"github.com/PRO-Robotech/kacho/services/iam/internal/domain"
-	"github.com/PRO-Robotech/kacho/services/iam/internal/keywrap"
 )
 
 // keystoreWrappedWith строит ключницу НАД ТЕМ ЖЕ хранилищем, но с названным

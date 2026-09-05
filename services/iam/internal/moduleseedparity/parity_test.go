@@ -57,10 +57,10 @@ import (
 	"github.com/PRO-Robotech/kacho/pkg/pgtest"
 	"github.com/PRO-Robotech/kacho/pkg/platformmodules"
 
-	"github.com/PRO-Robotech/kacho/services/iam/internal/authzmap"
-	"github.com/PRO-Robotech/kacho/services/iam/internal/domain"
-	"github.com/PRO-Robotech/kacho/services/iam/internal/manifest"
-	"github.com/PRO-Robotech/kacho/services/iam/internal/moduleseedparity"
+	"github.com/PRO-Robotech/kacho-iam/internal/authzmap"
+	"github.com/PRO-Robotech/kacho-iam/internal/domain"
+	"github.com/PRO-Robotech/kacho-iam/internal/manifest"
+	"github.com/PRO-Robotech/kacho-iam/internal/moduleseedparity"
 )
 
 // Пороги чтения: ниже них молчание гейта сказано ни о чём. Числа взяты у живой

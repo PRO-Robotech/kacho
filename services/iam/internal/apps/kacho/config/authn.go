@@ -23,7 +23,7 @@ import (
 	"os"
 	"strings"
 
-	"github.com/PRO-Robotech/kacho/services/iam/internal/keywrap"
+	"github.com/PRO-Robotech/kacho-iam/internal/keywrap"
 )
 
 // ResolveHookSharedSecret returns the current shared-secret for Hydra hooks.

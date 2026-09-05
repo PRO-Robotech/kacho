@@ -7,8 +7,8 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/PRO-Robotech/kacho/services/iam/internal/manifest"
-	"github.com/PRO-Robotech/kacho/services/iam/internal/modelrender"
+	"github.com/PRO-Robotech/kacho-iam/internal/manifest"
+	"github.com/PRO-Robotech/kacho-iam/internal/modelrender"
 )
 
 // canonforms_test.go — формы блока, которые НЕСЁТ действующий канон, обязаны быть

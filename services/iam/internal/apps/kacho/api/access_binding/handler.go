@@ -26,10 +26,10 @@ import (
 	"github.com/PRO-Robotech/kacho/pkg/safeconv"
 	corevalidate "github.com/PRO-Robotech/kacho/pkg/validate"
 
-	"github.com/PRO-Robotech/kacho/services/iam/internal/apps/kacho/shared"
-	"github.com/PRO-Robotech/kacho/services/iam/internal/domain"
-	repoab "github.com/PRO-Robotech/kacho/services/iam/internal/repo/kacho/access_binding"
-	reporole "github.com/PRO-Robotech/kacho/services/iam/internal/repo/kacho/role"
+	"github.com/PRO-Robotech/kacho-iam/internal/apps/kacho/shared"
+	"github.com/PRO-Robotech/kacho-iam/internal/domain"
+	repoab "github.com/PRO-Robotech/kacho-iam/internal/repo/kacho/access_binding"
+	reporole "github.com/PRO-Robotech/kacho-iam/internal/repo/kacho/role"
 )
 
 type Handler struct {

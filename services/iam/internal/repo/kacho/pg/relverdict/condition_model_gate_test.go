@@ -24,7 +24,7 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/PRO-Robotech/kacho/services/iam/internal/authzplan"
+	"github.com/PRO-Robotech/kacho-iam/internal/authzplan"
 )
 
 // modelConditions — какие условия каноническая модель действительно употребляет,

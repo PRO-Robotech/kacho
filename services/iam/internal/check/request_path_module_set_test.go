@@ -99,7 +99,7 @@ var requestPathReach = []string{
 }
 
 // canonImportPath — пакет, чей канон набора модулей выводится ИЗ ДЕРЕВА.
-const canonImportPath = "github.com/PRO-Robotech/kacho/services/iam/internal/authzmap"
+const canonImportPath = "github.com/PRO-Robotech/kacho-iam/internal/authzmap"
 
 // canonModuleSymbol — производитель канона. Один символ, а не набор: остальные
 // экспортированные имена пакета отвечают на другие вопросы, и запрещать их

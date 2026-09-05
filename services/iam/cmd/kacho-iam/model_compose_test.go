@@ -39,8 +39,8 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/PRO-Robotech/kacho/services/iam/internal/authzmodel"
-	"github.com/PRO-Robotech/kacho/services/iam/internal/manifest"
+	"github.com/PRO-Robotech/kacho-iam/internal/authzmodel"
+	"github.com/PRO-Robotech/kacho-iam/internal/manifest"
 )
 
 // deliveryDeclaringRelationGrant — манифест, объявляющий НЕПУСТОЙ

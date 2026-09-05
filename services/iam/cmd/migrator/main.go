@@ -49,8 +49,8 @@ import (
 	"github.com/PRO-Robotech/kacho/pkg/migratorcli/cobraargs"
 	"github.com/PRO-Robotech/kacho/pkg/migratorrun"
 
-	"github.com/PRO-Robotech/kacho/services/iam/internal/apps/kacho/config"
-	"github.com/PRO-Robotech/kacho/services/iam/internal/migrations"
+	"github.com/PRO-Robotech/kacho-iam/internal/apps/kacho/config"
+	"github.com/PRO-Robotech/kacho-iam/internal/migrations"
 )
 
 const (

@@ -25,9 +25,9 @@ import (
 	"fmt"
 	"sort"
 
-	"github.com/PRO-Robotech/kacho/services/iam/internal/authzplan"
-	"github.com/PRO-Robotech/kacho/services/iam/internal/manifest"
-	"github.com/PRO-Robotech/kacho/services/iam/internal/modelrender"
+	"github.com/PRO-Robotech/kacho-iam/internal/authzplan"
+	"github.com/PRO-Robotech/kacho-iam/internal/manifest"
+	"github.com/PRO-Robotech/kacho-iam/internal/modelrender"
 )
 
 // Report — перепись композиции. Печатается ВСЕГДА, независимо от исхода: без неё

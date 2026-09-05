@@ -27,8 +27,8 @@ import (
 	"github.com/jackc/pgx/v5"
 	"github.com/jackc/pgx/v5/pgxpool"
 
+	"github.com/PRO-Robotech/kacho-iam/internal/repo/kacho/pg/relverdict"
 	"github.com/PRO-Robotech/kacho/pkg/pgtest"
-	"github.com/PRO-Robotech/kacho/services/iam/internal/repo/kacho/pg/relverdict"
 )
 
 // withCommittedPool сеет данные и ОТДАЁТ пул: адаптер открывает свою транзакцию

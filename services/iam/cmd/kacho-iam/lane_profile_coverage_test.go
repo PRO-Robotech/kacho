@@ -60,7 +60,7 @@ import (
 
 	"gopkg.in/yaml.v3"
 
-	"github.com/PRO-Robotech/kacho/services/iam/internal/apps/kacho/config"
+	"github.com/PRO-Robotech/kacho-iam/internal/apps/kacho/config"
 )
 
 // umbrellaDirFromCmd — каталог зонтичного чарта относительно этого пакета.

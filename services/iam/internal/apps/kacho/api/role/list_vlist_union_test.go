@@ -47,10 +47,10 @@ import (
 	"google.golang.org/grpc/codes"
 	"google.golang.org/grpc/status"
 
-	"github.com/PRO-Robotech/kacho/services/iam/internal/authzfilter"
-	"github.com/PRO-Robotech/kacho/services/iam/internal/clients"
-	reporole "github.com/PRO-Robotech/kacho/services/iam/internal/repo/kacho/role"
-	"github.com/PRO-Robotech/kacho/services/iam/internal/testsupport/catalogfixture"
+	"github.com/PRO-Robotech/kacho-iam/internal/authzfilter"
+	"github.com/PRO-Robotech/kacho-iam/internal/clients"
+	reporole "github.com/PRO-Robotech/kacho-iam/internal/repo/kacho/role"
+	"github.com/PRO-Robotech/kacho-iam/internal/testsupport/catalogfixture"
 )
 
 // roleUnionFGAStub — relation-aware stub clients.RelationQueries: it distinguishes

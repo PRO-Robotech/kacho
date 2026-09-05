@@ -34,8 +34,8 @@ import (
 	"net/http"
 	"time"
 
+	registrytokenuc "github.com/PRO-Robotech/kacho-iam/internal/apps/kacho/api/registry_token"
 	"github.com/PRO-Robotech/kacho/pkg/credsecret"
-	registrytokenuc "github.com/PRO-Robotech/kacho/services/iam/internal/apps/kacho/api/registry_token"
 )
 
 // unauthorizedBody — ЕДИНСТВЕННОЕ тело отказа этой полосы, одно на ВСЯКУЮ

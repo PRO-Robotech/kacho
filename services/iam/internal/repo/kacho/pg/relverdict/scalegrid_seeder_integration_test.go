@@ -39,9 +39,9 @@ import (
 	"github.com/jackc/pgx/v5"
 	"github.com/jackc/pgx/v5/pgxpool"
 
+	"github.com/PRO-Robotech/kacho-iam/internal/repo/kacho/pg/resource_mirror"
+	"github.com/PRO-Robotech/kacho-iam/internal/repo/kacho/pg/scalegrid"
 	"github.com/PRO-Robotech/kacho/pkg/pgtest"
-	"github.com/PRO-Robotech/kacho/services/iam/internal/repo/kacho/pg/resource_mirror"
-	"github.com/PRO-Robotech/kacho/services/iam/internal/repo/kacho/pg/scalegrid"
 )
 
 // seederParityObjects — размер малой точки сверки.

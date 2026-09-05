@@ -61,10 +61,10 @@ import (
 
 	coredb "github.com/PRO-Robotech/kacho/pkg/db"
 
+	"github.com/PRO-Robotech/kacho-iam/internal/apps/kacho/shared"
+	"github.com/PRO-Robotech/kacho-iam/internal/domain"
+	"github.com/PRO-Robotech/kacho-iam/internal/repo/kacho/pg/scalegrid"
 	"github.com/PRO-Robotech/kacho/pkg/pgtest"
-	"github.com/PRO-Robotech/kacho/services/iam/internal/apps/kacho/shared"
-	"github.com/PRO-Robotech/kacho/services/iam/internal/domain"
-	"github.com/PRO-Robotech/kacho/services/iam/internal/repo/kacho/pg/scalegrid"
 )
 
 // strengthWDEnv — ручка «запускать замер записи и удаления», и только это.

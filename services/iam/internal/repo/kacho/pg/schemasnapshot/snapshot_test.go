@@ -52,8 +52,8 @@ import (
 
 	_ "github.com/jackc/pgx/v5/stdlib"
 
+	"github.com/PRO-Robotech/kacho-iam/internal/migrations"
 	"github.com/PRO-Robotech/kacho/pkg/pgtest"
-	"github.com/PRO-Robotech/kacho/services/iam/internal/migrations"
 )
 
 func itoa(i int) string { return strconv.Itoa(i) }

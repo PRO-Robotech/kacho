@@ -65,7 +65,7 @@ import (
 	"github.com/jackc/pgx/v5/pgxpool"
 	"github.com/stretchr/testify/require"
 
-	"github.com/PRO-Robotech/kacho/services/iam/internal/repo/kacho/pg/fga_outbox"
+	"github.com/PRO-Robotech/kacho-iam/internal/repo/kacho/pg/fga_outbox"
 )
 
 // retiredModuleSA — шесть снятых объявлений: имя службы (для детерминированного

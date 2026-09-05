@@ -11,7 +11,7 @@ import (
 	"github.com/stretchr/testify/require"
 	"google.golang.org/grpc/status"
 
-	iamerr "github.com/PRO-Robotech/kacho/services/iam/internal/errors"
+	iamerr "github.com/PRO-Robotech/kacho-iam/internal/errors"
 )
 
 // Отказ НИКОГДА не уходит клиенту с пустым текстом.

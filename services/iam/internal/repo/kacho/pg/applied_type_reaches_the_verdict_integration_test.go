@@ -117,16 +117,16 @@ import (
 	"github.com/PRO-Robotech/kacho/pkg/ids"
 	"github.com/PRO-Robotech/kacho/pkg/operations"
 
-	roleapp "github.com/PRO-Robotech/kacho/services/iam/internal/apps/kacho/api/role"
-	"github.com/PRO-Robotech/kacho/services/iam/internal/apps/kacho/seed"
-	"github.com/PRO-Robotech/kacho/services/iam/internal/authzmap"
-	"github.com/PRO-Robotech/kacho/services/iam/internal/authzmodel"
-	"github.com/PRO-Robotech/kacho/services/iam/internal/catalog"
-	"github.com/PRO-Robotech/kacho/services/iam/internal/domain"
-	"github.com/PRO-Robotech/kacho/services/iam/internal/manifest"
-	kachorepo "github.com/PRO-Robotech/kacho/services/iam/internal/repo/kacho"
-	kachopg "github.com/PRO-Robotech/kacho/services/iam/internal/repo/kacho/pg"
-	"github.com/PRO-Robotech/kacho/services/iam/internal/repo/kacho/pg/relverdict"
+	roleapp "github.com/PRO-Robotech/kacho-iam/internal/apps/kacho/api/role"
+	"github.com/PRO-Robotech/kacho-iam/internal/apps/kacho/seed"
+	"github.com/PRO-Robotech/kacho-iam/internal/authzmap"
+	"github.com/PRO-Robotech/kacho-iam/internal/authzmodel"
+	"github.com/PRO-Robotech/kacho-iam/internal/catalog"
+	"github.com/PRO-Robotech/kacho-iam/internal/domain"
+	"github.com/PRO-Robotech/kacho-iam/internal/manifest"
+	kachorepo "github.com/PRO-Robotech/kacho-iam/internal/repo/kacho"
+	kachopg "github.com/PRO-Robotech/kacho-iam/internal/repo/kacho/pg"
+	"github.com/PRO-Robotech/kacho-iam/internal/repo/kacho/pg/relverdict"
 )
 
 // Предмет ПЕРВОЙ пробы: ресурс ПОСТАВЛЯЕМОГО модуля. Блок его типа пришёл со

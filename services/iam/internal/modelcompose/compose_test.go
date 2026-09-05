@@ -16,11 +16,11 @@ import (
 	"strings"
 	"testing"
 
+	"github.com/PRO-Robotech/kacho-iam/internal/authzmodel"
+	"github.com/PRO-Robotech/kacho-iam/internal/authzplan"
+	"github.com/PRO-Robotech/kacho-iam/internal/manifest"
+	"github.com/PRO-Robotech/kacho-iam/internal/modelcompose"
 	"github.com/PRO-Robotech/kacho/pkg/treecorpus"
-	"github.com/PRO-Robotech/kacho/services/iam/internal/authzmodel"
-	"github.com/PRO-Robotech/kacho/services/iam/internal/authzplan"
-	"github.com/PRO-Robotech/kacho/services/iam/internal/manifest"
-	"github.com/PRO-Robotech/kacho/services/iam/internal/modelcompose"
 )
 
 const probeType = "probemod_alpha"

@@ -85,7 +85,7 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/PRO-Robotech/kacho/services/iam/internal/apps/kacho/shared"
+	"github.com/PRO-Robotech/kacho-iam/internal/apps/kacho/shared"
 )
 
 // deliberateBadFormMark — пометка намеренно негодного литерала. Текст

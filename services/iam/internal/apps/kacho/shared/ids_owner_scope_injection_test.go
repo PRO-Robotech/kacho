@@ -28,8 +28,8 @@ import (
 // ownDomainImport / sharedImport — пути, по которым распознаватель узнаёт
 // СВОЙ пакет domain и пакет строгой проверки.
 const (
-	ownDomainImport = "github.com/PRO-Robotech/kacho/services/iam/internal/domain"
-	sharedImport    = "github.com/PRO-Robotech/kacho/services/iam/internal/apps/kacho/shared"
+	ownDomainImport = "github.com/PRO-Robotech/kacho-iam/internal/domain"
+	sharedImport    = "github.com/PRO-Robotech/kacho-iam/internal/apps/kacho/shared"
 	foreignImport   = "github.com/PRO-Robotech/kacho/pkg/ids"
 )
 

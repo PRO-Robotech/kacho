@@ -45,7 +45,7 @@ import (
 
 	coredb "github.com/PRO-Robotech/kacho/pkg/db"
 
-	"github.com/PRO-Robotech/kacho/services/iam/internal/domain"
+	"github.com/PRO-Robotech/kacho-iam/internal/domain"
 )
 
 // Test 01 — FAST-MATERIALIZE (IAM-FMB-01). A single create-forward pass materializes the

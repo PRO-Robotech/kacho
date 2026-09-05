@@ -23,9 +23,9 @@ package main
 import (
 	"context"
 
-	moduleapp "github.com/PRO-Robotech/kacho/services/iam/internal/apps/kacho/api/module"
-	"github.com/PRO-Robotech/kacho/services/iam/internal/apps/kacho/config"
-	"github.com/PRO-Robotech/kacho/services/iam/internal/manifest"
+	moduleapp "github.com/PRO-Robotech/kacho-iam/internal/apps/kacho/api/module"
+	"github.com/PRO-Robotech/kacho-iam/internal/apps/kacho/config"
+	"github.com/PRO-Robotech/kacho-iam/internal/manifest"
 )
 
 // manifestDeliverySource — `moduleapp.DeliverySource` над каталогом доставки,

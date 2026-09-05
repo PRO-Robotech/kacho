@@ -32,7 +32,7 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/PRO-Robotech/kacho/services/iam/internal/manifest"
+	"github.com/PRO-Robotech/kacho-iam/internal/manifest"
 )
 
 // productionStackName — стенд, чья посадка боевая. Имя, а не цепочка: цепочку

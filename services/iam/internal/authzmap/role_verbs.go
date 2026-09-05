@@ -35,7 +35,7 @@ package authzmap
 //
 // Теперь предикат один, и обе стороны зовут его. Разойтись им больше нечем.
 
-import "github.com/PRO-Robotech/kacho/services/iam/internal/domain"
+import "github.com/PRO-Robotech/kacho-iam/internal/domain"
 
 // GrantedVerbs — глаголы, которые правило с авторскими глаголами `authored`
 // даёт НА ТИПЕ `fgaType`, в канонической форме и без приставки отношения.

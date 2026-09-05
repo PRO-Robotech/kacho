@@ -36,7 +36,7 @@ import (
 
 	iamv1 "github.com/PRO-Robotech/kacho/pkg/api/kacho/cloud/iam/v1"
 
-	"github.com/PRO-Robotech/kacho/services/iam/internal/catalog"
+	"github.com/PRO-Robotech/kacho-iam/internal/catalog"
 )
 
 // liveRows — каталог из ДВУХ строк, ни одна из которых не совпадает с деревом:

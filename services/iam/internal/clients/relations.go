@@ -30,7 +30,7 @@ package clients
 import (
 	"context"
 
-	"github.com/PRO-Robotech/kacho/services/iam/internal/authztypes"
+	"github.com/PRO-Robotech/kacho-iam/internal/authztypes"
 )
 
 // RelationTuple — тройка «субъект, отношение, объект».

@@ -14,7 +14,7 @@ import (
 	"flag"
 	"os"
 
-	"github.com/PRO-Robotech/kacho/services/iam/tools/operatordocs"
+	"github.com/PRO-Robotech/kacho-iam/tools/operatordocs"
 )
 
 func main() {

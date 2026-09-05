@@ -30,8 +30,8 @@ package access_binding
 import (
 	"context"
 
-	"github.com/PRO-Robotech/kacho/services/iam/internal/domain"
-	abrepo "github.com/PRO-Robotech/kacho/services/iam/internal/repo/kacho/access_binding"
+	"github.com/PRO-Robotech/kacho-iam/internal/domain"
+	abrepo "github.com/PRO-Robotech/kacho-iam/internal/repo/kacho/access_binding"
 )
 
 // partitionRevokeSet splits a binding's persisted emitted-set into the tuples this

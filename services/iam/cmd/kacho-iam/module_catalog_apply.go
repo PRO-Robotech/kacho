@@ -60,8 +60,8 @@ import (
 	"fmt"
 	"log/slog"
 
-	"github.com/PRO-Robotech/kacho/services/iam/internal/apps/kacho/modulecatalog"
-	"github.com/PRO-Robotech/kacho/services/iam/internal/manifest"
+	"github.com/PRO-Robotech/kacho-iam/internal/apps/kacho/modulecatalog"
+	"github.com/PRO-Robotech/kacho-iam/internal/manifest"
 )
 
 // applyDeliveredManifests приводит строки каталога к объявленному доставленными

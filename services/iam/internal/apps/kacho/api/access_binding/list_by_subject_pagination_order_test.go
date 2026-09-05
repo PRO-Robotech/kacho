@@ -55,8 +55,8 @@ import (
 
 	"github.com/PRO-Robotech/kacho/pkg/pagetoken"
 
-	"github.com/PRO-Robotech/kacho/services/iam/internal/domain"
-	repoab "github.com/PRO-Robotech/kacho/services/iam/internal/repo/kacho/access_binding"
+	"github.com/PRO-Robotech/kacho-iam/internal/domain"
+	repoab "github.com/PRO-Robotech/kacho-iam/internal/repo/kacho/access_binding"
 )
 
 // pageOrderGarbageToken — курсор, который не разбирается ни одним кодеком: не

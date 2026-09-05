@@ -12,9 +12,9 @@ import (
 	"strings"
 	"testing"
 
+	"github.com/PRO-Robotech/kacho-iam/internal/apps/kacho/config"
 	"github.com/PRO-Robotech/kacho/pkg/observability"
 	"github.com/PRO-Robotech/kacho/pkg/servicecontract"
-	"github.com/PRO-Robotech/kacho/services/iam/internal/apps/kacho/config"
 )
 
 // captureBootPosture прогоняет posture через реальный JSON-логгер и возвращает

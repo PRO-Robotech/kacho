@@ -23,8 +23,8 @@ import (
 	"google.golang.org/grpc/codes"
 	"google.golang.org/grpc/status"
 
-	"github.com/PRO-Robotech/kacho/services/iam/internal/domain"
-	repoab "github.com/PRO-Robotech/kacho/services/iam/internal/repo/kacho/access_binding"
+	"github.com/PRO-Robotech/kacho-iam/internal/domain"
+	repoab "github.com/PRO-Robotech/kacho-iam/internal/repo/kacho/access_binding"
 )
 
 // answerFor runs one probe and returns the observable pair (code, message).

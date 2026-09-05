@@ -19,9 +19,9 @@ import (
 
 	"github.com/PRO-Robotech/kacho/pkg/pgtest"
 
-	"github.com/PRO-Robotech/kacho/services/iam/internal/repo/kacho/access_binding"
-	kachopg "github.com/PRO-Robotech/kacho/services/iam/internal/repo/kacho/pg"
-	"github.com/PRO-Robotech/kacho/services/iam/internal/testsupport/iampgtest"
+	"github.com/PRO-Robotech/kacho-iam/internal/repo/kacho/access_binding"
+	kachopg "github.com/PRO-Robotech/kacho-iam/internal/repo/kacho/pg"
+	"github.com/PRO-Robotech/kacho-iam/internal/testsupport/iampgtest"
 )
 
 // TestSubjectChangeRepo_PollSubjectChanges verifies:

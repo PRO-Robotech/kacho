@@ -56,19 +56,19 @@ import (
 
 	"github.com/PRO-Robotech/kacho/pkg/operations"
 
-	"github.com/PRO-Robotech/kacho/services/iam/internal/authzfilter"
-	"github.com/PRO-Robotech/kacho/services/iam/internal/clients"
-	"github.com/PRO-Robotech/kacho/services/iam/internal/domain"
-	kachorepo "github.com/PRO-Robotech/kacho/services/iam/internal/repo/kacho"
-	"github.com/PRO-Robotech/kacho/services/iam/internal/repo/kacho/access_binding"
-	repoaccount "github.com/PRO-Robotech/kacho/services/iam/internal/repo/kacho/account"
-	"github.com/PRO-Robotech/kacho/services/iam/internal/repo/kacho/group"
-	"github.com/PRO-Robotech/kacho/services/iam/internal/repo/kacho/project"
-	reporole "github.com/PRO-Robotech/kacho/services/iam/internal/repo/kacho/role"
-	"github.com/PRO-Robotech/kacho/services/iam/internal/repo/kacho/service_account"
-	"github.com/PRO-Robotech/kacho/services/iam/internal/repo/kacho/user"
-	"github.com/PRO-Robotech/kacho/services/iam/internal/repo/kacho/visibility"
-	"github.com/PRO-Robotech/kacho/services/iam/internal/testsupport/catalogfixture"
+	"github.com/PRO-Robotech/kacho-iam/internal/authzfilter"
+	"github.com/PRO-Robotech/kacho-iam/internal/clients"
+	"github.com/PRO-Robotech/kacho-iam/internal/domain"
+	kachorepo "github.com/PRO-Robotech/kacho-iam/internal/repo/kacho"
+	"github.com/PRO-Robotech/kacho-iam/internal/repo/kacho/access_binding"
+	repoaccount "github.com/PRO-Robotech/kacho-iam/internal/repo/kacho/account"
+	"github.com/PRO-Robotech/kacho-iam/internal/repo/kacho/group"
+	"github.com/PRO-Robotech/kacho-iam/internal/repo/kacho/project"
+	reporole "github.com/PRO-Robotech/kacho-iam/internal/repo/kacho/role"
+	"github.com/PRO-Robotech/kacho-iam/internal/repo/kacho/service_account"
+	"github.com/PRO-Robotech/kacho-iam/internal/repo/kacho/user"
+	"github.com/PRO-Robotech/kacho-iam/internal/repo/kacho/visibility"
+	"github.com/PRO-Robotech/kacho-iam/internal/testsupport/catalogfixture"
 )
 
 // ───────────── fake repo (Roles().List only) ─────────────

@@ -17,7 +17,7 @@ import (
 	"fmt"
 	"os"
 
-	"github.com/PRO-Robotech/kacho/services/iam/internal/scopesourcecensus"
+	"github.com/PRO-Robotech/kacho-iam/internal/scopesourcecensus"
 )
 
 func main() {

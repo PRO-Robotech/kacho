@@ -50,7 +50,7 @@ import (
 	"github.com/jackc/pgx/v5"
 	"github.com/jackc/pgx/v5/pgxpool"
 
-	"github.com/PRO-Robotech/kacho/services/iam/internal/service"
+	"github.com/PRO-Robotech/kacho-iam/internal/service"
 )
 
 // ExpiredCredentialReclaimSpec — границы одного прогона. ДЛИТЕЛЬНОСТИ, а не

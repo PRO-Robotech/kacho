@@ -33,13 +33,13 @@ import (
 	"github.com/PRO-Robotech/kacho/pkg/pgtest"
 	"github.com/PRO-Robotech/kacho/pkg/tokenpolicy"
 
-	"github.com/PRO-Robotech/kacho/services/iam/internal/apps/kacho/api/signingkeys"
-	"github.com/PRO-Robotech/kacho/services/iam/internal/domain"
-	"github.com/PRO-Robotech/kacho/services/iam/internal/handler/jwksproxyhttp"
-	"github.com/PRO-Robotech/kacho/services/iam/internal/handler/tokenintrospecthttp"
-	"github.com/PRO-Robotech/kacho/services/iam/internal/keywrap"
-	kachopg "github.com/PRO-Robotech/kacho/services/iam/internal/repo/kacho/pg"
-	"github.com/PRO-Robotech/kacho/services/iam/internal/tokensigner"
+	"github.com/PRO-Robotech/kacho-iam/internal/apps/kacho/api/signingkeys"
+	"github.com/PRO-Robotech/kacho-iam/internal/domain"
+	"github.com/PRO-Robotech/kacho-iam/internal/handler/jwksproxyhttp"
+	"github.com/PRO-Robotech/kacho-iam/internal/handler/tokenintrospecthttp"
+	"github.com/PRO-Robotech/kacho-iam/internal/keywrap"
+	kachopg "github.com/PRO-Robotech/kacho-iam/internal/repo/kacho/pg"
+	"github.com/PRO-Robotech/kacho-iam/internal/tokensigner"
 )
 
 const contourIssuer = "https://iam.kacho.local"

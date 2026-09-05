@@ -302,10 +302,11 @@ func readCredentialTreeOverriding(t *testing.T, overrides map[string]string) (fa
 		imports := map[string]bool{}
 		for _, im := range file.Imports {
 			p, uerr := strconv.Unquote(im.Path.Value)
-			if uerr != nil || !strings.HasPrefix(p, modulePathPrefix) {
+			rel, own := treeRelOfImport(p)
+			if uerr != nil || !own {
 				continue
 			}
-			imports[strings.TrimPrefix(p, modulePathPrefix)] = true
+			imports[rel] = true
 		}
 		facts = append(facts, goFileFacts{
 			rel: rel, dir: path.Dir(filepath.ToSlash(rel)),
@@ -547,7 +548,8 @@ func importDirForQualifier(f *ast.File, qual string) string {
 		if name != qual {
 			continue
 		}
-		return strings.TrimPrefix(p, modulePathPrefix)
+		rel, _ := treeRelOfImport(p)
+		return rel
 	}
 	return qual
 }

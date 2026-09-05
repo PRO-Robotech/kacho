@@ -45,8 +45,8 @@ import (
 	"fmt"
 	"os"
 
-	"github.com/PRO-Robotech/kacho/services/iam/internal/apps/kacho/seed"
-	"github.com/PRO-Robotech/kacho/services/iam/internal/modelrender"
+	"github.com/PRO-Robotech/kacho-iam/internal/apps/kacho/seed"
+	"github.com/PRO-Robotech/kacho-iam/internal/modelrender"
 )
 
 // exitNotRun — проверка не исполнялась: вызов разобран не был.

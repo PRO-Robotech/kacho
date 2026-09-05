@@ -12,9 +12,9 @@ import (
 	iamv1 "github.com/PRO-Robotech/kacho/pkg/api/kacho/cloud/iam/v1"
 	"github.com/PRO-Robotech/kacho/pkg/safeconv"
 
-	"github.com/PRO-Robotech/kacho/services/iam/internal/apps/kacho/shared"
-	"github.com/PRO-Robotech/kacho/services/iam/internal/domain"
-	repomembership "github.com/PRO-Robotech/kacho/services/iam/internal/repo/kacho/membership"
+	"github.com/PRO-Robotech/kacho-iam/internal/apps/kacho/shared"
+	"github.com/PRO-Robotech/kacho-iam/internal/domain"
+	repomembership "github.com/PRO-Robotech/kacho-iam/internal/repo/kacho/membership"
 )
 
 type Handler struct {

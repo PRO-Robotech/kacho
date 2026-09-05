@@ -39,7 +39,7 @@ import (
 	"github.com/jackc/pgx/v5"
 	"github.com/jackc/pgx/v5/pgxpool"
 
-	"github.com/PRO-Robotech/kacho/services/iam/internal/catalog"
+	"github.com/PRO-Robotech/kacho-iam/internal/catalog"
 )
 
 // CatalogRepo — реализация порта `catalog.RowSource` поверх пула.

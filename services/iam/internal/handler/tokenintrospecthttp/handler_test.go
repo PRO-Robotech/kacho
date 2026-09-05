@@ -19,9 +19,9 @@ import (
 
 	"github.com/golang-jwt/jwt/v5"
 
-	"github.com/PRO-Robotech/kacho/services/iam/internal/domain"
-	"github.com/PRO-Robotech/kacho/services/iam/internal/handler/tokenintrospecthttp"
-	"github.com/PRO-Robotech/kacho/services/iam/internal/signingkeygen"
+	"github.com/PRO-Robotech/kacho-iam/internal/domain"
+	"github.com/PRO-Robotech/kacho-iam/internal/handler/tokenintrospecthttp"
+	"github.com/PRO-Robotech/kacho-iam/internal/signingkeygen"
 )
 
 const testIssuer = "https://iam.kacho.local"

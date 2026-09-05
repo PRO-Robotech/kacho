@@ -28,9 +28,9 @@ package modulecatalog
 import (
 	"fmt"
 
-	"github.com/PRO-Robotech/kacho/services/iam/internal/apps/kacho/seed"
-	"github.com/PRO-Robotech/kacho/services/iam/internal/catalog"
-	"github.com/PRO-Robotech/kacho/services/iam/internal/manifest"
+	"github.com/PRO-Robotech/kacho-iam/internal/apps/kacho/seed"
+	"github.com/PRO-Robotech/kacho-iam/internal/catalog"
+	"github.com/PRO-Robotech/kacho-iam/internal/manifest"
 )
 
 // AnchorOfDelivery собирает опору паритета из ДОСТАВЛЕННЫХ манифестов.

@@ -27,8 +27,8 @@ package internal_iam
 import (
 	"context"
 
-	"github.com/PRO-Robotech/kacho/services/iam/internal/authzmap"
-	"github.com/PRO-Robotech/kacho/services/iam/internal/service"
+	"github.com/PRO-Robotech/kacho-iam/internal/authzmap"
+	"github.com/PRO-Robotech/kacho-iam/internal/service"
 )
 
 // seededCatalogTypes — читатель, стоящий за ПОСЕЯННЫЕ строки каталога.

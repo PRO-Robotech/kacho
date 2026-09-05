@@ -32,8 +32,8 @@ package bootstrap_token
 import (
 	"context"
 
-	"github.com/PRO-Robotech/kacho/services/iam/internal/domain"
-	"github.com/PRO-Robotech/kacho/services/iam/internal/service"
+	"github.com/PRO-Robotech/kacho-iam/internal/domain"
+	"github.com/PRO-Robotech/kacho-iam/internal/service"
 )
 
 // BootstrapStore — the singleton provisioning port for the bootstrap OAuth-client

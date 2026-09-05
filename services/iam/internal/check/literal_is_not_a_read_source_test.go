@@ -54,7 +54,7 @@ import (
 )
 
 // authzmapImportPath — импортируемый пакет-литерал.
-const authzmapImportPath = "github.com/PRO-Robotech/kacho/services/iam/internal/authzmap"
+const authzmapImportPath = "github.com/PRO-Robotech/kacho-iam/internal/authzmap"
 
 // iamTreeRel — поддерево, которое обходит гейт. Предмет запрета — прод-код
 // СЕРВИСА; чужие деревья каталог модуля iam не читают и не вправе.

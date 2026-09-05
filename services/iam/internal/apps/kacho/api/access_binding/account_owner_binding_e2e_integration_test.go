@@ -22,13 +22,13 @@ import (
 
 	"github.com/PRO-Robotech/kacho/pkg/operations"
 
-	"github.com/PRO-Robotech/kacho/services/iam/internal/apps/kacho/api/access_binding/reconcile"
-	accountapp "github.com/PRO-Robotech/kacho/services/iam/internal/apps/kacho/api/account"
-	"github.com/PRO-Robotech/kacho/services/iam/internal/domain"
-	repoab "github.com/PRO-Robotech/kacho/services/iam/internal/repo/kacho/access_binding"
-	repoacct "github.com/PRO-Robotech/kacho/services/iam/internal/repo/kacho/account"
-	kachopg "github.com/PRO-Robotech/kacho/services/iam/internal/repo/kacho/pg"
-	"github.com/PRO-Robotech/kacho/services/iam/internal/testsupport/catalogfixture"
+	"github.com/PRO-Robotech/kacho-iam/internal/apps/kacho/api/access_binding/reconcile"
+	accountapp "github.com/PRO-Robotech/kacho-iam/internal/apps/kacho/api/account"
+	"github.com/PRO-Robotech/kacho-iam/internal/domain"
+	repoab "github.com/PRO-Robotech/kacho-iam/internal/repo/kacho/access_binding"
+	repoacct "github.com/PRO-Robotech/kacho-iam/internal/repo/kacho/account"
+	kachopg "github.com/PRO-Robotech/kacho-iam/internal/repo/kacho/pg"
+	"github.com/PRO-Robotech/kacho-iam/internal/testsupport/catalogfixture"
 )
 
 func TestAccountCreate_P6_OwnerBinding_CoCommit_E2E(t *testing.T) {

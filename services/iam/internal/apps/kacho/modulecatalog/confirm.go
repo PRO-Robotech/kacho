@@ -62,9 +62,9 @@ import (
 	"errors"
 	"fmt"
 
-	"github.com/PRO-Robotech/kacho/services/iam/internal/manifest"
+	"github.com/PRO-Robotech/kacho-iam/internal/manifest"
 
-	"github.com/PRO-Robotech/kacho/services/iam/internal/apps/kacho/seed"
+	"github.com/PRO-Robotech/kacho-iam/internal/apps/kacho/seed"
 )
 
 var (

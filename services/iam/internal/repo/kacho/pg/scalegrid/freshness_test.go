@@ -58,8 +58,8 @@ import (
 	"testing"
 	"time"
 
+	"github.com/PRO-Robotech/kacho-iam/internal/repo/kacho/pg/scalegrid"
 	"github.com/PRO-Robotech/kacho/pkg/gitenv"
-	"github.com/PRO-Robotech/kacho/services/iam/internal/repo/kacho/pg/scalegrid"
 )
 
 // scaleGridReportMaxAge — В8, величина ратифицирована владельцем.

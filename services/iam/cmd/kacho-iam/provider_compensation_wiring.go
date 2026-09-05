@@ -22,8 +22,8 @@ import (
 	"github.com/PRO-Robotech/kacho/pkg/outbox/drainer"
 	outboxmetrics "github.com/PRO-Robotech/kacho/pkg/outbox/metrics"
 
-	"github.com/PRO-Robotech/kacho/services/iam/internal/apps/kacho/config"
-	"github.com/PRO-Robotech/kacho/services/iam/internal/clients"
+	"github.com/PRO-Robotech/kacho-iam/internal/apps/kacho/config"
+	"github.com/PRO-Robotech/kacho-iam/internal/clients"
 )
 
 // compensationMaxAttempts — порог отравления. Компенсация обязана дожать

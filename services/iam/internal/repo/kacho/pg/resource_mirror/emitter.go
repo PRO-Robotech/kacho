@@ -38,7 +38,7 @@ import (
 
 	"github.com/jackc/pgx/v5"
 
-	iamerr "github.com/PRO-Robotech/kacho/services/iam/internal/errors"
+	iamerr "github.com/PRO-Robotech/kacho-iam/internal/errors"
 )
 
 // Row — the tenant-facing projection mirrored for one owner object. Labels nil

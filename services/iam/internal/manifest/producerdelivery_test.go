@@ -60,9 +60,9 @@ import (
 
 	"gopkg.in/yaml.v3"
 
+	"github.com/PRO-Robotech/kacho-iam/internal/manifest"
 	manifestproducer "github.com/PRO-Robotech/kacho/pkg/modulemanifest/producer"
 	"github.com/PRO-Robotech/kacho/pkg/treecorpus"
-	"github.com/PRO-Robotech/kacho/services/iam/internal/manifest"
 )
 
 // stacksTablePath — единственное объявление состава стендов, от корня дерева.

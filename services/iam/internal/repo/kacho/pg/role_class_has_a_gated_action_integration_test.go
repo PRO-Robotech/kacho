@@ -44,7 +44,7 @@ import (
 
 	"github.com/PRO-Robotech/kacho/pkg/pgtest"
 
-	"github.com/PRO-Robotech/kacho/services/iam/internal/domain"
+	"github.com/PRO-Robotech/kacho-iam/internal/domain"
 )
 
 // classMigrationPrefix — префикс имени миграции-предмета: находка обязана

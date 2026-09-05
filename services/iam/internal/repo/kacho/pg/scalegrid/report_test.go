@@ -19,7 +19,7 @@ import (
 	"testing"
 	"time"
 
-	"github.com/PRO-Robotech/kacho/services/iam/internal/repo/kacho/pg/scalegrid"
+	"github.com/PRO-Robotech/kacho-iam/internal/repo/kacho/pg/scalegrid"
 )
 
 func TestHeaderIsReadableByTheFreshnessGate(t *testing.T) {

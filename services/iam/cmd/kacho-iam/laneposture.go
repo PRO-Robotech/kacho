@@ -26,10 +26,10 @@ import (
 	"context"
 	"log/slog"
 
+	"github.com/PRO-Robotech/kacho-iam/internal/apps/kacho/config"
+	"github.com/PRO-Robotech/kacho-iam/internal/apps/kacho/seed"
+	"github.com/PRO-Robotech/kacho-iam/internal/tokensigner"
 	"github.com/PRO-Robotech/kacho/pkg/grpcsrv"
-	"github.com/PRO-Robotech/kacho/services/iam/internal/apps/kacho/config"
-	"github.com/PRO-Robotech/kacho/services/iam/internal/apps/kacho/seed"
-	"github.com/PRO-Robotech/kacho/services/iam/internal/tokensigner"
 )
 
 // observeLaneWiring снимает факты о ПРОВЯЗКЕ, которых настройка не видит.

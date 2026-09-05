@@ -38,11 +38,11 @@ import (
 
 	"github.com/PRO-Robotech/kacho/pkg/ids"
 
-	internaliam "github.com/PRO-Robotech/kacho/services/iam/internal/apps/kacho/api/internal_iam"
-	userapp "github.com/PRO-Robotech/kacho/services/iam/internal/apps/kacho/api/user"
-	"github.com/PRO-Robotech/kacho/services/iam/internal/apps/kacho/shared"
-	"github.com/PRO-Robotech/kacho/services/iam/internal/domain"
-	kachopg "github.com/PRO-Robotech/kacho/services/iam/internal/repo/kacho/pg"
+	internaliam "github.com/PRO-Robotech/kacho-iam/internal/apps/kacho/api/internal_iam"
+	userapp "github.com/PRO-Robotech/kacho-iam/internal/apps/kacho/api/user"
+	"github.com/PRO-Robotech/kacho-iam/internal/apps/kacho/shared"
+	"github.com/PRO-Robotech/kacho-iam/internal/domain"
+	kachopg "github.com/PRO-Robotech/kacho-iam/internal/repo/kacho/pg"
 
 	iamv1 "github.com/PRO-Robotech/kacho/pkg/api/kacho/cloud/iam/v1"
 )

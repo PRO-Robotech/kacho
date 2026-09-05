@@ -12,9 +12,9 @@ import (
 
 	"github.com/stretchr/testify/require"
 
+	kachopg "github.com/PRO-Robotech/kacho-iam/internal/repo/kacho/pg"
 	coredb "github.com/PRO-Robotech/kacho/pkg/db"
 	"github.com/PRO-Robotech/kacho/pkg/pgtest"
-	kachopg "github.com/PRO-Robotech/kacho/services/iam/internal/repo/kacho/pg"
 )
 
 func TestMintedTokenRevocation_RevokeIsMonotonicAndAbsenceMeansNoRevocation(t *testing.T) {

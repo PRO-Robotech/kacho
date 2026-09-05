@@ -36,7 +36,7 @@ import (
 
 	iamv1 "github.com/PRO-Robotech/kacho/pkg/api/kacho/cloud/iam/v1"
 
-	bootstraptoken "github.com/PRO-Robotech/kacho/services/iam/internal/apps/kacho/api/bootstrap_token"
+	bootstraptoken "github.com/PRO-Robotech/kacho-iam/internal/apps/kacho/api/bootstrap_token"
 )
 
 func TestBootstrapToken_InternalOnly_NotOnExternalListener(t *testing.T) {

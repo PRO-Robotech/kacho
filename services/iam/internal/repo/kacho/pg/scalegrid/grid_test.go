@@ -10,7 +10,7 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/PRO-Robotech/kacho/services/iam/internal/repo/kacho/pg/scalegrid"
+	"github.com/PRO-Robotech/kacho-iam/internal/repo/kacho/pg/scalegrid"
 )
 
 // TestGridDigestMovesWhenTheTopPointDrops — отпечаток сетки ловит СОКРАЩЕНИЕ.

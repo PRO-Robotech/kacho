@@ -33,7 +33,7 @@ package internal_iam
 // заводится сегодня») и соблюдён.
 
 import (
-	"github.com/PRO-Robotech/kacho/services/iam/internal/authzmap"
+	"github.com/PRO-Robotech/kacho-iam/internal/authzmap"
 )
 
 // catalogTypeOwner — реализация порта `proxytuple.TypeOwner` над ПОРОЖДЁННОЙ

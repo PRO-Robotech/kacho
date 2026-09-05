@@ -27,10 +27,10 @@ import (
 	// линкует все три пакета (grpc_register.go регистрирует их службы), поэтому
 	// проба обязана линковать их тоже: иначе она судила бы карту, которой в
 	// проде не бывает, и «не выводится» читалось бы как дефект двери.
+	"github.com/PRO-Robotech/kacho-iam/internal/authzguard"
 	_ "github.com/PRO-Robotech/kacho/pkg/api/kacho/cloud/operation"
 	_ "github.com/PRO-Robotech/kacho/pkg/api/kacho/cloud/quota/v1"
 	"github.com/PRO-Robotech/kacho/pkg/operations"
-	"github.com/PRO-Robotech/kacho/services/iam/internal/authzguard"
 )
 
 // grantStore — модель прав пробы: разрешено ровно то, что перечислено.

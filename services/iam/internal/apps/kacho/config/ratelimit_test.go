@@ -21,7 +21,7 @@ package config_test
 import (
 	"testing"
 
-	"github.com/PRO-Robotech/kacho/services/iam/internal/apps/kacho/config"
+	"github.com/PRO-Robotech/kacho-iam/internal/apps/kacho/config"
 )
 
 // rateLimitShapedConfig — форма YAML, которой посадка объявляет свои величины.

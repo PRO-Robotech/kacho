@@ -31,8 +31,8 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/PRO-Robotech/kacho/services/iam/internal/authzmap"
-	"github.com/PRO-Robotech/kacho/services/iam/internal/manifest/roleexport"
+	"github.com/PRO-Robotech/kacho-iam/internal/authzmap"
+	"github.com/PRO-Robotech/kacho-iam/internal/manifest/roleexport"
 )
 
 func TestAttributionProducesTheClosedTableSpelling(t *testing.T) {

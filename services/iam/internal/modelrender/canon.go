@@ -49,8 +49,8 @@ import (
 	"bytes"
 	"sort"
 
-	"github.com/PRO-Robotech/kacho/services/iam/internal/authzmap"
-	"github.com/PRO-Robotech/kacho/services/iam/internal/catalog"
+	"github.com/PRO-Robotech/kacho-iam/internal/authzmap"
+	"github.com/PRO-Robotech/kacho-iam/internal/catalog"
 )
 
 // Block — блок типа канона: имя типа и его байты (единица A).

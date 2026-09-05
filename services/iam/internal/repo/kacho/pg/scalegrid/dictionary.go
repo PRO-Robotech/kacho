@@ -3,7 +3,7 @@
 
 package scalegrid
 
-import "github.com/PRO-Robotech/kacho/services/iam/internal/authzmap"
+import "github.com/PRO-Robotech/kacho-iam/internal/authzmap"
 
 // ЦЕПЬ ПИШЕТСЯ В СЛОВАРЕ МОДЕЛИ — А СТРОКА ЗЕРКАЛА В СЛОВАРЕ КАТАЛОГА
 //

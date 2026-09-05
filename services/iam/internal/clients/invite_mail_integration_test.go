@@ -25,8 +25,8 @@ import (
 	"github.com/PRO-Robotech/kacho/pkg/outbox/drainer"
 	outboxmetrics "github.com/PRO-Robotech/kacho/pkg/outbox/metrics"
 
-	"github.com/PRO-Robotech/kacho/services/iam/internal/clients"
-	"github.com/PRO-Robotech/kacho/services/iam/internal/repo/kacho/pg/invite_mail_outbox"
+	"github.com/PRO-Robotech/kacho-iam/internal/clients"
+	"github.com/PRO-Robotech/kacho-iam/internal/repo/kacho/pg/invite_mail_outbox"
 )
 
 // Test_InviteMailIntent_IsAtomicWithTheInviteRow — MAIL-50, несущая половина.

@@ -31,10 +31,10 @@ import (
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 
-	"github.com/PRO-Robotech/kacho/services/iam/internal/domain"
-	kachorepo "github.com/PRO-Robotech/kacho/services/iam/internal/repo/kacho"
-	grouprepo "github.com/PRO-Robotech/kacho/services/iam/internal/repo/kacho/group"
-	"github.com/PRO-Robotech/kacho/services/iam/internal/service"
+	"github.com/PRO-Robotech/kacho-iam/internal/domain"
+	kachorepo "github.com/PRO-Robotech/kacho-iam/internal/repo/kacho"
+	grouprepo "github.com/PRO-Robotech/kacho-iam/internal/repo/kacho/group"
+	"github.com/PRO-Robotech/kacho-iam/internal/service"
 )
 
 // fakeGroupCreateRepo — kachorepo.Repository whose Writer() records the group

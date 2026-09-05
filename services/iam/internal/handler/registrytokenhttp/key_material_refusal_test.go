@@ -28,9 +28,9 @@ import (
 	"strings"
 	"testing"
 
+	registrytokenuc "github.com/PRO-Robotech/kacho-iam/internal/apps/kacho/api/registry_token"
+	"github.com/PRO-Robotech/kacho-iam/internal/domain"
 	"github.com/PRO-Robotech/kacho/pkg/credsecret"
-	registrytokenuc "github.com/PRO-Robotech/kacho/services/iam/internal/apps/kacho/api/registry_token"
-	"github.com/PRO-Robotech/kacho/services/iam/internal/domain"
 )
 
 // liveCredential — авторитет о базовом секрете: знает ровно одну годную строку.

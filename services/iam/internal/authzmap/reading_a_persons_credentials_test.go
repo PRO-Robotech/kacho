@@ -82,7 +82,7 @@ import (
 
 	"github.com/stretchr/testify/require"
 
-	"github.com/PRO-Robotech/kacho/services/iam/internal/authzplan"
+	"github.com/PRO-Robotech/kacho-iam/internal/authzplan"
 )
 
 // credentialReadRPCs — публичные RPC, чей предмет есть ЧТЕНИЕ СВЕДЕНИЙ ОБ

@@ -20,8 +20,8 @@ import (
 	"strings"
 	"time"
 
-	iamerr "github.com/PRO-Robotech/kacho/services/iam/internal/errors"
-	"github.com/PRO-Robotech/kacho/services/iam/internal/service"
+	iamerr "github.com/PRO-Robotech/kacho-iam/internal/errors"
+	"github.com/PRO-Robotech/kacho-iam/internal/service"
 )
 
 // TokenHookConfig — runtime config для token hook.

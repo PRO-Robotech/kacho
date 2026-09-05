@@ -12,9 +12,9 @@ import (
 	"github.com/golang-jwt/jwt/v5"
 	"github.com/stretchr/testify/require"
 
-	"github.com/PRO-Robotech/kacho/services/iam/internal/domain"
-	"github.com/PRO-Robotech/kacho/services/iam/internal/signingkeygen"
-	"github.com/PRO-Robotech/kacho/services/iam/internal/tokensigner"
+	"github.com/PRO-Robotech/kacho-iam/internal/domain"
+	"github.com/PRO-Robotech/kacho-iam/internal/signingkeygen"
+	"github.com/PRO-Robotech/kacho-iam/internal/tokensigner"
 )
 
 // stubKeys — подставной источник подписного материала.

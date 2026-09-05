@@ -882,7 +882,12 @@ func TestListReadRelationParity_EveryPageFilterIsAccountedFor(t *testing.T) {
 	declarerImportPaths := map[string]bool{}
 	for _, p := range pkgs {
 		if p.declares() {
-			declarerImportPaths["github.com/PRO-Robotech/kacho/"+p.dir] = true
+			// Путь импорта строится ОТОБРАЖЕНИЕМ, а не склейкой корневого
+			// префикса с путём дерева: модулей в дереве два, и у службы iam
+			// префикс другой. Склейка давала путь, которого не существует, —
+			// делегирование переставало распознаваться, и пакет объявлялся
+			// «невидимкой», ничего в себе не изменив.
+			declarerImportPaths[importOfTreeRel(p.dir)] = true
 		}
 	}
 

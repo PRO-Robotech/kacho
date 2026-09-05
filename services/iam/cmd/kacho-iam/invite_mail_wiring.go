@@ -42,8 +42,8 @@ import (
 	"github.com/PRO-Robotech/kacho/pkg/outbox/reconciler"
 	"github.com/PRO-Robotech/kacho/pkg/retention"
 
-	"github.com/PRO-Robotech/kacho/services/iam/internal/apps/kacho/config"
-	"github.com/PRO-Robotech/kacho/services/iam/internal/clients"
+	"github.com/PRO-Robotech/kacho-iam/internal/apps/kacho/config"
+	"github.com/PRO-Robotech/kacho-iam/internal/clients"
 )
 
 // inviteMailPartitionColumn — КЛЮЧ ПАРТИЦИИ порядка очереди писем.

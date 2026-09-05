@@ -17,8 +17,8 @@ package manifestoracle_test
 import (
 	"testing"
 
-	"github.com/PRO-Robotech/kacho/services/iam/internal/authzmodel"
-	"github.com/PRO-Robotech/kacho/services/iam/internal/manifestoracle"
+	"github.com/PRO-Robotech/kacho-iam/internal/authzmodel"
+	"github.com/PRO-Robotech/kacho-iam/internal/manifestoracle"
 )
 
 // TestNilPlansGiveNilOracle — переходник поверх пустоты НЕ заводится.

@@ -49,13 +49,13 @@ import (
 
 	"github.com/stretchr/testify/require"
 
+	"github.com/PRO-Robotech/kacho-iam/internal/apps/kacho/api/client_token"
+	registrytokenuc "github.com/PRO-Robotech/kacho-iam/internal/apps/kacho/api/registry_token"
+	"github.com/PRO-Robotech/kacho-iam/internal/domain"
+	"github.com/PRO-Robotech/kacho-iam/internal/service"
+	"github.com/PRO-Robotech/kacho-iam/internal/tokensigner"
 	"github.com/PRO-Robotech/kacho/pkg/credsecret"
 	"github.com/PRO-Robotech/kacho/pkg/tokenpolicy"
-	"github.com/PRO-Robotech/kacho/services/iam/internal/apps/kacho/api/client_token"
-	registrytokenuc "github.com/PRO-Robotech/kacho/services/iam/internal/apps/kacho/api/registry_token"
-	"github.com/PRO-Robotech/kacho/services/iam/internal/domain"
-	"github.com/PRO-Robotech/kacho/services/iam/internal/service"
-	"github.com/PRO-Robotech/kacho/services/iam/internal/tokensigner"
 )
 
 const (

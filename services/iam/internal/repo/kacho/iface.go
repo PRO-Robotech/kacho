@@ -23,16 +23,16 @@ package kacho
 import (
 	"context"
 
-	"github.com/PRO-Robotech/kacho/services/iam/internal/domain"
-	"github.com/PRO-Robotech/kacho/services/iam/internal/outboxtypes"
-	"github.com/PRO-Robotech/kacho/services/iam/internal/repo/kacho/access_binding"
-	"github.com/PRO-Robotech/kacho/services/iam/internal/repo/kacho/account"
-	"github.com/PRO-Robotech/kacho/services/iam/internal/repo/kacho/group"
-	"github.com/PRO-Robotech/kacho/services/iam/internal/repo/kacho/project"
-	"github.com/PRO-Robotech/kacho/services/iam/internal/repo/kacho/role"
-	"github.com/PRO-Robotech/kacho/services/iam/internal/repo/kacho/service_account"
-	"github.com/PRO-Robotech/kacho/services/iam/internal/repo/kacho/user"
-	"github.com/PRO-Robotech/kacho/services/iam/internal/repo/kacho/visibility"
+	"github.com/PRO-Robotech/kacho-iam/internal/domain"
+	"github.com/PRO-Robotech/kacho-iam/internal/outboxtypes"
+	"github.com/PRO-Robotech/kacho-iam/internal/repo/kacho/access_binding"
+	"github.com/PRO-Robotech/kacho-iam/internal/repo/kacho/account"
+	"github.com/PRO-Robotech/kacho-iam/internal/repo/kacho/group"
+	"github.com/PRO-Robotech/kacho-iam/internal/repo/kacho/project"
+	"github.com/PRO-Robotech/kacho-iam/internal/repo/kacho/role"
+	"github.com/PRO-Robotech/kacho-iam/internal/repo/kacho/service_account"
+	"github.com/PRO-Robotech/kacho-iam/internal/repo/kacho/user"
+	"github.com/PRO-Robotech/kacho-iam/internal/repo/kacho/visibility"
 )
 
 // Repository — корневой entry-point. Конкретная реализация — `pg` подпакет.

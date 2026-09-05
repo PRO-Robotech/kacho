@@ -23,7 +23,7 @@ import (
 	"sync"
 	"time"
 
-	"github.com/PRO-Robotech/kacho/services/iam/internal/observability/metrics"
+	"github.com/PRO-Robotech/kacho-iam/internal/observability/metrics"
 )
 
 // identityGrowthInterval — период замера.

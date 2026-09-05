@@ -30,8 +30,8 @@ import (
 
 	iamv1 "github.com/PRO-Robotech/kacho/pkg/api/kacho/cloud/iam/v1"
 
-	clusterapp "github.com/PRO-Robotech/kacho/services/iam/internal/apps/kacho/api/cluster"
-	"github.com/PRO-Robotech/kacho/services/iam/internal/domain"
+	clusterapp "github.com/PRO-Robotech/kacho-iam/internal/apps/kacho/api/cluster"
+	"github.com/PRO-Robotech/kacho-iam/internal/domain"
 )
 
 // fakeAdminChecker — in-memory authzguard.RelationChecker. Records the last

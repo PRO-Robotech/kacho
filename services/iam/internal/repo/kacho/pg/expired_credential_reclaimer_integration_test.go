@@ -32,7 +32,7 @@ import (
 
 	"github.com/PRO-Robotech/kacho/pkg/pgtest"
 
-	kachopg "github.com/PRO-Robotech/kacho/services/iam/internal/repo/kacho/pg"
+	kachopg "github.com/PRO-Robotech/kacho-iam/internal/repo/kacho/pg"
 )
 
 // reclaimFixture — принципалы и пул одной пробы.
