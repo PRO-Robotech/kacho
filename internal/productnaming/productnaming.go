@@ -102,3 +102,13 @@ func RenamedServices() map[string]string {
 func EnvPrefix(serviceDir string) string {
 	return strings.ToUpper(strings.ReplaceAll(ChartName(serviceDir), "-", "_"))
 }
+
+// MetricNamespace — приставка имён рядов метрик части продукта.
+//
+// Выводится из ТОГО ЖЕ имени, что чарт, образ и окружение: `vpc` →
+// `kacho_vpc`, `iam` → `kaname`. Разделитель здесь `_`, потому что имя ряда
+// Prometheus дефиса не допускает; иного различия с прочими словарями нет, и
+// своей ведомости у метрик не заводится.
+func MetricNamespace(serviceDir string) string {
+	return strings.ReplaceAll(ChartName(serviceDir), "-", "_")
+}

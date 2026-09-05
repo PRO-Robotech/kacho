@@ -171,3 +171,15 @@ func TestEnvPrefixFollowsTheSameNameAsTheChart(t *testing.T) {
 		}
 	}
 }
+
+func TestMetricNamespaceFollowsTheSameNameAsTheChart(t *testing.T) {
+	for _, c := range []struct{ svc, want string }{
+		{"iam", "kaname"},
+		{"vpc", "kacho_vpc"},
+		{"api-gateway", "kacho_api_gateway"},
+	} {
+		if got := productnaming.MetricNamespace(c.svc); got != c.want {
+			t.Errorf("MetricNamespace(%q) = %q, ожидалось %q", c.svc, got, c.want)
+		}
+	}
+}

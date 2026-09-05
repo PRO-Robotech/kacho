@@ -33,6 +33,8 @@ import (
 	"sort"
 	"strings"
 	"testing"
+
+	"github.com/PRO-Robotech/kacho/internal/productnaming"
 )
 
 const (
@@ -43,8 +45,14 @@ const (
 )
 
 var (
-	// имя ряда в объявлении константы Go
-	identityGrowthMetricNameRe = regexp.MustCompile(`"(kacho_iam_[a-z0-9_]+)"`)
+	// имя ряда в объявлении константы Go.
+	//
+	// Приставка спрашивается у владельца имён, а не выписывается: часть продукта
+	// вправе носить СВОЁ имя (#2076). Выписанная приставка на переименовании не
+	// краснеет по существу — она обнуляет ПРОЧИТАННОЕ, и гейт начинает судить
+	// пустоту; здесь это видно только потому, что предпосылка объявлена вслух.
+	identityGrowthMetricNameRe = regexp.MustCompile(
+		`"(` + regexp.QuoteMeta(productnaming.MetricNamespace("iam")) + `_[a-z0-9_]+)"`)
 	// строчный комментарий Go
 	identityGrowthGoCommentRe = regexp.MustCompile(`(?m)^\s*//.*$`)
 )
