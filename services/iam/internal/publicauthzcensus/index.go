@@ -118,6 +118,16 @@ func indexPackage(dir string) (*pkgIndex, int, error) {
 // выполнилось»: метода с таким именем на обработчике нет, и утверждать по нему
 // что-либо нельзя ни в одну сторону — ни что дверь есть, ни что её нет.
 func (p *pkgIndex) narrowsPage(rpcMethod string) (string, bool) {
+	return p.findOnServingPath(rpcMethod, pageNarrowingMatcher)
+}
+
+// findOnServingPath ищет на пути обслуживания RPC вызов, который распознаёт
+// matcher, и возвращает его свидетельство.
+//
+// Второй результат — разрешился ли метод вообще. false означает «не
+// выполнилось»: метода с таким именем на обработчике нет, и утверждать по нему
+// нельзя ничего ни в одну сторону.
+func (p *pkgIndex) findOnServingPath(rpcMethod string, m callMatcher) (string, bool) {
 	var entry *ast.FuncDecl
 	var recv string
 	for t := range p.handlerTypes {
@@ -129,7 +139,41 @@ func (p *pkgIndex) narrowsPage(rpcMethod string) (string, bool) {
 	if entry == nil {
 		return "", false
 	}
-	return p.walk(entry, recv, map[string]bool{}, 0), true
+	return p.walk(entry, recv, map[token.Pos]bool{}, 0, m), true
+}
+
+// callMatcher — распознаватель одного вызова. Пустая строка означает «это не
+// то, что я ищу»; непустая — свидетельство, которое уедет в перепись.
+//
+// Параметр, а не зашитый перечень: обходов по пути обслуживания ДВА и они
+// спрашивают РАЗНОЕ — сужается ли страница построчно (полоса данных) и есть ли
+// решатель доступа (полоса освобождённых). Общий обход с двумя перечнями внутри
+// склеил бы два вопроса в один, и свидетельство одного стало бы ответом на
+// другой.
+type callMatcher func(call *ast.CallExpr) string
+
+// pageNarrowingMatcher — распознаватель сужения страницы построчно.
+func pageNarrowingMatcher(call *ast.CallExpr) string {
+	if name, isQualified := qualifiedCallName(call.Fun); isQualified {
+		if form, hit := pageNarrowingCalls[name]; hit {
+			return name + " (" + form + ")"
+		}
+	}
+	// Третья форма: прямой вопрос к порту отношений.
+	if isRelationPortQuestion(call) {
+		return "порт отношений: Check(ctx, субъект, отношение, объект)"
+	}
+	return ""
+}
+
+// isRelationPortQuestion — вопрос к модели напрямую через порт отношений.
+//
+// Распознаётся ЧИСЛОМ АРГУМЕНТОВ, а не именем приёмника: имя поля у порта своё
+// в каждом пакете, и перечень имён был бы тем местом, которое забывают
+// дополнить.
+func isRelationPortQuestion(call *ast.CallExpr) bool {
+	sel, isSel := call.Fun.(*ast.SelectorExpr)
+	return isSel && sel.Sel.Name == relationPortQuestion && len(call.Args) == relationPortArgs
 }
 
 const maxDepth = 12
@@ -137,7 +181,17 @@ const maxDepth = 12
 // walk обходит тело функции и всё, что из неё достижимо внутри пакета, и
 // возвращает имя найденного вызова сужения страницы. Пустая строка означает,
 // что не найдено ни одного.
-func (p *pkgIndex) walk(fn *ast.FuncDecl, recv string, seen map[string]bool, depth int) string {
+// ОБХОДА ЗАПОМИНАЕТ ОБЪЯВЛЕНИЕ, А НЕ ЕГО ИМЯ.
+//
+// Ключом посещённого была пара «приёмник.имя», и она СКЛЕИВАЛА функцию уровня
+// пакета с одноимённым методом текущего приёмника: в этом дереве такая пара
+// существует (`requireGrantAuthority` — и метод-переходник use-case'а, и
+// функция пакета, которую он зовёт), поэтому обход входил в переходник, метил
+// ключ и НЕ ВХОДИЛ в функцию, где и стоит вопрос к модели. Свидетельство
+// терялось молча: гейт объявлял находкой RPC, у которого решатель есть.
+//
+// Позиция объявления уникальна by construction, поэтому склейки не бывает.
+func (p *pkgIndex) walk(fn *ast.FuncDecl, recv string, seen map[token.Pos]bool, depth int, m callMatcher) string {
 	if fn == nil || fn.Body == nil || depth > maxDepth {
 		return ""
 	}
@@ -150,23 +204,15 @@ func (p *pkgIndex) walk(fn *ast.FuncDecl, recv string, seen map[string]bool, dep
 		if !ok {
 			return true
 		}
-		if name, isQualified := qualifiedCallName(call.Fun); isQualified {
-			if form, hit := pageNarrowingCalls[name]; hit {
-				evidence = name + " (" + form + ")"
-				return false
-			}
-		}
-		// Третья форма: прямой вопрос к порту отношений.
-		if sel, isSel := call.Fun.(*ast.SelectorExpr); isSel &&
-			sel.Sel.Name == relationPortQuestion && len(call.Args) == relationPortArgs {
-			evidence = "порт отношений: Check(ctx, субъект, отношение, объект)"
+		if ev := m(call); ev != "" {
+			evidence = ev
 			return false
 		}
 		if next, nrecv, okNext := p.resolveCall(call.Fun, recv); okNext {
-			key := nrecv + "." + funcKey(next)
+			key := next.Pos()
 			if !seen[key] {
 				seen[key] = true
-				if ev := p.walk(next, nrecv, seen, depth+1); ev != "" {
+				if ev := p.walk(next, nrecv, seen, depth+1, m); ev != "" {
 					evidence = ev
 					return false
 				}
@@ -175,13 +221,6 @@ func (p *pkgIndex) walk(fn *ast.FuncDecl, recv string, seen map[string]bool, dep
 		return true
 	})
 	return evidence
-}
-
-func funcKey(fn *ast.FuncDecl) string {
-	if fn == nil {
-		return ""
-	}
-	return fn.Name.Name
 }
 
 // resolveCall разрешает вызов в объявление внутри пакета.

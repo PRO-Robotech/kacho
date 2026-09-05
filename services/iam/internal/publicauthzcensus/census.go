@@ -119,6 +119,9 @@ type Verdict struct {
 	// Package — каталог пакета, обслуживающего RPC, относительно корня дерева.
 	// Пуст, если обслуживающий пакет не разрешился (Unresolved).
 	Package string
+	// ExemptReason — причина освобождения, объявленная контрактом
+	// (`exempt_reason`). Непуста только у освобождённых RPC.
+	ExemptReason string
 	// Evidence — имя вызова, по которому вынесен исход gated/selfonly. Пусто у
 	// остальных категорий.
 	Evidence string
@@ -296,6 +299,11 @@ func CollectFrom(protoDir, cmdDir, root string) (Census, error) {
 	}
 	sort.Strings(svcNames)
 
+	reasons, err := exemptReasons()
+	if err != nil {
+		return c, err
+	}
+
 	door, err := doorCoverage()
 	if err != nil {
 		return c, fmt.Errorf("карта прав собственной двери: %w", err)
@@ -353,9 +361,51 @@ func CollectFrom(protoDir, cmdDir, root string) (Census, error) {
 					Evidence: kind.evidence,
 				})
 			case doorExempt.name:
+				// Освобождение — не молчание: у него обязан быть решатель на
+				// пути обслуживания, и какой именно, задаёт объявленная
+				// причина. Разбор — exempt.go.
+				reason := reasons[rpc]
+				if reason == reasonInternalListener {
+					// Контракт заявил ВНУТРЕННИЙ слушатель, регистрация —
+					// публичный. Это либо ban #6, либо неверная причина; ни то,
+					// ни другое не снимается никаким решателем.
+					c.Verdicts = append(c.Verdicts, Verdict{
+						RPC: rpc, Category: CategoryUngated, Package: relPkg,
+						ExemptReason: reason,
+						Evidence: "контракт освободил RPC признаком ВНУТРЕННЕГО слушателя (`" +
+							reason + "`), а зарегистрирован он на ПУБЛИЧНОМ",
+					})
+					continue
+				}
+				matcher, knownReason := matcherForReason(reason)
+				if !knownReason {
+					// Причина не названа либо перечню неизвестна: вердикта по
+					// такому RPC нет ни в одну сторону.
+					c.Unresolved = append(c.Unresolved, rpc)
+					continue
+				}
+				if idx == nil {
+					c.Unresolved = append(c.Unresolved, rpc)
+					continue
+				}
+				deciderEvidence, deciderResolved := idx.findOnServingPath(m, matcher)
+				if !deciderResolved {
+					c.Unresolved = append(c.Unresolved, rpc)
+					continue
+				}
+				if deciderEvidence == "" {
+					c.Verdicts = append(c.Verdicts, Verdict{
+						RPC: rpc, Category: CategoryUngated, Package: relPkg,
+						ExemptReason: reason,
+						Evidence: "освобождение `" + reason + "` объявлено, а решателя " +
+							"требуемой им формы на пути обслуживания нет",
+					})
+					continue
+				}
 				c.Verdicts = append(c.Verdicts, Verdict{
 					RPC: rpc, Category: CategoryExempt, Package: relPkg,
-					Evidence: "контракт объявил `<exempt>`",
+					ExemptReason: reason,
+					Evidence:     deciderEvidence + "; освобождение `" + reason + "`",
 				})
 			case doorScopeFiltered.name:
 				// Дверь единичного вопроса тут не задаёт намеренно — значит его
