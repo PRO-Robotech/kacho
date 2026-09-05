@@ -158,6 +158,19 @@ func (uc *DeleteUserUseCase) doDelete(ctx context.Context, id domain.UserID, act
 			if terr := w.EmitFGARelationDelete(ctx, identityTuplesForRemoval(id, accountID)); terr != nil {
 				return terr
 			}
+			// Симметрия созданию (kacho#2055): создание со-коммитит событие
+			// реконсайла, которым материализуется пообъектный кортеж владельца,
+			// — снятие обязано со-коммитить ОТЗЫВ в ту же writer-tx. Каскад
+			// `ON DELETE` его не заменяет: он ключуется по идентификатору
+			// ПРИВЯЗКИ, а не снятого объекта. Воркер на событие зовёт
+			// `ReconcileObject`, а тот на отсутствующем объекте получает пустой
+			// желаемый набор — что и есть отзыв.
+			// Снятие названных кортежей личности выше — НЕ то же самое: оно
+			// снимает выписанный набор, а событие отзывает пообъектные кортежи,
+			// которые материализовали ПРИВЯЗКИ на этом объекте.
+			if rerr := w.EmitReconcileEvent(ctx, shared.ReconcileEventDelete, "iam.user", string(id)); rerr != nil {
+				return rerr
+			}
 			ev := service.AuditEvent{
 				EventType: auditEventUserDeleted,
 				Payload: map[string]any{

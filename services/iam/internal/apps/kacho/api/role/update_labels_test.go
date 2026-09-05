@@ -141,6 +141,13 @@ type rlUpdRepo struct {
 	role     domain.Role
 	updated  domain.Labels
 	reconcil []string
+	// reconcilAll — ПОЛНАЯ тройка каждого со-коммитнутого события реконсайла
+	// («вид|тип|идентификатор»). Заведена рядом с `reconcil`, а не вместо неё:
+	// прежние пробы спрашивают про идентификатор на `iam.role`, а проба
+	// симметрии снятия (kacho#2055) — про ВИД события, и вид отбрасывался.
+	// Дублёр, отбрасывающий то, о чём спрашивают, делает невидимым ровно тот
+	// путь, ради которого его ставят.
+	reconcilAll []string
 }
 
 func newRlUpdRepo(initial domain.Labels) *rlUpdRepo {
@@ -226,7 +233,9 @@ func (w *rlUpdWriter) EmitFGARelationWrite(context.Context, []service.RelationTu
 func (w *rlUpdWriter) EmitFGARelationDelete(context.Context, []service.RelationTuple) error {
 	return nil
 }
-func (w *rlUpdWriter) EmitReconcileEvent(_ context.Context, _, objectType, objectID string) error {
+func (w *rlUpdWriter) EmitReconcileEvent(_ context.Context, eventType, objectType, objectID string) error {
+	w.parent.reconcilAll = append(w.parent.reconcilAll,
+		fmt.Sprintf("%s|%s|%s", eventType, objectType, objectID))
 	if objectType == "iam.role" {
 		w.parent.reconcil = append(w.parent.reconcil, objectID)
 	}

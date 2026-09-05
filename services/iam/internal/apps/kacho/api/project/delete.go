@@ -151,6 +151,15 @@ func (u *DeleteProjectUseCase) doDelete(ctx context.Context, id domain.ProjectID
 			if ferr := w.EmitFGARelationDelete(ctx, fgaDeletes); ferr != nil {
 				return ferr
 			}
+			// Симметрия созданию (kacho#2055): создание со-коммитит событие реконсайла,
+			// которым материализуется пообъектный кортеж владельца, — снятие обязано
+			// со-коммитить ОТЗЫВ в ту же writer-tx. Каскад `ON DELETE` его не заменяет:
+			// он ключуется по идентификатору ПРИВЯЗКИ, а не снятого объекта. Воркер на
+			// событие зовёт `ReconcileObject`, а тот на отсутствующем объекте получает
+			// пустой желаемый набор — что и есть отзыв.
+			if rerr := w.EmitReconcileEvent(ctx, shared.ReconcileEventDelete, "iam.project", string(id)); rerr != nil {
+				return rerr
+			}
 			return w.EmitAuditEvent(ctx, service.AuditEvent{
 				EventType:       auditEventProjectDeleted,
 				TenantAccountID: accountID,
