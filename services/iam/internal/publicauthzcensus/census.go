@@ -324,7 +324,8 @@ func CollectFrom(protoDir, cmdDir, root string) (Census, error) {
 		}
 		relPkg := ""
 		if okPkg {
-			relPkg = strings.TrimPrefix(importPath, modulePrefix)
+			// Тот же вопрос, что у packageDir: путь дерева по пути импорта.
+			relPkg = treeRelOfPackage(importPath)
 		}
 		for _, m := range methods {
 			c.Inspected++
@@ -396,11 +397,30 @@ func CollectFrom(protoDir, cmdDir, root string) (Census, error) {
 	return c, nil
 }
 
-const modulePrefix = "github.com/PRO-Robotech/kacho/"
+// МОДУЛЕЙ В ДЕРЕВЕ ДВА, И ОТОБРАЖЕНИЕ ОБЯЗАНО ЗНАТЬ ОБА.
+//
+// Служба несёт свой `go.mod` (`github.com/PRO-Robotech/kacho-iam`) — она
+// выносится отдельным репозиторием. Отрезание ОДНОГО префикса перестало
+// переводить путь импорта в путь дерева: для собственных пакетов службы
+// `TrimPrefix` не срабатывал вовсе, путь оставался целым, каталог не находился,
+// и перепись честно печатала «файлов Go разобрано 0». Это не находка и не
+// чистота — это пустой обход, и падать на нём обязан вызывающий.
+const (
+	rootModulePrefix    = "github.com/PRO-Robotech/kacho/"
+	serviceModulePrefix = "github.com/PRO-Robotech/kacho-iam/"
+	serviceTreePrefix   = "services/iam/"
+)
+
+// treeRelOfPackage — путь пакета В ДЕРЕВЕ (от корня монорепо) по пути импорта.
+func treeRelOfPackage(importPath string) string {
+	if rel, ok := strings.CutPrefix(importPath, serviceModulePrefix); ok {
+		return serviceTreePrefix + rel
+	}
+	return strings.TrimPrefix(importPath, rootModulePrefix)
+}
 
 func packageDir(root, importPath string) string {
-	rel := strings.TrimPrefix(importPath, modulePrefix)
-	return filepath.Join(root, filepath.FromSlash(rel))
+	return filepath.Join(root, filepath.FromSlash(treeRelOfPackage(importPath)))
 }
 
 // --- контракт -------------------------------------------------------------

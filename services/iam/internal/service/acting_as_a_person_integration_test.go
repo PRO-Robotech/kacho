@@ -83,12 +83,19 @@ func monorepoRootForActingAs(t *testing.T) string {
 	wd, err := os.Getwd()
 	require.NoError(t, err)
 	dir := wd
+	// Корнем берётся САМЫЙ ВНЕШНИЙ `go.mod`, а не первый встречный: у службы
+	// теперь СВОЙ модуль, и подъём «до первого» останавливался бы в её каталоге,
+	// а пути ниже называют место В ДЕРЕВЕ МОНОРЕПО — от корня.
+	outermost := ""
 	for {
 		if _, err := os.Stat(filepath.Join(dir, "go.mod")); err == nil {
-			return dir
+			outermost = dir
 		}
 		parent := filepath.Dir(dir)
-		require.NotEqualf(t, parent, dir, "корень монорепо (go.mod) не найден от %s", wd)
+		if parent == dir {
+			require.NotEmptyf(t, outermost, "корень монорепо (go.mod) не найден от %s", wd)
+			return outermost
+		}
 		dir = parent
 	}
 }

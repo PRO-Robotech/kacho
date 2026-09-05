@@ -171,10 +171,10 @@ func guardedReports() []guardedReport {
 	return []guardedReport{
 		{path: scalegrid.ReportPath, subject: scalegrid.ComputeFingerprint, hint: scaleGridRunHint},
 		{path: scalegrid.StrengthReportPath, subject: scalegrid.ComputeFingerprint,
-			hint: "KACHO_STRENGTH_FULL=1 go test ./services/iam/internal/repo/kacho/pg/relverdict/ " +
+			hint: "KACHO_STRENGTH_FULL=1 go test -C services/iam ./internal/repo/kacho/pg/relverdict/ " +
 				"-run TestStrengthGrid_Report -count=1 -v -timeout 120m"},
 		{path: scalegrid.WriteDeleteReportPath, subject: scalegrid.ComputeWriteDeleteFingerprint,
-			hint: "KACHO_STRENGTH_WRITE=1 go test ./services/iam/internal/repo/kacho/pg/ " +
+			hint: "KACHO_STRENGTH_WRITE=1 go test -C services/iam ./internal/repo/kacho/pg/ " +
 				"-run TestStrengthWriteDelete_Report -count=1 -v -timeout 120m"},
 	}
 }

@@ -847,7 +847,7 @@ func TestStrengthGrid_Report(t *testing.T) {
 	ctx := context.Background()
 	grid := scalegrid.Strength()
 
-	runCommand := fmt.Sprintf("%s=1 go test ./services/iam/internal/repo/kacho/pg/relverdict/ "+
+	runCommand := fmt.Sprintf("%s=1 go test -C services/iam ./internal/repo/kacho/pg/relverdict/ "+
 		"-run TestStrengthGrid_Report -count=1 -v -timeout 120m", strengthEnv)
 	prov := scalegrid.TakeProvenance(runCommand, nil)
 	// Сетка у этого прибора СВОЯ, и провенанс обязан назвать именно её: шапка,

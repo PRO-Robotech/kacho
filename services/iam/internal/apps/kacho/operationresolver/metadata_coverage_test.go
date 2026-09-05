@@ -269,15 +269,22 @@ func repoRootForCoverage(t *testing.T) string {
 	if err != nil {
 		t.Fatalf("рабочий каталог: %v", err)
 	}
+	// Корнем берётся САМЫЙ ВНЕШНИЙ `go.mod`, а не первый встречный: у службы
+	// теперь СВОЙ модуль, и подъём «до первого» останавливался бы в её каталоге,
+	// а пути ниже называют место В ДЕРЕВЕ МОНОРЕПО — от корня.
+	outermost := ""
 	for i := 0; i < 12; i++ {
 		if _, serr := os.Stat(filepath.Join(dir, "go.mod")); serr == nil {
-			return dir
+			outermost = dir
 		}
 		parent := filepath.Dir(dir)
 		if parent == dir {
 			break
 		}
 		dir = parent
+	}
+	if outermost != "" {
+		return outermost
 	}
 	t.Fatalf("не найден корень репозитория (каталог с go.mod) над %s", dir)
 	return ""

@@ -25,7 +25,25 @@ set -euo pipefail
 # "audit the current directory" would otherwise audit the repository instead of this
 # service. A --root given by the caller appears later on the command line and wins.
 SERVICE_ROOT="$(cd "$(dirname "$0")/.." && pwd)"
-cd "$(dirname "$0")/../../.."
 
-exec go run ./services/iam/tools/auditlistfilter/cmd/audit-list-filter \
-  --root="$SERVICE_ROOT" "$@"
+# Пакет зовётся ОТНОСИТЕЛЬНО СВОЕГО МОДУЛЯ: служба несёт свой `go.mod`, и путь
+# `./services/iam/…` из корня монорепо больше не резолвится — модуль-родитель
+# кончается там, где начинается вложенный.
+cd "$SERVICE_ROOT"
+
+# КОНТРАКТЫ ЛЕЖАТ НЕ ЗДЕСЬ, И ЭТО НАЗЫВАЕТСЯ ЯВНО.
+#
+# Умолчание флага — относительный `proto`, то есть каталог рядом с РАБОЧИМ. Пока
+# прогон шёл из корня монорепо, умолчание попадало в цель. Со сменой рабочего
+# каталога на каталог службы оно стало указывать в никуда — и это НЕ дало
+# отказа: проверка кромки честно объявила, что взяла свои объявления «на веру»,
+# то есть форма контроля осталась, а содержания не стало. Ровно тот класс,
+# который сама она и ловит. Поэтому каталог контрактов передаётся ЯВНО.
+#
+# Остаток назван прямо: в отдельно склонированной службе каталога контрактов
+# рядом не будет — они приезжают модулем платформы, и путь придётся брать у
+# `go list -m`. Здесь это не делается: предмет отдельной задачи.
+REPO_ROOT="$(cd "$SERVICE_ROOT/../.." && pwd)"
+
+exec go run ./tools/auditlistfilter/cmd/audit-list-filter \
+  --root="$SERVICE_ROOT" --proto-root="$REPO_ROOT/proto" "$@"

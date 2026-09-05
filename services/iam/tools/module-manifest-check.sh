@@ -30,7 +30,10 @@ cd "$REPO_ROOT"
 
 BUILD_DIR="$(mktemp -d)"
 trap 'rm -rf "$BUILD_DIR"' EXIT
-go build -o "$BUILD_DIR/module-manifest-check" ./services/iam/tools/modulemanifestcheck
+# Сборка идёт В МОДУЛЕ СЛУЖБЫ (`-C`): у неё свой `go.mod`, и путь пакета от
+# корня монорепо не резолвится. Корень ДЕРЕВА программе по-прежнему передаётся
+# ключом ниже — предмет её обхода не изменился.
+go build -C "$REPO_ROOT/services/iam" -o "$BUILD_DIR/module-manifest-check" ./tools/modulemanifestcheck
 
 # Код возврата снимается явно: под `set -e` ненулевой исход оборвал бы скрипт до
 # `exit`, а `exec` не дал бы сработать уборке за собой.
