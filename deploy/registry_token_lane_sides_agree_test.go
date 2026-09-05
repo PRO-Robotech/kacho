@@ -179,8 +179,8 @@ func TestRegistryLaneSidesScannerSeesEachDivergenceAndIsSilentOnTheLink(t *testi
 	}}}
 	profile := func(source, regSide, iamSide string) map[string]any {
 		p := map[string]any{
-			"registry":  map[string]any{"enabled": true},
-			"kaname": map[string]any{},
+			"registry": map[string]any{"enabled": true},
+			"kaname":   map[string]any{},
 		}
 		if source != "" {
 			p["global"] = map[string]any{"kacho": map[string]any{

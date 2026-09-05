@@ -199,7 +199,7 @@ func requireTLSHop(raw string) error {
 var adminHopConsumers = map[string][]string{
 	"api-gateway.hydra.introspectionUrl":  {"api-gateway", "hydra", "introspectionUrl"},
 	"api-gateway.hydra.adminUrl":          {"api-gateway", "hydra", "adminUrl"},
-	"kaname.kacho.iam.hydraAdminUrl":   {"kaname", "kacho", "iam", "hydraAdminUrl"},
+	"kaname.kacho.iam.hydraAdminUrl":      {"kaname", "kacho", "iam", "hydraAdminUrl"},
 	"kratos-selfservice-ui…hydraAdminUrl": {"kratos-selfservice-ui", "kratosSelfServiceUI", "hydraAdminUrl"},
 }
 

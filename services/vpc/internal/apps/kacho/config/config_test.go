@@ -74,7 +74,7 @@ func TestLoad_GeoEndpointDialHost(t *testing.T) {
 	cfg, err := Load("")
 	require.NoError(t, err)
 	cfg.AuthZ.IAMEndpoint = "kaname.kacho.svc:9091" // S1 prod-гардрейл
-	cfg.Repository.Postgres.SSLMode = "require"        // S1b prod-гардрейл
+	cfg.Repository.Postgres.SSLMode = "require"     // S1b prod-гардрейл
 	// S1c prod-гардрейл: круг отправителей чужой личности обязан быть сужен.
 	cfg.AuthZ.TrustedForwarderSANs = []string{"spiffe://kacho.cloud/ns/kacho/sa/kacho-api-gateway"}
 	require.NoError(t, cfg.Validate())

@@ -28,7 +28,7 @@ func TestSigningKeyStartupRefusalNamesTheKnob(t *testing.T) {
 	msg := err.Error()
 	for _, want := range []string{
 		"authn.jwks-encryption-key-hex", // ручка настройки
-		"KANAME_JWKS_ENC_KEY",        // переменная окружения того же предмета
+		"KANAME_JWKS_ENC_KEY",           // переменная окружения того же предмета
 	} {
 		if !strings.Contains(msg, want) {
 			t.Fatalf("отказ не называет %q: %s", want, msg)

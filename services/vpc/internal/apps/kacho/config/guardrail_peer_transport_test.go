@@ -57,7 +57,7 @@ func TestPeerTransport_GapDemonstration_S1S2Pass(t *testing.T) {
 // vpc9-C-01: production + authz Check edge cleartext (нет ни mTLS, ни server-TLS) → отказ.
 func TestValidatePeerTransport_Production_AuthzEdgeInsecure_Fails(t *testing.T) {
 	c := prodCfg(ModeProduction, "kaname:9091") // project edge ok (server-TLS)
-	var m MTLSConfig                               // IAMAuthzMTLS off; c.AuthZ.IAMTLS off
+	var m MTLSConfig                            // IAMAuthzMTLS off; c.AuthZ.IAMTLS off
 	err := c.ValidatePeerTransport(m)
 	require.Error(t, err)
 	require.Contains(t, err.Error(), "authz Check edge")
@@ -102,7 +102,7 @@ func TestValidatePeerTransport_Production_AuthzEdgeServerTLS_Passes(t *testing.T
 // незашифрованный транспорт теперь отвергается.
 func TestValidatePeerTransport_Production_AuthzEdgeHasNoExemptionLeft(t *testing.T) {
 	c := prodCfg(ModeProduction, "kaname:9091") // project edge ok
-	var m MTLSConfig                               // authz edge cleartext
+	var m MTLSConfig                            // authz edge cleartext
 	err := c.ValidatePeerTransport(m)
 	require.Error(t, err, "ребро решения о доступе больше нечем освободить")
 	require.Contains(t, err.Error(), "authz Check edge")
