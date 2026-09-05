@@ -45,7 +45,17 @@ import (
 // **именно** в той форме, в какой Kachō показывает ошибку — с пробелами, не
 // camelCase).
 func ValidateResourceID(id, prefix, resourceName string) error {
-	if !strings.HasPrefix(id, prefix) || len(id) != domain.ShortIDLen {
+	if !strings.HasPrefix(id, prefix) {
+		return status.Errorf(codes.InvalidArgument, "invalid %s id '%s'", resourceName, id)
+	}
+	// Длина — чеканная форма ЛИБО закрытый перечень посеянного применённой
+	// миграцией (`domain.SeededResourceIDs`). Второе — не послабление длины: оно
+	// принимает ровно те строки, которые продукт посеял сам и которые неизменяемы
+	// by construction (ban #15, ban #5). Объявлять собственный посев негодным —
+	// значит отвечать `INVALID_ARGUMENT` на id, выданный этим же сервисом в
+	// ответе `List` (задача #1808). Префикс при этом проверен ВЫШЕ, поэтому
+	// посеянный id роли не пройдёт там, где ждут аккаунт.
+	if len(id) != domain.ShortIDLen && !domain.IsSeededResourceID(id) {
 		return status.Errorf(codes.InvalidArgument, "invalid %s id '%s'", resourceName, id)
 	}
 	return nil
