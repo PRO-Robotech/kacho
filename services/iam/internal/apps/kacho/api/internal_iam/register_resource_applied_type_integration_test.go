@@ -86,11 +86,11 @@ func newRegisterUCApplied(t *testing.T) (*internaliam.RegisterResourceUseCase, *
 func seedAppliedType(t *testing.T, ctx context.Context, pool *pgxpool.Pool) {
 	t.Helper()
 	_, err := pool.Exec(ctx,
-		`INSERT INTO kacho_iam.catalog_module (module) VALUES ($1) ON CONFLICT DO NOTHING`,
+		`INSERT INTO kaname.catalog_module (module) VALUES ($1) ON CONFLICT DO NOTHING`,
 		appliedModule)
 	require.NoError(t, err, "условие сценария не создано: строка модуля")
 	_, err = pool.Exec(ctx,
-		`INSERT INTO kacho_iam.catalog_resource (module, resource, dotted, object_type)
+		`INSERT INTO kaname.catalog_resource (module, resource, dotted, object_type)
 		 VALUES ($1, $2, $3, $4) ON CONFLICT DO NOTHING`,
 		appliedModule, appliedRes, appliedDotted, appliedType)
 	require.NoError(t, err, "условие сценария не создано: строка ресурса")
@@ -100,7 +100,7 @@ func mirrorRowCount(t *testing.T, ctx context.Context, pool *pgxpool.Pool, objTy
 	t.Helper()
 	var n int
 	require.NoError(t, pool.QueryRow(ctx,
-		`SELECT count(*) FROM kacho_iam.resource_mirror WHERE object_type = $1 AND object_id = $2`,
+		`SELECT count(*) FROM kaname.resource_mirror WHERE object_type = $1 AND object_id = $2`,
 		objType, objID).Scan(&n))
 	return n
 }

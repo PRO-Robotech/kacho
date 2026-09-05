@@ -60,7 +60,7 @@ func seedSubjectChange(t *testing.T, ctx context.Context, pool *pgxpool.Pool, su
 
 	var id int64
 	require.NoError(t, pool.QueryRow(ctx,
-		`SELECT id FROM kacho_iam.subject_change_outbox WHERE subject_id = $1`, subjectID).Scan(&id))
+		`SELECT id FROM kaname.subject_change_outbox WHERE subject_id = $1`, subjectID).Scan(&id))
 	return id
 }
 
@@ -89,7 +89,7 @@ func TestSubjectChangeRepo_CursorBelowTheFloorIsRefusedByName(t *testing.T) {
 	require.Len(t, changes, 3)
 
 	// ── Уборка снимает ПРЕФИКС ──────────────────────────────────────────────
-	_, err = pool.Exec(ctx, `DELETE FROM kacho_iam.subject_change_outbox WHERE id <= $1`, id2)
+	_, err = pool.Exec(ctx, `DELETE FROM kaname.subject_change_outbox WHERE id <= $1`, id2)
 	require.NoError(t, err)
 
 	// Курсор НИЖЕ пола: строка id2 снята и уже не придёт.
@@ -144,7 +144,7 @@ func TestSubjectChangeRepo_EmptiedJournalSeatsTheCallerOnTheSettledBoundary(t *t
 	_, _, err = repo.PollSubjectChanges(ctx, 0, 10)
 	require.NoError(t, err)
 
-	_, err = pool.Exec(ctx, `DELETE FROM kacho_iam.subject_change_outbox`)
+	_, err = pool.Exec(ctx, `DELETE FROM kaname.subject_change_outbox`)
 	require.NoError(t, err)
 
 	_, _, err = repo.PollSubjectChanges(ctx, id1, 10)
@@ -218,7 +218,7 @@ func TestSubjectChangeRepo_ConcurrentSweepNeverProducesASilentGap(t *testing.T) 
 		go func() {
 			defer wg.Done()
 			_, _ = pool.Exec(ctx,
-				`DELETE FROM kacho_iam.subject_change_outbox WHERE id <= $1`, id2)
+				`DELETE FROM kaname.subject_change_outbox WHERE id <= $1`, id2)
 		}()
 
 		for i := 0; i < readers; i++ {

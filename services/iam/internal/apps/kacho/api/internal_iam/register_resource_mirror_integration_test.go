@@ -3,8 +3,8 @@
 
 // register_resource_mirror_integration_test.go — IAM (callee) side of
 // resource-scoped AccessBinding registration: RegisterResource UPSERTs a
-// kacho_iam.resource_mirror row AND emits the owner-tuple intent into
-// kacho_iam.fga_outbox in ONE writer-tx (atomic co-commit, ban #10);
+// kaname.resource_mirror row AND emits the owner-tuple intent into
+// kaname.fga_outbox in ONE writer-tx (atomic co-commit, ban #10);
 // UnregisterResource symmetrically DELETEs the mirror row + emits the tuple
 // revoke in one tx.
 //
@@ -306,7 +306,7 @@ func (p *mirrorProbe) readMirror(t *testing.T, ctx context.Context, objType, obj
 	var raw string
 	require.NoError(t, p.pool.QueryRow(ctx,
 		`SELECT parent_project_id, parent_account_id, labels::text
-		   FROM kacho_iam.resource_mirror WHERE object_type = $1 AND object_id = $2`, objType, objID).
+		   FROM kaname.resource_mirror WHERE object_type = $1 AND object_id = $2`, objType, objID).
 		Scan(&prj, &acc, &raw))
 	labels = map[string]string{}
 	require.NoError(t, json.Unmarshal([]byte(raw), &labels))
@@ -317,7 +317,7 @@ func (p *mirrorProbe) mirrorCount(t *testing.T, ctx context.Context, objType, ob
 	t.Helper()
 	var n int
 	require.NoError(t, p.pool.QueryRow(ctx,
-		`SELECT count(*) FROM kacho_iam.resource_mirror WHERE object_type = $1 AND object_id = $2`, objType, objID).Scan(&n))
+		`SELECT count(*) FROM kaname.resource_mirror WHERE object_type = $1 AND object_id = $2`, objType, objID).Scan(&n))
 	return n
 }
 
@@ -329,7 +329,7 @@ func (p *mirrorProbe) outboxCount(t *testing.T, ctx context.Context, objects ...
 	t.Helper()
 	var n int
 	require.NoError(t, p.pool.QueryRow(ctx,
-		`SELECT count(*) FROM kacho_iam.fga_outbox
+		`SELECT count(*) FROM kaname.fga_outbox
 		  WHERE payload->>'object' = ANY($1::text[])`, scopedToOwnObjects(t, objects)).Scan(&n))
 	return n
 }
@@ -343,7 +343,7 @@ func (p *mirrorProbe) lastOutboxEvent(t *testing.T, ctx context.Context, objects
 	t.Helper()
 	var et string
 	require.NoError(t, p.pool.QueryRow(ctx,
-		`SELECT event_type FROM kacho_iam.fga_outbox
+		`SELECT event_type FROM kaname.fga_outbox
 		  WHERE payload->>'object' = ANY($1::text[])
 		  ORDER BY id DESC LIMIT 1`, scopedToOwnObjects(t, objects)).Scan(&et))
 	return et
@@ -353,7 +353,7 @@ func (p *mirrorProbe) columns(t *testing.T, ctx context.Context) []string {
 	t.Helper()
 	rows, err := p.pool.Query(ctx,
 		`SELECT column_name FROM information_schema.columns
-		  WHERE table_schema = 'kacho_iam' AND table_name = 'resource_mirror'`)
+		  WHERE table_schema = 'kaname' AND table_name = 'resource_mirror'`)
 	require.NoError(t, err)
 	defer rows.Close()
 	var cols []string

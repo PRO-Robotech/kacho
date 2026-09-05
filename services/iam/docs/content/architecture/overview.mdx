@@ -45,7 +45,7 @@ flowchart TD
 
 ## База данных — database-per-service
 
-Kaname владеет схемой `kacho_iam` в PostgreSQL и не делит её ни с кем. Within-service
+Kaname владеет схемой `kaname` в PostgreSQL и не делит её ни с кем. Within-service
 инварианты выражены на уровне БД (FK / UNIQUE / CHECK / partial-UNIQUE / CAS), а не
 software-проверками. Ключевые группы таблиц: аккаунты / проекты / пользователи / сервис-аккаунты /
 группы (+ `group_members`) / роли / привязки доступа, плюс audit-outbox, журнал намерений
@@ -63,7 +63,7 @@ software-проверками. Ключевые группы таблиц: ак�
 ## Авторизация — реляционная форма в собственной базе
 
 IAM — не только владелец модели прав, но и **точка её исполнения**. На каждый RPC (свой и чужой —
-через `InternalIAMService.Check`) он складывает вердикт запросом к схеме `kacho_iam`: прямой факт,
+через `InternalIAMService.Check`) он складывает вердикт запросом к схеме `kaname`: прямой факт,
 выдача роли на область, выдача по меткам, членство в группе.
 
 Модель прав (`fga_model.fga`) описывает типы объектов
@@ -113,7 +113,7 @@ flowchart LR
   cmp["kacho-compute"] -->|"Check + RegisterResource"| iam
   geo["kacho-geo"] -->|"Check"| iam
   nlb["kacho-nlb"] -->|"Check"| iam
-  iam -->|"вердикт запросом"| pg[("PostgreSQL kacho_iam")]
+  iam -->|"вердикт запросом"| pg[("PostgreSQL kaname")]
   iam -->|"identity / OAuth"| ory["Ory Kratos + Hydra"]
 ```
 

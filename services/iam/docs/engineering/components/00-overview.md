@@ -6,7 +6,7 @@
 полной ресурсной моделью identity и поверх нее реализует runtime-авторизацию для
 всего кластера.
 
-**Ресурсная модель** (схема `kacho_iam`, источник истины для всех сервисов):
+**Ресурсная модель** (схема `kaname`, источник истины для всех сервисов):
 
 - **Account** — top-level tenant (организация). Глобально-уникальное имя; владелец —
   единственный User (`owner_user_id`).
@@ -24,7 +24,7 @@
 **Плоскость авторизации** (живет поверх ресурсной модели):
 
 - **Реляционная форма** (`internal/repo/kacho/pg/relverdict`) — единственный источник
-  решения. Вердикт складывается запросом к собственной базе `kacho_iam` из четырёх
+  решения. Вердикт складывается запросом к собственной базе `kaname` из четырёх
   источников: прямой факт, выдача роли на область, выдача по меткам, членство в группе.
   Вывод отношений компилируется из модели прав (`services/iam/internal/authzplan`). Внешнего движка
   отношений нет — см. [`29-relational-verdict.md`](29-relational-verdict.md).
@@ -95,7 +95,7 @@ flowchart LR
     Hydra[Ory Hydra] -- token / refresh hook --> hooks
     Kratos[Ory Kratos] -- provision hook --> hooks
 
-    iam --- Postgres[("Postgres<br/>schema kacho_iam")]
+    iam --- Postgres[("Postgres<br/>schema kaname")]
 ```
 
 Фоновые worker'ы:
@@ -142,7 +142,7 @@ C4Context
         System(vpc, "kacho-vpc", "Network")
         System(compute, "kacho-compute", "Compute")
         System(nlb, "kacho-nlb", "Load balancing")
-        SystemDb(pg, "Postgres", "schema kacho_iam")
+        SystemDb(pg, "Postgres", "schema kaname")
     }
 
     Rel(tenant, apigw, "HTTPS")
@@ -159,7 +159,7 @@ C4Context
 
 ## Плоскость авторизации (как принимается решение)
 
-1. **Грант** — `AccessBindingService.Create` пишет 5-tuple в `kacho_iam` И в той же
+1. **Грант** — `AccessBindingService.Create` пишет 5-tuple в `kaname` И в той же
    транзакции кладёт намерение об отношении в журнал `fga_outbox`. Триггер журнала
    складывает из строки прямой факт **в той же транзакции**, поэтому «закоммичено» и
    «действует» совпадают.
@@ -172,7 +172,7 @@ C4Context
    - публичный путь: api-gateway зовёт `AuthorizeService.Check`;
    - peer-путь: `kacho-vpc` / `kacho-compute` / `kacho-nlb` / `kacho-geo` зовут
      `InternalIAMService.Check` перед мутацией (mTLS, fail-closed).
-   - Оба упираются в один вердикт реляционной формы над строками `kacho_iam`.
+   - Оба упираются в один вердикт реляционной формы над строками `kaname`.
 4. **Условие на выдаче** — модель прав объявляет условия (`mfa_fresh` и другие), и форма
    вычисляет их на каждой проверке по контексту запроса, собранному на крае. Ключ условия
    задаёт сервер; тенантской поверхности управления условиями нет.
@@ -294,7 +294,7 @@ sequenceDiagram
 
 **Runtime-зависимости (peer):**
 
-- Postgres 16 — schema `kacho_iam`.
+- Postgres 16 — schema `kaname`.
 - Ory Hydra — OAuth2/OIDC tokens, backing-клиенты ServiceAccount, SA-ключи.
 - Ory Kratos — identity / login (provision-хук).
 - api-gateway — edge JWT-валидация и REST-проекция.

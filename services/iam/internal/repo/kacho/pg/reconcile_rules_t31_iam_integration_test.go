@@ -90,7 +90,7 @@ func drainOnce(t *testing.T, ctx context.Context, pool *pgxpool.Pool) {
 	require.Eventually(t, func() bool {
 		var unsent int
 		if err := pool.QueryRow(ctx,
-			`SELECT count(*) FROM kacho_iam.resource_reconcile_outbox WHERE sent_at IS NULL`).
+			`SELECT count(*) FROM kaname.resource_reconcile_outbox WHERE sent_at IS NULL`).
 			Scan(&unsent); err != nil {
 			return false
 		}
@@ -188,7 +188,7 @@ func TestReconcile_T31Iam01_LabelChangeViaRegisterResource_EagerRevoke(t *testin
 	var mirrorRows int
 	var labelsText string
 	require.NoError(t, pool.QueryRow(ctx,
-		`SELECT count(*) OVER (), labels::text FROM kacho_iam.resource_mirror
+		`SELECT count(*) OVER (), labels::text FROM kaname.resource_mirror
 		  WHERE object_type='vpc.network' AND object_id='net-treska'`).Scan(&mirrorRows, &labelsText))
 	assert.Equal(t, 1, mirrorRows, "mirror row survives the label removal (upsert, not Unregister)")
 	assert.Equal(t, "{}", labelsText, "mirror labels fully replaced with {} (FULL-REPLACE upsert)")
@@ -196,7 +196,7 @@ func TestReconcile_T31Iam01_LabelChangeViaRegisterResource_EagerRevoke(t *testin
 	// And: the ledger no longer holds the revoked member's tuples (no orphan).
 	var ledger int
 	require.NoError(t, pool.QueryRow(ctx,
-		`SELECT count(*) FROM kacho_iam.access_binding_emitted_tuples
+		`SELECT count(*) FROM kaname.access_binding_emitted_tuples
 		  WHERE binding_id=$1 AND object='vpc_network:net-treska'`, string(bid)).Scan(&ledger))
 	assert.Equal(t, 0, ledger, "revoked member leaves no ledger residual (no standing orphan tuple)")
 }

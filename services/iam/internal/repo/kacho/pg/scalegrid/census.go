@@ -78,14 +78,14 @@ func TakeCensus(ctx context.Context, tx pgx.Tx, speakerSubjects []string) (Censu
 		return nil
 	}
 
-	if err := scalar(&c.MirrorObjects, `SELECT count(*)::bigint FROM kacho_iam.resource_mirror`); err != nil {
+	if err := scalar(&c.MirrorObjects, `SELECT count(*)::bigint FROM kaname.resource_mirror`); err != nil {
 		return c, err
 	}
-	if err := scalar(&c.Edges, `SELECT count(*)::bigint FROM kacho_iam.resource_parent_edge`); err != nil {
+	if err := scalar(&c.Edges, `SELECT count(*)::bigint FROM kaname.resource_parent_edge`); err != nil {
 		return c, err
 	}
 	rows, err := tx.Query(ctx,
-		`SELECT depth, count(*)::bigint FROM kacho_iam.resource_parent_edge GROUP BY depth ORDER BY depth`)
+		`SELECT depth, count(*)::bigint FROM kaname.resource_parent_edge GROUP BY depth ORDER BY depth`)
 	if err != nil {
 		return c, fmt.Errorf("scalegrid: перепись рёбер по глубине: %w", err)
 	}
@@ -103,7 +103,7 @@ func TakeCensus(ctx context.Context, tx pgx.Tx, speakerSubjects []string) (Censu
 		return c, fmt.Errorf("scalegrid: перепись рёбер по глубине: %w", err)
 	}
 
-	if err := scalar(&c.Bindings, `SELECT count(*)::bigint FROM kacho_iam.access_bindings`); err != nil {
+	if err := scalar(&c.Bindings, `SELECT count(*)::bigint FROM kaname.access_bindings`); err != nil {
 		return c, err
 	}
 	// Выдача «называет спрашиваемого», если её субъект — одно из написаний, под
@@ -124,30 +124,30 @@ func TakeCensus(ctx context.Context, tx pgx.Tx, speakerSubjects []string) (Censu
 	// одному написанию, поэтому на различных парах числа тождественны.
 	if err := scalar(&c.BindingsNamingSubject,
 		`SELECT count(*)::bigint
-		   FROM kacho_iam.access_binding_subjects bs
+		   FROM kaname.access_binding_subjects bs
 		   JOIN (SELECT DISTINCT split_part(w, ':', 1) AS s_type,
 		                substr(w, length(split_part(w, ':', 1)) + 2) AS s_id
 		           FROM unnest($1::text[]) AS w) sp
 		     ON bs.subject_type = sp.s_type AND bs.subject_id = sp.s_id`, speakerSubjects); err != nil {
 		return c, err
 	}
-	if err := scalar(&c.GroupMemberships, `SELECT count(*)::bigint FROM kacho_iam.group_members`); err != nil {
+	if err := scalar(&c.GroupMemberships, `SELECT count(*)::bigint FROM kaname.group_members`); err != nil {
 		return c, err
 	}
-	if err := scalar(&c.Roles, `SELECT count(*)::bigint FROM kacho_iam.roles`); err != nil {
+	if err := scalar(&c.Roles, `SELECT count(*)::bigint FROM kaname.roles`); err != nil {
 		return c, err
 	}
-	if err := scalar(&c.RoleVerbs, `SELECT count(*)::bigint FROM kacho_iam.role_verb`); err != nil {
+	if err := scalar(&c.RoleVerbs, `SELECT count(*)::bigint FROM kaname.role_verb`); err != nil {
 		return c, err
 	}
-	if err := scalar(&c.RoleRules, `SELECT count(*)::bigint FROM kacho_iam.role_rule_selectors`); err != nil {
+	if err := scalar(&c.RoleRules, `SELECT count(*)::bigint FROM kaname.role_rule_selectors`); err != nil {
 		return c, err
 	}
-	if err := scalar(&c.Facts, `SELECT count(*)::bigint FROM kacho_iam.relation_fact`); err != nil {
+	if err := scalar(&c.Facts, `SELECT count(*)::bigint FROM kaname.relation_fact`); err != nil {
 		return c, err
 	}
 	if err := scalar(&c.FactsNamingSubject,
-		`SELECT count(*)::bigint FROM kacho_iam.relation_fact f WHERE f.subject = ANY($1::text[])`,
+		`SELECT count(*)::bigint FROM kaname.relation_fact f WHERE f.subject = ANY($1::text[])`,
 		speakerSubjects); err != nil {
 		return c, err
 	}

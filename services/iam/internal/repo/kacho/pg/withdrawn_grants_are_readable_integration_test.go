@@ -61,7 +61,7 @@ func TestWithdrawnGrantsAreReachableByReading(t *testing.T) {
 	require.NoError(t, writeRuleRefs(t, ctx, repo, role,
 		[]domain.RoleRuleRef{{Module: applierProbeModule, Resource: "wd1992gone", Verb: "get"}}))
 	_, err = pool.Exec(ctx, `
-		INSERT INTO kacho_iam.role_verb (role_id, object_type, verb) VALUES ($1, $2, 'get')`,
+		INSERT INTO kaname.role_verb (role_id, object_type, verb) VALUES ($1, $2, 'get')`,
 		string(role), applierProbeModule+".wd1992gone")
 	require.NoError(t, err)
 
@@ -112,7 +112,7 @@ func TestWithdrawnGrantsAreReachableByReading(t *testing.T) {
 	// одной величины разошёлся бы с первым молча.
 	var retiredReason string
 	require.NoError(t, pool.QueryRow(ctx,
-		`SELECT retired_reason FROM kacho_iam.catalog_resource WHERE dotted = $1`,
+		`SELECT retired_reason FROM kaname.catalog_resource WHERE dotted = $1`,
 		applierProbeModule+".wd1992gone").Scan(&retiredReason))
 	require.Equal(t, retiredReason, grant.Reason,
 		"причина в ведомости разошлась с причиной снятия строки каталога")

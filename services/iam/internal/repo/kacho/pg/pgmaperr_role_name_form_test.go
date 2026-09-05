@@ -132,8 +132,8 @@ func TestEveryNameCheckConstraintHasADecidedLane(t *testing.T) {
 	var (
 		filesRead   int
 		pairs       = map[string]string{} // ограничение → таблица
-		alterCheck  = regexp.MustCompile(`(?is)ALTER\s+TABLE\s+(?:ONLY\s+|IF\s+EXISTS\s+)?kacho_iam\.([a-z_0-9]+)\s+ADD\s+CONSTRAINT\s+([a-z_0-9]+)\s+CHECK`)
-		createTable = regexp.MustCompile(`(?is)CREATE\s+TABLE\s+(?:IF\s+NOT\s+EXISTS\s+)?kacho_iam\.([a-z_0-9]+)\s*\((.*?)\n\);`)
+		alterCheck  = regexp.MustCompile(`(?is)ALTER\s+TABLE\s+(?:ONLY\s+|IF\s+EXISTS\s+)?kaname\.([a-z_0-9]+)\s+ADD\s+CONSTRAINT\s+([a-z_0-9]+)\s+CHECK`)
+		createTable = regexp.MustCompile(`(?is)CREATE\s+TABLE\s+(?:IF\s+NOT\s+EXISTS\s+)?kaname\.([a-z_0-9]+)\s*\((.*?)\n\);`)
 		inlineCheck = regexp.MustCompile(`(?is)CONSTRAINT\s+([a-z_0-9]+)\s+CHECK`)
 	)
 	for _, e := range entries {

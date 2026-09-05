@@ -6,7 +6,7 @@
 // RegisterResource / UnregisterResource let a resource-owning module
 // (vpc/compute/nlb) register or remove an owner-hierarchy FGA tuple *through
 // IAM* — the module never writes FGA directly. The tuple intent is
-// enqueued into kacho_iam.fga_outbox in ONE writer-tx (atomic emit-in-tx,
+// enqueued into kaname.fga_outbox in ONE writer-tx (atomic emit-in-tx,
 // ban #10) and applied asynchronously by the existing drainer
 // (clients/fga_applier.go), whose idempotent classification makes the contract:
 //
@@ -50,7 +50,7 @@ type relationOutboxEmitter interface {
 }
 
 // resourceMirrorEmitter — narrow write port for the
-// output-only mirror: UPSERT/DELETE a kacho_iam.resource_mirror row inside the
+// output-only mirror: UPSERT/DELETE a kaname.resource_mirror row inside the
 // caller-owned tx (atomic co-commit with the owner-tuple emit, ban #10).
 // Implemented by *repo/kacho/pg.ResourceMirrorEmitter.
 //
@@ -66,7 +66,7 @@ type resourceMirrorEmitter interface {
 }
 
 // reconcileEventEmitter — narrow write port: enqueue a reconcile
-// event into kacho_iam.resource_reconcile_outbox in the SAME writer-tx as the
+// event into kaname.resource_reconcile_outbox in the SAME writer-tx as the
 // mirror UPSERT/DELETE (atomic co-commit, ban #10). The reconciler-worker
 // drains these and re-evaluates every binding member referencing the changed
 // object (selector + byName containment / PENDING→ACTIVE verify). Optional —

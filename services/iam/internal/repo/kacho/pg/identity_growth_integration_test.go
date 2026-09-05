@@ -121,7 +121,7 @@ func seedIdentityMember(t *testing.T, ctx context.Context, pool *pgxpool.Pool, a
 // продукт.
 func removeIdentityMember(t *testing.T, ctx context.Context, pool *pgxpool.Pool, userID string) {
 	t.Helper()
-	_, err := pool.Exec(ctx, `DELETE FROM kacho_iam.users WHERE id = $1`, userID)
+	_, err := pool.Exec(ctx, `DELETE FROM kaname.users WHERE id = $1`, userID)
 	require.NoError(t, err, "снятие строки члена")
 }
 
@@ -129,7 +129,7 @@ func removeIdentityMember(t *testing.T, ctx context.Context, pool *pgxpool.Pool,
 func journalCount(t *testing.T, ctx context.Context, pool *pgxpool.Pool) int64 {
 	t.Helper()
 	var n int64
-	require.NoError(t, pool.QueryRow(ctx, `SELECT count(*) FROM kacho_iam.identity_journal`).Scan(&n))
+	require.NoError(t, pool.QueryRow(ctx, `SELECT count(*) FROM kaname.identity_journal`).Scan(&n))
 	return n
 }
 
@@ -212,7 +212,7 @@ func TestIdentityGrowth_InvitationBecomesAnIdentityOnlyOnActivation(t *testing.T
 		"приглашение сосчитано личностью: считается строка пользователя, а не вход")
 
 	_, err := pool.Exec(ctx, `
-		UPDATE kacho_iam.users SET external_id = $2, invite_status = 'ACTIVE' WHERE id = $1`,
+		UPDATE kaname.users SET external_id = $2, invite_status = 'ACTIVE' WHERE id = $1`,
 		userID, "ext-growth-invited")
 	require.NoError(t, err, "активация приглашения")
 

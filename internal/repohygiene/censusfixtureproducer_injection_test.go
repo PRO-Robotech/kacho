@@ -27,7 +27,7 @@ const (
 	// половина инъекций позеленела ВХОЛОСТУЮ — не потому, что гейт молчит на
 	// законном, а потому что условия не возникало вовсе. Отсюда injCensusFacts
 	// ниже, который проверяет предпосылку самой фикстуры.
-	injCensusQuery = `const q = "SELECT 1 FROM kacho_iam.resource_mirror m WHERE NOT EXISTS (SELECT 1 FROM kacho_iam.resource_parent_edge e WHERE e.object_id = m.object_id)"
+	injCensusQuery = `const q = "SELECT 1 FROM kaname.resource_mirror m WHERE NOT EXISTS (SELECT 1 FROM kaname.resource_parent_edge e WHERE e.object_id = m.object_id)"
 `
 	injProducerImport = `import "github.com/PRO-Robotech/kacho-iam/internal/repo/kacho/pg/resource_mirror"
 `
@@ -139,7 +139,7 @@ func TestInjection_SameNamedFunctionOfAnotherPackageIsNotTheProducer(t *testing.
 // перепись сама кладёт рёбра прямой записью.
 func TestInjection_CensusThatWritesEdgesItselfIsFound(t *testing.T) {
 	src := injProducerImport + injCensusQuery +
-		`const ins = "INSERT INTO kacho_iam.resource_parent_edge (object_id) VALUES ($1)"
+		`const ins = "INSERT INTO kaname.resource_parent_edge (object_id) VALUES ($1)"
 ` + injProducerCall
 	byDir := map[string][]censusFileFacts{
 		"svc/pkg": {injCensusFacts(t, "svc/pkg/census_test.go", src)},
@@ -154,7 +154,7 @@ func TestInjection_CensusThatWritesEdgesItselfIsFound(t *testing.T) {
 // TestInjection_ReaderProbeMayWriteEdgesDirectly — законный близнец второй
 // формы: проба ЧИТАТЕЛЯ (без переписи) вправе класть рёбра прямо.
 func TestInjection_ReaderProbeMayWriteEdgesDirectly(t *testing.T) {
-	src := `const ins = "INSERT INTO kacho_iam.resource_parent_edge (object_id) VALUES ($1)"
+	src := `const ins = "INSERT INTO kaname.resource_parent_edge (object_id) VALUES ($1)"
 `
 	byDir := map[string][]censusFileFacts{
 		"svc/pkg": {injFacts(t, "svc/pkg/reader_test.go", src)},

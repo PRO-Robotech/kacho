@@ -71,7 +71,7 @@ func countLedgerTuple(t *testing.T, ctx context.Context, pool *pgxpool.Pool, bID
 	t.Helper()
 	var n int
 	require.NoError(t, pool.QueryRow(ctx,
-		`SELECT count(*) FROM kacho_iam.access_binding_emitted_tuples
+		`SELECT count(*) FROM kaname.access_binding_emitted_tuples
 		  WHERE binding_id=$1 AND object=$2 AND relation=$3`,
 		string(bID), object, relation).Scan(&n))
 	return n
@@ -83,7 +83,7 @@ func countLedgerTuple(t *testing.T, ctx context.Context, pool *pgxpool.Pool, bID
 func ledgerRelationsForObject(t *testing.T, ctx context.Context, pool *pgxpool.Pool, bID domain.AccessBindingID, object string) []string {
 	t.Helper()
 	rows, err := pool.Query(ctx,
-		`SELECT relation FROM kacho_iam.access_binding_emitted_tuples
+		`SELECT relation FROM kaname.access_binding_emitted_tuples
 		  WHERE binding_id=$1 AND object=$2 ORDER BY relation ASC`,
 		string(bID), object)
 	require.NoError(t, err)

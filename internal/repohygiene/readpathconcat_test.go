@@ -203,7 +203,7 @@ func collectPredicateConcats(t *testing.T, root string, files []string) ([]conca
 		}
 		c.files++
 		for _, lit := range sqlLiteralsOf(filepath.Base(rel), body) {
-			if !strings.Contains(lit.sql, "kacho_iam.") {
+			if !strings.Contains(lit.sql, "kaname.") {
 				continue
 			}
 			c.literals++

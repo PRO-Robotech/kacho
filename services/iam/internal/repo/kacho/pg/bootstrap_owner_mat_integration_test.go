@@ -57,7 +57,7 @@ import (
 // returns the bootstrapped user-id + personal account-id.
 func bootstrapNewIdentity(t *testing.T, ctx context.Context, pool *pgxpool.Pool, repo *kachopg.Repository, ext, email string) (domain.UserID, domain.AccountID) {
 	t.Helper()
-	opsRepo := operations.NewRepo(pool, "kacho_iam")
+	opsRepo := operations.NewRepo(pool, "kaname")
 	rec, _ := newReconciler(pool)
 	uc := userapp.NewUpsertFromIdentityUseCase(repo, opsRepo).
 		WithReconciler(rec)
@@ -72,9 +72,9 @@ func bootstrapNewIdentity(t *testing.T, ctx context.Context, pool *pgxpool.Pool,
 
 	var uid, accID string
 	require.NoError(t, pool.QueryRow(ctx,
-		`SELECT id FROM kacho_iam.users WHERE external_id = $1 AND invite_status='ACTIVE'`, ext).Scan(&uid))
+		`SELECT id FROM kaname.users WHERE external_id = $1 AND invite_status='ACTIVE'`, ext).Scan(&uid))
 	require.NoError(t, pool.QueryRow(ctx,
-		`SELECT id FROM kacho_iam.accounts WHERE owner_user_id = $1`, uid).Scan(&accID))
+		`SELECT id FROM kaname.accounts WHERE owner_user_id = $1`, uid).Scan(&accID))
 	return domain.UserID(uid), domain.AccountID(accID)
 }
 
@@ -100,7 +100,7 @@ func TestBootstrapOwnerMat_AccountIsOwnerBinding(t *testing.T) {
 	var dp bool
 	require.NoError(t, pool.QueryRow(ctx, `
 		SELECT role_id, deletion_protection
-		  FROM kacho_iam.access_bindings
+		  FROM kaname.access_bindings
 		 WHERE subject_id = $1 AND resource_type = 'account' AND resource_id = $2
 		   AND revoked_at IS NULL`,
 		string(uid), string(accID)).Scan(&roleID, &dp))
@@ -133,7 +133,7 @@ func TestBootstrapOwnerMat_ProjectContentMaterialized(t *testing.T) {
 
 	var prjID string
 	require.NoError(t, pool.QueryRow(ctx,
-		`SELECT id FROM kacho_iam.projects WHERE account_id = $1 AND name = 'default'`,
+		`SELECT id FROM kaname.projects WHERE account_id = $1 AND name = 'default'`,
 		string(accID)).Scan(&prjID))
 
 	// iam.project content collapses to the bare `project:<id>` FGA object
@@ -170,7 +170,7 @@ func TestBootstrapOwnerMat_OwnAccessBindingMaterialized(t *testing.T) {
 	// materialize admin on it.
 	var prjBID string
 	require.NoError(t, pool.QueryRow(ctx, `
-		SELECT id FROM kacho_iam.access_bindings
+		SELECT id FROM kaname.access_bindings
 		 WHERE subject_id = $1 AND resource_type = 'project' AND revoked_at IS NULL`,
 		string(uid)).Scan(&prjBID))
 

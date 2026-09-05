@@ -212,12 +212,12 @@ func deactivateOwner(t *testing.T, f assertionFixture, kind domain.AssertionClie
 	switch kind {
 	case domain.AssertionClientUser:
 		tag, err := f.pool.Exec(ctx,
-			`UPDATE kacho_iam.users SET invite_status='BLOCKED' WHERE id=$1 AND invite_status='ACTIVE'`, f.user)
+			`UPDATE kaname.users SET invite_status='BLOCKED' WHERE id=$1 AND invite_status='ACTIVE'`, f.user)
 		require.NoError(t, err)
 		require.EqualValues(t, 1, tag.RowsAffected(), "переход обязан состояться ровно один раз")
 	case domain.AssertionClientServiceAccount:
 		tag, err := f.pool.Exec(ctx,
-			`UPDATE kacho_iam.service_accounts SET enabled=false WHERE id=$1 AND enabled`, f.sva)
+			`UPDATE kaname.service_accounts SET enabled=false WHERE id=$1 AND enabled`, f.sva)
 		require.NoError(t, err)
 		require.EqualValues(t, 1, tag.RowsAffected(), "переход обязан состояться ровно один раз")
 	default:

@@ -87,8 +87,8 @@ type auditEmitter interface {
 // construction: сквозь неё не проходило ничего, кроме факта наличия.
 //
 // cluster_admin_grants.subject_id полиморфен, поэтому чтение — по типу:
-// UserInviteStatus читает kacho_iam.users, ServiceAccountEnabled —
-// kacho_iam.service_accounts. (Условного FK на полиморфную колонку в PostgreSQL
+// UserInviteStatus читает kaname.users, ServiceAccountEnabled —
+// kaname.service_accounts. (Условного FK на полиморфную колонку в PostgreSQL
 // нет, поэтому проверка остаётся на request-path.)
 type subjectStateReader interface {
 	UserInviteStatus(ctx context.Context, userID string) (domain.InviteStatus, error)

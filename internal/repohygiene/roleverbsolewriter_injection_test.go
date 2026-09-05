@@ -92,10 +92,10 @@ func strandedOf(t *testing.T, src, table string) []string {
 const srcAuthor = `package pg
 
 func (w *roleWriter) ReplaceRoleVerbs(ctx context.Context, roleID string) error {
-	if _, err := w.tx.Exec(ctx, ` + "`DELETE FROM kacho_iam.role_verb WHERE role_id = $1`" + `, roleID); err != nil {
+	if _, err := w.tx.Exec(ctx, ` + "`DELETE FROM kaname.role_verb WHERE role_id = $1`" + `, roleID); err != nil {
 		return err
 	}
-	_, err := w.tx.Exec(ctx, ` + "`INSERT INTO kacho_iam.role_verb (role_id, object_type, verb) VALUES ($1,$2,$3)`" + `)
+	_, err := w.tx.Exec(ctx, ` + "`INSERT INTO kaname.role_verb (role_id, object_type, verb) VALUES ($1,$2,$3)`" + `)
 	return err
 }`
 
@@ -106,12 +106,12 @@ const srcResettler = `package pg
 func (w catalogWriter) ResettleTenantProjections(ctx context.Context) error {
 	return w.tx.QueryRow(ctx, ` + "`" + `
 		WITH doomed AS (
-		  SELECT rv.role_id, rv.object_type, rv.verb FROM kacho_iam.role_verb rv
+		  SELECT rv.role_id, rv.object_type, rv.verb FROM kaname.role_verb rv
 		), moved AS (
-		  INSERT INTO kacho_iam.role_grant_orphan (role_id, object_type, verb, source, reason)
+		  INSERT INTO kaname.role_grant_orphan (role_id, object_type, verb, source, reason)
 		  SELECT d.role_id, d.object_type, d.verb, 'role_verb', $1 FROM doomed d
 		), dropped AS (
-		  DELETE FROM kacho_iam.role_verb rv USING doomed d
+		  DELETE FROM kaname.role_verb rv USING doomed d
 		   WHERE rv.role_id = d.role_id AND rv.object_type = d.object_type AND rv.verb = d.verb
 		  RETURNING 1
 		)
@@ -142,10 +142,10 @@ func TestIAMRV112_AxisAuthor_RedOnASecondAuthor(t *testing.T) {
 	src := `package seed
 
 func replaceRoleVerbsTx(ctx context.Context, tx pgxExecer, roleID string) error {
-	if _, err := tx.Exec(ctx, ` + "`DELETE FROM kacho_iam.role_verb WHERE role_id = $1`" + `, roleID); err != nil {
+	if _, err := tx.Exec(ctx, ` + "`DELETE FROM kaname.role_verb WHERE role_id = $1`" + `, roleID); err != nil {
 		return err
 	}
-	_, err := tx.Exec(ctx, ` + "`INSERT INTO kacho_iam.role_verb (role_id, object_type, verb) VALUES ($1,$2,$3)`" + `)
+	_, err := tx.Exec(ctx, ` + "`INSERT INTO kaname.role_verb (role_id, object_type, verb) VALUES ($1,$2,$3)`" + `)
 	return err
 }`
 	got := authorsOf(t, src, roleVerbTable)
@@ -198,9 +198,9 @@ func TestIAMRV112_AxisRelocation_RedWhenRemovalStrandsTheRow(t *testing.T) {
 func (w catalogWriter) ResettleTenantProjections(ctx context.Context) error {
 	return w.tx.QueryRow(ctx, ` + "`" + `
 		WITH doomed AS (
-		  SELECT rv.role_id, rv.object_type, rv.verb FROM kacho_iam.role_verb rv
+		  SELECT rv.role_id, rv.object_type, rv.verb FROM kaname.role_verb rv
 		), dropped AS (
-		  DELETE FROM kacho_iam.role_verb rv USING doomed d
+		  DELETE FROM kaname.role_verb rv USING doomed d
 		   WHERE rv.role_id = d.role_id AND rv.object_type = d.object_type AND rv.verb = d.verb
 		  RETURNING 1
 		)
@@ -251,18 +251,18 @@ func TestIAMRV112_InjectionSilentOnBothReaders(t *testing.T) {
 	whole := `package scalegrid
 
 func (c *census) read() error {
-	return scalar(&c.RoleVerbs, ` + "`SELECT count(*)::bigint FROM kacho_iam.role_verb`" + `)
+	return scalar(&c.RoleVerbs, ` + "`SELECT count(*)::bigint FROM kaname.role_verb`" + `)
 }`
 	perRole := `package scalegrid
 
 func strengthOf(ctx context.Context, roleID string) error {
 	return q.QueryRow(ctx,
-		` + "`SELECT count(*)::bigint FROM kacho_iam.role_verb WHERE role_id = $1`" + `, roleID).Scan(&n)
+		` + "`SELECT count(*)::bigint FROM kaname.role_verb WHERE role_id = $1`" + `, roleID).Scan(&n)
 }`
 	joined := `package relverdict
 
 func expand(ctx context.Context) error {
-	return q.Query(ctx, ` + "`SELECT 1 FROM roles r JOIN kacho_iam.role_verb rv ON rv.role_id = r.id`" + `)
+	return q.Query(ctx, ` + "`SELECT 1 FROM roles r JOIN kaname.role_verb rv ON rv.role_id = r.id`" + `)
 }`
 	for name, src := range map[string]string{
 		"чтение таблицы целиком": whole,
@@ -284,9 +284,9 @@ func expand(ctx context.Context) error {
 func TestIAMRV112_InjectionSilentOnItsOwnExplanation(t *testing.T) {
 	src := `package repohygiene
 
-// Предмет: INSERT INTO kacho_iam.role_verb из второго места — находка.
-// Проверяется оператор DELETE FROM kacho_iam.role_verb тоже, и переселение
-// INSERT INTO kacho_iam.role_grant_orphan — тоже.
+// Предмет: INSERT INTO kaname.role_verb из второго места — находка.
+// Проверяется оператор DELETE FROM kaname.role_verb тоже, и переселение
+// INSERT INTO kaname.role_grant_orphan — тоже.
 func explain() {}
 `
 	if got := opsOf(t, src); len(got) != 0 {
@@ -300,7 +300,7 @@ func TestIAMRV112_InjectionSilentOnAnotherTable(t *testing.T) {
 	src := `package pg
 
 func put(ctx context.Context) error {
-	_, err := tx.Exec(ctx, ` + "`INSERT INTO kacho_iam.role_rule_selectors (role_id) VALUES ($1)`" + `)
+	_, err := tx.Exec(ctx, ` + "`INSERT INTO kaname.role_rule_selectors (role_id) VALUES ($1)`" + `)
 	return err
 }`
 	if got := opsOf(t, src); len(got) != 0 {
@@ -338,10 +338,10 @@ func TestIAMCT105_InjectionRedOnASecondRuleRefAuthor(t *testing.T) {
 	src := `package seed
 
 func reseedRuleRefsTx(ctx context.Context, tx pgxExecer, roleID string) error {
-	if _, err := tx.Exec(ctx, ` + "`DELETE FROM kacho_iam.role_rule_ref WHERE role_id = $1`" + `, roleID); err != nil {
+	if _, err := tx.Exec(ctx, ` + "`DELETE FROM kaname.role_rule_ref WHERE role_id = $1`" + `, roleID); err != nil {
 		return err
 	}
-	_, err := tx.Exec(ctx, ` + "`INSERT INTO kacho_iam.role_rule_ref (role_id, module, resource) VALUES ($1,$2,$3)`" + `)
+	_, err := tx.Exec(ctx, ` + "`INSERT INTO kaname.role_rule_ref (role_id, module, resource) VALUES ($1,$2,$3)`" + `)
 	return err
 }`
 	got := authorsOf(t, src, roleRuleRefTable)
@@ -355,7 +355,7 @@ func TestIAMCT105_InjectionRedWhenRuleRefRemovalStrandsTheRow(t *testing.T) {
 	src := `package pg
 
 func (w catalogWriter) resettle(ctx context.Context) error {
-	return w.tx.QueryRow(ctx, ` + "`DELETE FROM kacho_iam.role_rule_ref rr USING doomed d WHERE rr.role_id = d.role_id`" + `).Scan()
+	return w.tx.QueryRow(ctx, ` + "`DELETE FROM kaname.role_rule_ref rr USING doomed d WHERE rr.role_id = d.role_id`" + `).Scan()
 }`
 	if got := strandedOf(t, src, roleRuleRefTable); len(got) != 1 {
 		t.Fatalf("снятие сегментов БЕЗ переселения обязано находиться: %v", got)
@@ -367,7 +367,7 @@ func TestIAMCT105_InjectionSilentOnARuleRefReader(t *testing.T) {
 
 func rulesRefsOfRole(ctx context.Context, q pgxQuerier, roleID string) (int, error) {
 	var n int
-	err := q.QueryRow(ctx, ` + "`SELECT count(*) FROM kacho_iam.role_rule_ref WHERE role_id = $1`" + `, roleID).Scan(&n)
+	err := q.QueryRow(ctx, ` + "`SELECT count(*) FROM kaname.role_rule_ref WHERE role_id = $1`" + `, roleID).Scan(&n)
 	return n, err
 }`
 	if got := opsOfTable(t, src, roleRuleRefTable); len(got) != 0 {

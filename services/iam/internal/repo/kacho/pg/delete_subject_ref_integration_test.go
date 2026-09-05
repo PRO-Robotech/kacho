@@ -46,7 +46,7 @@ func seedMemberUser(t *testing.T, ctx context.Context, pool *pgxpool.Pool, accID
 	t.Helper()
 	uid := ids.NewID(domain.PrefixUser)
 	_, err := pool.Exec(ctx, `
-		INSERT INTO kacho_iam.users (id, account_id, external_id, email, display_name, invite_status)
+		INSERT INTO kaname.users (id, account_id, external_id, email, display_name, invite_status)
 		VALUES ($1, $2, $3, $4, 'M', 'ACTIVE')`,
 		uid, accID, "ext-"+suffix+"-"+uid, "m-"+suffix+"@example.com")
 	require.NoError(t, err)
@@ -57,7 +57,7 @@ func seedMemberUser(t *testing.T, ctx context.Context, pool *pgxpool.Pool, accID
 // directly, bypassing the domain layer so the raw DB guard is what is under test.
 func insertABSubjectRaw(ctx context.Context, pool *pgxpool.Pool, bindingID, subjectType, subjectID string, ordinal int) error {
 	_, err := pool.Exec(ctx, `
-		INSERT INTO kacho_iam.access_binding_subjects (binding_id, subject_type, subject_id, ordinal)
+		INSERT INTO kaname.access_binding_subjects (binding_id, subject_type, subject_id, ordinal)
 		VALUES ($1, $2, $3, $4)`,
 		bindingID, subjectType, subjectID, ordinal)
 	return err
@@ -94,7 +94,7 @@ func TestUserDelete_ReferencedAsSubjectN_Blocked(t *testing.T) {
 
 	var cnt int
 	require.NoError(t, pool.QueryRow(ctx,
-		`SELECT count(*) FROM kacho_iam.users WHERE id=$1`, member).Scan(&cnt))
+		`SELECT count(*) FROM kaname.users WHERE id=$1`, member).Scan(&cnt))
 	assert.Equal(t, 1, cnt, "the referenced user must survive the rejected delete (no orphan subject row)")
 }
 
@@ -126,7 +126,7 @@ func TestSADelete_ReferencedAsSubjectN_Blocked(t *testing.T) {
 
 	var cnt int
 	require.NoError(t, pool.QueryRow(ctx,
-		`SELECT count(*) FROM kacho_iam.service_accounts WHERE id=$1`, member).Scan(&cnt))
+		`SELECT count(*) FROM kaname.service_accounts WHERE id=$1`, member).Scan(&cnt))
 	assert.Equal(t, 1, cnt, "the referenced service account must survive the rejected delete")
 }
 
@@ -158,7 +158,7 @@ func TestGroupDelete_ReferencedAsSubjectN_Blocked(t *testing.T) {
 
 	var cnt int
 	require.NoError(t, pool.QueryRow(ctx,
-		`SELECT count(*) FROM kacho_iam.groups WHERE id=$1`, member).Scan(&cnt))
+		`SELECT count(*) FROM kaname.groups WHERE id=$1`, member).Scan(&cnt))
 	assert.Equal(t, 1, cnt, "the referenced group must survive the rejected delete")
 }
 
@@ -188,11 +188,11 @@ func TestUserDelete_ConcurrentAddSubjectN_NoDangling(t *testing.T) {
 	// subjects[1..N] clause) — used only for the deterministic lock-timeout
 	// serialization proof; the behavioural assertion below uses the real repo.
 	const guardedUserDelete = `
-		DELETE FROM kacho_iam.users u
+		DELETE FROM kaname.users u
 		 WHERE u.id = $1
-		   AND NOT EXISTS (SELECT 1 FROM kacho_iam.access_bindings         WHERE subject_type='user' AND subject_id=$1)
-		   AND NOT EXISTS (SELECT 1 FROM kacho_iam.access_binding_subjects WHERE subject_type='user' AND subject_id=$1)
-		   AND NOT EXISTS (SELECT 1 FROM kacho_iam.group_members           WHERE member_type='user'  AND member_id=$1)`
+		   AND NOT EXISTS (SELECT 1 FROM kaname.access_bindings         WHERE subject_type='user' AND subject_id=$1)
+		   AND NOT EXISTS (SELECT 1 FROM kaname.access_binding_subjects WHERE subject_type='user' AND subject_id=$1)
+		   AND NOT EXISTS (SELECT 1 FROM kaname.group_members           WHERE member_type='user'  AND member_id=$1)`
 
 	ctx, pool := kac127Setup(t)
 	owner, accID := kac127SeedUserAndAccount(t, ctx, pool, "dsrc")
@@ -218,7 +218,7 @@ func TestUserDelete_ConcurrentAddSubjectN_NoDangling(t *testing.T) {
 		}
 	}()
 	_, err = txInsert.Exec(ctx, `
-		INSERT INTO kacho_iam.access_binding_subjects (binding_id, subject_type, subject_id, ordinal)
+		INSERT INTO kaname.access_binding_subjects (binding_id, subject_type, subject_id, ordinal)
 		VALUES ($1, 'user', $2, 1)`, abID, member)
 	require.NoError(t, err)
 
@@ -253,10 +253,10 @@ func TestUserDelete_ConcurrentAddSubjectN_NoDangling(t *testing.T) {
 	// Invariant: the user survived AND the subject row still references a LIVE user.
 	var userCnt, subCnt int
 	require.NoError(t, pool.QueryRow(ctx,
-		`SELECT count(*) FROM kacho_iam.users WHERE id=$1`, member).Scan(&userCnt))
+		`SELECT count(*) FROM kaname.users WHERE id=$1`, member).Scan(&userCnt))
 	assert.Equal(t, 1, userCnt, "the referenced user must survive (no orphan subjects[1] row)")
 	require.NoError(t, pool.QueryRow(ctx,
-		`SELECT count(*) FROM kacho_iam.access_binding_subjects WHERE subject_type='user' AND subject_id=$1`, member).Scan(&subCnt))
+		`SELECT count(*) FROM kaname.access_binding_subjects WHERE subject_type='user' AND subject_id=$1`, member).Scan(&subCnt))
 	assert.Equal(t, 1, subCnt, "the committed subjects[1] row must reference the live user")
 }
 
@@ -289,9 +289,9 @@ func TestDelete_SubjectRefTrigger_GuardBypassRejected(t *testing.T) {
 	cases := []struct {
 		name, table, id string
 	}{
-		{"user", "kacho_iam.users", memberUser},
-		{"service_account", "kacho_iam.service_accounts", memberSA},
-		{"group", "kacho_iam.groups", memberGroup},
+		{"user", "kaname.users", memberUser},
+		{"service_account", "kaname.service_accounts", memberSA},
+		{"group", "kaname.groups", memberGroup},
 	}
 	for _, c := range cases {
 		t.Run(c.name, func(t *testing.T) {

@@ -4,7 +4,7 @@
 package pg_test
 
 // cluster_admin_grant_integration_test.go — integration tests for the
-// cluster-admin Writer/Reader repos (kacho_iam.cluster_admin_grants).
+// cluster-admin Writer/Reader repos (kaname.cluster_admin_grants).
 //
 // Required tests:
 //   - TestGrant_Idempotent                  — повторный grant → no-op.
@@ -55,7 +55,7 @@ func seedClusterAdmin(t *testing.T, ctx context.Context, pool *pgxpool.Pool, sub
 	t.Helper()
 	id := domain.NewKac127ID(domain.PrefixClusterAdminGrant)
 	_, err := pool.Exec(ctx,
-		`INSERT INTO kacho_iam.cluster_admin_grants
+		`INSERT INTO kaname.cluster_admin_grants
 		     (id, cluster_id, subject_type, subject_id, granted_by, granted_at, granted_until)
 		 VALUES ($1, $2, 'user', $3, $3, now(), NULL)`,
 		id, domain.ClusterSingletonID, string(subject))
@@ -70,7 +70,7 @@ func seedRevokedClusterAdmin(t *testing.T, ctx context.Context, pool *pgxpool.Po
 	revokedAt := time.Now().UTC().Add(-1 * time.Hour)
 	grantedAt := revokedAt.Add(-1 * time.Hour)
 	_, err := pool.Exec(ctx,
-		`INSERT INTO kacho_iam.cluster_admin_grants
+		`INSERT INTO kaname.cluster_admin_grants
 		     (id, cluster_id, subject_type, subject_id, granted_by, granted_at, granted_until)
 		 VALUES ($1, $2, 'user', $3, $3, $4, $5)`,
 		id, domain.ClusterSingletonID, string(subject), grantedAt, revokedAt)
@@ -86,7 +86,7 @@ func countActiveAdmins(t *testing.T, ctx context.Context, pool *pgxpool.Pool) in
 	t.Helper()
 	var n int
 	require.NoError(t, pool.QueryRow(ctx,
-		`SELECT count(*) FROM kacho_iam.cluster_admin_grants WHERE granted_until IS NULL`).
+		`SELECT count(*) FROM kaname.cluster_admin_grants WHERE granted_until IS NULL`).
 		Scan(&n))
 	return n
 }
@@ -101,7 +101,7 @@ func countActiveUserAdmins(t *testing.T, ctx context.Context, pool *pgxpool.Pool
 	t.Helper()
 	var n int
 	require.NoError(t, pool.QueryRow(ctx,
-		`SELECT count(*) FROM kacho_iam.cluster_admin_grants
+		`SELECT count(*) FROM kaname.cluster_admin_grants
 		  WHERE granted_until IS NULL AND subject_type = 'user'`).
 		Scan(&n))
 	return n
@@ -114,7 +114,7 @@ func countActiveAdminsForSubject(t *testing.T, ctx context.Context, pool *pgxpoo
 	t.Helper()
 	var n int
 	require.NoError(t, pool.QueryRow(ctx,
-		`SELECT count(*) FROM kacho_iam.cluster_admin_grants
+		`SELECT count(*) FROM kaname.cluster_admin_grants
 		  WHERE subject_id = $1 AND granted_until IS NULL`, subjectID).
 		Scan(&n))
 	return n
@@ -128,7 +128,7 @@ func countActiveAdminsForSubject(t *testing.T, ctx context.Context, pool *pgxpoo
 func bootstrapSeedSubject(t *testing.T, ctx context.Context, pool *pgxpool.Pool) string {
 	t.Helper()
 	rows, err := pool.Query(ctx,
-		`SELECT subject_id FROM kacho_iam.cluster_admin_grants
+		`SELECT subject_id FROM kaname.cluster_admin_grants
 		  WHERE subject_type = 'service_account' AND granted_until IS NULL`)
 	require.NoError(t, err)
 	defer rows.Close()
@@ -156,7 +156,7 @@ func bootstrapSeedSubject(t *testing.T, ctx context.Context, pool *pgxpool.Pool)
 func decommissionBootstrapSeedGrant(t *testing.T, ctx context.Context, pool *pgxpool.Pool) {
 	t.Helper()
 	tag, err := pool.Exec(ctx,
-		`UPDATE kacho_iam.cluster_admin_grants
+		`UPDATE kaname.cluster_admin_grants
 		    SET granted_until = now()
 		  WHERE subject_type = 'service_account' AND granted_until IS NULL`)
 	require.NoError(t, err)
@@ -181,7 +181,7 @@ func countOutboxByEvent(t *testing.T, ctx context.Context, pool *pgxpool.Pool, e
 	// test's OWN system_admin grants too (they share that object), so the
 	// assertions counted 0 — hence discriminating on relation+user, not object.
 	require.NoError(t, pool.QueryRow(ctx,
-		`SELECT count(*) FROM kacho_iam.fga_outbox
+		`SELECT count(*) FROM kaname.fga_outbox
 		  WHERE event_type = $1
 		    AND `+fga_outbox.RelationPredicate("payload", "'system_admin'")+`
 		    AND payload->>'user' LIKE 'user:%'`,
@@ -721,7 +721,7 @@ func TestRevoke_AlreadyRevoked(t *testing.T) {
 	// History row should remain untouched (existence-only check).
 	var n int
 	require.NoError(t, pool.QueryRow(ctx,
-		`SELECT count(*) FROM kacho_iam.cluster_admin_grants
+		`SELECT count(*) FROM kaname.cluster_admin_grants
 		   WHERE subject_id = $1 AND granted_until IS NOT NULL`,
 		string(target)).Scan(&n))
 	require.Equal(t, 1, n, "history row must remain")
@@ -811,7 +811,7 @@ func TestGrantRevoke_ConcurrentSameSubject(t *testing.T) {
 	// Invariant: at most one active row for U2.
 	var u2Active int
 	require.NoError(t, pool.QueryRow(ctx,
-		`SELECT count(*) FROM kacho_iam.cluster_admin_grants
+		`SELECT count(*) FROM kaname.cluster_admin_grants
 		   WHERE subject_id = $1 AND granted_until IS NULL`,
 		string(u2)).Scan(&u2Active))
 	require.LessOrEqual(t, u2Active, 1, "no >1 active rows for U2")
@@ -901,7 +901,7 @@ func TestList_JoinsUsers(t *testing.T) {
 // Прежде это утверждение называлось «переживает недоступность движка» и доказывало
 // отсутствие живой зависимости от чужой службы. Со снятием движка предмет не пропал,
 // а стал НЕСУЩИМ: строка журнала и есть доставка — из неё триггер
-// (`kacho_iam.relation_fact_from_journal`) складывает прямой факт в тот же коммит.
+// (`kaname.relation_fact_from_journal`) складывает прямой факт в тот же коммит.
 // Значит откат этой транзакции не может оставить выданное право, а её коммит не может
 // оставить право невыданным. Разъехаться этим двум строкам больше негде.
 
@@ -1039,7 +1039,7 @@ func TestReactivate_GrantRevokeGrant(t *testing.T) {
 // fgaTuplesGrantSystemAdmin — минимальная форма кортежа для пробы атомарности выше.
 // Настоящий вызов эмиттера идёт через use-case выдачи кластерного администратора и
 // собирает ту же одиночную форму. Имя `fga` историческое и совпадает с именем таблицы
-// журнала (`kacho_iam.fga_outbox`), которая жива.
+// журнала (`kaname.fga_outbox`), которая жива.
 func fgaTuplesGrantSystemAdmin(subjectID string) []service.RelationTuple {
 	return []service.RelationTuple{
 		{User: "user:" + subjectID, Relation: "system_admin", Object: "cluster:" + domain.ClusterSingletonID},

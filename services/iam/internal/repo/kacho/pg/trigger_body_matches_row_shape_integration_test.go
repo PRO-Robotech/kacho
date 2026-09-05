@@ -28,7 +28,7 @@ package pg_test
 //
 // Проба «журнал принимает вставку» ниже закрывает СВОЙ экземпляр и молчит про
 // остальные таблицы схемы. Радиус же берётся по имени механизма, а не по месту,
-// где дефект заметили: триггеров в `kacho_iam` десятки, и следующий `DROP COLUMN`
+// где дефект заметили: триггеров в `kaname` десятки, и следующий `DROP COLUMN`
 // придёт в другую таблицу. Поэтому разбор идёт по ВСЕЙ схеме и печатает объём
 // осмотренного — «ноль находок» обязано быть отличимо от «ноль прочитанного».
 //
@@ -42,7 +42,7 @@ package pg_test
 // ОДНА ФУНКЦИЯ НА НЕСКОЛЬКО ТАБЛИЦ — ЗАКОННАЯ ФОРМА, И ГЕЙТ ЕЁ ЗНАЕТ
 //
 // Первая редакция разбора судила обращение по ОДНОЙ таблице и немедленно дала
-// ложную находку: `kacho_iam.subject_ref_exists()` навешена и на `access_bindings`,
+// ложную находку: `kaname.subject_ref_exists()` навешена и на `access_bindings`,
 // и на `access_binding_subjects`, а `NEW.binding_id` называет колонку только
 // второй — под явной веткой `TG_TABLE_NAME = 'access_binding_subjects'`. Гейт с
 // такой находкой был бы снят первым же читателем, и вместе с ней ушла бы
@@ -254,13 +254,13 @@ func TestTriggerBodyMatchesRowShape(t *testing.T) {
 	require.NoError(t, err)
 	pgtest.ClosePoolAtEnd(t, pool)
 
-	findings, census := findTriggerFieldDrift(ctx, t, pool, "kacho_iam")
+	findings, census := findTriggerFieldDrift(ctx, t, pool, "kaname")
 	t.Log(census)
 
 	// Предпосылка гейта. Схема без триггеров сделала бы «ноль находок»
 	// тождественно истинным, и молчание перестало бы что-либо означать.
 	require.NotZero(t, census.Triggers,
-		"в схеме kacho_iam не разобрано НИ ОДНОГО триггера: гейт беспредметен, "+
+		"в схеме kaname не разобрано НИ ОДНОГО триггера: гейт беспредметен, "+
 			"а его молчание неотличимо от исправности")
 	require.NotZero(t, census.Refs,
 		"ни одного обращения NEW./OLD.<поле> не разобрано: тела прочитаны, но "+
@@ -289,7 +289,7 @@ func TestJournalAcceptsAWriteAfterEveryMigration(t *testing.T) {
 	pgtest.ClosePoolAtEnd(t, pool)
 
 	_, err = pool.Exec(ctx,
-		`INSERT INTO kacho_iam.fga_outbox (event_type, payload, created_at)
+		`INSERT INTO kaname.fga_outbox (event_type, payload, created_at)
 		 VALUES ('fga.tuple.write',
 		         '{"user":"user:usr01","relation":"v_get","object":"vpc_network:net01"}'::jsonb,
 		         now())`)
@@ -311,11 +311,11 @@ func TestJournalAcceptsAWriteAfterEveryMigration(t *testing.T) {
 // Без (б) гейт утверждал бы «в теле встречается NEW.» — форму, а не существо: тела
 // триггеров состоят из таких обращений, и первое же ложное срабатывание сняло бы
 // гейт целиком. Близнец здесь не выдуман: это ДОСЛОВНАЯ форма
-// `kacho_iam.subject_ref_exists()`, на которой первая редакция разбора и дала
+// `kaname.subject_ref_exists()`, на которой первая редакция разбора и дала
 // ложную находку — одна функция на двух таблицах, поле только у второй, ветка по
 // TG_TABLE_NAME.
 //
-// Инъекция идёт в СВОЮ схему, а не в kacho_iam: проба не вправе править
+// Инъекция идёт в СВОЮ схему, а не в kaname: проба не вправе править
 // состояние, которого не заводила, и её падение не должно оставлять после себя
 // сломанную таблицу продукта.
 func TestTriggerBodyFieldRefsProvenByInjection(t *testing.T) {
@@ -347,7 +347,7 @@ func TestTriggerBodyFieldRefsProvenByInjection(t *testing.T) {
 
 		// (б2) законный близнец правила B: ОДНА функция на ДВУХ таблицах, поле есть
 		// только у второй, и тело различает таблицы явно. Это форма
-		// kacho_iam.subject_ref_exists(); разбор обязан её пропустить.
+		// kaname.subject_ref_exists(); разбор обязан её пропустить.
 		`CREATE FUNCTION ` + schema + `.shared_discriminating() RETURNS trigger LANGUAGE plpgsql AS $fn$
 		 BEGIN
 		     IF TG_TABLE_NAME = 'widget_parts' THEN

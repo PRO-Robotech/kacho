@@ -674,7 +674,7 @@ vpc:
 
 # ─── KAC-105: IAM stack (sub-phase 2.0) ─────────────────────────────────
 # Отдельные Postgres-инстансы (запрет #8: database-per-service):
-#   pg-iam      → kaname (схема kacho_iam)
+#   pg-iam      → kaname (схема kaname)
 # В dev — emptyDir (без persistence), небольшие resource-лимиты.
 # KAC-127: pg-zitadel удалён — auth-tier (identity/OIDC) на Ory (Kratos/Hydra).
 
@@ -712,7 +712,7 @@ pg-iam:
       shared_buffers = 128MB
       work_mem = 8MB
       effective_cache_size = 512MB
-      # kacho_iam.fga_outbox / .subject_change_outbox / .resource_reconcile_outbox.
+      # kaname.fga_outbox / .subject_change_outbox / .resource_reconcile_outbox.
       # Rationale in values.yaml; repeated here because a later -f replaces this
       # whole string instead of merging into it.
       autovacuum_naptime = 5s

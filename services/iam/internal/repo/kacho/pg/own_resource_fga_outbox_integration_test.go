@@ -11,7 +11,7 @@ package pg_test
 //
 //   - positive: an own-resource Create (Project/Group/SA/Role + the
 //     account-owner self-grant) co-commits its FGA hierarchy/owner-tuple INTENT
-//     into kacho_iam.fga_outbox in the SAME writer-tx as the resource INSERT
+//     into kaname.fga_outbox in the SAME writer-tx as the resource INSERT
 //     (event_type='fga.tuple.write'), next to the audit row.
 //
 //     Прежде здесь утверждалось ещё и `sent_at IS NULL` — «строка пока не
@@ -94,7 +94,7 @@ func TestOwnResource_FGAOutbox_ProjectCreateEmitsHierarchyIntent(t *testing.T) {
 	var et, payloadRaw string
 	require.NoError(t, pool.QueryRow(ctx,
 		`SELECT event_type, payload::text
-		   FROM kacho_iam.fga_outbox
+		   FROM kaname.fga_outbox
 		  WHERE payload->>'object' = $1
 		  ORDER BY id DESC LIMIT 1`,
 		"project:"+string(projID)).Scan(&et, &payloadRaw))
@@ -143,13 +143,13 @@ func TestOwnResource_FGAOutbox_RollbackDiscardsBothRowAndIntent(t *testing.T) {
 
 	var projCount int
 	require.NoError(t, pool.QueryRow(ctx,
-		`SELECT count(*) FROM kacho_iam.projects WHERE id = $1`,
+		`SELECT count(*) FROM kaname.projects WHERE id = $1`,
 		string(projID)).Scan(&projCount))
 	require.Equal(t, 0, projCount, "project row must be rolled back")
 
 	var intentCount int
 	require.NoError(t, pool.QueryRow(ctx,
-		`SELECT count(*) FROM kacho_iam.fga_outbox WHERE payload->>'object' = $1`,
+		`SELECT count(*) FROM kaname.fga_outbox WHERE payload->>'object' = $1`,
 		"project:"+string(projID)).Scan(&intentCount))
 	require.Equal(t, 0, intentCount,
 		"fga_outbox intent must be rolled back atomically with the project row (запрет #10)")
@@ -192,7 +192,7 @@ func TestOwnResource_FGAOutbox_AccountOwnerSelfGrantEmittedInTx(t *testing.T) {
 
 	var ownerCnt int
 	require.NoError(t, pool.QueryRow(ctx,
-		`SELECT count(*) FROM kacho_iam.fga_outbox
+		`SELECT count(*) FROM kaname.fga_outbox
 		  WHERE event_type='fga.tuple.write'
 		    AND payload->>'user' = $1 AND payload->>'object' = $2
 		    AND `+fga_outbox.RelationPredicate("payload", "'owner'"),

@@ -200,7 +200,7 @@ func TestHandler_ListSubjects_Filter(t *testing.T) {
 // Со снятием внешнего движка предмет проверки не изменился, изменился только
 // источник текста: теперь под вердиктом лежит СВОЯ база, и её сообщение об отказе
 // несёт координаты подключения ровно так же, как прежде их нёс адрес движка.
-const backendSecret = "host=pg.internal:5432 user=kacho_iam db=kacho_iam"
+const backendSecret = "host=pg.internal:5432 user=kaname db=kaname"
 
 // errVerdict — дублёр источника вердикта, чьи запросы падают ошибкой с
 // backendSecret: доказывает, что край сводит сырой текст к фиксированному

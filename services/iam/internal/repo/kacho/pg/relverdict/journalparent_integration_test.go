@@ -10,7 +10,7 @@ package relverdict_test
 // ПРЕДМЕТ (#781)
 //
 // Цепь областей выводила звено «проект → аккаунт» из ТАБЛИЦЫ СОСТОЯНИЯ
-// (`kacho_iam.projects`), тогда как тот же указатель уже лежит в ПРОЕКЦИИ
+// (`kaname.projects`), тогда как тот же указатель уже лежит в ПРОЕКЦИИ
 // ЖУРНАЛА (`relation_fact`, `object_type='project'`, `relation='account'`) — и
 // приезжает он туда ТОЙ ЖЕ строкой журнала, из которой свёрнуто состояние
 // движка отношений (миграция 0098). Два места об одном предмете разошлись:
@@ -33,7 +33,7 @@ package relverdict_test
 // ПОЧЕМУ ФИКСТУРА СЕЕТ ЧЕРЕЗ ЖУРНАЛ, А НЕ ПРЯМО В ПРОЕКЦИЮ
 //
 // У проекции ровно один производитель — триггер `relation_fact_follows_journal`
-// на строке `kacho_iam.fga_outbox`. Посев прямо в `relation_fact` обошёл бы его
+// на строке `kaname.fga_outbox`. Посев прямо в `relation_fact` обошёл бы его
 // и доказывал бы работу на данных, которые в продукте появиться не могут.
 // Строка журнала кладётся ТЕМИ ЖЕ тремя колонками и той же формой полезной
 // нагрузки, какими её кладёт эмиттер (`fga_outbox/emitter.go`), а применение
@@ -61,7 +61,7 @@ func pointerThroughJournal(t *testing.T, ctx context.Context, tx pgx.Tx,
 	objectType, objectID, relation, subject string) {
 	t.Helper()
 	exec(t, ctx, tx,
-		`INSERT INTO kacho_iam.fga_outbox (event_type, payload, created_at)
+		`INSERT INTO kaname.fga_outbox (event_type, payload, created_at)
 		 VALUES ('fga.tuple.write',
 		         jsonb_build_object('user', $1::text, 'relation', $2::text,
 		                            'object', $3::text || ':' || $4::text),
@@ -70,7 +70,7 @@ func pointerThroughJournal(t *testing.T, ctx context.Context, tx pgx.Tx,
 
 	var landed int
 	if err := tx.QueryRow(ctx,
-		`SELECT count(*)::int FROM kacho_iam.relation_fact
+		`SELECT count(*)::int FROM kaname.relation_fact
 		  WHERE object_type = $1 AND object_id = $2 AND relation = $3 AND subject = $4`,
 		objectType, objectID, relation, subject).Scan(&landed); err != nil {
 		t.Fatalf("перепись проекции журнала: %v", err)
@@ -115,7 +115,7 @@ func countScalar(t *testing.T, ctx context.Context, tx pgx.Tx, sql string, args 
 // # Почему проба красна ДО правки и по какой причине
 //
 // Представление `resource_scope_edge` (миграция 740001) выводит предка проекта
-// из `kacho_iam.projects`. Строки `prj-journal` там нет, поэтому цепь
+// из `kaname.projects`. Строки `prj-journal` там нет, поэтому цепь
 // останавливается на проекте: (2) отдаёт Deny. Красное на (2) при зелёных (1),
 // (3) и (4) — это и есть нужная причина; красное на (1) означало бы, что сломана
 // фикстура, а не предмет.
@@ -136,12 +136,12 @@ func TestScopeChainTakesTheParentFromTheJournalNotTheStateTable(t *testing.T) {
 		// причине, которой не заявляла: например, потому что кто-то досеял
 		// строку состояния.
 		if inState := countScalar(t, ctx, tx,
-			`SELECT count(*)::int FROM kacho_iam.projects WHERE id = 'prj-journal'`); inState != 0 {
+			`SELECT count(*)::int FROM kaname.projects WHERE id = 'prj-journal'`); inState != 0 {
 			t.Fatalf("проект prj-journal оказался в таблице состояния (%d строк) — предмет пробы "+
 				"исчез: она судила бы обычный проект, а не тот, что живёт только в журнале", inState)
 		}
 		inJournal := countScalar(t, ctx, tx,
-			`SELECT count(*)::int FROM kacho_iam.relation_fact
+			`SELECT count(*)::int FROM kaname.relation_fact
 			  WHERE object_type = 'project' AND object_id = 'prj-journal' AND relation = 'account'`)
 		if inJournal != 1 {
 			t.Fatalf("указателя проекта в журнале %d, ожидался ровно один", inJournal)
@@ -172,12 +172,12 @@ func TestScopeChainTakesTheParentFromTheJournalNotTheStateTable(t *testing.T) {
 		grant := func(bindingID, scopeType, scopeID, subjectID string) {
 			t.Helper()
 			exec(t, ctx, tx,
-				`INSERT INTO kacho_iam.access_bindings
+				`INSERT INTO kaname.access_bindings
 				   (id, subject_type, subject_id, role_id, resource_type, resource_id, status)
 				 VALUES ($1, 'user', $4, 'rol-any', $2, $3, 'ACTIVE')`,
 				bindingID, scopeType, scopeID, subjectID)
 			exec(t, ctx, tx,
-				`INSERT INTO kacho_iam.access_binding_subjects (binding_id, subject_type, subject_id)
+				`INSERT INTO kaname.access_binding_subjects (binding_id, subject_type, subject_id)
 				 VALUES ($1, 'user', $2)`, bindingID, subjectID)
 		}
 
@@ -187,7 +187,7 @@ func TestScopeChainTakesTheParentFromTheJournalNotTheStateTable(t *testing.T) {
 			t.Fatalf("выдача на САМ проект не достала до объекта: %s. Контроль провален — "+
 				"утверждения ниже ничего не сказали бы о высоте цепи", got)
 		}
-		exec(t, ctx, tx, `DELETE FROM kacho_iam.access_bindings WHERE id = 'acb-prj'`)
+		exec(t, ctx, tx, `DELETE FROM kaname.access_bindings WHERE id = 'acb-prj'`)
 		t.Log("контроль: выдача на проект — allow, обход до непосредственного предка работает")
 
 		// ── (2) ПРЕДМЕТ: выдача на АККАУНТ через журнальное звено ─────────────
@@ -201,7 +201,7 @@ func TestScopeChainTakesTheParentFromTheJournalNotTheStateTable(t *testing.T) {
 
 		// ── (3) КОНТРОЛЬ ПАРЫ: без выдачи отказывают обе стороны ──────────────
 		exec(t, ctx, tx,
-			`INSERT INTO kacho_iam.users (id, external_id, email, account_id)
+			`INSERT INTO kaname.users (id, external_id, email, account_id)
 			 VALUES ('usr-none', 'ext-none', 'none@kacho.local', 'acc-1')`)
 		if got := ask("user:usr-none", "net-j"); got != relverdict.Deny {
 			t.Errorf("субъект БЕЗ выдачи получил доступ к объекту: %s — значит утверждение (2) "+

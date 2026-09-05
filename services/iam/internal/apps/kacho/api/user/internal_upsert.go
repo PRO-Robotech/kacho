@@ -762,7 +762,7 @@ func (uc *UpsertFromIdentityUseCase) bootstrapPersonalResources(
 				}
 			}
 
-			// 6. Эмитим ВСЕ FGA-tuples bootstrap-графа intent'ами в kacho_iam.fga_outbox
+			// 6. Эмитим ВСЕ FGA-tuples bootstrap-графа intent'ами в kaname.fga_outbox
 			// в ТОЙ ЖЕ bootstrap-tx (SEC-D, запрет #10).
 			// Bootstrap идет в обход CreateAccount/CreateProject/CreateAccessBinding
 			// use-case'ов (которые обычно пишут эти tuples), поэтому без этого блока
@@ -800,7 +800,7 @@ func (uc *UpsertFromIdentityUseCase) bootstrapPersonalResources(
 }
 
 // bootstrapTuples строит ВСЕ FGA-tuples bootstrap-графа identity для co-commit
-// intent'ами в kacho_iam.fga_outbox (SEC-D). Раньше эти
+// intent'ами в kaname.fga_outbox (SEC-D). Раньше эти
 // tuples писались best-effort post-commit (`WriteTuples` + снятый с тех пор писатель
 // «Non-fatal») — теперь это чистый builder, а emit делает writer-tx:
 //
@@ -820,7 +820,7 @@ func (uc *UpsertFromIdentityUseCase) bootstrapPersonalResources(
 // ЗДЕСЬ СТОЯЛО «без `iam_user`-hierarchy-tuple per-resource UserService.Get/
 // Update/Delete никогда не авторизуется» — И ЭТО НЕВЕРНО СО ДНЯ СНЯТИЯ ВНЕШНЕГО
 // ДВИЖКА. Предка личности называет не этот кортеж, а цепь областей
-// (`kacho_iam.resource_scope_edge`), и берёт она его из таблицы членств (#944;
+// (`kaname.resource_scope_edge`), и берёт она его из таблицы членств (#944;
 // прежде — из колонки строки). Читателя у самого кортежа на пути решения нет:
 // атом плана ищет `admin`/`owner` НА ОБЪЕКТЕ-ПРЕДКЕ, а не отношение `account` на
 // личности. Кортеж пишется тремя местами и не читается ни одним — предмет

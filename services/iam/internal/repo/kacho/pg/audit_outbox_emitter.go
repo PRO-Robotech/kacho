@@ -3,7 +3,7 @@
 
 // audit_outbox_emitter.go — pg adapter for service.AuditOutboxEmitter.
 //
-// Emits ONE durable kacho_iam.audit_outbox row inside a caller-owned writer-tx
+// Emits ONE durable kaname.audit_outbox row inside a caller-owned writer-tx
 // (recovered from the opaque service.Tx via txAsPgx). Atomic with the
 // surrounding security-relevant mutation (запрет #10): the audit row commits iff
 // the mutation commits.

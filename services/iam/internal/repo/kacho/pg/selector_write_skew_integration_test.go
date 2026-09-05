@@ -55,12 +55,12 @@ import (
 // глаголов. Снятие ресурса вперёд глаголов отвергается ключом — что проба и
 // обнаружила на первом же прогоне.
 const skewRetireVerbsDirect = `
-	UPDATE kacho_iam.catalog_verb
+	UPDATE kaname.catalog_verb
 	   SET retired_at = now(), live = false, retired_reason = 'проба перекоса записи'
 	 WHERE module = $1 AND resource = $2 AND live`
 
 const skewRetireDirect = `
-	UPDATE kacho_iam.catalog_resource
+	UPDATE kaname.catalog_resource
 	   SET retired_at = now(), live = false, retired_reason = 'проба перекоса записи'
 	 WHERE dotted = $1 AND live`
 
@@ -70,7 +70,7 @@ const skewRetireDirect = `
 func upsertSelector(ctx context.Context, pool *pgxpool.Pool,
 	role domain.RoleID, fp string, types []string) error {
 	_, err := pool.Exec(ctx, `
-		INSERT INTO kacho_iam.role_rule_selectors
+		INSERT INTO kaname.role_rule_selectors
 		  (role_id, rule_fp, arm, object_types, resource_names, match_labels, created_at, updated_at)
 		VALUES ($1, $2, 'anchor', $3, '{}', '{}'::jsonb, now(), now())
 		ON CONFLICT (role_id, rule_fp) DO UPDATE
@@ -114,7 +114,7 @@ func TestSelectorWriteSkew_SelectorFirst(t *testing.T) {
 	defer func() { _ = txB.Rollback(ctx) }()
 
 	_, err = txB.Exec(ctx, `
-		INSERT INTO kacho_iam.role_rule_selectors
+		INSERT INTO kaname.role_rule_selectors
 		  (role_id, rule_fp, arm, object_types, resource_names, match_labels, created_at, updated_at)
 		VALUES ($1, 'fp-skew-first', 'anchor', $2, '{}', '{}'::jsonb, now(), now())`,
 		string(role), []string{doomed})
@@ -256,7 +256,7 @@ func TestSelectorWriteSkew_LoneWriteOfALiveTypeStillPasses(t *testing.T) {
 
 	var got []string
 	require.NoError(t, pool.QueryRow(ctx, `
-		SELECT object_types FROM kacho_iam.role_rule_selectors
+		SELECT object_types FROM kaname.role_rule_selectors
 		 WHERE role_id = $1 AND rule_fp = 'fp-skew-control'`, string(role)).Scan(&got))
 	t.Logf("одиночная запись живого типа: %v за %s", got, elapsed)
 	require.Equal(t, []string{alive}, got)

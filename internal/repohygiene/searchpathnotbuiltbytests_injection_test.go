@@ -49,7 +49,7 @@ func TestSearchPathGateFallsAndStaysSilentOnItsTwin(t *testing.T) {
 	}{
 		{
 			name: "склейка через именованную константу — канонический вид копии",
-			body: `	const optionsParam = "options=-c%20search_path%3Dkacho_iam%2Cpublic"
+			body: `	const optionsParam = "options=-c%20search_path%3Dkaname%2Cpublic"
 	sep := "?"
 	dsn = dsn + sep + optionsParam`,
 			wantFindings: 1, wantVia: "optionsParam",
@@ -84,13 +84,13 @@ func TestSearchPathGateFallsAndStaysSilentOnItsTwin(t *testing.T) {
 		},
 		{
 			name:         "ПОЛОЖИТЕЛЬНЫЙ КОНТРОЛЬ: объявленная форма",
-			body:         `	dsn = pgtest.WithSearchPath(dsn, "kacho_iam,public")`,
+			body:         `	dsn = pgtest.WithSearchPath(dsn, "kaname,public")`,
 			wantFindings: 0,
 			why:          "ровно то, чего гейт добивается: реализация одна на дерево",
 		},
 		{
 			name: "ПОЛОЖИТЕЛЬНЫЙ КОНТРОЛЬ: клауза названа ПРОЗОЙ",
-			body: `	// Приведение схемы (options=-c search_path=kacho_iam,public) объявлено пакетом.
+			body: `	// Приведение схемы (options=-c search_path=kaname,public) объявлено пакетом.
 	dsn = dsn + "&pool_max_conns=8"`,
 			wantFindings: 0,
 			why:          "разбор судит узел, а не текст: иначе гейт краснел бы на собственном объяснении",
@@ -133,7 +133,7 @@ func TestSearchPathGateWouldHaveCaughtTheTreeBeforeTheFix(t *testing.T) {
 import "strings"
 
 func appendSearchPathOptions(dsn string) string {
-	const optionsParam = "options=-c%20search_path%3Dkacho_iam%2Cpublic"
+	const optionsParam = "options=-c%20search_path%3Dkaname%2Cpublic"
 	if strings.Contains(dsn, "options=") || strings.Contains(dsn, "options%3D") {
 		return dsn
 	}

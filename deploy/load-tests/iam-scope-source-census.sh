@@ -3,9 +3,9 @@
 # SPDX-License-Identifier: BUSL-1.1
 #
 # iam-scope-source-census.sh — перепись ИСТОЧНИКОВ звена цепи областей: что о
-# предке объекта знает ЦЕПЬ (представление `kacho_iam.resource_scope_edge`)
+# предке объекта знает ЦЕПЬ (представление `kaname.resource_scope_edge`)
 # против того, что о нём знают ДВА других источника — колонка собственной строки
-# объекта и ПРОЕКЦИЯ ЖУРНАЛА (`kacho_iam.relation_fact`), из которой реляционная
+# объекта и ПРОЕКЦИЯ ЖУРНАЛА (`kaname.relation_fact`), из которой реляционная
 # форма собирает безусловное основание вердикта.
 #
 # ─────────────────────────────────────────────────────────────────────────────
@@ -157,12 +157,12 @@ else
   kubectl -n "$NS" get pod "$PG_POD" >/dev/null 2>&1 \
     || die_precond "пода базы $PG_POD в пространстве $NS нет"
 fi
-have_view=$(q "SELECT count(*) FROM pg_views WHERE schemaname='kacho_iam' AND viewname='resource_scope_edge';")
+have_view=$(q "SELECT count(*) FROM pg_views WHERE schemaname='kaname' AND viewname='resource_scope_edge';")
 [ "${have_view:-0}" = "1" ] \
-  || die_precond "представления kacho_iam.resource_scope_edge нет — цепь читать нечем"
-have_fact=$(q "SELECT count(*) FROM information_schema.tables WHERE table_schema='kacho_iam' AND table_name='relation_fact';")
+  || die_precond "представления kaname.resource_scope_edge нет — цепь читать нечем"
+have_fact=$(q "SELECT count(*) FROM information_schema.tables WHERE table_schema='kaname' AND table_name='relation_fact';")
 [ "${have_fact:-0}" = "1" ] \
-  || die_precond "таблицы kacho_iam.relation_fact нет — сверять не с чем"
+  || die_precond "таблицы kaname.relation_fact нет — сверять не с чем"
 
 # Перечень типов и запрос — У ВЛАДЕЛЬЦЕВ. Отказ генератора это УСЛОВИЕ НЕ
 # СОЗДАНО, а не «типов ноль»: перепись, не получившая перечня, обязана сказать
@@ -188,10 +188,10 @@ echo "  перечень типов выведен из authzcascade.DerivableTy
 # Без него «расхождений 0» неотличимо от «ничего не прочитали»: пустая проекция
 # даёт ровно тот же ноль, что и здоровое дерево.
 read -r facts pointers edges <<<"$(q "
-  SELECT (SELECT count(*) FROM kacho_iam.relation_fact),
-         (SELECT count(*) FROM kacho_iam.relation_fact
+  SELECT (SELECT count(*) FROM kaname.relation_fact),
+         (SELECT count(*) FROM kaname.relation_fact
            WHERE relation = split_part(subject, ':', 1)),
-         (SELECT count(*) FROM kacho_iam.resource_scope_edge);" | tr '|' ' ')"
+         (SELECT count(*) FROM kaname.resource_scope_edge);" | tr '|' ' ')"
 echo "  осмотрено: прямых фактов ${facts:-0}, из них указателей на предка ${pointers:-0}, рёбер цепи ${edges:-0}"
 
 if [ "${facts:-0}" -eq 0 ] || [ "${edges:-0}" -eq 0 ]; then
@@ -305,7 +305,7 @@ MAX_DEPTH="${MAX_DEPTH:-4}"
 read -r max_ptr max_obj <<<"$(q "
   SELECT n, object_type || ':' || object_id
     FROM (SELECT object_type, object_id, count(*) n
-            FROM kacho_iam.resource_scope_edge
+            FROM kaname.resource_scope_edge
            GROUP BY 1, 2) s
    ORDER BY n DESC LIMIT 1;" | tr '|' ' ')"
 echo "── предел обхода ─────────────────────────────────────────────────────────"

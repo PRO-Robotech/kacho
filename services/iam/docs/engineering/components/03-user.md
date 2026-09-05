@@ -47,7 +47,7 @@ PENDING ⇔ external_id = '';  ACTIVE/BLOCKED ⇔ external_id <> ''
 **Partial UNIQUE:** `users_account_external_id_unique ON (account_id, external_id) WHERE external_id <> ''`.
 
 **ID prefix:** `usr`.
-**DB table:** `kacho_iam.users` (`CREATE TABLE kacho_iam.users` в `0001_initial.sql`).
+**DB table:** `kaname.users` (`CREATE TABLE kaname.users` в `0001_initial.sql`).
 
 **FK contract:**
 
@@ -285,7 +285,7 @@ kubectl -n kacho port-forward svc/api-gateway 18080:8080 &
 
 # psql:
 make -C deploy psql SVC=iam
-# > SELECT id, account_id, email, invite_status, external_id FROM kacho_iam.users LIMIT 10;
+# > SELECT id, account_id, email, invite_status, external_id FROM kaname.users LIMIT 10;
 
 # Integration: invite-flow + UpsertFromIdentity.
 go test -short -count=1 -timeout 120s \

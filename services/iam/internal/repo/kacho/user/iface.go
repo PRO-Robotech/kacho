@@ -1,7 +1,7 @@
 // Copyright (c) PRO-Robotech
 // SPDX-License-Identifier: AGPL-3.0-or-later
 
-// Package user — CQRS port-iface'ы для kacho_iam.users.
+// Package user — CQRS port-iface'ы для kaname.users.
 package user
 
 import (
@@ -61,7 +61,7 @@ type ReaderIface interface {
 	ListAccountsForUser(ctx context.Context, userID domain.UserID) ([]domain.AccountID, error)
 
 	// MembershipExists — состоит ли человек в НАЗВАННОМ аккаунте
-	// (`kacho_iam.memberships`, миграция 470001).
+	// (`kaname.memberships`, миграция 470001).
 	//
 	// Вопрос задаётся ПАРОЙ, потому что членство и есть пара: у человека их может
 	// быть сколько угодно, а колонка `users.account_id` называет ОДНУ из них —

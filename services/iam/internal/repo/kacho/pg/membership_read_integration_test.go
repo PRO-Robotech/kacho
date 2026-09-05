@@ -45,7 +45,7 @@ func seedMembershipRow(
 	var id string
 	err := pool.QueryRow(ctx, `
 		INSERT INTO memberships (id, user_id, account_id, state, invited_by, created_at, updated_at)
-		VALUES (kacho_iam.membership_mirror_id($1, $2), $1, $2, $3, NULLIF($4, ''), $5, $5)
+		VALUES (kaname.membership_mirror_id($1, $2), $1, $2, $3, NULLIF($4, ''), $5, $5)
 		ON CONFLICT (user_id, account_id) DO UPDATE
 		   SET state = EXCLUDED.state, invited_by = EXCLUDED.invited_by,
 		       created_at = EXCLUDED.created_at, updated_at = EXCLUDED.updated_at

@@ -15,7 +15,7 @@ KAC-127 Phase 2 — Kratos config ConfigMap (WebAuthn / Passkey enabled).
     `/iam/v1/hooks/provision` on the :9092 hooks listener (Service kaname-internal).
     C4 fix: the previous target was the PURE gRPC :9091 port with a REST-style
     path that does not exist there → every hook failed silently → users were
-    never mirrored into kacho_iam (no project/namespace). Body = identity-payload.jsonnet
+    never mirrored into kaname (no project/namespace). Body = identity-payload.jsonnet
     (kaname-kratos-hooks ConfigMap), emitting {external_id, email, display_name}.
   - post-recovery web_hook → `/iam/v1/hooks/recovery` на том же :9092. Прежде он
     указывал на легаси :9091 с REST-подобным путём и падал молча, а объяснение

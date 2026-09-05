@@ -75,7 +75,7 @@ func insertSystemRole(ctx context.Context, q interface {
 	Exec(context.Context, string, ...any) (pgconn.CommandTag, error)
 }, name string, owner *string, rules string) error {
 	_, err := q.Exec(ctx, `
-		INSERT INTO kacho_iam.roles (id, cluster_id, name, description, permissions, rules, owner_module)
+		INSERT INTO kaname.roles (id, cluster_id, name, description, permissions, rules, owner_module)
 		VALUES ($1, $2, $3, $4, '[]'::jsonb, $5::jsonb, $6)`,
 		ids.NewID(domain.PrefixRole), domain.ClusterSingletonID, name,
 		"ярус владения роли, проба #1032", rules, owner)
@@ -106,7 +106,7 @@ func liveCatalogModule(t *testing.T, ctx context.Context, pool *pgxpool.Pool) st
 	t.Helper()
 	var module string
 	require.NoError(t, pool.QueryRow(ctx, `
-		SELECT module FROM kacho_iam.catalog_module WHERE live ORDER BY module LIMIT 1`).Scan(&module),
+		SELECT module FROM kaname.catalog_module WHERE live ORDER BY module LIMIT 1`).Scan(&module),
 		"живого модуля каталога не нашлось — сценарий вакуумен, а не пройден")
 	return module
 }
@@ -126,7 +126,7 @@ func TestRolesCarryTheOwnershipTier(t *testing.T) {
 	var validated int
 	require.NoError(t, pool.QueryRow(ctx, `
 		SELECT count(*) FROM pg_constraint
-		 WHERE conrelid = 'kacho_iam.roles'::regclass
+		 WHERE conrelid = 'kaname.roles'::regclass
 		   AND conname IN ('roles_owner_module_fk','roles_rule_wildcards_confined',
 		                   'roles_owner_module_name_prefix')
 		   AND convalidated`).Scan(&validated))
@@ -135,7 +135,7 @@ func TestRolesCarryTheOwnershipTier(t *testing.T) {
 	require.NoError(t, pool.QueryRow(ctx, `
 		SELECT count(*) FILTER (WHERE owner_module IS NOT NULL),
 		       count(*) FILTER (WHERE owner_module IS NULL)
-		  FROM kacho_iam.roles`).Scan(&owned, &platform))
+		  FROM kaname.roles`).Scan(&owned, &platform))
 
 	mods, _, _ := liveCatalogCounts(t, ctx, pool)
 	// Перепись печатается ВСЕГДА: «ролей с владельцем ноль» — ожидаемое
@@ -209,8 +209,8 @@ func TestResourceWildcardOutsideTheOwningModuleIsRefused(t *testing.T) {
 
 	var owner, foreign string
 	require.NoError(t, pool.QueryRow(ctx, `
-		SELECT (SELECT module FROM kacho_iam.catalog_module WHERE live ORDER BY module LIMIT 1),
-		       (SELECT module FROM kacho_iam.catalog_module WHERE live ORDER BY module DESC LIMIT 1)`).
+		SELECT (SELECT module FROM kaname.catalog_module WHERE live ORDER BY module LIMIT 1),
+		       (SELECT module FROM kaname.catalog_module WHERE live ORDER BY module DESC LIMIT 1)`).
 		Scan(&owner, &foreign))
 	require.NotEqual(t, owner, foreign,
 		"живых модулей каталога меньше двух — сценарий «чужой модуль» невыразим, а не пройден")
@@ -301,19 +301,19 @@ func retireModuleReturningErr(t *testing.T, ctx context.Context, pool *pgxpool.P
 	relocateModuleGrants(t, ctx, tx, module, reason)
 
 	_, err = tx.Exec(ctx, `
-		UPDATE kacho_iam.catalog_verb
+		UPDATE kaname.catalog_verb
 		   SET live = false, retired_at = now(), retired_reason = $2
 		 WHERE module = $1 AND live`, module, reason)
 	require.NoError(t, err, "снятие глаголов модуля")
 
 	_, err = tx.Exec(ctx, `
-		UPDATE kacho_iam.catalog_resource
+		UPDATE kaname.catalog_resource
 		   SET live = false, retired_at = now(), retired_reason = $2
 		 WHERE module = $1 AND live`, module, reason)
 	require.NoError(t, err, "снятие ресурсов модуля")
 
 	_, err = tx.Exec(ctx, `
-		UPDATE kacho_iam.catalog_module
+		UPDATE kaname.catalog_module
 		   SET live = false, retired_at = now(), retired_reason = $2
 		 WHERE module = $1 AND live`, module, reason)
 	return err
@@ -343,7 +343,7 @@ func TestOwnerRetiredFromTheCatalogIsRefusedByTheLivenessKey(t *testing.T) {
 
 	var live bool
 	require.NoError(t, pool.QueryRow(ctx,
-		`SELECT live FROM kacho_iam.catalog_module WHERE module = $1`, withdrawnModule).Scan(&live))
+		`SELECT live FROM kaname.catalog_module WHERE module = $1`, withdrawnModule).Scan(&live))
 	require.False(t, live, "предпосылка сценария: модуль снят")
 
 	owner := withdrawnModule
@@ -406,7 +406,7 @@ func TestRetiringAModuleThatOwnsALiveRoleIsRefused(t *testing.T) {
 	// «модуль снять нельзя НИКОГДА», а это ровно тот исход, которым круг 1
 	// приёмки отверг форму ключа живости.
 	res, err := pool.Exec(ctx, `
-		UPDATE kacho_iam.roles
+		UPDATE kaname.roles
 		   SET live = false, retired_at = now(), retired_reason = 'проба #2026 -12'
 		 WHERE owner_module = $1 AND live`, owner)
 	require.NoError(t, err, "пометка снятия ролей модуля")
@@ -416,7 +416,7 @@ func TestRetiringAModuleThatOwnsALiveRoleIsRefused(t *testing.T) {
 
 	var live bool
 	require.NoError(t, pool.QueryRow(ctx,
-		`SELECT live FROM kacho_iam.catalog_module WHERE module = $1`, owner).Scan(&live))
+		`SELECT live FROM kaname.catalog_module WHERE module = $1`, owner).Scan(&live))
 	require.Falsef(t, live,
 		"модуль %q, все роли которого СНЯТЫ, обязан сниматься: обратное означало бы, что "+
 			"ключ не держит порядок, а запирает каталог навсегда", owner)
@@ -425,7 +425,7 @@ func TestRetiringAModuleThatOwnsALiveRoleIsRefused(t *testing.T) {
 	var roles, liveRoles int
 	require.NoError(t, pool.QueryRow(ctx,
 		`SELECT count(*), count(*) FILTER (WHERE live)
-		   FROM kacho_iam.roles WHERE owner_module = $1`, owner).Scan(&roles, &liveRoles))
+		   FROM kaname.roles WHERE owner_module = $1`, owner).Scan(&roles, &liveRoles))
 	t.Logf("модуль %q снят (переселено выдач %d, объявлений %d), ролей с этим владельцем %d, "+
 		"из них живых %d", owner, verbs, refs, roles, liveRoles)
 	require.Positive(t, roles, "снятие модуля роль НЕ удаляет — она помечена")

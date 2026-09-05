@@ -88,7 +88,7 @@ an existing (PENDING) row and succeeds. Bindings carry the internal minted id
 (never a raw external subject), which cannot exist before the principal is
 provisioned — so "forward-referencing a subject that has no row at all" was a
 phantom-grant / typo vector, not a real pre-authorization capability, and is now
-closed. Cross-account subjects live in the same `kacho_iam` DB and are unaffected.
+closed. Cross-account subjects live in the same `kaname` DB and are unaffected.
 
 **Superseded convergence note**: the r2 doc proposed typed nullable FK columns or
 `SERIALIZABLE` as the only race-free options and deferred both. The r3 trigger with
@@ -505,7 +505,7 @@ _Reviewed 2026-08-18 (task #645, list page is a page of the visible)._
 ## 14. СНЯТО — двери, писавшие кортёж мимо журнала, закрыты (стадия S6)
 
 **Что было расхождением.** Два места писали кортёж во внешний движок отношений напрямую,
-не кладя строку журнала `kacho_iam.fga_outbox`: административный глагол записи кортежей
+не кладя строку журнала `kaname.fga_outbox`: административный глагол записи кортежей
 внутреннего листенера и `InternalIAMService.WriteCreatorTuple`. Поставленный так кортёж
 **не попадал в проекцию `relation_fact` никогда**: движок отвечал «да», своя БД — «нет»,
 и такое расхождение разбирают в правах, а не в наполнении.
@@ -628,7 +628,7 @@ IMG=oryd/hydra:<версия> bash services/iam/scripts/provider-revocation-equi
 
 ## Быстрый путь отзыва `session_revoked` снят вместе со своим триггером (#755)
 
-**Что было.** Триггер на `kacho_iam.session_revocations` слал уведомление в канал
+**Что было.** Триггер на `kaname.session_revocations` слал уведомление в канал
 `session_revoked` на каждую вставку. Производитель работал; слушателей было **ноль
 с первого дня схемы**, и ноль — не «пока не написали», а по построению.
 
@@ -665,14 +665,14 @@ Postgres у края нет ни одного файла, и завести ег
 > [!note] Ради чего эта запись осталась после закрытия предмета
 > Ловится здесь не канал, а КЛАСС: механизм, у которого объявление есть, а производителя
 > эффекта нет. Экземпляров при перемере нашлось **два**, а не один: второй —
-> `kacho_iam_fga_outbox`, чей дренаж снят вместе с внешним движком отношений
+> `kaname_fga_outbox`, чей дренаж снят вместе с внешним движком отношений
 > (задача #1436). Поэтому вместо третьей записи «нашли и починили» заведён гейт, который
 > спрашивает ОБЕ стороны в одном прогоне — живую схему о производителе и дерево о
 > потребителе: `notify_channel_has_a_listener_integration_test.go`,
 > `TestIntegration_EveryProducedNotifyChannelIsNamedByAConsumer`. Прежняя проба того же
 > файла судила ТОЛЬКО производителя и потому осталась бы зелёной на обоих.
 >
-> Второй экземпляр с тех пор **тоже закрыт**: триггер `kacho_iam_fga_outbox` снят
+> Второй экземпляр с тех пор **тоже закрыт**: триггер `kaname_fga_outbox` снят
 > миграцией `20260829123045_intent_journal_channel_retires_with_its_drainer.sql`, его
 > регрессия — `notify_channel_intent_journal_integration_test.go`. Поэтому ведомость
 > прощений гейта сегодня **пуста**, и это его цель, а не недосмотр: прощение снял сам
@@ -1122,7 +1122,7 @@ git grep -n 'codes\.InvalidArgument, "invalid .* id' -- 'services/iam/**/*.go' '
 ведёт себя верно, и запись существует затем, чтобы «решено не выносить»
 перестало быть неотличимым от «ещё не сделано».
 
-**Что.** `kacho_iam.invite_mail_outbox.sent_at` заполняет дренаж в момент сдачи
+**Что.** `kaname.invite_mail_outbox.sent_at` заполняет дренаж в момент сдачи
 письма ретранслятору (`UPDATE … SET sent_at = now()`). На контракт величина не
 выходит НИ ОДНИМ полем. Предикат:
 

@@ -34,7 +34,7 @@ import (
 	iamerr "github.com/PRO-Robotech/kacho-iam/internal/errors"
 )
 
-// SubjectStateReader — тонкий read-адаптер над kacho_iam.{users,service_accounts}.
+// SubjectStateReader — тонкий read-адаптер над kaname.{users,service_accounts}.
 type SubjectStateReader struct {
 	pool *pgxpool.Pool
 }
@@ -52,7 +52,7 @@ func NewSubjectStateReader(pool *pgxpool.Pool) *SubjectStateReader {
 func (c *SubjectStateReader) UserInviteStatus(ctx context.Context, userID string) (domain.InviteStatus, error) {
 	var st string
 	err := c.pool.QueryRow(ctx,
-		`SELECT invite_status FROM kacho_iam.users WHERE id = $1`, userID).Scan(&st)
+		`SELECT invite_status FROM kaname.users WHERE id = $1`, userID).Scan(&st)
 	if err == nil {
 		return domain.InviteStatus(st), nil
 	}
@@ -68,7 +68,7 @@ func (c *SubjectStateReader) UserInviteStatus(ctx context.Context, userID string
 func (c *SubjectStateReader) ServiceAccountEnabled(ctx context.Context, svaID string) (bool, error) {
 	var enabled bool
 	err := c.pool.QueryRow(ctx,
-		`SELECT enabled FROM kacho_iam.service_accounts WHERE id = $1`, svaID).Scan(&enabled)
+		`SELECT enabled FROM kaname.service_accounts WHERE id = $1`, svaID).Scan(&enabled)
 	if err == nil {
 		return enabled, nil
 	}

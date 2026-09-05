@@ -31,7 +31,7 @@ export type ClusterGrantSubjectType = OpenEnum<"USER" | "SERVICE_ACCOUNT">;
 
 /**
  * Денормализованный snapshot активной cluster_admin_grants row + JOIN на
- * kacho_iam.users. Email/display_name — output-only.
+ * kaname.users. Email/display_name — output-only.
  */
 export interface ClusterAdminEntry {
   cluster_admin_grant_id: string;

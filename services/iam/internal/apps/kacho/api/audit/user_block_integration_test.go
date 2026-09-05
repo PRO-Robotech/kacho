@@ -57,7 +57,7 @@ func userInviteStatus(ctx context.Context, t *testing.T, env *testEnv, uid domai
 	t.Helper()
 	var st string
 	require.NoError(t, env.pool.QueryRow(ctx,
-		`SELECT invite_status FROM kacho_iam.users WHERE id = $1`, string(uid)).Scan(&st))
+		`SELECT invite_status FROM kaname.users WHERE id = $1`, string(uid)).Scan(&st))
 	return st
 }
 
@@ -390,7 +390,7 @@ func TestUserBlock_PendingInvitationIsRefused(t *testing.T) {
 
 	pending := domain.UserID(ids.NewID(domain.PrefixUser))
 	_, err := env.pool.Exec(ctx, `
-		INSERT INTO kacho_iam.users (id, account_id, external_id, email, display_name, invite_status)
+		INSERT INTO kaname.users (id, account_id, external_id, email, display_name, invite_status)
 		VALUES ($1, $2, '', $3, $4, 'PENDING')`,
 		string(pending), string(accID), "pending-blk@example.com", "Pending")
 	require.NoError(t, err)
@@ -424,7 +424,7 @@ func seedIdentity(t *testing.T, ctx context.Context, env *testEnv,
 	t.Helper()
 	uid := domain.UserID(ids.NewID(domain.PrefixUser))
 	_, err := env.pool.Exec(ctx, `
-		INSERT INTO kacho_iam.users (id, account_id, external_id, email, display_name, invite_status)
+		INSERT INTO kaname.users (id, account_id, external_id, email, display_name, invite_status)
 		VALUES ($1, $2, $3, $4, $5, $6)`,
 		string(uid), string(accID), string(ext), string(email), "Identity", status)
 	require.NoError(t, err, "seed %s identity in %s", status, accID)
@@ -444,8 +444,8 @@ func addMembership(t *testing.T, ctx context.Context, env *testEnv,
 	uid domain.UserID, accID domain.AccountID) {
 	t.Helper()
 	_, err := env.pool.Exec(ctx, `
-		INSERT INTO kacho_iam.memberships (id, user_id, account_id, state)
-		VALUES (kacho_iam.membership_mirror_id($1, $2), $1, $2, 'ACTIVE')`,
+		INSERT INTO kaname.memberships (id, user_id, account_id, state)
+		VALUES (kaname.membership_mirror_id($1, $2), $1, $2, 'ACTIVE')`,
 		string(uid), string(accID))
 	require.NoError(t, err, "add membership of %s in %s", uid, accID)
 }
@@ -459,7 +459,7 @@ func addMembership(t *testing.T, ctx context.Context, env *testEnv,
 func membershipStates(ctx context.Context, t *testing.T, env *testEnv, uid domain.UserID) map[string]string {
 	t.Helper()
 	rows, err := env.pool.Query(ctx,
-		`SELECT account_id, state FROM kacho_iam.memberships WHERE user_id = $1`, string(uid))
+		`SELECT account_id, state FROM kaname.memberships WHERE user_id = $1`, string(uid))
 	require.NoError(t, err)
 	defer rows.Close()
 	out := map[string]string{}
@@ -482,7 +482,7 @@ func countIdentityRowsByEmail(ctx context.Context, t *testing.T, env *testEnv, e
 	t.Helper()
 	var n int
 	require.NoError(t, env.pool.QueryRow(ctx,
-		`SELECT count(*) FROM kacho_iam.users WHERE lower(email) = lower($1)`,
+		`SELECT count(*) FROM kaname.users WHERE lower(email) = lower($1)`,
 		string(email)).Scan(&n))
 	return n
 }
@@ -494,7 +494,7 @@ func countIdentityRowsByExternalID(ctx context.Context, t *testing.T, env *testE
 	t.Helper()
 	var n int
 	require.NoError(t, env.pool.QueryRow(ctx,
-		`SELECT count(*) FROM kacho_iam.users WHERE external_id = $1 AND external_id <> ''`,
+		`SELECT count(*) FROM kaname.users WHERE external_id = $1 AND external_id <> ''`,
 		string(ext)).Scan(&n))
 	return n
 }
@@ -545,7 +545,7 @@ func requireRefusedWithoutLeakingSQL(t *testing.T, err error) {
 		"SQLSTATE",
 		"23505",
 		"duplicate key",
-		"kacho_iam",
+		"kaname",
 		"pgx",
 	} {
 		require.NotContains(t, msg, leak,

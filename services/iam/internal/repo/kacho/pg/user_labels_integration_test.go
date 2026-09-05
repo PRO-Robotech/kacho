@@ -35,7 +35,7 @@ func setUserLabels(t *testing.T, ctx context.Context, pool *pgxpool.Pool, uid st
 	t.Helper()
 	payload := jsonObject(labels)
 	_, err := pool.Exec(ctx,
-		`UPDATE kacho_iam.users SET labels = $2::jsonb WHERE id = $1`, uid, payload)
+		`UPDATE kaname.users SET labels = $2::jsonb WHERE id = $1`, uid, payload)
 	require.NoError(t, err, "set user labels")
 }
 

@@ -68,7 +68,7 @@ const scopeEdgeMigrationDir = "services/iam/internal/migrations"
 
 // scopeEdgeViewAnchor — по чему опознаётся миграция, ОБЪЯВЛЯЮЩАЯ представление.
 // Анкер на глаголе, а не на имени: имя встречается в каждой ветви и в шапке.
-var scopeEdgeViewAnchor = regexp.MustCompile(`CREATE\s+(OR\s+REPLACE\s+)?VIEW\s+kacho_iam\.resource_scope_edge\b`)
+var scopeEdgeViewAnchor = regexp.MustCompile(`CREATE\s+(OR\s+REPLACE\s+)?VIEW\s+kaname\.resource_scope_edge\b`)
 
 // actingScopeEdgeMigration — файл с НАИБОЛЬШИМ номером, чей блок `Up` объявляет
 // представление. Он и есть действующее определение: goose применяет по числу, и
@@ -117,7 +117,7 @@ func actingScopeEdgeMigration(t *testing.T) (name, body string) {
 			"молчание означало бы «ничего не прочитано», а не «источники согласны»")
 	}
 	if name == "" {
-		t.Fatalf("среди %d миграций ни одна не объявляет kacho_iam.resource_scope_edge: "+
+		t.Fatalf("среди %d миграций ни одна не объявляет kaname.resource_scope_edge: "+
 			"либо анкер устарел, либо представление снято — в обоих случаях это ОТКАЗ", seen)
 	}
 	t.Logf("осмотрено миграций %d; действующее определение цепи — %s (версия %d)",
@@ -165,7 +165,7 @@ var legalDifferences = []legalDifference{
 		"оговаривает), а цепь даёт. Эталон здесь — ЗАПАСНОЙ СТРУКТУРНЫЙ ПУТЬ " +
 		"(domain.StructuralParent), и модель на его стороне: у типа объявлены все три " +
 		"области"},
-	{"iam_user", "обе стороны читают kacho_iam.memberships (#944 — цепь, #1172 — " +
+	{"iam_user", "обе стороны читают kaname.memberships (#944 — цепь, #1172 — " +
 		"материализация), и это ПРОВЕРЯЕТСЯ отдельным утверждением ниже (источник 4), а не " +
 		"пропускается. Здесь пропущена только ПОСВОЙСТВЕННАЯ сверка колонки-указателя: у " +
 		"личности аккаунт не является свойством её собственной строки, поэтому ветвь цепи " +
@@ -253,7 +253,7 @@ var (
 	// reFromTableAlias — таблица ветви и её ПСЕВДОНИМ. Псевдоним нужен целиком:
 	// по нему отличается «колонка своей строки» (`o`) от таблицы связи (`m`).
 	// Открывающая скобка допускается: свод пишет соединение как `FROM (a CROSS JOIN b)`.
-	reFromTableAlias = regexp.MustCompile(`\(?\s*(kacho_iam\.[a-z_]+)\s+(?:AS\s+)?([a-z][a-z0-9_]*)\b`)
+	reFromTableAlias = regexp.MustCompile(`\(?\s*(kaname\.[a-z_]+)\s+(?:AS\s+)?([a-z][a-z0-9_]*)\b`)
 	// reColumnAlias — псевдоним элемента выборки (`… AS parent_id`), который
 	// пишет свод и не пишет рука.
 	reColumnAlias = regexp.MustCompile(`(?i)\s+AS\s+[a-z_][a-z0-9_]*$`)
@@ -369,7 +369,7 @@ func scopeEdgeViewBody(up string) (string, error) {
 	loc := scopeEdgeViewAnchor.FindStringIndex(up)
 	if loc == nil {
 		return "", fmt.Errorf("в исполняемом блоке нет объявления " +
-			"kacho_iam.resource_scope_edge: разбирать нечего, и молчание здесь означало бы " +
+			"kaname.resource_scope_edge: разбирать нечего, и молчание здесь означало бы " +
 			"«ничего не прочитано», а не «источники согласны»")
 	}
 	body := up[loc[0]:]
@@ -763,8 +763,8 @@ func pointEdit(body string, forms [][2]string) (string, int) {
 // groupPointerForms — увод колонки-указателя группы с account_id на её же id.
 var groupPointerForms = [][2]string{
 	{ // форма свода
-		"    o.account_id AS parent_id,\n    1 AS depth\n   FROM kacho_iam.groups o",
-		"    o.id AS parent_id,\n    1 AS depth\n   FROM kacho_iam.groups o",
+		"    o.account_id AS parent_id,\n    1 AS depth\n   FROM kaname.groups o",
+		"    o.id AS parent_id,\n    1 AS depth\n   FROM kaname.groups o",
 	},
 	{ // рукописная
 		"SELECT 'iam_group'::text, o.id, 'account'::text, o.account_id, 1",
@@ -789,15 +789,15 @@ var bindingScopeDropForms = [][2]string{
 var identityBranchToColumnForms = [][2]string{
 	{ // форма свода
 		"    m.user_id AS object_id,\n    'account'::text AS parent_type,\n" +
-			"    m.account_id AS parent_id,\n    1 AS depth\n   FROM kacho_iam.memberships m",
+			"    m.account_id AS parent_id,\n    1 AS depth\n   FROM kaname.memberships m",
 		"    o.id AS object_id,\n    'account'::text AS parent_type,\n" +
-			"    o.account_id AS parent_id,\n    1 AS depth\n   FROM kacho_iam.users o",
+			"    o.account_id AS parent_id,\n    1 AS depth\n   FROM kaname.users o",
 	},
 	{ // рукописная
 		"SELECT 'iam_user'::text, m.user_id, 'account'::text, m.account_id, 1\n" +
-			"    FROM kacho_iam.memberships m",
+			"    FROM kaname.memberships m",
 		"SELECT 'iam_user'::text, o.id, 'account'::text, o.account_id, 1\n" +
-			"    FROM kacho_iam.users o",
+			"    FROM kaname.users o",
 	},
 }
 
@@ -813,9 +813,9 @@ var handWrittenForms = [][2]string{
 	{
 		" SELECT 'iam_group'::text AS object_type,\n    o.id AS object_id,\n" +
 			"    'account'::text AS parent_type,\n    o.account_id AS parent_id,\n" +
-			"    1 AS depth\n   FROM kacho_iam.groups o",
+			"    1 AS depth\n   FROM kaname.groups o",
 		"  SELECT 'iam_group'::text, o.id, 'account'::text, o.account_id, 1\n" +
-			"    FROM kacho_iam.groups o",
+			"    FROM kaname.groups o",
 	},
 	{
 		"(lower(o.resource_type) = ANY (ARRAY['project'::text, 'account'::text, 'cluster'::text]))",
@@ -910,7 +910,7 @@ func TestG2_InjectionUndeclaredTypeIsFound(t *testing.T) {
 	extra := `
 UNION ALL
   SELECT 'iam_unnamed'::text, o.id, 'account'::text, o.account_id, 1
-    FROM kacho_iam.users o
+    FROM kaname.users o
    WHERE COALESCE(o.account_id, '') <> ''`
 	broken := "-- +goose Up\n" + strings.Replace(up, view, view+extra, 1) + "\n-- +goose Down\n"
 	if !strings.Contains(broken, "iam_unnamed") {
@@ -1028,7 +1028,7 @@ func TestG2_InjectionLinkedParentTableDivergedInTheChainIsFound(t *testing.T) {
 			"строки: обе записи о предке разошлись, а сторож этого не заметил")
 	}
 	joined := strings.Join(found, "\n")
-	for _, want := range []string{"iam_user", "kacho_iam.users", "kacho_iam.memberships"} {
+	for _, want := range []string{"iam_user", "kaname.users", "kaname.memberships"} {
 		if !strings.Contains(joined, want) {
 			t.Errorf("находка не называет %q:\n%s", want, joined)
 		}
@@ -1057,7 +1057,7 @@ func TestG2_InjectionLinkedParentTableDivergedInThePlanIsFound(t *testing.T) {
 			"цепи, читающей таблицу связи: дрейф со стороны материализации невидим")
 	}
 	joined := strings.Join(found, "\n")
-	for _, want := range []string{"iam_user", "kacho_iam.memberships"} {
+	for _, want := range []string{"iam_user", "kaname.memberships"} {
 		if !strings.Contains(joined, want) {
 			t.Errorf("находка не называет %q:\n%s", want, joined)
 		}

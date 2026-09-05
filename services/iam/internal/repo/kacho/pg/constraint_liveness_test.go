@@ -84,7 +84,7 @@ var (
 	reRenameIndex = regexp.MustCompile(`(?i)\bALTER\s+INDEX\s+(?:IF\s+EXISTS\s+)?([a-z0-9_.]+)\s+RENAME\s+TO\s+([a-z0-9_]+)`)
 )
 
-// bareTable снимает имя схемы: миграции пишут и `kacho_iam.t`, и `t`.
+// bareTable снимает имя схемы: миграции пишут и `kaname.t`, и `t`.
 func bareTable(s string) string {
 	s = strings.ToLower(strings.TrimSpace(s))
 	if i := strings.LastIndex(s, "."); i >= 0 {

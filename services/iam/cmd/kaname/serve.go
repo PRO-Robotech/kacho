@@ -135,11 +135,11 @@ func runServe(cfg config.Config) error {
 		logger.Info("kaname CQRS slave-pool disabled — Reader-TX fallback to master")
 	}
 
-	// Schema = `kacho_iam`. cfg.DSN() уже несет
-	// `options=-c search_path=kacho_iam,public` — unqualified-references из repo-кода
-	// резолвятся в kacho_iam. operations-repo дополнительно передает схему явно
+	// Schema = `kaname`. cfg.DSN() уже несет
+	// `options=-c search_path=kaname,public` — unqualified-references из repo-кода
+	// резолвятся в kaname. operations-repo дополнительно передает схему явно
 	// для квалификации SQL-операций.
-	opsRepo := operations.NewRepo(pool, "kacho_iam")
+	opsRepo := operations.NewRepo(pool, "kaname")
 
 	// Фоновая уборка терминальных строк таблицы операций.
 	//
@@ -340,7 +340,7 @@ func runServe(cfg config.Config) error {
 	// ПРИМЕНЕНИЕ РОЛЕЙ ДОСТАВЛЕННОГО — ПОСЛЕ стража паритета каталога
 	// (задача #2010).
 	//
-	// Применитель ролей — единственный писатель строк `kacho_iam.roles` в
+	// Применитель ролей — единственный писатель строк `kaname.roles` в
 	// прод-коде помимо миграции; до этой провязки его не звал никто, и
 	// объявленная манифестом роль доезжала до базы только пересборкой образа.
 	// Довод о месте, порядке и о том, почему отказ фатален, — шапка
@@ -1313,7 +1313,7 @@ func runServe(cfg config.Config) error {
 
 	// ДРЕНАЖА ЖУРНАЛА НАМЕРЕНИЙ ЗДЕСЬ НЕТ — снят вместе с адресатом.
 	//
-	// Он читал `kacho_iam.fga_outbox` и применял каждую строку к внешнему движку
+	// Он читал `kaname.fga_outbox` и применял каждую строку к внешнему движку
 	// отношений. Движка нет; журнал ОСТАЁТСЯ и остаётся не «на всякий случай»:
 	// прямой факт, из которого форма собирает вердикт, складывается ИЗ ЭТОГО ЖУРНАЛА
 	// триггером (миграция 0098). Снять журнал вместе с дренажом значило бы обесточить
@@ -1322,7 +1322,7 @@ func runServe(cfg config.Config) error {
 
 	// ТОЛЧКА К КРАЮ ЗДЕСЬ НЕТ — направление развёрнуто (задача #1024).
 	//
-	// Здесь стоял дренаж `kacho_iam.subject_change_outbox`, который дозванивался до
+	// Здесь стоял дренаж `kaname.subject_change_outbox`, который дозванивался до
 	// края и гасил его кэш решений. Это было ребро ИЗ ЛИСТА ОБРАТНО К ПОТРЕБИТЕЛЮ:
 	// iam объявлен листом графа рёбер — его зовут, он не зовёт никого, — а адрес края
 	// был вдобавок ОБЯЗАТЕЛЬНОЙ ручкой, поэтому владелец прав не поднимался там, где
@@ -1526,7 +1526,7 @@ func runServe(cfg config.Config) error {
 		logger.With(slog.String("component", "rsab_reconciler")), catalogSnapshot)
 	// resource_reconcile_outbox дренажится NOTIFY-driven (паритет с fga_outbox drainer):
 	// AFTER INSERT триггер (миграция 0042) шлет pg_notify на канал
-	// kacho_iam_resource_reconcile_outbox, reconcileAdapter LISTEN'ит его и будит worker —
+	// kaname_resource_reconcile_outbox, reconcileAdapter LISTEN'ит его и будит worker —
 	// смена меток ресурса материализует label-selector грант в пределах одного reconcile-
 	// прохода, а не ждет poll-тика. DrainInterval теперь poll-fallback на пропущенный NOTIFY
 	// (idle-conn-reset): NOTIFY несет latency, поэтому дефолт поднят со 150ms до 1s — реже

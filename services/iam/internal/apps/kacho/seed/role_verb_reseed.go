@@ -216,7 +216,7 @@ func listMaterializingSystemRoles(ctx context.Context, pool *pgxpool.Pool) ([]sy
 		//
 		// Пропуск, а не обработка отказа: у снятой роли проекции быть НЕ ДОЛЖНО,
 		// и ключ здесь работает как задуман. Неверен был отбор.
-		`SELECT id, rules FROM kacho_iam.roles
+		`SELECT id, rules FROM kaname.roles
 		  WHERE is_system = true
 		    AND live
 		    AND rules IS NOT NULL

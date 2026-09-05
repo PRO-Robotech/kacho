@@ -101,7 +101,7 @@ func setupOrphanScope(t *testing.T, ctx context.Context, pool *pgxpool.Pool, suf
 	require.NoError(t, w.Commit(ctx))
 
 	// Историческое состояние: строка проекта снята БЕЗ дренажа выдач.
-	_, err = pool.Exec(ctx, `DELETE FROM kacho_iam.projects WHERE id = $1`, string(dead.ID))
+	_, err = pool.Exec(ctx, `DELETE FROM kaname.projects WHERE id = $1`, string(dead.ID))
 	require.NoError(t, err, "прямое снятие строки проекта — то, что делал Delete до #792")
 
 	// Предпосылка пробы: до уборки висячая выдача ЖИВА. Без этого утверждения
@@ -199,7 +199,7 @@ func bindingRowCount(t *testing.T, ctx context.Context, pool *pgxpool.Pool, id d
 	t.Helper()
 	var n int
 	require.NoError(t, pool.QueryRow(ctx,
-		`SELECT count(*) FROM kacho_iam.access_bindings WHERE id = $1`, string(id)).Scan(&n))
+		`SELECT count(*) FROM kaname.access_bindings WHERE id = $1`, string(id)).Scan(&n))
 	return n
 }
 
@@ -210,7 +210,7 @@ func fgaOutboxRelations(t *testing.T, ctx context.Context, pool *pgxpool.Pool, e
 	t.Helper()
 	rows, err := pool.Query(ctx,
 		`SELECT coalesce(payload->>'relations', '["'||(payload->>'relation')||'"]')
-		   FROM kacho_iam.fga_outbox
+		   FROM kaname.fga_outbox
 		  WHERE event_type = $1 AND payload->>'object' = $2`,
 		eventType, object)
 	require.NoError(t, err)

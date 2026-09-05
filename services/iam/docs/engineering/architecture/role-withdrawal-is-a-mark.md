@@ -31,7 +31,7 @@ SPDX-License-Identifier: AGPL-3.0-or-later
 |---|---:|---|
 | производителей снятия роли модуля в прод-коде | **0** | `git grep -n 'DELETE FROM roles' -- 'services/iam/**/*.go' ':!*_test.go'` → **1** оператор, и он сужен `is_system = false`; единица — оператор Go-файла |
 | прод-импортёров применителя ролей | **0** | `git grep -l 'apps/kacho/moduleroles' -- '*.go'` за вычетом `*_test.go`; единица — файл |
-| миграций, снимавших роль удалением | **9** | `git grep -c 'DELETE FROM kacho_iam.roles' -- 'services/iam/internal/migrations/*.sql'`; единица — **файл**, а не вхождение (`git grep -c` печатает строку на файл) |
+| миграций, снимавших роль удалением | **9** | `git grep -c 'DELETE FROM kaname.roles' -- 'services/iam/internal/migrations/*.sql'`; единица — **файл**, а не вхождение (`git grep -c` печатает строку на файл) |
 | таблиц каталога с пометкой снятия | **3** | `retired_at timestamptz` у `catalog_module`, `catalog_resource`, `catalog_verb` |
 | колонок живости формы `CASE WHEN live THEN true END` | **2** | `grep -n 'GENERATED ALWAYS AS' services/iam/internal/migrations/*.sql` — `20260902065414:103`, `20260902174501:146` |
 
@@ -115,7 +115,7 @@ APPROVED) §2.7 говорит дословно: «**Колонка жизнен
 > у снятия модуля появился ещё один уровень. Порядок вниз был «глагол → ресурс →
 > модуль» (`modulecatalog/apply.go`, шаги 6-7); стал **«глагол → ресурс → РОЛЬ →
 > модуль»**. Писатель `RetireModule`, которого сегодня не существует ни одного
-> (предикат: `git grep -nE 'UPDATE +kacho_iam\.catalog_module' --
+> (предикат: `git grep -nE 'UPDATE +kaname\.catalog_module' --
 > 'services/iam/**/*.go' ':!*_test.go'` → пусто, при том что тот же предикат по
 > `catalog_verb` и `catalog_resource` даёт по оператору — контроль различает),
 > обязан снимать роли модуля ПЕРЕД его строкой, иначе получит `23503` на своём же

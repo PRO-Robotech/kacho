@@ -459,7 +459,7 @@ func requireTierParityPremise(t *testing.T, rep tierParityReport) {
 func systemRolesOfBase(t *testing.T, ctx context.Context, pool *pgxpool.Pool) []tierParityRole {
 	t.Helper()
 	rows, err := pool.Query(ctx,
-		`SELECT name, permissions, rules FROM kacho_iam.roles WHERE is_system ORDER BY name`)
+		`SELECT name, permissions, rules FROM kaname.roles WHERE is_system ORDER BY name`)
 	require.NoError(t, err)
 	defer rows.Close()
 

@@ -267,7 +267,7 @@ func TestDirectRelationsMany_OnePageIsOneQuestionAndSaysWhatOneByOneSays(t *test
 			// ошибку отбора.
 			for _, rel := range []string{"zeta", relation, "editor", "admin"}[:perObj] {
 				exec(t, ctx, tx,
-					`INSERT INTO kacho_iam.relation_fact (object_type, object_id, relation, subject)
+					`INSERT INTO kaname.relation_fact (object_type, object_id, relation, subject)
 					 VALUES ($1, $2, $3, $4) ON CONFLICT DO NOTHING`, objType, id, rel, subject)
 			}
 		}
@@ -375,7 +375,7 @@ func TestAllowedMany_EveryArmOfTheRuleReachesThePage(t *testing.T) {
 		seedRole(t, ctx, tx, "rol-labels", "vpc_network", "get", "labels", `{"env":"prod"}`)
 		bindRole(t, ctx, tx, "acb-labels", "rol-labels")
 		exec(t, ctx, tx,
-			`UPDATE kacho_iam.resource_mirror SET labels = '{"env":"prod"}'::jsonb
+			`UPDATE kaname.resource_mirror SET labels = '{"env":"prod"}'::jsonb
 			  WHERE object_type = $1 AND object_id = $2`, catalogFormOf(t, "vpc_network"), labelsHit)
 
 		// ПРЯМОЙ ФАКТ на самом объекте — ветвь, не связанная с выдачами вовсе.
@@ -383,7 +383,7 @@ func TestAllowedMany_EveryArmOfTheRuleReachesThePage(t *testing.T) {
 		// произвольное имя: факт под чужим именем не совпал бы ни с одним
 		// источником и исчез бы молча — то есть проба зеленела бы на отказе.
 		exec(t, ctx, tx,
-			`INSERT INTO kacho_iam.relation_fact (object_type, object_id, relation, subject)
+			`INSERT INTO kaname.relation_fact (object_type, object_id, relation, subject)
 			 VALUES ('vpc_network', $1, 'v_get', $2)`, factHit, subject)
 	})
 	asker := relverdict.NewAsker(pool)

@@ -751,8 +751,8 @@ security:
 # the last ANALYZE.
 #
 # NOT EVERY TABLE BELOW IS ONE. Two of iam's are journals, not queues:
-# `kacho_iam.fga_outbox` is read by a trigger that folds the direct fact inside the
-# SAME transaction as the insert, and `kacho_iam.subject_change_outbox` is read by
+# `kaname.fga_outbox` is read by a trigger that folds the direct fact inside the
+# SAME transaction as the insert, and `kaname.subject_change_outbox` is read by
 # the edge with a cursor. Their delivery columns were dropped with the drainer
 # (kacho#917, #1396), so no claim predicate applies to them at all. The line still
 # stands for pg-iam, on the other half of the argument below: both are append-mostly,
@@ -826,7 +826,7 @@ pg-compute:
     extendedConfiguration: |
       autovacuum_naptime = 5s
 pg-iam:
-  # Carries kacho_iam.fga_outbox, .subject_change_outbox, .resource_reconcile_outbox.
+  # Carries kaname.fga_outbox, .subject_change_outbox, .resource_reconcile_outbox.
   primary:
     extendedConfiguration: |
       autovacuum_naptime = 5s

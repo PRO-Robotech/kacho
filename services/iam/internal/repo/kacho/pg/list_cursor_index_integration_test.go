@@ -46,10 +46,10 @@ func cursorOrderedTables(t *testing.T) []string {
 	// contains the words too, and a regex over raw text finds "FROM the" in an
 	// explanation of the very rule being checked.
 	literalRe := regexp.MustCompile("(?s)`([^`]*)`")
-	// Имя может быть КВАЛИФИЦИРОВАНО схемой (`FROM kacho_iam.limits`), и тогда
+	// Имя может быть КВАЛИФИЦИРОВАНО схемой (`FROM kaname.limits`), и тогда
 	// таблица — второй сегмент, а не первый. Прежняя форма брала первый
 	// идентификатор после FROM и на квалифицированном имени возвращала СХЕМУ:
-	// перепись объявляла таблицей `kacho_iam`, дальше искала у неё индекс и
+	// перепись объявляла таблицей `kaname`, дальше искала у неё индекс и
 	// падала — вердикт неверный, а не находка.
 	//
 	// Класс шире одного запроса: квалифицированные имена есть в 11 файлах
@@ -113,7 +113,7 @@ func TestListCursor_EveryPagedTableHasItsIndex(t *testing.T) {
 				  JOIN pg_class c   ON c.oid = i.indrelid
 				  JOIN pg_class ic  ON ic.oid = i.indexrelid
 				  JOIN pg_namespace n ON n.oid = c.relnamespace
-				 WHERE n.nspname = 'kacho_iam'
+				 WHERE n.nspname = 'kaname'
 				   AND c.relname = $1
 				   AND (SELECT a.attname FROM pg_attribute a
 				         WHERE a.attrelid = c.oid AND a.attnum = i.indkey[0]) = 'created_at'
@@ -122,7 +122,7 @@ func TestListCursor_EveryPagedTableHasItsIndex(t *testing.T) {
 				table).Scan(&count)
 			require.NoError(t, err)
 			require.Positive(t, count, fmt.Sprintf(
-				"kacho_iam.%s is listed with ORDER BY (created_at, id) and a keyset cursor, "+
+				"kaname.%s is listed with ORDER BY (created_at, id) and a keyset cursor, "+
 					"but no index leads with those columns — every page is a sequential scan "+
 					"plus a sort, and the cursor saves only the rows it excludes", table))
 		})

@@ -28,7 +28,7 @@ import (
 	"github.com/PRO-Robotech/kacho-iam/internal/domain"
 )
 
-// setupTestDB hands the calling test its OWN database, with kacho_iam on the
+// setupTestDB hands the calling test its OWN database, with kaname on the
 // search path.
 //
 // It used to start a fresh container and replay the whole migration chain on
@@ -59,7 +59,7 @@ func mustSeedUser(t *testing.T, ctx context.Context, pool *pgxpool.Pool, suffix 
 	defer func() { _ = tx.Rollback(ctx) }()
 
 	_, err = tx.Exec(ctx, `
-		INSERT INTO kacho_iam.users (id, account_id, external_id, email, display_name, invite_status)
+		INSERT INTO kaname.users (id, account_id, external_id, email, display_name, invite_status)
 		VALUES ($1, $2, $3, $4, $5, 'ACTIVE')`,
 		string(uid), string(accID),
 		fmt.Sprintf("ext-%s-%s", suffix, uid),
@@ -69,7 +69,7 @@ func mustSeedUser(t *testing.T, ctx context.Context, pool *pgxpool.Pool, suffix 
 	require.NoError(t, err, "seed user INSERT")
 
 	_, err = tx.Exec(ctx, `
-		INSERT INTO kacho_iam.accounts (id, name, owner_user_id, labels)
+		INSERT INTO kaname.accounts (id, name, owner_user_id, labels)
 		VALUES ($1, $2, $3, '{}'::jsonb)`,
 		string(accID),
 		fmt.Sprintf("seed-acc-%s-%s", suffix, accID[len(accID)-6:]),
@@ -86,7 +86,7 @@ func seedClusterAdmin(t *testing.T, ctx context.Context, pool *pgxpool.Pool, sub
 	t.Helper()
 	id := domain.NewKac127ID(domain.PrefixClusterAdminGrant)
 	_, err := pool.Exec(ctx,
-		`INSERT INTO kacho_iam.cluster_admin_grants
+		`INSERT INTO kaname.cluster_admin_grants
 		     (id, cluster_id, subject_type, subject_id, granted_by, granted_at, granted_until)
 		 VALUES ($1, $2, 'user', $3, $3, now(), NULL)`,
 		id, domain.ClusterSingletonID, string(subject))
@@ -99,7 +99,7 @@ func seedClusterAdmin(t *testing.T, ctx context.Context, pool *pgxpool.Pool, sub
 func bootstrapSeedSubject(t *testing.T, ctx context.Context, pool *pgxpool.Pool) string {
 	t.Helper()
 	rows, err := pool.Query(ctx,
-		`SELECT subject_id FROM kacho_iam.cluster_admin_grants
+		`SELECT subject_id FROM kaname.cluster_admin_grants
 		  WHERE subject_type = 'service_account' AND granted_until IS NULL`)
 	require.NoError(t, err)
 	defer rows.Close()
@@ -125,7 +125,7 @@ func bootstrapSeedSubject(t *testing.T, ctx context.Context, pool *pgxpool.Pool)
 func decommissionBootstrapSeedGrant(t *testing.T, ctx context.Context, pool *pgxpool.Pool) {
 	t.Helper()
 	tag, err := pool.Exec(ctx,
-		`UPDATE kacho_iam.cluster_admin_grants
+		`UPDATE kaname.cluster_admin_grants
 		    SET granted_until = now()
 		  WHERE subject_type = 'service_account' AND granted_until IS NULL`)
 	require.NoError(t, err)
@@ -140,7 +140,7 @@ func seedRevokedClusterAdmin(t *testing.T, ctx context.Context, pool *pgxpool.Po
 	revokedAt := time.Now().UTC().Add(-1 * time.Hour)
 	grantedAt := revokedAt.Add(-1 * time.Hour)
 	_, err := pool.Exec(ctx,
-		`INSERT INTO kacho_iam.cluster_admin_grants
+		`INSERT INTO kaname.cluster_admin_grants
 		     (id, cluster_id, subject_type, subject_id, granted_by, granted_at, granted_until)
 		 VALUES ($1, $2, 'user', $3, $3, $4, $5)`,
 		id, domain.ClusterSingletonID, string(subject), grantedAt, revokedAt)

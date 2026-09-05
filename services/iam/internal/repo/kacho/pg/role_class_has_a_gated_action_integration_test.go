@@ -72,7 +72,7 @@ func ruleLiteral(rs domain.Rules) string {
 func readClusterRules(ctx context.Context, t *testing.T, pool *pgxpool.Pool) (map[string]string, int) {
 	t.Helper()
 	rows, err := pool.Query(ctx,
-		`SELECT name, rules FROM kacho_iam.roles WHERE cluster_id IS NOT NULL ORDER BY name`)
+		`SELECT name, rules FROM kaname.roles WHERE cluster_id IS NOT NULL ORDER BY name`)
 	require.NoError(t, err)
 	defer rows.Close()
 
@@ -164,7 +164,7 @@ func TestRoleRuleRefDropsTheClassItsRuleNoLongerNames(t *testing.T) {
 
 	var total int
 	require.NoError(t, pool.QueryRow(ctx,
-		`SELECT count(*) FROM kacho_iam.role_rule_ref`).Scan(&total))
+		`SELECT count(*) FROM kaname.role_rule_ref`).Scan(&total))
 	t.Logf("перепись: строк проекции объявленных сегментов %d", total)
 	require.NotZerof(t, total,
 		"проекция пуста целиком — «нужной строки нет» получено даром, а не проверено")
@@ -175,8 +175,8 @@ func TestRoleRuleRefDropsTheClassItsRuleNoLongerNames(t *testing.T) {
 	// ближайший положительный контроль этой же пары (модуль, ресурс).
 	rows, err := pool.Query(ctx, `
 		SELECT r.name, coalesce(rr.verb, '(якорь)')
-		  FROM kacho_iam.role_rule_ref rr
-		  JOIN kacho_iam.roles r ON r.id = rr.role_id
+		  FROM kaname.role_rule_ref rr
+		  JOIN kaname.roles r ON r.id = rr.role_id
 		 WHERE rr.module = 'iam' AND rr.resource = 'role'
 		 ORDER BY r.name, 2`)
 	require.NoError(t, err)

@@ -131,10 +131,10 @@ func TestGroup_DeleteVsAddSubject_ConcurrentCAS_NoDangling(t *testing.T) {
 		// Invariant: the group survived and the binding references a live group.
 		var groupCnt, bindCnt int
 		require.NoError(t, master.QueryRow(ctx,
-			`SELECT count(*) FROM kacho_iam.groups WHERE id=$1`, string(g.ID)).Scan(&groupCnt))
+			`SELECT count(*) FROM kaname.groups WHERE id=$1`, string(g.ID)).Scan(&groupCnt))
 		require.Equal(t, 1, groupCnt, "bound group must survive the guarded delete")
 		require.NoError(t, master.QueryRow(ctx,
-			`SELECT count(*) FROM kacho_iam.access_bindings WHERE subject_type='group' AND subject_id=$1`,
+			`SELECT count(*) FROM kaname.access_bindings WHERE subject_type='group' AND subject_id=$1`,
 			string(g.ID)).Scan(&bindCnt))
 		require.Equal(t, 1, bindCnt, "the committed binding must reference the live group")
 	})
@@ -194,10 +194,10 @@ func TestGroup_DeleteVsAddSubject_ConcurrentCAS_NoDangling(t *testing.T) {
 
 		var groupCnt, subjCnt int
 		require.NoError(t, master.QueryRow(ctx,
-			`SELECT count(*) FROM kacho_iam.groups WHERE id=$1`, string(g.ID)).Scan(&groupCnt))
+			`SELECT count(*) FROM kaname.groups WHERE id=$1`, string(g.ID)).Scan(&groupCnt))
 		require.Equal(t, 1, groupCnt, "referenced group must survive the guarded delete")
 		require.NoError(t, master.QueryRow(ctx,
-			`SELECT count(*) FROM kacho_iam.access_binding_subjects WHERE subject_type='group' AND subject_id=$1`,
+			`SELECT count(*) FROM kaname.access_binding_subjects WHERE subject_type='group' AND subject_id=$1`,
 			string(g.ID)).Scan(&subjCnt))
 		require.Equal(t, 1, subjCnt, "the committed subject row must reference the live group")
 	})

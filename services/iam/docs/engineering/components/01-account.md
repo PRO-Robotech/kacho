@@ -41,7 +41,7 @@ Account замещает связку `Organization` + `Cloud` из устаре
 
 **ID prefix:** `acc` (см. `internal/domain/constants.go::PrefixAccount`).
 
-**DB table:** `kacho_iam.accounts` (`CREATE TABLE kacho_iam.accounts` в `0001_initial.sql`).
+**DB table:** `kaname.accounts` (`CREATE TABLE kaname.accounts` в `0001_initial.sql`).
 
 **Sentinel errors → gRPC:**
 
@@ -70,7 +70,7 @@ sequenceDiagram
     participant Cli as Tenant CLI
     participant GW as api-gateway :18080
     participant IAM as kaname :9090
-    participant DB as Postgres (kacho_iam)
+    participant DB as Postgres (kaname)
     participant Out as fga_outbox (журнал намерений)
 
     Cli->>GW: POST /iam/v1/accounts<br/>{"name":"acme"}
@@ -205,7 +205,7 @@ Account.Create **не** идемпотентен — повторный вызо
 | | потолок объёма | потолок темпа |
 |---|---|---|
 | носитель | личность (`users.external_id`) | она же |
-| величина | `kacho_iam.limits`, вид `iam.account` | `kacho_iam.account_admission_rate_limits` |
+| величина | `kaname.limits`, вид `iam.account` | `kaname.account_admission_rate_limits` |
 | умолчание | 5 аккаунтов | 3 заведения за 3600 секунд |
 | отказ | `QUOTA_EXCEEDED`, `KQ001` | `QUOTA_RATE_EXCEEDED`, `KQ004` |
 | что делать вызывающему | ничего — предел терминален | **повторить в следующем окне** |
@@ -250,7 +250,7 @@ kubectl -n kacho port-forward svc/api-gateway 18080:8080 &
 
 # 4. psql.
 make -C deploy psql SVC=iam
-# > SELECT id, name, owner_user_id, created_at FROM kacho_iam.accounts LIMIT 10;
+# > SELECT id, name, owner_user_id, created_at FROM kaname.accounts LIMIT 10;
 
 # 5. Integration tests.
 go test -short -count=1 -timeout 120s ./services/iam/internal/repo/kacho/pg/
@@ -279,7 +279,7 @@ make -C deploy logs-svc SVC=iam
   ошибок: `23503` по этому ключу приходит из `Commit()`, а не из `INSERT`.
 - **CHECK:** `accounts_labels_valid CHECK (kacho_labels_valid(labels))`.
 - **Намерение о владении:** Create-use-case кладёт кортеж владельца
-  `(user:usr_xxx, owner, account:acc_xxx)` в журнал `kacho_iam.fga_outbox` **в том же
+  `(user:usr_xxx, owner, account:acc_xxx)` в журнал `kaname.fga_outbox` **в том же
   writer-tx**; триггер журнала складывает из строки прямой факт (`relation_fact`) там же.
   Отдельного дренажа наружу нет — владение действует с момента фиксации.
 - **Transactional semantics:** INSERT account + INSERT operations + INSERT

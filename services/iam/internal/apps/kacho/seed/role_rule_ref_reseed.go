@@ -4,7 +4,7 @@
 package seed
 
 // role_rule_ref_reseed.go — досев проекции ОБЪЯВЛЕННЫХ СЕГМЕНТОВ правила
-// (`kacho_iam.role_rule_ref`) для системных ролей (kacho#1821).
+// (`kaname.role_rule_ref`) для системных ролей (kacho#1821).
 //
 // # Зачем эта полоса
 //

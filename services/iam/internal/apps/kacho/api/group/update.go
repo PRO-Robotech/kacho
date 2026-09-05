@@ -139,7 +139,7 @@ func (u *UpdateGroupUseCase) Execute(ctx context.Context, in UpdateGroupInput) (
 // BOTH feeds — the durable co-committed reconcile event and the in-process pass.
 //
 // WHY A LABEL CHANGE IS A REVOCATION. iam.group is label-selectable: it is in
-// domain.labelSelectableTypes, and the iam-direct scan spec probes kacho_iam.groups with
+// domain.labelSelectableTypes, and the iam-direct scan spec probes kaname.groups with
 // `labels @> match_labels` (GIN index, migration 0041). So clearing a label that an
 // ARM_LABELS grant matches un-matches the group from that grant — the per-object member
 // row and its FGA tuples must GO. Its cross-service twin gets both feeds for free:

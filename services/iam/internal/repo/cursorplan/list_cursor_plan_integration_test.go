@@ -24,12 +24,12 @@ import (
 func TestIntegration_IAM_CursorPagesTakeTheirOrderFromAnIndex(t *testing.T) {
 	listcursorplan.Run(t, listcursorplan.Options{
 		Service: "iam",
-		Schema:  "kacho_iam",
+		Schema:  "kaname",
 		FS:      migrations.FS,
 		Cases: []listcursorplan.Case{
 			{
 				Table: "operations", Index: "operations_cursor_idx", Order: "created_at ASC, id ASC",
-				Seed: listcursorplan.SeedOperations("kacho_iam"),
+				Seed: listcursorplan.SeedOperations("kaname"),
 			},
 			// ОБРАТНЫЙ обход счёта выдач аккаунта. Существующий
 			// `access_bindings_cursor_idx (created_at, id)` ему не помогает:

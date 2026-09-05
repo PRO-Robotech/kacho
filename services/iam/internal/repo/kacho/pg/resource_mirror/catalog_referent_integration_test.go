@@ -88,7 +88,7 @@ func TestResourceMirror_UpsertTx_TypeOutsideCatalogIsRefused(t *testing.T) {
 				require.NoError(t, uerr, "живой тип каталога обязан приниматься")
 				var n int
 				require.NoError(t, tx.QueryRow(ctx,
-					`SELECT count(*) FROM kacho_iam.resource_mirror
+					`SELECT count(*) FROM kaname.resource_mirror
 					  WHERE object_type = $1 AND object_id = $2`,
 					tc.objectType, tc.objectID).Scan(&n))
 				require.Equal(t, 1, n, "строка зеркала обязана лечь")
@@ -109,7 +109,7 @@ func TestResourceMirror_UpsertTx_TypeOutsideCatalogIsRefused(t *testing.T) {
 			// Отказ не оставляет следа: транзакция ещё жива, и строки в ней нет.
 			var n int
 			require.NoError(t, tx.QueryRow(ctx,
-				`SELECT count(*) FROM kacho_iam.resource_mirror
+				`SELECT count(*) FROM kaname.resource_mirror
 				  WHERE object_type = $1 AND object_id = $2`,
 				tc.objectType, tc.objectID).Scan(&n))
 			require.Equal(t, 0, n, "отвергнутая регистрация не вправе оставить строку зеркала")
@@ -154,18 +154,18 @@ func TestResourceMirror_RetiredTypeKeepsItsAlreadyRegisteredRows(t *testing.T) {
 	// проба ниже зеленела бы и на пустом каталоге.
 	var live bool
 	require.NoError(t, tx.QueryRow(ctx,
-		`SELECT live FROM kacho_iam.catalog_resource WHERE dotted = 'compute.disk'`).Scan(&live))
+		`SELECT live FROM kaname.catalog_resource WHERE dotted = 'compute.disk'`).Scan(&live))
 	require.False(t, live, "предпосылка пробы: `compute.disk` снят строкой каталога")
 
 	// Строка, легшая, пока тип был жив (регистрация прежних времён).
 	_, err = tx.Exec(ctx,
-		`INSERT INTO kacho_iam.resource_mirror (object_type, object_id, parent_project_id)
+		`INSERT INTO kaname.resource_mirror (object_type, object_id, parent_project_id)
 		 VALUES ('compute.disk', 'dsk-legacy', 'prj-P')`)
 	require.NoError(t, err, "снятый тип не вправе становиться непредставимым в зеркале")
 
 	var n int
 	require.NoError(t, tx.QueryRow(ctx,
-		`SELECT count(*) FROM kacho_iam.resource_mirror
+		`SELECT count(*) FROM kaname.resource_mirror
 		  WHERE object_type = 'compute.disk' AND object_id = 'dsk-legacy'`).Scan(&n))
 	require.Equal(t, 1, n, "уже зарегистрированный ресурс снятого типа обязан оставаться читаемым")
 }
@@ -203,7 +203,7 @@ func TestResourceMirror_UpsertTx_VersionBumpAlsoNeedsALiveType(t *testing.T) {
 
 	first := time.Now().UTC().Add(-time.Minute)
 	_, err = tx.Exec(ctx,
-		`INSERT INTO kacho_iam.resource_mirror
+		`INSERT INTO kaname.resource_mirror
 		   (object_type, object_id, parent_project_id, source_version)
 		 VALUES ('compute.disk', 'dsk-bump', 'prj-P', $1)`, first)
 	require.NoError(t, err)
@@ -221,7 +221,7 @@ func TestResourceMirror_UpsertTx_VersionBumpAlsoNeedsALiveType(t *testing.T) {
 	// Контроль: отметка версии НЕ сдвинулась — отказ не применил половину работы.
 	var stored time.Time
 	require.NoError(t, tx.QueryRow(ctx,
-		`SELECT source_version FROM kacho_iam.resource_mirror
+		`SELECT source_version FROM kaname.resource_mirror
 		  WHERE object_type = 'compute.disk' AND object_id = 'dsk-bump'`).Scan(&stored))
 	require.WithinDuration(t, first, stored, time.Second,
 		"отвергнутая регистрация не вправе сдвинуть отметку версии")
@@ -256,7 +256,7 @@ func TestResourceMirror_DeleteTx_DoesNotAskTheCatalog(t *testing.T) {
 
 	stamp := time.Now().UTC().Add(-time.Minute)
 	_, err = tx.Exec(ctx,
-		`INSERT INTO kacho_iam.resource_mirror
+		`INSERT INTO kaname.resource_mirror
 		   (object_type, object_id, parent_project_id, source_version)
 		 VALUES ('compute.disk', 'dsk-withdraw', 'prj-P', $1)`, stamp)
 	require.NoError(t, err)
@@ -266,7 +266,7 @@ func TestResourceMirror_DeleteTx_DoesNotAskTheCatalog(t *testing.T) {
 
 	var n int
 	require.NoError(t, tx.QueryRow(ctx,
-		`SELECT count(*) FROM kacho_iam.resource_mirror
+		`SELECT count(*) FROM kaname.resource_mirror
 		  WHERE object_type = 'compute.disk' AND object_id = 'dsk-withdraw'`).Scan(&n))
 	require.Equal(t, 0, n, "строка обязана быть снята")
 }

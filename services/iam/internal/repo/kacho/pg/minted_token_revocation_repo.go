@@ -39,7 +39,7 @@ func NewMintedTokenRevocationRepo(pool *pgxpool.Pool) *MintedTokenRevocationRepo
 // означать пусто, и вызывающий, получивший ошибку там, где отзыва просто нет,
 // закрылся бы на каждом запросе.
 func (r *MintedTokenRevocationRepo) RevokedBefore(ctx context.Context, subject string) (time.Time, bool, error) {
-	const q = `SELECT revoke_before FROM kacho_iam.minted_token_revocations WHERE subject = $1`
+	const q = `SELECT revoke_before FROM kaname.minted_token_revocations WHERE subject = $1`
 	var at time.Time
 	err := r.pool.QueryRow(ctx, q, subject).Scan(&at)
 	if errors.Is(err, pgx.ErrNoRows) {
@@ -65,10 +65,10 @@ func (r *MintedTokenRevocationRepo) Revoke(ctx context.Context, subject string, 
 	if strings.TrimSpace(decidedBy) == "" {
 		return fmt.Errorf("%w: revocation must name who decided it", iamerr.ErrInvalidArg)
 	}
-	const q = `INSERT INTO kacho_iam.minted_token_revocations (subject, revoke_before, reason, revoked_by)
+	const q = `INSERT INTO kaname.minted_token_revocations (subject, revoke_before, reason, revoked_by)
 		VALUES ($1,$2,$3,$4)
 		ON CONFLICT (subject) DO UPDATE
-		   SET revoke_before = GREATEST(kacho_iam.minted_token_revocations.revoke_before, EXCLUDED.revoke_before),
+		   SET revoke_before = GREATEST(kaname.minted_token_revocations.revoke_before, EXCLUDED.revoke_before),
 		       reason        = EXCLUDED.reason,
 		       revoked_by    = EXCLUDED.revoked_by,
 		       updated_at    = now()`
@@ -121,9 +121,9 @@ func (r *MintedTokenRevocationRepo) Revoke(ctx context.Context, subject string, 
 // `20260827112530`): без него уборка шла бы полным перебором.
 func (r *MintedTokenRevocationRepo) SweepStaleCutoffs(ctx context.Context, grace time.Duration, batch int) (int64, bool, error) {
 	const q = `
-DELETE FROM kacho_iam.minted_token_revocations
+DELETE FROM kaname.minted_token_revocations
  WHERE ctid IN (
-     SELECT ctid FROM kacho_iam.minted_token_revocations
+     SELECT ctid FROM kaname.minted_token_revocations
       WHERE revoke_before < now() - make_interval(secs => $1)
       ORDER BY revoke_before
       LIMIT $2

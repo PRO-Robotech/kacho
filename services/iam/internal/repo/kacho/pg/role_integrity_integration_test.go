@@ -56,7 +56,7 @@ func TestRoleIntegrity_UnresolvedSegments_AgainstLiveProjection(t *testing.T) {
 	// Строки проекции кладём НАПРЯМУЮ: предмет пробы — вопрос к ней, а не путь
 	// её заполнения (у него свой писатель и свои пробы).
 	_, err = pool.Exec(ctx, `
-		INSERT INTO kacho_iam.role_verb (role_id, object_type, verb)
+		INSERT INTO kaname.role_verb (role_id, object_type, verb)
 		VALUES ($1, 'vpc.network', 'get'), ($1, 'vpc.network', 'list')`, string(role.ID))
 	require.NoError(t, err)
 

@@ -77,7 +77,7 @@ UPDATE на `operations.response_data`, замещая поле `private_key_pem
 > издателей числом —
 > [`../architecture/sa-key-issuance-leaves-the-provider.md`](../architecture/sa-key-issuance-leaves-the-provider.md).
 
-**DB table:** `kacho_iam.service_account_oauth_clients` (squashed baseline
+**DB table:** `kaname.service_account_oauth_clients` (squashed baseline
 `internal/migrations/0001_initial.sql`).
 
 **FK contract:** CASCADE delete при удалении SA (в БД); но Hydra clients

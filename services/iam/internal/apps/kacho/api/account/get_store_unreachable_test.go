@@ -38,7 +38,7 @@ func (s *errFGA) Check(context.Context, string, string, string) (bool, error) {
 // The write side of this fake is gone, and its absence is the point. It carried
 // WriteTuples/DeleteTuples because clients.RelationStore used to declare them — a
 // port onto someone else's storage. There is nowhere to write any more: the state
-// an answer is folded from is this service's OWN journal (`kacho_iam.fga_outbox`),
+// an answer is folded from is this service's OWN journal (`kaname.fga_outbox`),
 // and the commit that changes a grant is the same commit that writes it. Methods
 // standing for a port method that no longer exists have no caller and no producer:
 // they cannot be exercised by anything, so they can never fail, and leaving them

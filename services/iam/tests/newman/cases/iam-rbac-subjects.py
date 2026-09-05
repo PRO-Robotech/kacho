@@ -342,7 +342,7 @@ def mint_user(env_var, ext, auth="jwtAccountAdminA"):
     (:8081), so POSTing it at the public {{baseUrl}} (:8080) returns 404 (ban #6). The
     PUBLIC user-mint path a tenant admin can drive over REST is Invite: it INSERTs a
     PENDING user row (invite.go InsertPending) and returns metadata.userId synchronously.
-    The row EXISTS in kacho_iam.users, so the 0049 trigger (existence, status-agnostic)
+    The row EXISTS in kaname.users, so the 0049 trigger (existence, status-agnostic)
     passes and the id is a valid binding subject. email is runId-scoped → a distinct real
     user per run (unique per-run subject → no active-grant UNIQUE collision) referenced
     by no other suite (→ no cross-suite pollution — the property the old synthetic ids

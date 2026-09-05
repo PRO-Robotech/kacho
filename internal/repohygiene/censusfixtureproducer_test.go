@@ -87,9 +87,9 @@ const (
 	// Первая редакция приметы искала одно лишь чтение зеркала и пометила ШЕСТЬ
 	// проб, читающих зеркало по конкретному объекту, — предикат ловил форму
 	// (обращение к таблице), а не существо (квантор).
-	censusMirrorTable  = "kacho_iam.resource_mirror"
-	censusEdgeTable    = "kacho_iam.resource_parent_edge"
-	rawEdgeWriteMarker = "INSERT INTO kacho_iam.resource_parent_edge"
+	censusMirrorTable  = "kaname.resource_mirror"
+	censusEdgeTable    = "kaname.resource_parent_edge"
+	rawEdgeWriteMarker = "INSERT INTO kaname.resource_parent_edge"
 	edgeProducerCall   = "UpsertTx"
 
 	// Пакет-производитель назван ДВАЖДЫ, и это не дубль: у двух величин разные

@@ -119,7 +119,7 @@ func TestSeededRoleRulesResolveOrArePinned(t *testing.T) {
 	require.NoError(t, err)
 	defer pool.Close()
 
-	rows, err := pool.Query(ctx, `SELECT id, name, rules FROM kacho_iam.roles ORDER BY id`)
+	rows, err := pool.Query(ctx, `SELECT id, name, rules FROM kaname.roles ORDER BY id`)
 	require.NoError(t, err)
 
 	type authored struct {

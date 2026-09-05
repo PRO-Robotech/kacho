@@ -96,7 +96,7 @@ func auditRowCount(t *testing.T, ctx context.Context, pool *pgxpool.Pool, recove
 	t.Helper()
 	var n int
 	require.NoError(t, pool.QueryRow(ctx, `
-		SELECT count(*) FROM kacho_iam.audit_outbox
+		SELECT count(*) FROM kaname.audit_outbox
 		 WHERE event_type = 'iam.user.recovery_completed'
 		   AND event_payload->>'recovery_jti' = $1`, recoveryJTI).Scan(&n))
 	return n
@@ -113,7 +113,7 @@ func TestOnRecoveryCompleted_S01_Blocked_KeepBlocked_Revoke_Audit_Idempotent(t *
 	require.NoError(t, err)
 	defer pool.Close()
 	repo := kachopg.New(pool, nil)
-	opsRepo := operations.NewRepo(pool, "kacho_iam")
+	opsRepo := operations.NewRepo(pool, "kaname")
 
 	uid, accID := seedAccountAndUser(t, ctx, pool, "krt_alice", "alice@example.com", "BLOCKED")
 
@@ -150,7 +150,7 @@ func TestOnRecoveryCompleted_S01_Blocked_KeepBlocked_Revoke_Audit_Idempotent(t *
 	assert.Equal(t, 1, auditRowCount(t, ctx, pool, "rec_flow_001"))
 	var tenant string
 	require.NoError(t, pool.QueryRow(ctx, `
-		SELECT tenant_account_id FROM kacho_iam.audit_outbox
+		SELECT tenant_account_id FROM kaname.audit_outbox
 		 WHERE event_payload->>'recovery_jti' = $1`, "rec_flow_001").Scan(&tenant))
 	assert.Equal(t, string(accID), tenant)
 
@@ -172,7 +172,7 @@ func TestOnRecoveryCompleted_S02_Active_Revoke_Audit(t *testing.T) {
 	require.NoError(t, err)
 	defer pool.Close()
 	repo := kachopg.New(pool, nil)
-	opsRepo := operations.NewRepo(pool, "kacho_iam")
+	opsRepo := operations.NewRepo(pool, "kaname")
 
 	uid, _ := seedAccountAndUser(t, ctx, pool, "krt_bob", "bob@example.com", "ACTIVE")
 
@@ -212,7 +212,7 @@ func TestOnRecoveryCompleted_S03_UnknownExternalID_NotFound_NoSideEffects(t *tes
 	require.NoError(t, err)
 	defer pool.Close()
 	repo := kachopg.New(pool, nil)
-	opsRepo := operations.NewRepo(pool, "kacho_iam")
+	opsRepo := operations.NewRepo(pool, "kaname")
 
 	uc := userapp.NewOnRecoveryCompletedUseCase(repo, opsRepo)
 	op, err := uc.Execute(ctx, userapp.OnRecoveryCompletedInput{
@@ -236,7 +236,7 @@ func TestOnRecoveryCompleted_S04_EmailMismatch_FailedPrecondition_NoSideEffects(
 	require.NoError(t, err)
 	defer pool.Close()
 	repo := kachopg.New(pool, nil)
-	opsRepo := operations.NewRepo(pool, "kacho_iam")
+	opsRepo := operations.NewRepo(pool, "kaname")
 
 	uid, _ := seedAccountAndUser(t, ctx, pool, "krt_carol", "carol@example.com", "ACTIVE")
 
@@ -266,7 +266,7 @@ func TestOnRecoveryCompleted_S05_DuplicateJTI_IdempotentNoop(t *testing.T) {
 	require.NoError(t, err)
 	defer pool.Close()
 	repo := kachopg.New(pool, nil)
-	opsRepo := operations.NewRepo(pool, "kacho_iam")
+	opsRepo := operations.NewRepo(pool, "kaname")
 
 	uid, _ := seedAccountAndUser(t, ctx, pool, "krt_alice", "alice@example.com", "BLOCKED")
 	uc := userapp.NewOnRecoveryCompletedUseCase(repo, opsRepo)
@@ -326,7 +326,7 @@ func TestOnRecoveryCompleted_S07_MidTxFailure_FullRollback(t *testing.T) {
 	require.NoError(t, err)
 	defer pool.Close()
 	realRepo := kachopg.New(pool, nil)
-	opsRepo := operations.NewRepo(pool, "kacho_iam")
+	opsRepo := operations.NewRepo(pool, "kaname")
 
 	uid, _ := seedAccountAndUser(t, ctx, pool, "krt_dan", "dan@example.com", "BLOCKED")
 
@@ -372,8 +372,8 @@ func addMembership(t *testing.T, ctx context.Context, pool *pgxpool.Pool,
 ) {
 	t.Helper()
 	_, err := pool.Exec(ctx, `
-		INSERT INTO kacho_iam.memberships (id, user_id, account_id, state)
-		VALUES (kacho_iam.membership_mirror_id($1, $2), $1, $2, $3)
+		INSERT INTO kaname.memberships (id, user_id, account_id, state)
+		VALUES (kaname.membership_mirror_id($1, $2), $1, $2, $3)
 		ON CONFLICT (user_id, account_id) DO UPDATE SET state = EXCLUDED.state`,
 		string(userID), string(accID), state)
 	require.NoError(t, err, "посев членства")
@@ -422,7 +422,7 @@ func TestOnRecoveryCompleted_S09_MultiAccountIdentity_RevokeAll(t *testing.T) {
 	require.NoError(t, err)
 	defer pool.Close()
 	repo := kachopg.New(pool, nil)
-	opsRepo := operations.NewRepo(pool, "kacho_iam")
+	opsRepo := operations.NewRepo(pool, "kaname")
 
 	// Личность: одна строка, заблокирована, домашний аккаунт — accA.
 	u1, accA := seedAccountAndUser(t, ctx, pool, "krt_eve", "eve@example.com", "BLOCKED")
@@ -499,7 +499,7 @@ func assertNoSideEffects(t *testing.T, ctx context.Context, pool *pgxpool.Pool, 
 	t.Helper()
 	var auditN int
 	require.NoError(t, pool.QueryRow(ctx, `
-		SELECT count(*) FROM kacho_iam.audit_outbox
+		SELECT count(*) FROM kaname.audit_outbox
 		 WHERE event_type = 'iam.user.recovery_completed'
 		   AND event_payload->>'recovery_jti' = $1`, recoveryJTI).Scan(&auditN))
 	assert.Equal(t, 0, auditN, "no audit row")

@@ -2,7 +2,7 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
 
 // subject_change_retention.go — УБОРКА журнала смены субъекта
-// (`kacho_iam.subject_change_outbox`, задача #1758).
+// (`kaname.subject_change_outbox`, задача #1758).
 //
 // # Предмет
 //
@@ -98,7 +98,7 @@ import (
 const subjectChangeSweepSQL = `
 WITH head AS (
     SELECT id AS pos, created_at AS aged
-      FROM kacho_iam.subject_change_outbox
+      FROM kaname.subject_change_outbox
      WHERE id <= $3
      ORDER BY id
      LIMIT $2
@@ -112,7 +112,7 @@ WITH head AS (
              ELSE (SELECT max(pos) FROM head WHERE pos < (SELECT pos FROM keep))
            END AS pos
 )
-DELETE FROM kacho_iam.subject_change_outbox
+DELETE FROM kaname.subject_change_outbox
  WHERE id <= (SELECT pos FROM cut)`
 
 // SubjectChangeJournalSweeper — уборщик журнала смены субъекта.

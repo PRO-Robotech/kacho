@@ -373,7 +373,7 @@ func statementsAbout(corpus, bare string) []string {
 	return out
 }
 
-// splitQualifiedTable разбирает `kacho_iam.subject_change_outbox` на сервис и
+// splitQualifiedTable разбирает `kaname.subject_change_outbox` на сервис и
 // голое имя. Имя схемы у всех владельцев — `kacho_<сервис>`, кроме живущих в
 // `public`; сервис сегодня не читается, но возвращается, чтобы отказ мог назвать
 // владельца очереди.

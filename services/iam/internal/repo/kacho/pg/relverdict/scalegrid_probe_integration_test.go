@@ -221,19 +221,19 @@ func newGridFixture(t *testing.T, ctx context.Context, tx pgx.Tx) *gridFixture {
 	// Кластер — СИНГЛТОН, и его строку кладёт миграция. `DO NOTHING` здесь не
 	// проглатывание ошибки, а признание факта: идентификатор фиксирован
 	// ограничением схемы, вставить второй нельзя, и наличие первого — норма.
-	exec(t, ctx, tx, `INSERT INTO kacho_iam.clusters (id, name) VALUES ('cluster_kacho_root', 'kacho')
+	exec(t, ctx, tx, `INSERT INTO kaname.clusters (id, name) VALUES ('cluster_kacho_root', 'kacho')
 		 ON CONFLICT DO NOTHING`)
 	exec(t, ctx, tx,
-		`INSERT INTO kacho_iam.accounts (id, name, owner_user_id) VALUES ('acc-1', 'probe-account', 'usr-1')`)
+		`INSERT INTO kaname.accounts (id, name, owner_user_id) VALUES ('acc-1', 'probe-account', 'usr-1')`)
 	exec(t, ctx, tx,
-		`INSERT INTO kacho_iam.users (id, external_id, email, account_id)
+		`INSERT INTO kaname.users (id, external_id, email, account_id)
 		 VALUES ('usr-1', 'ext-1', 'usr-1@kacho.local', 'acc-1')`)
 	exec(t, ctx, tx,
-		`INSERT INTO kacho_iam.projects (id, account_id, name) VALUES ('prj-1', 'acc-1', 'probe-project')`)
+		`INSERT INTO kaname.projects (id, account_id, name) VALUES ('prj-1', 'acc-1', 'probe-project')`)
 	exec(t, ctx, tx,
-		`INSERT INTO kacho_iam.groups (id, account_id, name) VALUES ($1, 'acc-1', 'probe-group')`, probeGroupID)
+		`INSERT INTO kaname.groups (id, account_id, name) VALUES ($1, 'acc-1', 'probe-group')`, probeGroupID)
 	exec(t, ctx, tx,
-		`INSERT INTO kacho_iam.group_members (group_id, member_type, member_id) VALUES ($1, 'user', 'usr-1')`,
+		`INSERT INTO kaname.group_members (group_id, member_type, member_id) VALUES ($1, 'user', 'usr-1')`,
 		probeGroupID)
 
 	seedProbeRole(t, ctx, tx, "rol-anchor", "probe.anchor")
@@ -262,17 +262,17 @@ func newGridFixture(t *testing.T, ctx context.Context, tx pgx.Tx) *gridFixture {
 func seedProbeRole(t *testing.T, ctx context.Context, tx pgx.Tx, roleID, roleName string) {
 	t.Helper()
 	exec(t, ctx, tx,
-		`INSERT INTO kacho_iam.roles (id, name, permissions, rules, cluster_id)
+		`INSERT INTO kaname.roles (id, name, permissions, rules, cluster_id)
 		 VALUES ($1, $2, '[]'::jsonb,
 		         jsonb_build_array(jsonb_build_object(
 		             'module', 'probe', 'resources', jsonb_build_array('*'),
 		             'verbs',  jsonb_build_array($3::text))),
 		         'cluster_kacho_root')`, roleID, roleName, probeVerb)
 	exec(t, ctx, tx,
-		`INSERT INTO kacho_iam.role_verb (role_id, object_type, verb) VALUES ($1, $2, $3)`,
+		`INSERT INTO kaname.role_verb (role_id, object_type, verb) VALUES ($1, $2, $3)`,
 		roleID, probeCatalogType, probeVerb)
 	exec(t, ctx, tx,
-		`INSERT INTO kacho_iam.role_rule_selectors (role_id, rule_fp, arm, object_types, match_labels)
+		`INSERT INTO kaname.role_rule_selectors (role_id, rule_fp, arm, object_types, match_labels)
 		 VALUES ($1, 'fp-1', 'anchor', ARRAY[$2::text], '{}'::jsonb)`, roleID, probeCatalogType)
 }
 
@@ -304,7 +304,7 @@ func (f *gridFixture) growN(t *testing.T, ctx context.Context, target int) {
 // Первая редакция давала каждой чужой выдаче своего пользователя. На 10⁶ она
 // не сошлась: прогон провёл на этой точке 58 минут и не закончил. Дело не во
 // вставках — их темп линеен, — а в стороже существования субъекта
-// (`kacho_iam.subject_ref_exists`, миграция 0049): он срабатывает НА КАЖДУЮ
+// (`kaname.subject_ref_exists`, миграция 0049): он срабатывает НА КАЖДУЮ
 // строку обеих таблиц выдачи и берёт `FOR KEY SHARE` на строке субъекта. Милион
 // РАЗЛИЧНЫХ субъектов означает миллион различных блокировок строк, накопленных
 // в одной транзакции; тысяча субъектов — тысячу, и повторный захват уже
@@ -347,7 +347,7 @@ func (f *gridFixture) growB(t *testing.T, ctx context.Context, target int) {
 	for i := f.seedBSubjects; i < wantSubjects; i++ {
 		uid := fmt.Sprintf("usr-b%07d", i)
 		must(t, s.QueueRaw(ctx,
-			`INSERT INTO kacho_iam.users (id, external_id, email, account_id)
+			`INSERT INTO kaname.users (id, external_id, email, account_id)
 			 VALUES ($1, $1, $1 || '@kacho.local', 'acc-1')`, uid))
 	}
 	if wantSubjects > f.seedBSubjects {
@@ -359,17 +359,17 @@ func (f *gridFixture) growB(t *testing.T, ctx context.Context, target int) {
 	for i := f.seedBRoles; i < wantRoles; i++ {
 		roleID := fmt.Sprintf("rol-b%05d", i)
 		must(t, s.QueueRaw(ctx,
-			`INSERT INTO kacho_iam.roles (id, name, permissions, rules, cluster_id)
+			`INSERT INTO kaname.roles (id, name, permissions, rules, cluster_id)
 			 VALUES ($1, $2, '[]'::jsonb,
 			         jsonb_build_array(jsonb_build_object(
 			             'module', 'probe', 'resources', jsonb_build_array('*'),
 			             'verbs',  jsonb_build_array($3::text))),
 			         'cluster_kacho_root')`, roleID, fmt.Sprintf("probe.b%05d", i), probeVerb))
 		must(t, s.QueueRaw(ctx,
-			`INSERT INTO kacho_iam.role_verb (role_id, object_type, verb) VALUES ($1, $2, $3)`,
+			`INSERT INTO kaname.role_verb (role_id, object_type, verb) VALUES ($1, $2, $3)`,
 			roleID, probeCatalogType, probeVerb))
 		must(t, s.QueueRaw(ctx,
-			`INSERT INTO kacho_iam.role_rule_selectors (role_id, rule_fp, arm, object_types, match_labels)
+			`INSERT INTO kaname.role_rule_selectors (role_id, rule_fp, arm, object_types, match_labels)
 			 VALUES ($1, 'fp-1', 'anchor', ARRAY[$2::text], '{}'::jsonb)`, roleID, probeCatalogType))
 	}
 	if wantRoles > f.seedBRoles {
@@ -381,11 +381,11 @@ func (f *gridFixture) growB(t *testing.T, ctx context.Context, target int) {
 		roleID := fmt.Sprintf("rol-b%05d", i/bSubjectPool)
 		bid := fmt.Sprintf("acb-b%07d", i)
 		must(t, s.QueueRaw(ctx,
-			`INSERT INTO kacho_iam.access_bindings
+			`INSERT INTO kaname.access_bindings
 			   (id, subject_type, subject_id, role_id, resource_type, resource_id, status)
 			 VALUES ($1, 'user', $2, $3, 'project', 'prj-1', 'ACTIVE')`, bid, uid, roleID))
 		must(t, s.QueueRaw(ctx,
-			`INSERT INTO kacho_iam.access_binding_subjects (binding_id, subject_type, subject_id)
+			`INSERT INTO kaname.access_binding_subjects (binding_id, subject_type, subject_id)
 			 VALUES ($1, 'user', $2)`, bid, uid))
 	}
 	must(t, s.Flush(ctx))
@@ -402,7 +402,7 @@ func (f *gridFixture) growB(t *testing.T, ctx context.Context, target int) {
 func (f *gridFixture) setR(t *testing.T, ctx context.Context, target int, rec scalegrid.Recruit) {
 	t.Helper()
 	if rec != f.recR {
-		exec(t, ctx, f.tx, `DELETE FROM kacho_iam.access_bindings WHERE id LIKE 'acb-r%'`)
+		exec(t, ctx, f.tx, `DELETE FROM kaname.access_bindings WHERE id LIKE 'acb-r%'`)
 		f.seedR, f.recR = 0, rec
 	}
 	if target <= f.seedR {
@@ -417,17 +417,17 @@ func (f *gridFixture) setR(t *testing.T, ctx context.Context, target int, rec sc
 	for i := f.seedRoles; i < target; i++ {
 		roleID := fmt.Sprintf("rol-r%05d", i)
 		must(t, s.QueueRaw(ctx,
-			`INSERT INTO kacho_iam.roles (id, name, permissions, rules, cluster_id)
+			`INSERT INTO kaname.roles (id, name, permissions, rules, cluster_id)
 			 VALUES ($1, $2, '[]'::jsonb,
 			         jsonb_build_array(jsonb_build_object(
 			             'module', 'probe', 'resources', jsonb_build_array('*'),
 			             'verbs',  jsonb_build_array($3::text))),
 			         'cluster_kacho_root')`, roleID, fmt.Sprintf("probe.r%05d", i), probeVerb))
 		must(t, s.QueueRaw(ctx,
-			`INSERT INTO kacho_iam.role_verb (role_id, object_type, verb) VALUES ($1, $2, $3)`,
+			`INSERT INTO kaname.role_verb (role_id, object_type, verb) VALUES ($1, $2, $3)`,
 			roleID, probeCatalogType, probeVerb))
 		must(t, s.QueueRaw(ctx,
-			`INSERT INTO kacho_iam.role_rule_selectors (role_id, rule_fp, arm, object_types, match_labels)
+			`INSERT INTO kaname.role_rule_selectors (role_id, rule_fp, arm, object_types, match_labels)
 			 VALUES ($1, 'fp-1', 'anchor', ARRAY[$2::text], '{}'::jsonb)`, roleID, probeCatalogType))
 	}
 	if target > f.seedRoles {
@@ -438,11 +438,11 @@ func (f *gridFixture) setR(t *testing.T, ctx context.Context, target int, rec sc
 		roleID := fmt.Sprintf("rol-r%05d", i)
 		bid := fmt.Sprintf("acb-r%05d", i)
 		must(t, s.QueueRaw(ctx,
-			`INSERT INTO kacho_iam.access_bindings
+			`INSERT INTO kaname.access_bindings
 			   (id, subject_type, subject_id, role_id, resource_type, resource_id, status)
 			 VALUES ($1, $2, $3, $4, 'project', 'prj-1', 'ACTIVE')`, bid, subjType, subjID, roleID))
 		must(t, s.QueueRaw(ctx,
-			`INSERT INTO kacho_iam.access_binding_subjects (binding_id, subject_type, subject_id)
+			`INSERT INTO kaname.access_binding_subjects (binding_id, subject_type, subject_id)
 			 VALUES ($1, $2, $3)`, bid, subjType, subjID))
 	}
 	must(t, s.Flush(ctx))
@@ -460,7 +460,7 @@ func (f *gridFixture) setR(t *testing.T, ctx context.Context, target int, rec sc
 func (f *gridFixture) setF(t *testing.T, ctx context.Context, target int, rec scalegrid.Recruit) {
 	t.Helper()
 	if rec != f.recF || target < f.seedF {
-		exec(t, ctx, f.tx, `DELETE FROM kacho_iam.relation_fact`)
+		exec(t, ctx, f.tx, `DELETE FROM kaname.relation_fact`)
 		f.seedF, f.recF = 0, rec
 	}
 	if target <= f.seedF {
@@ -487,7 +487,7 @@ func (f *gridFixture) setF(t *testing.T, ctx context.Context, target int, rec sc
 			relation = fmt.Sprintf("v_probe_%04d", i/len(chain))
 		}
 		must(t, s.QueueRaw(ctx,
-			`INSERT INTO kacho_iam.relation_fact (object_type, object_id, relation, subject)
+			`INSERT INTO kaname.relation_fact (object_type, object_id, relation, subject)
 			 VALUES ($1, $2, $3, $4)`, obj[0], obj[1], relation, subject))
 	}
 	must(t, s.Flush(ctx))
@@ -520,10 +520,10 @@ func (f *gridFixture) analyze(t *testing.T, ctx context.Context) {
 	// Что этим НЕ достигнуто: молчание гейта на этом файле по-прежнему не
 	// доказывает, что фикстура эквивалентна производителю. Доказывает это только
 	// построчная сверка в scalegrid_seeder_integration_test.go.
-	exec(t, ctx, f.tx, `ANALYZE kacho_iam.resource_mirror, kacho_iam.access_bindings,
-		kacho_iam.access_binding_subjects, kacho_iam.relation_fact,
-		kacho_iam.role_verb, kacho_iam.role_rule_selectors, kacho_iam.group_members`)
-	exec(t, ctx, f.tx, `ANALYZE kacho_iam.resource_parent_edge`)
+	exec(t, ctx, f.tx, `ANALYZE kaname.resource_mirror, kaname.access_bindings,
+		kaname.access_binding_subjects, kaname.relation_fact,
+		kaname.role_verb, kaname.role_rule_selectors, kaname.group_members`)
+	exec(t, ctx, f.tx, `ANALYZE kaname.resource_parent_edge`)
 }
 
 // seedPoint — привести фикстуру к точке и собрать статистику.
@@ -658,7 +658,7 @@ func observedScope(t *testing.T, ctx context.Context, tx pgx.Tx) int {
 		      FROM scope s
 		      CROSS JOIN LATERAL (
 		             SELECT pe.parent_type, pe.parent_id
-		               FROM kacho_iam.resource_parent_edge pe
+		               FROM kaname.resource_parent_edge pe
 		              WHERE pe.object_type = s.s_type AND pe.object_id = s.s_id
 		              ORDER BY pe.depth
 		              LIMIT $3::int
@@ -684,7 +684,7 @@ func distinctScope(t *testing.T, ctx context.Context, tx pgx.Tx) int {
 		      FROM scope s
 		      CROSS JOIN LATERAL (
 		             SELECT pe.parent_type, pe.parent_id
-		               FROM kacho_iam.resource_parent_edge pe
+		               FROM kaname.resource_parent_edge pe
 		              WHERE pe.object_type = s.s_type AND pe.object_id = s.s_id
 		              ORDER BY pe.depth
 		              LIMIT $3::int
@@ -1184,7 +1184,7 @@ func TestScaleGrid_ScopeCardinalityIsMeasuredNotAssumed(t *testing.T) {
 		      FROM scope s
 		      CROSS JOIN LATERAL (
 		             SELECT pe.parent_type, pe.parent_id
-		               FROM kacho_iam.resource_parent_edge pe
+		               FROM kaname.resource_parent_edge pe
 		              WHERE pe.object_type = s.s_type AND pe.object_id = s.s_id
 		              ORDER BY pe.depth
 		              LIMIT 4

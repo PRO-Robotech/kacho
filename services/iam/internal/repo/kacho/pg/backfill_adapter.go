@@ -96,7 +96,7 @@ func (a *BackfillAdapter) TryAcquireSingletonBackfillLock(ctx context.Context) (
 func (a *BackfillAdapter) ListActiveBindingIDsChunk(ctx context.Context, afterID string, limit int) ([]domain.AccessBindingID, error) {
 	rows, err := a.pool.Query(ctx,
 		`SELECT id
-		   FROM kacho_iam.access_bindings
+		   FROM kaname.access_bindings
 		  WHERE status = 'ACTIVE' AND id > $1
 		  ORDER BY id ASC
 		  LIMIT $2`,
@@ -135,16 +135,16 @@ func (a *BackfillAdapter) ListActiveBindingMaterialization(ctx context.Context) 
 		`SELECT b.id,
 		        COALESCE(am.cnt, 0) AS active_members,
 		        COALESCE(lt.cnt, 0) AS ledger_count
-		   FROM kacho_iam.access_bindings b
+		   FROM kaname.access_bindings b
 		   LEFT JOIN (
 		        SELECT binding_id, count(*) AS cnt
-		          FROM kacho_iam.access_binding_target_members
+		          FROM kaname.access_binding_target_members
 		         WHERE verification_status = 'ACTIVE'
 		         GROUP BY binding_id
 		   ) am ON am.binding_id = b.id
 		   LEFT JOIN (
 		        SELECT binding_id, count(*) AS cnt
-		          FROM kacho_iam.access_binding_emitted_tuples
+		          FROM kaname.access_binding_emitted_tuples
 		         GROUP BY binding_id
 		   ) lt ON lt.binding_id = b.id
 		  WHERE b.status = 'ACTIVE'`)
@@ -182,13 +182,13 @@ func (a *BackfillAdapter) ListActiveBindingMaterialization(ctx context.Context) 
 func (a *BackfillAdapter) ListOwnerBindingsMissingMembers(ctx context.Context) ([]domain.AccessBindingID, error) {
 	rows, err := a.pool.Query(ctx,
 		`SELECT b.id
-		   FROM kacho_iam.access_bindings b
+		   FROM kaname.access_bindings b
 		  WHERE b.status = 'ACTIVE'
 		    AND b.role_id = $1
 		    AND b.resource_type = 'account'
 		    AND NOT EXISTS (
 		      SELECT 1
-		        FROM kacho_iam.access_binding_target_members m
+		        FROM kaname.access_binding_target_members m
 		       WHERE m.binding_id = b.id
 		         AND m.verification_status = 'ACTIVE'
 		    )
@@ -230,11 +230,11 @@ func (a *BackfillAdapter) SeedSmokeMirrorObject(ctx context.Context, objectType,
 	// Явные приведения обязательны: в списке `SELECT` тип параметра не выводится
 	// из колонки назначения, как он выводился в форме `VALUES`.
 	tag, err := a.pool.Exec(ctx,
-		`INSERT INTO kacho_iam.resource_mirror
+		`INSERT INTO kaname.resource_mirror
 		   (object_type, object_id, parent_project_id, parent_account_id, labels, source_version, updated_at)
 		 SELECT $1::text, $2::text, $3::text, $4::text, $5::jsonb, now(), now()
 		  WHERE EXISTS (
-		    SELECT 1 FROM kacho_iam.catalog_resource WHERE dotted = $1 AND live
+		    SELECT 1 FROM kaname.catalog_resource WHERE dotted = $1 AND live
 		  )
 		 ON CONFLICT (object_type, object_id) DO UPDATE
 		    SET parent_project_id = EXCLUDED.parent_project_id,
@@ -261,7 +261,7 @@ func (a *BackfillAdapter) SeedSmokeMirrorObject(ctx context.Context, objectType,
 // RemoveSmokeMirrorObject removes the synthetic forward-smoke mirror row.
 func (a *BackfillAdapter) RemoveSmokeMirrorObject(ctx context.Context, objectType, objectID string) error {
 	_, err := a.pool.Exec(ctx,
-		`DELETE FROM kacho_iam.resource_mirror WHERE object_type = $1 AND object_id = $2`,
+		`DELETE FROM kaname.resource_mirror WHERE object_type = $1 AND object_id = $2`,
 		objectType, objectID)
 	if err != nil {
 		return fmt.Errorf("backfill: remove smoke mirror object %s:%s: %w", objectType, objectID, err)
@@ -282,7 +282,7 @@ func (a *BackfillAdapter) SmokeOwnerBindingCandidate(ctx context.Context) (domai
 	)
 	err := a.pool.QueryRow(ctx,
 		`SELECT id, resource_id
-		   FROM kacho_iam.access_bindings
+		   FROM kaname.access_bindings
 		  WHERE status = 'ACTIVE'
 		    AND role_id = $1
 		    AND resource_type = 'account'
@@ -310,8 +310,8 @@ func (a *BackfillAdapter) SmokeOwnerBindingCandidate(ctx context.Context) (domai
 func (a *BackfillAdapter) ListActiveBindingRelationChecks(ctx context.Context) ([]seed.BindingRelationCheck, error) {
 	rows, err := a.pool.Query(ctx,
 		`SELECT t.binding_id, t.fga_user, t.relation, t.object
-		   FROM kacho_iam.access_binding_emitted_tuples t
-		   JOIN kacho_iam.access_bindings b ON b.id = t.binding_id
+		   FROM kaname.access_binding_emitted_tuples t
+		   JOIN kaname.access_bindings b ON b.id = t.binding_id
 		  WHERE b.status = 'ACTIVE'
 		    AND t.relation IN ('v_get', 'v_list')
 		  ORDER BY t.binding_id ASC, t.object ASC, t.relation ASC`)
@@ -337,7 +337,7 @@ func (a *BackfillAdapter) ListActiveBindingRelationChecks(ctx context.Context) (
 func (a *BackfillAdapter) LedgerHasObject(ctx context.Context, bindingID domain.AccessBindingID, fgaObject string) (bool, error) {
 	var n int
 	if err := a.pool.QueryRow(ctx,
-		`SELECT count(*) FROM kacho_iam.access_binding_emitted_tuples
+		`SELECT count(*) FROM kaname.access_binding_emitted_tuples
 		  WHERE binding_id = $1 AND object = $2`,
 		string(bindingID), fgaObject).Scan(&n); err != nil {
 		return false, fmt.Errorf("backfill: ledger has object %s for binding %s: %w", fgaObject, bindingID, err)

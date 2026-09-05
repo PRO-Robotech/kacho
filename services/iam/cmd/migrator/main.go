@@ -3,7 +3,7 @@
 
 // Package main — отдельный binary `kacho-migrator`: единая точка сборки CLI
 // миграций (cmd-binary не смешивает обязанности). Обслуживает миграции БД
-// сервиса kaname (схема `kacho_iam`).
+// сервиса kaname (схема `kaname`).
 //
 // API совпадает с goose-flavour:
 //

@@ -27,7 +27,7 @@ const injCatalog = `[
 
 // injSeed — производитель отношений в обеих формах, которыми сеет дерево: SQL
 // (jsonb_build_object) и JSON в коде.
-const injSeedSQL = `INSERT INTO kacho_iam.fga_outbox (event_type, payload) VALUES
+const injSeedSQL = `INSERT INTO kaname.fga_outbox (event_type, payload) VALUES
   ('fga.tuple.write', jsonb_build_object(
      'user','service_account:svaX','relation','system_admin','object','cluster:cluster_kacho_root'));`
 
@@ -137,11 +137,11 @@ func TestClusterRelationProducerGate_TestFilesAreNotProducers(t *testing.T) {
 
 // injSeedDumpJSON — форма сведённой миграции: готовый объект JSON, где ключи
 // стоят в порядке jsonb (по длине), то есть ОТНОШЕНИЕ ПОСЛЕ ОБЪЕКТА.
-const injSeedDumpJSON = `INSERT INTO kacho_iam.fga_outbox (id, event_type, payload, created_at) VALUES ` +
+const injSeedDumpJSON = `INSERT INTO kaname.fga_outbox (id, event_type, payload, created_at) VALUES ` +
 	`(1, 'fga.tuple.write', '{"user": "service_account:svaX", "object": "cluster:cluster_kacho_root", "relation": "system_admin"}', now());`
 
 // injSeedDumpRow — форма сведённой миграции: столбцовая строка журнала отношений.
-const injSeedDumpRow = `INSERT INTO kacho_iam.relation_fact (object_type, object_id, relation, subject) VALUES ` +
+const injSeedDumpRow = `INSERT INTO kaname.relation_fact (object_type, object_id, relation, subject) VALUES ` +
 	`('cluster', 'cluster_kacho_root', 'system_admin', 'group:grpX#member');`
 
 func TestClusterRelationProducerGate_ReadsTheDumpJSONOrder(t *testing.T) {
@@ -204,7 +204,7 @@ func TestClusterRelationProducerGate_JSONWindowStopsAtTheObjectEnd(t *testing.T)
 	dir := t.TempDir()
 	// Первый кортеж называет кластерный объект и НЕ несёт отношения; второй
 	// несёт отношение, но объект у него другой.
-	body := `INSERT INTO kacho_iam.fga_outbox (payload) VALUES ` +
+	body := `INSERT INTO kaname.fga_outbox (payload) VALUES ` +
 		`('{"user": "user:u1", "object": "cluster:cluster_kacho_root"}'), ` +
 		`('{"user": "user:u2", "object": "group:grpX", "relation": "member"}');`
 	produced, _, err := relationsProducedOnCluster([]string{

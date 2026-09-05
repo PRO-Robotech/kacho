@@ -28,20 +28,20 @@ import (
 // migration 0009's INSERTs (single source of truth for the re-apply path).
 // fga_outbox rows are NOT EXISTS-guarded (no unique key) so re-apply is a no-op.
 const seedModuleSAIdentitySQL = `
-INSERT INTO kacho_iam.users (id, external_id, email, display_name, account_id, invite_status)
+INSERT INTO kaname.users (id, external_id, email, display_name, account_id, invite_status)
 VALUES (
   'usr' || substr(md5('kacho-system'), 1, 17), '', 'system@kacho.local',
   'Kacho System (module SA owner)', 'acc' || substr(md5('kacho-system'), 1, 17), 'PENDING')
 ON CONFLICT (id) DO NOTHING;
 
-INSERT INTO kacho_iam.accounts (id, name, description, owner_user_id)
+INSERT INTO kaname.accounts (id, name, description, owner_user_id)
 VALUES (
   'acc' || substr(md5('kacho-system'), 1, 17), 'kacho-system',
   'System account anchoring internal module service-accounts (SEC-C)',
   'usr' || substr(md5('kacho-system'), 1, 17))
 ON CONFLICT (id) DO NOTHING;
 
-INSERT INTO kacho_iam.service_accounts (id, account_id, name, description) VALUES
+INSERT INTO kaname.service_accounts (id, account_id, name, description) VALUES
   ('sva' || substr(md5('kacho-vpc'), 1, 17), 'acc' || substr(md5('kacho-system'), 1, 17), 'kacho-vpc', 'Module SA: kacho-vpc (SEC-C least-priv)'),
   ('sva' || substr(md5('kacho-compute'), 1, 17), 'acc' || substr(md5('kacho-system'), 1, 17), 'kacho-compute', 'Module SA: kacho-compute (SEC-C least-priv)'),
   ('sva' || substr(md5('kacho-nlb'), 1, 17), 'acc' || substr(md5('kacho-system'), 1, 17), 'kacho-nlb', 'Module SA: kacho-nlb (SEC-C least-priv)'),
@@ -77,7 +77,7 @@ ON CONFLICT (id) DO NOTHING;
 -- below, the system_viewer tuples of 0014, and the requesting tenant's own
 -- identity, propagated on every peer call (auth.PropagateOutgoing).
 
-INSERT INTO kacho_iam.fga_outbox (event_type, payload, created_at)
+INSERT INTO kaname.fga_outbox (event_type, payload, created_at)
 SELECT 'fga.tuple.write',
        jsonb_build_object('user', 'service_account:' || t.sva, 'relation', 'fga_writer', 'object', 'iam_fgaproxy:system'),
        now()
@@ -87,7 +87,7 @@ SELECT 'fga.tuple.write',
     ('sva' || substr(md5('kacho-nlb'), 1, 17))
   ) AS t(sva)
  WHERE NOT EXISTS (
-   SELECT 1 FROM kacho_iam.fga_outbox o
+   SELECT 1 FROM kaname.fga_outbox o
     WHERE o.event_type = 'fga.tuple.write'
       AND o.payload->>'user'     = 'service_account:' || t.sva
       AND o.payload->>'relation' = 'fga_writer'

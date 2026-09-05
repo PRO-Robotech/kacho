@@ -30,7 +30,7 @@ const catalogWriterLocked = `package pg
 
 import "context"
 
-const CatalogLockKey = "kacho_iam.module_catalog"
+const CatalogLockKey = "kaname.module_catalog"
 
 type catalogWriter struct{ tx pgx.Tx }
 
@@ -41,7 +41,7 @@ func (w catalogWriter) LockCatalog(ctx context.Context) error {
 
 func (w catalogWriter) UpsertModule(ctx context.Context, module string) (bool, error) {
 	return w.changed(ctx, ` + "`" + `
-		INSERT INTO kacho_iam.catalog_module (module) VALUES ($1)
+		INSERT INTO kaname.catalog_module (module) VALUES ($1)
 		ON CONFLICT (module) DO UPDATE SET live = true
 		RETURNING 1` + "`" + `, module)
 }
@@ -58,13 +58,13 @@ const catalogWriterNoLock = `package pg
 
 import "context"
 
-const CatalogLockKey = "kacho_iam.module_catalog"
+const CatalogLockKey = "kaname.module_catalog"
 
 type catalogWriter struct{ tx pgx.Tx }
 
 func (w catalogWriter) UpsertModule(ctx context.Context, module string) (bool, error) {
 	return w.changed(ctx, ` + "`" + `
-		INSERT INTO kacho_iam.catalog_module (module) VALUES ($1)
+		INSERT INTO kaname.catalog_module (module) VALUES ($1)
 		ON CONFLICT (module) DO UPDATE SET live = true
 		RETURNING 1` + "`" + `, module)
 }
@@ -83,7 +83,7 @@ const catalogWriterSessionLock = `package pg
 
 import "context"
 
-const CatalogLockKey = "kacho_iam.module_catalog"
+const CatalogLockKey = "kaname.module_catalog"
 
 type catalogWriter struct{ tx pgx.Tx }
 
@@ -93,7 +93,7 @@ func (w catalogWriter) LockCatalog(ctx context.Context) error {
 }
 
 func (w catalogWriter) UpsertModule(ctx context.Context, module string) (bool, error) {
-	return w.changed(ctx, ` + "`INSERT INTO kacho_iam.catalog_module (module) VALUES ($1)`" + `, module)
+	return w.changed(ctx, ` + "`INSERT INTO kaname.catalog_module (module) VALUES ($1)`" + `, module)
 }
 
 func (w catalogWriter) changed(ctx context.Context, sql string, args ...any) (bool, error) {
@@ -110,8 +110,8 @@ const catalogWriterWrongKey = `package pg
 
 import "context"
 
-const CatalogLockKey = "kacho_iam.module_catalog"
-const someOtherKey = "kacho_iam.roles"
+const CatalogLockKey = "kaname.module_catalog"
+const someOtherKey = "kaname.roles"
 
 type catalogWriter struct{ tx pgx.Tx }
 
@@ -121,7 +121,7 @@ func (w catalogWriter) LockCatalog(ctx context.Context) error {
 }
 
 func (w catalogWriter) UpsertModule(ctx context.Context, module string) (bool, error) {
-	return w.changed(ctx, ` + "`INSERT INTO kacho_iam.catalog_module (module) VALUES ($1)`" + `, module)
+	return w.changed(ctx, ` + "`INSERT INTO kaname.catalog_module (module) VALUES ($1)`" + `, module)
 }
 
 func (w catalogWriter) changed(ctx context.Context, sql string, args ...any) (bool, error) {
@@ -144,7 +144,7 @@ type catalogPruner struct{ tx pgx.Tx }
 
 func (p catalogPruner) DropStale(ctx context.Context, module string) error {
 	_, err := p.tx.Exec(ctx, ` + "`" + `
-		UPDATE kacho_iam.catalog_verb SET live = false WHERE module = $1` + "`" + `, module)
+		UPDATE kaname.catalog_verb SET live = false WHERE module = $1` + "`" + `, module)
 	return err
 }
 `
@@ -158,16 +158,16 @@ func (p catalogPruner) DropStale(ctx context.Context, module string) error {
 
 const catalogSeedParityParsesTheSameText = `package check
 
-const tierOnlyVerbSeedPrefix = "INSERT INTO kacho_iam.catalog_verb (module, resource, verb, per_object) VALUES"
+const tierOnlyVerbSeedPrefix = "INSERT INTO kaname.catalog_verb (module, resource, verb, per_object) VALUES"
 
 // Сверка посева миграции с манифестом: операторы ниже РАЗБИРАЮТСЯ, а не
-// исполняются. INSERT INTO kacho_iam.catalog_module здесь стоит и в прозе.
+// исполняются. INSERT INTO kaname.catalog_module здесь стоит и в прозе.
 func auditCatalogSeed(body string) ([][]string, error) {
-	mods, err := parseSeedBlock(body, "INSERT INTO kacho_iam.catalog_module (module) VALUES")
+	mods, err := parseSeedBlock(body, "INSERT INTO kaname.catalog_module (module) VALUES")
 	if err != nil {
 		return nil, err
 	}
-	res, err := parseSeedBlock(body, "INSERT INTO kacho_iam.catalog_resource (module, resource, dotted) VALUES")
+	res, err := parseSeedBlock(body, "INSERT INTO kaname.catalog_resource (module, resource, dotted) VALUES")
 	if err != nil {
 		return nil, err
 	}
@@ -192,7 +192,7 @@ func parseSeedBlock(body, insertPrefix string) ([][]string, error) {
 // литералы, та же константа, тот же пакет.
 const catalogSeedParityTurnedIntoAnExecutor = `package check
 
-const tierOnlyVerbSeedPrefix = "INSERT INTO kacho_iam.catalog_verb (module, resource, verb, per_object) VALUES"
+const tierOnlyVerbSeedPrefix = "INSERT INTO kaname.catalog_verb (module, resource, verb, per_object) VALUES"
 
 func auditCatalogSeed(ctx context.Context, tx pgx.Tx) error {
 	_, err := tx.Exec(ctx, tierOnlyVerbSeedPrefix)
@@ -268,7 +268,7 @@ func TestG1_InjectionRedsTheWriterThatDoesNotLock(t *testing.T) {
 	if !strings.Contains(f[0], "catalogWriter") {
 		t.Errorf("находка не называет единицу суждения: %q", f[0])
 	}
-	if !strings.Contains(f[0], "INSERT INTO kacho_iam.catalog_module") {
+	if !strings.Contains(f[0], "INSERT INTO kaname.catalog_module") {
 		t.Errorf("находка не называет оператор: %q", f[0])
 	}
 	if !strings.Contains(f[0], "не берёт вовсе") {
@@ -312,7 +312,7 @@ import "context"
 type roleWriter struct{ tx pgx.Tx }
 
 func (w roleWriter) Upsert(ctx context.Context, id string) error {
-	_, err := w.tx.Exec(ctx, ` + "`INSERT INTO kacho_iam.roles (id) VALUES ($1)`" + `, id)
+	_, err := w.tx.Exec(ctx, ` + "`INSERT INTO kaname.roles (id) VALUES ($1)`" + `, id)
 	return err
 }
 `
@@ -460,7 +460,7 @@ func TestG1_RedsASecondWriterWhileTheFirstOneStillLocks(t *testing.T) {
 	if !strings.Contains(findings[0], dir+"catalog_pruner.go:") {
 		t.Errorf("находка не называет координату второго писателя: %q", findings[0])
 	}
-	if !strings.Contains(findings[0], "UPDATE kacho_iam.catalog_verb") {
+	if !strings.Contains(findings[0], "UPDATE kaname.catalog_verb") {
 		t.Errorf("находка не называет оператор второго писателя: %q", findings[0])
 	}
 	t.Logf("текст находки: %s", findings[0])

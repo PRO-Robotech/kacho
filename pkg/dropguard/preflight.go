@@ -85,7 +85,7 @@ func GooseApplied(ctx context.Context, db Querier) AppliedSet {
 	return func(version int64) (bool, error) {
 		if !resolved {
 			// Unqualified on purpose: goose puts its table in whatever schema the
-			// DSN's search_path selects (kacho_vpc, kacho_iam, …), and to_regclass
+			// DSN's search_path selects (kacho_vpc, kaname, …), and to_regclass
 			// resolves through search_path exactly as the migrations themselves do.
 			if err := db.QueryRowContext(ctx,
 				`SELECT to_regclass('goose_db_version') IS NOT NULL`).Scan(&present); err != nil {

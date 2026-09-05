@@ -105,7 +105,7 @@ func TestIntegration_Issue2003_ScopeKeysComeFromTranslationNotTruncation(t *test
 	// и у члена (`access_binding_target_members.role_id`).
 	roleID := padOrTrim20("rol_d2003role")
 	_, err := pool.Exec(ctx, `
-		INSERT INTO kacho_iam.clusters (id, name) VALUES ('cluster_kacho_root', 'kacho')
+		INSERT INTO kaname.clusters (id, name) VALUES ('cluster_kacho_root', 'kacho')
 		ON CONFLICT DO NOTHING`)
 	require.NoError(t, err, "seed cluster")
 	// `is_system` НЕ задаётся: с миграции 0056 это ПОРОЖДЁННАЯ колонка
@@ -113,7 +113,7 @@ func TestIntegration_Issue2003_ScopeKeysComeFromTranslationNotTruncation(t *test
 	// подчиняется формату системной роли (`roles_system_name_check`) —
 	// подчёркивания в нём быть не может, поэтому оно не производится от `roleID`.
 	_, err = pool.Exec(ctx, `
-		INSERT INTO kacho_iam.roles (id, name, permissions, rules, cluster_id)
+		INSERT INTO kaname.roles (id, name, permissions, rules, cluster_id)
 		VALUES ($1, $2, '[]'::jsonb,
 		        jsonb_build_array(jsonb_build_object(
 		            'module',    'test',
@@ -128,7 +128,7 @@ func TestIntegration_Issue2003_ScopeKeysComeFromTranslationNotTruncation(t *test
 	// аккаунт: так вклад самой выдачи отличим от вклада её членов.
 	bindingID := padOrTrim20("abn_d2003bind")
 	_, err = pool.Exec(ctx, `
-		INSERT INTO kacho_iam.access_bindings
+		INSERT INTO kaname.access_bindings
 		  (id, subject_type, subject_id, role_id, resource_type, resource_id,
 		   status, granted_by_user_id)
 		VALUES ($1, 'user', $2, $3, 'account', $4, 'ACTIVE', $2)`,
@@ -136,7 +136,7 @@ func TestIntegration_Issue2003_ScopeKeysComeFromTranslationNotTruncation(t *test
 	require.NoError(t, err, "seed binding")
 
 	_, err = pool.Exec(ctx, `
-		INSERT INTO kacho_iam.access_binding_subjects (binding_id, subject_type, subject_id)
+		INSERT INTO kaname.access_binding_subjects (binding_id, subject_type, subject_id)
 		VALUES ($1, 'user', $2)`,
 		bindingID, subject)
 	require.NoError(t, err, "seed binding subject")
@@ -156,7 +156,7 @@ func TestIntegration_Issue2003_ScopeKeysComeFromTranslationNotTruncation(t *test
 
 	for i, c := range cases {
 		_, err = pool.Exec(ctx, `
-			INSERT INTO kacho_iam.access_binding_target_members
+			INSERT INTO kaname.access_binding_target_members
 			  (binding_id, role_id, rule_fp, object_type, object_id,
 			   verification_status, created_at, updated_at)
 			VALUES ($1, $2, $3, $4, $5, 'ACTIVE', $6, $6)`,
@@ -169,7 +169,7 @@ func TestIntegration_Issue2003_ScopeKeysComeFromTranslationNotTruncation(t *test
 	// пустой таблице, поэтому объём назван ЧИСЛОМ, а не подразумевается.
 	var membersSeen int
 	require.NoError(t, pool.QueryRow(ctx,
-		`SELECT count(*) FROM kacho_iam.access_binding_target_members WHERE binding_id = $1`,
+		`SELECT count(*) FROM kaname.access_binding_target_members WHERE binding_id = $1`,
 		bindingID).Scan(&membersSeen))
 	require.Equal(t, len(cases), membersSeen,
 		"перепись: членов выдачи должно быть %d — иначе проба сравнивает две пустоты "+
@@ -181,7 +181,7 @@ func TestIntegration_Issue2003_ScopeKeysComeFromTranslationNotTruncation(t *test
 	for _, c := range cases {
 		var objectType string
 		require.NoError(t, pool.QueryRow(ctx,
-			`SELECT object_type FROM kacho_iam.catalog_resource WHERE dotted = $1`,
+			`SELECT object_type FROM kaname.catalog_resource WHERE dotted = $1`,
 			c.dotted).Scan(&objectType),
 			"предпосылка пробы: строка каталога для %q обязана существовать — "+
 				"без неё перевод невыполним, и красное означало бы несозданное условие", c.dotted)

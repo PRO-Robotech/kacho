@@ -9,7 +9,7 @@ package pg_test
 //
 // Scope:
 //   - Insert AccessBinding(resource_type='cluster', resource_id=ClusterSingletonID,
-//     role_id=<roles/admin>) succeeds and lands in kacho_iam.access_bindings.
+//     role_id=<roles/admin>) succeeds and lands in kaname.access_bindings.
 //   - The atomic emit-in-tx flow produces an fga_outbox row with relation
 //     'system_admin' (NOT 'admin' -- прямое отношение кластера называется
 //     system_admin; словарь отношений объявлен формой прав, а не чартом: чарта
@@ -66,7 +66,7 @@ func TestAB_ClusterScope_InsertEmitsSystemAdminTuple(t *testing.T) {
 	// Look up the seeded global "admin" role id (deterministic md5-based seed).
 	var roleID string
 	require.NoError(t, pool.QueryRow(ctx, `
-		SELECT id FROM kacho_iam.roles
+		SELECT id FROM kaname.roles
 		 WHERE name = 'admin' AND cluster_id = 'cluster_kacho_root' AND is_system = true`).
 		Scan(&roleID))
 
@@ -98,7 +98,7 @@ func TestAB_ClusterScope_InsertEmitsSystemAdminTuple(t *testing.T) {
 	)
 	require.NoError(t, pool.QueryRow(ctx, `
 		SELECT resource_type, resource_id
-		  FROM kacho_iam.access_bindings WHERE id = $1`, string(binding.ID)).
+		  FROM kaname.access_bindings WHERE id = $1`, string(binding.ID)).
 		Scan(&gotResType, &gotResID))
 	assert.Equal(t, "cluster", gotResType)
 	assert.Equal(t, domain.ClusterSingletonID, gotResID)
@@ -107,7 +107,7 @@ func TestAB_ClusterScope_InsertEmitsSystemAdminTuple(t *testing.T) {
 	var et, payloadRaw string
 	require.NoError(t, pool.QueryRow(ctx, `
 		SELECT event_type, payload::text
-		  FROM kacho_iam.fga_outbox
+		  FROM kaname.fga_outbox
 		 WHERE payload->>'user' = $1 AND payload->>'object' = $2
 		 ORDER BY id DESC LIMIT 1`,
 		"user:"+string(uid),

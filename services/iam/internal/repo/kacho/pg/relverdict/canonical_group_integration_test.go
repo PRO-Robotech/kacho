@@ -32,13 +32,13 @@ import (
 func seedGroupFact(t *testing.T, ctx context.Context, tx pgx.Tx, groupID, subjectForm string) {
 	t.Helper()
 	exec(t, ctx, tx,
-		`INSERT INTO kacho_iam.groups (id, account_id, name) VALUES ($1, 'acc-1', $1)
+		`INSERT INTO kaname.groups (id, account_id, name) VALUES ($1, 'acc-1', $1)
 		 ON CONFLICT DO NOTHING`, groupID)
 	exec(t, ctx, tx,
-		`INSERT INTO kacho_iam.group_members (group_id, member_type, member_id)
+		`INSERT INTO kaname.group_members (group_id, member_type, member_id)
 		 VALUES ($1, 'user', 'usr-member')`, groupID)
 	exec(t, ctx, tx,
-		`INSERT INTO kacho_iam.relation_fact (object_type, object_id, relation, subject)
+		`INSERT INTO kaname.relation_fact (object_type, object_id, relation, subject)
 		 VALUES ('vpc_network', 'net-1', 'v_get', $1)`, subjectForm)
 }
 
@@ -55,10 +55,10 @@ func TestGroupSubjectFormsAreBothHonoured(t *testing.T) {
 			withTx(t, func(ctx context.Context, tx pgx.Tx) {
 				seedTenant(t, ctx, tx)
 				exec(t, ctx, tx,
-					`INSERT INTO kacho_iam.users (id, external_id, email, account_id)
+					`INSERT INTO kaname.users (id, external_id, email, account_id)
 					 VALUES ('usr-member', 'ext-m', 'm@kacho.local', 'acc-1') ON CONFLICT DO NOTHING`)
 				exec(t, ctx, tx,
-					`INSERT INTO kacho_iam.resource_mirror (object_type, object_id)
+					`INSERT INTO kaname.resource_mirror (object_type, object_id)
 					 VALUES ($1, 'net-1') ON CONFLICT DO NOTHING`,
 					catalogFormOf(t, "vpc_network"))
 				seedGroupFact(t, ctx, tx, tc.group, tc.form)

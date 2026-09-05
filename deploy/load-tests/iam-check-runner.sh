@@ -93,37 +93,37 @@ feed_cte() {
 cat <<SQL
 WITH
 acct_admin AS (
-  SELECT object_id AS account_id, subject FROM kacho_iam.relation_fact
+  SELECT object_id AS account_id, subject FROM kaname.relation_fact
    WHERE object_type = 'account' AND relation IN ('admin','owner')
      AND split_part(subject, ':', 1) IN ('user','service_account')),
 acct_owner AS (
-  SELECT object_id AS account_id, subject FROM kacho_iam.relation_fact
+  SELECT object_id AS account_id, subject FROM kaname.relation_fact
    WHERE object_type = 'account' AND relation = 'owner'
      AND split_part(subject, ':', 1) = 'user'),
 proj_acct AS (
   SELECT object_id AS project_id, split_part(subject, ':', 2) AS account_id
-    FROM kacho_iam.relation_fact
+    FROM kaname.relation_fact
    WHERE object_type = 'project' AND relation = 'account'),
 own AS (
   SELECT 'iam_user' AS otype, u.id AS oid, u.account_id AS anchor, NULL::text AS cls
-    FROM kacho_iam.users u WHERE u.account_id IS NOT NULL
+    FROM kaname.users u WHERE u.account_id IS NOT NULL
   UNION ALL SELECT 'iam_group', g.id, g.account_id, NULL::text
-    FROM kacho_iam.groups g WHERE g.account_id IS NOT NULL
+    FROM kaname.groups g WHERE g.account_id IS NOT NULL
   UNION ALL SELECT 'iam_service_account', s.id, s.account_id, NULL::text
-    FROM kacho_iam.service_accounts s WHERE s.account_id IS NOT NULL
+    FROM kaname.service_accounts s WHERE s.account_id IS NOT NULL
   UNION ALL SELECT 'iam_role', r.id, r.account_id, NULL::text
-    FROM kacho_iam.roles r WHERE r.account_id IS NOT NULL
+    FROM kaname.roles r WHERE r.account_id IS NOT NULL
   UNION ALL SELECT 'iam_role', r.id, p.account_id, 'project_role'
-    FROM kacho_iam.roles r JOIN kacho_iam.projects p ON p.id = r.project_id
+    FROM kaname.roles r JOIN kaname.projects p ON p.id = r.project_id
    WHERE r.project_id IS NOT NULL
   UNION ALL SELECT 'iam_access_binding', b.id, b.resource_id, NULL::text
-    FROM kacho_iam.access_bindings b WHERE b.resource_type = 'account'
+    FROM kaname.access_bindings b WHERE b.resource_type = 'account'
   UNION ALL SELECT 'iam_access_binding', b.id, p.account_id, NULL::text
-    FROM kacho_iam.access_bindings b JOIN kacho_iam.projects p ON p.id = b.resource_id
+    FROM kaname.access_bindings b JOIN kaname.projects p ON p.id = b.resource_id
    WHERE b.resource_type = 'project'),
 mirror AS (
   SELECT rf.object_type, rf.object_id, pa.account_id, NULL::text
-    FROM kacho_iam.relation_fact rf
+    FROM kaname.relation_fact rf
     JOIN proj_acct pa ON pa.project_id = split_part(rf.subject, ':', 2)
    WHERE rf.relation = 'project'
      AND rf.object_type NOT LIKE 'iam!_%' ESCAPE '!'

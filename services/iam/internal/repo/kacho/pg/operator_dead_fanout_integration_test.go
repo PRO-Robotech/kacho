@@ -92,8 +92,8 @@ func resolvableTypesReachableBySubject(
 	t.Helper()
 	rows, err := pool.Query(ctx,
 		`SELECT DISTINCT unnest(rrs.object_types)
-		   FROM kacho_iam.access_bindings b
-		   JOIN kacho_iam.role_rule_selectors rrs ON rrs.role_id = b.role_id
+		   FROM kaname.access_bindings b
+		   JOIN kaname.role_rule_selectors rrs ON rrs.role_id = b.role_id
 		  WHERE b.status = 'ACTIVE' AND b.subject_id = $1
 		  ORDER BY 1`, subjectID)
 	require.NoError(t, err)
@@ -151,8 +151,8 @@ func TestOperatorFanout_RetiredAndGrantsNothing(t *testing.T) {
 
 	// ── Перепись ДО вердикта: «ноль находок» обязано быть отличимо от «ноль
 	// прочитанного».
-	totalRoles := scalarInt(t, ctx, pool, `SELECT count(*) FROM kacho_iam.roles`)
-	totalSelectors := scalarInt(t, ctx, pool, `SELECT count(*) FROM kacho_iam.role_rule_selectors`)
+	totalRoles := scalarInt(t, ctx, pool, `SELECT count(*) FROM kaname.roles`)
+	totalSelectors := scalarInt(t, ctx, pool, `SELECT count(*) FROM kaname.role_rule_selectors`)
 	t.Logf("осмотрено: ролей=%d, строк селекторов=%d; оператор sva=%s rol=%s",
 		totalRoles, totalSelectors, operatorSVA, operatorRole)
 	require.NotZero(t, totalRoles, "предпосылка гейта нарушена: в посеве нет ни одной роли")
@@ -161,15 +161,15 @@ func TestOperatorFanout_RetiredAndGrantsNothing(t *testing.T) {
 
 	// ── Отрицание: роль снята, привязка снята, селекторов нет.
 	require.Zero(t, scalarInt(t, ctx, pool,
-		`SELECT count(*) FROM kacho_iam.roles WHERE id = $1`, operatorRole),
+		`SELECT count(*) FROM kaname.roles WHERE id = $1`, operatorRole),
 		"роль module.vpc_operator_sa обязана быть снята: её четыре правила не разрешаются "+
 			"закрытой таблицей типов и не материализуют ни одного кортежа")
 	require.Zero(t, scalarInt(t, ctx, pool,
-		`SELECT count(*) FROM kacho_iam.access_bindings WHERE subject_id = $1 AND status = 'ACTIVE'`,
+		`SELECT count(*) FROM kaname.access_bindings WHERE subject_id = $1 AND status = 'ACTIVE'`,
 		operatorSVA),
 		"у оператора сети не должно остаться ACTIVE-привязки: снятая роль не может оставаться выданной")
 	require.Zero(t, scalarInt(t, ctx, pool,
-		`SELECT count(*) FROM kacho_iam.role_rule_selectors WHERE role_id = $1`, operatorRole),
+		`SELECT count(*) FROM kaname.role_rule_selectors WHERE role_id = $1`, operatorRole),
 		"селекторы снятой роли обязаны уйти вместе с ней (ON DELETE CASCADE)")
 
 	opResolvable, opDeclared := resolvableTypesReachableBySubject(t, ctx, pool, operatorSVA)
@@ -204,7 +204,7 @@ func seedLivePrincipalBoundToResolvableRole(
 	const roleNameExpr = `'rol' || substr(md5('vpc.subnet.view'), 1, 17)`
 	roleID := scalarString(t, ctx, pool, roleNameExpr)
 	require.Equal(t, 1, scalarInt(t, ctx, pool,
-		`SELECT count(*) FROM kacho_iam.roles WHERE id = $1`, roleID),
+		`SELECT count(*) FROM kaname.roles WHERE id = $1`, roleID),
 		"предпосылка контроля нарушена: системная роль vpc.subnet.view не посеяна — "+
 			"положительная половина стала бы недостижимой")
 
@@ -213,13 +213,13 @@ func seedLivePrincipalBoundToResolvableRole(
 	bindingID := scalarString(t, ctx, pool, `'acb' || substr(md5('live-control-binding'), 1, 17)`)
 
 	_, err := pool.Exec(ctx,
-		`INSERT INTO kacho_iam.service_accounts (id, account_id, name, description)
+		`INSERT INTO kaname.service_accounts (id, account_id, name, description)
 		 VALUES ($1, $2, 'live-control-principal', 'positive control for the operator fan-out gate')
 		 ON CONFLICT (id) DO NOTHING`, subjectID, accountID)
 	require.NoError(t, err, "контроль: не удалось создать живого принципала")
 
 	_, err = pool.Exec(ctx,
-		`INSERT INTO kacho_iam.access_bindings
+		`INSERT INTO kaname.access_bindings
 		   (id, subject_type, subject_id, role_id, resource_type, resource_id, scope, status)
 		 VALUES ($1, 'service_account', $2, $3, 'cluster', 'cluster_kacho_root', 1, 'ACTIVE')
 		 ON CONFLICT DO NOTHING`, bindingID, subjectID, roleID)

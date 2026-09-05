@@ -4,7 +4,7 @@
 package pg_test
 
 // reconcile_person_membership_scope_integration_test.go — СЕЛЕКТОРНАЯ ВЫДАЧА НА
-// ЛЮДЕЙ сужается ЧЛЕНСТВОМ, а не колонкой `kacho_iam.users.account_id`
+// ЛЮДЕЙ сужается ЧЛЕНСТВОМ, а не колонкой `kaname.users.account_id`
 // (задача kacho#1172).
 //
 // ─────────────────────────────────────────────────────────────────────────────
@@ -22,8 +22,8 @@ package pg_test
 //	   колонку не трогает (она легаси и правится своим шагом), и селекторная
 //	   привязка продолжает материализовать на нём глаголы.
 //
-// Цепь областей (`kacho_iam.resource_scope_edge`) ту же связь берёт из
-// `kacho_iam.memberships` с #944 — то есть об одном предмете было два места, и
+// Цепь областей (`kaname.resource_scope_edge`) ту же связь берёт из
+// `kaname.memberships` с #944 — то есть об одном предмете было два места, и
 // они разошлись.
 //
 // ─────────────────────────────────────────────────────────────────────────────
@@ -78,7 +78,7 @@ func seedLabeledPerson(
 	t.Helper()
 	uid := domain.UserID(ids.NewID(domain.PrefixUser))
 	_, err := pool.Exec(ctx, `
-		INSERT INTO kacho_iam.users (id, account_id, external_id, email, display_name, invite_status, labels)
+		INSERT INTO kaname.users (id, account_id, external_id, email, display_name, invite_status, labels)
 		VALUES ($1, $2, $3, $4, $5, 'ACTIVE', $6::jsonb)`,
 		string(uid), string(columnAccount),
 		fmt.Sprintf("ext-%s-%s", suffix, uid),
@@ -96,7 +96,7 @@ func seedLabeledPerson(
 func dropMembership(t *testing.T, ctx context.Context, pool *pgxpool.Pool, userID domain.UserID, accountID domain.AccountID) {
 	t.Helper()
 	tag, err := pool.Exec(ctx,
-		`DELETE FROM kacho_iam.memberships WHERE user_id = $1 AND account_id = $2`,
+		`DELETE FROM kaname.memberships WHERE user_id = $1 AND account_id = $2`,
 		string(userID), string(accountID))
 	require.NoError(t, err, "снятие членства (%s → %s)", userID, accountID)
 	require.EqualValues(t, 1, tag.RowsAffected(),

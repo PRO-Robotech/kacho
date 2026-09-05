@@ -133,7 +133,7 @@ func TestCatalogApplierTakesCatalogRowLocksInTheSameOrderAsTheRoleWriter(t *test
 	var held int
 	require.NoError(t, holder.QueryRow(ctx, `
 		SELECT count(*) FROM (
-		  SELECT 1 FROM kacho_iam.catalog_resource
+		  SELECT 1 FROM kaname.catalog_resource
 		   WHERE dotted = $1 AND live
 		     FOR KEY SHARE) s`, crossLockEarly).Scan(&held))
 	require.Equalf(t, 1, held, "ПРЕДПОСЫЛКА: живой строки %s нет — держать нечего", crossLockEarly)
@@ -208,7 +208,7 @@ func TestCatalogApplierTakesCatalogRowLocksInTheSameOrderAsTheRoleWriter(t *test
 	// Обе работы ЛЕГЛИ: раннее имя снято, селектор приведён к каталожному факту.
 	var liveEarly int
 	require.NoError(t, pool.QueryRow(ctx, `
-		SELECT count(*) FROM kacho_iam.catalog_resource WHERE dotted = $1 AND live`,
+		SELECT count(*) FROM kaname.catalog_resource WHERE dotted = $1 AND live`,
 		crossLockEarly).Scan(&liveEarly))
 	require.Zerof(t, liveEarly, "строка %s не снята — применитель отчитался успехом впустую",
 		crossLockEarly)
@@ -248,7 +248,7 @@ func TestLoneCatalogApplyAgainstAnIdleCatalogPasses(t *testing.T) {
 
 	var live int
 	require.NoError(t, pool.QueryRow(ctx, `
-		SELECT count(*) FROM kacho_iam.catalog_resource
+		SELECT count(*) FROM kaname.catalog_resource
 		 WHERE dotted = $1 AND live`, applierProbeModule+".loneearly").Scan(&live))
 	require.Zero(t, live, "строка не снята — применение отчиталось успехом впустую")
 }

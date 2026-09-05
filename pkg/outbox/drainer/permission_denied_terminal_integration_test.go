@@ -86,7 +86,7 @@ func Test_PermissionDeniedHead_DoesNotWedgePartition(t *testing.T) {
 	// not parked one attempt below it forever.
 	var attempts int
 	require.NoError(t, pool.QueryRow(ctx,
-		`SELECT attempt_count FROM kacho_iam.fga_outbox WHERE id = $1`, headID).Scan(&attempts))
+		`SELECT attempt_count FROM kaname.fga_outbox WHERE id = $1`, headID).Scan(&attempts))
 	assert.GreaterOrEqualf(t, attempts, cfg.MaxAttempts,
 		"the refused head must reach the poison gate (MaxAttempts=%d), not be capped below it forever; got attempt_count=%d",
 		cfg.MaxAttempts, attempts)

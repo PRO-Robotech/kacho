@@ -58,7 +58,7 @@ func newForceLogoutHandler(t *testing.T) (*internaliam.Handler, *pgxpool.Pool) {
 	h := internaliam.NewHandler(internaliam.NewLookupSubjectUseCase(nil), nil).
 		WithSessionRevoker(kachopg.NewSessionRevocationsAdapter(pool)).
 		WithAdminChecker(allowAdmin{}).
-		WithOperations(operations.NewRepo(pool, "kacho_iam"))
+		WithOperations(operations.NewRepo(pool, "kaname"))
 	return h, pool
 }
 
@@ -81,14 +81,14 @@ func seedForceLogoutUser(t *testing.T, ctx context.Context, pool *pgxpool.Pool) 
 	defer func() { _ = tx.Rollback(ctx) }()
 
 	_, err = tx.Exec(ctx, `
-		INSERT INTO kacho_iam.users (id, account_id, external_id, email, display_name, invite_status)
+		INSERT INTO kaname.users (id, account_id, external_id, email, display_name, invite_status)
 		VALUES ($1, $2, $3, $4, $5, 'ACTIVE')`,
 		string(uid), string(accID),
 		"ext-"+string(uid), fmt.Sprintf("u-%s@example.com", uid), "Force Logout Target")
 	require.NoError(t, err, "seed user")
 
 	_, err = tx.Exec(ctx, `
-		INSERT INTO kacho_iam.accounts (id, name, owner_user_id, labels)
+		INSERT INTO kaname.accounts (id, name, owner_user_id, labels)
 		VALUES ($1, $2, $3, '{}'::jsonb)`,
 		string(accID), "seed-acc-"+string(accID)[len(accID)-6:], string(uid))
 	require.NoError(t, err, "seed account")
@@ -133,7 +133,7 @@ func TestForceLogout_OperationIsPersistedAndCompletes(t *testing.T) {
 	var done bool
 	var metaData, respData []byte
 	require.NoError(t, pool.QueryRow(ctx,
-		`SELECT done, metadata_data, response_data FROM kacho_iam.operations WHERE id = $1`,
+		`SELECT done, metadata_data, response_data FROM kaname.operations WHERE id = $1`,
 		op.GetId()).Scan(&done, &metaData, &respData),
 		"the operation id handed to the admin must name a persisted row")
 	require.True(t, done, "the operations row must be terminal, not merely reported as terminal")
@@ -141,7 +141,7 @@ func TestForceLogout_OperationIsPersistedAndCompletes(t *testing.T) {
 	require.NotEmpty(t, respData, "response must be persisted")
 
 	// (2) The poll path, end to end.
-	polled := pollForceLogoutOperationToDone(t, ctx, operations.NewRepo(pool, "kacho_iam"), op.GetId())
+	polled := pollForceLogoutOperationToDone(t, ctx, operations.NewRepo(pool, "kaname"), op.GetId())
 
 	polledMeta := &iamv1.ForceLogoutMetadata{}
 	require.NotNil(t, polled.Metadata)
@@ -158,7 +158,7 @@ func TestForceLogout_OperationIsPersistedAndCompletes(t *testing.T) {
 	// (3) The cutoff really landed — the operation describes a committed change.
 	var cutoffs int
 	require.NoError(t, pool.QueryRow(ctx,
-		`SELECT count(*) FROM kacho_iam.user_token_revocations WHERE user_id = $1`,
+		`SELECT count(*) FROM kaname.user_token_revocations WHERE user_id = $1`,
 		string(uid)).Scan(&cutoffs))
 	require.Equal(t, 1, cutoffs)
 }
@@ -180,14 +180,14 @@ func TestForceLogout_FailedWriteLeavesTerminalErrorOperation(t *testing.T) {
 
 	var unfinished int
 	require.NoError(t, pool.QueryRow(ctx,
-		`SELECT count(*) FROM kacho_iam.operations
+		`SELECT count(*) FROM kaname.operations
 		  WHERE done = false AND description LIKE 'Force logout%'`).Scan(&unfinished))
 	require.Zero(t, unfinished,
 		"a refused force-logout must not leave a never-completing operation row")
 
 	var terminalErrors int
 	require.NoError(t, pool.QueryRow(ctx,
-		`SELECT count(*) FROM kacho_iam.operations
+		`SELECT count(*) FROM kaname.operations
 		  WHERE done = true AND error_code <> 0 AND description LIKE 'Force logout%'`).Scan(&terminalErrors))
 	require.Equal(t, 1, terminalErrors,
 		"the failure must be readable by a poller, not invisible")
@@ -216,7 +216,7 @@ func TestForceLogout_UnwiredOperationRepo_FailsClosed(t *testing.T) {
 
 	var cutoffs int
 	require.NoError(t, pool.QueryRow(ctx,
-		`SELECT count(*) FROM kacho_iam.user_token_revocations WHERE user_id = $1`,
+		`SELECT count(*) FROM kaname.user_token_revocations WHERE user_id = $1`,
 		string(uid)).Scan(&cutoffs))
 	require.Zero(t, cutoffs, "the refusal must precede the mutation")
 }

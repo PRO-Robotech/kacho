@@ -1,7 +1,7 @@
 // Copyright (c) PRO-Robotech
 // SPDX-License-Identifier: AGPL-3.0-or-later
 
-// Package access_binding — CQRS port-iface'ы для kacho_iam.access_bindings.
+// Package access_binding — CQRS port-iface'ы для kaname.access_bindings.
 package access_binding
 
 import (
@@ -30,7 +30,7 @@ type ReaderIface interface {
 	ListBySubject(ctx context.Context, subjectType domain.SubjectType, subjectID domain.SubjectID, filter PageFilter) ([]domain.AccessBinding, string, error)
 	// ListSubjectPrivileges returns the subject's direct AccessBindings JOINed
 	// with `roles` so the human-readable role_name is resolved server-side in a
-	// SINGLE query (access_bindings ⋈ roles on role_id; same kacho_iam schema,
+	// SINGLE query (access_bindings ⋈ roles on role_id; same kaname schema,
 	// FK access_bindings_role_fk — no per-row N+1 GetRole). Used
 	// by the enriched `AccessBindingService.ListSubjectPrivileges` RPC.
 	// Differs from ListBySubject in:
@@ -56,7 +56,7 @@ type ReaderIface interface {
 	ListByAccount(ctx context.Context, accountID domain.AccountID, filter AccountPageFilter) ([]domain.AccessBinding, string, error)
 	// SelectEmittedTuples returns the EXACT FGA tuple set that was emitted for a
 	// binding at grant time / last reconcile (the persisted
-	// kacho_iam.access_binding_emitted_tuples ledger). This is the
+	// kaname.access_binding_emitted_tuples ledger). This is the
 	// source of truth for a SYMMETRIC revoke: Delete reads it and emits
 	// EmitRelationDelete on EXACTLY this set instead of re-deriving from the
 	// binding's CURRENT (possibly-mutated) role. It is also the diff base for the
@@ -234,7 +234,7 @@ type WriterIface interface {
 		revokedByUserID *domain.UserID,
 	) (domain.AccessBinding, error)
 
-	// EmitSubjectChangeEvent writes a kacho_iam.subject_change_outbox row in the
+	// EmitSubjectChangeEvent writes a kaname.subject_change_outbox row in the
 	// current transaction, used to drive api-gateway authz-cache invalidation.
 	// Serialises the SubjectChangeEvent into the payload jsonb column AND
 	// writes denormalised columns (subject_id, op, event_type, resource_type,
@@ -255,7 +255,7 @@ type WriterIface interface {
 	EmitSubjectChangeEvent(ctx context.Context, evt SubjectChangeEvent) error
 
 	// EmitRelationWrite — atomic FGA-tuple emit inside the writer-tx.
-	// INSERTs N rows into kacho_iam.fga_outbox (event_type='fga.tuple.write')
+	// INSERTs N rows into kaname.fga_outbox (event_type='fga.tuple.write')
 	// in the current Writer-tx; a trigger on that INSERT folds each row into a
 	// direct fact in the SAME commit. Tx rollback ⇒ no orphan rows (запрет #10).
 	//
@@ -267,7 +267,7 @@ type WriterIface interface {
 	EmitRelationDelete(ctx context.Context, tuples []RelationTuple) error
 
 	// InsertEmittedTuples persists the EXACT FGA tuples emitted for a binding into
-	// kacho_iam.access_binding_emitted_tuples in THIS writer-tx — co-committed with
+	// kaname.access_binding_emitted_tuples in THIS writer-tx — co-committed with
 	// the matching EmitRelationWrite (ban #10). The ledger row commits iff
 	// the fga_outbox emit commits, so "what was emitted" is always recorded
 	// alongside the emit. `INSERT … ON CONFLICT (binding_id, fga_user, relation,
@@ -302,7 +302,7 @@ type WriterIface interface {
 	DeleteSubject(ctx context.Context, bindingID domain.AccessBindingID, subject domain.Subject) (bool, error)
 
 	// EmitAuditEvent — durable compliance event emit inside the writer-tx.
-	// INSERTs one row into kacho_iam.audit_outbox carrying the canonical
+	// INSERTs one row into kaname.audit_outbox carrying the canonical
 	// "who granted/revoked which role to whom on which resource, and when"
 	// fact in the event_payload jsonb. A drainer streams these into the audit
 	// topic; the row is committed iff the surrounding binding mutation commits

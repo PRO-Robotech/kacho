@@ -79,7 +79,7 @@ func writeRoleVerbs(t *testing.T, ctx context.Context, repo kachorepo.Repository
 func projectionOf(t *testing.T, ctx context.Context, pool *pgxpool.Pool, roleID domain.RoleID) []string {
 	t.Helper()
 	rows, err := pool.Query(ctx,
-		`SELECT object_type, verb FROM kacho_iam.role_verb WHERE role_id = $1`, string(roleID))
+		`SELECT object_type, verb FROM kaname.role_verb WHERE role_id = $1`, string(roleID))
 	require.NoError(t, err)
 	defer rows.Close()
 	var out []string

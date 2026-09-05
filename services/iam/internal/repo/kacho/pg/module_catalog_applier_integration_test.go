@@ -107,25 +107,25 @@ func stateFingerprint(t *testing.T, ctx context.Context, pool *pgxpool.Pool) str
 		SELECT md5(coalesce(string_agg(x, '|' ORDER BY x), '')) FROM (
 		  SELECT 'm:' || module || ':' || live::text ||
 		         ':' || coalesce(retired_reason, '') AS x
-		    FROM kacho_iam.catalog_module
+		    FROM kaname.catalog_module
 		  UNION ALL
 		  SELECT 'r:' || dotted || ':' || live::text ||
 		         ':' || coalesce(retired_reason, '')
-		    FROM kacho_iam.catalog_resource
+		    FROM kaname.catalog_resource
 		  UNION ALL
 		  SELECT 'v:' || module || '.' || resource || '.' || verb || ':' || live::text ||
 		         ':' || per_object::text || ':' || coalesce(retired_reason, '')
-		    FROM kacho_iam.catalog_verb
+		    FROM kaname.catalog_verb
 		  UNION ALL
 		  SELECT 'rr:' || role_id || ':' || module || '.' || resource ||
 		         ':' || coalesce(verb, '')
-		    FROM kacho_iam.role_rule_ref
+		    FROM kaname.role_rule_ref
 		  UNION ALL
 		  SELECT 'rv:' || role_id || ':' || object_type || ':' || verb
-		    FROM kacho_iam.role_verb
+		    FROM kaname.role_verb
 		  UNION ALL
 		  SELECT 'or:' || role_id || ':' || object_type || ':' || verb || ':' || source
-		    FROM kacho_iam.role_grant_orphan
+		    FROM kaname.role_grant_orphan
 		) s`).Scan(&fp))
 	return fp
 }
@@ -276,7 +276,7 @@ func TestModuleCatalogWithdrawalOrderIsHeldByTheKey(t *testing.T) {
 		require.NoError(t, berr)
 		defer func() { _ = tx.Rollback(ctx) }()
 		if _, eerr := tx.Exec(ctx, `
-			UPDATE kacho_iam.catalog_verb SET retired_at = now(), live = false,
+			UPDATE kaname.catalog_verb SET retired_at = now(), live = false,
 			       retired_reason = 'перестановка шагов'
 			 WHERE module = $1 AND resource = $2 AND verb = $3 AND live`,
 			applierProbeModule, "gamma", "get"); eerr != nil {
@@ -300,7 +300,7 @@ func TestModuleCatalogWithdrawalOrderIsHeldByTheKey(t *testing.T) {
 	// Переселено, а не отобрано молча: строка обязана лежать в сиротах.
 	var orphans int
 	require.NoError(t, pool.QueryRow(ctx, `
-		SELECT count(*) FROM kacho_iam.role_grant_orphan
+		SELECT count(*) FROM kaname.role_grant_orphan
 		 WHERE role_id = $1 AND object_type = $2 AND verb = $3 AND source = 'rule_ref'`,
 		string(roleID), applierProbeModule+".gamma", "get").Scan(&orphans))
 	require.Equal(t, 1, orphans, "снятое объявление не записано в сироты — право отобрано молча")
@@ -329,11 +329,11 @@ func TestModuleCatalogApplierRefusesToStripASystemRole(t *testing.T) {
 	roleID := "role_mc_sys_" + strings.ReplaceAll(applierProbeModule, "-", "")
 	_, err = pool.Exec(ctx, `
 		INSERT INTO roles (id, cluster_id, name, description, permissions)
-		VALUES ($1, (SELECT id FROM kacho_iam.clusters LIMIT 1), $2, $3, '["iam.users.*.read"]'::jsonb)`,
+		VALUES ($1, (SELECT id FROM kaname.clusters LIMIT 1), $2, $3, '["iam.users.*.read"]'::jsonb)`,
 		roleID, applierProbeModule+".probe", "probe system role")
 	require.NoError(t, err)
 	_, err = pool.Exec(ctx, `
-		INSERT INTO kacho_iam.role_rule_ref (role_id, module, resource, verb)
+		INSERT INTO kaname.role_rule_ref (role_id, module, resource, verb)
 		VALUES ($1, $2, $3, $4)`, roleID, applierProbeModule, "delta", "get")
 	require.NoError(t, err)
 
@@ -451,7 +451,7 @@ func TestModuleCatalogApplierLeavesUnappliedModulesAlone(t *testing.T) {
 
 	var orphans int
 	require.NoError(t, pool.QueryRow(ctx,
-		`SELECT count(*) FROM kacho_iam.role_grant_orphan`).Scan(&orphans))
+		`SELECT count(*) FROM kaname.role_grant_orphan`).Scan(&orphans))
 	require.Zero(t, orphans, "применение чужого манифеста переселило чьи-то права")
 	t.Logf("перепись: до — модулей %d ресурсов %d глаголов %d; после — %d/%d/%d",
 		len(before.modules), len(before.resources), len(before.verbs),
@@ -488,7 +488,7 @@ func TestModuleCatalogApplierRoundTripsAModule(t *testing.T) {
 	// Оживление, а не вставка: строк с этим модулем ровно столько, сколько было.
 	var rows int
 	require.NoError(t, pool.QueryRow(ctx,
-		`SELECT count(*) FROM kacho_iam.catalog_resource WHERE module = $1`,
+		`SELECT count(*) FROM kaname.catalog_resource WHERE module = $1`,
 		applierProbeModule).Scan(&rows))
 	require.Equal(t, 2, rows, "снятая строка не ожила, а завелась второй")
 }
@@ -497,10 +497,10 @@ func TestModuleCatalogApplierRoundTripsAModule(t *testing.T) {
 func moduleCensus(t *testing.T, ctx context.Context, pool *pgxpool.Pool, module string) []string {
 	t.Helper()
 	rows, err := pool.Query(ctx, `
-		SELECT 'r:' || resource FROM kacho_iam.catalog_resource WHERE module = $1 AND live
+		SELECT 'r:' || resource FROM kaname.catalog_resource WHERE module = $1 AND live
 		UNION ALL
 		SELECT 'v:' || resource || '.' || verb || ':' || per_object::text
-		  FROM kacho_iam.catalog_verb WHERE module = $1 AND live
+		  FROM kaname.catalog_verb WHERE module = $1 AND live
 		ORDER BY 1`, module)
 	require.NoError(t, err)
 	out, err := pgx.CollectRows(rows, pgx.RowTo[string])

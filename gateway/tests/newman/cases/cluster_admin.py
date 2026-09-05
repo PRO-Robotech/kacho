@@ -248,7 +248,7 @@ CASES.append(Case(
 # ---------------------------------------------------------------------------
 # CLUSTER-ADMIN-GRANT-400-INVALID-USER
 # ---------------------------------------------------------------------------
-# Well-formed id that exists in no `kacho_iam.users` row → the existence check in
+# Well-formed id that exists in no `kaname.users` row → the existence check in
 # GrantAdmin.Execute returns ErrInvalidArg, mapped to InvalidArgument (grpc 3 →
 # HTTP 400) with the canonical text. Synchronous: the check runs BEFORE the
 # Operation row is persisted, so this is an HTTP-level 400, not an op.error.

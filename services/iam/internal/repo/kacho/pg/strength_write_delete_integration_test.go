@@ -289,7 +289,7 @@ func takeWDCensus(t *testing.T, ctx context.Context, pool *pgxpool.Pool,
 	var c wdCensus
 	rows, err := pool.Query(ctx,
 		`SELECT verification_status, count(*)::bigint
-		   FROM kacho_iam.access_binding_target_members WHERE binding_id = $1
+		   FROM kaname.access_binding_target_members WHERE binding_id = $1
 		  GROUP BY verification_status`, string(bid))
 	require.NoError(t, err)
 	for rows.Next() {
@@ -312,11 +312,11 @@ func takeWDCensus(t *testing.T, ctx context.Context, pool *pgxpool.Pool,
 		require.NoError(t, pool.QueryRow(ctx, sql, args...).Scan(dst))
 	}
 	one(&c.LedgerRows,
-		`SELECT count(*)::bigint FROM kacho_iam.access_binding_emitted_tuples WHERE binding_id = $1`,
+		`SELECT count(*)::bigint FROM kaname.access_binding_emitted_tuples WHERE binding_id = $1`,
 		string(bid))
-	one(&c.FGAOutbox, `SELECT count(*)::bigint FROM kacho_iam.fga_outbox`)
-	one(&c.ReconcileOutbox, `SELECT count(*)::bigint FROM kacho_iam.resource_reconcile_outbox`)
-	one(&c.MirrorObjects, `SELECT count(*)::bigint FROM kacho_iam.resource_mirror`)
+	one(&c.FGAOutbox, `SELECT count(*)::bigint FROM kaname.fga_outbox`)
+	one(&c.ReconcileOutbox, `SELECT count(*)::bigint FROM kaname.resource_reconcile_outbox`)
+	one(&c.MirrorObjects, `SELECT count(*)::bigint FROM kaname.resource_mirror`)
 	// Столкновение отпечатков замка: полный проход берёт исключительную
 	// консультативную блокировку по `hashtext(id)`, а он 32-битный. Две РАЗНЫЕ
 	// выдачи вправе сесть на один замок и получить ЛОЖНУЮ сериализацию — то
@@ -324,7 +324,7 @@ func takeWDCensus(t *testing.T, ctx context.Context, pool *pgxpool.Pool,
 	// ноль здесь — свидетельство, а не молчание.
 	one(&c.LockFPCollisions,
 		`SELECT coalesce(sum(n - 1), 0)::bigint FROM (
-		   SELECT count(*) AS n FROM kacho_iam.access_bindings
+		   SELECT count(*) AS n FROM kaname.access_bindings
 		    GROUP BY hashtext(id) HAVING count(*) > 1) t`)
 	return c
 }
@@ -407,8 +407,8 @@ func seedWDObjects(t *testing.T, ctx context.Context, pool *pgxpool.Pool,
 	}
 	require.NoError(t, s.Flush(ctx))
 	require.NoError(t, tx.Commit(ctx))
-	_, err = pool.Exec(ctx, `ANALYZE kacho_iam.resource_mirror, kacho_iam.access_binding_target_members,
-		kacho_iam.access_binding_emitted_tuples`)
+	_, err = pool.Exec(ctx, `ANALYZE kaname.resource_mirror, kaname.access_binding_target_members,
+		kaname.access_binding_emitted_tuples`)
 	require.NoError(t, err)
 }
 
@@ -536,7 +536,7 @@ func runBandPoint(t *testing.T, ctx context.Context, band string, p wdPoint, kin
 		// есть тот случай, когда фикстура пытается посадить состояние, которого
 		// продукт не допускает.
 		_, err := pool.Exec(ctx,
-			`UPDATE kacho_iam.access_bindings
+			`UPDATE kaname.access_bindings
 			    SET expires_at = created_at + interval '1 millisecond'
 			  WHERE id = $1`, string(bid))
 		require.NoError(t, err)

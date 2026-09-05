@@ -58,12 +58,12 @@ func newReclaimFixture(t *testing.T) *reclaimFixture {
 	_, err = tx.Exec(ctx, `SET CONSTRAINTS ALL DEFERRED`)
 	require.NoError(t, err)
 	for _, q := range []string{
-		`INSERT INTO kacho_iam.accounts (id, name, owner_user_id)
+		`INSERT INTO kaname.accounts (id, name, owner_user_id)
 		 VALUES ('acc00000000000000rcl', 'rcl-1', 'usr00000000000000rcl') ON CONFLICT DO NOTHING`,
-		`INSERT INTO kacho_iam.users (id, external_id, email, account_id, invite_status)
+		`INSERT INTO kaname.users (id, external_id, email, account_id, invite_status)
 		 VALUES ('usr00000000000000rcl', 'ext-rcl-1', 'rcl1@example.invalid', 'acc00000000000000rcl', 'ACTIVE')
 		 ON CONFLICT DO NOTHING`,
-		`INSERT INTO kacho_iam.service_accounts (id, account_id, name)
+		`INSERT INTO kaname.service_accounts (id, account_id, name)
 		 VALUES ('sva00000000000000rcl', 'acc00000000000000rcl', 'rcl-one-sa') ON CONFLICT DO NOTHING`,
 	} {
 		_, err = tx.Exec(ctx, q)
@@ -82,7 +82,7 @@ func newReclaimFixture(t *testing.T) *reclaimFixture {
 func (f *reclaimFixture) putUserCred(t *testing.T, id string, lifetime, expiredFor time.Duration) {
 	t.Helper()
 	_, err := f.pool.Exec(context.Background(), `
-INSERT INTO kacho_iam.user_oauth_clients
+INSERT INTO kaname.user_oauth_clients
     (id, user_id, hydra_client_id, created_by_user_id, credential_kind,
      secret_hash, public_key_pem, key_algorithm, created_at, expires_at)
 VALUES ($1, 'usr00000000000000rcl', $2, 'usr00000000000000rcl', 'KEYPAIR',
@@ -96,7 +96,7 @@ VALUES ($1, 'usr00000000000000rcl', $2, 'usr00000000000000rcl', 'KEYPAIR',
 func (f *reclaimFixture) putUserCredForever(t *testing.T, id string) {
 	t.Helper()
 	_, err := f.pool.Exec(context.Background(), `
-INSERT INTO kacho_iam.user_oauth_clients
+INSERT INTO kaname.user_oauth_clients
     (id, user_id, hydra_client_id, created_by_user_id, credential_kind,
      secret_hash, public_key_pem, key_algorithm, expires_at)
 VALUES ($1, 'usr00000000000000rcl', $2, 'usr00000000000000rcl', 'KEYPAIR',
@@ -108,7 +108,7 @@ VALUES ($1, 'usr00000000000000rcl', $2, 'usr00000000000000rcl', 'KEYPAIR',
 func (f *reclaimFixture) putSACred(t *testing.T, id string, lifetime, expiredFor time.Duration) {
 	t.Helper()
 	_, err := f.pool.Exec(context.Background(), `
-INSERT INTO kacho_iam.service_account_oauth_clients
+INSERT INTO kaname.service_account_oauth_clients
     (id, sva_id, hydra_client_id, created_by_user_id, credential_kind,
      secret_hash, public_key_pem, key_algorithm, trusted_subjects, created_at, expires_at)
 VALUES ($1, 'sva00000000000000rcl', $2, 'usr00000000000000rcl', 'KEYPAIR',
@@ -124,7 +124,7 @@ func (f *reclaimFixture) used(t *testing.T, carrierType, carrierID, kind string)
 	t.Helper()
 	var used int64
 	err := f.pool.QueryRow(context.Background(), `
-		SELECT used FROM kacho_iam.project_resource_quotas
+		SELECT used FROM kaname.project_resource_quotas
 		 WHERE carrier_type = $1 AND carrier_id = $2 AND kind = $3`,
 		carrierType, carrierID, kind).Scan(&used)
 	require.NoError(t, err, "строка учёта обязана существовать: её заводит триггер принципала")
@@ -135,7 +135,7 @@ func (f *reclaimFixture) countUserCreds(t *testing.T) int64 {
 	t.Helper()
 	var n int64
 	require.NoError(t, f.pool.QueryRow(context.Background(),
-		`SELECT count(*) FROM kacho_iam.user_oauth_clients WHERE user_id = 'usr00000000000000rcl'`).Scan(&n))
+		`SELECT count(*) FROM kaname.user_oauth_clients WHERE user_id = 'usr00000000000000rcl'`).Scan(&n))
 	return n
 }
 
@@ -183,7 +183,7 @@ func TestCredRcl01_ExpiredCredentialFreesItsPlaceUnderTheCeiling(t *testing.T) {
 		"предпосылка: списание учло все три")
 
 	// When: прогон уборщика с отсрочкой в десять минут — час назад это дальше её.
-	r := kachopg.NewExpiredCredentialReclaimer(f.pool, "kacho_iam")
+	r := kachopg.NewExpiredCredentialReclaimer(f.pool, "kaname")
 	res, err := r.ReclaimExpiredCredentials(ctx, reclaimSpec(10*time.Minute))
 	require.NoError(t, err)
 
@@ -200,7 +200,7 @@ func TestCredRcl01_ExpiredCredentialFreesItsPlaceUnderTheCeiling(t *testing.T) {
 	// Then (3): наблюдаемый исход — выдача, которой прежде не было места.
 	var limit int64
 	require.NoError(t, f.pool.QueryRow(ctx, `
-		UPDATE kacho_iam.project_resource_quotas SET limit_value = 2
+		UPDATE kaname.project_resource_quotas SET limit_value = 2
 		 WHERE carrier_type = 'iam.user' AND carrier_id = 'usr00000000000000rcl'
 		   AND kind = 'iam.user.credential' RETURNING limit_value`).Scan(&limit))
 	require.EqualValues(t, 2, limit)
@@ -225,7 +225,7 @@ func TestCredRcl02_ExpiredMachineCredentialFreesItsPlace(t *testing.T) {
 	require.EqualValues(t, 2, f.used(t, "iam.serviceAccount", "sva00000000000000rcl", "iam.serviceAccount.credential"),
 		"предпосылка: списание учло обе")
 
-	r := kachopg.NewExpiredCredentialReclaimer(f.pool, "kacho_iam")
+	r := kachopg.NewExpiredCredentialReclaimer(f.pool, "kaname")
 	res, err := r.ReclaimExpiredCredentials(ctx, reclaimSpec(10*time.Minute))
 	require.NoError(t, err)
 
@@ -255,7 +255,7 @@ func TestCredRcl03_LiveEndlessAndFreshlyExpiredAreNotTouched(t *testing.T) {
 	require.EqualValues(t, 3, before)
 
 	// Отсрочка — час: истёкшее две минуты назад ещё внутри неё.
-	r := kachopg.NewExpiredCredentialReclaimer(f.pool, "kacho_iam")
+	r := kachopg.NewExpiredCredentialReclaimer(f.pool, "kaname")
 	res, err := r.ReclaimExpiredCredentials(ctx, reclaimSpec(time.Hour))
 	require.NoError(t, err)
 
@@ -292,13 +292,13 @@ func TestCredRcl04_GraceBoundIsBothSidedAndTiedToTheRowsOwnLifetime(t *testing.T
 	f.putUserCred(t, "uoc_rcm00000000000d03", 5*time.Minute, 10*time.Minute)
 	f.putUserCred(t, "uoc_rcm00000000000d04", 30*24*time.Hour, 10*time.Minute)
 
-	r := kachopg.NewExpiredCredentialReclaimer(f.pool, "kacho_iam")
+	r := kachopg.NewExpiredCredentialReclaimer(f.pool, "kaname")
 	res, err := r.ReclaimExpiredCredentials(ctx, reclaimSpec(grace))
 	require.NoError(t, err)
 
 	remaining := map[string]bool{}
 	rows, err := f.pool.Query(ctx,
-		`SELECT id FROM kacho_iam.user_oauth_clients WHERE user_id = 'usr00000000000000rcl'`)
+		`SELECT id FROM kaname.user_oauth_clients WHERE user_id = 'usr00000000000000rcl'`)
 	require.NoError(t, err)
 	for rows.Next() {
 		var id string
@@ -335,7 +335,7 @@ func TestCredRcl13_DryRunFindsAndRemovesNothing(t *testing.T) {
 
 	spec := reclaimSpec(10 * time.Minute)
 	spec.DryRun = true
-	r := kachopg.NewExpiredCredentialReclaimer(f.pool, "kacho_iam")
+	r := kachopg.NewExpiredCredentialReclaimer(f.pool, "kaname")
 	res, err := r.ReclaimExpiredCredentials(ctx, spec)
 	require.NoError(t, err)
 
@@ -365,7 +365,7 @@ func TestCredRcl08_FirstPassAfterRolloutGoesInBatches(t *testing.T) {
 
 	spec := reclaimSpec(10 * time.Minute)
 	spec.BatchSize = 3
-	r := kachopg.NewExpiredCredentialReclaimer(f.pool, "kacho_iam")
+	r := kachopg.NewExpiredCredentialReclaimer(f.pool, "kaname")
 
 	var passes, swept int
 	for swept < total {
@@ -390,7 +390,7 @@ func (f *reclaimFixture) cutoffRows(t *testing.T, subject string) int64 {
 	t.Helper()
 	var n int64
 	require.NoError(t, f.pool.QueryRow(context.Background(),
-		`SELECT count(*) FROM kacho_iam.minted_token_revocations WHERE subject = $1`, subject).Scan(&n))
+		`SELECT count(*) FROM kaname.minted_token_revocations WHERE subject = $1`, subject).Scan(&n))
 	return n
 }
 
@@ -409,7 +409,7 @@ func TestCredRcl11_RevokingALiveCredentialStillLeavesACutOffRow(t *testing.T) {
 	const id = "uoc_rcm00000000000g01"
 	f.putUserCred(t, id, 30*24*time.Hour, liveFor(30*24*time.Hour)) // ДЕЙСТВУЕТ
 
-	_, err := f.pool.Exec(ctx, `DELETE FROM kacho_iam.user_oauth_clients WHERE id = $1`, id)
+	_, err := f.pool.Exec(ctx, `DELETE FROM kaname.user_oauth_clients WHERE id = $1`, id)
 	require.NoError(t, err)
 
 	require.EqualValues(t, 1, f.cutoffRows(t, id),
@@ -435,7 +435,7 @@ func TestCredRcl12_RemovingAnExpiredCredentialLeavesNoCutOffRow(t *testing.T) {
 	f.putUserCred(t, byHand, 30*24*time.Hour, time.Hour)
 
 	// Путь 1 — уборщик.
-	r := kachopg.NewExpiredCredentialReclaimer(f.pool, "kacho_iam")
+	r := kachopg.NewExpiredCredentialReclaimer(f.pool, "kaname")
 	res, err := r.ReclaimExpiredCredentials(ctx, reclaimSpec(10*time.Minute))
 	require.NoError(t, err)
 	require.Equal(t, 2, res.Reclaimed, "обе строки подлежали снятию")
@@ -446,7 +446,7 @@ func TestCredRcl12_RemovingAnExpiredCredentialLeavesNoCutOffRow(t *testing.T) {
 	// Путь 2 — ручной отзыв той же формы строки.
 	const alsoByHand = "uoc_rcm00000000000h03"
 	f.putUserCred(t, alsoByHand, 30*24*time.Hour, time.Hour)
-	_, err = f.pool.Exec(ctx, `DELETE FROM kacho_iam.user_oauth_clients WHERE id = $1`, alsoByHand)
+	_, err = f.pool.Exec(ctx, `DELETE FROM kaname.user_oauth_clients WHERE id = $1`, alsoByHand)
 	require.NoError(t, err)
 	require.EqualValues(t, 0, f.cutoffRows(t, alsoByHand),
 		"то же правило обязано действовать и на ручном отзыве: у него два вызывающих, а не два правила")
@@ -469,14 +469,14 @@ func TestCredRcl21_CascadedTrustedIssuersAreCountedInTheAuditRow(t *testing.T) {
 	f.putSACred(t, id, 90*24*time.Hour, time.Hour)
 	for i, iss := range []string{"https://idp-a.example.invalid", "https://idp-b.example.invalid"} {
 		_, err := f.pool.Exec(ctx, `
-INSERT INTO kacho_iam.federated_trusted_issuers
+INSERT INTO kaname.federated_trusted_issuers
     (issuer, subject, sa_oauth_client_id, public_key_pem, key_algorithm)
 VALUES ($1, $2, $3, '-----BEGIN PUBLIC KEY-----\nx\n-----END PUBLIC KEY-----', 'ES256')`,
 			iss, fmt.Sprintf("subject-%d", i), id)
 		require.NoError(t, err, "посев записи доверия %d", i)
 	}
 
-	r := kachopg.NewExpiredCredentialReclaimer(f.pool, "kacho_iam")
+	r := kachopg.NewExpiredCredentialReclaimer(f.pool, "kaname")
 	res, err := r.ReclaimExpiredCredentials(ctx, reclaimSpec(10*time.Minute))
 	require.NoError(t, err)
 	require.Equal(t, 1, res.Reclaimed)
@@ -484,7 +484,7 @@ VALUES ($1, $2, $3, '-----BEGIN PUBLIC KEY-----\nx\n-----END PUBLIC KEY-----', '
 	var cascaded int64
 	require.NoError(t, f.pool.QueryRow(ctx, `
 		SELECT (event_payload ->> 'cascaded_trusted_issuers')::bigint
-		  FROM kacho_iam.audit_outbox
+		  FROM kaname.audit_outbox
 		 WHERE event_type = 'iam.sa_key.expired_reclaimed'
 		   AND event_payload ->> 'resource_id' = $1`, id).Scan(&cascaded))
 	require.EqualValues(t, 2, cascaded,
@@ -492,7 +492,7 @@ VALUES ($1, $2, $3, '-----BEGIN PUBLIC KEY-----\nx\n-----END PUBLIC KEY-----', '
 
 	var left int64
 	require.NoError(t, f.pool.QueryRow(ctx,
-		`SELECT count(*) FROM kacho_iam.federated_trusted_issuers WHERE sa_oauth_client_id = $1`, id).Scan(&left))
+		`SELECT count(*) FROM kaname.federated_trusted_issuers WHERE sa_oauth_client_id = $1`, id).Scan(&left))
 	require.EqualValues(t, 0, left, "каскад обязан унести записи доверия вместе со строкой")
 }
 
@@ -510,13 +510,13 @@ func TestCredRcl10_PlatformRemovalIsAuditedUnderItsOwnEventType(t *testing.T) {
 	const id = "uoc_rcm00000000000k01"
 	f.putUserCred(t, id, 30*24*time.Hour, time.Hour)
 
-	r := kachopg.NewExpiredCredentialReclaimer(f.pool, "kacho_iam")
+	r := kachopg.NewExpiredCredentialReclaimer(f.pool, "kaname")
 	_, err := r.ReclaimExpiredCredentials(ctx, reclaimSpec(10*time.Minute))
 	require.NoError(t, err)
 
 	var actor, evType string
 	require.NoError(t, f.pool.QueryRow(ctx, `
-		SELECT event_type, event_payload ->> 'actor' FROM kacho_iam.audit_outbox
+		SELECT event_type, event_payload ->> 'actor' FROM kaname.audit_outbox
 		 WHERE event_payload ->> 'resource_id' = $1`, id).Scan(&evType, &actor))
 
 	require.Equal(t, "iam.user_token.expired_reclaimed", evType,
@@ -543,7 +543,7 @@ func TestCredRcl26_AuditRowIsWrittenInTheSameTransactionAsTheRemoval(t *testing.
 		f.putUserCred(t, id, 30*24*time.Hour, time.Hour)
 	}
 
-	r := kachopg.NewExpiredCredentialReclaimer(f.pool, "kacho_iam")
+	r := kachopg.NewExpiredCredentialReclaimer(f.pool, "kaname")
 	res, err := r.ReclaimExpiredCredentials(ctx, reclaimSpec(10*time.Minute))
 	require.NoError(t, err)
 	require.Equal(t, len(ids), res.Reclaimed)
@@ -552,7 +552,7 @@ func TestCredRcl26_AuditRowIsWrittenInTheSameTransactionAsTheRemoval(t *testing.
 	// означало бы, что арендатор не может узнать, куда делось удостоверение.
 	var events int64
 	require.NoError(t, f.pool.QueryRow(ctx, `
-		SELECT count(*) FROM kacho_iam.audit_outbox
+		SELECT count(*) FROM kaname.audit_outbox
 		 WHERE event_type = 'iam.user_token.expired_reclaimed'`).Scan(&events))
 	require.EqualValues(t, len(ids), events, "на каждое снятое обязано быть ровно одно событие")
 
@@ -563,7 +563,7 @@ func TestCredRcl26_AuditRowIsWrittenInTheSameTransactionAsTheRemoval(t *testing.
 	require.NoError(t, f.pool.QueryRow(ctx, `
 		SELECT event_payload ->> 'expired_at', event_payload ->> 'grace_applied',
 		       event_payload ->> 'credential_kind'
-		  FROM kacho_iam.audit_outbox
+		  FROM kaname.audit_outbox
 		 WHERE event_payload ->> 'resource_id' = $1`, ids[0]).Scan(&expiredAt, &grace, &kind))
 	require.NotEmpty(t, expiredAt, "событие обязано назвать срок снятой строки")
 	require.NotEmpty(t, grace, "и применённую отсрочку")

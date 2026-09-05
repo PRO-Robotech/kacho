@@ -64,14 +64,14 @@ func newAssertionFixture(t *testing.T) assertionFixture {
 	// пришёл бы на COMMIT, а не на INSERT.
 	tx, err := pool.Begin(ctx)
 	require.NoError(t, err)
-	_, err = tx.Exec(ctx, `INSERT INTO kacho_iam.accounts (id, name, owner_user_id) VALUES ($1,'assertion-fixture',$2)`,
+	_, err = tx.Exec(ctx, `INSERT INTO kaname.accounts (id, name, owner_user_id) VALUES ($1,'assertion-fixture',$2)`,
 		f.account, f.user)
 	require.NoError(t, err)
-	_, err = tx.Exec(ctx, `INSERT INTO kacho_iam.users (id, account_id, external_id, email, display_name, invite_status)
+	_, err = tx.Exec(ctx, `INSERT INTO kaname.users (id, account_id, external_id, email, display_name, invite_status)
 		VALUES ($1,$2,'ext-assertion','assert@example.com','Assert','ACTIVE')`, f.user, f.account)
 	require.NoError(t, err)
 	require.NoError(t, tx.Commit(ctx))
-	_, err = pool.Exec(ctx, `INSERT INTO kacho_iam.service_accounts (id, account_id, name) VALUES ($1,$2,'assertion-sva')`,
+	_, err = pool.Exec(ctx, `INSERT INTO kaname.service_accounts (id, account_id, name) VALUES ($1,$2,'assertion-sva')`,
 		f.sva, f.account)
 	require.NoError(t, err)
 	return f
@@ -81,7 +81,7 @@ func newAssertionFixture(t *testing.T) assertionFixture {
 func (f assertionFixture) seedUserClient(t *testing.T, id, mirror, keyPEM, alg string, expires *time.Time) {
 	t.Helper()
 	_, err := f.pool.Exec(context.Background(),
-		`INSERT INTO kacho_iam.user_oauth_clients
+		`INSERT INTO kaname.user_oauth_clients
 		   (id, user_id, hydra_client_id, created_by_user_id, public_key_pem, key_algorithm, expires_at,
 		    credential_kind)
 		 VALUES ($1,$2,$3,$4,$5,$6,$7,'KEYPAIR')`,
@@ -93,7 +93,7 @@ func (f assertionFixture) seedUserClient(t *testing.T, id, mirror, keyPEM, alg s
 func (f assertionFixture) seedSAClient(t *testing.T, id, mirror, keyPEM, alg string) {
 	t.Helper()
 	_, err := f.pool.Exec(context.Background(),
-		`INSERT INTO kacho_iam.service_account_oauth_clients
+		`INSERT INTO kaname.service_account_oauth_clients
 		   (id, sva_id, hydra_client_id, created_by_user_id, public_key_pem, key_algorithm,
 		    credential_kind)
 		 VALUES ($1,$2,$3,$4,$5,$6,'KEYPAIR')`,
@@ -147,7 +147,7 @@ func TestF2_44_InteractiveClientDoesNotResolveAtAll(t *testing.T) {
 	f := newAssertionFixture(t)
 
 	const interactiveID = "ic-ccccccccccccccccc"
-	_, err := f.pool.Exec(ctx, `INSERT INTO kacho_iam.interactive_clients
+	_, err := f.pool.Exec(ctx, `INSERT INTO kaname.interactive_clients
 		  (id, name, redirect_uris, client_id)
 		 VALUES ($1,'assertion-interactive',ARRAY['https://console.example/cb'],$2)`,
 		interactiveID, "provider-"+interactiveID)
@@ -224,7 +224,7 @@ func TestF2_30_OwnerStateReachesTheCallerForBothNonActiveValues(t *testing.T) {
 		if state == "PENDING" {
 			ext = ""
 		}
-		_, err = f.pool.Exec(ctx, `UPDATE kacho_iam.users SET invite_status=$2, external_id=$3 WHERE id=$1`,
+		_, err = f.pool.Exec(ctx, `UPDATE kaname.users SET invite_status=$2, external_id=$3 WHERE id=$1`,
 			f.user, state, ext)
 		require.NoError(t, err, "состояние %s", state)
 

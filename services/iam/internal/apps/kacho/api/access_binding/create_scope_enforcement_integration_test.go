@@ -65,7 +65,7 @@ func TestCreate_ScopeEnforcement_ListCreateParity(t *testing.T) {
 	dsn := setupTestDB(t)
 	pool := poolFromDSN(t, dsn)
 	repo := kachopg.New(pool, nil)
-	opsRepo := operations.NewRepo(pool, "kacho_iam")
+	opsRepo := operations.NewRepo(pool, "kaname")
 	create := accessbindingapp.NewCreateAccessBindingUseCase(repo, opsRepo).
 		WithRelationStore(allowRelationStore{}, nil)
 
@@ -120,7 +120,7 @@ func TestCreate_ScopeEnforcement_ConcurrentMisScoped_BothRejected(t *testing.T) 
 	dsn := setupTestDB(t)
 	pool := poolFromDSN(t, dsn)
 	repo := kachopg.New(pool, nil)
-	opsRepo := operations.NewRepo(pool, "kacho_iam")
+	opsRepo := operations.NewRepo(pool, "kaname")
 	create := accessbindingapp.NewCreateAccessBindingUseCase(repo, opsRepo).
 		WithRelationStore(allowRelationStore{}, nil)
 
@@ -170,7 +170,7 @@ func TestCreate_ScopeEnforcement_AccountRoleOnCluster_FailedPrecondition(t *test
 	dsn := setupTestDB(t)
 	pool := poolFromDSN(t, dsn)
 	repo := kachopg.New(pool, nil)
-	opsRepo := operations.NewRepo(pool, "kacho_iam")
+	opsRepo := operations.NewRepo(pool, "kaname")
 	create := accessbindingapp.NewCreateAccessBindingUseCase(repo, opsRepo).
 		WithRelationStore(allowRelationStore{}, nil)
 
@@ -208,7 +208,7 @@ func TestCreate_RoleMissing_FailedPrecondition(t *testing.T) {
 	dsn := setupTestDB(t)
 	pool := poolFromDSN(t, dsn)
 	repo := kachopg.New(pool, nil)
-	opsRepo := operations.NewRepo(pool, "kacho_iam")
+	opsRepo := operations.NewRepo(pool, "kaname")
 	create := accessbindingapp.NewCreateAccessBindingUseCase(repo, opsRepo).
 		WithRelationStore(allowRelationStore{}, nil)
 
@@ -241,7 +241,7 @@ func TestCreate_ForwardOnly_LegacyMisScopedSurvives(t *testing.T) {
 	dsn := setupTestDB(t)
 	pool := poolFromDSN(t, dsn)
 	repo := kachopg.New(pool, nil)
-	opsRepo := operations.NewRepo(pool, "kacho_iam")
+	opsRepo := operations.NewRepo(pool, "kaname")
 	del := accessbindingapp.NewDeleteAccessBindingUseCase(repo, opsRepo).
 		WithRelationStore(allowRelationStore{}, nil)
 
@@ -263,16 +263,16 @@ func TestCreate_ForwardOnly_LegacyMisScopedSurvives(t *testing.T) {
 	// other triggers on the table stay on — the scope column is derived by one of them.
 	legacyID := domain.AccessBindingID(ids.NewID(domain.PrefixAccessBinding))
 	_, err := pool.Exec(ctx,
-		`ALTER TABLE kacho_iam.access_bindings DISABLE TRIGGER access_bindings_role_assignable_trg`)
+		`ALTER TABLE kaname.access_bindings DISABLE TRIGGER access_bindings_role_assignable_trg`)
 	require.NoError(t, err, "suspend the assignability trigger to seed a pre-rule row")
 	_, err = pool.Exec(ctx, `
-		INSERT INTO kacho_iam.access_bindings
+		INSERT INTO kaname.access_bindings
 		    (id, subject_type, subject_id, role_id, resource_type, resource_id, status, granted_by_user_id)
 		VALUES ($1, 'user', $2, $3, 'account', $4, 'ACTIVE', $5)`,
 		string(legacyID), string(member), string(bcustom), string(accA), string(ownerA))
 	require.NoError(t, err, "seed pre-1.5 mis-scoped binding directly")
 	_, rerr := pool.Exec(ctx,
-		`ALTER TABLE kacho_iam.access_bindings ENABLE TRIGGER access_bindings_role_assignable_trg`)
+		`ALTER TABLE kaname.access_bindings ENABLE TRIGGER access_bindings_role_assignable_trg`)
 	require.NoError(t, rerr, "restore the assignability trigger — the rest of the case runs under it")
 
 	// (a) read-time: ListByScope still shows the legacy binding.

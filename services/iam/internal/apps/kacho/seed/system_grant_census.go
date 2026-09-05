@@ -63,7 +63,7 @@ func CensusOfSystemGrants(ctx context.Context, pool *pgxpool.Pool) (SystemGrantC
 		                     AND subject_type = 'user' AND subject_id = '*'),
 		  count(*) FILTER (WHERE status = 'ACTIVE' AND revoked_at IS NULL
 		                     AND resource_type = 'cluster')
-		  FROM kacho_iam.access_bindings
+		  FROM kaname.access_bindings
 		 WHERE is_system`).
 		Scan(&c.Active, &c.Revoked, &c.WildcardSubject, &c.ClusterAnchored)
 	if err != nil {

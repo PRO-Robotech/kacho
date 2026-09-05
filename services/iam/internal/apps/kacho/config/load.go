@@ -220,7 +220,7 @@ func applyLegacyEnv(v *viper.Viper) {
 			user = "iam"
 		}
 		if db == "" {
-			db = "kacho_iam"
+			db = "kaname"
 		}
 		v.Set("repository.postgres.url", fmt.Sprintf("postgres://%s@%s:%s/%s", user, host, port, db))
 	}

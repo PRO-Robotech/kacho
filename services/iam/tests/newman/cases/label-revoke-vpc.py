@@ -44,7 +44,7 @@ ARM_LABELS grant (a custom role with a {module, resources, verbs, matchLabels}
 rule) on a CROSS-SERVICE resource (vpc.network / vpc.securityGroup) must be
 REVOKED when the matching label is removed/changed on the resource. The bug
 was: consumer services emitted InternalIAMService.RegisterResource (→
-kacho_iam.resource_mirror upsert → mirror.upsert reconcile-event → rsab
+kaname.resource_mirror upsert → mirror.upsert reconcile-event → rsab
 re-materialize) ONLY on resource CREATE, NOT on label-UPDATE, so the IAM mirror
 went stale and rsab kept stale membership forever. The fix makes each
 label-selectable resource re-emit RegisterResource (mirror.upsert with current
@@ -81,7 +81,7 @@ DEPLOYMENT SCOPE — full-umbrella stack (cross-service)
 ─────────────────────────────────────────────────────────────────────────────
 These cases require kacho-vpc deployed alongside kaname behind the gateway so
 that vpc.NetworkService.Create/Update actually emits RegisterResource into
-kacho_iam.resource_mirror (the `vpc→iam` :9091 edge). The umbrella newman-e2e
+kaname.resource_mirror (the `vpc→iam` :9091 edge). The umbrella newman-e2e
 brings up the FULL stack (all services, mtls off) and runs this shared iam suite,
 so these execute against a complete deployment. They are NOT whitelisted: a real
 regression must fire the gate.

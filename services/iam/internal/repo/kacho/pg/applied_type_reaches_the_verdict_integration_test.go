@@ -228,7 +228,7 @@ func seedVerdictTenant(t *testing.T, ctx context.Context, pool *pgxpool.Pool) ve
 	exec(`INSERT INTO projects (id, account_id, name, labels)
 	      VALUES ($1, $2, 'dod1-prj', '{}'::jsonb)`, tn.projectID, tn.accountID)
 	for _, sa := range []string{tn.granted, tn.bare} {
-		exec(`INSERT INTO kacho_iam.service_accounts (id, account_id, name)
+		exec(`INSERT INTO kaname.service_accounts (id, account_id, name)
 		      VALUES ($1, $2, $3)`, sa, tn.accountID, sa)
 	}
 	require.NoError(t, tx.Commit(ctx))
@@ -287,7 +287,7 @@ func declareRole(t *testing.T, ctx context.Context, pool *pgxpool.Pool, repo kac
 	rules := probeRules(module, resource)
 	pairs := cat.Facts().RoleVerbsFromSelectors(rules.MaterializingSelectors())
 
-	ops := operations.NewRepo(pool, "kacho_iam")
+	ops := operations.NewRepo(pool, "kaname")
 	uc := roleapp.NewCreateRoleUseCase(repo, ops, cat)
 	op, err := uc.Execute(declarerCtx(ctx, userID), domain.Role{
 		AccountID:   domain.AccountID(accountID),
@@ -333,7 +333,7 @@ func redeclareRole(t *testing.T, ctx context.Context, pool *pgxpool.Pool, repo k
 	rules := probeRules(module, resource)
 	pairs := cat.Facts().RoleVerbsFromSelectors(rules.MaterializingSelectors())
 
-	ops := operations.NewRepo(pool, "kacho_iam")
+	ops := operations.NewRepo(pool, "kaname")
 	uc := roleapp.NewUpdateRoleUseCase(repo, ops, cat)
 	op, err := uc.Execute(declarerCtx(ctx, userID), roleapp.UpdateRoleInput{
 		ID:         domain.RoleID(roleID),
@@ -373,16 +373,16 @@ func grantOnProject(t *testing.T, ctx context.Context, pool *pgxpool.Pool,
 		_, eerr := tx.Exec(ctx, sql, args...)
 		require.NoError(t, eerr, "выдача: %s", sql)
 	}
-	exec(`INSERT INTO kacho_iam.resource_parent_edge
+	exec(`INSERT INTO kaname.resource_parent_edge
 	        (object_type, object_id, parent_type, parent_id, depth)
 	      VALUES ($1, $2, 'project', $3, 1)
 	      ON CONFLICT DO NOTHING`, objectModelType, objectID, tn.projectID)
-	exec(`INSERT INTO kacho_iam.access_bindings
+	exec(`INSERT INTO kaname.access_bindings
 	        (id, subject_type, subject_id, role_id, resource_type, resource_id, status)
 	      VALUES ($1, 'service_account', $2, $3, 'project', $4, 'ACTIVE')
 	      ON CONFLICT DO NOTHING`,
 		bindingID, tn.granted, roleID, tn.projectID)
-	exec(`INSERT INTO kacho_iam.access_binding_subjects (binding_id, subject_type, subject_id)
+	exec(`INSERT INTO kaname.access_binding_subjects (binding_id, subject_type, subject_id)
 	      VALUES ($1, 'service_account', $2) ON CONFLICT DO NOTHING`, bindingID, tn.granted)
 	require.NoError(t, tx.Commit(ctx))
 }

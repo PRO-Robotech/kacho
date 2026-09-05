@@ -174,14 +174,14 @@ flowchart LR
   cli["Клиент"] -->|"Bearer JWT"| agw["api-gateway"]
   agw -->|"verify JWT"| agw
   agw -->|"iam.v1.* + subject"| iam["kaname"]
-  iam -->|"Check(subject, relation, object)"| pg[("PostgreSQL<br/>kacho_iam")]
+  iam -->|"Check(subject, relation, object)"| pg[("PostgreSQL<br/>kaname")]
   pg -->|"allow / deny"| iam
 ```
 
 :::note Здесь была нарисована внешняя служба отношений — её нет
 Прежняя редакция схемы несла отдельный узел, отвечавший краю «allow / deny», и стрелка из него
 приходила к IAM. Такой службы в пути решения **нет**: вердикт складывается запросом к той же
-схеме `kacho_iam`, в которой лежат выдачи. Отдельного хранилища, до которого право должно
+схеме `kaname`, в которой лежат выдачи. Отдельного хранилища, до которого право должно
 доехать, не существует, и состояние «привязка создана, но право ещё не действует» невыразимо
 by construction.
 

@@ -82,7 +82,7 @@ func TestFGAOutbox_CarriesNoIndexWithoutAReader(t *testing.T) {
 	rows, err := pool.Query(ctx,
 		`SELECT indexname, indexdef
 		   FROM pg_indexes
-		  WHERE schemaname = 'kacho_iam' AND tablename = 'fga_outbox'
+		  WHERE schemaname = 'kaname' AND tablename = 'fga_outbox'
 		  ORDER BY indexname`)
 	require.NoError(t, err)
 	defer rows.Close()
@@ -99,7 +99,7 @@ func TestFGAOutbox_CarriesNoIndexWithoutAReader(t *testing.T) {
 
 	// Объём осмотренного печатается всегда: «ноль лишних индексов» обязано быть
 	// отличимо от «ничего не прочитано».
-	t.Logf("осмотрено индексов на kacho_iam.fga_outbox: %d — %v", len(defs), defs)
+	t.Logf("осмотрено индексов на kaname.fga_outbox: %d — %v", len(defs), defs)
 
 	// Положительный контроль. Без него проба зеленела бы на схеме, где журнала
 	// нет вовсе, и на запросе, промахнувшемся мимо схемы или имени таблицы.
@@ -108,7 +108,7 @@ func TestFGAOutbox_CarriesNoIndexWithoutAReader(t *testing.T) {
 			"и её отрицательная половина ничего не утверждает")
 
 	require.Equalf(t, []string{"fga_outbox_pkey"}, names,
-		"у kacho_iam.fga_outbox есть индекс сверх первичного ключа. В журнал пишет каждая "+
+		"у kaname.fga_outbox есть индекс сверх первичного ключа. В журнал пишет каждая "+
 			"выдача и каждый отзыв доступа, поэтому индекс здесь оплачивается на пути мутации "+
 			"прав арендатора. Ни один сегодняшний читатель журнала его не ищет: триггер свёртки "+
 			"прямого факта (0098) читает свою же строку в той же транзакции, де-дуп загрузочного "+

@@ -100,7 +100,7 @@ func TestSeedModuleSA_B01_ModuleIdentitiesCreated(t *testing.T) {
 	for _, svc := range wantSvcs {
 		var id, name, accountID string
 		err := pool.QueryRow(ctx,
-			`SELECT id, name, account_id FROM kacho_iam.service_accounts WHERE id = $1`,
+			`SELECT id, name, account_id FROM kaname.service_accounts WHERE id = $1`,
 			svaID(svc)).Scan(&id, &name, &accountID)
 		require.NoError(t, err, "module SA %q must exist with deterministic id %s", svc, svaID(svc))
 		require.Equal(t, "kacho-"+svc, name, "SA name segment is canonical kacho-<svc>")
@@ -109,7 +109,7 @@ func TestSeedModuleSA_B01_ModuleIdentitiesCreated(t *testing.T) {
 
 	var retired int
 	require.NoError(t, pool.QueryRow(ctx,
-		`SELECT count(*) FROM kacho_iam.service_accounts WHERE id = $1`,
+		`SELECT count(*) FROM kaname.service_accounts WHERE id = $1`,
 		svaID("vpc-operator")).Scan(&retired))
 	require.Zero(t, retired,
 		"учётка сетевого оператора обязана отсутствовать (0081): модуля в дереве нет и чарта, "+
@@ -177,7 +177,7 @@ func TestSeedModuleSA_B04_NlbRoleRetiredIdentityAndWriteKept(t *testing.T) {
 	// SA name segment canonical kacho-nlb (not legacy kacho-loadbalancer).
 	var name string
 	require.NoError(t, pool.QueryRow(ctx,
-		`SELECT name FROM kacho_iam.service_accounts WHERE id = $1`, svaID("nlb")).Scan(&name))
+		`SELECT name FROM kaname.service_accounts WHERE id = $1`, svaID("nlb")).Scan(&name))
 	require.Equal(t, "kacho-nlb", name)
 }
 
@@ -189,19 +189,19 @@ func requireRoleRetired(t *testing.T, ctx context.Context, pool *pgxpool.Pool, s
 	t.Helper()
 	var roleCnt int
 	require.NoError(t, pool.QueryRow(ctx,
-		`SELECT count(*) FROM kacho_iam.roles WHERE id = $1`, rolID(svc)).Scan(&roleCnt))
+		`SELECT count(*) FROM kaname.roles WHERE id = $1`, rolID(svc)).Scan(&roleCnt))
 	require.Zerof(t, roleCnt,
 		"backing-роль %s обязана быть снята (0077): её правила не разрешаются закрытой "+
 			"таблицей типов и не материализуют ни одного кортежа", roleName(svc))
 
 	var bindCnt int
 	require.NoError(t, pool.QueryRow(ctx,
-		`SELECT count(*) FROM kacho_iam.access_bindings WHERE role_id = $1`, rolID(svc)).Scan(&bindCnt))
+		`SELECT count(*) FROM kaname.access_bindings WHERE role_id = $1`, rolID(svc)).Scan(&bindCnt))
 	require.Zerof(t, bindCnt, "снятая роль %s не может оставаться выданной", roleName(svc))
 
 	var name string
 	require.NoError(t, pool.QueryRow(ctx,
-		`SELECT name FROM kacho_iam.service_accounts WHERE id = $1`, svaID(svc)).Scan(&name))
+		`SELECT name FROM kaname.service_accounts WHERE id = $1`, svaID(svc)).Scan(&name))
 	require.Equalf(t, "kacho-"+svc, name,
 		"учётка kacho-%s — личность модуля на внутреннем периметре; снятие выдачи её не касается", svc)
 }
@@ -230,21 +230,21 @@ func TestSeedModuleSA_B05_OperatorFullyRetired(t *testing.T) {
 	// Роль снята — вместе с правами, правилами и привязкой (0076).
 	var roleCnt int
 	require.NoError(t, pool.QueryRow(ctx,
-		`SELECT count(*) FROM kacho_iam.roles WHERE id = $1`, rolID("vpc-operator")).Scan(&roleCnt))
+		`SELECT count(*) FROM kaname.roles WHERE id = $1`, rolID("vpc-operator")).Scan(&roleCnt))
 	require.Zero(t, roleCnt,
 		"backing-роль оператора сети обязана быть снята: её правила не разрешаются закрытой "+
 			"таблицей типов и не материализуют ни одного кортежа")
 
 	var bindCnt int
 	require.NoError(t, pool.QueryRow(ctx,
-		`SELECT count(*) FROM kacho_iam.access_bindings WHERE subject_id = $1`,
+		`SELECT count(*) FROM kaname.access_bindings WHERE subject_id = $1`,
 		svaID("vpc-operator")).Scan(&bindCnt))
 	require.Zero(t, bindCnt, "снятая роль не может оставаться выданной оператору")
 
 	// Личность снята (0081).
 	var saCnt int
 	require.NoError(t, pool.QueryRow(ctx,
-		`SELECT count(*) FROM kacho_iam.service_accounts WHERE id = $1`,
+		`SELECT count(*) FROM kaname.service_accounts WHERE id = $1`,
 		svaID("vpc-operator")).Scan(&saCnt))
 	require.Zero(t, saCnt,
 		"учётка оператора обязана быть снята: за ней нет предъявителя, а строка принципала "+
@@ -254,7 +254,7 @@ func TestSeedModuleSA_B05_OperatorFullyRetired(t *testing.T) {
 	// нет права записи в модель. «Ноль у оператора» получен не из пустого посева.
 	var gatewayName string
 	require.NoError(t, pool.QueryRow(ctx,
-		`SELECT name FROM kacho_iam.service_accounts WHERE id = $1`,
+		`SELECT name FROM kaname.service_accounts WHERE id = $1`,
 		svaID("api-gateway")).Scan(&gatewayName))
 	require.Equal(t, "kacho-api-gateway", gatewayName,
 		"контроль: учётка парадной двери обязана остаться — снимается ОДИН субъект, а не класс")
@@ -301,7 +301,7 @@ func TestSeedModuleSA_B06_AccessBindingScopeAndIdempotency(t *testing.T) {
 		for _, svc := range allModuleSAs {
 			var count int
 			require.NoError(t, pool.QueryRow(ctx,
-				`SELECT count(*) FROM kacho_iam.access_bindings
+				`SELECT count(*) FROM kaname.access_bindings
 				  WHERE subject_id = $1 AND role_id IS NOT NULL`,
 				svaID(svc)).Scan(&count))
 			require.Zerof(t, count,
@@ -322,7 +322,7 @@ func TestSeedModuleSA_B06_AccessBindingScopeAndIdempotency(t *testing.T) {
 	for _, svc := range allModuleSAs {
 		var relCnt int
 		require.NoError(t, pool.QueryRow(ctx,
-			`SELECT count(*) FROM kacho_iam.access_bindings
+			`SELECT count(*) FROM kaname.access_bindings
 			  WHERE subject_id = $1
 			    AND role_id IS NULL
 			    AND granted_relation = 'system_viewer'
@@ -345,7 +345,7 @@ func TestSeedModuleSA_B06_AccessBindingScopeAndIdempotency(t *testing.T) {
 	// из пустой таблицы. Посев заводит кластерные выдачи бутстрап-учётке.
 	var totalBindings int
 	require.NoError(t, pool.QueryRow(ctx,
-		`SELECT count(*) FROM kacho_iam.access_bindings`).Scan(&totalBindings))
+		`SELECT count(*) FROM kaname.access_bindings`).Scan(&totalBindings))
 	require.NotZero(t, totalBindings,
 		"контроль: в посеве нет НИ ОДНОЙ привязки — «ноль у служебных учёток» получен даром")
 
@@ -354,7 +354,7 @@ func TestSeedModuleSA_B06_AccessBindingScopeAndIdempotency(t *testing.T) {
 	// на каждой клетке и читалась бы как «всё снято».
 	var liveRoleCnt int
 	require.NoError(t, pool.QueryRow(ctx,
-		`SELECT count(*) FROM kacho_iam.roles WHERE id = 'rol' || substr(md5('vpc.subnet.view'), 1, 17)`).
+		`SELECT count(*) FROM kaname.roles WHERE id = 'rol' || substr(md5('vpc.subnet.view'), 1, 17)`).
 		Scan(&liveRoleCnt))
 	require.Equal(t, 1, liveRoleCnt,
 		"контроль: посеянная роль vpc.subnet.view не найдена тем же выводом id — «ноль» у снятых "+
@@ -369,7 +369,7 @@ func TestSeedModuleSA_B06_AccessBindingScopeAndIdempotency(t *testing.T) {
 	for _, svc := range allModuleSAs {
 		var roleCnt int
 		require.NoError(t, pool.QueryRow(ctx,
-			`SELECT count(*) FROM kacho_iam.roles WHERE id = $1`, rolID(svc)).Scan(&roleCnt))
+			`SELECT count(*) FROM kaname.roles WHERE id = $1`, rolID(svc)).Scan(&roleCnt))
 		require.Zerof(t, roleCnt, "повторный посев не должен воскрешать снятую backing-роль %s", roleName(svc))
 
 		// Учётка сетевого оператора снята (0081), и повторный посев обязан её НЕ
@@ -382,7 +382,7 @@ func TestSeedModuleSA_B06_AccessBindingScopeAndIdempotency(t *testing.T) {
 		}
 		var saCnt int
 		require.NoError(t, pool.QueryRow(ctx,
-			`SELECT count(*) FROM kacho_iam.service_accounts WHERE id = $1`, svaID(svc)).Scan(&saCnt))
+			`SELECT count(*) FROM kaname.service_accounts WHERE id = $1`, svaID(svc)).Scan(&saCnt))
 		require.Equalf(t, wantSA, saCnt,
 			"повторный посев не должен ни удвоить, ни потерять, ни воскресить учётку kacho-%s", svc)
 	}
@@ -394,7 +394,7 @@ func readRolePermissions(t *testing.T, ctx context.Context, pool *pgxpool.Pool, 
 	t.Helper()
 	var raw string
 	err := pool.QueryRow(ctx,
-		`SELECT permissions::text FROM kacho_iam.roles WHERE id = $1`, roleID).Scan(&raw)
+		`SELECT permissions::text FROM kaname.roles WHERE id = $1`, roleID).Scan(&raw)
 	require.NoError(t, err, "backing role %s must exist", roleID)
 	var perms []string
 	require.NoError(t, json.Unmarshal([]byte(raw), &perms))
@@ -406,7 +406,7 @@ func requireFGAWriterTuple(t *testing.T, ctx context.Context, pool *pgxpool.Pool
 	t.Helper()
 	var count int
 	require.NoError(t, pool.QueryRow(ctx,
-		`SELECT count(*) FROM kacho_iam.fga_outbox
+		`SELECT count(*) FROM kaname.fga_outbox
 		  WHERE event_type='fga.tuple.write'
 		    AND payload->>'user'     = $1
 		    AND payload->>'relation' = 'fga_writer'

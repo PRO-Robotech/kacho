@@ -12,7 +12,7 @@ package relverdict
 // разворачивают найденные основания на членов названных групп. Прежде разворот
 // стоял в обоих файлах ОДНОЙ И ТОЙ ЖЕ строкой:
 //
-//	JOIN kacho_iam.group_members gm
+//	JOIN kaname.group_members gm
 //	  ON <subject> IN ('group:' || gm.group_id, 'group:' || gm.group_id || '#member')
 //
 // `gm.group_id` — ВЕДУЩАЯ колонка `group_members_pkey (group_id, member_type,
@@ -96,7 +96,7 @@ const membersOfNamedGroupsSQL = `
           WHERE substr(group_write.body,
                        length(split_part(group_write.body, '#', 1)) + 1) IN ('', '#member')
        ) group_ref
-  JOIN kacho_iam.group_members gm ON gm.group_id = group_ref.group_id`
+  JOIN kaname.group_members gm ON gm.group_id = group_ref.group_id`
 
 // membersOfNamedGroups — готовый фрагмент для конкретной колонки-субъекта.
 func membersOfNamedGroups(subjectCol string) string {

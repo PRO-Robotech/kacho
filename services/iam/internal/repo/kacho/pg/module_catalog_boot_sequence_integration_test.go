@@ -86,9 +86,9 @@ func deliveryOfShippedManifests(t *testing.T) (dir string, modules []string) {
 func catalogRowCensus(t *testing.T, ctx context.Context, pool *pgxpool.Pool) (mods, res, verbs int) {
 	t.Helper()
 	require.NoError(t, pool.QueryRow(ctx, `
-		SELECT (SELECT count(*) FROM kacho_iam.catalog_module   WHERE live),
-		       (SELECT count(*) FROM kacho_iam.catalog_resource WHERE live),
-		       (SELECT count(*) FROM kacho_iam.catalog_verb     WHERE live)`).
+		SELECT (SELECT count(*) FROM kaname.catalog_module   WHERE live),
+		       (SELECT count(*) FROM kaname.catalog_resource WHERE live),
+		       (SELECT count(*) FROM kaname.catalog_verb     WHERE live)`).
 		Scan(&mods, &res, &verbs))
 	return mods, res, verbs
 }

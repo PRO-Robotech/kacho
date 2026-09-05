@@ -81,7 +81,7 @@ type OpenFGAHTTPClient struct{ Endpoint string }
 // исполняемого обращения нет → гейт МОЛЧИТ.
 //
 // Без этой пробы гейт ловил бы слово. Слово в дереве остаётся законно и во
-// множестве мест: журнал намерений называется `kacho_iam.fga_outbox`, модель прав
+// множестве мест: журнал намерений называется `kaname.fga_outbox`, модель прав
 // лежит в `fga_model.fga` и стала источником истины формы, учётка посредника
 // зовётся `iam_fgaproxy`. Гейт, краснеющий на них, краснеет на исправном дереве.
 func TestR7_3_26_InjectionSilentOnTheLegitimateTwin(t *testing.T) {
@@ -92,7 +92,7 @@ import "context"
 
 // Журнал намерений исторически называется fga_outbox — по снятому движку OpenFGA.
 // Переименование это предмет отдельной задачи: применённые миграции не правятся.
-const journalTable = "kacho_iam.fga_outbox"
+const journalTable = "kaname.fga_outbox"
 
 // notifyChannel — канал, на который шлёт триггер журнала.
 const notifyChannel = "kacho_iam_fga_outbox"

@@ -2,7 +2,7 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
 
 // Package reconcile_outbox — emit + drain helpers for
-// kacho_iam.resource_reconcile_outbox.
+// kaname.resource_reconcile_outbox.
 //
 // RegisterResource/UnregisterResource enqueues an event HERE in the SAME
 // writer-tx as the resource_mirror UPSERT/DELETE (atomic co-commit, ban #10).
@@ -79,7 +79,7 @@ func EmitTx(ctx context.Context, tx pgx.Tx, eventType, objectType, objectID stri
 		return fmt.Errorf("reconcile_outbox: tx must not be nil")
 	}
 	if _, err := tx.Exec(ctx,
-		`INSERT INTO kacho_iam.resource_reconcile_outbox (object_type, object_id, event_type)
+		`INSERT INTO kaname.resource_reconcile_outbox (object_type, object_id, event_type)
 		 VALUES ($1, $2, $3)`,
 		objectType, objectID, eventType,
 	); err != nil {
@@ -113,7 +113,7 @@ type execQuerier interface {
 func ClaimBatch(ctx context.Context, q querier, limit int) ([]Event, error) {
 	rows, err := q.Query(ctx,
 		`SELECT id, object_type, object_id, event_type
-		   FROM kacho_iam.resource_reconcile_outbox
+		   FROM kaname.resource_reconcile_outbox
 		  WHERE sent_at IS NULL
 		    AND attempt_count < $2
 		  ORDER BY id ASC
@@ -153,7 +153,7 @@ func ClaimBatch(ctx context.Context, q querier, limit int) ([]Event, error) {
 func RecordFailure(ctx context.Context, q execQuerier, id int64, cause string) (int, error) {
 	var attempts int
 	if err := q.QueryRow(ctx,
-		`UPDATE kacho_iam.resource_reconcile_outbox
+		`UPDATE kaname.resource_reconcile_outbox
 		    SET attempt_count = attempt_count + 1,
 		        last_error    = $2
 		  WHERE id = $1
@@ -185,10 +185,10 @@ func SweepDrained(ctx context.Context, q execQuerier, grace time.Duration, batch
 		return 0, false, fmt.Errorf("reconcile_outbox: batch must be positive, got %d", batch)
 	}
 	tag, err := q.Exec(ctx,
-		`DELETE FROM kacho_iam.resource_reconcile_outbox
+		`DELETE FROM kaname.resource_reconcile_outbox
 		  WHERE id IN (
 		        SELECT id
-		          FROM kacho_iam.resource_reconcile_outbox
+		          FROM kaname.resource_reconcile_outbox
 		         WHERE sent_at IS NOT NULL
 		           AND sent_at < now() - make_interval(secs => $1)
 		         ORDER BY id
@@ -206,7 +206,7 @@ func SweepDrained(ctx context.Context, q execQuerier, grace time.Duration, batch
 // writes, so the event is consumed iff the reconcile commits).
 func MarkSentTx(ctx context.Context, tx pgx.Tx, id int64) error {
 	if _, err := tx.Exec(ctx,
-		`UPDATE kacho_iam.resource_reconcile_outbox SET sent_at = now() WHERE id = $1`,
+		`UPDATE kaname.resource_reconcile_outbox SET sent_at = now() WHERE id = $1`,
 		id,
 	); err != nil {
 		return fmt.Errorf("reconcile_outbox: mark sent: %w", err)

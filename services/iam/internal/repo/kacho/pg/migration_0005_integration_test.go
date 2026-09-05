@@ -112,18 +112,18 @@ func newRbacFixture(t *testing.T, ctx context.Context, suffix string) *rbacFixtu
 		_, xerr := tx.Exec(ctx, sql, args...)
 		require.NoError(t, xerr, sql)
 	}
-	exec(`INSERT INTO kacho_iam.clusters (id, name) VALUES ('cluster_kacho_root', 'kacho')
+	exec(`INSERT INTO kaname.clusters (id, name) VALUES ('cluster_kacho_root', 'kacho')
 	      ON CONFLICT DO NOTHING`)
-	exec(`INSERT INTO kacho_iam.accounts (id, name, owner_user_id)
+	exec(`INSERT INTO kaname.accounts (id, name, owner_user_id)
 	      VALUES ($1, $2, $3)`, "acc-"+suffix, "probe-"+suffix, "usr-"+suffix)
-	exec(`INSERT INTO kacho_iam.users (id, external_id, email, account_id)
+	exec(`INSERT INTO kaname.users (id, external_id, email, account_id)
 	      VALUES ($1, $2, $3, $4)`,
 		"usr-"+suffix, "ext-"+suffix, "usr-"+suffix+"@kacho.local", "acc-"+suffix)
-	exec(`INSERT INTO kacho_iam.projects (id, account_id, name)
+	exec(`INSERT INTO kaname.projects (id, account_id, name)
 	      VALUES ($1, $2, $3)`, "prj-"+suffix, "acc-"+suffix, "home")
 	// Роль КЛАСТЕРНОГО яруса: на неё ссылаются выдачи всех областей, тогда как
 	// роль проекта ограничена своей. Имя обязано пройти roles_system_name_check.
-	exec(`INSERT INTO kacho_iam.roles (id, name, permissions, cluster_id)
+	exec(`INSERT INTO kaname.roles (id, name, permissions, cluster_id)
 	      VALUES ($1, $2, '["compute.instance.*.get"]'::jsonb, 'cluster_kacho_root')`,
 		roleID, "kacho.probe"+suffix)
 	require.NoError(t, tx.Commit(ctx))
@@ -135,7 +135,7 @@ func newRbacFixture(t *testing.T, ctx context.Context, suffix string) *rbacFixtu
 // Возвращает ошибку как есть: грамматику судят пробы, а не помощник.
 func (f *rbacFixture) insertRole(ctx context.Context, id, name, perms string) error {
 	_, err := f.pool.Exec(ctx, `
-		INSERT INTO kacho_iam.roles (id, name, permissions, cluster_id)
+		INSERT INTO kaname.roles (id, name, permissions, cluster_id)
 		VALUES ($1, $2, $3::jsonb, 'cluster_kacho_root')`, id, name, perms)
 	return err
 }
@@ -160,7 +160,7 @@ func TestRbacV2Grammar_FourSegmentPermissionIsAccepted(t *testing.T) {
 
 	var raw string
 	require.NoError(t, f.pool.QueryRow(ctx,
-		`SELECT permissions::text FROM kacho_iam.roles WHERE id=$1`,
+		`SELECT permissions::text FROM kaname.roles WHERE id=$1`,
 		"rol0000000000000g4ab").Scan(&raw))
 	require.Contains(t, raw, `"compute.instance.inst-abc.update"`)
 	require.Contains(t, raw, `"vpc.network.*.create"`)
@@ -229,7 +229,7 @@ func TestRbacV2Grammar_SeededRolesAreAllFourSegment(t *testing.T) {
 	var total, withPerms int
 	require.NoError(t, f.pool.QueryRow(ctx,
 		`SELECT count(*), count(*) FILTER (WHERE jsonb_array_length(permissions) > 0)
-		   FROM kacho_iam.roles`).Scan(&total, &withPerms))
+		   FROM kaname.roles`).Scan(&total, &withPerms))
 	t.Logf("осмотрено ролей: %d, из них с непустым набором прав: %d", total, withPerms)
 	require.Positive(t, withPerms,
 		"ролей с непустым набором прав ноль — обход пуст, и вердикт беспредметен: "+
@@ -237,7 +237,7 @@ func TestRbacV2Grammar_SeededRolesAreAllFourSegment(t *testing.T) {
 
 	var leftCount int
 	require.NoError(t, f.pool.QueryRow(ctx, `
-		SELECT count(*) FROM kacho_iam.roles
+		SELECT count(*) FROM kaname.roles
 		WHERE EXISTS (
 			SELECT 1 FROM jsonb_array_elements_text(permissions) p
 			WHERE array_length(string_to_array(p, '.'), 1) <> 4
@@ -255,14 +255,14 @@ func TestRbacV2Grammar_SeededRolesAreAllFourSegment(t *testing.T) {
 func (f *rbacFixture) insertBinding(ctx context.Context, id, resType, resID, subject string, scope int) error {
 	if scope < 0 {
 		_, err := f.pool.Exec(ctx, `
-			INSERT INTO kacho_iam.access_bindings
+			INSERT INTO kaname.access_bindings
 			    (id, subject_type, subject_id, role_id, resource_type, resource_id, status)
 			VALUES ($1, 'user', $2, $3, $4, $5, 'ACTIVE')`,
 			id, subject, f.roleID, resType, resID)
 		return err
 	}
 	_, err := f.pool.Exec(ctx, `
-		INSERT INTO kacho_iam.access_bindings
+		INSERT INTO kaname.access_bindings
 		    (id, subject_type, subject_id, role_id, resource_type, resource_id, status, scope)
 		VALUES ($1, 'user', $2, $3, $4, $5, 'ACTIVE', $6)`,
 		id, subject, f.roleID, resType, resID, scope)
@@ -307,7 +307,7 @@ func TestAccessBindingScope_DerivedFromResourceType(t *testing.T) {
 	for _, c := range cases {
 		var got int
 		require.NoError(t, f.pool.QueryRow(ctx,
-			`SELECT scope FROM kacho_iam.access_bindings WHERE id=$1`, c.id).Scan(&got))
+			`SELECT scope FROM kaname.access_bindings WHERE id=$1`, c.id).Scan(&got))
 		require.Equal(t, c.want, got, "тип ресурса %s обязан давать область %d", c.resType, c.want)
 	}
 }
@@ -342,7 +342,7 @@ func TestAccessBindingScope_OutOfRangeIsRejectedAndOmittedIsDerived(t *testing.T
 		"триггер обязан вывести область из типа ресурса")
 	var derived int
 	require.NoError(t, f.pool.QueryRow(ctx,
-		`SELECT scope FROM kacho_iam.access_bindings WHERE id='acb0000000000000ok001'`).Scan(&derived))
+		`SELECT scope FROM kaname.access_bindings WHERE id='acb0000000000000ok001'`).Scan(&derived))
 	require.Equal(t, 1, derived, "тип ресурса cluster даёт область 1")
 }
 

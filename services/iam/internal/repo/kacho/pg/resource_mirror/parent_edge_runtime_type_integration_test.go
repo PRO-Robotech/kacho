@@ -96,14 +96,14 @@ func TestParentEdges_RuntimeAppliedTypeIsWrittenInTheModelDictionary(t *testing.
 	// «перевёл» было бы неотличимо от «записал обоими именами».
 	var underCatalog int
 	require.NoError(t, pool.QueryRow(ctx,
-		`SELECT count(*) FROM kacho_iam.resource_parent_edge
+		`SELECT count(*) FROM kaname.resource_parent_edge
 		  WHERE object_type = 'billing.invoice'`).Scan(&underCatalog))
 	require.Zero(t, underCatalog, "ребро осталось под точечным именем словаря каталога")
 
 	// Строка зеркала свой словарь сохраняет: перевод стоит на стыке.
 	var mirrored int
 	require.NoError(t, pool.QueryRow(ctx,
-		`SELECT count(*) FROM kacho_iam.resource_mirror
+		`SELECT count(*) FROM kaname.resource_mirror
 		  WHERE object_type = 'billing.invoice' AND object_id = 'inv-runtime'`).Scan(&mirrored))
 	require.Equal(t, 1, mirrored, "строки зеркала нет — регистрация не доехала вовсе")
 }
@@ -153,11 +153,11 @@ func TestParentEdges_RuntimeAppliedTypeUnregisterClearsTheChain(t *testing.T) {
 func applyRuntimeType(t *testing.T, ctx context.Context, pool *pgxpool.Pool, module, resource, objectType string) {
 	t.Helper()
 	_, err := pool.Exec(ctx,
-		`INSERT INTO kacho_iam.catalog_module (module) VALUES ($1)
+		`INSERT INTO kaname.catalog_module (module) VALUES ($1)
 		 ON CONFLICT (module) DO NOTHING`, module)
 	require.NoError(t, err)
 	_, err = pool.Exec(ctx,
-		`INSERT INTO kacho_iam.catalog_resource (module, resource, dotted, object_type)
+		`INSERT INTO kaname.catalog_resource (module, resource, dotted, object_type)
 		 VALUES ($1, $2, $1 || '.' || $2, $3)`, module, resource, objectType)
 	require.NoError(t, err)
 }
@@ -166,7 +166,7 @@ func countEdges(t *testing.T, ctx context.Context, pool *pgxpool.Pool, objectTyp
 	t.Helper()
 	var n int
 	require.NoError(t, pool.QueryRow(ctx,
-		`SELECT count(*) FROM kacho_iam.resource_parent_edge
+		`SELECT count(*) FROM kaname.resource_parent_edge
 		  WHERE object_type = $1 AND object_id = $2`, objectType, objectID).Scan(&n))
 	return n
 }

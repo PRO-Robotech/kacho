@@ -106,13 +106,13 @@ func grantOnAccount(t *testing.T, ctx context.Context, pool *pgxpool.Pool,
 	t.Helper()
 	bindingID := ids.NewID("acb")
 	_, err := pool.Exec(ctx, `
-		INSERT INTO kacho_iam.access_bindings
+		INSERT INTO kaname.access_bindings
 		    (id, subject_type, subject_id, role_id, resource_type, resource_id, status)
 		VALUES ($1, 'user', $2, $3, 'account', $4, 'ACTIVE')`,
 		bindingID, string(userID), roleID, string(accID))
 	require.NoError(t, err)
 	_, err = pool.Exec(ctx, `
-		INSERT INTO kacho_iam.access_binding_subjects (binding_id, subject_type, subject_id, ordinal)
+		INSERT INTO kaname.access_binding_subjects (binding_id, subject_type, subject_id, ordinal)
 		VALUES ($1, 'user', $2, 0)`, bindingID, string(userID))
 	require.NoError(t, err)
 	return bindingID
@@ -121,7 +121,7 @@ func grantOnAccount(t *testing.T, ctx context.Context, pool *pgxpool.Pool,
 func someRoleID(t *testing.T, ctx context.Context, pool *pgxpool.Pool) string {
 	t.Helper()
 	var id string
-	require.NoError(t, pool.QueryRow(ctx, `SELECT id FROM kacho_iam.roles LIMIT 1`).Scan(&id))
+	require.NoError(t, pool.QueryRow(ctx, `SELECT id FROM kaname.roles LIMIT 1`).Scan(&id))
 	require.NotEmpty(t, id, "ПРЕДПОСЫЛКА: в дереве обязана быть хоть одна роль")
 	return id
 }
@@ -218,7 +218,7 @@ func TestRemoveFromAccount_SucceedsOnceTheGrantIsGone(t *testing.T) {
 	role := someRoleID(t, ctx, pool)
 	blocking := grantOnAccount(t, ctx, pool, uid, accID, role)
 
-	_, err = pool.Exec(ctx, `DELETE FROM kacho_iam.access_bindings WHERE id = $1`, blocking)
+	_, err = pool.Exec(ctx, `DELETE FROM kaname.access_bindings WHERE id = $1`, blocking)
 	require.NoError(t, err)
 
 	uc := NewRemoveFromAccountUseCase(repo, nil)
@@ -250,14 +250,14 @@ func TestRemoveFromAccount_RefusalNamesGrantsScopedOnAccountProjects(t *testing.
 
 	projID := ids.NewID(domain.PrefixProject)
 	_, err = pool.Exec(ctx, `
-		INSERT INTO kacho_iam.projects (id, account_id, name, description, labels, created_at)
+		INSERT INTO kaname.projects (id, account_id, name, description, labels, created_at)
 		VALUES ($1, $2, $3, '', '{}'::jsonb, now())`,
 		projID, string(accID), "p-"+strings.ToLower(projID[4:12]))
 	require.NoError(t, err)
 
 	bindingID := ids.NewID("acb")
 	_, err = pool.Exec(ctx, `
-		INSERT INTO kacho_iam.access_bindings
+		INSERT INTO kaname.access_bindings
 		    (id, subject_type, subject_id, role_id, resource_type, resource_id, status)
 		VALUES ($1, 'user', $2, $3, 'project', $4, 'ACTIVE')`,
 		bindingID, string(uid), role, projID)

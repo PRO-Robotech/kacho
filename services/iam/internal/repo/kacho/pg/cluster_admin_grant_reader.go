@@ -34,7 +34,7 @@ func NewClusterAdminGrantReader(pool *pgxpool.Pool) *ClusterAdminGrantReader {
 	return &ClusterAdminGrantReader{pool: pool}
 }
 
-// ListActive — single SQL with two LEFT JOINs to `kacho_iam.users`:
+// ListActive — single SQL with two LEFT JOINs to `kaname.users`:
 //   - u_subj — for subject_email / subject_display_name
 //   - u_by   — for granted_by_email (NULL when granted_by == "bootstrap")
 //
@@ -56,9 +56,9 @@ func (r *ClusterAdminGrantReader) ListActive(ctx context.Context) ([]domain.Clus
 		            ELSE COALESCE(u_by.email, '')
 		       END AS granted_by_email,
 		       g.granted_at
-		  FROM kacho_iam.cluster_admin_grants g
-		  LEFT JOIN kacho_iam.users u_subj ON u_subj.id = g.subject_id
-		  LEFT JOIN kacho_iam.users u_by   ON u_by.id   = g.granted_by
+		  FROM kaname.cluster_admin_grants g
+		  LEFT JOIN kaname.users u_subj ON u_subj.id = g.subject_id
+		  LEFT JOIN kaname.users u_by   ON u_by.id   = g.granted_by
 		 WHERE g.granted_until IS NULL
 		 ORDER BY g.granted_at ASC`
 	rows, err := r.pool.Query(ctx, q)

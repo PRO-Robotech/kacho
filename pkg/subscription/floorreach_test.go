@@ -63,7 +63,7 @@ func (s earliestSource) QueryRow(context.Context, string, ...any) pgx.Row {
 // различает ДВЕ объявленные полосы удержания.
 func TestFloorIsAskedFromOutsideTheSubscriptionPackage(t *testing.T) {
 	ctx := context.Background()
-	h := subscription.NewWatermark("kacho_iam.subject_change_outbox", "id", nil)
+	h := subscription.NewWatermark("kaname.subject_change_outbox", "id", nil)
 
 	// Холодный наблюдатель: нижней строки ещё не спрашивали, обе полосы дают
 	// ноль. Утверждается, чтобы следующий шаг был ОТЛИЧИМ от этого состояния.

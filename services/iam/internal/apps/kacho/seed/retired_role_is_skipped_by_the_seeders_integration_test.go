@@ -52,11 +52,11 @@ func retireProbeRole(t *testing.T, ctx context.Context, pool *pgxpool.Pool, id s
 	for _, table := range []string{"role_verb", "role_rule_ref", "role_rule_selectors",
 		"access_binding_target_members"} {
 		_, err := pool.Exec(ctx,
-			`DELETE FROM kacho_iam.`+table+` WHERE role_id = $1`, id)
+			`DELETE FROM kaname.`+table+` WHERE role_id = $1`, id)
 		require.NoErrorf(t, err, "снятие проекции %s", table)
 	}
 	_, err := pool.Exec(ctx, `
-		UPDATE kacho_iam.roles
+		UPDATE kaname.roles
 		   SET live = false, retired_at = now(), retired_reason = 'проба', retired_by = 'проба'
 		 WHERE id = $1`, id)
 	require.NoError(t, err, "пометка роли снятой")
@@ -87,10 +87,10 @@ func TestRetiredRoleIsSkippedBySelectorSeeding(t *testing.T) {
 
 	var goneSelectors, goneVerbs int
 	require.NoError(t, pool.QueryRow(ctx,
-		`SELECT count(*) FROM kacho_iam.role_rule_selectors WHERE role_id = $1`, gone).
+		`SELECT count(*) FROM kaname.role_rule_selectors WHERE role_id = $1`, gone).
 		Scan(&goneSelectors))
 	require.NoError(t, pool.QueryRow(ctx,
-		`SELECT count(*) FROM kacho_iam.role_verb WHERE role_id = $1`, gone).Scan(&goneVerbs))
+		`SELECT count(*) FROM kaname.role_verb WHERE role_id = $1`, gone).Scan(&goneVerbs))
 	assert.Zero(t, goneSelectors, "у снятой роли появились селекторы: право вернулось")
 	assert.Zero(t, goneVerbs, "у снятой роли появилась проекция глаголов: право вернулось")
 
@@ -98,10 +98,10 @@ func TestRetiredRoleIsSkippedBySelectorSeeding(t *testing.T) {
 	// не написавшем ни строки.
 	var liveSelectors, liveVerbs int
 	require.NoError(t, pool.QueryRow(ctx,
-		`SELECT count(*) FROM kacho_iam.role_rule_selectors WHERE role_id = $1`, live).
+		`SELECT count(*) FROM kaname.role_rule_selectors WHERE role_id = $1`, live).
 		Scan(&liveSelectors))
 	require.NoError(t, pool.QueryRow(ctx,
-		`SELECT count(*) FROM kacho_iam.role_verb WHERE role_id = $1`, live).Scan(&liveVerbs))
+		`SELECT count(*) FROM kaname.role_verb WHERE role_id = $1`, live).Scan(&liveVerbs))
 	assert.Positive(t, liveSelectors,
 		"живая роль не получила селекторов — досев не сделал ничего, и пропуск снятой "+
 			"выше ничего не утверждает")
@@ -136,7 +136,7 @@ func TestRetiredRoleIsSkippedByOwnerBindingBackfill(t *testing.T) {
 	// НЕСУЩЕЕ: чужая работа той же транзакции ДОЕХАЛА.
 	var owners int
 	require.NoError(t, pool.QueryRow(ctx,
-		`SELECT count(*) FROM kacho_iam.access_bindings WHERE resource_id = $1`, accID).
+		`SELECT count(*) FROM kaname.access_bindings WHERE resource_id = $1`, accID).
 		Scan(&owners))
 	assert.Positive(t, owners,
 		"владельческой выдачи у аккаунта нет: откат унёс работу, которая к снятой роли "+

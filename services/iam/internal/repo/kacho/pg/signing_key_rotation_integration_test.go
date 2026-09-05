@@ -59,7 +59,7 @@ func countActive(t *testing.T, pool *pgxpool.Pool) int {
 	t.Helper()
 	var n int
 	require.NoError(t, pool.QueryRow(context.Background(),
-		`SELECT count(*) FROM kacho_iam.token_signing_keys WHERE state = 'ACTIVE'`).Scan(&n))
+		`SELECT count(*) FROM kaname.token_signing_keys WHERE state = 'ACTIVE'`).Scan(&n))
 	return n
 }
 
@@ -123,7 +123,7 @@ func TestSigningKey_F1_06_ExactlyOneSignerUnderConcurrency(t *testing.T) {
 	}
 	require.NotEmpty(t, bypass)
 	_, err := pool.Exec(ctx,
-		`UPDATE kacho_iam.token_signing_keys
+		`UPDATE kaname.token_signing_keys
 		    SET state='ACTIVE', activated_at=now(), retired_at=NULL,
 		        removed_at=NULL, compromised_at=NULL
 		  WHERE kid = $1`, string(bypass))
@@ -136,11 +136,11 @@ func TestSigningKey_F1_06_ExactlyOneSignerUnderConcurrency(t *testing.T) {
 	// подписывающего нет вовсе. Без него отказ выше был бы неотличим от
 	// ограничения, отвергающего любую прямую запись.
 	_, err = pool.Exec(ctx,
-		`UPDATE kacho_iam.token_signing_keys SET state='RETIRED', retired_at=now(), activated_at=NULL
+		`UPDATE kaname.token_signing_keys SET state='RETIRED', retired_at=now(), activated_at=NULL
 		  WHERE state='ACTIVE'`)
 	require.NoError(t, err)
 	_, err = pool.Exec(ctx,
-		`UPDATE kacho_iam.token_signing_keys
+		`UPDATE kaname.token_signing_keys
 		    SET state='ACTIVE', activated_at=now(), retired_at=NULL
 		  WHERE kid = $1`, string(bypass))
 	require.NoError(t, err, "прямая запись подписывающего при свободном месте обязана проходить")
@@ -151,7 +151,7 @@ func activeKID(t *testing.T, pool *pgxpool.Pool) domain.KeyID {
 	t.Helper()
 	var kid string
 	err := pool.QueryRow(context.Background(),
-		`SELECT kid FROM kacho_iam.token_signing_keys WHERE state = 'ACTIVE'`).Scan(&kid)
+		`SELECT kid FROM kaname.token_signing_keys WHERE state = 'ACTIVE'`).Scan(&kid)
 	require.NoError(t, err)
 	return domain.KeyID(kid)
 }
@@ -307,7 +307,7 @@ func TestSigningKey_StateStampsAreEnforcedByTheSchema(t *testing.T) {
 	}
 	ctx := context.Background()
 	pool, _ := signingKeyPool(t)
-	_, err := pool.Exec(ctx, `INSERT INTO kacho_iam.token_signing_keys
+	_, err := pool.Exec(ctx, `INSERT INTO kaname.token_signing_keys
 		(kid, algorithm, state, public_key_pem, private_key_wrapped, created_at, not_after)
 		VALUES ('kacho-nostamp','RS256','RETIRED','pem','\x01', now(), now() + interval '1 day')`)
 	require.Error(t, err)

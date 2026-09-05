@@ -69,7 +69,7 @@ func TestSubjectChangeRepo_PollSubjectChanges(t *testing.T) {
 
 		var id int64
 		require.NoError(t, pool.QueryRow(ctx,
-			`SELECT id FROM kacho_iam.subject_change_outbox WHERE subject_id = $1`,
+			`SELECT id FROM kaname.subject_change_outbox WHERE subject_id = $1`,
 			subjectID).Scan(&id))
 		return id
 	}
@@ -214,7 +214,7 @@ func TestSubjectChangeRepo_ZeroHeadMeansAnEmptyJournal(t *testing.T) {
 	// ── сторона 1: журнал пуст ─────────────────────────────────────────────
 	var rows int64
 	require.NoError(t, pool.QueryRow(ctx,
-		`SELECT count(*) FROM kacho_iam.subject_change_outbox`).Scan(&rows))
+		`SELECT count(*) FROM kaname.subject_change_outbox`).Scan(&rows))
 	require.Zero(t, rows, "журнал свежей базы не пуст — предпосылка пробы не выполнена, "+
 		"и «ноль в голове» было бы измерено не на том состоянии")
 

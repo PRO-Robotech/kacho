@@ -39,7 +39,7 @@ func TestAccountCreate_P6_OwnerBinding_CoCommit_E2E(t *testing.T) {
 	dsn := setupTestDB(t)
 	pool := poolFromDSN(t, dsn)
 	repo := kachopg.New(pool, nil)
-	opsRepo := operations.NewRepo(pool, "kacho_iam")
+	opsRepo := operations.NewRepo(pool, "kaname")
 	rec := reconcile.New(kachopg.NewReconcileAdapter(pool, catalogfixture.Source()), nil, catalogfixture.Source())
 
 	// Seed the creator user (needs a home account for the owner FK on its own

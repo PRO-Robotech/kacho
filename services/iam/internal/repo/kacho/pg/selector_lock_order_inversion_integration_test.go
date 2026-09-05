@@ -157,7 +157,7 @@ func TestSelectorWriteTakesTheCatalogRowLockBeforeTheSelectorRows(t *testing.T) 
 
 	// ── A идёт за строками селекторов той же роли ────────────────────────────
 	_, aerr := txA.Exec(ctx,
-		`DELETE FROM kacho_iam.role_rule_selectors WHERE role_id = $1 AND rule_fp = 'fp-lockorder'`,
+		`DELETE FROM kaname.role_rule_selectors WHERE role_id = $1 AND rule_fp = 'fp-lockorder'`,
 		string(role))
 	require.NoErrorf(t, aerr,
 		"сторона ПРИМЕНИТЕЛЯ отвергнута (%v) — при выровненном порядке она обязана "+
@@ -232,7 +232,7 @@ func TestLoneSelectorWriteAgainstALiveCatalogPasses(t *testing.T) {
 
 	var stored []string
 	require.NoError(t, pool.QueryRow(ctx,
-		`SELECT object_types FROM kacho_iam.role_rule_selectors
+		`SELECT object_types FROM kaname.role_rule_selectors
 		  WHERE role_id = $1 AND rule_fp = 'fp-lockorder-ok'`, string(role)).Scan(&stored))
 	require.Equalf(t, []string{alive}, stored,
 		"селектор записан не тем, что просили (%v) — «прошло» зеленело бы на писателе, "+

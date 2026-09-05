@@ -42,7 +42,7 @@ flowchart LR
     uc["UseCase / handler"]
   end
   icpt -->|"Check(subject, relation, object)"| iam["kaname<br/>InternalIAMService"]
-  iam -->|"вердикт по модели прав"| rel[("реляционная форма<br/>в базе kacho_iam")]
+  iam -->|"вердикт по модели прав"| rel[("реляционная форма<br/>в базе kaname")]
   iam -->|"allowed: bool"| icpt
   icpt -->|"allowed → next"| uc
   icpt -. "denied → PERMISSION_DENIED" .-> cli
@@ -174,7 +174,7 @@ sequenceDiagram
   V-->>C: Operation done · response = Network
   Note over D,I: асинхронно, вне request-path
   D->>I: RegisterResource: vpc_network:<id>#project@project:<pid>
-  I->>I: прямой факт в базе kacho_iam (idempotent)
+  I->>I: прямой факт в базе kaname (idempotent)
   Note over V,I: теперь Get/Update/Delete этого network авторизуются по project-наследованию
 ```
 

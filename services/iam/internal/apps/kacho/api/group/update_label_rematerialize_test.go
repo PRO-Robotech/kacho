@@ -7,7 +7,7 @@ package group
 // object, both durably and IMMEDIATELY.
 //
 // iam.group is label-selectable (domain.labelSelectableTypes carries "iam.group";
-// kacho_iam.groups.labels — migration 0041, GIN — is probed by `labels @> match_labels`
+// kaname.groups.labels — migration 0041, GIN — is probed by `labels @> match_labels`
 // in the iam-direct scan spec), so removing a label that an ARM_LABELS grant matches is
 // a REVOCATION: the per-object member row and its FGA tuples must go. Two feeds reach
 // the same reconciler for that:

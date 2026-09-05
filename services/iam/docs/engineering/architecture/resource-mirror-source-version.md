@@ -1,6 +1,6 @@
 # resource_mirror — monotonic `source_version`
 
-Records the design decision that makes `kacho_iam.resource_mirror`
+Records the design decision that makes `kaname.resource_mirror`
 **last-source-state-wins** instead of last-applier-wins.
 
 ## Problem

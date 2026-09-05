@@ -67,15 +67,15 @@ const roleRetirementCause = "role_retired"
 // Литерал не разрезается ссылкой НАМЕРЕННО: гейт дерева
 // `internal/repohygiene` `TestIAMRV112_RoleVerbProjectionHasASoleWriter`
 // требует, чтобы строковый литерал, содержащий `DELETE FROM` проекции роли,
-// содержал и `INSERT INTO kacho_iam.role_grant_orphan`. Снятие и переселение
+// содержал и `INSERT INTO kaname.role_grant_orphan`. Снятие и переселение
 // неделимы ровно тогда, когда стоят в одном операторе.
 const retireRoleVerbsSQL = `
 		WITH dropped AS (
-		  DELETE FROM kacho_iam.role_verb rv
+		  DELETE FROM kaname.role_verb rv
 		   WHERE rv.role_id = $1
 		  RETURNING rv.object_type, rv.verb
 		), moved AS (
-		  INSERT INTO kacho_iam.role_grant_orphan
+		  INSERT INTO kaname.role_grant_orphan
 		         (role_id, object_type, verb, source, cause, reason, applied_by)
 		  SELECT $1, d.object_type, d.verb, 'role_verb', 'role_retired', $2, $3 FROM dropped d
 		  ON CONFLICT (role_id, object_type, verb, source, cause) DO UPDATE
@@ -93,11 +93,11 @@ const retireRoleVerbsSQL = `
 // же семантика, что у полосы каталога.
 const retireRuleRefsSQL = `
 		WITH dropped AS (
-		  DELETE FROM kacho_iam.role_rule_ref rr
+		  DELETE FROM kaname.role_rule_ref rr
 		   WHERE rr.role_id = $1
 		  RETURNING rr.module, rr.resource, rr.verb
 		), moved AS (
-		  INSERT INTO kacho_iam.role_grant_orphan
+		  INSERT INTO kaname.role_grant_orphan
 		         (role_id, object_type, verb, source, cause, reason, applied_by)
 		  SELECT $1, d.module || '.' || d.resource, COALESCE(d.verb, ''), 'rule_ref',
 		         'role_retired', $2, $3
@@ -188,7 +188,7 @@ func (w *roleWriter) RetireRole(ctx context.Context, id domain.RoleID, ownerModu
 	// поэтому равенству с именем модуля они не удовлетворяют ни при каком входе.
 	var owned string
 	err := w.tx.QueryRow(ctx, `
-		SELECT id FROM kacho_iam.roles
+		SELECT id FROM kaname.roles
 		 WHERE id = $1
 		   AND live
 		   AND (owner_module = $2
@@ -221,7 +221,7 @@ func (w *roleWriter) RetireRole(ctx context.Context, id domain.RoleID, ownerModu
 	// пары «тип + глагол», которой адресуются сироты, а состав цели —
 	// материализация чужой выдачи. Снимаются они ЯВНО, потому что каскада здесь
 	// нет: строка роли остаётся.
-	tag, err := w.tx.Exec(ctx, `DELETE FROM kacho_iam.role_rule_selectors WHERE role_id = $1`,
+	tag, err := w.tx.Exec(ctx, `DELETE FROM kaname.role_rule_selectors WHERE role_id = $1`,
 		string(id))
 	if err != nil {
 		return out, mapErr(err, "", string(id))
@@ -229,7 +229,7 @@ func (w *roleWriter) RetireRole(ctx context.Context, id domain.RoleID, ownerModu
 	out.RemovedSelectors = int(tag.RowsAffected())
 
 	tag, err = w.tx.Exec(ctx,
-		`DELETE FROM kacho_iam.access_binding_target_members WHERE role_id = $1`, string(id))
+		`DELETE FROM kaname.access_binding_target_members WHERE role_id = $1`, string(id))
 	if err != nil {
 		return out, mapErr(err, "", string(id))
 	}
@@ -241,7 +241,7 @@ func (w *roleWriter) RetireRole(ctx context.Context, id domain.RoleID, ownerModu
 	// что замок не удержал строку, — и это отказ, а не штатный исход.
 	var marked string
 	err = w.tx.QueryRow(ctx, `
-		UPDATE kacho_iam.roles
+		UPDATE kaname.roles
 		   SET live = false, retired_at = now(), retired_reason = $2, retired_by = $3
 		 WHERE id = $1
 		   AND live
@@ -274,12 +274,12 @@ func (w *roleWriter) ReviveRole(ctx context.Context, id domain.RoleID) (bool, er
 	var revived int
 	err := w.tx.QueryRow(ctx, `
 		WITH revived AS (
-		  UPDATE kacho_iam.roles
+		  UPDATE kaname.roles
 		     SET live = true, retired_at = NULL, retired_reason = NULL, retired_by = NULL
 		   WHERE id = $1 AND NOT live
 		  RETURNING id
 		), cleared AS (
-		  DELETE FROM kacho_iam.role_grant_orphan o
+		  DELETE FROM kaname.role_grant_orphan o
 		   WHERE o.role_id IN (SELECT id FROM revived)
 		     AND o.cause = $2
 		)
@@ -315,7 +315,7 @@ func (r *roleReader) Lifecycles(ctx context.Context, roleIDs []domain.RoleID) (
 	}
 	rows, err := r.tx.Query(ctx, `
 		SELECT id, live, retired_at, retired_reason, retired_by
-		  FROM kacho_iam.roles
+		  FROM kaname.roles
 		 WHERE id = ANY($1::text[])`, ids)
 	if err != nil {
 		return nil, mapErr(err, "", "")

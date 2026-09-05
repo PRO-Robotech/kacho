@@ -135,26 +135,26 @@ func seedMembershipNoise(t *testing.T, ctx context.Context, tx pgx.Tx, n int) {
 	// `acc-1` своим харнессом; здесь заводится собственный, чтобы посев шума не
 	// зависел от того, что успела положить соседняя проба.
 	if _, err := tx.Exec(ctx, `
-		INSERT INTO kacho_iam.accounts (id, name, owner_user_id)
+		INSERT INTO kaname.accounts (id, name, owner_user_id)
 		VALUES ($1, 'membership-cost', $2)
 		ON CONFLICT DO NOTHING`, membershipCostAccountID, membershipCostSubjectID); err != nil {
 		t.Fatalf("посев аккаунта: %v", err)
 	}
 	if _, err := tx.Exec(ctx, `
-		INSERT INTO kacho_iam.groups (id, account_id, name, description)
+		INSERT INTO kaname.groups (id, account_id, name, description)
 		VALUES ($1, $2, 'membership-cost', '')
 		ON CONFLICT DO NOTHING`, membershipCostGroupID, membershipCostAccountID); err != nil {
 		t.Fatalf("посев группы: %v", err)
 	}
 	// Пользователь — предпосылка членства (внешний ключ проверяется).
 	if _, err := tx.Exec(ctx, `
-		INSERT INTO kacho_iam.users (id, external_id, email, account_id)
+		INSERT INTO kaname.users (id, external_id, email, account_id)
 		VALUES ($1, $1, $1 || '@kacho.local', $2)
 		ON CONFLICT DO NOTHING`, membershipCostSubjectID, membershipCostAccountID); err != nil {
 		t.Fatalf("посев спрашивающего: %v", err)
 	}
 	if _, err := tx.Exec(ctx, `
-		INSERT INTO kacho_iam.group_members (group_id, member_type, member_id)
+		INSERT INTO kaname.group_members (group_id, member_type, member_id)
 		VALUES ($1, 'user', $2)
 		ON CONFLICT DO NOTHING`, membershipCostGroupID, membershipCostSubjectID); err != nil {
 		t.Fatalf("посев членства спрашивающего: %v", err)
@@ -163,14 +163,14 @@ func seedMembershipNoise(t *testing.T, ctx context.Context, tx pgx.Tx, n int) {
 	// Шум: n−1 членств ЧУЖИХ субъектов в чужих группах.
 	if n > 1 {
 		if _, err := tx.Exec(ctx, `
-			INSERT INTO kacho_iam.groups (id, account_id, name, description)
+			INSERT INTO kaname.groups (id, account_id, name, description)
 			SELECT 'grp-noise-' || lpad(i::text, 12, '0'), $2, 'noise-' || i, ''
 			  FROM generate_series(1, $1) AS i
 			ON CONFLICT DO NOTHING`, n-1, membershipCostAccountID); err != nil {
 			t.Fatalf("посев чужих групп: %v", err)
 		}
 		if _, err := tx.Exec(ctx, `
-			INSERT INTO kacho_iam.users (id, external_id, email, account_id)
+			INSERT INTO kaname.users (id, external_id, email, account_id)
 			SELECT 'usr-noise-' || lpad(i::text, 12, '0'), 'ext-noise-' || i,
 			       'noise-' || i || '@kacho.local', $2
 			  FROM generate_series(1, $1) AS i
@@ -178,7 +178,7 @@ func seedMembershipNoise(t *testing.T, ctx context.Context, tx pgx.Tx, n int) {
 			t.Fatalf("посев чужих субъектов: %v", err)
 		}
 		if _, err := tx.Exec(ctx, `
-			INSERT INTO kacho_iam.group_members (group_id, member_type, member_id)
+			INSERT INTO kaname.group_members (group_id, member_type, member_id)
 			SELECT 'grp-noise-' || lpad(i::text, 12, '0'), 'user', 'usr-noise-' || lpad(i::text, 12, '0')
 			  FROM generate_series(1, $1) AS i
 			ON CONFLICT DO NOTHING`, n-1); err != nil {
@@ -189,7 +189,7 @@ func seedMembershipNoise(t *testing.T, ctx context.Context, tx pgx.Tx, n int) {
 	// Факт, выданный ГРУППЕ: без него цепочка членств не читалась бы вовсе, и
 	// проба мерила бы вопрос, который до неё не доходит.
 	if _, err := tx.Exec(ctx, `
-		INSERT INTO kacho_iam.relation_fact (object_type, object_id, relation, subject)
+		INSERT INTO kaname.relation_fact (object_type, object_id, relation, subject)
 		VALUES ('vpc_network', $1, 'v_get', 'group:' || $2)
 		ON CONFLICT DO NOTHING`, membershipCostObjectID, membershipCostGroupID); err != nil {
 		t.Fatalf("посев факта группы: %v", err)
@@ -197,12 +197,12 @@ func seedMembershipNoise(t *testing.T, ctx context.Context, tx pgx.Tx, n int) {
 
 	// Статистика: без неё планировщик выбирает план по пустым оценкам, и проба
 	// утверждала бы о другом состоянии мира, чем развёрнутая база.
-	if _, err := tx.Exec(ctx, `ANALYZE kacho_iam.group_members, kacho_iam.groups`); err != nil {
+	if _, err := tx.Exec(ctx, `ANALYZE kaname.group_members, kaname.groups`); err != nil {
 		t.Fatalf("ANALYZE: %v", err)
 	}
 
 	var got int64
-	if err := tx.QueryRow(ctx, `SELECT count(*) FROM kacho_iam.group_members`).Scan(&got); err != nil {
+	if err := tx.QueryRow(ctx, `SELECT count(*) FROM kaname.group_members`).Scan(&got); err != nil {
 		t.Fatalf("перепись членств: %v", err)
 	}
 	if got < int64(n) {

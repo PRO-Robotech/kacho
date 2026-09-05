@@ -7,7 +7,7 @@
 // lightweight pool-scoped writes without the CQRS Writer-TX overhead.
 // These adapters wrap the existing AuditOutboxRepo / SessionRevocationRepo
 // in single-statement TX (autocommit-style), serving the
-// kacho_iam.audit_outbox and kacho_iam.session_revocations tables.
+// kaname.audit_outbox and kaname.session_revocations tables.
 package pg
 
 import (

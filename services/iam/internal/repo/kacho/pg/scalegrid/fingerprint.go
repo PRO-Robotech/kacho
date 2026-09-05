@@ -49,7 +49,7 @@ import (
 // fingerprintTableMark — приставка, по которой из кода вердикта ВЫВОДЯТСЯ имена
 // читаемых таблиц. Схема названа целиком, потому что в запросах она пишется
 // целиком.
-const fingerprintTableMark = "kacho_iam."
+const fingerprintTableMark = "kaname."
 
 // verdictDir / gridDir — каталоги, чьё не-тестовое содержимое и есть предмет.
 const (
@@ -520,7 +520,7 @@ func stripSQLComments(src string) string {
 	return sqlLineComment.ReplaceAllString(sqlBlockComment.ReplaceAllString(src, " "), " ")
 }
 
-// tableNamesIn — имена `kacho_iam.<таблица>`, встреченные в тексте.
+// tableNamesIn — имена `kaname.<таблица>`, встреченные в тексте.
 func tableNamesIn(src string) []string {
 	var out []string
 	seen := map[string]bool{}

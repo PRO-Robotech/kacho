@@ -80,7 +80,7 @@ func startSecretBackstop(ctx context.Context, pool *pgxpool.Pool, cfg config.Con
 	settled += secretSweepMargin
 
 	sw := secretsweep.New(
-		secretSweepStore{inner: kachopg.NewOpsResponseRedactor(pool, "kacho_iam")},
+		secretSweepStore{inner: kachopg.NewOpsResponseRedactor(pool, "kaname")},
 		secretsweep.Spec{
 			Targets: secretSweepTargets(saKey.TypeUrl, userToken.TypeUrl),
 			Settled: settled,

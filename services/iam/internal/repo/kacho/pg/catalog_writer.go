@@ -4,7 +4,7 @@
 package pg
 
 // catalog_writer.go — ЕДИНСТВЕННЫЙ писатель строк каталога модуля в прод-коде
-// (`kacho_iam.catalog_module` / `catalog_resource` / `catalog_verb`), задача
+// (`kaname.catalog_module` / `catalog_resource` / `catalog_verb`), задача
 // продукта #1034.
 //
 // # Почему писатель живёт РЯДОМ С ЧИТАТЕЛЕМ, а не на `kacho.Writer`
@@ -61,7 +61,7 @@ import (
 // выписанный у неё второй литерал разошёлся бы с этим молча — и разошёлся бы
 // незаметно, потому что проба на чужом ключе просто не дождалась бы блокировки и
 // зеленела бы, ничего не проверив.
-const CatalogLockKey = "kacho_iam.module_catalog"
+const CatalogLockKey = "kaname.module_catalog"
 
 // ModuleStateExpr — ВЫРАЖЕНИЕ отпечатка состояния каталога одного модуля.
 //
@@ -104,13 +104,13 @@ const ModuleStateExpr = `(SELECT md5(coalesce(string_agg(x, '|' ORDER BY x), '')
 	    SELECT 'module:' || $1::text AS x
 	    UNION ALL
 	    SELECT 'm:' || module || ':' || live::text
-	      FROM kacho_iam.catalog_module WHERE module = $1
+	      FROM kaname.catalog_module WHERE module = $1
 	    UNION ALL
 	    SELECT 'r:' || resource || ':' || object_type || ':' || live::text
-	      FROM kacho_iam.catalog_resource WHERE module = $1
+	      FROM kaname.catalog_resource WHERE module = $1
 	    UNION ALL
 	    SELECT 'v:' || resource || '.' || verb || ':' || live::text || ':' || per_object::text
-	      FROM kacho_iam.catalog_verb WHERE module = $1
+	      FROM kaname.catalog_verb WHERE module = $1
 	  ) s)`
 
 // CatalogWriteRepo — исполнитель транзакций применителя каталога над пулом.
@@ -186,7 +186,7 @@ func (w catalogWriter) LockCatalog(ctx context.Context) error {
 // применителя не пускает консультативный замок каталога.
 func (w catalogWriter) LockModuleResources(ctx context.Context, module string) error {
 	_, err := w.tx.Exec(ctx, `
-		SELECT 1 FROM kacho_iam.catalog_resource
+		SELECT 1 FROM kaname.catalog_resource
 		 WHERE module = $1
 		 ORDER BY dotted
 		   FOR UPDATE`, module)
@@ -203,7 +203,7 @@ func (w catalogWriter) ReadModule(ctx context.Context, module string) (catalog.R
 
 	var present bool
 	if err := w.tx.QueryRow(ctx,
-		`SELECT true FROM kacho_iam.catalog_module WHERE module = $1 AND live`, module,
+		`SELECT true FROM kaname.catalog_module WHERE module = $1 AND live`, module,
 	).Scan(&present); err != nil && !errors.Is(err, pgx.ErrNoRows) {
 		return out, fmt.Errorf("прочитать строку модуля %s: %w", module, err)
 	}
@@ -212,7 +212,7 @@ func (w catalogWriter) ReadModule(ctx context.Context, module string) (catalog.R
 	}
 
 	resRows, err := w.tx.Query(ctx,
-		`SELECT module, resource, object_type FROM kacho_iam.catalog_resource
+		`SELECT module, resource, object_type FROM kaname.catalog_resource
 		  WHERE module = $1 AND live
 		  ORDER BY resource`, module)
 	if err != nil {
@@ -227,7 +227,7 @@ func (w catalogWriter) ReadModule(ctx context.Context, module string) (catalog.R
 	}
 
 	verbRows, err := w.tx.Query(ctx,
-		`SELECT module, resource, verb, per_object FROM kacho_iam.catalog_verb
+		`SELECT module, resource, verb, per_object FROM kaname.catalog_verb
 		  WHERE module = $1 AND live ORDER BY resource, verb`, module)
 	if err != nil {
 		return out, fmt.Errorf("прочитать действия модуля %s: %w", module, err)
@@ -286,7 +286,7 @@ func (w catalogWriter) ReadCatalog(ctx context.Context) (modulecatalog.CatalogSt
 // строку, а не заводит вторую с той же парой.
 func (w catalogWriter) UpsertModule(ctx context.Context, module string) (bool, error) {
 	return w.changed(ctx, `
-		INSERT INTO kacho_iam.catalog_module (module) VALUES ($1)
+		INSERT INTO kaname.catalog_module (module) VALUES ($1)
 		ON CONFLICT (module) DO UPDATE
 		   SET retired_at = NULL, live = true, retired_reason = NULL
 		 WHERE catalog_module.live IS DISTINCT FROM true
@@ -307,7 +307,7 @@ func (w catalogWriter) UpsertModule(ctx context.Context, module string) (bool, e
 // проигнорирована.
 func (w catalogWriter) UpsertResource(ctx context.Context, r catalog.ResourceRow) (bool, error) {
 	return w.changed(ctx, `
-		INSERT INTO kacho_iam.catalog_resource (module, resource, dotted, object_type)
+		INSERT INTO kaname.catalog_resource (module, resource, dotted, object_type)
 		VALUES ($1, $2, $1 || '.' || $2, $3)
 		ON CONFLICT (module, resource) DO UPDATE
 		   SET retired_at = NULL, live = true, retired_reason = NULL, superseded_by = NULL,
@@ -325,7 +325,7 @@ func (w catalogWriter) UpsertResource(ctx context.Context, r catalog.ResourceRow
 // материализуется).
 func (w catalogWriter) UpsertVerb(ctx context.Context, v catalog.VerbRow) (bool, error) {
 	return w.changed(ctx, `
-		INSERT INTO kacho_iam.catalog_verb (module, resource, verb, per_object)
+		INSERT INTO kaname.catalog_verb (module, resource, verb, per_object)
 		VALUES ($1, $2, $3, $4)
 		ON CONFLICT (module, resource, verb) DO UPDATE
 		   SET retired_at = NULL, live = true, retired_reason = NULL,
@@ -338,7 +338,7 @@ func (w catalogWriter) UpsertVerb(ctx context.Context, v catalog.VerbRow) (bool,
 // RetireVerb помечает строку действия снятой. Повторное снятие — ноль строк.
 func (w catalogWriter) RetireVerb(ctx context.Context, v catalog.VerbRow, reason string) (bool, error) {
 	return w.changed(ctx, `
-		UPDATE kacho_iam.catalog_verb
+		UPDATE kaname.catalog_verb
 		   SET retired_at = now(), live = false, retired_reason = $4
 		 WHERE module = $1 AND resource = $2 AND verb = $3 AND live
 		RETURNING 1`, v.Module, v.Resource, v.Verb, reason)
@@ -347,7 +347,7 @@ func (w catalogWriter) RetireVerb(ctx context.Context, v catalog.VerbRow, reason
 // RetireResource помечает строку ресурса снятой. Повторное снятие — ноль строк.
 func (w catalogWriter) RetireResource(ctx context.Context, r catalog.ResourceRow, reason string) (bool, error) {
 	return w.changed(ctx, `
-		UPDATE kacho_iam.catalog_resource
+		UPDATE kaname.catalog_resource
 		   SET retired_at = now(), live = false, retired_reason = $3
 		 WHERE module = $1 AND resource = $2 AND live
 		RETURNING 1`, r.Module, r.Resource, reason)
@@ -576,7 +576,7 @@ var (
 //
 // # Вырезанное ЗАПИСЫВАЕТСЯ — ТЕМ ЖЕ оператором (#1988)
 //
-// Каждый вырезанный элемент ложится в `kacho_iam.role_selector_prune`: роль,
+// Каждый вырезанный элемент ложится в `kaname.role_selector_prune`: роль,
 // отпечаток правила, тип, исход строки (укорочена либо снята целиком), причина
 // снятия строки каталога и момент. До этого вырезание было НЕОБРАТИМО и не
 // записано нигде — объём был виден только в плане применения.
@@ -619,13 +619,13 @@ func (w catalogWriter) PruneRetiredSelectorTypes(
 
 	if err := w.tx.QueryRow(ctx, `
 		WITH `+catalogStaleInputCTE+`, `+catalogSelectorPruneCTE+`, emptied AS (
-		  DELETE FROM kacho_iam.role_rule_selectors s
+		  DELETE FROM kaname.role_rule_selectors s
 		   USING changed c
 		   WHERE s.role_id = c.role_id AND s.rule_fp = c.rule_fp
 		     AND cardinality(c.alive) = 0
 		  RETURNING s.role_id, s.rule_fp
 		), stripped AS (
-		  UPDATE kacho_iam.role_rule_selectors s
+		  UPDATE kaname.role_rule_selectors s
 		     SET object_types = c.alive
 		    FROM changed c
 		   WHERE s.role_id = c.role_id AND s.rule_fp = c.rule_fp
@@ -636,13 +636,13 @@ func (w catalogWriter) PruneRetiredSelectorTypes(
 		  UNION ALL
 		  SELECT role_id, rule_fp, 'shortened'::text AS outcome FROM stripped
 		), recorded AS (
-		  INSERT INTO kacho_iam.role_selector_prune
+		  INSERT INTO kaname.role_selector_prune
 		         (role_id, rule_fp, object_type, outcome, retired_reason, applied_by)
 		  SELECT k.role_id, k.rule_fp, t, k.outcome, cr.retired_reason, $6
 		    FROM cut k
 		    JOIN changed c ON c.role_id = k.role_id AND c.rule_fp = k.rule_fp
 		    CROSS JOIN LATERAL unnest(c.was) AS t
-		    LEFT JOIN kacho_iam.catalog_resource cr ON cr.dotted = t
+		    LEFT JOIN kaname.catalog_resource cr ON cr.dotted = t
 		   WHERE NOT (t = ANY (c.alive))
 		  ON CONFLICT (role_id, rule_fp, object_type) DO NOTHING
 		  RETURNING 1

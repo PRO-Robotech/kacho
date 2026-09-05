@@ -72,7 +72,7 @@ func TestDisabledServiceAccount_IsRefusedACredential_AndWorksAgainAfterEnable(t 
 	require.NoError(t, err)
 	awaitWorkers(t)
 	saID := domain.ServiceAccountID(singleID(t, ctx, env,
-		`SELECT id FROM kacho_iam.service_accounts WHERE name = $1 AND account_id = $2`,
+		`SELECT id FROM kaname.service_accounts WHERE name = $1 AND account_id = $2`,
 		"ci-bot-issuance", string(accID)))
 
 	provider := &fakeOAuthProvider{}
@@ -97,7 +97,7 @@ func TestDisabledServiceAccount_IsRefusedACredential_AndWorksAgainAfterEnable(t 
 	requireEveryOperationSucceeded := func() {
 		t.Helper()
 		rows, qerr := env.pool.Query(ctx,
-			`SELECT id, description, done, coalesce(error_message, '') FROM kacho_iam.operations ORDER BY created_at`)
+			`SELECT id, description, done, coalesce(error_message, '') FROM kaname.operations ORDER BY created_at`)
 		require.NoError(t, qerr)
 		defer rows.Close()
 		for rows.Next() {
@@ -112,7 +112,7 @@ func TestDisabledServiceAccount_IsRefusedACredential_AndWorksAgainAfterEnable(t 
 	keysOnRecord := func() int {
 		var n int
 		require.NoError(t, env.pool.QueryRow(ctx,
-			`SELECT count(*) FROM kacho_iam.service_account_oauth_clients WHERE sva_id = $1`,
+			`SELECT count(*) FROM kaname.service_account_oauth_clients WHERE sva_id = $1`,
 			string(saID)).Scan(&n))
 		return n
 	}

@@ -48,7 +48,7 @@ func (allowRelationStore) Check(context.Context, string, string, string) (bool, 
 // might assert could ever go red — they only make this stub look wider than it is.
 var _ clients.RelationStore = allowRelationStore{}
 
-// setupTestDB hands the calling test its OWN database, with kacho_iam on the
+// setupTestDB hands the calling test its OWN database, with kaname on the
 // search path.
 //
 // It used to start a fresh container and replay the whole migration chain on
@@ -86,7 +86,7 @@ func mustSeedUser(t *testing.T, ctx context.Context, pool *pgxpool.Pool, suffix 
 	defer func() { _ = tx.Rollback(ctx) }()
 
 	_, err = tx.Exec(ctx, `
-		INSERT INTO kacho_iam.users (id, account_id, external_id, email, display_name, invite_status)
+		INSERT INTO kaname.users (id, account_id, external_id, email, display_name, invite_status)
 		VALUES ($1, $2, $3, $4, $5, 'ACTIVE')`,
 		string(uid), string(accID),
 		fmt.Sprintf("ext-%s-%s", suffix, uid),
@@ -95,7 +95,7 @@ func mustSeedUser(t *testing.T, ctx context.Context, pool *pgxpool.Pool, suffix 
 	require.NoError(t, err)
 
 	_, err = tx.Exec(ctx, `
-		INSERT INTO kacho_iam.accounts (id, name, owner_user_id, labels)
+		INSERT INTO kaname.accounts (id, name, owner_user_id, labels)
 		VALUES ($1, $2, $3, '{}'::jsonb)`,
 		string(accID),
 		fmt.Sprintf("seed-acc-%s-%s", suffix, accID[len(accID)-6:]),
@@ -112,7 +112,7 @@ func seedAccountByOwner(t *testing.T, ctx context.Context, pool *pgxpool.Pool, n
 	t.Helper()
 	accID := domain.AccountID(ids.NewID(domain.PrefixAccount))
 	_, err := pool.Exec(ctx, `
-		INSERT INTO kacho_iam.accounts (id, name, owner_user_id, labels)
+		INSERT INTO kaname.accounts (id, name, owner_user_id, labels)
 		VALUES ($1, $2, $3, '{}'::jsonb)`,
 		string(accID), name+"-"+string(accID)[len(accID)-6:], string(owner))
 	require.NoError(t, err)
@@ -124,7 +124,7 @@ func seedProjectInAccount(t *testing.T, ctx context.Context, pool *pgxpool.Pool,
 	t.Helper()
 	prj := domain.ProjectID(ids.NewID(domain.PrefixProject))
 	_, err := pool.Exec(ctx, `
-		INSERT INTO kacho_iam.projects (id, account_id, name, description, labels)
+		INSERT INTO kaname.projects (id, account_id, name, description, labels)
 		VALUES ($1, $2, $3, $4, '{}'::jsonb)`,
 		string(prj), string(acc), name+"-"+string(prj)[len(prj)-6:], "test project")
 	require.NoError(t, err)
@@ -140,7 +140,7 @@ func seedClusterAdmin(t *testing.T, ctx context.Context, pool *pgxpool.Pool, sub
 	t.Helper()
 	id := domain.NewKac127ID(domain.PrefixClusterAdminGrant)
 	_, err := pool.Exec(ctx,
-		`INSERT INTO kacho_iam.cluster_admin_grants
+		`INSERT INTO kaname.cluster_admin_grants
 		     (id, cluster_id, subject_type, subject_id, granted_by, granted_at, granted_until)
 		 VALUES ($1, $2, 'user', $3, $3, now(), NULL)`,
 		id, domain.ClusterSingletonID, string(subject))

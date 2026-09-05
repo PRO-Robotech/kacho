@@ -56,7 +56,7 @@ func newAccountRateDB(t *testing.T) (*pgxpool.Pool, context.Context) {
 func setAccountRateCeiling(t *testing.T, ctx context.Context, pool *pgxpool.Pool, maxEvents, windowSeconds int64) {
 	t.Helper()
 	tag, err := pool.Exec(ctx, `
-		UPDATE kacho_iam.account_admission_rate_limits
+		UPDATE kaname.account_admission_rate_limits
 		   SET max_events = $1, window_seconds = $2
 		 WHERE kind = 'iam.account' AND withdrawn_at IS NULL`,
 		maxEvents, windowSeconds)
@@ -71,7 +71,7 @@ func setAccountRateCeiling(t *testing.T, ctx context.Context, pool *pgxpool.Pool
 func rewindAdmissionWindow(t *testing.T, ctx context.Context, pool *pgxpool.Pool, identity string, seconds int64) {
 	t.Helper()
 	tag, err := pool.Exec(ctx, `
-		UPDATE kacho_iam.identity_admission_windows
+		UPDATE kaname.identity_admission_windows
 		   SET window_started_at = window_started_at - make_interval(secs => $2)
 		 WHERE carrier_id = $1 AND kind = 'iam.account'`,
 		identity, seconds)
@@ -268,13 +268,13 @@ func TestAccountRate_DeletingAnAccountDoesNotReturnARateSlot(t *testing.T) {
 	// Снимаем его же: место объёма обязано вернуться, место окна — нет.
 	var doomed string
 	require.NoError(t, pool.QueryRow(ctx,
-		`SELECT id FROM kacho_iam.accounts WHERE name = $1`, "rate-acc-delete-2").Scan(&doomed))
-	_, err := pool.Exec(ctx, `DELETE FROM kacho_iam.accounts WHERE id = $1`, doomed)
+		`SELECT id FROM kaname.accounts WHERE name = $1`, "rate-acc-delete-2").Scan(&doomed))
+	_, err := pool.Exec(ctx, `DELETE FROM kaname.accounts WHERE id = $1`, doomed)
 	require.NoError(t, err, "снятие аккаунта")
 
 	var used int64
 	require.NoError(t, pool.QueryRow(ctx, `
-		SELECT used FROM kacho_iam.project_resource_quotas
+		SELECT used FROM kaname.project_resource_quotas
 		 WHERE carrier_type = 'identity' AND carrier_id = $1 AND kind = 'iam.account'`,
 		identity).Scan(&used))
 	require.EqualValues(t, 1, used,

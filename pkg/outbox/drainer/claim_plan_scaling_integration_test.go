@@ -71,7 +71,7 @@ import (
 )
 
 // claimPlanTable is the canonical outbox table under test, created with EXACTLY
-// the index set kaname ships for kacho_iam.fga_outbox (migrations 0002 + 0063 +
+// the index set kaname ships for kaname.fga_outbox (migrations 0002 + 0063 +
 // 0067). Kept in sync with services/iam/internal/migrations — the iam side owns
 // the migration, this mirror lets the drainer prove the claim plan the index set
 // produces.
@@ -121,7 +121,7 @@ func Test_ClaimPlan_DoesNotScaleWithBacklogDepth(t *testing.T) {
 	const (
 		shallowBacklog = 5_000
 		deepBacklog    = 40_000 // 8x deeper
-		// rowsPerPartition mirrors the live stand: kacho_iam.fga_outbox carried
+		// rowsPerPartition mirrors the live stand: kaname.fga_outbox carried
 		// ~25-40 rows per object during the burst, so only ~1 row in 30 is a
 		// claimable partition head. A claim must still find its 16 heads without
 		// reading the backlog.
@@ -180,7 +180,7 @@ func Test_ClaimPlan_DoesNotScaleWithBacklogDepth(t *testing.T) {
 //	the Sort must consume the WHOLE pending set, so the anti-join runs once per
 //	pending row and the claim becomes O(backlog^2)-ish.
 //
-//	Measured on the live stand (Postgres 16, kacho_iam.fga_outbox, 8 600 pending)
+//	Measured on the live stand (Postgres 16, kaname.fga_outbox, 8 600 pending)
 //	with the extra `(created_at) WHERE sent_at IS NULL` index present: 6 990 ms for
 //	ONE claim. With it removed and nothing else changed: 29 ms. The drainer was
 //	observed applying exactly one 16-row batch every ~11.5 s for 46 s — 1.4 rows/s

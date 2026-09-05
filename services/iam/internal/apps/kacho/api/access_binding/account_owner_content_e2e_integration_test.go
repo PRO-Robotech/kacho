@@ -40,7 +40,7 @@ func ledgerHas(t *testing.T, ctx context.Context, pool *pgxpool.Pool, binding, u
 	t.Helper()
 	var n int
 	require.NoError(t, pool.QueryRow(ctx,
-		`SELECT count(*) FROM kacho_iam.access_binding_emitted_tuples
+		`SELECT count(*) FROM kaname.access_binding_emitted_tuples
 		  WHERE binding_id=$1 AND fga_user=$2 AND relation=$3 AND object=$4`,
 		binding, user, relation, object).Scan(&n))
 	return n > 0
@@ -54,7 +54,7 @@ func TestAccountOwner_MaterializesOnServiceAccountContent_E2E(t *testing.T) {
 	dsn := setupTestDB(t)
 	pool := poolFromDSN(t, dsn)
 	repo := kachopg.New(pool, nil)
-	opsRepo := operations.NewRepo(pool, "kacho_iam")
+	opsRepo := operations.NewRepo(pool, "kaname")
 	rec := reconcile.New(kachopg.NewReconcileAdapter(pool, catalogfixture.Source()), nil, catalogfixture.Source())
 
 	owner := mustSeedUser(t, ctx, pool, "aoc-own")
@@ -109,7 +109,7 @@ func TestAccountOwner_MaterializesOnServiceAccountContent_E2E(t *testing.T) {
 	require.Nil(t, doneSA.Error, "ServiceAccount.Create must succeed")
 	var saID string
 	require.NoError(t, pool.QueryRow(ctx,
-		`SELECT id FROM kacho_iam.service_accounts WHERE account_id=$1 AND name=$2`,
+		`SELECT id FROM kaname.service_accounts WHERE account_id=$1 AND name=$2`,
 		string(accID), "sa-aoc-content").Scan(&saID))
 	require.NotEmpty(t, saID)
 

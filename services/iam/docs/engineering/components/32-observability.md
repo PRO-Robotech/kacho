@@ -111,7 +111,7 @@ Registry приватный (`prometheus.NewRegistry()`, не глобальны
 | `kaname_lro_orphans_recovered_total`         | counter   | outcome                             | Осиротевшие операции, поднятые reconciler'ом.                 |
 | `kaname_lro_reconcile_runs_total`            | counter   | —                                   | Проходы reconciler-sweep.                                     |
 | `kaname_lro_reconcile_errors_total`          | counter   | —                                   | Проходы reconciler-sweep, завершившиеся ошибкой.             |
-| `kaname_identities_total`                    | counter   | —                                   | Личности, которых платформа видела за всё время (журнал `kacho_iam.identity_journal`). |
+| `kaname_identities_total`                    | counter   | —                                   | Личности, которых платформа видела за всё время (журнал `kaname.identity_journal`). |
 | `kaname_identity_ledger_samples_total`       | counter   | outcome                             | Исходы фонового замера журнала (`ok`/`error`) — то, чем ноль в предыдущем ряду отличается от неснятого замера. |
 
 ### Метка `rpc` — ЗАКРЫТЫЙ словарь из трёх полос
@@ -157,7 +157,7 @@ Registry приватный (`prometheus.NewRegistry()`, не глобальны
 личностей немонотонен: человек уходит, и величина падает. На падающем ряде рост
 не определён — `increase()` молчит там, где рост и был, — а «личностей ноль»
 перестаёт быть утверждением о всей жизни платформы и становится утверждением о
-текущем мгновении. Журнал `kacho_iam.identity_journal` рядов не снимает никогда,
+текущем мгновении. Журнал `kaname.identity_journal` рядов не снимает никогда,
 в том числе при уходе человека.
 
 **Почему рядов ДВА.** `kaname_identities_total` читается фоновым замером и до
@@ -192,7 +192,7 @@ Registry приватный (`prometheus.NewRegistry()`, не глобальны
   expr: rate(kaname_authz_check_decisions_total{decision="error"}[5m]) > 1
   for: 10m
   annotations:
-    summary: "authz Check возвращает error — база kacho_iam недоступна или деградирует"
+    summary: "authz Check возвращает error — база kaname недоступна или деградирует"
     description: "Вердикт складывается реляционной формой в собственной базе службы;
       отказ означает fail-closed по всем доменам — см. engineering/architecture/failure-domains.md"
 

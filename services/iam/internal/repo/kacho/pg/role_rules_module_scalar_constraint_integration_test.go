@@ -90,10 +90,10 @@ func TestRoleRulesConstraintAcceptsScalarModuleAndRejectsTheArrayForm(t *testing
 		SELECT count(*) FROM pg_constraint c
 		  JOIN pg_class t ON t.oid = c.conrelid
 		  JOIN pg_namespace n ON n.oid = t.relnamespace
-		 WHERE n.nspname = 'kacho_iam' AND t.relname = 'roles'
+		 WHERE n.nspname = 'kaname' AND t.relname = 'roles'
 		   AND c.conname = 'roles_rules_valid'`).Scan(&constraints))
 	require.Equalf(t, 1, constraints,
-		"ограничения `roles_rules_valid` на kacho_iam.roles нет — отрицания ниже "+
+		"ограничения `roles_rules_valid` на kaname.roles нет — отрицания ниже "+
 			"утверждали бы о правиле, которого не существует")
 
 	uid := mustSeedUser(t, ctx, pool, "rulescalar")

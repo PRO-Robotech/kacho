@@ -93,7 +93,7 @@ func auditDeclaredPairs(t *testing.T, ctx context.Context, pool *pgxpool.Pool) (
 	catalog := map[string]catalogPair{}
 	crows, err := pool.Query(ctx, `
 		SELECT module, resource, live, COALESCE(superseded_by, '')
-		  FROM kacho_iam.catalog_resource`)
+		  FROM kaname.catalog_resource`)
 	require.NoError(t, err, "прочитать каталог ресурсов")
 	var c declarationCensus
 	for crows.Next() {
@@ -105,7 +105,7 @@ func auditDeclaredPairs(t *testing.T, ctx context.Context, pool *pgxpool.Pool) (
 	}
 	require.NoError(t, crows.Err())
 
-	rows, err := pool.Query(ctx, `SELECT id, name, rules FROM kacho_iam.roles ORDER BY id`)
+	rows, err := pool.Query(ctx, `SELECT id, name, rules FROM kaname.roles ORDER BY id`)
 	require.NoError(t, err, "прочитать роли")
 	type pairKey struct{ role, module, resource string }
 	seen := map[pairKey]bool{}
@@ -234,7 +234,7 @@ func declareRuleFor(t *testing.T, ctx context.Context, pool *pgxpool.Pool,
 	rules := domain.Rules{{Module: module, Resources: resources, Verbs: verbs}}
 	raw, err := domain.EncodeRules(rules)
 	require.NoError(t, err)
-	_, err = pool.Exec(ctx, `UPDATE kacho_iam.roles SET rules = $2 WHERE id = $1`,
+	_, err = pool.Exec(ctx, `UPDATE kaname.roles SET rules = $2 WHERE id = $1`,
 		string(role), raw)
 	require.NoError(t, err, "объявить правило роли прямым оператором")
 }
@@ -314,7 +314,7 @@ func TestIAMRM106_RetiredPairIsFoundWithItsSuccessor(t *testing.T) {
 	// Предпосылка пробы — факт каталога, а не наше допущение о нём.
 	var successor string
 	require.NoError(t, pool.QueryRow(ctx, `
-		SELECT COALESCE(superseded_by, '') FROM kacho_iam.catalog_resource
+		SELECT COALESCE(superseded_by, '') FROM kaname.catalog_resource
 		 WHERE module = 'compute' AND resource = 'disk' AND NOT live`).Scan(&successor),
 		"ПРЕДПОСЫЛКА НАРУШЕНА: снятой строки compute.disk в каталоге нет")
 	require.NotEmpty(t, successor, "ПРЕДПОСЫЛКА НАРУШЕНА: у снятой пары нет преемника")
@@ -338,7 +338,7 @@ func TestIAMRM106_RetiredPairIsFoundWithItsSuccessor(t *testing.T) {
 	// ВТОРАЯ СТОРОНА: у строки без преемника находка говорит именно это, а не
 	// молчит и не обещает того, чего каталог не несёт.
 	_, err = pool.Exec(ctx, `
-		UPDATE kacho_iam.catalog_resource SET superseded_by = NULL
+		UPDATE kaname.catalog_resource SET superseded_by = NULL
 		 WHERE module = 'compute' AND resource = 'disk' AND NOT live`)
 	require.NoError(t, err)
 
@@ -386,7 +386,7 @@ func TestIAMRM107_CauseIsNotSubstitutedByDivergence(t *testing.T) {
 	// только то, что этот обход её предмета НЕ присваивает.
 	var projected int
 	require.NoError(t, pool.QueryRow(ctx, `
-		SELECT count(*) FROM kacho_iam.role_rule_ref WHERE role_id = $1`,
+		SELECT count(*) FROM kaname.role_rule_ref WHERE role_id = $1`,
 		string(unprojected)).Scan(&projected))
 	require.Zerof(t, projected, "предпосылка пробы ложна: проекция у роли есть, "+
 		"значит расхождения множеств нет и находить соседу нечего")

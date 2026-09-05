@@ -60,8 +60,8 @@ func TestRoleIamUserEdit_RetiredWhileItsNeighboursRemain(t *testing.T) {
 	require.NoError(t, bootSeedRuleSides(ctx, pool))
 
 	// ── Перепись ДО вердикта ────────────────────────────────────────────────
-	totalRoles := scalarInt(t, ctx, pool, `SELECT count(*) FROM kacho_iam.roles`)
-	totalVerbs := scalarInt(t, ctx, pool, `SELECT count(*) FROM kacho_iam.role_verb`)
+	totalRoles := scalarInt(t, ctx, pool, `SELECT count(*) FROM kaname.roles`)
+	totalVerbs := scalarInt(t, ctx, pool, `SELECT count(*) FROM kaname.role_verb`)
 	t.Logf("осмотрено: ролей=%d, строк проекции роль→глагол=%d", totalRoles, totalVerbs)
 	require.NotZero(t, totalRoles, "предпосылка сломана: в посеве нет ни одной роли")
 	require.NotZero(t, totalVerbs,
@@ -70,17 +70,17 @@ func TestRoleIamUserEdit_RetiredWhileItsNeighboursRemain(t *testing.T) {
 	retired := scalarString(t, ctx, pool, `'rol' || substr(md5('iam.user.edit'), 1, 17)`)
 
 	require.Zero(t, scalarInt(t, ctx, pool,
-		`SELECT count(*) FROM kacho_iam.roles WHERE id = $1`, retired),
+		`SELECT count(*) FROM kaname.roles WHERE id = $1`, retired),
 		"роль iam.user.edit обязана быть снята: её единственный глагол снят с типа, "+
 			"поэтому выдача этой роли материализует ноль кортежей, а имя обещает правку")
 	require.Zero(t, scalarInt(t, ctx, pool,
-		`SELECT count(*) FROM kacho_iam.access_bindings WHERE role_id = $1`, retired),
+		`SELECT count(*) FROM kaname.access_bindings WHERE role_id = $1`, retired),
 		"привязка на снятую роль остаться не может")
 	require.Zero(t, scalarInt(t, ctx, pool,
-		`SELECT count(*) FROM kacho_iam.role_rule_selectors WHERE role_id = $1`, retired),
+		`SELECT count(*) FROM kaname.role_rule_selectors WHERE role_id = $1`, retired),
 		"селекторы снятой роли обязаны уйти вместе с ней")
 	require.Zero(t, scalarInt(t, ctx, pool,
-		`SELECT count(*) FROM kacho_iam.role_verb WHERE role_id = $1`, retired),
+		`SELECT count(*) FROM kaname.role_verb WHERE role_id = $1`, retired),
 		"проекция роль→глагол снятой роли обязана уйти вместе с ней")
 
 	// ── ПОЛОЖИТЕЛЬНЫЙ КОНТРОЛЬ: соседи остались и остались НЕПУСТЫМИ ────────
@@ -89,10 +89,10 @@ func TestRoleIamUserEdit_RetiredWhileItsNeighboursRemain(t *testing.T) {
 	} {
 		id := scalarString(t, ctx, pool, `'rol' || substr(md5('`+n.name+`'), 1, 17)`)
 		require.Equalf(t, 1, scalarInt(t, ctx, pool,
-			`SELECT count(*) FROM kacho_iam.roles WHERE id = $1`, id),
+			`SELECT count(*) FROM kaname.roles WHERE id = $1`, id),
 			"роль %s исчезла — снято больше, чем предмет #1128 (%s)", n.name, n.why)
 		require.Positivef(t, scalarInt(t, ctx, pool,
-			`SELECT count(*) FROM kacho_iam.role_verb WHERE role_id = $1`, id),
+			`SELECT count(*) FROM kaname.role_verb WHERE role_id = $1`, id),
 			"роль %s не даёт ни одного глагола — она осталась строкой, но перестала быть правом (%s)",
 			n.name, n.why)
 	}
@@ -101,11 +101,11 @@ func TestRoleIamUserEdit_RetiredWhileItsNeighboursRemain(t *testing.T) {
 	// Иначе «на iam.user его нет» читалось бы как «его нет нигде», то есть как
 	// поломка проекции, а не как сужение набора одного типа.
 	require.Positive(t, scalarInt(t, ctx, pool,
-		`SELECT count(*) FROM kacho_iam.role_verb WHERE verb = 'update' AND object_type <> 'iam.user'`),
+		`SELECT count(*) FROM kaname.role_verb WHERE verb = 'update' AND object_type <> 'iam.user'`),
 		"глагол `update` не встречается в проекции НИ У ОДНОГО типа — сужение задело не только "+
 			"iam.user, и это уже не предмет #1128")
 	require.Zero(t, scalarInt(t, ctx, pool,
-		`SELECT count(*) FROM kacho_iam.role_verb WHERE verb = 'update' AND object_type = 'iam.user'`),
+		`SELECT count(*) FROM kaname.role_verb WHERE verb = 'update' AND object_type = 'iam.user'`),
 		"проекция всё ещё даёт `update` на iam.user — глагол снят с типа, значит правило, "+
 			"назвавшее его, не должно давать ничего")
 }

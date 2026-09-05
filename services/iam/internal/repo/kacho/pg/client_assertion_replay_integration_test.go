@@ -101,7 +101,7 @@ func TestClientAssertionReplay_ConcurrentRedeemAdmitsExactlyOne(t *testing.T) {
 	// базой. Без этого утверждения проба зелена на реализации, где
 	// уникальности в схеме нет вовсе, а «ровно один» получился блокировкой.
 	_, err = pool.Exec(ctx,
-		`INSERT INTO kacho_iam.client_assertion_replay (client_id, assertion_id, expires_at) VALUES ($1,$2,$3)`,
+		`INSERT INTO kaname.client_assertion_replay (client_id, assertion_id, expires_at) VALUES ($1,$2,$3)`,
 		clientID, assertionID, expiresAt)
 	require.Error(t, err, "база обязана отвергнуть второе погашение того же ключа")
 }
@@ -148,7 +148,7 @@ func TestClientAssertionReplay_GuaranteeSpansTheFleetNotTheProcess(t *testing.T)
 	// процесса, и второй отвергает погашенное при реализации, которая ломается
 	// со второй репликой.
 	tag, err := poolA.Exec(ctx,
-		`DELETE FROM kacho_iam.client_assertion_replay WHERE client_id = $1 AND assertion_id = $2`,
+		`DELETE FROM kaname.client_assertion_replay WHERE client_id = $1 AND assertion_id = $2`,
 		clientID, shared)
 	require.NoError(t, err)
 	require.EqualValues(t, 1, tag.RowsAffected())

@@ -105,7 +105,7 @@ func TestUserToken_CredentialWithoutProviderMirrorIsStorableAndResolvable(t *tes
 	// две группы строк — с регистрацией и без — неразличимыми.
 	var mirrorPresent bool
 	require.NoError(t, pool.QueryRow(ctx,
-		`SELECT hydra_client_id IS NOT NULL FROM kacho_iam.user_oauth_clients WHERE id = $1`,
+		`SELECT hydra_client_id IS NOT NULL FROM kaname.user_oauth_clients WHERE id = $1`,
 		string(first.ID)).Scan(&mirrorPresent))
 	assert.False(t, mirrorPresent,
 		"колонка зеркала заполнена — регистрации у поставщика нет, а строка о ней заявляет")
@@ -170,7 +170,7 @@ func TestUserToken_RevocationReachesPresentationWithoutTheProvider(t *testing.T)
 
 	var before int
 	require.NoError(t, pool.QueryRow(ctx,
-		`SELECT count(*) FROM kacho_iam.minted_token_revocations WHERE subject = $1`,
+		`SELECT count(*) FROM kaname.minted_token_revocations WHERE subject = $1`,
 		string(row.ID)).Scan(&before))
 	require.Equal(t, 0, before, "отсечка существовала до отзыва")
 
@@ -189,7 +189,7 @@ func TestUserToken_RevocationReachesPresentationWithoutTheProvider(t *testing.T)
 	// 2) уже отчеканенное отсечено — и ключом отсечки стоит НАША строка.
 	var reason string
 	require.NoError(t, pool.QueryRow(ctx,
-		`SELECT reason FROM kacho_iam.minted_token_revocations WHERE subject = $1`,
+		`SELECT reason FROM kaname.minted_token_revocations WHERE subject = $1`,
 		string(row.ID)).Scan(&reason),
 		"отзыв не породил отсечки — он перестал выдавать, но выданное продолжает проходить")
 	assert.NotEmpty(t, reason)

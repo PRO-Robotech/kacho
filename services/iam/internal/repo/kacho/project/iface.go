@@ -1,7 +1,7 @@
 // Copyright (c) PRO-Robotech
 // SPDX-License-Identifier: AGPL-3.0-or-later
 
-// Package project — CQRS port-iface'ы для kacho_iam.projects.
+// Package project — CQRS port-iface'ы для kaname.projects.
 package project
 
 import (

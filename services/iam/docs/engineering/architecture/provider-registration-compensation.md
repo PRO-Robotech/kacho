@@ -53,7 +53,7 @@
 
 ## Решение
 
-`kacho_iam.provider_compensation_outbox` (миграция 0079) — очередь
+`kaname.provider_compensation_outbox` (миграция 0079) — очередь
 компенсирующих намерений; дренаж — общий corelib `outbox/drainer`
 (`provider_compensation_wiring.go`). Предмет намерения РОВНО ОДИН — снять
 OAuth-клиента у провайдера.

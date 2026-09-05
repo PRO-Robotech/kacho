@@ -44,13 +44,13 @@ func putCompensationRow(
 	var err error
 	if sentOffset == nil {
 		_, err = pool.Exec(ctx,
-			`INSERT INTO kacho_iam.provider_compensation_outbox
+			`INSERT INTO kaname.provider_compensation_outbox
 			        (event_type, payload, resource_kind, resource_id, attempt_count)
 			 VALUES ('provider.oauth_client.delete', $1::jsonb, 'oauth_client', $2, $3)`,
 			payload, clientID, attempts)
 	} else {
 		_, err = pool.Exec(ctx,
-			`INSERT INTO kacho_iam.provider_compensation_outbox
+			`INSERT INTO kaname.provider_compensation_outbox
 			        (event_type, payload, resource_kind, resource_id, attempt_count, sent_at)
 			 VALUES ('provider.oauth_client.delete', $1::jsonb, 'oauth_client', $2, $3,
 			         now() + make_interval(secs => $4))`,
@@ -63,7 +63,7 @@ func putCompensationRow(
 func compensationRowsLeft(t *testing.T, ctx context.Context, pool *pgxpool.Pool) []string {
 	t.Helper()
 	rows, err := pool.Query(ctx,
-		`SELECT resource_id FROM kacho_iam.provider_compensation_outbox ORDER BY resource_id`)
+		`SELECT resource_id FROM kaname.provider_compensation_outbox ORDER BY resource_id`)
 	require.NoError(t, err)
 	defer rows.Close()
 	var left []string

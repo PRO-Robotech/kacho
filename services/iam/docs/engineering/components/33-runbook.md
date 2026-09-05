@@ -20,7 +20,7 @@ Readiness/liveness — TCP-проба на `:9090`.
 
 **Симптомы:**
 - API calls (через api-gateway) возвращают `UNAVAILABLE`/`PERMISSION_DENIED` массово.
-- Postgres `kacho_iam` недоступен или деградирует.
+- Postgres `kaname` недоступен или деградирует.
 
 **Быстрая диагностика:**
 
@@ -34,7 +34,7 @@ make -C deploy psql SVC=iam   # либо nc -zv <db-host> 5432
 # fga_outbox: глубина журнала и его голова. «Непринятых» строк у него НЕ БЫВАЕТ:
 # журнал читает триггер, складывающий прямой факт в той же транзакции, что и вставку.
 kubectl -n kacho exec deploy/postgres -- \
-  psql -c "SELECT count(*) AS rows, max(created_at) AS last FROM kacho_iam.fga_outbox;"
+  psql -c "SELECT count(*) AS rows, max(created_at) AS last FROM kaname.fga_outbox;"
 
 # Логи последние 5min.
 kubectl -n kacho logs -l app=kaname --since=5m | grep -E "ERROR|FATAL|authz|verdict"
@@ -43,7 +43,7 @@ kubectl -n kacho logs -l app=kaname --since=5m | grep -E "ERROR|FATAL|authz|verd
 **Действия:**
 
 1. **DB down** → escalate DBA. Это **полный отказ авторизации**: вердикт
-   складывается той же базой, поэтому недоступность `kacho_iam` означает
+   складывается той же базой, поэтому недоступность `kaname` означает
    fail-closed по всем доменам, а не только по мутациям iam. Разбор и цена —
    [`../architecture/failure-domains.md`](../architecture/failure-domains.md).
 2. **Реплика для чтения отстаёт** → вердикт читает master; проверить, не
@@ -90,7 +90,7 @@ kubectl -n kacho logs -l app=kaname --since=5m | grep -E "ERROR|FATAL|authz|verd
 ### Причина 1 — отстал кэш края (частая, самоисправляющаяся)
 
 api-gateway кэширует срез прав субъекта и **гасит этот кэш сам**: каждая его реплика
-читает `kacho_iam.subject_change_outbox` курсором по возрастанию `id` через
+читает `kaname.subject_change_outbox` курсором по возрастанию `id` через
 `InternalIAMService.PollSubjectChanges` с интервалом
 `KACHO_API_GATEWAY_SUBJECT_CHANGE_POLL_INTERVAL` (умолчание `2s`). Пока опрос не
 прошёл, край отвечает по старому срезу.
@@ -115,13 +115,13 @@ api-gateway кэширует срез прав субъекта и **гасит 
 # Глубина журнала и его голова — это НЕ отставание, а точка отсчёта курсора.
 kubectl -n kacho exec deploy/postgres -- psql -c "
 SELECT count(*) AS rows_total, max(id) AS head_id, max(created_at) AS last_row
-FROM kacho_iam.subject_change_outbox;
+FROM kaname.subject_change_outbox;
 "
 
 # Строки по конкретному субъекту: намерение вообще записалось?
 kubectl -n kacho exec deploy/postgres -- psql -c "
 SELECT id, op, event_type, created_at
-FROM kacho_iam.subject_change_outbox
+FROM kaname.subject_change_outbox
 WHERE subject_id = '<subject_id>'
 ORDER BY id DESC LIMIT 10;
 "
@@ -154,11 +154,11 @@ ORDER BY id DESC LIMIT 10;
 kubectl -n kacho exec deploy/postgres -- psql -c "
 -- намерение записано?
 SELECT id, event_type, payload, created_at
-  FROM kacho_iam.fga_outbox
+  FROM kaname.fga_outbox
  WHERE payload::text LIKE '%<subject_id>%'
  ORDER BY id DESC LIMIT 10;
 -- факт сложился?
-SELECT * FROM kacho_iam.relation_fact
+SELECT * FROM kaname.relation_fact
  WHERE subject = 'user:<subject_id>' LIMIT 20;
 "
 ```
@@ -194,7 +194,7 @@ kubectl -n kacho logs -l app=kaname --since=10m | grep -E "iamhooks|provision|Up
 
 # Identity уже отзеркалена?
 kubectl -n kacho exec deploy/postgres -- \
-  psql -c "SELECT id, external_id, created_at FROM kacho_iam.users ORDER BY created_at DESC LIMIT 5;"
+  psql -c "SELECT id, external_id, created_at FROM kaname.users ORDER BY created_at DESC LIMIT 5;"
 ```
 
 **Действия:**
@@ -277,7 +277,7 @@ kubectl -n kacho exec deploy/kaname -- \
 
 ## P3 — Миграции не применились / pod не стартует
 
-Схема — `kacho_iam`, миграции — goose, прогоняются отдельным бинарем
+Схема — `kaname`, миграции — goose, прогоняются отдельным бинарем
 `cmd/migrator` (`bin/kacho-migrator up`). Если схема отстает от кода — pod
 падает на старте или RPC отдают неожиданные ошибки.
 
@@ -289,7 +289,7 @@ kubectl -n kacho logs -l app=kaname --tail=200 | grep -iE "migrat|goose|schema|r
 
 # Текущая версия goose.
 kubectl -n kacho exec deploy/postgres -- \
-  psql -c "SELECT version_id, is_applied, tstamp FROM kacho_iam.goose_db_version ORDER BY id DESC LIMIT 5;"
+  psql -c "SELECT version_id, is_applied, tstamp FROM kaname.goose_db_version ORDER BY id DESC LIMIT 5;"
 ```
 
 **Действия:**
@@ -304,7 +304,7 @@ kubectl -n kacho exec deploy/postgres -- \
 
 Cluster-admin-привязки выдаются через internal-only `InternalClusterService`
 (`:9091`, mTLS) — на публичном TLS их нет (запрет #6). Хранятся в
-`kacho_iam.cluster_admin_grants`: `granted_until IS NULL` — постоянный grant,
+`kaname.cluster_admin_grants`: `granted_until IS NULL` — постоянный grant,
 непустой `granted_until` — с истечением.
 
 **Инвентаризация:**
@@ -317,7 +317,7 @@ grpcurl -d '{}' <mTLS-flags> kaname:9091 \
 # Либо напрямую в БД.
 kubectl -n kacho exec deploy/postgres -- psql -c "
 SELECT id, subject_id, granted_by, granted_at, granted_until
-FROM kacho_iam.cluster_admin_grants
+FROM kaname.cluster_admin_grants
 ORDER BY granted_at DESC;
 "
 ```
@@ -335,8 +335,8 @@ ORDER BY granted_at DESC;
 ## P3 — audit_outbox растёт: журнал аудита не вывозится
 
 **Симптомы:**
-- `kacho_iam.audit_outbox` копит строки со `status='pending'`;
-- `outbox_oldest_pending_age_seconds{table="kacho_iam.audit_outbox"}` растёт по
+- `kaname.audit_outbox` копит строки со `status='pending'`;
+- `outbox_oldest_pending_age_seconds{table="kaname.audit_outbox"}` растёт по
   стенным часам вместо того, чтобы держаться ограниченным сверху.
 
 **Что это значит.** Журнал аудита вывозится в поток структурных записей службы
@@ -347,7 +347,7 @@ ORDER BY granted_at DESC;
 **Действия:**
 
 1. Прочитать причину прямо из строки: `SELECT last_error, attempts FROM
-   kacho_iam.audit_outbox WHERE status = 'pending' ORDER BY next_attempt_at
+   kaname.audit_outbox WHERE status = 'pending' ORDER BY next_attempt_at
    LIMIT 5;` — вывоз записывает туда ответ приёмника.
 2. Самая частая причина — **уровень потока службы поднят выше Info**: тогда
    приёмник отказывает с прямым текстом об этом. Лечится настройкой уровня и
@@ -374,10 +374,10 @@ kubectl -n kacho logs -l app=kaname -f --tail=200
 # «pending» по ним не определён, а строки снимает фоновая уборка по сроку — число
 # выходит на полку, а не растёт монотонно).
 kubectl -n kacho exec deploy/postgres -- psql -c "
-SELECT 'fga (УДЕРЖАНО, журнал)'   AS q, count(*)                              AS n, max(created_at) AS last FROM kacho_iam.fga_outbox
-UNION ALL SELECT 'subject_change (УДЕРЖАНО, журнал)', count(*),                          max(created_at)       FROM kacho_iam.subject_change_outbox
-UNION ALL SELECT 'resource_reconcile (всего)',     count(*),                          max(created_at)       FROM kacho_iam.resource_reconcile_outbox
-UNION ALL SELECT 'audit (pending)',   count(*) FILTER (WHERE status='pending'),        max(created_at)       FROM kacho_iam.audit_outbox;
+SELECT 'fga (УДЕРЖАНО, журнал)'   AS q, count(*)                              AS n, max(created_at) AS last FROM kaname.fga_outbox
+UNION ALL SELECT 'subject_change (УДЕРЖАНО, журнал)', count(*),                          max(created_at)       FROM kaname.subject_change_outbox
+UNION ALL SELECT 'resource_reconcile (всего)',     count(*),                          max(created_at)       FROM kaname.resource_reconcile_outbox
+UNION ALL SELECT 'audit (pending)',   count(*) FILTER (WHERE status='pending'),        max(created_at)       FROM kaname.audit_outbox;
 "
 
 # LRO in-flight (метрика на :9095).

@@ -224,7 +224,7 @@ func TestIAMRW110AGrantOnARetiredRoleYieldsNoVerdict(t *testing.T) {
 	)
 	require.NoError(t, pool.QueryRow(ctx, `
 		SELECT status, revoked_at::text, expires_at::text
-		  FROM kacho_iam.access_bindings WHERE id = $1`, "acb-rw110").
+		  FROM kaname.access_bindings WHERE id = $1`, "acb-rw110").
 		Scan(&status, &revoked, &expires),
 		"строки выдачи на снятую роль нет вовсе — отзыв роли снял выдачу, а обязан её пережить")
 	assert.Equal(t, "ACTIVE", status, "выдача на снятую роль сменила состояние")

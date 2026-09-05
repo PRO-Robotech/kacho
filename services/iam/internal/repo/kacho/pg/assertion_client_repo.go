@@ -77,14 +77,14 @@ func NewAssertionClientRepo(pool *pgxpool.Pool) *AssertionClientRepo {
 const resolveAssertionClientQuery = `
 SELECT c.id, 'user', c.user_id, c.public_key_pem, c.key_algorithm, c.expires_at,
        COALESCE(u.invite_status = 'ACTIVE', FALSE), ARRAY[]::text[]
-  FROM kacho_iam.user_oauth_clients c
-  LEFT JOIN kacho_iam.users u ON u.id = c.user_id
+  FROM kaname.user_oauth_clients c
+  LEFT JOIN kaname.users u ON u.id = c.user_id
  WHERE c.id = $1
 UNION ALL
 SELECT c.id, 'service_account', c.sva_id, c.public_key_pem, c.key_algorithm, c.expires_at,
        COALESCE(s.enabled, FALSE), c.declared_audiences
-  FROM kacho_iam.service_account_oauth_clients c
-  LEFT JOIN kacho_iam.service_accounts s ON s.id = c.sva_id
+  FROM kaname.service_account_oauth_clients c
+  LEFT JOIN kaname.service_accounts s ON s.id = c.sva_id
  WHERE c.id = $1
 LIMIT 1`
 

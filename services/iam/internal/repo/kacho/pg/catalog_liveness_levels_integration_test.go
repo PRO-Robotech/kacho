@@ -198,7 +198,7 @@ func readCatalogLevels(t *testing.T, ctx context.Context, pool *pgxpool.Pool) []
 		  JOIN pg_namespace cns    ON cns.oid    = child.relnamespace
 		  JOIN pg_namespace pns    ON pns.oid    = parent.relnamespace
 		 WHERE c.contype = 'f'
-		   AND cns.nspname = 'kacho_iam' AND pns.nspname = 'kacho_iam'
+		   AND cns.nspname = 'kaname' AND pns.nspname = 'kaname'
 		   AND child.relname  LIKE 'catalog\_%'
 		   AND parent.relname LIKE 'catalog\_%'`, livenessColumn)
 	require.NoError(t, err)
@@ -274,7 +274,7 @@ func TestCatalogLevelGateFiresWhenALivenessKeyIsDropped(t *testing.T) {
 		t.Run(dropped.constraint, func(t *testing.T) {
 			ctx, pool := catalogPool(t)
 			_, err := pool.Exec(ctx,
-				`ALTER TABLE kacho_iam.`+dropped.table+` DROP CONSTRAINT `+dropped.constraint)
+				`ALTER TABLE kaname.`+dropped.table+` DROP CONSTRAINT `+dropped.constraint)
 			require.NoError(t, err)
 
 			census, findings := auditCatalogLevels(readCatalogLevels(t, ctx, pool), declaredLivenessChoices)

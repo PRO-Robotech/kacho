@@ -19,7 +19,7 @@
 // действительны до собственного истечения — платформа их не отзывает и отозвать
 // не может. Остаток окна СЧИТАЕТСЯ, а не оценивается:
 //
-//	SELECT count(*) FROM kacho_iam.user_oauth_clients WHERE hydra_client_id IS NOT NULL;
+//	SELECT count(*) FROM kaname.user_oauth_clients WHERE hydra_client_id IS NOT NULL;
 //
 // На Issue:
 //

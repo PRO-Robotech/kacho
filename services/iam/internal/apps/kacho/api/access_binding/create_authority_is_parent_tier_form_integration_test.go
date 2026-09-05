@@ -148,26 +148,26 @@ func seedCreateAuthorityFixture(t *testing.T, ctx context.Context, pool *pgxpool
 	}
 	// Имена — по единственной форме имени дерева: подчёркивание законно в
 	// идентификаторе и отвергается в имени.
-	run(`INSERT INTO kacho_iam.accounts (id, name, owner_user_id)
+	run(`INSERT INTO kaname.accounts (id, name, owner_user_id)
 	     VALUES ('acc_ca_home', 'home-account',    'usr_createauth'),
 	            ('acc_ca_fgn',  'foreign-account', 'usr_createauth')
 	     ON CONFLICT DO NOTHING`)
 	for _, u := range []string{"usr_createauth", "usr_createauth_none"} {
-		run(`INSERT INTO kacho_iam.users (id, external_id, email, account_id)
+		run(`INSERT INTO kaname.users (id, external_id, email, account_id)
 		     VALUES ($1, $1, $1 || '@kacho.local', 'acc_ca_home') ON CONFLICT DO NOTHING`, u)
 	}
-	run(`INSERT INTO kacho_iam.projects (id, account_id, name)
+	run(`INSERT INTO kaname.projects (id, account_id, name)
 	     VALUES ('prj_ca_home', 'acc_ca_home', 'home-project'),
 	            ('prj_ca_fgn',  'acc_ca_fgn',  'foreign-project')
 	     ON CONFLICT DO NOTHING`)
 	// Цепь областей — по одному ребру на звено, ровно как её набирают производители
 	// дерева. Замыкание (строка на каждого предка) — форма, которой в продукте нет.
-	run(`INSERT INTO kacho_iam.resource_parent_edge
+	run(`INSERT INTO kaname.resource_parent_edge
 	       (object_type, object_id, parent_type, parent_id, depth)
 	     VALUES ('project', 'prj_ca_home', 'account', 'acc_ca_home', 1),
 	            ('project', 'prj_ca_fgn',  'account', 'acc_ca_fgn',  1)
 	     ON CONFLICT DO NOTHING`)
-	run(`INSERT INTO kacho_iam.relation_fact (object_type, object_id, relation, subject)
+	run(`INSERT INTO kaname.relation_fact (object_type, object_id, relation, subject)
 	     VALUES ('project', 'prj_ca_home', 'editor', 'user:usr_createauth'),
 	            ('account', 'acc_ca_home', 'editor', 'user:usr_createauth')`)
 	require.NoError(t, tx.Commit(ctx), "коммит посева: форма читает СВОЕЙ транзакцией")
@@ -278,21 +278,21 @@ func TestCreateAuthority_RegistryNamespaceKeepsItsReader(t *testing.T) {
 		_, err := tx.Exec(ctx, sql, args...)
 		require.NoErrorf(t, err, "посев (%s)", sql)
 	}
-	run(`INSERT INTO kacho_iam.accounts (id, name, owner_user_id)
+	run(`INSERT INTO kaname.accounts (id, name, owner_user_id)
 	     VALUES ('acc_regca', 'registry-account', 'usr_regowner_ca') ON CONFLICT DO NOTHING`)
 	for _, u := range []string{"usr_regowner_ca", "usr_regoutsider_ca"} {
-		run(`INSERT INTO kacho_iam.users (id, external_id, email, account_id)
+		run(`INSERT INTO kaname.users (id, external_id, email, account_id)
 		     VALUES ($1, $1, $1 || '@kacho.local', 'acc_regca') ON CONFLICT DO NOTHING`, u)
 	}
-	run(`INSERT INTO kacho_iam.projects (id, account_id, name)
+	run(`INSERT INTO kaname.projects (id, account_id, name)
 	     VALUES ('prj_regca', 'acc_regca', 'registry-project') ON CONFLICT DO NOTHING`)
 	// Ровно то, что пишет регистрация ресурса реестром: структурный указатель на
 	// проект и факт владения. Ни одного `v_*` не пишется.
-	run(`INSERT INTO kacho_iam.resource_parent_edge
+	run(`INSERT INTO kaname.resource_parent_edge
 	       (object_type, object_id, parent_type, parent_id, depth)
 	     VALUES ('registry_registry', 'reg_ca000000000000', 'project', 'prj_regca', 1)
 	     ON CONFLICT DO NOTHING`)
-	run(`INSERT INTO kacho_iam.relation_fact (object_type, object_id, relation, subject)
+	run(`INSERT INTO kaname.relation_fact (object_type, object_id, relation, subject)
 	     VALUES ('registry_registry', 'reg_ca000000000000', 'owner', 'user:usr_regowner_ca')`)
 	require.NoError(t, tx.Commit(ctx), "коммит посева: форма читает СВОЕЙ транзакцией")
 

@@ -18,17 +18,17 @@ import (
 
 const (
 	// synthPoisoner — собственный оператор травления внутри строкового литерала.
-	synthPoisoner = "package pg\n\nconst q = `UPDATE kacho_iam.demo_outbox\n" +
+	synthPoisoner = "package pg\n\nconst q = `UPDATE kaname.demo_outbox\n" +
 		"   SET attempt_count = attempt_count + 1, last_error = $2\n WHERE id = $1`\n"
 
 	// synthScanOfDemo — скан состояния над той же таблицей, имя — константой корня.
-	synthScanOfDemo = "package main\n\nconst demoTable = \"kacho_iam.demo_outbox\"\n\n" +
+	synthScanOfDemo = "package main\n\nconst demoTable = \"kaname.demo_outbox\"\n\n" +
 		"func run() { _ = outboxmetrics.NewCollector(p, r, outboxmetrics.CollectorConfig{" +
 		"Table: demoTable, MaxAttempts: 10}) }\n"
 
 	// synthScanOfAnother — ЗАКОННЫЙ близнец: скан над ДРУГОЙ таблицей. Он не
 	// обязан закрывать чужую очередь и не должен считаться её покрытием.
-	synthScanOfAnother = "package main\n\nconst otherTable = \"kacho_iam.other_outbox\"\n\n" +
+	synthScanOfAnother = "package main\n\nconst otherTable = \"kaname.other_outbox\"\n\n" +
 		"func run2() { _ = outboxmetrics.NewCollector(p, r, outboxmetrics.CollectorConfig{" +
 		"Table: otherTable}) }\n"
 
@@ -42,7 +42,7 @@ const (
 	// Гейт судит разобранные строковые литералы, поэтому проза об операторе
 	// (а её в дереве не одна строка) не имеет права читаться как его наличие.
 	synthPoisonerInComment = "package pg\n\n" +
-		"// UPDATE kacho_iam.prose_outbox SET attempt_count = attempt_count + 1 — так\n" +
+		"// UPDATE kaname.prose_outbox SET attempt_count = attempt_count + 1 — так\n" +
 		"// выглядел бы учёт попытки, если бы он здесь был.\nfunc nothing() {}\n"
 )
 
@@ -68,7 +68,7 @@ func TestPoisonScanGateRedsOnAnUnobservedQueue(t *testing.T) {
 	)
 
 	require.Len(t, findings, 1, "очередь травит строки и молчит — гейт остался зелёным")
-	require.Contains(t, findings[0], "kacho_iam.demo_outbox")
+	require.Contains(t, findings[0], "kaname.demo_outbox")
 	require.Contains(t, findings[0], "outbox.go", "находка обязана назвать координату")
 	require.Equal(t, 1, c.poisoners)
 	require.Zero(t, c.scanned)
@@ -83,8 +83,8 @@ func TestPoisonScanGateDoesNotAcceptAForeignTableAsCoverage(t *testing.T) {
 	)
 
 	require.Len(t, findings, 1, "чужой скан засчитан покрытием")
-	require.Contains(t, findings[0], "kacho_iam.demo_outbox")
-	require.NotContains(t, findings[0], "kacho_iam.other_outbox",
+	require.Contains(t, findings[0], "kaname.demo_outbox")
+	require.NotContains(t, findings[0], "kaname.other_outbox",
 		"наблюдаемая очередь попала в находку — красное пришло бы не от снятого")
 	require.Equal(t, 1, c.scanned)
 }

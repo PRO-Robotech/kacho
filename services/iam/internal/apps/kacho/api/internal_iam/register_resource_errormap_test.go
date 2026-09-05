@@ -46,7 +46,7 @@ func (b failBeginTxBeginner) Begin(context.Context) (service.Tx, error) { return
 func TestRegisterResourceUseCase_BeginFailure_MapsUnavailable(t *testing.T) {
 	uc := NewRegisterResourceUseCase(
 		smEmitter{}, mirrorAdapter{},
-		failBeginTxBeginner{err: errors.New("failed to connect to `host=iamdb port=5432 user=kacho_iam`: connection refused")},
+		failBeginTxBeginner{err: errors.New("failed to connect to `host=iamdb port=5432 user=kaname`: connection refused")},
 		seededCatalogTypes{},
 	)
 
@@ -81,7 +81,7 @@ func (f *fakeRegistrar) Unregister(_ context.Context, _ unregisterInput) error {
 // rawPgxErr mimics a bare fmt.Errorf-wrapped pgx connection failure — exactly the
 // shape emit() produces on a DB fault. Its text carries driver detail that must
 // NEVER reach the caller.
-var rawPgxErr = errors.New("begin tx: failed to connect to `host=iamdb port=5432 user=kacho_iam database=kacho_iam`: connection refused")
+var rawPgxErr = errors.New("begin tx: failed to connect to `host=iamdb port=5432 user=kaname database=kaname`: connection refused")
 
 func registrarErrorCases() []struct {
 	name    string
@@ -126,7 +126,7 @@ func TestInternalIAM_RegisterResource_ErrorMapping(t *testing.T) {
 			msg := status.Convert(err).Message()
 			assert.NotContains(t, msg, "connection refused", "must not leak pgx driver text")
 			assert.NotContains(t, msg, "host=", "must not leak DB host")
-			assert.NotContains(t, msg, "kacho_iam", "must not leak DB user/name")
+			assert.NotContains(t, msg, "kaname", "must not leak DB user/name")
 			if tc.wantMsg != "" {
 				assert.Equal(t, tc.wantMsg, msg)
 			}
@@ -149,7 +149,7 @@ func TestInternalIAM_UnregisterResource_ErrorMapping(t *testing.T) {
 			msg := status.Convert(err).Message()
 			assert.NotContains(t, msg, "connection refused", "must not leak pgx driver text")
 			assert.NotContains(t, msg, "host=", "must not leak DB host")
-			assert.NotContains(t, msg, "kacho_iam", "must not leak DB user/name")
+			assert.NotContains(t, msg, "kaname", "must not leak DB user/name")
 			if tc.wantMsg != "" {
 				assert.Equal(t, tc.wantMsg, msg)
 			}

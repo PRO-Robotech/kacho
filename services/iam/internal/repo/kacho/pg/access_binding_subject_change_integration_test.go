@@ -45,7 +45,7 @@ func TestAccessBindingWriter_EmitSubjectChange_InTx(t *testing.T) {
 
 	var op string
 	err = pool.QueryRow(ctx,
-		`SELECT op FROM kacho_iam.subject_change_outbox WHERE subject_id = 'usr_test_subject'`).
+		`SELECT op FROM kaname.subject_change_outbox WHERE subject_id = 'usr_test_subject'`).
 		Scan(&op)
 	require.NoError(t, err, "expected exactly one outbox row for usr_test_subject")
 	require.Equal(t, "binding_delete", op)
@@ -60,6 +60,6 @@ func TestAccessBindingWriter_EmitSubjectChange_InTx(t *testing.T) {
 
 	var cnt int
 	require.NoError(t, pool.QueryRow(ctx,
-		`SELECT count(*) FROM kacho_iam.subject_change_outbox WHERE subject_id='usr_rollback'`).Scan(&cnt))
+		`SELECT count(*) FROM kaname.subject_change_outbox WHERE subject_id='usr_rollback'`).Scan(&cnt))
 	require.Equal(t, 0, cnt)
 }

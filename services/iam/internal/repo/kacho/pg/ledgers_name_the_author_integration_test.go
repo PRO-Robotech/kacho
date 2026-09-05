@@ -68,11 +68,11 @@ func orphanAuthorsOf(t *testing.T, ctx context.Context, pool *pgxpool.Pool,
 	t.Helper()
 	var total int
 	require.NoError(t, pool.QueryRow(ctx,
-		`SELECT count(*) FROM kacho_iam.role_grant_orphan`).Scan(&total))
+		`SELECT count(*) FROM kaname.role_grant_orphan`).Scan(&total))
 
 	rows, err := pool.Query(ctx, `
 		SELECT object_type, applied_by
-		  FROM kacho_iam.role_grant_orphan
+		  FROM kaname.role_grant_orphan
 		 WHERE role_id = $1
 		 ORDER BY object_type`, role)
 	require.NoError(t, err)
@@ -93,11 +93,11 @@ func prunedAuthorsOf(t *testing.T, ctx context.Context, pool *pgxpool.Pool,
 	t.Helper()
 	var total int
 	require.NoError(t, pool.QueryRow(ctx,
-		`SELECT count(*) FROM kacho_iam.role_selector_prune`).Scan(&total))
+		`SELECT count(*) FROM kaname.role_selector_prune`).Scan(&total))
 
 	rows, err := pool.Query(ctx, `
 		SELECT object_type, applied_by
-		  FROM kacho_iam.role_selector_prune
+		  FROM kaname.role_selector_prune
 		 WHERE role_id = $1
 		 ORDER BY object_type`, role)
 	require.NoError(t, err)
@@ -300,7 +300,7 @@ func writeRoleVerbsAt(t *testing.T, ctx context.Context, pool *pgxpool.Pool,
 	t.Helper()
 	for _, ot := range objectTypes {
 		_, err := pool.Exec(ctx, `
-			INSERT INTO kacho_iam.role_verb (role_id, object_type, verb)
+			INSERT INTO kaname.role_verb (role_id, object_type, verb)
 			VALUES ($1, $2, 'get')
 			ON CONFLICT DO NOTHING`, string(role), ot)
 		require.NoErrorf(t, err, "выдача глагола на %s не записана — "+

@@ -49,7 +49,7 @@ func TestMigration_F51_LegacyTablesDropped(t *testing.T) {
 		var exists bool
 		require.NoError(t, pool.QueryRow(ctx,
 			`SELECT EXISTS (SELECT 1 FROM information_schema.tables
-			                 WHERE table_schema = 'kacho_iam' AND table_name = $1)`,
+			                 WHERE table_schema = 'kaname' AND table_name = $1)`,
 			name).Scan(&exists))
 		return exists
 	}
@@ -115,14 +115,14 @@ func TestMigration_F53_SystemRolesReseededWithRules(t *testing.T) {
 
 	var total int
 	require.NoError(t, pool.QueryRow(ctx,
-		`SELECT count(*) FROM kacho_iam.roles WHERE is_system`).Scan(&total))
+		`SELECT count(*) FROM kaname.roles WHERE is_system`).Scan(&total))
 	assert.Equal(t, wantSystemRoles, total,
 		"F-53: exactly %d system roles expected after re-seed — see wantSystemRoles for the derivation",
 		wantSystemRoles)
 
 	var withoutRules int
 	require.NoError(t, pool.QueryRow(ctx,
-		`SELECT count(*) FROM kacho_iam.roles
+		`SELECT count(*) FROM kaname.roles
 		  WHERE is_system AND jsonb_array_length(rules) = 0`).Scan(&withoutRules))
 	assert.Equal(t, 0, withoutRules,
 		"F-53: every system role must have non-empty rules[] after re-seed (0031)")
@@ -142,7 +142,7 @@ func TestMigration_F53_IdStability(t *testing.T) {
 	idOf := func(name string) string {
 		var id string
 		require.NoError(t, pool.QueryRow(ctx,
-			`SELECT id FROM kacho_iam.roles WHERE name = $1 AND is_system`, name).Scan(&id))
+			`SELECT id FROM kaname.roles WHERE name = $1 AND is_system`, name).Scan(&id))
 		return id
 	}
 	mdID := func(name string) string {
@@ -175,14 +175,14 @@ func TestMigration_F53_AccessNotSevered(t *testing.T) {
 	countSystemRoles := func() int {
 		var n int
 		require.NoError(t, pool.QueryRow(ctx,
-			`SELECT count(*) FROM kacho_iam.roles WHERE is_system`).Scan(&n))
+			`SELECT count(*) FROM kaname.roles WHERE is_system`).Scan(&n))
 		return n
 	}
 	countSystemBindings := func() int {
 		var n int
 		require.NoError(t, pool.QueryRow(ctx,
-			`SELECT count(*) FROM kacho_iam.access_bindings
-			  WHERE role_id IN (SELECT id FROM kacho_iam.roles WHERE is_system)`).Scan(&n))
+			`SELECT count(*) FROM kaname.access_bindings
+			  WHERE role_id IN (SELECT id FROM kaname.roles WHERE is_system)`).Scan(&n))
 		return n
 	}
 
@@ -211,7 +211,7 @@ func TestMigration_F53_AccessNotSevered(t *testing.T) {
 func reapplySystemRoleReseed(t *testing.T, ctx context.Context, pool *pgxpool.Pool) {
 	t.Helper()
 	_, err := pool.Exec(ctx,
-		`UPDATE kacho_iam.roles SET rules = rules WHERE is_system`)
+		`UPDATE kaname.roles SET rules = rules WHERE is_system`)
 	require.NoError(t, err, "idempotent re-apply of system-role rules must succeed")
 }
 
@@ -237,7 +237,7 @@ func TestMigration_F52_SystemRolePublicDTOEmptyPermissions(t *testing.T) {
 	// still stored (FGA emission), but the public DTO must omit permissions.
 	var viewID string
 	require.NoError(t, pool.QueryRow(ctx,
-		`SELECT id FROM kacho_iam.roles WHERE name = 'view' AND is_system`).Scan(&viewID))
+		`SELECT id FROM kaname.roles WHERE name = 'view' AND is_system`).Scan(&viewID))
 
 	got, err := rd.Roles().Get(ctx, domain.RoleID(viewID))
 	require.NoError(t, err)

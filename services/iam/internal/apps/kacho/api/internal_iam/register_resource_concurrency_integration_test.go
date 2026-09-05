@@ -68,7 +68,7 @@ func TestRegisterResource_A06_ConcurrentRegisterIdempotent(t *testing.T) {
 	// All N enqueued (at-least-once); the drainer idempotently collapses them.
 	var count int
 	require.NoError(t, pool.QueryRow(ctx,
-		`SELECT count(*) FROM kacho_iam.fga_outbox
+		`SELECT count(*) FROM kaname.fga_outbox
 		  WHERE payload->>'object' = 'vpc_network:enp00000000000000002'`).Scan(&count))
 	require.Equal(t, n, count, "each concurrent call enqueues its own outbox row")
 }

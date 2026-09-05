@@ -16,7 +16,7 @@ package pg_test
 //	1. `ListAccountsForUser` — снимок «мои аккаунты» собственного профиля;
 //	2. сужение набора кандидатов страницы `Users().List` — «кого мне показывать»;
 //	3. звено цепи областей `iam_user → account` (представление
-//	   `kacho_iam.resource_scope_edge`) — «через какой аккаунт до личности
+//	   `kaname.resource_scope_edge`) — «через какой аккаунт до личности
 //	   достаёт администратор».
 //
 // Проба сеет состояние, в котором колонка и членства РАСХОДЯТСЯ — человек с
@@ -76,8 +76,8 @@ import (
 func seedMembership(t *testing.T, ctx context.Context, pool *pgxpool.Pool, userID domain.UserID, accountID domain.AccountID, state string) {
 	t.Helper()
 	_, err := pool.Exec(ctx, `
-		INSERT INTO kacho_iam.memberships (id, user_id, account_id, state)
-		VALUES (kacho_iam.membership_mirror_id($1, $2), $1, $2, $3)
+		INSERT INTO kaname.memberships (id, user_id, account_id, state)
+		VALUES (kaname.membership_mirror_id($1, $2), $1, $2, $3)
 		ON CONFLICT (user_id, account_id) DO UPDATE SET state = EXCLUDED.state`,
 		string(userID), string(accountID), state)
 	require.NoError(t, err, "сев членства (%s → %s)", userID, accountID)
@@ -87,7 +87,7 @@ func seedMembership(t *testing.T, ctx context.Context, pool *pgxpool.Pool, userI
 func scopeParents(t *testing.T, ctx context.Context, pool *pgxpool.Pool, userID domain.UserID) []string {
 	t.Helper()
 	rows, err := pool.Query(ctx, `
-		SELECT parent_id FROM kacho_iam.resource_scope_edge
+		SELECT parent_id FROM kaname.resource_scope_edge
 		 WHERE object_type = 'iam_user' AND object_id = $1 AND parent_type = 'account'
 		 ORDER BY parent_id`, string(userID))
 	require.NoError(t, err)
@@ -184,8 +184,8 @@ func TestMembershipIsTheAccountSource(t *testing.T) {
 	// Перепись предусловия: «ноль находок» обязано быть отличимо от «ноль
 	// прочитанного» (testing.md §«Гейт на класс» п. 3).
 	var seenUsers, seenMemberships int
-	require.NoError(t, pool.QueryRow(ctx, `SELECT count(*) FROM kacho_iam.users`).Scan(&seenUsers))
-	require.NoError(t, pool.QueryRow(ctx, `SELECT count(*) FROM kacho_iam.memberships`).Scan(&seenMemberships))
+	require.NoError(t, pool.QueryRow(ctx, `SELECT count(*) FROM kaname.users`).Scan(&seenUsers))
+	require.NoError(t, pool.QueryRow(ctx, `SELECT count(*) FROM kaname.memberships`).Scan(&seenMemberships))
 	require.Greater(t, seenUsers, 0, "осмотренных строк ноль — проба не о том дереве")
 	require.Equal(t, seenUsers+1, seenMemberships,
 		"членств обязано быть на одно больше строк: зеркало плюс второе, посеянное пробой")
@@ -280,13 +280,13 @@ func TestBlockedIdentityGainsNoAccountThroughMembership(t *testing.T) {
 	// Положительный контроль ДО отрицания: пока личность активна, аккаунт назван.
 	require.Contains(t, read(), string(accA), "активная личность обязана называть свой аккаунт")
 
-	_, err = pool.Exec(ctx, `UPDATE kacho_iam.users SET invite_status = 'BLOCKED' WHERE id = $1`, string(blocked))
+	_, err = pool.Exec(ctx, `UPDATE kaname.users SET invite_status = 'BLOCKED' WHERE id = $1`, string(blocked))
 	require.NoError(t, err)
 
 	// Членство при этом ОСТАЛОСЬ активным — иначе проба измеряла бы не то.
 	var state string
 	require.NoError(t, pool.QueryRow(ctx,
-		`SELECT state FROM kacho_iam.memberships WHERE user_id = $1 AND account_id = $2`,
+		`SELECT state FROM kaname.memberships WHERE user_id = $1 AND account_id = $2`,
 		string(blocked), string(accA)).Scan(&state))
 	require.Equal(t, "ACTIVE", state,
 		"зеркало обязано оставить членство активным: блокировка — свойство личности (В-8)")
@@ -314,7 +314,7 @@ func TestScopeEdgeReadsNoUserAccountColumn(t *testing.T) {
 
 	var def string
 	require.NoError(t, pool.QueryRow(ctx,
-		`SELECT pg_get_viewdef('kacho_iam.resource_scope_edge'::regclass, true)`).Scan(&def))
+		`SELECT pg_get_viewdef('kaname.resource_scope_edge'::regclass, true)`).Scan(&def))
 	require.NotEmpty(t, def, "определение представления пусто — проба не о том дереве")
 
 	// Контроль в обратную сторону: представление ЧИТАЕТ таблицу членств. Без

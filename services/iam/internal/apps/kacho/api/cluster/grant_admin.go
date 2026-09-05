@@ -7,7 +7,7 @@ package cluster
 //
 // Flow (synchronous within Execute):
 //  1. Sync validations: subject_type (USER | SERVICE_ACCOUNT), per-type
-//     subject_id format, subject exists in kacho_iam.{users,service_accounts}.
+//     subject_id format, subject exists in kaname.{users,service_accounts}.
 //  2. Persist Operation (done=false) so the returned id is always queryable.
 //  3. Begin TX → Grant → if !created && !active → Reactivate →
 //     EmitWriteTx (FGA outbox) → commit. On failure → MarkError the op.

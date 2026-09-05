@@ -8,7 +8,7 @@ package pg
 //
 // Strict Insert:
 //
-//   INSERT INTO kacho_iam.access_bindings (...)
+//   INSERT INTO kaname.access_bindings (...)
 //   VALUES ($newID, $st, $sid, $rid, $rt, $rid2, $status, $cond, $exp, $grb, $rva, $rvb, now())
 //   RETURNING id, ..., created_at;
 //
@@ -416,7 +416,7 @@ func (r *abReader) ListByAccount(ctx context.Context, accountID domain.AccountID
 // ListSubjectPrivileges — enriched read for the subject-privileges view.
 // Returns the subject's DIRECT AccessBindings LEFT JOINed with
 // `roles` so the human-readable role_name is resolved server-side in ONE query
-// (access_bindings ab ⋈ roles r ON ab.role_id = r.id; same kacho_iam schema,
+// (access_bindings ab ⋈ roles r ON ab.role_id = r.id; same kaname schema,
 // FK access_bindings_role_fk — no per-row N+1).
 //
 // LEFT JOIN (not INNER): a dangling role (deleted after a revoke) must not drop
@@ -446,7 +446,7 @@ func (r *abReader) ListSubjectPrivileges(ctx context.Context, subjectType domain
 	// predicates on (subject_type, subject_id), so access_bindings_subject_idx
 	// serves them as a BitmapOr — the read stays index-driven, no seq-scan.
 	//
-	// The group side reads kacho_iam.group_members via group_members_member_idx.
+	// The group side reads kaname.group_members via group_members_member_idx.
 	// Groups do NOT nest (group_members_type_check allows only user /
 	// service_account), so this is exactly ONE hop and cannot recurse: when the
 	// REQUESTED subject is itself a group the sub-select is empty and only the
@@ -1112,7 +1112,7 @@ func (w *abWriter) EmitSubjectChangeEvent(ctx context.Context, evt access_bindin
 	}
 
 	_, err = w.tx.Exec(ctx, `
-		INSERT INTO kacho_iam.subject_change_outbox
+		INSERT INTO kaname.subject_change_outbox
 			(subject_id, op, event_type, payload)
 		VALUES ($1, $2, $3, $4::jsonb)`,
 		evt.SubjectID, evt.Op, evt.EventType, payload)
@@ -1123,7 +1123,7 @@ func (w *abWriter) EmitSubjectChangeEvent(ctx context.Context, evt access_bindin
 }
 
 // EmitRelationWrite — atomically appends N grant rows into
-// kacho_iam.fga_outbox (event_type='fga.tuple.write') in the current
+// kaname.fga_outbox (event_type='fga.tuple.write') in the current
 // writer-tx (atomicity required — see within-service refs). A trigger on that
 // INSERT folds each row into a direct fact in the same commit.
 //
@@ -1140,7 +1140,7 @@ func (w *abWriter) EmitRelationDelete(ctx context.Context, tuples []access_bindi
 }
 
 // InsertEmittedTuples persists the EXACT FGA tuples emitted for a binding into
-// kacho_iam.access_binding_emitted_tuples in the current writer-tx, co-committed
+// kaname.access_binding_emitted_tuples in the current writer-tx, co-committed
 // with the matching EmitRelationWrite (ban #10). ON CONFLICT DO NOTHING
 // keeps a repeated emit (idempotent re-grant / reconcile) a no-op. len==0 no-op.
 func (w *abWriter) InsertEmittedTuples(ctx context.Context, bindingID domain.AccessBindingID, tuples []access_binding.RelationTuple) error {
@@ -1222,7 +1222,7 @@ func (w *abWriter) emitFGAOutbox(ctx context.Context, eventType string, tuples [
 }
 
 // EmitAuditEvent atomically appends one durable compliance row into
-// kacho_iam.audit_outbox in the current writer-tx (atomicity required — see
+// kaname.audit_outbox in the current writer-tx (atomicity required — see
 // within-service refs, запрет #10). The binding INSERT/DELETE and the audit
 // enqueue commit-or-rollback together: a rolled-back grant leaves no audit row
 // claiming it happened, and a committed grant always leaves its trail.
@@ -1258,7 +1258,7 @@ func (w *abWriter) EmitAuditEvent(ctx context.Context, ev access_binding.AuditEv
 	// tenant_account_id is nullable (per-account scoping when known).
 	tenant := nullableString(ev.TenantAccountID)
 	if _, err := w.tx.Exec(ctx,
-		`INSERT INTO kacho_iam.audit_outbox
+		`INSERT INTO kaname.audit_outbox
 			(id, event_type, tenant_account_id, event_payload, status, attempts, created_at, next_attempt_at)
 		 VALUES ($1, $2, $3, $4::jsonb, 'pending', 0, now(), now())`,
 		newAuditEventID(), string(ev.EventType), tenant, payload,
@@ -1358,7 +1358,7 @@ func (r *abReader) SelectEmittedTuplesBySource(ctx context.Context, bindingID do
 }
 
 // SelectEmittedTuples reads the persisted exact emitted-set of a binding
-// (kacho_iam.access_binding_emitted_tuples). The revoke (delete.go)
+// (kaname.access_binding_emitted_tuples). The revoke (delete.go)
 // and the Role.Update reconcile fan-out use it as the source of truth for which
 // FGA tuples were actually written, so the revoke is byte-symmetric to the grant
 // regardless of the role's current permissions. Zero rows ⇒ empty slice (nil).

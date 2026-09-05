@@ -63,7 +63,7 @@ func rowsWithEmail(t *testing.T, ctx context.Context, pool *pgxpool.Pool, email 
 	t.Helper()
 	var n int
 	require.NoError(t, pool.QueryRow(ctx,
-		`SELECT count(*) FROM kacho_iam.users WHERE lower(email) = lower($1)`, email).Scan(&n))
+		`SELECT count(*) FROM kaname.users WHERE lower(email) = lower($1)`, email).Scan(&n))
 	return n
 }
 

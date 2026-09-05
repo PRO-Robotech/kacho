@@ -325,7 +325,7 @@ func openMatrixPool(t *testing.T, ctx context.Context) (*pgxpool.Pool, *verdictC
 func seedMatrixSubject(t *testing.T, ctx context.Context, tx pgx.Tx) {
 	t.Helper()
 	exec(t, ctx, tx,
-		`INSERT INTO kacho_iam.users (id, external_id, email, account_id)
+		`INSERT INTO kaname.users (id, external_id, email, account_id)
 		 VALUES ($1, 'ext-mx', 'usr-mx@kacho.local', 'acc-1')`, matrixUserID)
 	seedProbeRole(t, ctx, tx, matrixRoleID, matrixRoleName)
 }
@@ -391,11 +391,11 @@ func takeMatrixTables(t *testing.T, ctx context.Context, tx pgx.Tx) ([]tableCoun
 	for _, tbl := range matrixTables {
 		var n, b int64
 		if err := tx.QueryRow(ctx,
-			fmt.Sprintf(`SELECT count(*)::bigint FROM kacho_iam.%s`, tbl)).Scan(&n); err != nil {
+			fmt.Sprintf(`SELECT count(*)::bigint FROM kaname.%s`, tbl)).Scan(&n); err != nil {
 			t.Fatalf("перепись строк %s: %v", tbl, err)
 		}
 		if err := tx.QueryRow(ctx,
-			`SELECT pg_total_relation_size($1)::bigint`, "kacho_iam."+tbl).Scan(&b); err != nil {
+			`SELECT pg_total_relation_size($1)::bigint`, "kaname."+tbl).Scan(&b); err != nil {
 			t.Fatalf("перепись места %s: %v", tbl, err)
 		}
 		out = append(out, tableCount{table: tbl, rows: n, bytes: b})

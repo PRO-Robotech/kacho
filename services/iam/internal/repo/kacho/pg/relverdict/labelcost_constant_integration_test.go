@@ -52,7 +52,7 @@ import (
 func verdictRows(t *testing.T, ctx context.Context, tx pgx.Tx) int {
 	t.Helper()
 	var n int
-	if err := tx.QueryRow(ctx, `SELECT count(*) FROM kacho_iam.relation_fact`).Scan(&n); err != nil {
+	if err := tx.QueryRow(ctx, `SELECT count(*) FROM kaname.relation_fact`).Scan(&n); err != nil {
 		t.Fatalf("счёт строк проекции: %v", err)
 	}
 	return n
@@ -64,11 +64,11 @@ func seedLabelledProjects(t *testing.T, ctx context.Context, tx pgx.Tx, from, to
 	for i := from; i < to; i++ {
 		id := fmt.Sprintf("prj-cost-%05d", i)
 		exec(t, ctx, tx,
-			`INSERT INTO kacho_iam.projects (id, account_id, name, labels)
+			`INSERT INTO kaname.projects (id, account_id, name, labels)
 			 VALUES ($1, 'acc-1', $2, $3::jsonb)`,
 			id, fmt.Sprintf("cost-%05d", i), `{"env":"prod"}`)
 		exec(t, ctx, tx,
-			`INSERT INTO kacho_iam.resource_parent_edge
+			`INSERT INTO kaname.resource_parent_edge
 			   (object_type, object_id, parent_type, parent_id, depth)
 			 VALUES ('project', $1, 'account', $2, 1)`, id, labelScopeAccount)
 	}
@@ -152,7 +152,7 @@ func TestLabelCostGateSeesExpansionWhenItHappens(t *testing.T) {
 		// Разворачивание, какого в продукте нет: по факту на каждый объект.
 		for i := 0; i < objects; i++ {
 			exec(t, ctx, tx,
-				`INSERT INTO kacho_iam.relation_fact (object_type, object_id, relation, subject)
+				`INSERT INTO kaname.relation_fact (object_type, object_id, relation, subject)
 				 VALUES ('project', $1, 'v_get', 'user:usr-1')`,
 				fmt.Sprintf("prj-cost-%05d", i))
 		}

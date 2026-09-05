@@ -131,13 +131,13 @@ func axesUnderGate() []struct {
 		table string
 	}{
 		{"ось зеркала", ""},
-		{"ось собственной таблицы iam", "kacho_iam.projects"},
+		{"ось собственной таблицы iam", "kaname.projects"},
 	}
 }
 
 var (
-	// Алиас таблицы: `FROM|JOIN kacho_iam.<таблица> <алиас>`.
-	reAlias = regexp.MustCompile(`(?:FROM|JOIN)\s+kacho_iam\.(\w+)\s+(\w+)`)
+	// Алиас таблицы: `FROM|JOIN kaname.<таблица> <алиас>`.
+	reAlias = regexp.MustCompile(`(?:FROM|JOIN)\s+kaname\.(\w+)\s+(\w+)`)
 	// Сравнение `<алиас>.<колонка> = <правая часть>`.
 	reCompare = regexp.MustCompile(`(\w+)\.(\w+)\s*=\s*([\w.$]+)`)
 	// Проверка членства `<правая часть> = ANY (<алиас>.<колонка>)`.

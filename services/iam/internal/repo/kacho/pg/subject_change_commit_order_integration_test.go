@@ -7,9 +7,9 @@ package pg_test
 //
 // # Что здесь доказывается
 //
-// Номер строки `kacho_iam.subject_change_outbox` выдаёт счётчик на ВСТАВКЕ
+// Номер строки `kaname.subject_change_outbox` выдаёт счётчик на ВСТАВКЕ
 // (умолчание колонки), а видимой строка становится на ФИКСАЦИИ. Выдачу здесь
-// ничто не сериализует — в отличие от `kacho_iam.limits`, где ревизию штампует
+// ничто не сериализует — в отличие от `kaname.limits`, где ревизию штампует
 // триггер под транзакционной блокировкой, держащейся до коммита, — поэтому
 // порядок номеров и порядок фиксаций НЕЗАВИСИМЫ.
 //
@@ -102,7 +102,7 @@ func (s *subjectChangeStand) idOf(t *testing.T, subjectID string) int64 {
 	t.Helper()
 	var id int64
 	require.NoError(t, s.pool.QueryRow(s.ctx,
-		`SELECT id FROM kacho_iam.subject_change_outbox WHERE subject_id = $1`,
+		`SELECT id FROM kaname.subject_change_outbox WHERE subject_id = $1`,
 		subjectID).Scan(&id))
 	return id
 }

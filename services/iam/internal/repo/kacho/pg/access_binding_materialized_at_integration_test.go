@@ -8,7 +8,7 @@ package pg_test
 // observable").
 //
 // The reconciler records what it materialized in
-// kacho_iam.access_binding_target_members, stamping updated_at on every status
+// kaname.access_binding_target_members, stamping updated_at on every status
 // transition. That ledger already answers "has this binding's per-object access
 // gone live, and when" — it was simply never surfaced. This locks the batch read
 // that projects it onto the resource.
@@ -121,7 +121,7 @@ func seedTargetMember(t *testing.T, ctx context.Context, pool *pgxpool.Pool,
 ) {
 	t.Helper()
 	_, err := pool.Exec(ctx, `
-		INSERT INTO kacho_iam.access_binding_target_members
+		INSERT INTO kaname.access_binding_target_members
 		  (binding_id, role_id, rule_fp, object_type, object_id, verification_status, created_at, updated_at)
 		VALUES ($1, $2, $3, $4, $5, $6, $7, $7)`,
 		bindingID, roleID, ruleFP, objectType, objectID, status, at)

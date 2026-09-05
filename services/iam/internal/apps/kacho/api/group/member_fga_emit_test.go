@@ -23,9 +23,9 @@ package group
 // repo/kacho/pg/group_member_fga_outbox_integration_test.go; this unit test proves
 // the use-case emits the RIGHT tuple shape without a DB.
 //
-// The journal (`kacho_iam.fga_outbox`) survived stage S6 — what was removed is the
+// The journal (`kaname.fga_outbox`) survived stage S6 — what was removed is the
 // external engine that used to consume it. A database trigger now folds each row
-// into `kacho_iam.relation_fact`, which is what a verdict is read from, so the
+// into `kaname.relation_fact`, which is what a verdict is read from, so the
 // co-commit contract this file pins is if anything more load-bearing than before:
 // the emit IS the materialization, in the same transaction.
 

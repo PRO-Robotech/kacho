@@ -70,7 +70,7 @@ func startExpiredCredentialReclaim(
 
 	minDelay := c.MinGrace(cfg.APIServer.RegistryToken.TokenTTL())
 	sw := expiredcredsweep.New(
-		expiredCredentialStore{inner: kachopg.NewExpiredCredentialReclaimer(pool, "kacho_iam")},
+		expiredCredentialStore{inner: kachopg.NewExpiredCredentialReclaimer(pool, "kaname")},
 		expiredcredsweep.Spec{
 			MinDelay:  minDelay,
 			Grace:     c.Grace,

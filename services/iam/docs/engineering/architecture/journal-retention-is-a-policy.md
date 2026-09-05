@@ -2,7 +2,7 @@
 
 **Статус:** решение принято 2026-08-31, дополнено в тот же день предикатом
 обнаружения пропуска (задача #1712) и провязанной уборкой (задача #1758) · **Область:** таблицы
-`kacho_iam.fga_outbox` и `kacho_iam.subject_change_outbox` · **Это единственное
+`kaname.fga_outbox` и `kaname.subject_change_outbox` · **Это единственное
 место, где выбор объявлен**; реестр роста (`internal/repohygiene`,
 `tableGrowthRegistry`) ссылается сюда и содержания не пересказывает.
 
@@ -35,7 +35,7 @@
 grep -rn "fga_outbox" --include=*.go services/ pkg/ gateway/ | grep -v _test | grep -iE "select .* from"
 # миграции: чтение прошлых строк в секциях Up (Down — откат, он не в счёт)
 awk '/^-- \+goose Up/{s="UP"} /^-- \+goose Down/{s="DOWN"}
-     /kacho_iam\.fga_outbox/ && (/DELETE[[:space:]]+FROM/ || /FROM[[:space:]]+kacho_iam\.fga_outbox/) && !/^[[:space:]]*--/ {print s, FILENAME, $0}' \
+     /kaname\.fga_outbox/ && (/DELETE[[:space:]]+FROM/ || /FROM[[:space:]]+kaname\.fga_outbox/) && !/^[[:space:]]*--/ {print s, FILENAME, $0}' \
   services/iam/internal/migrations/*.sql
 ```
 

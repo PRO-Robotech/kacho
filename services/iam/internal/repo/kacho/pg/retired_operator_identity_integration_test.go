@@ -66,7 +66,7 @@ func TestRetiredOperatorIdentityIsAbsentFromTheAppliedSchema(t *testing.T) {
 
 	// ── ПОЛОЖИТЕЛЬНЫЙ КОНТРОЛЬ. Отрицание без него ничего не утверждает:
 	//    на пустой схеме «оператора нет» верно тождественно.
-	totalSAs := countSQL(t, ctx, pool, `SELECT count(*) FROM kacho_iam.service_accounts`)
+	totalSAs := countSQL(t, ctx, pool, `SELECT count(*) FROM kaname.service_accounts`)
 	require.NotZero(t, totalSAs,
 		"служебных учёток ноль — схема не применена либо посев не отработал, и "+
 			"отсутствие оператора ниже было бы отсутствием чтения, а не фактом")
@@ -74,11 +74,11 @@ func TestRetiredOperatorIdentityIsAbsentFromTheAppliedSchema(t *testing.T) {
 	for _, svc := range readerSvcs {
 		subject := `'service_account:' || ('sva' || substr(md5('kacho-` + svc + `'), 1, 17))`
 		require.Equal(t, 1, countSQL(t, ctx, pool,
-			`SELECT count(*) FROM kacho_iam.service_accounts
+			`SELECT count(*) FROM kaname.service_accounts
 			  WHERE id = 'sva' || substr(md5('kacho-`+svc+`'), 1, 17)`),
 			"учётка модуля %q обязана быть: снят ОДИН субъект, а не класс", svc)
 		require.Equal(t, 1, countSQL(t, ctx, pool,
-			`SELECT count(*) FROM kacho_iam.relation_fact
+			`SELECT count(*) FROM kaname.relation_fact
 			  WHERE object_type = 'cluster' AND relation = 'system_viewer'
 			    AND subject = `+subject),
 			"модуль %q обязан держать кластерный system_viewer — он ЕГО, а не оператора", svc)
@@ -88,7 +88,7 @@ func TestRetiredOperatorIdentityIsAbsentFromTheAppliedSchema(t *testing.T) {
 	//    Три полосы, а не одна: строку можно снять, оставив кортеж, и наоборот —
 	//    ровно так и выглядело бы неполное снятие.
 	require.Zero(t, countSQL(t, ctx, pool,
-		`SELECT count(*) FROM kacho_iam.service_accounts
+		`SELECT count(*) FROM kaname.service_accounts
 		  WHERE id = 'sva' || substr(md5('kacho-vpc-operator'), 1, 17)`),
 		"учётка снятого сетевого оператора жива")
 	// Судится ВЫДАЧА, а не всякое упоминание, и различие здесь несущее.
@@ -106,18 +106,18 @@ func TestRetiredOperatorIdentityIsAbsentFromTheAppliedSchema(t *testing.T) {
 	// кортежа), и принимается оно не здесь. Названо, чтобы следующий не принял
 	// остаток за недосмотр: см. отчёт линии сведения.
 	require.Zero(t, countSQL(t, ctx, pool,
-		`SELECT count(*) FROM kacho_iam.fga_outbox
+		`SELECT count(*) FROM kaname.fga_outbox
 		  WHERE event_type = 'fga.tuple.write' AND payload->>'user' = `+operatorSubjectSQL),
 		"снятой личности ВЫДАЁТСЯ кортеж: субъекта нет, а право ему пишется")
 	require.Zero(t, countSQL(t, ctx, pool,
-		`SELECT count(*) FROM kacho_iam.relation_fact WHERE subject = `+operatorSubjectSQL),
+		`SELECT count(*) FROM kaname.relation_fact WHERE subject = `+operatorSubjectSQL),
 		"за снятой личностью числится отношение")
 
 	// ── НАИМЕНЬШЕЕ ПРАВО у живых читателей: только `system_viewer` на кластере
 	//    и ничего сверх. Утверждение не про оператора, но снималось оно вместе
 	//    с ним, и потерять его при переносе было бы тихой утратой.
 	over := countSQL(t, ctx, pool,
-		`SELECT count(*) FROM kacho_iam.relation_fact
+		`SELECT count(*) FROM kaname.relation_fact
 		  WHERE object_type = 'cluster' AND relation <> 'system_viewer'
 		    AND subject IN (`+
 			`'service_account:' || ('sva' || substr(md5('kacho-api-gateway'), 1, 17)),`+
@@ -131,7 +131,7 @@ func TestRetiredOperatorIdentityIsAbsentFromTheAppliedSchema(t *testing.T) {
 		"полос отсутствия снятой личности 3 (учётка · выдача · отношение); "+
 		"отзывов в очереди %d, из них о снятой личности %d — журнал, а не остаток",
 		totalSAs, len(readerSvcs),
-		countSQL(t, ctx, pool, `SELECT count(*) FROM kacho_iam.fga_outbox WHERE event_type = 'fga.tuple.delete'`),
-		countSQL(t, ctx, pool, `SELECT count(*) FROM kacho_iam.fga_outbox
+		countSQL(t, ctx, pool, `SELECT count(*) FROM kaname.fga_outbox WHERE event_type = 'fga.tuple.delete'`),
+		countSQL(t, ctx, pool, `SELECT count(*) FROM kaname.fga_outbox
 		  WHERE event_type = 'fga.tuple.delete' AND payload->>'user' = `+operatorSubjectSQL))
 }

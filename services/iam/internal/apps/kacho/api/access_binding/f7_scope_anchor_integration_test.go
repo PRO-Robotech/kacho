@@ -53,7 +53,7 @@ func TestAB_IAM_1_18_DottedScope_RoundTrip(t *testing.T) {
 	dsn := setupTestDB(t)
 	pool := poolFromDSN(t, dsn)
 	repo := kachopg.New(pool, nil)
-	opsRepo := operations.NewRepo(pool, "kacho_iam")
+	opsRepo := operations.NewRepo(pool, "kaname")
 	h := deltaHandler(t, repo, opsRepo)
 
 	owner := mustSeedUser(t, ctx, pool, "f7a")
@@ -93,7 +93,7 @@ func TestAB_IAM_1_18_MissingScopeType_InvalidArgument(t *testing.T) {
 	dsn := setupTestDB(t)
 	pool := poolFromDSN(t, dsn)
 	repo := kachopg.New(pool, nil)
-	opsRepo := operations.NewRepo(pool, "kacho_iam")
+	opsRepo := operations.NewRepo(pool, "kaname")
 	h := deltaHandler(t, repo, opsRepo)
 
 	owner := mustSeedUser(t, ctx, pool, "f7b")
@@ -124,7 +124,7 @@ func TestAB_IAM_1_18_UnknownScopeType_InvalidArgument(t *testing.T) {
 	dsn := setupTestDB(t)
 	pool := poolFromDSN(t, dsn)
 	repo := kachopg.New(pool, nil)
-	opsRepo := operations.NewRepo(pool, "kacho_iam")
+	opsRepo := operations.NewRepo(pool, "kaname")
 	h := deltaHandler(t, repo, opsRepo)
 
 	owner := mustSeedUser(t, ctx, pool, "f7c")
@@ -156,7 +156,7 @@ func TestAB_IAM_1_18_DbRowProjectsDotted(t *testing.T) {
 	dsn := setupTestDB(t)
 	pool := poolFromDSN(t, dsn)
 	repo := kachopg.New(pool, nil)
-	h := deltaHandler(t, repo, operations.NewRepo(pool, "kacho_iam"))
+	h := deltaHandler(t, repo, operations.NewRepo(pool, "kaname"))
 
 	owner := mustSeedUser(t, ctx, pool, "f7d")
 	acc := seedAccountByOwner(t, ctx, pool, "acc-f7d", owner)
@@ -167,7 +167,7 @@ func TestAB_IAM_1_18_DbRowProjectsDotted(t *testing.T) {
 	// `scope` (SMALLINT) omitted — the migration-0005 BEFORE INSERT trigger derives
 	// it from resource_type (account ⇒ ACCOUNT).
 	_, err := pool.Exec(ctx, `
-		INSERT INTO kacho_iam.access_bindings
+		INSERT INTO kaname.access_bindings
 		    (id, subject_type, subject_id, role_id, resource_type, resource_id, status, granted_by_user_id)
 		VALUES ($1,'user',$2,$3,'account',$4,'ACTIVE',$5)`,
 		string(bid), string(member), string(role), string(acc), string(owner))
@@ -190,7 +190,7 @@ func TestAB_IAM_1_18_ConcurrentIdenticalCreate_StrictCreateUnchanged(t *testing.
 	dsn := setupTestDB(t)
 	pool := poolFromDSN(t, dsn)
 	repo := kachopg.New(pool, nil)
-	opsRepo := operations.NewRepo(pool, "kacho_iam")
+	opsRepo := operations.NewRepo(pool, "kaname")
 	h := deltaHandler(t, repo, opsRepo)
 
 	owner := mustSeedUser(t, ctx, pool, "f7e")

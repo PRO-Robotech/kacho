@@ -67,53 +67,53 @@ type iamDirectProbe struct {
 var iamDirectProbes = []iamDirectProbe{
 	{
 		objectType: "account", objectID: "acc-2",
-		seedSQL: `INSERT INTO kacho_iam.accounts (id, name, owner_user_id, labels)
+		seedSQL: `INSERT INTO kaname.accounts (id, name, owner_user_id, labels)
 		          VALUES ($1, 'probe-account', 'usr-1', $2::jsonb)`,
-		relabelSQL: `UPDATE kacho_iam.accounts SET labels = $2::jsonb WHERE id = $1`,
+		relabelSQL: `UPDATE kaname.accounts SET labels = $2::jsonb WHERE id = $1`,
 	},
 	{
 		objectType: "project", objectID: "prj-9",
-		seedSQL: `INSERT INTO kacho_iam.projects (id, account_id, name, labels)
+		seedSQL: `INSERT INTO kaname.projects (id, account_id, name, labels)
 		          VALUES ($1, 'acc-1', 'probe-project', $2::jsonb)`,
-		relabelSQL: `UPDATE kacho_iam.projects SET labels = $2::jsonb WHERE id = $1`,
+		relabelSQL: `UPDATE kaname.projects SET labels = $2::jsonb WHERE id = $1`,
 	},
 	{
 		objectType: "iam_user", objectID: "usr-9",
-		seedSQL: `INSERT INTO kacho_iam.users (id, external_id, email, account_id, labels)
+		seedSQL: `INSERT INTO kaname.users (id, external_id, email, account_id, labels)
 		          VALUES ($1, 'ext-9', 'usr-9@kacho.local', 'acc-1', $2::jsonb)`,
-		relabelSQL: `UPDATE kacho_iam.users SET labels = $2::jsonb WHERE id = $1`,
+		relabelSQL: `UPDATE kaname.users SET labels = $2::jsonb WHERE id = $1`,
 	},
 	{
 		objectType: "iam_service_account", objectID: "sac-9",
-		seedSQL: `INSERT INTO kacho_iam.service_accounts (id, account_id, name, labels)
+		seedSQL: `INSERT INTO kaname.service_accounts (id, account_id, name, labels)
 		          VALUES ($1, 'acc-1', 'probe-sa', $2::jsonb)`,
-		relabelSQL: `UPDATE kacho_iam.service_accounts SET labels = $2::jsonb WHERE id = $1`,
+		relabelSQL: `UPDATE kaname.service_accounts SET labels = $2::jsonb WHERE id = $1`,
 	},
 	{
 		objectType: "iam_group", objectID: "grp-9",
-		seedSQL: `INSERT INTO kacho_iam.groups (id, account_id, name, labels)
+		seedSQL: `INSERT INTO kaname.groups (id, account_id, name, labels)
 		          VALUES ($1, 'acc-1', 'probe-group', $2::jsonb)`,
-		relabelSQL: `UPDATE kacho_iam.groups SET labels = $2::jsonb WHERE id = $1`,
+		relabelSQL: `UPDATE kaname.groups SET labels = $2::jsonb WHERE id = $1`,
 	},
 	{
 		objectType: "iam_role", objectID: "rol-9",
-		seedSQL: `INSERT INTO kacho_iam.roles (id, name, permissions, rules, cluster_id, labels)
+		seedSQL: `INSERT INTO kaname.roles (id, name, permissions, rules, cluster_id, labels)
 		          VALUES ($1, 'probe.role', '[]'::jsonb,
 		                  jsonb_build_array(jsonb_build_object(
 		                      'module', 'test', 'resources', jsonb_build_array('*'),
 		                      'verbs', jsonb_build_array('get'))),
 		                  'cluster_kacho_root', $2::jsonb)`,
-		relabelSQL: `UPDATE kacho_iam.roles SET labels = $2::jsonb WHERE id = $1`,
+		relabelSQL: `UPDATE kaname.roles SET labels = $2::jsonb WHERE id = $1`,
 	},
 	{
 		objectType: "iam_access_binding", objectID: "acb-9",
 		// Область у объекта-выдачи ДРУГАЯ (проект, не аккаунт): пара «субъект ×
 		// роль × область» уникальна среди действующих выдач, и повтор области
 		// столкнулся бы с этим ограничением, а не с предметом пробы.
-		seedSQL: `INSERT INTO kacho_iam.access_bindings
+		seedSQL: `INSERT INTO kaname.access_bindings
 		            (id, subject_type, subject_id, role_id, resource_type, resource_id, status, labels)
 		          VALUES ($1, 'user', 'usr-1', 'rol-lbl', 'project', 'prj-1', 'ACTIVE', $2::jsonb)`,
-		relabelSQL: `UPDATE kacho_iam.access_bindings SET labels = $2::jsonb WHERE id = $1`,
+		relabelSQL: `UPDATE kaname.access_bindings SET labels = $2::jsonb WHERE id = $1`,
 	},
 }
 
@@ -137,11 +137,11 @@ func seedLabelGrant(t *testing.T, ctx context.Context, tx pgx.Tx, objectType str
 	t.Helper()
 	seedRole(t, ctx, tx, "rol-lbl", objectType, "get", "labels", `{"env":"prod"}`)
 	exec(t, ctx, tx,
-		`INSERT INTO kacho_iam.access_bindings
+		`INSERT INTO kaname.access_bindings
 		   (id, subject_type, subject_id, role_id, resource_type, resource_id, status)
 		 VALUES ('acb-lbl', 'user', 'usr-1', 'rol-lbl', 'account', $1, 'ACTIVE')`, labelScopeAccount)
 	exec(t, ctx, tx,
-		`INSERT INTO kacho_iam.access_binding_subjects (binding_id, subject_type, subject_id)
+		`INSERT INTO kaname.access_binding_subjects (binding_id, subject_type, subject_id)
 		 VALUES ('acb-lbl', 'user', 'usr-1')`)
 }
 
@@ -167,7 +167,7 @@ func TestAsk_LabelGrantReachesEveryIAMDirectType(t *testing.T) {
 				seedLabelGrant(t, ctx, tx, p.objectType)
 				exec(t, ctx, tx, p.seedSQL, p.objectID, `{"env":"prod"}`)
 				exec(t, ctx, tx,
-					`INSERT INTO kacho_iam.resource_parent_edge
+					`INSERT INTO kaname.resource_parent_edge
 					   (object_type, object_id, parent_type, parent_id, depth)
 					 VALUES ($1, $2, 'account', $3, 1)`, p.objectType, p.objectID, labelScopeAccount)
 
@@ -207,11 +207,11 @@ func TestAsk_LabelGrantStillReachesTheMirrorAxis(t *testing.T) {
 		seedTenant(t, ctx, tx)
 		seedLabelGrant(t, ctx, tx, "vpc_network")
 		exec(t, ctx, tx,
-			`INSERT INTO kacho_iam.resource_mirror (object_type, object_id, labels)
+			`INSERT INTO kaname.resource_mirror (object_type, object_id, labels)
 			 VALUES ($1, 'net-9', '{"env":"prod"}'::jsonb)`,
 			catalogFormOf(t, "vpc_network"))
 		exec(t, ctx, tx,
-			`INSERT INTO kacho_iam.resource_parent_edge
+			`INSERT INTO kaname.resource_parent_edge
 			   (object_type, object_id, parent_type, parent_id, depth)
 			 VALUES ('vpc_network', 'net-9', 'account', $1, 1)`, labelScopeAccount)
 
@@ -219,7 +219,7 @@ func TestAsk_LabelGrantStillReachesTheMirrorAxis(t *testing.T) {
 			t.Fatalf("меточная выдача перестала доставать объект зеркала: %v", got)
 		}
 		exec(t, ctx, tx,
-			`UPDATE kacho_iam.resource_mirror SET labels = '{"env":"dev"}'::jsonb
+			`UPDATE kaname.resource_mirror SET labels = '{"env":"dev"}'::jsonb
 			  WHERE object_type = $1 AND object_id = 'net-9'`,
 			catalogFormOf(t, "vpc_network"))
 		if got := askLabelled(t, ctx, tx, "vpc_network", "net-9"); got != relverdict.Deny {
@@ -275,7 +275,7 @@ func TestReverseAnswersReachEveryIAMDirectType(t *testing.T) {
 				seedLabelGrant(t, ctx, tx, p.objectType)
 				exec(t, ctx, tx, p.seedSQL, p.objectID, `{"env":"prod"}`)
 				exec(t, ctx, tx,
-					`INSERT INTO kacho_iam.resource_parent_edge
+					`INSERT INTO kaname.resource_parent_edge
 					   (object_type, object_id, parent_type, parent_id, depth)
 					 VALUES ($1, $2, 'account', $3, 1)`, p.objectType, p.objectID, labelScopeAccount)
 

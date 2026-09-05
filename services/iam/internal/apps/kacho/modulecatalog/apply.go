@@ -2,7 +2,7 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
 
 // Package modulecatalog — ПРИМЕНИТЕЛЬ КАТАЛОГА модуля: читает манифест как данные
-// и приводит строки `kacho_iam.catalog_module` / `catalog_resource` /
+// и приводит строки `kaname.catalog_module` / `catalog_resource` /
 // `catalog_verb` к объявленному состоянию (задача продукта #1034).
 //
 // ─────────────────────────────────────────────────────────────────────────────

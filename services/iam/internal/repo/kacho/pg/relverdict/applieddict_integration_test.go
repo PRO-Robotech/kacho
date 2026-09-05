@@ -71,7 +71,7 @@ func appliedCatalogTypeName(t *testing.T, ctx context.Context, tx pgx.Tx, modelT
 	t.Helper()
 	var dotted string
 	if err := tx.QueryRow(ctx,
-		`SELECT dotted FROM kacho_iam.catalog_resource
+		`SELECT dotted FROM kaname.catalog_resource
 		  WHERE object_type = $1 AND live`, modelType).Scan(&dotted); err != nil {
 		t.Fatalf("живой строки каталога для типа %q нет: %v", modelType, err)
 	}
@@ -88,23 +88,23 @@ func applyRenamesTheResource(t *testing.T, ctx context.Context, tx pgx.Tx,
 	t.Helper()
 	oldDotted := module + "." + oldResource
 	newDotted := module + "." + newResource
-	exec(t, ctx, tx, `DELETE FROM kacho_iam.role_verb WHERE object_type = $1`, oldDotted)
+	exec(t, ctx, tx, `DELETE FROM kaname.role_verb WHERE object_type = $1`, oldDotted)
 	exec(t, ctx, tx,
-		`DELETE FROM kacho_iam.role_rule_ref WHERE module = $1 AND resource = $2`,
+		`DELETE FROM kaname.role_rule_ref WHERE module = $1 AND resource = $2`,
 		module, oldResource)
 	exec(t, ctx, tx,
-		`DELETE FROM kacho_iam.catalog_verb WHERE module = $1 AND resource = $2`,
+		`DELETE FROM kaname.catalog_verb WHERE module = $1 AND resource = $2`,
 		module, oldResource)
 	exec(t, ctx, tx,
-		`UPDATE kacho_iam.catalog_resource
+		`UPDATE kaname.catalog_resource
 		    SET live = false, retired_at = now(), retired_reason = 'renamed by apply',
 		        superseded_by = $2
 		  WHERE dotted = $1`, oldDotted, newDotted)
 	exec(t, ctx, tx,
-		`INSERT INTO kacho_iam.catalog_resource (module, resource, dotted, object_type)
+		`INSERT INTO kaname.catalog_resource (module, resource, dotted, object_type)
 		 VALUES ($1, $2, $3, $4)`, module, newResource, newDotted, modelType)
 	exec(t, ctx, tx,
-		`INSERT INTO kacho_iam.catalog_verb (module, resource, verb) VALUES ($1, $2, 'get')`,
+		`INSERT INTO kaname.catalog_verb (module, resource, verb) VALUES ($1, $2, 'get')`,
 		module, newResource)
 }
 
@@ -113,10 +113,10 @@ func seedRoleForCatalogType(t *testing.T, ctx context.Context, tx pgx.Tx,
 	roleID, catalogType, verb, arm, labels string) {
 	t.Helper()
 	exec(t, ctx, tx,
-		`INSERT INTO kacho_iam.clusters (id, name) VALUES ('cluster_kacho_root', 'kacho')
+		`INSERT INTO kaname.clusters (id, name) VALUES ('cluster_kacho_root', 'kacho')
 		 ON CONFLICT DO NOTHING`)
 	exec(t, ctx, tx,
-		`INSERT INTO kacho_iam.roles (id, name, permissions, rules, cluster_id)
+		`INSERT INTO kaname.roles (id, name, permissions, rules, cluster_id)
 		 VALUES ($1, $2, '[]'::jsonb,
 		         jsonb_build_array(jsonb_build_object(
 		             'module',    'test',
@@ -124,10 +124,10 @@ func seedRoleForCatalogType(t *testing.T, ctx context.Context, tx pgx.Tx,
 		             'verbs',     jsonb_build_array($3::text))),
 		         'cluster_kacho_root')`, roleID, roleID+"."+verb, verb)
 	exec(t, ctx, tx,
-		`INSERT INTO kacho_iam.role_verb (role_id, object_type, verb) VALUES ($1, $2, $3)`,
+		`INSERT INTO kaname.role_verb (role_id, object_type, verb) VALUES ($1, $2, $3)`,
 		roleID, catalogType, verb)
 	exec(t, ctx, tx,
-		`INSERT INTO kacho_iam.role_rule_selectors
+		`INSERT INTO kaname.role_rule_selectors
 		   (role_id, rule_fp, arm, object_types, match_labels)
 		 VALUES ($1, 'fp-applied', $2, ARRAY[$3::text], $4::jsonb)`,
 		roleID, arm, catalogType, labels)

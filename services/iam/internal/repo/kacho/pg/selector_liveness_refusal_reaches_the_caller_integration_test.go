@@ -66,7 +66,7 @@ func TestSelectorLivenessRefusalReachesTheCallerWithElementAndRole(t *testing.T)
 	// отвергать нечего, и всё ниже вакуумно.
 	var retired int
 	require.NoError(t, pool.QueryRow(ctx, `
-		SELECT count(*) FROM kacho_iam.catalog_resource
+		SELECT count(*) FROM kaname.catalog_resource
 		 WHERE dotted = 'compute.disk' AND NOT live`).Scan(&retired))
 	require.Equalf(t, 1, retired, "ПРЕДПОСЫЛКА НАРУШЕНА: снятой строки compute.disk в каталоге нет")
 

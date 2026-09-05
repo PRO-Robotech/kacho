@@ -86,18 +86,18 @@ func seedTenantRows(t *testing.T, pool *pgxpool.Pool, accountID string, projectI
 	// вставляется первым и проверяется на COMMIT.
 	owner := "usr-" + accountID
 	if _, err := tx.Exec(ctx,
-		`INSERT INTO kacho_iam.accounts (id, name, owner_user_id) VALUES ($1, $2, $3)`,
+		`INSERT INTO kaname.accounts (id, name, owner_user_id) VALUES ($1, $2, $3)`,
 		accountID, "acct-"+accountID, owner); err != nil {
 		t.Fatalf("посев аккаунта %s: %v", accountID, err)
 	}
 	if _, err := tx.Exec(ctx,
-		`INSERT INTO kacho_iam.users (id, external_id, email, account_id) VALUES ($1, $2, $3, $4)`,
+		`INSERT INTO kaname.users (id, external_id, email, account_id) VALUES ($1, $2, $3, $4)`,
 		owner, "ext-"+owner, owner+"@kacho.local", accountID); err != nil {
 		t.Fatalf("посев владельца аккаунта %s: %v", accountID, err)
 	}
 	for i, prj := range projectIDs {
 		if _, err := tx.Exec(ctx,
-			`INSERT INTO kacho_iam.projects (id, account_id, name) VALUES ($1, $2, $3)`,
+			`INSERT INTO kaname.projects (id, account_id, name) VALUES ($1, $2, $3)`,
 			prj, accountID, fmt.Sprintf("prj-name-%d", i)); err != nil {
 			t.Fatalf("посев проекта %s: %v", prj, err)
 		}
@@ -105,7 +105,7 @@ func seedTenantRows(t *testing.T, pool *pgxpool.Pool, accountID string, projectI
 		// триггер 0098 наполняет проекцию. Применение проверяется числом —
 		// молча не спроецировавшаяся строка оставила бы гейт зелёным ни на чём.
 		if _, err := tx.Exec(ctx,
-			`INSERT INTO kacho_iam.fga_outbox (event_type, payload, created_at)
+			`INSERT INTO kaname.fga_outbox (event_type, payload, created_at)
 			 VALUES ('fga.tuple.write',
 			         jsonb_build_object('user', 'account:' || $1::text,
 			                            'relation', 'account',
@@ -115,7 +115,7 @@ func seedTenantRows(t *testing.T, pool *pgxpool.Pool, accountID string, projectI
 		}
 		var landed int
 		if err := tx.QueryRow(ctx,
-			`SELECT count(*)::int FROM kacho_iam.relation_fact
+			`SELECT count(*)::int FROM kaname.relation_fact
 			  WHERE object_type = 'project' AND object_id = $1 AND relation = 'account'`,
 			prj).Scan(&landed); err != nil {
 			t.Fatalf("перепись проекции журнала для %s: %v", prj, err)
@@ -169,14 +169,14 @@ func rootReach(t *testing.T, pool *pgxpool.Pool) (examined int, out []reach) {
 		     SELECT COALESCE((SELECT d.model_name FROM dict d WHERE d.catalog_name = m.object_type),
 		                     m.object_type),
 		            m.object_id
-		       FROM kacho_iam.resource_mirror m
+		       FROM kaname.resource_mirror m
 		 ),
 		 climb(model_type, object_id, s_type, s_id, depth) AS (
 		     SELECT o.model_type, o.object_id, o.model_type, o.object_id, 0 FROM mirrored o
 		   UNION
 		     SELECT c.model_type, c.object_id, e.parent_type, e.parent_id, c.depth + 1
 		       FROM climb c
-		       JOIN kacho_iam.resource_scope_edge e
+		       JOIN kaname.resource_scope_edge e
 		         ON e.object_type = c.s_type AND e.object_id = c.s_id
 		      WHERE c.depth < $3::int
 		 )
@@ -184,7 +184,7 @@ func rootReach(t *testing.T, pool *pgxpool.Pool) (examined int, out []reach) {
 		        EXISTS (SELECT 1 FROM climb c
 		                 WHERE c.model_type = o.model_type AND c.object_id = o.object_id
 		                   AND c.s_type = 'cluster'),
-		        EXISTS (SELECT 1 FROM kacho_iam.resource_parent_edge e
+		        EXISTS (SELECT 1 FROM kaname.resource_parent_edge e
 		                 WHERE e.object_type = o.model_type AND e.object_id = o.object_id)
 		   FROM mirrored o`,
 		catalogNames, modelNames, relverdict.MaxAncestorDepth)

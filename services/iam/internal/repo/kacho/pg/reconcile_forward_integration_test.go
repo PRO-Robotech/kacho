@@ -62,7 +62,7 @@ func countTargetMembers(t *testing.T, ctx context.Context, pool *pgxpool.Pool, b
 	t.Helper()
 	var n int
 	require.NoError(t, pool.QueryRow(ctx,
-		`SELECT count(*) FROM kacho_iam.access_binding_target_members
+		`SELECT count(*) FROM kaname.access_binding_target_members
 		  WHERE binding_id=$1 AND rule_fp=$2 AND object_type=$3 AND object_id=$4`,
 		string(bID), ruleFP, objType, objID).Scan(&n))
 	return n
@@ -250,7 +250,7 @@ func TestReconcileForward_04_Backstop_FullConverges_NoDuplicate(t *testing.T) {
 		"forward after full does not duplicate the member (idempotent convergence)")
 	var ledgerRows int
 	require.NoError(t, pool.QueryRow(ctx,
-		`SELECT count(*) FROM kacho_iam.access_binding_emitted_tuples
+		`SELECT count(*) FROM kaname.access_binding_emitted_tuples
 		  WHERE binding_id=$1 AND object=$2 AND relation='v_update'`,
 		string(bid), "compute_instance:iBk").Scan(&ledgerRows))
 	assert.Equal(t, 1, ledgerRows, "ledger holds exactly one v_update row (PK dedup — forward+full overlap idempotent)")

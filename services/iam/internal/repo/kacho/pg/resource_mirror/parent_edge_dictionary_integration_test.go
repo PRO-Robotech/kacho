@@ -58,7 +58,7 @@ func TestParentEdges_AreWrittenInTheModelDictionary(t *testing.T) {
 
 	var underModel int
 	require.NoError(t, pool.QueryRow(ctx,
-		`SELECT count(*) FROM kacho_iam.resource_parent_edge
+		`SELECT count(*) FROM kaname.resource_parent_edge
 		  WHERE object_type = 'compute_instance' AND object_id = 'inst-dict'`).Scan(&underModel))
 	require.Equal(t, 2, underModel,
 		"цепь не записана словарём модели: вопрос о доступе приходит им, и соединение "+
@@ -69,7 +69,7 @@ func TestParentEdges_AreWrittenInTheModelDictionary(t *testing.T) {
 	// «перевёл» было бы неотличимо от «записал обоими именами».
 	var underCatalog int
 	require.NoError(t, pool.QueryRow(ctx,
-		`SELECT count(*) FROM kacho_iam.resource_parent_edge
+		`SELECT count(*) FROM kaname.resource_parent_edge
 		  WHERE object_type = 'compute.instance'`).Scan(&underCatalog))
 	require.Zero(t, underCatalog, "строка осталась под именем словаря каталога")
 
@@ -77,7 +77,7 @@ func TestParentEdges_AreWrittenInTheModelDictionary(t *testing.T) {
 	// подменяет словарь соседней таблицы.
 	var mirrored int
 	require.NoError(t, pool.QueryRow(ctx,
-		`SELECT count(*) FROM kacho_iam.resource_mirror
+		`SELECT count(*) FROM kaname.resource_mirror
 		  WHERE object_type = 'compute.instance' AND object_id = 'inst-dict'`).Scan(&mirrored))
 	require.Equal(t, 1, mirrored,
 		"перевод задел зеркало — а его колонка названа словарём каталога, и её читают "+
@@ -100,7 +100,7 @@ func TestParentEdges_SchemaRejectsTheCatalogDictionary(t *testing.T) {
 	// Законный близнец ТОЙ ЖЕ формы проходит — иначе отказ ниже означал бы
 	// «таблица не принимает ничего», а не «не принимает чужой словарь».
 	_, err = pool.Exec(ctx,
-		`INSERT INTO kacho_iam.resource_parent_edge
+		`INSERT INTO kaname.resource_parent_edge
 		   (object_type, object_id, parent_type, parent_id, depth)
 		 VALUES ('compute_instance', 'inst-ok', 'project', 'prj-P', 1)`)
 	require.NoError(t, err, "строка словаря модели отвергнута — проверка ловит форму, а не словарь")
@@ -109,13 +109,13 @@ func TestParentEdges_SchemaRejectsTheCatalogDictionary(t *testing.T) {
 		name string
 		sql  string
 	}{
-		{"объект", `INSERT INTO kacho_iam.resource_parent_edge
+		{"объект", `INSERT INTO kaname.resource_parent_edge
 		   (object_type, object_id, parent_type, parent_id, depth)
 		 VALUES ('compute.instance', 'inst-bad', 'project', 'prj-P', 1)`},
-		{"предок", `INSERT INTO kacho_iam.resource_parent_edge
+		{"предок", `INSERT INTO kaname.resource_parent_edge
 		   (object_type, object_id, parent_type, parent_id, depth)
 		 VALUES ('compute_instance', 'inst-bad2', 'iam.project', 'prj-P', 1)`},
-		{"прямой факт", `INSERT INTO kacho_iam.relation_fact
+		{"прямой факт", `INSERT INTO kaname.relation_fact
 		   (object_type, object_id, relation, subject)
 		 VALUES ('compute.instance', 'inst-bad3', 'v_get', 'user:usr-1')`},
 	} {

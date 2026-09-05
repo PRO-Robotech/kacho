@@ -82,11 +82,11 @@ func TestReconcileSkipsARetiredRole(t *testing.T) {
 	for _, table := range []string{"role_verb", "role_rule_ref", "role_rule_selectors",
 		"access_binding_target_members"} {
 		_, derr := pool.Exec(ctx,
-			`DELETE FROM kacho_iam.`+table+` WHERE role_id = $1`, string(roleID))
+			`DELETE FROM kaname.`+table+` WHERE role_id = $1`, string(roleID))
 		require.NoErrorf(t, derr, "снятие проекции %s", table)
 	}
 	_, err = pool.Exec(ctx, `
-		UPDATE kacho_iam.roles
+		UPDATE kaname.roles
 		   SET live = false, retired_at = now(), retired_reason = 'проба', retired_by = 'проба'
 		 WHERE id = $1`, string(roleID))
 	require.NoError(t, err, "пометка роли снятой")
@@ -99,7 +99,7 @@ func TestReconcileSkipsARetiredRole(t *testing.T) {
 
 	var members int
 	require.NoError(t, pool.QueryRow(ctx,
-		`SELECT count(*) FROM kacho_iam.access_binding_target_members WHERE role_id = $1`,
+		`SELECT count(*) FROM kaname.access_binding_target_members WHERE role_id = $1`,
 		string(roleID)).Scan(&members))
 	assert.Zero(t, members,
 		"состав цели снятой роли материализован заново: право вернулось через "+

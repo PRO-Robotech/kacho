@@ -44,7 +44,7 @@ func countAuditRows(ctx context.Context, t *testing.T, pool *pgxpool.Pool, bindi
 	t.Helper()
 	var n int
 	require.NoError(t, pool.QueryRow(ctx,
-		`SELECT count(*) FROM kacho_iam.audit_outbox WHERE event_payload->>'binding_id' = $1`,
+		`SELECT count(*) FROM kaname.audit_outbox WHERE event_payload->>'binding_id' = $1`,
 		bindingID).Scan(&n))
 	return n
 }
@@ -104,7 +104,7 @@ func TestAB_AuditOutboxTx_GrantEmitsGrantedRow(t *testing.T) {
 	)
 	require.NoError(t, pool.QueryRow(ctx,
 		`SELECT event_type, tenant_account_id, event_payload::text, status
-		   FROM kacho_iam.audit_outbox
+		   FROM kaname.audit_outbox
 		  WHERE event_payload->>'binding_id' = $1`, string(bindingID)).
 		Scan(&eventType, &tenant, &payloadRaw, &status))
 
@@ -168,7 +168,7 @@ func TestAB_AuditOutboxTx_RevokeEmitsRevokedRow(t *testing.T) {
 
 	var eventType string
 	require.NoError(t, pool.QueryRow(ctx,
-		`SELECT event_type FROM kacho_iam.audit_outbox
+		`SELECT event_type FROM kaname.audit_outbox
 		  WHERE event_payload->>'binding_id' = $1`, string(binding.ID)).Scan(&eventType))
 	require.Equal(t, "iam.access_binding.revoked", eventType)
 }
@@ -223,7 +223,7 @@ func TestAB_AuditOutboxTx_RollbackDiscardsAuditRow(t *testing.T) {
 	// Neither the binding row nor the audit_outbox row should be visible.
 	var bindingCount int
 	require.NoError(t, pool.QueryRow(ctx,
-		`SELECT count(*) FROM kacho_iam.access_bindings WHERE id = $1`,
+		`SELECT count(*) FROM kaname.access_bindings WHERE id = $1`,
 		string(bindingID)).Scan(&bindingCount))
 	require.Equal(t, 0, bindingCount, "binding row must be rolled back")
 

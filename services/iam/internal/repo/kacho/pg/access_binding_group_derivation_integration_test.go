@@ -84,7 +84,7 @@ func TestAB_GD_GroupDerivedPrivilegesResolved(t *testing.T) {
 		GrantedByUserID: owner,
 	})
 	_, err = pool.Exec(ctx,
-		`UPDATE kacho_iam.access_bindings
+		`UPDATE kaname.access_bindings
 		    SET status='REVOKED', revoked_at=now(), revoked_by_user_id=$2
 		  WHERE id=$1`,
 		string(revokedBinding.ID), string(owner))

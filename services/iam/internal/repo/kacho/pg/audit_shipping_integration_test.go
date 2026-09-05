@@ -92,7 +92,7 @@ func TestAuditJournalReachesTheSink(t *testing.T) {
 	sink := &capturingSink{}
 	sh, err := audit.NewShipper(pool, sink, metrics.NewMemRecorder(),
 		observability.NewSlogger(io.Discard),
-		audit.ShipperConfig{Table: "kacho_iam.audit_outbox"})
+		audit.ShipperConfig{Table: "kaname.audit_outbox"})
 	require.NoError(t, err)
 
 	res, err := sh.Pass(ctx)
@@ -124,7 +124,7 @@ func TestAuditJournalReachesTheSink(t *testing.T) {
 		sentAt   *string
 	)
 	require.NoError(t, pool.QueryRow(ctx,
-		`SELECT status, attempts, sent_at::text FROM kacho_iam.audit_outbox WHERE id = $1`,
+		`SELECT status, attempts, sent_at::text FROM kaname.audit_outbox WHERE id = $1`,
 		mine.ID).Scan(&status, &attempts, &sentAt))
 	require.Equal(t, "sent", status)
 	require.Equal(t, 1, attempts)
@@ -148,7 +148,7 @@ func TestAuditJournalStatusVocabularyIsTwo(t *testing.T) {
 
 	// Положительный контроль: законное состояние ограничением принимается.
 	_, err = pool.Exec(ctx,
-		`INSERT INTO kacho_iam.audit_outbox (id, event_type, event_payload, status)
+		`INSERT INTO kaname.audit_outbox (id, event_type, event_payload, status)
 		 VALUES ($1, 'iam.account.created', '{}'::jsonb, 'pending')`,
 		"evt_"+ids.NewID("aud")[3:]+"aaaaa")
 	require.NoError(t, err)
@@ -160,7 +160,7 @@ func TestAuditJournalStatusVocabularyIsTwo(t *testing.T) {
 	// вовсе, и это ровно та половина, о которой никто не вспомнит.
 	for _, gone := range []string{"in_flight", "failed"} {
 		_, err = pool.Exec(ctx,
-			`UPDATE kacho_iam.audit_outbox SET status = $1 WHERE status = 'pending'`, gone)
+			`UPDATE kaname.audit_outbox SET status = $1 WHERE status = 'pending'`, gone)
 		require.Error(t, err,
 			"состояние %q продукт не производит — оно обязано быть невыразимо в таблице", gone)
 	}

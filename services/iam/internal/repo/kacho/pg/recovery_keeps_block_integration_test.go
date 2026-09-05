@@ -45,7 +45,7 @@ func TestOnRecoveryCompleted_BlockedStaysBlocked(t *testing.T) {
 	require.NoError(t, err)
 	defer pool.Close()
 	repo := kachopg.New(pool, nil)
-	opsRepo := operations.NewRepo(pool, "kacho_iam")
+	opsRepo := operations.NewRepo(pool, "kaname")
 
 	uid, accID := seedAccountAndUser(t, ctx, pool, "krt_blocked_keep", "keep@example.com", "BLOCKED")
 
@@ -73,7 +73,7 @@ func TestOnRecoveryCompleted_BlockedStaysBlocked(t *testing.T) {
 	assert.Equal(t, 1, auditRowCount(t, ctx, pool, "rec_keep_001"))
 	var tenant string
 	require.NoError(t, pool.QueryRow(ctx, `
-		SELECT tenant_account_id FROM kacho_iam.audit_outbox
+		SELECT tenant_account_id FROM kaname.audit_outbox
 		 WHERE event_payload->>'recovery_jti' = $1`, "rec_keep_001").Scan(&tenant))
 	assert.Equal(t, string(accID), tenant)
 }
@@ -90,7 +90,7 @@ func TestOnRecoveryCompleted_ActiveStaysActive(t *testing.T) {
 	require.NoError(t, err)
 	defer pool.Close()
 	repo := kachopg.New(pool, nil)
-	opsRepo := operations.NewRepo(pool, "kacho_iam")
+	opsRepo := operations.NewRepo(pool, "kaname")
 
 	uid, _ := seedAccountAndUser(t, ctx, pool, "krt_active_keep", "active-keep@example.com", "ACTIVE")
 

@@ -94,9 +94,9 @@ func revokeRegisteredKey(t *testing.T, f assertionFixture, kind domain.Assertion
 	var table string
 	switch kind {
 	case domain.AssertionClientUser:
-		table = "kacho_iam.user_oauth_clients"
+		table = "kaname.user_oauth_clients"
 	case domain.AssertionClientServiceAccount:
-		table = "kacho_iam.service_account_oauth_clients"
+		table = "kaname.service_account_oauth_clients"
 	default:
 		t.Fatalf("вид клиента вне закрытого словаря: %q", kind)
 	}

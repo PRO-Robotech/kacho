@@ -42,7 +42,7 @@ const limitScopeRefConstraint = "limits_scope_ref"
 // iamServiceDomain — the `domain` half of ErrorInfo (`iam.kacho.cloud`).
 const iamServiceDomain = "iam"
 
-// LimitRepo — reads and writes kacho_iam.limits.
+// LimitRepo — reads and writes kaname.limits.
 type LimitRepo struct {
 	pool *pgxpool.Pool
 }
@@ -59,7 +59,7 @@ func NewLimitRepo(pool *pgxpool.Pool) *LimitRepo { return &LimitRepo{pool: pool}
 // delta says, "gone" is what Get says, and they describe the same fact to two
 // different audiences.
 func (r *LimitRepo) Get(ctx context.Context, id domain.LimitID) (domain.Limit, error) {
-	const q = `SELECT ` + limitCols + ` FROM kacho_iam.limits WHERE id = $1 AND withdrawn_at IS NULL`
+	const q = `SELECT ` + limitCols + ` FROM kaname.limits WHERE id = $1 AND withdrawn_at IS NULL`
 	out, err := scanLimit(r.pool.QueryRow(ctx, q, string(id)))
 	if stderrors.Is(err, pgx.ErrNoRows) {
 		return domain.Limit{}, limitNotFound(id)
@@ -87,7 +87,7 @@ func (r *LimitRepo) List(
 		afterTS, afterID = ts, id
 	}
 
-	const q = `SELECT ` + limitCols + ` FROM kacho_iam.limits
+	const q = `SELECT ` + limitCols + ` FROM kaname.limits
 		WHERE withdrawn_at IS NULL
 		  AND ($3::timestamptz IS NULL OR (created_at, id) > ($3, $4))
 		  AND ($2 = '' OR scope    = $2)
@@ -134,7 +134,7 @@ func (r *LimitRepo) List(
 // change, stand still on a restatement" holds for every writer that exists and
 // every writer that will exist, not only for the path this file happens to own.
 func (r *LimitRepo) Insert(ctx context.Context, l domain.Limit) (domain.Limit, error) {
-	const q = `INSERT INTO kacho_iam.limits (id, scope, scope_id, kind, limit_value)
+	const q = `INSERT INTO kaname.limits (id, scope, scope_id, kind, limit_value)
 		VALUES ($1,$2,$3,$4,$5)
 		RETURNING ` + limitCols
 	out, err := scanLimit(r.pool.QueryRow(ctx, q,
@@ -153,7 +153,7 @@ func (r *LimitRepo) Insert(ctx context.Context, l domain.Limit) (domain.Limit, e
 // withdrawn limit would resurrect it outside the uniqueness the partial index
 // promises, and two rows would then be in force for one triple.
 func (r *LimitRepo) Update(ctx context.Context, id domain.LimitID, value int64) (domain.Limit, error) {
-	const q = `UPDATE kacho_iam.limits
+	const q = `UPDATE kaname.limits
 		SET limit_value = $2
 		WHERE id = $1 AND withdrawn_at IS NULL
 		RETURNING ` + limitCols
@@ -175,7 +175,7 @@ func (r *LimitRepo) Update(ctx context.Context, id domain.LimitID, value int64) 
 // and the only code that must still tell the two apart is the one deciding whether
 // anything changed.
 func (r *LimitRepo) Withdraw(ctx context.Context, id domain.LimitID) (domain.Limit, bool, error) {
-	const q = `UPDATE kacho_iam.limits
+	const q = `UPDATE kaname.limits
 		SET withdrawn_at = now()
 		WHERE id = $1 AND withdrawn_at IS NULL
 		RETURNING ` + limitCols
@@ -204,20 +204,20 @@ func (r *LimitRepo) Withdraw(ctx context.Context, id domain.LimitID) (domain.Lim
 func (r *LimitRepo) StatedFor(ctx context.Context, scopeID string) ([]domain.Limit, bool, error) {
 	const q = `
 		WITH subject AS (
-			SELECT p.id AS project_id, p.account_id AS account_id FROM kacho_iam.projects p WHERE p.id = $1
+			SELECT p.id AS project_id, p.account_id AS account_id FROM kaname.projects p WHERE p.id = $1
 			UNION ALL
-			SELECT ''   AS project_id, a.id        AS account_id FROM kacho_iam.accounts a WHERE a.id = $1
+			SELECT ''   AS project_id, a.id        AS account_id FROM kaname.accounts a WHERE a.id = $1
 		)
 		SELECT ` + limitCols + `
-		  FROM kacho_iam.limits l, subject s
+		  FROM kaname.limits l, subject s
 		 WHERE l.withdrawn_at IS NULL
 		   AND (   l.scope = 'DEFAULT'
 		        OR (l.scope = 'ACCOUNT' AND l.scope_id = s.account_id)
 		        OR (l.scope = 'PROJECT' AND s.project_id <> '' AND l.scope_id = s.project_id))`
 	const existsQ = `SELECT EXISTS (
-			SELECT 1 FROM kacho_iam.projects WHERE id = $1
+			SELECT 1 FROM kaname.projects WHERE id = $1
 			UNION ALL
-			SELECT 1 FROM kacho_iam.accounts WHERE id = $1)`
+			SELECT 1 FROM kaname.accounts WHERE id = $1)`
 
 	var exists bool
 	if err := r.pool.QueryRow(ctx, existsQ, scopeID).Scan(&exists); err != nil {
@@ -274,7 +274,7 @@ func (r *LimitRepo) StatedFor(ctx context.Context, scopeID string) ([]domain.Lim
 // бы на путь чтения наблюдение блокировок и режим «поток задержан
 // незавершившимся писателем» там, где терять нечего.
 func (r *LimitRepo) ChangedSince(ctx context.Context, after int64, limit int) ([]domain.Limit, int64, error) {
-	const q = `SELECT ` + limitCols + ` FROM kacho_iam.limits
+	const q = `SELECT ` + limitCols + ` FROM kaname.limits
 		WHERE revision > $1
 		ORDER BY revision ASC
 		LIMIT $2`

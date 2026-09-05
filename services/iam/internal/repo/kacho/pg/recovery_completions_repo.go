@@ -3,7 +3,7 @@
 
 package pg
 
-// recovery_completions_repo.go — kacho_iam.recovery_completions (migration 0015):
+// recovery_completions_repo.go — kaname.recovery_completions (migration 0015):
 // idempotency ledger for the Kratos recovery-completed webhook
 // (InternalUserService.OnRecoveryCompleted).
 //

@@ -272,7 +272,7 @@ func TestIssuingAPersonalTokenIsNotReachableFromInsideTheAccount(t *testing.T) {
 // и контроль на нём утверждает живой посев, а не выдуманный.
 func seedRoleGrantingUserRead(t *testing.T, w *ciWorld, roleID, bindingID, subjectID, accountID string) {
 	t.Helper()
-	w.exec(t, `INSERT INTO kacho_iam.roles (id, name, permissions, rules, cluster_id)
+	w.exec(t, `INSERT INTO kaname.roles (id, name, permissions, rules, cluster_id)
 	           VALUES ($1, 'test.userread', '[]'::jsonb,
 	                   jsonb_build_array(jsonb_build_object(
 	                       'module', 'iam', 'resources', jsonb_build_array('user'),
@@ -280,15 +280,15 @@ func seedRoleGrantingUserRead(t *testing.T, w *ciWorld, roleID, bindingID, subje
 	                   'cluster_kacho_root')`, roleID)
 	// Тип — в ТОЧЕЧНОЙ форме каталога: именно так его кладёт прод, и именно так
 	// его читает вопрос о доступе.
-	w.exec(t, `INSERT INTO kacho_iam.role_verb (role_id, object_type, verb)
+	w.exec(t, `INSERT INTO kaname.role_verb (role_id, object_type, verb)
 	           VALUES ($1, 'iam.user', 'get')`, roleID)
-	w.exec(t, `INSERT INTO kacho_iam.role_rule_selectors
+	w.exec(t, `INSERT INTO kaname.role_rule_selectors
 	             (role_id, rule_fp, arm, object_types, match_labels)
 	           VALUES ($1, 'fp-actas', 'anchor', ARRAY['iam.user'::text], '{}'::jsonb)`, roleID)
-	w.exec(t, `INSERT INTO kacho_iam.access_bindings
+	w.exec(t, `INSERT INTO kaname.access_bindings
 	             (id, subject_type, subject_id, role_id, resource_type, resource_id, status)
 	           VALUES ($1, 'user', $2, $3, 'account', $4, 'ACTIVE')`,
 		bindingID, subjectID, roleID, accountID)
-	w.exec(t, `INSERT INTO kacho_iam.access_binding_subjects (binding_id, subject_type, subject_id)
+	w.exec(t, `INSERT INTO kaname.access_binding_subjects (binding_id, subject_type, subject_id)
 	           VALUES ($1, 'user', $2)`, bindingID, subjectID)
 }

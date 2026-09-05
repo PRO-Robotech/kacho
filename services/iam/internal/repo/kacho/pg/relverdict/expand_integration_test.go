@@ -26,10 +26,10 @@ func TestExpand_NamesEverySourceNotJustTheFirst(t *testing.T) {
 		seedTenant(t, ctx, tx)
 		seedRole(t, ctx, tx, "rol-exp", "vpc_network", "get", "anchor", "{}")
 		exec(t, ctx, tx,
-			`INSERT INTO kacho_iam.resource_mirror (object_type, object_id) VALUES ($1, 'net-1')`,
+			`INSERT INTO kaname.resource_mirror (object_type, object_id) VALUES ($1, 'net-1')`,
 			catalogFormOf(t, "vpc_network"))
 		exec(t, ctx, tx,
-			`INSERT INTO kacho_iam.resource_parent_edge
+			`INSERT INTO kaname.resource_parent_edge
 			   (object_type, object_id, parent_type, parent_id, depth)
 			 VALUES ('vpc_network', 'net-1', 'project', 'prj-1', 1)`)
 
@@ -37,29 +37,29 @@ func TestExpand_NamesEverySourceNotJustTheFirst(t *testing.T) {
 		// называет МОДЕЛЬ (`v_get`): в этой таблице лежат модельные имена, а не
 		// глаголы роли — глагол живёт в `role_verb`, и это разные словари.
 		exec(t, ctx, tx,
-			`INSERT INTO kacho_iam.relation_fact (object_type, object_id, relation, subject)
+			`INSERT INTO kaname.relation_fact (object_type, object_id, relation, subject)
 			 VALUES ('vpc_network', 'net-1', 'v_get', 'user:usr-1')`)
 		// Основание 2: своя выдача на проект.
 		exec(t, ctx, tx,
-			`INSERT INTO kacho_iam.access_bindings
+			`INSERT INTO kaname.access_bindings
 			   (id, subject_type, subject_id, role_id, resource_type, resource_id, status)
 			 VALUES ('acb-own', 'user', 'usr-1', 'rol-exp', 'project', 'prj-1', 'ACTIVE')`)
 		exec(t, ctx, tx,
-			`INSERT INTO kacho_iam.access_binding_subjects (binding_id, subject_type, subject_id)
+			`INSERT INTO kaname.access_binding_subjects (binding_id, subject_type, subject_id)
 			 VALUES ('acb-own', 'user', 'usr-1')`)
 		// Основание 3: выдача ГРУППЕ, в которой тот же человек.
 		exec(t, ctx, tx,
-			`INSERT INTO kacho_iam.groups (id, account_id, name) VALUES ('grp-1', 'acc-1', 'devs')
+			`INSERT INTO kaname.groups (id, account_id, name) VALUES ('grp-1', 'acc-1', 'devs')
 			 ON CONFLICT DO NOTHING`)
 		exec(t, ctx, tx,
-			`INSERT INTO kacho_iam.access_bindings
+			`INSERT INTO kaname.access_bindings
 			   (id, subject_type, subject_id, role_id, resource_type, resource_id, status)
 			 VALUES ('acb-grp', 'group', 'grp-1', 'rol-exp', 'project', 'prj-1', 'ACTIVE')`)
 		exec(t, ctx, tx,
-			`INSERT INTO kacho_iam.access_binding_subjects (binding_id, subject_type, subject_id)
+			`INSERT INTO kaname.access_binding_subjects (binding_id, subject_type, subject_id)
 			 VALUES ('acb-grp', 'group', 'grp-1')`)
 		exec(t, ctx, tx,
-			`INSERT INTO kacho_iam.group_members (group_id, member_type, member_id)
+			`INSERT INTO kaname.group_members (group_id, member_type, member_id)
 			 VALUES ('grp-1', 'user', 'usr-1')`)
 
 		got, err := relverdict.Expand(ctx, tx, "vpc_network", "net-1", "v_get")

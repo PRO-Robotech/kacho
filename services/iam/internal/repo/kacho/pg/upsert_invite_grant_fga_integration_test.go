@@ -70,7 +70,7 @@ func fgaOutboxCount(t *testing.T, ctx context.Context, pool *pgxpool.Pool, user,
 	t.Helper()
 	var n int
 	require.NoError(t, pool.QueryRow(ctx, `
-		SELECT count(*) FROM kacho_iam.fga_outbox
+		SELECT count(*) FROM kaname.fga_outbox
 		 WHERE event_type = 'fga.tuple.write'
 		   AND payload->>'user' = $1
 		   AND payload->>'object' = $3
@@ -82,7 +82,7 @@ func auditUpdatedCount(t *testing.T, ctx context.Context, pool *pgxpool.Pool, us
 	t.Helper()
 	var n int
 	require.NoError(t, pool.QueryRow(ctx, `
-		SELECT count(*) FROM kacho_iam.audit_outbox
+		SELECT count(*) FROM kaname.audit_outbox
 		 WHERE event_type = 'iam.user.updated'
 		   AND event_payload->>'resource_id' = $1`, userID).Scan(&n))
 	return n
@@ -92,7 +92,7 @@ func ownedAccountCount(t *testing.T, ctx context.Context, pool *pgxpool.Pool, ow
 	t.Helper()
 	var n int
 	require.NoError(t, pool.QueryRow(ctx,
-		`SELECT count(*) FROM kacho_iam.accounts WHERE owner_user_id = $1`, ownerUserID).Scan(&n))
+		`SELECT count(*) FROM kaname.accounts WHERE owner_user_id = $1`, ownerUserID).Scan(&n))
 	return n
 }
 
@@ -102,7 +102,7 @@ func activeRowCountByExternalID(t *testing.T, ctx context.Context, pool *pgxpool
 	t.Helper()
 	var n int
 	require.NoError(t, pool.QueryRow(ctx,
-		`SELECT count(*) FROM kacho_iam.users WHERE external_id = $1 AND invite_status = 'ACTIVE'`, ext).Scan(&n))
+		`SELECT count(*) FROM kaname.users WHERE external_id = $1 AND invite_status = 'ACTIVE'`, ext).Scan(&n))
 	return n
 }
 
@@ -117,7 +117,7 @@ func TestUpsertInviteGrant_TI3_RC2_MemberTupleCoCommitWithAudit(t *testing.T) {
 	require.NoError(t, err)
 	defer pool.Close()
 	repo := kachopg.New(pool, nil)
-	opsRepo := operations.NewRepo(pool, "kacho_iam")
+	opsRepo := operations.NewRepo(pool, "kaname")
 
 	const ext = "ext_INV_ti3"
 	const email = "invitee-ti3@example.com"
@@ -136,7 +136,7 @@ func TestUpsertInviteGrant_TI3_RC2_MemberTupleCoCommitWithAudit(t *testing.T) {
 	// PENDING → ACTIVE, id preserved.
 	var status, gotExt string
 	require.NoError(t, pool.QueryRow(ctx,
-		`SELECT invite_status, external_id FROM kacho_iam.users WHERE id = $1`, string(inviteeID)).
+		`SELECT invite_status, external_id FROM kaname.users WHERE id = $1`, string(inviteeID)).
 		Scan(&status, &gotExt))
 	assert.Equal(t, "ACTIVE", status, "invite activated")
 	assert.Equal(t, ext, gotExt, "external_id set on the SAME row (id preserved)")
@@ -190,7 +190,7 @@ func TestUpsertInviteGrant_TI3_RC2_RollbackDiscardsBoth(t *testing.T) {
 	// Still PENDING.
 	var status string
 	require.NoError(t, pool.QueryRow(ctx,
-		`SELECT invite_status FROM kacho_iam.users WHERE id = $1`, string(inviteeID)).Scan(&status))
+		`SELECT invite_status FROM kaname.users WHERE id = $1`, string(inviteeID)).Scan(&status))
 	assert.Equal(t, "PENDING", status, "rolled-back activation leaves row PENDING")
 }
 
@@ -205,7 +205,7 @@ func TestUpsertInviteGrant_TI5_RC5_BootstrapFiresOwnsZero_NoSecondInsertActive(t
 	require.NoError(t, err)
 	defer pool.Close()
 	repo := kachopg.New(pool, nil)
-	opsRepo := operations.NewRepo(pool, "kacho_iam")
+	opsRepo := operations.NewRepo(pool, "kaname")
 
 	const ext = "ext_INV_ti5"
 	const email = "invitee-ti5@example.com"
@@ -230,7 +230,7 @@ func TestUpsertInviteGrant_TI5_RC5_BootstrapFiresOwnsZero_NoSecondInsertActive(t
 		"exactly one ACTIVE user-row (no duplicate InsertActive → no 23505)")
 	var status string
 	require.NoError(t, pool.QueryRow(ctx,
-		`SELECT invite_status FROM kacho_iam.users WHERE id = $1`, string(inviteeID)).Scan(&status))
+		`SELECT invite_status FROM kaname.users WHERE id = $1`, string(inviteeID)).Scan(&status))
 	assert.Equal(t, "ACTIVE", status, "invitee activated on the existing row")
 
 	// RC-5: bootstrap fired → exactly ONE personal account owned by the invitee.
@@ -240,21 +240,21 @@ func TestUpsertInviteGrant_TI5_RC5_BootstrapFiresOwnsZero_NoSecondInsertActive(t
 	// the personal account has a "default" project.
 	var personalAcc string
 	require.NoError(t, pool.QueryRow(ctx,
-		`SELECT id FROM kacho_iam.accounts WHERE owner_user_id = $1`, string(inviteeID)).Scan(&personalAcc))
+		`SELECT id FROM kaname.accounts WHERE owner_user_id = $1`, string(inviteeID)).Scan(&personalAcc))
 	var defaultPrjCount int
 	require.NoError(t, pool.QueryRow(ctx,
-		`SELECT count(*) FROM kacho_iam.projects WHERE account_id = $1 AND name = 'default'`, personalAcc).
+		`SELECT count(*) FROM kaname.projects WHERE account_id = $1 AND name = 'default'`, personalAcc).
 		Scan(&defaultPrjCount))
 	assert.Equal(t, 1, defaultPrjCount, `RC-5: personal account has a "default" project`)
 
 	// 2 self-admin AccessBindings (account + project) for the invitee on personal scope.
 	var abCount int
 	require.NoError(t, pool.QueryRow(ctx,
-		`SELECT count(*) FROM kacho_iam.access_bindings ab
+		`SELECT count(*) FROM kaname.access_bindings ab
 		   WHERE ab.subject_id = $1 AND ab.revoked_at IS NULL
 		     AND ( (ab.resource_type='account' AND ab.resource_id=$2)
 			OR (ab.resource_type='project' AND ab.resource_id IN
-			      (SELECT id FROM kacho_iam.projects WHERE account_id=$2)) )`,
+			      (SELECT id FROM kaname.projects WHERE account_id=$2)) )`,
 		string(inviteeID), personalAcc).Scan(&abCount))
 	assert.Equal(t, 2, abCount, "RC-5: 2 self-admin AccessBindings on personal scope")
 
@@ -289,7 +289,7 @@ func TestUpsertInviteGrant_TE4_RC5_ReActivateIdempotent_SingleOwnedAccount(t *te
 	require.NoError(t, err)
 	defer pool.Close()
 	repo := kachopg.New(pool, nil)
-	opsRepo := operations.NewRepo(pool, "kacho_iam")
+	opsRepo := operations.NewRepo(pool, "kaname")
 
 	const ext = "ext_INV_te4"
 	const email = "invitee-te4@example.com"

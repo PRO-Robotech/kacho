@@ -58,7 +58,7 @@ func TestReview14_VerifyGate_BootForwardSmoke_OwnerBinding(t *testing.T) {
 	// real account).
 	var leftover int
 	require.NoError(t, pool.QueryRow(ctx,
-		`SELECT count(*) FROM kacho_iam.resource_mirror
+		`SELECT count(*) FROM kaname.resource_mirror
 		  WHERE object_type = 'vpc.network' AND parent_account_id = $1`,
 		string(acc.ID)).Scan(&leftover))
 	assert.Equal(t, 0, leftover, "boot forward-smoke must clean up its synthetic mirror object")
@@ -97,7 +97,7 @@ func TestReview14_SmokeOwnerBindingCandidate_DiscoversBinding(t *testing.T) {
 		status  string
 	)
 	require.NoError(t, pool.QueryRow(ctx,
-		`SELECT role_id, resource_type, status FROM kacho_iam.access_bindings WHERE id = $1`,
+		`SELECT role_id, resource_type, status FROM kaname.access_bindings WHERE id = $1`,
 		string(bindingID)).Scan(&roleID, &resType, &status))
 	assert.Equal(t, domain.OwnerRoleID, roleID, "candidate is an owner-role binding")
 	assert.Equal(t, "account", resType, "candidate is account-scoped")

@@ -16,7 +16,7 @@ import (
 //
 // DB / port / SSL values match kacho-vpc so both services deploy uniformly
 // through kacho-deploy. ENV-prefix is `KANAME` (vs `KACHO_VPC`), default
-// DB-name is `kacho_iam`.
+// DB-name is `kaname`.
 func RegisterDefaults(v *viper.Viper) {
 	// logger
 	v.SetDefault("logger.level", "INFO")

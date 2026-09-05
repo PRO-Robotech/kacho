@@ -2,7 +2,7 @@
 // SPDX-License-Identifier: BUSL-1.1
 
 // fgaoutboxrowowner_test.go — только ОДНО место вправе рендерить строку
-// `kacho_iam.fga_outbox`.
+// `kaname.fga_outbox`.
 //
 // ЧТО ЛОВИТСЯ. Строка этой очереди — не «кортеж», а ЕДИНИЦА АТОМАРНОСТИ: она несёт
 // весь набор отношений одного субъекта на одном объекте, и дренаж применяет её одним
@@ -43,7 +43,7 @@ import (
 )
 
 // fgaOutboxTableLiteral — то, что ищется в строковых литералах прод-кода.
-const fgaOutboxTableLiteral = "kacho_iam.fga_outbox"
+const fgaOutboxTableLiteral = "kaname.fga_outbox"
 
 // fgaOutboxRowOwnerDir — единственный каталог, которому разрешено рендерить строку.
 // Каталог, а не файл: у владельца может быть больше одного файла, но не больше одного

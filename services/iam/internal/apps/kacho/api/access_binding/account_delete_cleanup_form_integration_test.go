@@ -54,11 +54,11 @@ func ownerFixture(t *testing.T, ctx context.Context, pool *pgxpool.Pool, acc, ow
 	// Имя аккаунта — ОТДЕЛЬНЫМ параметром, а не идентификатором: схема требует
 	// единственной форме имени дерева (`accounts_name_check`), и подчёркивание, законное
 	// в идентификаторе, в имени отвергается.
-	run(`INSERT INTO kacho_iam.accounts (id, name, owner_user_id) VALUES ($1, $2, $3)
+	run(`INSERT INTO kaname.accounts (id, name, owner_user_id) VALUES ($1, $2, $3)
 	     ON CONFLICT DO NOTHING`, acc, accName, owner)
-	run(`INSERT INTO kacho_iam.users (id, external_id, email, account_id)
+	run(`INSERT INTO kaname.users (id, external_id, email, account_id)
 	     VALUES ($1, $1, $1 || '@kacho.local', $2) ON CONFLICT DO NOTHING`, owner, acc)
-	run(`INSERT INTO kacho_iam.relation_fact (object_type, object_id, relation, subject)
+	run(`INSERT INTO kaname.relation_fact (object_type, object_id, relation, subject)
 	     VALUES ('account', $1, 'owner', 'user:' || $2),
 	            ('account', $1, 'v_get', 'user:' || $2)`, acc, owner)
 	require.NoError(t, tx.Commit(ctx), "коммит посева: форма читает СВОЕЙ транзакцией и "+
@@ -91,7 +91,7 @@ func TestAccountDelete_RevokingOwnershipRemovesDerivedAdmin_OnTheForm(t *testing
 
 	// Снятие ровно того набора, который снимает удаление аккаунта.
 	_, err = pool.Exec(ctx,
-		`DELETE FROM kacho_iam.relation_fact
+		`DELETE FROM kaname.relation_fact
 		  WHERE object_type = 'account' AND object_id = $1 AND subject = $2`, acc, subj)
 	require.NoError(t, err)
 

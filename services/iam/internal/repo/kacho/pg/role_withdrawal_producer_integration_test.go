@@ -441,8 +441,8 @@ func platformProjectionRows(t *testing.T, ctx context.Context, pool *pgxpool.Poo
 	var n int
 	require.NoError(t, pool.QueryRow(ctx, `
 		SELECT count(*)
-		  FROM kacho_iam.role_verb rv
-		  JOIN kacho_iam.roles r ON r.id = rv.role_id
+		  FROM kaname.role_verb rv
+		  JOIN kaname.roles r ON r.id = rv.role_id
 		 WHERE r.owner_module IS NULL AND r.is_system`).Scan(&n))
 	return n
 }
@@ -456,20 +456,20 @@ func seedPlatformProjection(t *testing.T, ctx context.Context, pool *pgxpool.Poo
 	t.Helper()
 	var roleID, dotted, verb string
 	require.NoError(t, pool.QueryRow(ctx, `
-		SELECT id FROM kacho_iam.roles
+		SELECT id FROM kaname.roles
 		 WHERE owner_module IS NULL AND is_system AND live ORDER BY id LIMIT 1`).Scan(&roleID),
 		"живой платформенной роли нет — фикстуре не на что сослаться")
 	require.NoError(t, pool.QueryRow(ctx, `
 		SELECT cv.module || '.' || cv.resource, cv.verb
-		  FROM kacho_iam.catalog_verb cv
-		  JOIN kacho_iam.catalog_resource cr
+		  FROM kaname.catalog_verb cv
+		  JOIN kaname.catalog_resource cr
 		    ON cr.module = cv.module AND cr.resource = cv.resource AND cr.live
 		 WHERE cv.live
 		 ORDER BY cv.module, cv.resource, cv.verb
 		 LIMIT 1`).Scan(&dotted, &verb),
 		"живого каталожного глагола нет — фикстуре не на что сослаться")
 	_, err := pool.Exec(ctx, `
-		INSERT INTO kacho_iam.role_verb (role_id, object_type, verb)
+		INSERT INTO kaname.role_verb (role_id, object_type, verb)
 		VALUES ($1, $2, $3) ON CONFLICT DO NOTHING`, roleID, dotted, verb)
 	require.NoError(t, err, "фикстура проекции платформенной роли не легла")
 }

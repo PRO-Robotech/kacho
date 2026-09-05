@@ -7,7 +7,7 @@ package role
 // object IMMEDIATELY, not only through the reconcile queue.
 //
 // iam.role is label-selectable (domain.labelSelectableTypes carries "iam.role";
-// kacho_iam.roles.labels — migration 0041 — is probed by `labels @> match_labels` in
+// kaname.roles.labels — migration 0041 — is probed by `labels @> match_labels` in
 // MatchIAMDirect), so removing a label that an ARM_LABELS grant matches is a
 // REVOCATION: the per-object member row and its FGA tuples must go. NOTE these are the
 // role's OWN tenant-facing labels (Role.Labels), not Rule.MatchLabels — the rules-path

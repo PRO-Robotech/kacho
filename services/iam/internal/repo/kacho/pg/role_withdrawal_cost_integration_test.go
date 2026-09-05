@@ -127,7 +127,7 @@ func TestRoleWithdrawalCostAgainstModuleRoles(t *testing.T) {
 			// Переселено, а не отобрано молча: обе популяции лежат в ведомости.
 			var orphans int64
 			require.NoError(t, pool.QueryRow(ctx,
-				`SELECT count(*) FROM kacho_iam.role_grant_orphan WHERE cause = 'role_retired'`).
+				`SELECT count(*) FROM kaname.role_grant_orphan WHERE cause = 'role_retired'`).
 				Scan(&orphans))
 			require.Equal(t, int64(resettled), orphans,
 				"ведомость не покрывает переселённое — право отобрано молча")
@@ -196,7 +196,7 @@ func seedWithdrawalCostRoles(t *testing.T, ctx context.Context, pool *pgxpool.Po
 	require.NoError(t, err, "посев ролей модуля")
 
 	_, err = pool.Exec(ctx, `
-		INSERT INTO kacho_iam.role_rule_ref (role_id, module, resource, verb)
+		INSERT INTO kaname.role_rule_ref (role_id, module, resource, verb)
 		SELECT rid, $2, 'res' || to_char(r, 'FM00'), 'verb' || to_char(v, 'FM00')
 		  FROM unnest($1::text[]) AS rid,
 		       generate_series(0, $3::int - 1) AS r,
@@ -205,7 +205,7 @@ func seedWithdrawalCostRoles(t *testing.T, ctx context.Context, pool *pgxpool.Po
 	require.NoError(t, err, "посев проекции сегментов")
 
 	_, err = pool.Exec(ctx, `
-		INSERT INTO kacho_iam.role_verb (role_id, object_type, verb)
+		INSERT INTO kaname.role_verb (role_id, object_type, verb)
 		SELECT rid, $2 || '.res' || to_char(r, 'FM00'), 'verb' || to_char(v, 'FM00')
 		  FROM unnest($1::text[]) AS rid,
 		       generate_series(0, $3::int - 1) AS r,
@@ -214,10 +214,10 @@ func seedWithdrawalCostRoles(t *testing.T, ctx context.Context, pool *pgxpool.Po
 	require.NoError(t, err, "посев проекции глаголов")
 
 	require.NoError(t, pool.QueryRow(ctx,
-		`SELECT count(*) FROM kacho_iam.role_rule_ref WHERE role_id = ANY($1::text[])`,
+		`SELECT count(*) FROM kaname.role_rule_ref WHERE role_id = ANY($1::text[])`,
 		rawIDs).Scan(&ruleRefs))
 	require.NoError(t, pool.QueryRow(ctx,
-		`SELECT count(*) FROM kacho_iam.role_verb WHERE role_id = ANY($1::text[])`,
+		`SELECT count(*) FROM kaname.role_verb WHERE role_id = ANY($1::text[])`,
 		rawIDs).Scan(&roleVerbs))
 
 	if ruleRefs == 0 || roleVerbs == 0 {

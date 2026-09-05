@@ -15,7 +15,7 @@ package relverdict_test
 //	(а) ИСТОЧНИК звена проекта. Оба говорили «предок проекта — projects.account_id»,
 //	    тогда как миграция 781001 В ТОМ ЖЕ ДЕРЕВЕ перевела это звено на проекцию
 //	    журнала. Перечень таблиц под представлением при этом называл
-//	    `kacho_iam.projects`, которую цепь не читает вовсе, и НЕ называл
+//	    `kaname.projects`, которую цепь не читает вовсе, и НЕ называл
 //	    `relation_fact`, которую читает;
 //	(б) ДОВОД О ПРЕДЕЛЕ ОБХОДА. Оба обосновывали «предел не усекает» равенством
 //	    «рёбер у объекта не больше глубин (ключ таблицы уникален по глубине)» —
@@ -70,10 +70,10 @@ const (
 	// набора — берётся НАИБОЛЬШАЯ версия, чей блок Up объявляет представление,
 	// потому что порядок применения числовой и последнее объявление переживает
 	// предыдущие.
-	chainMigDecl      = `CREATE\s+(OR\s+REPLACE\s+)?VIEW\s+kacho_iam\.resource_scope_edge\b`
+	chainMigDecl      = `CREATE\s+(OR\s+REPLACE\s+)?VIEW\s+kaname\.resource_scope_edge\b`
 	cteCommentTop     = "-- scope — ОБЛАСТИ"
 	cteCommentEnd     = "scope(s_type, s_id, depth) AS ("
-	docsChainViewName = "kacho_iam.resource_scope_edge"
+	docsChainViewName = "kaname.resource_scope_edge"
 )
 
 // retiredClaims — утверждения, ОТМЕНЁННЫЕ деревом. Каждое несёт причину и то,
@@ -130,7 +130,7 @@ func cteComment(t *testing.T, queryGo string) string {
 	return queryGo[i:j]
 }
 
-var reChainTable = regexp.MustCompile(`kacho_iam\.[a-z_]+`)
+var reChainTable = regexp.MustCompile(`kaname\.[a-z_]+`)
 
 // viewBodyOf вырезает ТЕЛО объявления представления: от глагола до его
 // собственной точки с запятой.
@@ -398,12 +398,12 @@ func TestR7_4_17_InjectionTableListDriftIsFound(t *testing.T) {
 
 	// Избыток: добавляем таблицу, которой цепь не читает.
 	live[dropped] = true
-	live["kacho_iam.projects"] = true
-	if diff := diffSets(want, live); len(diff.extra) != 1 || diff.extra[0] != "kacho_iam.projects" {
+	live["kaname.projects"] = true
+	if diff := diffSets(want, live); len(diff.extra) != 1 || diff.extra[0] != "kaname.projects" {
 		t.Errorf("избыточная таблица не найдена: %v", diff.extra)
 	}
 	// Законный близнец: совпадающие перечни находкой не являются.
-	delete(live, "kacho_iam.projects")
+	delete(live, "kaname.projects")
 	if diff := diffSets(want, live); len(diff.missing) != 0 || len(diff.extra) != 0 {
 		t.Errorf("гейт нашёл расхождение на СОВПАДАЮЩИХ перечнях: %v / %v",
 			diff.missing, diff.extra)

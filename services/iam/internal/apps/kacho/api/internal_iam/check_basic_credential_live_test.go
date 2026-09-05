@@ -147,7 +147,7 @@ func TestBCL1450_PresentedStringNeverReachesTheAuthority(t *testing.T) {
 // удалось» НЕ подменяется отказом в удостоверении: вызывающему нечего исправить
 // сменой удостоверения. Сырой текст соседа наружу не течёт.
 func TestBCL1450_UnavailableAuthorityIsItsOwnOutcomeAndLeaksNothing(t *testing.T) {
-	const raw = "dial tcp 10.42.0.7:5432: connect: connection refused (user=kacho_iam db=kacho_iam)"
+	const raw = "dial tcp 10.42.0.7:5432: connect: connection refused (user=kaname db=kaname)"
 	auth := &basicAuthorityStub{live: errors.New(raw)}
 	h := (&Handler{}).WithBasicCredentialResolver(auth)
 
@@ -157,7 +157,7 @@ func TestBCL1450_UnavailableAuthorityIsItsOwnOutcomeAndLeaksNothing(t *testing.T
 	if st.Code() != codes.Unavailable {
 		t.Fatalf("код %s, ожидался Unavailable: недоступность авторитета — не отказ в удостоверении", st.Code())
 	}
-	if st.Message() == raw || contains(st.Message(), "5432") || contains(st.Message(), "kacho_iam") {
+	if st.Message() == raw || contains(st.Message(), "5432") || contains(st.Message(), "kaname") {
 		t.Errorf("наружу утёк текст соседа: %q", st.Message())
 	}
 }

@@ -38,7 +38,7 @@ import (
 	kachopg "github.com/PRO-Robotech/kacho-iam/internal/repo/kacho/pg"
 )
 
-// setupRedactorPG отдаёт вызывающему СОБСТВЕННУЮ базу схемы kacho_iam на общем
+// setupRedactorPG отдаёт вызывающему СОБСТВЕННУЮ базу схемы kaname на общем
 // Postgres пакета. Возвращает DSN, готовый под coredb.NewPool → Operations.Repo.
 //
 // Раньше на каждый вызов поднимался отдельный контейнер и заново проигрывалась
@@ -61,7 +61,7 @@ func TestKAC164_RedactSAKeyClientSecret_FullFlow(t *testing.T) {
 	require.NoError(t, err)
 	defer pool.Close()
 
-	opsRepo := operations.NewRepo(pool, "kacho_iam")
+	opsRepo := operations.NewRepo(pool, "kaname")
 
 	// 1. Persist an un-resolved Operation.
 	op := operations.Operation{
@@ -106,7 +106,7 @@ func TestKAC164_RedactSAKeyClientSecret_FullFlow(t *testing.T) {
 	}
 
 	// 4. Redact.
-	redactor := kachopg.NewOpsResponseRedactor(pool, "kacho_iam")
+	redactor := kachopg.NewOpsResponseRedactor(pool, "kaname")
 	require.NoError(t, redactor.RedactResponseField(ctx, op.ID,
 		[]string{"client_secret"}))
 
@@ -153,7 +153,7 @@ func TestKAC164_RedactSAKey_NonExistentOp_NoError(t *testing.T) {
 	require.NoError(t, err)
 	defer pool.Close()
 
-	redactor := kachopg.NewOpsResponseRedactor(pool, "kacho_iam")
+	redactor := kachopg.NewOpsResponseRedactor(pool, "kaname")
 	err = redactor.RedactResponseField(ctx, "iop_does_not_exist",
 		[]string{"client_secret"})
 	require.NoError(t, err, "missing op must not error")
@@ -170,7 +170,7 @@ func TestKAC164_RedactSAKey_OpWithoutResponse_NoError(t *testing.T) {
 	pool, err := coredb.NewPool(ctx, dsn)
 	require.NoError(t, err)
 	defer pool.Close()
-	opsRepo := operations.NewRepo(pool, "kacho_iam")
+	opsRepo := operations.NewRepo(pool, "kaname")
 
 	op := operations.Operation{
 		ID:          "iop_kac164_noresp",
@@ -182,7 +182,7 @@ func TestKAC164_RedactSAKey_OpWithoutResponse_NoError(t *testing.T) {
 	require.NoError(t, opsRepo.Create(ctx, op))
 	// Leave it without MarkDone/MarkError → response_type='' and response_data=NULL.
 
-	redactor := kachopg.NewOpsResponseRedactor(pool, "kacho_iam")
+	redactor := kachopg.NewOpsResponseRedactor(pool, "kaname")
 	err = redactor.RedactResponseField(ctx, op.ID,
 		[]string{"client_secret"})
 	require.NoError(t, err, "op without response must no-op")

@@ -50,7 +50,7 @@ import (
 // `client_secret` field after the Operation is marked done.
 type OpsResponseRedactor struct {
 	pool   *pgxpool.Pool
-	schema string // "kacho_iam"
+	schema string // "kaname"
 }
 
 // NewOpsResponseRedactor builds the adapter for the given schema.

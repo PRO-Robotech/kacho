@@ -139,7 +139,7 @@ func (w *writeTx) EmitAuditEvent(ctx context.Context, ev service.AuditEvent) err
 }
 
 // EmitFGARelationWrite appends N FGA owner/hierarchy tuple-write intent rows
-// into kacho_iam.fga_outbox (event_type='fga.tuple.write') on THIS writer-tx's
+// into kaname.fga_outbox (event_type='fga.tuple.write') on THIS writer-tx's
 // pgx.Tx — atomic with the surrounding resource INSERT (запрет #10). Reuses the
 // shared fga_outbox.EmitWriteTx helper (single source of truth with the
 // access_binding emit + InternalIAMService.RegisterResource relay), so a

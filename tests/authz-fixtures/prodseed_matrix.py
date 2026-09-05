@@ -196,7 +196,7 @@ def upsert_user(ext_id, wait_s=40):
         return ""
     deadline = time.time() + wait_s
     while time.time() < deadline:
-        if _psql(f"SELECT 1 FROM kacho_iam.users WHERE id='{uid}' LIMIT 1;") == "1":
+        if _psql(f"SELECT 1 FROM kaname.users WHERE id='{uid}' LIMIT 1;") == "1":
             return uid
         time.sleep(1)
     raise RuntimeError(f"user {ext_id} ({uid}) never became durable in {wait_s}s — "
@@ -206,7 +206,7 @@ def upsert_user(ext_id, wait_s=40):
 def db_lookup(ext_id):
     """Discover a user's personal account + default project (ids the production
     upsert created; every real auth stays RS256)."""
-    sql = (f"SET search_path=kacho_iam,public; "
+    sql = (f"SET search_path=kaname,public; "
            f"SELECT a.id||'|'||p.id FROM accounts a "
            f"JOIN users u ON u.id=a.owner_user_id "
            f"JOIN projects p ON p.account_id=a.id AND p.name='default' "
@@ -372,10 +372,10 @@ def seed_fga_tuple(fga_subject, relation, obj):
     Кластерный случай и его обоснование — в seed_fga_cluster ниже.
     """
     sql = (
-        "INSERT INTO kacho_iam.fga_outbox (event_type, payload, created_at) "
+        "INSERT INTO kaname.fga_outbox (event_type, payload, created_at) "
         "SELECT 'fga.tuple.write', jsonb_build_object("
         f"'user','{fga_subject}','relation','{relation}','object','{obj}'), now() "
-        "WHERE NOT EXISTS (SELECT 1 FROM kacho_iam.fga_outbox "
+        "WHERE NOT EXISTS (SELECT 1 FROM kaname.fga_outbox "
         f"WHERE payload->>'user'='{fga_subject}' AND payload->>'relation'='{relation}' "
         f"AND payload->>'object'='{obj}');"
     )
@@ -386,7 +386,7 @@ def seed_fga_tuple(fga_subject, relation, obj):
 
 def seed_fga_cluster(fga_subject, relation):
     """Seed a cluster-scope FGA tuple (<fga_subject> #<relation> @cluster_kacho_root)
-    deterministically via kacho_iam.fga_outbox → drainer → OpenFGA (idempotent
+    deterministically via kaname.fga_outbox → drainer → OpenFGA (idempotent
     WHERE NOT EXISTS), mirroring the sanctioned dev-mode setup.sh 5a/5c seeds.
 
     Why (cluster-viewer FLOOR, #64/#62): the admin-curated GLOBAL catalog reads —
@@ -432,7 +432,7 @@ def _seed_bootstrap_root_cluster():
     never gets system_viewer. Best-effort: skip silently if the user is not yet
     provisioned (never fails the seed run)."""
     email = "admin@prorobotech.ru"
-    sql = f"SELECT id FROM kacho_iam.users WHERE external_id='{email}' LIMIT 1;"
+    sql = f"SELECT id FROM kaname.users WHERE external_id='{email}' LIMIT 1;"
     args = ["kubectl", "-n", KACHO_NS, "exec", PG_IAM_POD, "-c", "postgresql",
             "--", "sh", "-c", f'PGPASSWORD="$POSTGRES_PASSWORD" psql -U iam -d kacho_iam -h 127.0.0.1 -tAc "{sql}"']
     out = subprocess.run(args, capture_output=True, text=True).stdout.strip()

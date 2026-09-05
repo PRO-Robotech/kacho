@@ -17,7 +17,7 @@ kacho-loadbalancer) общаются с kaname:
   invalidation poll (см. [`29-relational-verdict.md`](29-relational-verdict.md)).
 - `RegisterResource` / `UnregisterResource` — постановка и снятие иерархического
   указателя для ресурса чужого сервиса. Намерение ложится строкой журнала
-  `kacho_iam.fga_outbox`, и триггер журнала складывает из неё прямой факт **в той же
+  `kaname.fga_outbox`, и триггер журнала складывает из неё прямой факт **в той же
   транзакции**: дренажа наружу нет — применять не к чему и некому.
 
 **Use-cases:**
@@ -44,7 +44,7 @@ kacho-loadbalancer) общаются с kaname:
 | `UnregisterResource`    | sync             | Снятие того же указателя.                        |
 
 > [!note] Здесь стоял `WriteCreatorTuple` — RPC снят (#788)
-> Он писал кортёж создателя в движок НАПРЯМУЮ, мимо журнала `kacho_iam.fga_outbox`,
+> Он писал кортёж создателя в движок НАПРЯМУЮ, мимо журнала `kaname.fga_outbox`,
 > поэтому проекция `relation_fact` (инвариант миграции 0098) его не увидела бы никогда.
 > Вызывающих не осталось ни одного: все пять соседей ушли на `RegisterResource`, у
 > которого намерение сперва ложится в журнал. Имя держит надгробие `retiredRPCSurface`
@@ -85,7 +85,7 @@ sequenceDiagram
     participant IAM as InternalIAMService.Check :9091
     participant Auth as AuthorizeService
     participant Cascade as cluster_admin_grants fast-path
-    participant Form as реляционная форма (kacho_iam)
+    participant Form as реляционная форма (kaname)
     participant OPA
 
     VPC->>IAM: Check {subject:user:usr_alice, action:"vpc.network.create", resource:project/prj_yyy}
@@ -112,7 +112,7 @@ sequenceDiagram
     participant VPC as kacho-vpc Network.Create
     participant DB_VPC
     participant IAM as InternalIAMService :9091
-    participant DB as Postgres kacho_iam
+    participant DB as Postgres kaname
 
     VPC->>DB_VPC: INSERT vpc_networks → vpn_xxx
     VPC->>IAM: RegisterResource {subject:user:usr_alice, object:vpc_network:vpn_xxx, ...}

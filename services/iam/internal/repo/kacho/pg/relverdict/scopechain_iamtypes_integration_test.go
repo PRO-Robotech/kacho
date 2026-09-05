@@ -51,7 +51,7 @@ package relverdict_test
 // производителе:
 //
 //	· ПРОЕКЦИЯ ЖУРНАЛА (`relation_fact`) — производитель ровно один, триггер
-//	  `relation_fact_follows_journal` на строке `kacho_iam.fga_outbox`. Всё, что
+//	  `relation_fact_follows_journal` на строке `kaname.fga_outbox`. Всё, что
 //	  ей принадлежит — указатель проекта на аккаунт, прямой факт администратора,
 //	  — кладётся через `pointerThroughJournal`, а не прямой вставкой.
 //	· РЁБРА ДЕРЕВА (`resource_parent_edge`) — производитель один,
@@ -149,7 +149,7 @@ func r74AssertFiveTypesAreTheDerivableOnesMinusHierarchy(t *testing.T) {
 func r74SeedCluster(t *testing.T, ctx context.Context, tx pgx.Tx) {
 	t.Helper()
 	exec(t, ctx, tx,
-		`INSERT INTO kacho_iam.clusters (id, name) VALUES ('cluster_kacho_root', 'kacho')
+		`INSERT INTO kaname.clusters (id, name) VALUES ('cluster_kacho_root', 'kacho')
 		 ON CONFLICT DO NOTHING`)
 }
 
@@ -163,7 +163,7 @@ func r74SeedInertRole(t *testing.T, ctx context.Context, tx pgx.Tx) {
 	t.Helper()
 	r74SeedCluster(t, ctx, tx)
 	exec(t, ctx, tx,
-		`INSERT INTO kacho_iam.roles (id, name, permissions, rules, cluster_id)
+		`INSERT INTO kaname.roles (id, name, permissions, rules, cluster_id)
 		 VALUES ($1, 'inert.role', '[]'::jsonb,
 		         jsonb_build_array(jsonb_build_object(
 		             'module',    'test',
@@ -187,15 +187,15 @@ func r74SeedFiveOwnObjects(t *testing.T, ctx context.Context, tx pgx.Tx) {
 	t.Helper()
 	r74SeedInertRole(t, ctx, tx)
 	exec(t, ctx, tx,
-		`INSERT INTO kacho_iam.users (id, external_id, email, account_id)
+		`INSERT INTO kaname.users (id, external_id, email, account_id)
 		 VALUES ('usr-own', 'ext-own', 'own@kacho.local', 'acc-1')`)
 	exec(t, ctx, tx,
-		`INSERT INTO kacho_iam.groups (id, account_id, name) VALUES ('grp-own', 'acc-1', 'grp-own')`)
+		`INSERT INTO kaname.groups (id, account_id, name) VALUES ('grp-own', 'acc-1', 'grp-own')`)
 	exec(t, ctx, tx,
-		`INSERT INTO kacho_iam.service_accounts (id, account_id, name)
+		`INSERT INTO kaname.service_accounts (id, account_id, name)
 		 VALUES ('sac-own', 'acc-1', 'sac-own')`)
 	exec(t, ctx, tx,
-		`INSERT INTO kacho_iam.roles (id, name, permissions, rules, account_id)
+		`INSERT INTO kaname.roles (id, name, permissions, rules, account_id)
 		 VALUES ('rol-own', 'own_account_role', '[]'::jsonb,
 		         jsonb_build_array(jsonb_build_object(
 		             'module',    'test',
@@ -210,7 +210,7 @@ func r74SeedFiveOwnObjects(t *testing.T, ctx context.Context, tx pgx.Tx) {
 	// собственноручно положенном ребре.
 	var sent int
 	if err := tx.QueryRow(ctx,
-		`SELECT count(*)::int FROM kacho_iam.resource_parent_edge
+		`SELECT count(*)::int FROM kaname.resource_parent_edge
 		  WHERE object_type = ANY($1::text[])`,
 		[]string{"iam_user", "iam_group", "iam_service_account", "iam_role", "iam_access_binding"},
 	).Scan(&sent); err != nil {
@@ -231,12 +231,12 @@ func r74SeedBinding(t *testing.T, ctx context.Context, tx pgx.Tx,
 	bindingID, subjectID, roleID, scopeType, scopeID string) {
 	t.Helper()
 	exec(t, ctx, tx,
-		`INSERT INTO kacho_iam.access_bindings
+		`INSERT INTO kaname.access_bindings
 		   (id, subject_type, subject_id, role_id, resource_type, resource_id, status)
 		 VALUES ($1, 'user', $2, $3, $4, $5, 'ACTIVE')`,
 		bindingID, subjectID, roleID, scopeType, scopeID)
 	exec(t, ctx, tx,
-		`INSERT INTO kacho_iam.access_binding_subjects (binding_id, subject_type, subject_id)
+		`INSERT INTO kaname.access_binding_subjects (binding_id, subject_type, subject_id)
 		 VALUES ($1, 'user', $2)`, bindingID, subjectID)
 }
 
@@ -253,7 +253,7 @@ func r74SeedGrantRole(t *testing.T, ctx context.Context, tx pgx.Tx, roleID strin
 	t.Helper()
 	r74SeedCluster(t, ctx, tx)
 	exec(t, ctx, tx,
-		`INSERT INTO kacho_iam.roles (id, name, permissions, rules, cluster_id)
+		`INSERT INTO kaname.roles (id, name, permissions, rules, cluster_id)
 		 VALUES ($1, 'probe.grant', '[]'::jsonb,
 		         jsonb_build_array(jsonb_build_object(
 		             'module',    'test',
@@ -265,14 +265,14 @@ func r74SeedGrantRole(t *testing.T, ctx context.Context, tx pgx.Tx, roleID strin
 		ct := catalogFormOf(t, o.modelType)
 		catalog = append(catalog, ct)
 		exec(t, ctx, tx,
-			`INSERT INTO kacho_iam.role_verb (role_id, object_type, verb) VALUES ($1, $2, 'get')`,
+			`INSERT INTO kaname.role_verb (role_id, object_type, verb) VALUES ($1, $2, 'get')`,
 			roleID, ct)
 	}
 	// Ветвь ОДНА — якорная: она разрешает тип в области независимо от меток,
 	// поэтому исход зависит от того, попал ли объект в ОБЛАСТЬ, а не от меток.
 	// Именно область и является предметом.
 	exec(t, ctx, tx,
-		`INSERT INTO kacho_iam.role_rule_selectors
+		`INSERT INTO kaname.role_rule_selectors
 		   (role_id, rule_fp, arm, object_types, match_labels)
 		 VALUES ($1, 'fp-1', 'anchor', $2::text[], '{}'::jsonb)`, roleID, catalog)
 }
@@ -304,7 +304,7 @@ func r74ChainParents(t *testing.T, ctx context.Context, tx pgx.Tx,
 	}
 	rows, err := tx.Query(ctx,
 		`SELECT parent_type || ':' || parent_id
-		   FROM kacho_iam.resource_scope_edge
+		   FROM kaname.resource_scope_edge
 		  WHERE object_type = $1 AND object_id = $2
 		    AND NOT (object_type = ANY ($3::text[]))
 		  ORDER BY 1`, objectType, objectID, suppress)
@@ -330,10 +330,10 @@ func r74ChainParents(t *testing.T, ctx context.Context, tx pgx.Tx,
 func r74SeedForeignAccount(t *testing.T, ctx context.Context, tx pgx.Tx, accountID, userID string) {
 	t.Helper()
 	exec(t, ctx, tx,
-		`INSERT INTO kacho_iam.accounts (id, name, owner_user_id) VALUES ($1, $1, $2)`,
+		`INSERT INTO kaname.accounts (id, name, owner_user_id) VALUES ($1, $1, $2)`,
 		accountID, userID)
 	exec(t, ctx, tx,
-		`INSERT INTO kacho_iam.users (id, external_id, email, account_id)
+		`INSERT INTO kaname.users (id, external_id, email, account_id)
 		 VALUES ($1, $1, $1 || '@kacho.local', $2)`, userID, accountID)
 }
 
@@ -380,13 +380,13 @@ func TestR7_4_06_AccountGrantReachesIAMsOwnTypes(t *testing.T) {
 
 		// S1 — выдача на АККАУНТ `acc-1`.
 		exec(t, ctx, tx,
-			`INSERT INTO kacho_iam.users (id, external_id, email, account_id)
+			`INSERT INTO kaname.users (id, external_id, email, account_id)
 			 VALUES ('usr-s1', 'ext-s1', 's1@kacho.local', 'acc-1')`)
 		r74SeedBinding(t, ctx, tx, "acb-s1", "usr-s1", "rol-grant", "account", "acc-1")
 
 		// S2 — без единой выдачи.
 		exec(t, ctx, tx,
-			`INSERT INTO kacho_iam.users (id, external_id, email, account_id)
+			`INSERT INTO kaname.users (id, external_id, email, account_id)
 			 VALUES ('usr-s2', 'ext-s2', 's2@kacho.local', 'acc-1')`)
 
 		// S3 — такая же выдача в ЧУЖОМ аккаунте.
@@ -395,7 +395,7 @@ func TestR7_4_06_AccountGrantReachesIAMsOwnTypes(t *testing.T) {
 
 		// S4 — положительный контроль: выдача ПРЯМО на каждый объект.
 		exec(t, ctx, tx,
-			`INSERT INTO kacho_iam.users (id, external_id, email, account_id)
+			`INSERT INTO kaname.users (id, external_id, email, account_id)
 			 VALUES ('usr-s4', 'ext-s4', 's4@kacho.local', 'acc-1')`)
 		for _, o := range r74FiveOwnTypes {
 			r74SeedBinding(t, ctx, tx,
@@ -477,12 +477,12 @@ func TestR7_4_07_ProjectGrantReachesTheBindingAndTheProjectRole(t *testing.T) {
 		// указателем в журнале. Отрицание на калечной фикстуре объясняется
 		// фикстурой, а не предметом.
 		exec(t, ctx, tx,
-			`INSERT INTO kacho_iam.projects (id, account_id, name) VALUES ('prj-2', 'acc-1', 'second-project')`)
+			`INSERT INTO kaname.projects (id, account_id, name) VALUES ('prj-2', 'acc-1', 'second-project')`)
 		pointerThroughJournal(t, ctx, tx, "project", "prj-2", "account", "account:acc-1")
 
 		// ПРОЕКТНАЯ роль: аккаунта у неё нет по ограничению схемы.
 		exec(t, ctx, tx,
-			`INSERT INTO kacho_iam.roles (id, name, permissions, rules, project_id)
+			`INSERT INTO kaname.roles (id, name, permissions, rules, project_id)
 			 VALUES ('rol-proj', 'own_project_role', '[]'::jsonb,
 			         jsonb_build_array(jsonb_build_object(
 			             'module',    'test',
@@ -493,7 +493,7 @@ func TestR7_4_07_ProjectGrantReachesTheBindingAndTheProjectRole(t *testing.T) {
 		// доставалась бы аккаунтной ветвью (5a), и проба судила бы не ту ветвь.
 		var roleAccount string
 		if err := tx.QueryRow(ctx,
-			`SELECT COALESCE(account_id, '') FROM kacho_iam.roles WHERE id = 'rol-proj'`).Scan(&roleAccount); err != nil {
+			`SELECT COALESCE(account_id, '') FROM kaname.roles WHERE id = 'rol-proj'`).Scan(&roleAccount); err != nil {
 			t.Fatalf("перепись аккаунта проектной роли: %v", err)
 		}
 		if roleAccount != "" {
@@ -507,19 +507,19 @@ func TestR7_4_07_ProjectGrantReachesTheBindingAndTheProjectRole(t *testing.T) {
 
 		// Субъект с выдачей на ПРОЕКТ prj-1.
 		exec(t, ctx, tx,
-			`INSERT INTO kacho_iam.users (id, external_id, email, account_id)
+			`INSERT INTO kaname.users (id, external_id, email, account_id)
 			 VALUES ('usr-p1', 'ext-p1', 'p1@kacho.local', 'acc-1')`)
 		r74SeedBinding(t, ctx, tx, "acb-p1", "usr-p1", "rol-grant", "project", "prj-1")
 
 		// Субъект с выдачей на ДРУГОЙ проект того же аккаунта.
 		exec(t, ctx, tx,
-			`INSERT INTO kacho_iam.users (id, external_id, email, account_id)
+			`INSERT INTO kaname.users (id, external_id, email, account_id)
 			 VALUES ('usr-p2', 'ext-p2', 'p2@kacho.local', 'acc-1')`)
 		r74SeedBinding(t, ctx, tx, "acb-p2", "usr-p2", "rol-grant", "project", "prj-2")
 
 		// Субъект с выдачей на АККАУНТ.
 		exec(t, ctx, tx,
-			`INSERT INTO kacho_iam.users (id, external_id, email, account_id)
+			`INSERT INTO kaname.users (id, external_id, email, account_id)
 			 VALUES ('usr-pa', 'ext-pa', 'pa@kacho.local', 'acc-1')`)
 		r74SeedBinding(t, ctx, tx, "acb-pa", "usr-pa", "rol-grant", "account", "acc-1")
 
@@ -587,10 +587,10 @@ func TestR7_4_08_CloudAdministratorReachesIAMsOwnTypesThroughTheAccount(t *testi
 		r74SeedFiveOwnObjects(t, ctx, tx)
 
 		exec(t, ctx, tx,
-			`INSERT INTO kacho_iam.users (id, external_id, email, account_id)
+			`INSERT INTO kaname.users (id, external_id, email, account_id)
 			 VALUES ('usr-cloud', 'ext-cloud', 'cloud@kacho.local', 'acc-1')`)
 		exec(t, ctx, tx,
-			`INSERT INTO kacho_iam.users (id, external_id, email, account_id)
+			`INSERT INTO kaname.users (id, external_id, email, account_id)
 			 VALUES ('usr-plain', 'ext-plain', 'plain@kacho.local', 'acc-1')`)
 		// Факт кладётся ЖУРНАЛОМ — единственным производителем проекции.
 		pointerThroughJournal(t, ctx, tx,
@@ -703,7 +703,7 @@ func TestR7_4_09_BindingOutsideTheThreeScopesGetsNoParent(t *testing.T) {
 		// ВЕРДИКТНЫЙ БЛИЗНЕЦ: что предок ЗНАЧИТ. Администратор аккаунта достаёт
 		// до привязки своей области и НЕ достаёт до той, чья область вне набора.
 		exec(t, ctx, tx,
-			`INSERT INTO kacho_iam.users (id, external_id, email, account_id)
+			`INSERT INTO kaname.users (id, external_id, email, account_id)
 			 VALUES ('usr-adm', 'ext-adm', 'adm@kacho.local', 'acc-1')`)
 		pointerThroughJournal(t, ctx, tx, "account", "acc-1", "admin", "user:usr-adm")
 
@@ -765,7 +765,7 @@ func TestR7_4_10_RevokedBindingKeepsItsParentAndReturnsNoGrant(t *testing.T) {
 
 		// Роль, дающая получателю право НА ОБЛАСТЬ (на сам аккаунт).
 		exec(t, ctx, tx,
-			`INSERT INTO kacho_iam.roles (id, name, permissions, rules, cluster_id)
+			`INSERT INTO kaname.roles (id, name, permissions, rules, cluster_id)
 			 VALUES ('rol-scope', 'probe.scope', '[]'::jsonb,
 			         jsonb_build_array(jsonb_build_object(
 			             'module',    'test',
@@ -774,19 +774,19 @@ func TestR7_4_10_RevokedBindingKeepsItsParentAndReturnsNoGrant(t *testing.T) {
 			         'cluster_kacho_root')`)
 		accountCatalog := catalogFormOf(t, "account")
 		exec(t, ctx, tx,
-			`INSERT INTO kacho_iam.role_verb (role_id, object_type, verb) VALUES ('rol-scope', $1, 'get')`,
+			`INSERT INTO kaname.role_verb (role_id, object_type, verb) VALUES ('rol-scope', $1, 'get')`,
 			accountCatalog)
 		exec(t, ctx, tx,
-			`INSERT INTO kacho_iam.role_rule_selectors
+			`INSERT INTO kaname.role_rule_selectors
 			   (role_id, rule_fp, arm, object_types, match_labels)
 			 VALUES ('rol-scope', 'fp-1', 'anchor', ARRAY[$1::text], '{}'::jsonb)`, accountCatalog)
 
 		// Получатель выдачи и администратор аккаунта.
 		exec(t, ctx, tx,
-			`INSERT INTO kacho_iam.users (id, external_id, email, account_id)
+			`INSERT INTO kaname.users (id, external_id, email, account_id)
 			 VALUES ('usr-grantee', 'ext-grantee', 'grantee@kacho.local', 'acc-1')`)
 		exec(t, ctx, tx,
-			`INSERT INTO kacho_iam.users (id, external_id, email, account_id)
+			`INSERT INTO kaname.users (id, external_id, email, account_id)
 			 VALUES ('usr-adm', 'ext-adm', 'adm@kacho.local', 'acc-1')`)
 		pointerThroughJournal(t, ctx, tx, "account", "acc-1", "admin", "user:usr-adm")
 
@@ -802,17 +802,17 @@ func TestR7_4_10_RevokedBindingKeepsItsParentAndReturnsNoGrant(t *testing.T) {
 
 		// ОТЗЫВ ровно так, как его делает продукт: строка жива, статус сменён.
 		exec(t, ctx, tx,
-			`UPDATE kacho_iam.access_bindings
+			`UPDATE kaname.access_bindings
 			    SET status = 'REVOKED', revoked_at = now(), revoked_by_user_id = 'usr-adm'
 			  WHERE id = 'acb-rev'`)
 
 		// ПРЕДПОСЫЛКА «ОЧЕРЕДЬ ОТСТАЛА», названная числами: ни доставленного
 		// указателя, ни присланного ребра у привязки нет.
 		delivered := countScalar(t, ctx, tx,
-			`SELECT count(*)::int FROM kacho_iam.relation_fact
+			`SELECT count(*)::int FROM kaname.relation_fact
 			  WHERE object_type = 'iam_access_binding' AND object_id = 'acb-rev'`)
 		sent := countScalar(t, ctx, tx,
-			`SELECT count(*)::int FROM kacho_iam.resource_parent_edge
+			`SELECT count(*)::int FROM kaname.resource_parent_edge
 			  WHERE object_type = 'iam_access_binding' AND object_id = 'acb-rev'`)
 		if delivered != 0 || sent != 0 {
 			t.Fatalf("у привязки нашлись доставленный указатель (%d) либо присланное ребро (%d) — "+

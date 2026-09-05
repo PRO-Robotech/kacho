@@ -90,7 +90,7 @@ func TestShadowDeadlineLeavesNoOpenTransaction(t *testing.T) {
 		t.Fatalf("транзакция замка: %v", err)
 	}
 	if _, err := blockTx.Exec(ctx,
-		`LOCK TABLE kacho_iam.relation_fact IN ACCESS EXCLUSIVE MODE`); err != nil {
+		`LOCK TABLE kaname.relation_fact IN ACCESS EXCLUSIVE MODE`); err != nil {
 		t.Fatalf("замок: %v", err)
 	}
 
@@ -263,7 +263,7 @@ func TestShadowDeadlineDoesNotCostTheConnection(t *testing.T) {
 		t.Fatalf("транзакция замка: %v", err)
 	}
 	if _, err := blockTx.Exec(ctx,
-		`LOCK TABLE kacho_iam.relation_fact IN ACCESS EXCLUSIVE MODE`); err != nil {
+		`LOCK TABLE kaname.relation_fact IN ACCESS EXCLUSIVE MODE`); err != nil {
 		t.Fatalf("замок: %v", err)
 	}
 

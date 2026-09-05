@@ -52,7 +52,7 @@ func factExists(t *testing.T, ctx context.Context, pool *pgxpool.Pool, objType, 
 	t.Helper()
 	var n int
 	require.NoError(t, pool.QueryRow(ctx, `
-		SELECT count(*) FROM kacho_iam.relation_fact
+		SELECT count(*) FROM kaname.relation_fact
 		 WHERE object_type = $1 AND object_id = $2 AND relation = $3 AND subject = $4`,
 		objType, objID, relation, subject).Scan(&n))
 	return n > 0
@@ -63,7 +63,7 @@ func catalogGrantID(t *testing.T, ctx context.Context, pool *pgxpool.Pool) domai
 	t.Helper()
 	var id string
 	require.NoError(t, pool.QueryRow(ctx, `
-		SELECT id FROM kacho_iam.access_bindings
+		SELECT id FROM kaname.access_bindings
 		 WHERE is_system AND granted_relation = 'viewer'
 		   AND subject_type = 'user' AND subject_id = '*'
 		   AND resource_type = 'cluster'`).Scan(&id),
@@ -103,7 +103,7 @@ func TestABSystem_R893_RelationFormIsReadable(t *testing.T) {
 	// быть отличимо от «ноль прочитанного».
 	var n int
 	require.NoError(t, pool.QueryRow(ctx,
-		`SELECT count(*) FROM kacho_iam.access_bindings WHERE is_system`).Scan(&n))
+		`SELECT count(*) FROM kaname.access_bindings WHERE is_system`).Scan(&n))
 	t.Logf("осмотрено: системных выдач %d", n)
 	require.NotZero(t, n)
 }
@@ -129,7 +129,7 @@ func TestABSystem_R893_RevokeClosesTheAccess(t *testing.T) {
 	// Соседнее основание — то, что отзыв ОДНОЙ выдачи трогать не вправе.
 	var neighbourSubject string
 	require.NoError(t, pool.QueryRow(ctx, `
-		SELECT subject FROM kacho_iam.relation_fact
+		SELECT subject FROM kaname.relation_fact
 		 WHERE object_type = 'cluster' AND relation = 'system_viewer'
 		 ORDER BY subject LIMIT 1`).Scan(&neighbourSubject),
 		"положительному контролю не на чем стоять — соседних оснований нет")

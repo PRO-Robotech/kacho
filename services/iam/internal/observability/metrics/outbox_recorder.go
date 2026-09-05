@@ -20,7 +20,7 @@ import (
 // комментария молча (в день заведения он говорил «три», и это перестало быть
 // верным задолго до того, как кто-нибудь перечитал строку). Перечень ВЫВОДИТСЯ:
 //
-//	git grep -c 'CREATE TABLE kacho_iam\..*outbox' -- services/iam/internal/migrations
+//	git grep -c 'CREATE TABLE kaname\..*outbox' -- services/iam/internal/migrations
 //	git grep -l 'outboxmetrics.NewCollector' -- services/iam/cmd ':!*_test.go'
 //
 // Первое даёт объявленные очереди, второе — наблюдаемые; расхождение между ними

@@ -100,7 +100,7 @@ deny. Флаг `KACHO_API_GATEWAY_AUTHZ_FAIL_OPEN` существует толь
   «сменил права и тут же проверил».
 - **опрос журнала (сходимость остальных реплик)** — фоновый цикл каждой реплики зовёт
   `kacho.cloud.iam.v1.InternalIAMService/PollSubjectChanges` на cluster-internal listener'е
-  `kaname`, читая `kacho_iam.subject_change_outbox` курсором по возрастанию `id`; непустая
+  `kaname`, читая `kaname.subject_change_outbox` курсором по возрастанию `id`; непустая
   партия означает сброс кэша **этой** реплики. Интервал —
   `KACHO_API_GATEWAY_SUBJECT_CHANGE_POLL_INTERVAL` (дефолт `2s`), поэтому окно сходимости задаёт
   он, а не TTL записи.

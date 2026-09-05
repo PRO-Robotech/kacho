@@ -10,7 +10,7 @@ IAM-сервис Kachō: control-plane для identity & access. Управля�
   (`internal/authzcascade` поверх `repo/kacho/pg/relverdict`); внешнего движка
   отношений в пути решения нет — он снят целиком стадией S6 эпика #747, и его
   возвращение стережёт гейт `internal/repohygiene/authzengineretired.go`. Гранты
-  `AccessBinding` кладутся строками журнала намерений (`kacho_iam.fga_outbox`)
+  `AccessBinding` кладутся строками журнала намерений (`kaname.fga_outbox`)
   тем же writer-tx, что меняет выдачу, — журнал остался, снят его прежний
   потребитель.
 - **Permission catalog** — `PermissionCatalogService`: грантуемая таксономия `<module>.<resource>.<verb>`.
@@ -40,7 +40,7 @@ curl 'http://localhost:18080/iam/v1/accounts?pageSize=5'
 ```bash
 make -C deploy reload-svc SVC=iam
 make -C deploy logs-svc SVC=iam
-make -C deploy psql SVC=iam            # psql kacho_iam
+make -C deploy psql SVC=iam            # psql kaname
 ```
 
 ## Архитектура

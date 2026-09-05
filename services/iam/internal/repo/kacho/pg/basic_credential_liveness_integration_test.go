@@ -124,7 +124,7 @@ func basicCredCarriers(t *testing.T, pool *pgxpool.Pool) []string {
 	rows, err := pool.Query(context.Background(), `
 SELECT table_name
   FROM information_schema.columns
- WHERE table_schema = 'kacho_iam'
+ WHERE table_schema = 'kaname'
    AND column_name IN ('credential_kind', 'secret_hash')
  GROUP BY table_name
 HAVING count(DISTINCT column_name) = 2

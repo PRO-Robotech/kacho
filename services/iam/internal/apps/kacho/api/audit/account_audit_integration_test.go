@@ -86,7 +86,7 @@ func TestAccountAudit_5_2_12_DeleteEmits(t *testing.T) {
 	// non-empty account (IAM-1-06 "Account <id> contains projects"). Empty the account
 	// first (delete its default project) so the delete succeeds and emits its audit row —
 	// the subject of THIS test (the RESTRICT itself is exercised by account_integration).
-	_, perr := env.pool.Exec(ctx, `DELETE FROM kacho_iam.projects WHERE account_id = $1`, accID)
+	_, perr := env.pool.Exec(ctx, `DELETE FROM kaname.projects WHERE account_id = $1`, accID)
 	require.NoError(t, perr, "empty the account before delete (RESTRICT on projects, IAM-1-06)")
 
 	uc := account.NewDeleteAccountUseCase(env.repo, env.opsRepo)
@@ -197,6 +197,6 @@ func accountIDFromMetadata(t *testing.T, ctx context.Context, env *testEnv, name
 	t.Helper()
 	var id string
 	require.NoError(t, env.pool.QueryRow(ctx,
-		`SELECT id FROM kacho_iam.accounts WHERE name = $1`, name).Scan(&id))
+		`SELECT id FROM kaname.accounts WHERE name = $1`, name).Scan(&id))
 	return id
 }

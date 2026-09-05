@@ -35,7 +35,7 @@ func seedAccountRulesRole(t *testing.T, ctx context.Context, pool *pgxpool.Pool,
 	t.Helper()
 	rid := domain.RoleID(ids.NewID(domain.PrefixRole))
 	_, err := pool.Exec(ctx, `
-		INSERT INTO kacho_iam.roles (id, account_id, name, description, permissions, rules)
+		INSERT INTO kaname.roles (id, account_id, name, description, permissions, rules)
 		VALUES ($1, $2, $3, $4, '[]'::jsonb,
 		        ('[{"module":"'||$5||'","resources":["network"],"verbs":["get","list"]}]')::jsonb)`,
 		string(rid), string(acc), name, "rules role "+name, module)
@@ -53,7 +53,7 @@ func TestAB_IAM_1_24_RoleCoversType_Uncovered(t *testing.T) {
 	dsn := setupTestDB(t)
 	pool := poolFromDSN(t, dsn)
 	repo := kachopg.New(pool, nil)
-	opsRepo := operations.NewRepo(pool, "kacho_iam")
+	opsRepo := operations.NewRepo(pool, "kaname")
 	h := deltaHandler(t, repo, opsRepo)
 
 	owner := mustSeedUser(t, ctx, pool, "f9a")
@@ -94,7 +94,7 @@ func TestAB_IAM_1_26_MalformedScopeId_InvalidArgument(t *testing.T) {
 	dsn := setupTestDB(t)
 	pool := poolFromDSN(t, dsn)
 	repo := kachopg.New(pool, nil)
-	opsRepo := operations.NewRepo(pool, "kacho_iam")
+	opsRepo := operations.NewRepo(pool, "kaname")
 	h := deltaHandler(t, repo, opsRepo)
 
 	owner := mustSeedUser(t, ctx, pool, "f9b")

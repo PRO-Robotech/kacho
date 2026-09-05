@@ -22,7 +22,7 @@ Kaname конфигурируется через переменные окруж
   <tbody>
     <tr><td><code>KANAME_DB_HOST</code> / <code>KANAME_DB_PORT</code></td><td>Хост и порт PostgreSQL</td></tr>
     <tr><td><code>KANAME_DB_USER</code> / <code>KANAME_DB_PASSWORD</code></td><td>Учётные данные</td></tr>
-    <tr><td><code>KANAME_DB_NAME</code></td><td>Имя БД (схема <code>kacho_iam</code>)</td></tr>
+    <tr><td><code>KANAME_DB_NAME</code></td><td>Имя БД (схема <code>kaname</code>)</td></tr>
     <tr><td><code>KANAME_DB_SSLMODE</code></td><td>Режим SSL (<code>require</code> в проде)</td></tr>
     <tr><td><code>KANAME_DB_MAX_CONNS</code></td><td>Размер пула pgx</td></tr>
     <tr><td><code>KANAME_REPOSITORY__POSTGRES__URL</code></td><td>Альтернатива — полный DSN одной строкой. Двойное подчёркивание — не опечатка: конфигурация грузится viper'ом с префиксом <code>KANAME</code>, точка пути ключа заменяется на <code>__</code>, дефис на <code>_</code></td></tr>
@@ -154,7 +154,7 @@ with insecure :9090/:9091») — никакого молчаливого insecur
     export KANAME_DB_PORT=5432
     export KANAME_DB_USER=kacho
     export KANAME_DB_PASSWORD=secret
-    export KANAME_DB_NAME=kacho_iam
+    export KANAME_DB_NAME=kaname
     export KANAME_DB_SSLMODE=disable
 
     bin/kacho-migrator up

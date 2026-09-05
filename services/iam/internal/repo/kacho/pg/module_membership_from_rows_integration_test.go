@@ -14,7 +14,7 @@ package pg_test
 //
 // # Почему это ИНТЕГРАЦИОННАЯ проба, а не юнит
 //
-// Предмет — ДАННЫЕ: живое множество `kacho_iam.catalog_module` и его чтение тем
+// Предмет — ДАННЫЕ: живое множество `kaname.catalog_module` и его чтение тем
 // же портом, каким его читает служба. Подделка SQL здесь ничего не доказала бы:
 // она отвечала бы то, что в неё положили, а спор ровно о том, откуда приходит
 // ответ. Поэтому строка заводится и снимается настоящими операторами, читается
@@ -127,11 +127,11 @@ func TestIAMMW110_ModuleMembershipIsAnsweredByCatalogRows(t *testing.T) {
 	// представимым (ключ `catalog_resource_module_live_fk` не пускает снять
 	// модуль при живом ресурсе), и предмет пробы — сегмент модуля, а не пара.
 	_, err = pool.Exec(ctx,
-		`INSERT INTO kacho_iam.catalog_module (module) VALUES ($1)`, membershipProbeModule)
+		`INSERT INTO kaname.catalog_module (module) VALUES ($1)`, membershipProbeModule)
 	require.NoError(t, err, "заведение модуля строкой")
 	t.Cleanup(func() {
 		_, _ = pool.Exec(context.Background(),
-			`DELETE FROM kacho_iam.catalog_module WHERE module = $1`, membershipProbeModule)
+			`DELETE FROM kaname.catalog_module WHERE module = $1`, membershipProbeModule)
 	})
 
 	seeded := factsFromRows(t, ctx, pool)
@@ -146,7 +146,7 @@ func TestIAMMW110_ModuleMembershipIsAnsweredByCatalogRows(t *testing.T) {
 
 	// ── СНЯТИЕ: IAM-MW-1-10 ─────────────────────────────────────────────────
 	_, err = pool.Exec(ctx, `
-		UPDATE kacho_iam.catalog_module
+		UPDATE kaname.catalog_module
 		   SET live = false, retired_at = now(), retired_reason = 'проба IAM-MW-1-10'
 		 WHERE module = $1`, membershipProbeModule)
 	require.NoError(t, err, "снятие модуля строкой")

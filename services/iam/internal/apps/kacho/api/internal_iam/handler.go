@@ -164,7 +164,7 @@ func (h *Handler) WithResourceRegistrar(registrar resourceRegistrar, gate relati
 }
 
 // RegisterResource — Internal FGA-proxy: enqueue an owner-hierarchy tuple write
-// into kacho_iam.fga_outbox, out of which a trigger folds the direct fact in the
+// into kaname.fga_outbox, out of which a trigger folds the direct fact in the
 // same commit. Idempotent: repeat of the same tuple → OK, never AlreadyExists.
 //
 // authz: exempt in proto-catalog; least-priv enforced HERE via ReBAC
@@ -244,7 +244,7 @@ func (h *Handler) authorizeRegistration(ctx context.Context) (string, error) {
 }
 
 // TOMBSTONE. `WriteCreatorTuple` стоял здесь и снят (#788): он писал кортёж
-// создателя в движок НАПРЯМУЮ, мимо `kacho_iam.fga_outbox`, поэтому проекция
+// создателя в движок НАПРЯМУЮ, мимо `kaname.fga_outbox`, поэтому проекция
 // `relation_fact` (миграция 0098) его не увидела бы никогда. Вызывающих не
 // осталось ни одного — все пять соседей ушли на RegisterResource. Порт записи
 // (`relationWriter`) снят вместе с методом НАМЕРЕННО: тип без него нельзя

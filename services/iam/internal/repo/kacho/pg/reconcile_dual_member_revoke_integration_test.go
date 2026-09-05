@@ -166,7 +166,7 @@ func TestReview1_OwnerScopeSelfAndContent_ShareLedgerRow(t *testing.T) {
 	// rule_fp). Both write {admin, v_*} on account:<A> → the ledger collapses them.
 	var contentMembers int
 	require.NoError(t, pool.QueryRow(ctx,
-		`SELECT count(*) FROM kacho_iam.access_binding_target_members
+		`SELECT count(*) FROM kaname.access_binding_target_members
 		  WHERE binding_id=$1 AND object_type='iam.account' AND object_id=$2
 		    AND rule_fp <> 'scope_self' AND verification_status='ACTIVE'`,
 		string(ownerBID), string(acc.ID)).Scan(&contentMembers))

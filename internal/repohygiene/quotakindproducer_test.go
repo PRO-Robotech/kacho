@@ -129,7 +129,7 @@ type quotaDebt struct {
 // Задача: PRO-Robotech/kacho#414.
 var kindsWithoutADebitProducer = map[string]quotaDebt{
 	// МЕХАНИЗМ УЧЁТА У iam ЕСТЬ, и это измерено, а не предположено: таблица
-	// `kacho_iam.project_resource_quotas`, функция `kacho_iam.kacho_quota_count`
+	// `kaname.project_resource_quotas`, функция `kaname.kacho_quota_count`
 	// и списывающий триггер заведены миграцией
 	// `484002_account_quota_identity_carrier.sql`, а единственный производитель
 	// отказа — миграцией `484001_quota_refusal_single_source.sql`. Вид
@@ -570,9 +570,9 @@ func TestQuotaDebtReasonProbe_CanFailAndStaysSilentOnTheGenuineGap(t *testing.T)
 	// Инъекция: текст, ЗАВОДЯЩИЙ обе части. Долг, называющий их недостающими,
 	// обязан быть объявлен устаревшим — обе поимённо.
 	const real = `
-CREATE TABLE IF NOT EXISTS kacho_iam.project_resource_quotas (
+CREATE TABLE IF NOT EXISTS kaname.project_resource_quotas (
     carrier_type text NOT NULL);
-CREATE OR REPLACE FUNCTION kacho_iam.kacho_quota_count()
+CREATE OR REPLACE FUNCTION kaname.kacho_quota_count()
 RETURNS trigger LANGUAGE plpgsql AS $$ BEGIN RETURN NULL; END; $$;`
 
 	present := quotaMechanismInSQL(real)
@@ -597,7 +597,7 @@ RETURNS trigger LANGUAGE plpgsql AS $$ BEGIN RETURN NULL; END; $$;`
 	// отсутствие учёта, не заводит его — иначе гейт зеленел бы на собственном
 	// разборе (`testing.md` §«Гейт читает исполняемую часть, а не текст»).
 	prose := quotaMechanismInSQL(
-		`-- у владельца нет ни kacho_iam.project_resource_quotas, ни FUNCTION kacho_iam.kacho_quota_count`)
+		`-- у владельца нет ни kaname.project_resource_quotas, ни FUNCTION kaname.kacho_quota_count`)
 	if len(prose) != 0 {
 		t.Fatalf("часть, названная в комментарии, принята за заведённую: %v", prose)
 	}

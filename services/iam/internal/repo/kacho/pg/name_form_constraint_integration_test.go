@@ -62,14 +62,14 @@ func TestIntegration_IAM_NameFormConstraintIsEnforced(t *testing.T) {
 	nextOwner++
 
 	nameformdb.Probe{
-		Schema: "kacho_iam",
+		Schema: "kaname",
 		Tables: []nameformdb.Table{
 			{
 				Name: "accounts",
 				Row: func(name string, seq int) (string, []any) {
 					o := owners[nextOwner%len(owners)]
 					nextOwner++
-					return `INSERT INTO kacho_iam.accounts (id, name, owner_user_id)
+					return `INSERT INTO kaname.accounts (id, name, owner_user_id)
 					        VALUES ($1, $2, $3)`,
 						[]any{fmt.Sprintf("acc%017d", seq), name, string(o)}
 				},
@@ -77,7 +77,7 @@ func TestIntegration_IAM_NameFormConstraintIsEnforced(t *testing.T) {
 			{
 				Name: "projects",
 				Row: func(name string, seq int) (string, []any) {
-					return `INSERT INTO kacho_iam.projects (id, account_id, name)
+					return `INSERT INTO kaname.projects (id, account_id, name)
 					        VALUES ($1, $2, $3)`,
 						[]any{fmt.Sprintf("prj%017d", seq), acc, name}
 				},
@@ -85,7 +85,7 @@ func TestIntegration_IAM_NameFormConstraintIsEnforced(t *testing.T) {
 			{
 				Name: "groups",
 				Row: func(name string, seq int) (string, []any) {
-					return `INSERT INTO kacho_iam.groups (id, account_id, name)
+					return `INSERT INTO kaname.groups (id, account_id, name)
 					        VALUES ($1, $2, $3)`,
 						[]any{fmt.Sprintf("grp%017d", seq), acc, name}
 				},
@@ -93,7 +93,7 @@ func TestIntegration_IAM_NameFormConstraintIsEnforced(t *testing.T) {
 			{
 				Name: "service_accounts",
 				Row: func(name string, seq int) (string, []any) {
-					return `INSERT INTO kacho_iam.service_accounts (id, account_id, name)
+					return `INSERT INTO kaname.service_accounts (id, account_id, name)
 					        VALUES ($1, $2, $3)`,
 						[]any{fmt.Sprintf("sva%017d", seq), acc, name}
 				},
@@ -105,7 +105,7 @@ func TestIntegration_IAM_NameFormConstraintIsEnforced(t *testing.T) {
 					// адресов возврата — быть непустым и https: обе проверки
 					// стоят рядом с формой имени, и строка, спотыкающаяся о них,
 					// до неё бы не дошла.
-					return `INSERT INTO kacho_iam.interactive_clients
+					return `INSERT INTO kaname.interactive_clients
 					            (id, client_id, name, redirect_uris)
 					        VALUES ($1, $2, $3, ARRAY['https://console.example/cb'])`,
 						[]any{
@@ -138,7 +138,7 @@ func seedNameFormAccount(t *testing.T, ctx context.Context, pool *pgxpool.Pool, 
 	t.Helper()
 	const id = "acc00000000000nmfrm"
 	_, err := pool.Exec(ctx,
-		`INSERT INTO kacho_iam.accounts (id, name, owner_user_id) VALUES ($1, $2, $3)`,
+		`INSERT INTO kaname.accounts (id, name, owner_user_id) VALUES ($1, $2, $3)`,
 		id, "nameform-carrier", string(owner))
 	require.NoError(t, err, "фикстура: аккаунт-носитель не завёлся — дочерние вставки недостижимы")
 	return id

@@ -13,7 +13,7 @@ import (
 
 // setupTestDB hands the calling test its OWN database — all goose migrations
 // already applied (including 0058, which seeds the bootstrap SA + grant) — and
-// returns a dsn with search_path=kacho_iam.
+// returns a dsn with search_path=kaname.
 //
 // It used to start a fresh container and replay the whole chain on every call.
 // The database now comes from the one container this test binary owns (wired in

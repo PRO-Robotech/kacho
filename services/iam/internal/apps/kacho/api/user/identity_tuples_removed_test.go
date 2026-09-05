@@ -83,7 +83,7 @@ func toClientTuples(in []service.RelationTuple) []clients.RelationTuple {
 func journalWrite(t *testing.T, ctx context.Context, pool *pgxpool.Pool, tp clients.RelationTuple) {
 	t.Helper()
 	_, err := pool.Exec(ctx, `
-		INSERT INTO kacho_iam.fga_outbox (event_type, payload, created_at)
+		INSERT INTO kaname.fga_outbox (event_type, payload, created_at)
 		VALUES ('fga.tuple.write',
 		        jsonb_build_object('user', $1::text, 'relation', $2::text, 'object', $3::text),
 		        now())`, tp.User, tp.Relation, tp.Object)
@@ -97,7 +97,7 @@ func journalDelete(t *testing.T, ctx context.Context, pool *pgxpool.Pool, tuples
 	t.Helper()
 	for _, tp := range tuples {
 		_, err := pool.Exec(ctx, `
-			INSERT INTO kacho_iam.fga_outbox (event_type, payload, created_at)
+			INSERT INTO kaname.fga_outbox (event_type, payload, created_at)
 			VALUES ('fga.tuple.delete',
 			        jsonb_build_object('user', $1::text, 'relation', $2::text, 'object', $3::text),
 			        now())`, tp.User, tp.Relation, tp.Object)
@@ -114,7 +114,7 @@ func factHeld(t *testing.T, ctx context.Context, pool *pgxpool.Pool, tp clients.
 	require.Truef(t, ok, "объект %q не разбирается как «тип:идентификатор»", tp.Object)
 	var n int
 	require.NoError(t, pool.QueryRow(ctx, `
-		SELECT count(*)::int FROM kacho_iam.relation_fact
+		SELECT count(*)::int FROM kaname.relation_fact
 		 WHERE object_type = $1 AND object_id = $2 AND relation = $3 AND subject = $4`,
 		objectType, objectID, tp.Relation, tp.User).Scan(&n))
 	return n > 0

@@ -4,7 +4,7 @@
 package pg
 
 // catalog_repo.go — ЕДИНСТВЕННЫЙ читатель живых строк каталога модуля
-// (`kacho_iam.catalog_module` / `catalog_resource` / `catalog_verb`).
+// (`kaname.catalog_module` / `catalog_resource` / `catalog_verb`).
 //
 // # Почему читатель ОДИН
 //
@@ -123,18 +123,18 @@ var (
 	// и согласие этих двух держит проверка колонки, а не читатель.
 	liveCatalogHalf = catalogHalf{
 		what:      "каталог",
-		modules:   `SELECT module FROM kacho_iam.catalog_module WHERE live`,
-		resources: `SELECT module, resource, object_type FROM kacho_iam.catalog_resource WHERE live`,
-		verbs:     `SELECT module, resource, verb, per_object FROM kacho_iam.catalog_verb WHERE live`,
+		modules:   `SELECT module FROM kaname.catalog_module WHERE live`,
+		resources: `SELECT module, resource, object_type FROM kaname.catalog_resource WHERE live`,
+		verbs:     `SELECT module, resource, verb, per_object FROM kaname.catalog_verb WHERE live`,
 	}
 	// retiredCatalogHalf — СНЯТОЕ множество: `retired_at` проставлен, `live`
 	// ложен. Спрашивает его тот, кому нужно отличить снятую решением строку от
 	// непроехавшей вовсе.
 	retiredCatalogHalf = catalogHalf{
 		what:      "снятые строки каталога",
-		modules:   `SELECT module FROM kacho_iam.catalog_module WHERE NOT live`,
-		resources: `SELECT module, resource, object_type FROM kacho_iam.catalog_resource WHERE NOT live`,
-		verbs:     `SELECT module, resource, verb, per_object FROM kacho_iam.catalog_verb WHERE NOT live`,
+		modules:   `SELECT module FROM kaname.catalog_module WHERE NOT live`,
+		resources: `SELECT module, resource, object_type FROM kaname.catalog_resource WHERE NOT live`,
+		verbs:     `SELECT module, resource, verb, per_object FROM kaname.catalog_verb WHERE NOT live`,
 	}
 )
 

@@ -55,7 +55,7 @@ func seedAuditUser(t *testing.T, ctx context.Context, pool *pgxpool.Pool, suffix
 	require.NoError(t, err)
 	defer func() { _ = tx.Rollback(ctx) }()
 	_, err = tx.Exec(ctx, `
-		INSERT INTO kacho_iam.users (id, account_id, external_id, email, display_name, invite_status)
+		INSERT INTO kaname.users (id, account_id, external_id, email, display_name, invite_status)
 		VALUES ($1, $2, $3, $4, $5, 'ACTIVE')`,
 		string(uid), string(accID),
 		fmt.Sprintf("ext-%s-%s", suffix, uid),
@@ -63,7 +63,7 @@ func seedAuditUser(t *testing.T, ctx context.Context, pool *pgxpool.Pool, suffix
 		"Audit User "+suffix)
 	require.NoError(t, err)
 	_, err = tx.Exec(ctx, `
-		INSERT INTO kacho_iam.accounts (id, name, owner_user_id, labels)
+		INSERT INTO kaname.accounts (id, name, owner_user_id, labels)
 		VALUES ($1, $2, $3, '{}'::jsonb)`,
 		string(accID),
 		fmt.Sprintf("aud-acc-%s-%s", suffix, accID[len(accID)-6:]),
@@ -80,7 +80,7 @@ func seedActiveClusterAdmin(t *testing.T, ctx context.Context, pool *pgxpool.Poo
 	t.Helper()
 	id := domain.NewKac127ID(domain.PrefixClusterAdminGrant)
 	_, err := pool.Exec(ctx,
-		`INSERT INTO kacho_iam.cluster_admin_grants
+		`INSERT INTO kaname.cluster_admin_grants
 		     (id, cluster_id, subject_type, subject_id, granted_by, granted_at, granted_until)
 		 VALUES ($1, $2, 'user', $3, $3, now(), NULL)`,
 		id, domain.ClusterSingletonID, string(subject))
@@ -103,7 +103,7 @@ func clusterAuditRows(ctx context.Context, t *testing.T, pool *pgxpool.Pool, sub
 	t.Helper()
 	rows, err := pool.Query(ctx,
 		`SELECT id, event_type, event_payload::text, status, tenant_account_id
-		   FROM kacho_iam.audit_outbox
+		   FROM kaname.audit_outbox
 		  WHERE event_payload->>'subject_id' = $1 AND event_type = $2
 		  ORDER BY created_at ASC`,
 		subjectID, eventType)
@@ -200,7 +200,7 @@ func TestClusterAudit_5_2_02_RevokeAdminEmits(t *testing.T) {
 
 // ── atomicity: rollback leaves no orphan audit row ────────────────────────────
 //
-// A GrantAdmin against a subject that does NOT exist in kacho_iam.users fails
+// A GrantAdmin against a subject that does NOT exist in kaname.users fails
 // the user-existence guard BEFORE the writer-tx is opened — so no audit row
 // can exist. To exercise the in-tx rollback path we drive a grant whose target
 // user is absent but well-formed: the guard rejects it and nothing is written.

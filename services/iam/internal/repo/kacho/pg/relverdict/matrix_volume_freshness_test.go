@@ -265,7 +265,7 @@ func TestMatrixVolumeFreshnessGateCanFailAndCanStaySilent(t *testing.T) {
 		Composition: "aaaaaaaaaaaaaaaa",
 		Content:     "bbbbbbbbbbbbbbbb",
 		Files:       []string{"a/one.go", "a/two.go"},
-		Tables:      []string{"kacho_iam.access_bindings"},
+		Tables:      []string{"kaname.access_bindings"},
 	}
 	content := map[string]string{"a/one.go": "1111111111111111", "a/two.go": "2222222222222222"}
 	contentOf := func(rel string) string { return content[rel] }

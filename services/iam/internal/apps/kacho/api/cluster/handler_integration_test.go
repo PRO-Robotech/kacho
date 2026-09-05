@@ -57,7 +57,7 @@ func buildHandler(t *testing.T, dsn string) *clusterapp.Handler {
 	require.NoError(t, err)
 	t.Cleanup(pool.Close)
 
-	opsRepo := operations.NewRepo(pool, "kacho_iam")
+	opsRepo := operations.NewRepo(pool, "kaname")
 
 	clusterReader := kachopg.NewClusterReader(pool)
 	grantWriter := kachopg.NewClusterAdminGrantWriter(pool)
@@ -600,7 +600,7 @@ func TestCluster_6_20_RevokeAdmin_BootstrapServiceAccountGrant(t *testing.T) {
 	// The row is actually revoked (not merely reported as such).
 	var active int
 	require.NoError(t, pool.QueryRow(ctx,
-		`SELECT count(*) FROM kacho_iam.cluster_admin_grants
+		`SELECT count(*) FROM kaname.cluster_admin_grants
 		  WHERE subject_id = $1 AND granted_until IS NULL`, sva).Scan(&active))
 	require.Zero(t, active, "the seeded machine grant must no longer be active")
 
@@ -615,7 +615,7 @@ func TestCluster_6_20_RevokeAdmin_BootstrapServiceAccountGrant(t *testing.T) {
 	// backend still granting cluster-admin while the DB says revoked.
 	var tuples int
 	require.NoError(t, pool.QueryRow(ctx,
-		`SELECT count(*) FROM kacho_iam.fga_outbox
+		`SELECT count(*) FROM kaname.fga_outbox
 		  WHERE event_type = 'fga.tuple.delete'
 		    AND payload->>'user'     = $1
 		    AND payload->>'relation' = 'system_admin'
@@ -655,13 +655,13 @@ func TestCluster_6_21_RevokeAdmin_HumanPathUnaffected(t *testing.T) {
 
 	var active int
 	require.NoError(t, pool.QueryRow(ctx,
-		`SELECT count(*) FROM kacho_iam.cluster_admin_grants
+		`SELECT count(*) FROM kaname.cluster_admin_grants
 		  WHERE subject_id = $1 AND granted_until IS NULL`, string(target)).Scan(&active))
 	require.Zero(t, active)
 
 	var tuples int
 	require.NoError(t, pool.QueryRow(ctx,
-		`SELECT count(*) FROM kacho_iam.fga_outbox
+		`SELECT count(*) FROM kaname.fga_outbox
 		  WHERE event_type = 'fga.tuple.delete'
 		    AND payload->>'user'   = $1
 		    AND payload->>'object' = $2`,
@@ -698,7 +698,7 @@ func TestCluster_6_22_RevokeAdmin_MachineGrant_NotReachableAsUser(t *testing.T) 
 
 	var active int
 	require.NoError(t, pool.QueryRow(ctx,
-		`SELECT count(*) FROM kacho_iam.cluster_admin_grants
+		`SELECT count(*) FROM kaname.cluster_admin_grants
 		  WHERE subject_id = $1 AND granted_until IS NULL`, sva).Scan(&active))
 	require.Equal(t, 1, active, "the machine grant must be untouched by the rejected call")
 }
@@ -719,7 +719,7 @@ func containsAdminSubject(admins []*iamv1.ClusterAdminEntry, subjectID string) b
 // Grant and Revoke must accept the same subject types: an asymmetric pair
 // (grantable but not revocable, or the reverse) is how an unrevocable grant is
 // manufactured in the first place. This drives the SERVICE_ACCOUNT branch of the
-// existence guard (kacho_iam.service_accounts, not kacho_iam.users — subject_id
+// existence guard (kaname.service_accounts, not kaname.users — subject_id
 // is polymorphic and no FK can cover it).
 func TestCluster_6_23_GrantAdmin_ServiceAccountSubject(t *testing.T) {
 	if testing.Short() {
@@ -755,7 +755,7 @@ func TestCluster_6_23_GrantAdmin_ServiceAccountSubject(t *testing.T) {
 
 	var active int
 	require.NoError(t, pool.QueryRow(ctx,
-		`SELECT count(*) FROM kacho_iam.cluster_admin_grants
+		`SELECT count(*) FROM kaname.cluster_admin_grants
 		  WHERE subject_id = $1 AND subject_type = 'service_account'
 		    AND granted_until IS NULL`, sva).Scan(&active))
 	require.Equal(t, 1, active, "the machine grant must be active again")
@@ -763,7 +763,7 @@ func TestCluster_6_23_GrantAdmin_ServiceAccountSubject(t *testing.T) {
 	// The write-tuple must name the machine subject (mirror of the revoke case).
 	var tuples int
 	require.NoError(t, pool.QueryRow(ctx,
-		`SELECT count(*) FROM kacho_iam.fga_outbox
+		`SELECT count(*) FROM kaname.fga_outbox
 		  WHERE event_type = 'fga.tuple.write'
 		    AND payload->>'user'   = $1
 		    AND payload->>'object' = $2`,
@@ -777,7 +777,7 @@ func TestCluster_6_23_GrantAdmin_ServiceAccountSubject(t *testing.T) {
 
 // TestCluster_6_24_GrantAdmin_UnknownServiceAccount_Rejected — the existence
 // guard must read the SERVICE_ACCOUNTS table for a machine subject. Checking
-// kacho_iam.users for an `sva…` id would never match, turning a well-formed
+// kaname.users for an `sva…` id would never match, turning a well-formed
 // request into a confusing failure; skipping the check entirely would let a
 // cluster-admin grant be written for a subject that does not exist.
 func TestCluster_6_24_GrantAdmin_UnknownServiceAccount_Rejected(t *testing.T) {
@@ -808,7 +808,7 @@ func TestCluster_6_24_GrantAdmin_UnknownServiceAccount_Rejected(t *testing.T) {
 
 	var rows int
 	require.NoError(t, pool.QueryRow(ctx,
-		`SELECT count(*) FROM kacho_iam.cluster_admin_grants WHERE subject_id = $1`,
+		`SELECT count(*) FROM kaname.cluster_admin_grants WHERE subject_id = $1`,
 		absentSA).Scan(&rows))
 	require.Zero(t, rows, "no grant row may exist for a rejected subject")
 }

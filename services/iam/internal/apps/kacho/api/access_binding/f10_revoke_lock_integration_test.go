@@ -58,7 +58,7 @@ import (
 // Прежняя редакция записывала набор, переданный пост-коммитному СНЯТИЮ кортежей у
 // внешнего движка, и утверждала состав по этой записи. Снятия больше нет — и не
 // потому, что от него отказались, а потому что отзыв теперь ЗАЯВЛЯЕТСЯ В ТОЙ ЖЕ
-// транзакции, что снимает выдачу: строка журнала `kacho_iam.fga_outbox`, из
+// транзакции, что снимает выдачу: строка журнала `kaname.fga_outbox`, из
 // которой триггер `relation_fact_follows_journal` (миграции 0098/0100) убирает
 // прямой факт — до коммита, а не после него.
 //
@@ -96,7 +96,7 @@ func journalDeletes(t *testing.T, ctx context.Context, q interface {
 		SELECT payload->>'user' AS u,
 		       COALESCE(rel.value, payload->>'relation') AS r,
 		       payload->>'object' AS o
-		  FROM kacho_iam.fga_outbox
+		  FROM kaname.fga_outbox
 		  LEFT JOIN LATERAL jsonb_array_elements_text(
 		                COALESCE(payload->'relations', '[]'::jsonb)) AS rel(value) ON TRUE
 		 WHERE event_type = 'fga.tuple.delete'`)
@@ -137,7 +137,7 @@ func TestAB_IAM_1_28_Revoke_SerializesWithConcurrentForwardPass(t *testing.T) {
 	dsn := setupTestDB(t)
 	pool := poolFromDSN(t, dsn)
 	repo := kachopg.New(pool, nil)
-	opsRepo := operations.NewRepo(pool, "kacho_iam")
+	opsRepo := operations.NewRepo(pool, "kaname")
 
 	owner := mustSeedUser(t, ctx, pool, "rvlk")
 	acc := seedAccountByOwner(t, ctx, pool, "acc-rvlk", owner)
@@ -172,7 +172,7 @@ func TestAB_IAM_1_28_Revoke_SerializesWithConcurrentForwardPass(t *testing.T) {
 	_, err = fwd.Exec(ctx, `SELECT pg_advisory_xact_lock_shared(hashtext($1))`, string(abID))
 	require.NoError(t, err)
 	_, err = fwd.Exec(ctx, `
-		INSERT INTO kacho_iam.access_binding_emitted_tuples (binding_id, fga_user, relation, object, source)
+		INSERT INTO kaname.access_binding_emitted_tuples (binding_id, fga_user, relation, object, source)
 		VALUES ($1, $2, $3, $4, 'member')`,
 		string(abID), "user:"+string(member), "v_get", "vpc_network:net-race")
 	require.NoError(t, err)
@@ -214,7 +214,7 @@ func TestAB_IAM_1_28_Revoke_SerializesWithConcurrentForwardPass(t *testing.T) {
 	// Проверяется поимённо, а не сравнением длин: два набора одинакового размера
 	// могут не пересекаться вовсе, и счёт дал бы зелёное ровно на подмене набора.
 	rows, err := pool.Query(ctx,
-		`SELECT fga_user, relation, object FROM kacho_iam.access_binding_emitted_tuples
+		`SELECT fga_user, relation, object FROM kaname.access_binding_emitted_tuples
 		  WHERE binding_id = $1`, string(abID))
 	require.NoError(t, err)
 	var ledger [][3]string

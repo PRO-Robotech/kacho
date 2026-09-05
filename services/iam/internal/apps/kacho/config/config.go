@@ -428,10 +428,10 @@ func (b BootstrapMintConfig) AllowedSANs() []string {
 // pgx.Conn for LISTEN, goose via database/sql) sees kaname tables under
 // their unqualified names.
 //
-// search_path is "kacho_iam, public":
-//   - `kacho_iam` first — our tables;
+// search_path is "kaname, public":
+//   - `kaname` first — our tables;
 //   - `public` second — Postgres built-ins / extensions.
-const schemaOptionsParam = "options=-c%20search_path%3Dkacho_iam%2Cpublic"
+const schemaOptionsParam = "options=-c%20search_path%3Dkaname%2Cpublic"
 
 // baseDSN — standard postgres DSN without pgxpool parameters; used by both
 // pgxpool and database/sql.Open("pgx").
@@ -440,7 +440,7 @@ func (c Config) baseDSN() string {
 }
 
 // composeDSN appends missing libpq parameters to raw-DSN: `sslmode=<mode>`
-// and `options=-c search_path=kacho_iam,public`. If a parameter is already
+// and `options=-c search_path=kaname,public`. If a parameter is already
 // present in raw-URL we do not overwrite it (eases ENV/yaml override).
 func (c Config) composeDSN(raw string) string {
 	if raw == "" {

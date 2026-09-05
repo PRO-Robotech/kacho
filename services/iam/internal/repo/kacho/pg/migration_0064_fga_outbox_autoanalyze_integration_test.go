@@ -6,7 +6,7 @@ package pg_test
 // migration_0064_fga_outbox_autoanalyze_integration_test.go
 //
 // Pins the per-table autovacuum settings migration 0064 put on
-// kacho_iam.fga_outbox.
+// kaname.fga_outbox.
 //
 // ЗДЕСЬ ЖИЛА ВТОРАЯ ПРОБА — «журнал несёт ОБА индекса клейма»
 // (TestMigration0063_FGAOutbox_CarriesBothClaimIndexes). Она снята вместе со
@@ -60,7 +60,7 @@ import (
 )
 
 // TestMigration0064_FGAOutbox_KeepsStatisticsFresh закрепляет per-table настройки
-// автовакуума, которые миграция 0064 поставила на kacho_iam.fga_outbox.
+// автовакуума, которые миграция 0064 поставила на kaname.fga_outbox.
 //
 // Настройки заведены под план клейма дренажа: оценка по `sent_at IS NULL` бралась
 // из последнего ANALYZE, очередь почти всегда пуста, поэтому во всплеск въезжала
@@ -88,7 +88,7 @@ func TestMigration0064_FGAOutbox_KeepsStatisticsFresh(t *testing.T) {
 	require.NoError(t, pool.QueryRow(ctx,
 		`SELECT coalesce(c.reloptions, '{}')
 		   FROM pg_class c JOIN pg_namespace n ON n.oid = c.relnamespace
-		  WHERE n.nspname = 'kacho_iam' AND c.relname = 'fga_outbox'`,
+		  WHERE n.nspname = 'kaname' AND c.relname = 'fga_outbox'`,
 	).Scan(&reloptions))
 
 	// reloptions come back as "key=value" strings; compare NUMERICALLY so the
@@ -123,11 +123,11 @@ func TestMigration0064_FGAOutbox_KeepsStatisticsFresh(t *testing.T) {
 	} {
 		got, ok := opts[want.key]
 		require.True(t, ok,
-			"kacho_iam.fga_outbox обязан нести %s — это то, что применила миграция 0064: "+
+			"kaname.fga_outbox обязан нести %s — это то, что применила миграция 0064: "+
 				"статистика append-mostly журнала не должна замерзать между всплесками записи. "+
 				"got reloptions=%v", want.key, reloptions)
 		require.LessOrEqual(t, got, want.atMost,
-			"kacho_iam.fga_outbox %s=%v выше порога миграции 0064: статистика уходила бы в "+
+			"kaname.fga_outbox %s=%v выше порога миграции 0064: статистика уходила бы в "+
 				"устаревание больше чем на всплеск записи.", want.key, got)
 	}
 }

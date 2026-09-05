@@ -69,7 +69,7 @@ func TestCrudAudit_5_2_34_CommitTogether(t *testing.T) {
 	)
 	require.NoError(t, pool.QueryRow(ctx,
 		`SELECT event_type, status, tenant_account_id, event_payload::text
-		   FROM kacho_iam.audit_outbox WHERE event_payload->>'resource_id' = $1`,
+		   FROM kaname.audit_outbox WHERE event_payload->>'resource_id' = $1`,
 		string(accID)).Scan(&eventType, &status, &tenant, &payloadRaw))
 	require.Equal(t, "iam.account.created", eventType)
 	require.Equal(t, "pending", status)
@@ -110,13 +110,13 @@ func TestCrudAudit_5_2_35_RollbackNoOrphan(t *testing.T) {
 
 	var n int
 	require.NoError(t, pool.QueryRow(ctx,
-		`SELECT count(*) FROM kacho_iam.audit_outbox WHERE event_payload->>'resource_id' = $1`,
+		`SELECT count(*) FROM kaname.audit_outbox WHERE event_payload->>'resource_id' = $1`,
 		string(accID)).Scan(&n))
 	require.Equal(t, 0, n, "rolled-back mutation must leave no orphan audit row")
 
 	var acctN int
 	require.NoError(t, pool.QueryRow(ctx,
-		`SELECT count(*) FROM kacho_iam.accounts WHERE id = $1`, string(accID)).Scan(&acctN))
+		`SELECT count(*) FROM kaname.accounts WHERE id = $1`, string(accID)).Scan(&acctN))
 	require.Equal(t, 0, acctN, "the account row must also be rolled back")
 }
 
@@ -156,7 +156,7 @@ func TestCrudAudit_5_2_37_38_EventIdAndTypeCheck(t *testing.T) {
 
 		var id string
 		require.NoError(t, pool.QueryRow(ctx,
-			`SELECT id FROM kacho_iam.audit_outbox WHERE event_payload->>'resource_id' = $1`,
+			`SELECT id FROM kaname.audit_outbox WHERE event_payload->>'resource_id' = $1`,
 			marker).Scan(&id), "row for %s must read back (CHECK passed, not dropped)", et)
 		require.Regexp(t, sessionEvtIDRe, id, "id for %s must be 22-char evt_ format (#126 guard)", et)
 	}

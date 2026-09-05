@@ -45,7 +45,7 @@ DECLARE
   v_admin_role_id TEXT;
 BEGIN
   SELECT id INTO v_admin_role_id
-    FROM kacho_iam.roles
+    FROM kaname.roles
    WHERE name = 'admin' AND cluster_id = 'cluster_kacho_root' AND is_system = true;
   IF v_admin_role_id IS NULL THEN
     RAISE EXCEPTION 'cluster-admin backfill: roles/admin not found';
@@ -53,10 +53,10 @@ BEGIN
 
   WITH src AS (
     SELECT id, subject_type, subject_id, granted_by, granted_at
-      FROM kacho_iam.cluster_admin_grants
+      FROM kaname.cluster_admin_grants
      WHERE granted_until IS NULL
   )
-  INSERT INTO kacho_iam.access_bindings (
+  INSERT INTO kaname.access_bindings (
       id, subject_type, subject_id, role_id, resource_type, resource_id,
       status, granted_by_user_id, created_at
   )
@@ -72,10 +72,10 @@ BEGIN
 
   WITH src AS (
     SELECT id, subject_type, subject_id, granted_by, granted_at, granted_until
-      FROM kacho_iam.cluster_admin_grants
+      FROM kaname.cluster_admin_grants
      WHERE granted_until IS NOT NULL
   )
-  INSERT INTO kacho_iam.access_bindings (
+  INSERT INTO kaname.access_bindings (
       id, subject_type, subject_id, role_id, resource_type, resource_id,
       status, granted_by_user_id, revoked_at, revoked_by_user_id, created_at
   )
@@ -106,7 +106,7 @@ func adminRoleID(t *testing.T, ctx context.Context, pool *pgxpool.Pool) string {
 	t.Helper()
 	var id string
 	require.NoError(t, pool.QueryRow(ctx,
-		`SELECT id FROM kacho_iam.roles
+		`SELECT id FROM kaname.roles
 		  WHERE name = 'admin' AND cluster_id = 'cluster_kacho_root' AND is_system = true`).
 		Scan(&id))
 	return id
@@ -137,7 +137,7 @@ func TestBackfillCAG_ActiveGrantBecomesActiveBinding(t *testing.T) {
 	)
 	require.NoError(t, pool.QueryRow(ctx, `
 		SELECT status, resource_type, resource_id, role_id, revoked_at
-		  FROM kacho_iam.access_bindings
+		  FROM kaname.access_bindings
 		 WHERE subject_type = 'user' AND subject_id = $1
 		   AND resource_type = 'cluster'`, string(uid)).
 		Scan(&gotStatus, &gotResType, &gotResID, &gotRoleID, &gotRevokedAt))
@@ -172,7 +172,7 @@ func TestBackfillCAG_RevokedGrantBecomesRevokedBinding(t *testing.T) {
 	)
 	require.NoError(t, pool.QueryRow(ctx, `
 		SELECT status, revoked_at, revoked_by_user_id
-		  FROM kacho_iam.access_bindings
+		  FROM kaname.access_bindings
 		 WHERE subject_type = 'user' AND subject_id = $1
 		   AND resource_type = 'cluster'`, string(uid)).
 		Scan(&gotStatus, &gotRevokedAt, &gotRevokedBy))
@@ -202,7 +202,7 @@ func TestBackfillCAG_Idempotent(t *testing.T) {
 	runBackfill(t, ctx, pool)
 	var n1 int
 	require.NoError(t, pool.QueryRow(ctx,
-		`SELECT count(*) FROM kacho_iam.access_bindings
+		`SELECT count(*) FROM kaname.access_bindings
 		  WHERE resource_type = 'cluster' AND subject_id IN ($1, $2)`,
 		string(u1), string(u2)).Scan(&n1))
 	require.Equal(t, 2, n1)
@@ -211,7 +211,7 @@ func TestBackfillCAG_Idempotent(t *testing.T) {
 	runBackfill(t, ctx, pool)
 	var n2 int
 	require.NoError(t, pool.QueryRow(ctx,
-		`SELECT count(*) FROM kacho_iam.access_bindings
+		`SELECT count(*) FROM kaname.access_bindings
 		  WHERE resource_type = 'cluster' AND subject_id IN ($1, $2)`,
 		string(u1), string(u2)).Scan(&n2))
 	assert.Equal(t, n1, n2, "idempotent re-run must not insert duplicates")

@@ -49,13 +49,13 @@ object comes from the binding.
   whole-type wildcard behaviour). Persisted as the **absence** of
   `access_binding_targets` rows.
 - `target.resources[]` — per-object refs `{type, id}`. One child row per ref in
-  `kacho_iam.access_binding_targets`.
+  `kaname.access_binding_targets`.
 - `target.selector` — label-based selection (see
   `resource-scoped-access-binding-gamma.md`).
 
 ### DB (migration 0018)
 
-`kacho_iam.access_binding_targets`: `binding_id` FK →
+`kaname.access_binding_targets`: `binding_id` FK →
 `access_bindings(id) ON DELETE CASCADE` (same-DB cascade — ban #4 allows),
 `UNIQUE(binding_id, type, id)` (idempotent add / dedup). `all_in_scope` ≡ zero
 rows; the read-side projects 0 rows ⇒ all_in_scope (forward-only: no

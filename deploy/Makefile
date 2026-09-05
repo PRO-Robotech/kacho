@@ -1321,11 +1321,11 @@ loadtest-address-allocate-clean: guard-kind-context
 reload-svc-iam:
 	@$(MAKE) reload-svc SVC=iam
 
-# psql в kacho_iam-БД (база, пользователь, схема — все kacho_iam).
+# psql в kaname-БД (база, пользователь, схема — все kaname).
 psql-iam: guard-kind-context
 	kubectl exec -it -n kacho statefulset/kacho-umbrella-pg-iam -- psql -U iam -d kacho_iam
 
-# KAC-125: greenfield wipe kacho_iam schema + drop goose state.
+# KAC-125: greenfield wipe kaname schema + drop goose state.
 # Используется ДО helm upgrade с breaking migration (e.g. 0009_user_per_account_invite_kac125).
 # Воспроизводимый replacement для manual `DROP SCHEMA … CASCADE`.
 # ВНИМАНИЕ: уничтожает все данные IAM (accounts/projects/users/...). Только для dev.
@@ -1345,10 +1345,10 @@ psql-iam: guard-kind-context
 # то есть предупреждала, не сказав о чём.
 wipe-iam-db: guard-kind-context
 	@$(MAKE) --no-print-directory guard-destructive OP=wipe-iam-db TOKEN=WIPE-IAM \
-	  WHAT="DROP SCHEMA kacho_iam CASCADE + снос состояния goose — все аккаунты, проекты, пользователи, группы, роли и привязки исчезнут безвозвратно"
+	  WHAT="DROP SCHEMA kaname CASCADE + снос состояния goose — все аккаунты, проекты, пользователи, группы, роли и привязки исчезнут безвозвратно"
 	@kubectl exec -n kacho kacho-umbrella-pg-iam-0 -- \
 	    env PGPASSWORD=dev-iam-password psql -U iam -d kacho_iam \
-	    -c "DROP SCHEMA IF EXISTS kacho_iam CASCADE; CREATE SCHEMA kacho_iam;"
+	    -c "DROP SCHEMA IF EXISTS kaname CASCADE; CREATE SCHEMA kaname;"
 	@kubectl exec -n kacho kacho-umbrella-pg-iam-0 -- \
 	    env PGPASSWORD=dev-iam-password psql -U iam -d kacho_iam \
 	    -c "DROP TABLE IF EXISTS public.goose_db_version;" || true

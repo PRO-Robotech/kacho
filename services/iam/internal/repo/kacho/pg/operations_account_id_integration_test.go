@@ -8,7 +8,7 @@ package pg_test
 // AccountService.ListAllOperations and InternalOperationsService.ListIamOperations.
 //
 // Proves the IAM-side of the corelib account_id change end-to-end against the
-// real kacho_iam.operations schema (migration 0016 adds the account_id column +
+// real kaname.operations schema (migration 0016 adds the account_id column +
 // partial index):
 //   - category-(I) metadata carrying account_id (Project/Group/SA/Account/
 //     AddGroupMember/User-Delete/account-scoped AccessBinding) → corelib
@@ -64,7 +64,7 @@ func TestOperationsAccountID_DenormalizationAndIsolation(t *testing.T) {
 	require.NoError(t, err)
 	defer pool.Close()
 
-	opsRepo := operations.NewRepo(pool, "kacho_iam")
+	opsRepo := operations.NewRepo(pool, "kaname")
 
 	accX := ids.NewID(domain.PrefixAccount)
 	accOther := ids.NewID(domain.PrefixAccount)
@@ -114,7 +114,7 @@ func TestOperationsAccountID_CategoryII_NullExcludedFromAccountList(t *testing.T
 	require.NoError(t, err)
 	defer pool.Close()
 
-	opsRepo := operations.NewRepo(pool, "kacho_iam")
+	opsRepo := operations.NewRepo(pool, "kaname")
 
 	accX := ids.NewID(domain.PrefixAccount)
 	roleR := ids.NewID(domain.PrefixRole)
@@ -152,7 +152,7 @@ func TestOperationsAccountID_Pagination(t *testing.T) {
 	require.NoError(t, err)
 	defer pool.Close()
 
-	opsRepo := operations.NewRepo(pool, "kacho_iam")
+	opsRepo := operations.NewRepo(pool, "kaname")
 	accX := ids.NewID(domain.PrefixAccount)
 	base := time.Now().UTC().Truncate(time.Microsecond)
 	const total = 3

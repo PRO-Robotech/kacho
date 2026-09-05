@@ -27,7 +27,7 @@ const interactiveClientCols = `id, created_at, name, description, labels,
 	redirect_uris, post_logout_redirect_uris,
 	client_id, audiences, grant_types, token_endpoint_auth_method, status`
 
-// InteractiveClientRepo — reads and writes kacho_iam.interactive_clients.
+// InteractiveClientRepo — reads and writes kaname.interactive_clients.
 type InteractiveClientRepo struct {
 	pool *pgxpool.Pool
 }

@@ -30,11 +30,11 @@ func TestList_PagesThroughEverythingTheSubjectMaySee(t *testing.T) {
 		seedTenant(t, ctx, tx)
 		seedRole(t, ctx, tx, "rol-list", "vpc_network", "get", "anchor", "{}")
 		exec(t, ctx, tx,
-			`INSERT INTO kacho_iam.access_bindings
+			`INSERT INTO kaname.access_bindings
 			   (id, subject_type, subject_id, role_id, resource_type, resource_id, status)
 			 VALUES ('acb-l', 'user', 'usr-1', 'rol-list', 'project', 'prj-1', 'ACTIVE')`)
 		exec(t, ctx, tx,
-			`INSERT INTO kacho_iam.access_binding_subjects (binding_id, subject_type, subject_id)
+			`INSERT INTO kaname.access_binding_subjects (binding_id, subject_type, subject_id)
 			 VALUES ('acb-l', 'user', 'usr-1')`)
 
 		// Семь объектов под выдачей и один ВНЕ её области: последний обязан не
@@ -43,20 +43,20 @@ func TestList_PagesThroughEverythingTheSubjectMaySee(t *testing.T) {
 		for i := 0; i < inScope; i++ {
 			id := fmt.Sprintf("net-%02d", i)
 			exec(t, ctx, tx,
-				`INSERT INTO kacho_iam.resource_mirror (object_type, object_id) VALUES ($2, $1)`,
+				`INSERT INTO kaname.resource_mirror (object_type, object_id) VALUES ($2, $1)`,
 				id, catalogFormOf(t, "vpc_network"))
 			exec(t, ctx, tx,
-				`INSERT INTO kacho_iam.resource_parent_edge
+				`INSERT INTO kaname.resource_parent_edge
 				   (object_type, object_id, parent_type, parent_id, depth)
 				 VALUES ('vpc_network', $1, 'project', 'prj-1', 1)`, id)
 		}
 		exec(t, ctx, tx,
-			`INSERT INTO kacho_iam.resource_mirror (object_type, object_id) VALUES ($1, 'net-99')`,
+			`INSERT INTO kaname.resource_mirror (object_type, object_id) VALUES ($1, 'net-99')`,
 			catalogFormOf(t, "vpc_network"))
 		exec(t, ctx, tx,
-			`INSERT INTO kacho_iam.projects (id, account_id, name) VALUES ('prj-9', 'acc-1', 'other')`)
+			`INSERT INTO kaname.projects (id, account_id, name) VALUES ('prj-9', 'acc-1', 'other')`)
 		exec(t, ctx, tx,
-			`INSERT INTO kacho_iam.resource_parent_edge
+			`INSERT INTO kaname.resource_parent_edge
 			   (object_type, object_id, parent_type, parent_id, depth)
 			 VALUES ('vpc_network', 'net-99', 'project', 'prj-9', 1)`)
 

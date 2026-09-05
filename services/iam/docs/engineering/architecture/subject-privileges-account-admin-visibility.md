@@ -26,7 +26,7 @@ equally authorized to **see** the roles already held by members. "Who may grant"
 Cross-account reads (caller has neither self nor admin on the subject's home
 account) are rejected with `PERMISSION_DENIED` — no privilege data is returned
 (cross-account isolation). The subject's home account is resolved via a
-within-`kacho_iam` `Users().Get` / `ServiceAccounts().Get` (same-schema read,
+within-`kaname` `Users().Get` / `ServiceAccounts().Get` (same-schema read,
 **not** a new cross-domain edge).
 
 ## Допуск и сужение — разные вещи (пересмотрено, задача #1354)

@@ -14,7 +14,7 @@ package pg_test
 // parent_account_id) stays intact; only the label-selectors stop matching.
 // UnregisterResource remains reserved for actual resource Delete.
 //
-// This test asserts the SQL-side G-3 invariant directly on kacho_iam.resource_mirror
+// This test asserts the SQL-side G-3 invariant directly on kaname.resource_mirror
 // after a RegisterResource(labels={}) with a newer source_version:
 //   - the row is PRESENT (count==1), labels='{}'::jsonb (FULL-REPLACE)
 //   - parent_project_id / parent_account_id are PRESERVED
@@ -51,7 +51,7 @@ func readMirrorRowT31(t *testing.T, ctx context.Context, pool *pgxpool.Pool, obj
 	t.Helper()
 	err := pool.QueryRow(ctx,
 		`SELECT parent_project_id, parent_account_id, labels::text, source_version
-		   FROM kacho_iam.resource_mirror WHERE object_type=$1 AND object_id=$2`,
+		   FROM kaname.resource_mirror WHERE object_type=$1 AND object_id=$2`,
 		objType, objID).Scan(&parentPrj, &parentAcc, &labelsText, &sourceVersion)
 	if err != nil {
 		return false, "", "", "", time.Time{}
@@ -130,7 +130,7 @@ func TestNetworkRepo_T31G301_UpsertNotUnregister_MirrorRowStays(t *testing.T) {
 	// Exactly one row by the (object_type, object_id) PK — no duplicate / split.
 	var n int
 	require.NoError(t, pool.QueryRow(ctx,
-		`SELECT count(*) FROM kacho_iam.resource_mirror WHERE object_type=$1 AND object_id=$2`,
+		`SELECT count(*) FROM kaname.resource_mirror WHERE object_type=$1 AND object_id=$2`,
 		objType, objID).Scan(&n))
 	assert.Equal(t, 1, n, "single mirror row (PK upsert, no split)")
 }

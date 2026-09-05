@@ -54,7 +54,7 @@ func seedNativeRole(t *testing.T, ctx context.Context, pool *pgxpool.Pool, acc d
 	t.Helper()
 	rid := ids.NewID(domain.PrefixRole)
 	_, err := pool.Exec(ctx, `
-		INSERT INTO kacho_iam.roles (id, account_id, name, permissions)
+		INSERT INTO kaname.roles (id, account_id, name, permissions)
 		VALUES ($1, $2, $3, '["compute.instance.*.get"]'::jsonb)`,
 		rid, string(acc), name)
 	require.NoError(t, err, "seed native role")
@@ -66,7 +66,7 @@ func seedNativeGroup(t *testing.T, ctx context.Context, pool *pgxpool.Pool, acc 
 	t.Helper()
 	gid := ids.NewID(domain.PrefixGroup)
 	_, err := pool.Exec(ctx, `
-		INSERT INTO kacho_iam.groups (id, account_id, name)
+		INSERT INTO kaname.groups (id, account_id, name)
 		VALUES ($1, $2, $3)`, gid, string(acc), name)
 	require.NoError(t, err, "seed native group")
 	return gid
@@ -77,7 +77,7 @@ func seedNativeSA(t *testing.T, ctx context.Context, pool *pgxpool.Pool, acc dom
 	t.Helper()
 	sid := ids.NewID(domain.PrefixServiceAccount)
 	_, err := pool.Exec(ctx, `
-		INSERT INTO kacho_iam.service_accounts (id, account_id, name)
+		INSERT INTO kaname.service_accounts (id, account_id, name)
 		VALUES ($1, $2, $3)`, sid, string(acc), name)
 	require.NoError(t, err, "seed native service_account")
 	return sid
@@ -88,7 +88,7 @@ func seedNativeUser(t *testing.T, ctx context.Context, pool *pgxpool.Pool, acc d
 	t.Helper()
 	uid := ids.NewID(domain.PrefixUser)
 	_, err := pool.Exec(ctx, `
-		INSERT INTO kacho_iam.users (id, account_id, external_id, email, display_name, invite_status)
+		INSERT INTO kaname.users (id, account_id, external_id, email, display_name, invite_status)
 		VALUES ($1, $2, $3, $4, $5, 'ACTIVE')`,
 		uid, string(acc), "ext-"+suffix+"-"+uid, "u-"+suffix+"@example.com", "U "+suffix)
 	require.NoError(t, err, "seed native user")

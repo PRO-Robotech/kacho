@@ -249,7 +249,7 @@ func normaliseTable(s string) string {
 	return strings.ToLower(strings.ReplaceAll(strings.TrimSpace(s), `"`, ``))
 }
 
-// bareName strips a schema qualifier: `kacho_iam.roles` → `roles`.
+// bareName strips a schema qualifier: `kaname.roles` → `roles`.
 func bareName(s string) string {
 	if idx := strings.LastIndex(s, "."); idx >= 0 {
 		return s[idx+1:]

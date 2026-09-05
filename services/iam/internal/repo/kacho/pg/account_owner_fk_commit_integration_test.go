@@ -79,7 +79,7 @@ func TestAccountOwnerFK_CommitTime_FailedPrecondition(t *testing.T) {
 	got := iamerr.StripSentinel(cerr)
 	assert.Equal(t, "User "+string(missingOwner)+" not found", got)
 	// No raw pgx/schema fragments leak through the client-facing text.
-	for _, frag := range []string{"accounts_owner_fk", "constraint", "kacho_iam", "SQLSTATE"} {
+	for _, frag := range []string{"accounts_owner_fk", "constraint", "kaname", "SQLSTATE"} {
 		assert.NotContains(t, strings.ToLower(got), strings.ToLower(frag),
 			"client-facing text must not leak pgx fragment %q", frag)
 	}

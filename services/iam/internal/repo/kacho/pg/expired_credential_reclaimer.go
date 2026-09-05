@@ -83,7 +83,7 @@ type ExpiredCredentialReclaimer struct {
 // NewExpiredCredentialReclaimer — конструктор композиционного корня.
 func NewExpiredCredentialReclaimer(pool *pgxpool.Pool, schema string) *ExpiredCredentialReclaimer {
 	if schema == "" {
-		schema = "kacho_iam"
+		schema = "kaname"
 	}
 	return &ExpiredCredentialReclaimer{pool: pool, schema: schema}
 }
@@ -221,7 +221,7 @@ func (r *ExpiredCredentialReclaimer) sweepOneTable(
 				// Актор — ПЛАТФОРМА. Тип события отдельный, и актор отдельный:
 				// «арендатор отозвал» и «платформа сняла» обязаны быть
 				// различимы, иначе теряется ответственность.
-				"actor":           "kacho_iam:expired-credential-reclaim",
+				"actor":           "kaname:expired-credential-reclaim",
 				"resource_type":   tgt.ResourceType,
 				"resource_id":     row.ID,
 				"principal_id":    row.Carrier,

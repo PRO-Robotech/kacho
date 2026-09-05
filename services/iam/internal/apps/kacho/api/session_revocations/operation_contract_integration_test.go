@@ -57,7 +57,7 @@ func newRevokeHandler(t *testing.T) (*sessionrev.Handler, *pgxpool.Pool) {
 
 	adapter := kachopg.NewSessionRevocationsAdapter(pool)
 	h := sessionrev.NewHandler(
-		sessionrev.NewRevokeUseCase(adapter, operations.NewRepo(pool, "kacho_iam")),
+		sessionrev.NewRevokeUseCase(adapter, operations.NewRepo(pool, "kaname")),
 		adapter,
 	)
 	return h, pool
@@ -83,14 +83,14 @@ func seedRevokeUser(t *testing.T, ctx context.Context, pool *pgxpool.Pool) domai
 	defer func() { _ = tx.Rollback(ctx) }()
 
 	_, err = tx.Exec(ctx, `
-		INSERT INTO kacho_iam.users (id, account_id, external_id, email, display_name, invite_status)
+		INSERT INTO kaname.users (id, account_id, external_id, email, display_name, invite_status)
 		VALUES ($1, $2, $3, $4, $5, 'ACTIVE')`,
 		string(uid), string(accID),
 		"ext-"+string(uid), fmt.Sprintf("u-%s@example.com", uid), "Revoke Target")
 	require.NoError(t, err, "seed user")
 
 	_, err = tx.Exec(ctx, `
-		INSERT INTO kacho_iam.accounts (id, name, owner_user_id, labels)
+		INSERT INTO kaname.accounts (id, name, owner_user_id, labels)
 		VALUES ($1, $2, $3, '{}'::jsonb)`,
 		string(accID), "seed-acc-"+string(accID)[len(accID)-6:], string(uid))
 	require.NoError(t, err, "seed account")
@@ -122,7 +122,7 @@ func pollRevokeOperationToDone(t *testing.T, ctx context.Context, repo operation
 func revokeOpRow(t *testing.T, ctx context.Context, pool *pgxpool.Pool, opID string) (done bool, metadata, response []byte) {
 	t.Helper()
 	require.NoError(t, pool.QueryRow(ctx,
-		`SELECT done, metadata_data, response_data FROM kacho_iam.operations WHERE id = $1`,
+		`SELECT done, metadata_data, response_data FROM kaname.operations WHERE id = $1`,
 		opID).Scan(&done, &metadata, &response),
 		"the operation id handed to the caller must name a persisted row")
 	return done, metadata, response
@@ -155,7 +155,7 @@ func TestSessionRevoke_OperationIsPersistedAndCompletes(t *testing.T) {
 	require.NotEmpty(t, respData, "response must be persisted")
 
 	// (2) The poll path, end to end.
-	polled := pollRevokeOperationToDone(t, ctx, operations.NewRepo(pool, "kacho_iam"), op.GetId())
+	polled := pollRevokeOperationToDone(t, ctx, operations.NewRepo(pool, "kaname"), op.GetId())
 
 	polledMeta := &iamv1.RevokeMetadata{}
 	require.NotNil(t, polled.Metadata)
@@ -175,7 +175,7 @@ func TestSessionRevoke_OperationIsPersistedAndCompletes(t *testing.T) {
 	// (3) The response must describe the row that actually landed.
 	var rowReason string
 	require.NoError(t, pool.QueryRow(ctx,
-		`SELECT reason FROM kacho_iam.session_revocations WHERE token_jti = $1`,
+		`SELECT reason FROM kaname.session_revocations WHERE token_jti = $1`,
 		jti).Scan(&rowReason))
 	require.Equal(t, rowReason, polledResp.GetReason())
 }
@@ -202,7 +202,7 @@ func TestSessionRevoke_BulkPathOperationIsPersistedAndCompletes(t *testing.T) {
 	require.NotEmpty(t, respData,
 		"a revoke-all is a real revocation — its operation must carry the declared response")
 
-	polled := pollRevokeOperationToDone(t, ctx, operations.NewRepo(pool, "kacho_iam"), op.GetId())
+	polled := pollRevokeOperationToDone(t, ctx, operations.NewRepo(pool, "kaname"), op.GetId())
 	polledMeta := &iamv1.RevokeMetadata{}
 	require.NoError(t, polled.Metadata.UnmarshalTo(polledMeta))
 	require.Equal(t, string(uid), polledMeta.GetUserId())
@@ -234,14 +234,14 @@ func TestSessionRevoke_FailedWriteLeavesTerminalErrorOperation(t *testing.T) {
 
 	var unfinished int
 	require.NoError(t, pool.QueryRow(ctx,
-		`SELECT count(*) FROM kacho_iam.operations
+		`SELECT count(*) FROM kaname.operations
 		  WHERE done = false AND description LIKE 'Revoke session%'`).Scan(&unfinished))
 	require.Zero(t, unfinished,
 		"a refused revoke must not leave a never-completing operation row")
 
 	var terminalErrors int
 	require.NoError(t, pool.QueryRow(ctx,
-		`SELECT count(*) FROM kacho_iam.operations
+		`SELECT count(*) FROM kaname.operations
 		  WHERE done = true AND error_code <> 0 AND description LIKE 'Revoke session%'`).Scan(&terminalErrors))
 	require.Equal(t, 1, terminalErrors,
 		"the failure must be readable by a poller, not invisible")

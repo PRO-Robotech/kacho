@@ -67,7 +67,7 @@ func TestFGAOutboxEmitter_EmitWriteTx_AppendsRowsAtomically(t *testing.T) {
 	// зоны не имеет by construction — фикстура знает свои объекты.
 	rows, err := pool.Query(ctx, `
 		SELECT event_type, payload::text
-		  FROM kacho_iam.fga_outbox
+		  FROM kaname.fga_outbox
 		 WHERE payload->>'object' = ANY($1::text[])
 		 ORDER BY id ASC`, []string{tuples[0].Object, tuples[1].Object})
 	require.NoError(t, err)
@@ -120,7 +120,7 @@ func TestFGAOutboxEmitter_EmitDeleteTx_AppendsRevokeRows(t *testing.T) {
 
 	var et string
 	require.NoError(t, pool.QueryRow(ctx,
-		`SELECT event_type FROM kacho_iam.fga_outbox
+		`SELECT event_type FROM kaname.fga_outbox
 		  WHERE payload->>'object' = $1 LIMIT 1`, tuples[0].Object).Scan(&et))
 	require.Equal(t, "fga.tuple.delete", et)
 }
@@ -140,7 +140,7 @@ func TestFGAOutboxEmitter_RollbackRemovesRows(t *testing.T) {
 
 	var before int
 	require.NoError(t, pool.QueryRow(ctx,
-		`SELECT count(*) FROM kacho_iam.fga_outbox`).Scan(&before))
+		`SELECT count(*) FROM kaname.fga_outbox`).Scan(&before))
 
 	tx, err := pool.Begin(ctx)
 	require.NoError(t, err)
@@ -154,7 +154,7 @@ func TestFGAOutboxEmitter_RollbackRemovesRows(t *testing.T) {
 	// и «должно быть ноль» — утверждение о них, а не об откате.
 	var after int
 	require.NoError(t, pool.QueryRow(ctx,
-		`SELECT count(*) FROM kacho_iam.fga_outbox`).Scan(&after))
+		`SELECT count(*) FROM kaname.fga_outbox`).Scan(&after))
 	require.Equal(t, before, after, "rollback must discard outbox rows (atomic emit-in-tx)")
 }
 
@@ -171,7 +171,7 @@ func TestFGAOutboxEmitter_EmitWriteTx_EmptyTuplesIsNoop(t *testing.T) {
 
 	var before int
 	require.NoError(t, pool.QueryRow(ctx,
-		`SELECT count(*) FROM kacho_iam.fga_outbox`).Scan(&before))
+		`SELECT count(*) FROM kaname.fga_outbox`).Scan(&before))
 
 	tx, err := pool.Begin(ctx)
 	require.NoError(t, err)
@@ -183,7 +183,7 @@ func TestFGAOutboxEmitter_EmitWriteTx_EmptyTuplesIsNoop(t *testing.T) {
 
 	var after int
 	require.NoError(t, pool.QueryRow(ctx,
-		`SELECT count(*) FROM kacho_iam.fga_outbox`).Scan(&after))
+		`SELECT count(*) FROM kaname.fga_outbox`).Scan(&after))
 	require.Equal(t, before, after, "empty tuples is no-op")
 }
 
@@ -227,7 +227,7 @@ func TestFGAOutboxEmitter_SetInsertPreservesPerKeyOrder(t *testing.T) {
 	// Отбор по КЛЮЧУ СТРОКИ — (субъект, объект): строка несёт набор отношений субъекта
 	// на объекте, поэтому отношение в отборе не участвует (см. fga_outbox.emitTx).
 	rows, err := pool.Query(ctx, `
-		SELECT id, event_type FROM kacho_iam.fga_outbox
+		SELECT id, event_type FROM kaname.fga_outbox
 		 WHERE payload->>'user'=$1 AND payload->>'object'=$2
 		 ORDER BY id ASC`, key.User, key.Object)
 	require.NoError(t, err)
@@ -254,7 +254,7 @@ func TestFGAOutboxEmitter_SetInsertPreservesPerKeyOrder(t *testing.T) {
 		SELECT payload->>'user' || '|' ||
 		       coalesce((SELECT string_agg(r, '+') FROM jsonb_array_elements_text(payload->'relations') AS t(r)),
 		                payload->>'relation')
-		  FROM kacho_iam.fga_outbox
+		  FROM kaname.fga_outbox
 		 WHERE event_type='fga.tuple.write' AND payload->>'object'=$1
 		 ORDER BY id ASC`, key.Object)
 	require.NoError(t, err)
@@ -281,7 +281,7 @@ func TestFGAOutboxEmitter_SetInsertPreservesPerKeyOrder(t *testing.T) {
 	require.NoError(t, tx2.Commit(ctx))
 
 	rows2, err := pool.Query(ctx, `
-		SELECT event_type FROM kacho_iam.fga_outbox
+		SELECT event_type FROM kaname.fga_outbox
 		 WHERE payload->>'user'=$1 AND payload->>'relation'=$2 AND payload->>'object'=$3
 		 ORDER BY id ASC`, rev.User, rev.Relation, rev.Object)
 	require.NoError(t, err)

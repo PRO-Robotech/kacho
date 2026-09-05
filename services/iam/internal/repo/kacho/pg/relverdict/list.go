@@ -141,7 +141,7 @@ WITH RECURSIVE speaker_pair(s_type, s_id, via) AS (
            'self'
   UNION ALL
     SELECT 'group', gm.group_id, 'member'
-      FROM kacho_iam.group_members gm
+      FROM kaname.group_members gm
      WHERE gm.member_type = split_part($1::text, ':', 1)
        AND gm.member_id   = substr($1::text, length(split_part($1::text, ':', 1)) + 2)
   UNION ALL
@@ -225,7 +225,7 @@ scope(object_id, s_type, s_id, depth) AS (
       FROM scope s
       CROSS JOIN LATERAL (
              SELECT pe.parent_type, pe.parent_id
-               FROM kacho_iam.resource_scope_edge pe
+               FROM kaname.resource_scope_edge pe
               WHERE pe.object_type = s.s_type AND pe.object_id = s.s_id
               ORDER BY pe.depth
               LIMIT $5::int
@@ -266,7 +266,7 @@ SELECT c.object_id,
         -- типа. Без второго администратор облака не увидел бы НИ ОДНОГО объекта:
         -- его строка лежит на кластере и под другим именем.
         SELECT 1
-          FROM kacho_iam.relation_fact f
+          FROM kaname.relation_fact f
           JOIN speaker sp ON sp.subject = f.subject
           JOIN scope_distinct sc
             ON sc.object_id = c.object_id
@@ -288,14 +288,14 @@ SELECT c.object_id,
           -- 732001). Склейка субъекта выводила колонки из-под индекса.
           FROM speaker_pair sp
           JOIN scope_distinct sc ON sc.object_id = c.object_id
-          JOIN kacho_iam.access_binding_subjects bs
+          JOIN kaname.access_binding_subjects bs
             ON bs.subject_type  = sp.s_type AND bs.subject_id  = sp.s_id
            AND bs.resource_type = sc.s_type AND bs.resource_id = sc.s_id
-          JOIN kacho_iam.access_bindings b ON b.id = bs.binding_id
-          JOIN kacho_iam.role_verb rv
+          JOIN kaname.access_bindings b ON b.id = bs.binding_id
+          JOIN kaname.role_verb rv
             ON rv.role_id = b.role_id AND rv.object_type = $9::text
            AND rv.verb = ANY ($8::text[])
-          JOIN kacho_iam.role_rule_selectors rs
+          JOIN kaname.role_rule_selectors rs
             ON rs.role_id = b.role_id AND $9::text = ANY (rs.object_types)
          WHERE b.status = 'ACTIVE'
            AND (b.expires_at IS NULL OR b.expires_at > now())

@@ -224,7 +224,7 @@ WITH RECURSIVE
 --   аккаунт → кластер       — СХЕМА, accounts × clusters (синглтон): аккаунты
 --                             сеются миграциями, указателя в журнале у них нет
 --                             (740001, kacho#740);
---   ЛИЧНОСТЬ → аккаунт     — СХЕМА, таблица kacho_iam.memberships (944001,
+--   ЛИЧНОСТЬ → аккаунт     — СХЕМА, таблица kaname.memberships (944001,
 --                             kacho#944): принадлежность человека аккаунту
 --                             перестала быть колонкой его строки и стала
 --                             отдельной связью, которых у него может быть
@@ -241,10 +241,10 @@ WITH RECURSIVE
 --                             построению — девять миграций сеют эти строки, и ни
 --                             одна не пишет указатель (785001, kacho#785).
 --
--- Под представлением лежат kacho_iam.resource_parent_edge (присланное) плюс
--- kacho_iam.relation_fact, kacho_iam.accounts, kacho_iam.clusters,
--- kacho_iam.memberships, kacho_iam.groups, kacho_iam.service_accounts,
--- kacho_iam.roles и kacho_iam.access_bindings (выводимое). Таблица личностей из
+-- Под представлением лежат kaname.resource_parent_edge (присланное) плюс
+-- kaname.relation_fact, kaname.accounts, kaname.clusters,
+-- kaname.memberships, kaname.groups, kaname.service_accounts,
+-- kaname.roles и kaname.access_bindings (выводимое). Таблица личностей из
 -- перечня СНЯТА вместе с ветвью, которая её читала: звено личности берёт аккаунт
 -- из членства. Её имя здесь намеренно НЕ ВОСПРОИЗВОДИТСЯ даже в разборе этого
 -- снятия — перечень сверяется с телом представления, и имя таблицы, которую цепь
@@ -283,7 +283,7 @@ scope(s_type, s_id, depth) AS (
       FROM scope s
       CROSS JOIN LATERAL (
              SELECT pe.parent_type, pe.parent_id
-               FROM kacho_iam.resource_scope_edge pe
+               FROM kaname.resource_scope_edge pe
               WHERE pe.object_type = s.s_type AND pe.object_id = s.s_id
               ORDER BY pe.depth
               LIMIT $7::int
@@ -334,7 +334,7 @@ speaker_pair(s_type, s_id, via) AS (
            'self'
   UNION ALL
     SELECT 'group', gm.group_id, 'member'
-      FROM kacho_iam.group_members gm
+      FROM kaname.group_members gm
      WHERE gm.member_type = split_part($1::text, ':', 1)
        AND gm.member_id   = substr($1::text, length(split_part($1::text, ':', 1)) + 2)
   UNION ALL
@@ -510,14 +510,14 @@ const grantArmSQL = `
     SELECT ''::text AS cond_name, '{}'::jsonb AS cond_params, rs.arm AS arm
       FROM speaker_pair sp
       {{scope_join}}
-      JOIN kacho_iam.access_binding_subjects bs
+      JOIN kaname.access_binding_subjects bs
         ON bs.subject_type  = sp.s_type AND bs.subject_id  = sp.s_id
        AND bs.resource_type = sc.s_type AND bs.resource_id = sc.s_id
-      JOIN kacho_iam.access_bindings b ON b.id = bs.binding_id
-      JOIN kacho_iam.role_verb rv
+      JOIN kaname.access_bindings b ON b.id = bs.binding_id
+      JOIN kaname.role_verb rv
         ON rv.role_id = b.role_id AND rv.object_type = $9::text
        AND rv.verb = ANY ($6::text[])
-      JOIN kacho_iam.role_rule_selectors rs
+      JOIN kaname.role_rule_selectors rs
         ON rs.role_id = b.role_id AND $9::text = ANY (rs.object_types)
       -- Метки нужны только ветви меток, и лежат они там, где велит ТИП: у чужого
       -- ресурса — в зеркале, у собственного объекта iam — в его таблице.
@@ -572,7 +572,7 @@ const factArmSQL = `
     -- неразличимы, поэтому читателю довольно первой.
     SELECT DISTINCT f.condition_name AS cond_name, f.condition_params AS cond_params,
            ''::text AS arm
-      FROM kacho_iam.relation_fact f
+      FROM kaname.relation_fact f
       JOIN speaker sp ON sp.subject = f.subject
       {{scope_join}}
       JOIN fact_atom fa
@@ -846,7 +846,7 @@ scope(object_id, s_type, s_id, depth) AS (
       FROM scope s
       CROSS JOIN LATERAL (
              SELECT pe.parent_type, pe.parent_id
-               FROM kacho_iam.resource_scope_edge pe
+               FROM kaname.resource_scope_edge pe
               WHERE pe.object_type = s.s_type AND pe.object_id = s.s_id
               ORDER BY pe.depth
               LIMIT $7::int
@@ -869,7 +869,7 @@ speaker_pair(s_type, s_id, via) AS (
            'self'
   UNION ALL
     SELECT 'group', gm.group_id, 'member'
-      FROM kacho_iam.group_members gm
+      FROM kaname.group_members gm
      WHERE gm.member_type = split_part($1::text, ':', 1)
        AND gm.member_id   = substr($1::text, length(split_part($1::text, ':', 1)) + 2)
   UNION ALL

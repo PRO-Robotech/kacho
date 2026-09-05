@@ -35,12 +35,12 @@ func TestBindingSubjectBackfill_NoGrantLeftWithoutItsSubjects(t *testing.T) {
 
 	var total, orphan int
 	require.NoError(t, pool.QueryRow(ctx,
-		`SELECT count(*) FROM kacho_iam.access_bindings`).Scan(&total))
+		`SELECT count(*) FROM kaname.access_bindings`).Scan(&total))
 	require.NoError(t, pool.QueryRow(ctx, `
-		SELECT count(*) FROM kacho_iam.access_bindings b
+		SELECT count(*) FROM kaname.access_bindings b
 		 WHERE b.subject_type IS NOT NULL AND b.subject_type <> ''
 		   AND b.subject_id   IS NOT NULL AND b.subject_id   <> ''
-		   AND NOT EXISTS (SELECT 1 FROM kacho_iam.access_binding_subjects s
+		   AND NOT EXISTS (SELECT 1 FROM kaname.access_binding_subjects s
 		                    WHERE s.binding_id = b.id)`).Scan(&orphan))
 
 	// Перепись объявляется всегда: «ноль находок» обязано быть отличимо от

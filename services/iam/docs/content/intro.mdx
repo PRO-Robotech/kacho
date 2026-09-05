@@ -141,7 +141,7 @@ flowchart LR
     hydra["Ory Hydra<br/>OAuth2 tokens"]
   end
   subgraph store["Хранилище"]
-    pg[("PostgreSQL<br/>kacho_iam · права · outbox")]
+    pg[("PostgreSQL<br/>kaname · права · outbox")]
   end
 
   cli --> agw
@@ -152,7 +152,7 @@ flowchart LR
   peers -->|"InternalIAMService.Check"| iam
 ```
 
-Система построена по принципу **database-per-service**: kaname владеет схемой `kacho_iam` и
+Система построена по принципу **database-per-service**: kaname владеет схемой `kaname` и
 общается с другими доменами только по API. Права хранятся в той же схеме, и проверка `Check`
 складывает вердикт запросом к ней — отдельного хранилища отношений нет. Подробнее —
 [Модель авторизации](/architecture/authz).
@@ -199,7 +199,7 @@ flowchart LR
   <tbody>
     <tr><td>Go</td><td>Язык реализации (чистая архитектура: handler → use-case → domain)</td></tr>
     <tr><td>Protocol Buffers / Buf</td><td>Контракт API (<code>proto/</code>, домен <code>kacho.cloud.iam.v1</code>)</td></tr>
-    <tr><td>PostgreSQL / pgx v5</td><td>Хранилище <code>kacho_iam</code> — и данные, и права, и вердикт (без ORM — sqlc + handwritten pgx)</td></tr>
+    <tr><td>PostgreSQL / pgx v5</td><td>Хранилище <code>kaname</code> — и данные, и права, и вердикт (без ORM — sqlc + handwritten pgx)</td></tr>
     <tr><td>Ory Kratos</td><td>Аутентификация и хранение личностей (login / passkey); User — проекция identity</td></tr>
     <tr><td>Ory Hydra</td><td>OAuth 2.0 authorization server: токены сервис-аккаунтов и пользователей</td></tr>
     <tr><td>Goose</td><td>Версионирование схемы (набор миграций <code>0001…</code>)</td></tr>

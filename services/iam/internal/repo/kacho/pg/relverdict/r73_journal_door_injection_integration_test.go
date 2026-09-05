@@ -44,7 +44,7 @@ func TestR7_3_27_InjectionRedWhenTheJournalIsDeadened(t *testing.T) {
 	// ИНЪЕКЦИЯ: обесточиваем проекцию ровно тем способом, каким её обесточило бы
 	// буквальное исполнение команды «снять журнал вместе с дренажом».
 	if _, derr := pool.Exec(ctx,
-		`DROP TRIGGER IF EXISTS relation_fact_follows_journal ON kacho_iam.fga_outbox`); derr != nil {
+		`DROP TRIGGER IF EXISTS relation_fact_follows_journal ON kaname.fga_outbox`); derr != nil {
 		t.Fatalf("инъекция: снятие триггера проекции: %v", derr)
 	}
 

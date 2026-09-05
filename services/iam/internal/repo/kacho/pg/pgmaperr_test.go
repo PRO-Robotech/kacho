@@ -310,7 +310,7 @@ func TestWrapPgErr_DialFailure_IsUnavailable(t *testing.T) {
 // значению — текста у него нет.
 func TestWrapPgErr_ConnectError_IsUnavailable(t *testing.T) {
 	dial := &pgconn.ConnectError{
-		Config: &pgconn.Config{Host: "kaname-db", Port: 5432, User: "kacho", Database: "kacho_iam"},
+		Config: &pgconn.Config{Host: "kaname-db", Port: 5432, User: "kacho", Database: "kaname"},
 	}
 	if !stderrors.Is(wrapPgErr(dial, "", ""), iamerr.ErrUnavailable) {
 		t.Fatal("отказ соединения драйвера не прочитан как недоступность")

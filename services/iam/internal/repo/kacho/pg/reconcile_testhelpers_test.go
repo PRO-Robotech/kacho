@@ -49,7 +49,7 @@ func seedMirrorRow(t *testing.T, ctx context.Context, pool *pgxpool.Pool, objTyp
 	t.Helper()
 	payload := jsonObject(labels)
 	_, err := pool.Exec(ctx, `
-		INSERT INTO kacho_iam.resource_mirror
+		INSERT INTO kaname.resource_mirror
 		  (object_type, object_id, parent_project_id, parent_account_id, labels, source_version, updated_at)
 		VALUES ($1, $2, $3, $4, $5::jsonb, $6, now())
 		ON CONFLICT (object_type, object_id) DO UPDATE
@@ -58,7 +58,7 @@ func seedMirrorRow(t *testing.T, ctx context.Context, pool *pgxpool.Pool, objTyp
 		       labels            = EXCLUDED.labels,
 		       source_version    = EXCLUDED.source_version,
 		       updated_at        = now()
-		 WHERE kacho_iam.resource_mirror.source_version < EXCLUDED.source_version`,
+		 WHERE kaname.resource_mirror.source_version < EXCLUDED.source_version`,
 		objType, objID, parentProject, parentAccount, payload, sourceVersion)
 	require.NoError(t, err, "seed resource_mirror row")
 }
@@ -68,7 +68,7 @@ func setProjectLabels(t *testing.T, ctx context.Context, pool *pgxpool.Pool, prj
 	t.Helper()
 	payload := jsonObject(labels)
 	_, err := pool.Exec(ctx,
-		`UPDATE kacho_iam.projects SET labels = $2::jsonb WHERE id = $1`, string(prj), payload)
+		`UPDATE kaname.projects SET labels = $2::jsonb WHERE id = $1`, string(prj), payload)
 	require.NoError(t, err, "set project labels")
 }
 
@@ -94,7 +94,7 @@ func countFGAOutbox(t *testing.T, ctx context.Context, pool *pgxpool.Pool, event
 	t.Helper()
 	var n int
 	err := pool.QueryRow(ctx,
-		`SELECT count(*) FROM kacho_iam.fga_outbox
+		`SELECT count(*) FROM kaname.fga_outbox
 		  WHERE event_type=$1 AND payload->>'object'=$2`,
 		eventType, object).Scan(&n)
 	require.NoError(t, err)
@@ -106,7 +106,7 @@ func countContainmentAudit(t *testing.T, ctx context.Context, pool *pgxpool.Pool
 	t.Helper()
 	var n int
 	err := pool.QueryRow(ctx,
-		`SELECT count(*) FROM kacho_iam.audit_outbox
+		`SELECT count(*) FROM kaname.audit_outbox
 		  WHERE event_type='iam.access_binding.containment_rejected'
 		    AND event_payload->>'object_id'=$1`,
 		objID).Scan(&n)
