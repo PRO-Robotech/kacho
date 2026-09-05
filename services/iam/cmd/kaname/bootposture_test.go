@@ -64,7 +64,7 @@ func requireBootPostureFields(t *testing.T, line map[string]any, want map[string
 func TestBootPosture_Production(t *testing.T) {
 	var cfg config.Config
 	cfg.AuthN.Mode = config.ModeProduction
-	cfg.Repository.Postgres.URL = "postgres://u:p@pg-iam:5432/kacho_iam"
+	cfg.Repository.Postgres.URL = "postgres://u:p@pg-iam:5432/kaname"
 	cfg.Repository.Postgres.SSLMode = "require"
 	// Круг отправителей сужен: без него центральный дескриптор посадку НЕ
 	// принимает (О1), и это его работа, а не помеха пробе.
@@ -89,7 +89,7 @@ func TestBootPosture_Production(t *testing.T) {
 func TestBootPosture_SSLModeComesFromTheDSNThatReachesThePool(t *testing.T) {
 	var cfg config.Config
 	cfg.AuthN.Mode = config.ModeProductionStrict
-	cfg.Repository.Postgres.URL = "postgres://u:p@pg-iam:5432/kacho_iam?sslmode=verify-ca"
+	cfg.Repository.Postgres.URL = "postgres://u:p@pg-iam:5432/kaname?sslmode=verify-ca"
 	cfg.Repository.Postgres.SSLMode = ""
 	cfg.AuthN.TrustedForwarderSANs = []string{"spiffe://kacho.cloud/ns/kacho/sa/kacho-api-gateway"}
 
@@ -104,7 +104,7 @@ func TestBootPosture_SSLModeComesFromTheDSNThatReachesThePool(t *testing.T) {
 func TestBootPosture_InsecureIsReportedHonestly(t *testing.T) {
 	var cfg config.Config
 	cfg.AuthN.Mode = config.ModeDev
-	cfg.Repository.Postgres.URL = "postgres://u:p@pg-iam:5432/kacho_iam"
+	cfg.Repository.Postgres.URL = "postgres://u:p@pg-iam:5432/kaname"
 	// Вне боевого режима несужённый круг законен, но ТОЛЬКО как явный опт-ин:
 	// умолчанием его не получить (secure-by-default общей библиотеки).
 	cfg.AuthN.TrustAnyForwarder = true

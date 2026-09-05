@@ -100,8 +100,8 @@ restarts() {
 pg_conns() {
   local pw; pw=$(k get secret kacho-umbrella-pg-iam -o jsonpath='{.data.postgres-password}' 2>/dev/null | base64 -d || true)
   k exec kacho-umbrella-pg-iam-0 -c postgresql -- sh -c \
-    "PGPASSWORD='$pw' psql -U postgres -d kacho_iam -t -A -F'|' -c \
-     \"select count(*), count(*) filter (where state='active'), count(*) filter (where wait_event_type='Lock') from pg_stat_activity where datname='kacho_iam';\"" 2>/dev/null || echo "NA"
+    "PGPASSWORD='$pw' psql -U postgres -d kaname -t -A -F'|' -c \
+     \"select count(*), count(*) filter (where state='active'), count(*) filter (where wait_event_type='Lock') from pg_stat_activity where datname='kaname';\"" 2>/dev/null || echo "NA"
 }
 
 REPLICAS=$(k get deploy kaname -o jsonpath='{.spec.replicas}')

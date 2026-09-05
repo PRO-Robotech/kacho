@@ -1195,7 +1195,7 @@ pg-compute:
 pg-iam:
   auth:
     username: iam
-    database: kacho_iam
+    database: kaname
     existingSecret: kacho-umbrella-pg-iam
   tls:
     enabled: true

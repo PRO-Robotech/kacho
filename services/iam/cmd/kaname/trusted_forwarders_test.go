@@ -183,7 +183,7 @@ func TestBootPosture_ReportsWhetherTheCircleIsNarrowed(t *testing.T) {
 		// а не намерение, — поэтому измеряемый круг подаётся в `bootPosture`
 		// отдельно, ровно тем значением, которое проба и проверяет.
 		accepted := fwdCfg(fwdGatewaySAN)
-		accepted.Repository.Postgres.URL = "postgres://u:p@pg-iam:5432/kacho_iam"
+		accepted.Repository.Postgres.URL = "postgres://u:p@pg-iam:5432/kaname"
 		accepted.Repository.Postgres.SSLMode = "require"
 		return bootPosture(acceptedPosture(t, accepted), cfg, config.MTLSConfig{}, true).TrustedForwarders
 	}
@@ -242,7 +242,7 @@ func TestConfigRefusal_NamesTheEnvOverride(t *testing.T) {
 		Endpoint:         "tcp://0.0.0.0:9090",
 		InternalEndpoint: "tcp://0.0.0.0:9091",
 	}
-	cfg.Repository.Postgres.URL = "postgres://u:p@db:5432/kacho_iam"
+	cfg.Repository.Postgres.URL = "postgres://u:p@db:5432/kaname"
 	cfg.Repository.Postgres.SSLMode = "require"
 
 	err := cfg.Validate()

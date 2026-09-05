@@ -164,7 +164,7 @@ def _await(resp, token, key):
 def _psql(sql):
     """Run a read-only query against the iam DB from inside its own pod."""
     args = ["kubectl", "-n", KACHO_NS, "exec", PG_IAM_POD, "-c", "postgresql",
-            "--", "sh", "-c", f'PGPASSWORD="$POSTGRES_PASSWORD" psql -U iam -d kacho_iam -h 127.0.0.1 -tAc "{sql}"']
+            "--", "sh", "-c", f'PGPASSWORD="$POSTGRES_PASSWORD" psql -U iam -d kaname -h 127.0.0.1 -tAc "{sql}"']
     return subprocess.run(args, capture_output=True, text=True).stdout.strip()
 
 
@@ -212,7 +212,7 @@ def db_lookup(ext_id):
            f"JOIN projects p ON p.account_id=a.id AND p.name='default' "
            f"WHERE u.external_id='{ext_id}' LIMIT 1;")
     args = ["kubectl", "-n", KACHO_NS, "exec", PG_IAM_POD, "-c", "postgresql",
-            "--", "sh", "-c", f'PGPASSWORD="$POSTGRES_PASSWORD" psql -U iam -d kacho_iam -h 127.0.0.1 -tAc "{sql}"']
+            "--", "sh", "-c", f'PGPASSWORD="$POSTGRES_PASSWORD" psql -U iam -d kaname -h 127.0.0.1 -tAc "{sql}"']
     for _ in range(25):
         out = subprocess.run(args, capture_output=True, text=True).stdout.strip()
         row = next((ln for ln in out.splitlines() if "|" in ln), None)
@@ -380,7 +380,7 @@ def seed_fga_tuple(fga_subject, relation, obj):
         f"AND payload->>'object'='{obj}');"
     )
     args = ["kubectl", "-n", KACHO_NS, "exec", PG_IAM_POD, "-c", "postgresql",
-            "--", "sh", "-c", f'PGPASSWORD="$POSTGRES_PASSWORD" psql -U iam -d kacho_iam -h 127.0.0.1 -tAc "{sql}"']
+            "--", "sh", "-c", f'PGPASSWORD="$POSTGRES_PASSWORD" psql -U iam -d kaname -h 127.0.0.1 -tAc "{sql}"']
     subprocess.run(args, capture_output=True, text=True)
 
 
@@ -434,7 +434,7 @@ def _seed_bootstrap_root_cluster():
     email = "admin@prorobotech.ru"
     sql = f"SELECT id FROM kaname.users WHERE external_id='{email}' LIMIT 1;"
     args = ["kubectl", "-n", KACHO_NS, "exec", PG_IAM_POD, "-c", "postgresql",
-            "--", "sh", "-c", f'PGPASSWORD="$POSTGRES_PASSWORD" psql -U iam -d kacho_iam -h 127.0.0.1 -tAc "{sql}"']
+            "--", "sh", "-c", f'PGPASSWORD="$POSTGRES_PASSWORD" psql -U iam -d kaname -h 127.0.0.1 -tAc "{sql}"']
     out = subprocess.run(args, capture_output=True, text=True).stdout.strip()
     uid = next((ln.strip() for ln in out.splitlines() if ln.strip().startswith("usr")), "")
     if not uid:

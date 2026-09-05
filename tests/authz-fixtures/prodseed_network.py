@@ -93,7 +93,7 @@ def db_lookup(ext_id):
            f"JOIN projects p ON p.account_id=a.id AND p.name='default' "
            f"WHERE u.external_id='{ext_id}' LIMIT 1;")
     args = ["kubectl", "-n", "kacho", "exec", "kacho-umbrella-pg-iam-0", "-c", "postgresql",
-            "--", "sh", "-c", f'PGPASSWORD="$POSTGRES_PASSWORD" psql -U iam -d kacho_iam -h 127.0.0.1 -tAc "{sql}"']
+            "--", "sh", "-c", f'PGPASSWORD="$POSTGRES_PASSWORD" psql -U iam -d kaname -h 127.0.0.1 -tAc "{sql}"']
     # The personal account/project is created in the async upsert worker; retry to
     # absorb the post-upsert lag.
     for _ in range(20):

@@ -50,7 +50,7 @@ func goodEndpoints(mode config.Mode, sslMode string) config.Config {
 		},
 		Repository: config.RepositoryConfig{
 			Postgres: config.PostgresConfig{
-				URL:     "postgres://u:p@db:5432/kacho_iam",
+				URL:     "postgres://u:p@db:5432/kaname",
 				SSLMode: sslMode,
 			},
 		},

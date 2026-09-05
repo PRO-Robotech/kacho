@@ -347,7 +347,7 @@ db:
   host: kacho-umbrella-pg-iam
   port: "5432"
   user: iam
-  name: kacho_iam
+  name: kaname
   passwordSecretName: kacho-umbrella-pg-iam
   passwordSecretKey: password
 

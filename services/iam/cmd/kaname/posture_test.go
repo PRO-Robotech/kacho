@@ -27,7 +27,7 @@ func postureCfg(mode config.Mode, sslMode string) config.Config {
 	var cfg config.Config
 	cfg.AuthN.Mode = mode
 	cfg.AuthN.TrustedForwarderSANs = []string{"spiffe://kacho.cloud/ns/kacho/sa/kacho-api-gateway"}
-	cfg.Repository.Postgres.URL = "postgres://u:p@db:5432/kacho_iam"
+	cfg.Repository.Postgres.URL = "postgres://u:p@db:5432/kaname"
 	cfg.Repository.Postgres.SSLMode = sslMode
 	cfg.Retention = config.RetentionConfig{Interval: 5 * time.Minute, Batch: 1000, MaxBatchesPerPass: 20}
 	return cfg
@@ -92,7 +92,7 @@ func TestPosture_ProductionAcceptsEverySecureDBLink(t *testing.T) {
 // стенд она отвергала при исправной посадке.
 func TestPosture_SSLModeIsReadFromTheStringThatReachesThePool(t *testing.T) {
 	cfg := postureCfg(config.ModeProduction, "")
-	cfg.Repository.Postgres.URL = "postgres://u:p@db:5432/kacho_iam?sslmode=verify-ca"
+	cfg.Repository.Postgres.URL = "postgres://u:p@db:5432/kaname?sslmode=verify-ca"
 	if err := describeFor(t, cfg); err != nil {
 		t.Fatalf("режим, заданный в самом URL, обязан приниматься — в пул уходит именно он; получено: %v", err)
 	}

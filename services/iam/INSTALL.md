@@ -152,7 +152,7 @@ api-server:
 ### Строка подключения к базе: у неё ЕСТЬ умолчание, и оно указывает в localhost
 
 `repository.postgres.url` в перечне выше **не значится** — и это не пропуск.
-У ключа есть умолчание `postgres://iam@localhost:5432/kacho_iam`, поэтому страж
+У ключа есть умолчание `postgres://iam@localhost:5432/kaname`, поэтому страж
 настройки на его отсутствие не отказывает: он видит непустое значение.
 
 Забыть DSN всё равно не выйдет, но остановит вас **другая** проверка — та, что
@@ -160,7 +160,7 @@ api-server:
 собственной базой, а умолчание режима — `disable`. Задавайте DSN явно:
 
 ```
-KANAME_REPOSITORY__POSTGRES__URL=postgres://iam:...@pg:5432/kacho_iam?sslmode=require
+KANAME_REPOSITORY__POSTGRES__URL=postgres://iam:...@pg:5432/kaname?sslmode=require
 ```
 
 Пароль отдельной переменной — `KANAME_DB_PASSWORD` (её имя объявляется ключом

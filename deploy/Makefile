@@ -1323,7 +1323,7 @@ reload-svc-iam:
 
 # psql в kaname-БД (база, пользователь, схема — все kaname).
 psql-iam: guard-kind-context
-	kubectl exec -it -n kacho statefulset/kacho-umbrella-pg-iam -- psql -U iam -d kacho_iam
+	kubectl exec -it -n kacho statefulset/kacho-umbrella-pg-iam -- psql -U iam -d kaname
 
 # KAC-125: greenfield wipe kaname schema + drop goose state.
 # Используется ДО helm upgrade с breaking migration (e.g. 0009_user_per_account_invite_kac125).
@@ -1347,10 +1347,10 @@ wipe-iam-db: guard-kind-context
 	@$(MAKE) --no-print-directory guard-destructive OP=wipe-iam-db TOKEN=WIPE-IAM \
 	  WHAT="DROP SCHEMA kaname CASCADE + снос состояния goose — все аккаунты, проекты, пользователи, группы, роли и привязки исчезнут безвозвратно"
 	@kubectl exec -n kacho kacho-umbrella-pg-iam-0 -- \
-	    env PGPASSWORD=dev-iam-password psql -U iam -d kacho_iam \
+	    env PGPASSWORD=dev-iam-password psql -U iam -d kaname \
 	    -c "DROP SCHEMA IF EXISTS kaname CASCADE; CREATE SCHEMA kaname;"
 	@kubectl exec -n kacho kacho-umbrella-pg-iam-0 -- \
-	    env PGPASSWORD=dev-iam-password psql -U iam -d kacho_iam \
+	    env PGPASSWORD=dev-iam-password psql -U iam -d kaname \
 	    -c "DROP TABLE IF EXISTS public.goose_db_version;" || true
 	@echo "✓ IAM schema wiped; goose state dropped. Next: kubectl rollout restart deploy/kaname"
 

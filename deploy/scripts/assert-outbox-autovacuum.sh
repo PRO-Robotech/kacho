@@ -90,7 +90,7 @@ MAX_NAPTIME_S="${MAX_NAPTIME_S:-5}"
 INSTANCES="
 pg-vpc|kacho_vpc|kacho_vpc.fga_register_outbox|
 pg-compute|kacho_compute|public.compute_fga_register_outbox|
-pg-iam|kacho_iam|kaname.fga_outbox|kaname.subject_change_outbox,kaname.resource_reconcile_outbox
+pg-iam|kaname|kaname.fga_outbox|kaname.subject_change_outbox,kaname.resource_reconcile_outbox
 pg-nlb|kacho_nlb|kacho_nlb.fga_register_outbox|
 pg-storage|kacho_storage|kacho_storage.fga_register_outbox|
 pg-registry|kacho_registry|kacho_registry.registry_outbox|
