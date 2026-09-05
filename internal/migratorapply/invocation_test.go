@@ -13,6 +13,7 @@ import (
 	"strings"
 	"testing"
 
+	"github.com/PRO-Robotech/kacho/internal/productnaming"
 	"github.com/PRO-Robotech/kacho/pkg/pgtest"
 	"github.com/PRO-Robotech/kacho/pkg/treecorpus"
 )
@@ -54,7 +55,12 @@ var (
 
 // subchartKey — ключ подчарта в наложении значений зонта (`kaname:` в нулевой
 // колонке). Им наложение называет службу, которую настраивает.
-var subchartKey = regexp.MustCompile(`^kacho-([a-z0-9]+):`)
+//
+// Приставкой имени платформы образец НЕ сужается: часть продукта вправе носить
+// СВОЁ имя (#2076), и сужение по `kacho-` не отвергало бы такой ключ, а НЕ
+// ВИДЕЛО его — форма вызова у переименованной части оставалась бы без хозяина.
+// Кому принадлежит распознанный ключ, решает владелец имён.
+var subchartKey = regexp.MustCompile(`^([a-z][a-z0-9-]*):`)
 
 // serviceOfManifest — чей это манифест. Выводится из ПУТИ, а не из содержимого:
 // имя службы внутри файла бывает шаблонным (`{{ .Values.name }}`).
@@ -72,9 +78,11 @@ func serviceOfManifest(rel string) string {
 		}
 		return ""
 	}
-	if s, ok := strings.CutPrefix(rel, "deploy/helm/umbrella/charts/kacho-"); ok {
+	if s, ok := strings.CutPrefix(rel, "deploy/helm/umbrella/charts/"); ok {
 		if i := strings.Index(s, "/"); i > 0 {
-			return s[:i]
+			if svc, known := productnaming.ServiceDir(s[:i]); known {
+				return svc
+			}
 		}
 	}
 	return ""
@@ -92,8 +100,12 @@ func serviceForForm(rel string, lines []string, at int) string {
 		return s
 	}
 	for i := at; i >= 0; i-- {
-		if m := subchartKey.FindStringSubmatch(lines[i]); m != nil {
-			return m[1]
+		m := subchartKey.FindStringSubmatch(lines[i])
+		if m == nil {
+			continue
+		}
+		if svc, known := productnaming.ServiceDir(m[1]); known {
+			return svc
 		}
 	}
 	return ""
