@@ -5,7 +5,7 @@ package manifest
 
 // peekmodule_internal_test.go — ПРЕДПОСЫЛКА двухступенчатого обхода.
 //
-// Обход снимает имя модуля отдельным разбором (peekModule), потому что перечень
+// Обход снимает имя модуля отдельным разбором (PeekModule), потому что перечень
 // объявленных модулей обязан быть известен ДО того, как хоть один документ будет
 // судим целиком. Разбор идёт в ТУ ЖЕ структуру и читает ТОТ ЖЕ yaml-тег, поэтому
 // разойтись ему не с чем — но «не с чем» есть УТВЕРЖДЕНИЕ О ДЕРЕВЕ, и держит его
@@ -42,7 +42,7 @@ func TestPeekedModuleAgreesWithTheParsedOne(t *testing.T) {
 		if err != nil {
 			t.Fatalf("манифест %s не перечитан: %v", report.Paths[i], err)
 		}
-		if got := peekModule(data); got != m.Module {
+		if got := PeekModule(data); got != m.Module {
 			t.Errorf("%s: снято %q, разобрано %q — обход объявил бы НЕ ТОТ модуль, "+
 				"не дав ни одной находки", report.Paths[i], got, m.Module)
 		}
@@ -54,7 +54,7 @@ func TestPeekedModuleAgreesWithTheParsedOne(t *testing.T) {
 	// даёт — и потому в перечень объявленных не попадает. Без этого «снято
 	// пусто» было бы неотличимо от «снят пустой модуль».
 	for _, doc := range []string{"", "\t: :\n", "- список, а не отображение\n"} {
-		if got := peekModule([]byte(doc)); got != "" {
+		if got := PeekModule([]byte(doc)); got != "" {
 			t.Errorf("неразбираемый документ дал имя %q", got)
 		}
 	}

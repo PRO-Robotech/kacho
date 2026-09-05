@@ -218,8 +218,16 @@ func Sweep(resources []catalog.ResourceRow, root string, waivers []Waiver) (Cens
 	if ferr != nil {
 		return census, []Finding{{Detail: "обход дерева отказал: " + ferr.Error()}}, SweepFinding
 	}
+	// unusableFor — модули, чей манифест ЛЕЖИТ и негоден. Объявление «не засчитан
+	// НИ модулем, НИ его отсутствием» исполняется обеими половинами: в `found`
+	// такой документ не попадает (первая), и модуль по нему непокрытым не
+	// объявляется (вторая, #2045).
+	unusableFor := make(map[string]struct{}, len(unparsable))
 	for _, u := range unparsable {
-		findings = append(findings, Finding{Detail: fmt.Sprintf(
+		if u.Module != "" {
+			unusableFor[u.Module] = struct{}{}
+		}
+		findings = append(findings, Finding{Module: u.Module, Detail: fmt.Sprintf(
 			"%s: %s — %v; документ назвался манифестом и манифестом не стал, поэтому он не "+
 				"засчитан НИ модулем, НИ его отсутствием; форму судит "+
 				"`make -C services/iam module-manifest-check`", u.Cause, u.Path, u.Err)})
@@ -247,6 +255,12 @@ func Sweep(resources []catalog.ResourceRow, root string, waivers []Waiver) (Cens
 	for _, module := range modules {
 		path, ok := found[module]
 		if !ok {
+			// Манифест модуля лежит и негоден: он уже назван своей находкой с
+			// СОБСТВЕННОЙ причиной. Объявить модуль непокрытым значило бы послать
+			// читателя заводить документ, который написан (#2045).
+			if _, unusable := unusableFor[module]; unusable {
+				continue
+			}
 			switch w, forgiven := waived[module]; {
 			case forgiven:
 				census.Waived++
@@ -486,9 +500,18 @@ func firstDivergence(rendered, canon []byte) string {
 // нет. Это сказано, а не выдано за проверенное: молчание пробы, которой нет,
 // неотличимо от молчания пробы, которая не падает.
 type unusableManifest struct {
-	Path  string
-	Cause string
-	Err   error
+	Path string
+	// Module — модуль, который документ ОБЪЯВИЛ, либо пусто, если не объявил
+	// (или объявить не мог: документ не прочитан). Снимается тем же читателем
+	// оболочки, что и у обхода манифестов (`manifest.PeekModule`), а не своим:
+	// вторая реализация разошлась бы с первой молча.
+	//
+	// Пустое значение здесь означает «приписать НЕ К ЧЕМУ», и тогда «модуль без
+	// манифеста» остаётся верным. Различение несущее: без него починка #2045
+	// выродилась бы в замалчивание непокрытого модуля.
+	Module string
+	Cause  string
+	Err    error
 }
 
 func findManifests(treeRoot *os.Root, root string) (map[string]string, []unusableManifest, error) {
@@ -536,8 +559,13 @@ func findManifests(treeRoot *os.Root, root string) (map[string]string, []unusabl
 		}
 		m, lerr := manifest.LoadWithReferent(raw, manifest.ReferentCanon)
 		if lerr != nil {
+			// Документ прочитан, значит оболочку снять ЕСТЬ С ЧЕГО: имя модуля
+			// берётся у него самого, и негодный документ перестаёт читаться как
+			// отсутствующий (#2045). Отказ загрузчика при этом остаётся находкой —
+			// приписан он или нет.
 			unparsable = append(unparsable, unusableManifest{Path: path,
-				Cause: "манифест не разобран", Err: lerr})
+				Module: manifest.PeekModule(raw),
+				Cause:  "манифест не разобран", Err: lerr})
 			return nil
 		}
 		out[m.Module] = path
