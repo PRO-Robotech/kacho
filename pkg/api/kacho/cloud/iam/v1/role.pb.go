@@ -1442,8 +1442,12 @@ type Rule struct {
 	// Типы ресурсов гранта. 1..16; lowercase. Literal `"*"` — SYSTEM-ONLY;
 	// только как единственный элемент.
 	Resources []string `protobuf:"bytes,2,rep,name=resources,proto3" json:"resources,omitempty"`
-	// Глаголы гранта. 1..16; lowercase. Literal `"*"` — SYSTEM-ONLY; только как
-	// единственный элемент.
+	// Глаголы гранта. 1..16; lowercase. Literal `"*"` означает «все действия
+	// названного типа» и ярусом роли НЕ ограничен: он законен и в арендаторской
+	// роли — в отличие от подстановки в `module` и `resources`, где она доступна
+	// только роли с кластерным якорем. Единственное условие — `"*"` идёт
+	// единственным элементом (`["*", "get"]` → INVALID_ARGUMENT). Расхождение
+	// этой строки с тем, что домен ДЕЛАЕТ, держит гейт, а не внимание.
 	Verbs []string `protobuf:"bytes,3,rep,name=verbs,proto3" json:"verbs,omitempty"`
 	// Pin-by-id селекция инстансов (K8s-native). ≤256; opaque-id; literal `"*"`
 	// запрещен как элемент. Взаимоисключающе с `match_labels`.
