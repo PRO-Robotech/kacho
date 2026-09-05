@@ -31,6 +31,7 @@
 package repohygiene
 
 import (
+	"github.com/PRO-Robotech/kacho/internal/servicelayout"
 	"io/fs"
 	"os"
 	"path/filepath"
@@ -181,10 +182,13 @@ func TestUseCaseLayoutPremiseHolds(t *testing.T) {
 	total := 0
 
 	for _, svc := range serviceDirs(t, root) {
-		api := filepath.Join(root, svc, "internal", "apps", "kacho", "api")
+		// Сегмент берётся у службы, а не выписывается: одна строка на всех
+		// молча обходила бы не тот каталог у той, что назвалась своим именем.
+		api := filepath.Join(root, svc, "internal", "apps",
+			servicelayout.UseCaseSegment(filepath.Base(svc)), "api")
 		entries, err := os.ReadDir(api)
 		if err != nil {
-			t.Fatalf("%s: нет `internal/apps/kaname/api/` (%v). Предпосылка запрета "+
+			t.Fatalf("%s: нет `internal/apps/<сегмент>/api/` (%v). Предпосылка запрета "+
 				"второй раскладки (TestUseCaseLayerHasOneLayout) больше не выполняется: "+
 				"этот сервис держит слой бизнес-логики где-то ещё. Реши, где он живёт, "+
 				"и приведи к общему дому — либо пересмотри запрет.", svc, err)
@@ -196,7 +200,7 @@ func TestUseCaseLayoutPremiseHolds(t *testing.T) {
 			}
 		}
 		if pkgs == 0 {
-			t.Fatalf("%s: `internal/apps/kaname/api/` есть, но ни одного пакета с .go "+
+			t.Fatalf("%s: `internal/apps/<сегмент>/api/` есть, но ни одного пакета с .go "+
 				"в нём нет. Предпосылка запрета второй раскладки не выполняется — "+
 				"use-case этого сервиса лежит не там, где утверждает правило.", svc)
 		}

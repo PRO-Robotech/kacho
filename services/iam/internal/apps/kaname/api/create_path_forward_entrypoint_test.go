@@ -208,7 +208,7 @@ func apiDirForForwardGate(t *testing.T) string {
 		parent := filepath.Dir(dir)
 		if parent == dir {
 			if outermost != "" {
-				return filepath.Join(outermost, "services", "iam", "internal", "apps", "kacho", "api")
+				return filepath.Join(outermost, "services", "iam", "internal", "apps", "kaname", "api")
 			}
 			t.Fatalf("корень монорепо (go.mod) не найден от %s", wd)
 		}

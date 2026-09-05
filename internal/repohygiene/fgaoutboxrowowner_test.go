@@ -48,7 +48,7 @@ const fgaOutboxTableLiteral = "kaname.fga_outbox"
 // fgaOutboxRowOwnerDir — единственный каталог, которому разрешено рендерить строку.
 // Каталог, а не файл: у владельца может быть больше одного файла, но не больше одного
 // дома.
-var fgaOutboxRowOwnerDir = filepath.Join("services", "iam", "internal", "repo", "kacho", "pg", "fga_outbox")
+var fgaOutboxRowOwnerDir = filepath.Join("services", "iam", "internal", "repo", "kaname", "pg", "fga_outbox")
 
 // fgaOutboxInsertMarkers — признаки того, что литерал ВСТАВЛЯЕТ строку, а не читает её.
 // Чтение (гейты, диагностика, сканер очереди) законно откуда угодно и здесь ни при чём.

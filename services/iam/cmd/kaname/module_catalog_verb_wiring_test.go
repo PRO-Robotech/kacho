@@ -253,7 +253,7 @@ func TestIAM1034_VerbApplierBuiltByTheRootIsHandedToAConsumerThatApplies(t *test
 		t.Fatalf("перечень файлов композиционного корня: %v", err)
 	}
 	consumerFiles, err := treecorpus.UnderWithSuffix(
-		filepath.Join(root, "internal", "apps", "kacho", "api", "module"), ".go")
+		filepath.Join(root, "internal", "apps", "kaname", "api", "module"), ".go")
 	if err != nil {
 		t.Fatalf("перечень файлов пакета-потребителя: %v", err)
 	}

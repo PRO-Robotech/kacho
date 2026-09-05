@@ -53,7 +53,7 @@ func emit() string {
 func TestFGAOutboxRowOwnerGate_CatchesASecondRenderer(t *testing.T) {
 	root := t.TempDir()
 	writeInjected(t, root, filepath.Join(fgaOutboxRowOwnerDir, "emitter.go"), ownerFile)
-	writeInjected(t, root, filepath.Join("services", "iam", "internal", "repo", "kacho", "pg", "rogue.go"),
+	writeInjected(t, root, filepath.Join("services", "iam", "internal", "repo", "kaname", "pg", "rogue.go"),
 		`package pg
 
 import "github.com/PRO-Robotech/kacho-iam/internal/clients"
@@ -79,7 +79,7 @@ func TestFGAOutboxRowOwnerGate_SilentOnLegitimateTwins(t *testing.T) {
 	writeInjected(t, root, filepath.Join(fgaOutboxRowOwnerDir, "emitter.go"), ownerFile)
 
 	// Близнец 1: посев с КОНСТАНТНЫМ отношением — набора нет, расщеплять нечего.
-	writeInjected(t, root, filepath.Join("services", "iam", "internal", "apps", "kacho", "seed", "seed.go"),
+	writeInjected(t, root, filepath.Join("services", "iam", "internal", "apps", "kaname", "seed", "seed.go"),
 		`package seed
 
 func seedOne() string {

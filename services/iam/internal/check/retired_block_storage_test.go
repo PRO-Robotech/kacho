@@ -327,7 +327,7 @@ func TestRetiredBlockStorageIsNotInPermissionCatalog(t *testing.T) {
 	root := monorepoRoot(t)
 	copies := []string{
 		filepath.Join("gateway", "internal", "middleware", "embed", "permission_catalog.json"),
-		filepath.Join("services", "iam", "internal", "apps", "kacho", "seed", "embedded", "permission_catalog.json"),
+		filepath.Join("services", "iam", "internal", "apps", "kaname", "seed", "embedded", "permission_catalog.json"),
 	}
 
 	type entry struct {
