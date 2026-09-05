@@ -155,11 +155,14 @@ func TestConditionedRelationHasAProducer(t *testing.T) {
 // that is out of reach: the reconciler's tuple value has no place to put it.
 // Consequence today: each of these relations resolves solely through the
 // computed branch it unions (`or admin`), so `ssh`/`console` are exactly `admin`
-// and the freshness requirement is not in force anywhere. `cluster#console`
-// unions nothing, so it is unreachable outright.
+// and the freshness requirement is not in force anywhere.
+//
+// `cluster#console` stood here as a third entry and is GONE with its subject: the
+// relation unioned nothing, so it was unreachable outright, and it was withdrawn
+// from the canonical model (#1820). The entry left by the same change — an
+// exception with nothing to exclude is a finding, and TestNoStaleConditionExceptions
+// says so on its own.
 var unproducedConditionSites = map[string]string{
-	"cluster#console with mfa_fresh": "no `or` branch — the relation is unreachable; " +
-		"nothing grants cluster console today",
 	"compute_instance#ssh with mfa_fresh": "resolves via `or admin`; the freshness " +
 		"requirement on the direct branch is not in force",
 	"compute_instance#console with mfa_fresh": "resolves via `or admin`; the freshness " +
