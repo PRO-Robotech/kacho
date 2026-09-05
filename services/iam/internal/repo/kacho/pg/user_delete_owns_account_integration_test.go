@@ -33,6 +33,7 @@ import (
 
 	coredb "github.com/PRO-Robotech/kacho/pkg/db"
 	"github.com/PRO-Robotech/kacho/pkg/ids"
+	"github.com/PRO-Robotech/kacho/pkg/pgtest"
 
 	"github.com/PRO-Robotech/kacho-iam/internal/domain"
 	iamerr "github.com/PRO-Robotech/kacho-iam/internal/errors"
@@ -50,7 +51,10 @@ func TestUserDelete_OwnsAccount_SaysSoInsteadOfNotFound(t *testing.T) {
 	dsn := setupTestDB(t)
 	pool, err := coredb.NewPool(ctx, dsn)
 	require.NoError(t, err)
-	defer pool.Close()
+	// Закрытие ОГРАНИЧЕННОЕ (`pgtest.ClosePoolAtEnd`), а не `defer pool.Close()`:
+	// безусловное закрытие вешает прогон, если пул держит незакрытую связь, и
+	// это свойство дерева стережёт гейт `TestPoolCloseInTestsIsBounded`.
+	pgtest.ClosePoolAtEnd(t, pool)
 	repo := kachopg.New(pool, nil)
 
 	// Условие пробы: человек и принадлежащий ему аккаунт существуют. Заводится
