@@ -47,13 +47,14 @@ import (
 	"bytes"
 	"fmt"
 	"os"
-	"os/exec"
 	"path/filepath"
 	"regexp"
 	"sort"
 	"strings"
 
 	"gopkg.in/yaml.v3"
+
+	"github.com/PRO-Robotech/kacho/pkg/gitenv"
 )
 
 // Entry — одна личность в ведомости.
@@ -422,14 +423,21 @@ func short(sha string) string {
 
 // gitLog читает историю области. Разделители — управляющие символы, а не
 // перевод строки: тело сообщения содержит и переводы строк, и пустые строки.
+// gitLog спрашивает историю ЧЕРЕЗ pkg/gitenv, а не прямым вызовом.
+//
+// `cmd.Dir` не выбирает репозиторий, когда в окружении есть `GIT_DIR`:
+// переменная сильнее рабочего каталога. Прямой вызов с `cmd.Env =
+// append(os.Environ(), …)` возвращал снятые переменные обратно — и гейт вынес бы
+// вердикт о вкладе по истории ЧУЖОГО репозитория, оставаясь на вид исправным.
+// Дополнять окружение можно только ДОПИСЫВАНИЕМ к `gitenv.Env()`.
 func gitLog(repoRoot, revRange string, scope []string) ([]commitRec, error) {
-	args := []string{"-C", repoRoot, "log", "-z", "--format=%H%x1f%an%x1f%ae%x1f%B", revRange}
+	args := []string{"log", "-z", "--format=%H%x1f%an%x1f%ae%x1f%B", revRange}
 	if len(scope) > 0 {
 		args = append(args, "--")
 		args = append(args, scope...)
 	}
-	cmd := exec.Command("git", args...)
-	cmd.Env = append(os.Environ(), "GIT_TERMINAL_PROMPT=0")
+	cmd := gitenv.Command(repoRoot, args...)
+	cmd.Env = append(cmd.Env, "GIT_TERMINAL_PROMPT=0")
 	var stderr bytes.Buffer
 	cmd.Stderr = &stderr
 	out, err := cmd.Output()

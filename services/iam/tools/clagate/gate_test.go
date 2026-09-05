@@ -17,12 +17,13 @@ package clagate_test
 
 import (
 	"os"
-	"os/exec"
 	"path/filepath"
 	"strings"
 	"testing"
 
 	"github.com/stretchr/testify/require"
+
+	"github.com/PRO-Robotech/kacho/pkg/gitenv"
 
 	"github.com/PRO-Robotech/kacho-iam/tools/clagate"
 )
@@ -368,12 +369,19 @@ func inspectFixture(t *testing.T, dir, ledger string) clagate.Report {
 // Изоляция здесь несущая, а не аккуратность: проба, заводящая репозиторий без
 // неё, пишет в индекс и настройки того дерева, из которого запущена, — и дальше
 // проверки, читающие дерево, выдумывают красные вердикты на целом коде.
+//
+// СОБСТВЕННЫЙ КАТАЛОГ ЭТОГО НЕ ОБЕСПЕЧИВАЕТ. `cmd.Dir` не выбирает репозиторий,
+// когда в окружении есть `GIT_DIR`: переменная сильнее рабочего каталога.
+// Прежняя редакция строила окружение от `os.Environ()` — то есть возвращала
+// снятые переменные обратно и писала бы `init`, `add` и `commit` в чужую копию,
+// сохраняя вид изоляции. Основа берётся у `gitenv.Env()`, а свои величины
+// ДОПИСЫВАЮТСЯ.
 func writeRepo(t *testing.T, commits []commit) string {
 	t.Helper()
 	dir := t.TempDir()
 	home := t.TempDir()
 
-	env := append(os.Environ(),
+	env := append(gitenv.Env(),
 		"HOME="+home,
 		"GIT_CONFIG_NOSYSTEM=1",
 		"GIT_CONFIG_GLOBAL="+filepath.Join(home, "gitconfig"),
@@ -381,7 +389,7 @@ func writeRepo(t *testing.T, commits []commit) string {
 	)
 	run := func(extraEnv []string, args ...string) {
 		t.Helper()
-		cmd := exec.Command("git", append([]string{"-C", dir}, args...)...)
+		cmd := gitenv.Command(dir, args...)
 		cmd.Env = append(env, extraEnv...)
 		out, err := cmd.CombinedOutput()
 		require.NoError(t, err, "git %s: %s", strings.Join(args, " "), out)
