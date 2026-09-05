@@ -69,12 +69,28 @@ func TestOwnDoor_EveryObjectScopedRPCRefusesAStranger(t *testing.T) {
 		t.Fatal("карта пуста — вердикт беспредметен")
 	}
 
+	// delegated — RPC, у которых дверь снимается ЦЕЛИКОМ: вопрос о правах решает
+	// обработчик (`api/authorize/caller_authority.go`), единственный полный
+	// решатель «кто вправе спрашивать». Перебор их не судит — не как послабление,
+	// а потому что предмет у него другой: он спрашивает «держит ли ДВЕРЬ этот
+	// пообъектный RPC», а дверь этих RPC не держит по решению.
+	//
+	// Множество берётся у САМОЙ двери, а не выписывается здесь: выписанное было
+	// бы вторым объявлением того же предмета и разошлось бы с поправкой звена
+	// молча — ровно там, где расхождение невидимо. Отсюда же самоистечение:
+	// снимут запись из поправки — RPC вернётся в перебор сам.
+	delegated := make(map[string]struct{})
+	for _, full := range authzguard.CallerAuthorityGatedMethods() {
+		delegated[full] = struct{}{}
+	}
+
 	var (
-		objectScoped int
-		refused      int
-		admitted     int
-		unbuildable  []string
-		findings     []string
+		objectScoped  int
+		refused       int
+		admitted      int
+		delegatedSeen int
+		unbuildable   []string
+		findings      []string
 	)
 
 	methods := make([]string, 0, len(m))
@@ -86,6 +102,12 @@ func TestOwnDoor_EveryObjectScopedRPCRefusesAStranger(t *testing.T) {
 	for _, full := range methods {
 		entry := m[full]
 		if entry.Public || entry.ScopeFiltered || entry.Relation == "" || entry.Extract == nil {
+			continue
+		}
+		if _, handlerDecides := delegated[full]; handlerDecides {
+			// Считается ОТДЕЛЬНО и печатается в переписи: «не судили» обязано быть
+			// отличимо от «судили и прошло», иначе знаменатель молча уменьшался бы.
+			delegatedSeen++
 			continue
 		}
 		objectScoped++
@@ -147,8 +169,8 @@ func TestOwnDoor_EveryObjectScopedRPCRefusesAStranger(t *testing.T) {
 
 	sort.Strings(unbuildable)
 	t.Logf("перепись: записей карты %d · пообъектных %d · отказано постороннему %d · "+
-		"пропущено выданному %d · запрос не построен %d · находок %d",
-		len(m), objectScoped, refused, admitted, len(unbuildable), len(findings))
+		"пропущено выданному %d · запрос не построен %d · решает обработчик %d · находок %d",
+		len(m), objectScoped, refused, admitted, len(unbuildable), delegatedSeen, len(findings))
 
 	if objectScoped == 0 {
 		t.Fatal("пообъектных RPC в карте ноль — перебор беспредметен")
