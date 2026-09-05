@@ -162,11 +162,27 @@ var surfaceFiles = []surfaceFile{
 // отрицание этого не заметило бы.
 const (
 	liveConditionDefs = 6
-	// 4, а не 3: одна строка модели несёт ДВА ограничения
-	// (`[user with mfa_fresh, service_account with mfa_fresh]`). Число получено
-	// подсчётом вхождений, а не строк — первая редакция считала строками и
-	// ошиблась ровно на этот случай. Это и есть работа положительной половины.
-	liveMFARestrictions = 4
+	// Число получено подсчётом ВХОЖДЕНИЙ, а не строк: одна строка модели способна
+	// нести два ограничения (`[user with mfa_fresh, service_account with mfa_fresh]`).
+	// Первая редакция считала строками и ошиблась ровно на этот случай.
+	//
+	// Было 4, стало 2 — и это не подгонка под зелёное, а приведение якоря к факту.
+	// Отношение `console` на типе `cluster` снято решением #1820 (коммит d1c78ec271):
+	// читателя нет ни одного, вычисляемой ветви нет, выдать его нечем — роль
+	// отображается в ярусы, правило даёт только глаголы, пути кортежу не существует.
+	// Разбор и цена — services/iam/docs/engineering/architecture/anchor-relations-adjudicated.md.
+	// Строка несла ДВА вхождения, поэтому 4 − 2 = 2; живыми остаются `ssh` и
+	// `console` на `compute_instance`.
+	//
+	// Почему якорь пережил своё снятие на три недели: тем же коммитом обновлён
+	// близнец этого утверждения в модуле службы
+	// (services/iam/internal/authzmap/conditioned_relation_has_producer_test.go —
+	// запись `cluster#console with mfa_fresh` снята вместе с предметом), а этот
+	// якорь живёт в КОРНЕВОМ модуле, куда `go test ./...` из services/iam не
+	// доходит by construction. Два места об одном предмете в двух модулях: правя
+	// модель прав, ищи утверждения о ней ОБОИМИ обходами, а не тем, который
+	// запускается из твоего каталога.
+	liveMFARestrictions = 2
 	fgaModelPath        = "proto/kacho/cloud/iam/v1/fga_model.fga"
 	accessBindingPth    = "proto/kacho/cloud/iam/v1/access_binding.proto"
 )
