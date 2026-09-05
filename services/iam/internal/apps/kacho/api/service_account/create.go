@@ -35,8 +35,8 @@ import (
 type ObjectReconciler interface {
 	// ReconcileObjectForward is the ADDITIVE forward fast-path for the freshly-created
 	// service-account-AS-OBJECT (iam.serviceAccount): it materializes ONLY that new SA's
-	// per-object owner/admin tuples across the matching bindings under a SHARE advisory
-	// lock (no EXCLUSIVE / O(scope) recompute), the throughput fix for the owner-tuple
+	// per-object owner/admin tuples across the matching bindings while holding NO
+	// advisory lock at all (neither EXCLUSIVE nor SHARE, no O(scope) recompute); the throughput fix for the owner-tuple
 	// materialization lag under a parallel SA-create burst. It transparently delegates to
 	// the FULL ReconcileObject if the object already has members (delete-stale guard).
 	ReconcileObjectForwardNoStale(ctx context.Context, objectType, objectID string) error
@@ -174,7 +174,7 @@ func (u *CreateServiceAccountUseCase) doCreate(ctx context.Context, sa domain.Se
 	// co-committed reconcile event + periodic sweep are the at-least-once backstop.
 	//
 	// IAM-FMB throughput fix: the sync post-commit materialization takes the ADDITIVE
-	// forward (ReconcileObjectForward, SHARE advisory lock, single-object — the SA is
+	// forward (ReconcileObjectForward, NO advisory lock at all, single-object — the SA is
 	// brand-new so there is NOTHING stale to delete) instead of the FULL EXCLUSIVE
 	// ReconcileObject, whose per-binding advisory lock + O(scope) recompute serialized on
 	// the SINGLE owner/account binding every service account of an account shares → the

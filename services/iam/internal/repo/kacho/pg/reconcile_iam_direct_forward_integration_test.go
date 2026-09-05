@@ -16,7 +16,7 @@ package pg_test
 // under a parallel create burst. The forward path now materializes ONLY the freshly-
 // created iam-direct object's per-object tuples for each matching binding, reading the
 // object from its OWN table (GetIAMDirectObject) + the iam-direct fan-out
-// (IAMDirectSelectorBindingsMatchingObject), under a SHARE advisory lock — so N
+// (IAMDirectSelectorBindingsMatchingObject), holding NO advisory lock at all — so N
 // concurrent creates in one account do NOT serialize.
 //
 // Coverage (RED → GREEN):

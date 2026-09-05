@@ -12,7 +12,8 @@ package reconcile
 //
 // These pin the create-forward contract (mirror of the object-forward contract):
 //   - it materializes the binding's desired ACTIVE per-object members ADDITIVELY, taking
-//     ONLY the SHARE advisory lock (never the EXCLUSIVE full-path lock) — the throughput
+//     NO advisory lock at all (neither the EXCLUSIVE full-path lock nor a SHARE one) — the
+//     throughput
 //     property under a mass-binding-create burst (IAM-FMB-01);
 //   - a matched-but-foreign (cross-scope) object is NOT granted (additive-only leaves the
 //     REJECTED member + containment audit to the async full backstop) (IAM-FMB-03);

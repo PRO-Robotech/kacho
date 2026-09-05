@@ -90,7 +90,7 @@ func TestReconcileObjectForward_MaterializesSingleObject_NoExclusiveLock(t *test
 // iam.accessBinding / iam.project owner materialization). A brand-new iam-native object
 // (here iam.accessBinding created inside an account with an owner `*.*` binding) is
 // materialized ADDITIVELY: the owner's full owner verb-set (v_* + admin tier) is emitted
-// on iam_access_binding:<id> under the SHARE advisory lock ONLY (f.locks==0), reading the
+// on iam_access_binding:<id> with NO advisory lock taken at all (f.locks==0), reading the
 // object from its OWN table (GetIAMDirectObject) and the matching bindings from the
 // iam-direct fan-out (IAMDirectSelectorBindingsMatchingObject) — NOT the FULL EXCLUSIVE
 // ReconcileObject the create-path used before (which serialized on the single owner

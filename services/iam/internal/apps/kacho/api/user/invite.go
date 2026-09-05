@@ -68,7 +68,8 @@ type ObjectReconciler interface {
 	// ReconcileObjectForward is the ADDITIVE forward fast-path for the invite-flow's
 	// freshly-created iam-native objects (iam.user + the project-scoped iam.accessBinding):
 	// it materializes ONLY that new object's per-object owner/admin tuples across the
-	// matching bindings under a SHARE advisory lock (no EXCLUSIVE / O(scope) recompute),
+	// matching bindings while holding NO advisory lock at all (neither EXCLUSIVE nor SHARE,
+	// no O(scope) recompute),
 	// the throughput fix for the owner-tuple materialization lag under a parallel
 	// invite burst. It transparently delegates to the FULL ReconcileObject if the object
 	// already has members (delete-stale guard).
