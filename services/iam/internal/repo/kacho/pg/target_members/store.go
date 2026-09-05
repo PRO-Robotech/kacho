@@ -1,7 +1,7 @@
 // Copyright (c) PRO-Robotech
 // SPDX-License-Identifier: AGPL-3.0-or-later
 
-// Package target_members — store for kacho_iam.access_binding_target_members,
+// Package target_members — store for kaname.access_binding_target_members,
 // the materialized desired-state membership of a binding's target.
 //
 // The reconciler computes the desired member set from resource_mirror, then
@@ -42,7 +42,7 @@ type Member struct {
 // PENDING→ACTIVE/REJECTED). updated_at advances on write.
 func UpsertTx(ctx context.Context, tx pgx.Tx, m Member) error {
 	if _, err := tx.Exec(ctx,
-		`INSERT INTO kacho_iam.access_binding_target_members
+		`INSERT INTO kaname.access_binding_target_members
 		   (binding_id, role_id, rule_fp, object_type, object_id, verification_status, created_at, updated_at)
 		 VALUES ($1, $2, $3, $4, $5, $6, now(), now())
 		 ON CONFLICT (binding_id, role_id, rule_fp, object_type, object_id) DO UPDATE
@@ -93,7 +93,7 @@ func UpsertManyTx(ctx context.Context, tx pgx.Tx, members []Member) error {
 		statuses = append(statuses, string(m.VerificationStatus))
 	}
 	if _, err := tx.Exec(ctx,
-		`INSERT INTO kacho_iam.access_binding_target_members
+		`INSERT INTO kaname.access_binding_target_members
 		   (binding_id, role_id, rule_fp, object_type, object_id, verification_status, created_at, updated_at)
 		 SELECT b, r, f, ot, oi, vs, now(), now()
 		   FROM unnest($1::text[], $2::text[], $3::text[], $4::text[], $5::text[], $6::text[])
@@ -116,7 +116,7 @@ func UpsertManyTx(ctx context.Context, tx pgx.Tx, members []Member) error {
 // member never drops another rule's member of the same object.
 func DeleteTx(ctx context.Context, tx pgx.Tx, bindingID, ruleFP, objectType, objectID string) error {
 	if _, err := tx.Exec(ctx,
-		`DELETE FROM kacho_iam.access_binding_target_members
+		`DELETE FROM kaname.access_binding_target_members
 		  WHERE binding_id = $1 AND rule_fp = $2 AND object_type = $3 AND object_id = $4`,
 		bindingID, ruleFP, objectType, objectID,
 	); err != nil {
@@ -131,7 +131,7 @@ func DeleteTx(ctx context.Context, tx pgx.Tx, bindingID, ruleFP, objectType, obj
 func ListByBindingTx(ctx context.Context, tx pgx.Tx, bindingID string) ([]Member, error) {
 	return queryMembers(ctx, tx,
 		`SELECT binding_id, role_id, rule_fp, object_type, object_id, verification_status
-		   FROM kacho_iam.access_binding_target_members
+		   FROM kaname.access_binding_target_members
 		  WHERE binding_id = $1
 		  ORDER BY rule_fp ASC, object_type ASC, object_id ASC`,
 		bindingID)
@@ -149,7 +149,7 @@ func ListByBindingTx(ctx context.Context, tx pgx.Tx, bindingID string) ([]Member
 func ListByBindingObjectTx(ctx context.Context, tx pgx.Tx, bindingID, objectType, objectID string) ([]Member, error) {
 	return queryMembers(ctx, tx,
 		`SELECT binding_id, role_id, rule_fp, object_type, object_id, verification_status
-		   FROM kacho_iam.access_binding_target_members
+		   FROM kaname.access_binding_target_members
 		  WHERE object_type = $2 AND object_id = $3 AND binding_id = $1
 		  ORDER BY rule_fp ASC`,
 		bindingID, objectType, objectID)
@@ -168,7 +168,7 @@ func BindingsForObjectTx(ctx context.Context, tx pgx.Tx, objectType, objectID st
 	// the contract honest and the EXPLAIN stable.
 	rows, err := tx.Query(ctx,
 		`SELECT DISTINCT binding_id
-		   FROM kacho_iam.access_binding_target_members
+		   FROM kaname.access_binding_target_members
 		  WHERE object_type = $1 AND object_id = $2
 		  ORDER BY binding_id ASC`,
 		objectType, objectID)

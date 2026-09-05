@@ -82,17 +82,17 @@ type censusQuerier interface {
 func nonCanonicalBindingCensus(t *testing.T, ctx context.Context, q censusQuerier) (found []string, examined int) {
 	t.Helper()
 	require.NoError(t, q.QueryRow(ctx, `
-		SELECT count(*) FROM kacho_iam.access_bindings
+		SELECT count(*) FROM kaname.access_bindings
 		 WHERE subject_type = 'user'`).Scan(&examined))
 
 	rows, err := q.Query(ctx, `
 		SELECT b.id
-		  FROM kacho_iam.access_bindings b
-		  JOIN kacho_iam.users subj ON subj.id = b.subject_id
+		  FROM kaname.access_bindings b
+		  JOIN kaname.users subj ON subj.id = b.subject_id
 		 WHERE b.subject_type = 'user'
 		   AND b.subject_id <> (
 			   SELECT canon.id
-				 FROM kacho_iam.users canon
+				 FROM kaname.users canon
 				WHERE lower(canon.email) = lower(subj.email)
 				  AND canon.invite_status = 'ACTIVE'
 				ORDER BY canon.created_at, canon.id
@@ -127,7 +127,7 @@ func TestIntegration_NonCanonicalBindingCensus(t *testing.T) {
 
 	var canonEmail string
 	require.NoError(t, pool.QueryRow(ctx,
-		`SELECT email FROM kacho_iam.users WHERE id = $1`, string(canonUser)).Scan(&canonEmail))
+		`SELECT email FROM kaname.users WHERE id = $1`, string(canonUser)).Scan(&canonEmail))
 
 	// Законная выдача на каноническую строку: без неё перепись осматривала бы
 	// пустую таблицу, и «ноль находок» ничего не сообщало бы.
@@ -196,14 +196,14 @@ func TestIntegration_NonCanonicalBindingCensus(t *testing.T) {
 		require.NoError(t, txerr)
 		defer func() { _ = tx.Rollback(ctx) }()
 
-		_, err = tx.Exec(ctx, `DROP INDEX kacho_iam.users_identity_email_uniq`)
+		_, err = tx.Exec(ctx, `DROP INDEX kaname.users_identity_email_uniq`)
 		require.NoError(t, err,
 			"ПРЕДПОСЫЛКА части 3: ключ обязан существовать — иначе снимать нечего, "+
 				"и часть 2 утверждала бы про отказ, которого не бывает")
 
 		shadowUser := domain.UserID(ids.NewID(domain.PrefixUser))
 		_, err = tx.Exec(ctx, `
-			INSERT INTO kacho_iam.users
+			INSERT INTO kaname.users
 			    (id, account_id, external_id, email, display_name, invite_status, created_at)
 			VALUES ($1, $2, 'ext-nc1-shadow', $3, 'Shadow', 'ACTIVE', now() + interval '1 second')`,
 			string(shadowUser), string(otherAcc), canonEmail)
@@ -213,7 +213,7 @@ func TestIntegration_NonCanonicalBindingCensus(t *testing.T) {
 		// теневая, — иначе перепись назвала бы находкой законную выдачу.
 		var canonical string
 		require.NoError(t, tx.QueryRow(ctx, `
-			SELECT id FROM kacho_iam.users
+			SELECT id FROM kaname.users
 			 WHERE lower(email) = lower($1) AND invite_status = 'ACTIVE'
 			 ORDER BY created_at, id LIMIT 1`, canonEmail).Scan(&canonical))
 		require.Equal(t, string(canonUser), canonical,
@@ -221,13 +221,13 @@ func TestIntegration_NonCanonicalBindingCensus(t *testing.T) {
 				"проверяет не то, что называет")
 
 		_, err = tx.Exec(ctx, `
-			INSERT INTO kacho_iam.access_bindings
+			INSERT INTO kaname.access_bindings
 			    (id, subject_type, subject_id, role_id, resource_type, resource_id, status)
 			VALUES ($1, 'user', $2, $3, 'account', $4, 'ACTIVE')`,
 			shadowBinding, string(shadowUser), role, string(otherAcc))
 		require.NoError(t, err)
 		_, err = tx.Exec(ctx, `
-			INSERT INTO kacho_iam.access_binding_subjects (binding_id, subject_type, subject_id, ordinal)
+			INSERT INTO kaname.access_binding_subjects (binding_id, subject_type, subject_id, ordinal)
 			VALUES ($1, 'user', $2, 0)`, shadowBinding, string(shadowUser))
 		require.NoError(t, err)
 
@@ -253,7 +253,7 @@ func TestIntegration_NonCanonicalBindingCensus(t *testing.T) {
 
 	var shadowRows int
 	require.NoError(t, pool.QueryRow(ctx,
-		`SELECT count(*) FROM kacho_iam.users WHERE lower(email) = lower($1)`,
+		`SELECT count(*) FROM kaname.users WHERE lower(email) = lower($1)`,
 		canonEmail).Scan(&shadowRows))
 	require.Equal(t, 1, shadowRows, "строка с этой почтой обязана остаться одна")
 }
@@ -261,7 +261,7 @@ func TestIntegration_NonCanonicalBindingCensus(t *testing.T) {
 // bindingIDs — все привязки дерева поимённо.
 func bindingIDs(t *testing.T, ctx context.Context, q censusQuerier) []string {
 	t.Helper()
-	rows, err := q.Query(ctx, `SELECT id FROM kacho_iam.access_bindings ORDER BY id`)
+	rows, err := q.Query(ctx, `SELECT id FROM kaname.access_bindings ORDER BY id`)
 	require.NoError(t, err)
 	defer rows.Close()
 	var out []string

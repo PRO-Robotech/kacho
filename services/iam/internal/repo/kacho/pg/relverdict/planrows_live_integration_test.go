@@ -219,8 +219,8 @@ func TestPlanRows_InstrumentReadsTheProductsOwnStatement(t *testing.T) {
 	// файл и существует.
 	var loopRaw []byte
 	if err := tx.QueryRow(ctx, `EXPLAIN (ANALYZE, BUFFERS, VERBOSE, FORMAT JSON)
-		SELECT count(*) FROM kacho_iam.resource_mirror m
-		 WHERE EXISTS (SELECT 1 FROM kacho_iam.accounts a WHERE a.id = m.parent_account_id)`).Scan(&loopRaw); err != nil {
+		SELECT count(*) FROM kaname.resource_mirror m
+		 WHERE EXISTS (SELECT 1 FROM kaname.accounts a WHERE a.id = m.parent_account_id)`).Scan(&loopRaw); err != nil {
 		t.Fatalf("снятие плана с циклами: %v", err)
 	}
 	lm, err := planrows.Extract(loopRaw, []string{"accounts", "resource_mirror"})
@@ -287,7 +287,7 @@ func TestPlanRows_RefusesOnAPlanThatCannotCarryTheMeasurement(t *testing.T) {
 		var raw []byte
 		if err := tx.QueryRow(ctx,
 			`EXPLAIN (ANALYZE, BUFFERS, VERBOSE, FORMAT JSON)
-			 SELECT id FROM kacho_iam.accounts WHERE id = $1`, "acc-1").Scan(&raw); err != nil {
+			 SELECT id FROM kaname.accounts WHERE id = $1`, "acc-1").Scan(&raw); err != nil {
 			t.Fatalf("снятие плана: %v", err)
 		}
 

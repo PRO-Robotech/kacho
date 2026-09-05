@@ -6,7 +6,7 @@ package access_binding
 // revoke_set.go — the tuple-set a teardown (hard Delete / soft Revoke) may actually
 // remove from the rights state.
 //
-// THE RULE. The emitted-tuple ledger (kacho_iam.access_binding_emitted_tuples) is
+// THE RULE. The emitted-tuple ledger (kaname.access_binding_emitted_tuples) is
 // keyed PER BINDING (binding_id, fga_user, relation, object); the tuple itself is
 // NOT refcounted. Two bindings of the SAME subject on the SAME scope with the same
 // verbs therefore hold TWO ledger rows for ONE live tuple. Replaying a binding's own

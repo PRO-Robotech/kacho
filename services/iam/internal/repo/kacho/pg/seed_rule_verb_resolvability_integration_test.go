@@ -253,7 +253,7 @@ func TestSeededRoleRuleVerbsAreDeclaredByTheType(t *testing.T) {
 	require.NoError(t, err)
 	pgtest.ClosePoolAtEnd(t, pool)
 
-	rows, err := pool.Query(ctx, `SELECT id, name, rules FROM kacho_iam.roles ORDER BY id`)
+	rows, err := pool.Query(ctx, `SELECT id, name, rules FROM kaname.roles ORDER BY id`)
 	require.NoError(t, err)
 
 	var (

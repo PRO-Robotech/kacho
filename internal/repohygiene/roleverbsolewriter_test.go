@@ -8,7 +8,7 @@ package repohygiene
 // ─────────────────────────────────────────────────────────────────────────────
 // ПРЕДМЕТ
 //
-// Таблицы `kacho_iam.role_verb` и `kacho_iam.role_rule_ref` — проекции роли, то,
+// Таблицы `kaname.role_verb` и `kaname.role_rule_ref` — проекции роли, то,
 // из чего цепь вердикта собирает ответ «разрешено ли действие». Класс, ради
 // которого гейт заведён: ДВЕ реализации знают, что такое законная строка, и
 // расходятся МОЛЧА — обе компилируются, у обеих есть пробы, и различаются они
@@ -38,7 +38,7 @@ package repohygiene
 // функция, ВНОСЯЩАЯ строку.
 //
 // Предикат от смены не ослаб: прежний второй писатель (`replaceRoleVerbsTx` в
-// слое досева) нёс `INSERT INTO kacho_iam.role_verb` и был бы пойман ОДНОЙ этой
+// слое досева) нёс `INSERT INTO kaname.role_verb` и был бы пойман ОДНОЙ этой
 // осью. И он не вакуумен: авторов сегодня ровно по одному на проекцию, а
 // применитель под него не подпадает — он не вносит.
 //
@@ -107,7 +107,7 @@ import (
 )
 
 // roleVerbTable — проекция «роль → тип объекта × глагол».
-const roleVerbTable = "kacho_iam.role_verb"
+const roleVerbTable = "kaname.role_verb"
 
 // roleRuleRefTable — проекция ОБЪЯВЛЕННЫХ сегментов правила (kacho#1030).
 //
@@ -115,13 +115,13 @@ const roleVerbTable = "kacho_iam.role_verb"
 // прийти вместе с ней: решение #1028 закрыто наполовину, если новая таблица его
 // не наследует. Предмет у таблиц разный (та несёт резолвящееся, эта — каждый
 // объявленный сегмент), а требование к автору — одно.
-const roleRuleRefTable = "kacho_iam.role_rule_ref"
+const roleRuleRefTable = "kaname.role_rule_ref"
 
 // roleGrantOrphanTable — куда обязано переселяться снятое не-автором.
 //
 // Таблица существует ровно ради этого: снятие ПЕРЕСЕЛЯЕТ, а не отбирает молча,
 // иначе отобранное право неотличимо от никогда не выданного.
-const roleGrantOrphanTable = "kacho_iam.role_grant_orphan"
+const roleGrantOrphanTable = "kaname.role_grant_orphan"
 
 // roleProjectionTables — таблицы, у каждой из которых автор обязан быть один.
 var roleProjectionTables = []string{roleVerbTable, roleRuleRefTable}

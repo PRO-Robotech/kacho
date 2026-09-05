@@ -57,7 +57,7 @@ import (
 )
 
 // iamPartitionKey mirrors the partition key kacho-iam ships for
-// kacho_iam.fga_outbox (drainer.Config.PartitionColumn in
+// kaname.fga_outbox (drainer.Config.PartitionColumn in
 // services/iam/cmd/kacho-iam/serve.go): the FULL tuple identity
 // (user, relation, object), materialised by migration 0067 into the `tuple_key`
 // column and indexed by fga_outbox_tuple_head_idx. Every test below runs the
@@ -168,7 +168,7 @@ func insertOutboxRowAttempt(t *testing.T, ctx context.Context, pool *pgxpool.Poo
 	t.Helper()
 	var id int64
 	err := pool.QueryRow(ctx,
-		`INSERT INTO kacho_iam.fga_outbox (event_type, payload, attempt_count)
+		`INSERT INTO kaname.fga_outbox (event_type, payload, attempt_count)
 		 VALUES ($1, $2::jsonb, $3) RETURNING id`,
 		eventType, payload, attempt,
 	).Scan(&id)
@@ -183,7 +183,7 @@ func insertOutboxRowAged(t *testing.T, ctx context.Context, pool *pgxpool.Pool, 
 	t.Helper()
 	var id int64
 	err := pool.QueryRow(ctx,
-		`INSERT INTO kacho_iam.fga_outbox (event_type, payload, attempt_count, created_at)
+		`INSERT INTO kaname.fga_outbox (event_type, payload, attempt_count, created_at)
 		 VALUES ($1, $2::jsonb, $3, now() - make_interval(secs => $4)) RETURNING id`,
 		eventType, payload, attempt, age.Seconds(),
 	).Scan(&id)

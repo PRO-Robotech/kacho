@@ -35,7 +35,7 @@ func containmentAuditTenant(t *testing.T, ctx context.Context, pool *pgxpool.Poo
 	t.Helper()
 	var tenant *string
 	err := pool.QueryRow(ctx,
-		`SELECT tenant_account_id FROM kacho_iam.audit_outbox
+		`SELECT tenant_account_id FROM kaname.audit_outbox
 		  WHERE event_type='iam.access_binding.containment_rejected'
 		    AND event_payload->>'object_id'=$1
 		  ORDER BY created_at DESC LIMIT 1`,

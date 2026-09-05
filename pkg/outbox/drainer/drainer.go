@@ -15,7 +15,7 @@ import (
 
 // Config — параметры конкретного экземпляра drainer-а.
 type Config struct {
-	// Table — полное имя outbox-таблицы (`<schema>.<table>`), e.g. "kacho_iam.fga_outbox".
+	// Table — полное имя outbox-таблицы (`<schema>.<table>`), e.g. "kaname.fga_outbox".
 	Table string
 	// Channel — имя LISTEN-канала, e.g. "kacho_iam_fga_outbox".
 	Channel string
@@ -211,7 +211,7 @@ type Config struct {
 	// глубже очередь, тем медленнее claim → тем медленнее дренаж → тем глубже
 	// очередь; producer, обгоняющий consumer хотя бы на проценты, расходится
 	// неограниченно вместо небольшого постоянного лага. Замер на живом стенде
-	// (Postgres 16, kacho_iam.fga_outbox), один claim: backlog 5k — 11.7ms без (2)
+	// (Postgres 16, kaname.fga_outbox), один claim: backlog 5k — 11.7ms без (2)
 	// против 0.81ms с (2); 20k — 61.6ms против 0.72ms; 80k — 327ms против 0.82ms
 	// (с (2) время от глубины не зависит). Регрессию локает
 	// Test_ClaimPlan_DoesNotScaleWithBacklogDepth.

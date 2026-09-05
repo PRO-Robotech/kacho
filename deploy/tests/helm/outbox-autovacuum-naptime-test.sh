@@ -17,8 +17,8 @@
 # `autovacuum_naptime`, по умолчанию раз в минуту. Всплеск после затишья ждёт
 # именно launcher'а — это и есть остаточный минутный всплеск в замерах «после».
 #
-# У ЖУРНАЛА клейма нет, и довод про план к нему не относится: `kacho_iam.fga_outbox`
-# и `kacho_iam.subject_change_outbox` доставки не несут (величины сняты миграциями
+# У ЖУРНАЛА клейма нет, и довод про план к нему не относится: `kaname.fga_outbox`
+# и `kaname.subject_change_outbox` доставки не несут (величины сняты миграциями
 # kacho#917 и #1396), их читают триггером в той же транзакции и курсором. Строка на
 # такую базу стоит ради ДРУГОГО: журнал append-mostly, и замороженная статистика на
 # нём остаётся замороженной статистикой. Разбор — kacho#1049.
@@ -81,7 +81,7 @@ MAX_NAPTIME_S="${MAX_NAPTIME_S:-5}"
 QUEUE_INSTANCES="
 pg-vpc|kacho_vpc.fga_register_outbox
 pg-compute|public.compute_fga_register_outbox
-pg-iam|kacho_iam.fga_outbox,kacho_iam.subject_change_outbox,kacho_iam.resource_reconcile_outbox
+pg-iam|kaname.fga_outbox,kaname.subject_change_outbox,kaname.resource_reconcile_outbox
 pg-nlb|kacho_nlb.fga_register_outbox
 pg-storage|kacho_storage.fga_register_outbox
 pg-registry|kacho_registry.registry_outbox

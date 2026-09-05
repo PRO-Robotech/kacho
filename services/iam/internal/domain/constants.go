@@ -31,7 +31,7 @@ const (
 // ShortIDLen — full id length (prefix + body); matches kacho-corelib/ids.
 const ShortIDLen = 20
 
-// PrincipalType — allowed values for kacho_iam.operations.principal_type.
+// PrincipalType — allowed values for kaname.operations.principal_type.
 // 'system' / 'kacho-iam-bootstrap' are used for internal/background flows;
 // 'user' / 'service_account' come from OIDC at the api-gateway edge.
 const (

@@ -49,7 +49,7 @@ func NewProjectAccountResolver() *ProjectAccountResolver {
 func (r *ProjectAccountResolver) AccountForProjectTx(ctx context.Context, tx service.Tx, projectID string) (string, bool, error) {
 	var accID string
 	err := txAsPgx(tx).QueryRow(ctx,
-		`SELECT account_id FROM kacho_iam.projects WHERE id = $1`, projectID,
+		`SELECT account_id FROM kaname.projects WHERE id = $1`, projectID,
 	).Scan(&accID)
 	if err != nil {
 		if errors.Is(err, pgx.ErrNoRows) {

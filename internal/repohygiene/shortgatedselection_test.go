@@ -468,7 +468,7 @@ var shortGatedRunByOwnCIStep = map[string]string{
 	// назвать. Что ИЗМЕРЕНО: пакет собирается и под кратким режимом зелен целиком
 	// (`go test -C services/iam ./internal/observability/metrics/ -short -count=1`
 	// → ok, 0.182 с), пропуск в нём ровно один и гейтится только `-short`, а
-	// таблица пробы `kacho_iam.provider_compensation_outbox` заводится миграцией
+	// таблица пробы `kaname.provider_compensation_outbox` заводится миграцией
 	// 0001, то есть предпосылка прогона в дереве есть.
 	// Предикат снятия оговорки: тот же прогон без `-short` на машине со свободным
 	// местом — впишите сюда его время.

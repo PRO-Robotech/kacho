@@ -17,7 +17,7 @@ stricter **GLOBAL** partial unique index:
 
 ```sql
 CREATE UNIQUE INDEX users_active_external_id_uniq
-    ON kacho_iam.users (external_id)
+    ON kaname.users (external_id)
     WHERE invite_status = 'ACTIVE' AND external_id <> '';
 ```
 

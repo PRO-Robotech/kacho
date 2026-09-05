@@ -159,7 +159,7 @@ func TestApplyConfirmsTheStateItWasPlannedAgainst(t *testing.T) {
 		// приводится (§5.1, Н10), и завести его иначе нечем. Правится ровно та
 		// колонка, которую читает `WHERE` писателя.
 		tag, uerr := pool.Exec(ctx, `
-			UPDATE kacho_iam.catalog_resource SET object_type = $3
+			UPDATE kaname.catalog_resource SET object_type = $3
 			 WHERE module = $1 AND resource = $2 AND live`,
 			anchoredModule, spareResource, "vpc_probe_moved")
 		require.NoError(t, uerr, "сдвинуть форму живой строки")

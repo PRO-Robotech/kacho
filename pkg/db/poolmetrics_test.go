@@ -22,7 +22,7 @@ import (
 )
 
 // wantPoolStatsNames — ВСЕ девять семейств, как они обязаны выглядеть на
-// /metrics при namespace `kacho_iam`. Перечень выписан здесь литералом
+// /metrics при namespace `kaname`. Перечень выписан здесь литералом
 // намеренно: имя серии — контракт с панелями и правилами тревог, и вывод его
 // из того же кода, который его строит, не утверждал бы ничего.
 var wantPoolStatsNames = []string{
@@ -79,7 +79,7 @@ func describeDescs(t *testing.T, c prometheus.Collector) []*prometheus.Desc {
 func TestPoolStatsCollectorNilPoolEmitsNothing(t *testing.T) {
 	t.Parallel()
 
-	c := coredb.NewPoolStatsCollector("kacho_iam", "replica", nil)
+	c := coredb.NewPoolStatsCollector("kaname", "replica", nil)
 
 	require.NotPanics(t, func() { _ = collectMetrics(t, c) },
 		"Collect на nil-пуле не имеет права уронить /metrics всего процесса")
@@ -96,7 +96,7 @@ func TestPoolStatsCollectorNilPoolEmitsNothing(t *testing.T) {
 func TestPoolStatsCollectorDescribesAllNineFamilies(t *testing.T) {
 	t.Parallel()
 
-	descs := describeDescs(t, coredb.NewPoolStatsCollector("kacho_iam", "primary", nil))
+	descs := describeDescs(t, coredb.NewPoolStatsCollector("kaname", "primary", nil))
 	require.Len(t, descs, len(wantPoolStatsNames))
 
 	var got []string
@@ -126,11 +126,11 @@ func TestPoolStatsCollectorDoubleRegistrationDoesNotPanic(t *testing.T) {
 	t.Parallel()
 
 	reg := prometheus.NewRegistry()
-	require.NoError(t, reg.Register(coredb.NewPoolStatsCollector("kacho_iam", "primary", nil)))
+	require.NoError(t, reg.Register(coredb.NewPoolStatsCollector("kaname", "primary", nil)))
 
 	var err error
 	require.NotPanics(t, func() {
-		err = reg.Register(coredb.NewPoolStatsCollector("kacho_iam", "primary", nil))
+		err = reg.Register(coredb.NewPoolStatsCollector("kaname", "primary", nil))
 	})
 	require.Error(t, err)
 	require.IsType(t, prometheus.AlreadyRegisteredError{}, err,
@@ -138,7 +138,7 @@ func TestPoolStatsCollectorDoubleRegistrationDoesNotPanic(t *testing.T) {
 
 	// Положительный контроль: другой пул того же сервиса регистрируется, то есть
 	// отказ выше — про повтор, а не про то, что второй коллектор не берут вовсе.
-	require.NoError(t, reg.Register(coredb.NewPoolStatsCollector("kacho_iam", "replica", nil)))
+	require.NoError(t, reg.Register(coredb.NewPoolStatsCollector("kaname", "replica", nil)))
 }
 
 // TestPoolStatsCollectorReportsLiveNumbers — ПОЛОЖИТЕЛЬНЫЙ КОНТРОЛЬ: числа
@@ -160,7 +160,7 @@ func TestPoolStatsCollectorReportsLiveNumbers(t *testing.T) {
 	pgtest.ClosePoolAtEnd(t, pool)
 
 	reg := prometheus.NewRegistry()
-	require.NoError(t, reg.Register(coredb.NewPoolStatsCollector("kacho_iam", "primary", pool)))
+	require.NoError(t, reg.Register(coredb.NewPoolStatsCollector("kaname", "primary", pool)))
 
 	// Держим соединение: сбор обязан увидеть его ЗАНЯТЫМ, а не свободным.
 	conn, err := pool.Acquire(ctx)

@@ -29,7 +29,7 @@ import (
 func seedConditionedFact(t *testing.T, ctx context.Context, tx pgx.Tx, cond string) {
 	t.Helper()
 	exec(t, ctx, tx,
-		`INSERT INTO kacho_iam.relation_fact
+		`INSERT INTO kaname.relation_fact
 		   (object_type, object_id, relation, subject, condition_name)
 		 VALUES ('compute_instance', 'ins-1', 'ssh', 'user:usr-1', $1)`, cond)
 }
@@ -150,13 +150,13 @@ func TestAsk_UnconditionalSourceWinsOverAnUnknownCondition(t *testing.T) {
 		seedTenant(t, ctx, tx)
 		seedConditionedFact(t, ctx, tx, "условие_которого_нет_в_наборе")
 		exec(t, ctx, tx,
-			`INSERT INTO kacho_iam.relation_fact (object_type, object_id, relation, subject)
+			`INSERT INTO kaname.relation_fact (object_type, object_id, relation, subject)
 			 VALUES ('compute_instance', 'ins-1', 'ssh', 'group:grp-1')`)
 		exec(t, ctx, tx,
-			`INSERT INTO kacho_iam.groups (id, account_id, name) VALUES ('grp-1', 'acc-1', 'ops')
+			`INSERT INTO kaname.groups (id, account_id, name) VALUES ('grp-1', 'acc-1', 'ops')
 			 ON CONFLICT DO NOTHING`)
 		exec(t, ctx, tx,
-			`INSERT INTO kacho_iam.group_members (group_id, member_type, member_id)
+			`INSERT INTO kaname.group_members (group_id, member_type, member_id)
 			 VALUES ('grp-1', 'user', 'usr-1')`)
 
 		got, _, err := relverdict.Ask(ctx, tx, sshQuery(nil))
@@ -175,7 +175,7 @@ func TestSchema_ParamsWithoutAConditionAreRefused(t *testing.T) {
 	withTx(t, func(ctx context.Context, tx pgx.Tx) {
 		seedTenant(t, ctx, tx)
 		_, err := tx.Exec(ctx,
-			`INSERT INTO kacho_iam.relation_fact
+			`INSERT INTO kaname.relation_fact
 			   (object_type, object_id, relation, subject, condition_params)
 			 VALUES ('compute_instance', 'ins-1', 'ssh', 'user:usr-1', '{"ttl": 5}'::jsonb)`)
 		if err == nil {

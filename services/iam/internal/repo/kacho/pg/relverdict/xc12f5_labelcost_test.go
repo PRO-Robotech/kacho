@@ -85,7 +85,7 @@ import (
 // какой причине.
 const f5Gate = "AUTHZFORMBENCH_F5"
 
-// f5Label — метка правила. Ключ обязан пройти `kacho_iam.kacho_labels_valid`
+// f5Label — метка правила. Ключ обязан пройти `kaname.kacho_labels_valid`
 // (`^[a-z][-_./@a-z0-9]{0,62}$`), поэтому он проверен схемой, а не выбран на глаз.
 const (
 	f5LabelKey   = "authzformbench"
@@ -141,7 +141,7 @@ type relLabelForm struct {
 func (r *relLabelForm) Name() string { return "форма E (relverdict, таблицы iam)" }
 
 func (r *relLabelForm) Place() string {
-	return "services/iam/internal/repo/kacho/pg/relverdict · схема kacho_iam (pgtest)"
+	return "services/iam/internal/repo/kacho/pg/relverdict · схема kaname (pgtest)"
 }
 
 func (r *relLabelForm) StmtProducer() bench.ProducerStatus { return r.prod }
@@ -157,7 +157,7 @@ func (r *relLabelForm) ApplyRule(ctx context.Context) (bench.Counters, int, erro
 	}
 	defer func() { _ = tx.Rollback(ctx) }()
 
-	if _, err := tx.Exec(ctx, `INSERT INTO kacho_iam.roles (id, name, permissions, rules, cluster_id)
+	if _, err := tx.Exec(ctx, `INSERT INTO kaname.roles (id, name, permissions, rules, cluster_id)
 		VALUES ($1, $2, '[]'::jsonb,
 		        jsonb_build_array(jsonb_build_object(
 		            'module', 'authzformbench', 'resources', jsonb_build_array('*'),
@@ -168,20 +168,20 @@ func (r *relLabelForm) ApplyRule(ctx context.Context) (bench.Counters, int, erro
 	}
 	rows++
 	for _, v := range r.sc.Verbs {
-		if _, err := tx.Exec(ctx, `INSERT INTO kacho_iam.role_verb (role_id, object_type, verb)
+		if _, err := tx.Exec(ctx, `INSERT INTO kaname.role_verb (role_id, object_type, verb)
 			VALUES ($1, $2, $3)`, f5Role, f5CatalogType, v); err != nil {
 			return bench.Counters{StmtSQL: w.Close()}, rows, fmt.Errorf("глагол роли: %w", err)
 		}
 		rows++
 	}
-	if _, err := tx.Exec(ctx, `INSERT INTO kacho_iam.role_rule_selectors
+	if _, err := tx.Exec(ctx, `INSERT INTO kaname.role_rule_selectors
 		  (role_id, rule_fp, arm, object_types, match_labels)
 		VALUES ($1, 'fp-f5', 'labels', ARRAY[$2::text], $3::jsonb)`,
 		f5Role, f5CatalogType, labelJSON(r.sc)); err != nil {
 		return bench.Counters{StmtSQL: w.Close()}, rows, fmt.Errorf("правило-селектор: %w", err)
 	}
 	rows++
-	if _, err := tx.Exec(ctx, `INSERT INTO kacho_iam.access_bindings
+	if _, err := tx.Exec(ctx, `INSERT INTO kaname.access_bindings
 		  (id, subject_type, subject_id, role_id, resource_type, resource_id, status)
 		VALUES ($1, 'user', $2, $3, 'project', $4, 'ACTIVE')`,
 		f5Binding, subjID(r.sc.Subjects[0]), f5Role, f5Project); err != nil {
@@ -189,7 +189,7 @@ func (r *relLabelForm) ApplyRule(ctx context.Context) (bench.Counters, int, erro
 	}
 	rows++
 	for i, s := range r.sc.Subjects {
-		if _, err := tx.Exec(ctx, `INSERT INTO kacho_iam.access_binding_subjects
+		if _, err := tx.Exec(ctx, `INSERT INTO kaname.access_binding_subjects
 			  (binding_id, subject_type, subject_id, ordinal) VALUES ($1, 'user', $2, $3)`,
 			f5Binding, subjID(s), i); err != nil {
 			return bench.Counters{StmtSQL: w.Close()}, rows, fmt.Errorf("субъект выдачи: %w", err)
@@ -206,10 +206,10 @@ func (r *relLabelForm) ApplyRule(ctx context.Context) (bench.Counters, int, erro
 // стоимость ПЕРВОГО ответа по свежему правилу, и повтор по отозванной строке
 // мерил бы другое.
 func (r *relLabelForm) DropRule(ctx context.Context) error {
-	if _, err := r.pool.Exec(ctx, `DELETE FROM kacho_iam.access_bindings WHERE id = $1`, f5Binding); err != nil {
+	if _, err := r.pool.Exec(ctx, `DELETE FROM kaname.access_bindings WHERE id = $1`, f5Binding); err != nil {
 		return err
 	}
-	_, err := r.pool.Exec(ctx, `DELETE FROM kacho_iam.roles WHERE id = $1`, f5Role)
+	_, err := r.pool.Exec(ctx, `DELETE FROM kaname.roles WHERE id = $1`, f5Role)
 	return err
 }
 
@@ -226,7 +226,7 @@ func (r *relLabelForm) Settle(ctx context.Context, ev bench.LabelEvent) (bench.C
 		// означал удаление N × M × S кортежей. Сравнить теперь не с чем, но величина
 		// осталась абсолютной и по-прежнему обязана не расти с N.
 		w := r.cnt.Open()
-		tag, err := r.pool.Exec(ctx, `UPDATE kacho_iam.access_bindings
+		tag, err := r.pool.Exec(ctx, `UPDATE kaname.access_bindings
 			SET status = 'REVOKED', revoked_at = now() WHERE id = $1 AND status = 'ACTIVE'`, f5Binding)
 		c := bench.Counters{StmtSQL: w.Close()}
 		if err != nil {
@@ -297,12 +297,12 @@ type f5World struct {
 func (w *f5World) Commit(ctx context.Context, ev bench.LabelEvent) (time.Time, error) {
 	switch ev.Kind {
 	case bench.EventEntered:
-		if _, err := w.pool.Exec(ctx, `UPDATE kacho_iam.resource_mirror SET labels = $3::jsonb
+		if _, err := w.pool.Exec(ctx, `UPDATE kaname.resource_mirror SET labels = $3::jsonb
 			WHERE object_type = $1 AND object_id = $2`, f5CatalogType, ev.ObjectID, labelJSON(w.sc)); err != nil {
 			return time.Time{}, err
 		}
 	case bench.EventLeft:
-		if _, err := w.pool.Exec(ctx, `UPDATE kacho_iam.resource_mirror SET labels = '{}'::jsonb
+		if _, err := w.pool.Exec(ctx, `UPDATE kaname.resource_mirror SET labels = '{}'::jsonb
 			WHERE object_type = $1 AND object_id = $2`, f5CatalogType, ev.ObjectID); err != nil {
 			return time.Time{}, err
 		}
@@ -321,19 +321,19 @@ func (w *f5World) Commit(ctx context.Context, ev bench.LabelEvent) (time.Time, e
 func (w *f5World) Revert(ctx context.Context, ev bench.LabelEvent) error {
 	switch ev.Kind {
 	case bench.EventEntered:
-		_, err := w.pool.Exec(ctx, `UPDATE kacho_iam.resource_mirror SET labels = '{}'::jsonb
+		_, err := w.pool.Exec(ctx, `UPDATE kaname.resource_mirror SET labels = '{}'::jsonb
 			WHERE object_type = $1 AND object_id = $2`, f5CatalogType, ev.ObjectID)
 		return err
 	case bench.EventLeft:
-		_, err := w.pool.Exec(ctx, `UPDATE kacho_iam.resource_mirror SET labels = $3::jsonb
+		_, err := w.pool.Exec(ctx, `UPDATE kaname.resource_mirror SET labels = $3::jsonb
 			WHERE object_type = $1 AND object_id = $2`, f5CatalogType, ev.ObjectID, labelJSON(w.sc))
 		return err
 	case bench.EventCreated:
-		if _, err := w.pool.Exec(ctx, `DELETE FROM kacho_iam.resource_parent_edge
+		if _, err := w.pool.Exec(ctx, `DELETE FROM kaname.resource_parent_edge
 			WHERE object_type = $1 AND object_id = $2`, f5Type, ev.ObjectID); err != nil {
 			return err
 		}
-		_, err := w.pool.Exec(ctx, `DELETE FROM kacho_iam.resource_mirror
+		_, err := w.pool.Exec(ctx, `DELETE FROM kaname.resource_mirror
 			WHERE object_type = $1 AND object_id = $2`, f5CatalogType, ev.ObjectID)
 		return err
 	}
@@ -347,14 +347,14 @@ func (w *f5World) insertMirror(ctx context.Context, ids []string, labelled bool)
 	if labelled {
 		labels = labelJSON(w.sc)
 	}
-	if _, err := w.pool.Exec(ctx, `INSERT INTO kacho_iam.resource_mirror
+	if _, err := w.pool.Exec(ctx, `INSERT INTO kaname.resource_mirror
 		  (object_type, object_id, parent_project_id, parent_account_id, labels)
 		SELECT $1, u, $2, $3, $4::jsonb FROM unnest($5::text[]) AS u
 		ON CONFLICT (object_type, object_id) DO UPDATE SET labels = EXCLUDED.labels`,
 		f5CatalogType, f5Project, f5Account, labels, ids); err != nil {
 		return fmt.Errorf("зеркало: %w", err)
 	}
-	if _, err := w.pool.Exec(ctx, `INSERT INTO kacho_iam.resource_parent_edge
+	if _, err := w.pool.Exec(ctx, `INSERT INTO kaname.resource_parent_edge
 		  (object_type, object_id, parent_type, parent_id, depth)
 		SELECT $1, u, 'project', $2, 1 FROM unnest($3::text[]) AS u
 		ON CONFLICT DO NOTHING`, f5Type, f5Project, ids); err != nil {
@@ -607,21 +607,21 @@ func seedCommon(t *testing.T, ctx context.Context, w *f5World, sc bench.LabelSce
 	if err != nil {
 		t.Fatalf("транзакция посева обвязки: %v", err)
 	}
-	txExec(t, ctx, tx, `INSERT INTO kacho_iam.clusters (id, name)
+	txExec(t, ctx, tx, `INSERT INTO kaname.clusters (id, name)
 		VALUES ('cluster_kacho_root', 'kacho') ON CONFLICT DO NOTHING`)
-	txExec(t, ctx, tx, `INSERT INTO kacho_iam.accounts (id, name, owner_user_id)
+	txExec(t, ctx, tx, `INSERT INTO kaname.accounts (id, name, owner_user_id)
 		VALUES ($1, 'authzformbench-f5', $2) ON CONFLICT DO NOTHING`, f5Account, subjID(sc.Subjects[0]))
 	for _, s := range sc.Subjects {
-		txExec(t, ctx, tx, `INSERT INTO kacho_iam.users (id, external_id, email, account_id)
+		txExec(t, ctx, tx, `INSERT INTO kaname.users (id, external_id, email, account_id)
 			VALUES ($1, $1, $1 || '@kacho.local', $2) ON CONFLICT DO NOTHING`, subjID(s), f5Account)
 	}
 	// Посторонний — субъект отрицательного контроля. Он ЗАВЕДЁН, но не назван ни в
 	// одной выдаче: без него «разрешено субъекту правила» неотличимо от
 	// «разрешено всякому, кто существует».
-	txExec(t, ctx, tx, `INSERT INTO kacho_iam.users (id, external_id, email, account_id)
+	txExec(t, ctx, tx, `INSERT INTO kaname.users (id, external_id, email, account_id)
 		VALUES ('usr-stranger-not-in-any-binding', 'ext-stranger',
 		        'stranger@kacho.local', $1) ON CONFLICT DO NOTHING`, f5Account)
-	txExec(t, ctx, tx, `INSERT INTO kacho_iam.projects (id, account_id, name)
+	txExec(t, ctx, tx, `INSERT INTO kaname.projects (id, account_id, name)
 		VALUES ($1, $2, 'authzformbench-f5') ON CONFLICT DO NOTHING`, f5Project, f5Account)
 	if err := tx.Commit(ctx); err != nil {
 		t.Fatalf("коммит посева обвязки: %v", err)

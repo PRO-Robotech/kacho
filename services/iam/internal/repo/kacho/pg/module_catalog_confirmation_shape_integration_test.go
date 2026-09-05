@@ -87,7 +87,7 @@ func TestModuleStateIsBlindToTenantMovementAndSensitiveToCatalogForm(t *testing.
 				"подтверждение такого состава протухало бы от чужого арендатора (`-16`)")
 
 		// Вторая половина того же движения — удаление.
-		_, err = pool.Exec(ctx, `DELETE FROM kacho_iam.roles WHERE id = $1`, roleID)
+		_, err = pool.Exec(ctx, `DELETE FROM kaname.roles WHERE id = $1`, roleID)
 		require.NoError(t, err, "удалить арендаторскую роль")
 		deletedModule := moduleCatalogSnapshot(t, ctx, pool, anchoredModule)
 		deletedWide := stateFingerprint(t, ctx, pool)
@@ -114,7 +114,7 @@ func TestModuleStateIsBlindToTenantMovementAndSensitiveToCatalogForm(t *testing.
 		// ресурса. Правится прямым SQL: продуктом это состояние не производится
 		// (§5.1 приёмки, Н10), и завести его иначе нечем.
 		tag, err := pool.Exec(ctx, `
-			UPDATE kacho_iam.catalog_resource SET object_type = $3
+			UPDATE kaname.catalog_resource SET object_type = $3
 			 WHERE module = $1 AND resource = $2 AND live`,
 			anchoredModule, spareResource, "vpc_probe_retyped")
 		require.NoError(t, err, "сменить имя типа модели прав у живой строки")

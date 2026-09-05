@@ -36,7 +36,7 @@ kacho-iam держит только запись с id, именем и account_
 | `created_at`  | `time.Time`               | да (server)  | да        | UTC.                                              |
 
 **ID prefix:** `sva`.
-**DB table:** `kacho_iam.service_accounts` (`CREATE TABLE kacho_iam.service_accounts` в `0001_initial.sql`).
+**DB table:** `kaname.service_accounts` (`CREATE TABLE kaname.service_accounts` в `0001_initial.sql`).
 
 **FK contract:**
 
@@ -198,7 +198,7 @@ kubectl -n kacho port-forward svc/api-gateway 18080:8080 &
 
 # psql:
 make -C deploy psql SVC=iam
-# > SELECT id, account_id, name, enabled FROM kacho_iam.service_accounts;
+# > SELECT id, account_id, name, enabled FROM kaname.service_accounts;
 
 # Integration:
 go test -short -count=1 -timeout 120s -run TestServiceAccount \

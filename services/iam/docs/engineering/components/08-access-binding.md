@@ -51,7 +51,7 @@ Grant-идентичность AccessBinding (5-tuple subject↔role↔resource)
 | `created_at`        | `time.Time`                  | да (server)  | да        | UTC.                                                |
 
 **ID prefix:** `acb`.
-**DB table:** `kacho_iam.access_bindings` (`CREATE TABLE kacho_iam.access_bindings` в `0001_initial.sql`).
+**DB table:** `kaname.access_bindings` (`CREATE TABLE kaname.access_bindings` в `0001_initial.sql`).
 
 **UNIQUE constraint:** partial UNIQUE `access_bindings_active_grant_uniq ON
 (subject_type, subject_id, role_id, resource_type, resource_id) WHERE
@@ -263,10 +263,10 @@ kubectl -n kacho port-forward svc/api-gateway 18080:8080 &
 
 # psql:
 make -C deploy psql SVC=iam
-# > SELECT subject_type, subject_id, role_id, resource_type, resource_id, status FROM kacho_iam.access_bindings LIMIT 20;
-# > SELECT * FROM kacho_iam.fga_outbox LIMIT 10;      -- журнал намерений
-# > SELECT * FROM kacho_iam.relation_fact LIMIT 10;    -- проекция журнала
-# > SELECT * FROM kacho_iam.subject_change_outbox LIMIT 10;
+# > SELECT subject_type, subject_id, role_id, resource_type, resource_id, status FROM kaname.access_bindings LIMIT 20;
+# > SELECT * FROM kaname.fga_outbox LIMIT 10;      -- журнал намерений
+# > SELECT * FROM kaname.relation_fact LIMIT 10;    -- проекция журнала
+# > SELECT * FROM kaname.subject_change_outbox LIMIT 10;
 
 # Пробы привязки целиком — БЕЗ фильтра `-run`.
 #

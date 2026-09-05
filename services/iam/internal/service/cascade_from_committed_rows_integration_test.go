@@ -109,7 +109,7 @@ func newCIWorld(t *testing.T) *ciWorld {
 	// Кластер — синглтон и верхнее звено цепи (миграция 740001 берёт его
 	// идентификатор ИЗ СТРОКИ, а не литералом). Без строки звена нет, и весь
 	// верхний ярус молча стал бы недостижим.
-	w.exec(t, `INSERT INTO kacho_iam.clusters (id, name) VALUES ('cluster_kacho_root', 'kacho')
+	w.exec(t, `INSERT INTO kaname.clusters (id, name) VALUES ('cluster_kacho_root', 'kacho')
 	           ON CONFLICT DO NOTHING`)
 	return w
 }
@@ -134,10 +134,10 @@ func (w *ciWorld) seedAccountWithOwner(t *testing.T, accountID, ownerUserID stri
 	tx, err := w.pool.Begin(ctx)
 	require.NoError(t, err)
 	defer func() { _ = tx.Rollback(ctx) }()
-	_, err = tx.Exec(ctx, `INSERT INTO kacho_iam.accounts (id, name, owner_user_id) VALUES ($1, $1, $2)`,
+	_, err = tx.Exec(ctx, `INSERT INTO kaname.accounts (id, name, owner_user_id) VALUES ($1, $1, $2)`,
 		accountID, ownerUserID)
 	require.NoErrorf(t, err, "посев аккаунта %s", accountID)
-	_, err = tx.Exec(ctx, `INSERT INTO kacho_iam.users (id, external_id, email, account_id)
+	_, err = tx.Exec(ctx, `INSERT INTO kaname.users (id, external_id, email, account_id)
 	                       VALUES ($1, $1, $1 || '@example.test', $2)`, ownerUserID, accountID)
 	require.NoErrorf(t, err, "посев владельца %s", ownerUserID)
 	require.NoError(t, tx.Commit(ctx))
@@ -145,7 +145,7 @@ func (w *ciWorld) seedAccountWithOwner(t *testing.T, accountID, ownerUserID stri
 
 func (w *ciWorld) seedUser(t *testing.T, id, accountID string) {
 	t.Helper()
-	w.exec(t, `INSERT INTO kacho_iam.users (id, external_id, email, account_id)
+	w.exec(t, `INSERT INTO kaname.users (id, external_id, email, account_id)
 	           VALUES ($1, $1, $1 || '@example.test', $2)`, id, accountID)
 }
 
@@ -155,20 +155,20 @@ func (w *ciWorld) seedUser(t *testing.T, id, accountID string) {
 func (w *ciWorld) seedRole(t *testing.T, id, accountID string) {
 	t.Helper()
 	name := strings.ReplaceAll(id, "-", "_")
-	w.exec(t, `INSERT INTO kacho_iam.roles (id, account_id, name, permissions)
+	w.exec(t, `INSERT INTO kaname.roles (id, account_id, name, permissions)
 	           VALUES ($1, $2, $3, '["vpc.network.all.get"]'::jsonb)`, id, accountID, name)
 }
 
 func (w *ciWorld) seedBinding(t *testing.T, id, subjectID, roleID, resourceType, resourceID string) {
 	t.Helper()
-	w.exec(t, `INSERT INTO kacho_iam.access_bindings
+	w.exec(t, `INSERT INTO kaname.access_bindings
 	             (id, subject_type, subject_id, role_id, resource_type, resource_id)
 	           VALUES ($1, 'user', $2, $3, $4, $5)`, id, subjectID, roleID, resourceType, resourceID)
 }
 
 func (w *ciWorld) seedProject(t *testing.T, id, accountID string) {
 	t.Helper()
-	w.exec(t, `INSERT INTO kacho_iam.projects (id, account_id, name) VALUES ($1, $2, $1)`, id, accountID)
+	w.exec(t, `INSERT INTO kaname.projects (id, account_id, name) VALUES ($1, $2, $1)`, id, accountID)
 	// Указатель проекта на аккаунт берётся ПРОЕКЦИЕЙ ЖУРНАЛА (миграция 781001),
 	// а не колонкой `projects.account_id`, поэтому сеется он тем же путём, каким
 	// его кладёт продукт — строкой журнала.
@@ -185,14 +185,14 @@ func (w *ciWorld) seedProject(t *testing.T, id, accountID string) {
 func (w *ciWorld) factThroughJournal(t *testing.T, subject, relation, objectType, objectID string) {
 	t.Helper()
 	ctx := context.Background()
-	w.exec(t, `INSERT INTO kacho_iam.fga_outbox (event_type, payload, created_at)
+	w.exec(t, `INSERT INTO kaname.fga_outbox (event_type, payload, created_at)
 	           VALUES ('fga.tuple.write',
 	                   jsonb_build_object('user', $1::text, 'relation', $2::text,
 	                                      'object', $3::text || ':' || $4::text),
 	                   now())`, subject, relation, objectType, objectID)
 	var landed int
 	require.NoError(t, w.pool.QueryRow(ctx,
-		`SELECT count(*)::int FROM kacho_iam.relation_fact
+		`SELECT count(*)::int FROM kaname.relation_fact
 		  WHERE object_type = $1 AND object_id = $2 AND relation = $3 AND subject = $4`,
 		objectType, objectID, relation, subject).Scan(&landed))
 	require.Equalf(t, 1, landed,

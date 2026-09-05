@@ -87,7 +87,7 @@ func TestUserDelete_OwnsAccount_SaysSoInsteadOfNotFound(t *testing.T) {
 	assert.Equal(t, "User "+string(ownerID)+" owns accounts and cannot be deleted", got)
 	assert.NotContains(t, got, "not found",
 		"отказ не вправе утверждать отсутствие человека, которого возвращает ListUsers")
-	for _, frag := range []string{"accounts_owner_fk", "constraint", "kacho_iam", "SQLSTATE"} {
+	for _, frag := range []string{"accounts_owner_fk", "constraint", "kaname", "SQLSTATE"} {
 		assert.NotContains(t, strings.ToLower(got), strings.ToLower(frag),
 			"текст клиенту не вправе нести обломок pgx %q", frag)
 	}

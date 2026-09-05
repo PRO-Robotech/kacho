@@ -1,7 +1,7 @@
 // Copyright (c) PRO-Robotech
 // SPDX-License-Identifier: AGPL-3.0-or-later
 
-// Package role — CQRS port-iface'ы для kacho_iam.roles.
+// Package role — CQRS port-iface'ы для kaname.roles.
 package role
 
 import (
@@ -176,7 +176,7 @@ type WriterIface interface {
 	// владение тем, чего манифест не несёт.
 	UpsertSystemRole(ctx context.Context, r domain.Role) (out domain.Role, changed bool, err error)
 
-	// ReplaceRuleSelectors syncs kacho_iam.role_rule_selectors with the role's
+	// ReplaceRuleSelectors syncs kaname.role_rule_selectors with the role's
 	// UNIFIED materializing rules: ARM_ANCHOR
 	// (all) + ARM_NAMES + ARM_LABELS. It DELETEs the role's current selector rows and
 	// INSERTs one per materializing rule (keyed by rule_fp), inside the caller's
@@ -188,7 +188,7 @@ type WriterIface interface {
 	// re-sync (same rules → same set).
 	ReplaceRuleSelectors(ctx context.Context, roleID domain.RoleID, selectors []domain.RuleSelector) error
 
-	// ReplaceRoleVerbs syncs kacho_iam.role_verb — проекцию «роль → тип объекта ×
+	// ReplaceRoleVerbs syncs kaname.role_verb — проекцию «роль → тип объекта ×
 	// глагол», которой отвечает форма E.
 	//
 	// Отдельно от ReplaceRuleSelectors, потому что это ДРУГАЯ сторона того же
@@ -197,7 +197,7 @@ type WriterIface interface {
 	// и подмена одной другой даёт ответ, верный по форме и неверный по существу.
 	ReplaceRoleVerbs(ctx context.Context, roleID domain.RoleID, pairs []domain.RoleVerb) error
 
-	// ReplaceRuleRefs syncs kacho_iam.role_rule_ref — проекцию ОБЪЯВЛЕННЫХ
+	// ReplaceRuleRefs syncs kaname.role_rule_ref — проекцию ОБЪЯВЛЕННЫХ
 	// сегментов правила, на которой возможен внешний ключ в каталог.
 	//
 	// Ключ на `roles.rules jsonb` невыразим by construction: проверка значения не

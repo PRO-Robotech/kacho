@@ -72,10 +72,10 @@ func TestRoleIamUserDelete_GrantsNothingAndIsNoLongerProjected(t *testing.T) {
 	require.NoError(t, bootSeedRuleSides(ctx, pool))
 
 	// ── Перепись ДО вердикта ────────────────────────────────────────────────
-	totalRoles := scalarInt(t, ctx, pool, `SELECT count(*) FROM kacho_iam.roles`)
-	totalVerbs := scalarInt(t, ctx, pool, `SELECT count(*) FROM kacho_iam.role_verb`)
+	totalRoles := scalarInt(t, ctx, pool, `SELECT count(*) FROM kaname.roles`)
+	totalVerbs := scalarInt(t, ctx, pool, `SELECT count(*) FROM kaname.role_verb`)
 	onIdentity := scalarInt(t, ctx, pool,
-		`SELECT count(*) FROM kacho_iam.role_verb WHERE object_type = 'iam.user'`)
+		`SELECT count(*) FROM kaname.role_verb WHERE object_type = 'iam.user'`)
 	t.Logf("осмотрено: ролей=%d, строк проекции роль→глагол=%d, из них на iam.user=%d",
 		totalRoles, totalVerbs, onIdentity)
 	require.NotZero(t, totalRoles, "предпосылка сломана: в посеве нет ни одной роли")
@@ -91,8 +91,8 @@ func TestRoleIamUserDelete_GrantsNothingAndIsNoLongerProjected(t *testing.T) {
 	// мёртвым правом, и разбирать пришлось бы отдельным запросом.
 	offenders := scalarString(t, ctx, pool,
 		`COALESCE((SELECT string_agg(r.name, ', ' ORDER BY r.name)
-		             FROM kacho_iam.role_verb rv
-		             JOIN kacho_iam.roles r ON r.id = rv.role_id
+		             FROM kaname.role_verb rv
+		             JOIN kaname.roles r ON r.id = rv.role_id
 		            WHERE rv.object_type = 'iam.user' AND rv.verb = 'delete'), '')`)
 	require.Emptyf(t, offenders,
 		"проекция всё ещё даёт `delete` на iam.user — роли: %s. Глагол снят с типа, значит правило, "+
@@ -109,11 +109,11 @@ func TestRoleIamUserDelete_GrantsNothingAndIsNoLongerProjected(t *testing.T) {
 	// должен (гейт паритета ярусов), поэтому роль снята той же работой.
 	adminRole := scalarString(t, ctx, pool, `'rol' || substr(md5('iam.user.admin'), 1, 17)`)
 	require.Zero(t, scalarInt(t, ctx, pool,
-		`SELECT count(*) FROM kacho_iam.roles WHERE id = $1`, adminRole),
+		`SELECT count(*) FROM kaname.roles WHERE id = $1`, adminRole),
 		"роль iam.user.admin обязана быть снята: последний глагол административного яруса "+
 			"снят с типа, поэтому её имя обещает ярус, которого материализация не даст")
 	require.Zero(t, scalarInt(t, ctx, pool,
-		`SELECT count(*) FROM kacho_iam.access_bindings WHERE role_id = $1`, adminRole),
+		`SELECT count(*) FROM kaname.access_bindings WHERE role_id = $1`, adminRole),
 		"привязка на снятую роль остаться не может")
 
 	// ── ПОЛОЖИТЕЛЬНЫЙ КОНТРОЛЬ 1: семейство осталось ПРАВОМ ────────────────
@@ -121,12 +121,12 @@ func TestRoleIamUserDelete_GrantsNothingAndIsNoLongerProjected(t *testing.T) {
 	// одной роли, чьё имя перестало быть исполнимым.
 	viewRole := scalarString(t, ctx, pool, `'rol' || substr(md5('iam.user.view'), 1, 17)`)
 	require.Equal(t, 1, scalarInt(t, ctx, pool,
-		`SELECT count(*) FROM kacho_iam.roles WHERE id = $1`, viewRole),
+		`SELECT count(*) FROM kaname.roles WHERE id = $1`, viewRole),
 		"роль iam.user.view исчезла — снято больше, чем предмет #1189: чтение своих людей "+
 			"остаётся правом аккаунта")
 	for _, verb := range []string{"get", "list"} {
 		require.Equalf(t, 1, scalarInt(t, ctx, pool,
-			`SELECT count(*) FROM kacho_iam.role_verb
+			`SELECT count(*) FROM kaname.role_verb
 			  WHERE role_id = $1 AND object_type = 'iam.user' AND verb = $2`, viewRole, verb),
 			"роль iam.user.view перестала давать `%s` на iam.user — у этого глагола читатель "+
 				"ЕСТЬ (UserService/Get, UserService/ListOperations), и сужение его не касается", verb)
@@ -134,7 +134,7 @@ func TestRoleIamUserDelete_GrantsNothingAndIsNoLongerProjected(t *testing.T) {
 
 	// ── ПОЛОЖИТЕЛЬНЫЙ КОНТРОЛЬ 2: глагол жив у СОСЕДНИХ типов ───────────────
 	require.Positive(t, scalarInt(t, ctx, pool,
-		`SELECT count(*) FROM kacho_iam.role_verb WHERE verb = 'delete' AND object_type <> 'iam.user'`),
+		`SELECT count(*) FROM kaname.role_verb WHERE verb = 'delete' AND object_type <> 'iam.user'`),
 		"глагол `delete` не встречается в проекции НИ У ОДНОГО типа — сужение задело не только "+
 			"iam.user, и это уже не предмет #1189")
 }

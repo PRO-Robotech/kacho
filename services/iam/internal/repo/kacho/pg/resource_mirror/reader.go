@@ -3,7 +3,7 @@
 
 package resource_mirror
 
-// reader.go — read-side of kacho_iam.resource_mirror.
+// reader.go — read-side of kaname.resource_mirror.
 //
 // The register-side only FILLS the mirror; this read-side READS it for
 // selector-matching + containment (same-DB read of the owner's denormalized
@@ -28,7 +28,7 @@ package resource_mirror
 // account containment correctly WITHOUT reaching for the DB. The stored value wins when
 // present (COALESCE order); the LEFT JOIN falls back to projects.account_id; a dangling
 // project (deleted) degrades to '' (contained only in cluster) rather than erroring.
-// kacho_iam.projects is IAM-native (same DB, no peer call — the graph stays acyclic).
+// kaname.projects is IAM-native (same DB, no peer call — the graph stays acyclic).
 
 import (
 	"context"
@@ -72,8 +72,8 @@ func MatchByLabels(ctx context.Context, q querier, types []string, matchLabels m
 		`SELECT m.object_type, m.object_id, m.parent_project_id,
 		        COALESCE(NULLIF(m.parent_account_id, ''), pj.account_id, '') AS parent_account_id,
 		        m.labels
-		   FROM kacho_iam.resource_mirror m
-		   LEFT JOIN kacho_iam.projects pj ON pj.id = m.parent_project_id
+		   FROM kaname.resource_mirror m
+		   LEFT JOIN kaname.projects pj ON pj.id = m.parent_project_id
 		  WHERE m.object_type = ANY($1)
 		    AND m.labels @> $2::jsonb
 		  ORDER BY m.object_type ASC, m.object_id ASC`,
@@ -128,8 +128,8 @@ func AllByTypes(ctx context.Context, q querier, types []string, scopeType, scope
 		`SELECT m.object_type, m.object_id, m.parent_project_id,
 		        COALESCE(NULLIF(m.parent_account_id, ''), pj.account_id, '') AS parent_account_id,
 		        m.labels
-		   FROM kacho_iam.resource_mirror m
-		   LEFT JOIN kacho_iam.projects pj ON pj.id = m.parent_project_id
+		   FROM kaname.resource_mirror m
+		   LEFT JOIN kaname.projects pj ON pj.id = m.parent_project_id
 		  WHERE m.object_type = ANY($1)`+scopeClause+`
 		  ORDER BY m.object_type ASC, m.object_id ASC`,
 		args...,
@@ -152,8 +152,8 @@ func ByTypesAndIDs(ctx context.Context, q querier, types, ids []string) ([]Mirro
 		`SELECT m.object_type, m.object_id, m.parent_project_id,
 		        COALESCE(NULLIF(m.parent_account_id, ''), pj.account_id, '') AS parent_account_id,
 		        m.labels
-		   FROM kacho_iam.resource_mirror m
-		   LEFT JOIN kacho_iam.projects pj ON pj.id = m.parent_project_id
+		   FROM kaname.resource_mirror m
+		   LEFT JOIN kaname.projects pj ON pj.id = m.parent_project_id
 		  WHERE m.object_type = ANY($1) AND m.object_id = ANY($2)
 		  ORDER BY m.object_type ASC, m.object_id ASC`,
 		types, ids,
@@ -177,8 +177,8 @@ func GetByObject(ctx context.Context, q querier, objectType, objectID string) (M
 		`SELECT m.object_type, m.object_id, m.parent_project_id,
 		        COALESCE(NULLIF(m.parent_account_id, ''), pj.account_id, '') AS parent_account_id,
 		        m.labels
-		   FROM kacho_iam.resource_mirror m
-		   LEFT JOIN kacho_iam.projects pj ON pj.id = m.parent_project_id
+		   FROM kaname.resource_mirror m
+		   LEFT JOIN kaname.projects pj ON pj.id = m.parent_project_id
 		  WHERE m.object_type = $1 AND m.object_id = $2`,
 		objectType, objectID,
 	).Scan(&out.ObjectType, &out.ObjectID, &out.ParentProjectID, &out.ParentAccountID, &labelsJSON)

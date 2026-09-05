@@ -52,7 +52,7 @@ func TestRole_IAM_1_10_DefinitionTierXorRenamedAndIsSystemGenerated(t *testing.T
 	var attgenerated string
 	require.NoError(t, pool.QueryRow(ctx,
 		`SELECT attgenerated FROM pg_attribute
-		   WHERE attrelid = 'kacho_iam.roles'::regclass AND attname = 'is_system'`).Scan(&attgenerated))
+		   WHERE attrelid = 'kaname.roles'::regclass AND attname = 'is_system'`).Scan(&attgenerated))
 	assert.Equal(t, "s", attgenerated, "is_system must be a STORED generated column (derived from the tier)")
 
 	// (3) Production Insert round-trips a custom account-scoped role — is_system
@@ -82,7 +82,7 @@ func TestRole_IAM_1_10_DefinitionTierXorRenamedAndIsSystemGenerated(t *testing.T
 
 	// (4) An explicit INSERT into the generated is_system column is rejected.
 	_, err = pool.Exec(ctx,
-		`INSERT INTO kacho_iam.roles (id, account_id, name, description, permissions, rules, is_system, created_at, labels)
+		`INSERT INTO kaname.roles (id, account_id, name, description, permissions, rules, is_system, created_at, labels)
 		 VALUES ($1, $2, $3, '', '[]'::jsonb, '[]'::jsonb, true, now(), '{}'::jsonb)`,
 		ids.NewID(domain.PrefixRole), string(acc.ID), "forge_is_system_f4")
 	require.Error(t, err, "cannot insert a non-DEFAULT value into the generated is_system column")

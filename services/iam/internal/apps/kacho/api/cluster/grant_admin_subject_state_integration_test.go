@@ -46,7 +46,7 @@ func mustSeedBlockedUser(t *testing.T, ctx context.Context, pool *pgxpool.Pool, 
 	defer func() { _ = tx.Rollback(ctx) }()
 
 	_, err = tx.Exec(ctx, `
-		INSERT INTO kacho_iam.users (id, account_id, external_id, email, display_name, invite_status)
+		INSERT INTO kaname.users (id, account_id, external_id, email, display_name, invite_status)
 		VALUES ($1, $2, $3, $4, $5, 'BLOCKED')`,
 		string(uid), string(accID),
 		fmt.Sprintf("ext-blocked-%s-%s", suffix, uid),
@@ -56,7 +56,7 @@ func mustSeedBlockedUser(t *testing.T, ctx context.Context, pool *pgxpool.Pool, 
 	require.NoError(t, err, "seed BLOCKED user")
 
 	_, err = tx.Exec(ctx, `
-		INSERT INTO kacho_iam.accounts (id, name, owner_user_id, labels)
+		INSERT INTO kaname.accounts (id, name, owner_user_id, labels)
 		VALUES ($1, $2, $3, '{}'::jsonb)`,
 		string(accID),
 		fmt.Sprintf("blocked-acc-%s", accID[len(accID)-6:]),
@@ -78,11 +78,11 @@ func mustSeedServiceAccount(
 
 	var accID string
 	require.NoError(t, pool.QueryRow(ctx,
-		`SELECT account_id FROM kacho_iam.users WHERE id = $1`, string(owner)).Scan(&accID))
+		`SELECT account_id FROM kaname.users WHERE id = $1`, string(owner)).Scan(&accID))
 
 	svaID := domain.ServiceAccountID(ids.NewID(domain.PrefixServiceAccount))
 	_, err := pool.Exec(ctx, `
-		INSERT INTO kacho_iam.service_accounts (id, account_id, name, description, labels, enabled)
+		INSERT INTO kaname.service_accounts (id, account_id, name, description, labels, enabled)
 		VALUES ($1, $2, $3, '', '{}'::jsonb, $4)`,
 		string(svaID), accID, fmt.Sprintf("sa-%s-%s", suffix, svaID[len(svaID)-6:]), enabled)
 	require.NoError(t, err, "seed service account")
@@ -93,7 +93,7 @@ func countGrantRows(t *testing.T, ctx context.Context, pool *pgxpool.Pool, subje
 	t.Helper()
 	var n int
 	require.NoError(t, pool.QueryRow(ctx,
-		`SELECT count(*) FROM kacho_iam.cluster_admin_grants WHERE subject_id = $1`,
+		`SELECT count(*) FROM kaname.cluster_admin_grants WHERE subject_id = $1`,
 		subject).Scan(&n))
 	return n
 }
@@ -193,10 +193,10 @@ func TestCluster_GrantAdmin_RefusesPendingInvitee(t *testing.T) {
 	owner := mustSeedUser(t, ctx, pool, "pendinghost")
 	var accID string
 	require.NoError(t, pool.QueryRow(ctx,
-		`SELECT account_id FROM kacho_iam.users WHERE id = $1`, string(owner)).Scan(&accID))
+		`SELECT account_id FROM kaname.users WHERE id = $1`, string(owner)).Scan(&accID))
 	invitee := domain.UserID(ids.NewID(domain.PrefixUser))
 	_, err := pool.Exec(ctx, `
-		INSERT INTO kacho_iam.users (id, account_id, external_id, email, display_name, invite_status)
+		INSERT INTO kaname.users (id, account_id, external_id, email, display_name, invite_status)
 		VALUES ($1, $2, '', $3, 'Invitee', 'PENDING')`,
 		string(invitee), accID, fmt.Sprintf("pending-%s@example.com", invitee[len(invitee)-6:]))
 	require.NoError(t, err)

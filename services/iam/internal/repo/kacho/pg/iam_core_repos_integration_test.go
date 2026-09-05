@@ -753,7 +753,7 @@ func TestIamExtRepos_PermissionCatalog_AllEmpty_Sanity(t *testing.T) {
 // ────────────────────────────────────────────────────────────────────────────
 
 // padOrTrim20 — паддит/обрезает строку до 20 символов (3 char prefix + 17 char body).
-// id schema kacho_iam: accounts/users/projects/etc — TEXT, без CHECK regex'а на длину
+// id schema kaname: accounts/users/projects/etc — TEXT, без CHECK regex'а на длину
 // (CHECK только на name); тестам нужны валидные 20-char id's parity с production
 // ids.NewID(). Используется только в test setup.
 func padOrTrim20(s string) string {

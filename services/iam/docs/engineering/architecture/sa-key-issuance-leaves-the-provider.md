@@ -59,7 +59,7 @@
 ФЕДЕРАТИВНУЮ полосу: она берёт ключ у ЗАПИСИ ДОВЕРИЯ, а не у строки клиента, и
 принимает утверждение внешнего издателя на нашем токен-эндпоинте с видом выдачи
 jwt-bearer. Перечень доверенных издателей стал нашей таблицей
-(`kacho_iam.federated_trusted_issuers`) и пишется в той же транзакции, что строка
+(`kaname.federated_trusted_issuers`) и пишется в той же транзакции, что строка
 ключа.
 
 Значит на переведённом контуре федеративный ключ зеркала не заводит — ровно так
@@ -90,7 +90,7 @@ jwt-bearer. Перечень доверенных издателей стал н
 с зеркалом считается предикатом, а не памятью:
 
 ```sql
-SELECT count(*) FROM kacho_iam.service_account_oauth_clients
+SELECT count(*) FROM kaname.service_account_oauth_clients
  WHERE hydra_client_id <> id;
 ```
 
@@ -120,7 +120,7 @@ SELECT count(*) FROM kacho_iam.service_account_oauth_clients
 сужением, было **пусто**.
 
 Сегодня перечень, названный заказчиком при выдаче, записывается на строку ключа
-(`kacho_iam.service_account_oauth_clients.declared_audiences`), приезжает тем же
+(`kaname.service_account_oauth_clients.declared_audiences`), приезжает тем же
 оператором, что и всё остальное на полосе аутентификации, и решает выпуск.
 
 **Перечней два, и они не равноправны:**

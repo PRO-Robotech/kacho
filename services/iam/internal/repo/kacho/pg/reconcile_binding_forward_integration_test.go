@@ -214,7 +214,7 @@ func TestReconcileBindingForward_04_Race_ForwardVsFull_ExactlyOnce(t *testing.T)
 			// Exactly ONE ledger row per (relation,object) — no duplicate materialization.
 			var n int
 			require.NoError(t, pool.QueryRow(ctx,
-				`SELECT count(*) FROM kacho_iam.access_binding_emitted_tuples
+				`SELECT count(*) FROM kaname.access_binding_emitted_tuples
 				  WHERE binding_id=$1 AND object=$2 AND relation='v_update'`,
 				string(bid), "compute_instance:"+id).Scan(&n))
 			assert.Equal(t, 1, n, "exactly one v_update ledger row for %s (iter %d)", id, iter)
@@ -335,7 +335,7 @@ func TestReconcileBindingForward_07_Idempotent_DoubleForward(t *testing.T) {
 		"double forward does not duplicate the member")
 	var ledgerRows int
 	require.NoError(t, pool.QueryRow(ctx,
-		`SELECT count(*) FROM kacho_iam.access_binding_emitted_tuples
+		`SELECT count(*) FROM kaname.access_binding_emitted_tuples
 		  WHERE binding_id=$1 AND object=$2 AND relation='v_update'`,
 		string(bid), "compute_instance:iDup").Scan(&ledgerRows))
 	assert.Equal(t, 1, ledgerRows, "ledger holds exactly one v_update row (idempotent overlap)")
@@ -452,7 +452,7 @@ func TestReconcileBindingForward_12_EmptyScope_ZeroMembers(t *testing.T) {
 
 	var members int
 	require.NoError(t, pool.QueryRow(ctx,
-		`SELECT count(*) FROM kacho_iam.access_binding_target_members WHERE binding_id=$1`,
+		`SELECT count(*) FROM kaname.access_binding_target_members WHERE binding_id=$1`,
 		string(bid)).Scan(&members))
 	assert.Equal(t, 0, members, "empty scope → zero materialized members, no error")
 }

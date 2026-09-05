@@ -579,7 +579,7 @@ func RegisterOutboxDirections() map[string][]string {
 }
 
 // TupleOutboxDirections is the CollectorConfig.Directions value for the iam tuple outbox
-// (`kacho_iam.fga_outbox`): tuple writes and tuple deletes reported apart.
+// (`kaname.fga_outbox`): tuple writes and tuple deletes reported apart.
 //
 // This queue is the one where the asymmetry bites hardest, because it is where revocation
 // physically happens: every AccessBinding removal, every group-member removal and every

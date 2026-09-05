@@ -68,7 +68,7 @@ func TestIAMSV101_RuleRefOrphanTraceIsGone(t *testing.T) {
 	// Перепись — до вердикта, и по ОБЕИМ популяциям следа: «ноль строк
 	// объявления» обязано быть отличимо от «таблица пуста целиком».
 	rows, err := pool.Query(ctx, `
-		SELECT source, count(*) FROM kacho_iam.role_grant_orphan GROUP BY source ORDER BY source`)
+		SELECT source, count(*) FROM kaname.role_grant_orphan GROUP BY source ORDER BY source`)
 	require.NoError(t, err)
 	bySource := map[string]int{}
 	for rows.Next() {
@@ -84,13 +84,13 @@ func TestIAMSV101_RuleRefOrphanTraceIsGone(t *testing.T) {
 	// иначе «ноль строк» приходило бы и от несуществующего предмета.
 	var relKind string
 	require.NoError(t, pool.QueryRow(ctx,
-		`SELECT relkind FROM pg_class WHERE oid = 'kacho_iam.role_grant_orphan'::regclass`).Scan(&relKind),
+		`SELECT relkind FROM pg_class WHERE oid = 'kaname.role_grant_orphan'::regclass`).Scan(&relKind),
 		"предпосылка нарушена: таблицы следа нет — «ноль строк» получено даром")
 	require.Equal(t, "r", relKind)
 
 	detail, err := pool.Query(ctx, `
 		SELECT object_type, verb, count(*)
-		  FROM kacho_iam.role_grant_orphan
+		  FROM kaname.role_grant_orphan
 		 WHERE source = 'rule_ref'
 		 GROUP BY 1, 2 ORDER BY 1, 2`)
 	require.NoError(t, err)
@@ -129,7 +129,7 @@ func TestIAMSV107_RuleRefProjectionEqualsWhatRulesDeclare(t *testing.T) {
 
 	declared := map[string]map[string]bool{}
 	roleName := map[string]string{}
-	rows, err := pool.Query(ctx, `SELECT id, name, rules FROM kacho_iam.roles ORDER BY id`)
+	rows, err := pool.Query(ctx, `SELECT id, name, rules FROM kaname.roles ORDER BY id`)
 	require.NoError(t, err)
 	var roles, refs int
 	for rows.Next() {
@@ -156,7 +156,7 @@ func TestIAMSV107_RuleRefProjectionEqualsWhatRulesDeclare(t *testing.T) {
 
 	projected := map[string]map[string]bool{}
 	prows, err := pool.Query(ctx, `
-		SELECT role_id, module, resource, COALESCE(verb, '') FROM kacho_iam.role_rule_ref`)
+		SELECT role_id, module, resource, COALESCE(verb, '') FROM kaname.role_rule_ref`)
 	require.NoError(t, err)
 	var projectedRows int
 	for prows.Next() {

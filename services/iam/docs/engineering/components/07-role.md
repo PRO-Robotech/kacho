@@ -58,10 +58,10 @@ is_system=false + (account_id XOR project_id) NOT NULL → custom role
 
 **ID prefix:** `rol`. System-role IDs: `rol` + `substr(md5(name), 1, 17)`.
 
-**DB table:** `kacho_iam.roles` (`CREATE TABLE kacho_iam.roles` в `0001_initial.sql` + seed-блок).
+**DB table:** `kaname.roles` (`CREATE TABLE kaname.roles` в `0001_initial.sql` + seed-блок).
 
 **Permissions validation:** через PL/pgSQL функцию
-`kacho_iam.iam_permissions_valid(jsonb)`:
+`kaname.iam_permissions_valid(jsonb)`:
 
 ```
 ALL ELEMENTS должны соответствовать ^([a-z][a-z0-9]*|\*)\.([a-z][a-z0-9_]*|\*)\.([a-zA-Z][a-zA-Z0-9]*|\*)$
@@ -213,7 +213,7 @@ kubectl -n kacho port-forward svc/api-gateway 18080:8080 &
 
 # psql — посмотреть system-роли:
 make -C deploy psql SVC=iam
-# > SELECT id, name, jsonb_array_length(permissions) FROM kacho_iam.roles WHERE is_system=true ORDER BY name;
+# > SELECT id, name, jsonb_array_length(permissions) FROM kaname.roles WHERE is_system=true ORDER BY name;
 
 # Integration: seed determinism + permissions CHECK.
 go test -short -count=1 -timeout 120s \
@@ -249,7 +249,7 @@ go test -short -count=1 -timeout 120s \
 - **Permissions validation — PL/pgSQL функция**, NOT regex string в CHECK —
   при ошибке выдается `Illegal argument permissions: invalid format` без
   указания, какая именно permission невалидна. Для debug — psql проверка
-  `SELECT kacho_iam.iam_permissions_valid('["foo.bar"]'::jsonb)`.
+  `SELECT kaname.iam_permissions_valid('["foo.bar"]'::jsonb)`.
 - **Deterministic seed-ids** — НЕ менять `name` системной роли, иначе id
   пересчитается и все существующие AccessBinding'и сломаются. Если нужно
   переименование — отдельная роль + миграция AccessBinding'ов.

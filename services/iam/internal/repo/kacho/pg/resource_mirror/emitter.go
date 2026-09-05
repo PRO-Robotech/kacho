@@ -1,7 +1,7 @@
 // Copyright (c) PRO-Robotech
 // SPDX-License-Identifier: AGPL-3.0-or-later
 
-// Package resource_mirror — atomic emit-in-tx helper for kacho_iam.resource_mirror.
+// Package resource_mirror — atomic emit-in-tx helper for kaname.resource_mirror.
 //
 // The table is an OUTPUT-ONLY, cross-domain denormalised mirror (the source of
 // truth stays with the owning service) of the labels +
@@ -14,7 +14,7 @@
 // leaves NEITHER the mirror row NOR the tuple intent (atomic co-commit, ban #10).
 // Tx-commit is the atomicity primitive — never "UPSERT then call a second store".
 //
-// Schema (migration 0019 `kacho_iam.resource_mirror`):
+// Schema (migration 0019 `kaname.resource_mirror`):
 //
 //	object_type       text         PK ч.1   (closed-ish dotted key, e.g. "compute.instance")
 //	object_id         text         PK ч.2   (opaque cross-DB soft-ref, no FK)
@@ -112,7 +112,7 @@ const (
 	// УСЛОВИЕ ПРИЁМА СТОИТ И ЗДЕСЬ: полоса срабатывает на существующей строке и
 	// вставки не делает, поэтому без своего EXISTS она давала бы обход — тип снят
 	// с платформы, а регистрация им проходит только потому, что строка уже лежит.
-	StmtVersionOnlyBump = `UPDATE kacho_iam.resource_mirror
+	StmtVersionOnlyBump = `UPDATE kaname.resource_mirror
 		    SET source_version = $6, updated_at = now()
 		  WHERE object_type       = $1
 		    AND object_id         = $2
@@ -120,7 +120,7 @@ const (
 		    AND parent_account_id = $4
 		    AND labels            = $5::jsonb
 		    AND source_version    < $6
-		    AND EXISTS (SELECT 1 FROM kacho_iam.catalog_resource cr
+		    AND EXISTS (SELECT 1 FROM kaname.catalog_resource cr
 		                 WHERE cr.dotted = $1 AND cr.live)`
 
 	// StmtInsertOrSupersede — полоса ВСТАВКИ ПОД УСЛОВИЕМ ПРИЁМА, отвечающая
@@ -132,10 +132,10 @@ const (
 	// снимке.
 	StmtInsertOrSupersede = `WITH live_type AS (
 		     SELECT object_type
-		       FROM kacho_iam.catalog_resource
+		       FROM kaname.catalog_resource
 		      WHERE dotted = $1 AND live
 		 ), applied AS (
-		     INSERT INTO kacho_iam.resource_mirror
+		     INSERT INTO kaname.resource_mirror
 		       (object_type, object_id, parent_project_id, parent_account_id, labels, source_version, updated_at)
 		     SELECT $1::text, $2::text, $3::text, $4::text, $5::jsonb, $6::timestamptz, now()
 		      WHERE EXISTS (SELECT 1 FROM live_type)
@@ -353,7 +353,7 @@ func UpsertTx(ctx context.Context, tx pgx.Tx, row Row) (Outcome, error) {
 // писателя отвергается строкой, а не перестаёт совпадать тихо.
 func upsertParentEdges(ctx context.Context, tx pgx.Tx, row Row, objectType string, version any) error {
 	if _, err := tx.Exec(ctx,
-		`DELETE FROM kacho_iam.resource_parent_edge
+		`DELETE FROM kaname.resource_parent_edge
 		  WHERE object_type = $1 AND object_id = $2`,
 		objectType, row.ObjectID,
 	); err != nil {
@@ -375,7 +375,7 @@ func upsertParentEdges(ctx context.Context, tx pgx.Tx, row Row, objectType strin
 			return err
 		}
 		if _, err := tx.Exec(ctx,
-			`INSERT INTO kacho_iam.resource_parent_edge
+			`INSERT INTO kaname.resource_parent_edge
 			   (object_type, object_id, parent_type, parent_id, depth, source_version, updated_at)
 			 VALUES ($1, $2, $3, $4, $5, $6, now())`,
 			objectType, row.ObjectID, parentType, id, i+1, version,
@@ -455,7 +455,7 @@ func DeleteTx(ctx context.Context, tx pgx.Tx, objectType, objectID string, tombs
 		return fmt.Errorf("resource_mirror: tx must not be nil")
 	}
 	if _, err := tx.Exec(ctx,
-		`DELETE FROM kacho_iam.resource_mirror
+		`DELETE FROM kaname.resource_mirror
 		  WHERE object_type = $1 AND object_id = $2
 		    AND source_version <= $3`,
 		objectType, objectID, versionOr(tombstone),
@@ -476,7 +476,7 @@ func DeleteTx(ctx context.Context, tx pgx.Tx, objectType, objectID string, tombs
 		return err
 	}
 	if _, err := tx.Exec(ctx,
-		`DELETE FROM kacho_iam.resource_parent_edge
+		`DELETE FROM kaname.resource_parent_edge
 		  WHERE object_type = $1 AND object_id = $2
 		    AND source_version <= $3`,
 		modelType, objectID, versionOr(tombstone),

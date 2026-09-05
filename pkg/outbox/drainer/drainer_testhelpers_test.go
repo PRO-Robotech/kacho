@@ -31,7 +31,7 @@ import (
 
 // fgaOutboxSchema — СИНТЕТИЧЕСКАЯ очередь, на которой прогоняется ОБЩИЙ дренаж.
 //
-// ВНИМАНИЕ, ЭТО БОЛЬШЕ НЕ ЗЕРКАЛО ЖИВОЙ ТАБЛИЦЫ iam. Журнал `kacho_iam.fga_outbox`
+// ВНИМАНИЕ, ЭТО БОЛЬШЕ НЕ ЗЕРКАЛО ЖИВОЙ ТАБЛИЦЫ iam. Журнал `kaname.fga_outbox`
 // потерял и колонки доставки (`sent_at`, `attempt_count`, `last_error`), и ключ
 // `tuple_key` с его триггером и сторожем: дренажа у него нет с момента снятия
 // внешнего движка отношений (стадия S6 эпика #747), колонки сняла миграция
@@ -61,10 +61,10 @@ import (
 // Also omitted: subject_change_outbox / fga_model_version — not used by the
 // drainer.
 const fgaOutboxSchema = `
-CREATE SCHEMA IF NOT EXISTS kacho_iam;
-SET search_path TO kacho_iam, public;
+CREATE SCHEMA IF NOT EXISTS kaname;
+SET search_path TO kaname, public;
 
-CREATE TABLE kacho_iam.fga_outbox (
+CREATE TABLE kaname.fga_outbox (
     id            bigserial    PRIMARY KEY,
     event_type    text         NOT NULL,
     payload       jsonb        NOT NULL,
@@ -80,7 +80,7 @@ CREATE TABLE kacho_iam.fga_outbox (
 -- Mirrors kacho-iam migration 0067: the ordering partition key is the FULL tuple
 -- identity (user, relation, object) — the narrowest key over which the target's
 -- events fail to commute — materialised on INSERT by a trigger.
-CREATE OR REPLACE FUNCTION kacho_iam.fga_outbox_tuple_key() RETURNS trigger
+CREATE OR REPLACE FUNCTION kaname.fga_outbox_tuple_key() RETURNS trigger
 LANGUAGE plpgsql AS $fn$
 BEGIN
     NEW.tuple_key :=
@@ -92,21 +92,21 @@ END;
 $fn$;
 
 CREATE TRIGGER fga_outbox_tuple_key_trigger
-    BEFORE INSERT ON kacho_iam.fga_outbox
-    FOR EACH ROW EXECUTE FUNCTION kacho_iam.fga_outbox_tuple_key();
+    BEFORE INSERT ON kaname.fga_outbox
+    FOR EACH ROW EXECUTE FUNCTION kaname.fga_outbox_tuple_key();
 
 -- Mirrors kacho-iam migration 0067: partition-head-only claim NOT EXISTS support
 -- (PartitionColumn = tuple_key). Partial (sent_at IS NULL) so it stays as small as
 -- the pending backlog.
 CREATE INDEX fga_outbox_tuple_head_idx
-    ON kacho_iam.fga_outbox (tuple_key, id) WHERE sent_at IS NULL;
+    ON kaname.fga_outbox (tuple_key, id) WHERE sent_at IS NULL;
 
 -- Mirrors kacho-iam migration 0063: the claim's OUTER ordered scan
 -- ORDER BY (attempt_count, id). Required TOGETHER with the partition-head index —
 -- without it the planner cannot use that index at all and the claim degrades to a
 -- double seq-scan of the whole pending backlog (see Config.PartitionColumn).
 CREATE INDEX fga_outbox_claim_order_idx
-    ON kacho_iam.fga_outbox (attempt_count, id) WHERE sent_at IS NULL;
+    ON kaname.fga_outbox (attempt_count, id) WHERE sent_at IS NULL;
 
 -- NOTE (mirrors kacho-iam migration 0067): there is deliberately NO further
 -- partial index over sent_at IS NULL in any other order. A (created_at) one used
@@ -116,7 +116,7 @@ CREATE INDEX fga_outbox_claim_order_idx
 -- Config.PartitionColumn (section "Обязательные индексы") and
 -- Test_ClaimPlan_StaleStatistics_DoesNotCollapse.
 
-CREATE OR REPLACE FUNCTION kacho_iam.fga_outbox_notify() RETURNS trigger
+CREATE OR REPLACE FUNCTION kaname.fga_outbox_notify() RETURNS trigger
 LANGUAGE plpgsql AS $fn$
 BEGIN
     PERFORM pg_notify('kacho_iam_fga_outbox', NEW.id::text);
@@ -125,8 +125,8 @@ END;
 $fn$;
 
 CREATE TRIGGER fga_outbox_notify_trigger
-    AFTER INSERT ON kacho_iam.fga_outbox
-    FOR EACH ROW EXECUTE FUNCTION kacho_iam.fga_outbox_notify();
+    AFTER INSERT ON kaname.fga_outbox
+    FOR EACH ROW EXECUTE FUNCTION kaname.fga_outbox_notify();
 `
 
 // setupDrainerPG выдаёт тесту собственную БД с fga_outbox-schema на контейнере
@@ -359,13 +359,13 @@ func waitStableInt64(sample func() int64, want int64, stableFor, timeout time.Du
 	return want, true
 }
 
-// insertOutboxRow inserts a single row into kacho_iam.fga_outbox.
+// insertOutboxRow inserts a single row into kaname.fga_outbox.
 // Returns the auto-assigned id.
 func insertOutboxRow(t *testing.T, ctx context.Context, pool *pgxpool.Pool, eventType, payload string) int64 {
 	t.Helper()
 	var id int64
 	err := pool.QueryRow(ctx,
-		`INSERT INTO kacho_iam.fga_outbox (event_type, payload)
+		`INSERT INTO kaname.fga_outbox (event_type, payload)
 		 VALUES ($1, $2::jsonb)
 		 RETURNING id`,
 		eventType, payload,
@@ -390,7 +390,7 @@ func readOutboxRow(t *testing.T, ctx context.Context, pool *pgxpool.Pool, id int
 	r.id = id
 	err := pool.QueryRow(ctx,
 		`SELECT event_type, sent_at, last_error, attempt_count
-		   FROM kacho_iam.fga_outbox WHERE id = $1`,
+		   FROM kaname.fga_outbox WHERE id = $1`,
 		id,
 	).Scan(&r.eventType, &r.sentAt, &r.lastError, &r.attemptCount)
 	require.NoError(t, err)

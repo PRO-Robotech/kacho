@@ -90,10 +90,10 @@ func TestSchemaSnapshot(t *testing.T) {
 			if name == "" {
 				continue
 			}
-			if _, derr := db.Exec(`DROP TABLE kacho_iam.` + name + ` CASCADE`); derr != nil {
+			if _, derr := db.Exec(`DROP TABLE kaname.` + name + ` CASCADE`); derr != nil {
 				t.Fatalf("снять %s: %v", name, derr)
 			}
-			t.Logf("снято: kacho_iam.%s", name)
+			t.Logf("снято: kaname.%s", name)
 		}
 	}
 
@@ -115,28 +115,28 @@ func TestSchemaSnapshot(t *testing.T) {
 	// колонки с типами и умолчаниями
 	add(`SELECT 'COL '||table_name||'.'||column_name||' '||data_type||' null='||is_nullable||
 	       ' def='||coalesce(column_default,'-')
-	     FROM information_schema.columns WHERE table_schema='kacho_iam'`)
+	     FROM information_schema.columns WHERE table_schema='kaname'`)
 	// ограничения с их выражениями
 	add(`SELECT 'CON '||rel.relname||' '||con.conname||' '||pg_get_constraintdef(con.oid)
 	     FROM pg_constraint con JOIN pg_class rel ON rel.oid=con.conrelid
-	     JOIN pg_namespace n ON n.oid=rel.relnamespace WHERE n.nspname='kacho_iam'`)
+	     JOIN pg_namespace n ON n.oid=rel.relnamespace WHERE n.nspname='kaname'`)
 	// индексы
-	add(`SELECT 'IDX '||indexname||' '||indexdef FROM pg_indexes WHERE schemaname='kacho_iam'`)
+	add(`SELECT 'IDX '||indexname||' '||indexdef FROM pg_indexes WHERE schemaname='kaname'`)
 	// триггеры
 	add(`SELECT 'TRG '||c.relname||' '||t.tgname||' '||pg_get_triggerdef(t.oid)
 	     FROM pg_trigger t JOIN pg_class c ON c.oid=t.tgrelid
 	     JOIN pg_namespace n ON n.oid=c.relnamespace
-	     WHERE n.nspname='kacho_iam' AND NOT t.tgisinternal`)
+	     WHERE n.nspname='kaname' AND NOT t.tgisinternal`)
 	// функции
 	add(`SELECT 'FUN '||p.proname||' '||md5(pg_get_functiondef(p.oid))
-	     FROM pg_proc p JOIN pg_namespace n ON n.oid=p.pronamespace WHERE n.nspname='kacho_iam'`)
+	     FROM pg_proc p JOIN pg_namespace n ON n.oid=p.pronamespace WHERE n.nspname='kaname'`)
 
 	// Дамп снимается ТЕМ ЖЕ соединением, что и слепок: он даст SQL, которым
 	// сведённая миграция и воспроизведёт схему. Слепок остаётся ПРЕДИКАТОМ
 	// равенства, дамп — исходником; путать их нельзя.
 	if dumpTo := os.Getenv("KACHO_SCHEMA_DUMP_OUT"); dumpTo != "" {
 		cmd := exec.Command("pg_dump", "--schema-only", "--no-owner", "--no-privileges",
-			"--schema=kacho_iam", dsn)
+			"--schema=kaname", dsn)
 		out, derr := cmd.Output()
 		if derr != nil {
 			t.Fatalf("снять дамп: %v", derr)
@@ -155,7 +155,7 @@ func TestSchemaSnapshot(t *testing.T) {
 	// приходит не оттуда, где его ищут.
 	if fullTo := os.Getenv("KACHO_SCHEMA_FULL_OUT"); fullTo != "" {
 		cmd := exec.Command("pg_dump", "--no-owner", "--no-privileges",
-			"--column-inserts", "--schema=kacho_iam", dsn)
+			"--column-inserts", "--schema=kaname", dsn)
 		out, derr := cmd.Output()
 		if derr != nil {
 			t.Fatalf("снять полный дамп: %v", derr)
@@ -171,7 +171,7 @@ func TestSchemaSnapshot(t *testing.T) {
 	// данных стенда по одному счётчику нельзя — нужно увидеть сами строки.
 	if dataTo := os.Getenv("KACHO_SCHEMA_DATA_OUT"); dataTo != "" {
 		cmd := exec.Command("pg_dump", "--data-only", "--no-owner", "--no-privileges",
-			"--column-inserts", "--schema=kacho_iam", dsn)
+			"--column-inserts", "--schema=kaname", dsn)
 		out, derr := cmd.Output()
 		if derr != nil {
 			t.Fatalf("снять дамп данных: %v", derr)
@@ -187,7 +187,7 @@ func TestSchemaSnapshot(t *testing.T) {
 	if rowsTo := os.Getenv("KACHO_SCHEMA_ROWS_OUT"); rowsTo != "" {
 		var rl []string
 		rs, rerr := db.Query(`SELECT table_name FROM information_schema.tables
-		    WHERE table_schema='kacho_iam' AND table_type='BASE TABLE' ORDER BY table_name`)
+		    WHERE table_schema='kaname' AND table_type='BASE TABLE' ORDER BY table_name`)
 		if rerr != nil {
 			t.Fatalf("перечень таблиц: %v", rerr)
 		}
@@ -202,7 +202,7 @@ func TestSchemaSnapshot(t *testing.T) {
 		_ = rs.Close()
 		for _, n := range names {
 			var c int
-			if err := db.QueryRow(`SELECT count(*) FROM kacho_iam.` + n).Scan(&c); err != nil {
+			if err := db.QueryRow(`SELECT count(*) FROM kaname.` + n).Scan(&c); err != nil {
 				t.Fatalf("счёт строк %s: %v", n, err)
 			}
 			if c > 0 {

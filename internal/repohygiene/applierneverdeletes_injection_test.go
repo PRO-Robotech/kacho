@@ -43,7 +43,7 @@ type RoleWriter interface {
 const applierSQLDelete = `package moduleroles
 
 func sweep() string {
-	return ` + "`DELETE FROM kacho_iam.roles WHERE cluster_id IS NOT NULL`" + `
+	return ` + "`DELETE FROM kaname.roles WHERE cluster_id IS NOT NULL`" + `
 }
 `
 
@@ -153,7 +153,7 @@ type RoleWriter interface {
 const applierAdapterRetireDeletes = `package pg
 
 func (w *roleWriter) RetireSystemRole(id string) error {
-	_, err := w.tx.Exec(ctx, ` + "`DELETE FROM kacho_iam.roles WHERE id = $1`" + `, id)
+	_, err := w.tx.Exec(ctx, ` + "`DELETE FROM kaname.roles WHERE id = $1`" + `, id)
 	return err
 }
 `
@@ -163,7 +163,7 @@ func (w *roleWriter) RetireSystemRole(id string) error {
 const applierAdapterRetireMarks = `package pg
 
 func (w *roleWriter) RetireSystemRole(id string) error {
-	_, err := w.tx.Exec(ctx, ` + "`UPDATE kacho_iam.roles SET retired_at = now() WHERE id = $1`" + `, id)
+	_, err := w.tx.Exec(ctx, ` + "`UPDATE kaname.roles SET retired_at = now() WHERE id = $1`" + `, id)
 	return err
 }
 `

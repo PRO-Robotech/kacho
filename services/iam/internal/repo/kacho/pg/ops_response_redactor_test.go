@@ -12,7 +12,7 @@ import (
 )
 
 func Test_Redactor_EmptyFieldPath_ReturnsError(t *testing.T) {
-	r := NewOpsResponseRedactor(nil, "kacho_iam")
+	r := NewOpsResponseRedactor(nil, "kaname")
 	err := r.RedactResponseField(context.Background(), "iop_test", nil)
 	if err == nil {
 		t.Fatalf("empty field path must error, got nil")

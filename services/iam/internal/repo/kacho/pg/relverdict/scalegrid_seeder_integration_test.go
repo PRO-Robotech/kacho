@@ -208,7 +208,7 @@ func dumpMirror(t *testing.T, ctx context.Context, tx pgx.Tx) []mirrorRow {
 	rows, err := tx.Query(ctx, `
 		SELECT object_type, object_id, parent_project_id, parent_account_id,
 		       labels::text, source_version::text, updated_at IS NOT NULL
-		  FROM kacho_iam.resource_mirror
+		  FROM kaname.resource_mirror
 		 ORDER BY object_type, object_id`)
 	if err != nil {
 		t.Fatalf("вычитывание зеркала: %v", err)
@@ -234,7 +234,7 @@ func dumpEdges(t *testing.T, ctx context.Context, tx pgx.Tx) []edgeRow {
 	rows, err := tx.Query(ctx, `
 		SELECT object_type, object_id, parent_type, parent_id, depth,
 		       source_version::text, updated_at IS NOT NULL
-		  FROM kacho_iam.resource_parent_edge
+		  FROM kaname.resource_parent_edge
 		 ORDER BY object_type, object_id, depth`)
 	if err != nil {
 		t.Fatalf("вычитывание рёбер: %v", err)

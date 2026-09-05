@@ -68,10 +68,10 @@ func consequenceRowsOf(t *testing.T, ctx context.Context, pool *pgxpool.Pool) co
 	t.Helper()
 	var out consequenceRows
 	require.NoError(t, pool.QueryRow(ctx, `
-		SELECT (SELECT count(*) FROM kacho_iam.role_rule_ref),
-		       (SELECT count(*) FROM kacho_iam.role_verb),
-		       (SELECT count(*) FROM kacho_iam.role_rule_selectors),
-		       (SELECT count(*) FROM kacho_iam.role_grant_orphan)`).
+		SELECT (SELECT count(*) FROM kaname.role_rule_ref),
+		       (SELECT count(*) FROM kaname.role_verb),
+		       (SELECT count(*) FROM kaname.role_rule_selectors),
+		       (SELECT count(*) FROM kaname.role_grant_orphan)`).
 		Scan(&out.RuleRefs, &out.RoleVerbs, &out.Selectors, &out.Orphans))
 	return out
 }

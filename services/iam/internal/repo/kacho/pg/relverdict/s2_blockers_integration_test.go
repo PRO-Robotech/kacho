@@ -132,7 +132,7 @@ func TestR7_1_18_ScopeWalkCostsTheRequestNotTheCloud(t *testing.T) {
 	// на которой обход обязан подниматься транзитивно.
 	var links int
 	if err := tx.QueryRow(ctx, `
-		SELECT count(*)::int FROM kacho_iam.resource_parent_edge
+		SELECT count(*)::int FROM kaname.resource_parent_edge
 		 WHERE object_type = $1 AND object_id = $2`,
 		probeModelType, probeObjectID).Scan(&links); err != nil {
 		t.Fatalf("замыкание объекта: %v", err)
@@ -286,7 +286,7 @@ func seedElsewhereBindings(t *testing.T, ctx context.Context, tx pgx.Tx, f *grid
 	for i := 0; i < n; i++ {
 		pid := fmt.Sprintf("prj-e%07d", i)
 		must(t, s.QueueRaw(ctx,
-			`INSERT INTO kacho_iam.projects (id, account_id, name) VALUES ($1, 'acc-1', $1)`, pid))
+			`INSERT INTO kaname.projects (id, account_id, name) VALUES ($1, 'acc-1', $1)`, pid))
 	}
 	// Роли — своим пулом: действующая выдача уникальна по (субъект, роль, область),
 	// а область здесь у каждой своя, поэтому хватает одной роли на все.
@@ -294,11 +294,11 @@ func seedElsewhereBindings(t *testing.T, ctx context.Context, tx pgx.Tx, f *grid
 		bid := fmt.Sprintf("acb-e%07d", i)
 		pid := fmt.Sprintf("prj-e%07d", i)
 		must(t, s.QueueRaw(ctx,
-			`INSERT INTO kacho_iam.access_bindings
+			`INSERT INTO kaname.access_bindings
 			   (id, subject_type, subject_id, role_id, resource_type, resource_id, status)
 			 VALUES ($1, 'user', 'usr-1', 'rol-anchor', 'project', $2, 'ACTIVE')`, bid, pid))
 		must(t, s.QueueRaw(ctx,
-			`INSERT INTO kacho_iam.access_binding_subjects (binding_id, subject_type, subject_id)
+			`INSERT INTO kaname.access_binding_subjects (binding_id, subject_type, subject_id)
 			 VALUES ($1, 'user', 'usr-1')`, bid))
 	}
 	must(t, s.Flush(ctx))
@@ -338,7 +338,7 @@ func TestR7_1_12_SubjectAndScopeResolveOnOneIndex(t *testing.T) {
 	var carried int
 	if err := tx.QueryRow(ctx, `
 		SELECT count(*)::int FROM information_schema.columns
-		 WHERE table_schema = 'kacho_iam' AND table_name = 'access_binding_subjects'
+		 WHERE table_schema = 'kaname' AND table_name = 'access_binding_subjects'
 		   AND column_name IN ('subject_type','subject_id','resource_type','resource_id')`).Scan(&carried); err != nil {
 		t.Fatalf("состав колонок: %v", err)
 	}
@@ -357,7 +357,7 @@ func TestR7_1_12_SubjectAndScopeResolveOnOneIndex(t *testing.T) {
 
 	// ── ИНЪЕКЦИЯ: индекс снят, всё прочее не тронуто ─────────────────────────
 	if _, err := tx.Exec(ctx,
-		`DROP INDEX kacho_iam.access_binding_subjects_subject_scope_idx`); err != nil {
+		`DROP INDEX kaname.access_binding_subjects_subject_scope_idx`); err != nil {
 		t.Fatalf("снятие индекса: имя изменилось или индекса нет — инъекция не воспроизводит "+
 			"состояние «объявлен, но не применяется»: %v", err)
 	}
@@ -534,7 +534,7 @@ func seedConditionedFacts(t *testing.T, ctx context.Context, tx pgx.Tx, n int) {
 	// основание находится раньше усечения — и это верный исход, а не дефект
 	// (ровно та пара, ради которой сценарии 13 и 14 стоят рядом).
 	must(t, s.QueueRaw(ctx,
-		`INSERT INTO kacho_iam.projects (id, account_id, name) VALUES ('prj-trunc', 'acc-1', 'prj-trunc')`))
+		`INSERT INTO kaname.projects (id, account_id, name) VALUES ('prj-trunc', 'acc-1', 'prj-trunc')`))
 	must(t, s.Flush(ctx))
 	must(t, s.Queue(ctx, scalegrid.MirrorRow{
 		ObjectType: probeCatalogType, ObjectID: "repo-truncate",
@@ -545,12 +545,12 @@ func seedConditionedFacts(t *testing.T, ctx context.Context, tx pgx.Tx, n int) {
 	for i := 0; i < n; i++ {
 		gid := fmt.Sprintf("grp-t%05d", i)
 		must(t, s.QueueRaw(ctx,
-			`INSERT INTO kacho_iam.groups (id, account_id, name) VALUES ($1, 'acc-1', $1)`, gid))
+			`INSERT INTO kaname.groups (id, account_id, name) VALUES ($1, 'acc-1', $1)`, gid))
 		must(t, s.QueueRaw(ctx,
-			`INSERT INTO kacho_iam.group_members (group_id, member_type, member_id)
+			`INSERT INTO kaname.group_members (group_id, member_type, member_id)
 			 VALUES ($1, 'user', 'usr-1')`, gid))
 		must(t, s.QueueRaw(ctx,
-			`INSERT INTO kacho_iam.relation_fact
+			`INSERT INTO kaname.relation_fact
 			   (object_type, object_id, relation, subject, condition_name, condition_params)
 			 VALUES ($1, 'repo-truncate', $2, $3, $4, '{}'::jsonb)`,
 			probeModelType, probeRelation, "group:"+gid+"#member", fmt.Sprintf("cond_%04d", i)))
@@ -594,12 +594,12 @@ func TestR7_1_15_LabelArmShareIsMeasuredNotAssumed(t *testing.T) {
 
 		// Роль отличается ТОЛЬКО ветвью правила: тот же тип, тот же глагол.
 		must(t, execErr(ctx, tx,
-			`UPDATE kacho_iam.role_rule_selectors SET arm = $1,
+			`UPDATE kaname.role_rule_selectors SET arm = $1,
 			        match_labels = CASE WHEN $1 = 'labels' THEN '{"env":"prod"}'::jsonb ELSE '{}'::jsonb END
 			  WHERE role_id = 'rol-anchor'`, arm))
 		f.setR(t, ctx, 1, scalegrid.RecruitDirect)
 		must(t, execErr(ctx, tx,
-			`UPDATE kacho_iam.role_rule_selectors SET arm = $1,
+			`UPDATE kaname.role_rule_selectors SET arm = $1,
 			        match_labels = CASE WHEN $1 = 'labels' THEN '{"env":"prod"}'::jsonb ELSE '{}'::jsonb END
 			  WHERE role_id LIKE 'rol-r%'`, arm))
 		f.analyze(t, ctx)
@@ -607,7 +607,7 @@ func TestR7_1_15_LabelArmShareIsMeasuredNotAssumed(t *testing.T) {
 		v, m := askAndExplain(t, ctx, tx, cap, probeObjectID)
 		var objects int
 		if err := tx.QueryRow(ctx,
-			`SELECT count(*)::int FROM kacho_iam.resource_mirror`).Scan(&objects); err != nil {
+			`SELECT count(*)::int FROM kaname.resource_mirror`).Scan(&objects); err != nil {
 			t.Fatalf("перепись объектов: %v", err)
 		}
 		return m.Rows, v, objects

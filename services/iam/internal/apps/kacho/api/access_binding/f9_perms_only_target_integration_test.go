@@ -41,7 +41,7 @@ func TestAB_PermsOnlyRole_PerObjectTarget_Rejected(t *testing.T) {
 	dsn := setupTestDB(t)
 	pool := poolFromDSN(t, dsn)
 	repo := kachopg.New(pool, nil)
-	opsRepo := operations.NewRepo(pool, "kacho_iam")
+	opsRepo := operations.NewRepo(pool, "kaname")
 	h := deltaHandler(t, repo, opsRepo)
 
 	owner := mustSeedUser(t, ctx, pool, "po1")

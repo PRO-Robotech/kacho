@@ -60,7 +60,7 @@ import (
 // причине, что и у соседей: гейт резолвит координату очереди РАЗБОРОМ
 // исходника, и адрес, вычисляемый в рантайме, для него неотличим от
 // отсутствующего.
-const reconcileOutboxTable = "kacho_iam.resource_reconcile_outbox"
+const reconcileOutboxTable = "kaname.resource_reconcile_outbox"
 
 // runReconcileOutboxMetrics — скан состояния очереди сверки.
 //

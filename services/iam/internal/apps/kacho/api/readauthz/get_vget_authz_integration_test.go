@@ -163,26 +163,26 @@ func seedGetGrant(t *testing.T, ctx context.Context, pool *pgxpool.Pool,
 	acc domain.AccountID, role, binding, subjectID string) {
 	t.Helper()
 	mustExec(t, ctx, pool,
-		`INSERT INTO kacho_iam.roles (id, account_id, name, permissions)
+		`INSERT INTO kaname.roles (id, account_id, name, permissions)
 		 VALUES ($1, $2, $3, '["iam.project.*.get"]'::jsonb)`, role, string(acc), role)
 	for _, ty := range readAuthzTypes {
 		catalog := authzmap.CatalogTypeName(ty)
 		mustExec(t, ctx, pool,
-			`INSERT INTO kacho_iam.role_verb (role_id, object_type, verb) VALUES ($1, $2, 'get')`,
+			`INSERT INTO kaname.role_verb (role_id, object_type, verb) VALUES ($1, $2, 'get')`,
 			role, catalog)
 		mustExec(t, ctx, pool,
-			`INSERT INTO kacho_iam.role_rule_selectors
+			`INSERT INTO kaname.role_rule_selectors
 			   (role_id, rule_fp, arm, object_types, match_labels)
 			 VALUES ($1, $2, 'anchor', ARRAY[$3::text], '{}'::jsonb)`,
 			role, "fp-"+catalog, catalog)
 	}
 	mustExec(t, ctx, pool,
-		`INSERT INTO kacho_iam.access_bindings
+		`INSERT INTO kaname.access_bindings
 		   (id, subject_type, subject_id, role_id, resource_type, resource_id, status)
 		 VALUES ($1, 'user', $2, $3, 'account', $4, 'ACTIVE')`,
 		binding, subjectID, role, string(acc))
 	mustExec(t, ctx, pool,
-		`INSERT INTO kacho_iam.access_binding_subjects (binding_id, subject_type, subject_id)
+		`INSERT INTO kaname.access_binding_subjects (binding_id, subject_type, subject_id)
 		 VALUES ($1, 'user', $2)`, binding, subjectID)
 }
 
@@ -193,22 +193,22 @@ func seedObjectGrant(t *testing.T, ctx context.Context, pool *pgxpool.Pool,
 	t.Helper()
 	catalog := authzmap.CatalogTypeName(objectType)
 	mustExec(t, ctx, pool,
-		`INSERT INTO kacho_iam.roles (id, account_id, name, permissions)
+		`INSERT INTO kaname.roles (id, account_id, name, permissions)
 		 VALUES ($1, $2, $3, '["iam.project.*.get"]'::jsonb)`, role, string(acc), role)
 	mustExec(t, ctx, pool,
-		`INSERT INTO kacho_iam.role_verb (role_id, object_type, verb) VALUES ($1, $2, 'get')`,
+		`INSERT INTO kaname.role_verb (role_id, object_type, verb) VALUES ($1, $2, 'get')`,
 		role, catalog)
 	mustExec(t, ctx, pool,
-		`INSERT INTO kacho_iam.role_rule_selectors
+		`INSERT INTO kaname.role_rule_selectors
 		   (role_id, rule_fp, arm, object_types, match_labels)
 		 VALUES ($1, 'fp-obj', 'anchor', ARRAY[$2::text], '{}'::jsonb)`, role, catalog)
 	mustExec(t, ctx, pool,
-		`INSERT INTO kacho_iam.access_bindings
+		`INSERT INTO kaname.access_bindings
 		   (id, subject_type, subject_id, role_id, resource_type, resource_id, status)
 		 VALUES ($1, 'user', $2, $3, $4, $5, 'ACTIVE')`,
 		binding, subjectID, role, objectType, objectID)
 	mustExec(t, ctx, pool,
-		`INSERT INTO kacho_iam.access_binding_subjects (binding_id, subject_type, subject_id)
+		`INSERT INTO kaname.access_binding_subjects (binding_id, subject_type, subject_id)
 		 VALUES ($1, 'user', $2)`, binding, subjectID)
 }
 
@@ -219,7 +219,7 @@ func pointerThroughJournal(t *testing.T, ctx context.Context, pool *pgxpool.Pool
 	objectType, objectID, relation, subject string) {
 	t.Helper()
 	mustExec(t, ctx, pool,
-		`INSERT INTO kacho_iam.fga_outbox (event_type, payload, created_at)
+		`INSERT INTO kaname.fga_outbox (event_type, payload, created_at)
 		 VALUES ('fga.tuple.write',
 		         jsonb_build_object('user', $1::text, 'relation', $2::text,
 		                            'object', $3::text || ':' || $4::text),
@@ -227,7 +227,7 @@ func pointerThroughJournal(t *testing.T, ctx context.Context, pool *pgxpool.Pool
 		subject, relation, objectType, objectID)
 	var landed int
 	require.NoError(t, pool.QueryRow(ctx,
-		`SELECT count(*)::int FROM kacho_iam.relation_fact
+		`SELECT count(*)::int FROM kaname.relation_fact
 		  WHERE object_type = $1 AND object_id = $2 AND relation = $3 AND subject = $4`,
 		objectType, objectID, relation, subject).Scan(&landed))
 	require.Equalf(t, 1, landed,

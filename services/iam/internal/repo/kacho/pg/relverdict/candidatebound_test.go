@@ -105,7 +105,7 @@ func TestCandidateSourceIsBoundedOnEveryAxis(t *testing.T) {
 // Вход — не выдумка: это ровно та форма, какой источник кандидатов был до
 // переноса предела, поэтому проба закрепляет починенный дефект, а не абстракцию.
 func TestCandidateBoundPredicateRejectsAnUnboundedSource(t *testing.T) {
-	unbounded := "SELECT m.object_id, m.labels\n      FROM kacho_iam.resource_mirror m\n" +
+	unbounded := "SELECT m.object_id, m.labels\n      FROM kaname.resource_mirror m\n" +
 		"     WHERE m.object_type = $2::text\n       AND m.object_id > $3::text"
 	if why := boundedCandidateSource(unbounded, "$4"); why == "" {
 		t.Fatal("предикат принял источник БЕЗ предела — значит он не умеет находить именно " +

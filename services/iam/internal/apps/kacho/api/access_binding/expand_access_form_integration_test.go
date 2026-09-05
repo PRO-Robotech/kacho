@@ -97,16 +97,16 @@ func seedExpandFixture(t *testing.T, ctx context.Context, pool *pgxpool.Pool) {
 	// Имена проходят `accounts_name_check` / `projects_name_check` /
 	// `groups_name_check` (единственная форма имени дерева): подчёркивание в ИМЕНИ
 	// отвергается схемой, в идентификаторе — нет.
-	run(`INSERT INTO kacho_iam.accounts (id, name, owner_user_id)
+	run(`INSERT INTO kaname.accounts (id, name, owner_user_id)
 	     VALUES ('acc_A', 'home-account', 'usr_owner'), ('acc_B', 'foreign-account', 'usr_owner')
 	     ON CONFLICT DO NOTHING`)
 	for _, u := range []string{"usr_owner", "usr_auditor", "usr_m1", "usr_m2", "usr_secret_b"} {
-		run(`INSERT INTO kacho_iam.users (id, external_id, email, account_id)
+		run(`INSERT INTO kaname.users (id, external_id, email, account_id)
 		     VALUES ($1, $1, $1 || '@kacho.local', 'acc_A') ON CONFLICT DO NOTHING`, u)
 	}
-	run(`INSERT INTO kacho_iam.groups (id, account_id, name) VALUES ('grp_team', 'acc_A', 'team-group')
+	run(`INSERT INTO kaname.groups (id, account_id, name) VALUES ('grp_team', 'acc_A', 'team-group')
 	     ON CONFLICT DO NOTHING`)
-	run(`INSERT INTO kacho_iam.group_members (group_id, member_type, member_id)
+	run(`INSERT INTO kaname.group_members (group_id, member_type, member_id)
 	     VALUES ('grp_team', 'user', 'usr_m1'), ('grp_team', 'user', 'usr_m2')
 	     ON CONFLICT DO NOTHING`)
 
@@ -114,14 +114,14 @@ func seedExpandFixture(t *testing.T, ctx context.Context, pool *pgxpool.Pool) {
 	// продукт: хвост отношения раскрывает членство на стороне модели. Голая форма
 	// `group:<id>` тоже законна, но она адресует саму группу как получателя, а
 	// предмет здесь — люди внутри неё.
-	run(`INSERT INTO kacho_iam.relation_fact (object_type, object_id, relation, subject)
+	run(`INSERT INTO kaname.relation_fact (object_type, object_id, relation, subject)
 	     VALUES ('account', 'acc_A', 'viewer', 'group:grp_team#member')`)
 	// Право вызывающего администрировать СВОЙ объект — и только его.
-	run(`INSERT INTO kacho_iam.relation_fact (object_type, object_id, relation, subject)
+	run(`INSERT INTO kaname.relation_fact (object_type, object_id, relation, subject)
 	     VALUES ('account', 'acc_A', 'admin', 'user:usr_auditor')`)
 	// На чужом аккаунте лежит НАСТОЯЩАЯ выдача: без неё отказ ниже был бы
 	// неотличим от «там всё равно никого нет», и утечка не имела бы чего утекать.
-	run(`INSERT INTO kacho_iam.relation_fact (object_type, object_id, relation, subject)
+	run(`INSERT INTO kaname.relation_fact (object_type, object_id, relation, subject)
 	     VALUES ('account', 'acc_B', 'viewer', 'user:usr_secret_b')`)
 	require.NoError(t, tx.Commit(ctx), "коммит посева: форма читает СВОЕЙ транзакцией и "+
 		"незакоммиченного не увидит — проба зеленела бы на пустоте")

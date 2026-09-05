@@ -199,7 +199,7 @@ func (u *UpdateAccessBindingUseCase) Execute(ctx context.Context, id domain.Acce
 // iam-direct selector membership (a LABEL change), re-materializes the object.
 //
 // WHY THE IN-PROCESS PASS. iam.accessBinding is label-selectable (feed_registry.go), and
-// the iam-direct matcher probes `kacho_iam.access_bindings.labels` — so a binding is
+// the iam-direct matcher probes `kaname.access_bindings.labels` — so a binding is
 // itself an OBJECT another binding's ARM_LABELS selector may match, and clearing a
 // matching label is a REVOCATION of that other grant. Its cross-service twin gets that
 // for free: vpc/compute/nlb re-call InternalIAMService.RegisterResource on a label

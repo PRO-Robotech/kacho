@@ -1,7 +1,7 @@
 // Copyright (c) PRO-Robotech
 // SPDX-License-Identifier: AGPL-3.0-or-later
 
-// Package service_account — CQRS port-iface'ы для kacho_iam.service_accounts.
+// Package service_account — CQRS port-iface'ы для kaname.service_accounts.
 package service_account
 
 import (

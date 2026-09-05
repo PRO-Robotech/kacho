@@ -49,7 +49,7 @@ func membershipsOf(t *testing.T, ctx context.Context, pool *pgxpool.Pool, userID
 	t.Helper()
 	rows, err := pool.Query(ctx, `
 		SELECT id, account_id, state
-		  FROM kacho_iam.memberships
+		  FROM kaname.memberships
 		 WHERE user_id = $1
 		 ORDER BY account_id`, string(userID))
 	require.NoError(t, err)
@@ -76,7 +76,7 @@ func countMembershipsInAccount(t *testing.T, ctx context.Context, pool *pgxpool.
 	t.Helper()
 	var n int
 	require.NoError(t, pool.QueryRow(ctx,
-		`SELECT count(*) FROM kacho_iam.memberships WHERE account_id = $1`, string(acc)).Scan(&n))
+		`SELECT count(*) FROM kaname.memberships WHERE account_id = $1`, string(acc)).Scan(&n))
 	return n
 }
 
@@ -170,7 +170,7 @@ func TestIntegration_MembershipMirrorIsOnePerUserAccountPair(t *testing.T) {
 	userID, accID := bootstrapAdmin(t, ctx, repo, "mir2")
 
 	_, err = pool.Exec(ctx, `
-		INSERT INTO kacho_iam.memberships (id, user_id, account_id, state)
+		INSERT INTO kaname.memberships (id, user_id, account_id, state)
 		VALUES ($1, $2, $3, 'ACTIVE')`,
 		"mbr-00000000000000002", string(userID), string(accID))
 	require.Error(t, err,
@@ -193,7 +193,7 @@ func TestIntegration_MembershipMirrorIsOnePerUserAccountPair(t *testing.T) {
 		require.NoError(t, w.Commit(ctx))
 	}
 	_, err = pool.Exec(ctx, `
-		INSERT INTO kacho_iam.memberships (id, user_id, account_id, state)
+		INSERT INTO kaname.memberships (id, user_id, account_id, state)
 		VALUES ($1, $2, $3, 'ACTIVE')`,
 		"mbr-00000000000000003", string(userID), string(otherAcc))
 	require.NoError(t, err,

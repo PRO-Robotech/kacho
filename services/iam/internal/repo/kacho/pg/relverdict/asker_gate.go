@@ -84,7 +84,7 @@ func (a *Asker) DirectRelations(
 	}
 	rows, err := a.pool.Query(ctx, `
 		SELECT DISTINCT f.relation
-		  FROM kacho_iam.relation_fact f
+		  FROM kaname.relation_fact f
 		 WHERE f.object_type = $1
 		   AND f.object_id   = $2
 		   AND f.subject     = $3
@@ -147,7 +147,7 @@ func (a *Asker) DirectRelationsMany(
 		           row_number() OVER (PARTITION BY d.object_id ORDER BY d.relation) AS rn
 		      FROM (
 		        SELECT DISTINCT f.object_id, f.relation
-		          FROM kacho_iam.relation_fact f
+		          FROM kaname.relation_fact f
 		         WHERE f.object_type = $1
 		           AND f.object_id = ANY ($2::text[])
 		           AND f.subject   = $3

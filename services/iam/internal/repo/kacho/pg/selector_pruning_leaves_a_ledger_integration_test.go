@@ -57,11 +57,11 @@ func prunedLedgerOf(t *testing.T, ctx context.Context, pool *pgxpool.Pool, role 
 	t.Helper()
 	var total int
 	require.NoError(t, pool.QueryRow(ctx,
-		`SELECT count(*) FROM kacho_iam.role_selector_prune`).Scan(&total))
+		`SELECT count(*) FROM kaname.role_selector_prune`).Scan(&total))
 
 	rows, err := pool.Query(ctx, `
 		SELECT rule_fp, object_type, outcome, retired_reason, pruned_at
-		  FROM kacho_iam.role_selector_prune
+		  FROM kaname.role_selector_prune
 		 WHERE role_id = $1
 		 ORDER BY rule_fp, object_type`, role)
 	require.NoError(t, err)
@@ -158,7 +158,7 @@ func TestPruningASelectorLeavesALedgerRow(t *testing.T) {
 			"что снято одним заходом")
 	var retiredReason string
 	require.NoError(t, pool.QueryRow(ctx,
-		`SELECT retired_reason FROM kacho_iam.catalog_resource WHERE dotted = $1`,
+		`SELECT retired_reason FROM kaname.catalog_resource WHERE dotted = $1`,
 		doomed).Scan(&retiredReason))
 	require.NotEmpty(t, retiredReason, "снятая строка каталога причины не несёт — "+
 		"тогда её нечего и переносить в ведомость")
@@ -183,7 +183,7 @@ func TestPruningNothingLeavesTheLedgerAlone(t *testing.T) {
 
 	var before int
 	require.NoError(t, pool.QueryRow(ctx,
-		`SELECT count(*) FROM kacho_iam.role_selector_prune`).Scan(&before))
+		`SELECT count(*) FROM kaname.role_selector_prune`).Scan(&before))
 
 	rep, err := applier.Apply(ctx, probeManifest(
 		probeResource("led1988lonely", "get"),
@@ -201,7 +201,7 @@ func TestPruningNothingLeavesTheLedgerAlone(t *testing.T) {
 
 	var after int
 	require.NoError(t, pool.QueryRow(ctx,
-		`SELECT count(*) FROM kacho_iam.role_selector_prune`).Scan(&after))
+		`SELECT count(*) FROM kaname.role_selector_prune`).Scan(&after))
 	t.Logf("ведомость: строк ДО %d · ПОСЛЕ %d · снято ресурсов %d · вырезано элементов %d",
 		before, after, gone.RetiredResources, gone.PrunedSelectorTypes)
 	require.Equalf(t, before, after,
@@ -238,7 +238,7 @@ func TestPrunedLedgerDiesWithItsRole(t *testing.T) {
 	rows, _ := prunedLedgerOf(t, ctx, pool, string(role))
 	require.Lenf(t, rows, 1, "ПРЕДПОСЫЛКА: записи, которая должна умереть, нет: %+v", rows)
 
-	_, err = pool.Exec(ctx, `DELETE FROM kacho_iam.roles WHERE id = $1`, string(role))
+	_, err = pool.Exec(ctx, `DELETE FROM kaname.roles WHERE id = $1`, string(role))
 	require.NoError(t, err)
 
 	rows, total := prunedLedgerOf(t, ctx, pool, string(role))

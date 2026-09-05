@@ -57,13 +57,13 @@ import (
 // на стороне БД — разбор меток в приложении означал бы вычитывание всех строк
 // типа ради того, что индекс отвечает сразу.
 var iamDirectLabelTable = map[string]string{
-	"account":             "kacho_iam.accounts",
-	"project":             "kacho_iam.projects",
-	"iam_user":            "kacho_iam.users",
-	"iam_service_account": "kacho_iam.service_accounts",
-	"iam_group":           "kacho_iam.groups",
-	"iam_role":            "kacho_iam.roles",
-	"iam_access_binding":  "kacho_iam.access_bindings",
+	"account":             "kaname.accounts",
+	"project":             "kaname.projects",
+	"iam_user":            "kaname.users",
+	"iam_service_account": "kaname.service_accounts",
+	"iam_group":           "kaname.groups",
+	"iam_role":            "kaname.roles",
+	"iam_access_binding":  "kaname.access_bindings",
 }
 
 // LabelAxis — ось, по которой отвечает меточная ветвь для одного типа.
@@ -109,7 +109,7 @@ func IAMDirectLabelAxes() []LabelAxis {
 //
 // Здесь стоял перевод модель→каталог сборочной таблицей (`authzmap.DottedType`
 // над `tables_gen.go`, порождённой из манифестов ДЕРЕВА). Живое точечное имя
-// пишет ПРИМЕНЕНИЕ манифеста в `kacho_iam.catalog_resource`, и от сборочного оно
+// пишет ПРИМЕНЕНИЕ манифеста в `kaname.catalog_resource`, и от сборочного оно
 // расходится: применение вправе и переименовать ресурс, и передать его другому
 // модулю. Расхождение по границе `iam.` меняет ОСЬ — то есть место, у которого
 // спрашивают метки, — и делает это МОЛЧА: объект, зарегистрированный писателем
@@ -172,7 +172,7 @@ const (
 // таблицы iam тип не спрашивает вовсе: объект там адресован ключом.
 func labelsJoinPinned(table, catalogTypeParam, idParam string) string {
 	if table == "" {
-		return "LEFT JOIN kacho_iam.resource_mirror m\n        ON m.object_type = " +
+		return "LEFT JOIN kaname.resource_mirror m\n        ON m.object_type = " +
 			catalogTypeParam + "::text AND m.object_id = " + idParam + "::text"
 	}
 	return "LEFT JOIN " + table + " m ON m.id = " + idParam + "::text"
@@ -216,7 +216,7 @@ func labelsJoinPinned(table, catalogTypeParam, idParam string) string {
 // меток: кандидаты зеркальной оси отбираются по `resource_mirror.object_type`.
 func candidateFrom(table, catalogTypeParam, afterParam, limitParam string) string {
 	if table == "" {
-		return "SELECT m.object_id, m.labels\n      FROM kacho_iam.resource_mirror m\n     WHERE m.object_type = " +
+		return "SELECT m.object_id, m.labels\n      FROM kaname.resource_mirror m\n     WHERE m.object_type = " +
 			catalogTypeParam + "::text\n       AND m.object_id > " + afterParam + "::text" +
 			"\n     ORDER BY m.object_id\n     LIMIT " + limitParam + "::int"
 	}

@@ -63,7 +63,7 @@ func TestOperationsByResource_FilterAndIsolation(t *testing.T) {
 	require.NoError(t, err)
 	defer pool.Close()
 
-	opsRepo := operations.NewRepo(pool, "kacho_iam")
+	opsRepo := operations.NewRepo(pool, "kaname")
 
 	roleA := ids.NewID(domain.PrefixRole)
 	roleB := ids.NewID(domain.PrefixRole)
@@ -101,7 +101,7 @@ func TestOperationsByResource_Pagination(t *testing.T) {
 	require.NoError(t, err)
 	defer pool.Close()
 
-	opsRepo := operations.NewRepo(pool, "kacho_iam")
+	opsRepo := operations.NewRepo(pool, "kaname")
 
 	roleID := ids.NewID(domain.PrefixRole)
 	base := time.Now().UTC().Truncate(time.Microsecond)

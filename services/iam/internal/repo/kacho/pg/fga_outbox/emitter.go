@@ -1,7 +1,7 @@
 // Copyright (c) PRO-Robotech
 // SPDX-License-Identifier: AGPL-3.0-or-later
 
-// Package fga_outbox — atomic emit-in-tx helper for kacho_iam.fga_outbox.
+// Package fga_outbox — atomic emit-in-tx helper for kaname.fga_outbox.
 //
 // Mirror of the SubjectChangeEmitter pattern
 // (internal/repo/kacho/pg/subject_change_emitter.go).
@@ -13,7 +13,7 @@
 //	вовсе. Совокупный эффект: состояние прав НЕ было надёжным источником истины.
 //
 //	Все мутации сведены к этому журналу: выдача и отзыв кладут N строк в
-//	`kacho_iam.fga_outbox` в ТОЙ ЖЕ pgx.Tx, что и доменное изменение. Откат
+//	`kaname.fga_outbox` в ТОЙ ЖЕ pgx.Tx, что и доменное изменение. Откат
 //	транзакции вызывающего ⇒ ни одной осиротевшей строки.
 //
 //	ЧТО ИЗМЕНИЛОСЬ СО СНЯТИЕМ ДВИЖКА (стадия S6, эпик #747). Потребителя у
@@ -30,7 +30,7 @@
 //	Per ban #10 — within-service refs/invariants live on DB-level: tx-commit is
 //	the atomicity primitive, not "INSERT then call the store and hope".
 //
-// Форма `kacho_iam.fga_outbox` (таблица и триггеры — миграция `0001_initial.sql`).
+// Форма `kaname.fga_outbox` (таблица и триггеры — миграция `0001_initial.sql`).
 // ЧЕТЫРЕ колонки, и это вся таблица:
 //
 //	id            bigserial    PK
@@ -96,7 +96,7 @@ func RelationPredicate(payloadExpr, arg string) string {
 		" OR " + payloadExpr + "->'relations' @> to_jsonb(" + arg + "::text))"
 }
 
-// EmitWriteTx INSERTs N grant rows into `kacho_iam.fga_outbox` (event_type
+// EmitWriteTx INSERTs N grant rows into `kaname.fga_outbox` (event_type
 // `fga.tuple.write`) using the caller-supplied transaction.
 //
 // MUST run in the same pgx.Tx as the domain state-change (AccessBinding
@@ -109,7 +109,7 @@ func EmitWriteTx(ctx context.Context, tx pgx.Tx, tuples []clients.RelationTuple)
 	return emitTx(ctx, tx, EventTypeWrite, tuples)
 }
 
-// EmitDeleteTx INSERTs N revoke rows into `kacho_iam.fga_outbox` (event_type
+// EmitDeleteTx INSERTs N revoke rows into `kaname.fga_outbox` (event_type
 // `fga.tuple.delete`).
 //
 // Caller supplies the EXACT tuples that were originally written by EmitWriteTx
@@ -191,7 +191,7 @@ func emitTx(ctx context.Context, tx pgx.Tx, eventType string, tuples []clients.R
 	// партиции у клейма дренажа; дренажа больше нет (стадия S6), а требование к
 	// порядку осталось — сменился только тот, кто на него опирается.
 	if _, err := tx.Exec(ctx,
-		`INSERT INTO kacho_iam.fga_outbox (event_type, payload, created_at)
+		`INSERT INTO kaname.fga_outbox (event_type, payload, created_at)
 		 SELECT $1, p::jsonb, now() FROM unnest($2::text[]) AS p`,
 		eventType, payloads,
 	); err != nil {

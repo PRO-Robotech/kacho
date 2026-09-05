@@ -72,7 +72,7 @@ var refusalOwners = []RefusalOwner{
 	// ней. Отсюда пустое `Migration` — см. поле, там сказано, почему это не
 	// послабление: тело функции сверяется у него ровно тем же способом, что у
 	// остальных пяти.
-	{Service: "iam", Schema: "kacho_iam", Migration: ""},
+	{Service: "iam", Schema: "kaname", Migration: ""},
 	{Service: "vpc", Schema: "kacho_vpc", Migration: "0044_quota_refusal_single_source.sql"},
 	{Service: "compute", Schema: "public", Migration: "0038_quota_refusal_single_source.sql"},
 	{Service: "storage", Schema: "kacho_storage", Migration: "0025_quota_refusal_single_source.sql"},

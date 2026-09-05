@@ -83,8 +83,8 @@ func TestRetiredBlockStorageIsGoneFromMigratedSchema(t *testing.T) {
 	// Volume of what was inspected — "no retired row" must be distinguishable
 	// from "no row at all".
 	var totalRoles, totalSelectors int
-	require.NoError(t, pool.QueryRow(ctx, `SELECT count(*) FROM kacho_iam.roles`).Scan(&totalRoles))
-	require.NoError(t, pool.QueryRow(ctx, `SELECT count(*) FROM kacho_iam.role_rule_selectors`).Scan(&totalSelectors))
+	require.NoError(t, pool.QueryRow(ctx, `SELECT count(*) FROM kaname.roles`).Scan(&totalRoles))
+	require.NoError(t, pool.QueryRow(ctx, `SELECT count(*) FROM kaname.role_rule_selectors`).Scan(&totalSelectors))
 	require.NotZero(t, totalRoles, "no roles are seeded at all — this gate would assert nothing")
 	require.NotZero(t, totalSelectors, "no role_rule_selectors rows exist at all — this gate would assert nothing")
 	t.Logf("scanned: %d roles, %d role_rule_selectors rows", totalRoles, totalSelectors)
@@ -93,13 +93,13 @@ func TestRetiredBlockStorageIsGoneFromMigratedSchema(t *testing.T) {
 	for _, name := range retiredRoleNames {
 		var n int
 		require.NoError(t, pool.QueryRow(ctx,
-			`SELECT count(*) FROM kacho_iam.roles WHERE name = $1`, name).Scan(&n))
+			`SELECT count(*) FROM kaname.roles WHERE name = $1`, name).Scan(&n))
 		require.Zerof(t, n, "system role %q is still seeded and bindable — kacho-storage owns this resource; a grantable role for it is a promise the product cannot keep", name)
 	}
 	for _, name := range liveSiblingRoleNames {
 		var n int
 		require.NoError(t, pool.QueryRow(ctx,
-			`SELECT count(*) FROM kacho_iam.roles WHERE name = $1`, name).Scan(&n))
+			`SELECT count(*) FROM kaname.roles WHERE name = $1`, name).Scan(&n))
 		require.Equalf(t, 1, n, "system role %q is missing — the retire must remove the block-storage roles, not the module", name)
 	}
 
@@ -107,13 +107,13 @@ func TestRetiredBlockStorageIsGoneFromMigratedSchema(t *testing.T) {
 	for _, ty := range retiredDottedTypes {
 		var n int
 		require.NoError(t, pool.QueryRow(ctx,
-			`SELECT count(*) FROM kacho_iam.role_rule_selectors WHERE $1 = ANY(object_types)`, ty).Scan(&n))
+			`SELECT count(*) FROM kaname.role_rule_selectors WHERE $1 = ANY(object_types)`, ty).Scan(&n))
 		require.Zerof(t, n, "%d role_rule_selectors rows still select object type %q — the reconciler would materialize per-object tuples on a type no resource produces", n, ty)
 	}
 	for _, ty := range liveDottedTypes {
 		var n int
 		require.NoError(t, pool.QueryRow(ctx,
-			`SELECT count(*) FROM kacho_iam.role_rule_selectors WHERE $1 = ANY(object_types)`, ty).Scan(&n))
+			`SELECT count(*) FROM kaname.role_rule_selectors WHERE $1 = ANY(object_types)`, ty).Scan(&n))
 		require.NotZerof(t, n, "no role_rule_selectors row selects %q — the wildcard system-role selectors must keep the live types, or the negative half above proves nothing", ty)
 	}
 
@@ -121,8 +121,8 @@ func TestRetiredBlockStorageIsGoneFromMigratedSchema(t *testing.T) {
 	for _, name := range retiredRoleNames {
 		var n int
 		require.NoError(t, pool.QueryRow(ctx, `
-			SELECT count(*) FROM kacho_iam.access_bindings b
-			  JOIN kacho_iam.roles r ON r.id = b.role_id
+			SELECT count(*) FROM kaname.access_bindings b
+			  JOIN kaname.roles r ON r.id = b.role_id
 			 WHERE r.name = $1`, name).Scan(&n))
 		require.Zerof(t, n, "access_bindings still reference retired role %q", name)
 	}
@@ -135,7 +135,7 @@ func TestRetiredBlockStorageIsGoneFromMigratedSchema(t *testing.T) {
 	for _, ty := range retiredDottedTypes {
 		var n int
 		require.NoError(t, pool.QueryRow(ctx,
-			`SELECT count(*) FROM kacho_iam.resource_mirror WHERE object_type = $1`, ty).Scan(&n))
+			`SELECT count(*) FROM kaname.resource_mirror WHERE object_type = $1`, ty).Scan(&n))
 		require.Zerof(t, n, "resource_mirror still holds rows of retired object type %q", ty)
 	}
 }

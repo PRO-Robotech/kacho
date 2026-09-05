@@ -22,7 +22,7 @@ package pg
 // недосказывает — и недосказанное здесь не «повторится и сойдётся», а отношение,
 // пережившее снятие своего объекта и продолжающее отвечать «доступ есть».
 //
-// Теперь строки лежат в СВОЕЙ базе (`kacho_iam.relation_fact` — проекция журнала
+// Теперь строки лежат в СВОЕЙ базе (`kaname.relation_fact` — проекция журнала
 // намерений), и вопрос об отставании отпадает by construction: читается ведущая
 // база тем же соединением, которым идёт остальная работа. Просьбы к чужому
 // транспорту «ответь не с реплики» больше нет, потому что нет чужого транспорта.
@@ -98,7 +98,7 @@ func (r *ResidualTupleReader) ObjectTuples(ctx context.Context, object string) (
 	for page := 0; page < residualReadPageCap; page++ {
 		rows, err := r.pool.Query(ctx, `
 			SELECT f.relation, f.subject
-			  FROM kacho_iam.relation_fact f
+			  FROM kaname.relation_fact f
 			 WHERE f.object_type = $1
 			   AND f.object_id   = $2
 			   AND (f.relation, f.subject) > ($3, $4)

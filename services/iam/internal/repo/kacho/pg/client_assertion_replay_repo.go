@@ -58,7 +58,7 @@ func (r *ClientAssertionReplayRepo) Redeem(ctx context.Context, clientID, assert
 	// ОДИН вызов к базе. Гейт TestAssertionAdmissionIsASingleDatabaseCall
 	// стережёт это число: второй вызов здесь — возвращённая пара
 	// «посмотреть — записать», и вернуть её тихо нельзя.
-	const q = `INSERT INTO kacho_iam.client_assertion_replay (client_id, assertion_id, expires_at)
+	const q = `INSERT INTO kaname.client_assertion_replay (client_id, assertion_id, expires_at)
 		VALUES ($1,$2,$3)
 		ON CONFLICT (client_id, assertion_id) DO NOTHING`
 	tag, err := r.pool.Exec(ctx, q, clientID, assertionID, expiresAt)
@@ -124,9 +124,9 @@ func (r *ClientAssertionReplayRepo) Redeem(ctx context.Context, clientID, assert
 // темп никогда, оставаясь зелёным по всякой проверке «вызвался ли».
 func (r *ClientAssertionReplayRepo) Reap(ctx context.Context, grace time.Duration, batch int) (int64, bool, error) {
 	const q = `
-DELETE FROM kacho_iam.client_assertion_replay
+DELETE FROM kaname.client_assertion_replay
  WHERE ctid IN (
-     SELECT ctid FROM kacho_iam.client_assertion_replay
+     SELECT ctid FROM kaname.client_assertion_replay
       WHERE expires_at <= now() - make_interval(secs => $1)
       ORDER BY expires_at
       LIMIT $2
@@ -147,7 +147,7 @@ DELETE FROM kacho_iam.client_assertion_replay
 // сборщике, опустошившем таблицу целиком, — то есть на реализации, делающей
 // повтор законным.
 func (r *ClientAssertionReplayRepo) Len(ctx context.Context) (int64, error) {
-	const q = `SELECT count(*) FROM kacho_iam.client_assertion_replay`
+	const q = `SELECT count(*) FROM kaname.client_assertion_replay`
 	var n int64
 	if err := r.pool.QueryRow(ctx, q).Scan(&n); err != nil {
 		return 0, wrapPgErr(err, "ClientAssertionReplay", "")

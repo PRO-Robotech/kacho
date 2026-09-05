@@ -61,7 +61,7 @@ const note = "moduleroles.Reconcile"
 const withdrawalMarkWriter = `package pg
 
 func (w *roleWriter) WithdrawSystemRole(id string) error {
-	_, err := w.tx.Exec(ctx, ` + "`UPDATE kacho_iam.roles SET retired_at = now(), live = false WHERE id = $1 AND is_system`" + `, id)
+	_, err := w.tx.Exec(ctx, ` + "`UPDATE kaname.roles SET retired_at = now(), live = false WHERE id = $1 AND is_system`" + `, id)
 	return err
 }
 `

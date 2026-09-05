@@ -91,20 +91,20 @@ func TakeStrengthCensus(ctx context.Context, tx pgx.Tx, in StrengthCensusInput) 
 	}
 
 	if err := scalar(&c.MirrorObjects,
-		`SELECT count(*)::bigint FROM kacho_iam.resource_mirror`); err != nil {
+		`SELECT count(*)::bigint FROM kaname.resource_mirror`); err != nil {
 		return c, err
 	}
 	if err := scalar(&c.Edges,
-		`SELECT count(*)::bigint FROM kacho_iam.resource_parent_edge`); err != nil {
+		`SELECT count(*)::bigint FROM kaname.resource_parent_edge`); err != nil {
 		return c, err
 	}
 	if err := scalar(&c.SubjectMemberships,
-		`SELECT count(*)::bigint FROM kacho_iam.group_members
+		`SELECT count(*)::bigint FROM kaname.group_members
 		  WHERE member_type = $1 AND member_id = $2`, in.MemberType, in.MemberID); err != nil {
 		return c, err
 	}
 	if err := scalar(&c.AllMemberships,
-		`SELECT count(*)::bigint FROM kacho_iam.group_members`); err != nil {
+		`SELECT count(*)::bigint FROM kaname.group_members`); err != nil {
 		return c, err
 	}
 	// Пара (говорящий, область) — ровно тем соединением, которым её читает
@@ -117,8 +117,8 @@ func TakeStrengthCensus(ctx context.Context, tx pgx.Tx, in StrengthCensusInput) 
 	// целиком — у census.go, где та же правка сделана тем же способом.
 	if err := scalar(&c.SpeakerScopeRows,
 		`SELECT count(*)::bigint
-		   FROM kacho_iam.access_binding_subjects bs
-		   JOIN kacho_iam.access_bindings b ON b.id = bs.binding_id
+		   FROM kaname.access_binding_subjects bs
+		   JOIN kaname.access_bindings b ON b.id = bs.binding_id
 		   JOIN (SELECT DISTINCT split_part(w, ':', 1) AS s_type,
 		                substr(w, length(split_part(w, ':', 1)) + 2) AS s_id
 		           FROM unnest($1::text[]) AS w) sp
@@ -129,7 +129,7 @@ func TakeStrengthCensus(ctx context.Context, tx pgx.Tx, in StrengthCensusInput) 
 		return c, err
 	}
 	if err := scalar(&c.Bindings,
-		`SELECT count(*)::bigint FROM kacho_iam.access_bindings`); err != nil {
+		`SELECT count(*)::bigint FROM kaname.access_bindings`); err != nil {
 		return c, err
 	}
 	// Мощность цепи — ТЕМ ЖЕ обходом, каким её строит запрос вердикта. Своя
@@ -151,7 +151,7 @@ func TakeStrengthCensus(ctx context.Context, tx pgx.Tx, in StrengthCensusInput) 
 		      FROM scope s
 		      CROSS JOIN LATERAL (
 		             SELECT pe.parent_type, pe.parent_id
-		               FROM kacho_iam.resource_parent_edge pe
+		               FROM kaname.resource_parent_edge pe
 		              WHERE pe.object_type = s.s_type AND pe.object_id = s.s_id
 		              ORDER BY pe.depth
 		              LIMIT $3::int
@@ -163,17 +163,17 @@ func TakeStrengthCensus(ctx context.Context, tx pgx.Tx, in StrengthCensusInput) 
 		return c, fmt.Errorf("scalegrid: перепись прочности (мощность цепи): %w", err)
 	}
 	if err := scalar(&c.RoleRules,
-		`SELECT count(*)::bigint FROM kacho_iam.role_rule_selectors WHERE role_id = $1`,
+		`SELECT count(*)::bigint FROM kaname.role_rule_selectors WHERE role_id = $1`,
 		in.RoleID); err != nil {
 		return c, err
 	}
 	if err := scalar(&c.RoleVerbs,
-		`SELECT count(*)::bigint FROM kacho_iam.role_verb WHERE role_id = $1`,
+		`SELECT count(*)::bigint FROM kaname.role_verb WHERE role_id = $1`,
 		in.RoleID); err != nil {
 		return c, err
 	}
 	if err := scalar(&c.Facts,
-		`SELECT count(*)::bigint FROM kacho_iam.relation_fact`); err != nil {
+		`SELECT count(*)::bigint FROM kaname.relation_fact`); err != nil {
 		return c, err
 	}
 	return c, nil

@@ -67,7 +67,7 @@ func retentionPool(t *testing.T) (context.Context, *pgxpool.Pool) {
 func putAssertionAt(t *testing.T, ctx context.Context, pool *pgxpool.Pool, clientID, assertionID string, offset time.Duration) {
 	t.Helper()
 	_, err := pool.Exec(ctx,
-		`INSERT INTO kacho_iam.client_assertion_replay (client_id, assertion_id, expires_at)
+		`INSERT INTO kaname.client_assertion_replay (client_id, assertion_id, expires_at)
 		 VALUES ($1,$2, now() + make_interval(secs => $3))`,
 		clientID, assertionID, offset.Seconds())
 	require.NoError(t, err, "посев строки погашения")
@@ -97,7 +97,7 @@ func countAssertions(t *testing.T, ctx context.Context, repo *kachopg.ClientAsse
 func putRevocationAt(t *testing.T, ctx context.Context, pool *pgxpool.Pool, uid domain.UserID, jti string, offset time.Duration) {
 	t.Helper()
 	_, err := pool.Exec(ctx,
-		`INSERT INTO kacho_iam.session_revocations (token_jti, revoked_at, reason, user_id, ttl_expires_at)
+		`INSERT INTO kaname.session_revocations (token_jti, revoked_at, reason, user_id, ttl_expires_at)
 		 VALUES ($1, now() + make_interval(secs => $3) - interval '1 hour', 'retention-probe', $2,
 		         now() + make_interval(secs => $3))`,
 		jti, string(uid), offset.Seconds())
@@ -108,7 +108,7 @@ func putRevocationAt(t *testing.T, ctx context.Context, pool *pgxpool.Pool, uid 
 func putCutoffAt(t *testing.T, ctx context.Context, pool *pgxpool.Pool, subject string, offset time.Duration) {
 	t.Helper()
 	_, err := pool.Exec(ctx,
-		`INSERT INTO kacho_iam.minted_token_revocations (subject, revoke_before, reason, revoked_by)
+		`INSERT INTO kaname.minted_token_revocations (subject, revoke_before, reason, revoked_by)
 		 VALUES ($1, now() + make_interval(secs => $2), 'retention-probe', 'probe')`,
 		subject, offset.Seconds())
 	require.NoError(t, err, "посев отсечки")
@@ -171,7 +171,7 @@ func TestRetentionSweep_Revocations_RemovesExpiredKeepsLive(t *testing.T) {
 
 	var left int64
 	require.NoError(t, pool.QueryRow(ctx,
-		`SELECT count(*) FROM kacho_iam.session_revocations WHERE token_jti = $1`, expired).Scan(&left))
+		`SELECT count(*) FROM kaname.session_revocations WHERE token_jti = $1`, expired).Scan(&left))
 	require.EqualValues(t, 0, left, "истёкшая строка отзыва из таблицы не ушла")
 }
 
@@ -594,7 +594,7 @@ func deleteUser(t *testing.T, ctx context.Context, repo *kachopg.Repository, uid
 func putAdmissionLimit(t *testing.T, ctx context.Context, pool *pgxpool.Pool, kind string, maxEvents, windowSeconds int) {
 	t.Helper()
 	_, err := pool.Exec(ctx, `
-		INSERT INTO kacho_iam.account_admission_rate_limits (kind, max_events, window_seconds)
+		INSERT INTO kaname.account_admission_rate_limits (kind, max_events, window_seconds)
 		VALUES ($1, $2, $3)`, kind, maxEvents, windowSeconds)
 	require.NoError(t, err)
 }
@@ -603,7 +603,7 @@ func putAdmissionLimit(t *testing.T, ctx context.Context, pool *pgxpool.Pool, ki
 func putAdmissionWindowAt(t *testing.T, ctx context.Context, pool *pgxpool.Pool, carrier, kind string, offset time.Duration, admitted int) {
 	t.Helper()
 	_, err := pool.Exec(ctx, `
-		INSERT INTO kacho_iam.identity_admission_windows (carrier_id, kind, window_started_at, admitted)
+		INSERT INTO kaname.identity_admission_windows (carrier_id, kind, window_started_at, admitted)
 		VALUES ($1, $2, now() + make_interval(secs => $3), $4)`,
 		carrier, kind, offset.Seconds(), admitted)
 	require.NoError(t, err)
@@ -616,7 +616,7 @@ func countAdmissionWindows(t *testing.T, ctx context.Context, pool *pgxpool.Pool
 	t.Helper()
 	var n int64
 	require.NoError(t, pool.QueryRow(ctx,
-		`SELECT count(*) FROM kacho_iam.identity_admission_windows WHERE kind = $1`, kind).Scan(&n))
+		`SELECT count(*) FROM kaname.identity_admission_windows WHERE kind = $1`, kind).Scan(&n))
 	return n
 }
 
@@ -648,7 +648,7 @@ func TestRetentionSweep_AdmissionWindows_RemovesElapsedKeepsLive(t *testing.T) {
 
 	var live int64
 	require.NoError(t, pool.QueryRow(ctx,
-		`SELECT count(*) FROM kacho_iam.identity_admission_windows WHERE kind = $1 AND carrier_id = $2`,
+		`SELECT count(*) FROM kaname.identity_admission_windows WHERE kind = $1 AND carrier_id = $2`,
 		kind, carrierB).Scan(&live))
 	require.EqualValues(t, 1, live,
 		"снята строка ДЕЙСТВУЮЩЕГО окна: счётчик обнулён, носителю подарен полный потолок заново")

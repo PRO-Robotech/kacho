@@ -6,7 +6,7 @@ package pg_test
 // access_binding_emitted_tuples_integration_test.go — emitted-tuple ledger tests.
 //
 // testcontainers Postgres 16 integration tests for the persisted emitted-tuple
-// ledger (kacho_iam.access_binding_emitted_tuples, migration 0024) that makes
+// ledger (kaname.access_binding_emitted_tuples, migration 0024) that makes
 // AccessBinding revoke + Role.Update reconcile byte-symmetric to the grant:
 //
 //   - -COMMIT: InsertEmittedTuples co-committed with EmitRelationWrite +
@@ -42,7 +42,7 @@ func emittedTuplesCount(t *testing.T, ctx context.Context, pool *pgxpool.Pool, b
 	t.Helper()
 	var n int
 	require.NoError(t, pool.QueryRow(ctx,
-		`SELECT count(*) FROM kacho_iam.access_binding_emitted_tuples WHERE binding_id = $1`,
+		`SELECT count(*) FROM kaname.access_binding_emitted_tuples WHERE binding_id = $1`,
 		string(bindingID)).Scan(&n))
 	return n
 }
@@ -422,7 +422,7 @@ func TestABEmittedTuples_178_ConcurrentReplaceVsRevoke_Consistent(t *testing.T) 
 	// replaced set. Either way: zero ROWS referencing a NON-existent binding.
 	var bindingExists bool
 	require.NoError(t, pool.QueryRow(ctx,
-		`SELECT EXISTS(SELECT 1 FROM kacho_iam.access_bindings WHERE id = $1)`, string(ab.ID)).Scan(&bindingExists))
+		`SELECT EXISTS(SELECT 1 FROM kaname.access_bindings WHERE id = $1)`, string(ab.ID)).Scan(&bindingExists))
 	ledger := emittedTuplesCount(t, ctx, pool, ab.ID)
 	if !bindingExists {
 		require.Equal(t, 0, ledger,
@@ -434,7 +434,7 @@ func TestABEmittedTuples_178_ConcurrentReplaceVsRevoke_Consistent(t *testing.T) 
 	// no matching access_bindings row.
 	var orphans int
 	require.NoError(t, pool.QueryRow(ctx, `
-		SELECT count(*) FROM kacho_iam.access_binding_emitted_tuples e
-		 WHERE NOT EXISTS (SELECT 1 FROM kacho_iam.access_bindings ab WHERE ab.id = e.binding_id)`).Scan(&orphans))
+		SELECT count(*) FROM kaname.access_binding_emitted_tuples e
+		 WHERE NOT EXISTS (SELECT 1 FROM kaname.access_bindings ab WHERE ab.id = e.binding_id)`).Scan(&orphans))
 	require.Equal(t, 0, orphans, "no emitted-tuple row may reference a non-existent binding (FK CASCADE invariant)")
 }

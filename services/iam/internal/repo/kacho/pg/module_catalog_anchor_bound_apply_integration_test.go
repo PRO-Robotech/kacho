@@ -267,15 +267,15 @@ func moduleCatalogSnapshot(t *testing.T, ctx context.Context, pool *pgxpool.Pool
 	require.NoError(t, pool.QueryRow(ctx, `
 		SELECT coalesce(string_agg(x, '|' ORDER BY x), '') FROM (
 		  SELECT 'm:' || module || ':' || live::text AS x
-		    FROM kacho_iam.catalog_module WHERE module = $1
+		    FROM kaname.catalog_module WHERE module = $1
 		  UNION ALL
 		  SELECT 'r:' || resource || ':' || object_type || ':' || live::text ||
 		         ':' || coalesce(retired_reason, '')
-		    FROM kacho_iam.catalog_resource WHERE module = $1
+		    FROM kaname.catalog_resource WHERE module = $1
 		  UNION ALL
 		  SELECT 'v:' || resource || '.' || verb || ':' || live::text ||
 		         ':' || per_object::text || ':' || coalesce(retired_reason, '')
-		    FROM kacho_iam.catalog_verb WHERE module = $1
+		    FROM kaname.catalog_verb WHERE module = $1
 		) s`, module).Scan(&payload))
 	require.NotEmptyf(t, payload, "каталог модуля %s пуст: сверять нечего", module)
 	sum := md5.Sum([]byte(payload)) // #nosec G401 -- наблюдение пробы, не криптография
@@ -305,14 +305,14 @@ func systemProjectionsNaming(t *testing.T, ctx context.Context, pool *pgxpool.Po
 	t.Helper()
 	dotted := module + "." + resource
 	require.NoError(t, pool.QueryRow(ctx, `
-		SELECT (SELECT count(*) FROM kacho_iam.role_rule_ref rr
-		          JOIN kacho_iam.roles ro ON ro.id = rr.role_id
+		SELECT (SELECT count(*) FROM kaname.role_rule_ref rr
+		          JOIN kaname.roles ro ON ro.id = rr.role_id
 		         WHERE rr.module = $1 AND rr.resource = $2 AND ro.cluster_id IS NOT NULL),
-		       (SELECT count(*) FROM kacho_iam.role_verb rv
-		          JOIN kacho_iam.roles ro ON ro.id = rv.role_id
+		       (SELECT count(*) FROM kaname.role_verb rv
+		          JOIN kaname.roles ro ON ro.id = rv.role_id
 		         WHERE rv.object_type = $3 AND ro.cluster_id IS NOT NULL),
-		       (SELECT count(*) FROM kacho_iam.role_rule_selectors rs
-		          JOIN kacho_iam.roles ro ON ro.id = rs.role_id
+		       (SELECT count(*) FROM kaname.role_rule_selectors rs
+		          JOIN kaname.roles ro ON ro.id = rs.role_id
 		         WHERE $3 = ANY(rs.object_types) AND ro.cluster_id IS NOT NULL)`,
 		module, resource, dotted).Scan(&rules, &verbs, &selectors))
 	return rules, verbs, selectors
@@ -325,7 +325,7 @@ func catalogResourceState(t *testing.T, ctx context.Context, pool *pgxpool.Pool,
 	t.Helper()
 	var reasonValue *string
 	err := pool.QueryRow(ctx, `
-		SELECT live, retired_at, retired_reason FROM kacho_iam.catalog_resource
+		SELECT live, retired_at, retired_reason FROM kaname.catalog_resource
 		 WHERE module = $1 AND resource = $2`, module, resource).Scan(&live, &retiredAt, &reasonValue)
 	if err != nil {
 		return false, false, nil, ""
@@ -342,7 +342,7 @@ func insertDriftResource(t *testing.T, ctx context.Context, pool *pgxpool.Pool,
 	module, resource, objectType string) {
 	t.Helper()
 	_, err := pool.Exec(ctx, `
-		INSERT INTO kacho_iam.catalog_resource (module, resource, dotted, object_type, live)
+		INSERT INTO kaname.catalog_resource (module, resource, dotted, object_type, live)
 		VALUES ($1, $2, $1 || '.' || $2, $3, true)`, module, resource, objectType)
 	require.NoError(t, err, "завести дрейфовую строку прямым SQL")
 }
@@ -351,7 +351,7 @@ func insertDriftResource(t *testing.T, ctx context.Context, pool *pgxpool.Pool,
 func liveResourceNames(t *testing.T, ctx context.Context, pool *pgxpool.Pool, module string) []string {
 	t.Helper()
 	rows, err := pool.Query(ctx,
-		`SELECT resource FROM kacho_iam.catalog_resource WHERE module = $1 AND live ORDER BY resource`, module)
+		`SELECT resource FROM kaname.catalog_resource WHERE module = $1 AND live ORDER BY resource`, module)
 	require.NoError(t, err)
 	defer rows.Close()
 	var out []string

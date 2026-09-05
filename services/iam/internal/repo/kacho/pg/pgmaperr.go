@@ -178,7 +178,7 @@ func wrapPgErr(err error, kindHint, idHint string) error {
 	case pgfault.NotNull: // not_null_violation
 		return iamerr.Wrapf(iamerr.ErrInvalidArg, "%s", notNullText(pgErr))
 	case pgfault.Exclusion: // exclusion_violation
-		// No EXCLUDE constraints in kacho_iam today; map generically WITHOUT
+		// No EXCLUDE constraints in kaname today; map generically WITHOUT
 		// pgErr.Message (which would leak the constraint/range to the client).
 		return iamerr.Wrapf(iamerr.ErrFailedPrecondition, "resource conflicts with an existing reservation")
 	case pgfault.SerializationConflict: // serialization_failure
@@ -644,7 +644,7 @@ func checkText(pgErr *pgconn.PgError) string {
 		// Запрет ниже назван своей причиной: сообщение, СОСТАВЛЕННОЕ СЕРВЕРОМ, несёт
 		// выражение ограничения, имя таблицы и значения строки — то есть разведку
 		// схемы. Это сообщение сервер не составляет: его целиком пишет НАШ триггер
-		// (`kacho_iam.role_rule_selector_types_live`, миграции 20260902174500 →
+		// (`kaname.role_rule_selector_types_live`, миграции 20260902174500 →
 		// 20260903181000), и в нём ровно две величины, обе присланы самим
 		// вызывающим:
 		//

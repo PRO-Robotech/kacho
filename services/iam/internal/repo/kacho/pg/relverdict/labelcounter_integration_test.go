@@ -39,10 +39,10 @@ func TestAskerCountsLabelArmGroundsPerAxis(t *testing.T) {
 		seedTenant(t, ctx, tx)
 		seedLabelGrant(t, ctx, tx, "iam_group")
 		exec(t, ctx, tx,
-			`INSERT INTO kacho_iam.groups (id, account_id, name, labels)
+			`INSERT INTO kaname.groups (id, account_id, name, labels)
 			 VALUES ('grp-9', 'acc-1', 'probe-group', '{"env":"prod"}'::jsonb)`)
 		exec(t, ctx, tx,
-			`INSERT INTO kacho_iam.resource_parent_edge
+			`INSERT INTO kaname.resource_parent_edge
 			   (object_type, object_id, parent_type, parent_id, depth)
 			 VALUES ('iam_group', 'grp-9', 'account', 'acc-1', 1)`)
 	})
@@ -81,11 +81,11 @@ func TestAskerCountsLabelArmGroundsOnTheMirrorAxis(t *testing.T) {
 		seedTenant(t, ctx, tx)
 		seedLabelGrant(t, ctx, tx, "vpc_network")
 		exec(t, ctx, tx,
-			`INSERT INTO kacho_iam.resource_mirror (object_type, object_id, labels)
+			`INSERT INTO kaname.resource_mirror (object_type, object_id, labels)
 			 VALUES ($1, 'net-9', '{"env":"prod"}'::jsonb)`,
 			catalogFormOf(t, "vpc_network"))
 		exec(t, ctx, tx,
-			`INSERT INTO kacho_iam.resource_parent_edge
+			`INSERT INTO kaname.resource_parent_edge
 			   (object_type, object_id, parent_type, parent_id, depth)
 			 VALUES ('vpc_network', 'net-9', 'account', 'acc-1', 1)`)
 	})
@@ -120,17 +120,17 @@ func TestAskerDoesNotCountWhenTheLabelArmGaveNothing(t *testing.T) {
 		// Ветвь ЯКОРНАЯ: право есть, метки не читаются вовсе.
 		seedRole(t, ctx, tx, "rol-anchor", "iam_group", "get", "anchor", "{}")
 		exec(t, ctx, tx,
-			`INSERT INTO kacho_iam.access_bindings
+			`INSERT INTO kaname.access_bindings
 			   (id, subject_type, subject_id, role_id, resource_type, resource_id, status)
 			 VALUES ('acb-anchor', 'user', 'usr-1', 'rol-anchor', 'account', 'acc-1', 'ACTIVE')`)
 		exec(t, ctx, tx,
-			`INSERT INTO kacho_iam.access_binding_subjects (binding_id, subject_type, subject_id)
+			`INSERT INTO kaname.access_binding_subjects (binding_id, subject_type, subject_id)
 			 VALUES ('acb-anchor', 'user', 'usr-1')`)
 		exec(t, ctx, tx,
-			`INSERT INTO kacho_iam.groups (id, account_id, name, labels)
+			`INSERT INTO kaname.groups (id, account_id, name, labels)
 			 VALUES ('grp-9', 'acc-1', 'probe-group', '{"env":"prod"}'::jsonb)`)
 		exec(t, ctx, tx,
-			`INSERT INTO kacho_iam.resource_parent_edge
+			`INSERT INTO kaname.resource_parent_edge
 			   (object_type, object_id, parent_type, parent_id, depth)
 			 VALUES ('iam_group', 'grp-9', 'account', 'acc-1', 1)`)
 	})
@@ -168,18 +168,18 @@ func TestAskerCountsVerdictsThatStoppedBeforeTheSetWasRead(t *testing.T) {
 		seedTenant(t, ctx, tx)
 		seedRole(t, ctx, tx, "rol-anchor", "vpc_network", "get", "anchor", "{}")
 		exec(t, ctx, tx,
-			`INSERT INTO kacho_iam.resource_mirror (object_type, object_id, labels)
+			`INSERT INTO kaname.resource_mirror (object_type, object_id, labels)
 			 VALUES ($1, 'net-7', '{}'::jsonb)`, catalogFormOf(t, "vpc_network"))
 		exec(t, ctx, tx,
-			`INSERT INTO kacho_iam.resource_parent_edge
+			`INSERT INTO kaname.resource_parent_edge
 			   (object_type, object_id, parent_type, parent_id, depth)
 			 VALUES ('vpc_network', 'net-7', 'project', 'prj-1', 1)`)
 		exec(t, ctx, tx,
-			`INSERT INTO kacho_iam.access_bindings
+			`INSERT INTO kaname.access_bindings
 			   (id, subject_type, subject_id, role_id, resource_type, resource_id, status)
 			 VALUES ('acb-7', 'user', 'usr-1', 'rol-anchor', 'project', 'prj-1', 'ACTIVE')`)
 		exec(t, ctx, tx,
-			`INSERT INTO kacho_iam.access_binding_subjects (binding_id, subject_type, subject_id)
+			`INSERT INTO kaname.access_binding_subjects (binding_id, subject_type, subject_id)
 			 VALUES ('acb-7', 'user', 'usr-1')`)
 	})
 	asker := relverdict.NewAsker(pool)

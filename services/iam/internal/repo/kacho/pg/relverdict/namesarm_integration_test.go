@@ -31,11 +31,11 @@ func TestAsk_NamesArmGrantsTheNamedObject(t *testing.T) {
 		// Роль с ветвью ПЕРЕЧНЯ: право на подсеть, названную поимённо.
 		seedRoleNames(t, ctx, tx, "rol-names", "vpc.subnet", "get", []string{"snet-1"})
 		exec(t, ctx, tx,
-			`INSERT INTO kacho_iam.access_bindings
+			`INSERT INTO kaname.access_bindings
 			   (id, subject_type, subject_id, role_id, resource_type, resource_id, status)
 			 VALUES ('acb-names', 'user', 'usr-1', 'rol-names', 'project', 'prj-1', 'ACTIVE')`)
 		exec(t, ctx, tx,
-			`INSERT INTO kacho_iam.access_binding_subjects (binding_id, subject_type, subject_id)
+			`INSERT INTO kaname.access_binding_subjects (binding_id, subject_type, subject_id)
 			 VALUES ('acb-names', 'user', 'usr-1')`)
 
 		// Обе подсети существуют и лежат в том же проекте: названная и НЕ названная.
@@ -47,11 +47,11 @@ func TestAsk_NamesArmGrantsTheNamedObject(t *testing.T) {
 		// исправном запросе; проверено чтением соседних проб, а не догадкой.
 		for _, id := range []string{"snet-1", "snet-2"} {
 			exec(t, ctx, tx,
-				`INSERT INTO kacho_iam.resource_mirror (object_type, object_id, labels)
+				`INSERT INTO kaname.resource_mirror (object_type, object_id, labels)
 				 VALUES ($1, $2, '{}'::jsonb) ON CONFLICT DO NOTHING`,
 				catalogFormOf(t, "vpc_subnet"), id)
 			exec(t, ctx, tx,
-				`INSERT INTO kacho_iam.resource_parent_edge
+				`INSERT INTO kaname.resource_parent_edge
 				   (object_type, object_id, parent_type, parent_id, depth)
 				 VALUES ('vpc_subnet', $1, 'project', 'prj-1', 1)`, id)
 		}
@@ -91,10 +91,10 @@ func TestAsk_NamesArmGrantsTheNamedObject(t *testing.T) {
 func seedRoleNames(t *testing.T, ctx context.Context, tx pgx.Tx, roleID, objType, verb string, names []string) {
 	t.Helper()
 	exec(t, ctx, tx,
-		`INSERT INTO kacho_iam.clusters (id, name) VALUES ('cluster_kacho_root', 'kacho')
+		`INSERT INTO kaname.clusters (id, name) VALUES ('cluster_kacho_root', 'kacho')
 		 ON CONFLICT DO NOTHING`)
 	exec(t, ctx, tx,
-		`INSERT INTO kacho_iam.roles (id, name, permissions, rules, cluster_id)
+		`INSERT INTO kaname.roles (id, name, permissions, rules, cluster_id)
 		 VALUES ($1, $2, '[]'::jsonb,
 		         jsonb_build_array(jsonb_build_object(
 		             'module',    'vpc',
@@ -102,10 +102,10 @@ func seedRoleNames(t *testing.T, ctx context.Context, tx pgx.Tx, roleID, objType
 		             'verbs',     jsonb_build_array($3::text))),
 		         'cluster_kacho_root')`, roleID, "names."+verb, verb)
 	exec(t, ctx, tx,
-		`INSERT INTO kacho_iam.role_verb (role_id, object_type, verb) VALUES ($1, $2, $3)`,
+		`INSERT INTO kaname.role_verb (role_id, object_type, verb) VALUES ($1, $2, $3)`,
 		roleID, objType, verb)
 	exec(t, ctx, tx,
-		`INSERT INTO kacho_iam.role_rule_selectors
+		`INSERT INTO kaname.role_rule_selectors
 		   (role_id, rule_fp, arm, object_types, match_labels, resource_names)
 		 VALUES ($1, 'fp-names', 'names', ARRAY[$2::text], '{}'::jsonb, $3::text[])`,
 		roleID, objType, names)

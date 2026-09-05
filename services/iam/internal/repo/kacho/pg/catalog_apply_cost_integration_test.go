@@ -238,7 +238,7 @@ func seedCostRoles(t *testing.T, ctx context.Context, pool *pgxpool.Pool, roles 
 	// Проекции — одним оператором на популяцию: посев в цикле мерил бы стоимость
 	// посева, а не применения, и на тысяче ролей занял бы больше самого замера.
 	_, err = pool.Exec(ctx, `
-		INSERT INTO kacho_iam.role_rule_ref (role_id, module, resource, verb)
+		INSERT INTO kaname.role_rule_ref (role_id, module, resource, verb)
 		SELECT rid, $2, 'res' || to_char(r, 'FM00'), 'verb' || to_char(v, 'FM00')
 		  FROM unnest($1::text[]) AS rid,
 		       generate_series(0, $3::int - 1) AS r,
@@ -246,7 +246,7 @@ func seedCostRoles(t *testing.T, ctx context.Context, pool *pgxpool.Pool, roles 
 		roleIDs, costModule, costResources, costVerbs)
 	require.NoError(t, err)
 	_, err = pool.Exec(ctx, `
-		INSERT INTO kacho_iam.role_verb (role_id, object_type, verb)
+		INSERT INTO kaname.role_verb (role_id, object_type, verb)
 		SELECT rid, $2 || '.res' || to_char(r, 'FM00'), 'verb' || to_char(v, 'FM00')
 		  FROM unnest($1::text[]) AS rid,
 		       generate_series(0, $3::int - 1) AS r,
@@ -255,9 +255,9 @@ func seedCostRoles(t *testing.T, ctx context.Context, pool *pgxpool.Pool, roles 
 	require.NoError(t, err)
 
 	require.NoError(t, pool.QueryRow(ctx,
-		`SELECT count(*) FROM kacho_iam.role_rule_ref WHERE module = $1`, costModule).Scan(&ruleRefs))
+		`SELECT count(*) FROM kaname.role_rule_ref WHERE module = $1`, costModule).Scan(&ruleRefs))
 	require.NoError(t, pool.QueryRow(ctx,
-		`SELECT count(*) FROM kacho_iam.role_verb WHERE object_type LIKE $1`, costModule+".%").Scan(&roleVerbs))
+		`SELECT count(*) FROM kaname.role_verb WHERE object_type LIKE $1`, costModule+".%").Scan(&roleVerbs))
 
 	if ruleRefs == 0 || roleVerbs == 0 {
 		t.Fatalf("условие замера не создано: role_rule_ref %d, role_verb %d при %d ролях",
@@ -412,7 +412,7 @@ func TestModuleCatalogApplyCostAgainstTenantRoles(t *testing.T) {
 			// Переселено, а не отобрано молча.
 			var orphans int64
 			require.NoError(t, pool.QueryRow(ctx,
-				`SELECT count(*) FROM kacho_iam.role_grant_orphan WHERE object_type = $1`,
+				`SELECT count(*) FROM kaname.role_grant_orphan WHERE object_type = $1`,
 				costModule+".res"+fmt.Sprintf("%02d", costResources-1)).Scan(&orphans))
 			require.Equal(t, int64(roles*costVerbs*2), orphans,
 				"сироты не покрывают обе популяции — право отобрано молча")

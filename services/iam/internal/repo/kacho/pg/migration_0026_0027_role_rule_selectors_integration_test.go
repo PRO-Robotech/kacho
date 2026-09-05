@@ -38,7 +38,7 @@ func seedCustomRoleSQL(t *testing.T, ctx context.Context, pool *pgxpool.Pool, ac
 	t.Helper()
 	rid := domain.RoleID(ids.NewID(domain.PrefixRole))
 	_, err := pool.Exec(ctx, `
-		INSERT INTO kacho_iam.roles (id, account_id, name, description, permissions)
+		INSERT INTO kaname.roles (id, account_id, name, description, permissions)
 		VALUES ($1, $2, $3, $4, '["compute.instance.*.get"]'::jsonb)`,
 		string(rid), string(accID), name, "custom "+name)
 	require.NoError(t, err, "seed custom role")
@@ -60,7 +60,7 @@ func TestMigration0026_RoleRuleSelectorsTable(t *testing.T) {
 		var n int
 		require.NoError(t, pool.QueryRow(ctx, `
 			SELECT count(*) FROM information_schema.columns
-			 WHERE table_schema='kacho_iam' AND table_name='role_rule_selectors' AND column_name=$1`,
+			 WHERE table_schema='kaname' AND table_name='role_rule_selectors' AND column_name=$1`,
 			col).Scan(&n))
 		assert.Equal(t, 1, n, "role_rule_selectors.%s must exist", col)
 	}
@@ -76,7 +76,7 @@ func TestMigration0026_RoleRuleSelectorsTable(t *testing.T) {
 	// role_rule_selectors_arm_shape). The 0026/0027 invariants under test (column
 	// existence, FK ON DELETE CASCADE, PK uniqueness) are unchanged.
 	_, err = pool.Exec(ctx, `
-		INSERT INTO kacho_iam.role_rule_selectors (role_id, rule_fp, object_types, match_labels, arm, resource_names)
+		INSERT INTO kaname.role_rule_selectors (role_id, rule_fp, object_types, match_labels, arm, resource_names)
 		VALUES ($1, 'fp_abc', ARRAY['compute.instance'], '{"env":"prod"}'::jsonb, 'labels', '{}')`,
 		roleID)
 	require.NoError(t, err, "insert role_rule_selectors row")
@@ -92,7 +92,7 @@ func TestMigration0026_RoleRuleSelectorsTable(t *testing.T) {
 	// — живая строка каталога, строки по-прежнему различаются, ключ по-прежнему
 	// один.
 	_, dErr := pool.Exec(ctx, `
-		INSERT INTO kacho_iam.role_rule_selectors (role_id, rule_fp, object_types, match_labels, arm, resource_names)
+		INSERT INTO kaname.role_rule_selectors (role_id, rule_fp, object_types, match_labels, arm, resource_names)
 		VALUES ($1, 'fp_abc', ARRAY['storage.volumes'], '{"env":"dev"}'::jsonb, 'labels', '{}')`,
 		roleID)
 	require.Error(t, dErr, "duplicate (role_id, rule_fp) must violate PK")
@@ -100,11 +100,11 @@ func TestMigration0026_RoleRuleSelectorsTable(t *testing.T) {
 	require.ErrorAs(t, dErr, &pgErr)
 	assert.Equal(t, "23505", pgErr.Code, "PK violation SQLSTATE")
 
-	_, err = pool.Exec(ctx, `DELETE FROM kacho_iam.roles WHERE id=$1`, roleID)
+	_, err = pool.Exec(ctx, `DELETE FROM kaname.roles WHERE id=$1`, roleID)
 	require.NoError(t, err, "delete role")
 	var remaining int
 	require.NoError(t, pool.QueryRow(ctx,
-		`SELECT count(*) FROM kacho_iam.role_rule_selectors WHERE role_id=$1`, roleID).Scan(&remaining))
+		`SELECT count(*) FROM kaname.role_rule_selectors WHERE role_id=$1`, roleID).Scan(&remaining))
 	assert.Equal(t, 0, remaining, "FK ON DELETE CASCADE drops the role's selectors")
 }
 
@@ -123,7 +123,7 @@ func TestMigration0027_TargetMembersRekey(t *testing.T) {
 		var n int
 		require.NoError(t, pool.QueryRow(ctx, `
 			SELECT count(*) FROM information_schema.columns
-			 WHERE table_schema='kacho_iam' AND table_name='access_binding_target_members' AND column_name=$1`,
+			 WHERE table_schema='kaname' AND table_name='access_binding_target_members' AND column_name=$1`,
 			col).Scan(&n))
 		assert.Equal(t, 1, n, "access_binding_target_members.%s must exist after rekey", col)
 	}
@@ -136,14 +136,14 @@ func TestMigration0027_TargetMembersRekey(t *testing.T) {
 	roleID := seedCustomRoleSQL(t, ctx, pool, acc.ID, "tmrk_role")
 	bindingID := "acb_tmrk_1"
 	_, err = pool.Exec(ctx, `
-		INSERT INTO kacho_iam.access_bindings (id, subject_type, subject_id, role_id, resource_type, resource_id, status)
+		INSERT INTO kaname.access_bindings (id, subject_type, subject_id, role_id, resource_type, resource_id, status)
 		VALUES ($1, 'user', $2, $3, 'project', $4, 'ACTIVE')`,
 		bindingID, string(owner), string(roleID), string(prj.ID))
 	require.NoError(t, err)
 
 	insMember := func(ruleFP string) error {
 		_, e := pool.Exec(ctx, `
-			INSERT INTO kacho_iam.access_binding_target_members
+			INSERT INTO kaname.access_binding_target_members
 				(binding_id, role_id, rule_fp, object_type, object_id, verification_status)
 			VALUES ($1, $2, $3, 'compute.instance', 'inst-1', 'ACTIVE')`,
 			bindingID, string(roleID), ruleFP)
@@ -154,7 +154,7 @@ func TestMigration0027_TargetMembersRekey(t *testing.T) {
 
 	var members int
 	require.NoError(t, pool.QueryRow(ctx,
-		`SELECT count(*) FROM kacho_iam.access_binding_target_members
+		`SELECT count(*) FROM kaname.access_binding_target_members
 		  WHERE binding_id=$1 AND object_type='compute.instance' AND object_id='inst-1'`,
 		bindingID).Scan(&members))
 	assert.Equal(t, 2, members, "two rule_fp coordinates → two member rows for the same object")

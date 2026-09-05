@@ -47,7 +47,7 @@ func ownerBindingFor(t *testing.T, ctx context.Context, pool *pgxpool.Pool, accI
 	t.Helper()
 	var id string
 	require.NoError(t, pool.QueryRow(ctx,
-		`SELECT id FROM kacho_iam.access_bindings
+		`SELECT id FROM kaname.access_bindings
 		  WHERE role_id = $1 AND resource_type = 'account' AND resource_id = $2
 		    AND status = 'ACTIVE' AND revoked_at IS NULL`,
 		domain.OwnerRoleID, string(accID)).Scan(&id))

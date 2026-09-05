@@ -78,7 +78,7 @@ func TestRevoke_TTLCeiling(t *testing.T) {
 		// видно, что значение выброшено.
 		var got time.Time
 		require.NoError(t, pool.QueryRow(ctx,
-			`SELECT ttl_expires_at FROM kacho_iam.session_revocations WHERE token_jti = $1`, jti).Scan(&got))
+			`SELECT ttl_expires_at FROM kaname.session_revocations WHERE token_jti = $1`, jti).Scan(&got))
 		require.WithinDuration(t, want, got, time.Second,
 			"присланная величина не применена — подставлено умолчание")
 	})
@@ -110,7 +110,7 @@ func TestRevoke_TTLCeiling(t *testing.T) {
 		// Строки не появилось: отказ синхронный, до записи.
 		var n int64
 		require.NoError(t, pool.QueryRow(ctx,
-			`SELECT count(*) FROM kacho_iam.session_revocations WHERE token_jti = $1`, jti).Scan(&n))
+			`SELECT count(*) FROM kaname.session_revocations WHERE token_jti = $1`, jti).Scan(&n))
 		require.EqualValues(t, 0, n, "отвергнутый запрос оставил строку")
 	})
 }
@@ -140,7 +140,7 @@ func TestRevoke_TTLInThePastIsRefusedNotSubstituted(t *testing.T) {
 
 	var n int64
 	require.NoError(t, pool.QueryRow(ctx,
-		`SELECT count(*) FROM kacho_iam.session_revocations WHERE token_jti = $1`, jti).Scan(&n))
+		`SELECT count(*) FROM kaname.session_revocations WHERE token_jti = $1`, jti).Scan(&n))
 	require.EqualValues(t, 0, n,
 		"строка появилась: значит присланный момент был выброшен и заменён умолчанием")
 }

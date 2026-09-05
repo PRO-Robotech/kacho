@@ -54,7 +54,7 @@ import (
 // стояло, а не против пересказа того, что стояло.
 const concatenatedFormSQL = `
 	SELECT count(*)::bigint
-	  FROM kacho_iam.access_binding_subjects bs
+	  FROM kaname.access_binding_subjects bs
 	 WHERE bs.subject_type || ':' || bs.subject_id = ANY($1::text[])`
 
 // TestCensus_ParsedPairsCountWhatConcatenationCounted — перепись выдач,
@@ -116,8 +116,8 @@ func TestStrengthCensus_ParsedPairsCountWhatConcatenationCounted(t *testing.T) {
 		var byConcat int64
 		if err := tx.QueryRow(ctx, `
 			SELECT count(*)::bigint
-			  FROM kacho_iam.access_binding_subjects bs
-			  JOIN kacho_iam.access_bindings b ON b.id = bs.binding_id
+			  FROM kaname.access_binding_subjects bs
+			  JOIN kaname.access_bindings b ON b.id = bs.binding_id
 			 WHERE bs.subject_type || ':' || bs.subject_id = ANY($1::text[])
 			   AND bs.resource_type = $2 AND bs.resource_id = $3
 			   AND b.status = 'ACTIVE' AND b.revoked_at IS NULL`,
@@ -162,17 +162,17 @@ func seedCensusPairsFixture(t *testing.T, ctx context.Context, tx pgx.Tx) {
 	t.Helper()
 	seedLabelledSet(t, ctx, tx, 1)
 	exec(t, ctx, tx,
-		`INSERT INTO kacho_iam.groups (id, account_id, name, description)
+		`INSERT INTO kaname.groups (id, account_id, name, description)
 		 VALUES ($1, 'acc-1', 'census-pairs', '') ON CONFLICT DO NOTHING`, probeGroupID)
 	exec(t, ctx, tx,
-		`INSERT INTO kacho_iam.group_members (group_id, member_type, member_id)
+		`INSERT INTO kaname.group_members (group_id, member_type, member_id)
 		 VALUES ($1, 'user', 'usr-1') ON CONFLICT DO NOTHING`, probeGroupID)
 	exec(t, ctx, tx,
-		`INSERT INTO kacho_iam.access_bindings
+		`INSERT INTO kaname.access_bindings
 		   (id, subject_type, subject_id, role_id, resource_type, resource_id, status)
 		 VALUES ('acb-grp', 'group', $1, 'rol-cost', 'project', 'prj-1', 'ACTIVE')
 		 ON CONFLICT DO NOTHING`, probeGroupID)
 	exec(t, ctx, tx,
-		`INSERT INTO kacho_iam.access_binding_subjects (binding_id, subject_type, subject_id)
+		`INSERT INTO kaname.access_binding_subjects (binding_id, subject_type, subject_id)
 		 VALUES ('acb-grp', 'group', $1) ON CONFLICT DO NOTHING`, probeGroupID)
 }

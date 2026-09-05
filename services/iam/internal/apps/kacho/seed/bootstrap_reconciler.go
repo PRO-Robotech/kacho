@@ -10,7 +10,7 @@ package seed
 // `system_admin@cluster_kacho_root` to the bootstrap user identified by
 // KACHO_IAM_BOOTSTRAP_ROOT_EMAIL and enqueues the FGA tuple into the
 // transactional fga_outbox. But the bootstrap user row only appears in
-// kacho_iam.users on first login / fixture upsert (InternalUserService.
+// kaname.users on first login / fixture upsert (InternalUserService.
 // UpsertFromIdentity), which happens AFTER kacho-iam boots. A single startup
 // call therefore races the user row and skips ("user not registered"), so the
 // cluster-admin tuple is never written → cluster-scope AccessBinding cases

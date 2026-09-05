@@ -103,7 +103,7 @@ func TestModuleWithdrawalCompletesUnderTenantRolesAtScale(t *testing.T) {
 	// есть след в сиротах.
 	var orphans int64
 	require.NoError(t, pool.QueryRow(ctx,
-		`SELECT count(*) FROM kacho_iam.role_grant_orphan WHERE object_type LIKE $1`,
+		`SELECT count(*) FROM kaname.role_grant_orphan WHERE object_type LIKE $1`,
 		costModule+".%").Scan(&orphans))
 	require.Equal(t, int64(wantPerPopulation*2), orphans,
 		"сироты не покрывают обе популяции — право отобрано молча")
@@ -114,8 +114,8 @@ func TestModuleWithdrawalCompletesUnderTenantRolesAtScale(t *testing.T) {
 		sql  string
 		arg  string
 	}{
-		{"role_rule_ref", `SELECT count(*) FROM kacho_iam.role_rule_ref WHERE module = $1 AND resource <> 'res00'`, costModule},
-		{"role_verb", `SELECT count(*) FROM kacho_iam.role_verb WHERE object_type LIKE $1 AND object_type <> $2`, costModule + ".%"},
+		{"role_rule_ref", `SELECT count(*) FROM kaname.role_rule_ref WHERE module = $1 AND resource <> 'res00'`, costModule},
+		{"role_verb", `SELECT count(*) FROM kaname.role_verb WHERE object_type LIKE $1 AND object_type <> $2`, costModule + ".%"},
 	} {
 		var left int64
 		args := []any{q.arg}

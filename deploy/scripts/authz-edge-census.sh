@@ -5,7 +5,7 @@
 # authz-edge-census.sh — ПЕРЕПИСЬ «ЦЕПЬ ПРОТИВ ЖИВОЙ РЕГИСТРАЦИИ», обе полярности.
 #
 # ПРЕДМЕТ. Регистрация ресурса пишет ДВЕ половины одной транзакцией: строку
-# `kacho_iam.resource_mirror` и цепь рёбер `kacho_iam.resource_parent_edge`.
+# `kaname.resource_mirror` и цепь рёбер `kaname.resource_parent_edge`.
 # Половины обязаны существовать вместе. База этого не держит и держать не может:
 # внешнего ключа между ними НЕТ — стороны названы разными словарями (зеркало —
 # словарём каталога `vpc.securityGroup`, ребро — словарём модели прав
@@ -82,9 +82,9 @@ echo "пространство имён: ${NAMESPACE}, база: ${PG_IAM_POD}"
 # Печатается ВСЕГДА и первым: «ноль находок» обязано быть отличимо от «ноль
 # прочитанного».
 if ! VOLUME="$(psql_iam <<'SQL'
-SELECT (SELECT count(*) FROM kacho_iam.resource_parent_edge),
-       (SELECT count(DISTINCT object_id) FROM kacho_iam.resource_parent_edge),
-       (SELECT count(*) FROM kacho_iam.resource_mirror);
+SELECT (SELECT count(*) FROM kaname.resource_parent_edge),
+       (SELECT count(DISTINCT object_id) FROM kaname.resource_parent_edge),
+       (SELECT count(*) FROM kaname.resource_mirror);
 SQL
 )"; then
   echo "ПЕРЕПИСЬ НЕГОДНА: база iam недоступна (${PG_IAM_POD})" >&2
@@ -106,8 +106,8 @@ psql_iam > "$WORK/by_type.txt" <<'SQL'
 WITH e AS (
   SELECT pe.object_type,
          pe.object_id,
-         EXISTS (SELECT 1 FROM kacho_iam.resource_mirror m WHERE m.object_id = pe.object_id) AS mirrored
-    FROM kacho_iam.resource_parent_edge pe
+         EXISTS (SELECT 1 FROM kaname.resource_mirror m WHERE m.object_id = pe.object_id) AS mirrored
+    FROM kaname.resource_parent_edge pe
 )
 SELECT object_type,
        count(*)                                   AS edges,
@@ -119,8 +119,8 @@ SQL
 # Обратная полярность: строка зеркала без единого ребра.
 psql_iam > "$WORK/mirror_only.txt" <<'SQL'
 SELECT m.object_type, m.object_id
-  FROM kacho_iam.resource_mirror m
- WHERE NOT EXISTS (SELECT 1 FROM kacho_iam.resource_parent_edge pe
+  FROM kaname.resource_mirror m
+ WHERE NOT EXISTS (SELECT 1 FROM kaname.resource_parent_edge pe
                     WHERE pe.object_id = m.object_id)
  ORDER BY 1, 2;
 SQL
@@ -165,10 +165,10 @@ if [[ "$SHOW" -gt 0 ]]; then
     echo "--- цепь пережила снятие, первые ${SHOW} ---"
     psql_iam <<SQL | head -n "$SHOW"
 SELECT pe.object_type || ':' || pe.object_id || ' -> ' || pe.parent_type || ':' || pe.parent_id
-  FROM kacho_iam.resource_parent_edge pe
- WHERE NOT EXISTS (SELECT 1 FROM kacho_iam.resource_mirror m WHERE m.object_id = pe.object_id)
-   AND EXISTS (SELECT 1 FROM kacho_iam.resource_parent_edge s
-                JOIN kacho_iam.resource_mirror m2 ON m2.object_id = s.object_id
+  FROM kaname.resource_parent_edge pe
+ WHERE NOT EXISTS (SELECT 1 FROM kaname.resource_mirror m WHERE m.object_id = pe.object_id)
+   AND EXISTS (SELECT 1 FROM kaname.resource_parent_edge s
+                JOIN kaname.resource_mirror m2 ON m2.object_id = s.object_id
                WHERE s.object_type = pe.object_type)
  ORDER BY 1;
 SQL

@@ -36,7 +36,7 @@ func setABLabels(t *testing.T, ctx context.Context, pool *pgxpool.Pool, bid stri
 	t.Helper()
 	payload := jsonObject(labels)
 	_, err := pool.Exec(ctx,
-		`UPDATE kacho_iam.access_bindings SET labels = $2::jsonb WHERE id = $1`, bid, payload)
+		`UPDATE kaname.access_bindings SET labels = $2::jsonb WHERE id = $1`, bid, payload)
 	require.NoError(t, err, "set access_binding labels")
 }
 

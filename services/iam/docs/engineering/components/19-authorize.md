@@ -17,7 +17,7 @@ R?».
 1. **действие → отношение** — свёртка глагола (`get`/`list` → `viewer`,
    `create`/`update` → `editor`, `delete` → `admin`) либо явное поле
    `required_relation` (`internal/authzmap`).
-2. **вердикт реляционной формы** — запрос к собственной базе `kacho_iam`: прямой
+2. **вердикт реляционной формы** — запрос к собственной базе `kaname`: прямой
    факт ∪ выдача роли на область ∪ выдача по меткам ∪ членство в группе. Разбор —
    [`29-relational-verdict.md`](29-relational-verdict.md).
 
@@ -25,7 +25,7 @@ R?».
 
 **Ограничения:**
 - синхронный, только чтение (конверта `Operation` нет);
-- fail-closed: база `kacho_iam` недоступна → `UNAVAILABLE`, никогда «разрешено»
+- fail-closed: база `kaname` недоступна → `UNAVAILABLE`, никогда «разрешено»
   (см. [`../architecture/failure-domains.md`](../architecture/failure-domains.md)).
 
 > [!note] До стадии S6 решение принимал внешний движок отношений — его нет
@@ -144,7 +144,7 @@ sequenceDiagram
     participant Cli
     participant GW as api-gateway
     participant IAM as AuthorizeService
-    participant DB as Postgres kacho_iam
+    participant DB as Postgres kaname
 
     Cli->>GW: POST /iam/v1/authorize:check {subject, resource, action, context}
     GW->>IAM: gRPC Check
@@ -192,7 +192,7 @@ curl -X POST http://localhost:18080/iam/v1/authorize:expandRelations \
 
 | Сценарий | gRPC-код | HTTP | Текст |
 |---|---|---|---|
-| база `kacho_iam` недоступна | `UNAVAILABLE` | 503 | фиксированный текст, без деталей драйвера |
+| база `kaname` недоступна | `UNAVAILABLE` | 503 | фиксированный текст, без деталей драйвера |
 | действие не найдено в каталоге | `INVALID_ARGUMENT` | 400 | `Illegal argument action: unknown` |
 | субъект пуст | `INVALID_ARGUMENT` | 400 | `Illegal argument subject: required` |
 

@@ -11,7 +11,7 @@ package pg_test
 // Ведомость `role_selector_prune` завелась и наполняется применителем каталога
 // тем же оператором, что вырезает, — а ЧИТАЛ её ноль прод-мест:
 //
-//	git grep -c 'FROM kacho_iam.role_selector_prune' \
+//	git grep -c 'FROM kaname.role_selector_prune' \
 //	  -- 'services/iam/**/*.go' ':!*_test.go'   → 0
 //
 // Это ровно тот класс, ради которого заводилась ведомость СОСЕДНЯЯ: «значение,
@@ -150,7 +150,7 @@ func TestPrunedSelectorTypesAreReachableByReading(t *testing.T) {
 	// ── ПРИЧИНА И МОМЕНТ доезжают до читающего ───────────────────────────────
 	var retiredReason string
 	require.NoError(t, pool.QueryRow(ctx,
-		`SELECT retired_reason FROM kacho_iam.catalog_resource WHERE dotted = $1`,
+		`SELECT retired_reason FROM kaname.catalog_resource WHERE dotted = $1`,
 		doomed).Scan(&retiredReason))
 	require.NotEmpty(t, retiredReason,
 		"снятая строка каталога причины не несёт — тогда её нечего и доносить")
@@ -244,7 +244,7 @@ func TestPrunedSelectorTypesCollapseRowsThatDifferOnlyByFingerprint(t *testing.T
 
 	var ledger int
 	require.NoError(t, pool.QueryRow(ctx,
-		`SELECT count(*) FROM kacho_iam.role_selector_prune WHERE role_id = $1`,
+		`SELECT count(*) FROM kaname.role_selector_prune WHERE role_id = $1`,
 		string(role)).Scan(&ledger))
 	require.Equalf(t, 2, ledger, "ПРЕДПОСЫЛКА: в ведомости не две строки, а %d — "+
 		"схлопывать нечего, и проба вакуумна", ledger)

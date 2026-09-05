@@ -79,11 +79,11 @@ func registerAsProducerDoes(
 func seedProjectBinding(t *testing.T, ctx context.Context, tx pgx.Tx, bindingID, roleID string) {
 	t.Helper()
 	exec(t, ctx, tx,
-		`INSERT INTO kacho_iam.access_bindings
+		`INSERT INTO kaname.access_bindings
 		   (id, subject_type, subject_id, role_id, resource_type, resource_id, status)
 		 VALUES ($1, 'user', 'usr-1', $2, 'project', 'prj-1', 'ACTIVE')`, bindingID, roleID)
 	exec(t, ctx, tx,
-		`INSERT INTO kacho_iam.access_binding_subjects (binding_id, subject_type, subject_id)
+		`INSERT INTO kaname.access_binding_subjects (binding_id, subject_type, subject_id)
 		 VALUES ($1, 'user', 'usr-1')`, bindingID)
 }
 

@@ -18,7 +18,7 @@
 // This package imports ONLY the standard library.
 package outboxtypes
 
-// RelationTuple — {User, Relation, Object} triple for kacho_iam.fga_outbox
+// RelationTuple — {User, Relation, Object} triple for kaname.fga_outbox
 // grant/revoke writes.
 type RelationTuple struct {
 	User     string
@@ -26,7 +26,7 @@ type RelationTuple struct {
 	Object   string
 }
 
-// AuditEvent — payload for a durable kacho_iam.audit_outbox compliance row. The
+// AuditEvent — payload for a durable kaname.audit_outbox compliance row. The
 // repo adapter generates the id (evt_<22-char>), marshals Payload to the
 // event_payload jsonb, and inserts it with status='pending'. EventType must
 // satisfy the audit_outbox_event_type CHECK

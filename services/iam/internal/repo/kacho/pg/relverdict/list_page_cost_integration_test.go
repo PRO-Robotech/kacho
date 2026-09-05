@@ -95,7 +95,7 @@ func TestList_PageCostBelongsToTheRequestNotTheSet(t *testing.T) {
 
 	// Объём осмотренного печатается ВСЕГДА: «не растёт» без кривой неотличимо от
 	// «ничего не мерили».
-	t.Logf("осмотрено: %d точек кривой; единица — строк, прочитанных Postgres из схемы kacho_iam за один вызов List", len(curve))
+	t.Logf("осмотрено: %d точек кривой; единица — строк, прочитанных Postgres из схемы kaname за один вызов List", len(curve))
 	for _, p := range curve {
 		t.Logf("  N=%-6d страница %-4d: %6d строк   страница %-4d: %6d строк",
 			p.n, pageCostNarrowPage, p.rowsNarrow, pageCostContractPage, p.rowsPage)
@@ -140,14 +140,14 @@ func TestList_PageStaysFullWhenCandidatesAreInterleaved(t *testing.T) {
 		seedTenant(t, ctx, tx)
 		seedRole(t, ctx, tx, "rol-mix", "vpc_network", "get", "anchor", "{}")
 		exec(t, ctx, tx,
-			`INSERT INTO kacho_iam.access_bindings
+			`INSERT INTO kaname.access_bindings
 			   (id, subject_type, subject_id, role_id, resource_type, resource_id, status)
 			 VALUES ('acb-m', 'user', 'usr-1', 'rol-mix', 'project', 'prj-1', 'ACTIVE')`)
 		exec(t, ctx, tx,
-			`INSERT INTO kacho_iam.access_binding_subjects (binding_id, subject_type, subject_id)
+			`INSERT INTO kaname.access_binding_subjects (binding_id, subject_type, subject_id)
 			 VALUES ('acb-m', 'user', 'usr-1')`)
 		exec(t, ctx, tx,
-			`INSERT INTO kacho_iam.projects (id, account_id, name) VALUES ('prj-2', 'acc-1', 'foreign')`)
+			`INSERT INTO kaname.projects (id, account_id, name) VALUES ('prj-2', 'acc-1', 'foreign')`)
 
 		// ЧЕРЕДОВАНИЕ, а не «чужие в хвосте»: чужой объект в конце обход пережил бы
 		// и без повтора захода — проба зеленела бы на сломанном.
@@ -285,7 +285,7 @@ func tuplesRead(t *testing.T, ctx context.Context, tx pgx.Tx) int64 {
 	if err := tx.QueryRow(ctx, `
 		SELECT coalesce(sum(seq_tup_read + coalesce(idx_tup_fetch, 0)), 0)::bigint
 		  FROM pg_stat_xact_all_tables
-		 WHERE schemaname = 'kacho_iam'`).Scan(&total); err != nil {
+		 WHERE schemaname = 'kaname'`).Scan(&total); err != nil {
 		t.Fatalf("счётчик прочитанных строк: %v", err)
 	}
 	return total
@@ -300,11 +300,11 @@ func seedLabelledSet(t *testing.T, ctx context.Context, tx pgx.Tx, n int) {
 	seedTenant(t, ctx, tx)
 	seedRole(t, ctx, tx, "rol-cost", "vpc_network", "get", "labels", `{"env":"prod"}`)
 	exec(t, ctx, tx,
-		`INSERT INTO kacho_iam.access_bindings
+		`INSERT INTO kaname.access_bindings
 		   (id, subject_type, subject_id, role_id, resource_type, resource_id, status)
 		 VALUES ('acb-c', 'user', 'usr-1', 'rol-cost', 'project', 'prj-1', 'ACTIVE')`)
 	exec(t, ctx, tx,
-		`INSERT INTO kacho_iam.access_binding_subjects (binding_id, subject_type, subject_id)
+		`INSERT INTO kaname.access_binding_subjects (binding_id, subject_type, subject_id)
 		 VALUES ('acb-c', 'user', 'usr-1')`)
 
 	// Посев идёт ЧЕРЕЗ ПРОИЗВОДИТЕЛЯ цепи, а не прямой записью в таблицу рёбер.
@@ -336,6 +336,6 @@ func seedLabelledSet(t *testing.T, ctx context.Context, tx pgx.Tx, n int) {
 	}
 	// Статистика — чтобы измерялся ЗАПРОС, а не отсутствие статистики: на пустых
 	// оценках планировщик выбирает план по умолчанию, и кривая говорила бы о нём.
-	exec(t, ctx, tx, `ANALYZE kacho_iam.resource_mirror, kacho_iam.resource_parent_edge,
-		kacho_iam.access_bindings, kacho_iam.access_binding_subjects, kacho_iam.relation_fact`)
+	exec(t, ctx, tx, `ANALYZE kaname.resource_mirror, kaname.resource_parent_edge,
+		kaname.access_bindings, kaname.access_binding_subjects, kaname.relation_fact`)
 }

@@ -4,7 +4,7 @@
 package reconciler_test
 
 // The poison backstop must work on the outbox that carries the platform's
-// grants and revocations — kacho_iam.fga_outbox — and that queue is NOT
+// grants and revocations — kaname.fga_outbox — and that queue is NOT
 // partitioned on resource_id.
 //
 // Its ordering key is the full tuple identity (user, relation, object),
@@ -14,7 +14,7 @@ package reconciler_test
 // different entries and commute.
 //
 // That set used to live in an external relation engine; since stage S6 it is
-// iam's own `kacho_iam.relation_fact`, folded out of this very journal by a
+// iam's own `kaname.relation_fact`, folded out of this very journal by a
 // trigger. The queue, its ordering key and this backstop outlived the consumer
 // precisely because the property is about the SHAPE of the state, not about who
 // holds it.
@@ -56,7 +56,7 @@ import (
 	"github.com/PRO-Robotech/kacho/pkg/pgtest"
 )
 
-// tupleOutboxSchema mirrors kacho_iam.fga_outbox as migrations 0001 + 0063 + 0067
+// tupleOutboxSchema mirrors kaname.fga_outbox as migrations 0001 + 0063 + 0067
 // leave it: the tuple identity in its own column, filled by a BEFORE INSERT
 // trigger, plus the two partial indexes the partition-head claim reads. The
 // trigger is copied rather than paraphrased — a fixture that derives the key

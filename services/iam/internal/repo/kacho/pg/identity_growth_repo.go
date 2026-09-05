@@ -45,7 +45,7 @@ func NewIdentityGrowthRepo(pool *pgxpool.Pool) *IdentityGrowthRepo {
 // исчезают вместе с ней. Запрос по ним вернул бы правдоподобное число и вернул
 // бы вместе с ним ту самую немонотонность, ради ухода от которой журнал заведён.
 func (r *IdentityGrowthRepo) IdentitiesEverSeen(ctx context.Context) (int64, error) {
-	const q = `SELECT count(*) FROM kacho_iam.identity_journal`
+	const q = `SELECT count(*) FROM kaname.identity_journal`
 	var total int64
 	if err := r.pool.QueryRow(ctx, q).Scan(&total); err != nil {
 		return 0, fmt.Errorf("count identities ever seen: %w", err)

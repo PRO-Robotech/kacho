@@ -85,12 +85,12 @@ func raceRole(t *testing.T, ctx context.Context, pool *pgxpool.Pool, suffix stri
 	require.NoError(t, err, "фикстура роли")
 
 	_, err = pool.Exec(ctx, `
-		INSERT INTO kacho_iam.role_verb (role_id, object_type, verb)
+		INSERT INTO kaname.role_verb (role_id, object_type, verb)
 		VALUES ($1, 'vpc.network', 'get')`, string(id))
 	require.NoError(t, err, "фикстура проекции глаголов")
 
 	_, err = pool.Exec(ctx, `
-		INSERT INTO kacho_iam.role_rule_ref (role_id, module, resource, verb)
+		INSERT INTO kaname.role_rule_ref (role_id, module, resource, verb)
 		VALUES ($1, 'vpc', 'network', 'get')`, string(id))
 	require.NoError(t, err, "фикстура проекции сегментов")
 
@@ -116,12 +116,12 @@ func retireInTx(t *testing.T, ctx context.Context, pool *pgxpool.Pool, id domain
 	for _, table := range []string{"role_verb", "role_rule_ref", "role_rule_selectors",
 		"access_binding_target_members"} {
 		if _, err = tx.Exec(ctx,
-			`DELETE FROM kacho_iam.`+table+` WHERE role_id = $1`, string(id)); err != nil {
+			`DELETE FROM kaname.`+table+` WHERE role_id = $1`, string(id)); err != nil {
 			return err
 		}
 	}
 	if _, err = tx.Exec(ctx, `
-		UPDATE kacho_iam.roles
+		UPDATE kaname.roles
 		   SET live = false, retired_at = now(), retired_reason = 'гонка', retired_by = 'гонка'
 		 WHERE id = $1 AND owner_module = 'vpc' AND live`, string(id)); err != nil {
 		return err
@@ -172,7 +172,7 @@ func TestIAMRW126RetirementAgainstANewGrant(t *testing.T) {
 			c, cancel := context.WithTimeout(ctx, 20*time.Second)
 			defer cancel()
 			_, err := pool.Exec(c, `
-				INSERT INTO kacho_iam.access_bindings
+				INSERT INTO kaname.access_bindings
 				       (id, subject_type, subject_id, role_id, resource_type, resource_id, status)
 				VALUES ($1, 'user', $2, $3, 'cluster', $4, 'ACTIVE')`,
 				fmt.Sprintf("acb_rwrace%02d", i), "usr_rwracegrant", string(id),
@@ -341,7 +341,7 @@ func TestIAMRW128RetirementAgainstProjectionWrite(t *testing.T) {
 		c, cancel := context.WithTimeout(ctx, 20*time.Second)
 		defer cancel()
 		_, err := pool.Exec(c, `
-			INSERT INTO kacho_iam.role_verb (role_id, object_type, verb)
+			INSERT INTO kaname.role_verb (role_id, object_type, verb)
 			VALUES ($1, 'vpc.network', 'list')`, string(id))
 		writeErr <- err
 	}()
@@ -364,7 +364,7 @@ func TestIAMRW128RetirementAgainstProjectionWrite(t *testing.T) {
 	// Частичного результата нет: строк проекции у снятой роли ноль.
 	var projections int
 	require.NoError(t, pool.QueryRow(ctx,
-		`SELECT count(*) FROM kacho_iam.role_verb WHERE role_id = $1`, string(id)).Scan(&projections))
+		`SELECT count(*) FROM kaname.role_verb WHERE role_id = $1`, string(id)).Scan(&projections))
 	assert.Zero(t, projections,
 		"у снятой роли осталась строка проекции — право продолжает действовать")
 	t.Logf("перепись: отказ %s %s, строк проекции у снятой роли %d",

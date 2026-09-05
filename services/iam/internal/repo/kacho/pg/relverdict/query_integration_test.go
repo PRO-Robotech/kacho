@@ -67,13 +67,13 @@ func seedTenant(t *testing.T, ctx context.Context, tx pgx.Tx) {
 	// первым, ссылаясь на ещё не существующего владельца, и ключ проверяется на
 	// COMMIT. Порядок несущий — обратный даёт отказ сразу.
 	exec(t, ctx, tx,
-		`INSERT INTO kacho_iam.accounts (id, name, owner_user_id)
+		`INSERT INTO kaname.accounts (id, name, owner_user_id)
 		 VALUES ('acc-1', 'test-account', 'usr-1') ON CONFLICT DO NOTHING`)
 	exec(t, ctx, tx,
-		`INSERT INTO kacho_iam.users (id, external_id, email, account_id)
+		`INSERT INTO kaname.users (id, external_id, email, account_id)
 		 VALUES ('usr-1', 'ext-1', 'usr-1@kacho.local', 'acc-1') ON CONFLICT DO NOTHING`)
 	exec(t, ctx, tx,
-		`INSERT INTO kacho_iam.projects (id, account_id, name) VALUES ('prj-1', 'acc-1', 'test-project')
+		`INSERT INTO kaname.projects (id, account_id, name) VALUES ('prj-1', 'acc-1', 'test-project')
 		 ON CONFLICT DO NOTHING`)
 	// Указатель на аккаунт — В ЖУРНАЛ, потому что его туда кладёт САМ ПРОДУКТ:
 	// `Project.Create` со-коммитит иерархический кортеж в той же транзакции, что
@@ -106,10 +106,10 @@ func seedRole(t *testing.T, ctx context.Context, tx pgx.Tx, roleID, objType, ver
 	// ограничением схемы. Сеем настоящий, а не обходим FK: фикстура, снимающая
 	// ограничение, доказывала бы работу запроса на данных, которых в проде нет.
 	exec(t, ctx, tx,
-		`INSERT INTO kacho_iam.clusters (id, name) VALUES ('cluster_kacho_root', 'kacho')
+		`INSERT INTO kaname.clusters (id, name) VALUES ('cluster_kacho_root', 'kacho')
 		 ON CONFLICT DO NOTHING`)
 	exec(t, ctx, tx,
-		`INSERT INTO kacho_iam.roles (id, name, permissions, rules, cluster_id)
+		`INSERT INTO kaname.roles (id, name, permissions, rules, cluster_id)
 		 VALUES ($1, $2, '[]'::jsonb,
 		         jsonb_build_array(jsonb_build_object(
 		             'module',    'test',
@@ -131,12 +131,12 @@ func seedRole(t *testing.T, ctx context.Context, tx pgx.Tx, roleID, objType, ver
 		grantType = objType
 	}
 	exec(t, ctx, tx,
-		`INSERT INTO kacho_iam.role_verb (role_id, object_type, verb) VALUES ($1, $2, $3)`,
+		`INSERT INTO kaname.role_verb (role_id, object_type, verb) VALUES ($1, $2, $3)`,
 		roleID, grantType, verb)
 	// Без селектора роль не адресует ни одного объекта — и это верно, а не
 	// пробел фикстуры.
 	exec(t, ctx, tx,
-		`INSERT INTO kacho_iam.role_rule_selectors
+		`INSERT INTO kaname.role_rule_selectors
 		   (role_id, rule_fp, arm, object_types, match_labels)
 		 VALUES ($1, 'fp-1', $2, ARRAY[$3::text], $4::jsonb)`,
 		roleID, arm, grantType, labels)
@@ -146,7 +146,7 @@ func seedRole(t *testing.T, ctx context.Context, tx pgx.Tx, roleID, objType, ver
 func TestAsk_DirectFactAllows(t *testing.T) {
 	withTx(t, func(ctx context.Context, tx pgx.Tx) {
 		exec(t, ctx, tx,
-			`INSERT INTO kacho_iam.relation_fact (object_type, object_id, relation, subject)
+			`INSERT INTO kaname.relation_fact (object_type, object_id, relation, subject)
 			 VALUES ('vpc_network', 'net-1', 'v_get', 'user:usr-1')`)
 
 		got, _, err := relverdict.Ask(ctx, tx, relverdict.Query{
@@ -179,15 +179,15 @@ func TestAsk_BindingOnAncestorAllows(t *testing.T) {
 		seedTenant(t, ctx, tx)
 		seedRole(t, ctx, tx, "rol-view", "vpc_network", "get", "anchor", "{}")
 		exec(t, ctx, tx,
-			`INSERT INTO kacho_iam.resource_parent_edge
+			`INSERT INTO kaname.resource_parent_edge
 			   (object_type, object_id, parent_type, parent_id, depth)
 			 VALUES ('vpc_network', 'net-1', 'project', 'prj-1', 1)`)
 		exec(t, ctx, tx,
-			`INSERT INTO kacho_iam.access_bindings
+			`INSERT INTO kaname.access_bindings
 			   (id, subject_type, subject_id, role_id, resource_type, resource_id, status)
 			 VALUES ('acb-1', 'user', 'usr-1', 'rol-view', 'project', 'prj-1', 'ACTIVE')`)
 		exec(t, ctx, tx,
-			`INSERT INTO kacho_iam.access_binding_subjects (binding_id, subject_type, subject_id)
+			`INSERT INTO kaname.access_binding_subjects (binding_id, subject_type, subject_id)
 			 VALUES ('acb-1', 'user', 'usr-1')`)
 
 		got, _, err := relverdict.Ask(ctx, tx, relverdict.Query{
@@ -214,7 +214,7 @@ func TestAsk_BindingOnAncestorAllows(t *testing.T) {
 
 		// Отрицание: объект ВНЕ области выдачи (нет ребра к prj-1).
 		exec(t, ctx, tx,
-			`INSERT INTO kacho_iam.resource_parent_edge
+			`INSERT INTO kaname.resource_parent_edge
 			   (object_type, object_id, parent_type, parent_id, depth)
 			 VALUES ('vpc_network', 'net-2', 'project', 'prj-2', 1)`)
 		outside, _, err := relverdict.Ask(ctx, tx, relverdict.Query{
@@ -235,19 +235,19 @@ func TestAsk_LabelSelectorFollowsTheObjectLabels(t *testing.T) {
 		seedTenant(t, ctx, tx)
 		seedRole(t, ctx, tx, "rol-env", "vpc_network", "get", "labels", `{"env":"prod"}`)
 		exec(t, ctx, tx,
-			`INSERT INTO kacho_iam.resource_parent_edge
+			`INSERT INTO kaname.resource_parent_edge
 			   (object_type, object_id, parent_type, parent_id, depth)
 			 VALUES ('vpc_network', 'net-1', 'project', 'prj-1', 1)`)
 		exec(t, ctx, tx,
-			`INSERT INTO kacho_iam.resource_mirror (object_type, object_id, labels)
+			`INSERT INTO kaname.resource_mirror (object_type, object_id, labels)
 			 VALUES ($1, 'net-1', '{"env":"prod"}'::jsonb)`,
 			catalogFormOf(t, "vpc_network"))
 		exec(t, ctx, tx,
-			`INSERT INTO kacho_iam.access_bindings
+			`INSERT INTO kaname.access_bindings
 			   (id, subject_type, subject_id, role_id, resource_type, resource_id, status)
 			 VALUES ('acb-2', 'user', 'usr-1', 'rol-env', 'project', 'prj-1', 'ACTIVE')`)
 		exec(t, ctx, tx,
-			`INSERT INTO kacho_iam.access_binding_subjects (binding_id, subject_type, subject_id)
+			`INSERT INTO kaname.access_binding_subjects (binding_id, subject_type, subject_id)
 			 VALUES ('acb-2', 'user', 'usr-1')`)
 		got, _, err := relverdict.Ask(ctx, tx, relverdict.Query{
 			Subject: "user:usr-1", ObjectType: "vpc_network", ObjectID: "net-1", Relation: "v_get",
@@ -263,7 +263,7 @@ func TestAsk_LabelSelectorFollowsTheObjectLabels(t *testing.T) {
 		// произведение и не материализуется: иначе смена метки требовала бы
 		// пересчёта доступа для всех субъектов с меточными выдачами.
 		exec(t, ctx, tx,
-			`UPDATE kacho_iam.resource_mirror SET labels = '{"env":"dev"}'::jsonb
+			`UPDATE kaname.resource_mirror SET labels = '{"env":"dev"}'::jsonb
 			  WHERE object_type = $1 AND object_id = 'net-1'`,
 			catalogFormOf(t, "vpc_network"))
 		after, _, err := relverdict.Ask(ctx, tx, relverdict.Query{
@@ -285,21 +285,21 @@ func TestAsk_GroupMembershipAllows(t *testing.T) {
 		seedTenant(t, ctx, tx)
 		seedRole(t, ctx, tx, "rol-grp", "vpc_network", "get", "anchor", "{}")
 		exec(t, ctx, tx,
-			`INSERT INTO kacho_iam.resource_parent_edge
+			`INSERT INTO kaname.resource_parent_edge
 			   (object_type, object_id, parent_type, parent_id, depth)
 			 VALUES ('vpc_network', 'net-1', 'project', 'prj-1', 1)`)
 		exec(t, ctx, tx,
-			`INSERT INTO kacho_iam.groups (id, account_id, name) VALUES ('grp-1', 'acc-1', 'devs')
+			`INSERT INTO kaname.groups (id, account_id, name) VALUES ('grp-1', 'acc-1', 'devs')
 			 ON CONFLICT DO NOTHING`)
 		exec(t, ctx, tx,
-			`INSERT INTO kacho_iam.access_bindings
+			`INSERT INTO kaname.access_bindings
 			   (id, subject_type, subject_id, role_id, resource_type, resource_id, status)
 			 VALUES ('acb-3', 'group', 'grp-1', 'rol-grp', 'project', 'prj-1', 'ACTIVE')`)
 		exec(t, ctx, tx,
-			`INSERT INTO kacho_iam.access_binding_subjects (binding_id, subject_type, subject_id)
+			`INSERT INTO kaname.access_binding_subjects (binding_id, subject_type, subject_id)
 			 VALUES ('acb-3', 'group', 'grp-1')`)
 		exec(t, ctx, tx,
-			`INSERT INTO kacho_iam.group_members (group_id, member_type, member_id)
+			`INSERT INTO kaname.group_members (group_id, member_type, member_id)
 			 VALUES ('grp-1', 'user', 'usr-1')`)
 
 		got, _, err := relverdict.Ask(ctx, tx, relverdict.Query{
@@ -333,7 +333,7 @@ func TestAsk_RevokedAndExpiredBindingsDoNotAllow(t *testing.T) {
 		seedTenant(t, ctx, tx)
 		seedRole(t, ctx, tx, "rol-rev", "vpc_network", "get", "anchor", "{}")
 		exec(t, ctx, tx,
-			`INSERT INTO kacho_iam.resource_parent_edge
+			`INSERT INTO kaname.resource_parent_edge
 			   (object_type, object_id, parent_type, parent_id, depth)
 			 VALUES ('vpc_network', 'net-1', 'project', 'prj-1', 1)`)
 		// Отозванная.
@@ -341,11 +341,11 @@ func TestAsk_RevokedAndExpiredBindingsDoNotAllow(t *testing.T) {
 		// закреплена ограничением схемы. Посев, ставящий одну, проверял бы
 		// состояние, которого в проде не бывает.
 		exec(t, ctx, tx,
-			`INSERT INTO kacho_iam.access_bindings
+			`INSERT INTO kaname.access_bindings
 			   (id, subject_type, subject_id, role_id, resource_type, resource_id, status, revoked_at)
 			 VALUES ('acb-r', 'user', 'usr-1', 'rol-rev', 'project', 'prj-1', 'REVOKED', now())`)
 		exec(t, ctx, tx,
-			`INSERT INTO kacho_iam.access_binding_subjects (binding_id, subject_type, subject_id)
+			`INSERT INTO kaname.access_binding_subjects (binding_id, subject_type, subject_id)
 			 VALUES ('acb-r', 'user', 'usr-1')`)
 
 		got, _, err := relverdict.Ask(ctx, tx, relverdict.Query{

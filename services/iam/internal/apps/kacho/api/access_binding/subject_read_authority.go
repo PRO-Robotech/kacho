@@ -258,7 +258,7 @@ func callerIsSubject(
 }
 
 // resolveSubjectHome reads the subject (User / ServiceAccount / Group) to return
-// its home account_id for the authz check. All reads are within kacho_iam,
+// its home account_id for the authz check. All reads are within kaname,
 // same-schema — NOT a cross-domain edge.
 //
 // Three outcomes, deliberately distinct: resolved (found, account id); absent

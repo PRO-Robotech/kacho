@@ -74,27 +74,27 @@ func newScopeCarrierFixture(t *testing.T, ctx context.Context) *scopeCarrierFixt
 		_, err := tx.Exec(ctx, sql, args...)
 		require.NoError(t, err, sql)
 	}
-	exec(`INSERT INTO kacho_iam.clusters (id, name) VALUES ('cluster_kacho_root', 'kacho')
+	exec(`INSERT INTO kaname.clusters (id, name) VALUES ('cluster_kacho_root', 'kacho')
 	      ON CONFLICT DO NOTHING`)
-	exec(`INSERT INTO kacho_iam.accounts (id, name, owner_user_id) VALUES ('acc-1', 'carrier', 'usr-1')`)
+	exec(`INSERT INTO kaname.accounts (id, name, owner_user_id) VALUES ('acc-1', 'carrier', 'usr-1')`)
 	// ДВА пользователя, и второй здесь не для полноты. Строка субъекта проходит
 	// ещё и стража существования субъекта (0049); назови проба несуществующего,
 	// отказ пришёл бы ОТ НЕГО, и «чужая область отвергнута» стало бы зелёным,
 	// не сказав об области ничего.
-	exec(`INSERT INTO kacho_iam.users (id, external_id, email, account_id)
+	exec(`INSERT INTO kaname.users (id, external_id, email, account_id)
 	      VALUES ('usr-1', 'ext-1', 'usr-1@kacho.local', 'acc-1'),
 	             ('usr-2', 'ext-2', 'usr-2@kacho.local', 'acc-1')`)
-	exec(`INSERT INTO kacho_iam.projects (id, account_id, name)
+	exec(`INSERT INTO kaname.projects (id, account_id, name)
 	      VALUES ('prj-home', 'acc-1', 'home'), ('prj-other', 'acc-1', 'other')`)
 	// Пустой набор разрешений законен только при непустых правилах — так велит
 	// проверка схемы, и фикстура ей подчиняется, а не обходит её.
-	exec(`INSERT INTO kacho_iam.roles (id, name, permissions, rules, cluster_id)
+	exec(`INSERT INTO kaname.roles (id, name, permissions, rules, cluster_id)
 	      VALUES ('rol-1', 'probe.carrier', '[]'::jsonb,
 	              jsonb_build_array(jsonb_build_object(
 	                  'module', 'probe', 'resources', jsonb_build_array('*'),
 	                  'verbs',  jsonb_build_array('get'))),
 	              'cluster_kacho_root')`)
-	exec(`INSERT INTO kacho_iam.access_bindings
+	exec(`INSERT INTO kaname.access_bindings
 	        (id, subject_type, subject_id, role_id, resource_type, resource_id, status)
 	      VALUES ('acb-1', 'user', 'usr-1', 'rol-1', 'project', 'prj-home', 'ACTIVE')`)
 	require.NoError(t, tx.Commit(ctx))
@@ -105,7 +105,7 @@ func (f *scopeCarrierFixture) scopeOf(t *testing.T, ctx context.Context, binding
 	t.Helper()
 	var rt, ri string
 	err := f.pool.QueryRow(ctx,
-		`SELECT resource_type, resource_id FROM kacho_iam.access_binding_subjects
+		`SELECT resource_type, resource_id FROM kaname.access_binding_subjects
 		  WHERE binding_id = $1 AND subject_type = 'user' AND subject_id = $2`,
 		binding, subject).Scan(&rt, &ri)
 	require.NoError(t, err)
@@ -127,14 +127,14 @@ func TestBindingSubjectScopeCarrier_LyingIsUnrepresentable(t *testing.T) {
 	// ПОЛОЖИТЕЛЬНЫЙ КОНТРОЛЬ ПЕРВЫМ: та же вставка с ВЕРНОЙ областью проходит.
 	// Без него отказ ниже был бы неотличим от «вставка сюда не проходит вовсе».
 	_, err := f.pool.Exec(ctx,
-		`INSERT INTO kacho_iam.access_binding_subjects
+		`INSERT INTO kaname.access_binding_subjects
 		   (binding_id, subject_type, subject_id, resource_type, resource_id)
 		 VALUES ('acb-1', 'user', 'usr-1', 'project', 'prj-home')`)
 	require.NoError(t, err, "вставка с ВЕРНОЙ областью обязана проходить: иначе отказ ниже "+
 		"ничего не доказывает — он был бы отказом на любой вставке")
 
 	_, err = f.pool.Exec(ctx,
-		`INSERT INTO kacho_iam.access_binding_subjects
+		`INSERT INTO kaname.access_binding_subjects
 		   (binding_id, subject_type, subject_id, resource_type, resource_id)
 		 VALUES ('acb-1', 'user', 'usr-2', 'project', 'prj-other')`)
 	require.Error(t, err, "строка субъекта с ЧУЖОЙ областью принята: значит согласованность "+
@@ -158,7 +158,7 @@ func TestBindingSubjectScopeCarrier_ScopeIsTakenFromTheParent(t *testing.T) {
 	f := newScopeCarrierFixture(t, ctx)
 
 	_, err := f.pool.Exec(ctx,
-		`INSERT INTO kacho_iam.access_binding_subjects (binding_id, subject_type, subject_id)
+		`INSERT INTO kaname.access_binding_subjects (binding_id, subject_type, subject_id)
 		 VALUES ('acb-1', 'user', 'usr-1')`)
 	require.NoError(t, err, "вставка без области отвергнута: писателю пришлось бы знать область, "+
 		"то есть менялся бы каждый писатель строки субъекта")
@@ -183,7 +183,7 @@ func TestBindingSubjectScopeCarrier_MissingParentIsRefusedByName(t *testing.T) {
 	f := newScopeCarrierFixture(t, ctx)
 
 	_, err := f.pool.Exec(ctx,
-		`INSERT INTO kacho_iam.access_binding_subjects (binding_id, subject_type, subject_id)
+		`INSERT INTO kaname.access_binding_subjects (binding_id, subject_type, subject_id)
 		 VALUES ('acb-нет-такой', 'user', 'usr-1')`)
 	require.Error(t, err, "строка субъекта несуществующей выдачи принята — она осталась бы "+
 		"без области и выпала бы из вердикта молча")
@@ -200,7 +200,7 @@ func TestBindingSubjectScopeCarrier_MissingParentIsRefusedByName(t *testing.T) {
 // # ЭТОТ ПУТЬ В ПРОДУКТЕ СЕГОДНЯ НЕ СУЩЕСТВУЕТ, и проба это НАЗЫВАЕТ
 //
 // Перенос выдачи между областями ни одним путём записи не делается: ни один
-// `UPDATE kacho_iam.access_bindings` области не трогает. Значит `ON UPDATE
+// `UPDATE kaname.access_bindings` области не трогает. Значит `ON UPDATE
 // CASCADE` — мера ОБОРОНИТЕЛЬНАЯ: она бесплатна, она верна, и она непроверяема
 // вызовом продукта, потому что вызывать нечего.
 //
@@ -216,7 +216,7 @@ func TestBindingSubjectScopeCarrier_ParentScopeUpdateCascades(t *testing.T) {
 	f := newScopeCarrierFixture(t, ctx)
 
 	_, err := f.pool.Exec(ctx,
-		`INSERT INTO kacho_iam.access_binding_subjects (binding_id, subject_type, subject_id)
+		`INSERT INTO kaname.access_binding_subjects (binding_id, subject_type, subject_id)
 		 VALUES ('acb-1', 'user', 'usr-1')`)
 	require.NoError(t, err)
 
@@ -226,7 +226,7 @@ func TestBindingSubjectScopeCarrier_ParentScopeUpdateCascades(t *testing.T) {
 		"каскад здесь проверяется прямым оператором к базе, а не вызовом продукта")
 
 	_, err = f.pool.Exec(ctx,
-		`UPDATE kacho_iam.access_bindings SET resource_id = 'prj-other' WHERE id = 'acb-1'`)
+		`UPDATE kaname.access_bindings SET resource_id = 'prj-other' WHERE id = 'acb-1'`)
 	require.NoError(t, err, "правка области у родителя отвергнута: значит копия удерживает "+
 		"родителя, а не следует за ним")
 

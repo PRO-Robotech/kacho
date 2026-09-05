@@ -41,7 +41,7 @@ func TestUserAudit_5_2_14_UpsertInsertEmitsCreated(t *testing.T) {
 	require.NoError(t, err)
 	awaitWorkers(t)
 
-	usrID := singleID(t, ctx, env, `SELECT id FROM kacho_iam.users WHERE external_id = $1 AND email = $2`,
+	usrID := singleID(t, ctx, env, `SELECT id FROM kaname.users WHERE external_id = $1 AND email = $2`,
 		"ext-sub-5214-insert", "u-5214-insert@example.com")
 
 	r := requireOneAuditRow(ctx, t, env.pool, "iam.user.created", usrID)
@@ -66,7 +66,7 @@ func TestUserAudit_5_2_14_UpsertActivateEmitsUpdated(t *testing.T) {
 	_ = owner
 	pendingID := domain.UserID("usr0000000000005214pp")
 	_, err := env.pool.Exec(ctx, `
-		INSERT INTO kacho_iam.users (id, account_id, external_id, email, display_name, invite_status)
+		INSERT INTO kaname.users (id, account_id, external_id, email, display_name, invite_status)
 		VALUES ($1, $2, '', $3, $4, 'PENDING')`,
 		string(pendingID), string(accID), "u-5214-activate@example.com", "Pending Invitee")
 	require.NoError(t, err)

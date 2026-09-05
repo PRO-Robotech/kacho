@@ -221,7 +221,7 @@ func TestRemovingAnIdentityWithNoAccountScopeReachesOnlyTheCloud(t *testing.T) {
 	// Исключение из аккаунта: ровно тот оператор, каким его делает продукт
 	// (`RemoveMembership`). Указателя области в журнале эта личность не получала
 	// вовсе, поэтому снимать нечего — и это утверждается ниже, а не подразумевается.
-	w.exec(t, `DELETE FROM kacho_iam.memberships WHERE user_id = $1`, orphan)
+	w.exec(t, `DELETE FROM kaname.memberships WHERE user_id = $1`, orphan)
 
 	removeRel, removeType := actingAsGateFromCatalog(t, "kacho.cloud.iam.v1.UserService/Delete")
 	require.Equalf(t, "iam_user", removeType,
@@ -233,7 +233,7 @@ func TestRemovingAnIdentityWithNoAccountScopeReachesOnlyTheCloud(t *testing.T) {
 	// разворот `super_admin from account`.
 	var parents int
 	require.NoError(t, w.pool.QueryRow(context.Background(),
-		`SELECT count(*)::int FROM kacho_iam.resource_scope_edge
+		`SELECT count(*)::int FROM kaname.resource_scope_edge
 		  WHERE object_type = 'iam_user' AND object_id = $1 AND parent_type = 'account'`,
 		orphan).Scan(&parents))
 	require.Zerof(t, parents,
@@ -245,7 +245,7 @@ func TestRemovingAnIdentityWithNoAccountScopeReachesOnlyTheCloud(t *testing.T) {
 	// ничего не отдаёт, и предпосылка была бы выполнена на сломанном посеве.
 	var neighbourParents int
 	require.NoError(t, w.pool.QueryRow(context.Background(),
-		`SELECT count(*)::int FROM kacho_iam.resource_scope_edge
+		`SELECT count(*)::int FROM kaname.resource_scope_edge
 		  WHERE object_type = 'iam_user' AND object_id = $1 AND parent_type = 'account'`,
 		stranger).Scan(&neighbourParents))
 	require.Positivef(t, neighbourParents,

@@ -123,7 +123,7 @@ func TestSAKeyDeclaredAudiencesSchemaRefusesUnusableElements(t *testing.T) {
 
 	seed := func(id string, audiences []string) error {
 		_, err := f.pool.Exec(ctx,
-			`INSERT INTO kacho_iam.service_account_oauth_clients
+			`INSERT INTO kaname.service_account_oauth_clients
 			   (id, sva_id, hydra_client_id, created_by_user_id, public_key_pem, key_algorithm, declared_audiences,
 			    credential_kind)
 			 VALUES ($1,$2,$3,$4,$5,'ES256',$6::text[],'KEYPAIR')`,

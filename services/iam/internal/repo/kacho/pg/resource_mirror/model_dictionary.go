@@ -94,7 +94,7 @@ func modelTypeName(ctx context.Context, tx pgx.Tx, name string) (string, error) 
 	}
 	var modelType string
 	err := tx.QueryRow(ctx,
-		`SELECT object_type FROM kacho_iam.catalog_resource WHERE dotted = $1`,
+		`SELECT object_type FROM kaname.catalog_resource WHERE dotted = $1`,
 		name).Scan(&modelType)
 	switch {
 	case errors.Is(err, pgx.ErrNoRows):

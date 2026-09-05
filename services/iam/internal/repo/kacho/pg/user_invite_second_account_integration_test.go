@@ -123,7 +123,7 @@ func TestUserInvite_ExistingActiveEmail_SecondAccount(t *testing.T) {
 
 	var rowsWithThatEmail int
 	require.NoError(t, pool.QueryRow(ctx,
-		`SELECT count(*) FROM kacho_iam.users WHERE lower(email) = lower($1)`,
+		`SELECT count(*) FROM kaname.users WHERE lower(email) = lower($1)`,
 		string(email)).Scan(&rowsWithThatEmail))
 	assert.Equal(t, 1, rowsWithThatEmail, "строк с этой почтой обязана остаться одна")
 

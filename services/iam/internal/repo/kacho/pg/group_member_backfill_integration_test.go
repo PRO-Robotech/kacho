@@ -32,7 +32,7 @@ import (
 // of truth — kept byte-identical to internal/migrations/0029_*.sql so the test
 // proves the migration statement, not a paraphrase).
 const backfillGroupMemberTuplesSQL = `
-INSERT INTO kacho_iam.fga_outbox (event_type, payload, created_at)
+INSERT INTO kaname.fga_outbox (event_type, payload, created_at)
 SELECT
   'fga.tuple.write',
   jsonb_build_object(
@@ -41,10 +41,10 @@ SELECT
     'object',   'group:' || gm.group_id
   ),
   now()
-FROM kacho_iam.group_members gm
+FROM kaname.group_members gm
 WHERE NOT EXISTS (
   SELECT 1
-    FROM kacho_iam.fga_outbox o
+    FROM kaname.fga_outbox o
    WHERE o.event_type = 'fga.tuple.write'
      AND o.payload->>'user'     = gm.member_type || ':' || gm.member_id
      AND (o.payload->>'relation' = 'member'
@@ -71,14 +71,14 @@ func TestGroupMember_Backfill_GM_BF1_LegacyRowEmitsMemberTuple(t *testing.T) {
 	// data state). The seed already ran migration 0029 (group_members empty then),
 	// so this row has no member-tuple intent.
 	_, err = pool.Exec(ctx,
-		`INSERT INTO kacho_iam.group_members (group_id, member_type, member_id) VALUES ($1, 'user', $2)`,
+		`INSERT INTO kaname.group_members (group_id, member_type, member_id) VALUES ($1, 'user', $2)`,
 		string(g.ID), string(uid))
 	require.NoError(t, err)
 
 	// Sanity: no member-tuple intent yet (legacy bug state).
 	var pre int
 	require.NoError(t, pool.QueryRow(ctx,
-		`SELECT count(*) FROM kacho_iam.fga_outbox WHERE payload->>'object' = $1`,
+		`SELECT count(*) FROM kaname.fga_outbox WHERE payload->>'object' = $1`,
 		"group:"+string(g.ID)).Scan(&pre))
 	require.Equal(t, 0, pre, "legacy member row has NO FGA tuple (the bug)")
 
@@ -89,7 +89,7 @@ func TestGroupMember_Backfill_GM_BF1_LegacyRowEmitsMemberTuple(t *testing.T) {
 	var et, user, relation, object string
 	require.NoError(t, pool.QueryRow(ctx,
 		`SELECT event_type, payload->>'user', payload->>'relation', payload->>'object'
-		   FROM kacho_iam.fga_outbox
+		   FROM kaname.fga_outbox
 		  WHERE payload->>'object' = $1
 		  ORDER BY id DESC LIMIT 1`,
 		"group:"+string(g.ID)).Scan(&et, &user, &relation, &object))
@@ -117,7 +117,7 @@ func TestGroupMember_Backfill_GM_BF2_Idempotent(t *testing.T) {
 	g := seedGroup(t, ctx, repo, acc.ID, "g-gmbf2")
 
 	_, err = pool.Exec(ctx,
-		`INSERT INTO kacho_iam.group_members (group_id, member_type, member_id) VALUES
+		`INSERT INTO kaname.group_members (group_id, member_type, member_id) VALUES
 		   ($1, 'user', $2), ($1, 'user', $3)`,
 		string(g.ID), string(uid), string(uid2))
 	require.NoError(t, err)
@@ -131,7 +131,7 @@ func TestGroupMember_Backfill_GM_BF2_Idempotent(t *testing.T) {
 
 	var cnt int
 	require.NoError(t, pool.QueryRow(ctx,
-		`SELECT count(*) FROM kacho_iam.fga_outbox
+		`SELECT count(*) FROM kaname.fga_outbox
 		  WHERE event_type='fga.tuple.write' AND payload->>'object' = $1
 		    AND `+fga_outbox.RelationPredicate("payload", "'member'"),
 		"group:"+string(g.ID)).Scan(&cnt))

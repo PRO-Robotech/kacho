@@ -17,7 +17,7 @@
 // применения. Ни декодера, ни применителя, ни дренажа больше нет, и окна, в котором
 // подмножество было бы видно, тоже нет: строка журнала попадает в ту же транзакцию,
 // что и изменение, а прямой факт складывает ТРИГГЕР
-// (`kacho_iam.relation_fact_from_journal`) — то есть доставка стала тождеством коммита.
+// (`kaname.relation_fact_from_journal`) — то есть доставка стала тождеством коммита.
 //
 // Живой преемник того предмета — «набор проецируется ЦЕЛИКОМ, а не одним эхом» — уже
 // утверждается там, где живёт его потребитель:
@@ -105,7 +105,7 @@ func TestSetRowCarriesTheEchoOnlyForGrants(t *testing.T) {
 		SELECT event_type,
 		       coalesce(payload->>'relation', ''),
 		       jsonb_array_length(coalesce(payload->'relations', '[]'::jsonb))
-		  FROM kacho_iam.fga_outbox
+		  FROM kaname.fga_outbox
 		 WHERE payload->>'object' = $1
 		 ORDER BY id ASC`, object)
 	require.NoError(t, err)

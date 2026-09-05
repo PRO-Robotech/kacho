@@ -8,7 +8,7 @@ package repohygiene
 // ─────────────────────────────────────────────────────────────────────────────
 // ПРЕДМЕТ
 //
-// `kacho_iam.resource_mirror` — проекция каталога ресурсов, которую владельцы
+// `kaname.resource_mirror` — проекция каталога ресурсов, которую владельцы
 // присылают через проксируемую полосу регистрации. Требование «тип обязан иметь
 // живую строку каталога» выражено ОПЕРАТОРОМ записи, а не внешним ключом:
 // постоянное ограничение запретило бы платформе снять тип, пока у арендатора
@@ -75,7 +75,7 @@ package repohygiene
 // имени в СВОЕЙ временной схеме (`CREATE TABLE resource_mirror`, `search_path`
 // на неё же) и меряет форму реляционного вердикта, а не продуктовую строку.
 // Совпадение имени — не свойство дерева. Гейт судит имя ВМЕСТЕ СО СХЕМОЙ
-// (`kacho_iam.`), поэтому омонима не видит by construction; а если кто-нибудь
+// (`kaname.`), поэтому омонима не видит by construction; а если кто-нибудь
 // когда-нибудь нацелит прибор на продуктовую схему, сработает ось «вводящий
 // писатель вне services/iam».
 //
@@ -96,7 +96,7 @@ import (
 )
 
 // resourceMirrorTable — зеркало каталога ресурсов.
-const resourceMirrorTable = "kacho_iam.resource_mirror"
+const resourceMirrorTable = "kaname.resource_mirror"
 
 // mirrorReferenceLane — каталог ЭТАЛОННОЙ полосы: путь, по которому регистрация
 // от владельца ресурса доходит до строки зеркала. Требование выводится из него.
@@ -114,7 +114,7 @@ const mirrorOwnerService = "services/iam/"
 // каталог растёт (`catalog_module`, `catalog_resource`, `catalog_verb`, и #1031
 // заводит четвёртую), а выписанный перечень отстал бы от него молча — то есть
 // новое условие оказалось бы вне наблюдения, не будучи нарушением.
-var catalogTablePattern = regexp.MustCompile(`kacho_iam\.catalog_[a-z0-9_]+`)
+var catalogTablePattern = regexp.MustCompile(`kaname\.catalog_[a-z0-9_]+`)
 
 // mirrorWriteVerbs — глаголы записи. Чтение (`SELECT … FROM`) в перечень не
 // входит намеренно: читателей у зеркала десятки, все законны, и они служат
@@ -419,7 +419,7 @@ func TestMirrorRowCatalogConditionReachesEveryWriter(t *testing.T) {
 			"%s* — требовать сегодня нечего, и «несут %d из %d» исполненностью НЕ является. "+
 			"Сверка вооружена: в день, когда условие приедет в %s, гейт покраснеет на "+
 			"остальных полосах поимённо",
-			"kacho_iam.catalog_", rep.Carriers, rep.Lanes, mirrorReferenceLane)
+			"kaname.catalog_", rep.Carriers, rep.Lanes, mirrorReferenceLane)
 	} else {
 		t.Logf("условие эталонной полосы: %v", rep.Required)
 	}

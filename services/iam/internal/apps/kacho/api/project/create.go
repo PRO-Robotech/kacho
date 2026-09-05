@@ -4,7 +4,7 @@
 package project
 
 // create.go — CreateProjectUseCase.
-// Insert в kacho_iam.projects; FK projects_account_fk SQLSTATE 23503 →
+// Insert в kaname.projects; FK projects_account_fk SQLSTATE 23503 →
 // FailedPrecondition с verbatim "Account <id> not found";
 // UNIQUE projects_account_name_unique → AlreadyExists.
 

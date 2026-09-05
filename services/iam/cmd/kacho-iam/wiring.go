@@ -599,12 +599,12 @@ func buildServices(pool, slavePool *pgxpool.Pool, opsRepo operations.FullRepo,
 	// INTERNAL mux; internal-only is the invariant, gRPC-direct is not.
 	lookupSubject := internaliamapp.NewLookupSubjectUseCase(kachoRepo)
 	// SEC-C — FGA-proxy: RegisterResource / UnregisterResource enqueue the
-	// owner-hierarchy tuple into kacho_iam.fga_outbox in one writer-tx, out of which
+	// owner-hierarchy tuple into kaname.fga_outbox in one writer-tx, out of which
 	// a trigger folds the direct fact in the same commit. Least-priv enforced via the
 	// ReBAC gate (cert-cert→SA → fga_writer@cluster:cluster_kacho_root); the gate's
 	// RelationChecker is the same Check surface (relationStore).
 	// β (epic «Resource-scoped AccessBinding»): the same writer-tx also UPSERTs
-	// /DELETEs the kacho_iam.resource_mirror row (labels + parent-scope of the
+	// /DELETEs the kaname.resource_mirror row (labels + parent-scope of the
 	// owner object) — atomic co-commit with the owner-tuple emit (ban #10 — D-β3).
 	// γ (epic «Resource-scoped AccessBinding»): the SAME writer-tx also (D4)
 	// backfills parent_account_id from projects.account_id same-DB and (Q1=(c))
@@ -1021,7 +1021,7 @@ func buildSAKeysHandler(pool *pgxpool.Pool, opsRepo operations.Repo, cfg config.
 	// MarkDone'd with plaintext client_secret, this pg adapter clears the
 	// client_secret field in the proto-marshalled response_data (BYTEA) via a
 	// single-statement UPDATE on the operations row. Idempotent.
-	issueUC.WithResponseRedactor(kachopg.NewOpsResponseRedactor(pool, "kacho_iam"))
+	issueUC.WithResponseRedactor(kachopg.NewOpsResponseRedactor(pool, "kaname"))
 	issueUC.WithAuditEmitter(auditEmitter)
 	// Grace-окно перед затиранием одноразового private_key_pem: поллящий клиент
 	// (docker-login / CI / UI) должен успеть прочитать ключ из op.response до его
@@ -1086,7 +1086,7 @@ func buildUserTokensHandler(pool *pgxpool.Pool, opsRepo operations.Repo, cfg con
 	issueUC := usertokensapp.NewIssueUserTokenUseCase(userClientRepo, kachopg.NewPoolTxBeginner(pool), opsRepo)
 	// Post-Issue секрет-редактор: после MarkDone с plaintext private_key_pem этот
 	// pg-adapter затирает поле в proto-marshalled response_data (BYTEA) одним UPDATE.
-	issueUC.WithResponseRedactor(kachopg.NewOpsResponseRedactor(pool, "kacho_iam"))
+	issueUC.WithResponseRedactor(kachopg.NewOpsResponseRedactor(pool, "kaname"))
 	issueUC.WithAuditEmitter(auditEmitter)
 	// Grace-окно перед затиранием одноразового private_key_pem: поллящий клиент
 	// (CLI/UI) должен успеть прочитать ключ из op.response до вычистки.

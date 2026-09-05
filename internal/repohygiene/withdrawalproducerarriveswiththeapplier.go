@@ -132,7 +132,7 @@ type RoleWithdrawalCensus struct {
 // `\b` после `roles` отделяет саму таблицу от её проекций (`role_rule_ref`,
 // `role_verb`, `role_rule_selectors`): их запись к отзыву роли отношения не
 // имеет.
-var roleWithdrawalWriteRe = regexp.MustCompile(`(?is)\b(?:update|insert\s+into)\s+(?:kacho_iam\.)?roles\b`)
+var roleWithdrawalWriteRe = regexp.MustCompile(`(?is)\b(?:update|insert\s+into)\s+(?:kaname\.)?roles\b`)
 
 // roleWithdrawalMarkRe — пометка снятия В ПРИСВОЕНИИ. Форма взята из решения
 // (`live boolean` под `CHECK (live = (retired_at IS NULL))`), а не изобретена:

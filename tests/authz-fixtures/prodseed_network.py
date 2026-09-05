@@ -87,7 +87,7 @@ def db_lookup(ext_id):
     """Discover a user's personal account + default project via the iam DB
     (read-only discovery of ids the production upsert created; every actual auth
     stays production-strict RS256)."""
-    sql = (f"SET search_path=kacho_iam,public; "
+    sql = (f"SET search_path=kaname,public; "
            f"SELECT a.id||'|'||p.id FROM accounts a "
            f"JOIN users u ON u.id=a.owner_user_id "
            f"JOIN projects p ON p.account_id=a.id AND p.name='default' "

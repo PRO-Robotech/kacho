@@ -87,7 +87,7 @@ import (
 //     и ОТБРАСЫВАЕТ: `Flush` дренирует ответы через `br.Exec()`. Значит на
 //     неживом типе сетка молча посадит ноль строк зеркала — и рёбра при этом
 //     всё равно ляжет. Ловит это ПЕРЕПИСЬ (3): `census.go` считает
-//     `count(*) FROM kacho_iam.resource_mirror`, и ноль объектов там неотличим
+//     `count(*) FROM kaname.resource_mirror`, и ноль объектов там неотличим
 //     от «условие замера не создано» ровно потому, что это одно и то же.
 //
 // Текст стейтментов при этом не расходится НИ В ЧЁМ — и это ПОСТРОЕНИЕ, а не
@@ -213,7 +213,7 @@ func (s *Seeder) Queue(ctx context.Context, row MirrorRow) error {
 
 	// (3) Полная замена цепи: сначала снять.
 	s.batch.Queue(
-		`DELETE FROM kacho_iam.resource_parent_edge
+		`DELETE FROM kaname.resource_parent_edge
 		  WHERE object_type = $1 AND object_id = $2`,
 		edgeType, row.ObjectID)
 
@@ -224,7 +224,7 @@ func (s *Seeder) Queue(ctx context.Context, row MirrorRow) error {
 			return fmt.Errorf("scalegrid: непонятая форма предка %q (ожидается \"<type>:<id>\")", ancestor)
 		}
 		s.batch.Queue(
-			`INSERT INTO kacho_iam.resource_parent_edge
+			`INSERT INTO kaname.resource_parent_edge
 			   (object_type, object_id, parent_type, parent_id, depth, source_version, updated_at)
 			 VALUES ($1, $2, $3, $4, $5, $6, now())`,
 			edgeType, row.ObjectID, edgeParentType(typ), id, i+1, version)

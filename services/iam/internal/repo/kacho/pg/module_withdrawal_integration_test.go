@@ -84,11 +84,11 @@ func readCatalogCensus(t *testing.T, ctx context.Context, pool *pgxpool.Pool) ca
 	t.Helper()
 	return catalogCensus{
 		modules: readSet(t, ctx, pool,
-			`SELECT module FROM kacho_iam.catalog_module WHERE live`),
+			`SELECT module FROM kaname.catalog_module WHERE live`),
 		resources: readSet(t, ctx, pool,
-			`SELECT dotted FROM kacho_iam.catalog_resource WHERE live`),
+			`SELECT dotted FROM kaname.catalog_resource WHERE live`),
 		verbs: readSet(t, ctx, pool,
-			`SELECT module || '.' || resource || '.' || verb FROM kacho_iam.catalog_verb WHERE live`),
+			`SELECT module || '.' || resource || '.' || verb FROM kaname.catalog_verb WHERE live`),
 	}
 }
 
@@ -113,7 +113,7 @@ func declaredCatalogSize() (modules, resources, verbs int) {
 func moduleResources(t *testing.T, ctx context.Context, pool *pgxpool.Pool, module string) []string {
 	t.Helper()
 	return keysOf(readSet(t, ctx, pool,
-		`SELECT resource FROM kacho_iam.catalog_resource WHERE module = '`+module+`'`))
+		`SELECT resource FROM kaname.catalog_resource WHERE module = '`+module+`'`))
 }
 
 // relocateModuleGrants — переселение выдач и объявлений ВСЕГО модуля в след
@@ -127,10 +127,10 @@ func relocateModuleGrants(t *testing.T, ctx context.Context, tx pgx.Tx, module, 
 	t.Helper()
 
 	tag, err := tx.Exec(ctx, `
-		INSERT INTO kacho_iam.role_grant_orphan (role_id, object_type, verb, source, reason)
+		INSERT INTO kaname.role_grant_orphan (role_id, object_type, verb, source, reason)
 		SELECT rv.role_id, rv.object_type, rv.verb, 'role_verb', $2
-		  FROM kacho_iam.role_verb rv
-		  JOIN kacho_iam.catalog_resource cr ON cr.dotted = rv.object_type
+		  FROM kaname.role_verb rv
+		  JOIN kaname.catalog_resource cr ON cr.dotted = rv.object_type
 		 WHERE cr.module = $1
 		ON CONFLICT (role_id, object_type, verb, source, cause)
 		DO UPDATE SET reason = EXCLUDED.reason, orphaned_at = now()`, module, reason)
@@ -138,15 +138,15 @@ func relocateModuleGrants(t *testing.T, ctx context.Context, tx pgx.Tx, module, 
 	verbs = int(tag.RowsAffected())
 
 	_, err = tx.Exec(ctx, `
-		DELETE FROM kacho_iam.role_verb rv
-		 USING kacho_iam.catalog_resource cr
+		DELETE FROM kaname.role_verb rv
+		 USING kaname.catalog_resource cr
 		 WHERE cr.dotted = rv.object_type AND cr.module = $1`, module)
 	require.NoError(t, err)
 
 	tag, err = tx.Exec(ctx, `
-		INSERT INTO kacho_iam.role_grant_orphan (role_id, object_type, verb, source, reason)
+		INSERT INTO kaname.role_grant_orphan (role_id, object_type, verb, source, reason)
 		SELECT rr.role_id, rr.module || '.' || rr.resource, COALESCE(rr.verb, ''), 'rule_ref', $2
-		  FROM kacho_iam.role_rule_ref rr
+		  FROM kaname.role_rule_ref rr
 		 WHERE rr.module = $1
 		ON CONFLICT (role_id, object_type, verb, source, cause)
 		DO UPDATE SET reason = EXCLUDED.reason, orphaned_at = now()`, module, reason)
@@ -154,7 +154,7 @@ func relocateModuleGrants(t *testing.T, ctx context.Context, tx pgx.Tx, module, 
 	refs = int(tag.RowsAffected())
 
 	_, err = tx.Exec(ctx,
-		`DELETE FROM kacho_iam.role_rule_ref WHERE module = $1`, module)
+		`DELETE FROM kaname.role_rule_ref WHERE module = $1`, module)
 	require.NoError(t, err)
 
 	return verbs, refs
@@ -175,19 +175,19 @@ func withdrawModule(t *testing.T, ctx context.Context, pool *pgxpool.Pool, modul
 	verbs, refs = relocateModuleGrants(t, ctx, tx, module, reason)
 
 	_, err = tx.Exec(ctx, `
-		UPDATE kacho_iam.catalog_verb
+		UPDATE kaname.catalog_verb
 		   SET live = false, retired_at = now(), retired_reason = $2
 		 WHERE module = $1 AND live`, module, reason)
 	require.NoError(t, err, "снятие глаголов модуля")
 
 	_, err = tx.Exec(ctx, `
-		UPDATE kacho_iam.catalog_resource
+		UPDATE kaname.catalog_resource
 		   SET live = false, retired_at = now(), retired_reason = $2
 		 WHERE module = $1 AND live`, module, reason)
 	require.NoError(t, err, "снятие ресурсов модуля")
 
 	_, err = tx.Exec(ctx, `
-		UPDATE kacho_iam.catalog_module
+		UPDATE kaname.catalog_module
 		   SET live = false, retired_at = now(), retired_reason = $2
 		 WHERE module = $1 AND live`, module, reason)
 	require.NoError(t, err, "снятие строки модуля")
@@ -215,7 +215,7 @@ func installModule(t *testing.T, ctx context.Context, pool *pgxpool.Pool, module
 	defer func() { _ = tx.Rollback(ctx) }()
 
 	_, err = tx.Exec(ctx, `
-		UPDATE kacho_iam.catalog_module
+		UPDATE kaname.catalog_module
 		   SET live = true, retired_at = NULL, retired_reason = NULL
 		 WHERE module = $1 AND NOT live`, module)
 	require.NoError(t, err, "оживление строки модуля")
@@ -224,22 +224,22 @@ func installModule(t *testing.T, ctx context.Context, pool *pgxpool.Pool, module
 	// преемника у живого держат ПРОВЕРКИ, а не писатель, поэтому промежуточное
 	// состояние отвергается (IAM-MW-1-15).
 	_, err = tx.Exec(ctx, `
-		UPDATE kacho_iam.catalog_resource
+		UPDATE kaname.catalog_resource
 		   SET live = true, retired_at = NULL, retired_reason = NULL, superseded_by = NULL
 		 WHERE module = $1 AND resource = ANY($2) AND NOT live`, module, resources)
 	require.NoError(t, err, "оживление ресурсов модуля")
 
 	_, err = tx.Exec(ctx, `
-		UPDATE kacho_iam.catalog_verb
+		UPDATE kaname.catalog_verb
 		   SET live = true, retired_at = NULL, retired_reason = NULL
 		 WHERE module = $1 AND resource = ANY($2) AND NOT live`, module, resources)
 	require.NoError(t, err, "оживление глаголов модуля")
 
 	tag, err := tx.Exec(ctx, `
-		INSERT INTO kacho_iam.role_verb (role_id, object_type, verb)
+		INSERT INTO kaname.role_verb (role_id, object_type, verb)
 		SELECT o.role_id, o.object_type, o.verb
-		  FROM kacho_iam.role_grant_orphan o
-		  JOIN kacho_iam.catalog_resource cr
+		  FROM kaname.role_grant_orphan o
+		  JOIN kaname.catalog_resource cr
 		    ON cr.dotted = o.object_type AND cr.live
 		 WHERE o.source = 'role_verb' AND cr.module = $1
 		ON CONFLICT DO NOTHING`, module)
@@ -247,14 +247,14 @@ func installModule(t *testing.T, ctx context.Context, pool *pgxpool.Pool, module
 	verbs = int(tag.RowsAffected())
 
 	tag, err = tx.Exec(ctx, `
-		INSERT INTO kacho_iam.role_rule_ref (role_id, module, resource, verb)
+		INSERT INTO kaname.role_rule_ref (role_id, module, resource, verb)
 		SELECT o.role_id, cr.module, cr.resource, NULLIF(o.verb, '')
-		  FROM kacho_iam.role_grant_orphan o
-		  JOIN kacho_iam.catalog_resource cr
+		  FROM kaname.role_grant_orphan o
+		  JOIN kaname.catalog_resource cr
 		    ON cr.dotted = o.object_type AND cr.live
 		 WHERE o.source = 'rule_ref' AND cr.module = $1
 		   AND (o.verb = '' OR EXISTS (
-		         SELECT 1 FROM kacho_iam.catalog_verb cv
+		         SELECT 1 FROM kaname.catalog_verb cv
 		          WHERE cv.module = cr.module AND cv.resource = cr.resource
 		            AND cv.verb = o.verb AND cv.live))`, module)
 	require.NoError(t, err, "возврат объявления")
@@ -273,8 +273,8 @@ func installModule(t *testing.T, ctx context.Context, pool *pgxpool.Pool, module
 	// подавать вход, которого сценарий не производит, значило бы утверждать о
 	// коде, которого ещё нет.
 	_, err = tx.Exec(ctx, `
-		DELETE FROM kacho_iam.role_grant_orphan o
-		 USING kacho_iam.catalog_resource cr
+		DELETE FROM kaname.role_grant_orphan o
+		 USING kaname.catalog_resource cr
 		 WHERE cr.dotted = o.object_type AND cr.live AND cr.module = $1`, module)
 	require.NoError(t, err, "снятие следа, чей предмет вернулся")
 
@@ -295,14 +295,14 @@ func TestIAMMW107_ModuleLivenessKeyHoldsBothDirections(t *testing.T) {
 
 		var liveRes int
 		require.NoError(t, pool.QueryRow(ctx, `
-			SELECT count(*) FROM kacho_iam.catalog_resource WHERE module = $1 AND live`,
+			SELECT count(*) FROM kaname.catalog_resource WHERE module = $1 AND live`,
 			withdrawnModule).Scan(&liveRes))
 		require.Positivef(t, liveRes,
 			"предпосылка сценария: у модуля %s есть живые ресурсы — иначе -07(а) вакуумен",
 			withdrawnModule)
 
 		_, err := pool.Exec(ctx, `
-			UPDATE kacho_iam.catalog_module
+			UPDATE kaname.catalog_module
 			   SET live = false, retired_at = now(), retired_reason = 'проба IAM-MW-1-07(а)'
 			 WHERE module = $1`, withdrawnModule)
 		require.Error(t, err,
@@ -316,7 +316,7 @@ func TestIAMMW107_ModuleLivenessKeyHoldsBothDirections(t *testing.T) {
 
 		var live bool
 		require.NoError(t, pool.QueryRow(ctx,
-			`SELECT live FROM kacho_iam.catalog_module WHERE module = $1`,
+			`SELECT live FROM kaname.catalog_module WHERE module = $1`,
 			withdrawnModule).Scan(&live))
 		require.True(t, live, "отвергнутое снятие оставляет строку модуля живой")
 	})
@@ -330,7 +330,7 @@ func TestIAMMW107_ModuleLivenessKeyHoldsBothDirections(t *testing.T) {
 		require.NotEmpty(t, res)
 
 		_, err := pool.Exec(ctx, `
-			UPDATE kacho_iam.catalog_resource
+			UPDATE kaname.catalog_resource
 			   SET live = true, retired_at = NULL, retired_reason = NULL, superseded_by = NULL
 			 WHERE module = $1 AND resource = $2`, withdrawnModule, res[0])
 		require.Error(t, err,
@@ -345,12 +345,12 @@ func TestIAMMW107_ModuleLivenessKeyHoldsBothDirections(t *testing.T) {
 		// Законный близнец: сперва модуль, затем ресурс — проходит. Без него
 		// отрицание выше зеленело бы на схеме, где оживления не бывает вовсе.
 		_, err = pool.Exec(ctx, `
-			UPDATE kacho_iam.catalog_module
+			UPDATE kaname.catalog_module
 			   SET live = true, retired_at = NULL, retired_reason = NULL
 			 WHERE module = $1`, withdrawnModule)
 		require.NoError(t, err, "оживление модуля")
 		_, err = pool.Exec(ctx, `
-			UPDATE kacho_iam.catalog_resource
+			UPDATE kaname.catalog_resource
 			   SET live = true, retired_at = NULL, retired_reason = NULL, superseded_by = NULL
 			 WHERE module = $1 AND resource = $2`, withdrawnModule, res[0])
 		require.NoError(t, err, "после оживления модуля ресурс оживает")
@@ -376,16 +376,16 @@ func TestIAMMW108_ModuleWithAllResourcesRetiredIsWithdrawn(t *testing.T) {
 
 	var moduleLive bool
 	require.NoError(t, pool.QueryRow(ctx,
-		`SELECT live FROM kacho_iam.catalog_module WHERE module = $1`,
+		`SELECT live FROM kaname.catalog_module WHERE module = $1`,
 		withdrawnModule).Scan(&moduleLive))
 	require.False(t, moduleLive, "модуль, все ресурсы которого сняты, ОБЯЗАН сниматься")
 
 	var liveRes, liveVerbs int
 	require.NoError(t, pool.QueryRow(ctx,
-		`SELECT count(*) FROM kacho_iam.catalog_resource WHERE module = $1 AND live`,
+		`SELECT count(*) FROM kaname.catalog_resource WHERE module = $1 AND live`,
 		withdrawnModule).Scan(&liveRes))
 	require.NoError(t, pool.QueryRow(ctx,
-		`SELECT count(*) FROM kacho_iam.catalog_verb WHERE module = $1 AND live`,
+		`SELECT count(*) FROM kaname.catalog_verb WHERE module = $1 AND live`,
 		withdrawnModule).Scan(&liveVerbs))
 	require.Zero(t, liveRes)
 	require.Zero(t, liveVerbs)
@@ -393,7 +393,7 @@ func TestIAMMW108_ModuleWithAllResourcesRetiredIsWithdrawn(t *testing.T) {
 	// Соседний модуль не задет: ключ судит СВОЙ модуль, а не каталог целиком.
 	var neighbours int
 	require.NoError(t, pool.QueryRow(ctx,
-		`SELECT count(*) FROM kacho_iam.catalog_module WHERE live AND module <> $1`,
+		`SELECT count(*) FROM kaname.catalog_module WHERE live AND module <> $1`,
 		withdrawnModule).Scan(&neighbours))
 	t.Logf("живых соседних модулей после отзыва %s: %d", withdrawnModule, neighbours)
 	require.Positive(t, neighbours, "отзыв одного модуля не снимает остальные")
@@ -426,7 +426,7 @@ func TestIAMMW109_LiveCatalogIsNotLockedByTheKey(t *testing.T) {
 	requireNoRefsYet(t, ctx, pool, "vpc", "cidrGroup")
 	require.NoError(t, retireResource(ctx, pool, "vpc", "cidrGroup", "проба IAM-MW-1-09"))
 	_, err := pool.Exec(ctx, `
-		UPDATE kacho_iam.catalog_resource
+		UPDATE kaname.catalog_resource
 		   SET live = true, retired_at = NULL, retired_reason = NULL, superseded_by = NULL
 		 WHERE module = 'vpc' AND resource = 'cidrGroup'`)
 	require.NoError(t, err, "ресурс ЖИВОГО модуля оживает без оговорок")
@@ -497,7 +497,7 @@ func TestIAMMW114_RevivalByInsertIsRefused(t *testing.T) {
 	// 20260903112400), и без неё вставку отвергал бы `23502` — то есть проба
 	// утверждала бы про NOT NULL вместо первичного ключа, о котором она.
 	_, err := pool.Exec(ctx, `
-		INSERT INTO kacho_iam.catalog_resource (module, resource, dotted, object_type)
+		INSERT INTO kaname.catalog_resource (module, resource, dotted, object_type)
 		VALUES ('vpc', 'cidrGroup', 'vpc.cidrGroup', 'vpc_cidr_group')`)
 	require.Error(t, err, "повторная установка не вставляет строку заново")
 	code, constraint := pgCode(err)
@@ -521,13 +521,13 @@ func TestIAMMW115_RevivalIsOneStatement(t *testing.T) {
 	const dotted = "compute.disk"
 	var successor *string
 	require.NoError(t, pool.QueryRow(ctx,
-		`SELECT superseded_by FROM kacho_iam.catalog_resource WHERE dotted = $1`, dotted).
+		`SELECT superseded_by FROM kaname.catalog_resource WHERE dotted = $1`, dotted).
 		Scan(&successor))
 	require.NotNil(t, successor, "предпосылка (а2): у снятой строки есть преемник")
 
 	// (а1) правится ТОЛЬКО live — первым отвечает согласие живости с отметкой.
 	_, err := pool.Exec(ctx,
-		`UPDATE kacho_iam.catalog_resource SET live = true WHERE dotted = $1`, dotted)
+		`UPDATE kaname.catalog_resource SET live = true WHERE dotted = $1`, dotted)
 	require.Error(t, err)
 	code, constraint := pgCode(err)
 	t.Logf("(а1) правка одного live: SQLSTATE %s, ограничение %q", code, constraint)
@@ -537,7 +537,7 @@ func TestIAMMW115_RevivalIsOneStatement(t *testing.T) {
 	// (а2) правятся live и retired_at, преемник ОСТАВЛЕН — отвечает уже другое
 	// ограничение. Одна половина без другой называла бы ЧУЖОЕ ограничение.
 	_, err = pool.Exec(ctx, `
-		UPDATE kacho_iam.catalog_resource SET live = true, retired_at = NULL
+		UPDATE kaname.catalog_resource SET live = true, retired_at = NULL
 		 WHERE dotted = $1`, dotted)
 	require.Error(t, err)
 	code, constraint = pgCode(err)
@@ -549,7 +549,7 @@ func TestIAMMW115_RevivalIsOneStatement(t *testing.T) {
 	// (б) четыре колонки одним оператором — проходит. Без него (а1)/(а2) не
 	// отличают «оживление работает» от «оживление невозможно».
 	_, err = pool.Exec(ctx, `
-		UPDATE kacho_iam.catalog_resource
+		UPDATE kaname.catalog_resource
 		   SET live = true, retired_at = NULL, retired_reason = NULL, superseded_by = NULL
 		 WHERE dotted = $1`, dotted)
 	require.NoError(t, err, "оживление ОДНИМ оператором обязано проходить")
@@ -558,7 +558,7 @@ func TestIAMMW115_RevivalIsOneStatement(t *testing.T) {
 	var retiredAt *time.Time
 	var sup *string
 	require.NoError(t, pool.QueryRow(ctx, `
-		SELECT live, retired_at, superseded_by FROM kacho_iam.catalog_resource WHERE dotted = $1`,
+		SELECT live, retired_at, superseded_by FROM kaname.catalog_resource WHERE dotted = $1`,
 		dotted).Scan(&live, &retiredAt, &sup))
 	require.True(t, live)
 	require.Nil(t, retiredAt)
@@ -593,9 +593,9 @@ func TestIAMMW116_WithdrawAndInstallRestoresTheCensusBySets(t *testing.T) {
 
 	beforeRefs := readSet(t, ctx, pool, `
 		SELECT role_id || '|' || module || '.' || resource || '|' || COALESCE(verb, '*')
-		  FROM kacho_iam.role_rule_ref`)
+		  FROM kaname.role_rule_ref`)
 	beforeVerbs := readSet(t, ctx, pool,
-		`SELECT role_id || '|' || object_type || '|' || verb FROM kacho_iam.role_verb`)
+		`SELECT role_id || '|' || object_type || '|' || verb FROM kaname.role_verb`)
 
 	resources := moduleResources(t, ctx, pool, withdrawnModule)
 	require.NotEmpty(t, resources)
@@ -629,9 +629,9 @@ func TestIAMMW116_WithdrawAndInstallRestoresTheCensusBySets(t *testing.T) {
 	// что забрало, иначе «переселено» неотличимо от «отобрано».
 	afterRefs := readSet(t, ctx, pool, `
 		SELECT role_id || '|' || module || '.' || resource || '|' || COALESCE(verb, '*')
-		  FROM kacho_iam.role_rule_ref`)
+		  FROM kaname.role_rule_ref`)
 	afterVerbs := readSet(t, ctx, pool,
-		`SELECT role_id || '|' || object_type || '|' || verb FROM kacho_iam.role_verb`)
+		`SELECT role_id || '|' || object_type || '|' || verb FROM kaname.role_verb`)
 	t.Logf("объявлений до %d, после %d; выдач до %d, после %d",
 		len(beforeRefs), len(afterRefs), len(beforeVerbs), len(afterVerbs))
 	require.Equal(t, keysOf(beforeRefs), keysOf(afterRefs), "множество объявлений")
@@ -639,8 +639,8 @@ func TestIAMMW116_WithdrawAndInstallRestoresTheCensusBySets(t *testing.T) {
 
 	var orphans int
 	require.NoError(t, pool.QueryRow(ctx, `
-		SELECT count(*) FROM kacho_iam.role_grant_orphan o
-		  JOIN kacho_iam.catalog_resource cr ON cr.dotted = o.object_type
+		SELECT count(*) FROM kaname.role_grant_orphan o
+		  JOIN kaname.catalog_resource cr ON cr.dotted = o.object_type
 		 WHERE cr.module = $1`, withdrawnModule).Scan(&orphans))
 	require.Zero(t, orphans,
 		"след, чей предмет вернулся целиком, не остаётся: он утверждал бы отобранное право")
@@ -692,7 +692,7 @@ func TestIAMMW117_OrphanTraceDropsOnlyWhatCameBack(t *testing.T) {
 	countTrace := func(res string) int {
 		var n int
 		require.NoError(t, pool.QueryRow(ctx, `
-			SELECT count(*) FROM kacho_iam.role_grant_orphan
+			SELECT count(*) FROM kaname.role_grant_orphan
 			 WHERE object_type = $1`, withdrawnModule+"."+res).Scan(&n))
 		return n
 	}
@@ -704,10 +704,10 @@ func TestIAMMW117_OrphanTraceDropsOnlyWhatCameBack(t *testing.T) {
 
 	var liveBack, liveKept bool
 	require.NoError(t, pool.QueryRow(ctx,
-		`SELECT live FROM kacho_iam.catalog_resource WHERE module = $1 AND resource = $2`,
+		`SELECT live FROM kaname.catalog_resource WHERE module = $1 AND resource = $2`,
 		withdrawnModule, returning).Scan(&liveBack))
 	require.NoError(t, pool.QueryRow(ctx,
-		`SELECT live FROM kacho_iam.catalog_resource WHERE module = $1 AND resource = $2`,
+		`SELECT live FROM kaname.catalog_resource WHERE module = $1 AND resource = $2`,
 		withdrawnModule, staying).Scan(&liveKept))
 	require.True(t, liveBack, "объявленный повторной установкой ресурс жив")
 	require.False(t, liveKept, "не объявленный ею — остаётся снятым")

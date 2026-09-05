@@ -352,7 +352,7 @@ selfservice:
             # listener (Service kacho-iam-internal). The previous target was
             # the PURE gRPC :9091 port with a REST-style path that does not
             # exist there → every hook failed silently → users were never
-            # mirrored into kacho_iam (no project/namespace). The handler
+            # mirrored into kaname (no project/namespace). The handler
             # (internal/handler/iamhooks/provision_hook_handler.go) calls the
             # UpsertFromIdentity use-case in-process.
             - hook: web_hook

@@ -26,7 +26,7 @@ func TestMain(m *testing.M) {
 		// Прежде его приписывал каждый вызывающий своей копией; забывший
 		// получал `relation … does not exist` — отказ, читающийся как дефект
 		// продукта. Довод целиком — `pkg/pgtest` §searchpath.
-		SearchPath: "kacho_iam,public",
+		SearchPath: "kaname,public",
 		Name:       "iam",
 		Migrate:    pgtest.Goose(migrations.FS),
 	})

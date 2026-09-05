@@ -67,7 +67,7 @@ const (
 	// clean no-op (not a 23505 error). The id stays acb-prefixed (20 chars) so type
 	// routing is unchanged.
 	backfillOwnerBindingsSQL = `
-INSERT INTO kacho_iam.access_bindings
+INSERT INTO kaname.access_bindings
   (id, subject_type, subject_id, role_id, resource_type, resource_id,
    status, granted_by_user_id, deletion_protection)
 SELECT
@@ -80,10 +80,10 @@ SELECT
   'ACTIVE',
   'system',
   true
-FROM kacho_iam.accounts a
+FROM kaname.accounts a
 WHERE NOT EXISTS (
   SELECT 1
-    FROM kacho_iam.access_bindings b
+    FROM kaname.access_bindings b
    WHERE b.subject_type  = 'user'
      AND b.subject_id    = a.owner_user_id
      AND b.role_id       = 'rol' || substr(md5('owner'), 1, 17)
@@ -99,9 +99,9 @@ ON CONFLICT (subject_id, subject_type, role_id, resource_type, resource_id, targ
 	// owner-binding (parity with migration 0028). Identical to migration 0036
 	// statement (2).
 	backfillOwnerSubjectsSQL = `
-INSERT INTO kacho_iam.access_binding_subjects (binding_id, subject_type, subject_id, ordinal)
+INSERT INTO kaname.access_binding_subjects (binding_id, subject_type, subject_id, ordinal)
 SELECT b.id, b.subject_type, b.subject_id, 0
-  FROM kacho_iam.access_bindings b
+  FROM kaname.access_bindings b
  WHERE b.role_id       = 'rol' || substr(md5('owner'), 1, 17)
    AND b.resource_type = 'account'
    AND b.revoked_at IS NULL
@@ -126,7 +126,7 @@ var (
 	// journal row folds into a direct fact by trigger, in the same commit. It also covers
 	// accounts created AFTER goose.Up, which a migration can never see.
 	backfillOwnerHierarchyTuplesSQL = `
-INSERT INTO kacho_iam.fga_outbox (event_type, payload, created_at)
+INSERT INTO kaname.fga_outbox (event_type, payload, created_at)
 SELECT
   'fga.tuple.write',
   jsonb_build_object(
@@ -135,13 +135,13 @@ SELECT
     'object',   'iam_access_binding:' || b.id
   ),
   now()
-FROM kacho_iam.access_bindings b
+FROM kaname.access_bindings b
 WHERE b.role_id       = 'rol' || substr(md5('owner'), 1, 17)
   AND b.resource_type = 'account'
   AND b.revoked_at IS NULL
   AND NOT EXISTS (
     SELECT 1
-      FROM kacho_iam.fga_outbox o
+      FROM kaname.fga_outbox o
      WHERE o.event_type        = 'fga.tuple.write'
        AND o.payload->>'user'     = 'account:' || b.resource_id
        AND o.payload->>'object'   = 'iam_access_binding:' || b.id
@@ -205,7 +205,7 @@ func BackfillOwnerBindings(ctx context.Context, pool *pgxpool.Pool) error {
 }
 
 // SyncAllSystemRoleSelectors projects EVERY materializing system-role's rules[] into
-// kacho_iam.role_rule_selectors (forward fast-path JOIN index) in one short tx. It is
+// kaname.role_rule_selectors (forward fast-path JOIN index) in one short tx. It is
 // the idempotent self-healing seeder: a system role written by raw SQL (migrations
 // 0031/0035) never has its selectors populated by ReplaceRuleSelectors (that runs only
 // for custom roles via Role.Create/Update), so WITHOUT this seed the generic system
@@ -299,7 +299,7 @@ func syncAllSystemRoleSelectorsTx(ctx context.Context, tx pgxQuerierExecer) erro
 		//
 		// Пропуск, а не обработка отказа: у снятой роли проекции быть НЕ ДОЛЖНО,
 		// и ключ здесь работает как задуман. Неверен был отбор.
-		`SELECT id, rules FROM kacho_iam.roles
+		`SELECT id, rules FROM kaname.roles
 		  WHERE is_system = true
 		    AND live
 		    AND rules IS NOT NULL
@@ -346,7 +346,7 @@ func syncAllSystemRoleSelectorsTx(ctx context.Context, tx pgxQuerierExecer) erro
 		// materializing selector). The owner's stable `*.*.*` fp is always present, so
 		// its migration-seeded row survives.
 		if _, derr := tx.Exec(ctx,
-			`DELETE FROM kacho_iam.role_rule_selectors
+			`DELETE FROM kaname.role_rule_selectors
 			  WHERE role_id = $1 AND NOT (rule_fp = ANY($2))`,
 			rr.id, currentFPs); derr != nil {
 			return fmt.Errorf("sync system role selectors: prune stale selectors for %s: %w", rr.id, derr)
@@ -381,7 +381,7 @@ func upsertRoleSelectorTx(ctx context.Context, tx pgxExecer, roleID string, sel 
 		resourceNames = []string{}
 	}
 	if _, err := tx.Exec(ctx,
-		`INSERT INTO kacho_iam.role_rule_selectors
+		`INSERT INTO kaname.role_rule_selectors
 		   (role_id, rule_fp, arm, object_types, resource_names, match_labels, created_at, updated_at)
 		 VALUES ($1, $2, $3, $4, $5, $6::jsonb, now(), now())
 		 ON CONFLICT (role_id, rule_fp) DO UPDATE

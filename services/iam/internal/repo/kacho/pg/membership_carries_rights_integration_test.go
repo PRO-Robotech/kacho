@@ -57,13 +57,13 @@ func grantAccountScoped(t *testing.T, ctx context.Context, pool *pgxpool.Pool,
 	t.Helper()
 	bindingID := ids.NewID("acb")
 	_, err := pool.Exec(ctx, `
-		INSERT INTO kacho_iam.access_bindings
+		INSERT INTO kaname.access_bindings
 		    (id, subject_type, subject_id, role_id, resource_type, resource_id, status)
 		VALUES ($1, 'user', $2, $3, 'account', $4, 'ACTIVE')`,
 		bindingID, string(userID), roleID, string(accID))
 	require.NoError(t, err)
 	_, err = pool.Exec(ctx, `
-		INSERT INTO kacho_iam.access_binding_subjects (binding_id, subject_type, subject_id, ordinal)
+		INSERT INTO kaname.access_binding_subjects (binding_id, subject_type, subject_id, ordinal)
 		VALUES ($1, 'user', $2, 0)`, bindingID, string(userID))
 	require.NoError(t, err)
 	return bindingID
@@ -74,7 +74,7 @@ func grantAccountScoped(t *testing.T, ctx context.Context, pool *pgxpool.Pool,
 func anyRoleID(t *testing.T, ctx context.Context, pool *pgxpool.Pool) string {
 	t.Helper()
 	var id string
-	require.NoError(t, pool.QueryRow(ctx, `SELECT id FROM kacho_iam.roles LIMIT 1`).Scan(&id))
+	require.NoError(t, pool.QueryRow(ctx, `SELECT id FROM kaname.roles LIMIT 1`).Scan(&id))
 	require.NotEmpty(t, id, "ПРЕДПОСЫЛКА: в дереве обязана быть хоть одна роль")
 	return id
 }
@@ -85,7 +85,7 @@ func membershipRowExists(t *testing.T, ctx context.Context, pool *pgxpool.Pool,
 	t.Helper()
 	var n int
 	require.NoError(t, pool.QueryRow(ctx, `
-		SELECT count(*) FROM kacho_iam.memberships
+		SELECT count(*) FROM kaname.memberships
 		 WHERE user_id = $1 AND account_id = $2`, string(userID), string(accID)).Scan(&n))
 	return n > 0
 }
@@ -110,7 +110,7 @@ func TestIntegration_MembershipCannotBeRemovedWhileItCarriesRights(t *testing.T)
 
 	// ── снятие членства, пока выдача жива, — отвергается ─────────────────────
 	_, err = pool.Exec(ctx, `
-		DELETE FROM kacho_iam.memberships WHERE user_id = $1 AND account_id = $2`,
+		DELETE FROM kaname.memberships WHERE user_id = $1 AND account_id = $2`,
 		string(userID), string(accID))
 	require.Error(t, err,
 		"членство, на которое опирается живая выдача, снять нельзя: иначе право осталось бы "+
@@ -124,10 +124,10 @@ func TestIntegration_MembershipCannotBeRemovedWhileItCarriesRights(t *testing.T)
 	// никогда», а не «нельзя, пока оно несёт права».
 	tx, err := pool.Begin(ctx)
 	require.NoError(t, err)
-	_, err = tx.Exec(ctx, `DELETE FROM kacho_iam.access_bindings WHERE id = $1`, bindingID)
+	_, err = tx.Exec(ctx, `DELETE FROM kaname.access_bindings WHERE id = $1`, bindingID)
 	require.NoError(t, err)
 	_, err = tx.Exec(ctx, `
-		DELETE FROM kacho_iam.memberships WHERE user_id = $1 AND account_id = $2`,
+		DELETE FROM kaname.memberships WHERE user_id = $1 AND account_id = $2`,
 		string(userID), string(accID))
 	require.NoError(t, err)
 	require.NoError(t, tx.Commit(ctx),
@@ -159,7 +159,7 @@ func TestIntegration_MembershipRemovalIgnoresRevokedAndForeignGrants(t *testing.
 	// (а) ОТОЗВАННАЯ выдача носителем не является.
 	revoked := ids.NewID("acb")
 	_, err = pool.Exec(ctx, `
-		INSERT INTO kacho_iam.access_bindings
+		INSERT INTO kaname.access_bindings
 		    (id, subject_type, subject_id, role_id, resource_type, resource_id, status, revoked_at)
 		VALUES ($1, 'user', $2, $3, 'account', $4, 'REVOKED', now())`,
 		revoked, string(userID), role, string(accID))
@@ -172,7 +172,7 @@ func TestIntegration_MembershipRemovalIgnoresRevokedAndForeignGrants(t *testing.
 	_ = grantAccountScoped(t, ctx, pool, userID, otherAcc, role)
 
 	_, err = pool.Exec(ctx, `
-		DELETE FROM kacho_iam.memberships WHERE user_id = $1 AND account_id = $2`,
+		DELETE FROM kaname.memberships WHERE user_id = $1 AND account_id = $2`,
 		string(userID), string(accID))
 	require.NoError(t, err,
 		"ни отозванная выдача, ни выдача другому человеку, ни выдача в другом аккаунте "+
@@ -218,12 +218,12 @@ func TestIntegration_MembershipRemovalCheckIsDeferredWithinTheTransaction(t *tes
 
 	// ОБРАТНЫЙ порядок: сперва членство, потом выдача.
 	_, err = tx.Exec(ctx, `
-		DELETE FROM kacho_iam.memberships WHERE user_id = $1 AND account_id = $2`,
+		DELETE FROM kaname.memberships WHERE user_id = $1 AND account_id = $2`,
 		string(userID), string(accID))
 	require.NoError(t, err,
 		"на стейтменте проверка молчать обязана — она отложенная")
 
-	_, err = tx.Exec(ctx, `DELETE FROM kacho_iam.access_bindings WHERE id = $1`, bindingID)
+	_, err = tx.Exec(ctx, `DELETE FROM kaname.access_bindings WHERE id = $1`, bindingID)
 	require.NoError(t, err)
 
 	require.NoError(t, tx.Commit(ctx),

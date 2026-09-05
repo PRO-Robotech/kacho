@@ -17,8 +17,8 @@ R7-3 — ПРИБОР ОБЪЁМА: ОДНА ОПЕРАЦИЯ ПРОТИВ НА�
 ОТПЕЧАТОК ПРЕДМЕТА ЗАМЕРА (гейт свежести сверяет его с текущим деревом)
   отпечаток состава     e63f641d844c5bb4
   отпечаток содержимого be811c828e3b75bd
-  файлов под отпечатком 19, таблиц выведено 18 (kacho_iam.access_binding_subjects, kacho_iam.access_bindings, kacho_iam.accounts, kacho_iam.catalog_resource, kacho_iam.clusters, kacho_iam.group_members, kacho_iam.groups, kacho_iam.memberships, kacho_iam.projects, kacho_iam.relation_fact, kacho_iam.resource_mirror, kacho_iam.resource_parent_edge, kacho_iam.resource_scope_edge, kacho_iam.role_rule_selectors, kacho_iam.role_verb, kacho_iam.roles, kacho_iam.service_accounts, kacho_iam.users)
-  предикат отпечатка    все не-тестовые .go каталогов services/iam/internal/repo/kacho/pg/relverdict и services/iam/internal/repo/kacho/pg/scalegrid; те .sql каталога services/iam/internal/migrations, что МЕНЯЮТ СТРУКТУРУ (CREATE/ALTER/DROP вне комментариев) хотя бы одной таблицы, которую читает запрос вердикта (имена таблиц ВЫВЕДЕНЫ из кода вердикта по приставке "kacho_iam.", а не выписаны); БЕЗ файлов, объявленных оснасткой отпечатка (они не касаются базы — проверяется разбором, а не перечнем); у .go под отпечаток идёт ЗНАЧАЩЕЕ содержимое — поток лексем БЕЗ комментариев (директивы //go: сохранены), поэтому смена заголовка лицензии или прозы замер НЕ обесценивает; .sql берётся ПОБАЙТОВО — в его комментариях живут директивы мигратора (-- +goose), а отделить их текстом нельзя: две дефиса встречаются и внутри литерала
+  файлов под отпечатком 19, таблиц выведено 18 (kaname.access_binding_subjects, kaname.access_bindings, kaname.accounts, kaname.catalog_resource, kaname.clusters, kaname.group_members, kaname.groups, kaname.memberships, kaname.projects, kaname.relation_fact, kaname.resource_mirror, kaname.resource_parent_edge, kaname.resource_scope_edge, kaname.role_rule_selectors, kaname.role_verb, kaname.roles, kaname.service_accounts, kaname.users)
+  предикат отпечатка    все не-тестовые .go каталогов services/iam/internal/repo/kacho/pg/relverdict и services/iam/internal/repo/kacho/pg/scalegrid; те .sql каталога services/iam/internal/migrations, что МЕНЯЮТ СТРУКТУРУ (CREATE/ALTER/DROP вне комментариев) хотя бы одной таблицы, которую читает запрос вердикта (имена таблиц ВЫВЕДЕНЫ из кода вердикта по приставке "kaname.", а не выписаны); БЕЗ файлов, объявленных оснасткой отпечатка (они не касаются базы — проверяется разбором, а не перечнем); у .go под отпечаток идёт ЗНАЧАЩЕЕ содержимое — поток лексем БЕЗ комментариев (директивы //go: сохранены), поэтому смена заголовка лицензии или прозы замер НЕ обесценивает; .sql берётся ПОБАЙТОВО — в его комментариях живут директивы мигратора (-- +goose), а отделить их текстом нельзя: две дефиса встречаются и внутри литерала
   ФАЙЛЫ ПОД ОТПЕЧАТКОМ (пофайлово, чтобы гейт назвал ВИНОВНИКА, а не только факт)
     6323f9705aff7665  services/iam/internal/migrations/0001_initial.sql
     da2036e427d614d3  services/iam/internal/migrations/20260904135459_role_owner_module_needs_a_liveness_key.sql
@@ -64,7 +64,7 @@ R7-3 — ПРИБОР ОБЪЁМА: ОДНА ОПЕРАЦИЯ ПРОТИВ НА�
              сеть, край и кэши вердиктов.
   НЕ МЕРИТ ОСЬ ПРЯМЫХ ФАКТОВ, и это надо знать при чтении вердиктов ниже.
              Сетка растит объекты и выдачи; таблица прямых фактов
-             (kacho_iam.relation_fact) держится на ОДНОЙ строке во всех
+             (kaname.relation_fact) держится на ОДНОЙ строке во всех
              четырёх точках — это видно в разбивке по таблицам выше.
              Между тем безусловное основание вердикта читается именно из
              неё, а наполняет её триггер журнала намерений, то есть её

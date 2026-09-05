@@ -102,7 +102,7 @@ flowchart TB
     Tenant -- HTTPS/REST --> APIGW[api-gateway]
     subgraph KachoNS[Namespace kacho]
         APIGW -- gRPC :9090 / :9091 --> IAM[Deployment kacho-iam]
-        IAM -- pgx master + read-replica --> PG[(Postgres kacho_iam)]
+        IAM -- pgx master + read-replica --> PG[(Postgres kaname)]
         Kratos[Ory Kratos] -- provision-hook :9092 --> IAM
         Hydra[Ory Hydra] -- token/refresh-hook :9092 --> IAM
         IAM -- admin API: JWKS --> Hydra
@@ -223,7 +223,7 @@ authn:
 `authn.mode` безопасен по умолчанию (`production` в дефолтах кода —
 anonymous fail-closed); dev-стенд явно опускает его до `dev` через
 `values.dev.yaml`. DSN автоматически дополняется `sslmode=<mode>` и
-`options=-c search_path=kacho_iam,public`.
+`options=-c search_path=kaname,public`.
 
 ### Секреты и env-переменные
 
@@ -250,7 +250,7 @@ anonymous fail-closed); dev-стенд явно опускает его до `de
 
 ## Внешние зависимости
 
-- **Postgres** (`kacho_iam`) — master-pool обязателен; read-replica (`slave-url`)
+- **Postgres** (`kaname`) — master-pool обязателен; read-replica (`slave-url`)
   опциональна (CQRS Reader-TX, иначе fallback на master).
 - **Ory Kratos** — identity-provider; `provision`-хук создает/активирует
   Account/Project/AccessBinding для нового identity (`UpsertFromIdentity`).
@@ -278,7 +278,7 @@ anonymous fail-closed); dev-стенд явно опускает его до `de
 ## Миграции
 
 Миграции исполняет отдельный `kacho-migrator` (init-контейнер
-`templates/deployment.yaml`), а не основной бинарник. Схема — `kacho_iam`,
+`templates/deployment.yaml`), а не основной бинарник. Схема — `kaname`,
 набор goose-миграций (`internal/migrations/0001_initial.sql` и далее по
 возрастанию).
 
@@ -504,7 +504,7 @@ sequenceDiagram
     participant Pod as kacho-iam Pod
 
     Helm->>Init: start init-container
-    Init->>PG: goose up (схема kacho_iam)
+    Init->>PG: goose up (схема kaname)
     PG-->>Init: success
     Init-->>Pod: init complete → старт kacho-iam serve
     Pod->>Pod: load config.yaml + ENV-override

@@ -22,7 +22,7 @@
 
 Форма отвечает на один вопрос — «может ли ЭТОТ субъект сделать ЭТОТ глагол над
 ЭТИМ объектом» — и складывает ответ из **четырёх** источников. Все четыре живут
-в схеме `kacho_iam`:
+в схеме `kaname`:
 
 | # | Источник | Таблицы |
 |---|---|---|
@@ -54,7 +54,7 @@
 
 ## Журнал намерений остался — исчез его потребитель
 
-`kacho_iam.fga_outbox` — **живая таблица**, и она по-прежнему принимает каждое
+`kaname.fga_outbox` — **живая таблица**, и она по-прежнему принимает каждое
 намерение об отношении в той же транзакции, что и сама мутация. Изменилось то,
 что происходит со строкой дальше: её больше **никто не вывозит наружу**.
 
@@ -80,7 +80,7 @@
 
 ## Таблицы
 
-- `kacho_iam.fga_outbox(id, event_type, payload, created_at)` — журнал намерений; ключ
+- `kaname.fga_outbox(id, event_type, payload, created_at)` — журнал намерений; ключ
   кортежа лежит **внутри** `payload` (jsonb), отдельных колонок `user`/`relation`/`object`
   у таблицы нет. DDL — `0001_initial.sql`. Четыре колонки, и это весь журнал: величин
   доставки (`sent_at` / `attempt_count` / `last_error`) и ключа упорядочивания
@@ -93,8 +93,8 @@
   «непринятые» строки **нечем и не нужно** — потребитель у него один, триггер проекции, и
   он складывает прямой факт В ТОЙ ЖЕ транзакции, что и вставку. Право действует **с
   коммита**, а не «когда доедет»; запрос `WHERE sent_at IS NULL` отвергается базой.
-- `kacho_iam.relation_fact` — проекция журнала, из которой форма читает прямой факт.
-- `kacho_iam.subject_change_outbox(id, subject_id, op, created_at, event_type, payload)`
+- `kaname.relation_fact` — проекция журнала, из которой форма читает прямой факт.
+- `kaname.subject_change_outbox(id, subject_id, op, created_at, event_type, payload)`
   — **журнал** смены субъекта, который край читает курсором по возрастанию `id`;
   DDL — `0001_initial.sql`. Шесть колонок, и это весь журнал: величин доставки у него
   **больше нет**.
@@ -111,7 +111,7 @@
   Практическое следствие: считать по этому журналу отставание **нечем и не нужно** —
   колонки `sent_at` нет, а запрос по ней теперь отвергается базой, а не возвращает
   весь журнал молча. Отставание живёт у читателя (см. `33-runbook.md`).
-- `kacho_iam.resource_scope_edge` — представление цепи областей (см.
+- `kaname.resource_scope_edge` — представление цепи областей (см.
   [`../architecture/scope-chain-reaches-the-root.md`](../architecture/scope-chain-reaches-the-root.md)).
 
 `subject_change_outbox` **своего канала `NOTIFY` не несёт**: журнал читается курсором по
@@ -137,7 +137,7 @@ sequenceDiagram
     autonumber
     participant Admin as Admin tool
     participant IAM as kacho-iam :9090
-    participant DB as Postgres kacho_iam
+    participant DB as Postgres kaname
     participant GW as api-gateway authz-cache
     participant Caller
 
@@ -184,7 +184,7 @@ iam_access_binding:<id>  #project  @project:<project_id>
 > [!warning] Здесь стояло «без него шлюз НИКОГДА не авторизует пообъектный
 > `Get`/`Update`/`Delete`» — и это перестало быть верным вместе со снятием внешнего движка
 > Указатель был ребром, пока цепь читалась из графа движка. Сегодня недостающие звенья
-> **достраивает представление** `kacho_iam.resource_scope_edge`, и берёт оно их из СХЕМЫ:
+> **достраивает представление** `kaname.resource_scope_edge`, и берёт оно их из СХЕМЫ:
 > у личности — из таблицы членств (`kacho#944`), у группы, служебной учётки и роли — из
 > колонки их собственной строки, у привязки — из пары колонок области (`kacho#785`).
 > То есть пообъектное чтение авторизуется и без строки указателя в журнале.
@@ -221,12 +221,12 @@ iam_access_binding:<id>  #project  @project:<project_id>
 
 ```sql
 -- 1. Убедиться, что указателя нет.
-SELECT * FROM kacho_iam.relation_fact
+SELECT * FROM kaname.relation_fact
  WHERE object_type = 'iam_user' AND object_id = '<user_id>';
 
 -- 2. Посмотреть, дошло ли намерение до журнала.
 SELECT id, event_type, payload, created_at
-  FROM kacho_iam.fga_outbox
+  FROM kaname.fga_outbox
  WHERE payload::text LIKE '%<user_id>%'
  ORDER BY id DESC LIMIT 10;
 ```
@@ -337,7 +337,7 @@ iam только **дописывает** строку в `subject_change_outbox
   (`pkg/subjectchange`, `JournalRetention`); разбор —
   [`../architecture/journal-retention-is-a-policy.md`](../architecture/journal-retention-is-a-policy.md).
 - **Журнал растёт** — строки намерений остаются как след выдачи. Наблюдать
-  `count(*) FROM kacho_iam.fga_outbox`, но «строки копятся» здесь больше **не
+  `count(*) FROM kaname.fga_outbox`, но «строки копятся» здесь больше **не
   означает** «право не доехало»: право доезжает фиксацией, а не вывозом строки.
 
 ## Связанные компоненты

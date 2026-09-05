@@ -30,11 +30,11 @@ func TestAsk_VerbOnTheScopeObjectItself(t *testing.T) {
 		seedTenant(t, ctx, tx)
 		seedRole(t, ctx, tx, "rol-selfscope", "iam.project", "get", "anchor", "{}")
 		exec(t, ctx, tx,
-			`INSERT INTO kacho_iam.access_bindings
+			`INSERT INTO kaname.access_bindings
 			   (id, subject_type, subject_id, role_id, resource_type, resource_id, status)
 			 VALUES ('acb-self', 'user', 'usr-1', 'rol-selfscope', 'project', 'prj-1', 'ACTIVE')`)
 		exec(t, ctx, tx,
-			`INSERT INTO kacho_iam.access_binding_subjects (binding_id, subject_type, subject_id)
+			`INSERT INTO kaname.access_binding_subjects (binding_id, subject_type, subject_id)
 			 VALUES ('acb-self', 'user', 'usr-1')`)
 
 		got, _, err := relverdict.Ask(ctx, tx, relverdict.Query{
@@ -52,7 +52,7 @@ func TestAsk_VerbOnTheScopeObjectItself(t *testing.T) {
 		// ЗАКОННЫЙ БЛИЗНЕЦ: чужой проект той же формы остаётся закрытым. Без него
 		// проба зеленела бы на форме, разрешающей всё подряд.
 		exec(t, ctx, tx,
-			`INSERT INTO kacho_iam.projects (id, name, account_id)
+			`INSERT INTO kaname.projects (id, name, account_id)
 			 VALUES ('prj-2', 'other', 'acc-1') ON CONFLICT DO NOTHING`)
 		other, _, err := relverdict.Ask(ctx, tx, relverdict.Query{
 			Subject: "user:usr-1", ObjectType: "project", ObjectID: "prj-2", Relation: "v_get",

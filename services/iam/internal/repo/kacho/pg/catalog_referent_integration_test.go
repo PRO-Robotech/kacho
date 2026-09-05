@@ -123,11 +123,11 @@ func writeRuleRefs(t *testing.T, ctx context.Context, repo kachorepo.Repository,
 func liveCatalogCounts(t *testing.T, ctx context.Context, pool *pgxpool.Pool) (mods, res, verbs int) {
 	t.Helper()
 	require.NoError(t, pool.QueryRow(ctx,
-		`SELECT count(*) FROM kacho_iam.catalog_module WHERE live`).Scan(&mods))
+		`SELECT count(*) FROM kaname.catalog_module WHERE live`).Scan(&mods))
 	require.NoError(t, pool.QueryRow(ctx,
-		`SELECT count(*) FROM kacho_iam.catalog_resource WHERE live`).Scan(&res))
+		`SELECT count(*) FROM kaname.catalog_resource WHERE live`).Scan(&res))
 	require.NoError(t, pool.QueryRow(ctx,
-		`SELECT count(*) FROM kacho_iam.catalog_verb WHERE live`).Scan(&verbs))
+		`SELECT count(*) FROM kaname.catalog_verb WHERE live`).Scan(&verbs))
 	return mods, res, verbs
 }
 
@@ -172,7 +172,7 @@ func retireResource(ctx context.Context, q interface {
 		return err
 	}
 	_, err := q.Exec(ctx, `
-		UPDATE kacho_iam.catalog_resource
+		UPDATE kaname.catalog_resource
 		   SET retired_at = now(), live = false, retired_reason = $3
 		 WHERE module = $1 AND resource = $2`, module, resource, reason)
 	return err
@@ -189,9 +189,9 @@ func retireResource(ctx context.Context, q interface {
 // имеющие, и — что важнее — превратил бы немедленную форму в отложенную для
 // ВСЕЙ транзакции, то есть сделал бы фикстуру снисходительнее продукта (Т12).
 const deferCatalogKeys = `SET CONSTRAINTS ` +
-	`kacho_iam.role_rule_ref_res_fk, ` +
-	`kacho_iam.role_rule_ref_verb_fk, ` +
-	`kacho_iam.role_verb_type_fk DEFERRED`
+	`kaname.role_rule_ref_res_fk, ` +
+	`kaname.role_rule_ref_verb_fk, ` +
+	`kaname.role_verb_type_fk DEFERRED`
 
 // requireNoRefsYet — предпосылка сценариев снятия: на этот ресурс НЕ ссылается
 // ни одно правило, посеянное миграциями.
@@ -206,7 +206,7 @@ func requireNoRefsYet(t *testing.T, ctx context.Context, pool *pgxpool.Pool, mod
 	t.Helper()
 	var n int
 	require.NoError(t, pool.QueryRow(ctx, `
-		SELECT count(*) FROM kacho_iam.role_rule_ref WHERE module = $1 AND resource = $2`,
+		SELECT count(*) FROM kaname.role_rule_ref WHERE module = $1 AND resource = $2`,
 		module, resource).Scan(&n))
 	require.Zerof(t, n, "предпосылка сценария: правил на %s.%s нет — найдено %d",
 		module, resource, n)
@@ -249,15 +249,15 @@ func TestIAMCT104_CatalogSeedMatchesTheLiteralBothWays(t *testing.T) {
 	require.NotEmpty(t, wantTier, "ярусная половина литерала пуста — вторая сверка была бы вакуумной")
 
 	gotRes := readSet(t, ctx, pool,
-		`SELECT dotted FROM kacho_iam.catalog_resource WHERE live`)
+		`SELECT dotted FROM kaname.catalog_resource WHERE live`)
 	gotVerb := readSet(t, ctx, pool,
-		`SELECT module || '.' || resource || '.' || verb FROM kacho_iam.catalog_verb
+		`SELECT module || '.' || resource || '.' || verb FROM kaname.catalog_verb
 		  WHERE live AND per_object`)
 	gotTier := readSet(t, ctx, pool,
-		`SELECT module || '.' || resource || '.' || verb FROM kacho_iam.catalog_verb
+		`SELECT module || '.' || resource || '.' || verb FROM kaname.catalog_verb
 		  WHERE live AND NOT per_object`)
 	gotMod := readSet(t, ctx, pool,
-		`SELECT module FROM kacho_iam.catalog_module WHERE live`)
+		`SELECT module FROM kaname.catalog_module WHERE live`)
 
 	t.Logf("осмотрено: литерал — модулей %d, ресурсов %d, пообъектных пар %d, ярусных %d; "+
 		"посев — модулей %d, ресурсов %d, пообъектных пар %d, ярусных %d",
@@ -298,7 +298,7 @@ func TestIAMCT107_AnchorRuleStillChecksTheResource(t *testing.T) {
 
 	var anchors int
 	require.NoError(t, pool.QueryRow(ctx,
-		`SELECT count(*) FROM kacho_iam.role_rule_ref WHERE role_id = $1 AND verb IS NULL`,
+		`SELECT count(*) FROM kaname.role_rule_ref WHERE role_id = $1 AND verb IS NULL`,
 		string(live)).Scan(&anchors))
 	require.Equal(t, 1, anchors, "якорь обязан лечь строкой с verb IS NULL")
 
@@ -321,7 +321,7 @@ func TestIAMCT107_AnchorRuleStillChecksTheResource(t *testing.T) {
 
 	var rows int
 	require.NoError(t, pool.QueryRow(ctx,
-		`SELECT count(*) FROM kacho_iam.role_rule_ref WHERE role_id = $1`,
+		`SELECT count(*) FROM kaname.role_rule_ref WHERE role_id = $1`,
 		string(absent)).Scan(&rows))
 	require.Zero(t, rows, "отвергнутое правило не оставляет строк проекции")
 }
@@ -404,13 +404,13 @@ func TestIAMCT108_RetiringAResourceWithALiveGrantIsRefused(t *testing.T) {
 
 	var live bool
 	require.NoError(t, pool.QueryRow(ctx,
-		`SELECT live FROM kacho_iam.catalog_resource WHERE module='vpc' AND resource='networkInterface'`).
+		`SELECT live FROM kaname.catalog_resource WHERE module='vpc' AND resource='networkInterface'`).
 		Scan(&live))
 	require.True(t, live, "транзакция снятия не применилась: строка обязана остаться живой")
 
 	var kept int
 	require.NoError(t, pool.QueryRow(ctx,
-		`SELECT count(*) FROM kacho_iam.role_rule_ref WHERE role_id = $1`, string(role)).Scan(&kept))
+		`SELECT count(*) FROM kaname.role_rule_ref WHERE role_id = $1`, string(role)).Scan(&kept))
 	require.Equal(t, 1, kept, "роль своих строк не теряет")
 }
 
@@ -424,7 +424,7 @@ func TestIAMCT103_RetiringAnUnreferencedResourcePasses(t *testing.T) {
 
 	var refs int
 	require.NoError(t, pool.QueryRow(ctx, `
-		SELECT count(*) FROM kacho_iam.role_rule_ref
+		SELECT count(*) FROM kaname.role_rule_ref
 		 WHERE module='vpc' AND resource='cidrGroup'`).Scan(&refs))
 	require.Zero(t, refs, "предпосылка сценария: правил на этот ресурс нет — "+
 		"проверено запросом, а не предположено")
@@ -434,7 +434,7 @@ func TestIAMCT103_RetiringAnUnreferencedResourcePasses(t *testing.T) {
 	var live bool
 	var retiredAt *time.Time
 	require.NoError(t, pool.QueryRow(ctx, `
-		SELECT live, retired_at FROM kacho_iam.catalog_resource
+		SELECT live, retired_at FROM kaname.catalog_resource
 		 WHERE module='vpc' AND resource='cidrGroup'`).Scan(&live, &retiredAt))
 	require.False(t, live)
 	require.NotNil(t, retiredAt)
@@ -484,7 +484,7 @@ func TestIAMCT109_RelocateThenRetireInOneTransaction(t *testing.T) {
 
 	var stillLive bool
 	require.NoError(t, pool.QueryRow(ctx, `
-		SELECT live FROM kacho_iam.catalog_resource WHERE module='storage' AND resource='volumes'`).
+		SELECT live FROM kaname.catalog_resource WHERE module='storage' AND resource='volumes'`).
 		Scan(&stillLive))
 	require.True(t, stillLive, "отказ на коммите оставляет строку каталога живой")
 
@@ -502,14 +502,14 @@ func TestIAMCT109_RelocateThenRetireInOneTransaction(t *testing.T) {
 
 	var refs, orphans, verbRows int
 	require.NoError(t, pool.QueryRow(ctx, `
-		SELECT count(*) FROM kacho_iam.role_rule_ref WHERE module='storage' AND resource='volumes'`).
+		SELECT count(*) FROM kaname.role_rule_ref WHERE module='storage' AND resource='volumes'`).
 		Scan(&refs))
 	require.NoError(t, pool.QueryRow(ctx, `
-		SELECT count(*) FROM kacho_iam.role_grant_orphan
+		SELECT count(*) FROM kaname.role_grant_orphan
 		 WHERE object_type='storage.volumes' AND source='role_verb'`).
 		Scan(&orphans))
 	require.NoError(t, pool.QueryRow(ctx, `
-		SELECT count(*) FROM kacho_iam.role_verb WHERE object_type='storage.volumes'`).
+		SELECT count(*) FROM kaname.role_verb WHERE object_type='storage.volumes'`).
 		Scan(&verbRows))
 	t.Logf("переселено %d; осталось строк проекции правила %d, выдачи %d, сирот %d",
 		moved, refs, verbRows, orphans)
@@ -520,7 +520,7 @@ func TestIAMCT109_RelocateThenRetireInOneTransaction(t *testing.T) {
 	var reason string
 	var at time.Time
 	require.NoError(t, pool.QueryRow(ctx, `
-		SELECT reason, orphaned_at FROM kacho_iam.role_grant_orphan
+		SELECT reason, orphaned_at FROM kaname.role_grant_orphan
 		 WHERE object_type='storage.volumes' AND source='role_verb' LIMIT 1`).Scan(&reason, &at))
 	require.NotEmpty(t, reason, "каждая сирота несёт причину")
 	require.False(t, at.IsZero(), "каждая сирота несёт отметку времени")
@@ -529,7 +529,7 @@ func TestIAMCT109_RelocateThenRetireInOneTransaction(t *testing.T) {
 	// ВЕРДИКТ, а не написанное арендатором.
 	var rules string
 	require.NoError(t, pool.QueryRow(ctx,
-		`SELECT rules::text FROM kacho_iam.roles WHERE id = $1`, string(role)).Scan(&rules))
+		`SELECT rules::text FROM kaname.roles WHERE id = $1`, string(role)).Scan(&rules))
 	t.Logf("правила роли после снятия: %s", rules)
 }
 
@@ -538,17 +538,17 @@ func relocateGrants(t *testing.T, ctx context.Context, tx pgx.Tx, module, resour
 	t.Helper()
 	dotted := module + "." + resource
 	tag, err := tx.Exec(ctx, `
-		INSERT INTO kacho_iam.role_grant_orphan (role_id, object_type, verb, source, reason)
+		INSERT INTO kaname.role_grant_orphan (role_id, object_type, verb, source, reason)
 		SELECT role_id, object_type, verb, 'role_verb', $2
-		  FROM kacho_iam.role_verb WHERE object_type = $1
+		  FROM kaname.role_verb WHERE object_type = $1
 		ON CONFLICT (role_id, object_type, verb, source, cause)
 		DO UPDATE SET reason = EXCLUDED.reason, orphaned_at = now()`, dotted, reason)
 	require.NoError(t, err)
 	moved := int(tag.RowsAffected())
-	_, err = tx.Exec(ctx, `DELETE FROM kacho_iam.role_verb WHERE object_type = $1`, dotted)
+	_, err = tx.Exec(ctx, `DELETE FROM kaname.role_verb WHERE object_type = $1`, dotted)
 	require.NoError(t, err)
 	_, err = tx.Exec(ctx, `
-		DELETE FROM kacho_iam.role_rule_ref WHERE module = $1 AND resource = $2`, module, resource)
+		DELETE FROM kaname.role_rule_ref WHERE module = $1 AND resource = $2`, module, resource)
 	require.NoError(t, err)
 	return moved
 }
@@ -566,7 +566,7 @@ func TestIAMCT111_RetiredAtWithoutLiveIsRefused(t *testing.T) {
 	require.NoError(t, retireResource(ctx, pool, "vpc", "addressPool", "контроль -11"))
 
 	_, err := pool.Exec(ctx, `
-		UPDATE kacho_iam.catalog_resource SET retired_at = now()
+		UPDATE kaname.catalog_resource SET retired_at = now()
 		 WHERE module='vpc' AND resource='gateway'`)
 	require.Error(t, err, "правка только retired_at обязана отвергаться")
 	code, constraint := pgCode(err)
@@ -581,7 +581,7 @@ func TestIAMCT111_RetiredAtWithoutLiveIsRefused(t *testing.T) {
 
 	var live bool
 	require.NoError(t, pool.QueryRow(ctx, `
-		SELECT live FROM kacho_iam.catalog_resource WHERE module='vpc' AND resource='gateway'`).
+		SELECT live FROM kaname.catalog_resource WHERE module='vpc' AND resource='gateway'`).
 		Scan(&live))
 	require.True(t, live, "строка обязана остаться живой")
 }
@@ -607,7 +607,7 @@ func TestIAMCT110_RetiredResourceCarriesItsSuccessor(t *testing.T) {
 		var isLive bool
 		var successor *string
 		err := pool.QueryRow(ctx, `
-			SELECT live, superseded_by FROM kacho_iam.catalog_resource WHERE dotted = $1`,
+			SELECT live, superseded_by FROM kaname.catalog_resource WHERE dotted = $1`,
 			dotted).Scan(&isLive, &successor)
 		require.NoErrorf(t, err, "снятый тип %s обязан существовать СТРОКОЙ каталога", dotted)
 		require.Falsef(t, isLive, "%s обязан быть снятым", dotted)
@@ -716,9 +716,9 @@ func countDangling(t *testing.T, ctx context.Context, pool *pgxpool.Pool) int {
 	t.Helper()
 	var n int
 	require.NoError(t, pool.QueryRow(ctx, `
-		SELECT count(*) FROM kacho_iam.role_rule_ref rr
+		SELECT count(*) FROM kaname.role_rule_ref rr
 		 WHERE NOT EXISTS (
-		       SELECT 1 FROM kacho_iam.catalog_resource cr
+		       SELECT 1 FROM kaname.catalog_resource cr
 		        WHERE cr.module = rr.module AND cr.resource = rr.resource AND cr.live)`).Scan(&n))
 	return n
 }
@@ -853,7 +853,7 @@ func TestIAMCT112_InjectionFixtureThatDefersEverythingHidesTheSegment(t *testing
 	_, err = tx.Exec(ctx, `SET CONSTRAINTS ALL DEFERRED`)
 	require.NoError(t, err)
 	_, insErr := tx.Exec(ctx, `
-		INSERT INTO kacho_iam.role_rule_ref (role_id, module, resource, verb)
+		INSERT INTO kaname.role_rule_ref (role_id, module, resource, verb)
 		VALUES ($1, 'vpc', 'nonesuch', 'get')`, string(role))
 	require.NoError(t, insErr, "ПОД `SET CONSTRAINTS ALL DEFERRED` оператор обязан ПРОЙТИ: "+
 		"оператор накрывает и ключ, объявленный INITIALLY IMMEDIATE. Если здесь отказ — "+

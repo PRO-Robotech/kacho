@@ -46,7 +46,7 @@ import (
 
 // ── fakes modelling the monotonic mirror ────────────────────────────────────
 
-// versionedMirror models kacho_iam.resource_mirror's monotonic UPSERT guard: a row is
+// versionedMirror models kaname.resource_mirror's monotonic UPSERT guard: a row is
 // written only when the incoming source_version is STRICTLY newer than the stored one,
 // and the emitter reports whether it changed anything.
 type versionedMirror struct {

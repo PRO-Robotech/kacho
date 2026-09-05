@@ -18,7 +18,7 @@ import (
 
 // reconcileOutboxChannel — канал pg_notify очереди reconcile-событий (миграция
 // 0042). Должен совпадать с literal в триггере resource_reconcile_outbox_notify.
-const reconcileOutboxChannel = "kacho_iam_resource_reconcile_outbox"
+const reconcileOutboxChannel = "kaname_resource_reconcile_outbox"
 
 // Watch реализует seed.NotifyWatcher: LISTEN на reconcileOutboxChannel и сигнал в
 // wakeup на каждый NOTIFY (+ один раз на каждый успешный (пере)коннект — catch-up

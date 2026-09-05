@@ -9,7 +9,7 @@ package relverdict_test
 // # Предмет
 //
 // Движок отвечает по кортежам, и состояние его хранилища есть свёртка ОДНОГО
-// журнала — `kacho_iam.fga_outbox`. Форма E отвечает по своим таблицам. Пока
+// журнала — `kaname.fga_outbox`. Форма E отвечает по своим таблицам. Пока
 // прямой факт не складывается из того же журнала, всякое право, которое никакая
 // выдача не выводит (владение, поставленное при создании; указатель на предка;
 // служебная учётка модуля; посев миграции), у формы E отсутствует — и форма
@@ -44,7 +44,7 @@ import (
 func enqueueTuple(t *testing.T, ctx context.Context, tx pgx.Tx, event, user, relation, object string) {
 	t.Helper()
 	exec(t, ctx, tx,
-		`INSERT INTO kacho_iam.fga_outbox (event_type, payload, created_at)
+		`INSERT INTO kaname.fga_outbox (event_type, payload, created_at)
 		 VALUES ($1, jsonb_build_object('user', $2::text, 'relation', $3::text, 'object', $4::text), now())`,
 		event, user, relation, object)
 }
@@ -61,7 +61,7 @@ func enqueueGrantSet(t *testing.T, ctx context.Context, tx pgx.Tx, event, user, 
 	t.Helper()
 	if event == "fga.tuple.write" {
 		exec(t, ctx, tx,
-			`INSERT INTO kacho_iam.fga_outbox (event_type, payload, created_at)
+			`INSERT INTO kaname.fga_outbox (event_type, payload, created_at)
 			 VALUES ($1, jsonb_build_object('user', $2::text, 'object', $3::text,
 			                                'relations', to_jsonb($4::text[]),
 			                                'relation', $4::text[] [1]), now())`,
@@ -69,7 +69,7 @@ func enqueueGrantSet(t *testing.T, ctx context.Context, tx pgx.Tx, event, user, 
 		return
 	}
 	exec(t, ctx, tx,
-		`INSERT INTO kacho_iam.fga_outbox (event_type, payload, created_at)
+		`INSERT INTO kaname.fga_outbox (event_type, payload, created_at)
 		 VALUES ($1, jsonb_build_object('user', $2::text, 'object', $3::text,
 		                                'relations', to_jsonb($4::text[])), now())`,
 		event, user, object, relations)
@@ -79,7 +79,7 @@ func countFacts(t *testing.T, ctx context.Context, tx pgx.Tx, objectType, relati
 	t.Helper()
 	var n int
 	if err := tx.QueryRow(ctx,
-		`SELECT count(*) FROM kacho_iam.relation_fact WHERE object_type = $1 AND relation = $2`,
+		`SELECT count(*) FROM kaname.relation_fact WHERE object_type = $1 AND relation = $2`,
 		objectType, relation,
 	).Scan(&n); err != nil {
 		t.Fatalf("перепись фактов: %v", err)
@@ -301,7 +301,7 @@ func TestFactProjection_CountsWhatItProjected(t *testing.T) {
 		// посевами миграций, и утверждать об абсолютном числе значило бы утверждать
 		// о посевах, о которых эта проба ничего не знает.
 		var before int
-		if err := tx.QueryRow(ctx, `SELECT count(*) FROM kacho_iam.relation_fact`).Scan(&before); err != nil {
+		if err := tx.QueryRow(ctx, `SELECT count(*) FROM kaname.relation_fact`).Scan(&before); err != nil {
 			t.Fatalf("перепись до: %v", err)
 		}
 		enqueueTuple(t, ctx, tx, "fga.tuple.write", "user:usr-1", "admin", "project:prj-a")
@@ -311,7 +311,7 @@ func TestFactProjection_CountsWhatItProjected(t *testing.T) {
 		enqueueTuple(t, ctx, tx, "fga.tuple.write", "user:usr-1", "v_get", "vpc_network:net-1")
 
 		var n int
-		if err := tx.QueryRow(ctx, `SELECT count(*) FROM kacho_iam.relation_fact`).Scan(&n); err != nil {
+		if err := tx.QueryRow(ctx, `SELECT count(*) FROM kaname.relation_fact`).Scan(&n); err != nil {
 			t.Fatalf("перепись: %v", err)
 		}
 		got := n - before

@@ -199,7 +199,7 @@ func readLiveSystemRoles(ctx context.Context, t *testing.T, pool *pgxpool.Pool) 
 	t.Helper()
 	rows, err := pool.Query(ctx,
 		`SELECT id, name, description, rules
-		   FROM kacho_iam.roles
+		   FROM kaname.roles
 		  WHERE cluster_id IS NOT NULL
 		  ORDER BY name`)
 	require.NoError(t, err)

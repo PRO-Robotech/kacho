@@ -187,7 +187,7 @@ func TestVerdictScopeFormGateRedsOnADivergedStep(t *testing.T) {
       FROM scope s
       CROSS JOIN LATERAL (
              SELECT pe.parent_type, pe.parent_id
-               FROM kacho_iam.resource_parent_edge pe
+               FROM kaname.resource_parent_edge pe
               WHERE pe.object_type = s.s_type AND pe.object_id = s.s_id
               ORDER BY pe.depth
               LIMIT $7::int
@@ -201,7 +201,7 @@ func TestVerdictScopeFormGateRedsOnADivergedStep(t *testing.T) {
       FROM scope s
       CROSS JOIN LATERAL (
              SELECT pe.parent_type, pe.parent_id
-               FROM kacho_iam.resource_parent_edge pe
+               FROM kaname.resource_parent_edge pe
               WHERE pe.object_type = s.s_type AND pe.object_id = s.s_id
               ORDER BY pe.depth
               LIMIT $5::int
@@ -212,7 +212,7 @@ func TestVerdictScopeFormGateRedsOnADivergedStep(t *testing.T) {
 	const oneShot = `    SELECT $2::text, $3::text, 0
   UNION ALL
     SELECT e.parent_type, e.parent_id, e.depth
-      FROM kacho_iam.resource_parent_edge e
+      FROM kaname.resource_parent_edge e
      WHERE e.object_type = $2::text AND e.object_id = $3::text`
 
 	step, ok := recursiveStepOf(walk)

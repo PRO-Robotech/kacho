@@ -53,7 +53,7 @@ flowchart LR
   admin -->|"3. передаёт ссылку"| user["Приглашённый"]
   user -->|"4. вход через Kratos"| kratos["Ory Kratos"]
   kratos -->|"5. identity hook (:9092)"| iam
-  iam -->|"6. match email → ACTIVE + externalId"| pg[("kacho_iam")]
+  iam -->|"6. match email → ACTIVE + externalId"| pg[("kaname")]
 ```
 
 1. Админ вызывает `UserService.Invite(email)` — backend создаёт `PENDING`-строку.

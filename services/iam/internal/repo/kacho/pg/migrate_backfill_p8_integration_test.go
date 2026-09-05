@@ -57,7 +57,7 @@ func activeOwnerBindingCount(t *testing.T, ctx context.Context, pool *pgxpool.Po
 	t.Helper()
 	var n int
 	require.NoError(t, pool.QueryRow(ctx,
-		`SELECT count(*) FROM kacho_iam.access_bindings
+		`SELECT count(*) FROM kaname.access_bindings
 		  WHERE role_id = $1 AND resource_type = 'account' AND resource_id = $2
 		    AND revoked_at IS NULL`,
 		domain.OwnerRoleID, string(accID)).Scan(&n))
@@ -69,7 +69,7 @@ func ownerBindingID(t *testing.T, ctx context.Context, pool *pgxpool.Pool, accID
 	t.Helper()
 	var id string
 	require.NoError(t, pool.QueryRow(ctx,
-		`SELECT id FROM kacho_iam.access_bindings
+		`SELECT id FROM kaname.access_bindings
 		  WHERE role_id = $1 AND resource_type = 'account' AND resource_id = $2
 		    AND revoked_at IS NULL
 		  LIMIT 1`,
@@ -82,7 +82,7 @@ func ledgerTupleCount(t *testing.T, ctx context.Context, pool *pgxpool.Pool, bID
 	t.Helper()
 	var n int
 	require.NoError(t, pool.QueryRow(ctx,
-		`SELECT count(*) FROM kacho_iam.access_binding_emitted_tuples WHERE binding_id = $1`,
+		`SELECT count(*) FROM kaname.access_binding_emitted_tuples WHERE binding_id = $1`,
 		string(bID)).Scan(&n))
 	return n
 }
@@ -92,7 +92,7 @@ func ledgerHasTuple(t *testing.T, ctx context.Context, pool *pgxpool.Pool, bID d
 	t.Helper()
 	var n int
 	require.NoError(t, pool.QueryRow(ctx,
-		`SELECT count(*) FROM kacho_iam.access_binding_emitted_tuples
+		`SELECT count(*) FROM kaname.access_binding_emitted_tuples
 		  WHERE binding_id = $1 AND fga_user = $2 AND relation = $3 AND object = $4`,
 		string(bID), fgaUser, relation, object).Scan(&n))
 	return n > 0
@@ -153,7 +153,7 @@ func TestP8_01_OwnerBindingBackfill_ExistingAccounts(t *testing.T) {
 	var protected bool
 	require.NoError(t, pool.QueryRow(ctx,
 		`SELECT subject_type, subject_id, role_id, deletion_protection
-		   FROM kacho_iam.access_bindings WHERE id = $1`, string(bID)).
+		   FROM kaname.access_bindings WHERE id = $1`, string(bID)).
 		Scan(&subjType, &subjID, &roleID, &protected))
 	assert.Equal(t, "user", subjType)
 	assert.Equal(t, string(owner), subjID)
@@ -163,7 +163,7 @@ func TestP8_01_OwnerBindingBackfill_ExistingAccounts(t *testing.T) {
 	// access_binding_subjects has the projected single subject row.
 	var subjRows int
 	require.NoError(t, pool.QueryRow(ctx,
-		`SELECT count(*) FROM kacho_iam.access_binding_subjects WHERE binding_id = $1`,
+		`SELECT count(*) FROM kaname.access_binding_subjects WHERE binding_id = $1`,
 		string(bID)).Scan(&subjRows))
 	assert.Equal(t, 1, subjRows, "owner-binding must have its projected subject row")
 
@@ -176,7 +176,7 @@ func TestP8_01_OwnerBindingBackfill_ExistingAccounts(t *testing.T) {
 	// (403) on the owner-binding object.
 	var hierTuples int
 	require.NoError(t, pool.QueryRow(ctx,
-		`SELECT count(*) FROM kacho_iam.fga_outbox
+		`SELECT count(*) FROM kaname.fga_outbox
 		  WHERE event_type        = 'fga.tuple.write'
 		    AND payload->>'user'     = 'account:' || $1
 		    AND payload->>'relation' = 'account'
@@ -189,7 +189,7 @@ func TestP8_01_OwnerBindingBackfill_ExistingAccounts(t *testing.T) {
 	// Idempotent: the hierarchy-tuple emit de-dupes on the payload NOT EXISTS guard.
 	require.NoError(t, seed.BackfillOwnerBindings(ctx, pool))
 	require.NoError(t, pool.QueryRow(ctx,
-		`SELECT count(*) FROM kacho_iam.fga_outbox
+		`SELECT count(*) FROM kaname.fga_outbox
 		  WHERE event_type        = 'fga.tuple.write'
 		    AND payload->>'user'     = 'account:' || $1
 		    AND payload->>'relation' = 'account'
@@ -304,7 +304,7 @@ func TestP8_03_Singleton_ConcurrentRunOnce_ExactlyOneExecutes(t *testing.T) {
 	var dups int
 	require.NoError(t, pool.QueryRow(ctx,
 		`SELECT count(*) - count(DISTINCT (fga_user, relation, object))
-		   FROM kacho_iam.access_binding_emitted_tuples WHERE binding_id = $1`,
+		   FROM kaname.access_binding_emitted_tuples WHERE binding_id = $1`,
 		string(bID)).Scan(&dups))
 	assert.Equal(t, 0, dups, "no duplicate ledger tuples after concurrent backfill (partial-UNIQUE)")
 }
@@ -435,7 +435,7 @@ func TestReview15_RevokedOwnerBinding_BackfillRecreatesActive(t *testing.T) {
 	// Revoke it (tombstone: status=REVOKED, revoked_at set) — leaving the deterministic
 	// id occupied. This is exactly the state TransitionStatus/Delete produces.
 	_, err = pool.Exec(ctx,
-		`UPDATE kacho_iam.access_bindings SET status='REVOKED', revoked_at=now() WHERE id=$1`,
+		`UPDATE kaname.access_bindings SET status='REVOKED', revoked_at=now() WHERE id=$1`,
 		string(revokedID))
 	require.NoError(t, err)
 	require.Equal(t, 0, activeOwnerBindingCount(t, ctx, pool, acc.ID), "no ACTIVE owner-binding after revoke")

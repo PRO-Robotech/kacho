@@ -7,7 +7,7 @@ package access_binding
 // re-materialize the object IMMEDIATELY, not only through the reconcile queue.
 //
 // iam.accessBinding is label-selectable (domain.labelSelectableTypes carries
-// "iam.accessBinding"; kacho_iam.access_bindings.labels is probed by
+// "iam.accessBinding"; kaname.access_bindings.labels is probed by
 // `labels @> match_labels` in MatchIAMDirect), so removing a label that an ARM_LABELS
 // grant matches is a REVOCATION: the per-object member row and its FGA tuples must go.
 // Two feeds reach the same reconciler for that:

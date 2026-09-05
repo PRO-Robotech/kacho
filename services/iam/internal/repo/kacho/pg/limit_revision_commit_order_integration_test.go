@@ -10,7 +10,7 @@ package pg_test
 // Задача #1373 утверждала, что дельта величин несёт тот же класс, что журнал
 // изменений субъекта: номер выдан на вставке, строка видна на фиксации, курсор
 // уходит за невидимый номер, строка теряется навсегда. ПОСЫЛКА ОПРОВЕРГНУТА
-// ЗАМЕРОМ: сценарий на `kacho_iam.limits` НЕ СТРОИТСЯ.
+// ЗАМЕРОМ: сценарий на `kaname.limits` НЕ СТРОИТСЯ.
 //
 // Ревизию штампует триггер `limits_stamp_revision` (миграция 0092), и он берёт
 // `pg_advisory_xact_lock` ПЕРЕД `nextval`. Транзакционная консультативная
@@ -58,12 +58,12 @@ import (
 // limitValueUpdateSQL — правка величины МИМО адаптера: проба обязана держать
 // транзакцию открытой между выдачей ревизии и фиксацией, а адаптер коммитит сам.
 const limitValueUpdateSQL = `
-	UPDATE kacho_iam.limits SET limit_value = $2 WHERE id = $1 RETURNING revision`
+	UPDATE kaname.limits SET limit_value = $2 WHERE id = $1 RETURNING revision`
 
 // stampRevisionWithoutTheLock — ТОТ ЖЕ триггер без сериализации выдачи.
 // Ставится только в базу пробы; миграция не трогается.
 const stampRevisionWithoutTheLock = `
-CREATE OR REPLACE FUNCTION kacho_iam.limits_stamp_revision() RETURNS trigger
+CREATE OR REPLACE FUNCTION kaname.limits_stamp_revision() RETURNS trigger
     LANGUAGE plpgsql AS $$
 BEGIN
     IF TG_OP = 'UPDATE'
@@ -72,7 +72,7 @@ BEGIN
         NEW.revision := OLD.revision;
         RETURN NEW;
     END IF;
-    NEW.revision := nextval('kacho_iam.limits_revision_seq');
+    NEW.revision := nextval('kaname.limits_revision_seq');
     RETURN NEW;
 END $$;`
 

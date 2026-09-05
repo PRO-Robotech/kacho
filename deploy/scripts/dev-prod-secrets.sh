@@ -34,7 +34,7 @@ NS="${KACHO_NAMESPACE:-kacho}"
 # ── Ключ ОБЁРТКИ приватной половины подписного ключа ────────────────────────
 # 32-byte hex (64 chars) — iam ResolveJWKSEncryptionKey() requires exactly 32 bytes.
 #
-# Им обёрнута колонка kacho_iam.token_signing_keys.private_key_wrapped
+# Им обёрнута колонка kaname.token_signing_keys.private_key_wrapped
 # (services/iam/internal/keywrap, AES-256-GCM). Поэтому ключ ОБЯЗАН пережить
 # пересоздание стенда: новый ключ не разворачивает ни одной уже записанной
 # приватной половины, и вернуть их нечем. Порождаем ОДНАЖДЫ, дальше —

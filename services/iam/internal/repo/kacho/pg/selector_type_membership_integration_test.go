@@ -128,13 +128,13 @@ func TestSelectorTypeMembership_GinServesContainmentNotScalarAny(t *testing.T) {
 	tx, err := pool.Begin(ctx)
 	require.NoError(t, err)
 	_, err = tx.Exec(ctx, `
-		INSERT INTO kacho_iam.role_rule_selectors
+		INSERT INTO kaname.role_rule_selectors
 		       (role_id, rule_fp, arm, object_types, resource_names, match_labels)
 		SELECT r.id, md5(r.id), 'anchor',
 		       CASE WHEN (row_number() OVER (ORDER BY r.id)) % 500 = 0
 		            THEN ARRAY[$1::text] ELSE ARRAY[$2::text] END,
 		       '{}'::text[], '{}'::jsonb
-		  FROM kacho_iam.roles r
+		  FROM kaname.roles r
 		 WHERE r.id LIKE 'rol0%'
 		ON CONFLICT DO NOTHING`, probedType, bulkType)
 	require.NoError(t, err)
@@ -142,14 +142,14 @@ func TestSelectorTypeMembership_GinServesContainmentNotScalarAny(t *testing.T) {
 
 	txa, err := pool.Begin(ctx)
 	require.NoError(t, err)
-	_, err = txa.Exec(ctx, `ANALYZE kacho_iam.role_rule_selectors`)
+	_, err = txa.Exec(ctx, `ANALYZE kaname.role_rule_selectors`)
 	require.NoError(t, err)
 	require.NoError(t, txa.Commit(ctx))
 
 	var selectors, matching int
 	require.NoError(t, pool.QueryRow(ctx,
 		`SELECT count(*), count(*) FILTER (WHERE object_types @> ARRAY[$1::text])
-		   FROM kacho_iam.role_rule_selectors`, probedType).Scan(&selectors, &matching))
+		   FROM kaname.role_rule_selectors`, probedType).Scan(&selectors, &matching))
 	t.Logf("перепись: строк селекторов %d, из них с искомым типом %d", selectors, matching)
 	require.Greater(t, selectors, 1000,
 		"населения мало — планировщик выберет последовательное чтение при ЛЮБОЙ форме, и проба ничего не различит")
@@ -157,9 +157,9 @@ func TestSelectorTypeMembership_GinServesContainmentNotScalarAny(t *testing.T) {
 
 	// Обе формы — один и тот же вопрос, разными словами.
 	containment := explainSelectorPredicate(ctx, t, pool,
-		`SELECT role_id FROM kacho_iam.role_rule_selectors WHERE object_types @> ARRAY[$1::text]`, probedType)
+		`SELECT role_id FROM kaname.role_rule_selectors WHERE object_types @> ARRAY[$1::text]`, probedType)
 	scalarAny := explainSelectorPredicate(ctx, t, pool,
-		`SELECT role_id FROM kacho_iam.role_rule_selectors WHERE $1 = ANY(object_types)`, probedType)
+		`SELECT role_id FROM kaname.role_rule_selectors WHERE $1 = ANY(object_types)`, probedType)
 
 	t.Logf("перепись: форма членства — узлы %s, индексы %s", strings.Join(containment.nodeTypes, ","),
 		strings.Join(containment.indexes, ","))

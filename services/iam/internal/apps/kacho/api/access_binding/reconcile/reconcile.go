@@ -4,7 +4,7 @@
 // Package reconcile — selector/containment reconciler.
 //
 // Selector membership is DYNAMIC: labels change in the owning service and arrive
-// over the compute→iam RegisterResource edge into kacho_iam.resource_mirror.
+// over the compute→iam RegisterResource edge into kaname.resource_mirror.
 // The reconciler MATERIALIZES the desired per-object set for a binding from the
 // mirror (same-DB, no iam→owner peer call — keeps the graph acyclic), DIFFS
 // it against the stored access_binding_target_members, and EMITS/EAGER-REVOKEs

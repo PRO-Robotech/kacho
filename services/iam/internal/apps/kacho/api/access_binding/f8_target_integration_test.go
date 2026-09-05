@@ -47,7 +47,7 @@ func TestAB_IAM_1_21_TargetAllInScope_RoundTrip(t *testing.T) {
 	dsn := setupTestDB(t)
 	pool := poolFromDSN(t, dsn)
 	repo := kachopg.New(pool, nil)
-	opsRepo := operations.NewRepo(pool, "kacho_iam")
+	opsRepo := operations.NewRepo(pool, "kaname")
 	h := deltaHandler(t, repo, opsRepo)
 
 	owner := mustSeedUser(t, ctx, pool, "f8a")
@@ -81,7 +81,7 @@ func TestAB_IAM_1_22_MissingTarget_InvalidArgument(t *testing.T) {
 	dsn := setupTestDB(t)
 	pool := poolFromDSN(t, dsn)
 	repo := kachopg.New(pool, nil)
-	opsRepo := operations.NewRepo(pool, "kacho_iam")
+	opsRepo := operations.NewRepo(pool, "kaname")
 	h := deltaHandler(t, repo, opsRepo)
 
 	owner := mustSeedUser(t, ctx, pool, "f8b")
@@ -112,7 +112,7 @@ func TestAB_IAM_1_23_UnknownTargetType_InvalidArgument(t *testing.T) {
 	dsn := setupTestDB(t)
 	pool := poolFromDSN(t, dsn)
 	repo := kachopg.New(pool, nil)
-	opsRepo := operations.NewRepo(pool, "kacho_iam")
+	opsRepo := operations.NewRepo(pool, "kaname")
 	h := deltaHandler(t, repo, opsRepo)
 
 	owner := mustSeedUser(t, ctx, pool, "f8c")

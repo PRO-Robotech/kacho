@@ -12,7 +12,7 @@ import (
 	"go.uber.org/multierr"
 )
 
-// AuditOutboxEntry — строка журнала аудита `kacho_iam.audit_outbox` (заведён
+// AuditOutboxEntry — строка журнала аудита `kaname.audit_outbox` (заведён
 // миграцией `0001_initial.sql`), дописываемая только вперёд.
 //
 // # Что происходит на самом деле

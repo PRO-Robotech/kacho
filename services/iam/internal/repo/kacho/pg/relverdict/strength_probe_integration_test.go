@@ -222,21 +222,21 @@ func newStrFixture(t *testing.T, ctx context.Context, tx pgx.Tx) *strFixture {
 	t.Helper()
 	f := &strFixture{tx: tx, shareSeeded: -1}
 
-	exec(t, ctx, tx, `INSERT INTO kacho_iam.clusters (id, name) VALUES ('cluster_kacho_root', 'kacho')
+	exec(t, ctx, tx, `INSERT INTO kaname.clusters (id, name) VALUES ('cluster_kacho_root', 'kacho')
 		 ON CONFLICT DO NOTHING`)
 	exec(t, ctx, tx,
-		`INSERT INTO kacho_iam.accounts (id, name, owner_user_id) VALUES ('acc-1', 'strength-account', $1)`,
+		`INSERT INTO kaname.accounts (id, name, owner_user_id) VALUES ('acc-1', 'strength-account', $1)`,
 		strUserID)
 	exec(t, ctx, tx,
-		`INSERT INTO kacho_iam.users (id, external_id, email, account_id)
+		`INSERT INTO kaname.users (id, external_id, email, account_id)
 		 VALUES ($1, 'ext-1', 'usr-1@kacho.local', 'acc-1')`, strUserID)
 	exec(t, ctx, tx,
-		`INSERT INTO kacho_iam.projects (id, account_id, name) VALUES ('prj-1', 'acc-1', 'strength-project')`)
+		`INSERT INTO kaname.projects (id, account_id, name) VALUES ('prj-1', 'acc-1', 'strength-project')`)
 	// Группа заводится ВСЕГДА, даже при M = 0: за спрашиваемого говорят четыре
 	// написания, и три из них называют группу. Отсутствие самой группы сделало
 	// бы точку M = 0 неотличимой от «в базе групп нет вовсе».
 	exec(t, ctx, tx,
-		`INSERT INTO kacho_iam.groups (id, account_id, name) VALUES ($1, 'acc-1', 'strength-group')`,
+		`INSERT INTO kaname.groups (id, account_id, name) VALUES ($1, 'acc-1', 'strength-group')`,
 		strGroupID)
 
 	strSeedRole(t, ctx, tx, strRoleID, strRoleName, 1)
@@ -280,18 +280,18 @@ func newStrFixture(t *testing.T, ctx context.Context, tx pgx.Tx) *strFixture {
 func strSeedRole(t *testing.T, ctx context.Context, tx pgx.Tx, roleID, roleName string, k int) {
 	t.Helper()
 	exec(t, ctx, tx,
-		`INSERT INTO kacho_iam.roles (id, name, permissions, rules, cluster_id)
+		`INSERT INTO kaname.roles (id, name, permissions, rules, cluster_id)
 		 VALUES ($1, $2, '[]'::jsonb,
 		         jsonb_build_array(jsonb_build_object(
 		             'module', 'probe', 'resources', jsonb_build_array('*'),
 		             'verbs',  jsonb_build_array($3::text))),
 		         'cluster_kacho_root')`, roleID, roleName, strVerb)
 	exec(t, ctx, tx,
-		`INSERT INTO kacho_iam.role_verb (role_id, object_type, verb) VALUES ($1, $2, $3)`,
+		`INSERT INTO kaname.role_verb (role_id, object_type, verb) VALUES ($1, $2, $3)`,
 		roleID, strCatalogType, strVerb)
 	for i := 0; i < k; i++ {
 		exec(t, ctx, tx,
-			`INSERT INTO kacho_iam.role_rule_selectors (role_id, rule_fp, arm, object_types, match_labels)
+			`INSERT INTO kaname.role_rule_selectors (role_id, rule_fp, arm, object_types, match_labels)
 			 VALUES ($1, $2, 'labels', ARRAY[$3::text], $4::jsonb)`,
 			roleID, fmt.Sprintf("fp-%04d", i), strCatalogType, strJSON(t, strSelectorLabels(i)))
 	}
@@ -307,16 +307,16 @@ func strSeedBinding(t *testing.T, ctx context.Context, tx pgx.Tx,
 	bindingID, subjType, subjID, roleID, resType, resID string, extraSubjects [][2]string) {
 	t.Helper()
 	exec(t, ctx, tx,
-		`INSERT INTO kacho_iam.access_bindings
+		`INSERT INTO kaname.access_bindings
 		   (id, subject_type, subject_id, role_id, resource_type, resource_id, status)
 		 VALUES ($1, $2, $3, $4, $5, $6, 'ACTIVE')`,
 		bindingID, subjType, subjID, roleID, resType, resID)
 	exec(t, ctx, tx,
-		`INSERT INTO kacho_iam.access_binding_subjects (binding_id, subject_type, subject_id)
+		`INSERT INTO kaname.access_binding_subjects (binding_id, subject_type, subject_id)
 		 VALUES ($1, $2, $3)`, bindingID, subjType, subjID)
 	for _, s := range extraSubjects {
 		exec(t, ctx, tx,
-			`INSERT INTO kacho_iam.access_binding_subjects (binding_id, subject_type, subject_id)
+			`INSERT INTO kaname.access_binding_subjects (binding_id, subject_type, subject_id)
 			 VALUES ($1, $2, $3)`, bindingID, s[0], s[1])
 	}
 }
@@ -335,7 +335,7 @@ func (f *strFixture) growN(t *testing.T, ctx context.Context, target, allowedSha
 		// значило бы получить смесь двух долей и назвать её одной.
 		if f.seedN > 0 {
 			exec(t, ctx, f.tx,
-				`UPDATE kacho_iam.resource_mirror SET labels = CASE
+				`UPDATE kaname.resource_mirror SET labels = CASE
 				    WHEN (substr(object_id, 6)::int % 100) < $1 THEN $2::jsonb ELSE $3::jsonb END
 				  WHERE object_type = $4 AND object_id LIKE 'bulk-%'`,
 				allowedShare, strJSON(t, strSelectorLabels(0)), strJSON(t, map[string]string{"env": "dev"}),
@@ -375,7 +375,7 @@ func (f *strFixture) growN(t *testing.T, ctx context.Context, target, allowedSha
 func (f *strFixture) setM(t *testing.T, ctx context.Context, target int) {
 	t.Helper()
 	if target < f.seedM {
-		exec(t, ctx, f.tx, `DELETE FROM kacho_iam.group_members WHERE member_id = $1`, strUserID)
+		exec(t, ctx, f.tx, `DELETE FROM kaname.group_members WHERE member_id = $1`, strUserID)
 		f.seedM = 0
 	}
 	if target <= f.seedM {
@@ -385,10 +385,10 @@ func (f *strFixture) setM(t *testing.T, ctx context.Context, target int) {
 	for i := f.seedM; i < target; i++ {
 		gid := fmt.Sprintf("grp-m%05d", i)
 		must(t, s.QueueRaw(ctx,
-			`INSERT INTO kacho_iam.groups (id, account_id, name) VALUES ($1, 'acc-1', $2)
+			`INSERT INTO kaname.groups (id, account_id, name) VALUES ($1, 'acc-1', $2)
 			 ON CONFLICT DO NOTHING`, gid, fmt.Sprintf("strength-m-%05d", i)))
 		must(t, s.QueueRaw(ctx,
-			`INSERT INTO kacho_iam.group_members (group_id, member_type, member_id)
+			`INSERT INTO kaname.group_members (group_id, member_type, member_id)
 			 VALUES ($1, 'user', $2)`, gid, strUserID))
 	}
 	must(t, s.Flush(ctx))
@@ -399,8 +399,8 @@ func (f *strFixture) setM(t *testing.T, ctx context.Context, target int) {
 func (f *strFixture) setL(t *testing.T, ctx context.Context, target int) {
 	t.Helper()
 	if target < f.seedL {
-		exec(t, ctx, f.tx, `DELETE FROM kacho_iam.access_bindings WHERE id LIKE 'acb-l%'`)
-		exec(t, ctx, f.tx, `DELETE FROM kacho_iam.access_bindings WHERE id = 'acb-str-base'`)
+		exec(t, ctx, f.tx, `DELETE FROM kaname.access_bindings WHERE id LIKE 'acb-l%'`)
+		exec(t, ctx, f.tx, `DELETE FROM kaname.access_bindings WHERE id = 'acb-str-base'`)
 		f.seedL = 0
 	}
 	if target <= f.seedL {
@@ -410,12 +410,12 @@ func (f *strFixture) setL(t *testing.T, ctx context.Context, target int) {
 	if f.seedL == 0 {
 		// Первая строка — сам спрашиваемый легаси-субъектом.
 		must(t, s.QueueRaw(ctx,
-			`INSERT INTO kacho_iam.access_bindings
+			`INSERT INTO kaname.access_bindings
 			   (id, subject_type, subject_id, role_id, resource_type, resource_id, status)
 			 VALUES ('acb-str-base', 'user', $1, $2, $3, $4, 'ACTIVE')`,
 			strUserID, strRoleID, f.scopeType, f.scopeID))
 		must(t, s.QueueRaw(ctx,
-			`INSERT INTO kacho_iam.access_binding_subjects (binding_id, subject_type, subject_id)
+			`INSERT INTO kaname.access_binding_subjects (binding_id, subject_type, subject_id)
 			 VALUES ('acb-str-base', 'user', $1)`, strUserID))
 		f.seedL = 1
 	}
@@ -423,18 +423,18 @@ func (f *strFixture) setL(t *testing.T, ctx context.Context, target int) {
 		uid := fmt.Sprintf("usr-l%05d", i)
 		bid := fmt.Sprintf("acb-l%05d", i)
 		must(t, s.QueueRaw(ctx,
-			`INSERT INTO kacho_iam.users (id, external_id, email, account_id)
+			`INSERT INTO kaname.users (id, external_id, email, account_id)
 			 VALUES ($1, $1, $1 || '@kacho.local', 'acc-1') ON CONFLICT DO NOTHING`, uid))
 		must(t, s.QueueRaw(ctx,
-			`INSERT INTO kacho_iam.access_bindings
+			`INSERT INTO kaname.access_bindings
 			   (id, subject_type, subject_id, role_id, resource_type, resource_id, status)
 			 VALUES ($1, 'user', $2, $3, $4, $5, 'ACTIVE')`,
 			bid, uid, strRoleID, f.scopeType, f.scopeID))
 		must(t, s.QueueRaw(ctx,
-			`INSERT INTO kacho_iam.access_binding_subjects (binding_id, subject_type, subject_id)
+			`INSERT INTO kaname.access_binding_subjects (binding_id, subject_type, subject_id)
 			 VALUES ($1, 'user', $2)`, bid, uid))
 		must(t, s.QueueRaw(ctx,
-			`INSERT INTO kacho_iam.access_binding_subjects (binding_id, subject_type, subject_id)
+			`INSERT INTO kaname.access_binding_subjects (binding_id, subject_type, subject_id)
 			 VALUES ($1, 'user', $2)`, bid, strUserID))
 	}
 	must(t, s.Flush(ctx))
@@ -445,7 +445,7 @@ func (f *strFixture) setL(t *testing.T, ctx context.Context, target int) {
 func (f *strFixture) setK(t *testing.T, ctx context.Context, target int) {
 	t.Helper()
 	if target < f.seedK {
-		exec(t, ctx, f.tx, `DELETE FROM kacho_iam.role_rule_selectors WHERE role_id = $1`, strRoleID)
+		exec(t, ctx, f.tx, `DELETE FROM kaname.role_rule_selectors WHERE role_id = $1`, strRoleID)
 		f.seedK = 0
 	}
 	if target <= f.seedK {
@@ -454,7 +454,7 @@ func (f *strFixture) setK(t *testing.T, ctx context.Context, target int) {
 	s := scalegrid.NewSeeder(f.tx)
 	for i := f.seedK; i < target; i++ {
 		must(t, s.QueueRaw(ctx,
-			`INSERT INTO kacho_iam.role_rule_selectors (role_id, rule_fp, arm, object_types, match_labels)
+			`INSERT INTO kaname.role_rule_selectors (role_id, rule_fp, arm, object_types, match_labels)
 			 VALUES ($1, $2, 'labels', ARRAY[$3::text], $4::jsonb)`,
 			strRoleID, fmt.Sprintf("fp-%04d", i), strCatalogType, strJSON(t, strSelectorLabels(i))))
 	}
@@ -495,7 +495,7 @@ func (f *strFixture) setScopeShape(t *testing.T, ctx context.Context, s int) {
 
 	edge := func(objID string, depth int, parentType, parentID string) {
 		must(t, sd.QueueRaw(ctx,
-			`INSERT INTO kacho_iam.resource_parent_edge
+			`INSERT INTO kaname.resource_parent_edge
 			   (object_type, object_id, parent_type, parent_id, depth)
 			 VALUES ($1, $2, $3, $4, $5) ON CONFLICT DO NOTHING`,
 			strModelType, objID, parentType, parentID, depth))
@@ -505,7 +505,7 @@ func (f *strFixture) setScopeShape(t *testing.T, ctx context.Context, s int) {
 	// проверкой схемы.
 	synthEdge := func(objType, objID string, depth int, parentType, parentID string) {
 		must(t, sd.QueueRaw(ctx,
-			`INSERT INTO kacho_iam.resource_parent_edge
+			`INSERT INTO kaname.resource_parent_edge
 			   (object_type, object_id, parent_type, parent_id, depth)
 			 VALUES ($1, $2, $3, $4, $5) ON CONFLICT DO NOTHING`,
 			objType, objID, parentType, parentID, depth))
@@ -575,12 +575,12 @@ func (f *strFixture) setScopeShape(t *testing.T, ctx context.Context, s int) {
 	// ось мерила бы работу индекса, а не предикат правила.
 	for _, obj := range []string{allow, deny} {
 		must(t, sd.QueueRaw(ctx,
-			`INSERT INTO kacho_iam.access_bindings
+			`INSERT INTO kaname.access_bindings
 			   (id, subject_type, subject_id, role_id, resource_type, resource_id, status)
 			 VALUES ($1, 'user', $2, $3, $4, $5, 'ACTIVE') ON CONFLICT DO NOTHING`,
 			"acb-s-"+obj, strUserID, strRoleID, strModelType, obj))
 		must(t, sd.QueueRaw(ctx,
-			`INSERT INTO kacho_iam.access_binding_subjects (binding_id, subject_type, subject_id)
+			`INSERT INTO kaname.access_binding_subjects (binding_id, subject_type, subject_id)
 			 VALUES ($1, 'user', $2) ON CONFLICT DO NOTHING`, "acb-s-"+obj, strUserID))
 	}
 	must(t, sd.Flush(ctx))
@@ -594,10 +594,10 @@ func (f *strFixture) setScopeShape(t *testing.T, ctx context.Context, s int) {
 // СТАТИСТИКИ, а не запрос.
 func (f *strFixture) analyze(t *testing.T, ctx context.Context) {
 	t.Helper()
-	exec(t, ctx, f.tx, `ANALYZE kacho_iam.resource_mirror, kacho_iam.access_bindings,
-		kacho_iam.access_binding_subjects, kacho_iam.relation_fact,
-		kacho_iam.role_verb, kacho_iam.role_rule_selectors, kacho_iam.group_members`)
-	exec(t, ctx, f.tx, `ANALYZE kacho_iam.resource_parent_edge`)
+	exec(t, ctx, f.tx, `ANALYZE kaname.resource_mirror, kaname.access_bindings,
+		kaname.access_binding_subjects, kaname.relation_fact,
+		kaname.role_verb, kaname.role_rule_selectors, kaname.group_members`)
+	exec(t, ctx, f.tx, `ANALYZE kaname.resource_parent_edge`)
 }
 
 // seedPoint — привести фикстуру к точке.

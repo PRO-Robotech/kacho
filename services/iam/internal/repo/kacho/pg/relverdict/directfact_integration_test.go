@@ -27,13 +27,13 @@ func TestAsk_DirectFactOnTheObjectItselfGrants(t *testing.T) {
 	withTx(t, func(ctx context.Context, tx pgx.Tx) {
 		seedTenant(t, ctx, tx)
 		exec(t, ctx, tx,
-			`INSERT INTO kacho_iam.resource_mirror (object_type, object_id, labels)
+			`INSERT INTO kaname.resource_mirror (object_type, object_id, labels)
 			 VALUES ($1, 'snet-1', '{}'::jsonb) ON CONFLICT DO NOTHING`,
 			catalogFormOf(t, "vpc_subnet"))
 
 		// Прямой факт: право на ОДИН объект, без области и без правила.
 		exec(t, ctx, tx,
-			`INSERT INTO kacho_iam.relation_fact
+			`INSERT INTO kaname.relation_fact
 			   (object_type, object_id, relation, subject, source_version, created_at)
 			 VALUES ('vpc_subnet', 'snet-1', 'v_get', 'user:usr-1', now(), now())`)
 
@@ -53,7 +53,7 @@ func TestAsk_DirectFactOnTheObjectItselfGrants(t *testing.T) {
 		// обязан остаться закрытым. Без него проба зеленела бы и на форме,
 		// которая разрешает всё подряд.
 		exec(t, ctx, tx,
-			`INSERT INTO kacho_iam.resource_mirror (object_type, object_id, labels)
+			`INSERT INTO kaname.resource_mirror (object_type, object_id, labels)
 			 VALUES ($1, 'snet-2', '{}'::jsonb) ON CONFLICT DO NOTHING`,
 			catalogFormOf(t, "vpc_subnet"))
 		other, _, err := relverdict.Ask(ctx, tx, relverdict.Query{

@@ -38,7 +38,7 @@ func TestProjectAudit_5_2_13_CrudEmits(t *testing.T) {
 		})
 	require.NoError(t, err)
 	awaitWorkers(t)
-	prjID := singleID(t, ctx, env, `SELECT id FROM kacho_iam.projects WHERE name = $1 AND account_id = $2`, "proj-13", string(accID))
+	prjID := singleID(t, ctx, env, `SELECT id FROM kaname.projects WHERE name = $1 AND account_id = $2`, "proj-13", string(accID))
 
 	created := requireOneAuditRow(ctx, t, env.pool, "iam.project.created", prjID)
 	require.Equal(t, "project", created.payload["resource_type"])
@@ -85,7 +85,7 @@ func TestServiceAccountAudit_5_2_15_CrudEmits(t *testing.T) {
 		})
 	require.NoError(t, err)
 	awaitWorkers(t)
-	saID := singleID(t, ctx, env, `SELECT id FROM kacho_iam.service_accounts WHERE name = $1 AND account_id = $2`, "ci-bot-15", string(accID))
+	saID := singleID(t, ctx, env, `SELECT id FROM kaname.service_accounts WHERE name = $1 AND account_id = $2`, "ci-bot-15", string(accID))
 
 	created := requireOneAuditRow(ctx, t, env.pool, "iam.service_account.created", saID)
 	require.Equal(t, "service_account", created.payload["resource_type"])
@@ -128,7 +128,7 @@ func TestGroupAudit_5_2_16_CrudEmits(t *testing.T) {
 		})
 	require.NoError(t, err)
 	awaitWorkers(t)
-	grpID := singleID(t, ctx, env, `SELECT id FROM kacho_iam.groups WHERE name = $1 AND account_id = $2`, "devs-16", string(accID))
+	grpID := singleID(t, ctx, env, `SELECT id FROM kaname.groups WHERE name = $1 AND account_id = $2`, "devs-16", string(accID))
 
 	created := requireOneAuditRow(ctx, t, env.pool, "iam.group.created", grpID)
 	require.Equal(t, "group", created.payload["resource_type"])
@@ -172,7 +172,7 @@ func TestRoleAudit_5_2_17_CrudEmits(t *testing.T) {
 		})
 	require.NoError(t, err)
 	awaitWorkers(t)
-	rolID := singleID(t, ctx, env, `SELECT id FROM kacho_iam.roles WHERE name = $1 AND account_id = $2`, "vpc_reader_17", string(accID))
+	rolID := singleID(t, ctx, env, `SELECT id FROM kaname.roles WHERE name = $1 AND account_id = $2`, "vpc_reader_17", string(accID))
 
 	created := requireOneAuditRow(ctx, t, env.pool, "iam.role.created", rolID)
 	require.Equal(t, "role", created.payload["resource_type"])

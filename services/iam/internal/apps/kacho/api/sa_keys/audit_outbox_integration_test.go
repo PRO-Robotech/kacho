@@ -55,7 +55,7 @@ import (
 var sakeyEvtIDRe = regexp.MustCompile(`^evt_[0-9A-HJKMNP-TV-Za-hjkmnp-tv-z]{20,30}$`)
 
 // setupSAKeyTestDB hands the calling test its OWN database, IAM migrations
-// already applied, and returns a DSN whose search_path defaults to kacho_iam.
+// already applied, and returns a DSN whose search_path defaults to kaname.
 //
 // It used to start a fresh Postgres 16 container and replay the migration chain
 // on every call. The database now comes from the one container this test binary
@@ -83,7 +83,7 @@ func seedSAKeyUserAndSA(t *testing.T, ctx context.Context, pool *pgxpool.Pool, s
 	defer func() { _ = tx.Rollback(ctx) }()
 
 	_, err = tx.Exec(ctx, `
-		INSERT INTO kacho_iam.users (id, account_id, external_id, email, display_name, invite_status)
+		INSERT INTO kaname.users (id, account_id, external_id, email, display_name, invite_status)
 		VALUES ($1, $2, $3, $4, $5, 'ACTIVE')`,
 		string(uid), string(accID),
 		fmt.Sprintf("ext-%s-%s", suffix, uid),
@@ -92,7 +92,7 @@ func seedSAKeyUserAndSA(t *testing.T, ctx context.Context, pool *pgxpool.Pool, s
 	require.NoError(t, err)
 
 	_, err = tx.Exec(ctx, `
-		INSERT INTO kacho_iam.accounts (id, name, owner_user_id, labels)
+		INSERT INTO kaname.accounts (id, name, owner_user_id, labels)
 		VALUES ($1, $2, $3, '{}'::jsonb)`,
 		string(accID),
 		fmt.Sprintf("sak-acc-%s-%s", suffix, accID[len(accID)-6:]),
@@ -100,7 +100,7 @@ func seedSAKeyUserAndSA(t *testing.T, ctx context.Context, pool *pgxpool.Pool, s
 	require.NoError(t, err)
 
 	_, err = tx.Exec(ctx, `
-		INSERT INTO kacho_iam.service_accounts (id, account_id, name)
+		INSERT INTO kaname.service_accounts (id, account_id, name)
 		VALUES ($1, $2, $3)`,
 		string(svaID), string(accID),
 		fmt.Sprintf("sak-sa-%s", suffix))
@@ -124,7 +124,7 @@ func sakeyAuditRows(ctx context.Context, t *testing.T, pool *pgxpool.Pool, event
 	t.Helper()
 	rows, err := pool.Query(ctx,
 		`SELECT id, event_type, status, event_payload::text
-		   FROM kacho_iam.audit_outbox
+		   FROM kaname.audit_outbox
 		  WHERE event_type = $1 AND event_payload->>'key_id' = $2
 		  ORDER BY created_at ASC`,
 		eventType, keyID)
@@ -145,7 +145,7 @@ func sakeyAuditRows(ctx context.Context, t *testing.T, pool *pgxpool.Pool, event
 // fake Hydra, with the durable audit emitter attached.
 func buildIssueUC(pool *pgxpool.Pool, hydra OAuthClientAdmin) *IssueSAKeyUseCase {
 	repo := kachopg.NewSAOAuthClientRepo(pool)
-	opsRepo := operations.NewRepo(pool, "kacho_iam")
+	opsRepo := operations.NewRepo(pool, "kaname")
 	uc := NewIssueSAKeyUseCase(repo, kachopg.NewPoolTxBeginner(pool), hydra, opsRepo)
 	uc.WithAuditEmitter(kachopg.NewAuditOutboxEmitter(pool))
 	return uc
@@ -153,7 +153,7 @@ func buildIssueUC(pool *pgxpool.Pool, hydra OAuthClientAdmin) *IssueSAKeyUseCase
 
 func buildRevokeUC(pool *pgxpool.Pool, hydra OAuthClientAdmin) *RevokeSAKeyUseCase {
 	repo := kachopg.NewSAOAuthClientRepo(pool)
-	opsRepo := operations.NewRepo(pool, "kacho_iam")
+	opsRepo := operations.NewRepo(pool, "kaname")
 	uc := NewRevokeSAKeyUseCase(repo, kachopg.NewPoolTxBeginner(pool), hydra, opsRepo)
 	uc.WithAuditEmitter(kachopg.NewAuditOutboxEmitter(pool))
 	return uc
@@ -168,7 +168,7 @@ func awaitAudit(ctx context.Context, t *testing.T, pool *pgxpool.Pool, eventType
 	for time.Now().Before(deadline) {
 		var n int
 		require.NoError(t, pool.QueryRow(ctx,
-			`SELECT count(*) FROM kacho_iam.audit_outbox
+			`SELECT count(*) FROM kaname.audit_outbox
 			  WHERE event_type = $1 AND event_payload->>'key_id' = $2`,
 			eventType, keyID).Scan(&n))
 		if n >= 1 {
@@ -240,7 +240,7 @@ func TestSAKeyAudit_5_2_20_IssueEmitsNoSecret(t *testing.T) {
 	var keyID string
 	require.Eventually(t, func() bool {
 		return pool.QueryRow(ctx,
-			`SELECT id FROM kacho_iam.service_account_oauth_clients WHERE sva_id = $1`,
+			`SELECT id FROM kaname.service_account_oauth_clients WHERE sva_id = $1`,
 			string(svaID)).Scan(&keyID) == nil
 	}, 5*time.Second, 20*time.Millisecond, "issued key must persist")
 	require.True(t, strings.HasPrefix(keyID, domain.PrefixSAOAuthClient), "key id must be a soc_ id")
@@ -284,7 +284,7 @@ func TestSAKeyAudit_5_2_21_RevokeEmits(t *testing.T) {
 	var keyID string
 	require.Eventually(t, func() bool {
 		return pool.QueryRow(ctx,
-			`SELECT id FROM kacho_iam.service_account_oauth_clients WHERE sva_id = $1`,
+			`SELECT id FROM kaname.service_account_oauth_clients WHERE sva_id = $1`,
 			string(svaID)).Scan(&keyID) == nil
 	}, 5*time.Second, 20*time.Millisecond, "issued key must persist")
 
@@ -311,7 +311,7 @@ func TestSAKeyAudit_5_2_21_RevokeEmits(t *testing.T) {
 	// committed audit row.
 	var n int
 	require.NoError(t, pool.QueryRow(ctx,
-		`SELECT count(*) FROM kacho_iam.service_account_oauth_clients WHERE id = $1`, keyID).Scan(&n))
+		`SELECT count(*) FROM kaname.service_account_oauth_clients WHERE id = $1`, keyID).Scan(&n))
 	require.Equal(t, 0, n, "the revoked mapping row must be deleted (commit-together)")
 }
 
@@ -345,7 +345,7 @@ func TestSAKeyAudit_5_2_35_IssueRollbackNoOrphan(t *testing.T) {
 	var firstKey string
 	require.Eventually(t, func() bool {
 		return pool.QueryRow(ctx,
-			`SELECT id FROM kacho_iam.service_account_oauth_clients WHERE sva_id = $1`,
+			`SELECT id FROM kaname.service_account_oauth_clients WHERE sva_id = $1`,
 			string(svaID)).Scan(&firstKey) == nil
 	}, 5*time.Second, 20*time.Millisecond)
 	awaitAudit(ctx, t, pool, "iam.sa_key.issued", firstKey)
@@ -363,7 +363,7 @@ func TestSAKeyAudit_5_2_35_IssueRollbackNoOrphan(t *testing.T) {
 	// signal that the worker actually dequeued and attempted it), then assert it
 	// carries the constraint error — so the negative counts below only fire after
 	// the 23505-rollback path provably ran (not because the worker was merely slow).
-	opsRepo := operations.NewRepo(pool, "kacho_iam")
+	opsRepo := operations.NewRepo(pool, "kaname")
 	var finalOp *operations.Operation
 	require.Eventually(t, func() bool {
 		o, gerr := opsRepo.Get(ctx, op2.ID)
@@ -378,13 +378,13 @@ func TestSAKeyAudit_5_2_35_IssueRollbackNoOrphan(t *testing.T) {
 
 	var keyCount int
 	require.NoError(t, pool.QueryRow(ctx,
-		`SELECT count(*) FROM kacho_iam.service_account_oauth_clients WHERE sva_id = $1`,
+		`SELECT count(*) FROM kaname.service_account_oauth_clients WHERE sva_id = $1`,
 		string(svaID)).Scan(&keyCount))
 	require.Equal(t, 1, keyCount, "duplicate Issue must not create a second mapping row")
 
 	var auditCount int
 	require.NoError(t, pool.QueryRow(ctx,
-		`SELECT count(*) FROM kacho_iam.audit_outbox WHERE event_type = 'iam.sa_key.issued'`).Scan(&auditCount))
+		`SELECT count(*) FROM kaname.audit_outbox WHERE event_type = 'iam.sa_key.issued'`).Scan(&auditCount))
 	require.Equal(t, 1, auditCount, "rolled-back Issue must leave no orphan audit row (atomicity, запрет #10)")
 }
 
@@ -414,7 +414,7 @@ func TestSAKeyAudit_5_2_40_ActorFromPrincipal(t *testing.T) {
 	var keyID string
 	require.Eventually(t, func() bool {
 		return pool.QueryRow(ctx,
-			`SELECT id FROM kacho_iam.service_account_oauth_clients WHERE sva_id = $1`,
+			`SELECT id FROM kaname.service_account_oauth_clients WHERE sva_id = $1`,
 			string(svaID)).Scan(&keyID) == nil
 	}, 5*time.Second, 20*time.Millisecond)
 	awaitAudit(ctx, t, pool, "iam.sa_key.issued", keyID)

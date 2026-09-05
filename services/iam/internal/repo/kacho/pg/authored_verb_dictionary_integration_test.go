@@ -73,7 +73,7 @@ func TestAuthoredCreateIsAcceptedAndProducesNoPerObjectRelation(t *testing.T) {
 
 	var refs int
 	require.NoError(t, pool.QueryRow(ctx,
-		`SELECT count(*) FROM kacho_iam.role_rule_ref WHERE role_id = $1`,
+		`SELECT count(*) FROM kaname.role_rule_ref WHERE role_id = $1`,
 		string(role)).Scan(&refs))
 	require.Equal(t, 2, refs, "оба объявленных сегмента обязаны лечь строками проекции")
 

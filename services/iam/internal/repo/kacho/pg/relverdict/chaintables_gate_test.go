@@ -79,12 +79,12 @@ import (
 // обязан говорить, что он сторожит; переименование представления не проходит
 // мимо — миграции, объявляющей представление с этим именем, гейт не найдёт и
 // ОТКАЖЕТ, а не промолчит.
-const chainViewName = "kacho_iam.resource_scope_edge"
+const chainViewName = "kaname.resource_scope_edge"
 
 // chainTableMark — приставка, по которой имена таблиц выводятся из текста. Та же,
 // что у прибора; совпадение не берётся на веру, а проверяется предпосылкой
 // (chainCatalogueCouplingFindings).
-const chainTableMark = "kacho_iam."
+const chainTableMark = "kaname."
 
 // chainViewDecl — объявление представления в любой из двух форм: `740001` завела
 // его через CREATE VIEW, последующие переопределяют через CREATE OR REPLACE VIEW.
@@ -135,7 +135,7 @@ func chainExecutableSQL(src string) string {
 	return b.String()
 }
 
-// chainTableNamesIn — имена вида `kacho_iam.<таблица>`, встреченные в тексте.
+// chainTableNamesIn — имена вида `kaname.<таблица>`, встреченные в тексте.
 func chainTableNamesIn(src string) []string {
 	seen := map[string]bool{}
 	var out []string

@@ -46,7 +46,7 @@ func TestAsk_R893_PublicCatalogReadComesFromTheSystemGrant(t *testing.T) {
 		// сеющая его сама, утверждала бы о своей фикстуре, а не о платформе.
 		var seeded int
 		if err := tx.QueryRow(ctx, `
-			SELECT count(*) FROM kacho_iam.relation_fact
+			SELECT count(*) FROM kaname.relation_fact
 			 WHERE object_type = 'cluster' AND object_id = $1
 			   AND relation = 'viewer' AND subject = 'user:*'`,
 			domain.ClusterSingletonID).Scan(&seeded); err != nil {
@@ -95,7 +95,7 @@ func TestAsk_R893_PublicCatalogReadComesFromTheSystemGrant(t *testing.T) {
 		// системной выдачи (журнал → проекция); путь отзыва целиком проверяется
 		// пробой репозитория, здесь — его СЛЕДСТВИЕ для решения о доступе.
 		exec(t, ctx, tx, `
-			DELETE FROM kacho_iam.relation_fact
+			DELETE FROM kaname.relation_fact
 			 WHERE object_type = 'cluster' AND object_id = $1
 			   AND relation = 'viewer' AND subject = 'user:*'`,
 			domain.ClusterSingletonID)

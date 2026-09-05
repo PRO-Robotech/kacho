@@ -460,7 +460,7 @@ func (s *reconcileStore) MatchByIDsIAMDirect(ctx context.Context, types, ids []s
 //     parent_account = account_id (COALESCED through the owning project for a
 //     project-scoped role/SA so the account-scoped owner binding still contains it),
 //     parent_project = project_id (NULL → ”).
-//   - iam.user — аккаунты берутся из kacho_iam.memberships, а НЕ из колонки строки
+//   - iam.user — аккаунты берутся из kaname.memberships, а НЕ из колонки строки
 //     (#1172); их бывает несколько, поэтому источник назван parentAccountsExpr.
 //   - iam.accessBinding — scoped by (resource_type, resource_id): account-scoped →
 //     parent_account; project-scoped → parent_project (+ its account via the projects
@@ -510,36 +510,36 @@ func (s iamDirectScanSpec) accountsExpr() string {
 // iamDirectScanSpecs — the closed, per-type read plan. All identifiers are literals.
 var iamDirectScanSpecs = map[string]iamDirectScanSpec{
 	"iam.project": {
-		objectType: "iam.project", table: "kacho_iam.projects",
+		objectType: "iam.project", table: "kaname.projects",
 		parentAccountExpr: "o.account_id", parentProjectExpr: "o.id",
 	},
 	"iam.account": {
-		objectType: "iam.account", table: "kacho_iam.accounts",
+		objectType: "iam.account", table: "kaname.accounts",
 		parentAccountExpr: "o.id", parentProjectExpr: "''",
 	},
 	// account-scoped content (a role may also be project-scoped; a service
 	// account is account-scoped only — её проектная колонка снята вместе с
 	// полем контракта, писателя у неё не было).
 	"iam.role": {
-		objectType: "iam.role", table: "kacho_iam.roles",
+		objectType: "iam.role", table: "kaname.roles",
 		// A project-scoped role has account_id NULL → resolve it through its project.
 		parentAccountExpr: "COALESCE(o.account_id, p.account_id, '')",
 		parentProjectExpr: "COALESCE(o.project_id, '')",
-		join:              "LEFT JOIN kacho_iam.projects p ON p.id = o.project_id",
+		join:              "LEFT JOIN kaname.projects p ON p.id = o.project_id",
 	},
 	"iam.group": {
-		objectType: "iam.group", table: "kacho_iam.groups",
+		objectType: "iam.group", table: "kaname.groups",
 		parentAccountExpr: "o.account_id", parentProjectExpr: "''",
 	},
 	"iam.serviceAccount": {
-		objectType: "iam.serviceAccount", table: "kacho_iam.service_accounts",
+		objectType: "iam.serviceAccount", table: "kaname.service_accounts",
 		parentAccountExpr: "o.account_id", parentProjectExpr: "''",
 	},
 	// ЛИЧНОСТЬ — аккаунты из СВЯЗИ, а не из колонки строки (#1172).
 	//
-	// `kacho_iam.users.account_id` называет ОДИН аккаунт человека из многих:
+	// `kaname.users.account_id` называет ОДИН аккаунт человека из многих:
 	// принадлежность стала отдельной связью (#470/#471), и цепь областей читает
-	// её из `kacho_iam.memberships` с #944. Колонка при этом осталась
+	// её из `kaname.memberships` с #944. Колонка при этом осталась
 	// легаси-полем перехода — её не правит ни исключение из аккаунта (#1127), ни
 	// приглашение во второй, — поэтому опора на неё давала выдаче ДВА неверных
 	// исхода сразу: второй аккаунт не находил своего человека, а первый
@@ -554,8 +554,8 @@ var iamDirectScanSpecs = map[string]iamDirectScanSpec{
 	// распорядителю аккаунта, куда его пригласили, иначе приглашение нельзя ни
 	// прочитать, ни отозвать до первого входа приглашённого.
 	"iam.user": {
-		objectType: "iam.user", table: "kacho_iam.users",
-		parentAccountsExpr: "ARRAY(SELECT m.account_id FROM kacho_iam.memberships m" +
+		objectType: "iam.user", table: "kaname.users",
+		parentAccountsExpr: "ARRAY(SELECT m.account_id FROM kaname.memberships m" +
 			" WHERE m.user_id = o.id AND COALESCE(m.account_id, '') <> ''" +
 			" ORDER BY m.account_id)",
 		parentProjectExpr: "''",
@@ -564,10 +564,10 @@ var iamDirectScanSpecs = map[string]iamDirectScanSpec{
 	// onto the containment parents so the owner binding contains the bindings of its
 	// account/projects (a cluster-scoped binding stays cluster-only — both empty).
 	"iam.accessBinding": {
-		objectType: "iam.accessBinding", table: "kacho_iam.access_bindings",
+		objectType: "iam.accessBinding", table: "kaname.access_bindings",
 		parentAccountExpr: "CASE WHEN o.resource_type = 'account' THEN o.resource_id ELSE COALESCE(p.account_id, '') END",
 		parentProjectExpr: "CASE WHEN o.resource_type = 'project' THEN o.resource_id ELSE '' END",
-		join:              "LEFT JOIN kacho_iam.projects p ON o.resource_type = 'project' AND p.id = o.resource_id",
+		join:              "LEFT JOIN kaname.projects p ON o.resource_type = 'project' AND p.id = o.resource_id",
 	},
 }
 
@@ -917,11 +917,11 @@ func (s *reconcileStore) SelectorBindingsMatchingObject(ctx context.Context, obj
 	// anchor binding still matches everything.
 	rows, err := s.tx.Query(ctx,
 		`SELECT b.id
-		   FROM kacho_iam.role_rule_selectors rrs
-		   JOIN kacho_iam.access_bindings b ON b.role_id = rrs.role_id
-		   JOIN kacho_iam.resource_mirror m
+		   FROM kaname.role_rule_selectors rrs
+		   JOIN kaname.access_bindings b ON b.role_id = rrs.role_id
+		   JOIN kaname.resource_mirror m
 		     ON m.object_type = $1 AND m.object_id = $2
-		   LEFT JOIN kacho_iam.projects pj ON pj.id = m.parent_project_id
+		   LEFT JOIN kaname.projects pj ON pj.id = m.parent_project_id
 		  WHERE b.status = 'ACTIVE'
 		    -- Форма ЧЛЕНСТВА, а не "скаляр = ANY(массив)": под столбцом стоит
 		    -- GIN, а он обслуживает @> / && / = и НЕ обслуживает вторую форму —
@@ -1022,8 +1022,8 @@ func (s *reconcileStore) IAMDirectSelectorBindingsMatchingObject(ctx context.Con
 	                    OR (b.resource_type = 'account' AND b.resource_id = ANY(` + spec.accountsExpr() + `))
 	                    OR (b.resource_type = 'project' AND b.resource_id = ` + spec.parentProjectExpr + `)))`
 	q := `SELECT b.id
-	        FROM kacho_iam.role_rule_selectors rrs
-	        JOIN kacho_iam.access_bindings b ON b.role_id = rrs.role_id
+	        FROM kaname.role_rule_selectors rrs
+	        JOIN kaname.access_bindings b ON b.role_id = rrs.role_id
 	        JOIN ` + spec.table + ` o ON o.id = $2 ` + spec.join + `
 	       WHERE b.status = 'ACTIVE'
 	         -- Форма ЧЛЕНСТВА — см. соседний отбор выше: GIN не обслуживает
@@ -1111,7 +1111,7 @@ func (s *reconcileStore) RecordEmittedTuplesBatch(ctx context.Context, refs []re
 		objs = append(objs, t.Object)
 	}
 	if _, err := s.tx.Exec(ctx,
-		`INSERT INTO kacho_iam.access_binding_emitted_tuples (binding_id, fga_user, relation, object, source)
+		`INSERT INTO kaname.access_binding_emitted_tuples (binding_id, fga_user, relation, object, source)
 		 SELECT b, u, r, o, 'member' FROM unnest($1::text[], $2::text[], $3::text[], $4::text[]) AS t(b, u, r, o)
 		 ON CONFLICT (binding_id, fga_user, relation, object) DO UPDATE SET source = 'member'`,
 		binds, users, rels, objs,
@@ -1133,7 +1133,7 @@ func (s *reconcileStore) DeleteMember(ctx context.Context, bindingID domain.Acce
 func (s *reconcileStore) LedgerTuplesForObject(ctx context.Context, bindingID domain.AccessBindingID, object string) ([]domain.MembershipTuple, error) {
 	rows, err := s.tx.Query(ctx,
 		`SELECT fga_user, relation, object
-		   FROM kacho_iam.access_binding_emitted_tuples
+		   FROM kaname.access_binding_emitted_tuples
 		  WHERE binding_id = $1 AND object = $2`,
 		string(bindingID), object)
 	if err != nil {
@@ -1174,8 +1174,8 @@ func (s *reconcileStore) TuplesStillClaimedByOtherBindings(ctx context.Context, 
 		err := s.tx.QueryRow(ctx,
 			`SELECT EXISTS (
 			   SELECT 1
-			     FROM kacho_iam.access_binding_emitted_tuples et
-			     JOIN kacho_iam.access_bindings ab ON ab.id = et.binding_id
+			     FROM kaname.access_binding_emitted_tuples et
+			     JOIN kaname.access_bindings ab ON ab.id = et.binding_id
 			    WHERE et.binding_id <> $1
 			      AND et.fga_user = $2
 			      AND et.relation = $3
@@ -1203,7 +1203,7 @@ func (s *reconcileStore) EmitTupleDelete(ctx context.Context, tuples []domain.Me
 }
 
 // RecordEmittedTuples co-commits the per-member FGA tuples into the persisted
-// emitted-tuple ledger (kacho_iam.access_binding_emitted_tuples — F3/#178) on the
+// emitted-tuple ledger (kaname.access_binding_emitted_tuples — F3/#178) on the
 // reconcile writer-tx, alongside the matching EmitTupleWrite (ban #10). The INSERT is
 // `ON CONFLICT (binding_id,fga_user,relation,object) DO UPDATE SET source='member'` (the
 // DO UPDATE only re-tags a pre-0032 source='binding' row; the object-spaces are disjoint,
@@ -1243,7 +1243,7 @@ func (s *reconcileStore) RecordEmittedTuples(ctx context.Context, bindingID doma
 		// DO UPDATE SET source='member' self-heals any pre-0032 row that defaulted to
 		// 'binding' (object-spaces are disjoint, so a real binding↔member collision
 		// cannot occur — this only re-tags an existing member row).
-		`INSERT INTO kacho_iam.access_binding_emitted_tuples (binding_id, fga_user, relation, object, source)
+		`INSERT INTO kaname.access_binding_emitted_tuples (binding_id, fga_user, relation, object, source)
 		 SELECT $1, u, r, o, 'member' FROM unnest($2::text[], $3::text[], $4::text[]) AS t(u, r, o)
 		 ON CONFLICT (binding_id, fga_user, relation, object) DO UPDATE SET source = 'member'`,
 		string(bindingID), users, rels, objs,
@@ -1262,7 +1262,7 @@ func (s *reconcileStore) RecordEmittedTuples(ctx context.Context, bindingID doma
 func (s *reconcileStore) ForgetEmittedTuples(ctx context.Context, bindingID domain.AccessBindingID, tuples []domain.MembershipTuple) error {
 	for _, t := range tuples {
 		if _, err := s.tx.Exec(ctx,
-			`DELETE FROM kacho_iam.access_binding_emitted_tuples
+			`DELETE FROM kaname.access_binding_emitted_tuples
 			  WHERE binding_id = $1 AND fga_user = $2 AND relation = $3 AND object = $4`,
 			string(bindingID), t.User, t.Relation, t.Object,
 		); err != nil {
@@ -1299,7 +1299,7 @@ func (s *reconcileStore) EmitContainmentAudit(ctx context.Context, bindingID dom
 		return err
 	}
 	if _, err := s.tx.Exec(ctx,
-		`INSERT INTO kacho_iam.audit_outbox
+		`INSERT INTO kaname.audit_outbox
 			(id, event_type, tenant_account_id, event_payload, status, attempts, created_at, next_attempt_at)
 		 VALUES ($1, $2, $3, $4::jsonb, 'pending', 0, now(), now())`,
 		newAuditEventID(), "iam.access_binding.containment_rejected", tenantAccountID, payload,
@@ -1326,7 +1326,7 @@ func (s *reconcileStore) scopeTenantAccountID(ctx context.Context, scope domain.
 	case "project":
 		var accountID string
 		err := s.tx.QueryRow(ctx,
-			`SELECT account_id FROM kacho_iam.projects WHERE id = $1`, scope.ID).Scan(&accountID)
+			`SELECT account_id FROM kaname.projects WHERE id = $1`, scope.ID).Scan(&accountID)
 		if err != nil {
 			if errors.Is(err, pgx.ErrNoRows) {
 				return nil, nil // project gone → no resolvable account; emit with NULL.
@@ -1346,7 +1346,7 @@ func (s *reconcileStore) scopeTenantAccountID(ctx context.Context, scope domain.
 // access_bindings_revoked_consistency_ck CHECK.
 func (s *reconcileStore) RevokeExpiredBinding(ctx context.Context, bindingID domain.AccessBindingID) (bool, error) {
 	tag, err := s.tx.Exec(ctx,
-		`UPDATE kacho_iam.access_bindings
+		`UPDATE kaname.access_bindings
 		    SET status = 'REVOKED', revoked_at = now()
 		  WHERE id = $1 AND status = 'ACTIVE'`,
 		string(bindingID),
@@ -1361,7 +1361,7 @@ func (s *reconcileStore) RevokeExpiredBinding(ctx context.Context, bindingID dom
 // index (status, expires_at)). Pool-scoped read.
 func (a *ReconcileAdapter) ListExpiredBindingIDs(ctx context.Context) ([]domain.AccessBindingID, error) {
 	rows, err := a.pool.Query(ctx,
-		`SELECT id FROM kacho_iam.access_bindings
+		`SELECT id FROM kaname.access_bindings
 		  WHERE status = 'ACTIVE' AND expires_at IS NOT NULL AND expires_at < now()`)
 	if err != nil {
 		return nil, fmt.Errorf("reconcile: list expired bindings: %w", err)
@@ -1456,8 +1456,8 @@ func (a *ReconcileAdapter) RecordReconcileEventFailure(ctx context.Context, id i
 func (a *ReconcileAdapter) ListSelectorBindingIDs(ctx context.Context) ([]domain.AccessBindingID, error) {
 	rows, err := a.pool.Query(ctx,
 		`SELECT DISTINCT b.id
-		   FROM kacho_iam.role_rule_selectors rrs
-		   JOIN kacho_iam.access_bindings b ON b.role_id = rrs.role_id
+		   FROM kaname.role_rule_selectors rrs
+		   JOIN kaname.access_bindings b ON b.role_id = rrs.role_id
 		  WHERE b.status = 'ACTIVE'`)
 	if err != nil {
 		return nil, fmt.Errorf("reconcile: list selector bindings: %w", err)

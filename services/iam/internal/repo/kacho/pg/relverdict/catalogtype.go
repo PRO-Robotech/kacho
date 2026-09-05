@@ -129,7 +129,7 @@ func catalogTypeName(ctx context.Context, q pgx.Tx, modelType string) (string, e
 	var dotted string
 	err := q.QueryRow(ctx,
 		`SELECT r.dotted
-		   FROM kacho_iam.catalog_resource r
+		   FROM kaname.catalog_resource r
 		  WHERE r.object_type = $1::text
 		  ORDER BY r.live DESC, r.dotted
 		  LIMIT 1`, modelType).Scan(&dotted)

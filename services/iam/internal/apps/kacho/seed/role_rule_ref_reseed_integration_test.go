@@ -9,7 +9,7 @@ package seed_test
 // # Что утверждается
 //
 // После старта на чистой базе у КАЖДОЙ системной роли с непустыми правилами
-// множество строк `kacho_iam.role_rule_ref` совпадает с `domain.RuleRefsOf` её
+// множество строк `kaname.role_rule_ref` совпадает с `domain.RuleRefsOf` её
 // правил — по всем ролям сразу, а не только по посеянной пробой. Роль,
 // заведённая сырым SQL миграции, путём пользовательской роли не проходит
 // никогда, поэтому «совпадает у моей роли» ничего не сказало бы о том, ради чего
@@ -74,7 +74,7 @@ func storedRuleRefsOf(t *testing.T, ctx context.Context, pool *pgxpool.Pool, rol
 	t.Helper()
 	rows, err := pool.Query(ctx,
 		`SELECT module, resource, COALESCE(verb, '')
-		   FROM kacho_iam.role_rule_ref WHERE role_id = $1`, roleID)
+		   FROM kaname.role_rule_ref WHERE role_id = $1`, roleID)
 	require.NoError(t, err, "прочитать проекцию сегментов роли %s", roleID)
 	defer rows.Close()
 	var out []ruleRefRow
@@ -105,7 +105,7 @@ func sortRuleRefRows(rows []ruleRefRow) {
 func systemRolesWithRules(t *testing.T, ctx context.Context, pool *pgxpool.Pool) map[string][]byte {
 	t.Helper()
 	rows, err := pool.Query(ctx,
-		`SELECT id, rules FROM kacho_iam.roles
+		`SELECT id, rules FROM kaname.roles
 		  WHERE is_system = true AND live AND rules IS NOT NULL
 		    AND jsonb_typeof(rules) = 'array' AND jsonb_array_length(rules) > 0`)
 	require.NoError(t, err, "перечислить системные роли")
@@ -178,7 +178,7 @@ func TestRuleRefReseedMatchesDeclaredSegmentsForEverySystemRole(t *testing.T) {
 	// резолвится, отвергается ключом, а не оседает следом.
 	var orphans int
 	require.NoError(t, pool.QueryRow(ctx,
-		`SELECT count(*) FROM kacho_iam.role_grant_orphan WHERE source = 'rule_ref'`).
+		`SELECT count(*) FROM kaname.role_grant_orphan WHERE source = 'rule_ref'`).
 		Scan(&orphans))
 	require.Zero(t, orphans, "досев оставил следы нерезолвящихся сегментов")
 }

@@ -4,7 +4,7 @@
 // register_resource_integration_test.go — SEC-C group A (A-01..A-05).
 //
 // Verifies RegisterResource / UnregisterResource (Internal FGA-proxy):
-//   - A-01 happy: tuple enqueued into kacho_iam.fga_outbox (event fga.tuple.write),
+//   - A-01 happy: tuple enqueued into kaname.fga_outbox (event fga.tuple.write),
 //     in the SAME writer-tx (rollback ⇒ no orphan row);
 //   - A-02 idempotent register: re-issue same tuple → OK (вторая строка журнала;
 //     схлопывает их ПРОЕКЦИЯ — триггер `relation_fact_from_journal` пишет прямой
@@ -193,7 +193,7 @@ func TestRegisterResource_A05_InvalidArgsNoOutbox(t *testing.T) {
 
 // ── helpers ──────────────────────────────────────────────────────────────────
 
-// outboxProbe reads back kacho_iam.fga_outbox rows for assertions.
+// outboxProbe reads back kaname.fga_outbox rows for assertions.
 type outboxProbe struct{ pool *pgxpool.Pool }
 
 // scopedToOwnObjects — область отбора ПО СВОИМ объектам, а не «всё, кроме
@@ -237,7 +237,7 @@ func outboxTotalRows(t *testing.T, ctx context.Context, pool *pgxpool.Pool) int 
 	t.Helper()
 	var n int
 	require.NoError(t, pool.QueryRow(ctx,
-		`SELECT count(*) FROM kacho_iam.fga_outbox`).Scan(&n))
+		`SELECT count(*) FROM kaname.fga_outbox`).Scan(&n))
 	return n
 }
 
@@ -248,14 +248,14 @@ func (p *outboxProbe) lastOutbox(t *testing.T, ctx context.Context, objects ...s
 	own := scopedToOwnObjects(t, objects)
 	const mine = `payload->>'object' = ANY($1::text[])`
 	require.NoError(t, p.pool.QueryRow(ctx,
-		`SELECT count(*) FROM kacho_iam.fga_outbox WHERE `+mine, own).Scan(&count))
+		`SELECT count(*) FROM kaname.fga_outbox WHERE `+mine, own).Scan(&count))
 	payload = map[string]string{}
 	if count == 0 {
 		return count, "", payload
 	}
 	var raw string
 	require.NoError(t, p.pool.QueryRow(ctx,
-		`SELECT event_type, payload::text FROM kacho_iam.fga_outbox WHERE `+mine+
+		`SELECT event_type, payload::text FROM kaname.fga_outbox WHERE `+mine+
 			` ORDER BY id DESC LIMIT 1`, own).
 		Scan(&eventType, &raw))
 	require.NoError(t, json.Unmarshal([]byte(raw), &payload))

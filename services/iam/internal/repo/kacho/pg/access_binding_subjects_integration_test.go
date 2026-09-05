@@ -5,7 +5,7 @@ package pg_test
 
 // access_binding_subjects_integration_test.go — RBAC rules-model multi-subject
 // support. testcontainers Postgres 16 integration tests for
-// the multi-subject child table (kacho_iam.access_binding_subjects, migration
+// the multi-subject child table (kaname.access_binding_subjects, migration
 // 0028) + the ListByRole audit read.
 //
 //   - -ROUNDTRIP: InsertSubjects co-committed with the binding INSERT +

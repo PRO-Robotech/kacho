@@ -111,7 +111,7 @@ git grep -l 'ResolveAssertionClient' -- 'services/iam' ':!*_test.go'
 > ключа служебной учётки, ни выдача персонального токена зеркала больше не записывают, поэтому у
 > строк нового выпуска колонка пуста. Остаток окна у пользовательских токенов считается
 > предикатом
-> `SELECT count(*) FROM kacho_iam.user_oauth_clients WHERE hydra_client_id IS NOT NULL`.
+> `SELECT count(*) FROM kaname.user_oauth_clients WHERE hydra_client_id IS NOT NULL`.
 
 **Предикат снятия — один на все одиннадцать:** внешний сервер выведен из контура (в дереве нет ни
 одного не-тестового файла, заводящего в нём клиента). После этого каждая строка ведомости

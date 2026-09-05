@@ -74,8 +74,8 @@ func TestSystemRoleVerbProjectionIsSeededAlongsideItsSelectors(t *testing.T) {
 	require.NoError(t, bootSeedLanes(ctx, pool))
 
 	rows, err := pool.Query(ctx,
-		`SELECT r.id, r.name, s.object_types FROM kacho_iam.role_rule_selectors s
-		   JOIN kacho_iam.roles r ON r.id = s.role_id
+		`SELECT r.id, r.name, s.object_types FROM kaname.role_rule_selectors s
+		   JOIN kaname.roles r ON r.id = s.role_id
 		  WHERE r.is_system
 		  ORDER BY r.id`)
 	require.NoError(t, err)
@@ -126,7 +126,7 @@ func TestSystemRoleVerbProjectionIsSeededAlongsideItsSelectors(t *testing.T) {
 	for _, w := range verbBearing {
 		var n int
 		require.NoError(t, pool.QueryRow(ctx,
-			`SELECT count(*) FROM kacho_iam.role_verb WHERE role_id = $1 AND object_type = $2`,
+			`SELECT count(*) FROM kaname.role_verb WHERE role_id = $1 AND object_type = $2`,
 			w.roleID, w.dotted).Scan(&n))
 		if n == 0 {
 			missing = append(missing, fmt.Sprintf("%s→%s", w.roleName, w.dotted))
@@ -157,7 +157,7 @@ func TestSystemRoleWithoutMaterializingRulesGetsNoVerbs(t *testing.T) {
 	// Роль системная (cluster_id непуст ⇒ is_system вычисляется), правил нет.
 	// Разрешение — четырёхсегментное, как требует грамматика схемы.
 	_, err = pool.Exec(ctx,
-		`INSERT INTO kacho_iam.roles (id, name, permissions, rules, cluster_id)
+		`INSERT INTO kaname.roles (id, name, permissions, rules, cluster_id)
 		 VALUES ('rol-no-rules', 'test.no.rules', '["iam.role.*.get"]'::jsonb, '[]'::jsonb,
 		         'cluster_kacho_root')`)
 	require.NoError(t, err)
@@ -166,6 +166,6 @@ func TestSystemRoleWithoutMaterializingRulesGetsNoVerbs(t *testing.T) {
 
 	var n int
 	require.NoError(t, pool.QueryRow(ctx,
-		`SELECT count(*) FROM kacho_iam.role_verb WHERE role_id = 'rol-no-rules'`).Scan(&n))
+		`SELECT count(*) FROM kaname.role_verb WHERE role_id = 'rol-no-rules'`).Scan(&n))
 	require.Zerof(t, n, "роль без материализующих правил получила %d глаголов", n)
 }

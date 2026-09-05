@@ -93,7 +93,7 @@ func (w *ClusterAdminGrantWriter) Grant(
 
 	id := domain.NewKac127ID(domain.PrefixClusterAdminGrant)
 	tag, err := tx.Exec(ctx, `
-		INSERT INTO kacho_iam.cluster_admin_grants
+		INSERT INTO kaname.cluster_admin_grants
 		    (id, cluster_id, subject_type, subject_id, granted_by, granted_at, granted_until)
 		VALUES ($1, $2, $5, $3, $4, now(), NULL)
 		ON CONFLICT ON CONSTRAINT cluster_admin_grants_cluster_subject_uniq
@@ -162,14 +162,14 @@ func (w *ClusterAdminGrantWriter) Revoke(
 	}
 
 	const q = `
-		UPDATE kacho_iam.cluster_admin_grants
+		UPDATE kaname.cluster_admin_grants
 		   SET granted_until = now()
 		 WHERE subject_type = $3
 		   AND subject_id   = $1
 		   AND granted_until IS NULL
 		   AND subject_id  != $2  -- D-5 self-revoke guard
 		   AND (SELECT count(*)
-		          FROM kacho_iam.cluster_admin_grants
+		          FROM kaname.cluster_admin_grants
 		         WHERE granted_until IS NULL) > 1  -- D-6 last-admin guard
 		RETURNING id, cluster_id, subject_type, subject_id, granted_by, granted_at, granted_until`
 	row := tx.QueryRow(ctx, q, string(subject), principalID, string(subjectType))
@@ -206,7 +206,7 @@ func diagnoseRevokeMiss(ctx context.Context, tx pgx.Tx, subjectType domain.Grant
 	// 2. Does an active row exist for the subject at all?
 	var n int
 	if err := tx.QueryRow(ctx,
-		`SELECT count(*) FROM kacho_iam.cluster_admin_grants
+		`SELECT count(*) FROM kaname.cluster_admin_grants
 		   WHERE subject_type = $2 AND subject_id = $1 AND granted_until IS NULL`,
 		string(subject), string(subjectType)).Scan(&n); err != nil {
 		return fmt.Errorf("cluster_admin_grants diag-active: %w", err)
@@ -219,7 +219,7 @@ func diagnoseRevokeMiss(ctx context.Context, tx pgx.Tx, subjectType domain.Grant
 	// 3. Active row exists but count overall is 1 ⇒ last-admin.
 	var total int
 	if err := tx.QueryRow(ctx,
-		`SELECT count(*) FROM kacho_iam.cluster_admin_grants WHERE granted_until IS NULL`).
+		`SELECT count(*) FROM kaname.cluster_admin_grants WHERE granted_until IS NULL`).
 		Scan(&total); err != nil {
 		return fmt.Errorf("cluster_admin_grants diag-total: %w", err)
 	}
@@ -244,7 +244,7 @@ func diagnoseRevokeMiss(ctx context.Context, tx pgx.Tx, subjectType domain.Grant
 func getCAGBySubjectTx(ctx context.Context, tx pgx.Tx, subjectType domain.GrantSubjectType, subject domain.SubjectID) (domain.ClusterAdminGrant, error) {
 	row := tx.QueryRow(ctx, `
 		SELECT id, cluster_id, subject_type, subject_id, granted_by, granted_at, granted_until
-		  FROM kacho_iam.cluster_admin_grants
+		  FROM kaname.cluster_admin_grants
 		 WHERE subject_type = $2 AND subject_id = $1
 		 ORDER BY (granted_until IS NULL) DESC, granted_at DESC
 		 LIMIT 1`, string(subject), string(subjectType))
@@ -271,7 +271,7 @@ func (w *ClusterAdminGrantWriter) Reactivate(
 ) (domain.ClusterAdminGrant, error) {
 	tx := txAsPgx(txh)
 	const q = `
-		UPDATE kacho_iam.cluster_admin_grants
+		UPDATE kaname.cluster_admin_grants
 		   SET granted_until = NULL,
 		       granted_by    = $2,
 		       granted_at    = now()

@@ -168,7 +168,7 @@ func TestAB_SIA03_AccountScopeComposesWithIncludeRevoked(t *testing.T) {
 	// Отозванная строка вставляется напрямую: частичный UNIQUE не пропустит
 	// второй живой пятёрки того же состава.
 	revokedID := ids.NewID(domain.PrefixAccessBinding)
-	_, err = pool.Exec(ctx, `INSERT INTO kacho_iam.access_bindings
+	_, err = pool.Exec(ctx, `INSERT INTO kaname.access_bindings
 		(id, subject_type, subject_id, role_id, resource_type, resource_id, status,
 		 granted_by_user_id, revoked_at, revoked_by_user_id, created_at)
 		VALUES ($1, 'user', $2, $3, 'account', $4, 'REVOKED', '', now(), $5, now())`,

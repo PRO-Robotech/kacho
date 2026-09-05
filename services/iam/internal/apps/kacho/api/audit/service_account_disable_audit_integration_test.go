@@ -47,7 +47,7 @@ func TestServiceAccountDisable_RecordsTheEventAndReachesTheIssuanceGate(t *testi
 	require.NoError(t, err)
 	awaitWorkers(t)
 	saID := singleID(t, ctx, env,
-		`SELECT id FROM kacho_iam.service_accounts WHERE name = $1 AND account_id = $2`,
+		`SELECT id FROM kaname.service_accounts WHERE name = $1 AND account_id = $2`,
 		"ci-bot-disable", string(accID))
 
 	// The gate that decides whether this account may be handed a credential.
@@ -121,7 +121,7 @@ func TestServiceAccountDisable_TheTwoDirectionsAreDistinctEvents(t *testing.T) {
 	require.NoError(t, err)
 	awaitWorkers(t)
 	saID := singleID(t, ctx, env,
-		`SELECT id FROM kacho_iam.service_accounts WHERE name = $1 AND account_id = $2`,
+		`SELECT id FROM kaname.service_accounts WHERE name = $1 AND account_id = $2`,
 		"ci-bot-two-ways", string(accID))
 
 	_, err = service_account.NewDisableServiceAccountUseCase(env.repo, env.opsRepo).

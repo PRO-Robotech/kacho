@@ -47,7 +47,7 @@ func readParentChain(t *testing.T, ctx context.Context, pool *pgxpool.Pool, objT
 	t.Helper()
 	rows, err := pool.Query(ctx,
 		`SELECT parent_type || ':' || parent_id
-		   FROM kacho_iam.resource_parent_edge
+		   FROM kaname.resource_parent_edge
 		  WHERE object_type = $1 AND object_id = $2
 		  ORDER BY depth`, objType, objID)
 	require.NoError(t, err)

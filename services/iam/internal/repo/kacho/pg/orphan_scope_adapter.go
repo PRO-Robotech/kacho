@@ -88,11 +88,11 @@ func (a *OrphanScopeAdapter) TryAcquireSingletonOrphanScopeLock(ctx context.Cont
 func (a *OrphanScopeAdapter) ListOrphanBindingScopes(ctx context.Context, limit int) ([]seed.OrphanScope, error) {
 	rows, err := a.pool.Query(ctx,
 		`SELECT DISTINCT ab.resource_type, ab.resource_id
-		   FROM kacho_iam.access_bindings ab
+		   FROM kaname.access_bindings ab
 		  WHERE (ab.resource_type = 'project'
-		         AND NOT EXISTS (SELECT 1 FROM kacho_iam.projects p WHERE p.id = ab.resource_id))
+		         AND NOT EXISTS (SELECT 1 FROM kaname.projects p WHERE p.id = ab.resource_id))
 		     OR (ab.resource_type = 'account'
-		         AND NOT EXISTS (SELECT 1 FROM kacho_iam.accounts a WHERE a.id = ab.resource_id))
+		         AND NOT EXISTS (SELECT 1 FROM kaname.accounts a WHERE a.id = ab.resource_id))
 		  ORDER BY ab.resource_type ASC, ab.resource_id ASC
 		  LIMIT $1`, limit)
 	if err != nil {

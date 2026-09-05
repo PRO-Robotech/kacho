@@ -63,7 +63,7 @@ func (c *catalogStatementCounter) TraceQueryStart(ctx context.Context, _ *pgx.Co
 	c.mu.Lock()
 	defer c.mu.Unlock()
 	c.total++
-	if strings.Contains(data.SQL, "kacho_iam.catalog_") {
+	if strings.Contains(data.SQL, "kaname.catalog_") {
 		c.catalog++
 	}
 	return ctx
@@ -195,13 +195,13 @@ func TestIAMCT2_06_07_RetiredAfterStartDoesNotReachTheProjection(t *testing.T) {
 
 	// Снятие строки В РАБОТАЮЩЕМ процессе.
 	if _, err := pool.Exec(ctx,
-		`UPDATE kacho_iam.catalog_verb SET retired_at = now(), live = false, retired_reason = $2
+		`UPDATE kaname.catalog_verb SET retired_at = now(), live = false, retired_reason = $2
 		   WHERE module || '.' || resource = $1 AND retired_at IS NULL`,
 		dotted, "kacho#1816 IAM-CT-2-06"); err != nil {
 		t.Fatalf("снять строки глаголов: %v", err)
 	}
 	if _, err := pool.Exec(ctx,
-		`UPDATE kacho_iam.catalog_resource SET retired_at = now(), live = false, retired_reason = $2
+		`UPDATE kaname.catalog_resource SET retired_at = now(), live = false, retired_reason = $2
 		   WHERE dotted = $1 AND retired_at IS NULL`,
 		dotted, "kacho#1816 IAM-CT-2-06"); err != nil {
 		t.Fatalf("снять строку ресурса: %v", err)
@@ -259,11 +259,11 @@ func TestIAMCT2_06_07_RetiredAfterStartDoesNotReachTheProjection(t *testing.T) {
 	// (ни живой, ни снятой), — это уже не решение оператора, а непроехавший
 	// посев, и он обязан ронять старт по-прежнему.
 	if _, err := pool.Exec(ctx,
-		`DELETE FROM kacho_iam.catalog_verb WHERE module || '.' || resource = $1`, dotted); err != nil {
+		`DELETE FROM kaname.catalog_verb WHERE module || '.' || resource = $1`, dotted); err != nil {
 		t.Fatalf("удалить строки действий вовсе: %v", err)
 	}
 	if _, err := pool.Exec(ctx,
-		`DELETE FROM kacho_iam.catalog_resource WHERE dotted = $1`, dotted); err != nil {
+		`DELETE FROM kaname.catalog_resource WHERE dotted = $1`, dotted); err != nil {
 		t.Fatalf("удалить строку ресурса вовсе: %v", err)
 	}
 	gone, gerr := seed.AssertCatalogParity(ctx, repo, seed.ImageAnchor())
@@ -295,7 +295,7 @@ func TestIAMCT2_06_07_RetiredAfterStartDoesNotReachTheProjection(t *testing.T) {
 //
 // Это пункт 1 DoD эпика #1027: «применить манифест с новым типом → синтетический
 // вопрос вердикту даёт ненулевой ответ». Вердикт (`relverdict`) читает
-// `kacho_iam.role_verb`, а его пишет ровно эта проекция.
+// `kaname.role_verb`, а его пишет ровно эта проекция.
 func TestIAMCT2_14_AppliedAfterStartReachesTheProjection(t *testing.T) {
 	if testing.Short() {
 		t.Skip("integration: требует Postgres")
@@ -434,13 +434,13 @@ func TestWithdrawnRowDoesNotBlockTheNextBoot(t *testing.T) {
 	// манифесту: `retired_at`, причина И `live = false` (согласие держит
 	// проверка `catalog_*_live_matches_retired`, а не генерация колонки).
 	if _, err := pool.Exec(ctx,
-		`UPDATE kacho_iam.catalog_verb SET retired_at = now(), live = false, retired_reason = $2
+		`UPDATE kaname.catalog_verb SET retired_at = now(), live = false, retired_reason = $2
 		   WHERE module || '.' || resource = $1 AND retired_at IS NULL`,
 		dotted, "kacho#1861"); err != nil {
 		t.Fatalf("снять строки действий: %v", err)
 	}
 	if _, err := pool.Exec(ctx,
-		`UPDATE kacho_iam.catalog_resource SET retired_at = now(), live = false, retired_reason = $2
+		`UPDATE kaname.catalog_resource SET retired_at = now(), live = false, retired_reason = $2
 		   WHERE dotted = $1 AND retired_at IS NULL`,
 		dotted, "kacho#1861"); err != nil {
 		t.Fatalf("снять строку ресурса: %v", err)
@@ -491,7 +491,7 @@ func TestWithdrawnRowDoesNotBlockTheNextBoot(t *testing.T) {
 	// исход, а не то, что мы на него понадеялись.
 	var pairs int
 	if err := pool.QueryRow(ctx,
-		`SELECT count(*) FROM kacho_iam.role_verb WHERE object_type = $1`, dotted).Scan(&pairs); err != nil {
+		`SELECT count(*) FROM kaname.role_verb WHERE object_type = $1`, dotted).Scan(&pairs); err != nil {
 		t.Fatalf("перепись проекции снятого типа: %v", err)
 	}
 	if pairs != 0 {

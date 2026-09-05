@@ -61,7 +61,7 @@ func TestBootstrapConcurrent_TOCTOU_SingleOwnedAccount(t *testing.T) {
 	require.NoError(t, err)
 	defer pool.Close()
 	repo := kachopg.New(pool, nil)
-	opsRepo := operations.NewRepo(pool, "kacho_iam")
+	opsRepo := operations.NewRepo(pool, "kaname")
 
 	const ext = "ext_BOOT_conc"
 	const email = "boot-conc@example.com"
@@ -116,8 +116,8 @@ func TestBootstrapConcurrent_TOCTOU_SingleOwnedAccount(t *testing.T) {
 	// And exactly one "default" project across the (single) owned account.
 	var prjCount int
 	require.NoError(t, pool.QueryRow(ctx, `
-		SELECT count(*) FROM kacho_iam.projects p
-		  JOIN kacho_iam.accounts a ON a.id = p.account_id
+		SELECT count(*) FROM kaname.projects p
+		  JOIN kaname.accounts a ON a.id = p.account_id
 		 WHERE a.owner_user_id = $1 AND p.name = 'default'`,
 		string(inviteeID)).Scan(&prjCount))
 	assert.Equal(t, 1, prjCount, "exactly one default project (no duplicate bootstrap)")

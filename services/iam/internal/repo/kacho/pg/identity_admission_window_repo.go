@@ -11,7 +11,7 @@ import (
 )
 
 // IdentityAdmissionWindowRepo — окна темпа заведения аккаунтов
-// (`kacho_iam.identity_admission_windows`, миграция `20260822231600`).
+// (`kaname.identity_admission_windows`, миграция `20260822231600`).
 //
 // # Предмет: счётчик живёт окно, а строка — вечно
 //
@@ -26,7 +26,7 @@ import (
 // # Писателя у этой таблицы в коде НЕТ, и это не упущение
 //
 // Единственный писатель — триггер применённой миграции
-// (`kacho_iam.kacho_admission_rate_count`), срабатывающий отложенно на вставке
+// (`kaname.kacho_admission_rate_count`), срабатывающий отложенно на вставке
 // аккаунта. Он же единственный читатель. Репозиторий здесь появляется ровно
 // ради уборки: класть рядом с ним запись или чтение значило бы завести второе
 // место, принимающее решение о темпе, — а решение обязано остаться одним
@@ -46,7 +46,7 @@ func NewIdentityAdmissionWindowRepo(pool *pgxpool.Pool) *IdentityAdmissionWindow
 //
 // Читатель один — триггер. Он сравнивает `now()` с `window_started_at +
 // window_seconds`, где `window_seconds` берётся из ДЕЙСТВУЮЩЕЙ строки величин
-// (`kacho_iam.account_admission_rate_limits`, `withdrawn_at IS NULL`). Уборщик
+// (`kaname.account_admission_rate_limits`, `withdrawn_at IS NULL`). Уборщик
 // берёт её ОТТУДА ЖЕ и тем же оператором: длительность окна — величина, которую
 // владелец облака меняет строкой без выката, и копия в Go разошлась бы с ней
 // молча.
@@ -99,11 +99,11 @@ func NewIdentityAdmissionWindowRepo(pool *pgxpool.Pool) *IdentityAdmissionWindow
 // никогда, оставаясь зелёным по всякой проверке «вызвался ли».
 func (r *IdentityAdmissionWindowRepo) SweepElapsedAdmissionWindows(ctx context.Context, grace time.Duration, batch int) (int64, bool, error) {
 	const q = `
-DELETE FROM kacho_iam.identity_admission_windows
+DELETE FROM kaname.identity_admission_windows
  WHERE ctid IN (
      SELECT w.ctid
-       FROM kacho_iam.identity_admission_windows w
-       JOIN kacho_iam.account_admission_rate_limits l
+       FROM kaname.identity_admission_windows w
+       JOIN kaname.account_admission_rate_limits l
          ON l.kind = w.kind
         AND l.withdrawn_at IS NULL
       WHERE l.max_events >= 1
@@ -128,7 +128,7 @@ DELETE FROM kacho_iam.identity_admission_windows
 // опустошившем таблицу целиком, — то есть на реализации, дарящей носителю
 // заведение сверх потолка.
 func (r *IdentityAdmissionWindowRepo) LenAdmissionWindows(ctx context.Context) (int64, error) {
-	const q = `SELECT count(*) FROM kacho_iam.identity_admission_windows`
+	const q = `SELECT count(*) FROM kaname.identity_admission_windows`
 	var n int64
 	if err := r.pool.QueryRow(ctx, q).Scan(&n); err != nil {
 		return 0, wrapPgErr(err, "IdentityAdmissionWindow", "")

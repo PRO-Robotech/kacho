@@ -44,11 +44,11 @@ func mappedFrom(names ...string) map[string]token.Position {
 func TestConstraintLivenessGateInjection(t *testing.T) {
 	const created = `
 -- +goose Up
-CREATE TABLE kacho_iam.widgets (id text primary key);
-ALTER TABLE kacho_iam.widgets ADD CONSTRAINT widgets_owner_fk FOREIGN KEY (owner) REFERENCES owners(id);
-CREATE UNIQUE INDEX widgets_name_uniq ON kacho_iam.widgets (name);
+CREATE TABLE kaname.widgets (id text primary key);
+ALTER TABLE kaname.widgets ADD CONSTRAINT widgets_owner_fk FOREIGN KEY (owner) REFERENCES owners(id);
+CREATE UNIQUE INDEX widgets_name_uniq ON kaname.widgets (name);
 -- +goose Down
-DROP TABLE kacho_iam.widgets;
+DROP TABLE kaname.widgets;
 `
 
 	t.Run("контроль: живое имя — молчание", func(t *testing.T) {
@@ -61,7 +61,7 @@ DROP TABLE kacho_iam.widgets;
 	t.Run("инъекция: имя снято ПО ИМЕНИ", func(t *testing.T) {
 		const dropped = `
 -- +goose Up
-ALTER TABLE kacho_iam.widgets DROP CONSTRAINT widgets_owner_fk;
+ALTER TABLE kaname.widgets DROP CONSTRAINT widgets_owner_fk;
 -- +goose Down
 `
 		dead := deadMappedConstraints(factsFrom(t, created, dropped),
@@ -77,7 +77,7 @@ ALTER TABLE kacho_iam.widgets DROP CONSTRAINT widgets_owner_fk;
 	t.Run("инъекция: имя унесено СНОСОМ ТАБЛИЦЫ — тот самый случай, что был в дереве", func(t *testing.T) {
 		const tableGone = `
 -- +goose Up
-DROP TABLE IF EXISTS kacho_iam.widgets;
+DROP TABLE IF EXISTS kaname.widgets;
 -- +goose Down
 `
 		dead := deadMappedConstraints(factsFrom(t, created, tableGone), mappedFrom("widgets_owner_fk"))
@@ -107,7 +107,7 @@ DROP TABLE IF EXISTS kacho_iam.widgets;
 		const onlyProse = `
 -- +goose Up
 -- Здесь когда-то было ограничение widgets_ghost_fk, и оно снято.
-CREATE TABLE kacho_iam.gadgets (id text primary key);
+CREATE TABLE kaname.gadgets (id text primary key);
 -- +goose Down
 `
 		dead := deadMappedConstraints(factsFrom(t, onlyProse), mappedFrom("widgets_ghost_fk"))

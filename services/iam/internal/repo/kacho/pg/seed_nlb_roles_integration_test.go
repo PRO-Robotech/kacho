@@ -192,7 +192,7 @@ func TestSeed_NLB_03_ClusterScopeAndIsSystem(t *testing.T) {
 		)
 		err := pool.QueryRow(ctx, `
 			SELECT is_system, cluster_id, account_id, project_id, name, permissions
-			 FROM kacho_iam.roles
+			 FROM kaname.roles
 			 WHERE id = $1`, tc.id).Scan(
 			&isSystem, &clusterID, &accountID, &projectID, &gotName, &permsRaw,
 		)
@@ -222,7 +222,7 @@ func TestSeed_NLB_04_ReapplyIdempotent(t *testing.T) {
 	// make the second apply a no-op (no constraint violation, row count == 1
 	// for each id).
 	_, err = pool.Exec(ctx, `
-		INSERT INTO kacho_iam.roles
+		INSERT INTO kaname.roles
 		 (id, cluster_id, account_id, name, description, permissions)
 		VALUES
 		 ($1, 'cluster_kacho_root', NULL,
@@ -247,7 +247,7 @@ func TestSeed_NLB_04_ReapplyIdempotent(t *testing.T) {
 	// Verify still exactly one row.
 	var count int
 	require.NoError(t, pool.QueryRow(ctx,
-		`SELECT COUNT(*) FROM kacho_iam.roles WHERE id = $1`,
+		`SELECT COUNT(*) FROM kaname.roles WHERE id = $1`,
 		seedRoleIDLBOperator).Scan(&count))
 	assert.Equal(t, 1, count, "exactly one row for operator after re-apply")
 }
@@ -306,7 +306,7 @@ func TestSeed_NLB_06_PermissionsRegexAllowsCamelCaseResource(t *testing.T) {
 	} {
 		var ok bool
 		err := pool.QueryRow(ctx,
-			`SELECT kacho_iam.iam_permissions_valid($1::jsonb)`,
+			`SELECT kaname.iam_permissions_valid($1::jsonb)`,
 			`["`+tc.perm+`"]`,
 		).Scan(&ok)
 		require.NoError(t, err, "regex evaluation failed for %q", tc.perm)
@@ -332,7 +332,7 @@ func TestSeed_NLB_07_GreaterOrEqualSystemRoleCountAfterSeed(t *testing.T) {
 
 	var count int
 	require.NoError(t, pool.QueryRow(ctx,
-		`SELECT COUNT(*) FROM kacho_iam.roles
+		`SELECT COUNT(*) FROM kaname.roles
 		 WHERE is_system = true
 		 AND cluster_id = 'cluster_kacho_root'`).Scan(&count))
 	assert.GreaterOrEqual(t, count, 4,

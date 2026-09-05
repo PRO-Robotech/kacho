@@ -7,7 +7,7 @@ package service_account
 // re-materialize the object IMMEDIATELY, not only through the reconcile queue.
 //
 // iam.serviceAccount is label-selectable (domain.labelSelectableTypes carries
-// "iam.serviceAccount"; kacho_iam.service_accounts.labels — migration 0041 — is probed
+// "iam.serviceAccount"; kaname.service_accounts.labels — migration 0041 — is probed
 // by `labels @> match_labels` in MatchIAMDirect), so removing a label that an
 // ARM_LABELS grant matches is a REVOCATION: the per-object member row and its FGA
 // tuples must go. Two feeds reach the same reconciler for that:

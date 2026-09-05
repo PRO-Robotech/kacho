@@ -453,7 +453,7 @@ func TestAccessBinding_ConcurrentActiveGrant_ExactlyOneWinner(t *testing.T) {
 	// Exactly one ACTIVE row persisted in the DB (no second-writer-wins).
 	var active int
 	require.NoError(t, pool.QueryRow(ctx,
-		`SELECT count(*) FROM kacho_iam.access_bindings
+		`SELECT count(*) FROM kaname.access_bindings
 		   WHERE subject_type = $1 AND subject_id = $2 AND role_id = $3
 		     AND resource_type = $4 AND resource_id = $5
 		     AND revoked_at IS NULL`,
@@ -519,7 +519,7 @@ func TestAccessBinding_RegrantAfterRevoke_Succeeds(t *testing.T) {
 		`SELECT
 		   count(*) FILTER (WHERE revoked_at IS NULL),
 		   count(*) FILTER (WHERE revoked_at IS NOT NULL)
-		 FROM kacho_iam.access_bindings
+		 FROM kaname.access_bindings
 		 WHERE subject_type = $1 AND subject_id = $2 AND role_id = $3
 		   AND resource_type = $4 AND resource_id = $5`,
 		string(tuple.SubjectType), string(tuple.SubjectID), tuple.RoleID,

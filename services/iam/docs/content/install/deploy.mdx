@@ -19,7 +19,7 @@ Helm-чарт (часть umbrella-стенда платформы). Эта ст
 <table>
   <thead><tr><th>Зависимость</th><th>Роль · обязательность</th></tr></thead>
   <tbody>
-    <tr><td><strong>PostgreSQL</strong></td><td>Хранилище <code>kacho_iam</code> — обязательно</td></tr>
+    <tr><td><strong>PostgreSQL</strong></td><td>Хранилище <code>kaname</code> — обязательно</td></tr>
     <tr><td><strong>Ory Kratos</strong></td><td>Личности и интерактивный вход — для user-флоу</td></tr>
     <tr><td><strong>Ory Hydra</strong></td><td>OAuth 2.0 authorization server — для токенов (SAKey / UserToken)</td></tr>
     <tr><td><strong>api-gateway</strong></td><td>Edge для tenant-трафика (TLS + JWT) — для внешнего доступа</td></tr>
@@ -50,7 +50,7 @@ flowchart LR
   app -->|"нужен доступ"| deps["PostgreSQL · Kratos · Hydra"]
 ```
 
-1. **Миграции** — `kacho-migrator up` накатывает схему `kacho_iam` (обычно init-container перед
+1. **Миграции** — `kacho-migrator up` накатывает схему `kaname` (обычно init-container перед
    основным подом).
 2. **Сервис** — `kacho-iam serve` поднимает listener'ы (`:9090` public, `:9091` internal,
    `:9092` hooks, `:9095` metrics).

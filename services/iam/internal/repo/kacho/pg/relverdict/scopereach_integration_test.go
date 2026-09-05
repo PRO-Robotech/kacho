@@ -122,7 +122,7 @@ func TestScopeReachesTheRootOnTheChainProducersActuallyWrite(t *testing.T) {
 		// а не подразумевается.
 		var links int
 		if err := tx.QueryRow(ctx,
-			`SELECT count(*)::int FROM kacho_iam.resource_parent_edge
+			`SELECT count(*)::int FROM kaname.resource_parent_edge
 			  WHERE object_type = 'vpc_network' AND object_id = 'net-1'`).Scan(&links); err != nil {
 			t.Fatalf("перепись рёбер объекта: %v", err)
 		}
@@ -134,11 +134,11 @@ func TestScopeReachesTheRootOnTheChainProducersActuallyWrite(t *testing.T) {
 
 		// (1) Выдача на АККАУНТ — два звена вверх.
 		exec(t, ctx, tx,
-			`INSERT INTO kacho_iam.access_bindings
+			`INSERT INTO kaname.access_bindings
 			   (id, subject_type, subject_id, role_id, resource_type, resource_id, status)
 			 VALUES ('acb-acc', 'user', 'usr-1', 'rol-acc', 'account', 'acc-1', 'ACTIVE')`)
 		exec(t, ctx, tx,
-			`INSERT INTO kacho_iam.access_binding_subjects (binding_id, subject_type, subject_id)
+			`INSERT INTO kaname.access_binding_subjects (binding_id, subject_type, subject_id)
 			 VALUES ('acb-acc', 'user', 'usr-1')`)
 
 		got, _, err := relverdict.Ask(ctx, tx, relverdict.Query{
@@ -154,10 +154,10 @@ func TestScopeReachesTheRootOnTheChainProducersActuallyWrite(t *testing.T) {
 
 		// (2) Прямой факт администратора облака на КЛАСТЕРЕ — три звена вверх.
 		exec(t, ctx, tx,
-			`INSERT INTO kacho_iam.users (id, external_id, email, account_id)
+			`INSERT INTO kaname.users (id, external_id, email, account_id)
 			 VALUES ('usr-admin', 'ext-admin', 'admin@kacho.local', 'acc-1')`)
 		exec(t, ctx, tx,
-			`INSERT INTO kacho_iam.relation_fact (object_type, object_id, relation, subject)
+			`INSERT INTO kaname.relation_fact (object_type, object_id, relation, subject)
 			 VALUES ('cluster', 'cluster_kacho_root', 'system_admin', 'user:usr-admin')`)
 
 		admin, _, err := relverdict.Ask(ctx, tx, relverdict.Query{
@@ -174,16 +174,16 @@ func TestScopeReachesTheRootOnTheChainProducersActuallyWrite(t *testing.T) {
 
 		// ОТРИЦАНИЕ рядом с положительным: чужой аккаунт по-прежнему не достаёт.
 		exec(t, ctx, tx,
-			`INSERT INTO kacho_iam.accounts (id, name, owner_user_id) VALUES ('acc-9', 'foreign', 'usr-1')`)
+			`INSERT INTO kaname.accounts (id, name, owner_user_id) VALUES ('acc-9', 'foreign', 'usr-1')`)
 		exec(t, ctx, tx,
-			`INSERT INTO kacho_iam.users (id, external_id, email, account_id)
+			`INSERT INTO kaname.users (id, external_id, email, account_id)
 			 VALUES ('usr-out', 'ext-out', 'out@kacho.local', 'acc-1')`)
 		exec(t, ctx, tx,
-			`INSERT INTO kacho_iam.access_bindings
+			`INSERT INTO kaname.access_bindings
 			   (id, subject_type, subject_id, role_id, resource_type, resource_id, status)
 			 VALUES ('acb-foreign', 'user', 'usr-out', 'rol-acc', 'account', 'acc-9', 'ACTIVE')`)
 		exec(t, ctx, tx,
-			`INSERT INTO kacho_iam.access_binding_subjects (binding_id, subject_type, subject_id)
+			`INSERT INTO kaname.access_binding_subjects (binding_id, subject_type, subject_id)
 			 VALUES ('acb-foreign', 'user', 'usr-out')`)
 		outsider, _, err := relverdict.Ask(ctx, tx, relverdict.Query{
 			Subject: "user:usr-out", ObjectType: "vpc_network", ObjectID: "net-1", Relation: "v_get",
@@ -240,7 +240,7 @@ func TestScopeReachesTheRootOnTheChainTheTreeActuallyProduces(t *testing.T) {
 
 		var edges int
 		if err := tx.QueryRow(ctx,
-			`SELECT count(*)::int FROM kacho_iam.resource_parent_edge`).Scan(&edges); err != nil {
+			`SELECT count(*)::int FROM kaname.resource_parent_edge`).Scan(&edges); err != nil {
 			t.Fatalf("перепись рёбер: %v", err)
 		}
 		if edges != 2 {
@@ -262,12 +262,12 @@ func TestScopeReachesTheRootOnTheChainTheTreeActuallyProduces(t *testing.T) {
 		grant := func(bindingID, scopeType, scopeID, subjectID string) {
 			t.Helper()
 			exec(t, ctx, tx,
-				`INSERT INTO kacho_iam.access_bindings
+				`INSERT INTO kaname.access_bindings
 				   (id, subject_type, subject_id, role_id, resource_type, resource_id, status)
 				 VALUES ($1, 'user', $4, 'rol-any', $2, $3, 'ACTIVE')`,
 				bindingID, scopeType, scopeID, subjectID)
 			exec(t, ctx, tx,
-				`INSERT INTO kacho_iam.access_binding_subjects (binding_id, subject_type, subject_id)
+				`INSERT INTO kaname.access_binding_subjects (binding_id, subject_type, subject_id)
 				 VALUES ($1, 'user', $2)`, bindingID, subjectID)
 		}
 
@@ -278,7 +278,7 @@ func TestScopeReachesTheRootOnTheChainTheTreeActuallyProduces(t *testing.T) {
 			t.Fatalf("выдача на ПРОЕКТ не достала до объекта: %s. Контроль провален, и "+
 				"утверждения ниже ничего не говорят о высоте цепи", got)
 		}
-		exec(t, ctx, tx, `DELETE FROM kacho_iam.access_bindings WHERE id = 'acb-prj'`)
+		exec(t, ctx, tx, `DELETE FROM kaname.access_bindings WHERE id = 'acb-prj'`)
 		t.Log("контроль: выдача на проект — allow, обход до непосредственного предка работает")
 
 		// (1) Выдача на АККАУНТ — два звена вверх, второе достроено схемой.
@@ -291,10 +291,10 @@ func TestScopeReachesTheRootOnTheChainTheTreeActuallyProduces(t *testing.T) {
 
 		// (2) Прямой факт администратора облака на КЛАСТЕРЕ — три звена вверх.
 		exec(t, ctx, tx,
-			`INSERT INTO kacho_iam.users (id, external_id, email, account_id)
+			`INSERT INTO kaname.users (id, external_id, email, account_id)
 			 VALUES ('usr-admin', 'ext-admin', 'admin@kacho.local', 'acc-1')`)
 		exec(t, ctx, tx,
-			`INSERT INTO kacho_iam.relation_fact (object_type, object_id, relation, subject)
+			`INSERT INTO kaname.relation_fact (object_type, object_id, relation, subject)
 			 VALUES ('cluster', 'cluster_kacho_root', 'system_admin', 'user:usr-admin')`)
 		if got := ask("user:usr-admin", "net-1"); got != relverdict.Allow {
 			t.Errorf("администратор облака не достал до объекта арендатора: %s. Это аварийный "+
@@ -315,9 +315,9 @@ func TestScopeReachesTheRootOnTheChainTheTreeActuallyProduces(t *testing.T) {
 
 		// (4) ОТРИЦАНИЕ: чужой аккаунт не достаёт и через достроенное звено.
 		exec(t, ctx, tx,
-			`INSERT INTO kacho_iam.accounts (id, name, owner_user_id) VALUES ('acc-9', 'foreign', 'usr-1')`)
+			`INSERT INTO kaname.accounts (id, name, owner_user_id) VALUES ('acc-9', 'foreign', 'usr-1')`)
 		exec(t, ctx, tx,
-			`INSERT INTO kacho_iam.users (id, external_id, email, account_id)
+			`INSERT INTO kaname.users (id, external_id, email, account_id)
 			 VALUES ('usr-out', 'ext-out', 'out@kacho.local', 'acc-1')`)
 		grant("acb-foreign", "account", "acc-9", "usr-out")
 		if got := ask("user:usr-out", "net-1"); got != relverdict.Deny {
@@ -358,11 +358,11 @@ func TestAllFourEntryPointsAgreeOnAGrantAboveTheImmediateParent(t *testing.T) {
 
 		// Выдача на АККАУНТ — два звена вверх от объекта.
 		exec(t, ctx, tx,
-			`INSERT INTO kacho_iam.access_bindings
+			`INSERT INTO kaname.access_bindings
 			   (id, subject_type, subject_id, role_id, resource_type, resource_id, status)
 			 VALUES ('acb-acc', 'user', 'usr-1', 'rol-acc', 'account', 'acc-1', 'ACTIVE')`)
 		exec(t, ctx, tx,
-			`INSERT INTO kacho_iam.access_binding_subjects (binding_id, subject_type, subject_id)
+			`INSERT INTO kaname.access_binding_subjects (binding_id, subject_type, subject_id)
 			 VALUES ('acb-acc', 'user', 'usr-1')`)
 
 		// (1) точечный вердикт

@@ -56,7 +56,7 @@
 //	d, err := drainer.New[FGAOutboxEvent](
 //	    pool,
 //	    drainer.Config{
-//	        Table:        "kacho_iam.fga_outbox",
+//	        Table:        "kaname.fga_outbox",
 //	        Channel:      "kacho_iam_fga_outbox",
 //	        BatchSize:    32,
 //	        PollFallback: 30 * time.Second,

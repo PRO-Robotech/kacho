@@ -78,18 +78,18 @@ func TestIamExt_Migrations_6_1_1_FreshApply(t *testing.T) {
 	// clusters singleton — exactly one row, id = cluster_kacho_root.
 	var clusterCount int
 	require.NoError(t, db.QueryRowContext(ctx,
-		"SELECT count(*) FROM kacho_iam.clusters").Scan(&clusterCount))
+		"SELECT count(*) FROM kaname.clusters").Scan(&clusterCount))
 	assert.Equal(t, 1, clusterCount, "exactly one cluster row seeded")
 
 	var clusterID string
 	require.NoError(t, db.QueryRowContext(ctx,
-		"SELECT id FROM kacho_iam.clusters").Scan(&clusterID))
+		"SELECT id FROM kaname.clusters").Scan(&clusterID))
 	assert.Equal(t, "cluster_kacho_root", clusterID)
 
 	// Two new system roles seeded by 0011.
 	var sysRoleCount int
 	require.NoError(t, db.QueryRowContext(ctx,
-		`SELECT count(*) FROM kacho_iam.roles
+		`SELECT count(*) FROM kaname.roles
 		 WHERE is_system = true AND cluster_id = 'cluster_kacho_root'
 		 AND name IN ('kacho-system.admin', 'kacho-system.viewer')`).Scan(&sysRoleCount))
 	assert.Equal(t, 2, sysRoleCount, "two new system roles seeded")
@@ -105,10 +105,10 @@ func TestIamExt_Migrations_6_1_1_FreshApply(t *testing.T) {
 		err := db.QueryRowContext(ctx, `
 			SELECT EXISTS(
 			 SELECT 1 FROM information_schema.tables
-			 WHERE table_schema = 'kacho_iam' AND table_name = $1
+			 WHERE table_schema = 'kaname' AND table_name = $1
 			)`, table).Scan(&exists)
 		require.NoError(t, err)
-		assert.True(t, exists, "table kacho_iam.%s must exist", table)
+		assert.True(t, exists, "table kaname.%s must exist", table)
 	}
 
 	// Retired tables — must NOT come back. 0065 drops the signing-key store:
@@ -126,10 +126,10 @@ func TestIamExt_Migrations_6_1_1_FreshApply(t *testing.T) {
 		err := db.QueryRowContext(ctx, `
 			SELECT EXISTS(
 			 SELECT 1 FROM information_schema.tables
-			 WHERE table_schema = 'kacho_iam' AND table_name = $1
+			 WHERE table_schema = 'kaname' AND table_name = $1
 			)`, table).Scan(&exists)
 		require.NoError(t, err)
-		assert.False(t, exists, "retired table kacho_iam.%s must be gone", table)
+		assert.False(t, exists, "retired table kaname.%s must be gone", table)
 	}
 
 	// Verify new columns on extended tables.
@@ -151,7 +151,7 @@ func TestIamExt_Migrations_6_1_1_FreshApply(t *testing.T) {
 		err := db.QueryRowContext(ctx, `
 			SELECT EXISTS(
 			 SELECT 1 FROM information_schema.columns
-			 WHERE table_schema = 'kacho_iam'
+			 WHERE table_schema = 'kaname'
 			 AND table_name = $1 AND column_name = $2
 			)`, col.table, col.column).Scan(&exists)
 		require.NoError(t, err)
@@ -170,17 +170,17 @@ func TestIamExt_Migrations_6_1_2_IdempotentReapply(t *testing.T) {
 
 	// Capture cluster count + system role count BEFORE second up.
 	var beforeClusters, beforeRoles int
-	require.NoError(t, db.QueryRowContext(ctx, "SELECT count(*) FROM kacho_iam.clusters").Scan(&beforeClusters))
+	require.NoError(t, db.QueryRowContext(ctx, "SELECT count(*) FROM kaname.clusters").Scan(&beforeClusters))
 	require.NoError(t, db.QueryRowContext(ctx,
-		"SELECT count(*) FROM kacho_iam.roles WHERE is_system=true").Scan(&beforeRoles))
+		"SELECT count(*) FROM kaname.roles WHERE is_system=true").Scan(&beforeRoles))
 
 	// Second goose.Up — must be no-op.
 	require.NoError(t, goose.Up(db, "."))
 
 	var afterClusters, afterRoles int
-	require.NoError(t, db.QueryRowContext(ctx, "SELECT count(*) FROM kacho_iam.clusters").Scan(&afterClusters))
+	require.NoError(t, db.QueryRowContext(ctx, "SELECT count(*) FROM kaname.clusters").Scan(&afterClusters))
 	require.NoError(t, db.QueryRowContext(ctx,
-		"SELECT count(*) FROM kacho_iam.roles WHERE is_system=true").Scan(&afterRoles))
+		"SELECT count(*) FROM kaname.roles WHERE is_system=true").Scan(&afterRoles))
 
 	assert.Equal(t, beforeClusters, afterClusters, "cluster count unchanged after re-apply")
 	assert.Equal(t, beforeRoles, afterRoles, "system role count unchanged after re-apply")
@@ -189,7 +189,7 @@ func TestIamExt_Migrations_6_1_2_IdempotentReapply(t *testing.T) {
 // ── Down + Up round-trip: rollback then re-apply.
 //
 // The squashed baseline (0001_initial.sql) collapses the whole history into a
-// single migration — the Down step drops the entire kacho_iam schema, the Up
+// single migration — the Down step drops the entire kaname schema, the Up
 // step recreates it. The round-trip therefore asserts on that single-shot
 // DROP / re-CREATE.
 func TestIamExt_Migrations_6_1_RoundTripDownUp(t *testing.T) {
@@ -200,7 +200,7 @@ func TestIamExt_Migrations_6_1_RoundTripDownUp(t *testing.T) {
 	db := setupKac127TestDB(t)
 	ctx := context.Background()
 
-	// Down to 0 — squashed baseline drops the whole kacho_iam schema.
+	// Down to 0 — squashed baseline drops the whole kaname schema.
 	require.NoError(t, goose.DownTo(db, ".", 0))
 
 	// Verify tables are gone.
@@ -212,10 +212,10 @@ func TestIamExt_Migrations_6_1_RoundTripDownUp(t *testing.T) {
 		err := db.QueryRowContext(ctx, `
 			SELECT EXISTS(
 			 SELECT 1 FROM information_schema.tables
-			 WHERE table_schema = 'kacho_iam' AND table_name = $1
+			 WHERE table_schema = 'kaname' AND table_name = $1
 			)`, table).Scan(&exists)
 		require.NoError(t, err)
-		assert.False(t, exists, "table kacho_iam.%s must be gone after Down", table)
+		assert.False(t, exists, "table kaname.%s must be gone after Down", table)
 	}
 
 	// Up again — re-apply the squashed baseline.
@@ -231,10 +231,10 @@ func TestIamExt_Migrations_6_1_RoundTripDownUp(t *testing.T) {
 		err := db.QueryRowContext(ctx, `
 			SELECT EXISTS(
 			 SELECT 1 FROM information_schema.tables
-			 WHERE table_schema = 'kacho_iam' AND table_name = $1
+			 WHERE table_schema = 'kaname' AND table_name = $1
 			)`, table).Scan(&exists)
 		require.NoError(t, err)
-		assert.True(t, exists, "table kacho_iam.%s must be re-created", table)
+		assert.True(t, exists, "table kaname.%s must be re-created", table)
 	}
 }
 
@@ -248,14 +248,14 @@ func TestIamExt_Migrations_6_2_1_ClusterSingleton(t *testing.T) {
 	ctx := context.Background()
 
 	_, err := db.ExecContext(ctx,
-		"INSERT INTO kacho_iam.clusters (id, name) VALUES ('cluster_other', 'other')")
+		"INSERT INTO kaname.clusters (id, name) VALUES ('cluster_other', 'other')")
 	require.Error(t, err)
 	// SQLSTATE 23514 (CHECK violation on clusters_id_singleton_ck).
 	assert.Contains(t, err.Error(), "23514", "expected CHECK violation 23514")
 
 	var count int
 	require.NoError(t, db.QueryRowContext(ctx,
-		"SELECT count(*) FROM kacho_iam.clusters").Scan(&count))
+		"SELECT count(*) FROM kaname.clusters").Scan(&count))
 	assert.Equal(t, 1, count, "clusters table still has exactly one row")
 }
 
@@ -270,7 +270,7 @@ func TestIamExt_Migrations_6_4_4_RoleScopeXor_TwoScopesInvalid(t *testing.T) {
 
 	// Создаем User → Account → Project (валидные scope target'ы).
 	_, err := db.ExecContext(ctx, `
-		INSERT INTO kacho_iam.users (id, external_id, email, account_id, invite_status)
+		INSERT INTO kaname.users (id, external_id, email, account_id, invite_status)
 		VALUES ('usr_kac127test0001ab', 'ext_kac127_001', 'kac127@test.local', 'acc_kac127test001ab', 'ACTIVE')`)
 	// Сначала Account через DEFERRABLE FK.
 	// Простой план: INSERT user→account в одной TX с deferred FKs.
@@ -284,17 +284,17 @@ func TestIamExt_Migrations_6_4_4_RoleScopeXor_TwoScopesInvalid(t *testing.T) {
 	require.NoError(t, err)
 
 	_, err = tx.ExecContext(ctx, `
-		INSERT INTO kacho_iam.accounts (id, name, owner_user_id)
+		INSERT INTO kaname.accounts (id, name, owner_user_id)
 		VALUES ('acc_kac127test001ab', 'kac127-test-acc', 'usr_kac127test0001ab')`)
 	require.NoError(t, err)
 
 	_, err = tx.ExecContext(ctx, `
-		INSERT INTO kacho_iam.users (id, external_id, email, account_id, invite_status)
+		INSERT INTO kaname.users (id, external_id, email, account_id, invite_status)
 		VALUES ('usr_kac127test0001ab', 'ext_kac127_001', 'kac127@test.local', 'acc_kac127test001ab', 'ACTIVE')`)
 	require.NoError(t, err)
 
 	_, err = tx.ExecContext(ctx, `
-		INSERT INTO kacho_iam.projects (id, account_id, name)
+		INSERT INTO kaname.projects (id, account_id, name)
 		VALUES ('prj_kac127test001ab', 'acc_kac127test001ab', 'kac127-test-prj')`)
 	require.NoError(t, err)
 
@@ -302,7 +302,7 @@ func TestIamExt_Migrations_6_4_4_RoleScopeXor_TwoScopesInvalid(t *testing.T) {
 
 	// Теперь invalid INSERT: custom role с двумя non-NULL scope (account_id + project_id).
 	_, err = db.ExecContext(ctx, `
-		INSERT INTO kacho_iam.roles
+		INSERT INTO kaname.roles
 		 (id, account_id, project_id, name, permissions)
 		VALUES
 		 ('rol_kac127twoscope1', 'acc_kac127test001ab', 'prj_kac127test001ab',
@@ -314,7 +314,7 @@ func TestIamExt_Migrations_6_4_4_RoleScopeXor_TwoScopesInvalid(t *testing.T) {
 
 	// Valid project-scoped role работает.
 	_, err = db.ExecContext(ctx, `
-		INSERT INTO kacho_iam.roles
+		INSERT INTO kaname.roles
 		 (id, project_id, name, permissions)
 		VALUES
 		 ('rol_kac127prj00001a', 'prj_kac127test001ab',
@@ -336,7 +336,7 @@ func TestIamExt_Migrations_6_5_0_AccessBindingStatusDefault(t *testing.T) {
 	err := db.QueryRowContext(ctx, `
 		SELECT is_nullable, COALESCE(column_default, '')
 		 FROM information_schema.columns
-		 WHERE table_schema = 'kacho_iam' AND table_name = 'access_bindings' AND column_name = 'status'
+		 WHERE table_schema = 'kaname' AND table_name = 'access_bindings' AND column_name = 'status'
 	`).Scan(&isNullable, &columnDefault)
 	require.NoError(t, err)
 	assert.Equal(t, "NO", isNullable, "access_bindings.status must be NOT NULL")

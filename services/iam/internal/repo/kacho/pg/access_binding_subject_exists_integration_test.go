@@ -44,7 +44,7 @@ func seedSAID(t *testing.T, ctx context.Context, pool *pgxpool.Pool, accID, suff
 	t.Helper()
 	said := ids.NewID(domain.PrefixServiceAccount)
 	_, err := pool.Exec(ctx,
-		`INSERT INTO kacho_iam.service_accounts (id, account_id, name)
+		`INSERT INTO kaname.service_accounts (id, account_id, name)
 		 VALUES ($1, $2, $3)`,
 		said, accID, "sa-"+suffix)
 	require.NoError(t, err)
@@ -56,7 +56,7 @@ func seedGroupID(t *testing.T, ctx context.Context, pool *pgxpool.Pool, accID, s
 	t.Helper()
 	gid := ids.NewID(domain.PrefixGroup)
 	_, err := pool.Exec(ctx,
-		`INSERT INTO kacho_iam.groups (id, account_id, name)
+		`INSERT INTO kaname.groups (id, account_id, name)
 		 VALUES ($1, $2, $3)`,
 		gid, accID, "grp-"+suffix)
 	require.NoError(t, err)
@@ -68,7 +68,7 @@ func seedGroupID(t *testing.T, ctx context.Context, pool *pgxpool.Pool, accID, s
 // trigger is what is under test. Returns the pg error (nil on success).
 func insertBindingRaw(ctx context.Context, pool *pgxpool.Pool, id, subjectType, subjectID, roleID, resType, resID string) error {
 	_, err := pool.Exec(ctx, `
-		INSERT INTO kacho_iam.access_bindings
+		INSERT INTO kaname.access_bindings
 			(id, subject_type, subject_id, role_id, resource_type, resource_id, status)
 		VALUES ($1, $2, $3, $4, $5, $6, 'ACTIVE')`,
 		id, subjectType, subjectID, roleID, resType, resID)
@@ -87,7 +87,7 @@ func TestABSubjectExists_InsertPhantomUser_Rejected(t *testing.T) {
 	_, _, _, roleID := kac127SeedABRow(t, ctx, pool, "abse1", domain.AccessBindingStatusActive)
 	var prjID string
 	require.NoError(t, pool.QueryRow(ctx,
-		`SELECT resource_id FROM kacho_iam.access_bindings WHERE role_id=$1 LIMIT 1`, roleID).Scan(&prjID))
+		`SELECT resource_id FROM kaname.access_bindings WHERE role_id=$1 LIMIT 1`, roleID).Scan(&prjID))
 
 	phantom := ids.NewID(domain.PrefixUser)
 	err := insertBindingRaw(ctx, pool, padOrTrim20("acb00000abse1x"),
@@ -105,7 +105,7 @@ func TestABSubjectExists_InsertPhantomServiceAccount_Rejected(t *testing.T) {
 	_, _, _, roleID := kac127SeedABRow(t, ctx, pool, "abse2", domain.AccessBindingStatusActive)
 	var prjID string
 	require.NoError(t, pool.QueryRow(ctx,
-		`SELECT resource_id FROM kacho_iam.access_bindings WHERE role_id=$1 LIMIT 1`, roleID).Scan(&prjID))
+		`SELECT resource_id FROM kaname.access_bindings WHERE role_id=$1 LIMIT 1`, roleID).Scan(&prjID))
 
 	phantom := ids.NewID(domain.PrefixServiceAccount)
 	err := insertBindingRaw(ctx, pool, padOrTrim20("acb00000abse2x"),
@@ -123,7 +123,7 @@ func TestABSubjectExists_InsertPhantomGroup_Rejected(t *testing.T) {
 	_, _, _, roleID := kac127SeedABRow(t, ctx, pool, "abse3", domain.AccessBindingStatusActive)
 	var prjID string
 	require.NoError(t, pool.QueryRow(ctx,
-		`SELECT resource_id FROM kacho_iam.access_bindings WHERE role_id=$1 LIMIT 1`, roleID).Scan(&prjID))
+		`SELECT resource_id FROM kaname.access_bindings WHERE role_id=$1 LIMIT 1`, roleID).Scan(&prjID))
 
 	phantom := ids.NewID(domain.PrefixGroup)
 	err := insertBindingRaw(ctx, pool, padOrTrim20("acb00000abse3x"),
@@ -143,7 +143,7 @@ func TestABSubjectExists_InsertLiveSubjects_Accepted(t *testing.T) {
 	prjID := kac127SeedProject(t, ctx, pool, accID, "abse4")
 	roleID := padOrTrim20("rol00000abse4")
 	_, err := pool.Exec(ctx, `
-		INSERT INTO kacho_iam.roles (id, project_id, name, description, permissions)
+		INSERT INTO kaname.roles (id, project_id, name, description, permissions)
 		VALUES ($1, $2, 'role_abse4', '', '["x.y.*.z"]'::jsonb)`, roleID, prjID)
 	require.NoError(t, err)
 
@@ -170,7 +170,7 @@ func TestABSubjectExists_ChildSubjectRowPhantom_Rejected(t *testing.T) {
 
 	phantom := ids.NewID(domain.PrefixGroup)
 	_, err := pool.Exec(ctx, `
-		INSERT INTO kacho_iam.access_binding_subjects (binding_id, subject_type, subject_id, ordinal)
+		INSERT INTO kaname.access_binding_subjects (binding_id, subject_type, subject_id, ordinal)
 		VALUES ($1, 'group', $2, 1)`, abID, phantom)
 	require.Error(t, err, "child subject row referencing a non-existent group must be rejected")
 	assertSQLState(t, err, "23503")
@@ -193,12 +193,12 @@ func TestABSubjectExists_StatusTransitionOnExistingBinding_Unaffected(t *testing
 	// never re-probe the subject — the revoke/label/deletion-protection paths on
 	// an existing binding are unaffected.
 	_, err := pool.Exec(ctx,
-		`UPDATE kacho_iam.access_bindings SET labels = '{"k":"v"}'::jsonb WHERE id=$1`, abID)
+		`UPDATE kaname.access_bindings SET labels = '{"k":"v"}'::jsonb WHERE id=$1`, abID)
 	require.NoError(t, err, "label update (subject unchanged) must not trip the subject-exists trigger")
 
 	var lbl string
 	require.NoError(t, pool.QueryRow(ctx,
-		`SELECT labels::text FROM kacho_iam.access_bindings WHERE id=$1`, abID).Scan(&lbl))
+		`SELECT labels::text FROM kaname.access_bindings WHERE id=$1`, abID).Scan(&lbl))
 	require.Contains(t, lbl, "\"k\": \"v\"")
 }
 
@@ -223,10 +223,10 @@ func TestABSubjectExists_ConcurrentDeleteVsCreate_NoDangling(t *testing.T) {
 		t.Skip("integration: requires Postgres container")
 	}
 	const guardedUserDelete = `
-		DELETE FROM kacho_iam.users u
+		DELETE FROM kaname.users u
 		 WHERE u.id = $1
-		   AND NOT EXISTS (SELECT 1 FROM kacho_iam.access_bindings WHERE subject_type='user' AND subject_id=$1)
-		   AND NOT EXISTS (SELECT 1 FROM kacho_iam.group_members  WHERE member_type='user'  AND member_id=$1)`
+		   AND NOT EXISTS (SELECT 1 FROM kaname.access_bindings WHERE subject_type='user' AND subject_id=$1)
+		   AND NOT EXISTS (SELECT 1 FROM kaname.group_members  WHERE member_type='user'  AND member_id=$1)`
 
 	ctx, pool := kac127Setup(t)
 	// Seed an account (with its own owner) + project + role to bind on.
@@ -234,7 +234,7 @@ func TestABSubjectExists_ConcurrentDeleteVsCreate_NoDangling(t *testing.T) {
 	prjID := kac127SeedProject(t, ctx, pool, accID, "abse7")
 	roleID := padOrTrim20("rol00000abse7")
 	_, err := pool.Exec(ctx, `
-		INSERT INTO kacho_iam.roles (id, project_id, name, description, permissions)
+		INSERT INTO kaname.roles (id, project_id, name, description, permissions)
 		VALUES ($1, $2, 'role_abse7', '', '["x.y.*.z"]'::jsonb)`, roleID, prjID)
 	require.NoError(t, err)
 
@@ -242,7 +242,7 @@ func TestABSubjectExists_ConcurrentDeleteVsCreate_NoDangling(t *testing.T) {
 	// the guarded delete once it carries no bindings).
 	member := ids.NewID(domain.PrefixUser)
 	_, err = pool.Exec(ctx, `
-		INSERT INTO kacho_iam.users (id, account_id, external_id, email, display_name, invite_status)
+		INSERT INTO kaname.users (id, account_id, external_id, email, display_name, invite_status)
 		VALUES ($1, $2, $3, $4, 'M', 'ACTIVE')`,
 		member, accID, "ext-abse7m-"+member, "m-abse7@example.com")
 	require.NoError(t, err)
@@ -260,7 +260,7 @@ func TestABSubjectExists_ConcurrentDeleteVsCreate_NoDangling(t *testing.T) {
 		}
 	}()
 	_, err = txInsert.Exec(ctx, `
-		INSERT INTO kacho_iam.access_bindings
+		INSERT INTO kaname.access_bindings
 			(id, subject_type, subject_id, role_id, resource_type, resource_id, status)
 		VALUES ($1, 'user', $2, $3, 'project', $4, 'ACTIVE')`,
 		padOrTrim20("acb00000abse7"), member, roleID, prjID)
@@ -292,9 +292,9 @@ func TestABSubjectExists_ConcurrentDeleteVsCreate_NoDangling(t *testing.T) {
 	// Invariant: the user survived AND the binding references a LIVE user — no
 	// dangling binding for a deleted principal.
 	var userCnt, bindCnt int
-	require.NoError(t, pool.QueryRow(ctx, `SELECT count(*) FROM kacho_iam.users WHERE id=$1`, member).Scan(&userCnt))
+	require.NoError(t, pool.QueryRow(ctx, `SELECT count(*) FROM kaname.users WHERE id=$1`, member).Scan(&userCnt))
 	require.Equal(t, 1, userCnt, "the bound user must survive the guarded delete (no orphan binding)")
 	require.NoError(t, pool.QueryRow(ctx,
-		`SELECT count(*) FROM kacho_iam.access_bindings WHERE subject_id=$1`, member).Scan(&bindCnt))
+		`SELECT count(*) FROM kaname.access_bindings WHERE subject_id=$1`, member).Scan(&bindCnt))
 	require.Equal(t, 1, bindCnt, "the committed binding must reference the live user")
 }

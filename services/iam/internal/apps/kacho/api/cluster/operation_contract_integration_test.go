@@ -62,7 +62,7 @@ func activeGrantID(t *testing.T, ctx context.Context, pool *pgxpool.Pool, subjec
 	t.Helper()
 	var id string
 	require.NoError(t, pool.QueryRow(ctx,
-		`SELECT id FROM kacho_iam.cluster_admin_grants
+		`SELECT id FROM kaname.cluster_admin_grants
 		  WHERE subject_id = $1 AND granted_until IS NULL`, subjectID).Scan(&id))
 	return id
 }
@@ -72,7 +72,7 @@ func revokedGrantID(t *testing.T, ctx context.Context, pool *pgxpool.Pool, subje
 	t.Helper()
 	var id string
 	require.NoError(t, pool.QueryRow(ctx,
-		`SELECT id FROM kacho_iam.cluster_admin_grants
+		`SELECT id FROM kaname.cluster_admin_grants
 		  WHERE subject_id = $1 AND granted_until IS NOT NULL`, subjectID).Scan(&id))
 	return id
 }
@@ -81,7 +81,7 @@ func revokedGrantID(t *testing.T, ctx context.Context, pool *pgxpool.Pool, subje
 func opRow(t *testing.T, ctx context.Context, pool *pgxpool.Pool, opID string) (done bool, metadata, response []byte) {
 	t.Helper()
 	require.NoError(t, pool.QueryRow(ctx,
-		`SELECT done, metadata_data, response_data FROM kacho_iam.operations WHERE id = $1`,
+		`SELECT done, metadata_data, response_data FROM kaname.operations WHERE id = $1`,
 		opID).Scan(&done, &metadata, &response))
 	return done, metadata, response
 }
@@ -125,7 +125,7 @@ func TestClusterGrantAdmin_OperationCarriesGrantIdAndCompletesInDB(t *testing.T)
 	require.NotEmpty(t, respData, "response must be persisted")
 
 	// (3) The poll path, end to end.
-	polled := pollOperationToDone(t, ctx, operations.NewRepo(pool, "kacho_iam"), op.GetId())
+	polled := pollOperationToDone(t, ctx, operations.NewRepo(pool, "kaname"), op.GetId())
 
 	polledMeta := &iamv1.GrantClusterAdminMetadata{}
 	require.NotNil(t, polled.Metadata)
@@ -222,7 +222,7 @@ func TestClusterRevokeAdmin_OperationCompletesInDBAndCarriesResponse(t *testing.
 	require.NotEmpty(t, respData, "response must be persisted")
 
 	// (3) The poll path, end to end.
-	polled := pollOperationToDone(t, ctx, operations.NewRepo(pool, "kacho_iam"), op.GetId())
+	polled := pollOperationToDone(t, ctx, operations.NewRepo(pool, "kaname"), op.GetId())
 
 	polledMeta := &iamv1.RevokeClusterAdminMetadata{}
 	require.NotNil(t, polled.Metadata)
@@ -264,7 +264,7 @@ func TestClusterRevokeAdmin_RefusedRevokeLeavesNoUnfinishedOperation(t *testing.
 
 	var unfinished int
 	require.NoError(t, pool.QueryRow(ctx,
-		`SELECT count(*) FROM kacho_iam.operations
+		`SELECT count(*) FROM kaname.operations
 		  WHERE done = false
 		    AND description LIKE 'Revoke cluster admin%'`).Scan(&unfinished))
 	require.Zero(t, unfinished,
@@ -273,7 +273,7 @@ func TestClusterRevokeAdmin_RefusedRevokeLeavesNoUnfinishedOperation(t *testing.
 	// And the subject really is untouched.
 	var rows int
 	require.NoError(t, pool.QueryRow(ctx,
-		`SELECT count(*) FROM kacho_iam.cluster_admin_grants WHERE subject_id = $1`,
+		`SELECT count(*) FROM kaname.cluster_admin_grants WHERE subject_id = $1`,
 		string(target)).Scan(&rows))
 	require.Zero(t, rows)
 }

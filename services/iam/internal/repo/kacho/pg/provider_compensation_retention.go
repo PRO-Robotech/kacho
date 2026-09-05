@@ -60,10 +60,10 @@ import (
 // расхождение с эмиссией стерегут применённая миграция (таблицы с другим именем
 // нет) и та же перепись гейта.
 const providerCompensationSweepSQL = `
-DELETE FROM kacho_iam.provider_compensation_outbox
+DELETE FROM kaname.provider_compensation_outbox
  WHERE id IN (
        SELECT id
-         FROM kacho_iam.provider_compensation_outbox
+         FROM kaname.provider_compensation_outbox
         WHERE sent_at IS NOT NULL
           AND sent_at < now() - make_interval(secs => $1)
         ORDER BY id

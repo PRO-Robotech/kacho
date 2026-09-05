@@ -50,7 +50,7 @@ import (
 
 // ---- fake kacho-iam modelling the resource_mirror --------------------------
 
-// mirrorRow — the modelled `kacho_iam.resource_mirror` row: the parent scope the
+// mirrorRow — the modelled `kaname.resource_mirror` row: the parent scope the
 // γ selector reads plus the source_version the LWW guard compares against.
 type mirrorRow struct {
 	parentProjectID string

@@ -9,9 +9,9 @@ package pg_test
 // Covers atomic emit + rollback:
 //
 // - CREATE-EMIT: AccessBindingsW().Insert + EmitRelationWrite + Commit
-// leaves N grant rows in kacho_iam.fga_outbox (event_type=fga.tuple.write).
+// leaves N grant rows in kaname.fga_outbox (event_type=fga.tuple.write).
 // - DELETE-EMIT: AccessBindingsW().Delete + EmitRelationDelete + Commit
-// leaves N revoke rows in kacho_iam.fga_outbox (event_type=fga.tuple.delete).
+// leaves N revoke rows in kaname.fga_outbox (event_type=fga.tuple.delete).
 // - ROLLBACK: rollback of the writer-tx removes both the binding
 // row AND the fga_outbox rows (ban #10).
 
@@ -68,7 +68,7 @@ func TestAB_FGAOutboxTx_FGAOutbox_CreateEmitsWriteRows(t *testing.T) {
 	var payloadRaw string
 	require.NoError(t, pool.QueryRow(ctx,
 		`SELECT event_type, payload::text
-		 FROM kacho_iam.fga_outbox
+		 FROM kaname.fga_outbox
 		 ORDER BY id DESC LIMIT 1`).Scan(&et, &payloadRaw))
 	require.Equal(t, "fga.tuple.write", et)
 	var payload map[string]string
@@ -111,7 +111,7 @@ func TestAB_FGAOutboxTx_FGAOutbox_DeleteEmitsDeleteRows(t *testing.T) {
 
 	var et string
 	require.NoError(t, pool.QueryRow(ctx,
-		`SELECT event_type FROM kacho_iam.fga_outbox WHERE event_type = $1 LIMIT 1`,
+		`SELECT event_type FROM kaname.fga_outbox WHERE event_type = $1 LIMIT 1`,
 		"fga.tuple.delete").Scan(&et))
 	require.Equal(t, "fga.tuple.delete", et)
 }
@@ -156,13 +156,13 @@ func TestAB_FGAOutboxTx_FGAOutbox_RollbackDiscardsBothRowAndEmit(t *testing.T) {
 	// Neither the binding row nor the fga_outbox row should be visible.
 	var bindingCount int
 	require.NoError(t, pool.QueryRow(ctx,
-		`SELECT count(*) FROM kacho_iam.access_bindings WHERE id = $1`,
+		`SELECT count(*) FROM kaname.access_bindings WHERE id = $1`,
 		string(candidateID)).Scan(&bindingCount))
 	require.Equal(t, 0, bindingCount, "binding row must be rolled back")
 
 	var fgaCount int
 	require.NoError(t, pool.QueryRow(ctx,
-		`SELECT count(*) FROM kacho_iam.fga_outbox
+		`SELECT count(*) FROM kaname.fga_outbox
 		 WHERE payload->>'user' = $1 AND payload->>'object' = $2`,
 		"user:"+string(uid), "account:"+string(acc.ID)).Scan(&fgaCount))
 	require.Equal(t, 0, fgaCount, "fga_outbox row must be rolled back atomically with binding row")
@@ -188,7 +188,7 @@ func TestAB_FGAOutboxTx_FGAOutbox_EmitWriteTx_EmptyTuplesNoop(t *testing.T) {
 	// silently broke each time a new cluster-root seed landed).
 	var before int
 	require.NoError(t, pool.QueryRow(ctx,
-		`SELECT count(*) FROM kacho_iam.fga_outbox`).Scan(&before))
+		`SELECT count(*) FROM kaname.fga_outbox`).Scan(&before))
 
 	w, err := repo.Writer(ctx)
 	require.NoError(t, err)
@@ -198,6 +198,6 @@ func TestAB_FGAOutboxTx_FGAOutbox_EmitWriteTx_EmptyTuplesNoop(t *testing.T) {
 
 	var after int
 	require.NoError(t, pool.QueryRow(ctx,
-		`SELECT count(*) FROM kacho_iam.fga_outbox`).Scan(&after))
+		`SELECT count(*) FROM kaname.fga_outbox`).Scan(&after))
 	require.Equal(t, before, after, "empty tuples → no emit, no new row")
 }

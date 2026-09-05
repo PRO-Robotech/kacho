@@ -54,7 +54,7 @@ func selectorRowCount(t *testing.T, ctx context.Context, pool *pgxpool.Pool, rol
 	t.Helper()
 	var n int
 	require.NoError(t, pool.QueryRow(ctx,
-		`SELECT count(*) FROM kacho_iam.role_rule_selectors WHERE role_id = $1`, string(roleID)).Scan(&n))
+		`SELECT count(*) FROM kaname.role_rule_selectors WHERE role_id = $1`, string(roleID)).Scan(&n))
 	return n
 }
 
@@ -63,7 +63,7 @@ func selectorRowCountFP(t *testing.T, ctx context.Context, pool *pgxpool.Pool, r
 	t.Helper()
 	var n int
 	require.NoError(t, pool.QueryRow(ctx,
-		`SELECT count(*) FROM kacho_iam.role_rule_selectors WHERE role_id = $1 AND rule_fp = $2`,
+		`SELECT count(*) FROM kaname.role_rule_selectors WHERE role_id = $1 AND rule_fp = $2`,
 		string(roleID), fp).Scan(&n))
 	return n
 }
@@ -73,7 +73,7 @@ func selectorRowCountFP(t *testing.T, ctx context.Context, pool *pgxpool.Pool, r
 func selectorObjectTypes(t *testing.T, ctx context.Context, pool *pgxpool.Pool, roleID domain.RoleID) []string {
 	t.Helper()
 	rows, err := pool.Query(ctx,
-		`SELECT unnest(object_types) FROM kacho_iam.role_rule_selectors WHERE role_id = $1`, string(roleID))
+		`SELECT unnest(object_types) FROM kaname.role_rule_selectors WHERE role_id = $1`, string(roleID))
 	require.NoError(t, err)
 	defer rows.Close()
 	var out []string
@@ -240,7 +240,7 @@ func TestSysRoleSel_04_Idempotent_SelfHeal(t *testing.T) {
 
 	// Self-heal: inject a STALE selector row (a fingerprint no current rule produces).
 	_, err = pool.Exec(ctx,
-		`INSERT INTO kacho_iam.role_rule_selectors
+		`INSERT INTO kaname.role_rule_selectors
 		   (role_id, rule_fp, arm, object_types, resource_names, match_labels)
 		 VALUES ($1, 'deadbeefstalefp', 'anchor', ARRAY['vpc.network']::text[], '{}'::text[], '{}'::jsonb)`,
 		string(editRole))

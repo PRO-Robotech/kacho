@@ -86,7 +86,7 @@ type poolStatsCollector struct {
 
 // NewPoolStatsCollector собирает коллектор состояния пула `pool`.
 //
-// `namespace` становится префиксом имён (kacho-iam передаёт `kacho_iam`), `poolName` —
+// `namespace` становится префиксом имён (kacho-iam передаёт `kaname`), `poolName` —
 // значением постоянной метки `pool` (`primary`, `replica`), поэтому несколько пулов
 // одного сервиса не сталкиваются.
 //

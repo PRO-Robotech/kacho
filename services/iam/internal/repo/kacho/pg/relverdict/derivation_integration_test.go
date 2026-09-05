@@ -44,7 +44,7 @@ func seedChain(t *testing.T, ctx context.Context, tx pgx.Tx) {
 	t.Helper()
 	seedTenant(t, ctx, tx)
 	exec(t, ctx, tx,
-		`INSERT INTO kacho_iam.resource_parent_edge
+		`INSERT INTO kaname.resource_parent_edge
 		   (object_type, object_id, parent_type, parent_id, depth)
 		 VALUES ('vpc_network', 'net-1', 'project', 'prj-1', 1),
 		        ('project',     'prj-1', 'account', 'acc-1', 1),
@@ -68,7 +68,7 @@ func TestAsk_CloudAdministratorReachesTheLeaf(t *testing.T) {
 	withTx(t, func(ctx context.Context, tx pgx.Tx) {
 		seedChain(t, ctx, tx)
 		exec(t, ctx, tx,
-			`INSERT INTO kacho_iam.relation_fact (object_type, object_id, relation, subject)
+			`INSERT INTO kaname.relation_fact (object_type, object_id, relation, subject)
 			 VALUES ('cluster', 'cluster_kacho_root', 'system_admin', 'user:usr-admin')`)
 
 		if got := ask(t, ctx, tx, "user:usr-admin", "v_get"); got != relverdict.Allow {
@@ -96,7 +96,7 @@ func TestAsk_AccountOwnerReachesInsideAndNotOutside(t *testing.T) {
 	withTx(t, func(ctx context.Context, tx pgx.Tx) {
 		seedChain(t, ctx, tx)
 		exec(t, ctx, tx,
-			`INSERT INTO kacho_iam.relation_fact (object_type, object_id, relation, subject)
+			`INSERT INTO kaname.relation_fact (object_type, object_id, relation, subject)
 			 VALUES ('account', 'acc-1', 'owner', 'user:usr-owner')`)
 
 		if got := ask(t, ctx, tx, "user:usr-owner", "v_update"); got != relverdict.Allow {
@@ -106,10 +106,10 @@ func TestAsk_AccountOwnerReachesInsideAndNotOutside(t *testing.T) {
 		// Сеть ЧУЖОГО аккаунта тем же владельцем не достаётся. Отрицание несущее:
 		// без него «достаёт» было бы неотличимо от «достаёт до всего».
 		exec(t, ctx, tx,
-			`INSERT INTO kacho_iam.accounts (id, name, owner_user_id)
+			`INSERT INTO kaname.accounts (id, name, owner_user_id)
 			 VALUES ('acc-2', 'other-account', 'usr-1') ON CONFLICT DO NOTHING`)
 		exec(t, ctx, tx,
-			`INSERT INTO kacho_iam.resource_parent_edge
+			`INSERT INTO kaname.resource_parent_edge
 			   (object_type, object_id, parent_type, parent_id, depth)
 			 VALUES ('vpc_network', 'net-9', 'account', 'acc-2', 1)`)
 		other, _, err := relverdict.Ask(ctx, tx, relverdict.Query{

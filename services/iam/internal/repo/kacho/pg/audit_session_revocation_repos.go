@@ -64,7 +64,7 @@ func (r *AuditOutboxRepo) Get(ctx context.Context, id domain.AuditEventID) (doma
 // и квалификация разрешается в ту же таблицу.
 func (r *AuditOutboxRepo) InsertTx(ctx context.Context, tx pgx.Tx, e domain.AuditOutboxEntry) (domain.AuditOutboxEntry, error) {
 	const q = `
-		INSERT INTO kacho_iam.audit_outbox (
+		INSERT INTO kaname.audit_outbox (
 		    id, event_type, tenant_account_id,
 		    event_payload, status, attempts, created_at, next_attempt_at
 		) VALUES ($1, $2, $3, $4::jsonb, COALESCE(NULLIF($5, ''), 'pending'),

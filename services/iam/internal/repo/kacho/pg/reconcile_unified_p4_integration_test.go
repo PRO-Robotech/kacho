@@ -50,7 +50,7 @@ func scopeGrantOutboxCount(t *testing.T, ctx context.Context, pool *pgxpool.Pool
 	t.Helper()
 	var n int
 	require.NoError(t, pool.QueryRow(ctx,
-		`SELECT count(*) FROM kacho_iam.fga_outbox WHERE payload->>'object' LIKE 'scope_grant:%'`).Scan(&n))
+		`SELECT count(*) FROM kaname.fga_outbox WHERE payload->>'object' LIKE 'scope_grant:%'`).Scan(&n))
 	return n
 }
 
@@ -262,7 +262,7 @@ func TestP4_E03_AnchorAll_ScopeExit_RevokesByLedger(t *testing.T) {
 
 	// The object leaves the mirror (UnregisterResource on Delete). Reconcile must
 	// revoke the materialized tuple from the SAVED ledger (not re-derive).
-	_, err = pool.Exec(ctx, `DELETE FROM kacho_iam.resource_mirror WHERE object_type=$1 AND object_id=$2`,
+	_, err = pool.Exec(ctx, `DELETE FROM kaname.resource_mirror WHERE object_type=$1 AND object_id=$2`,
 		"vpc.network", "ngone")
 	require.NoError(t, err)
 	require.NoError(t, rec.ReconcileObject(ctx, "vpc.network", "ngone"))
@@ -273,7 +273,7 @@ func TestP4_E03_AnchorAll_ScopeExit_RevokesByLedger(t *testing.T) {
 		"scope-exit eager-revokes the materialized tuple")
 	var ledger int
 	require.NoError(t, pool.QueryRow(ctx,
-		`SELECT count(*) FROM kacho_iam.access_binding_emitted_tuples WHERE binding_id=$1 AND object='vpc_network:ngone'`,
+		`SELECT count(*) FROM kaname.access_binding_emitted_tuples WHERE binding_id=$1 AND object='vpc_network:ngone'`,
 		string(bid)).Scan(&ledger))
 	assert.Equal(t, 0, ledger, "ledger holds no residual for the departed object")
 }
@@ -315,11 +315,11 @@ func TestP4_H05_ConcurrentAnchorReconcile_ExactlyOnce(t *testing.T) {
 
 	var members, ledger int
 	require.NoError(t, pool.QueryRow(ctx,
-		`SELECT count(*) FROM kacho_iam.access_binding_target_members WHERE binding_id=$1 AND rule_fp=$2`,
+		`SELECT count(*) FROM kaname.access_binding_target_members WHERE binding_id=$1 AND rule_fp=$2`,
 		string(bid), fp).Scan(&members))
 	assert.Equal(t, 1, members, "exactly one materialized member (advisory-lock serialized passes)")
 	require.NoError(t, pool.QueryRow(ctx,
-		`SELECT count(*) FROM kacho_iam.access_binding_emitted_tuples WHERE binding_id=$1 AND object='vpc_network:nconc'`,
+		`SELECT count(*) FROM kaname.access_binding_emitted_tuples WHERE binding_id=$1 AND object='vpc_network:nconc'`,
 		string(bid)).Scan(&ledger))
 	assert.GreaterOrEqual(t, ledger, 1, "ledger has the materialized tuple")
 	// No duplicate ledger row beyond the per-verb tuples (one v_get + one tier here).
@@ -344,7 +344,7 @@ func fgaOutboxTuple(t *testing.T, ctx context.Context, pool *pgxpool.Pool, user,
 	// отрицательные утверждения рядом («роль на чтение НЕ поднимается до admin»)
 	// зеленели бы, не заглянув в строку, где это отношение и лежит.
 	require.NoError(t, pool.QueryRow(ctx,
-		`SELECT count(*) FROM kacho_iam.fga_outbox
+		`SELECT count(*) FROM kaname.fga_outbox
 		  WHERE event_type='fga.tuple.write'
 		    AND payload->>'user'=$1 AND payload->>'object'=$3
 		    AND `+fga_outbox.RelationPredicate("payload", "$2"),

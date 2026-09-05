@@ -2,7 +2,7 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
 
 // Package invite_mail_outbox — writer намерения отправить письмо приглашения в
-// `kacho_iam.invite_mail_outbox`.
+// `kaname.invite_mail_outbox`.
 //
 // Намерение пишется В ТОЙ ЖЕ транзакции, что строка приглашения, и это несущее
 // свойство, а не оптимизация: при откате приглашения намерения нет ВОВСЕ, а при
@@ -37,7 +37,7 @@ const (
 	// Table — полное имя очереди. Имя объявлено ЗДЕСЬ и у клиента-применителя
 	// (clients.InviteMailTable); совпадение держит проба
 	// TestInviteMailTableIsNamedOnce, а не соглашение.
-	Table = "kacho_iam.invite_mail_outbox"
+	Table = "kaname.invite_mail_outbox"
 	// EventSend — единственный вид события; словарь закрыт CHECK'ом миграции.
 	EventSend = "mail.invite.send"
 	// kind — resource_kind денормализованной колонки.

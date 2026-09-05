@@ -49,14 +49,14 @@ func putReconcileEvent(
 	var err error
 	if sentOffset == nil {
 		err = pool.QueryRow(ctx,
-			`INSERT INTO kacho_iam.resource_reconcile_outbox
+			`INSERT INTO kaname.resource_reconcile_outbox
 			        (object_type, object_id, event_type, attempt_count)
 			 VALUES ('compute.instance', $1, $2, $3)
 			 RETURNING id`,
 			objectID, reconcile_outbox.EventUpsert, attempts).Scan(&id)
 	} else {
 		err = pool.QueryRow(ctx,
-			`INSERT INTO kacho_iam.resource_reconcile_outbox
+			`INSERT INTO kaname.resource_reconcile_outbox
 			        (object_type, object_id, event_type, attempt_count, sent_at)
 			 VALUES ('compute.instance', $1, $2, $3, now() + make_interval(secs => $4))
 			 RETURNING id`,
@@ -70,7 +70,7 @@ func countReconcileRows(t *testing.T, ctx context.Context, pool *pgxpool.Pool) i
 	t.Helper()
 	var n int
 	require.NoError(t, pool.QueryRow(ctx,
-		`SELECT count(*) FROM kacho_iam.resource_reconcile_outbox`).Scan(&n))
+		`SELECT count(*) FROM kaname.resource_reconcile_outbox`).Scan(&n))
 	return n
 }
 
@@ -97,7 +97,7 @@ func TestReconcileOutbox_FailureIsRecordedAndPoisonLeavesTheClaim(t *testing.T) 
 	var storedAttempts int
 	var storedErr *string
 	require.NoError(t, pool.QueryRow(ctx,
-		`SELECT attempt_count, last_error FROM kacho_iam.resource_reconcile_outbox WHERE id = $1`,
+		`SELECT attempt_count, last_error FROM kaname.resource_reconcile_outbox WHERE id = $1`,
 		id).Scan(&storedAttempts, &storedErr))
 	require.Equal(t, 1, storedAttempts, "attempt_count не записан")
 	require.NotNil(t, storedErr, "last_error не записан — «отравлено» неотличимо от «отравлено чем»")
@@ -149,7 +149,7 @@ func TestReconcileOutbox_DrainedRowsAreSweptAndTheRestAreNot(t *testing.T) {
 
 	var left []string
 	rows, err := pool.Query(ctx,
-		`SELECT object_id FROM kacho_iam.resource_reconcile_outbox ORDER BY object_id`)
+		`SELECT object_id FROM kaname.resource_reconcile_outbox ORDER BY object_id`)
 	require.NoError(t, err)
 	defer rows.Close()
 	for rows.Next() {

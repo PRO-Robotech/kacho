@@ -63,7 +63,7 @@ func stageIssuedKey(t *testing.T, ctx context.Context, pool *pgxpool.Pool, opsRe
 
 	if age > 0 {
 		_, err := pool.Exec(ctx,
-			`UPDATE kacho_iam.operations SET modified_at = now() - $2::interval WHERE id = $1`,
+			`UPDATE kaname.operations SET modified_at = now() - $2::interval WHERE id = $1`,
 			opID, age.String())
 		require.NoError(t, err)
 	}
@@ -101,14 +101,14 @@ func TestSweepStrandedSecrets_ClearsWhatTheDetachedCleanupNeverGotTo(t *testing.
 	pool, err := coredb.NewPool(ctx, setupRedactorPG(t))
 	require.NoError(t, err)
 	defer pool.Close()
-	opsRepo := operations.NewRepo(pool, "kacho_iam")
+	opsRepo := operations.NewRepo(pool, "kaname")
 
 	const secret = "-----BEGIN PRIVATE KEY-----stranded-----END PRIVATE KEY-----"
 	stageIssuedKey(t, ctx, pool, opsRepo, "iop_sweep_stranded", secret, 10*time.Minute)
 	require.Equal(t, secret, readPEM(t, ctx, opsRepo, "iop_sweep_stranded"),
 		"baseline: the credential is staged in the response, as the hand-over requires")
 
-	sw := kachopg.NewOpsResponseRedactor(pool, "kacho_iam")
+	sw := kachopg.NewOpsResponseRedactor(pool, "kaname")
 	spec := kachopg.SecretSweepSpec{
 		Targets: saKeySweepTargets(t), Settled: time.Minute, Window: 24 * time.Hour, Limit: 100,
 	}
@@ -135,12 +135,12 @@ func TestSweepStrandedSecrets_LeavesTheGraceWindowAlone(t *testing.T) {
 	pool, err := coredb.NewPool(ctx, setupRedactorPG(t))
 	require.NoError(t, err)
 	defer pool.Close()
-	opsRepo := operations.NewRepo(pool, "kacho_iam")
+	opsRepo := operations.NewRepo(pool, "kaname")
 
 	const secret = "-----BEGIN PRIVATE KEY-----fresh-----END PRIVATE KEY-----"
 	stageIssuedKey(t, ctx, pool, opsRepo, "iop_sweep_fresh", secret, 0)
 
-	sw := kachopg.NewOpsResponseRedactor(pool, "kacho_iam")
+	sw := kachopg.NewOpsResponseRedactor(pool, "kaname")
 	res, err := sw.SweepStrandedSecrets(ctx, kachopg.SecretSweepSpec{
 		Targets: saKeySweepTargets(t), Settled: 10 * time.Minute, Window: 24 * time.Hour, Limit: 100,
 	})
@@ -161,7 +161,7 @@ func TestSweepStrandedSecrets_ReadsOnlyCredentialBearingResponses(t *testing.T) 
 	pool, err := coredb.NewPool(ctx, setupRedactorPG(t))
 	require.NoError(t, err)
 	defer pool.Close()
-	opsRepo := operations.NewRepo(pool, "kacho_iam")
+	opsRepo := operations.NewRepo(pool, "kaname")
 
 	stageIssuedKey(t, ctx, pool, opsRepo, "iop_sweep_typed",
 		"-----BEGIN PRIVATE KEY-----x-----END PRIVATE KEY-----", 10*time.Minute)
@@ -175,11 +175,11 @@ func TestSweepStrandedSecrets_ReadsOnlyCredentialBearingResponses(t *testing.T) 
 	require.NoError(t, err)
 	require.NoError(t, opsRepo.MarkDone(ctx, "iop_sweep_other", other))
 	_, err = pool.Exec(ctx,
-		`UPDATE kacho_iam.operations SET modified_at = now() - interval '10 minutes' WHERE id = $1`,
+		`UPDATE kaname.operations SET modified_at = now() - interval '10 minutes' WHERE id = $1`,
 		"iop_sweep_other")
 	require.NoError(t, err)
 
-	sw := kachopg.NewOpsResponseRedactor(pool, "kacho_iam")
+	sw := kachopg.NewOpsResponseRedactor(pool, "kaname")
 	res, err := sw.SweepStrandedSecrets(ctx, kachopg.SecretSweepSpec{
 		Targets: saKeySweepTargets(t), Settled: time.Minute, Window: 24 * time.Hour, Limit: 100,
 	})

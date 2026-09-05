@@ -5,7 +5,7 @@
 //
 // # Предмет
 //
-// Схема у каждого сервиса своя (`kacho_iam`, `kacho_vpc`, …), а DSN, который
+// Схема у каждого сервиса своя (`kaname`, `kacho_vpc`, …), а DSN, который
 // отдаёт `NewDB`, объявлял только базу. Всякий, кто писал запрос без имени
 // схемы, обязан был приписать приведение сам — и приписывал: 29 файлов в 25
 // пакетах, каждый своей копией.
@@ -38,14 +38,14 @@ func TestWithSearchPath(t *testing.T) {
 	}{
 		{
 			name: "DSN без параметров получает `?`",
-			dsn:  base, searchPath: "kacho_iam,public",
-			want: base + "?options=-c%20search_path%3Dkacho_iam%2Cpublic",
+			dsn:  base, searchPath: "kaname,public",
+			want: base + "?options=-c%20search_path%3Dkaname%2Cpublic",
 			why:  "разделитель выбирается по наличию `?`, а не ставится всегда одинаковым",
 		},
 		{
 			name: "DSN с параметрами получает `&`",
-			dsn:  base + "?sslmode=disable", searchPath: "kacho_iam,public",
-			want: base + "?sslmode=disable&options=-c%20search_path%3Dkacho_iam%2Cpublic",
+			dsn:  base + "?sslmode=disable", searchPath: "kaname,public",
+			want: base + "?sslmode=disable&options=-c%20search_path%3Dkaname%2Cpublic",
 			why:  "ПОЛОЖИТЕЛЬНЫЙ КОНТРОЛЬ к предыдущему: один факт — наличие `?`",
 		},
 		{
@@ -56,14 +56,14 @@ func TestWithSearchPath(t *testing.T) {
 		},
 		{
 			name: "клауза уже есть — не удваивается",
-			dsn:  base + "?options=-c%20search_path%3Dkacho_probe", searchPath: "kacho_iam,public",
+			dsn:  base + "?options=-c%20search_path%3Dkacho_probe", searchPath: "kaname,public",
 			want: base + "?options=-c%20search_path%3Dkacho_probe",
 			why:  "две клаузы `options` в одном DSN — вторая молча замещает первую либо отвергается драйвером",
 		},
 		{
 			name: "значение экранируется",
-			dsn:  base, searchPath: "kacho_iam,public",
-			want: base + "?options=-c%20search_path%3Dkacho_iam%2Cpublic",
+			dsn:  base, searchPath: "kaname,public",
+			want: base + "?options=-c%20search_path%3Dkaname%2Cpublic",
 			why:  "запятая обязана уехать как %2C, иначе она разделяет параметры DSN",
 		},
 	}
@@ -85,13 +85,13 @@ func TestWithSearchPath(t *testing.T) {
 // подогнать: строка, собранная неверным экранированием, совпала бы с ожиданием
 // и при этом развалилась бы у драйвера. Здесь спрашивается разбор.
 func TestWithSearchPathSurvivesParsing(t *testing.T) {
-	got := WithSearchPath("postgres://u:p@h:5432/db?sslmode=disable", "kacho_iam,public")
+	got := WithSearchPath("postgres://u:p@h:5432/db?sslmode=disable", "kaname,public")
 	u, err := url.Parse(got)
 	if err != nil {
 		t.Fatalf("результат не разбирается как URL: %v", err)
 	}
 	q := u.Query()
-	if want := "-c search_path=kacho_iam,public"; q.Get("options") != want {
+	if want := "-c search_path=kaname,public"; q.Get("options") != want {
 		t.Fatalf("после разбора options = %q, ожидалось %q", q.Get("options"), want)
 	}
 	if q.Get("sslmode") != "disable" {

@@ -138,7 +138,7 @@ func countMembersOnObject(t *testing.T, ctx context.Context, pool *pgxpool.Pool,
 	t.Helper()
 	var n int
 	require.NoError(t, pool.QueryRow(ctx,
-		`SELECT count(DISTINCT binding_id) FROM kacho_iam.access_binding_target_members
+		`SELECT count(DISTINCT binding_id) FROM kaname.access_binding_target_members
 		  WHERE object_type='compute.instance' AND object_id=$1`, objID).Scan(&n))
 	return n
 }

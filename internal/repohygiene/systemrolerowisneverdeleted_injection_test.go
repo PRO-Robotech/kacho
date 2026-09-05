@@ -46,7 +46,7 @@ const roleDeleteTierGuardSrc = `package pg
 
 func (w *roleWriter) Delete(ctx context.Context, id string) error {
 	row := w.tx.QueryRow(ctx,
-		` + "`DELETE FROM kacho_iam.roles WHERE id = $1 AND cluster_id IS NULL RETURNING 1`" + `, id)
+		` + "`DELETE FROM kaname.roles WHERE id = $1 AND cluster_id IS NULL RETURNING 1`" + `, id)
 	return row.Scan(new(int))
 }
 `
@@ -69,7 +69,7 @@ var errNoSystemRoleDelete = errors.New("DELETE FROM roles здесь не про
 const roleDeleteProjectionSrc = `package pg
 
 func (w *roleWriter) ReplaceRuleRefs(ctx context.Context, id string) error {
-	_, err := w.tx.Exec(ctx, ` + "`DELETE FROM kacho_iam.role_rule_ref WHERE role_id = $1`" + `, id)
+	_, err := w.tx.Exec(ctx, ` + "`DELETE FROM kaname.role_rule_ref WHERE role_id = $1`" + `, id)
 	return err
 }
 `

@@ -116,7 +116,7 @@ func collectUnboundedVerdictReads(t *testing.T, dir string) ([]enumFinding, enum
 		}
 		c.files++
 		for _, lit := range sqlLiteralsOf(name, body) {
-			if !strings.Contains(lit.sql, "kacho_iam.") {
+			if !strings.Contains(lit.sql, "kaname.") {
 				continue
 			}
 			c.literals++
@@ -170,7 +170,7 @@ func auditSQLForEnumeration(file string, baseLine int, sql string) ([]enumFindin
 	// констант, поэтому их число ограничено внешней стороной by construction.
 	//
 	// ЭТО НЕ ПОСЛАБЛЕНИЕ, и вот почему. Соединение вбок, которое таблицу ЧИТАЕТ
-	// (обход цепи областей: `LATERAL (SELECT … FROM kacho_iam.resource_scope_edge
+	// (обход цепи областей: `LATERAL (SELECT … FROM kaname.resource_scope_edge
 	// pe WHERE pe.object_type = s.s_type …) e`), в якоря НЕ попадает, а его
 	// внутреннее чтение по-прежнему проверяется этим же обходом отдельной
 	// строкой и привязывается собственным равенством. То есть правило добавляет
@@ -248,7 +248,7 @@ func computedLateralAliasesOf(sql string) []string {
 			return out
 		}
 		off = end + 1
-		if strings.Contains(sql[open:end], "kacho_iam.") {
+		if strings.Contains(sql[open:end], "kaname.") {
 			continue
 		}
 		if a := aliasAfter(sql[end+1:]); a != "" {
@@ -259,7 +259,7 @@ func computedLateralAliasesOf(sql string) []string {
 
 // tableReadsOf — чтения таблиц схемы: имя и введённый псевдоним.
 func tableReadsOf(sql string, baseLine int) []tableRead {
-	const marker = "kacho_iam."
+	const marker = "kaname."
 	var out []tableRead
 	for off := 0; ; {
 		i := strings.Index(sql[off:], marker)

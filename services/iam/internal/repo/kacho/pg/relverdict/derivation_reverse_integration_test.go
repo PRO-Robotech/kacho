@@ -51,16 +51,16 @@ func seedTwoAccountsChain(t *testing.T, ctx context.Context, tx pgx.Tx, nets []s
 	t.Helper()
 	seedTenant(t, ctx, tx)
 	exec(t, ctx, tx,
-		`INSERT INTO kacho_iam.accounts (id, name, owner_user_id)
+		`INSERT INTO kaname.accounts (id, name, owner_user_id)
 		 VALUES ('acc-2', 'other-account', 'usr-1') ON CONFLICT DO NOTHING`)
 	exec(t, ctx, tx,
-		`INSERT INTO kacho_iam.projects (id, account_id, name) VALUES ('prj-9', 'acc-2', 'other')
+		`INSERT INTO kaname.projects (id, account_id, name) VALUES ('prj-9', 'acc-2', 'other')
 		 ON CONFLICT DO NOTHING`)
 	// Субъекты — НАСТОЯЩИМИ строками: выдача ссылается на пользователя внешним
 	// ключом, и посев, обходящий его, доказывал бы работу запроса на данных,
 	// которых в проде не бывает.
 	exec(t, ctx, tx,
-		`INSERT INTO kacho_iam.users (id, external_id, email, account_id)
+		`INSERT INTO kaname.users (id, external_id, email, account_id)
 		 VALUES ('usr-admin',    'ext-admin', 'admin@kacho.local', 'acc-1'),
 		        ('usr-outsider', 'ext-out',   'out@kacho.local',   'acc-2')
 		 ON CONFLICT DO NOTHING`)
@@ -69,7 +69,7 @@ func seedTwoAccountsChain(t *testing.T, ctx context.Context, tx pgx.Tx, nets []s
 	// наблюдаемым: положи она замыкание, различить обход и одно чтение стало бы
 	// нечем.
 	exec(t, ctx, tx,
-		`INSERT INTO kacho_iam.resource_parent_edge
+		`INSERT INTO kaname.resource_parent_edge
 		   (object_type, object_id, parent_type, parent_id, depth)
 		 VALUES ('project', 'prj-1', 'account', 'acc-1', 1),
 		        ('project', 'prj-9', 'account', 'acc-2', 1),
@@ -77,19 +77,19 @@ func seedTwoAccountsChain(t *testing.T, ctx context.Context, tx pgx.Tx, nets []s
 		        ('account', 'acc-2', 'cluster', 'cluster_kacho_root', 1)`)
 	for _, id := range nets {
 		exec(t, ctx, tx,
-			`INSERT INTO kacho_iam.resource_mirror (object_type, object_id) VALUES ($2, $1)`,
+			`INSERT INTO kaname.resource_mirror (object_type, object_id) VALUES ($2, $1)`,
 			id, catalogFormOf(t, "vpc_network"))
 		exec(t, ctx, tx,
-			`INSERT INTO kacho_iam.resource_parent_edge
+			`INSERT INTO kaname.resource_parent_edge
 			   (object_type, object_id, parent_type, parent_id, depth)
 			 VALUES ('vpc_network', $1, 'project', 'prj-1', 1)`, id)
 	}
 	// Сеть ЧУЖОГО аккаунта — та же форма, другая область.
 	exec(t, ctx, tx,
-		`INSERT INTO kacho_iam.resource_mirror (object_type, object_id) VALUES ($1, 'net-99')`,
+		`INSERT INTO kaname.resource_mirror (object_type, object_id) VALUES ($1, 'net-99')`,
 		catalogFormOf(t, "vpc_network"))
 	exec(t, ctx, tx,
-		`INSERT INTO kacho_iam.resource_parent_edge
+		`INSERT INTO kaname.resource_parent_edge
 		   (object_type, object_id, parent_type, parent_id, depth)
 		 VALUES ('vpc_network', 'net-99', 'project', 'prj-9', 1)`)
 }
@@ -99,7 +99,7 @@ func seedTwoAccountsChain(t *testing.T, ctx context.Context, tx pgx.Tx, nets []s
 func seedCloudAdminAndForeignOwner(t *testing.T, ctx context.Context, tx pgx.Tx) {
 	t.Helper()
 	exec(t, ctx, tx,
-		`INSERT INTO kacho_iam.relation_fact (object_type, object_id, relation, subject)
+		`INSERT INTO kaname.relation_fact (object_type, object_id, relation, subject)
 		 VALUES ('cluster', 'cluster_kacho_root', 'system_admin', 'user:usr-admin'),
 		        ('account', 'acc-2',              'owner',        'user:usr-outsider')`)
 }
@@ -192,23 +192,23 @@ func TestList_PagesThroughDerivedObjectsWithoutLossOrDuplication(t *testing.T) {
 
 		// Второе основание на ТОМ ЖЕ объекте: прямой факт на самой сети.
 		exec(t, ctx, tx,
-			`INSERT INTO kacho_iam.relation_fact (object_type, object_id, relation, subject)
+			`INSERT INTO kaname.relation_fact (object_type, object_id, relation, subject)
 			 VALUES ('vpc_network', 'net-02', 'v_get', 'user:usr-admin')`)
 		// Третье основание: выдача роли на проект — тому же субъекту.
 		seedRole(t, ctx, tx, "rol-der", "vpc_network", "get", "anchor", "{}")
 		exec(t, ctx, tx,
-			`INSERT INTO kacho_iam.access_bindings
+			`INSERT INTO kaname.access_bindings
 			   (id, subject_type, subject_id, role_id, resource_type, resource_id, status)
 			 VALUES ('acb-der', 'user', 'usr-admin', 'rol-der', 'project', 'prj-1', 'ACTIVE')`)
 		exec(t, ctx, tx,
-			`INSERT INTO kacho_iam.access_binding_subjects (binding_id, subject_type, subject_id)
+			`INSERT INTO kaname.access_binding_subjects (binding_id, subject_type, subject_id)
 			 VALUES ('acb-der', 'user', 'usr-admin')`)
 
 		// Объект в зеркале, но ВНЕ всякой цепи: до него не достаёт ни один
 		// источник, включая кластерный. Без него «страница верна» зеленело бы на
 		// форме, отдающей весь тип.
 		exec(t, ctx, tx,
-			`INSERT INTO kacho_iam.resource_mirror (object_type, object_id) VALUES ($1, 'net-orphan')`,
+			`INSERT INTO kaname.resource_mirror (object_type, object_id) VALUES ($1, 'net-orphan')`,
 			catalogFormOf(t, "vpc_network"))
 
 		count := map[string]int{}

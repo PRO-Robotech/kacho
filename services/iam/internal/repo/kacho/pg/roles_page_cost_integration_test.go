@@ -62,10 +62,10 @@ import (
 // одном предмете.
 var rolesPageStatements = map[string]string{
 	"администратор облака: набор кандидатов не сужается": `
-		SELECT * FROM kacho_iam.roles
+		SELECT * FROM kaname.roles
 		 ORDER BY created_at ASC, id ASC LIMIT 101`,
 	"арендатор: дизъюнкт кандидатов, индексом не обслуживаемый": `
-		SELECT * FROM kacho_iam.roles
+		SELECT * FROM kaname.roles
 		 WHERE (is_system OR account_id = ANY(ARRAY['acc-nonexistent']) OR id = ANY(ARRAY['rol-nonexistent']))
 		 ORDER BY created_at ASC, id ASC LIMIT 101`,
 }
@@ -235,24 +235,24 @@ func seedRolesVia(ctx context.Context, t *testing.T, pool interface {
 	require.NoError(t, err)
 
 	var have int
-	require.NoError(t, tx.QueryRow(ctx, `SELECT count(*) FROM kacho_iam.roles`).Scan(&have))
+	require.NoError(t, tx.QueryRow(ctx, `SELECT count(*) FROM kaname.roles`).Scan(&have))
 	if have < want {
 		_, err = tx.Exec(ctx, fmt.Sprintf(`
-			INSERT INTO kacho_iam.roles (id, cluster_id, name, permissions, created_at)
+			INSERT INTO kaname.roles (id, cluster_id, name, permissions, created_at)
 			SELECT 'rol' || lpad(g::text, 17, '0'),
-			       (SELECT cluster_id FROM kacho_iam.roles WHERE is_system AND cluster_id IS NOT NULL LIMIT 1),
+			       (SELECT cluster_id FROM kaname.roles WHERE is_system AND cluster_id IS NOT NULL LIMIT 1),
 			       'seedrole-' || lpad(g::text, 9, '0'),
-			       (SELECT permissions FROM kacho_iam.roles WHERE is_system AND jsonb_array_length(permissions) > 0 LIMIT 1),
+			       (SELECT permissions FROM kaname.roles WHERE is_system AND jsonb_array_length(permissions) > 0 LIMIT 1),
 			       now() + (g || ' milliseconds')::interval
 			  FROM generate_series(%d, %d) g`, have+1, want))
 		require.NoError(t, err)
-		require.NoError(t, tx.QueryRow(ctx, `SELECT count(*) FROM kacho_iam.roles`).Scan(&have))
+		require.NoError(t, tx.QueryRow(ctx, `SELECT count(*) FROM kaname.roles`).Scan(&have))
 	}
 	require.NoError(t, tx.Commit(ctx))
 
 	txa, err := pool.Begin(ctx)
 	require.NoError(t, err)
-	_, err = txa.Exec(ctx, `ANALYZE kacho_iam.roles`)
+	_, err = txa.Exec(ctx, `ANALYZE kaname.roles`)
 	require.NoError(t, err)
 	require.NoError(t, txa.Commit(ctx))
 	return have

@@ -46,7 +46,7 @@ func TestAB_IAM_1_25_AccountRoleOnNestedProject_Assignable(t *testing.T) {
 	dsn := setupTestDB(t)
 	pool := poolFromDSN(t, dsn)
 	repo := kachopg.New(pool, nil)
-	opsRepo := operations.NewRepo(pool, "kacho_iam")
+	opsRepo := operations.NewRepo(pool, "kaname")
 	h := deltaHandler(t, repo, opsRepo)
 
 	ownerA := mustSeedUser(t, ctx, pool, "hd25a")
@@ -133,7 +133,7 @@ func seedProjectCustomRole(t *testing.T, ctx context.Context, pool *pgxpool.Pool
 	t.Helper()
 	rid := domain.RoleID(ids.NewID(domain.PrefixRole))
 	_, err := pool.Exec(ctx, `
-		INSERT INTO kacho_iam.roles (id, project_id, name, description, permissions)
+		INSERT INTO kaname.roles (id, project_id, name, description, permissions)
 		VALUES ($1, $2, $3, $4, '["iam.users.*.read"]'::jsonb)`,
 		string(rid), string(prj), name, "prj role "+name)
 	require.NoError(t, err)

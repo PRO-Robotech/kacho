@@ -85,7 +85,7 @@ type Writer interface {
 	RolesW() role.WriterIface
 	AccessBindingsW() access_binding.WriterIface
 
-	// EmitAuditEvent appends one durable kacho_iam.audit_outbox compliance row
+	// EmitAuditEvent appends one durable kaname.audit_outbox compliance row
 	// inside THIS writer-tx — atomic with the surrounding domain mutation
 	// (запрет #10): the audit row commits iff the mutation commits, so a
 	// rolled-back mutation leaves no orphan compliance row and a committed one
@@ -96,7 +96,7 @@ type Writer interface {
 	EmitAuditEvent(ctx context.Context, ev outboxtypes.AuditEvent) error
 
 	// EmitFGARelationWrite / EmitFGARelationDelete append N FGA owner/hierarchy
-	// tuple-write (resp. tuple-delete) intent rows into kacho_iam.fga_outbox
+	// tuple-write (resp. tuple-delete) intent rows into kaname.fga_outbox
 	// inside THIS writer-tx — atomic with the surrounding resource mutation
 	// (запрет #10 / SEC-D). The intent row commits iff the
 	// resource INSERT commits, so a rolled-back create leaves no orphan intent
@@ -107,7 +107,7 @@ type Writer interface {
 	//
 	// Used by the own-resource Create use-cases (Account/Project/Group/
 	// ServiceAccount/Role) + user bootstrap to co-commit the owner/hierarchy
-	// owner-tuple intent. Event types reuse the existing kacho_iam.fga_outbox
+	// owner-tuple intent. Event types reuse the existing kaname.fga_outbox
 	// CHECK literals 'fga.tuple.write'/'fga.tuple.delete' (migration 0001) —
 	// no new literal, no new migration. len(tuples)==0 is a no-op. Mirrors the
 	// already-atomic AccessBindingsW().EmitRelationWrite emit path.
@@ -125,7 +125,7 @@ type Writer interface {
 	EmitReconcileEvent(ctx context.Context, eventType, objectType, objectID string) error
 
 	// EmitInviteMail ставит намерение отправить письмо приглашения в
-	// `kacho_iam.invite_mail_outbox` на ЭТОЙ writer-транзакции — атомарно со
+	// `kaname.invite_mail_outbox` на ЭТОЙ writer-транзакции — атомарно со
 	// строкой приглашения (ban #10).
 	//
 	// Атомарность здесь несущая, а не удобная: при откате приглашения намерения
@@ -139,7 +139,7 @@ type Writer interface {
 	EmitInviteMail(ctx context.Context, userID, accountID, to, loginURL string) error
 
 	// InsertRecoveryCompletion — idempotency-gate INSERT for the Kratos
-	// recovery-completed webhook (kacho_iam.recovery_completions, migration 0015).
+	// recovery-completed webhook (kaname.recovery_completions, migration 0015).
 	// Runs `INSERT … ON CONFLICT (recovery_jti) DO NOTHING` and
 	// then reads back the stored row, all on THIS writer-tx:
 	//   - inserted=true  → this recovery_jti is new → caller runs the side-effects
@@ -153,7 +153,7 @@ type Writer interface {
 	InsertRecoveryCompletion(ctx context.Context, rc domain.RecoveryCompletion) (domain.RecoveryCompletion, bool /*inserted*/, error)
 
 	// UpsertUserTokenRevokeAll — per-user "revoke-all-before" cutoff written on
-	// THIS writer-tx (kacho_iam.user_token_revocations, migration 0012). Same
+	// THIS writer-tx (kaname.user_token_revocations, migration 0012). Same
 	// monotonic GREATEST upsert as the pool-scoped path, but tx-scoped so the
 	// cutoff commits atomically with the recovery audit event
 	// (запрет #10). The cutoff never moves backwards; the PK row-lock

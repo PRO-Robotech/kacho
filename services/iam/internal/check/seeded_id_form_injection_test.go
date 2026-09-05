@@ -27,13 +27,13 @@ import (
 
 const (
 	// synthGoodSeed — законный посев: слитная форма 20 символов.
-	synthGoodSeed = "INSERT INTO kacho_iam.roles (id, name, permissions) " +
+	synthGoodSeed = "INSERT INTO kaname.roles (id, name, permissions) " +
 		"VALUES ('rol000000000sysadmin', 'kacho-system.admin', '[]');\n"
 	// synthUnderscoreSeed — ЗАКОННЫЙ близнец: форма через подчёркивание, 21 символ.
-	synthUnderscoreSeed = "INSERT INTO kacho_iam.cluster_admin_grants (id, cluster_id) " +
+	synthUnderscoreSeed = "INSERT INTO kaname.cluster_admin_grants (id, cluster_id) " +
 		"VALUES ('cag_5f4510f927a011885', 'cluster_kacho_root');\n"
 	// synthForeignFamilySeed — ЗАКОННЫЙ близнец: семейство таблицей не названо.
-	synthForeignFamilySeed = "INSERT INTO kacho_iam.clusters (id, name) " +
+	synthForeignFamilySeed = "INSERT INTO kaname.clusters (id, name) " +
 		"VALUES ('cluster_kacho_root', 'root');\n"
 	// synthBadSeedID — ДЕФЕКТ: слитная форма длиной 21, НИ ОДНОЙ миграцией не
 	// посеянная и потому перечнем `domain.SeededResourceIDs()` не названная.
@@ -45,7 +45,7 @@ const (
 	// обязан быть ВНЕ перечня, и это утверждается ниже, а не подразумевается.
 	synthBadSeedID = "rol000000000sysvi3w3r"
 	// synthBadSeed — тот же дефект в форме посева.
-	synthBadSeed = "INSERT INTO kacho_iam.roles (id, name, permissions) " +
+	synthBadSeed = "INSERT INTO kaname.roles (id, name, permissions) " +
 		"VALUES ('" + synthBadSeedID + "', 'kacho-system.viewer', '[]');\n"
 )
 
@@ -130,7 +130,7 @@ func TestSeededIDLedgerSelfExpires(t *testing.T) {
 func TestSeededIDGateCountsWhatItCouldNotParse(t *testing.T) {
 	corpus := map[string]string{
 		"20260101000000_x.sql": synthGoodSeed +
-			"INSERT INTO kacho_iam.roles\n       (id, name)\nSELECT '" + synthBadSeedID + "', 'x';\n",
+			"INSERT INTO kaname.roles\n       (id, name)\nSELECT '" + synthBadSeedID + "', 'x';\n",
 	}
 
 	findings, c := auditSeededIDs(corpus, nil)

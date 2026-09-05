@@ -25,7 +25,7 @@ import (
 // Мгновенный счёт личностей немонотонен: человек уходит, и величина падает. На
 // падающем ряде РОСТ не определён — `increase()` молчит там, где рост и был, — а
 // «личностей ноль» перестаёт быть утверждением о всей жизни платформы. Журнал
-// (`kacho_iam.identity_journal`) рядов не снимает никогда, поэтому здесь величина
+// (`kaname.identity_journal`) рядов не снимает никогда, поэтому здесь величина
 // объявлена СЧЁТЧИКОМ: над ней осмысленны и `increase()`, и `rate()`.
 //
 // # Почему рядом ОБЯЗАТЕЛЕН счётчик снятых замеров
@@ -88,7 +88,7 @@ func (r *Registry) NewIdentityGrowthCollector(read func() IdentityGrowthCounts) 
 		identities: prometheus.NewDesc(
 			IdentitiesTotalMetric,
 			"Login identities the platform has ever seen, from the accumulating "+
-				"ledger kacho_iam.identity_journal. Monotone by construction: rows are "+
+				"ledger kaname.identity_journal. Monotone by construction: rows are "+
 				"never removed, not even when a person leaves, so growth is defined on "+
 				"it and \"zero over the whole life\" is a statement that can be made. An "+
 				"instantaneous count of user rows answers a different question and falls "+

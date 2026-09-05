@@ -5,7 +5,7 @@ package shared
 
 // reconcile_event.go — app-layer reconcile-event type literals.
 //
-// The γ reconciler-worker drains kacho_iam.resource_reconcile_outbox and re-evaluates
+// The γ reconciler-worker drains kaname.resource_reconcile_outbox and re-evaluates
 // the bindings that reference the changed object (ReconcileObject keys on
 // object_type/object_id — it does NOT branch on the event type). So an IAM-OWN
 // resource CHANGE (label-update OR a brand-new resource that must forward-materialize

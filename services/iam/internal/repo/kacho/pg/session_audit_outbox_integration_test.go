@@ -52,7 +52,7 @@ func countAuditByEventAndSubject(ctx context.Context, t *testing.T, pool *pgxpoo
 	t.Helper()
 	var n int
 	require.NoError(t, pool.QueryRow(ctx,
-		`SELECT count(*) FROM kacho_iam.audit_outbox
+		`SELECT count(*) FROM kaname.audit_outbox
 		  WHERE event_type = $1 AND event_payload->>'subject_id' = $2`,
 		eventType, subjectID).Scan(&n))
 	return n
@@ -61,7 +61,7 @@ func countAuditByEventAndSubject(ctx context.Context, t *testing.T, pool *pgxpoo
 func readOneAudit(ctx context.Context, t *testing.T, pool *pgxpool.Pool, eventType, subjectID string) (id, status, payloadRaw string) {
 	t.Helper()
 	require.NoError(t, pool.QueryRow(ctx,
-		`SELECT id, status, event_payload::text FROM kacho_iam.audit_outbox
+		`SELECT id, status, event_payload::text FROM kaname.audit_outbox
 		  WHERE event_type = $1 AND event_payload->>'subject_id' = $2`,
 		eventType, subjectID).Scan(&id, &status, &payloadRaw))
 	return id, status, payloadRaw

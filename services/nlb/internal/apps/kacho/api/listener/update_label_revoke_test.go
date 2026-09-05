@@ -22,7 +22,7 @@ import (
 //
 // `loadbalancer.listeners` is a declared label-selectable type
 // (services/iam/internal/domain/feed_registry.go) and it is MIRROR-fed: an
-// ARM_LABELS grant selects listeners by matching `kacho_iam.resource_mirror.labels`
+// ARM_LABELS grant selects listeners by matching `kaname.resource_mirror.labels`
 // against the rule's matchLabels. The mirror is written ONLY as a side effect of
 // kacho-iam's InternalIAMService.RegisterResource — the labels ride along on the
 // RegisterResource call as an additive payload field.

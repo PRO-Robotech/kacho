@@ -38,7 +38,7 @@ prod / staging / dev — это три Project одного Account).
 - **Имя уникально per-Account** (`UNIQUE projects_account_name_unique`).
 - Удаление RESTRICT — нельзя удалить Project, пока в нем есть workload
   (это проверяется на стороне Compute/VPC через peer-API; на DB-уровне
-  Project — leaf-ресурс в `kacho_iam`).
+  Project — leaf-ресурс в `kaname`).
 - `account_id` **hard-immutable**: в `updateMask` отвергается `INVALID_ARGUMENT`
   (`"accountId is immutable after Project.Create"`). Операции переноса проекта между
   аккаунтами в дереве нет.
@@ -55,7 +55,7 @@ prod / staging / dev — это три Project одного Account).
 | `created_at`  | `time.Time`               | да (server)  | да        | UTC.                                                   |
 
 **ID prefix:** `prj` (`domain.PrefixProject`).
-**DB table:** `kacho_iam.projects` (`CREATE TABLE kacho_iam.projects` в `0001_initial.sql`).
+**DB table:** `kaname.projects` (`CREATE TABLE kaname.projects` в `0001_initial.sql`).
 
 **Sentinel errors:**
 
@@ -180,7 +180,7 @@ kubectl -n kacho port-forward svc/api-gateway 18080:8080 &
 
 # psql.
 make -C deploy psql SVC=iam
-# > SELECT id, account_id, name FROM kacho_iam.projects;
+# > SELECT id, account_id, name FROM kaname.projects;
 
 # Integration tests.
 go test -short -count=1 -timeout 120s -run TestProject \

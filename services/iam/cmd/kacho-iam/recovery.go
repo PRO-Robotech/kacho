@@ -26,8 +26,8 @@ import (
 func startLROReconciler(ctx context.Context, pool *pgxpool.Pool, repo kachorepo.Repository, catalogSource catalog.Source, rec operations.Recorder, logger *slog.Logger) {
 	resolver := operationresolver.New(repo, catalogSource, operationresolver.WithLogger(logger))
 	reconciler := operations.NewReconciler(pool, resolver, operations.ReconcilerConfig{
-		Schema: "kacho_iam",
+		Schema: "kaname",
 	}, operations.WithReconcilerRecorder(rec), operations.WithReconcilerLogger(logger))
 	go reconciler.Run(ctx)
-	logger.Info("LRO orphan reconciler backstop started", "schema", "kacho_iam")
+	logger.Info("LRO orphan reconciler backstop started", "schema", "kaname")
 }

@@ -52,7 +52,7 @@ const journalGrace = subjectchange.JournalRetention
 func ageSubjectChange(t *testing.T, ctx context.Context, pool *pgxpool.Pool, id int64, back time.Duration) {
 	t.Helper()
 	tag, err := pool.Exec(ctx,
-		`UPDATE kacho_iam.subject_change_outbox
+		`UPDATE kaname.subject_change_outbox
 		    SET created_at = now() - make_interval(secs => $2)
 		  WHERE id = $1`, id, back.Seconds())
 	require.NoError(t, err)
@@ -63,7 +63,7 @@ func ageSubjectChange(t *testing.T, ctx context.Context, pool *pgxpool.Pool, id 
 func journalIDs(t *testing.T, ctx context.Context, pool *pgxpool.Pool) []int64 {
 	t.Helper()
 	rows, err := pool.Query(ctx,
-		`SELECT id FROM kacho_iam.subject_change_outbox ORDER BY id`)
+		`SELECT id FROM kaname.subject_change_outbox ORDER BY id`)
 	require.NoError(t, err)
 	defer rows.Close()
 	var out []int64
@@ -194,7 +194,7 @@ func TestSubjectChangeSweep_HoldsWhileTheBoundaryIsNotSettled(t *testing.T) {
 	require.NoError(t, err)
 	defer func() { _ = tx.Rollback(ctx) }()
 	_, err = tx.Exec(ctx,
-		`INSERT INTO kacho_iam.subject_change_outbox (subject_id, op, event_type, payload)
+		`INSERT INTO kaname.subject_change_outbox (subject_id, op, event_type, payload)
 		 VALUES ($1, $2, $3, jsonb_build_object('subject_id', $1::text, 'op', $2::text, 'event_type', $3::text))`,
 		"usr_hold_inflight", "binding_upsert", "binding_upsert")
 	require.NoError(t, err)

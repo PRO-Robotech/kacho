@@ -252,7 +252,7 @@ func TestIntegration_MembershipCarryingRightsIsRefusedWithContractTone(t *testin
 	// Живая выдача этому человеку В ЭТОМ аккаунте — то, что страж и охраняет.
 	roleID := seedAccountRole(t, ctx, pool, accID, "rmrgtrole")
 	bindingID := ids.NewID(domain.PrefixAccessBinding)
-	_, err = pool.Exec(ctx, `INSERT INTO kacho_iam.access_bindings
+	_, err = pool.Exec(ctx, `INSERT INTO kaname.access_bindings
 	          (id, subject_type, subject_id, role_id, resource_type, resource_id, status)
 	        VALUES ($1, 'user', $2, $3, 'account', $4, 'ACTIVE')`,
 		bindingID, string(person), string(roleID), string(accID))
@@ -297,7 +297,7 @@ func readUserRow(t *testing.T, ctx context.Context, pool *pgxpool.Pool, id domai
 		SELECT format('%s|%s|%s|%s|%s|%s|%s|%s|%s',
 		              id, coalesce(account_id,''), external_id, email, display_name,
 		              invite_status, coalesce(invited_by,''), labels::text, created_at)
-		  FROM kacho_iam.users WHERE id = $1`, string(id)).Scan(&out))
+		  FROM kaname.users WHERE id = $1`, string(id)).Scan(&out))
 	require.NotEmptyf(t, out, "строка личности %s не прочитана — снимок беспредметен", id)
 	return out
 }

@@ -113,7 +113,7 @@ var r74DerivableSeeders = map[string]r74Seeder{
 	"account": func(t *testing.T, ctx context.Context, tx pgx.Tx) string {
 		r74SeedCluster(t, ctx, tx)
 		exec(t, ctx, tx,
-			`INSERT INTO kacho_iam.accounts (id, name, owner_user_id)
+			`INSERT INTO kaname.accounts (id, name, owner_user_id)
 			 VALUES ('acc-cov', 'coverage-account', 'usr-1')`)
 		return "acc-cov"
 	},
@@ -121,31 +121,31 @@ var r74DerivableSeeders = map[string]r74Seeder{
 	// кладётся её единственным производителем.
 	"project": func(t *testing.T, ctx context.Context, tx pgx.Tx) string {
 		exec(t, ctx, tx,
-			`INSERT INTO kacho_iam.projects (id, account_id, name)
+			`INSERT INTO kaname.projects (id, account_id, name)
 			 VALUES ('prj-cov', 'acc-1', 'coverage-project')`)
 		pointerThroughJournal(t, ctx, tx, "project", "prj-cov", "account", "account:acc-1")
 		return "prj-cov"
 	},
 	"iam_user": func(t *testing.T, ctx context.Context, tx pgx.Tx) string {
 		exec(t, ctx, tx,
-			`INSERT INTO kacho_iam.users (id, external_id, email, account_id)
+			`INSERT INTO kaname.users (id, external_id, email, account_id)
 			 VALUES ('usr-cov', 'ext-cov', 'cov@kacho.local', 'acc-1')`)
 		return "usr-cov"
 	},
 	"iam_group": func(t *testing.T, ctx context.Context, tx pgx.Tx) string {
 		exec(t, ctx, tx,
-			`INSERT INTO kacho_iam.groups (id, account_id, name) VALUES ('grp-cov', 'acc-1', 'grp-cov')`)
+			`INSERT INTO kaname.groups (id, account_id, name) VALUES ('grp-cov', 'acc-1', 'grp-cov')`)
 		return "grp-cov"
 	},
 	"iam_service_account": func(t *testing.T, ctx context.Context, tx pgx.Tx) string {
 		exec(t, ctx, tx,
-			`INSERT INTO kacho_iam.service_accounts (id, account_id, name)
+			`INSERT INTO kaname.service_accounts (id, account_id, name)
 			 VALUES ('sac-cov', 'acc-1', 'sac-cov')`)
 		return "sac-cov"
 	},
 	"iam_role": func(t *testing.T, ctx context.Context, tx pgx.Tx) string {
 		exec(t, ctx, tx,
-			`INSERT INTO kacho_iam.roles (id, name, permissions, rules, account_id)
+			`INSERT INTO kaname.roles (id, name, permissions, rules, account_id)
 			 VALUES ('rol-cov', 'coverage_role', '[]'::jsonb,
 			         jsonb_build_array(jsonb_build_object(
 			             'module',    'test',
@@ -372,7 +372,7 @@ func TestR7_4_05_CoverageGateStaysSilentOnATypeNotDeclaredDerivable(t *testing.T
 		// Объект ЧУЖОГО домена, чью регистрацию владелец не прислал: предка у
 		// него нет, и это законно.
 		exec(t, ctx, tx,
-			`INSERT INTO kacho_iam.resource_mirror (object_type, object_id)
+			`INSERT INTO kaname.resource_mirror (object_type, object_id)
 			 VALUES ($1, 'net-nowhere')`, catalogFormOf(t, "vpc_network"))
 		for _, ty := range []string{"vpc_network", "iam_fgaproxy", "user"} {
 			if _, declared := authzcascade.DerivableTypes[ty]; declared {

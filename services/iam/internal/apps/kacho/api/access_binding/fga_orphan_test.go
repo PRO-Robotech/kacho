@@ -50,7 +50,7 @@ const (
 
 // netTuples computes the residual tuple set after applying a sequence of writes and
 // deletes: a tuple present in writes but not cancelled by an equal delete is still
-// materialized — i.e. still a row in `kacho_iam.relation_fact`, which is what a
+// materialized — i.e. still a row in `kaname.relation_fact`, which is what a
 // verdict resolves against. An orphan tuple is a write with no matching delete. The
 // projection of the journal is idempotent, so multiplicity does not matter — set
 // semantics on (User, Relation, Object).

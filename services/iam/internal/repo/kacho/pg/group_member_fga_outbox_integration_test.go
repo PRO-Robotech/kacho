@@ -6,7 +6,7 @@ package pg_test
 // group_member_fga_outbox_integration_test.go — integration proof of the in-tx
 // fga_outbox co-commit for GROUP MEMBERSHIP (the E-31 / group-based-authz bug).
 //
-// The bug: AddMember persisted ONLY the kacho_iam.group_members row and emitted
+// The bug: AddMember persisted ONLY the kaname.group_members row and emitted
 // NO `group:<gid>#member` userset intent, so a binding on a GROUP subject resolved
 // to no concrete members at all. These tests pin the atomic emit
 // contract the AddMember/RemoveMember use-cases now rely on:
@@ -80,7 +80,7 @@ func TestGroupMember_FGAOutbox_GM_O1_AddEmitsMemberTupleInTx(t *testing.T) {
 	var et, payloadRaw string
 	require.NoError(t, pool.QueryRow(ctx,
 		`SELECT event_type, payload::text
-		   FROM kacho_iam.fga_outbox
+		   FROM kaname.fga_outbox
 		  WHERE payload->>'object' = $1
 		  ORDER BY id DESC LIMIT 1`,
 		"group:"+string(g.ID)).Scan(&et, &payloadRaw))
@@ -121,13 +121,13 @@ func TestGroupMember_FGAOutbox_GM_O2_RollbackDiscardsBoth(t *testing.T) {
 
 	var memCount int
 	require.NoError(t, pool.QueryRow(ctx,
-		`SELECT count(*) FROM kacho_iam.group_members WHERE group_id = $1 AND member_id = $2`,
+		`SELECT count(*) FROM kaname.group_members WHERE group_id = $1 AND member_id = $2`,
 		string(g.ID), string(uid)).Scan(&memCount))
 	require.Equal(t, 0, memCount, "group_members row must be rolled back")
 
 	var intentCount int
 	require.NoError(t, pool.QueryRow(ctx,
-		`SELECT count(*) FROM kacho_iam.fga_outbox WHERE payload->>'object' = $1`,
+		`SELECT count(*) FROM kaname.fga_outbox WHERE payload->>'object' = $1`,
 		"group:"+string(g.ID)).Scan(&intentCount))
 	require.Equal(t, 0, intentCount,
 		"fga_outbox member-tuple intent must roll back atomically with the membership row (запрет #10)")
@@ -158,7 +158,7 @@ func TestGroupMember_FGAOutbox_GM_O3_RemoveEmitsSymmetricDelete(t *testing.T) {
 	var et, payloadRaw string
 	require.NoError(t, pool.QueryRow(ctx,
 		`SELECT event_type, payload::text
-		   FROM kacho_iam.fga_outbox
+		   FROM kaname.fga_outbox
 		  WHERE payload->>'object' = $1
 		  ORDER BY id DESC LIMIT 1`,
 		"group:"+string(g.ID)).Scan(&et, &payloadRaw))

@@ -94,7 +94,7 @@ func TestIntegration_R914_MembersOfGroupsIsBoundedAndNamesTheTruncation(t *testi
 
 	for name, g := range map[string]string{"bound-a-small": smallGroup, "bound-b-huge": hugeGroup} {
 		_, err = pool.Exec(ctx, `
-			INSERT INTO kacho_iam.groups (id, account_id, name)
+			INSERT INTO kaname.groups (id, account_id, name)
 			VALUES ($1, $2, $3) ON CONFLICT DO NOTHING`, g, accountID, name)
 		require.NoError(t, err)
 	}
@@ -104,14 +104,14 @@ func TestIntegration_R914_MembersOfGroupsIsBoundedAndNamesTheTruncation(t *testi
 	seedMembers := func(group, idPrefix string, n int) {
 		t.Helper()
 		_, err := pool.Exec(ctx, `
-			INSERT INTO kacho_iam.users (id, account_id, external_id, email, display_name, invite_status)
+			INSERT INTO kaname.users (id, account_id, external_id, email, display_name, invite_status)
 			SELECT $1 || lpad(i::text, 6, '0'), $2, $1 || lpad(i::text, 6, '0'),
 			       $1 || lpad(i::text, 6, '0') || '@kacho.local', 'm', 'ACTIVE'
 			  FROM generate_series(1, $3) AS i
 			ON CONFLICT DO NOTHING`, idPrefix, accountID, n)
 		require.NoError(t, err)
 		_, err = pool.Exec(ctx, `
-			INSERT INTO kacho_iam.group_members (group_id, member_type, member_id)
+			INSERT INTO kaname.group_members (group_id, member_type, member_id)
 			SELECT $1, 'user', $2 || lpad(i::text, 6, '0')
 			  FROM generate_series(1, $3) AS i
 			ON CONFLICT DO NOTHING`, group, idPrefix, n)

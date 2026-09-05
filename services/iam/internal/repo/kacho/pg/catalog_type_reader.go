@@ -2,7 +2,7 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
 
 // catalog_type_reader.go — pg-адаптер: точечное имя КАТАЛОГА по имени типа
-// МОДЕЛИ, из строк `kacho_iam.catalog_resource` (kacho#1990).
+// МОДЕЛИ, из строк `kaname.catalog_resource` (kacho#1990).
 //
 // Обратное направление того же перехода, что читает зеркало у себя
 // (`pg/resource_mirror/model_dictionary.go`, #1982). Второго словаря от этого не
@@ -49,7 +49,7 @@ func (r *CatalogTypeReader) DottedTypeTx(
 	var dotted string
 	err := txAsPgx(tx).QueryRow(ctx,
 		`SELECT dotted
-		   FROM kacho_iam.catalog_resource
+		   FROM kaname.catalog_resource
 		  WHERE object_type = $1
 		  ORDER BY live DESC
 		  LIMIT 1`,

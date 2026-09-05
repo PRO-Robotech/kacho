@@ -10,7 +10,7 @@ package audit_test
 //
 // One package (`audit_test`) drives all six resource use-cases through their
 // real Execute → operations.Run worker → writer-tx, then reads back the
-// kacho_iam.audit_outbox rows. Centralising the setup helper here avoids
+// kaname.audit_outbox rows. Centralising the setup helper here avoids
 // duplicating setupTestDB across six packages.
 //
 // The Postgres itself is one per test BINARY (testmain_pgtest_test.go); each
@@ -61,7 +61,7 @@ func newTestEnv(t *testing.T) *testEnv {
 	return &testEnv{
 		pool:    pool,
 		repo:    kachopg.New(pool, nil),
-		opsRepo: operations.NewRepo(pool, "kacho_iam"),
+		opsRepo: operations.NewRepo(pool, "kaname"),
 	}
 }
 
@@ -72,7 +72,7 @@ func awaitWorkers(t *testing.T) {
 	require.NoError(t, operations.Wait(context.Background()))
 }
 
-// setupTestDB hands the calling test its OWN database, with kacho_iam on the
+// setupTestDB hands the calling test its OWN database, with kaname on the
 // search path.
 //
 // It used to start a fresh container and replay the whole migration chain on
@@ -106,7 +106,7 @@ func seedUserAccount(t *testing.T, ctx context.Context, pool *pgxpool.Pool, suff
 	defer func() { _ = tx.Rollback(ctx) }()
 
 	_, err = tx.Exec(ctx, `
-		INSERT INTO kacho_iam.users (id, account_id, external_id, email, display_name, invite_status)
+		INSERT INTO kaname.users (id, account_id, external_id, email, display_name, invite_status)
 		VALUES ($1, $2, $3, $4, $5, 'ACTIVE')`,
 		string(uid), string(accID),
 		fmt.Sprintf("ext-%s-%s", suffix, uid),
@@ -115,7 +115,7 @@ func seedUserAccount(t *testing.T, ctx context.Context, pool *pgxpool.Pool, suff
 	require.NoError(t, err)
 
 	_, err = tx.Exec(ctx, `
-		INSERT INTO kacho_iam.accounts (id, name, owner_user_id, labels)
+		INSERT INTO kaname.accounts (id, name, owner_user_id, labels)
 		VALUES ($1, $2, $3, '{}'::jsonb)`,
 		string(accID),
 		fmt.Sprintf("aud-acc-%s-%s", suffix, accID[len(accID)-6:]),
@@ -132,7 +132,7 @@ func seedExtraUser(t *testing.T, ctx context.Context, pool *pgxpool.Pool, accID 
 	t.Helper()
 	uid := domain.UserID(ids.NewID(domain.PrefixUser))
 	_, err := pool.Exec(ctx, `
-		INSERT INTO kacho_iam.users (id, account_id, external_id, email, display_name, invite_status)
+		INSERT INTO kaname.users (id, account_id, external_id, email, display_name, invite_status)
 		VALUES ($1, $2, $3, $4, $5, 'ACTIVE')`,
 		string(uid), string(accID),
 		fmt.Sprintf("extra-%s-%s", suffix, uid),
@@ -158,7 +158,7 @@ func auditRowsByEventResource(ctx context.Context, t *testing.T, pool *pgxpool.P
 	t.Helper()
 	rows, err := pool.Query(ctx,
 		`SELECT id, event_type, status, tenant_account_id, event_payload::text
-		   FROM kacho_iam.audit_outbox
+		   FROM kaname.audit_outbox
 		  WHERE event_type = $1 AND event_payload->>'resource_id' = $2
 		  ORDER BY created_at ASC`,
 		eventType, resourceID)
@@ -185,7 +185,7 @@ func countAuditByResource(ctx context.Context, t *testing.T, pool *pgxpool.Pool,
 	t.Helper()
 	var n int
 	require.NoError(t, pool.QueryRow(ctx,
-		`SELECT count(*) FROM kacho_iam.audit_outbox WHERE event_payload->>'resource_id' = $1`,
+		`SELECT count(*) FROM kaname.audit_outbox WHERE event_payload->>'resource_id' = $1`,
 		resourceID).Scan(&n))
 	return n
 }

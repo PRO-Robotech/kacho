@@ -50,9 +50,9 @@ const resolveTrustedIssuerQuery = `
 SELECT t.sa_oauth_client_id, t.issuer, t.subject, t.public_key_pem, t.key_algorithm, t.expires_at,
        c.sva_id, c.expires_at,
        COALESCE(s.enabled, FALSE)
-  FROM kacho_iam.federated_trusted_issuers t
-  JOIN kacho_iam.service_account_oauth_clients c ON c.id = t.sa_oauth_client_id
-  LEFT JOIN kacho_iam.service_accounts s ON s.id = c.sva_id
+  FROM kaname.federated_trusted_issuers t
+  JOIN kaname.service_account_oauth_clients c ON c.id = t.sa_oauth_client_id
+  LEFT JOIN kaname.service_accounts s ON s.id = c.sva_id
  WHERE t.issuer = $1 AND t.subject = $2`
 
 // ResolveTrustedIssuer разрешает пару (издатель, субъект) в запись перечня и в
@@ -129,7 +129,7 @@ func (r *TrustedIssuerRepo) InsertTrustedIssuers(
 	}
 	tx := txAsPgx(txh)
 	const q = `
-		INSERT INTO kacho_iam.federated_trusted_issuers (
+		INSERT INTO kaname.federated_trusted_issuers (
 		    issuer, subject, sa_oauth_client_id, public_key_pem, key_algorithm, expires_at
 		) VALUES ($1, $2, $3, $4, $5, $6)`
 	for _, ts := range subjects {

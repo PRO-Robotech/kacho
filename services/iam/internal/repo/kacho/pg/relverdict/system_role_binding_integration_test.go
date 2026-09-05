@@ -84,17 +84,17 @@ func seedBindingOnProject(t *testing.T, ctx context.Context, tx pgx.Tx, roleID, 
 	// ключом, и фикстура, обходящая его, доказывала бы работу запроса на данных,
 	// которых в проде не бывает.
 	exec(t, ctx, tx,
-		`INSERT INTO kacho_iam.service_accounts (id, account_id, name)
+		`INSERT INTO kaname.service_accounts (id, account_id, name)
 		 VALUES ('sva-1', 'acc-1', 'sva-one') ON CONFLICT DO NOTHING`)
 	exec(t, ctx, tx,
-		`INSERT INTO kacho_iam.resource_parent_edge (object_type, object_id, parent_type, parent_id, depth)
+		`INSERT INTO kaname.resource_parent_edge (object_type, object_id, parent_type, parent_id, depth)
 		 VALUES ($1, $2, 'project', 'prj-1', 1)`, objType, objID)
 	exec(t, ctx, tx,
-		`INSERT INTO kacho_iam.access_bindings
+		`INSERT INTO kaname.access_bindings
 		   (id, subject_type, subject_id, role_id, resource_type, resource_id, status)
 		 VALUES ('acb-sys', 'service_account', 'sva-1', $1, 'project', 'prj-1', 'ACTIVE')`, roleID)
 	exec(t, ctx, tx,
-		`INSERT INTO kacho_iam.access_binding_subjects (binding_id, subject_type, subject_id)
+		`INSERT INTO kaname.access_binding_subjects (binding_id, subject_type, subject_id)
 		 VALUES ('acb-sys', 'service_account', 'sva-1')`)
 }
 

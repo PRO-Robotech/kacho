@@ -219,9 +219,9 @@ const quotaReaderGroupName = "module-quota-readers"
 
 var (
 	reSquashGroupRow = regexp.MustCompile(
-		`INSERT INTO kacho_iam\.groups \([^)]*\) VALUES \('([^']+)', '[^']*', '([^']+)'`)
+		`INSERT INTO kaname\.groups \([^)]*\) VALUES \('([^']+)', '[^']*', '([^']+)'`)
 	reSquashServiceAccountRow = regexp.MustCompile(
-		`INSERT INTO kacho_iam\.service_accounts \([^)]*\) VALUES \('([^']+)', '[^']*', '([^']+)'`)
+		`INSERT INTO kaname\.service_accounts \([^)]*\) VALUES \('([^']+)', '[^']*', '([^']+)'`)
 	reSquashGroupMemberRow = regexp.MustCompile(
-		`INSERT INTO kacho_iam\.group_members \([^)]*\) VALUES \('([^']+)', '([^']+)', '([^']+)'`)
+		`INSERT INTO kaname\.group_members \([^)]*\) VALUES \('([^']+)', '([^']+)', '([^']+)'`)
 )

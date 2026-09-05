@@ -658,7 +658,7 @@ func TestLimit_SeedCoverageProbeCanFail(t *testing.T) {
 		"законный близнец: на посеянной базе недостающих видов нет")
 
 	_, err := pool.Exec(ctx,
-		`DELETE FROM kacho_iam.limits WHERE scope = 'DEFAULT' AND kind = $1`, string(victim))
+		`DELETE FROM kaname.limits WHERE scope = 'DEFAULT' AND kind = $1`, string(victim))
 	require.NoError(t, err)
 
 	require.Equal(t, []string{string(victim)}, missingSeededKinds(t, ctx, repo),
@@ -701,7 +701,7 @@ func TestLimit_NestedKindFormIsAccepted(t *testing.T) {
 
 	insert := func(kind string) error {
 		_, err := pool.Exec(ctx,
-			`INSERT INTO kacho_iam.limits (id, scope, scope_id, kind, limit_value)
+			`INSERT INTO kaname.limits (id, scope, scope_id, kind, limit_value)
 			 VALUES ($1, 'PROJECT', $2, $3, 4)`,
 			string(ids.NewHyphenID(ids.PrefixLimitHyphen)), prj, kind)
 		return err

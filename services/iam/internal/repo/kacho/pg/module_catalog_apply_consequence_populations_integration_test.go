@@ -138,14 +138,14 @@ func tenantProjectionsNaming(t *testing.T, ctx context.Context, pool *pgxpool.Po
 	t.Helper()
 	dotted := module + "." + resource
 	require.NoError(t, pool.QueryRow(ctx, `
-		SELECT (SELECT count(*) FROM kacho_iam.role_rule_ref rr
-		          JOIN kacho_iam.roles ro ON ro.id = rr.role_id
+		SELECT (SELECT count(*) FROM kaname.role_rule_ref rr
+		          JOIN kaname.roles ro ON ro.id = rr.role_id
 		         WHERE rr.module = $1 AND rr.resource = $2 AND ro.cluster_id IS NULL),
-		       (SELECT count(*) FROM kacho_iam.role_verb rv
-		          JOIN kacho_iam.roles ro ON ro.id = rv.role_id
+		       (SELECT count(*) FROM kaname.role_verb rv
+		          JOIN kaname.roles ro ON ro.id = rv.role_id
 		         WHERE rv.object_type = $3 AND ro.cluster_id IS NULL),
-		       (SELECT count(*) FROM kacho_iam.role_rule_selectors rs
-		          JOIN kacho_iam.roles ro ON ro.id = rs.role_id
+		       (SELECT count(*) FROM kaname.role_rule_selectors rs
+		          JOIN kaname.roles ro ON ro.id = rs.role_id
 		         WHERE $3 = ANY(rs.object_types) AND ro.cluster_id IS NULL)`,
 		module, resource, dotted).Scan(&rules, &verbs, &selectors))
 	return rules, verbs, selectors
@@ -156,8 +156,8 @@ func orphanRowsOf(t *testing.T, ctx context.Context, pool *pgxpool.Pool, account
 	t.Helper()
 	var n int
 	require.NoError(t, pool.QueryRow(ctx, `
-		SELECT count(*) FROM kacho_iam.role_grant_orphan o
-		  JOIN kacho_iam.roles ro ON ro.id = o.role_id
+		SELECT count(*) FROM kaname.role_grant_orphan o
+		  JOIN kaname.roles ro ON ro.id = o.role_id
 		 WHERE ro.account_id = $1`, accountID).Scan(&n))
 	return n
 }
@@ -167,8 +167,8 @@ func tenantSelectorRowsOf(t *testing.T, ctx context.Context, pool *pgxpool.Pool,
 	t.Helper()
 	var n int
 	require.NoError(t, pool.QueryRow(ctx, `
-		SELECT count(*) FROM kacho_iam.role_rule_selectors rs
-		  JOIN kacho_iam.roles ro ON ro.id = rs.role_id
+		SELECT count(*) FROM kaname.role_rule_selectors rs
+		  JOIN kaname.roles ro ON ro.id = rs.role_id
 		 WHERE ro.account_id = $1`, accountID).Scan(&n))
 	return n
 }

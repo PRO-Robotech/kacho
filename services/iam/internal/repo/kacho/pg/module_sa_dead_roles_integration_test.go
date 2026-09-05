@@ -107,8 +107,8 @@ func TestModuleSARoles_RetiredAndGrantNothing(t *testing.T) {
 
 	// ── Перепись ДО вердикта: «ноль находок» обязано быть отличимо от «ноль
 	// прочитанного».
-	totalRoles := scalarInt(t, ctx, pool, `SELECT count(*) FROM kacho_iam.roles`)
-	totalSelectors := scalarInt(t, ctx, pool, `SELECT count(*) FROM kacho_iam.role_rule_selectors`)
+	totalRoles := scalarInt(t, ctx, pool, `SELECT count(*) FROM kaname.roles`)
+	totalSelectors := scalarInt(t, ctx, pool, `SELECT count(*) FROM kaname.role_rule_selectors`)
 	t.Logf("осмотрено: ролей=%d, строк селекторов=%d, снимаемых объявлений=%d",
 		totalRoles, totalSelectors, len(retiredModuleSA))
 	require.NotZero(t, totalRoles, "предпосылка гейта нарушена: в посеве нет ни одной роли")
@@ -121,14 +121,14 @@ func TestModuleSARoles_RetiredAndGrantNothing(t *testing.T) {
 			rol := scalarString(t, ctx, pool, fmt.Sprintf(`'rol' || substr(md5('%s'), 1, 17)`, m.role))
 
 			require.Zero(t, scalarInt(t, ctx, pool,
-				`SELECT count(*) FROM kacho_iam.roles WHERE id = $1`, rol),
+				`SELECT count(*) FROM kaname.roles WHERE id = $1`, rol),
 				"роль %s обязана быть снята: её правила не разрешаются закрытой таблицей типов "+
 					"и не материализуют ни одного кортежа", m.role)
 			require.Zero(t, scalarInt(t, ctx, pool,
-				`SELECT count(*) FROM kacho_iam.access_bindings WHERE role_id = $1`, rol),
+				`SELECT count(*) FROM kaname.access_bindings WHERE role_id = $1`, rol),
 				"привязка на снятую роль %s не может остаться: снятая роль не может оставаться выданной", m.role)
 			require.Zero(t, scalarInt(t, ctx, pool,
-				`SELECT count(*) FROM kacho_iam.role_rule_selectors WHERE role_id = $1`, rol),
+				`SELECT count(*) FROM kaname.role_rule_selectors WHERE role_id = $1`, rol),
 				"селекторы снятой роли %s обязаны уйти вместе с ней", m.role)
 
 			resolvable, declared := resolvableTypesReachableBySubject(t, ctx, pool, sva)
@@ -173,7 +173,7 @@ func TestModuleSACapabilitiesSurviveRetirement(t *testing.T) {
 	for _, m := range retiredModuleSA {
 		sva := scalarString(t, ctx, pool, fmt.Sprintf(`'sva' || substr(md5('kacho-%s'), 1, 17)`, m.svc))
 		require.Equal(t, 1, scalarInt(t, ctx, pool,
-			`SELECT count(*) FROM kacho_iam.service_accounts WHERE id = $1`, sva),
+			`SELECT count(*) FROM kaname.service_accounts WHERE id = $1`, sva),
 			"учётка kacho-%s — личность модуля на внутреннем периметре; снятие мёртвого "+
 				"объявления её не касается", m.svc)
 	}
@@ -214,7 +214,7 @@ func countClusterTuple(t *testing.T, ctx context.Context, pool *pgxpool.Pool,
 	svc, relation, object string) int {
 	t.Helper()
 	return scalarInt(t, ctx, pool,
-		fmt.Sprintf(`SELECT count(*) FROM kacho_iam.fga_outbox
+		fmt.Sprintf(`SELECT count(*) FROM kaname.fga_outbox
 		              WHERE event_type = 'fga.tuple.write'
 		                AND `+fga_outbox.RelationPredicate("payload", "$1")+`
 		                AND payload->>'object'   = $2

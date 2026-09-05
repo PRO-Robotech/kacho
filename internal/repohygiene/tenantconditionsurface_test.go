@@ -336,7 +336,7 @@ func TestTenantConditionSurface_IsGone(t *testing.T) {
 		// # Признак — СОСТОЯНИЕ схемы, а не история цепи
 		//
 		// Прежде здесь требовалось, чтобы в миграциях нашёлся
-		// `DROP TABLE IF EXISTS kacho_iam.conditions`, а рядом — запись о нём в
+		// `DROP TABLE IF EXISTS kaname.conditions`, а рядом — запись о нём в
 		// `dropguard.json` с числом уничтожаемых строк. Оба референта были из
 		// ИСТОРИИ, и оба исчезли вместе с ней: цепь iam сведена в одну первичную
 		// миграцию. У свода истории нет by construction — он одно состояние, —
@@ -398,7 +398,7 @@ func TestTenantConditionSurface_IsGone(t *testing.T) {
 		// КОНТРОЛЬ. Без него «поверхности нет» зеленело бы на пустом файле, на
 		// каталоге, который перестали читать, и на схеме, из которой вынесли всё.
 		// Якорь — таблица, которая обязана быть и к наложению отношения не имеет.
-		const anchor = "kacho_iam.access_bindings"
+		const anchor = "kaname.access_bindings"
 		if !strings.Contains(body, anchor) {
 			t.Fatalf("якорь %s не найден в %d файле(ах) миграций: читается не то либо не читается "+
 				"ничего, и отсутствие поверхности ниже было бы отсутствием чтения", anchor, files)
@@ -409,7 +409,7 @@ func TestTenantConditionSurface_IsGone(t *testing.T) {
 		// существующей таблицы, а таблица — под другим оператором.
 		mentions := 0
 		for _, gone := range []string{
-			"kacho_iam.conditions",
+			"kaname.conditions",
 			"access_binding_conditions",
 			"condition_id",
 			"builtin_condition",

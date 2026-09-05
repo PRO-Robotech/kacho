@@ -108,7 +108,7 @@ func bootBindingsAndVerbs(ctx context.Context, pool *pgxpool.Pool) error {
 func seedProbeSystemRole(t *testing.T, ctx context.Context, pool *pgxpool.Pool, id, name, rules string) string {
 	t.Helper()
 	_, err := pool.Exec(ctx,
-		`INSERT INTO kacho_iam.roles (id, name, permissions, rules, cluster_id)
+		`INSERT INTO kaname.roles (id, name, permissions, rules, cluster_id)
 		 VALUES ($1, $2, '["iam.role.*.get"]'::jsonb, $3::jsonb, $4)`,
 		id, name, rules, reseedProbeCluster)
 	require.NoErrorf(t, err, "посев системной роли %s", id)
@@ -127,12 +127,12 @@ func seedProbeAccountWithoutOwnerBinding(t *testing.T, ctx context.Context, pool
 	tx, err := pool.Begin(ctx)
 	require.NoError(t, err)
 	_, err = tx.Exec(ctx,
-		`INSERT INTO kacho_iam.users (id, account_id, external_id, email, display_name, invite_status)
+		`INSERT INTO kaname.users (id, account_id, external_id, email, display_name, invite_status)
 		 VALUES ($1, $2, $3, $4, 'RoleVerb Probe', 'ACTIVE')`,
 		uid, accID, "ext-"+uid, uid+"@probe.invalid")
 	require.NoError(t, err, "посев пользователя")
 	_, err = tx.Exec(ctx,
-		`INSERT INTO kacho_iam.accounts (id, name, owner_user_id, labels)
+		`INSERT INTO kaname.accounts (id, name, owner_user_id, labels)
 		 VALUES ($1, $2, $3, '{}'::jsonb)`,
 		accID, "probe-acc-"+suffix, uid)
 	require.NoError(t, err, "посев аккаунта")
@@ -144,15 +144,15 @@ func seedProbeAccountWithoutOwnerBinding(t *testing.T, ctx context.Context, pool
 func refuseRoleVerbInsertFor(t *testing.T, ctx context.Context, pool *pgxpool.Pool, roleID string) {
 	t.Helper()
 	_, err := pool.Exec(ctx, `
-		CREATE OR REPLACE FUNCTION kacho_iam.probe_refuse_role_verb() RETURNS trigger
+		CREATE OR REPLACE FUNCTION kaname.probe_refuse_role_verb() RETURNS trigger
 		LANGUAGE plpgsql AS $fn$
 		BEGIN
 			RAISE EXCEPTION 'проба: запись проекции роли отвергнута';
 		END $fn$;
 		CREATE TRIGGER probe_refuse_role_verb_insert
-			BEFORE INSERT ON kacho_iam.role_verb
+			BEFORE INSERT ON kaname.role_verb
 			FOR EACH ROW WHEN (NEW.role_id = '`+roleID+`')
-			EXECUTE FUNCTION kacho_iam.probe_refuse_role_verb();`)
+			EXECUTE FUNCTION kaname.probe_refuse_role_verb();`)
 	require.NoError(t, err, "внести отказ пересчёта одной роли")
 }
 
@@ -162,15 +162,15 @@ func refuseRoleVerbInsertFor(t *testing.T, ctx context.Context, pool *pgxpool.Po
 func refuseEveryRoleVerbReseed(t *testing.T, ctx context.Context, pool *pgxpool.Pool) {
 	t.Helper()
 	_, err := pool.Exec(ctx, `
-		CREATE OR REPLACE FUNCTION kacho_iam.probe_refuse_role_verb() RETURNS trigger
+		CREATE OR REPLACE FUNCTION kaname.probe_refuse_role_verb() RETURNS trigger
 		LANGUAGE plpgsql AS $fn$
 		BEGIN
 			RAISE EXCEPTION 'проба: пересчёт проекции отвергнут для всех ролей';
 		END $fn$;
 		CREATE TRIGGER probe_refuse_role_verb_all
-			BEFORE DELETE ON kacho_iam.role_verb
+			BEFORE DELETE ON kaname.role_verb
 			FOR EACH STATEMENT
-			EXECUTE FUNCTION kacho_iam.probe_refuse_role_verb();`)
+			EXECUTE FUNCTION kaname.probe_refuse_role_verb();`)
 	require.NoError(t, err, "внести отказ пересчёта всех ролей")
 }
 
@@ -179,7 +179,7 @@ func projectionSizeOf(t *testing.T, ctx context.Context, pool *pgxpool.Pool, rol
 	t.Helper()
 	var n int
 	require.NoError(t, pool.QueryRow(ctx,
-		`SELECT count(*) FROM kacho_iam.role_verb WHERE role_id = $1`, roleID).Scan(&n))
+		`SELECT count(*) FROM kaname.role_verb WHERE role_id = $1`, roleID).Scan(&n))
 	return n
 }
 
@@ -187,7 +187,7 @@ func projectionSizeOf(t *testing.T, ctx context.Context, pool *pgxpool.Pool, rol
 // не несут, поэтому сравнивается СОСТАВ.
 func wholeProjection(t *testing.T, ctx context.Context, pool *pgxpool.Pool) []string {
 	t.Helper()
-	rows, err := pool.Query(ctx, `SELECT role_id, object_type, verb FROM kacho_iam.role_verb`)
+	rows, err := pool.Query(ctx, `SELECT role_id, object_type, verb FROM kaname.role_verb`)
 	require.NoError(t, err)
 	defer rows.Close()
 	var out []string
@@ -215,7 +215,7 @@ func wholeProjection(t *testing.T, ctx context.Context, pool *pgxpool.Pool) []st
 //
 // Вход, который дерево ПРОИЗВОДИТ сегодня, ровно один и он уже, а не шире:
 // источников имени типа ДВА, и они разные по построению — таблица
-// `kacho_iam.catalog_resource`, которую судит триггер, и закрытое компилируемое
+// `kaname.catalog_resource`, которую судит триггер, и закрытое компилируемое
 // множество `authzmap.objectTypes`, по которому раскрывает `RoleVerbsFromSelectors`
 // (`fgaType, ok := authzmap.FGAObjectType(dotted); if !ok { continue }`). Пока они
 // сходятся, разницы не видно; разойдись они — а это ровно состояние, которое
@@ -243,7 +243,7 @@ func seedProbeCatalogResourceNotInCompiledSet(t *testing.T, ctx context.Context,
 	// принадлежит фикстуре, а не каталогу платформы.
 	objectType := module + "_" + strings.ToLower(resource)
 	_, err := pool.Exec(ctx,
-		`INSERT INTO kacho_iam.catalog_resource (module, resource, dotted, object_type)
+		`INSERT INTO kaname.catalog_resource (module, resource, dotted, object_type)
 		 VALUES ($1, $2, $3, $4)`, module, resource, dotted, objectType)
 	require.NoErrorf(t, err, "посев живой строки каталога %s", dotted)
 	return dotted
@@ -258,7 +258,7 @@ func selectorRowsNaming(t *testing.T, ctx context.Context, pool *pgxpool.Pool, r
 	t.Helper()
 	var n int
 	require.NoError(t, pool.QueryRow(ctx,
-		`SELECT count(*) FROM kacho_iam.role_rule_selectors
+		`SELECT count(*) FROM kaname.role_rule_selectors
 		  WHERE role_id = $1 AND $2 = ANY(object_types)`, roleID, dotted).Scan(&n))
 	return n
 }
@@ -333,12 +333,12 @@ func TestIAMRV105_ReseedLeavesTenantRolesAlone(t *testing.T) {
 	// Роль арендатора: аккаунтная, не системная. Её проекцию кладём вручную —
 	// именно её досев обязан НЕ ТРОГАТЬ.
 	_, err := pool.Exec(ctx,
-		`INSERT INTO kacho_iam.roles (id, account_id, name, permissions, rules)
+		`INSERT INTO kaname.roles (id, account_id, name, permissions, rules)
 		 VALUES ('rol-rv105-tenant', $1, 'probe_rv105_tenant', '["iam.role.*.get"]'::jsonb, $2::jsonb)`,
 		accID, materializingRules)
 	require.NoError(t, err, "посев роли арендатора")
 	_, err = pool.Exec(ctx,
-		`INSERT INTO kacho_iam.role_verb (role_id, object_type, verb)
+		`INSERT INTO kaname.role_verb (role_id, object_type, verb)
 		 VALUES ('rol-rv105-tenant', 'iam.role', 'v_get')`)
 	require.NoError(t, err, "посев проекции роли арендатора")
 
@@ -380,7 +380,7 @@ func TestIAMRV106_ProjectionFailureDoesNotUndoTheOwnerBindingBackfill(t *testing
 	ownerBindings := func() int {
 		var n int
 		require.NoError(t, pool.QueryRow(ctx,
-			`SELECT count(*) FROM kacho_iam.access_bindings
+			`SELECT count(*) FROM kaname.access_bindings
 			  WHERE resource_type = 'account' AND resource_id = $1 AND revoked_at IS NULL`,
 			accID).Scan(&n))
 		return n
@@ -388,7 +388,7 @@ func TestIAMRV106_ProjectionFailureDoesNotUndoTheOwnerBindingBackfill(t *testing
 	hierarchyIntents := func() int {
 		var n int
 		require.NoError(t, pool.QueryRow(ctx,
-			`SELECT count(*) FROM kacho_iam.fga_outbox
+			`SELECT count(*) FROM kaname.fga_outbox
 			  WHERE event_type = 'fga.tuple.write' AND payload->>'user' = 'account:' || $1`,
 			accID).Scan(&n))
 		return n
@@ -404,7 +404,7 @@ func TestIAMRV106_ProjectionFailureDoesNotUndoTheOwnerBindingBackfill(t *testing
 		require.NoError(t, bootBindingsAndVerbs(ctx2, pool2))
 		var n int
 		require.NoError(t, pool2.QueryRow(ctx2,
-			`SELECT count(*) FROM kacho_iam.access_bindings
+			`SELECT count(*) FROM kaname.access_bindings
 			  WHERE resource_type = 'account' AND resource_id = $1 AND revoked_at IS NULL`,
 			acc2).Scan(&n))
 		require.Positive(t, n, "владельческая выдача не записана и БЕЗ отказа")
@@ -498,7 +498,7 @@ func TestIAMRV108_StructuralFailureNamesBothQuantities(t *testing.T) {
 
 	var systemRoles int
 	require.NoError(t, pool.QueryRow(ctx,
-		`SELECT count(*) FROM kacho_iam.roles
+		`SELECT count(*) FROM kaname.roles
 		  WHERE is_system = true AND rules IS NOT NULL
 		    AND jsonb_typeof(rules) = 'array' AND jsonb_array_length(rules) > 0`).Scan(&systemRoles))
 	require.Positive(t, systemRoles, "предпосылка структурной полосы: системных ролей с "+
@@ -541,7 +541,7 @@ func TestIAMRV108_StructuralFailureNamesBothQuantities(t *testing.T) {
 	err := bootSeedLanes(ctx, pool)
 
 	var reseeded int
-	require.NoError(t, pool.QueryRow(ctx, `SELECT count(DISTINCT role_id) FROM kacho_iam.role_verb`).Scan(&reseeded))
+	require.NoError(t, pool.QueryRow(ctx, `SELECT count(DISTINCT role_id) FROM kaname.role_verb`).Scan(&reseeded))
 	t.Logf("системных ролей с материализующими правилами %d; пересеяно %d; отказ: %v",
 		systemRoles, reseeded, err)
 
@@ -600,7 +600,7 @@ func TestIAMRV111_ConcurrentReseedsNeverExposeAnEmptyProjection(t *testing.T) {
 			}
 			var n int
 			if err := pool.QueryRow(ctx,
-				`SELECT count(*) FROM kacho_iam.role_verb WHERE role_id = $1`, role).Scan(&n); err == nil {
+				`SELECT count(*) FROM kaname.role_verb WHERE role_id = $1`, role).Scan(&n); err == nil {
 				mu.Lock()
 				reads++
 				if n == 0 {

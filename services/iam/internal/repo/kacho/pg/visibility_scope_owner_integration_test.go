@@ -131,7 +131,7 @@ func TestIntegration_Issue610_OwnedAccountWithoutMembershipStaysCandidate(t *tes
 	// оба утверждения ниже истинны тождественно на пустой таблице.
 	var membershipsOfSecond int
 	require.NoError(t, pool.QueryRow(ctx,
-		`SELECT count(*) FROM kacho_iam.memberships WHERE user_id = $1 AND account_id = $2`,
+		`SELECT count(*) FROM kaname.memberships WHERE user_id = $1 AND account_id = $2`,
 		owner, second).Scan(&membershipsOfSecond))
 	require.Zero(t, membershipsOfSecond,
 		"предусловие пробы: во втором аккаунте членства у владельца быть не должно — "+
@@ -139,7 +139,7 @@ func TestIntegration_Issue610_OwnedAccountWithoutMembershipStaysCandidate(t *tes
 
 	var membershipsOfPersonal int
 	require.NoError(t, pool.QueryRow(ctx,
-		`SELECT count(*) FROM kacho_iam.memberships WHERE user_id = $1 AND account_id = $2`,
+		`SELECT count(*) FROM kaname.memberships WHERE user_id = $1 AND account_id = $2`,
 		owner, personal).Scan(&membershipsOfPersonal))
 	require.Equal(t, 1, membershipsOfPersonal,
 		"перепись: зеркало S1 обязано было завести членство в личном аккаунте — "+
@@ -147,7 +147,7 @@ func TestIntegration_Issue610_OwnedAccountWithoutMembershipStaysCandidate(t *tes
 
 	var accountsSeen int
 	require.NoError(t, pool.QueryRow(ctx,
-		`SELECT count(*) FROM kacho_iam.accounts`).Scan(&accountsSeen))
+		`SELECT count(*) FROM kaname.accounts`).Scan(&accountsSeen))
 	require.GreaterOrEqual(t, accountsSeen, 3,
 		"перепись осмотренного: «посторонний не видит чужого» на пустой таблице "+
 			"истинно тождественно (осмотрено аккаунтов: %d)", accountsSeen)

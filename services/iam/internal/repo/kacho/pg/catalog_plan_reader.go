@@ -74,9 +74,9 @@ import (
 // арендатора, и сложив их, план потерял бы именно это различие.
 const planConsequencesSQL = `
 	WITH ` + catalogStaleInputCTE + `, ` + catalogSelectorPruneCTE + `
-	SELECT (SELECT count(*) FROM kacho_iam.role_rule_ref rr
+	SELECT (SELECT count(*) FROM kaname.role_rule_ref rr
 	         WHERE ` + catalogStaleRuleRefPredicate + `),
-	       (SELECT count(*) FROM kacho_iam.role_verb rv
+	       (SELECT count(*) FROM kaname.role_verb rv
 	         WHERE ` + catalogStaleRoleVerbPredicate + `),
 	       (SELECT count(*) FROM changed WHERE cardinality(alive) > 0),
 	       (SELECT count(*) FROM changed WHERE cardinality(alive) = 0),

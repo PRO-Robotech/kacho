@@ -135,7 +135,7 @@ func (r *roleReader) UnresolvedSegments(
 		SELECT d.role_id, d.object_type, d.verb
 		  FROM d
 		 WHERE NOT EXISTS (
-		   SELECT 1 FROM kacho_iam.role_verb rv
+		   SELECT 1 FROM kaname.role_verb rv
 		    WHERE rv.role_id     = d.role_id
 		      AND rv.object_type = d.object_type
 		      AND (d.verb = '' OR rv.verb = d.verb))`, ids, types, verbs)
@@ -195,7 +195,7 @@ func (r *roleReader) WithdrawnGrants(
 	}
 	rows, err := r.tx.Query(ctx, `
 		SELECT role_id, object_type, verb, source, reason, orphaned_at, applied_by, cause
-		  FROM kacho_iam.role_grant_orphan
+		  FROM kaname.role_grant_orphan
 		 WHERE role_id = ANY($1::text[])
 		 ORDER BY role_id, object_type, verb, source, cause`, ids)
 	if err != nil {
@@ -315,7 +315,7 @@ func (r *roleReader) PrunedSelectorTypes(
 	rows, err := r.tx.Query(ctx, `
 		SELECT DISTINCT role_id, object_type, outcome,
 		       coalesce(retired_reason, ''), pruned_at, applied_by
-		  FROM kacho_iam.role_selector_prune
+		  FROM kaname.role_selector_prune
 		 WHERE role_id = ANY($1::text[])
 		 ORDER BY role_id, object_type, outcome`, ids)
 	if err != nil {
@@ -618,7 +618,7 @@ func (w *roleWriter) Insert(ctx context.Context, r domain.Role) (domain.Role, er
 //
 // # Время правки эта строка НЕСЁТ — и цена ошибки здесь измерена
 //
-// Столбца `kacho_iam.roles.updated_at` не существовало, а присваивание
+// Столбца `kaname.roles.updated_at` не существовало, а присваивание
 // `updated_at = $7` здесь стояло. Неизвестный столбец в `ON CONFLICT DO UPDATE
 // SET` — ошибка РАЗБОРА всего оператора (`42703`), а не его ветви: отказ
 // приходил на первом же вызове, включая вставку, и применитель не записал бы ни
@@ -953,12 +953,12 @@ func (w *roleWriter) Delete(ctx context.Context, id domain.RoleID) error {
 // иначе, покраснеет.
 func (w *roleWriter) ReplaceRoleVerbs(ctx context.Context, roleID domain.RoleID, pairs []domain.RoleVerb) error {
 	if _, err := w.tx.Exec(ctx,
-		`DELETE FROM kacho_iam.role_verb WHERE role_id = $1`, string(roleID)); err != nil {
+		`DELETE FROM kaname.role_verb WHERE role_id = $1`, string(roleID)); err != nil {
 		return mapErr(err, "", string(roleID))
 	}
 	for _, pv := range pairs {
 		if _, err := w.tx.Exec(ctx,
-			`INSERT INTO kacho_iam.role_verb (role_id, object_type, verb)
+			`INSERT INTO kaname.role_verb (role_id, object_type, verb)
 			 VALUES ($1, $2, $3)
 			 ON CONFLICT (role_id, object_type, verb) DO NOTHING`,
 			string(roleID), pv.ObjectType, pv.Verb,
@@ -999,7 +999,7 @@ func (w *roleWriter) ReplaceRoleVerbs(ctx context.Context, roleID domain.RoleID,
 // и подсказывать некому.
 func (w *roleWriter) ReplaceRuleRefs(ctx context.Context, roleID domain.RoleID, refs []domain.RoleRuleRef) error {
 	if _, err := w.tx.Exec(ctx,
-		`DELETE FROM kacho_iam.role_rule_ref WHERE role_id = $1`, string(roleID)); err != nil {
+		`DELETE FROM kaname.role_rule_ref WHERE role_id = $1`, string(roleID)); err != nil {
 		return mapErr(err, "", string(roleID))
 	}
 	for _, ref := range refs {
@@ -1008,7 +1008,7 @@ func (w *roleWriter) ReplaceRuleRefs(ctx context.Context, roleID domain.RoleID, 
 			verb = ref.Verb
 		}
 		if _, err := w.tx.Exec(ctx,
-			`INSERT INTO kacho_iam.role_rule_ref (role_id, module, resource, verb)
+			`INSERT INTO kaname.role_rule_ref (role_id, module, resource, verb)
 			 VALUES ($1, $2, $3, $4)
 			 ON CONFLICT DO NOTHING`,
 			string(roleID), ref.Module, ref.Resource, verb,
@@ -1091,7 +1091,7 @@ func splitRuleRefHint(hint string) (resource, verb string) {
 func (w *roleWriter) ReplaceRuleSelectors(ctx context.Context, roleID domain.RoleID, selectors []domain.RuleSelector) error {
 	if types := lockedCatalogTypesOf(selectors); len(types) > 0 {
 		if _, err := w.tx.Exec(ctx, `
-			SELECT 1 FROM kacho_iam.catalog_resource
+			SELECT 1 FROM kaname.catalog_resource
 			 WHERE dotted = ANY($1) AND live
 			 ORDER BY dotted
 			   FOR KEY SHARE`, types); err != nil {
@@ -1099,7 +1099,7 @@ func (w *roleWriter) ReplaceRuleSelectors(ctx context.Context, roleID domain.Rol
 		}
 	}
 	if _, err := w.tx.Exec(ctx,
-		`DELETE FROM kacho_iam.role_rule_selectors WHERE role_id = $1`, string(roleID)); err != nil {
+		`DELETE FROM kaname.role_rule_selectors WHERE role_id = $1`, string(roleID)); err != nil {
 		// Route SQLSTATE → sentinel (mapErr) rather than bare fmt.Errorf(%w) so a
 		// constraint violation maps to the right gRPC code and no pgx text leaks.
 		return mapErr(err, "", string(roleID))
@@ -1126,7 +1126,7 @@ func (w *roleWriter) ReplaceRuleSelectors(ctx context.Context, roleID domain.Rol
 			resourceNames = []string{}
 		}
 		if _, err := w.tx.Exec(ctx,
-			`INSERT INTO kacho_iam.role_rule_selectors
+			`INSERT INTO kaname.role_rule_selectors
 			   (role_id, rule_fp, arm, object_types, resource_names, match_labels, created_at, updated_at)
 			 VALUES ($1, $2, $3, $4, $5, $6::jsonb, now(), now())
 			 ON CONFLICT (role_id, rule_fp) DO UPDATE

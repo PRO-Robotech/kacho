@@ -33,14 +33,14 @@ func TestServiceAccounts_ProjectColumnRetired(t *testing.T) {
 	var cols int
 	require.NoError(t, pool.QueryRow(ctx, `
 		SELECT count(*) FROM information_schema.columns
-		 WHERE table_schema = 'kacho_iam' AND table_name = 'service_accounts'
+		 WHERE table_schema = 'kaname' AND table_name = 'service_accounts'
 		   AND column_name = 'project_id'`).Scan(&cols))
 	assert.Zero(t, cols, "колонка снята вместе с полем контракта")
 
 	var idx int
 	require.NoError(t, pool.QueryRow(ctx, `
 		SELECT count(*) FROM pg_indexes
-		 WHERE schemaname = 'kacho_iam' AND indexname = 'service_accounts_project_idx'`).Scan(&idx))
+		 WHERE schemaname = 'kaname' AND indexname = 'service_accounts_project_idx'`).Scan(&idx))
 	assert.Zero(t, idx, "частичный индекс по снятой колонке")
 
 	var fk int
@@ -54,7 +54,7 @@ func TestServiceAccounts_ProjectColumnRetired(t *testing.T) {
 	var enabled int
 	require.NoError(t, pool.QueryRow(ctx, `
 		SELECT count(*) FROM information_schema.columns
-		 WHERE table_schema = 'kacho_iam' AND table_name = 'service_accounts'
+		 WHERE table_schema = 'kaname' AND table_name = 'service_accounts'
 		   AND column_name = 'enabled'`).Scan(&enabled))
 	assert.Equal(t, 1, enabled, "проверка смотрит на существующую таблицу")
 }

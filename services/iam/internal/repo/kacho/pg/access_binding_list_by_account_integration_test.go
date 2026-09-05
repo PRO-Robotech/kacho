@@ -104,9 +104,9 @@ func TestAB_LBA02_FilterBySubjectType(t *testing.T) {
 	acc := seedAccount(t, ctx, repo, "acc-lba02", owner)
 	saID := domain.ServiceAccountID(ids.NewID(domain.PrefixServiceAccount))
 
-	// Insert SA row into kacho_iam.service_accounts table so the soft-ref
+	// Insert SA row into kaname.service_accounts table so the soft-ref
 	// matches reality (subject_id has no FK; the test seeds it for clarity).
-	_, err = pool.Exec(ctx, `INSERT INTO kacho_iam.service_accounts (id, account_id, name, description, created_at)
+	_, err = pool.Exec(ctx, `INSERT INTO kaname.service_accounts (id, account_id, name, description, created_at)
 		VALUES ($1, $2, 'sa-lba02', '', now())`, string(saID), string(acc.ID))
 	require.NoError(t, err)
 
@@ -159,7 +159,7 @@ func TestAB_LBA03_IncludeRevokedFlag(t *testing.T) {
 	// Insert a REVOKED binding directly (cannot use the partial-UNIQUE active
 	// path twice for the same 5-tuple).
 	other := mustSeedUser(t, ctx, pool, "lba03x")
-	_, err = pool.Exec(ctx, `INSERT INTO kacho_iam.access_bindings
+	_, err = pool.Exec(ctx, `INSERT INTO kaname.access_bindings
 		(id, subject_type, subject_id, role_id, resource_type, resource_id, status,
 		 granted_by_user_id, revoked_at, revoked_by_user_id, created_at)
 		VALUES ($1, 'user', $2, $3, 'account', $4, 'REVOKED', '', now(), $5, now())`,

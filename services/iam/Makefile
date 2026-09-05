@@ -237,7 +237,7 @@ cla-check:
 	@go test ./tools/clagate/ -count=1 -v
 
 # Общая `operations`-таблица из kacho-corelib/migrations/common/0001_operations.sql
-# встроена inline в internal/migrations/0001_initial.sql под схемой kacho_iam.
+# встроена inline в internal/migrations/0001_initial.sql под схемой kaname.
 # Re-копирование common-файла создало бы конфликтующий unqualified
 # public.operations — отсюда no-op.
 docker:

@@ -7,10 +7,10 @@ package seed_test
 // seed.RunBootstrapAdmin against a real Postgres (testcontainers).
 //
 // The cluster-admin (`system_admin@cluster_kacho_root`) tuple MUST be stated
-// through the transactional journal `kacho_iam.fga_outbox` — never by a raw SQL
+// through the transactional journal `kaname.fga_outbox` — never by a raw SQL
 // seed that goes around it. Stage S6 removed the external engine that used to
 // consume that journal; the journal itself remains, and a database trigger folds
-// each row into `kacho_iam.relation_fact`, which is what a verdict is read from.
+// each row into `kaname.relation_fact`, which is what a verdict is read from.
 // So the requirement did not weaken when the consumer changed — it is now the ONLY
 // way the grant becomes an answer. These tests prove RunBootstrapAdmin:
 //
@@ -42,7 +42,7 @@ import (
 )
 
 // setupBootstrapDB hands the caller its own migrated database on the package's
-// shared Postgres, with search_path defaulting to kacho_iam.
+// shared Postgres, with search_path defaulting to kaname.
 //
 // It used to boot a container and replay the whole migration chain per call, which
 // this package paid seven times over. The caller still gets a database of its own —
@@ -97,7 +97,7 @@ func TestRunBootstrapAdmin_UserPresent_EmitsFGAOutboxTuple(t *testing.T) {
 	require.NotEmpty(t, res.FGAOutboxID, "must enqueue an fga_outbox row")
 
 	// The journal row carries the system_admin@cluster tuple; the trigger on that
-	// table folds it into `kacho_iam.relation_fact` in this very transaction.
+	// table folds it into `kaname.relation_fact` in this very transaction.
 	var eventType string
 	var payload []byte
 	require.NoError(t, pool.QueryRow(ctx,

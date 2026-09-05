@@ -61,10 +61,10 @@ func seedNetworks(t *testing.T, ctx context.Context, tx pgx.Tx, n int) []string 
 		id := fmt.Sprintf("net-%02d", i)
 		ids = append(ids, id)
 		exec(t, ctx, tx,
-			`INSERT INTO kacho_iam.resource_mirror (object_type, object_id) VALUES ($2, $1)`,
+			`INSERT INTO kaname.resource_mirror (object_type, object_id) VALUES ($2, $1)`,
 			id, catalogFormOf(t, "vpc_network"))
 		exec(t, ctx, tx,
-			`INSERT INTO kacho_iam.resource_parent_edge
+			`INSERT INTO kaname.resource_parent_edge
 			   (object_type, object_id, parent_type, parent_id, depth)
 			 VALUES ('vpc_network', $1, 'project', 'prj-1', 1)`, id)
 	}
@@ -75,11 +75,11 @@ func seedNetworks(t *testing.T, ctx context.Context, tx pgx.Tx, n int) []string 
 func bindRole(t *testing.T, ctx context.Context, tx pgx.Tx, bindingID, roleID string) {
 	t.Helper()
 	exec(t, ctx, tx,
-		`INSERT INTO kacho_iam.access_bindings
+		`INSERT INTO kaname.access_bindings
 		   (id, subject_type, subject_id, role_id, resource_type, resource_id, status)
 		 VALUES ($1, 'user', 'usr-1', $2, 'project', 'prj-1', 'ACTIVE')`, bindingID, roleID)
 	exec(t, ctx, tx,
-		`INSERT INTO kacho_iam.access_binding_subjects (binding_id, subject_type, subject_id)
+		`INSERT INTO kaname.access_binding_subjects (binding_id, subject_type, subject_id)
 		 VALUES ($1, 'user', 'usr-1')`, bindingID)
 }
 

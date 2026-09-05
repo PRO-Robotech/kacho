@@ -72,7 +72,7 @@ const catalogStaleInputCTE = `stale_res AS (
 // `is_system = false` — роль системного яруса объявлена манифестом; манифест,
 // снимающий ресурс, который его же роль называет, противоречит сам себе, и это
 // обязано быть отвергнуто ключом, а не улажено молчаливым отбором права.
-const catalogStaleRuleRefPredicate = `EXISTS (SELECT 1 FROM kacho_iam.roles r
+const catalogStaleRuleRefPredicate = `EXISTS (SELECT 1 FROM kaname.roles r
 		                  WHERE r.id = rr.role_id AND r.is_system = false)
 		     AND (EXISTS (SELECT 1 FROM stale_res s
 		                   WHERE s.module = rr.module AND s.resource = rr.resource)
@@ -89,7 +89,7 @@ const catalogStaleRuleRefPredicate = `EXISTS (SELECT 1 FROM kacho_iam.roles r
 // ТОЛЬКО на ресурс (`role_verb_type_fk` → `catalog_resource(dotted, live)`),
 // поэтому снятие действия её ключом не задевает, и переселять её на этом входе
 // значило бы отбирать у арендатора право, которого база не отбирает.
-const catalogStaleRoleVerbPredicate = `EXISTS (SELECT 1 FROM kacho_iam.roles r
+const catalogStaleRoleVerbPredicate = `EXISTS (SELECT 1 FROM kaname.roles r
 		                  WHERE r.id = rv.role_id AND r.is_system = false)
 		     AND rv.object_type IN (SELECT dotted FROM stale_dotted)`
 
@@ -140,11 +140,11 @@ const catalogSelectorPruneCTE = `touched AS (
 		  SELECT s.role_id, s.rule_fp, s.object_types AS was,
 		         (SELECT coalesce(array_agg(t ORDER BY t), ARRAY[]::text[])
 		            FROM unnest(s.object_types) AS t
-		           WHERE EXISTS (SELECT 1 FROM kacho_iam.catalog_resource cr
+		           WHERE EXISTS (SELECT 1 FROM kaname.catalog_resource cr
 		                          WHERE cr.dotted = t AND cr.live)
 		             AND NOT EXISTS (SELECT 1 FROM stale_dotted d WHERE d.dotted = t)) AS alive
-		    FROM kacho_iam.role_rule_selectors s
-		    JOIN kacho_iam.roles r ON r.id = s.role_id
+		    FROM kaname.role_rule_selectors s
+		    JOIN kaname.roles r ON r.id = s.role_id
 		   WHERE r.is_system = false
 		     AND s.object_types && coalesce(
 		           (SELECT array_agg(d.dotted) FROM stale_dotted d), ARRAY[]::text[])
@@ -161,7 +161,7 @@ const catalogSelectorPruneCTE = `touched AS (
 //
 // `internal/repohygiene` `TestIAMRV112_RoleVerbProjectionHasASoleWriter` требует,
 // чтобы СТРОКОВЫЙ ЛИТЕРАЛ, содержащий `DELETE FROM` проекции роли, содержал и
-// `INSERT INTO kacho_iam.role_grant_orphan`. Признак читается по литералу
+// `INSERT INTO kaname.role_grant_orphan`. Признак читается по литералу
 // намеренно: снятие и переселение неделимы ровно тогда, когда стоят в одном
 // операторе, и отобранное право иначе неотличимо от никогда не выданного.
 //
@@ -184,8 +184,8 @@ const catalogSelectorPruneCTE = `touched AS (
 // ролей и переселение снятого в сироты ОДНИМ оператором.
 const resettleRuleRefSQL = `
 		WITH ` + catalogStaleInputCTE + `, dropped AS (
-		  DELETE FROM kacho_iam.role_rule_ref rr
-		   WHERE EXISTS (SELECT 1 FROM kacho_iam.roles r
+		  DELETE FROM kaname.role_rule_ref rr
+		   WHERE EXISTS (SELECT 1 FROM kaname.roles r
 		                  WHERE r.id = rr.role_id AND r.is_system = false)
 		     AND (EXISTS (SELECT 1 FROM stale_res s
 		                   WHERE s.module = rr.module AND s.resource = rr.resource)
@@ -194,7 +194,7 @@ const resettleRuleRefSQL = `
 		                     AND s.verb = rr.verb))
 		  RETURNING rr.role_id, rr.module, rr.resource, rr.verb
 		), moved AS (
-		  INSERT INTO kacho_iam.role_grant_orphan (role_id, object_type, verb, source, reason, applied_by)
+		  INSERT INTO kaname.role_grant_orphan (role_id, object_type, verb, source, reason, applied_by)
 		  SELECT d.role_id, d.module || '.' || d.resource, COALESCE(d.verb, ''), 'rule_ref', $6, $7
 		    FROM dropped d
 		  ON CONFLICT (role_id, object_type, verb, source, cause) DO NOTHING
@@ -205,13 +205,13 @@ const resettleRuleRefSQL = `
 // снятого в сироты ОДНИМ оператором.
 const resettleRoleVerbSQL = `
 		WITH ` + catalogStaleInputCTE + `, dropped AS (
-		  DELETE FROM kacho_iam.role_verb rv
-		   WHERE EXISTS (SELECT 1 FROM kacho_iam.roles r
+		  DELETE FROM kaname.role_verb rv
+		   WHERE EXISTS (SELECT 1 FROM kaname.roles r
 		                  WHERE r.id = rv.role_id AND r.is_system = false)
 		     AND rv.object_type IN (SELECT dotted FROM stale_dotted)
 		  RETURNING rv.role_id, rv.object_type, rv.verb
 		), moved AS (
-		  INSERT INTO kacho_iam.role_grant_orphan (role_id, object_type, verb, source, reason, applied_by)
+		  INSERT INTO kaname.role_grant_orphan (role_id, object_type, verb, source, reason, applied_by)
 		  SELECT d.role_id, d.object_type, d.verb, 'role_verb', $6, $7 FROM dropped d
 		  ON CONFLICT (role_id, object_type, verb, source, cause) DO NOTHING
 		)

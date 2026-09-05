@@ -29,7 +29,7 @@ func writerPkgOf(t *testing.T, rel, src string) (string, bool) {
 const injWriterSrc = `package pg
 
 func (w *roleWriter) ReplaceRoleVerbs(ctx context.Context) error {
-	_, err := w.tx.Exec(ctx, ` + "`DELETE FROM kacho_iam.role_verb WHERE role_id = $1`" + `)
+	_, err := w.tx.Exec(ctx, ` + "`DELETE FROM kaname.role_verb WHERE role_id = $1`" + `)
 	return err
 }
 `
@@ -37,7 +37,7 @@ func (w *roleWriter) ReplaceRoleVerbs(ctx context.Context) error {
 const injReaderSrc = `package scalegrid
 
 func count(ctx context.Context) error {
-	return row(ctx, ` + "`SELECT count(*)::bigint FROM kacho_iam.role_verb`" + `)
+	return row(ctx, ` + "`SELECT count(*)::bigint FROM kaname.role_verb`" + `)
 }
 `
 

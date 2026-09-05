@@ -95,7 +95,7 @@ scope(s_type, s_id, depth) AS (
       FROM scope s
       CROSS JOIN LATERAL (
              SELECT pe.parent_type, pe.parent_id
-               FROM kacho_iam.resource_scope_edge pe
+               FROM kaname.resource_scope_edge pe
               WHERE pe.object_type = s.s_type AND pe.object_id = s.s_id
               ORDER BY pe.depth
               LIMIT $5::int
@@ -135,7 +135,7 @@ named(subject) AS (
     -- второго администратор облака не назвал бы себя: его строка лежит на
     -- кластере под именем system_admin, а спрашивают про глагол.
     SELECT f.subject
-      FROM kacho_iam.relation_fact f
+      FROM kaname.relation_fact f
       JOIN scope_distinct sc ON sc.s_type = f.object_type AND sc.s_id = f.object_id
       JOIN fact_atom fa
         ON fa.relation = f.relation
@@ -146,12 +146,12 @@ named(subject) AS (
   UNION
     -- (2) субъект выдачи (в том числе группа: она и есть адресат)
     SELECT bs.subject_type || ':' || bs.subject_id
-      FROM kacho_iam.access_bindings b
-      JOIN kacho_iam.access_binding_subjects bs ON bs.binding_id = b.id
-      JOIN kacho_iam.role_verb rv
+      FROM kaname.access_bindings b
+      JOIN kaname.access_binding_subjects bs ON bs.binding_id = b.id
+      JOIN kaname.role_verb rv
         ON rv.role_id = b.role_id AND rv.object_type = $9::text
        AND rv.verb = ANY ($8::text[])
-      JOIN kacho_iam.role_rule_selectors rs
+      JOIN kaname.role_rule_selectors rs
         ON rs.role_id = b.role_id AND $9::text = ANY (rs.object_types)
       JOIN scope_distinct sc ON sc.s_type = b.resource_type AND sc.s_id = b.resource_id
       -- Метки лежат там, где велит ТИП (labelaxis.go): у чужого ресурса — в

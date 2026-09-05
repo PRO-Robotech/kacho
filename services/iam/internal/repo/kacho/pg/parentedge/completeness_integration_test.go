@@ -190,12 +190,12 @@ func uncovered(t *testing.T, pool *pgxpool.Pool) (examined int, missing []string
 	rows, err := pool.Query(ctx,
 		`WITH dict(catalog_name, model_name) AS (SELECT * FROM unnest($1::text[], $2::text[]))
 		 SELECT m.object_type, m.object_id,
-		        EXISTS (SELECT 1 FROM kacho_iam.resource_parent_edge e
+		        EXISTS (SELECT 1 FROM kaname.resource_parent_edge e
 		                 WHERE e.object_type = COALESCE(
 		                         (SELECT d.model_name FROM dict d
 		                           WHERE d.catalog_name = m.object_type), m.object_type)
 		                   AND e.object_id = m.object_id)
-		   FROM kacho_iam.resource_mirror m`, catalogNames, modelNames)
+		   FROM kaname.resource_mirror m`, catalogNames, modelNames)
 	if err != nil {
 		t.Fatalf("перепись зеркала: %v", err)
 	}
@@ -307,7 +307,7 @@ func TestParentEdgeCompleteness_ProducerWritesEveryLinkOfTheChain(t *testing.T) 
 	ctx := context.Background()
 	rows, err := pool.Query(ctx,
 		`SELECT depth, parent_type, parent_id
-		   FROM kacho_iam.resource_parent_edge
+		   FROM kaname.resource_parent_edge
 		  WHERE object_type = 'registry_repository' AND object_id = 'repo-1'
 		  ORDER BY depth`)
 	if err != nil {

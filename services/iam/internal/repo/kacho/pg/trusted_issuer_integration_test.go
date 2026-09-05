@@ -63,19 +63,19 @@ func newTrustFixture(t *testing.T) trustFixture {
 	// транзакцией: внешние ключи отложенные, и 23503 пришёл бы на COMMIT.
 	tx, err := pool.Begin(ctx)
 	require.NoError(t, err)
-	_, err = tx.Exec(ctx, `INSERT INTO kacho_iam.accounts (id, name, owner_user_id) VALUES ($1,'trust-fixture',$2)`,
+	_, err = tx.Exec(ctx, `INSERT INTO kaname.accounts (id, name, owner_user_id) VALUES ($1,'trust-fixture',$2)`,
 		f.account, f.user)
 	require.NoError(t, err)
-	_, err = tx.Exec(ctx, `INSERT INTO kacho_iam.users (id, account_id, external_id, email, display_name, invite_status)
+	_, err = tx.Exec(ctx, `INSERT INTO kaname.users (id, account_id, external_id, email, display_name, invite_status)
 		VALUES ($1,$2,'ext-trust','trust@example.com','Trust','ACTIVE')`, f.user, f.account)
 	require.NoError(t, err)
 	require.NoError(t, tx.Commit(ctx))
-	_, err = pool.Exec(ctx, `INSERT INTO kacho_iam.service_accounts (id, account_id, name) VALUES ($1,$2,'trust-sva')`,
+	_, err = pool.Exec(ctx, `INSERT INTO kaname.service_accounts (id, account_id, name) VALUES ($1,$2,'trust-sva')`,
 		f.sva, f.account)
 	require.NoError(t, err)
 	// Федеративная строка ключевого материала НЕ несёт: подпись проверяется
 	// ключом издателя из записи доверия.
-	_, err = pool.Exec(ctx, `INSERT INTO kacho_iam.service_account_oauth_clients
+	_, err = pool.Exec(ctx, `INSERT INTO kaname.service_account_oauth_clients
 		   (id, sva_id, hydra_client_id, created_by_user_id, public_key_pem, key_algorithm,
 		    credential_kind)
 		 VALUES ($1,$2,$1,$3,'','','LEGACY')`, f.client, f.sva, f.user)
@@ -87,7 +87,7 @@ func newTrustFixture(t *testing.T) trustFixture {
 func (f trustFixture) seedTrust(t *testing.T, issuer, subject, keyPEM, alg string, expires *time.Time) {
 	t.Helper()
 	_, err := f.pool.Exec(context.Background(),
-		`INSERT INTO kacho_iam.federated_trusted_issuers
+		`INSERT INTO kaname.federated_trusted_issuers
 		   (issuer, subject, sa_oauth_client_id, public_key_pem, key_algorithm, expires_at)
 		 VALUES ($1,$2,$3,$4,$5,$6)`,
 		issuer, subject, f.client, keyPEM, alg, expires)
@@ -154,14 +154,14 @@ func TestTrustedIssuer_PairIsGloballyUnique(t *testing.T) {
 
 	// Вторая наша строка ключа — другая, пара та же.
 	second := "soc_vvvvvvvvvvvvvvvvv"
-	_, err := f.pool.Exec(context.Background(), `INSERT INTO kacho_iam.service_account_oauth_clients
+	_, err := f.pool.Exec(context.Background(), `INSERT INTO kaname.service_account_oauth_clients
 		   (id, sva_id, hydra_client_id, created_by_user_id, public_key_pem, key_algorithm,
 		    credential_kind)
 		 VALUES ($1,$2,$1,$3,'','','LEGACY')`, second, f.sva, f.user)
 	require.NoError(t, err)
 
 	_, err = f.pool.Exec(context.Background(),
-		`INSERT INTO kacho_iam.federated_trusted_issuers
+		`INSERT INTO kaname.federated_trusted_issuers
 		   (issuer, subject, sa_oauth_client_id, public_key_pem, key_algorithm)
 		 VALUES ($1,$2,$3,$4,'ES256')`,
 		testExternalIssuer, testExternalSubject, second, testPublicKeyPEM)
@@ -169,7 +169,7 @@ func TestTrustedIssuer_PairIsGloballyUnique(t *testing.T) {
 
 	// Положительный контроль: ДРУГАЯ пара той же строкой ложится.
 	_, err = f.pool.Exec(context.Background(),
-		`INSERT INTO kacho_iam.federated_trusted_issuers
+		`INSERT INTO kaname.federated_trusted_issuers
 		   (issuer, subject, sa_oauth_client_id, public_key_pem, key_algorithm)
 		 VALUES ($1,$2,$3,$4,'ES256')`,
 		testExternalIssuer, "repo:acme/other:ref:refs/heads/main", second, testPublicKeyPEM)
@@ -191,7 +191,7 @@ func TestTrustedIssuer_TrustIsWithdrawnWithTheKeyItBacked(t *testing.T) {
 	require.NoError(t, err)
 
 	_, err = f.pool.Exec(context.Background(),
-		`DELETE FROM kacho_iam.service_account_oauth_clients WHERE id = $1`, f.client)
+		`DELETE FROM kaname.service_account_oauth_clients WHERE id = $1`, f.client)
 	require.NoError(t, err)
 
 	_, _, err = f.repo.ResolveTrustedIssuer(context.Background(), testExternalIssuer, testExternalSubject)
@@ -217,7 +217,7 @@ func TestTrustedIssuer_ExpiredTrustStillResolvesAndCarriesItsExpiry(t *testing.T
 	created := time.Now().UTC().Add(-2 * time.Hour)
 	past := time.Now().UTC().Add(-time.Hour)
 	_, err := f.pool.Exec(context.Background(),
-		`INSERT INTO kacho_iam.federated_trusted_issuers
+		`INSERT INTO kaname.federated_trusted_issuers
 		   (issuer, subject, sa_oauth_client_id, public_key_pem, key_algorithm, expires_at, created_at)
 		 VALUES ($1,$2,$3,$4,'ES256',$5,$6)`,
 		testExternalIssuer, testExternalSubject, f.client, testPublicKeyPEM, past, created)
@@ -238,7 +238,7 @@ func TestTrustedIssuer_OwnerStateArrivesInsteadOfDisappearing(t *testing.T) {
 	f := newTrustFixture(t)
 	f.seedTrust(t, testExternalIssuer, testExternalSubject, testPublicKeyPEM, "ES256", nil)
 	_, err := f.pool.Exec(context.Background(),
-		`UPDATE kacho_iam.service_accounts SET enabled = FALSE WHERE id = $1`, f.sva)
+		`UPDATE kaname.service_accounts SET enabled = FALSE WHERE id = $1`, f.sva)
 	require.NoError(t, err)
 
 	trust, client, err := f.repo.ResolveTrustedIssuer(context.Background(), testExternalIssuer, testExternalSubject)
@@ -261,7 +261,7 @@ func TestTrustedIssuer_KeyMaterialCannotBeBlank(t *testing.T) {
 	} {
 		t.Run(name, func(t *testing.T) {
 			_, err := f.pool.Exec(context.Background(),
-				`INSERT INTO kacho_iam.federated_trusted_issuers
+				`INSERT INTO kaname.federated_trusted_issuers
 				   (issuer, subject, sa_oauth_client_id, public_key_pem, key_algorithm)
 				 VALUES ($1,$2,$3,$4,$5)`,
 				testExternalIssuer, "subject:"+name, f.client, row[0], row[1])
@@ -272,7 +272,7 @@ func TestTrustedIssuer_KeyMaterialCannotBeBlank(t *testing.T) {
 	// Положительный контроль: законная строка ложится. Без него проба зелена на
 	// таблице, отвергающей всякую вставку.
 	_, err := f.pool.Exec(context.Background(),
-		`INSERT INTO kacho_iam.federated_trusted_issuers
+		`INSERT INTO kaname.federated_trusted_issuers
 		   (issuer, subject, sa_oauth_client_id, public_key_pem, key_algorithm)
 		 VALUES ($1,$2,$3,$4,'ES256')`,
 		testExternalIssuer, testExternalSubject, f.client, testPublicKeyPEM)

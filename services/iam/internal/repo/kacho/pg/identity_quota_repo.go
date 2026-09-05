@@ -36,7 +36,7 @@ import (
 // пустой был бы прочитан как «предела нет», ровно наоборот действительности.
 
 // IdentityQuotaSchema — схема, в которой у владельца величин лежит таблица учёта.
-const IdentityQuotaSchema = "kacho_iam"
+const IdentityQuotaSchema = "kaname"
 
 // IdentityQuotaRepo — чтение квот личности.
 type IdentityQuotaRepo struct {
@@ -59,7 +59,7 @@ func NewIdentityQuotaRepo(pool *pgxpool.Pool) *IdentityQuotaRepo {
 // вошедший), и оно НЕ является личностью: у такого субъекта нечего считать.
 // Отказ здесь называет предмет, а не отдаёт пустой ответ.
 func (r *IdentityQuotaRepo) IdentityOfUser(ctx context.Context, userID domain.UserID) (string, error) {
-	const q = `SELECT external_id FROM kacho_iam.users WHERE id = $1`
+	const q = `SELECT external_id FROM kaname.users WHERE id = $1`
 	var external string
 	if err := r.pool.QueryRow(ctx, q, string(userID)).Scan(&external); err != nil {
 		if errors.Is(err, pgx.ErrNoRows) {
@@ -131,7 +131,7 @@ func (r *IdentityQuotaRepo) statedDefault(
 ) (quotaread.State, bool, error) {
 	const q = `
 		SELECT limit_value, scope, scope_id
-		  FROM kacho_iam.limits
+		  FROM kaname.limits
 		 WHERE withdrawn_at IS NULL AND kind = $1 AND scope = 'DEFAULT'`
 	var (
 		value   int64

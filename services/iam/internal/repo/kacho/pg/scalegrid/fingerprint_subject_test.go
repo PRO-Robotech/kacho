@@ -25,12 +25,12 @@ func TestMigrationTouchesStructure_ProvenByInjection(t *testing.T) {
 	}{
 		{
 			name: "индекс на измеряемой таблице — влияет",
-			sql:  "CREATE INDEX access_bindings_scope_idx ON kacho_iam.access_bindings (scope_type, scope_id);",
+			sql:  "CREATE INDEX access_bindings_scope_idx ON kaname.access_bindings (scope_type, scope_id);",
 			want: true,
 		},
 		{
 			name: "снятие колонки измеряемой таблицы — влияет",
-			sql:  "ALTER TABLE kacho_iam.role_rule_selectors DROP COLUMN legacy_tier;",
+			sql:  "ALTER TABLE kaname.role_rule_selectors DROP COLUMN legacy_tier;",
 			want: true,
 		},
 		{
@@ -39,12 +39,12 @@ func TestMigrationTouchesStructure_ProvenByInjection(t *testing.T) {
 			// она соседнюю таблицу не трогает, — и попадала под отпечаток
 			// именно этим объяснением.
 			sql: "-- Здесь намеренно не трогаем access_bindings: у неё свой владелец.\n" +
-				"CREATE TABLE kacho_iam.quota_usage (id text PRIMARY KEY);",
+				"CREATE TABLE kaname.quota_usage (id text PRIMARY KEY);",
 			want: false,
 		},
 		{
 			name: "блочный комментарий с именем таблицы — не влияет",
-			sql:  "/* role_rule_selectors переписывается отдельной задачей */\nINSERT INTO kacho_iam.limits (id) VALUES ('lim-1');",
+			sql:  "/* role_rule_selectors переписывается отдельной задачей */\nINSERT INTO kaname.limits (id) VALUES ('lim-1');",
 			want: false,
 		},
 		{
@@ -52,18 +52,18 @@ func TestMigrationTouchesStructure_ProvenByInjection(t *testing.T) {
 			// Данные меняют то, ЧТО намеряли; отпечаток отвечает на «изменилось
 			// ли ТО, ЧЕМ мерили». Стоимость прогона на новых данных меряет сам
 			// прогон, и отчёт от посева ложным не становится.
-			sql:  "INSERT INTO kacho_iam.access_bindings (id, role_id) VALUES ('acb-1', 'rol-1');",
+			sql:  "INSERT INTO kaname.access_bindings (id, role_id) VALUES ('acb-1', 'rol-1');",
 			want: false,
 		},
 		{
 			name: "DDL над ЧУЖОЙ таблицей — не влияет",
-			sql:  "CREATE INDEX fga_outbox_pending_idx ON kacho_iam.fga_outbox (sent_at) WHERE sent_at IS NULL;",
+			sql:  "CREATE INDEX fga_outbox_pending_idx ON kaname.fga_outbox (sent_at) WHERE sent_at IS NULL;",
 			want: false,
 		},
 		{
 			name: "имя измеряемой таблицы как ПРЕФИКС чужого имени — не влияет",
 			// Граница слова: `access_bindings_archive` — другая таблица.
-			sql:  "CREATE TABLE kacho_iam.access_bindings_archive (id text PRIMARY KEY);",
+			sql:  "CREATE TABLE kaname.access_bindings_archive (id text PRIMARY KEY);",
 			want: false,
 		},
 		{
@@ -73,19 +73,19 @@ func TestMigrationTouchesStructure_ProvenByInjection(t *testing.T) {
 			// таблицы — но DDL идёт над ВРЕМЕННОЙ таблицей, а измеряемая только
 			// ЧИТАЕТСЯ. Плана чтения это не меняет, значит отчёт не устаревает.
 			sql: "CREATE TEMP TABLE _sys_rule ON COMMIT DROP AS\n" +
-				"  SELECT id, scope_type FROM kacho_iam.access_bindings WHERE role_id IS NOT NULL;",
+				"  SELECT id, scope_type FROM kaname.access_bindings WHERE role_id IS NOT NULL;",
 			want: false,
 		},
 		{
 			name: "временная таблица без ON COMMIT — тоже не влияет",
 			// Слово `DROP` из формы не обязательно: одного `CREATE` над временной
 			// таблицей довольно, чтобы прежний предикат взял оператор целиком.
-			sql:  "CREATE TEMPORARY TABLE _seg_scan AS SELECT verb FROM kacho_iam.role_rule_selectors;",
+			sql:  "CREATE TEMPORARY TABLE _seg_scan AS SELECT verb FROM kaname.role_rule_selectors;",
 			want: false,
 		},
 		{
 			name: "снятие временной таблицы по имени — не влияет",
-			sql:  "DROP TABLE IF EXISTS _seg_scan;\nSELECT count(*) FROM kacho_iam.access_bindings;",
+			sql:  "DROP TABLE IF EXISTS _seg_scan;\nSELECT count(*) FROM kaname.access_bindings;",
 			want: false,
 		},
 		{
@@ -93,21 +93,21 @@ func TestMigrationTouchesStructure_ProvenByInjection(t *testing.T) {
 			// Форма та же, слова `TEMP` нет. Такая таблица живёт в схеме и
 			// меняет её структуру — отпечаток обязан её взять. Без этого случая
 			// починка выродилась бы в «не брать CREATE … AS SELECT вовсе».
-			sql:  "CREATE TABLE kacho_iam.access_bindings_snapshot AS SELECT * FROM kacho_iam.access_bindings;",
+			sql:  "CREATE TABLE kaname.access_bindings_snapshot AS SELECT * FROM kaname.access_bindings;",
 			want: true,
 		},
 		{
 			name: "ЗАКОННЫЙ БЛИЗНЕЦ: временная таблица И правка измеряемой — влияет",
 			// Оператор с временной таблицей отсеивается, СОСЕДНИЙ — нет.
-			sql: "CREATE TEMP TABLE _scan ON COMMIT DROP AS SELECT id FROM kacho_iam.access_bindings;\n" +
-				"ALTER TABLE kacho_iam.access_bindings ADD COLUMN note text;",
+			sql: "CREATE TEMP TABLE _scan ON COMMIT DROP AS SELECT id FROM kaname.access_bindings;\n" +
+				"ALTER TABLE kaname.access_bindings ADD COLUMN note text;",
 			want: true,
 		},
 		{
 			name: "DDL и упоминание в РАЗНЫХ операторах — не влияет",
 			// Оператор разбирается целиком: DDL есть, но не над измеряемой.
-			sql: "INSERT INTO kacho_iam.access_bindings (id) VALUES ('acb-2');\n" +
-				"CREATE INDEX limits_kind_idx ON kacho_iam.limits (kind);",
+			sql: "INSERT INTO kaname.access_bindings (id) VALUES ('acb-2');\n" +
+				"CREATE INDEX limits_kind_idx ON kaname.limits (kind);",
 			want: false,
 		},
 	}
@@ -187,7 +187,7 @@ func TestScaffoldingExclusionSelfExpires(t *testing.T) {
 	// Законный близнец: SQL в ЛИТЕРАЛЕ и в комментарии — не обращение к базе.
 	// Оснастка вправе цитировать запрос, объясняя, почему сама его не шлёт.
 	if ok, why := scaffoldingStillHolds("z.go", []byte(
-		"package z\n// здесь нет ни одного SELECT — предмет отпечатка иной\nconst q = \"SELECT 1 FROM kacho_iam.access_bindings\"\n")); !ok {
+		"package z\n// здесь нет ни одного SELECT — предмет отпечатка иной\nconst q = \"SELECT 1 FROM kaname.access_bindings\"\n")); !ok {
 		t.Fatalf("цитата запроса принята за обращение к базе (%s): исключение истекло бы на собственном объяснении", why)
 	}
 

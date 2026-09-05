@@ -36,7 +36,7 @@ package relverdict
 
 // askVerdict — вердикт о доступе.
 func askVerdict() string {
-	return "SELECT id FROM kacho_iam.access_bindings WHERE scope_id = $1"
+	return "SELECT id FROM kaname.access_bindings WHERE scope_id = $1"
 }
 `
 
@@ -111,12 +111,12 @@ func askVerdict() string {
 			// поменявшую Up и Down местами, — то есть купили бы отсутствие
 			// лишнего прогона ценой неразличимости настоящей правки схемы.
 			rel:   "m.sql",
-			other: "-- SPDX-License-Identifier: AGPL-3.0-or-later\n-- +goose Up\nALTER TABLE kacho_iam.roles ADD COLUMN updated_at timestamptz;\n",
+			other: "-- SPDX-License-Identifier: AGPL-3.0-or-later\n-- +goose Up\nALTER TABLE kaname.roles ADD COLUMN updated_at timestamptz;\n",
 			moved: true,
 		},
 	}
 
-	const sqlBase = "-- SPDX-License-Identifier: BUSL-1.1\n-- +goose Up\nALTER TABLE kacho_iam.roles ADD COLUMN updated_at timestamptz;\n"
+	const sqlBase = "-- SPDX-License-Identifier: BUSL-1.1\n-- +goose Up\nALTER TABLE kaname.roles ADD COLUMN updated_at timestamptz;\n"
 
 	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {
@@ -272,7 +272,7 @@ package relverdict
 
 // askVerdict — вердикт о доступе.
 func askVerdict() string {
-	return "SELECT id FROM kacho_iam.access_bindings WHERE scope_id = $1"
+	return "SELECT id FROM kaname.access_bindings WHERE scope_id = $1"
 }
 `)
 	// Оснастка отпечатка: обязана существовать и обязана оставаться оснасткой,
@@ -281,7 +281,7 @@ func askVerdict() string {
 	writeFile(t, filepath.Join(root, gridDir, "report.go"), "package scalegrid\n\nfunc rep() int { return 2 }\n")
 	writeFile(t, filepath.Join(root, gridDir, "grid.go"), "package scalegrid\n\n// grid — сетка замера.\nfunc grid() int { return 3 }\n")
 	writeFile(t, filepath.Join(root, migrateDir, "0001_initial.sql"),
-		"-- +goose Up\nCREATE TABLE kacho_iam.access_bindings (id text PRIMARY KEY);\n")
+		"-- +goose Up\nCREATE TABLE kaname.access_bindings (id text PRIMARY KEY);\n")
 
 	return root
 }

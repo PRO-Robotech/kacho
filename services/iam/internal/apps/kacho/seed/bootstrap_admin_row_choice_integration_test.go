@@ -15,7 +15,7 @@ package seed_test
 // `lower(email)` и предиката не имеет — почта непуста по `users_email_check`,
 // значит строки, которую следовало бы исключить из ключа, не бывает.
 //
-// Принадлежность человека аккаунтам выражается строками `kacho_iam.memberships`,
+// Принадлежность человека аккаунтам выражается строками `kaname.memberships`,
 // которых у него может быть сколько угодно. Второй аккаунт больше НЕ ЗАВОДИТ
 // второй строки — он заводит второе членство.
 //
@@ -200,7 +200,7 @@ func TestRunBootstrapAdmin_OneRowPerPerson_SecondAccountIsAMembership(t *testing
 	// триггер зеркала на вставке строки (миграция 470001), второе заводится здесь.
 	_, err = pool.Exec(ctx, `
 		INSERT INTO memberships (id, user_id, account_id, state)
-		VALUES (kacho_iam.membership_mirror_id($1, $2), $1, $2, 'ACTIVE')`, uid, second)
+		VALUES (kaname.membership_mirror_id($1, $2), $1, $2, 'ACTIVE')`, uid, second)
 	require.NoError(t, err, "принадлежность второму аккаунту обязана быть выразима членством")
 
 	var rows, members int

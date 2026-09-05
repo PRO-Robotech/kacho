@@ -1,7 +1,7 @@
 // Copyright (c) PRO-Robotech
 // SPDX-License-Identifier: AGPL-3.0-or-later
 
-// Package account — CQRS port-iface'ы для kacho_iam.accounts.
+// Package account — CQRS port-iface'ы для kaname.accounts.
 //
 // Реализация — `internal/repo/kacho/pg/account_repo.go` (pgxpool).
 // Mock — `internal/repo/repomock` (для unit-тестов use-case'ов).

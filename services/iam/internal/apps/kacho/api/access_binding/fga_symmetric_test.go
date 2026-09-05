@@ -12,7 +12,7 @@ package access_binding
 //
 // # What "in the writer-tx" now means, and why this file lost its second half
 //
-// The journal `kacho_iam.fga_outbox` used to be an at-least-once queue toward an
+// The journal `kaname.fga_outbox` used to be an at-least-once queue toward an
 // EXTERNAL relation engine, drained asynchronously. Because that drain lagged, the
 // use-cases additionally removed the same set from the engine SYNCHRONOUSLY after
 // commit, through clients.RelationStore.DeleteTuples, and this file asserted both
@@ -20,7 +20,7 @@ package access_binding
 //
 // Stage S6 removed the engine. The journal stayed and changed role: a database
 // trigger (`relation_fact_follows_journal`, migrations 0098/0100) folds every journal
-// row into `kacho_iam.relation_fact` — the table a verdict is read from — IN THE SAME
+// row into `kaname.relation_fact` — the table a verdict is read from — IN THE SAME
 // TRANSACTION as the INSERT. So the revoke is effective at commit, which is earlier
 // and stricter than "synchronously, just after commit"; and the port through which
 // the second half was asserted no longer carries DeleteTuples at all.
@@ -278,8 +278,8 @@ type abFakeRepo struct {
 	// whole-role anchor collapse. Empty ⇒ legacy permission-only role.
 	roleRules domain.Rules
 	ab        *domain.AccessBinding // last inserted
-	// Captured journal (`kacho_iam.fga_outbox`) emit-in-tx tuples — the rows a
-	// trigger folds into `kacho_iam.relation_fact` inside the same transaction.
+	// Captured journal (`kaname.fga_outbox`) emit-in-tx tuples — the rows a
+	// trigger folds into `kaname.relation_fact` inside the same transaction.
 	fgaWritten []ab_repo.RelationTuple
 	fgaDeleted []ab_repo.RelationTuple
 	// Captured audit_outbox compliance events emitted in the writer-tx.

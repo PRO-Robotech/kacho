@@ -7,7 +7,7 @@ package access_binding
 // ACCESS ANOTHER *ACTIVE* BINDING STILL GRANTS (access-loss regression).
 //
 // THE DEFECT (observed live). The emitted-tuple ledger
-// (kacho_iam.access_binding_emitted_tuples) is keyed PER BINDING
+// (kaname.access_binding_emitted_tuples) is keyed PER BINDING
 // (binding_id, fga_user, relation, object), while the fact a verdict resolves
 // against is NOT refcounted — it is one row per (object, relation, subject). Two
 // bindings of the SAME subject on the SAME scope with the same role therefore hold
@@ -37,8 +37,8 @@ package access_binding
 // external relation engine straight after commit (clients.RelationStore.DeleteTuples)
 // and what it stated in the journal for the drainer. Stage S6 removed the engine —
 // the port no longer carries DeleteTuples, and the journal
-// (`kacho_iam.fga_outbox`) stopped being a queue toward anything external: a database
-// trigger folds each of its rows into `kacho_iam.relation_fact` inside the SAME
+// (`kaname.fga_outbox`) stopped being a queue toward anything external: a database
+// trigger folds each of its rows into `kaname.relation_fact` inside the SAME
 // transaction, and that table is what a verdict is read from.
 //
 // So there is exactly one removal path now, and it is the one that was called the

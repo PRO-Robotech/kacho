@@ -42,7 +42,7 @@ func TestGrantRemovalTraceGateInjection(t *testing.T) {
 		for i := 0; i < grantRemovalRatchet; i++ {
 			out = append(out, grantMigrationSource{
 				Name: fmt.Sprintf("00%02d_retire.sql", i),
-				Body: "-- +goose Up\nDELETE FROM kacho_iam.access_bindings WHERE role_id = 'r';\n" +
+				Body: "-- +goose Up\nDELETE FROM kaname.access_bindings WHERE role_id = 'r';\n" +
 					"-- +goose Down\nSELECT 1;\n",
 			})
 		}
@@ -67,7 +67,7 @@ func TestGrantRemovalTraceGateInjection(t *testing.T) {
 	// ОСЬ «перебор»: седьмой файл, снимающий выдачи без следа.
 	over := append(base(), grantMigrationSource{
 		Name: "0099_seventh.sql",
-		Body: "-- +goose Up\nDELETE FROM kacho_iam.access_bindings WHERE subject_id = 's';\n" +
+		Body: "-- +goose Up\nDELETE FROM kaname.access_bindings WHERE subject_id = 's';\n" +
 			"-- +goose Down\nSELECT 1;\n",
 	})
 	got, _ := auditGrantRemovalTrace(over)
@@ -91,8 +91,8 @@ func TestGrantRemovalTraceGateInjection(t *testing.T) {
 	// она о предикате, а не о числе прощённых.
 	traced := append(base(), grantMigrationSource{
 		Name: "0099_seventh.sql",
-		Body: "-- +goose Up\nDELETE FROM kacho_iam.access_bindings WHERE subject_id = 's';\n" +
-			"INSERT INTO kacho_iam.audit_outbox (event_type) VALUES ('AccessBindingDeleted');\n" +
+		Body: "-- +goose Up\nDELETE FROM kaname.access_bindings WHERE subject_id = 's';\n" +
+			"INSERT INTO kaname.audit_outbox (event_type) VALUES ('AccessBindingDeleted');\n" +
 			"-- +goose Down\nSELECT 1;\n",
 	})
 	got, _ = auditGrantRemovalTrace(traced)
@@ -110,8 +110,8 @@ func TestGrantRemovalTraceGateInjection(t *testing.T) {
 	// через гейт в тот день, когда храповик поднимут.
 	if grantRemovalRatchet > 0 {
 		under := base()
-		under[0].Body = "-- +goose Up\nDELETE FROM kacho_iam.access_bindings WHERE role_id = 'r';\n" +
-			"INSERT INTO kacho_iam.audit_outbox (event_type) VALUES ('AccessBindingDeleted');\n" +
+		under[0].Body = "-- +goose Up\nDELETE FROM kaname.access_bindings WHERE role_id = 'r';\n" +
+			"INSERT INTO kaname.audit_outbox (event_type) VALUES ('AccessBindingDeleted');\n" +
 			"-- +goose Down\nSELECT 1;\n"
 		got, _ = auditGrantRemovalTrace(under)
 		if len(got) != grantRemovalRatchet-1 {
@@ -127,8 +127,8 @@ func TestGrantRemovalTraceGateInjection(t *testing.T) {
 	// миграция снимает СВОЮ ЖЕ вставку, откатываясь, и доступа не отбирает.
 	twin := append(base(), grantMigrationSource{
 		Name: "0100_rollback_only.sql",
-		Body: "-- +goose Up\nINSERT INTO kacho_iam.access_bindings (id) VALUES ('b1');\n" +
-			"-- +goose Down\nDELETE FROM kacho_iam.access_bindings WHERE id = 'b1';\n",
+		Body: "-- +goose Up\nINSERT INTO kaname.access_bindings (id) VALUES ('b1');\n" +
+			"-- +goose Down\nDELETE FROM kaname.access_bindings WHERE id = 'b1';\n",
 	})
 	got, ctwin := auditGrantRemovalTrace(twin)
 	if len(got) != grantRemovalRatchet {
@@ -144,8 +144,8 @@ func TestGrantRemovalTraceGateInjection(t *testing.T) {
 	prose := append(base(), grantMigrationSource{
 		Name: "0101_prose.sql",
 		Body: "-- +goose Up\n" +
-			"-- Здесь НЕ делается DELETE FROM kacho_iam.access_bindings — выдачи остаются.\n" +
-			"SELECT 'DELETE FROM kacho_iam.access_bindings' AS explanation;\n" +
+			"-- Здесь НЕ делается DELETE FROM kaname.access_bindings — выдачи остаются.\n" +
+			"SELECT 'DELETE FROM kaname.access_bindings' AS explanation;\n" +
 			"-- +goose Down\nSELECT 1;\n",
 	})
 	got, cprose := auditGrantRemovalTrace(prose)
@@ -161,7 +161,7 @@ func TestGrantRemovalTraceGateInjection(t *testing.T) {
 	// факт о дереве.
 	spelling := append(base(), grantMigrationSource{
 		Name: "0102_other_spelling.sql",
-		Body: "-- +goose Up\ndelete\n  from   kacho_iam . access_bindings\n where id = 'x';\n" +
+		Body: "-- +goose Up\ndelete\n  from   kaname . access_bindings\n where id = 'x';\n" +
 			"-- +goose Down\nSELECT 1;\n",
 	})
 	got, _ = auditGrantRemovalTrace(spelling)
@@ -181,20 +181,20 @@ func TestGrantRoleReassignmentDiscriminatorCutsBothWays(t *testing.T) {
 	corpus := []grantMigrationSource{
 		// ЛОВИТСЯ: role_id стоит среди присваиваний.
 		{Name: "0200_move.sql", Body: "-- +goose Up\n" +
-			"UPDATE kacho_iam.access_bindings SET role_id = 'rol-new' WHERE role_id = 'rol-old';\n" +
+			"UPDATE kaname.access_bindings SET role_id = 'rol-new' WHERE role_id = 'rol-old';\n" +
 			"-- +goose Down\nSELECT 1;\n"},
 		// МОЛЧИТ: role_id только в условии отбора — это мягкий отзыв, а не перенос.
 		{Name: "0201_soft_revoke.sql", Body: "-- +goose Up\n" +
-			"UPDATE kacho_iam.access_bindings\n   SET status = 'REVOKED', revoked_at = now()\n" +
+			"UPDATE kaname.access_bindings\n   SET status = 'REVOKED', revoked_at = now()\n" +
 			" WHERE role_id = 'rol-old' AND revoked_at IS NULL;\n" +
 			"-- +goose Down\nSELECT 1;\n"},
 		// МОЛЧИТ: перенос в ОТКАТНОЙ половине — миграция откатывает свою же правку.
 		{Name: "0202_rollback_move.sql", Body: "-- +goose Up\nSELECT 1;\n" +
-			"-- +goose Down\nUPDATE kacho_iam.access_bindings SET role_id = 'rol-old';\n"},
+			"-- +goose Down\nUPDATE kaname.access_bindings SET role_id = 'rol-old';\n"},
 		// МОЛЧИТ: перенос, названный ПРОЗОЙ и ЛИТЕРАЛОМ.
 		{Name: "0203_prose.sql", Body: "-- +goose Up\n" +
-			"-- Переносить нельзя: UPDATE kacho_iam.access_bindings SET role_id = …\n" +
-			"SELECT 'UPDATE kacho_iam.access_bindings SET role_id = x' AS explanation;\n" +
+			"-- Переносить нельзя: UPDATE kaname.access_bindings SET role_id = …\n" +
+			"SELECT 'UPDATE kaname.access_bindings SET role_id = x' AS explanation;\n" +
 			"-- +goose Down\nSELECT 1;\n"},
 	}
 

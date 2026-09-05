@@ -18,7 +18,7 @@ package relverdict_test
 // найденный субъект, и он приходит текстовой колонкой CTE. Поэтому там осталась
 // прежняя форма:
 //
-//	JOIN kacho_iam.group_members gm
+//	JOIN kaname.group_members gm
 //	  ON n.subject IN ('group:' || gm.group_id, 'group:' || gm.group_id || '#member')
 //
 // `gm.group_id` — ведущая колонка `group_members_pkey`; склейка выводит её

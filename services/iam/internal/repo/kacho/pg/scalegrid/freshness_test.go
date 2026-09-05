@@ -255,7 +255,7 @@ func TestScaleGridFreshnessGateCanFailAndCanStaySilent(t *testing.T) {
 		Composition: "COMPOSITION00001",
 		Content:     "CONTENT000000001",
 		Files:       []string{"a/one.go", "b/two.sql"},
-		Tables:      []string{"kacho_iam.access_bindings"},
+		Tables:      []string{"kaname.access_bindings"},
 	}
 	content := map[string]string{"a/one.go": "HASHA00000000001", "b/two.sql": "HASHB00000000002"}
 	contentOf := func(rel string) string { return content[rel] }

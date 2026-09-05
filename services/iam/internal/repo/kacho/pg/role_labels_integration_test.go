@@ -41,7 +41,7 @@ func setRoleLabels(t *testing.T, ctx context.Context, pool *pgxpool.Pool, rid st
 	t.Helper()
 	payload := jsonObject(labels)
 	_, err := pool.Exec(ctx,
-		`UPDATE kacho_iam.roles SET labels = $2::jsonb WHERE id = $1`, rid, payload)
+		`UPDATE kaname.roles SET labels = $2::jsonb WHERE id = $1`, rid, payload)
 	require.NoError(t, err, "set role labels")
 }
 

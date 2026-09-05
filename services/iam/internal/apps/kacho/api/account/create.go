@@ -127,7 +127,7 @@ type CreateAccountUseCase struct {
 	opsRepo operations.Repo
 	// relations/logger — kept for backwards-compatible WithRelationStore wiring
 	// (composition root still passes them). The owner-tuple is no longer written
-	// sync from the Create path: it is co-committed into kacho_iam.fga_outbox in
+	// sync from the Create path: it is co-committed into kaname.fga_outbox in
 	// the writer-tx (SEC-D) and applied by the drainer. The
 	// fields remain so future read-side helpers can reuse the client.
 	relations clients.RelationStore

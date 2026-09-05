@@ -38,7 +38,7 @@ RPC в kacho-iam возвращают `*operation.Operation` (никогда н�
 | `principal_id`             | TEXT (IAM-extension) | да           | да        | id или `bootstrap`.                            |
 | `principal_display_name`   | TEXT (IAM-extension) | да           | да        | Email / SA-name / `kacho-iam-bootstrap`.       |
 
-**DB table:** `kacho_iam.operations` (`CREATE TABLE kacho_iam.operations` в `0001_initial.sql`).
+**DB table:** `kaname.operations` (`CREATE TABLE kaname.operations` в `0001_initial.sql`).
 
 ## Sequence diagram — типичный async RPC
 
@@ -210,8 +210,8 @@ curl "http://localhost:18080/iam/v1/accounts/$ACC_ID/operations:all?pageSize=20"
 ```bash
 # psql:
 make -C deploy psql SVC=iam
-# > SELECT id, description, done, principal_type, principal_id, principal_display_name FROM kacho_iam.operations LIMIT 20;
-# > SELECT count(*) FROM kacho_iam.operations WHERE done=false;     -- in-flight
+# > SELECT id, description, done, principal_type, principal_id, principal_display_name FROM kaname.operations LIMIT 20;
+# > SELECT count(*) FROM kaname.operations WHERE done=false;     -- in-flight
 
 # Anti-leak: полоса владения операцией сведена в общий слой, и пробы живут там же
 # — pkg/operations/operationspb/handler_test.go. Прежде здесь стояла команда,
@@ -231,7 +231,7 @@ go test -short -count=1 -timeout 60s \
   секретов в ответе — `internal/repo/kacho/pg/ops_response_redactor.go`. Отдельного
   файла-репозитория операций у iam нет.
 - **Handler:** `pkg/operations/operationspb/handler.go` + `handler_test.go` (общий слой).
-- **Wiring:** `cmd/kacho-iam/serve.go::operations.NewRepo(pool, "kacho_iam")`.
+- **Wiring:** `cmd/kacho-iam/serve.go::operations.NewRepo(pool, "kaname")`.
 - **Исполнение:** use-case зовёт `operations.Run` (`pkg/operations`) сразу после
   writer-TX; IAM-операции в основном завершаются тут же (sync-ish). Бэкстопом стоит
   реконсайлер бесхозных операций — `cmd/kacho-iam/recovery.go` (`startLROReconciler`),
@@ -266,6 +266,6 @@ go test -short -count=1 -timeout 60s \
 - `pkg/operations/operationspb/handler.go`
 - `internal/repo/kacho/pg/ops_response_redactor.go`
 - `internal/migrations/0001_initial.sql` (IAM extension — колонки принципала)
-- `cmd/kacho-iam/serve.go` (`operations.NewRepo(pool, "kacho_iam")`)
+- `cmd/kacho-iam/serve.go` (`operations.NewRepo(pool, "kaname")`)
 - `cmd/kacho-iam/recovery.go` (реконсайлер бесхозных операций)
 - `pkg/operations/`

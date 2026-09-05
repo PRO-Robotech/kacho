@@ -255,7 +255,7 @@ func (r *userReader) FindActiveByEmail(ctx context.Context, email domain.Email) 
 //
 // Полный набор =
 //
-//	(1) аккаунты АКТИВНЫХ ЧЛЕНСТВ активной личности (kacho_iam.memberships)
+//	(1) аккаунты АКТИВНЫХ ЧЛЕНСТВ активной личности (kaname.memberships)
 //	UNION
 //	(2) аккаунты, где principal является owner (accounts.owner_user_id = $1) —
 //	    владеть не значит состоять (решение по PRO-Robotech/kacho#610), поэтому

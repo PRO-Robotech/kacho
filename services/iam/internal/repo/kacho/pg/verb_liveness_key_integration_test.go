@@ -56,7 +56,7 @@ func retireVerbsOf(ctx context.Context, q interface {
 	Exec(context.Context, string, ...any) (pgconn.CommandTag, error)
 }, module, resource, reason string) error {
 	_, err := q.Exec(ctx, `
-		UPDATE kacho_iam.catalog_verb
+		UPDATE kaname.catalog_verb
 		   SET retired_at = now(), live = false, retired_reason = $3
 		 WHERE module = $1 AND resource = $2 AND live`, module, resource, reason)
 	return err
@@ -72,7 +72,7 @@ func retireResourceRowOnly(ctx context.Context, q interface {
 	Exec(context.Context, string, ...any) (pgconn.CommandTag, error)
 }, module, resource, reason string) error {
 	_, err := q.Exec(ctx, `
-		UPDATE kacho_iam.catalog_resource
+		UPDATE kaname.catalog_resource
 		   SET retired_at = now(), live = false, retired_reason = $3
 		 WHERE module = $1 AND resource = $2`, module, resource, reason)
 	return err
@@ -90,13 +90,13 @@ func freeLiveResource(t *testing.T, ctx context.Context, pool *pgxpool.Pool) (mo
 	t.Helper()
 	err := pool.QueryRow(ctx, `
 		SELECT cr.module, cr.resource
-		  FROM kacho_iam.catalog_resource cr
+		  FROM kaname.catalog_resource cr
 		 WHERE cr.live
-		   AND EXISTS (SELECT 1 FROM kacho_iam.catalog_verb cv
+		   AND EXISTS (SELECT 1 FROM kaname.catalog_verb cv
 		                WHERE cv.module = cr.module AND cv.resource = cr.resource AND cv.live)
-		   AND NOT EXISTS (SELECT 1 FROM kacho_iam.role_rule_ref rr
+		   AND NOT EXISTS (SELECT 1 FROM kaname.role_rule_ref rr
 		                    WHERE rr.module = cr.module AND rr.resource = cr.resource)
-		   AND NOT EXISTS (SELECT 1 FROM kacho_iam.role_verb rv
+		   AND NOT EXISTS (SELECT 1 FROM kaname.role_verb rv
 		                    WHERE rv.object_type = cr.dotted)
 		 ORDER BY cr.dotted
 		 LIMIT 1`).Scan(&module, &resource)
@@ -112,7 +112,7 @@ func liveVerbsOf(t *testing.T, ctx context.Context, pool *pgxpool.Pool, module, 
 	t.Helper()
 	var n int
 	require.NoError(t, pool.QueryRow(ctx, `
-		SELECT count(*) FROM kacho_iam.catalog_verb
+		SELECT count(*) FROM kaname.catalog_verb
 		 WHERE module = $1 AND resource = $2 AND live`, module, resource).Scan(&n))
 	return n
 }
@@ -134,13 +134,13 @@ func TestVerbsUnderARetiredResourceAreAbsent(t *testing.T) {
 
 	var retiredRes, verbRows, contradicted int
 	require.NoError(t, pool.QueryRow(ctx,
-		`SELECT count(*) FROM kacho_iam.catalog_resource WHERE NOT live`).Scan(&retiredRes))
+		`SELECT count(*) FROM kaname.catalog_resource WHERE NOT live`).Scan(&retiredRes))
 	require.NoError(t, pool.QueryRow(ctx,
-		`SELECT count(*) FROM kacho_iam.catalog_verb`).Scan(&verbRows))
+		`SELECT count(*) FROM kaname.catalog_verb`).Scan(&verbRows))
 	require.NoError(t, pool.QueryRow(ctx, `
 		SELECT count(*)
-		  FROM kacho_iam.catalog_verb cv
-		  JOIN kacho_iam.catalog_resource cr
+		  FROM kaname.catalog_verb cv
+		  JOIN kaname.catalog_resource cr
 		    ON cr.module = cv.module AND cr.resource = cv.resource
 		 WHERE cv.live AND NOT cr.live`).Scan(&contradicted))
 
@@ -186,7 +186,7 @@ func TestRetiringAResourceWithLiveVerbsIsRefused(t *testing.T) {
 
 	var live bool
 	require.NoError(t, pool.QueryRow(ctx, `
-		SELECT live FROM kacho_iam.catalog_resource WHERE module = $1 AND resource = $2`,
+		SELECT live FROM kaname.catalog_resource WHERE module = $1 AND resource = $2`,
 		module, resource).Scan(&live))
 	require.True(t, live, "отвергнутое снятие оставляет строку ресурса живой")
 }
@@ -217,14 +217,14 @@ func TestResourceWithAllVerbsRetiredIsRetired(t *testing.T) {
 
 	var live bool
 	require.NoError(t, pool.QueryRow(ctx, `
-		SELECT live FROM kacho_iam.catalog_resource WHERE module = $1 AND resource = $2`,
+		SELECT live FROM kaname.catalog_resource WHERE module = $1 AND resource = $2`,
 		module, resource).Scan(&live))
 	require.False(t, live)
 
 	// Соседний ресурс не задет: ключ судит СВОЙ ресурс, а не каталог целиком.
 	var neighbours int
 	require.NoError(t, pool.QueryRow(ctx, `
-		SELECT count(*) FROM kacho_iam.catalog_resource
+		SELECT count(*) FROM kaname.catalog_resource
 		 WHERE live AND NOT (module = $1 AND resource = $2)`, module, resource).Scan(&neighbours))
 	t.Logf("снят %s.%s (глаголов было %d); живых соседних ресурсов %d",
 		module, resource, before, neighbours)
@@ -251,12 +251,12 @@ func TestRevivingAVerbUnderARetiredResourceIsRefused(t *testing.T) {
 
 	var verb string
 	require.NoError(t, pool.QueryRow(ctx, `
-		SELECT verb FROM kacho_iam.catalog_verb
+		SELECT verb FROM kaname.catalog_verb
 		 WHERE module = $1 AND resource = $2 ORDER BY verb LIMIT 1`,
 		module, resource).Scan(&verb))
 
 	reviveVerb := `
-		UPDATE kacho_iam.catalog_verb
+		UPDATE kaname.catalog_verb
 		   SET live = true, retired_at = NULL, retired_reason = NULL
 		 WHERE module = $1 AND resource = $2 AND verb = $3`
 
@@ -273,7 +273,7 @@ func TestRevivingAVerbUnderARetiredResourceIsRefused(t *testing.T) {
 	// Законный близнец: сперва ресурс, затем глагол — проходит. Без него
 	// отрицание выше зеленело бы на схеме, где оживления не бывает вовсе.
 	_, err = pool.Exec(ctx, `
-		UPDATE kacho_iam.catalog_resource
+		UPDATE kaname.catalog_resource
 		   SET live = true, retired_at = NULL, retired_reason = NULL, superseded_by = NULL
 		 WHERE module = $1 AND resource = $2`, module, resource)
 	require.NoError(t, err, "оживление ресурса")
@@ -316,7 +316,7 @@ func TestVerbLivenessKeyIsVacuousOnlyForRetiredRowsAndExistenceStaysHeld(t *test
 			var notNull bool
 			require.NoError(t, pool.QueryRow(ctx, `
 				SELECT attnotnull FROM pg_attribute
-				 WHERE attrelid = 'kacho_iam.catalog_verb'::regclass AND attname = $1`,
+				 WHERE attrelid = 'kaname.catalog_verb'::regclass AND attname = $1`,
 				col).Scan(&notNull))
 			require.Truef(t, notNull,
 				"колонка %s обязана быть NOT NULL: пустая составляющая снимает проверку "+
@@ -326,7 +326,7 @@ func TestVerbLivenessKeyIsVacuousOnlyForRetiredRowsAndExistenceStaysHeld(t *test
 		var generated string
 		require.NoError(t, pool.QueryRow(ctx, `
 			SELECT attgenerated::text FROM pg_attribute
-			 WHERE attrelid = 'kacho_iam.catalog_verb'::regclass AND attname = 'resource_live'`).
+			 WHERE attrelid = 'kaname.catalog_verb'::regclass AND attname = 'resource_live'`).
 			Scan(&generated))
 		require.Equal(t, "s", generated,
 			"resource_live обязана быть ГЕНЕРИРУЕМОЙ: значение, которое пишет писатель, "+
@@ -339,7 +339,7 @@ func TestVerbLivenessKeyIsVacuousOnlyForRetiredRowsAndExistenceStaysHeld(t *test
 
 		var retiredVerbs int
 		require.NoError(t, pool.QueryRow(ctx, `
-			SELECT count(*) FROM kacho_iam.catalog_verb
+			SELECT count(*) FROM kaname.catalog_verb
 			 WHERE module = $1 AND resource = $2 AND NOT live`, module, resource).Scan(&retiredVerbs))
 		t.Logf("снятых глаголов под снятым %s.%s: %d — ключ живости их не судит "+
 			"(составляющая пуста, MATCH SIMPLE)", module, resource, retiredVerbs)
@@ -351,7 +351,7 @@ func TestVerbLivenessKeyIsVacuousOnlyForRetiredRowsAndExistenceStaysHeld(t *test
 
 		// Живая строка: обе составляющие непусты, отвечает ключ существования.
 		_, err := pool.Exec(ctx, `
-			INSERT INTO kacho_iam.catalog_verb (module, resource, verb, per_object)
+			INSERT INTO kaname.catalog_verb (module, resource, verb, per_object)
 			VALUES ($1, 'ghost', 'get', true)`, ghost)
 		require.Error(t, err, "живой глагол несуществующего ресурса обязан отвергаться")
 		code, constraint := pgCode(err)
@@ -365,7 +365,7 @@ func TestVerbLivenessKeyIsVacuousOnlyForRetiredRowsAndExistenceStaysHeld(t *test
 		// by construction — и если бы существование не держал второй ключ,
 		// строка в никуда прошла бы. Проба утверждает, что не проходит.
 		_, err = pool.Exec(ctx, `
-			INSERT INTO kacho_iam.catalog_verb
+			INSERT INTO kaname.catalog_verb
 			  (module, resource, verb, per_object, live, retired_at, retired_reason)
 			VALUES ($1, 'ghost', 'get', true, false, now(), 'частичное совпадение')`, ghost)
 		require.Error(t, err,

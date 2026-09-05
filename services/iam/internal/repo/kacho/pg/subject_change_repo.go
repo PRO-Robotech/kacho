@@ -2,14 +2,14 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
 
 // subject_change_repo.go — pgxpool adapter implementing service.SubjectChangeReader.
-// Drains kacho_iam.subject_change_outbox for the InternalIAMService.PollSubjectChanges
+// Drains kaname.subject_change_outbox for the InternalIAMService.PollSubjectChanges
 // use-case. Read-only; no mutation.
 //
 // # Позиция ДОЕЗЖАЕТ по границе устоявшегося, а не по голому номеру (kacho#1374)
 //
 // Номер строки выдаёт счётчик на ВСТАВКЕ (умолчание колонки), а видимой она
 // становится на ФИКСАЦИИ. Выдачу здесь ничто не сериализует — в отличие от
-// `kacho_iam.limits`, где ревизию штампует триггер под транзакционной
+// `kaname.limits`, где ревизию штампует триггер под транзакционной
 // блокировкой, держащейся до коммита, — поэтому порядок номеров и порядок
 // фиксаций НЕЗАВИСИМЫ.
 //
@@ -43,7 +43,7 @@ import (
 // Имена журнала — КОНСТАНТЫ этого пакета, а не строки, пришедшие снаружи:
 // наблюдение подставляет их в текст запроса и не экранирует.
 const (
-	subjectChangeTable    = "kacho_iam.subject_change_outbox"
+	subjectChangeTable    = "kaname.subject_change_outbox"
 	subjectChangePosition = "id"
 )
 
@@ -126,7 +126,7 @@ func (r *SubjectChangeRepo) PollSubjectChanges(ctx context.Context, sinceID int6
 	// две полосы об одном предмете разошлись бы молча.
 	rows, err := r.pool.Query(ctx,
 		`SELECT id, subject_id, op, COALESCE(payload->>'subject_type', '')
-		   FROM kacho_iam.subject_change_outbox
+		   FROM kaname.subject_change_outbox
 		  WHERE id > $1 AND id <= $2
 		  ORDER BY id ASC
 		  LIMIT $3`,

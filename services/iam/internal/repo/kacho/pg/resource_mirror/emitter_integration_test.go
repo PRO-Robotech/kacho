@@ -360,7 +360,7 @@ func readMirrorVersion(t *testing.T, ctx context.Context, pool *pgxpool.Pool, ob
 	t.Helper()
 	var v time.Time
 	require.NoError(t, pool.QueryRow(ctx,
-		`SELECT source_version FROM kacho_iam.resource_mirror
+		`SELECT source_version FROM kaname.resource_mirror
 		  WHERE object_type = $1 AND object_id = $2`, objType, objID).Scan(&v))
 	return v
 }
@@ -370,7 +370,7 @@ func readMirror(t *testing.T, ctx context.Context, pool *pgxpool.Pool, objType, 
 	var raw string
 	require.NoError(t, pool.QueryRow(ctx,
 		`SELECT object_type, parent_project_id, parent_account_id, labels::text
-		   FROM kacho_iam.resource_mirror
+		   FROM kaname.resource_mirror
 		  WHERE object_type = $1 AND object_id = $2`, objType, objID).
 		Scan(&gotType, &prj, &acc, &raw))
 	labels = map[string]string{}
@@ -382,7 +382,7 @@ func countMirror(t *testing.T, ctx context.Context, pool *pgxpool.Pool, objType,
 	t.Helper()
 	var n int
 	require.NoError(t, pool.QueryRow(ctx,
-		`SELECT count(*) FROM kacho_iam.resource_mirror
+		`SELECT count(*) FROM kaname.resource_mirror
 		  WHERE object_type = $1 AND object_id = $2`, objType, objID).Scan(&n))
 	return n
 }

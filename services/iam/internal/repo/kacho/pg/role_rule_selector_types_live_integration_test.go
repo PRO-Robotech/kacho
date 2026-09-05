@@ -12,7 +12,7 @@ package pg_test
 //
 // Предмет, довод в пользу триггера и выбор fail-closed разобраны в САМОЙ СХЕМЕ —
 // комментарием к функции триггера (`COMMENT ON FUNCTION
-// kacho_iam.role_rule_selector_types_live()`); здесь они не пересказываются,
+// kaname.role_rule_selector_types_live()`); здесь они не пересказываются,
 // чтобы не завести двух мест об одном предмете.
 //
 // Здесь стояло имя отдельной миграции, и оно пережило свой предмет вместе со
@@ -51,7 +51,7 @@ const selectorTrigger = "role_rule_selectors_types_live"
 func writeSelector(ctx context.Context, pool *pgxpool.Pool,
 	role domain.RoleID, fp string, types []string) error {
 	_, err := pool.Exec(ctx, `
-		INSERT INTO kacho_iam.role_rule_selectors
+		INSERT INTO kaname.role_rule_selectors
 		  (role_id, rule_fp, arm, object_types, resource_names, match_labels, created_at, updated_at)
 		VALUES ($1, $2, 'anchor', $3, '{}', '{}'::jsonb, now(), now())`,
 		string(role), fp, types)
@@ -71,7 +71,7 @@ func TestIAMRM108_SelectorNamingARetiredTypeIsRefused(t *testing.T) {
 	// ПРЕДПОСЫЛКА — факт каталога, а не наше допущение о нём.
 	var retired int
 	require.NoError(t, pool.QueryRow(ctx, `
-		SELECT count(*) FROM kacho_iam.catalog_resource
+		SELECT count(*) FROM kaname.catalog_resource
 		 WHERE dotted = 'compute.disk' AND NOT live`).Scan(&retired))
 	require.Equalf(t, 1, retired, "ПРЕДПОСЫЛКА НАРУШЕНА: снятой строки compute.disk "+
 		"в каталоге нет — отвергать было бы нечего, и молчание триггера ничего не значило бы")
@@ -95,7 +95,7 @@ func TestIAMRM108_SelectorNamingARetiredTypeIsRefused(t *testing.T) {
 	// Строки нет: отказ пришёл ДО записи, а не после неё.
 	var got int
 	require.NoError(t, pool.QueryRow(ctx, `
-		SELECT count(*) FROM kacho_iam.role_rule_selectors
+		SELECT count(*) FROM kaname.role_rule_selectors
 		 WHERE role_id = $1 AND rule_fp = 'fp-dead'`, string(role)).Scan(&got))
 	require.Zero(t, got)
 }
@@ -127,7 +127,7 @@ func TestIAMRM109_TriggerJudgesEveryElementNotTheFirst(t *testing.T) {
 	// `ON CONFLICT … DO UPDATE`, и сужение `OF object_types` пропустило бы правку
 	// массива через EXCLUDED.
 	_, uerr := pool.Exec(ctx, `
-		UPDATE kacho_iam.role_rule_selectors
+		UPDATE kaname.role_rule_selectors
 		   SET object_types = ARRAY['compute.image']
 		 WHERE role_id = $1 AND rule_fp = 'fp-two-live'`, string(role))
 	require.Error(t, uerr, "обновление на снятый тип принято")
@@ -147,7 +147,7 @@ func TestIAMRM110_SystemRoleSelectorSeedPasses(t *testing.T) {
 
 	var before int
 	require.NoError(t, pool.QueryRow(ctx,
-		`SELECT count(*) FROM kacho_iam.role_rule_selectors`).Scan(&before))
+		`SELECT count(*) FROM kaname.role_rule_selectors`).Scan(&before))
 
 	require.NoError(t, seed.SyncAllSystemRoleSelectors(ctx, pool),
 		"досев селекторов отвергнут триггером: литерал типов разошёлся с каталогом — "+
@@ -155,7 +155,7 @@ func TestIAMRM110_SystemRoleSelectorSeedPasses(t *testing.T) {
 
 	var after int
 	require.NoError(t, pool.QueryRow(ctx,
-		`SELECT count(*) FROM kacho_iam.role_rule_selectors`).Scan(&after))
+		`SELECT count(*) FROM kaname.role_rule_selectors`).Scan(&after))
 	t.Logf("перепись: строк селекторов до досева %d, после %d", before, after)
 	require.NotZerof(t, after, "ПРЕДПОСЫЛКА НАРУШЕНА: селекторов ноль — досев прошёл "+
 		"даром, и его зелёное ничего не говорит о согласии литерала с каталогом")
@@ -165,8 +165,8 @@ func TestIAMRM110_SystemRoleSelectorSeedPasses(t *testing.T) {
 	var stale []string
 	rows, err := pool.Query(ctx, `
 		SELECT DISTINCT t
-		  FROM kacho_iam.role_rule_selectors s, unnest(s.object_types) AS t
-		 WHERE NOT EXISTS (SELECT 1 FROM kacho_iam.catalog_resource cr
+		  FROM kaname.role_rule_selectors s, unnest(s.object_types) AS t
+		 WHERE NOT EXISTS (SELECT 1 FROM kaname.catalog_resource cr
 		                    WHERE cr.dotted = t AND cr.live)`)
 	require.NoError(t, err)
 	for rows.Next() {
@@ -206,7 +206,7 @@ func TestIAMRM116_DeliveredSchemaCarriesTheTriggerAndItsReversePathRemovesIt(t *
 
 	// ПОЛОЖИТЕЛЬНЫЙ КОНТРОЛЬ, и он первый: без него «обратный путь снимает
 	// триггер» верно тождественно на схеме, где триггера нет вовсе.
-	require.Containsf(t, up, "kacho_iam.role_rule_selector_types_live()",
+	require.Containsf(t, up, "kaname.role_rule_selector_types_live()",
 		"схема (%s) объявляет триггер, но не называет функцию, которую он исполняет: "+
 			"объявление есть, предмета у него нет", name)
 
@@ -257,7 +257,7 @@ func auditReversePathText(name, down string) []string {
 	}
 	namesTrigger := strings.Contains(down, "DROP TRIGGER") && strings.Contains(down, selectorTrigger)
 	dropsCarrier := strings.Contains(down, "DROP SCHEMA") &&
-		strings.Contains(down, "kacho_iam") && strings.Contains(down, "CASCADE")
+		strings.Contains(down, "kaname") && strings.Contains(down, "CASCADE")
 	if !namesTrigger && !dropsCarrier {
 		findings = append(findings, fmt.Sprintf(
 			"обратный путь %s не снимает триггер %s: он не называет его (DROP TRIGGER) и "+
@@ -268,7 +268,7 @@ func auditReversePathText(name, down string) []string {
 	}
 	// Откат ничего не восстанавливает — иначе он вернул бы состояние, которого
 	// накат не отнимал: данных он не трогает вовсе.
-	for _, forbidden := range []string{"INSERT INTO", "UPDATE kacho_iam.", "DELETE FROM"} {
+	for _, forbidden := range []string{"INSERT INTO", "UPDATE kaname.", "DELETE FROM"} {
 		if strings.Contains(down, forbidden) {
 			findings = append(findings, fmt.Sprintf(
 				"откат %s трогает ДАННЫЕ (%s), хотя накат их не трогал", name, forbidden))
@@ -319,7 +319,7 @@ func TestIAMRM116_InjectionReversePathThatKeepsTheTriggerIsFound(t *testing.T) {
 // миграции, которая заводит триггер своим файлом.
 func TestIAMRM116_InjectionNamedDropIsAcceptedToo(t *testing.T) {
 	named := "DROP TRIGGER IF EXISTS " + selectorTrigger +
-		" ON kacho_iam.role_rule_selectors;"
+		" ON kaname.role_rule_selectors;"
 	if found := auditReversePathText("инъекция: поимённое снятие", named); len(found) > 0 {
 		t.Fatalf("разбор КРАСЕН на обратном пути, снимающем триггер поимённо:\n%s\n"+
 			"Это вторая законная форма, и требовать вместо неё сноса схемы значило бы "+
@@ -330,7 +330,7 @@ func TestIAMRM116_InjectionNamedDropIsAcceptedToo(t *testing.T) {
 // TestIAMRM116_InjectionReversePathTouchingDataIsFound — ОБЯЗАН ПОКРАСНЕТЬ.
 func TestIAMRM116_InjectionReversePathTouchingDataIsFound(t *testing.T) {
 	name, _ := deliveredSchemaDeclaring(t, "CREATE TRIGGER "+selectorTrigger)
-	down := reversePathOf(t, name) + "\nDELETE FROM kacho_iam.role_rule_selectors;"
+	down := reversePathOf(t, name) + "\nDELETE FROM kaname.role_rule_selectors;"
 	found := auditReversePathText(name, down)
 	if len(found) == 0 {
 		t.Fatal("разбор ПРОМОЛЧАЛ на откате, трогающем ДАННЫЕ: он вернул бы состояние, " +
@@ -344,7 +344,7 @@ func TestIAMRM116_InjectionReversePathTouchingDataIsFound(t *testing.T) {
 // Без этой пробы разбор зеленел бы на собственном объяснении — тот самый класс,
 // ради которого исполняемая часть вырезается.
 func TestIAMRM116_InjectionCommentAboutTheDropIsNotTheDrop(t *testing.T) {
-	onlyProse := "-- здесь был DROP SCHEMA IF EXISTS kacho_iam CASCADE;\n" +
+	onlyProse := "-- здесь был DROP SCHEMA IF EXISTS kaname CASCADE;\n" +
 		"-- и DROP TRIGGER " + selectorTrigger + ";\nSELECT 1;"
 	if found := auditReversePathText("инъекция: снятие только в прозе",
 		executableLines(onlyProse)); len(found) == 0 {

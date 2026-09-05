@@ -94,7 +94,7 @@ func memberStatusByRule(t *testing.T, ctx context.Context, pool *pgxpool.Pool, b
 	t.Helper()
 	var st string
 	err := pool.QueryRow(ctx,
-		`SELECT verification_status FROM kacho_iam.access_binding_target_members
+		`SELECT verification_status FROM kaname.access_binding_target_members
 		  WHERE binding_id=$1 AND rule_fp=$2 AND object_type=$3 AND object_id=$4`,
 		string(bid), ruleFP, objType, objID).Scan(&st)
 	if err != nil {
@@ -145,7 +145,7 @@ func TestC22_MatchLabels_PerObject_NoOverGrant(t *testing.T) {
 	assert.Equal(t, 0, countFGAOutbox(t, ctx, pool, "fga.tuple.write", "compute_instance:i2"), "no tuple on non-matched")
 	var anchorTuples int
 	require.NoError(t, pool.QueryRow(ctx,
-		`SELECT count(*) FROM kacho_iam.fga_outbox WHERE payload->>'object' LIKE 'scope_grant:%'`).Scan(&anchorTuples))
+		`SELECT count(*) FROM kaname.fga_outbox WHERE payload->>'object' LIKE 'scope_grant:%'`).Scan(&anchorTuples))
 	assert.Equal(t, 0, anchorTuples, "matchLabels never emits a scope_grant anchor (fix #8)")
 
 	// Later: i2 gets env=prod → reconcile by object → i2 becomes a member ACTIVE.
@@ -246,10 +246,10 @@ func TestC20C21_RuleRemoved_EagerRevokeByRuleFP_NoResidual(t *testing.T) {
 	// Ledger holds NO residual for ib (no orphan), still holds ia's tuples.
 	var ibLedger, iaLedger int
 	require.NoError(t, pool.QueryRow(ctx,
-		`SELECT count(*) FROM kacho_iam.access_binding_emitted_tuples WHERE binding_id=$1 AND object='compute_instance:ib'`,
+		`SELECT count(*) FROM kaname.access_binding_emitted_tuples WHERE binding_id=$1 AND object='compute_instance:ib'`,
 		string(bid)).Scan(&ibLedger))
 	require.NoError(t, pool.QueryRow(ctx,
-		`SELECT count(*) FROM kacho_iam.access_binding_emitted_tuples WHERE binding_id=$1 AND object='compute_instance:ia'`,
+		`SELECT count(*) FROM kaname.access_binding_emitted_tuples WHERE binding_id=$1 AND object='compute_instance:ia'`,
 		string(bid)).Scan(&iaLedger))
 	assert.Equal(t, 0, ibLedger, "removed-rule object has zero ledger residual (C-20)")
 	assert.Greater(t, iaLedger, 0, "kept-rule object retains its ledger tuples")
@@ -289,7 +289,7 @@ func TestC26_ConcurrentRulesReconcile_Idempotent(t *testing.T) {
 	// Exactly one member row; LoadBinding's SELECT FOR UPDATE serializes passes.
 	var members int
 	require.NoError(t, pool.QueryRow(ctx,
-		`SELECT count(*) FROM kacho_iam.access_binding_target_members WHERE binding_id=$1 AND rule_fp=$2`,
+		`SELECT count(*) FROM kaname.access_binding_target_members WHERE binding_id=$1 AND rule_fp=$2`,
 		string(bid), fp).Scan(&members))
 	assert.Equal(t, 1, members, "exactly one materialized member (idempotent, no dupes)")
 }
@@ -328,7 +328,7 @@ func TestC23_ExpiredRulesBinding_EagerRevoke(t *testing.T) {
 	// satisfy access_bindings_expires_future_ck) so the binding is now expired —
 	// exactly the state the expiry sweep finds via expires_at < now().
 	_, err = pool.Exec(ctx,
-		`UPDATE kacho_iam.access_bindings
+		`UPDATE kaname.access_bindings
 		    SET created_at = now() - interval '2 hours',
 		        expires_at = now() - interval '1 hour'
 		  WHERE id=$1`, string(bid))
@@ -337,7 +337,7 @@ func TestC23_ExpiredRulesBinding_EagerRevoke(t *testing.T) {
 
 	// Binding REVOKED; member purged; per-object tuple eager-revoked → Check denies.
 	var status string
-	require.NoError(t, pool.QueryRow(ctx, `SELECT status FROM kacho_iam.access_bindings WHERE id=$1`, string(bid)).Scan(&status))
+	require.NoError(t, pool.QueryRow(ctx, `SELECT status FROM kaname.access_bindings WHERE id=$1`, string(bid)).Scan(&status))
 	assert.Equal(t, "REVOKED", status, "expired binding CAS→REVOKED")
 	_, okM := memberStatusByRule(t, ctx, pool, bid, fp, "compute.instance", "iexp")
 	assert.False(t, okM, "expired binding's member removed")

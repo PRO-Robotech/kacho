@@ -66,7 +66,7 @@ func seedMixedPage(t *testing.T, ctx context.Context, tx pgx.Tx, n int) (ids []s
 	t.Helper()
 	// Вторая область — тот же аккаунт, другой проект: выдачи на неё нет.
 	exec(t, ctx, tx,
-		`INSERT INTO kacho_iam.projects (id, account_id, name) VALUES ('prj-2', 'acc-1', 'other')
+		`INSERT INTO kaname.projects (id, account_id, name) VALUES ('prj-2', 'acc-1', 'other')
 		 ON CONFLICT DO NOTHING`)
 	pointerThroughJournal(t, ctx, tx, "project", "prj-2", "account", "account:acc-1")
 
@@ -80,10 +80,10 @@ func seedMixedPage(t *testing.T, ctx context.Context, tx pgx.Tx, n int) (ids []s
 			parent = "prj-1"
 		}
 		exec(t, ctx, tx,
-			`INSERT INTO kacho_iam.resource_mirror (object_type, object_id) VALUES ($2, $1)`,
+			`INSERT INTO kaname.resource_mirror (object_type, object_id) VALUES ($2, $1)`,
 			id, catalogFormOf(t, "vpc_network"))
 		exec(t, ctx, tx,
-			`INSERT INTO kacho_iam.resource_parent_edge
+			`INSERT INTO kaname.resource_parent_edge
 			   (object_type, object_id, parent_type, parent_id, depth)
 			 VALUES ('vpc_network', $1, 'project', $2, 1)`, id, parent)
 		ids = append(ids, id)

@@ -10,7 +10,7 @@ package pg_test
 // # Предмет: у половины референта нет производителя входа
 //
 // Референт третьей проекции — триггер `role_rule_selectors_types_live` — держится
-// НА ВХОДЕ (`BEFORE INSERT OR UPDATE ON kacho_iam.role_rule_selectors`). Он судит
+// НА ВХОДЕ (`BEFORE INSERT OR UPDATE ON kaname.role_rule_selectors`). Он судит
 // запись селектора и НЕ судит снятие строки каталога; обратной половины у него
 // нет и быть не может тем же способом — ключ на элемент массива невыразим, и это
 // сказано в шапке самой миграции `20260902174500`.
@@ -64,10 +64,10 @@ func selectorsNamingDeadTypes(t *testing.T, ctx context.Context, pool *pgxpool.P
 	t.Helper()
 	rows, err := pool.Query(ctx, `
 		SELECT s.role_id, s.rule_fp, t AS dotted
-		  FROM kacho_iam.role_rule_selectors s
+		  FROM kaname.role_rule_selectors s
 		  CROSS JOIN LATERAL unnest(s.object_types) AS t
 		 WHERE NOT EXISTS (
-		         SELECT 1 FROM kacho_iam.catalog_resource cr
+		         SELECT 1 FROM kaname.catalog_resource cr
 		          WHERE cr.dotted = t AND cr.live)
 		 ORDER BY s.role_id, s.rule_fp, t`)
 	require.NoError(t, err)
@@ -89,7 +89,7 @@ func selectorObjectTypesRead(t *testing.T, ctx context.Context, pool *pgxpool.Po
 	t.Helper()
 	var n int
 	require.NoError(t, pool.QueryRow(ctx, `
-		SELECT count(*) FROM kacho_iam.role_rule_selectors s
+		SELECT count(*) FROM kaname.role_rule_selectors s
 		 CROSS JOIN LATERAL unnest(s.object_types) AS t`).Scan(&n))
 	return n
 }
@@ -142,7 +142,7 @@ func TestRetiringAResourcePrunesTheSelectorThatNamedIt(t *testing.T) {
 
 	var live bool
 	require.NoError(t, pool.QueryRow(ctx,
-		`SELECT live FROM kacho_iam.catalog_resource WHERE dotted = $1`, dotted).Scan(&live))
+		`SELECT live FROM kaname.catalog_resource WHERE dotted = $1`, dotted).Scan(&live))
 	require.Falsef(t, live, "строка каталога %s жива после снятия", dotted)
 
 	// ── ИСХОД ────────────────────────────────────────────────────────────────
@@ -166,14 +166,14 @@ func TestRetiringAResourcePrunesTheSelectorThatNamedIt(t *testing.T) {
 	// и у правки, снёсшей обе строки, — то есть у отбора права сверх снятого.
 	var kept []string
 	require.NoError(t, pool.QueryRow(ctx,
-		`SELECT object_types FROM kacho_iam.role_rule_selectors
+		`SELECT object_types FROM kaname.role_rule_selectors
 		  WHERE role_id = $1 AND rule_fp = 'fp-1942-mixed'`, string(role)).Scan(&kept))
 	require.Equal(t, []string{applierProbeModule + ".kept"}, kept,
 		"укорочение унесло живой тип — правка отобрала больше, чем сняла платформа")
 
 	var survived int
 	require.NoError(t, pool.QueryRow(ctx,
-		`SELECT count(*) FROM kacho_iam.role_rule_selectors
+		`SELECT count(*) FROM kaname.role_rule_selectors
 		  WHERE role_id = $1 AND rule_fp = 'fp-1942'`, string(role)).Scan(&survived))
 	require.Zero(t, survived, "строка без единого живого типа уцелела")
 

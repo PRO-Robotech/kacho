@@ -110,7 +110,7 @@ func TestIntegration_R914_RelationWriteIsAskedOnTheCluster(t *testing.T) {
 	offHierarchyAnchors := []string{"iam_fgaproxy"}
 	var offHierarchy int
 	require.NoError(t, pool.QueryRow(ctx, `
-		SELECT count(*) FROM kacho_iam.relation_fact
+		SELECT count(*) FROM kaname.relation_fact
 		 WHERE object_type = ANY($1::text[])`, offHierarchyAnchors).Scan(&offHierarchy))
 	assert.Zero(t, offHierarchy,
 		"основание доступа на якоре вне иерархии %v: его не видно перечислением выдач и нечем отозвать",
@@ -147,7 +147,7 @@ func TestIntegration_R914_RevokingTheClusterGrantClosesTheWrite(t *testing.T) {
 
 	var bindingID string
 	require.NoError(t, pool.QueryRow(ctx, `
-		SELECT id FROM kacho_iam.access_bindings
+		SELECT id FROM kaname.access_bindings
 		 WHERE is_system AND granted_relation = $1 AND resource_type = 'cluster'
 		   AND status = 'ACTIVE' AND revoked_at IS NULL`, relationWriteRelation).Scan(&bindingID),
 		"право обязано быть ВЫДАЧЕЙ: отзывать нечего, пока его нет на поверхности выдач")

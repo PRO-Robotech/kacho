@@ -107,7 +107,7 @@ func TestSessionCutoffOf_UnwiredReaderFailsClosed(t *testing.T) {
 // координаты соединения. Наружу уходит фиксированный текст; утверждается
 // СООБЩЕНИЕ, а не только код.
 func TestSessionCutoffOf_StoreErrorDoesNotLeak(t *testing.T) {
-	const leak = "host=pg-iam.kacho.svc user=kacho_iam dbname=kacho_iam"
+	const leak = "host=pg-iam.kacho.svc user=kaname dbname=kaname"
 	h := (&Handler{}).WithCutoffReader(&fakeCutoffs{err: errors.New(leak)})
 
 	_, err := h.SessionCutoffOf(context.Background(),

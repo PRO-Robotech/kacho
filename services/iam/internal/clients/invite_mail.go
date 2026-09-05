@@ -59,9 +59,9 @@ import (
 const (
 	// InviteMailTable — полное имя очереди писем приглашения. ШЕСТАЯ очередь
 	// сервиса; форма не изобретается — она в дереве пятикратна.
-	InviteMailTable = "kacho_iam.invite_mail_outbox"
+	InviteMailTable = "kaname.invite_mail_outbox"
 	// InviteMailChannel — LISTEN-канал (триггер миграции).
-	InviteMailChannel = "kacho_iam_invite_mail_outbox"
+	InviteMailChannel = "kaname_invite_mail_outbox"
 	// EventInviteMailSend — единственный вид события очереди. Словарь закрыт
 	// CHECK'ом миграции: расширение требует и кода, и миграции.
 	EventInviteMailSend = "mail.invite.send"

@@ -49,7 +49,7 @@ func (r *SigningKeyRepo) Insert(ctx context.Context, rec domain.SigningKeyRecord
 	if err := rec.KID.Validate(); err != nil {
 		return fmt.Errorf("%w: %s", iamerr.ErrInvalidArg, err)
 	}
-	const q = `INSERT INTO kacho_iam.token_signing_keys
+	const q = `INSERT INTO kaname.token_signing_keys
 		(kid, algorithm, state, public_key_pem, private_key_wrapped,
 		 created_at, not_after, activated_at, retired_at, removed_at, compromised_at)
 		VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11)`
@@ -66,7 +66,7 @@ func (r *SigningKeyRepo) Insert(ctx context.Context, rec domain.SigningKeyRecord
 
 // Get читает строку по идентификатору ключа.
 func (r *SigningKeyRepo) Get(ctx context.Context, kid domain.KeyID) (domain.SigningKeyRecord, error) {
-	q := `SELECT ` + signingKeyColumns + ` FROM kacho_iam.token_signing_keys WHERE kid = $1`
+	q := `SELECT ` + signingKeyColumns + ` FROM kaname.token_signing_keys WHERE kid = $1`
 	row := r.pool.QueryRow(ctx, q, string(kid))
 	rec, err := scanSigningKey(row)
 	if errors.Is(err, pgx.ErrNoRows) {
@@ -83,7 +83,7 @@ func (r *SigningKeyRepo) Get(ctx context.Context, kid domain.KeyID) (domain.Sign
 // Отсутствие подписывающего — ОТКАЗ, а не нулевая структура: «подписали ничем»
 // обязано быть невыразимо, а не отловлено вызывающим.
 func (r *SigningKeyRepo) Active(ctx context.Context) (domain.SigningKeyRecord, error) {
-	q := `SELECT ` + signingKeyColumns + ` FROM kacho_iam.token_signing_keys WHERE state = 'ACTIVE'`
+	q := `SELECT ` + signingKeyColumns + ` FROM kaname.token_signing_keys WHERE state = 'ACTIVE'`
 	row := r.pool.QueryRow(ctx, q)
 	rec, err := scanSigningKey(row)
 	if errors.Is(err, pgx.ErrNoRows) {
@@ -100,7 +100,7 @@ func (r *SigningKeyRepo) Active(ctx context.Context) (domain.SigningKeyRecord, e
 // Отбор идёт ПО СОСТОЯНИЮ, а не «все строки»: набор, отдающий строки подряд,
 // отдал бы и снятый, и скомпрометированный ключ.
 func (r *SigningKeyRepo) KeySet(ctx context.Context) ([]domain.SigningKeyRecord, error) {
-	q := `SELECT ` + signingKeyColumns + ` FROM kacho_iam.token_signing_keys
+	q := `SELECT ` + signingKeyColumns + ` FROM kaname.token_signing_keys
 		WHERE state IN ('PUBLISHED','ACTIVE','RETIRED')
 		ORDER BY created_at, kid`
 	rows, err := r.pool.Query(ctx, q)
@@ -138,14 +138,14 @@ func (r *SigningKeyRepo) Activate(ctx context.Context, kid domain.KeyID, at time
 	}
 	defer func() { _ = tx.Rollback(ctx) }()
 
-	const demote = `UPDATE kacho_iam.token_signing_keys
+	const demote = `UPDATE kaname.token_signing_keys
 		SET state = 'RETIRED', retired_at = $1
 		WHERE state = 'ACTIVE' AND kid <> $2`
 	if _, err := tx.Exec(ctx, demote, at, string(kid)); err != nil {
 		return wrapPgErr(err, "SigningKey", string(kid))
 	}
 
-	const promote = `UPDATE kacho_iam.token_signing_keys
+	const promote = `UPDATE kaname.token_signing_keys
 		SET state = 'ACTIVE', activated_at = COALESCE(activated_at, $1)
 		WHERE kid = $2 AND state IN ('PUBLISHED','ACTIVE')
 		RETURNING kid`
@@ -170,14 +170,14 @@ func (r *SigningKeyRepo) Activate(ctx context.Context, kid domain.KeyID, at time
 
 // Retire выводит ключ из подписи, оставляя его в наборе на отсрочку.
 func (r *SigningKeyRepo) Retire(ctx context.Context, kid domain.KeyID, at time.Time) error {
-	return r.transition(ctx, kid, `UPDATE kacho_iam.token_signing_keys
+	return r.transition(ctx, kid, `UPDATE kaname.token_signing_keys
 		SET state = 'RETIRED', retired_at = $1
 		WHERE kid = $2 AND state IN ('PUBLISHED','ACTIVE') RETURNING kid`, at)
 }
 
 // Remove снимает ключ из набора: отсрочка истекла.
 func (r *SigningKeyRepo) Remove(ctx context.Context, kid domain.KeyID, at time.Time) error {
-	return r.transition(ctx, kid, `UPDATE kacho_iam.token_signing_keys
+	return r.transition(ctx, kid, `UPDATE kaname.token_signing_keys
 		SET state = 'REMOVED', removed_at = $1
 		WHERE kid = $2 AND state = 'RETIRED' RETURNING kid`, at)
 }
@@ -187,7 +187,7 @@ func (r *SigningKeyRepo) Remove(ctx context.Context, kid domain.KeyID, at time.T
 // Отдельный глагол, а не ветка вывода из ротации: оператор, выводящий ключ, и
 // оператор, объявляющий его утёкшим, принимают решения разной цены.
 func (r *SigningKeyRepo) Compromise(ctx context.Context, kid domain.KeyID, at time.Time) error {
-	return r.transition(ctx, kid, `UPDATE kacho_iam.token_signing_keys
+	return r.transition(ctx, kid, `UPDATE kaname.token_signing_keys
 		SET state = 'COMPROMISED', compromised_at = $1
 		WHERE kid = $2 AND state <> 'COMPROMISED' RETURNING kid`, at)
 }

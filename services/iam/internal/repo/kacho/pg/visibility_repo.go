@@ -87,16 +87,16 @@ type visibilityReader struct {
 const scopeOfQuery = `
 WITH grp AS (
     SELECT gm.group_id
-      FROM kacho_iam.group_members gm
+      FROM kaname.group_members gm
      WHERE gm.member_type = $1 AND gm.member_id = $2
 ),
 bnd AS (
     SELECT ab.id, ab.resource_type, ab.resource_id
-      FROM kacho_iam.access_bindings ab
+      FROM kaname.access_bindings ab
      WHERE ab.status <> 'REVOKED'
        AND EXISTS (
              SELECT 1
-               FROM kacho_iam.access_binding_subjects s
+               FROM kaname.access_binding_subjects s
               WHERE s.binding_id = ab.id
                 AND ( (s.subject_type = $1 AND s.subject_id = $2)
                    OR (s.subject_type = 'group'
@@ -112,11 +112,11 @@ tgt AS (
     SELECT b.resource_type AS otype, b.resource_id AS oid FROM bnd b
     UNION
     SELECT m.object_type, m.object_id
-      FROM kacho_iam.access_binding_target_members m
+      FROM kaname.access_binding_target_members m
       JOIN bnd b ON b.id = m.binding_id
 )
 SELECT 'own'::text AS kind, ''::text AS otype, a.id AS oid
-  FROM kacho_iam.accounts a
+  FROM kaname.accounts a
  WHERE $1 = 'user' AND a.owner_user_id = $2
 UNION ALL
 -- Имя типа приводится к словарю МОДЕЛИ переводом у владельца словаря: точечный
@@ -125,7 +125,7 @@ UNION ALL
 -- всегда). Непереводимый точечный ключ остаётся собой ОСОЗНАННО — см. шапку файла.
 SELECT 'grant'::text, COALESCE(cr.object_type, t.otype), t.oid
   FROM tgt t
-  LEFT JOIN kacho_iam.catalog_resource cr ON cr.dotted = t.otype`
+  LEFT JOIN kaname.catalog_resource cr ON cr.dotted = t.otype`
 
 func (r *visibilityReader) ScopeOf(ctx context.Context, s visibility.Subject) (visibility.Scope, error) {
 	out := visibility.Scope{GrantedObjects: map[string][]string{}}

@@ -18,7 +18,7 @@
 // Per-mode:
 //   - **dev** (default): backwards-compat. Без Bearer — pass-through anonymous
 //     (Principal{system, anonymous}). С Bearer — валидируется (HMAC-dev ИЛИ Hydra
-//     JWKS по alg); HMAC-subject (external_id) не найден в kacho_iam → fallback на
+//     JWKS по alg); HMAC-subject (external_id) не найден в kaname → fallback на
 //     anonymous, чтобы не ломать существующие newman-сценарии. Bad token (любая
 //     стратегия) → reject Unauthenticated, НИКОГДА anonymous.
 //   - **production**: Subject lookup → kacho-iam; NotFound → reject.

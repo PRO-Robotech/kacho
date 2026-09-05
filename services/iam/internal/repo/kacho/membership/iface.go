@@ -1,7 +1,7 @@
 // Copyright (c) PRO-Robotech
 // SPDX-License-Identifier: AGPL-3.0-or-later
 
-// Package membership — CQRS port-iface для kacho_iam.memberships.
+// Package membership — CQRS port-iface для kaname.memberships.
 //
 // Writer-половины у порта НЕТ, и это решение, а не пропуск: на читающей
 // поверхности членства глаголов изменения не существует. Строку заводит

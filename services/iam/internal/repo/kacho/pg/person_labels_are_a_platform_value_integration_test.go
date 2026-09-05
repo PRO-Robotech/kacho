@@ -71,7 +71,7 @@ func TestIntegration_APersonHasExactlyOneLabelCarrier(t *testing.T) {
 	rows, err := pool.Query(ctx, `
 		SELECT table_name
 		  FROM information_schema.columns
-		 WHERE table_schema = 'kacho_iam'
+		 WHERE table_schema = 'kaname'
 		   AND column_name  = 'labels'
 		   AND table_name IN ('users', 'memberships')
 		 ORDER BY table_name`)
@@ -88,7 +88,7 @@ func TestIntegration_APersonHasExactlyOneLabelCarrier(t *testing.T) {
 	var total int
 	require.NoError(t, pool.QueryRow(ctx,
 		`SELECT count(*)::int FROM information_schema.columns
-		  WHERE table_schema = 'kacho_iam' AND table_name IN ('users','memberships')`).Scan(&total))
+		  WHERE table_schema = 'kaname' AND table_name IN ('users','memberships')`).Scan(&total))
 	require.Positive(t, total,
 		"ПРЕДПОСЫЛКА: ни одной колонки у `users`/`memberships` не прочитано — перепись "+
 			"беспредметна, и «носитель один» ниже означало бы «мы не смотрели»")
@@ -147,7 +147,7 @@ func TestIntegration_APersonHasExactlyOneLabelCarrier(t *testing.T) {
 	// быть не может, потому что второго места для неё не существует.
 	var withLabel int
 	require.NoError(t, pool.QueryRow(ctx,
-		`SELECT count(*)::int FROM kacho_iam.users WHERE id = $1 AND labels ? 'team'`,
+		`SELECT count(*)::int FROM kaname.users WHERE id = $1 AND labels ? 'team'`,
 		string(person)).Scan(&withLabel))
 	require.Equal(t, 1, withLabel,
 		"метка не легла на строку личности — тогда перепись носителей выше ничего не измеряла")

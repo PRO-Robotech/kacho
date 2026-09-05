@@ -205,9 +205,9 @@ func explainLiveCatalog(t *testing.T, ctx context.Context, pool interface {
 ) (time.Duration, []string) {
 	t.Helper()
 	stmts := []string{
-		`SELECT module FROM kacho_iam.catalog_module WHERE live`,
-		`SELECT module, resource, object_type FROM kacho_iam.catalog_resource WHERE live`,
-		`SELECT module, resource, verb, per_object FROM kacho_iam.catalog_verb WHERE live`,
+		`SELECT module FROM kaname.catalog_module WHERE live`,
+		`SELECT module, resource, object_type FROM kaname.catalog_resource WHERE live`,
+		`SELECT module, resource, verb, per_object FROM kaname.catalog_verb WHERE live`,
 	}
 	var total time.Duration
 	var nodes []string

@@ -46,20 +46,20 @@ N бесконтрольных bindings.
 **PK:** `(group_id, member_type, member_id)`.
 
 **ID prefix:** `grp`.
-**DB tables:** `kacho_iam.groups`, `kacho_iam.group_members` (`CREATE TABLE kacho_iam.groups`
-и `CREATE TABLE kacho_iam.group_members` в `0001_initial.sql`).
+**DB tables:** `kaname.groups`, `kaname.group_members` (`CREATE TABLE kaname.groups`
+и `CREATE TABLE kaname.group_members` в `0001_initial.sql`).
 
 ### Trigger `group_members_member_exists_trg`
 
 ```sql
-CREATE OR REPLACE FUNCTION kacho_iam.group_members_member_exists() RETURNS TRIGGER AS $$
+CREATE OR REPLACE FUNCTION kaname.group_members_member_exists() RETURNS TRIGGER AS $$
 BEGIN
   IF NEW.member_type = 'user' THEN
-    IF NOT EXISTS (SELECT 1 FROM kacho_iam.users WHERE id = NEW.member_id) THEN
+    IF NOT EXISTS (SELECT 1 FROM kaname.users WHERE id = NEW.member_id) THEN
       RAISE foreign_key_violation USING MESSAGE = 'user not found';
     END IF;
   ELSIF NEW.member_type = 'service_account' THEN
-    IF NOT EXISTS (SELECT 1 FROM kacho_iam.service_accounts WHERE id = NEW.member_id) THEN
+    IF NOT EXISTS (SELECT 1 FROM kaname.service_accounts WHERE id = NEW.member_id) THEN
       RAISE foreign_key_violation USING MESSAGE = 'service_account not found';
     END IF;
   END IF;
@@ -229,7 +229,7 @@ kubectl -n kacho port-forward svc/api-gateway 18080:8080 &
 
 # psql:
 make -C deploy psql SVC=iam
-# > SELECT g.id, g.name, gm.member_type, gm.member_id FROM kacho_iam.groups g LEFT JOIN kacho_iam.group_members gm USING (...);
+# > SELECT g.id, g.name, gm.member_type, gm.member_id FROM kaname.groups g LEFT JOIN kaname.group_members gm USING (...);
 
 # Integration:
 go test -short -count=1 -timeout 120s \
@@ -242,7 +242,7 @@ go test -short -count=1 -timeout 120s \
 - **Use-cases:** `internal/apps/kacho/api/group/{create,get,list,update,delete,add_member,remove_member,list_members}.go`.
 - **Handler:** `internal/apps/kacho/api/group/handler.go`.
 - **Repo:** `internal/repo/kacho/pg/group_repo.go`.
-- **Trigger function:** `kacho_iam.group_members_member_exists()` — PL/pgSQL, см. `0001_initial.sql`.
+- **Trigger function:** `kaname.group_members_member_exists()` — PL/pgSQL, см. `0001_initial.sql`.
 - **DB:** `groups(id, account_id, name, description, labels JSONB, created_at)`;
   `group_members(group_id, member_type, member_id, added_at)`.
 - **Indexes:** PK groups; UNIQUE `groups_account_name_unique`; PK group_members

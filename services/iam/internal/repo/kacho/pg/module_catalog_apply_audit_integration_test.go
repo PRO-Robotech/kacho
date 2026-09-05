@@ -192,7 +192,7 @@ func auditRowsOfType(t *testing.T, ctx context.Context, pool *pgxpool.Pool, even
 	t.Helper()
 	var n int
 	require.NoError(t, pool.QueryRow(ctx,
-		`SELECT count(*) FROM kacho_iam.audit_outbox WHERE event_type = $1`, eventType).Scan(&n))
+		`SELECT count(*) FROM kaname.audit_outbox WHERE event_type = $1`, eventType).Scan(&n))
 	return n
 }
 
@@ -201,7 +201,7 @@ func auditRowsOfType(t *testing.T, ctx context.Context, pool *pgxpool.Pool, even
 func auditRowsTotal(t *testing.T, ctx context.Context, pool *pgxpool.Pool) int {
 	t.Helper()
 	var n int
-	require.NoError(t, pool.QueryRow(ctx, `SELECT count(*) FROM kacho_iam.audit_outbox`).Scan(&n))
+	require.NoError(t, pool.QueryRow(ctx, `SELECT count(*) FROM kaname.audit_outbox`).Scan(&n))
 	return n
 }
 
@@ -210,7 +210,7 @@ func auditRowsWithActor(t *testing.T, ctx context.Context, pool *pgxpool.Pool, a
 	t.Helper()
 	var n int
 	require.NoError(t, pool.QueryRow(ctx,
-		`SELECT count(*) FROM kacho_iam.audit_outbox WHERE event_payload->>'actor' = $1`, actor).Scan(&n))
+		`SELECT count(*) FROM kaname.audit_outbox WHERE event_payload->>'actor' = $1`, actor).Scan(&n))
 	return n
 }
 
@@ -223,7 +223,7 @@ func lastAuditPayload(t *testing.T, ctx context.Context, pool *pgxpool.Pool, eve
 	t.Helper()
 	var raw []byte
 	err := pool.QueryRow(ctx, `
-		SELECT event_payload FROM kacho_iam.audit_outbox
+		SELECT event_payload FROM kaname.audit_outbox
 		 WHERE event_type = $1 ORDER BY created_at DESC, id DESC LIMIT 1`, eventType).Scan(&raw)
 	require.NoErrorf(t, err,
 		"записи аудита вида %s нет: применение каталога следа не оставляет", eventType)

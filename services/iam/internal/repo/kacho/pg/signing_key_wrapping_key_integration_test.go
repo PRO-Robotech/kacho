@@ -92,7 +92,7 @@ func TestSigningKeyContour_StandRaisedOverAnExistingDatabase(t *testing.T) {
 	pgtest.ClosePoolAtEnd(t, countPool)
 	countKeys := func() int {
 		var n int
-		require.NoError(t, countPool.QueryRow(ctx, `SELECT count(*) FROM kacho_iam.token_signing_keys`).Scan(&n))
+		require.NoError(t, countPool.QueryRow(ctx, `SELECT count(*) FROM kaname.token_signing_keys`).Scan(&n))
 		return n
 	}
 

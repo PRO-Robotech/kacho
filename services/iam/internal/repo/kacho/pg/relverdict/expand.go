@@ -107,7 +107,7 @@ scope(s_type, s_id, depth) AS (
       FROM scope s
       CROSS JOIN LATERAL (
              SELECT pe.parent_type, pe.parent_id
-               FROM kacho_iam.resource_scope_edge pe
+               FROM kaname.resource_scope_edge pe
               WHERE pe.object_type = s.s_type AND pe.object_id = s.s_id
               ORDER BY pe.depth
               LIMIT $3::int
@@ -152,7 +152,7 @@ ground(kind, subject, detail, scope_type, scope_id) AS (
                               THEN ' (условие ' || f.condition_name || ')'
                               ELSE '' END,
            sc.s_type, sc.s_id
-      FROM kacho_iam.relation_fact f
+      FROM kaname.relation_fact f
       JOIN scope_distinct sc ON sc.s_type = f.object_type AND sc.s_id = f.object_id
       JOIN fact_atom fa
         ON fa.relation = f.relation
@@ -165,12 +165,12 @@ ground(kind, subject, detail, scope_type, scope_id) AS (
            bs.subject_type || ':' || bs.subject_id,
            b.id || ' (' || rs.arm || ')',
            b.resource_type, b.resource_id
-      FROM kacho_iam.access_bindings b
-      JOIN kacho_iam.access_binding_subjects bs ON bs.binding_id = b.id
-      JOIN kacho_iam.role_verb rv
+      FROM kaname.access_bindings b
+      JOIN kaname.access_binding_subjects bs ON bs.binding_id = b.id
+      JOIN kaname.role_verb rv
         ON rv.role_id = b.role_id AND rv.object_type = $7::text
        AND rv.verb = ANY ($6::text[])
-      JOIN kacho_iam.role_rule_selectors rs
+      JOIN kaname.role_rule_selectors rs
         ON rs.role_id = b.role_id AND $7::text = ANY (rs.object_types)
       JOIN scope_distinct sc ON sc.s_type = b.resource_type AND sc.s_id = b.resource_id
       -- Метки лежат там, где велит ТИП (labelaxis.go): у чужого ресурса — в
