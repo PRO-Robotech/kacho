@@ -1422,6 +1422,14 @@ func runServe(cfg config.Config) error {
 		runAuditOutboxMetrics(ctx, pool, metricsReg.OutboxRecorder(), logger)
 		return nil
 	})
+	// Очередь сверки прав: состояние. У неё есть и доставка (дренаж ниже), и
+	// отсечка (#2050) — а отсечка без наблюдаемости делает отказ ТИХИМ: строка,
+	// перешагнувшая порог, из клейма выпадает и перестаёт жаловаться. Разбор —
+	// `reconcile_outbox_metrics_wiring.go`.
+	tasks = append(tasks, func() error {
+		runReconcileOutboxMetrics(ctx, pool, metricsReg.OutboxRecorder(), logger)
+		return nil
+	})
 	// Журнал аудита: вывоз в приёмник. Строится ДО запуска задач, чтобы ошибка
 	// сборки останавливала старт, а не всплывала фоном: журнал, который не
 	// вывозится, снаружи неотличим от журнала, в котором нечего вывозить.
