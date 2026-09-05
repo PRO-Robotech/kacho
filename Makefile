@@ -333,6 +333,7 @@ PG_OUTSIDE_SELECTION_PKGS_IAM ?= \
 	./internal/testsupport/accesssnapshot \
 	./internal/moduleroleparity \
 	./internal/moduleseedparity \
+	./internal/observability/metrics \
 	./cmd/kacho-iam
 
 # ─── Хуки git ────────────────────────────────────────────────────────────────
