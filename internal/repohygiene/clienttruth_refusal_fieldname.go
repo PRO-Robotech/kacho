@@ -68,7 +68,6 @@ package repohygiene
 
 import (
 	"fmt"
-	"github.com/PRO-Robotech/kacho/internal/servicelayout"
 	"go/ast"
 	"go/parser"
 	"go/token"
@@ -79,6 +78,8 @@ import (
 	"sort"
 	"strconv"
 	"strings"
+
+	"github.com/PRO-Robotech/kacho/internal/servicelayout"
 
 	"google.golang.org/protobuf/reflect/protoreflect"
 	"google.golang.org/protobuf/reflect/protoregistry"

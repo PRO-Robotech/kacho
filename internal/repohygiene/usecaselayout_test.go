@@ -31,7 +31,6 @@
 package repohygiene
 
 import (
-	"github.com/PRO-Robotech/kacho/internal/servicelayout"
 	"io/fs"
 	"os"
 	"path/filepath"
@@ -39,6 +38,8 @@ import (
 	"strconv"
 	"strings"
 	"testing"
+
+	"github.com/PRO-Robotech/kacho/internal/servicelayout"
 )
 
 // useCaseLayerDirNames — имена, которыми называют каталог слоя бизнес-логики.

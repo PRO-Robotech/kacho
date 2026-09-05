@@ -62,7 +62,6 @@ package deploy_test
 
 import (
 	"fmt"
-	"github.com/PRO-Robotech/kacho/internal/servicelayout"
 	"go/ast"
 	"go/parser"
 	"go/token"
@@ -74,6 +73,8 @@ import (
 	"strconv"
 	"strings"
 	"testing"
+
+	"github.com/PRO-Robotech/kacho/internal/servicelayout"
 )
 
 // Корень дерева читается от каталога deploy — константа `repoRoot` объявлена
