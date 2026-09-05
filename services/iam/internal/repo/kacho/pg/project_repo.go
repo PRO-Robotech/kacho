@@ -30,6 +30,13 @@ type projectReader struct {
 
 const projectCols = "id, account_id, name, description, labels, created_at"
 
+// projectUpdateQ — оператор записи проекта. СТАТИЧЕСКИЙ: набор колонок известен
+// компилятору, применимость поля приезжает параметром (#2065; разбор —
+// `mutable_triplet_update.go`). `account_id` неизменяем и в перечень не входит —
+// вызывающий отвергает его до записи.
+const projectUpdateQ = `UPDATE projects SET` + mutableTripletSetSQL +
+	` WHERE id = $1 RETURNING ` + projectCols
+
 // Get — Kachō contract: well-formed-но-несуществующий → NotFound "Project <id> not found".
 func (r *projectReader) Get(ctx context.Context, id domain.ProjectID) (domain.Project, error) {
 	q := fmt.Sprintf(`SELECT %s FROM projects WHERE id = $1`, projectCols)
@@ -189,17 +196,15 @@ func (w *projectWriter) Update(ctx context.Context, p domain.Project, updateMask
 	if err != nil {
 		return domain.Project{}, iamerr.Wrapf(iamerr.ErrInvalidArg, "Illegal argument labels: %s", err.Error())
 	}
-	set, args, err := buildProjectUpdateSet(p, labelsJSON, updateMask)
+	args, changed, err := mutableTripletUpdateArgs(
+		string(p.ID), string(p.Name), string(p.Description), labelsJSON, updateMask)
 	if err != nil {
 		return domain.Project{}, err
 	}
-	if set == "" {
+	if !changed {
 		return w.Get(ctx, p.ID)
 	}
-	args = append(args, string(p.ID))
-	q := fmt.Sprintf(`UPDATE projects SET %s WHERE id = $%d RETURNING %s`,
-		set, len(args), projectCols)
-	row := w.tx.QueryRow(ctx, q, args...)
+	row := w.tx.QueryRow(ctx, projectUpdateQ, args...)
 	out, err := scanProject(row)
 	if err != nil {
 		if errors.Is(err, pgx.ErrNoRows) {
@@ -245,39 +250,4 @@ func scanProject(row scanner) (domain.Project, error) {
 		return domain.Project{}, err
 	}
 	return p, nil
-}
-
-func buildProjectUpdateSet(p domain.Project, labelsJSON []byte, mask []string) (string, []any, error) {
-	mutableFields := map[string]bool{"name": true, "description": true, "labels": true}
-	apply := map[string]bool{}
-	if len(mask) == 0 {
-		for k := range mutableFields {
-			apply[k] = true
-		}
-	} else {
-		for _, f := range mask {
-			if !mutableFields[f] {
-				return "", nil, iamerr.Wrapf(iamerr.ErrInvalidArg, "Illegal argument update_mask field %q", f)
-			}
-			apply[f] = true
-		}
-	}
-	parts := []string{}
-	args := []any{}
-	idx := 1
-	if apply["name"] {
-		parts = append(parts, fmt.Sprintf("name = $%d", idx))
-		args = append(args, string(p.Name))
-		idx++
-	}
-	if apply["description"] {
-		parts = append(parts, fmt.Sprintf("description = $%d", idx))
-		args = append(args, string(p.Description))
-		idx++
-	}
-	if apply["labels"] {
-		parts = append(parts, fmt.Sprintf("labels = $%d", idx))
-		args = append(args, labelsJSON)
-	}
-	return strings.Join(parts, ", "), args, nil
 }
