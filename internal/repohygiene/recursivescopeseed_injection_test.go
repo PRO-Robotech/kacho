@@ -167,14 +167,14 @@ SELECT ip FROM ips`
 	cases := []scopeSeedInjection{
 		{
 			name: "инъекция: заход без предела И обычное соединение в цепи",
-			path: "services/iam/internal/repo/kacho/pg/relverdict/list.go",
+			path: "services/iam/internal/repo/kaname/pg/relverdict/list.go",
 			origin: "дословно из перечисления до перехода: кандидаты берутся без предела, " +
 				"предел стоит последним действием",
 			sql: beforeBoth, wantFind: true,
 		},
 		{
 			name: "инъекция: предел на кандидатах есть, цепь всё ещё берёт таблицу целиком",
-			path: "services/iam/internal/repo/kacho/pg/relverdict/list.go",
+			path: "services/iam/internal/repo/kaname/pg/relverdict/list.go",
 			origin: "промежуточное состояние этого же перехода; измерено — кривая осталась " +
 				"растущей, страница из 50 объектов читала все рёбра типа",
 			sql: beforeSecondHalf, wantFind: true,
@@ -187,13 +187,13 @@ SELECT ip FROM ips`
 		},
 		{
 			name:   "законный близнец: сегодняшняя форма перечисления",
-			path:   "services/iam/internal/repo/kacho/pg/relverdict/list.go",
+			path:   "services/iam/internal/repo/kaname/pg/relverdict/list.go",
 			origin: "предел на источнике кандидатов + соединение вбок с пределом",
 			sql:    afterBoth, wantFind: false,
 		},
 		{
 			name:   "законный близнец: вопрос про один объект (вердикт, субъекты, разворот)",
-			path:   "services/iam/internal/repo/kacho/pg/relverdict/query.go",
+			path:   "services/iam/internal/repo/kaname/pg/relverdict/query.go",
 			origin: "заход — строка из доводов запроса; набора нет, раскручивать нечего",
 			sql:    singleObjectSeed, wantFind: false,
 		},

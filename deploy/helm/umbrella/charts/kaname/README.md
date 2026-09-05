@@ -126,7 +126,7 @@ be provisioned BEFORE first-deploy of this chart. Two supported patterns:
 > with a message about the key length, so the operator who followed a wrong
 > example ends up looking for the defect in the wrong place. Both examples below
 > mint hex, and a gate RUNS them and feeds the result to the real resolver
-> (`services/iam/internal/apps/kacho/config`,
+> (`services/iam/internal/apps/kaname/config`,
 > `TestREADMEExampleMintsAValueTheResolverAccepts`) — this page cannot drift from
 > the code again without going red.
 

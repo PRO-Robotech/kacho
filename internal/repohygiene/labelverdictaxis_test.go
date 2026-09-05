@@ -69,13 +69,13 @@ var (
 	// Читать порождённое объявление безопасно: его свежесть сверяется побайтово
 	// своим гейтом, поэтому «текст отстал от манифеста» здесь невыразимо.
 	fgaTypesPkg  = filepath.Join("services", "iam", "internal", "authzmap")
-	labelAxisPkg = filepath.Join("services", "iam", "internal", "repo", "kacho", "pg",
+	labelAxisPkg = filepath.Join("services", "iam", "internal", "repo", "kaname", "pg",
 		"relverdict")
 	// verdictFormFiles — четыре вопроса формы E. Каждый строит СВОЙ запрос,
 	// поэтому ось обязан подставлять каждый: реестр, на который смотрит один
 	// запрос из четырёх, оставляет три с прежним соединением.
 	verdictFormFiles = []string{"query.go", "list.go", "subjects.go", "expand.go"}
-	verdictFormDir   = filepath.Join("services", "iam", "internal", "repo", "kacho", "pg", "relverdict")
+	verdictFormDir   = filepath.Join("services", "iam", "internal", "repo", "kaname", "pg", "relverdict")
 )
 
 // iamDirectPrefix — по этому признаку тип относится к совпадающим по СВОЕЙ

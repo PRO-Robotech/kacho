@@ -82,7 +82,7 @@ const (
 	ruleRefEntryPointMark = "RuleRef"
 
 	// seedPackageDir — каталог досева от корня монорепо.
-	seedPackageDir = "services/iam/internal/apps/kacho/seed"
+	seedPackageDir = "services/iam/internal/apps/kaname/seed"
 
 	// compositionRootDir — каталог композиционного корня службы.
 	compositionRootDir = "services/iam/cmd/kaname"

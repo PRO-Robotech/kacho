@@ -30,10 +30,10 @@ import (
 
 	"github.com/jackc/pgx/v5/pgxpool"
 
-	"github.com/PRO-Robotech/kacho-iam/internal/apps/kacho/config"
-	"github.com/PRO-Robotech/kacho-iam/internal/apps/kacho/retention"
+	"github.com/PRO-Robotech/kacho-iam/internal/apps/kaname/config"
+	"github.com/PRO-Robotech/kacho-iam/internal/apps/kaname/retention"
 	"github.com/PRO-Robotech/kacho-iam/internal/observability/metrics"
-	kachopg "github.com/PRO-Robotech/kacho-iam/internal/repo/kacho/pg"
+	kanamepg "github.com/PRO-Robotech/kacho-iam/internal/repo/kaname/pg"
 )
 
 // startRetentionSweeper поднимает фоновую уборку и подключает её величины к
@@ -52,26 +52,26 @@ func startRetentionSweeper(
 	sweeper, err := retention.New(
 		cfg.Retention.Sweep(),
 		retention.Subjects(
-			kachopg.NewClientAssertionReplayRepo(pool),
-			kachopg.NewSessionRevocationRepo(pool),
-			kachopg.NewMintedTokenRevocationRepo(pool),
-			kachopg.NewIdentityAdmissionWindowRepo(pool),
+			kanamepg.NewClientAssertionReplayRepo(pool),
+			kanamepg.NewSessionRevocationRepo(pool),
+			kanamepg.NewMintedTokenRevocationRepo(pool),
+			kanamepg.NewIdentityAdmissionWindowRepo(pool),
 			// Пятым предметом — журнал смены субъекта (#1758). Наблюдатель
 			// границы устоявшегося у него СВОЙ, а не общий с читателем, и это
 			// безопасно by construction: граница монотонна, поэтому величина,
 			// наблюдённая до оператора, остаётся нижней оценкой — снимется не
 			// больше, чем позволено.
-			kachopg.NewSubjectChangeJournalSweeper(pool, logger),
+			kanamepg.NewSubjectChangeJournalSweeper(pool, logger),
 			// Шестым предметом — очередь сверки прав (#2050). Её дренированные
 			// строки не снимались никогда, при том что приём уборки уже был и
 			// применён к соседней очереди.
-			kachopg.NewReconcileOutboxSweeper(pool),
+			kanamepg.NewReconcileOutboxSweeper(pool),
 			// Седьмым предметом — очередь компенсаций у внешнего провайдера
 			// (#2069). Её доставленные строки не снимались никогда, и реестр
 			// роста таблиц объявлял её долгом; уборщик СВОЙ, потому что общий
 			// уборщик платформы требует ключа партиции, а он у этой очереди
 			// пуст намеренно — поток коммутативен.
-			kachopg.NewProviderCompensationSweeper(pool),
+			kanamepg.NewProviderCompensationSweeper(pool),
 		),
 		logger.With(slog.String("component", "retention_sweep")),
 	)

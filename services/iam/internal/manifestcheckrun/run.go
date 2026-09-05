@@ -69,7 +69,7 @@ import (
 	"log/slog"
 	"os"
 
-	"github.com/PRO-Robotech/kacho-iam/internal/apps/kacho/seed"
+	"github.com/PRO-Robotech/kacho-iam/internal/apps/kaname/seed"
 	"github.com/PRO-Robotech/kacho-iam/internal/catalog"
 	"github.com/PRO-Robotech/kacho-iam/internal/manifest"
 	"github.com/PRO-Robotech/kacho-iam/internal/manifest/roleexport"

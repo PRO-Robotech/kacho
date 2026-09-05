@@ -54,7 +54,7 @@ import (
 	"github.com/stretchr/testify/require"
 	"gopkg.in/yaml.v3"
 
-	"github.com/PRO-Robotech/kacho-iam/internal/apps/kacho/config"
+	"github.com/PRO-Robotech/kacho-iam/internal/apps/kaname/config"
 )
 
 // chartDir — каталог чарта этой службы относительно пакета композиционного корня.

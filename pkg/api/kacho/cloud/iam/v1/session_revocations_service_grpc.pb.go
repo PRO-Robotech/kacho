@@ -69,7 +69,7 @@ type InternalSessionRevocationsServiceClient interface {
 	//
 	// The whole response is about ONE user the CALLER NAMES, so it is authorized
 	// per-object on that user, and kacho-iam enforces that itself
-	// (internal/apps/kacho/api/session_revocations). The record below states that
+	// (internal/apps/kaname/api/session_revocations). The record below states that
 	// lane, so any future route inherits it rather than a bypass.
 	//
 	// The relation is `session_reader` — the person themselves plus cloud
@@ -205,7 +205,7 @@ type InternalSessionRevocationsServiceServer interface {
 	//
 	// The whole response is about ONE user the CALLER NAMES, so it is authorized
 	// per-object on that user, and kacho-iam enforces that itself
-	// (internal/apps/kacho/api/session_revocations). The record below states that
+	// (internal/apps/kaname/api/session_revocations). The record below states that
 	// lane, so any future route inherits it rather than a bypass.
 	//
 	// The relation is `session_reader` — the person themselves plus cloud

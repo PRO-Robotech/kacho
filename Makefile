@@ -32,7 +32,7 @@
 # заблуждение. Замерено на тихой машине, `-p 1`, `-count=1`:
 #
 #   vpc/internal/repo             410 с без -race — в 600 с укладывается;
-#   nlb/internal/repo/kacho/pg    312 с без -race — тоже;
+#   nlb/internal/repo/kaname/pg    312 с без -race — тоже;
 #   те же два пакета под -race при -p 12:  990 с и 1133 с — уже нет.
 #
 # И на `-p 12` контейнерные пакеты голодают друг у друга: pkg/outbox/drainer выдал
@@ -41,7 +41,7 @@
 # вердикт не годится. Поэтому бюджет и `-p` заданы здесь, в одном месте.
 #
 # Стоимость самой фикстуры снята там, где она была наибольшей: vpc/internal/repo и
-# nlb/internal/repo/kacho/pg перешли на один Postgres на пакет + клон шаблона на
+# nlb/internal/repo/kaname/pg перешли на один Postgres на пакет + клон шаблона на
 # тест (410 с → 19 с и 312 с → 13 с). Ещё 31 пакет поднимает контейнер на каждый
 # тест — это открытый долг, и явный бюджет его не лечит и не притворяется, что
 # лечит.
@@ -197,7 +197,7 @@ GO ?= go
 UNIT_TIMEOUT ?= 40m
 
 # Интеграционный прогон: бюджет НА ПАКЕТ. 25m — значение, которое CI уже нёс
-# инлайном; выбрано оно было по самому дорогому пакету (iam/internal/repo/kacho/pg,
+# инлайном; выбрано оно было по самому дорогому пакету (iam/internal/repo/kaname/pg,
 # см. историю в ci.yaml), а не «на глаз». Снижать его следует замером, а не
 # ощущением: сейчас запас есть, но 34 пакета всё ещё поднимают контейнер.
 INTEGRATION_TIMEOUT ?= 25m
@@ -246,7 +246,7 @@ IAM_MODULE_DIR ?= services/iam
 #
 # ВТОРАЯ ЗАПИСЬ ЗАВЕДЕНА ЗАДАЧЕЙ #495, и её повод — не удобство. Пробы фоновых
 # проходов nlb не исполняла НИ ОДНА джоба: под кратким они пропускаются (20 из
-# 20), а отбор интеграционной идёт по пути и до apps/kacho/jobs не достаёт.
+# 20), а отбор интеграционной идёт по пути и до apps/kaname/jobs не достаёт.
 # Следствие наблюдалось: фикстура одной из них перестала вставляться при
 # появлении миграции 0035 и десять проб были красны НА САМОМ СТВОЛЕ — сутки, и
 # ни один вердикт этого не сказал. Цена измерена, а не оценена, и предикат
@@ -322,12 +322,12 @@ PG_OUTSIDE_SELECTION_PKGS ?= \
 # Пакеты МОДУЛЯ СЛУЖБЫ iam — пути относительно $(IAM_MODULE_DIR).
 PG_OUTSIDE_SELECTION_PKGS_IAM ?= \
 	./internal/migrations \
-	./internal/apps/kacho/api/bootstrap_token \
+	./internal/apps/kaname/api/bootstrap_token \
 	./internal/scopesourcecensus \
-	./internal/apps/kacho/api/access_binding \
-	./internal/apps/kacho/api/listvisibility \
-	./internal/apps/kacho/api/readauthz \
-	./internal/apps/kacho/api/user \
+	./internal/apps/kaname/api/access_binding \
+	./internal/apps/kaname/api/listvisibility \
+	./internal/apps/kaname/api/readauthz \
+	./internal/apps/kaname/api/user \
 	./internal/authzmap \
 	./internal/service \
 	./internal/testsupport/accesssnapshot \
@@ -591,7 +591,7 @@ help:
 ##                      В конвейере не идёт и не должна: её место — перед
 ##                      правкой и после неё, парой «до/после».
 ##
-## Сетка живёт КОНСТАНТОЙ в services/iam/internal/repo/kacho/pg/scalegrid и
+## Сетка живёт КОНСТАНТОЙ в services/iam/internal/repo/kaname/pg/scalegrid и
 ## ниоткуда не переопределяется. Переменная ниже решает, ЗАПУСКАТЬ ли полный
 ## прогон, и НИКОГДА — что мерить: отчёт, снятый на сокращённой сетке,
 ## неотличим от полного и читается как полный.
@@ -605,12 +605,12 @@ help:
 ##
 ## Стоило трёх перезапусков за одну сессию, каждый — потерянные минуты прогона.
 scale-grid-small:
-	$(GO) test -C $(IAM_MODULE_DIR) ./internal/repo/kacho/pg/relverdict/ \
+	$(GO) test -C $(IAM_MODULE_DIR) ./internal/repo/kaname/pg/relverdict/ \
 	  -run 'TestScaleGrid_SmallGridStaysFlatAndTheControlGrows|TestScaleGrid_StatisticsArePartOfThePointNotHygiene|TestScaleGridSeeder_RowForRowMatchesTheProducer' \
 	  -count=1 -v -timeout $(INTEGRATION_TIMEOUT)
 
 scale-grid-full:
-	KACHO_SCALEGRID_FULL=1 $(GO) test -C $(IAM_MODULE_DIR) ./internal/repo/kacho/pg/relverdict/ \
+	KACHO_SCALEGRID_FULL=1 $(GO) test -C $(IAM_MODULE_DIR) ./internal/repo/kaname/pg/relverdict/ \
 	  -run TestScaleGrid_FullGridReport -count=1 -v -timeout 120m
 
 ## ── ПРИБОР ОБЪЁМА: ОДНА ОПЕРАЦИЯ ПРОТИВ НАЛИТОЙ МАТРИЦЫ (R7-3) ──────────────
@@ -637,10 +637,10 @@ scale-grid-full:
 ## Свежесть отчёта сторожит `TestMatrixVolumeReportIsFreshAndItsSubjectHasNotMoved`
 ## в том же пакете; отсутствие отчёта для него — ОТКАЗ, а не пропуск.
 matrix-volume-small:
-	$(GO) test -C $(IAM_MODULE_DIR) ./internal/repo/kacho/pg/relverdict/ \
+	$(GO) test -C $(IAM_MODULE_DIR) ./internal/repo/kaname/pg/relverdict/ \
 	  -run 'TestMatrixVolume_SmallGridMeasuresSomethingAndStaysFlat|TestMatrixVolumeFreshnessGateCanFailAndCanStaySilent' \
 	  -count=1 -v -timeout $(INTEGRATION_TIMEOUT)
 
 matrix-volume-full:
-	KACHO_MATRIX_VOLUME=1 $(GO) test -C $(IAM_MODULE_DIR) ./internal/repo/kacho/pg/relverdict/ \
+	KACHO_MATRIX_VOLUME=1 $(GO) test -C $(IAM_MODULE_DIR) ./internal/repo/kaname/pg/relverdict/ \
 	  -run TestMatrixVolume_Report -count=1 -v -timeout 120m

@@ -51,7 +51,7 @@ SPDX-License-Identifier: AGPL-3.0-or-later
 | proto | `condition.proto`, `conditions_service.proto`, `access_binding_condition.proto` | 3 файла, 401 строка |
 | proto | `AccessBinding.condition_id = 9`, `AccessBinding.builtin_condition = 14` → `reserved` (номер **и** имя) | 2 поля |
 | gen | `pkg/api/.../condition*.pb.go`, `conditions_service*.pb.go` | перегенерация |
-| Go (iam) | пакет `api/conditions`, `service/conditions_*.go`, `repo/kacho/pg/conditions_repo.go`, `repo/kacho/condition/`, `domain/condition.go`, `domain/access_binding_condition.go` | 2013 строк прод-кода |
+| Go (iam) | пакет `api/conditions`, `service/conditions_*.go`, `repo/kaname/pg/conditions_repo.go`, `repo/kaname/condition/`, `domain/condition.go`, `domain/access_binding_condition.go` | 2013 строк прод-кода |
 | Go (iam) | `domain.AccessBinding.ConditionID`, проекция в ответ, колонка в `INSERT`/`SELECT` привязки | 1 поле, 3 места |
 | БД | новая миграция `0075`: `DROP TABLE conditions`, `DROP TABLE access_binding_conditions`, `ALTER TABLE access_bindings DROP COLUMN condition_id`, снятие триггера и функции из `0048` | 2 таблицы, 1 колонка, 1 триггер, 1 функция |
 | БД | объявления в `dropguard.json` с ожидаемым числом строк | 2 записи, `expect_rows: 0` |
@@ -254,7 +254,7 @@ SPDX-License-Identifier: AGPL-3.0-or-later
 **Прогоны:** `go build ./...` и `go vet ./...` зелёные;
 `go test ./internal/...` зелёный (215 с); `go test ./gateway/...` зелёный;
 `go test -short ./services/iam/...` зелёный; интеграционные пакеты iam
-(`repo/kacho/pg`, `authzcascade`, `authzmap`, `migrations`, `service`, `cmd`,
+(`repo/kaname/pg`, `authzcascade`, `authzmap`, `migrations`, `service`, `cmd`,
 `apps/...`) зелёные, кроме одного пре-существующего красного (ниже).
 
 ## 7б. Открытое — числом

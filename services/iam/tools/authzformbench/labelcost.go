@@ -127,7 +127,7 @@ const AttributionRule = `
 // в отчёте, чей предмет как раз в том, чтобы величины были измеренными.
 const QueuePredicate = `grep -rn 'KANAME_RECONCILE_DRAIN_INTERVAL_MS|PollFallback|pg_notify' ` +
 	`services/iam/cmd/kaname/serve.go services/iam/cmd/kaname/fga_outbox_drainer.go ` +
-	`services/iam/internal/repo/kacho/pg/reconcile_notify.go`
+	`services/iam/internal/repo/kaname/pg/reconcile_notify.go`
 
 // ── словарь операций ──────────────────────────────────────────────────────────
 

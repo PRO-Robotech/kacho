@@ -41,7 +41,7 @@ import (
 	"strings"
 	"testing"
 
-	bootstraptoken "github.com/PRO-Robotech/kacho-iam/internal/apps/kacho/api/bootstrap_token"
+	bootstraptoken "github.com/PRO-Robotech/kacho-iam/internal/apps/kaname/api/bootstrap_token"
 	"github.com/PRO-Robotech/kacho-iam/internal/domain"
 	"github.com/PRO-Robotech/kacho-iam/internal/service"
 	"github.com/PRO-Robotech/kacho-iam/internal/tokensigner"

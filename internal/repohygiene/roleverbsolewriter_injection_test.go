@@ -313,8 +313,8 @@ func put(ctx context.Context) error {
 // Она проверяется отдельно от первых двух, потому что инъекция обязана ронять
 // ТОЛЬКО проверяемое: автор может быть ОДИН и при этом лежать не там.
 func TestIAMRV112_LayerPredicateSeparatesRepoFromSeed(t *testing.T) {
-	inRepo := "services/iam/internal/repo/kacho/pg/role_repo.go"
-	inSeed := "services/iam/internal/apps/kacho/seed/migrate_backfill.go"
+	inRepo := "services/iam/internal/repo/kaname/pg/role_repo.go"
+	inSeed := "services/iam/internal/apps/kaname/seed/migrate_backfill.go"
 
 	if !strings.Contains("/"+inRepo, roleVerbWriterLayer) {
 		t.Errorf("предикат слоя не признаёт законного места писателя (%s) — гейт краснел бы "+

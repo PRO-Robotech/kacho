@@ -13,7 +13,7 @@ import (
 
 	"github.com/stretchr/testify/require"
 
-	"github.com/PRO-Robotech/kacho-iam/internal/apps/kacho/shared"
+	"github.com/PRO-Robotech/kacho-iam/internal/apps/kaname/shared"
 	"github.com/PRO-Robotech/kacho/pkg/treecorpus"
 )
 

@@ -282,7 +282,7 @@ jobs:
       # иначе -short-путь исчезает и быстрый сигнал (59с) тонет в контейнерах.
       #
       # МАТРИЦА ПО СЕРВИСАМ, а не один прогон на все 45 пакетов. Причина: одним job'ом
-      # это не влезает — iam/internal/repo/kacho/pg держит 398 тестов против
+      # это не влезает — iam/internal/repo/kaname/pg держит 398 тестов против
       # testcontainers-Postgres и под -race выбирает 15m в одиночку:
       #   panic: test timed out after 15m0s   (весь job шёл 35 минут и падал)
       # В polyrepo этой нагрузки не было: у kaname integration-джобы НЕ СУЩЕСТВОВАЛО

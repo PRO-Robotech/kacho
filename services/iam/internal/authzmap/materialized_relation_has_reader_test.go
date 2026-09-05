@@ -120,7 +120,7 @@ func ownerOfType(fgaType string) string {
 // зелёным). Каждый обязан существовать — исчез файл, значит предикат смотрит не туда.
 var emissionSideFiles = []string{
 	filepath.Join("services", "iam", "internal", "authzmap", "fga_types.go"),
-	filepath.Join("services", "iam", "internal", "apps", "kacho", "api", "access_binding", "reconcile", "tuples.go"),
+	filepath.Join("services", "iam", "internal", "apps", "kaname", "api", "access_binding", "reconcile", "tuples.go"),
 }
 
 // knownUnread — пары (тип, отношение), которые материализация пишет, а НИКТО не

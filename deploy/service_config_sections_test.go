@@ -62,6 +62,7 @@ package deploy_test
 
 import (
 	"fmt"
+	"github.com/PRO-Robotech/kacho/internal/servicelayout"
 	"go/ast"
 	"go/parser"
 	"go/token"
@@ -360,7 +361,7 @@ func serviceConfigCharts(t *testing.T) (found []serviceConfigChart, chartsSeen i
 // declaredSections — теги mapstructure корневой структуры Config сервиса.
 func declaredSections(t *testing.T, service string) ([]string, string) {
 	t.Helper()
-	rel := filepath.Join("services", service, "internal", "apps", "kacho", "config", "config.go")
+	rel := filepath.Join("services", service, "internal", "apps", servicelayout.UseCaseSegment(service), "config", "config.go")
 	fset := token.NewFileSet()
 	f, err := parser.ParseFile(fset, filepath.Join(repoRoot, rel), nil, parser.SkipObjectResolution)
 	if err != nil {

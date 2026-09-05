@@ -222,7 +222,7 @@ func scanCatalogOne(t *testing.T, what, path, src string) ([]string, CatalogWrit
 	return catalogWriteFindings(f), census
 }
 
-const catalogWriterRel = "services/iam/internal/repo/kacho/pg/catalog_writer.go"
+const catalogWriterRel = "services/iam/internal/repo/kaname/pg/catalog_writer.go"
 
 // TestG1_ControlTheLockingWriterIsSilent — прогон 1: годный вход проходит.
 func TestG1_ControlTheLockingWriterIsSilent(t *testing.T) {
@@ -316,7 +316,7 @@ func (w roleWriter) Upsert(ctx context.Context, id string) error {
 	return err
 }
 `
-	f2, c2 := scanCatalogOne(t, "состав без предмета", "services/iam/internal/repo/kacho/pg/role_repo.go", unrelated)
+	f2, c2 := scanCatalogOne(t, "состав без предмета", "services/iam/internal/repo/kaname/pg/role_repo.go", unrelated)
 	if c2.Parsed == 0 || c2.StringLiterals == 0 {
 		t.Fatalf("состав без предмета не прочитан: разобрано %d, литералов %d",
 			c2.Parsed, c2.StringLiterals)
@@ -425,7 +425,7 @@ func TestG1_RedsTheSessionLockAndTheWrongKeySeparately(t *testing.T) {
 // Единица суждения — ТИП. Единица «пакет» смолчала бы: замок в пакете есть,
 // берёт его первый тип, а пишет второй.
 func TestG1_RedsASecondWriterWhileTheFirstOneStillLocks(t *testing.T) {
-	const dir = "services/iam/internal/repo/kacho/pg/"
+	const dir = "services/iam/internal/repo/kaname/pg/"
 
 	f, census, err := ScanCatalogWriteLocking([]CatalogSource{
 		{Path: dir + "catalog_writer.go", Src: []byte(catalogWriterLocked)},

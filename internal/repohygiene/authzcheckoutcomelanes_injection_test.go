@@ -155,7 +155,7 @@ const why = "if allowed, err := c.Check(ctx, s, r, o); err == nil && allowed { r
 // называет координату.
 func TestCheckLaneGateRedOnACollapsedOutcome(t *testing.T) {
 	root := synthCarrierTree(t, map[string]string{
-		"services/x/internal/apps/kacho/api/limit/gate.go": collapsedSrc,
+		"services/x/internal/apps/kaname/api/limit/gate.go": collapsedSrc,
 	})
 	found, questions, files, err := scanSynth(root)
 	if err != nil {
@@ -197,7 +197,7 @@ func TestCheckLaneGateRedOnADiscardedError(t *testing.T) {
 // вопрос, ошибка доступна ниже по функции.
 func TestCheckLaneGateSilentWhenTheOutcomesAreSeparated(t *testing.T) {
 	root := synthCarrierTree(t, map[string]string{
-		"services/x/internal/apps/kacho/api/limit/gate.go": separatedSrc,
+		"services/x/internal/apps/kaname/api/limit/gate.go": separatedSrc,
 	})
 	found, questions, files, err := scanSynth(root)
 	if err != nil {
@@ -394,8 +394,8 @@ func request(ctx context.Context, c checker, subject string) bool {
 // TestCheckLaneGateRedOnASeparateAssignment — Б1: форма B краснеет.
 func TestCheckLaneGateRedOnASeparateAssignment(t *testing.T) {
 	root := synthCarrierTree(t, map[string]string{
-		"services/x/internal/apps/kacho/api/access_binding/helpers.go": separateAssignCollapsedSrc,
-		"services/x/internal/apps/kacho/api/account/list_all.go":       separateAssignNestedSrc,
+		"services/x/internal/apps/kaname/api/access_binding/helpers.go": separateAssignCollapsedSrc,
+		"services/x/internal/apps/kaname/api/account/list_all.go":       separateAssignNestedSrc,
 	})
 	found, questions, _, err := scanSynth(root)
 	if err != nil {

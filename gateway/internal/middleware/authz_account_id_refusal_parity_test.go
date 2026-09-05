@@ -66,7 +66,7 @@ const malformedAccountID = "not-an-id"
 const wellFormedAccountID = "acc00000000000wellfm"
 
 // ownerRefusalOnAccountID — текст ВЛАДЕЛЬЦА поля: `shared.ValidateResourceID(id,
-// domain.PrefixAccount, "account")` (services/iam/internal/apps/kacho/shared/ids.go).
+// domain.PrefixAccount, "account")` (services/iam/internal/apps/kaname/shared/ids.go).
 const ownerRefusalOnAccountID = "invalid account id 'not-an-id'"
 
 // edgeRefusalOnMalformedScopeID — текст КРАЯ на полосе формы цели авторизации

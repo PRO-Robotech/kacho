@@ -25,7 +25,7 @@
 // # This service's shape
 //
 // iam colocates transport and use-cases per resource, like vpc and nlb:
-// internal/apps/kacho/api/<res> holds a `Handler` whose listing methods delegate to
+// internal/apps/kaname/api/<res> holds a `Handler` whose listing methods delegate to
 // per-RPC use-cases in the same package. So the PACKAGE tells one resource from
 // another, and the analyser's walk reaches the use-case.
 //
@@ -52,7 +52,7 @@
 // therefore accepted as a filter call — and the analyser cannot tell a call inside a
 // per-row loop from a single call before it. For that one method the pass means "the
 // per-object question is asked", not "it is asked for every row". The stronger
-// statement is a test's job (services/iam/internal/apps/kacho/api/access_binding),
+// statement is a test's job (services/iam/internal/apps/kaname/api/access_binding),
 // not this gate's, and pretending otherwise would be exactly the form-without-
 // substance this class is about.
 //
@@ -90,7 +90,7 @@ var (
 // Profile describes kaname to the analyser.
 var Profile = listfiltergate.Profile{
 	Service:    "iam",
-	AnchorRoot: "internal/apps/kacho/api",
+	AnchorRoot: "internal/apps/kaname/api",
 	// One package per resource, all declaring the same transport type.
 	PerPackage:     true,
 	ReceiverSuffix: "Handler",
@@ -137,11 +137,11 @@ var Profile = listfiltergate.Profile{
 	// listing — and would be exactly the old defect inside one.
 	EnumerationSources: []listfiltergate.EnumerationSource{
 		{Dir: "internal/clients", Type: "RelationQueries"},
-		{Dir: "internal/repo/kacho/pg/relverdict", Type: "Asker"},
+		{Dir: "internal/repo/kaname/pg/relverdict", Type: "Asker"},
 	},
 	// "listOp.Execute" is the delegation to shared.ListOperationsUseCase, which is
 	// where the narrowing actually happens. It has to be named this way because the
-	// use-case lives in a DIFFERENT package (internal/apps/kacho/shared) and the
+	// use-case lives in a DIFFERENT package (internal/apps/kaname/shared) and the
 	// analyser's walk deliberately does not leave the package it is judging.
 	//
 	// Naming a field is against this gate's own doctrine — identify by declared type,

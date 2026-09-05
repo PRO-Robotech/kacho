@@ -125,7 +125,7 @@ service WidgetService {
 	}
 
 	// Белые списки: членства (законный — аккаунт обязателен) и `widget`.
-	mdir := filepath.Join(root, "services", "iam", "internal", "repo", "kacho", "membership")
+	mdir := filepath.Join(root, "services", "iam", "internal", "repo", "kaname", "membership")
 	if err := os.MkdirAll(mdir, 0o750); err != nil {
 		t.Fatalf("каталог порта: %v", err)
 	}
@@ -133,7 +133,7 @@ service WidgetService {
 		"package membership\n\nconst FilterFieldUserID = \"userId\"\n\n"+
 			"func ParseListFilter(e string) { filter.Parse(e, []string{FilterFieldUserID}) }\n")
 
-	wdir := filepath.Join(root, "services", "iam", "internal", "repo", "kacho", "pg")
+	wdir := filepath.Join(root, "services", "iam", "internal", "repo", "kaname", "pg")
 	if err := os.MkdirAll(wdir, 0o750); err != nil {
 		t.Fatalf("каталог репозитория: %v", err)
 	}
@@ -145,7 +145,7 @@ service WidgetService {
 		"package pg\n\nfunc list(f F) { parseListFilter(f.Filter, "+terms+") }\n")
 
 	// Доказательство гасящей записи условия «г».
-	adir := filepath.Join(root, "services", "iam", "internal", "apps", "kacho", "api", "access_binding")
+	adir := filepath.Join(root, "services", "iam", "internal", "apps", "kaname", "api", "access_binding")
 	if err := os.MkdirAll(adir, 0o750); err != nil {
 		t.Fatalf("каталог use-case: %v", err)
 	}

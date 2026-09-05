@@ -54,7 +54,7 @@ import (
 func actingAsGateFromCatalog(t *testing.T, fqn string) (relation, objectType string) {
 	t.Helper()
 	root := monorepoRootForActingAs(t)
-	const rel = "services/iam/internal/apps/kacho/seed/embedded/permission_catalog.json"
+	const rel = "services/iam/internal/apps/kaname/seed/embedded/permission_catalog.json"
 	data, err := os.ReadFile(filepath.Join(root, rel))
 	require.NoErrorf(t, err, "каталог прав %s не прочитан — у пробы нет источника гейта", rel)
 

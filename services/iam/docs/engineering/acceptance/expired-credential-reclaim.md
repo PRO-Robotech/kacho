@@ -15,8 +15,8 @@ SPDX-License-Identifier: AGPL-3.0-or-later
 - **Задача:** `PRO-Robotech/kacho#1264`
 - **Тип изменения:** меняет наблюдаемое поведение (строка исчезает из перечня без
   действия арендатора); **не** ломающее по функции — доказательство в §2.4
-- **Сервис:** `kaname`; затрагивает `services/iam/internal/apps/kacho/`,
-  `services/iam/internal/repo/kacho/pg/`, `services/iam/cmd/kaname/`,
+- **Сервис:** `kaname`; затрагивает `services/iam/internal/apps/kaname/`,
+  `services/iam/internal/repo/kaname/pg/`, `services/iam/cmd/kaname/`,
   `pkg/tokenpolicy`, `internal/repohygiene`, миграции iam
 - **Предшественник:** приёмка потолка числа удостоверений
   (`credential-ceiling-per-principal.md`, задача #1191). Её §2.4 назвала этот
@@ -34,8 +34,8 @@ SPDX-License-Identifier: AGPL-3.0-or-later
 
 | Полоса предъявления | Что делает срок | Координата |
 |---|---|---|
-| секрет (`SECRET`) | отбор резолва несёт `expires_at > now()`; истёкшая строка не резолвится | `services/iam/internal/repo/kacho/pg/basic_credential_repo.go:64-65,76-77` |
-| ключевая пара (`KEYPAIR`/`FEDERATED`) | остаток срока не положителен — `OutcomeClientExpired`, отказ | `services/iam/internal/apps/kacho/api/client_token/issue.go:162-167` |
+| секрет (`SECRET`) | отбор резолва несёт `expires_at > now()`; истёкшая строка не резолвится | `services/iam/internal/repo/kaname/pg/basic_credential_repo.go:64-65,76-77` |
+| ключевая пара (`KEYPAIR`/`FEDERATED`) | остаток срока не положителен — `OutcomeClientExpired`, отказ | `services/iam/internal/apps/kaname/api/client_token/issue.go:162-167` |
 
 Истёкшая строка не даёт ни одного пути входа и не может отчеканить ни одного
 токена. Единственное, что она делает, — занимает место.
@@ -79,7 +79,7 @@ WHEN 'SECRET'  THEN octet_length(secret_hash) = 32
 
 У служебной учётки срок проставляется и прочим видам: умолчание
 `authn.sakey-default-ttl` — **90 суток**
-(`services/iam/internal/apps/kacho/config/defaults.go:151`), чарт его выставляет, а
+(`services/iam/internal/apps/kaname/config/defaults.go:151`), чарт его выставляет, а
 проба посадки требует его наличия в боевом профиле именно затем, чтобы бессрочного
 ключа не выходило.
 
@@ -112,8 +112,8 @@ WHEN 'SECRET'  THEN octet_length(secret_hash) = 32
 
 | Объявление | Вызывающих в прод-коде |
 |---|---:|
-| `ClientAssertionReplayRepo.Reap` — `DELETE FROM kacho_iam.client_assertion_replay WHERE expires_at <= $1` (`repo/kacho/pg/client_assertion_replay_repo.go:90`) | **0** |
-| `SessionRevocationRepo.DeleteExpired` — `DELETE FROM session_revocations WHERE ttl_expires_at <= $1` (`repo/kacho/pg/audit_session_revocation_repos.go:139`) | **0** |
+| `ClientAssertionReplayRepo.Reap` — `DELETE FROM kacho_iam.client_assertion_replay WHERE expires_at <= $1` (`repo/kaname/pg/client_assertion_replay_repo.go:90`) | **0** |
+| `SessionRevocationRepo.DeleteExpired` — `DELETE FROM session_revocations WHERE ttl_expires_at <= $1` (`repo/kaname/pg/audit_session_revocation_repos.go:139`) | **0** |
 
 Предикат: `grep -rn "\.Reap(\|DeleteExpired" --include='*.go' .` — вне объявлений
 попадания только в пробах и в фикстуре инъекции **по этим двум типам**. По всему
@@ -195,7 +195,7 @@ UPDATE kacho_iam.project_resource_quotas
 ```
 
 Отзыв — физический `DELETE` строки
-(`repo/kacho/pg/user_oauth_clients_repos.go:221`, `iam_extension_repos.go:332`).
+(`repo/kaname/pg/user_oauth_clients_repos.go:221`, `iam_extension_repos.go:332`).
 Значит уборщик, удаляющий строку, идёт тем же путём **в части учёта**: возврат
 места — в той же транзакции, гонку разрешает блокировка строки учёта, ban #10
 соблюдён **без единой правки в функции списания**.
@@ -220,7 +220,7 @@ UPDATE kacho_iam.project_resource_quotas
 остатка срока удостоверения:
 
 ```go
-// services/iam/internal/apps/kacho/api/client_token/issue.go:168-175
+// services/iam/internal/apps/kaname/api/client_token/issue.go:168-175
 if remaining < ttl {
     // Ровно до остатка, без запаса. Всякий запас здесь ... воскрешает состояние,
     // которое эта строка и объявляет несуществующим: токен, переживший клиента.
@@ -229,7 +229,7 @@ if remaining < ttl {
 ```
 
 Свойство держит проба `TestF2_29_TokenExpiryNeverOutlivesTheClient`
-(`services/iam/internal/apps/kacho/api/client_token/issue_test.go:200`).
+(`services/iam/internal/apps/kaname/api/client_token/issue_test.go:200`).
 
 Отсюда: **на полосе ключевой пары к моменту истечения удостоверения ни один
 отчеканенный им токен не жив** — by construction.
@@ -432,7 +432,7 @@ type TargetDrainConfig struct {
 и страж старта (`validate.go:290`, отказ при `Interval <= 0`).
 
 **Эта работа заводит у iam такую же секцию — предикат:**
-`grep -n "Jobs\|jobs" services/iam/internal/apps/kacho/config/config.go` → **пусто**,
+`grep -n "Jobs\|jobs" services/iam/internal/apps/kaname/config/config.go` → **пусто**,
 секции фоновых заданий у сервиса нет.
 
 | Величина | Где | Страж старта отвергает |

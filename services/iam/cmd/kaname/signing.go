@@ -18,11 +18,11 @@ import (
 
 	"github.com/jackc/pgx/v5/pgxpool"
 
-	"github.com/PRO-Robotech/kacho-iam/internal/apps/kacho/api/signingkeys"
-	"github.com/PRO-Robotech/kacho-iam/internal/apps/kacho/config"
+	"github.com/PRO-Robotech/kacho-iam/internal/apps/kaname/api/signingkeys"
+	"github.com/PRO-Robotech/kacho-iam/internal/apps/kaname/config"
 	"github.com/PRO-Robotech/kacho-iam/internal/domain"
 	"github.com/PRO-Robotech/kacho-iam/internal/keywrap"
-	kachopg "github.com/PRO-Robotech/kacho-iam/internal/repo/kacho/pg"
+	kanamepg "github.com/PRO-Robotech/kacho-iam/internal/repo/kaname/pg"
 	"github.com/PRO-Robotech/kacho-iam/internal/tokensigner"
 	"github.com/PRO-Robotech/kacho/pkg/tokenpolicy"
 )
@@ -74,7 +74,7 @@ func buildTokenSigning(
 		return nil, nil, fmt.Errorf("алгоритм подписи: %w", err)
 	}
 
-	repo := kachopg.NewSigningKeyRepo(pool)
+	repo := kanamepg.NewSigningKeyRepo(pool)
 	keystore, err := signingkeys.New(signingkeys.Config{
 		Algorithm:   alg,
 		KeyLifetime: ts.ResolveKeyLifetime(),

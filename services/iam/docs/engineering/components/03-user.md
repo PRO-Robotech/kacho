@@ -214,7 +214,7 @@ Account'а (`super_admin: admin from account`) и, каскадом, админ�
 > Прежняя редакция объявляла адрес и токен админского API Kratos с YAML-двойниками
 > и описывала dev-заглушку клиента. Ни переменных, ни YAML-ключей, ни самого клиента
 > в дереве нет: клиент удалён, и об этом прямо сказано в шапке
-> `internal/apps/kacho/api/user/invite.go`. Приглашение создаёт строку пользователя в
+> `internal/apps/kaname/api/user/invite.go`. Приглашение создаёт строку пользователя в
 > состоянии PENDING и (опционально) привязку доступа; **чем именно** приглашённый
 > активирует строку — вход через поставщика личности, ссылка, помощь администратора —
 > вынесено за пределы сервиса. Имена переменных не воспроизводятся: в обратных кавычках
@@ -290,17 +290,17 @@ make -C deploy psql SVC=iam
 # Integration: invite-flow + UpsertFromIdentity.
 go test -short -count=1 -timeout 120s \
   -run "TestUser|TestUpsertFromIdentity|TestInvite" \
-  ./services/iam/internal/repo/kacho/pg/...
+  ./services/iam/internal/repo/kaname/pg/...
 ```
 
 ## Подробности реализации
 
-- **Use-cases:** `internal/apps/kacho/api/user/` (`get.go`, `list.go`, `delete.go`,
+- **Use-cases:** `internal/apps/kaname/api/user/` (`get.go`, `list.go`, `delete.go`,
   `invite.go`, `internal_upsert.go`, `set_blocked.go`, `update.go`, `audit.go`).
-- **Handler:** `internal/apps/kacho/api/user/handler.go` (public); internal-полоса —
+- **Handler:** `internal/apps/kaname/api/user/handler.go` (public); internal-полоса —
   `internal_upsert.go` и `internal_on_recovery.go` в том же каталоге (отдельного файла
   с обобщённым именем внутреннего обработчика здесь нет).
-- **Repo:** `internal/repo/kacho/pg/user_repo.go` + `user_pool_repo.go` (Hydra hooks).
+- **Repo:** `internal/repo/kaname/pg/user_repo.go` + `user_pool_repo.go` (Hydra hooks).
 - **Bootstrap path:** `UpsertFromIdentity` создает User + Account + Project +
   AccessBindings в одной transaction, минуя per-resource `CreateUseCase`.
   FGA tuples — все в одном `fga_outbox` batch.
@@ -338,7 +338,7 @@ go test -short -count=1 -timeout 120s \
 ## Ссылки на код
 
 - `internal/domain/user.go`
-- `internal/apps/kacho/api/user/`
-- `internal/repo/kacho/pg/user_repo.go`, `user_pool_repo.go`
+- `internal/apps/kaname/api/user/`
+- `internal/repo/kaname/pg/user_repo.go`, `user_pool_repo.go`
 - `internal/migrations/0001_initial.sql` (таблица пользователей)
 - `tests/newman/cases/iam-user.py`

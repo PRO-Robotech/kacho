@@ -35,7 +35,7 @@ import (
 )
 
 // catalogProbeFile — файл проб ссылочной целостности каталога.
-const catalogProbeFile = "services/iam/internal/repo/kacho/pg/catalog_referent_integration_test.go"
+const catalogProbeFile = "services/iam/internal/repo/kaname/pg/catalog_referent_integration_test.go"
 
 // catalogMigrationRel — та же миграция, что сверяет гейт паритета.
 const catalogMigrationRel = catalogMigrationPath

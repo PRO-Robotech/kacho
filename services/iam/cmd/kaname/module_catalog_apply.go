@@ -60,7 +60,7 @@ import (
 	"fmt"
 	"log/slog"
 
-	"github.com/PRO-Robotech/kacho-iam/internal/apps/kacho/modulecatalog"
+	"github.com/PRO-Robotech/kacho-iam/internal/apps/kaname/modulecatalog"
 	"github.com/PRO-Robotech/kacho-iam/internal/manifest"
 )
 

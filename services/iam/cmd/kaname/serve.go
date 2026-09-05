@@ -34,10 +34,10 @@ import (
 	"github.com/PRO-Robotech/kacho/pkg/servicecontract"
 	"github.com/PRO-Robotech/kacho/pkg/servicehost"
 
-	"github.com/PRO-Robotech/kacho-iam/internal/apps/kacho/api/access_binding/reconcile"
-	"github.com/PRO-Robotech/kacho-iam/internal/apps/kacho/config"
-	"github.com/PRO-Robotech/kacho-iam/internal/apps/kacho/modulecatalog"
-	"github.com/PRO-Robotech/kacho-iam/internal/apps/kacho/moduleroles"
+	"github.com/PRO-Robotech/kacho-iam/internal/apps/kaname/api/access_binding/reconcile"
+	"github.com/PRO-Robotech/kacho-iam/internal/apps/kaname/config"
+	"github.com/PRO-Robotech/kacho-iam/internal/apps/kaname/modulecatalog"
+	"github.com/PRO-Robotech/kacho-iam/internal/apps/kaname/moduleroles"
 	"github.com/PRO-Robotech/kacho-iam/internal/authzguard"
 	"github.com/PRO-Robotech/kacho-iam/internal/clients"
 	"github.com/PRO-Robotech/kacho-iam/internal/handler/clienttokenhttp"
@@ -45,9 +45,9 @@ import (
 	"github.com/PRO-Robotech/kacho-iam/internal/handler/tokenintrospecthttp"
 	"github.com/PRO-Robotech/kacho-iam/internal/observability/metrics"
 	"github.com/PRO-Robotech/kacho-iam/internal/registrytokenwire"
-	kachopg "github.com/PRO-Robotech/kacho-iam/internal/repo/kacho/pg"
+	kanamepg "github.com/PRO-Robotech/kacho-iam/internal/repo/kaname/pg"
 
-	"github.com/PRO-Robotech/kacho-iam/internal/apps/kacho/seed"
+	"github.com/PRO-Robotech/kacho-iam/internal/apps/kaname/seed"
 	"github.com/PRO-Robotech/kacho-iam/internal/catalog"
 )
 
@@ -121,7 +121,7 @@ func runServe(cfg config.Config) error {
 
 	// slave-pool wiring (read-replica). Если slave-url
 	// настроен и отличается от master URL — отдельный pgxpool для read-TX'ов;
-	// иначе slavePool = nil и kachopg.New() сделает fallback на master.
+	// иначе slavePool = nil и kanamepg.New() сделает fallback на master.
 	var slavePool *pgxpool.Pool
 	if slaveDSN := cfg.SlaveDSN(); slaveDSN != "" {
 		slavePool, err = coredb.NewPool(ctx, slaveDSN)
@@ -159,8 +159,8 @@ func runServe(cfg config.Config) error {
 	// so it currently has no outbound peer-clients (other services dial in
 	// for `iam.v1.ProjectService.Get` etc.).
 
-	// kachoRepo is shared by all per-resource use-cases.
-	kachoRepo := kachopg.New(pool, slavePool)
+	// kanameRepo is shared by all per-resource use-cases.
+	kanameRepo := kanamepg.New(pool, slavePool)
 
 	// ВЫБОРА ПОСТАВЩИКА РЕШЕНИЯ О ДОСТУПЕ ЗДЕСЬ БОЛЬШЕ НЕТ.
 	//
@@ -193,7 +193,7 @@ func runServe(cfg config.Config) error {
 	// КАТАЛОГ МОДУЛЯ: одно чтение, страж паритета и снимок — в таком порядке и
 	// ДО сборки служб (задача #1816).
 	//
-	// Читатель живого множества ОДИН (`kachopg.NewCatalogRepo`), и вызывающих у
+	// Читатель живого множества ОДИН (`kanamepg.NewCatalogRepo`), и вызывающих у
 	// него двое: страж, сверяющий строки с литералом, и снимок, которым отвечают
 	// читатели на пути запроса. Дай каждому свой запрос — получишь два места об
 	// одном предмете, и разойдутся они молча. Отсюда величина, которую
@@ -279,7 +279,7 @@ func runServe(cfg config.Config) error {
 	// Страж НИЖЕ судит то, что применитель ТОЛЬКО ЧТО записал: ConfigMap с
 	// манифестами — данные оператора, а не релиза, и в одиночку он не вправе
 	// расширить каталог за пределы того, что знает образ.
-	catalogApplier := modulecatalog.NewApplier(kachopg.NewCatalogWriteRepo(pool))
+	catalogApplier := modulecatalog.NewApplier(kanamepg.NewCatalogWriteRepo(pool))
 	// Наблюдатель — ОТДЕЛЬНЫМ оператором, а не цепочкой к конструктору: гейт
 	// провязки (`module_catalog_apply_wiring_test.go`) опознаёт связывание по
 	// вызову конструктора в правой части, и цепочка увела бы применителя
@@ -289,7 +289,7 @@ func runServe(cfg config.Config) error {
 		return aErr
 	}
 
-	catalogRepo := kachopg.NewCatalogRepo(pool)
+	catalogRepo := kanamepg.NewCatalogRepo(pool)
 	catalogCensus, catErr := seed.AssertCatalogParity(ctx, catalogRepo, catalogAnchor)
 	// Перепись печатается ВСЕГДА, независимо от исхода: без неё «ноль
 	// расхождений» неотличимо от «ноль прочитанного».
@@ -357,7 +357,7 @@ func runServe(cfg config.Config) error {
 	if rrErr != nil {
 		return fmt.Errorf("роли модуля: %w", rrErr)
 	}
-	rolesApplier := moduleroles.NewApplier(moduleroles.NewRepoTxRunner(kachoRepo), rolesRights)
+	rolesApplier := moduleroles.NewApplier(moduleroles.NewRepoTxRunner(kanameRepo), rolesRights)
 	if raErr := applyDeliveredModuleRoles(ctx, logger, rolesApplier, deliveredManifests); raErr != nil {
 		return raErr
 	}
@@ -383,7 +383,7 @@ func runServe(cfg config.Config) error {
 	// Orphan-reconciler backstop: разрешает осиротевшие done=false операции умершего
 	// процесса (kill-9 / истекший terminal-write budget) в терминал по
 	// committed-реальности ресурса. Boot-sweep + периодический фон; non-fatal.
-	startLROReconciler(ctx, pool, kachoRepo, catalogSnapshot, lroRec, logger)
+	startLROReconciler(ctx, pool, kanameRepo, catalogSnapshot, lroRec, logger)
 
 	// Durable backstop for one-shot credentials staged in FINISHED operation
 	// responses. The reconciler above cannot cover them: its claim is done=false and
@@ -414,7 +414,7 @@ func runServe(cfg config.Config) error {
 		return err
 	}
 
-	svcs := buildServices(pool, slavePool, opsRepo, kachoRepo, kachoRepo, catalogSnapshot,
+	svcs := buildServices(pool, slavePool, opsRepo, kanameRepo, kanameRepo, catalogSnapshot,
 		// Тот же экземпляр читателя, что прочитал строки для стража паритета
 		// и для снимка: третьего чтения каталога на старте не заводится.
 		catalogRepo,
@@ -903,7 +903,7 @@ func runServe(cfg config.Config) error {
 	// Носитель готовности отдаётся сюда, чтобы гашение переводило `/readyz` в
 	// 503 ДО остановки серверов (см. triggerShutdown ниже). Без этого носитель
 	// был бы, а дёрнуть его было бы некому (#1752).
-	hooksHandler, hooksHealth := buildHooksMux(pool, kachoRepo, opsRepo, svcs.ownGates,
+	hooksHandler, hooksHealth := buildHooksMux(pool, kanameRepo, opsRepo, svcs.ownGates,
 		catalogSnapshot, metricsReg, cfg, logger)
 	hooksSurface, err := iamHTTPSurface(servicecontract.Surface{
 		Name:    "вебхуки провайдера личности",
@@ -1161,7 +1161,7 @@ func runServe(cfg config.Config) error {
 			introspect := tokenintrospecthttp.NewHandler(tokenintrospecthttp.Config{
 				Issuer:            cfg.AuthN.TokenSigning.Issuer,
 				Keys:              signingKeystore,
-				Revocations:       kachopg.NewMintedTokenRevocationRepo(pool),
+				Revocations:       kanamepg.NewMintedTokenRevocationRepo(pool),
 				Logger:            logger.With(slog.String("component", "token_introspection")),
 				RequireClientCert: true,
 			})
@@ -1478,7 +1478,7 @@ func runServe(cfg config.Config) error {
 		return nil
 	})
 
-	identityGrowth := newIdentityGrowthSampler(kachopg.NewIdentityGrowthRepo(pool))
+	identityGrowth := newIdentityGrowthSampler(kanamepg.NewIdentityGrowthRepo(pool))
 	metricsReg.NewIdentityGrowthCollector(identityGrowth.Counts)
 	tasks = append(tasks, func() error {
 		identityGrowth.Run(ctx, logger)
@@ -1521,7 +1521,7 @@ func runServe(cfg config.Config) error {
 	// AND periodically sweeps every selector binding (D12 defense-in-depth) +
 	// expires TTL-elapsed bindings (D9 eager-revoke). In-process worker (no new
 	// deploy); non-fatal by contract.
-	reconcileAdapter := kachopg.NewReconcileAdapter(pool, catalogSnapshot)
+	reconcileAdapter := kanamepg.NewReconcileAdapter(pool, catalogSnapshot)
 	reconcileEngine := reconcile.New(reconcileAdapter,
 		logger.With(slog.String("component", "rsab_reconciler")), catalogSnapshot)
 	// resource_reconcile_outbox дренажится NOTIFY-driven (паритет с fga_outbox drainer):
@@ -1563,7 +1563,7 @@ func runServe(cfg config.Config) error {
 	// afterwards — the backfill just front-loads convergence before the next sweep.
 	// ONE BackfillAdapter over the pool, shared by the backfill-runner and the
 	// verify-gate.
-	backfillAdapter := kachopg.NewBackfillAdapter(pool)
+	backfillAdapter := kanamepg.NewBackfillAdapter(pool)
 	backfillRunner := seed.NewBackfillRunner(
 		reconcileEngine,
 		backfillAdapter,
@@ -1594,7 +1594,7 @@ func runServe(cfg config.Config) error {
 	// висячими были 145 выдач из 193, и любой правдоподобный порог отказал бы
 	// ровно там, где уборка и нужна. Радиус одного старта ограничен потолком
 	// прогона, каждая область оставляет событие аудита.
-	orphanScopeSweeper := seed.NewOrphanScopeSweeper(kachoRepo, kachopg.NewOrphanScopeAdapter(pool),
+	orphanScopeSweeper := seed.NewOrphanScopeSweeper(kanameRepo, kanamepg.NewOrphanScopeAdapter(pool),
 		seed.OrphanScopeConfig{Logger: logger.With(slog.String("component", "orphan_scope_sweep"))})
 	// Счётчик исходов пересчёта проекции глаголов роли — по одной системной роли.
 	// Успехи считаются наравне с отказами: без знаменателя «ноль отказов» не
@@ -1633,7 +1633,7 @@ func runServe(cfg config.Config) error {
 		// самолечащая, менять ограниченное отставание на полный отказ службы
 		// нельзя); структурная — системные роли есть, пересеяна ни одна —
 		// РОНЯЕТ старт, потому что «повтори позже» на ней есть ложь.
-		verbs, verr := seed.ReseedSystemRoleVerbs(ctx, kachoRepo, pool,
+		verbs, verr := seed.ReseedSystemRoleVerbs(ctx, kanameRepo, pool,
 			catalogSnapshot.Facts(), roleVerbReseed)
 		if verr != nil {
 			logger.Error("пересчёт проекции глаголов роли отказал",
@@ -1672,7 +1672,7 @@ func runServe(cfg config.Config) error {
 		// ненаписанного стража значило бы менять ограниченную потерю проверки на
 		// полный отказ. Поэтому здесь `Error` плюс счётчик плюс перепись — и
 		// структурная полоса НАЗВАНА в тексте, а не проглочена.
-		refs, rerr := seed.ReseedSystemRoleRuleRefs(ctx, kachoRepo, pool, ruleRefReseed)
+		refs, rerr := seed.ReseedSystemRoleRuleRefs(ctx, kanameRepo, pool, ruleRefReseed)
 		if rerr != nil {
 			logger.Error("пересчёт проекции сегментов правила отказал",
 				slog.Any("err", rerr),

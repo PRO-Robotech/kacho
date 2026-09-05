@@ -9,7 +9,7 @@
 Своя полоса обмена зеркала не читает: реестр утверждений резолвит клиента по
 **нашему** идентификатору (`service_account_oauth_clients.id`), и зеркальная
 колонка на том пути не участвует ни как второй ключ поиска, ни как запасной
-(разбор — в шапке `internal/repo/kacho/pg/assertion_client_repo.go`). Значит на
+(разбор — в шапке `internal/repo/kaname/pg/assertion_client_repo.go`). Значит на
 посадке, где своя полоса объявлена, зеркало — запись у постороннего, которую
 никто не читает, при живой административной дороге к нему.
 
@@ -145,7 +145,7 @@ SELECT count(*) FROM kaname.service_account_oauth_clients
 — отрицание и положительный контроль на каждой оси), пары проб записи
 (`sa_keys/usecase_audience_narrowing_test.go`, оба вида ключа), сквозная проба
 цепочки «запись → колонка → чтение полосы аутентификации»
-(`repo/kacho/pg/assertion_client_audience_integration_test.go`) и ограничение
+(`repo/kaname/pg/assertion_client_audience_integration_test.go`) и ограничение
 таблицы на форму элементов.
 
 ### Полос выдачи по ключу ДВЕ, и сверка адресата действует на обеих (#1184, закрыто)

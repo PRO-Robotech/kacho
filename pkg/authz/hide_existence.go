@@ -32,7 +32,7 @@ import (
 //
 // Sources (repo layer of the owning service):
 //
-//	iam       services/iam/internal/repo/kacho/pg/{account,project,user_pool,group,service_account,access_binding}_repo.go
+//	iam       services/iam/internal/repo/kaname/pg/{account,project,user_pool,group,service_account,access_binding}_repo.go
 //	compute   services/compute/internal/repo/instance_repo.go
 //	vpc       services/vpc/internal/repo/kacho/pg/*.go (+ repo/helpers/sg.go)
 //	nlb       services/nlb/internal/repo/kacho/pg/{load_balancer,listener,target_group}_repo.go

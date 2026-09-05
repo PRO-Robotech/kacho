@@ -18,7 +18,7 @@ import (
 
 	"github.com/PRO-Robotech/kacho/pkg/outbox/drainer"
 
-	"github.com/PRO-Robotech/kacho-iam/internal/apps/kacho/config"
+	"github.com/PRO-Robotech/kacho-iam/internal/apps/kaname/config"
 )
 
 // Test_InviteMailDrainerConfig_PatienceOutlastsTheAttempt — требование, ради

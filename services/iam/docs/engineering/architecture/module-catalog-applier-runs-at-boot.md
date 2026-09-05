@@ -27,7 +27,7 @@ Postgres — и не позван ни разу.
 
 | величина | до | после | предикат · единица счёта |
 |---|---:|---:|---|
-| прод-файлов композиционного корня, знающих применитель | **0** | **2** | `git grep -ln 'apps/kacho/modulecatalog' -- 'services/iam/cmd/**/*.go' ':!*_test.go'`; единица — файл |
+| прод-файлов композиционного корня, знающих применитель | **0** | **2** | `git grep -ln 'apps/kaname/modulecatalog' -- 'services/iam/cmd/**/*.go' ':!*_test.go'`; единица — файл |
 | писателей строк каталога в прод-коде, у которых ЕСТЬ вызывающий на пути старта | **0** | **1** | обход прод-файлов корня разбором (`module_catalog_apply_wiring_test.go`); единица — связывание `modulecatalog.NewApplier` |
 | манифестов, применяемых стартом на боевой посадке | **0** | **6** | прогон против живой Postgres: `compute iam loadbalancer registry storage vpc` |
 | строк каталога после применения (модули/ресурсы/глаголы) | 6/27/135 | 6/27/135 | `count(*) WHERE live` по трём таблицам |
@@ -167,8 +167,8 @@ ConfigMap обновляется kubelet'ом асинхронно, и петл�
 | применитель, построенный корнем, ПОЗВАН | `services/iam/cmd/kaname/module_catalog_apply_wiring_test.go`, часть A — судит поток значения, а не совпадение имён; посредник-пустышка и посредник чужого типа краснеют |
 | порядок «доставка → применение → страж» | там же, часть B — по узлу вызова, не по подстроке: все три имени встречаются в прозе того же файла |
 | гейт СПОСОБЕН упасть и смолчать | `module_catalog_apply_wiring_injection_test.go` — 15 утверждений, обе стороны по каждой оси, плюс отказ на пустом обходе |
-| обход доставки, порядок, остановка на отказе, перепись | `services/iam/internal/apps/kacho/modulecatalog/applyall_test.go` |
-| цепочка старта против ЖИВОЙ Postgres | `services/iam/internal/repo/kacho/pg/module_catalog_boot_sequence_integration_test.go` |
+| обход доставки, порядок, остановка на отказе, перепись | `services/iam/internal/apps/kaname/modulecatalog/applyall_test.go` |
+| цепочка старта против ЖИВОЙ Postgres | `services/iam/internal/repo/kaname/pg/module_catalog_boot_sequence_integration_test.go` |
 | пустое имя модуля отвергает КЛЮЧ, а не код | там же — `catalog_module_nonempty`; подставным писателем это утверждать нельзя вовсе |
 
 ## Что этим решением НЕ закрыто

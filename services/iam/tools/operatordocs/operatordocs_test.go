@@ -30,7 +30,7 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/PRO-Robotech/kacho-iam/internal/apps/kacho/config"
+	"github.com/PRO-Robotech/kacho-iam/internal/apps/kaname/config"
 )
 
 // iamRoot — корень дерева iam относительно каталога этой пробы

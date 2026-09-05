@@ -47,7 +47,7 @@ import (
 // running database —
 // the seeded system roles, their selectors and the resource mirror are effective
 // state, and they are asserted against a real migrated schema in
-// services/iam/internal/repo/kacho/pg/retired_block_storage_integration_test.go.
+// services/iam/internal/repo/kaname/pg/retired_block_storage_integration_test.go.
 // Neither half is sufficient alone: a vocabulary can be clean while nine bindable
 // roles still name the resource, and the rows can be gone while the code still
 // advertises the type as grantable.
@@ -327,7 +327,7 @@ func TestRetiredBlockStorageIsNotInPermissionCatalog(t *testing.T) {
 	root := monorepoRoot(t)
 	copies := []string{
 		filepath.Join("gateway", "internal", "middleware", "embed", "permission_catalog.json"),
-		filepath.Join("services", "iam", "internal", "apps", "kacho", "seed", "embedded", "permission_catalog.json"),
+		filepath.Join("services", "iam", "internal", "apps", "kaname", "seed", "embedded", "permission_catalog.json"),
 	}
 
 	type entry struct {

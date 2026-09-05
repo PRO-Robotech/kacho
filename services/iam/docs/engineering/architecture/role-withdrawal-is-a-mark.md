@@ -30,7 +30,7 @@ SPDX-License-Identifier: AGPL-3.0-or-later
 | величина | значение | предикат · единица счёта |
 |---|---:|---|
 | производителей снятия роли модуля в прод-коде | **0** | `git grep -n 'DELETE FROM roles' -- 'services/iam/**/*.go' ':!*_test.go'` → **1** оператор, и он сужен `is_system = false`; единица — оператор Go-файла |
-| прод-импортёров применителя ролей | **0** | `git grep -l 'apps/kacho/moduleroles' -- '*.go'` за вычетом `*_test.go`; единица — файл |
+| прод-импортёров применителя ролей | **0** | `git grep -l 'apps/kaname/moduleroles' -- '*.go'` за вычетом `*_test.go`; единица — файл |
 | миграций, снимавших роль удалением | **9** | `git grep -c 'DELETE FROM kaname.roles' -- 'services/iam/internal/migrations/*.sql'`; единица — **файл**, а не вхождение (`git grep -c` печатает строку на файл) |
 | таблиц каталога с пометкой снятия | **3** | `retired_at timestamptz` у `catalog_module`, `catalog_resource`, `catalog_verb` |
 | колонок живости формы `CASE WHEN live THEN true END` | **2** | `grep -n 'GENERATED ALWAYS AS' services/iam/internal/migrations/*.sql` — `20260902065414:103`, `20260902174501:146` |
@@ -174,7 +174,7 @@ RAISE EXCEPTION 'Role % is withdrawn and cannot be granted', NEW.role_id
 ```
 
 Отображение **не правится ни одной строкой**: класс `IntegrityConstraint` уже
-отвечает `ErrFailedPrecondition` целиком (`repo/kacho/pg/pgmaperr.go`, ветвь
+отвечает `ErrFailedPrecondition` целиком (`repo/kaname/pg/pgmaperr.go`, ветвь
 `pgfault.IntegrityConstraint`), потому что «нарушение целостности, поднятое
 триггером схемы» и есть «состояние ресурса не позволяет». Заводится один `case`
 в `integrityText` — текст, называющий роль.

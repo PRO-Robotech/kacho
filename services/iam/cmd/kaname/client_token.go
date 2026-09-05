@@ -27,11 +27,11 @@ import (
 
 	"github.com/jackc/pgx/v5/pgxpool"
 
-	"github.com/PRO-Robotech/kacho-iam/internal/apps/kacho/config"
+	"github.com/PRO-Robotech/kacho-iam/internal/apps/kaname/config"
 	"github.com/PRO-Robotech/kacho-iam/internal/clienttokenwire"
 	"github.com/PRO-Robotech/kacho-iam/internal/domain"
 	"github.com/PRO-Robotech/kacho-iam/internal/handler/clienttokenhttp"
-	kachopg "github.com/PRO-Robotech/kacho-iam/internal/repo/kacho/pg"
+	kanamepg "github.com/PRO-Robotech/kacho-iam/internal/repo/kaname/pg"
 	"github.com/PRO-Robotech/kacho-iam/internal/tokensigner"
 	"github.com/PRO-Robotech/kacho/pkg/tokenpolicy"
 )
@@ -96,8 +96,8 @@ func buildClientTokenEndpoint(
 // значению, и один порт с двумя разными вопросами рано или поздно получает не
 // тот.
 type ownClientAdapter struct {
-	userClients *kachopg.UserOAuthClientRepo
-	saClients   *kachopg.SAOAuthClientRepo
+	userClients *kanamepg.UserOAuthClientRepo
+	saClients   *kanamepg.SAOAuthClientRepo
 }
 
 func (a *ownClientAdapter) GetUserToken(ctx context.Context, id domain.UserOAuthClientID) (domain.UserOAuthClient, error) {

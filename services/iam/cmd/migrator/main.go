@@ -49,7 +49,7 @@ import (
 	"github.com/PRO-Robotech/kacho/pkg/migratorcli/cobraargs"
 	"github.com/PRO-Robotech/kacho/pkg/migratorrun"
 
-	"github.com/PRO-Robotech/kacho-iam/internal/apps/kacho/config"
+	"github.com/PRO-Robotech/kacho-iam/internal/apps/kaname/config"
 	"github.com/PRO-Robotech/kacho-iam/internal/migrations"
 )
 

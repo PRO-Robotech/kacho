@@ -13,7 +13,7 @@
 //
 // Писателя у них нет ни одного:
 //
-//	вставка         `repo/kacho/pg/access_binding_repo.go` пишет
+//	вставка         `repo/kaname/pg/access_binding_repo.go` пишет
 //	                (subject_id, op, event_type, payload) — и только;
 //	дренаж          снят вместе с адресатом (serve.go, #1024): `UPDATE … SET
 //	                sent_at` не исполняет никто;

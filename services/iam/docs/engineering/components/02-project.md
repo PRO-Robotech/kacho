@@ -184,15 +184,15 @@ make -C deploy psql SVC=iam
 
 # Integration tests.
 go test -short -count=1 -timeout 120s -run TestProject \
-  ./services/iam/internal/repo/kacho/pg/...
+  ./services/iam/internal/repo/kaname/pg/...
 ```
 
 ## Подробности реализации
 
-- **Use-cases:** `internal/apps/kacho/api/project/{create,get,list,update,delete}.go`.
-- **Handler:** `internal/apps/kacho/api/project/handler.go`.
-- **Repo iface:** `internal/repo/kacho/project/iface.go`.
-- **Repo impl:** `internal/repo/kacho/pg/project_repo.go`.
+- **Use-cases:** `internal/apps/kaname/api/project/{create,get,list,update,delete}.go`.
+- **Handler:** `internal/apps/kaname/api/project/handler.go`.
+- **Repo iface:** `internal/repo/kaname/project/iface.go`.
+- **Repo impl:** `internal/repo/kaname/pg/project_repo.go`.
 - **DB:** таблица `projects` со столбцами `id, account_id, name, description, labels JSONB, created_at`.
 - **Indexes:** PK `projects_pkey(id)`, UNIQUE `projects_account_name_unique(account_id, name)`,
   INDEX `projects_account_idx(account_id)`.
@@ -218,6 +218,6 @@ go test -short -count=1 -timeout 120s -run TestProject \
 ## Ссылки на код
 
 - `internal/domain/project.go`
-- `internal/apps/kacho/api/project/`
-- `internal/repo/kacho/pg/project_repo.go`
+- `internal/apps/kaname/api/project/`
+- `internal/repo/kaname/pg/project_repo.go`
 - `internal/migrations/0001_initial.sql` — DDL `projects`

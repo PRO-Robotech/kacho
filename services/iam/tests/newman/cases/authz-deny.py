@@ -918,7 +918,7 @@ for subj in SUBJECTS:
     # Строка спрашивает `CanInviteUsers` — право приглашать В АККАУНТ. Прежнее тело
     # несло `roleId` без `projectId`, а `InviteUserUseCase.Execute` объявляет эти
     # поля парными и отвергает такую пару СИНХРОННО, шагом 1, — то есть раньше
-    # `canInviteUsers` (шаг 2, `services/iam/internal/apps/kacho/api/user/invite.go`).
+    # `canInviteUsers` (шаг 2, `services/iam/internal/apps/kaname/api/user/invite.go`).
     # Значит ALLOW-строки до заявленного предмета не доходили ни разу.
     #
     # Снят `roleId`, а не добавлен `projectId`, и выбор здесь содержательный:
@@ -1019,7 +1019,7 @@ for subj in SUBJECTS:
 # ЧТО ИМЕННО УТВЕРЖДАЕТСЯ: человек читает СВОЮ запись и получает её. Отношение, по
 # которому это разрешено, — `iam_user.v_get ⊇ subject`; кортеж `iam_user:<usr>#subject
 # @ user:<usr>` пишется на заведении пользователя (bootstrapTuples в
-# services/iam/internal/apps/kacho/api/user/internal_upsert.go, ветка ownedAccounts==0
+# services/iam/internal/apps/kaname/api/user/internal_upsert.go, ветка ownedAccounts==0
 # — то есть у КАЖДОГО пользователя). До восстановления `subject` в читающем глаголе
 # самочтение не работало ни у кого, и отказ был неотличим от «пользователя нет»:
 # скрытие существования отвечает тем же текстом, что и настоящее отсутствие. Здесь

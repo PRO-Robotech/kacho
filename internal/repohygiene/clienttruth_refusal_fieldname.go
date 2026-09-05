@@ -68,11 +68,13 @@ package repohygiene
 
 import (
 	"fmt"
+	"github.com/PRO-Robotech/kacho/internal/servicelayout"
 	"go/ast"
 	"go/parser"
 	"go/token"
 	"io"
 	"os"
+	"path"
 	"path/filepath"
 	"sort"
 	"strconv"
@@ -97,8 +99,13 @@ type RefusalFieldNameOptions struct {
 	Root string
 	// ServicesRel — каталог сервисов относительно Root.
 	ServicesRel string
-	// UseCaseRel — путь от каталога сервиса до каталога use-case-пакетов.
-	UseCaseRel string
+	// UseCaseRelOf — путь от каталога службы до каталога use-case-пакетов.
+	//
+	// ФУНКЦИЯ, а не строка: сегмент каталога выведен из имени ПРОДУКТА службы,
+	// и одна строка на всех молча обходила бы не тот каталог у той службы,
+	// которая назвалась иначе. Промах здесь не краснеет — он даёт «ноль
+	// находок» там, где не прочитано ничего.
+	UseCaseRelOf func(service string) string
 	// ProtoPackageOf — пакет контрактов по имени каталога сервиса. Имя каталога и
 	// имя домена совпадают не всегда (`nlb` → `loadbalancer`), поэтому таблица
 	// объявляется вызывающим, а не угадывается из строки.
@@ -110,7 +117,9 @@ func DefaultRefusalFieldNameOptions(root string) RefusalFieldNameOptions {
 	return RefusalFieldNameOptions{
 		Root:        root,
 		ServicesRel: "services",
-		UseCaseRel:  "internal/apps/kacho/api",
+		UseCaseRelOf: func(service string) string {
+			return path.Join("internal", "apps", servicelayout.UseCaseSegment(service), "api")
+		},
 		ProtoPackageOf: map[string]string{
 			"compute":  "kacho.cloud.compute.v1",
 			"geo":      "kacho.cloud.geo.v1",
@@ -227,7 +236,7 @@ func AuditRefusalFieldNames(opts RefusalFieldNameOptions, log io.Writer) ([]Refu
 		if !ok {
 			continue
 		}
-		apiAbs := filepath.Join(servicesAbs, svc.Name(), filepath.FromSlash(opts.UseCaseRel))
+		apiAbs := filepath.Join(servicesAbs, svc.Name(), filepath.FromSlash(opts.UseCaseRelOf(svc.Name())))
 		resEntries, rerr := os.ReadDir(apiAbs)
 		if rerr != nil {
 			continue // у сервиса нет каталога use-case'ов — не находка

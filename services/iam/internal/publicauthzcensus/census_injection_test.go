@@ -47,7 +47,7 @@ func synthTree(t *testing.T, service, method string) (protoDir, cmdDir string) {
 		// Импорт обязателен: перепись разрешает поле сборки в каталог пакета
 		// через алиас, и без него обработчик не резолвится — то есть фикстура
 		// подала бы «не разрешилось» вместо предмета инъекции.
-		"import (\n\tsynthapp \"github.com/PRO-Robotech/kacho-iam/internal/apps/kacho/api/project\"\n)\n\n" +
+		"import (\n\tsynthapp \"github.com/PRO-Robotech/kacho-iam/internal/apps/kaname/api/project\"\n)\n\n" +
 		"type services struct {\n\tsynthHandler *synthapp.Handler\n}\n\n" +
 		"func registerPublicServices(srv grpc.ServiceRegistrar, svcs *services) {\n" +
 		"\tiamv1.Register" + service + "Server(srv, svcs.synthHandler)\n}\n"

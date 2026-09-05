@@ -38,7 +38,7 @@
 
 ## Замер — посылка задачи подтверждена
 
-`DeleteProjectUseCase.doDelete` (`services/iam/internal/apps/kacho/api/project/delete.go`)
+`DeleteProjectUseCase.doDelete` (`services/iam/internal/apps/kaname/api/project/delete.go`)
 в одной транзакции делает ровно три вещи: снимает выдачи, ограниченные проектом;
 удаляет строку; эмитирует снятие кортежей и запись аудита. **Проверки ссылок нет
 ни в какой форме** — ни своей, ни чужой.

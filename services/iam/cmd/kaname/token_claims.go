@@ -16,8 +16,8 @@ package main
 import (
 	"github.com/jackc/pgx/v5/pgxpool"
 
-	"github.com/PRO-Robotech/kacho-iam/internal/apps/kacho/config"
-	kachopg "github.com/PRO-Robotech/kacho-iam/internal/repo/kacho/pg"
+	"github.com/PRO-Robotech/kacho-iam/internal/apps/kaname/config"
+	kanamepg "github.com/PRO-Robotech/kacho-iam/internal/repo/kaname/pg"
 	"github.com/PRO-Robotech/kacho-iam/internal/service"
 )
 
@@ -25,9 +25,9 @@ import (
 // и путь обратного вызова прежнего провайдера: перечень и правила объявлены один
 // раз, и правка любого из них доезжает до всех полос by construction.
 func newAssertionClaimsComposer(pool *pgxpool.Pool, cfg config.Config) *service.TokenEnrichmentService {
-	users := kachopg.NewUserPoolRepo(pool)
-	saClients := kachopg.NewSAOAuthClientRepo(pool)
-	userClients := kachopg.NewUserOAuthClientRepo(pool)
+	users := kanamepg.NewUserPoolRepo(pool)
+	saClients := kanamepg.NewSAOAuthClientRepo(pool)
+	userClients := kanamepg.NewUserOAuthClientRepo(pool)
 
 	return service.NewTokenEnrichmentService(
 		service.TokenEnrichmentConfig{

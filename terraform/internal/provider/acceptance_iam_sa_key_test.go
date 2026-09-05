@@ -69,7 +69,7 @@ func edgeKindSAKeyAs(machineCaller bool) *edgeKind {
 
 		Create: func(_ *fakeEdge, id string, req edgeObject) (edgeObject, error) {
 			// СТРАЖ ЛИЧНОСТИ КРАЯ — воспроизведён дословно, тексты отказов те же, что у
-			// края (services/iam/internal/apps/kacho/api/sa_keys/handler.go, Issue).
+			// края (services/iam/internal/apps/kaname/api/sa_keys/handler.go, Issue).
 			//
 			// Прежняя редакция этой подделки требовала названного ответственного и
 			// отвергала пустое — то есть закрепляла ровно тот дефект, ради которого
@@ -112,7 +112,7 @@ func edgeKindSAKeyAs(machineCaller bool) *edgeKind {
 		//
 		// keyId РАВЕН key.id, и это не упрощение подделки, а измеренный контракт: край
 		// чеканит один идентификатор и кладёт его И в строку, И в поле подписи
-		// (services/iam/internal/apps/kacho/api/sa_keys/usecases.go — keyID заводится
+		// (services/iam/internal/apps/kaname/api/sa_keys/usecases.go — keyID заводится
 		// один раз и уезжает обоими путями; та же мысль записана в самом контракте, у
 		// ServiceAccountOAuthClient.id: «credential-id/JWK kid»).
 		//

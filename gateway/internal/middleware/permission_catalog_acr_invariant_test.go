@@ -778,6 +778,6 @@ func iamCatalogPath(t *testing.T) string {
 	require.True(t, ok)
 	// this file: <repo>/gateway/internal/middleware/permission_catalog_acr_invariant_test.go
 	repoRoot := filepath.Clean(filepath.Join(filepath.Dir(thisFile), "..", "..", ".."))
-	return filepath.Join(repoRoot, "services", "iam", "internal", "apps", "kacho",
+	return filepath.Join(repoRoot, "services", "iam", "internal", "apps", "kaname",
 		"seed", "embedded", "permission_catalog.json")
 }

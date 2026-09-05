@@ -32,7 +32,7 @@ package authzmap_test
 // Прежде эти пробы поднимали движок контейнером, грузили в него заготовку модели
 // из карты чарта и спрашивали его. Ни движка, ни карты, ни подчарта в дереве
 // нет. Исход теперь считает форма вердикта поверх СОБСТВЕННОЙ базы iam
-// (`internal/repo/kacho/pg/relverdict`), а вывод отношений она берёт из той же
+// (`internal/repo/kaname/pg/relverdict`), а вывод отношений она берёт из той же
 // модели, что разбирают структурные пробы этого пакета.
 //
 // Утверждения при этом НЕ ослаблены. План вывода, скомпилированный из модели,
@@ -55,7 +55,7 @@ import (
 	"github.com/stretchr/testify/require"
 
 	"github.com/PRO-Robotech/kacho-iam/internal/authzmap"
-	"github.com/PRO-Robotech/kacho-iam/internal/repo/kacho/pg/relverdict"
+	"github.com/PRO-Robotech/kacho-iam/internal/repo/kaname/pg/relverdict"
 	"github.com/PRO-Robotech/kacho/pkg/pgtest"
 )
 

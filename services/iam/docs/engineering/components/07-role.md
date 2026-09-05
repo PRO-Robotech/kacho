@@ -218,14 +218,14 @@ make -C deploy psql SVC=iam
 # Integration: seed determinism + permissions CHECK.
 go test -short -count=1 -timeout 120s \
   -run "TestRole|TestSeedRoleIds|TestSeedNlbRoles|TestRolesPermissionsValid" \
-  ./services/iam/internal/repo/kacho/pg/...
+  ./services/iam/internal/repo/kaname/pg/...
 ```
 
 ## Подробности реализации
 
-- **Use-cases:** `internal/apps/kacho/api/role/{create,get,list,update,delete}.go`.
-- **Handler:** `internal/apps/kacho/api/role/handler.go`.
-- **Repo:** `internal/repo/kacho/pg/role_repo.go`. Отдельного файла-порта только на
+- **Use-cases:** `internal/apps/kaname/api/role/{create,get,list,update,delete}.go`.
+- **Handler:** `internal/apps/kaname/api/role/handler.go`.
+- **Repo:** `internal/repo/kaname/pg/role_repo.go`. Отдельного файла-порта только на
   чтение здесь нет: вывод отношений из списка прав живёт в
   `internal/authzmap/permissions_to_relations.go` (`PermissionsToRelations`) и репозитория
   не требует.
@@ -267,8 +267,8 @@ go test -short -count=1 -timeout 120s \
 ## Ссылки на код
 
 - `internal/domain/role.go`
-- `internal/apps/kacho/api/role/`
-- `internal/repo/kacho/pg/role_repo.go`, `seed_role_ids_test.go`, `seed_nlb_roles_integration_test.go`
+- `internal/apps/kaname/api/role/`
+- `internal/repo/kaname/pg/role_repo.go`, `seed_role_ids_test.go`, `seed_nlb_roles_integration_test.go`
 - `internal/authzmap/permissions_to_relations.go`
 - `internal/authzmap/permissions_to_relations.go`
 - `internal/migrations/0001_initial.sql` — DDL `roles` + seed-блок

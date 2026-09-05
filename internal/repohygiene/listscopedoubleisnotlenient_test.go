@@ -56,7 +56,7 @@ import (
 // находок» означает «у каждого снисходительного назван живой держатель», а не
 // «снисходительных нет»: перепись печатает оба числа.
 func TestLenientScopeDoubleNamesALiveHolder(t *testing.T) {
-	lenientScopeAudit(t, "../../services/iam/internal/apps/kacho/api")
+	lenientScopeAudit(t, "../../services/iam/internal/apps/kaname/api")
 }
 
 // namesPackage — членство в срезе; ссылающийся пакет называется РОВНО ОДИН раз,
@@ -93,7 +93,7 @@ func auditLenientScopes(apiRoot string) (string, []string, error) {
 
 	// Путь-держатель, названный в комментарии. Ищется как путь внутри дерева
 	// сервиса, а не по имени пакета: имя переживает переезд, путь — нет.
-	holderRef := regexp.MustCompile(`services/iam/internal/apps/kacho/api/([a-z_]+)`)
+	holderRef := regexp.MustCompile(`services/iam/internal/apps/kaname/api/([a-z_]+)`)
 
 	entries, err := os.ReadDir(apiRoot)
 	if err != nil {

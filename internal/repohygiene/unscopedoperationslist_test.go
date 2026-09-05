@@ -41,11 +41,11 @@ import (
 // Каждая запись обязана нести обоснование «почему этот ярус», а не «так
 // исторически»: молчаливое освобождение неотличимо от пропущенного места.
 var adminTierUnscopedList = map[string]string{
-	"services/iam/internal/apps/kacho/api/account/list_all_operations.go": "" +
+	"services/iam/internal/apps/kaname/api/account/list_all_operations.go": "" +
 		"ярус администратора аккаунта: гейт пропускает только кластерного администратора, " +
 		"владельца аккаунта и делегированного администратора аккаунта. Аудит чужих действий " +
 		"внутри своей тенантности — предмет этого RPC, а не побочный эффект.",
-	"services/iam/internal/apps/kacho/api/internal_operations/list_iam_operations.go": "" +
+	"services/iam/internal/apps/kaname/api/internal_operations/list_iam_operations.go": "" +
 		"внутренний ярус: system_admin @ cluster, RPC живёт только на internal-листенере. " +
 		"Ровно тот случай, который godoc operations.Repo.List называет законным — доверенный " +
 		"внутренний вызывающий, авторизованный иначе.",

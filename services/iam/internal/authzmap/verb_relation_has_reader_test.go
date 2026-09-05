@@ -56,7 +56,7 @@ import (
 // (gateway/internal/middleware/embed/) байт-идентична ей — это отдельный,
 // уже существующий гейт (`make permission-catalog-check`), поэтому читать здесь
 // обе значило бы дублировать его утверждение, а не усиливать своё.
-const catalogRelPath = "services/iam/internal/apps/kacho/seed/embedded/permission_catalog.json"
+const catalogRelPath = "services/iam/internal/apps/kaname/seed/embedded/permission_catalog.json"
 
 // verbPair — (FGA object type, имя глагольного отношения).
 type verbPair struct {
@@ -127,7 +127,7 @@ var declaredWithoutReader = map[verbPair]string{
 	// `*`, разворачиваемую в набор ТИПА). То есть мёртвое право раздавалось по факту,
 	// а не в теории. Наблюдаемо это держат две пробы:
 	// `api/permission_catalog/resource_verbs_iam_user_test.go` (редактор больше не
-	// предлагает глагол) и `repo/kacho/pg/role_iam_user_delete_grants_nothing_integration_test.go`
+	// предлагает глагол) и `repo/kaname/pg/role_iam_user_delete_grants_nothing_integration_test.go`
 	// (проекция, которую читает вердикт, больше не несёт пары).
 	//
 	// РОЛИ `iam.user.delete` НЕ СУЩЕСТВОВАЛО, и это записано, чтобы обиход не вернулся:

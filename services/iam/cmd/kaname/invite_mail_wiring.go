@@ -44,7 +44,7 @@ import (
 	"github.com/PRO-Robotech/kacho/pkg/outbox/reconciler"
 	"github.com/PRO-Robotech/kacho/pkg/retention"
 
-	"github.com/PRO-Robotech/kacho-iam/internal/apps/kacho/config"
+	"github.com/PRO-Robotech/kacho-iam/internal/apps/kaname/config"
 	"github.com/PRO-Robotech/kacho-iam/internal/clients"
 )
 

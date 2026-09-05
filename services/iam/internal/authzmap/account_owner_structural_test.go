@@ -79,7 +79,7 @@ var (
 var aoVerbs = authzmap.VerbRelationsOfType("account")
 
 // aoSeedFreshAccount кладёт РОВНО то, что со-коммитит `Account.Create` в своей
-// транзакции (apps/kacho/api/account/create.go::ownerTuples), и НИЧЕГО больше:
+// транзакции (apps/kaname/api/account/create.go::ownerTuples), и НИЧЕГО больше:
 //
 //	user:<owner> #owner @ account:<A>  — самовыдача владельца.
 //

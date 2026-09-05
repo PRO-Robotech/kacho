@@ -822,7 +822,7 @@ $ go list -deps ./services/iam/cmd/kaname | grep -c modelrender
   27 ресурсов, каждый `objectType` уже объявлен каноном (§0.5).
 - **Когда:** процесс собирает модель на старте.
 - **Тогда:** собранная модель **побайтово равна** вшитому канону; перепись
-  печатает «блоков сверх канона **0**», «типов **32**», «байт **112 353**».
+  печатает «блоков сверх канона **0**», «типов **32**», «байт **112 354**».
   Величина «байт» есть **функция ревизии канона**, а не константа сценария: её
   производит `modelrender` (единица B — весь файл, шапка `canon.go`), и `#1820`
   сдвинул её со **110 717**. Сегодняшнее значение перемерено производителем и
@@ -1130,7 +1130,7 @@ $ go list -deps ./services/iam/cmd/kaname | grep -c modelrender
 **`IAM-MB-1-19` Граница ИСТЕКАЕТ САМА**
 
 - **Дано:** проба, утверждающая, что опора стража паритета — литерал
-  (`grep -n LiteralRows services/iam/internal/apps/kacho/seed/catalog_parity.go`
+  (`grep -n LiteralRows services/iam/internal/apps/kaname/seed/catalog_parity.go`
   непуст; сегодня `:153`).
 - **Когда:** #1861 сменит опору на применённые манифесты.
 - **Тогда:** проба **краснеет** и печатает указание перевернуть `-18`: отказ пуска
@@ -1627,7 +1627,7 @@ production-complete не является по признаку отказа о�
 5. **§0.5 — база тождества.** `go run ./services/iam/tools/modelcanoncheck`;
    RC = 0 при 27 из 27. Иначе `-01` теряет вход.
 6. **§0.10 — четвёртая ступень.** `grep -n 'validateRuleCatalog'
-   services/iam/internal/apps/kacho/api/role/*.go`. Вызывающих не два — лестница
+   services/iam/internal/apps/kaname/api/role/*.go`. Вызывающих не два — лестница
    §1 неверна.
 7. **§0.6 — взаимная блокировка.** Убедитесь, что `LoadWithReferent` всегда
    доходит до `authzmodel.Shared()`. Если существует путь разбора, модель не
@@ -3659,7 +3659,7 @@ construction**. Он ищет **завышенный выигрыш** и сле�
 | приёмка допуска **APPROVED** | `scripts/docs-gate/_lib.verdict` над `composed-model-admits-only-what-it-owns.md` | `('APPROVED', '- **Статус:** ✅ APPROVED — круг 4 …')` |
 | допуск — чистая функция в дереве | `grep -c '^func Admit' services/iam/internal/authzmodel/admit.go` | **1** |
 | клауз допуска | `grep -cE '^\tRule[A-Za-z0-9]+ Rule = ' .../admit.go` | **8** |
-| страж старта существует и зовётся | `grep -c 'func (c ManifestsConfig) validateComposition' services/iam/internal/apps/kacho/config/manifests.go` | **1**; цепь `ManifestsConfig.Validate ← Config.Validate ← main → os.Exit(1)` |
+| страж старта существует и зовётся | `grep -c 'func (c ManifestsConfig) validateComposition' services/iam/internal/apps/kaname/config/manifests.go` | **1**; цепь `ManifestsConfig.Validate ← Config.Validate ← main → os.Exit(1)` |
 | посадка объявляет допуск | `grep -c 'admission' deploy/helm/umbrella/charts/kaname/values.yaml` | непусто; закрытый набор — `AdmissionByContent = "content"` |
 | ни один стенд не включает сборку без допуска | `deploy/iam_module_manifest_composition_admission_test.go` | проба есть, читает **объявление** профилей структурным разбором |
 

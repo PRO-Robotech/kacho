@@ -155,7 +155,7 @@ grpcurl -plaintext -d '{"since_id":0,"limit":100}' localhost:9091 \
 
 ## Подробности реализации
 
-- **Handler:** `internal/apps/kacho/api/internal_iam/handler.go`.
+- **Handler:** `internal/apps/kaname/api/internal_iam/handler.go`.
 - **LookupSubject:** `lookup_subject.go`.
 - **ListPermissions:** RPC **снят** — в `proto/kacho/cloud/iam/v1/internal_iam_service.proto`
   на его месте стоит надгробие с прямым запретом заводить метод под тем же именем. Файла
@@ -191,7 +191,7 @@ grpcurl -plaintext -d '{"since_id":0,"limit":100}' localhost:9091 \
 
 ## Ссылки на код
 
-- `internal/apps/kacho/api/internal_iam/handler.go`, `lookup_subject.go`,
+- `internal/apps/kaname/api/internal_iam/handler.go`, `lookup_subject.go`,
   `register_resource.go`, `force_logout.go`, `get_role_compiled.go`
 - `internal/service/authorize_service.go`, `subject_change_service.go`
-- `internal/repo/kacho/pg/creator_tuple_writer.go`, `internal/repo/kacho/pg/relverdict/`
+- `internal/repo/kaname/pg/creator_tuple_writer.go`, `internal/repo/kaname/pg/relverdict/`

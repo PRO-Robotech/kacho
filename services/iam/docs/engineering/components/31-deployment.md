@@ -544,7 +544,7 @@ grpcurl -plaintext -d '{"external_id":"bootstrap-admin","email":"admin@kacho.clo
 
 - `cmd/kaname/{main,serve,wiring,env,grpc_register,hooks_mux}.go`
 - `cmd/migrator/main.go`
-- `internal/apps/kacho/config/`
+- `internal/apps/kaname/config/`
 - `internal/migrations/0001_initial.sql`
 - `deploy/Chart.yaml`, `deploy/values.yaml`, `deploy/templates/`
 - `Dockerfile`, `Makefile`

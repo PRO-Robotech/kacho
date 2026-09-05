@@ -63,7 +63,7 @@ type carrierCensus struct {
 //
 // Обе половины формы несущие. Тип с полем `Check` другой подписи — не носитель
 // готовности, а таблица требований, и такой в дереве живёт
-// (`services/iam/internal/apps/kacho/config` — поле `Element` вместо `Name` и
+// (`services/iam/internal/apps/kaname/config` — поле `Element` вместо `Name` и
 // `Check` двух аргументов). Он обязан молчать, и он стоит законным близнецом в
 // инъекции.
 //

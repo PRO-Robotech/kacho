@@ -10,7 +10,7 @@
 // invariant forbids software-precheck for within-service refs — a within-service
 // violation is detected by catching the pgx SQLSTATE and wrapping it in the
 // appropriate sentinel. That SQLSTATE→sentinel bridge (which needs pgx/pgconn)
-// deliberately lives in the ADAPTER layer (internal/repo/kacho/pg/pgmaperr.go),
+// deliberately lives in the ADAPTER layer (internal/repo/kaname/pg/pgmaperr.go),
 // NOT here: this package stays pgx-free so the ~40 use-case/handler files that
 // import it for the sentinels never pull pgx into their build closure
 // (architecture.md dependency-rule).

@@ -295,7 +295,7 @@ proto-gen: proto-vendor
 
 # permission_catalog.json — runtime-embedded grant-catalog для
 # InternalIAMService.ListPermissions / PermissionCatalogService. Файл закоммичен и
-# встроен через //go:embed (internal/apps/kacho/seed/embedded/permission_catalog.json),
+# встроен через //go:embed (internal/apps/kaname/seed/embedded/permission_catalog.json),
 # поэтому iam собирается standalone. Полный catalog по транзитивному набору всех
 # доменных service.proto собирается в api-gateway (catalog god-node) — обновление
 # этого зеркала прилетает оттуда. Локально это no-op.
@@ -306,7 +306,7 @@ proto-gen: proto-vendor
 # расходились ровно тогда, когда синхронизация и требовалась. Теперь цель делает
 # то, что называет, и проверяет результат.
 GATEWAY_CATALOG := ../../gateway/internal/middleware/embed/permission_catalog.json
-IAM_CATALOG_EMBED := internal/apps/kacho/seed/embedded/permission_catalog.json
+IAM_CATALOG_EMBED := internal/apps/kaname/seed/embedded/permission_catalog.json
 .PHONY: sync-permission-catalog
 sync-permission-catalog:
 	@test -f "$(GATEWAY_CATALOG)" || { echo "нет копии шлюза: $(GATEWAY_CATALOG) — нужен полный чекаут монорепо"; exit 1; }

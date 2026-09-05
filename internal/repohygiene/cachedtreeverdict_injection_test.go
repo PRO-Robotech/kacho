@@ -115,7 +115,7 @@ func TestCachedVerdictGate_MakefileAxisFindsAndSpares(t *testing.T) {
 		"\t$(GO) test ./... -race -short -count=1 -timeout $(UNIT_TIMEOUT)\n" +
 		"\n" +
 		"scale-grid:\n" +
-		"\t$(GO) test ./services/iam/internal/repo/kacho/pg/relverdict/ \\\n" +
+		"\t$(GO) test ./services/iam/internal/repo/kaname/pg/relverdict/ \\\n" +
 		"\t  -run TestScaleGrid \\\n" +
 		"\t  -count=1 -v\n" +
 		"\n" +

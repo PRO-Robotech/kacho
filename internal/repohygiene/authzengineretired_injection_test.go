@@ -16,7 +16,7 @@ import "testing"
 // хранилищу → гейт КРАСНЕЕТ и НАЗЫВАЕТ КООРДИНАТУ.
 func TestR7_3_26_InjectionRedOnAReturnedEngineCall(t *testing.T) {
 	sources := map[string]string{
-		"services/iam/internal/apps/kacho/api/thing/decide.go": `package thing
+		"services/iam/internal/apps/kaname/api/thing/decide.go": `package thing
 
 import "context"
 
@@ -43,7 +43,7 @@ func decide(ctx context.Context, s store, subject, relation, object string) (boo
 			"он не способен покраснеть, и его зелёный на дереве ничего не значит")
 	}
 	got := findings[0]
-	if got.File != "services/iam/internal/apps/kacho/api/thing/decide.go" || got.Line == 0 {
+	if got.File != "services/iam/internal/apps/kaname/api/thing/decide.go" || got.Line == 0 {
 		t.Fatalf("находка без координаты: %+v — гейт, который не называет место, "+
 			"невозможно исполнить", got)
 	}
@@ -86,7 +86,7 @@ type OpenFGAHTTPClient struct{ Endpoint string }
 // зовётся `iam_fgaproxy`. Гейт, краснеющий на них, краснеет на исправном дереве.
 func TestR7_3_26_InjectionSilentOnTheLegitimateTwin(t *testing.T) {
 	sources := map[string]string{
-		"services/iam/internal/repo/kacho/pg/journal.go": `package pg
+		"services/iam/internal/repo/kaname/pg/journal.go": `package pg
 
 import "context"
 

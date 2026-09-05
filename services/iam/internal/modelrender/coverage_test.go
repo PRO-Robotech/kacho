@@ -9,7 +9,7 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/PRO-Robotech/kacho-iam/internal/apps/kacho/seed"
+	"github.com/PRO-Robotech/kacho-iam/internal/apps/kaname/seed"
 	"github.com/PRO-Robotech/kacho-iam/internal/authzmap"
 	"github.com/PRO-Robotech/kacho-iam/internal/authzplan"
 	"github.com/PRO-Robotech/kacho-iam/internal/modelrender"

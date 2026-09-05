@@ -51,8 +51,8 @@ const providerClientPkg = "github.com/PRO-Robotech/kacho-iam/internal/clients"
 // use-case и его композиция. Пути относительны каталогу ЭТОГО пакета, поэтому
 // проба не зависит ни от корня дерева, ни от git.
 var bootstrapMintPackages = []string{
-	".",                                 // bootstraptokenwire — сборка контура
-	"../apps/kacho/api/bootstrap_token", // use-case чеканки
+	".",                                  // bootstraptokenwire — сборка контура
+	"../apps/kaname/api/bootstrap_token", // use-case чеканки
 }
 
 // providerImportsIn возвращает файлы каталога, импортирующие пакет поставщика,

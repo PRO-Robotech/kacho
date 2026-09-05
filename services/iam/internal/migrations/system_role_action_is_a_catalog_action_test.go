@@ -46,7 +46,7 @@ import (
 
 	"github.com/stretchr/testify/require"
 
-	"github.com/PRO-Robotech/kacho-iam/internal/apps/kacho/seed"
+	"github.com/PRO-Robotech/kacho-iam/internal/apps/kaname/seed"
 )
 
 // reRoleInsert — ПЕРВАЯ законная форма присвоения: вставка строки роли.

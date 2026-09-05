@@ -22,7 +22,7 @@ db:
 # ─── Config sections (viper YAML, parity с kacho-vpc) ───────────────────
 # Все ключи ниже рендерятся в /etc/kaname/config.yaml через
 # deploy/templates/configmap.yaml. Любой ключ можно override через
-# ENV KANAME_<SECTION>__<KEY>=... (см. internal/apps/kacho/config).
+# ENV KANAME_<SECTION>__<KEY>=... (см. internal/apps/kaname/config).
 logger:
   level: INFO
 apiServer:

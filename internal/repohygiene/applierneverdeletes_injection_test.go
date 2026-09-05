@@ -228,7 +228,7 @@ func TestApplierDeleteGateStaysSilentOnTheWithdrawalMarkVerb(t *testing.T) {
 // он судит оператор. Именно этого ось 1 не умела никогда — `WithdrawSystemRole`
 // с удалением внутри под её перечень не подпадал.
 func TestTheDeletingImplementationIsHeldWhateverTheVerbIsCalled(t *testing.T) {
-	const rel = "services/iam/internal/repo/kacho/pg/role_repo.go"
+	const rel = "services/iam/internal/repo/kaname/pg/role_repo.go"
 
 	sites, census, err := ScanRoleDeletes(rel, []byte(applierAdapterRetireDeletes))
 	if err != nil {

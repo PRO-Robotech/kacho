@@ -15,7 +15,7 @@
 // idle the machine.
 //
 // This package is the generalisation of the fix already landed by hand in
-// services/iam/internal/repo/kacho/pg, services/nlb/internal/repo/kacho/pg and
+// services/iam/internal/repo/kaname/pg, services/nlb/internal/repo/kacho/pg and
 // services/vpc/internal/repo — three byte-for-byte copies of the same 150 lines.
 // It is not a new invention; it is those three with the service-specific parts
 // (the name, and how the schema is applied) lifted into Config.

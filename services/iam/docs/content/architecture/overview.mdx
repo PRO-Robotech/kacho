@@ -20,7 +20,7 @@ database-per-service, интеграцию с провайдерами иден�
 
 ```mermaid
 flowchart TD
-  handler["handler<br/>(тонкий transport: parse → use-case → format)"] --> uc["use-case<br/>(apps/kacho/api/{account,project,user,…})"]
+  handler["handler<br/>(тонкий transport: parse → use-case → format)"] --> uc["use-case<br/>(apps/kaname/api/{account,project,user,…})"]
   repo["repo (pgx adapter)"] --> uc
   clients["clients (Hydra / Kratos)"] --> uc
   uc --> domain["domain<br/>(сущности + Validate, чистый Go)"]
@@ -31,7 +31,7 @@ flowchart TD
   <thead><tr><th>Слой</th><th>Где</th><th>Ответственность</th></tr></thead>
   <tbody>
     <tr><td><strong>domain</strong></td><td><code>internal/domain/</code></td><td>Сущности + <code>Validate()</code>; закрытые наборы (verbs, subject-types). Только stdlib + proto</td></tr>
-    <tr><td><strong>use-case</strong></td><td><code>internal/apps/kacho/api/&lt;resource&gt;/</code></td><td>Бизнес-логика; определяет port-интерфейсы (Repo, Client). Не импортирует transport</td></tr>
+    <tr><td><strong>use-case</strong></td><td><code>internal/apps/kaname/api/&lt;resource&gt;/</code></td><td>Бизнес-логика; определяет port-интерфейсы (Repo, Client). Не импортирует transport</td></tr>
     <tr><td><strong>repo (adapter)</strong></td><td><code>internal/repo/</code></td><td>Реализация портов на handwritten pgx; SQLSTATE → sentinel; outbox-emit в TX</td></tr>
     <tr><td><strong>clients (adapter)</strong></td><td><code>internal/clients/</code></td><td>Hydra (OAuth-клиенты), Kratos (identity), сброс кэша прав на краю</td></tr>
     <tr><td><strong>handler</strong></td><td><code>internal/handler/</code></td><td>Тонкий transport: parse → use-case → format. Без бизнес-логики</td></tr>

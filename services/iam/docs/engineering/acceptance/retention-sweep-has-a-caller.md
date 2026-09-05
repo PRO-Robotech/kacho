@@ -22,8 +22,8 @@ SPDX-License-Identifier: AGPL-3.0-or-later
 - **Тип изменения:** вводит фоновое поведение, удаляющее строки, и **меняет наблюдаемый
   исход в двух местах**, оба названы замером: `UserService.Delete` (§5) и приём
   `ttl_expires_at` у `InternalSessionRevocationsService.Revoke` (§2.5)
-- **Сервис:** `kaname`; затрагивает `services/iam/internal/apps/kacho/`,
-  `services/iam/internal/repo/kacho/pg/`, `services/iam/cmd/kaname/`,
+- **Сервис:** `kaname`; затрагивает `services/iam/internal/apps/kaname/`,
+  `services/iam/internal/repo/kaname/pg/`, `services/iam/cmd/kaname/`,
   `internal/repohygiene`, миграции iam
 - **Соседняя приёмка:** `expired-credential-reclaim.md` (задача #1264, APPROVED, **не
   реализована**). Её §1.4 нашла эту пару и вынесла из своего объёма; её §9.12 планировала
@@ -45,8 +45,8 @@ SPDX-License-Identifier: AGPL-3.0-or-later
 
 | Объявление | Сервис | Прод-вызывающих | Что это значит |
 |---|---|---:|---|
-| `ClientAssertionReplayRepo.Reap` (`repo/kacho/pg/client_assertion_replay_repo.go:90`) | iam | **0** | уборка не идёт |
-| `SessionRevocationRepo.DeleteExpired` (`repo/kacho/pg/audit_session_revocation_repos.go:140`) | iam | **0** | уборка не идёт |
+| `ClientAssertionReplayRepo.Reap` (`repo/kaname/pg/client_assertion_replay_repo.go:90`) | iam | **0** | уборка не идёт |
+| `SessionRevocationRepo.DeleteExpired` (`repo/kaname/pg/audit_session_revocation_repos.go:140`) | iam | **0** | уборка не идёт |
 | `Store.PurgeExpiredDPoPProofs` | gateway | **0** | уборка не идёт (вне области, §9) |
 | `targetGroupWriter.DeleteTargetsDrained` | nlb | **0** | мёртвый дубль: уборку делает свой оператор раннера (вне области, §9) |
 | `PendingBlobRepo.SweepStale` | registry | 1 | идёт |
@@ -109,8 +109,8 @@ grep -rn "\.Reap(\|\.DeleteExpired(\|\.PurgeExpiredDPoPProofs(\|\.SweepStale(\|\
 |---:|---|---|---|
 | 1 | `internal/migrations/898001_client_assertion_replay.sql:63` | «Обход сборщика идёт по сроку годности» | `client_assertion_replay` |
 | 2 | `internal/migrations/898001_client_assertion_replay.sql:68` (`COMMENT ON TABLE`) | «…убирается сборщиком» | `client_assertion_replay` |
-| 3 | `internal/repo/kacho/pg/client_assertion_replay_repo.go:75` | «`Reap` убирает строки утверждений, истёкших к названному моменту» | `client_assertion_replay` |
-| 4 | `internal/repo/kacho/pg/audit_session_revocation_repos.go:139` | «DeleteExpired — cron-cleanup» | `session_revocations` |
+| 3 | `internal/repo/kaname/pg/client_assertion_replay_repo.go:75` | «`Reap` убирает строки утверждений, истёкших к названному моменту» | `client_assertion_replay` |
+| 4 | `internal/repo/kaname/pg/audit_session_revocation_repos.go:139` | «DeleteExpired — cron-cleanup» | `session_revocations` |
 | 5 | `internal/domain/session_revocation.go:13` | «A cron cleanup deletes rows past ttl_expires_at» | `session_revocations` |
 | 6 | `proto/kacho/cloud/iam/v1/session_revocation.proto:18` | «background cron prunes» | `session_revocations`, **контракт** — поверхность Internal |
 | 7 | `internal/migrations/755001_session_revoked_channel_retires_with_its_listener.sql:35-36` | «у неё живые писатель … и читатели (`IsRevoked`, `ListByUser`, **`DeleteExpired`**)» | `session_revocations` |
@@ -487,7 +487,7 @@ RemovalSlack)`; предикат выше даёт лишь первые два 
 
 **Что уборка НЕ уносит.** Свидетельство «этому субъекту отзывали» живёт в аудите: путь
 отзыва пишет `iam.session.revoked` в `audit_outbox` **той же транзакцией**
-(`repo/kacho/pg/hook_pool_adapters.go:30,123`). Оперативная таблица отсечек — не журнал,
+(`repo/kaname/pg/hook_pool_adapters.go:30,123`). Оперативная таблица отсечек — не журнал,
 и её укорачивание истории не теряет.
 
 ### 2.4. Почему ОДНА петля, а не три
@@ -628,7 +628,7 @@ Internal. Вызывающий, сегодня присылающий момен
 > слепое пятно остаётся предметом приёмки #1264. Предмет свой она и закрыла: расширение
 > объявлено в §5.2 `expired-credential-reclaim.md` и посажено вместе с маркером `РЕПЛИКИ:`
 > у `secretsweep/sweeper.go`. Предикат: `grep -c 'РЕПЛИКИ:'
-> services/iam/internal/apps/kacho/secretsweep/sweeper.go` → **1** (было 0). Выбор формы в
+> services/iam/internal/apps/kaname/secretsweep/sweeper.go` → **1** (было 0). Выбор формы в
 > петле уборки перестал быть несущим — ровно как и предсказывала растяжка, оставленная в
 > `TestRetentionLoopFormIsTheRecognisedOne`; её утверждение перевёрнуто, а не ослаблено.
 
@@ -762,7 +762,7 @@ ALTER TABLE ONLY kacho_iam.session_revocations
 > [!note] Абзац выше — ЗАМЕР, а не утверждение о сегодняшнем дереве (помечено 2026-08-31, #1743)
 > Цитируемый текст верен на той ревизии, на которой этот разбор писался, и остаётся верен
 > на стволе: предикат `git grep -c 'referenced resource not found or still in use' --
-> services/iam/internal/repo/kacho/pg/pgmaperr.go` даёт на `origin/main` **1**.
+> services/iam/internal/repo/kaname/pg/pgmaperr.go` даёт на `origin/main` **1**.
 >
 > **Но у него есть преемник, и он уже написан — на другой линии.** Ветка
 > `release/identity-11` разводит этот слитый отказ на две противоположные полосы, потому

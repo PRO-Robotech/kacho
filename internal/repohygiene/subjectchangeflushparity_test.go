@@ -32,7 +32,7 @@ func subjectChangeFlushParityOptions(t *testing.T) SubjectChangeFlushParityOptio
 	t.Helper()
 	return SubjectChangeFlushParityOptions{
 		Root:          repoRoot(t),
-		ProducerRoot:  "services/iam/internal/apps/kacho/api",
+		ProducerRoot:  "services/iam/internal/apps/kaname/api",
 		SelfFlushFile: "gateway/internal/middleware/authz.go",
 		MethodExists:  methodExistsInContract,
 	}

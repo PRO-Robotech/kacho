@@ -48,7 +48,7 @@ package check
 //	grep -rl 'kacho-iam/internal/authzmap"' --include=*.go . | grep -v '_test.go' \
 //	  | xargs -n1 dirname | sort -u
 //	# → 11 каталогов-импортёров, из них НЕ достижимы бинарём 2:
-//	#   internal/repo/kacho/pg/scalegrid · internal/scopesourcecensus
+//	#   internal/repo/kaname/pg/scalegrid · internal/scopesourcecensus
 //
 // Цена решения названа честно: у этих двух перевод на порт — церемония, новых
 // свойств он не даёт. Платится она за то, что граница популяции не зависит от

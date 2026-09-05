@@ -34,7 +34,7 @@ type UserOAuthClient struct {
 	// действительны до своего истечения.
 	//
 	// На пути разрешения клиента эта колонка НЕ участвует (см.
-	// repo/kacho/pg.AssertionClientRepo).
+	// repo/kaname/pg.AssertionClientRepo).
 	OAuthClientID   OAuthClientID
 	Description     Description
 	CreatedByUserID UserID

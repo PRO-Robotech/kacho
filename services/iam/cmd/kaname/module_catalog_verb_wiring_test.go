@@ -59,7 +59,7 @@ import (
 const moduleVerbApplierCtor = "NewVerbApplier"
 
 // moduleVerbConsumerPkg — пакет-потребитель: use-case четырёх глаголов.
-const moduleVerbConsumerPkg = "github.com/PRO-Robotech/kacho-iam/internal/apps/kacho/api/module"
+const moduleVerbConsumerPkg = "github.com/PRO-Robotech/kacho-iam/internal/apps/kaname/api/module"
 
 // moduleVerbApplierPort — имя ПОРТА применителя в пакете-потребителе. Именно на
 // значении этого типа обязан быть позван `Apply`.
@@ -253,7 +253,7 @@ func TestIAM1034_VerbApplierBuiltByTheRootIsHandedToAConsumerThatApplies(t *test
 		t.Fatalf("перечень файлов композиционного корня: %v", err)
 	}
 	consumerFiles, err := treecorpus.UnderWithSuffix(
-		filepath.Join(root, "internal", "apps", "kacho", "api", "module"), ".go")
+		filepath.Join(root, "internal", "apps", "kaname", "api", "module"), ".go")
 	if err != nil {
 		t.Fatalf("перечень файлов пакета-потребителя: %v", err)
 	}

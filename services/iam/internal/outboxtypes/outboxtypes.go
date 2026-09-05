@@ -4,14 +4,14 @@
 // Package outboxtypes holds the NEUTRAL writer-tx outbox payload value types
 // shared across the Clean-Architecture boundary between the use-case layer
 // (internal/service, which defines the emitter ports) and the CQRS Repository
-// port aggregator (internal/repo/kacho, whose Writer surface also emits them).
+// port aggregator (internal/repo/kaname, whose Writer surface also emits them).
 //
-// Why a dedicated leaf package: internal/repo/kacho/iface.go (the
+// Why a dedicated leaf package: internal/repo/kaname/iface.go (the
 // Repository/Reader/Writer ports) exposes EmitAuditEvent / EmitFGARelationWrite
 // / EmitFGARelationDelete in terms of these payloads. If the payloads lived in
 // internal/service (the use-case layer), the repo-ports package would import the
 // use-case package it is a dependency OF — an inverted layer edge that is "one
-// refactor away from an import cycle" (repo/kacho → service → repo/kacho).
+// refactor away from an import cycle" (repo/kaname → service → repo/kaname).
 // Hoisting the payloads into this stdlib-only leaf package lets BOTH sides
 // reference a neutral type without either importing the other.
 //

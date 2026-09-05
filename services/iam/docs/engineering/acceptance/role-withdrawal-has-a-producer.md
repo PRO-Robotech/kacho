@@ -255,14 +255,14 @@ SQL); происхождение ложной посылки подтвержд�
 |---|---|---|---|
 | Е1 | применитель ролей **приводится в действие** в проде | гейт `TestWithdrawalProducerArrivesWithTheApplier`, строка переписи; единица — узел разбора `пакет.Имя` | **1** (`services/iam/cmd/kaname/serve.go:333`, `NewApplier`) |
 | Е2 | операторов записи над `roles` в прод-Go iam | та же перепись; единица — оператор в строковом литерале | **4** |
-| Е3 | сверка `Reconcile` объявляет ОБА вида расхождения | `services/iam/internal/apps/kacho/moduleroles/reconcile.go`, константы `LiveNotDeclared` / `DeclaredNotLive` | **2** вида |
+| Е3 | сверка `Reconcile` объявляет ОБА вида расхождения | `services/iam/internal/apps/kaname/moduleroles/reconcile.go`, константы `LiveNotDeclared` / `DeclaredNotLive` | **2** вида |
 | Е4 | таблиц каталога прав, несущих пометку снятия | `CREATE TABLE` в `20260901113757_rule_segments_have_a_referent.sql`; единица — таблица | **3** (`catalog_module`, `catalog_resource`, `catalog_verb`) |
 | Е5 | форма пометки объявлена дословно | там же, `catalog_module`: `retired_at timestamptz` · `retired_reason text` · `live boolean NOT NULL DEFAULT true` · `CHECK (live = (retired_at IS NULL))` · `UNIQUE (module, live)` как референт | форма **есть** |
-| Е6 | писатель пометки у каталога | `services/iam/internal/repo/kacho/pg/catalog_writer.go`: `RetireVerb` (`SET retired_at = now(), live = false, retired_reason = $4`), `RetireResource`; обратные — `UpsertModule`/`UpsertResource`/`UpsertVerb` (`SET retired_at = NULL, live = true`) | **2** снятия + **3** оживления |
+| Е6 | писатель пометки у каталога | `services/iam/internal/repo/kaname/pg/catalog_writer.go`: `RetireVerb` (`SET retired_at = now(), live = false, retired_reason = $4`), `RetireResource`; обратные — `UpsertModule`/`UpsertResource`/`UpsertVerb` (`SET retired_at = NULL, live = true`) | **2** снятия + **3** оживления |
 | Е7 | путь старта СНИМАЕТ строки каталога и **продолжает пуск**, называя снятое поимённо | `services/iam/cmd/kaname/serve.go:288-290` — условие `len(catalogCensus.WithdrawnRows) > 0` и под ним `logger.Info("строки каталога сняты решением — старт продолжается", slog.Any("rows", …))` | прецедент **есть** |
 | Е8 | ключей, ссылающихся на `roles`, объявлено | `git grep -cE 'REFERENCES kacho_iam\.roles' -- services/iam/internal/migrations/*.sql`; единица — объявление ключа | **8** (из них 1 на дропнутой `organizations`, 0008 → живых **7**) |
 | Е9 | из них `ON DELETE RESTRICT` · `ON DELETE CASCADE` | тот же вывод, разбор по действию | **1** живой RESTRICT (`access_bindings_role_fk`) · **6** CASCADE |
-| Е10 | `roles` в прод-коде вердикта вне комментария | обход `services/iam/internal/repo/kacho/pg/relverdict/*.go` без `_test.go`; единица — вхождение вне строки-комментария | **1**, и это **ось меток** (`labelaxis.go:66`, `iamDirectLabelTable["iam_role"]`) |
+| Е10 | `roles` в прод-коде вердикта вне комментария | обход `services/iam/internal/repo/kaname/pg/relverdict/*.go` без `_test.go`; единица — вхождение вне строки-комментария | **1**, и это **ось меток** (`labelaxis.go:66`, `iamDirectLabelTable["iam_role"]`) |
 | Е11 | что вердикт читает как ПРАВО роли | тот же обход; единица — **строка вне комментария** в прод-файле `relverdict/` | `role_verb` **4**, `role_rule_selectors` **4** |
 | Е12 | ведомость отобранного и её читатель | писателей `INSERT INTO kacho_iam.role_grant_orphan` — **3** (`catalog_consequence_sql.go`); читателей `FROM kacho_iam.role_grant_orphan` — **1** (`role_repo.go:198`, `WithdrawnGrants`) | ведомость **читается** |
 | Е13 | контракт роли уже несёт состояние целости | `proto/kacho/cloud/iam/v1/role.proto`: `health` (22), `declared_segments` (23), `unresolved_segments` (24), `withdrawn_grants` (25) | **4** поля |
@@ -270,7 +270,7 @@ SQL); происхождение ложной посылки подтвержд�
 | Е15 | владелец роли и его ключ | `roles.owner_module` + `roles_owner_module_fk FOREIGN KEY (owner_module) REFERENCES kacho_iam.catalog_module (module)` — на ПЕРВИЧНЫЙ ключ, `20260902190500` | **есть** |
 | Е16 | уникальность имени системной роли | `roles_system_unique ON kacho_iam.roles (cluster_id, name) WHERE is_system = true` (`0056`) | **есть**, `live` в ней **нет** |
 | Е17 | порядок снятия, исполненный человеком | `20260824002317_role_iam_user_edit_grants_nothing.sql`: (1) `role_rule_selectors` → (2) `role_verb` → (3) `access_bindings` → (4) `roles` | **4** шага |
-| Е18 | снятие строк каталога у применителя — **по одной строке за оператор**, в цикле | `services/iam/internal/apps/kacho/modulecatalog/apply.go:518` (`RetireVerb`) и `:528` (`RetireResource`), оба в `for` | цикл **есть** |
+| Е18 | снятие строк каталога у применителя — **по одной строке за оператор**, в цикле | `services/iam/internal/apps/kaname/modulecatalog/apply.go:518` (`RetireVerb`) и `:528` (`RetireResource`), оба в `for` | цикл **есть** |
 | Е19 | ОДНИМ оператором над множеством сделано **переселение последствий**, а не пометка | `catalog_writer.go` §`ResettleTenantProjections`: «снятие само СТАЛО отбором. `DELETE … RETURNING`» | отбор **есть**, и он о другом |
 
 ### 0.2. Чего в дереве НЕТ — и это несущее, а не оговорка
@@ -680,7 +680,7 @@ check-then-act запрещён (#10), а ключ на элемент масс�
 
 > [!important] Круг 2 требовал здесь `23514` — из него нужный отказ НЕ получается
 > Перемерено: `23514` уходит в ветвь `pgfault.Check` → `checkText` →
-> `iamerr.ErrInvalidArg` (`repo/kacho/pg/pgmaperr.go:147`), то есть буквальное
+> `iamerr.ErrInvalidArg` (`repo/kaname/pg/pgmaperr.go:147`), то есть буквальное
 > исполнение дало бы `INVALID_ARGUMENT` и опровергло бы `-16`. Класс `23000`
 > отвечает `ErrFailedPrecondition` **целиком** (`integritySentinel`, там же
 > `:484-494`), а незнакомая связь уже получает общий текст без утечки
@@ -766,7 +766,7 @@ check-then-act запрещён (#10), а ключ на элемент масс�
 
 | # | звено | предикат |
 |---|---|---|
-| 1 | роль модуля **всегда** кластерного яруса | `owner_module` пишет ровно один оператор (`repo/kacho/pg/role_repo.go:636-648`), и он же пишет `cluster_id`; ярусы взаимоисключающи ограничением `roles_definition_tier_xor` |
+| 1 | роль модуля **всегда** кластерного яруса | `owner_module` пишет ровно один оператор (`repo/kaname/pg/role_repo.go:636-648`), и он же пишет `cluster_id`; ярусы взаимоисключающи ограничением `roles_definition_tier_xor` |
 | 2 | у роли кластерного яруса цепь областей **пуста** | миграция `785001_scope_chain_covers_iam_own_types.sql` говорит это словами: «Системная роль (`cluster_id`) не попадает ни в одну ветвь — законно» (`:284`), и отдельно — «строка без владеющего аккаунта must not become reachable from any account's administrator» (`:177-180`) |
 | 3 | цепью объекта гейтятся **все три арма** выдачи, не только меточный | закрытый набор областей выдачи `bindableScopes = {project, account, cluster}` (`domain/structural_tuple.go:54`) `iam_role` не содержит |
 

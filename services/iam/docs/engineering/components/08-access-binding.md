@@ -275,14 +275,14 @@ make -C deploy psql SVC=iam
 # → пусто). Такая команда выходит УСПЕХОМ, не исполнив ни одной пробы, — то есть
 # читалась как зелёный прогон и им не была.
 go test -short -count=1 -timeout 120s \
-  ./services/iam/internal/apps/kacho/api/access_binding/ ./services/iam/internal/repo/kacho/pg/
+  ./services/iam/internal/apps/kaname/api/access_binding/ ./services/iam/internal/repo/kaname/pg/
 ```
 
 ## Подробности реализации
 
-- **Use-cases:** `internal/apps/kacho/api/access_binding/{create,delete,get,list_by_resource,list_by_subject}.go`.
-- **Handler:** `internal/apps/kacho/api/access_binding/handler.go`.
-- **Repo:** `internal/repo/kacho/pg/access_binding_repo.go` — strict INSERT
+- **Use-cases:** `internal/apps/kaname/api/access_binding/{create,delete,get,list_by_resource,list_by_subject}.go`.
+- **Handler:** `internal/apps/kaname/api/access_binding/handler.go`.
+- **Repo:** `internal/repo/kaname/pg/access_binding_repo.go` — strict INSERT
   (без `ON CONFLICT`); дубль активной 5-tuple → 23505 → `ErrAlreadyExists`.
 - **DB:** `access_bindings(id, subject_type, subject_id, role_id, resource_type,
   resource_id, status, condition_id, builtin_condition, expires_at, granted_by,
@@ -338,7 +338,7 @@ go test -short -count=1 -timeout 120s \
 ## Ссылки на код
 
 - `internal/domain/access_binding.go`
-- `internal/apps/kacho/api/access_binding/`
-- `internal/repo/kacho/pg/access_binding_repo.go`, `access_binding_fga_outbox_integration_test.go`, `access_binding_subject_change_integration_test.go`
+- `internal/apps/kaname/api/access_binding/`
+- `internal/repo/kaname/pg/access_binding_repo.go`, `access_binding_fga_outbox_integration_test.go`, `access_binding_subject_change_integration_test.go`
 - `internal/authzmap/`
 - `internal/migrations/0001_initial.sql` — DDL `access_bindings`

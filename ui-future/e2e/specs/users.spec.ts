@@ -173,7 +173,7 @@ async function ownUserId(page: Page, email: string): Promise<string> {
  *
  * Второе членство создаётся ровно одним способом — ПРИГЛАШЕНИЕМ уже
  * существующей почты в другой аккаунт. Заведение аккаунта членства не даёт:
- * в `services/iam/internal/repo/kacho/pg/account_repo.go` нет ни одной записи в
+ * в `services/iam/internal/repo/kaname/pg/account_repo.go` нет ни одной записи в
  * `memberships`, их пишет только заведение человека
  * (`user_repo.go`, два места, оба — путь `Upsert`). Приглашение же объявлено
  * полом уровня «2» (`required_acr_min = "2"`,

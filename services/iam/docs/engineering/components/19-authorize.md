@@ -199,8 +199,8 @@ curl -X POST http://localhost:18080/iam/v1/authorize:expandRelations \
 ## Подробности реализации
 
 - **служба:** `internal/service/authorize_service.go`
-- **обработчик:** `internal/apps/kacho/api/authorize/handler.go`
-- **реляционная форма:** `internal/repo/kacho/pg/relverdict/`
+- **обработчик:** `internal/apps/kaname/api/authorize/handler.go`
+- **реляционная форма:** `internal/repo/kaname/pg/relverdict/`
 - **план вывода из модели:** `services/iam/internal/authzplan/`
 - **свёртка глагола:** `internal/authzmap/permissions_to_relations.go`
 
@@ -213,6 +213,6 @@ curl -X POST http://localhost:18080/iam/v1/authorize:expandRelations \
 ## Ссылки на код
 
 - `internal/service/authorize_service.go`
-- `internal/apps/kacho/api/authorize/handler.go`
-- `internal/repo/kacho/pg/relverdict/`
+- `internal/apps/kaname/api/authorize/handler.go`
+- `internal/repo/kaname/pg/relverdict/`
 - `internal/authzmap/`, `services/iam/internal/authzplan/`

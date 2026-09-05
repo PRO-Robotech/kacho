@@ -60,7 +60,7 @@ func TestIntegration_IntentJournalChannelHasNoProducerLeft(t *testing.T) {
 
 	// Положительный контроль на том же запросе, в том же прогоне: канал, чей
 	// потребитель ЖИВ и назван прод-кодом
-	// (`repo/kacho/pg/reconcile_notify.go`, `LISTEN` на reconcileOutboxChannel).
+	// (`repo/kaname/pg/reconcile_notify.go`, `LISTEN` на reconcileOutboxChannel).
 	assert.Contains(t, channels, "kaname_resource_reconcile_outbox",
 		"рабочий канал очереди обязан остаться — если пропал и он, снято лишнее, "+
 			"а не только беспотребительское")

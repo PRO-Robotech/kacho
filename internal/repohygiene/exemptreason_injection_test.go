@@ -36,7 +36,7 @@ func hasFinding(j ExemptJudgement, needle string) bool {
 
 func TestR893_ExemptJudgeCanFailAndCanStaySilent(t *testing.T) {
 	sites := map[string]string{
-		"kacho.cloud.iam.v1.UserService/List": "services/iam/internal/apps/kacho/api/user/list.go",
+		"kacho.cloud.iam.v1.UserService/List": "services/iam/internal/apps/kaname/api/user/list.go",
 	}
 
 	cases := []struct {

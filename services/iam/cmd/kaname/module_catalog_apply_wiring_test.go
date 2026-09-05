@@ -68,7 +68,7 @@ import (
 )
 
 // moduleCatalogPkgPath — пакет применителя каталога.
-const moduleCatalogPkgPath = "github.com/PRO-Robotech/kacho-iam/internal/apps/kacho/modulecatalog"
+const moduleCatalogPkgPath = "github.com/PRO-Robotech/kacho-iam/internal/apps/kaname/modulecatalog"
 
 // moduleCatalogApplierCtor — конструктор применителя.
 const moduleCatalogApplierCtor = "NewApplier"

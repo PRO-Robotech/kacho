@@ -253,7 +253,7 @@ make -C deploy psql SVC=iam
 # > SELECT id, name, owner_user_id, created_at FROM kaname.accounts LIMIT 10;
 
 # 5. Integration tests.
-go test -short -count=1 -timeout 120s ./services/iam/internal/repo/kacho/pg/
+go test -short -count=1 -timeout 120s ./services/iam/internal/repo/kaname/pg/
 
 # 6. Логи сервиса.
 make -C deploy logs-svc SVC=iam
@@ -267,10 +267,10 @@ make -C deploy logs-svc SVC=iam
 
 ## Подробности реализации
 
-- **Use-cases:** `internal/apps/kacho/api/account/{create,get,list,update,delete}.go`.
-- **Handler:** `internal/apps/kacho/api/account/handler.go` — тонкий transport.
-- **Repo iface:** `internal/repo/kacho/account/iface.go` (Reader/Writer split).
-- **Repo impl:** `internal/repo/kacho/pg/account_repo.go` (pgx + dto-mapping).
+- **Use-cases:** `internal/apps/kaname/api/account/{create,get,list,update,delete}.go`.
+- **Handler:** `internal/apps/kaname/api/account/handler.go` — тонкий transport.
+- **Repo iface:** `internal/repo/kaname/account/iface.go` (Reader/Writer split).
+- **Repo impl:** `internal/repo/kaname/pg/account_repo.go` (pgx + dto-mapping).
 - **DB:** таблица `accounts` со столбцами `id, name, description, labels JSONB, owner_user_id, created_at`.
 - **Indexes:** PK `accounts_pkey(id)`, UNIQUE `accounts_name_unique(name)`, INDEX
   `accounts_owner_idx(owner_user_id)`.
@@ -315,7 +315,7 @@ make -C deploy logs-svc SVC=iam
 
 - `internal/domain/account.go` — entity + Validate.
 - `internal/domain/types.go::AccountID, AccountName, validateResourceName` — newtypes.
-- `internal/apps/kacho/api/account/` — use-cases.
-- `internal/repo/kacho/pg/account_repo.go` — pg-impl.
+- `internal/apps/kaname/api/account/` — use-cases.
+- `internal/repo/kaname/pg/account_repo.go` — pg-impl.
 - `internal/migrations/0001_initial.sql` — DDL `accounts`.
 - `tests/newman/cases/iam-account-*.py` — black-box scenarios.
