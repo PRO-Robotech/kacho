@@ -529,7 +529,7 @@ type Config struct {
 
 	// HookSharedSecret — shared secret для Hydra→kaname back-channel logout
 	// (RFC 8254). Также используется как HMAC для CAEP push payload integrity.
-	HookSharedSecret string `envconfig:"KACHO_IAM_HOOK_TOKEN" default:""`
+	HookSharedSecret string `envconfig:"KANAME_HOOK_TOKEN" default:""`
 
 	// AuthNEnableDPoP — feature toggle; true → требовать DPoP/mTLS-bound для
 	// tokens с `cnf` claim, валидировать. False → skip DPoP проверки (legacy

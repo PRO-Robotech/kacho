@@ -27,7 +27,7 @@ sentence was WRONG for half of them and that error cost nine assertions that nev
     THE LIFETIME IS 14400s (4h), NOT 900s — this line said 900s and that was wrong.
     Measured three independent ways (2026-08-04): `exp - iat` on four issued tokens; the
     provider's own config (`ttl.access_token: 4h`); and the absence of a per-client
-    override on this stand (`KACHO_IAM_SAKEY_ACCESSTOKENTTL` unset →
+    override on this stand (`KANAME_SAKEY_ACCESSTOKENTTL` unset →
     `IssueSAKeyUseCase.accessTokenLifespan()` returns "" → the provider default applies).
     The magnitude is the whole point for whoever schedules the wave: "outwait 15 minutes"
     and "outwait 4 hours" are different decisions. Note that
@@ -425,7 +425,7 @@ m.assert_bootstrap_accepted_by_the_edge(PUBLIC, boot)
 
 def _seed_bootstrap_root_cluster():
     """Deterministic system_admin + system_viewer @cluster for the bootstrap ROOT
-    user (KACHO_IAM_BOOTSTRAP_ROOT_EMAIL, default admin@prorobotech.ru), mirroring
+    user (KANAME_BOOTSTRAP_ROOT_EMAIL, default admin@prorobotech.ru), mirroring
     dev-mode setup.sh 5a/5c. The bootstrap SA principal already holds system_admin
     @cluster via migration 0058 (deterministic), but the root USER's grant is
     seeded by the ≤180s RunBootstrapAdmin reconciler (racy on a fresh stand) and it

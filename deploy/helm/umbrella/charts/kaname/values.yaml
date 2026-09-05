@@ -22,20 +22,20 @@ kacho:
     # в registry `/iam/token` shim. Пусто → env не эмитится, сервис падает на внешний
     # issuer-URL (недостижимый в кластере). Prod-профиль ставит cluster-internal Service.
     hydraTokenURL: ""
-    # Trust anchor for the token-endpoint hop (env KACHO_IAM_HYDRA_TOKEN_CA_FILE).
+    # Trust anchor for the token-endpoint hop (env KANAME_HYDRA_TOKEN_CA_FILE).
     # That hop carries a signed client assertion out and the minted bearer back, so
     # the same discipline applies as for the admin hop: empty → default transport;
     # set → the only anchor; unreadable → refuse the start. Production refuses to
     # start on an https address with this empty.
     hydraTokenCaFile: ""
     # Upstream Hydra PUBLIC JWKS URL that the cluster-INTERNAL jwks-proxy listener
-    # (:9097) mirrors byte-for-byte (env KACHO_IAM_HYDRA_JWKS_URL). Empty → iam falls
+    # (:9097) mirrors byte-for-byte (env KANAME_HYDRA_JWKS_URL). Empty → iam falls
     # back to ResolveHydraIssuer()+"/.well-known/jwks.json". Prod sets the in-cluster
     # hydra-public base so the iam→Hydra fetch stays inside the cluster. Hydra remains
     # the token signer/issuer — iam only proxies its JWKS (the served kids are Hydra's).
     hydraJwksUrl: ""
     # Trust anchor for the JWKS upstream fetch when that hop is served over TLS
-    # (env KACHO_IAM_HYDRA_JWKS_CA_FILE). Empty → the default transport, which is
+    # (env KANAME_HYDRA_JWKS_CA_FILE). Empty → the default transport, which is
     # what the provider's plaintext in-cluster public listener needs today. Set →
     # that bundle becomes the ONLY anchor for the hop, and one that cannot be read
     # REFUSES THE START rather than silently falling back to the system roots. A
@@ -46,7 +46,7 @@ kacho:
     # <mtls.mountPath>/server/ca.crt — no extra volume is needed.
     hydraJwksCaFile: ""
     # In-cluster Hydra ADMIN URL (POST /admin/clients + jwt-bearer trust-grants) used by
-    # sa_keys (SAKeyService.Issue/Revoke) and user_tokens (env KACHO_IAM_HYDRA_ADMIN_URL).
+    # sa_keys (SAKeyService.Issue/Revoke) and user_tokens (env KANAME_HYDRA_ADMIN_URL).
     # Empty → ResolveHydraAdminURL() derives `https://hydra-admin.<domain>` from the issuer,
     # which is UNREACHABLE from inside the cluster (public ingress hostname does not resolve
     # in-cluster) → CreateOAuthClient fails → SAKey.Issue op errors ("internal worker error").
@@ -55,7 +55,7 @@ kacho:
     # START when it is left to the derivation (config.validateProductionProviderAdminHop).
     hydraAdminUrl: ""
     # Trust anchor for the provider-ADMIN hop when that hop is served over TLS
-    # (env KACHO_IAM_HYDRA_ADMIN_CA_FILE). The hop carries the administrative
+    # (env KANAME_HYDRA_ADMIN_CA_FILE). The hop carries the administrative
     # bearer on every OAuth2 client registration, trust grant and session
     # teardown, and the admin API it opens authenticates nobody — so production
     # addresses it over https, and https here is only meaningful if the peer is
@@ -444,7 +444,7 @@ config:
     identityProvider: external
     # ─── своя чеканка токенов (#897) ──────────────────────────────────────────
     # Рендерится в config.yaml как authn.token-signing.* (env-override:
-    # KACHO_IAM_AUTHN__TOKEN_SIGNING__<KEY>).
+    # KANAME_AUTHN__TOKEN_SIGNING__<KEY>).
     #
     # ВЫКЛЮЧЕНА ПО УМОЛЧАНИЮ, и это не осторожность, а форма стража: пока чеканка
     # выключена, её настройки не требуются — страж, требующий того, чем не
@@ -502,13 +502,13 @@ config:
     # so the insecure combination cannot be reached by omission.
     #
     # Rendered into config.yaml as authn.bootstrap-mint.allowed-client-sans (env
-    # override: KACHO_IAM_AUTHN__BOOTSTRAP_MINT__ALLOWED_CLIENT_SANS, comma-separated).
+    # override: KANAME_AUTHN__BOOTSTRAP_MINT__ALLOWED_CLIENT_SANS, comma-separated).
     bootstrapMint:
       allowedClientSANs: []
     # ─── who may FORWARD an end-user identity to iam ─────────────────────────
     # Client-certificate SPIFFE SANs permitted to send x-kacho-principal-* headers.
     # Rendered into config.yaml as authn.trusted-forwarder-sans (env override:
-    # KACHO_IAM_AUTHN__TRUSTED_FORWARDER_SANS, comma-separated) and fed into
+    # KANAME_AUTHN__TRUSTED_FORWARDER_SANS, comma-separated) and fed into
     # grpcsrv.WithTrustedForwarders on BOTH gRPC listeners.
     #
     # DEFAULT NON-EMPTY, unlike bootstrapMint above, and for the opposite reason:
@@ -575,15 +575,15 @@ env: {}
 # out of SEC-H), so SEC-H wires the SERVER only — both listeners (public :9090 +
 # internal :9091). Strict mirror of the vpc subchart server block (SEC-D).
 #
-# enable=false (default) → NO cert-secret mounted and NO KACHO_IAM_*_SERVER_MTLS_*
+# enable=false (default) → NO cert-secret mounted and NO KANAME_*_SERVER_MTLS_*
 # env emitted → current insecure dev behaviour (zero regression). The umbrella
 # values.mtls.yaml overlay flips kaname.mtls.enable=true for the full-stack
 # profile (КРИТ#3 mapping). When enable=true:
 #   - mounts cert-manager secret kaname-server-tls (tls.crt/tls.key/ca.crt) in
 #     volume mtls-server at <mountPath>/server;
-#   - emits, via corelib LoadPrefixed("KACHO_IAM"):
-#       KACHO_IAM_PUBLIC_SERVER_MTLS_*   (public :9090 listener)
-#       KACHO_IAM_INTERNAL_SERVER_MTLS_* (internal :9091 listener)
+#   - emits, via corelib LoadPrefixed("KANAME"):
+#       KANAME_PUBLIC_SERVER_MTLS_*   (public :9090 listener)
+#       KANAME_INTERNAL_SERVER_MTLS_* (internal :9091 listener)
 #     each = {ENABLE, CERTFILE, KEYFILE, CLIENTCAFILES} → RequireAndVerifyClientCert
 #     against the internal-CA bundle (ca.crt in the server secret).
 mtls:
@@ -593,7 +593,7 @@ mtls:
   # toggle from `enable` ON PURPOSE: the dev/newman kind stand runs the gRPC
   # listeners under mTLS (enable=true) yet must keep hooks/metrics PLAINTEXT
   # (the Hydra/Kratos hook clients and the in-pod OPA bundle pull have no client
-  # cert on the dev stand). Default false → no KACHO_IAM_{HOOKS,METRICS}_SERVER_MTLS_*
+  # cert on the dev stand). Default false → no KANAME_{HOOKS,METRICS}_SERVER_MTLS_*
   # env emitted → listeners stay plaintext (byte-identical to today). Only the
   # production profile (values.prod.yaml) flips this true; it REQUIRES enable=true
   # (the server cert-trio it reuses is mounted only when enable=true — no new PKI).

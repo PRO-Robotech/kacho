@@ -145,7 +145,7 @@ func (u *IssueUserTokenUseCase) WithLogger(l *slog.Logger) *IssueUserTokenUseCas
 
 // WithRedactGrace задаёт grace-окно между Done-ом Operation и затиранием
 // одноразового private_key_pem. Composition-root передаёт значение из конфига
-// (KACHO_IAM_USERTOKEN_REDACT_GRACE, дефолт 120s); нулевое/отрицательное — «без окна».
+// (KANAME_USERTOKEN_REDACT_GRACE, дефолт 120s); нулевое/отрицательное — «без окна».
 func (u *IssueUserTokenUseCase) WithRedactGrace(d time.Duration) *IssueUserTokenUseCase {
 	u.redactGrace = d
 	return u

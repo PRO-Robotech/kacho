@@ -53,7 +53,7 @@ func TestF4d_ExternalPostureStillRefusesTheSameEmptyAddresses(t *testing.T) {
 	}
 	// F4d-04/F4d-05: тексты отказов сохранены ДОСЛОВНО и несут ОДНУ добавленную
 	// строку о том, каким значением поля требование снимается.
-	if !strings.Contains(msg, "is not declared (env override KACHO_IAM_HYDRA_ADMIN_URL)") {
+	if !strings.Contains(msg, "is not declared (env override KANAME_HYDRA_ADMIN_URL)") {
 		t.Fatalf("текст провайдерского отказа обязан быть сохранён дословно, получено: %q", msg)
 	}
 	if n := strings.Count(msg, "declare authn.identity-provider=own and this requirement is lifted"); n != 3 {
@@ -65,9 +65,9 @@ func TestF4d_ExternalPostureStillRefusesTheSameEmptyAddresses(t *testing.T) {
 // единого адреса внешнего поставщика (ни в настройке, ни в окружении).
 func postureWithoutProviderAddresses(t *testing.T, p config.IdentityProvider) config.Config {
 	t.Helper()
-	t.Setenv("KACHO_IAM_HYDRA_ADMIN_URL", "")
-	t.Setenv("KACHO_IAM_HYDRA_JWKS_URL", "")
-	t.Setenv("KACHO_IAM_HYDRA_TOKEN_URL", "")
+	t.Setenv("KANAME_HYDRA_ADMIN_URL", "")
+	t.Setenv("KANAME_HYDRA_JWKS_URL", "")
+	t.Setenv("KANAME_HYDRA_TOKEN_URL", "")
 
 	cfg := laneCfg(p)
 	cfg.AuthN.HydraAdminURL = ""
@@ -149,14 +149,14 @@ func breakRequirement(t *testing.T, cfg config.Config, r config.LaneRequirement)
 
 	switch r.Element {
 	case "административная дорога к внешнему поставщику":
-		t.Setenv("KACHO_IAM_HYDRA_ADMIN_URL", "")
+		t.Setenv("KANAME_HYDRA_ADMIN_URL", "")
 		broken.AuthN.HydraAdminURL = ""
 		broken.AuthN.HydraAdminCAFile = ""
 	case "набор проверочных ключей внешнего поставщика":
-		t.Setenv("KACHO_IAM_HYDRA_JWKS_URL", "")
+		t.Setenv("KANAME_HYDRA_JWKS_URL", "")
 		broken.AuthN.HydraJWKSURL = ""
 	case "адрес обмена утверждения у внешнего поставщика":
-		t.Setenv("KACHO_IAM_HYDRA_TOKEN_URL", "")
+		t.Setenv("KANAME_HYDRA_TOKEN_URL", "")
 		broken.AuthN.HydraTokenURL = ""
 	case "своя чеканка токенов включена":
 		broken.AuthN.TokenSigning.Enabled = false

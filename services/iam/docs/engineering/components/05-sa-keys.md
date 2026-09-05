@@ -85,8 +85,8 @@ UPDATE на `operations.response_data`, замещая поле `private_key_pem
 
 ### Срок жизни ключа (`expires_at`)
 
-Выставляется на Issue: явный `ttl_seconds` → иначе `KACHO_IAM_SAKEY_DEFAULT_TTL`
-(90d) → иначе NULL. Потолок — `KACHO_IAM_SAKEY_MAX_TTL` (365d), запрос сверх него
+Выставляется на Issue: явный `ttl_seconds` → иначе `KANAME_SAKEY_DEFAULT_TTL`
+(90d) → иначе NULL. Потолок — `KANAME_SAKEY_MAX_TTL` (365d), запрос сверх него
 отвергается `InvalidArgument` до регистрации клиента в Hydra.
 
 Энфорсится на пути обмена ключа на токен одним предикатом
@@ -108,7 +108,7 @@ UPDATE на `operations.response_data`, замещая поле `private_key_pem
 а не проверяющей.
 
 Уже выданный access-token переживает истечение ключа: он живёт свой
-`access_token_lifespan` (per-client, `KACHO_IAM_SAKEY_ACCESS_TOKEN_TTL`). Гейт
+`access_token_lifespan` (per-client, `KANAME_SAKEY_ACCESS_TOKEN_TTL`). Гейт
 закрывает выдачу НОВЫХ токенов, не отзывает старые. Жнеца просроченных строк нет —
 строка остаётся, ключ просто перестаёт работать.
 
@@ -206,8 +206,8 @@ sequenceDiagram
 
 | Env var                                | YAML key                                  | Default | Описание                          |
 |----------------------------------------|-------------------------------------------|---------|-----------------------------------|
-| `KACHO_IAM_HYDRA_ADMIN_URL`            | `extapi.hydra.admin-url`                  | —       | URL Hydra admin API.              |
-| `KACHO_IAM_HYDRA_ADMIN_TOKEN`          | `extapi.hydra.admin-token`                | —       | Bearer для Hydra admin.           |
+| `KANAME_HYDRA_ADMIN_URL`            | `extapi.hydra.admin-url`                  | —       | URL Hydra admin API.              |
+| `KANAME_HYDRA_ADMIN_TOKEN`          | `extapi.hydra.admin-token`                | —       | Bearer для Hydra admin.           |
 
 ## Как пользоваться
 

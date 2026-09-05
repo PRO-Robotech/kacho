@@ -42,7 +42,7 @@ cd services/iam && go test ./internal/repo/kacho/pg/ \
 | **2 · по требованию** | чтение каталога из базы | **293 µs** | 550 µs | **на каждом обращении** горячего пути |
 
 **Величина отставания — 15 с**, и она объявлена ручкой
-`KACHO_IAM_CATALOG_SNAPSHOT_REFRESH_INTERVAL_MS`, а не вшита; умолчание живёт в
+`KANAME_CATALOG_SNAPSHOT_REFRESH_INTERVAL_MS`, а не вшита; умолчание живёт в
 композиционном корне (`cmd/kaname/catalog_snapshot_wiring.go`).
 
 ## Что из этого следует — арифметика, а не догадка

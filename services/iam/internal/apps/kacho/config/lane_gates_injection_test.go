@@ -134,11 +134,11 @@ func TestX(t *testing.T) {
 func TestInjection_AProviderKnobReadOutsideTheConfigPackageIsFound(t *testing.T) {
 	_, files := synthetic(t, map[string]string{
 		"wiring.go": `package main
-func build() string { return os.Getenv("KACHO_IAM_HYDRA_ADMIN_TOKEN") }
+func build() string { return os.Getenv("KANAME_HYDRA_ADMIN_TOKEN") }
 `,
 	})
 	got := getenvNamesMentioningProvider(files["wiring.go"])
-	if len(got) != 1 || got[0] != "KACHO_IAM_HYDRA_ADMIN_TOKEN" {
+	if len(got) != 1 || got[0] != "KANAME_HYDRA_ADMIN_TOKEN" {
 		t.Fatalf("ручка вне пакета настройки не найдена: %v", got)
 	}
 }
@@ -149,7 +149,7 @@ func build() string { return os.Getenv("KACHO_IAM_HYDRA_ADMIN_TOKEN") }
 func TestInjection_AProviderKnobBehindAnIndirectionIsStillFound(t *testing.T) {
 	_, files := synthetic(t, map[string]string{
 		"wiring.go": `package main
-func name() string { return "KACHO_IAM_HYDRA_ADMIN_TOKEN" }
+func name() string { return "KANAME_HYDRA_ADMIN_TOKEN" }
 func build() string { return os.Getenv(name()) }
 `,
 	})
@@ -163,7 +163,7 @@ func build() string { return os.Getenv(name()) }
 func TestInjection_AnUnrelatedKnobIsSilent(t *testing.T) {
 	_, files := synthetic(t, map[string]string{
 		"wiring.go": `package main
-func build() string { return os.Getenv("KACHO_IAM_HOOK_TOKEN") }
+func build() string { return os.Getenv("KANAME_HOOK_TOKEN") }
 `,
 	})
 	if got := getenvNamesMentioningProvider(files["wiring.go"]); len(got) != 0 {
@@ -177,7 +177,7 @@ func build() string { return os.Getenv("KACHO_IAM_HOOK_TOKEN") }
 func TestInjection_ProseNamingTheKnobIsSilent(t *testing.T) {
 	_, files := synthetic(t, map[string]string{
 		"doc.go": `package main
-// Здесь объясняется, зачем нужна KACHO_IAM_HYDRA_ADMIN_TOKEN и почему её
+// Здесь объясняется, зачем нужна KANAME_HYDRA_ADMIN_TOKEN и почему её
 // читают через настройку.
 func nothing() {}
 `,

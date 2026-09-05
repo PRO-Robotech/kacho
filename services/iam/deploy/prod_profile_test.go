@@ -92,7 +92,7 @@ var configBridge = []bridged{
 	}},
 	{configKey: "repository.postgres.max-conns", valuePath: []string{"repository", "postgres", "maxConns"}},
 	{configKey: "repository.postgres.ssl-mode", valuePath: []string{"repository", "postgres", "sslMode"}},
-	{configKey: "repository.postgres.password-from-env", derive: func(map[string]any) any { return "KACHO_IAM_DB_PASSWORD" }},
+	{configKey: "repository.postgres.password-from-env", derive: func(map[string]any) any { return "KANAME_DB_PASSWORD" }},
 	{configKey: "authn.mode", valuePath: []string{"authMode"}},
 	{configKey: "authn.identity-provider", valuePath: []string{"authn", "identityProvider"}, omitEmpty: true},
 	{configKey: "authn.trusted-forwarder-sans", valuePath: []string{"authn", "trustedForwarderSANs"}, omitEmpty: true},
@@ -117,24 +117,24 @@ var restatedDeliberately = map[string]string{
 	// процесса и потому непусты всегда. Причина у всех трёх одна и та же, что у
 	// докерной полосы ниже: страж живёт в композиционном корне, отсюда
 	// недостижимом by construction.
-	"env.KACHO_IAM_HOOKS_SERVER_MTLS_ENABLE": "ручка НЕСУЩАЯ, но её страж живёт в " +
+	"env.KANAME_HOOKS_SERVER_MTLS_ENABLE": "ручка НЕСУЩАЯ, но её страж живёт в " +
 		"композиционном корне (requireHTTPEdgeTLS в cmd/kaname), а не в Config.Validate, " +
 		"который зовёт эта проба, — то есть недостижим отсюда by construction: пакет main не " +
 		"импортируется. Снятие ручки роняет не посадку, а СТАРТ: слушатель вебхуков " +
 		"поднимается умолчанием процесса, и боевой режим отказывается пускать открытым текстом " +
 		"хоп, по которому идёт общий секрет поставщика личности. Держит это " +
 		"TestProductionProfileSatisfiesTheStartupGuards в services/iam/cmd/kaname",
-	"env.KACHO_IAM_JWKSPROXY_SERVER_MTLS_ENABLE": "ручка НЕСУЩАЯ, но её страж живёт в " +
+	"env.KANAME_JWKSPROXY_SERVER_MTLS_ENABLE": "ручка НЕСУЩАЯ, но её страж живёт в " +
 		"композиционном корне (requireHTTPEdgeTLS в cmd/kaname) и отсюда недостижим. " +
 		"Снятие роняет СТАРТ: аутентификация с этой поверхности снята задокументированно, и " +
 		"обоснование опирается на одностороннюю TLS — без неё предпосылка собственного " +
 		"исключения ложна. Держит это TestProductionProfileSatisfiesTheStartupGuards",
-	"env.KACHO_IAM_METRICS_SERVER_MTLS_ENABLE": "ручка НЕСУЩАЯ, но её страж живёт в " +
+	"env.KANAME_METRICS_SERVER_MTLS_ENABLE": "ручка НЕСУЩАЯ, но её страж живёт в " +
 		"композиционном корне (requireHTTPEdgeTLS в cmd/kaname) и отсюда недостижим. " +
 		"Снятие роняет СТАРТ: счётчики процесса суть внутренняя кардинальность, и открытый " +
 		"текст выносит её всякому, кто слушает сеть пода. Держит это " +
 		"TestProductionProfileSatisfiesTheStartupGuards",
-	"env.KACHO_IAM_REGISTRYTOKEN_SERVER_MTLS_ENABLE": "ручка НЕСУЩАЯ, но её страж живёт в " +
+	"env.KANAME_REGISTRYTOKEN_SERVER_MTLS_ENABLE": "ручка НЕСУЩАЯ, но её страж живёт в " +
 		"композиционном корне (requireRegistryTokenTLS в cmd/kaname), а не в Config.Validate, " +
 		"который зовёт эта проба, — то есть недостижим отсюда by construction: пакет main не " +
 		"импортируется. Снятие ручки роняет не посадку, а СТАРТ: слушатель докерной полосы " +
@@ -160,10 +160,10 @@ var restatedDeliberately = map[string]string{
 // Перечень утверждается в обе стороны: заменитель без объявленной переменной —
 // находка, а не запас.
 var secretStandIns = map[string]string{
-	"KACHO_IAM_HOOK_TOKEN": "stand-in-not-a-secret",
+	"KANAME_HOOK_TOKEN": "stand-in-not-a-secret",
 	// Ключ обёртки разбирается как шестнадцатеричная строка объявленной длины,
 	// поэтому заменитель обязан быть годен по форме.
-	"KACHO_IAM_JWKS_ENC_KEY": "000102030405060708090a0b0c0d0e0f101112131415161718191a1b1c1d1e1f",
+	"KANAME_JWKS_ENC_KEY": "000102030405060708090a0b0c0d0e0f101112131415161718191a1b1c1d1e1f",
 }
 
 // ── несущая проба ────────────────────────────────────────────────────────────
@@ -361,12 +361,12 @@ func evaluatePosture(t *testing.T, merged map[string]any) (envCount, keyCount in
 		if !mtls.PublicServerMTLS.Enable {
 			errs = multierr.Append(errs, fmt.Errorf(
 				"боевая посадка с непроверенным транспортом публичного слушателя: "+
-					"KACHO_IAM_PUBLIC_SERVER_MTLS_ENABLE не объявлен"))
+					"KANAME_PUBLIC_SERVER_MTLS_ENABLE не объявлен"))
 		}
 		if !mtls.InternalServerMTLS.Enable {
 			errs = multierr.Append(errs, fmt.Errorf(
 				"боевая посадка с непроверенным транспортом внутреннего слушателя: "+
-					"KACHO_IAM_INTERNAL_SERVER_MTLS_ENABLE не объявлен; внутренний периметр не доверенный"))
+					"KANAME_INTERNAL_SERVER_MTLS_ENABLE не объявлен; внутренний периметр не доверенный"))
 		}
 		errs = multierr.Append(errs, mtls.Validate())
 		errs = multierr.Append(errs, filesAreMountable(merged, envs))
@@ -526,7 +526,7 @@ func envEntries(merged map[string]any) map[string]string {
 	return out
 }
 
-// requireCleanEnv — предпосылка пробы: в процессе нет посторонних KACHO_IAM_*.
+// requireCleanEnv — предпосылка пробы: в процессе нет посторонних KANAME_*.
 //
 // Оставшаяся переменная сделала бы вердикт свойством машины, а не профиля, и
 // зелёное читалось бы как утверждение о дереве.
@@ -534,7 +534,7 @@ func requireCleanEnv(t *testing.T) {
 	t.Helper()
 	var stray []string
 	for _, kv := range os.Environ() {
-		if strings.HasPrefix(kv, "KACHO_IAM_") {
+		if strings.HasPrefix(kv, "KANAME_") {
 			stray = append(stray, kv[:strings.Index(kv, "=")])
 		}
 	}

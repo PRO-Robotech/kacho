@@ -32,17 +32,17 @@ import (
 //   - empty/unset mode  → explicit safe per-edge default (server-tls-only for both
 //     hooks and metrics in this phase).
 //
-// Env families: KACHO_IAM_HOOKS_SERVER_MTLS_CLIENTAUTHMODE /
-// KACHO_IAM_METRICS_SERVER_MTLS_CLIENTAUTHMODE (read via the existing
-// config.LoadPrefixed("KACHO_IAM") envconfig hierarchy).
+// Env families: KANAME_HOOKS_SERVER_MTLS_CLIENTAUTHMODE /
+// KANAME_METRICS_SERVER_MTLS_CLIENTAUTHMODE (read via the existing
+// config.LoadPrefixed("KANAME") envconfig hierarchy).
 
 // ── Scenario 5.5-01 — hooks server-tls-only → NoClientCert, no client-CA needed ──
 func TestMTLS_55_01_HooksServerTLSOnly_NoClientCert(t *testing.T) {
 	certFile, keyFile, _ := writeTestCert(t)
-	t.Setenv("KACHO_IAM_HOOKS_SERVER_MTLS_ENABLE", "true")
-	t.Setenv("KACHO_IAM_HOOKS_SERVER_MTLS_CERTFILE", certFile)
-	t.Setenv("KACHO_IAM_HOOKS_SERVER_MTLS_KEYFILE", keyFile)
-	t.Setenv("KACHO_IAM_HOOKS_SERVER_MTLS_CLIENTAUTHMODE", "server-tls-only")
+	t.Setenv("KANAME_HOOKS_SERVER_MTLS_ENABLE", "true")
+	t.Setenv("KANAME_HOOKS_SERVER_MTLS_CERTFILE", certFile)
+	t.Setenv("KANAME_HOOKS_SERVER_MTLS_KEYFILE", keyFile)
+	t.Setenv("KANAME_HOOKS_SERVER_MTLS_CLIENTAUTHMODE", "server-tls-only")
 	// CLIENTCAFILES intentionally UNSET — server-tls-only must not require it.
 
 	m, err := config.LoadMTLS()
@@ -61,11 +61,11 @@ func TestMTLS_55_01_HooksServerTLSOnly_NoClientCert(t *testing.T) {
 // ── Scenario 5.5-02 — metrics mutual → RequireAndVerifyClientCert + client-CA pool ──
 func TestMTLS_55_02_MetricsMutual_RequireAndVerify(t *testing.T) {
 	certFile, keyFile, caFile := writeTestCert(t)
-	t.Setenv("KACHO_IAM_METRICS_SERVER_MTLS_ENABLE", "true")
-	t.Setenv("KACHO_IAM_METRICS_SERVER_MTLS_CERTFILE", certFile)
-	t.Setenv("KACHO_IAM_METRICS_SERVER_MTLS_KEYFILE", keyFile)
-	t.Setenv("KACHO_IAM_METRICS_SERVER_MTLS_CLIENTCAFILES", caFile)
-	t.Setenv("KACHO_IAM_METRICS_SERVER_MTLS_CLIENTAUTHMODE", "mutual")
+	t.Setenv("KANAME_METRICS_SERVER_MTLS_ENABLE", "true")
+	t.Setenv("KANAME_METRICS_SERVER_MTLS_CERTFILE", certFile)
+	t.Setenv("KANAME_METRICS_SERVER_MTLS_KEYFILE", keyFile)
+	t.Setenv("KANAME_METRICS_SERVER_MTLS_CLIENTCAFILES", caFile)
+	t.Setenv("KANAME_METRICS_SERVER_MTLS_CLIENTAUTHMODE", "mutual")
 
 	m, err := config.LoadMTLS()
 	require.NoError(t, err)
@@ -80,9 +80,9 @@ func TestMTLS_55_02_MetricsMutual_RequireAndVerify(t *testing.T) {
 // ── Scenario 5.5-03 — edge disabled → (nil, nil); cert files NOT read ──
 func TestMTLS_55_03_Disabled_NilNoRead(t *testing.T) {
 	// A non-existent cert path proves the builder does NOT read files when disabled.
-	t.Setenv("KACHO_IAM_HOOKS_SERVER_MTLS_CERTFILE", "/nonexistent/tls.crt")
-	t.Setenv("KACHO_IAM_HOOKS_SERVER_MTLS_KEYFILE", "/nonexistent/tls.key")
-	t.Setenv("KACHO_IAM_HOOKS_SERVER_MTLS_CLIENTAUTHMODE", "mutual")
+	t.Setenv("KANAME_HOOKS_SERVER_MTLS_CERTFILE", "/nonexistent/tls.crt")
+	t.Setenv("KANAME_HOOKS_SERVER_MTLS_KEYFILE", "/nonexistent/tls.key")
+	t.Setenv("KANAME_HOOKS_SERVER_MTLS_CLIENTAUTHMODE", "mutual")
 	// ENABLE intentionally unset → false.
 
 	m, err := config.LoadMTLS()
@@ -100,8 +100,8 @@ func TestMTLS_55_03_Disabled_NilNoRead(t *testing.T) {
 
 // ── Scenario 5.5-04 — enabled with incomplete cert-trio → Validate fail-closed ──
 func TestMTLS_55_04_EnabledNoCert_ValidateFailClosed(t *testing.T) {
-	t.Setenv("KACHO_IAM_HOOKS_SERVER_MTLS_ENABLE", "true")
-	t.Setenv("KACHO_IAM_HOOKS_SERVER_MTLS_CLIENTAUTHMODE", "server-tls-only")
+	t.Setenv("KANAME_HOOKS_SERVER_MTLS_ENABLE", "true")
+	t.Setenv("KANAME_HOOKS_SERVER_MTLS_CLIENTAUTHMODE", "server-tls-only")
 	// no CERTFILE/KEYFILE → fail-closed even in server-tls-only mode.
 
 	m, err := config.LoadMTLS()
@@ -115,10 +115,10 @@ func TestMTLS_55_04_EnabledNoCert_ValidateFailClosed(t *testing.T) {
 // ── Scenario 5.5-05 — mutual + empty client-CA → fail-closed; server-tls-only + empty CA → OK ──
 func TestMTLS_55_05_MutualEmptyCA_FailClosed(t *testing.T) {
 	certFile, keyFile, _ := writeTestCert(t)
-	t.Setenv("KACHO_IAM_METRICS_SERVER_MTLS_ENABLE", "true")
-	t.Setenv("KACHO_IAM_METRICS_SERVER_MTLS_CERTFILE", certFile)
-	t.Setenv("KACHO_IAM_METRICS_SERVER_MTLS_KEYFILE", keyFile)
-	t.Setenv("KACHO_IAM_METRICS_SERVER_MTLS_CLIENTAUTHMODE", "mutual")
+	t.Setenv("KANAME_METRICS_SERVER_MTLS_ENABLE", "true")
+	t.Setenv("KANAME_METRICS_SERVER_MTLS_CERTFILE", certFile)
+	t.Setenv("KANAME_METRICS_SERVER_MTLS_KEYFILE", keyFile)
+	t.Setenv("KANAME_METRICS_SERVER_MTLS_CLIENTAUTHMODE", "mutual")
 	// CLIENTCAFILES intentionally empty → mutual requires it → fail-closed.
 
 	m, err := config.LoadMTLS()
@@ -133,10 +133,10 @@ func TestMTLS_55_05_MutualEmptyCA_FailClosed(t *testing.T) {
 // client-CA passes Validate (client-cert not verified → no client-CA needed).
 func TestMTLS_55_05b_ServerTLSOnlyEmptyCA_OK(t *testing.T) {
 	certFile, keyFile, _ := writeTestCert(t)
-	t.Setenv("KACHO_IAM_METRICS_SERVER_MTLS_ENABLE", "true")
-	t.Setenv("KACHO_IAM_METRICS_SERVER_MTLS_CERTFILE", certFile)
-	t.Setenv("KACHO_IAM_METRICS_SERVER_MTLS_KEYFILE", keyFile)
-	t.Setenv("KACHO_IAM_METRICS_SERVER_MTLS_CLIENTAUTHMODE", "server-tls-only")
+	t.Setenv("KANAME_METRICS_SERVER_MTLS_ENABLE", "true")
+	t.Setenv("KANAME_METRICS_SERVER_MTLS_CERTFILE", certFile)
+	t.Setenv("KANAME_METRICS_SERVER_MTLS_KEYFILE", keyFile)
+	t.Setenv("KANAME_METRICS_SERVER_MTLS_CLIENTAUTHMODE", "server-tls-only")
 
 	m, err := config.LoadMTLS()
 	require.NoError(t, err)
@@ -150,11 +150,11 @@ func TestMTLS_55_05b_ServerTLSOnlyEmptyCA_OK(t *testing.T) {
 // ── Scenario 5.5-06 — unknown clientAuthMode → fail-closed (never insecure default) ──
 func TestMTLS_55_06_UnknownMode_FailClosed(t *testing.T) {
 	certFile, keyFile, caFile := writeTestCert(t)
-	t.Setenv("KACHO_IAM_HOOKS_SERVER_MTLS_ENABLE", "true")
-	t.Setenv("KACHO_IAM_HOOKS_SERVER_MTLS_CERTFILE", certFile)
-	t.Setenv("KACHO_IAM_HOOKS_SERVER_MTLS_KEYFILE", keyFile)
-	t.Setenv("KACHO_IAM_HOOKS_SERVER_MTLS_CLIENTCAFILES", caFile)
-	t.Setenv("KACHO_IAM_HOOKS_SERVER_MTLS_CLIENTAUTHMODE", "open")
+	t.Setenv("KANAME_HOOKS_SERVER_MTLS_ENABLE", "true")
+	t.Setenv("KANAME_HOOKS_SERVER_MTLS_CERTFILE", certFile)
+	t.Setenv("KANAME_HOOKS_SERVER_MTLS_KEYFILE", keyFile)
+	t.Setenv("KANAME_HOOKS_SERVER_MTLS_CLIENTCAFILES", caFile)
+	t.Setenv("KANAME_HOOKS_SERVER_MTLS_CLIENTAUTHMODE", "open")
 
 	m, err := config.LoadMTLS()
 	require.NoError(t, err)
@@ -180,13 +180,13 @@ func TestMTLS_55_06_UnknownMode_FailClosed(t *testing.T) {
 func TestMTLS_55_07_DefaultMode_ServerTLSOnly(t *testing.T) {
 	certFile, keyFile, _ := writeTestCert(t)
 	// Hooks: enabled, cert+key, NO clientAuthMode, NO client-CA.
-	t.Setenv("KACHO_IAM_HOOKS_SERVER_MTLS_ENABLE", "true")
-	t.Setenv("KACHO_IAM_HOOKS_SERVER_MTLS_CERTFILE", certFile)
-	t.Setenv("KACHO_IAM_HOOKS_SERVER_MTLS_KEYFILE", keyFile)
+	t.Setenv("KANAME_HOOKS_SERVER_MTLS_ENABLE", "true")
+	t.Setenv("KANAME_HOOKS_SERVER_MTLS_CERTFILE", certFile)
+	t.Setenv("KANAME_HOOKS_SERVER_MTLS_KEYFILE", keyFile)
 	// Metrics: enabled, cert+key, NO clientAuthMode, NO client-CA.
-	t.Setenv("KACHO_IAM_METRICS_SERVER_MTLS_ENABLE", "true")
-	t.Setenv("KACHO_IAM_METRICS_SERVER_MTLS_CERTFILE", certFile)
-	t.Setenv("KACHO_IAM_METRICS_SERVER_MTLS_KEYFILE", keyFile)
+	t.Setenv("KANAME_METRICS_SERVER_MTLS_ENABLE", "true")
+	t.Setenv("KANAME_METRICS_SERVER_MTLS_CERTFILE", certFile)
+	t.Setenv("KANAME_METRICS_SERVER_MTLS_KEYFILE", keyFile)
 
 	m, err := config.LoadMTLS()
 	require.NoError(t, err)
@@ -211,10 +211,10 @@ func TestMTLS_55_07_DefaultMode_ServerTLSOnly(t *testing.T) {
 // open the edge to unauthenticated callers. ──
 func TestMTLS_55_12_HooksServerTLSOnly_HandshakeOK_HMACIndependent(t *testing.T) {
 	certFile, keyFile, caFile := writeTestCert(t)
-	t.Setenv("KACHO_IAM_HOOKS_SERVER_MTLS_ENABLE", "true")
-	t.Setenv("KACHO_IAM_HOOKS_SERVER_MTLS_CERTFILE", certFile)
-	t.Setenv("KACHO_IAM_HOOKS_SERVER_MTLS_KEYFILE", keyFile)
-	t.Setenv("KACHO_IAM_HOOKS_SERVER_MTLS_CLIENTAUTHMODE", "server-tls-only")
+	t.Setenv("KANAME_HOOKS_SERVER_MTLS_ENABLE", "true")
+	t.Setenv("KANAME_HOOKS_SERVER_MTLS_CERTFILE", certFile)
+	t.Setenv("KANAME_HOOKS_SERVER_MTLS_KEYFILE", keyFile)
+	t.Setenv("KANAME_HOOKS_SERVER_MTLS_CLIENTAUTHMODE", "server-tls-only")
 
 	m, err := config.LoadMTLS()
 	require.NoError(t, err)
@@ -279,10 +279,10 @@ func TestMTLS_55_12_HooksServerTLSOnly_HandshakeOK_HMACIndependent(t *testing.T)
 // server-tls-only listener is rejected at the transport (no insecure downgrade). ──
 func TestMTLS_55_13_PlaintextRejected(t *testing.T) {
 	certFile, keyFile, _ := writeTestCert(t)
-	t.Setenv("KACHO_IAM_HOOKS_SERVER_MTLS_ENABLE", "true")
-	t.Setenv("KACHO_IAM_HOOKS_SERVER_MTLS_CERTFILE", certFile)
-	t.Setenv("KACHO_IAM_HOOKS_SERVER_MTLS_KEYFILE", keyFile)
-	t.Setenv("KACHO_IAM_HOOKS_SERVER_MTLS_CLIENTAUTHMODE", "server-tls-only")
+	t.Setenv("KANAME_HOOKS_SERVER_MTLS_ENABLE", "true")
+	t.Setenv("KANAME_HOOKS_SERVER_MTLS_CERTFILE", certFile)
+	t.Setenv("KANAME_HOOKS_SERVER_MTLS_KEYFILE", keyFile)
+	t.Setenv("KANAME_HOOKS_SERVER_MTLS_CLIENTAUTHMODE", "server-tls-only")
 
 	m, err := config.LoadMTLS()
 	require.NoError(t, err)
@@ -315,10 +315,10 @@ func TestMTLS_55_13_PlaintextRejected(t *testing.T) {
 // callers (same requireHookAuth as token/refresh). ──
 func TestMTLS_55_14b_ProvisionNoHMAC_401(t *testing.T) {
 	certFile, keyFile, caFile := writeTestCert(t)
-	t.Setenv("KACHO_IAM_HOOKS_SERVER_MTLS_ENABLE", "true")
-	t.Setenv("KACHO_IAM_HOOKS_SERVER_MTLS_CERTFILE", certFile)
-	t.Setenv("KACHO_IAM_HOOKS_SERVER_MTLS_KEYFILE", keyFile)
-	t.Setenv("KACHO_IAM_HOOKS_SERVER_MTLS_CLIENTAUTHMODE", "server-tls-only")
+	t.Setenv("KANAME_HOOKS_SERVER_MTLS_ENABLE", "true")
+	t.Setenv("KANAME_HOOKS_SERVER_MTLS_CERTFILE", certFile)
+	t.Setenv("KANAME_HOOKS_SERVER_MTLS_KEYFILE", keyFile)
+	t.Setenv("KANAME_HOOKS_SERVER_MTLS_CLIENTAUTHMODE", "server-tls-only")
 
 	m, err := config.LoadMTLS()
 	require.NoError(t, err)
@@ -367,10 +367,10 @@ func TestMTLS_55_14b_ProvisionNoHMAC_401(t *testing.T) {
 // client cert handshakes and scrapes /metrics; plaintext is rejected. ──
 func TestMTLS_55_15_MetricsServerTLSOnly_ScrapeNoClientCert(t *testing.T) {
 	certFile, keyFile, caFile := writeTestCert(t)
-	t.Setenv("KACHO_IAM_METRICS_SERVER_MTLS_ENABLE", "true")
-	t.Setenv("KACHO_IAM_METRICS_SERVER_MTLS_CERTFILE", certFile)
-	t.Setenv("KACHO_IAM_METRICS_SERVER_MTLS_KEYFILE", keyFile)
-	t.Setenv("KACHO_IAM_METRICS_SERVER_MTLS_CLIENTAUTHMODE", "server-tls-only")
+	t.Setenv("KANAME_METRICS_SERVER_MTLS_ENABLE", "true")
+	t.Setenv("KANAME_METRICS_SERVER_MTLS_CERTFILE", certFile)
+	t.Setenv("KANAME_METRICS_SERVER_MTLS_KEYFILE", keyFile)
+	t.Setenv("KANAME_METRICS_SERVER_MTLS_CLIENTAUTHMODE", "server-tls-only")
 
 	m, err := config.LoadMTLS()
 	require.NoError(t, err)
@@ -420,11 +420,11 @@ func TestMTLS_55_15_MetricsServerTLSOnly_ScrapeNoClientCert(t *testing.T) {
 // handshake (RequireAndVerifyClientCert). Proves the mutual mode is ready. ──
 func TestMTLS_55_16_MetricsMutual_ClientCertRequired(t *testing.T) {
 	certFile, keyFile, caFile := writeTestCert(t)
-	t.Setenv("KACHO_IAM_METRICS_SERVER_MTLS_ENABLE", "true")
-	t.Setenv("KACHO_IAM_METRICS_SERVER_MTLS_CERTFILE", certFile)
-	t.Setenv("KACHO_IAM_METRICS_SERVER_MTLS_KEYFILE", keyFile)
-	t.Setenv("KACHO_IAM_METRICS_SERVER_MTLS_CLIENTCAFILES", caFile)
-	t.Setenv("KACHO_IAM_METRICS_SERVER_MTLS_CLIENTAUTHMODE", "mutual")
+	t.Setenv("KANAME_METRICS_SERVER_MTLS_ENABLE", "true")
+	t.Setenv("KANAME_METRICS_SERVER_MTLS_CERTFILE", certFile)
+	t.Setenv("KANAME_METRICS_SERVER_MTLS_KEYFILE", keyFile)
+	t.Setenv("KANAME_METRICS_SERVER_MTLS_CLIENTCAFILES", caFile)
+	t.Setenv("KANAME_METRICS_SERVER_MTLS_CLIENTAUTHMODE", "mutual")
 
 	m, err := config.LoadMTLS()
 	require.NoError(t, err)

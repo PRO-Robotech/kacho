@@ -87,7 +87,7 @@ func TestKeyMaterialWindow_DeclaredInstantIsParsedAndUnboundedIsUnexpressible(t 
 // литералами, поэтому переименование ключа молча отвязывает документированную
 // ручку.
 func TestDocumentedEnvName_KeyMaterialWindowUntil(t *testing.T) {
-	t.Setenv("KACHO_IAM_API_SERVER__REGISTRY_TOKEN__KEY_MATERIAL_WINDOW_UNTIL", "2026-09-30T00:00:00Z")
+	t.Setenv("KANAME_API_SERVER__REGISTRY_TOKEN__KEY_MATERIAL_WINDOW_UNTIL", "2026-09-30T00:00:00Z")
 
 	cfg, err := config.Load("")
 	require.NoError(t, err)
@@ -95,6 +95,6 @@ func TestDocumentedEnvName_KeyMaterialWindowUntil(t *testing.T) {
 	until, err := cfg.APIServer.RegistryToken.KeyMaterialWindowUntil()
 	require.NoError(t, err)
 	require.False(t, until.IsZero(),
-		"ENV KACHO_IAM_API_SERVER__REGISTRY_TOKEN__KEY_MATERIAL_WINDOW_UNTIL обязана "+
+		"ENV KANAME_API_SERVER__REGISTRY_TOKEN__KEY_MATERIAL_WINDOW_UNTIL обязана "+
 			"менять исход загрузки — иначе документированной ручки не существует")
 }

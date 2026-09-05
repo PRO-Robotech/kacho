@@ -46,7 +46,7 @@ package main
 //
 // Судится ровно то, что НАЗВАНО ОСЬЮ. Имя переменной, встреченное в комментарии
 // рядом или в тексте отказа, предметом этого гейта не является: по дереву iam
-// имён вида `KACHO_IAM_*` больше сотни, и разбор, судящий исходный текст, дал бы
+// имён вида `KANAME_*` больше сотни, и разбор, судящий исходный текст, дал бы
 // десятки находок, из которых верны единицы, — такой отключают первым.
 
 import (
@@ -67,7 +67,7 @@ import (
 )
 
 // postureEnvPattern — имя переменной ЭТОЙ службы в тексте оси.
-var postureEnvPattern = regexp.MustCompile(`KACHO_IAM_[A-Z0-9_]*[A-Z0-9]`)
+var postureEnvPattern = regexp.MustCompile(`KANAME_[A-Z0-9_]*[A-Z0-9]`)
 
 // axisText — один текст самоотчёта об оси с его координатой.
 type axisText struct {
@@ -299,7 +299,7 @@ func postureReaches(t *testing.T) func(string) (bool, string) {
 func clearIAMEnv() {
 	for _, kv := range os.Environ() {
 		key, _, ok := strings.Cut(kv, "=")
-		if ok && strings.HasPrefix(key, "KACHO_IAM_") {
+		if ok && strings.HasPrefix(key, "KANAME_") {
 			_ = os.Unsetenv(key)
 		}
 	}
@@ -313,7 +313,7 @@ func TestPostureSelfReportNamesAReachableEnvVar(t *testing.T) {
 	t.Cleanup(func() {
 		clearIAMEnv()
 		for _, kv := range saved {
-			if key, value, ok := strings.Cut(kv, "="); ok && strings.HasPrefix(key, "KACHO_IAM_") {
+			if key, value, ok := strings.Cut(kv, "="); ok && strings.HasPrefix(key, "KANAME_") {
 				_ = os.Setenv(key, value)
 			}
 		}

@@ -73,7 +73,7 @@ const serviceName = "iam"
 // перечисляются намеренно: их печатает сам общий пакет, поэтому умолчать
 // источник, который перебивает названные, нельзя by construction. Ровно это и
 // случилось однажды — текст отказа называл третий источник и умалчивал второй.
-var dsnExtraSources = []string{"kaname config (KACHO_IAM_CONFIG_PATH)"}
+var dsnExtraSources = []string{"kaname config (KANAME_CONFIG_PATH)"}
 
 // rootOptions — shared параметры всех subcommand'ов, накапливаются persistent-флагами.
 type rootOptions struct {
@@ -229,7 +229,7 @@ func buildRunner(opts *rootOptions, migrationsFS fs.FS) (*migratorrun.Runner, er
 	// нести не должен. Судится ровно употребляемая величина — строка подключения,
 	// ниже по тексту.
 	dsn, err := migratorcli.ResolveDSN(opts.dsn, func() (string, error) {
-		cfg, cerr := config.Load(os.Getenv("KACHO_IAM_CONFIG_PATH"))
+		cfg, cerr := config.Load(os.Getenv("KANAME_CONFIG_PATH"))
 		if cerr != nil {
 			return "", cerr
 		}

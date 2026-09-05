@@ -27,8 +27,8 @@ import (
 )
 
 // configPathEnv — путь к YAML-конфигу. Пустое значение допустимо (defaults +
-// ENV-override). Helm chart выставляет KACHO_IAM_CONFIG_PATH=/etc/kaname/config.yaml.
-const configPathEnv = "KACHO_IAM_CONFIG_PATH"
+// ENV-override). Helm chart выставляет KANAME_CONFIG_PATH=/etc/kaname/config.yaml.
+const configPathEnv = "KANAME_CONFIG_PATH"
 
 func main() {
 	// kaname — single-purpose binary.

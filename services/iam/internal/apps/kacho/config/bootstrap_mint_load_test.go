@@ -68,7 +68,7 @@ func TestLoad_BootstrapMintAllowlist_FromChartShapedYAML(t *testing.T) {
 // TestLoad_BootstrapMintAllowlist_FromEnv — the documented comma-separated env
 // override (the escape hatch when a profile cannot be re-rendered).
 func TestLoad_BootstrapMintAllowlist_FromEnv(t *testing.T) {
-	t.Setenv("KACHO_IAM_AUTHN__BOOTSTRAP_MINT__ALLOWED_CLIENT_SANS",
+	t.Setenv("KANAME_AUTHN__BOOTSTRAP_MINT__ALLOWED_CLIENT_SANS",
 		"spiffe://kacho.cloud/ns/kacho/sa/kacho-bootstrap-operator,spiffe://kacho.cloud/ns/kacho/sa/kacho-release-runner")
 
 	cfg, err := config.Load("")
@@ -104,7 +104,7 @@ func TestLoad_BootstrapMintSigningKeyEnv_Default(t *testing.T) {
 	if err != nil {
 		t.Fatalf("Load: %v", err)
 	}
-	if got := cfg.AuthN.BootstrapMint.ResolveSigningKeyEnv(); got != "KACHO_IAM_BOOTSTRAP_SA_PRIVATE_KEY_PEM" {
-		t.Fatalf("ResolveSigningKeyEnv() = %q, want KACHO_IAM_BOOTSTRAP_SA_PRIVATE_KEY_PEM (the env the chart wires from the Secret)", got)
+	if got := cfg.AuthN.BootstrapMint.ResolveSigningKeyEnv(); got != "KANAME_BOOTSTRAP_SA_PRIVATE_KEY_PEM" {
+		t.Fatalf("ResolveSigningKeyEnv() = %q, want KANAME_BOOTSTRAP_SA_PRIVATE_KEY_PEM (the env the chart wires from the Secret)", got)
 	}
 }

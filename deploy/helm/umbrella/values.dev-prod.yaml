@@ -295,7 +295,7 @@ kaname:
       # aud=<derived>/oauth2/token → Hydra rejects it ("audience must match the token
       # endpoint http://localhost:28080/.ory/hydra/public/oauth2/token", invalid_client).
       # Set as a CONFIG value (ResolveHydraIssuer highest precedence) — the env passthrough
-      # KACHO_IAM_HYDRA_ISSUER collides with the chart's domain-derived env of the same name
+      # KANAME_HYDRA_ISSUER collides with the chart's domain-derived env of the same name
       # and k8s dedups to the first (external) → non-deterministic. Aligns iam with the
       # gateway (gateway.hydra.issuer already = this localhost issuer); the in-cluster POST
       # target stays hydraTokenURL. authn.go documents this override for non-derivable issuers.
@@ -442,7 +442,7 @@ kaname:
       hydraTokenURL: "http://kacho-umbrella-hydra-public.kacho.svc:4444/oauth2/token"
       # UNIFICATION FIX (dev-masked): the iam :9097 JWKS proxy — the endpoint every
       # service is supposed to verify RS256 tokens through (registry-iam-jwks-unify) —
-      # derives its upstream from KACHO_IAM_HYDRA_ISSUER = https://hydra.api.kacho.cloud,
+      # derives its upstream from KANAME_HYDRA_ISSUER = https://hydra.api.kacho.cloud,
       # the EXTERNAL ingress host that is UNREACHABLE in-cluster → the proxy fail-closes
       # 502 and NO service can verify through it (they silently fall back to Hydra-direct,
       # defeating the unification). Point the upstream at the in-cluster Hydra PUBLIC
@@ -787,7 +787,7 @@ pg-registry:
 #
 # ЗДЕСЬ БЫЛ ЗАПИСАН ДЕФЕКТ, КОТОРЫЙ ЭТОТ ЖЕ ФАЙЛ И ЛЕЧИЛ — ТОЛЬКО У СЕБЯ.
 # Прежняя редакция объясняла: в базовом профиле величиной стоит литерал
-# `${KACHO_IAM_HOOK_TOKEN}`, провайдер подстановки не делает, значит литерал
+# `${KANAME_HOOK_TOKEN}`, провайдер подстановки не делает, значит литерал
 # уезжает в заголовок и служба прав отвечает `401`. Всё верно — и починено было
 # только в этом наложении. Базовый профиль остался с литералом и без источника,
 # а `make dev-up` поднимает СНАЧАЛА его и ждёт готовности в этом состоянии

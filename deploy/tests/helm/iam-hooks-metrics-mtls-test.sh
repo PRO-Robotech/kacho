@@ -91,16 +91,16 @@ render_only() {
 # knew only ENABLE/CERTFILE/KEYFILE/CLIENTCAFILES — adding CLIENTAUTHMODE makes the
 # capability-intact section RED against a template that does not yet emit it.
 HOOKS_METRICS_ENV=(
-  KACHO_IAM_HOOKS_SERVER_MTLS_ENABLE
-  KACHO_IAM_HOOKS_SERVER_MTLS_CLIENTAUTHMODE
-  KACHO_IAM_HOOKS_SERVER_MTLS_CERTFILE
-  KACHO_IAM_HOOKS_SERVER_MTLS_KEYFILE
-  KACHO_IAM_HOOKS_SERVER_MTLS_CLIENTCAFILES
-  KACHO_IAM_METRICS_SERVER_MTLS_ENABLE
-  KACHO_IAM_METRICS_SERVER_MTLS_CLIENTAUTHMODE
-  KACHO_IAM_METRICS_SERVER_MTLS_CERTFILE
-  KACHO_IAM_METRICS_SERVER_MTLS_KEYFILE
-  KACHO_IAM_METRICS_SERVER_MTLS_CLIENTCAFILES
+  KANAME_HOOKS_SERVER_MTLS_ENABLE
+  KANAME_HOOKS_SERVER_MTLS_CLIENTAUTHMODE
+  KANAME_HOOKS_SERVER_MTLS_CERTFILE
+  KANAME_HOOKS_SERVER_MTLS_KEYFILE
+  KANAME_HOOKS_SERVER_MTLS_CLIENTCAFILES
+  KANAME_METRICS_SERVER_MTLS_ENABLE
+  KANAME_METRICS_SERVER_MTLS_CLIENTAUTHMODE
+  KANAME_METRICS_SERVER_MTLS_CERTFILE
+  KANAME_METRICS_SERVER_MTLS_KEYFILE
+  KANAME_METRICS_SERVER_MTLS_CLIENTCAFILES
 )
 
 # ── 1. PROD values DECISION — gate ON in server-tls-only mode (deterministic yq) ─
@@ -169,7 +169,7 @@ gate_render() {
 }
 gate_render --set mtls.httpListeners=true; GATE_ON="$HELM_OUT"
 gate_render; GATE_OFF="$HELM_OUT"
-for name in KACHO_IAM_HOOKS_SERVER_MTLS_ENABLE KACHO_IAM_METRICS_SERVER_MTLS_ENABLE; do
+for name in KANAME_HOOKS_SERVER_MTLS_ENABLE KANAME_METRICS_SERVER_MTLS_ENABLE; do
   [[ "$GATE_ON" == *"name: $name"* ]] \
     || fail "capability: mtls.httpListeners=true НЕ включает $name — способность потеряна, боевой профиль отгрузил бы открытый листенер"
   if [[ "$GATE_OFF" == *"name: $name"* ]]; then
@@ -181,12 +181,12 @@ for name in "${HOOKS_METRICS_ENV[@]}"; do
     || fail "capability: env $name missing from template — server-side TLS support / CLIENTAUTHMODE not emitted"
 done
 # Both CLIENTAUTHMODE env default to server-tls-only in the template.
-[[ "$(grep -A1 'KACHO_IAM_HOOKS_SERVER_MTLS_CLIENTAUTHMODE' "$TPL")" == *'hooksClientAuthMode'* ]] \
+[[ "$(grep -A1 'KANAME_HOOKS_SERVER_MTLS_CLIENTAUTHMODE' "$TPL")" == *'hooksClientAuthMode'* ]] \
   || fail "capability: hooks CLIENTAUTHMODE must derive from .Values.mtls.hooksClientAuthMode"
-[[ "$(grep -A1 'KACHO_IAM_METRICS_SERVER_MTLS_CLIENTAUTHMODE' "$TPL")" == *'metricsClientAuthMode'* ]] \
+[[ "$(grep -A1 'KANAME_METRICS_SERVER_MTLS_CLIENTAUTHMODE' "$TPL")" == *'metricsClientAuthMode'* ]] \
   || fail "capability: metrics CLIENTAUTHMODE must derive from .Values.mtls.metricsClientAuthMode"
 # The hooks/metrics block must REUSE the mounted server cert-trio (no new PKI).
-[[ "$(grep -A1 'KACHO_IAM_HOOKS_SERVER_MTLS_CERTFILE' "$TPL")" == *'tls.crt'* ]] \
+[[ "$(grep -A1 'KANAME_HOOKS_SERVER_MTLS_CERTFILE' "$TPL")" == *'tls.crt'* ]] \
   || fail "capability: hooks certfile must reuse the mounted server tls.crt (SEC-F)"
 ok
 

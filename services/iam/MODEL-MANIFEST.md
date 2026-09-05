@@ -32,9 +32,9 @@
 | `manifests.compose-model` | модель прав установки **собирается** из доставленных манифестов |
 | `manifests.admission` | каким допуском судится собранная модель. Сегодня принимается одно значение: `content` — по содержанию |
 
-Все четыре подаются переменными окружения (`KACHO_IAM_MANIFESTS__DIR`,
-`KACHO_IAM_MANIFESTS__REQUIRED`, `KACHO_IAM_MANIFESTS__COMPOSE_MODEL`,
-`KACHO_IAM_MANIFESTS__ADMISSION`) либо файлом настроек.
+Все четыре подаются переменными окружения (`KANAME_MANIFESTS__DIR`,
+`KANAME_MANIFESTS__REQUIRED`, `KANAME_MANIFESTS__COMPOSE_MODEL`,
+`KANAME_MANIFESTS__ADMISSION`) либо файлом настроек.
 
 **Умолчания у каталога нет намеренно.** Подставленный путь был бы непустым
 всегда, и доставка читалась бы заведённой на установке, которая её не заводила.

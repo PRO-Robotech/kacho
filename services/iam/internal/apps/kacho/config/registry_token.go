@@ -56,7 +56,7 @@ type RegistryTokenConfig struct {
 	// мгновение (RFC 3339), до которого докерная полоса ПРОДОЛЖАЕТ принимать
 	// ключевой материал в поле пароля наряду с базовым токеном доступа.
 	//
-	// ENV: KACHO_IAM_API_SERVER__REGISTRY_TOKEN__KEY_MATERIAL_WINDOW_UNTIL
+	// ENV: KANAME_API_SERVER__REGISTRY_TOKEN__KEY_MATERIAL_WINDOW_UNTIL
 	// Пример значения: 2026-09-30T00:00:00Z
 	//
 	// УМОЛЧАНИЕ — ПУСТО, ТО ЕСТЬ ОКНО ЗАКРЫТО. Незаданное послабление не
@@ -186,7 +186,7 @@ func (c RegistryTokenConfig) Validate(clientToken ClientTokenConfig) error {
 				"by the deployment as global.kacho.registry.serviceAud and read by BOTH sides of the lane "+
 				"(the registry ships it as KACHO_REGISTRY_SERVICE_AUD and advertises it to the docker client; "+
 				"we mint it into aud). Declare global.kacho.registry.serviceAud, or set this key directly "+
-				"when running iam on its own (env KACHO_IAM_API_SERVER__REGISTRY_TOKEN__SERVICE)",
+				"when running iam on its own (env KANAME_API_SERVER__REGISTRY_TOKEN__SERVICE)",
 			c.ListenAddress())
 	}
 	if !clientToken.Enabled {

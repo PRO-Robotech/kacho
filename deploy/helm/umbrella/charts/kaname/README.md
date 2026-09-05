@@ -21,7 +21,7 @@ ConfigMap / RBAC / Service objects.
 > Решение о доступе вычисляет реляционная форма в собственной базе iam, поэтому
 > из чарта ушли: подчарт начальной настройки движка, выделенная база движка,
 > секрет с идентификатором модели, init-контейнер ожидания движка, переменные
-> `KACHO_IAM_OPENFGA_STORE_ID` / `KACHO_IAM_OPENFGA_MODEL_ID`, ключ
+> `KANAME_OPENFGA_STORE_ID` / `KANAME_OPENFGA_MODEL_ID`, ключ
 > `config.extapi.openfga.*` и рубильник источника вердикта
 > (`config.authz.verdictFormTypes` / `config.authz.shadowCompare`) — сравнивать
 > больше не с чем. Сама МОДЕЛЬ прав (`fga_model.fga`) остаётся: она источник
@@ -117,7 +117,7 @@ If the **private** signing key leaks (e.g., dev-cluster Secret leak):
 ## Sealed-secret integration (operator setup)
 
 For production deployments, the 32-byte AES-GCM key
-(`KACHO_IAM_JWKS_ENC_KEY`, default Secret name `kaname-jwks-enc-key`) must
+(`KANAME_JWKS_ENC_KEY`, default Secret name `kaname-jwks-enc-key`) must
 be provisioned BEFORE first-deploy of this chart. Two supported patterns:
 
 > [!important] THE VALUE IS HEX — 64 hexadecimal characters, nothing else.
@@ -215,7 +215,7 @@ So a change is an edit, not a migration. Put the new key first and KEEP the
 previous one:
 
 ```
-KACHO_IAM_JWKS_ENC_KEY=<new key>,<the key that is in use today>
+KANAME_JWKS_ENC_KEY=<new key>,<the key that is in use today>
 ```
 
 Restart iam. Nothing in the store is touched, no window is needed, and every

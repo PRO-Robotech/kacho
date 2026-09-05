@@ -10,8 +10,8 @@ import (
 )
 
 // TestResolveHydraJWKSURL_Precedence — the internal JWKS-proxy upstream mirrors the
-// KACHO_IAM_HYDRA_TOKEN_URL precedence (authn.go): explicit field → env
-// KACHO_IAM_HYDRA_JWKS_URL (cluster-internal hydra-public) → derived
+// KANAME_HYDRA_TOKEN_URL precedence (authn.go): explicit field → env
+// KANAME_HYDRA_JWKS_URL (cluster-internal hydra-public) → derived
 // ResolveHydraIssuer()+"/.well-known/jwks.json" (back-compat).
 func TestResolveHydraJWKSURL_Precedence(t *testing.T) {
 	// Default: derived from the Hydra issuer's well-known path.
@@ -21,7 +21,7 @@ func TestResolveHydraJWKSURL_Precedence(t *testing.T) {
 	}
 
 	// Env override: the cluster-internal hydra-public Service (mirror of the token URL).
-	t.Setenv("KACHO_IAM_HYDRA_JWKS_URL", "http://kacho-umbrella-hydra-public.kacho.svc:4444/.well-known/jwks.json")
+	t.Setenv("KANAME_HYDRA_JWKS_URL", "http://kacho-umbrella-hydra-public.kacho.svc:4444/.well-known/jwks.json")
 	if got := c.ResolveHydraJWKSURL(); got != "http://kacho-umbrella-hydra-public.kacho.svc:4444/.well-known/jwks.json" {
 		t.Fatalf("env-override ResolveHydraJWKSURL() = %q; want the cluster-internal URL", got)
 	}

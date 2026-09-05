@@ -291,7 +291,7 @@ func (h *Handler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 				"token verification downstream fails until it is corrected",
 				slog.String("upstream", h.upstreamURL),
 				slog.String("classification", reasonMisconfigured),
-				slog.String("setting", "authn.hydra-jwks-url (env KACHO_IAM_HYDRA_JWKS_URL)"),
+				slog.String("setting", "authn.hydra-jwks-url (env KANAME_HYDRA_JWKS_URL)"),
 				slog.Uint64("misconfigured_total", h.misconfigured.Load()),
 				slog.String("err", err.Error()))
 		} else {

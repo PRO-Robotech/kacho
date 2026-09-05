@@ -8,7 +8,7 @@
 //     from `embedded/permission_catalog.json`. The registry is in-memory and
 //     embed-binary self-contained — no DB-table backing it.
 //   - BootstrapAdminRunner: creates cluster_admin_grant + fga_outbox when
-//     KACHO_IAM_BOOTSTRAP_ROOT_EMAIL env is set.
+//     KANAME_BOOTSTRAP_ROOT_EMAIL env is set.
 //
 // The composition root (cmd/kaname/main.go) invokes seed.Run() after
 // `migrator.Up()` and before the gRPC listener starts.
@@ -101,7 +101,7 @@ type PermissionRegistry struct {
 // sorted by FQN).
 //
 // Catalog source: embedded/permission_catalog.json (committed).
-// Planned override env: `KACHO_IAM_PERMISSION_CATALOG_PATH` — ConfigMap
+// Planned override env: `KANAME_PERMISSION_CATALOG_PATH` — ConfigMap
 // mount path for emergency hotfix (fallback path); currently embed only.
 func LoadPermissionRegistry(ctx context.Context, logger *slog.Logger) (*PermissionRegistry, error) {
 	if logger == nil {

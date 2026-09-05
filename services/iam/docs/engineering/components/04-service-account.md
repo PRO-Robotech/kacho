@@ -134,9 +134,9 @@ SA-ключи — отдельный service (см. [`05-sa-keys.md`](05-sa-keys
 
 | Env var                              | YAML key                              | Default | Описание                                |
 |--------------------------------------|---------------------------------------|---------|-----------------------------------------|
-| `KACHO_IAM_HYDRA_ADMIN_URL`          | `extapi.hydra.admin-url`              | —       | URL Hydra admin API.                    |
-| `KACHO_IAM_HYDRA_ADMIN_TOKEN`        | `extapi.hydra.admin-token`            | —       | Bearer token для Hydra admin.           |
-| `KACHO_IAM_HYDRA_ISSUER`             | `authn.hydra-issuer`                  | `https://hydra.<domain>` | Hydra issuer URL.    |
+| `KANAME_HYDRA_ADMIN_URL`          | `extapi.hydra.admin-url`              | —       | URL Hydra admin API.                    |
+| `KANAME_HYDRA_ADMIN_TOKEN`        | `extapi.hydra.admin-token`            | —       | Bearer token для Hydra admin.           |
+| `KANAME_HYDRA_ISSUER`             | `authn.hydra-issuer`                  | `https://hydra.<domain>` | Hydra issuer URL.    |
 
 ## Как пользоваться
 

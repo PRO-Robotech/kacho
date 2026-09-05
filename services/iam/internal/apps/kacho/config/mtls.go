@@ -16,11 +16,21 @@ import (
 	"github.com/PRO-Robotech/kacho/pkg/grpcsrv"
 )
 
-// mtlsEnvPrefix — корневой сегмент env-имен для per-edge server-side mTLS.
+// EnvPrefix — корневой сегмент ВСЕХ env-имен службы, объявленный ОДИН раз.
+//
+// Прежде он стоял двумя литералами: здесь и в load.go (`SetEnvPrefix`). Два
+// места об одном предмете расходятся молча, и расхождение здесь особенно тихое —
+// часть ручек продолжала бы читаться под прежним именем, а часть нет, и оператор
+// увидел бы это только по последствиям. Переименование службы в Kaname (#2076)
+// было бы ровно таким случаем.
+//
 // LoadPrefixed (envconfig) выводит env-имя каждого поля из иерархии:
-// mtlsEnvPrefix + tag родительского поля + field примитива →
-// KACHO_IAM_<EDGE>_<NAME>.
-const mtlsEnvPrefix = "KACHO_IAM"
+// EnvPrefix + tag родительского поля + field примитива → KANAME_<EDGE>_<NAME>.
+const EnvPrefix = "KANAME"
+
+// mtlsEnvPrefix — тот же префикс под прежним внутренним именем: у per-edge mTLS
+// своего словаря имён нет.
+const mtlsEnvPrefix = EnvPrefix
 
 // MTLSConfig — per-edge opt-in server-side mTLS для listener'ов IAM (+
 // HTTP-listener hardening). Загружается ОТДЕЛЬНО от основного
@@ -35,7 +45,7 @@ const mtlsEnvPrefix = "KACHO_IAM"
 // снятым дренажом смены субъекта) и вне scope.
 //
 // Каждое ребро независимо: env-имена выводятся из тега родительского поля.
-// Напр. InternalServerMTLS → KACHO_IAM_INTERNAL_SERVER_MTLS_{ENABLE,CERTFILE,
+// Напр. InternalServerMTLS → KANAME_INTERNAL_SERVER_MTLS_{ENABLE,CERTFILE,
 // KEYFILE,CLIENTCAFILES}. Enable=false (default) → insecure/plaintext (dev
 // backward-compat). Per-edge enable → независимый rollback.
 //
@@ -77,7 +87,7 @@ type MTLSConfig struct {
 	HooksServerMTLS grpcsrv.TLSServer `envconfig:"HOOKS_SERVER_MTLS"`
 
 	// HooksClientAuthMode — per-edge TLS ClientAuth-режим для hooks-listener'а
-	// (:9092). Env: KACHO_IAM_HOOKS_SERVER_MTLS_CLIENTAUTHMODE. Допустимые
+	// (:9092). Env: KANAME_HOOKS_SERVER_MTLS_CLIENTAUTHMODE. Допустимые
 	// значения — clientAuthServerTLSOnly | clientAuthMutual. Пустая строка
 	// (unset) при enabled-edge → безопасный per-edge дефолт server-tls-only (Ory
 	// не предъявляет client-cert; иначе enabled hooks-edge падал бы в
@@ -94,7 +104,7 @@ type MTLSConfig struct {
 	MetricsServerMTLS grpcsrv.TLSServer `envconfig:"METRICS_SERVER_MTLS"`
 
 	// MetricsClientAuthMode — per-edge TLS ClientAuth-режим для metrics-listener'а
-	// (:9095). Env: KACHO_IAM_METRICS_SERVER_MTLS_CLIENTAUTHMODE. Пустая строка
+	// (:9095). Env: KANAME_METRICS_SERVER_MTLS_CLIENTAUTHMODE. Пустая строка
 	// (unset) при enabled-edge → безопасный per-edge дефолт server-tls-only.
 	// Неизвестный режим → fail-closed.
 	MetricsClientAuthMode string `envconfig:"METRICS_SERVER_MTLS_CLIENTAUTHMODE"`
@@ -108,11 +118,11 @@ type MTLSConfig struct {
 	// authN-on-every-listener invariant (security.md), justified by internal-only
 	// surface + server-TLS + only-public-material. Default-off (Enable=false) →
 	// plaintext (dev/newman стенд byte-identical). Env:
-	// KACHO_IAM_JWKSPROXY_SERVER_MTLS_{ENABLE,CERTFILE,KEYFILE,CLIENTCAFILES}.
+	// KANAME_JWKSPROXY_SERVER_MTLS_{ENABLE,CERTFILE,KEYFILE,CLIENTCAFILES}.
 	JWKSProxyServerMTLS grpcsrv.TLSServer `envconfig:"JWKSPROXY_SERVER_MTLS"`
 
 	// JWKSProxyClientAuthMode — per-edge TLS ClientAuth-режим для jwks-proxy
-	// listener'а (:9097). Env: KACHO_IAM_JWKSPROXY_SERVER_MTLS_CLIENTAUTHMODE.
+	// listener'а (:9097). Env: KANAME_JWKSPROXY_SERVER_MTLS_CLIENTAUTHMODE.
 	// Пустая строка (unset) при enabled-edge → безопасный per-edge дефолт
 	// server-tls-only (ONE-WAY: registry-verifier предъявляет только server-trust,
 	// не client-cert — mutual сломал бы «verifier untouched»). Неизвестный режим →
@@ -136,12 +146,12 @@ type MTLSConfig struct {
 	// mutual потребовал бы client-cert у nginx-sidecar реестра. Default-off →
 	// (nil, nil) → plaintext (dev байт-идентичен); в production listener без TLS
 	// отказывается стартовать (requireRegistryTokenTLS). Env:
-	// KACHO_IAM_REGISTRYTOKEN_SERVER_MTLS_{ENABLE,CERTFILE,KEYFILE,CLIENTCAFILES}.
+	// KANAME_REGISTRYTOKEN_SERVER_MTLS_{ENABLE,CERTFILE,KEYFILE,CLIENTCAFILES}.
 	RegistryTokenServerMTLS grpcsrv.TLSServer `envconfig:"REGISTRYTOKEN_SERVER_MTLS"`
 
 	// RegistryTokenClientAuthMode — per-edge TLS ClientAuth-режим для docker-token
 	// listener'а (:9096). Env:
-	// KACHO_IAM_REGISTRYTOKEN_SERVER_MTLS_CLIENTAUTHMODE. Пустая строка (unset) при
+	// KANAME_REGISTRYTOKEN_SERVER_MTLS_CLIENTAUTHMODE. Пустая строка (unset) при
 	// enabled-ребре → server-tls-only. Неизвестный режим → fail-closed.
 	RegistryTokenClientAuthMode string `envconfig:"REGISTRYTOKEN_SERVER_MTLS_CLIENTAUTHMODE"`
 }
@@ -213,7 +223,7 @@ func resolveClientAuthMode(mode string) string {
 	return mode
 }
 
-// LoadMTLS читает per-edge server-side mTLS-конфиг из env (KACHO_IAM_*).
+// LoadMTLS читает per-edge server-side mTLS-конфиг из env (KANAME_*).
 // enable=false по каждому ребру (zero-value) → текущее insecure/plaintext-
 // поведение (dev, нулевая регрессия).
 func LoadMTLS() (MTLSConfig, error) {
@@ -411,7 +421,7 @@ func serverTLSConfig(cfg grpcsrv.TLSServer, mode string) (*tls.Config, error) {
 func loadCAPool(files []string) (*x509.CertPool, error) {
 	pool := x509.NewCertPool()
 	for _, f := range files {
-		// #nosec G304 -- trusted operator-config path (env KACHO_IAM_*_CLIENTCAFILES,
+		// #nosec G304 -- trusted operator-config path (env KANAME_*_CLIENTCAFILES,
 		// mounted internal-CA bundle), not request/user input. Same idiom as
 		// снятым дренажом смены субъекта: доверенного корня края владельцу прав больше не нужно.
 		pem, err := os.ReadFile(f)

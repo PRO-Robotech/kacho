@@ -793,7 +793,7 @@ func buildServices(pool, slavePool *pgxpool.Pool, opsRepo operations.FullRepo,
 	// the gateway verifies. It is iam's decision, never a request field (Р2): a
 	// caller-supplied audience can be set but cannot be set correctly, and a wrong
 	// one is refused by the edge long after the client was created.
-	interactiveAudience := os.Getenv("KACHO_IAM_INTERACTIVE_CLIENT_AUDIENCE")
+	interactiveAudience := os.Getenv("KANAME_INTERACTIVE_CLIENT_AUDIENCE")
 	if interactiveAudience == "" {
 		interactiveAudience = "https://" + cfg.AuthN.ResolveDomain()
 	}

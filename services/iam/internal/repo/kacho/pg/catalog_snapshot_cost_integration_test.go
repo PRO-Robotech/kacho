@@ -58,7 +58,7 @@ import (
 // живёт в композиционном корне (`cmd/kaname`), а корень пробе репозитория не
 // виден — пакет чужой и импортировать его отсюда нельзя. Расхождение поймает не
 // компилятор, а читатель отчёта: величина названа в отчёте рядом с именем ручки
-// `KACHO_IAM_CATALOG_SNAPSHOT_REFRESH_INTERVAL_MS`, и сверить их — одна команда.
+// `KANAME_CATALOG_SNAPSHOT_REFRESH_INTERVAL_MS`, и сверить их — одна команда.
 const catalogSnapshotDeclaredPeriod = 15 * time.Second
 
 // TestIAMCT2_SnapshotCostAgainstOnDemand — замер §8 п. 1.
@@ -131,7 +131,7 @@ func TestIAMCT2_SnapshotCostAgainstOnDemand(t *testing.T) {
 		refresh.median, refresh.p99, catalogSnapshotDeclaredPeriod, snapRead.median, snapRead.p99)
 	t.Logf("строка 2 · ПО ТРЕБОВАНИЮ: чтение каталога медиана %v (p99 %v) НА КАЖДОМ обращении",
 		dbRead.median, dbRead.p99)
-	t.Logf("отставание: %v — объявлено ручкой KACHO_IAM_CATALOG_SNAPSHOT_REFRESH_INTERVAL_MS, не вшито",
+	t.Logf("отставание: %v — объявлено ручкой KANAME_CATALOG_SNAPSHOT_REFRESH_INTERVAL_MS, не вшито",
 		catalogSnapshotDeclaredPeriod)
 	t.Logf("отношение: обращение к снимку дешевле обращения к базе в %.0f раз; "+
 		"снимок платит %v за %v на реплику, чтение по требованию — столько же за КАЖДОЕ обращение",

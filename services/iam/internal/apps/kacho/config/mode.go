@@ -4,8 +4,8 @@
 // Package config — configuration for kaname.
 //
 // YAML + viper. Defaults are kept in defaults.go (not in struct-tags).
-// ENV-binding lives in load.go via `viper.SetEnvPrefix("KACHO_IAM")` +
-// delimiter `__` for hierarchy (`KACHO_IAM_REPOSITORY__POSTGRES__URL` →
+// ENV-binding lives in load.go via `viper.SetEnvPrefix("KANAME")` +
+// delimiter `__` for hierarchy (`KANAME_REPOSITORY__POSTGRES__URL` →
 // `repository.postgres.url`).
 //
 // Mode: ENUM Mode{ModeDev, ModeProduction, ModeProductionStrict} — overall

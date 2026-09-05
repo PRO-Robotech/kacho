@@ -22,7 +22,7 @@ db:
 # ─── Config sections (viper YAML, parity с kacho-vpc) ───────────────────
 # Все ключи ниже рендерятся в /etc/kaname/config.yaml через
 # deploy/templates/configmap.yaml. Любой ключ можно override через
-# ENV KACHO_IAM_<SECTION>__<KEY>=... (см. internal/apps/kacho/config).
+# ENV KANAME_<SECTION>__<KEY>=... (см. internal/apps/kacho/config).
 logger:
   level: INFO
 apiServer:
@@ -72,7 +72,7 @@ repository:
 #
 # Слушатель метрик у iam настоящий, и его ручка одна — api-server.metrics-endpoint
 # (пустое значение выключает слушатель). Ключ движка описывал клиента, который
-# собирался в композиционном корне из переменных KACHO_IAM_*, а не из этого файла;
+# собирался в композиционном корне из переменных KANAME_*, а не из этого файла;
 # сегодня нет и клиента — движок снят стадией S6 эпика #747, вердикт вычисляет
 # реляционная форма в своей базе. Оба ключа были ВТОРЫМ способом сказать то же
 # самое, причём неработающим.
@@ -93,8 +93,8 @@ env: {}
 # сговор с провайдером личности и ключ обёртки ключницы непустыми.
 #
 #   secrets:
-#     KACHO_IAM_HOOK_TOKEN:   { secretName: kaname-authn, secretKey: hook-shared-secret }
-#     KACHO_IAM_JWKS_ENC_KEY: { secretName: kaname-authn, secretKey: jwks-encryption-key-hex }
+#     KANAME_HOOK_TOKEN:   { secretName: kaname-authn, secretKey: hook-shared-secret }
+#     KANAME_JWKS_ENC_KEY: { secretName: kaname-authn, secretKey: jwks-encryption-key-hex }
 secrets: {}
 
 # ── МАТЕРИАЛ TLS СЛУШАТЕЛЕЙ ─────────────────────────────────────────────────

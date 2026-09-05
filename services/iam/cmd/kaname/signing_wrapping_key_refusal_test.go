@@ -28,7 +28,7 @@ func TestSigningKeyStartupRefusalNamesTheKnob(t *testing.T) {
 	msg := err.Error()
 	for _, want := range []string{
 		"authn.jwks-encryption-key-hex", // ручка настройки
-		"KACHO_IAM_JWKS_ENC_KEY",        // переменная окружения того же предмета
+		"KANAME_JWKS_ENC_KEY",        // переменная окружения того же предмета
 	} {
 		if !strings.Contains(msg, want) {
 			t.Fatalf("отказ не называет %q: %s", want, msg)
@@ -38,8 +38,8 @@ func TestSigningKeyStartupRefusalNamesTheKnob(t *testing.T) {
 	// Имя переменной берётся ИЗ НАСТРОЙКИ, а не из копии: профиль, переназвавший
 	// переменную, обязан увидеть в отказе своё имя, иначе оператор ищет не ту.
 	renamed := signingKeyStartupRefusal(
-		config.AuthNConfig{JWKSEncryptionKeyHexEnv: "KACHO_IAM_JWKS_ENC_KEY_ALT"}, inner)
-	if !strings.Contains(renamed.Error(), "KACHO_IAM_JWKS_ENC_KEY_ALT") {
+		config.AuthNConfig{JWKSEncryptionKeyHexEnv: "KANAME_JWKS_ENC_KEY_ALT"}, inner)
+	if !strings.Contains(renamed.Error(), "KANAME_JWKS_ENC_KEY_ALT") {
 		t.Fatalf("отказ называет умолчание вместо заданного имени: %s", renamed.Error())
 	}
 

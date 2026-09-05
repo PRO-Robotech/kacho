@@ -8,7 +8,7 @@
 // UNRECOGNIZED (non-status) error.
 //
 // Regression for the live-stand defect: a mis-set / absent
-// KACHO_IAM_HYDRA_ADMIN_URL made iam derive the public `https://hydra-admin.<domain>`
+// KANAME_HYDRA_ADMIN_URL made iam derive the public `https://hydra-admin.<domain>`
 // (unresolvable in-cluster) → CreateOAuthClient failed → the plain
 // `fmt.Errorf("%w: hydra create-client: %w", iamerr.ErrUnavailable, err)` was NOT a
 // gRPC status, so the worker degraded it to codes.Internal "internal worker error"

@@ -249,7 +249,7 @@ func TestConfigRefusal_NamesTheEnvOverride(t *testing.T) {
 	if err == nil {
 		t.Fatal("production Validate() accepted an empty trusted-forwarder allow-list")
 	}
-	if !strings.Contains(err.Error(), "KACHO_IAM_AUTHN__TRUSTED_FORWARDER_SANS") {
+	if !strings.Contains(err.Error(), "KANAME_AUTHN__TRUSTED_FORWARDER_SANS") {
 		t.Fatalf("the refusal must name the env override an operator sets, got: %v", err)
 	}
 }

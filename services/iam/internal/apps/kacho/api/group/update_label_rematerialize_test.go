@@ -23,7 +23,7 @@ package group
 //     post-commit — the update path emitted no reconcile event at all and re-materialized
 //     nothing in-process. So the revoke had no at-least-once queue behind it and no
 //     accelerator in front of it: it converged only when the 30s periodic sweep
-//     (KACHO_IAM_RECONCILE_SWEEP_INTERVAL_MS) happened to reach the binding.
+//     (KANAME_RECONCILE_SWEEP_INTERVAL_MS) happened to reach the binding.
 //
 // Adding only the in-process pass would be an accelerator with no durable backstop; adding
 // only the event makes revoke latency the DEPTH OF THE GLOBAL RECONCILE QUEUE — strictly

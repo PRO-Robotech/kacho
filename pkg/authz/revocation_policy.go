@@ -218,7 +218,7 @@ var RevocationPolicy = RevocationWindowPolicy{
 		// Ключ — ВИПЕРОВСКИЙ, как у vpc и nlb, а не имя переменной окружения:
 		// площадку перепись находит по объявлению в конфигурации, и ключ обязан
 		// совпадать с тем, чем она её нашла. Оператору ручка видна как
-		// KACHO_IAM_AUTHZ_CACHE_TTL — это её псевдоним в load.go.
+		// KANAME_AUTHZ_CACHE_TTL — это её псевдоним в load.go.
 		"iam authz.cache-ttl": 5 * time.Second,
 	},
 

@@ -8,7 +8,7 @@ package seed
 //
 // Why a loop (not a one-shot call): RunBootstrapAdmin grants
 // `system_admin@cluster_kacho_root` to the bootstrap user identified by
-// KACHO_IAM_BOOTSTRAP_ROOT_EMAIL and enqueues the FGA tuple into the
+// KANAME_BOOTSTRAP_ROOT_EMAIL and enqueues the FGA tuple into the
 // transactional fga_outbox. But the bootstrap user row only appears in
 // kacho_iam.users on first login / fixture upsert (InternalUserService.
 // UpsertFromIdentity), which happens AFTER kaname boots. A single startup

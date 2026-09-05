@@ -70,8 +70,8 @@ func describePosture(cfg config.Config, logger *slog.Logger) (servicecontract.De
 		// подать сюда сырое поле значило бы судить намерение вместо исхода.
 		Forwarders: servicecontract.Value(cfg.AuthN.TrustedForwarders()),
 		ForwarderKnobs: servicecontract.ForwarderKnobs{
-			SANs:     "authn.trusted-forwarder-sans (env KACHO_IAM_AUTHN__TRUSTED_FORWARDER_SANS)",
-			TrustAny: "authn.trust-any-forwarder (env KACHO_IAM_AUTHN__TRUST_ANY_FORWARDER)",
+			SANs:     "authn.trusted-forwarder-sans (env KANAME_AUTHN__TRUSTED_FORWARDER_SANS)",
+			TrustAny: "authn.trust-any-forwarder (env KANAME_AUTHN__TRUST_ANY_FORWARDER)",
 			OptIn:    cfg.AuthN.TrustAnyForwarder,
 		},
 

@@ -85,9 +85,9 @@ func TestF4d01_EitherLegalValuePassesTheStart(t *testing.T) {
 // и требовать по ней нечего. Проверяется наблюдаемым: при незаданном поле в
 // тексте нет НИ ОДНОГО полосного требования.
 func TestF4d01_UnsetLaneDemandsNothingLaneScoped(t *testing.T) {
-	t.Setenv("KACHO_IAM_HYDRA_ADMIN_URL", "")
-	t.Setenv("KACHO_IAM_HYDRA_JWKS_URL", "")
-	t.Setenv("KACHO_IAM_HYDRA_TOKEN_URL", "")
+	t.Setenv("KANAME_HYDRA_ADMIN_URL", "")
+	t.Setenv("KANAME_HYDRA_JWKS_URL", "")
+	t.Setenv("KANAME_HYDRA_TOKEN_URL", "")
 
 	cfg := laneCfg(config.IdentityProviderUnset)
 	cfg.AuthN.HydraAdminURL = ""
@@ -169,7 +169,7 @@ func TestF4d02_CanonicalValuesAreAccepted(t *testing.T) {
 // нет, но это свойство может измениться, а проба обязана пережить такое
 // изменение осмысленной).
 func TestDocumentedEnvName_IdentityProvider(t *testing.T) {
-	t.Setenv("KACHO_IAM_AUTHN__IDENTITY_PROVIDER", "own")
+	t.Setenv("KANAME_AUTHN__IDENTITY_PROVIDER", "own")
 
 	cfg, err := config.Load("")
 	if err != nil {
@@ -185,7 +185,7 @@ func TestDocumentedEnvName_IdentityProvider(t *testing.T) {
 // настройку влиять НЕ должно. Без этой половины проба зеленела бы на любом
 // имени и ничего не сужала.
 func TestDocumentedEnvName_IdentityProvider_FlatFormDoesNotApply(t *testing.T) {
-	t.Setenv("KACHO_IAM_AUTHN_IDENTITY_PROVIDER", "own")
+	t.Setenv("KANAME_AUTHN_IDENTITY_PROVIDER", "own")
 
 	cfg, err := config.Load("")
 	if err != nil {
@@ -200,7 +200,7 @@ func TestDocumentedEnvName_IdentityProvider_FlatFormDoesNotApply(t *testing.T) {
 // ключ, но значения ему не даёт — иначе она была бы тем самым умолчанием в
 // коде, которого здесь нет намеренно.
 func TestIdentityProviderStaysUnsetWithoutAnyDeclaration(t *testing.T) {
-	t.Setenv("KACHO_IAM_AUTHN__IDENTITY_PROVIDER", "")
+	t.Setenv("KANAME_AUTHN__IDENTITY_PROVIDER", "")
 
 	cfg, err := config.Load("")
 	if err != nil {

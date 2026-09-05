@@ -39,8 +39,8 @@ func prodCfgWithSecrets(t *testing.T) config.Config {
 // boot-guard: mint enabled + no caller allow-list → refuse to start.
 func TestValidate_Production_BootstrapMintEnabled_EmptyAllowlist_Rejected(t *testing.T) {
 	cfg := prodCfgWithSecrets(t)
-	cfg.AuthN.BootstrapMint.SigningKeyEnv = "KACHO_IAM_TEST_BOOTSTRAP_KEY"
-	t.Setenv("KACHO_IAM_TEST_BOOTSTRAP_KEY", "-----BEGIN PRIVATE KEY-----\nx\n-----END PRIVATE KEY-----")
+	cfg.AuthN.BootstrapMint.SigningKeyEnv = "KANAME_TEST_BOOTSTRAP_KEY"
+	t.Setenv("KANAME_TEST_BOOTSTRAP_KEY", "-----BEGIN PRIVATE KEY-----\nx\n-----END PRIVATE KEY-----")
 	// allowed-client-sans deliberately empty
 
 	err := cfg.Validate()
@@ -60,11 +60,11 @@ func TestValidate_Production_BootstrapMintEnabled_EmptyAllowlist_Rejected(t *tes
 // mint boots.
 func TestValidate_Production_BootstrapMintEnabled_WithAllowlist_OK(t *testing.T) {
 	cfg := prodCfgWithSecrets(t)
-	cfg.AuthN.BootstrapMint.SigningKeyEnv = "KACHO_IAM_TEST_BOOTSTRAP_KEY"
+	cfg.AuthN.BootstrapMint.SigningKeyEnv = "KANAME_TEST_BOOTSTRAP_KEY"
 	cfg.AuthN.BootstrapMint.AllowedClientSANs = []string{
 		"spiffe://kacho.cloud/ns/kacho/sa/kacho-bootstrap-seeder",
 	}
-	t.Setenv("KACHO_IAM_TEST_BOOTSTRAP_KEY", "-----BEGIN PRIVATE KEY-----\nx\n-----END PRIVATE KEY-----")
+	t.Setenv("KANAME_TEST_BOOTSTRAP_KEY", "-----BEGIN PRIVATE KEY-----\nx\n-----END PRIVATE KEY-----")
 
 	if err := cfg.Validate(); err != nil {
 		t.Fatalf("Validate() = %v, want nil for an allow-listed bootstrap mint", err)
@@ -75,8 +75,8 @@ func TestValidate_Production_BootstrapMintEnabled_WithAllowlist_OK(t *testing.T)
 // disabled; the guard must not block deployments that never use it.
 func TestValidate_Production_BootstrapMintDisabled_OK(t *testing.T) {
 	cfg := prodCfgWithSecrets(t)
-	cfg.AuthN.BootstrapMint.SigningKeyEnv = "KACHO_IAM_TEST_BOOTSTRAP_KEY"
-	t.Setenv("KACHO_IAM_TEST_BOOTSTRAP_KEY", "")
+	cfg.AuthN.BootstrapMint.SigningKeyEnv = "KANAME_TEST_BOOTSTRAP_KEY"
+	t.Setenv("KANAME_TEST_BOOTSTRAP_KEY", "")
 
 	if err := cfg.Validate(); err != nil {
 		t.Fatalf("Validate() = %v, want nil when the bootstrap mint is not enabled", err)
@@ -89,8 +89,8 @@ func TestValidate_Production_BootstrapMintDisabled_OK(t *testing.T) {
 // caller-less mint in dev.
 func TestValidate_Dev_BootstrapMintEnabled_EmptyAllowlist_OK(t *testing.T) {
 	cfg := goodEndpoints(config.ModeDev, "disable")
-	cfg.AuthN.BootstrapMint.SigningKeyEnv = "KACHO_IAM_TEST_BOOTSTRAP_KEY"
-	t.Setenv("KACHO_IAM_TEST_BOOTSTRAP_KEY", "-----BEGIN PRIVATE KEY-----\nx\n-----END PRIVATE KEY-----")
+	cfg.AuthN.BootstrapMint.SigningKeyEnv = "KANAME_TEST_BOOTSTRAP_KEY"
+	t.Setenv("KANAME_TEST_BOOTSTRAP_KEY", "-----BEGIN PRIVATE KEY-----\nx\n-----END PRIVATE KEY-----")
 
 	if err := cfg.Validate(); err != nil {
 		t.Fatalf("Validate() = %v, want nil in dev mode", err)

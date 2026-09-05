@@ -144,11 +144,11 @@ func TestValidate_Production_FullyPopulated_OK(t *testing.T) {
 // production requirement (workspace policy: secrets via secretKeyRef/env, never
 // YAML).
 func TestValidate_Production_SecretFromEnv_OK(t *testing.T) {
-	t.Setenv("KACHO_IAM_TEST_HOOK_TOKEN", "env-hook-secret")
-	t.Setenv("KACHO_IAM_TEST_JWKS_KEY", strings.Repeat("cd", 32))
+	t.Setenv("KANAME_TEST_HOOK_TOKEN", "env-hook-secret")
+	t.Setenv("KANAME_TEST_JWKS_KEY", strings.Repeat("cd", 32))
 	cfg := goodEndpoints(config.ModeProduction, "require")
-	cfg.AuthN.HookSharedSecretEnv = "KACHO_IAM_TEST_HOOK_TOKEN"
-	cfg.AuthN.JWKSEncryptionKeyHexEnv = "KACHO_IAM_TEST_JWKS_KEY"
+	cfg.AuthN.HookSharedSecretEnv = "KANAME_TEST_HOOK_TOKEN"
+	cfg.AuthN.JWKSEncryptionKeyHexEnv = "KANAME_TEST_JWKS_KEY"
 	if err := cfg.Validate(); err != nil {
 		t.Fatalf("Validate() = %v, want nil when secrets resolve from ENV", err)
 	}

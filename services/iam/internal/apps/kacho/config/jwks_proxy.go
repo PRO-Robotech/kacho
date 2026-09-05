@@ -10,7 +10,7 @@
 // nothing). It is served ONLY on the cluster-internal `kaname-internal` Service
 // (never external, ban #6) over one-way server-TLS (internal-CA leaf) — the
 // Service wiring lives in kacho-deploy. The upstream Hydra JWKS URL is resolved
-// via AuthNConfig.ResolveHydraJWKSURL (env KACHO_IAM_HYDRA_JWKS_URL).
+// via AuthNConfig.ResolveHydraJWKSURL (env KANAME_HYDRA_JWKS_URL).
 package config
 
 // JWKSProxyConfig — api-server.jwks-proxy section.

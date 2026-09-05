@@ -365,7 +365,7 @@ selfservice:
                   config:
                     in: header
                     name: X-Kacho-Hook-Token
-                    value: ${KACHO_IAM_HOOK_TOKEN}
+                    value: ${KANAME_HOOK_TOKEN}
             - hook: show_verification_ui
             - hook: session   # Kratos auto-issues session post-registration → AAL2
         password:
@@ -381,7 +381,7 @@ selfservice:
                   config:
                     in: header
                     name: X-Kacho-Hook-Token
-                    value: ${KACHO_IAM_HOOK_TOKEN}
+                    value: ${KANAME_HOOK_TOKEN}
             - hook: show_verification_ui
             # Сессия выдаётся и на этой полосе — как на соседней. Показ экрана
             # подтверждения почты выдачу НЕ заменяет: это разные вещи, и без
@@ -411,7 +411,7 @@ selfservice:
                   config:
                     in: header
                     name: X-Kacho-Hook-Token
-                    value: ${KACHO_IAM_HOOK_TOKEN}
+                    value: ${KANAME_HOOK_TOKEN}
             - hook: require_verified_address
         password:
           hooks:
@@ -426,7 +426,7 @@ selfservice:
                   config:
                     in: header
                     name: X-Kacho-Hook-Token
-                    value: ${KACHO_IAM_HOOK_TOKEN}
+                    value: ${KANAME_HOOK_TOKEN}
             - hook: require_verified_address
 
     # ─── Settings ────────────────────────────────────────────────
@@ -472,7 +472,7 @@ selfservice:
                 config:
                   in: header
                   name: X-Kacho-Hook-Token
-                  value: ${KACHO_IAM_HOOK_TOKEN}
+                  value: ${KANAME_HOOK_TOKEN}
 
     # ─── Verification ────────────────────────────────────────────
     verification:
@@ -704,7 +704,7 @@ kacho.identity.configRenderInitContainer — подстановка величи
 ДО старта процесса личности.
 
 ЗАЧЕМ. Конфигурация объявляет учётные данные обратных вызовов как
-`${KACHO_IAM_HOOK_TOKEN}`, то есть рассчитывает на подстановку. Служба личности
+`${KANAME_HOOK_TOKEN}`, то есть рассчитывает на подстановку. Служба личности
 подстановки в ЗНАЧЕНИЯХ конфигурации не делает: она переопределяет ключи
 переменными по пути ключа, а элемент массива хуков таким путём невыразим.
 Строка уезжала в заголовок ДОСЛОВНО, служба прав отвечала 401, провайдер — 502;
@@ -833,7 +833,7 @@ kacho.identity.configRenderInitContainer — подстановка величи
           exit 1
         fi
         # ВЕЛИЧИНА, ПОХОЖАЯ НА СВОЁ ИМЯ, — отказ, а не диковина. Наблюдалось на
-        # прогоне: заголовок обратного вызова уехал со строкой `KACHO_IAM_HOOK_TOKEN`,
+        # прогоне: заголовок обратного вызова уехал со строкой `KANAME_HOOK_TOKEN`,
         # то есть подстановка сработала, а в переменной лежало её собственное имя.
         # Принимающая сторона отвергает такую величину `401`, поток регистрации
         # падает `502`, и стенд при этом поднят. Разряд тот же, что у пустой:
@@ -872,7 +872,7 @@ kacho.identity.configRenderInitContainer — подстановка величи
         # переменным и трактует УДВОЕННЫЙ знак доллара как экран для одинарного.
         # Здесь стояло удвоение; kubelet схлопывал его, оболочка присваивала ИМЯ
         # переменной вместо её ВЕЛИЧИНЫ, и подстановка записывала в конфигурацию
-        # строку `KACHO_IAM_HOOK_TOKEN` на месте каждой ссылки. Страж выхода ниже
+        # строку `KANAME_HOOK_TOKEN` на месте каждой ссылки. Страж выхода ниже
         # это поймал и отказал в старте — оба рабочих объекта личности не
         # поднялись, семь проверок линии были красны.
         #
@@ -1114,12 +1114,12 @@ kacho.identity.configRenderInitContainer — подстановка величи
     # объявления не видно. Это два места об одном предмете, и разошлись бы они
     # молча; держит единственность deploy/identity_step_declaration_parses_test.go.
     - name: KACHO_IDENTITY_SUBSTITUTED_VARS
-      value: "KACHO_IAM_HOOK_TOKEN{{ if $mailCredDeclared }} KACHO_IDENTITY_SMTP_CREDENTIAL{{ end }}"
+      value: "KANAME_HOOK_TOKEN{{ if $mailCredDeclared }} KACHO_IDENTITY_SMTP_CREDENTIAL{{ end }}"
     # Почтовая полоса, ЭФФЕКТИВНАЯ: тот же секрет и тот же ключ, из которого её
     # берёт сам процесс. Ссылка НЕОБЯЗАТЕЛЬНА — подчарт поставщика заводит ключ
     # только когда объявлен его собственный ключ полосы; отсутствие переменной
     # означает «полосу задаёт файл», и шаг подстановки читает тогда файл.
-    - name: KACHO_IAM_HOOK_TOKEN
+    - name: KANAME_HOOK_TOKEN
       valueFrom:
         secretKeyRef:
           name: kaname-hook-token

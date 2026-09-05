@@ -125,7 +125,7 @@ func (m localMint) MintToken(ctx context.Context, in bootstraptoken.MintInput) (
 // BuildConfig — composition inputs for the bootstrap-token mint handler.
 type BuildConfig struct {
 	// SigningKeyPEM — the bootstrap ES256 (P-256, PKCS#8) private key PEM,
-	// supplied from a k8s Secret (KACHO_IAM_BOOTSTRAP_SA_PRIVATE_KEY_PEM). Empty →
+	// supplied from a k8s Secret (KANAME_BOOTSTRAP_SA_PRIVATE_KEY_PEM). Empty →
 	// mint disabled (fail-closed).
 	SigningKeyPEM string
 	// Signer — НАШ подписант. Обязателен, когда контур включён: выпускать иначе

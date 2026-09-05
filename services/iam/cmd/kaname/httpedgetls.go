@@ -103,20 +103,20 @@ func requireHTTPEdgeTLS(productionMode bool, edges []httpEdgeTLS) error {
 func iamHTTPEdges(hooksAddr, metricsAddr, jwksProxyAddr string, mtlsCfg mtlsEnableReader) []httpEdgeTLS {
 	return []httpEdgeTLS{
 		{
-			name: "identity-provider hooks", knob: "KACHO_IAM_HOOKS_SERVER_MTLS_ENABLE",
+			name: "identity-provider hooks", knob: "KANAME_HOOKS_SERVER_MTLS_ENABLE",
 			addr: hooksAddr, enabled: mtlsCfg.HooksTLSEnabled(),
 			why: "the identity provider's shared secret travels this hop — the very value the " +
 				"handler uses to tell the provider from a stranger",
 		},
 		{
-			name: "verification-key mirror (/.well-known/jwks.json)", knob: "KACHO_IAM_JWKSPROXY_SERVER_MTLS_ENABLE",
+			name: "verification-key mirror (/.well-known/jwks.json)", knob: "KANAME_JWKSPROXY_SERVER_MTLS_ENABLE",
 			addr: jwksProxyAddr, enabled: mtlsCfg.JWKSProxyTLSEnabled(),
 			why: "this surface carries NO authentication by documented exception, and that " +
 				"exception rests on one-way TLS: without it an unauthenticated plaintext " +
 				"listener decides whose signatures the registry data-plane trusts",
 		},
 		{
-			name: "metrics scrape", knob: "KACHO_IAM_METRICS_SERVER_MTLS_ENABLE",
+			name: "metrics scrape", knob: "KANAME_METRICS_SERVER_MTLS_ENABLE",
 			addr: metricsAddr, enabled: mtlsCfg.MetricsTLSEnabled(),
 			why: "process counters are internal cardinality, kept off any surface a stranger " +
 				"can read (security.md)",

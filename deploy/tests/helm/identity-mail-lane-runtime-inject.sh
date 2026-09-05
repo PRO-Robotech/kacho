@@ -92,9 +92,9 @@ courier:
     connection_uri: "$fileuri"
     from_address: "noreply@kacho.local"
 selfservice:
-  hook_token: "\${KACHO_IAM_HOOK_TOKEN}"
+  hook_token: "\${KANAME_HOOK_TOKEN}"
 YAML
-  if out="$(KACHO_IAM_HOOK_TOKEN=tok COURIER_SMTP_CONNECTION_URI="$envuri" sh -euc "$(cat "$TMP/script.sh")" 2>&1)"
+  if out="$(KANAME_HOOK_TOKEN=tok COURIER_SMTP_CONNECTION_URI="$envuri" sh -euc "$(cat "$TMP/script.sh")" 2>&1)"
   then got=GREEN; else got=RED; fi
   if [ "$got" != "$want" ]; then
     echo "  ОТКАЗ $name → $got, ожидалось $want"; printf '       %s\n' "$out" | tail -2; rc=1; return
@@ -193,9 +193,9 @@ courier:
     connection_uri: "$fileuri"
     from_address: "noreply@kacho.local"
 selfservice:
-  hook_token: "\${KACHO_IAM_HOOK_TOKEN}"
+  hook_token: "\${KANAME_HOOK_TOKEN}"
 YAML
-  if out="$(KACHO_IDENTITY_SUBSTITUTED_VARS="$CRED_VARS" KACHO_IAM_HOOK_TOKEN=tok \
+  if out="$(KACHO_IDENTITY_SUBSTITUTED_VARS="$CRED_VARS" KANAME_HOOK_TOKEN=tok \
             KACHO_IDENTITY_SMTP_CREDENTIAL="$cred" COURIER_SMTP_CONNECTION_URI='' \
             sh -euc "$(cat "$TMP/script-cred.sh")" 2>&1)"
   then got=GREEN; else got=RED; fi

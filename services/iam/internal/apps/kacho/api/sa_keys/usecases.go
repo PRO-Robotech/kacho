@@ -270,7 +270,7 @@ func (u *IssueSAKeyUseCase) WithLogger(l *slog.Logger) *IssueSAKeyUseCase {
 
 // WithRedactGrace задаёт grace-окно между Done-ом Operation и затиранием
 // одноразового private_key_pem. Composition-root передаёт значение из конфига
-// (KACHO_IAM_SAKEY_REDACT_GRACE, дефолт 120s); нулевое или отрицательное значение
+// (KANAME_SAKEY_REDACT_GRACE, дефолт 120s); нулевое или отрицательное значение
 // трактуется как «без окна» (немедленное затирание — тест/legacy).
 func (u *IssueSAKeyUseCase) WithRedactGrace(d time.Duration) *IssueSAKeyUseCase {
 	u.redactGrace = d
@@ -707,7 +707,7 @@ func (u *IssueSAKeyUseCase) issueSecretSync(
 // including a plain fmt.Errorf even when it wraps iamerr.ErrUnavailable — to a
 // generic codes.Internal "internal worker error" and logs NOTHING. So the previous
 // `fmt.Errorf("%w: hydra create-client: %w", iamerr.ErrUnavailable, err)` degraded a
-// peer-UNREACHABLE hydra-admin (e.g. KACHO_IAM_HYDRA_ADMIN_URL absent → issuer-derived
+// peer-UNREACHABLE hydra-admin (e.g. KANAME_HYDRA_ADMIN_URL absent → issuer-derived
 // public host unresolvable in-cluster) into an opaque INTERNAL with zero diagnostics.
 //
 // Returning an explicit UNAVAILABLE keeps the mutation fail-closed per the

@@ -33,7 +33,7 @@ SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 OUT_DIR="${OUT_DIR:-$SCRIPT_DIR/out}"
 
 # Транспорт для grpcurl к kaname-internal. По умолчанию (kind / mTLS-off CI)
-# — plaintext. На mTLS-стенде (например fe3455, KACHO_IAM_INTERNAL_SERVER_MTLS_ENABLE=true)
+# — plaintext. На mTLS-стенде (например fe3455, KANAME_INTERNAL_SERVER_MTLS_ENABLE=true)
 # internal-listener требует client-cert: задай IAM_INTERNAL_GRPC_MTLS_CERT/_KEY
 # (PEM client-cert/key, принимаемые ClientCAFiles internal-листенера) — тогда grpcurl
 # идёт mTLS. -insecure пропускает проверку server-SAN (порт-форвард меняет hostname),

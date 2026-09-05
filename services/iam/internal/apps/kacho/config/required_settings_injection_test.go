@@ -89,7 +89,7 @@ func TestRequiredSettingsAudit_CanFailAndStaysSilent(t *testing.T) {
 			name: "строка, которой страж НЕ требует",
 			table: append(cloneTable(), config.RequiredSetting{
 				Key:     "authn.nonexistent-knob",
-				Env:     "KACHO_IAM_AUTHN__NONEXISTENT_KNOB",
+				Env:     "KANAME_AUTHN__NONEXISTENT_KNOB",
 				Supply:  config.SupplyEnv,
 				Sample:  "value",
 				Why:     "выдуманное требование",
@@ -112,7 +112,7 @@ func TestRequiredSettingsAudit_CanFailAndStaysSilent(t *testing.T) {
 			name: "путь подачи объявлен ОКРУЖЕНИЕМ, а названная переменная до поля НЕ ДОЕЗЖАЕТ",
 			table: mutate(cloneTable(), "authn.trusted-forwarder-sans", func(s *config.RequiredSetting) {
 				s.Supply = config.SupplyEnv
-				s.Env = "KACHO_IAM_AUTHN__TRUSTED_FORWARDER_SANS_THAT_NOBODY_BINDS"
+				s.Env = "KANAME_AUTHN__TRUSTED_FORWARDER_SANS_THAT_NOBODY_BINDS"
 			}),
 			wantFinding: true,
 			coordinate:  "authn.trusted-forwarder-sans",

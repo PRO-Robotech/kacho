@@ -60,7 +60,7 @@ func TestRequireRegistryTokenTLS(t *testing.T) {
 					t.Fatal("want refusal, got nil")
 				}
 				// Оператор обязан узнать из отказа, ЧТО включить.
-				if !strings.Contains(err.Error(), "KACHO_IAM_REGISTRYTOKEN_SERVER_MTLS_ENABLE") {
+				if !strings.Contains(err.Error(), "KANAME_REGISTRYTOKEN_SERVER_MTLS_ENABLE") {
 					t.Fatalf("refusal does not name the knob: %q", err.Error())
 				}
 				return

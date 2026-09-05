@@ -17,7 +17,7 @@ import (
 // listener were PLAINTEXT (net.Listen). These tests pin the per-edge, default-off
 // server-side mTLS contract for both HTTP listeners, mirroring SEC-H
 // (grpcsrv.TLSServer per-edge envconfig + fail-closed). Env families:
-// KACHO_IAM_HOOKS_SERVER_MTLS_* / KACHO_IAM_METRICS_SERVER_MTLS_*.
+// KANAME_HOOKS_SERVER_MTLS_* / KANAME_METRICS_SERVER_MTLS_*.
 
 // TestMTLS_Hooks_DisabledDefaultPlaintext — DEFAULT-OFF: no mTLS env set → the
 // hooks edge is off (zero-value); HooksServerTLSConfig() returns (nil, nil) — the
@@ -47,7 +47,7 @@ func TestMTLS_Metrics_DisabledDefaultPlaintext(t *testing.T) {
 // HooksServerTLSConfig() returns an error (fail-closed, never silent plaintext;
 // ban #11).
 func TestMTLS_Hooks_EnabledNoCertErrors(t *testing.T) {
-	t.Setenv("KACHO_IAM_HOOKS_SERVER_MTLS_ENABLE", "true")
+	t.Setenv("KANAME_HOOKS_SERVER_MTLS_ENABLE", "true")
 	// no CERTFILE/KEYFILE/CLIENTCAFILES → fail-closed.
 	m, err := config.LoadMTLS()
 	require.NoError(t, err)
@@ -58,7 +58,7 @@ func TestMTLS_Hooks_EnabledNoCertErrors(t *testing.T) {
 
 // TestMTLS_Metrics_EnabledNoCertErrors — enable=true but no cert-trio → fail-closed.
 func TestMTLS_Metrics_EnabledNoCertErrors(t *testing.T) {
-	t.Setenv("KACHO_IAM_METRICS_SERVER_MTLS_ENABLE", "true")
+	t.Setenv("KANAME_METRICS_SERVER_MTLS_ENABLE", "true")
 	m, err := config.LoadMTLS()
 	require.NoError(t, err)
 	assert.True(t, m.MetricsServerMTLS.Enable)
@@ -73,11 +73,11 @@ func TestMTLS_Metrics_EnabledNoCertErrors(t *testing.T) {
 // is server-tls-only. See mtls_clientauthmode_test.go.)
 func TestMTLS_Hooks_EnabledMutualBuildsRequireAndVerifyClientCert(t *testing.T) {
 	certFile, keyFile, caFile := writeTestCert(t)
-	t.Setenv("KACHO_IAM_HOOKS_SERVER_MTLS_ENABLE", "true")
-	t.Setenv("KACHO_IAM_HOOKS_SERVER_MTLS_CERTFILE", certFile)
-	t.Setenv("KACHO_IAM_HOOKS_SERVER_MTLS_KEYFILE", keyFile)
-	t.Setenv("KACHO_IAM_HOOKS_SERVER_MTLS_CLIENTCAFILES", caFile)
-	t.Setenv("KACHO_IAM_HOOKS_SERVER_MTLS_CLIENTAUTHMODE", "mutual")
+	t.Setenv("KANAME_HOOKS_SERVER_MTLS_ENABLE", "true")
+	t.Setenv("KANAME_HOOKS_SERVER_MTLS_CERTFILE", certFile)
+	t.Setenv("KANAME_HOOKS_SERVER_MTLS_KEYFILE", keyFile)
+	t.Setenv("KANAME_HOOKS_SERVER_MTLS_CLIENTCAFILES", caFile)
+	t.Setenv("KANAME_HOOKS_SERVER_MTLS_CLIENTAUTHMODE", "mutual")
 
 	m, err := config.LoadMTLS()
 	require.NoError(t, err)
@@ -96,11 +96,11 @@ func TestMTLS_Hooks_EnabledMutualBuildsRequireAndVerifyClientCert(t *testing.T) 
 // future internal-CA scrape client). Default is server-tls-only (5.5).
 func TestMTLS_Metrics_EnabledMutualBuildsRequireAndVerifyClientCert(t *testing.T) {
 	certFile, keyFile, caFile := writeTestCert(t)
-	t.Setenv("KACHO_IAM_METRICS_SERVER_MTLS_ENABLE", "true")
-	t.Setenv("KACHO_IAM_METRICS_SERVER_MTLS_CERTFILE", certFile)
-	t.Setenv("KACHO_IAM_METRICS_SERVER_MTLS_KEYFILE", keyFile)
-	t.Setenv("KACHO_IAM_METRICS_SERVER_MTLS_CLIENTCAFILES", caFile)
-	t.Setenv("KACHO_IAM_METRICS_SERVER_MTLS_CLIENTAUTHMODE", "mutual")
+	t.Setenv("KANAME_METRICS_SERVER_MTLS_ENABLE", "true")
+	t.Setenv("KANAME_METRICS_SERVER_MTLS_CERTFILE", certFile)
+	t.Setenv("KANAME_METRICS_SERVER_MTLS_KEYFILE", keyFile)
+	t.Setenv("KANAME_METRICS_SERVER_MTLS_CLIENTCAFILES", caFile)
+	t.Setenv("KANAME_METRICS_SERVER_MTLS_CLIENTAUTHMODE", "mutual")
 
 	m, err := config.LoadMTLS()
 	require.NoError(t, err)
@@ -117,10 +117,10 @@ func TestMTLS_Metrics_EnabledMutualBuildsRequireAndVerifyClientCert(t *testing.T
 // AND they are independent of the gRPC public/internal edges.
 func TestMTLS_HooksMetrics_PerEdgeIndependent(t *testing.T) {
 	certFile, keyFile, caFile := writeTestCert(t)
-	t.Setenv("KACHO_IAM_HOOKS_SERVER_MTLS_ENABLE", "true")
-	t.Setenv("KACHO_IAM_HOOKS_SERVER_MTLS_CERTFILE", certFile)
-	t.Setenv("KACHO_IAM_HOOKS_SERVER_MTLS_KEYFILE", keyFile)
-	t.Setenv("KACHO_IAM_HOOKS_SERVER_MTLS_CLIENTCAFILES", caFile)
+	t.Setenv("KANAME_HOOKS_SERVER_MTLS_ENABLE", "true")
+	t.Setenv("KANAME_HOOKS_SERVER_MTLS_CERTFILE", certFile)
+	t.Setenv("KANAME_HOOKS_SERVER_MTLS_KEYFILE", keyFile)
+	t.Setenv("KANAME_HOOKS_SERVER_MTLS_CLIENTCAFILES", caFile)
 	// metrics + public + internal intentionally left unset → enable=false.
 
 	m, err := config.LoadMTLS()
@@ -142,7 +142,7 @@ func TestMTLS_HooksMetrics_PerEdgeIndependent(t *testing.T) {
 // fail-closed error for any edge that is enabled without a complete cert-trio
 // (used by the composition root so a misconfigured prod boot fails fast).
 func TestMTLS_Validate_FailClosedWhenEnabledNoCert(t *testing.T) {
-	t.Setenv("KACHO_IAM_HOOKS_SERVER_MTLS_ENABLE", "true")
+	t.Setenv("KANAME_HOOKS_SERVER_MTLS_ENABLE", "true")
 	m, err := config.LoadMTLS()
 	require.NoError(t, err)
 	err = m.Validate()

@@ -96,7 +96,7 @@ func (c auditCensus) String() string {
 // ОКРУЖЕНИЕ. Разбор ставит переменные сам и возвращает окружение как было —
 // иначе прогон подставной таблицы протёк бы в соседнюю пробу.
 
-const envPrefix = "KACHO_IAM_"
+const envPrefix = "KANAME_"
 
 func snapshotEnv() map[string]string {
 	out := map[string]string{}
@@ -136,7 +136,7 @@ func restoreEnv(saved map[string]string) {
 // выглядел бы недособранным. Снимок и восстановление делает разбор целиком.
 func supplyProfile(dir string, table []config.RequiredSetting, lane config.IdentityProvider, omit string) (config.Config, error) {
 	clearOwnEnv()
-	if err := os.Setenv("KACHO_IAM_AUTHN__MODE", "production"); err != nil {
+	if err := os.Setenv("KANAME_AUTHN__MODE", "production"); err != nil {
 		return config.Config{}, err
 	}
 
@@ -180,10 +180,10 @@ func supplyProfile(dir string, table []config.RequiredSetting, lane config.Ident
 // доказывается полнота таблицы.
 func emptyProfile(lane config.IdentityProvider) (config.Config, error) {
 	clearOwnEnv()
-	if err := os.Setenv("KACHO_IAM_AUTHN__MODE", "production"); err != nil {
+	if err := os.Setenv("KANAME_AUTHN__MODE", "production"); err != nil {
 		return config.Config{}, err
 	}
-	if err := os.Setenv("KACHO_IAM_AUTHN__IDENTITY_PROVIDER", lane.String()); err != nil {
+	if err := os.Setenv("KANAME_AUTHN__IDENTITY_PROVIDER", lane.String()); err != nil {
 		return config.Config{}, err
 	}
 	return config.Load("")

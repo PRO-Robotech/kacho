@@ -298,7 +298,7 @@ kubectl -n kacho exec deploy/postgres -- \
    **только новой** миграцией — применную миграцию не редактировать.
 2. **Pod опередил миграцию** (rollout раньше migrator-job) → дождаться/перезапустить
    migrator-job, затем pod.
-3. Локально вне kind: `KACHO_IAM_DB_PASSWORD=<...> bin/kacho-migrator up`.
+3. Локально вне kind: `KANAME_DB_PASSWORD=<...> bin/kacho-migrator up`.
 
 ## Cluster-admin grants
 

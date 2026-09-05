@@ -47,7 +47,7 @@ func TestRetentionDefaultsAreDeclared(t *testing.T) {
 // Значение не-дефолтное намеренно: совпадение с умолчанием сделало бы
 // утверждение тождественно истинным.
 func TestDocumentedEnvName_RetentionBatch(t *testing.T) {
-	t.Setenv("KACHO_IAM_RETENTION__BATCH", "137")
+	t.Setenv("KANAME_RETENTION__BATCH", "137")
 
 	cfg, err := config.Load("")
 	require.NoError(t, err)
@@ -58,7 +58,7 @@ func TestDocumentedEnvName_RetentionBatch(t *testing.T) {
 // плоская форма имени ручкой НЕ является, и значение выразимо ровно одним
 // способом.
 func TestFlatEnvName_RetentionBatch_IsNotAKnob(t *testing.T) {
-	t.Setenv("KACHO_IAM_RETENTION_BATCH", "138")
+	t.Setenv("KANAME_RETENTION_BATCH", "138")
 
 	cfg, err := config.Load("")
 	require.NoError(t, err)

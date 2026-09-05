@@ -4,7 +4,7 @@
 // bootstrap_admin.go — startup-time bootstrap admin grant + fga_outbox enqueue.
 //
 // Flow:
-//  1. Read env `KACHO_IAM_BOOTSTRAP_ROOT_EMAIL` (caller passes the value).
+//  1. Read env `KANAME_BOOTSTRAP_ROOT_EMAIL` (caller passes the value).
 //  2. If empty — skip (no-op, log DEBUG).
 //  3. Resolve the canonical row of that email — the oldest ACTIVE one (see the
 //     query below). No such row → skip, distinguishing "not registered yet"
@@ -44,7 +44,7 @@ import (
 
 // BootstrapAdminInput — bootstrap-run parameters.
 type BootstrapAdminInput struct {
-	Email     string // KACHO_IAM_BOOTSTRAP_ROOT_EMAIL
+	Email     string // KANAME_BOOTSTRAP_ROOT_EMAIL
 	ClusterID string // domain.ClusterSingletonID by default
 	NowFn     func() time.Time
 }
@@ -81,7 +81,7 @@ func RunBootstrapAdmin(ctx context.Context, pool *pgxpool.Pool, logger *slog.Log
 
 	email := strings.TrimSpace(in.Email)
 	if email == "" {
-		logger.DebugContext(ctx, "bootstrap admin: KACHO_IAM_BOOTSTRAP_ROOT_EMAIL not set, skipping")
+		logger.DebugContext(ctx, "bootstrap admin: KANAME_BOOTSTRAP_ROOT_EMAIL not set, skipping")
 		return BootstrapAdminResult{Skipped: true, SkipReason: "email empty"}, nil
 	}
 

@@ -34,7 +34,7 @@ import "time"
 
 const (
 	// catalogSnapshotRefreshKnob — период перечитывания живых строк каталога.
-	catalogSnapshotRefreshKnob = "KACHO_IAM_CATALOG_SNAPSHOT_REFRESH_INTERVAL_MS"
+	catalogSnapshotRefreshKnob = "KANAME_CATALOG_SNAPSHOT_REFRESH_INTERVAL_MS"
 
 	// catalogSnapshotRefreshDefault — умолчание окна.
 	//

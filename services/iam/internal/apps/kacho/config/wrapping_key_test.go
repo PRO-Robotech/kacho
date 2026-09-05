@@ -39,7 +39,7 @@ func TestF1_09_WrappingKeyGuardRefusesAndAdmits(t *testing.T) {
 		"короче нормы":  "00010203",
 		"длиннее нормы": goodHex + "00",
 	} {
-		cfg := AuthNConfig{JWKSEncryptionKeyHex: val, JWKSEncryptionKeyHexEnv: "KACHO_IAM_JWKS_ENC_KEY_ABSENT_FOR_TEST"}
+		cfg := AuthNConfig{JWKSEncryptionKeyHex: val, JWKSEncryptionKeyHexEnv: "KANAME_JWKS_ENC_KEY_ABSENT_FOR_TEST"}
 		_, err := cfg.ResolveJWKSEncryptionKeys()
 		if err == nil {
 			t.Fatalf("%s: негодная ручка принята — старт обязан отвергаться", name)

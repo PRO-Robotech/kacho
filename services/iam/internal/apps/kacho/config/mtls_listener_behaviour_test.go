@@ -58,11 +58,11 @@ func TestMTLS_Hooks_DefaultOffServesPlaintext(t *testing.T) {
 // as serve.go. (5.5: explicit mutual — server-tls-only is the new default.)
 func TestMTLS_Metrics_EnabledRejectsPlaintext(t *testing.T) {
 	certFile, keyFile, caFile := writeTestCert(t)
-	t.Setenv("KACHO_IAM_METRICS_SERVER_MTLS_ENABLE", "true")
-	t.Setenv("KACHO_IAM_METRICS_SERVER_MTLS_CERTFILE", certFile)
-	t.Setenv("KACHO_IAM_METRICS_SERVER_MTLS_KEYFILE", keyFile)
-	t.Setenv("KACHO_IAM_METRICS_SERVER_MTLS_CLIENTCAFILES", caFile)
-	t.Setenv("KACHO_IAM_METRICS_SERVER_MTLS_CLIENTAUTHMODE", "mutual")
+	t.Setenv("KANAME_METRICS_SERVER_MTLS_ENABLE", "true")
+	t.Setenv("KANAME_METRICS_SERVER_MTLS_CERTFILE", certFile)
+	t.Setenv("KANAME_METRICS_SERVER_MTLS_KEYFILE", keyFile)
+	t.Setenv("KANAME_METRICS_SERVER_MTLS_CLIENTCAFILES", caFile)
+	t.Setenv("KANAME_METRICS_SERVER_MTLS_CLIENTAUTHMODE", "mutual")
 
 	m, err := config.LoadMTLS()
 	require.NoError(t, err)

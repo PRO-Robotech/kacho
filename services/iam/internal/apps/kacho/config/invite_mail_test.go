@@ -42,7 +42,7 @@ func Test_InviteMail_TwoValuesAreDeclaredAndDistinct(t *testing.T) {
 	// Величины читаются РАЗНЫМИ ручками — это и есть их различие. Проба задаёт
 	// каждую по отдельности и требует, чтобы менялась только она.
 	t.Run("предел попытки меняется своей ручкой", func(t *testing.T) {
-		t.Setenv("KACHO_IAM_INVITE_MAIL__ATTEMPT_TIMEOUT", "7s")
+		t.Setenv("KANAME_INVITE_MAIL__ATTEMPT_TIMEOUT", "7s")
 		c, lerr := config.Load("")
 		require.NoError(t, lerr)
 		assert.Equal(t, 7*time.Second, c.InviteMail.AttemptTimeoutOrDefault(),
@@ -52,7 +52,7 @@ func Test_InviteMail_TwoValuesAreDeclaredAndDistinct(t *testing.T) {
 	})
 
 	t.Run("число повторов меняется своей ручкой", func(t *testing.T) {
-		t.Setenv("KACHO_IAM_INVITE_MAIL__MAX_ATTEMPTS", "4")
+		t.Setenv("KANAME_INVITE_MAIL__MAX_ATTEMPTS", "4")
 		c, lerr := config.Load("")
 		require.NoError(t, lerr)
 		assert.Equal(t, 4, c.InviteMail.MaxAttemptsOrDefault(),
@@ -81,7 +81,7 @@ func Test_InviteMail_NoBuiltInDefaultForRelayOrSender(t *testing.T) {
 
 	// Положительный контроль: объявленная полоса читается как объявленная. Без
 	// него отрицания выше зеленели бы на предикате, отвечающем «нет» всегда.
-	t.Setenv("KACHO_IAM_INVITE_MAIL__RELAY", "relay.example.invalid:587")
+	t.Setenv("KANAME_INVITE_MAIL__RELAY", "relay.example.invalid:587")
 	c, lerr := config.Load("")
 	require.NoError(t, lerr)
 	assert.True(t, c.InviteMail.RelayConfigured(),

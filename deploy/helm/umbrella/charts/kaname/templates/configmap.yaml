@@ -5,10 +5,10 @@ ConfigMap с YAML-конфигом kaname.
 
 Соответствует convention'у kacho-vpc / kacho-compute (skill evgeniy §8 J.1):
 сервис читает config из /etc/kaname/config.yaml; поля можно override через
-ENV `KACHO_IAM_<SECTION>__<KEY>=...`.
+ENV `KANAME_<SECTION>__<KEY>=...`.
 
 DB-пароль НЕ кладётся сюда (secret); подтягивается через
-`repository.postgres.password-from-env: KACHO_IAM_DB_PASSWORD` и Secret-ENV
+`repository.postgres.password-from-env: KANAME_DB_PASSWORD` и Secret-ENV
 в deployment.yaml.
 
 Здесь только те секции, которые сервис ДЕЙСТВИТЕЛЬНО разбирает: logger,
@@ -87,7 +87,7 @@ data:
         # подстановочный путь. Что sslmode обязан быть НЕ открытым на боевом
         # стеке, держит deploy/dbtls_declaration_test.go.
         ssl-mode: {{ required "config.repository.postgres.sslMode не задан: канал к Postgres обязан быть объявлен явно (disable|require|verify-ca|verify-full); пустое значение молча дало бы открытый текст" .Values.config.repository.postgres.sslMode | quote }}
-        password-from-env: KACHO_IAM_DB_PASSWORD
+        password-from-env: KANAME_DB_PASSWORD
 
     # Секции `authz` здесь НЕТ, и это не пропуск. Она несла две ручки — перечень
     # типов, переключённых на реляционную форму, и признак теневой сверки, — и обе
@@ -113,7 +113,7 @@ data:
       {{- end }}
       {{- with .Values.config.authn.hydraIssuer }}
       # Explicit Hydra issuer override (ResolveHydraIssuer highest precedence, ahead of
-      # the KACHO_IAM_HYDRA_ISSUER env + the domain-derived default). Set it when Hydra
+      # the KANAME_HYDRA_ISSUER env + the domain-derived default). Set it when Hydra
       # advertises a self.issuer that is NOT https://hydra.<domain> — e.g. a kind stand
       # whose issuer is http://localhost:<nodeport>/.ory/hydra/public/. The private_key_jwt
       # client_assertion (registry /iam/token, пока тот контур не переведён на свою

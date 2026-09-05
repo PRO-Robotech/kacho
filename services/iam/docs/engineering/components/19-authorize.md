@@ -161,10 +161,10 @@ sequenceDiagram
 
 Отдельных переменных окружения у проверки доступа **нет**. Вердикт складывается
 той же базой, что и остальные чтения службы, и берёт её из общей настройки
-подключения (`KACHO_IAM_DB_*`). Переменные внешнего движка —
-`KACHO_IAM_OPENFGA_ENDPOINT`, `KACHO_IAM_OPENFGA_STORE_ID`,
-`KACHO_IAM_OPENFGA_MODEL_ID`, `KACHO_IAM_FGA_CHECK_TIMEOUT_MS`,
-`KACHO_IAM_FGA_LIST_OBJECTS_TIMEOUT_MS`, `KACHO_IAM_FGA_WRITE_TIMEOUT_MS` — сняты
+подключения (`KANAME_DB_*`). Переменные внешнего движка —
+`KANAME_OPENFGA_ENDPOINT`, `KANAME_OPENFGA_STORE_ID`,
+`KANAME_OPENFGA_MODEL_ID`, `KANAME_FGA_CHECK_TIMEOUT_MS`,
+`KANAME_FGA_LIST_OBJECTS_TIMEOUT_MS`, `KANAME_FGA_WRITE_TIMEOUT_MS` — сняты
 вместе с движком: у них не осталось читателя.
 
 ## Как пользоваться

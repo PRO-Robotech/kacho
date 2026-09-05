@@ -5,10 +5,10 @@
 ConfigMap с YAML-конфигом kaname.
 
 Сервис читает config из /etc/kaname/config.yaml; конкретные поля можно
-override'ить через ENV (`KACHO_IAM_REPOSITORY__POSTGRES__URL` и т.п.).
+override'ить через ENV (`KANAME_REPOSITORY__POSTGRES__URL` и т.п.).
 
 DB-пароль НЕ кладется сюда (secret); подтягивается через
-`repository.postgres.password-from-env: KACHO_IAM_DB_PASSWORD` и Secret-ENV
+`repository.postgres.password-from-env: KANAME_DB_PASSWORD` и Secret-ENV
 в deployment.yaml.
 
 Здесь только те секции, которые сервис ДЕЙСТВИТЕЛЬНО разбирает: logger,
@@ -56,7 +56,7 @@ data:
         # deploy/dbtls_declaration_test.go — тем важнее, что он не производит
         # открытый текст сам.
         ssl-mode: {{ required "repository.postgres.sslMode не задан: канал к Postgres обязан быть объявлен явно (disable|require|verify-ca|verify-full); пустое значение молча дало бы открытый текст" .Values.repository.postgres.sslMode | quote }}
-        password-from-env: KACHO_IAM_DB_PASSWORD
+        password-from-env: KANAME_DB_PASSWORD
 
     authn:
       mode: {{ default "production" (include "kaname-svc.authMode" .) | quote }}
@@ -74,7 +74,7 @@ data:
       # ЗДЕСЬ СТОЯЛО «ключ обязан приехать файлом, а не переменной окружения»:
       # у него не было ни умолчания в `defaults.go`, ни привязки в `load.go`, а
       # `AutomaticEnv` разрешает переменную только для ключа, который випер УЖЕ
-      # знает, — поэтому `KACHO_IAM_AUTHN__TRUSTED_FORWARDER_SANS`, та самая, что
+      # знает, — поэтому `KANAME_AUTHN__TRUSTED_FORWARDER_SANS`, та самая, что
       # называет текст отказа стража, до поля не доезжала. Ключ привязан задачей
       # #2040, и оба пути теперь работают.
       #

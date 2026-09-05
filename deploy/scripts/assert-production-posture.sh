@@ -151,7 +151,7 @@ POSTURE_SKIP="${POSTURE_SKIP:-}"
 # заголовки личности без проверки транспорта.
 #
 # iam добавлен: ручка authn.trusted-forwarder-sans (env
-# KACHO_IAM_AUTHN__TRUSTED_FORWARDER_SANS), стража старта
+# KANAME_AUTHN__TRUSTED_FORWARDER_SANS), стража старта
 # (validateProductionTrustedForwarders) и общий сборщик цепочки на ОБА листенера.
 # У iam цена этого измерения выше, чем у соседей: на :9090 он СОЗНАТЕЛЬНО не
 # перепроверяет права конечного пользователя, поэтому не сужённый круг означал

@@ -12,7 +12,7 @@ import (
 )
 
 // Имена ENV этого сервиса НЕ ВСТРЕЧАЮТСЯ В КОДЕ КАК ЛИТЕРАЛЫ — они выводятся
-// viper'ом из пути ключа конфигурации: префикс `KACHO_IAM`, точка → `__`,
+// viper'ом из пути ключа конфигурации: префикс `KANAME`, точка → `__`,
 // дефис → `_` (см. load.go, `SetEnvPrefix`+`SetEnvKeyReplacer`+`AutomaticEnv`).
 //
 // Следствие, ради которого заведён этот файл: **имя, которое документация
@@ -32,13 +32,13 @@ import (
 // привычке) на конфигурацию НЕ влияло. Без этой половины проба зеленела бы на
 // любом имени и ничего не сужала.
 func TestDocumentedEnvName_MetricsEndpoint(t *testing.T) {
-	t.Setenv("KACHO_IAM_API_SERVER__METRICS_ENDPOINT", "tcp://127.0.0.1:19099")
+	t.Setenv("KANAME_API_SERVER__METRICS_ENDPOINT", "tcp://127.0.0.1:19099")
 
 	cfg, err := config.Load("")
 	require.NoError(t, err)
 
 	require.Equal(t, "127.0.0.1:19099", cfg.APIServer.MetricsListenAddress(),
-		"ENV KACHO_IAM_API_SERVER__METRICS_ENDPOINT напечатан в документации "+
+		"ENV KANAME_API_SERVER__METRICS_ENDPOINT напечатан в документации "+
 			"установки как ручка адреса /metrics — она обязана менять исход загрузки")
 }
 
@@ -47,7 +47,7 @@ func TestDocumentedEnvName_MetricsEndpoint(t *testing.T) {
 // задать одно и то же значение, и документация обязана сказать, какой из них
 // главный (`code-authoring`: значение выразимо ровно одним способом).
 func TestFlatEnvName_MetricsEndpoint_IsNotAKnob(t *testing.T) {
-	t.Setenv("KACHO_IAM_METRICS_ENDPOINT", "tcp://127.0.0.1:19098")
+	t.Setenv("KANAME_METRICS_ENDPOINT", "tcp://127.0.0.1:19098")
 
 	cfg, err := config.Load("")
 	require.NoError(t, err)
@@ -61,13 +61,13 @@ func TestFlatEnvName_MetricsEndpoint_IsNotAKnob(t *testing.T) {
 // строкой именно в выведенной форме.
 func TestDocumentedEnvName_PostgresURL(t *testing.T) {
 	const dsn = "postgres://u:p@127.0.0.1:5432/db?sslmode=require"
-	t.Setenv("KACHO_IAM_REPOSITORY__POSTGRES__URL", dsn)
+	t.Setenv("KANAME_REPOSITORY__POSTGRES__URL", dsn)
 
 	cfg, err := config.Load("")
 	require.NoError(t, err)
 
 	require.Equal(t, dsn, cfg.Repository.Postgres.URL,
-		"ENV KACHO_IAM_REPOSITORY__POSTGRES__URL напечатан в документации установки "+
+		"ENV KANAME_REPOSITORY__POSTGRES__URL напечатан в документации установки "+
 			"как альтернатива по-полям — она обязана менять исход загрузки")
 }
 
@@ -100,7 +100,7 @@ func TestDevOptInEnvName_TrustAnyForwarder(t *testing.T) {
 	// отказывает. Без него утверждение ниже зеленело бы на профиле, который
 	// страж и так пропускает.
 	clearOwnEnv()
-	t.Setenv("KACHO_IAM_AUTHN__MODE", "dev")
+	t.Setenv("KANAME_AUTHN__MODE", "dev")
 	before, err := config.Load("")
 	if err != nil {
 		t.Fatalf("профиль стенда не загружается: %v", err)
@@ -111,14 +111,14 @@ func TestDevOptInEnvName_TrustAnyForwarder(t *testing.T) {
 	}
 
 	clearOwnEnv()
-	t.Setenv("KACHO_IAM_AUTHN__MODE", "dev")
-	t.Setenv("KACHO_IAM_AUTHN__TRUST_ANY_FORWARDER", "true")
+	t.Setenv("KANAME_AUTHN__MODE", "dev")
+	t.Setenv("KANAME_AUTHN__TRUST_ANY_FORWARDER", "true")
 	after, err := config.Load("")
 	if err != nil {
 		t.Fatalf("профиль стенда с опт-ином не загружается: %v", err)
 	}
 	if !after.AuthN.TrustAnyForwarder {
-		t.Fatalf("KACHO_IAM_AUTHN__TRUST_ANY_FORWARDER=true до поля не доехала: " +
+		t.Fatalf("KANAME_AUTHN__TRUST_ANY_FORWARDER=true до поля не доехала: " +
 			"текст отказа называет эту переменную, и оператор стенда, выполнивший названное, " +
 			"получит тот же отказ")
 	}
@@ -136,7 +136,7 @@ func TestDocumentedEnvName_TrustedForwarderSANs(t *testing.T) {
 
 	const san = "spiffe://kacho.example/ns/kacho/sa/kacho-api-gateway"
 	clearOwnEnv()
-	t.Setenv("KACHO_IAM_AUTHN__TRUSTED_FORWARDER_SANS", san)
+	t.Setenv("KANAME_AUTHN__TRUSTED_FORWARDER_SANS", san)
 
 	cfg, err := config.Load("")
 	if err != nil {
@@ -159,7 +159,7 @@ func TestDocumentedEnvName_RegistryTokenService(t *testing.T) {
 	defer restoreEnv(saved)
 
 	clearOwnEnv()
-	t.Setenv("KACHO_IAM_API_SERVER__REGISTRY_TOKEN__SERVICE", "kacho-registry")
+	t.Setenv("KANAME_API_SERVER__REGISTRY_TOKEN__SERVICE", "kacho-registry")
 
 	cfg, err := config.Load("")
 	if err != nil {
@@ -186,8 +186,8 @@ func TestDevOptInIsStillIgnoredInProduction(t *testing.T) {
 	defer restoreEnv(saved)
 
 	clearOwnEnv()
-	t.Setenv("KACHO_IAM_AUTHN__MODE", "production")
-	t.Setenv("KACHO_IAM_AUTHN__TRUST_ANY_FORWARDER", "true")
+	t.Setenv("KANAME_AUTHN__MODE", "production")
+	t.Setenv("KANAME_AUTHN__TRUST_ANY_FORWARDER", "true")
 
 	cfg, err := config.Load("")
 	if err != nil {

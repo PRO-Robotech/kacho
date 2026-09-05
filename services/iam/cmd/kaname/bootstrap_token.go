@@ -45,7 +45,7 @@ func buildBootstrapTokenHandler(
 	// Адресат выпускаемого удостоверения — адресат КРАЯ (https://{API_DOMAIN}).
 	// Это решение iam, а не поле запроса: caller-supplied адресат можно задать,
 	// но нельзя задать верно, а неверный отвергается краем много позже выдачи.
-	audience := os.Getenv("KACHO_IAM_BOOTSTRAP_TOKEN_AUDIENCE")
+	audience := os.Getenv("KANAME_BOOTSTRAP_TOKEN_AUDIENCE")
 	if audience == "" {
 		audience = "https://" + cfg.AuthN.ResolveDomain()
 	}
@@ -64,7 +64,7 @@ func buildBootstrapTokenHandler(
 	}
 
 	// SigningKeyPEM приходит из authn.bootstrap-mint.signing-key-env (умолчание
-	// KACHO_IAM_BOOTSTRAP_SA_PRIVATE_KEY_PEM) — ТОТ ЖЕ аксессор, которым
+	// KANAME_BOOTSTRAP_SA_PRIVATE_KEY_PEM) — ТОТ ЖЕ аксессор, которым
 	// Config.Validate решает, включён ли контур, поэтому страж старта и рантайм
 	// не могут разойтись во мнении о нём. Пусто → чеканка выключена
 	// (fail-closed).

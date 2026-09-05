@@ -126,7 +126,7 @@ sleep 4
 # setup.sh это поддерживает через IAM_INTERNAL_GRPC_MTLS_CERT/_KEY (дефолт — plaintext,
 # рассчитан на mTLS-off CI), но кто-то должен ему серт ДАТЬ. Достаём из секрета,
 # который выпустил cert-manager: iam принимает любой client-cert, подписанный
-# internal-CA (KACHO_IAM_INTERNAL_SERVER_MTLS_CLIENTCAFILES = ca.crt того же CA).
+# internal-CA (KANAME_INTERNAL_SERVER_MTLS_CLIENTCAFILES = ca.crt того же CA).
 MTLS_ENV=()
 if kubectl -n "$NS" get secret api-gateway-client-tls >/dev/null 2>&1; then
   CERT_DIR="$(mktemp -d)"; TMP_DIRS+=("$CERT_DIR")

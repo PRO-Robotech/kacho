@@ -18,11 +18,11 @@ func TestResolveHydraAdminURL_DerivesByDefault(t *testing.T) {
 	}
 }
 
-// TestResolveHydraAdminURL_EnvOverride — KACHO_IAM_HYDRA_ADMIN_URL points iam at
+// TestResolveHydraAdminURL_EnvOverride — KANAME_HYDRA_ADMIN_URL points iam at
 // the cluster-internal admin Service when the external issuer would not resolve
 // in-cluster (fix for the "hydra publish failed" wiring gap).
 func TestResolveHydraAdminURL_EnvOverride(t *testing.T) {
-	t.Setenv("KACHO_IAM_HYDRA_ADMIN_URL", "http://kacho-umbrella-hydra-admin.kacho.svc:4445")
+	t.Setenv("KANAME_HYDRA_ADMIN_URL", "http://kacho-umbrella-hydra-admin.kacho.svc:4445")
 	c := config.AuthNConfig{}
 	if got := c.ResolveHydraAdminURL(); got != "http://kacho-umbrella-hydra-admin.kacho.svc:4445" {
 		t.Fatalf("ResolveHydraAdminURL() = %q; want the env override", got)
@@ -39,14 +39,14 @@ func TestResolveHydraAdminURL_FieldOverride(t *testing.T) {
 }
 
 // TestResolveHydraTokenURL_DefaultAndOverride — the shim's POST target defaults to
-// the external issuer's token endpoint, and honors KACHO_IAM_HYDRA_TOKEN_URL for
+// the external issuer's token endpoint, and honors KANAME_HYDRA_TOKEN_URL for
 // the cluster-internal Hydra public Service.
 func TestResolveHydraTokenURL_DefaultAndOverride(t *testing.T) {
 	c := config.AuthNConfig{}
 	if got := c.ResolveHydraTokenURL(); got != "https://hydra.api.kacho.cloud/oauth2/token" {
 		t.Fatalf("default ResolveHydraTokenURL() = %q", got)
 	}
-	t.Setenv("KACHO_IAM_HYDRA_TOKEN_URL", "http://kacho-umbrella-hydra-public.kacho.svc:4444/oauth2/token")
+	t.Setenv("KANAME_HYDRA_TOKEN_URL", "http://kacho-umbrella-hydra-public.kacho.svc:4444/oauth2/token")
 	if got := c.ResolveHydraTokenURL(); got != "http://kacho-umbrella-hydra-public.kacho.svc:4444/oauth2/token" {
 		t.Fatalf("override ResolveHydraTokenURL() = %q", got)
 	}
@@ -62,13 +62,13 @@ func TestResolveHydraTokenEndpoint_ExternalIssuerTokenEndpoint(t *testing.T) {
 	}
 }
 
-// TestResolveHydraIssuer_EnvOverride — KACHO_IAM_HYDRA_ISSUER points iam at the
+// TestResolveHydraIssuer_EnvOverride — KANAME_HYDRA_ISSUER points iam at the
 // ACTUAL Hydra issuer when it differs from the derived hydra.<domain>. The shim's
 // client_assertion audience (ResolveHydraTokenEndpoint) is derived from the issuer,
 // and Hydra rejects the exchange invalid_client if it doesn't match Hydra's real
 // issuer — so the env override must reach both resolvers.
 func TestResolveHydraIssuer_EnvOverride(t *testing.T) {
-	t.Setenv("KACHO_IAM_HYDRA_ISSUER", "http://localhost:28080/.ory/hydra/public/")
+	t.Setenv("KANAME_HYDRA_ISSUER", "http://localhost:28080/.ory/hydra/public/")
 	c := config.AuthNConfig{}
 	if got := c.ResolveHydraIssuer(); got != "http://localhost:28080/.ory/hydra/public/" {
 		t.Fatalf("ResolveHydraIssuer() = %q; want env override", got)
@@ -81,7 +81,7 @@ func TestResolveHydraIssuer_EnvOverride(t *testing.T) {
 // TestResolveHydraIssuer_FieldWinsOverEnv — an explicit config field takes
 // precedence over the env (field → env → derived).
 func TestResolveHydraIssuer_FieldWinsOverEnv(t *testing.T) {
-	t.Setenv("KACHO_IAM_HYDRA_ISSUER", "http://env.example/")
+	t.Setenv("KANAME_HYDRA_ISSUER", "http://env.example/")
 	c := config.AuthNConfig{HydraIssuer: "https://field.example/"}
 	if got := c.ResolveHydraIssuer(); got != "https://field.example/" {
 		t.Fatalf("ResolveHydraIssuer() = %q; want field override", got)

@@ -132,20 +132,20 @@ func TestConfigValidateCallsTheManifestsGuard(t *testing.T) {
 // выглядела бы настроенной, ничего не делая — «принято-и-проигнорировано»
 // этажом ниже поля запроса.
 func TestDocumentedManifestEnvNamesReachTheFields(t *testing.T) {
-	t.Setenv("KACHO_IAM_MANIFESTS__DIR", "/mnt/манифесты")
-	t.Setenv("KACHO_IAM_MANIFESTS__REQUIRED", "true")
+	t.Setenv("KANAME_MANIFESTS__DIR", "/mnt/манифесты")
+	t.Setenv("KANAME_MANIFESTS__REQUIRED", "true")
 
 	cfg, err := config.Load("")
 	if err != nil {
 		t.Fatalf("Load: %v", err)
 	}
 	if cfg.Manifests.Dir != "/mnt/манифесты" {
-		t.Errorf("KACHO_IAM_MANIFESTS__DIR не доехала до поля: получено %q — "+
+		t.Errorf("KANAME_MANIFESTS__DIR не доехала до поля: получено %q — "+
 			"документированное имя переменной, которое ничего не делает, хуже недокументированного",
 			cfg.Manifests.Dir)
 	}
 	if !cfg.Manifests.Required {
-		t.Error("KACHO_IAM_MANIFESTS__REQUIRED не доехала до поля — опора объявлена оператором " +
+		t.Error("KANAME_MANIFESTS__REQUIRED не доехала до поля — опора объявлена оператором " +
 			"и невидима стражу старта")
 	}
 }
@@ -376,19 +376,19 @@ func TestConfigValidateCarriesTheCompositionRefusal(t *testing.T) {
 // явной привязки оператор задал бы имя, процесс принял бы старт как «сборка не
 // объявлена», и ручка выглядела бы настроенной, ничего не делая.
 func TestDocumentedCompositionEnvNamesReachTheFields(t *testing.T) {
-	t.Setenv("KACHO_IAM_MANIFESTS__COMPOSE_MODEL", "true")
-	t.Setenv("KACHO_IAM_MANIFESTS__ADMISSION", config.AdmissionByContent)
+	t.Setenv("KANAME_MANIFESTS__COMPOSE_MODEL", "true")
+	t.Setenv("KANAME_MANIFESTS__ADMISSION", config.AdmissionByContent)
 
 	cfg, err := config.Load("")
 	if err != nil {
 		t.Fatalf("Load: %v", err)
 	}
 	if !cfg.Manifests.ComposeModel {
-		t.Error("KACHO_IAM_MANIFESTS__COMPOSE_MODEL не доехала до поля — документированное " +
+		t.Error("KANAME_MANIFESTS__COMPOSE_MODEL не доехала до поля — документированное " +
 			"имя переменной, которое ничего не делает, хуже недокументированного")
 	}
 	if cfg.Manifests.Admission != config.AdmissionByContent {
-		t.Errorf("KACHO_IAM_MANIFESTS__ADMISSION не доехала до поля: получено %q",
+		t.Errorf("KANAME_MANIFESTS__ADMISSION не доехала до поля: получено %q",
 			cfg.Manifests.Admission)
 	}
 }

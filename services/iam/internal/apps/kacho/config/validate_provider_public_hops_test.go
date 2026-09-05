@@ -52,7 +52,7 @@ func publicHopCfg(mode config.Mode) config.Config {
 // The JWKS upstream left to derivation must be refused. Nothing else catches it:
 // ResolveHydraJWKSURL always returns a non-empty string.
 func TestValidate_Production_RefusesDerivedProviderJWKSURL(t *testing.T) {
-	t.Setenv("KACHO_IAM_HYDRA_JWKS_URL", "")
+	t.Setenv("KANAME_HYDRA_JWKS_URL", "")
 	cfg := publicHopCfg(config.ModeProduction)
 	cfg.AuthN.HydraJWKSURL = ""
 	err := cfg.Validate()
@@ -66,7 +66,7 @@ func TestValidate_Production_RefusesDerivedProviderJWKSURL(t *testing.T) {
 
 // The token endpoint left to derivation must be refused, for the same reason.
 func TestValidate_Production_RefusesDerivedProviderTokenURL(t *testing.T) {
-	t.Setenv("KACHO_IAM_HYDRA_TOKEN_URL", "")
+	t.Setenv("KANAME_HYDRA_TOKEN_URL", "")
 	cfg := publicHopCfg(config.ModeProduction)
 	cfg.AuthN.HydraJWKSURL = "http://kacho-umbrella-hydra-public.kacho.svc:4444/.well-known/jwks.json"
 	cfg.AuthN.HydraTokenURL = ""
@@ -166,8 +166,8 @@ func TestValidate_Production_AcceptsTLSPublicHopsWithAnchor(t *testing.T) {
 // The ENV override counts as declared — it is one of the two sources an operator
 // actually writes, and the chart ships the address that way.
 func TestValidate_Production_AcceptsEnvDeclaredPublicHops(t *testing.T) {
-	t.Setenv("KACHO_IAM_HYDRA_JWKS_URL", "http://kacho-umbrella-hydra-public.kacho.svc:4444/.well-known/jwks.json")
-	t.Setenv("KACHO_IAM_HYDRA_TOKEN_URL", "http://kacho-umbrella-hydra-public.kacho.svc:4444/oauth2/token")
+	t.Setenv("KANAME_HYDRA_JWKS_URL", "http://kacho-umbrella-hydra-public.kacho.svc:4444/.well-known/jwks.json")
+	t.Setenv("KANAME_HYDRA_TOKEN_URL", "http://kacho-umbrella-hydra-public.kacho.svc:4444/oauth2/token")
 	cfg := publicHopCfg(config.ModeProduction)
 	if err := cfg.Validate(); err != nil {
 		t.Fatalf("Validate() = %v, want nil when the addresses come from the ENV override", err)
@@ -177,8 +177,8 @@ func TestValidate_Production_AcceptsEnvDeclaredPublicHops(t *testing.T) {
 // dev keeps the derivation: an in-process fixture has no provider at all, and a
 // developer stand may run one without a certificate.
 func TestValidate_Dev_LeavesPublicHopsAlone(t *testing.T) {
-	t.Setenv("KACHO_IAM_HYDRA_JWKS_URL", "")
-	t.Setenv("KACHO_IAM_HYDRA_TOKEN_URL", "")
+	t.Setenv("KANAME_HYDRA_JWKS_URL", "")
+	t.Setenv("KANAME_HYDRA_TOKEN_URL", "")
 	cfg := publicHopCfg(config.ModeDev)
 	if err := cfg.Validate(); err != nil {
 		t.Fatalf("Validate() = %v, want nil in dev with both public hops derived", err)

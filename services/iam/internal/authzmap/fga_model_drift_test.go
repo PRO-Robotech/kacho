@@ -38,7 +38,7 @@
 // -------------------------
 // It parses the canonical DSL directly (no Docker → it runs in -short too) and
 // it has NO opt-out: a missing canonical file is a FAILURE, never a skip. The
-// previous revision skipped itself unless KACHO_IAM_REQUIRE_FGA_MODEL was set,
+// previous revision skipped itself unless KANAME_REQUIRE_FGA_MODEL was set,
 // and the file it looked for did not exist in the tree at all — so the gate gave
 // zero protection on every ordinary run while still reporting `ok`. A skipped
 // security gate is neither red nor green; the absence of the source of truth is

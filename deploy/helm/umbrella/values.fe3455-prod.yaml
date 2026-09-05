@@ -397,7 +397,7 @@ kaname:
     iam:
       hydraTokenURL: http://kacho-umbrella-hydra-public.kacho.svc:4444/oauth2/token
       # registry-iam-jwks-unify — upstream the cluster-INTERNAL jwks-proxy (:9097)
-      # mirrors byte-for-byte (env KACHO_IAM_HYDRA_JWKS_URL). In-cluster hydra-public
+      # mirrors byte-for-byte (env KANAME_HYDRA_JWKS_URL). In-cluster hydra-public
       # base so the iam→Hydra JWKS fetch never leaves the cluster; iam re-serves it to
       # the registry data-plane over one-way server-TLS. Hydra stays signer/issuer.
       hydraJwksUrl: http://kacho-umbrella-hydra-public.kacho.svc:4444/.well-known/jwks.json

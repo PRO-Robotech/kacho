@@ -66,8 +66,8 @@
 # ─── Secrets discipline (workspace rule: no secrets in values) ──────────────
 # This file contains NO secret material. AuthN secrets the production binaries
 # require are consumed from Secrets the chart already wires via secretKeyRef:
-#   - kaname: KACHO_IAM_HOOK_TOKEN  ← kacho.hooks.tokenHookSecretName
-#                KACHO_IAM_JWKS_ENC_KEY ← kacho.iam.jwks.encKeySecretName
+#   - kaname: KANAME_HOOK_TOKEN  ← kacho.hooks.tokenHookSecretName
+#                KANAME_JWKS_ENC_KEY ← kacho.iam.jwks.encKeySecretName
 #   - per-service DB password           ← <svc>.db.passwordSecretName
 #   - kratos-selfservice-ui COOKIE_SECRET/CSRF_COOKIE_SECRET
 #                                       ← kratosSelfServiceUI.cookieSecret.existingSecret
@@ -617,7 +617,7 @@ kaname:
         # production-strict (below) enforces ssl-mode ∈ {require,verify-ca,verify-full}.
         sslMode: require
     # production-strict → Bearer required; Config.Validate also requires the
-    # AuthN secrets (KACHO_IAM_HOOK_TOKEN + KACHO_IAM_JWKS_ENC_KEY) — wired via
+    # AuthN secrets (KANAME_HOOK_TOKEN + KANAME_JWKS_ENC_KEY) — wired via
     # secretKeyRef (kacho.hooks.* / kacho.iam.jwks.*); operator provisions them.
     authn:
       # Who may FORWARD an end-user identity (x-kacho-principal-*) to iam.
@@ -1733,7 +1733,7 @@ hydra:
         #
         # ─── ВЕЛИЧИНА УЧЁТНЫХ ДАННЫХ ЗДЕСЬ ПУСТА НАМЕРЕННО (задача #948) ──────
         #
-        # Здесь стояло `${KACHO_IAM_HOOK_TOKEN}` — форма, которая ЧИТАЕТСЯ как
+        # Здесь стояло `${KANAME_HOOK_TOKEN}` — форма, которая ЧИТАЕТСЯ как
         # «будет подставлено». Провайдер подстановки в значениях конфигурации
         # НЕ делает: ИЗМЕРЕНО на oryd/hydra:v26.2.0 — при переменной, ЗАВЕДЁННОЙ
         # в поде, ссылка в поле `urls.self.issuer` дожила до проверки схемы
@@ -1862,7 +1862,7 @@ hydra:
     # Величина учётных данных обратного вызова + корень доверия для исходящего
     # TLS к службе прав.
     #
-    # ЗДЕСЬ СТОЯЛА ЕЩЁ ОДНА ПЕРЕМЕННАЯ — `KACHO_IAM_HOOK_TOKEN`, и её НИКТО НЕ
+    # ЗДЕСЬ СТОЯЛА ЕЩЁ ОДНА ПЕРЕМЕННАЯ — `KANAME_HOOK_TOKEN`, и её НИКТО НЕ
     # ЧИТАЛ (задача #948). Её собственный комментарий объявлял её источником
     # подстановки в конфигурации, а комментарий строкой ниже — в том же файле —
     # утверждал обратное: провайдер не интерполирует. Два места об одном

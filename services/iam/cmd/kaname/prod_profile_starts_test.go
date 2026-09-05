@@ -18,7 +18,7 @@
 // боевым профилем дала отказ старта, при том что проба профиля была зелёной:
 //
 //	production mode requires TLS on the docker-token listener 0.0.0.0:9096
-//	(set KACHO_IAM_REGISTRYTOKEN_SERVER_MTLS_ENABLE=true with its cert/key)
+//	(set KANAME_REGISTRYTOKEN_SERVER_MTLS_ENABLE=true with its cert/key)
 //
 // Профиль поднимает докерную полосу (объявляет её издателя и адресата), адрес
 // слушателя приходит умолчанием процесса (`tcp://0.0.0.0:9096`), а TLS этой

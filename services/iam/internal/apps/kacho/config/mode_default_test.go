@@ -16,7 +16,7 @@ import (
 // vars for the duration of the test so Load() exercises the compiled-in default.
 func unsetAuthModeEnv(t *testing.T) {
 	t.Helper()
-	for _, k := range []string{"KACHO_IAM_AUTH_MODE", "KACHO_IAM_AUTHN__MODE"} {
+	for _, k := range []string{"KANAME_AUTH_MODE", "KANAME_AUTHN__MODE"} {
 		if old, ok := os.LookupEnv(k); ok {
 			require.NoError(t, os.Unsetenv(k))
 			t.Cleanup(func() { _ = os.Setenv(k, old) })
@@ -44,11 +44,11 @@ func TestLoad_UnsetMode_DefaultsToFailClosed(t *testing.T) {
 // TestLoad_ExplicitDevMode_OptIn — local fixtures can still explicitly select
 // dev mode (anonymous-allowed); the secure default must not break the opt-in.
 func TestLoad_ExplicitDevMode_OptIn(t *testing.T) {
-	t.Setenv("KACHO_IAM_AUTH_MODE", "dev")
+	t.Setenv("KANAME_AUTH_MODE", "dev")
 
 	cfg, err := config.Load("")
 	require.NoError(t, err)
 
 	require.Equal(t, config.ModeDev, cfg.AuthN.Mode,
-		"explicit KACHO_IAM_AUTH_MODE=dev must select dev mode")
+		"explicit KANAME_AUTH_MODE=dev must select dev mode")
 }

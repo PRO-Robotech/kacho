@@ -46,8 +46,8 @@ func connBudgetComplaint(poolMaxConns int32, replicaBudget int, ceiling coredb.C
 	if err == nil {
 		return nil
 	}
-	return fmt.Errorf("KACHO_IAM_REPOSITORY__POSTGRES__MAX_CONNS / "+
-		"KACHO_IAM_REPOSITORY__POSTGRES__REPLICA_BUDGET: %w", err)
+	return fmt.Errorf("KANAME_REPOSITORY__POSTGRES__MAX_CONNS / "+
+		"KANAME_REPOSITORY__POSTGRES__REPLICA_BUDGET: %w", err)
 }
 
 // assertConnBudgetFits отказывает в старте, когда обещанное не помещается.

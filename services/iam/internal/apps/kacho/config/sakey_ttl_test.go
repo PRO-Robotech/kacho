@@ -42,9 +42,9 @@ func TestLoad_SAKeyAccessTokenTTL_DefaultsToProviderInherit(t *testing.T) {
 
 // TestLoad_SAKeyTTL_EnvOverride — the flat env names the chart emits win.
 func TestLoad_SAKeyTTL_EnvOverride(t *testing.T) {
-	t.Setenv("KACHO_IAM_SAKEY_DEFAULT_TTL", "720h")
-	t.Setenv("KACHO_IAM_SAKEY_MAX_TTL", "1440h")
-	t.Setenv("KACHO_IAM_SAKEY_ACCESS_TOKEN_TTL", "15m")
+	t.Setenv("KANAME_SAKEY_DEFAULT_TTL", "720h")
+	t.Setenv("KANAME_SAKEY_MAX_TTL", "1440h")
+	t.Setenv("KANAME_SAKEY_ACCESS_TOKEN_TTL", "15m")
 
 	cfg, err := config.Load("")
 	require.NoError(t, err)
@@ -66,7 +66,7 @@ func TestLoad_SAKeyBindDPoP_DefaultsOff(t *testing.T) {
 
 // TestLoad_SAKeyBindDPoP_EnvOverride — the flat env name the chart emits wins.
 func TestLoad_SAKeyBindDPoP_EnvOverride(t *testing.T) {
-	t.Setenv("KACHO_IAM_SAKEY_BIND_DPOP", "true")
+	t.Setenv("KANAME_SAKEY_BIND_DPOP", "true")
 	cfg, err := config.Load("")
 	require.NoError(t, err)
 	require.True(t, cfg.AuthN.SAKeyBindDPoP)

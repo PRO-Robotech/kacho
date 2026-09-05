@@ -23,15 +23,15 @@ func TestLoad_SAKeyRedactGrace_Default(t *testing.T) {
 		"default sakey redact grace must be 120s (poll-retrieval window)")
 }
 
-// TestLoad_SAKeyRedactGrace_EnvOverride — KACHO_IAM_SAKEY_REDACT_GRACE
+// TestLoad_SAKeyRedactGrace_EnvOverride — KANAME_SAKEY_REDACT_GRACE
 // переопределяет grace-окно (оператор может расширить/сузить окно под свой
 // retrieval-флоу).
 func TestLoad_SAKeyRedactGrace_EnvOverride(t *testing.T) {
-	t.Setenv("KACHO_IAM_SAKEY_REDACT_GRACE", "45s")
+	t.Setenv("KANAME_SAKEY_REDACT_GRACE", "45s")
 
 	cfg, err := config.Load("")
 	require.NoError(t, err)
 
 	require.Equal(t, 45*time.Second, cfg.AuthN.SAKeyRedactGrace,
-		"KACHO_IAM_SAKEY_REDACT_GRACE must override the default grace window")
+		"KANAME_SAKEY_REDACT_GRACE must override the default grace window")
 }

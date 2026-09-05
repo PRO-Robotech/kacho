@@ -121,8 +121,8 @@ spec:
         kacho.cloud/module-manifests-digest: {{ dig "kachoModuleManifests" "digest" "unset" (.Values.global | default dict) | quote }}
         {{- end }}
     spec:
-      # KACHO_IAM_* — собственный config-namespace сервиса. К-net auto-инжектит
-      # KACHO_IAM_INTERNAL_PORT=tcp://<ip>:9091 (из Service `kaname-internal`),
+      # KANAME_* — собственный config-namespace сервиса. К-net auto-инжектит
+      # KANAME_INTERNAL_PORT=tcp://<ip>:9091 (из Service `kaname-internal`),
       # что viper-binding путает с config-полями → "too many colons in address" на listen.
       # Гасим service-link-инъекцию: всё конфигурим из своих env / config.yaml.
       enableServiceLinks: false
@@ -177,7 +177,7 @@ spec:
         {{- if .Values.initContainer.migrator.enabled }}
         # skill evgeniy §9 K.1: миграции БД исполняет отдельный binary `kacho-migrator`
         # (тот же image, отдельный entrypoint). DSN собирается мигратором из
-        # KACHO_IAM_DB_* env (через config-fallback).
+        # KANAME_DB_* env (через config-fallback).
         - name: migrate
           image: "{{ include "kaname.image" . }}"
           imagePullPolicy: {{ .Values.image.pullPolicy }}
@@ -190,9 +190,9 @@ spec:
               mountPath: /etc/kaname
               readOnly: true
           env:
-            - name: KACHO_IAM_CONFIG_PATH
+            - name: KANAME_CONFIG_PATH
               value: /etc/kaname/config.yaml
-            - name: KACHO_IAM_DB_PASSWORD
+            - name: KANAME_DB_PASSWORD
               valueFrom:
                 secretKeyRef:
                   name: {{ .Values.db.passwordSecretName }}
@@ -248,9 +248,9 @@ spec:
               readOnly: true
             {{- end }}
           env:
-            - name: KACHO_IAM_CONFIG_PATH
+            - name: KANAME_CONFIG_PATH
               value: /etc/kaname/config.yaml
-            - name: KACHO_IAM_DB_PASSWORD
+            - name: KANAME_DB_PASSWORD
               valueFrom:
                 secretKeyRef:
                   name: {{ .Values.db.passwordSecretName }}
@@ -258,24 +258,24 @@ spec:
             {{- if .Values.mtls.enable }}
             {{- $srv := printf "%s/server" .Values.mtls.mountPath }}
             # SEC-H mTLS server-creds (both listeners) — corelib grpcsrv.TLSServer
-            # via config.LoadPrefixed("KACHO_IAM"). RequireAndVerifyClientCert
+            # via config.LoadPrefixed("KANAME"). RequireAndVerifyClientCert
             # against the internal-CA bundle (ca.crt in the server secret). IAM is
             # a leaf-owner: server-side only, no outgoing peer-dial edge in scope.
-            - name: KACHO_IAM_PUBLIC_SERVER_MTLS_ENABLE
+            - name: KANAME_PUBLIC_SERVER_MTLS_ENABLE
               value: "true"
-            - name: KACHO_IAM_PUBLIC_SERVER_MTLS_CERTFILE
+            - name: KANAME_PUBLIC_SERVER_MTLS_CERTFILE
               value: {{ printf "%s/tls.crt" $srv | quote }}
-            - name: KACHO_IAM_PUBLIC_SERVER_MTLS_KEYFILE
+            - name: KANAME_PUBLIC_SERVER_MTLS_KEYFILE
               value: {{ printf "%s/tls.key" $srv | quote }}
-            - name: KACHO_IAM_PUBLIC_SERVER_MTLS_CLIENTCAFILES
+            - name: KANAME_PUBLIC_SERVER_MTLS_CLIENTCAFILES
               value: {{ printf "%s/ca.crt" $srv | quote }}
-            - name: KACHO_IAM_INTERNAL_SERVER_MTLS_ENABLE
+            - name: KANAME_INTERNAL_SERVER_MTLS_ENABLE
               value: "true"
-            - name: KACHO_IAM_INTERNAL_SERVER_MTLS_CERTFILE
+            - name: KANAME_INTERNAL_SERVER_MTLS_CERTFILE
               value: {{ printf "%s/tls.crt" $srv | quote }}
-            - name: KACHO_IAM_INTERNAL_SERVER_MTLS_KEYFILE
+            - name: KANAME_INTERNAL_SERVER_MTLS_KEYFILE
               value: {{ printf "%s/tls.key" $srv | quote }}
-            - name: KACHO_IAM_INTERNAL_SERVER_MTLS_CLIENTCAFILES
+            - name: KANAME_INTERNAL_SERVER_MTLS_CLIENTCAFILES
               value: {{ printf "%s/ca.crt" $srv | quote }}
             {{- if (dig "hooksAndMetrics" .Values.mtls.httpListeners .Values.mtls) }}
             # Sub-phase 5.5 — HTTP listener TLS (hooks :9092 + /metrics :9095).
@@ -312,25 +312,25 @@ spec:
             # mtls.httpListeners stays false on dev → these env are NOT emitted →
             # hooks/metrics stay plaintext (byte-identical). values.prod.yaml flips
             # it true with clientAuthMode=server-tls-only.
-            - name: KACHO_IAM_HOOKS_SERVER_MTLS_ENABLE
+            - name: KANAME_HOOKS_SERVER_MTLS_ENABLE
               value: "true"
-            - name: KACHO_IAM_HOOKS_SERVER_MTLS_CLIENTAUTHMODE
+            - name: KANAME_HOOKS_SERVER_MTLS_CLIENTAUTHMODE
               value: {{ .Values.mtls.hooksClientAuthMode | default "server-tls-only" | quote }}
-            - name: KACHO_IAM_HOOKS_SERVER_MTLS_CERTFILE
+            - name: KANAME_HOOKS_SERVER_MTLS_CERTFILE
               value: {{ printf "%s/tls.crt" $srv | quote }}
-            - name: KACHO_IAM_HOOKS_SERVER_MTLS_KEYFILE
+            - name: KANAME_HOOKS_SERVER_MTLS_KEYFILE
               value: {{ printf "%s/tls.key" $srv | quote }}
-            - name: KACHO_IAM_HOOKS_SERVER_MTLS_CLIENTCAFILES
+            - name: KANAME_HOOKS_SERVER_MTLS_CLIENTCAFILES
               value: {{ printf "%s/ca.crt" $srv | quote }}
-            - name: KACHO_IAM_METRICS_SERVER_MTLS_ENABLE
+            - name: KANAME_METRICS_SERVER_MTLS_ENABLE
               value: "true"
-            - name: KACHO_IAM_METRICS_SERVER_MTLS_CLIENTAUTHMODE
+            - name: KANAME_METRICS_SERVER_MTLS_CLIENTAUTHMODE
               value: {{ .Values.mtls.metricsClientAuthMode | default "server-tls-only" | quote }}
-            - name: KACHO_IAM_METRICS_SERVER_MTLS_CERTFILE
+            - name: KANAME_METRICS_SERVER_MTLS_CERTFILE
               value: {{ printf "%s/tls.crt" $srv | quote }}
-            - name: KACHO_IAM_METRICS_SERVER_MTLS_KEYFILE
+            - name: KANAME_METRICS_SERVER_MTLS_KEYFILE
               value: {{ printf "%s/tls.key" $srv | quote }}
-            - name: KACHO_IAM_METRICS_SERVER_MTLS_CLIENTCAFILES
+            - name: KANAME_METRICS_SERVER_MTLS_CLIENTCAFILES
               value: {{ printf "%s/ca.crt" $srv | quote }}
             {{- end }}
             {{- if (dig "jwksProxy" .Values.mtls.httpListeners .Values.mtls) }}
@@ -343,15 +343,15 @@ spec:
             # RequireAndVerifyClientCert would reject the handshake. Registry trusts
             # this leaf via the internal-CA it already mounts (SSL_CERT_DIR). Gated on
             # mtls.jwksProxy (defaults to mtls.httpListeners) → dev stays plaintext :9097.
-            - name: KACHO_IAM_JWKSPROXY_SERVER_MTLS_ENABLE
+            - name: KANAME_JWKSPROXY_SERVER_MTLS_ENABLE
               value: "true"
-            - name: KACHO_IAM_JWKSPROXY_SERVER_MTLS_CLIENTAUTHMODE
+            - name: KANAME_JWKSPROXY_SERVER_MTLS_CLIENTAUTHMODE
               value: {{ .Values.mtls.jwksProxyClientAuthMode | default "server-tls-only" | quote }}
-            - name: KACHO_IAM_JWKSPROXY_SERVER_MTLS_CERTFILE
+            - name: KANAME_JWKSPROXY_SERVER_MTLS_CERTFILE
               value: {{ printf "%s/tls.crt" $srv | quote }}
-            - name: KACHO_IAM_JWKSPROXY_SERVER_MTLS_KEYFILE
+            - name: KANAME_JWKSPROXY_SERVER_MTLS_KEYFILE
               value: {{ printf "%s/tls.key" $srv | quote }}
-            - name: KACHO_IAM_JWKSPROXY_SERVER_MTLS_CLIENTCAFILES
+            - name: KANAME_JWKSPROXY_SERVER_MTLS_CLIENTCAFILES
               value: {{ printf "%s/ca.crt" $srv | quote }}
             {{- end }}
             {{- if (dig "registryToken" .Values.mtls.httpListeners .Values.mtls) }}
@@ -366,15 +366,15 @@ spec:
             # (server-tls-only): caller-auth здесь и ЕСТЬ Basic, а mutual потребовал бы
             # client-cert у nginx-sidecar реестра. Gated on mtls.httpListeners → dev
             # остаётся plaintext, и production boot-guard там не срабатывает.
-            - name: KACHO_IAM_REGISTRYTOKEN_SERVER_MTLS_ENABLE
+            - name: KANAME_REGISTRYTOKEN_SERVER_MTLS_ENABLE
               value: "true"
-            - name: KACHO_IAM_REGISTRYTOKEN_SERVER_MTLS_CLIENTAUTHMODE
+            - name: KANAME_REGISTRYTOKEN_SERVER_MTLS_CLIENTAUTHMODE
               value: {{ .Values.mtls.registryTokenClientAuthMode | default "server-tls-only" | quote }}
-            - name: KACHO_IAM_REGISTRYTOKEN_SERVER_MTLS_CERTFILE
+            - name: KANAME_REGISTRYTOKEN_SERVER_MTLS_CERTFILE
               value: {{ printf "%s/tls.crt" $srv | quote }}
-            - name: KACHO_IAM_REGISTRYTOKEN_SERVER_MTLS_KEYFILE
+            - name: KANAME_REGISTRYTOKEN_SERVER_MTLS_KEYFILE
               value: {{ printf "%s/tls.key" $srv | quote }}
-            - name: KACHO_IAM_REGISTRYTOKEN_SERVER_MTLS_CLIENTCAFILES
+            - name: KANAME_REGISTRYTOKEN_SERVER_MTLS_CLIENTCAFILES
               value: {{ printf "%s/ca.crt" $srv | quote }}
             {{- end }}
             {{- end }}
@@ -391,7 +391,7 @@ spec:
             # Hydra ↔ kaname shared secret для token_hook / refresh_hook.
             # Создаётся отдельным Secret kaname-hook-token (см. cluster overrides);
             # optional: true позволяет pod'у стартовать на E0/E1 (до Phase 2 включения).
-            - name: KACHO_IAM_HOOK_TOKEN
+            - name: KANAME_HOOK_TOKEN
               valueFrom:
                 secretKeyRef:
                   name: {{ .Values.kacho.hooks.tokenHookSecretName }}
@@ -409,7 +409,7 @@ spec:
             # оборачивает, все открывают. Так и меняется ключ обёртки — без
             # простоя и без переписывания хранилища (задача #1065); порядок
             # смены — README чарта, раздел «Changing the wrapping key».
-            - name: KACHO_IAM_JWKS_ENC_KEY
+            - name: KANAME_JWKS_ENC_KEY
               valueFrom:
                 secretKeyRef:
                   name: {{ .Values.kacho.iam.jwks.encKeySecretName }}
@@ -422,11 +422,11 @@ spec:
             # never expires"; maxTtl is the inclusive ceiling.
             {{- with .Values.kacho.iam.saKey }}
             {{- if .defaultTtl }}
-            - name: KACHO_IAM_SAKEY_DEFAULT_TTL
+            - name: KANAME_SAKEY_DEFAULT_TTL
               value: {{ .defaultTtl | quote }}
             {{- end }}
             {{- if .maxTtl }}
-            - name: KACHO_IAM_SAKEY_MAX_TTL
+            - name: KANAME_SAKEY_MAX_TTL
               value: {{ .maxTtl | quote }}
             {{- end }}
             # accessTokenTtl — per-client access_token_lifespan stamped on the
@@ -434,7 +434,7 @@ spec:
             # provider-global TTL applies (unchanged behaviour), so a profile
             # opts in rather than inheriting a silent change.
             {{- if .accessTokenTtl }}
-            - name: KACHO_IAM_SAKEY_ACCESS_TOKEN_TTL
+            - name: KANAME_SAKEY_ACCESS_TOKEN_TTL
               value: {{ .accessTokenTtl | quote }}
             {{- end }}
             # bindDpop — register each key's OAuth2 client so the provider mints
@@ -443,20 +443,20 @@ spec:
             # this is switched on; pre-existing keys must be rotated. Enable this
             # BEFORE the gateway's requireMachineTokenBinding.
             {{- if .bindDpop }}
-            - name: KACHO_IAM_SAKEY_BIND_DPOP
+            - name: KANAME_SAKEY_BIND_DPOP
               value: "true"
             {{- end }}
             {{- end }}
-            - name: KACHO_IAM_HYDRA_ISSUER
+            - name: KANAME_HYDRA_ISSUER
               value: {{ printf "https://%s.%s" .Values.kacho.subdomains.hydra .Values.kacho.domain | quote }}
             # Bootstrap-token (#58) — requested token audience the gateway accepts
             # (ExpectedAudience = https://{APIDomain}); signing key from a Secret
             # (optional — empty ⇒ env absent ⇒ MintBootstrapToken fails closed).
-            - name: KACHO_IAM_BOOTSTRAP_TOKEN_AUDIENCE
+            - name: KANAME_BOOTSTRAP_TOKEN_AUDIENCE
               value: {{ printf "https://%s" .Values.kacho.domain | quote }}
             {{- with .Values.kacho.iam.bootstrapToken }}
             {{- if .signingKeySecretName }}
-            - name: KACHO_IAM_BOOTSTRAP_SA_PRIVATE_KEY_PEM
+            - name: KANAME_BOOTSTRAP_SA_PRIVATE_KEY_PEM
               valueFrom:
                 secretKeyRef:
                   name: {{ .signingKeySecretName }}
@@ -469,7 +469,7 @@ spec:
             # registry `/iam/token` shim. Без него ResolveHydraTokenURL() падает на
             # внешний issuer-URL, недостижимый изнутри кластера. Пусто → не эмитится
             # (dev/local сохраняет прежний fallback).
-            - name: KACHO_IAM_HYDRA_TOKEN_URL
+            - name: KANAME_HYDRA_TOKEN_URL
               value: {{ . | quote }}
             {{- end }}
             {{- with .Values.kacho.iam.hydraTokenCaFile }}
@@ -477,7 +477,7 @@ spec:
             # assertion out and the minted bearer back. Same discipline as the admin
             # hop: empty → default transport; set → the only anchor; unreadable →
             # refuse the start rather than fall back to the system roots.
-            - name: KACHO_IAM_HYDRA_TOKEN_CA_FILE
+            - name: KANAME_HYDRA_TOKEN_CA_FILE
               value: {{ . | quote }}
             {{- end }}
             {{- with .Values.kacho.iam.hydraJwksUrl }}
@@ -487,7 +487,7 @@ spec:
             # ResolveHydraIssuer()+"/.well-known/jwks.json" (dev/local unchanged).
             # Prod sets the in-cluster hydra-public base so the iam→Hydra fetch stays
             # inside the cluster. Hydra remains the signer/issuer — iam only proxies.
-            - name: KACHO_IAM_HYDRA_JWKS_URL
+            - name: KANAME_HYDRA_JWKS_URL
               value: {{ . | quote }}
             {{- end }}
             {{- with .Values.kacho.iam.hydraJwksCaFile }}
@@ -497,7 +497,7 @@ spec:
             # read refuses the start — the keyset fetched here is what the whole
             # data-plane verifies tokens against, so an unverified peer on this hop
             # chooses the platform's signing keys.
-            - name: KACHO_IAM_HYDRA_JWKS_CA_FILE
+            - name: KANAME_HYDRA_JWKS_CA_FILE
               value: {{ . | quote }}
             {{- end }}
             {{- with .Values.kacho.iam.hydraAdminUrl }}
@@ -508,7 +508,7 @@ spec:
             # in-cluster (public ingress host does not resolve) → CreateOAuthClient
             # fails → SAKey.Issue op errors ("internal worker error"). Every deployed
             # profile points this at the cluster-internal hydra-admin Service.
-            - name: KACHO_IAM_HYDRA_ADMIN_URL
+            - name: KANAME_HYDRA_ADMIN_URL
               value: {{ . | quote }}
             {{- end }}
             {{- with .Values.kacho.iam.hydraAdminCaFile }}
@@ -516,7 +516,7 @@ spec:
             # system-root pool, which an internal-CA certificate never chains to.
             # Set → that bundle becomes the ONLY anchor for the hop, and one that
             # cannot be read refuses the start.
-            - name: KACHO_IAM_HYDRA_ADMIN_CA_FILE
+            - name: KANAME_HYDRA_ADMIN_CA_FILE
               value: {{ . | quote }}
             {{- end }}
             {{- range $k, $v := .Values.env }}

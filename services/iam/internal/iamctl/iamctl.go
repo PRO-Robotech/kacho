@@ -159,7 +159,7 @@ func withService(ctx context.Context, stderr io.Writer, deps Deps, fn func(Modul
 			addressPhrase(deps.Endpoint), err)
 		if deps.Endpoint == "" {
 			_, _ = fmt.Fprintln(stderr, "что сделать: назовите адрес внутреннего слушателя iam флагом "+
-				"-endpoint (либо переменной KACHO_IAMCTL_ENDPOINT) и удостоверение к нему; "+
+				"-endpoint (либо переменной KANAMECTL_ENDPOINT) и удостоверение к нему; "+
 				"вердикта о каталоге НЕ получено")
 		} else {
 			_, _ = fmt.Fprintf(stderr, "что сделать: проверьте, что служба поднята и адрес %s достижим "+
@@ -180,7 +180,7 @@ func withService(ctx context.Context, stderr io.Writer, deps Deps, fn func(Modul
 // же класс, что пустое значение, выдающее себя за факт о ресурсе.
 func addressPhrase(endpoint string) string {
 	if endpoint == "" {
-		return "(адрес не задан: -endpoint / KACHO_IAMCTL_ENDPOINT)"
+		return "(адрес не задан: -endpoint / KANAMECTL_ENDPOINT)"
 	}
 	return "по адресу " + endpoint
 }

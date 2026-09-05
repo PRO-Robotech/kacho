@@ -178,7 +178,7 @@ Short-circuit применяется **не только** к read-Check (`Autho
 ### Bootstrap (chicken-egg + separation of duties)
 
 Первый cluster-admin сидится на инсталле через internal-only
-`InternalClusterService` (env `KACHO_IAM_BOOTSTRAP_ROOT_EMAIL`): в одной tx —
+`InternalClusterService` (env `KANAME_BOOTSTRAP_ROOT_EMAIL`): в одной tx —
 строка `cluster_admin_grants` + fga-outbox tuple `system_admin` + audit-событие.
 Идемпотентно: повторный рестарт ловит partial-unique (SQLSTATE 23505) и тихо
 пропускает. **Self-grant через публичный API невозможен** — нет публичного пути к

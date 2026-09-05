@@ -19,7 +19,7 @@
 // ФИКСТУРЫ ЗДЕСЬ СИНТЕТИЧЕСКИЕ И НЕ ЗАВИСЯТ ОТ ЖИВОГО ДЕРЕВА — намеренно.
 // Инъекция, опирающаяся на живой дефект, истекает вместе с его починкой и уносит
 // доказательство (ровно это случилось в соседнем файле, см. его шапку). Имена
-// вида `KACHO_IAM_INJECTED__*` не привязаны ничем и не будут привязаны никогда.
+// вида `KANAME_INJECTED__*` не привязаны ничем и не будут привязаны никогда.
 //
 // ЧЕГО ЭТОТ ФАЙЛ НЕ ДОКАЗЫВАЕТ: что предметом гейта служат отказы ЖИВОГО стража,
 // а не текст исходников. Подставной мир об этом не утверждает ничего by
@@ -33,9 +33,9 @@ import (
 )
 
 const (
-	injectedInert  = "KACHO_IAM_INJECTED__INERT_KNOB"
-	injectedLive   = "KACHO_IAM_INJECTED__LIVE_KNOB"
-	injectedInProf = "KACHO_IAM_INJECTED__NAMED_OUTSIDE_A_REFUSAL"
+	injectedInert  = "KANAME_INJECTED__INERT_KNOB"
+	injectedLive   = "KANAME_INJECTED__LIVE_KNOB"
+	injectedInProf = "KANAME_INJECTED__NAMED_OUTSIDE_A_REFUSAL"
 )
 
 // staticWorld — подставной мир: заданные тексты отказов и заданный исход опыта.

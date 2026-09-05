@@ -21,13 +21,13 @@ import (
 //
 // Behaviour:
 //  1. Defaults are registered (RegisterDefaults).
-//  2. ENV-binding: prefix `KACHO_IAM`, key separator `__` →
-//     `KACHO_IAM_REPOSITORY__POSTGRES__URL` is mapped to
+//  2. ENV-binding: prefix `KANAME`, key separator `__` →
+//     `KANAME_REPOSITORY__POSTGRES__URL` is mapped to
 //     `repository.postgres.url`. Dashes in keys (`max-conns`) become
 //     underscores (`MAX_CONNS`) via viper's SetEnvKeyReplacer.
 //  3. If path != "" — YAML is read and overlays the defaults.
 //  4. ENV overrides YAML + defaults.
-//  5. Legacy ENV aliases (KACHO_IAM_DB_HOST/PORT/USER/NAME/PASSWORD/…) are
+//  5. Legacy ENV aliases (KANAME_DB_HOST/PORT/USER/NAME/PASSWORD/…) are
 //     translated to the new keys by applyLegacyEnv — backward-compat for the
 //     already-deployed Helm chart and dev scripts.
 //  6. Unmarshal into Config with a custom DecodeHook (Mode-ENUM from string).
@@ -39,7 +39,7 @@ func Load(path string) (Config, error) {
 	RegisterDefaults(v)
 
 	// ENV-binding.
-	v.SetEnvPrefix("KACHO_IAM")
+	v.SetEnvPrefix(EnvPrefix)
 	v.SetEnvKeyReplacer(strings.NewReplacer(".", "__", "-", "_"))
 	v.AutomaticEnv()
 
@@ -56,7 +56,7 @@ func Load(path string) (Config, error) {
 	// оставляет поле нулевым, то есть «не объявлено», и отказ старта наступает
 	// ровно так же. Свойство закреплено пробой documented-env-имени.
 	if err := v.BindEnv("authn."+identityposture.FieldName,
-		"KACHO_IAM_AUTHN__IDENTITY_PROVIDER"); err != nil {
+		"KANAME_AUTHN__IDENTITY_PROVIDER"); err != nil {
 		return Config{}, fmt.Errorf("bind %s env: %w", IdentityProviderSetting, err)
 	}
 
@@ -107,14 +107,14 @@ func Load(path string) (Config, error) {
 	// переименованию не подлежит: это контракт с оператором.
 	// #nosec G101 -- ключи и имена переменных окружения, ни одного значения.
 	for key, env := range map[string]string{
-		"manifests.dir":           "KACHO_IAM_MANIFESTS__DIR",
-		"manifests.required":      "KACHO_IAM_MANIFESTS__REQUIRED",
-		"manifests.compose-model": "KACHO_IAM_MANIFESTS__COMPOSE_MODEL",
-		"manifests.admission":     "KACHO_IAM_MANIFESTS__ADMISSION",
+		"manifests.dir":           "KANAME_MANIFESTS__DIR",
+		"manifests.required":      "KANAME_MANIFESTS__REQUIRED",
+		"manifests.compose-model": "KANAME_MANIFESTS__COMPOSE_MODEL",
+		"manifests.admission":     "KANAME_MANIFESTS__ADMISSION",
 
-		"authn.trusted-forwarder-sans":      "KACHO_IAM_AUTHN__TRUSTED_FORWARDER_SANS",
-		"authn.trust-any-forwarder":         "KACHO_IAM_AUTHN__TRUST_ANY_FORWARDER",
-		"api-server.registry-token.service": "KACHO_IAM_API_SERVER__REGISTRY_TOKEN__SERVICE",
+		"authn.trusted-forwarder-sans":      "KANAME_AUTHN__TRUSTED_FORWARDER_SANS",
+		"authn.trust-any-forwarder":         "KANAME_AUTHN__TRUST_ANY_FORWARDER",
+		"api-server.registry-token.service": "KANAME_API_SERVER__REGISTRY_TOKEN__SERVICE",
 	} {
 		if err := v.BindEnv(key, env); err != nil {
 			return Config{}, fmt.Errorf("bind %s env: %w", key, err)
@@ -162,41 +162,41 @@ func Load(path string) (Config, error) {
 }
 
 // applyLegacyEnv — bridge from legacy ENV names to new viper keys. Applied
-// AFTER AutomaticEnv: if the new KACHO_IAM_REPOSITORY__POSTGRES__URL is set
+// AFTER AutomaticEnv: if the new KANAME_REPOSITORY__POSTGRES__URL is set
 // it has already been picked up via ENV-binding and legacy is ignored.
 //
-// If at least one of KACHO_IAM_DB_HOST/PORT/USER/NAME is set we assemble a
+// If at least one of KANAME_DB_HOST/PORT/USER/NAME is set we assemble a
 // DSN from them and override repository.postgres.url. This is required
 // because the current values.yaml sets ENV vars exactly that way (parity
 // with kacho-vpc).
 //
-// KACHO_IAM_DB_PASSWORD stays a separate mechanism (see password-from-env).
+// KANAME_DB_PASSWORD stays a separate mechanism (see password-from-env).
 func applyLegacyEnv(v *viper.Viper) {
 	type mapping struct {
 		env string
 		key string
 	}
 	simple := []mapping{
-		{"KACHO_IAM_DB_SSLMODE", "repository.postgres.ssl-mode"},
-		{"KACHO_IAM_DB_MAX_CONNS", "repository.postgres.max-conns"},
-		{"KACHO_IAM_GRPC_PORT", "_legacy.grpc-port"},
-		{"KACHO_IAM_INTERNAL_PORT", "_legacy.internal-port"},
-		{"KACHO_IAM_AUTH_MODE", "authn.mode"},
+		{"KANAME_DB_SSLMODE", "repository.postgres.ssl-mode"},
+		{"KANAME_DB_MAX_CONNS", "repository.postgres.max-conns"},
+		{"KANAME_GRPC_PORT", "_legacy.grpc-port"},
+		{"KANAME_INTERNAL_PORT", "_legacy.internal-port"},
+		{"KANAME_AUTH_MODE", "authn.mode"},
 		// Flat alias for the SA-key redact grace window — the deploy chart sets
-		// the short KACHO_IAM_SAKEY_REDACT_GRACE rather than the namespaced
-		// KACHO_IAM_AUTHN__SAKEY_REDACT_GRACE. Value is a Go duration ("120s").
-		{"KACHO_IAM_SAKEY_REDACT_GRACE", "authn.sakey-redact-grace"},
+		// the short KANAME_SAKEY_REDACT_GRACE rather than the namespaced
+		// KANAME_AUTHN__SAKEY_REDACT_GRACE. Value is a Go duration ("120s").
+		{"KANAME_SAKEY_REDACT_GRACE", "authn.sakey-redact-grace"},
 		// Flat alias for the User-token redact grace window — mirror of the SA-key
 		// alias above. Value is a Go duration ("120s").
-		{"KACHO_IAM_USERTOKEN_REDACT_GRACE", "authn.usertoken-redact-grace"},
+		{"KANAME_USERTOKEN_REDACT_GRACE", "authn.usertoken-redact-grace"},
 		// SA-key lifetime discipline — flat aliases the deploy chart sets.
 		// Values are Go durations ("2160h" / "8760h" / "15m").
-		{"KACHO_IAM_SAKEY_DEFAULT_TTL", "authn.sakey-default-ttl"},
-		{"KACHO_IAM_SAKEY_MAX_TTL", "authn.sakey-max-ttl"},
-		{"KACHO_IAM_SAKEY_ACCESS_TOKEN_TTL", "authn.sakey-access-token-ttl"},
-		{"KACHO_IAM_SAKEY_BIND_DPOP", "authn.sakey-bind-dpop"},
+		{"KANAME_SAKEY_DEFAULT_TTL", "authn.sakey-default-ttl"},
+		{"KANAME_SAKEY_MAX_TTL", "authn.sakey-max-ttl"},
+		{"KANAME_SAKEY_ACCESS_TOKEN_TTL", "authn.sakey-access-token-ttl"},
+		{"KANAME_SAKEY_BIND_DPOP", "authn.sakey-bind-dpop"},
 		// Окно отзыва собственной двери. Величина Go-длительности ("5s").
-		{"KACHO_IAM_AUTHZ_CACHE_TTL", "authz.cache-ttl"},
+		{"KANAME_AUTHZ_CACHE_TTL", "authz.cache-ttl"},
 	}
 	for _, m := range simple {
 		if val, ok := os.LookupEnv(m.env); ok {
@@ -204,11 +204,11 @@ func applyLegacyEnv(v *viper.Viper) {
 		}
 	}
 
-	// DB DSN composition from split-env (KACHO_IAM_DB_HOST/PORT/USER/NAME).
-	host, hasHost := os.LookupEnv("KACHO_IAM_DB_HOST")
-	port, hasPort := os.LookupEnv("KACHO_IAM_DB_PORT")
-	user, hasUser := os.LookupEnv("KACHO_IAM_DB_USER")
-	db, hasDB := os.LookupEnv("KACHO_IAM_DB_NAME")
+	// DB DSN composition from split-env (KANAME_DB_HOST/PORT/USER/NAME).
+	host, hasHost := os.LookupEnv("KANAME_DB_HOST")
+	port, hasPort := os.LookupEnv("KANAME_DB_PORT")
+	user, hasUser := os.LookupEnv("KANAME_DB_USER")
+	db, hasDB := os.LookupEnv("KANAME_DB_NAME")
 	if hasHost || hasPort || hasUser || hasDB {
 		if host == "" {
 			host = "localhost"

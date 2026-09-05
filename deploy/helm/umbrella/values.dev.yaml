@@ -895,7 +895,7 @@ kratos:
       - /etc/kacho-identity-rendered/kratos.yaml
     # ─── ВЕЛИЧИНА ОБРАТНОГО ВЫЗОВА ОБЯЗАНА ДОЕХАТЬ ДО ПРОЦЕССА ────────────────
     #
-    # Конфигурация объявляет учётные данные обратных вызовов как `${KACHO_IAM_HOOK_TOKEN}`
+    # Конфигурация объявляет учётные данные обратных вызовов как `${KANAME_HOOK_TOKEN}`
     # — то есть рассчитывает на подстановку. Служба личности подстановки в
     # ЗНАЧЕНИЯХ конфигурации НЕ делает: она переопределяет ключи переменными по
     # пути, а элемент массива хуков таким путём невыразим. Значит строка уезжала
@@ -1334,7 +1334,7 @@ hydra:
         #
         # ─── ВЕЛИЧИНА УЧЁТНЫХ ДАННЫХ ПУСТА НАМЕРЕННО (задача #948) ────────────
         #
-        # Здесь стояло `${KACHO_IAM_HOOK_TOKEN}`, и этот профиль НЕ объявлял ни
+        # Здесь стояло `${KANAME_HOOK_TOKEN}`, и этот профиль НЕ объявлял ни
         # одного источника — то есть провайдер отправлял ЭТУ САМУЮ СТРОКУ в
         # заголовке, служба прав её отвергала (`401`), а край переводил отказ
         # арендатору как `502`. Профиль поднимается первой фазой `make dev-up` и
@@ -1642,7 +1642,7 @@ kaname:
     # backdoor that bypassed the drainer). The user row is mirrored on first
     # fixture upsert; the reconciler retries until the grant commits. The
     # authz-fixtures bootstrap user is admin@prorobotech.ru.
-    KACHO_IAM_BOOTSTRAP_ROOT_EMAIL: "admin@prorobotech.ru"
+    KANAME_BOOTSTRAP_ROOT_EMAIL: "admin@prorobotech.ru"
   # KAC-127 Phase 3: OPA sidecar config propagated from umbrella to sub-chart.
   # KAC-127 (deploy#39 fix): включён — kaname отдаёт OPA-bundle по HTTP на
   # :9092; см. комментарий у top-level `opaSidecar` ниже.

@@ -55,7 +55,7 @@ Squash в единый `0001_initial.sql` baseline запланирован в W
 
 ## Запуск
 
-`make migrate-up` (требует `KACHO_IAM_DB_PASSWORD=...`).
+`make migrate-up` (требует `KANAME_DB_PASSWORD=...`).
 
 ## Запреты
 

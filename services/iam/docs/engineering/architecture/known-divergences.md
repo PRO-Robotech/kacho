@@ -31,9 +31,9 @@ only an opt-in security hardening surface, isolated to this one struct.
 
 **Safety**: the two mechanisms do not overlap — viper/YAML owns all functional
 config; `envconfig` owns *only* the four opt-in mTLS server edges
-(`KACHO_IAM_{PUBLIC,INTERNAL,HOOKS,METRICS}_SERVER_MTLS_*`). There is no field
+(`KANAME_{PUBLIC,INTERNAL,HOOKS,METRICS}_SERVER_MTLS_*`). There is no field
 whose value could be silently shadowed between the two. An operator setting an
-mTLS parameter uses the documented `KACHO_IAM_*_MTLS_*` env vars; these are not
+mTLS parameter uses the documented `KANAME_*_MTLS_*` env vars; these are not
 expressible under a YAML `config:` section by design.
 
 **Convergence path (deferred)**: give `grpcsrv.TLSServer` `mapstructure` tags

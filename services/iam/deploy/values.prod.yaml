@@ -108,11 +108,11 @@ tls:
 # дереве ни разу.
 secrets:
   # Общий сговор, которым подписаны вебхуки поставщика личности.
-  KACHO_IAM_HOOK_TOKEN:
+  KANAME_HOOK_TOKEN:
     secretName: kaname-authn
     secretKey: hook-shared-secret
   # Ключ обёртки приватной половины подписного ключа в ключнице.
-  KACHO_IAM_JWKS_ENC_KEY:
+  KANAME_JWKS_ENC_KEY:
     secretName: kaname-authn
     secretKey: jwks-encryption-key-hex
 
@@ -129,14 +129,14 @@ env:
   # публичный. Оба ребра — взаимные по построению общей библиотеки: она строит
   # их с требованием проверенного клиентского сертификата, поэтому якорь клиента
   # обязателен на обоих.
-  KACHO_IAM_PUBLIC_SERVER_MTLS_ENABLE: "true"
-  KACHO_IAM_PUBLIC_SERVER_MTLS_CERTFILE: /etc/kaname/tls/server/tls.crt
-  KACHO_IAM_PUBLIC_SERVER_MTLS_KEYFILE: /etc/kaname/tls/server/tls.key
-  KACHO_IAM_PUBLIC_SERVER_MTLS_CLIENTCAFILES: /etc/kaname/tls/server/ca.crt
-  KACHO_IAM_INTERNAL_SERVER_MTLS_ENABLE: "true"
-  KACHO_IAM_INTERNAL_SERVER_MTLS_CERTFILE: /etc/kaname/tls/server/tls.crt
-  KACHO_IAM_INTERNAL_SERVER_MTLS_KEYFILE: /etc/kaname/tls/server/tls.key
-  KACHO_IAM_INTERNAL_SERVER_MTLS_CLIENTCAFILES: /etc/kaname/tls/server/ca.crt
+  KANAME_PUBLIC_SERVER_MTLS_ENABLE: "true"
+  KANAME_PUBLIC_SERVER_MTLS_CERTFILE: /etc/kaname/tls/server/tls.crt
+  KANAME_PUBLIC_SERVER_MTLS_KEYFILE: /etc/kaname/tls/server/tls.key
+  KANAME_PUBLIC_SERVER_MTLS_CLIENTCAFILES: /etc/kaname/tls/server/ca.crt
+  KANAME_INTERNAL_SERVER_MTLS_ENABLE: "true"
+  KANAME_INTERNAL_SERVER_MTLS_CERTFILE: /etc/kaname/tls/server/tls.crt
+  KANAME_INTERNAL_SERVER_MTLS_KEYFILE: /etc/kaname/tls/server/tls.key
+  KANAME_INTERNAL_SERVER_MTLS_CLIENTCAFILES: /etc/kaname/tls/server/ca.crt
 
   # ── ДОКЕРНАЯ ПОЛОСА (`/iam/token`, :9096) ────────────────────────────────
   #
@@ -159,9 +159,9 @@ env:
   # сертификата сломало бы докерного клиента, который его не предъявляет.
   # Незаданный режим проверки клиента процесс читает как `server-tls-only`,
   # поэтому четвёртой строки у этой ноги нет и быть не должно.
-  KACHO_IAM_REGISTRYTOKEN_SERVER_MTLS_ENABLE: "true"
-  KACHO_IAM_REGISTRYTOKEN_SERVER_MTLS_CERTFILE: /etc/kaname/tls/server/tls.crt
-  KACHO_IAM_REGISTRYTOKEN_SERVER_MTLS_KEYFILE: /etc/kaname/tls/server/tls.key
+  KANAME_REGISTRYTOKEN_SERVER_MTLS_ENABLE: "true"
+  KANAME_REGISTRYTOKEN_SERVER_MTLS_CERTFILE: /etc/kaname/tls/server/tls.crt
+  KANAME_REGISTRYTOKEN_SERVER_MTLS_KEYFILE: /etc/kaname/tls/server/tls.key
 
   # ── ТРАНСПОРТ ОСТАЛЬНЫХ HTTP-РЁБЕР ───────────────────────────────────────
   #
@@ -195,17 +195,17 @@ env:
   # ДЕРЖИТСЯ СТРАЖЕМ, а не этим комментарием: снятие любой из трёх строк роняет
   # не посадку, а СТАРТ — `requireHTTPEdgeTLS` в композиционном корне называет
   # ручку, адрес и то, что по этому проводу едет.
-  KACHO_IAM_HOOKS_SERVER_MTLS_ENABLE: "true"
-  KACHO_IAM_HOOKS_SERVER_MTLS_CERTFILE: /etc/kaname/tls/server/tls.crt
-  KACHO_IAM_HOOKS_SERVER_MTLS_KEYFILE: /etc/kaname/tls/server/tls.key
+  KANAME_HOOKS_SERVER_MTLS_ENABLE: "true"
+  KANAME_HOOKS_SERVER_MTLS_CERTFILE: /etc/kaname/tls/server/tls.crt
+  KANAME_HOOKS_SERVER_MTLS_KEYFILE: /etc/kaname/tls/server/tls.key
 
-  KACHO_IAM_JWKSPROXY_SERVER_MTLS_ENABLE: "true"
-  KACHO_IAM_JWKSPROXY_SERVER_MTLS_CERTFILE: /etc/kaname/tls/server/tls.crt
-  KACHO_IAM_JWKSPROXY_SERVER_MTLS_KEYFILE: /etc/kaname/tls/server/tls.key
+  KANAME_JWKSPROXY_SERVER_MTLS_ENABLE: "true"
+  KANAME_JWKSPROXY_SERVER_MTLS_CERTFILE: /etc/kaname/tls/server/tls.crt
+  KANAME_JWKSPROXY_SERVER_MTLS_KEYFILE: /etc/kaname/tls/server/tls.key
 
-  KACHO_IAM_METRICS_SERVER_MTLS_ENABLE: "true"
-  KACHO_IAM_METRICS_SERVER_MTLS_CERTFILE: /etc/kaname/tls/server/tls.crt
-  KACHO_IAM_METRICS_SERVER_MTLS_KEYFILE: /etc/kaname/tls/server/tls.key
+  KANAME_METRICS_SERVER_MTLS_ENABLE: "true"
+  KANAME_METRICS_SERVER_MTLS_CERTFILE: /etc/kaname/tls/server/tls.crt
+  KANAME_METRICS_SERVER_MTLS_KEYFILE: /etc/kaname/tls/server/tls.key
 
   # ── ТРИ КОНТУРА К ПОСТАВЩИКУ ЛИЧНОСТИ ────────────────────────────────────
   #
@@ -226,9 +226,9 @@ env:
   # открытого текста было бы режимом, годным только для стенда. Оператор,
   # чей поставщик отвечает по http, меняет схему сам — страж якоря тогда не
   # требует, и профиль остаётся исполнимым.
-  KACHO_IAM_HYDRA_ADMIN_URL: "https://hydra-admin.example.invalid:4445"
-  KACHO_IAM_HYDRA_ADMIN_CA_FILE: /etc/kaname/tls/server/ca.crt
-  KACHO_IAM_HYDRA_JWKS_URL: "https://hydra-public.example.invalid:4444/.well-known/jwks.json"
-  KACHO_IAM_HYDRA_JWKS_CA_FILE: /etc/kaname/tls/server/ca.crt
-  KACHO_IAM_HYDRA_TOKEN_URL: "https://hydra-public.example.invalid:4444/oauth2/token"
-  KACHO_IAM_HYDRA_TOKEN_CA_FILE: /etc/kaname/tls/server/ca.crt
+  KANAME_HYDRA_ADMIN_URL: "https://hydra-admin.example.invalid:4445"
+  KANAME_HYDRA_ADMIN_CA_FILE: /etc/kaname/tls/server/ca.crt
+  KANAME_HYDRA_JWKS_URL: "https://hydra-public.example.invalid:4444/.well-known/jwks.json"
+  KANAME_HYDRA_JWKS_CA_FILE: /etc/kaname/tls/server/ca.crt
+  KANAME_HYDRA_TOKEN_URL: "https://hydra-public.example.invalid:4444/oauth2/token"
+  KANAME_HYDRA_TOKEN_CA_FILE: /etc/kaname/tls/server/ca.crt

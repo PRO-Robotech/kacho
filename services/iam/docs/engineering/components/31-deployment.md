@@ -173,7 +173,7 @@ Pod hardened: `runAsNonRoot` (uid 65532), `readOnlyRootFilesystem`,
 
 `kaname` читает YAML-config из `/etc/kaname/config.yaml` (рендерится
 `templates/configmap.yaml`). Любой ключ переопределяется ENV по схеме
-`KACHO_IAM_<SECTION>__<KEY>` (двойное подчеркивание между секцией и ключом).
+`KANAME_<SECTION>__<KEY>` (двойное подчеркивание между секцией и ключом).
 Отрендеренный config:
 
 ```yaml
@@ -198,15 +198,15 @@ repository:
     slave-url: ""                  # опц. read-replica; пусто → Reader-TX на master
     max-conns: 80
     ssl-mode: disable
-    password-from-env: KACHO_IAM_DB_PASSWORD
+    password-from-env: KANAME_DB_PASSWORD
 
 authn:
   mode: dev                        # dev | production | production-strict
   domain: api.kacho.cloud
   hydra-issuer: ""                 # пусто → выводится из domain
-  hook-shared-secret-env: KACHO_IAM_HOOK_TOKEN
+  hook-shared-secret-env: KANAME_HOOK_TOKEN
   # Ключ ОБЁРТКИ приватной половины подписного ключа (см. ниже).
-  jwks-encryption-key-hex-env: KACHO_IAM_JWKS_ENC_KEY
+  jwks-encryption-key-hex-env: KANAME_JWKS_ENC_KEY
   hooks-http-endpoint: "tcp://0.0.0.0:9092"
   # Своя чеканка токенов. Блок рендерится ТОЛЬКО при enabled: пока чеканка
   # выключена, её настройки не требуются — страж, требующий того, чем не
@@ -232,21 +232,21 @@ anonymous fail-closed); dev-стенд явно опускает его до `de
 
 | ENV | Назначение |
 |---|---|
-| `KACHO_IAM_DB_PASSWORD` | пароль Postgres (`password-from-env`) |
-| `KACHO_IAM_HOOK_TOKEN` | shared secret HMAC для Ory-webhooks |
-| `KACHO_IAM_JWKS_ENC_KEY` | 32-байтный ключ (hex) ОБЁРТКИ приватной половины подписного ключа в ключнице (смысл ручки сменился, имя — нет; см. ниже) |
-| `KACHO_IAM_HYDRA_ADMIN_TOKEN` | Bearer для Hydra admin API (опц.) |
-| `KACHO_IAM_BOOTSTRAP_ROOT_EMAIL` | если задан — bootstrap-admin reconciler выдает `system_admin@cluster` этому юзеру (опц.) |
+| `KANAME_DB_PASSWORD` | пароль Postgres (`password-from-env`) |
+| `KANAME_HOOK_TOKEN` | shared secret HMAC для Ory-webhooks |
+| `KANAME_JWKS_ENC_KEY` | 32-байтный ключ (hex) ОБЁРТКИ приватной половины подписного ключа в ключнице (смысл ручки сменился, имя — нет; см. ниже) |
+| `KANAME_HYDRA_ADMIN_TOKEN` | Bearer для Hydra admin API (опц.) |
+| `KANAME_BOOTSTRAP_ROOT_EMAIL` | если задан — bootstrap-admin reconciler выдает `system_admin@cluster` этому юзеру (опц.) |
 
 > [!note] До стадии S6 здесь стояли четыре переменные внешнего движка прав
-> `KACHO_IAM_OPENFGA_ENDPOINT`, `KACHO_IAM_OPENFGA_STORE_ID`,
-> `KACHO_IAM_OPENFGA_MODEL_ID`, `KACHO_IAM_AUTHZ_PROVIDER` и три срока
-> (`KACHO_IAM_FGA_CHECK_TIMEOUT_MS`, `…_LIST_OBJECTS_…`, `…_WRITE_…`). Ни у одной
+> `KANAME_OPENFGA_ENDPOINT`, `KANAME_OPENFGA_STORE_ID`,
+> `KANAME_OPENFGA_MODEL_ID`, `KANAME_AUTHZ_PROVIDER` и три срока
+> (`KANAME_FGA_CHECK_TIMEOUT_MS`, `…_LIST_OBJECTS_…`, `…_WRITE_…`). Ни у одной
 > не осталось читателя: движок снят вместе со своим клиентом. Выставлять их не
 > нужно и бессмысленно — процесс их не читает.
 
 Вердикт о доступе складывается **той же базой**, что и остальное состояние службы,
-и настраивается общими `KACHO_IAM_DB_*`. Отдельного бэкенда авторизации нет.
+и настраивается общими `KANAME_DB_*`. Отдельного бэкенда авторизации нет.
 
 ## Внешние зависимости
 
@@ -293,7 +293,7 @@ kacho-migrator status
 kacho-migrator down
 
 # Источник DSN: --dsn > ENV KACHO_MIGRATOR_DSN > viper-config kaname.
-KACHO_IAM_DB_PASSWORD=secret kacho-migrator up
+KANAME_DB_PASSWORD=secret kacho-migrator up
 ```
 
 ## Своя чеканка токенов: ключница, ротация, публикация, отзыв
@@ -335,7 +335,7 @@ KACHO_IAM_DB_PASSWORD=secret kacho-migrator up
 
 ### Ключ обёртки: смысл сменился, имя — нет
 
-`KACHO_IAM_JWKS_ENC_KEY` (`authn.jwks-encryption-key-hex-env`) остаётся
+`KANAME_JWKS_ENC_KEY` (`authn.jwks-encryption-key-hex-env`) остаётся
 обязательным в production-режиме, и теперь у него **есть потребитель, причём
 единственный**: им оборачивается приватная половина подписного ключа в ключнице.
 Приватная половина ложится в базу, класть её открытым текстом нельзя — значит ключ
@@ -359,7 +359,7 @@ KACHO_IAM_DB_PASSWORD=secret kacho-migrator up
 ключей, и ни одной новой строки не заводится:
 
 ```
-подписывающий ключ: ручка authn.jwks-encryption-key-hex (ENV KACHO_IAM_JWKS_ENC_KEY)
+подписывающий ключ: ручка authn.jwks-encryption-key-hex (ENV KANAME_JWKS_ENC_KEY)
 не открывает уже записанные подписные ключи. Служба ОТКАЗЫВАЕТСЯ стартовать: …
 Верните прежнее значение ручки: signingkeys: the wrapping key does not open the
 stored signing keys: 1 of 1 keys in the key set do not open (kacho-…)

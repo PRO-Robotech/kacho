@@ -35,7 +35,7 @@ func mustDecodeHex(t *testing.T, s string) []byte {
 
 // absentEnv — имя переменной, которой заведомо нет: иначе проба читала бы
 // окружение прогоняющего и её вердикт зависел бы от машины.
-const absentEnv = "KACHO_IAM_JWKS_ENC_KEY_ABSENT_FOR_TEST"
+const absentEnv = "KANAME_JWKS_ENC_KEY_ABSENT_FOR_TEST"
 
 // TestWrappingKeyListKeepsTheDeclaredOrder — перечень читается В ПОРЯДКЕ
 // объявления, и первый остаётся первым.

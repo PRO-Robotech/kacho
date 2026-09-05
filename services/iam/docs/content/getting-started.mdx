@@ -73,17 +73,17 @@ REST-примеры идут через `api-gateway` (порт указан к�
 <CodeBlock language="bash">
   {dedent`
     # применить все миграции (up)
-    KACHO_IAM_DB_PASSWORD=secret bin/kacho-migrator up
+    KANAME_DB_PASSWORD=secret bin/kacho-migrator up
 
     # посмотреть текущий статус
-    KACHO_IAM_DB_PASSWORD=secret bin/kacho-migrator status
+    KANAME_DB_PASSWORD=secret bin/kacho-migrator status
   `}
 </CodeBlock>
 
 Те же шаги обёрнуты в Make-цели: `make migrate-up`, `make migrate-status`.
 
 :::note Подключение к БД
-Параметры задаются переменными `KACHO_IAM_DB_*` (хост, порт, пользователь, имя БД, sslmode).
+Параметры задаются переменными `KANAME_DB_*` (хост, порт, пользователь, имя БД, sslmode).
 Полный список ключей — на странице [Конфигурация](/install/configuration).
 :::
 
@@ -96,7 +96,7 @@ cluster-internal (`:9091`, `InternalIAMService.Check` для peer-сервисо
 
 <CodeBlock language="bash">
   {dedent`
-    KACHO_IAM_DB_PASSWORD=secret \\
+    KANAME_DB_PASSWORD=secret \\
     bin/kaname serve
   `}
 </CodeBlock>

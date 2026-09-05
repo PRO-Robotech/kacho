@@ -103,7 +103,7 @@ flowchart LR
 - **LRO operations worker** — гоняет async-мутации к терминалу; orphan-reconciler
   закрывает осиротевшие `done=false`-операции умершего процесса по committed-реальности.
 - **bootstrap-admin reconciler** — выдает `system_admin@cluster` пользователю из
-  `KACHO_IAM_BOOTSTRAP_ROOT_EMAIL` (best-effort, no-op при пустом env).
+  `KANAME_BOOTSTRAP_ROOT_EMAIL` (best-effort, no-op при пустом env).
 - **binding reconciler-worker** — пере-материализует label-selector и by-name гранты
   при смене меток ресурса, доводит PENDING→ACTIVE и истекает TTL-гранты.
 

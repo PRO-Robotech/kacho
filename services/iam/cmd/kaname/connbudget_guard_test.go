@@ -28,8 +28,8 @@ func TestConnBudgetComplaint_RefusesTheMeasuredPosture(t *testing.T) {
 	}
 	// Отказ читает ОПЕРАТОР: он обязан называть ручки и числа.
 	for _, want := range []string{
-		"KACHO_IAM_REPOSITORY__POSTGRES__MAX_CONNS",
-		"KACHO_IAM_REPOSITORY__POSTGRES__REPLICA_BUDGET",
+		"KANAME_REPOSITORY__POSTGRES__MAX_CONNS",
+		"KANAME_REPOSITORY__POSTGRES__REPLICA_BUDGET",
 		"max_connections", "100", "5", "500",
 	} {
 		if !strings.Contains(err.Error(), want) {

@@ -21,7 +21,7 @@ import (
 //	repository:    { postgres }
 //	authn:         { mode, domain, hydra-issuer, hooks, jwks, dpop }
 //
-// The gateway-internal drainer is configured from KACHO_IAM_* env vars in the
+// The gateway-internal drainer is configured from KANAME_* env vars in the
 // composition root (cmd/kaname), not from this YAML.
 //
 // Every section is `mapstructure`-tagged (viper uses mapstructure for
@@ -160,7 +160,7 @@ type RepositoryConfig struct {
 //	ReplicaBudget    — под сколько реплик рассчитана посадка (см. PostgresConfig).
 //	SSLMode          — disable|require|verify-ca|verify-full (validated in Validate).
 //	PasswordFromEnv  — name of the ENV var the password is read from and
-//	                   substituted into URL and SlaveURL. Default — KACHO_IAM_DB_PASSWORD.
+//	                   substituted into URL and SlaveURL. Default — KANAME_DB_PASSWORD.
 type PostgresConfig struct {
 	URL      string `mapstructure:"url"`
 	SlaveURL string `mapstructure:"slave-url"`
@@ -208,28 +208,28 @@ type PostgresConfig struct {
 //	SAKeyRedactGrace      — задержка между Done-ом Issue-Operation и затиранием
 //	                        одноразового private_key_pem в её response. Даёт
 //	                        поллящему клиенту окно, чтобы забрать ключ до вычистки.
-//	                        Default 120s; override KACHO_IAM_SAKEY_REDACT_GRACE.
+//	                        Default 120s; override KANAME_SAKEY_REDACT_GRACE.
 //	UserTokenRedactGrace  — то же для UserTokenService.Issue (персональные токены
 //	                        пользователя). Default 120s; override
-//	                        KACHO_IAM_USERTOKEN_REDACT_GRACE.
+//	                        KANAME_USERTOKEN_REDACT_GRACE.
 //	SAKeyDefaultTTL       — срок жизни SA-ключа, когда вызывающий не передал
 //	                        ttl_seconds. Машинный принципал освобождён от
 //	                        усиленного входа (у машины нет второго фактора) —
 //	                        это защитимо лишь пока сам ключ ограничен по времени,
 //	                        поэтому умолчание конечно, а не «никогда».
-//	                        Default 2160h (90d); override KACHO_IAM_SAKEY_DEFAULT_TTL.
+//	                        Default 2160h (90d); override KANAME_SAKEY_DEFAULT_TTL.
 //	SAKeyMaxTTL           — включительный потолок ttl_seconds. Запрос сверх него
 //	                        отвергается InvalidArgument ДО регистрации клиента.
-//	                        Default 8760h (365d); override KACHO_IAM_SAKEY_MAX_TTL.
+//	                        Default 8760h (365d); override KANAME_SAKEY_MAX_TTL.
 //	SAKeyBindDPoP         — регистрировать OAuth2-клиент SA-ключа так, чтобы
 //	                        провайдер выпускал ТОЛЬКО sender-constrained токены
 //	                        (RFC 9449 `cnf.jkt`). Половина «выпуска» контроля
 //	                        привязки; половина «проверки» живёт на api-gateway.
-//	                        Default false; override KACHO_IAM_SAKEY_BIND_DPOP.
+//	                        Default false; override KANAME_SAKEY_BIND_DPOP.
 //	SAKeyAccessTokenTTL   — per-client access_token_lifespan, проставляемый на
 //	                        OAuth2-клиенте SA-ключа. 0 → поле не отправляется и
 //	                        действует глобальный дефолт провайдера. Задаётся
-//	                        профилем деплоя; override KACHO_IAM_SAKEY_ACCESS_TOKEN_TTL.
+//	                        профилем деплоя; override KANAME_SAKEY_ACCESS_TOKEN_TTL.
 type AuthNConfig struct {
 	Mode Mode `mapstructure:"mode"`
 	// IdentityProvider — ПОСАДКА ЛИЧНОСТИ: чем стенд проверяет человека,
@@ -319,7 +319,7 @@ type AuthNConfig struct {
 	// port, and it is off outside production.
 	//
 	// Format: comma-separated in the env override
-	// KACHO_IAM_AUTHN__TRUSTED_FORWARDER_SANS; a YAML list under
+	// KANAME_AUTHN__TRUSTED_FORWARDER_SANS; a YAML list under
 	// authn.trusted-forwarder-sans.
 	//
 	// Empty is tolerated ONLY in dev (in-process fixtures); in any production mode
@@ -377,19 +377,19 @@ type BootstrapMintConfig struct {
 	// PEM (supplied from a k8s Secret; never in YAML). An EMPTY value in that
 	// var means the mint is DISABLED — the use-case fails closed with
 	// UNAVAILABLE and the boot-guard does not apply. Default:
-	// KACHO_IAM_BOOTSTRAP_SA_PRIVATE_KEY_PEM.
+	// KANAME_BOOTSTRAP_SA_PRIVATE_KEY_PEM.
 	SigningKeyEnv string `mapstructure:"signing-key-env"`
 	// AllowedClientSANs — EXACT client-certificate SPIFFE SAN URIs allowed to
 	// call MintBootstrapToken (e.g.
 	// `spiffe://kacho.cloud/ns/kacho/sa/kacho-bootstrap-seeder`). Empty → nobody
 	// may mint. Env: comma-separated
-	// KACHO_IAM_AUTHN__BOOTSTRAP_MINT__ALLOWED_CLIENT_SANS.
+	// KANAME_AUTHN__BOOTSTRAP_MINT__ALLOWED_CLIENT_SANS.
 	AllowedClientSANs []string `mapstructure:"allowed-client-sans"`
 }
 
 // defaultBootstrapSigningKeyEnv — the env var the composition root has always
 // read the bootstrap SA key from.
-const defaultBootstrapSigningKeyEnv = "KACHO_IAM_BOOTSTRAP_SA_PRIVATE_KEY_PEM"
+const defaultBootstrapSigningKeyEnv = "KANAME_BOOTSTRAP_SA_PRIVATE_KEY_PEM"
 
 // ResolveSigningKeyEnv returns the env-var NAME holding the bootstrap signing
 // key, falling back to the documented default when unset.

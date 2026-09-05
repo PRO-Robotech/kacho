@@ -135,7 +135,7 @@ id (`iop` → iam) в `gateway/internal/opsproxy/proxy.go`.
 ## Конфигурация
 
 **Настраиваемых снаружи ручек у этой подсистемы в iam нет.** Предикат:
-`grep -rhoE 'KACHO_IAM_OPS_[A-Z0-9]*'` по всему дереву даёт **ноль** вхождений
+`grep -rhoE 'KANAME_OPS_[A-Z0-9]*'` по всему дереву даёт **ноль** вхождений
 (замер 2026-08-06). Параметры берутся из умолчаний общего пакета — период
 фонового обхода бесхозных операций задан `operations.ReconcilerConfig` (30 s,
 `pkg/operations/reconciler.go`), а сама постановка идёт в `pkg/operations`

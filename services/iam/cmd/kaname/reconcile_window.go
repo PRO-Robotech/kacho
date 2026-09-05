@@ -38,8 +38,8 @@ import (
 // стал бы вторым местом об одном предмете и разошёлся бы с политикой молча —
 // поэтому он читается из `pkg/authz.RevocationPolicy`, где объявлены все три.
 const (
-	reconcileSweepKnob = "KACHO_IAM_RECONCILE_SWEEP_INTERVAL_MS"
-	reconcileDrainKnob = "KACHO_IAM_RECONCILE_DRAIN_INTERVAL_MS"
+	reconcileSweepKnob = "KANAME_RECONCILE_SWEEP_INTERVAL_MS"
+	reconcileDrainKnob = "KANAME_RECONCILE_DRAIN_INTERVAL_MS"
 )
 
 // reconcileWindows — величины второй ступени, с которыми процесс БУДЕТ работать.

@@ -42,16 +42,16 @@ import (
 // silent-skip vector, since none of them gate on a separate Docker probe. A full
 // CI run invoked with `-short` would therefore drop every race proof that
 // data-integrity.md requires while still reporting green (a skipped test is
-// neither red nor green). When KACHO_IAM_REQUIRE_INTEGRATION is set (the CI
+// neither red nor green). When KANAME_REQUIRE_INTEGRATION is set (the CI
 // integration lane), `-short` is refused hard, before anything else runs.
 //
 // Under `-short` no container starts at all: pgtest starts one on first use, and
 // every test that would ask for one skips first.
 func TestMain(m *testing.M) {
 	flag.Parse()
-	if os.Getenv("KACHO_IAM_REQUIRE_INTEGRATION") != "" && testing.Short() {
+	if os.Getenv("KANAME_REQUIRE_INTEGRATION") != "" && testing.Short() {
 		fmt.Fprintln(os.Stderr,
-			"KACHO_IAM_REQUIRE_INTEGRATION set but -short given: refusing to skip integration/concurrency/DB-trigger proofs")
+			"KANAME_REQUIRE_INTEGRATION set but -short given: refusing to skip integration/concurrency/DB-trigger proofs")
 		os.Exit(1)
 	}
 

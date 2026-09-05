@@ -497,7 +497,7 @@ func TestKnobShapePredicateHasControlsBothWays(t *testing.T) {
 	for _, k := range []string{
 		"KACHO_API_GATEWAY_SESSION_CACHE_TTL_SECONDS",
 		"KACHO_API_GATEWAY_DPOP_REPLAY_TTL_SECONDS",
-		"KACHO_IAM_INTROSPECTION_CACHE_TTL",
+		"KANAME_INTROSPECTION_CACHE_TTL",
 		"KACHO_VPC_PEER_PROJECT_CACHE_TTL",
 		"http.client.timeout",
 		"authz.cache-size",

@@ -26,8 +26,8 @@ func reachNothing(string) (bool, string) { return false, "подставной �
 func axisAt(text string) axisText { return axisText{File: "injected.go", Line: 1, Text: text} }
 
 func TestPostureEnvGate_CanFailAndStaysSilent(t *testing.T) {
-	live := axisAt("KACHO_IAM_API_SERVER__METRICS_ENDPOINT не задан профилем: скрейпа нет")
-	dead := axisAt("KACHO_IAM_METRICS_ADDR не задан профилем: скрейпа нет")
+	live := axisAt("KANAME_API_SERVER__METRICS_ENDPOINT не задан профилем: скрейпа нет")
+	dead := axisAt("KANAME_METRICS_ADDR не задан профилем: скрейпа нет")
 	mute := axisAt("снята осознанно: на проводе только счётчики процесса")
 
 	cases := []struct {
@@ -46,7 +46,7 @@ func TestPostureEnvGate_CanFailAndStaysSilent(t *testing.T) {
 		{
 			name:  "названное не доезжает",
 			files: 1, axes: []axisText{dead}, reaches: reachNothing,
-			want: "KACHO_IAM_METRICS_ADDR названа текстом самоотчёта об оси",
+			want: "KANAME_METRICS_ADDR названа текстом самоотчёта об оси",
 			why:  "ровно предмет #2042: оператор задаёт названное и не меняет ничего",
 		},
 		{
@@ -115,20 +115,20 @@ func TestPostureAxisReader_JudgesTheNodeNotTheText(t *testing.T) {
 
 import "example.test/servicecontract"
 
-// Комментарий называет KACHO_IAM_COMMENT_ONLY и осью не является.
+// Комментарий называет KANAME_COMMENT_ONLY и осью не является.
 func build(addr string) {
 	// Ось первая: текст стоит аргументом.
-	_ = addrAxis(addr, "KACHO_IAM_AXIS_ONE не задан профилем развёртывания")
+	_ = addrAxis(addr, "KANAME_AXIS_ONE не задан профилем развёртывания")
 	// Ось вторая: текст склеен из двух литералов — форма законная и обычная.
-	_ = servicecontract.NotApplicable[string]("KACHO_IAM_AXIS_TWO " +
+	_ = servicecontract.NotApplicable[string]("KANAME_AXIS_TWO " +
 		"не задан профилем развёртывания")
 	// Не ось: аргумент не константа. Это механизм передачи, а не место самоотчёта.
 	_ = servicecontract.NotApplicable[string](reason())
 	// Не ось: отказ. У него свой производитель и свой гейт.
-	_ = refuse("задайте KACHO_IAM_REFUSAL_ONLY=true")
+	_ = refuse("задайте KANAME_REFUSAL_ONLY=true")
 }
 
-func reason() string { return "KACHO_IAM_INDIRECT" }
+func reason() string { return "KANAME_INDIRECT" }
 func refuse(s string) error { return nil }
 `
 	axes, err := postureAxisTexts("injected.go", []byte(src))
@@ -142,7 +142,7 @@ func refuse(s string) error { return nil }
 
 	_, census := auditPostureNamedEnv(1, axes, reachAll)
 	got := strings.Join(census.NamedList, ",")
-	if got != "KACHO_IAM_AXIS_ONE,KACHO_IAM_AXIS_TWO" {
+	if got != "KANAME_AXIS_ONE,KANAME_AXIS_TWO" {
 		t.Fatalf("перечень названных осями = %q; ждали ровно два имени осей.\n"+
 			"имя из комментария, из отказа и из непрямого аргумента предметом гейта не являются", got)
 	}

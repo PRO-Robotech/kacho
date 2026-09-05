@@ -93,7 +93,7 @@ python3 - "$CHART/values.dev.yaml" "$TMP/values.inject-byname.yaml" <<'PY'
 import io,sys
 s=io.open(sys.argv[1],encoding="utf-8").read()
 s=s.replace('{{- include "kacho.identity.configRenderInitContainer" . | nindent 0 }}',
-            '{{- include "kacho.identity.configRenderInitContainer" . | nindent 0 | replace "[A-Za-z_][A-Za-z0-9_]*" "KACHO_IAM_HOOK_TOKEN" }}')
+            '{{- include "kacho.identity.configRenderInitContainer" . | nindent 0 | replace "[A-Za-z_][A-Za-z0-9_]*" "KANAME_HOOK_TOKEN" }}')
 io.open(sys.argv[2],"w",encoding="utf-8").write(s)
 PY
 assert "остаток судится по имени" RED "$TMP/values.inject-byname.yaml"

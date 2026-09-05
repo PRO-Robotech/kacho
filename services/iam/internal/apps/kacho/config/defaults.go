@@ -15,7 +15,7 @@ import (
 // kept in one place rather than in struct-tags).
 //
 // DB / port / SSL values match kacho-vpc so both services deploy uniformly
-// through kacho-deploy. ENV-prefix is `KACHO_IAM` (vs `KACHO_VPC`), default
+// through kacho-deploy. ENV-prefix is `KANAME` (vs `KACHO_VPC`), default
 // DB-name is `kacho_iam`.
 func RegisterDefaults(v *viper.Viper) {
 	// logger
@@ -26,13 +26,13 @@ func RegisterDefaults(v *viper.Viper) {
 	v.SetDefault("api-server.internal-endpoint", "tcp://0.0.0.0:9091")
 	v.SetDefault("api-server.graceful-shutdown", 10*time.Second)
 	// Prometheus /metrics HTTP listener — separate cluster-internal port (never
-	// the public tenant gRPC surface). Override via KACHO_IAM_API_SERVER__METRICS_ENDPOINT.
+	// the public tenant gRPC surface). Override via KANAME_API_SERVER__METRICS_ENDPOINT.
 	v.SetDefault("api-server.metrics-endpoint", "tcp://0.0.0.0:9095")
 	// Docker Registry v2 `/iam/token` auth-server HTTP listener — a SEPARATE,
 	// external-reachable plaintext port (ingress-terminated TLS), distinct from
 	// the hooks (:9092) and metrics (:9095) listeners. Issuer/service/TTL shape
 	// the minted identity-JWT and must match the data-plane's advertised Bearer
-	// realm. Override via KACHO_IAM_API_SERVER__REGISTRY_TOKEN__{ENDPOINT,ISSUER,SERVICE,TTL}.
+	// realm. Override via KANAME_API_SERVER__REGISTRY_TOKEN__{ENDPOINT,ISSUER,SERVICE,TTL}.
 	v.SetDefault("api-server.registry-token.endpoint", "tcp://0.0.0.0:9096")
 	v.SetDefault("api-server.registry-token.issuer", "https://api.kacho.local/iam/token")
 	// `api-server.registry-token.service` УМОЛЧАНИЯ НЕ ИМЕЕТ намеренно — имя
@@ -46,14 +46,14 @@ func RegisterDefaults(v *viper.Viper) {
 	// объявленного умолчания даёт документированную ручку БЕЗ ЧИТАТЕЛЯ —
 	// оператор её задаёт, а исход загрузки не меняется. Держит это
 	// TestDocumentedEnvName_KeyMaterialWindowUntil.
-	// ENV: KACHO_IAM_API_SERVER__REGISTRY_TOKEN__KEY_MATERIAL_WINDOW_UNTIL
+	// ENV: KANAME_API_SERVER__REGISTRY_TOKEN__KEY_MATERIAL_WINDOW_UNTIL
 	v.SetDefault("api-server.registry-token.key-material-window-until", "")
 	// Cluster-INTERNAL Hydra-JWKS proxy HTTP listener (`GET /.well-known/jwks.json`)
 	// — a SEPARATE cluster-internal port (default `tcp://0.0.0.0:9097`), served ONLY
 	// on the kaname-internal Service (never external, ban #6) over one-way
 	// server-TLS. Short-TTL caching reverse-proxy of Hydra's PUBLIC JWKS so the
 	// data-plane fetches verification keys from iam (Hydra stays the signer).
-	// Override via KACHO_IAM_API_SERVER__JWKS_PROXY__ENDPOINT.
+	// Override via KANAME_API_SERVER__JWKS_PROXY__ENDPOINT.
 	v.SetDefault("api-server.jwks-proxy.endpoint", "tcp://0.0.0.0:9097")
 
 	// retention — фоновая уборка таблиц, чей рост задаёт внешний (задача #1292).
@@ -64,19 +64,19 @@ func RegisterDefaults(v *viper.Viper) {
 	// Интервал: верхняя граница числа строк = темп × (срок строки + интервал);
 	// при сроке до часа пять минут добавляют к ней около 8 %, то есть величина
 	// не определяющая и выбрана по стоимости прогона.
-	// ENV: KACHO_IAM_RETENTION__INTERVAL
+	// ENV: KANAME_RETENTION__INTERVAL
 	v.SetDefault("retention.interval", 5*time.Minute)
 	// Партия — длина одного оператора DELETE. Величина того же рода уже живёт в
 	// дереве у уборщика края (`gateway/internal/idempotencypg`), менять её без
 	// замера незачем.
-	// ENV: KACHO_IAM_RETENTION__BATCH
+	// ENV: KANAME_RETENTION__BATCH
 	v.SetDefault("retention.batch", 1000)
 	// Потолок партий за проход. Одна партия за тик даёт скорость догона
 	// «партия / интервал», и при более высоком темпе записи уборщик не догонит
 	// НИКОГДА, оставаясь зелёным по всякой проверке «вызвался ли». Двадцать
 	// партий по тысяче за пять минут — 240 тыс. строк в час на предмет, при
 	// длительности прохода, ограниченной сверху.
-	// ENV: KACHO_IAM_RETENTION__MAX_BATCHES_PER_PASS
+	// ENV: KANAME_RETENTION__MAX_BATCHES_PER_PASS
 	v.SetDefault("retention.max-batches-per-pass", 20)
 
 	// repository
@@ -88,7 +88,7 @@ func RegisterDefaults(v *viper.Viper) {
 	// любую проверку.
 	v.SetDefault("repository.postgres.replica-budget", 1)
 	v.SetDefault("repository.postgres.ssl-mode", "disable")
-	v.SetDefault("repository.postgres.password-from-env", "KACHO_IAM_DB_PASSWORD")
+	v.SetDefault("repository.postgres.password-from-env", "KANAME_DB_PASSWORD")
 
 	// authz — кто принимает решение о доступе.
 	//
@@ -107,7 +107,7 @@ func RegisterDefaults(v *viper.Viper) {
 	// Safe-by-default (prod-readiness F14): an un-configured binary fails CLOSED
 	// (production = anonymous → PermissionDenied), never dev (anonymous → full
 	// access). Local fixtures / the newman stand opt INTO dev explicitly via
-	// KACHO_IAM_AUTH_MODE=dev (values.dev.yaml carries mode: dev).
+	// KANAME_AUTH_MODE=dev (values.dev.yaml carries mode: dev).
 	v.SetDefault("authn.mode", "production")
 	// authn.identity-provider — УМОЛЧАНИЯ НЕТ НАМЕРЕННО (задача #1125).
 	//
@@ -125,16 +125,16 @@ func RegisterDefaults(v *viper.Viper) {
 	// resolved from env so they don't sit in YAML/ConfigMap.
 	v.SetDefault("authn.domain", "api.kacho.cloud")
 	v.SetDefault("authn.hydra-issuer", "")       // resolved via ResolveHydraIssuer() when empty
-	v.SetDefault("authn.hydra-jwks-url", "")     // resolved via ResolveHydraJWKSURL() (env KACHO_IAM_HYDRA_JWKS_URL)
+	v.SetDefault("authn.hydra-jwks-url", "")     // resolved via ResolveHydraJWKSURL() (env KANAME_HYDRA_JWKS_URL)
 	v.SetDefault("authn.hook-shared-secret", "") // no default — security-sensitive
-	v.SetDefault("authn.hook-shared-secret-env", "KACHO_IAM_HOOK_TOKEN")
+	v.SetDefault("authn.hook-shared-secret-env", "KANAME_HOOK_TOKEN")
 	// Административный предъявитель внешнего поставщика: в YAML пишется ИМЯ
 	// переменной, значение — никогда (секрет). Прежде эта ручка читалась прямо
 	// из окружения в корне сборки и потому была невидима проверке настройки при
 	// старте (задача #1125).
-	v.SetDefault("authn.hydra-admin-token-env", "KACHO_IAM_HYDRA_ADMIN_TOKEN")
+	v.SetDefault("authn.hydra-admin-token-env", "KANAME_HYDRA_ADMIN_TOKEN")
 	v.SetDefault("authn.jwks-encryption-key-hex", "")
-	v.SetDefault("authn.jwks-encryption-key-hex-env", "KACHO_IAM_JWKS_ENC_KEY")
+	v.SetDefault("authn.jwks-encryption-key-hex-env", "KANAME_JWKS_ENC_KEY")
 	v.SetDefault("authn.hooks-http-endpoint", "tcp://0.0.0.0:9092")
 	// Своя чеканка токенов (задача #897). Умолчания заданы ТОЛЬКО у величин,
 	// у которых умолчание осмысленно: путь нашей записи набора и срок ключа.
@@ -161,18 +161,18 @@ func RegisterDefaults(v *viper.Viper) {
 	// поллит Operation.Get, чтобы его забрать. Затирание выдерживает это окно,
 	// иначе клиент проигрывает гонку и получает ПУСТОЕ поле (затирание очищает
 	// поле, а не подставляет метку — метки нет). Override —
-	// KACHO_IAM_SAKEY_REDACT_GRACE (или KACHO_IAM_AUTHN__SAKEY_REDACT_GRACE).
+	// KANAME_SAKEY_REDACT_GRACE (или KANAME_AUTHN__SAKEY_REDACT_GRACE).
 	v.SetDefault("authn.sakey-redact-grace", 120*time.Second)
 	// User-токен: одноразовый private_key_pem отдаётся только в op.response; клиент
 	// поллит Operation.Get, чтобы его забрать. Grace-окно выдерживает это окно.
-	// Override — KACHO_IAM_USERTOKEN_REDACT_GRACE.
+	// Override — KANAME_USERTOKEN_REDACT_GRACE.
 	v.SetDefault("authn.usertoken-redact-grace", 120*time.Second)
 	// SA-key lifetime discipline. A service-account key IS the machine's
 	// credential, and machine principals are exempt from step-up (a machine has
 	// no second factor) — "exempt" is only defensible while the credential is
 	// bounded in time. So the omitted-ttl_seconds case resolves to a finite
 	// default instead of "never expires", and requests carry an inclusive
-	// ceiling. Overrides: KACHO_IAM_SAKEY_DEFAULT_TTL / KACHO_IAM_SAKEY_MAX_TTL.
+	// ceiling. Overrides: KANAME_SAKEY_DEFAULT_TTL / KANAME_SAKEY_MAX_TTL.
 	// Окно вердикта СОБСТВЕННОЙ ДВЕРИ iam. Пять секунд — то же число, что у
 	// остальных площадок платформы (`pkg/authz.RevocationPolicy`), и выбрано оно
 	// однородностью, а не удобством: окно отзыва у владельца модели не имеет
@@ -209,14 +209,14 @@ func RegisterDefaults(v *viper.Viper) {
 	// Per-client access_token_lifespan for the SA-key OAuth2 client. Default 0 =
 	// omit the field and inherit the provider-global TTL, so an existing
 	// deployment is unchanged until its profile pins a value (values.prod.yaml
-	// does). Override: KACHO_IAM_SAKEY_ACCESS_TOKEN_TTL.
+	// does). Override: KANAME_SAKEY_ACCESS_TOKEN_TTL.
 	v.SetDefault("authn.sakey-access-token-ttl", time.Duration(0))
 	// Sender-constrained (RFC 9449) tokens for SA keys. Binding is per-client
 	// REGISTRATION metadata, so it takes effect only for keys issued after it is
 	// enabled — pre-existing keys keep minting plain bearers until rotated.
 	// Default false; the edge enforcement knob must be turned on only AFTER this
 	// one, otherwise every existing service-account token is rejected.
-	// Override: KACHO_IAM_SAKEY_BIND_DPOP.
+	// Override: KANAME_SAKEY_BIND_DPOP.
 	v.SetDefault("authn.sakey-bind-dpop", false)
 	// bootstrap-mint — the cluster-admin token mint (#58). The signing key lives
 	// in a k8s Secret, referenced BY ENV NAME here (never inlined in YAML). The
@@ -224,8 +224,8 @@ func RegisterDefaults(v *viper.Viper) {
 	// default caller, so an operator must name the client-certificate SPIFFE SANs
 	// explicitly (and an ENABLED mint with an empty list refuses to boot in
 	// production — validate.go). Override —
-	// KACHO_IAM_AUTHN__BOOTSTRAP_MINT__ALLOWED_CLIENT_SANS (comma-separated).
-	v.SetDefault("authn.bootstrap-mint.signing-key-env", "KACHO_IAM_BOOTSTRAP_SA_PRIVATE_KEY_PEM")
+	// KANAME_AUTHN__BOOTSTRAP_MINT__ALLOWED_CLIENT_SANS (comma-separated).
+	v.SetDefault("authn.bootstrap-mint.signing-key-env", "KANAME_BOOTSTRAP_SA_PRIVATE_KEY_PEM")
 	v.SetDefault("authn.bootstrap-mint.allowed-client-sans", []string{})
 
 	// invite-mail — величины НАШЕГО отправителя письма приглашения (приёмка
@@ -242,7 +242,7 @@ func RegisterDefaults(v *viper.Viper) {
 	//
 	// Посадка полосы по умолчанию — шифрованная; незащищённой полосы разбор не
 	// производит ни при каком входе (ban #16).
-	// Override: KACHO_IAM_INVITE_MAIL__RELAY, __FROM, __FROM_NAME,
+	// Override: KANAME_INVITE_MAIL__RELAY, __FROM, __FROM_NAME,
 	// __USERNAME_ENV, __PASSWORD_ENV, __TLS_MODE, __CA_BUNDLE_FILE, __LOGIN_URL,
 	// __ATTEMPT_TIMEOUT, __MAX_ATTEMPTS.
 	v.SetDefault("invite-mail.relay", "")
@@ -259,7 +259,7 @@ func RegisterDefaults(v *viper.Viper) {
 	// The external relations engine, the gateway-internal drainer, Enterprise SSO,
 	// Governance, Federation/CAEP/ComplianceReport/Notify and the dead healthcheck
 	// placeholder were all removed from this YAML (dead config). The drainer is
-	// configured from KACHO_IAM_* env vars in the composition root; the engine no
+	// configured from KANAME_* env vars in the composition root; the engine no
 	// longer exists at all, so it is configured nowhere. The
 	// Prometheus metrics listener default is set above (api-server.metrics-endpoint).
 }

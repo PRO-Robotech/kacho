@@ -87,9 +87,9 @@ spec:
               mountPath: /etc/kaname
               readOnly: true
           env:
-            - name: KACHO_IAM_CONFIG_PATH
+            - name: KANAME_CONFIG_PATH
               value: /etc/kaname/config.yaml
-            - name: KACHO_IAM_DB_PASSWORD
+            - name: KANAME_DB_PASSWORD
               valueFrom:
                 secretKeyRef:
                   name: {{ .Values.db.passwordSecretName }}
@@ -128,9 +128,9 @@ spec:
               readOnly: true
             {{- end }}
           env:
-            - name: KACHO_IAM_CONFIG_PATH
+            - name: KANAME_CONFIG_PATH
               value: /etc/kaname/config.yaml
-            - name: KACHO_IAM_DB_PASSWORD
+            - name: KANAME_DB_PASSWORD
               valueFrom:
                 secretKeyRef:
                   name: {{ .Values.db.passwordSecretName }}

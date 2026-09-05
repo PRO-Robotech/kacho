@@ -13,7 +13,7 @@ import (
 // Интервал остается env-конфигурируемым; проверяем контракт envDurationMS на этом ключе:
 // unset/garbage/non-positive → дефолт, валидное положительное → миллисекунды из env.
 func TestEnvDurationMS_ReconcileDrain(t *testing.T) {
-	const key = "KACHO_IAM_RECONCILE_DRAIN_INTERVAL_MS"
+	const key = "KANAME_RECONCILE_DRAIN_INTERVAL_MS"
 	const def = 1 * time.Second
 
 	cases := []struct {

@@ -76,7 +76,7 @@ func TestMTLS_SEC_H_01_DisabledDefaultInsecure(t *testing.T) {
 // cert-trio → *ServerCreds() returns an error (fail-closed, never silent
 // insecure; ban #11).
 func TestMTLS_SEC_H_02_EnabledNoCertErrors(t *testing.T) {
-	t.Setenv("KACHO_IAM_INTERNAL_SERVER_MTLS_ENABLE", "true")
+	t.Setenv("KANAME_INTERNAL_SERVER_MTLS_ENABLE", "true")
 	// no CERTFILE/KEYFILE/CLIENTCAFILES → fail-closed.
 	m, err := config.LoadMTLS()
 	require.NoError(t, err)
@@ -90,10 +90,10 @@ func TestMTLS_SEC_H_02_EnabledNoCertErrors(t *testing.T) {
 // creds (the no-client-cert rejection is enforced at handshake in corelib).
 func TestMTLS_SEC_H_03_EnabledInternalServerCreds(t *testing.T) {
 	certFile, keyFile, caFile := writeTestCert(t)
-	t.Setenv("KACHO_IAM_INTERNAL_SERVER_MTLS_ENABLE", "true")
-	t.Setenv("KACHO_IAM_INTERNAL_SERVER_MTLS_CERTFILE", certFile)
-	t.Setenv("KACHO_IAM_INTERNAL_SERVER_MTLS_KEYFILE", keyFile)
-	t.Setenv("KACHO_IAM_INTERNAL_SERVER_MTLS_CLIENTCAFILES", caFile)
+	t.Setenv("KANAME_INTERNAL_SERVER_MTLS_ENABLE", "true")
+	t.Setenv("KANAME_INTERNAL_SERVER_MTLS_CERTFILE", certFile)
+	t.Setenv("KANAME_INTERNAL_SERVER_MTLS_KEYFILE", keyFile)
+	t.Setenv("KANAME_INTERNAL_SERVER_MTLS_CLIENTCAFILES", caFile)
 
 	m, err := config.LoadMTLS()
 	require.NoError(t, err)
@@ -107,10 +107,10 @@ func TestMTLS_SEC_H_03_EnabledInternalServerCreds(t *testing.T) {
 // public enable=true with a valid server cert + client-CA builds server creds.
 func TestMTLS_SEC_H_03_EnabledPublicServerCreds(t *testing.T) {
 	certFile, keyFile, caFile := writeTestCert(t)
-	t.Setenv("KACHO_IAM_PUBLIC_SERVER_MTLS_ENABLE", "true")
-	t.Setenv("KACHO_IAM_PUBLIC_SERVER_MTLS_CERTFILE", certFile)
-	t.Setenv("KACHO_IAM_PUBLIC_SERVER_MTLS_KEYFILE", keyFile)
-	t.Setenv("KACHO_IAM_PUBLIC_SERVER_MTLS_CLIENTCAFILES", caFile)
+	t.Setenv("KANAME_PUBLIC_SERVER_MTLS_ENABLE", "true")
+	t.Setenv("KANAME_PUBLIC_SERVER_MTLS_CERTFILE", certFile)
+	t.Setenv("KANAME_PUBLIC_SERVER_MTLS_KEYFILE", keyFile)
+	t.Setenv("KANAME_PUBLIC_SERVER_MTLS_CLIENTCAFILES", caFile)
 
 	m, err := config.LoadMTLS()
 	require.NoError(t, err)
@@ -125,10 +125,10 @@ func TestMTLS_SEC_H_03_EnabledPublicServerCreds(t *testing.T) {
 // rollback).
 func TestMTLS_SEC_H_08_PerEdgeIndependent(t *testing.T) {
 	certFile, keyFile, caFile := writeTestCert(t)
-	t.Setenv("KACHO_IAM_INTERNAL_SERVER_MTLS_ENABLE", "true")
-	t.Setenv("KACHO_IAM_INTERNAL_SERVER_MTLS_CERTFILE", certFile)
-	t.Setenv("KACHO_IAM_INTERNAL_SERVER_MTLS_KEYFILE", keyFile)
-	t.Setenv("KACHO_IAM_INTERNAL_SERVER_MTLS_CLIENTCAFILES", caFile)
+	t.Setenv("KANAME_INTERNAL_SERVER_MTLS_ENABLE", "true")
+	t.Setenv("KANAME_INTERNAL_SERVER_MTLS_CERTFILE", certFile)
+	t.Setenv("KANAME_INTERNAL_SERVER_MTLS_KEYFILE", keyFile)
+	t.Setenv("KANAME_INTERNAL_SERVER_MTLS_CLIENTCAFILES", caFile)
 	// public edge intentionally left unset → enable=false.
 
 	m, err := config.LoadMTLS()

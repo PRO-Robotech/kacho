@@ -137,10 +137,10 @@ ok
 # step-up, which holds only while the credential is time-bounded.
 render_only "$PROD" charts/kaname/templates/deployment.yaml; IAM_PROD="$HELM_OUT"
 [ -n "$IAM_PROD" ] || fail "kaname deployment did not render in prod profile"
-[[ "$IAM_PROD" == *'KACHO_IAM_SAKEY_DEFAULT_TTL'* ]] \
-  || fail "prod: KACHO_IAM_SAKEY_DEFAULT_TTL absent — an omitted ttl_seconds would mint a never-expiring key"
-[[ "$IAM_PROD" == *'KACHO_IAM_SAKEY_MAX_TTL'* ]] \
-  || fail "prod: KACHO_IAM_SAKEY_MAX_TTL absent — no ceiling on how long a machine credential may live"
+[[ "$IAM_PROD" == *'KANAME_SAKEY_DEFAULT_TTL'* ]] \
+  || fail "prod: KANAME_SAKEY_DEFAULT_TTL absent — an omitted ttl_seconds would mint a never-expiring key"
+[[ "$IAM_PROD" == *'KANAME_SAKEY_MAX_TTL'* ]] \
+  || fail "prod: KANAME_SAKEY_MAX_TTL absent — no ceiling on how long a machine credential may live"
 prod_atl="$(yq '.["kaname"].kacho.iam.saKey.accessTokenTtl // ""' "$PROD")"
 [ -n "$prod_atl" ] \
   || fail "prod: kaname.kacho.iam.saKey.accessTokenTtl unset — SA-key clients would inherit the global TTL with no second layer"
@@ -149,7 +149,7 @@ ok
 # ── 3. DEV keeps bounded keys but does NOT pin the per-client token lifespan ──
 render_only "$DEV" charts/kaname/templates/deployment.yaml; IAM_DEV="$HELM_OUT"
 [ -n "$IAM_DEV" ] || fail "kaname deployment did not render in dev profile"
-[[ "$IAM_DEV" == *'KACHO_IAM_SAKEY_MAX_TTL'* ]] \
+[[ "$IAM_DEV" == *'KANAME_SAKEY_MAX_TTL'* ]] \
   || fail "dev: the SA-key ceiling must apply on the local stand too"
 dev_atl="$(yq '.["kaname"].kacho.iam.saKey.accessTokenTtl // ""' "$DEV")"
 [ -z "$dev_atl" ] \
@@ -181,8 +181,8 @@ ok
 # ── 5. CAPABILITY INTACT — the templates still emit the knobs ────────────────
 # The DPoP feature was unreachable for its whole life precisely because no
 # template emitted its env. A values-level decision is inert without this.
-for name in KACHO_IAM_SAKEY_DEFAULT_TTL KACHO_IAM_SAKEY_MAX_TTL \
-            KACHO_IAM_SAKEY_ACCESS_TOKEN_TTL KACHO_IAM_SAKEY_BIND_DPOP; do
+for name in KANAME_SAKEY_DEFAULT_TTL KANAME_SAKEY_MAX_TTL \
+            KANAME_SAKEY_ACCESS_TOKEN_TTL KANAME_SAKEY_BIND_DPOP; do
   grep -q "name: $name" "$IAM_TPL" \
     || fail "capability: kaname template no longer emits $name — the values knob would be silently inert"
 done

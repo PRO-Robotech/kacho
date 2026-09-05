@@ -432,7 +432,7 @@ func runServe(cfg config.Config) error {
 	// client-CA), fail-closed на отсутствующем/мусорном cert-trio (no silent
 	// insecure downgrade, Сценарий SEC-H-02). Public и internal listener —
 	// два независимых per-edge ребра. Загружается отдельным envconfig-
-	// loader'ом из KACHO_IAM_{PUBLIC,INTERNAL}_SERVER_MTLS_* (mirror vpc).
+	// loader'ом из KANAME_{PUBLIC,INTERNAL}_SERVER_MTLS_* (mirror vpc).
 	mtlsCfg, err := config.LoadMTLS()
 	if err != nil {
 		return fmt.Errorf("load server mTLS config: %w", err)
@@ -909,7 +909,7 @@ func runServe(cfg config.Config) error {
 		Name:    "вебхуки провайдера личности",
 		Mode:    surfaceMode,
 		Logger:  logger,
-		Addr:    addrAxis(hooksAddr, "KACHO_IAM_AUTHN__HOOKS_HTTP_ENDPOINT не задан профилем развёртывания: обогащение токена и заведение пользователя по первому входу на этой посадке не обслуживаются"),
+		Addr:    addrAxis(hooksAddr, "KANAME_AUTHN__HOOKS_HTTP_ENDPOINT не задан профилем развёртывания: обогащение токена и заведение пользователя по первому входу на этой посадке не обслуживаются"),
 		Handler: hooksHandler,
 		Reach:   servicecontract.ReachClusterInternal,
 		Auth: servicecontract.Value[servicecontract.SurfaceAuthMech](
@@ -929,7 +929,7 @@ func runServe(cfg config.Config) error {
 		Name:    "диагностика (/metrics)",
 		Mode:    surfaceMode,
 		Logger:  logger,
-		Addr:    addrAxis(metricsAddr, "KACHO_IAM_API_SERVER__METRICS_ENDPOINT не задан профилем развёртывания: скрейпа на этой посадке нет"),
+		Addr:    addrAxis(metricsAddr, "KANAME_API_SERVER__METRICS_ENDPOINT не задан профилем развёртывания: скрейпа на этой посадке нет"),
 		Handler: metricsMux,
 		Reach:   servicecontract.ReachClusterInternal,
 		Auth: servicecontract.NotApplicable[servicecontract.SurfaceAuthMech](
@@ -1025,7 +1025,7 @@ func runServe(cfg config.Config) error {
 		Name:    "выдача токенов (/iam/token, /iam/v1/token)",
 		Mode:    surfaceMode,
 		Logger:  logger,
-		Addr:    addrAxis(registryTokenAddr, "KACHO_IAM_API_SERVER__REGISTRY_TOKEN__ENDPOINT не задан профилем развёртывания: docker login на этой посадке не обслуживается"),
+		Addr:    addrAxis(registryTokenAddr, "KANAME_API_SERVER__REGISTRY_TOKEN__ENDPOINT не задан профилем развёртывания: docker login на этой посадке не обслуживается"),
 		Handler: registryTokenHandler,
 		Reach:   servicecontract.ReachExternal,
 		Auth: servicecontract.Value[servicecontract.SurfaceAuthMech](
@@ -1154,7 +1154,7 @@ func runServe(cfg config.Config) error {
 			if !mtlsCfg.JWKSProxyVerifiesCaller() {
 				return fmt.Errorf(
 					"авторитет отзыва не может быть выставлен на слушателе, который не запрашивает " +
-						"клиентский сертификат: задайте KACHO_IAM_JWKSPROXY_SERVER_MTLS_CLIENTAUTHMODE=optional-mutual " +
+						"клиентский сертификат: задайте KANAME_JWKSPROXY_SERVER_MTLS_CLIENTAUTHMODE=optional-mutual " +
 						"(набор проверочных ключей при этом остаётся доступен без сертификата) " +
 						"либо выключите свою чеканку authn.token-signing.enabled")
 			}
@@ -1179,7 +1179,7 @@ func runServe(cfg config.Config) error {
 		Name:    "зеркало публичных ключей проверки (/.well-known/jwks.json)",
 		Mode:    surfaceMode,
 		Logger:  logger,
-		Addr:    addrAxis(jwksProxyAddr, "KACHO_IAM_API_SERVER__JWKS_PROXY__ENDPOINT не задан профилем развёртывания: плоскости данных реестра неоткуда взять ключи проверки, и её верификация останется закрытой"),
+		Addr:    addrAxis(jwksProxyAddr, "KANAME_API_SERVER__JWKS_PROXY__ENDPOINT не задан профилем развёртывания: плоскости данных реестра неоткуда взять ключи проверки, и её верификация останется закрытой"),
 		Handler: jwksProxyHandler,
 		Reach:   servicecontract.ReachClusterInternal,
 		Auth: servicecontract.NotApplicable[servicecontract.SurfaceAuthMech](
@@ -1486,14 +1486,14 @@ func runServe(cfg config.Config) error {
 	})
 
 	// Bootstrap-admin reconciler. Grants `system_admin@cluster_kacho_root` to
-	// the user identified by KACHO_IAM_BOOTSTRAP_ROOT_EMAIL and enqueues the
+	// the user identified by KANAME_BOOTSTRAP_ROOT_EMAIL and enqueues the
 	// FGA tuple into the transactional fga_outbox, out of which a trigger folds the
 	// direct fact in the same commit. The user row is mirrored only on first login /
 	// fixture upsert — which races startup — so a one-shot call would skip and the
 	// cluster-admin tuple would never be written at all (Bug B). The reconciler re-runs until the
 	// grant commits; it is non-fatal by contract (best-effort startup
 	// convenience, never a hard gate). No-op when the env is unset.
-	bootstrapEmail := os.Getenv("KACHO_IAM_BOOTSTRAP_ROOT_EMAIL")
+	bootstrapEmail := os.Getenv("KANAME_BOOTSTRAP_ROOT_EMAIL")
 	bootstrapReconciler := seed.NewBootstrapReconciler(
 		func(ctx context.Context) (seed.BootstrapAdminResult, error) {
 			return seed.RunBootstrapAdmin(ctx, pool, logger, seed.BootstrapAdminInput{Email: bootstrapEmail})
@@ -1505,7 +1505,7 @@ func runServe(cfg config.Config) error {
 	)
 	tasks = append(tasks, func() error {
 		if bootstrapEmail == "" {
-			logger.Info("bootstrap admin disabled (KACHO_IAM_BOOTSTRAP_ROOT_EMAIL unset)")
+			logger.Info("bootstrap admin disabled (KANAME_BOOTSTRAP_ROOT_EMAIL unset)")
 			return nil
 		}
 		logger.Info("bootstrap admin reconciler starting", "email", bootstrapEmail)
@@ -1798,7 +1798,7 @@ func requireRegistryTokenTLS(productionMode bool, addr string, mtlsCfg config.MT
 	}
 	if !mtlsCfg.RegistryTokenServerMTLS.Enable {
 		return fmt.Errorf("production mode requires TLS on the docker-token listener %s "+
-			"(set KACHO_IAM_REGISTRYTOKEN_SERVER_MTLS_ENABLE=true with its cert/key): the "+
+			"(set KANAME_REGISTRYTOKEN_SERVER_MTLS_ENABLE=true with its cert/key): the "+
 			"HTTP Basic password on this hop is the service-account key's private key, which "+
 			"this server never stores and which never expires; refusing to start with it in the clear",
 			addr)

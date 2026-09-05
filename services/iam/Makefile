@@ -247,13 +247,13 @@ docker:
 # migrate-* дергают отдельный binary `bin/kacho-migrator`.
 # Зависимость на build-migrator гарантирует, что bin/ актуальный.
 migrate-up: build-migrator
-	KACHO_IAM_DB_PASSWORD=secret bin/$(MIGRATOR_BIN) up
+	KANAME_DB_PASSWORD=secret bin/$(MIGRATOR_BIN) up
 
 migrate-down: build-migrator
-	KACHO_IAM_DB_PASSWORD=secret bin/$(MIGRATOR_BIN) down
+	KANAME_DB_PASSWORD=secret bin/$(MIGRATOR_BIN) down
 
 migrate-status: build-migrator
-	KACHO_IAM_DB_PASSWORD=secret bin/$(MIGRATOR_BIN) status
+	KANAME_DB_PASSWORD=secret bin/$(MIGRATOR_BIN) status
 
 # proto-install-plugins — ставит protoc-плагины в $GOBIN (lookup через $PATH для buf).
 # Доменный proto iam генерируется этими тремя плагинами.

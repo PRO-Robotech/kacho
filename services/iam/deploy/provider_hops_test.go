@@ -76,23 +76,23 @@ var providerHops = []hop{
 	{
 		name:      "admin API",
 		knob:      []string{"kaname", "kacho", "iam", "hydraAdminUrl"},
-		env:       "KACHO_IAM_HYDRA_ADMIN_URL",
+		env:       "KANAME_HYDRA_ADMIN_URL",
 		anchor:    []string{"kaname", "kacho", "iam", "hydraAdminCaFile"},
-		anchorEnv: "KACHO_IAM_HYDRA_ADMIN_CA_FILE",
+		anchorEnv: "KANAME_HYDRA_ADMIN_CA_FILE",
 	},
 	{
 		name:      "JWKS upstream",
 		knob:      []string{"kaname", "kacho", "iam", "hydraJwksUrl"},
-		env:       "KACHO_IAM_HYDRA_JWKS_URL",
+		env:       "KANAME_HYDRA_JWKS_URL",
 		anchor:    []string{"kaname", "kacho", "iam", "hydraJwksCaFile"},
-		anchorEnv: "KACHO_IAM_HYDRA_JWKS_CA_FILE",
+		anchorEnv: "KANAME_HYDRA_JWKS_CA_FILE",
 	},
 	{
 		name:      "token endpoint",
 		knob:      []string{"kaname", "kacho", "iam", "hydraTokenURL"},
-		env:       "KACHO_IAM_HYDRA_TOKEN_URL",
+		env:       "KANAME_HYDRA_TOKEN_URL",
 		anchor:    []string{"kaname", "kacho", "iam", "hydraTokenCaFile"},
-		anchorEnv: "KACHO_IAM_HYDRA_TOKEN_CA_FILE",
+		anchorEnv: "KANAME_HYDRA_TOKEN_CA_FILE",
 	},
 }
 

@@ -70,7 +70,7 @@ const (
 	// defaults.go либо явная привязка в load.go), поэтому AutomaticEnv его
 	// разрешает.
 	SupplyEnv SupplyPath = iota
-	// SupplyFile — ТОЛЬКО файлом настроек (`KACHO_IAM_CONFIG_PATH`). У ключа нет
+	// SupplyFile — ТОЛЬКО файлом настроек (`KANAME_CONFIG_PATH`). У ключа нет
 	// ни умолчания, ни привязки, поэтому переменная окружения до поля не
 	// доезжает — сколько бы раз её ни задали.
 	SupplyFile
@@ -172,7 +172,7 @@ func (s RequiredSetting) LaneNames() []string {
 var RequiredSettings = []RequiredSetting{
 	{
 		Key:          IdentityProviderSetting,
-		Env:          "KACHO_IAM_AUTHN__IDENTITY_PROVIDER",
+		Env:          "KANAME_AUTHN__IDENTITY_PROVIDER",
 		Supply:       SupplyEnv,
 		SampleIsLane: true,
 		// ВЫВЕДЕНО из словаря посадки, а не выписано: второе перечисление
@@ -187,7 +187,7 @@ var RequiredSettings = []RequiredSetting{
 	},
 	{
 		Key:      "authn.trusted-forwarder-sans",
-		Env:      "KACHO_IAM_AUTHN__TRUSTED_FORWARDER_SANS",
+		Env:      "KANAME_AUTHN__TRUSTED_FORWARDER_SANS",
 		Supply:   SupplyEnv,
 		FileList: true,
 		Sample:   "spiffe://kacho.cloud/ns/kacho/sa/kacho-api-gateway",
@@ -199,7 +199,7 @@ var RequiredSettings = []RequiredSetting{
 	},
 	{
 		Key:    "authn.hook-shared-secret",
-		Env:    "KACHO_IAM_HOOK_TOKEN",
+		Env:    "KANAME_HOOK_TOKEN",
 		Supply: SupplyEnv,
 		Sample: "заменить-на-случайную-строку",
 		Why: "предъявитель, которым поставщик удостоверений аутентифицируется на хуках выдачи и " +
@@ -208,7 +208,7 @@ var RequiredSettings = []RequiredSetting{
 	},
 	{
 		Key:    "authn.jwks-encryption-key-hex",
-		Env:    "KACHO_IAM_JWKS_ENC_KEY",
+		Env:    "KANAME_JWKS_ENC_KEY",
 		Supply: SupplyEnv,
 		Sample: "0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef",
 		Why: "ключ ОБЁРТКИ приватной половины подписного ключа: 32 байта в hex (64 знака). " +
@@ -218,7 +218,7 @@ var RequiredSettings = []RequiredSetting{
 	},
 	{
 		Key:    "api-server.registry-token.service",
-		Env:    "KACHO_IAM_API_SERVER__REGISTRY_TOKEN__SERVICE",
+		Env:    "KANAME_API_SERVER__REGISTRY_TOKEN__SERVICE",
 		Supply: SupplyEnv,
 		Sample: "kacho-registry",
 		Why: "имя службы реестра, которое обе стороны докерной полосы обязаны называть одинаково: " +
@@ -228,7 +228,7 @@ var RequiredSettings = []RequiredSetting{
 	},
 	{
 		Key:    "authn.hydra-admin-url",
-		Env:    "KACHO_IAM_HYDRA_ADMIN_URL",
+		Env:    "KANAME_HYDRA_ADMIN_URL",
 		Supply: SupplyEnv,
 		Lanes:  []IdentityProvider{IdentityProviderExternal},
 		Sample: "https://hydra-admin.kacho.svc:4445",
@@ -240,7 +240,7 @@ var RequiredSettings = []RequiredSetting{
 	},
 	{
 		Key:         "authn.hydra-admin-ca-file",
-		Env:         "KACHO_IAM_HYDRA_ADMIN_CA_FILE",
+		Env:         "KANAME_HYDRA_ADMIN_CA_FILE",
 		Supply:      SupplyEnv,
 		Lanes:       []IdentityProvider{IdentityProviderExternal},
 		Conditional: true,
@@ -252,7 +252,7 @@ var RequiredSettings = []RequiredSetting{
 	},
 	{
 		Key:    "authn.hydra-jwks-url",
-		Env:    "KACHO_IAM_HYDRA_JWKS_URL",
+		Env:    "KANAME_HYDRA_JWKS_URL",
 		Supply: SupplyEnv,
 		Lanes:  []IdentityProvider{IdentityProviderExternal},
 		Sample: "http://hydra-public.kacho.svc:4444/.well-known/jwks.json",
@@ -263,7 +263,7 @@ var RequiredSettings = []RequiredSetting{
 	},
 	{
 		Key:    "authn.hydra-token-url",
-		Env:    "KACHO_IAM_HYDRA_TOKEN_URL",
+		Env:    "KANAME_HYDRA_TOKEN_URL",
 		Supply: SupplyEnv,
 		Lanes:  []IdentityProvider{IdentityProviderExternal},
 		Sample: "http://hydra-public.kacho.svc:4444/oauth2/token",
@@ -273,7 +273,7 @@ var RequiredSettings = []RequiredSetting{
 	},
 	{
 		Key:    "authn.token-signing.enabled",
-		Env:    "KACHO_IAM_AUTHN__TOKEN_SIGNING__ENABLED",
+		Env:    "KANAME_AUTHN__TOKEN_SIGNING__ENABLED",
 		Supply: SupplyEnv,
 		Lanes:  []IdentityProvider{IdentityProviderOwn},
 		Sample: "true",
@@ -283,7 +283,7 @@ var RequiredSettings = []RequiredSetting{
 	},
 	{
 		Key:         "authn.token-signing.issuer",
-		Env:         "KACHO_IAM_AUTHN__TOKEN_SIGNING__ISSUER",
+		Env:         "KANAME_AUTHN__TOKEN_SIGNING__ISSUER",
 		Supply:      SupplyEnv,
 		Lanes:       []IdentityProvider{IdentityProviderOwn},
 		Conditional: true,
@@ -295,7 +295,7 @@ var RequiredSettings = []RequiredSetting{
 	},
 	{
 		Key:         "authn.token-signing.algorithm",
-		Env:         "KACHO_IAM_AUTHN__TOKEN_SIGNING__ALGORITHM",
+		Env:         "KANAME_AUTHN__TOKEN_SIGNING__ALGORITHM",
 		Supply:      SupplyEnv,
 		Lanes:       []IdentityProvider{IdentityProviderOwn},
 		Conditional: true,
@@ -305,7 +305,7 @@ var RequiredSettings = []RequiredSetting{
 	},
 	{
 		Key:         "authn.token-signing.allowed-algorithms",
-		Env:         "KACHO_IAM_AUTHN__TOKEN_SIGNING__ALLOWED_ALGORITHMS",
+		Env:         "KANAME_AUTHN__TOKEN_SIGNING__ALLOWED_ALGORITHMS",
 		Supply:      SupplyEnv,
 		Lanes:       []IdentityProvider{IdentityProviderOwn},
 		Conditional: true,

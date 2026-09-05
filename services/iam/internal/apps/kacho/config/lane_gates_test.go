@@ -284,7 +284,7 @@ func looksLikeProviderEnvName(s string) bool {
 func TestF4d11_AKnobUnrelatedToTheProviderIsNotAFinding(t *testing.T) {
 	env := providerEnvKnobs(t, "../../../..")
 	for _, knob := range env.names {
-		if knob == "KACHO_IAM_HOOK_TOKEN" || knob == "KACHO_IAM_JWKS_ENC_KEY" {
+		if knob == "KANAME_HOOK_TOKEN" || knob == "KANAME_JWKS_ENC_KEY" {
 			t.Fatalf("ручка %q к разговору с поставщиком не относится и в перепись попадать не должна", knob)
 		}
 	}

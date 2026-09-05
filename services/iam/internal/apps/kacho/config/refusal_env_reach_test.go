@@ -17,9 +17,9 @@
 //
 // Цена измерена, а не предположена. Замер на этом дереве (4 профиля посадки,
 // разбор `Config.Validate`): отказов прочитано 22, переменных названо 7, из них
-// НЕ ДОЕЗЖАЛО ДО ПОЛЯ 2 — `KACHO_IAM_AUTHN__TRUSTED_FORWARDER_SANS` (круг
+// НЕ ДОЕЗЖАЛО ДО ПОЛЯ 2 — `KANAME_AUTHN__TRUSTED_FORWARDER_SANS` (круг
 // законных отправителей переданной личности) и
-// `KACHO_IAM_AUTHN__TRUST_ANY_FORWARDER` (объявленный тем же отказом опт-ин
+// `KANAME_AUTHN__TRUST_ANY_FORWARDER` (объявленный тем же отказом опт-ин
 // стенда). Вторую из них задание не называло: она найдена этим разбором.
 //
 // ─────────────────────────────────────────────────────────────────────────────
@@ -45,7 +45,7 @@
 // было бы ложью, которую оператор обнаружит на стенде.
 //
 // И ещё уже: судятся только переменные ЭТОЙ службы — имя с префиксом
-// `KACHO_IAM_`. Отказ докерной полосы называет заодно `KACHO_REGISTRY_SERVICE_AUD`
+// `KANAME_`. Отказ докерной полосы называет заодно `KACHO_REGISTRY_SERVICE_AUD`
 // — переменную СОСЕДА, и это правильно: величина у обеих сторон одна, и оператор
 // обязан видеть оба имени. Судить её здесь нечем by construction — она не
 // доезжает и не должна доезжать до полей iam, а её досягаемость есть свойство
@@ -54,7 +54,7 @@
 // И ещё уже: судится ровно то, что НАЗВАНО ОТКАЗОМ. Имя переменной, встреченное
 // в комментарии, в шапке функции или в строке самоотчёта, предметом этого гейта
 // НЕ является — оно к оператору в момент отказа не обращено. Половина эта не
-// декоративна: по дереву iam имён вида `KACHO_IAM_*` — 106, и 63 из них не
+// декоративна: по дереву iam имён вида `KANAME_*` — 106, и 63 из них не
 // меняют исход `Load`+`Validate`, потому что читаются другими механизмами
 // (посадка mTLS, композиционный корень). Разбор, судящий исходный ТЕКСТ, выдал
 // бы шесть десятков находок, из которых верны единицы, — и его отключили бы
@@ -74,7 +74,7 @@ import (
 )
 
 // refusalEnvPattern — имя переменной этой службы в тексте отказа.
-var refusalEnvPattern = regexp.MustCompile(`KACHO_IAM_[A-Z0-9_]*[A-Z0-9]`)
+var refusalEnvPattern = regexp.MustCompile(`KANAME_[A-Z0-9_]*[A-Z0-9]`)
 
 // refusalProfile — ОДИН профиль посадки, на котором спрашивают стража.
 type refusalProfile struct {
@@ -186,13 +186,13 @@ func refusalProfilesUnderTest() []refusalProfile {
 	return []refusalProfile{
 		{Name: "боевой, ничего не объявлено", Env: map[string]string{}},
 		{Name: "боевой, полоса external", Env: map[string]string{
-			"KACHO_IAM_AUTHN__IDENTITY_PROVIDER": "external",
+			"KANAME_AUTHN__IDENTITY_PROVIDER": "external",
 		}},
 		{Name: "боевой, полоса own", Env: map[string]string{
-			"KACHO_IAM_AUTHN__IDENTITY_PROVIDER": "own",
+			"KANAME_AUTHN__IDENTITY_PROVIDER": "own",
 		}},
 		{Name: "стенд разработчика", Env: map[string]string{
-			"KACHO_IAM_AUTHN__MODE": "dev",
+			"KANAME_AUTHN__MODE": "dev",
 		}},
 	}
 }
@@ -281,14 +281,14 @@ func TestRefusalNamedEnvVarReachesItsField(t *testing.T) {
 // ЗАКОННЫЙ БЛИЗНЕЦ, половина первая: имя, названное ПРОЗОЙ, а не отказом, —
 // предметом гейта не является, и он о нём молчит.
 //
-// `KACHO_IAM_RECONCILE_DRAIN_INTERVAL_MS` встречается в дереве iam константой
+// `KANAME_RECONCILE_DRAIN_INTERVAL_MS` встречается в дереве iam константой
 // композиционного корня, читается им напрямую из окружения и потому исход
 // `Load`+`Validate` не меняет. Разбор, судящий исходный текст, объявил бы её
 // находкой; этот молчит — она не названа НИ ОДНИМ отказом стража настройки.
 // Прав ли соседний текст, называя её, — предмет другого разбора; здесь
 // утверждается только область.
 //
-// Прежде близнецом стояла `KACHO_IAM_METRICS_ADDR` — имя из текста самоотчёта о
+// Прежде близнецом стояла `KANAME_METRICS_ADDR` — имя из текста самоотчёта о
 // посадке. Оно перестало существовать в дереве вместе со своим предметом (#2042:
 // самоотчёт называл четыре переменные, которых нет, и приведён к работающим
 // ручкам), а близнец, взятый у снятого предмета, истекает вместе с ним и уносит
@@ -297,7 +297,7 @@ func TestRefusalEnvGate_SaysNothingAboutNamesMentionedOnlyInProse(t *testing.T) 
 	saved := snapshotEnv()
 	defer restoreEnv(saved)
 
-	const proseOnly = "KACHO_IAM_RECONCILE_DRAIN_INTERVAL_MS"
+	const proseOnly = "KANAME_RECONCILE_DRAIN_INTERVAL_MS"
 
 	_, census := auditRefusalNamedEnv(refusalProfilesUnderTest(), liveRefusalWorld())
 	for _, named := range census.NamedList {
@@ -309,8 +309,8 @@ func TestRefusalEnvGate_SaysNothingAboutNamesMentionedOnlyInProse(t *testing.T) 
 
 	// Положительный контроль: имя, которое отказ действительно называет, в
 	// перечне ЕСТЬ. Без него отрицание выше зеленело бы на пустом перечне.
-	if !contains(census.NamedList, "KACHO_IAM_HOOK_TOKEN") {
-		t.Fatalf("перечень названных отказами не содержит KACHO_IAM_HOOK_TOKEN — "+
+	if !contains(census.NamedList, "KANAME_HOOK_TOKEN") {
+		t.Fatalf("перечень названных отказами не содержит KANAME_HOOK_TOKEN — "+
 			"обход не состоялся, и отрицание выше беспредметно: %s", census)
 	}
 }

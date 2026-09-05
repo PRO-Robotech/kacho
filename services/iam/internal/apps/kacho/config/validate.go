@@ -270,8 +270,8 @@ func (c Config) validateTrustedForwarders() error {
 	return c.AuthN.TrustedForwarders().Require(grpcsrv.ForwarderGate{
 		Production:   c.AuthN.Mode.IsProduction(),
 		DevTrustAny:  c.AuthN.TrustAnyForwarder,
-		SANsKnob:     "authn.trusted-forwarder-sans (env KACHO_IAM_AUTHN__TRUSTED_FORWARDER_SANS)",
-		TrustAnyKnob: "authn.trust-any-forwarder (env KACHO_IAM_AUTHN__TRUST_ANY_FORWARDER)",
+		SANsKnob:     "authn.trusted-forwarder-sans (env KANAME_AUTHN__TRUSTED_FORWARDER_SANS)",
+		TrustAnyKnob: "authn.trust-any-forwarder (env KANAME_AUTHN__TRUST_ANY_FORWARDER)",
 	})
 }
 
@@ -308,7 +308,7 @@ func (c Config) validateProductionProviderAdminHop() error {
 	if declared == "" {
 		return fmt.Errorf(
 			"production mode: authn.hydra-admin-url is not declared (env override " +
-				"KACHO_IAM_HYDRA_ADMIN_URL) — it then falls back to a name DERIVED from the " +
+				"KANAME_HYDRA_ADMIN_URL) — it then falls back to a name DERIVED from the " +
 				"issuer, which is the public ingress host and does not resolve inside the " +
 				"cluster; the derivation is never empty, so the facade reads as configured " +
 				"while addressing a host nobody chose. Name the cluster-internal admin " +
@@ -336,7 +336,7 @@ func (c Config) validateProductionProviderAdminHop() error {
 	if c.AuthN.ResolveHydraAdminCAFile() == "" {
 		return fmt.Errorf(
 			"production mode: authn.hydra-admin-url is https (%q) but authn.hydra-admin-ca-file "+
-				"is empty (env KACHO_IAM_HYDRA_ADMIN_CA_FILE) — the provider's in-cluster "+
+				"is empty (env KANAME_HYDRA_ADMIN_CA_FILE) — the provider's in-cluster "+
 				"certificate is issued by the internal CA and this process trusts the system "+
 				"roots, so every call on the hop fails with an unknown authority; pin the "+
 				"bundle together with the address",
@@ -418,20 +418,20 @@ func (c Config) providerPublicHops() []providerPublicHop {
 	return []providerPublicHop{
 		{
 			setting:   "authn.hydra-jwks-url",
-			env:       "KACHO_IAM_HYDRA_JWKS_URL",
+			env:       "KANAME_HYDRA_JWKS_URL",
 			declared:  c.AuthN.DeclaredHydraJWKSURL(),
 			caSetting: "authn.hydra-jwks-ca-file",
-			caEnv:     "KACHO_IAM_HYDRA_JWKS_CA_FILE",
+			caEnv:     "KANAME_HYDRA_JWKS_CA_FILE",
 			caFile:    c.AuthN.ResolveHydraJWKSCAFile(),
 			whatItISFor: "the keyset this process mirrors on its cluster-internal listener is the " +
 				"data-plane's only anchor for deciding whether a token was signed by the provider",
 		},
 		{
 			setting:   "authn.hydra-token-url",
-			env:       "KACHO_IAM_HYDRA_TOKEN_URL",
+			env:       "KANAME_HYDRA_TOKEN_URL",
 			declared:  c.AuthN.DeclaredHydraTokenURL(),
 			caSetting: "authn.hydra-token-ca-file",
-			caEnv:     "KACHO_IAM_HYDRA_TOKEN_CA_FILE",
+			caEnv:     "KANAME_HYDRA_TOKEN_CA_FILE",
 			caFile:    c.AuthN.ResolveHydraTokenCAFile(),
 			whatItISFor: "the exchange posts a signed client assertion to this address and reads the " +
 				"minted bearer back out of the response body",
@@ -512,7 +512,7 @@ func (c Config) validateProductionAuthNSecrets() error {
 	var errs error
 	if strings.TrimSpace(c.AuthN.ResolveHookSharedSecret()) == "" {
 		errs = multierr.Append(errs, fmt.Errorf(
-			"production mode: authn.hook-shared-secret is empty (set authn.hook-shared-secret-env / KACHO_IAM_HOOK_TOKEN)"))
+			"production mode: authn.hook-shared-secret is empty (set authn.hook-shared-secret-env / KANAME_HOOK_TOKEN)"))
 	}
 	if _, err := c.AuthN.ResolveJWKSEncryptionKeys(); err != nil {
 		// ResolveJWKSEncryptionKeys already reports WHICH setting / what shape is

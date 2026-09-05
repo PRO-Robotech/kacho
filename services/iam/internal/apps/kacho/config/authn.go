@@ -7,7 +7,7 @@
 //
 //  1. value from YAML/ENV directly (e.g. authn.hook-shared-secret),
 //  2. ENV variable referenced by authn.hook-shared-secret-env (default
-//     KACHO_IAM_HOOK_TOKEN). Required because secrets are never written to
+//     KANAME_HOOK_TOKEN). Required because secrets are never written to
 //     YAML (workspace policy — secretKeyRef-only).
 //
 // ResolveHydraIssuer() / ResolveAudience() — derived from Domain. Default
@@ -43,7 +43,7 @@ func (c AuthNConfig) ResolveHookSharedSecret() string {
 	}
 	envName := c.HookSharedSecretEnv
 	if envName == "" {
-		envName = "KACHO_IAM_HOOK_TOKEN"
+		envName = "KANAME_HOOK_TOKEN"
 	}
 	return os.Getenv(envName)
 }
@@ -58,7 +58,7 @@ func (c AuthNConfig) JWKSEncryptionKeyEnvName() string {
 	if n := strings.TrimSpace(c.JWKSEncryptionKeyHexEnv); n != "" {
 		return n
 	}
-	return "KACHO_IAM_JWKS_ENC_KEY"
+	return "KANAME_JWKS_ENC_KEY"
 }
 
 // ResolveJWKSEncryptionKeys возвращает ПЕРЕЧЕНЬ ключей ОБЁРТКИ приватной
@@ -67,7 +67,7 @@ func (c AuthNConfig) JWKSEncryptionKeyEnvName() string {
 //
 // Источник: authn.jwks-encryption-key-hex напрямую либо переменная окружения,
 // названная authn.jwks-encryption-key-hex-env (по умолчанию
-// KACHO_IAM_JWKS_ENC_KEY). Каждая запись обязана быть ровно ключом объявленного
+// KANAME_JWKS_ENC_KEY). Каждая запись обязана быть ровно ключом объявленного
 // размера.
 //
 // # Почему перечень, а не вторая ручка (задача #1065)
@@ -157,7 +157,7 @@ func (c AuthNConfig) ResolveDomain() string {
 }
 
 // ResolveHydraIssuer returns the Hydra issuer. Precedence: explicit HydraIssuer
-// field → KACHO_IAM_HYDRA_ISSUER env → derived `https://hydra.<Domain>`. The env
+// field → KANAME_HYDRA_ISSUER env → derived `https://hydra.<Domain>`. The env
 // fallback lets a deployment whose Hydra advertises a non-derivable issuer (e.g. a
 // dev-stand behind a path-prefixed public URL) align the shim's client_assertion
 // audience with Hydra's real issuer — otherwise the exchange fails invalid_client.
@@ -165,7 +165,7 @@ func (c AuthNConfig) ResolveHydraIssuer() string {
 	if iss := strings.TrimSpace(c.HydraIssuer); iss != "" {
 		return iss
 	}
-	if v := strings.TrimSpace(os.Getenv("KACHO_IAM_HYDRA_ISSUER")); v != "" {
+	if v := strings.TrimSpace(os.Getenv("KANAME_HYDRA_ISSUER")); v != "" {
 		return v
 	}
 	return "https://hydra." + c.ResolveDomain()
@@ -179,7 +179,7 @@ func (c AuthNConfig) ResolveAudience() string {
 
 // ResolveHydraAdminURL — URL of the Hydra admin API (client-registration +
 // jwt-bearer trust-grants). Precedence: the explicit `authn.hydra-admin-url` /
-// ENV KACHO_IAM_HYDRA_ADMIN_URL override, then the derivation from the issuer
+// ENV KANAME_HYDRA_ADMIN_URL override, then the derivation from the issuer
 // (hydra.X → hydra-admin.X). The override lets in-cluster iam reach the
 // cluster-internal admin Service (http://kacho-umbrella-hydra-admin.<ns>.svc:4445)
 // even when the external issuer host does not resolve in-cluster.
@@ -196,7 +196,7 @@ func (c AuthNConfig) DeclaredHydraAdminURL() string {
 	if v := strings.TrimSpace(c.HydraAdminURL); v != "" {
 		return v
 	}
-	return strings.TrimSpace(os.Getenv("KACHO_IAM_HYDRA_ADMIN_URL"))
+	return strings.TrimSpace(os.Getenv("KANAME_HYDRA_ADMIN_URL"))
 }
 
 // ResolveHydraAdminCAFile — path to the PEM bundle the provider-admin hop is
@@ -209,7 +209,7 @@ func (c AuthNConfig) ResolveHydraAdminCAFile() string {
 	if v := strings.TrimSpace(c.HydraAdminCAFile); v != "" {
 		return v
 	}
-	return strings.TrimSpace(os.Getenv("KACHO_IAM_HYDRA_ADMIN_CA_FILE"))
+	return strings.TrimSpace(os.Getenv("KANAME_HYDRA_ADMIN_CA_FILE"))
 }
 
 func (c AuthNConfig) ResolveHydraAdminURL() string {
@@ -242,7 +242,7 @@ func (c AuthNConfig) ResolveHydraTokenEndpoint() string {
 
 // ResolveHydraTokenURL — the Hydra public token endpoint the `/iam/token` shim
 // POSTs the exchange to. Precedence: the explicit `authn.hydra-token-url` / ENV
-// KACHO_IAM_HYDRA_TOKEN_URL override (a cluster-internal Service, e.g.
+// KANAME_HYDRA_TOKEN_URL override (a cluster-internal Service, e.g.
 // http://kacho-umbrella-hydra-public.<ns>.svc:4444/oauth2/token), then the
 // external token endpoint (back-compat). The `iss` of the resulting token remains
 // the external Hydra issuer; only the network target differs.
@@ -266,14 +266,14 @@ func (c AuthNConfig) DeclaredHydraTokenURL() string {
 	if v := strings.TrimSpace(c.HydraTokenURL); v != "" {
 		return v
 	}
-	return strings.TrimSpace(os.Getenv("KACHO_IAM_HYDRA_TOKEN_URL"))
+	return strings.TrimSpace(os.Getenv("KANAME_HYDRA_TOKEN_URL"))
 }
 
 func (c AuthNConfig) DeclaredHydraJWKSURL() string {
 	if v := strings.TrimSpace(c.HydraJWKSURL); v != "" {
 		return v
 	}
-	return strings.TrimSpace(os.Getenv("KACHO_IAM_HYDRA_JWKS_URL"))
+	return strings.TrimSpace(os.Getenv("KANAME_HYDRA_JWKS_URL"))
 }
 
 // ResolveHydraTokenCAFile / ResolveHydraJWKSCAFile — path to the PEM bundle each
@@ -288,20 +288,20 @@ func (c AuthNConfig) ResolveHydraTokenCAFile() string {
 	if v := strings.TrimSpace(c.HydraTokenCAFile); v != "" {
 		return v
 	}
-	return strings.TrimSpace(os.Getenv("KACHO_IAM_HYDRA_TOKEN_CA_FILE"))
+	return strings.TrimSpace(os.Getenv("KANAME_HYDRA_TOKEN_CA_FILE"))
 }
 
 func (c AuthNConfig) ResolveHydraJWKSCAFile() string {
 	if v := strings.TrimSpace(c.HydraJWKSCAFile); v != "" {
 		return v
 	}
-	return strings.TrimSpace(os.Getenv("KACHO_IAM_HYDRA_JWKS_CA_FILE"))
+	return strings.TrimSpace(os.Getenv("KANAME_HYDRA_JWKS_CA_FILE"))
 }
 
 // ResolveHydraJWKSURL — the upstream Hydra PUBLIC JWKS URL the cluster-internal
 // jwks-proxy listener mirrors (`GET /.well-known/jwks.json`). Precedence mirrors
 // ResolveHydraTokenURL: the explicit `authn.hydra-jwks-url` / ENV
-// KACHO_IAM_HYDRA_JWKS_URL override (a cluster-internal Service, e.g.
+// KANAME_HYDRA_JWKS_URL override (a cluster-internal Service, e.g.
 // http://kacho-umbrella-hydra-public.<ns>.svc:4444/.well-known/jwks.json), then the
 // derived `<issuer>/.well-known/jwks.json` (back-compat). Hydra remains the signer;
 // iam serves a byte-identical mirror so the served kids are Hydra's real signing
@@ -331,7 +331,7 @@ func (c AuthNConfig) HydraAdminTokenEnvName() string {
 	if n := strings.TrimSpace(c.HydraAdminTokenEnv); n != "" {
 		return n
 	}
-	return "KACHO_IAM_HYDRA_ADMIN_TOKEN"
+	return "KANAME_HYDRA_ADMIN_TOKEN"
 }
 
 // ResolveHydraAdminToken возвращает административный предъявитель внешнего

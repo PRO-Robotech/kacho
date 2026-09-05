@@ -448,7 +448,7 @@ func (s *TokenEnrichmentService) EnrichClaims(ctx context.Context, subject strin
 //     inserted with no expiry, as is every row predating the SA-key TTL knobs;
 //     reading nil as invalid would take the cluster-admin credential and all
 //     legacy keys offline at once. Bounding those lifetimes is the issuer's job
-//     (KACHO_IAM_SAKEY_DEFAULT_TTL), not a retroactive reinterpretation here.
+//     (KANAME_SAKEY_DEFAULT_TTL), not a retroactive reinterpretation here.
 //   - the boundary instant is EXPIRED (`!After(now)`, not `Before(now)`): at
 //     exactly expires_at the credential is spent.
 //

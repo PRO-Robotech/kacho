@@ -151,7 +151,7 @@ func (u *UpdateGroupUseCase) Execute(ctx context.Context, in UpdateGroupInput) (
 // WHAT THIS PATH WAS MISSING. Unlike Group.Create — which co-commits a reconcile event
 // AND runs the forward post-commit — this update path did NEITHER. With no event there
 // is no at-least-once queue behind the revoke at all: it converged only when the 30s
-// periodic sweep (KACHO_IAM_RECONCILE_SWEEP_INTERVAL_MS) happened to reach the binding.
+// periodic sweep (KANAME_RECONCILE_SWEEP_INTERVAL_MS) happened to reach the binding.
 // And the event alone is not enough either, because it makes revoke latency the DEPTH OF
 // THE GLOBAL RECONCILE QUEUE: that queue is strictly FIFO, drained by a single worker at
 // ~5 events/s, each event a FULL O(scope) recompute, while the e2e suite produces
