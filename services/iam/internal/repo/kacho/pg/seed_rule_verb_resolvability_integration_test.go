@@ -320,17 +320,13 @@ func TestSeededRoleRuleVerbsAreDeclaredByTheType(t *testing.T) {
 	}
 
 	// Самоистечение: запись пина, которой больше нечего описывать, — находка.
-	var stale []string
-	for key := range knownUnresolvableSeedVerbs {
-		if !seen[key] {
-			stale = append(stale, key)
-		}
-	}
-	sort.Strings(stale)
-	for _, key := range stale {
-		t.Errorf("запись пина без предмета: «%s» перечислена, но такого нерезолвящегося глагола "+
-			"в посеве нет.\nГлагол привели к словарю, роль удалили либо правило сняли — сними и "+
-			"запись, иначе перечень описывает мир, которого нет.", key)
+	// Разбор ОБЩИЙ с гейтом-близнецом (seed_pin_self_expiry_test.go): вторая
+	// реализация разошлась бы с первой молча — обе дают «ноль находок» на честном
+	// перечне, и различие видно только на том входе, ради которого они написаны.
+	// Там же живёт доказательство её способности упасть и смолчать.
+	for _, f := range stalePinFindings("knownUnresolvableSeedVerbs",
+		"нерезолвящегося глагола", knownUnresolvableSeedVerbs, seen) {
+		t.Error(f)
 	}
 }
 

@@ -897,7 +897,7 @@ func runServe(cfg config.Config) error {
 		Name:    "вебхуки провайдера личности",
 		Mode:    surfaceMode,
 		Logger:  logger,
-		Addr:    addrAxis(hooksAddr, "KACHO_IAM_HOOKS_HTTP_ADDR не задан профилем развёртывания: обогащение токена и заведение пользователя по первому входу на этой посадке не обслуживаются"),
+		Addr:    addrAxis(hooksAddr, "KACHO_IAM_AUTHN__HOOKS_HTTP_ENDPOINT не задан профилем развёртывания: обогащение токена и заведение пользователя по первому входу на этой посадке не обслуживаются"),
 		Handler: hooksHandler,
 		Reach:   servicecontract.ReachClusterInternal,
 		Auth: servicecontract.Value[servicecontract.SurfaceAuthMech](
@@ -917,7 +917,7 @@ func runServe(cfg config.Config) error {
 		Name:    "диагностика (/metrics)",
 		Mode:    surfaceMode,
 		Logger:  logger,
-		Addr:    addrAxis(metricsAddr, "KACHO_IAM_METRICS_ADDR не задан профилем развёртывания: скрейпа на этой посадке нет"),
+		Addr:    addrAxis(metricsAddr, "KACHO_IAM_API_SERVER__METRICS_ENDPOINT не задан профилем развёртывания: скрейпа на этой посадке нет"),
 		Handler: metricsMux,
 		Reach:   servicecontract.ReachClusterInternal,
 		Auth: servicecontract.NotApplicable[servicecontract.SurfaceAuthMech](
@@ -1013,7 +1013,7 @@ func runServe(cfg config.Config) error {
 		Name:    "выдача токенов (/iam/token, /iam/v1/token)",
 		Mode:    surfaceMode,
 		Logger:  logger,
-		Addr:    addrAxis(registryTokenAddr, "KACHO_IAM_REGISTRY_TOKEN_ADDR не задан профилем развёртывания: docker login на этой посадке не обслуживается"),
+		Addr:    addrAxis(registryTokenAddr, "KACHO_IAM_API_SERVER__REGISTRY_TOKEN__ENDPOINT не задан профилем развёртывания: docker login на этой посадке не обслуживается"),
 		Handler: registryTokenHandler,
 		Reach:   servicecontract.ReachExternal,
 		Auth: servicecontract.Value[servicecontract.SurfaceAuthMech](
@@ -1167,7 +1167,7 @@ func runServe(cfg config.Config) error {
 		Name:    "зеркало публичных ключей проверки (/.well-known/jwks.json)",
 		Mode:    surfaceMode,
 		Logger:  logger,
-		Addr:    addrAxis(jwksProxyAddr, "KACHO_IAM_JWKS_PROXY_ADDR не задан профилем развёртывания: плоскости данных реестра неоткуда взять ключи проверки, и её верификация останется закрытой"),
+		Addr:    addrAxis(jwksProxyAddr, "KACHO_IAM_API_SERVER__JWKS_PROXY__ENDPOINT не задан профилем развёртывания: плоскости данных реестра неоткуда взять ключи проверки, и её верификация останется закрытой"),
 		Handler: jwksProxyHandler,
 		Reach:   servicecontract.ReachClusterInternal,
 		Auth: servicecontract.NotApplicable[servicecontract.SurfaceAuthMech](
