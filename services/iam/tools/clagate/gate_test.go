@@ -24,7 +24,7 @@ import (
 
 	"github.com/stretchr/testify/require"
 
-	"github.com/PRO-Robotech/kacho/services/iam/tools/clagate"
+	"github.com/PRO-Robotech/kacho-iam/tools/clagate"
 )
 
 // repoRoot — корень дерева продукта (пакет лежит в services/iam/tools/clagate).
