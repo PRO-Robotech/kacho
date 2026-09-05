@@ -219,6 +219,37 @@ func NewTokenEnrichmentService(cfg TokenEnrichmentConfig, users TokenEnrichmentU
 	return &TokenEnrichmentService{cfg: cfg, users: users, now: time.Now}
 }
 
+// WithClock injects the clock this service stamps `kacho_issued_at` from. A nil
+// func keeps time.Now.
+//
+// It exists because the claim set carries a value derived from the clock, and
+// the two issuance lanes (the provider's token hook and its refresh hook) must
+// be comparable BYTE FOR BYTE on one principal. Two clocks would let that one
+// value diverge — and the divergence would be a property of the probe, not of
+// the product, which is the shape of a check that cannot tell the two apart.
+// One instance, one clock, both lanes: whatever still differs belongs to the
+// lanes.
+func (s *TokenEnrichmentService) WithClock(now func() time.Time) *TokenEnrichmentService {
+	if now != nil {
+		s.now = now
+	}
+	return s
+}
+
+// UserClaims assembles the claim set for a User subject the CALLER has already
+// resolved.
+//
+// This is the same producer EnrichClaims uses on its user branch, exported so
+// the refresh lane can reach it. The refresh hook resolves the subject itself —
+// it has to, its revoke-all gate weighs EVERY row of the identity — and used to
+// assemble the claim set itself as well. That second assembly was a second place
+// about one subject: a change to the device-compliance derivation in the service
+// would not have reached the refresh lane, and one person would have been handed
+// different claims at issuance and at renewal, with each lane's own probe green.
+func (s *TokenEnrichmentService) UserClaims(u domain.User, subject string, hookCtx TokenHookContext) map[string]any {
+	return s.userClaims(u, subject, hookCtx)
+}
+
 // WithSAPort wires the ServiceAccount lookup port enabling Phase 3a SA-token
 // enrichment (`kacho_principal_type=service_account` + principal_id +
 // account_id claims). Returning the receiver keeps the constructor chainable
