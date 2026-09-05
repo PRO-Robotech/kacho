@@ -182,3 +182,144 @@ func TestManifestRightsRecognizerChangedWhatIsInspected(t *testing.T) {
 	t.Logf("перепись синтетики: файлов Go %d · манифестов %d — до расширения гейт читал "+
 		"первое число, после читает оба", goFiles, manifests)
 }
+
+// ─────────────────────────────────────────────────────────────────────────────
+// Ось 6: приведение написаний МНОГОСЛОВНОГО глагола (задача #1852).
+//
+// # Почему прежних пяти осей мало — замер, а не догадка
+//
+// Все глаголы инъекции выше однословные и строчные: `read`, `get`, `browse`. На
+// них `normalizeVerb` ТОЖДЕСТВЕНО, поэтому его снятие с любой из трёх сторон не
+// меняло НИ ОДНОГО исхода: набор оставался зелёным целиком, и ось, ради которой
+// приведение написано, не имела производителя красного.
+//
+// Форма, которую эти оси вводят, — многословный глагол, чьи написания в
+// каталоге и в манифесте различаются РЕГИСТРОМ и РАЗДЕЛИТЕЛЕМ
+// (`set_default_security_group` против `setDefaultSecurityGroup`).
+//
+// # Граница, и её не расширять
+//
+// Речь ТОЛЬКО о регистре и разделителе. Порядок слов приведение не снимает
+// намеренно (`get_internal` против `internalGet` не совпадут и не должны) — это
+// предмет генератора, отданный #1834. Пробы ниже утверждают первое и не
+// притворяются, будто судят второе.
+
+// syntheticRightsTreeWith — то же синтетическое дерево, но каталог и правила
+// ролей задаются вызывающим: у осей приведения предметом является ИМЕННО
+// написание, и фиксированный каталог их выразить не может.
+func syntheticRightsTreeWith(t *testing.T, catalogJSON, roleRuleVerbs, manifestBody string) string {
+	t.Helper()
+	root := t.TempDir()
+
+	write := func(rel, body string) {
+		t.Helper()
+		full := filepath.Join(root, filepath.FromSlash(rel))
+		if err := os.MkdirAll(filepath.Dir(full), 0o755); err != nil {
+			t.Fatalf("каталог %s: %v", rel, err)
+		}
+		if err := os.WriteFile(full, []byte(body), 0o644); err != nil {
+			t.Fatalf("файл %s: %v", rel, err)
+		}
+	}
+	write(catalogRelPath, catalogJSON)
+	write(modelRelPath, "type vpc_network\ntype vpc_security_group\ntype cluster\n")
+	write(migrationsRelDir+"/0001_roles.sql",
+		`INSERT INTO roles (rules) VALUES ('[{"module":"vpc","verbs":[`+roleRuleVerbs+`]}]');`)
+	write("services/vpc/"+manifestBaseName, manifestBody)
+	return root
+}
+
+// multiWordManifest — манифест с ОДНИМ многословным устаревшим глаголом,
+// записанным в верблюжьем регистре (как пишет манифест).
+//
+// Ресурс помечен `derived`, и это не деталь: аннотации синтетического каталога
+// якорят на `vpc_network` строку, поэтому `authored` дал бы ВТОРУЮ находку — по
+// оси, к приведению написаний отношения не имеющей. Инъекция обязана ронять
+// только проверяемое, иначе красное приходит от соседа (первая редакция этих
+// проб именно так и падала).
+func multiWordManifest(deprecatedVerb string) string {
+	return "apiVersion: iam/v1\nmodule: vpc\nresources:\n" +
+		"  - name: network\n    objectType: vpc_network\n    parent: project\n    producer: derived\n    verbs: [get]\n" +
+		"deprecatedVerbs:\n  " + deprecatedVerb + ":\n    class: get\n    since: \"2026-09-05\"\n" +
+		"    reason: синоним из прежней грамматики\n    removeWhen: выдач с таким правом ноль\n"
+}
+
+// faultsOnWith — находки гейта на дереве с заданными каталогом и правилами.
+func faultsOnWith(t *testing.T, catalogJSON, roleRuleVerbs, manifestBody string) []manifestRightFinding {
+	t.Helper()
+	tr := readTreeRights(t, newSyntheticTree(t,
+		syntheticRightsTreeWith(t, catalogJSON, roleRuleVerbs, manifestBody)))
+	if len(tr.Manifests) != 1 {
+		t.Fatalf("синтетика несёт %d манифестов вместо одного", len(tr.Manifests))
+	}
+	if tr.CatalogRows == 0 || len(tr.ModelTypes) == 0 || tr.MigrationFiles == 0 {
+		t.Fatalf("предпосылка синтетики не создана: строк каталога %d · типов модели %d · "+
+			"файлов миграций %d", tr.CatalogRows, len(tr.ModelTypes), tr.MigrationFiles)
+	}
+	return findManifestRightFaults(tr)
+}
+
+// catalogProducingMultiWord — каталог, производящий многословный глагол в
+// ЗМЕИНОМ регистре: так его пишет каталог прав.
+const catalogProducingMultiWord = `[
+  {"permission":"vpc.networks.get","required_relation":"viewer",
+   "scope_extractor":{"object_type":"vpc_network","from_request_field":"network_id"}},
+  {"permission":"vpc.security_groups.set_default_security_group","required_relation":"editor",
+   "scope_extractor":{"object_type":"vpc_security_group","from_request_field":"security_group_id"}}
+]`
+
+// catalogWithoutMultiWord — тот же каталог БЕЗ многословного глагола.
+const catalogWithoutMultiWord = `[
+  {"permission":"vpc.networks.get","required_relation":"viewer",
+   "scope_extractor":{"object_type":"vpc_network","from_request_field":"network_id"}}
+]`
+
+// TestManifestRightsGateJoinsMultiWordVerbSpellingsOnTheCatalogSide — ось 6а:
+// каталог пишет глагол змеиным регистром, манифест — верблюжьим, и приведение
+// обязано их СОЕДИНИТЬ.
+//
+// Снятие приведения со стороны КАТАЛОГА либо со стороны КЛЮЧА `deprecatedVerbs`
+// делает поиск промахом, находка «каталог его ПРОИЗВОДИТ» исчезает — и запись,
+// которая лжёт, живёт дальше молча.
+func TestManifestRightsGateJoinsMultiWordVerbSpellingsOnTheCatalogSide(t *testing.T) {
+	faults := faultsOnWith(t, catalogProducingMultiWord, `"get","set_default_security_group"`,
+		multiWordManifest("setDefaultSecurityGroup"))
+	namesOnly(t, faults, "deprecatedVerbs.setDefaultSecurityGroup", "каталог его ПРОИЗВОДИТ")
+}
+
+// TestManifestRightsGateJoinsMultiWordVerbSpellingsOnTheRoleRuleSide — ось 6б,
+// ЗЕРКАЛО: правило роли пишет глагол змеиным регистром, манифест — верблюжьим, и
+// приведение обязано соединить их ЗДЕСЬ ТОЖЕ.
+//
+// Это ПОЛОЖИТЕЛЬНЫЙ контроль: гейт обязан МОЛЧАТЬ. Снятие приведения со стороны
+// правил ролей либо со стороны ключа даёт ложную находку «у записи не осталось
+// предмета» — то есть отнимает предмет у ЖИВОЙ записи, ровно чего шапка
+// `normalizeVerb` и называет причиной своего существования.
+func TestManifestRightsGateJoinsMultiWordVerbSpellingsOnTheRoleRuleSide(t *testing.T) {
+	faults := faultsOnWith(t, catalogWithoutMultiWord, `"get","set_default_security_group"`,
+		multiWordManifest("setDefaultSecurityGroup"))
+	if len(faults) != 0 {
+		t.Fatalf("гейт нашёл на законном многословном глаголе то, чего в нём нет — приведение "+
+			"написаний не соединило стороны, и живая запись осталась без предмета: %v", faults)
+	}
+}
+
+// TestManifestRightsGateStillFindsAMultiWordVerbWithoutASubject — отрицательный
+// близнец предыдущей: без положительного контроля выше она зеленела бы и на
+// гейте, который молчит ВСЕГДА.
+func TestManifestRightsGateStillFindsAMultiWordVerbWithoutASubject(t *testing.T) {
+	namesOnly(t, faultsOnWith(t, catalogWithoutMultiWord, `"get"`,
+		multiWordManifest("setDefaultSecurityGroup")),
+		"deprecatedVerbs.setDefaultSecurityGroup", "не осталось предмета")
+}
+
+// TestManifestRightsGateDoesNotJoinDifferentWordOrder — ГРАНИЦА оси 6: порядок
+// слов приведение НЕ снимает, и проба это утверждает прямо.
+//
+// Без неё следующий читатель расширил бы приведение до «одинаковый набор букв» и
+// склеил бы `get_internal` с `internalGet` — разные права.
+func TestManifestRightsGateDoesNotJoinDifferentWordOrder(t *testing.T) {
+	namesOnly(t, faultsOnWith(t, catalogWithoutMultiWord, `"get","internal_get"`,
+		multiWordManifest("getInternal")),
+		"deprecatedVerbs.getInternal", "не осталось предмета")
+}

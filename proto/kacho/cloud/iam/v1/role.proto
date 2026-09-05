@@ -97,8 +97,9 @@ message Role {
   // TOMBSTONE (DB column dropped in migration 0008; proto field also
   // dropped). Org-scoped roles были упразднены вместе с
   // B2B Organization. Tag 9 & name `organization_id` зарезервированы и никогда
-  // не переиспользуются (append-only / buf-breaking tombstone discipline,
-  // enforced by scripts/tombstone_enforce.sh).
+  // не переиспользуются. Держатель — адъюдикация `buf breaking` против ствола
+  // (категория FILE); вызывается заданием конвейера и локально
+  // scripts/ci-local.sh.
   reserved 9;
   reserved "organization_id";
 
@@ -678,7 +679,9 @@ message Rule {
   // правилами (по одному на модуль). Намеренный major bump — tag 1 + имя
   // `modules` зарезервированы tombstone-дисциплиной (тот же прием, что
   // `AccessBinding` reserved 16/18; reserved, НЕ [deprecated]),
-  // никогда не реюзаются (enforced — scripts/tombstone_enforce.sh).
+  // никогда не реюзаются. Держатель — адъюдикация `buf breaking` против ствола
+  // (категория FILE); вызывается заданием конвейера и локально
+  // scripts/ci-local.sh.
   reserved 1;
   reserved "modules";
 
