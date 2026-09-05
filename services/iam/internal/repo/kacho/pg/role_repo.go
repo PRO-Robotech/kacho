@@ -697,17 +697,14 @@ func (w *roleWriter) UpsertSystemRole(ctx context.Context, r domain.Role) (domai
 // Update — UPDATE на mutable полях. Custom-role: name (с UNIQUE check),
 // description, permissions. System-role caller отвергает на use-case-уровне.
 func (w *roleWriter) Update(ctx context.Context, r domain.Role, updateMask []string) (domain.Role, error) {
-	parts, args, err := roleUpdateSet(r, updateMask)
+	args, changed, err := roleUpdateArgs(r, updateMask)
 	if err != nil {
 		return domain.Role{}, err
 	}
-	if len(parts) == 0 {
+	if !changed {
 		return w.Get(ctx, r.ID)
 	}
-	args = append(args, string(r.ID))
-	q := fmt.Sprintf(`UPDATE roles SET %s WHERE id = $%d RETURNING %s`,
-		strings.Join(parts, ", "), len(args), roleCols)
-	row := w.tx.QueryRow(ctx, q, args...)
+	row := w.tx.QueryRow(ctx, roleUpdateQ, args...)
 	out, err := scanRole(row)
 	if err != nil {
 		if errors.Is(err, pgx.ErrNoRows) {
@@ -732,19 +729,17 @@ func (w *roleWriter) UpdateCAS(ctx context.Context, r domain.Role, updateMask []
 	if expectedVersion == "" {
 		return w.Update(ctx, r, updateMask)
 	}
-	parts, args, err := roleUpdateSet(r, updateMask)
+	args, _, err := roleUpdateArgs(r, updateMask)
 	if err != nil {
 		return domain.Role{}, err
 	}
-	if len(parts) == 0 {
-		// Nothing to change — re-touch under the OCC guard so a no-op Update still
-		// validates the expected version (and bumps xmin for observers).
-		parts = append(parts, "id = id")
-	}
-	args = append(args, string(r.ID), expectedVersion)
-	q := fmt.Sprintf(`UPDATE roles SET %s WHERE id = $%d AND xmin::text = $%d RETURNING %s`,
-		strings.Join(parts, ", "), len(args)-1, len(args), roleCols)
-	row := w.tx.QueryRow(ctx, q, args...)
+	// Пустая маска НЕ выводит из-под сторожа: оператор исполняется с ложными
+	// признаками применимости, то есть переписывает строку теми же значениями.
+	// Это и есть прежний «re-touch» — версия сверяется, xmin двигается для
+	// наблюдателей, а метка правки НЕ трогается (её признак тоже ложен), потому
+	// что правки не было.
+	args = append(args, expectedVersion)
+	row := w.tx.QueryRow(ctx, roleUpdateCASQ, args...)
 	out, err := scanRole(row)
 	if err != nil {
 		if errors.Is(err, pgx.ErrNoRows) {
@@ -758,29 +753,65 @@ func (w *roleWriter) UpdateCAS(ctx context.Context, r domain.Role, updateMask []
 	return out, nil
 }
 
-// roleUpdateSet builds the mutable-field SET fragments + bind-args shared by Update
-// and UpdateCAS. Returns the `col = $n` parts and the matching arg slice (idx
-// starting at 1). An unknown update_mask field → ErrInvalidArg (verbatim text).
-func roleUpdateSet(r domain.Role, updateMask []string) ([]string, []any, error) {
-	// `rules` is the authored mutable field; when it is set, the use-case has
-	// already recompiled `permissions` from the new rules and updates BOTH in the
-	// same writer-tx so the stored compiled set never drifts from the authority.
-	// Время правки присваивается ЗДЕСЬ, и присваивается ПОСЛЕДНИМ — задачей
-	// #1873, вместе со столбцом `kacho_iam.roles.updated_at`.
-	//
-	// Здесь дважды стоял комментарий, разошедшийся с деревом в РАЗНЫЕ стороны, и
-	// оба раза это стоило дефекта. Сперва — «`updated_at` is bumped on every
-	// applied mutation» при отсутствующем столбце: по нему присваивание завели в
-	// соседнем операторе (`UpsertSystemRole`), а неизвестный столбец там есть
-	// ошибка РАЗБОРА всего оператора (`42703`), то есть писатель системной роли
-	// стал неисполним при любом входе, включая вставку. Затем — обратное
-	// утверждение «времени правки среди присваиваний НЕТ, и это не пропуск»,
-	// верное ровно до заведения столбца.
-	//
-	// Отсюда правило для следующего, кто сюда придёт: этот комментарий описывает
-	// СОСТОЯНИЕ ДЕРЕВА, а не намерение. Правишь перечень присваиваний — правь и
-	// его тем же изменением, иначе он переживёт свой предмет молча.
-	mutableFields := map[string]bool{"name": true, "description": true, "permissions": true, "rules": true, "labels": true}
+// ─── Запись роли: набор колонок известен КОМПИЛЯТОРУ ────────────────────────
+//
+// Оператор СТАТИЧЕСКИЙ, и это несущее свойство, а не стиль (задача продукта
+// #2058). Прежде список `SET` собирался из маски форматированием строки: какие
+// колонки пишет оператор, решалось во время исполнения и не проверялось ни
+// типами, ни компилятором. Ошибка такой сборки не видна ни сборке, ни обзору
+// диффа — только прогону, дошедшему до этой ветви маски.
+//
+// Применимость поля переехала из ТЕКСТА оператора в его ПАРАМЕТР: каждой
+// изменяемой колонке отвечает пара «признак применимости + значение», и колонка,
+// которую маска не назвала, переписывается сама в себя. Наблюдаемо это
+// тождественно прежнему поведению — писалось ровно то же значение, — а разница в
+// том, что перечень колонок теперь один и он в коде.
+//
+// Метка правки — такая же пара, и её признак ЛОЖЕН на пустой правке. Условие
+// несущее: `Update` на пустом перечне уходит в `Get`, не выполняя оператора
+// вовсе, а `UpdateCAS` оператор исполняет (сторож версии обязан отработать) —
+// и метка при этом двигаться не должна, иначе `updated_at` перестал бы означать
+// правку.
+const roleUpdateSetSQL = `
+	       name        = CASE WHEN $2::boolean  THEN $3::text        ELSE name        END,
+	       description = CASE WHEN $4::boolean  THEN $5::text        ELSE description END,
+	       rules       = CASE WHEN $6::boolean  THEN $7::jsonb       ELSE rules       END,
+	       permissions = CASE WHEN $8::boolean  THEN $9::jsonb       ELSE permissions END,
+	       labels      = CASE WHEN $10::boolean THEN $11::jsonb      ELSE labels      END,
+	       updated_at  = CASE WHEN $12::boolean THEN $13::timestamptz ELSE updated_at END`
+
+const roleUpdateQ = `UPDATE roles SET` + roleUpdateSetSQL +
+	` WHERE id = $1 RETURNING ` + roleCols
+
+const roleUpdateCASQ = `UPDATE roles SET` + roleUpdateSetSQL +
+	` WHERE id = $1 AND xmin::text = $14 RETURNING ` + roleCols
+
+// roleUpdateUnknownField — единственное место, где маска отвергается; текст
+// конвенционный и остаётся частью контракта.
+func roleUpdateUnknownField(f string) error {
+	return iamerr.Wrapf(iamerr.ErrInvalidArg, "Illegal argument update_mask field %q", f)
+}
+
+// roleUpdateArgs — аргументы статического оператора записи роли в порядке
+// подстановок, начиная с `$1`.
+//
+// changed=false означает «маска не назвала ни одного изменяемого поля»:
+// вызывающий решает сам, исполнять ли оператор (сторож версии — да, обычная
+// запись — нет).
+//
+// `rules` — авторская изменяемая форма; когда она названа, use-case уже
+// перекомпилировал `permissions` из новых правил, и обе колонки пишутся в одной
+// транзакции писателя, чтобы хранимый скомпилированный набор не разошёлся с
+// авторитетом. Отсюда следование: названы правила ⇒ названы и права.
+//
+// Время правки берётся из тех же часов, что `created_at` у вставки (время
+// процесса, не `now()` сервера): две метки одной строки, сравниваемые между
+// собой, обязаны приходить из одного источника, иначе расхождение часов делает
+// `updated_at < created_at` представимым.
+func roleUpdateArgs(r domain.Role, updateMask []string) (args []any, changed bool, err error) {
+	mutableFields := map[string]bool{
+		"name": true, "description": true, "permissions": true, "rules": true, "labels": true,
+	}
 	apply := map[string]bool{}
 	if len(updateMask) == 0 {
 		for k := range mutableFields {
@@ -789,7 +820,7 @@ func roleUpdateSet(r domain.Role, updateMask []string) ([]string, []any, error) 
 	} else {
 		for _, f := range updateMask {
 			if !mutableFields[f] {
-				return nil, nil, iamerr.Wrapf(iamerr.ErrInvalidArg, "Illegal argument update_mask field %q", f)
+				return nil, false, roleUpdateUnknownField(f)
 			}
 			apply[f] = true
 		}
@@ -798,63 +829,42 @@ func roleUpdateSet(r domain.Role, updateMask []string) ([]string, []any, error) 
 	if apply["rules"] {
 		apply["permissions"] = true
 	}
-	parts := []string{}
-	args := []any{}
-	idx := 1
-	if apply["name"] {
-		parts = append(parts, fmt.Sprintf("name = $%d", idx))
-		args = append(args, string(r.Name))
-		idx++
-	}
-	if apply["description"] {
-		parts = append(parts, fmt.Sprintf("description = $%d", idx))
-		args = append(args, string(r.Description))
-		idx++
-	}
+
+	// Значение готовится ТОЛЬКО для названного поля: отказ разбора принадлежит
+	// полю, которое вызывающий действительно прислал, а не всякому обновлению.
+	var rulesJSON, permsJSON, labelsJSON []byte
 	if apply["rules"] {
-		rulesJSON, err := rulesToJSON(r.Rules)
-		if err != nil {
-			return nil, nil, iamerr.Wrapf(iamerr.ErrInvalidArg, "Illegal argument rules: %s", err.Error())
+		if rulesJSON, err = rulesToJSON(r.Rules); err != nil {
+			return nil, false, iamerr.Wrapf(iamerr.ErrInvalidArg,
+				"Illegal argument rules: %s", err.Error())
 		}
-		parts = append(parts, fmt.Sprintf("rules = $%d", idx))
-		args = append(args, rulesJSON)
-		idx++
 	}
 	if apply["permissions"] {
-		permsJSON, err := json.Marshal(stringSlice(r.Permissions))
-		if err != nil {
-			return nil, nil, iamerr.Wrapf(iamerr.ErrInvalidArg, "Illegal argument permissions: %s", err.Error())
+		if permsJSON, err = json.Marshal(stringSlice(r.Permissions)); err != nil {
+			return nil, false, iamerr.Wrapf(iamerr.ErrInvalidArg,
+				"Illegal argument permissions: %s", err.Error())
 		}
-		parts = append(parts, fmt.Sprintf("permissions = $%d", idx))
-		args = append(args, permsJSON)
-		idx++
 	}
 	// labels — own-resource tenant-facing метки; mutable наравне с name/rules.
 	if apply["labels"] {
-		labelsJSON, err := marshalLabels(r.Labels)
-		if err != nil {
-			return nil, nil, iamerr.Wrapf(iamerr.ErrInvalidArg, "Illegal argument labels: %s", err.Error())
+		if labelsJSON, err = marshalLabels(r.Labels); err != nil {
+			return nil, false, iamerr.Wrapf(iamerr.ErrInvalidArg,
+				"Illegal argument labels: %s", err.Error())
 		}
-		parts = append(parts, fmt.Sprintf("labels = $%d", idx))
-		args = append(args, labelsJSON)
-		idx++
 	}
-	// Время правки — ПОСЛЕДНИМ и только когда правка действительно есть.
-	//
-	// Условие несущее: вызывающий (`Update`) на пустом перечне присваиваний
-	// уходит в `Get`, не выполняя оператора вовсе. Присвой мы время
-	// безусловно — перечень никогда не был бы пуст, «правка ничего не менявшая»
-	// стала бы двигать метку, и `updated_at` перестал бы означать правку.
-	//
-	// Величина берётся из тех же часов, что `created_at` у вставки (время
-	// процесса, не `now()` сервера): две метки одной строки, сравниваемые между
-	// собой, обязаны приходить из одного источника, иначе расхождение часов
-	// делает `updated_at < created_at` представимым.
-	if len(parts) > 0 {
-		parts = append(parts, fmt.Sprintf("updated_at = $%d", idx))
-		args = append(args, time.Now().UTC())
-	}
-	return parts, args, nil
+
+	changed = apply["name"] || apply["description"] || apply["rules"] ||
+		apply["permissions"] || apply["labels"]
+
+	return []any{
+		string(r.ID),
+		apply["name"], string(r.Name),
+		apply["description"], string(r.Description),
+		apply["rules"], rulesJSON,
+		apply["permissions"], permsJSON,
+		apply["labels"], labelsJSON,
+		changed, time.Now().UTC(),
+	}, changed, nil
 }
 
 // Delete — the in-use invariant is enforced at the DB level by the FK
