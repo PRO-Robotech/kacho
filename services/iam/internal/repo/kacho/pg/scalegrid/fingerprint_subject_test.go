@@ -67,6 +67,43 @@ func TestMigrationTouchesStructure_ProvenByInjection(t *testing.T) {
 			want: false,
 		},
 		{
+			name: "временная таблица ИЗ ВЫБОРКИ измеряемой — не влияет",
+			// #1833. `CREATE TEMP TABLE … ON COMMIT DROP AS SELECT … FROM <измеряемая>`
+			// несёт в ОДНОМ операторе и `CREATE`, и `DROP`, и имя измеряемой
+			// таблицы — но DDL идёт над ВРЕМЕННОЙ таблицей, а измеряемая только
+			// ЧИТАЕТСЯ. Плана чтения это не меняет, значит отчёт не устаревает.
+			sql: "CREATE TEMP TABLE _sys_rule ON COMMIT DROP AS\n" +
+				"  SELECT id, scope_type FROM kacho_iam.access_bindings WHERE role_id IS NOT NULL;",
+			want: false,
+		},
+		{
+			name: "временная таблица без ON COMMIT — тоже не влияет",
+			// Слово `DROP` из формы не обязательно: одного `CREATE` над временной
+			// таблицей довольно, чтобы прежний предикат взял оператор целиком.
+			sql:  "CREATE TEMPORARY TABLE _seg_scan AS SELECT verb FROM kacho_iam.role_rule_selectors;",
+			want: false,
+		},
+		{
+			name: "снятие временной таблицы по имени — не влияет",
+			sql:  "DROP TABLE IF EXISTS _seg_scan;\nSELECT count(*) FROM kacho_iam.access_bindings;",
+			want: false,
+		},
+		{
+			name: "ЗАКОННЫЙ БЛИЗНЕЦ: постоянная таблица из выборки измеряемой — влияет",
+			// Форма та же, слова `TEMP` нет. Такая таблица живёт в схеме и
+			// меняет её структуру — отпечаток обязан её взять. Без этого случая
+			// починка выродилась бы в «не брать CREATE … AS SELECT вовсе».
+			sql:  "CREATE TABLE kacho_iam.access_bindings_snapshot AS SELECT * FROM kacho_iam.access_bindings;",
+			want: true,
+		},
+		{
+			name: "ЗАКОННЫЙ БЛИЗНЕЦ: временная таблица И правка измеряемой — влияет",
+			// Оператор с временной таблицей отсеивается, СОСЕДНИЙ — нет.
+			sql: "CREATE TEMP TABLE _scan ON COMMIT DROP AS SELECT id FROM kacho_iam.access_bindings;\n" +
+				"ALTER TABLE kacho_iam.access_bindings ADD COLUMN note text;",
+			want: true,
+		},
+		{
 			name: "DDL и упоминание в РАЗНЫХ операторах — не влияет",
 			// Оператор разбирается целиком: DDL есть, но не над измеряемой.
 			sql: "INSERT INTO kacho_iam.access_bindings (id) VALUES ('acb-2');\n" +
