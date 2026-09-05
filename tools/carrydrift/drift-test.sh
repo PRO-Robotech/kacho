@@ -672,6 +672,119 @@ case_nothing_judged_at_all_is_loud() {
   rm -rf "$r"
 }
 
+# ── Случай 11а. Накопительная линия названа НЕ `release/*` — она всё равно опора
+# Пара к случаю 11 и граница послабления, которое тот вводит. Там вердикта не
+# получала ни одна посадка, и это была НАХОДКА о раскладке. Здесь та же форма
+# графа законна: линия просто названа иначе, и молчать о её посадках гейт не
+# вправе — иначе он ловит имя ветки, а не откат.
+#
+# Форма не выдумана и не синтетична по происхождению: ровно так устроена линия
+# выноса iam. Замер на её запросе слияния (`0c3b3313..5080524c`, 2026-09-05):
+# посадок 22, вердикта не получила НИ ОДНА, потому что образец опорных ссылок
+# знал `main` и `release/*`, а линия зовётся `integration/standalone-iam`.
+# Родителей на опорных линиях у каждой посадки было 0; на первородительской
+# цепи самой линии — ровно 1 у каждой из 22.
+#
+# Случай ОТРИЦАТЕЛЬНЫЙ (гейт обязан промолчать), поэтому рядом обязателен
+# случай 11б с настоящим откатом на той же раскладке: без него «промолчал»
+# неотличимо от «ослеп на накопительных линиях».
+case_line_named_outside_release_is_still_a_trunk_line() {
+  cases=$((cases + 1))
+  local r; r=$(newrepo)
+  echo "база" > "$r/shared.txt"; echo "прочее" > "$r/other.txt"; commit "$r" "база"
+  local base; base=$(git -C "$r" rev-parse HEAD)
+
+  git -C "$r" checkout -q -b integration/standalone-x
+  echo "ЛИНИЯ" > "$r/shared.txt"; commit "$r" "линия правит общий файл"
+  local line_before; line_before=$(git -C "$r" rev-parse HEAD)
+
+  git -C "$r" checkout -q -b lane "$base"
+  echo "правка полосы" > "$r/other.txt"; commit "$r" "полоса правит своё"
+  local lane; lane=$(git -C "$r" rev-parse HEAD)
+
+  # Посадка ЧИСТАЯ: полоса не трогала общий файл, линия его правит сама.
+  git -C "$r" checkout -q integration/standalone-x
+  git -C "$r" merge -q --no-ff --no-edit lane -m "посадка полосы в линию" >/dev/null 2>&1
+  local head; head=$(git -C "$r" rev-parse HEAD)
+  git -C "$r" update-ref refs/remotes/origin/main "$base"
+  git -C "$r" update-ref refs/remotes/origin/integration/standalone-x "$head"
+
+  # Предпосылка случая — та самая раскладка: на `main` и `release/*` у посадки
+  # родителей НЕТ, иначе он проверял бы не то, что назван.
+  local p1 p2 narrow
+  read -r _ p1 p2 <<<"$(git -C "$r" rev-list --parents -n1 "$head")"
+  narrow="$(git -C "$r" rev-list --first-parent refs/remotes/origin/main)"
+  if line_in "$narrow" "$p1" || line_in "$narrow" "$p2"; then
+    no "предпосылка случая 11а не выполнена: сторона лежит на узкой опоре" ""
+    rm -rf "$r"; return
+  fi
+  if [ "$p1" != "$line_before" ] || [ "$p2" != "$lane" ]; then
+    no "предпосылка случая 11а не выполнена: стороны посадки не в нужной форме" ""
+    rm -rf "$r"; return
+  fi
+
+  local out rc
+  out=$(cd "$r" && BEFORE="$base" HEAD_SHA="$head" bash -e -o pipefail "$JUDGE" 2>&1); rc=$?
+  if [ "$rc" -eq 0 ] \
+     && [[ "$out" != *"ни одна посадка прогона не получила вердикта"* ]] \
+     && [[ "$out" != *"сторону ствола установить нечем"* ]] \
+     && [[ "$out" != *"ОТКАТ"* ]] \
+     && any_line_matches "$out" 'сверено чисто 1' \
+     && any_line_matches "$out" 'сторона ствола не установлена 0'; then
+    ok "линия вне образца release/* судится как опорная, а не остаётся без вердикта"
+  else
+    no "посадка в линию, названную не release/*, вердикта не получила (rc=$rc)" "$out"
+  fi
+  rm -rf "$r"
+}
+
+# ── Случай 11б. Настоящий откат на той же раскладке — гейт ОБЯЗАН заговорить ──
+# Положительный близнец случая 11а и единственное, что делает его молчание
+# осмысленным. Отличается от него РОВНО ОДНИМ фактом: посадка возвращает общий
+# файл к содержимому базы. Всё остальное — имена, граф, ссылки — совпадает.
+#
+# Он же отвечает на вопрос, которым расширение образца опорных ссылок обязано
+# сопровождаться: не станет ли гейт слеп к настоящему откату ради того, чтобы
+# перестать краснеть. Пока этот случай зелен — не станет.
+case_rollback_on_a_line_named_outside_release_is_named() {
+  cases=$((cases + 1))
+  local r; r=$(newrepo)
+  echo "база" > "$r/shared.txt"; echo "прочее" > "$r/other.txt"; commit "$r" "база"
+  local base; base=$(git -C "$r" rev-parse HEAD)
+
+  git -C "$r" checkout -q -b integration/standalone-x
+  echo "ЛИНИЯ" > "$r/shared.txt"; commit "$r" "линия правит общий файл"
+  local line_before; line_before=$(git -C "$r" rev-parse HEAD)
+
+  git -C "$r" checkout -q -b lane "$base"
+  echo "правка полосы" > "$r/other.txt"; commit "$r" "полоса правит своё"
+  local lane; lane=$(git -C "$r" rev-parse HEAD)
+
+  git -C "$r" checkout -q integration/standalone-x
+  git -C "$r" merge -q --no-ff --no-commit lane >/dev/null 2>&1
+  echo "база" > "$r/shared.txt"          # ОТКАТ: посадка вернула содержимое базы
+  commit "$r" "посадка полосы в линию"
+  local head; head=$(git -C "$r" rev-parse HEAD)
+  git -C "$r" update-ref refs/remotes/origin/main "$base"
+  git -C "$r" update-ref refs/remotes/origin/integration/standalone-x "$head"
+
+  local p1 p2
+  read -r _ p1 p2 <<<"$(git -C "$r" rev-list --parents -n1 "$head")"
+  if [ "$p1" != "$line_before" ] || [ "$p2" != "$lane" ]; then
+    no "предпосылка случая 11б не выполнена: стороны посадки не в нужной форме" ""
+    rm -rf "$r"; return
+  fi
+
+  local out rc
+  out=$(cd "$r" && BEFORE="$base" HEAD_SHA="$head" bash -e -o pipefail "$JUDGE" 2>&1); rc=$?
+  if [ "$rc" -ne 0 ] && [[ "$out" == *"ОТКАТ: shared.txt"* ]]; then
+    ok "настоящий откат на линии вне образца release/* назван, и координата напечатана"
+  else
+    no "откат на линии, названной не release/*, НЕ пойман (rc=$rc)" "$out"
+  fi
+  rm -rf "$r"
+}
+
 # ── Случай 10. Опорных линий НЕТ ВОВСЕ — обход пуст, и гейт падает ───────────
 # Близнец к случаю 9 и граница послабления, которое он вводит. Там граф не
 # отвечал на вопрос о КОНКРЕТНОЙ посадке; здесь спрашивать не у чего вообще:
@@ -699,7 +812,8 @@ case_no_trunk_reference_is_an_empty_traversal() {
   git -C "$r" branch -q -D main lane other >/dev/null 2>&1
   if [ -n "$(git -C "$r" for-each-ref --format='%(refname)' \
               refs/heads/main refs/remotes/origin/main \
-              'refs/heads/release/*' 'refs/remotes/origin/release/*')" ]; then
+              'refs/heads/release/*' 'refs/remotes/origin/release/*' \
+              'refs/heads/integration/*' 'refs/remotes/origin/integration/*')" ]; then
     no "предпосылка случая не выполнена: опорная ссылка всё-таки осталась" ""
     rm -rf "$r"; return
   fi
@@ -1278,6 +1392,8 @@ case_line_into_lane_adaptation_is_silent
 case_trunk_side_undecidable_is_not_a_finding
 case_no_trunk_reference_is_an_empty_traversal
 case_nothing_judged_at_all_is_loud
+case_line_named_outside_release_is_still_a_trunk_line
+case_rollback_on_a_line_named_outside_release_is_named
 case_declaration_outlives_the_push_that_used_it
 case_declaration_without_subject_anywhere_still_reds
 case_finding_outlives_the_push_that_found_it
