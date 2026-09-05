@@ -137,9 +137,34 @@ func (c Config) Validate() error {
 				strings.Join(coredb.ConfigurableSSLModes(), ", ")))
 	}
 
-	if strings.TrimSpace(c.Repository.Postgres.URL) == "" {
+	// АДРЕС БАЗЫ СУДИТСЯ ПО ХОСТУ, А НЕ ПО ПУСТОТЕ СТРОКИ.
+	//
+	// Прежде здесь стояла только проверка на целиком пустую строку. По пути чарта
+	// она не могла сработать НИ ПРИ КАКОМ входе: шаблон собирает строку из частей
+	// (`postgres://<user>@<host>:<port>/<db>`), поэтому при незаданном адресе базы
+	// она выходит НЕПУСТОЙ и с пустым хостом — `postgres://iam@:5432/kacho_iam`.
+	// Предикат был уже своего предмета, и настоящий отказ оператора шёл мимо него.
+	//
+	// Цена измерена в кластере: установка с незаданным адресом базы не давала ни
+	// отказа, ни текста — контейнер миграций оставался в `running` с НУЛЁМ байт
+	// журнала, ожидая базу, которой не будет никогда. Само ожидание законно и
+	// нужно (база поднимается рядом и может быть не готова); незаконно не
+	// различать «ещё не поднялась» и «адрес не задан»: первое сходится само,
+	// второе не сойдётся никогда.
+	//
+	// Форма `ключ=значение` (её тоже принимает драйвер) здесь НЕ судится: чарт её
+	// не производит, а разбирать вторым способом значило бы завести второй кодек,
+	// который разойдётся с первым молча.
+	if dsn := strings.TrimSpace(c.Repository.Postgres.URL); dsn == "" {
 		errs = multierr.Append(errs,
 			fmt.Errorf("repository.postgres.url is empty"))
+	} else if parsed, parseErr := url.Parse(dsn); parseErr == nil &&
+		(parsed.Scheme == "postgres" || parsed.Scheme == "postgresql") &&
+		strings.TrimSpace(parsed.Hostname()) == "" {
+		errs = multierr.Append(errs,
+			fmt.Errorf("repository.postgres.url=%q names no host: the database address is not set, "+
+				"and waiting for it would never converge; set the chart's db.host (or the host part of the DSN)",
+				dsn))
 	}
 
 	// Круг отправителей чужой личности проверяется на ЛЮБОМ старте, а не только в
