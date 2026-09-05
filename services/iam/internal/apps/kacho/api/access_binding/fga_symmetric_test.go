@@ -291,6 +291,10 @@ type abFakeRepo struct {
 	// lbaRows — fixture rows returned by ListByAccount. Seed via
 	// seedABListByAccount; used by ListByAccountUseCase unit tests.
 	lbaRows []domain.AccessBinding
+	// lbrRows — фикстурные строки ListByRole. Засевается seedABListByRole;
+	// используется пробами стоимости страницы (#2054). Пусто ⇒ читается
+	// одиночная `ab`, как было, поэтому существующие пробы не задеты.
+	lbrRows []domain.AccessBinding
 	// lbsRows — fixture rows returned by ListByScope. Seed via seedABListByScope;
 	// used by the viewer ∪ v_list union-floor unit tests. Also the source rows for
 	// the unified List fake.

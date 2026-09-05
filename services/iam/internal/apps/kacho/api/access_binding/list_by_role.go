@@ -67,13 +67,14 @@ func (u *ListByRoleUseCase) Execute(ctx context.Context, roleID string, f repoab
 	// administer (grant-authority holder / admin). requireGrantAuthority opens its
 	// own reader, so the list reader is released first. Self-grants (the caller is
 	// the subject) are also visible.
+	authority := &pageAuthority{repo: u.repo, relations: u.relations}
 	filtered := out[:0:0]
 	for _, b := range out {
 		if callerIsSubjectOf(ctx, b) {
 			filtered = append(filtered, b)
 			continue
 		}
-		if err := requireGrantAuthority(ctx, u.repo, u.relations, string(b.ResourceType), b.ResourceID); err == nil {
+		if err := authority.verdict(ctx, string(b.ResourceType), b.ResourceID); err == nil {
 			filtered = append(filtered, b)
 		}
 	}
@@ -81,5 +82,86 @@ func (u *ListByRoleUseCase) Execute(ctx context.Context, roleID string, f repoab
 	// keyset cursor). A page may return fewer rows than page_size after the
 	// scope-filter; the client paginates until next_page_token is empty (parity
 	// with the per-object filtered List RPCs).
+	//
+	// Дофильтровый курсор — РЕШЕНИЕ, а не умолчание, и оно записано:
+	// docs/engineering/architecture/page-cost-belongs-to-the-request.md
+	// (паритет с пообъектно-фильтрованными списочными RPC подфазы D — полосы
+	// меняются вместе либо не меняются).
 	return filtered, next, nil
+}
+
+// ─── СТОИМОСТЬ СТРАНИЦЫ ПРИНАДЛЕЖИТ ЗАПРОСУ ─────────────────────────────────
+
+// pageAuthority — вердикты о праве администрировать область, СОБРАННЫЕ ЗА ОДИН
+// ЗАПРОС. Отвечает ровно то же, что requireGrantAuthority на той же строке, и
+// отличается только тем, СКОЛЬКО РАЗ об этом спрашивают.
+//
+// # Что именно перестало умножаться на число строк
+//
+// Прежде каждая строка страницы стоила двух вопросов к хранилищу прав: супер-гейт
+// (про ЛИЧНОСТЬ вызывающего — одинаков для всей страницы) и админ-кортеж области
+// (про ОБЛАСТЬ — одинаков для всех строк одной области). `page_size` — часть
+// контракта и доходит до 1000 (`api-conventions.md` §Pagination), поэтому тысяча
+// строк разворачивалась в две тысячи последовательных вопросов; под нагрузкой
+// это не укладывается в срок и даёт `UNAVAILABLE` на ПОЛОЖИТЕЛЬНОМ пути, а
+// сужать `page_size` ради бюджета запрещено (`security.md` §«Фильтрация —
+// страница → проверка страницы»).
+//
+// Теперь супер-гейт спрашивается ОДНАЖДЫ за запрос, а область — однажды на
+// РАЗЛИЧНУЮ область. Число вопросов перестало быть функцией числа строк.
+//
+// # Почему это не ослабление
+//
+// Оба вопроса детерминированы в пределах запроса: субъект берётся из одного и
+// того же контекста, объект — из типа и идентификатора области. Повторный вопрос
+// об одном и том же дал бы тот же ответ, поэтому памятка не меняет ни одного
+// вердикта — она снимает повтор. Кэша МЕЖДУ запросами здесь нет намеренно: отзыв
+// права обязан действовать на следующем же чтении.
+//
+// # Три исхода супер-гейта, а не два
+//
+// «Спросить не удалось» — не «не положено»: неполадка хранилища прав возвращается
+// как `AuthzBackendUnavailable`, ровно как в requireGrantAuthority, и запоминается
+// вместе с остальными, чтобы страница не переспрашивала сорванный источник по
+// разу на строку.
+//
+// Вопрос задаётся ЛЕНИВО: страница без строк не оплачивается вовсе.
+type pageAuthority struct {
+	repo      Repo
+	relations clients.RelationStore
+
+	clusterAsked bool
+	clusterAdmin bool
+	clusterErr   error
+
+	byScope map[string]error
+}
+
+// verdict — тот же исход, что у requireGrantAuthority для этой строки.
+func (p *pageAuthority) verdict(ctx context.Context, resourceType, resourceID string) error {
+	// Путь 0 — супер-гейт, ОДИН на запрос.
+	if !p.clusterAsked {
+		p.clusterAdmin, p.clusterErr = authzguard.IsClusterAdminE(ctx, p.relations)
+		p.clusterAsked = true
+	}
+	if p.clusterErr != nil {
+		return authzguard.AuthzBackendUnavailable()
+	}
+	if p.clusterAdmin {
+		return nil
+	}
+
+	// Пути 1-2 — один на РАЗЛИЧНУЮ область. Ключ несёт разделитель, которого нет
+	// ни в типе, ни в идентификаторе: склейка без него дала бы одну память двум
+	// разным областям.
+	key := resourceType + "\x00" + resourceID
+	if err, seen := p.byScope[key]; seen {
+		return err
+	}
+	err := grantAuthorityBeyondClusterAdmin(ctx, p.repo, p.relations, resourceType, resourceID)
+	if p.byScope == nil {
+		p.byScope = make(map[string]error, 4)
+	}
+	p.byScope[key] = err
+	return err
 }

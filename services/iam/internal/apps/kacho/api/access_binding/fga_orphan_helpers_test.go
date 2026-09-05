@@ -172,6 +172,22 @@ func (rd *fakeABRdr) SelectEmittedTuplesBySource(ctx context.Context, id domain.
 func (rd *fakeABRdr) ListByRole(_ context.Context, roleID domain.RoleID, f ab_repo.ListByRoleFilter) ([]domain.AccessBinding, string, error) {
 	rd.repo.mu.Lock()
 	defer rd.repo.mu.Unlock()
+	// Многострочная фикстура (seedABListByRole) — страница из НЕСКОЛЬКИХ строк:
+	// одиночная `ab` о стоимости страницы не утверждает ничего, потому что
+	// «на строку» и «на запрос» на одной строке совпадают by construction.
+	if len(rd.repo.lbrRows) > 0 {
+		out := make([]domain.AccessBinding, 0, len(rd.repo.lbrRows))
+		for _, b := range rd.repo.lbrRows {
+			if b.RoleID != roleID {
+				continue
+			}
+			if !f.IncludeRevoked && b.Status == domain.AccessBindingStatusRevoked {
+				continue
+			}
+			out = append(out, b)
+		}
+		return out, "", nil
+	}
 	if rd.repo.ab == nil || rd.repo.ab.RoleID != roleID {
 		return nil, "", nil
 	}
