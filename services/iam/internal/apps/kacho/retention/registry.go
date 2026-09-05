@@ -33,6 +33,7 @@ import (
 	"context"
 	"time"
 
+	"github.com/PRO-Robotech/kacho/pkg/outbox"
 	"github.com/PRO-Robotech/kacho/pkg/subjectchange"
 	"github.com/PRO-Robotech/kacho/pkg/tokenpolicy"
 
@@ -75,6 +76,15 @@ const (
 	// неограниченно под штатным потоком регистраций, при том что приём уборки в
 	// дереве уже был и применён к соседней очереди.
 	SubjectReconcileOutbox = "resource_reconcile_outbox"
+	// SubjectProviderCompensationOutbox — очередь компенсаций у внешнего
+	// провайдера. Темп задаёт арендатор: строка пишется в writer-транзакции
+	// мутации, снимающей клиента либо доверенную выдачу у провайдера.
+	//
+	// До #2069 доставленные строки не снимались НИКОГДА, и реестр роста таблиц
+	// объявлял таблицу ДОЛГОМ, назвав условие легализации: предикат ей нужен
+	// СВОЙ и более простой, чем у общего уборщика платформы, а послабление
+	// обязано нести гейт, который покраснеет с появлением оживителя.
+	SubjectProviderCompensationOutbox = "provider_compensation_outbox"
 )
 
 // SweepFunc — один проход уборщика по одному предмету.
@@ -96,7 +106,7 @@ type Subject struct {
 	// выписывается длительностью: копия разошлась бы с политикой молча и в
 	// ОПАСНУЮ сторону — политика удлиняет допуск, копия остаётся прежней и
 	// снимает строку, которая ещё держит однократность. Держит это гейт
-	// `TestRetentionThresholdsAreComputedFromPolicy`.
+	// `TestRegistryThresholdsFollowPolicyRatherThanACopy`.
 	Grace time.Duration
 	// Sweep — сам уборщик.
 	Sweep SweepFunc
@@ -127,6 +137,11 @@ type SubjectChangeJournalReaper interface {
 	SweepAgedRows(ctx context.Context, grace time.Duration, batch int) (int64, bool, error)
 }
 
+// CompensationOutboxReaper — порт уборщика очереди компенсаций у провайдера.
+type CompensationOutboxReaper interface {
+	SweepDeliveredCompensations(ctx context.Context, grace time.Duration, batch int) (int64, bool, error)
+}
+
 // ReconcileOutboxReaper — порт уборщика очереди сверки прав.
 type ReconcileOutboxReaper interface {
 	SweepDrainedReconcileEvents(ctx context.Context, grace time.Duration, batch int) (int64, bool, error)
@@ -143,6 +158,7 @@ type ReconcileOutboxReaper interface {
 //	уборка окон темпа:   window_started_at < now() − window_seconds − 0
 //	уборка журнала:      created_at     <  now() − subjectchange.JournalRetention
 //	уборка очереди сверки: sent_at      <  now() − reconcile_outbox.DrainedRetention
+//	уборка компенсаций:    sent_at      <  now() − outbox.DeliveredRetention
 //
 // У отзывов слагаемых НЕТ, и это не пропуск: часы уборки и всех четырёх её
 // читателей уже одни — база, — поэтому запасу взяться неоткуда. Ноль здесь
@@ -168,6 +184,7 @@ func Subjects(
 	admissionWindows AdmissionWindowReaper,
 	subjectChangeJournal SubjectChangeJournalReaper,
 	reconcileOutbox ReconcileOutboxReaper,
+	compensationOutbox CompensationOutboxReaper,
 ) []Subject {
 	return []Subject{
 		{
@@ -199,6 +216,16 @@ func Subjects(
 			Name:  SubjectReconcileOutbox,
 			Grace: reconcile_outbox.DrainedRetention,
 			Sweep: reconcileOutbox.SweepDrainedReconcileEvents,
+		},
+		{
+			// Порог берётся у СЕМЬИ, а не объявляется здесь седьмым числом:
+			// [outbox.DeliveredRetention] выведен из читателя доставленной
+			// строки очереди дренажа — оператора, разбирающего «доехало ли
+			// снятие», — и эта очередь ровно того же рода. Своя копия величины
+			// разошлась бы с семьёй молча.
+			Name:  SubjectProviderCompensationOutbox,
+			Grace: outbox.DeliveredRetention,
+			Sweep: compensationOutbox.SweepDeliveredCompensations,
 		},
 	}
 }

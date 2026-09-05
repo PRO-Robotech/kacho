@@ -430,13 +430,14 @@ func TestRetentionSweep_ReportsEachSubjectSeparately(t *testing.T) {
 	windows := kachopg.NewIdentityAdmissionWindowRepo(pool)
 	journal := kachopg.NewSubjectChangeJournalSweeper(pool, nil)
 	reconcileQ := kachopg.NewReconcileOutboxSweeper(pool)
+	compensationQ := kachopg.NewProviderCompensationSweeper(pool)
 	uid := mustSeedUser(t, ctx, pool, "ret-15")
 
 	// По отзывам — есть что снять; по утверждениям и отсечкам — нечего.
 	putRevocationAt(t, ctx, pool, uid, "ret15-"+ids.NewID(domain.PrefixUser), -time.Hour)
 
 	sw, err := retention.New(retention.Config{Interval: time.Minute, Batch: sweepBatch, MaxBatchesPerPass: 2},
-		retention.Subjects(assertions, revocations, cutoffs, windows, journal, reconcileQ), nil)
+		retention.Subjects(assertions, revocations, cutoffs, windows, journal, reconcileQ, compensationQ), nil)
 	require.NoError(t, err)
 	res := sw.Pass(ctx)
 	require.NoError(t, res.Err())
