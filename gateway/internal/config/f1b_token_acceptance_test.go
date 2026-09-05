@@ -18,9 +18,9 @@ import (
 )
 
 const (
-	f1bOurs   = "https://iam.kacho.local"
+	f1bOurs   = "https://kaname.kacho.local"
 	f1bLegacy = "https://hydra.api.kacho.test"
-	f1bOursKS = "https://kaname-internal.kacho.svc:9097/.well-known/kacho/jwks.json"
+	f1bOursKS = "https://kaname-internal.kacho.svc:9097/.well-known/kaname/jwks.json"
 	f1bLegKS  = "https://kaname-internal.kacho.svc:9097/.well-known/jwks.json"
 	f1bRevURL = "https://kaname-internal.kacho.svc:9097/internal/tokens/introspect"
 )

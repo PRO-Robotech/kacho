@@ -231,7 +231,7 @@ func TestLicenseSubjectGate_RedsWhenTierRootCarriesAnotherLicenseText(t *testing
 // Обратное направление той же оси: вынесенный продукт под текстом монорепо.
 func TestLicenseSubjectGate_RedsWhenTheProductCarriesTheMonorepoLicenseText(t *testing.T) {
 	findings, _ := injLicenseScan(injLicenseCorpus{
-		"services/iam/LICENSE": injLicenseBody("Kachō IAM (kaname)"),
+		"services/iam/LICENSE": injLicenseBody("Kaname (kaname)"),
 	})
 	if len(findings) != 1 || !strings.Contains(findings[0].String(), "AGPL-3.0-or-later") {
 		t.Fatalf("текст монорепо у вынесенного продукта не распознан: %v", findings)

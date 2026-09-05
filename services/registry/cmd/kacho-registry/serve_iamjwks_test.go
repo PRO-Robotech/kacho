@@ -46,9 +46,9 @@ func TestDataplaneVerifier_FetchesEachIssuerKeySetFromItsDeclaredURL(t *testing.
 	defer iam.Close()
 
 	const (
-		platformIssuer = "https://iam.kacho.local"
+		platformIssuer = "https://kaname.kacho.local"
 		legacyIssuer   = "https://hydra.api.kacho.cloud"
-		platformPath   = "/.well-known/kacho/jwks.json"
+		platformPath   = "/.well-known/kaname/jwks.json"
 		legacyPath     = "/.well-known/jwks.json"
 	)
 
@@ -105,11 +105,11 @@ func TestDataplaneVerifier_UndeclaredIssuerNeverReachesAnySource(t *testing.T) {
 	}))
 	defer iam.Close()
 
-	const platformIssuer = "https://iam.kacho.local"
+	const platformIssuer = "https://kaname.kacho.local"
 	t.Setenv("KACHO_REGISTRY_DB_PASSWORD", "s3cr3t")
 	t.Setenv("KACHO_REGISTRY_AUTH_MODE", "dev")
 	t.Setenv("KACHO_REGISTRY_TOKEN_ISSUERS", platformIssuer)
-	t.Setenv("KACHO_REGISTRY_TOKEN_ISSUER_KEYSETS", platformIssuer+"="+iam.URL+"/.well-known/kacho/jwks.json")
+	t.Setenv("KACHO_REGISTRY_TOKEN_ISSUER_KEYSETS", platformIssuer+"="+iam.URL+"/.well-known/kaname/jwks.json")
 	t.Setenv("KACHO_REGISTRY_PLATFORM_TOKEN_ISSUER", platformIssuer)
 	t.Setenv("KACHO_REGISTRY_TOKEN_REVOCATION_URL", iam.URL+"/internal/tokens/introspect")
 

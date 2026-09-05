@@ -192,9 +192,9 @@ gRPC server-reflection **нет собственной ручки** — пере
     # Издатель — МНОЖЕСТВО: платформа чеканит свои токены сама, прежний издатель
     # на переходе остаётся, и у каждого СВОЯ запись источника ключей. Один набор
     # на двоих означал бы, что ключ одного проверяет токен другого.
-    KACHO_API_GATEWAY_TOKEN_ISSUERS: "https://iam.kacho.local,https://auth.kacho.cloud"
-    KACHO_API_GATEWAY_TOKEN_ISSUER_KEYSETS: "https://iam.kacho.local=https://kaname-internal.kacho.svc:9097/.well-known/kacho/jwks.json,https://auth.kacho.cloud=https://kaname-internal.kacho.svc:9097/.well-known/jwks.json"
-    KACHO_API_GATEWAY_PLATFORM_TOKEN_ISSUER: "https://iam.kacho.local"
+    KACHO_API_GATEWAY_TOKEN_ISSUERS: "https://kaname.kacho.local,https://auth.kacho.cloud"
+    KACHO_API_GATEWAY_TOKEN_ISSUER_KEYSETS: "https://kaname.kacho.local=https://kaname-internal.kacho.svc:9097/.well-known/kaname/jwks.json,https://auth.kacho.cloud=https://kaname-internal.kacho.svc:9097/.well-known/jwks.json"
+    KACHO_API_GATEWAY_PLATFORM_TOKEN_ISSUER: "https://kaname.kacho.local"
     KACHO_API_GATEWAY_PLATFORM_TOKEN_REVOCATION_URL: "https://kaname-internal.kacho.svc:9097/internal/tokens/introspect"
     # Прежний скалярный пин при этом СНЯТ: два объявления об одном предмете дают
     # отказ в старте, а не молчаливое старшинство.

@@ -186,7 +186,7 @@
               }
             ],
             "url": {
-              "raw": "{{baseUrl}}/.well-known/kacho/jwks.json",
+              "raw": "{{baseUrl}}/.well-known/kaname/jwks.json",
               "host": [
                 "{{baseUrl}}"
               ],
@@ -212,7 +212,7 @@
                   "// Missing value = misconfigured harness, NOT a legal mode: FAIL, then skip.",
                   "const __cfgUrl = pm.environment.get('iamJwksBaseUrl') || pm.variables.get('iamJwksBaseUrl') || '';",
                   "if (__cfgUrl) {",
-                  "  pm.request.url = __cfgUrl + pm.variables.replaceIn('/.well-known/kacho/jwks.json');",
+                  "  pm.request.url = __cfgUrl + pm.variables.replaceIn('/.well-known/kaname/jwks.json');",
                   "} else {",
                   "  pm.test('harness config: iamJwksBaseUrl is set — verification lane — the OWN record of the facade; the platform signs with its own keyring and publishes the verifying half here', () => {",
                   "    pm.expect.fail('iamJwksBaseUrl is not set — the newman runner (deploy/scripts/newman-e2e.sh / newman-parallel.sh --env-var) did not inject it. This step cannot run, and a check that cannot run MUST NOT be silently dropped.');",
@@ -4462,7 +4462,7 @@
               }
             ],
             "url": {
-              "raw": "{{baseUrl}}/.well-known/kacho/jwks.json",
+              "raw": "{{baseUrl}}/.well-known/kaname/jwks.json",
               "host": [
                 "{{baseUrl}}"
               ],
@@ -4488,7 +4488,7 @@
                   "// Missing value = misconfigured harness, NOT a legal mode: FAIL, then skip.",
                   "const __cfgUrl = pm.environment.get('iamJwksBaseUrl') || pm.variables.get('iamJwksBaseUrl') || '';",
                   "if (__cfgUrl) {",
-                  "  pm.request.url = __cfgUrl + pm.variables.replaceIn('/.well-known/kacho/jwks.json');",
+                  "  pm.request.url = __cfgUrl + pm.variables.replaceIn('/.well-known/kaname/jwks.json');",
                   "} else {",
                   "  pm.test('harness config: iamJwksBaseUrl is set — IBT-10 — the same, for the OWN record of the facade: the kid that signed the accepted Bearer may be published by either', () => {",
                   "    pm.expect.fail('iamJwksBaseUrl is not set — the newman runner (deploy/scripts/newman-e2e.sh / newman-parallel.sh --env-var) did not inject it. This step cannot run, and a check that cannot run MUST NOT be silently dropped.');",

@@ -278,7 +278,7 @@ _CLAIM_READER = [
 # ---------------------------------------------------------------------------
 
 _MIRROR_JWKS_PATH = "/.well-known/jwks.json"
-_OWN_JWKS_PATH = "/.well-known/kacho/jwks.json"
+_OWN_JWKS_PATH = "/.well-known/kaname/jwks.json"
 
 
 def _jwks_step(name, why, path=_MIRROR_JWKS_PATH, record="mirror",

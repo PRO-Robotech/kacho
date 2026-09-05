@@ -3,7 +3,7 @@ import type { Config } from '@docusaurus/types'
 import type * as Preset from '@docusaurus/preset-classic'
 
 const config: Config = {
-  title: 'Kachō IAM',
+  title: 'Kaname',
   tagline: 'Identity & Access Management — Account, Project, User, ServiceAccount, Group, Role, AccessBinding',
 
   url: 'https://iam.kacho.cloud',
@@ -81,7 +81,7 @@ const config: Config = {
       maxHeadingLevel: 2,
     },
     navbar: {
-      title: 'Kachō IAM',
+      title: 'Kaname',
       items: [
         {
           type: 'docSidebar',

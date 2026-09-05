@@ -80,11 +80,11 @@ type stubSigner struct{}
 func (stubSigner) Sign(context.Context, tokensigner.Request) (tokensigner.Token, error) {
 	return tokensigner.Token{}, nil
 }
-func (stubSigner) Issuer() string { return "https://iam.kacho.local" }
+func (stubSigner) Issuer() string { return "https://kaname.kacho.local" }
 
 func full() clienttokenwire.BuildConfig {
 	return clienttokenwire.BuildConfig{
-		ExpectedAudience:         "https://iam.kacho.local",
+		ExpectedAudience:         "https://kaname.kacho.local",
 		AssertionLifetimeCeiling: tokenpolicy.MaxAssertionLifetime,
 		FederatedLifetimeCeiling: tokenpolicy.MaxFederatedAssertionLifetime,
 		ClockSkew:                tokenpolicy.ClockSkew,

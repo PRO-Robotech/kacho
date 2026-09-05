@@ -215,7 +215,7 @@ func newSigner(t *testing.T) *tokensigner.Signer {
 	pubDER, err := x509.MarshalPKIXPublicKey(&k.PublicKey)
 	require.NoError(t, err)
 	s, err := tokensigner.New(tokensigner.Config{
-		Issuer:      "https://iam.kacho.local",
+		Issuer:      "https://kaname.kacho.local",
 		Clock:       func() time.Time { return time.Unix(1_700_000_000, 0).UTC() },
 		MaxTokenTTL: tokenpolicy.MaxTokenTTL,
 	}, stubKeys{mat: tokensigner.SigningMaterial{

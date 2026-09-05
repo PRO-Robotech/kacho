@@ -392,7 +392,7 @@ tokenAcceptance:
   # production/-strict требуют https:// у каждого адреса: набор ключей есть
   # единственный якорь доверия проверки подписи.
   # Пример (наш издатель + зеркало прежнего, зеркало живёт до F4):
-  #   "https://iam.kacho.local=https://kaname-internal.kacho.svc:9097/.well-known/kacho/jwks.json,\
+  #   "https://kaname.kacho.local=https://kaname-internal.kacho.svc:9097/.well-known/kaname/jwks.json,\
   #    https://hydra.api.kacho.cloud=https://kaname-internal.kacho.svc:9097/.well-known/jwks.json"
   issuerKeySets: ""
   # PLATFORM_TOKEN_ISSUER — издатель, под которым чеканит НАША платформа. Он же

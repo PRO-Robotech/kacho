@@ -42,7 +42,7 @@ import (
 	"github.com/PRO-Robotech/kacho-iam/internal/tokensigner"
 )
 
-const contourIssuer = "https://iam.kacho.local"
+const contourIssuer = "https://kaname.kacho.local"
 
 // TestTokenContour_MintedTokenVerifiesAgainstOurPublishedSet — контур сходится.
 func TestTokenContour_MintedTokenVerifiesAgainstOurPublishedSet(t *testing.T) {

@@ -188,11 +188,11 @@ internal ребёр к iam различаются, поэтому это **дв�
     KACHO_REGISTRY_AUTHZ_BREAKGLASS: "false"
 
     # data-plane: приём identity-JWT — издатель множество, у каждого своя запись
-    KACHO_REGISTRY_TOKEN_ISSUERS: https://iam.kacho.local,https://hydra.api.kacho.cloud
+    KACHO_REGISTRY_TOKEN_ISSUERS: https://kaname.kacho.local,https://hydra.api.kacho.cloud
     KACHO_REGISTRY_TOKEN_ISSUER_KEYSETS: >-
-      https://iam.kacho.local=https://kaname-internal.kacho.svc:9097/.well-known/kacho/jwks.json,
+      https://kaname.kacho.local=https://kaname-internal.kacho.svc:9097/.well-known/kaname/jwks.json,
       https://hydra.api.kacho.cloud=https://kaname-internal.kacho.svc:9097/.well-known/jwks.json
-    KACHO_REGISTRY_PLATFORM_TOKEN_ISSUER: https://iam.kacho.local
+    KACHO_REGISTRY_PLATFORM_TOKEN_ISSUER: https://kaname.kacho.local
     KACHO_REGISTRY_TOKEN_REVOCATION_URL: https://kaname-internal.kacho.svc:9097/internal/tokens/introspect
     KACHO_REGISTRY_SERVICE_AUD: registry.kacho.local
     KACHO_REGISTRY_DATAPLANE_TLS_TERMINATED_EXTERNALLY: "true"

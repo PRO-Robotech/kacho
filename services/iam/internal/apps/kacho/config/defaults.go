@@ -144,7 +144,7 @@ func RegisterDefaults(v *viper.Viper) {
 	v.SetDefault("authn.token-signing.issuer", "")
 	v.SetDefault("authn.token-signing.algorithm", "")
 	v.SetDefault("authn.token-signing.allowed-algorithms", "")
-	v.SetDefault("authn.token-signing.key-set-path", "/.well-known/kacho/jwks.json")
+	v.SetDefault("authn.token-signing.key-set-path", defaultKeySetPath)
 	v.SetDefault("authn.token-signing.key-lifetime", "2160h")
 	// Токен-эндпоинт платформы (задача #898). Умолчания заданы ТОЛЬКО у
 	// величин, которые описывают НАШ расход и ничего не разрешают: потолок

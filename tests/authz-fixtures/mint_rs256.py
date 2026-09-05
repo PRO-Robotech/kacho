@@ -438,7 +438,7 @@ def sign_client_assertion(client_id: str, private_key_pem: str, key_id: str,
 # совпадение: обе полосы обслуживает ОДИН выданный ключ. Поэтому здесь нет
 # второй подписи и второго разбора ответа операции; переиспользуются те же.
 PLATFORM_ASSERTION_AUDIENCE = os.environ.get(
-    "PLATFORM_ASSERTION_AUDIENCE", "https://iam.kacho.local")
+    "PLATFORM_ASSERTION_AUDIENCE", "https://kaname.kacho.local")
 # Умолчание — порт, который прогонщики newman пробрасывают ВСЕГДА
 # (deploy/scripts/newman-{parallel,e2e}.sh, IAM_REGTOKEN_PORT).
 PLATFORM_TOKEN_URL = os.environ.get(

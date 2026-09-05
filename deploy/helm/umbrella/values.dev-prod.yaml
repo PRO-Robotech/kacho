@@ -82,15 +82,15 @@ api-gateway:
   # ОТКАТ состоит в снятии platformIssuer и нашего издателя из issuers — не в
   # перекатке образа.
   tokenAcceptance:
-    issuers: "https://iam.kacho.local,https://localhost:28080/.ory/hydra/public"
+    issuers: "https://kaname.kacho.local,https://localhost:28080/.ory/hydra/public"
     # Адрес ОБЪЯВЛЯЕТСЯ, а не выводится из издателя: издатель приходит от
     # предъявителя, и производный адрес получался бы у ВСЯКОГО издателя —
     # состояние «записи нет» не наступало бы никогда, а страж старта стал бы
     # тождественно истинным.
-    issuerKeySets: "https://iam.kacho.local=https://kaname-internal.kacho.svc:9097/.well-known/kacho/jwks.json,https://localhost:28080/.ory/hydra/public=https://kaname-internal.kacho.svc:9097/.well-known/jwks.json"
+    issuerKeySets: "https://kaname.kacho.local=https://kaname-internal.kacho.svc:9097/.well-known/kaname/jwks.json,https://localhost:28080/.ory/hydra/public=https://kaname-internal.kacho.svc:9097/.well-known/jwks.json"
     # Наш издатель выбирает полосу приёма: строгий тип at+jwt и чтение отзыва на
     # предъявлении. Вне issuers — отказ в старте.
-    platformIssuer: "https://iam.kacho.local"
+    platformIssuer: "https://kaname.kacho.local"
     # НАШ авторитет отзыва. Прежний провайдер о наших токенах не знает by
     # construction: спрошенный про наш токен, он отвечает не «действует» и не
     # «отозван», а утверждение о предмете, которого у него нет.
@@ -336,10 +336,10 @@ kaname:
       # неспособную упасть.
       tokenSigning:
         enabled: true
-        issuer: "https://iam.kacho.local"
+        issuer: "https://kaname.kacho.local"
         algorithm: ES256
         allowedAlgorithms: "ES256,RS256"
-        keySetPath: /.well-known/kacho/jwks.json
+        keySetPath: /.well-known/kaname/jwks.json
       # ТОКЕН-ЭНДПОИНТ ПЛАТФОРМЫ (F2, задача #898)
       #
       # Клиент предъявляет подписанное утверждение, мы сверяем подпись открытым
@@ -511,15 +511,15 @@ registry:
   # Профиль, задающий только снятые имена, принимает НОЛЬ издателей и не
   # поднимается.
   tokenAcceptance:
-    issuers: "https://iam.kacho.local,https://localhost:28080/.ory/hydra/public"
+    issuers: "https://kaname.kacho.local,https://localhost:28080/.ory/hydra/public"
     # Адрес ОБЪЯВЛЯЕТСЯ, а не выводится из издателя: издатель приходит от
     # предъявителя, и производный адрес получался бы у ВСЯКОГО издателя —
     # состояние «записи нет» не наступало бы никогда, а страж старта стал бы
     # тождественно истинным.
-    issuerKeySets: "https://iam.kacho.local=https://kaname-internal.kacho.svc:9097/.well-known/kacho/jwks.json,https://localhost:28080/.ory/hydra/public=https://kaname-internal.kacho.svc:9097/.well-known/jwks.json"
+    issuerKeySets: "https://kaname.kacho.local=https://kaname-internal.kacho.svc:9097/.well-known/kaname/jwks.json,https://localhost:28080/.ory/hydra/public=https://kaname-internal.kacho.svc:9097/.well-known/jwks.json"
     # Наш издатель выбирает полосу приёма: тип at+jwt и чтение отзыва на
     # предъявлении. Вне issuers — отказ в старте.
-    platformIssuer: "https://iam.kacho.local"
+    platformIssuer: "https://kaname.kacho.local"
     # Авторитет отзыва. Контроль, действующий на выдаче и не действующий на
     # предъявлении, отзывом не является: он лишь не выдаёт нового, а
     # предъявленное проходит до истечения срока, и это состояние не сходится

@@ -55,7 +55,7 @@ import (
 )
 
 const (
-	ctIssuer   = "https://iam.kacho.local"
+	ctIssuer   = "https://kaname.kacho.local"
 	ctAudience = "registry.kacho.local"
 )
 

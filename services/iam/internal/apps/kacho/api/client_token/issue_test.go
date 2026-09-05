@@ -28,7 +28,7 @@ import (
 )
 
 const (
-	issuerID    = "https://iam.kacho.local"
+	issuerID    = "https://kaname.kacho.local"
 	audResource = "https://api.kacho.cloud"
 	audRegistry = "registry.kacho.local"
 )

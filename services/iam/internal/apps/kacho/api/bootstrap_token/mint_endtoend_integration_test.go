@@ -47,7 +47,7 @@ import (
 )
 
 const (
-	testIssuer   = "https://iam.kacho.local"
+	testIssuer   = "https://kaname.kacho.local"
 	testAudience = "https://api.kacho.cloud"
 )
 

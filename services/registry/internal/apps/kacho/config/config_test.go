@@ -131,11 +131,11 @@ func TestConfig_AnonymousSubject_Override(t *testing.T) {
 // работающую посадку с чужими умолчаниями.
 func TestConfig_TokenAcceptance_Override(t *testing.T) {
 	env := baseEnv()
-	env["KACHO_REGISTRY_TOKEN_ISSUERS"] = "https://iam.kacho.local,https://hydra.api.kacho.cloud"
+	env["KACHO_REGISTRY_TOKEN_ISSUERS"] = "https://kaname.kacho.local,https://hydra.api.kacho.cloud"
 	env["KACHO_REGISTRY_TOKEN_ISSUER_KEYSETS"] =
-		"https://iam.kacho.local=https://kaname-internal.example:9097/.well-known/kacho/jwks.json," +
+		"https://kaname.kacho.local=https://kaname-internal.example:9097/.well-known/kaname/jwks.json," +
 			"https://hydra.api.kacho.cloud=https://kaname-internal.example:9097/.well-known/jwks.json"
-	env["KACHO_REGISTRY_PLATFORM_TOKEN_ISSUER"] = "https://iam.kacho.local"
+	env["KACHO_REGISTRY_PLATFORM_TOKEN_ISSUER"] = "https://kaname.kacho.local"
 	env["KACHO_REGISTRY_TOKEN_REVOCATION_URL"] = "https://kaname-internal.example:9097/internal/tokens/introspect"
 	// Снятые с контракта имена — умышленно выставлены: они не должны ничего менять.
 	env["KACHO_REGISTRY_IAM_JWKS_URL"] = "http://hydra.example:4444/.well-known/jwks.json"
@@ -146,13 +146,13 @@ func TestConfig_TokenAcceptance_Override(t *testing.T) {
 
 	issuers, err := c.AcceptedTokenIssuers()
 	require.NoError(t, err)
-	assert.Equal(t, []string{"https://iam.kacho.local", "https://hydra.api.kacho.cloud"}, issuers,
+	assert.Equal(t, []string{"https://kaname.kacho.local", "https://hydra.api.kacho.cloud"}, issuers,
 		"перечень читается ЭЛЕМЕНТАМИ из KACHO_REGISTRY_TOKEN_ISSUERS")
 
 	bindings, err := c.TokenIssuerBindings()
 	require.NoError(t, err)
 	require.Len(t, bindings, 2)
-	assert.Equal(t, "https://kaname-internal.example:9097/.well-known/kacho/jwks.json", bindings[0].KeySetURL,
+	assert.Equal(t, "https://kaname-internal.example:9097/.well-known/kaname/jwks.json", bindings[0].KeySetURL,
 		"адрес набора берётся из объявленной привязки")
 	assert.Equal(t, TokenTypePlatform, bindings[0].TokenType,
 		"полоса нашей чеканки несёт свой тип токена")

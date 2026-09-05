@@ -30,7 +30,7 @@ import (
 	"github.com/PRO-Robotech/kacho-iam/internal/tokensigner"
 )
 
-const wrapProbeIssuer = "https://iam.kacho.local"
+const wrapProbeIssuer = "https://kaname.kacho.local"
 
 // bootIAM собирает ключницу и подписанта заново — как это делает композиционный
 // корень на КАЖДОМ подъёме службы. Общего состояния между подъёмами нет: всё,

@@ -53,7 +53,7 @@ import (
 )
 
 const (
-	f1bPlatformIssuer = "https://iam.kacho.local"
+	f1bPlatformIssuer = "https://kaname.kacho.local"
 	f1bLegacyIssuer   = "https://hydra.api.kacho.cloud"
 )
 

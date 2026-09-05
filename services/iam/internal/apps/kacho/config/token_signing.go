@@ -39,7 +39,7 @@ const dayDuration = 24 * time.Hour
 // слушатель отдаёт зеркало прежнего издателя, и оно остаётся там до тех пор,
 // пока прежний издатель принимается. Перенос зеркала сменил бы адрес у каждого
 // существующего потребителя разом — цена, которой эта фаза не предусматривала.
-const defaultKeySetPath = "/.well-known/kacho/jwks.json"
+const defaultKeySetPath = "/.well-known/kaname/jwks.json"
 
 // TokenSigningConfig — своя чеканка токенов.
 type TokenSigningConfig struct {

@@ -69,7 +69,7 @@ ROOT = Path(__file__).resolve().parents[1]
 COLLECTION = ROOT / "collections" / "iam-token-facade-conformance.postman_collection.json"
 
 MIRROR_PATH = "/.well-known/jwks.json"
-OWN_PATH = "/.well-known/kacho/jwks.json"
+OWN_PATH = "/.well-known/kaname/jwks.json"
 
 # Публичный материал ниже — синтетический и никем не проверяется: подставной
 # сервер ничего не подписывает. Форма взята с живого публикатора (RSA-запись
@@ -117,7 +117,7 @@ def own_lane_bearer(**over) -> str:
     """Полоса ПЛАТФОРМЫ: ES256, свой kid, состав ПЛОСКО, `sub` = принципал."""
     claims = base_claims()
     claims.update(over.pop("claims", {}))
-    payload = {"iss": "https://iam.kacho.local", "aud": ["https://api.kacho.cloud"],
+    payload = {"iss": "https://kaname.kacho.local", "aud": ["https://api.kacho.cloud"],
                "sub": PRINCIPAL_ID, "exp": 4102444800, **claims}
     payload.update(over.pop("payload", {}))
     header = {"alg": "ES256", "kid": OWN_KEY["kid"], "typ": "at+jwt"}
@@ -268,7 +268,7 @@ def main() -> int:
          lambda: Stand(provider_lane_bearer(), subject=SUBJECT), False, None),
         ("форма: ни одной — падает и называет три формы", ibt13,
          lambda: Stand(jwt({"alg": "ES256", "kid": OWN_KEY["kid"], "typ": "at+jwt"},
-                           {"iss": "https://iam.kacho.local", "sub": PRINCIPAL_ID,
+                           {"iss": "https://kaname.kacho.local", "sub": PRINCIPAL_ID,
                             "aud": ["https://api.kacho.cloud"], "exp": 4102444800})),
          True, "composed platform claims"),
 

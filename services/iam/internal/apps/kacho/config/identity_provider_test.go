@@ -42,7 +42,7 @@ func ownMintingSettings() config.TokenSigningConfig {
 		Issuer:            "https://iam.kacho.cloud",
 		Algorithm:         "RS256",
 		AllowedAlgorithms: "RS256",
-		KeySetPath:        "/.well-known/kacho/jwks.json",
+		KeySetPath:        "/.well-known/kaname/jwks.json",
 		KeyLifetime:       90 * 24 * time.Hour,
 	}
 }

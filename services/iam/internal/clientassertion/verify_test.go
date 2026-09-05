@@ -28,7 +28,7 @@ import (
 )
 
 const (
-	testIssuerID = "https://iam.kacho.local"
+	testIssuerID = "https://kaname.kacho.local"
 	testClientID = "uoc_0123456789abcdefg"
 	testOwnerID  = "usr_0123456789abcdefg"
 )

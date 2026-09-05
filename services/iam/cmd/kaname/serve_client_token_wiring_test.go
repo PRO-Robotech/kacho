@@ -64,7 +64,7 @@ type wiringSigner struct{}
 func (wiringSigner) Sign(context.Context, tokensigner.Request) (tokensigner.Token, error) {
 	return tokensigner.Token{}, nil
 }
-func (wiringSigner) Issuer() string { return "https://iam.kacho.local" }
+func (wiringSigner) Issuer() string { return "https://kaname.kacho.local" }
 
 // TestF2_45_ClientTokenEndpointSharesTheDeclaredIssuingSurface — оба вида
 // предъявления живут на ОДНОЙ внешне досягаемой поверхности и не затирают друг
@@ -82,7 +82,7 @@ func TestF2_45_ClientTokenEndpointSharesTheDeclaredIssuingSurface(t *testing.T) 
 	}
 
 	h, err := clienttokenwire.New(clienttokenwire.BuildConfig{
-		ExpectedAudience:         "https://iam.kacho.local",
+		ExpectedAudience:         "https://kaname.kacho.local",
 		AssertionLifetimeCeiling: tokenpolicy.MaxAssertionLifetime,
 		FederatedLifetimeCeiling: tokenpolicy.MaxFederatedAssertionLifetime,
 		ClockSkew:                tokenpolicy.ClockSkew,

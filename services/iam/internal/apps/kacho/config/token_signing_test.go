@@ -18,10 +18,10 @@ import (
 func fullSigningConfig() TokenSigningConfig {
 	return TokenSigningConfig{
 		Enabled:           true,
-		Issuer:            "https://iam.kacho.local",
+		Issuer:            "https://kaname.kacho.local",
 		Algorithm:         "ES256",
 		AllowedAlgorithms: "ES256,RS256",
-		KeySetPath:        "/.well-known/kacho/jwks.json",
+		KeySetPath:        "/.well-known/kaname/jwks.json",
 		KeyLifetime:       dayDuration * 90,
 	}
 }

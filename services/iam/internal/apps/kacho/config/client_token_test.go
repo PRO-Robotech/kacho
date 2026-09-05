@@ -34,10 +34,10 @@ import (
 func signingOn() config.TokenSigningConfig {
 	return config.TokenSigningConfig{
 		Enabled:           true,
-		Issuer:            "https://iam.kacho.local",
+		Issuer:            "https://kaname.kacho.local",
 		Algorithm:         tokenpolicy.AlgES256,
 		AllowedAlgorithms: tokenpolicy.AlgES256,
-		KeySetPath:        "/.well-known/kacho/jwks.json",
+		KeySetPath:        "/.well-known/kaname/jwks.json",
 	}
 }
 

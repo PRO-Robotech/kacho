@@ -44,7 +44,7 @@ func (m *stubMinter) MintToken(_ context.Context, in registrytokenuc.MintInput) 
 	}
 	m.in = in
 	tok := jwt.NewWithClaims(jwt.SigningMethodHS256, jwt.MapClaims{
-		"iss": "https://iam.kacho.local", "sub": in.Subject, "aud": in.Audience,
+		"iss": "https://kaname.kacho.local", "sub": in.Subject, "aud": in.Audience,
 		"exp": time.Now().Add(5 * time.Minute).Unix(),
 	})
 	raw, _ := tok.SignedString([]byte("proof-only"))

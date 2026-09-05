@@ -24,7 +24,7 @@ import (
 	"github.com/PRO-Robotech/kacho-iam/internal/signingkeygen"
 )
 
-const testIssuer = "https://iam.kacho.local"
+const testIssuer = "https://kaname.kacho.local"
 
 // stubKeys — публикуемый набор, которым проверяется подпись.
 type stubKeys struct {

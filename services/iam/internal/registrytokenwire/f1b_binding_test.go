@@ -57,7 +57,7 @@ func f1bSigner(t *testing.T) *tokensigner.Signer {
 	pubPEM := string(pem.EncodeToMemory(&pem.Block{Type: "PUBLIC KEY", Bytes: pubDER}))
 
 	s, err := tokensigner.New(tokensigner.Config{
-		Issuer:      "https://iam.kacho.local",
+		Issuer:      "https://kaname.kacho.local",
 		Clock:       time.Now,
 		MaxTokenTTL: 30 * time.Minute,
 	}, f1bKeys{mat: tokensigner.SigningMaterial{

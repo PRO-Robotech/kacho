@@ -513,7 +513,7 @@ def _self_test() -> int:
     # exactly what the edge reads.
     def _flat(pid, **extra):
         """A token of OUR issuance: `kacho_*` at the top level, nothing nested."""
-        claims = {"iss": "https://iam.kacho.local", "sub": "usr_owner_of_the_key",
+        claims = {"iss": "https://kaname.kacho.local", "sub": "usr_owner_of_the_key",
                   "kacho_principal_type": "service_account",
                   "kacho_principal_id": pid, **extra}
         body = base64.urlsafe_b64encode(json.dumps(claims).encode()).decode().rstrip("=")

@@ -75,7 +75,7 @@ func TestSigningKeyStore_F1_08_ReadBackPrivateHalfIsFitToSign(t *testing.T) {
 	require.NoError(t, err, "прочитанная приватная половина обязана разбираться как ключ")
 
 	tok := jwt.NewWithClaims(jwt.SigningMethodRS256, jwt.MapClaims{
-		"iss": "https://iam.kacho.local",
+		"iss": "https://kaname.kacho.local",
 		"exp": now.Add(time.Minute).Unix(),
 	})
 	tok.Header["kid"] = string(got.KID)

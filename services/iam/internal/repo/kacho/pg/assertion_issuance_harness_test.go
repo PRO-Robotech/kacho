@@ -42,7 +42,7 @@ import (
 )
 
 const (
-	assertionIssuer   = "https://iam.kacho.local"
+	assertionIssuer   = "https://kaname.kacho.local"
 	assertionAudience = "registry.kacho.local"
 	assertionKID      = "kacho-assertion-probe"
 	assertionTokenTTL = 15 * time.Minute
