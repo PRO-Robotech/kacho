@@ -77,7 +77,7 @@ func TestABSubjects_E34_RoundTripOrdered(t *testing.T) {
 	said := seedSAID(t, ctx, pool, string(acc.ID), "absubrt")
 	ab := insertAB(t, ctx, repo, domain.AccessBinding{
 		SubjectType: domain.SubjectTypeUser, SubjectID: domain.SubjectID(uid),
-		RoleID: domain.SystemViewerRoleID, ResourceType: "account", ResourceID: string(acc.ID),
+		RoleID: "rol000000000sysviewer", ResourceType: "account", ResourceID: string(acc.ID),
 	})
 
 	subs := []domain.Subject{
@@ -116,7 +116,7 @@ func TestABSubjects_E30_CascadeOnBindingDelete(t *testing.T) {
 	gid := seedGroupID(t, ctx, pool, string(acc.ID), "absubcas")
 	ab := insertAB(t, ctx, repo, domain.AccessBinding{
 		SubjectType: domain.SubjectTypeUser, SubjectID: domain.SubjectID(uid),
-		RoleID: domain.SystemViewerRoleID, ResourceType: "account", ResourceID: string(acc.ID),
+		RoleID: "rol000000000sysviewer", ResourceType: "account", ResourceID: string(acc.ID),
 	})
 	insertSubjects(t, ctx, repo, ab.ID, []domain.Subject{
 		{Type: domain.SubjectTypeUser, ID: domain.SubjectID(uid)},
@@ -149,7 +149,7 @@ func TestABSubjects_PerSubjectDelete_Independent(t *testing.T) {
 	gid := seedGroupID(t, ctx, pool, string(acc.ID), "absubdel")
 	ab := insertAB(t, ctx, repo, domain.AccessBinding{
 		SubjectType: domain.SubjectTypeUser, SubjectID: domain.SubjectID(uid),
-		RoleID: domain.SystemViewerRoleID, ResourceType: "account", ResourceID: string(acc.ID),
+		RoleID: "rol000000000sysviewer", ResourceType: "account", ResourceID: string(acc.ID),
 	})
 	insertSubjects(t, ctx, repo, ab.ID, []domain.Subject{
 		{Type: domain.SubjectTypeUser, ID: domain.SubjectID(uid)},
@@ -201,7 +201,7 @@ func TestABSubjects_Batch_ListForBindings(t *testing.T) {
 	said := seedSAID(t, ctx, pool, string(acc.ID), "absubbat")
 	ab1 := insertAB(t, ctx, repo, domain.AccessBinding{
 		SubjectType: domain.SubjectTypeUser, SubjectID: domain.SubjectID(uid),
-		RoleID: domain.SystemViewerRoleID, ResourceType: "account", ResourceID: string(acc.ID),
+		RoleID: "rol000000000sysviewer", ResourceType: "account", ResourceID: string(acc.ID),
 	})
 	ab2 := insertAB(t, ctx, repo, domain.AccessBinding{
 		SubjectType: domain.SubjectTypeUser, SubjectID: domain.SubjectID(uid),
@@ -237,11 +237,11 @@ func TestABSubjects_E33_ListByRole(t *testing.T) {
 	// Two ACTIVE bindings carrying the same role; one of a different role.
 	insertAB(t, ctx, repo, domain.AccessBinding{
 		SubjectType: domain.SubjectTypeUser, SubjectID: domain.SubjectID(uid),
-		RoleID: domain.SystemViewerRoleID, ResourceType: "account", ResourceID: string(acc.ID),
+		RoleID: "rol000000000sysviewer", ResourceType: "account", ResourceID: string(acc.ID),
 	})
 	insertAB(t, ctx, repo, domain.AccessBinding{
 		SubjectType: domain.SubjectTypeGroup, SubjectID: domain.SubjectID(gid),
-		RoleID: domain.SystemViewerRoleID, ResourceType: "account", ResourceID: string(acc.ID),
+		RoleID: "rol000000000sysviewer", ResourceType: "account", ResourceID: string(acc.ID),
 	})
 	insertAB(t, ctx, repo, domain.AccessBinding{
 		SubjectType: domain.SubjectTypeUser, SubjectID: domain.SubjectID(uid),
@@ -251,11 +251,11 @@ func TestABSubjects_E33_ListByRole(t *testing.T) {
 	rd, err := repo.Reader(ctx)
 	require.NoError(t, err)
 	defer func() { _ = rd.Rollback(ctx) }()
-	got, _, err := rd.AccessBindings().ListByRole(ctx, domain.SystemViewerRoleID, repoab.ListByRoleFilter{PageSize: 50})
+	got, _, err := rd.AccessBindings().ListByRole(ctx, "rol000000000sysviewer", repoab.ListByRoleFilter{PageSize: 50})
 	require.NoError(t, err)
 	require.Len(t, got, 2, "ListByRole returns exactly the bindings carrying the role")
 	for _, b := range got {
-		assert.Equal(t, domain.RoleID(domain.SystemViewerRoleID), b.RoleID)
+		assert.Equal(t, domain.RoleID("rol000000000sysviewer"), b.RoleID)
 	}
 }
 
@@ -275,7 +275,7 @@ func TestABSubjects_RACE_ConcurrentInsertSameSubject_OneRow(t *testing.T) {
 	gid := seedGroupID(t, ctx, pool, string(acc.ID), "absubrace")
 	ab := insertAB(t, ctx, repo, domain.AccessBinding{
 		SubjectType: domain.SubjectTypeUser, SubjectID: domain.SubjectID(uid),
-		RoleID: domain.SystemViewerRoleID, ResourceType: "account", ResourceID: string(acc.ID),
+		RoleID: "rol000000000sysviewer", ResourceType: "account", ResourceID: string(acc.ID),
 	})
 	sub := domain.Subject{Type: domain.SubjectTypeGroup, ID: domain.SubjectID(gid)}
 

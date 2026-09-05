@@ -87,7 +87,7 @@ func TestAB_31a_Insert_New(t *testing.T) {
 	b := domain.AccessBinding{
 		SubjectType:  domain.SubjectTypeUser,
 		SubjectID:    domain.SubjectID(uid),
-		RoleID:       domain.SystemViewerRoleID, // seed system role (migration 0011)
+		RoleID:       "rol000000000sysviewer", // seed system role (migration 0011)
 		ResourceType: "account",
 		ResourceID:   string(acc.ID),
 	}
@@ -120,7 +120,7 @@ func TestAB_31b_Insert_DuplicateActiveIsAlreadyExists(t *testing.T) {
 	b := domain.AccessBinding{
 		SubjectType:  domain.SubjectTypeUser,
 		SubjectID:    domain.SubjectID(uid),
-		RoleID:       domain.SystemViewerRoleID, // seed system role (migration 0011)
+		RoleID:       "rol000000000sysviewer", // seed system role (migration 0011)
 		ResourceType: "account",
 		ResourceID:   string(acc.ID),
 	}
@@ -165,7 +165,7 @@ func TestAB_31c_Insert_AfterRevokeIsAllowed(t *testing.T) {
 	b := domain.AccessBinding{
 		SubjectType:  domain.SubjectTypeUser,
 		SubjectID:    domain.SubjectID(uid),
-		RoleID:       domain.SystemViewerRoleID,
+		RoleID:       "rol000000000sysviewer",
 		ResourceType: "account",
 		ResourceID:   string(acc.ID),
 	}

@@ -46,10 +46,6 @@ const (
 	// re-seeded with `*.*.*` rules by migration 0031. Also a legitimate
 	// cluster-admin superuser.
 	SystemAdminRoleID = "rol000000000sysadmin"
-
-	// SystemViewerRoleID — идентификатор второй системной роли кластера
-	// (`kacho-system.viewer`, чтение), посеянной миграцией 0001.
-	SystemViewerRoleID = "rol00000000sysviewer"
 )
 
 // OwnerRoleRules is the canonical authored policy of the `owner` system-role:

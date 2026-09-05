@@ -59,7 +59,7 @@ func TestAB_P6_DeletionProtection_PersistRoundTrip(t *testing.T) {
 		ID:                 domain.AccessBindingID(ids.NewID(domain.PrefixAccessBinding)),
 		SubjectType:        domain.SubjectTypeUser,
 		SubjectID:          domain.SubjectID(uid),
-		RoleID:             domain.SystemViewerRoleID,
+		RoleID:             "rol000000000sysviewer",
 		ResourceType:       "account",
 		ResourceID:         string(acc.ID),
 		DeletionProtection: true,
@@ -98,7 +98,7 @@ func TestAB_P6_DeleteGuarded_RefusesProtected(t *testing.T) {
 	require.NoError(t, err)
 	_, err = w.AccessBindingsW().Insert(ctx, domain.AccessBinding{
 		ID: id, SubjectType: domain.SubjectTypeUser, SubjectID: domain.SubjectID(uid),
-		RoleID: domain.SystemViewerRoleID, ResourceType: "account", ResourceID: string(acc.ID),
+		RoleID: "rol000000000sysviewer", ResourceType: "account", ResourceID: string(acc.ID),
 		DeletionProtection: true,
 	})
 	require.NoError(t, err)
@@ -131,7 +131,7 @@ func TestAB_P6_DeleteGuarded_DeletesUnprotected(t *testing.T) {
 	require.NoError(t, err)
 	_, err = w.AccessBindingsW().Insert(ctx, domain.AccessBinding{
 		ID: id, SubjectType: domain.SubjectTypeUser, SubjectID: domain.SubjectID(uid),
-		RoleID: domain.SystemViewerRoleID, ResourceType: "account", ResourceID: string(acc.ID),
+		RoleID: "rol000000000sysviewer", ResourceType: "account", ResourceID: string(acc.ID),
 		DeletionProtection: false,
 	})
 	require.NoError(t, err)
@@ -189,7 +189,7 @@ func TestAB_P6_DeleteGuarded_ConcurrentCAS(t *testing.T) {
 	require.NoError(t, err)
 	_, err = w.AccessBindingsW().Insert(ctx, domain.AccessBinding{
 		ID: id, SubjectType: domain.SubjectTypeUser, SubjectID: domain.SubjectID(uid),
-		RoleID: domain.SystemViewerRoleID, ResourceType: "account", ResourceID: string(acc.ID),
+		RoleID: "rol000000000sysviewer", ResourceType: "account", ResourceID: string(acc.ID),
 		DeletionProtection: false,
 	})
 	require.NoError(t, err)
@@ -263,7 +263,7 @@ func TestAB_P6_DeleteVsRearm_ConcurrentCAS(t *testing.T) {
 	require.NoError(t, err)
 	_, err = w.AccessBindingsW().Insert(ctx, domain.AccessBinding{
 		ID: id, SubjectType: domain.SubjectTypeUser, SubjectID: domain.SubjectID(uid),
-		RoleID: domain.SystemViewerRoleID, ResourceType: "account", ResourceID: string(acc.ID),
+		RoleID: "rol000000000sysviewer", ResourceType: "account", ResourceID: string(acc.ID),
 		DeletionProtection: false,
 	})
 	require.NoError(t, err)
@@ -354,7 +354,7 @@ func TestAB_P6_ClearProtection_ThenDelete(t *testing.T) {
 	require.NoError(t, err)
 	_, err = w.AccessBindingsW().Insert(ctx, domain.AccessBinding{
 		ID: id, SubjectType: domain.SubjectTypeUser, SubjectID: domain.SubjectID(uid),
-		RoleID: domain.SystemViewerRoleID, ResourceType: "account", ResourceID: string(acc.ID),
+		RoleID: "rol000000000sysviewer", ResourceType: "account", ResourceID: string(acc.ID),
 		DeletionProtection: true,
 	})
 	require.NoError(t, err)

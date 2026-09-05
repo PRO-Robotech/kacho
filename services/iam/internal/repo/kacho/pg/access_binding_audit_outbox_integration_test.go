@@ -68,7 +68,7 @@ func TestAB_AuditOutboxTx_GrantEmitsGrantedRow(t *testing.T) {
 		ID:              bindingID,
 		SubjectType:     domain.SubjectTypeUser,
 		SubjectID:       domain.SubjectID(uid),
-		RoleID:          domain.SystemViewerRoleID,
+		RoleID:          "rol000000000sysviewer",
 		ResourceType:    "account",
 		ResourceID:      string(acc.ID),
 		GrantedByUserID: uid,
@@ -119,7 +119,7 @@ func TestAB_AuditOutboxTx_GrantEmitsGrantedRow(t *testing.T) {
 	require.Equal(t, "user", payload["subject_type"])
 	require.Equal(t, "account", payload["resource_type"])
 	require.Equal(t, string(acc.ID), payload["resource_id"])
-	require.Equal(t, domain.SystemViewerRoleID, payload["role_id"])
+	require.Equal(t, "rol000000000sysviewer", payload["role_id"])
 	require.Equal(t, string(bindingID), payload["binding_id"])
 }
 
@@ -139,7 +139,7 @@ func TestAB_AuditOutboxTx_RevokeEmitsRevokedRow(t *testing.T) {
 	binding := insertAB(t, ctx, repo, domain.AccessBinding{
 		SubjectType:     domain.SubjectTypeUser,
 		SubjectID:       domain.SubjectID(uid),
-		RoleID:          domain.SystemViewerRoleID,
+		RoleID:          "rol000000000sysviewer",
 		ResourceType:    "account",
 		ResourceID:      string(acc.ID),
 		GrantedByUserID: uid,
@@ -196,7 +196,7 @@ func TestAB_AuditOutboxTx_RollbackDiscardsAuditRow(t *testing.T) {
 		ID:              bindingID,
 		SubjectType:     domain.SubjectTypeUser,
 		SubjectID:       domain.SubjectID(uid),
-		RoleID:          domain.SystemViewerRoleID,
+		RoleID:          "rol000000000sysviewer",
 		ResourceType:    "account",
 		ResourceID:      string(acc.ID),
 		GrantedByUserID: uid,

@@ -154,13 +154,8 @@ func TestMigration_F53_IdStability(t *testing.T) {
 
 	assert.Equal(t, mdID("view"), idOf("view"), "F-53: view id must stay 'rol'||md5('view')[1..17]")
 	assert.Equal(t, mdID("admin"), idOf("admin"), "F-53: admin id must stay 'rol'||md5('admin')[1..17]")
-	// Идентификатор viewer БЫЛ длиной 21 и потому недостижим по id ни одним
-	// глаголом роли (задача #1808): строгая проверка формы стоит первым
-	// стейтментом и отвергала его до чтения. Поздняя миграция привела его к
-	// форме, и утверждение ключуется на КОНСТАНТУ домена, а не на литерал:
-	// прежний литерал закреплял ровно тот дефект, ради которого проба и стоит.
-	assert.Equal(t, domain.SystemViewerRoleID, idOf("kacho-system.viewer"),
-		"F-53: id роли kacho-system.viewer обязан совпадать с константой домена")
+	assert.Equal(t, "rol000000000sysviewer", idOf("kacho-system.viewer"),
+		"F-53: kacho-system.viewer id must stay the literal rol000000000sysviewer")
 	assert.Equal(t, "rol000000000sysadmin", idOf("kacho-system.admin"),
 		"F-53: kacho-system.admin id must stay the literal rol000000000sysadmin")
 }

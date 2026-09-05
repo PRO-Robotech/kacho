@@ -54,7 +54,7 @@ func seedABForEmitted(t *testing.T, ctx context.Context, repo *kachopg.Repositor
 	return insertAB(t, ctx, repo, domain.AccessBinding{
 		SubjectType:  domain.SubjectTypeUser,
 		SubjectID:    domain.SubjectID(uid),
-		RoleID:       domain.SystemViewerRoleID,
+		RoleID:       "rol000000000sysviewer",
 		ResourceType: "account",
 		ResourceID:   string(accID),
 	})

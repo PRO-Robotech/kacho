@@ -43,7 +43,7 @@ func insertBindingWithTarget(t *testing.T, ctx context.Context, repo *kachopg.Re
 	require.NoError(t, err)
 	out, ierr := w.AccessBindingsW().Insert(ctx, domain.AccessBinding{
 		ID: id, SubjectType: domain.SubjectTypeUser, SubjectID: domain.SubjectID(uid),
-		RoleID: domain.SystemViewerRoleID, ResourceType: "account", ResourceID: accID,
+		RoleID: "rol000000000sysviewer", ResourceType: "account", ResourceID: accID,
 		Target: tgt,
 	})
 	if ierr != nil {
