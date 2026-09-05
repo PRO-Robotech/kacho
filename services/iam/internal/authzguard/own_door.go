@@ -69,6 +69,7 @@ import (
 	"context"
 	"fmt"
 	"log/slog"
+	"strings"
 	"time"
 
 	"google.golang.org/grpc"
@@ -188,9 +189,42 @@ func withPlatformLivenessProbe(m authz.RPCMap) authz.RPCMap {
 // её видно как отдельное звено, — рядом с двумя другими рубежами того же
 // слушателя.
 //
-// Сужение при этом строже, чем у записи в карте: дверь снимается ТОЛЬКО когда
-// личности арендатора нет вовсе. Названный вызывающий проходит дверь как
-// прежде — по объекту у `BatchCheck` и полосой данных у `Check`.
+// Сужение при этом строже, чем у записи в карте: дверь снимается ровно там, где
+// у неё НЕТ ОБЪЕКТА, о котором спрашивать, — и случаев таких два, а не один.
+//
+// # Второй случай: вызывающий назван, а области запрос не назвал
+//
+// Здесь стояло «дверь снимается ТОЛЬКО когда личности арендатора нет вовсе», и
+// половина эта неполна. `BatchCheck` спрашивает СУЖАТЕЛЬ СПИСОЧНОЙ ВЫДАЧИ
+// (`pkg/listnarrow/client.go`), и он оборачивает исходящий контекст
+// `auth.PropagateOutgoing` НАМЕРЕННО: решатель вопроса пропускает субъекта,
+// спрашивающего о СЕБЕ, и настоящий принципал ему обязателен. То есть вызывающий
+// назван — и снятие по первому случаю к нему не относится.
+//
+// Объекта у этого вопроса при этом нет. Контракт называет `scope_id`
+// НЕОБЯЗАТЕЛЬНЫМ дословно: «Optional scope id for authz of the batch as a whole.
+// When set, the gateway gates the entire batch on this scope's permission
+// INSTEAD OF per-item». Незаданное поле означает «сужения нет, решает служба по
+// данным»; сужатель его не заполняет ни в одном месте дерева (предикат:
+// `git grep -n 'ScopeId' -- pkg/listnarrow` → пусто). Выведенный извлекатель
+// читает поле как заданное всегда и отдаёт `project:` с пустым идентификатором —
+// модель на такой объект отвечает «нет», и вызывающий получает отказ, к правам
+// отношения не имеющий.
+//
+// Наблюдалось на прогоне 33965153510 (console-e2e, голова d1c7a4a89b): консоль
+// показывала «Сервер не смог ответить · list filter: AuthorizeService.BatchCheck
+// PermissionDenied: permission denied», СПИСКИ ВСЕХ РЕСУРСОВ ПРОЕКТА были пусты
+// у каждого арендатора, и пять сквозных проб падали на том, что предмет их не
+// виден. Журнал звена называл причину прямо: `authz_object_format_failed
+// err="authz: empty object id"`.
+//
+// # Что снимается и что остаётся
+//
+// Дверь отходит, когда извлекатель отдал ПУСТОЙ идентификатор, — то есть когда
+// спрашивать не о чем. Запрос, назвавший `scope_id`, проходит дверь как прежде:
+// объект есть, и гейт контракта на нём осмыслен. `Check` не затронут вовсе — он
+// объявлен `scope_filtered`, извлекателя у него нет by construction, и полоса
+// данных остаётся его полосой.
 func CallerAuthorityGatedMethods() []string {
 	return []string{
 		"/kacho.cloud.iam.v1.AuthorizeService/Check",
@@ -242,13 +276,17 @@ func NewOwnDoor(opts OwnDoorOptions) (*OwnDoor, error) {
 	if logger == nil {
 		logger = slog.Default()
 	}
-	bypass := make(map[string]struct{})
+	full := withPlatformLivenessProbe(m)
+	// Извлекатель берётся ИЗ ТОЙ ЖЕ карты, которую спрашивает звено: второй,
+	// написанный рядом, разошёлся бы с первым молча — и разошёлся бы ровно там,
+	// где расхождение невидимо, на пустом поле.
+	bypass := make(map[string]authz.ObjectExtractor, len(CallerAuthorityGatedMethods()))
 	for _, method := range CallerAuthorityGatedMethods() {
-		bypass[method] = struct{}{}
+		bypass[method] = full[method].Extract
 	}
 	return &OwnDoor{inner: authz.NewInterceptor(authz.InterceptorOptions{
 		ServiceName:         "kacho-iam",
-		Map:                 withPlatformLivenessProbe(m),
+		Map:                 full,
 		Client:              checkAdapter{inner: opts.SelfCheck},
 		Cache:               authz.NewCache(opts.PositiveTTL),
 		Logger:              logger,
@@ -264,10 +302,12 @@ func NewOwnDoor(opts OwnDoorOptions) (*OwnDoor, error) {
 // проводку, которой в проде нет.
 type OwnDoor struct {
 	inner *authz.Interceptor
-	// bypass — методы, у которых безымянный вызывающий идёт к обработчику.
-	// Множество строится один раз: сравнение по срезу на каждом запросе было бы
-	// линейным поиском на горячем пути.
-	bypass map[string]struct{}
+	// bypass — методы, которыми у модели СПРАШИВАЮТ, а не действуют. Значение —
+	// извлекатель объекта, ВЫВЕДЕННЫЙ из аннотаций контракта: им дверь и решает,
+	// назвал ли запрос область, о которой можно спросить. Карта строится один
+	// раз: сравнение по срезу на каждом запросе было бы линейным поиском на
+	// горячем пути.
+	bypass map[string]authz.ObjectExtractor
 }
 
 // callerNamed — назван ли вызывающий арендатором.
@@ -281,13 +321,58 @@ func callerNamed(ctx context.Context) bool {
 	return named
 }
 
+// questionNamesNoScope — вопрос о правах не назвал области, о которой дверь
+// могла бы спросить модель.
+//
+// # Почему это отдельный предикат, а не «пустая строка»
+//
+// Он отвечает ровно на один вопрос — есть ли у ДВЕРИ объект, — и отвечает по
+// тому же извлекателю, которым звено соберёт объект секундой позже. Иначе
+// завелось бы второе объявление того же предмета: имя поля контракта, выписанное
+// здесь руками, пережило бы своё переименование молча.
+//
+// # Три исхода, и средний назван отдельно
+//
+//   - извлекателя нет вовсе (`scope_filtered`) — объекта у RPC нет by
+//     construction, но и снимать нечего: звено единичного вопроса не задаёт.
+//     Отвечаем «область названа», чтобы полоса `Check` осталась ровно той же;
+//   - извлечение отказало — мы НЕ УСТАНОВИЛИ, что области нет. Дверь остаётся:
+//     неполученный ответ не есть «спрашивать не о чем»;
+//   - идентификатор пуст — области нет, и вопрос решает его решатель.
+func questionNamesNoScope(extract authz.ObjectExtractor, req any) bool {
+	if extract == nil {
+		return false
+	}
+	_, id, err := extract(req)
+	if err != nil {
+		return false
+	}
+	return strings.TrimSpace(id) == ""
+}
+
+// questionGoesToItsOwnDecider — вопрос о правах решает `caller_authority.go`, а
+// не дверь.
+//
+// Два случая, и оба про ОТСУТСТВИЕ объекта у двери, а не про доверие
+// вызывающему: безымянный модуль называет себя сертификатом, а названный
+// арендатор спрашивает о странице, области не назвав. Решатель за дверью строго
+// fail-closed в обоих: субъект проходит, только спрашивая о себе, об объекте,
+// которым администрирует, либо будучи администратором облака.
+func (d *OwnDoor) questionGoesToItsOwnDecider(ctx context.Context, method string, req any) bool {
+	extract, question := d.bypass[method]
+	if !question {
+		return false
+	}
+	return !callerNamed(ctx) || questionNamesNoScope(extract, req)
+}
+
 // Unary — звено публичного слушателя.
 func (d *OwnDoor) Unary() grpc.UnaryServerInterceptor {
 	door := d.inner.Unary()
 	return func(ctx context.Context, req any, info *grpc.UnaryServerInfo, handler grpc.UnaryHandler) (any, error) {
-		if _, question := d.bypass[info.FullMethod]; question && !callerNamed(ctx) {
-			// Вопрос о правах от модуля: решает обработчик — сертификатом
-			// вызывающего, а не заголовком личности, которого у вопроса нет.
+		if d.questionGoesToItsOwnDecider(ctx, info.FullMethod, req) {
+			// Вопрос о правах: решает обработчик — сертификатом вызывающего либо
+			// данными самого вопроса. Объекта, о котором спросить, у двери нет.
 			return handler(ctx, req)
 		}
 		return door(ctx, req, info, handler)
@@ -302,7 +387,7 @@ func (d *OwnDoor) Unary() grpc.UnaryServerInterceptor {
 func (d *OwnDoor) Stream() grpc.StreamServerInterceptor {
 	door := d.inner.Stream()
 	return func(srv any, ss grpc.ServerStream, info *grpc.StreamServerInfo, handler grpc.StreamHandler) error {
-		if _, question := d.bypass[info.FullMethod]; question && !callerNamed(ss.Context()) {
+		if d.questionGoesToItsOwnDecider(ss.Context(), info.FullMethod, nil) {
 			return handler(srv, ss)
 		}
 		return door(srv, ss, info, handler)
