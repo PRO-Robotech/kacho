@@ -77,8 +77,10 @@ type ProjectServiceClient interface {
 	//
 	// Blocking a non-empty project is decided and specified — the live tally must
 	// reach IAM from the resource owners, because IAM is a leaf of the call graph
-	// and may not call them back. See docs/architecture/project-deletion-and-live-resources.md
-	// and PRO-Robotech/kacho#1594.
+	// and may not call them back. See docs/architecture/project-deletion-and-live-resources.md;
+	// the OPEN successor carrying the mechanism is PRO-Robotech/kacho#1231.
+	// (The decision itself was taken under #1594, which is closed — a reader sent
+	// there would read "closed" as "done".)
 	Delete(ctx context.Context, in *DeleteProjectRequest, opts ...grpc.CallOption) (*operation.Operation, error)
 	// Lists operations for the specified project.
 	ListOperations(ctx context.Context, in *ListProjectOperationsRequest, opts ...grpc.CallOption) (*ListProjectOperationsResponse, error)
@@ -198,8 +200,10 @@ type ProjectServiceServer interface {
 	//
 	// Blocking a non-empty project is decided and specified — the live tally must
 	// reach IAM from the resource owners, because IAM is a leaf of the call graph
-	// and may not call them back. See docs/architecture/project-deletion-and-live-resources.md
-	// and PRO-Robotech/kacho#1594.
+	// and may not call them back. See docs/architecture/project-deletion-and-live-resources.md;
+	// the OPEN successor carrying the mechanism is PRO-Robotech/kacho#1231.
+	// (The decision itself was taken under #1594, which is closed — a reader sent
+	// there would read "closed" as "done".)
 	Delete(context.Context, *DeleteProjectRequest) (*operation.Operation, error)
 	// Lists operations for the specified project.
 	ListOperations(context.Context, *ListProjectOperationsRequest) (*ListProjectOperationsResponse, error)
