@@ -3,7 +3,7 @@
 
 // Package auditlistfilter states how kacho-compute is laid out for the public-List
 // gate. The analysis itself — and why it parses instead of grepping — lives in
-// tools/listfiltergate.
+// pkg/listfiltergate.
 //
 // # This service's shape
 //
@@ -51,7 +51,7 @@
 // the gate asserts what it can actually see, which is the gate preceding the read.
 package auditlistfilter
 
-import "github.com/PRO-Robotech/kacho/tools/listfiltergate"
+import "github.com/PRO-Robotech/kacho/pkg/listfiltergate"
 
 // quotaIsAProjectProperty — почему у чтения квот сужать НЕЧЕГО.
 //

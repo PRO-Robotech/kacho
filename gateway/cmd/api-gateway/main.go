@@ -294,6 +294,14 @@ func main() {
 		AdminURL:         cfg.ResolvedHydraAdminURL(),
 		AdminCAFile:      cfg.HydraAdminCAFile,
 		IdentityProvider: identityLane,
+		// Все четыре величины НАШЕГО авторитета отзыва подаются стражу, потому
+		// что он их судит. Собранная без них структура оставила бы их нулевыми,
+		// и вердикт «нашего авторитета нет» не зависел бы от настройки вовсе —
+		// класс, уже стоивший выкатки на соседней оси якоря доверия.
+		PlatformRevocationURL:      cfg.PlatformTokenRevocationURL,
+		PlatformRevocationCAFile:   cfg.PlatformTokenRevocationCAFile,
+		PlatformRevocationCertFile: cfg.PlatformTokenRevocationCertFile,
+		PlatformRevocationKeyFile:  cfg.PlatformTokenRevocationKeyFile,
 	}); rvErr != nil {
 		log.Fatalf("revocation config startup-validation: %v", rvErr)
 	}

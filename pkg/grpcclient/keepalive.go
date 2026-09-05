@@ -1,5 +1,5 @@
 // Copyright (c) PRO-Robotech
-// SPDX-License-Identifier: BUSL-1.1
+// SPDX-License-Identifier: Apache-2.0
 
 // Package grpcclient — горизонтальный cross-cutting helper для client-side gRPC
 // keepalive. Единая точка истины для keepalive-параметров inter-service

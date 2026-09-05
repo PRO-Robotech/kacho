@@ -8,7 +8,7 @@
 //	kacho-migrator [--dsn DSN] [--dialect postgres] {up|down|status} [--target VERSION]
 //
 // Разбор аргументов и САМ НАКАТ — общие на все семь точек наката
-// (`pkg/migratorcli` и `internal/migratorrun`), и это не украшение. Разбор:
+// (`pkg/migratorcli` и `pkg/migratorrun`), и это не украшение. Разбор:
 // собственный МОЛЧА терял флаг, написанный после подкоманды, поэтому
 // `kacho-migrator up --dsn X` накатывал не на ту базу и выглядел успехом.
 // Накат: форм было ДВЕ, и различие никем не решалось — оно завелось побочным
@@ -31,8 +31,8 @@ import (
 
 	_ "github.com/jackc/pgx/v5/stdlib" // регистрирует database/sql-драйвер "pgx"
 
-	"github.com/PRO-Robotech/kacho/internal/migratorrun"
 	"github.com/PRO-Robotech/kacho/pkg/migratorcli"
+	"github.com/PRO-Robotech/kacho/pkg/migratorrun"
 	"github.com/PRO-Robotech/kacho/services/storage/internal/config"
 	"github.com/PRO-Robotech/kacho/services/storage/internal/migrations"
 )

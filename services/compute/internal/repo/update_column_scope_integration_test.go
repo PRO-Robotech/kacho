@@ -16,7 +16,7 @@ import (
 	"github.com/PRO-Robotech/kacho/services/compute/internal/domain"
 	"github.com/PRO-Robotech/kacho/services/compute/internal/repo"
 
-	"github.com/PRO-Robotech/kacho/internal/pgtest"
+	"github.com/PRO-Robotech/kacho/pkg/pgtest"
 )
 
 // TestIntegration_InstanceUpdate_ColumnScoped_NoLostUpdate — воспроизводит classic

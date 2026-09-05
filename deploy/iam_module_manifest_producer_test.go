@@ -57,7 +57,7 @@ import (
 
 	"gopkg.in/yaml.v3"
 
-	"github.com/PRO-Robotech/kacho/tools/modulemanifests"
+	manifestproducer "github.com/PRO-Robotech/kacho/pkg/modulemanifest/producer"
 )
 
 // producerCensus — объём осмотренного этой проверкой.
@@ -152,7 +152,7 @@ func TestModuleManifestConfigMapHasAProducer(t *testing.T) {
 	for _, stack := range names {
 		chain := stacks[stack]
 		want := declaredNameInChain(t, chain)
-		delivery, err := modulemanifests.Collect(repoRoot, chainPaths(chain))
+		delivery, err := manifestproducer.Collect(repoRoot, chainPaths(chain))
 		if want == "" {
 			// Стенд доставку не объявил — законный исход, а не отказ.
 			if err == nil {
@@ -197,7 +197,7 @@ func TestModuleManifestConfigMapHasAProducer(t *testing.T) {
 //
 // Обе стороны, а не одна: перечень, покрывающий дерево не полностью, доставил бы
 // часть модулей молча — а это ровно тот класс, ради которого доставка заводилась.
-func assertKeysMatchTree(t *testing.T, stack string, d modulemanifests.Delivery, tree map[string][]byte) {
+func assertKeysMatchTree(t *testing.T, stack string, d manifestproducer.Delivery, tree map[string][]byte) {
 	t.Helper()
 	seen := map[string]bool{}
 	for _, s := range d.Sources {
@@ -223,9 +223,9 @@ func assertKeysMatchTree(t *testing.T, stack string, d modulemanifests.Delivery,
 
 // assertRenderRoundTrips — «собрал» обязано означать «применимо»: напечатанный
 // объект разбирается обратно в те же ключи и те же байты.
-func assertRenderRoundTrips(t *testing.T, stack string, d modulemanifests.Delivery, tree map[string][]byte) {
+func assertRenderRoundTrips(t *testing.T, stack string, d manifestproducer.Delivery, tree map[string][]byte) {
 	t.Helper()
-	out, err := modulemanifests.Render(d)
+	out, err := manifestproducer.Render(d)
 	if err != nil {
 		t.Errorf("стенд %s: объект не собран: %v", stack, err)
 		return

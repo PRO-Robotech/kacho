@@ -36,7 +36,7 @@ import (
 
 	"gopkg.in/yaml.v3"
 
-	"github.com/PRO-Robotech/kacho/internal/gitenv"
+	"github.com/PRO-Robotech/kacho/pkg/gitenv"
 )
 
 // runner — прогонщик проб. Он же обязан быть тем, кого зовёт конвейер.

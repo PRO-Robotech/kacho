@@ -101,7 +101,7 @@ import (
 	"sort"
 	"strings"
 
-	"github.com/PRO-Robotech/kacho/internal/treecorpus"
+	"github.com/PRO-Robotech/kacho/pkg/treecorpus"
 )
 
 // adviceSource — один контракт: путь относительно корня и тело.

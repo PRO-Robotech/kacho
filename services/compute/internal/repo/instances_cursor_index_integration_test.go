@@ -16,7 +16,7 @@ import (
 
 	coredb "github.com/PRO-Robotech/kacho/pkg/db"
 
-	"github.com/PRO-Robotech/kacho/internal/pgtest"
+	"github.com/PRO-Robotech/kacho/pkg/pgtest"
 )
 
 // Тот же предмет, что у списков блочного хранения: курсорная пагинация продаётся

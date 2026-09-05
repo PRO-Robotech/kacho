@@ -19,11 +19,11 @@ import (
 	"google.golang.org/grpc/status"
 	"google.golang.org/protobuf/types/known/fieldmaskpb"
 
-	"github.com/PRO-Robotech/kacho/internal/pgtest"
 	lbv1 "github.com/PRO-Robotech/kacho/pkg/api/kacho/cloud/loadbalancer/v1"
 	coredb "github.com/PRO-Robotech/kacho/pkg/db"
 	"github.com/PRO-Robotech/kacho/pkg/ids"
 	"github.com/PRO-Robotech/kacho/pkg/operations"
+	"github.com/PRO-Robotech/kacho/pkg/pgtest"
 
 	"github.com/PRO-Robotech/kacho/services/nlb/internal/apps/kacho/api/loadbalancer"
 	vpcclient "github.com/PRO-Robotech/kacho/services/nlb/internal/clients/vpc"
@@ -35,7 +35,7 @@ import (
 
 // setupDB выдаёт тесту СОБСТВЕННУЮ базу на одном контейнере пакета — клон
 // шаблона, в который миграции накатаны один раз (см. TestMain и
-// internal/pgtest). Зеркало pg/setup_integration_test.go (внутренний helper).
+// pkg/pgtest). Зеркало pg/setup_integration_test.go (внутренний helper).
 func setupDB(t *testing.T) (*pgxpool.Pool, *kachopg.Repository) {
 	t.Helper()
 	if testing.Short() {

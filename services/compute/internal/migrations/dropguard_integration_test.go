@@ -23,8 +23,8 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/PRO-Robotech/kacho/internal/dropguard"
-	"github.com/PRO-Robotech/kacho/internal/dropguard/dropguardtest"
+	"github.com/PRO-Robotech/kacho/pkg/dropguard"
+	"github.com/PRO-Robotech/kacho/pkg/dropguard/dropguardtest"
 	"github.com/PRO-Robotech/kacho/services/compute/internal/migrations"
 )
 

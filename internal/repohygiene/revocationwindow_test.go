@@ -31,8 +31,8 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/PRO-Robotech/kacho/internal/treecorpus"
 	"github.com/PRO-Robotech/kacho/pkg/authz"
+	"github.com/PRO-Robotech/kacho/pkg/treecorpus"
 	"github.com/PRO-Robotech/kacho/tools/revocationwindowgate"
 )
 
@@ -46,6 +46,11 @@ var revocationScanRoots = []string{
 	"services/compute/internal/config",
 	"services/storage/internal/config",
 	"services/geo/internal/apps/kacho/config",
+	// Владелец модели. До собственной двери окна у него не было ВООБЩЕ — он не
+	// задавал пообъектного вопроса на своих слушателях, полагаясь на край, — и
+	// потому его каталог объявлений в перепись не входил. Дверь завела окно;
+	// каталог входит вместе с ним.
+	"services/iam/internal/apps/kacho/config",
 	// Край. Он не лежит под services/, и именно поэтому его окно не попало в
 	// перепись: все корни обхода начинались с services/, так что процесс, через
 	// который проходит КАЖДЫЙ внешний запрос, не был прочитан ни одной из

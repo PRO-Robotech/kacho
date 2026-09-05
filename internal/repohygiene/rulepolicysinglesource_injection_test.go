@@ -25,7 +25,7 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/PRO-Robotech/kacho/internal/gitenv"
+	"github.com/PRO-Robotech/kacho/pkg/gitenv"
 )
 
 // rulePolicyFixture — синтетическое дерево с каталогом домена.

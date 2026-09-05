@@ -33,7 +33,7 @@ import (
 	kachopg "github.com/PRO-Robotech/kacho/services/vpc/internal/repo/kacho/pg"
 	"github.com/PRO-Robotech/kacho/services/vpc/internal/repo/repomock"
 
-	"github.com/PRO-Robotech/kacho/internal/pgtest"
+	"github.com/PRO-Robotech/kacho/pkg/pgtest"
 )
 
 // reservedRangeUnderTest — служебный диапазон стенда для случаев ниже. Лежит ВНУТРИ

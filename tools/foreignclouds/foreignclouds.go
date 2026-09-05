@@ -67,7 +67,7 @@ import (
 	"strings"
 	"unicode/utf8"
 
-	"github.com/PRO-Robotech/kacho/internal/gitenv"
+	"github.com/PRO-Robotech/kacho/pkg/gitenv"
 )
 
 // tokens are the provider and provider-product names. Each is matched

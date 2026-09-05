@@ -20,7 +20,7 @@ import (
 
 	"github.com/soheilhy/cmux"
 
-	"github.com/PRO-Robotech/kacho/internal/treecorpus"
+	"github.com/PRO-Robotech/kacho/pkg/treecorpus"
 )
 
 // serveEdgeStack поднимает ТУ ЖЕ композицию, что и шлюз: мультиплексор края с

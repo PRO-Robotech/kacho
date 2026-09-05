@@ -58,7 +58,7 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/PRO-Robotech/kacho/internal/gitenv"
+	"github.com/PRO-Robotech/kacho/pkg/gitenv"
 )
 
 // makeMentionRe — вызов вида make [-C <каталог>] <цель> внутри inline-кода.

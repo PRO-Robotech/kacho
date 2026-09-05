@@ -19,7 +19,7 @@ import (
 	"github.com/PRO-Robotech/kacho/services/compute/internal/ports"
 	"github.com/PRO-Robotech/kacho/services/compute/internal/repo"
 
-	"github.com/PRO-Robotech/kacho/internal/pgtest"
+	"github.com/PRO-Robotech/kacho/pkg/pgtest"
 )
 
 // seedInstanceForObserved вставляет машину и возвращает её id вместе с номером

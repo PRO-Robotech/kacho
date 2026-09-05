@@ -279,10 +279,11 @@ func readAccumulatorTree(t *testing.T) (facts []goFileFacts, scanned int) {
 		imports := map[string]bool{}
 		for _, im := range file.Imports {
 			p, uerr := strconv.Unquote(im.Path.Value)
-			if uerr != nil || !strings.HasPrefix(p, modulePathPrefix) {
+			rel, own := treeRelOfImport(p)
+			if uerr != nil || !own {
 				continue
 			}
-			imports[strings.TrimPrefix(p, modulePathPrefix)] = true
+			imports[rel] = true
 		}
 		facts = append(facts, goFileFacts{
 			rel: rel, dir: path.Dir(filepath.ToSlash(rel)),

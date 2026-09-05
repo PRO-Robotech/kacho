@@ -1,5 +1,5 @@
 // Copyright (c) PRO-Robotech
-// SPDX-License-Identifier: BUSL-1.1
+// SPDX-License-Identifier: Apache-2.0
 
 // Внешний тест-пакет (errors_test, не errors): внутри пакета неэкспортируемые
 // поля видны, и проба закрытости, написанная там, утверждала бы обратное тому,

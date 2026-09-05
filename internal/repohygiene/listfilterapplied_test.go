@@ -41,7 +41,7 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/PRO-Robotech/kacho/internal/treecorpus"
+	"github.com/PRO-Robotech/kacho/pkg/treecorpus"
 )
 
 // filterParseSite — одно место вызова filter.Parse с разобранным whitelist'ом.
@@ -57,7 +57,7 @@ type filterParseSite struct {
 // НЕ-тестовом коде, определяя размер объявленного whitelist'а и то, читает ли
 // охватывающая функция разобранное поле.
 //
-// Состав берётся у ИНДЕКСА (`internal/treecorpus`), а не обходом диска: правила
+// Состав берётся у ИНДЕКСА (`pkg/treecorpus`), а не обходом диска: правила
 // игнорирования действуют на любой глубине, и под `services/`, `gateway/`, `pkg/`
 // на всякой машине, где поднимали стенд, лежат распаковки чартов, сборочные
 // каталоги и отчёты прогонов. Обход диска сделал бы вердикт свойством рабочего

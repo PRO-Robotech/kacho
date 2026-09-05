@@ -35,7 +35,7 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/PRO-Robotech/kacho/internal/treecorpus"
+	"github.com/PRO-Robotech/kacho/pkg/treecorpus"
 )
 
 // proxyShapedFields — имена полей дескриптора, появление которых означало бы,

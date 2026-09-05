@@ -54,10 +54,11 @@ func synthFacts(t *testing.T, files map[string]string) []goFileFacts {
 		imports := map[string]bool{}
 		for _, im := range file.Imports {
 			p, uerr := strconv.Unquote(im.Path.Value)
-			if uerr != nil || !strings.HasPrefix(p, modulePathPrefix) {
+			rel, own := treeRelOfImport(p)
+			if uerr != nil || !own {
 				continue
 			}
-			imports[strings.TrimPrefix(p, modulePathPrefix)] = true
+			imports[rel] = true
 		}
 		out = append(out, goFileFacts{
 			rel: rel, dir: path.Dir(rel), pkgName: file.Name.Name,

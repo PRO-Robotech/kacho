@@ -7,7 +7,7 @@
 // объявлен. Здесь утверждается о поведении: план настоящего Postgres на
 // настоящей цепочке миграций vpc берёт порядок страницы ИЗ ЭТОГО индекса и не
 // содержит узла сортировки. Разбор этих двух вопросов и контроль в обратную
-// сторону — в шапке `internal/listcursorplan`.
+// сторону — в шапке `pkg/listcursorplan`.
 //
 // Проба красна на состоянии ДО фикса: без `708001` план каждой из девяти таблиц
 // несёт узел сортировки, потому что порядок брать неоткуда.
@@ -16,7 +16,7 @@ package cursorplan_test
 import (
 	"testing"
 
-	"github.com/PRO-Robotech/kacho/internal/listcursorplan"
+	"github.com/PRO-Robotech/kacho/pkg/listcursorplan"
 	"github.com/PRO-Robotech/kacho/services/vpc/internal/migrations"
 )
 

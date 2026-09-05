@@ -51,7 +51,7 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/PRO-Robotech/kacho/internal/treecorpus"
+	"github.com/PRO-Robotech/kacho/pkg/treecorpus"
 )
 
 // tmpl — заголовок, напечатанный из литерала: где объявлен и что печатает.
@@ -67,7 +67,7 @@ const minProseChunk = 24
 // каталога — свойство прибора, а не дерева, и вывести его неоткуда.
 var reportGlobs = []string{
 	"services/iam/internal/repo/kacho/pg/scalegrid/REPORT-*.txt",
-	"tools/authzformbench/REPORT-*.txt",
+	"services/iam/tools/authzformbench/REPORT-*.txt",
 	"services/iam/tests/k6/results/*.md",
 	"services/vpc/tests/k6/results/*.md",
 }

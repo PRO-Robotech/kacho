@@ -43,7 +43,7 @@
 // Чего гейт НЕ покрывает, и почему это сказано здесь, а не подразумевается:
 //
 //   - `tools/` — приборы замера. Они не лежат ни на одном пути запроса (ничто
-//     из продукта их не импортирует, см. `tools/authzformbench/doc.go`), их
+//     из продукта их не импортирует, см. `services/iam/tools/authzformbench/doc.go`), их
 //     стоимость есть предмет отчёта, а не договора с арендатором. Прибор
 //     воспроизводит форму продукта своей схемой, у которой нет ограничения на
 //     число рёбер объекта, — значит и предел внутри соединения вбок был бы там
@@ -116,7 +116,14 @@ func collectUnboundedRecursiveScopeSeeds(t *testing.T, root string) ([]scopeSeed
 		c        scopeSeedCensus
 	)
 	want := func(rel string) bool {
-		return strings.HasSuffix(rel, ".go") && !strings.HasSuffix(rel, "_test.go")
+		if !strings.HasSuffix(rel, ".go") || strings.HasSuffix(rel, "_test.go") {
+			return false
+		}
+		// Прибор замера предметом не является — это сказано в шапке гейта. До
+		// линии выноса iam оговорка держалась РАСКЛАДКОЙ (приборы лежали в
+		// корневом `tools/`, обход шёл по трём другим корням); теперь она
+		// держится признаком — [isInstrumentPath].
+		return !isInstrumentPath(rel)
 	}
 	for _, sub := range recursiveScopeRoots {
 		dir := filepath.Join(root, sub)

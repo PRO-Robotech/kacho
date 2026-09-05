@@ -20,7 +20,7 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/PRO-Robotech/kacho/internal/treecorpus"
+	"github.com/PRO-Robotech/kacho/pkg/treecorpus"
 )
 
 // readMigrationSources — исходники миграций ИЗ ИНДЕКСА git: вердикт обязан быть

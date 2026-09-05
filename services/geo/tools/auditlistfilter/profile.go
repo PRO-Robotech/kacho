@@ -2,7 +2,7 @@
 // SPDX-License-Identifier: BUSL-1.1
 
 // Package auditlistfilter states how kacho-geo is laid out for the public-List
-// gate. The analysis itself lives in tools/listfiltergate.
+// gate. The analysis itself lives in pkg/listfiltergate.
 //
 // # Why this exists
 //
@@ -43,7 +43,7 @@
 //     gate to be silent about.
 package auditlistfilter
 
-import "github.com/PRO-Robotech/kacho/tools/listfiltergate"
+import "github.com/PRO-Robotech/kacho/pkg/listfiltergate"
 
 // placementCatalog is the shared reason for both listings.
 const placementCatalog = "Region and Zone are the admin-curated global catalog of the placement " +

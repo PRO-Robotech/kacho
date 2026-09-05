@@ -1,5 +1,5 @@
 // Copyright (c) PRO-Robotech
-// SPDX-License-Identifier: BUSL-1.1
+// SPDX-License-Identifier: Apache-2.0
 
 syntax = "proto3";
 
@@ -49,8 +49,12 @@ message Account {
 
   // TOMBSTONE (B2B Organization fully removed). The
   // `organization_id` field (tag 7) is dropped; tag & name are reserved and
-  // never reused (append-only / buf-breaking tombstone discipline, enforced by
-  // scripts/tombstone_enforce.sh). The DB column was already dropped in iam
+  // never reused. Держатель — адъюдикация `buf breaking` против ствола
+  // (категория FILE, правила RESERVED_FIELD_NO_DELETE / RESERVED_ENUM_NO_DELETE);
+  // вызывается заданием конвейера «buf lint · breaking · generate-diff» и
+  // локально scripts/ci-local.sh. Снятие `reserved 7` либо `reserved
+  // "organization_id"` — разрыв, и он либо стоит в proto/declared-breaks.yaml
+  // решением, либо роняет прогон. The DB column was already dropped in iam
   // migration 0008_drop_organizations.sql.
   reserved 7;
   reserved "organization_id";

@@ -34,7 +34,7 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/PRO-Robotech/kacho/internal/treecorpus"
+	"github.com/PRO-Robotech/kacho/pkg/treecorpus"
 )
 
 const (
@@ -62,7 +62,7 @@ const (
 	// дереву и найдёт величину, куда бы она ни переехала; здесь путь служит
 	// только тексту находки, и его устаревание гейт заметит сам:
 	// `TestScopeDepthPlanFileCoordinateIsAlive` ниже.
-	scopeDepthPlanFile = "internal/authzplan/compile.go"
+	scopeDepthPlanFile = "services/iam/internal/authzplan/compile.go"
 )
 
 var (
@@ -203,7 +203,7 @@ func singleNumber(t *testing.T, re *regexp.Regexp, body, what string) int {
 // findPlanDepth — предел компилятора модели, если он в дереве объявлен.
 //
 // ОБХОД — ВСЁ ДЕРЕВО, а не поддерево одной службы. Прежняя редакция искала
-// только под `services/iam/internal`, а величина объявлена в `internal/authzplan`
+// только под `services/iam/internal`, а величина объявлена в `services/iam/internal/authzplan`
 // — то есть гейт печатал «не объявлен в дереве (сверять не с чем)» при
 // объявленной величине, и третья из трёх сверок не выполнялась НИ РАЗУ.
 //

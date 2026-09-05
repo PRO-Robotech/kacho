@@ -26,8 +26,8 @@ func TestLabelsRoundtrip(t *testing.T) {
 
 	out, err := LabelsFromJSONB(b)
 	require.NoError(t, err)
-	assert.Equal(t, 3, out.Len())
-	env, ok := out.Get("env")
+	assert.Equal(t, 3, len(out))
+	env, ok := out["env"]
 	require.True(t, ok)
 	assert.Equal(t, domain.LbLabelVal("prod"), env)
 }
@@ -39,11 +39,11 @@ func TestLabelsNilEmpty(t *testing.T) {
 
 	out, err := LabelsFromJSONB(nil)
 	require.NoError(t, err)
-	assert.Equal(t, 0, out.Len())
+	assert.Equal(t, 0, len(out))
 
 	out2, err := LabelsFromJSONB([]byte("null"))
 	require.NoError(t, err)
-	assert.Equal(t, 0, out2.Len())
+	assert.Equal(t, 0, len(out2))
 }
 
 func TestHealthCheckTCP_Roundtrip(t *testing.T) {

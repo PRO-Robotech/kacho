@@ -28,7 +28,7 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/PRO-Robotech/kacho/internal/treecorpus"
+	"github.com/PRO-Robotech/kacho/pkg/treecorpus"
 )
 
 // previousGlobShapeRe — форма пути, которую видела ПРЕЖНЯЯ выписка

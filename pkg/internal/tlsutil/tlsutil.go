@@ -1,5 +1,5 @@
 // Copyright (c) PRO-Robotech
-// SPDX-License-Identifier: BUSL-1.1
+// SPDX-License-Identifier: Apache-2.0
 
 // Package tlsutil holds module-internal TLS helpers shared by the grpcsrv and
 // grpcclient transport-credential builders. It is under internal/ so it is NOT

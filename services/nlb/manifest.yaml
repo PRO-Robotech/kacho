@@ -26,7 +26,7 @@
 #
 #  РАЗДЕЛ `roles` ЗДЕСЬ ЕСТЬ. Он объявляет то, что у модуля уже лежит в базе, и
 #  согласие с ней доказывается ПРОГОНОМ:
-#      go test ./services/iam/internal/moduleroleparity/
+#      go test -C services/iam ./internal/moduleroleparity/
 #
 #  Здесь стояло «единственный в дереве на сегодня», а потом «три модуля из
 #  четырёх» — оба утверждения пережили свой предмет. Раздел объявляют ВСЕ ЧЕТЫРЕ
@@ -165,7 +165,7 @@ resources:
 #      grep -l 'loadbalancer.operator' services/iam/internal/migrations/*.sql
 #  Поэтому действующее состояние не лежит нигде одним куском, и объявление
 #  сверяется с ЖИВОЙ базой прогоном, а не чтением миграций:
-#      go test ./services/iam/internal/moduleroleparity/
+#      go test -C services/iam ./internal/moduleroleparity/
 #  Гейт поднимает Postgres, играет цепочку миграций дерева и сравнивает строки
 #  `kacho_iam.roles` с тем, что произвёл бы применитель из ЭТОГО раздела.
 #  Расхождение по идентификатору, назначению либо праву — находка с именем роли.
@@ -223,7 +223,7 @@ roles:
 #
 #  Здесь объявлено то, что у модуля уже лежит в базе, и согласие с ней
 #  доказывается ПРОГОНОМ, а не чтением миграций:
-#      go test ./services/iam/internal/moduleseedparity/
+#      go test -C services/iam ./internal/moduleseedparity/
 #
 #  ЧЕГО ЗДЕСЬ НЕТ, и это не недосмотр: `groups` и `accessBindings`. Живых строк
 #  этих двух видов у модуля НЕТ ни одной, и это утверждение ПРОВЕРЯЕТСЯ: гейт

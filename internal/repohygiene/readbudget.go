@@ -52,7 +52,7 @@ import (
 	"sort"
 	"strings"
 
-	"github.com/PRO-Robotech/kacho/internal/treecorpus"
+	"github.com/PRO-Robotech/kacho/pkg/treecorpus"
 
 	"google.golang.org/protobuf/reflect/protoreflect"
 )
@@ -273,7 +273,7 @@ func AuditReadBudgetClassification(opts ReadBudgetOptions, out io.Writer) ([]Rea
 // с деревом молча, и разошёлся бы именно там, где расхождение не видно, — на
 // новом домене.
 //
-// Состав берётся у ИНДЕКСА (`internal/treecorpus`), а не с диска: обход диска
+// Состав берётся у ИНДЕКСА (`pkg/treecorpus`), а не с диска: обход диска
 // подбирает то, что лежит у разработчика и не отслеживается, — распаковки
 // чартов, сборочные каталоги, отчёты прогонов. Два обхода поддерева в этом
 // дереве уже оказались дефектными по этой самой причине.

@@ -1,5 +1,5 @@
 // Copyright (c) PRO-Robotech
-// SPDX-License-Identifier: BUSL-1.1
+// SPDX-License-Identifier: Apache-2.0
 
 // audit_test.go — доказательство того, что отказы старта, которым нужен
 // СЛУЖИМЫЙ НАБОР RPC, способны упасть, и что падают они на существе.

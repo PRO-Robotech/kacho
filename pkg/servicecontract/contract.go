@@ -1,5 +1,5 @@
 // Copyright (c) PRO-Robotech
-// SPDX-License-Identifier: BUSL-1.1
+// SPDX-License-Identifier: Apache-2.0
 
 // Package servicecontract — то, что сервис объявляет О СЕБЕ, чтобы носитель
 // входящего пути (`pkg/servicehost`) поднял его контур работы с владельцем прав.

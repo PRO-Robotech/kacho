@@ -34,7 +34,7 @@ import (
 	"fmt"
 	"os"
 
-	"github.com/PRO-Robotech/kacho/tools/modulemanifests"
+	manifestproducer "github.com/PRO-Robotech/kacho/pkg/modulemanifest/producer"
 )
 
 func main() {
@@ -51,18 +51,18 @@ func main() {
 		os.Exit(1)
 	}
 
-	delivery, err := modulemanifests.Collect(*root, profiles)
+	delivery, err := manifestproducer.Collect(*root, profiles)
 	// Перепись печатается ВСЕГДА, до ветвления по исходу: без неё «имя не
 	// объявлено» неотличимо от «профили не прочитаны».
 	fmt.Fprintf(os.Stderr, "module-manifests-configmap: %s\n", delivery.Census.Summary())
 
 	switch {
-	case errors.Is(err, modulemanifests.ErrNotDeclared):
+	case errors.Is(err, manifestproducer.ErrNotDeclared):
 		fmt.Fprintf(os.Stderr,
 			"доставка манифестов этой цепочкой не объявлена (kacho-iam.manifests.configMapName "+
 				"пусто) — ConfigMap не заводится, и это решение посадки, а не отказ\n")
 		os.Exit(3)
-	case errors.Is(err, modulemanifests.ErrNoManifests):
+	case errors.Is(err, manifestproducer.ErrNoManifests):
 		fmt.Fprintf(os.Stderr,
 			"ОТКАЗ: доставка объявлена, а манифеста в дереве нет ни одного — применить "+
 				"пустой ConfigMap нельзя: пустой каталог доставки служба читает как сорванную "+
@@ -73,7 +73,7 @@ func main() {
 		os.Exit(1)
 	}
 
-	out, err := modulemanifests.Render(delivery)
+	out, err := manifestproducer.Render(delivery)
 	if err != nil {
 		fmt.Fprintf(os.Stderr, "ОТКАЗ: %v\n", err)
 		os.Exit(1)

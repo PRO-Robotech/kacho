@@ -12,7 +12,7 @@ import (
 	"time"
 
 	"github.com/PRO-Robotech/kacho/gateway/internal/idempotencypg"
-	"github.com/PRO-Robotech/kacho/internal/pgtest"
+	"github.com/PRO-Robotech/kacho/pkg/pgtest"
 )
 
 // TestDPoPReplay_SecondReplicaRejectsTheSameProof — ПРЕДИКАТ ЗАДАЧИ #909:

@@ -71,7 +71,7 @@ import (
 	"regexp"
 	"strings"
 
-	"github.com/PRO-Robotech/kacho/internal/treecorpus"
+	"github.com/PRO-Robotech/kacho/pkg/treecorpus"
 )
 
 // ct3ProbeCorpusDir — корпус, за который гейт отвечает. Сужение до registry —

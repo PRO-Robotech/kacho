@@ -114,7 +114,7 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/PRO-Robotech/kacho/internal/treecorpus"
+	"github.com/PRO-Robotech/kacho/pkg/treecorpus"
 )
 
 // consoleSubjectEntry — запись карты предметов: спека → владелец и вид.
@@ -140,7 +140,7 @@ var consoleSubjectOwnerField = regexp.MustCompile(`owner\s*:\s*"`)
 // выписывается: рукописный список разошёлся бы с деревом молча, и первым, чего
 // он не заметил бы, стал бы новый владелец.
 //
-// Обход идёт через `internal/treecorpus`, а не по диску: под `services/` на
+// Обход идёт через `pkg/treecorpus`, а не по диску: под `services/` на
 // всякой машине, где поднимали стенд, лежит игнорируемое (распаковки чартов,
 // отчёты прогонов), и состав, взятый диском, у разработчика и у конвейера
 // разный. Состав берётся у индекса git — тем же способом, каким его берут

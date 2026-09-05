@@ -31,7 +31,7 @@
 //
 // # Что гейт утверждает
 //
-//  1. вызов git в Go-коде идёт через `internal/gitenv` — прямой
+//  1. вызов git в Go-коде идёт через `pkg/gitenv` — прямой
 //     `exec.Command("git", …)` вне самого помощника есть находка;
 //  2. окружение, снятое помощником, не возвращается обратно присваиванием
 //     `cmd.Env = append(os.Environ(), …)` — дописывать надо к `cmd.Env`.
@@ -58,8 +58,8 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/PRO-Robotech/kacho/internal/gitenv"
-	"github.com/PRO-Robotech/kacho/internal/treecorpus"
+	"github.com/PRO-Robotech/kacho/pkg/gitenv"
+	"github.com/PRO-Robotech/kacho/pkg/treecorpus"
 )
 
 // gitEnvHelperPkg — каталог помощника. Единственное место, где прямой вызов
@@ -68,7 +68,7 @@ import (
 // Самоистечение: если каталог переедет или исчезнет, перепись ниже сообщит о
 // нулевом числе файлов помощника и гейт откажет — исключение не переживёт
 // своего предмета.
-const gitEnvHelperPkg = "internal/gitenv"
+const gitEnvHelperPkg = "pkg/gitenv"
 
 // gitFinding — одно место, названное координатой и видом.
 type gitFinding struct {
@@ -152,7 +152,7 @@ func TestGitCommandsRunWithScrubbedEnvironment(t *testing.T) {
 
 	sort.Slice(findings, func(i, j int) bool { return findings[i].pos < findings[j].pos })
 	var b strings.Builder
-	b.WriteString("вызов git в обход помощника internal/gitenv — находок: ")
+	b.WriteString("вызов git в обход помощника pkg/gitenv — находок: ")
 	b.WriteString(strconv.Itoa(len(findings)))
 	b.WriteString("\n\n")
 	for _, f := range findings {
@@ -432,7 +432,7 @@ func isGitBinary(name string) bool {
 // TestHookAndHelperScrubTheSameVariables — два места об одном предмете обязаны
 // сходиться.
 //
-// Перечень переменных объявлен дважды: в `internal/gitenv` (для всего, что зовёт
+// Перечень переменных объявлен дважды: в `pkg/gitenv` (для всего, что зовёт
 // git из Go) и в `scripts/hooks/pre-push` (граница, обрывающая наследование до
 // запуска проверок). Расхождение между ними тихое: каждая половина по отдельности
 // выглядит исправной, а дыра открывается ровно на той переменной, которую

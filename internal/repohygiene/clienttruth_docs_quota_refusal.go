@@ -9,7 +9,7 @@ import (
 	"sort"
 	"strings"
 
-	"github.com/PRO-Robotech/kacho/internal/treecorpus"
+	"github.com/PRO-Robotech/kacho/pkg/treecorpus"
 )
 
 // Отказ по исчерпанию предела описан у КАЖДОГО владельца учёта — и только у него.

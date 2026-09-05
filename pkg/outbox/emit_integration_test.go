@@ -1,5 +1,5 @@
 // Copyright (c) PRO-Robotech
-// SPDX-License-Identifier: BUSL-1.1
+// SPDX-License-Identifier: Apache-2.0
 
 package outbox_test
 
@@ -28,8 +28,8 @@ import (
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 
-	"github.com/PRO-Robotech/kacho/internal/pgtest"
 	"github.com/PRO-Robotech/kacho/pkg/outbox"
+	"github.com/PRO-Robotech/kacho/pkg/pgtest"
 )
 
 // outboxSchema — таблица с фиксированной схемой из doc-контракта outbox.Emit

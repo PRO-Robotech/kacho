@@ -29,7 +29,7 @@ package principalmeta_test
 // СОСТАВ БЕРЁТСЯ У ИНДЕКСА, А НЕ У ДИСКА. Обход диском подхватывает то, что на
 // машине со стендом лежит рядом с деревом и деревом не является — распакованные
 // чарты, сборочные каталоги, отчёты прогонов, — и находка из такого каталога
-// говорит о чужой копии, а не о нашем коде. Общий корпус (internal/treecorpus)
+// говорит о чужой копии, а не о нашем коде. Общий корпус (pkg/treecorpus)
 // спрашивает индекс git и потому отвечает про отслеживаемое.
 
 import (
@@ -46,7 +46,7 @@ import (
 	"github.com/stretchr/testify/require"
 
 	"github.com/PRO-Robotech/kacho/gateway/internal/principalmeta"
-	"github.com/PRO-Robotech/kacho/internal/treecorpus"
+	"github.com/PRO-Robotech/kacho/pkg/treecorpus"
 )
 
 // edgeOnlyKeyNames — ключи, чьё отсутствие за краем утверждается.

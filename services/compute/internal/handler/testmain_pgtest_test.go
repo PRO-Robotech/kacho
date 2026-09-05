@@ -7,7 +7,7 @@ import (
 	"os"
 	"testing"
 
-	"github.com/PRO-Robotech/kacho/internal/pgtest"
+	"github.com/PRO-Robotech/kacho/pkg/pgtest"
 	"github.com/PRO-Robotech/kacho/services/compute/internal/migrations"
 )
 
@@ -15,7 +15,7 @@ import (
 //
 // setupWatchDB used to start a container AND replay the whole migration chain on
 // every call; the container now starts once, the chain runs once into a template,
-// and each caller gets its own database cloned from it. See internal/pgtest for
+// and each caller gets its own database cloned from it. See pkg/pgtest for
 // why a clone is the same isolation a separate container gave.
 //
 // The container starts lazily on first use, so `-short` — under which every

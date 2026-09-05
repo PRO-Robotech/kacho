@@ -16,7 +16,7 @@ import (
 	"github.com/PRO-Robotech/kacho/services/vpc/internal/repo/helpers"
 	kachopg "github.com/PRO-Robotech/kacho/services/vpc/internal/repo/kacho/pg"
 
-	"github.com/PRO-Robotech/kacho/internal/pgtest"
+	"github.com/PRO-Robotech/kacho/pkg/pgtest"
 )
 
 // Baseline 0001_initial.sql несет DB-уровневые CHECK на name regex и длину

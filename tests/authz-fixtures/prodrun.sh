@@ -11,7 +11,7 @@
 #   prodrun.sh geo
 #   prodrun.sh vpc --service authz-deny
 set -euo pipefail
-# Тот же класс, что в drain_fga_outbox.sh (разбор — там): подстановка НЕсуществующего
+# Подстановка НЕсуществующего
 # `/tmp/kacho.kubeconfig` ломала рабочую настройку `~/.kube/config`, уводя kubectl на
 # legacy-умолчание localhost:8080. Файла не создаёт ни CI, ни один скрипт дерева.
 # Берём путь, только если он задан явно либо существует.
@@ -105,18 +105,14 @@ if [[ -f "$EXT" ]]; then
   python3 "$FIX/patch-env.py" "$EXTCACHE" "$ENVFILE" >&2
 fi
 
-# Grant-materialization drain-gate: freshly-created AccessBindings materialize the
-# subject's owner/verb FGA tuples eventually-consistent. Running collections at
-# matrix-age-0 hits that window (403 cascade in suites with thin retry coverage —
-# the reseed-warmup race). Deterministically wait (poll healthy fga_outbox depth →
-# 0) once after a reseed so grants are visible before the first suite; adapts to the
-# burst size instead of a fixed under/over-shooting sleep, and degrades to a bounded
-# settle when the iam DB is not directly reachable. The run then fits the 15min token
-# window (reseed ~3min + drain + run).
-if [[ "$DID_RESEED" == 1 ]]; then
-  echo "[prodrun] grant-materialization drain-gate…" >&2
-  bash "$FIX/drain_fga_outbox.sh" "${DRAIN_BUDGET:-180}" || true
-fi
+# ЗДЕСЬ СТОЯЛ ГЕЙТ ОСЕДАНИЯ ПОСЛЕ ПОСЕВА — снят вместе со своим предметом (kacho#1049).
+#
+# Он ждал материализации кортежей прав дренажем. Дренажа нет: журнал
+# `kacho_iam.fga_outbox` читает триггер, складывающий прямой факт В ТОЙ ЖЕ транзакции,
+# что и вставку. Окна между «выдали» и «действует» у этой полосы больше не существует.
+#
+# Сам скрипт к тому же ОТКАЗЫВАЛ на каждом прогоне (снятые колонки `sent_at`/`last_error`)
+# и звался под `|| true` — то есть молча не делал ничего. Разбор — kacho#1049.
 
 cd "$ROOT/services/$SVC/tests/newman"
 exec ./scripts/run.sh "${EXTRA[@]}"

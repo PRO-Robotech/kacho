@@ -16,7 +16,7 @@ import (
 	"sort"
 	"strings"
 
-	"github.com/PRO-Robotech/kacho/internal/treecorpus"
+	"github.com/PRO-Robotech/kacho/pkg/treecorpus"
 )
 
 // bootguardpresence.go — обход дерева для гейта посадки. Живёт в НЕ-тестовом

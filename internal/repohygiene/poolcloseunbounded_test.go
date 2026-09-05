@@ -22,7 +22,7 @@
 //	require.NoError(t, err)
 //	pgtest.ClosePoolAtEnd(t, pool)   // было: defer pool.Close() / t.Cleanup(pool.Close)
 //
-// `internal/pgtest.ClosePoolAtEnd` даёт закрытию предел и на его исходе называет
+// `pkg/pgtest.ClosePoolAtEnd` даёт закрытию предел и на его исходе называет
 // причину и снятие. Десять минут молчания меняются на секунды с именем пробы.
 //
 // # Почему остаток назван ЧИСЛОМ, а не молчанием

@@ -44,7 +44,7 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/PRO-Robotech/kacho/internal/treecorpus"
+	"github.com/PRO-Robotech/kacho/pkg/treecorpus"
 )
 
 // retiredQueueEventValues — значения словаря, которые ОСТАЮТСЯ в ограничении, но

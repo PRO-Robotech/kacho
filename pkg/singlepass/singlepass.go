@@ -1,5 +1,5 @@
 // Copyright (c) PRO-Robotech
-// SPDX-License-Identifier: BUSL-1.1
+// SPDX-License-Identifier: Apache-2.0
 
 // Package singlepass разводит фоновый проход между репликами: из всех процессов,
 // подошедших к проходу одновременно, его исполняет ровно один.

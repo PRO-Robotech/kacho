@@ -16,7 +16,7 @@ import (
 	coredb "github.com/PRO-Robotech/kacho/pkg/db"
 	kachopg "github.com/PRO-Robotech/kacho/services/vpc/internal/repo/kacho/pg"
 
-	"github.com/PRO-Robotech/kacho/internal/pgtest"
+	"github.com/PRO-Robotech/kacho/pkg/pgtest"
 )
 
 // Заморозка координаты изоляции тенант-домена (`networks.vrf_id`, миграция 0031).

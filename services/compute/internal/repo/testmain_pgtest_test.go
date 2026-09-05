@@ -7,7 +7,7 @@ import (
 	"os"
 	"testing"
 
-	"github.com/PRO-Robotech/kacho/internal/pgtest"
+	"github.com/PRO-Robotech/kacho/pkg/pgtest"
 	"github.com/PRO-Robotech/kacho/services/compute/internal/migrations"
 )
 
@@ -17,7 +17,7 @@ import (
 // every call, and it is called 52 times here — so the package spent its budget on
 // its harness rather than on its tests. The container now starts once, the chain
 // runs once into a template, and each caller gets its own database cloned from it.
-// See internal/pgtest for why a clone is the same isolation a separate container
+// See pkg/pgtest for why a clone is the same isolation a separate container
 // gave: the CAS / UNIQUE / lost-update / race proofs in this package still run
 // their goroutines against the same real rows of the same real database.
 //

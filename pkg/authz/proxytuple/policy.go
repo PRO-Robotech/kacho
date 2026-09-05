@@ -1,5 +1,5 @@
 // Copyright (c) PRO-Robotech
-// SPDX-License-Identifier: BUSL-1.1
+// SPDX-License-Identifier: Apache-2.0
 
 // Package proxytuple holds the ONE declaration of what a resource-owning module
 // may write into the authorization model through kacho-iam's FGA proxy —

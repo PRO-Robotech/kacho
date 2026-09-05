@@ -184,12 +184,22 @@ IMAGE_IDS_VALUES := helm/umbrella/values.image-ids.yaml
 # дерева.
 MODULE_MANIFESTS_VALUES := helm/umbrella/values.module-manifests.yaml
 
+# КОНТЕКСТ СБОРКИ — НЕ У ВСЕХ ОДИНАКОВ, И ЭТО ОБЪЯВЛЕНО, А НЕ ПОДРАЗУМЕВАЕТСЯ.
+#
+# Семь образов собираются с контекстом в КОРНЕ дерева: они пакеты одного модуля,
+# и `pkg/` с `proto/` нужны каждому. Служба iam несёт СВОЙ `go.mod` и подключает
+# фундамент внешним модулем по версии — её контекст равен её каталогу.
+#
+# Дай ей корень — соберётся тоже, поэтому расхождение было бы МОЛЧАЛИВЫМ: разошлись
+# бы не сборка и отказ, а сборка и утверждение шапки её Dockerfile о собственной
+# самодостаточности. Ложным стало бы утверждение, а не образ.
 build-services:
 	@echo "=== provenance: $(GIT_REF) @ $(GIT_COMMIT)$(GIT_DIRTY) ==="
 	@for svc in $(IMAGES); do \
 	  echo "=== build kacho-$$svc:dev ==="; \
 	  d=$$(test "$$svc" = api-gateway && echo gateway || echo services/$$svc); \
-	  ( cd .. && docker build -f $$d/Dockerfile $(IMAGE_BUILD_ARGS) -t kacho-$$svc:dev . ) || exit 1; \
+	  bctx=$$(test "$$svc" = iam && echo "$$d" || echo .); \
+	  ( cd .. && docker build -f $$d/Dockerfile $(IMAGE_BUILD_ARGS) -t kacho-$$svc:dev "$$bctx" ) || exit 1; \
 	  kind load docker-image kacho-$$svc:dev --name $(CLUSTER_NAME) || exit 1; \
 	done
 	@# Идентификатор содержимого берётся у демона ПОСЛЕ сборки: это то, что реально
@@ -1251,7 +1261,8 @@ endif
 		: ; \
 	else \
 		d=$$(test "$(SVC)" = api-gateway && echo gateway || echo services/$(SVC)); \
-		( cd .. && docker build -f $$d/Dockerfile $(IMAGE_BUILD_ARGS) -t kacho-$(SVC):dev . ); \
+		bctx=$$(test "$(SVC)" = iam && echo "$$d" || echo .); \
+		( cd .. && docker build -f $$d/Dockerfile $(IMAGE_BUILD_ARGS) -t kacho-$(SVC):dev "$$bctx" ); \
 	fi && \
 	kind load docker-image kacho-$(SVC):dev --name $(CLUSTER_NAME) && \
 	kubectl rollout restart -n kacho deployment/$$DEPLOY_NAME

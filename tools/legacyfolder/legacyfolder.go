@@ -61,7 +61,7 @@ import (
 	"unicode"
 	"unicode/utf8"
 
-	"github.com/PRO-Robotech/kacho/internal/gitenv"
+	"github.com/PRO-Robotech/kacho/pkg/gitenv"
 )
 
 // idWords are the components that turn a preceding "folder" into the retired

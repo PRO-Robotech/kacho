@@ -69,8 +69,7 @@ import (
 // группы теперь, вместо «что-то изменилось, перечитай».
 
 // TargetDrainRunner — фоновый worker, реализующий двухфазный drain.
-// Запускается из cmd/kacho-loadbalancer/main.go параллельно с gRPC-серверами
-// через H-BF/corlib/pkg/parallel.ExecAbstract.
+// Запускается из cmd/kacho-loadbalancer/main.go параллельно с gRPC-серверами.
 type TargetDrainRunner struct {
 	repo     kachorepo.Repository
 	logger   *slog.Logger

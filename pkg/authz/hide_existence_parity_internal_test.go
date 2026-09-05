@@ -1,5 +1,5 @@
 // Copyright (c) PRO-Robotech
-// SPDX-License-Identifier: BUSL-1.1
+// SPDX-License-Identifier: Apache-2.0
 
 package authz
 
@@ -18,69 +18,29 @@ package authz
 // matches the backend.
 
 import (
-	"go/ast"
-	"go/parser"
-	"go/token"
-	"os"
-	"path/filepath"
-	"strconv"
 	"testing"
 )
 
-const gatewayTableFile = "../../gateway/internal/middleware/permission_denied_response.go"
-
-// parseGatewayFormats extracts `hideExistenceNotFoundFormats` from the gateway
-// source.
+// parseGatewayFormats — записи таблицы края.
+//
+// Разрешение идёт ПО ПАКЕТУ (`parseFormatsInPackage`), а не по имени файла:
+// прежняя редакция пинила координату `permission_denied_response.go`, и перенос
+// объявления в соседний файл того же пакета — законная правка — давал `t.Fatalf`,
+// то есть «не выполнилось», поданное как красное. Собственный текст того отказа
+// это признавал («move the guard with it»), и стража, отвечающего так, снимают
+// как вечно красный — вместе с единственным, что байт-идентичность двух текстов
+// держит (задача #1946).
+//
+// Второго разбора здесь НЕ заводится: разбор один, и он же доказан инъекцией
+// (`hide_existence_parity_scope_test.go`).
 func parseGatewayFormats(t *testing.T) map[string]string {
 	t.Helper()
-	path, err := filepath.Abs(gatewayTableFile)
+	formats, read, err := parseFormatsInPackage(gatewayTableDir)
 	if err != nil {
-		t.Fatalf("resolve gateway table path: %v", err)
+		t.Fatalf("таблица скрытия существования у края не разрешена: %v", err)
 	}
-	if _, err := os.Stat(path); err != nil {
-		t.Fatalf("the gateway hide-existence table is not where this guard expects it (%s): %v — move the guard with it, do not delete it", gatewayTableFile, err)
-	}
-	f, err := parser.ParseFile(token.NewFileSet(), path, nil, 0)
-	if err != nil {
-		t.Fatalf("parse gateway table: %v", err)
-	}
-
-	out := map[string]string{}
-	ast.Inspect(f, func(n ast.Node) bool {
-		vs, ok := n.(*ast.ValueSpec)
-		if !ok || len(vs.Names) != 1 || vs.Names[0].Name != "hideExistenceNotFoundFormats" {
-			return true
-		}
-		if len(vs.Values) != 1 {
-			return false
-		}
-		lit, ok := vs.Values[0].(*ast.CompositeLit)
-		if !ok {
-			return false
-		}
-		for _, el := range lit.Elts {
-			kv, ok := el.(*ast.KeyValueExpr)
-			if !ok {
-				continue
-			}
-			k, kok := kv.Key.(*ast.BasicLit)
-			v, vok := kv.Value.(*ast.BasicLit)
-			if !kok || !vok {
-				continue
-			}
-			key, kerr := strconv.Unquote(k.Value)
-			val, verr := strconv.Unquote(v.Value)
-			if kerr != nil || verr != nil {
-				continue
-			}
-			out[key] = val
-		}
-		return false
-	})
-	if len(out) == 0 {
-		t.Fatalf("no entries parsed from the gateway table — the guard would pass vacuously")
-	}
-	return out
+	t.Logf("перепись: файлов пакета края прочитано %d · записей таблицы %d", read, len(formats))
+	return formats
 }
 
 // TestHideExistenceFormats_MatchTheGateway — same keys, same texts.

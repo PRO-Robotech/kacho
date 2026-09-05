@@ -1,5 +1,5 @@
 // Copyright (c) PRO-Robotech
-// SPDX-License-Identifier: BUSL-1.1
+// SPDX-License-Identifier: Apache-2.0
 
 // journalwords_internal_test.go — проба ВНУТРИ пакета, и это её единственная
 // причина здесь быть.

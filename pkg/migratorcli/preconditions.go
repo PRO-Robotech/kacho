@@ -1,5 +1,5 @@
 // Copyright (c) PRO-Robotech
-// SPDX-License-Identifier: BUSL-1.1
+// SPDX-License-Identifier: Apache-2.0
 
 // preconditions.go — что обязано быть заполнено ДО обращения к базе, объявлено
 // ОДИН раз на дерево.

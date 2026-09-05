@@ -8,7 +8,7 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/PRO-Robotech/kacho/internal/treecorpus"
+	"github.com/PRO-Robotech/kacho/pkg/treecorpus"
 )
 
 // TestDocsPagesAreReachableFromTheMenu — страница сайта достижима из меню, а

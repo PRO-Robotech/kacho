@@ -56,7 +56,7 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/PRO-Robotech/kacho/internal/gitenv"
+	"github.com/PRO-Robotech/kacho/pkg/gitenv"
 )
 
 // helmDepsOwner — единственный файл дерева, которому позволено звать helm за

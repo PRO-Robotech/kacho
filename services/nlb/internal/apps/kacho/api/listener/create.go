@@ -10,7 +10,7 @@ import (
 	"log/slog"
 	"time"
 
-	"github.com/H-BF/corlib/pkg/option"
+	"github.com/PRO-Robotech/kacho/pkg/option"
 	"google.golang.org/grpc/codes"
 	"google.golang.org/grpc/status"
 	"google.golang.org/protobuf/types/known/anypb"

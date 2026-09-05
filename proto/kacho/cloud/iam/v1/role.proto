@@ -1,5 +1,5 @@
 // Copyright (c) PRO-Robotech
-// SPDX-License-Identifier: BUSL-1.1
+// SPDX-License-Identifier: Apache-2.0
 
 syntax = "proto3";
 
@@ -97,8 +97,9 @@ message Role {
   // TOMBSTONE (DB column dropped in migration 0008; proto field also
   // dropped). Org-scoped roles были упразднены вместе с
   // B2B Organization. Tag 9 & name `organization_id` зарезервированы и никогда
-  // не переиспользуются (append-only / buf-breaking tombstone discipline,
-  // enforced by scripts/tombstone_enforce.sh).
+  // не переиспользуются. Держатель — адъюдикация `buf breaking` против ствола
+  // (категория FILE); вызывается заданием конвейера и локально
+  // scripts/ci-local.sh.
   reserved 9;
   reserved "organization_id";
 
@@ -678,7 +679,9 @@ message Rule {
   // правилами (по одному на модуль). Намеренный major bump — tag 1 + имя
   // `modules` зарезервированы tombstone-дисциплиной (тот же прием, что
   // `AccessBinding` reserved 16/18; reserved, НЕ [deprecated]),
-  // никогда не реюзаются (enforced — scripts/tombstone_enforce.sh).
+  // никогда не реюзаются. Держатель — адъюдикация `buf breaking` против ствола
+  // (категория FILE); вызывается заданием конвейера и локально
+  // scripts/ci-local.sh.
   reserved 1;
   reserved "modules";
 
@@ -686,8 +689,12 @@ message Rule {
   // только как единственный элемент.
   repeated string resources = 2;
 
-  // Глаголы гранта. 1..16; lowercase. Literal `"*"` — SYSTEM-ONLY; только как
-  // единственный элемент.
+  // Глаголы гранта. 1..16; lowercase. Literal `"*"` означает «все действия
+  // названного типа» и ярусом роли НЕ ограничен: он законен и в арендаторской
+  // роли — в отличие от подстановки в `module` и `resources`, где она доступна
+  // только роли с кластерным якорем. Единственное условие — `"*"` идёт
+  // единственным элементом (`["*", "get"]` → INVALID_ARGUMENT). Расхождение
+  // этой строки с тем, что домен ДЕЛАЕТ, держит гейт, а не внимание.
   repeated string verbs = 3;
 
   // Pin-by-id селекция инстансов (K8s-native). ≤256; opaque-id; literal `"*"`

@@ -39,7 +39,7 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/PRO-Robotech/kacho/internal/treecorpus"
+	"github.com/PRO-Robotech/kacho/pkg/treecorpus"
 )
 
 // anchorDir is the directory holding the resource packages this gate reads.
@@ -90,7 +90,7 @@ func moduleRoot(t *testing.T) string {
 }
 
 // copyTree materialises one tracked tree into dst and returns how many files it
-// wrote. The file set comes from the git INDEX (internal/treecorpus), not from a
+// wrote. The file set comes from the git INDEX (pkg/treecorpus), not from a
 // disk walk: under services/ a walk also reads what the repository does not contain
 // — agent working copies, generated directories, run reports.
 func copyTree(t *testing.T, base, tree, dst string) int {

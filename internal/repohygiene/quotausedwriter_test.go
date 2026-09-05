@@ -56,7 +56,7 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/PRO-Robotech/kacho/internal/treecorpus"
+	"github.com/PRO-Robotech/kacho/pkg/treecorpus"
 )
 
 // quotaUsageTables — таблицы учёта потребления. Перечень ВЫПИСАН, а не выведен:
@@ -188,7 +188,7 @@ var scanRootsForQuotaWriters = []string{"services", "pkg", "gateway"}
 // forEachQuotaScannedFile отдаёт содержимое каждого ОТСЛЕЖИВАЕМОГО файла под
 // корнями обхода.
 //
-// Состав берётся у индекса дерева (`internal/treecorpus`), а не обходом диска.
+// Состав берётся у индекса дерева (`pkg/treecorpus`), а не обходом диска.
 // Разница не косметическая: под `services/` на всякой машине, где поднимали
 // стенд, лежат распаковки чартов, отчёты прогонов и рабочие копии агентов —
 // обход диска прочитал бы их и объявил находкой чужой файл (или, что тише,

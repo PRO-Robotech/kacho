@@ -87,7 +87,7 @@ const (
 
 	// sharedApplyImport — признак действующей формы: точка наката обращается к
 	// ОБЩЕМУ накату. Импорт, а не имя каталога: имя встречается и в прозе.
-	sharedApplyImport = "github.com/PRO-Robotech/kacho/internal/migratorrun"
+	sharedApplyImport = "github.com/PRO-Robotech/kacho/pkg/migratorrun"
 
 	// wrapperImportSuffix — признак снятой формы: точка наката импортирует
 	// СВОЙ пакет-обёртку. Признак оставлен намеренно — им ловится возвращение.

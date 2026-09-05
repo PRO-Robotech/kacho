@@ -29,7 +29,7 @@ import (
 	"os"
 	"testing"
 
-	"github.com/PRO-Robotech/kacho/internal/treecorpus"
+	"github.com/PRO-Robotech/kacho/pkg/treecorpus"
 )
 
 func TestMain(m *testing.M) {

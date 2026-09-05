@@ -24,8 +24,8 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/PRO-Robotech/kacho/internal/gitenv"
-	"github.com/PRO-Robotech/kacho/internal/treecorpus"
+	"github.com/PRO-Robotech/kacho/pkg/gitenv"
+	"github.com/PRO-Robotech/kacho/pkg/treecorpus"
 )
 
 // synthFrozen — перепись синтетического дерева. Отдельная от боевой намеренно:

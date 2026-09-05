@@ -512,10 +512,11 @@ func resolveQualifiedConst(
 		return "", false, nil
 	}
 	importPath, ok := imports[pkgIdent.Name]
-	if !ok || !strings.HasPrefix(importPath, modulePathPrefix) {
+	rel, own := treeRelOfImport(importPath)
+	if !ok || !own {
 		return "", false, nil
 	}
-	dir := filepath.Join(root, filepath.FromSlash(strings.TrimPrefix(importPath, modulePathPrefix)))
+	dir := filepath.Join(root, filepath.FromSlash(rel))
 	files, err := collectFiles(dir, ".go")
 	if err != nil {
 		return "", false, err
@@ -537,8 +538,46 @@ func resolveQualifiedConst(
 	return "", false, nil
 }
 
-// modulePathPrefix — префикс импортов ЭТОГО модуля.
+// modulePathPrefix — префикс импортов КОРНЕВОГО модуля дерева.
 const modulePathPrefix = "github.com/PRO-Robotech/kacho/"
+
+// МОДУЛЬ В ДЕРЕВЕ БОЛЬШЕ НЕ ОДИН.
+//
+// Служба iam несёт свой `go.mod` (`github.com/PRO-Robotech/kacho-iam`): она
+// выносится отдельным репозиторием и обязана собираться без дерева монорепо на
+// диске. Отображение «путь импорта ↔ путь в дереве» перестало быть отрезанием
+// одного префикса.
+//
+// Класс, ради которого это записано отдельной парой функций, а не вторым
+// `strings.HasPrefix` по месту: распознаватель, не знающий одной из законных
+// форм записи предмета, не даёт ни красного, ни зелёного — он МОЛЧИТ. Гейты,
+// строившие путь дерева отрезанием корневого префикса, после разделения
+// перестали видеть код службы вовсе и объявили её накопители «считающими в
+// никуда», ничего в ней не изменив.
+const (
+	iamModulePathPrefix = "github.com/PRO-Robotech/kacho-iam/"
+	iamTreePrefix       = "services/iam/"
+)
+
+// treeRelOfImport — путь В ДЕРЕВЕ (от корня монорепо) по пути импорта любого
+// модуля дерева. Второй результат — принадлежит ли импорт дереву вообще.
+func treeRelOfImport(importPath string) (string, bool) {
+	if rel, ok := strings.CutPrefix(importPath, iamModulePathPrefix); ok {
+		return iamTreePrefix + rel, true
+	}
+	if rel, ok := strings.CutPrefix(importPath, modulePathPrefix); ok {
+		return rel, true
+	}
+	return "", false
+}
+
+// importOfTreeRel — обратное отображение: путь импорта по пути в дереве.
+func importOfTreeRel(rel string) string {
+	if inner, ok := strings.CutPrefix(rel, iamTreePrefix); ok {
+		return iamModulePathPrefix + inner
+	}
+	return modulePathPrefix + rel
+}
 
 // constStringValue отдаёт строковое значение константы по её имени.
 func constStringValue(f *ast.File, name string) (string, bool) {

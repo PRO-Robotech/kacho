@@ -65,7 +65,7 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/PRO-Robotech/kacho/internal/gitenv"
+	"github.com/PRO-Robotech/kacho/pkg/gitenv"
 )
 
 // useCaseLayerMarker — признак слоя use-case в пути файла.
@@ -132,7 +132,7 @@ func roleVerbWriterPackageOf(rel, src string) (string, bool, error) {
 	if len(writes) == 0 {
 		return "", false, nil
 	}
-	return modulePathPrefix + filepath.ToSlash(filepath.Dir(rel)), true, nil
+	return importOfTreeRel(filepath.ToSlash(filepath.Dir(rel))), true, nil
 }
 
 // isUseCaseLayer — лежит ли файл в слое use-case.

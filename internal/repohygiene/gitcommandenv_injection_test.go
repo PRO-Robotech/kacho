@@ -40,7 +40,7 @@ import (
 	"os"
 	"os/exec"
 
-	"github.com/PRO-Robotech/kacho/internal/gitenv"
+	"github.com/PRO-Robotech/kacho/pkg/gitenv"
 )
 
 var ctx = context.Background()

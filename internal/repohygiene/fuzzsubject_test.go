@@ -63,7 +63,7 @@ import (
 // утверждает, что предмет проверяется.
 func TestEveryFuzzTargetDrivesProductionCode(t *testing.T) {
 	root := repoRoot(t)
-	targets, census := analyzeFuzzSubjects(t, newTrackedTree(t, root), moduleImportPath(t, root))
+	targets, census := analyzeFuzzSubjects(t, newTrackedTree(t, root), moduleImportPaths(t, root))
 
 	// ПЕРЕПИСЬ печатается ВСЕГДА, включая зелёный прогон: «ноль целей без
 	// предмета» обязано отличаться от «ноль прочитанных файлов».
@@ -111,7 +111,7 @@ func TestEveryFuzzTargetDrivesProductionCode(t *testing.T) {
 // TestScheduledMatrixCoversEveryFuzzTarget ниже, на том же разборе.
 func TestFuzzSubjectAnalyzerSeesEveryScheduledTarget(t *testing.T) {
 	root := repoRoot(t)
-	targets, census := analyzeFuzzSubjects(t, newTrackedTree(t, root), moduleImportPath(t, root))
+	targets, census := analyzeFuzzSubjects(t, newTrackedTree(t, root), moduleImportPaths(t, root))
 	t.Logf("%s; фаз-целей найдено %d", census, len(targets))
 	seen := map[string]bool{}
 	for _, tg := range targets {
@@ -151,7 +151,7 @@ func TestFuzzSubjectAnalyzerSeesEveryScheduledTarget(t *testing.T) {
 func TestScheduledMatrixCoversEveryFuzzTarget(t *testing.T) {
 	root := repoRoot(t)
 
-	targets, census := analyzeFuzzSubjects(t, newTrackedTree(t, root), moduleImportPath(t, root))
+	targets, census := analyzeFuzzSubjects(t, newTrackedTree(t, root), moduleImportPaths(t, root))
 	var inCode []string
 	for _, tg := range targets {
 		inCode = append(inCode, tg.name)
@@ -472,7 +472,7 @@ import (
 }
 `)
 
-	targets, census := analyzeFuzzSubjects(t, newSyntheticTree(t, root), mod)
+	targets, census := analyzeFuzzSubjects(t, newSyntheticTree(t, root), []string{mod})
 	got := map[string]bool{}
 	for _, tg := range targets {
 		got[tg.name] = tg.hasSubject
@@ -529,7 +529,7 @@ import (
 func FuzzHealthy(f *testing.F) { f.Fuzz(func(t *testing.T, s string) { _ = domain.Parse(s) }) }
 `)
 
-	targets, census := analyzeFuzzSubjects(t, newSyntheticTree(t, root), mod)
+	targets, census := analyzeFuzzSubjects(t, newSyntheticTree(t, root), []string{mod})
 
 	// (а) ПОЛОЖИТЕЛЬНОЕ НАПРАВЛЕНИЕ: битый файл назван, с координатой.
 	if len(census.unparsed) != 1 {
@@ -612,7 +612,7 @@ func (c fuzzCensus) String() string {
 	return s
 }
 
-func analyzeFuzzSubjects(t *testing.T, tt *trackedTree, modulePath string) ([]fuzzTarget, fuzzCensus) {
+func analyzeFuzzSubjects(t *testing.T, tt *trackedTree, modulePaths []string) ([]fuzzTarget, fuzzCensus) {
 	t.Helper()
 	root := tt.root
 	census := fuzzCensus{indexFiles: tt.count()}
@@ -641,7 +641,7 @@ func analyzeFuzzSubjects(t *testing.T, tt *trackedTree, modulePath string) ([]fu
 
 	var out []fuzzTarget
 	for dir, files := range byDir {
-		targets, unparsed := analyzePackage(t, root, modulePath, dir, files)
+		targets, unparsed := analyzePackage(t, root, modulePaths, dir, files)
 		out = append(out, targets...)
 		census.unparsed = append(census.unparsed, unparsed...)
 	}
@@ -661,7 +661,7 @@ type funcFacts struct {
 	callsLocal []string // зовёт функции своего же пакета (по имени)
 }
 
-func analyzePackage(t *testing.T, root, modulePath, dir string, files []string) ([]fuzzTarget, []string) {
+func analyzePackage(t *testing.T, root string, modulePaths []string, dir string, files []string) ([]fuzzTarget, []string) {
 	t.Helper()
 
 	fset := token.NewFileSet()
@@ -691,7 +691,7 @@ func analyzePackage(t *testing.T, root, modulePath, dir string, files []string) 
 			unparsed = append(unparsed, filepath.ToSlash(rel)+": "+err.Error())
 			continue
 		}
-		prodPkgs := prodImportNames(f, modulePath)
+		prodPkgs := prodImportNames(f, modulePaths)
 
 		for _, decl := range f.Decls {
 			fd, ok := decl.(*ast.FuncDecl)
@@ -800,17 +800,24 @@ func isFuzzTargetDecl(fd *ast.FuncDecl) bool {
 // раскодирует вход в стаб, фаззит protobuf-go, а не продукт. Blank- и
 // dot-импорты не дают имени для вызова и в множество не попадают — импорт без
 // вызова предметом не является.
-func prodImportNames(f *ast.File, modulePath string) map[string]bool {
+func prodImportNames(f *ast.File, modulePaths []string) map[string]bool {
 	out := map[string]bool{}
 	for _, imp := range f.Imports {
 		path, err := strconv.Unquote(imp.Path.Value)
 		if err != nil {
 			continue
 		}
-		if !strings.HasPrefix(path, modulePath+"/") {
-			continue
+		own, generated := false, false
+		for _, mod := range modulePaths {
+			if strings.HasPrefix(path, mod+"/") {
+				own = true
+				if strings.HasPrefix(path, mod+"/pkg/api/") {
+					generated = true
+				}
+				break
+			}
 		}
-		if strings.HasPrefix(path, modulePath+"/pkg/api/") {
+		if !own || generated {
 			continue
 		}
 		name := path[strings.LastIndex(path, "/")+1:]
@@ -855,6 +862,50 @@ func scheduledFuzzTargets(t *testing.T, root string) []string {
 // moduleImportPath — путь модуля из go.mod. Префикс «своё vs чужое» берётся отсюда,
 // а не из константы: константа пережила бы переименование модуля молча, и тогда
 // прод-импорты перестали бы считаться своими — гейт начал бы валить всё подряд.
+// moduleImportPaths — пути ВСЕХ модулей дерева, ВЫВЕДЕННЫЕ из него.
+//
+// Модуль в дереве перестал быть единственным: служба iam несёт свой `go.mod`,
+// потому что выносится отдельным репозиторием. Распознаватель прод-кода ниже
+// сверял импорт с ОДНИМ путём и после разделения перестал видеть прод-код
+// службы вовсе — её фаз-цель объявилась «заглушкой», ничего не изменив в себе.
+// Класс известный: распознаватель, не знающий одной из законных форм записи
+// предмета, не даёт ни красного, ни зелёного — он молчит.
+//
+// Перечень ВЫВОДИТСЯ обходом, а не выписывается: выписанный разошёлся бы с
+// деревом при заведении следующего модуля — и разошёлся бы молча.
+func moduleImportPaths(t *testing.T, root string) []string {
+	t.Helper()
+
+	// Состав берётся у ИНДЕКСА, а не у диска. Обход диска от корня прочитал бы
+	// каталоги, которых в репозитории нет — рабочие копии агентов, отчёты
+	// прогонов, локальные оверлеи, — и вердикт стал бы свойством чужого рабочего
+	// каталога, а не коммита. Держит это `TestTreeWalkersAskTheIndex`, и он же
+	// поймал первую редакцию этой функции.
+	tt := newTrackedTree(t, root)
+
+	var out []string
+	for rel := range tt.files {
+		if filepath.Base(rel) != "go.mod" {
+			continue
+		}
+		raw, err := os.ReadFile(filepath.Join(root, filepath.FromSlash(rel)))
+		if err != nil {
+			t.Fatalf("не прочитан %s: %v", rel, err)
+		}
+		for _, line := range strings.Split(string(raw), "\n") {
+			if after, ok := strings.CutPrefix(strings.TrimSpace(line), "module "); ok {
+				out = append(out, strings.TrimSpace(after))
+				break
+			}
+		}
+	}
+	if len(out) == 0 {
+		t.Fatalf("в составе дерева не найдено ни одного go.mod — обход пуст, вердикт беспредметен")
+	}
+	sort.Strings(out)
+	return out
+}
+
 func moduleImportPath(t *testing.T, root string) string {
 	t.Helper()
 	raw, err := os.ReadFile(filepath.Join(root, "go.mod"))

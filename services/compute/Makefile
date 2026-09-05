@@ -32,7 +32,7 @@ vet:
 # receive only the rows it may see (per-object, kacho-iam BatchCheck), not every row
 # of its project. The check parses the tree, so a resource is recognised by what its
 # declaration IS — a `List` method on a `<X>Handler` type — and never by what the
-# receiver variable is called; see tools/listfiltergate for the whole contract.
+# receiver variable is called; see pkg/listfiltergate for the whole contract.
 #
 # The run always prints its census (files, resources, checked, whitelisted): "zero
 # findings" must be distinguishable from "zero read", so a tree the gate could not

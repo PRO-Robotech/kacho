@@ -717,7 +717,7 @@ authMode: production
 # операция над данными и релиза службы не требует.
 #
 # КТО ЕГО КЛАДЁТ (kacho#1901). Объект порождает `make module-manifests-configmap`
-# (инструмент — tools/modulemanifests): он обходит `services/*/manifest.yaml`
+# (инструмент — pkg/modulemanifest/producer): он обходит `services/*/manifest.yaml`
 # того же дерева и берёт ИМЯ ОБЪЕКТА из тех же профилей, что и helm, — отсюда,
 # из `configMapName` ниже. Одно объявление на обе стороны: второе разошлось бы с
 # первым молча, под смонтировал бы один объект, производитель положил бы другой,

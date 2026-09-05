@@ -14,7 +14,7 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/PRO-Robotech/kacho/internal/treecorpus"
+	"github.com/PRO-Robotech/kacho/pkg/treecorpus"
 )
 
 // ownerRegisterScanRoots — где ищем производителей регистрации у владельца прав.
@@ -242,7 +242,7 @@ func forEachOwnerRegisterFile(t *testing.T, root string, visit func(rel string, 
 // walkOwnerRegisterGoFiles — прод-файлы (.go, не _test.go) под указанными
 // корнями.
 //
-// Состав берётся у ИНДЕКСА git (internal/treecorpus), а не обходом диска.
+// Состав берётся у ИНДЕКСА git (pkg/treecorpus), а не обходом диска.
 // Разница не в стиле: правила игнорирования действуют на любой глубине, и под
 // services/ на всякой машине, где поднимали стенд или собирали фронтенд, лежат
 // распаковки чартов, сборочные каталоги и отчёты прогонов. Обход диска

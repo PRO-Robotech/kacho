@@ -19,7 +19,7 @@ import (
 	kachopg "github.com/PRO-Robotech/kacho/services/vpc/internal/repo/kacho/pg"
 	"google.golang.org/grpc/status"
 
-	"github.com/PRO-Robotech/kacho/internal/pgtest"
+	"github.com/PRO-Robotech/kacho/pkg/pgtest"
 )
 
 // DeleteGuarded — атомарный backstop Address.Delete: между sync-проверкой

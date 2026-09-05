@@ -1,12 +1,12 @@
 // Copyright (c) PRO-Robotech
-// SPDX-License-Identifier: BUSL-1.1
+// SPDX-License-Identifier: Apache-2.0
 
 // dialect_test.go — пробы общего шага «открыть базу и настроить goose».
 //
 // # Почему здесь НЕТ живой базы, хотя шаг к ней обращается
 //
 // Не потому, что дорого: Docker на машине разработчика есть, образ
-// postgres:16-alpine уже вытянут, а `internal/pgtest` поднимает один контейнер на
+// postgres:16-alpine уже вытянут, а `pkg/pgtest` поднимает один контейнер на
 // пакет. Потому, что такую пробу НЕКУДА положить так, чтобы её кто-нибудь гонял:
 // отбор интеграционной джобы (корневой Makefile, цель test-integration) сужен
 // образцом, пропускающим только repo / clients / reconciler /

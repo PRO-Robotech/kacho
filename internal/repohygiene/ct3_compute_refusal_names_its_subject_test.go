@@ -9,14 +9,14 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/PRO-Robotech/kacho/internal/treecorpus"
+	"github.com/PRO-Robotech/kacho/pkg/treecorpus"
 
 	_ "github.com/PRO-Robotech/kacho/pkg/api/kacho/cloud/compute/v1" // регистрирует дескрипторы contract-а compute
 )
 
 // ct3ComputeSources — прод-код compute: путь → исходник.
 //
-// Состав берётся у ИНДЕКСА git (`internal/treecorpus`), а не с диска. Правила
+// Состав берётся у ИНДЕКСА git (`pkg/treecorpus`), а не с диска. Правила
 // игнорирования действуют на любой глубине, и под `services/` на всякой машине,
 // где поднимали стенд или собирали консоль, лежат распакованные чарты,
 // сборочные каталоги и отчёты прогонов. Обход по диску подобрал бы их, и

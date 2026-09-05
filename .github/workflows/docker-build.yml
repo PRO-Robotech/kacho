@@ -223,16 +223,23 @@ jobs:
       - name: сборка образов (8 шт)
         run: |
           set -uo pipefail
-          # image:dir — контекст сборки КОРЕНЬ монорепы (единый go.mod + pkg/ + proto/
-          # нужны каждому образу), меняется только -f Dockerfile.
-          images="kacho-iam:services/iam
-          kacho-vpc:services/vpc
-          kacho-compute:services/compute
-          kacho-geo:services/geo
-          kacho-nlb:services/nlb
-          kacho-storage:services/storage
-          kacho-registry:services/registry
-          kacho-api-gateway:gateway"
+          # image:dir:context — у большинства образов контекст сборки КОРЕНЬ монорепы
+          # (единый go.mod + pkg/ + proto/ нужны каждому), и меняется только
+          # -f Dockerfile.
+          #
+          # ИСКЛЮЧЕНИЕ — iam, и оно объявлено полем, а не догадкой в коде цикла.
+          # Служба несёт СВОЙ go.mod и подключает фундамент внешним модулем по
+          # версии, поэтому её контекст — собственный каталог. Дай ей корень —
+          # соберётся тоже, но контекст будет на порядок больше нужного, а шапка
+          # её Dockerfile утверждает обратное, и утверждение стало бы ложным.
+          images="kacho-iam:services/iam:services/iam
+          kacho-vpc:services/vpc:.
+          kacho-compute:services/compute:.
+          kacho-geo:services/geo:.
+          kacho-nlb:services/nlb:.
+          kacho-storage:services/storage:.
+          kacho-registry:services/registry:.
+          kacho-api-gateway:gateway:."
 
           push_flag=""
           [ "${{ steps.gate.outputs.push }}" = "true" ] && push_flag="--push"
@@ -241,7 +248,7 @@ jobs:
           # прячет состояние остальных семи, и вместо «упал registry» видно «упало что-то».
           failed=""
           for entry in $images; do
-            image="${entry%%:*}"; dir="${entry##*:}"
+            image="${entry%%:*}"; rest="${entry#*:}"; dir="${rest%%:*}"; ctx="${rest##*:}"
             echo "::group::$image"
             # ПРОВЕНАНС. Без этих двух аргументов образ уезжает в реестр, не неся
             # ревизии вовсе: `--provenance=false` выше снимает вложение buildkit, а
@@ -260,7 +267,7 @@ jobs:
                  --cache-to "type=gha,mode=max,scope=$image" \
                  -f "./$dir/Dockerfile" \
                  -t "${{ steps.gate.outputs.ns }}/$image:${{ steps.subject.outputs.branch }}-${{ steps.subject.outputs.sha }}" \
-                 $push_flag . ; then
+                 $push_flag "$ctx" ; then
               echo "✓ $image"
             else
               echo "::error::сборка $image упала"; failed="$failed $image"

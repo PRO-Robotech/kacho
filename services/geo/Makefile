@@ -105,13 +105,13 @@ migrate-status: build-migrator
 
 # audit-list-filter — CI gate for kacho-geo's listing surface: every method that
 # hands a page to a caller must narrow it, and must declare HOW. What is checked
-# lives in tools/listfiltergate; how this service is laid out lives in
+# lives in pkg/listfiltergate; how this service is laid out lives in
 # services/geo/tools/auditlistfilter.
 #
 # This target is NEW: geo had no gate of this class, and nothing was red because the
 # set of services to analyse was written by hand and geo was in neither the CI loop
 # nor the set of directories anyone remembered to create. That set is now derived
-# from the committed tree by tools/listfiltergate/coverage_test.go, which reports an
+# from the committed tree by pkg/listfiltergate/coverage_test.go, which reports an
 # unanalysed service as a finding.
 #
 # Invoked by CI as `make -C services/geo audit-list-filter`.

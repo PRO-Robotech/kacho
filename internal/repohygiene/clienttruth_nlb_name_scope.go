@@ -12,7 +12,7 @@ import (
 	"strconv"
 	"strings"
 
-	"github.com/PRO-Robotech/kacho/internal/treecorpus"
+	"github.com/PRO-Robotech/kacho/pkg/treecorpus"
 )
 
 // Область уникальности имени: контракт, документация и база обязаны называть ОДНУ.

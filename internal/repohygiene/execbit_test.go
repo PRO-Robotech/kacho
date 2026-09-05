@@ -29,7 +29,7 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/PRO-Robotech/kacho/internal/gitenv"
+	"github.com/PRO-Robotech/kacho/pkg/gitenv"
 )
 
 // isProbeFixture — файл под `testdata/` есть ВХОД пробы, а не исполняемый файл

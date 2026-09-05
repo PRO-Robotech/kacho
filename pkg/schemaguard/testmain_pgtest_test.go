@@ -1,5 +1,5 @@
 // Copyright (c) PRO-Robotech
-// SPDX-License-Identifier: BUSL-1.1
+// SPDX-License-Identifier: Apache-2.0
 
 package schemaguard_test
 
@@ -7,7 +7,7 @@ import (
 	"os"
 	"testing"
 
-	"github.com/PRO-Robotech/kacho/internal/pgtest"
+	"github.com/PRO-Robotech/kacho/pkg/pgtest"
 )
 
 // TestMain поднимает шаблон базы с журналом goose ОДИН раз; каждая проба

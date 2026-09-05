@@ -15,10 +15,10 @@ import (
 	_ "github.com/jackc/pgx/v5/stdlib"
 	"github.com/stretchr/testify/require"
 
-	"github.com/PRO-Robotech/kacho/internal/pgtest"
 	coredb "github.com/PRO-Robotech/kacho/pkg/db"
 	"github.com/PRO-Robotech/kacho/pkg/filter"
 	"github.com/PRO-Robotech/kacho/pkg/ids"
+	"github.com/PRO-Robotech/kacho/pkg/pgtest"
 
 	"github.com/PRO-Robotech/kacho/services/storage/internal/apps/kacho/api/volume"
 	"github.com/PRO-Robotech/kacho/services/storage/internal/blockbackend"
@@ -130,7 +130,7 @@ func newBareTestPool(t *testing.T) *pgxpool.Pool {
 
 // newTestPool выдаёт тесту СОБСТВЕННУЮ базу на одном контейнере пакета — клон
 // шаблона, в который миграции kacho-storage (включая seed disk_types) накатаны
-// один раз (см. TestMain и internal/pgtest). Возвращает pgxpool с
+// один раз (см. TestMain и pkg/pgtest). Возвращает pgxpool с
 // search_path=kacho_storage. Пропускается под -short. Каждый тест заводит данные
 // сам.
 func newTestPool(t *testing.T) *pgxpool.Pool {

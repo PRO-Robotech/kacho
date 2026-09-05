@@ -7,7 +7,7 @@ import (
 	"os"
 	"testing"
 
-	"github.com/PRO-Robotech/kacho/internal/pgtest"
+	"github.com/PRO-Robotech/kacho/pkg/pgtest"
 	"github.com/PRO-Robotech/kacho/services/nlb/internal/migrations"
 )
 
@@ -19,7 +19,7 @@ import (
 // The container starts once, the migrations run once into a template database,
 // and each caller gets its own database cloned from it — a genuinely separate
 // database, so the isolation the concurrent add/remove-targets proofs depend on
-// is unchanged. See internal/pgtest for the full argument.
+// is unchanged. See pkg/pgtest for the full argument.
 //
 // It also removes the reason gooseMu existed: goose's package-level globals are
 // now touched once, from here, before any test runs.
@@ -31,7 +31,7 @@ func TestMain(m *testing.M) {
 		// Приведение схемы — ОДИН раз на пакет, у выдающего базу.
 		// Прежде его приписывал каждый вызывающий своей копией; забывший
 		// получал `relation … does not exist` — отказ, читающийся как дефект
-		// продукта. Довод целиком — `internal/pgtest` §searchpath.
+		// продукта. Довод целиком — `pkg/pgtest` §searchpath.
 		SearchPath: "kacho_nlb,public",
 		Name:       "nlb",
 		Migrate:    pgtest.Goose(migrations.FS),

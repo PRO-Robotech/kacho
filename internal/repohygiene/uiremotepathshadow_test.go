@@ -57,7 +57,7 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/PRO-Robotech/kacho/internal/treecorpus"
+	"github.com/PRO-Robotech/kacho/pkg/treecorpus"
 )
 
 // uiHostDockerfile — где объявлены адреса модулей, попадающие в сборку оболочки.

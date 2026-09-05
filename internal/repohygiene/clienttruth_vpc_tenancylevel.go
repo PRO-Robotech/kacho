@@ -106,7 +106,7 @@ import (
 	"regexp"
 	"strings"
 
-	"github.com/PRO-Robotech/kacho/internal/treecorpus"
+	"github.com/PRO-Robotech/kacho/pkg/treecorpus"
 )
 
 // TenancyLevelOptions — вход анализатора.

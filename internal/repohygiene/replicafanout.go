@@ -124,6 +124,13 @@ func scanBackgroundLoops(root string) (bgCensus, error) {
 					return false
 				}
 				full := dir + "/" + rel
+				// Прибор замера запускается оператором в одном экземпляре — это
+				// уже сказано у [bgScanDirs]. Признак объявлен ОДИН раз
+				// ([isInstrumentPath]), а не повторён здесь куском пути: копия
+				// разошлась бы с оригиналом молча.
+				if isInstrumentPath(full) {
+					return false
+				}
 				for _, skip := range bgSkipParts {
 					if strings.Contains(full, skip) {
 						return false

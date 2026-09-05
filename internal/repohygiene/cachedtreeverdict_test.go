@@ -11,7 +11,7 @@
 // индекса git подпроцессом — инструменту невидимым. Правка в чужом каталоге кеш
 // не инвалидирует, и над красным деревом печатается `ok (cached)`.
 //
-// Класс, замеры и дискриминатор — internal/treecorpus, cachedverdict.go. Здесь
+// Класс, замеры и дискриминатор — pkg/treecorpus, cachedverdict.go. Здесь
 // не пересказывается: два места об одном предмете разошлись бы на первой правке.
 //
 // # Что держит ЭТОТ гейт
@@ -19,7 +19,7 @@
 // Он держит не сам класс (класс держит страж), а то, что страж ОСТАЁТСЯ на
 // месте, — по трём осям сразу:
 //
-//	ось 1  каждый пакет проб под internal/repohygiene и internal/treecorpus
+//	ось 1  каждый пакет проб под internal/repohygiene и pkg/treecorpus
 //	       объявляет TestMain, доходящий до стража;
 //	ось 2  каждая экспортированная функция treecorpus, достигающая реального
 //	       индекса, доходит до стража — то есть третий конструктор, заведённый
@@ -46,7 +46,7 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/PRO-Robotech/kacho/internal/treecorpus"
+	"github.com/PRO-Robotech/kacho/pkg/treecorpus"
 )
 
 // guardRoots — корни, пакеты которых обязаны нести стража. Перечень назван, а не
@@ -55,7 +55,7 @@ import (
 // Остаток при этом не спрятан — он печатается числом (см. слепую зону в шапке).
 var guardRoots = []string{
 	"internal/repohygiene",
-	"internal/treecorpus",
+	"pkg/treecorpus",
 }
 
 // guardName — имя стража. Одно место на весь файл: ось 1 и ось 2 обязаны
@@ -92,7 +92,7 @@ func TestTreeVerdictIsNeverServedFromTheTestCache(t *testing.T) {
 		t.Errorf("страж кешированного вердикта снят или обойдён — найдено %d:\n  %s\n\n"+
 			"Без него проверка дерева отвечает `ok (cached)` над деревом, где она красная: "+
 			"состав она берёт подпроцессом, о котором `go test` не знает.\n"+
-			"Разбор — internal/treecorpus, cachedverdict.go.",
+			"Разбор — pkg/treecorpus, cachedverdict.go.",
 			len(findings), strings.Join(findings, "\n  "))
 	}
 }
@@ -248,9 +248,9 @@ func collectTestMainFacts(t *testing.T, root string) ([]testMainFacts, int) {
 
 func collectTreecorpusFacts(t *testing.T, root string) ([]constructorFacts, int) {
 	t.Helper()
-	files, err := treecorpus.UnderWithSuffix(filepath.Join(root, "internal/treecorpus"), ".go")
+	files, err := treecorpus.UnderWithSuffix(filepath.Join(root, "pkg/treecorpus"), ".go")
 	if err != nil {
-		t.Fatalf("состав internal/treecorpus: %v", err)
+		t.Fatalf("состав pkg/treecorpus: %v", err)
 	}
 	calls := map[string]map[string]bool{}
 	exported := map[string]bool{}
@@ -338,7 +338,7 @@ func countGuardlessTreeReaders(t *testing.T, root string) int {
 		if readErr != nil {
 			continue
 		}
-		if strings.Contains(string(src), "internal/treecorpus") {
+		if strings.Contains(string(src), "pkg/treecorpus") {
 			dirs[dir] = true
 		}
 	}

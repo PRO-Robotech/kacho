@@ -78,7 +78,7 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/PRO-Robotech/kacho/internal/treecorpus"
+	"github.com/PRO-Robotech/kacho/pkg/treecorpus"
 )
 
 // excludingTagFinding — пакет, который перестаёт собираться, стоит передать тег,

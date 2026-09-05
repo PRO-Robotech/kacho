@@ -29,7 +29,7 @@ import (
 
 	"github.com/PRO-Robotech/kacho/gateway/internal/idempotencypg"
 	"github.com/PRO-Robotech/kacho/gateway/internal/middleware"
-	"github.com/PRO-Robotech/kacho/internal/pgtest"
+	"github.com/PRO-Robotech/kacho/pkg/pgtest"
 )
 
 // countRecords — сколько всего строк однократности лежит в таблице.

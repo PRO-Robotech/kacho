@@ -53,7 +53,7 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/PRO-Robotech/kacho/internal/treecorpus"
+	"github.com/PRO-Robotech/kacho/pkg/treecorpus"
 )
 
 // Как поднимают слушателя и как заводят измеритель. Разъедутся с кодом —

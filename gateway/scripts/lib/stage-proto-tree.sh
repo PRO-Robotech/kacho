@@ -1,3 +1,4 @@
+# shellcheck shell=bash
 # Copyright (c) PRO-Robotech
 # SPDX-License-Identifier: BUSL-1.1
 #
@@ -20,9 +21,21 @@
 # предмета: запись, которой больше нечего исключать, — находка, а не безобидный
 # остаток (иначе она унаследует следующую слепую зону).
 #
+# ОТБОР ДОМЕНОВ (заведён вместе с разрезом на отдельные продукты). Домен,
+# вынесенный в свой репозиторий, получает дерево контрактов ВНЕШНЕЙ зависимостью,
+# то есть ЦЕЛИКОМ — урезать его он не вправе. Значит сузить выход обязан отбор, а
+# не форма дерева. Отбор — четвёртый аргумент, строка имён через пробел; пусто
+# означает «все домены дерева» и воспроизводит прежнее поведение побайтово.
+#
+# ЗАМЫКАНИЕ ИМПОРТОВ ВЫВОДИТСЯ, А НЕ ВЫПИСЫВАЕТСЯ. Домен не компилируется в
+# одиночку: `kacho/cloud/iam` импортирует `kacho/cloud/operation` и
+# `kacho/cloud/api`. Рукописный перечень «что ещё нужно iam» был бы ровно той
+# второй копией, ради снятия которой этот файл и заведён, — поэтому недостающие
+# деревья добираются обходом `import`-строк до неподвижной точки.
+#
 # Использование:
 #   source "$(dirname "$0")/lib/stage-proto-tree.sh"
-#   stage_proto_tree "${PROTO_ROOT}" "${STAGE}" "<имя-генератора-для-переписи>"
+#   stage_proto_tree "${PROTO_ROOT}" "${STAGE}" "<имя-генератора>" ["<домен> <домен> …"]
 
 # Каталоги под `kacho/cloud`, которые в стадию НЕ идут.
 #
@@ -31,10 +44,22 @@
 # присутствие в стадии добавило бы в оба выхода записи, которых там быть не должно.
 KACHO_PROTO_STAGE_EXCLUDE=()
 
+# kacho_proto_tree_imports — деревья под `kacho/cloud`, на которые ссылаются
+# `import`-строки файлов одного дерева. Читается синтаксис объявления импорта, а
+# не любое вхождение пути: путь встречается и в комментариях.
+kacho_proto_tree_imports() {
+  local proto_root=$1 tree=$2
+  [[ -d "${proto_root}/kacho/cloud/${tree}" ]] || return 0
+  grep -rhE '^[[:space:]]*import[[:space:]]+(public[[:space:]]+)?"kacho/cloud/[^"]+"[[:space:]]*;' \
+    "${proto_root}/kacho/cloud/${tree}" 2>/dev/null \
+    | sed -E 's|.*"kacho/cloud/([^/"]+)/.*|\1|' | sort -u
+}
+
 stage_proto_tree() {
   local proto_root=$1
   local stage=$2
   local caller=${3:-stage-proto-tree}
+  local selection_raw=${4:-}
 
   mkdir -p "${stage}/kacho/cloud" "${stage}/kacho/iam/authz"
 
@@ -63,22 +88,77 @@ stage_proto_tree() {
     fi
   done
 
-  # --- всё остальное под kacho/cloud, выведенное из дерева ---
-  local tree name skip copied=0
+  # --- перечень деревьев дерева, выведенный из дерева ---
+  local tree name skip
+  local -a present=()
   for tree in "${proto_root}"/kacho/cloud/*/; do
+    [[ -d "${tree}" ]] || continue
     name="$(basename "${tree}")"
     skip=0
     for excluded in "${KACHO_PROTO_STAGE_EXCLUDE[@]}"; do
       [[ "${name}" == "${excluded}" ]] && skip=1
     done
     [[ "${skip}" -eq 1 ]] && continue
-    cp -R "${tree%/}" "${stage}/kacho/cloud/${name}"
+    present+=("${name}")
+  done
+
+  # --- отбор ---
+  local -a selected=()
+  if [[ -z "${selection_raw// /}" ]]; then
+    selected=("${present[@]}")
+  else
+    read -r -a selected <<< "${selection_raw}"
+    for name in "${selected[@]}"; do
+      if [[ ! -d "${proto_root}/kacho/cloud/${name}" ]]; then
+        echo "ERR: ${caller}: выбранного домена '${name}' нет в дереве контрактов" >&2
+        echo "     ${proto_root}/kacho/cloud/${name} — отбор назвал то, чего нет." >&2
+        return 1
+      fi
+    done
+  fi
+
+  # --- замыкание импортов до неподвижной точки ---
+  local -A in_closure=()
+  local -a queue=() closure_order=()
+  for name in "${selected[@]}"; do
+    [[ -n "${in_closure[${name}]:-}" ]] && continue
+    in_closure[${name}]=1
+    closure_order+=("${name}")
+    queue+=("${name}")
+  done
+  local -a added_by_closure=()
+  local head dep
+  while [[ ${#queue[@]} -gt 0 ]]; do
+    head="${queue[0]}"
+    queue=("${queue[@]:1}")
+    while IFS= read -r dep; do
+      [[ -n "${dep}" ]] || continue
+      [[ -n "${in_closure[${dep}]:-}" ]] && continue
+      if [[ ! -d "${proto_root}/kacho/cloud/${dep}" ]]; then
+        echo "ERR: ${caller}: '${head}' импортирует kacho/cloud/${dep}, а такого" >&2
+        echo "     дерева в ${proto_root} нет — стадия собралась бы неполной и buf" >&2
+        echo "     упал бы чужим сообщением компилятора." >&2
+        return 1
+      fi
+      in_closure[${dep}]=1
+      closure_order+=("${dep}")
+      added_by_closure+=("${dep}")
+      queue+=("${dep}")
+    done < <(kacho_proto_tree_imports "${proto_root}" "${head}")
+  done
+
+  # --- копирование ---
+  local copied=0
+  for name in "${closure_order[@]}"; do
+    cp -R "${proto_root}/kacho/cloud/${name}" "${stage}/kacho/cloud/${name}"
     copied=$((copied + 1))
   done
 
   # Перепись: «ноль находок» обязано быть отличимо от «ноль прочитанного».
   echo "${caller}: деревьев под kacho/cloud скопировано ${copied}," \
        "исключено: ${KACHO_PROTO_STAGE_EXCLUDE[*]}"
+  echo "${caller}: отбор доменов: ${selected[*]}" \
+       "· добрано замыканием импортов: ${added_by_closure[*]:-(нечего)}"
 
   if [[ "${copied}" -eq 0 ]]; then
     echo "ERR: ${caller}: под ${proto_root}/kacho/cloud не скопировано ни одного" >&2

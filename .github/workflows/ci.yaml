@@ -109,11 +109,27 @@ jobs:
       - name: go mod download
         run: go mod download
 
+      # МОДУЛЬ СЛУЖБЫ IAM — ОТДЕЛЬНЫЙ ПРОГОН, А НЕ ПОДРАЗУМЕВАЕМЫЙ.
+      #
+      # Служба iam несёт свой `go.mod` (она выносится отдельным репозиторием),
+      # поэтому корневой `./...` её пакетов НЕ ВИДИТ: модуль-родитель кончается
+      # там, где начинается вложенный. Без второго прогона джоба осталась бы
+      # зелёной, перестав проверять службу вовсе, — а «ноль находок» здесь было
+      # бы неотличимо от «ноль прочитанного».
+      - name: go mod download (модуль службы iam)
+        run: go mod download -C services/iam
+
       - name: build
         run: go build ./...
 
+      - name: build (модуль службы iam)
+        run: go build -C services/iam ./...
+
       - name: vet
         run: go vet ./...
+
+      - name: vet (модуль службы iam)
+        run: go vet -C services/iam ./...
 
       - name: gofmt
         run: |
@@ -333,7 +349,7 @@ jobs:
   # красное там, где ничего не сломано (шапка корневого Makefile: «под -p 12
   # контейнерные пакеты голодают друг у друга»), и ровно это наблюдалось дважды
   # за день на пробах iam. Плюс быстрая джоба задумана как обходящаяся без
-  # Docker, а internal/pgtest по построению ОТКАЗЫВАЕТ, когда демона нет.
+  # Docker, а pkg/pgtest по построению ОТКАЗЫВАЕТ, когда демона нет.
   #
   # Перечень пакетов и числовой вердикт — в корневом Makefile (цель
   # test-pg-outside-selection), а не здесь: команда обязана быть ОДНОЙ у
@@ -555,11 +571,20 @@ jobs:
       # каталоге получает `catalog: no entry for method` → AUTHZ_DENIED (fail-closed)
       # на КАЖДЫЙ вызов, независимо от грантов (security.md инв. 4).
       #
-      # Гейт ПАДАЕТ (не warn) в двух случаях:
+      # Гейт ПАДАЕТ (не warn) в ТРЁХ случаях:
       #   1. embedded-каталог STALE относительно proto (новый/переименованный RPC
       #      уехал без записи);
-      #   2. iam-копия разошлась с gateway-копией байт-в-байт.
-      # Обе проверки — внутри `make permission-catalog-check` (gateway/Makefile),
+      #   2. iam-копия разошлась с gateway-копией байт-в-байт;
+      #   3. одной из копий НЕТ на месте — сверять не с чем.
+      # Третий случай назван отдельно, потому что до #2041 он был тихим успехом:
+      # сверка копий стояла под `if [ -f $IAM_CATALOG ]`, и отсутствие копии
+      # означало «проверку не исполнять», а не «отказать». Обёртка ничего не
+      # пропускала ровно до дня, когда копия уедет, — а её уезд запланирован
+      # выносом iam отдельным продуктом. Теперь сверку исполняет отдельная цель
+      # `permission-catalog-copies-in-sync` (зависимость проверяемой), она не
+      # требует buf и потому проверяется запуском в `go test`
+      # (internal/repohygiene/catalogcopyparity_test.go).
+      # Все три проверки — внутри `make permission-catalog-check` (gateway/Makefile),
       # существующего таргета: гейт не изобретает свою логику сравнения, а
       # переиспользует ту, которой пользуется разработчик локально.
       - name: permission-catalog staleness + copy-drift
@@ -604,7 +629,7 @@ jobs:
       # iam, а geo не было ни разу. Сверку делают ДВА независимых гейта, и оба
       # выводят перечни, а не хранят их: internal/repohygiene/
       # listfiltergatewiring_test.go сверяет «кто объявляет цель в Makefile» с
-      # «кого обходит этот цикл» в обе стороны, а tools/listfiltergate/
+      # «кого обходит этот цикл» в обе стороны, а pkg/listfiltergate/
       # coverage_test.go считает НАХОДКОЙ и сервис без анализатора, и запись без
       # сервиса. Рукописность и была причиной каждого из трёх пропусков.
       #
@@ -647,9 +672,9 @@ jobs:
       # `/internal/(repo|clients|reconciler)` под `services/<svc>/...` (этого пакета там нет).
       # Из одиннадцати тестов пакета под `-short` пропускался ровно один — этот, —
       # поэтому зелёное самого пакета о переписи не говорило ничего.
-      # Провязка залочена тестом tools/listfiltergate (TestCIRunsThisCensus).
+      # Провязка залочена тестом pkg/listfiltergate (TestCIRunsThisCensus).
       - name: listauthz — анализатор видит КАЖДЫЙ списочный метод дерева
-        run: go test ./tools/listfiltergate/ -run TestCensus_EveryTransportListingIsSeenByItsAnalyser -count=1 -v
+        run: go test ./pkg/listfiltergate/ -run TestCensus_EveryTransportListingIsSeenByItsAnalyser -count=1 -v
 
       # Форму манифеста домена судит ОДИН исполнитель — загрузчик
       # services/iam/internal/manifest, и второго заводить нельзя (решение #1778).
@@ -781,7 +806,7 @@ jobs:
       # матрицы требует переменной окружения и часов: он ручной по построению и в
       # конвейере ему не место.
       - name: authzformbench — доказательства харнесса замера форм модели прав
-        run: go test ./tools/authzformbench/ -count=1 -timeout 25m
+        run: go test -C services/iam ./tools/authzformbench/ -count=1 -timeout 25m
 
       # Сюита обязана говорить правду О СЕБЕ, иначе её зелёное нечем читать.
       #
@@ -1152,7 +1177,16 @@ jobs:
           BASELINE_UNSEEN=0
           # Порог слабой атрибуции: сколько полей закрыто именем-строкой при
           # неуникальном имени. Только вниз.
-          BASELINE_WEAK=2
+          #
+          # 2 → 0 вместе с выносом iam. Оба поля слабой корзины были iam-овыми —
+          # `BatchAuthorizeCheckRequest.scope_id` и `UpdateRoleRequest.permissions`
+          # (замер зелёного прогона main `034faebf4`, 2026-09-04). Их обработчики
+          # уехали в `kacho-iam`, поэтому оба закрываются теперь не именем-строкой,
+          # а полосой «RPC-НЕ-РЕАЛИЗОВАН», и слабой корзине покрывать нечего.
+          # Арифметика сходится: закрыто чтением 982 → 716, полоса без обработчика
+          # 0 → 268, и 982 − 716 + 2 = 268. Полей осмотрено 996 в обоих прогонах —
+          # линия ни одного поля публичного запроса не завела и не сняла.
+          BASELINE_WEAK=0
           rc=0
           python3 tools/unreadfieldaudit/unread_field_audit.py > unread.txt 2>&1 || rc=$?
           cat unread.txt
@@ -1286,6 +1320,15 @@ jobs:
           GOLANGCI_LINT_CACHE: ${{ github.workspace }}/.cache/golangci-lint
         run: golangci-lint run --timeout=10m
 
+      - name: golangci-lint (модуль службы iam)
+        # Линтер работает В ГРАНИЦАХ МОДУЛЯ. Служба несёт свой `go.mod`, поэтому
+        # прогон выше её пакетов не осматривает вовсе — второй прогон обязателен,
+        # иначе линт целого продукта молча перестал бы её видеть.
+        env:
+          GOLANGCI_LINT_CACHE: ${{ github.workspace }}/.cache/golangci-lint
+        working-directory: services/iam
+        run: golangci-lint run --timeout=10m --config=${{ github.workspace }}/.golangci.yml
+
   govulncheck:
     name: govulncheck
     runs-on: ubuntu-latest
@@ -1299,6 +1342,9 @@ jobs:
         run: |
           go install golang.org/x/vuln/cmd/govulncheck@latest
           govulncheck ./...
+          # Модуль службы iam — свой граф зависимостей, свой прогон: корневой
+          # `./...` в него не спускается.
+          govulncheck -C services/iam ./...
 
   helm:
     name: helm lint · template (dev + prod)

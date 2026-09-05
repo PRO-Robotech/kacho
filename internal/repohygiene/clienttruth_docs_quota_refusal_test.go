@@ -7,8 +7,8 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/PRO-Robotech/kacho/internal/treecorpus"
 	"github.com/PRO-Robotech/kacho/pkg/quota"
+	"github.com/PRO-Robotech/kacho/pkg/treecorpus"
 )
 
 // TestDocsDescribeQuotaRefusalExactlyAtItsOwners — отказ по исчерпанию предела

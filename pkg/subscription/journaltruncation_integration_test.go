@@ -1,5 +1,5 @@
 // Copyright (c) PRO-Robotech
-// SPDX-License-Identifier: BUSL-1.1
+// SPDX-License-Identifier: Apache-2.0
 
 // journaltruncation_integration_test.go — что происходит с подписчиком, чья
 // позиция снята уборкой ПОД РАБОТАЮЩИМ ПОТОКОМ.
@@ -19,7 +19,7 @@ import (
 	"testing"
 	"time"
 
-	"github.com/PRO-Robotech/kacho/internal/pgtest"
+	"github.com/PRO-Robotech/kacho/pkg/pgtest"
 
 	"github.com/jackc/pgx/v5"
 	"github.com/jackc/pgx/v5/pgxpool"

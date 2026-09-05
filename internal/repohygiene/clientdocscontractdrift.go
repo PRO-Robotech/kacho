@@ -80,7 +80,7 @@ import (
 	"sort"
 	"strings"
 
-	"github.com/PRO-Robotech/kacho/internal/treecorpus"
+	"github.com/PRO-Robotech/kacho/pkg/treecorpus"
 )
 
 // clientDocsSharedProtoDomains — пакеты контракта, чьи поля законно встречаются в

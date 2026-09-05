@@ -35,11 +35,11 @@ import (
 	"google.golang.org/grpc/codes"
 	"google.golang.org/grpc/status"
 
-	"github.com/PRO-Robotech/kacho/internal/pgtest"
 	iamv1 "github.com/PRO-Robotech/kacho/pkg/api/kacho/cloud/iam/v1"
 	coredb "github.com/PRO-Robotech/kacho/pkg/db"
 	"github.com/PRO-Robotech/kacho/pkg/observability"
 	"github.com/PRO-Robotech/kacho/pkg/outbox/drainer"
+	"github.com/PRO-Robotech/kacho/pkg/pgtest"
 
 	"github.com/PRO-Robotech/kacho/services/vpc/internal/clients"
 )

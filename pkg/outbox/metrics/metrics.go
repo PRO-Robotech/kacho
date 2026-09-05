@@ -1,5 +1,5 @@
 // Copyright (c) PRO-Robotech
-// SPDX-License-Identifier: BUSL-1.1
+// SPDX-License-Identifier: Apache-2.0
 
 // Package metrics exposes the outbox-delivery observability surface: backlog
 // depth, oldest-pending age and poison count per outbox table/channel. It makes

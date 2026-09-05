@@ -4,10 +4,9 @@
 // Package domain — self-validating domain newtypes для kacho-nlb.
 //
 // Все поля с семантикой — newtypes с `Validate error`. Голый `string`
-// запрещён. Domain-пакет импортирует ТОЛЬКО stdlib,
-// `H-BF/corlib/pkg/{dict,option}` и `kacho-corelib/errors` — никаких pgx,
-// grpc-stubs, sqlc-types; domain не знает adapter'ов (workspace CLAUDE.md
-// «Чистая архитектура»).
+// запрещён. Domain-пакет импортирует ТОЛЬКО stdlib и собственный фундамент
+// (`pkg/option`, `pkg/errors`) — никаких pgx, grpc-stubs, sqlc-types; domain не
+// знает adapter'ов (workspace CLAUDE.md «Чистая архитектура»).
 //
 // CreatedAt сюда не входит (DB-managed) — он живёт в repo-сущности
 // .
@@ -19,9 +18,8 @@ import (
 	"time"
 	"unicode/utf8"
 
-	"github.com/H-BF/corlib/pkg/dict"
-	"github.com/H-BF/corlib/pkg/option"
 	coreerrors "github.com/PRO-Robotech/kacho/pkg/errors"
+	"github.com/PRO-Robotech/kacho/pkg/option"
 	corevalidate "github.com/PRO-Robotech/kacho/pkg/validate"
 )
 
@@ -68,7 +66,7 @@ type (
 	LbNameOpt = option.ValueOf[LbName]
 )
 
-// ---- Labels (dict.HDict с typed key/value) ---------------------------------
+// ---- Labels (карта с typed key/value) --------------------------------------
 
 type (
 	// LbLabelKey — ключ label (regex `^[a-z][-_./\\@a-z0-9]{0,62}$`).
@@ -78,7 +76,14 @@ type (
 	LbLabelVal string
 
 	// LbLabels — labels-набор; cardinality ≤ MaxLabelPairs.
-	LbLabels = dict.HDict[LbLabelKey, LbLabelVal]
+	//
+	// Обычная карта, а не контейнер стороннего модуля (тот не нёс лицензии и
+	// снят). Из тринадцати его методов здесь читались четыре, и все четыре у
+	// карты есть в языке: длина, обход, чтение по ключу, запись. Порядок обхода
+	// не менялся — хеш-словарь его тоже не давал, и ни одно место на него не
+	// опиралось: наружу набор уходит картой (`LabelsToMap`), а сравнивается по
+	// составу (`LabelsEqual`).
+	LbLabels = map[LbLabelKey]LbLabelVal
 )
 
 // ---- Сетевые/численные newtypes --------------------------------------------
@@ -168,26 +173,23 @@ func (v LbLabelVal) Validate() error {
 }
 
 // ValidateLabels — cardinality ≤ MaxLabelPairs + per-key/value validate.
-// Свободная функция (а не метод HDict.Validate) — receiver мы не контролируем.
+// Свободная функция, а не метод: LbLabels — псевдоним карты, метод на нём не
+// объявить.
 func ValidateLabels(labels LbLabels) error {
-	if labels.Len() > MaxLabelPairs {
+	if len(labels) > MaxLabelPairs {
 		return coreerrors.InvalidArgument().
 			AddFieldViolation("labels", "too many labels (max 64)").
 			Err()
 	}
-	var firstErr error
-	labels.Iterate(func(k LbLabelKey, v LbLabelVal) bool {
+	for k, v := range labels {
 		if err := k.Validate(); err != nil {
-			firstErr = err
-			return false
+			return err
 		}
 		if err := v.Validate(); err != nil {
-			firstErr = err
-			return false
+			return err
 		}
-		return true
-	})
-	return firstErr
+	}
+	return nil
 }
 
 // Validate проверяет port-range [PortMin, PortMax].
@@ -254,9 +256,9 @@ func (w LbWeight) Validate() error {
 // LabelsFromMap конвертирует map[string]string → LbLabels (handler-layer).
 // nil-map → пустой LbLabels.
 func LabelsFromMap(m map[string]string) LbLabels {
-	var d LbLabels
+	d := make(LbLabels, len(m))
 	for k, v := range m {
-		d.Put(LbLabelKey(k), LbLabelVal(v))
+		d[LbLabelKey(k)] = LbLabelVal(v)
 	}
 	return d
 }
@@ -264,14 +266,13 @@ func LabelsFromMap(m map[string]string) LbLabels {
 // LabelsToMap — обратное преобразование для DTO. nil если LbLabels пуст
 // (паритет с proto-семантикой: отсутствие labels = поле не задано).
 func LabelsToMap(d LbLabels) map[string]string {
-	if d.Len() == 0 {
+	if len(d) == 0 {
 		return nil
 	}
-	m := make(map[string]string, d.Len())
-	d.Iterate(func(k LbLabelKey, v LbLabelVal) bool {
+	m := make(map[string]string, len(d))
+	for k, v := range d {
 		m[string(k)] = string(v)
-		return true
-	})
+	}
 	return m
 }
 
@@ -292,17 +293,13 @@ func stringsEqualOrdered(a, b []string) bool {
 
 // LabelsEqual — set-equality для LbLabels (used in Update no-op detection).
 func LabelsEqual(a, b LbLabels) bool {
-	if a.Len() != b.Len() {
+	if len(a) != len(b) {
 		return false
 	}
-	equal := true
-	a.Iterate(func(k LbLabelKey, v LbLabelVal) bool {
-		bv, ok := b.Get(k)
-		if !ok || bv != v {
-			equal = false
+	for k, v := range a {
+		if bv, ok := b[k]; !ok || bv != v {
 			return false
 		}
-		return true
-	})
-	return equal
+	}
+	return true
 }
