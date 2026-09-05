@@ -574,9 +574,9 @@ CASES.append(Case(
 #    or pass on some OTHER error — the precise failure mode this cleanup exists to
 #    remove.
 #
-#    Covered by: services/iam/internal/apps/kacho/api/cluster/handler_integration_test.go
+#    Covered by: services/iam/internal/apps/kaname/api/cluster/handler_integration_test.go
 #    ::TestCluster_6_07_RevokeAdmin_SelfRevoke (codes.FailedPrecondition + message)
-#    and services/iam/internal/repo/kacho/pg/cluster_admin_grant_integration_test.go
+#    and services/iam/internal/repo/kaname/pg/cluster_admin_grant_integration_test.go
 #    ::TestRevoke_Self (ErrSelfRevoke sentinel + proof no row was mutated — stricter
 #    than any black-box check could be).
 #

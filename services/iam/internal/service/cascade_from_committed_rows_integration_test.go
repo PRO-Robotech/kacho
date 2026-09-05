@@ -10,7 +10,7 @@
 // Решение (`security.md` §«Три уровня супер-доступа») выбрало каскад вместо
 // материализации ради ОДНОГО довода — аварийного пути: человек, обязанный
 // починить платформу, не должен зависеть от состояния доставки. Пробы формы
-// (`repo/kacho/pg/relverdict/derivation_integration_test.go` и соседи)
+// (`repo/kaname/pg/relverdict/derivation_integration_test.go` и соседи)
 // утверждают этот вывод про САМУ ФОРМУ. Здесь тот же вывод спрашивается через
 // `AuthorizeService.CheckRelation` — то есть через дверь, которую задаёт
 // `InternalIAMService.Check`, а значит через ту, куда приходит КАЖДЫЙ запрос
@@ -49,7 +49,7 @@ import (
 
 	"github.com/PRO-Robotech/kacho-iam/internal/authzcascade"
 	"github.com/PRO-Robotech/kacho-iam/internal/authzmap"
-	"github.com/PRO-Robotech/kacho-iam/internal/repo/kacho/pg/relverdict"
+	"github.com/PRO-Robotech/kacho-iam/internal/repo/kaname/pg/relverdict"
 	"github.com/PRO-Robotech/kacho-iam/internal/service"
 	"github.com/PRO-Robotech/kacho/pkg/pgtest"
 )

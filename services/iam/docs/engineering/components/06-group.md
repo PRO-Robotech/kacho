@@ -234,14 +234,14 @@ make -C deploy psql SVC=iam
 # Integration:
 go test -short -count=1 -timeout 120s \
   -run "TestGroup|TestGroupMember|TestGroupIsMember" \
-  ./services/iam/internal/repo/kacho/pg/...
+  ./services/iam/internal/repo/kaname/pg/...
 ```
 
 ## Подробности реализации
 
-- **Use-cases:** `internal/apps/kacho/api/group/{create,get,list,update,delete,add_member,remove_member,list_members}.go`.
-- **Handler:** `internal/apps/kacho/api/group/handler.go`.
-- **Repo:** `internal/repo/kacho/pg/group_repo.go`.
+- **Use-cases:** `internal/apps/kaname/api/group/{create,get,list,update,delete,add_member,remove_member,list_members}.go`.
+- **Handler:** `internal/apps/kaname/api/group/handler.go`.
+- **Repo:** `internal/repo/kaname/pg/group_repo.go`.
 - **Trigger function:** `kaname.group_members_member_exists()` — PL/pgSQL, см. `0001_initial.sql`.
 - **DB:** `groups(id, account_id, name, description, labels JSONB, created_at)`;
   `group_members(group_id, member_type, member_id, added_at)`.
@@ -269,7 +269,7 @@ go test -short -count=1 -timeout 120s \
 ## Ссылки на код
 
 - `internal/domain/group.go`
-- `internal/apps/kacho/api/group/`
-- `internal/repo/kacho/pg/group_repo.go`
-- `internal/repo/kacho/pg/group_ismember_integration_test.go`
+- `internal/apps/kaname/api/group/`
+- `internal/repo/kaname/pg/group_repo.go`
+- `internal/repo/kaname/pg/group_ismember_integration_test.go`
 - `internal/migrations/0001_initial.sql` — DDL `groups` / `group_members`

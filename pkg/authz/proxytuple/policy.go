@@ -322,7 +322,7 @@ func WithTypeOwner(o TypeOwner) Option {
 // | sort -u` → 21 каталог, из них шесть служб сверх iam), поэтому «перенести его
 // туда, где перечень виден» невыразимо: перечень виден только внутри
 // `services/iam/`. Вызывающий у `ValidateTuple` в прод-коде ровно ОДИН, и он в iam
-// (`services/iam/internal/apps/kacho/api/internal_iam/handler.go`, предикат:
+// (`services/iam/internal/apps/kaname/api/internal_iam/handler.go`, предикат:
 // `git grep -n 'ValidateTuple(' -- '*.go' ':!*_test.go'`), — он словарь и подаёт.
 //
 // ПОРЯДОК БЫЛ НАЗВАН ЗАРАНЕЕ И СОБЛЮДЁН. Здесь стояло «порт сегодня не заводится»,

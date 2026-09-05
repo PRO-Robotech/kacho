@@ -9,9 +9,9 @@ import (
 
 	"github.com/jackc/pgx/v5/pgxpool"
 
-	"github.com/PRO-Robotech/kacho-iam/internal/apps/kacho/config"
-	"github.com/PRO-Robotech/kacho-iam/internal/apps/kacho/expiredcredsweep"
-	kachopg "github.com/PRO-Robotech/kacho-iam/internal/repo/kacho/pg"
+	"github.com/PRO-Robotech/kacho-iam/internal/apps/kaname/config"
+	"github.com/PRO-Robotech/kacho-iam/internal/apps/kaname/expiredcredsweep"
+	kanamepg "github.com/PRO-Robotech/kacho-iam/internal/repo/kaname/pg"
 )
 
 // expiredCredentialStore приводит адаптер Postgres к порту use-case.
@@ -19,13 +19,13 @@ import (
 // Типы порта объявляет ВЫЗЫВАЮЩИЙ, поэтому преобразование живёт здесь, а не
 // протекает формой адаптера вверх.
 type expiredCredentialStore struct {
-	inner *kachopg.ExpiredCredentialReclaimer
+	inner *kanamepg.ExpiredCredentialReclaimer
 }
 
 func (s expiredCredentialStore) ReclaimExpiredCredentials(
 	ctx context.Context, spec expiredcredsweep.Spec,
 ) (expiredcredsweep.Result, error) {
-	res, err := s.inner.ReclaimExpiredCredentials(ctx, kachopg.ExpiredCredentialReclaimSpec{
+	res, err := s.inner.ReclaimExpiredCredentials(ctx, kanamepg.ExpiredCredentialReclaimSpec{
 		MinDelay:  spec.MinDelay,
 		Grace:     spec.Grace,
 		BatchSize: spec.BatchSize,
@@ -70,7 +70,7 @@ func startExpiredCredentialReclaim(
 
 	minDelay := c.MinGrace(cfg.APIServer.RegistryToken.TokenTTL())
 	sw := expiredcredsweep.New(
-		expiredCredentialStore{inner: kachopg.NewExpiredCredentialReclaimer(pool, "kaname")},
+		expiredCredentialStore{inner: kanamepg.NewExpiredCredentialReclaimer(pool, "kaname")},
 		expiredcredsweep.Spec{
 			MinDelay:  minDelay,
 			Grace:     c.Grace,

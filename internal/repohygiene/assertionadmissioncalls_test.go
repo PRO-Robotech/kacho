@@ -33,7 +33,7 @@ import (
 
 const (
 	// assertionAdmissionFile — файл владельца хранилища однократности.
-	assertionAdmissionFile = "services/iam/internal/repo/kacho/pg/client_assertion_replay_repo.go"
+	assertionAdmissionFile = "services/iam/internal/repo/kaname/pg/client_assertion_replay_repo.go"
 	// assertionAdmissionFunc — функция ДОПУСКА: та, что решает, принять ли
 	// предъявление.
 	assertionAdmissionFunc = "ClientAssertionReplayRepo.Redeem"

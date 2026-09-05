@@ -137,7 +137,7 @@ func TestIntegration_AuditEventChannelHasNoProducerLeft(t *testing.T) {
 	//
 	// Контроль, потерявший предмет, и есть половина, которая доказывает, что
 	// отрицание рядом не вакуумно, — поэтому он перепривязан к каналу, чей
-	// потребитель ЖИВ и назван прод-кодом (`repo/kacho/pg/reconcile_notify.go`,
+	// потребитель ЖИВ и назван прод-кодом (`repo/kaname/pg/reconcile_notify.go`,
 	// `LISTEN` на reconcileOutboxChannel).
 	//
 	// Имя вынесено в [notifyChannelWithAProvenConsumer], а не выписано литералом,

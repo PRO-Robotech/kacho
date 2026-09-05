@@ -57,8 +57,8 @@ resource-scoped AccessBinding. Builds on the per-object targets
 - `resource_reconcile_outbox` (0021) — the event queue: RegisterResource enqueues
   a "this object changed" event atomically with the mirror UPSERT/DELETE.
 
-### Reconciler — `internal/apps/kacho/api/access_binding/reconcile`
-A use-case (ports `ReconcileStore`/`TxRunner`; pg adapter in `repo/kacho/pg/
+### Reconciler — `internal/apps/kaname/api/access_binding/reconcile`
+A use-case (ports `ReconcileStore`/`TxRunner`; pg adapter in `repo/kaname/pg/
 reconcile_adapter.go`). One reconcile pass = ONE writer-tx: membership
 UPSERT/DELETE + per-object `fga_outbox` emit/eager-revoke + containment audit +
 event mark-sent all commit-or-rollback together (ban #10). Triggers:

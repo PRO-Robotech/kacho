@@ -181,7 +181,7 @@ type entryPointShape struct {
 // go wrong are asserted below rather than hoped about:
 //
 // The question no longer leaves the process for another pod: it is resolved by the
-// service's own database (repo/kacho/pg/relverdict) behind authzcascade.Client. That
+// service's own database (repo/kaname/pg/relverdict) behind authzcascade.Client. That
 // makes each question cheaper and changes NOTHING about why this gate exists —
 // per-row still means one query per row, and a query per row is a cost that grows
 // with the page and that nothing here measures.
@@ -279,7 +279,7 @@ var relationQuestionEntryPoints = map[string]entryPointShape{
 // the wider question, and a report once cited this gate as proof about a file
 // that lay outside it.
 const (
-	useCaseTreeRoot = "../apps/kacho/api"
+	useCaseTreeRoot = "../apps/kaname/api"
 	serviceTreeRoot = ".."
 	// relationClientRoot points at `authzcascade`, not at `clients`, and that
 	// difference is what premise 2 exists to catch. `clients` declares the PORTS
@@ -488,7 +488,7 @@ func TestRelationQuestionsStayInsideTheMeasuredPath(t *testing.T) {
 // Keyed by file + calling name, no line number: a declaration must not expire
 // because the function moved down its own file.
 var declaredPerRowQuestions = map[string]string{
-	"../apps/kacho/api/access_binding/list_by_role.go: requireGrantAuthority": "" +
+	"../apps/kaname/api/access_binding/list_by_role.go: requireGrantAuthority": "" +
 		"Per-row scope filter over a LIST page: up to TWO relation questions per " +
 		"binding whose subject is not the caller — a cluster-administrator question " +
 		"that is subject-scoped and therefore constant across the page, plus a " +
@@ -502,7 +502,7 @@ var declaredPerRowQuestions = map[string]string{
 		"not carry it, and that the loop interleaves relation questions with DB " +
 		"reads — a request-path change to an authorization surface, with its own " +
 		"acceptance.",
-	"../apps/kacho/api/authorize/handler.go: authorizeCaller": "" +
+	"../apps/kaname/api/authorize/handler.go: authorizeCaller": "" +
 		"Per-item caller authority in BatchCheck, bounded by the contract at 100 " +
 		"items (rejected above that). SAME CORRECTION: this declaration used to say " +
 		"it 'converges with the same batched question' as a thing not yet available. " +

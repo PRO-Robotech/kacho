@@ -6,7 +6,7 @@
 превращается в `allowed=true` для последующего `Check` на затронутую область.
 
 Решение о доступе вычисляет **реляционная форма в собственной базе `kaname`**
-(`internal/repo/kacho/pg/relverdict`). Внешнего движка отношений, к которому
+(`internal/repo/kaname/pg/relverdict`). Внешнего движка отношений, к которому
 прежде уходил вопрос, **нет**: ни клиента, ни его хранилища, ни очереди к нему,
 ни окна рассогласования между «выдача закоммичена» и «выдача действует».
 
@@ -278,12 +278,12 @@ iam о крае не знает и на этот срок не влияет. П�
 `writerSession.AccessBindingsW().EmitRelationWrite(ctx, …)` внутри writer-tx —
 это `INSERT` в `fga_outbox`, из которого триггер тут же складывает факт.
 Аналогично `EmitSubjectChangeEvent()`
-(`internal/repo/kacho/pg/access_binding_repo.go`) — `INSERT` в
+(`internal/repo/kaname/pg/access_binding_repo.go`) — `INSERT` в
 `subject_change_outbox`.
 
 ### Вердикт — запрос
 
-`internal/repo/kacho/pg/relverdict`: `query.go` (прямой вердикт), `list.go`
+`internal/repo/kaname/pg/relverdict`: `query.go` (прямой вердикт), `list.go`
 (перечисление объектов), `subjects.go` (перечисление субъектов), `expand.go`
 (разбор оснований), `labelaxis.go` (меточная ветвь), `condition.go` (условия).
 План вывода компилируется из модели — `services/iam/internal/authzplan`.
@@ -295,9 +295,9 @@ iam о крае не знает и на этот срок не влияет. П�
 ### Сброс кэша края — со стороны iam его НЕТ
 
 iam только **дописывает** строку в `subject_change_outbox` (`EmitSubjectChangeEvent`,
-`internal/repo/kacho/pg/access_binding_repo.go`) и отдаёт журнал по запросу:
+`internal/repo/kaname/pg/access_binding_repo.go`) и отдаёт журнал по запросу:
 `InternalIAMService.PollSubjectChanges(since_id, limit)` →
-`internal/service/subject_change_service.go` → `internal/repo/kacho/pg/subject_change_repo.go`.
+`internal/service/subject_change_service.go` → `internal/repo/kaname/pg/subject_change_repo.go`.
 Ни клиента к краю, ни дренажа, ни апплаера у iam нет.
 
 Читатель — сам край: `gateway/internal/watcher/subject_change_watcher.go` держит курсор в
@@ -350,11 +350,11 @@ iam только **дописывает** строку в `subject_change_outbox
 
 ## Ссылки на код
 
-- `internal/repo/kacho/pg/relverdict/` — реляционная форма
+- `internal/repo/kaname/pg/relverdict/` — реляционная форма
 - `internal/authzcascade/` — дверь решения
 - `services/iam/internal/authzplan/` — компиляция плана вывода из модели
-- `internal/repo/kacho/pg/fga_outbox/` — эмиссия намерения
-- `internal/repo/kacho/pg/creator_tuple_writer.go` — кортеж создателя строкой журнала
+- `internal/repo/kaname/pg/fga_outbox/` — эмиссия намерения
+- `internal/repo/kaname/pg/creator_tuple_writer.go` — кортеж создателя строкой журнала
 - `internal/clients/cache_invalidation_applier.go`
 - `internal/migrations/0001_initial.sql` — DDL обеих очередей
 - `internal/migrations/0098_relation_fact_follows_the_journal.sql` — триггер проекции

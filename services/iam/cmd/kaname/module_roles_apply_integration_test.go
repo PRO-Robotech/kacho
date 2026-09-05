@@ -10,7 +10,7 @@ package main
 // # Чем эта проба отличается от соседней и почему её было мало
 //
 // Применитель ролей уже доведён до настоящего Postgres
-// (`services/iam/internal/repo/kacho/pg/module_roles_applier_integration_test.go`)
+// (`services/iam/internal/repo/kaname/pg/module_roles_applier_integration_test.go`)
 // и прогнан по всем манифестам дерева сверкой `moduleroleparity`. Обе зелены — и
 // обе оставались зелёными ровно тогда, когда объявленная роль до базы НЕ
 // доезжала: они зовут применитель САМИ, а на пути старта его не звал никто.
@@ -46,11 +46,11 @@ import (
 	coredb "github.com/PRO-Robotech/kacho/pkg/db"
 	"github.com/PRO-Robotech/kacho/pkg/pgtest"
 
-	"github.com/PRO-Robotech/kacho-iam/internal/apps/kacho/moduleroles"
-	"github.com/PRO-Robotech/kacho-iam/internal/apps/kacho/seed"
+	"github.com/PRO-Robotech/kacho-iam/internal/apps/kaname/moduleroles"
+	"github.com/PRO-Robotech/kacho-iam/internal/apps/kaname/seed"
 	"github.com/PRO-Robotech/kacho-iam/internal/domain"
 	"github.com/PRO-Robotech/kacho-iam/internal/manifest"
-	kachopg "github.com/PRO-Robotech/kacho-iam/internal/repo/kacho/pg"
+	kanamepg "github.com/PRO-Robotech/kacho-iam/internal/repo/kaname/pg"
 )
 
 // bootRolesTestDSN — свежая база с проигранной цепочкой миграций iam и с
@@ -89,7 +89,7 @@ func bootRolesOnLiveBase(t *testing.T) (
 	// Каталожный факт — из ЖИВЫХ строк, ровно как на старте: там их читает страж
 	// паритета, здесь тот же читатель. Литерал сюда подставлять нельзя — проба
 	// перестала бы утверждать что-либо о базе.
-	live, lerr := kachopg.NewCatalogRepo(pool).ReadLiveCatalog(ctx)
+	live, lerr := kanamepg.NewCatalogRepo(pool).ReadLiveCatalog(ctx)
 	require.NoError(t, lerr, "живые строки каталога обязаны читаться: без них "+
 		"производитель правил роли не собирается вовсе")
 
@@ -103,7 +103,7 @@ func bootRolesOnLiveBase(t *testing.T) (
 	require.NotZero(t, actions, "ноль действий каталога — полнота поимённого перечня "+
 		"считалась бы по НУЛЮ классов, то есть тривиально: вердикт был бы беспредметен")
 
-	return ctx, pool, moduleroles.NewApplier(moduleroles.NewRepoTxRunner(kachopg.New(pool, nil)), rights), logger
+	return ctx, pool, moduleroles.NewApplier(moduleroles.NewRepoTxRunner(kanamepg.New(pool, nil)), rights), logger
 }
 
 // countBootRoleRows — строк роли по её идентификатору.
@@ -212,7 +212,7 @@ func TestIAM2010_BootPathRefusesWhenTheRightsProducerCannotBeBuilt(t *testing.T)
 	require.NoError(t, err)
 	pgtest.ClosePoolAtEnd(t, pool)
 
-	live, lerr := kachopg.NewCatalogRepo(pool).ReadLiveCatalog(ctx)
+	live, lerr := kanamepg.NewCatalogRepo(pool).ReadLiveCatalog(ctx)
 	require.NoError(t, lerr)
 
 	// Положительный близнец — тот же живой каталог с поданным реестром — стоит в

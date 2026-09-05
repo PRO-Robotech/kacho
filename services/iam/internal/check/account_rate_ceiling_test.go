@@ -70,7 +70,7 @@ import (
 // говорить.
 const (
 	// accountProbeDirRel — дом интеграционных проб, заводящих аккаунты.
-	accountProbeDirRel = "services/iam/internal/repo/kacho/pg"
+	accountProbeDirRel = "services/iam/internal/repo/kaname/pg"
 
 	// seedUserCall — фикстура личности; заводит и личность, и её аккаунт.
 	seedUserCall = "mustSeedUser"

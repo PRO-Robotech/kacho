@@ -34,7 +34,7 @@ import (
 
 	"github.com/PRO-Robotech/kacho/pkg/grpcsrv"
 
-	"github.com/PRO-Robotech/kacho-iam/internal/apps/kacho/config"
+	"github.com/PRO-Robotech/kacho-iam/internal/apps/kaname/config"
 )
 
 // listenerAdmission — пара ограничителей процесса.

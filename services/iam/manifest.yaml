@@ -542,7 +542,7 @@ resources:
           # ПОЧЕМУ ЭТО НЕ ПРАВО АККАУНТА — прямее, чем у меток. Запрет пишется в
           # состояние ГЛОБАЛЬНОЙ строки, поэтому останавливает выдачу удостоверений
           # человеку ВЕЗДЕ, а не в том аккаунте, откуда его нажали. Это разобрано в
-          # `services/iam/internal/apps/kacho/api/user/set_blocked.go` и наблюдаемо
+          # `services/iam/internal/apps/kaname/api/user/set_blocked.go` и наблюдаемо
           # утверждено пробой `api/audit/user_block_integration_test.go`
           # (`TestUserBlock_ReachesEveryAccountBecauseThePersonIsOneRow`). Распорядителю
           # аккаунта для его собственной задачи — «этот человек больше не работает у

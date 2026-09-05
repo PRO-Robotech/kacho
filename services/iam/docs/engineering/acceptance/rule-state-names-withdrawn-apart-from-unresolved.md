@@ -58,7 +58,7 @@ SPDX-License-Identifier: AGPL-3.0-or-later
 
 ```sh
 git grep -c 'health\|declared_segments\|unresolved_segments' proto/kacho/cloud/iam/v1/role.proto
-git grep -n 'attachIntegrity' -- services/iam/internal/apps/kacho/api/role/{get,list}.go
+git grep -n 'attachIntegrity' -- services/iam/internal/apps/kaname/api/role/{get,list}.go
 ```
 → поля `health` (tag 22), `declared_segments` (23), `unresolved_segments` (24)
 объявлены; `Get` (`get.go:122`) и `List` (`list.go:293`) зовут **одного**
@@ -386,7 +386,7 @@ go run ./internal/repohygiene/... 2>/dev/null # либо разбор ast.Import
 | # | сценарий | производитель «Тогда» |
 |---|---|---|
 | **MOD-RS-01** | **Дано** роль, все сегменты которой имеют строку проекции. **Когда** `Get`. **Тогда** у каждого правила `RULE_LIFECYCLE_ACTIVE`, `lostSegments = 0` | `domain.RuleStatesOf` (заводится этим изменением) → `(roleObj).toPb`, `services/iam/internal/dto/toproto/role.go` (неэкспортируемый метод, регистрируемый `dto.RegTransfer` в `init()`; **один и тот же** на `Get`, `List` и ответ операции — различает их `attachIntegrity`, а не он) |
-| **MOD-RS-02** | **Дано** роль, у правила 1 сегмент потерян и объяснён ведомостью. **Когда** `Get`. **Тогда** правило 1 — `WITHDRAWN`, правило 0 — `ACTIVE` | `domain.RuleStatesOf`; ведомость `kacho_iam.role_grant_orphan` пишется цепочкой `modulecatalog/apply.go` → `repo/kacho/pg/catalog_writer.go` `ResettleTenantProjections` → `catalog_consequence_sql.go` (`resettleRuleRefSQL`, `resettleRoleVerbSQL`), плюс досев миграцией `20260901113757_rule_segments_have_a_referent.sql` |
+| **MOD-RS-02** | **Дано** роль, у правила 1 сегмент потерян и объяснён ведомостью. **Когда** `Get`. **Тогда** правило 1 — `WITHDRAWN`, правило 0 — `ACTIVE` | `domain.RuleStatesOf`; ведомость `kacho_iam.role_grant_orphan` пишется цепочкой `modulecatalog/apply.go` → `repo/kaname/pg/catalog_writer.go` `ResettleTenantProjections` → `catalog_consequence_sql.go` (`resettleRuleRefSQL`, `resettleRoleVerbSQL`), плюс досев миграцией `20260901113757_rule_segments_have_a_referent.sql` |
 | **MOD-RS-03** | **Дано** роль, у правила сегмент потерян и ведомостью НЕ объяснён. **Когда** `Get`. **Тогда** правило — `UNRESOLVED`, а не `WITHDRAWN` | `domain.RuleStatesOf`; форма инцидента 513001 |
 | **MOD-RS-04** | **Дано** правило, у которого одна потеря объяснена, другая нет. **Когда** `Get`. **Тогда** состояние `UNRESOLVED`, `lostSegments = 2`, `explainedSegments = 1` — состав виден | `domain.RuleStatesOf` |
 | **MOD-RS-05** | **Дано** правило `*.*` (адресуемых сегментов ноль). **Когда** `Get`. **Тогда** `ACTIVE`, `segments = 0` | `domain.RuleRefsByRule` (заводится) — подстановка сегментов не даёт |

@@ -23,7 +23,7 @@
 
 **Плоскость авторизации** (живет поверх ресурсной модели):
 
-- **Реляционная форма** (`internal/repo/kacho/pg/relverdict`) — единственный источник
+- **Реляционная форма** (`internal/repo/kaname/pg/relverdict`) — единственный источник
   решения. Вердикт складывается запросом к собственной базе `kaname` из четырёх
   источников: прямой факт, выдача роли на область, выдача по меткам, членство в группе.
   Вывод отношений компилируется из модели прав (`services/iam/internal/authzplan`). Внешнего движка
@@ -189,12 +189,12 @@ C4Context
 
 ```
 domain/              # entities + newtypes + Validate(). stdlib + multierr only.
-apps/kacho/
+apps/kaname/
   api/<resource>/    # use-cases per RPC (slice-per-RPC).
   config/            # viper YAML config + env-resolvers.
   seed/              # system-role seed, bootstrap-admin, backfill/verify, workers.
-repo/kacho/          # Reader/Writer port-interfaces (CQRS).
-repo/kacho/pg/       # pgxpool + dto-mapping. Реализует Reader/Writer.
+repo/kaname/          # Reader/Writer port-interfaces (CQRS).
+repo/kaname/pg/       # pgxpool + dto-mapping. Реализует Reader/Writer.
 clients/             # peer-clients (Hydra, api-gateway authz-cache).
 handler/             # тонкий gRPC transport (operation handler).
 handler/iamhooks/    # HTTP-хуки Ory (token / refresh / provision) + health.

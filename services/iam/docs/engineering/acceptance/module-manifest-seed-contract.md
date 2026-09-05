@@ -158,7 +158,7 @@ go test ./services/iam/internal/manifest/ -count=1                          # �
 
 Прогнан один пакет Go и набор `docs-gate` воркспейса. Гейты дерева продукта, сквозные
 пробы и сборка целиком не гонялись: очередь была занята соседней полосой
-(`go test ./services/iam/internal/repo/kacho/pg/relverdict/ … -timeout 120m`, 12 минут
+(`go test ./services/iam/internal/repo/kaname/pg/relverdict/ … -timeout 120m`, 12 минут
 на момент замера), свободного места на диске — **6.0 ГБ**. Правка — только markdown,
 поэтому шире прогона от неё ничего не зависит; сказано числом, а не подразумевается.
 

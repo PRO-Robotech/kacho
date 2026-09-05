@@ -232,7 +232,7 @@ KNOWN_COCREATED = {
         "Projects": None,
         "AccessBindings":
             "Account.Delete вычищает выдачи аккаунта сам (shared.RevokeBindingsInScope "
-            "в services/iam/internal/apps/kacho/api/account/delete.go)",
+            "в services/iam/internal/apps/kaname/api/account/delete.go)",
     },
 }
 
@@ -314,13 +314,13 @@ def premises(root):
              r"message CreateAccountMetadata\b[\s\S]{0,600}?\bstring default_project_id\b"),
          "proto/kacho/cloud/iam/v1/account.proto"),
         ("P2 сага создания аккаунта вставляет проект в своей транзакции",
-         has("services/iam/internal/apps/kacho/api/account/create.go",
+         has("services/iam/internal/apps/kaname/api/account/create.go",
              r"w\.ProjectsW\(\)\.Insert\("),
-         "services/iam/internal/apps/kacho/api/account/create.go"),
+         "services/iam/internal/apps/kaname/api/account/create.go"),
         ("P3 удаление аккаунта отказывает, пока в нём есть проект",
-         has("services/iam/internal/repo/kacho/pg/account_repo.go",
+         has("services/iam/internal/repo/kaname/pg/account_repo.go",
              r"NOT EXISTS \(SELECT 1 FROM projects"),
-         "services/iam/internal/repo/kacho/pg/account_repo.go"),
+         "services/iam/internal/repo/kaname/pg/account_repo.go"),
     ]
 
 

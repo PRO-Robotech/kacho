@@ -8,7 +8,7 @@ import (
 
 	"github.com/stretchr/testify/require"
 
-	registrytokenuc "github.com/PRO-Robotech/kacho-iam/internal/apps/kacho/api/registry_token"
+	registrytokenuc "github.com/PRO-Robotech/kacho-iam/internal/apps/kaname/api/registry_token"
 )
 
 // Счётчик обязан нести ВСЕ ТРИ исхода, и это не педантизм: каждый отвечает на

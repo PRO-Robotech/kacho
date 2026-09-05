@@ -29,7 +29,7 @@ const (
 	// ниже, который проверяет предпосылку самой фикстуры.
 	injCensusQuery = `const q = "SELECT 1 FROM kaname.resource_mirror m WHERE NOT EXISTS (SELECT 1 FROM kaname.resource_parent_edge e WHERE e.object_id = m.object_id)"
 `
-	injProducerImport = `import "github.com/PRO-Robotech/kacho-iam/internal/repo/kacho/pg/resource_mirror"
+	injProducerImport = `import "github.com/PRO-Robotech/kacho-iam/internal/repo/kaname/pg/resource_mirror"
 `
 	injProducerCall = `func seed() { _, _ = resource_mirror.UpsertTx(nil, nil, resource_mirror.Row{}) }
 `
@@ -104,7 +104,7 @@ func TestInjection_CensusCallingTheProducerItselfIsSilent(t *testing.T) {
 // остаётся производителем. Иначе гейт краснел бы на переименовании импорта,
 // то есть ловил бы написание, а не вызов.
 func TestInjection_AliasedProducerImportIsStillRecognised(t *testing.T) {
-	src := `import rm "github.com/PRO-Robotech/kacho-iam/internal/repo/kacho/pg/resource_mirror"
+	src := `import rm "github.com/PRO-Robotech/kacho-iam/internal/repo/kaname/pg/resource_mirror"
 ` + injCensusQuery + `func seed() { _, _ = rm.UpsertTx(nil, nil, rm.Row{}) }
 `
 	byDir := map[string][]censusFileFacts{
@@ -123,7 +123,7 @@ func TestInjection_AliasedProducerImportIsStillRecognised(t *testing.T) {
 // такой вызов посевом рёбер — то есть зеленел бы на фикстуре, не посеявшей
 // ничего. Это единственная сторона, где новая редакция СТРОЖЕ прежней.
 func TestInjection_SameNamedFunctionOfAnotherPackageIsNotTheProducer(t *testing.T) {
-	src := `import "github.com/PRO-Robotech/kacho-iam/internal/repo/kacho/pg/target_members"
+	src := `import "github.com/PRO-Robotech/kacho-iam/internal/repo/kaname/pg/target_members"
 ` + injCensusQuery + `func seed() { _ = target_members.UpsertTx(nil, nil, target_members.Member{}) }
 `
 	byDir := map[string][]censusFileFacts{

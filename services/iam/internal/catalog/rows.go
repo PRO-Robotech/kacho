@@ -103,7 +103,7 @@ type Rows struct {
 }
 
 // RowSource — ПОРТ чтения живого каталога. Объявлен здесь, у потребителя;
-// реализация — `repo/kacho/pg/catalog_repo.go`.
+// реализация — `repo/kaname/pg/catalog_repo.go`.
 type RowSource interface {
 	ReadLiveCatalog(ctx context.Context) (Rows, error)
 }

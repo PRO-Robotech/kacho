@@ -20,7 +20,7 @@ import (
 	"testing"
 	"time"
 
-	"github.com/PRO-Robotech/kacho-iam/internal/apps/kacho/api/client_token"
+	"github.com/PRO-Robotech/kacho-iam/internal/apps/kaname/api/client_token"
 	"github.com/PRO-Robotech/kacho-iam/internal/clientassertion"
 	"github.com/PRO-Robotech/kacho-iam/internal/clienttokenwire"
 	"github.com/PRO-Robotech/kacho-iam/internal/domain"

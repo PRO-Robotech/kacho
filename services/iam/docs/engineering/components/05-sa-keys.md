@@ -21,7 +21,7 @@ access_token: клиент сам подписывает JWT-assertion прив�
 
 **Защита приватного ключа:** `private_key_pem` показывается **один раз** в
 ответе `IssueSAKey`. После этого `OpsResponseRedactor`
-(`internal/repo/kacho/pg/ops_response_redactor.go`) выполняет single-statement
+(`internal/repo/kaname/pg/ops_response_redactor.go`) выполняет single-statement
 UPDATE на `operations.response_data`, замещая поле `private_key_pem` на
 `"<redacted>"` (а также legacy `client_secret`, который теперь всегда пустой).
 Повторный `GET /operations/{id}` после redaction даст response без ключа.
@@ -313,7 +313,7 @@ kubectl -n kacho port-forward svc/api-gateway 18080:8080 &
 # Integration (testcontainers + Hydra stub):
 go test -short -count=1 -timeout 120s \
   -run "TestSAKey|TestOpsResponseRedactor|TestIssueSAKey" \
-  ./services/iam/internal/clients/ ./services/iam/internal/apps/kacho/api/sa_keys/
+  ./services/iam/internal/clients/ ./services/iam/internal/apps/kaname/api/sa_keys/
 ```
 
 > [!note] Прежняя команда звала набор, которого нет, и передавала имя набора
@@ -325,12 +325,12 @@ go test -short -count=1 -timeout 120s \
 
 ## Подробности реализации
 
-- **Handler и use-case живут в одном пакете** `internal/apps/kacho/api/sa_keys/`: точки входа
+- **Handler и use-case живут в одном пакете** `internal/apps/kaname/api/sa_keys/`: точки входа
   `Handler.Issue` / `Handler.List` / `Handler.Revoke` в `handler.go`, выпуск ключа — `keys.go`,
   журналирование — `audit.go`. Отдельного файла со сводкой use-case'ов у пакета нет.
 - **Hydra клиент:** `internal/clients/hydra_admin_client.go` + `hydra_oauth_clients.go`.
-- **Repo:** SA-OAuth-clients-репо в `internal/repo/kacho/pg/` (через `NewSAOAuthClientRepo`).
-- **Redactor:** `internal/repo/kacho/pg/ops_response_redactor.go`. SELECT
+- **Repo:** SA-OAuth-clients-репо в `internal/repo/kaname/pg/` (через `NewSAOAuthClientRepo`).
+- **Redactor:** `internal/repo/kaname/pg/ops_response_redactor.go`. SELECT
   `(response_type, response_data)` из `operations`, unmarshal `Any` →
   `IssueSAKeyResponse`, reflect-clear поле `private_key_pem` (+ legacy
   `client_secret`), UPDATE обратно. Idempotent (повторный clear no-op).
@@ -358,7 +358,7 @@ go test -short -count=1 -timeout 120s \
   диагностики ротаций.
 - **Алгоритм фиксирован `ES256`** — domain.Validate допускает RS256/EdDSA
   для будущих расширений, но текущая ECDSA P-256-only генерация
-  (`internal/apps/kacho/api/sa_keys/keys.go`) выставляет только `ES256`.
+  (`internal/apps/kaname/api/sa_keys/keys.go`) выставляет только `ES256`.
 - **Legacy `client_secret` rows** — миграция в `0001_initial.sql` ставит
   DEFAULT '' для `public_key_pem` / `key_algorithm`, поэтому rows,
   выпущенные до перехода на private_key_jwt (если такие существуют в
@@ -373,15 +373,15 @@ go test -short -count=1 -timeout 120s \
 
 ## Ссылки на код
 
-- `internal/apps/kacho/api/sa_keys/usecases.go` — `IssueSAKeyUseCase` /
+- `internal/apps/kaname/api/sa_keys/usecases.go` — `IssueSAKeyUseCase` /
   `RevokeSAKeyUseCase` / `ListSAKeysUseCase`.
-- `internal/apps/kacho/api/sa_keys/keys.go` — `generateES256Key` (ECDSA P-256
+- `internal/apps/kaname/api/sa_keys/keys.go` — `generateES256Key` (ECDSA P-256
   keypair → PKCS#8 / SPKI PEM + JWK).
-- `internal/apps/kacho/api/sa_keys/handler.go`.
+- `internal/apps/kaname/api/sa_keys/handler.go`.
 - `internal/clients/hydra_admin_client.go`,
   `hydra_oauth_clients.go` — `CreateOAuthClient` с `jwks` /
   `token_endpoint_auth_method=private_key_jwt`.
-- `internal/repo/kacho/pg/ops_response_redactor.go` (тот же файл, что назван выше — прежде
+- `internal/repo/kaname/pg/ops_response_redactor.go` (тот же файл, что назван выше — прежде
   здесь стоял другой каталог, и две ссылки об одном предмете расходились).
 - `internal/migrations/0001_initial.sql` — таблица
   `service_account_oauth_clients` (`public_key_pem`, `key_algorithm`).

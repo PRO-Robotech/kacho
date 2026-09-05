@@ -7,7 +7,7 @@ IAM-сервис Kachō: control-plane для identity & access. Управля�
 - **AuthZ (реляционная форма в своей базе)** — публичный `AuthorizeService` (PDP)
   + internal `Check` (authz-gate, который зовут остальные сервисы). Вердикт
   вычисляется **в той же базе**, что и остальное состояние службы
-  (`internal/authzcascade` поверх `repo/kacho/pg/relverdict`); внешнего движка
+  (`internal/authzcascade` поверх `repo/kaname/pg/relverdict`); внешнего движка
   отношений в пути решения нет — он снят целиком стадией S6 эпика #747, и его
   возвращение стережёт гейт `internal/repohygiene/authzengineretired.go`. Гранты
   `AccessBinding` кладутся строками журнала намерений (`kaname.fga_outbox`)
@@ -50,9 +50,9 @@ composition root, `cmd/migrator/main.go` — отдельный CLI миграц
 Структура `internal/`:
 
 - `domain/`            — newtypes + self-validating `Validate()`.
-- `apps/kacho/api/`    — use-cases per ресурс (slice-per-RPC).
-- `apps/kacho/config/` — viper YAML config.
-- `repo/kacho/`        — CQRS Repository / Reader / Writer + pg-impl.
+- `apps/kaname/api/`    — use-cases per ресурс (slice-per-RPC).
+- `apps/kaname/config/` — viper YAML config.
+- `repo/kaname/`        — CQRS Repository / Reader / Writer + pg-impl.
 - `dto/`               — generic table-driven DTO трансферы.
 - `handler/`           — тонкий gRPC transport-слой.
 - `clients/`           — peer-клиенты (TTL+LRU) к Ory Hydra (admin/OAuth/сессии/

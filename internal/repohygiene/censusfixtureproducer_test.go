@@ -56,7 +56,7 @@ import (
 // # Производитель узнаётся ИМЕНЕМ ПАКЕТА, а не одним лишь именем функции
 //
 // `UpsertTx` в дереве не одна: одноимённую экспортирует
-// `services/iam/internal/repo/kacho/pg/target_members`. Предикат «встретилось
+// `services/iam/internal/repo/kaname/pg/target_members`. Предикат «встретилось
 // слово UpsertTx» признал бы производителем вызов, который к рёбрам отношения
 // не имеет, — то есть зеленел бы на фикстуре, ничего не посеявшей. Поэтому
 // селектор обязан ссылаться на импорт ИМЕННО пакета-производителя.
@@ -104,8 +104,8 @@ const (
 	// импорта пропал: хвост перестал совпадать с каталогом. Прежний комментарий
 	// обещал устойчивость к переименованию модуля — обещание было верно
 	// наполовину, потому что величина несла оба смысла сразу.
-	edgeProducerDir    = "services/iam/internal/repo/kacho/pg/resource_mirror"
-	edgeProducerImport = "kacho-iam/internal/repo/kacho/pg/resource_mirror"
+	edgeProducerDir    = "services/iam/internal/repo/kaname/pg/resource_mirror"
+	edgeProducerImport = "kacho-iam/internal/repo/kaname/pg/resource_mirror"
 )
 
 // censusFileFacts — то, что гейт узнаёт об одном файле.

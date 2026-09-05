@@ -51,7 +51,7 @@ Why no black-box POSITIVE revoke→IsRevoked case:
   HTTP surface to drive revoke→IsRevoked black-box through Newman. The closed
   loop (Revoke writes session_revocations → refresh-hook IsRevoked denies) is
   covered white-box by the integration test
-  internal/repo/kacho/pg/session_revocation_loop_integration_test.go. The
+  internal/repo/kaname/pg/session_revocation_loop_integration_test.go. The
   black-box-feasible contract here is the external-isolation NEGATIVE: these
   internal RPCs must never appear on the advertised external TLS endpoint.
 
@@ -61,7 +61,7 @@ Why no black-box POSITIVE revoke→IsRevoked case:
   a server-side Hydra webhook with no public HTTP surface. It is covered
   white-box by unit tests (internal/handler/iamhooks/refresh_hook_handler_test.go
   user-level cases; internal/apps/.../{internal_iam,session_revocations}) and the
-  integration test internal/repo/kacho/pg/user_token_revocations_repo_integration_test.go.
+  integration test internal/repo/kaname/pg/user_token_revocations_repo_integration_test.go.
   The black-box contract that remains is the external-isolation NEGATIVE below
   (IAM-INT-NEG-EXT-UNBOUND-NEVER-SUCCEEDS — with the caveat recorded there that it
   witnesses fail-closed refusal, not route isolation).

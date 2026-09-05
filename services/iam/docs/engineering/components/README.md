@@ -61,9 +61,9 @@ devops, архитектор: все, что нужно, чтобы поднят
 ## Источники истины (для самостоятельной проверки)
 
 - `internal/domain/*.go` — entities, валидация, regex'ы, длины.
-- `internal/repo/kacho/pg/*.go` — SQL, scan-функции, error-mapping.
-- `internal/apps/kacho/api/*/` — use-cases (slice-per-RPC).
-- `internal/handler/*.go` + `internal/apps/kacho/api/*/handler.go` — gRPC transport.
+- `internal/repo/kaname/pg/*.go` — SQL, scan-функции, error-mapping.
+- `internal/apps/kaname/api/*/` — use-cases (slice-per-RPC).
+- `internal/handler/*.go` + `internal/apps/kaname/api/*/handler.go` — gRPC transport.
 - `cmd/kaname/{main,wiring,serve,...}.go` — composition root.
 - `internal/migrations/0001_initial.sql` — squashed schema (46 таблиц, 101 индекс, 7 триггеров, 62 FK).
 - `README.md` (корень репозитория) — высокоуровневый overview.

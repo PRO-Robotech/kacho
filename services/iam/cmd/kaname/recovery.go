@@ -11,9 +11,9 @@ import (
 
 	"github.com/PRO-Robotech/kacho/pkg/operations"
 
-	"github.com/PRO-Robotech/kacho-iam/internal/apps/kacho/operationresolver"
+	"github.com/PRO-Robotech/kacho-iam/internal/apps/kaname/operationresolver"
 	"github.com/PRO-Robotech/kacho-iam/internal/catalog"
-	kachorepo "github.com/PRO-Robotech/kacho-iam/internal/repo/kacho"
+	kanamerepo "github.com/PRO-Robotech/kacho-iam/internal/repo/kaname"
 )
 
 // startLROReconciler wires the orphan-reconciler backstop. Without it an operation
@@ -23,7 +23,7 @@ import (
 // (FOR UPDATE SKIP LOCKED, so replicas partition the set) and resolves each to its
 // terminal outcome from the committed reality of the resource. It runs a boot
 // sweep + a periodic background sweep; it is non-fatal by contract.
-func startLROReconciler(ctx context.Context, pool *pgxpool.Pool, repo kachorepo.Repository, catalogSource catalog.Source, rec operations.Recorder, logger *slog.Logger) {
+func startLROReconciler(ctx context.Context, pool *pgxpool.Pool, repo kanamerepo.Repository, catalogSource catalog.Source, rec operations.Recorder, logger *slog.Logger) {
 	resolver := operationresolver.New(repo, catalogSource, operationresolver.WithLogger(logger))
 	reconciler := operations.NewReconciler(pool, resolver, operations.ReconcilerConfig{
 		Schema: "kaname",

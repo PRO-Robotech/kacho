@@ -125,7 +125,7 @@ grep -rn "relation_fact" --include=*.go services/ pkg/ | grep -v _test | grep -i
 
 Читатель — край, унарным `PollSubjectChanges`, окном
 `WHERE id > $1 AND id <= $2 ORDER BY id ASC LIMIT $3`
-(`services/iam/internal/repo/kacho/pg/subject_change_repo.go`). Пропуска он не
+(`services/iam/internal/repo/kaname/pg/subject_change_repo.go`). Пропуска он не
 обнаруживает ничем: снятая строка просто не находится, курсор переезжает через
 неё по последней прочитанной позиции, и «строк не было» становится неотличимо от
 «строки убрали».

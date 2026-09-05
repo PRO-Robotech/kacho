@@ -14,22 +14,22 @@ import (
 
 	iamv1 "github.com/PRO-Robotech/kacho/pkg/api/kacho/cloud/iam/v1"
 
-	"github.com/PRO-Robotech/kacho-iam/internal/apps/kacho/config"
-	"github.com/PRO-Robotech/kacho-iam/internal/apps/kacho/secretsweep"
-	kachopg "github.com/PRO-Robotech/kacho-iam/internal/repo/kacho/pg"
+	"github.com/PRO-Robotech/kacho-iam/internal/apps/kaname/config"
+	"github.com/PRO-Robotech/kacho-iam/internal/apps/kaname/secretsweep"
+	kanamepg "github.com/PRO-Robotech/kacho-iam/internal/repo/kaname/pg"
 )
 
 // secretSweepStore adapts the Postgres redactor to the use-case port. The port's
 // types are declared by the caller, so the conversion lives here rather than
 // letting the adapter's shape leak upwards.
-type secretSweepStore struct{ inner *kachopg.OpsResponseRedactor }
+type secretSweepStore struct{ inner *kanamepg.OpsResponseRedactor }
 
 func (s secretSweepStore) SweepStrandedSecrets(ctx context.Context, spec secretsweep.Spec) (secretsweep.Result, error) {
-	targets := make([]kachopg.SecretSweepTarget, 0, len(spec.Targets))
+	targets := make([]kanamepg.SecretSweepTarget, 0, len(spec.Targets))
 	for _, t := range spec.Targets {
-		targets = append(targets, kachopg.SecretSweepTarget{ResponseType: t.ResponseType, Fields: t.Fields})
+		targets = append(targets, kanamepg.SecretSweepTarget{ResponseType: t.ResponseType, Fields: t.Fields})
 	}
-	res, err := s.inner.SweepStrandedSecrets(ctx, kachopg.SecretSweepSpec{
+	res, err := s.inner.SweepStrandedSecrets(ctx, kanamepg.SecretSweepSpec{
 		Targets: targets, Settled: spec.Settled, Window: spec.Window, Limit: spec.Limit,
 	})
 	return secretsweep.Result{Scanned: res.Scanned, Redacted: res.Redacted}, err
@@ -80,7 +80,7 @@ func startSecretBackstop(ctx context.Context, pool *pgxpool.Pool, cfg config.Con
 	settled += secretSweepMargin
 
 	sw := secretsweep.New(
-		secretSweepStore{inner: kachopg.NewOpsResponseRedactor(pool, "kaname")},
+		secretSweepStore{inner: kanamepg.NewOpsResponseRedactor(pool, "kaname")},
 		secretsweep.Spec{
 			Targets: secretSweepTargets(saKey.TypeUrl, userToken.TypeUrl),
 			Settled: settled,

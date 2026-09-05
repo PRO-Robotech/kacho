@@ -84,9 +84,9 @@ linters:
       # proto-API.
       # proto-mirror naming (IpVersion / OutgoingSmtpCapability / SetDefaultSecurityGroupId):
       # поля и методы — точные копии proto, переименование = breaking change API.
-      # Путь расширен на apps/kacho/{api,services}: там ровно тот же зеркальный naming,
+      # Путь расширен на apps/kaname/{api,services}: там ровно тот же зеркальный naming,
       # а прежний список (domain|handler|service) его не покрывал.
-      - path: 'internal/(domain|handler|service|apps/kacho/(api|services))/'
+      - path: 'internal/(domain|handler|service|apps/kaname/(api|services))/'
         linters: [revive]
         text: 'var-naming'
       # Из конфига api-gateway: косметические staticcheck-quickfix'ы. QF1011 вдобавок
@@ -106,9 +106,9 @@ linters:
       # одноимённые слои соседних служб при прогоне из корня — то есть тихо
       # расширила бы послабление на чужой код. С якорем она срабатывает только
       # там, где корнем прогона и является каталог службы.
-      - path: 'services/iam/internal/(domain|errors|repo|service|apps/kacho/api)/'
+      - path: 'services/iam/internal/(domain|errors|repo|service|apps/kaname/api)/'
         linters: [staticcheck]
-      - path: '^internal/(domain|errors|repo|service|apps/kacho/api)/'
+      - path: '^internal/(domain|errors|repo|service|apps/kaname/api)/'
         linters: [staticcheck]
 
 formatters:

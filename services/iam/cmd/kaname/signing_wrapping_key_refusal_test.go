@@ -14,8 +14,8 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/PRO-Robotech/kacho-iam/internal/apps/kacho/api/signingkeys"
-	"github.com/PRO-Robotech/kacho-iam/internal/apps/kacho/config"
+	"github.com/PRO-Robotech/kacho-iam/internal/apps/kaname/api/signingkeys"
+	"github.com/PRO-Robotech/kacho-iam/internal/apps/kaname/config"
 )
 
 func TestSigningKeyStartupRefusalNamesTheKnob(t *testing.T) {

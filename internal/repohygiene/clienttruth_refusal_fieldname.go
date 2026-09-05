@@ -110,7 +110,7 @@ func DefaultRefusalFieldNameOptions(root string) RefusalFieldNameOptions {
 	return RefusalFieldNameOptions{
 		Root:        root,
 		ServicesRel: "services",
-		UseCaseRel:  "internal/apps/kacho/api",
+		UseCaseRel:  "internal/apps/kaname/api",
 		ProtoPackageOf: map[string]string{
 			"compute":  "kacho.cloud.compute.v1",
 			"geo":      "kacho.cloud.geo.v1",

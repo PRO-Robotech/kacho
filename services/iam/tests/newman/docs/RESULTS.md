@@ -654,7 +654,7 @@ the **ungated** behavior and do NOT assert the gated part:
   projection lives on the internal listener (`InternalIAMService.GetRoleCompiled`, :9091),
   which is not reachable from this public-gateway newman env. Newman covers the **public**
   side (two-projection field-ABSENCE on public `Role.Get`/`List`); the internal-positive is
-  covered by `services/iam/internal/apps/kacho/api/role/f5_compiled_projection_test.go`.
+  covered by `services/iam/internal/apps/kaname/api/role/f5_compiled_projection_test.go`.
 - **IAM-1-33 (INTERNAL never echoes pgx/SQL)** — requires injecting an uncategorized DB
   error on the write path (not reproducible black-box). Integration-covered
   (INTERNAL-opaque mapping tests). Documented here, not a newman case.

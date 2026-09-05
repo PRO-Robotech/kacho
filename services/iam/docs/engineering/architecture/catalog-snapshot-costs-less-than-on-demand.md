@@ -23,7 +23,7 @@ SPDX-License-Identifier: AGPL-3.0-or-later
 кластер не нужен):
 
 ```sh
-cd services/iam && go test ./internal/repo/kacho/pg/ \
+cd services/iam && go test ./internal/repo/kaname/pg/ \
   -run TestIAMCT2_SnapshotCostAgainstOnDemand -count=1 -v
 ```
 

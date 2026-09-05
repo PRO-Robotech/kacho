@@ -981,7 +981,7 @@ func (x *ClusterAdminRecord) GetGrantedAt() *timestamppb.Timestamp {
 // читает тот, кто разбирает запись по её форме, `kind` — тот, кто раскладывает
 // перечисление по видам, не заглядывая внутрь. Согласие двух прочтений — не
 // пожелание: его держит проба
-// (`services/iam/internal/apps/kacho/api/access_binding`), потому что запись, чей
+// (`services/iam/internal/apps/kaname/api/access_binding`), потому что запись, чей
 // `kind` разошёлся с ветвью, читается разными вызывающими по-разному.
 type GrantSurfaceRecord struct {
 	state protoimpl.MessageState `protogen:"open.v1"`

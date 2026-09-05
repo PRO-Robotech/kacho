@@ -63,7 +63,7 @@ CEREMONY_DECL = "tests/authz-fixtures/ceremony_credentials.py"
 CEREMONY_SEED = "tests/authz-fixtures/prodseed_ceremony.py"
 NEIGHBOUR_GATE = "deploy/scripts/assert-cocreated-child-is-torn-down.py"
 IAM_MIGRATIONS = "services/iam/internal/migrations"
-BOOTSTRAP_SOURCE = "services/iam/internal/apps/kacho/api/user/internal_upsert.go"
+BOOTSTRAP_SOURCE = "services/iam/internal/apps/kaname/api/user/internal_upsert.go"
 
 # Предъявители ОДНОГО человека церемонии. Оба обязаны стоять в объявлении церемонии —
 # это проверяется, а не предполагается: переименуют один, и счёт молча перестанет

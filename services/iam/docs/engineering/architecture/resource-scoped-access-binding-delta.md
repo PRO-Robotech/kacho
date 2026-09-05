@@ -65,7 +65,7 @@ deliberate red). Physical removal of the deprecated fields is a future major bum
 The whole change lives in proto + the transport-adjacent layer. `domain` and
 `repo` (the DB row, writer-tx, FGA emit) are NOT touched.
 
-### Input normalization (`internal/apps/kacho/api/access_binding/delta_input.go`)
+### Input normalization (`internal/apps/kaname/api/access_binding/delta_input.go`)
 `Handler.Create` calls, FIRST (before any Operation):
 - `normalizeScopeInput(resource_type, resource_id, scope_ref)` →
   single `(resource_type, resource_id)` pair the rest of the pipeline consumes.

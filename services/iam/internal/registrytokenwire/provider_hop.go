@@ -44,7 +44,7 @@ import (
 	"context"
 	"fmt"
 
-	registrytokenuc "github.com/PRO-Robotech/kacho-iam/internal/apps/kacho/api/registry_token"
+	registrytokenuc "github.com/PRO-Robotech/kacho-iam/internal/apps/kaname/api/registry_token"
 	"github.com/PRO-Robotech/kacho-iam/internal/clients"
 )
 

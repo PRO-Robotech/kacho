@@ -19,7 +19,7 @@ import (
 
 const (
 	// applierPackageDir — каталог применителя.
-	applierPackageDir = "services/iam/internal/apps/kacho/moduleroles/"
+	applierPackageDir = "services/iam/internal/apps/kaname/moduleroles/"
 	// applierCensusFloor — файлов пакета, ниже которого обход беспредметен.
 	applierCensusFloor = 2
 )

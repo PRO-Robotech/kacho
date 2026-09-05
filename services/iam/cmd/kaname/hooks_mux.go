@@ -16,16 +16,16 @@ import (
 	"github.com/PRO-Robotech/kacho/pkg/observability/health"
 	"github.com/PRO-Robotech/kacho/pkg/operations"
 
-	reconcileapp "github.com/PRO-Robotech/kacho-iam/internal/apps/kacho/api/access_binding/reconcile"
-	userapp "github.com/PRO-Robotech/kacho-iam/internal/apps/kacho/api/user"
-	"github.com/PRO-Robotech/kacho-iam/internal/apps/kacho/config"
+	reconcileapp "github.com/PRO-Robotech/kacho-iam/internal/apps/kaname/api/access_binding/reconcile"
+	userapp "github.com/PRO-Robotech/kacho-iam/internal/apps/kaname/api/user"
+	"github.com/PRO-Robotech/kacho-iam/internal/apps/kaname/config"
 	"github.com/PRO-Robotech/kacho-iam/internal/catalog"
 	"github.com/PRO-Robotech/kacho-iam/internal/clients"
 	"github.com/PRO-Robotech/kacho-iam/internal/domain"
 	handlerinternal "github.com/PRO-Robotech/kacho-iam/internal/handler/iamhooks"
 	"github.com/PRO-Robotech/kacho-iam/internal/observability/metrics"
-	kachorepo "github.com/PRO-Robotech/kacho-iam/internal/repo/kacho"
-	kachopg "github.com/PRO-Robotech/kacho-iam/internal/repo/kacho/pg"
+	kanamerepo "github.com/PRO-Robotech/kacho-iam/internal/repo/kaname"
+	kanamepg "github.com/PRO-Robotech/kacho-iam/internal/repo/kaname/pg"
 	"github.com/PRO-Robotech/kacho-iam/internal/service"
 
 	"github.com/PRO-Robotech/kacho-iam/internal/migrations"
@@ -42,13 +42,13 @@ import (
 // соседних сервисов эта провязка есть, и её отсутствие было бы расхождением,
 // которому нечем себя выдать (#1752).
 //
-// kachoRepo / opsRepo / relationStore прокидываются из composition root
+// kanameRepo / opsRepo / relationStore прокидываются из composition root
 // (serve.go) — provision hook (Kratos user-provisioning, C4) строит
 // UpsertFromIdentityUseCase из тех же зависимостей, что wiring.go, и
 // переиспользует уже собранную дверь решения (не дублирует её).
 func buildHooksMux(
 	pool *pgxpool.Pool,
-	kachoRepo kachorepo.Repository,
+	kanameRepo kanamerepo.Repository,
 	opsRepo operations.Repo,
 	relationStore clients.RelationStore,
 	// catalogSource — каталожный факт из живых строк (задача #1816): ЖИВОЙ путь
@@ -64,19 +64,19 @@ func buildHooksMux(
 	hydraIssuer := cfg.AuthN.ResolveHydraIssuer()
 
 	// Repo adapters (pool-scoped).
-	users := kachopg.NewUserPoolRepo(pool)
-	auditPg := kachopg.NewAuditEmitterAdapter(pool)
-	revsPg := kachopg.NewSessionRevocationsAdapter(pool)
+	users := kanamepg.NewUserPoolRepo(pool)
+	auditPg := kanamepg.NewAuditEmitterAdapter(pool)
+	revsPg := kanamepg.NewSessionRevocationsAdapter(pool)
 
 	// Adapter shims между port-iface'ами handler-слоя и repo-adapter'ами.
 	auditAdapter := &handlerinternal.AuditAdapter{EmitFn: auditPg.Emit}
 
-	saClientRepo := kachopg.NewSAOAuthClientRepo(pool)
+	saClientRepo := kanamepg.NewSAOAuthClientRepo(pool)
 	saPort := &tokenEnrichSAAdapter{saClients: saClientRepo}
 
 	// User-token principal mapping: минтованный из UserOAuthClient токен резолвится
 	// в принципал `user:<id>` (net-new относительно SA-key → serviceAccount:<id>).
-	userClientRepo := kachopg.NewUserOAuthClientRepo(pool)
+	userClientRepo := kanamepg.NewUserOAuthClientRepo(pool)
 	userTokenPort := &tokenEnrichUserTokenAdapter{userClients: userClientRepo, users: users}
 
 	tokenEnricher := service.NewTokenEnrichmentService(
@@ -120,8 +120,8 @@ func buildHooksMux(
 	// signup path) forward-materializes the bootstrap owner's per-object content
 	// access — parity with the gRPC InternalUserService wiring (wiring.go). Without
 	// it the LIVE signup user is 403 on their own account's content until the sweep.
-	provisionReconciler := reconcileapp.New(kachopg.NewReconcileAdapter(pool, catalogSource), logger, catalogSource)
-	userUpsert := userapp.NewUpsertFromIdentityUseCase(kachoRepo, opsRepo).
+	provisionReconciler := reconcileapp.New(kanamepg.NewReconcileAdapter(pool, catalogSource), logger, catalogSource)
+	userUpsert := userapp.NewUpsertFromIdentityUseCase(kanameRepo, opsRepo).
 		WithLogger(logger).
 		WithReconciler(provisionReconciler).
 		// ЖИВОЙ путь первого входа: именно здесь активируются приглашения на
@@ -138,7 +138,7 @@ func buildHooksMux(
 	// заведения пользователя: событие не доезжало никогда, а восстановивший
 	// доступ оставался заблокированным, и прежние сессии переживали
 	// восстановление. Use-case существовал всё это время; не хватало маршрута.
-	recoveryUC := userapp.NewOnRecoveryCompletedUseCase(kachoRepo, opsRepo).WithLogger(logger)
+	recoveryUC := userapp.NewOnRecoveryCompletedUseCase(kanameRepo, opsRepo).WithLogger(logger)
 	recoveryHook := handlerinternal.NewRecoveryHookHandler(
 		handlerinternal.RecoveryHookConfig{HookSharedSecret: hookSecret},
 		&userRecoveryAdapter{uc: recoveryUC},
@@ -234,7 +234,7 @@ func (a *userRecoveryAdapter) CompleteRecovery(ctx context.Context, in handlerin
 // the identity fields — so `enabled` arrived false for every account and the
 // mint path could not have judged the state even if it had tried to.
 type tokenEnrichSAAdapter struct {
-	saClients *kachopg.SAOAuthClientRepo
+	saClients *kanamepg.SAOAuthClientRepo
 }
 
 func (a *tokenEnrichSAAdapter) LookupByOAuthClientID(ctx context.Context, hydraClientID domain.OAuthClientID) (domain.ServiceAccountOAuthClient, error) {
@@ -256,8 +256,8 @@ func (a *tokenEnrichSAAdapter) GetServiceAccount(ctx context.Context, id domain.
 // минтованного из UserOAuthClient (личный access-токен) — обратный lookup по
 // hydra_client_id + чтение владеющего User.
 type tokenEnrichUserTokenAdapter struct {
-	userClients *kachopg.UserOAuthClientRepo
-	users       *kachopg.UserPoolRepo
+	userClients *kanamepg.UserOAuthClientRepo
+	users       *kanamepg.UserPoolRepo
 }
 
 func (a *tokenEnrichUserTokenAdapter) LookupByOAuthClientID(ctx context.Context, hydraClientID domain.OAuthClientID) (domain.UserOAuthClient, error) {

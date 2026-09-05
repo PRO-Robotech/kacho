@@ -7,7 +7,7 @@
 // emit their rows inside that same caller-owned transaction, so each side-effect
 // commits atomically with the mutation that produced it.
 //
-// Service layer defines these ports; adapters in repo/kacho/pg and clients/
+// Service layer defines these ports; adapters in repo/kaname/pg and clients/
 // implement them. Composition root (cmd/kaname/main.go) injects concrete
 // implementations.
 package service
@@ -27,7 +27,7 @@ type TxBeginner interface {
 
 // RelationTuple — {User, Relation, Object} triple for fga_outbox writes.
 // Neutral value type owned by internal/outboxtypes so the repo-ports package
-// (internal/repo/kacho) can reference it without importing this use-case package
+// (internal/repo/kaname) can reference it without importing this use-case package
 // (dependency-rule fix); the alias keeps the ergonomic service.RelationTuple name.
 type RelationTuple = outboxtypes.RelationTuple
 

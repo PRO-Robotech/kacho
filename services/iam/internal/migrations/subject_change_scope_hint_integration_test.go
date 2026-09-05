@@ -8,7 +8,7 @@
 //
 // Колонки `resource_type`/`resource_id` заполняла КАЖДАЯ мутация выдачи —
 // выдача права и его снятие, — а читателя у них не было ни одного: проекция
-// чтения (`repo/kacho/pg/subject_change_repo.go`) их не выбирает, контракт
+// чтения (`repo/kaname/pg/subject_change_repo.go`) их не выбирает, контракт
 // `InternalIAMService.PollSubjectChanges` их не выставляет, потребитель на крае
 // о них не знает. Комментарий рядом с объявлением называл их «optional scope
 // hint for future per-resource cache invalidation», то есть подсказкой —

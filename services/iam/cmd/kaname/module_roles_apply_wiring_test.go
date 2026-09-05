@@ -68,7 +68,7 @@ import (
 )
 
 // moduleRolesPkgPath — пакет применителя ролей.
-const moduleRolesPkgPath = "github.com/PRO-Robotech/kacho-iam/internal/apps/kacho/moduleroles"
+const moduleRolesPkgPath = "github.com/PRO-Robotech/kacho-iam/internal/apps/kaname/moduleroles"
 
 // moduleRolesApplierCtor — конструктор применителя ролей.
 const moduleRolesApplierCtor = "NewApplier"

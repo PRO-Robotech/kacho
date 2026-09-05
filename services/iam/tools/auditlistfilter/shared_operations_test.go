@@ -24,7 +24,7 @@ import (
 	"testing"
 )
 
-// sharedUseCaseDir locates internal/apps/kacho/shared relative to this file.
+// sharedUseCaseDir locates internal/apps/kaname/shared relative to this file.
 func sharedUseCaseDir(t *testing.T) string {
 	t.Helper()
 	_, self, _, ok := runtime.Caller(0)

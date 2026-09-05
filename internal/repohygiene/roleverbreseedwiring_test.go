@@ -20,7 +20,7 @@ package repohygiene
 // Здесь закрываются ровно две оси, которых у того гейта нет:
 //
 //  1. слой use-case (`services/*/internal/apps/`) НЕ импортирует пакет, в котором
-//     стоит единственный писатель. Писателя зовут через порт (`kachorepo.Writer`,
+//     стоит единственный писатель. Писателя зовут через порт (`kanamerepo.Writer`,
 //     `shared.DoWithWriteTxVoid`) — это и есть раскладка `architecture.md`
 //     §«Clean Architecture»: use-case объявляет порт, adapter его реализует;
 //  2. ссылка на пересчёт проекции в ДЕРЕВЕ ровно одна, и стоит она в
@@ -72,7 +72,7 @@ import (
 const useCaseLayerMarker = "/internal/apps/"
 
 // roleVerbSeedPackageDir — каталог досева, чьи вызовы считает ось 2.
-const roleVerbSeedPackageDir = "services/iam/internal/apps/kacho/seed"
+const roleVerbSeedPackageDir = "services/iam/internal/apps/kaname/seed"
 
 // treeGoFiles — непроверочные файлы Go по ИНДЕКСУ git: единица счёта —
 // отслеживаемый файл, поэтому неотслеживаемый мусор рабочей копии в вердикт не
@@ -218,7 +218,7 @@ func TestRoleVerbWriterIsReachedFromUseCaseThroughThePort(t *testing.T) {
 	for _, f := range useCaseWriterImportFindings(apps, writerPkgs) {
 		t.Errorf("%s\n"+
 			"Слой use-case дотягивается до писателя проекции роли ПРЯМЫМ ИМПОРТОМ "+
-			"пакета-адаптера. Писателя зовут через порт: `kachorepo.Writer` + "+
+			"пакета-адаптера. Писателя зовут через порт: `kanamerepo.Writer` + "+
 			"`shared.DoWithWriteTxVoid`, метод `RolesW().ReplaceRoleVerbs`. Иначе "+
 			"use-case решает не только КОГДА и ДЛЯ КАКИХ ролей пересчитывать, но и "+
 			"КАК писать, — а форму строки, отображение отказов и транзакционность "+

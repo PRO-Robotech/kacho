@@ -17,40 +17,40 @@ import (
 
 	"github.com/PRO-Robotech/kacho/pkg/operations"
 
-	accessbindingapp "github.com/PRO-Robotech/kacho-iam/internal/apps/kacho/api/access_binding"
-	reconcileapp "github.com/PRO-Robotech/kacho-iam/internal/apps/kacho/api/access_binding/reconcile"
-	accountapp "github.com/PRO-Robotech/kacho-iam/internal/apps/kacho/api/account"
-	authorizeapp "github.com/PRO-Robotech/kacho-iam/internal/apps/kacho/api/authorize"
-	bootstraptoken "github.com/PRO-Robotech/kacho-iam/internal/apps/kacho/api/bootstrap_token"
-	clusterapp "github.com/PRO-Robotech/kacho-iam/internal/apps/kacho/api/cluster"
-	groupapp "github.com/PRO-Robotech/kacho-iam/internal/apps/kacho/api/group"
-	identityquotaapp "github.com/PRO-Robotech/kacho-iam/internal/apps/kacho/api/identityquota"
-	interactiveclientapp "github.com/PRO-Robotech/kacho-iam/internal/apps/kacho/api/interactive_client"
-	internaliamapp "github.com/PRO-Robotech/kacho-iam/internal/apps/kacho/api/internal_iam"
-	internaloperationsapp "github.com/PRO-Robotech/kacho-iam/internal/apps/kacho/api/internal_operations"
-	limitapp "github.com/PRO-Robotech/kacho-iam/internal/apps/kacho/api/limit"
-	membershipapp "github.com/PRO-Robotech/kacho-iam/internal/apps/kacho/api/membership"
-	moduleapp "github.com/PRO-Robotech/kacho-iam/internal/apps/kacho/api/module"
-	permissioncatalogapp "github.com/PRO-Robotech/kacho-iam/internal/apps/kacho/api/permission_catalog"
-	projectapp "github.com/PRO-Robotech/kacho-iam/internal/apps/kacho/api/project"
-	roleapp "github.com/PRO-Robotech/kacho-iam/internal/apps/kacho/api/role"
-	sakeysapp "github.com/PRO-Robotech/kacho-iam/internal/apps/kacho/api/sa_keys"
-	serviceaccountapp "github.com/PRO-Robotech/kacho-iam/internal/apps/kacho/api/service_account"
-	sessionrevapp "github.com/PRO-Robotech/kacho-iam/internal/apps/kacho/api/session_revocations"
-	userapp "github.com/PRO-Robotech/kacho-iam/internal/apps/kacho/api/user"
-	usertokensapp "github.com/PRO-Robotech/kacho-iam/internal/apps/kacho/api/user_tokens"
-	"github.com/PRO-Robotech/kacho-iam/internal/apps/kacho/config"
-	"github.com/PRO-Robotech/kacho-iam/internal/apps/kacho/modulecatalog"
-	"github.com/PRO-Robotech/kacho-iam/internal/apps/kacho/shared"
+	accessbindingapp "github.com/PRO-Robotech/kacho-iam/internal/apps/kaname/api/access_binding"
+	reconcileapp "github.com/PRO-Robotech/kacho-iam/internal/apps/kaname/api/access_binding/reconcile"
+	accountapp "github.com/PRO-Robotech/kacho-iam/internal/apps/kaname/api/account"
+	authorizeapp "github.com/PRO-Robotech/kacho-iam/internal/apps/kaname/api/authorize"
+	bootstraptoken "github.com/PRO-Robotech/kacho-iam/internal/apps/kaname/api/bootstrap_token"
+	clusterapp "github.com/PRO-Robotech/kacho-iam/internal/apps/kaname/api/cluster"
+	groupapp "github.com/PRO-Robotech/kacho-iam/internal/apps/kaname/api/group"
+	identityquotaapp "github.com/PRO-Robotech/kacho-iam/internal/apps/kaname/api/identityquota"
+	interactiveclientapp "github.com/PRO-Robotech/kacho-iam/internal/apps/kaname/api/interactive_client"
+	internaliamapp "github.com/PRO-Robotech/kacho-iam/internal/apps/kaname/api/internal_iam"
+	internaloperationsapp "github.com/PRO-Robotech/kacho-iam/internal/apps/kaname/api/internal_operations"
+	limitapp "github.com/PRO-Robotech/kacho-iam/internal/apps/kaname/api/limit"
+	membershipapp "github.com/PRO-Robotech/kacho-iam/internal/apps/kaname/api/membership"
+	moduleapp "github.com/PRO-Robotech/kacho-iam/internal/apps/kaname/api/module"
+	permissioncatalogapp "github.com/PRO-Robotech/kacho-iam/internal/apps/kaname/api/permission_catalog"
+	projectapp "github.com/PRO-Robotech/kacho-iam/internal/apps/kaname/api/project"
+	roleapp "github.com/PRO-Robotech/kacho-iam/internal/apps/kaname/api/role"
+	sakeysapp "github.com/PRO-Robotech/kacho-iam/internal/apps/kaname/api/sa_keys"
+	serviceaccountapp "github.com/PRO-Robotech/kacho-iam/internal/apps/kaname/api/service_account"
+	sessionrevapp "github.com/PRO-Robotech/kacho-iam/internal/apps/kaname/api/session_revocations"
+	userapp "github.com/PRO-Robotech/kacho-iam/internal/apps/kaname/api/user"
+	usertokensapp "github.com/PRO-Robotech/kacho-iam/internal/apps/kaname/api/user_tokens"
+	"github.com/PRO-Robotech/kacho-iam/internal/apps/kaname/config"
+	"github.com/PRO-Robotech/kacho-iam/internal/apps/kaname/modulecatalog"
+	"github.com/PRO-Robotech/kacho-iam/internal/apps/kaname/shared"
 	"github.com/PRO-Robotech/kacho-iam/internal/authzcascade"
 	"github.com/PRO-Robotech/kacho-iam/internal/authzguard"
 	"github.com/PRO-Robotech/kacho-iam/internal/catalog"
 	"github.com/PRO-Robotech/kacho-iam/internal/clients"
 	"github.com/PRO-Robotech/kacho-iam/internal/domain"
 	"github.com/PRO-Robotech/kacho-iam/internal/observability/metrics"
-	kachorepo "github.com/PRO-Robotech/kacho-iam/internal/repo/kacho"
-	kachopg "github.com/PRO-Robotech/kacho-iam/internal/repo/kacho/pg"
-	"github.com/PRO-Robotech/kacho-iam/internal/repo/kacho/pg/relverdict"
+	kanamerepo "github.com/PRO-Robotech/kacho-iam/internal/repo/kaname"
+	kanamepg "github.com/PRO-Robotech/kacho-iam/internal/repo/kaname/pg"
+	"github.com/PRO-Robotech/kacho-iam/internal/repo/kaname/pg/relverdict"
 	"github.com/PRO-Robotech/kacho-iam/internal/service"
 	"github.com/PRO-Robotech/kacho-iam/internal/tokensigner"
 )
@@ -203,7 +203,7 @@ func ownGateWiringComplaint(store *authzcascade.Client) string {
 // metadata on the terminal write (the grant id exists only after the mutation),
 // and that capability must be proven at compile time, not type-asserted here.
 func buildServices(pool, slavePool *pgxpool.Pool, opsRepo operations.FullRepo,
-	kachoRepo kachorepo.Repository,
+	kanameRepo kanamerepo.Repository,
 	// membershipRepo — УЗКИЙ корень чтения членства, приходящий ОТДЕЛЬНЫМ
 	// параметром, а не выуживаемый приведением типа из соседнего.
 	//
@@ -227,7 +227,7 @@ func buildServices(pool, slavePool *pgxpool.Pool, opsRepo operations.FullRepo,
 	catalogRows moduleapp.CatalogStateSource,
 	metricsReg *metrics.Registry,
 	cfg config.Config, tokenSigner *tokensigner.Signer, logger *slog.Logger) *services {
-	_ = slavePool // kachoRepo is built and passed in by main()
+	_ = slavePool // kanameRepo is built and passed in by main()
 
 	// relationStore — ТО значение, которое получают собственные стражи iam, и
 	// причина, по которой страж не может спросить «мимо»: другого значения для него
@@ -281,7 +281,7 @@ func buildServices(pool, slavePool *pgxpool.Pool, opsRepo operations.FullRepo,
 	// membership fan-out, AND the P6 Account.Create owner auto-binding
 	// materialization (C-01/C-01b). Created once here so every consumer drives the
 	// same instance.
-	rsabReconciler := reconcileapp.New(kachopg.NewReconcileAdapter(pool, catalogSource), logger, catalogSource)
+	rsabReconciler := reconcileapp.New(kanamepg.NewReconcileAdapter(pool, catalogSource), logger, catalogSource)
 	if metricsReg != nil {
 		// Размер материализации привязки — измерение, не потолок. Он ничего не
 		// отвергает: величина, которой привязка может достичь, не измерена, а предел,
@@ -291,10 +291,10 @@ func buildServices(pool, slavePool *pgxpool.Pool, opsRepo operations.FullRepo,
 	}
 
 	// AccountService.
-	accountCreate := accountapp.NewCreateAccountUseCase(kachoRepo, opsRepo).
+	accountCreate := accountapp.NewCreateAccountUseCase(kanameRepo, opsRepo).
 		WithRelationStore(relationStore, logger).
 		WithReconciler(rsabReconciler)
-	accountUpdate := accountapp.NewUpdateAccountUseCase(kachoRepo, opsRepo).
+	accountUpdate := accountapp.NewUpdateAccountUseCase(kanameRepo, opsRepo).
 		WithRelationStore(relationStore, logger).
 		// A LABEL change flips iam-direct selector membership, so removing a label an
 		// ARM_LABELS grant matches is a REVOCATION. The cross-service twin already gets
@@ -305,29 +305,29 @@ func buildServices(pool, slavePool *pgxpool.Pool, opsRepo operations.FullRepo,
 		// event, so revoke latency became the depth of the FIFO reconcile queue —
 		// measured 7m30s of queue plus a 65s sweep before the tuple died.
 		WithObjectReconciler(rsabReconciler)
-	accountDelete := accountapp.NewDeleteAccountUseCase(kachoRepo, opsRepo)
-	accountGet := accountapp.NewGetAccountUseCase(kachoRepo).WithRelationStore(relationStore)
+	accountDelete := accountapp.NewDeleteAccountUseCase(kanameRepo, opsRepo)
+	accountGet := accountapp.NewGetAccountUseCase(kanameRepo).WithRelationStore(relationStore)
 	// listScanRec — съём стоимости страницы для списков с добором (#653).
 	// Один экземпляр на сборку: гистограммы размечены видом ресурса.
 	listScanRec := metricsReg.NewListScanRecorder()
 
-	accountList := accountapp.NewListAccountsUseCase(kachoRepo).WithRelationStore(relationStore).
+	accountList := accountapp.NewListAccountsUseCase(kanameRepo).WithRelationStore(relationStore).
 		WithListScanRecorder(listScanRec)
-	accountListAllOps := accountapp.NewListAllOperationsUseCase(kachoRepo, opsRepo).
+	accountListAllOps := accountapp.NewListAllOperationsUseCase(kanameRepo, opsRepo).
 		WithRelationStore(relationStore, logger)
 	accountHandler := accountapp.NewHandler(accountCreate, accountUpdate, accountDelete, accountGet, accountList).
 		WithListOperations(shared.NewListOperationsUseCase(opsRepo)).
 		WithListAllOperations(accountListAllOps)
 
 	// ProjectService.
-	projectCreate := projectapp.NewCreateProjectUseCase(kachoRepo, opsRepo).
+	projectCreate := projectapp.NewCreateProjectUseCase(kanameRepo, opsRepo).
 		WithRelationStore(relationStore, logger).
 		// rbac-contract-a-flat: synchronously materialize the owner's
 		// per-object admin/v_* tuple on a freshly-created project (sync ReconcileObject
 		// post-commit through the shared rsabReconciler's sync-FGA writer) so a GET right
 		// after the Operation reports done does not race the async fga_outbox drain (403).
 		WithObjectReconciler(rsabReconciler)
-	projectUpdate := projectapp.NewUpdateProjectUseCase(kachoRepo, opsRepo).
+	projectUpdate := projectapp.NewUpdateProjectUseCase(kanameRepo, opsRepo).
 		WithRelationStore(relationStore, logger).
 		// A LABEL change flips iam-direct selector membership, so removing a label an
 		// ARM_LABELS grant matches is a REVOCATION. The cross-service twin already gets
@@ -338,76 +338,76 @@ func buildServices(pool, slavePool *pgxpool.Pool, opsRepo operations.FullRepo,
 		// event, so revoke latency became the depth of the FIFO reconcile queue —
 		// measured 7m30s of queue plus a 65s sweep before the tuple died.
 		WithObjectReconciler(rsabReconciler)
-	projectDelete := projectapp.NewDeleteProjectUseCase(kachoRepo, opsRepo)
-	projectGet := projectapp.NewGetProjectUseCase(kachoRepo).WithRelationStore(relationStore)
-	projectList := projectapp.NewListProjectsUseCase(kachoRepo).WithRelationStore(relationStore).
+	projectDelete := projectapp.NewDeleteProjectUseCase(kanameRepo, opsRepo)
+	projectGet := projectapp.NewGetProjectUseCase(kanameRepo).WithRelationStore(relationStore)
+	projectList := projectapp.NewListProjectsUseCase(kanameRepo).WithRelationStore(relationStore).
 		WithListScanRecorder(listScanRec)
 	projectHandler := projectapp.NewHandler(projectCreate, projectUpdate, projectDelete, projectGet, projectList).
 		WithListOperations(shared.NewListOperationsUseCase(opsRepo))
 
 	// UserService + InternalUserService.
-	userGet := userapp.NewGetUserUseCase(kachoRepo).WithRelationStore(relationStore)
-	userList := userapp.NewListUsersUseCase(kachoRepo).WithRelationStore(relationStore).
+	userGet := userapp.NewGetUserUseCase(kanameRepo).WithRelationStore(relationStore)
+	userList := userapp.NewListUsersUseCase(kanameRepo).WithRelationStore(relationStore).
 		WithListScanRecorder(listScanRec)
-	userUpdate := userapp.NewUpdateUserUseCase(kachoRepo, opsRepo).
+	userUpdate := userapp.NewUpdateUserUseCase(kanameRepo, opsRepo).
 		// Same revoke-latency fix as accountUpdate above: iam.user is label-selectable,
 		// so a label clear is a REVOCATION, and without the in-process object-forward it
 		// waited out the FIFO reconcile queue (measured 7m30s + a 65s sweep) instead of
 		// converging in-process the way the cross-service RegisterResource path does.
 		WithObjectReconciler(rsabReconciler, logger)
-	userDelete := userapp.NewDeleteUserUseCase(kachoRepo, opsRepo)
-	userUpsert := userapp.NewUpsertFromIdentityUseCase(kachoRepo, opsRepo).
+	userDelete := userapp.NewDeleteUserUseCase(kanameRepo, opsRepo)
+	userUpsert := userapp.NewUpsertFromIdentityUseCase(kanameRepo, opsRepo).
 		WithLogger(logger).
 		WithReconciler(rsabReconciler).
 		WithActivationObserver(metricsReg.InviteActivationRecorder())
-	userInvite := userapp.NewInviteUserUseCase(kachoRepo, opsRepo, relationStore).
+	userInvite := userapp.NewInviteUserUseCase(kanameRepo, opsRepo, relationStore).
 		WithRelationStore(relationStore, logger).
 		WithObjectReconciler(rsabReconciler)
-	userOnRecovery := userapp.NewOnRecoveryCompletedUseCase(kachoRepo, opsRepo).
+	userOnRecovery := userapp.NewOnRecoveryCompletedUseCase(kanameRepo, opsRepo).
 		WithLogger(logger)
 	// Block/Unblock — административный запрет участию и его снятие. Два РАЗНЫХ
 	// типа, поэтому перестановка их здесь — ошибка компиляции, а не контроль,
 	// тихо ставший своей противоположностью.
-	userBlock := userapp.NewBlockUserUseCase(kachoRepo, opsRepo)
-	userUnblock := userapp.NewUnblockUserUseCase(kachoRepo, opsRepo)
+	userBlock := userapp.NewBlockUserUseCase(kanameRepo, opsRepo)
+	userUnblock := userapp.NewUnblockUserUseCase(kanameRepo, opsRepo)
 	// Исключение из аккаунта — пара к приглашению: тот вводит человека в
 	// аккаунт, этот выводит (#1127). Строку личности не трогает.
-	userRemoveFromAccount := userapp.NewRemoveFromAccountUseCase(kachoRepo, opsRepo)
+	userRemoveFromAccount := userapp.NewRemoveFromAccountUseCase(kanameRepo, opsRepo)
 	userHandler := userapp.NewHandler(userGet, userList, userUpdate, userDelete, userInvite,
 		userBlock, userUnblock, userRemoveFromAccount).
 		WithListOperations(shared.NewListOperationsUseCase(opsRepo))
 	internalUserHandler := userapp.NewInternalHandler(userUpsert, userGet, userOnRecovery)
 
 	// ServiceAccountService.
-	saCreate := serviceaccountapp.NewCreateServiceAccountUseCase(kachoRepo, opsRepo).
+	saCreate := serviceaccountapp.NewCreateServiceAccountUseCase(kanameRepo, opsRepo).
 		WithRelationStore(relationStore, logger).
 		WithObjectReconciler(rsabReconciler)
-	saUpdate := serviceaccountapp.NewUpdateServiceAccountUseCase(kachoRepo, opsRepo).
+	saUpdate := serviceaccountapp.NewUpdateServiceAccountUseCase(kanameRepo, opsRepo).
 		// Same revoke-latency fix as accountUpdate above: iam.serviceAccount is
 		// label-selectable, so a label clear is a REVOCATION, and without the in-process
 		// object-forward it waited out the FIFO reconcile queue (measured 7m30s + a 65s
 		// sweep) instead of converging in-process the way the cross-service
 		// RegisterResource path does.
 		WithObjectReconciler(rsabReconciler, logger)
-	saDelete := serviceaccountapp.NewDeleteServiceAccountUseCase(kachoRepo, opsRepo)
-	saGet := serviceaccountapp.NewGetServiceAccountUseCase(kachoRepo).WithRelationStore(relationStore)
-	saList := serviceaccountapp.NewListServiceAccountsUseCase(kachoRepo).WithRelationStore(relationStore).
+	saDelete := serviceaccountapp.NewDeleteServiceAccountUseCase(kanameRepo, opsRepo)
+	saGet := serviceaccountapp.NewGetServiceAccountUseCase(kanameRepo).WithRelationStore(relationStore)
+	saList := serviceaccountapp.NewListServiceAccountsUseCase(kanameRepo).WithRelationStore(relationStore).
 		WithListScanRecorder(listScanRec)
 	// Disable / Enable — the writers for the state that decides whether a service
 	// account may authenticate. The state was read by the token hook, by key
 	// issuance and by the docker-token validator long before anything could set
 	// it; until these were wired, the only way to move it was a statement against
 	// the database by hand.
-	saDisable := serviceaccountapp.NewDisableServiceAccountUseCase(kachoRepo, opsRepo)
-	saEnable := serviceaccountapp.NewEnableServiceAccountUseCase(kachoRepo, opsRepo)
+	saDisable := serviceaccountapp.NewDisableServiceAccountUseCase(kanameRepo, opsRepo)
+	saEnable := serviceaccountapp.NewEnableServiceAccountUseCase(kanameRepo, opsRepo)
 	saHandler := serviceaccountapp.NewHandler(saCreate, saUpdate, saDelete, saGet, saList, saDisable, saEnable).
 		WithListOperations(shared.NewListOperationsUseCase(opsRepo))
 
 	// GroupService.
-	groupCreate := groupapp.NewCreateGroupUseCase(kachoRepo, opsRepo).
+	groupCreate := groupapp.NewCreateGroupUseCase(kanameRepo, opsRepo).
 		WithRelationStore(relationStore, logger).
 		WithObjectReconciler(rsabReconciler)
-	groupUpdate := groupapp.NewUpdateGroupUseCase(kachoRepo, opsRepo).
+	groupUpdate := groupapp.NewUpdateGroupUseCase(kanameRepo, opsRepo).
 		// Same revoke-latency fix as accountUpdate above: iam.group is label-selectable,
 		// so a label clear is a REVOCATION. Group.Update was the last path with NEITHER
 		// half — no co-committed reconcile event and no in-process object-forward — so a
@@ -416,16 +416,16 @@ func buildServices(pool, slavePool *pgxpool.Pool, opsRepo operations.FullRepo,
 		// accelerator the cross-service RegisterResource path runs in-process, without
 		// which revoke latency is the depth of the FIFO reconcile queue (measured 7m30s).
 		WithObjectReconciler(rsabReconciler, logger)
-	groupDelete := groupapp.NewDeleteGroupUseCase(kachoRepo, opsRepo)
-	groupGet := groupapp.NewGetGroupUseCase(kachoRepo).WithRelationStore(relationStore)
-	groupList := groupapp.NewListGroupsUseCase(kachoRepo).WithRelationStore(relationStore).
+	groupDelete := groupapp.NewDeleteGroupUseCase(kanameRepo, opsRepo)
+	groupGet := groupapp.NewGetGroupUseCase(kanameRepo).WithRelationStore(relationStore)
+	groupList := groupapp.NewListGroupsUseCase(kanameRepo).WithRelationStore(relationStore).
 		WithListScanRecorder(listScanRec)
-	groupAdd := groupapp.NewAddMemberUseCase(kachoRepo, opsRepo)
-	groupRemove := groupapp.NewRemoveMemberUseCase(kachoRepo, opsRepo)
+	groupAdd := groupapp.NewAddMemberUseCase(kanameRepo, opsRepo)
+	groupRemove := groupapp.NewRemoveMemberUseCase(kanameRepo, opsRepo)
 	// ListMembers names the group in the request, so it re-asks the model about
 	// that group on `v_list` — the same relation the front door requires, and the
 	// layer its two sibling reads already carry.
-	groupListMembers := groupapp.NewListMembersUseCase(kachoRepo).WithRelationStore(relationStore)
+	groupListMembers := groupapp.NewListMembersUseCase(kanameRepo).WithRelationStore(relationStore)
 	groupHandler := groupapp.NewHandler(groupCreate, groupUpdate, groupDelete, groupGet, groupList,
 		groupAdd, groupRemove, groupListMembers).
 		WithListOperations(shared.NewListOperationsUseCase(opsRepo))
@@ -443,7 +443,7 @@ func buildServices(pool, slavePool *pgxpool.Pool, opsRepo operations.FullRepo,
 	)
 
 	// RoleService.
-	roleCreate := roleapp.NewCreateRoleUseCase(kachoRepo, opsRepo, catalogSource).
+	roleCreate := roleapp.NewCreateRoleUseCase(kanameRepo, opsRepo, catalogSource).
 		WithRelationStore(relationStore, logger).
 		WithObjectReconciler(rsabReconciler)
 	// Role.Update of an active role's permissions reconciles the FGA
@@ -459,9 +459,9 @@ func buildServices(pool, slavePool *pgxpool.Pool, opsRepo operations.FullRepo,
 	// rule_fp). One use-case over the pg ReconcileAdapter (Clean Architecture port).
 	// NOTE: rsabReconciler is created once near the top of buildServices (shared
 	// with the Account.Create owner auto-binding materialization).
-	roleUpdate := roleapp.NewUpdateRoleUseCase(kachoRepo, opsRepo, catalogSource).
+	roleUpdate := roleapp.NewUpdateRoleUseCase(kanameRepo, opsRepo, catalogSource).
 		WithTupleReconciler(accessbindingapp.NewRoleTupleReconciler()).
-		WithMembershipFanout(accessbindingapp.NewRoleMembershipFanout(kachoRepo, rsabReconciler)).
+		WithMembershipFanout(accessbindingapp.NewRoleMembershipFanout(kanameRepo, rsabReconciler)).
 		// Same revoke-latency fix as accountUpdate above, for the role AS AN OBJECT
 		// (iam.role is label-selectable, so clearing one of the ROLE's own labels is a
 		// REVOCATION of access TO the role — orthogonal to the rules fan-out wired
@@ -470,23 +470,23 @@ func buildServices(pool, slavePool *pgxpool.Pool, opsRepo operations.FullRepo,
 		// sweep) instead of converging in-process the way the cross-service
 		// RegisterResource path does.
 		WithObjectReconciler(rsabReconciler, logger)
-	roleDelete := roleapp.NewDeleteRoleUseCase(kachoRepo, opsRepo)
+	roleDelete := roleapp.NewDeleteRoleUseCase(kanameRepo, opsRepo)
 	// roleGet — D-1 fix: system roles are served to all (catalog floor, exempt);
 	// CUSTOM roles enforce per-object via the SAME FGA v_list set as List
 	// (read==enforce, D-45). relationStore is always non-nil, so a custom-role Get
 	// fails closed on an FGA outage (Unavailable, D-47) — never a body leak.
-	roleGet := roleapp.NewGetRoleUseCase(kachoRepo, catalogSource).WithRelationStore(relationStore)
+	roleGet := roleapp.NewGetRoleUseCase(kanameRepo, catalogSource).WithRelationStore(relationStore)
 	// roleList — per-object scope-filtered: the FGA v_list set on
 	// iam_role is intersected with the catalog (system roles bypass). relationStore
 	// is always non-nil, so List fails closed on an FGA outage (D-47).
-	roleList := roleapp.NewListRolesUseCase(kachoRepo, catalogSource).WithRelationStore(relationStore).
+	roleList := roleapp.NewListRolesUseCase(kanameRepo, catalogSource).WithRelationStore(relationStore).
 		WithListScanRecorder(listScanRec)
 	roleHandler := roleapp.NewHandler(roleCreate, roleUpdate, roleDelete, roleGet, roleList).
 		WithListOperations(shared.NewListOperationsUseCase(opsRepo))
 
 	// AccessBindingService. (rsabReconciler is created above — shared with the
 	// Role.Update membership fan-out; the same instance drives Create + worker.)
-	abCreate := accessbindingapp.NewCreateAccessBindingUseCase(kachoRepo, opsRepo).
+	abCreate := accessbindingapp.NewCreateAccessBindingUseCase(kanameRepo, opsRepo).
 		WithRelationStore(relationStore, logger).
 		WithReconciler(rsabReconciler)
 	// abDelete — relationStore drives the grant-authority gate, and ONLY that. The
@@ -494,13 +494,13 @@ func buildServices(pool, slavePool *pgxpool.Pool, opsRepo operations.FullRepo,
 	// the in-tx EmitRelationDelete is now the whole mechanism, because a trigger folds
 	// the journal row into the direct fact in the SAME commit. The deny is therefore
 	// observable at Operation-done by construction, not by a second write racing it.
-	abDelete := accessbindingapp.NewDeleteAccessBindingUseCase(kachoRepo, opsRepo).
+	abDelete := accessbindingapp.NewDeleteAccessBindingUseCase(kanameRepo, opsRepo).
 		WithRelationStore(relationStore, logger)
 	// Revoke — F10 (IAM-1-28) SOFT-revoke (status ACTIVE→REVOKED, row retained for
 	// audit-retention), contrast with Delete=HARD. Same grant-authority +
 	// deletion_protection gate as Delete; same post-commit synchronous FGA
 	// tuple-removal so deny is observable at Operation-done.
-	abRevoke := accessbindingapp.NewRevokeAccessBindingUseCase(kachoRepo, opsRepo).
+	abRevoke := accessbindingapp.NewRevokeAccessBindingUseCase(kanameRepo, opsRepo).
 		WithRelationStore(relationStore, logger)
 	// Update — P6 (C-03): clear deletion_protection so a protected binding can be
 	// deleted. Same grant-authority gate as Create/Delete. WithObjectReconciler adds the
@@ -509,7 +509,7 @@ func buildServices(pool, slavePool *pgxpool.Pool, opsRepo operations.FullRepo,
 	// in-process pass its latency is the depth of the FIFO reconcile queue (one worker,
 	// ~5 events/s of FULL O(scope) recomputes — measured 7m30s enqueue→drain on the
 	// sibling iam.project path). The co-committed reconcile event stays the backstop.
-	abUpdate := accessbindingapp.NewUpdateAccessBindingUseCase(kachoRepo, opsRepo).
+	abUpdate := accessbindingapp.NewUpdateAccessBindingUseCase(kanameRepo, opsRepo).
 		WithRelationStore(relationStore, logger).
 		WithObjectReconciler(rsabReconciler)
 	// D-6 (T3.3): the AB read RPCs union the existing self/granted floor with the
@@ -517,10 +517,10 @@ func buildServices(pool, slavePool *pgxpool.Pool, opsRepo operations.FullRepo,
 	// (the decision door) satisfies BOTH RelationStore (Check) and RelationQueries
 	// (the contextual and paged forms); WithRelationQueries wires the per-object
 	// visibility floor.
-	abGet := accessbindingapp.NewGetAccessBindingUseCase(kachoRepo).
+	abGet := accessbindingapp.NewGetAccessBindingUseCase(kanameRepo).
 		WithRelationStore(relationStore, logger).
 		WithRelationQueries(relationStore)
-	abListByScope := accessbindingapp.NewListByScopeUseCase(kachoRepo).
+	abListByScope := accessbindingapp.NewListByScopeUseCase(kanameRepo).
 		WithRelationStore(relationStore, logger).
 		WithRelationQueries(relationStore)
 	// F11 (IAM-1-32): the unified List — viewer ∪ v_list push-down (same
@@ -534,10 +534,10 @@ func buildServices(pool, slavePool *pgxpool.Pool, opsRepo operations.FullRepo,
 	// из ОДНОЙ точки чтения — иначе две поверхности об одном предмете расходятся
 	// молча. Читатель тот же, что обслуживает `InternalClusterService.ListAdmins`:
 	// второй завёл бы второй способ ответить на один вопрос.
-	abList := accessbindingapp.NewListUseCase(kachoRepo).
+	abList := accessbindingapp.NewListUseCase(kanameRepo).
 		WithRelationStore(relationStore).
 		WithRelationQueries(relationStore).
-		WithClusterAdmins(kachopg.NewClusterAdminGrantReader(pool)).
+		WithClusterAdmins(kanamepg.NewClusterAdminGrantReader(pool)).
 		WithListScanRecorder(listScanRec)
 	// ListBySubject — тот же вопрос, что и у ListSubjectPrivileges («какие выдачи
 	// есть у этого субъекта»), поэтому и допуск у него ТОТ ЖЕ, единым предикатом
@@ -545,10 +545,10 @@ func buildServices(pool, slavePool *pgxpool.Pool, opsRepo operations.FullRepo,
 	// и делегированного распорядителя, RelationQueries сужает СТРАНИЦУ полосы
 	// распорядителя построчно (#1354). Непровязанный порт этим чтением
 	// ОТКАЗЫВАЕТ — провязка здесь не удобство, а условие работоспособности полосы.
-	abListBySub := accessbindingapp.NewListBySubjectUseCase(kachoRepo).
+	abListBySub := accessbindingapp.NewListBySubjectUseCase(kanameRepo).
 		WithRelationStore(relationStore, logger).
 		WithRelationQueries(relationStore)
-	abListByAcc := accessbindingapp.NewListByAccountUseCase(kachoRepo).
+	abListByAcc := accessbindingapp.NewListByAccountUseCase(kanameRepo).
 		WithRelationStore(relationStore, logger).
 		WithRelationQueries(relationStore)
 	// ListSubjectPrivileges — enriched self|account-admin read.
@@ -558,26 +558,26 @@ func buildServices(pool, slavePool *pgxpool.Pool, opsRepo operations.FullRepo,
 	// вызывающего (#1354). Непровязанный порт этим чтением ОТКАЗЫВАЕТ, поэтому
 	// провязка здесь — не удобство, а условие работоспособности полосы
 	// распорядителя аккаунта.
-	abListSubjPriv := accessbindingapp.NewListSubjectPrivilegesUseCase(kachoRepo).
+	abListSubjPriv := accessbindingapp.NewListSubjectPrivilegesUseCase(kanameRepo).
 		WithRelationStore(relationStore, logger).
 		WithRelationQueries(relationStore)
 	// ListAssignableRoles — roles valid to bind on a resource,
 	// scope_group-annotated. Same grant-authority gate as ListByScope/Create
 	// (RelationStore wired so the delegated-admin + cluster-scope authority paths
 	// resolve).
-	abListAssignable := accessbindingapp.NewListAssignableRolesUseCase(kachoRepo).
+	abListAssignable := accessbindingapp.NewListAssignableRolesUseCase(kanameRepo).
 		WithRelationStore(relationStore, logger)
 	// ListByRole audit (same grant-authority scope-filter as
 	// the other List RPCs) + ExpandAccess effective-principal audit
 	// (resolves group usersets via the door's ListSubjects).
-	abListByRole := accessbindingapp.NewListByRoleUseCase(kachoRepo).
+	abListByRole := accessbindingapp.NewListByRoleUseCase(kanameRepo).
 		WithRelationStore(relationStore, logger)
 	// ExpandAccess: the decision door doubles as the userset expander (ListSubjects)
 	// AND the RelationStore for the per-object grant-authority gate (В3 — a caller may
 	// expand "who can do X" only on objects they are authorized to administer, the
 	// SAME requireGrantAuthority predicate ListByScope/ListByRole enforce).
 	abExpandAccess := accessbindingapp.NewExpandAccessUseCase(relationStore).
-		WithGrantAuthority(kachoRepo, relationStore, logger)
+		WithGrantAuthority(kanameRepo, relationStore, logger)
 	abHandler := accessbindingapp.NewHandler(abCreate, abDelete, abGet, abListByScope, abListBySub, abListByAcc,
 		abListSubjPriv).
 		WithUpdate(abUpdate).
@@ -589,7 +589,7 @@ func buildServices(pool, slavePool *pgxpool.Pool, opsRepo operations.FullRepo,
 		WithRevoke(abRevoke)
 
 	// ── AuthZ core wiring ─────────────────────────────────────────────────
-	authzServices := buildAuthZServices(pool, opsRepo, kachoRepo, relationStore,
+	authzServices := buildAuthZServices(pool, opsRepo, kanameRepo, relationStore,
 		metricsReg, cfg.AuthN.Mode.IsProduction(), logger)
 	// InternalIAMService — LookupSubject (for the api-gateway
 	// auth-interceptor) + Check (delegates to AuthorizeService.CheckRelation
@@ -597,7 +597,7 @@ func buildServices(pool, slavePool *pgxpool.Pool, opsRepo operations.FullRepo,
 	// the external endpoint (ban #6). "gRPC-direct only" used to stand here and
 	// is wrong — the api-gateway also exposes these two over REST on its
 	// INTERNAL mux; internal-only is the invariant, gRPC-direct is not.
-	lookupSubject := internaliamapp.NewLookupSubjectUseCase(kachoRepo)
+	lookupSubject := internaliamapp.NewLookupSubjectUseCase(kanameRepo)
 	// SEC-C — FGA-proxy: RegisterResource / UnregisterResource enqueue the
 	// owner-hierarchy tuple into kaname.fga_outbox in one writer-tx, out of which
 	// a trigger folds the direct fact in the same commit. Least-priv enforced via the
@@ -612,17 +612,17 @@ func buildServices(pool, slavePool *pgxpool.Pool, opsRepo operations.FullRepo,
 	// affected selector/byName memberships — all atomic with the mirror UPSERT/
 	// DELETE (ban #10).
 	registerResourceUC := internaliamapp.NewRegisterResourceUseCase(
-		kachopg.NewFGAOutboxEmitter(),
-		kachopg.NewResourceMirrorEmitter(),
-		kachopg.NewPoolTxBeginner(pool),
+		kanamepg.NewFGAOutboxEmitter(),
+		kanamepg.NewResourceMirrorEmitter(),
+		kanamepg.NewPoolTxBeginner(pool),
 		// Имя типа КАТАЛОГА читается у ЖИВОЙ строки, в транзакции записи зеркала
 		// (kacho#1990). Параметр, а не опция: запасной путь «переводим словарём
 		// сборки» молчалив — верный ответ на посеянных типах и неверный на
 		// заведённых применением манифеста в работающем процессе.
-		kachopg.NewCatalogTypeReader(),
+		kanamepg.NewCatalogTypeReader(),
 	).
-		WithReconcile(kachopg.NewReconcileEventEmitter()).
-		WithAccountResolver(kachopg.NewProjectAccountResolver()).
+		WithReconcile(kanamepg.NewReconcileEventEmitter()).
+		WithAccountResolver(kanamepg.NewProjectAccountResolver()).
 		// Design-B instant-visibility (VBC-15): after the owner-tuple + mirror co-commit,
 		// drive a SYNCHRONOUS ReconcileObject (shared rsabReconciler's sync-FGA writer) so
 		// the creator's per-object v_get materializes before the consumer's create-Operation
@@ -650,7 +650,7 @@ func buildServices(pool, slavePool *pgxpool.Pool, opsRepo operations.FullRepo,
 		// The bare transport is used deliberately: this needs the STRONG object listing,
 		// and it must not travel the cascade wrapper, whose job is to widen answers to
 		// questions rather than to enumerate what is physically there.
-		WithResidualTupleReader(kachopg.NewResidualTupleReader(pool))
+		WithResidualTupleReader(kanamepg.NewResidualTupleReader(pool))
 	// Both post-commit steps above are best-effort: they front a durable queue, so a
 	// failure costs latency and never the change. That is what makes a permanently broken
 	// one invisible — one WARN and a product that keeps working, slower, forever. The
@@ -668,7 +668,7 @@ func buildServices(pool, slavePool *pgxpool.Pool, opsRepo operations.FullRepo,
 	// session_revocations — SHARED by ForceLogout (here), the
 	// InternalSessionRevocationsService Revoke path, and the refresh-hook reader
 	// (one table, one fan-out).
-	sessionRevAdapter := kachopg.NewSessionRevocationsAdapter(pool)
+	sessionRevAdapter := kanamepg.NewSessionRevocationsAdapter(pool)
 	// Instrument the authz Check hot path at the adapter boundary (Clean
 	// Architecture): the metrics decorator wraps the CheckRelation port the
 	// InternalIAMService gate calls per-RPC (vpc/compute/nlb), recording the
@@ -689,13 +689,13 @@ func buildServices(pool, slavePool *pgxpool.Pool, opsRepo operations.FullRepo,
 		// молчит при живых событиях. Без жалобы в журнал процесса оно
 		// неотличимо от «событий нет» (kacho#1374).
 		WithSubjectChange(service.NewSubjectChangeService(
-			kachopg.NewSubjectChangeRepo(pool, logger))).
+			kanamepg.NewSubjectChangeRepo(pool, logger))).
 		// SEC-C — FGA-proxy RPCs + ReBAC authz gate.
 		WithResourceRegistrar(registerResourceUC, regGate).
 		// #1142 — авторитет о предъявленном базовом секрете. Край зовёт его на
 		// промахе своего кэша вердикта; отзыв доходит до предъявления тем, что
 		// резолв не находит СНЯТОЙ строки.
-		WithBasicCredentialResolver(kachopg.NewBasicCredentialRepo(pool)).
+		WithBasicCredentialResolver(kanamepg.NewBasicCredentialRepo(pool)).
 		WithLogger(logger).
 		// ForceLogout records a session revocation.
 		WithSessionRevoker(sessionRevAdapter).
@@ -706,7 +706,7 @@ func buildServices(pool, slavePool *pgxpool.Pool, opsRepo operations.FullRepo,
 		// self-service logout at the edge already pulls for its own caller.
 		WithProviderSessions(
 			mustProviderAdminClient(cfg),
-			&forceLogoutSubjectResolver{users: kachopg.NewUserPoolRepo(pool)},
+			&forceLogoutSubjectResolver{users: kanamepg.NewUserPoolRepo(pool)},
 		).
 		// ForceLogout returns an Operation — the row it names is persisted here,
 		// before the cutoff is written and terminally after it, so the id the
@@ -719,7 +719,7 @@ func buildServices(pool, slavePool *pgxpool.Pool, opsRepo operations.FullRepo,
 		WithAdminChecker(relationStore).
 		// F5 (IAM-1-13): GetRoleCompiled — Internal-only compiled-permission
 		// projection (two-projection; public RoleService carries only rules[]).
-		WithRoleCompiledReader(roleapp.NewGetRoleCompiledUseCase(kachoRepo))
+		WithRoleCompiledReader(roleapp.NewGetRoleCompiledUseCase(kanameRepo))
 
 	// ── InternalSessionRevocationsService ─────────────────────────────────
 	// Revoke (logout / force-logout) + IsRevoked (api-gateway hot-path) +
@@ -738,7 +738,7 @@ func buildServices(pool, slavePool *pgxpool.Pool, opsRepo operations.FullRepo,
 		// Читатель ТОТ ЖЕ, которым пользуются хуки выдачи: два ответа об одной
 		// отсечке разошлись бы молча, и разошлись бы там, где расхождение
 		// означает «выведен по одной полосе и работает по другой».
-		WithCutoffReader(kachopg.NewUserTokenRevocationRepo(pool))
+		WithCutoffReader(kanamepg.NewUserTokenRevocationRepo(pool))
 
 	// ── SAKey wiring (Class A static SA keys via Hydra) ───────────────────
 	saKeysH := buildSAKeysHandler(pool, opsRepo, cfg, metricsReg.CompensationRecorder(), logger)
@@ -759,18 +759,18 @@ func buildServices(pool, slavePool *pgxpool.Pool, opsRepo operations.FullRepo,
 	}
 
 	// ── InternalClusterService ────────────────────────────────────────────
-	clusterReader := kachopg.NewClusterReader(pool)
-	clusterGrantWriter := kachopg.NewClusterAdminGrantWriter(pool)
-	clusterGrantReader := kachopg.NewClusterAdminGrantReader(pool)
-	clusterRelEmitter := kachopg.NewFGAOutboxEmitter()
-	clusterTxb := kachopg.NewPoolTxBeginner(pool)
-	clusterSubjectState := kachopg.NewSubjectStateReader(pool)
+	clusterReader := kanamepg.NewClusterReader(pool)
+	clusterGrantWriter := kanamepg.NewClusterAdminGrantWriter(pool)
+	clusterGrantReader := kanamepg.NewClusterAdminGrantReader(pool)
+	clusterRelEmitter := kanamepg.NewFGAOutboxEmitter()
+	clusterTxb := kanamepg.NewPoolTxBeginner(pool)
+	clusterSubjectState := kanamepg.NewSubjectStateReader(pool)
 
 	clusterGetUC := clusterapp.NewGetClusterUseCase(clusterReader)
 	// Durable audit_outbox emitter — emits the
 	// iam.cluster_admin.{granted,revoked} compliance row atomically inside the
 	// grant/revoke writer-tx (запрет #10). Shared stateless adapter.
-	clusterAuditEmitter := kachopg.NewAuditOutboxEmitter(pool)
+	clusterAuditEmitter := kanamepg.NewAuditOutboxEmitter(pool)
 	// Defense-in-depth ReBAC gate (security.md "AuthN+AuthZ ВЕЗДЕ"): the
 	// highest-blast cluster-admin RPCs must run their OWN per-RPC system_admin
 	// Check, not rely solely on the gateway caller-policy. relationStore
@@ -797,7 +797,7 @@ func buildServices(pool, slavePool *pgxpool.Pool, opsRepo operations.FullRepo,
 	if interactiveAudience == "" {
 		interactiveAudience = "https://" + cfg.AuthN.ResolveDomain()
 	}
-	interactiveRepo := kachopg.NewInteractiveClientRepo(pool)
+	interactiveRepo := kanamepg.NewInteractiveClientRepo(pool)
 	interactiveProvider := clients.NewInteractiveClientProvider(mustProviderAdminClient(cfg))
 	interactiveClientHandler := interactiveclientapp.NewHandler(
 		interactiveclientapp.NewGetUseCase(interactiveRepo),
@@ -833,7 +833,7 @@ func buildServices(pool, slavePool *pgxpool.Pool, opsRepo operations.FullRepo,
 	// The checker is wired here and nowhere else: an unwired gate fails CLOSED
 	// inside the use-case, because an unauthorised read of the platform's
 	// ceilings is not a lesser failure than an unauthorised write.
-	limitRepo := kachopg.NewLimitRepo(pool)
+	limitRepo := kanamepg.NewLimitRepo(pool)
 	limitHandler := limitapp.NewHandler(
 		limitapp.NewGetUseCase(limitRepo),
 		limitapp.NewListUseCase(limitRepo),
@@ -854,7 +854,7 @@ func buildServices(pool, slavePool *pgxpool.Pool, opsRepo operations.FullRepo,
 	// ограничивал бы невидимо — а самообслуживаемое создание аккаунта есть первое
 	// действие, к которому платформа приглашает, и отказ на нём без объяснения
 	// неотличим от поломки.
-	identityQuotaHandler := identityquotaapp.NewHandler(kachopg.NewIdentityQuotaRepo(pool))
+	identityQuotaHandler := identityquotaapp.NewHandler(kanamepg.NewIdentityQuotaRepo(pool))
 
 	// ── PermissionCatalogService — RBAC rules-model G public catalog ──
 	// In-code projection (authzmap + domain): no repo, no peer-call. Stateless.
@@ -876,8 +876,8 @@ func buildServices(pool, slavePool *pgxpool.Pool, opsRepo operations.FullRepo,
 	// показанный планом, читался бы из другой базы, чем сверяет CAS применения.
 	// Оценка последствий при этом идёт читающей транзакцией (`READ ONLY`), а её
 	// предикаты — те же, что вставляет в свои операторы писатель.
-	moduleApplier := modulecatalog.NewVerbApplier(kachopg.NewCatalogWriteRepo(pool))
-	modulePlanState := kachopg.NewCatalogPlanRepo(pool)
+	moduleApplier := modulecatalog.NewVerbApplier(kanamepg.NewCatalogWriteRepo(pool))
+	modulePlanState := kanamepg.NewCatalogPlanRepo(pool)
 	moduleDelivery := newManifestDeliverySource(cfg.Manifests)
 	moduleHandler := moduleapp.NewHandler(
 		moduleapp.NewPlanUseCase(moduleDelivery, catalogRows, modulePlanState).
@@ -990,7 +990,7 @@ func saKeyIssuanceIsOurs(cfg config.Config) bool {
 // via Hydra OAuth2 client_credentials.
 func buildSAKeysHandler(pool *pgxpool.Pool, opsRepo operations.Repo, cfg config.Config,
 	compObs clients.CompensationEmitObserver, logger *slog.Logger) *sakeysapp.Handler {
-	saClientRepo := kachopg.NewSAOAuthClientRepo(pool)
+	saClientRepo := kanamepg.NewSAOAuthClientRepo(pool)
 
 	hydraAdminURL := cfg.AuthN.ResolveHydraAdminURL()
 	hydraAdmin := mustProviderAdminClient(cfg)
@@ -998,9 +998,9 @@ func buildSAKeysHandler(pool *pgxpool.Pool, opsRepo operations.Repo, cfg config.
 	// Durable audit_outbox emitter — emits iam.sa_key.issued /
 	// iam.sa_key.revoked rows inside the SAKey worker-tx, atomic with the
 	// key-mapping mutation (запрет #10). Payload carries no key material.
-	auditEmitter := kachopg.NewAuditOutboxEmitter(pool)
+	auditEmitter := kanamepg.NewAuditOutboxEmitter(pool)
 
-	issueUC := sakeysapp.NewIssueSAKeyUseCase(saClientRepo, kachopg.NewPoolTxBeginner(pool), hydraAdmin, opsRepo)
+	issueUC := sakeysapp.NewIssueSAKeyUseCase(saClientRepo, kanamepg.NewPoolTxBeginner(pool), hydraAdmin, opsRepo)
 	// Переведён ли контур выдачи ключей на свою чеканку (задача #1120). Решается
 	// ЗДЕСЬ, в единственном месте сборки: «переведён» — свойство посадки, и
 	// use-case его не выводит.
@@ -1016,12 +1016,12 @@ func buildSAKeysHandler(pool *pgxpool.Pool, opsRepo operations.Repo, cfg config.
 	issueUC.RegistryAudience = cfg.APIServer.RegistryToken.TokenService()
 	// Перечень доверенных издателей федеративного ключа — НАША таблица (#1124):
 	// писатель провязан здесь, читает её проверка утверждения на пути запроса.
-	issueUC.WithTrustedIssuerWriter(kachopg.NewTrustedIssuerRepo(pool))
+	issueUC.WithTrustedIssuerWriter(kanamepg.NewTrustedIssuerRepo(pool))
 	// Wire the post-Issue secret redactor. After the Operation is
 	// MarkDone'd with plaintext client_secret, this pg adapter clears the
 	// client_secret field in the proto-marshalled response_data (BYTEA) via a
 	// single-statement UPDATE on the operations row. Idempotent.
-	issueUC.WithResponseRedactor(kachopg.NewOpsResponseRedactor(pool, "kaname"))
+	issueUC.WithResponseRedactor(kanamepg.NewOpsResponseRedactor(pool, "kaname"))
 	issueUC.WithAuditEmitter(auditEmitter)
 	// Grace-окно перед затиранием одноразового private_key_pem: поллящий клиент
 	// (docker-login / CI / UI) должен успеть прочитать ключ из op.response до его
@@ -1050,7 +1050,7 @@ func buildSAKeysHandler(pool *pgxpool.Pool, opsRepo operations.Repo, cfg config.
 	// снятия остаётся ЗАПАСНЫМ путём: он сам может отказать, а процесс — умереть
 	// между провалом и уборкой; durable намерение доставит дренаж.
 	issueUC.WithCompensationEmitter(clients.NewProviderCompensationOutbox(pool).WithEmitObserver(compObs))
-	revokeUC := sakeysapp.NewRevokeSAKeyUseCase(saClientRepo, kachopg.NewPoolTxBeginner(pool), hydraAdmin, opsRepo)
+	revokeUC := sakeysapp.NewRevokeSAKeyUseCase(saClientRepo, kanamepg.NewPoolTxBeginner(pool), hydraAdmin, opsRepo)
 	revokeUC.WithAuditEmitter(auditEmitter)
 	// Surface the post-commit Hydra orphan-cleanup warning (eventual-consistency).
 	revokeUC.WithLogger(logger)
@@ -1076,24 +1076,24 @@ func buildSAKeysHandler(pool *pgxpool.Pool, opsRepo operations.Repo, cfg config.
 // строка, и она либо закоммичена, либо откачена.
 func buildUserTokensHandler(pool *pgxpool.Pool, opsRepo operations.Repo, cfg config.Config,
 	logger *slog.Logger) *usertokensapp.Handler {
-	userClientRepo := kachopg.NewUserOAuthClientRepo(pool)
+	userClientRepo := kanamepg.NewUserOAuthClientRepo(pool)
 
 	// Durable audit_outbox emitter — эмитит iam.user_token.{issued,revoked} строки
 	// внутри worker-tx, атомарно с token-mapping-мутацией (запрет #10). Payload без
 	// key material.
-	auditEmitter := kachopg.NewAuditOutboxEmitter(pool)
+	auditEmitter := kanamepg.NewAuditOutboxEmitter(pool)
 
-	issueUC := usertokensapp.NewIssueUserTokenUseCase(userClientRepo, kachopg.NewPoolTxBeginner(pool), opsRepo)
+	issueUC := usertokensapp.NewIssueUserTokenUseCase(userClientRepo, kanamepg.NewPoolTxBeginner(pool), opsRepo)
 	// Post-Issue секрет-редактор: после MarkDone с plaintext private_key_pem этот
 	// pg-adapter затирает поле в proto-marshalled response_data (BYTEA) одним UPDATE.
-	issueUC.WithResponseRedactor(kachopg.NewOpsResponseRedactor(pool, "kaname"))
+	issueUC.WithResponseRedactor(kanamepg.NewOpsResponseRedactor(pool, "kaname"))
 	issueUC.WithAuditEmitter(auditEmitter)
 	// Grace-окно перед затиранием одноразового private_key_pem: поллящий клиент
 	// (CLI/UI) должен успеть прочитать ключ из op.response до вычистки.
 	issueUC.WithRedactGrace(cfg.AuthN.UserTokenRedactGrace)
 	// Surface redaction-сбоев detached redaction-goroutine.
 	issueUC.WithLogger(logger)
-	revokeUC := usertokensapp.NewRevokeUserTokenUseCase(userClientRepo, kachopg.NewPoolTxBeginner(pool), opsRepo)
+	revokeUC := usertokensapp.NewRevokeUserTokenUseCase(userClientRepo, kanamepg.NewPoolTxBeginner(pool), opsRepo)
 	revokeUC.WithAuditEmitter(auditEmitter)
 	listUC := usertokensapp.NewListUserTokensUseCase(userClientRepo)
 
@@ -1119,7 +1119,7 @@ type authzServiceBundle struct {
 // надзор администратора облака форма поднимает своим планом, поэтому «два ответа
 // на один вопрос» перестало быть возможным by construction, а не по договорённости.
 func buildAuthZServices(pool *pgxpool.Pool, opsRepo operations.Repo,
-	kachoRepo kachorepo.Repository, ownGates *authzcascade.Client,
+	kanameRepo kanamerepo.Repository, ownGates *authzcascade.Client,
 	metricsReg *metrics.Registry,
 	prodMode bool, logger *slog.Logger) authzServiceBundle {
 	_ = opsRepo // операции здесь больше не создаются: их создавал снятый писатель кортежей
@@ -1132,7 +1132,7 @@ func buildAuthZServices(pool *pgxpool.Pool, opsRepo operations.Repo,
 		Relations:           ownGates,
 		ClusterAdminChecker: ownGates,
 	})
-	whoAmIUC := authorizeapp.NewWhoAmIUseCase(kachoRepo, ownGates)
+	whoAmIUC := authorizeapp.NewWhoAmIUseCase(kanameRepo, ownGates)
 	// WithCallerAuthority wires the caller-authority gate (a tenant principal may
 	// only query authz decisions about itself, a resource it administers, or as a
 	// cluster-admin). The SAME decision door answers the authority Check; a
@@ -1172,7 +1172,7 @@ func buildAuthZServices(pool *pgxpool.Pool, opsRepo operations.Repo,
 // login sessions on the subject it issued, which is a different namespace from
 // `users.id` — handing it the wrong one would delete nothing and report success.
 type forceLogoutSubjectResolver struct {
-	users *kachopg.UserPoolRepo
+	users *kanamepg.UserPoolRepo
 }
 
 func (r *forceLogoutSubjectResolver) ExternalIDOf(ctx context.Context, id domain.UserID) (string, error) {

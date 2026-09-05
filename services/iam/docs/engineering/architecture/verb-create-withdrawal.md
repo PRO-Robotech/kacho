@@ -94,7 +94,7 @@ git-путь:
 
 **Ничего в правах.** Доказано пробой
 `TestCreateAuthority_IsTheParentWriteTier_NotAPerObjectVerb`
-(`services/iam/internal/apps/kacho/api/access_binding/`): на настоящем хранилище
+(`services/iam/internal/apps/kaname/api/access_binding/`): на настоящем хранилище
 прав, поднятом на канонической модели, субъект с ярусом редактора на своей области и
 **без единого кортежа `v_create`** проходит каждый гейт создания на своей области и
 не проходит ни одного на чужой. Проба даёт побайтово тот же вывод на дереве **до** и

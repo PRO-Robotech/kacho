@@ -23,8 +23,8 @@ package main
 import (
 	"context"
 
-	moduleapp "github.com/PRO-Robotech/kacho-iam/internal/apps/kacho/api/module"
-	"github.com/PRO-Robotech/kacho-iam/internal/apps/kacho/config"
+	moduleapp "github.com/PRO-Robotech/kacho-iam/internal/apps/kaname/api/module"
+	"github.com/PRO-Robotech/kacho-iam/internal/apps/kaname/config"
 	"github.com/PRO-Robotech/kacho-iam/internal/manifest"
 )
 

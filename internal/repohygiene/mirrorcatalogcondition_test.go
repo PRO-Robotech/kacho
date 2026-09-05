@@ -104,7 +104,7 @@ const resourceMirrorTable = "kaname.resource_mirror"
 // Переедет каталог — гейт объявит ОТКАЗ, а не промолчит: сверять «тем же
 // условием» станет не с чем, и молчание означало бы, что гейт умер вместе с
 // координатой. Правь эту константу тем же изменением, каким двигаешь пакет.
-const mirrorReferenceLane = "services/iam/internal/repo/kacho/pg/resource_mirror/"
+const mirrorReferenceLane = "services/iam/internal/repo/kaname/pg/resource_mirror/"
 
 // mirrorOwnerService — сервис-владелец таблицы. Вводящий писатель вне него
 // означает запись в чужую БД (ban #8), и это находка независимо от условий.

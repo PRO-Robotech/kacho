@@ -41,7 +41,7 @@ package check
 // # Досягаемость пути запроса — ДВА поддерева, и они названы слоем
 //
 //	services/iam/internal/domain            чистый домен: его достигает КАЖДЫЙ RPC
-//	services/iam/internal/apps/kacho/api    слой use-case, обслуживающий RPC
+//	services/iam/internal/apps/kaname/api    слой use-case, обслуживающий RPC
 //
 // Это имена СЛОЁВ (`architecture.md`), а не перечень файлов, поэтому список не
 // стареет вместе с деревом. Переедет слой — обход опустеет, и гейт откажет, а не
@@ -49,8 +49,8 @@ package check
 //
 // # Чего гейт НЕ судит, и это решение, а не пропуск
 //
-// Вне досягаемости — применитель ролей модуля (`apps/kacho/moduleroles`), страж
-// паритета (`apps/kacho/seed`), загрузчик манифеста (`manifest`) и оснастка
+// Вне досягаемости — применитель ролей модуля (`apps/kaname/moduleroles`), страж
+// паритета (`apps/kaname/seed`), загрузчик манифеста (`manifest`) и оснастка
 // дерева (`modelrender`). Все они спрашивают канон ЗАКОННО: их вопрос — «объявлен
 // ли модуль платформой», и ответ обязан быть воспроизводим ИЗ ДЕРЕВА, потому что
 // у них базы нет by construction. Разведение двух вопросов — решение #1927,
@@ -95,7 +95,7 @@ import (
 // монорепо.
 var requestPathReach = []string{
 	"services/iam/internal/domain",
-	"services/iam/internal/apps/kacho/api",
+	"services/iam/internal/apps/kaname/api",
 }
 
 // canonImportPath — пакет, чей канон набора модулей выводится ИЗ ДЕРЕВА.

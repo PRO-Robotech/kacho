@@ -114,7 +114,7 @@ go list -f '{{join .Imports " "}}' ./services/iam/... \
 
 `quota/v1` здесь не случайность: iam **служит** `IdentityQuotaService` — читатели
 `services/iam/cmd/kaname/grpc_register.go` и
-`services/iam/internal/apps/kacho/api/identityquota/handler.go`.
+`services/iam/internal/apps/kaname/api/identityquota/handler.go`.
 
 ### 1.3 Что нужно ТОЛЬКО пробам
 
@@ -155,7 +155,7 @@ go list -f '{{join .Imports " "}}' ./services/iam/... \
 
 **Второй, менее заметный вход генерации — каталог прав.** Файлы
 `gateway/internal/middleware/embed/permission_catalog.json` и
-`services/iam/internal/apps/kacho/seed/embedded/permission_catalog.json` **побайтово
+`services/iam/internal/apps/kaname/seed/embedded/permission_catalog.json` **побайтово
 одинаковы** (`md5sum` обоих → `7b125fa181546f546045580977a34939`), а производит их
 `gateway/scripts/gen-permission-catalog.sh` плагином
 `gateway/cmd/protoc-gen-kacho-permissions`. Скрипт в своей же шапке говорит, что
@@ -208,9 +208,9 @@ services/iam/internal/domain  → use of internal package ... not allowed   rc=1
 | `services/iam/internal/authzmodel/relationsubjects.go` | `internal/authzplan` |
 | `services/iam/internal/modelcompose/compose.go` | `internal/authzplan` |
 | `services/iam/internal/modelrender/sweep.go` | `internal/authzplan` |
-| `services/iam/internal/repo/kacho/pg/relverdict/query.go` | `internal/authzplan` |
-| `services/iam/internal/repo/kacho/pg/scalegrid/report.go` | `internal/gitenv` |
-| `services/iam/internal/repo/kacho/pg/scalegrid/strength.go` | `internal/gitenv` |
+| `services/iam/internal/repo/kaname/pg/relverdict/query.go` | `internal/authzplan` |
+| `services/iam/internal/repo/kaname/pg/scalegrid/report.go` | `internal/gitenv` |
+| `services/iam/internal/repo/kaname/pg/scalegrid/strength.go` | `internal/gitenv` |
 | `services/iam/internal/testsupport/iampgtest/iampgtest.go` | `internal/pgtest` |
 | `services/iam/tools/auditlistfilter/profile.go` | `tools/listfiltergate` |
 | `services/iam/tools/auditlistfilter/cmd/audit-list-filter/main.go` | `tools/listfiltergate` |

@@ -458,7 +458,7 @@ selfservice:
           #
           # Отсрочка объяснялась тем, что «OnRecoveryCompleted не реализован».
           # Утверждение пережило свой предмет: use-case существовал
-          # (internal/apps/kacho/api/user/internal_on_recovery.go) и вызывался
+          # (internal/apps/kaname/api/user/internal_on_recovery.go) и вызывался
           # по внутреннему gRPC; не хватало ровно HTTP-маршрута к нему. Маршрут
           # заведён (internal/handler/iamhooks/recovery_hook_handler.go), и его
           # НАЛИЧИЕ держит проба, а не память автора.

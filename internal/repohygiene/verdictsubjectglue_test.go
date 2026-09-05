@@ -53,7 +53,7 @@ import (
 //
 // Перечень объявлен здесь, потому что он и есть ОБЪЁМ гейта, и печатается в
 // переписи вместе с числом прочитанных файлов.
-const verdictGlueRoot = "services/iam/internal/repo/kacho/pg/relverdict"
+const verdictGlueRoot = "services/iam/internal/repo/kaname/pg/relverdict"
 
 // gluePattern — склейка субъекта выдачи в любой форме написания алиаса.
 //

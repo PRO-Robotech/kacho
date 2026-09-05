@@ -121,7 +121,7 @@ func TestStandaloneGate_RedsOnRootToolsWithTheWeakerGround(t *testing.T) {
 // предикат и сделан положительным.
 func TestStandaloneGate_RedsOnAForeignServiceImportNoBlacklistWouldHaveNamed(t *testing.T) {
 	corpus := injStandaloneCorpus{
-		"services/iam/internal/apps/kacho/api/x.go": injGoFile("api",
+		"services/iam/internal/apps/kaname/api/x.go": injGoFile("api",
 			injStandaloneModule+"/services/vpc/internal/domain",
 		),
 	}
@@ -201,7 +201,7 @@ func TestStandaloneGate_SilentOnItsOwnInternalSubtree(t *testing.T) {
 // дословная: их импортируют 92 прод-файла iam.
 func TestStandaloneGate_SilentOnGeneratedContractStubs(t *testing.T) {
 	corpus := injStandaloneCorpus{
-		"services/iam/internal/apps/kacho/api/user/handler.go": injGoFile("user",
+		"services/iam/internal/apps/kaname/api/user/handler.go": injGoFile("user",
 			injStandaloneModule+"/pkg/api/kacho/cloud/iam/v1",
 			injStandaloneModule+"/pkg/api/kacho/cloud/operation",
 		),
@@ -219,7 +219,7 @@ func TestStandaloneGate_SilentOnGeneratedContractStubs(t *testing.T) {
 // каждом файле дерева.
 func TestStandaloneGate_SilentOnStdlibAndThirdParty(t *testing.T) {
 	corpus := injStandaloneCorpus{
-		"services/iam/internal/repo/kacho/pg/x.go": injGoFile("pg",
+		"services/iam/internal/repo/kaname/pg/x.go": injGoFile("pg",
 			"context",
 			"github.com/jackc/pgx/v5",
 			"google.golang.org/grpc",

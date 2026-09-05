@@ -69,7 +69,7 @@ func TestTheAppliedCatalogIsObserved(t *testing.T) {
 			t.Fatalf("разбор %s: %v", name, perr)
 		}
 		parsed++
-		local := localName(file, "github.com/PRO-Robotech/kacho-iam/internal/apps/kacho/modulecatalog")
+		local := localName(file, "github.com/PRO-Robotech/kacho-iam/internal/apps/kaname/modulecatalog")
 		ast.Inspect(file, func(n ast.Node) bool {
 			switch x := n.(type) {
 			case *ast.AssignStmt:

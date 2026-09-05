@@ -28,9 +28,9 @@ import (
 
 	"github.com/jackc/pgx/v5/pgxpool"
 
-	bootstraptoken "github.com/PRO-Robotech/kacho-iam/internal/apps/kacho/api/bootstrap_token"
+	bootstraptoken "github.com/PRO-Robotech/kacho-iam/internal/apps/kaname/api/bootstrap_token"
 	"github.com/PRO-Robotech/kacho-iam/internal/domain"
-	kachopg "github.com/PRO-Robotech/kacho-iam/internal/repo/kacho/pg"
+	kanamepg "github.com/PRO-Robotech/kacho-iam/internal/repo/kaname/pg"
 	"github.com/PRO-Robotech/kacho-iam/internal/service"
 	"github.com/PRO-Robotech/kacho-iam/internal/tokensigner"
 	"github.com/PRO-Robotech/kacho/pkg/tokenpolicy"
@@ -148,8 +148,8 @@ type BuildConfig struct {
 // собранный наполовину контур отвечал бы отказом на первом же запросе, и узнать
 // об этом было бы неоткуда — стенд поднялся бы Ready.
 func Build(pool *pgxpool.Pool, cfg BuildConfig) (*bootstraptoken.Handler, error) {
-	store := kachopg.NewBootstrapStore(pool)
-	txb := kachopg.NewPoolTxBeginner(pool)
+	store := kanamepg.NewBootstrapStore(pool)
+	txb := kanamepg.NewPoolTxBeginner(pool)
 
 	var minter bootstraptoken.LocalMinter
 	if cfg.SigningKeyPEM != "" {

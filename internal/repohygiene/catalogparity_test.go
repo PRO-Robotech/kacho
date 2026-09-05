@@ -63,7 +63,7 @@ import (
 // побайтово.
 const (
 	catalogEmbedPath     = "gateway/internal/middleware/embed/permission_catalog.json"
-	iamCatalogMirrorPath = "services/iam/internal/apps/kacho/seed/embedded/permission_catalog.json"
+	iamCatalogMirrorPath = "services/iam/internal/apps/kaname/seed/embedded/permission_catalog.json"
 )
 
 // catalogProtoPackages — proto-пакеты, чьи RPC попадают в каталог.

@@ -24,7 +24,7 @@ import (
 
 	"github.com/PRO-Robotech/kacho-iam/internal/observability/metrics"
 
-	"github.com/PRO-Robotech/kacho-iam/internal/apps/kacho/config"
+	"github.com/PRO-Robotech/kacho-iam/internal/apps/kaname/config"
 	"github.com/PRO-Robotech/kacho-iam/internal/clients"
 )
 

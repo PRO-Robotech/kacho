@@ -286,7 +286,7 @@ MOD-RG-13).
 **Цена копии уплачена целиком:** производная порождается целью сборки, а
 побайтовое равенство канону держит гейт (`services/iam/internal/authzmodel/identity_test.go`).
 Прод-импортёров у этой копии сегодня **три**, и один из них — путь запроса
-(`services/iam/internal/apps/kacho/api/authorize/handler.go`), то есть предмет не
+(`services/iam/internal/apps/kaname/api/authorize/handler.go`), то есть предмет не
 нов и опробован.
 
 **Судить каноном здесь — НЕ «спрашивать у ответа», и это надо доказать, а не

@@ -501,7 +501,7 @@ func TestPermissionCatalog_ListPermissionCatalog_ExemptAndTombstones(t *testing.
 // storage rows below close that instance; the CLASS is held elsewhere, by a probe
 // that derives its population from the catalog itself and asks the emitter what a
 // one-verb grant actually resolves:
-// services/iam/internal/apps/kacho/api/access_binding/reconcile,
+// services/iam/internal/apps/kaname/api/access_binding/reconcile,
 // TestCreateOnlyGrantOpensNoObjectSelfRPC. A new domain landing on tiers is caught
 // there without anyone remembering to add a row here.
 func TestPermissionCatalog_VBC22_VerbBearingFlip(t *testing.T) {

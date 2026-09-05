@@ -31,7 +31,7 @@ import (
 
 	iamv1 "github.com/PRO-Robotech/kacho/pkg/api/kacho/cloud/iam/v1"
 
-	moduleapp "github.com/PRO-Robotech/kacho-iam/internal/apps/kacho/api/module"
+	moduleapp "github.com/PRO-Robotech/kacho-iam/internal/apps/kaname/api/module"
 )
 
 func TestInternalModuleService_MA126_InternalOnly_NotOnExternalListener(t *testing.T) {

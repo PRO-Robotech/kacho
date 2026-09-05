@@ -9,7 +9,7 @@
 # ПРЕДМЕТ
 #
 # Сегмент ГЛАГОЛА в Role.Create словарём НЕ закрыт (закрыты модуль и ресурс, см.
-# services/iam/internal/apps/kacho/api/role/rules_catalog.go). Поэтому роль с
+# services/iam/internal/apps/kaname/api/role/rules_catalog.go). Поэтому роль с
 # несуществующим глаголом создаётся успешно — 200, — а реконсайлер на эмиссии
 # отношений такой глагол ПРОПУСКАЕТ (`domain.IsVerbOfType` → continue в
 # access_binding/reconcile/tuples.go). Отношения `v_*` за ним не появляется

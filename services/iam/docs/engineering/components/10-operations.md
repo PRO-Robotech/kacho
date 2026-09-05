@@ -228,7 +228,7 @@ go test -short -count=1 -timeout 60s \
 ## Подробности реализации
 
 - **Repo:** общий `pkg/operations` (`repo.go`); iam добавляет поверх него редактор
-  секретов в ответе — `internal/repo/kacho/pg/ops_response_redactor.go`. Отдельного
+  секретов в ответе — `internal/repo/kaname/pg/ops_response_redactor.go`. Отдельного
   файла-репозитория операций у iam нет.
 - **Handler:** `pkg/operations/operationspb/handler.go` + `handler_test.go` (общий слой).
 - **Wiring:** `cmd/kaname/serve.go::operations.NewRepo(pool, "kaname")`.
@@ -236,7 +236,7 @@ go test -short -count=1 -timeout 60s \
   writer-TX; IAM-операции в основном завершаются тут же (sync-ish). Бэкстопом стоит
   реконсайлер бесхозных операций — `cmd/kaname/recovery.go` (`startLROReconciler`),
   boot-обход плюс периодический.
-- **Migration extension:** `internal/repo/kacho/pg/migrations_iam_extensions_integration_test.go`
+- **Migration extension:** `internal/repo/kaname/pg/migrations_iam_extensions_integration_test.go`
   гарантирует, что `principal_*` колонки добавлены поверх corelib baseline.
 - **Principal sources:**
   - Public-API: api-gateway interceptor → metadata headers → `UnaryPrincipalExtract`.
@@ -264,7 +264,7 @@ go test -short -count=1 -timeout 60s \
 ## Ссылки на код
 
 - `pkg/operations/operationspb/handler.go`
-- `internal/repo/kacho/pg/ops_response_redactor.go`
+- `internal/repo/kaname/pg/ops_response_redactor.go`
 - `internal/migrations/0001_initial.sql` (IAM extension — колонки принципала)
 - `cmd/kaname/serve.go` (`operations.NewRepo(pool, "kaname")`)
 - `cmd/kaname/recovery.go` (реконсайлер бесхозных операций)

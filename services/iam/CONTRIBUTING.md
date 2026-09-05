@@ -79,7 +79,7 @@ make lint
 
 - **unit** — use-case'ы и handler через mock-порты (`internal/.../*_test.go`), домен, конфиг;
 - **integration** — для нового SQL/инварианта: testcontainers Postgres, включая
-  конкурентные сценарии для FK/UNIQUE (`internal/repo/kacho/pg/*_integration_test.go` —
+  конкурентные сценарии для FK/UNIQUE (`internal/repo/kaname/pg/*_integration_test.go` —
   файла с таким именем без префикса ресурса в каталоге нет, проб там больше сотни).
 
 Тестируйте поведение, а не реализацию. Тесты, проверяющие отсутствие уже удаленного

@@ -246,7 +246,7 @@ func (r *roleResource) Schema(_ context.Context, _ resource.SchemaRequest, resp 
 			// Метки версии, автора и времени последней правки в ресурсе НЕТ — намеренно.
 			//
 			// Контракт роли все три объявляет, но ответ края их не несёт: проекция чтения
-			// (`roleCols` в `services/iam/internal/repo/kacho/pg/role_repo.go`) состоит из
+			// (`roleCols` в `services/iam/internal/repo/kaname/pg/role_repo.go`) состоит из
 			// идентификатора, якорей, имени, описания, политики, признака системности,
 			// времени создания и меток, а сборка ответа
 			// (`services/iam/internal/dto/toproto/role.go`) метку версии не заполняет

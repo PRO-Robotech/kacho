@@ -26,7 +26,7 @@ import (
 var clientTruthRequestBodyDomains = []ClientTruthRequestBodyDomain{
 	{Name: "iam", ProtoPackage: "kacho.cloud.iam.v1",
 		DocsDirs:    []string{"services/iam/docs/content", "services/iam/docs/engineering"},
-		UseCaseDirs: []string{"services/iam/internal/apps/kacho/api"}},
+		UseCaseDirs: []string{"services/iam/internal/apps/kaname/api"}},
 	{Name: "vpc", ProtoPackage: "kacho.cloud.vpc.v1",
 		DocsDirs:    []string{"services/vpc/docs/content", "services/vpc/docs/engineering"},
 		UseCaseDirs: []string{"services/vpc/internal/apps/kacho/api"}},

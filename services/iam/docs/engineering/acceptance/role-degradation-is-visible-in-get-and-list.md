@@ -47,8 +47,8 @@ SPDX-License-Identifier: AGPL-3.0-or-later
 | П1 | производителя деградации роли в дереве **ноль** | `git grep -nE '(health\|degrad\|integrity\|orphan\|withdrawn\|unresolved)' -- proto/kacho/cloud/iam/v1/role.proto proto/kacho/cloud/iam/v1/role_service.proto` → вывод пуст, код **1** | **ПОДТВЕРЖДЕНА** |
 | П2 | предикат П1 способен находить (контроль в обратную сторону) | тот же корень по всему дереву контрактов: `git grep -lE '(health\|degrad\|integrity\|orphan\|withdrawn\|unresolved)' -- proto/ \| wc -l` → **18** | **предикат годен** — молчание на роли не есть немота предиката |
 | П3 | производителя нет и в прод-Go iam | `git grep -nEi 'Health\|Degrad\|Orphan\|Unresolved\|Withdrawn' -- 'services/iam/**/*.go' ':!*_test.go'` → попадания есть, но **ни одного о целости роли**: готовность процесса (`pkg/observability/health`), реконсайлер осиротевших операций, комментарии | **ПОДТВЕРЖДЕНА** после адъюдикации по каждому попаданию |
-| П4 | «прод-читателя следа переселения нет ни одного» (Н2 приёмки `module-withdrawal-is-described.md`) | писателей: `git grep -c 'INSERT INTO kacho_iam.role_grant_orphan' -- 'services/iam/**/*.go' ':!*_test.go'` → **2**; читателей: `git grep -cE 'FROM kacho_iam\.role_grant_orphan' -- 'services/iam/**/*.go' ':!*_test.go'` → **0** | **ОПРОВЕРГНУТА НАПОЛОВИНУ.** На своей ревизии Н2 говорила «ни одного вхождения»; сегодня **писатель есть** (переселение живёт в `repo/kacho/pg/catalog_writer.go`, зовёт его `apps/kacho/modulecatalog/apply.go`), а **читателя по-прежнему ноль**. Ведомость наполняется и не читается никем |
-| П5 | цепь вердикта читает `role_verb` | `git grep -l 'kacho_iam.role_verb' -- 'services/iam/internal/repo/kacho/pg/relverdict/*.go' ':!*_test.go' \| wc -l` → **4** (`query`, `list`, `expand`, `subjects`) | **ПОДТВЕРЖДЕНА** |
+| П4 | «прод-читателя следа переселения нет ни одного» (Н2 приёмки `module-withdrawal-is-described.md`) | писателей: `git grep -c 'INSERT INTO kacho_iam.role_grant_orphan' -- 'services/iam/**/*.go' ':!*_test.go'` → **2**; читателей: `git grep -cE 'FROM kacho_iam\.role_grant_orphan' -- 'services/iam/**/*.go' ':!*_test.go'` → **0** | **ОПРОВЕРГНУТА НАПОЛОВИНУ.** На своей ревизии Н2 говорила «ни одного вхождения»; сегодня **писатель есть** (переселение живёт в `repo/kaname/pg/catalog_writer.go`, зовёт его `apps/kaname/modulecatalog/apply.go`), а **читателя по-прежнему ноль**. Ведомость наполняется и не читается никем |
+| П5 | цепь вердикта читает `role_verb` | `git grep -l 'kacho_iam.role_verb' -- 'services/iam/internal/repo/kaname/pg/relverdict/*.go' ':!*_test.go' \| wc -l` → **4** (`query`, `list`, `expand`, `subjects`) | **ПОДТВЕРЖДЕНА** |
 | П6 | блокировка `#1034` действует | `gh issue view 1034 -R PRO-Robotech/kacho --json state -q .state` → `OPEN`; глагол применения: `git grep -lE 'ApplyManifest\|ModuleManifestService' -- proto/ 'services/iam/**/*.go' ':!*_test.go' \| wc -l` → **0** | **ПОДТВЕРЖДЕНА, НО НЕ ПОКРЫВАЕТ ВЕСЬ ПРЕДМЕТ** — §8 |
 | П7 | ревизии каталога нет — перемерено **по свойству**, не по имени | `git grep -niE 'revision' -- 'services/iam/internal/migrations/*.sql' \| grep -viE 'limit\|An earlier revision'` → **3** попадания, все три — переменные `v_revision` домена **квот** (`20260824230000`, `484002`). Каталога не касается ни одно | **ПОДТВЕРЖДЕНА** — отсюда §8 строка о `WITHDRAWN(…, revision, …)` |
 
@@ -158,7 +158,7 @@ enum RoleHealth {
 
 - **объявлено** — сегменты авторского правила, `domain.RuleRefsOf(role.Rules)`.
   Функция уже в дереве и уже питает писателя проекции
-  (`apps/kacho/api/role/create.go`, `update.go`). `roles.rules` читается тем же
+  (`apps/kaname/api/role/create.go`, `update.go`). `roles.rules` читается тем же
   `roleCols`, что и сегодня, — **дополнительного чтения не требует**;
 - **спроецировано** — строки `kacho_iam.role_verb`, **единственной** таблицы,
   которую читает цепь вердикта (П5: четыре файла `relverdict`).
@@ -293,12 +293,12 @@ enum RoleHealth {
 
 | производитель | существует сегодня | координата / предикат |
 |---|---|---|
-| авторские правила роли в ответе чтения | **да** | `roleCols` несёт `rules`; `git grep -n 'const roleCols' services/iam/internal/repo/kacho/pg/role_repo.go` |
+| авторские правила роли в ответе чтения | **да** | `roleCols` несёт `rules`; `git grep -n 'const roleCols' services/iam/internal/repo/kaname/pg/role_repo.go` |
 | разложение правил в сегменты | **да** | `domain.RuleRefsOf`, `services/iam/internal/domain/rule_verbs.go` |
 | таблица, которую читает вердикт | **да** | `kacho_iam.role_verb`, четыре файла `relverdict` (П5) |
 | молчаливый пропуск нерезолвящегося типа (механизм 513001) | **да** | `authzmap/role_verbs.go`, ветка `if !ok { continue }` |
 | переселение при снятии строки каталога | **да** | `catalog_writer.go` → `role_grant_orphan`, зовёт `modulecatalog/apply.go` |
-| единая сборка `domain.Role → iamv1.Role` для обоих чтений | **да** | `dto/toproto/role.go`; `Get` и `List` идут через один `roleToPb` (`apps/kacho/api/role/handler.go`) |
+| единая сборка `domain.Role → iamv1.Role` для обоих чтений | **да** | `dto/toproto/role.go`; `Get` и `List` идут через один `roleToPb` (`apps/kaname/api/role/handler.go`) |
 | **поля `health` / `declared_segments` / `unresolved_segments`** | **НЕТ** | **заказываются этой приёмкой**, §3 |
 | **функция состояния из пары величин** | **НЕТ** | **заказывается**, домен, §5 |
 | **выборка неразрешённых сегментов страницы** | **НЕТ** | **заказывается**, порт чтения ролей, §5 |
@@ -318,11 +318,11 @@ enum RoleHealth {
 construction**. Годится только проб-модуль, заведённый применителем.
 
 Харнесс **существует** и заводить его не требуется —
-`services/iam/internal/repo/kacho/pg/module_catalog_applier_integration_test.go`:
+`services/iam/internal/repo/kaname/pg/module_catalog_applier_integration_test.go`:
 
 ```sh
 grep -n 'func applierOver\|func probeManifest\|func probeResource' \
-  services/iam/internal/repo/kacho/pg/module_catalog_applier_integration_test.go
+  services/iam/internal/repo/kaname/pg/module_catalog_applier_integration_test.go
 #   73: probeManifest  ·  77: probeResource  ·  122: applierOver
 ```
 
@@ -473,7 +473,7 @@ IAM-RH-1-09 и IAM-RH-1-10 и ломается здесь.
 *Тогда:* `INVALID_ARGUMENT` — маска называет поле вне известного набора.
 *Производитель — СУЩЕСТВУЮЩИЙ:* `shared.ValidateUpdateMask(in.UpdateMask,
 roleMutableFields, roleImmutableFields)`, первый стейтмент после проверки
-идентификатора (`apps/kacho/api/role/update.go`). `health` не стоит ни в
+идентификатора (`apps/kaname/api/role/update.go`). `health` не стоит ни в
 `roleMutableFields` (четыре поля: `name`, `description`, `rules`, `labels`), ни
 в `roleImmutableFields`, поэтому отвергается как неизвестное — без единой
 строки нового кода.
@@ -750,8 +750,8 @@ linux/amd64, 32 ядра — та же, на которой снят прибо�
 |---|---|---|
 | Т1 | поле контракта появилось | `git grep -c 'RoleHealth health' -- proto/kacho/cloud/iam/v1/role.proto` → **1** |
 | Т2 | **РЕШЕНИЕ** о состоянии принимается в одном месте, перевод — не решение | две строки, потому что величины две: `git grep -l 'func HealthOf' -- 'services/iam/**/*.go' ':!*_test.go' \| wc -l` → **1** (домен, где решение) и `git grep -l 'RoleHealthDegraded\|RoleHealthEmpty' -- 'services/iam/**/*.go' ':!*_test.go' \| wc -l` → **2** (домен **плюс** перевод `dto/toproto/role.go`). **Прежняя редакция требовала «ровно 1» и краснела бы на идиоматичной реализации:** перевод домен→контракт по образцу соседнего поля (`DefinitionTier`, тот же файл) обязан назвать константы, не принимая никакого решения. Негодна была единица счёта, а не предмет |
-| Т3 | помощник — один, вызывающих — два | `git grep -c 'attachIntegrity' -- services/iam/internal/apps/kacho/api/role/get.go services/iam/internal/apps/kacho/api/role/list.go \| wc -l` → **2**; `git grep -n 'func attachIntegrity' -- 'services/iam/**/*.go' \| wc -l` → **1** |
-| Т4 | состояние не читает каталог и ведомость | `git grep -nE 'catalog_(module\|resource\|verb)\|role_grant_orphan' -- services/iam/internal/domain/role_integrity.go services/iam/internal/apps/kacho/api/role/helpers.go` → **пусто**, код **1** |
+| Т3 | помощник — один, вызывающих — два | `git grep -c 'attachIntegrity' -- services/iam/internal/apps/kaname/api/role/get.go services/iam/internal/apps/kaname/api/role/list.go \| wc -l` → **2**; `git grep -n 'func attachIntegrity' -- 'services/iam/**/*.go' \| wc -l` → **1** |
+| Т4 | состояние не читает каталог и ведомость | `git grep -nE 'catalog_(module\|resource\|verb)\|role_grant_orphan' -- services/iam/internal/domain/role_integrity.go services/iam/internal/apps/kaname/api/role/helpers.go` → **пусто**, код **1** |
 | Т5 | миграции не заведено **ЭТОЙ реализацией** | `git diff --name-only --diff-filter=A 0da754d118..HEAD -- 'services/iam/internal/migrations/'` → **пусто**. **База названа точкой ветвления, а не подвижной ссылкой:** прежняя редакция брала `origin/release/modules-6`, которая на момент замера отставала на **29** коммитов, — такой предикат мерил бы «миграции, заведённые кем угодно с тех пор», а не «этой работой» |
 | Т6 | синтаксис фильтра по целости не напечатан | `git grep -nE 'health *[!=]=' -- services/iam/docs/content gateway/docs/content` → **пусто**, код **1**. **Сужено:** прежняя редакция требовала пустоты от `git grep -n 'health'`, а она недостижима — `services/iam/docs/content/install/deploy.mdx:70` законно поминает `pod-health`. Предикат мерил слово, а предмет — грамматику фильтра |
 | Т7 | стоимость страницы — один вызов, пустой — ноль | пробы IAM-RH-1-14 и 14а зелены и **способны упасть**: реализацию «вызов на роль» роняет первая, «вызов всегда» — вторая |
@@ -876,7 +876,7 @@ linux/amd64, 32 ядра — та же, на которой снят прибо�
 
 ```sh
 sed -n '/func (u \*GetRoleUseCase) Execute/,/^}/p' \
-  services/iam/internal/apps/kacho/api/role/get.go | grep -n 'return out, nil'
+  services/iam/internal/apps/kaname/api/role/get.go | grep -n 'return out, nil'
 #   ранний — системная роль, ДО резолва;  поздний — пользовательская, после
 ```
 

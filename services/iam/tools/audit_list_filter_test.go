@@ -46,9 +46,9 @@ import (
 // treesRead are the directories the gate parses for iam: the listing surface, and
 // the two declared enumeration sources whose method sets derive the ban.
 var treesRead = []string{
-	"internal/apps/kacho/api",
+	"internal/apps/kaname/api",
 	"internal/clients",
-	"internal/repo/kacho/pg/relverdict",
+	"internal/repo/kaname/pg/relverdict",
 }
 
 // serviceRoot returns services/iam (the directory holding internal/… and tools/).
@@ -173,7 +173,7 @@ func TestGate_RealTreePasses_AndLegitimateEnumeratorsStaySilent(t *testing.T) {
 		// derived nothing is distinguishable from this one
 		"enumerate-then-narrow ban",
 		"source internal/clients.RelationQueries",
-		"source internal/repo/kacho/pg/relverdict.Asker",
+		"source internal/repo/kaname/pg/relverdict.Asker",
 		// both flavours are in the effective ban
 		"ListObjects",
 		"Objects",
@@ -217,11 +217,11 @@ func TestGate_RefusesAPageTakenFromAnEnumeration(t *testing.T) {
 			// exactly the old defect inside one. Nothing in the tree calls it from a
 			// listing, which is why the ban had to arrive BEFORE the first caller.
 			name:       "own database",
-			file:       "internal/apps/kacho/api/user/list.go",
+			file:       "internal/apps/kaname/api/user/list.go",
 			anchor:     "\tsubject := userPrincipalSubject(principal)",
 			injected:   "\tids, _, _ := uc.verdicts.Objects(ctx, \"user:x\", fgaUserType, []string{\"viewer\"}, 500)\n\t_ = ids\n\tsubject := userPrincipalSubject(principal)",
 			wantCall:   "reaches Objects",
-			wantSource: "internal/repo/kacho/pg/relverdict.Asker",
+			wantSource: "internal/repo/kaname/pg/relverdict.Asker",
 			wantInFile: "user/handler.go",
 		},
 		{
@@ -229,7 +229,7 @@ func TestGate_RefusesAPageTakenFromAnEnumeration(t *testing.T) {
 			// hand-written floor too, so this half also proves the floor still holds
 			// after the derivation was added.
 			name:       "authorization store",
-			file:       "internal/apps/kacho/api/group/list.go",
+			file:       "internal/apps/kaname/api/group/list.go",
 			anchor:     "\tsubject := principalSubject(principal)",
 			injected:   "\tids, _ := u.relationQueries.ListObjects(ctx, \"user:x\", \"viewer\", fgaGroupType, nil, 1000)\n\t_ = ids\n\tsubject := principalSubject(principal)",
 			wantCall:   "reaches ListObjects",
@@ -276,8 +276,8 @@ func TestGate_EnumerationSourceExpiresWithItsSubject(t *testing.T) {
 	// Перечень намеренно ВЫПИСАН, а не выведен: вывод по каталогу утащил бы сюда
 	// пробы, и инъекция стала бы править то, чего не собиралась.
 	for _, rel := range []string{
-		"internal/repo/kacho/pg/relverdict/asker.go",
-		"internal/repo/kacho/pg/relverdict/asker_gate.go",
+		"internal/repo/kaname/pg/relverdict/asker.go",
+		"internal/repo/kaname/pg/relverdict/asker_gate.go",
 	} {
 		patch(t, root, rel, "Asker", "AskerMoved")
 	}

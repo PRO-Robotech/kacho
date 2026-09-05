@@ -80,7 +80,7 @@ func edgeKindUserTokenAs(machineCaller bool) *edgeKind {
 
 		Create: func(_ *fakeEdge, id string, req edgeObject) (edgeObject, error) {
 			// СТРАЖ ЛИЧНОСТИ КРАЯ — воспроизведён дословно, включая расхождение полос
-			// (services/iam/internal/apps/kacho/api/user_tokens/handler.go, Issue).
+			// (services/iam/internal/apps/kaname/api/user_tokens/handler.go, Issue).
 			by, err := edgeUserTokenIssuer(machineCaller, edgeStr(req, "userId"),
 				edgeStr(req, "createdByUserId"))
 			if err != nil {

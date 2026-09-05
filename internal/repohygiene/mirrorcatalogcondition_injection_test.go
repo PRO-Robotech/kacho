@@ -76,8 +76,8 @@ func (a *BackfillAdapter) SeedSmokeMirrorObject(ctx context.Context, objectType,
 `
 
 const (
-	refPath    = "services/iam/internal/repo/kacho/pg/resource_mirror/emitter.go"
-	secondPath = "services/iam/internal/repo/kacho/pg/backfill_adapter.go"
+	refPath    = "services/iam/internal/repo/kaname/pg/resource_mirror/emitter.go"
+	secondPath = "services/iam/internal/repo/kaname/pg/backfill_adapter.go"
 )
 
 // taggedWrites — записи распознавателя, приписанные пути.
@@ -308,7 +308,7 @@ func TestMirrorCondition_StaleExemptionIsAFinding(t *testing.T) {
 func TestMirrorCondition_ExemptionForAVanishedWriterIsAFinding(t *testing.T) {
 	writes := taggedWrites(t, refPath, srcReferenceWithCondition)
 	led := map[string]string{
-		"services/iam/internal/repo/kacho/pg/gone.go::Gone.Write": "причина: писатель, которого сняли",
+		"services/iam/internal/repo/kaname/pg/gone.go::Gone.Write": "причина: писатель, которого сняли",
 	}
 	rep := mirrorConditionReport(writes, led)
 	if len(rep.Stale) != 1 {

@@ -202,14 +202,14 @@ make -C deploy psql SVC=iam
 
 # Integration:
 go test -short -count=1 -timeout 120s -run TestServiceAccount \
-  ./services/iam/internal/repo/kacho/pg/...
+  ./services/iam/internal/repo/kaname/pg/...
 ```
 
 ## Подробности реализации
 
-- **Use-cases:** `internal/apps/kacho/api/service_account/{create,get,list,update,delete,set_enabled}.go`.
-- **Handler:** `internal/apps/kacho/api/service_account/handler.go`.
-- **Repo:** `internal/repo/kacho/pg/service_account_repo.go`.
+- **Use-cases:** `internal/apps/kaname/api/service_account/{create,get,list,update,delete,set_enabled}.go`.
+- **Handler:** `internal/apps/kaname/api/service_account/handler.go`.
+- **Repo:** `internal/repo/kaname/pg/service_account_repo.go`.
 - **Hydra integration:** SA сам по себе не делает запросы в Hydra — только
   IssueSAKey (см. [`05-sa-keys.md`](05-sa-keys.md)). Сам SA — просто запись в БД.
 - **DB:** `service_accounts(id, account_id, name, description, labels, enabled, created_at)`.
@@ -239,6 +239,6 @@ go test -short -count=1 -timeout 120s -run TestServiceAccount \
 ## Ссылки на код
 
 - `internal/domain/service_account.go`
-- `internal/apps/kacho/api/service_account/`
-- `internal/repo/kacho/pg/service_account_repo.go`
+- `internal/apps/kaname/api/service_account/`
+- `internal/repo/kaname/pg/service_account_repo.go`
 - `internal/migrations/0001_initial.sql` — DDL `service_accounts`

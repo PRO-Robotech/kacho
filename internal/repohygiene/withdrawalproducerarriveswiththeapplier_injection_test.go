@@ -22,7 +22,7 @@ const withdrawalDriveWired = `package serve
 import (
 	"context"
 
-	"github.com/PRO-Robotech/kacho-iam/internal/apps/kacho/moduleroles"
+	"github.com/PRO-Robotech/kacho-iam/internal/apps/kaname/moduleroles"
 )
 
 func wire(ctx context.Context, tx moduleroles.TxRunner) error {
@@ -38,7 +38,7 @@ func wire(ctx context.Context, tx moduleroles.TxRunner) error {
 const withdrawalDriveAliased = `package serve
 
 import (
-	mr "github.com/PRO-Robotech/kacho-iam/internal/apps/kacho/moduleroles"
+	mr "github.com/PRO-Robotech/kacho-iam/internal/apps/kaname/moduleroles"
 )
 
 func wire(declared []mr.Role) {
@@ -126,15 +126,15 @@ func TestWithdrawalGateRedsOnlyWhenTheApplierIsDrivenWithoutAProducer(t *testing
 		{
 			name: "приводится · производитель есть — норма",
 			files: map[string]string{
-				"services/iam/cmd/iam/serve.go":               withdrawalDriveWired,
-				"services/iam/internal/repo/kacho/pg/role.go": withdrawalMarkWriter,
+				"services/iam/cmd/iam/serve.go":                withdrawalDriveWired,
+				"services/iam/internal/repo/kaname/pg/role.go": withdrawalMarkWriter,
 			},
 			redded: false,
 		},
 		{
 			name: "не приводится · производитель есть — норма",
 			files: map[string]string{
-				"services/iam/internal/repo/kacho/pg/role.go": withdrawalMarkWriter,
+				"services/iam/internal/repo/kaname/pg/role.go": withdrawalMarkWriter,
 			},
 			redded: false,
 		},
@@ -191,7 +191,7 @@ func TestWithdrawalGateKnowsBothWritingsOfTheMark(t *testing.T) {
 		"присвоение в UPDATE":      withdrawalMarkWriter,
 		"присвоение в ON CONFLICT": withdrawalMarkOnConflict,
 	} {
-		_, mark, census := scanWithdrawal(t, map[string]string{"services/iam/internal/repo/kacho/pg/role.go": src})
+		_, mark, census := scanWithdrawal(t, map[string]string{"services/iam/internal/repo/kaname/pg/role.go": src})
 		if census.WritesOverRoles == 0 {
 			t.Fatalf("%s: операторов записи над `roles` прочитано ноль — форма беспредметна", name)
 		}
@@ -207,7 +207,7 @@ func TestWithdrawalGateKnowsBothWritingsOfTheMark(t *testing.T) {
 // производителя: та же колонка в УСЛОВИИ.
 func TestWithdrawalGateDoesNotMistakeAReadForAWrite(t *testing.T) {
 	_, mark, census := scanWithdrawal(t, map[string]string{
-		"services/iam/internal/repo/kacho/pg/role.go": withdrawalMarkRead,
+		"services/iam/internal/repo/kaname/pg/role.go": withdrawalMarkRead,
 	})
 	if census.WritesOverRoles != 1 {
 		t.Fatalf("операторов записи над `roles` прочитано %d из одного — близнец беспредметен",

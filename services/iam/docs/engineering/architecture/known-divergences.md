@@ -10,9 +10,9 @@ safe, and what would be required to converge.
 
 **Convention** (evgeniy regime): service configuration is loaded via
 `viper` + `mapstructure` from YAML — no `envconfig` struct-tags.
-`internal/apps/kacho/config/load.go` follows this for the bulk of the config.
+`internal/apps/kaname/config/load.go` follows this for the bulk of the config.
 
-**Divergence**: `MTLSConfig` (`internal/apps/kacho/config/mtls.go`) is loaded by a
+**Divergence**: `MTLSConfig` (`internal/apps/kaname/config/mtls.go`) is loaded by a
 **separate** `envconfig`-based path (`LoadMTLS`), using `envconfig:"…"` struct
 tags, so two config-parsing mechanisms coexist in the same package.
 
@@ -178,7 +178,7 @@ the model is a hard failure with no environment opt-out.
 ## 5. Fat authz service struct not yet split into per-RPC use-cases (deferred reorg)
 
 **Convention** (evgeniy/godzila regime): one `UseCase` struct + one file per RPC
-(as in `internal/apps/kacho/api/account`).
+(as in `internal/apps/kaname/api/account`).
 
 **Divergence**: `AuthorizeService` (`authorize_service.go`) carries the full authz
 method set on a single struct, and some services keep their use-cases in one file
@@ -200,7 +200,7 @@ refactor-only change (its own PR), to be reviewed in isolation.
 
 ## 6. `access_binding_repo.go` combines row-CRUD with three outbox emitters (deferred reorg)
 
-**Divergence**: `internal/repo/kacho/pg/access_binding_repo.go` (~1.2k LOC) holds
+**Divergence**: `internal/repo/kaname/pg/access_binding_repo.go` (~1.2k LOC) holds
 the access-binding reader/writer plus the subject_change / fga / audit outbox
 emitters and the emitted-tuple bookkeeping in one file, with emitter logic that is
 near-duplicated in `reconcile_adapter.go` / `audit_outbox_emitter.go`.
@@ -261,7 +261,7 @@ the reverse. `cluster/ports.go` and `service/governance_ports.go` follow this
 
 **Divergence**: the relation ports `RelationStore` / `RelationQueries` (and the
 plain `RelationTuple` value type) are declared **inside** the adapter package
-`internal/clients`. **43** use-case files under `internal/apps/kacho/api/*`
+`internal/clients`. **43** use-case files under `internal/apps/kaname/api/*`
 (re-measured 2026-08-20; the earlier figure was ~64) import `internal/clients` purely
 to name their port type (`clients.RelationStore` / `clients.RelationQueries` /
 `clients.RelationTuple`), so the use-case layer compile-time-couples to the
@@ -487,7 +487,7 @@ Both changes turn a success into a refusal, which is the fail-closed direction.
 retryable, so a client that polls recovers on its own once the deployment is
 fixed; an empty page gave it nothing to retry.
 
-**Regression**: `services/iam/internal/apps/kacho/api/listvisibility`,
+**Regression**: `services/iam/internal/apps/kaname/api/listvisibility`,
 `TestList645_23b_AnUnwiredRelationPortRefusesRatherThanReportingNothing` and
 `TestList645_16b_SubjectQuestionFailureIsUnavailableNotANarrowedPage` — both run
 all seven surfaces against real Postgres and a real relation store, and both
@@ -818,7 +818,7 @@ git grep -nE "m\.state|memberships\.state|state[ ]*=[ ]*'(PENDING|ACTIVE)'" \
   -- 'services/**/*.go' ':!*_test.go'
 ```
 
-Читатель в дереве **один**: `services/iam/internal/repo/kacho/pg/user_repo.go:273`
+Читатель в дереве **один**: `services/iam/internal/repo/kaname/pg/user_repo.go:273`
 (`userReader.ListAccountsForUser`, отбор `m.state = 'ACTIVE' AND u.invite_status =
 'ACTIVE'`), и до него доходит `WhoAmI`. Остальные попадания предиката — другая
 таблица (`token_signing_keys`) и комментарии. **Его поведение не меняется**:
@@ -897,7 +897,7 @@ git grep -nE "m\.state|memberships\.state|state[ ]*=[ ]*'(PENDING|ACTIVE)'" \
 поданная как account-id, форму проходит и уходит в полосу отсутствия.
 
 **Расхождение.** У семи своих ресурсов iam зовёт собственную
-`shared.ValidateResourceID` (`internal/apps/kacho/shared/ids.go`), которая сверяет
+`shared.ValidateResourceID` (`internal/apps/kaname/shared/ids.go`), которая сверяет
 префикс с **ожидаемым** и требует точной длины.
 
 **Замер на ревизии `74eb331234`** — той, которой этот раздел приехал в линию
@@ -1058,7 +1058,7 @@ by construction — она не знает объявленного вида.
 
 ### Чем держится
 
-`internal/apps/kacho/shared/ids_owner_scope_test.go`,
+`internal/apps/kaname/shared/ids_owner_scope_test.go`,
 `TestStrictIDFormatCheckStaysOwnerScoped` — обходит непроверочное дерево сервиса,
 разбирает исходник (имя функции стоит и в комментариях, и в приёмках, поэтому
 проверка по подстроке краснела бы на собственном объяснении) и требует, чтобы

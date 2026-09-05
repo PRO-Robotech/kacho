@@ -150,7 +150,7 @@ SPDX-License-Identifier: AGPL-3.0-or-later
 | # | предмет | дом | вход → выход |
 |---|---|---|---|
 | **A** | допуск — чистая функция | пакет `services/iam/internal/authzmodel`, новый файл admit.go | **текст** собранной модели → отчёт (перепись + находки) |
-| **B** | страж старта | `services/iam/internal/apps/kacho/config/manifests.go` | секция `manifests` → отказ в пуске либо пуск |
+| **B** | страж старта | `services/iam/internal/apps/kaname/config/manifests.go` | секция `manifests` → отказ в пуске либо пуск |
 | **C** | проба посадки, декларативная | каталог `deploy`, новый файл iam_composed_model_admission_test.go | объявления профилей → находки с именем стенда |
 
 **Вход допуска — ТЕКСТ, а не `*authzplan.Model` и не `manifest.Resource`.** Три
@@ -663,8 +663,8 @@ type acme_widget
 | **П-09** | `Model.Conditions` | там же, `:106` | шесть имён условий канона (§2.1) |
 | **П-10** | `authzmodel.DSL` (`//go:embed fga_model.fga`) | `services/iam/internal/authzmodel/authzmodel.go:66` | канон `C` в процессе; побайтово равен контракту |
 | **П-11** | `authzmodel.New`, `Plans.Model` | там же, `:113`, `:183` | разбор **названного** текста и доступ к `*authzplan.Model` — вход для синтетики |
-| **П-12** | `ManifestsConfig.Validate` | `services/iam/internal/apps/kacho/config/manifests.go` | отказ старта; тон задан двумя существующими текстами (называют ручку, значение, причину, номер задачи) |
-| **П-13** | цепь `Config.Validate` → `main` → `os.Exit(1)` | `services/iam/internal/apps/kacho/config/validate.go:101`, `services/iam/cmd/kaname/main.go:48` | **отказ в пуске**, а не предупреждение |
+| **П-12** | `ManifestsConfig.Validate` | `services/iam/internal/apps/kaname/config/manifests.go` | отказ старта; тон задан двумя существующими текстами (называют ручку, значение, причину, номер задачи) |
+| **П-13** | цепь `Config.Validate` → `main` → `os.Exit(1)` | `services/iam/internal/apps/kaname/config/validate.go:101`, `services/iam/cmd/kaname/main.go:48` | **отказ в пуске**, а не предупреждение |
 | **П-14** | `deployStacks(t)` | `deploy/dbtls_declaration_test.go:183` | популяция стендов из `deploy/stacks.txt`; отказ на нуле стендов |
 | **П-15** | `chainPaths` | `deploy/iam_module_manifest_producer_test.go:107` | пути профилей цепочки |
 | **П-16** | `nestedString` | `deploy/iam_module_manifest_delivery_test.go:170` | значение по пути ключей **и признак объявленности отдельно от значения**; нестроковое приводит `fmt.Sprint`, поэтому булево читается как `"true"` |

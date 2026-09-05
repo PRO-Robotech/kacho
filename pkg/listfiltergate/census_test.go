@@ -12,7 +12,7 @@
 // not. A method can be invisible for a second, independent reason: it lives outside
 // the anchor root the profile names. vpc had exactly that — a listing RPC in a
 // SECOND transport package (internal/handler, beside the per-resource packages under
-// internal/apps/kacho/api), returning NIC attachments for instance ids the caller
+// internal/apps/kaname/api), returning NIC attachments for instance ids the caller
 // supplies with no per-RPC check behind it. Widening the name predicate did not
 // reach it, and the analyser's census went on reporting a number that looked
 // complete because it counted only what the analyser had looked at.

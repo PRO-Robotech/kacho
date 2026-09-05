@@ -138,7 +138,7 @@ func buildGRPCNotFoundStatus(desc permissionDeniedDescriptor) *status.Status {
 // service.mapRepoErr → stripSentinel, nlb shared.StripSentinel, registry
 // wrapPgErr) and passes the message through unchanged. Sources:
 //
-//	iam       services/iam/internal/repo/kacho/pg/{account,project,user_pool,group,service_account,access_binding}_repo.go
+//	iam       services/iam/internal/repo/kaname/pg/{account,project,user_pool,group,service_account,access_binding}_repo.go
 //	compute   services/compute/internal/repo/instance_repo.go
 //	vpc       services/vpc/internal/repo/kacho/pg/*.go (+ repo/helpers/sg.go)
 //	storage   services/storage/internal/repo/pg/{volume,snapshot,image}_repo.go
@@ -159,7 +159,7 @@ func buildGRPCNotFoundStatus(desc permissionDeniedDescriptor) *status.Status {
 // of compute's duplicate that way, and the source list above went on naming
 // repository files that had been deleted.
 var hideExistenceNotFoundFormats = map[string]string{
-	// iam — services/iam/internal/repo/kacho/pg/*.go
+	// iam — services/iam/internal/repo/kaname/pg/*.go
 	"account":             "Account %s not found",
 	"project":             "Project %s not found",
 	"iam_user":            "User %s not found",

@@ -43,7 +43,7 @@ func edgeKindAccount() *edgeKind {
 
 		Create: func(_ *fakeEdge, id string, req edgeObject) (edgeObject, error) {
 			// Отказ края воспроизведён дословно
-			// (services/iam/internal/apps/kacho/api/account/create.go): владелец —
+			// (services/iam/internal/apps/kaname/api/account/create.go): владелец —
 			// ВЫХОДНОЕ поле, и присланное значение отвергается, даже если это
 			// собственный идентификатор вызывающего. Принять и выбросить его было бы
 			// запрещённым третьим исходом: вызывающий получил бы успех на ввод, который

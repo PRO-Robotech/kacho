@@ -51,7 +51,7 @@ import (
 	outboxmetrics "github.com/PRO-Robotech/kacho/pkg/outbox/metrics"
 
 	"github.com/PRO-Robotech/kacho-iam/internal/observability/metrics"
-	reconcileoutbox "github.com/PRO-Robotech/kacho-iam/internal/repo/kacho/pg/reconcile_outbox"
+	reconcileoutbox "github.com/PRO-Robotech/kacho-iam/internal/repo/kaname/pg/reconcile_outbox"
 )
 
 // reconcileOutboxTable — очередь сверки прав.

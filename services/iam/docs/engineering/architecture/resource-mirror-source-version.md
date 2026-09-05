@@ -68,7 +68,7 @@ already handles.
 
 ## Tests
 
-- IAM (`services/iam/internal/repo/kacho/pg/resource_mirror/emitter_integration_test.go`,
+- IAM (`services/iam/internal/repo/kaname/pg/resource_mirror/emitter_integration_test.go`,
   testcontainers): stale register → no-op (v2 kept); same-version repeat → no-op;
   newer register applies + advances version; stale tombstone does not wipe a fresh
   row; fresh tombstone removes the row.
