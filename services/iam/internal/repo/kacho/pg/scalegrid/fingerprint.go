@@ -338,10 +338,25 @@ func migrationsNaming(root string, tables []string) ([]string, error) {
 // умолчания). Судить об этом пришлось бы по смыслу, а не по форме, — и первая
 // же ошибка суждения дала бы отчёт, который выглядит свежим и не является им.
 // Ошибка в эту сторону стоит лишнего прогона; в обратную — ложного числа.
+//
+// # Временный объект структуры не меняет (#1833)
+//
+// Форма «создать временную таблицу из выборки» несёт в ОДНОМ операторе три
+// признака сразу — `CREATE`, `DROP` (из хвоста `ON COMMIT DROP`) и имя
+// измеряемой таблицы, — но DDL идёт над временной таблицей, а измеряемая только
+// ЧИТАЕТСЯ. Плана чтения это не меняет, и отчёт от такой миграции ложным не
+// становится. Прежний предикат брал оператор целиком, потому что требовал лишь
+// совпадения глагола и имени где угодно в одном куске.
+//
+// Поэтому конструкции DDL над ВРЕМЕННЫМ объектом снимаются с оператора до
+// проверки на глагол: остался глагол — оператор судится как прежде, не
+// остался — оператор структуры не менял. Обратная сторона сохранена и
+// проверяется законным близнецом: та же форма БЕЗ слова `TEMP` создаёт таблицу
+// в схеме и под отпечаток попадает.
 func migrationTouchesStructure(src string, tables []string) bool {
 	code := stripSQLComments(src)
 	for _, stmt := range strings.Split(code, ";") {
-		if !ddlVerbRe.MatchString(stmt) {
+		if !ddlVerbRe.MatchString(stripTempObjectDDL(stmt)) {
 			continue
 		}
 		for _, tbl := range tables {
@@ -357,7 +372,26 @@ var (
 	ddlVerbRe       = regexp.MustCompile(`(?i)\b(CREATE|ALTER|DROP)\b`)
 	sqlLineComment  = regexp.MustCompile(`--[^\n]*`)
 	sqlBlockComment = regexp.MustCompile(`(?s)/\*.*?\*/`)
+
+	// tempObjectCreate — создание ВРЕМЕННОГО объекта. Временный объект живёт в
+	// `pg_temp` и измеряемой таблицей быть не может by construction, поэтому
+	// глагол над ним о структуре схемы не говорит ничего.
+	tempObjectCreate = regexp.MustCompile(`(?i)\bCREATE\s+(?:GLOBAL\s+|LOCAL\s+)?(?:TEMP|TEMPORARY)\s+(?:UNLOGGED\s+)?(?:TABLE|VIEW|SEQUENCE)\b`)
+
+	// tempOnCommit — хвост `ON COMMIT …` формы создания временной таблицы.
+	// Слово `DROP` здесь — часть объявления времени жизни, а не снятие объекта;
+	// в Postgres эта оговорка законна ТОЛЬКО у временной таблицы.
+	tempOnCommit = regexp.MustCompile(`(?i)\bON\s+COMMIT\s+(?:DROP|DELETE\s+ROWS|PRESERVE\s+ROWS)\b`)
 )
+
+// stripTempObjectDDL — оператор без конструкций DDL над временными объектами.
+//
+// Снимается ровно объявление (`CREATE TEMP TABLE`, хвост `ON COMMIT …`), а не
+// весь оператор: всё остальное — включая соседний глагол над измеряемой
+// таблицей, если он в этом же операторе есть, — судится как прежде.
+func stripTempObjectDDL(stmt string) string {
+	return tempOnCommit.ReplaceAllString(tempObjectCreate.ReplaceAllString(stmt, " "), " ")
+}
 
 // stripSQLComments — текст без комментариев: они не исполняются, значит на
 // стоимость влиять не могут. Имя таблицы в объяснении, ПОЧЕМУ её здесь не
