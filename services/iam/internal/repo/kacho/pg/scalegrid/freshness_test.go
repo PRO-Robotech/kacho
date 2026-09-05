@@ -70,8 +70,8 @@ const scaleGridReportDateMark = "  снято               "
 
 // scaleGridRunHint — КАК ПЕРЕСНЯТЬ. Отдельной строкой: сообщение отказа обязано
 // говорить, что делать, а не только что не так.
-const scaleGridRunHint = "KACHO_SCALEGRID_FULL=1 go test " +
-	"./services/iam/internal/repo/kacho/pg/relverdict/ -run TestScaleGrid_FullGridReport " +
+const scaleGridRunHint = "KACHO_SCALEGRID_FULL=1 go test -C services/iam " +
+	"./internal/repo/kacho/pg/relverdict/ -run TestScaleGrid_FullGridReport " +
 	"-count=1 -v -timeout 120m"
 
 // ── ВЕРДИКТ: ЧИСТАЯ ФУНКЦИЯ ─────────────────────────────────────────────────

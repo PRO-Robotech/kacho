@@ -840,8 +840,8 @@ func TestStrengthGrid_Report(t *testing.T) {
 		t.Skip("integration")
 	}
 	if os.Getenv(strengthEnv) == "" {
-		t.Skipf("сетка предела прочности идёт РУЧНЫМ прогоном: %s=1 go test "+
-			"./services/iam/internal/repo/kacho/pg/relverdict/ -run TestStrengthGrid_Report "+
+		t.Skipf("сетка предела прочности идёт РУЧНЫМ прогоном: %s=1 go test -C services/iam "+
+			"./internal/repo/kacho/pg/relverdict/ -run TestStrengthGrid_Report "+
 			"-count=1 -v -timeout 120m", strengthEnv)
 	}
 	ctx := context.Background()
