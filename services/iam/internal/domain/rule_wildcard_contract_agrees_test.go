@@ -217,15 +217,17 @@ func TestRuleWildcardContractAgreesWithTheDomain(t *testing.T) {
 	}
 }
 
+// roleContractRel — координата контракта роли ОТНОСИТЕЛЬНО дерева, которое его
+// несёт. Объявлена здесь и одна.
+var roleContractRel = filepath.Join("proto", "kacho", "cloud", "iam", "v1", "role.proto")
+
 // readRoleContract читает контракт роли из дерева продукта.
 //
-// Координата объявлена ЗДЕСЬ и одна: контракты живут в `proto/` корня и
-// остаются там при выносе iam отдельным репозиторием — тогда путь меняется
-// вместе с зависимостью, в одном месте.
+// Контракты живут в `proto/` КОРНЯ и остаются там при выносе iam отдельным
+// репозиторием.
 func readRoleContract(t *testing.T) string {
 	t.Helper()
-	root := repoRootForContract(t)
-	path := filepath.Join(root, "proto", "kacho", "cloud", "iam", "v1", "role.proto")
+	path := filepath.Join(contractTreeRoot(t), roleContractRel)
 	b, err := os.ReadFile(path)
 	if err != nil {
 		t.Fatalf("контракт роли не прочитан (%s): %v", path, err)
@@ -233,7 +235,52 @@ func readRoleContract(t *testing.T) string {
 	return string(b)
 }
 
-func repoRootForContract(t *testing.T) string {
+// contractTreeRoot — ближайший предок, который НЕСЁТ контракт.
+//
+// # Здесь стоял подъём до ближайшего `go.mod`, и он перестал попадать
+//
+// Пока сервис был пакетом монорепо, ближайший `go.mod` и был корнем, несущим
+// `proto/`. С выносом iam отдельным модулем ближайшим стал `services/iam/go.mod`
+// — каталога `proto/` под ним нет, и гейт перестал выносить вердикт вовсе.
+// Прежний комментарий этот случай ПРЕДСКАЗЫВАЛ («путь меняется вместе с
+// зависимостью»), но подъём остался прежним: предупреждение пережило свой
+// предмет и молчало, потому что отказ выглядел как обычное красное.
+//
+// Якорь теперь — САМ КОНТРАКТ, а не признак модуля: он не зависит от того,
+// сколько `go.mod` лежит по дороге.
+//
+// # Граница названа: отдельный клон сервиса контракта НЕ несёт
+//
+// Тогда его придётся брать из кеша модулей, и это другой вопрос — вопрос ЛИНИИ
+// выноса, а не этого гейта. Здесь такой прогон обязан назваться словами, а не
+// притвориться находкой о дереве.
+func contractTreeRoot(t *testing.T) string {
+	t.Helper()
+	dir, err := os.Getwd()
+	if err != nil {
+		t.Fatalf("рабочий каталог: %v", err)
+	}
+	for i := 0; i < 12; i++ {
+		if _, serr := os.Stat(filepath.Join(dir, roleContractRel)); serr == nil {
+			return dir
+		}
+		parent := filepath.Dir(dir)
+		if parent == dir {
+			break
+		}
+		dir = parent
+	}
+	t.Fatalf("НЕ ВЫПОЛНИЛОСЬ: над рабочим каталогом нет дерева, несущего %s — "+
+		"в отдельном клоне сервиса контракт приезжает зависимостью, и читать его "+
+		"из дерева нечем. Это не вердикт о продукте", roleContractRel)
+	return ""
+}
+
+// moduleRootDir — ближайший предок с `go.mod`: корень МОДУЛЯ сервиса.
+//
+// Отдельно от `contractTreeRoot` намеренно: якоря разные. Страница арендатора
+// живёт ВНУТРИ модуля, контракт — НАД ним, и один подъём обслужить оба не может.
+func moduleRootDir(t *testing.T) string {
 	t.Helper()
 	dir, err := os.Getwd()
 	if err != nil {
@@ -249,7 +296,7 @@ func repoRootForContract(t *testing.T) string {
 		}
 		dir = parent
 	}
-	t.Fatalf("не найден корень репозитория (каталог с go.mod) над %s", dir)
+	t.Fatalf("не найден корень модуля (каталог с go.mod) над %s", dir)
 	return ""
 }
 
