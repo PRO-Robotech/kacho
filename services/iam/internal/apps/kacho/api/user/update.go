@@ -85,7 +85,8 @@ var userImmutableFields = map[string]string{
 type ObjectForwardReconciler interface {
 	// ReconcileObjectForward is the ADDITIVE forward fast-path for one object: it
 	// materializes ONLY that object's per-object tuples across the matching bindings
-	// under a SHARE advisory lock (no EXCLUSIVE / O(scope) recompute). It transparently
+	// while holding NO advisory lock at all (neither EXCLUSIVE nor SHARE, no O(scope)
+	// recompute). It transparently
 	// delegates to the FULL ReconcileObject when the object already has members
 	// (delete-stale guard) — which is the branch a REVOCATION takes.
 	ReconcileObjectForward(ctx context.Context, objectType, objectID string) error
