@@ -62,6 +62,8 @@ import (
 	"log/slog"
 	"time"
 
+	"google.golang.org/grpc"
+
 	"github.com/PRO-Robotech/kacho/pkg/authz"
 	"github.com/PRO-Robotech/kacho/pkg/authz/catalogderive"
 )
@@ -126,6 +128,67 @@ func withPlatformLivenessProbe(m authz.RPCMap) authz.RPCMap {
 	return m
 }
 
+// CallerAuthorityGatedMethods — RPC, которыми у модели СПРАШИВАЮТ, а не
+// действуют: «можно ли субъекту S сделать A с объектом O».
+//
+// # Почему у них нет личности арендатора
+//
+// Субъект такого RPC стоит В ЗАПРОСЕ, а вызывающий — модуль: край на пути
+// каждого запроса и сервисы-соседи при сужении списочной выдачи. Личности
+// арендатора в их исходящем контексте нет by construction — вопрос задаётся ДО
+// того, как решение о доступе принято, и задаёт его не тот, о ком спрашивают.
+//
+// # Кто их решает — ОДИН, и он назван
+//
+// `api/authorize/caller_authority.go` — единственный решатель вопроса «кто
+// вправе спрашивать», и его шапка это заявляет прямо. Он строго fail-closed:
+// вызывающий без личности проходит ТОЛЬКО с проверенным сертификатом модуля
+// (`authorizeAnonymousPeer`), арендатор — только про себя, про объект, которым
+// администрирует, либо будучи администратором кластера. Соседний рубеж того же
+// слушателя (`AntiAnonymousUnary`) вычитает эти RPC по той же причине.
+//
+// Дверь для них добавляла ровно одно требование — «вызывающий назван», — и
+// именно оно неверно: модуль называет себя сертификатом, а не заголовком
+// личности. Наблюдалось: пять шардов сквозных проб, у каждого 40+ отказов
+// `authz_no_principal` на `AuthorizeService/Check`, при нуле таких записей на
+// стволе; посев умирал на первой же мутации, потому что ОТКАЗОМ становилось
+// всякое решение о доступе на стенде.
+//
+// # Круг узок намеренно, и у каждой записи назван ПРОИЗВОДИТЕЛЬ
+//
+//   - `Check` — край, `gateway/internal/clients/iam_authorize_client.go`
+//     (вопрос на пути каждого запроса);
+//   - `BatchCheck` — сужатель списочной выдачи, `pkg/listnarrow/client.go`
+//     (вопрос о странице у сервисов-соседей).
+//
+// `ListSubjects` и `ExpandRelations` тот же обработчик судит тем же гейтом, но
+// производителя вне iam у них в этом дереве НЕТ (предикат:
+// `git grep -l 'ExpandRelations\|ListSubjects' -- gateway pkg services ':!services/iam'`),
+// поэтому записи им здесь не заводится: освобождение заводится ВМЕСТЕ с тем,
+// что оно освобождает, а не вперёд него. Появится производитель — запись
+// приедет вместе с ним.
+//
+// # Поправка живёт В ЗВЕНЕ, а не в карте — и это решение, а не вкус
+//
+// Карту двери судит перепись публичной поверхности
+// (`internal/publicauthzcensus`), и её шапка объявляет: перепись обязана читать
+// ТУ ЖЕ карту, которую звено спрашивает в проде. Перекрой мы здесь выведенную
+// запись — перепись назвала бы эти два RPC освобождёнными КОНТРАКТОМ, чего
+// контракт не объявлял; получилось бы второе место об одном предмете, и
+// разошлись бы они молча. Карта остаётся выведенной, а поправка стоит там, где
+// её видно как отдельное звено, — рядом с двумя другими рубежами того же
+// слушателя.
+//
+// Сужение при этом строже, чем у записи в карте: дверь снимается ТОЛЬКО когда
+// личности арендатора нет вовсе. Названный вызывающий проходит дверь как
+// прежде — по объекту у `BatchCheck` и полосой данных у `Check`.
+func CallerAuthorityGatedMethods() []string {
+	return []string{
+		"/kacho.cloud.iam.v1.AuthorizeService/Check",
+		"/kacho.cloud.iam.v1.AuthorizeService/BatchCheck",
+	}
+}
+
 // OwnDoorOptions — то, что композиционный корень приносит двери.
 type OwnDoorOptions struct {
 	// SelfCheck — решатель ВЛАДЕЛЬЦА модели: собственный порт отношений iam.
@@ -156,7 +219,7 @@ type OwnDoorOptions struct {
 // не выводится карта. Оба случая обязаны ронять старт, а не тихо давать
 // пропускающее звено, — иначе провязка выглядит исполненной, и отличить её от
 // исправной нельзя ничем.
-func NewOwnDoor(opts OwnDoorOptions) (*authz.Interceptor, error) {
+func NewOwnDoor(opts OwnDoorOptions) (*OwnDoor, error) {
 	if opts.SelfCheck == nil {
 		return nil, fmt.Errorf("authzguard: собственная дверь iam не собирается — " +
 			"решатель модели не принесён; дверь без решателя пропускает всех")
@@ -170,7 +233,11 @@ func NewOwnDoor(opts OwnDoorOptions) (*authz.Interceptor, error) {
 	if logger == nil {
 		logger = slog.Default()
 	}
-	return authz.NewInterceptor(authz.InterceptorOptions{
+	bypass := make(map[string]struct{})
+	for _, method := range CallerAuthorityGatedMethods() {
+		bypass[method] = struct{}{}
+	}
+	return &OwnDoor{inner: authz.NewInterceptor(authz.InterceptorOptions{
 		ServiceName:         "kacho-iam",
 		Map:                 withPlatformLivenessProbe(m),
 		Client:              checkAdapter{inner: opts.SelfCheck},
@@ -178,7 +245,59 @@ func NewOwnDoor(opts OwnDoorOptions) (*authz.Interceptor, error) {
 		Logger:              logger,
 		CheckTimeout:        opts.CheckTimeout,
 		DenyRateLimitPerSec: opts.DenyRateLimitPerSec,
-	}), nil
+	}), bypass: bypass}, nil
+}
+
+// OwnDoor — собственная дверь iam вместе с поправкой на вопросы о правах.
+//
+// Тип существует затем, чтобы у двери был ОДИН конструктор: композиционный
+// корень и пробы обязаны собирать её одинаково, иначе проба судила бы вторую
+// проводку, которой в проде нет.
+type OwnDoor struct {
+	inner *authz.Interceptor
+	// bypass — методы, у которых безымянный вызывающий идёт к обработчику.
+	// Множество строится один раз: сравнение по срезу на каждом запросе было бы
+	// линейным поиском на горячем пути.
+	bypass map[string]struct{}
+}
+
+// callerNamed — назван ли вызывающий арендатором.
+//
+// Предикат ОДИН на звено и на обработчик: `PrincipalSubject` — то же чтение,
+// которым `caller_authority.go` решает, идти ли вызывающему в
+// `authorizeAnonymousPeer`. Второй предикат разошёлся бы с первым молча, и
+// разошёлся бы ровно там, где расхождение невидимо, — на безымянном вызывающем.
+func callerNamed(ctx context.Context) bool {
+	_, named := PrincipalSubject(ctx)
+	return named
+}
+
+// Unary — звено публичного слушателя.
+func (d *OwnDoor) Unary() grpc.UnaryServerInterceptor {
+	door := d.inner.Unary()
+	return func(ctx context.Context, req any, info *grpc.UnaryServerInfo, handler grpc.UnaryHandler) (any, error) {
+		if _, question := d.bypass[info.FullMethod]; question && !callerNamed(ctx) {
+			// Вопрос о правах от модуля: решает обработчик — сертификатом
+			// вызывающего, а не заголовком личности, которого у вопроса нет.
+			return handler(ctx, req)
+		}
+		return door(ctx, req, info, handler)
+	}
+}
+
+// Stream — то же на второй полосе.
+//
+// Стримовых RPC у iam сегодня НОЛЬ, поэтому поправка здесь ничего не решает
+// СЕЙЧАС и стоит ради того, чтобы решать, когда предмет появится: полоса без
+// поправки при полосе с поправкой — различие, которого никто не принимал.
+func (d *OwnDoor) Stream() grpc.StreamServerInterceptor {
+	door := d.inner.Stream()
+	return func(srv any, ss grpc.ServerStream, info *grpc.StreamServerInfo, handler grpc.StreamHandler) error {
+		if _, question := d.bypass[info.FullMethod]; question && !callerNamed(ss.Context()) {
+			return handler(srv, ss)
+		}
+		return door(srv, ss, info, handler)
+	}
 }
 
 // checkAdapter доводит порт отношений iam до порта решателя общего звена.
