@@ -123,6 +123,89 @@ func stripIt(err error, sentinel error) string {
 func stripIt(err error, sentinel error) string {
 	return err.Error()
 }`,
+	// ЗАКОННАЯ ФОРМА 5 — вывод и срезка вынесены в ПОМОЩНИКА того же пакета,
+	// ограждение осталось у стриппера. Так устроен iam после того, как имя
+	// признака стало сниматься и из СЕРЕДИНЫ текста: обход цепочки отказа
+	// вынесен в отдельные функции, а `StripSentinel` их зовёт. Распознаватель,
+	// смотрящий только в тело названной функции, объявляет это «префиксом
+	// ниоткуда» — то есть находкой там, где свойство выполняется.
+	"вывод-в-помощнике": `
+func stripIt(err error, sentinel error) string {
+	msg := err.Error()
+	s, rest, ok := cutIt(msg)
+	if !ok {
+		return msg
+	}
+	if rest == "" {
+		return s.Error()
+	}
+	return rest
+}
+
+func cutIt(msg string) (error, string, bool) {
+	for _, s := range []error{errNotFound, errQuota} {
+		if rest, ok := strings.CutPrefix(msg, s.Error()+": "); ok {
+			return s, rest, true
+		}
+	}
+	return nil, "", false
+}`,
+	// НАХОДКА, СПРЯТАННАЯ В ПОМОЩНИКЕ. Зеркало формы 5 и обязательная её
+	// половина: раз замыкание вызовов признаёт вывод у помощника, оно обязано
+	// признавать там же и перечень префиксов-СТРОК. Иначе расширение стало бы
+	// способом выйти из-под гейта, перенеся перечень на строку ниже.
+	"перечень-строк-в-помощнике": `
+func stripIt(err error, sentinel error) string {
+	msg := err.Error()
+	if rest, ok := strings.CutPrefix(msg, sentinel.Error()+": "); ok {
+		if rest == "" {
+			return sentinel.Error()
+		}
+		return legacyCut(rest)
+	}
+	return msg
+}
+
+func legacyCut(msg string) string {
+	for _, p := range []string{"not found: ", "already exists: "} {
+		if rest, ok := strings.CutPrefix(msg, p); ok {
+			return rest
+		}
+	}
+	return msg
+}`,
+}
+
+// ct2ToneStripperCallingAbsentHelper — тот же стриппер, что у формы 5, но БЕЗ
+// объявления помощника: его кладёт в соседний файл `helper` фикстуры.
+const ct2ToneStripperCallingAbsentHelper = `
+func stripIt(err error, sentinel error) string {
+	msg := err.Error()
+	s, rest, ok := cutIt(msg)
+	if !ok {
+		return msg
+	}
+	if rest == "" {
+		return s.Error()
+	}
+	return rest
+}`
+
+// ct2ToneHelperBodies — помощники, вынесенные в ОТДЕЛЬНЫЙ ФАЙЛ того же пакета.
+//
+// Замыкание вызовов объявлено пакетным, а не файловым, — значит и доказывать
+// его надо на разных файлах, иначе заявление шире проверенного.
+var ct2ToneHelperBodies = map[string]string{
+	// Тот же вывод, что у формы 5, но через границу файла.
+	"вывод-в-соседнем-файле": `
+func cutIt(msg string) (error, string, bool) {
+	for _, s := range []error{errNotFound, errQuota} {
+		if rest, ok := strings.CutPrefix(msg, s.Error()+": "); ok {
+			return s, rest, true
+		}
+	}
+	return nil, "", false
+}`,
 }
 
 // ct2ToneFixture — что пишется в синтетическое дерево одного владельца.
@@ -134,6 +217,11 @@ type ct2ToneFixture struct {
 	noReason bool
 	// commentOnly — литеральный префикс стоит в КОММЕНТАРИИ, а код законен.
 	commentOnly bool
+	// bodyLiteral — тело стриппера дословно, минуя ct2ToneStripperBodies.
+	bodyLiteral string
+	// helper — ключ ct2ToneHelperBodies; помощник кладётся в ОТДЕЛЬНЫЙ файл
+	// того же пакета.
+	helper string
 	// vocabulary — тексты словаря sentinel'ов; пусто → общий словарь.
 	// "нет" → файла словаря не будет вовсе.
 	vocabulary string
@@ -192,8 +280,23 @@ var (
 )
 `)
 		}
-		if f.body == "" {
-			continue
+		if f.helper != "" {
+			// Помощник — ОТДЕЛЬНЫЙ файл того же пакета: замыкание вызовов
+			// объявлено пакетным, и доказывать его надо через границу файла.
+			mk("services/"+f.owner+"/internal/apps/shared/strip_helper.go", `
+package shared
+
+import "strings"
+
+`+ct2ToneHelperBodies[f.helper]+`
+`)
+		}
+		body := f.bodyLiteral
+		if body == "" {
+			if f.body == "" {
+				continue
+			}
+			body = ct2ToneStripperBodies[f.body]
 		}
 		head := ""
 		if f.commentOnly {
@@ -209,7 +312,7 @@ import "strings"
 var errNotFound = strings.NewReplacer().Replace
 var errQuota = errNotFound
 
-`+head+ct2ToneStripperBodies[f.body]+`
+`+head+body+`
 `)
 	}
 	return root
@@ -250,7 +353,9 @@ func TestCt2ToneInjection_PrefixListIsAFinding(t *testing.T) {
 // (б) КАЖДАЯ законная форма обязана МОЛЧАТЬ — иначе гейт ловит форму записи, а
 // не существо, и первый же ложный срабат его отключит.
 func TestCt2ToneInjection_LawfulFormsAreSilent(t *testing.T) {
-	for _, form := range []string{"склейка-на-месте", "перечень-sentinel", "через-переменную"} {
+	for _, form := range []string{
+		"склейка-на-месте", "перечень-sentinel", "через-переменную", "вывод-в-помощнике",
+	} {
 		t.Run(form, func(t *testing.T) {
 			root := writeCt2ToneTree(t, ct2ToneFixture{owner: "vpc", body: form})
 			c, findings := ct2ToneRun(t, root, []string{"vpc"})
@@ -262,6 +367,50 @@ func TestCt2ToneInjection_LawfulFormsAreSilent(t *testing.T) {
 			}
 		})
 	}
+}
+
+// (б3) ЗАМЫКАНИЕ ВЫЗОВОВ — обе его стороны, и они обязаны стоять рядом.
+//
+// Расширение области с тела названной функции до её вызовов внутри пакета
+// признаёт вывод у помощника — значит обязано признавать там же и перечень
+// префиксов-СТРОК. Односторонняя правка сделала бы гейт обходимым переносом
+// перечня на строку ниже, и обход был бы НЕ ВИДЕН: гейт остался бы зелёным.
+func TestCt2ToneInjection_CallClosureHasBothSides(t *testing.T) {
+	t.Run("вывод у помощника в СОСЕДНЕМ ФАЙЛЕ — молчит", func(t *testing.T) {
+		root := writeCt2ToneTree(t, ct2ToneFixture{
+			owner:       "vpc",
+			bodyLiteral: ct2ToneStripperCallingAbsentHelper,
+			helper:      "вывод-в-соседнем-файле",
+		})
+		c, findings := ct2ToneRun(t, root, []string{"vpc"})
+		if len(findings) != 0 {
+			t.Fatalf("вывод через границу файла того же пакета обязан молчать, получено: %v", findings)
+		}
+		if c.Conforming != 1 || c.Guarding != 1 {
+			t.Errorf("обе оси обязаны сойтись: выводящих %d, ограждающих %d", c.Conforming, c.Guarding)
+		}
+	})
+
+	t.Run("перечень строк У ПОМОЩНИКА — находка", func(t *testing.T) {
+		root := writeCt2ToneTree(t, ct2ToneFixture{owner: "vpc", body: "перечень-строк-в-помощнике"})
+		c, findings := ct2ToneRun(t, root, []string{"vpc"})
+		if len(findings) != 1 {
+			t.Fatalf("перечень префиксов-строк у помощника обязан дать РОВНО одну находку, "+
+				"получено %d: %v", len(findings), findings)
+		}
+		for _, want := range []string{"vpc", "strip.go", "not found: "} {
+			if !strings.Contains(findings[0], want) {
+				t.Errorf("находка обязана называть %q, а называет: %s", want, findings[0])
+			}
+		}
+		if c.Conforming != 0 {
+			t.Errorf("соответствующих обязано быть 0, посчитано %d", c.Conforming)
+		}
+		if got := ct2ToneOwnerState(c.Facts["vpc"]); got != "перечень префиксов-строк" {
+			t.Errorf("перепись назвала состояние %q, ожидалось «перечень префиксов-строк» — "+
+				"перепись и находка говорят о владельце разное", got)
+		}
+	})
 }
 
 // (б2) Литеральный префикс В КОММЕНТАРИИ находкой не является: гейт судит узлы.

@@ -39,11 +39,21 @@
 //     поэтому расхождение делает шесть мапперов несравнимыми. Клиенту оно не
 //     видно (префикс снимается), и потому тихо: обзор изменения его не поймает.
 //
-// ПОЧЕМУ ЭТО НЕ СУЖЕНИЕ ДО ОДНОЙ ФОРМЫ ЗАПИСИ. Законных форм в дереве две, и обе
-// выводят префикс: «сними префикс НАЗВАННОГО sentinel'а» (пять владельцев) и
-// «сними префикс любого из перечня SENTINEL'ОВ» (шестой, перечень `[]error`).
-// Находкой является только перечень ПРЕФИКСОВ-СТРОК: у него нет связи с
-// sentinel'ами вовсе, поэтому расходится он молча.
+// ПОЧЕМУ ЭТО НЕ СУЖЕНИЕ ДО ОДНОЙ ФОРМЫ ЗАПИСИ. Законных форм в дереве ТРИ, и все
+// выводят префикс: «сними префикс НАЗВАННОГО sentinel'а» (пять владельцев);
+// «сними префикс любого из перечня SENTINEL'ОВ» (перечень `[]error`); и «вывод
+// вынесен в ПОМОЩНИКА того же пакета, стриппер его зовёт» (iam, с тех пор как
+// имя признака стало сниматься и из середины текста). Находкой является только
+// перечень ПРЕФИКСОВ-СТРОК: у него нет связи с sentinel'ами вовсе, поэтому
+// расходится он молча.
+//
+// ТРЕТЬЯ ФОРМА ДОБАВЛЕНА НЕ ДЛЯ УДОБСТВА, а потому что распознаватель без неё
+// звал находкой выполненное свойство: iam выводит префикс из sentinel'а, только
+// делает это на строку ниже. Область судимого расширена с тела названной функции
+// до ЗАМЫКАНИЯ её вызовов внутри пакета — и расширена СИММЕТРИЧНО: перечень
+// префиксов-строк ищется в том же замыкании, иначе перенос перечня в помощника
+// стал бы способом выйти из-под гейта, причём невидимым (гейт остался бы
+// зелёным). Обе стороны доказаны инъекцией порознь.
 //
 // ПОЧЕМУ РАЗБОР СИНТАКСИСА, А НЕ ПОИСК ПО ТЕКСТУ. Имена и строки, которые здесь
 // ищутся, стоят и в комментариях — в том числе в этой самой шапке. Проверка по
@@ -64,6 +74,10 @@
 //     попадёт в находку «стриппер не разрешён», а не в молчание.
 //  3. Стриппер, объявленный в ЧУЖОМ модуле. В дереве таких нет: `pkg/` общего
 //     стриппера не несёт, и каждый владелец снимает префикс у себя.
+//  4. Помощник, вызванный МЕТОДОМ или через значение, и помощник в ЧУЖОМ пакете
+//     (границы замыкания — см. godoc `ct2ToneCallClosure`). Ошибка здесь идёт в
+//     БЕЗОПАСНУЮ сторону: такой владелец попадёт в находку «префикс ниоткуда», а
+//     не в молчание.
 package repohygiene
 
 import (
@@ -72,6 +86,7 @@ import (
 	"go/parser"
 	"go/token"
 	"os"
+	"path"
 	"path/filepath"
 	"strconv"
 	"strings"
@@ -210,7 +225,32 @@ func collectQuotaRefusalTone(tree *treecorpus.Tree, owners []string) (ct2ToneCen
 		facts.stripperName = name
 	}
 
+	// Указатель функций ПО ПАКЕТАМ — он нужен проходу 2, чтобы дойти до
+	// помощников стриппера. Пакет здесь — каталог: у Go это одно и то же, а
+	// разбор идёт по одному файлу и имени пакета из `package` не сверяет.
+	pkgFuncs := map[string]map[string]ct2ToneFn{}
+	for _, pf := range parsed {
+		dir := path.Dir(pf.rel)
+		if pkgFuncs[dir] == nil {
+			pkgFuncs[dir] = map[string]ct2ToneFn{}
+		}
+		for _, d := range pf.file.Decls {
+			fn, isFn := d.(*ast.FuncDecl)
+			if !isFn || fn.Name == nil || fn.Body == nil || fn.Recv != nil {
+				continue
+			}
+			if _, seen := pkgFuncs[dir][fn.Name.Name]; !seen {
+				pkgFuncs[dir][fn.Name.Name] = ct2ToneFn{decl: fn, rel: pf.rel}
+			}
+		}
+	}
+
 	// ПРОХОД 2 — объявление стриппера и то, откуда он берёт префикс.
+	//
+	// Судится не только тело названной функции, но и ЗАМЫКАНИЕ её вызовов
+	// внутри пакета: вывод префикса законно выносится в помощника, и
+	// распознаватель, знающий одну форму записи, объявил бы такого владельца
+	// «префиксом ниоткуда» — находкой там, где свойство выполняется.
 	for _, pf := range parsed {
 		facts := c.Facts[pf.owner]
 		if facts.stripperName == "" || facts.stripperFile != "" {
@@ -221,10 +261,11 @@ func collectQuotaRefusalTone(tree *treecorpus.Tree, owners []string) (ct2ToneCen
 			continue
 		}
 		facts.stripperFile = pf.rel
-		facts.derivesPrefix = ct2ToneDerivesPrefix(decl)
-		facts.guardsEmptyRemainder = ct2ToneGuardsEmptyRemainder(decl)
-		if lit, ok := ct2ToneLiteralPrefixList(decl); ok {
-			facts.literalPrefixFile = pf.rel
+		closure := ct2ToneCallClosure(pkgFuncs[path.Dir(pf.rel)], ct2ToneFn{decl: decl, rel: pf.rel})
+		facts.derivesPrefix = ct2ToneDerivesPrefix(closure)
+		facts.guardsEmptyRemainder = ct2ToneGuardsEmptyRemainder(closure)
+		if lit, rel, ok := ct2ToneLiteralPrefixList(closure); ok {
+			facts.literalPrefixFile = rel
 			facts.literalPrefix = lit
 		}
 	}
@@ -365,6 +406,77 @@ func ct2ToneHasReason(f *ast.File) bool {
 }
 
 // ct2ToneFuncDecl — объявление функции (или метода) с этим именем в файле.
+// ct2ToneFn — объявление функции вместе с координатой её файла.
+//
+// Координата хранится, а не выводится потом: находка обязана называть ФАЙЛ, в
+// котором перечень префиксов лежит на самом деле, а он бывает не тем, где
+// объявлен стриппер (`testing.md` §«Гейт на класс», п.8 — диагностика есть
+// часть свойства).
+type ct2ToneFn struct {
+	decl *ast.FuncDecl
+	rel  string
+}
+
+// ct2ToneClosureCap — потолок обхода замыкания.
+//
+// Стоит не ради скорости: он делает обход завершающимся на взаимной рекурсии и
+// на пакете, где функций много. Величина заведомо выше наблюдаемого (у самого
+// длинного стриппера дерева замыкание — три функции), поэтому усечение здесь
+// означало бы не «дорого», а «пакет устроен не так, как гейт полагает».
+const ct2ToneClosureCap = 64
+
+// ct2ToneCallClosure — стриппер и все функции ЕГО ПАКЕТА, до которых он
+// дозванивается по имени, вместе с их координатами.
+//
+// Обход в ширину, с пометкой посещённых: цикл вызовов иначе не завершился бы.
+//
+// ЧЕГО ОБХОД НЕ ВИДИТ — названо, а не спрятано:
+//
+//   - вызов МЕТОДА (`x.Cut(msg)`) и вызов значения из переменной или поля:
+//     судится вызов по имени, а не поток значений. Такой владелец попадёт в
+//     находку «префикс ниоткуда», а не в молчание, — то есть ошибка идёт в
+//     безопасную сторону;
+//   - помощник в ЧУЖОМ пакете. В дереве таких нет: каждый владелец снимает
+//     префикс у себя, а `pkg/` общего стриппера не несёт.
+func ct2ToneCallClosure(pkg map[string]ct2ToneFn, root ct2ToneFn) []ct2ToneFn {
+	out := []ct2ToneFn{root}
+	seen := map[string]bool{}
+	if root.decl.Name != nil {
+		seen[root.decl.Name.Name] = true
+	}
+	for i := 0; i < len(out) && len(out) < ct2ToneClosureCap; i++ {
+		cur := out[i]
+		var names []string
+		ast.Inspect(cur.decl.Body, func(n ast.Node) bool {
+			call, isCall := n.(*ast.CallExpr)
+			if !isCall {
+				return true
+			}
+			if id, isID := call.Fun.(*ast.Ident); isID {
+				names = append(names, id.Name)
+			}
+			return true
+		})
+		// Порядок обхода детерминирован порядком вызовов в теле, а не обходом
+		// карты: перечень собран из узлов, карта — только для резолва имени.
+		for _, name := range names {
+			if seen[name] {
+				continue
+			}
+			fn, ok := pkg[name]
+			if !ok {
+				continue
+			}
+			seen[name] = true
+			out = append(out, fn)
+			if len(out) >= ct2ToneClosureCap {
+				break
+			}
+		}
+	}
+	return out
+}
+
 func ct2ToneFuncDecl(f *ast.File, name string) *ast.FuncDecl {
 	for _, d := range f.Decls {
 		fn, ok := d.(*ast.FuncDecl)
@@ -383,10 +495,10 @@ func ct2ToneFuncDecl(f *ast.File, name string) *ast.FuncDecl {
 //
 //	prefix := sentinel.Error() + ": "        — склейка на месте;
 //	fallback = sentinel.Error(); … fallback+": " — через переменную.
-func ct2ToneDerivesPrefix(fn *ast.FuncDecl) bool {
+func ct2ToneDerivesPrefix(closure []ct2ToneFn) bool {
 	// Переменные, которым присвоено значение выражения с `.Error()`.
 	derived := map[string]bool{}
-	ast.Inspect(fn.Body, func(n ast.Node) bool {
+	ct2ToneInspectClosure(closure, func(n ast.Node) bool {
 		as, ok := n.(*ast.AssignStmt)
 		if !ok {
 			return true
@@ -403,7 +515,7 @@ func ct2ToneDerivesPrefix(fn *ast.FuncDecl) bool {
 	})
 
 	var ok bool
-	ast.Inspect(fn.Body, func(n ast.Node) bool {
+	ct2ToneInspectClosure(closure, func(n ast.Node) bool {
 		if ok {
 			return false
 		}
@@ -463,25 +575,45 @@ func ct2ToneIsSeparatorLiteral(e ast.Expr) bool {
 // Это и есть находка: у такого перечня нет связи с sentinel'ами домена, поэтому
 // расходится он молча. Перечень `[]error` находкой НЕ является — из его
 // элементов префикс всё равно выводится вызовом `Error()`.
-func ct2ToneLiteralPrefixList(fn *ast.FuncDecl) (string, bool) {
-	var found string
+func ct2ToneLiteralPrefixList(closure []ct2ToneFn) (string, string, bool) {
+	var found, rel string
 	var ok bool
-	ast.Inspect(fn.Body, func(n ast.Node) bool {
-		if ok {
+	for _, fn := range closure {
+		ast.Inspect(fn.decl.Body, func(n ast.Node) bool {
+			if ok {
+				return false
+			}
+			lit, isLit := n.(*ast.BasicLit)
+			if !isLit || lit.Kind != token.STRING {
+				return true
+			}
+			s, err := strconv.Unquote(lit.Value)
+			if err != nil || s == ct2SentinelSeparator || !strings.HasSuffix(s, ct2SentinelSeparator) {
+				return true
+			}
+			found, rel, ok = s, fn.rel, true
 			return false
+		})
+		if ok {
+			break
 		}
-		lit, isLit := n.(*ast.BasicLit)
-		if !isLit || lit.Kind != token.STRING {
-			return true
-		}
-		s, err := strconv.Unquote(lit.Value)
-		if err != nil || s == ct2SentinelSeparator || !strings.HasSuffix(s, ct2SentinelSeparator) {
-			return true
-		}
-		found, ok = s, true
-		return false
-	})
-	return found, ok
+	}
+	return found, rel, ok
+}
+
+// ct2ToneInspectClosure — обход узлов ВСЕХ тел замыкания одним проходом.
+//
+// Замыкание судится как одно тело намеренно: связь «остаток срезки» →
+// «ограждение остатка» держится ИМЕНЕМ переменной, и у вынесенного помощника
+// она пересекает границу функции. Это то же приближение по имени, каким
+// распознаватель судил и внутри одного тела, — расширена ОБЛАСТЬ, а не
+// строгость. Что из этого следует и почему приемлемо: ось 2 проверяет НАЛИЧИЕ
+// ограждения, а не его правильность (сказано в шапке файла), а правильность
+// держат пробы владельцев рядом со стриппером.
+func ct2ToneInspectClosure(closure []ct2ToneFn, fn func(ast.Node) bool) {
+	for _, f := range closure {
+		ast.Inspect(f.decl.Body, fn)
+	}
 }
 
 // quotaRefusalToneFindings — расхождения, каждое с координатой.
@@ -593,10 +725,10 @@ func ct2ToneCallIs(c *ast.CallExpr, imports map[string]string, pkgPath, fn strin
 // «функция не может вернуть пустую строку на непустом входе» статически
 // неразрешимо. Правильность держат парные пробы владельцев
 // (`empty_refusal_test.go`).
-func ct2ToneGuardsEmptyRemainder(fn *ast.FuncDecl) bool {
+func ct2ToneGuardsEmptyRemainder(closure []ct2ToneFn) bool {
 	// Остаток — первое из значений, связанных вызовом срезки префикса.
 	remainders := map[string]bool{}
-	ast.Inspect(fn.Body, func(n ast.Node) bool {
+	ct2ToneInspectClosure(closure, func(n ast.Node) bool {
 		as, isAs := n.(*ast.AssignStmt)
 		if !isAs || len(as.Rhs) != 1 || len(as.Lhs) < 1 {
 			return true
@@ -619,7 +751,7 @@ func ct2ToneGuardsEmptyRemainder(fn *ast.FuncDecl) bool {
 	}
 
 	var ok bool
-	ast.Inspect(fn.Body, func(n ast.Node) bool {
+	ct2ToneInspectClosure(closure, func(n ast.Node) bool {
 		if ok {
 			return false
 		}
