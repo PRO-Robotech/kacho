@@ -531,39 +531,37 @@ func stripProtoComments(src string) string {
 // независимо от того, как служба названа.
 func publicServiceFields(cmdDir string) (map[string]string, error) {
 	fset := token.NewFileSet()
-	pkgs, err := parser.ParseDir(fset, cmdDir, notTestFile, parser.SkipObjectResolution)
+	files, err := parseDirFiles(fset, cmdDir)
 	if err != nil {
 		return nil, err
 	}
 	out := map[string]string{}
 	found := false
-	for _, pkg := range pkgs {
-		for _, f := range pkg.Files {
-			for _, decl := range f.Decls {
-				fn, ok := decl.(*ast.FuncDecl)
-				if !ok || fn.Name.Name != "registerPublicServices" || fn.Body == nil {
-					continue
-				}
-				found = true
-				ast.Inspect(fn.Body, func(n ast.Node) bool {
-					call, isCall := n.(*ast.CallExpr)
-					if !isCall {
-						return true
-					}
-					sel, isSel := call.Fun.(*ast.SelectorExpr)
-					if !isSel {
-						return true
-					}
-					svc, okName := serviceFromRegister(sel.Sel.Name)
-					if !okName || len(call.Args) < 2 {
-						return true
-					}
-					if field, okField := servicesField(call.Args[1]); okField {
-						out[svc] = field
-					}
-					return true
-				})
+	for _, f := range files {
+		for _, decl := range f.Decls {
+			fn, ok := decl.(*ast.FuncDecl)
+			if !ok || fn.Name.Name != "registerPublicServices" || fn.Body == nil {
+				continue
 			}
+			found = true
+			ast.Inspect(fn.Body, func(n ast.Node) bool {
+				call, isCall := n.(*ast.CallExpr)
+				if !isCall {
+					return true
+				}
+				sel, isSel := call.Fun.(*ast.SelectorExpr)
+				if !isSel {
+					return true
+				}
+				svc, okName := serviceFromRegister(sel.Sel.Name)
+				if !okName || len(call.Args) < 2 {
+					return true
+				}
+				if field, okField := servicesField(call.Args[1]); okField {
+					out[svc] = field
+				}
+				return true
+			})
 		}
 	}
 	if !found {
@@ -603,40 +601,38 @@ func servicesField(arg ast.Expr) (string, bool) {
 // поле → путь импорта пакета, чей тип в этом поле лежит.
 func handlerPackages(cmdDir string) (map[string]string, error) {
 	fset := token.NewFileSet()
-	pkgs, err := parser.ParseDir(fset, cmdDir, notTestFile, parser.SkipObjectResolution)
+	files, err := parseDirFiles(fset, cmdDir)
 	if err != nil {
 		return nil, err
 	}
 	out := map[string]string{}
-	for _, pkg := range pkgs {
-		for _, f := range pkg.Files {
-			aliases := importAliases(f)
-			for _, decl := range f.Decls {
-				gen, ok := decl.(*ast.GenDecl)
-				if !ok || gen.Tok != token.TYPE {
+	for _, f := range files {
+		aliases := importAliases(f)
+		for _, decl := range f.Decls {
+			gen, ok := decl.(*ast.GenDecl)
+			if !ok || gen.Tok != token.TYPE {
+				continue
+			}
+			for _, spec := range gen.Specs {
+				ts, isTS := spec.(*ast.TypeSpec)
+				if !isTS || ts.Name.Name != "services" {
 					continue
 				}
-				for _, spec := range gen.Specs {
-					ts, isTS := spec.(*ast.TypeSpec)
-					if !isTS || ts.Name.Name != "services" {
+				st, isStruct := ts.Type.(*ast.StructType)
+				if !isStruct {
+					continue
+				}
+				for _, field := range st.Fields.List {
+					alias, okAlias := selectorPackage(field.Type)
+					if !okAlias {
 						continue
 					}
-					st, isStruct := ts.Type.(*ast.StructType)
-					if !isStruct {
+					path, okPath := aliases[alias]
+					if !okPath {
 						continue
 					}
-					for _, field := range st.Fields.List {
-						alias, okAlias := selectorPackage(field.Type)
-						if !okAlias {
-							continue
-						}
-						path, okPath := aliases[alias]
-						if !okPath {
-							continue
-						}
-						for _, nm := range field.Names {
-							out[nm.Name] = path
-						}
+					for _, nm := range field.Names {
+						out[nm.Name] = path
 					}
 				}
 			}
@@ -680,6 +676,32 @@ func selectorPackage(t ast.Expr) (string, bool) {
 	return ident.Name, true
 }
 
-func notTestFile(fi os.FileInfo) bool {
-	return !strings.HasSuffix(fi.Name(), "_test.go")
+// parseDirFiles — не-тестовые файлы Go каталога, разобранные.
+//
+// Замена `parser.ParseDir`, снятой с поддержки. Она группирует файлы по ПАКЕТАМ,
+// а группировка здесь не читается ни одним вызывающим: все три обходят
+// `pkg.Files` плоско. Заодно уходит недетерминизм — порядок обхода карты пакетов
+// в Go случаен, а `os.ReadDir` отдаёт имена отсортированными, и вход проверки
+// становится воспроизводимым.
+//
+// Фильтр тестовых файлов — тот же, что был у снятого вызова: разбор судит
+// прод-код, и проба, лежащая рядом, его утверждением не является.
+func parseDirFiles(fset *token.FileSet, dir string) ([]*ast.File, error) {
+	entries, err := os.ReadDir(dir)
+	if err != nil {
+		return nil, err
+	}
+	out := make([]*ast.File, 0, len(entries))
+	for _, e := range entries {
+		name := e.Name()
+		if e.IsDir() || !strings.HasSuffix(name, ".go") || strings.HasSuffix(name, "_test.go") {
+			continue
+		}
+		f, perr := parser.ParseFile(fset, filepath.Join(dir, name), nil, parser.SkipObjectResolution)
+		if perr != nil {
+			return nil, perr
+		}
+		out = append(out, f)
+	}
+	return out, nil
 }

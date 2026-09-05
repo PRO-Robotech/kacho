@@ -228,9 +228,13 @@ model-canon-check:
 # ведомость своих, подписавших и машинных личностей — services/iam/cla-ledger.yaml.
 #
 # Вызов: `make -C services/iam cla-check`
+#
+# Путь — ОТ КОРНЯ МОДУЛЯ СЛУЖБЫ: у неё свой go.mod, и подъём в корень монорепо
+# ради пути `./services/iam/...` отказывает — тот модуль этих пакетов не
+# содержит. В конвейере цель не зовётся, поэтому отказ был тихим.
 .PHONY: cla-check
 cla-check:
-	@cd ../.. && go test ./services/iam/tools/clagate/ -count=1 -v
+	@go test ./tools/clagate/ -count=1 -v
 
 # Общая `operations`-таблица из kacho-corelib/migrations/common/0001_operations.sql
 # встроена inline в internal/migrations/0001_initial.sql под схемой kacho_iam.

@@ -26,8 +26,20 @@ import (
 	"path/filepath"
 	"testing"
 
+	"github.com/PRO-Robotech/kacho/pkg/treecorpus"
 	"github.com/stretchr/testify/require"
 )
+
+// syntheticCorpus — состав СИНТЕТИЧЕСКОГО корня. Индекса у него нет by
+// construction (это каталог прогона, а не репозиторий), поэтому обход диска
+// здесь — единственный возможный авторитет, и выбран он ЯВНО: настоящее дерево
+// службы берёт состав у индекса, и подмена одного другим была бы невидима.
+func syntheticCorpus(t *testing.T, root string) *treecorpus.Tree {
+	t.Helper()
+	tree, err := treecorpus.SyntheticTree(root)
+	require.NoError(t, err, "состав синтетического корня не собран — инъекция беспредметна")
+	return tree
+}
 
 // syntheticServiceRoot — годный корень службы: свой go.mod, требование
 // платформы по версии и один файл, импортирующий покрытый пакет платформы.
@@ -78,7 +90,7 @@ RUN --mount=type=cache,target=/go/pkg/mod go build ./internal/sample
 func TestInjectionControl_SoundRootIsSilentInBothChecks(t *testing.T) {
 	root := syntheticServiceRoot(t, goodGoMod, goodGoFile, goodDockerfile)
 
-	census, findings, err := scanServiceModule(root)
+	census, findings, err := scanServiceModule(syntheticCorpus(t, root))
 	require.NoError(t, err)
 	require.Empty(t, findings, "годный корень объявлен нарушением: проверка ловит форму, а не существо")
 	require.NotZero(t, census.filesParsed, "контроль беспредметен: файлов не разобрано")
@@ -95,7 +107,7 @@ func TestInjectionControl_SoundRootIsSilentInBothChecks(t *testing.T) {
 
 func TestInjection_MissingGoModIsAFinding(t *testing.T) {
 	root := t.TempDir()
-	_, _, err := scanServiceModule(root)
+	_, _, err := scanServiceModule(syntheticCorpus(t, root))
 	require.Error(t, err, "корень без go.mod принят: именно его отсутствие и есть предмет проверки")
 }
 
@@ -103,7 +115,7 @@ func TestInjection_ReplaceOnThePlatformIsFound(t *testing.T) {
 	badMod := goodGoMod + "\nreplace github.com/PRO-Robotech/kacho => ../..\n"
 	root := syntheticServiceRoot(t, badMod, goodGoFile, goodDockerfile)
 
-	_, findings, err := scanServiceModule(root)
+	_, findings, err := scanServiceModule(syntheticCorpus(t, root))
 	require.NoError(t, err)
 	require.Len(t, findings, 1, "директива замены на модуль платформы не найдена")
 	require.Equal(t, "github.com/PRO-Robotech/kacho", findings[0].path)
@@ -117,7 +129,7 @@ import _ "github.com/PRO-Robotech/kacho-nowhere/pkg/thing"
 `
 	root := syntheticServiceRoot(t, goodGoMod, badFile, goodDockerfile)
 
-	_, findings, err := scanServiceModule(root)
+	_, findings, err := scanServiceModule(syntheticCorpus(t, root))
 	require.NoError(t, err)
 	require.Len(t, findings, 1, "импорт платформы вне require и вне своего модуля не найден")
 	require.Equal(t, "github.com/PRO-Robotech/kacho-nowhere/pkg/thing", findings[0].path)
@@ -132,7 +144,7 @@ import _ "github.com/PRO-Robotech/kacho/pkg/thing"
 `
 	root := syntheticServiceRoot(t, goodGoMod, okFile, goodDockerfile)
 
-	_, findings, err := scanServiceModule(root)
+	_, findings, err := scanServiceModule(syntheticCorpus(t, root))
 	require.NoError(t, err)
 	require.Empty(t, findings, "покрытый импорт объявлен нарушением: проверка судит форму пути, а не покрытие")
 }
@@ -144,7 +156,7 @@ func TestInjection_ImportInsideAStringLiteralIsNotAnImport(t *testing.T) {
 	fixtureFile := "package sample\n\nconst fixture = `import \"github.com/PRO-Robotech/kacho-nowhere/pkg/thing\"`\n"
 	root := syntheticServiceRoot(t, goodGoMod, fixtureFile, goodDockerfile)
 
-	_, findings, err := scanServiceModule(root)
+	_, findings, err := scanServiceModule(syntheticCorpus(t, root))
 	require.NoError(t, err)
 	require.Empty(t, findings, "путь внутри строкового литерала принят за импорт: проверка читает текст, а не разбор")
 }
@@ -153,7 +165,7 @@ func TestInjection_EmptyWalkIsDistinguishableFromZeroFindings(t *testing.T) {
 	root := t.TempDir()
 	require.NoError(t, os.WriteFile(filepath.Join(root, "go.mod"), []byte(goodGoMod), 0o600))
 
-	census, findings, err := scanServiceModule(root)
+	census, findings, err := scanServiceModule(syntheticCorpus(t, root))
 	require.NoError(t, err)
 	require.Empty(t, findings)
 	require.Zero(t, census.platformImports,

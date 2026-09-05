@@ -183,7 +183,7 @@ func journalGoStringLiterals(src []byte) ([]SQLChunk, ChunkCensus) {
 		case s[i] == '/' && i+1 < len(s) && s[i+1] == '*':
 			start := i
 			i += 2
-			for i+1 < len(s) && !(s[i] == '*' && s[i+1] == '/') {
+			for i+1 < len(s) && (s[i] != '*' || s[i+1] != '/') {
 				i++
 			}
 			census.ProseLines += 1 + strings.Count(s[start:min(i, len(s))], "\n")

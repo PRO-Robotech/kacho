@@ -175,7 +175,10 @@ var RequiredSettings = []RequiredSetting{
 		Env:          "KACHO_IAM_AUTHN__IDENTITY_PROVIDER",
 		Supply:       SupplyEnv,
 		SampleIsLane: true,
-		Sample:       "external",
+		// ВЫВЕДЕНО из словаря посадки, а не выписано: второе перечисление
+		// канонических имён разошлось бы с типом на первом же новом значении,
+		// и разошлось бы молча (гейт pkg/identityposture).
+		Sample: IdentityProviderExternal.String(),
 		Why: "чем установка проверяет человека: внешним поставщиком удостоверений (external) " +
 			"или собственной чеканкой платформы (own). Умолчания нет намеренно — оно в одну сторону " +
 			"потребовало бы адресов поставщика у установки, у которой его нет, в другую молча сняло бы " +

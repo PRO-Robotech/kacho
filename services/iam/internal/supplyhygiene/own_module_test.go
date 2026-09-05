@@ -49,6 +49,7 @@ import (
 	"strings"
 	"testing"
 
+	"github.com/PRO-Robotech/kacho/pkg/treecorpus"
 	"github.com/stretchr/testify/require"
 	"golang.org/x/mod/modfile"
 )
@@ -90,12 +91,25 @@ type moduleCensus struct {
 	externalModules []string
 }
 
-// scanServiceModule — весь разбор одним местом, над ПРОИЗВОЛЬНЫМ корнем. Обход
+// scanServiceModule — весь разбор одним местом, над ПРОИЗВОЛЬНЫМ составом. Обход
 // вынесен из теста именно затем, чтобы способность гейта упасть проверялась
 // подачей настоящего входа, а не чтением.
-func scanServiceModule(root string) (moduleCensus, []uncoveredImport, error) {
+//
+// СОСТАВ ПРИНОСИТ ВЫЗЫВАЮЩИЙ, и в этом весь смысл параметра. У настоящего дерева
+// службы авторитет — ИНДЕКС git (`treecorpus.NewTree`): под корнем лежат
+// каталоги, которых в репозитории нет (рабочие копии агентов, отчёты прогонов,
+// сборочные и распакованные каталоги), и обход диска сделал бы вердикт свойством
+// чужого рабочего каталога, а не коммита — в обе стороны: красное на файле,
+// которого в репозитории нет, и молчание в свежем клоне там, где сказать обязан.
+// У синтетического корня инъекции индекса нет by construction, и обход диска там
+// не откат, а единственный возможный авторитет (`treecorpus.SyntheticTree`).
+// Поставщики РАЗВЕДЕНЫ по назначению и выбираются явно: молчаливый откат
+// «нет git — иду по диску» вернул бы ровно тот дефект, ради которого разведение
+// и сделано, и вернул бы его невидимо.
+func scanServiceModule(tree *treecorpus.Tree) (moduleCensus, []uncoveredImport, error) {
 	var census moduleCensus
 
+	root := tree.Root()
 	modPath := filepath.Join(root, "go.mod")
 	raw, err := os.ReadFile(modPath)
 	if err != nil {
@@ -145,23 +159,15 @@ func scanServiceModule(root string) (moduleCensus, []uncoveredImport, error) {
 	externals := map[string]struct{}{}
 	fset := token.NewFileSet()
 
-	walkErr := filepath.WalkDir(root, func(path string, d os.DirEntry, err error) error {
-		if err != nil {
-			return err
+	for _, rel := range tree.SortedFiles() {
+		if !strings.HasSuffix(rel, ".go") || inSkippedDir(rel) {
+			continue
 		}
-		if d.IsDir() {
-			if _, skip := skippedDirs[d.Name()]; skip {
-				return filepath.SkipDir
-			}
-			return nil
-		}
-		if !strings.HasSuffix(d.Name(), ".go") {
-			return nil
-		}
+		path := filepath.Join(root, rel)
 
 		file, parseErr := parser.ParseFile(fset, path, nil, parser.ImportsOnly)
 		if parseErr != nil {
-			return parseErr
+			return census, findings, parseErr
 		}
 		census.filesParsed++
 
@@ -193,10 +199,6 @@ func scanServiceModule(root string) (moduleCensus, []uncoveredImport, error) {
 				reason: "не принадлежит собственному модулю и не покрыт ни одним require",
 			})
 		}
-		return nil
-	})
-	if walkErr != nil {
-		return census, findings, walkErr
 	}
 
 	for m := range externals {
@@ -207,11 +209,30 @@ func scanServiceModule(root string) (moduleCensus, []uncoveredImport, error) {
 	return census, findings, nil
 }
 
+// inSkippedDir — лежит ли файл под каталогом, обходу не принадлежащим. Состав
+// отдаёт ПУТИ, а не записи каталога, поэтому отсечение идёт по сегментам пути, а
+// не пропуском поддерева; последний сегмент — имя файла и каталогом не является.
+func inSkippedDir(rel string) bool {
+	segments := strings.Split(filepath.ToSlash(rel), "/")
+	for _, seg := range segments[:len(segments)-1] {
+		if _, skip := skippedDirs[seg]; skip {
+			return true
+		}
+	}
+	return false
+}
+
 // errNoModulePath — go.mod есть, но пути модуля не объявляет.
 var errNoModulePath = errors.New("go.mod не объявляет путь модуля")
 
 func TestServiceCarriesItsOwnSelfSufficientModule(t *testing.T) {
-	census, findings, err := scanServiceModule(serviceRoot)
+	tree, treeErr := treecorpus.NewTree(serviceRoot)
+	require.NoErrorf(t, treeErr,
+		"состав дерева службы (%s) не прочитан у индекса — вердикт беспредметен: "+
+			"обход диска вместо индекса читал бы каталоги, которых в репозитории нет",
+		serviceRoot)
+
+	census, findings, err := scanServiceModule(tree)
 	require.NoErrorf(t, err,
 		"у службы нет пригодного собственного go.mod (%s): собрать её вне дерева монорепо невозможно by construction",
 		filepath.Join(serviceRoot, "go.mod"))

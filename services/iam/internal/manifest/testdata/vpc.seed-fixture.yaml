@@ -35,7 +35,7 @@ seed:
   # успехом о предмете, которого нет. Второй предикат жив и половину про ПЯТЬ
   # подтверждает дословно: `kacho-iam-bootstrap` есть, `kacho-iam` — нет.
   # Предикаты обеих половин:
-  #   go test ./services/iam/internal/authzmap/ -run TestModuleSet_PinnedComposition -count=1
+  #   go test -C services/iam ./internal/authzmap/ -run TestModuleSet_PinnedComposition -count=1
   #   git grep -ohE "'kacho-[a-z-]+'" -- 'services/iam/internal/migrations/*.sql' | sort -u
   #
   # Каждая обязана нести `description` —

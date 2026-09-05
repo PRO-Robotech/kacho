@@ -30,7 +30,6 @@ package publicauthzcensus
 
 import (
 	"go/ast"
-	"go/parser"
 	"go/token"
 	"strings"
 )
@@ -53,7 +52,7 @@ type pkgIndex struct {
 // разобранных не-тестовых файлов.
 func indexPackage(dir string) (*pkgIndex, int, error) {
 	fset := token.NewFileSet()
-	pkgs, err := parser.ParseDir(fset, dir, notTestFile, parser.SkipObjectResolution)
+	parsed, err := parseDirFiles(fset, dir)
 	if err != nil {
 		return nil, 0, err
 	}
@@ -64,45 +63,43 @@ func indexPackage(dir string) (*pkgIndex, int, error) {
 		handlerTypes: map[string]bool{},
 	}
 	files := 0
-	for _, pkg := range pkgs {
-		for _, f := range pkg.Files {
-			files++
-			for _, decl := range f.Decls {
-				switch d := decl.(type) {
-				case *ast.FuncDecl:
-					if d.Recv == nil || len(d.Recv.List) == 0 {
-						idx.funcs[d.Name.Name] = d
+	for _, f := range parsed {
+		files++
+		for _, decl := range f.Decls {
+			switch d := decl.(type) {
+			case *ast.FuncDecl:
+				if d.Recv == nil || len(d.Recv.List) == 0 {
+					idx.funcs[d.Name.Name] = d
+					continue
+				}
+				recv, ok := receiverType(d.Recv.List[0].Type)
+				if !ok {
+					continue
+				}
+				idx.methods[recv+"."+d.Name.Name] = d
+				if strings.Contains(recv, "Handler") {
+					idx.handlerTypes[recv] = true
+				}
+			case *ast.GenDecl:
+				if d.Tok != token.TYPE {
+					continue
+				}
+				for _, spec := range d.Specs {
+					ts, isTS := spec.(*ast.TypeSpec)
+					if !isTS {
 						continue
 					}
-					recv, ok := receiverType(d.Recv.List[0].Type)
-					if !ok {
+					st, isStruct := ts.Type.(*ast.StructType)
+					if !isStruct {
 						continue
 					}
-					idx.methods[recv+"."+d.Name.Name] = d
-					if strings.Contains(recv, "Handler") {
-						idx.handlerTypes[recv] = true
-					}
-				case *ast.GenDecl:
-					if d.Tok != token.TYPE {
-						continue
-					}
-					for _, spec := range d.Specs {
-						ts, isTS := spec.(*ast.TypeSpec)
-						if !isTS {
+					for _, field := range st.Fields.List {
+						typeName, okT := bareTypeName(field.Type)
+						if !okT {
 							continue
 						}
-						st, isStruct := ts.Type.(*ast.StructType)
-						if !isStruct {
-							continue
-						}
-						for _, field := range st.Fields.List {
-							typeName, okT := bareTypeName(field.Type)
-							if !okT {
-								continue
-							}
-							for _, nm := range field.Names {
-								idx.fields[ts.Name.Name+"."+nm.Name] = typeName
-							}
+						for _, nm := range field.Names {
+							idx.fields[ts.Name.Name+"."+nm.Name] = typeName
 						}
 					}
 				}

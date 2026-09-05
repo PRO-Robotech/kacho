@@ -32,11 +32,12 @@
 package release
 
 import (
-	"github.com/PRO-Robotech/kacho/pkg/gitenv"
 	"os"
 	"path/filepath"
 	"strings"
 	"testing"
+
+	"github.com/PRO-Robotech/kacho/pkg/gitenv"
 )
 
 // synthetic — описание синтетического репозитория. Поля меняются по ОДНОМУ:

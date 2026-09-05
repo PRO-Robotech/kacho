@@ -95,7 +95,12 @@ DB="${DB:-kacho_iam}"
 DBUSER="${DBUSER:-postgres}"
 ALLOW_TYPES="${ALLOW_TYPES:-}"
 REPO_ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)"
-GEN="./services/iam/internal/scopesourcecensus/cmd/scope-source-census-sql"
+# Генератор живёт в МОДУЛЕ СЛУЖБЫ (свой go.mod), поэтому путь называется
+# относительно его корня, а go зовётся оттуда же. Путь от корня монорепо
+# отказывал всегда — и отказ приходил как «условие не создано», то есть
+# выглядел отсутствующим инструментом, а не сломанным путём.
+GEN_MODULE_DIR="$REPO_ROOT/services/iam"
+GEN="./internal/scopesourcecensus/cmd/scope-source-census-sql"
 
 die_precond() { echo "УСЛОВИЕ НЕ СОЗДАНО: $*" >&2; exit 3; }
 
@@ -161,9 +166,9 @@ command -v go >/dev/null 2>&1 \
   || die_precond "нет go: перечень типов выводится из дерева генератором $GEN, выписывать его здесь нельзя"
 SQL_FILE="$(mktemp)"; TYPES_FILE="$(mktemp)"
 trap 'rm -f "$SQL_FILE" "$TYPES_FILE"' EXIT
-( cd "$REPO_ROOT" && go run "$GEN" sql ) > "$SQL_FILE" \
+( cd "$GEN_MODULE_DIR" && go run "$GEN" sql ) > "$SQL_FILE" \
   || die_precond "генератор запроса переписи ($GEN sql) отказал — перечень типов не получен"
-( cd "$REPO_ROOT" && go run "$GEN" types ) > "$TYPES_FILE" \
+( cd "$GEN_MODULE_DIR" && go run "$GEN" types ) > "$TYPES_FILE" \
   || die_precond "генератор перечня типов ($GEN types) отказал"
 declared=$(grep -c . "$TYPES_FILE" || true)
 [ "${declared:-0}" -gt 0 ] \
