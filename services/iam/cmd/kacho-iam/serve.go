@@ -503,6 +503,18 @@ func runServe(cfg config.Config) error {
 		cfg.APIServer.RegistryToken.ListenAddress(), mtlsCfg); err != nil {
 		return err
 	}
+	// Транспорт остальных HTTP-рёбер. Их ручки задавал ЗОНТИЧНЫЙ чарт монорепо;
+	// у отдельно поставленной службы его нет, а адреса всех трёх приходят
+	// умолчанием процесса и потому непусты всегда — то есть без этого стража
+	// профиль, о них умолчавший, поднимал три слушателя открытым текстом.
+	if err := requireHTTPEdgeTLS(productionMode, iamHTTPEdges(
+		cfg.AuthN.HooksHTTPListenAddress(),
+		cfg.APIServer.MetricsListenAddress(),
+		cfg.APIServer.JWKSProxy.ListenAddress(),
+		mtlsCfg,
+	)); err != nil {
+		return err
+	}
 
 	// Самоотчёт о security-posture: ПОСЛЕ boot-guard'ов (cfg.Validate() в main,
 	// mtlsCfg.Validate() и production-гейт обоих gRPC-листенеров выше — конфиг

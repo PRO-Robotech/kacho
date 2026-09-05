@@ -490,10 +490,11 @@ func (c Config) validateMode() error {
 }
 
 // validateProductionAuthNSecrets requires the AuthN secrets the binary needs to
-// authenticate the Ory hooks. In dev mode these may legitimately be empty (the
-// hook handlers accept calls without a Bearer); in any production mode a missing
-// secret is a boot-time misconfiguration that would otherwise only surface as a
-// runtime fail-closed (availability risk).
+// authenticate the Ory hooks. Вне production-посадки пустое значение законно, но
+// ОБХОДА НЕ ДАЁТ: обработчик отвечает на него 500 и запрос не обслуживает
+// (`iamhooks.requireHookAuth`). В любой production-посадке пустой секрет — это
+// ошибка настройки, которую страж обязан назвать на старте: иначе она вышла бы
+// наружу только отказом на пути запроса (риск доступности).
 //
 // The JWKS encryption key is still demanded here even though nothing decrypts
 // Ключ обёртки требуется потому, что им оборачивается приватная половина

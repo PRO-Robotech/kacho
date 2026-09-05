@@ -167,6 +167,39 @@ func TestProductionProfileSatisfiesTheStartupGuards(t *testing.T) {
 		"боевой режим требует TLS публичного слушателя (:9090): профиль его не объявляет, и процесс откажется стартовать")
 	require.NoError(t, requireRegistryTokenTLS(productionMode, registryTokenAddr, mtlsCfg),
 		"боевой профиль не проходит стража старта докерной полосы: объявленная посадка неисполнима — процесс не поднимется НИ ПРИ КАКОМ входе")
+
+	// ── ТРАНСПОРТ ОСТАЛЬНЫХ HTTP-РЁБЕР ──────────────────────────────────────
+	//
+	// Адреса берутся у САМОГО процесса (`config.RegisterDefaults`), а не
+	// выписываются: все три непусты умолчанием, поэтому слушатели поднимаются
+	// ВСЕГДА — и профиль, не объявивший их транспорт, ставит службу открытым
+	// текстом. Ручки этих рёбер задавал зонтичный чарт монорепо; у отдельно
+	// поставленной службы его нет.
+	httpEdges := iamHTTPEdges(
+		httpEdgeAddr(t, values, defaults, "authn.hooks-http-endpoint",
+			"authn", "hooksHttpEndpoint"),
+		httpEdgeAddr(t, values, defaults, "api-server.metrics-endpoint",
+			"apiServer", "metricsEndpoint"),
+		httpEdgeAddr(t, values, defaults, "api-server.jwks-proxy.endpoint",
+			"apiServer", "jwksProxy", "endpoint"),
+		mtlsCfg,
+	)
+	require.NotEmpty(t, httpEdges, "перечень HTTP-рёбер пуст — вердикт беспредметен")
+	require.NoError(t, requireHTTPEdgeTLS(productionMode, httpEdges),
+		"боевой профиль не проходит стража транспорта HTTP-рёбер: объявленная посадка неисполнима — процесс не поднимется НИ ПРИ КАКОМ входе")
+}
+
+// httpEdgeAddr — адрес слушателя: объявленный профилем либо умолчание процесса.
+// Умолчание спрашивается у процесса, а не выписывается здесь: выписанное
+// разошлось бы молча, и проба судила бы полосу, которой процесс не поднимает.
+func httpEdgeAddr(t *testing.T, values map[string]any, defaults *viper.Viper,
+	defaultKey string, chartPath ...string) string {
+	t.Helper()
+	endpoint := defaults.GetString(defaultKey)
+	if declared, found := dig(values, chartPath...); found {
+		endpoint = valueAsString(t, strings.Join(chartPath, "."), declared)
+	}
+	return config.ListenAddressOf(endpoint)
 }
 
 // valueAsString — значение профиля строкой. Числа и булевы в карте `env` чарт

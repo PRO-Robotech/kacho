@@ -28,8 +28,15 @@ import (
 
 // ResolveHookSharedSecret returns the current shared-secret for Hydra hooks.
 // If authn.hook-shared-secret is set directly (dev) we use it; otherwise we
-// read the ENV variable named by authn.hook-shared-secret-env. An empty
-// return is allowed in dev mode (the handler accepts calls without Bearer).
+// read the ENV variable named by authn.hook-shared-secret-env.
+//
+// Пустой возврат ОБХОДА НЕ ДАЁТ. Обработчик отвечает на него `500`
+// `hook_secret_not_configured` и не обслуживает запрос: ненастроенный секрет —
+// операторская ошибка нашей стороны, а не «аутентификация не требуется»
+// (`internal/handler/iamhooks/hook_auth.go`, проба
+// `TestHookAuthUnconfiguredSecretIsObservable`). В production-посадке пустое
+// значение до обработчика вообще не доезжает — страж старта отказывает в пуске
+// (`validateProductionAuthNSecrets`).
 func (c AuthNConfig) ResolveHookSharedSecret() string {
 	if c.HookSharedSecret != "" {
 		return c.HookSharedSecret

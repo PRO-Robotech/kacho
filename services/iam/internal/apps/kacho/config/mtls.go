@@ -424,3 +424,12 @@ func loadCAPool(files []string) (*x509.CertPool, error) {
 	}
 	return pool, nil
 }
+
+// HooksTLSEnabled / MetricsTLSEnabled / JWKSProxyTLSEnabled — объявлен ли
+// транспорт соответствующего HTTP-ребра.
+//
+// Существуют затем, чтобы страж старта спрашивал ПОСАДКУ, а не лез в поля:
+// поле переедет вместе с формой, а вопрос останется тем же.
+func (c MTLSConfig) HooksTLSEnabled() bool     { return c.HooksServerMTLS.Enable }
+func (c MTLSConfig) MetricsTLSEnabled() bool   { return c.MetricsServerMTLS.Enable }
+func (c MTLSConfig) JWKSProxyTLSEnabled() bool { return c.JWKSProxyServerMTLS.Enable }
