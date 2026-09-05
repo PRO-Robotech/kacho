@@ -287,7 +287,7 @@ func NewOwnDoor(opts OwnDoorOptions) (*OwnDoor, error) {
 	}
 	return &OwnDoor{inner: authz.NewInterceptor(authz.InterceptorOptions{
 		ServiceName:         "kacho-iam",
-		Map:                 withPlatformLivenessProbe(m),
+		Map:                 withCanonicalRoleAnchor(withPlatformLivenessProbe(m)),
 		Client:              checkAdapter{inner: opts.SelfCheck},
 		Cache:               authz.NewCache(opts.PositiveTTL),
 		Logger:              logger,
