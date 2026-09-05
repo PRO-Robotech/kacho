@@ -95,12 +95,17 @@ DB="${DB:-kacho_iam}"
 DBUSER="${DBUSER:-postgres}"
 ALLOW_TYPES="${ALLOW_TYPES:-}"
 REPO_ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)"
-# Генератор живёт в МОДУЛЕ СЛУЖБЫ (свой go.mod), поэтому путь называется
-# относительно его корня, а go зовётся оттуда же. Путь от корня монорепо
-# отказывал всегда — и отказ приходил как «условие не создано», то есть
-# выглядел отсутствующим инструментом, а не сломанным путём.
-GEN_MODULE_DIR="$REPO_ROOT/services/iam"
-GEN="./internal/scopesourcecensus/cmd/scope-source-census-sql"
+
+# Генератор живёт в СВОЁМ модуле (`services/iam`, github.com/PRO-Robotech/kacho-iam),
+# а этот прибор — в дереве монорепо. `go run` берёт пакет у ГЛАВНОГО модуля рабочего
+# каталога, поэтому вызов от корня отвечает «main module does not contain package»
+# ДО любого условия внутри — то есть перепись объявляла бы «условие не создано» на
+# исправном дереве. Каталог модуля и путь пакета ВНУТРИ него поэтому разведены:
+# GEN_DIR задаёт главный модуль, GEN_PKG адресуется относительно него, GEN остаётся
+# путём от корня дерева и служит только для сообщений.
+GEN_DIR="services/iam"
+GEN_PKG="./internal/scopesourcecensus/cmd/scope-source-census-sql"
+GEN="./$GEN_DIR/${GEN_PKG#./}"
 
 die_precond() { echo "УСЛОВИЕ НЕ СОЗДАНО: $*" >&2; exit 3; }
 
@@ -166,9 +171,9 @@ command -v go >/dev/null 2>&1 \
   || die_precond "нет go: перечень типов выводится из дерева генератором $GEN, выписывать его здесь нельзя"
 SQL_FILE="$(mktemp)"; TYPES_FILE="$(mktemp)"
 trap 'rm -f "$SQL_FILE" "$TYPES_FILE"' EXIT
-( cd "$GEN_MODULE_DIR" && go run "$GEN" sql ) > "$SQL_FILE" \
+( cd "$REPO_ROOT/$GEN_DIR" && go run "$GEN_PKG" sql ) > "$SQL_FILE" \
   || die_precond "генератор запроса переписи ($GEN sql) отказал — перечень типов не получен"
-( cd "$GEN_MODULE_DIR" && go run "$GEN" types ) > "$TYPES_FILE" \
+( cd "$REPO_ROOT/$GEN_DIR" && go run "$GEN_PKG" types ) > "$TYPES_FILE" \
   || die_precond "генератор перечня типов ($GEN types) отказал"
 declared=$(grep -c . "$TYPES_FILE" || true)
 [ "${declared:-0}" -gt 0 ] \

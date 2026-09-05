@@ -42,7 +42,7 @@
 # сторона — зеркальная перепись ниже: файл, у которого «inject» в имени есть, а
 # формы доказательства нет, обязан быть ОПОЗНАН явно.
 #
-# Формы доказательства две, и обе живые: `<тема>-inject.sh` (десять файлов) и
+# Формы доказательства две, и обе живые: `<тема>-inject.sh` (восемнадцать файлов) и
 # `<тема>_inject.sh` (один, `gateway/deploy/revocation_authority_inject.sh` —
 # подчёркивание там от соседних Go-файлов пакета). Форма `inject-<тема>.sh`
 # доказательством НЕ является: так называются внесения дефектов в ЖИВОЙ стенд, и
@@ -90,6 +90,8 @@ scripts/judge-outcome-inject.sh
 scripts/hooks/install-inject.sh
 scripts/hooks/prepush-groups-inject.sh
 scripts/hooks/prepush-range-inject.sh
+scripts/release/probe-published-inject.sh
+scripts/release/publish-version-inject.sh
 services/nlb/tests/newman/scripts/selftest-assertions-inject.sh
 "
 
@@ -101,6 +103,7 @@ services/nlb/tests/newman/scripts/selftest-assertions-inject.sh
 NOT_A_PROOF="
 deploy/scripts/inject-admin-hop-defects.sh|вносит дефекты в ЖИВОЙ стенд, а не доказывает гейт; запускается целью admin-hop-injection под стражем контекста
 deploy/scripts/run-injection-proofs.sh|это ОБХОДЧИК доказательств, а не доказательство; слово в имени от предмета обхода. Запускать его собой значило бы рекурсию
+gateway/scripts/inject-domain-generation-defects.sh|доказательство гейта разреза, но НЕ этого обхода: правит рабочее дерево и требует buf+go, поэтому зовётся отдельной целью domain-generation-inject (gateway/Makefile) руками при правке гейта или генераторов
 gateway/scripts/inject-session-cutoff-defects.sh|вносит дефекты в ЖИВОЙ стенд обрыва сессии; запускается вручную при разборе, не обходом
 "
 
@@ -410,11 +413,11 @@ fi
 
 # ── Собственная достижимость из конвейера ───────────────────────────────────
 # Иначе дефект повторяется этажом выше: шаг снимут, обходчик перестанет
-# вызываться, и одиннадцать доказательств снова станут немыми — молча.
+# вызываться, и девятнадцать доказательств снова станут немыми — молча.
 if [ "$TREE" = "$REPO_ROOT" ]; then
   workflow_invokes "$REPO_ROOT" "$MAKE_TARGET" || {
     echo "FAIL: цель $MAKE_TARGET не вызывается НИ ОДНИМ объявлением конвейера."
-    echo "      Тогда этот обходчик исполняется только руками, а одиннадцать доказательств"
+    echo "      Тогда этот обходчик исполняется только руками, а девятнадцать доказательств"
     echo "      инъекцией снова немы — ровно тот дефект, который он закрывает."
     exit 1
   }
