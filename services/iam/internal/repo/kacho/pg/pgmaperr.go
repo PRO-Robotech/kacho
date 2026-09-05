@@ -328,6 +328,24 @@ func uniqueText(pgErr *pgconn.PgError, kindHint, idHint string) string {
 func fkText(pgErr *pgconn.PgError, kindHint, idHint string) (string, error) {
 	switch pgErr.ConstraintName {
 	case "accounts_owner_fk":
+		// Direction-sensitive, как у четырёх соседей ниже. Ограничение объявлено
+		// `ON DELETE RESTRICT`, поэтому оно срабатывает С ДВУХ сторон:
+		//   INSERT account с несуществующим owner_user_id → «User <id> not found»
+		//   DELETE user, ВЛАДЕЮЩЕГО аккаунтом              → «… owns accounts …»
+		// Второе — состояние «ещё ссылаются», противоположное «ссылки нет». До
+		// #2048 ветви не было вовсе: человек, которого только что вернул
+		// `ListUsers`, получал утверждение о собственном отсутствии, а клиент,
+		// ведущий состояние, снимал его строку у себя. Тон обеих сторон — часть
+		// контракта (api-conventions.md §Error-format); код у них ОДИН
+		// (`ErrFailedPrecondition`), различает их только сообщение.
+		//
+		// Полоса сужена до снятия ИМЕННО человека: это единственный глагол,
+		// нарушающий `accounts_owner_fk` со стороны ссылающихся. Широкое «всякая
+		// подсказка снятия» было бы неверно — снятие соседнего ресурса этого
+		// ключа не касается.
+		if kindHint == "User.Delete" {
+			return fmt.Sprintf("User %s owns accounts and cannot be deleted", idHint), iamerr.ErrReferenceInUse
+		}
 		return fmt.Sprintf("User %s not found", idHint), iamerr.ErrReferenceMissing
 	case "projects_account_fk":
 		// Direction-sensitive:
