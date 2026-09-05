@@ -69,7 +69,7 @@ func (u *ListByRoleUseCase) Execute(ctx context.Context, roleID string, f repoab
 	// the subject) are also visible.
 	filtered := out[:0:0]
 	for _, b := range out {
-		if authzguard.IsSelf(ctx, string(b.SubjectID)) {
+		if callerIsSubjectOf(ctx, b) {
 			filtered = append(filtered, b)
 			continue
 		}

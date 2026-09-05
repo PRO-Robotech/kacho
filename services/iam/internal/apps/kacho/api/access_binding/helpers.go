@@ -361,3 +361,25 @@ func (u *CreateAccessBindingUseCase) validateGlobalAllSelector(ctx context.Conte
 	}
 	return nil
 }
+
+// callerIsSubjectOf — самопол выдачи: принципал названным субъектом ЭТОЙ выдачи.
+//
+// Судится ВЕСЬ набор `Subjects`, а не легаси-первый `SubjectID`. До #2049 оба
+// самопола читали только `SubjectID` (= `Subjects[0]`), поэтому субъект,
+// стоящий в мультисубъектной выдаче не первым, своей же выдачи не видел:
+// самопол он не проходил и уезжал в ветвь права выдавать, которой у него нет.
+// Направление отказа безопасное (меньше доступа, не больше) — оттого дефект был
+// тихим: жалуется только тот, кому не показали.
+//
+// Набор наполняет путь чтения (`ListSubjects` / `projectSubjectsBatch`) той же
+// читающей транзакцией, что и саму строку. У легаси-строки без детей набор пуст
+// — тогда судится легаси-первый, и старая полоса не отзывается: это не запасной
+// путь, а единственный субъект такой выдачи.
+func callerIsSubjectOf(ctx context.Context, b domain.AccessBinding) bool {
+	for _, s := range b.Subjects {
+		if authzguard.IsSelf(ctx, string(s.ID)) {
+			return true
+		}
+	}
+	return authzguard.IsSelf(ctx, string(b.SubjectID))
+}

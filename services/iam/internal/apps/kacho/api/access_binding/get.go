@@ -100,7 +100,7 @@ func (u *GetAccessBindingUseCase) Execute(ctx context.Context, id domain.AccessB
 	//     `system_admin@cluster` — no DB owner). Bug B follow-on: the previous
 	//     ad-hoc account/project-only owner switch denied cluster-scope
 	//     bindings to the bootstrap cluster-admin (newman get-cluster-binding).
-	if authzguard.IsSelf(ctx, string(got.SubjectID)) {
+	if callerIsSubjectOf(ctx, got) {
 		return got, nil
 	}
 	// Release the read-TX before the authority check — requireGrantAuthority
