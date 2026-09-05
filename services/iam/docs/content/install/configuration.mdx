@@ -75,9 +75,27 @@ listener'ы. Каждый может требовать mTLS.
     <tr><td><code>KACHO_IAM_INTERNAL_SERVER_MTLS_…</code></td><td>mTLS internal listener'а (<code>InternalIAMService</code>)</td></tr>
     <tr><td><code>KACHO_IAM_HOOKS_SERVER_MTLS_…</code></td><td>mTLS hooks-listener'а (Kratos identity-хуки)</td></tr>
     <tr><td><code>KACHO_IAM_METRICS_SERVER_MTLS_…</code></td><td>mTLS metrics-listener'а (Prometheus)</td></tr>
+    <tr><td><code>KACHO_IAM_JWKSPROXY_SERVER_MTLS_…</code></td><td>TLS зеркала ключей проверки (<code>/.well-known/jwks.json</code>, односторонняя)</td></tr>
+    <tr><td><code>KACHO_IAM_REGISTRYTOKEN_SERVER_MTLS_…</code></td><td>TLS докерной полосы (<code>/iam/token</code>, односторонняя)</td></tr>
     <tr><td><code>KACHO_IAM_API_SERVER__METRICS_ENDPOINT</code></td><td>Адрес Prometheus <code>/metrics</code> (cluster-internal, по умолчанию <code>tcp://0.0.0.0:9095</code>). Имя без двойных подчёркиваний, стоявшее здесь прежде, встречается в дереве <b>только в комментарии</b> — читателя у него нет</td></tr>
   </tbody>
 </table>
+
+:::warning В боевой посадке транспорт этих рёбер ОБЯЗАТЕЛЕН
+Умолчание `…_ENABLE` — **открытый текст**, а не «слушатель выключен»: адреса всех
+HTTP-рёбер приходят умолчанием процесса и потому непусты всегда. Поэтому в боевой
+посадке процесс **отказывается стартовать**, пока транспорт не объявлен, и отказ
+называет ручку, адрес и то, что по этому проводу едет:
+
+```
+production mode requires TLS on the identity-provider hooks listener 0.0.0.0:9092
+(set KACHO_IAM_HOOKS_SERVER_MTLS_ENABLE=true with its cert/key): the identity
+provider's shared secret travels this hop …
+```
+
+Отказ называет **все** незакрытые рёбра сразу — профиль чинится за один заход, а не
+за три перезапуска. Вне боевой посадки страж молчит: стенд остаётся байт-идентичным.
+:::
 
 :::note Ручек с адресом api-gateway у iam больше нет
 Здесь стояла строка про адрес и клиентский mTLS до internal-порта api-gateway — iam ходил туда

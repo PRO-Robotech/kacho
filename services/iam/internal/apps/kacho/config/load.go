@@ -337,3 +337,10 @@ func (c APIServerConfig) InternalListenAddress() string { return listenAddress(c
 // HTTP server. Empty endpoint → empty (disabled). Separate internal port from
 // the gRPC public/internal listeners (default :9095).
 func (c APIServerConfig) MetricsListenAddress() string { return listenAddress(c.MetricsEndpoint) }
+
+// ListenAddressOf — адрес слушателя из объявленной конечной точки.
+//
+// Экспортируется затем, чтобы страж старта и проба профиля приводили конечную
+// точку к адресу ТЕМ ЖЕ разбором, каким это делает процесс: второй разбор
+// разошёлся бы с первым молча — на верном входе оба отвечают одинаково.
+func ListenAddressOf(endpoint string) string { return listenAddress(endpoint) }
