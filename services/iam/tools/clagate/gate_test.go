@@ -445,3 +445,52 @@ func TestGate_SummaryNamesCoordinatesEvenWhenFindingsAreMany(t *testing.T) {
 	}), minimalLedger)
 	require.Equal(t, "находок нет", clean.Summary(3))
 }
+
+// TestGate_LedgerOutsideTheJudgedTreeIsRefused — ведомость, лежащая ВНЕ дерева,
+// которое гейту велено судить, не читается.
+//
+// Предмет — не гипотетическая атака: `ledgerRel` приезжает в Inspect строкой, и
+// до этой пробы ЕДИНСТВЕННЫМ, что удерживало чтение внутри дерева, была
+// добросовестность вызывающего. Гейт, читающий файл за корнем, выносит вердикт
+// о дереве по документу, которого в этом дереве нет, — и вердикт выглядит
+// обычным.
+//
+// Инъекция меняет РОВНО ОДИН факт против положительного близнеца ниже: имя
+// ведомости. Ведомость при этом ГОДНАЯ и ЧИТАЕМАЯ — иначе «отказано» было бы
+// неотличимо от «не найдено», то есть проба зеленела бы на пустом месте.
+func TestGate_LedgerOutsideTheJudgedTreeIsRefused(t *testing.T) {
+	outer := t.TempDir()
+	dir := filepath.Join(outer, "tree")
+	require.NoError(t, os.MkdirAll(dir, 0o700))
+
+	// Годная ведомость лежит СНАРУЖИ судимого дерева и вполне читаема.
+	outside := filepath.Join(outer, "cla-ledger.yaml")
+	require.NoError(t, os.WriteFile(outside, []byte(minimalLedger), 0o600))
+	require.FileExists(t, outside)
+
+	_, err := clagate.Inspect(dir, filepath.Join("..", "cla-ledger.yaml"), "HEAD")
+	require.Error(t, err, "ведомость за корнем судимого дерева прочитана — "+
+		"вердикт вынесен по документу, которого в этом дереве нет")
+	require.Contains(t, err.Error(), "вне судимого дерева",
+		"отказ не называет своей причины: читатель не отличит выход за корень от отсутствия файла")
+}
+
+// TestGate_LedgerInsideTheJudgedTreeIsRead — ПОЛОЖИТЕЛЬНЫЙ БЛИЗНЕЦ инъекции выше.
+//
+// Отличается ровно одним фактом — ведомость лежит ВНУТРИ дерева. Без него отказ
+// зеленел бы и на проверке, отвергающей всякий путь.
+func TestGate_LedgerInsideTheJudgedTreeIsRead(t *testing.T) {
+	outer := t.TempDir()
+	dir := filepath.Join(outer, "tree")
+	require.NoError(t, os.MkdirAll(dir, 0o700))
+	require.NoError(t, os.WriteFile(filepath.Join(dir, "cla-ledger.yaml"),
+		[]byte(minimalLedger), 0o600))
+
+	_, err := clagate.Inspect(dir, "cla-ledger.yaml", "HEAD")
+	// Отказ здесь БУДЕТ — каталог не репозиторий, и обход истории до него не
+	// доходит. Утверждается не отсутствие отказа, а его ПРИЧИНА: ведомость,
+	// лежащая внутри дерева, внешней объявлена быть не может.
+	if err != nil && strings.Contains(err.Error(), "вне судимого дерева") {
+		t.Fatalf("ведомость ВНУТРИ дерева отвергнута как внешняя: %v", err)
+	}
+}

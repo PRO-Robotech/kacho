@@ -496,6 +496,9 @@ func declaredRPCs(dir string) (map[string][]string, int, error) {
 		if e.IsDir() || !strings.HasSuffix(e.Name(), ".proto") {
 			continue
 		}
+		// #nosec G304 -- e пришло из os.ReadDir(dir) строкой выше: e.Name() есть имя
+		// записи ЭТОГО каталога и сепаратора не содержит by construction, поэтому
+		// join за dir не выходит. Каталог контракта задаёт вызывающий.
 		body, rerr := os.ReadFile(filepath.Join(dir, e.Name()))
 		if rerr != nil {
 			return nil, 0, rerr
