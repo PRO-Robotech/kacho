@@ -240,6 +240,18 @@ func (u *DeleteAccessBindingUseCase) doDelete(ctx context.Context, id domain.Acc
 	if err := w.AccessBindingsW().EmitRelationDelete(ctx, revokeTuples); err != nil {
 		return nil, shared.MapRepoErr(err)
 	}
+	// Симметрия созданию (kacho#2055): создание со-коммитит событие реконсайла,
+	// которым материализуется пообъектный кортеж владельца, — снятие обязано
+	// со-коммитить ОТЗЫВ в ту же writer-tx. Каскад `ON DELETE` его не заменяет:
+	// он ключуется по идентификатору ПРИВЯЗКИ, а не снятого объекта. Воркер на
+	// событие зовёт `ReconcileObject`, а тот на отсутствующем объекте получает
+	// пустой желаемый набор — что и есть отзыв.
+	// Снятие ВЫПУЩЕННЫХ кортежей выше — не то же самое: оно снимает набор,
+	// который эмитировала САМА привязка. Событие отзывает пообъектные
+	// кортежи, которые материализовали ДРУГИЕ привязки НА этом объекте.
+	if rerr := w.EmitReconcileEvent(ctx, shared.ReconcileEventDelete, "iam.accessBinding", string(id)); rerr != nil {
+		return nil, shared.MapRepoErr(rerr)
+	}
 	// Emit subject_change_outbox row in the same TX as the deletion: a rollback
 	// of this TX will not leave an orphan outbox row (atomicity guarantee).
 	// НА КАЖДОГО субъекта привязки, а не на легаси-одиночку: см.
