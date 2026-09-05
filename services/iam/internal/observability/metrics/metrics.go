@@ -113,7 +113,7 @@ func NewRegistry() *Registry {
 	r := &Registry{
 		reg: reg,
 		authzDuration: prometheus.NewHistogramVec(prometheus.HistogramOpts{
-			Name: "kacho_iam_authz_check_duration_seconds",
+			Name: Namespace + "_authz_check_duration_seconds",
 			Help: "Latency of the authz Check hot path (FGA Check + transport), by rpc lane and outcome. " +
 				"SLO budget: <=30ms p95. On the BatchCheck lane `allowed` means the CALL completed, not that a " +
 				"question was allowed: one batch carries many answers, and a single label over all of them would " +
@@ -123,11 +123,11 @@ func NewRegistry() *Registry {
 			Buckets: []float64{0.001, 0.0025, 0.005, 0.01, 0.02, 0.03, 0.05, 0.1, 0.25, 0.5, 1},
 		}, []string{"rpc", "allowed"}),
 		authzDecisions: prometheus.NewCounterVec(prometheus.CounterOpts{
-			Name: "kacho_iam_authz_check_decisions_total",
+			Name: Namespace + "_authz_check_decisions_total",
 			Help: "Authz Check decisions by rpc and outcome (allow|deny|error).",
 		}, []string{"rpc", "decision"}),
 		authzStoreAttempts: prometheus.NewCounterVec(prometheus.CounterOpts{
-			Name: "kacho_iam_authz_store_attempts_total",
+			Name: Namespace + "_authz_store_attempts_total",
 			Help: "Attempts against the authorization store by operation, outcome " +
 				"(ok|store_rejected|store_error|store_unreachable|pooled_conn_dropped|" +
 				"conn_dropped|store_timeout|decode_failed) and whether the connection " +
@@ -142,7 +142,7 @@ func NewRegistry() *Registry {
 // Namespace — префикс имён ВСЕХ серий этого сервиса. Отдельная константа, а не
 // литерал по месту: имя серии — контракт с панелями и правилами тревог, и
 // собранное в двух местах оно разъедется на первом переименовании.
-const Namespace = "kacho_iam"
+const Namespace = "kaname"
 
 // RegisterPoolStats подключает к этому реестру состояние ОДНОГО пула соединений
 // под именем `poolName` (`primary`, `replica`).
@@ -266,8 +266,8 @@ func (r *Registry) ObserveAuthzStoreAttempt(op, outcome string, reused bool) {
 
 // Задержка обслуженного вызова наблюдается НЕ ЗДЕСЬ.
 //
-// Здесь стояла своя пара серий (`kacho_iam_grpc_server_handling_seconds` и
-// `kacho_iam_grpc_server_handled_total`) со своим интерсептором и своим
+// Здесь стояла своя пара серий (`kaname_grpc_server_handling_seconds` и
+// `kaname_grpc_server_handled_total`) со своим интерсептором и своим
 // разбором полного имени метода. Предмет у неё тот же, что у платформенного
 // измерителя `pkg/grpcsrv.ServerLatency`, — а два места об одном предмете
 // расходятся: эта пара смешивала отказ с успехом в одном ряду (быстрый отказ

@@ -672,7 +672,7 @@ func buildServices(pool, slavePool *pgxpool.Pool, opsRepo operations.FullRepo,
 	// Instrument the authz Check hot path at the adapter boundary (Clean
 	// Architecture): the metrics decorator wraps the CheckRelation port the
 	// InternalIAMService gate calls per-RPC (vpc/compute/nlb), recording the
-	// kacho_iam_authz_check_* histogram + decision counter without the
+	// kaname_authz_check_* histogram + decision counter without the
 	// AuthorizeService use-case importing prometheus. nil registry → plain
 	// authorizer (metrics disabled).
 	var checkAuthz internaliamapp.Authorizer = authzServices.authorizeSvc

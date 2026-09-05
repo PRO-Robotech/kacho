@@ -26,15 +26,15 @@ import (
 // намеренно: имя серии — контракт с панелями и правилами тревог, и вывод его
 // из того же кода, который его строит, не утверждал бы ничего.
 var wantPoolStatsNames = []string{
-	"kacho_iam_db_pool_acquired_conns",
-	"kacho_iam_db_pool_idle_conns",
-	"kacho_iam_db_pool_total_conns",
-	"kacho_iam_db_pool_max_conns",
-	"kacho_iam_db_pool_constructing_conns",
-	"kacho_iam_db_pool_acquire_total",
-	"kacho_iam_db_pool_empty_acquire_total",
-	"kacho_iam_db_pool_canceled_acquire_total",
-	"kacho_iam_db_pool_acquire_wait_seconds_total",
+	"kaname_db_pool_acquired_conns",
+	"kaname_db_pool_idle_conns",
+	"kaname_db_pool_total_conns",
+	"kaname_db_pool_max_conns",
+	"kaname_db_pool_constructing_conns",
+	"kaname_db_pool_acquire_total",
+	"kaname_db_pool_empty_acquire_total",
+	"kaname_db_pool_canceled_acquire_total",
+	"kaname_db_pool_acquire_wait_seconds_total",
 }
 
 // collectMetrics снимает коллектор ровно так, как это сделает сбор: через
@@ -175,12 +175,12 @@ func TestPoolStatsCollectorReportsLiveNumbers(t *testing.T) {
 			"семейство %s не доехало до /metrics", name)
 	}
 
-	require.GreaterOrEqual(t, sampleValue(t, body, "kacho_iam_db_pool_acquired_conns"), 1.0,
+	require.GreaterOrEqual(t, sampleValue(t, body, "kaname_db_pool_acquired_conns"), 1.0,
 		"удерживается соединение — занятых обязано быть не меньше одного; ноль здесь означал бы вшитую константу")
-	require.GreaterOrEqual(t, sampleValue(t, body, "kacho_iam_db_pool_total_conns"), 1.0)
-	require.Greater(t, sampleValue(t, body, "kacho_iam_db_pool_max_conns"), 0.0,
+	require.GreaterOrEqual(t, sampleValue(t, body, "kaname_db_pool_total_conns"), 1.0)
+	require.Greater(t, sampleValue(t, body, "kaname_db_pool_max_conns"), 0.0,
 		"потолок пула обязан быть положительным — иначе делить на него нечего")
-	require.GreaterOrEqual(t, sampleValue(t, body, "kacho_iam_db_pool_acquire_total"), 1.0,
+	require.GreaterOrEqual(t, sampleValue(t, body, "kaname_db_pool_acquire_total"), 1.0,
 		"счётчик выдач обязан двигаться: он и отличает «пул простаивает» от «наблюдения нет»")
 }
 

@@ -92,3 +92,13 @@ func RenamedServices() map[string]string {
 	}
 	return out
 }
+
+// EnvPrefix — корневой сегмент имён окружения части продукта.
+//
+// Выводится из ТОГО ЖЕ имени, что чарт и образ: `vpc` → `KACHO_VPC`,
+// `api-gateway` → `KACHO_API_GATEWAY`, `iam` → `KANAME`. Отдельной ведомости
+// у окружения нет намеренно — своя ведомость стала бы третьим словарём об одном
+// предмете и разошлась бы с двумя первыми молча.
+func EnvPrefix(serviceDir string) string {
+	return strings.ToUpper(strings.ReplaceAll(ChartName(serviceDir), "-", "_"))
+}

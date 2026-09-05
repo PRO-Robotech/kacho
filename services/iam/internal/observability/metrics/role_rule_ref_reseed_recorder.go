@@ -35,7 +35,7 @@ type RuleRefReseedRecorder struct {
 func (r *Registry) NewRuleRefReseedRecorder() *RuleRefReseedRecorder {
 	rec := &RuleRefReseedRecorder{
 		outcomes: prometheus.NewCounterVec(prometheus.CounterOpts{
-			Name: "kacho_iam_role_rule_ref_reseeds_total",
+			Name: Namespace + "_role_rule_ref_reseeds_total",
 			Help: "Исходы пересчёта проекции объявленных сегментов правила " +
 				"(kacho_iam.role_rule_ref) на старте, по одной системной роли: " +
 				"reseeded — транзакция роли закоммичена; failed — откачена. " +

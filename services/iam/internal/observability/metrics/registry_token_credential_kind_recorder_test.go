@@ -38,7 +38,7 @@ func TestRegistryTokenCredentialKindRecorder_AllThreeOutcomesAreLive(t *testing.
 	// одинаково лишь до тех пор, пока их не различили.
 	for _, o := range outcomes {
 		_, present := labelledCounter(t, reg,
-			"kacho_iam_registry_token_credential_kind_total", map[string]string{"outcome": o})
+			"kaname_registry_token_credential_kind_total", map[string]string{"outcome": o})
 		require.False(t, present,
 			"до первого наблюдения серии %q быть не должно — иначе проба ниже ничего не утверждает", o)
 	}
@@ -54,7 +54,7 @@ func TestRegistryTokenCredentialKindRecorder_AllThreeOutcomesAreLive(t *testing.
 		registrytokenuc.OutcomeKeyMaterialAcceptedInWindow: 1,
 	} {
 		got, present := labelledCounter(t, reg,
-			"kacho_iam_registry_token_credential_kind_total", map[string]string{"outcome": o})
+			"kaname_registry_token_credential_kind_total", map[string]string{"outcome": o})
 		require.True(t, present, "серия исхода %q обязана существовать после наблюдения", o)
 		require.Equal(t, want, got, "исход %q посчитан неверно", o)
 	}

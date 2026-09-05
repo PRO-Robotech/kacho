@@ -23,7 +23,7 @@ import (
 //     NOTIFY в окне disconnect'а).
 type ListenInvalidator struct {
 	// ConnString — pgx connection string на kacho_iam Postgres.
-	// Пример: "postgres://kacho_iam_listener:pwd@host:5432/kacho_iam?sslmode=disable".
+	// Пример: "postgres://kaname_listener:pwd@host:5432/kacho_iam?sslmode=disable".
 	ConnString string
 
 	// Channel — обычно "kacho_iam_subjects".

@@ -814,7 +814,7 @@ func renderWDReport(results []wdResult, wall time.Duration, final bool) string {
 	}
 
 	w("\nНАСЫЩЕНИЕ ШТАТНОГО ПРИБОРА\n")
-	w("  Корзины `kacho_iam_binding_materialization_tuples` кончаются на 5000. Точка,\n")
+	w("  Корзины `kaname_binding_materialization_tuples` кончаются на 5000. Точка,\n")
 	w("  чьё число членов выше, попадает в верхнюю корзину целиком и там неразличима:\n")
 	w("  штатной наблюдаемости на этом режиме НЕТ, и это результат, а не оговорка.\n")
 	sat := 0

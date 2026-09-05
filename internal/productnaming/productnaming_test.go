@@ -156,3 +156,18 @@ func TestIsProductImageRepoSeesBothNamingForms(t *testing.T) {
 		}
 	}
 }
+
+func TestEnvPrefixFollowsTheSameNameAsTheChart(t *testing.T) {
+	// Приставка окружения выводится из имени части, а не из имени платформы.
+	// Положительный контроль обеих форм: без него проверка зеленела бы на
+	// выводе, который не различает переименованную часть и любую другую.
+	for _, c := range []struct{ svc, want string }{
+		{"iam", "KANAME"},
+		{"vpc", "KACHO_VPC"},
+		{"api-gateway", "KACHO_API_GATEWAY"},
+	} {
+		if got := productnaming.EnvPrefix(c.svc); got != c.want {
+			t.Errorf("EnvPrefix(%q) = %q, ожидалось %q", c.svc, got, c.want)
+		}
+	}
+}

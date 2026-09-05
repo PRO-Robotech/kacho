@@ -85,7 +85,7 @@ type Config struct {
 
 const outboxTable = "kacho_iam.fga_outbox"
 
-func label() string { return "kacho_iam_fga_outbox_pending" }
+func label() string { return "kaname_fga_outbox_pending" }
 `
 	names, literals, err := channelNamesBoundIn("synthetic.go", []byte(src))
 	require.NoError(t, err)
@@ -97,7 +97,7 @@ func label() string { return "kacho_iam_fga_outbox_pending" }
 			"потребителя там, где его нет")
 	assert.NotContains(t, names, "kacho_iam.fga_outbox",
 		"имя ТАБЛИЦЫ принято за имя канала: объявление названо не на Channel")
-	assert.NotContains(t, names, "kacho_iam_fga_outbox_pending",
+	assert.NotContains(t, names, "kaname_fga_outbox_pending",
 		"посторонний литерал принят за имя канала — он ничем не связан как имя канала")
 }
 
@@ -136,7 +136,7 @@ func TestIntegration_ProducedChannelWithoutAConsumerIsFound(t *testing.T) {
 		"на нетронутой схеме уже есть беспотребительский канал — инъекция ниже "+
 			"доказывала бы не себя")
 
-	const injected = "kacho_iam_channel_nobody_names"
+	const injected = "kaname_channel_nobody_names"
 	for _, stmt := range []string{
 		`CREATE FUNCTION kacho_iam.injected_notify() RETURNS trigger LANGUAGE plpgsql AS $$
 		 BEGIN PERFORM pg_notify('` + injected + `', ''); RETURN NEW; END; $$`,

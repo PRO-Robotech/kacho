@@ -74,7 +74,7 @@ snapshot() {
 pool_stats() {
   for p in $(iam_pods); do
     k exec "$p" -c kaname -- sh -c \
-      'wget -qO- http://127.0.0.1:9095/metrics 2>/dev/null | grep -E "^kacho_iam_db_pool_|^kacho_iam_authz_check_duration_seconds_count|^kacho_iam_shadow" || true' \
+      'wget -qO- http://127.0.0.1:9095/metrics 2>/dev/null | grep -E "^kaname_db_pool_|^kaname_authz_check_duration_seconds_count|^kaname_shadow" || true' \
       2>/dev/null | sed "s|^|$p |"
   done
 }

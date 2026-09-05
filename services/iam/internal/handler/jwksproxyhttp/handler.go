@@ -194,7 +194,7 @@ func NewHandler(cfg Config) *Handler {
 // difference is "every docker pull is 401" versus "everything is fine".
 //
 // WHO READS THIS. The composition root registers a scrape collector over these
-// counters (kacho_iam_jwks_mirror_outcomes_total), so Served is published beside
+// counters (kaname_jwks_mirror_outcomes_total), so Served is published beside
 // the two refusal reasons and "never refused" stays distinguishable from "never
 // reached". Здесь стояло «процесс сообщает их в журнале жизненного цикла» — такого
 // читателя в дереве не было НИ ОДНОГО, то есть комментарий описывал наблюдаемость,

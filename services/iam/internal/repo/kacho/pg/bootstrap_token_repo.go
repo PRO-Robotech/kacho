@@ -28,7 +28,7 @@ const bootstrapSvaID = "svab91854890de887e6d"
 
 // bootstrapProvisionLockName — the advisory-lock namespace string; hashtext()'d to
 // the lock key. Distinct string ⇒ collision-free with any other advisory lock.
-const bootstrapProvisionLockName = "kacho_iam_bootstrap_sa_provision"
+const bootstrapProvisionLockName = "kaname_bootstrap_sa_provision"
 
 // BootstrapStore is the pg adapter implementing
 // bootstrap_token.BootstrapStore.

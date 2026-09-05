@@ -16,7 +16,7 @@ import (
 // Набор клеток ЗАКРЫТ и приходит из констант применителя
 // (`clients.InviteMailOutcomes`), а не из ответа почтового узла: иначе
 // кардинальность росла бы с трафиком, а имена клеток задавал бы чужой процесс.
-const InviteMailOutcomesMetric = "kacho_iam_invite_mail_outcomes_total"
+const InviteMailOutcomesMetric = "kaname_invite_mail_outcomes_total"
 
 // InviteMailRecorder — счётчик исходов отправки письма приглашения.
 //

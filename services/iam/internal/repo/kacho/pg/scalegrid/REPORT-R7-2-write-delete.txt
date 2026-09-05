@@ -96,7 +96,7 @@ R7-2 — ПРЕДЕЛ ПРОЧНОСТИ: ЗАПИСЬ и УДАЛЕНИЕ (пр
 полная, ВЕЕР выдач         51200                 157184           3.0700 INSERT INTO kacho_iam.fga_outbox×51200 · INSERT INTO kacho_iam.access_binding_emitted_tuples×51200 · INSERT INTO kacho_iam.access_binding_target_members×51200
 
 НАСЫЩЕНИЕ ШТАТНОГО ПРИБОРА
-  Корзины `kacho_iam_binding_materialization_tuples` кончаются на 5000. Точка,
+  Корзины `kaname_binding_materialization_tuples` кончаются на 5000. Точка,
   чьё число членов выше, попадает в верхнюю корзину целиком и там неразличима:
   штатной наблюдаемости на этом режиме НЕТ, и это результат, а не оговорка.
   точек сверх верхней корзины: 10 из 18

@@ -59,7 +59,7 @@ func TestAuthzCheck_ObservesHistogramSample(t *testing.T) {
 		Duration: 0.005,
 	})
 
-	const want = `kacho_iam_authz_check_duration_seconds_count{allowed="true",rpc="CheckRelation"} 1`
+	const want = `kaname_authz_check_duration_seconds_count{allowed="true",rpc="CheckRelation"} 1`
 	got := dumpMetrics(t, reg)
 	if !strings.Contains(got, want) {
 		t.Fatalf("histogram sample missing.\nwant substring: %s\ngot:\n%s", want, got)
@@ -73,7 +73,7 @@ func TestAuthzCheck_DenyCounter(t *testing.T) {
 
 	reg.ObserveAuthz(metrics.AuthzObservation{RPC: "Check", Allowed: false, Err: false, Duration: 0.002})
 
-	const want = `kacho_iam_authz_check_decisions_total{decision="deny",rpc="Check"} 1`
+	const want = `kaname_authz_check_decisions_total{decision="deny",rpc="Check"} 1`
 	got := dumpMetrics(t, reg)
 	if !strings.Contains(got, want) {
 		t.Fatalf("deny counter missing.\nwant substring: %s\ngot:\n%s", want, got)
@@ -87,7 +87,7 @@ func TestAuthzCheck_ErrorCounter(t *testing.T) {
 
 	reg.ObserveAuthz(metrics.AuthzObservation{RPC: "Check", Allowed: false, Err: true, Duration: 0.001})
 
-	const want = `kacho_iam_authz_check_decisions_total{decision="error",rpc="Check"} 1`
+	const want = `kaname_authz_check_decisions_total{decision="error",rpc="Check"} 1`
 	got := dumpMetrics(t, reg)
 	if !strings.Contains(got, want) {
 		t.Fatalf("error counter missing.\nwant substring: %s\ngot:\n%s", want, got)
@@ -137,7 +137,7 @@ func TestRegistererWindowCarriesThePlatformLatencySeries(t *testing.T) {
 	}
 	// Зеркало: прежней пары серий больше нет. Две серии об одном предмете
 	// разъезжаются, и оставленная про запас читалась бы панелями как живая.
-	if strings.Contains(got, "kacho_iam_grpc_server_") {
+	if strings.Contains(got, "kaname_grpc_server_") {
 		t.Fatalf("прежняя пара серий пережила свою замену — два места об одном предмете:\n%s", got)
 	}
 }

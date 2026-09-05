@@ -93,8 +93,8 @@ JWKS, не вердикт) и спрашивает отзыв у Hydra (кэш �
 ## Как разложена цена — делением измеренного на измеренное
 
 ```
-проверок на операцию      = Δ kacho_iam_authz_check_duration_seconds_count / Δ обслужено
-время проверок на операцию = Δ kacho_iam_authz_check_duration_seconds_sum   / Δ обслужено
+проверок на операцию      = Δ kaname_authz_check_duration_seconds_count / Δ обслужено
+время проверок на операцию = Δ kaname_authz_check_duration_seconds_sum   / Δ обслужено
 ```
 
 > **Этот счётчик видит НЕ ВСЮ проверку, и это надо знать, читая столбец.**

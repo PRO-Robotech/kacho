@@ -68,7 +68,7 @@ func outboxPicture(t *testing.T, r *Registry, table string) []string {
 
 	var out []string
 	for _, fam := range families {
-		if !strings.HasPrefix(fam.GetName(), "kacho_iam_outbox_") {
+		if !strings.HasPrefix(fam.GetName(), "kaname_outbox_") {
 			continue
 		}
 		for _, m := range fam.GetMetric() {

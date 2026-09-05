@@ -38,10 +38,10 @@ import (
 // «замеров не было» и «замеры отказывают» требуют разных действий.
 const (
 	// IdentitiesTotalMetric — личности, которые платформа видела за всё время.
-	IdentitiesTotalMetric = "kacho_iam_identities_total"
+	IdentitiesTotalMetric = "kaname_identities_total"
 
 	// IdentityLedgerSamplesMetric — исходы фонового замера журнала.
-	IdentityLedgerSamplesMetric = "kacho_iam_identity_ledger_samples_total"
+	IdentityLedgerSamplesMetric = "kaname_identity_ledger_samples_total"
 
 	// IdentityLedgerSampleOK — замер прочитал журнал.
 	IdentityLedgerSampleOK = "ok"

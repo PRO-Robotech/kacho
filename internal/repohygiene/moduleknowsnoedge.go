@@ -103,6 +103,8 @@ import (
 	"sort"
 	"strconv"
 	"strings"
+
+	"github.com/PRO-Robotech/kacho/internal/productnaming"
 )
 
 // edgeContractImportMarker — по чему узнаётся контракт края в пути импорта.
@@ -169,8 +171,10 @@ func (f ModuleKnowsNoEdgeFinding) String() string {
 // Экспортируется, чтобы проба называла ту же величину, что и анализатор: вторая
 // копия предиката разошлась бы с первой молча.
 func EdgeAddressKnobPrefixFor(module string) string {
-	up := strings.ToUpper(strings.ReplaceAll(module, "-", "_"))
-	return "KACHO_" + up + "_GATEWAY"
+	// Приставка окружения модуля спрашивается у владельца имён, а не собирается
+	// здесь из имени платформы: часть продукта вправе носить СВОЁ имя (#2076), и
+	// сборка «KACHO_» + модуль называла бы ручку, которой у такой части нет.
+	return productnaming.EnvPrefix(module) + "_GATEWAY"
 }
 
 // AuditModuleKnowsNoEdge обходит дерево и возвращает находки с переписью.

@@ -37,7 +37,7 @@
 ## Как разводились две гипотезы
 
 Знаменатель доли — `diverged / compared` (обе клетки объявлены закрытым набором
-`kacho_iam_shadow_verdict_outcomes_total`; `diverged` — подмножество `compared`).
+`kaname_shadow_verdict_outcomes_total`; `diverged` — подмножество `compared`).
 Дельты счётчиков берутся между сводками сравнителя до и после подачи.
 
 | # | подача | сравнено | разошлось | **доля** |

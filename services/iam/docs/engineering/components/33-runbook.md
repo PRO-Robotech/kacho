@@ -381,10 +381,10 @@ UNION ALL SELECT 'audit (pending)',   count(*) FILTER (WHERE status='pending'), 
 "
 
 # LRO in-flight (метрика на :9095).
-kubectl -n kacho exec deploy/kaname -- curl -s http://localhost:9095/metrics | grep kacho_iam_lro_inflight
+kubectl -n kacho exec deploy/kaname -- curl -s http://localhost:9095/metrics | grep kaname_lro_inflight
 
 # Решения authz (rate/итог) — деградация видна по росту deny.
-kubectl -n kacho exec deploy/kaname -- curl -s http://localhost:9095/metrics | grep kacho_iam_authz_check_decisions_total
+kubectl -n kacho exec deploy/kaname -- curl -s http://localhost:9095/metrics | grep kaname_authz_check_decisions_total
 
 # Graceful restart Deployment.
 kubectl rollout restart deploy/kaname -n kacho

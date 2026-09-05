@@ -11,8 +11,8 @@
 # поэтому доля «проверка доступа» получается ДЕЛЕНИЕМ ИЗМЕРЕННОГО НА
 # ИЗМЕРЕННОЕ, а не оценкой:
 #
-#   проверок службы на операцию = Δ kacho_iam_authz_check_duration_seconds_count / Δ операций
-#   времени службы на операцию  = Δ kacho_iam_authz_check_duration_seconds_sum   / Δ операций
+#   проверок службы на операцию = Δ kaname_authz_check_duration_seconds_count / Δ операций
+#   времени службы на операцию  = Δ kaname_authz_check_duration_seconds_sum   / Δ операций
 #   проверок КРАЯ на операцию   = Δ kacho_api_gateway_authz_check_decisions_total / Δ операций
 #
 # ПРОВЕРОК ДВЕ, И СЧИТАТЬ НАДО ОБЕ (#772). На пути чтения по id край решает
@@ -92,8 +92,8 @@ authz_counters() {
     m=$(k exec "$p" -c kaname -- sh -c 'wget -qO- http://127.0.0.1:9095/metrics 2>/dev/null' 2>/dev/null) || m=""
     if [ -z "$m" ]; then echo "checks=NA sum=NA"; return 0; fi
     local c s
-    c=$(echo "$m" | awk '/^kacho_iam_authz_check_duration_seconds_count/{t+=$2} END{printf "%.0f", t+0}')
-    s=$(echo "$m" | awk '/^kacho_iam_authz_check_duration_seconds_sum/{t+=$2}   END{printf "%.6f", t+0}')
+    c=$(echo "$m" | awk '/^kaname_authz_check_duration_seconds_count/{t+=$2} END{printf "%.0f", t+0}')
+    s=$(echo "$m" | awk '/^kaname_authz_check_duration_seconds_sum/{t+=$2}   END{printf "%.6f", t+0}')
     total_c=$(awk -v a="$total_c" -v b="$c" 'BEGIN{printf "%.0f", a+b}')
     total_s=$(awk -v a="$total_s" -v b="$s" 'BEGIN{printf "%.6f", a+b}')
   done
@@ -108,7 +108,7 @@ authz_counters() {
 # занижено — и занижено МОЛЧА: половина просто не участвовала в делении.
 #
 # Серия края одноимённа по форме (`kacho_api_gateway_authz_*` против
-# `kacho_iam_authz_*`), поэтому складывать их законно, а держать порознь —
+# `kaname_authz_*`), поэтому складывать их законно, а держать порознь —
 # обязательно: доля попаданий кеша у них своя, и смешение скрыло бы, чей именно
 # кеш промахивается.
 #
@@ -137,7 +137,7 @@ pool_stats() {
   local p
   for p in $(iam_pods); do
     k exec "$p" -c kaname -- sh -c \
-      'wget -qO- http://127.0.0.1:9095/metrics 2>/dev/null | grep -E "^kacho_iam_db_pool_" || true' 2>/dev/null | sed "s|^|$p |"
+      'wget -qO- http://127.0.0.1:9095/metrics 2>/dev/null | grep -E "^kaname_db_pool_" || true' 2>/dev/null | sed "s|^|$p |"
   done
 }
 

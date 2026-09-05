@@ -971,7 +971,7 @@ func runServe(cfg config.Config) error {
 			"open_now", time.Now().Before(registryTokenKeyMaterialWindow),
 			"knob", "api-server.registry-token.key-material-window-until",
 			"effect", "the docker lane keeps accepting key material in the password field until that instant",
-			"close_when", "kacho_iam_registry_token_credential_kind_total{outcome=\"key_material_accepted_in_window\"} stops growing")
+			"close_when", "kaname_registry_token_credential_kind_total{outcome=\"key_material_accepted_in_window\"} stops growing")
 	}
 	var registryTokenHandler http.Handler
 	if registryTokenAddr != "" {

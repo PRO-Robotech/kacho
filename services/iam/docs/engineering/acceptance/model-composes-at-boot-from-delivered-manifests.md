@@ -727,7 +727,7 @@ $ go list -deps ./services/iam/cmd/kaname | grep -c modelrender
 | П-13 | `relverdict.sourcesOf` | `relverdict/query.go:1089` | проброс ошибки плана **без обёртки** |
 | П-14 | `authzmodel.Plans.Plan` | `authzmodel.go:126` | запомненный план (`by map`, `sync.RWMutex`); `authzmodel: %w` поверх `ErrTypeNotDeclared` |
 | П-15 | `Grounds.TypeNotDeclared` | `query.go:478`; выставляется `:634-636` (`Ask`) и `:952-958` (`AskMany`) | основание отказа |
-| П-16 | `Asker.UndeclaredTypeDenials` | поле `asker.go:114`, инкремент `:167-169`, читатель `:145-150`, провязка `wiring.go:248` | счётчик → метрика `kacho_iam_relation_verdict_undeclared_type_denials_total` |
+| П-16 | `Asker.UndeclaredTypeDenials` | поле `asker.go:114`, инкремент `:167-169`, читатель `:145-150`, провязка `wiring.go:248` | счётчик → метрика `kaname_relation_verdict_undeclared_type_denials_total` |
 | П-17 | `tools/modelcanoncheck` | `main.go:95` → `modelrender.Sweep` | побайтовая сверка рендера с каноном + перепись (27/27, 79923 байта, RC=0) |
 | П-18 | проба #1969 | `applied_type_reaches_the_verdict_integration_test.go:419`; ветвление `:477-492`; контроль предпосылки в обе стороны `:425-435` | обе ветви — `deny` с основанием и законная `Allow` без единого `require` |
 | П-19 | `facts := u.cat.Facts()` | `role/create.go:136` | снимок живых строк **уже связан** в той же функции, двенадцатью строками выше Д-роли |
@@ -870,7 +870,7 @@ $ go list -deps ./services/iam/cmd/kaname | grep -c modelrender
 - **Когда:** вердикт спрашивает план.
 - **Тогда:** `deny`; `Grounds.TypeNotDeclared = true`; счётчик
   `Asker.UndeclaredTypeDenials` растёт; метрика
-  `kacho_iam_relation_verdict_undeclared_type_denials_total` отдаёт прирост;
+  `kaname_relation_verdict_undeclared_type_denials_total` отдаёт прирост;
   текст — `authzmodel: authzplan: тип не объявлен моделью: "<тип>"`.
 - **Почему это сценарий приёмки, а не чужое хозяйство:** #1969 объявляет
   различимость «право не выдано» и «модель типа не знает» тем, что **обязано
