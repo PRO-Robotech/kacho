@@ -11,7 +11,7 @@
 // собирает её из частей (`postgres://<user>@<host>:<port>/<db>`), поэтому при
 // незаданном адресе базы она выходит НЕПУСТОЙ и с пустым хостом:
 //
-//	postgres://iam@:5432/kacho_iam
+//	postgres://iam@:5432/kaname
 //
 // То есть по пути чарта прежний предикат не мог сработать НИ ПРИ КАКОМ входе:
 // величина, которую он судит, непуста by construction. Предикат оказался уже
@@ -57,7 +57,7 @@ func TestValidate_RefusesDSNWithoutAHost(t *testing.T) {
 	cfg := goodEndpoints(config.ModeProduction, "require")
 	cfg.AuthN.HookSharedSecret = "hook-secret"
 	cfg.AuthN.JWKSEncryptionKeyHex = strings.Repeat("ab", 32)
-	cfg.Repository.Postgres.URL = "postgres://iam@:5432/kacho_iam"
+	cfg.Repository.Postgres.URL = "postgres://iam@:5432/kaname"
 
 	err := cfg.Validate()
 	if err == nil {
@@ -79,7 +79,7 @@ func TestValidate_AcceptsDSNWithAHost(t *testing.T) {
 	cfg := goodEndpoints(config.ModeProduction, "require")
 	cfg.AuthN.HookSharedSecret = "hook-secret"
 	cfg.AuthN.JWKSEncryptionKeyHex = strings.Repeat("ab", 32)
-	cfg.Repository.Postgres.URL = "postgres://iam@pg:5432/kacho_iam"
+	cfg.Repository.Postgres.URL = "postgres://iam@pg:5432/kaname"
 
 	if err := cfg.Validate(); err != nil {
 		t.Fatalf("Validate() = %q, want nil: адрес базы задан, отвергать нечего", err.Error())
@@ -118,7 +118,7 @@ func TestValidate_RefusalDoesNotEchoTheDBPassword(t *testing.T) {
 	cfg := goodEndpoints(config.ModeProduction, "require")
 	cfg.AuthN.HookSharedSecret = "hook-secret"
 	cfg.AuthN.JWKSEncryptionKeyHex = strings.Repeat("ab", 32)
-	cfg.Repository.Postgres.URL = "postgres://iam:" + password + "@:5432/kacho_iam"
+	cfg.Repository.Postgres.URL = "postgres://iam:" + password + "@:5432/kaname"
 
 	err := cfg.Validate()
 	if err == nil {

@@ -110,15 +110,24 @@ func TestSchemaInjection_NeighbourNamespaceStaysSilent(t *testing.T) {
 		"пропущенные соседи не сосчитаны — «пропущено 0» стало бы неотличимо от «полоса не рассматривалась»")
 }
 
-// ── Ось 3: имя БАЗЫ в строке подключения МОЛЧИТ и считается отдельно ────────
+// ── Ось 3: имя БАЗЫ в адресе — НАХОДКА, и она называет ИМЕННО базу ──────────
+//
+// Полоса переведена из пропуска в находку вместе с переименованием базы: у
+// освобождения не стало предмета, а освобождение без предмета есть слепая зона.
+// Утверждается ДВОЕ: находка есть (иначе полоса молчала бы по-прежнему) и она
+// называет объект «база», а не «схема», — иначе читателя пошлют править
+// квалификатор оператора там, где править надо профиль развёртывания.
 
-func TestSchemaInjection_DatabaseNameStaysSilent(t *testing.T) {
+func TestSchemaInjection_DatabaseNameInAnAddressIsFound(t *testing.T) {
 	body := soundSchemaBody + "-- postgres://u:p@pg-iam:5432/kacho_iam?sslmode=require\n"
 
 	census, findings, err := scanSchemaName(syntheticCorpus(t, schemaRootWith(t, body)))
 	require.NoError(t, err)
-	require.Empty(t, findings, "имя базы объявлено именем схемы: база и схема — разные объекты")
-	require.Equal(t, 1, census.skippedDatabase, "пропущенные имена базы не сосчитаны")
+	require.Len(t, findings, 1, "имя базы в адресе пропущено: освобождение пережило свой предмет")
+	require.Equal(t, "база", findings[0].object,
+		"находка назвала не тот объект Postgres — починка у схемы и у базы разная")
+	require.Equal(t, 1, census.databaseHits, "имена базы не сосчитаны отдельным числом")
+	require.Zero(t, census.retiredHits, "имя базы засчитано схемой: различение форм потеряно")
 }
 
 // ── Ось 4: положительный контроль не выполняется частью слова ───────────────
@@ -194,29 +203,36 @@ func TestSchemaInjection_TheSameProseOutsideAcceptanceIsFound(t *testing.T) {
 
 // ── Ось 7: ВТОРАЯ форма имени базы — значение ключа профиля ─────────────────
 //
-// Первая форма (последний сегмент строки подключения) проверена осью 3. Здесь
-// вторая: значение ключа профиля развёртывания. Пара обязательна, потому что
-// распознаватель, знающий одну форму из двух, на второй даёт находку там, где
-// нарушения нет, — и снимают его как непонятный.
+// Первая форма (последний сегмент адреса) проверена осью 3. Здесь вторая:
+// значение ключа профиля развёртывания. Пара обязательна и ПОСЛЕ перевода
+// полосы в находку: обе формы теперь находки, но различает их ОБЪЕКТ в тексте,
+// и распознаватель, знающий одну форму из двух, назовёт вторую схемой.
 
-func TestSchemaInjection_DatabaseNameAsAProfileKeyStaysSilent(t *testing.T) {
+func TestSchemaInjection_DatabaseNameAsAProfileKeyIsFound(t *testing.T) {
 	body := soundSchemaBody + "db:\n  host: pg-iam\n  name: kacho_iam\n"
 
 	census, findings, err := scanSchemaName(syntheticCorpus(t, schemaRootWith(t, body)))
 	require.NoError(t, err)
-	require.Empty(t, findings, "значение ключа профиля объявлено именем схемы: это имя БАЗЫ")
-	require.Equal(t, 1, census.skippedDatabase)
+	require.Len(t, findings, 1, "значение ключа профиля пропущено: вторая форма имени базы не судится")
+	require.Equal(t, "база", findings[0].object, "значение ключа профиля засчитано схемой")
+	require.Equal(t, 1, census.databaseHits)
 }
 
-// Близнец: то же слово в ТОЙ ЖЕ строке, но не значением ключа — находка.
-// Различие ровно одно: слева от имени стоит не только ключ с отступом.
-func TestSchemaInjection_TheSameWordNotAsAKeyValueIsFound(t *testing.T) {
+// Близнец: то же слово в ТОЙ ЖЕ строке, но не значением ключа. Находка тоже
+// есть — сегодня отставленное имя неверно для обоих объектов, — но объект она
+// называет ДРУГОЙ. Различие ровно одно: слева от имени стоит не только ключ с
+// отступом. Без этой пары распознаватель, отвечающий «база» на что угодно,
+// прошёл бы ось 7 и остался бы незамеченным.
+func TestSchemaInjection_TheSameWordNotAsAKeyValueIsFoundAsASchema(t *testing.T) {
 	body := soundSchemaBody + "  name: тут раньше стояла схема kacho_iam\n"
 
-	_, findings, err := scanSchemaName(syntheticCorpus(t, schemaRootWith(t, body)))
+	census, findings, err := scanSchemaName(syntheticCorpus(t, schemaRootWith(t, body)))
 	require.NoError(t, err)
 	require.Len(t, findings, 1,
 		"проза после ключа принята за значение ключа: правило судит слово, а не позицию")
+	require.Equal(t, "схема", findings[0].object,
+		"проза засчитана именем базы: распознаватель отвечает одно и то же на любой вход")
+	require.Zero(t, census.databaseHits)
 }
 
 // ── Ось 8: перечень «предмет = это переименование» УЗОК и НЕПУСТ ────────────

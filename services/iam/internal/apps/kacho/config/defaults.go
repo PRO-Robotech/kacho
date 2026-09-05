@@ -80,7 +80,7 @@ func RegisterDefaults(v *viper.Viper) {
 	v.SetDefault("retention.max-batches-per-pass", 20)
 
 	// repository
-	v.SetDefault("repository.postgres.url", "postgres://iam@localhost:5432/kacho_iam")
+	v.SetDefault("repository.postgres.url", "postgres://iam@localhost:5432/kaname")
 	v.SetDefault("repository.postgres.slave-url", "")
 	v.SetDefault("repository.postgres.max-conns", 0)
 	// Одна реплика — минимальная посадка, которая вообще работает. Ноль здесь

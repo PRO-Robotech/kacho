@@ -682,7 +682,7 @@ pg-iam:
   auth:
     username: iam
     password: changeme-dev-iam
-    database: kacho_iam
+    database: kaname
   primary:
     persistence:
       enabled: true
@@ -1542,7 +1542,7 @@ kaname:
     host: kacho-umbrella-pg-iam
     port: "5432"
     user: iam
-    name: kacho_iam
+    name: kaname
     passwordSecretName: kacho-umbrella-pg-iam
     passwordSecretKey: password
   config:

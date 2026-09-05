@@ -72,7 +72,7 @@ trap 'rm -rf "$WORK"' EXIT
 
 psql_iam() {
   kubectl -n "$NAMESPACE" exec -i "$PG_IAM_POD" -c postgresql -- \
-    psql -U postgres -d kacho_iam -tA -F '|' 2>/dev/null
+    psql -U postgres -d kaname -tA -F '|' 2>/dev/null
 }
 
 echo "=== перепись «цепь против живой регистрации» ==="

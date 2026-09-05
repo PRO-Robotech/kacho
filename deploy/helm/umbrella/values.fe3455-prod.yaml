@@ -156,7 +156,7 @@ pg-compute:
 pg-iam:
   image: { registry: docker.io, repository: bitnamilegacy/postgresql }
   volumePermissions: { image: { registry: docker.io, repository: bitnamilegacy/os-shell } }
-  auth: { existingSecret: kacho-umbrella-pg-iam, username: iam, database: kacho_iam }
+  auth: { existingSecret: kacho-umbrella-pg-iam, username: iam, database: kaname }
   tls:
     enabled: true
     certificatesSecret: kacho-umbrella-pg-iam-server-tls

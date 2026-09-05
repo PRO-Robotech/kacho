@@ -66,7 +66,7 @@ set -euo pipefail
 
 NS="${NS:-kacho}"
 PG_POD="${PG_POD:-kacho-umbrella-pg-iam-0}"
-DB="${DB:-kacho_iam}"
+DB="${DB:-kaname}"
 DBUSER="${DBUSER:-postgres}"
 RUNNER="${RUNNER:-k6-iam-runner}"
 SCRIPT_CM="${SCRIPT_CM:-k6-iam-check-script}"

@@ -137,7 +137,7 @@ db:
   host: kacho-umbrella-pg-iam
   port: "5432"
   user: iam
-  name: kacho_iam
+  name: kaname
   passwordSecretName: kacho-umbrella-pg-iam
   passwordSecretKey: password
 logger:
@@ -194,7 +194,7 @@ healthcheck:
 repository:
   type: POSTGRES
   postgres:
-    url: "postgres://iam@kacho-umbrella-pg-iam:5432/kacho_iam"
+    url: "postgres://iam@kacho-umbrella-pg-iam:5432/kaname"
     slave-url: ""                  # опц. read-replica; пусто → Reader-TX на master
     max-conns: 80
     ssl-mode: disable
