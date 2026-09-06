@@ -35,7 +35,7 @@
 
 -- +goose Up
 -- +goose StatementBegin
-SET search_path TO public, public;
+SET search_path TO public;
 
 ALTER TABLE public.quota_sync_cursor
     ADD COLUMN IF NOT EXISTS authority_state text NOT NULL DEFAULT 'unknown';
@@ -57,7 +57,7 @@ COMMENT ON COLUMN public.quota_sync_cursor.authority_state IS
 
 -- +goose Down
 -- +goose StatementBegin
-SET search_path TO public, public;
+SET search_path TO public;
 ALTER TABLE public.quota_sync_cursor
     DROP CONSTRAINT IF EXISTS quota_sync_cursor_authority_state_check;
 ALTER TABLE public.quota_sync_cursor DROP COLUMN IF EXISTS authority_state;
