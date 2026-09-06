@@ -68,9 +68,9 @@ run_subject() {
 
 assert_rc()  { if [ "$2" = "$3" ]; then pass "$1 → $3"
     else fail "$1: ожидался код $2, получен $3" ""; fi; }
-assert_has() { if printf '%s' "$3" | grep -Fq -- "$2"; then pass "$1"
+assert_has() { if [[ "$3" == *"$2"* ]]; then pass "$1"
     else fail "$1: в сводке нет '$2'" "$(printf '%s' "$3" | tr '\n' '|' | cut -c1-200)"; fi; }
-assert_not() { if printf '%s' "$3" | grep -Fq -- "$2"; then
+assert_not() { if [[ "$3" == *"$2"* ]]; then
         fail "$1: в сводке есть '$2', а не должно" "$(printf '%s' "$3" | tr '\n' '|' | cut -c1-200)"
     else pass "$1"; fi; }
 

@@ -117,7 +117,7 @@ assert_rc() { # assert_rc <имя> <ожидаемый> <полученный> <
     else fail "$1: ожидался код $2, получен $3" "$(printf '%s' "$4" | tail -6 | tr '\n' '|')"; fi
 }
 assert_out() { # assert_out <имя> <подстрока> <вывод>
-    if printf '%s' "$3" | grep -Fq -- "$2"; then pass "$1"
+    if [[ "$3" == *"$2"* ]]; then pass "$1"
     else fail "$1: в выводе нет '$2'" "$(printf '%s' "$3" | tail -6 | tr '\n' '|')"; fi
 }
 

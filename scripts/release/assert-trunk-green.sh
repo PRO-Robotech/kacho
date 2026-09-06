@@ -120,7 +120,11 @@ checked=0; findings=()
 while IFS= read -r ctx; do
     [ -n "$ctx" ] || continue
     checked=$((checked + 1))
-    if printf '%s\n' "$SUCCEEDED" | grep -Fxq -- "$ctx"; then
+    # Сравнение целой строки БЕЗ внешнего процесса: `grep -q` выходит до конца
+    # входа, писатель слева получает SIGPIPE, и под `pipefail` найденное
+    # объявляется НЕнайденным — то есть успешный контекст читался бы как
+    # неуспешный, и публикация отвергалась бы на зелёном стволе (#658).
+    if [[ $'\n'"$SUCCEEDED"$'\n' == *$'\n'"$ctx"$'\n'* ]]; then
         printf '  ✓ %s\n' "$ctx"
     else
         findings+=("$ctx")

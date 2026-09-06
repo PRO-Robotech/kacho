@@ -119,7 +119,7 @@ F="$tmp/f1"; mkfixture "$F" 0
 RC_PREREQ=0 RC_GREEN=0 RC_DELTA=0 run_subject "$F" "$VER" --confirm "v9.9.9" --publish
 assert_rc   "подтверждение не совпало" 2 "$RC" "$OUT"
 assert_refs "подтверждение не совпало" 0 "$(refs_on_remote "$F")"
-if printf '%s' "$OUT" | grep -q 'заглушка'; then
+if [[ "$OUT" == *'заглушка'* ]]; then
     fail "отказ по подтверждению обязан наступать ДО гейтов" "заглушка была позвана"
 else
     pass "отказ по подтверждению наступает до единого вызова гейтов"
