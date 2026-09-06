@@ -39,6 +39,30 @@ type Config struct {
 	Network     NetworkConfig     `mapstructure:"network"`
 	IAM         IAMConfig         `mapstructure:"iam"`
 	Dataplane   DataplaneConfig   `mapstructure:"dataplane"`
+	Quota       QuotaConfig       `mapstructure:"quota"`
+}
+
+// QuotaConfig — секция quota: ОБЪЯВЛЕНИЕ домена величин.
+//
+// Прежде адрес домена величин ВЫВОДИЛСЯ из адреса авторизации: своей ручки у
+// резолва не было намеренно — второй адрес того же слушателя разошёлся бы с
+// первым молча. Довод верен ровно до тех пор, пока авторитет величин и авторитет
+// авторизации — одна служба; уход модуля квотирования из службы доступа это
+// условие снимает.
+//
+// Приёмка `docs/specs/sub-phase-KAN-QUOTA-1-limit-authority-leaves-iam-acceptance.md`,
+// стадия S1, решение Д1.
+type QuotaConfig struct {
+	// Authority — где живёт домен величин. РОВНО ДВА законных значения:
+	// адрес в форме host:port либо слово `not-deployed`. Незаданное значение —
+	// отказ старта: умолчание здесь означало бы выбор за оператора между
+	// «потолки действуют» и «потолков нет», и выбор этот был бы невидим.
+	//
+	// Объявление ОДНО на обе полосы ребра — разрешение величины на пути запроса
+	// и фоновую дельту: ребро одно, и два объявления о нём разошлись бы молча.
+	//
+	// ENV `KACHO_VPC_QUOTA__AUTHORITY`.
+	Authority string `mapstructure:"authority"`
 }
 
 // IAMConfig — секция iam: интеграция с kaname (fail-closed boot-gate +

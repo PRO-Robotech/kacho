@@ -60,6 +60,17 @@ type Config struct {
 	// (Internal-only). Пусто + Breakglass=false → интерсептор НЕ подключается.
 	AuthZIAMGRPCAddr string `envconfig:"KACHO_REGISTRY_AUTHZ_IAM_GRPC_ADDR" default:""`
 
+	// QuotaAuthority — ОБЪЯВЛЕНИЕ домена величин. Ровно два законных значения:
+	// адрес в форме host:port либо слово `not-deployed`. Незаданное значение —
+	// отказ старта: умолчание означало бы выбор за оператора между «потолки
+	// действуют» и «потолков нет», и выбор этот был бы невидим.
+	//
+	// Объявление ОДНО на обе полосы ребра — разрешение величины на пути запроса
+	// и фоновую дельту. Приёмка
+	// `docs/specs/sub-phase-KAN-QUOTA-1-limit-authority-leaves-iam-acceptance.md`,
+	// стадия S1, решение Д1.
+	QuotaAuthority string `envconfig:"KACHO_REGISTRY_QUOTA_AUTHORITY" default:""`
+
 	// IAMProjectGRPCAddr — PUBLIC endpoint kaname (:9090) для ProjectService.Get
 	// (existence-валидация project на Create). ProjectService зарегистрирован ТОЛЬКО
 	// на public :9090; на internal :9091 (AuthZIAMGRPCAddr) его НЕТ — вызов там
@@ -433,6 +444,12 @@ type Config struct {
 	// GeoMTLS — client-creds для ребра registry→geo public (:9090): RegionService.Get.
 	// ServerName = kacho-geo public dial-host'а (REG-1 F4 новое ребро).
 	GeoMTLS grpcclient.TLSClient `envconfig:"GEO_MTLS"`
+
+	// QuotaAuthorityMTLS — client-creds ребра registry→домен величин (обе полосы:
+	// InternalLimitService.Resolve на пути запроса и ListChangedSince фоновой
+	// дельтой). Своё, а не заимствованное у authz-ребра: адрес домена величин
+	// объявляется отдельно, и удостоверение обязано следовать за адресом.
+	QuotaAuthorityMTLS grpcclient.TLSClient `envconfig:"QUOTA_AUTHORITY_MTLS"`
 
 	// PublicServerMTLS — server-creds для публичного листенера (:9090).
 	PublicServerMTLS grpcsrv.TLSServer `envconfig:"PUBLIC_SERVER_MTLS"`

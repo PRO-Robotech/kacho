@@ -156,6 +156,22 @@ authn:
 # authorizeEndpoint, ни iamEndpoint не заданы. Пустое значение здесь означает не
 # «не используется», а «взять iamEndpoint». Пометка «код не читает» на ручке,
 # от которой зависит решение о доступе, — прямое приглашение её удалить.
+# ОБЪЯВЛЕНИЕ домена величин. Ровно два законных значения: адрес в форме
+# host:port либо слово `not-deployed`. Пустое значение — НЕ умолчание, а отказ
+# старта: умолчание означало бы выбор за оператора между «потолки действуют» и
+# «потолков нет», и выбор этот был бы невидим.
+#
+# Объявление ОДНО на обе полосы ребра — разрешение величины на пути запроса и
+# фоновую дельту. Приёмка
+# `docs/specs/sub-phase-KAN-QUOTA-1-limit-authority-leaves-iam-acceptance.md`,
+# стадия S1.
+#
+# Сегодня домен величин живёт внутри службы доступа, поэтому значение указывает
+# на её внутренний слушатель, и поведение продукта не меняется ни на байт.
+# Уедет домен — правится ЭТА строка, а не код пяти потребителей.
+quota:
+  authority: "kaname-internal.kacho.svc:9091"
+
 authz:
   iamEndpoint: ""           # default cluster-internal kaname-internal:9091
   checkTimeout: 2s
@@ -385,6 +401,7 @@ mtls:
     iamProject: false    # vpc→iam ProjectService.Get (existence/leaf-owner, :9090)
     iamAuthz: false      # vpc→iam InternalIAMService.Check (per-RPC gate + list-filter, :9091)
     geo: false           # vpc→geo geo.v1.ZoneService.Get (zone_id validation)
+    quotaAuthority: false # vpc→домен величин (Resolve + ListChangedSince, :9091)
   # serverName на dial-стороне = реальный dial-host (∈ server-SAN пира).
   # iam server-cert SAN покрывает оба host'а: kaname (:9090) + kaname-internal (:9091).
   serverName:
@@ -392,6 +409,7 @@ mtls:
     iamProject: kaname.kacho.svc           # :9090 public dial-host
     iamAuthz: kaname-internal.kacho.svc    # :9091 internal dial-host
     geo: kacho-geo.kacho.svc                  # vpc→geo dial-host (= Service kacho-geo + cert SAN)
+    quotaAuthority: kaname-internal.kacho.svc # домен величин; сегодня — внутренний слушатель службы доступа
 
 resources:
   requests:

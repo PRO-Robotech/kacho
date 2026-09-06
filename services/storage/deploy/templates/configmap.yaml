@@ -23,6 +23,9 @@ data:
   KACHO_STORAGE_GEO_GRPC_ADDR: {{ .Values.config.geoGrpcAddr | quote }}
   KACHO_STORAGE_IAM_GRPC_ADDR: {{ .Values.config.iamGrpcAddr | quote }}
   KACHO_STORAGE_AUTHZ_IAM_GRPC_ADDR: {{ .Values.config.authzIamGrpcAddr | quote }}
+  # Объявление домена величин: одно на обе полосы ребра. Пустое значение
+  # отвергает страж старта — умолчания у него нет by construction.
+  KACHO_STORAGE_QUOTA_AUTHORITY: {{ required "quota.authority is required: address host:port or the word not-deployed" .Values.quota.authority | quote }}
   # Круг отправителей, которым разрешено передавать личность конечного пользователя.
   # Пустая строка = «принимаем от любого пира с сертификатом» (контракт corelib), и
   # боевой режим на ней не стартует — см. values.yaml config.trustedForwarderSANs.

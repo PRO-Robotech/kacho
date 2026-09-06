@@ -8,6 +8,8 @@ import (
 	"strings"
 	"testing"
 	"time"
+
+	corequota "github.com/PRO-Robotech/kacho/pkg/quota"
 )
 
 // Словарь посадок у nlb — ТОТ ЖЕ, что у остальных шести стражей старта.
@@ -74,7 +76,12 @@ func minimalValidConfig() Config {
 	return Config{
 		ModeRaw: "dev",
 		Authz:   AuthzConfig{TrustAnyForwarder: true, DenyBudgetPerSec: 100},
-		Logger:  LoggerConfig{Level: "INFO"},
+		// Объявление домена величин — часть законной посадки: у ручки ровно два
+		// законных значения, и незаданное среди них не значится. Отправная
+		// точка, его не несущая, отличалась бы от законной ДВУМЯ фактами сразу,
+		// и каждое отрицание ниже перестало бы означать то, что объявлено.
+		Quota:  QuotaConfig{Authority: corequota.NotDeployed},
+		Logger: LoggerConfig{Level: "INFO"},
 		APIServer: APIServerConfig{
 			Endpoint:         "tcp://0.0.0.0:9090",
 			InternalEndpoint: "tcp://0.0.0.0:9091",

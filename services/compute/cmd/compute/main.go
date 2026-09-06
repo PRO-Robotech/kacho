@@ -59,7 +59,6 @@ import (
 
 	"github.com/PRO-Robotech/kacho/pkg/observability/health"
 	"github.com/PRO-Robotech/kacho/pkg/ownerregister"
-	corequota "github.com/PRO-Robotech/kacho/pkg/quota"
 	"github.com/PRO-Robotech/kacho/pkg/servicecontract"
 	"github.com/PRO-Robotech/kacho/services/compute/internal/apps/kacho/api/guestaccesskey"
 	"github.com/PRO-Robotech/kacho/services/compute/internal/apps/kacho/api/instance"
@@ -268,44 +267,27 @@ func runServe(cfg config.Config) error {
 		)
 	}
 
-	// Резолв величин квоты идёт на ВНУТРЕННИЙ слушатель kaname — по тому же
-	// адресу, что уже объявлен оператором для проверки прав.
+	// Ребро compute→домен величин: ОДНО ребро, ДВЕ полосы — разрешение величины
+	// на пути запроса и фоновая дельта, которой снимок догоняет авторитет.
 	//
-	// Это НЕ вывод адреса из чужого: адрес внутреннего контура объявлен
-	// оператором явно, и здесь он переиспользуется. Своей ручки у резолва нет
-	// именно потому, что второй адрес того же слушателя разошёлся бы с первым
-	// молча — и контроль ушёл бы в никуда, выглядя включённым.
+	// Адрес ОБЪЯВЛЕН ручкой, а не выведен из адреса авторизации. Прежде он
+	// выводился, и довод был верен ровно до тех пор, пока авторитет величин и
+	// авторитет авторизации — одна служба; уход модуля квотирования из службы
+	// доступа это условие снимает.
 	//
-	// Пустой адрес (dev без соседа) → полоса не собирается. Это означает
-	// «раннего отказа и материализации нет», а НЕ «предела нет»: место занимает
-	// триггер, и при отсутствии строк учёта он отвергает вставку «потолок не
-	// назван». На любом поднятом стенде адрес обязан быть задан — иначе домен
-	// перестаёт принимать создание, и это видно с первой же мутации, а не тихо.
-	var quotaLimits quota.LimitResolver
-	if authzConn != nil {
-		limitClient := clients.NewLimitClient(authzConn)
-		quotaLimits = limitClient
-		logger.Info("resource-count quota: limits resolver wired",
-			"endpoint", cfg.AuthZIAMGRPCAddr, "service", "compute")
-
-		// Снимок величины обязан ДОГОНЯТЬ авторитет: без тянущего строка,
-		// заведённая один раз, живёт со своей величиной вечно, и смена предела
-		// администратором не доезжает до проекта никогда. Показывать арендатору
-		// такой снимок значило бы громко назвать число, которое не догонит
-		// назначенное, — поэтому чтение и тянущий едут вместе.
-		stopQuotaSync, qerr := corequota.StartLimitSyncer(
-			ctx, pool, limitClient, repo.QuotaSchema, corequota.Config{}, logger)
-		if qerr != nil {
-			return fmt.Errorf("start quota limit syncer: %w", qerr)
-		}
-		defer stopQuotaSync()
-	} else {
-		logger.Warn("resource-count quota: no internal kaname endpoint, limits resolver is OFF " +
-			"and the limit snapshot will NEVER catch up with the authority. " +
-			"The charging trigger still enforces, so creates are refused with " +
-			"\"no ceiling stated\" until the endpoint is configured, and an administrator " +
-			"raising or lowering a ceiling has no effect on this process")
+	// Ветки «полоса не собирается, потому что соседа не задали» здесь БОЛЬШЕ НЕТ:
+	// незаданное объявление отвергает страж старта, а объявленное отсутствие —
+	// законная посадка, в которой тянущий не заводится и состояние курсора
+	// называет причину. Приёмка ухода модуля квотирования из службы доступа,
+	// стадия S1 (имя документа приёмки здесь не цитируется: страж комментариев
+	// этой службы отвергает процессный лексикон, а он входит в имя файла).
+	quotaEdge, stopQuotaEdge, qerr := buildQuotaAuthorityEdge(
+		ctx, cfg, pool, repo.QuotaSchema, logger)
+	if qerr != nil {
+		return qerr
 	}
+	defer stopQuotaEdge()
+	quotaLimits := quotaEdge.Limits
 
 	// Сборка use-case'ов идёт ПОСЛЕ объявления резолва величин: полоса учёта —
 	// их зависимость, а её источник — соединение внутреннего контура выше.
@@ -903,6 +885,14 @@ func insecureEdgesInProductionStrict(cfg config.Config) error {
 	}
 	if cfg.FGARegisterDrainerEnabled && !cfg.IAMRegisterMTLS.Enable {
 		insecure = append(insecure, "IAM_REGISTER_MTLS_ENABLE")
+	}
+	// Ребро compute→домен величин. Провод живой ровно тогда, когда объявление
+	// разрешилось адресом, — тем же методом, каким его читает проводка, поэтому
+	// «страж увидел ребро» ⟺ «ребро дилится» by construction, а не по совпадению
+	// двух одинаково написанных условий. Полос у ребра две, и обе идут по этому
+	// проводу, поэтому удостоверение одно.
+	if cfg.QuotaAuthorityEdgeLive() && !cfg.QuotaAuthorityMTLS.Enable {
+		insecure = append(insecure, "QUOTA_AUTHORITY_MTLS_ENABLE")
 	}
 	if len(insecure) == 0 {
 		return nil

@@ -68,6 +68,16 @@ func RegisterDefaults(v *viper.Viper) {
 	// Ключи объявлены здесь ещё и затем, чтобы их видел ENV-override: viper
 	// подхватывает переменную окружения только для ИЗВЕСТНОГО ключа, поэтому без
 	// SetDefault `KACHO_VPC_API_SERVER__RATE_LIMIT__*` не доехал бы до поля вовсе.
+	// Объявление домена величин. Умолчание — ПУСТАЯ строка, то есть «оператор не
+	// выбрал», и боевая посадка на ней не поднимается: у ручки ровно два законных
+	// значения, и незаданное среди них не значится.
+	//
+	// Ключ объявлен здесь ещё и затем, чтобы его видел ENV-override: viper
+	// подхватывает переменную окружения только для ИЗВЕСТНОГО ключа, поэтому без
+	// SetDefault `KACHO_VPC_QUOTA__AUTHORITY` не доехал бы до поля ВОВСЕ — ручка
+	// принималась бы профилем и не читалась процессом.
+	v.SetDefault("quota.authority", "")
+
 	v.SetDefault("api-server.rate-limit.public.read-per-sec", 0.0)
 	v.SetDefault("api-server.rate-limit.public.mutation-per-sec", 0.0)
 	v.SetDefault("api-server.rate-limit.public.burst-factor", 0.0)

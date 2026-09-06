@@ -27,6 +27,11 @@ const (
 		"(cross-tenant authz bypass). If the listener sits behind an authenticated " +
 		"forwarder/service-mesh that terminates client identity, set authn.trusted-forwarder=true " +
 		"to acknowledge that trust boundary (production-strict ignores this escape hatch)"
+	errQuotaAuthorityPeerTransportRequired = "production mode (%s): verified transport required on the " +
+		"vpc→limit-authority edge — set KACHO_VPC_QUOTA_AUTHORITY_MTLS_ENABLE=true (with cert/key/CA). " +
+		"Without it the limit resolve on the request path and the background delta both travel over " +
+		"cleartext gRPC: the client credentials silently degrade to insecure, so the process starts " +
+		"and reports the edge as configured"
 	errInternalMTLSRequired = "production mode (%s): internal listener mTLS required " +
 		"(set KACHO_VPC_INTERNAL_SERVER_MTLS_ENABLE=true with cert/key/ca) — the internal :9091 " +
 		"listener hosts admin/IPAM RPC (InternalAddressPoolService, InternalNetworkService.GetNetwork " +
@@ -555,6 +560,14 @@ func (c Config) ValidatePeerTransport(m MTLSConfig) error {
 		errs = multierr.Append(errs, fmt.Errorf(errRegisterPeerTransportRequired, c.AuthN.Mode))
 	}
 
+	// Ребро vpc→домен величин. Провод живой ровно тогда, когда объявление
+	// разрешилось адресом, — тем же методом, каким его читает проводка. Полос у
+	// ребра две (разрешение на пути запроса и фоновая дельта), и обе идут по
+	// этому проводу, поэтому удостоверение одно.
+	if c.QuotaAuthorityEdgeLive() && !m.QuotaAuthorityMTLS.Enable {
+		errs = multierr.Append(errs, fmt.Errorf(errQuotaAuthorityPeerTransportRequired, c.AuthN.Mode))
+	}
+
 	// list-filter authorize edge — активен ровно тогда, когда его поднимает
 	// composition root: фильтр включён И адрес резолвится. Оба условия читаются
 	// теми же методами, что и проводка, поэтому «страж видит ребро» ⟺ «ребро
@@ -949,6 +962,7 @@ func (c Config) ValidateBoot(m MTLSConfig) error {
 		c.ValidateReservedPrefixes(),
 		c.ValidateRequestRateLimits(),
 		c.ValidatePeerTransport(m),
+		c.ValidateQuotaAuthority(m),
 	)
 }
 

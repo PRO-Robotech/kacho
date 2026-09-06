@@ -216,6 +216,20 @@ spec:
             - name: KACHO_COMPUTE_IAM_AUTHZ_MTLS_SERVERNAME
               value: {{ .Values.mtls.serverName.iamAuthz | quote }}
             {{- end }}
+            {{- if .Values.mtls.edges.quotaAuthority }}
+            # compute→домен величин: ОБЕ полосы одного ребра (Resolve на пути
+            # запроса и ListChangedSince фоновой дельтой) — удостоверение одно.
+            - name: KACHO_COMPUTE_QUOTA_AUTHORITY_MTLS_ENABLE
+              value: "true"
+            - name: KACHO_COMPUTE_QUOTA_AUTHORITY_MTLS_CERTFILE
+              value: {{ printf "%s/tls.crt" $cli | quote }}
+            - name: KACHO_COMPUTE_QUOTA_AUTHORITY_MTLS_KEYFILE
+              value: {{ printf "%s/tls.key" $cli | quote }}
+            - name: KACHO_COMPUTE_QUOTA_AUTHORITY_MTLS_CAFILES
+              value: {{ printf "%s/ca.crt" $cli | quote }}
+            - name: KACHO_COMPUTE_QUOTA_AUTHORITY_MTLS_SERVERNAME
+              value: {{ .Values.mtls.serverName.quotaAuthority | quote }}
+            {{- end }}
             {{- if .Values.mtls.edges.vpc }}
             # compute→vpc — ДВА провода, оба под одним ключом edges.vpc: они делят
             # один клиентский сертификат, один CA и один Service `vpc`, чей
@@ -305,6 +319,10 @@ spec:
               value: "{{ .Values.storageInternalAddr }}"
             - name: KACHO_COMPUTE_SKIP_PEER_VALIDATION
               value: "{{ .Values.skipPeerValidation }}"
+            # Объявление домена величин: одно на обе полосы ребра. Пустое
+            # значение отвергает страж старта — умолчания у него нет.
+            - name: KACHO_COMPUTE_QUOTA_AUTHORITY
+              value: {{ required "quota.authority is required: address host:port or the word not-deployed" .Values.quota.authority | quote }}
             # KAC-127 Phase 4 — FGA-filtered List + per-RPC authz endpoint.
             {{- with .Values.authzIam }}
             - name: KACHO_COMPUTE_AUTHZ_IAM_GRPC_ADDR

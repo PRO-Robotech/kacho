@@ -45,6 +45,18 @@ type MTLSConfig struct {
 	// → KACHO_VPC_IAM_AUTHZ_MTLS_{ENABLE,CERTFILE,KEYFILE,CAFILES,SERVERNAME}.
 	IAMAuthzMTLS grpcclient.TLSClient `envconfig:"IAM_AUTHZ_MTLS"`
 
+	// QuotaAuthorityMTLS — client-creds для ребра vpc→домен величин
+	// (InternalLimitService.Resolve на пути запроса И ListChangedSince фоновой
+	// дельтой — обе полосы ОДНОГО ребра, поэтому удостоверение одно).
+	//
+	// Своё, а не заимствованное у authz-ребра: адрес домена величин объявляется
+	// отдельно (`quota.authority`), и удостоверение обязано следовать за адресом.
+	// Половина пары — адрес есть, удостоверения нет — отвергается стражем старта:
+	// она выглядит настроенной, а сосед отвечает «требуется сертификат клиента»,
+	// и отказ читается как недоступность соседа при исправном соседе.
+	// → KACHO_VPC_QUOTA_AUTHORITY_MTLS_{ENABLE,CERTFILE,KEYFILE,CAFILES,SERVERNAME}.
+	QuotaAuthorityMTLS grpcclient.TLSClient `envconfig:"QUOTA_AUTHORITY_MTLS"`
+
 	// GeoMTLS — client-creds для ребра vpc→geo (geo.v1.ZoneService.Get,
 	// валидация zone_id при Subnet.Create / AddressPool.Create). Geography —
 	// leaf-домен kacho-geo, ребро vpc→compute «ради zone» отсутствует.
@@ -96,6 +108,12 @@ func (m MTLSConfig) IAMProjectClientCreds() (grpc.DialOption, error) {
 // (fail-closed).
 func (m MTLSConfig) IAMAuthzClientCreds() (grpc.DialOption, error) {
 	return grpcclient.TLSClientCreds(m.IAMAuthzMTLS)
+}
+
+// QuotaAuthorityClientCreds возвращает grpc.DialOption для ребра
+// vpc→домен величин (обе полосы: разрешение на пути запроса и фоновая дельта).
+func (m MTLSConfig) QuotaAuthorityClientCreds() (grpc.DialOption, error) {
+	return grpcclient.TLSClientCreds(m.QuotaAuthorityMTLS)
 }
 
 // PublicServerCreds возвращает grpc.ServerOption для публичного listener (:9090).

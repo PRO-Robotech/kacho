@@ -65,6 +65,29 @@ type Config struct {
 	FGA         FGAConfig         `mapstructure:"fga"`
 	MTLS        MTLSConfig        `mapstructure:"mtls"`
 	Jobs        JobsConfig        `mapstructure:"jobs"`
+	Quota       QuotaConfig       `mapstructure:"quota"`
+}
+
+// QuotaConfig — секция quota: ОБЪЯВЛЕНИЕ домена величин.
+//
+// Прежде адрес домена величин ВЫВОДИЛСЯ из адреса внутреннего слушателя соседа
+// по авторизации. Довод был верен ровно до тех пор, пока авторитет величин и
+// авторитет авторизации — одна служба; уход модуля квотирования из службы
+// доступа это условие снимает.
+//
+// Приёмка `docs/specs/sub-phase-KAN-QUOTA-1-limit-authority-leaves-iam-acceptance.md`,
+// стадия S1, решение Д1.
+type QuotaConfig struct {
+	// Authority — где живёт домен величин. РОВНО ДВА законных значения:
+	// адрес в форме host:port либо слово `not-deployed`. Незаданное значение —
+	// отказ старта: умолчание означало бы выбор за оператора между «потолки
+	// действуют» и «потолков нет», и выбор этот был бы невидим.
+	//
+	// Объявление ОДНО на обе полосы ребра — разрешение величины на пути запроса
+	// и фоновую дельту: ребро одно, и два объявления о нём разошлись бы молча.
+	//
+	// ENV `KACHO_NLB_QUOTA__AUTHORITY`.
+	Authority string `mapstructure:"authority"`
 }
 
 // Mode возвращает резолвленный enum-режим (после `Validate`).
@@ -498,6 +521,12 @@ type MTLSConfig struct {
 	Compute grpcclient.TLSClient `mapstructure:"compute"`
 	// Geo — client-cert на ребре nlb→geo (RegionService.Get, kacho-geo).
 	Geo grpcclient.TLSClient `mapstructure:"geo"`
+	// QuotaAuthority — client-cert на ребре nlb→домен величин (обе полосы:
+	// InternalLimitService.Resolve на пути запроса и ListChangedSince фоновой
+	// дельтой). Своё, а не заимствованное у authz-ребра: адрес домена величин
+	// объявляется отдельно (`quota.authority`), и удостоверение обязано
+	// следовать за адресом.
+	QuotaAuthority grpcclient.TLSClient `mapstructure:"quota-authority"`
 }
 
 // ─── Jobs (background workers) ───────────────────────────────────────────────

@@ -1,6 +1,23 @@
 # Copyright (c) PRO-Robotech
 # SPDX-License-Identifier: BUSL-1.1
 
+# ОБЪЯВЛЕНИЕ домена величин. Ровно два законных значения: адрес в форме
+# host:port либо слово `not-deployed`. Пустое значение — НЕ умолчание, а отказ
+# старта: умолчание означало бы выбор за оператора между «потолки действуют» и
+# «потолков нет», и выбор этот был бы невидим.
+#
+# Объявление ОДНО на обе полосы ребра — разрешение величины на пути запроса и
+# фоновую дельту. Приёмка
+# `docs/specs/sub-phase-KAN-QUOTA-1-limit-authority-leaves-iam-acceptance.md`,
+# стадия S1.
+#
+# Сегодня домен величин живёт внутри службы доступа, поэтому значение указывает
+# на её внутренний слушатель, и поведение продукта не меняется ни на байт.
+# Уедет домен — правится ЭТА строка, а не код пяти потребителей.
+quota:
+  authority: "kaname-internal.kacho.svc:9091"
+
+
 # ─── Workload identity / image ────────────────────────────────────────────────
 name: kacho-nlb
 namespace: kacho
@@ -245,6 +262,7 @@ mtls:
     vpc: false           # nlb→vpc Address/Subnet/NIC
     compute: false       # nlb→compute Instance-resolve (NOT geography)
     geo: false           # nlb→geo :9090 RegionService.Get (epic kacho-geo)
+    quotaAuthority: false # nlb→домен величин (Resolve + ListChangedSince, :9091)
   serverName:
     iamRegister: kaname-internal.kacho.svc
     iamProject: kaname.kacho.svc
@@ -252,6 +270,8 @@ mtls:
     compute: compute.kacho.svc
     # serverName = реальный :9090 dial-host (∈ geo server-SAN, КРИТ#1).
     geo: kacho-geo.kacho.svc
+    # домен величин; сегодня — внутренний слушатель службы доступа.
+    quotaAuthority: kaname-internal.kacho.svc
 
 # ─── Resource requests/limits + probes ────────────────────────────────────────
 resources:

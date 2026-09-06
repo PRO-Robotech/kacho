@@ -225,6 +225,11 @@ func everyEdgeLive(t *testing.T) config.Config {
 		VPCInternalGRPCAddr:     "kacho-vpc-internal.kacho.svc:9091",
 		StorageInternalGRPCAddr: "kacho-storage-internal.kacho.svc:9091",
 		AuthZIAMGRPCAddr:        "kaname-internal.kacho.svc:9091",
+		// Домен величин объявлен АДРЕСОМ: ребро дилится, значит страж обязан
+		// требовать от него удостоверение. Объявление «не развёрнут» вывело бы
+		// ребро из наблюдения, и отключение его mTLS перестало бы что-либо
+		// значить — фикстура молча перестала бы быть представительной.
+		QuotaAuthority: "kaname-internal.kacho.svc:9091",
 	}
 	v := reflect.ValueOf(&cfg).Elem()
 	for _, field := range dialedEdgeFields(t, moduleRoot(t)) {

@@ -34,6 +34,8 @@ import (
 	"strings"
 	"testing"
 
+	corequota "github.com/PRO-Robotech/kacho/pkg/quota"
+
 	"google.golang.org/grpc"
 	"google.golang.org/grpc/credentials"
 	"google.golang.org/grpc/metadata"
@@ -77,7 +79,12 @@ func prodCfg(forwarders ...string) config.Config {
 		// ради которого её подставляют; измерение ослабляется только в своей
 		// пробе (peer_transport_test.go). Рёбра project/geo здесь не подняты
 		// (адреса пусты) — по тому же предикату, что читает проводка.
-		IAMAuthzMTLS:              grpcclient.TLSClient{Enable: true},
+		IAMAuthzMTLS: grpcclient.TLSClient{Enable: true},
+		// Объявление домена величин — часть законной посадки: у ручки ровно два
+		// законных значения, и незаданное среди них не значится. Здесь стоит
+		// «не развёрнут», потому что эта отправная точка ребра величин не
+		// поднимает: адрес без удостоверения был бы ВТОРЫМ ослаблением.
+		QuotaAuthority:            corequota.NotDeployed,
 		AuthZTrustedForwarderSANs: forwarders,
 		// Домен доверия — величина установки, и конструктор дескриптора требует её
 		// названной: процесс, не назвавший домена, своим не признаёт никого.

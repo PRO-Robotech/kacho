@@ -15,10 +15,22 @@ import (
 )
 
 // writeYAML — helper: пишет YAML-снэппет во временный файл, возвращает path.
+// quotaDeclaration — объявление домена величин, которого требует страж старта.
+//
+// Дописывается к фикстуре, если та его не несёт: у ручки ровно два законных
+// значения, и незаданное среди них не значится. Фикстура без объявления
+// отличалась бы от законной ДВУМЯ фактами сразу, и каждое утверждение ниже
+// перестало бы означать то, что объявлено. Случай, которому нужно иное
+// значение, задаёт его сам — тогда эта добавка не срабатывает.
+const quotaDeclaration = "\nquota:\n  authority: not-deployed\n"
+
 func writeYAML(t *testing.T, body string) string {
 	t.Helper()
 	dir := t.TempDir()
 	p := filepath.Join(dir, "config.yaml")
+	if !strings.Contains(body, "quota:") {
+		body += quotaDeclaration
+	}
 	if err := os.WriteFile(p, []byte(body), 0o600); err != nil {
 		t.Fatalf("write tmp YAML: %v", err)
 	}
@@ -64,6 +76,9 @@ func TestLoad_DefaultsApplied(t *testing.T) {
 	// TestLoad_DefaultMode_FailsClosedProduction) не даст Load'у пройти без
 	// mTLS/iam — тут проверяются НЕ-mode дефолты, поэтому dev-opt-in.
 	t.Setenv("KACHO_NLB_MODE", "dev")
+	// Объявление домена величин — часть законной посадки: у ручки ровно два
+	// законных значения, и незаданное среди них не значится.
+	t.Setenv("KACHO_NLB_QUOTA__AUTHORITY", "not-deployed")
 	t.Setenv("KACHO_NLB_REPOSITORY__POSTGRES__URL", "postgres://u:p@h/d")
 	cfg, err := Load("")
 	if err != nil {
@@ -125,6 +140,9 @@ func TestLoad_DefaultMode_FailsClosedProduction(t *testing.T) {
 
 func TestLoad_EnvOverride(t *testing.T) {
 	t.Setenv("KACHO_NLB_MODE", "dev") // dev-opt-in: default fail-closed production
+	// Объявление домена величин — часть законной посадки: у ручки ровно два
+	// законных значения, и незаданное среди них не значится.
+	t.Setenv("KACHO_NLB_QUOTA__AUTHORITY", "not-deployed")
 	// ENV: KACHO_NLB_REPOSITORY__POSTGRES__URL → repository.postgres.url
 	t.Setenv("KACHO_NLB_REPOSITORY__POSTGRES__URL", "postgres://envuser:envpass@envhost/kacho_nlb")
 	t.Setenv("KACHO_NLB_LOGGER__LEVEL", "WARN")

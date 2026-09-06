@@ -495,9 +495,14 @@ func TestValidateBoot_Production_AllSecure_Passes(t *testing.T) {
 	c.Repository.Postgres.SSLMode = "verify-full"
 	c.AuthZ.ListFilter.Enabled = true
 	c.AuthZ.ListFilter.AuthorizeEndpoint = "kaname:9090"
+	// Ребро величин поднято и защищено наравне с остальными: объявление «не
+	// развёрнут» вывело бы его из наблюдения, и ослабление его удостоверения
+	// перестало бы что-либо значить.
+	c.Quota.Authority = "kaname-internal:9091"
 	var m MTLSConfig
 	m.PublicServerMTLS.Enable = true
 	m.InternalServerMTLS.Enable = true
 	m.IAMAuthzMTLS.Enable = true // authz Check edge ok
+	m.QuotaAuthorityMTLS.Enable = true
 	require.NoError(t, c.ValidateBoot(m))
 }

@@ -5,7 +5,6 @@ package quota
 
 import (
 	"context"
-	"fmt"
 	"log/slog"
 )
 
@@ -33,44 +32,6 @@ import (
 // накопительные счётчики в таблице курсора делают заметным состояние «ни одна
 // строка не синхронизирована за всё время» — иначе мёртвый тянущий неотличим от
 // живого на неизменной конфигурации.
-
-// StartLimitSyncer поднимает тянущего в фоне и возвращает его останов.
-//
-// Отказывает ПРИ СБОРКЕ — и это намеренно: синхронизатор, собранный без
-// источника или без проекции, исполнялся бы по расписанию и не делал ничего,
-// оставаясь на вид работающим. Ровно тот класс, который этот механизм и чинит.
-//
-// Первый проход — синхронный и до фонового цикла: он же и проверка, что путь
-// доставки существует. Отказ первого прохода НЕ фатален (сосед мог ещё не
-// подняться), но назван, поэтому «величины не догоняют» не приходится выяснять
-// по симптомам.
-//
-// Проход несёт СВОЙ срок и НЕ повторяется фоновым циклом (#666) — см. startSyncer.
-func StartLimitSyncer(
-	ctx context.Context,
-	db Execer,
-	src Source,
-	schema string,
-	cfg Config,
-	logger *slog.Logger,
-) (func(), error) {
-	if logger == nil {
-		logger = slog.Default()
-	}
-
-	proj, err := NewPgProjection(db, schema)
-	if err != nil {
-		return nil, fmt.Errorf("quota limit projection: %w", err)
-	}
-
-	syncer, err := NewSyncer(src, proj, cfg,
-		logger.With(slog.String("component", "quota-limit-syncer")))
-	if err != nil {
-		return nil, fmt.Errorf("quota limit syncer: %w", err)
-	}
-
-	return startSyncer(ctx, syncer, schema, logger), nil
-}
 
 // startSyncer — первый проход плюс фоновый цикл. Отделено от сборки, чтобы у
 // подъёма был шов: собранный синхронизатор приходит готовым, и поведение подъёма

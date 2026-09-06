@@ -135,6 +135,9 @@ func TestBuildRunner_EnvDSNFallback(t *testing.T) {
 	// mode defaults to fail-closed production; the migrator only needs the DSN,
 	// so opt into dev explicitly to exercise the env-DSN fallback path.
 	t.Setenv("KACHO_NLB_MODE", "dev")
+	// Объявление домена величин — часть законной посадки: у ручки ровно два
+	// законных значения, и незаданное среди них не значится.
+	t.Setenv("KACHO_NLB_QUOTA__AUTHORITY", "not-deployed")
 	t.Setenv("KACHO_NLB_AUTHZ__TRUST_ANY_FORWARDER", "true") // локальная фикстура: круг не сужаем ЯВНО
 	t.Setenv("KACHO_NLB_REPOSITORY__POSTGRES__URL", "postgres://envuser:envpass@h/db")
 	opts := &rootOptions{dialect: "postgres" /* dsn пуст*/}

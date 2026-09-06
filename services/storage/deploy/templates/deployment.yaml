@@ -188,6 +188,20 @@ spec:
             - name: KACHO_STORAGE_GEO_CLIENT_MTLS_SERVERNAME
               value: {{ .Values.mtls.serverName.geo | quote }}
             {{- end }}
+            {{- if .Values.mtls.edges.quotaAuthority }}
+            # storage→домен величин: ОБЕ полосы одного ребра (Resolve на пути
+            # запроса и ListChangedSince фоновой дельтой) — удостоверение одно.
+            - name: KACHO_STORAGE_QUOTA_AUTHORITY_MTLS_ENABLE
+              value: "true"
+            - name: KACHO_STORAGE_QUOTA_AUTHORITY_MTLS_CERTFILE
+              value: {{ printf "%s/tls.crt" $cli | quote }}
+            - name: KACHO_STORAGE_QUOTA_AUTHORITY_MTLS_KEYFILE
+              value: {{ printf "%s/tls.key" $cli | quote }}
+            - name: KACHO_STORAGE_QUOTA_AUTHORITY_MTLS_CAFILES
+              value: {{ printf "%s/ca.crt" $cli | quote }}
+            - name: KACHO_STORAGE_QUOTA_AUTHORITY_MTLS_SERVERNAME
+              value: {{ .Values.mtls.serverName.quotaAuthority | quote }}
+            {{- end }}
             {{- if .Values.mtls.edges.iam }}
             # storage→iam client-creds — ОДИН leaf на все iam-дозвоны: ProjectService.Get
             # (:9090), per-RPC Check (:9091) и RegisterResource/UnregisterResource

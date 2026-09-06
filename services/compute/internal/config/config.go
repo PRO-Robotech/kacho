@@ -106,6 +106,17 @@ type Config struct {
 	// Обычно адрес совпадает с IAMGRPCAddr (тот же сервис), но порт другой: 9091
 	// (internal) против 9090 (публичный ProjectService.Get).
 	AuthZIAMGRPCAddr string `envconfig:"KACHO_COMPUTE_AUTHZ_IAM_GRPC_ADDR" default:""`
+
+	// QuotaAuthority — ОБЪЯВЛЕНИЕ домена величин. Ровно два законных значения:
+	// адрес в форме host:port либо слово `not-deployed`. Незаданное значение —
+	// отказ старта: умолчание означало бы выбор за оператора между «потолки
+	// действуют» и «потолков нет», и выбор этот был бы невидим.
+	//
+	// Объявление ОДНО на обе полосы ребра — разрешение величины на пути запроса
+	// и фоновую дельту. Приёмка ухода модуля квотирования из службы доступа,
+	// решение Д1 (имя документа приёмки здесь не цитируется: страж комментариев
+	// этой службы отвергает процессный лексикон, а он входит в имя файла).
+	QuotaAuthority string `envconfig:"KACHO_COMPUTE_QUOTA_AUTHORITY" default:""`
 	// AuthZBreakglass — аварийная ручка, чей ПРЕДМЕТ УЖЕ СНЯТ переездом контура на
 	// общий носитель, и это записано здесь, а не оставлено в имени.
 	//
@@ -411,6 +422,16 @@ type Config struct {
 	// InternalIAMService.Check + FGA-filtered List (один conn → AuthZIAMGRPCAddr,
 	// internal :9091). ServerName = kaname-internal.*.
 	IAMAuthzMTLS grpcclient.TLSClient `envconfig:"IAM_AUTHZ_MTLS"`
+
+	// QuotaAuthorityMTLS — client-creds для ребра compute→домен величин
+	// (InternalLimitService.Resolve на пути запроса И ListChangedSince фоновой
+	// дельтой — обе полосы ОДНОГО ребра, поэтому удостоверение одно).
+	//
+	// Своё, а не заимствованное у authz-ребра: адрес домена величин объявляется
+	// отдельно (KACHO_COMPUTE_QUOTA_AUTHORITY), и удостоверение обязано следовать
+	// за адресом. Половина пары — адрес есть, удостоверения нет — отвергается
+	// стражем старта.
+	QuotaAuthorityMTLS grpcclient.TLSClient `envconfig:"QUOTA_AUTHORITY_MTLS"`
 
 	// GeoMTLS — client-creds для ребра compute→geo (geo.v1.ZoneService.Get,
 	// zone_id-валидация Instance). Enable=false (default) → insecure

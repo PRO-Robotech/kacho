@@ -405,6 +405,7 @@ vpc:
   mtls:
     enable: true
     edges:
+      quotaAuthority: true # →домен величин (Resolve + ListChangedSince, :9091)
       iamRegister: true
       iamProject: true
       iamAuthz: true
@@ -456,6 +457,7 @@ compute:
   mtls:
     enable: true
     edges:
+      quotaAuthority: true # →домен величин (Resolve + ListChangedSince, :9091)
       iamRegister: true
       iamProject: true
       iamAuthz: true
@@ -773,6 +775,7 @@ kacho-nlb:
   mtls:
     enable: true
     edges:
+      quotaAuthority: true # →домен величин (Resolve + ListChangedSince, :9091)
       iamRegister: true
       iamProject: true
       vpc: true
@@ -920,6 +923,7 @@ storage:
   mtls:
     enable: true
     edges:
+      quotaAuthority: true # →домен величин (Resolve + ListChangedSince, :9091)
       geo: true
       iam: true
 
@@ -1037,6 +1041,7 @@ registry:
   mtls:
     enable: true
     edges:
+      quotaAuthority: true # →домен величин (Resolve + ListChangedSince, :9091)
       iamAuthz: true
       iamProject: true
       geo: true
