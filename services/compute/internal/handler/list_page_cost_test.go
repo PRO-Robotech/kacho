@@ -11,12 +11,11 @@ import (
 
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
-	"google.golang.org/grpc"
 	"google.golang.org/grpc/codes"
 	"google.golang.org/grpc/status"
 
 	computev1 "github.com/PRO-Robotech/kacho/pkg/api/kacho/cloud/compute/v1"
-	iamv1 "github.com/PRO-Robotech/kacho/pkg/api/kacho/cloud/iam/v1"
+	"github.com/PRO-Robotech/kacho/pkg/listnarrow"
 
 	"github.com/PRO-Robotech/kacho/services/compute/internal/apps/kacho/api/instance"
 	"github.com/PRO-Robotech/kacho/services/compute/internal/domain"
@@ -78,19 +77,14 @@ func newPageCostAuthorizeClient(granted ...string) *pageCostAuthorizeClient {
 // BatchCheck отвечает по каждому (субъект, объект) ПРЯМО из того же набора —
 // без перечисления. Порядок сохраняется, как требует контракт RPC: верный, но
 // переставленный вердикт отфильтровал бы страницу чужим ответом.
-func (c *pageCostAuthorizeClient) BatchCheck(_ context.Context, in *iamv1.BatchAuthorizeCheckRequest,
-	_ ...grpc.CallOption) (*iamv1.BatchAuthorizeCheckResponse, error) {
-	if n := len(in.GetChecks()); n > 100 {
+func (c *pageCostAuthorizeClient) BatchCheck(_ context.Context, checks []listnarrow.Check) ([]bool, error) {
+	if n := len(checks); n > 100 {
 		return nil, status.Errorf(codes.InvalidArgument, "Illegal argument checks: batch size %d > 100", n)
 	}
-	out := &iamv1.BatchAuthorizeCheckResponse{
-		Responses: make([]*iamv1.AuthorizeCheckResponse, len(in.GetChecks())),
-	}
-	for i, chk := range in.GetChecks() {
+	out := make([]bool, len(checks))
+	for i, chk := range checks {
 		c.batchCheckedIDs.Add(1)
-		out.Responses[i] = &iamv1.AuthorizeCheckResponse{
-			Allowed: c.granted[chk.GetResource().GetId()],
-		}
+		out[i] = c.granted[chk.ResourceID]
 	}
 	return out, nil
 }
