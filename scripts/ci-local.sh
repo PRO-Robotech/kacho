@@ -511,6 +511,7 @@ go_group() {
     run "выпуск: точка отсчёта совместимости" bash "$ROOT/scripts/release/breaking-since-release-inject.sh"
     run "выпуск: производитель отказывает без следа" bash "$ROOT/scripts/release/publish-tag-inject.sh"
     run "выпуск: сводка читает факт, а не вход" bash "$ROOT/scripts/release/summarize-run-inject.sh"
+    run "поставка: производитель артефакта службы" bash "$ROOT/scripts/release/publish-service-artifact-inject.sh"
     run "go build" go build ./...
     run "go vet" go vet ./...
     run "go test -short" go test ./... -short -count=1
