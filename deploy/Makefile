@@ -59,13 +59,39 @@ STACK_EXTRA_ARGS ?=
 POSTURE_SKIP ?=
 
 # KAC-228: build + kind-load all backend service images. The dev deployments
-# reference local `kacho-<svc>:dev` images (values.dev.yaml), which kind cannot
+# reference local `:dev` images named by images.txt (values.dev.yaml), which kind cannot
 # pull from a registry → they MUST be built locally before helm install, else
 # pods sit in ImagePullBackOff and `helm --wait` times out. Single-repo builds: each
 # Dockerfile is `COPY . .` + `go mod download` (versioned GitHub deps), so the
-# build context is the service's OWN dir (kacho-$svc), NOT the parent — a
-# workspace-root context would `COPY . .` a rootless tree → `go: no modules`.
-SERVICES := iam vpc compute api-gateway nlb geo storage registry
+# build context is the service's OWN dir, NOT the parent — a workspace-root
+# context would `COPY . .` a rootless tree → `go: no modules`.
+#
+# ── ИМЯ ОБРАЗА ОБЪЯВЛЕНО, А НЕ ВЫВЕДЕНО ─────────────────────────────────────
+#
+# Здесь стоял выписанный перечень служб, а имя образа выводилось из него формой
+# `kacho-$svc:dev`. Профиль стенда при этом называл образ ЯВНО — то есть об одном
+# предмете было два объявления, и одно из них выведенное. Следствие: вхождений
+# имени в дереве НОЛЬ, перепись по строке находила ноль, а расхождение уже было.
+#
+# Для семи служб вывод случайно совпадал с профилем. Восьмая — служба личности,
+# получившая собственное имя продукта, — разошлась молча: профиль просил
+# `kaname:dev`, сборка клала `kacho-iam:dev`, отказ приходил в кластере
+# (`pull access denied … Init:ImagePullBackOff`) уже после `helm upgrade`.
+#
+# Теперь и перечень, и имена читаются из `images.txt` — единственного объявления;
+# его же сверяет с профилями TestEveryStandLocalImageHasAProducer, в обе стороны.
+IMAGE_MAP_FILE := images.txt
+IMAGE_MAP := $(shell sed -e 's/#.*//' -e '/^[[:space:]]*$$/d' $(IMAGE_MAP_FILE))
+SERVICES := $(foreach e,$(IMAGE_MAP),$(firstword $(subst :, ,$(e))))
+
+# Пустой перечень — ОТКАЗ, а не «собирать нечего»: молчаливая сборка нуля образов
+# неотличима от исправной, и обнаруживается она подами в ImagePullBackOff.
+ifeq ($(strip $(SERVICES)),)
+$(error $(IMAGE_MAP_FILE) не дал ни одной службы — перечень читается оттуда, и пустой означает, что предмет исчез, а не что собирать нечего)
+endif
+
+# Развёрнутая в шелл карта «служба=образ» — циклы ниже читают её awk-ом.
+IMAGE_NAME_PAIRS := $(foreach e,$(IMAGE_MAP),$(firstword $(subst :, ,$(e)))=$(word 3,$(subst :, ,$(e))))
 
 # IMAGES — какие образы РЕАЛЬНО собирать. Умолчание — все восемь (локальный стенд
 # поднимает всё). Шард e2e поднимает подмножество компонентов, и сборка образа,
@@ -144,7 +170,7 @@ BUILD_UI ?= 1
 # совпадение — клиент zot, читающий одноимённую OCI-аннотацию у образов
 # арендатора; к меткам наших образов оно отношения не имеет).
 # Величина провенанса объявлена ОДИН раз на дерево — иначе девять рецептов,
-# собирающих `kacho-<svc>:dev`, несли бы девять копий одного предиката.
+# собирающих образы стенда, несли бы девять копий одного предиката.
 include ../provenance.mk
 
 # IMAGE_IDS_VALUES — карта «сервис → идентификатор СОДЕРЖИМОГО его образа».
@@ -196,11 +222,13 @@ MODULE_MANIFESTS_VALUES := helm/umbrella/values.module-manifests.yaml
 build-services:
 	@echo "=== provenance: $(GIT_REF) @ $(GIT_COMMIT)$(GIT_DIRTY) ==="
 	@for svc in $(IMAGES); do \
-	  echo "=== build kacho-$$svc:dev ==="; \
+	  img=$$(printf '%s\n' $(IMAGE_NAME_PAIRS) | awk -F= -v s="$$svc" '$$1==s{print $$2}'); \
+	  test -n "$$img" || { echo "ERROR: имя образа службы '$$svc' не объявлено в $(IMAGE_MAP_FILE)"; exit 1; }; \
+	  echo "=== build $$img:dev ==="; \
 	  d=$$(test "$$svc" = api-gateway && echo gateway || echo services/$$svc); \
 	  bctx=$$(test "$$svc" = iam && echo "$$d" || echo .); \
-	  ( cd .. && docker build -f $$d/Dockerfile $(IMAGE_BUILD_ARGS) -t kacho-$$svc:dev "$$bctx" ) || exit 1; \
-	  kind load docker-image kacho-$$svc:dev --name $(CLUSTER_NAME) || exit 1; \
+	  ( cd .. && docker build -f $$d/Dockerfile $(IMAGE_BUILD_ARGS) -t $$img:dev "$$bctx" ) || exit 1; \
+	  kind load docker-image $$img:dev --name $(CLUSTER_NAME) || exit 1; \
 	done
 	@# Идентификатор содержимого берётся у демона ПОСЛЕ сборки: это то, что реально
 	@# лежит под тегом, а не то, что мы намеревались собрать. Пустой ответ — отказ:
@@ -209,9 +237,10 @@ build-services:
 	@echo "global:" >> $(IMAGE_IDS_VALUES)
 	@echo "  kachoImageIds:" >> $(IMAGE_IDS_VALUES)
 	@for svc in $(IMAGES); do \
-	  id=$$(docker image inspect --format '{{.Id}}' kacho-$$svc:dev 2>/dev/null); \
+	  img=$$(printf '%s\n' $(IMAGE_NAME_PAIRS) | awk -F= -v s="$$svc" '$$1==s{print $$2}'); \
+	  id=$$(docker image inspect --format '{{.Id}}' $$img:dev 2>/dev/null); \
 	  if [ -z "$$id" ]; then \
-	    echo "ERROR: не определён идентификатор содержимого образа kacho-$$svc:dev"; exit 1; \
+	    echo "ERROR: не определён идентификатор содержимого образа $$img:dev"; exit 1; \
 	  fi; \
 	  echo "    $$svc: \"$$id\"" >> $(IMAGE_IDS_VALUES); \
 	done
@@ -1248,6 +1277,10 @@ endif
 	@if [ "$(SVC)" != "vpc" ] && [ "$(SVC)" != "compute" ] && [ "$(SVC)" != "storage" ] && [ "$(SVC)" != "loadbalancer" ] && [ "$(SVC)" != "api-gateway" ] && [ "$(SVC)" != "iam" ] && [ "$(SVC)" != "ui" ] && [ "$(SVC)" != "nlb" ]; then \
 		echo "ERROR: unknown service '$(SVC)'"; exit 1; \
 	fi; \
+	img=$$(printf '%s\n' $(IMAGE_NAME_PAIRS) | awk -F= -v s="$(SVC)" '$$1==s{print $$2}'); \
+	if [ -z "$$img" ]; then \
+		echo "ERROR: имя образа службы '$(SVC)' не объявлено в $(IMAGE_MAP_FILE) — перекатывать нечего"; exit 1; \
+	fi; \
 	DEPLOY_NAME=$(SVC); \
 	if [ "$(SVC)" = "iam" ]; then DEPLOY_NAME=kaname; fi; \
 	if [ "$(SVC)" = "ui" ]; then DEPLOY_NAME=ui; fi; \
@@ -1262,9 +1295,9 @@ endif
 	else \
 		d=$$(test "$(SVC)" = api-gateway && echo gateway || echo services/$(SVC)); \
 		bctx=$$(test "$(SVC)" = iam && echo "$$d" || echo .); \
-		( cd .. && docker build -f $$d/Dockerfile $(IMAGE_BUILD_ARGS) -t kacho-$(SVC):dev "$$bctx" ); \
+		( cd .. && docker build -f $$d/Dockerfile $(IMAGE_BUILD_ARGS) -t $$img:dev "$$bctx" ); \
 	fi && \
-	kind load docker-image kacho-$(SVC):dev --name $(CLUSTER_NAME) && \
+	kind load docker-image $$img:dev --name $(CLUSTER_NAME) && \
 	kubectl rollout restart -n kacho deployment/$$DEPLOY_NAME
 
 logs-svc:

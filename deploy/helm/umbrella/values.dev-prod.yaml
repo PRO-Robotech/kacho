@@ -11,7 +11,8 @@
 # those defects surface locally instead of on a prod cluster.
 #
 # LAYERED ON TOP of values.dev.yaml (like values.fe3455.yaml is) — it inherits ALL
-# kind-local adaptations from dev (local kacho-*:dev images, ingress hostPort,
+# kind-local adaptations from dev (local `:dev` images — see deploy/images.txt for
+# their names, ingress hostPort,
 # in-cluster Hydra issuer/JWKS, pg hosts + inline dev secrets) and flips ONLY the
 # security knobs from insecure-dev → production:
 #
