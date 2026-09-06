@@ -79,7 +79,7 @@ raise SystemExit("перечень владения не объявлен в р�
 PYVARS
 )" || { echo "ОТКАЗ: перечень владения не извлечён из рендера"; exit 1; }
 export KANAME_IDENTITY_SUBSTITUTED_VARS="$SUBST_VARS"
-sed "s#/etc/kacho-identity-src#$TMP/src#g; s#/etc/kacho-identity-rendered#$TMP/rendered#g" \
+sed "s#/etc/kaname-identity-src#$TMP/src#g; s#/etc/kaname-identity-rendered#$TMP/rendered#g" \
   "$TMP/script.raw" > "$TMP/script.sh"
 
 rc=0; red=0; green=0
@@ -181,7 +181,7 @@ case "$CRED_VARS" in
   *) echo "ОТКАЗ: чарт не назвал KANAME_IDENTITY_SMTP_CREDENTIAL в перечне владения ($CRED_VARS) — оси удостоверения проверяли бы пустоту"; exit 1 ;;
 esac
 
-sed "s#/etc/kacho-identity-src#$TMP/src#g; s#/etc/kacho-identity-rendered#$TMP/rendered#g" \
+sed "s#/etc/kaname-identity-src#$TMP/src#g; s#/etc/kaname-identity-rendered#$TMP/rendered#g" \
   "$TMP/script-cred.raw" > "$TMP/script-cred.sh"
 
 run_cred() { # имя · ожидание(RED|GREEN) · улика · величина-удостоверения · uri-в-файле

@@ -191,7 +191,7 @@ identity:
   default_schema_id: kacho_user_v2
   schemas:
     - id: kacho_user_v2
-      url: file:///etc/kacho-identity/identity.schema.json
+      url: file:///etc/kaname-identity/identity.schema.json
 {{- range $inherited }}
     # Унаследовано от слоя под нами: строки личностей, созданные до смены
     # схемы, ссылаются на неё по ИМЕНИ и без объявления не читаются.
@@ -359,7 +359,7 @@ selfservice:
               config:
                 url: {{ .Values.global.kacho.identity.hooks.scheme }}://{{ include "kacho.identity.hooksAuthority" . }}/iam/v1/hooks/provision
                 method: POST
-                body: file:///etc/kacho-identity/hooks/identity-payload.jsonnet
+                body: file:///etc/kaname-identity/hooks/identity-payload.jsonnet
                 auth:
                   type: api_key
                   config:
@@ -375,7 +375,7 @@ selfservice:
               config:
                 url: {{ .Values.global.kacho.identity.hooks.scheme }}://{{ include "kacho.identity.hooksAuthority" . }}/iam/v1/hooks/provision
                 method: POST
-                body: file:///etc/kacho-identity/hooks/identity-payload.jsonnet
+                body: file:///etc/kaname-identity/hooks/identity-payload.jsonnet
                 auth:
                   type: api_key
                   config:
@@ -405,7 +405,7 @@ selfservice:
               config:
                 url: {{ .Values.global.kacho.identity.hooks.scheme }}://{{ include "kacho.identity.hooksAuthority" . }}/iam/v1/hooks/provision
                 method: POST
-                body: file:///etc/kacho-identity/hooks/identity-payload.jsonnet
+                body: file:///etc/kaname-identity/hooks/identity-payload.jsonnet
                 auth:
                   type: api_key
                   config:
@@ -420,7 +420,7 @@ selfservice:
               config:
                 url: {{ .Values.global.kacho.identity.hooks.scheme }}://{{ include "kacho.identity.hooksAuthority" . }}/iam/v1/hooks/provision
                 method: POST
-                body: file:///etc/kacho-identity/hooks/identity-payload.jsonnet
+                body: file:///etc/kaname-identity/hooks/identity-payload.jsonnet
                 auth:
                   type: api_key
                   config:
@@ -466,7 +466,7 @@ selfservice:
             config:
               url: {{ .Values.global.kacho.identity.hooks.scheme }}://{{ include "kacho.identity.hooksAuthority" . }}/iam/v1/hooks/recovery
               method: POST
-              body: file:///etc/kacho-identity/hooks/recovery-payload.jsonnet
+              body: file:///etc/kaname-identity/hooks/recovery-payload.jsonnet
               auth:
                 type: api_key
                 config:
@@ -775,8 +775,8 @@ kacho.identity.configRenderInitContainer — подстановка величи
   command: ["sh", "-euc"]
   args:
     - |
-      src=/etc/kacho-identity-src/kratos.yaml
-      out=/etc/kacho-identity-rendered/kratos.yaml
+      src=/etc/kaname-identity-src/kratos.yaml
+      out=/etc/kaname-identity-rendered/kratos.yaml
 
       # ── ФОРМА ССЫЛКИ — ОДНО ОБЪЯВЛЕНИЕ НА ВСЕ ЧЕТЫРЕ МЕСТА (задача #1795) ───
       #
@@ -1063,7 +1063,7 @@ kacho.identity.configRenderInitContainer — подстановка величи
       MAIL_URI="${COURIER_SMTP_CONNECTION_URI:-}"
       MAIL_SRC="переменная COURIER_SMTP_CONNECTION_URI (она бьёт файл настроек)"
       if [ -z "$(printf %s "$MAIL_URI" | tr -d '[:space:],')" ]; then
-        MAIL_URI="$(awk -F: '/^[[:space:]]*connection_uri:/{sub(/^[[:space:]]*connection_uri:[[:space:]]*/,""); gsub(/^"|"$|^'"'"'|'"'"'$/,""); print; exit}' /etc/kacho-identity-rendered/kratos.yaml)"
+        MAIL_URI="$(awk -F: '/^[[:space:]]*connection_uri:/{sub(/^[[:space:]]*connection_uri:[[:space:]]*/,""); gsub(/^"|"$|^'"'"'|'"'"'$/,""); print; exit}' /etc/kaname-identity-rendered/kratos.yaml)"
         MAIL_SRC="файл настроек (global.kacho.identity.smtp.connectionURI)"
       fi
       # ── УДОСТОВЕРЕНИЕ НЕ ПЕЧАТАЕТСЯ НИ В ОДНОМ ОТКАЗЕ ──────────────────────
@@ -1099,7 +1099,7 @@ kacho.identity.configRenderInitContainer — подстановка величи
           echo "ОТКАЗ: почтовая полоса '$MAIL_SHOWN' (источник: $MAIL_SRC) — схема не распознана; ожидается smtp:// (STARTTLS) либо smtps:// (неявный TLS)" >&2
           exit 1 ;;
       esac
-      echo "подстановка исполнена: $(wc -l < /etc/kacho-identity-rendered/kratos.yaml) строк; почтовая полоса задана и шифрована; источник величины — $MAIL_SRC"
+      echo "подстановка исполнена: $(wc -l < /etc/kaname-identity-rendered/kratos.yaml) строк; почтовая полоса задана и шифрована; источник величины — $MAIL_SRC"
   env:
     # Перечень имён, которыми ВЛАДЕЕТ шаг. Он объявлен рядом с самими
     # переменными, и их согласие держит гейт, а не внимание: имя, попавшее в
@@ -1158,8 +1158,8 @@ kacho.identity.configRenderInitContainer — подстановка величи
 {{- end }}
   volumeMounts:
     - name: kacho-identity-config
-      mountPath: /etc/kacho-identity-src
+      mountPath: /etc/kaname-identity-src
       readOnly: true
     - name: kacho-identity-rendered
-      mountPath: /etc/kacho-identity-rendered
+      mountPath: /etc/kaname-identity-rendered
 {{- end -}}
