@@ -11,6 +11,7 @@ import (
 	"github.com/PRO-Robotech/kacho/pkg/grpcclient"
 	"github.com/PRO-Robotech/kacho/pkg/grpcsrv"
 
+	corequota "github.com/PRO-Robotech/kacho/pkg/quota"
 	"github.com/PRO-Robotech/kacho/services/storage/internal/config"
 )
 
@@ -22,6 +23,14 @@ func secureProd() config.Config {
 		DBSSLMode:         "require",
 		AuthZIAMGRPCAddr:  "kaname-internal:9091",
 		ListFilterEnabled: true,
+		// Объявление домена величин — часть законной посадки: у ручки ровно два
+		// законных значения, и незаданное среди них не значится. Здесь стоит
+		// «не развёрнут», потому что эта отправная точка удостоверений не
+		// взводит вовсе: адрес без удостоверения был бы ВТОРЫМ ослаблением, и
+		// красное ниже перестало бы означать то, что объявлено. Посадку с
+		// поднятым ребром величин проверяет armedProd() соседнего файла.
+		QuotaAuthority: corequota.NotDeployed,
+
 		// Круг отправителей, которым разрешено передавать личность конечного
 		// пользователя, обязан быть сужен — пустой список для corelib означает
 		// «принимаем от любого пира с сертификатом», поэтому конфиг с пустым
@@ -79,6 +88,10 @@ func TestValidate_devTolerant(t *testing.T) {
 		AuthMode:  "dev",
 		DBSSLMode: "disable",
 		// mTLS off, authz addr empty — всё insecure, но dev это допускает.
+		//
+		// Объявление домена величин при этом обязано быть: режимом оно не
+		// смягчается — это не свойство посадки, а отсутствие выбора оператора.
+		QuotaAuthority: corequota.NotDeployed,
 	}
 	if err := c.Validate(); err != nil {
 		t.Fatalf("dev mode must tolerate insecure config, got err = %v", err)

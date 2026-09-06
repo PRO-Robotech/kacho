@@ -1,5 +1,22 @@
 # Copyright (c) PRO-Robotech
 # SPDX-License-Identifier: BUSL-1.1
+
+# ОБЪЯВЛЕНИЕ домена величин. Ровно два законных значения: адрес в форме
+# host:port либо слово `not-deployed`. Пустое значение — НЕ умолчание, а отказ
+# старта: умолчание означало бы выбор за оператора между «потолки действуют» и
+# «потолков нет», и выбор этот был бы невидим.
+#
+# Объявление ОДНО на обе полосы ребра — разрешение величины на пути запроса и
+# фоновую дельту. Приёмка
+# `docs/specs/sub-phase-KAN-QUOTA-1-limit-authority-leaves-iam-acceptance.md`,
+# стадия S1.
+#
+# Сегодня домен величин живёт внутри службы доступа, поэтому значение указывает
+# на её внутренний слушатель, и поведение продукта не меняется ни на байт.
+# Уедет домен — правится ЭТА строка, а не код пяти потребителей.
+quota:
+  authority: "kaname-internal.kacho.svc:9091"
+
 #
 # kacho-registry sub-chart defaults — OCI/Docker registry control-plane + data-plane
 # auth-proxy, over a zot storage backend. Modeled on the kacho-geo sub-chart shape:
@@ -471,6 +488,7 @@ mtls:
   mountPath: /etc/kacho-registry/tls   # <mp>/server|client/{tls.crt,tls.key,ca.crt}
   edges:
     iamAuthz: false     # registry→iam Check + fga-proxy (internal :9091)
+    quotaAuthority: false # registry→домен величин (Resolve + ListChangedSince, :9091)
     iamProject: false   # registry→iam ProjectService.Get (public :9090)
     geo: false          # registry→geo RegionService.Get (public :9090, REG-1 F4)
     # tokenRevocation — registry→iam авторитет отзыва (internal :9097, F1 #897).
@@ -489,6 +507,7 @@ mtls:
     # данных не поднимается.
     tokenRevocation: false
   serverName:
+    quotaAuthority: kaname-internal.kacho.svc # домен величин; сегодня — внутренний слушатель службы доступа
     iamAuthz: kaname-internal.kacho.svc
     iamProject: kaname.kacho.svc
     geo: kacho-geo.kacho.svc

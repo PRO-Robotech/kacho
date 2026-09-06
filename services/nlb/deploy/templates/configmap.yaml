@@ -93,6 +93,11 @@ data:
         dial-duration: {{ .Values.peers.iam.dialDuration }}
         tls: {{ .Values.peers.iam.tls }}
 
+    # Объявление домена величин: одно на обе полосы ребра. Пустое значение
+    # отвергает страж старта — умолчания у него нет by construction.
+    quota:
+      authority: {{ required "quota.authority is required: address host:port or the word not-deployed" .Values.quota.authority | quote }}
+
     authz:
       iam:
         # Адреса здесь нет: per-RPC Check идёт по соединению `iam-internal`,
@@ -185,6 +190,17 @@ data:
         cafiles:
           - {{ printf "%s/ca.crt" $cli | quote }}
         servername: {{ .Values.mtls.serverName.iamProject | quote }}
+        {{- end }}
+      # nlb→домен величин: ОБЕ полосы одного ребра (Resolve на пути запроса и
+      # ListChangedSince фоновой дельтой) — удостоверение одно.
+      quota-authority:
+        enable: {{ .Values.mtls.edges.quotaAuthority }}
+        {{- if .Values.mtls.edges.quotaAuthority }}
+        certfile: {{ printf "%s/tls.crt" $cli | quote }}
+        keyfile: {{ printf "%s/tls.key" $cli | quote }}
+        cafiles:
+          - {{ printf "%s/ca.crt" $cli | quote }}
+        servername: {{ .Values.mtls.serverName.quotaAuthority | quote }}
         {{- end }}
       vpc:
         enable: {{ .Values.mtls.edges.vpc }}

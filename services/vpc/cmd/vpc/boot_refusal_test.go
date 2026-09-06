@@ -48,11 +48,17 @@ func buildVPCBinary(t *testing.T) string {
 // одну ручку и это было видно в самом случае.
 func productionEnv() map[string]string {
 	return map[string]string{
-		"KACHO_VPC_CONFIG_PATH":                   "", // только defaults + ENV
-		"KACHO_VPC_AUTH_MODE":                     "production",
-		"KACHO_VPC_REPOSITORY__POSTGRES__URL":     "postgres://vpc@db-that-is-never-dialled:5432/kacho_vpc",
-		"KACHO_VPC_DB_SSLMODE":                    "require",
-		"KACHO_VPC_AUTHZ__IAM_ENDPOINT":           "kaname-internal:9091",
+		"KACHO_VPC_CONFIG_PATH":               "", // только defaults + ENV
+		"KACHO_VPC_AUTH_MODE":                 "production",
+		"KACHO_VPC_REPOSITORY__POSTGRES__URL": "postgres://vpc@db-that-is-never-dialled:5432/kacho_vpc",
+		"KACHO_VPC_DB_SSLMODE":                "require",
+		"KACHO_VPC_AUTHZ__IAM_ENDPOINT":       "kaname-internal:9091",
+		// Объявление домена величин — часть законной посадки: у ручки ровно два
+		// законных значения, и незаданное среди них не значится. Ребро при этом
+		// поднято и защищено, как остальные: «не развёрнут» вывело бы его из
+		// наблюдения.
+		"KACHO_VPC_QUOTA__AUTHORITY":              "kaname-internal:9091",
+		"KACHO_VPC_QUOTA_AUTHORITY_MTLS_ENABLE":   "true",
 		"KACHO_VPC_AUTHZ__TRUSTED_FORWARDER_SANS": "spiffe://kacho.cloud/ns/kacho/sa/kacho-api-gateway",
 		// Домен доверия — величина установки: без неё дескриптор не принимается,
 		// потому что процесс, не назвавший домена, своим не признаёт никого.

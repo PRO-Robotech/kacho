@@ -607,6 +607,10 @@ func TestScopeFilteredRPCsAreBackedByTheProductionBootGuard(t *testing.T) {
 		"KACHO_STORAGE_BLOCK_BACKEND_CALL_TIMEOUT":       "30s",
 		"KACHO_STORAGE_BLOCK_BACKEND_RECONCILE_INTERVAL": "15s",
 		"KACHO_STORAGE_BLOCK_BACKEND_RECONCILE_BATCH":    "100",
+		// Объявление домена величин — часть законной посадки. Без него посадка
+		// отличалась бы от законной ДВУМЯ фактами, и красное перестало бы
+		// означать то, что объявлено этой пробой.
+		"KACHO_STORAGE_QUOTA_AUTHORITY": "not-deployed",
 	})
 	err := cfg.Validate()
 	if err == nil {

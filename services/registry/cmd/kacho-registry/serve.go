@@ -41,10 +41,8 @@ import (
 	registryv1 "github.com/PRO-Robotech/kacho/pkg/api/kacho/cloud/registry/v1"
 	subscriptionv1 "github.com/PRO-Robotech/kacho/pkg/api/kacho/cloud/subscription"
 
-	corequota "github.com/PRO-Robotech/kacho/pkg/quota"
 	registry "github.com/PRO-Robotech/kacho/services/registry/internal/apps/kacho/api/registry"
 	"github.com/PRO-Robotech/kacho/services/registry/internal/apps/kacho/config"
-	"github.com/PRO-Robotech/kacho/services/registry/internal/apps/kacho/quota"
 	"github.com/PRO-Robotech/kacho/services/registry/internal/check"
 	geoclient "github.com/PRO-Robotech/kacho/services/registry/internal/clients/geo"
 	iamclient "github.com/PRO-Robotech/kacho/services/registry/internal/clients/iam"
@@ -335,39 +333,30 @@ func runServe(cfg config.Config) error {
 	// берётся из УЖЕ существующего вызова к соседу за проектом (:9090), новым
 	// ребром работа не обзаводится.
 	//
-	// Полоса собирается ТОЛЬКО когда есть оба соседа и база: typed-nil в
-	// интерфейсном поле означал бы non-nil интерфейс с nil внутри, и проверка
-	// `!= nil` у вызывающего пропустила бы вызов. Её отсутствие НЕ означает «нет
-	// предела»: списание остаётся за триггером, теряется ровно ранний
-	// синхронный отказ — и это состояние объявлено в журнале, чтобы «полосы нет»
-	// было отличимо от «полоса есть и молчит».
-	var quotaHandler *handler.QuotaHandler
-	if limitClient := iamclient.NewLimitClient(iamConn); limitClient != nil {
-		if store := pg.NewQuotaStore(pool); store != nil {
-			quotaGuard := quota.NewGuard(store, limitClient, iamAdapter, "registry")
-			registryUC.WithQuotaGuard(quotaGuard)
-			// Чтение квот арендатором — та же полоса, что и ранний отказ: у чтения
-			// и у полосы ровно два источника, и они одни и те же.
-			quotaHandler = handler.NewQuotaHandler(quotaGuard)
-		}
-
-		// Снимок величины обязан ДОГОНЯТЬ авторитет: без тянущего строка учёта,
-		// заведённая один раз, живёт со своей величиной вечно, и смена предела
-		// администратором не доезжает до проекта никогда. Показывать арендатору
-		// такой снимок значило бы громко назвать число, которое не догонит
-		// назначенное, — поэтому чтение и тянущий едут вместе.
-		stopQuotaSync, qerr := corequota.StartLimitSyncer(
-			ctx, pool, limitClient, pg.QuotaSchema, corequota.Config{}, logger)
-		if qerr != nil {
-			return fmt.Errorf("start quota limit syncer: %w", qerr)
-		}
-		defer stopQuotaSync()
-	} else {
-		logger.Warn("resource-count quota: no internal iam endpoint, the limit snapshot will " +
-			"NEVER catch up with the authority — the charging trigger still enforces, but an " +
-			"administrator raising or lowering a ceiling has no effect on this process")
+	// Ребро registry→домен величин: ОДНО ребро, ДВЕ полосы — разрешение величины
+	// на пути запроса и фоновая дельта, которой снимок догоняет авторитет.
+	//
+	// Адрес ОБЪЯВЛЕН ручкой, а не выведен из адреса авторизации. Ветки «полоса не
+	// собирается, потому что соседа не задали» здесь БОЛЬШЕ НЕТ: незаданное
+	// объявление отвергает страж старта, а объявленное отсутствие — законная
+	// посадка, в которой тянущий не заводится, а состояние курсора называет
+	// причину. Приёмка
+	// `docs/specs/sub-phase-KAN-QUOTA-1-limit-authority-leaves-iam-acceptance.md`,
+	// стадия S1.
+	quotaEdge, stopQuotaEdge, qerr := buildQuotaAuthorityEdge(ctx, cfg, pool, iamAdapter, logger)
+	if qerr != nil {
+		return qerr
 	}
-	logger.Info("quota_guard", "wired", iamConn != nil)
+	defer stopQuotaEdge()
+
+	var quotaHandler *handler.QuotaHandler
+	if quotaEdge.Guard != nil {
+		registryUC.WithQuotaGuard(quotaEdge.Guard)
+		// Чтение квот арендатором — та же полоса, что и ранний отказ: у чтения
+		// и у полосы ровно два источника, и они одни и те же.
+		quotaHandler = handler.NewQuotaHandler(quotaEdge.Guard)
+	}
+	logger.Info("quota_guard", "wired", quotaEdge.Guard != nil)
 
 	// ── разрешитель осиротевших операций (durable LRO recovery) ───────────────
 	// Дренаж на SIGTERM ниже закрывает только штатное завершение. Всё остальное —

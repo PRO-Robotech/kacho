@@ -43,14 +43,12 @@ import (
 	storagev1 "github.com/PRO-Robotech/kacho/pkg/api/kacho/cloud/storage/v1"
 	subscriptionv1 "github.com/PRO-Robotech/kacho/pkg/api/kacho/cloud/subscription"
 
-	corequota "github.com/PRO-Robotech/kacho/pkg/quota"
 	"github.com/PRO-Robotech/kacho/services/storage/internal/apps/kacho/api/disktype"
 	"github.com/PRO-Robotech/kacho/services/storage/internal/apps/kacho/api/disktypebinding"
 	"github.com/PRO-Robotech/kacho/services/storage/internal/apps/kacho/api/image"
 	"github.com/PRO-Robotech/kacho/services/storage/internal/apps/kacho/api/snapshot"
 	"github.com/PRO-Robotech/kacho/services/storage/internal/apps/kacho/api/storagebackend"
 	"github.com/PRO-Robotech/kacho/services/storage/internal/apps/kacho/api/volume"
-	"github.com/PRO-Robotech/kacho/services/storage/internal/apps/kacho/shared/quota"
 	"github.com/PRO-Robotech/kacho/services/storage/internal/apps/kacho/shared/serviceerr"
 	"github.com/PRO-Robotech/kacho/services/storage/internal/authzfilter"
 	"github.com/PRO-Robotech/kacho/services/storage/internal/clients"
@@ -377,40 +375,30 @@ func runServe(cfg config.Config) error {
 	// заводит владелец типа: ребро «владелец величин → владелец типа» замкнуло бы
 	// цикл, запрещённый polyrepo.md.
 	//
-	// Без соединения с соседом полоса НЕ собирается, и это осознанно: спрашивать
-	// величины не у кого. «Полоса не собрана» означает «нет РАННЕГО отказа», а не
-	// «нет предела» — место по-прежнему занимает триггер в той же транзакции, что
-	// вставка, поэтому исчерпание приезжает отказом операции, а «потолок не
-	// назван» остаётся отказом. Молча снять учёт отсутствием соседа нельзя: ровно
-	// так контроль и становится мёртвым, оставаясь на вид работающим.
+	// Ребро storage→домен величин: ОДНО ребро, ДВЕ полосы — разрешение величины
+	// на пути запроса и фоновая дельта, которой снимок догоняет авторитет.
+	//
+	// Адрес ОБЪЯВЛЕН ручкой, а не выведен из адреса авторизации. Ветки «полоса не
+	// собирается, потому что соседа не задали» здесь БОЛЬШЕ НЕТ: незаданное
+	// объявление отвергает страж старта, а объявленное отсутствие — законная
+	// посадка, в которой тянущий не заводится, а состояние курсора называет
+	// причину. Приёмка
+	// `docs/specs/sub-phase-KAN-QUOTA-1-limit-authority-leaves-iam-acceptance.md`,
+	// стадия S1.
+	quotaEdge, stopQuotaEdge, qerr := buildQuotaAuthorityEdge(ctx, cfg, pool, iamClient, logger)
+	if qerr != nil {
+		return qerr
+	}
+	defer stopQuotaEdge()
+
 	var quotaHandler *handler.QuotaHandler
-	if authzConn != nil {
-		limitClient := clients.NewLimitClient(authzConn)
-		quotaGuard := quota.NewGuard(pg.NewQuotaRepo(pool), limitClient, iamClient)
-		volumeUC.WithQuota(quotaGuard)
-		snapshotUC.WithQuota(quotaGuard)
-		imageUC.WithQuota(quotaGuard)
+	if quotaEdge.Guard != nil {
+		volumeUC.WithQuota(quotaEdge.Guard)
+		snapshotUC.WithQuota(quotaEdge.Guard)
+		imageUC.WithQuota(quotaEdge.Guard)
 		// Чтение квот арендатором — та же полоса, что и ранний отказ: у чтения и
 		// у полосы ровно два источника, и они одни и те же.
-		quotaHandler = handler.NewQuotaHandler(quotaGuard)
-
-		// Снимок величины обязан ДОГОНЯТЬ авторитет: без тянущего строка,
-		// заведённая один раз, живёт со своей величиной вечно, и смена предела
-		// администратором не доезжает до проекта никогда. Показывать арендатору
-		// такой снимок значило бы громко назвать число, которое не догонит
-		// назначенное, — поэтому чтение и тянущий едут вместе.
-		stopQuotaSync, qerr := corequota.StartLimitSyncer(
-			ctx, pool, limitClient, pg.QuotaSchema, corequota.Config{}, logger)
-		if qerr != nil {
-			return fmt.Errorf("start quota limit syncer: %w", qerr)
-		}
-		defer stopQuotaSync()
-	} else {
-		logger.Warn("resource-count quota advisory band NOT wired (authz.iam-addr empty) — " +
-			"the charging trigger still holds the ceiling, but the tenant learns of exhaustion " +
-			"from the operation instead of a synchronous refusal, and the limit snapshot will " +
-			"NEVER catch up with the authority: an administrator raising or lowering a ceiling " +
-			"has no effect on this process")
+		quotaHandler = handler.NewQuotaHandler(quotaEdge.Guard)
 	}
 
 	// ── FGA owner-tuple register-drainer + sync-registrar (SEC-D, анти-BOLA) ──
