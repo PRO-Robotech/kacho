@@ -70,29 +70,109 @@ var chartProfiles = []string{"values.yaml", "values.prod.yaml"}
 type bridged struct {
 	configKey string   // точечный путь ключа конфигурации
 	valuePath []string // путь в дереве значений чарта; пуст, когда значение выводится
-	derive    func(map[string]any) any
+	derive    func(*valueReader) any
 	omitEmpty bool // пустое значение шаблон не рендерит вовсе
+}
+
+// valueReader — доступ к дереву значений чарта, ЗАПОМИНАЮЩИЙ прочитанные пути.
+//
+// Заведён затем, чтобы перечень путей, которые потребляет `derive`, ВЫВОДИЛСЯ
+// исполнением самой функции, а не выписывался рядом с ней. Выписанный перечень
+// есть второе место об одном предмете, и расходится он молча: склейка перестаёт
+// читать ключ, перечень о нём не знает, и ключ остаётся на поверхности посадки,
+// которой больше не принадлежит.
+type valueReader struct {
+	tree map[string]any
+	read [][]string
+}
+
+// text — величина по пути, в форме, годной для подстановки в строку.
+//
+// ОТСУТСТВУЮЩИЙ ПУТЬ ДАЁТ ПУСТОТУ, А НЕ «<nil>», и это несущее свойство, а не
+// косметика. Пока склейка шла через `fmt.Sprintf("%v", …)`, снятый `db.host`
+// давал строку подключения `postgres://iam@<nil>:5432/kaname`: хост НЕПУСТ,
+// страж старта доволен, и снятие ручки посадку не роняло. То есть проба о такой
+// ручке не утверждала ничего — при том что без хоста служба в пуск не идёт.
+// Пустая величина даёт `postgres://iam@:5432/kaname`, и страж отвечает своим
+// текстом: `repository.postgres.url=… names no host`.
+func (r *valueReader) text(path ...string) string {
+	r.read = append(r.read, append([]string{}, path...))
+	v := at(r.tree, path...)
+	if v == nil {
+		return ""
+	}
+	return fmt.Sprintf("%v", v)
+}
+
+// derivedValuePathsOf — пути значений, которые потребляют вычисляющие записи
+// названного переложения. Получены ИСПОЛНЕНИЕМ каждой записи на запоминающем
+// читателе, а не объявлением.
+//
+// Переложение приходит ПАРАМЕТРОМ, чтобы способность вывода упасть доказывалась
+// инъекцией: склейка, переставшая читать путь, обязана выводить ручку из
+// поверхности посадки, и это проверяется подменой переложения, а не прочтением.
+func derivedValuePathsOf(bridge []bridged, tree map[string]any) [][]string {
+	var out [][]string
+	seen := map[string]bool{}
+	for _, b := range bridge {
+		if b.derive == nil {
+			continue
+		}
+		r := &valueReader{tree: tree}
+		_ = b.derive(r)
+		for _, path := range r.read {
+			joined := strings.Join(path, ".")
+			if seen[joined] {
+				continue
+			}
+			seen[joined] = true
+			out = append(out, path)
+		}
+	}
+	return out
+}
+
+// derivedValuePaths — то же для действующего переложения чарта.
+func derivedValuePaths(tree map[string]any) [][]string {
+	return derivedValuePathsOf(configBridge, tree)
+}
+
+// postureValuePathsOf — ВСЕ пути значений, которые названное переложение
+// доводит до файла настроек: и взятые по `valuePath`, и потреблённые склейкой.
+func postureValuePathsOf(bridge []bridged, tree map[string]any) [][]string {
+	var out [][]string
+	for _, b := range bridge {
+		if len(b.valuePath) > 0 {
+			out = append(out, b.valuePath)
+		}
+	}
+	return append(out, derivedValuePathsOf(bridge, tree)...)
+}
+
+// postureValuePaths — то же для действующего переложения чарта.
+func postureValuePaths(tree map[string]any) [][]string {
+	return postureValuePathsOf(configBridge, tree)
 }
 
 var configBridge = []bridged{
 	{configKey: "logger.level", valuePath: []string{"logger", "level"}},
-	{configKey: "api-server.endpoint", derive: func(v map[string]any) any {
-		return fmt.Sprintf("tcp://0.0.0.0:%v", at(v, "ports", "grpc"))
+	{configKey: "api-server.endpoint", derive: func(r *valueReader) any {
+		return fmt.Sprintf("tcp://0.0.0.0:%s", r.text("ports", "grpc"))
 	}},
-	{configKey: "api-server.internal-endpoint", derive: func(v map[string]any) any {
-		return fmt.Sprintf("tcp://0.0.0.0:%v", at(v, "ports", "internalGrpc"))
+	{configKey: "api-server.internal-endpoint", derive: func(r *valueReader) any {
+		return fmt.Sprintf("tcp://0.0.0.0:%s", r.text("ports", "internalGrpc"))
 	}},
 	{configKey: "api-server.graceful-shutdown", valuePath: []string{"apiServer", "gracefulShutdown"}},
 	{configKey: "api-server.registry-token.issuer", valuePath: []string{"apiServer", "registryToken", "issuer"}, omitEmpty: true},
 	{configKey: "api-server.registry-token.service", valuePath: []string{"apiServer", "registryToken", "service"}, omitEmpty: true},
-	{configKey: "repository.type", derive: func(map[string]any) any { return "POSTGRES" }},
-	{configKey: "repository.postgres.url", derive: func(v map[string]any) any {
-		return fmt.Sprintf("postgres://%v@%v:%v/%v",
-			at(v, "db", "user"), at(v, "db", "host"), at(v, "db", "port"), at(v, "db", "name"))
+	{configKey: "repository.type", derive: func(*valueReader) any { return "POSTGRES" }},
+	{configKey: "repository.postgres.url", derive: func(r *valueReader) any {
+		return fmt.Sprintf("postgres://%s@%s:%s/%s",
+			r.text("db", "user"), r.text("db", "host"), r.text("db", "port"), r.text("db", "name"))
 	}},
 	{configKey: "repository.postgres.max-conns", valuePath: []string{"repository", "postgres", "maxConns"}},
 	{configKey: "repository.postgres.ssl-mode", valuePath: []string{"repository", "postgres", "sslMode"}},
-	{configKey: "repository.postgres.password-from-env", derive: func(map[string]any) any { return "KANAME_DB_PASSWORD" }},
+	{configKey: "repository.postgres.password-from-env", derive: func(*valueReader) any { return "KANAME_DB_PASSWORD" }},
 	{configKey: "authn.mode", valuePath: []string{"authMode"}},
 	{configKey: "authn.identity-provider", valuePath: []string{"authn", "identityProvider"}, omitEmpty: true},
 	{configKey: "authn.trusted-forwarder-sans", valuePath: []string{"authn", "trustedForwarderSANs"}, omitEmpty: true},
@@ -246,12 +326,18 @@ func TestProdProfile_EveryKnobIsLoadBearing(t *testing.T) {
 	require.NotEmpty(t, knobs, "боевой профиль не объявляет ни одной ручки — "+
 		"перепись прочитала бы ноль и отчиталась успехом при любом содержимом")
 
+	// Поверхность считается ОДИН РАЗ и по ПОЛНОЙ цепочке: снятие ручки идёт
+	// дальше по циклу, и поверхность, пересчитанная на усечённом дереве, судила
+	// бы ручку по дереву без неё.
+	surface := postureValuePaths(mergeChartProfiles(t, chartProfiles))
+
 	seenRestated := map[string]bool{}
-	inSurface, outside := 0, 0
+	inSurface := 0
+	var outsideKnobs []string
 	for _, knob := range knobs {
 		joined := strings.Join(knob, ".")
-		if !inPostureSurface(knob) {
-			outside++
+		if !inPostureSurface(surface, knob) {
+			outsideKnobs = append(outsideKnobs, joined)
 			continue
 		}
 		inSurface++
@@ -288,44 +374,135 @@ func TestProdProfile_EveryKnobIsLoadBearing(t *testing.T) {
 	require.NotZero(t, inSurface,
 		"ни одна ручка боевого профиля не попала в поверхность посадки — перепись "+
 			"прочитала бы ноль и отчиталась успехом при любом содержимом")
-	// ВНЕ ПОВЕРХНОСТИ — ДВА РОДА, и второй назван потому, что он не «эксплуатационный».
+
+	// ВНЕ ПОВЕРХНОСТИ — ДВА РОДА, и они РАЗДЕЛЯЮТСЯ, а не сваливаются в одно
+	// число со словом «эксплуатационные».
 	//
-	//  1. эксплуатационные величины (число реплик, образ, пределы): посадки они не
-	//     несут, и предметом этой пробы не являются;
-	//  2. координаты объектов кластера, которых чарт не создаёт (`db.host`,
-	//     `db.passwordSecretName`, `db.passwordSecretKey`, задача #2090). Из них
-	//     `db.host` посадку НЕСЁТ — страж старта отказывает без него, — а вне
-	//     поверхности он оказался потому, что она выводится только из `valuePath`
-	//     записей переложения, а строку подключения шаблон СКЛЕИВАЕТ (`derive`,
-	//     `valuePath` пуст). Это пробел вывода, а не решение; предмет и предикат
-	//     снятия — задача #2095. Две координаты секрета вне поверхности стоят
-	//     ВЕРНО: страж старта их не видит вовсе, их судит страж рендера чарта
-	//     (`kaname-svc.requireOperatorSuppliedNames`).
+	//  1. координаты, которые судит ДРУГОЙ судья — страж рендера чарта
+	//     (`kaname-svc.requireOperatorSuppliedNames`): имя секрета с паролем,
+	//     ключ в нём, координата образа. Страж старта их не видит вовсе, и это
+	//     ВЕРНО: до процесса они не доезжают, а без них не проходит установка;
+	//  2. собственно эксплуатационные величины (число реплик, пределы): их не
+	//     читает ни один из двух судей, и предметом этой пробы они не являются.
+	//
+	// Прежде оба рода назывались «эксплуатационными» одной строкой, и в ту же
+	// строку попадал `db.host`, который посадку НЕСЁТ. Разделение выводится, а
+	// не выписывается: перечень первого рода читается из самого перечня отказа
+	// рендера.
+	refused, guardCensus, err := renderRefusalPaths(filepath.Join(serviceRoot(t), "deploy"))
+	require.NoError(t, err, "перечень отказа рендера не прочитан — вторая половина "+
+		"классификации не с чем сверяется")
+
+	var judgedByRender, operational []string
+	for _, joined := range outsideKnobs {
+		if refused[joined] {
+			judgedByRender = append(judgedByRender, joined)
+			continue
+		}
+		operational = append(operational, joined)
+	}
+
 	t.Logf("перепись: ручек боевого профиля %d · на поверхности посадки %d · вне её %d "+
-		"(эксплуатационные — число реплик, образ, пределы — и координаты объектов кластера, "+
-		"см. #2095) · восстановленных намеренно %d",
-		len(knobs), inSurface, outside, len(restatedDeliberately))
+		"(судимых стражем рендера %d: %s · эксплуатационных %d: %s) · "+
+		"восстановленных намеренно %d · %s",
+		len(knobs), inSurface, len(outsideKnobs),
+		len(judgedByRender), strings.Join(judgedByRender, ", "),
+		len(operational), strings.Join(operational, ", "),
+		len(restatedDeliberately), guardCensus)
+}
+
+// renderRefusalPaths — пути значений, которые перечисляет ОТКАЗ РЕНДЕРА чарта.
+//
+// Читается тело именованного шаблона `kaname-svc.requireOperatorSuppliedNames`
+// и берутся пути, названные его ветвями. Перечень ВЫВОДИТСЯ, а не выписывается:
+// выписанный разошёлся бы с шаблоном молча — новая координата появляется
+// коммитом в шаблон, перечень о ней не знает, и ручка уезжает в «эксплуатационные».
+//
+// ПРЕДПОСЫЛКА ПРОВЕРЯЕТСЯ, А НЕ ПОДРАЗУМЕВАЕТСЯ: не найден сам шаблон или ни
+// одного пути в нём — это ОШИБКА, а не пустой перечень. Пустой перечень отнёс бы
+// все координаты чужого кластера к эксплуатационным, то есть вернул бы ровно ту
+// неправду, ради которой классификация заведена.
+func renderRefusalPaths(chartDir string) (map[string]bool, string, error) {
+	raw, err := os.ReadFile(filepath.Join(chartDir, templatesDir, helpersFile))
+	if err != nil {
+		return nil, "", fmt.Errorf("файл именованных шаблонов не читается: %w", err)
+	}
+	text := string(raw)
+
+	const marker = `{{- define "kaname-svc.requireOperatorSuppliedNames" -}}`
+	start := strings.Index(text, marker)
+	if start < 0 {
+		return nil, "", fmt.Errorf(
+			"в %s нет объявления %s — перечень отказа рендера переименован или снят, "+
+				"и классификация ручек вне поверхности посадки судила бы по пустому множеству",
+			helpersFile, marker)
+	}
+	// Тело кончается СЛЕДУЮЩИМ объявлением, а не первым `{{- end -}}`: ветви
+	// перечня закрываются своими `end`, и обрыв по первому из них прочитал бы
+	// одну ветвь из четырёх — перепись показала бы одну координату вместо всех.
+	body := text[start+len(marker):]
+	if next := strings.Index(body, "{{- define "); next >= 0 {
+		body = body[:next]
+	}
+
+	aliases := templateAliases(body)
+	out := map[string]bool{}
+	lines := strings.Split(body, "\n")
+	for _, line := range lines {
+		for _, m := range actionRe.FindAllStringSubmatch(line, -1) {
+			action := strings.TrimSpace(m[1])
+			if !strings.HasPrefix(action, "if ") {
+				continue
+			}
+			for _, path := range resolveRefs(action, aliases) {
+				out[path] = true
+			}
+		}
+	}
+	if len(out) == 0 {
+		return nil, "", fmt.Errorf(
+			"перечень отказа рендера прочитан (%d строк), но не назвал ни одного пути "+
+				"значений — распознаватель не знает формы его ветвей", len(lines))
+	}
+
+	named := make([]string, 0, len(out))
+	for p := range out {
+		named = append(named, p)
+	}
+	sort.Strings(named)
+	return out, fmt.Sprintf("перечень отказа рендера называет %d координат(ы): %s",
+		len(named), strings.Join(named, ", ")), nil
 }
 
 // inPostureSurface — принадлежит ли ручка ПОВЕРХНОСТИ ПОСАДКИ.
 //
 // Поверхность выводится из устройства чарта, а не выписывается перечнем условий
 // стража: это карта переменных окружения, карта величин из секрета, материал TLS
-// и те ключи значений, которые шаблон кладёт в файл настроек (`configBridge`).
-// Всё прочее — эксплуатационные величины (число реплик, образ, пределы): они
-// законны в боевом профиле и посадки не несут, поэтому предметом этой пробы не
-// являются и в её вердикт не входят.
-func inPostureSurface(knob []string) bool {
+// и те ключи значений, которые шаблон кладёт в файл настроек. Всё прочее —
+// эксплуатационные величины (число реплик, пределы): они законны в боевом
+// профиле, посадки не несут и в вердикт этой пробы не входят.
+//
+// ПУТИ ПРИХОДЯТ ПАРАМЕТРОМ, А НЕ БЕРУТСЯ ИЗ `configBridge` НАПРЯМУЮ, и это
+// несущее различие, а не стиль. Прежде поверхность выводилась ТОЛЬКО из
+// `valuePath`, а записи, которые значение ВЫЧИСЛЯЮТ (`derive`, `valuePath`
+// пуст), пропускались целиком. Строку подключения к базе шаблон СКЛЕИВАЕТ из
+// `db.user`, `db.host`, `db.port`, `db.name` — поэтому `db.host` поверхности не
+// принадлежал, хотя страж старта его читает и без него отказывает в пуске
+// (`repository.postgres.url=… names no host`). Ручка, которую страж читает,
+// числилась не несущей посадки, а перепись относила её к эксплуатационным.
+// Теперь потреблённые пути ВЫВОДЯТСЯ исполнением самой склейки
+// (`derivedValuePaths`), и второго места об одном предмете не заводится.
+func inPostureSurface(paths [][]string, knob []string) bool {
 	switch knob[0] {
 	case "env", "secrets", "tls":
 		return true
 	}
-	for _, b := range configBridge {
-		if len(b.valuePath) == 0 || len(b.valuePath) > len(knob) {
+	for _, path := range paths {
+		if len(path) == 0 || len(path) > len(knob) {
 			continue
 		}
 		match := true
-		for i, seg := range b.valuePath {
+		for i, seg := range path {
 			if knob[i] != seg {
 				match = false
 				break
@@ -357,7 +534,33 @@ func TestConfigBridge_MirrorsTheChartTemplate(t *testing.T) {
 				"больше не рендерит — переложение собирает вход, которого процесс не "+
 				"увидит, и вердикт пробы относится к чужому дереву", b.configKey)
 	}
-	t.Logf("перепись: ключей переложения %d, шаблон прочитан (%d байт)", len(configBridge), len(raw))
+
+	// ВТОРАЯ ПОЛОВИНА ПРЕДПОСЫЛКИ — пути, которые потребляет СКЛЕЙКА.
+	//
+	// Они выводятся исполнением самой склейки, но склейка всё-таки повторяет
+	// шаблон, и повторение обязано быть удержано так же, как повторение ключей
+	// выше: путь, который шаблон перестал читать, делает поверхность посадки
+	// шире действительной — ручка стерегомая, а читателя у неё нет.
+	merged := mergeChartProfiles(t, chartProfiles)
+	derived := derivedValuePaths(merged)
+	require.NotEmpty(t, derived,
+		"ни одна запись переложения не потребляет путей значений — либо склейки не "+
+			"осталось, либо читатель перестал их запоминать; поверхность посадки "+
+			"собралась бы из одних `valuePath`, то есть вернулась бы к пробелу задачи #2095")
+
+	named := make([]string, 0, len(derived))
+	for _, path := range derived {
+		joined := strings.Join(path, ".")
+		named = append(named, joined)
+		require.Contains(t, text, ".Values."+joined,
+			"склейка читает %q, а шаблон configmap.yaml на этот путь больше не "+
+				"ссылается — поверхность посадки шире действительной, и проба стережёт "+
+				"ручку, у которой нет читателя", joined)
+	}
+	sort.Strings(named)
+
+	t.Logf("перепись: ключей переложения %d · путей, потреблённых склейкой %d (%s) · "+
+		"шаблон прочитан (%d байт)", len(configBridge), len(named), strings.Join(named, ", "), len(raw))
 }
 
 // ── сборка входа и вердикт ───────────────────────────────────────────────────
@@ -541,7 +744,7 @@ func writeRenderedConfig(t *testing.T, merged map[string]any) (string, int) {
 		var val any
 		switch {
 		case b.derive != nil:
-			val = b.derive(merged)
+			val = b.derive(&valueReader{tree: merged})
 		default:
 			val = at(merged, b.valuePath...)
 		}
