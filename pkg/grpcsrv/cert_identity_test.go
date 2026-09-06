@@ -93,7 +93,7 @@ func TestSECB16Unit_NoVerifiedCert_NotTrusted(t *testing.T) {
 // --- a ctx carrying a verified cert-identity reports it.
 func TestSECB15Unit_VerifiedCert_Carried(t *testing.T) {
 	const id = "spiffe://kacho.cloud/ns/kacho-system/sa/kacho-compute"
-	ctx := grpcsrv.WithCertIdentity(context.Background(), id, true)
+	ctx := grpcsrv.WithCertIdentityIn(context.Background(), grpcsrv.NewTrustDomain("kacho.cloud"), id, true)
 	got, verified := grpcsrv.CertIdentityFromContext(ctx)
 	require.Equal(t, id, got)
 	require.True(t, verified)

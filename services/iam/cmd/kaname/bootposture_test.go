@@ -69,6 +69,9 @@ func TestBootPosture_Production(t *testing.T) {
 	// Круг отправителей сужен: без него центральный дескриптор посадку НЕ
 	// принимает (О1), и это его работа, а не помеха пробе.
 	cfg.AuthN.TrustedForwarderSANs = []string{"spiffe://kacho.cloud/ns/kacho/sa/kacho-api-gateway"}
+	// Домен доверия — величина установки: без неё дескриптор не принимается,
+	// потому что процесс, не назвавший домена, своим не признаёт никого.
+	cfg.AuthN.TrustDomainName = "kacho.cloud"
 	var mtls config.MTLSConfig
 	mtls.PublicServerMTLS.Enable = true
 	mtls.InternalServerMTLS.Enable = true
@@ -92,6 +95,9 @@ func TestBootPosture_SSLModeComesFromTheDSNThatReachesThePool(t *testing.T) {
 	cfg.Repository.Postgres.URL = "postgres://u:p@pg-iam:5432/kaname?sslmode=verify-ca"
 	cfg.Repository.Postgres.SSLMode = ""
 	cfg.AuthN.TrustedForwarderSANs = []string{"spiffe://kacho.cloud/ns/kacho/sa/kacho-api-gateway"}
+	// Домен доверия — величина установки: без неё дескриптор не принимается,
+	// потому что процесс, не назвавший домена, своим не признаёт никого.
+	cfg.AuthN.TrustDomainName = "kacho.cloud"
 
 	requireBootPostureFields(t, captureBootPosture(t, bootPosture(acceptedPosture(t, cfg), cfg, config.MTLSConfig{}, true)), map[string]any{
 		"auth_mode":  "production-strict",
@@ -108,6 +114,11 @@ func TestBootPosture_InsecureIsReportedHonestly(t *testing.T) {
 	// Вне боевого режима несужённый круг законен, но ТОЛЬКО как явный опт-ин:
 	// умолчанием его не получить (secure-by-default общей библиотеки).
 	cfg.AuthN.TrustAnyForwarder = true
+	// У ДОМЕНА опт-ина нет и быть не может, и это не пробел рядом с соседкой
+	// выше: пустой круг ПОЗВОЛЯЕТ лишнее (доверять всякому предъявителю), а
+	// необъявленный домен, наоборот, не признаёт никого. Опт-ин «поднимусь без
+	// домена» означал бы согласие не работать, поэтому домен называется и здесь.
+	cfg.AuthN.TrustDomainName = "kacho.cloud"
 
 	requireBootPostureFields(t, captureBootPosture(t, bootPosture(acceptedPosture(t, cfg), cfg, config.MTLSConfig{}, false)), map[string]any{
 		"service":       "iam",

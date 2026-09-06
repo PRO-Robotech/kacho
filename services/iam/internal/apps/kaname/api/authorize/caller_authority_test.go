@@ -61,7 +61,7 @@ func newHandlerWithAuthorityInsecure(svcCheck bool, auth *authorityStub) *Handle
 // moduleCertCtx injects a verified mTLS module-cert SAN into ctx, simulating a
 // cluster-internal module PDP peer call over the :9091 internal listener.
 func moduleCertCtx() context.Context {
-	return grpcsrv.WithCertIdentity(context.Background(),
+	return grpcsrv.WithCertIdentityIn(context.Background(), grpcsrv.NewTrustDomain("kacho.cloud"),
 		"spiffe://kacho.cloud/ns/kacho/sa/kacho-vpc", true)
 }
 

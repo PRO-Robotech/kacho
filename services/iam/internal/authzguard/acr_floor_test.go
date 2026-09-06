@@ -61,7 +61,7 @@ func realisticCatalog() fakeACRCatalog {
 // gatewayACRCtx returns a ctx as the trust-aware extract would leave it for a
 // verified api-gateway peer forwarding the given acr.
 func gatewayACRCtx(acr string) context.Context {
-	ctx := grpcsrv.WithCertIdentity(context.Background(), gatewaySAN, true)
+	ctx := grpcsrv.WithCertIdentityIn(context.Background(), grpcsrv.NewTrustDomain("kacho.cloud"), gatewaySAN, true)
 	return grpcsrv.WithTrustedACR(ctx, acr, true)
 }
 
@@ -103,7 +103,7 @@ func TestACRFloor_0402_AcrBelowFloor_Denied(t *testing.T) {
 func TestACRFloor_0403_AcrAbsent_FailClosed(t *testing.T) {
 	f := newACRFloor(true)
 	// Trusted gateway peer but NO acr forwarded (TrustedACR present-but-empty).
-	ctx := grpcsrv.WithCertIdentity(context.Background(), gatewaySAN, true)
+	ctx := grpcsrv.WithCertIdentityIn(context.Background(), grpcsrv.NewTrustDomain("kacho.cloud"), gatewaySAN, true)
 	ctx = grpcsrv.WithTrustedACR(ctx, "", true)
 	err := f.allow(ctx, grantAdminMethod)
 	if status.Code(err) != codes.PermissionDenied {
@@ -120,7 +120,7 @@ func TestACRFloor_0404_AcrMinZero_NotChecked(t *testing.T) {
 	if err := f.allow(gatewayACRCtx("0"), revokeMethod); err != nil {
 		t.Fatalf("acr_min=0 RPC must pass regardless of acr, got %v", err)
 	}
-	ctx := grpcsrv.WithCertIdentity(context.Background(), gatewaySAN, true)
+	ctx := grpcsrv.WithCertIdentityIn(context.Background(), grpcsrv.NewTrustDomain("kacho.cloud"), gatewaySAN, true)
 	ctx = grpcsrv.WithTrustedACR(ctx, "", true)
 	if err := f.allow(ctx, revokeMethod); err != nil {
 		t.Fatalf("acr_min=0 RPC with absent acr must pass, got %v", err)
@@ -132,7 +132,7 @@ func TestACRFloor_0404_AcrMinZero_NotChecked(t *testing.T) {
 func TestACRFloor_0405_NonGatewayRPC_Exempt(t *testing.T) {
 	f := newACRFloor(true)
 	// kacho-vpc module SA, no user-acr, calling a non-gateway-fronted RPC.
-	ctx := grpcsrv.WithCertIdentity(context.Background(), vpcSAN, true)
+	ctx := grpcsrv.WithCertIdentityIn(context.Background(), grpcsrv.NewTrustDomain("kacho.cloud"), vpcSAN, true)
 	ctx = grpcsrv.WithTrustedACR(ctx, "", true)
 	if err := f.allow(ctx, registerNonGateway); err != nil {
 		t.Fatalf("non-gateway-fronted RPC must be acr-exempt (service→service), got %v", err)

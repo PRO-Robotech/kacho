@@ -128,16 +128,22 @@ type certIdentity struct {
 	domain TrustDomain
 }
 
-// WithCertIdentity stores the extracted cert-identity and the mTLS-verified flag
-// in ctx. Exposed so the principal-aware layer (and tests) can assert the
-// invariant deterministically without a live TLS peer.
-func WithCertIdentity(ctx context.Context, id string, verified bool) context.Context {
-	return context.WithValue(ctx, certIdentityCtxKey{}, certIdentity{id: id, verified: verified})
-}
-
-// WithCertIdentityIn — то же, но с доменом, относительно которого личность
-// признана нашей. Форма, которую употребляет извлекатель; [WithCertIdentity]
-// остаётся для проб и вызывающих, которым домен не нужен.
+// WithCertIdentityIn stores the extracted cert-identity, the domain it was
+// recognized under, and the mTLS-verified flag in ctx. Exposed so the
+// principal-aware layer (and tests) can assert the invariant deterministically
+// without a live TLS peer.
+//
+// # Почему домен здесь ОБЯЗАТЕЛЕН, а формы без него не существует
+//
+// Личность существует ОТНОСИТЕЛЬНО домена, и читатели ниже по цепочке
+// (`authzguard.SANToServiceDomain` и соседи) разбирают эту же строку, спрашивая
+// домен у контекста. Контекст, собранный без домена, отдал бы им нулевое
+// значение — и они fail-closed отвергли бы личность, которую сами же признали
+// нашей. Отказ при этом выглядел бы как отсутствие прав у законного модуля.
+//
+// Форма с двумя аргументами существовала и была снята: она собиралась молча и
+// давала ровно такой контекст. Запретить её значением было нечем — запретили
+// подписью.
 func WithCertIdentityIn(ctx context.Context, d TrustDomain, id string, verified bool) context.Context {
 	return context.WithValue(ctx, certIdentityCtxKey{}, certIdentity{id: id, verified: verified, domain: d})
 }

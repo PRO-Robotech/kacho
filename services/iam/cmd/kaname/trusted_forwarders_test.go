@@ -69,6 +69,10 @@ func fwdCfg(forwarders ...string) config.Config {
 		AuthN: config.AuthNConfig{
 			Mode:                 config.ModeProductionStrict,
 			TrustedForwarderSANs: forwarders,
+			// Домен доверия — величина установки: по необъявленному не опознаётся
+			// ни один предъявитель, и проба судила бы отказ домена вместо своего
+			// предмета — круга отправителей.
+			TrustDomainName: "kacho.cloud",
 		},
 	}
 }

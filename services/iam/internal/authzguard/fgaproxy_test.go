@@ -81,7 +81,7 @@ func TestRelationWriteGate_C01_B07_ValidSANResolvedAndAllowed(t *testing.T) {
 	chk := &fakeChecker{allowSubjects: map[string]bool{"service_account:" + sva("vpc"): true}}
 	gate := authzguard.NewRelationWriteGate(chk).WithProductionMode(true)
 
-	ctx := grpcsrv.WithCertIdentity(context.Background(),
+	ctx := grpcsrv.WithCertIdentityIn(context.Background(), grpcsrv.NewTrustDomain("kacho.cloud"),
 		"spiffe://kacho.cloud/ns/kacho-system/sa/kacho-vpc", true)
 
 	dom, err := gate.Authorize(ctx)
@@ -101,7 +101,7 @@ func TestRelationWriteGate_B08_NoFGAWriterRelationDenied(t *testing.T) {
 	chk := &fakeChecker{allowSubjects: map[string]bool{}}
 	gate := authzguard.NewRelationWriteGate(chk).WithProductionMode(true)
 
-	ctx := grpcsrv.WithCertIdentity(context.Background(),
+	ctx := grpcsrv.WithCertIdentityIn(context.Background(), grpcsrv.NewTrustDomain("kacho.cloud"),
 		"spiffe://kacho.cloud/ns/kacho/sa/kacho-geo", true)
 
 	_, err := gate.Authorize(ctx)
@@ -118,7 +118,7 @@ func TestRelationWriteGate_C03_MalformedOrForeignSANDenied(t *testing.T) {
 		"spiffe://kacho.cloud/ns//sa/kacho-", // empty segments
 		"",                                   // no identity
 	} {
-		ctx := grpcsrv.WithCertIdentity(context.Background(), san, true)
+		ctx := grpcsrv.WithCertIdentityIn(context.Background(), grpcsrv.NewTrustDomain("kacho.cloud"), san, true)
 		_, err := gate.Authorize(ctx)
 		require.Equal(t, codes.PermissionDenied, status.Code(err), "malformed SAN %q → PermissionDenied", san)
 	}
@@ -129,7 +129,7 @@ func TestRelationWriteGate_C05_UnverifiedPeerDenied(t *testing.T) {
 	gate := authzguard.NewRelationWriteGate(chk).WithProductionMode(true)
 
 	// Verified=false (TLS peer without verified client-cert) → never trusted.
-	ctx := grpcsrv.WithCertIdentity(context.Background(),
+	ctx := grpcsrv.WithCertIdentityIn(context.Background(), grpcsrv.NewTrustDomain("kacho.cloud"),
 		"spiffe://kacho.cloud/ns/kacho-system/sa/kacho-vpc", false)
 	_, err := gate.Authorize(ctx)
 	require.Equal(t, codes.PermissionDenied, status.Code(err), "unverified peer → fail-closed")
@@ -141,7 +141,7 @@ func TestRelationWriteGate_C02_UnknownSADenied(t *testing.T) {
 
 	// Well-formed SPIRE SAN, but the resolved SA has no fga_writer relation
 	// (unknown / unregistered module) → fail-closed PermissionDenied.
-	ctx := grpcsrv.WithCertIdentity(context.Background(),
+	ctx := grpcsrv.WithCertIdentityIn(context.Background(), grpcsrv.NewTrustDomain("kacho.cloud"),
 		"spiffe://kacho.cloud/ns/kacho-system/sa/kacho-unknown", true)
 	_, err := gate.Authorize(ctx)
 	require.Equal(t, codes.PermissionDenied, status.Code(err))
@@ -154,7 +154,7 @@ func TestRelationWriteGate_B09_NoACRConsulted(t *testing.T) {
 	gate := authzguard.NewRelationWriteGate(chk).WithProductionMode(true)
 
 	// ctx carries NO acr claim of any kind — must still pass on relation alone.
-	ctx := grpcsrv.WithCertIdentity(context.Background(),
+	ctx := grpcsrv.WithCertIdentityIn(context.Background(), grpcsrv.NewTrustDomain("kacho.cloud"),
 		"spiffe://kacho.cloud/ns/kacho-system/sa/kacho-vpc", true)
 	_, err := gate.Authorize(ctx)
 	require.NoError(t, err, "SA exempt from ACR-floor")
@@ -212,7 +212,7 @@ func TestRelationWriteGate_I1_BackendFailureIsUnavailable(t *testing.T) {
 			}
 			gate := authzguard.NewRelationWriteGate(chk).WithProductionMode(true)
 
-			ctx := grpcsrv.WithCertIdentity(context.Background(),
+			ctx := grpcsrv.WithCertIdentityIn(context.Background(), grpcsrv.NewTrustDomain("kacho.cloud"),
 				"spiffe://kacho.cloud/ns/kacho-system/sa/kacho-vpc", true)
 
 			_, err := gate.Authorize(ctx)
@@ -242,7 +242,7 @@ func TestRelationWriteGate_I1_ExplicitDenyIsPermissionDenied(t *testing.T) {
 	chk := &fakeChecker{allowSubjects: map[string]bool{}} // empty → allowed=false, err=nil
 	gate := authzguard.NewRelationWriteGate(chk).WithProductionMode(true)
 
-	ctx := grpcsrv.WithCertIdentity(context.Background(),
+	ctx := grpcsrv.WithCertIdentityIn(context.Background(), grpcsrv.NewTrustDomain("kacho.cloud"),
 		"spiffe://kacho.cloud/ns/kacho-system/sa/kacho-vpc", true)
 
 	_, err := gate.Authorize(ctx)

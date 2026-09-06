@@ -62,6 +62,7 @@ func goodEndpoints(mode config.Mode, sslMode string) config.Config {
 			// поэтому фикстура обязана его назвать — как обязан профиль.
 			IdentityProvider:     config.IdentityProviderExternal,
 			TrustedForwarderSANs: []string{"spiffe://kacho.cloud/ns/kacho/sa/kacho-api-gateway"},
+			TrustDomainName:      "kacho.cloud",
 			HydraAdminURL:        "https://kacho-umbrella-hydra-admin.kacho.svc:4445",
 			HydraAdminCAFile:     "/etc/kaname/tls/server/ca.crt",
 			// Both hops to the provider's PUBLIC listener declared, in the plain

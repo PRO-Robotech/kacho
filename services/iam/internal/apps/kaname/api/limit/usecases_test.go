@@ -578,7 +578,7 @@ func TestResolve_GateAsksAboutTheCallingMODULE(t *testing.T) {
 
 	// Контекст стенда: проверенная личность сертификата модуля ПЛЮС проброшенная
 	// личность арендатора. Оба присутствуют — вопрос в том, про кого спросят.
-	ctx := grpcsrv.WithCertIdentity(context.Background(), "spiffe://kacho.cloud/ns/kacho/sa/kacho-compute", true)
+	ctx := grpcsrv.WithCertIdentityIn(context.Background(), grpcsrv.NewTrustDomain("kacho.cloud"), "spiffe://kacho.cloud/ns/kacho/sa/kacho-compute", true)
 	ctx = operations.WithPrincipal(ctx, operations.Principal{Type: "user", ID: "usr-tenant"})
 
 	_, err := NewResolveUseCase(repo).WithQuotaReaderChecker(checker).Execute(ctx, "prj-x", "vpc")
@@ -609,7 +609,7 @@ func TestResolve_ModuleIdentityAloneIsEnough(t *testing.T) {
 	repo.stated = []domain.Limit{{Scope: domain.LimitScopeDefault, Kind: "vpc.network", Value: 16}}
 	checker := &fakeChecker{answer: true, only: "service_account:" + authzguard.ServiceAccountIDForService("compute")}
 
-	ctx := grpcsrv.WithCertIdentity(context.Background(), "spiffe://kacho.cloud/ns/kacho/sa/kacho-compute", true)
+	ctx := grpcsrv.WithCertIdentityIn(context.Background(), grpcsrv.NewTrustDomain("kacho.cloud"), "spiffe://kacho.cloud/ns/kacho/sa/kacho-compute", true)
 	ctx = operations.WithPrincipal(ctx, operations.Principal{Type: "user", ID: "usr-tenant"})
 
 	_, err := NewResolveUseCase(repo).WithQuotaReaderChecker(checker).Execute(ctx, "prj-x", "vpc")
@@ -627,7 +627,7 @@ func TestResolve_PrincipalAloneIsEnough(t *testing.T) {
 	repo.stated = []domain.Limit{{Scope: domain.LimitScopeDefault, Kind: "vpc.network", Value: 16}}
 	checker := &fakeChecker{answer: true, only: "service_account:sva-admin"}
 
-	ctx := grpcsrv.WithCertIdentity(context.Background(), "spiffe://kacho.cloud/ns/kacho/sa/kacho-api-gateway", true)
+	ctx := grpcsrv.WithCertIdentityIn(context.Background(), grpcsrv.NewTrustDomain("kacho.cloud"), "spiffe://kacho.cloud/ns/kacho/sa/kacho-api-gateway", true)
 	ctx = operations.WithPrincipal(ctx, operations.Principal{Type: "service_account", ID: "sva-admin"})
 
 	_, err := NewResolveUseCase(repo).WithQuotaReaderChecker(checker).Execute(ctx, "prj-x", "vpc")
@@ -642,7 +642,7 @@ func TestResolve_NeitherIdentityIsReader(t *testing.T) {
 	repo.stated = []domain.Limit{{Scope: domain.LimitScopeDefault, Kind: "vpc.network", Value: 16}}
 	checker := &fakeChecker{answer: true, only: "service_account:sva-nobody-asks-about"}
 
-	ctx := grpcsrv.WithCertIdentity(context.Background(), "spiffe://kacho.cloud/ns/kacho/sa/kacho-api-gateway", true)
+	ctx := grpcsrv.WithCertIdentityIn(context.Background(), grpcsrv.NewTrustDomain("kacho.cloud"), "spiffe://kacho.cloud/ns/kacho/sa/kacho-api-gateway", true)
 	ctx = operations.WithPrincipal(ctx, operations.Principal{Type: "user", ID: "usr-tenant"})
 
 	_, err := NewResolveUseCase(repo).WithQuotaReaderChecker(checker).Execute(ctx, "prj-x", "vpc")
@@ -832,7 +832,7 @@ func TestQuotaReaderGate_AllowNeedsNoSecondOpinion(t *testing.T) {
 	moduleSVA := "service_account:" + authzguard.ServiceAccountIDForService("compute")
 	checker := &fakeChecker{answer: true, failFor: moduleSVA}
 
-	ctx := grpcsrv.WithCertIdentity(context.Background(), "spiffe://kacho.cloud/ns/kacho/sa/kacho-compute", true)
+	ctx := grpcsrv.WithCertIdentityIn(context.Background(), grpcsrv.NewTrustDomain("kacho.cloud"), "spiffe://kacho.cloud/ns/kacho/sa/kacho-compute", true)
 	ctx = operations.WithPrincipal(ctx, operations.Principal{Type: "service_account", ID: "sva-admin"})
 
 	_, err := NewResolveUseCase(repo).WithQuotaReaderChecker(checker).Execute(ctx, "prj-x", "vpc")
@@ -856,7 +856,7 @@ func TestQuotaReaderGate_UnansweredThenDenied_IsUnavailable(t *testing.T) {
 	// вторая личность получает честное «нет»; первая — неполадку.
 	checker := &fakeChecker{answer: true, only: "service_account:sva-nobody-asks-about", failFor: moduleSVA}
 
-	ctx := grpcsrv.WithCertIdentity(context.Background(), "spiffe://kacho.cloud/ns/kacho/sa/kacho-compute", true)
+	ctx := grpcsrv.WithCertIdentityIn(context.Background(), grpcsrv.NewTrustDomain("kacho.cloud"), "spiffe://kacho.cloud/ns/kacho/sa/kacho-compute", true)
 	ctx = operations.WithPrincipal(ctx, operations.Principal{Type: "service_account", ID: "sva-admin"})
 
 	_, err := NewResolveUseCase(repo).WithQuotaReaderChecker(checker).Execute(ctx, "prj-x", "vpc")
