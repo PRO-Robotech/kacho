@@ -212,8 +212,17 @@ func TestProductionProfileSatisfiesTheStartupGuards(t *testing.T) {
 			"неотличимо от «не судили»")
 	t.Logf("осмотрено: HTTP-рёбер в перечне %d, из них с объявленным адресом %d",
 		len(httpEdges), judged)
-	require.NoError(t, requireHTTPEdgeTLS(productionMode, httpEdges),
+	declaredPlaintext, edgeErr := requireHTTPEdgeTLS(productionMode, httpEdges)
+	require.NoError(t, edgeErr,
 		"боевой профиль не проходит стража транспорта HTTP-рёбер: объявленная посадка неисполнима — процесс не поднимется НИ ПРИ КАКОМ входе")
+	// ОБЪЯВЛЕННЫЕ ИСКЛЮЧЕНИЯ НАЗЫВАЮТСЯ ЧИСЛОМ, а не подразумеваются. Профиль
+	// ЭТОГО чарта их не объявляет: у отдельно поставленной службы вызывающий
+	// слушателя вебхуков не тот, ради которого исключение заводилось, и молча
+	// унаследовать его она не вправе. Пустой перечень здесь — утверждение, а не
+	// умолчание: вырастет он — проба скажет, чем именно.
+	require.Empty(t, declaredPlaintext,
+		"боевой профиль этого чарта объявил исключение открытого текста: %v", declaredPlaintext)
+	t.Logf("объявленных исключений открытого текста: %d", len(declaredPlaintext))
 }
 
 // httpEdgeAddr — адрес слушателя: объявленный профилем либо умолчание процесса.

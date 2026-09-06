@@ -538,15 +538,24 @@ func runServe(cfg config.Config) error {
 	// у отдельно поставленной службы его нет, а адреса всех трёх приходят
 	// умолчанием процесса и потому непусты всегда — то есть без этого стража
 	// профиль, о них умолчавший, поднимал три слушателя открытым текстом.
-	if err := requireHTTPEdgeTLS(productionMode, iamHTTPEdges(
+	declaredPlaintext, err := requireHTTPEdgeTLS(productionMode, iamHTTPEdges(
 		cfg.AuthN.HooksHTTPListenAddress(),
 		cfg.APIServer.MetricsListenAddress(),
 		cfg.APIServer.JWKSProxy.ListenAddress(),
 		cfg.APIServer.RESTListenAddress(),
 		cfg.APIServer.InternalRESTListenAddress(),
 		mtlsCfg,
-	)); err != nil {
+	))
+	if err != nil {
 		return err
+	}
+	// ОБЪЯВЛЕННОЕ ИСКЛЮЧЕНИЕ НАЗЫВАЕТСЯ ВСЛУХ. Контроль, снятый решением, и
+	// контроль, снятый недосмотром, выглядят на поднятом стенде одинаково —
+	// различить их можно только по журналу старта. Молчание здесь означало бы
+	// «ноль находок», неотличимое от «ноль прочитанного».
+	for _, d := range declaredPlaintext {
+		logger.Warn("HTTP-ребро работает открытым текстом по ОБЪЯВЛЕННОМУ исключению",
+			slog.String("edge", d))
 	}
 	// Раздельность поверхностей есть свойство СОКЕТА: «внутреннее не
 	// опубликовано наружу» проверяемо ровно тогда, когда оно недосягаемо.

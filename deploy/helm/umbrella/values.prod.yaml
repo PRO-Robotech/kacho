@@ -551,6 +551,23 @@ kaname:
     # token/refresh webhook URLs are flipped to https://…:9092 and the Hydra pod
     # mounts the internal-CA bundle so it trusts the kaname server cert (below).
     httpListeners: true
+    # ВСЕ ШЕСТЬ СЛУШАТЕЛЕЙ ОБЪЯВЛЕНЫ ЯВНО, по одной ручке на слушателя. Общая ручка
+    # выше остаётся объявленной, но профиль на неё НЕ ОПИРАЕТСЯ: величина, которую
+    # построение подставляет само, предметом стража быть не может — он зелен при
+    # любом входе. Прежде здесь стояла только она, и о четырёх слушателях профиль не
+    # говорил ничего.
+    hooks: true
+    metrics: true
+    registryToken: true
+    jwksProxy: true
+    publicRest: true
+    internalRest: true
+    # Объявленных исключений на этом стенде НЕТ: обратные вызовы службы личности
+    # идут сюда по https (см. схему в шапке профиля), и открытому тексту на :9092
+    # основания нет. Ключ объявлен явно, чтобы «исключения нет» было решением, а не
+    # умолчанием, которого никто не читал.
+    plaintextExceptions:
+      hooks: false
     # Both HTTP edges run server-tls-only (default; restated here for prod clarity).
     hooksClientAuthMode: server-tls-only
     metricsClientAuthMode: server-tls-only
