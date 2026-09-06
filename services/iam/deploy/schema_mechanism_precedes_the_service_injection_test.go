@@ -42,7 +42,12 @@ type injectionCase struct {
 func copyChartFixture(t *testing.T) string {
 	t.Helper()
 	root := t.TempDir()
-	src := filepath.Join("..", "..", "..", "services", "iam")
+	// Источник — СОБСТВЕННЫЙ модуль пробы, найденный подъёмом до маркера
+	// (tree_root_test.go), а не сложенный из `..`: у поставки сегмента
+	// `services/iam` не существует, и фикстура там не собиралась вовсе —
+	// восемь случаев подряд падали «Dockerfile не прочитан», то есть
+	// доказательство способности упасть не исполнялось ни разу.
+	src := serviceRoot(t)
 	dst := filepath.Join(root, "services", "iam")
 
 	for _, rel := range []string{
@@ -202,7 +207,7 @@ func TestSchemaMechanismInjection(t *testing.T) {
 			root := copyChartFixture(t)
 			tc.mutate(t, root)
 
-			audits, findings, err := auditSchemaMechanism(root)
+			audits, findings, err := auditSchemaMechanism("", root)
 			if err != nil {
 				t.Fatalf("обход не состоялся: %v", err)
 			}
@@ -244,7 +249,7 @@ func TestSchemaMechanismInjection(t *testing.T) {
 // TestSchemaMechanismEmptyTraversalIsNotGreen — обход, которому нечего читать,
 // обязан быть отличим от обхода без находок.
 func TestSchemaMechanismEmptyTraversalIsNotGreen(t *testing.T) {
-	audits, findings, err := auditSchemaMechanism(t.TempDir())
+	audits, findings, err := auditSchemaMechanism("", t.TempDir())
 	if err != nil {
 		t.Fatalf("обход не состоялся: %v", err)
 	}
