@@ -174,7 +174,7 @@ func revokeAccountOwnerTuples(ctx context.Context, w Writer, id domain.AccountID
 	// owner-выдачи), но обязан уйти вместе с самим аккаунтом. Поэтому он
 	// добавляется здесь, а не приходит из общего дренажа.
 	fgaDeletes = append(fgaDeletes, service.RelationTuple{
-		User:     "cluster:cluster_kacho_root",
+		User:     "cluster:" + domain.ClusterSingletonID,
 		Relation: "cluster",
 		Object:   "account:" + string(id),
 	})

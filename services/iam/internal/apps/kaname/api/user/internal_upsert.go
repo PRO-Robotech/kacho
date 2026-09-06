@@ -865,8 +865,8 @@ func bootstrapTuples(
 		// Owner-binding OBJECT hierarchy parent-pointer (parity with account/create.go).
 		{User: fmt.Sprintf("account:%s", accID), Relation: "account", Object: fmt.Sprintf("iam_access_binding:%s", ownerBindingID)},
 		// SEC-L cluster parent-pointer tuples (зеркалит account.Create / project.Create).
-		{User: "cluster:cluster_kacho_root", Relation: "cluster", Object: fmt.Sprintf("account:%s", accID)},
-		{User: "cluster:cluster_kacho_root", Relation: "cluster", Object: fmt.Sprintf("project:%s", prjID)},
+		{User: "cluster:" + domain.ClusterSingletonID, Relation: "cluster", Object: fmt.Sprintf("account:%s", accID)},
+		{User: "cluster:" + domain.ClusterSingletonID, Relation: "cluster", Object: fmt.Sprintf("project:%s", prjID)},
 		// Project-scoped AB hierarchy (iam_access_binding имеет лишь project-parent).
 		{User: fmt.Sprintf("project:%s", prjID), Relation: "project", Object: fmt.Sprintf("iam_access_binding:%s", projectAB.ID)},
 	}
