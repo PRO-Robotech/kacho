@@ -240,7 +240,7 @@ func main() {
 	// the AuthInterceptor derives the principal from the verified cert and skips
 	// the JWT requirement. Default off ⇒ JWT-only authN, behaviour unchanged.
 	if cfg.HybridMTLSEnabled() {
-		authInterceptor = authInterceptor.WithMTLSPrincipal(true)
+		authInterceptor = authInterceptor.WithMTLSPrincipal(grpcsrv.NewTrustDomain(cfg.AuthNTrustDomain))
 		logger.Info("hybrid mTLS external listener: cert-principal path enabled")
 	}
 

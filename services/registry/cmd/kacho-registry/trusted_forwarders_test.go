@@ -194,7 +194,7 @@ func hostIdentityChain(t *testing.T, forwarders ...string) []grpc.UnaryServerInt
 			forwarders, err)
 	}
 	circle, _ := desc.Spec().Forwarders.Get()
-	return grpcsrv.PrincipalExtractUnary(circle)
+	return grpcsrv.PrincipalExtractUnary(grpcsrv.NewTrustDomain("kacho.cloud"), circle)
 }
 
 // seenIdentity прогоняет запрос через цепочку и возвращает личность, которую

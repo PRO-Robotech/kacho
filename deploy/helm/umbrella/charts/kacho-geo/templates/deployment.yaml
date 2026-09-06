@@ -131,6 +131,12 @@ spec:
             # AuthN fail-closed gate (dev | production | production-strict).
             - name: KACHO_GEO_AUTH_MODE
               value: "{{ .Values.authMode }}"
+            # Домен доверия установки: то, чьи сертификаты процесс признаёт своими.
+            # Берётся из ТОГО ЖЕ объявления, под которым чеканится его собственный
+            # сертификат (certificate.yaml) — иначе выпускающая и принимающая
+            # стороны разойдутся молча.
+            - name: KACHO_GEO_AUTHZ_TRUST_DOMAIN
+              value: {{ include "kacho-geo.trustDomain" . | quote }}
             # geo→iam per-RPC authz Check (InternalIAMService.Check on iam :9091).
             - name: KACHO_GEO_AUTHZ_IAM_GRPC_ADDR
               value: "{{ .Values.authzIamGrpcAddr }}"

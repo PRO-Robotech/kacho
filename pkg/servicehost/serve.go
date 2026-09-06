@@ -620,7 +620,7 @@ func unaryChain(spec servicecontract.Spec, slot *decisionSlot,
 	if gate, ok := spec.BootGate.Get(); ok && gate != nil {
 		chain = append(chain, bootGateUnary(gate))
 	}
-	chain = append(chain, grpcsrv.PrincipalExtractUnary(carriedForwarders(spec))...)
+	chain = append(chain, grpcsrv.PrincipalExtractUnary(carriedTrustDomain(spec), carriedForwarders(spec))...)
 	return append(chain, slot.unary())
 }
 
@@ -647,7 +647,7 @@ func streamChain(spec servicecontract.Spec, slot *decisionSlot,
 	if budget, ok := spec.StreamBudget.Get(); ok {
 		chain = append(chain, streamBudgetLink(budget))
 	}
-	chain = append(chain, grpcsrv.PrincipalExtractStream(carriedForwarders(spec))...)
+	chain = append(chain, grpcsrv.PrincipalExtractStream(carriedTrustDomain(spec), carriedForwarders(spec))...)
 	return append(chain, slot.stream())
 }
 
@@ -662,4 +662,17 @@ func streamChain(spec servicecontract.Spec, slot *decisionSlot,
 func carriedForwarders(spec servicecontract.Spec) grpcsrv.TrustedForwarders {
 	circle, _ := spec.Forwarders.Get()
 	return circle
+}
+
+// carriedTrustDomain — домен доверия контура, поднятого носителем.
+//
+// Ось здесь ВСЕГДА несёт значение по тому же основанию, что и круг отправителей:
+// изъятие («личность сертификата я не разбираю») конструктор дескриптора
+// отвергает у всякого, чей контур поднимает носитель, — именно потому, что пару
+// звеньев извлечения носитель ставит безусловно. Необъявленный домен, доставшийся
+// отсюда, означал бы процесс, не признающий своим ни одного предъявителя, поэтому
+// молчаливого пути к нему нет: до `Serve` доходит только принятый дескриптор.
+func carriedTrustDomain(spec servicecontract.Spec) grpcsrv.TrustDomain {
+	domain, _ := spec.TrustDomain.Get()
+	return domain
 }

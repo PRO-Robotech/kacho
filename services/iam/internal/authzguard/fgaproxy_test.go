@@ -268,11 +268,30 @@ func TestSANToServiceAccountID(t *testing.T) {
 		{"garbage", "", false},
 		{"", "", false},
 	}
+	d := grpcsrv.NewTrustDomain("kacho.cloud")
 	for _, c := range cases {
-		got, ok := authzguard.SANToServiceAccountID(c.san)
+		got, ok := authzguard.SANToServiceAccountID(d, c.san)
 		require.Equal(t, c.ok, ok, "san=%q parse-ok", c.san)
 		if c.ok {
 			require.Equal(t, c.want, got, "san=%q → sva-id", c.san)
 		}
+	}
+
+	// Домен приезжает величиной, а не сборкой: под ДРУГИМ объявленным доменом та
+	// же строка перестаёт быть нашей, а строка того домена — становится. Без этой
+	// половины проба зеленела бы на разборе, который домен вообще не читает.
+	other := grpcsrv.NewTrustDomain("kaname.local")
+	if _, ok := authzguard.SANToServiceAccountID(other, "spiffe://kacho.cloud/ns/kacho-system/sa/kacho-vpc"); ok {
+		t.Fatalf("SAN чужого домена признан своим — разбор читает не объявленный домен")
+	}
+	got, ok := authzguard.SANToServiceAccountID(other, "spiffe://kaname.local/ns/kaname/sa/kacho-vpc")
+	require.True(t, ok, "SAN ОБЪЯВЛЕННОГО домена обязан разбираться — иначе отрицание выше "+
+		"зеленело бы на разборе, не признающем никого")
+	require.Equal(t, sva("vpc"), got)
+
+	// Необъявленный домен не признаёт своим никого.
+	var undeclared grpcsrv.TrustDomain
+	if _, ok := authzguard.SANToServiceAccountID(undeclared, "spiffe://kacho.cloud/ns/kacho-system/sa/kacho-vpc"); ok {
+		t.Fatalf("необъявленный домен признал своим предъявителя")
 	}
 }

@@ -40,7 +40,7 @@ func mustURIs(t *testing.T, raw ...string) []*url.URL {
 func TestSECB12_ExtractIdentity_SpiffeSAN(t *testing.T) {
 	const san = "spiffe://kacho.cloud/ns/kacho-system/sa/kacho-compute"
 	cert := &x509.Certificate{URIs: mustURIs(t, san)}
-	got := grpcsrv.CertIdentity(cert)
+	got := grpcsrv.NewTrustDomain("kacho.cloud").CertIdentity(cert)
 	require.Equal(t, san, got, "extractor must return the SAN URI verbatim")
 }
 
@@ -48,20 +48,20 @@ func TestSECB12_ExtractIdentity_SpiffeSAN(t *testing.T) {
 func TestSECB13_ExtractIdentity_NoSpiffeSAN_Empty(t *testing.T) {
 	t.Run("dns_san_only", func(t *testing.T) {
 		cert := &x509.Certificate{DNSNames: []string{"client.kacho.svc"}}
-		require.Equal(t, "", grpcsrv.CertIdentity(cert))
+		require.Equal(t, "", grpcsrv.NewTrustDomain("kacho.cloud").CertIdentity(cert))
 	})
 	t.Run("cn_only", func(t *testing.T) {
 		cert := &x509.Certificate{}
 		cert.Subject.CommonName = "kacho-compute"
-		require.Equal(t, "", grpcsrv.CertIdentity(cert))
+		require.Equal(t, "", grpcsrv.NewTrustDomain("kacho.cloud").CertIdentity(cert))
 	})
 	t.Run("non_kacho_spiffe_uri", func(t *testing.T) {
 		cert := &x509.Certificate{URIs: mustURIs(t, "spiffe://other.domain/ns/x/sa/y")}
-		require.Equal(t, "", grpcsrv.CertIdentity(cert),
+		require.Equal(t, "", grpcsrv.NewTrustDomain("kacho.cloud").CertIdentity(cert),
 			"non-kacho spiffe URI must not be returned (no foreign-field leak)")
 	})
 	t.Run("nil_cert", func(t *testing.T) {
-		require.Equal(t, "", grpcsrv.CertIdentity(nil), "nil cert must return empty, not panic")
+		require.Equal(t, "", grpcsrv.NewTrustDomain("kacho.cloud").CertIdentity(nil), "nil cert must return empty, not panic")
 	})
 }
 
@@ -74,7 +74,7 @@ func TestSECB14_ExtractIdentity_MultiSAN_Deterministic(t *testing.T) {
 	)}
 	const want = "spiffe://kacho.cloud/ns/kacho-system/sa/kacho-vpc"
 	for i := 0; i < 5; i++ {
-		require.Equal(t, want, grpcsrv.CertIdentity(cert),
+		require.Equal(t, want, grpcsrv.NewTrustDomain("kacho.cloud").CertIdentity(cert),
 			"first kacho-spiffe SAN must be chosen, stable across calls")
 	}
 }
@@ -148,7 +148,7 @@ func TestSECB16Unit_TLSPeerNoVerifiedCert_PrincipalNotTrusted(t *testing.T) {
 		return nil, nil
 	}
 	chained := chainUnary(
-		grpcsrv.UnaryCertIdentityExtract(),
+		grpcsrv.UnaryCertIdentityExtract(grpcsrv.NewTrustDomain("kacho.cloud")),
 		grpcsrv.UnaryTrustedPrincipalExtract(),
 	)
 	_, err := chained(ctx, nil, nil, final)
@@ -204,7 +204,7 @@ func TestTrustedForwarders_NonForwarderVerifiedPeer_PrincipalDropped(t *testing.
 		return nil, nil
 	}
 	chained := chainUnary(
-		grpcsrv.UnaryCertIdentityExtract(),
+		grpcsrv.UnaryCertIdentityExtract(grpcsrv.NewTrustDomain("kacho.cloud")),
 		grpcsrv.UnaryTrustedPrincipalExtract(grpcsrv.WithTrustedForwarders(grpcsrv.NewTrustedForwarders(gatewaySAN))),
 	)
 	_, err := chained(ctx, nil, nil, final)
@@ -231,7 +231,7 @@ func TestTrustedForwarders_ForwarderVerifiedPeer_PrincipalTrusted(t *testing.T) 
 		return nil, nil
 	}
 	chained := chainUnary(
-		grpcsrv.UnaryCertIdentityExtract(),
+		grpcsrv.UnaryCertIdentityExtract(grpcsrv.NewTrustDomain("kacho.cloud")),
 		grpcsrv.UnaryTrustedPrincipalExtract(grpcsrv.WithTrustedForwarders(grpcsrv.NewTrustedForwarders(gatewaySAN))),
 	)
 	_, err := chained(ctx, nil, nil, final)
@@ -253,7 +253,7 @@ func TestTrustedForwarders_NonForwarder_PrincipalContextOK_False(t *testing.T) {
 		return nil, nil
 	}
 	chained := chainUnary(
-		grpcsrv.UnaryCertIdentityExtract(),
+		grpcsrv.UnaryCertIdentityExtract(grpcsrv.NewTrustDomain("kacho.cloud")),
 		grpcsrv.UnaryTrustedPrincipalExtract(grpcsrv.WithTrustedForwarders(grpcsrv.NewTrustedForwarders(gatewaySAN))),
 	)
 	_, err := chained(ctx, nil, nil, final)

@@ -164,7 +164,7 @@ func TestPrincipalChain_ForwarderAllowlist_DropsNonGateway(t *testing.T) {
 // верной и после того, как продукт перестал бы её собирать.
 // forwarderSANs — круг доверенных отправителей (пусто → круг не сужен).
 func principalChainUnderTest(forwarderSANs ...string) grpc.UnaryServerInterceptor {
-	return chainUnaryServer(grpcsrv.PrincipalExtractUnary(grpcsrv.NewTrustedForwarders(forwarderSANs...))...)
+	return chainUnaryServer(grpcsrv.PrincipalExtractUnary(grpcsrv.NewTrustDomain("kacho.cloud"), grpcsrv.NewTrustedForwarders(forwarderSANs...))...)
 }
 
 // runChain прогоняет ctx через цепочку и возвращает то, что увидел бы handler:

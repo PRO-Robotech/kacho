@@ -198,6 +198,13 @@ func describe(
 			OptIn:    cfg.AuthZ.TrustAnyForwarder,
 		},
 
+		// Домен доверия — ЗНАЧЕНИЕ: личность клиентского сертификата этот процесс
+		// разбирает, и разбирает её ОТНОСИТЕЛЬНО домена. Читается из той же
+		// функции, значение которой уезжает в пару звеньев извлечения личности,
+		// поэтому «страж пропустил» ⟺ «домен реально объявлен».
+		TrustDomain:     servicecontract.Value(cfg.TrustDomain()),
+		TrustDomainKnob: "authz.trust-domain (env KACHO_VPC_AUTHZ__TRUST_DOMAIN)",
+
 		Authz:        servicecontract.AuthzViaIAM,
 		CheckEdge:    servicecontract.NewPeerEdge(cfg.AuthZ.IAMEndpoint, checkCreds),
 		CacheWindow:  cfg.AuthZ.CacheTTL,

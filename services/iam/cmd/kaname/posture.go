@@ -75,6 +75,13 @@ func describePosture(cfg config.Config, logger *slog.Logger) (servicecontract.De
 			OptIn:    cfg.AuthN.TrustAnyForwarder,
 		},
 
+		// Домен доверия — ЗНАЧЕНИЕ: личность клиентского сертификата этот процесс
+		// разбирает, и разбирает её ОТНОСИТЕЛЬНО домена. Читается из той же
+		// функции, значение которой уезжает в пару звеньев извлечения личности,
+		// поэтому «страж пропустил» ⟺ «домен реально объявлен».
+		TrustDomain:     servicecontract.Value(cfg.AuthN.TrustDomain()),
+		TrustDomainKnob: "authn.trust-domain (env KANAME_AUTHN__TRUST_DOMAIN)",
+
 		// Шифрование до собственной базы — ЗНАЧЕНИЕ: база у iam своя. Читается из
 		// ТОЙ строки, что уходит в пул: `sslmode` приходит и из настройки, и из
 		// сырого URL, а пустое поле деривится в `disable`. Судить настройку

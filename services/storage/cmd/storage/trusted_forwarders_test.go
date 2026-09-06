@@ -117,7 +117,7 @@ func listenerChain(t *testing.T, cfg config.Config) grpc.UnaryServerInterceptor 
 		t.Fatalf("дескриптор не принят — круг до цепочки не доедет вовсе: %v", err)
 	}
 	circle, _ := desc.Spec().Forwarders.Get()
-	return chainUnary(grpcsrv.PrincipalExtractUnary(circle)...)
+	return chainUnary(grpcsrv.PrincipalExtractUnary(grpcsrv.NewTrustDomain("kacho.cloud"), circle)...)
 }
 
 // seenIdentity прогоняет запрос через цепочку и возвращает личность, которую

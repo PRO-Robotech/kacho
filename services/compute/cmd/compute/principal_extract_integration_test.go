@@ -52,7 +52,7 @@ func TestCompute_PublicChain_ExtractsPrincipalFromMD(t *testing.T) {
 	// (CertIdentityExtract → TrustedPrincipalExtract). Recording interceptor СТАВИМ
 	// ПОСЛЕДНИМ, чтобы он видел уже-extract'ed Principal.
 	publicUnary := []grpc.UnaryServerInterceptor{
-		grpcsrv.UnaryCertIdentityExtract(),
+		grpcsrv.UnaryCertIdentityExtract(grpcsrv.NewTrustDomain("kacho.cloud")),
 		grpcsrv.UnaryTrustedPrincipalExtract(),
 		recordingInterceptor,
 	}
@@ -107,7 +107,7 @@ func TestCompute_PublicChain_FallsBackToSystem_WhenNoMD(t *testing.T) {
 	}
 
 	publicUnary := []grpc.UnaryServerInterceptor{
-		grpcsrv.UnaryCertIdentityExtract(),
+		grpcsrv.UnaryCertIdentityExtract(grpcsrv.NewTrustDomain("kacho.cloud")),
 		grpcsrv.UnaryTrustedPrincipalExtract(),
 		recordingInterceptor,
 	}

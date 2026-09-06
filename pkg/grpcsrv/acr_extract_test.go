@@ -106,7 +106,7 @@ func TestTrustedACR_UnverifiedPeer_Dropped(t *testing.T) {
 		return nil, nil
 	}
 	chained := chainUnary(
-		grpcsrv.UnaryCertIdentityExtract(),
+		grpcsrv.UnaryCertIdentityExtract(grpcsrv.NewTrustDomain("kacho.cloud")),
 		grpcsrv.UnaryTrustedPrincipalExtract(),
 	)
 	_, err := chained(ctx, nil, nil, final)

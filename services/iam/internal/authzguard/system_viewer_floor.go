@@ -196,7 +196,7 @@ func (f *SystemViewerFloor) allow(ctx context.Context, fullMethod string) error 
 	if !verified || san == "" {
 		return status.Error(codes.PermissionDenied, "permission denied")
 	}
-	sva, ok := SANToServiceAccountID(san)
+	sva, ok := SANToServiceAccountID(grpcsrv.CertIdentityDomainFromContext(ctx), san)
 	if !ok {
 		// Malformed / foreign-trust-domain SAN → not a module identity.
 		return status.Error(codes.PermissionDenied, "permission denied")

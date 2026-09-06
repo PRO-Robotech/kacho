@@ -653,9 +653,11 @@ func TestProbeIsWiredOnlyWhenItIsBrought(t *testing.T) {
 // контроля любое «отказано» зеленело бы по чужой причине.
 func acceptableSpec() servicecontract.Spec {
 	return servicecontract.Spec{
-		Service:    "kacho-demo",
-		Mode:       servicecontract.ModeDev,
-		Forwarders: servicecontract.Value(grpcsrv.NewTrustedForwarders("spiffe://kacho.cloud/ns/kacho/sa/kacho-api-gateway")),
+		Service:         "kacho-demo",
+		Mode:            servicecontract.ModeDev,
+		Forwarders:      servicecontract.Value(grpcsrv.NewTrustedForwarders("spiffe://kacho.cloud/ns/kacho/sa/kacho-api-gateway")),
+		TrustDomain:     servicecontract.Value(grpcsrv.NewTrustDomain("kacho.cloud")),
+		TrustDomainKnob: "KACHO_DEMO_AUTHZ_TRUST_DOMAIN",
 		ForwarderKnobs: servicecontract.ForwarderKnobs{
 			SANs:     "KACHO_DEMO_AUTHZ_TRUSTED_FORWARDER_SANS",
 			TrustAny: "KACHO_DEMO_AUTHZ_TRUST_ANY_FORWARDER",
