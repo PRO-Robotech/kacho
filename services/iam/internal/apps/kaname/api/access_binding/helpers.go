@@ -232,7 +232,7 @@ func grantAuthorityBeyondClusterAdmin(ctx context.Context, repo Repo, relations 
 	// Non-hierarchy scopes (cluster / org / cross-service / leaf FGA objects like
 	// compute.instance) have no DB-side "owner": authority is granted ONLY by the
 	// FGA admin/system_admin path below (e.g. cluster admins hold `system_admin`
-	// on cluster:cluster_kacho_root). No owner-fallback path — ownerUserID stays
+	// on cluster:cluster_root). No owner-fallback path — ownerUserID stays
 	// empty so only Path 2 can authorize them.
 
 	// Path 1 — owner of the owning Account.
@@ -339,7 +339,7 @@ func (u *CreateAccessBindingUseCase) requireGrantAuthority(ctx context.Context, 
 // 2026 P5, A-05/A-05b/A-05c) SYNC on the Create request path:
 //
 //   - GLOBAL == the cluster scope (resource_type == "cluster"; there is no separate
-//     GLOBAL tier in the proto/domain enum — cluster:cluster_kacho_root IS the
+//     GLOBAL tier in the proto/domain enum — cluster:cluster_root IS the
 //     cluster-wide anchor).
 //   - A role with an ARM_ANCHOR (selector=all) rule bound at GLOBAL would require
 //     per-object materialization over the WHOLE cluster — forbidden for an ordinary

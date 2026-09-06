@@ -41,7 +41,7 @@
 // # Здесь стояло «кортеж и учётка снятыми быть не могут» — довод не выдержал
 //
 // Прежняя редакция держала вторым утверждением файла сохранность кластерного
-// кортежа `system_viewer@cluster:cluster_kacho_root` (посев 0010) и самой
+// кортежа `system_viewer@cluster:cluster_root` (посев 0010) и самой
 // учётки, обосновывая это «вторым, действующим читателем»: миграция 0014 не
 // сеет оператору system_viewer, потому что он уже держит его из 0010;
 // `authzguard.SystemViewerFloor` гейтит на этом отношении READ-RPC внутреннего
@@ -221,7 +221,7 @@ func seedLivePrincipalBoundToResolvableRole(
 	_, err = pool.Exec(ctx,
 		`INSERT INTO kaname.access_bindings
 		   (id, subject_type, subject_id, role_id, resource_type, resource_id, scope, status)
-		 VALUES ($1, 'service_account', $2, $3, 'cluster', 'cluster_kacho_root', 1, 'ACTIVE')
+		 VALUES ($1, 'service_account', $2, $3, 'cluster', 'cluster_root', 1, 'ACTIVE')
 		 ON CONFLICT DO NOTHING`, bindingID, subjectID, roleID)
 	require.NoError(t, err, "контроль: не удалось выдать живому принципалу привязку")
 

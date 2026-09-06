@@ -4,7 +4,7 @@
 // Модель: грант = subjects[] + role + АНКЕР области + цель под этим анкером.
 // Область — first-class измерение (явный селектор «Область действия»), НЕ скрытый
 // «тип ресурса»; в форме её тир называется GLOBAL/ACCOUNT/PROJECT, на wire это
-// dotted `iam.cluster|iam.account|iam.project` (GLOBAL ≡ анкер cluster_kacho_root).
+// dotted `iam.cluster|iam.account|iam.project` (GLOBAL ≡ анкер cluster_root).
 //
 // Тело запроса (buildCreateAccessBindingBody): {subjects[], role_id, scope_type,
 // scope_id, target}, один POST на роль. Все три координаты — обязательные поля

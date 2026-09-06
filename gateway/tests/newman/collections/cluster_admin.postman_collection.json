@@ -99,9 +99,9 @@
                 "type": "text/javascript",
                 "exec": [
                   "pm.test('status 200', () => pm.expect(pm.response.code, JSON.stringify(pm.response.text())).to.eql(200));",
-                  "pm.test('cluster id is the singleton cluster_kacho_root', () => {",
+                  "pm.test('cluster id is the singleton cluster_root', () => {",
                   "  const j = pm.response.json();",
-                  "  pm.expect(j.id, JSON.stringify(j)).to.eql('cluster_kacho_root');",
+                  "  pm.expect(j.id, JSON.stringify(j)).to.eql('cluster_root');",
                   "});",
                   "pm.test('cluster carries a createdAt timestamp (string, RFC3339)', () => {",
                   "  const j = pm.response.json();",

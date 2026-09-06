@@ -41,7 +41,7 @@ func probe(ctx c, pool P, t T) {
 	var n int
 	pool.QueryRow(ctx,
 		` + "`" + `SELECT count(*) FROM kaname.fga_outbox
-		  WHERE payload->>'object' NOT IN ('iam_fgaproxy:system', 'cluster:cluster_kacho_root')` + "`" + `).Scan(&n)
+		  WHERE payload->>'object' NOT IN ('iam_fgaproxy:system', 'cluster:cluster_root')` + "`" + `).Scan(&n)
 }
 `
 
@@ -51,7 +51,7 @@ func probe(ctx c, pool P, t T) {
 const synthProbeNegativeViaConst = `package p
 
 func probe(ctx c, pool P, t T) {
-	const notSeed = ` + "`" + `payload->>'object' NOT IN ('iam_fgaproxy:system', 'cluster:cluster_kacho_root')` + "`" + `
+	const notSeed = ` + "`" + `payload->>'object' NOT IN ('iam_fgaproxy:system', 'cluster:cluster_root')` + "`" + `
 	var n int
 	pool.QueryRow(ctx,
 		` + "`" + `SELECT count(*) FROM kaname.fga_outbox WHERE ` + "`" + `+notSeed).Scan(&n)

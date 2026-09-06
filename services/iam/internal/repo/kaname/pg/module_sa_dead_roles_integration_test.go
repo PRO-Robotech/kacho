@@ -24,7 +24,7 @@
 //     0057 — хранилище). Заголовок 0044 говорит это прямым текстом: «owner-tuple
 //     writes are authorized by the fga_writer ReBAC tuple, not by a role
 //     permission».
-//  2. ЧТЕНИЕ внутреннего листенера — кортеж `system_viewer@cluster:cluster_kacho_root`
+//  2. ЧТЕНИЕ внутреннего листенера — кортеж `system_viewer@cluster:cluster_root`
 //     (0014 — шлюз/vpc/compute), на котором гейтит `authzguard.SystemViewerFloor`.
 //     Тоже прямой посев в fga_outbox, не роль.
 //  3. МЕЖСЕРВИСНЫЙ вызов от имени тенанта — субъектом проверки выступает НЕ
@@ -192,7 +192,7 @@ func TestModuleSACapabilitiesSurviveRetirement(t *testing.T) {
 	// Право ЧТЕНИЯ внутреннего листенера — ровно у трёх, кто его имел.
 	systemViewers := []string{"api-gateway", "vpc", "compute"}
 	for _, svc := range systemViewers {
-		require.Equal(t, 1, countClusterTuple(t, ctx, pool, svc, "system_viewer", "cluster:cluster_kacho_root"),
+		require.Equal(t, 1, countClusterTuple(t, ctx, pool, svc, "system_viewer", "cluster:cluster_root"),
 			"кортеж system_viewer@cluster учётки kacho-%s обязан ОСТАТЬСЯ: на нём гейтит "+
 				"authzguard.SystemViewerFloor READ-RPC внутреннего листенера", svc)
 	}
@@ -200,7 +200,7 @@ func TestModuleSACapabilitiesSurviveRetirement(t *testing.T) {
 	// когда-нибудь снимет у этих трёх правила, оставив права, легаси-ветка
 	// выдаст им system_viewer@cluster, которого у них нет.
 	for _, svc := range []string{"nlb", "registry", "storage"} {
-		require.Zero(t, countClusterTuple(t, ctx, pool, svc, "system_viewer", "cluster:cluster_kacho_root"),
+		require.Zero(t, countClusterTuple(t, ctx, pool, svc, "system_viewer", "cluster:cluster_root"),
 			"у учётки kacho-%s кластерного читательского отношения НЕТ, и снятие мёртвого "+
 				"объявления не смеет его выдать: ровно это сделала бы правка, снимающая "+
 				"правила и оставляющая строки прав", svc)

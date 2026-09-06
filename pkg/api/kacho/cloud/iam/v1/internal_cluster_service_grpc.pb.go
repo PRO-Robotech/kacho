@@ -11,7 +11,7 @@
 // Registered exclusively on the api-gateway internal mux (cluster-internal listener)
 // under `/iam/v1/internal/cluster/...`; never on the external TLS endpoint.
 //
-// Manages cluster-RBAC admin grants on the singleton `cluster:cluster_kacho_root`
+// Manages cluster-RBAC admin grants on the singleton `cluster:cluster_root`
 // FGA object. Replaces the prior `kubectl exec`-into-openfga workflow for
 // granting / revoking `system_admin` to humans. All mutations follow the
 // `Operation` async envelope: the handler
@@ -24,7 +24,7 @@
 //
 // Authorization gate:
 // every RPC requires the FGA relation `system_admin` on
-// `cluster:cluster_kacho_root` (resolved via `scope_extractor.object_type =
+// `cluster:cluster_root` (resolved via `scope_extractor.object_type =
 // "cluster"`, `from_request_field = "*"` ⇒ the singleton cluster id). The
 // api-gateway authz middleware reads `permission_catalog.json` and enforces
 // this before the request reaches the handler. Non-admin subjects MUST NOT
@@ -58,16 +58,16 @@ const (
 // For semantics around ctx use and closing/ending streaming RPCs, please refer to https://pkg.go.dev/google.golang.org/grpc/?tab=doc#ClientConn.NewStream.
 //
 // InternalClusterService — admin-tooling for the singleton
-// `cluster:cluster_kacho_root` FGA object. See file-level comment for the
+// `cluster:cluster_root` FGA object. See file-level comment for the
 // gate and the outbox contract.
 type InternalClusterServiceClient interface {
-	// Returns the singleton Cluster resource (`id = "cluster_kacho_root"`).
+	// Returns the singleton Cluster resource (`id = "cluster_root"`).
 	// Sync read; no Operation envelope.
 	//
 	// REST exposed ONLY on the cluster-internal listener.
 	Get(ctx context.Context, in *GetClusterRequest, opts ...grpc.CallOption) (*Cluster, error)
 	// Grants permanent cluster-admin (relation `system_admin` on
-	// `cluster:cluster_kacho_root`) to the requested subject. Idempotent —
+	// `cluster:cluster_root`) to the requested subject. Idempotent —
 	// re-granting an already-active subject returns success with the existing
 	// grant id.
 	//
@@ -154,16 +154,16 @@ func (c *internalClusterServiceClient) ListAdmins(ctx context.Context, in *ListC
 // for forward compatibility.
 //
 // InternalClusterService — admin-tooling for the singleton
-// `cluster:cluster_kacho_root` FGA object. See file-level comment for the
+// `cluster:cluster_root` FGA object. See file-level comment for the
 // gate and the outbox contract.
 type InternalClusterServiceServer interface {
-	// Returns the singleton Cluster resource (`id = "cluster_kacho_root"`).
+	// Returns the singleton Cluster resource (`id = "cluster_root"`).
 	// Sync read; no Operation envelope.
 	//
 	// REST exposed ONLY on the cluster-internal listener.
 	Get(context.Context, *GetClusterRequest) (*Cluster, error)
 	// Grants permanent cluster-admin (relation `system_admin` on
-	// `cluster:cluster_kacho_root`) to the requested subject. Idempotent —
+	// `cluster:cluster_root`) to the requested subject. Idempotent —
 	// re-granting an already-active subject returns success with the existing
 	// grant id.
 	//

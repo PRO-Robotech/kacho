@@ -60,7 +60,7 @@ func TestExcludingFromAnAccountIsReachableFromInsideThatAccountOnly(t *testing.T
 	w.factThroughJournal(t, "user:"+ownerA, "owner", "account", accA)
 	w.factThroughJournal(t, "user:"+ownerB, "owner", "account", accB)
 	// Уровень 1.
-	w.factThroughJournal(t, "user:"+cloudAdmin, "system_admin", "cluster", "cluster_kacho_root")
+	w.factThroughJournal(t, "user:"+cloudAdmin, "system_admin", "cluster", "cluster_root")
 
 	// Гейты спрашиваются У КАТАЛОГА: он порождается из proto и есть единственный
 	// источник per-RPC решения края. Литерал означал бы, что проба утверждает о

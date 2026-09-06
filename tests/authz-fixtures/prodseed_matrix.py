@@ -359,7 +359,7 @@ def user_platform_token(uid, created_by):
                                  PLATFORM_TOKEN_URL, API_AUD, PLATFORM_ASSERT_AUD)
 
 
-CLUSTER_ROOT_OBJECT = "cluster:cluster_kacho_root"
+CLUSTER_ROOT_OBJECT = "cluster:cluster_root"
 
 
 def seed_fga_tuple(fga_subject, relation, obj):
@@ -385,7 +385,7 @@ def seed_fga_tuple(fga_subject, relation, obj):
 
 
 def seed_fga_cluster(fga_subject, relation):
-    """Seed a cluster-scope FGA tuple (<fga_subject> #<relation> @cluster_kacho_root)
+    """Seed a cluster-scope FGA tuple (<fga_subject> #<relation> @cluster_root)
     deterministically via kaname.fga_outbox → drainer → OpenFGA (idempotent
     WHERE NOT EXISTS), mirroring the sanctioned dev-mode setup.sh 5a/5c seeds.
 
@@ -394,7 +394,7 @@ def seed_fga_cluster(fga_subject, relation):
     (scope_extractor object_type=cluster). `viewer` derives from `system_viewer` /
     `system_admin` (any_admin), NEVER from an account/project grant. A tenant SA with
     only project/account bindings therefore fails the catalog read with
-    "get lacks relation viewer on cluster:cluster_kacho_root" — yet EVERY authenticated
+    "get lacks relation viewer on cluster:cluster_root" — yet EVERY authenticated
     tenant must read the catalog to launch placement-scoped resources (compute
     authz-deny EXPECTs catalog-read = ALLOW for every non-anon subject). Grant each
     matrix SA `system_viewer@cluster` so the floor is satisfied; it grants ONLY the

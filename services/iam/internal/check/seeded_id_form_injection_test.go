@@ -22,7 +22,7 @@ import (
 // Законных близнецов здесь ДВА, и оба обязательны:
 //   - `cag_…` длиной 21 — форма префикса через подчёркивание. Гейт со своим
 //     правилом «ровно 20» покраснел бы на исправном посеве;
-//   - `cluster_kacho_root` — семейство, таблицей форм не названное. Судить его
+//   - `cluster_root` — семейство, таблицей форм не названное. Судить его
 //     нечем, и молчание тут — не слепота, а граница предмета.
 
 const (
@@ -31,10 +31,10 @@ const (
 		"VALUES ('rol000000000sysadmin', 'kacho-system.admin', '[]');\n"
 	// synthUnderscoreSeed — ЗАКОННЫЙ близнец: форма через подчёркивание, 21 символ.
 	synthUnderscoreSeed = "INSERT INTO kaname.cluster_admin_grants (id, cluster_id) " +
-		"VALUES ('cag_5f4510f927a011885', 'cluster_kacho_root');\n"
+		"VALUES ('cag_5f4510f927a011885', 'cluster_root');\n"
 	// synthForeignFamilySeed — ЗАКОННЫЙ близнец: семейство таблицей не названо.
 	synthForeignFamilySeed = "INSERT INTO kaname.clusters (id, name) " +
-		"VALUES ('cluster_kacho_root', 'root');\n"
+		"VALUES ('cluster_root', 'root');\n"
 	// synthBadSeedID — ДЕФЕКТ: слитная форма длиной 21, НИ ОДНОЙ миграцией не
 	// посеянная и потому перечнем `domain.SeededResourceIDs()` не названная.
 	//

@@ -81,7 +81,7 @@ func TestGoverningTheIdentityIsNotReachableFromInsideTheAccount(t *testing.T) {
 	// Сам человек. Кортеж пишется на заведении пользователя (internal_upsert.go).
 	w.factThroughJournal(t, "user:"+invitee, "subject", "iam_user", invitee)
 	// Уровень 1.
-	w.factThroughJournal(t, "user:"+cloudAdmin, "system_admin", "cluster", "cluster_kacho_root")
+	w.factThroughJournal(t, "user:"+cloudAdmin, "system_admin", "cluster", "cluster_root")
 
 	// Выдача, живущая В АККАУНТЕ пригласившего, — предмет его законной власти.
 	w.seedRole(t, "rol-govid2", acc)

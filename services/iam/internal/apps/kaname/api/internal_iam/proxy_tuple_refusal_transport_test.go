@@ -27,7 +27,7 @@ func TestProxyTupleRefusalMapsToPermissionDenied(t *testing.T) {
 	t.Parallel()
 
 	// A tuple the rule refuses: a privilege relation on the platform singleton.
-	err := validateProxyTuple("vpc", "service_account:sva1", "system_admin", "cluster:cluster_kacho_root")
+	err := validateProxyTuple("vpc", "service_account:sva1", "system_admin", "cluster:cluster_root")
 	if err == nil {
 		t.Fatal("refused tuple returned nil: the rule is not being applied at this boundary")
 	}

@@ -113,7 +113,7 @@ func seedRoleForCatalogType(t *testing.T, ctx context.Context, tx pgx.Tx,
 	roleID, catalogType, verb, arm, labels string) {
 	t.Helper()
 	exec(t, ctx, tx,
-		`INSERT INTO kaname.clusters (id, name) VALUES ('cluster_kacho_root', 'kacho')
+		`INSERT INTO kaname.clusters (id, name) VALUES ('cluster_root', 'kacho')
 		 ON CONFLICT DO NOTHING`)
 	exec(t, ctx, tx,
 		`INSERT INTO kaname.roles (id, name, permissions, rules, cluster_id)
@@ -122,7 +122,7 @@ func seedRoleForCatalogType(t *testing.T, ctx context.Context, tx pgx.Tx,
 		             'module',    'test',
 		             'resources', jsonb_build_array('*'),
 		             'verbs',     jsonb_build_array($3::text))),
-		         'cluster_kacho_root')`, roleID, roleID+"."+verb, verb)
+		         'cluster_root')`, roleID, roleID+"."+verb, verb)
 	exec(t, ctx, tx,
 		`INSERT INTO kaname.role_verb (role_id, object_type, verb) VALUES ($1, $2, $3)`,
 		roleID, catalogType, verb)

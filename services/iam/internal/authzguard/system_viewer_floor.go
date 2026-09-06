@@ -13,7 +13,7 @@
 // For the READ-RPC set (ReadFloorRPCs), it requires the CALLER MODULE
 // ServiceAccount (derived from the verified mTLS cert SAN, the SAME
 // SAN→sva derivation as fgaproxy) to hold a COARSE cluster relation
-// `system_viewer` on the singleton `cluster:cluster_kacho_root`, checked via the
+// `system_viewer` on the singleton `cluster:cluster_root`, checked via the
 // SAME RelationChecker port used by RelationWriteGate / InternalIAMService.Check.
 //
 // This is a COARSE "is this a legitimate internal reader" gate (defense-in-depth
@@ -181,7 +181,7 @@ func (f *SystemViewerFloor) WithProductionMode(prod bool) *SystemViewerFloor {
 //  3. prod, no verified module-cert SAN (unverified / absent / malformed /
 //     foreign-trust-domain) → PermissionDenied (fail-closed).
 //  4. prod, valid SAN → derive sva → Check(service_account:<sva>,
-//     system_viewer, cluster:cluster_kacho_root):
+//     system_viewer, cluster:cluster_root):
 //     - err != nil (FGA outage / 5xx / network / ErrNotConfigured) → Unavailable
 //     (retryable, fail-closed — NOT allow; parity with RelationWriteGate).
 //     - allowed == false → PermissionDenied.

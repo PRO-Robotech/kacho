@@ -149,7 +149,7 @@ func r74AssertFiveTypesAreTheDerivableOnesMinusHierarchy(t *testing.T) {
 func r74SeedCluster(t *testing.T, ctx context.Context, tx pgx.Tx) {
 	t.Helper()
 	exec(t, ctx, tx,
-		`INSERT INTO kaname.clusters (id, name) VALUES ('cluster_kacho_root', 'kacho')
+		`INSERT INTO kaname.clusters (id, name) VALUES ('cluster_root', 'kacho')
 		 ON CONFLICT DO NOTHING`)
 }
 
@@ -169,7 +169,7 @@ func r74SeedInertRole(t *testing.T, ctx context.Context, tx pgx.Tx) {
 		             'module',    'test',
 		             'resources', jsonb_build_array('*'),
 		             'verbs',     jsonb_build_array('get'))),
-		         'cluster_kacho_root')`, r74InertRole)
+		         'cluster_root')`, r74InertRole)
 }
 
 // r74SeedFiveOwnObjects кладёт по одному объекту каждого собственного типа iam
@@ -259,7 +259,7 @@ func r74SeedGrantRole(t *testing.T, ctx context.Context, tx pgx.Tx, roleID strin
 		             'module',    'test',
 		             'resources', jsonb_build_array('*'),
 		             'verbs',     jsonb_build_array('get'))),
-		         'cluster_kacho_root')`, roleID)
+		         'cluster_root')`, roleID)
 	catalog := make([]string, 0, len(r74FiveOwnTypes))
 	for _, o := range r74FiveOwnTypes {
 		ct := catalogFormOf(t, o.modelType)
@@ -594,7 +594,7 @@ func TestR7_4_08_CloudAdministratorReachesIAMsOwnTypesThroughTheAccount(t *testi
 			 VALUES ('usr-plain', 'ext-plain', 'plain@kacho.local', 'acc-1')`)
 		// Факт кладётся ЖУРНАЛОМ — единственным производителем проекции.
 		pointerThroughJournal(t, ctx, tx,
-			"cluster", "cluster_kacho_root", "system_admin", "user:usr-cloud")
+			"cluster", "cluster_root", "system_admin", "user:usr-cloud")
 
 		for _, o := range r74FiveOwnTypes {
 			if got := r74Ask(t, ctx, tx, "user:usr-cloud", o.modelType, o.id, "v_get"); got != relverdict.Allow {
@@ -661,8 +661,8 @@ func TestR7_4_09_BindingOutsideTheThreeScopesGetsNoParent(t *testing.T) {
 				wantParent: "account:acc-1", why: "область — аккаунт, ярус иерархии есть"},
 			{id: "acb-c-prj", scopeType: "project", scopeID: "prj-1",
 				wantParent: "project:prj-1", why: "область — проект, ярус иерархии есть"},
-			{id: "acb-c-clu", scopeType: "cluster", scopeID: "cluster_kacho_root",
-				wantParent: "cluster:cluster_kacho_root", why: "область — кластер, ярус иерархии есть"},
+			{id: "acb-c-clu", scopeType: "cluster", scopeID: "cluster_root",
+				wantParent: "cluster:cluster_root", why: "область — кластер, ярус иерархии есть"},
 			{id: "acb-c-res", scopeType: "vpc_network", scopeID: "net-1",
 				wantParent: "", why: "область — ресурс арендатора: яруса, к которому подниматься, нет"},
 			{id: "acb-c-any", scopeType: "*", scopeID: "*",
@@ -771,7 +771,7 @@ func TestR7_4_10_RevokedBindingKeepsItsParentAndReturnsNoGrant(t *testing.T) {
 			             'module',    'test',
 			             'resources', jsonb_build_array('*'),
 			             'verbs',     jsonb_build_array('get'))),
-			         'cluster_kacho_root')`)
+			         'cluster_root')`)
 		accountCatalog := catalogFormOf(t, "account")
 		exec(t, ctx, tx,
 			`INSERT INTO kaname.role_verb (role_id, object_type, verb) VALUES ('rol-scope', $1, 'get')`,

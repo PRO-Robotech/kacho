@@ -59,7 +59,7 @@ func namedRightManifest(t *testing.T, rule string) *manifest.Manifest {
 		"    producer: derived\n    verbs:\n" + subnetVerbsFull +
 		"roles:\n" +
 		"  - id: vpc.subnet.editor\n    description: Правит подсети модуля.\n" +
-		"    tier: {tierType: iam.cluster, tierId: cluster_kacho_root}\n" +
+		"    tier: {tierType: iam.cluster, tierId: cluster_root}\n" +
 		"    rules:\n      - " + rule + "\n"
 	m, err := manifest.Load([]byte(doc))
 	if err != nil {

@@ -62,7 +62,7 @@ seed:
         - {type: serviceAccount, name: kacho-vpc}
       grantedRelation: system_viewer
       scopeType: iam.cluster
-      scopeId: cluster_kacho_root
+      scopeId: cluster_root
       target: allInScope
 `
 

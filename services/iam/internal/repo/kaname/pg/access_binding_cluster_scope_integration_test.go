@@ -43,7 +43,7 @@ import (
 // Production path:
 //
 //	w.AccessBindingsW().Insert(binding{resource_type='cluster', ...})
-//	w.AccessBindingsW().EmitRelationWrite(tuples{system_admin@cluster:cluster_kacho_root})
+//	w.AccessBindingsW().EmitRelationWrite(tuples{system_admin@cluster:cluster_root})
 //	w.Commit(ctx)
 //
 // Asserts the binding row is visible AND the fga_outbox row carries the
@@ -67,7 +67,7 @@ func TestAB_ClusterScope_InsertEmitsSystemAdminTuple(t *testing.T) {
 	var roleID string
 	require.NoError(t, pool.QueryRow(ctx, `
 		SELECT id FROM kaname.roles
-		 WHERE name = 'admin' AND cluster_id = 'cluster_kacho_root' AND is_system = true`).
+		 WHERE name = 'admin' AND cluster_id = 'cluster_root' AND is_system = true`).
 		Scan(&roleID))
 
 	binding := domain.AccessBinding{

@@ -102,7 +102,7 @@ var iamDirectProbes = []iamDirectProbe{
 		                  jsonb_build_array(jsonb_build_object(
 		                      'module', 'test', 'resources', jsonb_build_array('*'),
 		                      'verbs', jsonb_build_array('get'))),
-		                  'cluster_kacho_root', $2::jsonb)`,
+		                  'cluster_root', $2::jsonb)`,
 		relabelSQL: `UPDATE kaname.roles SET labels = $2::jsonb WHERE id = $1`,
 	},
 	{

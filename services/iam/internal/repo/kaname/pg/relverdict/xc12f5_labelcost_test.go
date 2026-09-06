@@ -162,7 +162,7 @@ func (r *relLabelForm) ApplyRule(ctx context.Context) (bench.Counters, int, erro
 		        jsonb_build_array(jsonb_build_object(
 		            'module', 'authzformbench', 'resources', jsonb_build_array('*'),
 		            'verbs', $3::jsonb)),
-		        'cluster_kacho_root')`,
+		        'cluster_root')`,
 		f5Role, "authzformbench.f5", jsonArray(r.sc.Verbs)); err != nil {
 		return bench.Counters{StmtSQL: w.Close()}, rows, fmt.Errorf("роль: %w", err)
 	}
@@ -608,7 +608,7 @@ func seedCommon(t *testing.T, ctx context.Context, w *f5World, sc bench.LabelSce
 		t.Fatalf("транзакция посева обвязки: %v", err)
 	}
 	txExec(t, ctx, tx, `INSERT INTO kaname.clusters (id, name)
-		VALUES ('cluster_kacho_root', 'kacho') ON CONFLICT DO NOTHING`)
+		VALUES ('cluster_root', 'kacho') ON CONFLICT DO NOTHING`)
 	txExec(t, ctx, tx, `INSERT INTO kaname.accounts (id, name, owner_user_id)
 		VALUES ($1, 'authzformbench-f5', $2) ON CONFLICT DO NOTHING`, f5Account, subjID(sc.Subjects[0]))
 	for _, s := range sc.Subjects {

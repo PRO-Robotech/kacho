@@ -491,7 +491,7 @@ def revoke_await(name_prefix, acb_var, rev_op_var, grant_op_var=None):
     materialized via fga_outbox a beat AFTER Create→done. An immediate DELETE by the
     account-admin therefore flaked to 403 ("lacks v_delete on iam_access_binding:<id>") — the
     revoke became a NO-OP and the downstream Check never denied (variable per run). jwtBootstrap
-    holds `system_admin @ cluster_kacho_root` (the cluster-admin short-circuit set up by
+    holds `system_admin @ cluster_root` (the cluster-admin short-circuit set up by
     authz-fixtures), which ALLOWs any Check without a per-object tuple — so the DELETE commits immediately
     and deterministically (no creator-tuple race). A small 403-retry remains as a belt."""
     # Значение вызывающего становится ЧАСТЬЮ ИМЕНИ переменной прогона, а имя не

@@ -17,7 +17,7 @@
 // нём — `tuplesForBinding` прогоняет отношения через `mapClusterRelations`,
 // который сводит и `admin`, и `editor` в ОДНО прямое `system_admin`. У
 // `module.compute_sa` строки прав несут create/update/delete, поэтому легаси-
-// ветка выдала бы ей `system_admin@cluster:cluster_kacho_root` — верхний из трёх
+// ветка выдала бы ей `system_admin@cluster:cluster_root` — верхний из трёх
 // уровней супер-доступа, администратора облака, каскадом на всё. Пяти остальным
 // (только `.get`) досталось бы `system_viewer@cluster`, которого у nlb, реестра
 // и хранилища сегодня нет вовсе (у vpc/compute/шлюза он есть из посева 0014).
@@ -72,7 +72,7 @@ func moduleSABinding() domain.AccessBinding {
 		SubjectType:  domain.SubjectTypeServiceAccount,
 		SubjectID:    "sva_module_sa_probe001",
 		ResourceType: "cluster",
-		ResourceID:   "cluster_kacho_root",
+		ResourceID:   "cluster_root",
 	}
 }
 
@@ -87,7 +87,7 @@ func TestBuildBindingTuples_ModuleSA_WithRules_EmitsNoAccessTuple(t *testing.T) 
 	got, err := buildBindingTuples(moduleSABinding(), role)
 	require.NoError(t, err)
 
-	access := tierTuples(t, got, "cluster:cluster_kacho_root")
+	access := tierTuples(t, got, "cluster:cluster_root")
 	assert.Empty(t, access,
 		"роль С правилами обязана эмитить ТОЛЬКО иерархический указатель: "+
 			"право этой роли не едет ярусным кортежем на якоре области привязки, "+
@@ -108,12 +108,12 @@ func TestBuildBindingTuples_ModuleSA_RulesCleared_MintsClusterTier(t *testing.T)
 	got, err := buildBindingTuples(moduleSABinding(), role)
 	require.NoError(t, err)
 
-	access := tierTuples(t, got, "cluster:cluster_kacho_root")
+	access := tierTuples(t, got, "cluster:cluster_root")
 	require.NotEmpty(t, access,
 		"контроль: роль без правил обязана уйти в легаси-ветку и эмитить ярус — "+
 			"иначе проба не измеряет ветвление вовсе")
 	for _, tp := range access {
-		assert.Equal(t, "cluster:cluster_kacho_root", tp.Object,
+		assert.Equal(t, "cluster:cluster_root", tp.Object,
 			"ярус легаси-ветки садится на ЯКОРЬ ОБЛАСТИ привязки")
 	}
 	relations := make([]string, 0, len(access))
@@ -145,7 +145,7 @@ func TestBuildBindingTuples_ModuleSA_ViewerOnlyRulesCleared_MintsClusterSystemVi
 	got, err := buildBindingTuples(moduleSABinding(), role)
 	require.NoError(t, err)
 
-	access := tierTuples(t, got, "cluster:cluster_kacho_root")
+	access := tierTuples(t, got, "cluster:cluster_root")
 	relations := make([]string, 0, len(access))
 	for _, tp := range access {
 		relations = append(relations, tp.Relation)

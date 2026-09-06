@@ -128,7 +128,7 @@ var tierOnlyObjectTypes = map[string]bool{}
 //   - group — the subject-SET type (`group#member` usersets). The grantable IAM
 //     Group resource is the separate `iam_group` type; this one only carries
 //     `member`.
-//   - cluster — the platform singleton (`cluster:cluster_kacho_root`). Its
+//   - cluster — the platform singleton (`cluster:cluster_root`). Its
 //     relations are the platform-role ladder (system_admin/system_viewer/
 //     console); the cluster itself is not a per-project grantable
 //     resource, it is the D-9 super-admin short-circuit anchor. С #914 он несёт и
@@ -141,7 +141,7 @@ var nonGrantableModelTypes = map[string]string{
 	"user":            "subject type (left side of a tuple, never an authz object)",
 	"service_account": "subject type (left side of a tuple, never an authz object)",
 	"group":           "subject-set type for group#member usersets (the grantable resource is iam_group)",
-	"cluster":         "platform singleton cluster:cluster_kacho_root — super-admin ladder anchor, not a grantable resource",
+	"cluster":         "platform singleton cluster:cluster_root — super-admin ladder anchor, not a grantable resource",
 	"iam_fgaproxy":    "исторический якорь права писать кортежи: живых фактов нет (#914), но его выдают уже применённые миграции",
 }
 

@@ -174,14 +174,14 @@ func TestCreateProject_SECL_EmitsHierarchyAndClusterTupleInTx(t *testing.T) {
 			strings.HasPrefix(tup.Object, "project:") {
 			accSeen = true
 		}
-		if tup.Relation == "cluster" && tup.User == "cluster:cluster_kacho_root" &&
+		if tup.Relation == "cluster" && tup.User == "cluster:cluster_root" &&
 			strings.HasPrefix(tup.Object, "project:") {
 			clusterSeen = true
 		}
 	}
 	assert.True(t, accSeen, "project→account hierarchy intent co-committed in-tx")
 	assert.True(t, clusterSeen,
-		"SEC-L: project:<id>#cluster@cluster:cluster_kacho_root must be co-committed in-tx")
+		"SEC-L: project:<id>#cluster@cluster:cluster_root must be co-committed in-tx")
 }
 
 // ── in-memory fake Repo + ops ──────────────────────────────────────────────

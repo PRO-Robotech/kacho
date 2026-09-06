@@ -75,7 +75,7 @@ func TestIamExt_Migrations_6_1_1_FreshApply(t *testing.T) {
 		"SELECT EXISTS(SELECT 1 FROM goose_db_version WHERE version_id = 1 AND is_applied = true)").Scan(&applied))
 	assert.True(t, applied, "squashed baseline migration 0001 must be applied")
 
-	// clusters singleton — exactly one row, id = cluster_kacho_root.
+	// clusters singleton — exactly one row, id = cluster_root.
 	var clusterCount int
 	require.NoError(t, db.QueryRowContext(ctx,
 		"SELECT count(*) FROM kaname.clusters").Scan(&clusterCount))
@@ -84,13 +84,13 @@ func TestIamExt_Migrations_6_1_1_FreshApply(t *testing.T) {
 	var clusterID string
 	require.NoError(t, db.QueryRowContext(ctx,
 		"SELECT id FROM kaname.clusters").Scan(&clusterID))
-	assert.Equal(t, "cluster_kacho_root", clusterID)
+	assert.Equal(t, "cluster_root", clusterID)
 
 	// Two new system roles seeded by 0011.
 	var sysRoleCount int
 	require.NoError(t, db.QueryRowContext(ctx,
 		`SELECT count(*) FROM kaname.roles
-		 WHERE is_system = true AND cluster_id = 'cluster_kacho_root'
+		 WHERE is_system = true AND cluster_id = 'cluster_root'
 		 AND name IN ('kacho-system.admin', 'kacho-system.viewer')`).Scan(&sysRoleCount))
 	assert.Equal(t, 2, sysRoleCount, "two new system roles seeded")
 

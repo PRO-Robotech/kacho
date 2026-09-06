@@ -40,7 +40,7 @@ func TestAuthzChecker_ForwardsRequiredRelation(t *testing.T) {
 		Action:           "vpc.address_pools.list",
 		RequiredRelation: "system_admin",
 		ResourceType:     "cluster",
-		ResourceID:       "cluster_kacho_root",
+		ResourceID:       "cluster_root",
 		TraceID:          "trace-1",
 	})
 	if err != nil {
@@ -52,7 +52,7 @@ func TestAuthzChecker_ForwardsRequiredRelation(t *testing.T) {
 	}
 	// Guard the rest of the fields stay wired too (regression net for the adapter).
 	if rec.got.Subject != "user:usr_abc" || rec.got.Action != "vpc.address_pools.list" ||
-		rec.got.ResourceType != "cluster" || rec.got.ResourceID != "cluster_kacho_root" ||
+		rec.got.ResourceType != "cluster" || rec.got.ResourceID != "cluster_root" ||
 		rec.got.TraceID != "trace-1" {
 		t.Errorf("adapter dropped a field: %+v", rec.got)
 	}

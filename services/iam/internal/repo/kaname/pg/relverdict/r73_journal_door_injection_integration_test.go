@@ -51,7 +51,7 @@ func TestR7_3_27_InjectionRedWhenTheJournalIsDeadened(t *testing.T) {
 	const (
 		subject    = "user:usr_r73injection"
 		objectType = "cluster"
-		objectID   = "cluster_kacho_root"
+		objectID   = "cluster_root"
 		relation   = "system_admin"
 	)
 

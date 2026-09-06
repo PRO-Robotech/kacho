@@ -74,7 +74,7 @@ func newScopeCarrierFixture(t *testing.T, ctx context.Context) *scopeCarrierFixt
 		_, err := tx.Exec(ctx, sql, args...)
 		require.NoError(t, err, sql)
 	}
-	exec(`INSERT INTO kaname.clusters (id, name) VALUES ('cluster_kacho_root', 'kacho')
+	exec(`INSERT INTO kaname.clusters (id, name) VALUES ('cluster_root', 'kacho')
 	      ON CONFLICT DO NOTHING`)
 	exec(`INSERT INTO kaname.accounts (id, name, owner_user_id) VALUES ('acc-1', 'carrier', 'usr-1')`)
 	// ДВА пользователя, и второй здесь не для полноты. Строка субъекта проходит
@@ -93,7 +93,7 @@ func newScopeCarrierFixture(t *testing.T, ctx context.Context) *scopeCarrierFixt
 	              jsonb_build_array(jsonb_build_object(
 	                  'module', 'probe', 'resources', jsonb_build_array('*'),
 	                  'verbs',  jsonb_build_array('get'))),
-	              'cluster_kacho_root')`)
+	              'cluster_root')`)
 	exec(`INSERT INTO kaname.access_bindings
 	        (id, subject_type, subject_id, role_id, resource_type, resource_id, status)
 	      VALUES ('acb-1', 'user', 'usr-1', 'rol-1', 'project', 'prj-home', 'ACTIVE')`)

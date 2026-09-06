@@ -78,7 +78,7 @@ func (ClusterGrantSubjectType) EnumDescriptor() ([]byte, []int) {
 // A ClusterAdminGrant resource — permanent grant of cluster-admin authority.
 //
 // Single source of truth for the relation tuple
-// `cluster:cluster_kacho_root#system_admin@user:<id>` (or `@service_account:<id>`).
+// `cluster:cluster_root#system_admin@user:<id>` (or `@service_account:<id>`).
 // Removed via soft revoke (CAEP push); hard delete is reserved for
 // GDPR erasure. DB FK `ON DELETE RESTRICT` preserves audit trail.
 //

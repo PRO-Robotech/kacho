@@ -6,7 +6,7 @@ package seed_test
 // bootstrap_admin_integration_test.go — Bug B integration tests for
 // seed.RunBootstrapAdmin against a real Postgres (testcontainers).
 //
-// The cluster-admin (`system_admin@cluster_kacho_root`) tuple MUST be stated
+// The cluster-admin (`system_admin@cluster_root`) tuple MUST be stated
 // through the transactional journal `kaname.fga_outbox` — never by a raw SQL
 // seed that goes around it. Stage S6 removed the external engine that used to
 // consume that journal; the journal itself remains, and a database trigger folds
@@ -15,7 +15,7 @@ package seed_test
 // way the grant becomes an answer. These tests prove RunBootstrapAdmin:
 //
 //   1. user present   → cluster_admin_grant + fga_outbox(fga.tuple.write) row
-//      committed atomically, payload = {object:"cluster:cluster_kacho_root",
+//      committed atomically, payload = {object:"cluster:cluster_root",
 //      relation:"system_admin", user:"user:<id>"}.
 //   2. user absent     → graceful skip, NO rows written.
 //   3. idempotent re-run → 23505 graceful skip, NO duplicate grant.

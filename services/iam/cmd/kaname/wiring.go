@@ -601,7 +601,7 @@ func buildServices(pool, slavePool *pgxpool.Pool, opsRepo operations.FullRepo,
 	// SEC-C — FGA-proxy: RegisterResource / UnregisterResource enqueue the
 	// owner-hierarchy tuple into kaname.fga_outbox in one writer-tx, out of which
 	// a trigger folds the direct fact in the same commit. Least-priv enforced via the
-	// ReBAC gate (cert-cert→SA → fga_writer@cluster:cluster_kacho_root); the gate's
+	// ReBAC gate (cert-cert→SA → fga_writer@cluster:cluster_root); the gate's
 	// RelationChecker is the same Check surface (relationStore).
 	// β (epic «Resource-scoped AccessBinding»): the same writer-tx also UPSERTs
 	// /DELETEs the kaname.resource_mirror row (labels + parent-scope of the

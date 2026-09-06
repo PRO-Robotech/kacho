@@ -11,7 +11,7 @@ package pg_test
 // then re-execute the backfill SQL inline to verify:
 //
 //   * active cag_* rows land as access_bindings(status='ACTIVE', resource_type='cluster',
-//     resource_id='cluster_kacho_root', role_id=<roles/admin id>).
+//     resource_id='cluster_root', role_id=<roles/admin id>).
 //   * revoked cag_* rows land as access_bindings(status='REVOKED',
 //     revoked_at=<old granted_until>, revoked_by_user_id='system:cluster-admin-backfill').
 //   * Idempotent — re-running the same backfill SQL produces NO duplicate rows
@@ -46,7 +46,7 @@ DECLARE
 BEGIN
   SELECT id INTO v_admin_role_id
     FROM kaname.roles
-   WHERE name = 'admin' AND cluster_id = 'cluster_kacho_root' AND is_system = true;
+   WHERE name = 'admin' AND cluster_id = 'cluster_root' AND is_system = true;
   IF v_admin_role_id IS NULL THEN
     RAISE EXCEPTION 'cluster-admin backfill: roles/admin not found';
   END IF;
@@ -63,7 +63,7 @@ BEGIN
   SELECT
       'abc' || substr(src.id, 5, 17),
       src.subject_type, src.subject_id, v_admin_role_id,
-      'cluster', 'cluster_kacho_root',
+      'cluster', 'cluster_root',
       'ACTIVE',
       CASE WHEN length(src.granted_by) <= 64 THEN src.granted_by ELSE substr(src.granted_by, 1, 64) END,
       src.granted_at
@@ -82,7 +82,7 @@ BEGIN
   SELECT
       'abc' || substr(src.id, 5, 17),
       src.subject_type, src.subject_id, v_admin_role_id,
-      'cluster', 'cluster_kacho_root',
+      'cluster', 'cluster_root',
       'REVOKED',
       CASE WHEN length(src.granted_by) <= 64 THEN src.granted_by ELSE substr(src.granted_by, 1, 64) END,
       src.granted_until,
@@ -107,7 +107,7 @@ func adminRoleID(t *testing.T, ctx context.Context, pool *pgxpool.Pool) string {
 	var id string
 	require.NoError(t, pool.QueryRow(ctx,
 		`SELECT id FROM kaname.roles
-		  WHERE name = 'admin' AND cluster_id = 'cluster_kacho_root' AND is_system = true`).
+		  WHERE name = 'admin' AND cluster_id = 'cluster_root' AND is_system = true`).
 		Scan(&id))
 	return id
 }

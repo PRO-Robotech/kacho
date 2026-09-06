@@ -124,7 +124,7 @@ func grantProjectRead(t *testing.T, ctx context.Context, pool *pgxpool.Pool,
 		_, err := pool.Exec(ctx, sql, args...)
 		require.NoErrorf(t, err, "посев: %s", sql)
 	}
-	exec(`INSERT INTO kaname.clusters (id, name) VALUES ('cluster_kacho_root', 'kacho')
+	exec(`INSERT INTO kaname.clusters (id, name) VALUES ('cluster_root', 'kacho')
 	      ON CONFLICT DO NOTHING`)
 	exec(`INSERT INTO kaname.roles (id, name, permissions, rules, cluster_id)
 	      VALUES ($1, $2, '[]'::jsonb,
@@ -132,7 +132,7 @@ func grantProjectRead(t *testing.T, ctx context.Context, pool *pgxpool.Pool,
 	                  'module',    'test',
 	                  'resources', jsonb_build_array('*'),
 	                  'verbs',     jsonb_build_array('get'))),
-	              'cluster_kacho_root')`, roleID, "test.snapshot.get")
+	              'cluster_root')`, roleID, "test.snapshot.get")
 	exec(`INSERT INTO kaname.role_verb (role_id, object_type, verb) VALUES ($1, $2, 'get')`,
 		roleID, dotted)
 	exec(`INSERT INTO kaname.role_rule_selectors

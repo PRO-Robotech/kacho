@@ -83,7 +83,7 @@ func TestMintBootstrapToken_FirstCall_ProvisionsAndMints(t *testing.T) {
 		`SELECT count(*) FROM cluster_admin_grants WHERE subject_type='service_account' AND subject_id=$1 AND granted_until IS NULL`, id.SvaID),
 		"cluster system_admin grant on the bootstrap SA seeded")
 	require.Equal(t, 1, countRows(t, dsn,
-		`SELECT count(*) FROM fga_outbox WHERE payload->>'user'=$1 AND payload->>'relation'='system_admin' AND payload->>'object'='cluster:cluster_kacho_root'`,
+		`SELECT count(*) FROM fga_outbox WHERE payload->>'user'=$1 AND payload->>'relation'='system_admin' AND payload->>'object'='cluster:cluster_root'`,
 		"service_account:"+id.SvaID), "fga owner-tuple intent emitted")
 	// Not yet provisioned at runtime.
 	require.Equal(t, 0, countRows(t, dsn, `SELECT count(*) FROM service_account_oauth_clients WHERE sva_id=$1`, id.SvaID))

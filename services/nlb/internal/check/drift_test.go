@@ -378,7 +378,7 @@ func TestExtract_AllRPCEntries(t *testing.T) {
 		// какой объект спрашивают».
 		{"/kacho.cloud.loadbalancer.v1.InternalLoadBalancerAnnounceService/GetAnnounceState",
 			&lbv1.GetLoadBalancerAnnounceStateRequest{NetworkLoadBalancerId: id},
-			"cluster", "cluster_kacho_root"},
+			"cluster", "cluster_root"},
 		{"/kacho.cloud.loadbalancer.v1.InternalLoadBalancerAnnounceService/ReportAnnounceState",
 			&lbv1.ReportLoadBalancerAnnounceStateRequest{NetworkLoadBalancerId: id},
 			"nlb_network_load_balancer", id},

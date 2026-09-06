@@ -161,7 +161,7 @@ resources:
       - before: cluster
         text: |
           # kacho:latent — cluster-anchored admin resource; its RPCs gate on
-          # cluster:cluster_kacho_root#system_admin directly, so no module registers an
+          # cluster:cluster_root#system_admin directly, so no module registers an
           # address pool and nothing writes this pointer today. Declared ahead of that
           # producer deliberately: the type is admin-curated and the anchor is what the
           # super-admin cascade below derives over. The marker expires by itself — the
@@ -217,7 +217,7 @@ roles:
     description: "Admin Address"
     tier:
       tierType: iam.cluster
-      tierId: cluster_kacho_root
+      tierId: cluster_root
     rules:
       - module: vpc
         resources: [address]
@@ -227,7 +227,7 @@ roles:
     description: "Edit Address"
     tier:
       tierType: iam.cluster
-      tierId: cluster_kacho_root
+      tierId: cluster_root
     rules:
       - module: vpc
         resources: [address]
@@ -237,7 +237,7 @@ roles:
     description: "Read Address"
     tier:
       tierType: iam.cluster
-      tierId: cluster_kacho_root
+      tierId: cluster_root
     rules:
       - module: vpc
         resources: [address]
@@ -247,7 +247,7 @@ roles:
     description: "Admin Gateway"
     tier:
       tierType: iam.cluster
-      tierId: cluster_kacho_root
+      tierId: cluster_root
     rules:
       - module: vpc
         resources: [gateway]
@@ -257,7 +257,7 @@ roles:
     description: "Edit Gateway"
     tier:
       tierType: iam.cluster
-      tierId: cluster_kacho_root
+      tierId: cluster_root
     rules:
       - module: vpc
         resources: [gateway]
@@ -267,7 +267,7 @@ roles:
     description: "Read Gateway"
     tier:
       tierType: iam.cluster
-      tierId: cluster_kacho_root
+      tierId: cluster_root
     rules:
       - module: vpc
         resources: [gateway]
@@ -277,7 +277,7 @@ roles:
     description: "Admin Network"
     tier:
       tierType: iam.cluster
-      tierId: cluster_kacho_root
+      tierId: cluster_root
     rules:
       - module: vpc
         resources: [network]
@@ -287,7 +287,7 @@ roles:
     description: "Edit Network"
     tier:
       tierType: iam.cluster
-      tierId: cluster_kacho_root
+      tierId: cluster_root
     rules:
       - module: vpc
         resources: [network]
@@ -297,7 +297,7 @@ roles:
     description: "Read Network"
     tier:
       tierType: iam.cluster
-      tierId: cluster_kacho_root
+      tierId: cluster_root
     rules:
       - module: vpc
         resources: [network]
@@ -307,7 +307,7 @@ roles:
     description: "Admin RouteTable"
     tier:
       tierType: iam.cluster
-      tierId: cluster_kacho_root
+      tierId: cluster_root
     rules:
       - module: vpc
         resources: [routeTable]
@@ -317,7 +317,7 @@ roles:
     description: "Edit RouteTable"
     tier:
       tierType: iam.cluster
-      tierId: cluster_kacho_root
+      tierId: cluster_root
     rules:
       - module: vpc
         resources: [routeTable]
@@ -327,7 +327,7 @@ roles:
     description: "Read RouteTable"
     tier:
       tierType: iam.cluster
-      tierId: cluster_kacho_root
+      tierId: cluster_root
     rules:
       - module: vpc
         resources: [routeTable]
@@ -337,7 +337,7 @@ roles:
     description: "Admin SecurityGroup"
     tier:
       tierType: iam.cluster
-      tierId: cluster_kacho_root
+      tierId: cluster_root
     rules:
       - module: vpc
         resources: [securityGroup]
@@ -347,7 +347,7 @@ roles:
     description: "Edit SecurityGroup"
     tier:
       tierType: iam.cluster
-      tierId: cluster_kacho_root
+      tierId: cluster_root
     rules:
       - module: vpc
         resources: [securityGroup]
@@ -357,7 +357,7 @@ roles:
     description: "Read SecurityGroup"
     tier:
       tierType: iam.cluster
-      tierId: cluster_kacho_root
+      tierId: cluster_root
     rules:
       - module: vpc
         resources: [securityGroup]
@@ -367,7 +367,7 @@ roles:
     description: "Admin Subnet"
     tier:
       tierType: iam.cluster
-      tierId: cluster_kacho_root
+      tierId: cluster_root
     rules:
       - module: vpc
         resources: [subnet]
@@ -377,7 +377,7 @@ roles:
     description: "Edit Subnet"
     tier:
       tierType: iam.cluster
-      tierId: cluster_kacho_root
+      tierId: cluster_root
     rules:
       - module: vpc
         resources: [subnet]
@@ -387,7 +387,7 @@ roles:
     description: "Read Subnet"
     tier:
       tierType: iam.cluster
-      tierId: cluster_kacho_root
+      tierId: cluster_root
     rules:
       - module: vpc
         resources: [subnet]
@@ -443,7 +443,7 @@ seed:
         - {type: serviceAccount, name: kacho-vpc}
       grantedRelation: system_viewer
       scopeType: iam.cluster
-      scopeId: cluster_kacho_root
+      scopeId: cluster_root
       target: allInScope
 
   joins:

@@ -145,7 +145,7 @@ roles:
     description: "Admin Instance"
     tier:
       tierType: iam.cluster
-      tierId: cluster_kacho_root
+      tierId: cluster_root
     rules:
       - module: compute
         resources: [instance]
@@ -155,7 +155,7 @@ roles:
     description: "Edit Instance"
     tier:
       tierType: iam.cluster
-      tierId: cluster_kacho_root
+      tierId: cluster_root
     rules:
       - module: compute
         resources: [instance]
@@ -165,7 +165,7 @@ roles:
     description: "Read Instance"
     tier:
       tierType: iam.cluster
-      tierId: cluster_kacho_root
+      tierId: cluster_root
     rules:
       - module: compute
         resources: [instance]
@@ -221,7 +221,7 @@ seed:
         - {type: serviceAccount, name: kacho-compute}
       grantedRelation: system_viewer
       scopeType: iam.cluster
-      scopeId: cluster_kacho_root
+      scopeId: cluster_root
       target: allInScope
 
   joins:

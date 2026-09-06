@@ -92,8 +92,8 @@ func TestSystemViewerFloor_Prod_LegitimateReaderSA_Allowed(t *testing.T) {
 	if ck.relation != "system_viewer" {
 		t.Errorf("Check relation = %q, want %q", ck.relation, "system_viewer")
 	}
-	if ck.object != "cluster:cluster_kacho_root" {
-		t.Errorf("Check object = %q, want %q", ck.object, "cluster:cluster_kacho_root")
+	if ck.object != "cluster:cluster_root" {
+		t.Errorf("Check object = %q, want %q", ck.object, "cluster:cluster_root")
 	}
 }
 

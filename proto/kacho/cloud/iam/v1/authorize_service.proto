@@ -398,7 +398,7 @@ message WhoAmIResponse {
   string display_name = 4;
 
   // True when the caller holds `system_admin` on the singleton cluster
-  // object (`cluster:cluster_kacho_root`). Bypasses every per-resource
+  // object (`cluster:cluster_root`). Bypasses every per-resource
   // authz check at the api-gateway middleware (internal
   // admin RPCs gate on this).
   bool system_admin = 5;

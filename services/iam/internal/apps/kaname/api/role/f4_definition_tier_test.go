@@ -44,7 +44,7 @@ func TestRole_IAM_1_10_DtoEmitsDefinitionTier(t *testing.T) {
 		{"project-tier custom", domain.Role{ID: "rol-y000000000000000", ProjectID: "prj-P000000000000000", Name: "p", Rules: f4Rules()}, "iam.project", "prj-P000000000000000", false},
 		// Stored IsSystem is intentionally left false to prove the projection derives
 		// system-ness from the cluster tier, not the stored flag.
-		{"cluster-tier system (derived)", domain.Role{ID: "rol-z000000000000000", ClusterID: "cluster_kacho_root", Name: "admin", Rules: f4Rules(), IsSystem: false}, "iam.cluster", "cluster_kacho_root", true},
+		{"cluster-tier system (derived)", domain.Role{ID: "rol-z000000000000000", ClusterID: "cluster_root", Name: "admin", Rules: f4Rules(), IsSystem: false}, "iam.cluster", "cluster_root", true},
 	}
 	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {
@@ -105,7 +105,7 @@ func TestRole_IAM_1_10_CreateReqMapsDefinitionTier(t *testing.T) {
 func TestRole_IAM_1_11_CreateReqDefinitionTierNegative(t *testing.T) {
 	for _, tc := range []struct{ name, tt, tid string }{
 		{"empty tierType (pre-Phase-0 required)", "", "acc-A000000000000000"},
-		{"cluster tier rejected (seeded, not API)", "iam.cluster", "cluster_kacho_root"},
+		{"cluster tier rejected (seeded, not API)", "iam.cluster", "cluster_root"},
 		{"unknown tierType", "iam.folder", "x"},
 	} {
 		t.Run(tc.name, func(t *testing.T) {

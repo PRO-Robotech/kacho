@@ -112,7 +112,7 @@ func TestIntegration_RoleWithAModuleOwnerIsAlwaysClusterTier(t *testing.T) {
 		_, err := db.Exec(`
 			INSERT INTO kaname.roles
 			       (id, cluster_id, name, description, permissions, owner_module, created_at)
-			VALUES ('rol_p2_module_cluster', 'cluster_kacho_root', 'vpc.viewer',
+			VALUES ('rol_p2_module_cluster', 'cluster_root', 'vpc.viewer',
 			        'законная роль модуля', '["vpc.network.*.get"]'::jsonb, 'vpc', now())`)
 		require.NoError(t, err,
 			"законная роль модуля отвергнута: ограничение шире своего предмета — "+

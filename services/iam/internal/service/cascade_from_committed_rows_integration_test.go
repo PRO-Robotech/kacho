@@ -54,7 +54,7 @@ import (
 	"github.com/PRO-Robotech/kaname/internal/service"
 )
 
-const ciClusterObject = "cluster:cluster_kacho_root"
+const ciClusterObject = "cluster:cluster_root"
 
 // ciVerbsOf — глаголы, которые ОБЪЯВЛЯЕТ этот тип, прочитанные из той же
 // потиповой таблицы, которой пользуется эмиссия.
@@ -109,7 +109,7 @@ func newCIWorld(t *testing.T) *ciWorld {
 	// Кластер — синглтон и верхнее звено цепи (миграция 740001 берёт его
 	// идентификатор ИЗ СТРОКИ, а не литералом). Без строки звена нет, и весь
 	// верхний ярус молча стал бы недостижим.
-	w.exec(t, `INSERT INTO kaname.clusters (id, name) VALUES ('cluster_kacho_root', 'kacho')
+	w.exec(t, `INSERT INTO kaname.clusters (id, name) VALUES ('cluster_root', 'kacho')
 	           ON CONFLICT DO NOTHING`)
 	return w
 }
@@ -241,7 +241,7 @@ func TestCloudAdministratorReachesAnyObjectFromCommittedRows(t *testing.T) {
 	w.seedRole(t, role, acc)
 	w.seedBinding(t, binding, grantee, role, "account", acc)
 
-	w.factThroughJournal(t, "user:"+cloudAdmin, "system_admin", "cluster", "cluster_kacho_root")
+	w.factThroughJournal(t, "user:"+cloudAdmin, "system_admin", "cluster", "cluster_root")
 
 	for _, verb := range ciVerbsOf(t, "iam_access_binding:"+binding) {
 		require.Truef(t, w.allowed(t, "user:"+cloudAdmin, verb, "iam_access_binding:"+binding),

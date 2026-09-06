@@ -280,7 +280,7 @@ func TestReconcileObjectForward_ForeignScope_SkipsNoTuple(t *testing.T) {
 // on-cluster).
 func TestReconcileObjectForward_ClusterSuperAdmin_NoPerObject(t *testing.T) {
 	f := &fakeStore{
-		scope:       domain.ScopeAnchor{Type: "cluster", ID: "cluster_kacho_root"},
+		scope:       domain.ScopeAnchor{Type: "cluster", ID: "cluster_root"},
 		subjectType: "user", subjectID: "usr-root", active: true,
 		// cluster-scope wildcard → empty ObjectTypes (short-circuit, not per-object).
 		selectors: []domain.RuleSelector{{
