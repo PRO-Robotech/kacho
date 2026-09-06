@@ -14,7 +14,7 @@ import (
 	"github.com/PRO-Robotech/kacho/pkg/operations"
 	"github.com/PRO-Robotech/kacho/pkg/operations/operationspb"
 
-	iamv1 "github.com/PRO-Robotech/kacho/pkg/api/kacho/cloud/iam/v1"
+	iamv1 "github.com/PRO-Robotech/kacho/pkg/api/kaname/cloud/iam/v1"
 	operationpb "github.com/PRO-Robotech/kacho/pkg/api/kacho/cloud/operation"
 	quotav1 "github.com/PRO-Robotech/kacho/pkg/api/kacho/cloud/quota/v1"
 )

@@ -40,7 +40,7 @@ import (
 	"github.com/stretchr/testify/require"
 	"google.golang.org/grpc"
 
-	iampb "github.com/PRO-Robotech/kacho/pkg/api/kacho/cloud/iam/v1"
+	iampb "github.com/PRO-Robotech/kacho/pkg/api/kaname/cloud/iam/v1"
 	lbv1 "github.com/PRO-Robotech/kacho/pkg/api/kacho/cloud/loadbalancer/v1"
 	"github.com/PRO-Robotech/kacho/pkg/outbox/drainer"
 

@@ -10,7 +10,7 @@
 package quotav1
 
 import (
-	v1 "github.com/PRO-Robotech/kacho/pkg/api/kacho/cloud/iam/v1"
+	v1 "github.com/PRO-Robotech/kacho/pkg/api/kaname/cloud/iam/v1"
 	protoreflect "google.golang.org/protobuf/reflect/protoreflect"
 	protoimpl "google.golang.org/protobuf/runtime/protoimpl"
 	reflect "reflect"
@@ -67,7 +67,7 @@ type Quota struct {
 	// Without it "you are at 16 of 16" does not tell the tenant whether the number
 	// is their own override, their account's, or the platform's, and therefore does
 	// not tell them who can change it.
-	SourceScope v1.Limit_Scope `protobuf:"varint,4,opt,name=source_scope,json=sourceScope,proto3,enum=kacho.cloud.iam.v1.Limit_Scope" json:"source_scope,omitempty"`
+	SourceScope v1.Limit_Scope `protobuf:"varint,4,opt,name=source_scope,json=sourceScope,proto3,enum=kaname.cloud.iam.v1.Limit_Scope" json:"source_scope,omitempty"`
 	// Id of the object the winning scope names: an account id for ACCOUNT, a
 	// project id for PROJECT. Empty when the winner is DEFAULT, and empty ONLY
 	// then — the pairing mirrors `iam.v1.Limit`, where a DB CHECK enforces it.
@@ -169,12 +169,12 @@ var File_kacho_cloud_quota_v1_quota_proto protoreflect.FileDescriptor
 
 const file_kacho_cloud_quota_v1_quota_proto_rawDesc = "" +
 	"\n" +
-	" kacho/cloud/quota/v1/quota.proto\x12\x14kacho.cloud.quota.v1\x1a\x1ekacho/cloud/iam/v1/limit.proto\"\xf3\x01\n" +
+	" kacho/cloud/quota/v1/quota.proto\x12\x14kacho.cloud.quota.v1\x1a\x1fkaname/cloud/iam/v1/limit.proto\"\xf4\x01\n" +
 	"\x05Quota\x12\x12\n" +
 	"\x04kind\x18\x01 \x01(\tR\x04kind\x12\x14\n" +
 	"\x05limit\x18\x02 \x01(\x03R\x05limit\x12\x12\n" +
-	"\x04used\x18\x03 \x01(\x03R\x04used\x12B\n" +
-	"\fsource_scope\x18\x04 \x01(\x0e2\x1f.kacho.cloud.iam.v1.Limit.ScopeR\vsourceScope\x12&\n" +
+	"\x04used\x18\x03 \x01(\x03R\x04used\x12C\n" +
+	"\fsource_scope\x18\x04 \x01(\x0e2 .kaname.cloud.iam.v1.Limit.ScopeR\vsourceScope\x12&\n" +
 	"\x0fsource_scope_id\x18\x05 \x01(\tR\rsourceScopeId\x12!\n" +
 	"\fcarrier_type\x18\x06 \x01(\tR\vcarrierType\x12\x1d\n" +
 	"\n" +
@@ -195,10 +195,10 @@ func file_kacho_cloud_quota_v1_quota_proto_rawDescGZIP() []byte {
 var file_kacho_cloud_quota_v1_quota_proto_msgTypes = make([]protoimpl.MessageInfo, 1)
 var file_kacho_cloud_quota_v1_quota_proto_goTypes = []any{
 	(*Quota)(nil),       // 0: kacho.cloud.quota.v1.Quota
-	(v1.Limit_Scope)(0), // 1: kacho.cloud.iam.v1.Limit.Scope
+	(v1.Limit_Scope)(0), // 1: kaname.cloud.iam.v1.Limit.Scope
 }
 var file_kacho_cloud_quota_v1_quota_proto_depIdxs = []int32{
-	1, // 0: kacho.cloud.quota.v1.Quota.source_scope:type_name -> kacho.cloud.iam.v1.Limit.Scope
+	1, // 0: kacho.cloud.quota.v1.Quota.source_scope:type_name -> kaname.cloud.iam.v1.Limit.Scope
 	1, // [1:1] is the sub-list for method output_type
 	1, // [1:1] is the sub-list for method input_type
 	1, // [1:1] is the sub-list for extension type_name

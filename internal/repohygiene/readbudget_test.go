@@ -31,7 +31,7 @@ import (
 	_ "github.com/PRO-Robotech/kacho/pkg/api/kacho/cloud/api"
 	_ "github.com/PRO-Robotech/kacho/pkg/api/kacho/cloud/compute/v1"
 	_ "github.com/PRO-Robotech/kacho/pkg/api/kacho/cloud/geo/v1"
-	_ "github.com/PRO-Robotech/kacho/pkg/api/kacho/cloud/iam/v1"
+	_ "github.com/PRO-Robotech/kacho/pkg/api/kaname/cloud/iam/v1"
 	_ "github.com/PRO-Robotech/kacho/pkg/api/kacho/cloud/loadbalancer/v1"
 	_ "github.com/PRO-Robotech/kacho/pkg/api/kacho/cloud/operation"
 	_ "github.com/PRO-Robotech/kacho/pkg/api/kacho/cloud/quota/v1"

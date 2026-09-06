@@ -138,13 +138,13 @@ func TestCatalogJudgeRefusesAnEmptyWalkInsteadOfReportingNoFindings(t *testing.T
 
 func edgeFixture() ([]boundaryEdge, []knownBoundaryEdge) {
 	observed := []boundaryEdge{
-		{From: "pkg/listnarrow", To: "pkg/api/kacho/cloud/iam/v1",
+		{From: "pkg/listnarrow", To: "pkg/api/kaname/cloud/iam/v1",
 			FromClass: classCorelib, ToClass: classKaname, Prod: 3, Test: 3},
 		{From: "services/iam/internal/manifest", To: "pkg/modulemanifest",
 			FromClass: classKaname, ToClass: classKacho, Prod: 1, Test: 1},
 	}
 	ledger := []knownBoundaryEdge{
-		{"pkg/listnarrow", "pkg/api/kacho/cloud/iam/v1", 3, 3, "З2"},
+		{"pkg/listnarrow", "pkg/api/kaname/cloud/iam/v1", 3, 3, "З2"},
 		{"services/iam/internal/manifest", "pkg/modulemanifest", 1, 1, "З8"},
 	}
 	return observed, ledger
@@ -169,7 +169,7 @@ func TestEdgeJudgeIsSilentWhenTheTreeMatchesTheLedger(t *testing.T) {
 func TestEdgeJudgeCatchesAnEdgeThatTheLedgerDoesNotName(t *testing.T) {
 	observed, ledger := edgeFixture()
 	observed = append(observed, boundaryEdge{
-		From: "pkg/outbox", To: "pkg/api/kacho/cloud/iam/v1",
+		From: "pkg/outbox", To: "pkg/api/kaname/cloud/iam/v1",
 		FromClass: classCorelib, ToClass: classKaname, Prod: 1, Test: 0,
 	})
 
@@ -181,7 +181,7 @@ func TestEdgeJudgeCatchesAnEdgeThatTheLedgerDoesNotName(t *testing.T) {
 	}
 	// Находка обязана назвать ОБЕ координаты и направление: без них читатель
 	// пойдёт искать не там.
-	for _, want := range []string{"pkg/outbox", "pkg/api/kacho/cloud/iam/v1", "corelib", "kaname"} {
+	for _, want := range []string{"pkg/outbox", "pkg/api/kaname/cloud/iam/v1", "corelib", "kaname"} {
 		if !strings.Contains(faults[0], want) {
 			t.Fatalf("находка не называет %q: %s", want, faults[0])
 		}
@@ -343,7 +343,7 @@ func TestClassOfPackageResolvesSplitSubtreesAndRefusesUnknownCatalogs(t *testing
 		want foundationClass
 	}{
 		// расщепление pkg/api (приёмка §5.1)
-		{"pkg/api/kacho/cloud/iam/v1", classKaname},
+		{"pkg/api/kaname/cloud/iam/v1", classKaname},
 		{"pkg/api/kacho/cloud/operation/v1", classCorelib},
 		{"pkg/api/kacho/cloud/subscription", classCorelib},
 		{"pkg/api/kacho/cloud/quota/v1", classCorelib},

@@ -172,7 +172,7 @@ func TestEdgeProbe_ReadsStatusOffAFinishedStream(t *testing.T) {
 	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
 	defer cancel()
 
-	const unserved = "/kacho.cloud.iam.v1.GhostService/Vanish"
+	const unserved = "/kaname.cloud.iam.v1.GhostService/Vanish"
 	desc := &grpc.StreamDesc{StreamName: "probe", ClientStreams: true, ServerStreams: true}
 	st, err := probe.conn.NewStream(ctx, desc, unserved, grpc.ForceCodec(rawCodec{}))
 	require.NoError(t, err, "open a stream to an unserved method")
@@ -210,7 +210,7 @@ func TestPublicAllowlist_EdgeAnswersEveryEntryItServes(t *testing.T) {
 	}
 	for _, unanswerable := range []string{
 		"grpc.health.v1.Health/Evaporate",                          // registered service, no such method
-		"kacho.cloud.iam.v1.GhostService/Vanish",                   // service the edge does not serve
+		"kaname.cloud.iam.v1.GhostService/Vanish",                   // service the edge does not serve
 		"grpc.reflection.v1.ServerReflection/ServerReflectionInfo", // moved to the internal listener
 	} {
 		if got := probe.code(unanswerable); got != codes.Unimplemented {

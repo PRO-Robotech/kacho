@@ -18,7 +18,7 @@ import (
 	"github.com/PRO-Robotech/kacho/pkg/operations"
 	"github.com/PRO-Robotech/kacho/pkg/pgtest"
 
-	iamv1 "github.com/PRO-Robotech/kacho/pkg/api/kacho/cloud/iam/v1"
+	iamv1 "github.com/PRO-Robotech/kacho/pkg/api/kaname/cloud/iam/v1"
 	"github.com/PRO-Robotech/kacho/pkg/listnarrow"
 	"github.com/PRO-Robotech/kacho/pkg/listnarrow/narrowtest"
 	"github.com/PRO-Robotech/kacho/services/nlb/internal/apps/kacho/api/loadbalancer"

@@ -124,7 +124,7 @@ import (
 	computepb "github.com/PRO-Robotech/kacho/pkg/api/kacho/cloud/compute/v1"
 	// geo.v1 — Region/Zone leaf-сервис kacho-geo.
 	geopb "github.com/PRO-Robotech/kacho/pkg/api/kacho/cloud/geo/v1"
-	iampb "github.com/PRO-Robotech/kacho/pkg/api/kacho/cloud/iam/v1"
+	iampb "github.com/PRO-Robotech/kacho/pkg/api/kaname/cloud/iam/v1"
 	quotapb "github.com/PRO-Robotech/kacho/pkg/api/kacho/cloud/quota/v1"
 
 	// kacho-nlb (loadbalancer.v1) — public RPC под /nlb/v1/*.

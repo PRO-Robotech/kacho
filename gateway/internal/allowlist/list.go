@@ -226,8 +226,8 @@ var AllowedMethods = map[string]struct{}{
 	// (admin-CRUD на :9091; HasInternalSuffix блокирует автоматически, запрет #6).
 
 	// iam.v1 — AccountService
-	"/kacho.cloud.iam.v1.AccountService/Get":  {},
-	"/kacho.cloud.iam.v1.AccountService/List": {},
+	"/kaname.cloud.iam.v1.AccountService/Get":  {},
+	"/kaname.cloud.iam.v1.AccountService/List": {},
 	// quota.v1 — IdentityQuotaService (только чтение, и только о СЕБЕ: поля,
 	// которым можно было бы назвать чужую личность, у запроса нет).
 	//
@@ -235,37 +235,37 @@ var AllowedMethods = map[string]struct{}{
 	// зависит от `iam.v1`, и обратная ссылка замкнула бы пакеты друг на друга.
 	"/kacho.cloud.quota.v1.IdentityQuotaService/List": {},
 
-	"/kacho.cloud.iam.v1.AccountService/Create":            {},
-	"/kacho.cloud.iam.v1.AccountService/Update":            {},
-	"/kacho.cloud.iam.v1.AccountService/Delete":            {},
-	"/kacho.cloud.iam.v1.AccountService/ListOperations":    {},
-	"/kacho.cloud.iam.v1.AccountService/ListAllOperations": {}, // account-scoped module list (REST GET /iam/v1/accounts/{id}/operations:all)
+	"/kaname.cloud.iam.v1.AccountService/Create":            {},
+	"/kaname.cloud.iam.v1.AccountService/Update":            {},
+	"/kaname.cloud.iam.v1.AccountService/Delete":            {},
+	"/kaname.cloud.iam.v1.AccountService/ListOperations":    {},
+	"/kaname.cloud.iam.v1.AccountService/ListAllOperations": {}, // account-scoped module list (REST GET /iam/v1/accounts/{id}/operations:all)
 	// iam.v1 — ProjectService
-	"/kacho.cloud.iam.v1.ProjectService/Get":            {},
-	"/kacho.cloud.iam.v1.ProjectService/List":           {},
-	"/kacho.cloud.iam.v1.ProjectService/Create":         {},
-	"/kacho.cloud.iam.v1.ProjectService/Update":         {},
-	"/kacho.cloud.iam.v1.ProjectService/Delete":         {},
-	"/kacho.cloud.iam.v1.ProjectService/ListOperations": {},
+	"/kaname.cloud.iam.v1.ProjectService/Get":            {},
+	"/kaname.cloud.iam.v1.ProjectService/List":           {},
+	"/kaname.cloud.iam.v1.ProjectService/Create":         {},
+	"/kaname.cloud.iam.v1.ProjectService/Update":         {},
+	"/kaname.cloud.iam.v1.ProjectService/Delete":         {},
+	"/kaname.cloud.iam.v1.ProjectService/ListOperations": {},
 	// iam.v1 — UserService (НЕТ публичного Create — Users создаются через
 	// InternalUserService.UpsertFromIdentity).
 	// Update — публичная async-мутация: mutable только labels (identity-поля
 	// immutable), возвращает Operation; parity с RoleService/ServiceAccountService.
-	"/kacho.cloud.iam.v1.UserService/Get":            {},
-	"/kacho.cloud.iam.v1.UserService/List":           {},
-	"/kacho.cloud.iam.v1.UserService/Update":         {}, // public labels-only mutation (REST PATCH /iam/v1/users/{user_id}); record_writer on iam_user, acr 1
-	"/kacho.cloud.iam.v1.UserService/Delete":         {},
-	"/kacho.cloud.iam.v1.UserService/ListOperations": {}, // per-resource ops (REST GET /iam/v1/users/{user_id}/operations)
+	"/kaname.cloud.iam.v1.UserService/Get":            {},
+	"/kaname.cloud.iam.v1.UserService/List":           {},
+	"/kaname.cloud.iam.v1.UserService/Update":         {}, // public labels-only mutation (REST PATCH /iam/v1/users/{user_id}); record_writer on iam_user, acr 1
+	"/kaname.cloud.iam.v1.UserService/Delete":         {},
+	"/kaname.cloud.iam.v1.UserService/ListOperations": {}, // per-resource ops (REST GET /iam/v1/users/{user_id}/operations)
 	// Административный запрет участию и его снятие (REST POST
 	// /iam/v1/users/{user_id}:block|:unblock). Пара обязана быть здесь ОБЕ: без
 	// записи в этом списке директор отвергает метод раньше, чем что-либо о нём
 	// узнают каталог и таблица маршрутов, и односторонний недосмотр оставил бы
 	// заблокированного без пути снятия.
-	"/kacho.cloud.iam.v1.UserService/Block":   {}, // identity_suspender on iam_user, acr 2
-	"/kacho.cloud.iam.v1.UserService/Unblock": {}, // identity_suspender on iam_user, acr 2
+	"/kaname.cloud.iam.v1.UserService/Block":   {}, // identity_suspender on iam_user, acr 2
+	"/kaname.cloud.iam.v1.UserService/Unblock": {}, // identity_suspender on iam_user, acr 2
 	// Приглашение по адресу почты (REST POST /iam/v1/users:invite) — единственный
 	// публичный путь появления пользователя; Create по-прежнему только internal.
-	"/kacho.cloud.iam.v1.UserService/Invite": {},
+	"/kaname.cloud.iam.v1.UserService/Invite": {},
 	// Исключение человека из аккаунта (REST POST
 	// /iam/v1/users/{user_id}:removeFromAccount) — ПАРА к приглашению выше, и
 	// стоять они обязаны обе: аккаунт, который умеет только вводить людей и не
@@ -273,67 +273,67 @@ var AllowedMethods = map[string]struct{}{
 	// Гейтится `member_remover` на АККАУНТЕ (тот же круг, что у Invite), acr 2;
 	// строку личности не трогает — её снятие спрашивает `identity_remover`
 	// (#1131).
-	"/kacho.cloud.iam.v1.UserService/RemoveFromAccount": {},
+	"/kaname.cloud.iam.v1.UserService/RemoveFromAccount": {},
 	// iam.v1 — UserTokenService (REST .../users/{user_id}/tokens) —
 	// выдача, перечисление и отзыв неинтерактивных токенов пользователя.
-	"/kacho.cloud.iam.v1.UserTokenService/Issue":  {},
-	"/kacho.cloud.iam.v1.UserTokenService/List":   {},
-	"/kacho.cloud.iam.v1.UserTokenService/Revoke": {},
+	"/kaname.cloud.iam.v1.UserTokenService/Issue":  {},
+	"/kaname.cloud.iam.v1.UserTokenService/List":   {},
+	"/kaname.cloud.iam.v1.UserTokenService/Revoke": {},
 	// iam.v1 — ServiceAccountService
-	"/kacho.cloud.iam.v1.ServiceAccountService/Get":    {},
-	"/kacho.cloud.iam.v1.ServiceAccountService/List":   {},
-	"/kacho.cloud.iam.v1.ServiceAccountService/Create": {},
-	"/kacho.cloud.iam.v1.ServiceAccountService/Update": {},
-	"/kacho.cloud.iam.v1.ServiceAccountService/Delete": {},
+	"/kaname.cloud.iam.v1.ServiceAccountService/Get":    {},
+	"/kaname.cloud.iam.v1.ServiceAccountService/List":   {},
+	"/kaname.cloud.iam.v1.ServiceAccountService/Create": {},
+	"/kaname.cloud.iam.v1.ServiceAccountService/Update": {},
+	"/kaname.cloud.iam.v1.ServiceAccountService/Delete": {},
 	// Disable / Enable — explicit actions over the state that decides whether a
 	// service account may authenticate. Public on purpose: it is the owner of a
 	// machine identity who takes it out of service, not only a cluster operator.
-	"/kacho.cloud.iam.v1.ServiceAccountService/Disable":        {},
-	"/kacho.cloud.iam.v1.ServiceAccountService/Enable":         {},
-	"/kacho.cloud.iam.v1.ServiceAccountService/ListOperations": {},
+	"/kaname.cloud.iam.v1.ServiceAccountService/Disable":        {},
+	"/kaname.cloud.iam.v1.ServiceAccountService/Enable":         {},
+	"/kaname.cloud.iam.v1.ServiceAccountService/ListOperations": {},
 	// iam.v1 — SAKeyService (REST .../serviceAccounts/{service_account_id}/keys) —
 	// выдача, перечисление и отзыв ключей служебной учётки.
-	"/kacho.cloud.iam.v1.SAKeyService/Issue":  {},
-	"/kacho.cloud.iam.v1.SAKeyService/List":   {},
-	"/kacho.cloud.iam.v1.SAKeyService/Revoke": {},
+	"/kaname.cloud.iam.v1.SAKeyService/Issue":  {},
+	"/kaname.cloud.iam.v1.SAKeyService/List":   {},
+	"/kaname.cloud.iam.v1.SAKeyService/Revoke": {},
 	// iam.v1 — AuthorizeService (REST /iam/v1/authorize:* и /iam/v1/me) —
 	// tenant-facing запросы к модели прав: предпросмотр разрешений в консоли и
 	// самоописание вызывающего. Публичный сервис, не Internal*.
-	"/kacho.cloud.iam.v1.AuthorizeService/Check":           {},
-	"/kacho.cloud.iam.v1.AuthorizeService/BatchCheck":      {},
-	"/kacho.cloud.iam.v1.AuthorizeService/ListSubjects":    {},
-	"/kacho.cloud.iam.v1.AuthorizeService/ExpandRelations": {},
-	"/kacho.cloud.iam.v1.AuthorizeService/WhoAmI":          {},
+	"/kaname.cloud.iam.v1.AuthorizeService/Check":           {},
+	"/kaname.cloud.iam.v1.AuthorizeService/BatchCheck":      {},
+	"/kaname.cloud.iam.v1.AuthorizeService/ListSubjects":    {},
+	"/kaname.cloud.iam.v1.AuthorizeService/ExpandRelations": {},
+	"/kaname.cloud.iam.v1.AuthorizeService/WhoAmI":          {},
 	// iam.v1 — GroupService
-	"/kacho.cloud.iam.v1.GroupService/Get":            {},
-	"/kacho.cloud.iam.v1.GroupService/List":           {},
-	"/kacho.cloud.iam.v1.GroupService/Create":         {},
-	"/kacho.cloud.iam.v1.GroupService/Update":         {},
-	"/kacho.cloud.iam.v1.GroupService/Delete":         {},
-	"/kacho.cloud.iam.v1.GroupService/AddMember":      {},
-	"/kacho.cloud.iam.v1.GroupService/RemoveMember":   {},
-	"/kacho.cloud.iam.v1.GroupService/ListMembers":    {},
-	"/kacho.cloud.iam.v1.GroupService/ListOperations": {},
+	"/kaname.cloud.iam.v1.GroupService/Get":            {},
+	"/kaname.cloud.iam.v1.GroupService/List":           {},
+	"/kaname.cloud.iam.v1.GroupService/Create":         {},
+	"/kaname.cloud.iam.v1.GroupService/Update":         {},
+	"/kaname.cloud.iam.v1.GroupService/Delete":         {},
+	"/kaname.cloud.iam.v1.GroupService/AddMember":      {},
+	"/kaname.cloud.iam.v1.GroupService/RemoveMember":   {},
+	"/kaname.cloud.iam.v1.GroupService/ListMembers":    {},
+	"/kaname.cloud.iam.v1.GroupService/ListOperations": {},
 
 	// iam.v1 — MembershipService: чтение членства на аккаунт-скоупных путях.
 	// Только два ЧТЕНИЯ: глаголов изменения у ресурса на этой поверхности нет.
-	"/kacho.cloud.iam.v1.MembershipService/Get":  {},
-	"/kacho.cloud.iam.v1.MembershipService/List": {},
+	"/kaname.cloud.iam.v1.MembershipService/Get":  {},
+	"/kaname.cloud.iam.v1.MembershipService/List": {},
 	// iam.v1 — RoleService
 	// Role.rules[].module — скалярная строка; REST Create/Update маршалят это
 	// поле; отдельной allowlist-записи не требуется (новых RPC нет).
-	"/kacho.cloud.iam.v1.RoleService/Get":            {},
-	"/kacho.cloud.iam.v1.RoleService/List":           {},
-	"/kacho.cloud.iam.v1.RoleService/Create":         {},
-	"/kacho.cloud.iam.v1.RoleService/Update":         {},
-	"/kacho.cloud.iam.v1.RoleService/Delete":         {},
-	"/kacho.cloud.iam.v1.RoleService/ListOperations": {},
+	"/kaname.cloud.iam.v1.RoleService/Get":            {},
+	"/kaname.cloud.iam.v1.RoleService/List":           {},
+	"/kaname.cloud.iam.v1.RoleService/Create":         {},
+	"/kaname.cloud.iam.v1.RoleService/Update":         {},
+	"/kaname.cloud.iam.v1.RoleService/Delete":         {},
+	"/kaname.cloud.iam.v1.RoleService/ListOperations": {},
 	// iam.v1 — AccessBindingService
-	"/kacho.cloud.iam.v1.AccessBindingService/Get":    {},
-	"/kacho.cloud.iam.v1.AccessBindingService/List":   {}, // unified paginated read (REST GET /iam/v1/accessBindings), F11
-	"/kacho.cloud.iam.v1.AccessBindingService/Create": {},
-	"/kacho.cloud.iam.v1.AccessBindingService/Update": {}, // public mutation (REST PATCH /iam/v1/accessBindings/{access_binding_id}); clears deletion_protection, editor relation (parity with Delete)
-	"/kacho.cloud.iam.v1.AccessBindingService/Delete": {},
+	"/kaname.cloud.iam.v1.AccessBindingService/Get":    {},
+	"/kaname.cloud.iam.v1.AccessBindingService/List":   {}, // unified paginated read (REST GET /iam/v1/accessBindings), F11
+	"/kaname.cloud.iam.v1.AccessBindingService/Create": {},
+	"/kaname.cloud.iam.v1.AccessBindingService/Update": {}, // public mutation (REST PATCH /iam/v1/accessBindings/{access_binding_id}); clears deletion_protection, editor relation (parity with Delete)
+	"/kaname.cloud.iam.v1.AccessBindingService/Delete": {},
 
 	// LimitService — административная поверхность пределов на ПУБЛИЧНОМ бэкенде
 	// (ADM-1 S1, #878). Наружу выставлен публичный глагол, а не `Internal*`:
@@ -341,21 +341,21 @@ var AllowedMethods = map[string]struct{}{
 	// отношение `system_admin` @ `cluster`, которое подстановочный кортеж
 	// `user:*` не выполняет, — поэтому публикация адреса круга не расширяет, а
 	// делает отказ честным: 403 вместо 404.
-	"/kacho.cloud.iam.v1.LimitService/Get":            {},
-	"/kacho.cloud.iam.v1.LimitService/List":           {},
-	"/kacho.cloud.iam.v1.LimitService/Create":         {},
-	"/kacho.cloud.iam.v1.LimitService/Update":         {},
-	"/kacho.cloud.iam.v1.LimitService/Delete":         {},
-	"/kacho.cloud.iam.v1.AccessBindingService/Revoke": {}, // soft-revoke :verb (REST POST /iam/v1/accessBindings/{access_binding_id}:revoke), F10
+	"/kaname.cloud.iam.v1.LimitService/Get":            {},
+	"/kaname.cloud.iam.v1.LimitService/List":           {},
+	"/kaname.cloud.iam.v1.LimitService/Create":         {},
+	"/kaname.cloud.iam.v1.LimitService/Update":         {},
+	"/kaname.cloud.iam.v1.LimitService/Delete":         {},
+	"/kaname.cloud.iam.v1.AccessBindingService/Revoke": {}, // soft-revoke :verb (REST POST /iam/v1/accessBindings/{access_binding_id}:revoke), F10
 
-	"/kacho.cloud.iam.v1.AccessBindingService/ListByScope":           {}, // public sync read (REST GET /iam/v1/accessBindings:listByScope)
-	"/kacho.cloud.iam.v1.AccessBindingService/ListBySubject":         {},
-	"/kacho.cloud.iam.v1.AccessBindingService/ListByAccount":         {},
-	"/kacho.cloud.iam.v1.AccessBindingService/ListOperations":        {}, // per-resource ops (REST GET /iam/v1/accessBindings/{access_binding_id}/operations)
-	"/kacho.cloud.iam.v1.AccessBindingService/ListSubjectPrivileges": {}, // public sync read
-	"/kacho.cloud.iam.v1.AccessBindingService/ListAssignableRoles":   {}, // public sync read (REST GET /iam/v1/accessBindings:listAssignableRoles)
-	"/kacho.cloud.iam.v1.AccessBindingService/ListByRole":            {}, // public sync read (REST GET /iam/v1/accessBindings:listByRole)
-	"/kacho.cloud.iam.v1.AccessBindingService/ExpandAccess":          {}, // public sync read (REST GET /iam/v1/accessBindings:expandAccess)
+	"/kaname.cloud.iam.v1.AccessBindingService/ListByScope":           {}, // public sync read (REST GET /iam/v1/accessBindings:listByScope)
+	"/kaname.cloud.iam.v1.AccessBindingService/ListBySubject":         {},
+	"/kaname.cloud.iam.v1.AccessBindingService/ListByAccount":         {},
+	"/kaname.cloud.iam.v1.AccessBindingService/ListOperations":        {}, // per-resource ops (REST GET /iam/v1/accessBindings/{access_binding_id}/operations)
+	"/kaname.cloud.iam.v1.AccessBindingService/ListSubjectPrivileges": {}, // public sync read
+	"/kaname.cloud.iam.v1.AccessBindingService/ListAssignableRoles":   {}, // public sync read (REST GET /iam/v1/accessBindings:listAssignableRoles)
+	"/kaname.cloud.iam.v1.AccessBindingService/ListByRole":            {}, // public sync read (REST GET /iam/v1/accessBindings:listByRole)
+	"/kaname.cloud.iam.v1.AccessBindingService/ExpandAccess":          {}, // public sync read (REST GET /iam/v1/accessBindings:expandAccess)
 	// iam.v1 — PermissionCatalogService
 	// Public, sync read (REST GET /iam/v1/permissionCatalog): authenticated-floor
 	// read — отношение `viewer` на кластере, выданное системной выдачей субъекту
@@ -363,7 +363,7 @@ var AllowedMethods = map[string]struct{}{
 	// palette без Internal* RPC. Прежде здесь стояла полоса `<exempt>`: пол был тот
 	// же, но доступ не показывался перечислением выдач и не отзывался. MUST be
 	// reachable on the external listener (else 404/NotFound при gRPC-маршрутизации).
-	"/kacho.cloud.iam.v1.PermissionCatalogService/ListPermissionCatalog": {},
+	"/kaname.cloud.iam.v1.PermissionCatalogService/ListPermissionCatalog": {},
 	// iam.v1 — InternalIAMService / InternalUserService.* — НЕ в allowlist
 	// (HasInternalSuffix блокирует автоматически; запрет #6). Речь ровно про
 	// ВНЕШНИЙ listener: на внутреннем у части этих RPC есть и REST-маршрут

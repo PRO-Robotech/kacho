@@ -221,7 +221,7 @@ func TestExtractEntry_ExemptReasonIsRequiredAndOnlyThere(t *testing.T) {
 // ReBAC + deliberate FGA-exempt posture, and adding one is high-scrutiny.
 func TestExtractEntry_ExemptUnannotated_NoAcrDefault(t *testing.T) {
 	opts := withExemptReason(buildOpts(t, ExemptSentinel, "", "", "", ""), "HANDLER_DECIDES")
-	entry, _ := extractEntry("kacho.cloud.iam.v1.AccessBindingService/Create", opts)
+	entry, _ := extractEntry("kaname.cloud.iam.v1.AccessBindingService/Create", opts)
 	if entry.RequiredAcrMin != "" {
 		t.Errorf("exempt un-annotated RPC must keep EMPTY acr (no default injection), got %q", entry.RequiredAcrMin)
 	}
@@ -230,7 +230,7 @@ func TestExtractEntry_ExemptUnannotated_NoAcrDefault(t *testing.T) {
 	// this is exactly the AccessBindingService/Create net-strengthening: exempt +
 	// acr="2").
 	optsExplicit := withExemptReason(buildOpts(t, ExemptSentinel, "", "2", "", ""), "HANDLER_DECIDES")
-	entry2, warn := extractEntry("kacho.cloud.iam.v1.AccessBindingService/Create", optsExplicit)
+	entry2, warn := extractEntry("kaname.cloud.iam.v1.AccessBindingService/Create", optsExplicit)
 	if warn != "" {
 		t.Fatalf("exempt RPC with explicit acr should not warn, got: %s", warn)
 	}

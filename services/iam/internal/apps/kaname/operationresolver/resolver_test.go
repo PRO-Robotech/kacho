@@ -12,7 +12,7 @@ import (
 
 	"github.com/PRO-Robotech/kacho/pkg/operations"
 
-	iamv1 "github.com/PRO-Robotech/kacho/pkg/api/kacho/cloud/iam/v1"
+	iamv1 "github.com/PRO-Robotech/kacho/pkg/api/kaname/cloud/iam/v1"
 	"github.com/PRO-Robotech/kaname/internal/domain"
 	iamerr "github.com/PRO-Robotech/kaname/internal/errors"
 	"github.com/PRO-Robotech/kaname/internal/testsupport/catalogfixture"

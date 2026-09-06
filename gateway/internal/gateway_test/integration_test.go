@@ -20,7 +20,7 @@ import (
 	healthpb "google.golang.org/grpc/health/grpc_health_v1"
 	"google.golang.org/grpc/status"
 
-	iamv1 "github.com/PRO-Robotech/kacho/pkg/api/kacho/cloud/iam/v1"
+	iamv1 "github.com/PRO-Robotech/kacho/pkg/api/kaname/cloud/iam/v1"
 
 	"github.com/PRO-Robotech/kacho/gateway/internal/health"
 	"github.com/PRO-Robotech/kacho/gateway/internal/middleware"

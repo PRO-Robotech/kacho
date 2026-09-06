@@ -45,7 +45,7 @@ import (
 	"google.golang.org/grpc/status"
 	"google.golang.org/protobuf/types/known/timestamppb"
 
-	iamv1 "github.com/PRO-Robotech/kacho/pkg/api/kacho/cloud/iam/v1"
+	iamv1 "github.com/PRO-Robotech/kacho/pkg/api/kaname/cloud/iam/v1"
 	"github.com/PRO-Robotech/kacho/pkg/ids"
 	"github.com/PRO-Robotech/kacho/pkg/tokenpolicy"
 	sessionrev "github.com/PRO-Robotech/kaname/internal/apps/kaname/api/session_revocations"

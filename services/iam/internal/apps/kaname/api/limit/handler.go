@@ -11,7 +11,7 @@ package limit
 import (
 	"context"
 
-	iamv1 "github.com/PRO-Robotech/kacho/pkg/api/kacho/cloud/iam/v1"
+	iamv1 "github.com/PRO-Robotech/kacho/pkg/api/kaname/cloud/iam/v1"
 	operationpb "github.com/PRO-Robotech/kacho/pkg/api/kacho/cloud/operation"
 
 	"github.com/PRO-Robotech/kaname/internal/domain"

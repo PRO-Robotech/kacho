@@ -247,13 +247,13 @@ var knownBoundaryEdges = []knownBoundaryEdge{
 	{"pkg/authz/catalogderive", "pkg/api/kacho/cloud/vpc/v1", 0, 1, "З3"},
 	{"pkg/servicehost", "pkg/api/kacho/cloud/compute/v1", 0, 1, "З3"},
 	{"pkg/servicehost", "pkg/api/kacho/cloud/vpc/v1", 0, 1, "З3"},
-	{"pkg/subscription", "pkg/api/kacho/cloud/iam/v1", 0, 1, "З3"},
+	{"pkg/subscription", "pkg/api/kaname/cloud/iam/v1", 0, 1, "З3"},
 	{"services/iam/cmd/kaname", "pkg/api/kacho/cloud/api", 0, 1, "З3"},
 
 	// З2 — порт сужения и вынос адаптера носителя (приёмка §7.2).
-	{"pkg/listnarrow", "pkg/api/kacho/cloud/iam/v1", 3, 3, "З2"},
-	{"pkg/listnarrow/narrowtest", "pkg/api/kacho/cloud/iam/v1", 1, 0, "З2"},
-	{"pkg/servicehost", "pkg/api/kacho/cloud/iam/v1", 1, 1, "З2"},
+	{"pkg/listnarrow", "pkg/api/kaname/cloud/iam/v1", 3, 3, "З2"},
+	{"pkg/listnarrow/narrowtest", "pkg/api/kaname/cloud/iam/v1", 1, 0, "З2"},
+	{"pkg/servicehost", "pkg/api/kaname/cloud/iam/v1", 1, 1, "З2"},
 
 	// З8 — оснастка, разбирающая дерево, в двоичном службы (приёмка §11).
 	{"services/iam/internal/manifest", "pkg/modulemanifest", 1, 1, "З8"},
@@ -263,8 +263,8 @@ var knownBoundaryEdges = []knownBoundaryEdge{
 	// K3-НОВОЕ — разрез дерева контрактов; приёмка выносит его в полосу
 	// контракта (§10) и этих двух рёбер не называет. Найдены обходом по обеим
 	// осям на ревизии полосы; предмет заведён отчётом полосы.
-	{"pkg/api/kacho/cloud/quota/v1", "pkg/api/kacho/cloud/iam/v1", 1, 0, "K3-НОВОЕ"},
-	{"pkg/api/kacho/cloud/iam/v1", "pkg/api/kacho/cloud/api", 18, 0, "K3-НОВОЕ"},
+	{"pkg/api/kacho/cloud/quota/v1", "pkg/api/kaname/cloud/iam/v1", 1, 0, "K3-НОВОЕ"},
+	{"pkg/api/kaname/cloud/iam/v1", "pkg/api/kacho/cloud/api", 18, 0, "K3-НОВОЕ"},
 }
 
 // boundaryCensus — объём осмотренного. Печатается ВСЕГДА: «ноль находок»

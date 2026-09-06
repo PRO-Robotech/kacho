@@ -28,7 +28,7 @@ import (
 	"context"
 	"time"
 
-	iamv1 "github.com/PRO-Robotech/kacho/pkg/api/kacho/cloud/iam/v1"
+	iamv1 "github.com/PRO-Robotech/kacho/pkg/api/kaname/cloud/iam/v1"
 	"google.golang.org/protobuf/types/known/timestamppb"
 )
 
@@ -56,7 +56,7 @@ import (
 	"context"
 	"time"
 
-	iamv1 "github.com/PRO-Robotech/kacho/pkg/api/kacho/cloud/iam/v1"
+	iamv1 "github.com/PRO-Robotech/kacho/pkg/api/kaname/cloud/iam/v1"
 	"google.golang.org/protobuf/types/known/timestamppb"
 )
 
@@ -86,7 +86,7 @@ import (
 	"log/slog"
 	"time"
 
-	iamv1 "github.com/PRO-Robotech/kacho/pkg/api/kacho/cloud/iam/v1"
+	iamv1 "github.com/PRO-Robotech/kacho/pkg/api/kaname/cloud/iam/v1"
 	"google.golang.org/protobuf/types/known/timestamppb"
 )
 

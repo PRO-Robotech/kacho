@@ -22,7 +22,7 @@ import (
 	"google.golang.org/protobuf/proto"
 	"google.golang.org/protobuf/types/known/anypb"
 
-	iamv1 "github.com/PRO-Robotech/kacho/pkg/api/kacho/cloud/iam/v1"
+	iamv1 "github.com/PRO-Robotech/kacho/pkg/api/kaname/cloud/iam/v1"
 	"github.com/PRO-Robotech/kacho/pkg/operations"
 
 	"github.com/PRO-Robotech/kaname/internal/clients"

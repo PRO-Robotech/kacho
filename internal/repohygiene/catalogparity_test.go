@@ -48,7 +48,7 @@ import (
 	_ "github.com/PRO-Robotech/kacho/pkg/api/kacho/cloud/api"
 	_ "github.com/PRO-Robotech/kacho/pkg/api/kacho/cloud/compute/v1"
 	_ "github.com/PRO-Robotech/kacho/pkg/api/kacho/cloud/geo/v1"
-	_ "github.com/PRO-Robotech/kacho/pkg/api/kacho/cloud/iam/v1"
+	_ "github.com/PRO-Robotech/kacho/pkg/api/kaname/cloud/iam/v1"
 	_ "github.com/PRO-Robotech/kacho/pkg/api/kacho/cloud/loadbalancer/v1"
 	_ "github.com/PRO-Robotech/kacho/pkg/api/kacho/cloud/registry/v1"
 	_ "github.com/PRO-Robotech/kacho/pkg/api/kacho/cloud/storage/v1"
@@ -74,7 +74,7 @@ const (
 // Появился домен — строка добавляется сюда, и до тех пор гейт краснеет на его
 // строках как на незаявленных.
 var catalogProtoPackages = []string{
-	"kacho.cloud.iam.v1",
+	"kaname.cloud.iam.v1",
 	"kacho.cloud.vpc.v1",
 	"kacho.cloud.compute.v1",
 	"kacho.cloud.storage.v1",
@@ -114,7 +114,7 @@ var catalogProtoPackages = []string{
 // смонтировали и объявили ему проводку сужателя в своих дескрипторах, домен
 // перестал быть непровязанным, и анализатор уронил прогон на записи сам.
 var domainsWithoutAWiredMap = []string{
-	"kacho.cloud.iam.v1",
+	"kaname.cloud.iam.v1",
 }
 
 // TestCatalogMatchesTheAnnotationsItWasGeneratedFrom — закоммиченный каталог

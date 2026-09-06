@@ -31,7 +31,7 @@ import (
 	"github.com/PRO-Robotech/kacho/pkg/operations"
 	corevalidate "github.com/PRO-Robotech/kacho/pkg/validate"
 
-	iamv1 "github.com/PRO-Robotech/kacho/pkg/api/kacho/cloud/iam/v1"
+	iamv1 "github.com/PRO-Robotech/kacho/pkg/api/kaname/cloud/iam/v1"
 
 	"github.com/PRO-Robotech/kaname/internal/apps/kaname/shared"
 	"github.com/PRO-Robotech/kaname/internal/authzguard"

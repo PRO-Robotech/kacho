@@ -50,7 +50,7 @@ import (
 	"github.com/PRO-Robotech/kacho/pkg/servicehost"
 
 	computev1 "github.com/PRO-Robotech/kacho/pkg/api/kacho/cloud/compute/v1"
-	iamv1 "github.com/PRO-Robotech/kacho/pkg/api/kacho/cloud/iam/v1"
+	iamv1 "github.com/PRO-Robotech/kacho/pkg/api/kaname/cloud/iam/v1"
 	operationpb "github.com/PRO-Robotech/kacho/pkg/api/kacho/cloud/operation"
 	subscriptionv1 "github.com/PRO-Robotech/kacho/pkg/api/kacho/cloud/subscription"
 	"github.com/PRO-Robotech/kacho/pkg/retention"

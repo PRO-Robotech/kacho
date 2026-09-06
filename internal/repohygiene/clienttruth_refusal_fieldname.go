@@ -87,7 +87,7 @@ import (
 	// Регистрация дескрипторов доменов: источник словаря имён полей и oneof.
 	_ "github.com/PRO-Robotech/kacho/pkg/api/kacho/cloud/compute/v1"
 	_ "github.com/PRO-Robotech/kacho/pkg/api/kacho/cloud/geo/v1"
-	_ "github.com/PRO-Robotech/kacho/pkg/api/kacho/cloud/iam/v1"
+	_ "github.com/PRO-Robotech/kacho/pkg/api/kaname/cloud/iam/v1"
 	_ "github.com/PRO-Robotech/kacho/pkg/api/kacho/cloud/loadbalancer/v1"
 	_ "github.com/PRO-Robotech/kacho/pkg/api/kacho/cloud/registry/v1"
 	_ "github.com/PRO-Robotech/kacho/pkg/api/kacho/cloud/storage/v1"
