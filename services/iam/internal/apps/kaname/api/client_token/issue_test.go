@@ -79,7 +79,7 @@ func (s *stubClaims) ClaimsForAssertionClient(_ context.Context, c domain.Assert
 	if s.err != nil {
 		return nil, service.ResolvedPrincipal{}, s.err
 	}
-	out := map[string]any{"kacho_principal_id": c.OwnerID}
+	out := map[string]any{"kaname_principal_id": c.OwnerID}
 	for k, v := range s.set {
 		out[k] = v
 	}
@@ -388,13 +388,13 @@ func TestIssuedTokenCarriesOurTypeAndOurIssuer(t *testing.T) {
 // второй ключ существующего механизма не с чем связать.
 func TestClaimsComeFromTheSingleDeclarationAndCarryTheClientIdentifier(t *testing.T) {
 	uc, claims := newUseCase(t)
-	claims.set = map[string]any{"kacho_user_token_id": "uoc_0123456789abcdefg"}
+	claims.set = map[string]any{"kaname_user_token_id": "uoc_0123456789abcdefg"}
 
 	out, _, err := uc.Issue(context.Background(), client_token.Input{Client: client()})
 	require.NoError(t, err)
 	got, _ := parse(t, out.AccessToken)
-	require.Equal(t, "uoc_0123456789abcdefg", got["kacho_user_token_id"])
-	require.Equal(t, "usr_0123456789abcdefg", got["kacho_principal_id"])
+	require.Equal(t, "uoc_0123456789abcdefg", got["kaname_user_token_id"])
+	require.Equal(t, "usr_0123456789abcdefg", got["kaname_principal_id"])
 
 	// Вид выдачи доезжает до объявления состава: путь обратного вызова
 	// различает виды, и наш обязан назвать свой тем же словарём.

@@ -109,7 +109,7 @@ func plainBearer(t *testing.T, hydra *hydraFixture, jti string) string {
 	tok := jwt.NewWithClaims(jwt.SigningMethodES256, jwt.MapClaims{
 		"iss": testIssuer, "aud": []any{testAudience}, "sub": "usr_alice_acc_a1b2",
 		"iat": now, "exp": now + 900, "acr": "2", "jti": jti,
-		"kacho_principal_type": "user", "kacho_principal_id": "usr_alice_acc_a1b2",
+		"kaname_principal_type": "user", "kaname_principal_id": "usr_alice_acc_a1b2",
 	})
 	tok.Header["kid"] = hydra.kid
 	signed, err := tok.SignedString(hydra.priv)
@@ -322,7 +322,7 @@ func TestE2E_Revocation_TokenWithoutIdentifier_IsReportedNotSilent(t *testing.T)
 	tok := jwt.NewWithClaims(jwt.SigningMethodES256, jwt.MapClaims{
 		"iss": testIssuer, "aud": []any{testAudience}, "sub": "usr_alice_acc_a1b2",
 		"iat": now, "exp": now + 900, "acr": "2",
-		"kacho_principal_type": "user", "kacho_principal_id": "usr_alice_acc_a1b2",
+		"kaname_principal_type": "user", "kaname_principal_id": "usr_alice_acc_a1b2",
 	})
 	tok.Header["kid"] = hydra.kid
 	signed, err := tok.SignedString(hydra.priv)

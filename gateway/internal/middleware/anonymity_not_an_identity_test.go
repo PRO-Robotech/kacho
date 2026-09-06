@@ -71,8 +71,8 @@ func TestSubjectExtractor_AnonymousMarker_NotASubject(t *testing.T) {
 	subj, ok := e.Extract(&middleware.VerifiedToken{
 		Subject: "anonymous",
 		ExtClaims: map[string]any{
-			"kacho_principal_type": "system",
-			"kacho_principal_id":   "anonymous",
+			"kaname_principal_type": "system",
+			"kaname_principal_id":   "anonymous",
 		},
 	})
 	assert.False(t, ok, "маркер анонимности не должен резолвиться в субъект")

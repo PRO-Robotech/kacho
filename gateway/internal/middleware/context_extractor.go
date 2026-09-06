@@ -25,18 +25,18 @@
 //	client_ip           string (canonical IP literal)   — when resolvable
 //	acr_value           string ("0".."3")               — from token.ACR
 //	amr_claims          []string                        — from token.AMR
-//	mfa_at              timestamp                       — from ext_claims.kacho_mfa_at
-//	device_attestation  string                          — from ext_claims.kacho_device_compliance
-//	passkey_aaguid      string                          — from ext_claims.kacho_passkey_aaguid
-//	device_id           string                          — from ext_claims.kacho_device_id
+//	mfa_at              timestamp                       — from ext_claims.kaname_mfa_at
+//	device_attestation  string                          — from ext_claims.kaname_device_compliance
+//	passkey_aaguid      string                          — from ext_claims.kaname_passkey_aaguid
+//	device_id           string                          — from ext_claims.kaname_device_id
 //	dpop_jkt            string                          — from token.Cnf.Jkt
 //	auth_time           timestamp                       — from token.AuthTime
 //	jti                 string                          — from token.JTI (for replay-trace correlation)
 //	subject_kind        string ("user"/"service_account"/"workload"/"external")
 //
-// Beyond the reserved keys above, any remaining `kacho_*`-prefixed ext_claims
+// Beyond the reserved keys above, any remaining `kaname_*`-prefixed ext_claims
 // are forwarded verbatim under their ORIGINAL key name (no prefix rewrite), so
-// future Conditions can read them without an extractor change. Non-`kacho_*`
+// future Conditions can read them without an extractor change. Non-`kaname_*`
 // ext_claims keys are dropped entirely. The condition set of the rights model is
 // closed, so tenant-supplied junk never participates in condition evaluation.
 package middleware
@@ -163,33 +163,33 @@ func (e *ContextExtractor) fillFromToken(out map[string]any, t *VerifiedToken) {
 		out["dpop_jkt"] = t.Cnf.Jkt
 	}
 	if ext := t.ExtClaims; ext != nil {
-		// Recognised kacho_* claims — extracted with the canonical condition
+		// Recognised kaname_* claims — extracted with the canonical condition
 		// key.
-		if v, ok := ext["kacho_mfa_at"]; ok {
+		if v, ok := ext["kaname_mfa_at"]; ok {
 			if ts, ok := coerceUnixSeconds(v); ok {
 				out["mfa_at"] = ts
 			}
 		}
-		if v, ok := ext["kacho_device_compliance"].(string); ok && v != "" {
+		if v, ok := ext["kaname_device_compliance"].(string); ok && v != "" {
 			out["device_attestation"] = v
 		}
-		if v, ok := ext["kacho_passkey_aaguid"].(string); ok && v != "" {
+		if v, ok := ext["kaname_passkey_aaguid"].(string); ok && v != "" {
 			out["passkey_aaguid"] = v
 		}
-		if v, ok := ext["kacho_device_id"].(string); ok && v != "" {
+		if v, ok := ext["kaname_device_id"].(string); ok && v != "" {
 			out["device_id"] = v
 		}
-		// Forward any other kacho_* claims under their original name so
+		// Forward any other kaname_* claims under their original name so
 		// future Conditions can read them without an extractor change.
 		for k, v := range ext {
-			if !strings.HasPrefix(k, "kacho_") {
+			if !strings.HasPrefix(k, "kaname_") {
 				continue
 			}
 			// Already extracted above.
 			switch k {
-			case "kacho_mfa_at", "kacho_device_compliance", "kacho_passkey_aaguid",
-				"kacho_device_id", "kacho_principal_type", "kacho_principal_id",
-				"kacho_user_id", "kacho_sa_id", "kacho_workload_id":
+			case "kaname_mfa_at", "kaname_device_compliance", "kaname_passkey_aaguid",
+				"kaname_device_id", "kaname_principal_type", "kaname_principal_id",
+				"kaname_user_id", "kaname_sa_id", "kaname_workload_id":
 				continue
 			}
 			out[k] = v

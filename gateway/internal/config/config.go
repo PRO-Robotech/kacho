@@ -571,7 +571,7 @@ type Config struct {
 	AuthNEnforceStepUp bool `envconfig:"KACHO_API_GATEWAY_AUTHN_ENFORCE_STEP_UP" default:"false"`
 
 	// AuthNRequireMachineTokenBinding — true → a token whose principal is a
-	// MACHINE (kacho_principal_type=service_account) MUST be sender-constrained
+	// MACHINE (kaname_principal_type=service_account) MUST be sender-constrained
 	// (RFC 7800 `cnf`: DPoP `jkt` or mTLS `x5t#S256`); an unbound machine token
 	// is rejected 401. The human/interactive path is unaffected.
 	//

@@ -172,18 +172,18 @@ func verifiedTokenFromCtxOrHTTP(ctx context.Context, r *http.Request) (*Verified
 		return nil, false
 	}
 	extClaims := map[string]any{
-		"kacho_principal_type": defaultIfEmptyStr(pType, "user"),
-		"kacho_principal_id":   sub,
+		"kaname_principal_type": defaultIfEmptyStr(pType, "user"),
+		"kaname_principal_id":   sub,
 	}
 	// Момент подтверждения кладётся под тем же именем, под которым его читает
-	// сборка доводов (`kacho_mfa_at`), — а не под вторым, «своим». Второе имя
+	// сборка доводов (`kaname_mfa_at`), — а не под вторым, «своим». Второе имя
 	// одной величины разошлось бы с первым молча.
 	//
 	// Непрочитанное и неположительное значение НЕ кладутся: «довода нет» и
 	// «подтверждено в 1970 году» — разные утверждения, и второе поддаётся
 	// арифметике, которой нечего опровергнуть.
 	if at, ok := parseUnixSecondsHeader(mfaRaw); ok {
-		extClaims["kacho_mfa_at"] = at
+		extClaims["kaname_mfa_at"] = at
 	}
 	return &VerifiedToken{
 		Subject:   sub,

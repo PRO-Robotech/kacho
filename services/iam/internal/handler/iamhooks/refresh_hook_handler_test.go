@@ -117,8 +117,8 @@ func TestRefreshHook_HappyPath(t *testing.T) {
 	}
 	require.NoError(t, json.NewDecoder(w.Body).Decode(&resp))
 	claims := resp.Session.AccessToken["ext_claims"].(map[string]any)
-	assert.Equal(t, "kratos-uuid-1", claims["kacho_external_id"])
-	assert.Equal(t, "attested", claims["kacho_device_compliance"])
+	assert.Equal(t, "kratos-uuid-1", claims["kaname_external_id"])
+	assert.Equal(t, "attested", claims["kaname_device_compliance"])
 	// One audit row.
 	events := audit.Events()
 	require.Len(t, events, 1)

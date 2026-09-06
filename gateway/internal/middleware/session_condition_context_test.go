@@ -361,9 +361,9 @@ func TestConditionArguments_LanesAgree(t *testing.T) {
 		ACR:     "3",
 		AMR:     []string{"webauthn"},
 		ExtClaims: map[string]any{
-			"kacho_principal_type": "user",
-			"kacho_principal_id":   "usr_alice_acc_a1b2",
-			"kacho_mfa_at":         at.Unix(),
+			"kaname_principal_type": "user",
+			"kaname_principal_id":   "usr_alice_acc_a1b2",
+			"kaname_mfa_at":         at.Unix(),
 		},
 	}
 

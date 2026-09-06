@@ -95,7 +95,7 @@ func (s *f1bSigner) mint(t *testing.T, typ, jti string, mutate func(jwt.MapClaim
 	claims := jwt.MapClaims{
 		"iss": s.issuer, "aud": []any{testAudience}, "sub": "usr_alice_acc_a1b2",
 		"iat": now, "nbf": now, "exp": now + 900, "acr": "2",
-		"kacho_principal_type": "user", "kacho_principal_id": "usr_alice_acc_a1b2",
+		"kaname_principal_type": "user", "kaname_principal_id": "usr_alice_acc_a1b2",
 	}
 	if jti != "" {
 		claims["jti"] = jti
@@ -489,8 +489,8 @@ func TestF1b10_EdgeRequiresBindingFromOurIssuersMachineTokens(t *testing.T) {
 
 	machine := func(cnf map[string]any, jti string) string {
 		return st.ours.mint(t, middleware.PlatformTokenType, jti, func(c jwt.MapClaims) {
-			c["kacho_principal_type"] = "service_account"
-			c["kacho_principal_id"] = "sva_deployer_a1b2"
+			c["kaname_principal_type"] = "service_account"
+			c["kaname_principal_id"] = "sva_deployer_a1b2"
 			c["sub"] = "sva_deployer_a1b2"
 			if cnf != nil {
 				c["cnf"] = cnf

@@ -6,7 +6,7 @@
 // The api-gateway authz middleware needs an FGA-shaped subject id
 // ("user:<usr_xxx>" / "service_account:<sva_xxx>" / "workload:<wid_xxx>")
 // for every per-RPC Check. The verified token's `sub` claim is the external
-// Hydra subject; the `ext_claims.kacho_*` fields (filled by the Hydra
+// Hydra subject; the `ext_claims.kaname_*` fields (filled by the Hydra
 // token_hook) carry the kacho-native principal id.
 //
 // Resolution priority:
@@ -16,15 +16,15 @@
 //     presented no credential, and while it resolved, every downstream gate of
 //     the form "a subject came out ⇒ authenticated" read true for exactly the
 //     caller those gates exist to stop.
-//  1. `ext_claims.kacho_principal_type` + `ext_claims.kacho_principal_id`
+//  1. `ext_claims.kaname_principal_type` + `ext_claims.kaname_principal_id`
 //     — explicit unified shape, populated by token_hook for both User and
 //     ServiceAccount flows. A stated principal whose type is not an
 //     authenticable kind (`system`, …) does not resolve, but rules 2-4 still
 //     get their turn — those are positive identity assertions. Rule 5 does not:
 //     see below.
-//  2. `ext_claims.kacho_user_id` (User flow).
-//  3. `ext_claims.kacho_sa_id` (ServiceAccount flow).
-//  4. `ext_claims.kacho_workload_id` (federated Workload identity).
+//  2. `ext_claims.kaname_user_id` (User flow).
+//  3. `ext_claims.kaname_sa_id` (ServiceAccount flow).
+//  4. `ext_claims.kaname_workload_id` (federated Workload identity).
 //  5. Hydra `sub` claim as the final fallback when none of the above are
 //     present — yields an `external:<sub>` subject for diagnostic purposes.
 //     Skipped when rule 1 stated a non-authenticable principal: this rule mints
@@ -111,8 +111,8 @@ func NewSubjectExtractor(allowExternalFallback bool) *SubjectExtractor {
 	return &SubjectExtractor{allowExternalFallback: allowExternalFallback}
 }
 
-// Extract reads kacho_principal_* / kacho_user_id / kacho_sa_id /
-// kacho_workload_id from the verified token's ext_claims and returns the
+// Extract reads kaname_principal_* / kaname_user_id / kaname_sa_id /
+// kaname_workload_id from the verified token's ext_claims and returns the
 // most-specific resolution. Returns ok=false when nothing matches and
 // allowExternalFallback=false.
 func (e *SubjectExtractor) Extract(t *VerifiedToken) (ResolvedSubject, bool) {
@@ -136,10 +136,10 @@ func (e *SubjectExtractor) Extract(t *VerifiedToken) (ResolvedSubject, bool) {
 	// would overrule the token's own declaration of not being a tenant.
 	statedNonTenant := false
 
-	// 1. Unified ext_claims.kacho_principal_*.
+	// 1. Unified ext_claims.kaname_principal_*.
 	if ext != nil {
-		pType, _ := ext["kacho_principal_type"].(string)
-		pID, _ := ext["kacho_principal_id"].(string)
+		pType, _ := ext["kaname_principal_type"].(string)
+		pID, _ := ext["kaname_principal_id"].(string)
 		pType = strings.TrimSpace(pType)
 		pID = strings.TrimSpace(pID)
 		if isAnonymousSubjectID(pID) {
@@ -152,45 +152,45 @@ func (e *SubjectExtractor) Extract(t *VerifiedToken) (ResolvedSubject, bool) {
 					FGA:    prefix + ":" + pID,
 					Kind:   kind,
 					ID:     pID,
-					Source: "ext_claims.kacho_principal_*",
+					Source: "ext_claims.kaname_principal_*",
 				}, true
 			}
 			statedNonTenant = true
 		}
 	}
 
-	// 2. ext_claims.kacho_user_id.
+	// 2. ext_claims.kaname_user_id.
 	if ext != nil {
-		if uid, ok := ext["kacho_user_id"].(string); ok && uid != "" {
+		if uid, ok := ext["kaname_user_id"].(string); ok && uid != "" {
 			return ResolvedSubject{
 				FGA:    subjectPrefixUser + ":" + uid,
 				Kind:   SubjectKindUser,
 				ID:     uid,
-				Source: "ext_claims.kacho_user_id",
+				Source: "ext_claims.kaname_user_id",
 			}, true
 		}
 	}
 
-	// 3. ext_claims.kacho_sa_id.
+	// 3. ext_claims.kaname_sa_id.
 	if ext != nil {
-		if said, ok := ext["kacho_sa_id"].(string); ok && said != "" {
+		if said, ok := ext["kaname_sa_id"].(string); ok && said != "" {
 			return ResolvedSubject{
 				FGA:    subjectPrefixServiceAccount + ":" + said,
 				Kind:   SubjectKindServiceAccount,
 				ID:     said,
-				Source: "ext_claims.kacho_sa_id",
+				Source: "ext_claims.kaname_sa_id",
 			}, true
 		}
 	}
 
-	// 4. ext_claims.kacho_workload_id (federated Workload identity).
+	// 4. ext_claims.kaname_workload_id (federated Workload identity).
 	if ext != nil {
-		if wid, ok := ext["kacho_workload_id"].(string); ok && wid != "" {
+		if wid, ok := ext["kaname_workload_id"].(string); ok && wid != "" {
 			return ResolvedSubject{
 				FGA:    subjectPrefixWorkload + ":" + wid,
 				Kind:   SubjectKindWorkload,
 				ID:     wid,
-				Source: "ext_claims.kacho_workload_id",
+				Source: "ext_claims.kaname_workload_id",
 			}, true
 		}
 	}

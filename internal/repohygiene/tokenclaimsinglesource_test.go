@@ -50,7 +50,7 @@ const (
 	// claimOwnerFile — единственный дом сборки состава.
 	claimOwnerFile = "services/iam/internal/service/token_enrichment_service.go"
 	// claimKeyPrefix — префикс имени утверждения платформы.
-	claimKeyPrefix = "kacho_"
+	claimKeyPrefix = "kaname_"
 	// claimMinKeys — сколько РАЗНЫХ ключей делают место сборкой состава.
 	claimMinKeys = 3
 	// claimLanesFloor — сколько РАЗНЫХ функций обязаны звать сборщики.

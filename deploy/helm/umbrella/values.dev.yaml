@@ -1302,21 +1302,21 @@ hydra:
             rotation_grace_period: 1s
         exclude_not_before_claim: false
         # Phase 2 — `ext_claims` — обёртка, под которой token_hook
-        # возвращает kacho_*-claim'ы (см. handler/iamhooks/token_hook_handler.go).
-        # Phase 3a — добавляем индивидуальные kacho_* claim'ы как
+        # возвращает kaname_*-claim'ы (см. handler/iamhooks/token_hook_handler.go).
+        # Phase 3a — добавляем индивидуальные kaname_* claim'ы как
         # top-level allowed, чтобы кашо-policy-движки могли читать их
         # без unwrap'а `ext_claims` (private_key_jwt SA-токены / interactive
         # user-токены — оба пути).
         allowed_top_level_claims:
           - ext_claims
           # SA / user principal — Phase 3a token_hook enrichment
-          - kacho_principal_type
-          - kacho_principal_id
-          - kacho_account_id
-          - kacho_active_account
-          - kacho_user_id
-          - kacho_sa_key_id
-          - kacho_hydra_client_id
+          - kaname_principal_type
+          - kaname_principal_id
+          - kaname_account_id
+          - kaname_active_account
+          - kaname_user_id
+          - kaname_sa_key_id
+          - kaname_hydra_client_id
         client_credentials:
           default_grant_allowed_scope: false
         # KAC-127 (deploy#37): глобальные `oauth2.dpop` / `oauth2.mtls` блоки

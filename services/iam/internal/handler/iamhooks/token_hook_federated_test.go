@@ -143,12 +143,12 @@ func TestTokenHook_FederatedPath_ForwardsIssuerToEnricher(t *testing.T) {
 	claims, ok := resp.Session.AccessToken["ext_claims"].(map[string]any)
 	require.True(t, ok, "ext_claims must be present")
 
-	assert.Equal(t, "service_account", claims["kacho_principal_type"])
-	assert.Equal(t, "sva_01abcdefghjkmnpqr", claims["kacho_principal_id"])
-	assert.Equal(t, "https://token.actions.githubusercontent.com", claims["kacho_federation_issuer"])
-	assert.Equal(t, "repo:acme/infra:ref:refs/heads/main", claims["kacho_federation_subject"])
-	assert.Equal(t, "jwt-bearer", claims["kacho_federation_mode"])
-	assert.Equal(t, "hydra-cli-fake", claims["kacho_hydra_client_id"])
+	assert.Equal(t, "service_account", claims["kaname_principal_type"])
+	assert.Equal(t, "sva_01abcdefghjkmnpqr", claims["kaname_principal_id"])
+	assert.Equal(t, "https://token.actions.githubusercontent.com", claims["kaname_federation_issuer"])
+	assert.Equal(t, "repo:acme/infra:ref:refs/heads/main", claims["kaname_federation_subject"])
+	assert.Equal(t, "jwt-bearer", claims["kaname_federation_mode"])
+	assert.Equal(t, "hydra-cli-fake", claims["kaname_hydra_client_id"])
 }
 
 // TestTokenHook_NonFederatedRequest_NoExternalIssuerForwarded — when grant

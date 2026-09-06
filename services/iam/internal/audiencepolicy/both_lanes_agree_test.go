@@ -202,7 +202,7 @@ func (stubClaims) ClaimsForAssertionClient(_ context.Context, c domain.Assertion
 	// Принципал машинный: у ключа служебной учётки поля пользователя нет, и
 	// дублёр, проставивший его, был бы снисходительнее настоящего объявления
 	// состава — то есть скрыл бы расхождение путей.
-	return map[string]any{"kacho_principal_id": c.OwnerID},
+	return map[string]any{"kaname_principal_id": c.OwnerID},
 		service.ResolvedPrincipal{Kind: service.PrincipalServiceAccount}, nil
 }
 

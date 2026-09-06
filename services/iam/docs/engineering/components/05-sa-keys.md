@@ -387,6 +387,6 @@ go test -short -count=1 -timeout 120s \
   `service_account_oauth_clients` (`public_key_pem`, `key_algorithm`).
 - `pkg/operations/operationspb/handler_test.go` (полоса сведена в общий слой).
 - `internal/service/token_enrichment_service.go` — SA-claims path
-  (`kacho_principal_type=service_account`, `kacho_principal_id`,
-  `kacho_account_id`).
+  (`kaname_principal_type=service_account`, `kaname_principal_id`,
+  `kaname_account_id`).
 - `cmd/kaname/hooks_mux.go` — `tokenEnrichSAAdapter` wiring.

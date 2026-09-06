@@ -137,7 +137,7 @@ message MintBootstrapTokenResponse {
   google.protobuf.Timestamp expires_at = 4;
 
   // The bootstrap ServiceAccount id (`sva…`) this token authenticates as —
-  // equals the token's `kacho_principal_id` claim.
+  // equals the token's `kaname_principal_id` claim.
   string principal_id = 5;
 
   // Absolute issuance time (truncated to seconds).
