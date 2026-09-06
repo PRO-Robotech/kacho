@@ -1,5 +1,5 @@
 // Copyright (c) PRO-Robotech
-// SPDX-License-Identifier: BUSL-1.1
+// SPDX-License-Identifier: Apache-2.0
 
 // Package contractroot объявляет ЗАКРЫТОЕ множество корней дерева контрактов и
 // резолвит домен в свой корень ОБХОДОМ дерева.

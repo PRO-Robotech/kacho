@@ -30,6 +30,8 @@ import (
 	"strings"
 	"testing"
 
+	"github.com/PRO-Robotech/kacho/pkg/contractroot"
+
 	"github.com/stretchr/testify/require"
 	"google.golang.org/protobuf/reflect/protoreflect"
 	"google.golang.org/protobuf/reflect/protoregistry"
@@ -48,12 +50,12 @@ import (
 
 	_ "github.com/PRO-Robotech/kacho/pkg/api/kacho/cloud/compute/v1"
 	_ "github.com/PRO-Robotech/kacho/pkg/api/kacho/cloud/geo/v1"
-	_ "github.com/PRO-Robotech/kacho/pkg/api/kaname/cloud/iam/v1"
 	_ "github.com/PRO-Robotech/kacho/pkg/api/kacho/cloud/loadbalancer/v1"
 	_ "github.com/PRO-Robotech/kacho/pkg/api/kacho/cloud/operation"
 	_ "github.com/PRO-Robotech/kacho/pkg/api/kacho/cloud/registry/v1"
 	_ "github.com/PRO-Robotech/kacho/pkg/api/kacho/cloud/storage/v1"
 	_ "github.com/PRO-Robotech/kacho/pkg/api/kacho/cloud/vpc/v1"
+	_ "github.com/PRO-Robotech/kacho/pkg/api/kaname/cloud/iam/v1"
 
 	"github.com/PRO-Robotech/kacho/gateway/internal/allowlist"
 	"github.com/PRO-Robotech/kacho/gateway/internal/middleware"
@@ -236,7 +238,7 @@ func TestDefaultPublicAllowlist_EveryEntryResolvesToAServedMethod(t *testing.T) 
 	// breaks (descriptor names change, registry API changes), the gate must say
 	// "I am broken", never "the tree is clean".
 	for _, control := range []string{
-		"grpc.health.v1.Health/Check",        // grpc-go family
+		"grpc.health.v1.Health/Check",         // grpc-go family
 		"kaname.cloud.iam.v1.UserService/Get", // kacho family
 	} {
 		if r, why := ci.resolve(control); r != resolveOK {
@@ -292,12 +294,17 @@ func auditAllowlist(ci *contractIndex, entries []string) (dead, blind []string) 
 	for _, fqn := range entries {
 		switch r, why := ci.resolve(fqn); r {
 		case resolveOK:
-			// Resolving in the proto contract is necessary, not sufficient: a
-			// kacho RPC that the gRPC edge does not route cannot be reached
+			// Resolving in the proto contract is necessary, not sufficient: an
+			// RPC OF OURS that the gRPC edge does not route cannot be reached
 			// through this bypass either, so an entry for one is dead weight
 			// that reads like a decision. grpc.* entries are natively
 			// registered and are not in the edge routing table by design.
-			if strings.HasPrefix(fqn, "kacho.") && !allowlist.IsAllowed("/"+fqn) {
+			//
+			// «Наш» решается ОБЪЯВЛЕННЫМ множеством корней, а не литералом
+			// `kacho.`: под литералом запись службы, переехавшей под второй
+			// корень, переставала проверяться на маршрутизируемость и молча
+			// оседала в перечне разрешённых, ничего не разрешая.
+			if isOurContractName(fqn) && !allowlist.IsAllowed("/"+fqn) {
 				dead = append(dead, fmt.Sprintf(
 					"%s — resolves in the proto contract but is not routed on the gRPC edge (absent from allowlist.AllowedMethods)", fqn))
 			}
@@ -342,10 +349,10 @@ func TestAllowlistGate_Injection_DeadEntryIsCaughtAndNamed(t *testing.T) {
 	// the ENTRY — never as blindness of the gate, which is a report nobody acts
 	// on by fixing the list.
 	for _, nearMiss := range []string{
-		"/grpc.health.v1.Health/Check",       // FullMethod form, leading slash kept
-		" grpc.health.v1.Health/Check",       // leading whitespace
-		"grpc.health.v1.Health/Check ",       // trailing whitespace
-		"grpc.health.v1.Health/check",        // wrong method case
+		"/grpc.health.v1.Health/Check",        // FullMethod form, leading slash kept
+		" grpc.health.v1.Health/Check",        // leading whitespace
+		"grpc.health.v1.Health/Check ",        // trailing whitespace
+		"grpc.health.v1.Health/check",         // wrong method case
 		"kaname.cloud.iam.v1.userservice/Get", // wrong service case
 	} {
 		switch r, why := ci.resolve(nearMiss); r {
@@ -427,10 +434,10 @@ func TestAllowlistGate_ReportingBodyActuallyBuckets(t *testing.T) {
 	ci.declared[realButUnlinked] = struct{}{}
 
 	dead, blind := auditAllowlist(ci, []string{
-		"grpc.health.v1.Health/Check",                 // healthy — neither bucket
+		"grpc.health.v1.Health/Check",                  // healthy — neither bucket
 		"kaname.cloud.iam.v1.GhostService/Vanish",      // dead: no such service
 		"kaname.cloud.iam.v1.InternalIAMService/Check", // dead: real RPC, not routed on the gRPC edge
-		realButUnlinked + ".SomeService/SomeMethod",   // blind: real package, unlinked
+		realButUnlinked + ".SomeService/SomeMethod",    // blind: real package, unlinked
 	})
 
 	require.Len(t, blind, 1, "exactly the real-but-unlinked entry belongs in blind, got %v", blind)
@@ -459,8 +466,8 @@ func TestAllowlistGate_MistypedPackageIsDeadNotBlindness(t *testing.T) {
 	ci := buildContractIndex(t)
 
 	for _, mistyped := range []string{
-		"kacho.cloud.iam.v2.UserService/Get",     // version typo — no such package
-		"Kacho.cloud.iam.v1.UserService/Get",     // wrong-case package
+		"kacho.cloud.iam.v2.UserService/Get",      // version typo — no such package
+		"Kacho.cloud.iam.v1.UserService/Get",      // wrong-case package
 		"kaname.cloud.iam.v1.UserService.Get/Get", // dot where the slash belongs
 	} {
 		switch r, why := ci.resolve(mistyped); r {
@@ -471,4 +478,15 @@ func TestAllowlistGate_MistypedPackageIsDeadNotBlindness(t *testing.T) {
 			t.Errorf("mistyped entry %q must not resolve", mistyped)
 		}
 	}
+}
+
+// isOurContractName — объявлено ли полное имя под одним из наших корней
+// контракта.
+func isOurContractName(fqn string) bool {
+	for _, root := range contractroot.Roots {
+		if strings.HasPrefix(fqn, root+".") {
+			return true
+		}
+	}
+	return false
 }

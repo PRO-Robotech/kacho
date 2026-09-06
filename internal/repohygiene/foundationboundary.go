@@ -74,6 +74,7 @@ var foundationClasses = map[string]foundationClass{
 	"backoff":         classCorelib,
 	"baggage":         classCorelib,
 	"config":          classCorelib,
+	"contractroot":    classCorelib,
 	"credsecret":      classKaname,
 	"db":              classCorelib,
 	"dbready":         classCorelib,

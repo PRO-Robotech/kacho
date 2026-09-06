@@ -153,3 +153,9 @@ deploy/helm/*/values.*-ory.yaml
 # ловит by construction: его единица счёта — файл, который git ИГНОРИРУЕТ, а каталог
 # провайдера отслеживается.
 terraform
+
+# Локальный мост кросс-модульной разработки (polyrepo.md §replace ЗАПРЕЩЁН →
+# git-ignored go.work). Ни один Dockerfile дерева его не читает, а в контексте
+# сборки он промахивает слой `COPY . .` мимо кэша на КАЖДОМ прогоне.
+go.work
+go.work.sum
