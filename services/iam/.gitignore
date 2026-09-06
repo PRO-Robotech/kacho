@@ -43,3 +43,7 @@ CLAUDE.md
 AGENTS.md
 .codex/
 .agents/
+
+# Кэш golangci-lint: якорь — каталог модуля (Makefile, GOLANGCI_LINT_CACHE),
+# потому что модуль стоит и самостоятельным клоном, где корня монорепо нет.
+/.cache/
