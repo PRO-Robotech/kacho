@@ -647,6 +647,28 @@ go_group() {
                     jq -r '.runs[].results[]|select(.level=="error")|"   | \(.ruleId) \(.locations[0].physicalLocation.artifactLocation.uri):\(.locations[0].physicalLocation.region.startLine)"' "$WORK/gosec.sarif"
                     fails+=("gosec (level=error)")
                 fi
+
+                # У ПОДАВЛЕНИЯ ОБЯЗАН БЫТЬ ПРЕДМЕТ — тот же гейт, что в
+                # конвейере (security-scan.yml, шаг «у подавлений gosec ещё есть
+                # предмет»). Вердикт по находкам его не отменяет и не заменяет:
+                # директива, под которой правило больше не срабатывает, не
+                # оставляет в отчёте выше НИКАКОГО следа, поэтому её не видно ни
+                # при каком числе находок.
+                #
+                # Исходов три, и они читаются по КОДУ ВОЗВРАТА, а не по виду
+                # вывода: 1 — находки, 2 — гейт не смог вынести вердикт
+                # (перепись подавлений не снята, распознаватель разошёлся со
+                # сканером). Второе в зелёное не засчитывается.
+                local subj_rc=0
+                go run "$ROOT/tools/gosecsubject/cmd/verify-gosec-suppression-subject" \
+                    "$ROOT" "$WORK" > "$WORK/gosec-subject.txt" 2>&1 || subj_rc=$?
+                sed 's/^/   | /' "$WORK/gosec-subject.txt"
+                case "$subj_rc" in
+                    0) echo "   ok (подавления gosec: у каждого есть предмет)" ;;
+                    1) fails+=("gosec: подавление без предмета") ;;
+                    *) echo "   ОТКАЗ: гейт предмета НЕ ВЫНЕС вердикта (код $subj_rc)"
+                       fails+=("gosec: гейт предмета не выполнен") ;;
+                esac
             fi
         else
             echo "   ОТКАЗ: пиннутый gosec не поставился — проверка НЕ выполнена"
