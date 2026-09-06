@@ -34,8 +34,19 @@ func TestSignificantContent_ProvenByInjection(t *testing.T) {
 
 package relverdict
 
+import "github.com/PRO-Robotech/kacho/services/iam/internal/repo/prevhome/pg/resource_mirror"
+
+// reportPath — куда кладётся отчёт.
+const reportPath = "services/iam/internal/repo/prevhome/pg/scalegrid/REPORT-R7-2-strength.txt"
+
+// sameSubject — литерал С КОСОЙ ЧЕРТОЙ, координатой НЕ являющийся.
+const sameSubject = "kaname.roles/updated_at"
+
 // askVerdict — вердикт о доступе.
 func askVerdict() string {
+	_ = resource_mirror.Nothing
+	_ = reportPath
+	_ = sameSubject
 	return "SELECT id FROM kaname.access_bindings WHERE scope_id = $1"
 }
 `
@@ -104,6 +115,50 @@ func askVerdict() string {
 			moved: true,
 		},
 		{
+			// ЗАКОННЫЙ БЛИЗНЕЦ переезда: путь импорта СВОЕГО модуля — адрес
+			// кода, а не его поведение. Каталог `repo/prevhome/pg` переехал в
+			// `repo/kaname/pg`, ни один оператор не изменился.
+			name: "каталог переехал в пути импорта своего модуля — НЕ сдвинулся",
+			rel:  "a.go",
+			other: strings.Replace(base,
+				"kacho/services/iam/internal/repo/prevhome/pg/resource_mirror",
+				"kacho/services/iam/internal/repo/kaname/pg/resource_mirror", 1),
+			moved: false,
+		},
+		{
+			// Тот же переезд, второй вид координаты: путь от корня
+			// репозитория. Отчёт лежит по новому адресу, измеренная стоимость
+			// операций от этого не меняется.
+			name: "каталог переехал в пути отчёта — НЕ сдвинулся",
+			rel:  "a.go",
+			other: strings.Replace(base,
+				"services/iam/internal/repo/prevhome/pg/scalegrid/REPORT",
+				"services/iam/internal/repo/kaname/pg/scalegrid/REPORT", 1),
+			moved: false,
+		},
+		{
+			// ПОЛОЖИТЕЛЬНЫЙ КОНТРОЛЬ к двум предыдущим: литерал с косой чертой,
+			// который координатой НЕ является (первый сегмент — не каталог
+			// верхнего уровня и не путь модуля). Без этой строки правило
+			// «литерал с косой чертой незначащ» зеленело бы на любой правке
+			// запроса, где встретилась косая черта.
+			name: "литерал с косой чертой, координатой НЕ являющийся — СДВИНУЛСЯ",
+			rel:  "a.go",
+			other: strings.Replace(base,
+				`"kaname.roles/updated_at"`, `"kaname.roles/created_at"`, 1),
+			moved: true,
+		},
+		{
+			// Второй положительный контроль: правка ВНУТРИ запроса, у которого
+			// есть косая черта в соседнем литерале. Замена координат не смеет
+			// затрагивать текст, отправляемый в базу.
+			name: "оператор запроса сменился при живых координатах рядом — СДВИНУЛСЯ",
+			rel:  "a.go",
+			other: strings.Replace(base,
+				"WHERE scope_id = $1", "WHERE scope_id = $1 AND live", 1),
+			moved: true,
+		},
+		{
 			name: "заголовок лицензии в .sql — СДВИНУЛСЯ (граница названа)",
 			// Комментарии SQL в этом дереве НЕ проза: `-- +goose Up` и
 			// `-- +goose Down` читает мигратор, а `-- +kacho point-of-no-return`
@@ -118,17 +173,19 @@ func askVerdict() string {
 
 	const sqlBase = "-- SPDX-License-Identifier: BUSL-1.1\n-- +goose Up\nALTER TABLE kaname.roles ADD COLUMN updated_at timestamptz;\n"
 
+	coords := coordsFor(t)
+
 	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {
 			src := base
 			if strings.HasSuffix(tc.rel, ".sql") {
 				src = sqlBase
 			}
-			before, err := significantContent(tc.rel, []byte(src))
+			before, err := significantContent(tc.rel, []byte(src), coords)
 			if err != nil {
 				t.Fatalf("значащее содержимое исходного %s: %v", tc.rel, err)
 			}
-			after, err := significantContent(tc.rel, []byte(tc.other))
+			after, err := significantContent(tc.rel, []byte(tc.other), coords)
 			if err != nil {
 				t.Fatalf("значащее содержимое правленого %s: %v", tc.rel, err)
 			}
@@ -164,7 +221,7 @@ func countMoving(cases []struct {
 // Молчаливый возврат восстановил бы байтовую чувствительность ровно там, где её
 // никто не ждёт, и отличить это от исправной работы было бы нечем.
 func TestSignificantContent_UnparsableGoIsRefusal(t *testing.T) {
-	if _, err := significantContent("broken.go", []byte("package ; ??? {")); err == nil {
+	if _, err := significantContent("broken.go", []byte("package ; ??? {"), coordsFor(t)); err == nil {
 		t.Fatal("неразбираемый .go обязан быть отказом, а не молчаливым возвратом байтов")
 	}
 }
@@ -282,6 +339,10 @@ func askVerdict() string {
 	writeFile(t, filepath.Join(root, gridDir, "grid.go"), "package scalegrid\n\n// grid — сетка замера.\nfunc grid() int { return 3 }\n")
 	writeFile(t, filepath.Join(root, migrateDir, "0001_initial.sql"),
 		"-- +goose Up\nCREATE TABLE kaname.access_bindings (id text PRIMARY KEY);\n")
+	// `go.mod` в корне: без него распознаватель координат не знает пути своего
+	// модуля, и клаузу про импорт проверять было бы нечем — проба зеленела бы
+	// на половине правила, не сказав об этом.
+	writeFile(t, filepath.Join(root, "go.mod"), "module github.com/PRO-Robotech/kacho\n\ngo 1.26.0\n")
 
 	return root
 }
@@ -291,4 +352,23 @@ func writeFile(t *testing.T, path, body string) {
 	if err := os.WriteFile(path, []byte(body), 0o600); err != nil {
 		t.Fatalf("запись %s: %v", path, err)
 	}
+}
+
+// coordsFor — распознаватель координат по СИНТЕТИЧЕСКОМУ дереву той же формы.
+//
+// Синтетика, а не настоящее дерево: проба обязана утверждать о ПРАВИЛЕ, а не о
+// сегодняшнем составе каталогов. На настоящем дереве она молча меняла бы смысл
+// вместе с ним — и однажды позеленела бы оттого, что каталог переименовали.
+func coordsFor(t *testing.T) repoCoordinates {
+	t.Helper()
+	coords, err := newRepoCoordinates(syntheticRoot(t))
+	if err != nil {
+		t.Fatalf("распознаватель координат не построен: %v", err)
+	}
+	if len(coords.topLevel) == 0 {
+		t.Fatalf("каталогов верхнего уровня НОЛЬ — распознаватель не узнал бы ни одной " +
+			"координаты, и проба зеленела бы на пустом правиле")
+	}
+	t.Logf("перепись распознавателя: каталогов верхнего уровня %d", len(coords.topLevel))
+	return coords
 }

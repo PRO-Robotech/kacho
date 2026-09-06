@@ -101,19 +101,29 @@ func judgeMatrixReport(text string, fp scalegrid.Fingerprint,
 	}
 	recorded := matrixRecordedHashes(text)
 
-	// (в) состав множества.
-	if recordedComposition != fp.Composition {
+	// Пофайловый перечень — ПРЕДПОСЫЛКА обоих плеч ниже: по нему они называют
+	// виновника. Пустой означает «сверять не с чем».
+	if len(recorded) == 0 {
+		return append(findings, "в шапке отчёта НЕТ пофайлового перечня (хэш · тождество · "+
+			"путь): плечи состава и содержимого назвать виновника не могут, а «совпало» "+
+			"здесь означало бы «не с чем сравнивать»")
+	}
+
+	// (в) СОСТАВ — по ТОЖДЕСТВАМ, а не по путям: переезд каталога состава не
+	// меняет, приход и уход файла меняют.
+	sameComposition := recordedComposition == fp.Composition
+	if !sameComposition {
 		var added, removed []string
 		have := map[string]bool{}
-		for _, f := range fp.Files {
-			have[f] = true
-			if _, ok := recorded[f]; !ok {
-				added = append(added, f)
+		for _, id := range fp.Identities {
+			have[id] = true
+			if _, ok := recorded[id]; !ok {
+				added = append(added, id)
 			}
 		}
-		for f := range recorded {
-			if !have[f] {
-				removed = append(removed, f)
+		for id := range recorded {
+			if !have[id] {
+				removed = append(removed, id)
 			}
 		}
 		sort.Strings(added)
@@ -127,22 +137,45 @@ func judgeMatrixReport(text string, fp scalegrid.Fingerprint,
 			matrixJoinOrDash(added), matrixJoinOrDash(removed)))
 	}
 
-	// (а) содержимое — с ИМЕНЕМ виновника: «что-то сдвинулось» посылает читателя
-	// перебирать восемьдесят восемь файлов руками.
+	// (а) СОДЕРЖИМОЕ — с ИМЕНЕМ виновника, найденным по тождеству: «что-то
+	// сдвинулось» посылает читателя перебирать девятнадцать файлов руками.
 	if recordedContent != fp.Content {
 		var moved []string
-		for _, rel := range fp.Files {
-			was, known := recorded[rel]
-			if cur := contentOf(rel); known && was != cur {
-				moved = append(moved, fmt.Sprintf("%s (было %s, стало %s)", rel, was, cur))
+		for i, id := range fp.Identities {
+			was, known := recorded[id]
+			if !known {
+				continue
+			}
+			if cur := contentOf(fp.Files[i]); was.hash != cur {
+				moved = append(moved, fmt.Sprintf("%s (%s: было %s, стало %s)",
+					id, fp.Files[i], was.hash, cur))
 			}
 		}
 		sort.Strings(moved)
-		findings = append(findings, fmt.Sprintf(
-			"ПРЕДМЕТ ЗАМЕРА СДВИНУЛСЯ: отпечаток содержимого в отчёте %s, по дереву %s\n"+
-				"  сдвинули его: %s\n"+
-				"  Отчёт продолжает утверждать о стоимости операций на дереве, которого больше нет",
-			recordedContent, fp.Content, matrixJoinOrDash(moved)))
+
+		switch {
+		case len(moved) > 0:
+			findings = append(findings, fmt.Sprintf(
+				"ПРЕДМЕТ ЗАМЕРА СДВИНУЛСЯ: отпечаток содержимого в отчёте %s, по дереву %s\n"+
+					"  сдвинули его: %s\n"+
+					"  Отчёт продолжает утверждать о стоимости операций на дереве, которого больше нет",
+				recordedContent, fp.Content, matrixJoinOrDash(moved)))
+		case !sameComposition:
+			findings = append(findings, fmt.Sprintf(
+				"ПРЕДМЕТ ЗАМЕРА СДВИНУЛСЯ СОСТАВОМ: отпечаток содержимого в отчёте %s, "+
+					"по дереву %s, при этом НИ ОДИН общий файл не двигался\n"+
+					"  Расхождение объясняется плечом состава выше (пришёл или ушёл файл), "+
+					"а не правкой существующего",
+				recordedContent, fp.Content))
+		default:
+			findings = append(findings, fmt.Sprintf(
+				"ВЕРДИКТ ВЫНЕСЕН НЕ О ТОМ: отпечаток содержимого в отчёте %s, по дереву %s, "+
+					"состав ТОТ ЖЕ (%s), а пофайловая сверка не нашла НИ ОДНОГО расхождения\n"+
+					"  Итоговый хэш и пофайловые хэши считает один и тот же код, поэтому "+
+					"расходиться они не могут: сдвинулся не предмет замера, а сам прибор — "+
+					"починке подлежит он, а не отчёт",
+				recordedContent, fp.Content, fp.Composition))
+		}
 	}
 
 	// (б) возраст.
@@ -170,22 +203,33 @@ func matrixValueAfter(text, marker string) string {
 	return ""
 }
 
-// matrixRecordedHashes — пофайловые отпечатки из шапки.
+// matrixRecordedFile — строка пофайлового перечня: хэш и путь на момент замера.
+type matrixRecordedFile struct {
+	hash string
+	path string
+}
+
+// matrixRecordedHashes — пофайловый перечень из шапки, КЛЮЧОМ ПО ТОЖДЕСТВУ.
 //
-// Читаются строки вида `    <хэш>  <путь>`; чужие строки того же отступа
-// отбрасываются по форме поля, а не по счёту, — счёт разошёлся бы с шапкой при
-// первой же правке её текста.
-func matrixRecordedHashes(text string) map[string]string {
-	out := map[string]string{}
+// Читаются строки вида `    <хэш>  <тождество>  <путь>`; чужие строки того же
+// отступа отбрасываются по форме поля, а не по счёту, — счёт разошёлся бы с
+// шапкой при первой же правке её текста.
+//
+// Ключ — тождество, а не путь: переезд каталога меняет все пути разом, и
+// сопоставление по ним не находит НИ ОДНОЙ пары. Гейт тогда объявляет
+// расхождение содержимого и не может назвать ни одного виновника — вердикт о
+// том, чего проверка не смотрела (#2039).
+func matrixRecordedHashes(text string) map[string]matrixRecordedFile {
+	out := map[string]matrixRecordedFile{}
 	for _, line := range strings.Split(text, "\n") {
 		if !strings.HasPrefix(line, scalegrid.MarkerFile) {
 			continue
 		}
 		f := strings.Fields(strings.TrimSpace(line))
-		if len(f) != 2 || len(f[0]) != 16 || !strings.Contains(f[1], "/") {
+		if len(f) != 3 || len(f[0]) != 16 || !strings.Contains(f[1], "/") || !strings.Contains(f[2], "/") {
 			continue
 		}
-		out[f[1]] = f[0]
+		out[f[1]] = matrixRecordedFile{hash: f[0], path: f[2]}
 	}
 	return out
 }
@@ -264,14 +308,25 @@ func TestMatrixVolumeFreshnessGateCanFailAndCanStaySilent(t *testing.T) {
 	fp := scalegrid.Fingerprint{
 		Composition: "aaaaaaaaaaaaaaaa",
 		Content:     "bbbbbbbbbbbbbbbb",
+		Identities:  []string{"вердикт/one.go", "вердикт/two.go"},
 		Files:       []string{"a/one.go", "a/two.go"},
 		Tables:      []string{"kaname.access_bindings"},
 	}
-	content := map[string]string{"a/one.go": "1111111111111111", "a/two.go": "2222222222222222"}
+	// contentOf ключуется ПУТЁМ (так его зовёт гейт), перечень шапки — ТОЖДЕСТВОМ.
+	content := map[string]string{
+		"a/one.go": "1111111111111111", "a/two.go": "2222222222222222",
+		// те же файлы после переезда каталога: содержимое ТО ЖЕ, путь другой
+		"z/one.go": "1111111111111111", "z/two.go": "2222222222222222",
+	}
 	contentOf := func(rel string) string { return content[rel] }
 	now := time.Date(2026, 8, 19, 12, 0, 0, 0, time.UTC)
 
-	report := func(when, comp, cont string, files map[string]string) string {
+	recorded := map[string]matrixRecordedFile{
+		"вердикт/one.go": {hash: "1111111111111111", path: "a/one.go"},
+		"вердикт/two.go": {hash: "2222222222222222", path: "a/two.go"},
+	}
+
+	report := func(when, comp, cont string, files map[string]matrixRecordedFile) string {
 		var b strings.Builder
 		fmt.Fprintf(&b, "%s%s\n", matrixReportDateMark, when)
 		fmt.Fprintf(&b, "%s%s\n", scalegrid.MarkerComposition, comp)
@@ -282,14 +337,14 @@ func TestMatrixVolumeFreshnessGateCanFailAndCanStaySilent(t *testing.T) {
 		}
 		sort.Strings(keys)
 		for _, k := range keys {
-			fmt.Fprintf(&b, "%s%s  %s\n", scalegrid.MarkerFile, files[k], k)
+			fmt.Fprintf(&b, "%s%s  %s  %s\n", scalegrid.MarkerFile, files[k].hash, k, files[k].path)
 		}
 		return b.String()
 	}
 	fresh := "2026-08-18 10:00:00 UTC"
 
 	t.Run("ЗАКОННЫЙ БЛИЗНЕЦ: свежий отчёт неподвижного предмета — МОЛЧАНИЕ", func(t *testing.T) {
-		got := judgeMatrixReport(report(fresh, fp.Composition, fp.Content, content), fp, contentOf, now)
+		got := judgeMatrixReport(report(fresh, fp.Composition, fp.Content, recorded), fp, contentOf, now)
 		if len(got) != 0 {
 			t.Fatalf("гейт покраснел на законном близнеце — он краснеет на всём и будет снят "+
 				"первым же срабатыванием:\n%s", strings.Join(got, "\n"))
@@ -297,32 +352,78 @@ func TestMatrixVolumeFreshnessGateCanFailAndCanStaySilent(t *testing.T) {
 	})
 
 	t.Run("СОДЕРЖИМОЕ сдвинулось — красное С ИМЕНЕМ виновника", func(t *testing.T) {
-		moved := map[string]string{"a/one.go": "1111111111111111", "a/two.go": "9999999999999999"}
+		moved := map[string]matrixRecordedFile{
+			"вердикт/one.go": {hash: "1111111111111111", path: "a/one.go"},
+			"вердикт/two.go": {hash: "9999999999999999", path: "a/two.go"},
+		}
 		got := judgeMatrixReport(report(fresh, fp.Composition, "cccccccccccccccc", moved), fp, contentOf, now)
 		if len(got) == 0 {
 			t.Fatal("гейт смолчал на сдвинутом содержимом")
 		}
-		if !strings.Contains(strings.Join(got, "\n"), "a/two.go") {
+		if !strings.Contains(strings.Join(got, "\n"), "вердикт/two.go") {
 			t.Fatalf("гейт не назвал виновника — читателю останется перебирать файлы руками:\n%s",
 				strings.Join(got, "\n"))
 		}
 	})
 
 	t.Run("СОСТАВ изменился — красное, хотя прежние файлы неподвижны", func(t *testing.T) {
-		only := map[string]string{"a/one.go": "1111111111111111"}
+		only := map[string]matrixRecordedFile{
+			"вердикт/one.go": {hash: "1111111111111111", path: "a/one.go"},
+		}
 		got := judgeMatrixReport(report(fresh, "dddddddddddddddd", fp.Content, only), fp, contentOf, now)
 		if len(got) == 0 {
 			t.Fatal("гейт смолчал на изменившемся составе — плечо содержимого этого не ловит " +
 				"by construction, и без плеча состава новый файл уехал бы незамеченным")
 		}
-		if !strings.Contains(strings.Join(got, "\n"), "a/two.go") {
+		if !strings.Contains(strings.Join(got, "\n"), "вердикт/two.go") {
 			t.Fatalf("гейт не назвал добавленный файл:\n%s", strings.Join(got, "\n"))
+		}
+	})
+
+	t.Run("ВТОРОЙ ЗАКОННЫЙ БЛИЗНЕЦ: каталог ПЕРЕЕХАЛ — МОЛЧАНИЕ", func(t *testing.T) {
+		// Пути все до одного другие, тождества и содержимое те же. Ни один
+		// оператор не изменился, поэтому пересъёмка (до двух часов на живой
+		// базе) не нужна. Именно этого прибор и не различал: сопоставление шло
+		// по путям, ни одна пара не находилась, и «содержимое сдвинулось»
+		// печаталось без единого виновника (#2039).
+		movedTree := scalegrid.Fingerprint{
+			Composition: fp.Composition, // состав по ТОЖДЕСТВАМ переезд не двигает
+			Content:     fp.Content,     // содержимое то же — путь в него не входит
+			Identities:  []string{"вердикт/one.go", "вердикт/two.go"},
+			Files:       []string{"z/one.go", "z/two.go"}, // каталог переименован
+			Tables:      fp.Tables,
+		}
+		got := judgeMatrixReport(report(fresh, fp.Composition, fp.Content, recorded),
+			movedTree, contentOf, now)
+		if len(got) != 0 {
+			t.Fatalf("гейт покраснел на ЧИСТОМ ПЕРЕИМЕНОВАНИИ — это ложная тревога ценой "+
+				"двухчасовой пересъёмки:\n%s", strings.Join(got, "\n"))
+		}
+	})
+
+	t.Run("СОДЕРЖИМОЕ разошлось при том же составе и без виновника — ВЕРДИКТ НЕ О ТОМ", func(t *testing.T) {
+		got := judgeMatrixReport(report(fresh, fp.Composition, "eeeeeeeeeeeeeeee", recorded),
+			fp, contentOf, now)
+		if len(got) == 0 {
+			t.Fatal("гейт смолчал на расхождении итогового хэша")
+		}
+		if !strings.Contains(strings.Join(got, "\n"), "ВЕРДИКТ ВЫНЕСЕН НЕ О ТОМ") {
+			t.Fatalf("гейт объявил сдвиг предмета, не назвав ни одного виновника, — прежде "+
+				"это печаталось как «сдвинули его: —» и читалось как вердикт о дереве:\n%s",
+				strings.Join(got, "\n"))
+		}
+	})
+
+	t.Run("ШАПКА БЕЗ ПОФАЙЛОВОГО ПЕРЕЧНЯ — красное", func(t *testing.T) {
+		got := judgeMatrixReport(report(fresh, fp.Composition, fp.Content, nil), fp, contentOf, now)
+		if len(got) == 0 {
+			t.Fatal("гейт смолчал на шапке без пофайлового перечня — виновника назвать нечем")
 		}
 	})
 
 	t.Run("ВОЗРАСТ сверх предела — красное", func(t *testing.T) {
 		old := now.Add(-matrixReportMaxAge - 48*time.Hour).Format("2006-01-02 15:04:05 MST")
-		got := judgeMatrixReport(report(old, fp.Composition, fp.Content, content), fp, contentOf, now)
+		got := judgeMatrixReport(report(old, fp.Composition, fp.Content, recorded), fp, contentOf, now)
 		if len(got) == 0 {
 			t.Fatal("гейт смолчал на просроченном отчёте")
 		}
@@ -344,6 +445,7 @@ func TestMatrixVolumeFreshnessGateCanFailAndCanStaySilent(t *testing.T) {
 		}
 	})
 
-	t.Logf("проверено плеч: 5 (содержимое · состав · возраст · пустой предмет · шапка без "+
-		"отпечатка) плюс законный близнец; файлов в синтетике %d", len(fp.Files))
+	t.Logf("проверено плеч: 8 (содержимое · состав · вердикт-не-о-том · пофайловый перечень · "+
+		"возраст · пустой предмет · шапка без отпечатка) плюс ДВА законных близнеца "+
+		"(неподвижный предмет и чистое переименование); файлов в синтетике %d", len(fp.Files))
 }

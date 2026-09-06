@@ -5,7 +5,7 @@ go 1.26.0
 toolchain go1.26.8
 
 require (
-	github.com/PRO-Robotech/kacho v0.0.0-20260904231955-a30d906b8edf
+	github.com/PRO-Robotech/kacho v0.0.0-20260905181354-89d72c19c271
 	github.com/go-viper/mapstructure/v2 v2.5.0
 	github.com/golang-jwt/jwt/v5 v5.3.1
 	github.com/jackc/pgx/v5 v5.10.0

@@ -74,7 +74,7 @@ func (u *ListByRoleUseCase) Execute(ctx context.Context, roleID string, f repoab
 			filtered = append(filtered, b)
 			continue
 		}
-		if err := authority.verdict(ctx, string(b.ResourceType), b.ResourceID); err == nil {
+		if err := authority.grantAuthorityVerdict(ctx, string(b.ResourceType), b.ResourceID); err == nil {
 			filtered = append(filtered, b)
 		}
 	}
@@ -137,8 +137,27 @@ type pageAuthority struct {
 	byScope map[string]error
 }
 
-// verdict — тот же исход, что у requireGrantAuthority для этой строки.
-func (p *pageAuthority) verdict(ctx context.Context, resourceType, resourceID string) error {
+// grantAuthorityVerdict — тот же исход, что у requireGrantAuthority для этой строки.
+//
+// # Почему имя такое длинное, а не `verdict`
+//
+// Имя метода здесь — ТОКЕН, по которому гейт списочных поверхностей
+// (`tools/auditlistfilter`) узнаёт пообъектный вопрос: он идёт по графу вызовов
+// и записывает имена, а через локальную переменную (`authority`) внутрь метода
+// не проходит — значит `grantAuthorityBeyondClusterAdmin` ниже ему не виден by
+// construction. Голое `verdict` в перечень сужателей ставить нельзя: этим именем
+// в iam уже назван ДРУГОЙ предмет (`internal/service/authorize_service.go` —
+// вычисление одного разрешения), и профиль, назвавший сужателем `verdict`,
+// проверял бы написание, а не предмет.
+//
+// Поэтому имя названо по существу и ничьего другого предмета не называет
+// (предикат: `git grep -l grantAuthorityVerdict -- services/iam` — этот файл,
+// профиль гейта и его инъекция, больше ничего). Правя имя, правь и
+// `Profile.Filters`: гейт скажет
+// об этом сам, но координатой назовёт ОБЪЯВЛЕНИЕ листинга — `handler.go`,
+// `ListByRole`, — а не эту строку. Он сообщает о поверхности, отдавшей страницу,
+// и вызов может лежать в нескольких шагах от неё.
+func (p *pageAuthority) grantAuthorityVerdict(ctx context.Context, resourceType, resourceID string) error {
 	// Путь 0 — супер-гейт, ОДИН на запрос.
 	if !p.clusterAsked {
 		p.clusterAdmin, p.clusterErr = authzguard.IsClusterAdminE(ctx, p.relations)

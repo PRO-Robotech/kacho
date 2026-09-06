@@ -106,9 +106,20 @@ func judgeReport(text string, fp scalegrid.Fingerprint,
 			"гейта означало бы, что предмет замера неподвижен, чего никто не проверял")
 	}
 
-	// (г) состав множества.
-	if recordedComposition != fp.Composition {
-		added, removed := diffSets(keysOf(recordedFiles), fp.Files)
+	// Пофайловый перечень — ПРЕДПОСЫЛКА обоих плеч ниже: по нему они называют
+	// виновника. Пустой означает «сверять не с чем», и молчание на нём было бы
+	// неотличимо от «всё сошлось».
+	if len(recordedFiles) == 0 {
+		return append(findings, "в шапке отчёта НЕТ пофайлового перечня (хэш · тождество · "+
+			"путь): плечи состава и содержимого назвать виновника не могут, а «совпало» "+
+			"здесь означало бы «не с чем сравнивать».\n  предикат: "+predicateOf(fp))
+	}
+
+	// (г) СОСТАВ — по ТОЖДЕСТВАМ, а не по путям: переезд каталога состава не
+	// меняет, приход и уход файла меняют.
+	sameComposition := recordedComposition == fp.Composition
+	if !sameComposition {
+		added, removed := diffSets(keysOf(recordedFiles), fp.Identities)
 		findings = append(findings, fmt.Sprintf(
 			"СОСТАВ множества под отпечатком изменился: в отчёте %s, по дереву %s\n"+
 				"  добавлено: %s\n  снято:     %s\n"+
@@ -117,21 +128,50 @@ func judgeReport(text string, fp scalegrid.Fingerprint,
 			recordedComposition, fp.Composition, joinOrDash(added), joinOrDash(removed)))
 	}
 
-	// (а) содержимое — с ИМЕНЕМ виновника.
+	// (а) СОДЕРЖИМОЕ — с ИМЕНЕМ виновника, найденным по тождеству.
 	if recordedContent != fp.Content {
 		var moved []string
-		for _, rel := range fp.Files {
-			was, known := recordedFiles[rel]
-			if now := contentOf(rel); known && was != now {
-				moved = append(moved, fmt.Sprintf("%s (было %s, стало %s)", rel, was, now))
+		for i, id := range fp.Identities {
+			was, known := recordedFiles[id]
+			if !known {
+				continue
+			}
+			if now := contentOf(fp.Files[i]); was.hash != now {
+				moved = append(moved, fmt.Sprintf("%s (%s: было %s, стало %s)",
+					id, fp.Files[i], was.hash, now))
 			}
 		}
 		sort.Strings(moved)
-		findings = append(findings, fmt.Sprintf(
-			"ПРЕДМЕТ ЗАМЕРА СДВИНУЛСЯ: отпечаток содержимого в отчёте %s, по дереву %s\n"+
-				"  сдвинули его: %s\n"+
-				"  Отчёт продолжает утверждать о поведении, которого в дереве больше нет",
-			recordedContent, fp.Content, joinOrDash(moved)))
+
+		switch {
+		case len(moved) > 0:
+			findings = append(findings, fmt.Sprintf(
+				"ПРЕДМЕТ ЗАМЕРА СДВИНУЛСЯ: отпечаток содержимого в отчёте %s, по дереву %s\n"+
+					"  сдвинули его: %s\n"+
+					"  Отчёт продолжает утверждать о поведении, которого в дереве больше нет",
+				recordedContent, fp.Content, joinOrDash(moved)))
+		case !sameComposition:
+			// Расхождение объяснено плечом состава выше: ни один ОБЩИЙ файл не
+			// двигался, содержимое разошлось из-за пришедшего или ушедшего.
+			// Отчёт всё равно несвеж — предмет замера стал другим множеством.
+			findings = append(findings, fmt.Sprintf(
+				"ПРЕДМЕТ ЗАМЕРА СДВИНУЛСЯ СОСТАВОМ: отпечаток содержимого в отчёте %s, "+
+					"по дереву %s, при этом НИ ОДИН общий файл не двигался\n"+
+					"  Расхождение объясняется плечом состава выше (пришёл или ушёл файл), "+
+					"а не правкой существующего",
+				recordedContent, fp.Content))
+		default:
+			// Состав ТОТ ЖЕ, содержимое разошлось, а пофайловая сверка не нашла
+			// ни одного расхождения. Три величины противоречат друг другу, и
+			// пока противоречие не разобрано, вердикт вынесен НЕ О ТОМ.
+			findings = append(findings, fmt.Sprintf(
+				"ВЕРДИКТ ВЫНЕСЕН НЕ О ТОМ: отпечаток содержимого в отчёте %s, по дереву %s, "+
+					"состав ТОТ ЖЕ (%s), а пофайловая сверка не нашла НИ ОДНОГО расхождения\n"+
+					"  Итоговый хэш и пофайловые хэши считает один и тот же код, поэтому "+
+					"расходиться они не могут: сдвинулся не предмет замера, а сам прибор — "+
+					"починке подлежит он, а не отчёт",
+				recordedContent, fp.Content, fp.Composition))
+		}
 	}
 
 	// (б) возраст.
@@ -250,34 +290,65 @@ func TestScaleGridFreshnessGateCanFailAndCanStaySilent(t *testing.T) {
 	now := time.Date(2026, 8, 19, 12, 0, 0, 0, time.UTC)
 	fresh := now.Add(-3 * 24 * time.Hour)
 
-	// Синтетическое дерево: два файла с известными отпечатками.
+	// Синтетическое дерево: два файла с известными тождествами и отпечатками.
 	fp := scalegrid.Fingerprint{
 		Composition: "COMPOSITION00001",
 		Content:     "CONTENT000000001",
+		Identities:  []string{"вердикт/one.go", "миграции/two.sql"},
 		Files:       []string{"a/one.go", "b/two.sql"},
 		Tables:      []string{"kaname.access_bindings"},
 	}
-	content := map[string]string{"a/one.go": "HASHA00000000001", "b/two.sql": "HASHB00000000002"}
+	// contentOf ключуется ПУТЁМ (так его зовёт гейт), перечень шапки — ТОЖДЕСТВОМ.
+	content := map[string]string{
+		"a/one.go": "HASHA00000000001", "b/two.sql": "HASHB00000000002",
+		// те же файлы после переезда каталога: содержимое ТО ЖЕ, путь другой
+		"z/one.go": "HASHA00000000001", "z/two.sql": "HASHB00000000002",
+	}
 	contentOf := func(rel string) string { return content[rel] }
 
-	report := func(when time.Time, comp, cont string, files map[string]string) string {
+	recorded := map[string]recordedFile{
+		"вердикт/one.go":   {hash: "HASHA00000000001", path: "a/one.go"},
+		"миграции/two.sql": {hash: "HASHB00000000002", path: "b/two.sql"},
+	}
+
+	report := func(when time.Time, comp, cont string, files map[string]recordedFile) string {
 		var b strings.Builder
 		fmt.Fprintf(&b, "%s%s\n", scaleGridReportDateMark, when.Format("2006-01-02 15:04:05 MST"))
 		fmt.Fprintf(&b, "%s%s\n", scalegrid.MarkerComposition, comp)
 		fmt.Fprintf(&b, "%s%s\n", scalegrid.MarkerContent, cont)
 		fmt.Fprintf(&b, "%s\n", scalegrid.MarkerFileList)
-		keys := keysOf(files)
-		for _, rel := range keys {
-			fmt.Fprintf(&b, "%s%s  %s\n", scalegrid.MarkerFile, files[rel], rel)
+		for _, id := range keysOf(files) {
+			fmt.Fprintf(&b, "%s%s  %s  %s\n", scalegrid.MarkerFile, files[id].hash, id, files[id].path)
 		}
 		return b.String()
 	}
 
 	// ЗАКОННЫЙ БЛИЗНЕЦ: свежий отчёт, предмет неподвижен — гейт обязан МОЛЧАТЬ.
 	// Без него всякое «покраснел» ниже зеленело бы и на исправном дереве.
-	if got := judgeReport(report(fresh, fp.Composition, fp.Content, content), fp, contentOf, now); len(got) != 0 {
+	if got := judgeReport(report(fresh, fp.Composition, fp.Content, recorded), fp, contentOf, now); len(got) != 0 {
 		t.Fatalf("законный близнец покраснел: свежий отчёт с неподвижным предметом обязан "+
 			"проходить молча, иначе гейт краснеет на достижении собственной цели.\n%s",
+			strings.Join(got, "\n"))
+	}
+
+	// ВТОРОЙ ЗАКОННЫЙ БЛИЗНЕЦ: каталог ПЕРЕЕХАЛ — пути все до одного другие,
+	// тождества и содержимое те же. Гейт обязан МОЛЧАТЬ: адрес кода не есть его
+	// поведение, а пересъёмка одного отчёта стоит до двух часов на живой базе.
+	//
+	// Именно этот случай прибор и не различал: сопоставление шло по путям, ни
+	// одна пара не находилась, и «содержимое сдвинулось» печаталось без единого
+	// виновника — вердикт о том, чего проверка не смотрела (#2039).
+	movedTree := scalegrid.Fingerprint{
+		Composition: fp.Composition, // состав по ТОЖДЕСТВАМ переезд не двигает
+		Content:     fp.Content,     // содержимое то же — путь в него не входит
+		Identities:  []string{"вердикт/one.go", "миграции/two.sql"},
+		Files:       []string{"z/one.go", "z/two.sql"}, // каталог переименован
+		Tables:      fp.Tables,
+	}
+	if got := judgeReport(report(fresh, fp.Composition, fp.Content, recorded),
+		movedTree, contentOf, now); len(got) != 0 {
+		t.Fatalf("гейт покраснел на ЧИСТОМ ПЕРЕИМЕНОВАНИИ: ни один оператор не изменился, "+
+			"а отчёт объявлен несвежим — это ложная тревога ценой двухчасовой пересъёмки.\n%s",
 			strings.Join(got, "\n"))
 	}
 
@@ -288,32 +359,58 @@ func TestScaleGridFreshnessGateCanFailAndCanStaySilent(t *testing.T) {
 		expect string
 	}{
 		{
-			name:   "(а) содержимое файла правлено — гейт называет виновника",
-			text:   report(fresh, fp.Composition, "OTHERCONTENT0001", map[string]string{"a/one.go": "WASA000000000001", "b/two.sql": "HASHB00000000002"}),
+			// Плечо содержимого краснеет, а пофайловая сверка при неизменном
+			// составе не нашла ни одного виновника. Это противоречие ВНУТРИ
+			// прибора: итоговый и пофайловые хэши считает один и тот же код.
+			// Раньше такое печаталось как «сдвинули его: —» и читалось как
+			// вердикт о дереве.
+			name:   "содержимое разошлось, состав тот же, виновника нет — ВЕРДИКТ НЕ О ТОМ",
+			text:   report(fresh, fp.Composition, "OTHERCONTENT0001", recorded),
 			fp:     fp,
-			expect: "a/one.go (было WASA000000000001, стало HASHA00000000001)",
+			expect: "ВЕРДИКТ ВЫНЕСЕН НЕ О ТОМ",
+		},
+		{
+			// Перечень — предпосылка обоих плеч: без него виновника назвать
+			// нечем, и «совпало» означало бы «не с чем сравнивать».
+			name: "шапка без пофайлового перечня — предпосылка плеч отсутствует",
+			text: fmt.Sprintf("%s%s\n%s%s\n%s%s\n",
+				scaleGridReportDateMark, fresh.Format("2006-01-02 15:04:05 MST"),
+				scalegrid.MarkerComposition, fp.Composition,
+				scalegrid.MarkerContent, fp.Content),
+			fp:     fp,
+			expect: "НЕТ пофайлового перечня",
+		},
+		{
+			name: "(а) содержимое файла правлено — гейт называет виновника",
+			text: report(fresh, fp.Composition, "OTHERCONTENT0001", map[string]recordedFile{
+				"вердикт/one.go":   {hash: "WASA000000000001", path: "a/one.go"},
+				"миграции/two.sql": {hash: "HASHB00000000002", path: "b/two.sql"},
+			}),
+			fp:     fp,
+			expect: "вердикт/one.go (a/one.go: было WASA000000000001, стало HASHA00000000001)",
 		},
 		{
 			name:   "(б) отчёт старше 60 дней",
-			text:   report(now.Add(-61*24*time.Hour), fp.Composition, fp.Content, content),
+			text:   report(now.Add(-61*24*time.Hour), fp.Composition, fp.Content, recorded),
 			fp:     fp,
 			expect: "СТАРШЕ предела",
 		},
 		{
 			name:   "(в) множество под отпечатком пусто",
-			text:   report(fresh, fp.Composition, fp.Content, content),
+			text:   report(fresh, fp.Composition, fp.Content, recorded),
 			fp:     scalegrid.Fingerprint{Composition: fp.Composition, Content: fp.Content, Tables: fp.Tables},
 			expect: "ПУСТО",
 		},
 		{
 			name: "(г) состав изменился, содержимое прежних файлов НЕ двигалось",
-			text: report(fresh, "OLDCOMPOSITION01", fp.Content, content),
+			text: report(fresh, "OLDCOMPOSITION01", fp.Content, recorded),
 			fp: scalegrid.Fingerprint{
 				Composition: fp.Composition, Content: fp.Content,
-				Files:  []string{"a/one.go", "a/three.go", "b/two.sql"},
-				Tables: fp.Tables,
+				Identities: []string{"вердикт/one.go", "вердикт/three.go", "миграции/two.sql"},
+				Files:      []string{"a/one.go", "a/three.go", "b/two.sql"},
+				Tables:     fp.Tables,
 			},
-			expect: "добавлено: a/three.go",
+			expect: "добавлено: вердикт/three.go",
 		},
 		{
 			name:   "шапка без строк отпечатка",
@@ -323,7 +420,7 @@ func TestScaleGridFreshnessGateCanFailAndCanStaySilent(t *testing.T) {
 		},
 		{
 			name:   "дата не читается",
-			text:   report(fresh, fp.Composition, fp.Content, content)[strings.Index(report(fresh, fp.Composition, fp.Content, content), "\n")+1:],
+			text:   report(fresh, fp.Composition, fp.Content, recorded)[strings.Index(report(fresh, fp.Composition, fp.Content, recorded), "\n")+1:],
 			fp:     fp,
 			expect: "возраст неизвестен",
 		},
@@ -376,30 +473,40 @@ func valueAfter(text, marker string) string {
 	return strings.TrimSpace(rest)
 }
 
-// recordedFileHashes — пофайловые отпечатки из шапки отчёта.
-func recordedFileHashes(text string) map[string]string {
-	out := map[string]string{}
+// recordedFile — строка пофайлового перечня из шапки: хэш и путь на момент замера.
+type recordedFile struct {
+	hash string
+	path string
+}
+
+// recordedFileHashes — пофайловый перечень из шапки, КЛЮЧОМ ПО ТОЖДЕСТВУ.
+//
+// Ключ — тождество, а не путь: переезд каталога меняет все пути разом, и
+// сопоставление по ним не находит НИ ОДНОЙ пары. Гейт тогда объявлял бы
+// расхождение содержимого и не мог назвать ни одного виновника — вердикт о том,
+// чего проверка не смотрела.
+func recordedFileHashes(text string) map[string]recordedFile {
+	out := map[string]recordedFile{}
 	i := strings.Index(text, scalegrid.MarkerFileList)
 	if i < 0 {
 		return out
 	}
 	for _, line := range strings.Split(text[i+len(scalegrid.MarkerFileList):], "\n") {
 		if !strings.HasPrefix(line, scalegrid.MarkerFile) {
-			if strings.TrimSpace(line) == "" {
-				continue
-			}
-			break
-		}
-		fields := strings.Fields(line)
-		if len(fields) != 2 {
 			continue
 		}
-		out[fields[1]] = fields[0]
+		f := strings.Fields(strings.TrimSpace(line))
+		// Три поля по форме, а не по счёту строк: счёт разошёлся бы с шапкой при
+		// первой же правке её текста.
+		if len(f) != 3 || len(f[0]) != 16 || !strings.Contains(f[1], "/") || !strings.Contains(f[2], "/") {
+			continue
+		}
+		out[f[1]] = recordedFile{hash: f[0], path: f[2]}
 	}
 	return out
 }
 
-func keysOf(m map[string]string) []string {
+func keysOf(m map[string]recordedFile) []string {
 	out := make([]string, 0, len(m))
 	for k := range m {
 		out = append(out, k)

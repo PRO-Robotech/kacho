@@ -33,6 +33,7 @@ package scalegrid_test
 // «НЕ описывает» — иначе проверка зеленела бы на всём сломанном.
 
 import (
+	"path/filepath"
 	"strings"
 	"testing"
 	"time"
@@ -55,7 +56,7 @@ func TestDirtinessIsJudgedAgainstTheSubjectOfTheMeasurement(t *testing.T) {
 
 	t.Run("грязь ВНЕ предмета: замер воспроизводим, и шапка это говорит", func(t *testing.T) {
 		p := dirtyBase()
-		p.Fingerprint = scalegrid.Fingerprint{Composition: "C1", Content: "C2", Files: subject}
+		p.Fingerprint = scalegrid.Fingerprint{Composition: "C1", Content: "C2", Files: subject, Identities: identitiesOf(subject)}
 		p.TreeDirty, p.DirtyPaths = true, 3
 		p.DirtyPathList = []string{
 			"services/iam/internal/repo/kaname/pg/scalegrid/REPORT-R7-2-strength.txt",
@@ -81,7 +82,7 @@ func TestDirtinessIsJudgedAgainstTheSubjectOfTheMeasurement(t *testing.T) {
 
 	t.Run("грязь ВНУТРИ предмета: «НЕ описывает» обязано остаться", func(t *testing.T) {
 		p := dirtyBase()
-		p.Fingerprint = scalegrid.Fingerprint{Composition: "C1", Content: "C2", Files: subject}
+		p.Fingerprint = scalegrid.Fingerprint{Composition: "C1", Content: "C2", Files: subject, Identities: identitiesOf(subject)}
 		p.TreeDirty, p.DirtyPaths = true, 2
 		p.DirtyPathList = []string{
 			"services/iam/internal/repo/kaname/pg/scalegrid/grid.go",
@@ -111,7 +112,7 @@ func TestDirtinessIsJudgedAgainstTheSubjectOfTheMeasurement(t *testing.T) {
 
 	t.Run("перечень путей не собран: число есть, разбора нет", func(t *testing.T) {
 		p := dirtyBase()
-		p.Fingerprint = scalegrid.Fingerprint{Composition: "C1", Content: "C2", Files: subject}
+		p.Fingerprint = scalegrid.Fingerprint{Composition: "C1", Content: "C2", Files: subject, Identities: identitiesOf(subject)}
 		p.TreeDirty, p.DirtyPaths = true, 5
 		text := headerOf(t, p)
 
@@ -142,4 +143,16 @@ func TestDirtyPathsAreParsedFromPorcelain(t *testing.T) {
 			t.Errorf("путь %d разобран как %q, ожидался %q", i, got[i], want[i])
 		}
 	}
+}
+
+// identitiesOf — тождества для синтетического предмета фикстуры.
+//
+// Прибор их вычисляет сам; фикстура строит `Fingerprint` руками, поэтому обязана
+// нести их тоже — иначе она утверждала бы о шапке, которой прибор не производит.
+func identitiesOf(files []string) []string {
+	out := make([]string, 0, len(files))
+	for _, f := range files {
+		out = append(out, "предмет/"+filepath.Base(f))
+	}
+	return out
 }
