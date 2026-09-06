@@ -31,12 +31,37 @@ const envPrefix = "KACHO_NLB"
 // `repository.postgres.url` → `KACHO_NLB_REPOSITORY__POSTGRES__URL`.
 const envKeyDelimiter = "__"
 
-// Load читает YAML config (если path != "") + ENV overrides, заполняет
-// defaults и валидирует.
+// Load — дверь СЛУЖБЫ: разбор конфигурации плюс страж посадки процесса,
+// который служит.
 //
 // path == "" — config-файл не используется (только ENV + defaults). Полезно
 // для тестов и unit-stages, где нет ConfigMap.
+//
+// Страж стоит ЗДЕСЬ, а не только в композиционном корне, и это не меняется:
+// перенос его к вызывающему завёл бы вторую вещь, которую надо не забыть, и
+// первый же новый вызывающий поднял бы службу непроверенной.
+//
+// Разбор при этом отделён от стража ([parse]) — затем, что у конфигурации есть
+// второй законный читатель, которого посадка службы не связывает: точка наката
+// (`cmd/migrator`). Что именно она спрашивает и почему не всё — [MigrateDSN].
 func Load(path string) (*Config, error) {
+	cfg, err := parse(path)
+	if err != nil {
+		return nil, err
+	}
+	if err := cfg.Validate(); err != nil {
+		return nil, fmt.Errorf("validate config: %w", err)
+	}
+	return cfg, nil
+}
+
+// parse — разбор конфигурации БЕЗ стража посадки: viper (defaults + файл + ENV)
+// → Unmarshal → подстановка пароля из окружения.
+//
+// Разбор ОДИН на обе двери. Второй разбор той же конфигурации разошёлся бы с
+// первым молча — и разошёлся бы именно там, где различие не видно: на входе,
+// который обе двери принимают.
+func parse(path string) (*Config, error) {
 	v := viper.New()
 	v.SetEnvPrefix(envPrefix)
 	v.SetEnvKeyReplacer(strings.NewReplacer(".", envKeyDelimiter))
@@ -63,9 +88,6 @@ func Load(path string) (*Config, error) {
 		return nil, fmt.Errorf("unmarshal config: %w", err)
 	}
 	expandPasswordFromEnv(&cfg)
-	if err := cfg.Validate(); err != nil {
-		return nil, fmt.Errorf("validate config: %w", err)
-	}
 	return &cfg, nil
 }
 
