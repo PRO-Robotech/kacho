@@ -1,5 +1,20 @@
 # Copyright (c) PRO-Robotech
 # SPDX-License-Identifier: BUSL-1.1
+{{/*
+СНЯТЫЕ РУЧКИ ТРАНСПОРТА: отказ рендера, а не молчаливый откат к умолчанию.
+
+Две ручки накрывали по ДВА слушателя каждая, и у слушателей под ними были разные
+требования — то есть профиль не мог быть верным ни в одном положении. Теперь у
+каждого слушателя ручка своя. Профиль, всё ещё называющий снятое имя, объявляет
+величину, которой шаблон не читает: он выглядит настроенным и не настраивает
+ничего. Поэтому — отказ рендера с именем замены, а не тишина.
+*/}}
+{{- if hasKey (.Values.mtls | default dict) "hooksAndMetrics" }}
+{{- fail "kaname: mtls.hooksAndMetrics снята — она накрывала ДВА слушателя с противоположными требованиями (обратные вызовы службы личности и скрейп). Объявите mtls.hooks и mtls.metrics по отдельности; открытый текст на слушателе обратных вызовов возможен только через mtls.plaintextExceptions.hooks" }}
+{{- end }}
+{{- if hasKey (.Values.mtls | default dict) "rest" }}
+{{- fail "kaname: mtls.rest снята — она накрывала ОБА собственных REST-фронта. Объявите mtls.publicRest и mtls.internalRest по отдельности" }}
+{{- end }}
 apiVersion: apps/v1
 kind: Deployment
 metadata:
@@ -52,6 +67,12 @@ spec:
         prometheus.io/scrape: "true"
         prometheus.io/port: {{ .Values.metricsScrape.port | quote }}
         prometheus.io/path: /metrics
+        # СХЕМА ЧИТАЕТСЯ У ТОЙ ЖЕ РУЧКИ, ЧТО ПОДНИМАЕТ ТРАНСПОРТ СЛУШАТЕЛЯ.
+        # Объявление сбора говорит агенту, КУДА идти; включённый транспорт меняет
+        # это «куда», и объявление, о нём умолчавшее, посылает агента открытым
+        # текстом на слушатель под TLS — то есть перестаёт быть правдой. Два места
+        # об одном предмете здесь не заводится: ручка одна.
+        prometheus.io/scheme: {{ ternary "https" "http" (dig "metrics" .Values.mtls.httpListeners .Values.mtls | default false | eq true) | quote }}
         {{- else }}
         # Сбор выключен ОБЪЯВЛЕНИЕМ, и причина едет в кластер вместе с подом:
         # оператор, увидевший процесс без объявления сбора, обязан прочитать
@@ -284,41 +305,44 @@ spec:
               value: {{ printf "%s/tls.key" $srv | quote }}
             - name: KANAME_INTERNAL_SERVER_MTLS_CLIENTCAFILES
               value: {{ printf "%s/ca.crt" $srv | quote }}
-            {{- if (dig "hooksAndMetrics" .Values.mtls.httpListeners .Values.mtls) }}
-            # Sub-phase 5.5 — HTTP listener TLS (hooks :9092 + /metrics :9095).
+            {{- if (dig "hooks" .Values.mtls.httpListeners .Values.mtls) }}
+            # ─── СЛУШАТЕЛЬ ОБРАТНЫХ ВЫЗОВОВ СЛУЖБЫ ЛИЧНОСТИ (:9092) ───────────
             #
-            # ЭТО РЕБРО ОТДЕЛЕНО ОТ ОСТАЛЬНЫХ, И ВОТ ПОЧЕМУ. Одна общая ручка заворачивала
-            # в TLS ЧЕТЫРЕ листенера разом, а у этого есть вызывающий, который ходит по
-            # открытому http и своего доверия не несёт, — вебхук провайдера личности.
-            # Включение общей ручки роняло выдачу токенов целиком: рукопожатие отвечало
-            # «клиент прислал http-запрос на https-сервер», хук проваливался, и ни один
-            # токен не выпускался. При этом отключить общую ручку тоже нельзя: на ней
-            # висит листенер :9096, по которому едет непротухающий пароль, и загрузочная
-            # стража справедливо отказывается стартовать с ним в открытую.
-            # Значит ручка обязана быть ПОЛИСТЕННОЙ. Умолчание — прежняя общая, так что
-            # существующие профили ведут себя байт-в-байт как раньше.
-            # These two listeners were served PLAINTEXT; per-edge, default-off
-            # server-side TLS now wraps them (config.MTLSConfig.HooksServerTLSConfig
-            # / MetricsServerTLSConfig → tls.NewListener). The per-edge
-            # CLIENTAUTHMODE selects the TLS ClientAuth mode:
-            #   - server-tls-only → tls.NoClientCert (encryption + server-auth only,
-            #     NO client cert required). The hooks edge carries FOUR
-            #     HMAC-authenticated hook endpoints (Hydra token/refresh + Kratos
-            #     provision/recovery); every caller is an HTTP client that presents
-            #     no transport client-cert (Ory webhooks cannot) — HMAC
-            #     (X-Kacho-Hook-Token) is the caller-auth. The metrics edge has no
-            #     scrape client cert wired yet → server-tls-only too.
-            #   - mutual → RequireAndVerifyClientCert (option, flip CLIENTAUTHMODE
-            #     to "mutual" when a scrape client is provisioned with a client cert).
-            # They REUSE the SAME SEC-F internal-CA server cert-trio mounted above
-            # (no new PKI).
+            # РУЧКА У НЕГО СВОЯ, И ЭТО НЕСУЩЕЕ СВОЙСТВО, А НЕ АККУРАТНОСТЬ. Здесь
+            # стояло условие, накрывавшее ДВА слушателя разом — этот и слушатель
+            # скрейпа, — и у них ПРОТИВОПОЛОЖНЫЕ требования. У этого есть
+            # вызывающий, который ходит по открытому http и своего доверия не
+            # несёт: вебхук службы личности. Завернув его в TLS вместе с соседом,
+            # получаем «клиент прислал http-запрос на https-сервер», проваленный
+            # хук и полностью неработающую выдачу токенов. Оставив соседа
+            # открытым вместе с ним, получаем отказ старта: страж боевой посадки
+            # справедливо не пускает счётчики процесса в открытую.
             #
-            # SEPARATE toggle from mtls.enable: the dev/newman kind stand runs the
-            # gRPC listeners under mTLS (mtls.enable=true) but keeps hooks/metrics
-            # PLAINTEXT (the Hydra/Kratos hook clients have no client cert there).
-            # mtls.httpListeners stays false on dev → these env are NOT emitted →
-            # hooks/metrics stay plaintext (byte-identical). values.prod.yaml flips
-            # it true with clientAuthMode=server-tls-only.
+            # Одним значением эти два требования не выполнить НИ В КАКОМ
+            # положении, поэтому профиль боевой посадки был невыразим by
+            # construction, а служба не поднималась вовсе. Теперь ручка — одна на
+            # одного слушателя, и профиль объявляет каждую отдельно.
+            #
+            # ОТКРЫТЫЙ ТЕКСТ ЗДЕСЬ ВОЗМОЖЕН ТОЛЬКО ОБЪЯВЛЕННЫМ ИСКЛЮЧЕНИЕМ —
+            # `mtls.plaintextExceptions.hooks`, — и исключение это ЕДИНСТВЕННОЕ:
+            # у остальных слушателей такой ручки нет вовсе, поэтому область
+            # исключения сужена до одного слушателя не уговором, а построением.
+            #
+            # Транспорт переиспользует ТОТ ЖЕ серверный набор внутреннего УЦ, что
+            # смонтирован выше, — новой PKI не заводится. Режим выбирается
+            # CLIENTAUTHMODE:
+            #   - server-tls-only → шифрование и аутентификация СЕРВЕРА, без
+            #     требования клиентского сертификата. Полоса несёт четыре
+            #     обработчика, чьего вызывающего аутентифицирует общий секрет в
+            #     заголовке (`X-Kacho-Hook-Token`), а не транспорт: клиентского
+            #     сертификата вебхуки службы личности предъявить не умеют;
+            #   - mutual → сертификат клиента требуется и верифицируется (когда
+            #     он у вызывающего появится).
+            #
+            # ТРАНСПОРТ ЭТОГО СЛУШАТЕЛЯ И СХЕМА ОБРАТНОГО ВЫЗОВА — ОДИН ПРЕДМЕТ,
+            # объявленный в двух местах: здесь и в `global` схемой адреса. Их
+            # согласие держит deploy/identity_callback_transport_test.go: полоса,
+            # объявленная открытой к слушателю под TLS (и наоборот), — находка.
             - name: KANAME_HOOKS_SERVER_MTLS_ENABLE
               value: "true"
             - name: KANAME_HOOKS_SERVER_MTLS_CLIENTAUTHMODE
@@ -329,6 +353,26 @@ spec:
               value: {{ printf "%s/tls.key" $srv | quote }}
             - name: KANAME_HOOKS_SERVER_MTLS_CLIENTCAFILES
               value: {{ printf "%s/ca.crt" $srv | quote }}
+            {{- end }}
+            {{- if (dig "metrics" .Values.mtls.httpListeners .Values.mtls) }}
+            # ─── СЛУШАТЕЛЬ СКРЕЙПА (:9095) ───────────────────────────────────
+            #
+            # Отделён от слушателя обратных вызовов выше: требование у него
+            # ПРОТИВОПОЛОЖНОЕ. Счётчики процесса суть внутренняя кардинальность,
+            # которую канон держит вне всякой поверхности, читаемой посторонним;
+            # открытый текст выносит её всякому, кто слушает сеть пода. Отсюда:
+            # объявленного исключения у этого слушателя НЕТ и быть не может —
+            # ручки `plaintextExceptions.metrics` не существует, и профиль,
+            # оставивший его открытым, получает отказ старта, а не тихий откат.
+            #
+            # Режим односторонний: у собирателя клиентского сертификата пока нет.
+            # Переведёшь его на двусторонний — правкой `metricsClientAuthMode`,
+            # когда сертификат появится.
+            #
+            # СЛЕДСТВИЕ, КОТОРОЕ НАДО ЗНАТЬ ОПЕРАТОРУ: включённый транспорт
+            # меняет схему адреса сбора на https. Объявление сбора несёт её
+            # рядом (аннотация `prometheus.io/scheme` выше), поэтому агент, эту
+            # аннотацию читающий, приходит верной схемой.
             - name: KANAME_METRICS_SERVER_MTLS_ENABLE
               value: "true"
             - name: KANAME_METRICS_SERVER_MTLS_CLIENTAUTHMODE
@@ -361,17 +405,28 @@ spec:
             - name: KANAME_JWKSPROXY_SERVER_MTLS_CLIENTCAFILES
               value: {{ printf "%s/ca.crt" $srv | quote }}
             {{- end }}
-            {{- if (dig "rest" .Values.mtls.httpListeners .Values.mtls) }}
-            # Собственные REST-фронты службы (KAN-REST-1). Переиспользуют ТОТ ЖЕ
-            # серверный набор внутреннего УЦ, что смонтирован выше, — новой PKI
-            # не заводится.
+            {{- if (dig "publicRest" .Values.mtls.httpListeners .Values.mtls) }}
+            # ─── СОБСТВЕННЫЙ ПУБЛИЧНЫЙ REST-ФРОНТ (:9098) ────────────────────
             #
-            # ONE-WAY (server-tls-only) НАМЕРЕННО: до публичного фронта
-            # дотягивается арендатор обычным HTTP-клиентом, клиентского
-            # сертификата он не носит, и требование предъявить его отвергло бы
-            # каждого на рукопожатии. Вызывающего здесь аутентифицирует
+            # РУЧКА У НЕГО СВОЯ. Здесь стояло условие, накрывавшее ОБА фронта, и
+            # это тот же класс, что был у пары «вебхуки + скрейп»: перечень
+            # поверхностей под одной ручкой растёт молча, а профиль объявляет
+            # одно значение на две поверхности, о требованиях которых он ничего
+            # не говорит. Прежнее имя ручки (`rest`) снято, а не сужено: молча
+            # сузить его значило бы оставить внутренний фронт открытым у всякого,
+            # кто уже объявил старое имя.
+            #
+            # Переиспользует ТОТ ЖЕ серверный набор внутреннего УЦ, что смонтирован
+            # выше, — новой PKI не заводится. Режим односторонний НАМЕРЕННО: до
+            # публичного фронта дотягивается арендатор обычным HTTP-клиентом,
+            # клиентского сертификата он не носит, и требование предъявить его
+            # отвергло бы каждого на рукопожатии. Вызывающего здесь аутентифицирует
             # предъявленное удостоверение — его проверяет звено собственного
             # слушателя, а не транспорт.
+            #
+            # Объявленного исключения у этого фронта НЕТ: по проводу идёт
+            # предъявленное удостоверение арендатора, и снятое с провода оно
+            # предъявляется повторно кем угодно до истечения срока.
             - name: KANAME_REST_SERVER_MTLS_ENABLE
               value: "true"
             - name: KANAME_REST_SERVER_MTLS_CLIENTAUTHMODE
@@ -382,6 +437,17 @@ spec:
               value: {{ printf "%s/tls.key" $srv | quote }}
             - name: KANAME_REST_SERVER_MTLS_CLIENTCAFILES
               value: {{ printf "%s/ca.crt" $srv | quote }}
+            {{- end }}
+            {{- if (dig "internalRest" .Values.mtls.httpListeners .Values.mtls) }}
+            # ─── СОБСТВЕННЫЙ ВНУТРЕННИЙ REST-ФРОНТ (:9099) ───────────────────
+            #
+            # Своя ручка, а не общая с публичным фронтом: поверхности разные, и
+            # «внутренний — значит доверенный» объявлено запрещённым допущением
+            # (защита в глубину против бокового движения). По этому проводу идут
+            # служебные поверхности, и открытый текст выносит их всякому, кто
+            # слушает сеть пода, — объявленного исключения здесь тоже нет.
+            #
+            # Режим односторонний по той же причине, что у публичного фронта.
             - name: KANAME_INTERNALREST_SERVER_MTLS_ENABLE
               value: "true"
             - name: KANAME_INTERNALREST_SERVER_MTLS_CLIENTAUTHMODE
@@ -392,11 +458,21 @@ spec:
               value: {{ printf "%s/tls.key" $srv | quote }}
             - name: KANAME_INTERNALREST_SERVER_MTLS_CLIENTCAFILES
               value: {{ printf "%s/ca.crt" $srv | quote }}
-            # Удостоверение, которым фронт представляется СОБСТВЕННОМУ
-            # gRPC-слушателю. Фронт — обычный клиент своего слушателя: широкого
-            # допуска он не получает и в круг разрешённых отправителей личности
-            # не вносится. Имя сервера сверяется с SAN серверного листа, потому
-            # что дозвон идёт в петлю, а лист выписан на имя Service.
+            {{- end }}
+            {{- if or (dig "publicRest" .Values.mtls.httpListeners .Values.mtls) (dig "internalRest" .Values.mtls.httpListeners .Values.mtls) }}
+            # ─── УДОСТОВЕРЕНИЕ ФРОНТА ПЕРЕД СОБСТВЕННЫМ СЛУШАТЕЛЕМ ───────────
+            #
+            # Это НЕ слушатель, а исходящий вызов, поэтому и условие у него своё:
+            # оно спрашивает «поднят ли хоть один фронт», а не «под TLS ли он».
+            # Страж старта требует удостоверения ровно при этом условии
+            # (requireRESTUpstreamCredential), и привязать его к транспорту
+            # одного из двух фронтов значило бы завести третье правило о чужом
+            # предмете.
+            #
+            # Фронт — обычный клиент своего слушателя: широкого допуска он не
+            # получает и в круг разрешённых отправителей личности не вносится.
+            # Имя сервера сверяется с SAN серверного листа, потому что дозвон
+            # идёт в петлю, а лист выписан на имя Service.
             - name: KANAME_REST_UPSTREAM_MTLS_ENABLE
               value: "true"
             - name: KANAME_REST_UPSTREAM_MTLS_CERTFILE
@@ -431,6 +507,25 @@ spec:
             - name: KANAME_REGISTRYTOKEN_SERVER_MTLS_CLIENTCAFILES
               value: {{ printf "%s/ca.crt" $srv | quote }}
             {{- end }}
+            {{- end }}
+            {{- if (dig "hooks" false .Values.mtls.plaintextExceptions) }}
+            # ─── ОБЪЯВЛЕННОЕ ИСКЛЮЧЕНИЕ: слушатель обратных вызовов открыт ───
+            #
+            # Страж старта в боевой посадке не пускает НИ ОДНО HTTP-ребро открытым
+            # текстом. У этого — и только у этого — исключение возможно, и оно
+            # обязано быть ОБЪЯВЛЕНО: вызывающий ходит по открытому http и своего
+            # доверия не несёт, поэтому TLS здесь означал бы не защиту, а
+            # неработающую выдачу токенов. Измерено на стенде, а не выведено.
+            #
+            # Ручки для остальных слушателей НЕ СУЩЕСТВУЕТ — ни в чарте, ни в
+            # процессе, — поэтому область исключения сужена до одного слушателя
+            # построением, а не дисциплиной профиля.
+            #
+            # Объявить исключение ВМЕСТЕ с транспортом нельзя: процесс отвечает
+            # отказом старта — два правила об одном предмете говорят
+            # противоположное, и молча выбирать между ними он не вправе.
+            - name: KANAME_HOOKS_SERVER_PLAINTEXT_ACKNOWLEDGED
+              value: "true"
             {{- end }}
             # АДРЕСА КРАЯ ЗДЕСЬ НЕТ — направление развёрнуто (задача продукта #1024).
             #
@@ -592,7 +687,7 @@ spec:
             httpGet:
               path: /readyz
               port: http-hooks
-              {{- if (dig "hooksAndMetrics" .Values.mtls.httpListeners .Values.mtls) }}
+              {{- if (dig "hooks" .Values.mtls.httpListeners .Values.mtls) }}
               scheme: HTTPS
               {{- end }}
             initialDelaySeconds: 5
@@ -601,7 +696,7 @@ spec:
             httpGet:
               path: /healthz
               port: http-hooks
-              {{- if (dig "hooksAndMetrics" .Values.mtls.httpListeners .Values.mtls) }}
+              {{- if (dig "hooks" .Values.mtls.httpListeners .Values.mtls) }}
               scheme: HTTPS
               {{- end }}
             initialDelaySeconds: 10

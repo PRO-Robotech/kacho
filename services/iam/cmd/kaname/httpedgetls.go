@@ -41,6 +41,23 @@
 //
 // Оператор чинит профиль один раз, а не по одному ребру за перезапуск: страж,
 // останавливающийся на первом, продаёт три круга подъёма вместо одного.
+//
+// # ОБЪЯВЛЕННОЕ ИСКЛЮЧЕНИЕ — одно, и его область сужена ПОСТРОЕНИЕМ
+//
+// У слушателя вебхуков открытый текст возможен, и основание у этого измерено, а
+// не выведено: вызывающий ходит по открытому http и своего доверия не несёт,
+// поэтому TLS здесь означал бы не защиту, а проваленный хук и неработающую
+// выдачу токенов целиком.
+//
+// Исключение обязано быть ОБЪЯВЛЕНО посадкой — умолчания у него нет: величина,
+// которую построение подставляет само, предметом стража быть не может, он зелен
+// при любом входе. И оно ЕДИНСТВЕННОЕ: у остальных рёбер ручки исключения нет ни
+// в чарте, ни в описателе настроек, поэтому объявить им открытый текст нечем.
+// Область сужена до одного слушателя построением, а не дисциплиной оператора.
+//
+// Ребро, у которого транспорт объявлен И объявлено исключение из него, — ОТКАЗ:
+// два правила об одном предмете говорят противоположное, и выбирать между ними
+// молча процесс не вправе.
 package main
 
 import (
@@ -63,35 +80,72 @@ type httpEdgeTLS struct {
 	// why — ЧТО едет по этому проводу. Текст отказа без этого не отличим от
 	// придирки, и первый же оператор снимет ручку, а не заведёт материал.
 	why string
+	// plaintextKnob — ручка, которой посадка ОБЪЯВЛЯЕТ открытый текст на этом
+	// ребре. ПУСТАЯ ⇒ исключения у ребра не бывает вовсе, и объявить его нечем.
+	plaintextKnob string
+	// plaintextDeclared — объявлено ли исключение посадкой.
+	plaintextDeclared bool
 }
 
 // requireHTTPEdgeTLS — в боевой посадке ни одно поднимаемое HTTP-ребро не
-// работает открытым текстом.
+// работает открытым текстом иначе как по ОБЪЯВЛЕННОМУ исключению.
 //
 // В не-боевой посадке — no-op: тот же порядок, что у прочих рёбер (умолчание
 // выключено, стенд байт-идентичен). Пустой адрес — no-op: слушателя нет.
 //
 // Пустой перечень рёбер — ОТКАЗ, а не тишина: «стражу не на что жаловаться»
 // обязано быть отличимо от «стражу не дали ничего».
-func requireHTTPEdgeTLS(productionMode bool, edges []httpEdgeTLS) error {
+//
+// ПЕРВЫМ ЗНАЧЕНИЕМ ВОЗВРАЩАЮТСЯ ОБЪЯВЛЕННЫЕ ИСКЛЮЧЕНИЯ, и вызывающий обязан их
+// НАЗВАТЬ в журнале старта. Исключение, о котором процесс молчит, неотличимо от
+// недосмотра: «контроль есть» и «контроль снят решением» выглядели бы одинаково
+// для всякого, кто смотрит на поднятый стенд, а не в профиль.
+func requireHTTPEdgeTLS(productionMode bool, edges []httpEdgeTLS) ([]string, error) {
 	if len(edges) == 0 {
-		return errors.New("страж транспорта HTTP-рёбер позван с пустым перечнем: " +
+		return nil, errors.New("страж транспорта HTTP-рёбер позван с пустым перечнем: " +
 			"вердикт беспредметен — «нарушений нет» неотличимо от «рёбер не передано ни одного»")
 	}
 	if !productionMode {
-		return nil
+		return nil, nil
 	}
-	var refusals []error
+	var (
+		refusals []error
+		declared []string
+	)
 	for _, e := range edges {
-		if strings.TrimSpace(e.addr) == "" || e.enabled {
+		if strings.TrimSpace(e.addr) == "" {
 			continue
 		}
-		refusals = append(refusals, fmt.Errorf(
-			"production mode requires TLS on the %s listener %s (set %s=true with its cert/key): %s; "+
-				"refusing to start with it in the clear",
-			e.name, e.addr, e.knob, e.why))
+		switch {
+		case e.enabled && e.plaintextDeclared:
+			// Две ручки об одном предмете говорят противоположное. Молчаливый
+			// выбор одной из них и есть тот класс, ради которого страж заведён.
+			refusals = append(refusals, fmt.Errorf(
+				"%s listener %s: транспорт объявлен (%s) И объявлено исключение из него (%s) — "+
+					"два правила об одном предмете говорят противоположное; refusing to start",
+				e.name, e.addr, e.knob, e.plaintextKnob))
+		case e.enabled:
+			// Ребро под транспортом — предмета для отказа нет.
+		case e.plaintextDeclared && e.plaintextKnob != "":
+			declared = append(declared, fmt.Sprintf("%s (%s), объявлено %s: %s",
+				e.name, e.addr, e.plaintextKnob, e.why))
+		case e.plaintextDeclared:
+			// Ребро объявило исключение, которого у него НЕТ. Из перечня ниже
+			// такое ребро не приходит by construction — ручка есть ровно у
+			// одного, — но сужение обязано быть свойством СТРАЖА, а не доверием
+			// к вызывающему: ребро, заведённое без ручки и с объявленным
+			// исключением, иначе получило бы свободный проход молча.
+			refusals = append(refusals, fmt.Errorf(
+				"%s listener %s: объявлено исключение открытого текста, которого у этого ребра "+
+					"не бывает — %s; refusing to start", e.name, e.addr, e.why))
+		default:
+			refusals = append(refusals, fmt.Errorf(
+				"production mode requires TLS on the %s listener %s (set %s=true with its cert/key): %s; "+
+					"refusing to start with it in the clear",
+				e.name, e.addr, e.knob, e.why))
+		}
 	}
-	return errors.Join(refusals...)
+	return declared, errors.Join(refusals...)
 }
 
 // iamHTTPEdges — перечень рёбер, чей транспорт судится. ВЫВОДИТСЯ из той же
@@ -108,6 +162,14 @@ func iamHTTPEdges(hooksAddr, metricsAddr, jwksProxyAddr, restAddr, internalRESTA
 			addr: hooksAddr, enabled: mtlsCfg.HooksTLSEnabled(),
 			why: "the identity provider's shared secret travels this hop — the very value the " +
 				"handler uses to tell the provider from a stranger",
+			// ЕДИНСТВЕННОЕ ребро с ручкой исключения. Основание измерено на
+			// стенде: вызывающий ходит по открытому http и своего доверия не
+			// несёт, поэтому завёрнутый в TLS слушатель отвечает ему «клиент
+			// прислал http-запрос на https-сервер», хук проваливается, и выдача
+			// токенов не работает целиком. У соседних рёбер ручки нет — и это
+			// область исключения, а не недоделка.
+			plaintextKnob:     "KANAME_HOOKS_SERVER_PLAINTEXT_ACKNOWLEDGED",
+			plaintextDeclared: mtlsCfg.HooksPlaintextAcknowledged(),
 		},
 		{
 			name: "verification-key mirror (/.well-known/jwks.json)", knob: "KANAME_JWKSPROXY_SERVER_MTLS_ENABLE",
@@ -140,13 +202,18 @@ func iamHTTPEdges(hooksAddr, metricsAddr, jwksProxyAddr, restAddr, internalRESTA
 	}
 }
 
-// mtlsEnableReader — ровно то, что стражу нужно от посадки транспорта: три
-// ответа «объявлен ли транспорт». Узкий интерфейс здесь не украшение — он
-// позволяет пробе подать посадку, не собирая её из окружения.
+// mtlsEnableReader — ровно то, что стражу нужно от посадки транспорта: по
+// ответу «объявлен ли транспорт» на каждое ребро плюс ОДИН ответ про объявленное
+// исключение. Узкий интерфейс здесь не украшение — он позволяет пробе подать
+// посадку, не собирая её из окружения.
+//
+// Ответ про исключение ОДИН, и это область исключения, выраженная типом: у
+// остальных рёбер спросить о нём нечем.
 type mtlsEnableReader interface {
 	HooksTLSEnabled() bool
 	MetricsTLSEnabled() bool
 	JWKSProxyTLSEnabled() bool
 	RESTTLSEnabled() bool
 	InternalRESTTLSEnabled() bool
+	HooksPlaintextAcknowledged() bool
 }

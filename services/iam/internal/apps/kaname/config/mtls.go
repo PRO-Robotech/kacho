@@ -88,6 +88,26 @@ type MTLSConfig struct {
 	// Default-off (Enable=false) → plaintext (dev/newman стенд).
 	HooksServerMTLS grpcsrv.TLSServer `envconfig:"HOOKS_SERVER_MTLS"`
 
+	// HooksServerPlaintextAcknowledged — ОБЪЯВЛЕННОЕ ИСКЛЮЧЕНИЕ: слушатель
+	// обратных вызовов работает открытым текстом СОЗНАТЕЛЬНО.
+	// Env: KANAME_HOOKS_SERVER_PLAINTEXT_ACKNOWLEDGED.
+	//
+	// Страж старта в боевой посадке не пускает ни одно HTTP-ребро открытым
+	// текстом. У этого ребра исключение возможно, и основание у него измерено, а
+	// не выведено: вызывающий — вебхук службы личности — ходит по открытому http
+	// и своего доверия не несёт, поэтому TLS здесь означал бы не защиту, а
+	// проваленный хук и неработающую выдачу токенов целиком.
+	//
+	// ПОЛЕ ОДНО НА ВСЮ ПОСАДКУ, И ЭТО ОБЛАСТЬ ИСКЛЮЧЕНИЯ, А НЕ НЕДОДЕЛКА. У
+	// остальных HTTP-рёбер такого поля НЕТ, поэтому объявить им открытый текст
+	// нечем: сужение держится построением, а не дисциплиной оператора. Заводя
+	// такое поле следующему ребру, спроси, чем измерено его основание.
+	//
+	// Объявить исключение ВМЕСТЕ с транспортом — отказ старта: два правила об
+	// одном предмете говорят противоположное, и выбирать между ними молча
+	// процесс не вправе.
+	HooksServerPlaintextAcknowledged bool `envconfig:"HOOKS_SERVER_PLAINTEXT_ACKNOWLEDGED"`
+
 	// HooksClientAuthMode — per-edge TLS ClientAuth-режим для hooks-listener'а
 	// (:9092). Env: KANAME_HOOKS_SERVER_MTLS_CLIENTAUTHMODE. Допустимые
 	// значения — clientAuthServerTLSOnly | clientAuthMutual. Пустая строка
@@ -516,9 +536,14 @@ func loadCAPool(files []string) (*x509.CertPool, error) {
 //
 // Существуют затем, чтобы страж старта спрашивал ПОСАДКУ, а не лез в поля:
 // поле переедет вместе с формой, а вопрос останется тем же.
-func (c MTLSConfig) HooksTLSEnabled() bool     { return c.HooksServerMTLS.Enable }
-func (c MTLSConfig) MetricsTLSEnabled() bool   { return c.MetricsServerMTLS.Enable }
-func (c MTLSConfig) JWKSProxyTLSEnabled() bool { return c.JWKSProxyServerMTLS.Enable }
+func (c MTLSConfig) HooksTLSEnabled() bool { return c.HooksServerMTLS.Enable }
+
+// HooksPlaintextAcknowledged — объявлено ли исключение открытого текста на
+// слушателе обратных вызовов. Метод ОДИН на всю посадку намеренно: у остальных
+// рёбер исключения не бывает, и спросить о нём нечем (см. поле выше).
+func (c MTLSConfig) HooksPlaintextAcknowledged() bool { return c.HooksServerPlaintextAcknowledged }
+func (c MTLSConfig) MetricsTLSEnabled() bool          { return c.MetricsServerMTLS.Enable }
+func (c MTLSConfig) JWKSProxyTLSEnabled() bool        { return c.JWKSProxyServerMTLS.Enable }
 
 // RESTTLSEnabled / InternalRESTTLSEnabled — объявлен ли транспорт собственных
 // REST-фронтов. Спрашивается посадка, а не поле: поле переедет вместе с формой,
