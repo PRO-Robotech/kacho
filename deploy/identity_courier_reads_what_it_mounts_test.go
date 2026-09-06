@@ -511,7 +511,7 @@ func TestIdentityCourierReadsWhatItMounts(t *testing.T) {
 // TestScanCourierWiring_SelfTest — способность проверки упасть И смолчать,
 // доказанная инъекцией, а не прочтением. По каждой оси — обе стороны.
 func TestScanCourierWiring_SelfTest(t *testing.T) {
-	const ourConfig = "/etc/kacho-identity-rendered/kratos.yaml"
+	const ourConfig = "/etc/kaname-identity-rendered/kratos.yaml"
 
 	profile := func(dep, sts map[string]any) map[string]any {
 		p := map[string]any{}

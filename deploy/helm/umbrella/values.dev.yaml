@@ -892,7 +892,7 @@ kratos:
     # subPath — два тома на один каталог не поставить.
     extraArgs:
       - --config
-      - /etc/kacho-identity-rendered/kratos.yaml
+      - /etc/kaname-identity-rendered/kratos.yaml
     # ─── ВЕЛИЧИНА ОБРАТНОГО ВЫЗОВА ОБЯЗАНА ДОЕХАТЬ ДО ПРОЦЕССА ────────────────
     #
     # Конфигурация объявляет учётные данные обратных вызовов как `${KANAME_HOOK_TOKEN}`
@@ -1003,14 +1003,14 @@ kratos:
       # отрендеренное. Смонтировать оба значило бы держать рядом два файла, из
       # которых один рабочий, — и следующая правка `--config` вернула бы дефект.
       - name: kacho-identity-rendered
-        mountPath: /etc/kacho-identity-rendered
+        mountPath: /etc/kaname-identity-rendered
         readOnly: true
       - name: kacho-identity-schema
-        mountPath: /etc/kacho-identity/identity.schema.json
+        mountPath: /etc/kaname-identity/identity.schema.json
         subPath: identity.schema.json
         readOnly: true
       - name: kacho-identity-hooks
-        mountPath: /etc/kacho-identity/hooks
+        mountPath: /etc/kaname-identity/hooks
         readOnly: true
       - name: kacho-mail-anchor
         mountPath: /etc/kacho-mail-anchor
@@ -1037,7 +1037,7 @@ kratos:
   statefulSet:
     extraArgs:
       - --config
-      - /etc/kacho-identity-rendered/kratos.yaml
+      - /etc/kaname-identity-rendered/kratos.yaml
   kratos:
     development: true
     automigration:
