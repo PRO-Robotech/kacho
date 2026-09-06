@@ -19,9 +19,13 @@
 //
 // # Раскладка общая, тела — разные
 //
-// Судей-целей два, и у каждого своя инъекция со своими телами Makefile,
+// Судей-целей три, и у каждого своя инъекция со своими телами Makefile,
 // конвейера и прогонщика. Общей остаётся раскладка на диске: один писатель —
 // одна форма дерева, и расходиться ей негде.
+//
+// Судьи бывают ДВУХ раскладок — объявленные каждым сервисом (services/*/Makefile)
+// и объявленные одним каталогом (gateway/Makefile). Писатель знает обе, потому
+// что второй писатель разошёлся бы с первым молча.
 package repohygiene
 
 import (
@@ -34,6 +38,10 @@ import (
 type judgeWiringTree struct {
 	// makefiles — сервис → содержимое services/<svc>/Makefile.
 	makefiles map[string]string
+	// dirMakefiles — каталог (как он пишется от корня) → содержимое его
+	// Makefile. Так кладётся судья, объявленный ОДНИМ каталогом, а не каждым
+	// сервисом: gateway/Makefile и подобные.
+	dirMakefiles map[string]string
 	// workflow — содержимое .github/workflows/ci.yaml.
 	workflow string
 	// localRunner — содержимое scripts/ci-local.sh.
@@ -52,6 +60,15 @@ func writeJudgeWiringTree(t *testing.T, tree judgeWiringTree) string {
 		}
 		if err := os.WriteFile(filepath.Join(dir, "Makefile"), []byte(body), 0o644); err != nil {
 			t.Fatalf("не записан Makefile %s: %v", svc, err)
+		}
+	}
+	for dir, body := range tree.dirMakefiles {
+		abs := filepath.Join(root, filepath.FromSlash(dir))
+		if err := os.MkdirAll(abs, 0o755); err != nil {
+			t.Fatalf("не заведён %s: %v", abs, err)
+		}
+		if err := os.WriteFile(filepath.Join(abs, "Makefile"), []byte(body), 0o644); err != nil {
+			t.Fatalf("не записан Makefile %s: %v", dir, err)
 		}
 	}
 	wfDir := filepath.Join(root, ".github", "workflows")
@@ -88,4 +105,28 @@ func judgeWiringFaultsOn(t *testing.T, target string, tree judgeWiringTree) []st
 			w.MakefilesRead, w.WorkflowsRead, w.WorkflowStepsRead, w.LocalRunnersRead)
 	}
 	return findJudgeTargetWiringFaults(w)
+}
+
+// dirTargetWiringFaultsOn — находки гейта цели ОДНОГО каталога на синтетическом
+// дереве.
+//
+// Обход синтетики проверяется на непустоту ПЕРЕД тем, как читать находки: иначе
+// инъекция подала бы вход, которого гейт не видит, и её зелёное ничего не
+// значило бы.
+func dirTargetWiringFaultsOn(t *testing.T, dir, target string, tree judgeWiringTree) []string {
+	t.Helper()
+	w, err := readMakeTargetWiring(writeJudgeWiringTree(t, tree), dir, target)
+	if err != nil {
+		t.Fatalf("синтетическое дерево не прочитано: %v", err)
+	}
+	if w.Reach.RecipeLines == 0 || w.WorkflowsRead == 0 || w.WorkflowStepsRead == 0 {
+		t.Fatalf("обход синтетики пуст (строк рецепта %d · workflow %d · шагов run %d) — "+
+			"инъекция подала бы вход, которого гейт не видит, и её зелёное ничего не значило бы",
+			w.Reach.RecipeLines, w.WorkflowsRead, w.WorkflowStepsRead)
+	}
+	if !w.Reach.Declared {
+		t.Fatalf("цель %s не объявлена в %s/Makefile синтетики — инъекция судила бы отсутствие цели, "+
+			"а не отсутствие провязки", target, dir)
+	}
+	return findMakeTargetWiringFaults(w)
 }

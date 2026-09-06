@@ -4,7 +4,8 @@
 // catalogcopyparity_test.go — гейты шва «две вшитые копии каталога прав обязаны
 // сверяться, и сверка обязана исполняться».
 //
-// Утверждений три, и они о РАЗНОМ:
+// Утверждений ЧЕТЫРЕ, и они о РАЗНОМ. Три живут здесь, четвёртое — в соседнем
+// файле, потому что читает другое дерево и другим механизмом:
 //
 //  1. КЛАСС по дереву — ни одна сверка ни в одном Makefile не исполняется
 //     условно по наличию файла. Структурное свойство дерева, читается разбором
@@ -12,12 +13,28 @@
 //  2. ПОВЕДЕНИЕ цели — сверка копий каталога прав на целом дереве проходит.
 //     Читается ЗАПУСКОМ, а не прочтением: объявление и исход — разные предметы,
 //     и корпус требует судить исход.
-//  3. ПРОВЯЗКА — цель, которую зовёт конвейер, обязана звать сверку. Без этого
-//     сверка исполнима и не исполняется, то есть страж без вызывающего.
+//  3. СВЯЗЬ ВНУТРИ Makefile — цель `permission-catalog-check` обязана звать
+//     сверку: зависимостью в заголовке правила либо вызовом в рецепте. Читается
+//     разбором gateway/Makefile, где заголовок и тело рецепта судятся порознь.
+//  4. ПРОВЯЗКА С КОНВЕЙЕРОМ — эту цепочку обязан звать хотя бы один шаг
+//     объявленного процесса. Живёт в catalogcheckwiring_test.go (#2084): предмет
+//     у неё другой — не Makefile, а .github/workflows, — и механизм тоже другой,
+//     общий с гейтами судей services/* (gatetargetwiring.go).
 //
-// Ни одно не заменяет двух других. Первое зелено при мёртвой цели; второе зелено
-// при цели, которую никто не зовёт; третье зелено при сверке, которая ничего не
-// сверяет.
+// Ни одно не заменяет трёх остальных. Первое зелено при мёртвой цели; второе —
+// при цели, которую никто не зовёт; третье — при сверке, которая ничего не
+// сверяет; четвёртое — при сверке, вызов которой сняли из конвейера, не тронув
+// ни одной строки Makefile.
+//
+// # Здесь стояло ТРИ утверждения, и третье было ШИРЕ своей пробы (#2084)
+//
+// Прежняя редакция называла третье «цель, которую ЗОВЁТ КОНВЕЙЕР, обязана звать
+// сверку». Оборот «которую зовёт конвейер» был ПРЕДПОСЫЛКОЙ, не утверждаемой
+// ничем: проба читала только gateway/Makefile и о .github/workflows не
+// высказывалась ни строкой. Снятие шага из ci.yaml оставляло её зелёной, а
+// сверку — исполнимой и неисполняемой. Четвёртое утверждение заведено ровно на
+// этот шов: предпосылка стала предметом, и шапка теперь совпадает с тем, что
+// пробы делают.
 //
 // # Почему сверка вынесена ОТДЕЛЬНОЙ целью
 //
@@ -29,7 +46,6 @@
 package repohygiene
 
 import (
-	"os"
 	"os/exec"
 	"path/filepath"
 	"strings"
@@ -41,8 +57,13 @@ import (
 // catalogParityTarget — цель, исполняющая сверку двух копий каталога прав.
 const catalogParityTarget = "permission-catalog-copies-in-sync"
 
-// catalogCheckTarget — цель, которую зовёт конвейер (.github/workflows/ci.yaml,
-// шаг «permission-catalog staleness + copy-drift»).
+// catalogCheckTarget — цель, зовущая сверку своей зависимостью; её же зовёт
+// конвейер.
+//
+// Координата вызывающего здесь намеренно НЕ выписана: имя файла и заголовок шага
+// стареют молча, а утверждение «её зовёт конвейер» держит проба
+// TestCatalogCopyParityTargetIsCalledByThePipeline, которая выводит перечень
+// процессов из дерева.
 const catalogCheckTarget = "permission-catalog-check"
 
 // makefilesOfTree — отслеживаемые Makefile и *.mk дерева.
@@ -185,75 +206,51 @@ func TestCatalogCopyParityPassesOnTheWholeTree(t *testing.T) {
 	t.Logf("вывод цели: %s", strings.TrimSpace(out))
 }
 
-// TestCatalogCheckInvokesTheCopyParityTarget — ПРОВЯЗКА: цель, которую зовёт
-// конвейер, обязана звать сверку копий.
+// TestCatalogCheckInvokesTheCopyParityTarget — СВЯЗЬ ВНУТРИ Makefile: цель,
+// которую зовёт конвейер, обязана звать сверку копий.
 //
 // Без этого утверждения сверка остаётся исполнимой и неисполняемой: конвейер
 // зовёт `permission-catalog-check`, и если сверка выпала из его зависимостей,
 // расхождение копий снова не ловится ничем — только теперь тихо и без обёртки.
+//
+// Связь засчитывается в ДВУХ формах, и обе исполняемы: зависимость в заголовке
+// правила и вызов `$(MAKE) <цель>` в рецепте. Имя цели, стоящее в комментарии,
+// связью не является. Распознаватель — общий (makefileTargetsReaching,
+// gatetargetwiring.go): им же гейт провязки с конвейером выводит множество
+// целей, вызов которых исполняет сверку. Две копии этого предиката разошлись бы
+// молча — и разошлись бы там, где обе зелены.
 func TestCatalogCheckInvokesTheCopyParityTarget(t *testing.T) {
 	root := repoRoot(t)
-	path := filepath.Join(root, "gateway", "Makefile")
-	raw, err := os.ReadFile(path)
+	reach, err := makefileTargetsReaching(
+		filepath.Join(root, catalogMakefileDir, "Makefile"), catalogParityTarget)
 	if err != nil {
-		t.Fatalf("gateway/Makefile не прочитан: %v — вердикт беспредметен", err)
+		t.Fatalf("достижимость не прочитана: %v — вердикт беспредметен", err)
 	}
-	recipes, perr := parseMakefileRecipes(path)
-	if perr != nil {
-		t.Fatalf("рецепты gateway/Makefile не разобраны: %v", perr)
-	}
-	if len(recipes.Lines) == 0 {
-		t.Fatal("в gateway/Makefile не прочитано ни одной строки рецепта — разбор сломан")
-	}
-
-	// Провязка засчитывается в ДВУХ формах, и обе исполняемы: зависимость в
-	// заголовке правила и вызов `$(MAKE) <цель>` в рецепте. Имя цели, стоящее в
-	// комментарии, провязкой не является — заголовок правила и тело рецепта
-	// читаются порознь именно поэтому.
-	wiredAsPrerequisite := false
-	for _, line := range strings.Split(string(raw), "\n") {
-		if strings.HasPrefix(line, "\t") || strings.HasPrefix(strings.TrimSpace(line), "#") {
-			continue
-		}
-		head := ruleHeadRe.FindStringSubmatch(line)
-		if head == nil {
-			continue
-		}
-		if strings.Fields(strings.TrimSpace(head[1]))[0] != catalogCheckTarget {
-			continue
-		}
-		_, deps, _ := strings.Cut(line, ":")
-		for _, d := range strings.Fields(deps) {
-			if d == catalogParityTarget {
-				wiredAsPrerequisite = true
-			}
-		}
-	}
-	wiredAsCall := false
-	for _, rl := range recipes.Lines {
-		if rl.Target == catalogCheckTarget && strings.Contains(rl.Text, catalogParityTarget) {
-			wiredAsCall = true
-		}
+	if reach.RecipeLines == 0 {
+		t.Fatalf("в %s/Makefile не прочитано ни одной строки рецепта — разбор сломан", catalogMakefileDir)
 	}
 
 	// Положительный контроль: сама сверяющая цель обязана быть НАЙДЕНА
 	// объявленной. Ноль объявлений означает, что цель сняли либо разбор сломан,
-	// и тогда «провязка в порядке» ничего не значит.
-	declared := false
-	for _, rl := range recipes.Lines {
-		if rl.Target == catalogParityTarget {
-			declared = true
+	// и тогда «связь в порядке» ничего не значит.
+	if !reach.Declared {
+		t.Fatalf("цель %s не объявлена в %s/Makefile (прочитано %d строк рецепта) — "+
+			"сверять копии некому", catalogParityTarget, catalogMakefileDir, reach.RecipeLines)
+	}
+
+	wired := false
+	for _, entry := range reach.Reaching {
+		if entry == catalogCheckTarget {
+			wired = true
 		}
 	}
-	if !declared {
-		t.Fatalf("цель %s не объявлена в gateway/Makefile (прочитано %d строк рецепта) — "+
-			"сверять копии некому", catalogParityTarget, len(recipes.Lines))
-	}
-	if !wiredAsPrerequisite && !wiredAsCall {
+	if !wired {
 		t.Fatalf("цель %s объявлена, но %s её не зовёт — ни зависимостью, ни вызовом. "+
-			"Конвейер зовёт %s, значит сверка копий исполнима и не исполняется",
-			catalogParityTarget, catalogCheckTarget, catalogCheckTarget)
+			"Конвейер зовёт %s, значит сверка копий исполнима и не исполняется. "+
+			"Достигают сверку сейчас: %s",
+			catalogParityTarget, catalogCheckTarget, catalogCheckTarget,
+			strings.Join(reach.Reaching, ", "))
 	}
-	t.Logf("перепись: строк рецепта прочитано %d · провязка зависимостью %v · вызовом %v",
-		len(recipes.Lines), wiredAsPrerequisite, wiredAsCall)
+	t.Logf("перепись: строк рецепта прочитано %d · целей, достигающих %s, %d (%s)",
+		reach.RecipeLines, catalogParityTarget, len(reach.Reaching), strings.Join(reach.Reaching, ", "))
 }
