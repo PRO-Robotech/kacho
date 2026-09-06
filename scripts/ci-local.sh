@@ -568,9 +568,10 @@ go_group() {
         skip "golangci-lint" "не установлен"
     fi
 
-    # gosec запускается В ТОЙ ЖЕ ФОРМЕ, что в конвейере, и «та же форма» — это ТРИ
-    # вещи разом, а не одна. Прежняя редакция совпадала с конвейером по флагу
-    # исключения и расходилась по двум другим, утверждая при этом тождество.
+    # gosec запускается В ТОЙ ЖЕ ФОРМЕ, что в конвейере, и «та же форма» — это
+    # ЧЕТЫРЕ вещи разом, а не одна. Каждая добавлена своим расхождением, которое
+    # уже случилось; порознь любое из них оставляло локальный вердикт верным «в
+    # целом» и неверным по существу.
     #
     # 1. ВЕРСИЯ. Конвейер ставит пин (`security-scan.yml`, шаг «install gosec»);
     #    прежняя редакция брала то, что лежит в PATH. Замер 2026-08-14: в PATH был
@@ -580,6 +581,13 @@ go_group() {
     #    в самом `security-scan.yml`: «локальная проверка „severity HIGH“ показывала
     #    0, пока CI честно краснел». Здесь тот же класс в обратную сторону.
     # 3. ИСКЛЮЧЕНИЕ КАТАЛОГА — единственное, что совпадало и раньше.
+    # 4. ОБЛАСТЬ. Прежняя редакция несла СВОЙ перечень модулей, выписанный руками.
+    #    Он совпадал с деревом ровно до следующего модуля — а область гейта
+    #    конвейера на этом же классе уже разошлась с деревом молча (#2092).
+    #
+    # Сегодня «та же форма» — не сходство, а тождество: прогон и здесь, и в
+    # конвейере идёт ОДНИМ скриптом (scripts/gosec-scan-modules.sh), поэтому
+    # разойтись по области они больше не могут by construction.
     #
     # Цена расхождения измерена на объединённой волне: по коду возврата — шесть
     # находок и красное, по предикату конвейера — ноль ошибок при семи результатах
@@ -610,30 +618,33 @@ go_group() {
             # Гейт — по SARIF level=error, тем же jq-предикатом, что в конвейере.
             # Код возврата gosec здесь НЕ вердикт: он ненулевой и при находках
             # ниже порога, то есть отвечает на другой вопрос.
-            "$gosec_bin/gosec" -exclude-dir=pkg/api -fmt sarif -out "$WORK/gosec.sarif" ./... \
-                > "$WORK/gosec-run.txt" 2>&1 || true
-            # Модуль службы iam сканируется ОТДЕЛЬНО: сканер работает в границах
-            # модуля, и корневой `./...` в него не спускается. Отчёты сливаются
-            # ниже одним `jq` по обоим файлам — иначе перепись назвала бы объём
-            # одного модуля, выдав его за объём дерева.
-            ( cd services/iam && "$gosec_bin/gosec" -fmt sarif -out "$WORK/gosec-iam.sarif" ./... ) \
-                >> "$WORK/gosec-run.txt" 2>&1 || true
-            if [ ! -s "$WORK/gosec.sarif" ] || [ ! -s "$WORK/gosec-iam.sarif" ]; then
-                echo "   ОТКАЗ: отчёт есть не по обоим модулям — сканер не дошёл до вердикта,"
-                echo "   и это НЕ «находок нет». Пустая половина неотличима от чистой."
+            # Перечень модулей и сам прогон — ОДНИМ определением с конвейером
+            # (scripts/gosec-scan-modules.sh). Прежде здесь стоял СВОЙ список из
+            # двух модулей, выписанный руками рядом с корневым `./...`: он
+            # разошёлся бы с деревом молча — ровно тем способом, каким разошлась
+            # область гейта конвейера, когда модулей стало два. Третий модуль
+            # попадёт под оба прогона в тот же коммит, которым заведётся.
+            GOSEC_BIN="$gosec_bin/gosec" GOSEC_OUT="$WORK" \
+                "$ROOT/scripts/gosec-scan-modules.sh" > "$WORK/gosec-run.txt" 2>&1
+            if [ ! -s "$WORK/gosec.sarif" ] || [ -f "$WORK/gosec-scan-failed" ]; then
+                echo "   ОТКАЗ: скан не дошёл до вердикта, и это НЕ «находок нет»."
+                echo "   Непрочитанный модуль неотличим от чистого — вердикт не выносится."
+                [ -f "$WORK/gosec-scan-failed" ] && sed 's/^/   | /' "$WORK/gosec-scan-failed"
                 tail -5 "$WORK/gosec-run.txt" | sed 's/^/   | /'
                 fails+=("gosec: отчёт не создан")
             else
                 local errs total
-                errs=$(jq -s '[.[].runs[].results[]|select(.level=="error")]|length' "$WORK/gosec.sarif" "$WORK/gosec-iam.sarif")
-                total=$(jq -s '[.[].runs[].results[]]|length' "$WORK/gosec.sarif" "$WORK/gosec-iam.sarif")
+                errs=$(jq '[.runs[].results[]|select(.level=="error")]|length' "$WORK/gosec.sarif")
+                total=$(jq '[.runs[].results[]]|length' "$WORK/gosec.sarif")
                 # Перепись — отдельное утверждение: «ноль ошибок» обязано быть
-                # отличимо от «ноль прочитанного».
+                # отличимо от «ноль прочитанного», и назвать объём надо ПО
+                # МОДУЛЯМ: одно суммарное число скрывает непрочитанную половину.
+                sed 's/^/   | модуль /' "$WORK/gosec-census.txt"
                 echo "   осмотрено результатов ${total}; из них level=error: ${errs}"
                 if [ "$errs" -eq 0 ]; then
                     echo "   ok"
                 else
-                    jq -r -s '.[].runs[].results[]|select(.level=="error")|"   | \(.ruleId) \(.locations[0].physicalLocation.artifactLocation.uri):\(.locations[0].physicalLocation.region.startLine)"' "$WORK/gosec.sarif" "$WORK/gosec-iam.sarif"
+                    jq -r '.runs[].results[]|select(.level=="error")|"   | \(.ruleId) \(.locations[0].physicalLocation.artifactLocation.uri):\(.locations[0].physicalLocation.region.startLine)"' "$WORK/gosec.sarif"
                     fails+=("gosec (level=error)")
                 fi
             fi

@@ -96,3 +96,15 @@ go.work.sum
 .terraform.lock.hcl
 *.tfstate
 *.tfstate.*
+
+# Выходы локального прогона gosec (scripts/gosec-scan-modules.sh).
+#
+# В конвейере они эфемерны, а на машине разработчика ложатся в корень дерева —
+# и отчёт сканера безопасности не место в репозитории: он несёт координаты
+# находок, то есть ровно ту сборку, которую запрещает публичность обоих репо.
+gosec.sarif
+gosec-census.txt
+gosec-scan-failed
+gosec-*-summary.txt
+gosec-*.sarif
+gosec-merge-err.txt
