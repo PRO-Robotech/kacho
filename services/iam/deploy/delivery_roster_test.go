@@ -72,6 +72,7 @@ var deliveryRoster = []string{
 	"foreign_object_defaults_test.go",
 	"image_coordinate_injection_test.go",
 	"image_coordinate_test.go",
+	"prod_profile_injection_test.go",
 	"prod_profile_test.go",
 	"provider_hops_test.go",
 	"release_namespace_test.go",
