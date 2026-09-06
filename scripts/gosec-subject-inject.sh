@@ -271,7 +271,7 @@ GOSTUB
 $block
         }
         probe
-        printf 'ОТКАЗОВ=%d\n' \"\${#fails[@]}\"
+        printf 'ОТКАЗОВ=%d [%s]\n' \"\${#fails[@]}\" \"\${fails[*]-}\"
     " 2>&1) || rc=$?
     if printf '%s' "$out" | grep -q "$expect"; then
         ok "$name: код $want → $expect"
