@@ -20,7 +20,12 @@
 # └───────────────────────────────────────────────────────────────────────────┘
 
 # KAC-127 — dev-стенд (kind) использует локально-загруженные образы `:dev`
-# (`kind load docker-image kacho-*:dev`), а не DockerHub. pullPolicy IfNotPresent —
+# (`kind load docker-image`), а не DockerHub.
+# ИМЯ ОБРАЗА НЕ ВЫВОДИТСЯ ИЗ ИМЕНИ СЛУЖБЫ: служба личности носит собственное имя
+# продукта (`kaname`), и прежняя форма `kacho-*` перестала описывать стенд. Имя
+# каждого образа объявляет `internal/productnaming` — единственный источник имён;
+# что профиль просит именно его, держит гейт
+# `TestProfileImageNameAgreesWithTheSourceOfNames`. pullPolicy IfNotPresent —
 # образ уже в node-кэше kind. Чтобы тянуть из DockerHub в dev — убрать эти
 # override'ы (вернётся registry/tag из values.yaml).
 
@@ -29,7 +34,7 @@
 # third-party sub-chart'ы (Ory kratos/hydra/keto, bitnami postgresql)
 # тоже уважают `global.imageRegistry` и подставляют его перед СВОИМ image →
 # получается несуществующий `docker.io/prorobotech/oryd/hydra`. На dev-стенде
-# kacho-* образы и так заданы явной строкой `image: kacho-*:dev` (flat-string,
+# образы стенда и так заданы явной строкой `image: <имя>:dev` (flat-string,
 # global.imageRegistry не используется этими sub-chart'ами), поэтому обнуление
 # global безопасно для kacho-сервисов и чинит pull third-party образов
 # (Ory → docker.io/oryd/*).
