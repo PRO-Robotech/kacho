@@ -86,14 +86,19 @@ func TestEveryImageArgumentComesFromTheDeclaredNames(t *testing.T) {
 	}
 	mk := string(b)
 
-	total := 0
-	for _, target := range []string{"build-services", "reload-svc"} {
+	// Целей ОСМОТРЕНО, а не «целей 2»: цель, которой в рецепте не нашлось, в
+	// перепись не попадает — иначе строка утверждала бы осмотр того, чего не
+	// читали (тот же класс, что и литеральная перепись держателя ниже по ветке).
+	targets := []string{"build-services", "reload-svc"}
+	total, inspected := 0, 0
+	for _, target := range targets {
 		body, ok := makeTargetBody(mk, target)
 		if !ok {
 			t.Errorf("цели %q в рецепте стенда нет — популяция изменилась, "+
 				"проверь, чем теперь собираются образы", target)
 			continue
 		}
+		inspected++
 		found, seen := imageArgumentFindings(target, body)
 		total += seen
 		if seen == 0 {
@@ -105,7 +110,8 @@ func TestEveryImageArgumentComesFromTheDeclaredNames(t *testing.T) {
 			t.Errorf("%s", f)
 		}
 	}
-	t.Logf("перепись: целей сборки 2, ссылок на образ осмотрено %d", total)
+	t.Logf("перепись: целей сборки названо %d, осмотрено %d, ссылок на образ осмотрено %d",
+		len(targets), inspected, total)
 }
 
 // makeTargetBody — тело цели: строки от заголовка до первой строки, начатой не

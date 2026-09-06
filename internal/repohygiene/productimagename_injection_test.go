@@ -107,6 +107,34 @@ func TestImageDerivationGateCanFail(t *testing.T) {
 			"гейт судит не свой предмет", found)
 	}
 
+	// КЛЮЧ `-t` БЕЗ КОМАНДЫ СБОРКИ — НЕ ССЫЛКА НА ОБРАЗ (замечание З7).
+	// У `kubectl exec -t` это имя ПОДА, у `docker exec -t` — имя КОНТЕЙНЕРА.
+	// Без стража обе формы объявлялись находкой «имя образа выведено
+	// приставкой», и основание шапки («имена развёртываний и кластеров тега не
+	// несут») переставало действовать молча.
+	for _, twin := range []struct{ line, why string }{
+		{"\tkubectl exec -t kacho-$1-0 -- psql\n", "имя пода"},
+		{"\tdocker exec -t kacho-$1 sh\n", "имя контейнера"},
+		{"\tkubectl rollout status -t kacho-$svc\n", "имя развёртывания"},
+	} {
+		found, words := scanImageDerivations("deploy/scripts/x.sh", twin.line)
+		if len(found) != 0 {
+			t.Errorf("законный близнец (%s) объявлен находкой %v — ключ -t принят за "+
+				"ссылку на образ без команды сборки", twin.why, found)
+		}
+		if words == 0 {
+			t.Errorf("законный близнец (%s): слов с приставкой сосчитано ноль — "+
+				"близнец не прочитан, и его молчание ничего не доказывает", twin.why)
+		}
+	}
+
+	// А ТА ЖЕ ФОРМА ПОСЛЕ КОМАНДЫ СБОРКИ — находка: страж не должен ослепить ключ.
+	if found, _ := scanImageDerivations("deploy/Makefile",
+		"\t  docker buildx build -f x/Dockerfile -t kacho-$$svc .\n"); len(found) != 1 {
+		t.Errorf("`docker buildx build -t kacho-$$svc`: находок %d, ожидалась одна — "+
+			"страж ослепил ключ вместо того, чтобы его сузить", len(found))
+	}
+
 	// Комментарий, ОБЪЯСНЯЮЩИЙ запрет, находкой не является: иначе гейт
 	// краснел бы на собственной шапке.
 	if found, _ := scanImageDerivations("deploy/Makefile",

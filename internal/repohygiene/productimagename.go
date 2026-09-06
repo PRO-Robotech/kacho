@@ -157,10 +157,8 @@ func scanImageDerivations(path, content string) ([]imageNameFinding, int) {
 		// ссылка на образ ПО МЕСТУ, даже когда тега на нём нет: `docker build -t
 		// kacho-$svc` соберёт `:latest`, а `kind load` его загрузит.
 		inImagePos := map[string]bool{}
-		for _, p := range imageArgPatterns {
-			for _, m := range p.Re.FindAllStringSubmatch(line, -1) {
-				inImagePos[m[1]] = true
-			}
+		for _, a := range imageArgsOn(line) {
+			inImagePos[a.Tok] = true
 		}
 		rest := line
 		for {
@@ -280,13 +278,54 @@ func productImageDerivations(root string) ([]imageNameFinding, imageNameScope, e
 
 // imageArgPatterns — позиции ссылки на образ. Перечень закрыт и назван: это те
 // три команды, которыми образ попадает в кластер стенда.
+//
+// # `-t` ТРЕБУЕТ СТРАЖА, И ВОТ ПОЧЕМУ
+//
+// Голый `-t\s+(\S+)` ключом к образу НЕ является: тот же ключ у `kubectl exec
+// -t <под>` и `docker exec -t <контейнер>` — там это ИМЯ ПОДА и ИМЯ
+// КОНТЕЙНЕРА. Замер по обеим формам давал находку «имя образа выведено
+// приставкой… её образ в кластер не попадает» на строках, к образам отношения
+// не имеющих. Живых вхождений в дереве нет, поэтому вреда пока не было — но
+// основание, на котором шапка выше исключает имена развёртываний и кластеров
+// («тега у него тоже нет»), при широком ключе переставало действовать, а шапка
+// об этом молчала.
+//
+// Гейт, у которого находки ложные, отключают первым — и вместе с ним перестают
+// читать настоящие. Поэтому `-t` признаётся ссылкой на образ ТОЛЬКО после
+// стража `docker build` / `docker buildx build` на той же строке.
 var imageArgPatterns = []struct {
 	Cmd string
-	Re  *regexp.Regexp
+	// Guard — команда, после которой ключ вообще что-то говорит об образе.
+	// nil означает, что ключ самодостаточен (имя команды уже в самом образце).
+	Guard *regexp.Regexp
+	Re    *regexp.Regexp
 }{
-	{"docker build -t", regexp.MustCompile(`-t\s+(\S+)`)},
-	{"kind load docker-image", regexp.MustCompile(`kind load docker-image\s+(\S+)`)},
-	{"docker image inspect", regexp.MustCompile(`docker image inspect\s+--format\s+'[^']*'\s+(\S+)`)},
+	{"docker build -t", regexp.MustCompile(`docker\s+(?:buildx\s+)?build\b`), regexp.MustCompile(`-t\s+(\S+)`)},
+	{"kind load docker-image", nil, regexp.MustCompile(`kind load docker-image\s+(\S+)`)},
+	{"docker image inspect", nil, regexp.MustCompile(`docker image inspect\s+--format\s+'[^']*'\s+(\S+)`)},
+}
+
+// imageArgsOn — токены в позиции ссылки на образ на одной строке.
+//
+// Со стражем поиск идёт по остатку строки ПОСЛЕ него: `-t` до `docker build`
+// (его там не бывает) ключом к образу не является, а после — является, включая
+// вторую и третью метку многотеговой сборки.
+func imageArgsOn(line string) []struct{ Cmd, Tok string } {
+	var out []struct{ Cmd, Tok string }
+	for _, p := range imageArgPatterns {
+		seg := line
+		if p.Guard != nil {
+			loc := p.Guard.FindStringIndex(line)
+			if loc == nil {
+				continue
+			}
+			seg = line[loc[1]:]
+		}
+		for _, m := range p.Re.FindAllStringSubmatch(seg, -1) {
+			out = append(out, struct{ Cmd, Tok string }{p.Cmd, m[1]})
+		}
+	}
+	return out
 }
 
 // readerBound — присваивание значения от читателя: `img=$(product_image_name …)`.
@@ -365,28 +404,25 @@ func imageArgumentFindings(target, body string) ([]imageNameFinding, int) {
 		for _, m := range readerBound.FindAllStringSubmatch(rl.Text, -1) {
 			bound[m[1]] = true
 		}
-		for _, p := range imageArgPatterns {
-			for _, m := range p.Re.FindAllStringSubmatch(rl.Text, -1) {
-				tok := m[1]
-				seen++
-				name := varNameOf(tok)
-				if name == "" {
-					out = append(out, imageNameFinding{
-						File: "deploy/Makefile (цель " + target + ")", Line: rl.Line, Text: tok,
-						Why: p.Cmd + ": ссылка на образ задана ЛИТЕРАЛОМ. Верность литерала — " +
-							"совпадение, а не свойство: он не меняется вслед за именем части. " +
-							"Имя обязано приходить от product_image_name",
-					})
-					continue
-				}
-				if !bound[name] {
-					out = append(out, imageNameFinding{
-						File: "deploy/Makefile (цель " + target + ")", Line: rl.Line, Text: tok,
-						Why: p.Cmd + ": переменная " + name + " в ЭТОЙ логической строке рецепта " +
-							"не получена у читателя имён (нет " + name + "=$(product_image_name …)). " +
-							"Каждая строка рецепта — своя оболочка: привязка из соседней здесь не действует",
-					})
-				}
+		for _, a := range imageArgsOn(rl.Text) {
+			seen++
+			name := varNameOf(a.Tok)
+			if name == "" {
+				out = append(out, imageNameFinding{
+					File: "deploy/Makefile (цель " + target + ")", Line: rl.Line, Text: a.Tok,
+					Why: a.Cmd + ": ссылка на образ задана ЛИТЕРАЛОМ. Верность литерала — " +
+						"совпадение, а не свойство: он не меняется вслед за именем части. " +
+						"Имя обязано приходить от product_image_name",
+				})
+				continue
+			}
+			if !bound[name] {
+				out = append(out, imageNameFinding{
+					File: "deploy/Makefile (цель " + target + ")", Line: rl.Line, Text: a.Tok,
+					Why: a.Cmd + ": переменная " + name + " в ЭТОЙ логической строке рецепта " +
+						"не получена у читателя имён (нет " + name + "=$(product_image_name …)). " +
+						"Каждая строка рецепта — своя оболочка: привязка из соседней здесь не действует",
+				})
 			}
 		}
 	}
