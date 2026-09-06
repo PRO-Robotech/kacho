@@ -72,7 +72,12 @@ func buildQuotaAuthorityEdge(
 			mtlsCfg.QuotaAuthorityMTLS.Enable, mtlsCfg.QuotaAuthorityClientCreds, false,
 			clients.BuildOptions{
 				Endpoint: authority.Endpoint(),
-				TLS:      mtlsCfg.QuotaAuthorityMTLS.Enable,
+				// Односторонний TLS у этого ребра не объявляется: удостоверение
+				// здесь — только клиентский сертификат (довод — godoc
+				// Config.QuotaAuthority). Поле читается набирателем лишь на
+				// выключенном client-cert, то есть на посадке, где открытым
+				// текстом ходят и все прочие рёбра.
+				TLS: false,
 			})
 		if derr != nil {
 			return quotaAuthorityEdge{}, noop, fmt.Errorf("dial quota authority: %w", derr)
