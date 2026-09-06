@@ -19,6 +19,7 @@ import (
 	"context"
 	"crypto/tls"
 	"crypto/x509"
+	"github.com/PRO-Robotech/kacho/pkg/grpcsrv"
 	"net/url"
 	"testing"
 	"time"
