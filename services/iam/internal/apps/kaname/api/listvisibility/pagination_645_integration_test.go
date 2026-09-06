@@ -19,8 +19,8 @@ import (
 	"google.golang.org/grpc/codes"
 	"google.golang.org/grpc/status"
 
-	projectapp "github.com/PRO-Robotech/kacho-iam/internal/apps/kaname/api/project"
-	repoproject "github.com/PRO-Robotech/kacho-iam/internal/repo/kaname/project"
+	projectapp "github.com/PRO-Robotech/kaname/internal/apps/kaname/api/project"
+	repoproject "github.com/PRO-Robotech/kaname/internal/repo/kaname/project"
 )
 
 // seedInterleaved lays down `visible` objects the caller may read, with

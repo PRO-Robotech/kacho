@@ -44,7 +44,7 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/PRO-Robotech/kacho-iam/internal/apps/kaname/config"
+	"github.com/PRO-Robotech/kaname/internal/apps/kaname/config"
 )
 
 // TestValidate_RefusesDSNWithoutAHost — отрицание: адрес не задан, отказ обязан

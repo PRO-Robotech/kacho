@@ -23,8 +23,8 @@ import (
 	"context"
 	"fmt"
 
-	"github.com/PRO-Robotech/kacho-iam/internal/domain"
-	kanamerepo "github.com/PRO-Robotech/kacho-iam/internal/repo/kaname"
+	"github.com/PRO-Robotech/kaname/internal/domain"
+	kanamerepo "github.com/PRO-Robotech/kaname/internal/repo/kaname"
 )
 
 // membershipReconciler — the per-binding membership reconcile entry point (the γ

@@ -28,7 +28,7 @@ package manifest_test
 import (
 	"testing"
 
-	"github.com/PRO-Robotech/kacho-iam/internal/manifest"
+	"github.com/PRO-Robotech/kaname/internal/manifest"
 )
 
 // TestRolesDeclaredDistinguishesTheThreeStatesOfTheSection — три состояния и

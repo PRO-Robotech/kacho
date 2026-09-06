@@ -33,7 +33,7 @@ import (
 
 	"github.com/stretchr/testify/require"
 
-	"github.com/PRO-Robotech/kacho-iam/internal/domain"
+	"github.com/PRO-Robotech/kaname/internal/domain"
 )
 
 // errArityProbe обрывает чтение сразу после захвата длины: тело сканера за

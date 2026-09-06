@@ -11,9 +11,9 @@ import (
 
 	"github.com/PRO-Robotech/kacho/pkg/operations"
 
-	"github.com/PRO-Robotech/kacho-iam/internal/apps/kaname/operationresolver"
-	"github.com/PRO-Robotech/kacho-iam/internal/catalog"
-	kanamerepo "github.com/PRO-Robotech/kacho-iam/internal/repo/kaname"
+	"github.com/PRO-Robotech/kaname/internal/apps/kaname/operationresolver"
+	"github.com/PRO-Robotech/kaname/internal/catalog"
+	kanamerepo "github.com/PRO-Robotech/kaname/internal/repo/kaname"
 )
 
 // startLROReconciler wires the orphan-reconciler backstop. Without it an operation

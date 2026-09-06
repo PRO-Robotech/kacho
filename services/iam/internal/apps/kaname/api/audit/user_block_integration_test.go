@@ -38,11 +38,11 @@ import (
 
 	"github.com/PRO-Robotech/kacho/pkg/ids"
 
-	internaliam "github.com/PRO-Robotech/kacho-iam/internal/apps/kaname/api/internal_iam"
-	userapp "github.com/PRO-Robotech/kacho-iam/internal/apps/kaname/api/user"
-	"github.com/PRO-Robotech/kacho-iam/internal/apps/kaname/shared"
-	"github.com/PRO-Robotech/kacho-iam/internal/domain"
-	kanamepg "github.com/PRO-Robotech/kacho-iam/internal/repo/kaname/pg"
+	internaliam "github.com/PRO-Robotech/kaname/internal/apps/kaname/api/internal_iam"
+	userapp "github.com/PRO-Robotech/kaname/internal/apps/kaname/api/user"
+	"github.com/PRO-Robotech/kaname/internal/apps/kaname/shared"
+	"github.com/PRO-Robotech/kaname/internal/domain"
+	kanamepg "github.com/PRO-Robotech/kaname/internal/repo/kaname/pg"
 
 	iamv1 "github.com/PRO-Robotech/kacho/pkg/api/kacho/cloud/iam/v1"
 )

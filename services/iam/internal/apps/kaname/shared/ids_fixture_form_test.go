@@ -85,7 +85,7 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/PRO-Robotech/kacho-iam/internal/apps/kaname/shared"
+	"github.com/PRO-Robotech/kaname/internal/apps/kaname/shared"
 )
 
 // deliberateBadFormMark — пометка намеренно негодного литерала. Текст

@@ -25,7 +25,7 @@ import (
 
 	"github.com/jackc/pgx/v5/pgconn"
 
-	iamerr "github.com/PRO-Robotech/kacho-iam/internal/errors"
+	iamerr "github.com/PRO-Robotech/kaname/internal/errors"
 )
 
 // nameFormTables — таблицы, которым миграция 715001 поставила форму имени.

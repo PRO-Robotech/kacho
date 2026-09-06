@@ -35,7 +35,7 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/PRO-Robotech/kacho-iam/internal/repo/kaname/pg/planrows"
+	"github.com/PRO-Robotech/kaname/internal/repo/kaname/pg/planrows"
 )
 
 // verdictRelations — отношения, которые читает запрос вердикта.

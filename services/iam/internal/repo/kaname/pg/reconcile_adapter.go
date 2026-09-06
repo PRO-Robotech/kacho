@@ -29,15 +29,15 @@ import (
 	"github.com/jackc/pgx/v5"
 	"github.com/jackc/pgx/v5/pgxpool"
 
-	"github.com/PRO-Robotech/kacho-iam/internal/apps/kaname/api/access_binding/reconcile"
-	"github.com/PRO-Robotech/kacho-iam/internal/catalog"
-	"github.com/PRO-Robotech/kacho-iam/internal/clients"
-	"github.com/PRO-Robotech/kacho-iam/internal/domain"
-	iamerr "github.com/PRO-Robotech/kacho-iam/internal/errors"
-	"github.com/PRO-Robotech/kacho-iam/internal/repo/kaname/pg/fga_outbox"
-	"github.com/PRO-Robotech/kacho-iam/internal/repo/kaname/pg/reconcile_outbox"
-	"github.com/PRO-Robotech/kacho-iam/internal/repo/kaname/pg/resource_mirror"
-	"github.com/PRO-Robotech/kacho-iam/internal/repo/kaname/pg/target_members"
+	"github.com/PRO-Robotech/kaname/internal/apps/kaname/api/access_binding/reconcile"
+	"github.com/PRO-Robotech/kaname/internal/catalog"
+	"github.com/PRO-Robotech/kaname/internal/clients"
+	"github.com/PRO-Robotech/kaname/internal/domain"
+	iamerr "github.com/PRO-Robotech/kaname/internal/errors"
+	"github.com/PRO-Robotech/kaname/internal/repo/kaname/pg/fga_outbox"
+	"github.com/PRO-Robotech/kaname/internal/repo/kaname/pg/reconcile_outbox"
+	"github.com/PRO-Robotech/kaname/internal/repo/kaname/pg/resource_mirror"
+	"github.com/PRO-Robotech/kaname/internal/repo/kaname/pg/target_members"
 )
 
 // ReconcileAdapter — composition-root adapter for the reconciler. Holds the

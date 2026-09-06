@@ -68,7 +68,7 @@ import (
 
 	"github.com/jackc/pgx/v5"
 
-	"github.com/PRO-Robotech/kacho-iam/internal/repo/kaname/visibility"
+	"github.com/PRO-Robotech/kaname/internal/repo/kaname/visibility"
 )
 
 // visibilityReader — visibility.ReaderIface over pgx.Tx, so the memo shares the

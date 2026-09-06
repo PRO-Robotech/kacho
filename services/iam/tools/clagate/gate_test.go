@@ -25,7 +25,7 @@ import (
 
 	"github.com/PRO-Robotech/kacho/pkg/gitenv"
 
-	"github.com/PRO-Robotech/kacho-iam/tools/clagate"
+	"github.com/PRO-Robotech/kaname/tools/clagate"
 )
 
 // repoRoot — корень дерева продукта (пакет лежит в services/iam/tools/clagate).

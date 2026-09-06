@@ -16,8 +16,8 @@ import (
 	"fmt"
 	"time"
 
-	"github.com/PRO-Robotech/kacho-iam/internal/domain"
-	iamerr "github.com/PRO-Robotech/kacho-iam/internal/errors"
+	"github.com/PRO-Robotech/kaname/internal/domain"
+	iamerr "github.com/PRO-Robotech/kaname/internal/errors"
 )
 
 // ErrCredentialExpired — the OAuth2 client behind this token request maps to a

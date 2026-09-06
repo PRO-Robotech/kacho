@@ -28,7 +28,7 @@ import (
 
 	"github.com/PRO-Robotech/kacho/pkg/operations"
 
-	"github.com/PRO-Robotech/kacho-iam/internal/apps/kaname/shared"
+	"github.com/PRO-Robotech/kaname/internal/apps/kaname/shared"
 )
 
 // recordingOpsRepo implements operations.Repo, capturing the ListFilter it was

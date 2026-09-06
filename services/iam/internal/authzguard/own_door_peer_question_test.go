@@ -41,7 +41,7 @@ import (
 	iamv1 "github.com/PRO-Robotech/kacho/pkg/api/kacho/cloud/iam/v1"
 	"github.com/PRO-Robotech/kacho/pkg/authz/catalogderive"
 
-	"github.com/PRO-Robotech/kacho-iam/internal/authzguard"
+	"github.com/PRO-Robotech/kaname/internal/authzguard"
 )
 
 // ВОПРОС О ПРАВАХ ДОХОДИТ ДО ОБРАБОТЧИКА без личности арендатора.

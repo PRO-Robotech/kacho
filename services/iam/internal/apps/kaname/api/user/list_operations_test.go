@@ -24,8 +24,8 @@ import (
 	iamv1 "github.com/PRO-Robotech/kacho/pkg/api/kacho/cloud/iam/v1"
 	"github.com/PRO-Robotech/kacho/pkg/operations"
 
-	userapp "github.com/PRO-Robotech/kacho-iam/internal/apps/kaname/api/user"
-	"github.com/PRO-Robotech/kacho-iam/internal/apps/kaname/shared"
+	userapp "github.com/PRO-Robotech/kaname/internal/apps/kaname/api/user"
+	"github.com/PRO-Robotech/kaname/internal/apps/kaname/shared"
 )
 
 // fakeOpsList — minimal operations.Repo stub that echoes a canned page.

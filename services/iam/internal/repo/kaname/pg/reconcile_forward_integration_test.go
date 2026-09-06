@@ -47,7 +47,7 @@ import (
 
 	coredb "github.com/PRO-Robotech/kacho/pkg/db"
 
-	"github.com/PRO-Robotech/kacho-iam/internal/domain"
+	"github.com/PRO-Robotech/kaname/internal/domain"
 )
 
 // forwardAnchorRule — a project-scoped ARM_ANCHOR rule over compute.instance (get,

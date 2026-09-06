@@ -32,7 +32,7 @@ import (
 
 	"github.com/stretchr/testify/require"
 
-	"github.com/PRO-Robotech/kacho-iam/internal/check"
+	"github.com/PRO-Robotech/kaname/internal/check"
 )
 
 // srcCreateUpsert — создание со-коммитит событие вида upsert на свой тип.

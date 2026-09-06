@@ -1,4 +1,4 @@
-module github.com/PRO-Robotech/kacho-iam
+module github.com/PRO-Robotech/kaname
 
 go 1.26.0
 

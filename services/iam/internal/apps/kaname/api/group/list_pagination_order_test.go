@@ -12,7 +12,7 @@ import (
 	"google.golang.org/grpc/codes"
 	"google.golang.org/grpc/status"
 
-	repogroup "github.com/PRO-Robotech/kacho-iam/internal/repo/kaname/group"
+	repogroup "github.com/PRO-Robotech/kaname/internal/repo/kaname/group"
 )
 
 // Формат пагинации проверяется ДО замыкания по личности вызывающего.

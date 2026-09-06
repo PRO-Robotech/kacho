@@ -10,10 +10,10 @@ import (
 
 	iamv1 "github.com/PRO-Robotech/kacho/pkg/api/kacho/cloud/iam/v1"
 
-	"github.com/PRO-Robotech/kacho-iam/internal/domain"
-	"github.com/PRO-Robotech/kacho-iam/internal/dto"
+	"github.com/PRO-Robotech/kaname/internal/domain"
+	"github.com/PRO-Robotech/kaname/internal/dto"
 
-	_ "github.com/PRO-Robotech/kacho-iam/internal/dto/toproto"
+	_ "github.com/PRO-Robotech/kaname/internal/dto/toproto"
 )
 
 func marshalSA(sa domain.ServiceAccount) (*anypb.Any, error) {

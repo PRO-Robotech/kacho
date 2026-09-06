@@ -17,7 +17,7 @@ import (
 
 	"github.com/stretchr/testify/require"
 
-	"github.com/PRO-Robotech/kacho-iam/internal/moduleseedparity"
+	"github.com/PRO-Robotech/kaname/internal/moduleseedparity"
 )
 
 func injSA(desc string) moduleseedparity.ServiceAccount {

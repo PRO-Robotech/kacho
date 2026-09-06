@@ -39,8 +39,8 @@ import (
 	"strings"
 	"time"
 
-	"github.com/PRO-Robotech/kacho-iam/internal/iamctl"
-	"github.com/PRO-Robotech/kacho-iam/internal/manifestcheckrun"
+	"github.com/PRO-Robotech/kaname/internal/iamctl"
+	"github.com/PRO-Robotech/kaname/internal/manifestcheckrun"
 )
 
 func main() {

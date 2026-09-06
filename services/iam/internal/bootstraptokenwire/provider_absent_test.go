@@ -45,7 +45,7 @@ import (
 )
 
 // providerClientPkg — пакет клиентов внешнего поставщика удостоверений.
-const providerClientPkg = "github.com/PRO-Robotech/kacho-iam/internal/clients"
+const providerClientPkg = "github.com/PRO-Robotech/kaname/internal/clients"
 
 // bootstrapMintPackages — каталоги, составляющие путь чеканки бутстрапа:
 // use-case и его композиция. Пути относительны каталогу ЭТОГО пакета, поэтому

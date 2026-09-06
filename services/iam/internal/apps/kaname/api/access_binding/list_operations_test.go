@@ -24,8 +24,8 @@ import (
 	iamv1 "github.com/PRO-Robotech/kacho/pkg/api/kacho/cloud/iam/v1"
 	"github.com/PRO-Robotech/kacho/pkg/operations"
 
-	abapp "github.com/PRO-Robotech/kacho-iam/internal/apps/kaname/api/access_binding"
-	"github.com/PRO-Robotech/kacho-iam/internal/apps/kaname/shared"
+	abapp "github.com/PRO-Robotech/kaname/internal/apps/kaname/api/access_binding"
+	"github.com/PRO-Robotech/kaname/internal/apps/kaname/shared"
 )
 
 type fakeOpsList struct {

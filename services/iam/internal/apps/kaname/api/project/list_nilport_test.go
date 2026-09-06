@@ -16,7 +16,7 @@ import (
 	"google.golang.org/grpc/codes"
 	"google.golang.org/grpc/status"
 
-	repoproject "github.com/PRO-Robotech/kacho-iam/internal/repo/kaname/project"
+	repoproject "github.com/PRO-Robotech/kaname/internal/repo/kaname/project"
 )
 
 // nil relation-порт (use-case без WithRelationStore) → Unavailable (fail-closed):

@@ -10,8 +10,8 @@ import (
 	"google.golang.org/grpc/codes"
 	"google.golang.org/grpc/status"
 
-	"github.com/PRO-Robotech/kacho-iam/internal/apps/kaname/shared"
-	iamerr "github.com/PRO-Robotech/kacho-iam/internal/errors"
+	"github.com/PRO-Robotech/kaname/internal/apps/kaname/shared"
+	iamerr "github.com/PRO-Robotech/kaname/internal/errors"
 )
 
 // TestMapRepoErr_Internal_NoLeak — hardening-invariant #1: a wrapped ErrInternal

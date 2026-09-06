@@ -15,9 +15,9 @@ package pg
 import (
 	"context"
 
-	"github.com/PRO-Robotech/kacho-iam/internal/clients"
-	"github.com/PRO-Robotech/kacho-iam/internal/repo/kaname/pg/fga_outbox"
-	"github.com/PRO-Robotech/kacho-iam/internal/service"
+	"github.com/PRO-Robotech/kaname/internal/clients"
+	"github.com/PRO-Robotech/kaname/internal/repo/kaname/pg/fga_outbox"
+	"github.com/PRO-Robotech/kaname/internal/service"
 )
 
 // FGAOutboxEmitter — adapter implementing service.RelationOutboxEmitter on top of

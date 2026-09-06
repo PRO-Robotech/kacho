@@ -73,10 +73,10 @@ import (
 	"github.com/jackc/pgx/v5"
 	"github.com/jackc/pgx/v5/pgxpool"
 
-	"github.com/PRO-Robotech/kacho-iam/internal/authzmap"
-	"github.com/PRO-Robotech/kacho-iam/internal/repo/kaname/pg/relverdict"
-	bench "github.com/PRO-Robotech/kacho-iam/tools/authzformbench"
 	"github.com/PRO-Robotech/kacho/pkg/pgtest"
+	"github.com/PRO-Robotech/kaname/internal/authzmap"
+	"github.com/PRO-Robotech/kaname/internal/repo/kaname/pg/relverdict"
+	bench "github.com/PRO-Robotech/kaname/tools/authzformbench"
 )
 
 // f5Gate — прогон поднимает контейнеры и пишет сотни тысяч строк; `go test ./...`

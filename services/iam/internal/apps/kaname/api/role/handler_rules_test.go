@@ -9,7 +9,7 @@ package role
 // paths return BEFORE reaching the use-case, so a nil use-case is safe.
 
 import (
-	"github.com/PRO-Robotech/kacho-iam/internal/testsupport/catalogfixture"
+	"github.com/PRO-Robotech/kaname/internal/testsupport/catalogfixture"
 
 	"context"
 	"testing"

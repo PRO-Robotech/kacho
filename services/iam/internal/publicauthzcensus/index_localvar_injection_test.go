@@ -27,7 +27,7 @@ import (
 	"path/filepath"
 	"testing"
 
-	"github.com/PRO-Robotech/kacho-iam/internal/publicauthzcensus"
+	"github.com/PRO-Robotech/kaname/internal/publicauthzcensus"
 )
 
 // servingPkgTree кладёт синтетический контракт, точку регистрации и
@@ -56,7 +56,7 @@ func servingPkgTree(t *testing.T, body string) (protoDir, cmdDir, root string) {
 		t.Fatalf("записать контракт: %v", err)
 	}
 	reg := "package main\n\n" +
-		"import (\n\tsynthapp \"github.com/PRO-Robotech/kacho-iam/internal/apps/kaname/api/project\"\n)\n\n" +
+		"import (\n\tsynthapp \"github.com/PRO-Robotech/kaname/internal/apps/kaname/api/project\"\n)\n\n" +
 		"type services struct {\n\tsynthHandler *synthapp.Handler\n}\n\n" +
 		"func registerPublicServices(srv grpc.ServiceRegistrar, svcs *services) {\n" +
 		"\tiamv1.RegisterProjectServiceServer(srv, svcs.synthHandler)\n}\n"

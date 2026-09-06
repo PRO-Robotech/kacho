@@ -35,7 +35,7 @@ import (
 
 	"github.com/jackc/pgx/v5/pgxpool"
 
-	"github.com/PRO-Robotech/kacho-iam/internal/repo/kaname/pg/reconcile_outbox"
+	"github.com/PRO-Robotech/kaname/internal/repo/kaname/pg/reconcile_outbox"
 )
 
 // ReconcileOutboxSweeper — уборщик дренированных строк очереди сверки.

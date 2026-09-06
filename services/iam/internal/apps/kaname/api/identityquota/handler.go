@@ -20,9 +20,9 @@ import (
 	"github.com/PRO-Robotech/kacho/pkg/quota/quotapb"
 	"github.com/PRO-Robotech/kacho/pkg/quota/quotaread"
 
-	"github.com/PRO-Robotech/kacho-iam/internal/apps/kaname/shared"
-	"github.com/PRO-Robotech/kacho-iam/internal/authzguard"
-	"github.com/PRO-Robotech/kacho-iam/internal/domain"
+	"github.com/PRO-Robotech/kaname/internal/apps/kaname/shared"
+	"github.com/PRO-Robotech/kaname/internal/authzguard"
+	"github.com/PRO-Robotech/kaname/internal/domain"
 )
 
 // Reader — то, что нужно чтению от хранилища.

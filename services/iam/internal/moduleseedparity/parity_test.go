@@ -57,10 +57,10 @@ import (
 	"github.com/PRO-Robotech/kacho/pkg/pgtest"
 	"github.com/PRO-Robotech/kacho/pkg/platformmodules"
 
-	"github.com/PRO-Robotech/kacho-iam/internal/authzmap"
-	"github.com/PRO-Robotech/kacho-iam/internal/domain"
-	"github.com/PRO-Robotech/kacho-iam/internal/manifest"
-	"github.com/PRO-Robotech/kacho-iam/internal/moduleseedparity"
+	"github.com/PRO-Robotech/kaname/internal/authzmap"
+	"github.com/PRO-Robotech/kaname/internal/domain"
+	"github.com/PRO-Robotech/kaname/internal/manifest"
+	"github.com/PRO-Robotech/kaname/internal/moduleseedparity"
 )
 
 // Пороги чтения: ниже них молчание гейта сказано ни о чём. Числа взяты у живой
@@ -496,7 +496,7 @@ func manifestFiles(t *testing.T, root string) []string {
 // repoRoot — корень монорепо: САМЫЙ ВНЕШНИЙ каталог с go.mod.
 //
 // Не «ближайший вверх»: у службы теперь СВОЙ модуль (`services/iam`,
-// github.com/PRO-Robotech/kacho-iam), и подъём до первого встречного
+// github.com/PRO-Robotech/kaname), и подъём до первого встречного
 // останавливался бы в её каталоге. Ниже к этому корню приклеивается `services`,
 // то есть путь В ДЕРЕВЕ МОНОРЕПО от корня, — остановка внутри службы удваивала
 // сегмент, и обход искал `services/iam/services`, которого не существует. Отказ

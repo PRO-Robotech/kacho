@@ -33,7 +33,7 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/PRO-Robotech/kacho-iam/internal/keywrap"
+	"github.com/PRO-Robotech/kaname/internal/keywrap"
 )
 
 // chartREADME — координата раздела о выдаче этого секрета.

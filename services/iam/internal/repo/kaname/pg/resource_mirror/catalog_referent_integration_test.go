@@ -32,9 +32,9 @@ import (
 
 	coredb "github.com/PRO-Robotech/kacho/pkg/db"
 
-	iamerr "github.com/PRO-Robotech/kacho-iam/internal/errors"
-	"github.com/PRO-Robotech/kacho-iam/internal/repo/kaname/pg/resource_mirror"
-	"github.com/PRO-Robotech/kacho-iam/internal/testsupport/iampgtest"
+	iamerr "github.com/PRO-Robotech/kaname/internal/errors"
+	"github.com/PRO-Robotech/kaname/internal/repo/kaname/pg/resource_mirror"
+	"github.com/PRO-Robotech/kaname/internal/testsupport/iampgtest"
 )
 
 // TestResourceMirror_UpsertTx_TypeOutsideCatalogIsRefused — ОБЕ стороны на одной

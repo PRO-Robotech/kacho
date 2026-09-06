@@ -20,7 +20,7 @@ import (
 
 	"github.com/PRO-Robotech/kacho/pkg/operations"
 
-	"github.com/PRO-Robotech/kacho-iam/internal/domain"
+	"github.com/PRO-Robotech/kaname/internal/domain"
 )
 
 // seedAccountBinding seeds an ACTIVE account-scoped binding on the fake repo so the

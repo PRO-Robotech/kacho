@@ -60,8 +60,8 @@ import (
 	"github.com/jackc/pgx/v5"
 	"github.com/jackc/pgx/v5/pgxpool"
 
-	moduleapp "github.com/PRO-Robotech/kacho-iam/internal/apps/kaname/api/module"
-	"github.com/PRO-Robotech/kacho-iam/internal/catalog"
+	moduleapp "github.com/PRO-Robotech/kaname/internal/apps/kaname/api/module"
+	"github.com/PRO-Robotech/kaname/internal/catalog"
 )
 
 // planConsequencesSQL — ОЦЕНКА последствий снятия, три популяции одним

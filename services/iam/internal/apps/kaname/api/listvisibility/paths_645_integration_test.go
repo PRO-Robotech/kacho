@@ -22,11 +22,11 @@ import (
 	"google.golang.org/grpc/codes"
 	"google.golang.org/grpc/status"
 
-	projectapp "github.com/PRO-Robotech/kacho-iam/internal/apps/kaname/api/project"
-	userapp "github.com/PRO-Robotech/kacho-iam/internal/apps/kaname/api/user"
-	"github.com/PRO-Robotech/kacho-iam/internal/domain"
-	repoproject "github.com/PRO-Robotech/kacho-iam/internal/repo/kaname/project"
-	repouser "github.com/PRO-Robotech/kacho-iam/internal/repo/kaname/user"
+	projectapp "github.com/PRO-Robotech/kaname/internal/apps/kaname/api/project"
+	userapp "github.com/PRO-Robotech/kaname/internal/apps/kaname/api/user"
+	"github.com/PRO-Robotech/kaname/internal/domain"
+	repoproject "github.com/PRO-Robotech/kaname/internal/repo/kaname/project"
+	repouser "github.com/PRO-Robotech/kaname/internal/repo/kaname/user"
 )
 
 // TestList645_05_AccountOwnerSeesEveryProjectOfHisAccount — path П3.

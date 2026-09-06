@@ -44,9 +44,9 @@ import (
 
 	coredb "github.com/PRO-Robotech/kacho/pkg/db"
 
-	"github.com/PRO-Robotech/kacho-iam/internal/repo/kaname/pg/resource_mirror"
-	"github.com/PRO-Robotech/kacho-iam/internal/testsupport/iampgtest"
 	"github.com/PRO-Robotech/kacho/pkg/pgtest"
+	"github.com/PRO-Robotech/kaname/internal/repo/kaname/pg/resource_mirror"
+	"github.com/PRO-Robotech/kaname/internal/testsupport/iampgtest"
 )
 
 // TestParentEdges_RuntimeAppliedTypeIsWrittenInTheModelDictionary — тип,

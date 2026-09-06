@@ -30,7 +30,7 @@ import (
 
 	"github.com/PRO-Robotech/kacho/pkg/pgtest"
 
-	"github.com/PRO-Robotech/kacho-iam/internal/migrations"
+	"github.com/PRO-Robotech/kaname/internal/migrations"
 )
 
 // setupKac127TestDB отдаёт вызывающему СОБСТВЕННУЮ базу с полностью прогнанными

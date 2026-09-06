@@ -15,8 +15,8 @@ package role
 // же каталог, что и служба на исправном стенде.
 
 import (
-	"github.com/PRO-Robotech/kacho-iam/internal/domain"
-	"github.com/PRO-Robotech/kacho-iam/internal/testsupport/catalogfixture"
+	"github.com/PRO-Robotech/kaname/internal/domain"
+	"github.com/PRO-Robotech/kaname/internal/testsupport/catalogfixture"
 )
 
 // withPreviewLookup вешает на роль набор глаголов типа по посеянному каталогу.

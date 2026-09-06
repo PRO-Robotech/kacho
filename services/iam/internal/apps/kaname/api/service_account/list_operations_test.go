@@ -20,8 +20,8 @@ import (
 	iamv1 "github.com/PRO-Robotech/kacho/pkg/api/kacho/cloud/iam/v1"
 	"github.com/PRO-Robotech/kacho/pkg/operations"
 
-	serviceaccount "github.com/PRO-Robotech/kacho-iam/internal/apps/kaname/api/service_account"
-	"github.com/PRO-Robotech/kacho-iam/internal/apps/kaname/shared"
+	serviceaccount "github.com/PRO-Robotech/kaname/internal/apps/kaname/api/service_account"
+	"github.com/PRO-Robotech/kaname/internal/apps/kaname/shared"
 )
 
 type fakeOpsList struct {

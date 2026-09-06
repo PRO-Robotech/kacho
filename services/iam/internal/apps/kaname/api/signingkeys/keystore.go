@@ -36,10 +36,10 @@ import (
 	"sync/atomic"
 	"time"
 
-	"github.com/PRO-Robotech/kacho-iam/internal/domain"
-	iamerr "github.com/PRO-Robotech/kacho-iam/internal/errors"
-	"github.com/PRO-Robotech/kacho-iam/internal/signingkeygen"
-	"github.com/PRO-Robotech/kacho-iam/internal/tokensigner"
+	"github.com/PRO-Robotech/kaname/internal/domain"
+	iamerr "github.com/PRO-Robotech/kaname/internal/errors"
+	"github.com/PRO-Robotech/kaname/internal/signingkeygen"
+	"github.com/PRO-Robotech/kaname/internal/tokensigner"
 )
 
 // ErrWrappingKeyMismatch — предъявленный ключ обёртки не разворачивает то, что

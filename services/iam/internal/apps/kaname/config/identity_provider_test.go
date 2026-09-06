@@ -14,7 +14,7 @@ import (
 	"testing"
 	"time"
 
-	"github.com/PRO-Robotech/kacho-iam/internal/apps/kaname/config"
+	"github.com/PRO-Robotech/kaname/internal/apps/kaname/config"
 )
 
 // laneCfg — боевая настройка, удовлетворяющая всем прочим требованиям старта

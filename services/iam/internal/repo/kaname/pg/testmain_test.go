@@ -11,7 +11,7 @@ import (
 
 	"github.com/PRO-Robotech/kacho/pkg/pgtest"
 
-	"github.com/PRO-Robotech/kacho-iam/internal/migrations"
+	"github.com/PRO-Robotech/kaname/internal/migrations"
 )
 
 // TestMain owns the one Postgres this package runs against, and enforces that the

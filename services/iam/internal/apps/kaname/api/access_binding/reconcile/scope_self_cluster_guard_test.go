@@ -19,7 +19,7 @@ package reconcile
 import (
 	"testing"
 
-	"github.com/PRO-Robotech/kacho-iam/internal/testsupport/catalogfixture"
+	"github.com/PRO-Robotech/kaname/internal/testsupport/catalogfixture"
 )
 
 func TestScopeSelfMember_Cluster_EmitsNothing(t *testing.T) {

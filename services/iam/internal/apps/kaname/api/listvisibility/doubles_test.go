@@ -27,7 +27,7 @@ import (
 	"strings"
 	"sync"
 
-	"github.com/PRO-Robotech/kacho-iam/internal/clients"
+	"github.com/PRO-Robotech/kaname/internal/clients"
 )
 
 // ── counting ─────────────────────────────────────────────────────────────────

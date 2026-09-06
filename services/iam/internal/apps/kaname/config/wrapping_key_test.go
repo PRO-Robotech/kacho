@@ -13,7 +13,7 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/PRO-Robotech/kacho-iam/internal/keywrap"
+	"github.com/PRO-Robotech/kaname/internal/keywrap"
 )
 
 func TestF1_09_WrappingKeyGuardRefusesAndAdmits(t *testing.T) {

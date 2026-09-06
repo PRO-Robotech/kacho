@@ -28,9 +28,9 @@ import (
 	"google.golang.org/grpc/codes"
 	"google.golang.org/grpc/status"
 
-	"github.com/PRO-Robotech/kacho-iam/internal/authzfilter"
-	"github.com/PRO-Robotech/kacho-iam/internal/clients"
-	repoaccount "github.com/PRO-Robotech/kacho-iam/internal/repo/kaname/account"
+	"github.com/PRO-Robotech/kaname/internal/authzfilter"
+	"github.com/PRO-Robotech/kaname/internal/clients"
+	repoaccount "github.com/PRO-Robotech/kaname/internal/repo/kaname/account"
 )
 
 // ───────────── relation-aware stub (viewer vs v_list vs v_get distinguished) ──

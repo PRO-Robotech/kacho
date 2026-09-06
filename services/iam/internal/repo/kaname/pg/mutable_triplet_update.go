@@ -37,7 +37,7 @@
 package pg
 
 import (
-	iamerr "github.com/PRO-Robotech/kacho-iam/internal/errors"
+	iamerr "github.com/PRO-Robotech/kaname/internal/errors"
 )
 
 // mutableTripletFields — изменяемые поля ресурса этой формы. Перечень объявлен

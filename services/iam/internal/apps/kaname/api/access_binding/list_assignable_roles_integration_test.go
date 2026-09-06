@@ -21,10 +21,10 @@ import (
 	"github.com/PRO-Robotech/kacho/pkg/operations"
 	"github.com/jackc/pgx/v5/pgxpool"
 
-	accessbindingapp "github.com/PRO-Robotech/kacho-iam/internal/apps/kaname/api/access_binding"
-	"github.com/PRO-Robotech/kacho-iam/internal/domain"
-	kanamepg "github.com/PRO-Robotech/kacho-iam/internal/repo/kaname/pg"
-	reporole "github.com/PRO-Robotech/kacho-iam/internal/repo/kaname/role"
+	accessbindingapp "github.com/PRO-Robotech/kaname/internal/apps/kaname/api/access_binding"
+	"github.com/PRO-Robotech/kaname/internal/domain"
+	kanamepg "github.com/PRO-Robotech/kaname/internal/repo/kaname/pg"
+	reporole "github.com/PRO-Robotech/kaname/internal/repo/kaname/role"
 )
 
 func asUser(ctx context.Context, uid domain.UserID) context.Context {

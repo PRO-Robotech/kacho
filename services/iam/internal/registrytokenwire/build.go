@@ -12,10 +12,10 @@ import (
 
 	"github.com/jackc/pgx/v5/pgxpool"
 
-	registrytokenuc "github.com/PRO-Robotech/kacho-iam/internal/apps/kaname/api/registry_token"
-	"github.com/PRO-Robotech/kacho-iam/internal/handler/registrytokenhttp"
-	kanamepg "github.com/PRO-Robotech/kacho-iam/internal/repo/kaname/pg"
-	"github.com/PRO-Robotech/kacho-iam/internal/tokensigner"
+	registrytokenuc "github.com/PRO-Robotech/kaname/internal/apps/kaname/api/registry_token"
+	"github.com/PRO-Robotech/kaname/internal/handler/registrytokenhttp"
+	kanamepg "github.com/PRO-Robotech/kaname/internal/repo/kaname/pg"
+	"github.com/PRO-Robotech/kaname/internal/tokensigner"
 )
 
 // BuildConfig — the composition inputs for the registry `/iam/token` shim.

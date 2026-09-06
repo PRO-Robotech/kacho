@@ -17,9 +17,9 @@ import (
 	"context"
 	"testing"
 
-	registrytokenuc "github.com/PRO-Robotech/kacho-iam/internal/apps/kaname/api/registry_token"
-	"github.com/PRO-Robotech/kacho-iam/internal/domain"
 	"github.com/PRO-Robotech/kacho/pkg/credsecret"
+	registrytokenuc "github.com/PRO-Robotech/kaname/internal/apps/kaname/api/registry_token"
+	"github.com/PRO-Robotech/kaname/internal/domain"
 )
 
 // liveBasicCredential — авторитет, знающий ровно одну живую строку.

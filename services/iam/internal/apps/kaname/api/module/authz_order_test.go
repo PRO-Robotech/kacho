@@ -37,8 +37,8 @@ import (
 
 	"github.com/PRO-Robotech/kacho/pkg/operations"
 
-	moduleapp "github.com/PRO-Robotech/kacho-iam/internal/apps/kaname/api/module"
-	"github.com/PRO-Robotech/kacho-iam/internal/domain"
+	moduleapp "github.com/PRO-Robotech/kaname/internal/apps/kaname/api/module"
+	"github.com/PRO-Robotech/kaname/internal/domain"
 )
 
 // clusterSingleton — синглтон назван ОДИН раз на всё дерево; проба спрашивает

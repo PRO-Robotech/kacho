@@ -41,10 +41,10 @@ import (
 	"strings"
 	"testing"
 
-	bootstraptoken "github.com/PRO-Robotech/kacho-iam/internal/apps/kaname/api/bootstrap_token"
-	"github.com/PRO-Robotech/kacho-iam/internal/domain"
-	"github.com/PRO-Robotech/kacho-iam/internal/service"
-	"github.com/PRO-Robotech/kacho-iam/internal/tokensigner"
+	bootstraptoken "github.com/PRO-Robotech/kaname/internal/apps/kaname/api/bootstrap_token"
+	"github.com/PRO-Robotech/kaname/internal/domain"
+	"github.com/PRO-Robotech/kaname/internal/service"
+	"github.com/PRO-Robotech/kaname/internal/tokensigner"
 )
 
 // signerStub — подписант, отвечающий заданной ошибкой.

@@ -10,11 +10,11 @@ import (
 
 	iamv1 "github.com/PRO-Robotech/kacho/pkg/api/kacho/cloud/iam/v1"
 
-	"github.com/PRO-Robotech/kacho-iam/internal/domain"
-	"github.com/PRO-Robotech/kacho-iam/internal/dto"
-	iamerr "github.com/PRO-Robotech/kacho-iam/internal/errors"
+	"github.com/PRO-Robotech/kaname/internal/domain"
+	"github.com/PRO-Robotech/kaname/internal/dto"
+	iamerr "github.com/PRO-Robotech/kaname/internal/errors"
 
-	_ "github.com/PRO-Robotech/kacho-iam/internal/dto/toproto"
+	_ "github.com/PRO-Robotech/kaname/internal/dto/toproto"
 )
 
 // pendingRefusal — отказ на строке приглашения, которое ещё никто не подтвердил.

@@ -47,8 +47,8 @@ import (
 
 	"github.com/stretchr/testify/require"
 
-	projectapp "github.com/PRO-Robotech/kacho-iam/internal/apps/kaname/api/project"
-	repoproject "github.com/PRO-Robotech/kacho-iam/internal/repo/kaname/project"
+	projectapp "github.com/PRO-Robotech/kaname/internal/apps/kaname/api/project"
+	repoproject "github.com/PRO-Robotech/kaname/internal/repo/kaname/project"
 )
 
 // costState is one of the two populations the scenario compares. The difference

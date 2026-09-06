@@ -23,7 +23,7 @@ import (
 
 	"github.com/PRO-Robotech/kacho/pkg/observability"
 
-	"github.com/PRO-Robotech/kacho-iam/internal/apps/kaname/config"
+	"github.com/PRO-Robotech/kaname/internal/apps/kaname/config"
 )
 
 // configPathEnv — путь к YAML-конфигу. Пустое значение допустимо (defaults +

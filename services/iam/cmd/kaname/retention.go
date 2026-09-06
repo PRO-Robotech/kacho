@@ -30,10 +30,10 @@ import (
 
 	"github.com/jackc/pgx/v5/pgxpool"
 
-	"github.com/PRO-Robotech/kacho-iam/internal/apps/kaname/config"
-	"github.com/PRO-Robotech/kacho-iam/internal/apps/kaname/retention"
-	"github.com/PRO-Robotech/kacho-iam/internal/observability/metrics"
-	kanamepg "github.com/PRO-Robotech/kacho-iam/internal/repo/kaname/pg"
+	"github.com/PRO-Robotech/kaname/internal/apps/kaname/config"
+	"github.com/PRO-Robotech/kaname/internal/apps/kaname/retention"
+	"github.com/PRO-Robotech/kaname/internal/observability/metrics"
+	kanamepg "github.com/PRO-Robotech/kaname/internal/repo/kaname/pg"
 )
 
 // startRetentionSweeper поднимает фоновую уборку и подключает её величины к

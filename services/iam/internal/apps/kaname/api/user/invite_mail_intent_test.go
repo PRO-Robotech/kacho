@@ -20,9 +20,9 @@ import (
 
 	"github.com/PRO-Robotech/kacho/pkg/operations"
 
-	"github.com/PRO-Robotech/kacho-iam/internal/domain"
-	kanamerepo "github.com/PRO-Robotech/kacho-iam/internal/repo/kaname"
-	repouser "github.com/PRO-Robotech/kacho-iam/internal/repo/kaname/user"
+	"github.com/PRO-Robotech/kaname/internal/domain"
+	kanamerepo "github.com/PRO-Robotech/kaname/internal/repo/kaname"
+	repouser "github.com/PRO-Robotech/kaname/internal/repo/kaname/user"
 )
 
 // Test_Invite_CoCommitsTheMailIntent — несущее утверждение.

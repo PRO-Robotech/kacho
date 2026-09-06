@@ -23,8 +23,8 @@ package pg_test
 // соответствие «глаголы → ярус», разошлось бы с первым молча.
 
 import (
-	"github.com/PRO-Robotech/kacho-iam/internal/authzmap"
-	"github.com/PRO-Robotech/kacho-iam/internal/domain"
+	"github.com/PRO-Robotech/kaname/internal/authzmap"
+	"github.com/PRO-Robotech/kaname/internal/domain"
 )
 
 // ownerTierOn — ярус, который правило с подстановкой `*` (форма роли владельца)

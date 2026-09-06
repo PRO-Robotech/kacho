@@ -46,7 +46,7 @@ import (
 
 	outboxmetrics "github.com/PRO-Robotech/kacho/pkg/outbox/metrics"
 
-	"github.com/PRO-Robotech/kacho-iam/internal/observability/metrics"
+	"github.com/PRO-Robotech/kaname/internal/observability/metrics"
 )
 
 // outboxMetricsInterval — период скана. Совпадает с остальными сервисами

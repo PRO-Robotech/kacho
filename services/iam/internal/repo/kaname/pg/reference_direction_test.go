@@ -27,7 +27,7 @@ import (
 	"strings"
 	"testing"
 
-	iamerr "github.com/PRO-Robotech/kacho-iam/internal/errors"
+	iamerr "github.com/PRO-Robotech/kaname/internal/errors"
 )
 
 // mergedRefusal — форма, ради снятия которой написана эта проба. Держится

@@ -8,9 +8,9 @@ package membership
 import (
 	"context"
 
-	"github.com/PRO-Robotech/kacho-iam/internal/apps/kaname/shared"
-	"github.com/PRO-Robotech/kacho-iam/internal/domain"
-	repomembership "github.com/PRO-Robotech/kacho-iam/internal/repo/kaname/membership"
+	"github.com/PRO-Robotech/kaname/internal/apps/kaname/shared"
+	"github.com/PRO-Robotech/kaname/internal/domain"
+	repomembership "github.com/PRO-Robotech/kaname/internal/repo/kaname/membership"
 )
 
 type ListMembershipsUseCase struct{ repo Repo }

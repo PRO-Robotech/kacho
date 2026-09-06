@@ -59,7 +59,7 @@ import (
 const moduleVerbApplierCtor = "NewVerbApplier"
 
 // moduleVerbConsumerPkg — пакет-потребитель: use-case четырёх глаголов.
-const moduleVerbConsumerPkg = "github.com/PRO-Robotech/kacho-iam/internal/apps/kaname/api/module"
+const moduleVerbConsumerPkg = "github.com/PRO-Robotech/kaname/internal/apps/kaname/api/module"
 
 // moduleVerbApplierPort — имя ПОРТА применителя в пакете-потребителе. Именно на
 // значении этого типа обязан быть позван `Apply`.

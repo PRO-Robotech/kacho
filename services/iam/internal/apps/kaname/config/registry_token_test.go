@@ -7,7 +7,7 @@ import (
 	"testing"
 	"time"
 
-	"github.com/PRO-Robotech/kacho-iam/internal/apps/kaname/config"
+	"github.com/PRO-Robotech/kaname/internal/apps/kaname/config"
 )
 
 // TestRegistryTokenListenAddress_Default — the Docker Registry v2 `/iam/token`

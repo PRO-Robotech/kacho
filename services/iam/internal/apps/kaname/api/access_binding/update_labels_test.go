@@ -26,7 +26,7 @@ import (
 
 	"github.com/PRO-Robotech/kacho/pkg/operations"
 
-	"github.com/PRO-Robotech/kacho-iam/internal/domain"
+	"github.com/PRO-Robotech/kaname/internal/domain"
 )
 
 // T3.3-IMM-01 happy: Update(update_mask=["labels"]) sets labels and co-commits a

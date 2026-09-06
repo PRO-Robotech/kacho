@@ -288,7 +288,7 @@ func stampFiles(root string, files []string, fp *Fingerprint) error {
 // вида, и все три сдвинулись при переезде каталогов, не изменив ни одного
 // оператора:
 //
-//	путь импорта своего модуля   ".../kacho-iam/internal/repo/<каталог>/pg/resource_mirror"
+//	путь импорта своего модуля   ".../kaname/internal/repo/<каталог>/pg/resource_mirror"
 //	путь отчёта                  "services/iam/.../REPORT-R7-2-strength.txt"
 //	каталог предмета записи      "services/iam/internal/apps/<каталог>/.../reconcile"
 //

@@ -16,8 +16,8 @@ import (
 
 	"github.com/stretchr/testify/require"
 
-	"github.com/PRO-Robotech/kacho-iam/internal/apps/kaname/api/account"
-	"github.com/PRO-Robotech/kacho-iam/internal/domain"
+	"github.com/PRO-Robotech/kaname/internal/apps/kaname/api/account"
+	"github.com/PRO-Robotech/kaname/internal/domain"
 )
 
 func TestAccountAudit_5_2_10_CreateEmits(t *testing.T) {

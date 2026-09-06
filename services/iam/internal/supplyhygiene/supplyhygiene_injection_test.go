@@ -60,7 +60,7 @@ func syntheticServiceRoot(t *testing.T, goMod, goFile, dockerfile string) string
 	return root
 }
 
-const goodGoMod = `module github.com/PRO-Robotech/kacho-iam
+const goodGoMod = `module github.com/PRO-Robotech/kaname
 
 go 1.26.0
 
@@ -72,7 +72,7 @@ require github.com/PRO-Robotech/kacho v0.0.0-20260904231955-a30d906b8edf
 const goodGoFile = `package sample
 
 import (
-	_ "github.com/PRO-Robotech/kacho-iam/internal/other"
+	_ "github.com/PRO-Robotech/kaname/internal/other"
 	_ "github.com/PRO-Robotech/kacho/pkg/ids"
 )
 `
@@ -94,7 +94,7 @@ func TestInjectionControl_SoundRootIsSilentInBothChecks(t *testing.T) {
 	require.NoError(t, err)
 	require.Empty(t, findings, "годный корень объявлен нарушением: проверка ловит форму, а не существо")
 	require.NotZero(t, census.filesParsed, "контроль беспредметен: файлов не разобрано")
-	require.Equal(t, "github.com/PRO-Robotech/kacho-iam", census.modulePath)
+	require.Equal(t, "github.com/PRO-Robotech/kaname", census.modulePath)
 
 	dcensus, dfindings, derr := scanDockerfileCoordinates(root)
 	require.NoError(t, derr)

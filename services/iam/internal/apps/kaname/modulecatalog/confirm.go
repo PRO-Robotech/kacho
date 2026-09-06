@@ -62,9 +62,9 @@ import (
 	"errors"
 	"fmt"
 
-	"github.com/PRO-Robotech/kacho-iam/internal/manifest"
+	"github.com/PRO-Robotech/kaname/internal/manifest"
 
-	"github.com/PRO-Robotech/kacho-iam/internal/apps/kaname/seed"
+	"github.com/PRO-Robotech/kaname/internal/apps/kaname/seed"
 )
 
 var (

@@ -23,7 +23,7 @@ package membership
 import (
 	"context"
 
-	repomembership "github.com/PRO-Robotech/kacho-iam/internal/repo/kaname/membership"
+	repomembership "github.com/PRO-Robotech/kaname/internal/repo/kaname/membership"
 )
 
 // Repo / Session — порты, объявленные ЗДЕСЬ, в use-case, и узкие намеренно:

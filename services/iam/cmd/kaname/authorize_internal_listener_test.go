@@ -45,8 +45,8 @@ import (
 
 	iamv1 "github.com/PRO-Robotech/kacho/pkg/api/kacho/cloud/iam/v1"
 
-	authorizeapp "github.com/PRO-Robotech/kacho-iam/internal/apps/kaname/api/authorize"
-	"github.com/PRO-Robotech/kacho-iam/internal/service"
+	authorizeapp "github.com/PRO-Robotech/kaname/internal/apps/kaname/api/authorize"
+	"github.com/PRO-Robotech/kaname/internal/service"
 )
 
 // authzStubAuthorizer — минимальный service.Authorizer для регистрационной пробы.

@@ -32,8 +32,8 @@ import (
 const verbApplierHandedToTheConsumer = `package main
 
 import (
-	moduleapp "github.com/PRO-Robotech/kacho-iam/internal/apps/kaname/api/module"
-	"github.com/PRO-Robotech/kacho-iam/internal/apps/kaname/modulecatalog"
+	moduleapp "github.com/PRO-Robotech/kaname/internal/apps/kaname/api/module"
+	"github.com/PRO-Robotech/kaname/internal/apps/kaname/modulecatalog"
 )
 
 func buildServices() *services {
@@ -52,8 +52,8 @@ func buildServices() *services {
 const verbApplierBuiltNeverHandedOff = `package main
 
 import (
-	moduleapp "github.com/PRO-Robotech/kacho-iam/internal/apps/kaname/api/module"
-	"github.com/PRO-Robotech/kacho-iam/internal/apps/kaname/modulecatalog"
+	moduleapp "github.com/PRO-Robotech/kaname/internal/apps/kaname/api/module"
+	"github.com/PRO-Robotech/kaname/internal/apps/kaname/modulecatalog"
 )
 
 func buildServices() *services {
@@ -68,8 +68,8 @@ func buildServices() *services {
 const verbApplierHandedToAnotherPackage = `package main
 
 import (
-	"github.com/PRO-Robotech/kacho-iam/internal/apps/kaname/modulecatalog"
-	otherapp "github.com/PRO-Robotech/kacho-iam/internal/apps/kaname/api/cluster"
+	"github.com/PRO-Robotech/kaname/internal/apps/kaname/modulecatalog"
+	otherapp "github.com/PRO-Robotech/kaname/internal/apps/kaname/api/cluster"
 )
 
 func buildServices() *services {
@@ -83,8 +83,8 @@ func buildServices() *services {
 const verbApplierUnderAnAlias = `package main
 
 import (
-	ma "github.com/PRO-Robotech/kacho-iam/internal/apps/kaname/api/module"
-	mc "github.com/PRO-Robotech/kacho-iam/internal/apps/kaname/modulecatalog"
+	ma "github.com/PRO-Robotech/kaname/internal/apps/kaname/api/module"
+	mc "github.com/PRO-Robotech/kaname/internal/apps/kaname/modulecatalog"
 )
 
 func buildServices() *services {
@@ -101,8 +101,8 @@ func buildServices() *services {
 const verbApplierUnderAnAliasHandedOff = `package main
 
 import (
-	ma "github.com/PRO-Robotech/kacho-iam/internal/apps/kaname/api/module"
-	mc "github.com/PRO-Robotech/kacho-iam/internal/apps/kaname/modulecatalog"
+	ma "github.com/PRO-Robotech/kaname/internal/apps/kaname/api/module"
+	mc "github.com/PRO-Robotech/kaname/internal/apps/kaname/modulecatalog"
 )
 
 func buildServices() *services {
@@ -114,7 +114,7 @@ func buildServices() *services {
 // verbApplierDiscarded — не связан вовсе: предмета нет, находки быть не должно.
 const verbApplierDiscarded = `package main
 
-import "github.com/PRO-Robotech/kacho-iam/internal/apps/kaname/modulecatalog"
+import "github.com/PRO-Robotech/kaname/internal/apps/kaname/modulecatalog"
 
 func probe() { _ = modulecatalog.NewVerbApplier(writeRepo) }
 `
