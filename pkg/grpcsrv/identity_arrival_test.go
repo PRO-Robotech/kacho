@@ -272,3 +272,53 @@ func TestIdentityArrival_StreamRefusesToo(t *testing.T) {
 	require.NoError(t, err, "положительный близнец обязан пройти — иначе отрицание зелено на всём")
 	require.True(t, called)
 }
+
+// TestIdentityArrival_RefusedBeforeAnyDecisionAboutTheSubject — KAN-W2-03: тот
+// же рассинхрон на записи каталога, ОСВОБОЖДЁННОЙ от вопроса о субъекте.
+//
+// # Зачем отдельным сценарием
+//
+// KAN-W2-02, взятый один, был бы удовлетворён уже существующим отказом слоя
+// прав — то есть не потребовал бы построить ничего. Здесь ниже по цепочке стоит
+// звено, которое вопрос о субъекте НЕ ЗАДАЁТ и пропустило бы безымянный вызов:
+// ровно то, чем живут освобождённые записи каталога. Наследовать отказ им не у
+// кого, и проба утверждает, что до этого звена вызов не доходит вовсе.
+func TestIdentityArrival_RefusedBeforeAnyDecisionAboutTheSubject(t *testing.T) {
+	exemptReached := false
+	// Звено, стоящее ЗА парой: освобождённая запись каталога вопроса о субъекте
+	// не задаёт и безымянный вызов пропускает.
+	exemptLane := func(ctx context.Context, req any, info *grpc.UnaryServerInfo,
+		handler grpc.UnaryHandler) (any, error) {
+		exemptReached = true
+		return handler(ctx, req)
+	}
+	pair := grpcsrv.PrincipalExtractUnary(
+		grpcsrv.NewTrustDomain("kacho.cloud"),
+		grpcsrv.NewTrustedForwarders(arrivalGatewaySAN),
+	)
+	chained := chainUnary(append(pair, exemptLane)...)
+
+	handled := false
+	_, err := chained(forwarderCtx(t, metadata.Pairs(
+		"x-kaname-principal-type", "user",
+		"x-kaname-principal-id", "usr-alice",
+	)), nil, nil, func(context.Context, any) (any, error) { handled = true; return nil, nil })
+
+	require.Error(t, err, "отказ обязан быть ПРОИЗВЕДЁН здесь, а не унаследован от слоя прав")
+	require.Equal(t, codes.Unauthenticated, status.Code(err))
+	require.False(t, exemptReached,
+		"освобождённая полоса не должна быть достигнута: наследовать отказ ей не у кого")
+	require.False(t, handled)
+
+	// ПОЛОЖИТЕЛЬНЫЙ БЛИЗНЕЦ той же полосы. Отличие — ОДИН факт: ключи написаны
+	// так же, как их читает эта сборка. Без него отрицание выше зеленело бы на
+	// цепочке, отвергающей всё.
+	exemptReached, handled = false, false
+	_, err = chained(forwarderCtx(t, metadata.Pairs(
+		grpcsrv.MDKeyPrincipalType, "user",
+		grpcsrv.MDKeyPrincipalID, "usr-alice",
+	)), nil, nil, func(context.Context, any) (any, error) { handled = true; return nil, nil })
+	require.NoError(t, err)
+	require.True(t, exemptReached, "освобождённая полоса обязана работать как прежде")
+	require.True(t, handled)
+}

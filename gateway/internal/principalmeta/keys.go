@@ -282,6 +282,29 @@ func IsGatewayProducedKey(name string) bool {
 // If that ever changes, add the key to an explicit allow-list here rather than
 // narrowing the namespace sweep.
 func IsClientForgeableKey(key string) bool {
-	_, ok := KachoNamespaceKey(key)
-	return ok
+	if _, ok := KachoNamespaceKey(key); ok {
+		return true
+	}
+	return IsForeignIdentityKey(key)
+}
+
+// IsForeignIdentityKey — имя имеет ФОРМУ ключа личности, но принадлежит
+// пространству имён, которого эта сборка НЕ читает.
+//
+// # Зачем край снимает и такое
+//
+// Вычистка, ключующаяся только на СВОЮ приставку, о чужой не знает ничего:
+// заголовок вида `x-<чужое>-principal-id` пересекал бы мост наравне с любым
+// другим и приезжал слушателю. Пока его никто не читал, он был безобиден. Он
+// перестал быть безобидным в тот день, когда слушатель научился отличать
+// «личность объявлена и не приехала» от законной безымянности: имя формы
+// личности под чужой приставкой — ровно тот признак, и прислать его мог бы
+// клиент, получив в ответ отказ на СВОЙ же запрос.
+//
+// Признак тот же, каким слушатель принимает решение (`principalwire`), а не
+// свой: две записи одного предмета разошлись бы молча — край снимал бы одно, а
+// слушатель отвергал другое.
+func IsForeignIdentityKey(key string) bool {
+	bare := principalwire.Bare(key)
+	return principalwire.IsIdentityShaped(bare) && !principalwire.IsOurs(bare)
 }

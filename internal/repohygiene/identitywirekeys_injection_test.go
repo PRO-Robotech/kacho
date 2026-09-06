@@ -218,3 +218,36 @@ func TestIdentityWireCatalogueNamesOnlyRealFundamentKeys(t *testing.T) {
 	t.Logf("осмотрено: записей каталога %d, связано синтетикой %d, названо несвязанными %d",
 		len(principalwire.Keys()), len(bound), len(missing))
 }
+
+// TestIdentityWireEdgeOnlyKeyDoesNotDemandAFundamentReader — KAN-W2-06,
+// ЗАКОННЫЙ БЛИЗНЕЦ второго утверждения: ключ, который край производит для себя
+// и за мост не пускает, у фундамента не требуется.
+//
+// Отличие от находки — ОДИН факт: односторонность ОБЪЯВЛЕНА каталогом, а не
+// получилась умолчанием. Без этого близнеца гейт требовал бы читателя у каждого
+// ключа и краснел бы на решении, принятом осознанно, — то есть его сняли бы
+// первым же законным срабатыванием.
+func TestIdentityWireEdgeOnlyKeyDoesNotDemandAFundamentReader(t *testing.T) {
+	var edgeOnly, demanded []string
+	for _, k := range principalwire.Keys() {
+		if !k.EdgeOnly {
+			continue
+		}
+		edgeOnly = append(edgeOnly, k.Name)
+		if k.Fundament {
+			demanded = append(demanded, k.Name)
+		}
+	}
+	if len(edgeOnly) == 0 {
+		t.Fatal("каталог не объявил ни одного ключа, остающегося на краю — близнец " +
+			"беспредметен, и молчание гейта на односторонности сказано ни о чём")
+	}
+	if len(demanded) > 0 {
+		t.Fatalf("ключи объявлены остающимися на краю и одновременно читаемыми у фундамента: %v. "+
+			"Два свойства об одном ключе противоречат друг другу: мост его не несёт, значит "+
+			"производителя за краем нет, а читатель объявлен", demanded)
+	}
+	t.Logf("осмотрено: записей каталога %d, из них остающихся на краю %d, "+
+		"из них требующих читателя у фундамента %d",
+		len(principalwire.Keys()), len(edgeOnly), len(demanded))
+}
