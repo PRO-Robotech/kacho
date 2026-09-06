@@ -396,6 +396,7 @@ compute:
   mtls:
     enable: true
     edges:
+      quotaAuthority: true # →домен величин (Resolve + ListChangedSince, :9091)
       iamRegister: true
       iamProject: true
       iamAuthz: true
@@ -450,6 +451,7 @@ storage:
   mtls:
     enable: true
     edges:
+      quotaAuthority: true # →домен величин (Resolve + ListChangedSince, :9091)
       geo: true
       iam: true
 
@@ -644,6 +646,7 @@ vpc:
   mtls:
     enable: true
     edges:
+      quotaAuthority: true # →домен величин (Resolve + ListChangedSince, :9091)
       iamRegister: true
       iamProject: true
       iamAuthz: true
@@ -1745,6 +1748,7 @@ kacho-nlb:
   mtls:
     enable: true
     edges:
+      quotaAuthority: true # →домен величин (Resolve + ListChangedSince, :9091)
       iamRegister: true
       iamProject: true
       vpc: true
@@ -1919,6 +1923,7 @@ registry:
   mtls:
     enable: true
     edges:
+      quotaAuthority: true # →домен величин (Resolve + ListChangedSince, :9091)
       iamAuthz: true      # registry→iam Check + fga-proxy (:9091)
       iamProject: true    # registry→iam ProjectService.Get (:9090)
       geo: true           # registry→geo RegionService.Get (:9090)

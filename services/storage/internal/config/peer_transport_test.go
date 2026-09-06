@@ -34,6 +34,11 @@ func armedProd() config.Config {
 	c.GeoGRPCAddr = "kacho-geo:9090"
 	c.IAMClientMTLS = grpcclient.TLSClient{Enable: true}
 	c.GeoClientMTLS = grpcclient.TLSClient{Enable: true}
+	// Ребро величин поднимается и защищается наравне с остальными: отправная
+	// точка, где оно объявлено отсутствующим, вывела бы его из наблюдения, и
+	// ослабление его удостоверения перестало бы что-либо значить.
+	c.QuotaAuthority = "kaname-internal:9091"
+	c.QuotaAuthorityMTLS = grpcclient.TLSClient{Enable: true}
 	return c
 }
 

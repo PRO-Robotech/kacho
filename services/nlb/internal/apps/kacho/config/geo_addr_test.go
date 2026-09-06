@@ -12,6 +12,9 @@ import "testing"
 
 func TestLoad_GeoGRPCAddr_FromEnv(t *testing.T) {
 	t.Setenv("KACHO_NLB_MODE", "dev") // dev-opt-in: default fail-closed production
+	// Объявление домена величин — часть законной посадки: у ручки ровно два
+	// законных значения, и незаданное среди них не значится.
+	t.Setenv("KACHO_NLB_QUOTA__AUTHORITY", "not-deployed")
 	t.Setenv("KACHO_NLB_REPOSITORY__POSTGRES__URL", "postgres://u:p@h/d")
 	t.Setenv("KACHO_NLB_GEO_GRPC_ADDR", "kacho-geo.kacho.svc:9090")
 
@@ -26,6 +29,9 @@ func TestLoad_GeoGRPCAddr_FromEnv(t *testing.T) {
 
 func TestLoad_GeoMTLS_FromEnv(t *testing.T) {
 	t.Setenv("KACHO_NLB_MODE", "dev") // dev-opt-in: default fail-closed production
+	// Объявление домена величин — часть законной посадки: у ручки ровно два
+	// законных значения, и незаданное среди них не значится.
+	t.Setenv("KACHO_NLB_QUOTA__AUTHORITY", "not-deployed")
 	t.Setenv("KACHO_NLB_REPOSITORY__POSTGRES__URL", "postgres://u:p@h/d")
 	t.Setenv("KACHO_NLB_MTLS__GEO__ENABLE", "true")
 	t.Setenv("KACHO_NLB_MTLS__GEO__SERVERNAME", "kacho-geo.kacho.svc")

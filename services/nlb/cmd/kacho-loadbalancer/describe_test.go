@@ -70,6 +70,9 @@ func bootConfig(t *testing.T, env map[string]string) *config.Config {
 		// приезжает общей заменой приставки, которая дефисы не трогает. Померено
 		// загрузкой обоих написаний.
 		"KACHO_NLB_AUTHZ__TRUST_DOMAIN": "kacho.cloud",
+		// Объявление домена величин — часть законной посадки: у ручки ровно два
+		// законных значения, и незаданное среди них не значится.
+		"KACHO_NLB_QUOTA__AUTHORITY": "not-deployed",
 	}
 	for k, v := range env {
 		base[k] = v
@@ -205,6 +208,9 @@ func TestDeclaredCircleIsTheOneTheProcessCarries(t *testing.T) {
 	// круг не доживает до слушателей», а какая из двух страж его остановит, для
 	// вызывающего безразлично. Обе читают ОДИН предикат (`IsNarrowed`).
 	t.Setenv("KACHO_NLB_MODE", "dev")
+	// Объявление домена величин — часть законной посадки: у ручки ровно два
+	// законных значения, и незаданное среди них не значится.
+	t.Setenv("KACHO_NLB_QUOTA__AUTHORITY", "not-deployed")
 	t.Setenv("KACHO_NLB_REPOSITORY__POSTGRES__URL", "postgres://u:p@pg-nlb:5432/kacho_nlb?sslmode=require")
 	t.Setenv("KACHO_NLB_EXTAPI__IAM__INTERNAL_ADDR", "kaname-internal:9091")
 	t.Setenv("KACHO_NLB_AUTHZ__TRUSTED-FORWARDER-SANS", "")

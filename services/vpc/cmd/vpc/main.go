@@ -269,6 +269,14 @@ func runServe(cfg config.Config) error {
 		return fmt.Errorf("config validate (peer transport): %w", err)
 	}
 
+	// Объявление домена величин: ровно два законных значения, и незаданное среди
+	// них не значится. Проверка стоит ЗДЕСЬ, до дозвонов, чтобы оператор получил
+	// названную ручку раньше, чем отказ соединения; сама проводка читает то же
+	// объявление тем же методом, поэтому «страж доволен» ⟺ «дилится объявленное».
+	if err := cfg.ValidateQuotaAuthority(mtlsCfg); err != nil {
+		return fmt.Errorf("config validate (quota authority): %w", err)
+	}
+
 	pool, err := coredb.NewPool(ctx, cfg.DSN())
 	if err != nil {
 		return err
@@ -502,45 +510,31 @@ func runServe(cfg config.Config) error {
 
 	// Учёт числа ресурсов арендатора. Приёмка
 	// `docs/specs/sub-phase-quota-v2-materialised-usage-acceptance.md`
-	// (APPROVED, раунд 2), DoD S2 п.3 и п.5.
+	// (APPROVED, раунд 2), DoD S2 п.3 и п.5; объявление источника величин —
+	// `docs/specs/sub-phase-KAN-QUOTA-1-limit-authority-leaves-iam-acceptance.md`,
+	// стадия S1.
 	//
-	// Величины живут у kaname и разрешаются ТАМ: старшинство PROJECT >
+	// Величины живут у домена величин и разрешаются ТАМ: старшинство PROJECT >
 	// ACCOUNT > DEFAULT требует знать аккаунт проекта, а владелец типа его не
 	// знает (у него только зеркало, заводимое из того же обращения).
 	//
-	// Резолв идёт на ВНУТРЕННИЙ слушатель соседа — тот же `authzConn`, что
-	// обслуживает per-RPC Check: `InternalLimitService` выставлен ровно там. Это
-	// НЕ вывод адреса из чужого (`security.md` §Hardening п.9), а использование
-	// уже объявленного оператором адреса внутреннего контура: своей ручки у
-	// резолва нет именно потому, что второй адрес того же слушателя разошёлся бы
-	// с первым молча.
+	// Адрес домена величин ОБЪЯВЛЕН ручкой `quota.authority`, а не выведен из
+	// адреса авторизации. Прежде он выводился, и довод был верен ровно до тех
+	// пор, пока авторитет величин и авторитет авторизации — одна служба; уход
+	// модуля квотирования из службы доступа это условие снимает, а выведенный
+	// адрес указывал бы после него на слушатель, где службы величин нет вовсе.
 	//
-	// Пустой endpoint (dev без соседа) → полоса не собирается. Это означает
-	// «раннего отказа нет», а НЕ «предела нет»: место по-прежнему занимает
-	// триггер в writer-транзакции, и исчерпание приезжает отказом операции.
-	// Различие наблюдаемо, и на любом поднятом стенде адрес обязан быть задан.
-	var quotaLimits quota.LimitResolver
-	if authzConn != nil {
-		limitClient := clients.NewLimitClient(authzConn)
-		quotaLimits = limitClient
-		logger.Info("resource-count quota: limits resolver wired",
-			"endpoint", cfg.AuthZ.IAMEndpoint, "service", "vpc")
-
-		// Снимок величины обязан ДОГОНЯТЬ авторитет: без тянущего строка,
-		// заведённая один раз, живёт со своей величиной вечно, и смена предела
-		// администратором не доезжает до проекта никогда.
-		stopQuotaSync, qerr := startQuotaLimitSyncer(ctx, pool, limitClient, "kacho_vpc", logger)
-		if qerr != nil {
-			return fmt.Errorf("start quota limit syncer: %w", qerr)
-		}
-		defer stopQuotaSync()
-	} else {
-		logger.Warn("resource-count quota: no internal kaname endpoint, advisory band is OFF " +
-			"and the limit snapshot will NEVER catch up with the authority. " +
-			"Limits are still enforced by the charging trigger, but the tenant learns of " +
-			"exhaustion from the operation instead of a synchronous refusal, and an " +
-			"administrator raising or lowering a ceiling has no effect on this process")
+	// Ветки «полоса не собирается, потому что соседа не задали» здесь БОЛЬШЕ НЕТ:
+	// незаданное объявление отвергает страж старта, а объявленное отсутствие —
+	// законная посадка, в которой тянущий не заводится и состояние курсора
+	// называет причину.
+	quotaEdge, stopQuotaEdge, qerr := buildQuotaAuthorityEdge(
+		ctx, cfg, mtlsCfg, pool, "kacho_vpc", logger)
+	if qerr != nil {
+		return qerr
 	}
+	defer stopQuotaEdge()
+	quotaLimits := quotaEdge.Limits
 
 	svcs := buildServices(pool, slavePool, projectClient, geoClient, geoRegionClient, listFilter, opsRepo, syncRegistrar, quotaLimits, projectClient, cfg, logger)
 

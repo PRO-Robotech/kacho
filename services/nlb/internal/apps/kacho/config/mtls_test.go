@@ -28,6 +28,9 @@ import (
 func minimalEnv(t *testing.T) {
 	t.Helper()
 	t.Setenv("KACHO_NLB_MODE", "dev")
+	// Объявление домена величин — часть законной посадки: у ручки ровно два
+	// законных значения, и незаданное среди них не значится.
+	t.Setenv("KACHO_NLB_QUOTA__AUTHORITY", "not-deployed")
 	t.Setenv("KACHO_NLB_REPOSITORY__POSTGRES__URL", "postgres://u:p@h/kacho_nlb")
 }
 
