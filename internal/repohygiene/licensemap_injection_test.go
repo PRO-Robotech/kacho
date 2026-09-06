@@ -138,12 +138,12 @@ func TestLicenseHeaderGate_RedsWhenHeaderIsAbsentAndNamesTheExpectedLicense(t *t
 // отключают первым.
 func TestLicenseHeaderGate_SilentOnACorrectTree(t *testing.T) {
 	findings, census := injHeaderCorpus{
-		"pkg/ids/ids.go":                   injHeader(licenseApache),
+		"pkg/ids/ids.go":                    injHeader(licenseApache),
 		"proto/kaname/cloud/iam/v1/i.proto": injHeader(licenseApache),
-		"services/iam/internal/a.go":       injHeader(licenseAGPL),
-		"services/vpc/internal/a.go":       injHeader(licenseBUSL),
-		"internal/repohygiene/x.go":        injHeader(licenseBUSL),
-		"proto/google/api/http.proto":      "// Copyright 2026 Google LLC\n",
+		"services/iam/internal/a.go":        injHeader(licenseAGPL),
+		"services/vpc/internal/a.go":        injHeader(licenseBUSL),
+		"internal/repohygiene/x.go":         injHeader(licenseBUSL),
+		"proto/google/api/http.proto":       "// Copyright 2026 Google LLC\n",
 	}.scan()
 	if len(findings) != 0 {
 		t.Fatalf("верное дерево объявлено находкой: %v", findings)

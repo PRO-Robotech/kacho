@@ -210,7 +210,7 @@ func TestPublicAllowlist_EdgeAnswersEveryEntryItServes(t *testing.T) {
 	}
 	for _, unanswerable := range []string{
 		"grpc.health.v1.Health/Evaporate",                          // registered service, no such method
-		"kaname.cloud.iam.v1.GhostService/Vanish",                   // service the edge does not serve
+		"kaname.cloud.iam.v1.GhostService/Vanish",                  // service the edge does not serve
 		"grpc.reflection.v1.ServerReflection/ServerReflectionInfo", // moved to the internal listener
 	} {
 		if got := probe.code(unanswerable); got != codes.Unimplemented {
