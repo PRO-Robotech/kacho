@@ -562,3 +562,56 @@ CASES.append(Case(
         ),
     ],
 ))
+
+# ───────────────────────────────────────────────────────────────────────────
+# ТА ЖЕ ПАРА НА МУТАЦИИ. Дверь одна на чтение и на правку, но утверждать это
+# нужно отдельно: отображение кода в статус у мутирующего глагола то же, а вот
+# путь до двери — другой, и «читать нельзя, а править можно» проверяется только
+# правкой.
+# ───────────────────────────────────────────────────────────────────────────
+CASES.append(Case(
+    id="IAM-OWNREST-NEG-FOREIGN-MUTATION",
+    title="Правка чужого объекта через собственный фронт → 404, неотличимый от промаха: ответ не сообщает, существует ли объект",
+    classes=["NEG", "SEC"],
+    priority="P0",
+    steps=[
+        Step(
+            name="patch-foreign-account",
+            method="PATCH",
+            path="/iam/v1/accounts/{{accountBId}}",
+            body={"name": "seized-by-{{runId}}"},
+            pre_script=_own("/iam/v1/accounts/{{accountBId}}"),
+            # Тот же арендатор, что успешно читает СВОЙ аккаунт в контроле.
+            # Отличие — идентификатор объекта; глагол мутирующий.
+            auth="jwtAccountAdminA",
+            test_script=[
+                # Пара «статус + код»: по одному слову «отказ» смена отображения
+                # на фронте была бы незаметна.
+                *assert_status(404),
+                "const j = pm.response.json();",
+                "pm.test('FOREIGN-MUT: grpc code 5', () => pm.expect(j.code, JSON.stringify(j)).to.eql(5));",
+                "pm.test('FOREIGN-MUT: ответ не сообщает, существует ли объект — "
+                "ни состояния, ни отметок времени в теле нет', () => {",
+                "  const body = pm.response.text();",
+                "  pm.expect(body).to.not.include('createdAt');",
+                "  pm.expect(body).to.not.include('seized-by');",
+                "});",
+            ],
+        ),
+        Step(
+            name="foreign-account-unchanged",
+            method="GET",
+            path="/iam/v1/accounts/{{accountBId}}",
+            pre_script=_own("/iam/v1/accounts/{{accountBId}}"),
+            # Читает ВЛАДЕЛЕЦ: без этого шага «правка отвергнута» доказывалось бы
+            # только кодом ответа, а не тем, что объект остался прежним.
+            auth="jwtAccountAdminB",
+            test_script=[
+                *assert_status(200),
+                "pm.test('FOREIGN-MUT: объект чужого арендатора НЕ изменился', () =>",
+                "  pm.expect(pm.response.json().name, pm.response.text())",
+                "    .to.not.include('seized-by'));",
+            ],
+        ),
+    ],
+))
