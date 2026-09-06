@@ -14,9 +14,12 @@
 // человек уже согласился не смотреть.
 //
 // Соседний гейт `internal/repohygiene` `TestNoInertGosecSuppressions` ловит ту же
-// беду с другой стороны — чужой диалект `//nolint:gosec`, который в этом дереве
-// не читает никто. Там форма нерабочая при живом предмете; здесь форма рабочая,
-// а предмета может не быть. Ни один из двух второго не заменяет.
+// беду с другой стороны — чужой диалект `//nolint` с именем gosec в перечне
+// линтеров, который в этом дереве не читает никто. Там форма нерабочая при живом
+// предмете; здесь форма рабочая, а предмета может не быть. Ни один из двух
+// второго не заменяет. (Диалект назван здесь по частям намеренно: записанный
+// целиком, он сам стал бы находкой того гейта — гейт судит код, а не прозу о
+// себе, и различить их в комментарии ему нечем.)
 //
 // # Почему НЕ по номеру строки
 //
@@ -85,12 +88,13 @@ import (
 	"go/token"
 	"io"
 	"os"
-	"os/exec"
 	"path/filepath"
 	"regexp"
 	"sort"
 	"strconv"
 	"strings"
+
+	"github.com/PRO-Robotech/kacho/pkg/gitenv"
 )
 
 // AllRules — то, чем gosec обозначает «подавить все правила»
@@ -319,8 +323,11 @@ func SplitBySubject(dirs []Directive, findings []Finding) (live, inert []Directi
 func hasSubject(d Directive, findings []Finding) bool {
 	for _, f := range findings {
 		// Тот же предикат перекрытия, каким сканер выбирает диапазон
-		// подавления (`ignores.get`).
-		if !(d.Start <= f.Start && d.End >= f.End || f.Start <= d.Start && f.End >= d.End) {
+		// подавления (`ignores.get`): накрывает либо диапазон директивы находку,
+		// либо находка — диапазон директивы.
+		covers := d.Start <= f.Start && d.End >= f.End
+		covered := f.Start <= d.Start && f.End >= d.End
+		if !covers && !covered {
 			continue
 		}
 		for _, r := range d.Rules {
@@ -732,7 +739,7 @@ func readManifest(path string) ([]Module, error) {
 // Модуль, вылетевший из скана, вылетел бы и из вердикта, и оба были бы уверены
 // в своей правоте.
 func everyModuleIsInTheManifest(root string, mods []Module) error {
-	out, err := exec.Command("git", "-C", root, "ls-files", "*go.mod").Output()
+	out, err := gitenv.Command(root, "ls-files", "*go.mod").Output()
 	if err != nil {
 		return fmt.Errorf("перечень модулей не выведен из индекса git: %w", err)
 	}
@@ -756,7 +763,7 @@ func everyModuleIsInTheManifest(root string, mods []Module) error {
 }
 
 func trackedGoFiles(root string) ([]string, error) {
-	out, err := exec.Command("git", "-C", root, "ls-files", "*.go").Output()
+	out, err := gitenv.Command(root, "ls-files", "*.go").Output()
 	if err != nil {
 		return nil, fmt.Errorf("перечень файлов .go не выведен из индекса git: %w. "+
 			"Обход диска читал бы и рабочие копии под .claude/, и вердикт стал бы "+
@@ -814,31 +821,31 @@ func Print(r *Report, w io.Writer) {
 		return
 	}
 	c := r.Census
-	fmt.Fprintf(w, "gosec-подавления: файлов .go в индексе %d; из них несут тег %d, разобрано %d;\n"+
+	_, _ = fmt.Fprintf(w, "gosec-подавления: файлов .go в индексе %d; из них несут тег %d, разобрано %d;\n"+
 		"  директив прочитано %d — судимых %d, вне осмотра %d;\n"+
 		"  из судимых: с живым предметом %d, инертных %d; записей ведомости %d\n",
 		c.TrackedGoFiles, c.Candidates, c.Parsed, c.Directives, c.Judged, c.Unjudged,
 		c.Live, c.Inert, c.LedgerRows)
 	for _, m := range c.Modules {
-		fmt.Fprintf(w, "  модуль %-16s осмотрено файлов %5d; находок %4d (подавлено %4d); "+
+		_, _ = fmt.Fprintf(w, "  модуль %-16s осмотрено файлов %5d; находок %4d (подавлено %4d); "+
 			"директив: сканер %3d, гейт %3d\n",
 			m.Dir, m.ScannedFiles, m.Findings, m.Suppressed, m.ScannerNosec, m.GateDirectives)
 	}
 	if c.Unjudged > 0 {
-		fmt.Fprintf(w, "  вне осмотра %d директив — сканер этих файлов не читал "+
+		_, _ = fmt.Fprintf(w, "  вне осмотра %d директив — сканер этих файлов не читал "+
 			"(флага -tests у скана нет намеренно). «Нет находки» там означает отсутствие\n"+
 			"  ОСМОТРА, а не отсутствие предмета, поэтому они не судятся.\n", c.Unjudged)
 	}
 	if c.Inert == 0 && c.LedgerRows == 0 {
-		fmt.Fprintln(w, "  инертных директив нет и ведомость пуста — это цель механизма, "+
+		_, _ = fmt.Fprintln(w, "  инертных директив нет и ведомость пуста — это цель механизма, "+
 			"а не его простой: он сработает на следующей записи в тот же прогон")
 	}
 	for _, d := range r.Uncovered {
-		fmt.Fprintf(w, "  %s:%d: #nosec %s подавляет НИЧЕГО — правило по этой координате "+
+		_, _ = fmt.Fprintf(w, "  %s:%d: #nosec %s подавляет НИЧЕГО — правило по этой координате "+
 			"не срабатывает (причина в директиве: %q)\n",
 			d.File, d.Line, d.RuleKey(), oneLine(d.Reason))
 	}
 	for _, s := range r.Stale {
-		fmt.Fprintf(w, "  ведомость:%d: %s %s — %s\n", s.Line, s.File, s.Rule, s.Why)
+		_, _ = fmt.Fprintf(w, "  ведомость:%d: %s %s — %s\n", s.Line, s.File, s.Rule, s.Why)
 	}
 }

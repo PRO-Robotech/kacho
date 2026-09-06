@@ -26,10 +26,19 @@
 #                                                              (молчание)
 #   E    журнал скана без перечня прочитанного              →  код 2, не 0 и не 1
 #   F    модуль пропал из перечня скана                     →  код 2, не 0 и не 1
+#   G/H  вызывающие (локальный прогонщик и объявление         →  три исхода читаются
+#        конвейера) на кодах 0 · 1 · 2 · неожиданном             РАЗДЕЛЬНО
 #
 # Пара C/D — несущая. Она меняет один факт: идентификатор правила в директиве.
 # Код, файл, строка, форма комментария и причина у обоих одинаковы, поэтому
 # красное у C не может прийти «от соседа».
+#
+# G и H проверяют ДРУГОЙ предмет: не гейт, а того, кто его зовёт. Коды возврата
+# у гейта свои и правильные, но прочитать их может только вызывающий, и здесь
+# это уже стоило одной правки — `go run` схлопывал любой ненулевой код в
+# единицу, и третий исход доезжал неотличимым от находки. Оба блока берутся ИЗ
+# своих файлов, а не переписываются: копия разошлась бы с оригиналом молча и
+# доказывала бы свойство копии.
 #
 # # Третий исход проверяется отдельно (E, F)
 #
@@ -235,6 +244,73 @@ rc=$(gate)
 [ "$rc" -eq 2 ] && ok "код 2 — вердикт по неполному дереву не выносится" || bad "код $rc, ожидался 2"
 grep -q 'services/iam' "$WORK/gate.txt" && ok "отказ называет модуль поимённо" \
     || bad "отказ не называет модуль: $(head -c 200 "$WORK/gate.txt")"
+
+# ── G и H: ВЫЗЫВАЮЩИЕ ЧИТАЮТ ТРИ ИСХОДА, А НЕ ДВА ───────────────────────────
+# Подставной `go build` кладёт на место гейта заглушку, выходящую заданным кодом.
+# Проверяется, что вызывающий различает 0 · 1 · 2 и не засчитывает неожиданный
+# код в успех.
+probe_caller() {
+    local name="$1" block="$2" want="$3" expect="$4"
+    local box; box=$(mktemp -d)
+    mkdir -p "$box/binpath" "$box/root"
+    cat > "$box/binpath/go" <<GOSTUB
+#!/usr/bin/env bash
+if [ "\$1" = build ]; then
+    out=""; prev=""
+    for a in "\$@"; do [ "\$prev" = "-o" ] && out="\$a"; prev="\$a"; done
+    printf '#!/usr/bin/env bash\nexit %s\n' "$want" > "\$out"; chmod +x "\$out"; exit 0
+fi
+exit 0
+GOSTUB
+    chmod +x "$box/binpath/go"
+    local out rc=0
+    out=$(cd "$box/root" && PATH="$box/binpath:$PATH" bash -c "
+        set -uo pipefail
+        ROOT='$box/root'; WORK='$box'; fails=()
+        probe() {
+$block
+        }
+        probe
+        printf 'ОТКАЗОВ=%d\n' \"\${#fails[@]}\"
+    " 2>&1) || rc=$?
+    if printf '%s' "$out" | grep -q "$expect"; then
+        ok "$name: код $want → $expect"
+    else
+        bad "$name: код $want не дал «$expect»: $(printf '%s' "$out" | tr '\n' '|' | head -c 200)"
+    fi
+    rm -rf "$box"
+}
+
+say "G: локальный прогонщик различает исходы гейта"
+CALLER_BLOCK=$(awk '/# У ПОДАВЛЕНИЯ ОБЯЗАН БЫТЬ ПРЕДМЕТ/,/^                esac$/' \
+    "$ROOT/scripts/ci-local.sh" | sed 's/^                //')
+if [ -z "$CALLER_BLOCK" ]; then
+    bad "G: блок вызова не найден в ci-local.sh — предмет пробы исчез, а сама она смолчала бы"
+else
+    probe_caller "ci-local" "$CALLER_BLOCK" 0 'ОТКАЗОВ=0'
+    probe_caller "ci-local" "$CALLER_BLOCK" 1 'подавление без предмета'
+    probe_caller "ci-local" "$CALLER_BLOCK" 2 'НЕ ВЫНЕС вердикта (код 2)'
+    probe_caller "ci-local" "$CALLER_BLOCK" 7 'НЕ ВЫНЕС вердикта (код 7)'
+fi
+
+say "H: объявление конвейера различает исходы гейта"
+WF_BLOCK=$(python3 - "$ROOT/.github/workflows/security-scan.yml" <<'PY'
+import sys, yaml
+d = yaml.safe_load(open(sys.argv[1], encoding='utf-8'))
+for st in d['jobs']['gosec']['steps']:
+    if 'gosecsubject' in str(st.get('run', '')):
+        sys.stdout.write(st['run'])
+        break
+PY
+)
+if [ -z "$WF_BLOCK" ]; then
+    bad "H: шаг вызова гейта не найден в security-scan.yml"
+else
+    probe_caller "конвейер" "$WF_BLOCK" 0 'есть предмет'
+    probe_caller "конвейер" "$WF_BLOCK" 1 'без предмета'
+    probe_caller "конвейер" "$WF_BLOCK" 2 'НЕ ВЫНЕС вердикта (код 2)'
+    probe_caller "конвейер" "$WF_BLOCK" 7 'НЕ ВЫНЕС вердикта (код 7)'
+fi
 
 # ── ВОССТАНОВЛЕНИЕ — ФАКТ, А НЕ ЗАЯВЛЕНИЕ ───────────────────────────────────
 say "восстановление рабочей копии"
