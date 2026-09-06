@@ -261,3 +261,64 @@ func IsIdentityShaped(bare string) bool {
 
 // IsOurs — принадлежит ли голое имя пространству имён ЭТОЙ сборки.
 func IsOurs(bare string) bool { return strings.HasPrefix(bare, Namespace) }
+
+// WireNameKind — чем является строковое значение по отношению к пространству
+// имён личности. Нужен проверкам дерева, чтобы отказ называл предмет, а не
+// «строка похожа на нашу».
+type WireNameKind int
+
+// Виды имён пространства.
+const (
+	// WireNameNone — к пространству имён личности значение не относится.
+	WireNameNone WireNameKind = iota
+	// WireNameNamespace — само пространство имён.
+	WireNameNamespace
+	// WireNameFamily — приставка подсемейства (`x-<обозначение>-principal-`,
+	// `x-<обозначение>-token-`). На ней ключуется вычистка чужого ввода, поэтому
+	// второе её объявление так же опасно, как второе объявление ключа.
+	WireNameFamily
+	// WireNameKey — ключ формы личности.
+	WireNameKey
+)
+
+// ClassifyWireName относит строковое значение к пространству имён личности.
+//
+// # Почему признак СТРУКТУРНЫЙ, а не «начинается с нашей приставки»
+//
+// Переименование пространства — тот самый переход, ради которого написан этот
+// пакет. Признак, знающий только сегодняшнюю приставку, не увидел бы второго
+// объявления, сделанного уже под новой, — то есть промолчал бы ровно в тот
+// день, когда нужен.
+//
+// # Чего признак НЕ относит к пространству — названо, а не спрятано
+//
+// Общая приставка ещё не делает имя ключом личности: `x-kacho-hook-token`
+// (общий секрет крючка службы личности), `x-kacho-admin`, `x-kacho-project-id`
+// — законные имена вне этого контракта, и запрет объявлять их значил бы
+// запрет на соседние подсистемы. Различает подсемейство и непустое поле за ним.
+func ClassifyWireName(v string) WireNameKind {
+	if v == Namespace {
+		return WireNameNamespace
+	}
+	if familyPrefix(v) {
+		return WireNameFamily
+	}
+	if IsIdentityShaped(v) {
+		return WireNameKey
+	}
+	return WireNameNone
+}
+
+// familyPrefix — является ли значение ровно приставкой подсемейства.
+func familyPrefix(v string) bool {
+	if !strings.HasPrefix(v, "x-") {
+		return false
+	}
+	rest := v[len("x-"):]
+	i := strings.IndexByte(rest, '-')
+	if i <= 0 {
+		return false
+	}
+	rest = rest[i+1:]
+	return rest == "principal-" || rest == "token-"
+}
