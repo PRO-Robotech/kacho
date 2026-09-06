@@ -7,9 +7,6 @@ import (
 	"crypto/sha256"
 	"encoding/hex"
 	"fmt"
-	"os"
-	"path/filepath"
-	"sort"
 	"strings"
 
 	"github.com/PRO-Robotech/kacho/pkg/gitenv"
@@ -342,79 +339,5 @@ func AbsPathOf(rel string) (string, error) {
 	return strings.TrimSpace(string(out)) + "/" + rel, nil
 }
 
-// ── ОТПЕЧАТОК ПРЕДМЕТА ЗАМЕРА ЗАПИСИ И УДАЛЕНИЯ ──────────────────────────────
-//
-// Предмет у него ДРУГОЙ, и сторожить его отпечатком читающего прибора нельзя:
-// такой гейт краснел бы на правке запроса вердикта, которой отчёт о записи не
-// касается, и МОЛЧАЛ бы на правке материализатора — то есть ровно на том, что
-// он обязан ловить. Второй отпечаток заводится не «для симметрии», а потому что
-// у второго отчёта другой предмет.
-
 // WriteDeleteReportPath — куда ложится отчёт записи и удаления.
 const WriteDeleteReportPath = "services/iam/internal/repo/kaname/pg/scalegrid/REPORT-R7-2-write-delete.txt"
-
-// reconcileDir — каталог материализатора: он и есть предмет замера записи.
-const reconcileDir = "services/iam/internal/apps/kaname/api/access_binding/reconcile"
-
-// WriteDeleteFingerprintPredicate — предикат второго отпечатка, словами.
-const WriteDeleteFingerprintPredicate = `все не-тестовые .go каталога ` + reconcileDir +
-	`; все .sql каталога ` + migrateDir + `, называющие хотя бы одну таблицу, которую пишет ` +
-	`материализатор (имена таблиц ВЫВЕДЕНЫ из его кода по приставке "` + fingerprintTableMark +
-	`", а не выписаны)` +
-	`; у .go под отпечаток идёт ЗНАЧАЩЕЕ содержимое — поток лексем БЕЗ комментариев ` +
-	`(директивы //go: сохранены), поэтому смена заголовка лицензии или прозы замер НЕ ` +
-	`обесценивает; .sql берётся ПОБАЙТОВО — в его комментариях живут директивы мигратора ` +
-	`(-- +goose), а отделить их текстом нельзя: две дефиса встречаются и внутри литерала`
-
-// ComputeWriteDeleteFingerprint — отпечаток предмета замера записи и удаления.
-//
-// Устроен ТЕМИ ЖЕ двумя хэшами, что и первый (состав ловит появление и
-// исчезновение файла, содержимое — правку существующего), и теми же вспомогатель-
-// ными функциями: вторая реализация обхода разошлась бы с первой молча.
-func ComputeWriteDeleteFingerprint(root string) (Fingerprint, error) {
-	var fp Fingerprint
-	fp.Predicate = WriteDeleteFingerprintPredicate
-
-	code, err := nonTestGoFiles(root, reconcileDir)
-	if err != nil {
-		return fp, err
-	}
-	tables := map[string]bool{}
-	for _, rel := range code {
-		body, rerr := os.ReadFile(filepath.Join(root, rel)) // #nosec G304 -- rel получен обходом СОБСТВЕННОГО дерева репозитория под корнем root, не из запроса и не от пользователя
-		if rerr != nil {
-			return fp, fmt.Errorf("scalegrid: чтение %s: %w", rel, rerr)
-		}
-		for _, name := range tableNamesIn(string(body)) {
-			tables[name] = true
-		}
-	}
-	for name := range tables {
-		fp.Tables = append(fp.Tables, name)
-	}
-	sort.Strings(fp.Tables)
-
-	migrations, err := migrationsNaming(root, fp.Tables)
-	if err != nil {
-		return fp, err
-	}
-	files := append(append([]string{}, code...), migrations...)
-	sort.Strings(files)
-	fp.Files = files
-
-	ch := sha256.New()
-	for _, rel := range files {
-		ch.Write([]byte(rel + "\n"))
-	}
-	fp.Composition = hex.EncodeToString(ch.Sum(nil))[:16]
-
-	// Тот же `contentHash`, что у первого отпечатка: значащее содержимое
-	// определяется ОДИН раз. Второй экземпляр этой арифметики разошёлся бы с
-	// первым молча — оба давали бы «совпало» на неподвижном дереве, и заметить
-	// расхождение было бы нечем.
-	fp.Content, err = contentHash(root, files)
-	if err != nil {
-		return fp, err
-	}
-	return fp, nil
-}

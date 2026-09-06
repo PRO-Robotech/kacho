@@ -19,30 +19,37 @@ R7-2 — ПРЕДЕЛ ПРОЧНОСТИ: ЧТЕНИЕ (рамка A, реляц
   Postgres            16.15
 
 ОТПЕЧАТОК ПРЕДМЕТА ЗАМЕРА (гейт свежести сверяет его с текущим деревом)
-  отпечаток состава     e63f641d844c5bb4
-  отпечаток содержимого d750edb5dbbde4b2
+  отпечаток состава     55357f47a4fd3180
+  отпечаток содержимого b40f95a969543dba
   файлов под отпечатком 19, таблиц выведено 18 (kaname.access_binding_subjects, kaname.access_bindings, kaname.accounts, kaname.catalog_resource, kaname.clusters, kaname.group_members, kaname.groups, kaname.memberships, kaname.projects, kaname.relation_fact, kaname.resource_mirror, kaname.resource_parent_edge, kaname.resource_scope_edge, kaname.role_rule_selectors, kaname.role_verb, kaname.roles, kaname.service_accounts, kaname.users)
-  предикат отпечатка    все не-тестовые .go каталогов services/iam/internal/repo/kacho/pg/relverdict и services/iam/internal/repo/kacho/pg/scalegrid; те .sql каталога services/iam/internal/migrations, что МЕНЯЮТ СТРУКТУРУ (CREATE/ALTER/DROP вне комментариев) хотя бы одной таблицы, которую читает запрос вердикта (имена таблиц ВЫВЕДЕНЫ из кода вердикта по приставке "kaname.", а не выписаны); БЕЗ файлов, объявленных оснасткой отпечатка (они не касаются базы — проверяется разбором, а не перечнем); у .go под отпечаток идёт ЗНАЧАЩЕЕ содержимое — поток лексем БЕЗ комментариев (директивы //go: сохранены), поэтому смена заголовка лицензии или прозы замер НЕ обесценивает; .sql берётся ПОБАЙТОВО — в его комментариях живут директивы мигратора (-- +goose), а отделить их текстом нельзя: две дефиса встречаются и внутри литерала
-  ФАЙЛЫ ПОД ОТПЕЧАТКОМ (пофайлово, чтобы гейт назвал ВИНОВНИКА, а не только факт)
-    5ed0b860ed8e8607  services/iam/internal/migrations/0001_initial.sql
-    ee18772d31c05f47  services/iam/internal/migrations/20260904135459_role_owner_module_needs_a_liveness_key.sql
-    390bfdb71548b903  services/iam/internal/migrations/20260905020423_roles_carry_a_time_of_last_edit.sql
-    28ccc0b674e6ac55  services/iam/internal/repo/kacho/pg/relverdict/asker.go
-    8a5df9cd8d0a346e  services/iam/internal/repo/kacho/pg/relverdict/asker_gate.go
-    44feeb9469eb14bc  services/iam/internal/repo/kacho/pg/relverdict/catalogtype.go
-    26004fc4746102cd  services/iam/internal/repo/kacho/pg/relverdict/condition.go
-    0a456f44bf28d9d2  services/iam/internal/repo/kacho/pg/relverdict/expand.go
-    4bd7c6a0b7a9c185  services/iam/internal/repo/kacho/pg/relverdict/labelaxis.go
-    ea23896d20b684b9  services/iam/internal/repo/kacho/pg/relverdict/list.go
-    3b3ea697e22783c0  services/iam/internal/repo/kacho/pg/relverdict/membership.go
-    dd0427f68768b96d  services/iam/internal/repo/kacho/pg/relverdict/query.go
-    6911db75df41e8f6  services/iam/internal/repo/kacho/pg/relverdict/subjects.go
-    cba312c09c5cc18f  services/iam/internal/repo/kacho/pg/scalegrid/census.go
-    f2edbd685a512a60  services/iam/internal/repo/kacho/pg/scalegrid/dictionary.go
-    207aaca91e4a2a36  services/iam/internal/repo/kacho/pg/scalegrid/grid.go
-    09f03c04b0f28ba4  services/iam/internal/repo/kacho/pg/scalegrid/seed.go
-    39d58ae3d30f9397  services/iam/internal/repo/kacho/pg/scalegrid/strength.go
-    f6e9c85169896050  services/iam/internal/repo/kacho/pg/scalegrid/strength_census.go
+  предикат отпечатка    все не-тестовые .go каталогов services/iam/internal/repo/kaname/pg/relverdict и services/iam/internal/repo/kaname/pg/scalegrid; те .sql каталога services/iam/internal/migrations, что МЕНЯЮТ СТРУКТУРУ (CREATE/ALTER/DROP вне комментариев) хотя бы одной таблицы, которую читает запрос вердикта (имена таблиц ВЫВЕДЕНЫ из кода вердикта по приставке "kaname.", а не выписаны); БЕЗ файлов, объявленных оснасткой отпечатка (они не касаются базы — проверяется разбором, а не перечнем); у .go под отпечаток идёт ЗНАЧАЩЕЕ содержимое — поток лексем БЕЗ комментариев (директивы //go: сохранены), поэтому смена заголовка лицензии или прозы замер НЕ обесценивает; строковая лексема, называющая КООРДИНАТУ собственного дерева (путь импорта своего модуля либо путь, начинающийся с каталога верхнего уровня репозитория), заменяется постоянной меткой — адрес кода не есть его поведение, поэтому переезд каталога замер тоже НЕ обесценивает; .sql берётся ПОБАЙТОВО — в его комментариях живут директивы мигратора (-- +goose), а отделить их текстом нельзя: две дефиса встречаются и внутри литерала; файл опознаётся ТОЖДЕСТВОМ «роль каталога/имя файла», а не путём, и в этом же порядке считается содержимое — поэтому оба плеча неподвижны при переименовании каталога by construction
+  ПЕРЕШТАМПОВАН БЕЗ ПЕРЕСЪЁМКИ (задача продукта #2039). Сменилось ПРАВИЛО
+  отпечатка: координата собственного дерева вынесена из значащего содержимого, а
+  файл опознаётся тождеством, а не путём. Замер не повторялся, и это доказано, а
+  не заявлено: под новым правилом дерево ревизии b4b84500 и дерево после переезда
+  каталогов дают ОДИН И ТОТ ЖЕ отпечаток — 19 совпадений из 19 пофайлово. Позже
+  сдвинулся ровно один файл, `сетка/strength.go`: из него вынесена машинерия
+  самого отпечатка, ни один оператор замера не тронут.
+  ФАЙЛЫ ПОД ОТПЕЧАТКОМ (хэш · тождество · путь на момент замера)
+    28ccc0b674e6ac55  вердикт/asker.go  services/iam/internal/repo/kaname/pg/relverdict/asker.go
+    8a5df9cd8d0a346e  вердикт/asker_gate.go  services/iam/internal/repo/kaname/pg/relverdict/asker_gate.go
+    44feeb9469eb14bc  вердикт/catalogtype.go  services/iam/internal/repo/kaname/pg/relverdict/catalogtype.go
+    26004fc4746102cd  вердикт/condition.go  services/iam/internal/repo/kaname/pg/relverdict/condition.go
+    0a456f44bf28d9d2  вердикт/expand.go  services/iam/internal/repo/kaname/pg/relverdict/expand.go
+    80e119935fa750c3  вердикт/labelaxis.go  services/iam/internal/repo/kaname/pg/relverdict/labelaxis.go
+    ea23896d20b684b9  вердикт/list.go  services/iam/internal/repo/kaname/pg/relverdict/list.go
+    3b3ea697e22783c0  вердикт/membership.go  services/iam/internal/repo/kaname/pg/relverdict/membership.go
+    9be00171f7f5dad4  вердикт/query.go  services/iam/internal/repo/kaname/pg/relverdict/query.go
+    6911db75df41e8f6  вердикт/subjects.go  services/iam/internal/repo/kaname/pg/relverdict/subjects.go
+    5ed0b860ed8e8607  миграции/0001_initial.sql  services/iam/internal/migrations/0001_initial.sql
+    ee18772d31c05f47  миграции/20260904135459_role_owner_module_needs_a_liveness_key.sql  services/iam/internal/migrations/20260904135459_role_owner_module_needs_a_liveness_key.sql
+    390bfdb71548b903  миграции/20260905020423_roles_carry_a_time_of_last_edit.sql  services/iam/internal/migrations/20260905020423_roles_carry_a_time_of_last_edit.sql
+    cba312c09c5cc18f  сетка/census.go  services/iam/internal/repo/kaname/pg/scalegrid/census.go
+    58879bd6de1a3d96  сетка/dictionary.go  services/iam/internal/repo/kaname/pg/scalegrid/dictionary.go
+    a4344ef691609535  сетка/grid.go  services/iam/internal/repo/kaname/pg/scalegrid/grid.go
+    90e89714c215b4e7  сетка/seed.go  services/iam/internal/repo/kaname/pg/scalegrid/seed.go
+    59456362d14ce8a3  сетка/strength.go  services/iam/internal/repo/kaname/pg/scalegrid/strength.go
+    f6e9c85169896050  сетка/strength_census.go  services/iam/internal/repo/kaname/pg/scalegrid/strength_census.go
 
 СЕТКА (константа в коде, ниоткуда не переопределяется)
   ось V: 100, 1000, 10000, 100000  — неподвижны: M=0 L=1 S=7 K=1
