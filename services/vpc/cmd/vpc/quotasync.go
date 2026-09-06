@@ -31,10 +31,12 @@ import (
 type quotaAuthorityEdge struct {
 	// Limits — полоса пути запроса. nil, когда домен объявлен отсутствующим:
 	// отсутствие представимо ОТДЕЛЬНО от адреса, а не пустой строкой.
+	//
+	// Останова здесь нет намеренно: он один на всё ребро и возвращается вторым
+	// значением сборки. Второе поле-останов было бы вторым способом закрыть одно
+	// и то же — и первый же вызывающий, закрывший не тем, оставил бы соединение
+	// открытым молча.
 	Limits quota.LimitResolver
-	// Stop останавливает фоновую полосу. Не nil никогда — у вызывающего не
-	// должно быть ветки «а здесь останавливать нечего».
-	Stop func()
 }
 
 // buildQuotaAuthorityEdge разрешает объявление, при надобности дозванивается и
@@ -95,6 +97,6 @@ func buildQuotaAuthorityEdge(
 		return quotaAuthorityEdge{}, noop, fmt.Errorf("start quota limit sync: %w", serr)
 	}
 
-	return quotaAuthorityEdge{Limits: limits, Stop: stopSync},
+	return quotaAuthorityEdge{Limits: limits},
 		func() { stopSync(); closeConn() }, nil
 }

@@ -33,6 +33,7 @@ import (
 	"os"
 	"path/filepath"
 	"sort"
+	"strings"
 	"testing"
 
 	"github.com/stretchr/testify/require"
@@ -134,4 +135,70 @@ func anyEdgeEnabled(edges map[string]any) bool {
 		}
 	}
 	return false
+}
+
+// TestQuotaAuthorityChartsHaveNoDefault — чарт потребителя НЕ подставляет
+// умолчания за оператора: объявление проходит через `required`.
+//
+// # Почему это отдельная проверка, а не следствие стража старта
+//
+// Страж отказывает ПРОЦЕССУ, то есть уже на поднятом стенде и после выкатки.
+// Чарт отказывает РЕНДЕРУ — на машине оператора, до того как что-либо
+// применено. Полосы разные, и умолчание, вписанное в шаблон (`| default
+// "kaname-internal:9091"`), сняло бы вторую целиком: оператор получал бы адрес,
+// которого не выбирал, а страж видел бы его заданным и молчал.
+//
+// # Что судится и чего эта проверка НЕ видит
+//
+// Судится объявление шаблона, а не исход рендера: рендер требует helm, которого
+// у короткого прогона нет. Значит проверка ловит подставленное умолчание и не
+// ловит шаблон, синтаксически верный, но рендерящийся во что-то иное. Вторую
+// половину закрывает рендер на прогоне посадки; здесь она названа, а не скрыта.
+func TestQuotaAuthorityChartsHaveNoDefault(t *testing.T) {
+	root := repoRoot(t)
+
+	// Каталоги чартов ВЫВОДЯТСЯ из тех же потребителей, что и перепись выше:
+	// выписанный список разошёлся бы с деревом при шестом потребителе.
+	consumers, err := quotaConsumers(root)
+	require.NoError(t, err)
+	require.NotEmpty(t, consumers, "обход беспредметен: потребителей ребра величин не найдено")
+
+	var templatesRead, carrying int
+	for _, svc := range consumers {
+		dir := filepath.Join(root, "services", svc, "deploy", "templates")
+		var found bool
+		werr := rootedWalk(dir,
+			func(rel string) bool { return filepath.Ext(rel) == ".yaml" },
+			func(abs string, body []byte) error {
+				text := string(body)
+				if !strings.Contains(text, ".Values.quota.authority") {
+					return nil
+				}
+				templatesRead++
+				for _, line := range strings.Split(text, "\n") {
+					if !strings.Contains(line, ".Values.quota.authority") {
+						continue
+					}
+					if !strings.Contains(line, "required ") {
+						t.Errorf("%s: объявление домена величин проходит без `required`: %s\n"+
+							"Умолчание в шаблоне подставило бы за оператора выбор между "+
+							"«потолки действуют» и «потолков нет», и страж старта увидел бы "+
+							"значение заданным — то есть промолчал бы", abs, strings.TrimSpace(line))
+						continue
+					}
+					found = true
+				}
+				return nil
+			})
+		require.NoError(t, werr)
+		if found {
+			carrying++
+			continue
+		}
+		t.Errorf("чарт службы %s не проводит объявление домена величин ни одним шаблоном: "+
+			"ручка есть у процесса и недостижима из профиля", svc)
+	}
+
+	t.Logf("перепись: потребителей %d, из них проводят объявление %d (шаблонов с ним %d)",
+		len(consumers), carrying, templatesRead)
 }

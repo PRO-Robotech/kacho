@@ -313,6 +313,11 @@ func runServe(configPath string) error {
 	if qaerr != nil {
 		return qaerr
 	}
+	// Проверка на nil здесь НЕ избыточна: peers.Limit — конкретный указатель, и
+	// присваивание нулевого указателя интерфейсу даёт НЕнулевой интерфейс с nil
+	// внутри. Тогда сборка приняла бы «источник есть» на неразвёрнутом домене, и
+	// первый же проход упал бы на разыменовании вместо того, чтобы не заводиться
+	// вовсе.
 	var limitSrc corequota.Source
 	if peers.Limit != nil {
 		limitSrc = peers.Limit
