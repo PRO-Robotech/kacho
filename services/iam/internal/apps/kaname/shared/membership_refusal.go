@@ -14,6 +14,8 @@ import (
 	"google.golang.org/grpc/status"
 
 	iamerr "github.com/PRO-Robotech/kaname/internal/errors"
+
+	"github.com/PRO-Robotech/kaname/internal/refusaldomain"
 )
 
 // Отказ «членство несёт права» на пути наружу (задача продукта #1686).
@@ -51,8 +53,12 @@ const (
 )
 
 // membershipReasonDomain — источник отказа в `ErrorInfo.domain`, как его видит
-// клиент. Совпадает с доменом отказа учёта: сервис один.
-const membershipReasonDomain = "iam.kacho.cloud"
+// клиент.
+//
+// Берётся у ЕДИНСТВЕННОГО объявления продукта, а не пишется здесь литералом:
+// совпадение с соседними полосами прежде держалось комментарием, то есть ничем.
+// Задача продукта #2099, приёмка WIRE-1, сценарий WIRE-3-01.
+func membershipReasonDomain() string { return refusaldomain.For(refusaldomain.ServiceIAM) }
 
 // MaxNamedBlockingGrants — сколько выдач называется поимённо.
 //
@@ -138,7 +144,7 @@ func withMembershipDetails(msg string, named []string, total int) error {
 	}
 	withDetails, derr := st.WithDetails(&errdetails.ErrorInfo{
 		Reason:   reasonMembershipCarriesRights,
-		Domain:   membershipReasonDomain,
+		Domain:   membershipReasonDomain(),
 		Metadata: meta,
 	})
 	if derr != nil {
