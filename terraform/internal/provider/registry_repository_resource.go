@@ -57,8 +57,8 @@ type repositoryResource struct{ c *client.Client }
 // NewRegistryRepositoryResource — конструктор для реестра провайдера.
 func NewRegistryRepositoryResource() resource.Resource { return &repositoryResource{} }
 
-func (r *repositoryResource) Metadata(_ context.Context, req resource.MetadataRequest, resp *resource.MetadataResponse) {
-	resp.TypeName = req.ProviderTypeName + "_registry_repository"
+func (r *repositoryResource) Metadata(_ context.Context, _ resource.MetadataRequest, resp *resource.MetadataResponse) {
+	resp.TypeName = typeNameRegistryRepository
 }
 
 func (r *repositoryResource) Configure(_ context.Context, req resource.ConfigureRequest, resp *resource.ConfigureResponse) {
@@ -216,7 +216,7 @@ func (r *repositoryResource) Create(ctx context.Context, req resource.CreateRequ
 		resp.Diagnostics.AddError("Тело запроса не собрано", err.Error())
 		return
 	}
-	hdr := &client.Headers{IdempotencyKey: client.IdempotencyKey("kacho_registry_repository",
+	hdr := &client.Headers{IdempotencyKey: client.IdempotencyKey(typeNameRegistryRepository,
 		repoStateID(plan.RegistryID.ValueString(), plan.Repository.ValueString()), raw)}
 
 	httpResp, err := r.c.Do(ctx, http.MethodPost, col, body, hdr)

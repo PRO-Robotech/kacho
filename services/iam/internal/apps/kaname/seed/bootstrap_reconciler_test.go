@@ -33,7 +33,7 @@ func TestBootstrapReconciler_RetriesUntilGrantCommitted(t *testing.T) {
 		n := calls.Add(1)
 		if n < 3 {
 			// User not registered yet — graceful skip, keep retrying.
-			return BootstrapAdminResult{Skipped: true, SkipReason: "user not registered"}, nil
+			return BootstrapAdminResult{Skipped: true, SkipReason: BootstrapSkipNotRegistered}, nil
 		}
 		// User appeared — grant + outbox committed.
 		return BootstrapAdminResult{Skipped: false, GrantID: "cag_x", FGAOutboxID: "fga_1", UserID: "usr_boot"}, nil
@@ -72,7 +72,7 @@ func TestBootstrapReconciler_EmailEmpty_NoOp(t *testing.T) {
 	run := func(ctx context.Context) (BootstrapAdminResult, error) {
 		calls.Add(1)
 		// email-empty skip is terminal — there is no email to ever resolve.
-		return BootstrapAdminResult{Skipped: true, SkipReason: "email empty"}, nil
+		return BootstrapAdminResult{Skipped: true, SkipReason: BootstrapSkipEmailEmpty}, nil
 	}
 	rec := NewBootstrapReconciler(run, BootstrapReconcilerConfig{Interval: time.Millisecond})
 	ctx, cancel := context.WithTimeout(context.Background(), 200*time.Millisecond)
@@ -87,7 +87,7 @@ func TestBootstrapReconciler_EmailEmpty_NoOp(t *testing.T) {
 
 func TestBootstrapReconciler_ContextCancel_Stops(t *testing.T) {
 	run := func(ctx context.Context) (BootstrapAdminResult, error) {
-		return BootstrapAdminResult{Skipped: true, SkipReason: "user not registered"}, nil
+		return BootstrapAdminResult{Skipped: true, SkipReason: BootstrapSkipNotRegistered}, nil
 	}
 	rec := NewBootstrapReconciler(run, BootstrapReconcilerConfig{Interval: time.Millisecond})
 	ctx, cancel := context.WithTimeout(context.Background(), 50*time.Millisecond)

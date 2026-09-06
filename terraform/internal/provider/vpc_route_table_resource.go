@@ -129,8 +129,8 @@ type routeTableResource struct{ c *client.Client }
 // NewVPCRouteTableResource — конструктор для реестра провайдера.
 func NewVPCRouteTableResource() resource.Resource { return &routeTableResource{} }
 
-func (r *routeTableResource) Metadata(_ context.Context, req resource.MetadataRequest, resp *resource.MetadataResponse) {
-	resp.TypeName = req.ProviderTypeName + "_vpc_route_table"
+func (r *routeTableResource) Metadata(_ context.Context, _ resource.MetadataRequest, resp *resource.MetadataResponse) {
+	resp.TypeName = typeNameVPCRouteTable
 }
 
 func (r *routeTableResource) Configure(_ context.Context, req resource.ConfigureRequest, resp *resource.ConfigureResponse) {
@@ -491,7 +491,7 @@ func (r *routeTableResource) Create(ctx context.Context, req resource.CreateRequ
 		StaticRoutes: routesToProto(ctx, plan.StaticRoutes),
 	}
 
-	id, err := awaitCreate(ctx, r.c, routeTablesPath, "routeTableId", "kacho_vpc_route_table",
+	id, err := awaitCreate(ctx, r.c, routeTablesPath, "routeTableId", typeNameVPCRouteTable,
 		plan.ProjectID.ValueString()+"/"+plan.Name.ValueString(), body)
 	if err != nil {
 		resp.Diagnostics.AddError("Создание таблицы маршрутизации не завершилось", err.Error())

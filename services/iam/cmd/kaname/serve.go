@@ -1645,6 +1645,10 @@ func runServe(cfg config.Config) error {
 		seed.BootstrapReconcilerConfig{
 			Interval: 10 * time.Second,
 			Logger:   logger.With(slog.String("component", "bootstrap_admin_reconciler")),
+			// Исход КАЖДОЙ попытки уезжает счётчиком: петля незавершающая по
+			// контракту и на неисполнимом посеве печатает только Debug, поэтому
+			// «доступ не выдан ни разу» иначе неотличимо от «выдан сразу».
+			Observer: metricsReg.NewBootstrapAdminRecorder(),
 		},
 	)
 	tasks = append(tasks, func() error {

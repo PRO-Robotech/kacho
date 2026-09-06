@@ -313,10 +313,26 @@ var (
 	// независимыми литералами, и разойтись они могли молча, поэтому объявление сведено к
 	// одному. Предикат, знающий только литерал, объявил бы девять существующих ресурсов
 	// отсутствующими — что он и сделал при первом прогоне после сведения.
-	reTypeConstDecl  = regexp.MustCompile(`(?m)^\s*(\w+)\s*=\s*"((?:kacho|kaname)_[a-z0-9_]+)"\s*$`)
-	reTypeNameIdent  = regexp.MustCompile(`TypeName\s*=\s*([A-Za-z_]\w*)\b`)
-	reTypeSpecIdent  = regexp.MustCompile(`tfName:\s*([A-Za-z_]\w*)\s*,`)
-	reTypeSpecEither = regexp.MustCompile(`tfName:\s*(?:"((?:kacho|kaname)_[a-z0-9_]+)"|([A-Za-z_]\w*))\s*,`)
+	reTypeConstDecl = regexp.MustCompile(`(?m)^\s*(\w+)\s*=\s*"((?:kacho|kaname)_[a-z0-9_]+)"\s*$`)
+	// Четвёртая форма — имя типа объявлено константой, ВЫЧИСЛЯЕМОЙ через имя провайдера.
+	// Она появилась вместе со сведением имён типов платформы к одному объявлению: имя
+	// записывалось дважды (в описании типа и в пространстве ключа повторной подачи), и
+	// сведение сняло второе написание, а приставку оставило производной от имени
+	// провайдера. Предикат, знающий только литерал, объявил бы тринадцать существующих
+	// ресурсов отсутствующими — что он и сделал при первом прогоне после сведения.
+	//
+	// Разрешается она ЧЕРЕЗ имя провайдера, поэтому его объявление ищется отдельно: без
+	// него составное имя не вычислимо, и молчание здесь означало бы слепоту, а не чистое
+	// дерево. Предпосылку предикат проверяет сам — см. registeredTerraformResources.
+	//
+	// `const\s+` необязателен намеренно: объявление бывает и одиночным, и внутри блока
+	// `const ( … )`. Предикат, знающий одну из двух форм, не нашёл бы имени провайдера —
+	// что он и сделал при первом прогоне: оно объявлено одиночной строкой.
+	reProviderNameConst = regexp.MustCompile(`(?m)^\s*(?:const\s+)?providerTypeName\s*=\s*"([a-z0-9]+)"\s*$`)
+	reTypeConstExpr     = regexp.MustCompile(`(?m)^\s*(?:const\s+)?(\w+)\s*=\s*providerTypeName\s*\+\s*"(_[a-z0-9_]+)"\s*$`)
+	reTypeNameIdent     = regexp.MustCompile(`TypeName\s*=\s*([A-Za-z_]\w*)\b`)
+	reTypeSpecIdent     = regexp.MustCompile(`tfName:\s*([A-Za-z_]\w*)\s*,`)
+	reTypeSpecEither    = regexp.MustCompile(`tfName:\s*(?:"((?:kacho|kaname)_[a-z0-9_]+)"|([A-Za-z_]\w*))\s*,`)
 )
 
 // publicCreatingServices — сервисы контрактов, заводящие ресурс.
@@ -460,6 +476,36 @@ func registeredTerraformResources(t *testing.T, root string) map[string]bool {
 		for _, c := range reTypeConstDecl.FindAllStringSubmatch(s, -1) {
 			consts[c[1]] = c[2]
 		}
+	}
+
+	// Составные имена разрешаются ВТОРЫМ проходом: их значение вычисляется через имя
+	// провайдера, и порядок объявления в файлах произволен.
+	// Обход по файлам идёт в произвольном порядке, и это безопасно: объявление имени
+	// провайдера в пакете ровно одно — второе не собралось бы.
+	providerName := ""
+	for _, s := range sources {
+		if m := reProviderNameConst.FindStringSubmatch(s); m != nil {
+			providerName = m[1]
+			break
+		}
+	}
+	composite := 0
+	for _, s := range sources {
+		for _, c := range reTypeConstExpr.FindAllStringSubmatch(s, -1) {
+			composite++
+			if providerName == "" {
+				continue
+			}
+			consts[c[1]] = providerName + c[2]
+		}
+	}
+	// Предпосылка предиката, проверяемая им самим: составные имена в дереве есть, а имени
+	// провайдера, через которое они вычисляются, нет. Тогда «ресурс не зарегистрирован»
+	// означало бы «предикат ослеп», и разница между этим и настоящей находкой не видна
+	// ниоткуда.
+	if composite > 0 && providerName == "" {
+		t.Fatalf("в дереве %d составных имён типа, а объявления providerTypeName не найдено — "+
+			"вычислить их не через что; предикат переписи устарел", composite)
 	}
 
 	// Форма 1: собственный конструктор. Имя типа берётся из Metadata его файла — либо

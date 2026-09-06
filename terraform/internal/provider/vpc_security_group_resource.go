@@ -87,8 +87,8 @@ type securityGroupResource struct{ c *client.Client }
 // NewVPCSecurityGroupResource — конструктор для реестра провайдера.
 func NewVPCSecurityGroupResource() resource.Resource { return &securityGroupResource{} }
 
-func (r *securityGroupResource) Metadata(_ context.Context, req resource.MetadataRequest, resp *resource.MetadataResponse) {
-	resp.TypeName = req.ProviderTypeName + "_vpc_security_group"
+func (r *securityGroupResource) Metadata(_ context.Context, _ resource.MetadataRequest, resp *resource.MetadataResponse) {
+	resp.TypeName = typeNameVPCSecurityGroup
 }
 
 func (r *securityGroupResource) Configure(_ context.Context, req resource.ConfigureRequest, resp *resource.ConfigureResponse) {
@@ -824,7 +824,7 @@ func (r *securityGroupResource) Create(ctx context.Context, req resource.CreateR
 	}
 
 	id, err := awaitCreate(ctx, r.c, securityGroupsPath, "securityGroupId",
-		"kacho_vpc_security_group", plan.ProjectID.ValueString()+"/"+plan.Name.ValueString(), body)
+		typeNameVPCSecurityGroup, plan.ProjectID.ValueString()+"/"+plan.Name.ValueString(), body)
 	if err != nil {
 		resp.Diagnostics.AddError("Создание группы безопасности не завершилось", err.Error())
 		return

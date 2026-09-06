@@ -65,6 +65,8 @@ import (
 	"google.golang.org/grpc/status"
 
 	"github.com/PRO-Robotech/kacho/pkg/grpcsrv"
+
+	"github.com/PRO-Robotech/kaname/internal/domain"
 )
 
 const (
@@ -73,9 +75,15 @@ const (
 	// service_account] with NO `user:*` wildcard (FGA model), so an
 	// arbitrary user:<rando> can never satisfy it.
 	systemViewerRelation = "system_viewer"
-	// clusterRootObject — the singleton cluster object, the same root
-	// used by cluster-scope AccessBindings and the operator tuple.
-	clusterRootObject = "cluster:cluster_kacho_root"
+	// clusterRootObject — объект якоря кластера, тот же, что у выдач кластерной
+	// области и у операторского кортежа.
+	//
+	// СОБИРАЕТСЯ из объявленного написания, а не повторяет его строкой: переход
+	// написания правит объявление, а повторённая рукой строка продолжила бы
+	// спрашивать про прежний объект молча — код собрался бы, типы сошлись бы.
+	// Выражение остаётся КОНСТАНТНЫМ: объявление нетипизировано, поэтому
+	// сложение вычисляется на сборке и соседний блок констант его принимает.
+	clusterRootObject = "cluster:" + domain.ClusterSingletonID
 )
 
 // ReadFloorRPCs returns the full-method set of cluster-internal READ RPCs that
