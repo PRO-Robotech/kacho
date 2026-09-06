@@ -42,7 +42,7 @@
 # сторона — зеркальная перепись ниже: файл, у которого «inject» в имени есть, а
 # формы доказательства нет, обязан быть ОПОЗНАН явно.
 #
-# Формы доказательства две, и обе живые: `<тема>-inject.sh` (восемнадцать файлов) и
+# Формы доказательства две, и обе живые: `<тема>-inject.sh` (девятнадцать файлов) и
 # `<тема>_inject.sh` (один, `gateway/deploy/revocation_authority_inject.sh` —
 # подчёркивание там от соседних Go-файлов пакета). Форма `inject-<тема>.sh`
 # доказательством НЕ является: так называются внесения дефектов в ЖИВОЙ стенд, и
@@ -75,6 +75,7 @@ REPO_ROOT="$(cd "$DEPLOY_ROOT/.." && pwd)"
 # ниже — расхождение в любую сторону роняет проверку.
 DECLARED="
 deploy/load-tests/restart-verdict-inject.sh
+deploy/scripts/assert-scan-stubs-hide-nothing-inject.sh
 deploy/scripts/deps-failure-class-inject.sh
 deploy/tests/helm/identity-hook-credential-provenance-inject.sh
 deploy/tests/helm/identity-hook-credential-source-inject.sh

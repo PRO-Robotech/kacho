@@ -510,39 +510,47 @@ endif
 ## достаёт — то есть без этой цели они не исполнялись бы НИГДЕ. `-short` не передаётся;
 ## `-p 1` сериализует пакеты (контейнерным пробам параллель противопоказана —
 ## см. шапку файла); вердикт выносится ПО ЧИСЛАМ.
+##
+## ВЕРДИКТ ЖИВЁТ В СКРИПТЕ, А НЕ В РЕЦЕПТЕ, И СЧИТАЕТСЯ ПО ПОЛОСАМ.
+## Перепись вынесена в deploy/scripts/classify-pg-outside-selection.sh — ветку
+## внутри рецепта нечем доказать инъекцией, а недоказанная ветка сама становится
+## тем классом, который цель ловит. Полосы (корневой модуль и модуль службы iam)
+## судятся ПОРОЗНЬ и своими логами: перечень пакетов разделён по модулям именно
+## потому, что половина, отчитавшаяся нулём, неотличима от успеха, — а общий счёт
+## отчитавшихся эту половину гасил соседкой, если сумма сходилась.
+##
+## МОДУЛЬНЫЙ ПУТЬ ПОЛОСЫ ВЫВОДИТСЯ (`go list -m`), А НЕ ВПИСЫВАЕТСЯ. Литерал был
+## вторым местом об одном предмете — первым является `go.mod` — и разошёлся молча
+## при переименовании модуля службы iam: её 14 пакетов отчитались `ok`, а перепись
+## знала один модульный путь и увидела 10 из 24. Красное было свойством ПРОВЕРКИ,
+## а не дерева, и разобрать его можно было только сверив вывод с `go.mod` руками.
 test-pg-outside-selection:
 	@set -o pipefail; \
-	log=$$(mktemp); \
-	trap 'rm -f "$$log"' EXIT; \
+	root_log=$$(mktemp); iam_log=$$(mktemp); \
+	trap 'rm -f "$$root_log" "$$iam_log"' EXIT; \
 	root_named=$$(printf '%s\n' $(PG_OUTSIDE_SELECTION_PKGS) | grep -c . || true); \
 	iam_named=$$(printf '%s\n' $(PG_OUTSIDE_SELECTION_PKGS_IAM) | grep -c . || true); \
-	named=$$((root_named + iam_named)); \
 	if [ "$$root_named" -eq 0 ] || [ "$$iam_named" -eq 0 ]; then \
 	  echo "перечень пуст с одной из сторон (корень $$root_named, iam $$iam_named) — это отказ," >&2; \
 	  echo "а не «нечего запускать»: пустая половина дала бы зелёную цель, переставшую" >&2; \
-	  echo "проверять целый модуль, и это неотличимо от успеха." >&2; exit 1; fi; \
-	echo "пакетов заявлено: $$named (корневой модуль $$root_named, модуль службы iam $$iam_named)"; \
-	rc=0; \
+	  echo "проверять целый модуль, и это неотличимо от успеха. Отказ стоит ДО прогона," >&2; \
+	  echo "потому что go test с пустым перечнем проверил бы пакет текущего каталога." >&2; \
+	  exit 1; fi; \
+	root_mod=$$($(GO) list -m) || root_mod=""; \
+	iam_mod=$$($(GO) -C $(IAM_MODULE_DIR) list -m) || iam_mod=""; \
+	if [ -z "$$root_mod" ] || [ -z "$$iam_mod" ]; then \
+	  echo "модульный путь полосы НЕ ВЫВЕДЕН (корень «$$root_mod», iam «$$iam_mod») —" >&2; \
+	  echo "переписи не по чему считать отчитавшиеся пакеты, и её молчание было бы" >&2; \
+	  echo "неотличимо от согласия." >&2; exit 1; fi; \
+	echo "полосы: $$root_mod — заявлено $$root_named · $$iam_mod — заявлено $$iam_named"; \
+	root_rc=0; iam_rc=0; \
 	$(GO) test -race -count=1 -p 1 -v -timeout $(INTEGRATION_TIMEOUT) \
-	  $(PG_OUTSIDE_SELECTION_PKGS) 2>&1 | tee "$$log" || rc=$$?; \
+	  $(PG_OUTSIDE_SELECTION_PKGS) 2>&1 | tee "$$root_log" || root_rc=$$?; \
 	$(GO) test -C $(IAM_MODULE_DIR) -race -count=1 -p 1 -v -timeout $(INTEGRATION_TIMEOUT) \
-	  $(PG_OUTSIDE_SELECTION_PKGS_IAM) 2>&1 | tee -a "$$log" || rc=$$?; \
-	pass=$$(grep -c -- '--- PASS' "$$log" || true); \
-	skip=$$(grep -c -- '--- SKIP' "$$log" || true); \
-	failed=$$(grep -c -- '--- FAIL' "$$log" || true); \
-	reported=$$(grep -cE '^(ok|FAIL|\?)[[:space:]]+github\.com/PRO-Robotech/kacho[-/]' "$$log" || true); \
-	echo "перепись: пакетов отчиталось $$reported из $$named; утверждений пройдено $$pass, пропущено $$skip, упало $$failed"; \
-	if [ "$$rc" -ne 0 ] || [ "$$failed" -gt 0 ]; then \
-	  echo "пробы упали (код $$rc, упавших утверждений $$failed)" >&2; exit 1; fi; \
-	if [ "$$skip" -gt 0 ]; then \
-	  echo "пропущено $$skip проб. Пропуск здесь — ОТКАЗ: пробу, которая не" >&2; \
-	  echo "выполнилась, нельзя засчитать выполненной, а именно ради невозможности" >&2; \
-	  echo "такого зачёта эта цель и заведена." >&2; exit 1; fi; \
-	if [ "$$pass" -eq 0 ]; then \
-	  echo "ноль пройденных утверждений — цель отработала вхолостую и зелёной не будет" >&2; exit 1; fi; \
-	if [ "$$reported" -ne "$$named" ]; then \
-	  echo "отчиталось $$reported пакетов из $$named заявленных — часть перечня не дошла" >&2; \
-	  echo "до прогона, и её молчание неотличимо от успеха." >&2; exit 1; fi
+	  $(PG_OUTSIDE_SELECTION_PKGS_IAM) 2>&1 | tee "$$iam_log" || iam_rc=$$?; \
+	deploy/scripts/classify-pg-outside-selection.sh \
+	  --lane "$$root_mod" "$$root_named" "$$root_log" "$$root_rc" \
+	  --lane "$$iam_mod" "$$iam_named" "$$iam_log" "$$iam_rc"
 
 ## test-service — ВСЁ одного сервиса (юниты + интеграция). SVC обязателен.
 ## Сюда делегируют `make test` в services/<svc>/Makefile.

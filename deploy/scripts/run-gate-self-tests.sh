@@ -128,6 +128,7 @@ deploy/scripts/assert-verdict-aggregators-honest.sh
 deploy/scripts/assert-waiters-name-their-target.sh
 deploy/scripts/assert-wave-scheduler-terminates.sh
 deploy/scripts/classify-integration-outcome.sh
+deploy/scripts/classify-pg-outside-selection.sh
 deploy/scripts/gen-managed-image-pins.sh
 deploy/scripts/helm-umbrella-deps.sh
 deploy/scripts/remeasure-provider-listener-tls.sh
