@@ -64,6 +64,7 @@ import (
 	"google.golang.org/grpc/status"
 
 	"github.com/PRO-Robotech/kaname/internal/apps/kaname/shared"
+	"github.com/PRO-Robotech/kaname/internal/refusaldomain"
 )
 
 const (
@@ -97,8 +98,13 @@ const (
 )
 
 // refusalDomain — источник отказа в `ErrorInfo.domain`, как его видит клиент.
-// Совпадает с доменом соседних полос: сервис один.
-const refusalDomain = "iam.kacho.cloud"
+//
+// Берётся у ЕДИНСТВЕННОГО объявления продукта, а не пишется здесь литералом:
+// прежняя редакция объявляла совпадение с соседними полосами комментарием
+// («сервис один»), и совпадение это ничем не держалось — три места об одном
+// предмете расходятся на первой же правке, и расходятся молча. Задача продукта
+// #2099, приёмка WIRE-1, сценарий WIRE-3-01.
+func refusalDomain() string { return refusaldomain.For(refusaldomain.ServiceIAM) }
 
 const (
 	// metaModule / metaRole — величины полосы. Обе взяты из манифеста, который
@@ -127,7 +133,7 @@ func RefusalLane(err error) string {
 	if st, ok := status.FromError(err); ok {
 		for _, d := range st.Details() {
 			ei, isInfo := d.(*errdetails.ErrorInfo)
-			if !isInfo || ei.GetDomain() != refusalDomain {
+			if !isInfo || ei.GetDomain() != refusalDomain() {
 				continue
 			}
 			switch ei.GetReason() {
@@ -189,7 +195,7 @@ func refuse(code codes.Code, msg, reason, module, role string, wrapped error) er
 	}
 	withDetails, derr := st.WithDetails(&errdetails.ErrorInfo{
 		Reason:   reason,
-		Domain:   refusalDomain,
+		Domain:   refusalDomain(),
 		Metadata: meta,
 	})
 	if derr != nil {
