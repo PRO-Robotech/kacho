@@ -360,3 +360,45 @@ func isShippedBinaryDir(dir string) bool {
 	}
 	return false
 }
+
+// TestEveryDeclaredPathPrefixHasASubjectInTheTree — ось ЧЕТВЁРТАЯ.
+//
+// Две карты путей (расщепления † и корни вне `pkg/`) сверяются с деревом тем же
+// порядком, каким сверяются три ведомости этого файла: запись, которой нечего
+// разрешать, — находка. Неверный класс ловят оси 1–3; мёртвое ИМЯ не ловил
+// никто.
+func TestEveryDeclaredPathPrefixHasASubjectInTheTree(t *testing.T) {
+	root := repoRoot(t)
+
+	tracked, err := treecorpus.Under(root)
+	if err != nil {
+		t.Fatalf("состав дерева: %v", err)
+	}
+	if len(tracked) == 0 {
+		t.Fatal("под корнем нет ни одного отслеживаемого файла — обход пуст")
+	}
+
+	declared := declaredPrefixes()
+	pathsUnder := map[string]int{}
+	for _, abs := range tracked {
+		rel, rerr := filepath.Rel(root, abs)
+		if rerr != nil {
+			t.Fatalf("относительный путь для %s: %v", abs, rerr)
+		}
+		slash := filepath.ToSlash(rel)
+		for _, prefix := range declared {
+			if slash == prefix || strings.HasPrefix(slash, prefix+"/") {
+				pathsUnder[prefix]++
+			}
+		}
+	}
+
+	faults, census := judgeFoundationPrefixes(declared, pathsUnder)
+	t.Logf("перепись: %s · отслеживаемых путей прочитано %d",
+		census.PrefixSummary(), len(tracked))
+
+	if len(faults) > 0 {
+		t.Fatalf("карта путей разошлась с деревом (%d):\n  %s",
+			len(faults), strings.Join(faults, "\n  "))
+	}
+}

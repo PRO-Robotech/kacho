@@ -497,3 +497,71 @@ func judgeShippedToolchain(reached map[string]foundationClass, ledger map[string
 	sort.Strings(faults)
 	return faults, census
 }
+
+// judgeFoundationPrefixes — ось ЧЕТВЁРТАЯ: у каждой записи двух карт путей
+// (foundationSubtrees, foundationRoots) есть предмет в дереве.
+//
+// # Зачем она, если неверный КЛАСС уже ловится тремя осями
+//
+// Неверный класс ловится: он немедленно меняет вердикт о рёбрах. А вот мёртвое
+// ИМЯ не ловится ничем — запись, чьей приставке в дереве не соответствует ни
+// один путь, просто никогда не совпадает и проходит молча:
+//
+//	{"pkg/api/kacho/cloud/nosuchdomain", classKaname}  // путей 0 → тишина
+//	{"services/nosuchservice",           classKaname}  // путей 0 → тишина
+//
+// Это ровно то послабление, которое три ведомости этого файла обязаны истекать
+// сами: запись, которой нечего исключать, — находка. Две карты путей жили без
+// такой сверки, и симметрию собственного принципа надо было закрыть.
+//
+// Сверка ОДНОСТОРОННЯЯ намеренно: путь дерева без записи — не находка, а
+// умолчание (класс «оснастка сборки»), и оно объявлено осознанно. Находка —
+// только запись без пути.
+func judgeFoundationPrefixes(declared []string, pathsUnder map[string]int) ([]string, boundaryCensus) {
+	census := boundaryCensus{Declared: len(declared)}
+	var faults []string
+
+	if len(declared) == 0 {
+		return []string{"карты путей пусты: судить нечего, и всякий вердикт о " +
+			"разрешении пути относился бы к непрочитанному"}, census
+	}
+	if len(pathsUnder) == 0 {
+		return []string{"обход пуст: под объявленными приставками не сосчитано ни " +
+			"одного пути — «мёртвых записей нет» означало бы непрочитанное"}, census
+	}
+
+	for _, prefix := range declared {
+		if pathsUnder[prefix] > 0 {
+			census.Catalogs++
+			continue
+		}
+		faults = append(faults, "карта путей объявляет приставку "+prefix+
+			", которой в дереве не соответствует НИ ОДИН путь: запись описывает "+
+			"несуществующее, никогда не совпадёт и потому не истечёт сама — "+
+			"снимите её вместе с предметом")
+	}
+
+	sort.Strings(faults)
+	return faults, census
+}
+
+// declaredPrefixes — приставки обеих карт путей, одним перечнем и в порядке
+// объявления. Перечень ВЫВОДИТСЯ из карт, а не выписывается: выписанный
+// разошёлся бы с ними молча — тем же способом, каким расходится всё, о чём
+// сказано в двух местах.
+func declaredPrefixes() []string {
+	out := make([]string, 0, len(foundationSubtrees)+len(foundationRoots))
+	for _, s := range foundationSubtrees {
+		out = append(out, s.Prefix)
+	}
+	for _, r := range foundationRoots {
+		out = append(out, r.Prefix)
+	}
+	return out
+}
+
+// PrefixSummary — перепись оси четвёртой.
+func (c boundaryCensus) PrefixSummary() string {
+	return fmt.Sprintf("объявлено приставок %d · с живым предметом в дереве %d",
+		c.Declared, c.Catalogs)
+}

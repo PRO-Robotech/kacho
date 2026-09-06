@@ -489,3 +489,156 @@ func TestClosureJudgeCatchesAForgivenToolchainWithNoSubject(t *testing.T) {
 		t.Fatalf("находка не называет предмет и координату: %s", faults[0])
 	}
 }
+
+// ------------------------------- ось 4 -------------------------------
+
+// prefixFixture — две живые приставки из каждой карты: расщепление † и корень
+// вне `pkg/`. Обе с непустым предметом, поэтому контроль обязан молчать.
+func prefixFixture() ([]string, map[string]int) {
+	declared := []string{"pkg/api/kacho/cloud/iam", "services/iam"}
+	pathsUnder := map[string]int{"pkg/api/kacho/cloud/iam": 83, "services/iam": 2332}
+	return declared, pathsUnder
+}
+
+func TestPrefixJudgeIsSilentWhenEveryDeclaredPrefixHasASubject(t *testing.T) {
+	declared, pathsUnder := prefixFixture()
+
+	faults, census := judgeFoundationPrefixes(declared, pathsUnder)
+
+	if len(faults) != 0 {
+		t.Fatalf("контроль покраснел на живых приставках (%d):\n  %s",
+			len(faults), strings.Join(faults, "\n  "))
+	}
+	if census.Declared != 2 || census.Catalogs != 2 {
+		t.Fatalf("перепись контроля не сошлась: объявлено %d, с предметом %d, ожидалось 2 и 2",
+			census.Declared, census.Catalogs)
+	}
+}
+
+// TestPrefixJudgeCatchesADeadSubtreeEntry — мёртвая запись карты расщеплений.
+func TestPrefixJudgeCatchesADeadSubtreeEntry(t *testing.T) {
+	declared, pathsUnder := prefixFixture()
+	declared = append(declared, "pkg/api/kacho/cloud/nosuchdomain") // путей 0
+
+	faults, census := judgeFoundationPrefixes(declared, pathsUnder)
+
+	if len(faults) != 1 {
+		t.Fatalf("ожидалась ровно одна находка, получено %d:\n  %s",
+			len(faults), strings.Join(faults, "\n  "))
+	}
+	// Находка обязана назвать ИМЯ: без него читатель не знает, какую из
+	// одиннадцати записей снимать.
+	if !strings.Contains(faults[0], "pkg/api/kacho/cloud/nosuchdomain") {
+		t.Fatalf("находка не называет мёртвую приставку: %s", faults[0])
+	}
+	// Перепись обязана показать, что запись ПРОЧИТАНА и осуждена, а не пропущена.
+	if census.Declared != 3 || census.Catalogs != 2 {
+		t.Fatalf("перепись не разделила прочитанное и живое: объявлено %d, с предметом %d",
+			census.Declared, census.Catalogs)
+	}
+}
+
+// TestPrefixJudgeCatchesADeadRootEntry — та же беззубость у второй карты.
+// Прогон отдельный: молчание соседней карты в контроле иначе неотличимо от
+// молчания мёртвой ветви.
+func TestPrefixJudgeCatchesADeadRootEntry(t *testing.T) {
+	declared, pathsUnder := prefixFixture()
+	declared = append(declared, "services/nosuchservice")
+
+	faults, _ := judgeFoundationPrefixes(declared, pathsUnder)
+
+	if len(faults) != 1 {
+		t.Fatalf("ожидалась ровно одна находка, получено %d:\n  %s",
+			len(faults), strings.Join(faults, "\n  "))
+	}
+	if !strings.Contains(faults[0], "services/nosuchservice") {
+		t.Fatalf("находка не называет мёртвый корень: %s", faults[0])
+	}
+}
+
+// TestPrefixJudgeStaysSilentOnALiveAdditionAtAGrownCensus — законный близнец.
+//
+// Требование к нему жёстче обычного молчания: перепись обязана ВЫРАСТИ. Молчание
+// при неизменной переписи означало бы, что запись не прочитана, — то есть тот же
+// класс «ноль находок против ноль прочитанного», только внутри пробы.
+func TestPrefixJudgeStaysSilentOnALiveAdditionAtAGrownCensus(t *testing.T) {
+	declared, pathsUnder := prefixFixture()
+	_, before := judgeFoundationPrefixes(declared, pathsUnder)
+
+	declared = append(declared, "pkg/api/kacho/cloud/vpc")
+	pathsUnder["pkg/api/kacho/cloud/vpc"] = 41
+
+	faults, after := judgeFoundationPrefixes(declared, pathsUnder)
+
+	if len(faults) != 0 {
+		t.Fatalf("законный близнец покраснел (%d):\n  %s",
+			len(faults), strings.Join(faults, "\n  "))
+	}
+	if after.Declared != before.Declared+1 || after.Catalogs != before.Catalogs+1 {
+		t.Fatalf("перепись не выросла: было объявлено %d с предметом %d, стало %d и %d — "+
+			"молчание относится к непрочитанному",
+			before.Declared, before.Catalogs, after.Declared, after.Catalogs)
+	}
+}
+
+func TestPrefixJudgeRefusesAnEmptyWalkInsteadOfReportingNoFindings(t *testing.T) {
+	declared, pathsUnder := prefixFixture()
+
+	noDecl, _ := judgeFoundationPrefixes(nil, pathsUnder)
+	if len(noDecl) != 1 || !strings.Contains(noDecl[0], "карты путей пусты") {
+		t.Fatalf("пустые карты обязаны быть ОТКАЗОМ: %v", noDecl)
+	}
+
+	noTree, census := judgeFoundationPrefixes(declared, map[string]int{})
+	if len(noTree) != 1 || !strings.Contains(noTree[0], "обход пуст") {
+		t.Fatalf("пустой обход обязан быть ОТКАЗОМ: %v", noTree)
+	}
+	if census.Catalogs != 0 {
+		t.Fatalf("перепись пустого обхода обязана называть ноль живых, а не %d",
+			census.Catalogs)
+	}
+}
+
+// TestDeclaredPrefixesCoversBothPathMaps — вывод перечня сам обязан быть сверен.
+//
+// Найдено сломом собственной оси 4: если declaredPrefixes() перестаёт читать
+// одну из двух карт, проба над деревом ПРОХОДИТ, молча упав с одиннадцати
+// приставок до семи. Перепись при этом честно печатает 7 — и выглядит нормой,
+// потому что сравнить её не с чем.
+//
+// Это тот же класс, что ловит сама ось 4, только уровнем выше: там мёртвой была
+// запись карты, здесь — целая карта, выпавшая из обхода. Поэтому сверяется не
+// только состав, но и ЧИСЛО: пропажа карты обязана быть арифметически видна.
+func TestDeclaredPrefixesCoversBothPathMaps(t *testing.T) {
+	got := map[string]bool{}
+	for _, p := range declaredPrefixes() {
+		got[p] = true
+	}
+
+	want := 0
+	for _, s := range foundationSubtrees {
+		want++
+		if !got[s.Prefix] {
+			t.Fatalf("приставка расщепления %s не попала в перечень: её карта выпала "+
+				"из обхода, и ось 4 о ней не судит", s.Prefix)
+		}
+	}
+	for _, r := range foundationRoots {
+		want++
+		if !got[r.Prefix] {
+			t.Fatalf("приставка корня %s не попала в перечень: её карта выпала из "+
+				"обхода, и ось 4 о ней не судит", r.Prefix)
+		}
+	}
+
+	if len(declaredPrefixes()) != want {
+		t.Fatalf("перечень приставок несёт %d записей при %d объявленных в двух картах: "+
+			"расхождение означает выпавшую или задвоенную карту",
+			len(declaredPrefixes()), want)
+	}
+	if want == 0 {
+		t.Fatal("обе карты путей пусты — вывод перечня относился бы к непрочитанному")
+	}
+	t.Logf("перепись: приставок расщепления %d · корней %d · в перечне %d",
+		len(foundationSubtrees), len(foundationRoots), len(declaredPrefixes()))
+}
