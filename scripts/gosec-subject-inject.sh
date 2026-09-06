@@ -56,7 +56,10 @@ LEDGER="$ROOT/tools/gosecsubject/known-inert.tsv"
 # счётчиков вместо того, ради чего заведена. Плюс индекс чужой рабочей копии
 # трогать нельзя ни при каких условиях.
 FIXTURE="$ROOT/tools/gosecsubject/gosecsubject.go"
-GATE="./tools/gosecsubject/cmd/verify-gosec-suppression-subject"
+# Гейт зовётся СОБРАННЫМ БИНАРЁМ, а не через `go run`: тот схлопывает любой
+# ненулевой код в единицу, и утверждения про третий исход ниже (E, F) проверяли
+# бы поведение `go run`, а не гейта.
+GATEPKG="./tools/gosecsubject/cmd/verify-gosec-suppression-subject"
 WORK="$(mktemp -d)"
 PASS=0
 FAIL=0
@@ -103,12 +106,18 @@ if [ -z "$GOSEC_BIN" ]; then
     GOSEC_BIN="$WORK/bin/gosec"
 fi
 
+if ! ( cd "$ROOT" && go build -o "$WORK/gate-bin" "$GATEPKG" ) > "$WORK/build.txt" 2>&1; then
+    echo "ОТКАЗ: гейт не собрался — проба НЕ ВЫПОЛНЕНА" >&2
+    sed 's/^/  | /' "$WORK/build.txt" >&2
+    exit 2
+fi
+
 scan() {
     GOSEC_BIN="$GOSEC_BIN" GOSEC_OUT="$WORK" "$ROOT/scripts/gosec-scan-modules.sh" \
         > "$WORK/scan.txt" 2>&1
 }
 gate() {
-    ( cd "$ROOT" && go run "$GATE" "$ROOT" "$WORK" ) > "$WORK/gate.txt" 2>&1
+    "$WORK/gate-bin" "$ROOT" "$WORK" > "$WORK/gate.txt" 2>&1
     echo $?
 }
 

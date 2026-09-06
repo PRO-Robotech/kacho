@@ -284,17 +284,79 @@ func TestScanLogSilenceRefusesVerdict(t *testing.T) {
 
 // ── ПРОВЯЗКА ────────────────────────────────────────────────────────────────
 
+// gatePkg — пакет гейта. Ищется без ведущего «./»: вызывающие пишут путь
+// по-разному (`./tools/…` в объявлении конвейера, `"$ROOT/tools/…"` в скрипте),
+// и требование одной формы записи проверяло бы стиль, а не провязку.
+const gatePkg = "tools/gosecsubject/cmd/verify-gosec-suppression-subject"
+
+// callsOfGate — строки файла, ЗОВУЩИЕ гейт: комментарии отсеиваются, иначе
+// проза об этом гейте засчитывалась бы за его вызов. Тот же класс, что гейт по
+// подстроке, краснеющий на собственном объяснении.
+func callsOfGate(t *testing.T, rel string) []string {
+	t.Helper()
+	b, err := os.ReadFile(filepath.Join(repoRoot(t), filepath.FromSlash(rel)))
+	if err != nil {
+		t.Fatalf("%s: %v", rel, err)
+	}
+	var out []string
+	for _, line := range strings.Split(string(b), "\n") {
+		code := line
+		if i := strings.Index(code, "#"); i >= 0 {
+			code = code[:i]
+		}
+		if strings.Contains(code, gatePkg) {
+			out = append(out, strings.TrimSpace(code))
+		}
+	}
+	return out
+}
+
 // Гейт, которого конвейер не зовёт, стоит ровно столько же, сколько его
 // отсутствие. Эта пара уже случалась в этом репозитории.
 func TestCIRunsThisGate(t *testing.T) {
-	b, err := os.ReadFile(filepath.Join(repoRoot(t), ".github", "workflows", "security-scan.yml"))
-	if err != nil {
-		t.Fatal(err)
+	calls := callsOfGate(t, ".github/workflows/security-scan.yml")
+	if len(calls) == 0 {
+		t.Fatalf("security-scan.yml не зовёт %s — провяжи обратно", gatePkg)
 	}
-	const invocation = "go run ./tools/gosecsubject/cmd/verify-gosec-suppression-subject"
-	if !strings.Contains(string(b), invocation) {
-		t.Fatalf("security-scan.yml не зовёт %q — провяжи обратно", invocation)
+	t.Logf("вызовов гейта в объявлении конвейера: %d", len(calls))
+}
+
+// Исходов у гейта ТРИ, и вызывающий обязан их различать. `go run` СХЛОПЫВАЕТ
+// любой ненулевой код программы в единицу — замерено, а не предположено:
+// программа, вышедшая двойкой, доходит до вызывающего единицей, и «гейт не смог
+// вынести вердикт» становится неотличимо от «гейт нашёл нарушение».
+//
+// Цена различения ровно одна строка `go build`, и в дереве это уже сделано ради
+// того же свойства (ci.yaml, шаг адъюдикации разрывов контракта).
+//
+// Проба судит ВЫЗЫВАЮЩЕГО, а не программу: коды возврата у неё свои и
+// правильные, но без этой строки их никто не прочитал бы.
+func TestCallersDoNotCollapseTheThirdOutcome(t *testing.T) {
+	callers := []string{
+		".github/workflows/security-scan.yml",
+		"scripts/ci-local.sh",
+		"scripts/gosec-subject-inject.sh",
 	}
+	seen := 0
+	for _, rel := range callers {
+		calls := callsOfGate(t, rel)
+		if len(calls) == 0 {
+			t.Errorf("%s больше не зовёт гейт — проба о его поведении не утверждает "+
+				"ничего, а перечень вызывающих пережил свой предмет", rel)
+			continue
+		}
+		seen += len(calls)
+		for _, c := range calls {
+			if strings.Contains(c, "go run") {
+				t.Errorf("%s зовёт гейт через `go run`: %s\n"+
+					"`go run` схлопывает любой ненулевой код в единицу, и третий исход "+
+					"(«вердикт не вынесен», код 2) стал бы неотличим от находки. "+
+					"Собери бинарь `go build -o …` и зови его.", rel, c)
+			}
+		}
+	}
+	// «Ноль находок» обязано быть отличимо от «ноль прочитанного».
+	t.Logf("осмотрено вызывающих %d, строк с вызовом гейта %d", len(callers), seen)
 }
 
 // Скан обязан ОСТАВЛЯТЬ то, что читает гейт. Без этой пробы шаг конвейера выше

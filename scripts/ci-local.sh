@@ -659,9 +659,19 @@ go_group() {
                 # вывода: 1 — находки, 2 — гейт не смог вынести вердикт
                 # (перепись подавлений не снята, распознаватель разошёлся со
                 # сканером). Второе в зелёное не засчитывается.
+                # Бинарь собирается, а не зовётся через `go run`: тот схлопывает
+                # любой ненулевой код в единицу, и третий исход стал бы
+                # неотличим от находки — ровно то, что этот case и различает.
                 local subj_rc=0
-                go run "$ROOT/tools/gosecsubject/cmd/verify-gosec-suppression-subject" \
-                    "$ROOT" "$WORK" > "$WORK/gosec-subject.txt" 2>&1 || subj_rc=$?
+                go build -o "$WORK/gosec-subject" \
+                    "$ROOT/tools/gosecsubject/cmd/verify-gosec-suppression-subject" \
+                    > "$WORK/gosec-subject.txt" 2>&1 || subj_rc=$?
+                if [ "$subj_rc" -eq 0 ]; then
+                    subj_rc=0
+                    "$WORK/gosec-subject" "$ROOT" "$WORK" > "$WORK/gosec-subject.txt" 2>&1 || subj_rc=$?
+                else
+                    subj_rc=2
+                fi
                 sed 's/^/   | /' "$WORK/gosec-subject.txt"
                 case "$subj_rc" in
                     0) echo "   ok (подавления gosec: у каждого есть предмет)" ;;

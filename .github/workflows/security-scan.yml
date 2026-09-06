@@ -154,9 +154,27 @@ jobs:
       # Идёт под `!cancelled()` по той же причине, что и соседи в job'е trivy:
       # вердикты независимы. Красные находки не должны прятать устаревшую запись
       # ведомости — как и наоборот.
+      #
+      # БИНАРЬ СОБИРАЕТСЯ, А НЕ ЗОВЁТСЯ ЧЕРЕЗ `go run`, и это несущее свойство:
+      # `go run` схлопывает ЛЮБОЙ ненулевой код программы в единицу (замерено),
+      # поэтому третий исход — «гейт не смог вынести вердикт», код 2 — доехал бы
+      # сюда неотличимым от находки. Тот же приём и по той же причине применён в
+      # ci.yaml к адъюдикации разрывов контракта. Свойство держит проба
+      # tools/gosecsubject TestCallersDoNotCollapseTheThirdOutcome.
       - name: у подавлений gosec ещё есть предмет
         if: '!cancelled()'
-        run: go run ./tools/gosecsubject/cmd/verify-gosec-suppression-subject . .
+        run: |
+          set -uo pipefail
+          go build -o /tmp/gosec-suppression-subject ./tools/gosecsubject/cmd/verify-gosec-suppression-subject
+          rc=0
+          /tmp/gosec-suppression-subject . . || rc=$?
+          case "$rc" in
+            0) echo "у каждого подавления gosec есть предмет" ;;
+            1) echo "::error::подавления без предмета — координаты выше"; exit 1 ;;
+            *) echo "::error::гейт предмета НЕ ВЫНЕС вердикта (код $rc): непроверенное" \
+                    "дерево не проходит гейт безопасности и не выдаётся за чистое"
+               exit 1 ;;
+          esac
 
   trivy:
     name: trivy (fs + IaC)
