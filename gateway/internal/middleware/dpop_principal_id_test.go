@@ -3,7 +3,7 @@
 
 // dpop_principal_id_test.go — the DPoP header-injection path must derive the
 // principal with the SAME rule as the legacy auth.HTTP Hydra path
-// (principalFromVerifiedToken): the kaname_principal_* claims, and nothing else.
+// (principalFromVerifiedToken): the kacho_principal_* claims, and nothing else.
 // Otherwise DPoP.Wrap (inner handler) overwrites the principal headers auth.HTTP
 // set, and the downstream FGA subject becomes user:<oidc-sub> instead of
 // user:<kacho-id> — a lockout / inconsistent-subject bug (CWE-287 / OWASP A07).
@@ -33,14 +33,14 @@ func newDPoPProbeMiddleware(t *testing.T) *DPoPMiddleware {
 	}
 }
 
-func TestInjectVerifiedTokenHeaders_PrefersKanamePrincipalIDOverSub(t *testing.T) {
+func TestInjectVerifiedTokenHeaders_PrefersKachoPrincipalIDOverSub(t *testing.T) {
 	r := httptest.NewRequest(http.MethodGet, "/iam/v1/users/x", nil)
 	vt := &VerifiedToken{
 		Subject: "zitadel-uuid-999", // raw OIDC sub — must NOT win
 		ACR:     "1",
 		ExtClaims: map[string]any{
-			"kaname_principal_type": "user",
-			"kaname_principal_id":   "usr_abc123", // canonical kacho id — must win
+			"kacho_principal_type": "user",
+			"kacho_principal_id":   "usr_abc123", // canonical kacho id — must win
 		},
 	}
 	newDPoPProbeMiddleware(t).injectVerifiedTokenHeaders(r, vt)
@@ -56,15 +56,15 @@ func TestInjectVerifiedTokenHeaders_PrefersKanamePrincipalIDOverSub(t *testing.T
 	}
 }
 
-// TestInjectVerifiedTokenHeaders_TopLevelClaimWins — kaname_principal_id promoted
+// TestInjectVerifiedTokenHeaders_TopLevelClaimWins — kacho_principal_id promoted
 // to the top-level claim set (Hydra allowed_top_level_claims) is also honored.
 func TestInjectVerifiedTokenHeaders_TopLevelClaimWins(t *testing.T) {
 	r := httptest.NewRequest(http.MethodGet, "/iam/v1/users/x", nil)
 	vt := &VerifiedToken{
 		Subject: "sub-raw",
 		Claims: map[string]any{
-			"kaname_principal_type": "service_account",
-			"kaname_principal_id":   "sa_xyz",
+			"kacho_principal_type": "service_account",
+			"kacho_principal_id":   "sa_xyz",
 		},
 	}
 	newDPoPProbeMiddleware(t).injectVerifiedTokenHeaders(r, vt)
@@ -111,7 +111,7 @@ func TestInjectVerifiedTokenHeaders_TypeWithoutID_NamesNobody(t *testing.T) {
 		Subject: "provider-subject-7f3a",
 		ACR:     "2",
 		ExtClaims: map[string]any{
-			"kaname_principal_type": "user",
+			"kacho_principal_type": "user",
 		},
 	}
 	newDPoPProbeMiddleware(t).injectVerifiedTokenHeaders(r, vt)

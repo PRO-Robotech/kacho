@@ -102,7 +102,7 @@ func TestDenyDetail_EveryScopeFilteredMethodNamesItsAction(t *testing.T) {
 				"a refusal decided over the data must still carry the machine-readable "+
 					"reason the convention requires; the client cannot parse the prose")
 			assert.Equal(t, "AUTHZ_DENIED", info.GetReason())
-			assert.Equal(t, "kacho.cloud.iam.v1", info.GetDomain(),
+			assert.Equal(t, "kaname.cloud.iam.v1", info.GetDomain(),
 				"the same domain the edge stamps — a client keying on it must not have "+
 					"to know which layer refused")
 			assert.Equal(t, e.Permission, info.GetMetadata()["action"],
@@ -121,9 +121,9 @@ func TestDenyDetail_ScopeRefusalIsDistinguishableFromCatalogMiss(t *testing.T) {
 	reg := mustRegistry(t)
 
 	scoped := denyThrough(t, reg,
-		"/kacho.cloud.iam.v1.AccessBindingService/ListBySubject")
+		"/kaname.cloud.iam.v1.AccessBindingService/ListBySubject")
 	missed := denyThrough(t, reg,
-		"/kacho.cloud.iam.v1.AccessBindingService/ThisMethodIsNotInTheCatalog")
+		"/kaname.cloud.iam.v1.AccessBindingService/ThisMethodIsNotInTheCatalog")
 
 	require.Equal(t, codes.PermissionDenied, scoped.Code())
 	require.Equal(t, codes.PermissionDenied, missed.Code())
@@ -144,7 +144,7 @@ func TestDenyDetail_ScopeRefusalIsDistinguishableFromCatalogMiss(t *testing.T) {
 // if it were an action would be a false claim, so nothing is attached.
 func TestDenyDetail_ExemptMethodNamesNoAction(t *testing.T) {
 	reg := mustRegistry(t)
-	st := denyThrough(t, reg, "/kacho.cloud.iam.v1.InternalIAMService/ForceLogout")
+	st := denyThrough(t, reg, "/kaname.cloud.iam.v1.InternalIAMService/ForceLogout")
 	require.Equal(t, codes.PermissionDenied, st.Code())
 	require.Nil(t, errorInfo(st))
 }
@@ -167,7 +167,7 @@ func TestDenyDetail_PreservesExistingDetails(t *testing.T) {
 	require.NoError(t, err)
 
 	st := throughInterceptor(t, reg,
-		"/kacho.cloud.iam.v1.AccessBindingService/ListBySubject", withPF.Err())
+		"/kaname.cloud.iam.v1.AccessBindingService/ListBySubject", withPF.Err())
 
 	var sawPF bool
 	for _, d := range st.Details() {
@@ -186,13 +186,13 @@ func TestDenyDetail_AlreadyCarriesReason_LeftAlone(t *testing.T) {
 
 	base := status.New(codes.PermissionDenied, "permission denied")
 	withInfo, err := base.WithDetails(&errdetails.ErrorInfo{
-		Reason: "AUTHZ_DENIED", Domain: "kacho.cloud.iam.v1",
+		Reason: "AUTHZ_DENIED", Domain: "kaname.cloud.iam.v1",
 		Metadata: map[string]string{"action": "already.set"},
 	})
 	require.NoError(t, err)
 
 	st := throughInterceptor(t, reg,
-		"/kacho.cloud.iam.v1.AccessBindingService/ListBySubject", withInfo.Err())
+		"/kaname.cloud.iam.v1.AccessBindingService/ListBySubject", withInfo.Err())
 
 	var infos int
 	for _, d := range st.Details() {
@@ -219,7 +219,7 @@ func TestDenyDetail_NonRefusalsPassThroughUnchanged(t *testing.T) {
 	} {
 		t.Run(tc.name, func(t *testing.T) {
 			st := throughInterceptor(t, reg,
-				"/kacho.cloud.iam.v1.AccessBindingService/ListBySubject", tc.err)
+				"/kaname.cloud.iam.v1.AccessBindingService/ListBySubject", tc.err)
 			require.Nil(t, errorInfo(st),
 				"only a refusal carries an authz reason — anything else would mislabel the failure")
 			assert.Equal(t, status.Convert(tc.err).Message(), st.Message())
@@ -231,7 +231,7 @@ func TestDenyDetail_SuccessIsNotDisturbed(t *testing.T) {
 	reg := mustRegistry(t)
 	ic := authzguard.DenyDetailUnary(reg)
 	resp, err := ic(context.Background(), nil,
-		&grpc.UnaryServerInfo{FullMethod: "/kacho.cloud.iam.v1.AccessBindingService/ListBySubject"},
+		&grpc.UnaryServerInfo{FullMethod: "/kaname.cloud.iam.v1.AccessBindingService/ListBySubject"},
 		func(context.Context, any) (any, error) { return "ok", nil })
 	require.NoError(t, err)
 	assert.Equal(t, "ok", resp)
@@ -240,7 +240,7 @@ func TestDenyDetail_SuccessIsNotDisturbed(t *testing.T) {
 // Without a catalog the interceptor must be a pass-through, not a source of
 // empty actions — an empty action is the very thing that means "catalog miss".
 func TestDenyDetail_NilCatalog_IsPassThrough(t *testing.T) {
-	st := denyThrough(t, nil, "/kacho.cloud.iam.v1.AccessBindingService/ListBySubject")
+	st := denyThrough(t, nil, "/kaname.cloud.iam.v1.AccessBindingService/ListBySubject")
 	require.Equal(t, codes.PermissionDenied, st.Code())
 	require.Nil(t, errorInfo(st))
 }

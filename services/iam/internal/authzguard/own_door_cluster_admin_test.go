@@ -50,7 +50,7 @@ import (
 
 	"google.golang.org/grpc"
 
-	iamv1 "github.com/PRO-Robotech/kacho/pkg/api/kacho/cloud/iam/v1"
+	iamv1 "github.com/PRO-Robotech/kacho/pkg/api/kaname/cloud/iam/v1"
 	"github.com/PRO-Robotech/kacho/pkg/operations"
 )
 
@@ -67,7 +67,7 @@ const (
 	foreignUser = "usr00000000000000042"
 
 	// credentialMint — глагол, у которого армы надзора в модели нет.
-	credentialMint = "/kacho.cloud.iam.v1.UserTokenService/Issue"
+	credentialMint = "/kaname.cloud.iam.v1.UserTokenService/Issue"
 )
 
 // clusterSuperGateFact — единственный факт, которым учётка первичной посадки

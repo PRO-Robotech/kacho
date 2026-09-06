@@ -74,6 +74,7 @@ var foundationClasses = map[string]foundationClass{
 	"backoff":         classCorelib,
 	"baggage":         classCorelib,
 	"config":          classCorelib,
+	"contractroot":    classCorelib,
 	"credsecret":      classKaname,
 	"db":              classCorelib,
 	"dbready":         classCorelib,
@@ -130,24 +131,24 @@ var foundationClasses = map[string]foundationClass{
 // который его РЕАЛИЗУЕТ» (§5.1): контракт доступа — в `kaname`, общие
 // примитивы (операция, поток изменений, учёт потолков, разметка доступа) —
 // в `corelib`, доменные контракты платформы — в `kacho`.
+//
+// После KAN-PKG-1 контракт доступа лежит под СВОИМ корнем (`pkg/api/kaname/…`),
+// и путь с классом теперь СОВПАДАЮТ. Прежде запись переопределяла класс вопреки
+// пути — стабы службы лежали под корнем платформы, — и это переопределение было
+// единственным, что удерживало границу. Совпадение не делает запись лишней:
+// класс объявляется здесь, а не выводится из пути, иначе следующий переезд
+// сменил бы владение молча.
 var foundationSubtrees = []struct {
 	Prefix string
 	Class  foundationClass
 }{
-	{"pkg/api/kacho/cloud/iam", classKaname},
+	{"pkg/api/kaname/cloud/iam", classKaname},
 	{"pkg/api/kacho/cloud/operation", classCorelib},
 	{"pkg/api/kacho/cloud/subscription", classCorelib},
 	{"pkg/api/kacho/cloud/quota", classCorelib},
 	{"pkg/api/kacho/iam/authz", classCorelib},
 	{"pkg/quota/quotaiam", classKaname},
 	{"pkg/quota/quotapb", classKaname},
-
-	// Адаптер порта сужения к контракту владельца модели (приёмка §7.2, задача
-	// #2131). Правило то же, что у расщепления `pkg/api`: контракт остаётся у
-	// того, кто его РЕАЛИЗУЕТ. Порт при этом остаётся в `corelib` — шов проходит
-	// сквозь тип, а не по каталогу.
-	{"pkg/listnarrow/narrowiam", classKaname},
-	{"pkg/authz/authziam", classKaname},
 }
 
 // foundationRoots — класс дерева ВНЕ `pkg/`. Нужен затем, что направление
@@ -165,14 +166,6 @@ var foundationRoots = []struct {
 	{"services", classKacho},
 	{"gateway", classKacho},
 	{"terraform", classKacho},
-
-	// Оснастка объявляется ПОИМЁННО, а не умолчанием. Прежде эти четыре корня
-	// получали класс молча — и вместе с ними его получал ЛЮБОЙ новый верхний
-	// корень, потому что умолчание не спрашивает имени. Разбор оси пятой ниже.
-	{"internal", classToolchain},
-	{"deploy", classToolchain},
-	{"tools", classToolchain},
-	{"ui-future", classToolchain},
 }
 
 // classOfPackage — класс пакета по его пути от корня дерева.
@@ -212,18 +205,7 @@ func classOfPackage(rel string) (foundationClass, bool) {
 	if best != "" {
 		return cls, true
 	}
-	// Здесь стояло `return classToolchain, true` — УМОЛЧАНИЕ, и оно делало гейт
-	// fail-open ровно для того корня, который заведёт разъезд: каталог вне
-	// известных карт получал класс «оснастка сборки», а оснастка не участвует
-	// НИ В ОДНОЙ запрещённой паре (см. forbiddenDirections). Значит рёбра из
-	// нового верхнего корня не судились ни одной парой: файл прочитывался —
-	// перепись росла — и молча разрешался.
-	//
-	// Теперь незнакомый путь возвращает false, и его обязана поймать ось пятая
-	// (judgeTreeRoots): корень без объявленного класса — находка, а не
-	// умолчание. Это то же требование, что ось первая предъявляет каталогу
-	// `pkg/*`, распространённое на корни дерева.
-	return "", false
+	return classToolchain, true
 }
 
 // forbiddenDirections — направления, запрещённые целевой раскладкой.
@@ -273,7 +255,13 @@ var knownBoundaryEdges = []knownBoundaryEdge{
 	{"pkg/authz/catalogderive", "pkg/api/kacho/cloud/vpc/v1", 0, 1, "З3"},
 	{"pkg/servicehost", "pkg/api/kacho/cloud/compute/v1", 0, 1, "З3"},
 	{"pkg/servicehost", "pkg/api/kacho/cloud/vpc/v1", 0, 1, "З3"},
+	{"pkg/subscription", "pkg/api/kaname/cloud/iam/v1", 0, 1, "З3"},
 	{"services/iam/cmd/kaname", "pkg/api/kacho/cloud/api", 0, 1, "З3"},
+
+	// З2 — порт сужения и вынос адаптера носителя (приёмка §7.2).
+	{"pkg/listnarrow", "pkg/api/kaname/cloud/iam/v1", 3, 3, "З2"},
+	{"pkg/listnarrow/narrowtest", "pkg/api/kaname/cloud/iam/v1", 1, 0, "З2"},
+	{"pkg/servicehost", "pkg/api/kaname/cloud/iam/v1", 1, 1, "З2"},
 
 	// З8 — оснастка, разбирающая дерево, в двоичном службы (приёмка §11).
 	{"services/iam/internal/manifest", "pkg/modulemanifest", 1, 1, "З8"},
@@ -283,8 +271,8 @@ var knownBoundaryEdges = []knownBoundaryEdge{
 	// K3-НОВОЕ — разрез дерева контрактов; приёмка выносит его в полосу
 	// контракта (§10) и этих двух рёбер не называет. Найдены обходом по обеим
 	// осям на ревизии полосы; предмет заведён отчётом полосы.
-	{"pkg/api/kacho/cloud/quota/v1", "pkg/api/kacho/cloud/iam/v1", 1, 0, "K3-НОВОЕ"},
-	{"pkg/api/kacho/cloud/iam/v1", "pkg/api/kacho/cloud/api", 18, 0, "K3-НОВОЕ"},
+	{"pkg/api/kacho/cloud/quota/v1", "pkg/api/kaname/cloud/iam/v1", 1, 0, "K3-НОВОЕ"},
+	{"pkg/api/kaname/cloud/iam/v1", "pkg/api/kacho/cloud/api", 18, 0, "K3-НОВОЕ"},
 }
 
 // boundaryCensus — объём осмотренного. Печатается ВСЕГДА: «ноль находок»
@@ -584,88 +572,4 @@ func declaredPrefixes() []string {
 func (c boundaryCensus) PrefixSummary() string {
 	return fmt.Sprintf("объявлено приставок %d · с живым предметом в дереве %d",
 		c.Declared, c.Catalogs)
-}
-
-// judgeTreeRoots — ось ПЯТАЯ: у каждого ВЕРХНЕГО КОРНЯ дерева объявлен класс.
-//
-// # Зачем она, если класс каталога `pkg/*` уже судит ось первая
-//
-// Ось первая обходит `pkg/`, ось вторая — рёбра, ось третья — замыкание, ось
-// четвёртая — мёртвые записи карт путей. НИ ОДНА из четырёх не спрашивала, что
-// за корень появился в дереве, и это была не педантичность, а дыра: незнакомый
-// путь получал класс «оснастка сборки» умолчанием, а оснастка НАМЕРЕННО не
-// участвует ни в одной запрещённой паре — её предмет ось третья, не вторая.
-//
-// Сложение двух верных решений давало fail-open: рёбра всего, что попало в
-// умолчание, не судились в ОБЕ стороны. Внутри `pkg/` дыры не было (там ось
-// двусторонняя), снаружи — была, и открывалась она ровно тогда, когда разъезд
-// заводит корень `corelib/`.
-//
-// Сверка ДВУСТОРОННЯЯ, как у оси первой: корень в дереве без записи и запись
-// без корня — обе находки. Корень `pkg` этой оси не принадлежит: его каталоги
-// классифицируются ПОКАТАЛОЖНО осью первой, и один класс на весь корень был бы
-// неправдой — там живут все четыре.
-func judgeTreeRoots(inTree []string, declared map[string]foundationClass) ([]string, boundaryCensus) {
-	census := boundaryCensus{Catalogs: len(inTree), Declared: len(declared)}
-	var faults []string
-
-	if len(inTree) == 0 {
-		return []string{"обход пуст: верхних корней дерева не прочитано ни одного — " +
-			"вердикт о классе корня относился бы к непрочитанному"}, census
-	}
-
-	known := map[string]bool{}
-	for _, root := range inTree {
-		known[root] = true
-		cls, ok := declared[root]
-		if !ok {
-			faults = append(faults, "верхний корень "+root+"/: класса не объявлено. "+
-				"Умолчания у корня НЕТ намеренно: прежде незнакомый корень получал "+
-				"«оснастку сборки», а она не участвует ни в одной запрещённой паре — "+
-				"то есть первое же нарушение границы в новом модуле прошло бы молча. "+
-				"Внесите строку в foundationRoots, назвав класс правилом приёмки K3-1 §3")
-			continue
-		}
-		switch cls {
-		case classCorelib, classKaname, classKacho, classToolchain:
-		default:
-			faults = append(faults, "верхний корень "+root+"/: класс "+string(cls)+
-				" вне закрытого набора четырёх")
-		}
-	}
-
-	for root := range declared {
-		if !known[root] {
-			faults = append(faults, "объявлен класс верхнего корня "+root+
-				"/, которого в дереве нет: запись описывает несуществующее — снимите её "+
-				"вместе с корнем")
-		}
-	}
-
-	sort.Strings(faults)
-	return faults, census
-}
-
-// RootSummary — перепись оси пятой.
-func (c boundaryCensus) RootSummary() string {
-	return fmt.Sprintf("верхних корней дерева прочитано %d · объявлено классов %d",
-		c.Catalogs, c.Declared)
-}
-
-// declaredTreeRoots — объявленные ВЕРХНИЕ корни, одним перечнем.
-//
-// ВЫВОДИТСЯ из foundationRoots (односегментные приставки), а не выписывается:
-// выписанный разошёлся бы с картой молча — тем же способом, каким расходится
-// всё, о чём сказано в двух местах. Многосегментные приставки (`services/iam`)
-// корнями не являются и в перечень не идут: их предмет — расщепление корня, а
-// не его класс.
-func declaredTreeRoots() map[string]foundationClass {
-	out := map[string]foundationClass{}
-	for _, r := range foundationRoots {
-		if strings.Contains(r.Prefix, "/") {
-			continue
-		}
-		out[r.Prefix] = r.Class
-	}
-	return out
 }

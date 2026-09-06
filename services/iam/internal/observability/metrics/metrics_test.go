@@ -119,7 +119,7 @@ func TestRegistererWindowCarriesThePlatformLatencySeries(t *testing.T) {
 		t.Fatalf("измеритель не заводится в реестре iam: %v", err)
 	}
 	intr := lat.UnaryServerInterceptor(grpcsrv.ListenerInternal)
-	info := &grpc.UnaryServerInfo{FullMethod: "/kacho.cloud.iam.v1.InternalIAMService/Check"}
+	info := &grpc.UnaryServerInfo{FullMethod: "/kaname.cloud.iam.v1.InternalIAMService/Check"}
 	if _, err := intr(context.Background(), nil, info,
 		func(context.Context, any) (any, error) { return "ok", nil }); err != nil {
 		t.Fatalf("интерсептор вернул ошибку: %v", err)
@@ -127,7 +127,7 @@ func TestRegistererWindowCarriesThePlatformLatencySeries(t *testing.T) {
 
 	got := dumpMetrics(t, reg)
 	wantCount := `kacho_grpc_server_handled_total{grpc_code="OK",grpc_method="Check",` +
-		`grpc_service="kacho.cloud.iam.v1.InternalIAMService",listener="internal"} 1`
+		`grpc_service="kaname.cloud.iam.v1.InternalIAMService",listener="internal"} 1`
 	if !strings.Contains(got, wantCount) {
 		t.Fatalf("счётчика обслуженных нет в выгрузке iam.\nожидалась подстрока: %s\nполучено:\n%s",
 			wantCount, got)

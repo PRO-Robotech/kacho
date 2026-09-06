@@ -312,7 +312,7 @@ Cluster-admin-привязки выдаются через internal-only `Intern
 ```bash
 # Текущие активные cluster-admin (denormalized snapshot).
 grpcurl -d '{}' <mTLS-flags> kaname:9091 \
-  kacho.cloud.iam.v1.InternalClusterService/ListAdmins
+  kaname.cloud.iam.v1.InternalClusterService/ListAdmins
 
 # Либо напрямую в БД.
 kubectl -n kacho exec deploy/postgres -- psql -c "

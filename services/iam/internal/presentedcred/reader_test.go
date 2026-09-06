@@ -857,7 +857,7 @@ func TestPresented_MoreThanOneCredentialIsRefused(t *testing.T) {
 	))
 	final := func(context.Context, any) (any, error) { return nil, nil }
 	_, err := s.reader.UnaryOver(nil)(ctx, nil,
-		&grpc.UnaryServerInfo{FullMethod: "/kacho.cloud.iam.v1.ProjectService/Get"}, final)
+		&grpc.UnaryServerInfo{FullMethod: "/kaname.cloud.iam.v1.ProjectService/Get"}, final)
 	if err == nil {
 		t.Fatal("два предъявленных удостоверения приняты — победил порядок метаданных")
 	}

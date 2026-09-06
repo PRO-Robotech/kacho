@@ -46,7 +46,7 @@ import (
 // canonicalVerbModelRelPath — каноническая модель прав относительно корня репо.
 // Тот же файл, который сторожит гейт дрейфа iam; здесь он читается независимо,
 // потому что гейт не импортирует ни один пакет сервиса.
-const canonicalVerbModelRelPath = "proto/kacho/cloud/iam/v1/fga_model.fga"
+const canonicalVerbModelRelPath = "proto/kaname/cloud/iam/v1/fga_model.fga"
 
 // verbRelationPrefix — приставка, по которой имя отношения модели опознаётся как
 // глагольное. Она же — форма, в которой глагол попадает в кортеж.

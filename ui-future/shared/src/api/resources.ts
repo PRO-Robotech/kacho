@@ -11,7 +11,7 @@
 // поверхность пакета; названо честно, чтобы «используются» не читалось как факт.
 //
 // KAC-124: organization-manager + resource-manager упразднены, заменены на
-// kacho.cloud.iam.v1 (Account / Project). Helpers под IAM лежат в api/iam.ts
+// kaname.cloud.iam.v1 (Account / Project). Helpers под IAM лежат в api/iam.ts
 // (iamApi.listAccounts / listProjects).
 
 import { api } from "./client";

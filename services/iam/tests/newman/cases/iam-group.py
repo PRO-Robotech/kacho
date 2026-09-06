@@ -738,7 +738,7 @@ CASES.append(Case(
 # accountBId»), но она ЕСТЬ: посев даёт `jwtInvitee` роль `admin` на account-B
 # (tests/authz-fixtures/prodseed_matrix.py — subject с ROLE_ADMIN на acctB), а
 # модель прав выводит на группе `super_admin: admin from account` → `v_update`
-# (proto/kacho/cloud/iam/v1/fga_model.fga, type iam_group). То есть предмет
+# (proto/kaname/cloud/iam/v1/fga_model.fga, type iam_group). То есть предмет
 # конструируем публичным API целиком, и его отсутствие было не ограничением
 # фикстуры, а незакрытым долгом.
 # ---------------------------------------------------------------------------

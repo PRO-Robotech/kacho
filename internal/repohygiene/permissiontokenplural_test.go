@@ -68,6 +68,8 @@ import (
 	"sort"
 	"strings"
 	"testing"
+
+	"github.com/PRO-Robotech/kacho/pkg/contractroot"
 )
 
 // permTokAnnotation — строка аннотации права в .proto. Аннотация односложна
@@ -195,7 +197,14 @@ func permTokScan(rel string, body []byte) []permTokRecord {
 // permTokReadDomain — записи одного домена + число прочитанных файлов.
 func permTokReadDomain(t *testing.T, root, domain string) (files int, recs []permTokRecord) {
 	t.Helper()
-	dir := filepath.Join(root, "proto", "kacho", "cloud", domain, "v1")
+	// Корень домена РЕЗОЛВИТСЯ обходом объявленных корней: литерал не нашёл бы
+	// домена, переехавшего под второй корень, и гейт объявил бы находкой
+	// собственную слепоту — «каталог proto не читается».
+	_, domainDir, ok := contractroot.ResolveDomain(filepath.Join(root, "proto"), domain)
+	if !ok {
+		t.Fatalf("домен %s не резолвится ни под одним объявленным корнем %v", domain, contractroot.Roots)
+	}
+	dir := filepath.Join(domainDir, "v1")
 	if _, err := os.Stat(dir); err != nil {
 		t.Fatalf("домен %s: каталог proto не читается: %v — «ноль находок» тут был бы "+
 			"«ноль прочитанного»", domain, err)

@@ -37,7 +37,7 @@ func synthTree(t *testing.T, service, method string) (protoDir, cmdDir string) {
 			t.Fatalf("создать %s: %v", d, err)
 		}
 	}
-	proto := "syntax = \"proto3\";\npackage kacho.cloud.iam.v1;\n\n" +
+	proto := "syntax = \"proto3\";\npackage kaname.cloud.iam.v1;\n\n" +
 		"service " + service + " {\n  rpc " + method + "(Req) returns (Res);\n}\n"
 	if err := os.WriteFile(filepath.Join(protoDir, "synth.proto"), []byte(proto), 0o644); err != nil {
 		t.Fatalf("записать контракт: %v", err)

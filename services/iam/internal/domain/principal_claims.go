@@ -24,9 +24,9 @@ package domain
 
 const (
 	// ClaimPrincipalType — вид принципала: `user` либо `service_account`.
-	ClaimPrincipalType = "kaname_principal_type"
+	ClaimPrincipalType = "kacho_principal_type"
 	// ClaimPrincipalID — идентификатор принципала.
-	ClaimPrincipalID = "kaname_principal_id"
+	ClaimPrincipalID = "kacho_principal_id"
 	// ClaimPrincipalDisplay — отображаемое имя принципала. Косметическое.
-	ClaimPrincipalDisplay = "kaname_principal_display_name"
+	ClaimPrincipalDisplay = "kacho_principal_display_name"
 )

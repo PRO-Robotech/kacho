@@ -55,27 +55,27 @@ const (
 	// projectGetMethod — единственный публичный RPC, который зовут ВСЕ
 	// consumer-модули (vpc/compute/nlb/storage/registry): существование проекта
 	// и его аккаунт на пути запроса Create.
-	projectGetMethod = "/kacho.cloud.iam.v1.ProjectService/Get"
+	projectGetMethod = "/kaname.cloud.iam.v1.ProjectService/Get"
 	// projectListMethod / accountListMethod — два списочных RPC, которые прежде
 	// стояли в таблице под веер снятого оператора. Соседо-вызываемыми они больше
 	// не объявлены; остаются здесь как предмет отрицания и как часть поверхности,
 	// доступной парадной двери.
-	projectListMethod = "/kacho.cloud.iam.v1.ProjectService/List"
-	accountListMethod = "/kacho.cloud.iam.v1.AccountService/List"
+	projectListMethod = "/kaname.cloud.iam.v1.ProjectService/List"
+	accountListMethod = "/kaname.cloud.iam.v1.AccountService/List"
 
 	// userTokenIssueMethod — представитель того, что ДОЛЖНО остаться только за
 	// парадной дверью: чеканка личного токена пользователя. Ровно этот RPC
 	// показывает цену дыры — сосед выпускал бы носитель прав от чужого имени.
-	userTokenIssueMethod = "/kacho.cloud.iam.v1.UserTokenService/Issue"
+	userTokenIssueMethod = "/kaname.cloud.iam.v1.UserTokenService/Issue"
 	// accessBindingCreateMethod — второй представитель: выдача прав.
-	accessBindingCreateMethod = "/kacho.cloud.iam.v1.AccessBindingService/Create"
+	accessBindingCreateMethod = "/kaname.cloud.iam.v1.AccessBindingService/Create"
 	// projectDeleteMethod — третий: необратимая мутация тенантского ресурса.
-	projectDeleteMethod = "/kacho.cloud.iam.v1.ProjectService/Delete"
+	projectDeleteMethod = "/kaname.cloud.iam.v1.ProjectService/Delete"
 
 	// batchCheckMethod — пер-страничный фильтр видимости List у vpc/compute/nlb/
 	// storage (internal/authzfilter). Единственный метод AuthorizeService, который
 	// кто-либо из них зовёт.
-	batchCheckMethod = "/kacho.cloud.iam.v1.AuthorizeService/BatchCheck"
+	batchCheckMethod = "/kaname.cloud.iam.v1.AuthorizeService/BatchCheck"
 
 	// registrySAN — живой модуль, который вправе спросить ProjectService.Get и
 	// НЕ вправе спросить BatchCheck (фильтра страницы у него нет). Пара
@@ -286,7 +286,7 @@ func TestPublicPeerCallableRPCs_CarryNoMutation(t *testing.T) {
 // источника истины контракта, а не из копии, которую пришлось бы поддерживать.
 func protoReturnTypes(t *testing.T) map[string]string {
 	t.Helper()
-	dir := filepath.Join("..", "..", "..", "..", "proto", "kacho", "cloud", "iam", "v1")
+	dir := filepath.Join("..", "..", "..", "..", "proto", "kaname", "cloud", "iam", "v1")
 	entries, err := os.ReadDir(dir)
 	if err != nil {
 		t.Fatalf("read proto dir %s: %v", dir, err)
@@ -309,7 +309,7 @@ func protoReturnTypes(t *testing.T) map[string]string {
 				continue
 			}
 			if m := rpcRe.FindStringSubmatch(ln); m != nil && svc != "" {
-				out["/kacho.cloud.iam.v1."+svc+"/"+m[1]] = m[2]
+				out["/kaname.cloud.iam.v1."+svc+"/"+m[1]] = m[2]
 			}
 		}
 	}

@@ -38,7 +38,7 @@ const (
 	scopeFilteredEntry = `{"fqn":"kacho.cloud.vpc.v1.NetworkService/List","permission":"vpc.networks.list","scope_filtered":true,"required_acr_min":"1"}`
 	// The same FQN in both lanes, so the internal-listener contrast below compares
 	// like with like.
-	internalScopeFiltered = `{"fqn":"kacho.cloud.iam.v1.InternalIAMService/Check","permission":"iam.internal.check","scope_filtered":true,"required_acr_min":"1"}`
+	internalScopeFiltered = `{"fqn":"kaname.cloud.iam.v1.InternalIAMService/Check","permission":"iam.internal.check","scope_filtered":true,"required_acr_min":"1"}`
 )
 
 // TestScopeFiltered_CatalogEntryDecodes — the runtime catalog must carry the lane

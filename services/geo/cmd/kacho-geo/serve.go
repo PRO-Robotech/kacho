@@ -17,7 +17,6 @@ import (
 
 	operationpb "github.com/PRO-Robotech/kacho/pkg/api/kacho/cloud/operation"
 	"github.com/PRO-Robotech/kacho/pkg/authz"
-	"github.com/PRO-Robotech/kacho/pkg/authz/authziam"
 	"github.com/PRO-Robotech/kacho/pkg/authz/authzmetrics"
 	"github.com/PRO-Robotech/kacho/pkg/authz/proxytuple"
 	coredb "github.com/PRO-Robotech/kacho/pkg/db"
@@ -263,12 +262,8 @@ func describe(cfg config.Config, logger *slog.Logger,
 		TrustDomain:     servicecontract.Value(cfg.TrustDomain()),
 		TrustDomainKnob: "KACHO_GEO_AUTHZ_TRUST_DOMAIN",
 
-		Authz:     servicecontract.AuthzViaIAM,
-		CheckEdge: servicecontract.NewPeerEdge(cfg.AuthZIAMGRPCAddr, checkCreds),
-		// Перевод вопроса в контракт службы доступа приносит СЕРВИС: носитель
-		// принадлежит фундаменту и чужого контракта не знает (приёмка K3-1,
-		// раздел 7.2).
-		PeerCheck:    authziam.NewCheckClient,
+		Authz:        servicecontract.AuthzViaIAM,
+		CheckEdge:    servicecontract.NewPeerEdge(cfg.AuthZIAMGRPCAddr, checkCreds),
 		CacheWindow:  cfg.AuthZCacheTTL,
 		ClientBudget: cfg.AuthZCheckTimeout,
 		// Приёмник величин кеша вердиктов: носитель строит кеш, а

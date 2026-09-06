@@ -277,15 +277,15 @@ func (m *AuthzMiddleware) Metrics() *AuthzMetrics { return m.metrics }
 //
 // Набор доступен только на чтение после инициализации пакета — не менять в рантайме.
 var subjectChangingFQNs = map[string]struct{}{
-	"kacho.cloud.iam.v1.AccessBindingService/Create": {},
-	"kacho.cloud.iam.v1.AccessBindingService/Delete": {},
+	"kaname.cloud.iam.v1.AccessBindingService/Create": {},
+	"kaname.cloud.iam.v1.AccessBindingService/Delete": {},
 	// Мягкий отзыв: строка привязки остаётся, набор отношений снимается — для
 	// вердикта это то же, что удаление, и кэш обязан погаснуть так же.
-	"kacho.cloud.iam.v1.AccessBindingService/Revoke": {},
+	"kaname.cloud.iam.v1.AccessBindingService/Revoke": {},
 	// Членство в группе меняет права, не трогая ни одной привязки: право выдано
 	// ГРУППЕ, а состав её здесь и меняется.
-	"kacho.cloud.iam.v1.GroupService/AddMember":    {},
-	"kacho.cloud.iam.v1.GroupService/RemoveMember": {},
+	"kaname.cloud.iam.v1.GroupService/AddMember":    {},
+	"kaname.cloud.iam.v1.GroupService/RemoveMember": {},
 }
 
 // MaybeFlushOnMutation flushes the decision cache when fqn is a grant-changing

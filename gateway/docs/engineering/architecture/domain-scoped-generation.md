@@ -54,7 +54,7 @@
 ```sh
 git grep -l '^import "kacho/iam/authz/v1/authz_options.proto";' -- proto | wc -l   # 67
 git grep -l '^import "kacho/iam/authz/v1/authz_options.proto";' -- proto \
-  | grep -vc '^proto/kacho/cloud/iam/'                                             # 45
+  | grep -vc '^proto/kaname/cloud/iam/'                                             # 45
 ```
 
 Числа сняты на ревизии, назвавшей это решение; предикат назван рядом, чтобы их

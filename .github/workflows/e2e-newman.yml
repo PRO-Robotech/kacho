@@ -881,7 +881,7 @@ jobs:
           COVERAGE_MIN: "30"
         run: |
           python3 scripts/coverage.py \
-            --proto-glob "${GITHUB_WORKSPACE}/proto/kacho/cloud/iam/v1/*.proto" \
+            --proto-glob "${GITHUB_WORKSPACE}/proto/kaname/cloud/iam/v1/*.proto" \
             --collections-glob 'collections/*.postman_collection.json' \
             --min "$COVERAGE_MIN"
 

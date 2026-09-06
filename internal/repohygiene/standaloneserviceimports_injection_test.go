@@ -202,7 +202,7 @@ func TestStandaloneGate_SilentOnItsOwnInternalSubtree(t *testing.T) {
 func TestStandaloneGate_SilentOnGeneratedContractStubs(t *testing.T) {
 	corpus := injStandaloneCorpus{
 		"services/iam/internal/apps/kaname/api/user/handler.go": injGoFile("user",
-			injStandaloneModule+"/pkg/api/kacho/cloud/iam/v1",
+			injStandaloneModule+"/pkg/api/kaname/cloud/iam/v1",
 			injStandaloneModule+"/pkg/api/kacho/cloud/operation",
 		),
 	}

@@ -59,7 +59,7 @@ package authzguard
 import (
 	"github.com/PRO-Robotech/kacho/pkg/authz"
 
-	iamv1 "github.com/PRO-Robotech/kacho/pkg/api/kacho/cloud/iam/v1"
+	iamv1 "github.com/PRO-Robotech/kacho/pkg/api/kaname/cloud/iam/v1"
 
 	"github.com/PRO-Robotech/kaname/internal/domain"
 )
@@ -71,7 +71,7 @@ import (
 // ровно одно сообщение запроса во всём контракте. Новый метод получает якорь
 // добавлением поля в своё сообщение И записи сюда — обоими действиями, а не
 // одним, потому что привязка к FQN и есть то, что делает якорь безопасным.
-const roleCreateMethod = "/kacho.cloud.iam.v1.RoleService/Create"
+const roleCreateMethod = "/kaname.cloud.iam.v1.RoleService/Create"
 
 // withCanonicalRoleAnchor учит карту двери читать канонический якорь роли,
 // оставляя легаси-полосу рабочей.

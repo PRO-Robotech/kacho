@@ -49,7 +49,7 @@ const (
 	chainAudience = "kaname-public"
 	chainSubject  = "usr-01hchainchainchain"
 	chainKID      = "kacho-chain-a"
-	chainRPC      = "/kacho.cloud.iam.v1.ProjectService/Get"
+	chainRPC      = "/kaname.cloud.iam.v1.ProjectService/Get"
 )
 
 // chainKeys / chainRevocations — подставные зависимости читателя. Своей логики

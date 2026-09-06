@@ -29,14 +29,14 @@ import (
 	// Blank-import the iam proto package so its FileDescriptors register into
 	// protoregistry.GlobalFiles. Without this the test would only enumerate
 	// protos transitively imported by this package — incomplete.
-	_ "github.com/PRO-Robotech/kacho/pkg/api/kacho/cloud/iam/v1"
+	_ "github.com/PRO-Robotech/kacho/pkg/api/kaname/cloud/iam/v1"
 )
 
 // iamServicePrefix — only enumerate services in the iam proto package.
-const iamServicePrefix = "kacho.cloud.iam.v1."
+const iamServicePrefix = "kaname.cloud.iam.v1."
 
 // TestAnonTable_AllFullMethodsClassified walks every method in
-// kacho.cloud.iam.v1.* and asserts that anonymous callers reach the handler
+// kaname.cloud.iam.v1.* and asserts that anonymous callers reach the handler
 // (read-only or whitelisted) OR are denied (everything else).
 //
 // Failures here signal one of:

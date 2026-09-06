@@ -59,7 +59,7 @@ func twoCopies(t *testing.T, iam, edge string) (iamPath, edgePath string) {
 // цели непуста и «копии равны» не может означать «сверять было нечего».
 const oneEntryCatalog = `[
   {
-    "fqn": "kacho.cloud.iam.v1.UserService/Get",
+    "fqn": "kaname.cloud.iam.v1.UserService/Get",
     "permission": "iam.users.get",
     "required_relation": "viewer"
   }

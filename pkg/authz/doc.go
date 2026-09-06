@@ -83,26 +83,16 @@
 //	    Check(ctx context.Context, subjectID, relation, object string) (allowed bool, err error)
 //	}
 //
-// Реализация (gRPC-клиент к `InternalIAMService.Check`) живёт в adapter'е
-// `pkg/authz/authziam` — он импортирует стабы контракта и реализует
-// authz.CheckClient. Каталог объявлен классом `kaname` в карте гейта границы:
-// контракт остаётся у того, кто его реализует, и фундамент его не знает
-// (приёмка K3-1 §7.2).
-//
-// Прежняя редакция называла здесь координату в дереве отдельного сервиса
-// (`…/internal/clients/iam_authz_client.go`); такого файла нет, и адаптер был
-// один — в носителе, откуда и уехал.
+// Реализация (gRPC client к InternalIAMService.Check) живет в кliente-side
+// adapter'е (например `kacho-vpc/internal/clients/iam_authz_client.go`),
+// который импортирует kacho-proto stubs и реализует authz.CheckClient.
 //
 // # Файлы пакета
 //
 //   - types.go            — RPCMap / Decision / типы
 //   - cache.go            — TTL=5s positive-only кэш + LISTEN-invalidate hook
 //   - interceptor.go      — gRPC unary/stream interceptor
-//   - check_client.go     — port-интерфейс CheckClient, CheckClientFunc и
-//     CheckClientFrom (сборщик решателя из соединения; его приносит сервис
-//     полем дескриптора, потому что перевод в чужой контракт фундаменту не
-//     принадлежит)
-//   - authziam/           — единственный адаптер порта к контракту владельца
+//   - check_client.go     — port-интерфейс CheckClient + composition helper
 //   - rate_limiter.go     — token-bucket per-Principal на denied-storm
 //   - listen_invalidate.go — pgx LISTEN-loop, инвалидирующий cache на NOTIFY
 //   - authzmetrics/        — коллектор величин звена и его окна вердиктов

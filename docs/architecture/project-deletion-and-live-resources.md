@@ -4,11 +4,11 @@
 `iam.v1.ProjectService.Delete` и всякий будущий глагол, снимающий КОНТЕЙНЕР
 арендатора · **Это ЕДИНСТВЕННОЕ место, где выбор объявлен**; клиентская сторона
 решения — `services/iam/docs/content/api/project.mdx`, контракт —
-`proto/kacho/cloud/iam/v1/project_service.proto`.
+`proto/kaname/cloud/iam/v1/project_service.proto`.
 
 **Задача-преемник:** #1231
 
-**Поверхности решения:** `proto/kacho/cloud/iam/v1/project_service.proto` ·
+**Поверхности решения:** `proto/kaname/cloud/iam/v1/project_service.proto` ·
 `services/iam/docs/content/api/project.mdx`
 
 Номер объявлен ОДНОЙ строкой и в ОДНОМ месте намеренно. Прежде все три

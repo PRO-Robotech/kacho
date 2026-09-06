@@ -48,7 +48,7 @@ const (
 	catalogRelPathIAM     = "services/iam/internal/apps/kaname/seed/embedded/permission_catalog.json"
 
 	// modelRelPath — канонический источник отношений и их выводимости.
-	modelRelPath = "proto/kacho/cloud/iam/v1/fga_model.fga"
+	modelRelPath = "proto/kaname/cloud/iam/v1/fga_model.fga"
 )
 
 type catalogRow struct {
@@ -205,16 +205,16 @@ func declaredRelations(t *testing.T, dsl, fgaType string) map[string]bool {
 // требовал бы, чтобы КАЖДЫЙ гейт края был открываем выдачей, — а это ровно то
 // допущение, которое неверно для права «действовать ОТ ИМЕНИ человека».
 var ungrantableByDesign = map[string]string{
-	"kacho.cloud.iam.v1.UserTokenService/Issue": "выпуск персонального токена — действие ОТ ИМЕНИ человека; " +
+	"kaname.cloud.iam.v1.UserTokenService/Issue": "выпуск персонального токена — действие ОТ ИМЕНИ человека; " +
 		"`iam_user.token_issuer` вычисляется из `subject`, поэтому обладать им можно только БУДУЧИ этим человеком (#1086)",
-	"kacho.cloud.iam.v1.UserTokenService/Revoke": "отзыв персонального токена — та же полоса, что и выпуск (#1086)",
+	"kaname.cloud.iam.v1.UserTokenService/Revoke": "отзыв персонального токена — та же полоса, что и выпуск (#1086)",
 
 	// #1133 — ЧТЕНИЕ СВЕДЕНИЙ ОБ УДОСТОВЕРЕНИЯХ. Третья сторона той же директивы.
 	// Запись появилась вместе с сужением: прежде `token_reader` выводился из
 	// `v_list`, то есть выдачей резолвился, и в перечне ему места не было. Это и
 	// есть форма, которую перечень обязан иметь — он идёт СЛЕДОМ за моделью, а не
 	// впереди неё.
-	"kacho.cloud.iam.v1.UserTokenService/List": "перечень персональных удостоверений — сведения о ЛИЧНОСТИ, " +
+	"kaname.cloud.iam.v1.UserTokenService/List": "перечень персональных удостоверений — сведения о ЛИЧНОСТИ, " +
 		"а не право на аккаунт; `iam_user.token_reader` выводится из `subject` и `super_admin from account`, " +
 		"то есть держат его только сам человек и надзор облака, и выдачей внутри аккаунта он не резолвится (#1133)",
 
@@ -229,11 +229,11 @@ var ungrantableByDesign = map[string]string{
 	// быть ОБЪЯВЛЕНО моделью (иначе каталог называет несуществующее и край отказал
 	// бы всем), и полная выдача `*` его резолвить НЕ должна (иначе запись пережила
 	// свой предмет).
-	"kacho.cloud.iam.v1.UserService/Update": "правка записи человека — `iam_user.record_writer` выводится " +
+	"kaname.cloud.iam.v1.UserService/Update": "правка записи человека — `iam_user.record_writer` выводится " +
 		"из `super_admin from account`, то есть только надзор облака; выдачей внутри аккаунта он не резолвится (#1102)",
-	"kacho.cloud.iam.v1.UserService/Block": "запрет личности действует во ВСЕХ её аккаунтах, поэтому " +
+	"kaname.cloud.iam.v1.UserService/Block": "запрет личности действует во ВСЕХ её аккаунтах, поэтому " +
 		"`iam_user.identity_suspender` не выводится ни из одного источника уровня аккаунта (#1102)",
-	"kacho.cloud.iam.v1.UserService/Unblock": "снятие запрета — та же полоса, что и запрет (#1102)",
+	"kaname.cloud.iam.v1.UserService/Unblock": "снятие запрета — та же полоса, что и запрет (#1102)",
 
 	// #1131 — СНЯТИЕ СТРОКИ ЛИЧНОСТИ. Тот же довод, что у соседей по #1102, и с
 	// более тяжёлым исходом: запрет обратим, удаление нет. Отличие от них одно и
@@ -241,7 +241,7 @@ var ungrantableByDesign = map[string]string{
 	// разрешено всегда), поэтому отношение выводится из `subject` ЛИБО из
 	// `super_admin from account`, — но выдачей внутри аккаунта не резолвится
 	// ни то, ни другое.
-	"kacho.cloud.iam.v1.UserService/Delete": "снятие строки личности стирает человека во ВСЕХ его " +
+	"kaname.cloud.iam.v1.UserService/Delete": "снятие строки личности стирает человека во ВСЕХ его " +
 		"аккаунтах, поэтому `iam_user.identity_remover` выводится только из `subject` (самоудаление) " +
 		"и `super_admin from account` (надзор облака); выдачей внутри аккаунта он не резолвится. " +
 		"Распорядителю аккаунта служит исключение из аккаунта — оно гейтится отношением АККАУНТА " +

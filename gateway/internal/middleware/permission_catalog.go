@@ -41,7 +41,7 @@ import (
 )
 
 // CatalogEntry — catalog row mirrored from
-// `kacho.cloud.iam.v1.PermissionCatalogEntry`. Decoded from JSON without
+// `kaname.cloud.iam.v1.PermissionCatalogEntry`. Decoded from JSON without
 // pulling the proto descriptor (the catalog is intentionally self-contained;
 // see permissions_catalog.proto comment).
 type CatalogEntry struct {
@@ -138,7 +138,7 @@ type CatalogEntry struct {
 	ScopeFiltered bool `json:"scope_filtered"`
 }
 
-// ScopeExtractor — mirrored from `kacho.cloud.iam.v1.PermissionScopeExtractor`.
+// ScopeExtractor — mirrored from `kaname.cloud.iam.v1.PermissionScopeExtractor`.
 type ScopeExtractor struct {
 	// ObjectType — object type of the rights model ("project" / "vpc_network" / ...).
 	ObjectType string `json:"object_type"`
@@ -177,7 +177,7 @@ func (e CatalogEntry) IsExempt() bool {
 //     service_account / group / access_binding Get), whose owner returns
 //     NotFound for a denied caller; the gateway must not pre-empt that with a 403.
 //
-// The fqn argument is the normalized gRPC FQN ("kacho.cloud.iam.v1.AccountService/Get").
+// The fqn argument is the normalized gRPC FQN ("kaname.cloud.iam.v1.AccountService/Get").
 func (e CatalogEntry) HidesExistenceOnDeny(fqn string) bool {
 	if e.HideExistence {
 		return true

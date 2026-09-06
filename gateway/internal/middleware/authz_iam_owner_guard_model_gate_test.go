@@ -43,7 +43,7 @@ import (
 	"google.golang.org/grpc/codes"
 	"google.golang.org/grpc/status"
 
-	iamv1 "github.com/PRO-Robotech/kacho/pkg/api/kacho/cloud/iam/v1"
+	iamv1 "github.com/PRO-Robotech/kacho/pkg/api/kaname/cloud/iam/v1"
 
 	"github.com/PRO-Robotech/kacho/gateway/internal/middleware"
 )
@@ -73,12 +73,12 @@ func ownerGuardModelGatedRPCs() []ownerGuardRPC {
 	)
 	return []ownerGuardRPC{
 		{
-			fullMethod: "/kacho.cloud.iam.v1.AccountService/Delete",
+			fullMethod: "/kaname.cloud.iam.v1.AccountService/Delete",
 			relation:   "v_delete", objectType: "account", scopeField: "account_id",
 			req: &iamv1.DeleteAccountRequest{AccountId: accID}, targetObjID: accID,
 		},
 		{
-			fullMethod: "/kacho.cloud.iam.v1.ProjectService/Delete",
+			fullMethod: "/kaname.cloud.iam.v1.ProjectService/Delete",
 			relation:   "v_delete", objectType: "project", scopeField: "project_id",
 			req: &iamv1.DeleteProjectRequest{ProjectId: projID}, targetObjID: projID,
 		},
@@ -87,7 +87,7 @@ func ownerGuardModelGatedRPCs() []ownerGuardRPC {
 			// отношение БЕЗ источников уровня аккаунта. Пообъектный гейт края от
 			// этого никуда не делся, и именно его перепись здесь и утверждает:
 			// меняется имя спрашиваемого отношения, а не наличие вопроса.
-			fullMethod: "/kacho.cloud.iam.v1.UserService/Update",
+			fullMethod: "/kaname.cloud.iam.v1.UserService/Update",
 			relation:   "record_writer", objectType: "iam_user", scopeField: "user_id",
 			req: &iamv1.UpdateUserRequest{UserId: usrID}, targetObjID: usrID,
 		},
@@ -104,47 +104,47 @@ func ownerGuardModelGatedRPCs() []ownerGuardRPC {
 			// Что распорядителю аккаунта осталось вместо удаления — исключение из
 			// аккаунта (`UserService/RemoveFromAccount`, #1127): оно снимает
 			// членство и не трогает глобальную строку.
-			fullMethod: "/kacho.cloud.iam.v1.UserService/Delete",
+			fullMethod: "/kaname.cloud.iam.v1.UserService/Delete",
 			relation:   "identity_remover", objectType: "iam_user", scopeField: "user_id",
 			req: &iamv1.DeleteUserRequest{UserId: usrID}, targetObjID: usrID,
 		},
 		{
-			fullMethod: "/kacho.cloud.iam.v1.GroupService/Update",
+			fullMethod: "/kaname.cloud.iam.v1.GroupService/Update",
 			relation:   "v_update", objectType: "iam_group", scopeField: "group_id",
 			req: &iamv1.UpdateGroupRequest{GroupId: grpID}, targetObjID: grpID,
 		},
 		{
-			fullMethod: "/kacho.cloud.iam.v1.GroupService/Delete",
+			fullMethod: "/kaname.cloud.iam.v1.GroupService/Delete",
 			relation:   "v_delete", objectType: "iam_group", scopeField: "group_id",
 			req: &iamv1.DeleteGroupRequest{GroupId: grpID}, targetObjID: grpID,
 		},
 		{
-			fullMethod: "/kacho.cloud.iam.v1.GroupService/AddMember",
+			fullMethod: "/kaname.cloud.iam.v1.GroupService/AddMember",
 			relation:   "v_update", objectType: "iam_group", scopeField: "group_id",
 			req: &iamv1.AddGroupMemberRequest{GroupId: grpID}, targetObjID: grpID,
 		},
 		{
-			fullMethod: "/kacho.cloud.iam.v1.GroupService/RemoveMember",
+			fullMethod: "/kaname.cloud.iam.v1.GroupService/RemoveMember",
 			relation:   "v_update", objectType: "iam_group", scopeField: "group_id",
 			req: &iamv1.RemoveGroupMemberRequest{GroupId: grpID}, targetObjID: grpID,
 		},
 		{
-			fullMethod: "/kacho.cloud.iam.v1.RoleService/Update",
+			fullMethod: "/kaname.cloud.iam.v1.RoleService/Update",
 			relation:   "v_update", objectType: "iam_role", scopeField: "role_id",
 			req: &iamv1.UpdateRoleRequest{RoleId: roleID}, targetObjID: roleID,
 		},
 		{
-			fullMethod: "/kacho.cloud.iam.v1.RoleService/Delete",
+			fullMethod: "/kaname.cloud.iam.v1.RoleService/Delete",
 			relation:   "v_delete", objectType: "iam_role", scopeField: "role_id",
 			req: &iamv1.DeleteRoleRequest{RoleId: roleID}, targetObjID: roleID,
 		},
 		{
-			fullMethod: "/kacho.cloud.iam.v1.ServiceAccountService/Update",
+			fullMethod: "/kaname.cloud.iam.v1.ServiceAccountService/Update",
 			relation:   "v_update", objectType: "iam_service_account", scopeField: "service_account_id",
 			req: &iamv1.UpdateServiceAccountRequest{ServiceAccountId: saID}, targetObjID: saID,
 		},
 		{
-			fullMethod: "/kacho.cloud.iam.v1.ServiceAccountService/Delete",
+			fullMethod: "/kaname.cloud.iam.v1.ServiceAccountService/Delete",
 			relation:   "v_delete", objectType: "iam_service_account", scopeField: "service_account_id",
 			req: &iamv1.DeleteServiceAccountRequest{ServiceAccountId: saID}, targetObjID: saID,
 		},

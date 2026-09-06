@@ -134,30 +134,30 @@ kubectl -n kacho port-forward svc/kaname 9091:9091 &
 
 # LookupSubject by external_id (OIDC sub from Ory).
 grpcurl -plaintext -d '{"external_id":"ory-sub-xyz"}' localhost:9091 \
-  kacho.cloud.iam.v1.InternalIAMService/LookupSubject
+  kaname.cloud.iam.v1.InternalIAMService/LookupSubject
 
 # Check. Тройка называется subject_id / relation / object — все три строки в
 # FGA-форме "<тип>:<id>"; глагола вида "vpc.network.create" на входе нет,
 # спрашивается ОТНОШЕНИЕ модели.
 grpcurl -plaintext -d '{
   "subject_id":"user:usr_alice","relation":"editor","object":"project:prj_yyy"
-}' localhost:9091 kacho.cloud.iam.v1.InternalIAMService/Check
+}' localhost:9091 kaname.cloud.iam.v1.InternalIAMService/Check
 
 # UpsertFromIdentity (api-gateway после OIDC).
 grpcurl -plaintext -d '{
   "external_id":"ory-sub-xyz","email":"alice@example.com","display_name":"Alice"
-}' localhost:9091 kacho.cloud.iam.v1.InternalUserService/UpsertFromIdentity
+}' localhost:9091 kaname.cloud.iam.v1.InternalUserService/UpsertFromIdentity
 
 # PollSubjectChanges (api-gateway cache invalidation poll).
 grpcurl -plaintext -d '{"since_id":0,"limit":100}' localhost:9091 \
-  kacho.cloud.iam.v1.InternalIAMService/PollSubjectChanges
+  kaname.cloud.iam.v1.InternalIAMService/PollSubjectChanges
 ```
 
 ## Подробности реализации
 
 - **Handler:** `internal/apps/kaname/api/internal_iam/handler.go`.
 - **LookupSubject:** `lookup_subject.go`.
-- **ListPermissions:** RPC **снят** — в `proto/kacho/cloud/iam/v1/internal_iam_service.proto`
+- **ListPermissions:** RPC **снят** — в `proto/kaname/cloud/iam/v1/internal_iam_service.proto`
   на его месте стоит надгробие с прямым запретом заводить метод под тем же именем. Файла
   обработчика нет; имя не воспроизводится как координата.
 - **Check delegation:** narrow port `authorizer` over `*service.AuthorizeService`.

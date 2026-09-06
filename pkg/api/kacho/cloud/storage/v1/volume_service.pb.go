@@ -78,7 +78,7 @@ func (x *GetVolumeRequest) GetVolumeId() string {
 type ListVolumesRequest struct {
 	state protoimpl.MessageState `protogen:"open.v1"`
 	// ID of the project to list volumes in.
-	// To get the project ID, use a [kacho.cloud.iam.v1.ProjectService.List] request.
+	// To get the project ID, use a [kaname.cloud.iam.v1.ProjectService.List] request.
 	ProjectId string `protobuf:"bytes,1,opt,name=project_id,json=projectId,proto3" json:"project_id,omitempty"`
 	// The maximum number of results per page to return. If the number of available
 	// results is larger than [page_size], the service returns a
@@ -210,7 +210,7 @@ func (x *ListVolumesResponse) GetNextPageToken() string {
 type CreateVolumeRequest struct {
 	state protoimpl.MessageState `protogen:"open.v1"`
 	// ID of the project to create a volume in.
-	// To get the project ID, use a [kacho.cloud.iam.v1.ProjectService.List] request.
+	// To get the project ID, use a [kaname.cloud.iam.v1.ProjectService.List] request.
 	ProjectId string `protobuf:"bytes,1,opt,name=project_id,json=projectId,proto3" json:"project_id,omitempty"`
 	// Name of the volume.
 	Name string `protobuf:"bytes,2,opt,name=name,proto3" json:"name,omitempty"`

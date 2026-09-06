@@ -30,13 +30,13 @@ import (
 
 const (
 	// grantAdminMethod — a gateway-fronted RPC with required_acr_min=2 (immediate effect).
-	grantAdminMethod = "/kacho.cloud.iam.v1.InternalClusterService/GrantAdmin"
+	grantAdminMethod = "/kaname.cloud.iam.v1.InternalClusterService/GrantAdmin"
 	// revokeMethod — a gateway-fronted RPC with required_acr_min=0 today.
-	revokeMethod = "/kacho.cloud.iam.v1.InternalSessionRevocationsService/Revoke"
+	revokeMethod = "/kaname.cloud.iam.v1.InternalSessionRevocationsService/Revoke"
 	// registerNonGateway — a NON-gateway-fronted internal RPC (module SA caller).
-	registerNonGateway = "/kacho.cloud.iam.v1.InternalIAMService/RegisterResource"
+	registerNonGateway = "/kaname.cloud.iam.v1.InternalIAMService/RegisterResource"
 	// forceLogoutMethod — gateway-fronted, acr_min=0 in prod (raised to 2 only in the fixture).
-	forceLogoutMethod = "/kacho.cloud.iam.v1.InternalIAMService/ForceLogout"
+	forceLogoutMethod = "/kaname.cloud.iam.v1.InternalIAMService/ForceLogout"
 )
 
 // fakeACRCatalog maps gRPC full-method (catalog FQN without the leading slash)
@@ -49,12 +49,12 @@ func (c fakeACRCatalog) RequiredACRMin(fqn string) string { return c[fqn] }
 
 func realisticCatalog() fakeACRCatalog {
 	return fakeACRCatalog{
-		"kacho.cloud.iam.v1.InternalClusterService/GrantAdmin":        "2",
-		"kacho.cloud.iam.v1.InternalClusterService/RevokeAdmin":       "2",
-		"kacho.cloud.iam.v1.InternalClusterService/ListAdmins":        "2",
-		"kacho.cloud.iam.v1.InternalClusterService/Get":               "2",
-		"kacho.cloud.iam.v1.InternalSessionRevocationsService/Revoke": "", // acr_min 0
-		"kacho.cloud.iam.v1.InternalIAMService/ForceLogout":           "", // acr_min 0 (prod)
+		"kaname.cloud.iam.v1.InternalClusterService/GrantAdmin":        "2",
+		"kaname.cloud.iam.v1.InternalClusterService/RevokeAdmin":       "2",
+		"kaname.cloud.iam.v1.InternalClusterService/ListAdmins":        "2",
+		"kaname.cloud.iam.v1.InternalClusterService/Get":               "2",
+		"kaname.cloud.iam.v1.InternalSessionRevocationsService/Revoke": "", // acr_min 0
+		"kaname.cloud.iam.v1.InternalIAMService/ForceLogout":           "", // acr_min 0 (prod)
 	}
 }
 
@@ -157,7 +157,7 @@ func TestACRFloor_0407_DevMode_NoOp(t *testing.T) {
 func TestACRFloor_0408_FixtureRaisesAcrMin_FloorFires(t *testing.T) {
 	// Fixture catalog: ForceLogout now requires acr_min=2.
 	cat := realisticCatalog()
-	cat["kacho.cloud.iam.v1.InternalIAMService/ForceLogout"] = "2"
+	cat["kaname.cloud.iam.v1.InternalIAMService/ForceLogout"] = "2"
 	f := NewACRFloor(cat, GatewayFrontedInternalRPCs()).WithProductionMode(true)
 
 	// acr=1 < 2 → denied.

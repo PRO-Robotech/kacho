@@ -106,7 +106,7 @@ test("AUTHZ_DENIED объясняется по признаку — даже к�
   await refuseCreate(
     page,
     403,
-    refusalBody(7, "AUTHZ_DENIED", "kacho.cloud.iam.v1", "доступ к vpc.networks.create закрыт", {
+    refusalBody(7, "AUTHZ_DENIED", "kaname.cloud.iam.v1", "доступ к vpc.networks.create закрыт", {
       action: "vpc.networks.create",
       resource: `project:${projectId}`,
     }),

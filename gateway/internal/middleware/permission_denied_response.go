@@ -90,7 +90,7 @@ func buildGRPCDenyStatus(desc permissionDeniedDescriptor, reasons []string) *sta
 
 	info := &errdetails.ErrorInfo{
 		Reason: "AUTHZ_DENIED",
-		Domain: "kacho.cloud.iam.v1",
+		Domain: "kaname.cloud.iam.v1",
 		Metadata: map[string]string{
 			"subject":  desc.Subject,
 			"action":   desc.Action,
@@ -262,7 +262,7 @@ func buildGRPCUnauthStatus(desc permissionDeniedDescriptor, reasons []string) *s
 
 	info := &errdetails.ErrorInfo{
 		Reason: "AUTHN_REQUIRED",
-		Domain: "kacho.cloud.iam.v1",
+		Domain: "kaname.cloud.iam.v1",
 		Metadata: map[string]string{
 			"fqn":          desc.FQN,
 			"deny_reasons": strings.Join(reasons, "; "),
@@ -293,7 +293,7 @@ func writeHTTPUnauth(w http.ResponseWriter, desc permissionDeniedDescriptor, rea
 			{
 				"@type":  "type.googleapis.com/google.rpc.ErrorInfo",
 				"reason": "AUTHN_REQUIRED",
-				"domain": "kacho.cloud.iam.v1",
+				"domain": "kaname.cloud.iam.v1",
 				"metadata": map[string]string{
 					"fqn":          desc.FQN,
 					"deny_reasons": strings.Join(reasons, "; "),
@@ -340,7 +340,7 @@ func writeHTTPDeny(w http.ResponseWriter, desc permissionDeniedDescriptor, reaso
 	details = append(details, map[string]any{
 		"@type":  "type.googleapis.com/google.rpc.ErrorInfo",
 		"reason": "AUTHZ_DENIED",
-		"domain": "kacho.cloud.iam.v1",
+		"domain": "kaname.cloud.iam.v1",
 		"metadata": map[string]string{
 			"subject":  desc.Subject,
 			"action":   desc.Action,

@@ -32,8 +32,8 @@ import (
 	"google.golang.org/grpc/codes"
 	"google.golang.org/grpc/credentials/insecure"
 	"google.golang.org/grpc/status"
-	"google.golang.org/protobuf/types/known/emptypb"
 
+	iamv1 "github.com/PRO-Robotech/kacho/pkg/api/kaname/cloud/iam/v1"
 	"github.com/PRO-Robotech/kacho/pkg/authz"
 	"github.com/PRO-Robotech/kacho/pkg/grpcsrv"
 	"github.com/PRO-Robotech/kacho/pkg/servicecontract"
@@ -179,51 +179,42 @@ func TestScopedTypesAreDerivedFromTheRightsMap(t *testing.T) {
 
 // ── тот же вопрос ко ВТОРОЙ ветке источника решения ─────────────────────────
 
-// denyingPeer — сборщик решателя СОСЕДА, отвечающего отказом. Нужен затем, чтобы
-// ветка `AuthzViaIAM` проверялась ТЕМ ЖЕ способом, что и `AuthzSelf`: провязка
-// стоит в обеих, и снять её можно в любой.
-//
-// Прежде здесь поднимался НАСТОЯЩИЙ владелец модели, и проба говорила на его
-// контракте — то есть фундамент импортировал контракт службы доступа (приёмка
-// K3-1 §7.3). Перевод в чужой контракт больше не принадлежит носителю: его
-// приносит сервис полем [servicecontract.Spec.PeerCheck], и подставить сюда
-// достаточно решатель, а не сервер.
-//
-// Утверждение от этого не ослабло: предмет пробы — провязка сверки
-// существования ПОВЕРХ решателя, а не разговор по проводу. Прежняя редакция
-// проверяла обе вещи разом и краснела бы от любой из них.
-func denyingPeer(grpc.ClientConnInterface) authz.CheckClient {
-	return authz.CheckClientFunc(func(context.Context, string, string, string) (bool, error) {
-		return false, nil
-	})
+// denyingIAM — владелец модели, отвечающий отказом. Нужен затем, чтобы ветка
+// `AuthzViaIAM` проверялась ТЕМ ЖЕ способом, что и `AuthzSelf`: провязка стоит в
+// обеих, и снять её можно в любой.
+type denyingIAM struct {
+	iamv1.UnimplementedInternalIAMServiceServer
 }
 
-// listeningEdge — адрес ЖИВОГО слушателя без служб.
-//
-// Ребро остаётся настоящим: носитель по-прежнему набирает соседа сам и сам
-// закрывает соединение, и объявление, которое никто не набирает, было бы
-// объявлением без предмета.
-func listeningEdge(t *testing.T) string {
+func (denyingIAM) Check(context.Context, *iamv1.CheckRequest) (*iamv1.CheckResponse, error) {
+	return &iamv1.CheckResponse{Allowed: false}, nil
+}
+
+// startDenyingIAM поднимает владельца модели на эфемерном порту.
+func startDenyingIAM(t *testing.T) string {
 	t.Helper()
 	lis, err := net.Listen("tcp", "127.0.0.1:0")
 	if err != nil {
-		t.Fatalf("слушатель соседа: %v", err)
+		t.Fatalf("слушатель владельца модели: %v", err)
 	}
-	t.Cleanup(func() { _ = lis.Close() })
+	srv := grpc.NewServer()
+	iamv1.RegisterInternalIAMServiceServer(srv, denyingIAM{})
+	go func() { _ = srv.Serve(lis) }()
+	t.Cleanup(srv.Stop)
 	return lis.Addr().String()
 }
 
 // TestCarrierPutsTheExistenceProbeOnTheIAMEdgeToo — вторая ветка `decisionLink`.
 //
 // Провязка стоит в ОБЕИХ ветках источника решения, и снять её можно в любой —
-// значит утверждать надо обе. Решатель соседа отвечает «не разрешено», потому
-// что без этого ответа до сверки существования дело не доходит вовсе.
+// значит утверждать надо обе. Ветка ходит к настоящему владельцу модели
+// (поднятому здесь же), потому что без ответа «не разрешено» до сверки
+// существования дело не доходит вовсе.
 func TestCarrierPutsTheExistenceProbeOnTheIAMEdgeToo(t *testing.T) {
 	spec := existenceSpec(true)
 	spec.Authz = servicecontract.AuthzViaIAM
 	spec.SelfCheck = nil
-	spec.CheckEdge = servicecontract.NewPeerEdge(listeningEdge(t), insecure.NewCredentials())
-	spec.PeerCheck = denyingPeer
+	spec.CheckEdge = servicecontract.NewPeerEdge(startDenyingIAM(t), insecure.NewCredentials())
 	spec.ClientBudget = 5 * time.Second
 
 	form, _ := authz.OwnerNotFoundFormat(probedType)
@@ -410,7 +401,7 @@ var demoServiceDesc = grpc.ServiceDesc{
 	Methods: []grpc.MethodDesc{{
 		MethodName: "Get",
 		Handler: func(_ any, ctx context.Context, _ func(any) error, chain grpc.UnaryServerInterceptor) (any, error) {
-			h := func(context.Context, any) (any, error) { return &emptypb.Empty{}, nil }
+			h := func(context.Context, any) (any, error) { return &iamv1.CheckResponse{Allowed: true}, nil }
 			if chain == nil {
 				return h(ctx, nil)
 			}
@@ -443,8 +434,8 @@ func callOverTheWire(t *testing.T, srv *grpc.Server) codes.Code {
 
 	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
 	defer cancel()
-	var out emptypb.Empty
-	cerr := conn.Invoke(ctx, "/kacho.cloud.demo.v1.WidgetService/Get", &emptypb.Empty{}, &out)
+	var out iamv1.CheckResponse
+	cerr := conn.Invoke(ctx, "/kacho.cloud.demo.v1.WidgetService/Get", &iamv1.CheckRequest{}, &out)
 	return status.Code(cerr)
 }
 
@@ -551,7 +542,7 @@ func TestNoDomainServesServerStreams(t *testing.T) {
 	// считается НЕ ОСМОТРЕННЫМ, а не «без стримов»: перепись печатает оба списка
 	// раздельно, и «ноль находок» остаётся отличимо от «ноль прочитанного».
 	candidates := []string{
-		"kacho.cloud.iam.v1", "kacho.cloud.vpc.v1", "kacho.cloud.compute.v1",
+		"kaname.cloud.iam.v1", "kacho.cloud.vpc.v1", "kacho.cloud.compute.v1",
 		"kacho.cloud.loadbalancer.v1", "kacho.cloud.geo.v1",
 		"kacho.cloud.storage.v1", "kacho.cloud.registry.v1",
 	}

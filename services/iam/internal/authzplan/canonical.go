@@ -24,7 +24,7 @@ import (
 // reads (services/iam/internal/testsupport/fgatest). Its absence is a hard error:
 // a comparison against a model this harness invented would measure nothing about
 // the product.
-const fgaModelRelPath = "proto/kacho/cloud/iam/v1/fga_model.fga"
+const fgaModelRelPath = "proto/kaname/cloud/iam/v1/fga_model.fga"
 
 // ResolveCanonicalModel walks up from the working directory to the monorepo root
 // and returns the canonical DSL.

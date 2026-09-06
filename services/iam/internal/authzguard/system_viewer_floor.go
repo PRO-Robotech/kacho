@@ -105,24 +105,24 @@ const (
 func ReadFloorRPCs() []string {
 	return []string{
 		// InternalIAMService — service→service read lookups.
-		"/kacho.cloud.iam.v1.InternalIAMService/LookupSubject",
-		"/kacho.cloud.iam.v1.InternalIAMService/PollSubjectChanges",
+		"/kaname.cloud.iam.v1.InternalIAMService/LookupSubject",
+		"/kaname.cloud.iam.v1.InternalIAMService/PollSubjectChanges",
 		// InternalUserService — service→service user mirror read.
-		"/kacho.cloud.iam.v1.InternalUserService/Get",
+		"/kaname.cloud.iam.v1.InternalUserService/Get",
 		// InternalSessionRevocationsService — admin-UI revocation history. (Both
 		// the floor AND the gateway-only restriction apply — see CallerPolicy.)
 		// Neither of them is the per-USER decision for this RPC, and this comment
 		// says so deliberately: the RPC answers about a user the CALLER NAMES, and
 		// nothing on this chain reads that name. That decision is made against the
 		// named user in api/session_revocations/list_by_user_authz.go.
-		"/kacho.cloud.iam.v1.InternalSessionRevocationsService/ListByUser",
+		"/kaname.cloud.iam.v1.InternalSessionRevocationsService/ListByUser",
 		// InternalInteractiveClientService — admin reads of the interactive-login
 		// client surface (gateway-fronted; floor AND gateway-only both apply).
 		// The three mutations of the same service are deliberately ABSENT: the
 		// read floor is for reads, and the mutations are governed by the caller
 		// policy plus the acr floor.
-		"/kacho.cloud.iam.v1.InternalInteractiveClientService/Get",
-		"/kacho.cloud.iam.v1.InternalInteractiveClientService/List",
+		"/kaname.cloud.iam.v1.InternalInteractiveClientService/Get",
+		"/kaname.cloud.iam.v1.InternalInteractiveClientService/List",
 		// InternalLimitService — admin reads of the resource-count ceilings
 		// (gateway-fronted; floor AND gateway-only both apply). The three
 		// mutations of the same service are deliberately ABSENT: the read floor is
@@ -134,8 +134,8 @@ func ReadFloorRPCs() []string {
 		// require every owner to hold `system_viewer` on the cluster — the whole
 		// cluster-scoped read surface — in addition to the narrow relation that is
 		// supposed to be the entire grant.
-		"/kacho.cloud.iam.v1.InternalLimitService/Get",
-		"/kacho.cloud.iam.v1.InternalLimitService/List",
+		"/kaname.cloud.iam.v1.InternalLimitService/Get",
+		"/kaname.cloud.iam.v1.InternalLimitService/List",
 		// Двух читающих методов администрирования хранилища отношений здесь больше
 		// нет: служба снята вместе с движком (стадия S6 эпика #747). Потолок,
 		// объявленный для несуществующего метода, ничего не гейтит и вводит в

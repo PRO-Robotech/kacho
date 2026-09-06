@@ -145,8 +145,8 @@ func TestBAT1_73_EverySecretBearingOperationResponseFieldIsInTheSweeperLedger(t 
 	// здесь не заводится: копия разошлась бы молча.
 	ledger := map[string]map[string]struct{}{}
 	for _, tgt := range secretSweepTargets(
-		"type.googleapis.com/kacho.cloud.iam.v1.IssueSAKeyResponse",
-		"type.googleapis.com/kacho.cloud.iam.v1.IssueUserTokenResponse",
+		"type.googleapis.com/kaname.cloud.iam.v1.IssueSAKeyResponse",
+		"type.googleapis.com/kaname.cloud.iam.v1.IssueUserTokenResponse",
 	) {
 		full := strings.TrimPrefix(tgt.ResponseType, "type.googleapis.com/")
 		set := map[string]struct{}{}

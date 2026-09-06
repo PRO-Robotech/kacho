@@ -80,7 +80,7 @@
 //
 // В документации распознаются ДВЕ формы команды. `curl`: метод (`-X`, по
 // умолчанию GET), адрес и тело (`-d '{…}'`). `grpcurl`: тело и ПОЛНОЕ имя
-// службы с методом (`kacho.cloud.iam.v1.AccountService/Create`) — его сопоставлять
+// службы с методом (`kaname.cloud.iam.v1.AccountService/Create`) — его сопоставлять
 // с путём не надо вовсе, и вместе с ним под наблюдение попадают методы
 // `Internal*`, у которых HTTP-привязки нет by construction.
 //
@@ -219,11 +219,11 @@ import (
 	// Совпадение имён у остальных шести — совпадение, а не свойство дерева.
 	_ "github.com/PRO-Robotech/kacho/pkg/api/kacho/cloud/compute/v1"
 	_ "github.com/PRO-Robotech/kacho/pkg/api/kacho/cloud/geo/v1"
-	_ "github.com/PRO-Robotech/kacho/pkg/api/kacho/cloud/iam/v1"
 	_ "github.com/PRO-Robotech/kacho/pkg/api/kacho/cloud/loadbalancer/v1"
 	_ "github.com/PRO-Robotech/kacho/pkg/api/kacho/cloud/registry/v1"
 	_ "github.com/PRO-Robotech/kacho/pkg/api/kacho/cloud/storage/v1"
 	_ "github.com/PRO-Robotech/kacho/pkg/api/kacho/cloud/vpc/v1"
+	_ "github.com/PRO-Robotech/kacho/pkg/api/kaname/cloud/iam/v1"
 )
 
 // ClientTruthRequestBodyDomain — один домен под наблюдением.

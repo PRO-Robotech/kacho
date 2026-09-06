@@ -15,11 +15,10 @@ import (
 
 	"google.golang.org/grpc"
 
-	iamv1 "github.com/PRO-Robotech/kacho/pkg/api/kacho/cloud/iam/v1"
+	iamv1 "github.com/PRO-Robotech/kacho/pkg/api/kaname/cloud/iam/v1"
 	"github.com/PRO-Robotech/kacho/pkg/auth"
 	"github.com/PRO-Robotech/kacho/pkg/authz"
 	"github.com/PRO-Robotech/kacho/pkg/listnarrow"
-	"github.com/PRO-Robotech/kacho/pkg/listnarrow/narrowiam"
 )
 
 // CheckTimeout — per-call deadline на один Check-вызов к iam. Зеркалит corelib
@@ -48,7 +47,7 @@ type IAMCheckClient struct {
 func NewIAMCheckClient(conn grpc.ClientConnInterface) *IAMCheckClient {
 	return &IAMCheckClient{
 		cli: iamv1.NewInternalIAMServiceClient(conn),
-		narrower: listnarrow.New(narrowiam.New(conn), listnarrow.Config{
+		narrower: listnarrow.New(listnarrow.NewAuthorizeClient(conn), listnarrow.Config{
 			// Предикат страницы registry задаётся ЯВНО на каждом вызове (см.
 			// CheckMany), поэтому карта здесь несёт лишь умолчание — но несёт, иначе
 			// сборка сужателя отвергла бы посадку без предиката.

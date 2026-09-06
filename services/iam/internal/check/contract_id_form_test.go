@@ -130,7 +130,7 @@ var legacyAcceptedForms = []legacyAcceptedForm{
 	{"uoc", "_", "'^uoc_?[0-9a-hjkmnp-tv-z]{17}$'"},
 }
 
-const iamContractDir = "proto/kacho/cloud/iam/v1"
+const iamContractDir = "proto/kaname/cloud/iam/v1"
 
 // TestMintedFormsAreProvenByExecution — форма каждой строки таблицы доказывается
 // ВЫЗОВОМ генератора, а не объявлением рядом с ним.

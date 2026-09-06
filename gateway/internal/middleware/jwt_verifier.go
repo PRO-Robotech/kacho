@@ -12,7 +12,7 @@
 //  4. Validate `iss` (exact match), `aud` (contains expected), `exp`/`nbf`/`iat`
 //     with configurable clock-skew (default ±30s).
 //  5. Extract custom claims: `acr`, `amr`, `auth_time`, `cnf` (jkt | x5t#S256),
-//     `scope`, `ext_claims` (kaname_*). The enrichment map and the assurance
+//     `scope`, `ext_claims` (kacho_*). The enrichment map and the assurance
 //     level are resolved across BOTH placements the provider produces — see
 //     extClaimsMap / extractACR for why one placement is not enough.
 //
@@ -145,7 +145,7 @@ type VerifiedToken struct {
 	// Authentication context — drives step-up gating.
 	// ACR: "0" | "1" | "2" | "3"; "" when the token asserts no level, which the
 	// gate ranks 0 and denies. Sourced by extractACR from the standard top-level
-	// `acr` claim, falling back to `kaname_acr` in ExtClaims — always from inside
+	// `acr` claim, falling back to `kacho_acr` in ExtClaims — always from inside
 	// the signed token, never from a header ON THIS LANE (второй производитель
 	// носителя читает ACR из разметки, которую край проставил себе сам, — см.
 	// шапку типа).
@@ -171,7 +171,7 @@ type VerifiedToken struct {
 	// носителя (см. шапку типа).
 	Scope string
 
-	// ExtClaims — Kachō custom claims emitted by the iam token hook (kaname_*).
+	// ExtClaims — Kachō custom claims emitted by the iam token hook (kacho_*).
 	// Resolved by extClaimsMap from either placement the provider uses (promoted
 	// to the top level, or nested under its `ext` wrapper), so consumers never
 	// have to know which deployment profile minted the token.
@@ -682,7 +682,7 @@ func splitJWT(token string) (header []byte, err error) {
 	return header, nil
 }
 
-// extClaimsMap resolves the Kachō enrichment map (the `kaname_*` claims stamped
+// extClaimsMap resolves the Kachō enrichment map (the `kacho_*` claims stamped
 // by the iam token hook) from a verified claim set, accepting BOTH placements
 // the provider produces. There is exactly one resolution point on purpose:
 // every reader of these claims — principal type/id, the subject extractor, the
@@ -720,13 +720,13 @@ func extClaimsMap(claims jwt.MapClaims) map[string]any {
 //
 //  1. top-level `acr`, the standard OIDC claim. When the provider states the
 //     level itself, that statement is authoritative and nothing overrides it.
-//  2. `kaname_acr` in the enrichment map — where OUR OWN token hook puts the
+//  2. `kacho_acr` in the enrichment map — where OUR OWN token hook puts the
 //     level (services/iam token enrichment, carried in
 //     `session.access_token.ext_claims`).
 //
 // Step 2 is not a nicety. The provider promotes to the top level only the claim
 // names whitelisted in `oauth2.allowed_top_level_claims`, and neither `acr` nor
-// `kaname_acr` is on that list on any deployed profile — so without this fallback
+// `kacho_acr` is on that list on any deployed profile — so without this fallback
 // the level a human actually authenticated with is present in the signed token,
 // arrives at the edge, and is discarded before the gate sees it. The gate then
 // ranks every human at 0 and refuses every RPC that declares a floor. Machine
@@ -746,7 +746,7 @@ func extractACR(claims jwt.MapClaims, ext map[string]any) string {
 	if acr, ok := claims["acr"].(string); ok && acr != "" {
 		return acr
 	}
-	if acr, ok := ext["kaname_acr"].(string); ok {
+	if acr, ok := ext["kacho_acr"].(string); ok {
 		return acr
 	}
 	return ""

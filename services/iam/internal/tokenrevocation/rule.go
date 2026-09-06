@@ -52,9 +52,9 @@ type Reader interface {
 // construction: идентификаторы платформы глобально уникальны.
 var subjectClaims = []string{
 	// Клиент пользовательского токена.
-	"kaname_user_token_id",
+	"kacho_user_token_id",
 	// Клиент ключа служебной учётки.
-	"kaname_sa_key_id",
+	"kacho_sa_key_id",
 }
 
 // Keys возвращает ВСЕ ключи отсечки для состава утверждений: субъект и каждое

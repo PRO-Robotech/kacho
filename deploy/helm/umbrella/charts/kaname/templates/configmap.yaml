@@ -116,22 +116,6 @@ data:
       {{- with .Values.config.authn.identityProvider }}
       identity-provider: {{ . | quote }}
       {{- end }}
-      {{- /* АДРЕСАТ выпускаемых удостоверений (задача #2127).
-
-           Из него выводится клеймо адресата, уезжающее в КАЖДОМ выпущенном
-           токене и читаемое всяким, кто токен разбирает. Прежде значение
-           подставляло ПОСТРОЕНИЕ, и подставляло доменное имя платформы: этого
-           ключа здесь не было вовсе, поэтому адресат каждого удостоверения
-           выбирал не оператор.
-
-           Значение берётся из `kacho.domain` — того же объявления, из которого
-           уже собраны KANAME_HYDRA_ISSUER и KANAME_BOOTSTRAP_TOKEN_AUDIENCE:
-           второе объявление об одном предмете разошлось бы с первым молча.
-
-           `default` НЕ ставится намеренно: пустое доезжает до стража старта, и
-           он отказывает в пуске, называя настройку. Умолчание шаблона сделало
-           бы профиль, ручку не объявивший, выглядящим настроенным. */}}
-      domain: {{ .Values.kacho.domain | quote }}
       {{- with .Values.config.authn.hydraIssuer }}
       # Explicit Hydra issuer override (ResolveHydraIssuer highest precedence, ahead of
       # the KANAME_HYDRA_ISSUER env + the domain-derived default). Set it when Hydra

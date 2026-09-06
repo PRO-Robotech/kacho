@@ -26,7 +26,7 @@ import (
 //
 // Словарь и тон текстов — Kachō (`Project`, api-conventions.md
 // "<Resource> %s not found"). Ресурс называется Project
-// (proto/kacho/cloud/iam/v1/project.proto); `Folder` в API Kachō не существует,
+// (proto/kaname/cloud/iam/v1/project.proto); `Folder` в API Kachō не существует,
 // а клиент присылает `projectId` — ошибка про `Folder` не соответствовала бы
 // ничему на публичной поверхности.
 //

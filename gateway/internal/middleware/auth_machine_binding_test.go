@@ -51,8 +51,8 @@ func machineToken(bound bool) *VerifiedToken {
 	t := &VerifiedToken{
 		Subject: "sva0000000000000000a",
 		Claims: map[string]any{
-			"kaname_principal_type": "service_account",
-			"kaname_principal_id":   "sva0000000000000000a",
+			"kacho_principal_type": "service_account",
+			"kacho_principal_id":   "sva0000000000000000a",
 		},
 	}
 	if bound {
@@ -67,8 +67,8 @@ func humanToken(bound bool) *VerifiedToken {
 	t := &VerifiedToken{
 		Subject: "usr0000000000000000a",
 		Claims: map[string]any{
-			"kaname_principal_type": "user",
-			"kaname_principal_id":   "usr0000000000000000a",
+			"kacho_principal_type": "user",
+			"kacho_principal_id":   "usr0000000000000000a",
 		},
 	}
 	if bound {
@@ -230,14 +230,14 @@ func TestGRPC_MachineUnboundToken_AcceptedWhenNotRequired(t *testing.T) {
 // ── lookup-fallback branch ───────────────────────────────────────────────────
 
 // lookupStub — a SubjectLookuper resolving a fixed subject, used to reach the
-// branch taken when a verified token carries no kaname_principal_* claims.
+// branch taken when a verified token carries no kacho_principal_* claims.
 type lookupStub struct{ typ, id string }
 
 func (l *lookupStub) LookupByExternalID(_ context.Context, _ string) (Subject, error) {
 	return Subject{Type: l.typ, ID: l.id, DisplayName: ""}, nil
 }
 
-// claimlessToken — verified, but without kaname_principal_* claims, so the
+// claimlessToken — verified, but without kacho_principal_* claims, so the
 // principal comes from the lookup instead of the token.
 func claimlessToken() *VerifiedToken {
 	return &VerifiedToken{

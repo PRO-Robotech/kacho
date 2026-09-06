@@ -366,7 +366,7 @@ func (s *stand) present(t *testing.T, raw string, ctxOpts ...func(context.Contex
 	// парой. Размещение — предмет проб композиционного корня, и там цепочка
 	// собирается боевым сборщиком.
 	_, err := s.reader.UnaryOver(nil)(ctx, nil,
-		&grpc.UnaryServerInfo{FullMethod: "/kacho.cloud.iam.v1.ProjectService/Get"}, final)
+		&grpc.UnaryServerInfo{FullMethod: "/kaname.cloud.iam.v1.ProjectService/Get"}, final)
 	return seen, present, err
 }
 

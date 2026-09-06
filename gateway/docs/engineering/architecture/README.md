@@ -89,7 +89,7 @@ rotation, чтобы одно-доменный сбой не амплифици�
   вызов, сбрасывает свой кэш немедленно (`gateway/internal/middleware/authz.go`, набор
   `subjectChangingFQNs`). Это самый частый случай: «сменил права и тут же проверил»;
 - **опрос журнала** — `gateway/internal/watcher/subject_change_watcher.go` зовёт
-  `kacho.cloud.iam.v1.InternalIAMService/PollSubjectChanges` на cluster-internal listener'е
+  `kaname.cloud.iam.v1.InternalIAMService/PollSubjectChanges` на cluster-internal listener'е
   `kaname`, читая `kaname.subject_change_outbox` курсором по возрастанию `id`. Непустая
   партия ⇒ сброс кэша **этой** реплики. Интервал —
   `KACHO_API_GATEWAY_SUBJECT_CHANGE_POLL_INTERVAL`, умолчание `2s`;

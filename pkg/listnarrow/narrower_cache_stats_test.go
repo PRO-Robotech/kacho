@@ -21,6 +21,9 @@ import (
 	"time"
 
 	"github.com/stretchr/testify/require"
+	"google.golang.org/grpc"
+
+	iamv1 "github.com/PRO-Robotech/kacho/pkg/api/kaname/cloud/iam/v1"
 )
 
 // recordingPeer — подставная приёмная сторона, считающая ЗАДАННЫЕ ей вопросы.
@@ -32,13 +35,14 @@ type recordingPeer struct {
 	calls int
 }
 
-func (p *recordingPeer) BatchCheck(_ context.Context, checks []Check) ([]bool, error) {
+func (p *recordingPeer) BatchCheck(_ context.Context, in *iamv1.BatchAuthorizeCheckRequest,
+	_ ...grpc.CallOption) (*iamv1.BatchAuthorizeCheckResponse, error) {
 	p.calls++
-	out := make([]bool, 0, len(checks))
-	for _, c := range checks {
-		out = append(out, p.allow[c.ResourceID])
+	out := make([]*iamv1.AuthorizeCheckResponse, 0, len(in.GetChecks()))
+	for _, c := range in.GetChecks() {
+		out = append(out, &iamv1.AuthorizeCheckResponse{Allowed: p.allow[c.GetResource().GetId()]})
 	}
-	return out, nil
+	return &iamv1.BatchAuthorizeCheckResponse{Responses: out}, nil
 }
 
 // TestVerdictWindowCountsHitsAndMisses — ядро #768.

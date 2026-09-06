@@ -98,9 +98,9 @@ func TestRemovingTheIdentityIsNotReachableFromInsideTheAccount(t *testing.T) {
 
 	// Гейты спрашиваются У КАТАЛОГА, а не пишутся литералом: каталог порождается
 	// из proto и есть единственный источник per-RPC решения края.
-	removeRel, removeType := actingAsGateFromCatalog(t, "kacho.cloud.iam.v1.UserService/Delete")
-	readRel, readType := actingAsGateFromCatalog(t, "kacho.cloud.iam.v1.UserService/Get")
-	grantRel, grantType := actingAsGateFromCatalog(t, "kacho.cloud.iam.v1.AccessBindingService/Delete")
+	removeRel, removeType := actingAsGateFromCatalog(t, "kaname.cloud.iam.v1.UserService/Delete")
+	readRel, readType := actingAsGateFromCatalog(t, "kaname.cloud.iam.v1.UserService/Get")
+	grantRel, grantType := actingAsGateFromCatalog(t, "kaname.cloud.iam.v1.AccessBindingService/Delete")
 	require.Equalf(t, "iam_user", removeType,
 		"снятие личности гейтится не на объекте личности (%s) — предмет пробы сменился", removeType)
 	require.Equalf(t, "iam_user", readType,
@@ -223,7 +223,7 @@ func TestRemovingAnIdentityWithNoAccountScopeReachesOnlyTheCloud(t *testing.T) {
 	// вовсе, поэтому снимать нечего — и это утверждается ниже, а не подразумевается.
 	w.exec(t, `DELETE FROM kaname.memberships WHERE user_id = $1`, orphan)
 
-	removeRel, removeType := actingAsGateFromCatalog(t, "kacho.cloud.iam.v1.UserService/Delete")
+	removeRel, removeType := actingAsGateFromCatalog(t, "kaname.cloud.iam.v1.UserService/Delete")
 	require.Equalf(t, "iam_user", removeType,
 		"снятие личности гейтится не на объекте личности (%s) — предмет пробы сменился", removeType)
 

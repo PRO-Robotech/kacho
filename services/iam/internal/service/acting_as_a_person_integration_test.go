@@ -134,8 +134,8 @@ func TestIssuingAPersonalTokenIsNotReachableFromInsideTheAccount(t *testing.T) {
 	// Уровень 1.
 	w.factThroughJournal(t, "user:"+cloudAdmin, "system_admin", "cluster", "cluster_root")
 
-	issueRel, issueType := actingAsGateFromCatalog(t, "kacho.cloud.iam.v1.UserTokenService/Issue")
-	revokeRel, revokeType := actingAsGateFromCatalog(t, "kacho.cloud.iam.v1.UserTokenService/Revoke")
+	issueRel, issueType := actingAsGateFromCatalog(t, "kaname.cloud.iam.v1.UserTokenService/Issue")
+	revokeRel, revokeType := actingAsGateFromCatalog(t, "kaname.cloud.iam.v1.UserTokenService/Revoke")
 	require.Equalf(t, "iam_user", issueType, "выпуск токена гейтится не на объекте личности (%s)", issueType)
 	require.Equalf(t, "iam_user", revokeType, "отзыв токена гейтится не на объекте личности (%s)", revokeType)
 
@@ -209,7 +209,7 @@ func TestIssuingAPersonalTokenIsNotReachableFromInsideTheAccount(t *testing.T) {
 	// Различающая пара — ниже целиком: людей своего аккаунта распорядитель
 	// перечисляет по-прежнему (`v_list` на `iam_user` источники уровня аккаунта
 	// сохраняет намеренно), их удостоверения — нет.
-	listRel, listType := actingAsGateFromCatalog(t, "kacho.cloud.iam.v1.UserTokenService/List")
+	listRel, listType := actingAsGateFromCatalog(t, "kaname.cloud.iam.v1.UserTokenService/List")
 	require.Equalf(t, "iam_user", listType, "перечень токенов гейтится не на объекте личности (%s)", listType)
 	require.True(t, w.allowed(t, "user:"+invitee, listRel, obj),
 		"сам человек обязан видеть перечень СВОИХ удостоверений — иначе потерянный "+

@@ -108,7 +108,7 @@ export type { ResourceColumn, ResourceSpec };
  * взяться неоткуда:
  *
  *   - `RemoveUserFromAccountRequest.account_id` объявлен ОБЯЗАТЕЛЬНЫМ
- *     (`proto/kacho/cloud/iam/v1/user_service.proto`) — запрос без него край
+ *     (`proto/kaname/cloud/iam/v1/user_service.proto`) — запрос без него край
  *     отвергает, то есть пункт не работал бы ни при каком вводе;
  *   - на строке личности аккаунта НЕТ: поле снято с контракта (#471,
  *     `User.reserved 6 / "account_id"`), потому что членств у человека бывает
@@ -153,7 +153,7 @@ function accountScopeChosen(ctx: RowVerbContext): boolean {
  *
  * ПРЕДИКАТ ПЕРЕСМОТРА этого абзаца назван, чтобы вложенность не наследовали на
  * веру: изменится тело любого из двух отношений в
- * `proto/kacho/cloud/iam/v1/fga_model.fga` — вложенность перемеряют заново.
+ * `proto/kaname/cloud/iam/v1/fga_model.fga` — вложенность перемеряют заново.
  *
  * ПОЧЕМУ ЦЕНА ЗДЕСЬ ВЫШЕ, ЧЕМ У СОСЕДА. Запрет себе необратим самим
  * запрещающим: восстановление пароля его не снимает, вернуть доступ может только
@@ -574,7 +574,7 @@ function LifecycleCell({ value }: { value: unknown }): ReactNode {
 
 export const REGISTRY: Record<string, ResourceSpec> = {
   // ====== iam ======
-  // proto: kacho.cloud.iam.v1.AccountService / ProjectService.
+  // proto: kaname.cloud.iam.v1.AccountService / ProjectService.
 
   // Account — global-scoped (ListAccounts без обязательных полей).
   accounts: {

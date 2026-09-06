@@ -117,9 +117,9 @@ func TestStepUp_VerdictParity_GatewayVsSharedRule(t *testing.T) {
 						tok := &middleware.VerifiedToken{ACR: presented, AuthTime: authTime}
 						if pType != "" {
 							if len(presented)%2 == 0 {
-								tok.Claims = map[string]any{"kaname_principal_type": pType}
+								tok.Claims = map[string]any{"kacho_principal_type": pType}
 							} else {
-								tok.ExtClaims = map[string]any{"kaname_principal_type": pType}
+								tok.ExtClaims = map[string]any{"kacho_principal_type": pType}
 							}
 						}
 						req := middleware.PermissionRequirement{RequiredACRMin: required, MFAMaxAge: maxAge}
@@ -171,7 +171,7 @@ func TestStepUp_VerdictParity_MachineBranch_Pinned(t *testing.T) {
 	req := middleware.PermissionRequirement{RequiredACRMin: "3", MFAMaxAge: time.Hour}
 	machine := &middleware.VerifiedToken{
 		ACR:       "", // a machine has no interactive ceremony — ranks 0
-		ExtClaims: map[string]any{"kaname_principal_type": grpcsrv.PrincipalTypeServiceAccount},
+		ExtClaims: map[string]any{"kacho_principal_type": grpcsrv.PrincipalTypeServiceAccount},
 	}
 
 	assert.Equal(t, grpcsrv.StepUpAllow,
@@ -190,7 +190,7 @@ func TestStepUp_VerdictParity_MachineBranch_Pinned(t *testing.T) {
 	// still challenged, on both the rule and the real entrypoint.
 	human := &middleware.VerifiedToken{
 		ACR:       "",
-		ExtClaims: map[string]any{"kaname_principal_type": "user"},
+		ExtClaims: map[string]any{"kacho_principal_type": "user"},
 	}
 	assert.Equal(t, grpcsrv.StepUpDenyACR,
 		grpcsrv.EvaluateStepUp(grpcsrv.StepUpInput{

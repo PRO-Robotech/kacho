@@ -818,7 +818,7 @@ func TestRecordedOwnerAxisIgnoresForeignContracts(t *testing.T) {
 	src := `package middleware
 
 import (
-	iamv1 "github.com/PRO-Robotech/kacho/pkg/api/kacho/cloud/iam/v1"
+	iamv1 "github.com/PRO-Robotech/kacho/pkg/api/kaname/cloud/iam/v1"
 )
 
 func lane(resp *iamv1.ResolveSubjectResponse) (string, string) {
