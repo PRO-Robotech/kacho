@@ -43,6 +43,9 @@ func armedProdCfg(mode string) config.Config {
 		IAMProjectMTLS:            grpcclient.TLSClient{Enable: true},
 		GeoMTLS:                   grpcclient.TLSClient{Enable: true},
 		AuthZTrustedForwarderSANs: []string{"spiffe://kacho.cloud/ns/kacho/sa/kacho-api-gateway"},
+		// Домен доверия — величина установки, и конструктор дескриптора требует её
+		// названной: процесс, не назвавший домена, своим не признаёт никого.
+		AuthZTrustDomain: "kacho.cloud",
 	}
 }
 

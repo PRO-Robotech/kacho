@@ -79,6 +79,9 @@ func prodCfg(forwarders ...string) config.Config {
 		AuthZIAMGRPCAddr:          "kaname-internal:9091",
 		ListFilterEnabled:         true,
 		AuthZTrustedForwarderSANs: forwarders,
+		// Домен доверия — величина установки, и конструктор дескриптора требует её
+		// названной: процесс, не назвавший домена, своим не признаёт никого.
+		AuthZTrustDomain: "kacho.cloud",
 		// Величины, которые конструктор дескриптора требует названными. Литералы
 		// здесь законны: предмет этого файла — круг отправителей, а не выбор
 		// величин (его судит describe_test.go на конфигурации из окружения).
@@ -117,7 +120,7 @@ func listenerChain(t *testing.T, cfg config.Config) grpc.UnaryServerInterceptor 
 		t.Fatalf("дескриптор не принят — круг до цепочки не доедет вовсе: %v", err)
 	}
 	circle, _ := desc.Spec().Forwarders.Get()
-	return chainUnary(grpcsrv.PrincipalExtractUnary(circle)...)
+	return chainUnary(grpcsrv.PrincipalExtractUnary(grpcsrv.NewTrustDomain("kacho.cloud"), circle)...)
 }
 
 // seenIdentity прогоняет запрос через цепочку и возвращает личность, которую

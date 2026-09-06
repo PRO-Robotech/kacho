@@ -192,17 +192,21 @@ func (f TrustedForwarders) Require(g ForwarderGate) error {
 // Конструктор существует затем, чтобы пару нельзя было ни разорвать, ни
 // переставить в композиционном корне: до него семь сервисов собирали её вручную
 // четырнадцатью литералами.
-func PrincipalExtractUnary(f TrustedForwarders) []grpc.UnaryServerInterceptor {
+//
+// Домен доверия стоит ПЕРВЫМ аргументом по той же причине, по какой первым
+// стоит звено извлечения личности сертификата: сперва решается, чей это
+// предъявитель, и только потом — вправе ли он представляться другим.
+func PrincipalExtractUnary(d TrustDomain, f TrustedForwarders) []grpc.UnaryServerInterceptor {
 	return []grpc.UnaryServerInterceptor{
-		UnaryCertIdentityExtract(),
+		UnaryCertIdentityExtract(d),
 		UnaryTrustedPrincipalExtract(WithTrustedForwarders(f)),
 	}
 }
 
 // PrincipalExtractStream — то же для stream RPC (тот же инвариант порядка).
-func PrincipalExtractStream(f TrustedForwarders) []grpc.StreamServerInterceptor {
+func PrincipalExtractStream(d TrustDomain, f TrustedForwarders) []grpc.StreamServerInterceptor {
 	return []grpc.StreamServerInterceptor{
-		StreamCertIdentityExtract(),
+		StreamCertIdentityExtract(d),
 		StreamTrustedPrincipalExtract(WithTrustedForwarders(f)),
 	}
 }

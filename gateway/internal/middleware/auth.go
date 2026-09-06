@@ -54,6 +54,7 @@ import (
 	"google.golang.org/grpc/peer"
 	"google.golang.org/grpc/status"
 
+	"github.com/PRO-Robotech/kacho/pkg/grpcsrv"
 	"github.com/PRO-Robotech/kacho/pkg/operations"
 
 	"github.com/PRO-Robotech/kacho/gateway/internal/principalmeta"
@@ -128,7 +129,12 @@ type AuthInterceptor struct {
 	subjectLookup SubjectLookuper
 	kratos        *KratosClient // optional Ory Kratos /whoami client (nil → disabled)
 	verifier      TokenVerifier // JWKS-валидатор Hydra RS256 access JWT (nil → disabled, HMAC-only)
-	mtlsPrincipal bool          // derive Principal from a verified client cert (hybrid external listener)
+	// mtlsDomain — домен доверия, ОТНОСИТЕЛЬНО которого личность клиентского
+	// сертификата признаётся нашей. Объявленный домен И ЕСТЬ включение полосы:
+	// пары «флаг + величина» здесь нет намеренно — две величины, обязанные
+	// согласовываться, расходятся молча, и разошлись бы они в сторону «полоса
+	// включена, но своим никто не признаётся».
+	mtlsDomain grpcsrv.TrustDomain
 	// requireMachineBinding — when true, a token whose principal is a MACHINE
 	// (kacho_principal_type=service_account) must be sender-constrained (RFC
 	// 7800 `cnf`: DPoP jkt or mTLS x5t#S256). See machineBindingViolationFor.
@@ -299,15 +305,23 @@ func (a *AuthInterceptor) WithVerifier(v TokenVerifier) *AuthInterceptor {
 
 // WithMTLSPrincipal enables the hybrid-listener cert-principal path: when
 // the external TLS listener runs with tls.VerifyClientCertIfGiven, a request that
-// arrived over a connection with a VERIFIED client cert (a valid Kachō cert) has
-// its Principal derived from the cert's SPIFFE SAN BEFORE the JWT path — so a
-// service→service caller authenticates on its mTLS identity with no JWT. When the
-// flag is off (default), or no verified cert is present, the existing JWT flow is
-// unchanged. The cert is trusted ONLY because the listener already verified the
+// arrived over a connection with a VERIFIED client cert (a valid installation
+// cert) has its Principal derived from the cert's SPIFFE SAN BEFORE the JWT path —
+// so a service→service caller authenticates on its mTLS identity with no JWT.
+// With an UNDECLARED domain the path stays off (default) and the existing JWT flow
+// is unchanged. The cert is trusted ONLY because the listener already verified the
 // chain (VerifiedChains non-empty); client-supplied x-kacho-principal-* metadata
 // is still stripped (no spoofing).
-func (a *AuthInterceptor) WithMTLSPrincipal(enable bool) *AuthInterceptor {
-	a.mtlsPrincipal = enable
+//
+// # Почему аргумент — ДОМЕН, а не признак включения
+//
+// Полоса без домена невыразима: имя предъявителя опознаётся относительно домена,
+// и «включено, но домен не назван» означало бы полосу, которая своим не признаёт
+// НИКОГО, — то есть включение, ничего не включающее. Тихого выключения это не
+// заводит: домен объявлен осью посадки (`describePosture`), и процесс с
+// необъявленным доменом не стартует вовсе.
+func (a *AuthInterceptor) WithMTLSPrincipal(d grpcsrv.TrustDomain) *AuthInterceptor {
+	a.mtlsDomain = d
 	return a
 }
 
@@ -362,8 +376,8 @@ func (a *AuthInterceptor) authorize(ctx context.Context, fullMethod string) (con
 	// a cert but no JWT is NOT rejected in production-strict. The cert is trusted
 	// only because the listener already verified it; client-supplied
 	// x-kacho-principal-* metadata was stripped above (no spoofing).
-	if a.mtlsPrincipal {
-		if pType, pID, ok := principalFromVerifiedPeer(ctx); ok {
+	if a.mtlsDomain.IsDeclared() {
+		if pType, pID, ok := principalFromVerifiedPeer(a.mtlsDomain, ctx); ok {
 			a.logger.Debug("auth: principal derived from verified client cert (mTLS)",
 				"method", fullMethod, "type", pType, "id", pID)
 			return a.injectPrincipal(ctx, pType, pID, pID), nil
@@ -710,10 +724,11 @@ func verifiedClaim(vt *VerifiedToken, key string) string {
 // yields ok=false so the caller falls through to the JWT path.
 //
 // The principal is mapped from the leaf's SPIFFE URI SAN
-// (spiffe://kacho.cloud/ns/<ns>/sa/<sa>): a service→service caller is a
+// (spiffe://<trust-domain>/ns/<ns>/sa/<sa>): a service→service caller is a
 // `service_account` whose id is the `<sa>` segment. Display name defaults to the
-// id at the call site.
-func principalFromVerifiedPeer(ctx context.Context) (pType, pID string, ok bool) {
+// id at the call site. The trust domain is the one the installation declared —
+// a SAN of any other domain is not ours and yields ok=false.
+func principalFromVerifiedPeer(d grpcsrv.TrustDomain, ctx context.Context) (pType, pID string, ok bool) {
 	p, present := peer.FromContext(ctx)
 	if !present || p == nil {
 		return "", "", false
@@ -727,7 +742,7 @@ func principalFromVerifiedPeer(ctx context.Context) (pType, pID string, ok bool)
 		return "", "", false
 	}
 	for _, u := range leaf.URIs {
-		if sa, matched := saFromSPIFFE(u.String()); matched {
+		if sa, matched := saFromSPIFFE(d, u.String()); matched {
 			return "service_account", sa, true
 		}
 	}
@@ -746,11 +761,20 @@ func verifiedLeaf(chains [][]*x509.Certificate) *x509.Certificate {
 	return nil
 }
 
-// saFromSPIFFE parses a Kachō SPIFFE id of the form
-// `spiffe://kacho.cloud/ns/<ns>/sa/<sa>` and returns the `<sa>` workload segment.
-// Any other URI shape (or a non-Kachō trust domain) → matched=false.
-func saFromSPIFFE(uri string) (sa string, matched bool) {
-	const prefix = "spiffe://kacho.cloud/ns/"
+// saFromSPIFFE parses a SPIFFE id of the form
+// `spiffe://<trust-domain>/ns/<ns>/sa/<sa>` and returns the `<sa>` workload
+// segment. Any other URI shape — or a FOREIGN trust domain — → matched=false.
+//
+// Домен приезжает величиной установки, а не стоит здесь литералом: сертификаты
+// выпускаются под доменом из величины профиля, и скомпилированный домен означал
+// бы, что правка величины оставляет край признающим прежний, — молча, отказом
+// законному вызывающему, неотличимым от отсутствия сертификата.
+func saFromSPIFFE(d grpcsrv.TrustDomain, uri string) (sa string, matched bool) {
+	prefix := d.NamespacePrefix()
+	if prefix == "" {
+		// Домен не объявлен — своим не признаётся никто.
+		return "", false
+	}
 	rest, ok := strings.CutPrefix(uri, prefix)
 	if !ok {
 		return "", false

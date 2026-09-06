@@ -60,6 +60,9 @@ func describeCfg() config.Config {
 		InternalGrpcPort:          "0",
 		AuthZIAMGRPCAddr:          "kaname-internal.kacho.svc:9091",
 		AuthZTrustedForwarderSANs: []string{gatewaySAN},
+		// Домен доверия — величина установки, и без неё дескриптор не принимается:
+		// процесс, не назвавший домена, своим не признаёт никого.
+		AuthZTrustDomain:          "kacho.cloud",
 		ListFilterEnabled:         true,
 		FGARegisterDrainerEnabled: true,
 		AuthZCacheTTL:             5 * time.Second,

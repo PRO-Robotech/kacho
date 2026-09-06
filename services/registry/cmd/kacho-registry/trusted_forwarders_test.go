@@ -79,6 +79,9 @@ func prodCfg(forwarders ...string) config.Config {
 		// (адреса пусты) — по тому же предикату, что читает проводка.
 		IAMAuthzMTLS:              grpcclient.TLSClient{Enable: true},
 		AuthZTrustedForwarderSANs: forwarders,
+		// Домен доверия — величина установки, и конструктор дескриптора требует её
+		// названной: процесс, не назвавший домена, своим не признаёт никого.
+		AuthZTrustDomain: "kacho.cloud",
 	}
 }
 
@@ -194,7 +197,7 @@ func hostIdentityChain(t *testing.T, forwarders ...string) []grpc.UnaryServerInt
 			forwarders, err)
 	}
 	circle, _ := desc.Spec().Forwarders.Get()
-	return grpcsrv.PrincipalExtractUnary(circle)
+	return grpcsrv.PrincipalExtractUnary(grpcsrv.NewTrustDomain("kacho.cloud"), circle)
 }
 
 // seenIdentity прогоняет запрос через цепочку и возвращает личность, которую

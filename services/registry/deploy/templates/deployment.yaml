@@ -161,6 +161,12 @@ spec:
             # certificate-verified peer may act as any tenant. See values.yaml.
             - name: KACHO_REGISTRY_AUTHZ_TRUSTED_FORWARDER_SANS
               value: "{{ .Values.authz.trustedForwarderSANs }}"
+            # Домен доверия установки: то, чьи сертификаты процесс признаёт
+            # своими. Берётся из ТОГО ЖЕ объявления, под которым чеканится его
+            # собственный сертификат (certificate.yaml): взятые по отдельности,
+            # стороны расходятся молча.
+            - name: KACHO_REGISTRY_AUTHZ_TRUST_DOMAIN
+              value: {{ include "registry.trustDomain" . | quote }}
             - name: KACHO_REGISTRY_AUTHZ_BREAKGLASS
               value: "{{ .Values.authz.breakglass }}"
             # ─── zot OCI backend (cluster-internal, never public) ───

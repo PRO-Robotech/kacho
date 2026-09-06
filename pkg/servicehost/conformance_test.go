@@ -42,11 +42,13 @@ import (
 // различила бы.
 func chainSpec() servicecontract.Spec {
 	return servicecontract.Spec{
-		Service:        "kacho-demo",
-		Logger:         slog.Default(),
-		Forwarders:     servicecontract.Value(grpcsrv.NewTrustedForwarders("spiffe://kacho.cloud/ns/kacho/sa/kacho-api-gateway")),
-		HandlingBudget: 30 * time.Second,
-		StreamBudget:   servicecontract.Value(30 * time.Minute),
+		Service:         "kacho-demo",
+		Logger:          slog.Default(),
+		Forwarders:      servicecontract.Value(grpcsrv.NewTrustedForwarders("spiffe://kacho.cloud/ns/kacho/sa/kacho-api-gateway")),
+		TrustDomain:     servicecontract.Value(grpcsrv.NewTrustDomain("kacho.cloud")),
+		TrustDomainKnob: "KACHO_DEMO_AUTHZ_TRUST_DOMAIN",
+		HandlingBudget:  30 * time.Second,
+		StreamBudget:    servicecontract.Value(30 * time.Minute),
 	}
 }
 
@@ -216,7 +218,7 @@ func TestChainBuilderIsDeterministic(t *testing.T) {
 func TestForwarderCircleReachesTheChain(t *testing.T) {
 	spec := chainSpec()
 	circle, _ := spec.Forwarders.Get()
-	pair := grpcsrv.PrincipalExtractUnary(circle)
+	pair := grpcsrv.PrincipalExtractUnary(grpcsrv.NewTrustDomain("kacho.cloud"), circle)
 	if len(pair) != 2 {
 		t.Fatalf("пара звеньев личности изменила состав: %d", len(pair))
 	}

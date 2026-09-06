@@ -65,6 +65,11 @@ func bootConfig(t *testing.T, env map[string]string) *config.Config {
 		"KACHO_NLB_EXTAPI__IAM__INTERNAL_ADDR":    "kaname-internal:9091",
 		"KACHO_NLB_EXTAPI__IAM__ADDR":             "kaname:9090",
 		"KACHO_NLB_AUTHZ__TRUSTED-FORWARDER-SANS": probeGatewaySAN,
+		// Имя ЭТОЙ переменной — с подчёркиваниями, и это не описка рядом с дефисами
+		// выше: ключ домена привязан явным BindEnv (defaults.go), а круг выше
+		// приезжает общей заменой приставки, которая дефисы не трогает. Померено
+		// загрузкой обоих написаний.
+		"KACHO_NLB_AUTHZ__TRUST_DOMAIN": "kacho.cloud",
 	}
 	for k, v := range env {
 		base[k] = v

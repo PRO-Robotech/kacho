@@ -145,6 +145,12 @@ spec:
             - name: KACHO_COMPUTE_AUTHZ_TRUSTED_FORWARDER_SANS
               value: {{ . | quote }}
             {{- end }}
+            # Домен доверия установки: то, чьи сертификаты процесс признаёт
+            # своими. Берётся из ТОГО ЖЕ объявления, под которым чеканится его
+            # собственный сертификат (certificate.yaml): взятые по отдельности,
+            # стороны расходятся молча.
+            - name: KACHO_COMPUTE_AUTHZ_TRUST_DOMAIN
+              value: {{ include "compute.trustDomain" . | quote }}
             # KAC-106 (E1): peer for project-existence switched to kaname.
             - name: KACHO_COMPUTE_IAM_GRPC_ADDR
               value: "{{ .Values.iamAddr }}"

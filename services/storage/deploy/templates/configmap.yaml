@@ -27,6 +27,10 @@ data:
   # Пустая строка = «принимаем от любого пира с сертификатом» (контракт corelib), и
   # боевой режим на ней не стартует — см. values.yaml config.trustedForwarderSANs.
   KACHO_STORAGE_AUTHZ_TRUSTED_FORWARDER_SANS: {{ .Values.config.trustedForwarderSANs | quote }}
+  # Домен доверия установки: то, чьи сертификаты процесс признаёт своими. Берётся
+  # из ТОГО ЖЕ объявления, под которым чеканится его собственный сертификат
+  # (certificate.yaml): взятые по отдельности, стороны расходятся молча.
+  KACHO_STORAGE_AUTHZ_TRUST_DOMAIN: {{ include "storage.trustDomain" . | quote }}
   KACHO_STORAGE_FGA_REGISTER_DRAINER_ENABLED: {{ .Values.config.fgaRegisterDrainerEnabled | quote }}
   KACHO_STORAGE_LIST_FILTER_ENABLED: {{ .Values.config.listFilter.enabled | quote }}
   KACHO_STORAGE_LIST_FILTER_TIMEOUT_MS: {{ .Values.config.listFilter.timeoutMs | quote }}

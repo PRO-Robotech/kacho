@@ -45,7 +45,7 @@ func ownerFromChain(t *testing.T, ctx context.Context, opts ...grpcsrv.TrustedPr
 		return nil, nil
 	}
 	chained := chainUnary(
-		grpcsrv.UnaryCertIdentityExtract(),
+		grpcsrv.UnaryCertIdentityExtract(grpcsrv.NewTrustDomain("kacho.cloud")),
 		grpcsrv.UnaryTrustedPrincipalExtract(opts...),
 	)
 	_, err := chained(ctx, nil, nil, final)
@@ -106,7 +106,7 @@ func TestTrustedPrincipal_NoIdentityMetadata_TrustFlagUnchanged(t *testing.T) {
 		return nil, nil
 	}
 	chained := chainUnary(
-		grpcsrv.UnaryCertIdentityExtract(),
+		grpcsrv.UnaryCertIdentityExtract(grpcsrv.NewTrustDomain("kacho.cloud")),
 		grpcsrv.UnaryTrustedPrincipalExtract(),
 	)
 	_, err := chained(ctx, nil, nil, final)

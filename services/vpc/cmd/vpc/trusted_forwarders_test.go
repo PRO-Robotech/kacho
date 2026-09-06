@@ -123,7 +123,7 @@ func chainOutcome(t *testing.T, ctx context.Context, forwarders grpcsrv.TrustedF
 	// отвергает неназванного вызывающего безусловно (в любом режиме), тогда как
 	// снятый страж делал это только в боевом. Случаи ниже от этого не изменились —
 	// они утверждают на исходе, а исход прежний.
-	chain := grpcsrv.PrincipalExtractUnary(forwarders)
+	chain := grpcsrv.PrincipalExtractUnary(grpcsrv.NewTrustDomain("kacho.cloud"), forwarders)
 	next := func(ctx context.Context, req any) (any, error) {
 		return authzIntr.Unary()(ctx, req, info, final)
 	}

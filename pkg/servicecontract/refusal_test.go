@@ -50,9 +50,11 @@ func (tlsLike) Info() credentials.ProtocolInfo {
 // отрицание ниже зеленело бы на полностью сломанном конструкторе.
 func lawful() servicecontract.Spec {
 	return servicecontract.Spec{
-		Service:    "kacho-demo",
-		Mode:       servicecontract.ModeProduction,
-		Forwarders: servicecontract.Value(grpcsrv.NewTrustedForwarders("spiffe://kacho.cloud/ns/kacho/sa/kacho-api-gateway")),
+		Service:         "kacho-demo",
+		Mode:            servicecontract.ModeProduction,
+		Forwarders:      servicecontract.Value(grpcsrv.NewTrustedForwarders("spiffe://kacho.cloud/ns/kacho/sa/kacho-api-gateway")),
+		TrustDomain:     servicecontract.Value(grpcsrv.NewTrustDomain("kacho.cloud")),
+		TrustDomainKnob: "KACHO_DEMO_AUTHZ_TRUST_DOMAIN",
 		ForwarderKnobs: servicecontract.ForwarderKnobs{
 			SANs:     "KACHO_DEMO_AUTHZ_TRUSTED_FORWARDER_SANS",
 			TrustAny: "KACHO_DEMO_AUTHZ_TRUST_ANY_FORWARDER",
@@ -561,10 +563,12 @@ func TestO13_LawfulDevSpecWithARegistryIsAccepted(t *testing.T) {
 // посадка целиком, проводки носителя ни одного поля.
 func ownContourSpec() servicecontract.Spec {
 	return servicecontract.Spec{
-		Service:    "kacho-demo-own",
-		Mode:       servicecontract.ModeProduction,
-		OwnContour: "контур входящего пути демо собран в его композиционном корне",
-		Forwarders: servicecontract.Value(grpcsrv.NewTrustedForwarders("spiffe://kacho.cloud/ns/kacho/sa/kacho-api-gateway")),
+		Service:         "kacho-demo-own",
+		Mode:            servicecontract.ModeProduction,
+		OwnContour:      "контур входящего пути демо собран в его композиционном корне",
+		Forwarders:      servicecontract.Value(grpcsrv.NewTrustedForwarders("spiffe://kacho.cloud/ns/kacho/sa/kacho-api-gateway")),
+		TrustDomain:     servicecontract.Value(grpcsrv.NewTrustDomain("kacho.cloud")),
+		TrustDomainKnob: "KACHO_DEMO_AUTHZ_TRUST_DOMAIN",
 		ForwarderKnobs: servicecontract.ForwarderKnobs{
 			SANs:     "KACHO_DEMO_AUTHZ_TRUSTED_FORWARDER_SANS",
 			TrustAny: "KACHO_DEMO_AUTHZ_TRUST_ANY_FORWARDER",
