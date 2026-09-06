@@ -353,7 +353,7 @@ PG_OUTSIDE_SELECTION_PKGS_IAM ?= \
 # ЧЕМ ПРОВЯЗЫВАЕТСЯ И ПОЧЕМУ НЕ `core.hooksPath` — в шапке scripts/hooks/install.sh
 # (короткий ответ: он перебивает `.git/hooks` целиком и молча выключает всё, что
 # там уже лежало).
-.PHONY: test test-unit test-integration test-pg-outside-selection test-service test-service-short docs-sites help install-hooks check-hooks hooks-notice scale-grid-small scale-grid-full matrix-volume-small matrix-volume-full
+.PHONY: test test-unit test-integration test-pg-outside-selection test-service test-service-short docs-sites help install-hooks check-hooks hooks-notice scale-grid-small scale-grid-full matrix-volume-small matrix-volume-full release-preflight release-trunk-green release-breaking-since release-probe release-dry-run
 
 ## install-hooks — провязать хуки git из scripts/hooks в этот клон (один раз на клон).
 install-hooks:
@@ -644,3 +644,55 @@ matrix-volume-small:
 matrix-volume-full:
 	KACHO_MATRIX_VOLUME=1 $(GO) test -C $(IAM_MODULE_DIR) ./internal/repo/kaname/pg/relverdict/ \
 	  -run TestMatrixVolume_Report -count=1 -v -timeout 120m
+
+## ── ЛИНИЯ ВЫПУСКА: ВЕРСИЯ ПЛАТФОРМЫ ────────────────────────────────────────
+##
+## Служба iam вынесена отдельным репозиторием и потребляет платформу как внешний
+## модуль. Пока версий не публикуется, «бампнуть фундамент до совместимой
+## версии» не является операцией: совместимость выражается НОМЕРОМ, а номеров
+## нет. Политика, цена выбора `v0` и порядок бампа цепочки —
+## docs/architecture/release-and-versioning.md.
+##
+## НЕОБРАТИМЫЙ ШАГ ЗДЕСЬ НЕ ДЕЛАЕТСЯ НИ ОДНОЙ ИЗ ЦЕЛЕЙ. Ссылку создаёт процесс
+## конвейера `release` (ручной запуск с подтверждением) — ровно затем, чтобы
+## гейты нельзя было обойти. Цели ниже отвечают на вопросы, а не публикуют.
+##
+##   release-preflight       — сойдутся ли предпосылки выпуска VERSION
+##   release-trunk-green     — зелены ли обязательные проверки на ревизии REV
+##   release-breaking-since  — какого наименьшего повышения требует накопленная
+##                             дельта контрактов с последней опубликованной
+##   release-probe           — собирается ли VERSION у внешнего потребителя
+##   release-dry-run         — весь набор гейтов разом, без создания чего-либо
+##
+## У самих скриптов исходов ЧЕТЫРЕ, и различать их обязательно: 0 — сошлось,
+## 1 — находка, 2 — позван неверно, 3 — НЕ ВЫПОЛНИЛОСЬ (спросить не удалось).
+## Третий в успех не вычитается: не спрошенная предпосылка не считается
+## выполненной.
+##
+## ЧЕРЕЗ `make` ЭТОТ КОД НЕ ДОХОДИТ, и это надо знать, а не обнаруживать. GNU
+## make на любом отказе рецепта выходит СВОИМ кодом 2 — то есть находка и
+## «не выполнилось» через него неразличимы. Настоящий код make печатает словом
+## («Ошибка 3»), но `$$?` вызывающего его не получает. Поэтому там, где исход
+## читает не человек, а другая проверка, скрипт зовётся НАПРЯМУЮ:
+##
+##   scripts/release/breaking-since-release.sh --require v0.2.0 ; echo $$?
+##
+## Ровно так его и зовёт процесс конвейера — целями этого файла он не
+## пользуется.
+release-preflight:
+	@test -n "$(VERSION)" || { echo "нужна VERSION, напр. make release-preflight VERSION=v0.1.0" >&2; exit 2; }
+	scripts/release/publish-version.sh $(VERSION)
+
+release-trunk-green:
+	scripts/release/assert-trunk-green.sh $(or $(REV),$(shell git rev-parse HEAD))
+
+release-breaking-since:
+	scripts/release/breaking-since-release.sh $(if $(VERSION),--require $(VERSION))
+
+release-probe:
+	@test -n "$(VERSION)" || { echo "нужна VERSION, напр. make release-probe VERSION=v0.1.0" >&2; exit 2; }
+	scripts/release/probe-published.sh $(VERSION)
+
+release-dry-run:
+	@test -n "$(VERSION)" || { echo "нужна VERSION, напр. make release-dry-run VERSION=v0.1.0" >&2; exit 2; }
+	scripts/release/publish-tag.sh $(VERSION) --confirm $(VERSION)
