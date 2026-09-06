@@ -128,11 +128,15 @@ func TestResolveAuthority_UnsetIsRefusedRegardlessOfPosture(t *testing.T) {
 // TestResolveAuthority_TypoDoesNotBecomeAnAddress — опечатка в значении-слове
 // отвергается СТАРТОМ, а не превращается в адрес.
 //
-// Иначе `not-deployd` уезжает в дозвон и приезжает арендатору отказом
-// UNAVAILABLE, обещающим временность, — то есть «повтори позже» на посадку,
-// которая не станет рабочей никогда.
+// Иначе близкое-но-не-то написание уезжает в дозвон и приезжает арендатору
+// отказом UNAVAILABLE, обещающим временность, — то есть «повтори позже» на
+// посадку, которая не станет рабочей никогда.
+//
+// Входы — настоящие промахи оператора: разделитель не тот, регистр не тот,
+// слово из чужого словаря. Орфографическая опечатка в этот перечень не годится:
+// её ловит линтер дерева, и проба падала бы на своих же данных.
 func TestResolveAuthority_TypoDoesNotBecomeAnAddress(t *testing.T) {
-	for _, raw := range []string{"not-deployd", "notdeployed", "none", "off", "false"} {
+	for _, raw := range []string{"not_deployed", "NOT-DEPLOYED", "notdeployed", "none", "off", "false"} {
 		_, err := ResolveAuthority(Declaration{
 			Knob: knob, Value: raw,
 			TransportKnob: transportKnob, TransportDeclared: true,
