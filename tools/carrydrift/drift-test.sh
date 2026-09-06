@@ -1487,7 +1487,8 @@ case_branch_rename_of_a_trunk_edited_file_is_not_a_loss() {
 
   # Предпосылка случая: правка ствола ДОЕХАЛА под новым именем. Без неё случай
   # утверждал бы, что находка ложная, там где она истинная.
-  if ! git -C "$r" show "$landed:new/a.txt" | grep -q 'ПРАВКА СТВОЛА'; then
+  local landed_a; landed_a=$(git -C "$r" show "$landed:new/a.txt" 2>/dev/null || true)
+  if [[ "$landed_a" != *"ПРАВКА СТВОЛА"* ]]; then
     no "предпосылка случая не выполнена: слияние не донесло правку ствола" ""
     rm -rf "$r"; return
   fi
@@ -1590,7 +1591,8 @@ case_trunk_rename_of_a_branch_edited_file_is_not_an_adaptation() {
   git -C "$r" merge -q --no-ff --no-edit main >/dev/null 2>&1
   local landed; landed=$(git -C "$r" rev-parse HEAD)
 
-  if ! git -C "$r" show "$landed:new/serve.go" | grep -q 'схема kaname'; then
+  local landed_serve; landed_serve=$(git -C "$r" show "$landed:new/serve.go" 2>/dev/null || true)
+  if [[ "$landed_serve" != *"схема kaname"* ]]; then
     no "предпосылка случая не выполнена: слияние не донесло правку ветки" ""
     rm -rf "$r"; return
   fi
