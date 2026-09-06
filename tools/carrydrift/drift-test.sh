@@ -1377,6 +1377,341 @@ case_phantom_on_the_pushed_head_still_reds() {
   rm -rf "$r"
 }
 
+# ── Случай 30. Поиск ПЕРЕЕЗДА не имеет права оборвать сам прогон ─────────────
+#
+# Случай 3 доказывает, что переезд не назван находкой, и делает это на дереве из
+# двух файлов. Дерево продукта — восемь тысяч, и на нём тот же код ведёт себя
+# ИНАЧЕ: читатель конвейера выходит на первом же совпадении, писатель получает
+# SIGPIPE, `pipefail` поднимает 141 на присваивание, а `set -e` роняет скрипт
+# ЦЕЛИКОМ — посреди обхода, до переписи и до остальных файлов области.
+#
+# Наблюдалось на боевом прогоне (посадка `5bd3a13b9` линии `release/kaname`):
+# из сорока файлов области гейт прошёл шесть, напечатал пять находок и умер
+# кодом 141. Судья прочитал это как «сверить не удалось» — то есть находки,
+# которые гейт уже назвал, в переписи не оказались вовсе, а тридцать четыре
+# файла не были осмотрены ни разу.
+#
+# Размер дерева здесь — ПРЕДМЕТ случая, а не декорация: на маленьком писатель
+# успевает дописать в буфер трубы и SIGPIPE не наступает никогда. Именно поэтому
+# фикстура случая 3 была снисходительнее продукта и дефект дожил до боевого.
+case_move_lookup_does_not_abort_the_scan() {
+  cases=$((cases + 1))
+  local r; r=$(newrepo)
+  echo "прочее" > "$r/other.txt"
+  # НАПОЛНИТЕЛЬ — предмет случая, а не декорация. Обход обязан не поместиться ни
+  # в буфер трубы, ни в буфер читателя: иначе писатель успевает дописать всё до
+  # выхода читателя, SIGPIPE не наступает, и случай зеленеет, ничего не проверив.
+  # Величина выбрана замером, а не на глаз: 200 КБ дают 0 из 3 срабатываний,
+  # 2.1 МБ — 10 из 10. Дерево продукта на посадке, где дефект наблюдался, даёт
+  # 1.0 МБ, то есть фикстура строже предмета. Имя каталога начинается на `z`,
+  # чтобы совпадение стояло в обходе ПЕРВЫМ и писателю оставалось всё остальное.
+  local pad="$r/pad/$(printf 'z%.0s' $(seq 1 200))"
+  mkdir -p "$pad"
+  ( cd "$pad" && touch $(seq -f '%06g.txt' 1 8000) )
+  commit "$r" "база с большим деревом"
+  local base; base=$(git -C "$r" rev-parse HEAD)
+
+  git -C "$r" checkout -q -b branch
+  echo "правка ветки" > "$r/other.txt"; commit "$r" "ветка правит своё"
+  local br; br=$(git -C "$r" rev-parse HEAD)
+
+  git -C "$r" checkout -q main
+  printf 'СОДЕРЖИМОЕ МИГРАЦИИ\n' > "$r/0087.sql"; commit "$r" "ствол завёл 0087"
+  local trunk; trunk=$(git -C "$r" rev-parse HEAD)
+
+  # Переезд: тот же байт-в-байт файл под именем, которое в обходе дерева стоит
+  # РАНО, — значит читатель выйдет, когда писателю ещё есть что писать.
+  git -C "$r" checkout -q -b landed "$br"
+  printf 'СОДЕРЖИМОЕ МИГРАЦИИ\n' > "$r/0089.sql"; commit "$r" "перенумерован в 0089"
+  local landed; landed=$(git -C "$r" rev-parse HEAD)
+
+  local out rc
+  out=$(cd "$r" && bash "$DRIFT" "$base" "$br" "$trunk" "$landed" 2>&1); rc=$?
+  if [ "$rc" -eq 0 ] \
+     && [[ "$out" == *"переехало: 0087.sql"* ]] \
+     && [[ "$out" == *"drift: перепись"* ]]; then
+    ok "поиск переезда на большом дереве не оборвал обход — перепись напечатана"
+  else
+    no "обход оборвался на поиске переезда (rc=$rc; 141 = SIGPIPE писателя)" "$out"
+  fi
+  rm -rf "$r"
+}
+
+# ── Случай 31. Ветка ПЕРЕИМЕНОВАЛА файл, который правил ствол ────────────────
+#
+# Область гейта объявлена им самим: «файлы, которых касалась ветка, судит не
+# этот гейт». Касание считалось СОВПАДЕНИЕМ ПУТИ, а `git diff --name-only`
+# схлопывает переименование в ОДНО имя — назначения. Значит ствол называет файл
+# старым именем, ветка — новым, пересечение пусто, и файл, который ветка
+# заведомо трогала, уезжает под суд.
+#
+# Исход для читателя: УТРАТА на файле, чьё содержимое в результате есть, причём
+# ВМЕСТЕ с правкой ствола. Наблюдалось на посадке `5bd3a13b9`: пять снимков
+# `services/iam/internal/apps/kacho/api/*/delete.go` названы утраченными, тогда
+# как правка ствола лежала в результате под `.../apps/kaname/...` целиком.
+#
+# Посадка строится НАСТОЯЩИМ слиянием: разрешение делает git своим распознаванием
+# переименований, и фикстура не вправе подменять его рукой — иначе случай
+# проверял бы мою реконструкцию, а не то, что происходит на линии.
+case_branch_rename_of_a_trunk_edited_file_is_not_a_loss() {
+  cases=$((cases + 1))
+  local r; r=$(newrepo)
+  mkdir -p "$r/old"
+  printf 'импорт старый\nтело 1\nтело 2\nтело 3\nтело 4\nтело 5\n' > "$r/old/a.txt"
+  echo "база" > "$r/keep.txt"
+  echo "прочее" > "$r/other.txt"
+  commit "$r" "база"
+  local base; base=$(git -C "$r" rev-parse HEAD)
+
+  # Ветка переносит каталог и правит строку импорта — ровно форма переименования
+  # с правкой, на которой побайтовое послабление переезда не срабатывает.
+  git -C "$r" checkout -q -b branch
+  mkdir -p "$r/new"
+  git -C "$r" mv old/a.txt new/a.txt
+  printf 'импорт НОВЫЙ\nтело 1\nтело 2\nтело 3\nтело 4\nтело 5\n' > "$r/new/a.txt"
+  commit "$r" "ветка перенесла каталог"
+  local br; br=$(git -C "$r" rev-parse HEAD)
+
+  # Ствол правит СТАРЫЙ путь — он о переносе не знает. Рядом правит `keep.txt`,
+  # которого ветка не касается: без него область гейта оказалась бы пуста, и
+  # молчание объяснялось бы беспредметностью, а не разбором переименования.
+  git -C "$r" checkout -q main
+  printf 'импорт старый\nтело 1\nтело 2\nтело 3\nтело 4\nтело 5\nПРАВКА СТВОЛА\n' > "$r/old/a.txt"
+  echo "ПРАВКА СТВОЛА" > "$r/keep.txt"
+  commit "$r" "ствол правит файл и общий keep"
+  local trunk; trunk=$(git -C "$r" rev-parse HEAD)
+
+  git -C "$r" checkout -q -b landed "$br"
+  git -C "$r" merge -q --no-ff --no-edit main >/dev/null 2>&1
+  local landed; landed=$(git -C "$r" rev-parse HEAD)
+
+  # Предпосылка случая: правка ствола ДОЕХАЛА под новым именем. Без неё случай
+  # утверждал бы, что находка ложная, там где она истинная.
+  if ! git -C "$r" show "$landed:new/a.txt" | grep -q 'ПРАВКА СТВОЛА'; then
+    no "предпосылка случая не выполнена: слияние не донесло правку ствола" ""
+    rm -rf "$r"; return
+  fi
+
+  local out rc
+  out=$(cd "$r" && bash "$DRIFT" "$base" "$br" "$trunk" "$landed" 2>&1); rc=$?
+  if [ "$rc" -eq 0 ] \
+     && [[ "$out" != *"УТРАТА"* ]] \
+     && any_line_matches "$out" 'сверено побайтово 1; находок 0'; then
+    ok "файл, переименованный веткой, утратой не назван, а область не опустела"
+  else
+    no "переименование веткой прочитано как утрата — правка ствола на месте (rc=$rc)" "$out"
+  fi
+  rm -rf "$r"
+}
+
+# ── Случай 31б. Близнец: настоящая утрата РЯДОМ с переименованием ────────────
+#
+# Без него послабление случая 31 неотличимо от снятия проверки утрат вовсе.
+# Граф тот же, но посадка вдобавок выбрасывает файл, который завёл ствол и
+# которого ветка не касалась ни под каким именем.
+case_loss_beside_a_branch_rename_is_still_named() {
+  cases=$((cases + 1))
+  local r; r=$(newrepo)
+  mkdir -p "$r/old"
+  printf 'импорт старый\nтело 1\nтело 2\nтело 3\nтело 4\nтело 5\n' > "$r/old/a.txt"
+  echo "прочее" > "$r/other.txt"
+  commit "$r" "база"
+  local base; base=$(git -C "$r" rev-parse HEAD)
+
+  git -C "$r" checkout -q -b branch
+  mkdir -p "$r/new"
+  git -C "$r" mv old/a.txt new/a.txt
+  printf 'импорт НОВЫЙ\nтело 1\nтело 2\nтело 3\nтело 4\nтело 5\n' > "$r/new/a.txt"
+  commit "$r" "ветка перенесла каталог"
+  local br; br=$(git -C "$r" rev-parse HEAD)
+
+  git -C "$r" checkout -q main
+  printf 'импорт старый\nтело 1\nтело 2\nтело 3\nтело 4\nтело 5\nПРАВКА СТВОЛА\n' > "$r/old/a.txt"
+  printf 'ЗАВЕДЁН СТВОЛОМ\n' > "$r/gone.txt"
+  commit "$r" "ствол правит файл и заводит второй"
+  local trunk; trunk=$(git -C "$r" rev-parse HEAD)
+
+  git -C "$r" checkout -q -b landed "$br"
+  git -C "$r" merge -q --no-ff --no-commit main >/dev/null 2>&1
+  rm -f "$r/gone.txt"
+  git -C "$r" add -A
+  git -C "$r" commit -qm "посадка выбросила файл ствола"
+  local landed; landed=$(git -C "$r" rev-parse HEAD)
+
+  local out rc
+  out=$(cd "$r" && bash "$DRIFT" "$base" "$br" "$trunk" "$landed" 2>&1); rc=$?
+  if [ "$rc" -eq 1 ] \
+     && [[ "$out" == *"УТРАТА: gone.txt"* ]] \
+     && [[ "$out" != *"old/a.txt"* ]]; then
+    ok "настоящая утрата рядом с переименованием названа, а переименование — нет"
+  else
+    no "послабление переименования закрыло предмет гейта (rc=$rc)" "$out"
+  fi
+  rm -rf "$r"
+}
+
+# ── Случай 32. СТВОЛ переименовал файл, который правила ветка ────────────────
+#
+# Зеркало случая 31, и оно опаснее: файл в результате ЕСТЬ, поэтому гейт
+# называет его не утратой, а НЕОБЪЯВЛЕННЫМ ПРИСПОСОБЛЕНИЕМ — то есть требует
+# объявить решением обычное трёхстороннее слияние, которое ничего не отменило.
+#
+# Наблюдалось на посадке `b4b84500f` линии `release/kaname`: четырнадцать файлов
+# (`services/iam/cmd/kaname/*.go`, шаблоны чарта) названы приспособленными, а
+# расхождение результата со стволом было ДОСЛОВНО правкой самой ветки, доехавшей
+# через переименование ствола.
+case_trunk_rename_of_a_branch_edited_file_is_not_an_adaptation() {
+  cases=$((cases + 1))
+  local r; r=$(newrepo)
+  mkdir -p "$r/old"
+  printf 'схема kacho_iam\nтело 1\nтело 2\nтело 3\nтело 4\nтело 5\n' > "$r/old/serve.go"
+  echo "база" > "$r/keep.txt"
+  echo "прочее" > "$r/other.txt"
+  commit "$r" "база"
+  local base; base=$(git -C "$r" rev-parse HEAD)
+
+  # Ветка правит СТАРЫЙ путь — о переносе, который затеял ствол, она не знает.
+  git -C "$r" checkout -q -b branch
+  printf 'схема kaname\nтело 1\nтело 2\nтело 3\nтело 4\nтело 5\n' > "$r/old/serve.go"
+  commit "$r" "ветка правит имя схемы"
+  local br; br=$(git -C "$r" rev-parse HEAD)
+
+  # `keep.txt` правит только ствол: без него область гейта оказалась бы пуста, и
+  # молчание объяснялось бы беспредметностью, а не разбором переименования.
+  git -C "$r" checkout -q main
+  mkdir -p "$r/new"
+  git -C "$r" mv old/serve.go new/serve.go
+  printf 'схема kacho_iam\nтело 1\nтело 2\nтело 3\nтело 4\nтело 5\nСТРОКА СТВОЛА\n' > "$r/new/serve.go"
+  echo "ПРАВКА СТВОЛА" > "$r/keep.txt"
+  commit "$r" "ствол перенёс каталог и правит общий keep"
+  local trunk; trunk=$(git -C "$r" rev-parse HEAD)
+
+  git -C "$r" checkout -q -b landed "$br"
+  git -C "$r" merge -q --no-ff --no-edit main >/dev/null 2>&1
+  local landed; landed=$(git -C "$r" rev-parse HEAD)
+
+  if ! git -C "$r" show "$landed:new/serve.go" | grep -q 'схема kaname'; then
+    no "предпосылка случая не выполнена: слияние не донесло правку ветки" ""
+    rm -rf "$r"; return
+  fi
+
+  local out rc
+  out=$(cd "$r" && bash "$DRIFT" "$base" "$br" "$trunk" "$landed" 2>&1); rc=$?
+  if [ "$rc" -eq 0 ] \
+     && [[ "$out" != *"ПРИСПОСОБЛЕНИЕ"* ]] \
+     && any_line_matches "$out" 'сверено побайтово 1; находок 0'; then
+    ok "файл, переименованный стволом, приспособлением не назван, а область не опустела"
+  else
+    no "правка ветки, доехавшая через переименование ствола, названа находкой (rc=$rc)" "$out"
+  fi
+  rm -rf "$r"
+}
+
+# ── Случай 32б. Близнец: настоящий откат РЯДОМ с переименованием ствола ──────
+case_rollback_beside_a_trunk_rename_is_still_named() {
+  cases=$((cases + 1))
+  local r; r=$(newrepo)
+  mkdir -p "$r/old"
+  printf 'схема kacho_iam\nтело 1\nтело 2\nтело 3\nтело 4\nтело 5\n' > "$r/old/serve.go"
+  echo "база" > "$r/shared.txt"
+  echo "прочее" > "$r/other.txt"
+  commit "$r" "база"
+  local base; base=$(git -C "$r" rev-parse HEAD)
+
+  git -C "$r" checkout -q -b branch
+  printf 'схема kaname\nтело 1\nтело 2\nтело 3\nтело 4\nтело 5\n' > "$r/old/serve.go"
+  commit "$r" "ветка правит имя схемы"
+  local br; br=$(git -C "$r" rev-parse HEAD)
+
+  git -C "$r" checkout -q main
+  mkdir -p "$r/new"
+  git -C "$r" mv old/serve.go new/serve.go
+  printf 'схема kacho_iam\nтело 1\nтело 2\nтело 3\nтело 4\nтело 5\nСТРОКА СТВОЛА\n' > "$r/new/serve.go"
+  echo "ПРАВКА СТВОЛА" > "$r/shared.txt"
+  commit "$r" "ствол перенёс каталог и правит общий файл"
+  local trunk; trunk=$(git -C "$r" rev-parse HEAD)
+
+  git -C "$r" checkout -q -b landed "$br"
+  git -C "$r" merge -q --no-ff --no-commit main >/dev/null 2>&1
+  echo "база" > "$r/shared.txt"
+  git -C "$r" add -A
+  git -C "$r" commit -qm "посадка вернула базу на общем файле"
+  local landed; landed=$(git -C "$r" rev-parse HEAD)
+
+  local out rc
+  out=$(cd "$r" && bash "$DRIFT" "$base" "$br" "$trunk" "$landed" 2>&1); rc=$?
+  if [ "$rc" -eq 1 ] \
+     && [[ "$out" == *"ОТКАТ: shared.txt"* ]] \
+     && [[ "$out" != *"serve.go"* ]]; then
+    ok "настоящий откат рядом с переименованием ствола назван, а переименование — нет"
+  else
+    no "послабление переименования ствола закрыло предмет гейта (rc=$rc)" "$out"
+  fi
+  rm -rf "$r"
+}
+
+# ── Случай 33. Самоистечение перечня не утверждается над НЕСУДИМЫМИ посадками ─
+#
+# Случай 9 объявляет неразличимую сторону ствола ТРЕТЬЕЙ КАТЕГОРИЕЙ: по такой
+# посадке вердикт не выносится, `drift.sh` для неё не зовётся вовсе, а значит
+# `declared-used:` от неё не придёт НИКОГДА — независимо от того, есть у записи
+# предмет или нет.
+#
+# Самоистечение читало это молчание как «исключать нечего» и роняло гейт кодом 3.
+# То есть «ноль находок» подменялось «ноль прочитанного» — ровно тот класс,
+# который перепись судьи и заведена отличать.
+#
+# Наблюдалось на `release/kaname`: запись линии выноса iam объявлена пережившей
+# предмет, тогда как её посадка достижима от вершины, лежит в прогоне и просто
+# не получила вердикта — линия `integration/standalone-iam` на origin не
+# отправлена, опорной ссылки на неё нет, и сторону ствола спросить не у чего.
+case_expiry_is_not_asserted_over_unjudged_landings() {
+  cases=$((cases + 1))
+  local r; r=$(newrepo)
+  echo "база" > "$r/shared.txt"; echo "прочее" > "$r/other.txt"
+  mkdir -p "$r/tools/carrydrift"
+  printf '%s\n' "A.txt  снято решением; посадка судимой не оказалась" \
+    > "$r/tools/carrydrift/declared-removals.txt"
+  commit "$r" "база"
+  local base; base=$(git -C "$r" rev-parse HEAD)
+
+  git -C "$r" checkout -q -b release/line
+  echo "ЛИНИЯ" > "$r/shared.txt"; commit "$r" "линия правит общий файл"
+
+  git -C "$r" checkout -q -b lane "$base"
+  echo "полоса" > "$r/other.txt"; commit "$r" "полоса правит своё"
+
+  # Посадка первая — разрешимая и чистая.
+  git -C "$r" checkout -q release/line
+  git -C "$r" merge -q --no-ff --no-edit lane -m "посадка полосы в линию" >/dev/null 2>&1
+  local line_tip; line_tip=$(git -C "$r" rev-parse HEAD)
+
+  # Посадка вторая — две полосы, слитые между собой: ни одна не влита никуда,
+  # сторону ствола спросить не у чего.
+  git -C "$r" checkout -q -b first "$line_tip"
+  echo "первая" > "$r/first.txt"; commit "$r" "первая полоса"
+  git -C "$r" checkout -q -b second "$line_tip"
+  echo "вторая" > "$r/second.txt"; commit "$r" "вторая полоса"
+  git -C "$r" checkout -q first
+  git -C "$r" merge -q --no-ff --no-edit second -m "две полосы слиты между собой" >/dev/null 2>&1
+  local head; head=$(git -C "$r" rev-parse HEAD)
+
+  git -C "$r" update-ref refs/remotes/origin/main "$base"
+  git -C "$r" update-ref refs/remotes/origin/release/line "$line_tip"
+
+  local out rc
+  out=$(cd "$r" && BEFORE="$base" HEAD_SHA="$head" bash "$JUDGE" 2>&1); rc=$?
+  if [ "$rc" -eq 0 ] \
+     && [[ "$out" != *"ПЕРЕЖИЛА ПРЕДМЕТ"* ]] \
+     && [[ "$out" == *"ПРЕДМЕТ НЕ УСТАНОВЛЕН"* ]] \
+     && any_line_matches "$out" 'предмет которых не установлен: 1'; then
+    ok "над несудимой посадкой самоистечение не утверждается и сосчитано отдельно"
+  else
+    no "запись объявлена пережившей предмет там, где предмет не читали (rc=$rc)" "$out"
+  fi
+  rm -rf "$r"
+}
+
 echo "проба гейта переноса — синтетические графы"
 case_real_rollback
 case_branch_owns_file
@@ -1407,6 +1742,12 @@ case_declared_return_to_base_is_refused
 case_ledger_is_read_from_the_pushed_head
 case_ledger_beside_the_push_is_not_read
 case_phantom_on_the_pushed_head_still_reds
+case_move_lookup_does_not_abort_the_scan
+case_branch_rename_of_a_trunk_edited_file_is_not_a_loss
+case_loss_beside_a_branch_rename_is_still_named
+case_trunk_rename_of_a_branch_edited_file_is_not_an_adaptation
+case_rollback_beside_a_trunk_rename_is_still_named
+case_expiry_is_not_asserted_over_unjudged_landings
 
 echo
 echo "перепись: случаев ${cases}; прошло ${pass}; упало ${fail}"
