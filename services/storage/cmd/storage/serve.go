@@ -661,7 +661,8 @@ func describe(
 		Authz:     servicecontract.AuthzViaIAM,
 		CheckEdge: servicecontract.NewPeerEdge(cfg.AuthZIAMGRPCAddr, checkCreds),
 		// Перевод вопроса в контракт службы доступа приносит СЕРВИС: носитель
-		// принадлежит фундаменту и чужого контракта не знает (приёмка K3-1 §7.2).
+		// принадлежит фундаменту и чужого контракта не знает (приёмка K3-1,
+		// раздел 7.2).
 		PeerCheck:    authziam.NewCheckClient,
 		CacheWindow:  cfg.AuthZCacheTTL,
 		ClientBudget: cfg.AuthZCheckTimeout,

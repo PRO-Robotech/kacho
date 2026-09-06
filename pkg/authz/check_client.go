@@ -9,12 +9,13 @@ import (
 	"google.golang.org/grpc"
 )
 
-// CheckClient — port-интерфейс (DIP). Реализация — клиентский adapter в
-// сервисе (например `kacho-vpc/internal/clients/iam_authz_client.go`),
-// который импортирует kacho-proto stubs и кальзывает
-// `iamv1.InternalIAMServiceClient.Check(...)`.
+// CheckClient — port-интерфейс (DIP). Реализация — адаптер
+// `pkg/authz/authziam`: он импортирует стабы контракта и зовёт
+// `InternalIAMService.Check`.
 //
-// Decoupling: corelib НЕ зависит от kacho-proto stubs (см. comment в doc.go).
+// Decoupling: фундамент НЕ зависит от контракта службы доступа. Это не
+// украшение слоёв: после разъезда на три модуля такая зависимость дала бы
+// цикл, потому что служба уже требует фундамент (приёмка K3-1 §7.2).
 type CheckClient interface {
 	// Check возвращает (allowed, err).
 	//

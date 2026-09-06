@@ -1092,7 +1092,8 @@ func describe(cfg config.Config, mode servicecontract.Mode, logger *slog.Logger,
 		Authz:     servicecontract.AuthzViaIAM,
 		CheckEdge: servicecontract.NewPeerEdge(cfg.AuthZIAMGRPCAddr, checkCreds),
 		// Перевод вопроса в контракт службы доступа приносит СЕРВИС: носитель
-		// принадлежит фундаменту и чужого контракта не знает (приёмка K3-1 §7.2).
+		// принадлежит фундаменту и чужого контракта не знает (приёмка K3-1,
+		// раздел 7.2).
 		PeerCheck: authziam.NewCheckClient,
 		// Окно кэша положительных вердиктов — оно же окно отзыва. Читается через
 		// `check.CacheWindow`, потому что ручка реестра несёт landed-значение
