@@ -10,6 +10,8 @@ github.com/PRO-Robotech/kacho v0.0.0-20260905181354-89d72c19c271 h1:xFRa+5j+zgm9
 github.com/PRO-Robotech/kacho v0.0.0-20260905181354-89d72c19c271/go.mod h1:6Vnz08Zr9yGmJ9F5fpMxAFD87gRTASoqO3VAgFXmlEg=
 github.com/PRO-Robotech/kacho v0.0.0-20260906100534-dbc084b73d32 h1:tMyduAh3xklXPSMwEYLgaDALLt1D/EnOHebJzX7VHTU=
 github.com/PRO-Robotech/kacho v0.0.0-20260906100534-dbc084b73d32/go.mod h1:6Vnz08Zr9yGmJ9F5fpMxAFD87gRTASoqO3VAgFXmlEg=
+github.com/PRO-Robotech/kacho v0.0.0-20260906212857-03c890c2da3c h1:Rjz8jzFJDT8ceatzmdOva0IQCeGRsHO+fQFYzdJgr6Q=
+github.com/PRO-Robotech/kacho v0.0.0-20260906212857-03c890c2da3c/go.mod h1:6Vnz08Zr9yGmJ9F5fpMxAFD87gRTASoqO3VAgFXmlEg=
 github.com/beorn7/perks v1.0.1 h1:VlbKKnNfV8bJzeqoa4cOKqO6bYr3WgKZxO8Z16+hsOM=
 github.com/beorn7/perks v1.0.1/go.mod h1:G2ZrVWU2WbWT9wwq4/hrbKbnv/1ERSJQ0ibhJ6rlkpw=
 github.com/cenkalti/backoff/v4 v4.3.0 h1:MyRJ/UdXutAwSAT+s3wNd7MfTIcy71VQueUuFK343L8=
