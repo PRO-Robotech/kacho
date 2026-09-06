@@ -87,6 +87,26 @@ func TestImageDerivationGateCanFail(t *testing.T) {
 		t.Errorf("селектор метки объявлен находкой %v — гейт судит не свой предмет", found)
 	}
 
+	// БЕЗ ТЕГА, НО В ПОЗИЦИИ ССЫЛКИ НА ОБРАЗ — находка (замечание З4).
+	// `docker build -t kacho-$svc` соберёт `:latest`, `kind load` загрузит.
+	for _, cmd := range []string{
+		"\t  ( cd .. && docker build -f x/Dockerfile -t kacho-$$svc \"$$bctx\" ) || exit 1\n",
+		"\t  kind load docker-image kacho-$$svc --name x\n",
+	} {
+		found, _ := scanImageDerivations("deploy/Makefile", cmd)
+		if len(found) != 1 {
+			t.Errorf("бестеговая ссылка в позиции образа (%q): находок %d, ожидалась одна — "+
+				"форма уходит из-под наблюдения молча", strings.TrimSpace(cmd), len(found))
+		}
+	}
+
+	// Законный близнец той же бестеговой формы: НЕ в позиции ссылки на образ.
+	if found, _ := scanImageDerivations("deploy/scripts/x.sh",
+		"echo \"каталог kacho-$svc собран\"\n"); len(found) != 0 {
+		t.Errorf("бестеговое имя вне команды работы с образом объявлено находкой %v — "+
+			"гейт судит не свой предмет", found)
+	}
+
 	// Комментарий, ОБЪЯСНЯЮЩИЙ запрет, находкой не является: иначе гейт
 	// краснел бы на собственной шапке.
 	if found, _ := scanImageDerivations("deploy/Makefile",

@@ -65,14 +65,19 @@ func TestStandRecipesNeverDeriveAnImageNameByPrefix(t *testing.T) {
 		scope.FilesRead, scope.LinesRead, scope.PrefixWords, len(found))
 }
 
-// Ось 2 — положительный контроль: рецепт стенда читает объявленный источник.
-func TestStandRecipeReadsTheDeclaredNames(t *testing.T) {
+// Ось 2 — КАЖДАЯ ссылка на образ в целях сборки приходит от читателя имён.
+//
+// Это и положительный контроль (без него отрицание оси 1 выполняется удалением
+// самого цикла сборки), и держатель самого инварианта полосы: «стенд собирает
+// то, что просит чарт». Прежняя редакция проверяла ВХОЖДЕНИЕ подстроки и была
+// вакуумна с обеих сторон — разбор в шапке productimagename.go.
+func TestEveryImageArgumentComesFromTheDeclaredNames(t *testing.T) {
 	root := gateRepoRoot(t)
 
 	lib := filepath.Join(root, "deploy", "scripts", "lib", "product-names.sh")
 	if _, err := os.Stat(lib); err != nil {
 		t.Fatalf("читателя имён для оболочки в дереве нет (%v) — рецепту стенда "+
-			"неоткуда взять имя, и отрицание выше вакуумно", err)
+			"неоткуда взять имя, и отрицание оси 1 вакуумно", err)
 	}
 
 	b, err := os.ReadFile(filepath.Join(root, "deploy", "Makefile"))
@@ -81,7 +86,7 @@ func TestStandRecipeReadsTheDeclaredNames(t *testing.T) {
 	}
 	mk := string(b)
 
-	// Цель сборки образов обязана ЗВАТЬ читателя, а не просто иметь его рядом.
+	total := 0
 	for _, target := range []string{"build-services", "reload-svc"} {
 		body, ok := makeTargetBody(mk, target)
 		if !ok {
@@ -89,11 +94,18 @@ func TestStandRecipeReadsTheDeclaredNames(t *testing.T) {
 				"проверь, чем теперь собираются образы", target)
 			continue
 		}
-		if !strings.Contains(body, "scripts/lib/product-names.sh") {
-			t.Errorf("цель %q не читает scripts/lib/product-names.sh — имя образа "+
-				"она берёт откуда-то ещё, и объявленный источник ей не указ", target)
+		found, seen := imageArgumentFindings(target, body)
+		total += seen
+		if seen == 0 {
+			t.Errorf("в цели %q не разобрано ни одной ссылки на образ — разбор ослеп "+
+				"(сменились формы команд), и «ноль находок» здесь неотличимо от "+
+				"«ноль прочитанного»", target)
+		}
+		for _, f := range found {
+			t.Errorf("%s", f)
 		}
 	}
+	t.Logf("перепись: целей сборки 2, ссылок на образ осмотрено %d", total)
 }
 
 // makeTargetBody — тело цели: строки от заголовка до первой строки, начатой не

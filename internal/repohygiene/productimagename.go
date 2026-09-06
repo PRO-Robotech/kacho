@@ -22,10 +22,20 @@
 //
 // # Что здесь считается находкой
 //
-// Приставка платформы, приклеенная к ПЕРЕМЕННОЙ, в слове, несущем тег образа:
-// `kacho-$$svc:dev`, `kacho-$(SVC):dev`, `kacho-${svc}:dev`. Тег обязателен как
-// признак: он отделяет ссылку на образ от прочих имён, которые законно
-// выводятся приставкой и частью продукта НЕ являются.
+// Приставка платформы, приклеенная к ПЕРЕМЕННОЙ, — когда слово либо несёт тег
+// образа (`kacho-$$svc:dev`, `kacho-$(SVC):dev`, `kacho-${svc}:dev`), либо
+// стоит в ПОЗИЦИИ ссылки на образ (`docker build -t`, `kind load docker-image`,
+// `docker image inspect`).
+//
+// Позиция добавлена ко второму кругу, и вот почему одного тега мало: `docker
+// build -t kacho-$svc` без тега соберёт `:latest`, а `kind load docker-image
+// kacho-$svc` его загрузит — то есть беда та же, а признака нет. Прежняя
+// редакция объявляла размен («тег отделяет ссылку на образ»), но подавала его
+// шире правды: бестеговая форма не судилась вовсе и не была названа зоной.
+//
+// Признак «тег ИЛИ позиция» оставляет вне предмета именно то, что и должно
+// остаться: имя без тега и не в команде работы с образом ссылкой на образ не
+// является.
 //
 // # Чего здесь НЕ судится — названо, чтобы «ноль находок» не читалось шире
 //
@@ -63,6 +73,7 @@ import (
 	"strings"
 
 	"github.com/PRO-Robotech/kacho/internal/productnaming"
+	"github.com/PRO-Robotech/kacho/pkg/treecorpus"
 )
 
 // imageNameFinding — одна находка с координатой. Координата обязательна: без
@@ -141,6 +152,16 @@ func scanImageDerivations(path, content string) ([]imageNameFinding, int) {
 		if t := strings.TrimSpace(line); strings.HasPrefix(t, "#") {
 			continue
 		}
+		// Токены, стоящие в позиции ссылки на образ ЭТОЙ строки: `-t X`,
+		// `kind load docker-image X`, `docker image inspect … X`. Такой токен —
+		// ссылка на образ ПО МЕСТУ, даже когда тега на нём нет: `docker build -t
+		// kacho-$svc` соберёт `:latest`, а `kind load` его загрузит.
+		inImagePos := map[string]bool{}
+		for _, p := range imageArgPatterns {
+			for _, m := range p.Re.FindAllStringSubmatch(line, -1) {
+				inImagePos[m[1]] = true
+			}
+		}
 		rest := line
 		for {
 			k := strings.Index(rest, prefix)
@@ -150,7 +171,7 @@ func scanImageDerivations(path, content string) ([]imageNameFinding, int) {
 			tail := rest[k+len(prefix):]
 			words++
 			word := prefix + tail[:wordEnd(tail)]
-			if varStart.MatchString(tail) && imageTag.MatchString(word) {
+			if varStart.MatchString(tail) && (imageTag.MatchString(word) || inImagePos[word]) {
 				out = append(out, imageNameFinding{
 					File: path, Line: i + 1, Text: word,
 					Why: "имя образа выведено приставкой платформы из переменной; " +
@@ -166,24 +187,39 @@ func scanImageDerivations(path, content string) ([]imageNameFinding, int) {
 }
 
 // standRecipeFiles — популяция: рецепты, которыми поднимается стенд.
+//
+// СОСТАВ БЕРЁТСЯ У ИНДЕКСА GIT, А НЕ С ДИСКА, и это не стиль.
+//
+// Прежняя редакция обходила `deploy/` через filepath.WalkDir. Под этим
+// каталогом правила игнорирования действуют на любой глубине: `helm dep update`
+// распаковывает туда вендоренные чарты (`charts/postgresql/`, `charts/vpc/`,
+// `tmpcharts-<pid>/`), и на всякой машине, где хоть раз поднимали стенд, они
+// лежат. Обход диска их читает.
+//
+// Цена измерена, а не предположена: файл `charts/postgresql/scripts/entry.sh`
+// со строкой `docker build -t kacho-$1:dev .` невидим для `git status`, но
+// давал НАХОДКУ и поднимал перепись с 94 рецептов до 95. То есть вердикт гейта
+// становился свойством РАБОЧЕГО КАТАЛОГА, а не коммита — притом находка
+// указывала на чужой чарт, который мы не пишем и чинить не можем.
+//
+// Пустой состав здесь — ОТКАЗ, а не пустой успех: `treecorpus.Under` возвращает
+// ошибку, и она обязана дойти до вызывающего. «Ноль находок» на «ноль
+// прочитанного» неотличимо от чистого дерева.
 func standRecipeFiles(root string) ([]string, error) {
-	var out []string
-	deploy := filepath.Join(root, "deploy")
-	err := filepath.WalkDir(deploy, func(p string, d os.DirEntry, err error) error {
-		if err != nil {
-			return err
-		}
-		if d.IsDir() {
-			return nil
-		}
-		name := d.Name()
-		if name == "Makefile" || strings.HasSuffix(name, ".mk") || strings.HasSuffix(name, ".sh") {
-			out = append(out, p)
-		}
-		return nil
-	})
+	files, err := treecorpus.Under(filepath.Join(root, "deploy"))
 	if err != nil {
 		return nil, err
+	}
+	var out []string
+	for _, f := range files {
+		name := filepath.Base(f)
+		if name == "Makefile" || strings.HasSuffix(name, ".mk") || strings.HasSuffix(name, ".sh") {
+			out = append(out, f)
+		}
+	}
+	if len(out) == 0 {
+		return nil, fmt.Errorf("под %s нет ни одного отслеживаемого рецепта стенда — "+
+			"обход беспредметен, и это отказ, а не «ноль находок»", filepath.Join(root, "deploy"))
 	}
 	sort.Strings(out)
 	return out, nil
@@ -200,7 +236,7 @@ func productImageDerivations(root string) ([]imageNameFinding, imageNameScope, e
 		scope imageNameScope
 	)
 	for _, f := range files {
-		b, err := os.ReadFile(f)
+		b, err := os.ReadFile(f) // #nosec G304 -- путь из индекса git собственного дерева
 		if err != nil {
 			return nil, scope, err
 		}
@@ -212,4 +248,147 @@ func productImageDerivations(root string) ([]imageNameFinding, imageNameScope, e
 		scope.PrefixWords += words
 	}
 	return out, scope, nil
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// ССЫЛКА НА ОБРАЗ В ЦЕЛИ СБОРКИ — ТОЛЬКО ОТВЕТ ЧИТАТЕЛЯ, НИКОГДА ЛИТЕРАЛ
+//
+// # Зачем этого мало — «в теле цели упомянут читатель»
+//
+// Прежняя редакция проверяла ВХОЖДЕНИЕ подстроки: тело цели упоминает
+// `scripts/lib/product-names.sh` — значит читает источник. Проверка вакуумна с
+// двух сторон сразу, и обе показаны опытом:
+//
+//   - снять ОДНО из двух подключений читателя в `build-services` — проба
+//     остаётся зелёной, потому что второе упоминание на месте;
+//   - вернуть исходную беду ЛИТЕРАЛОМ (`-t kacho-iam:dev`) рядом с живым
+//     подключением — зелены все проверки ветки, весь пакет `deploy` и весь
+//     `repohygiene`. То есть инвариант, ради которого заведена полоса, не имел
+//     держателя вовсе.
+//
+// # Что проверяется вместо
+//
+// КАЖДЫЙ токен, стоящий в позиции ссылки на образ (`docker build -t X`,
+// `kind load docker-image X`, `docker image inspect … X`), обязан быть
+// раскрытием переменной, ЗНАЧЕНИЕ КОТОРОЙ В ЭТОМ ЖЕ ТЕЛЕ получено у читателя
+// (`X=$(product_image_name …)`). Литерал отвергается, даже когда он верен
+// сегодня: верность литерала — совпадение, а не свойство.
+//
+// Число найденных ссылок печатается: если формы команд сменятся и разбор
+// перестанет их видеть, «ноль находок» обязано быть отличимо от «ноль
+// прочитанного».
+
+// imageArgPatterns — позиции ссылки на образ. Перечень закрыт и назван: это те
+// три команды, которыми образ попадает в кластер стенда.
+var imageArgPatterns = []struct {
+	Cmd string
+	Re  *regexp.Regexp
+}{
+	{"docker build -t", regexp.MustCompile(`-t\s+(\S+)`)},
+	{"kind load docker-image", regexp.MustCompile(`kind load docker-image\s+(\S+)`)},
+	{"docker image inspect", regexp.MustCompile(`docker image inspect\s+--format\s+'[^']*'\s+(\S+)`)},
+}
+
+// readerBound — присваивание значения от читателя: `img=$(product_image_name …)`.
+var readerBound = regexp.MustCompile(`([A-Za-z_][A-Za-z0-9_]*)=\$\$?\(\s*product_image_name`)
+
+// varNameOf — имя переменной в токене ссылки. Пусто, если токен литерал.
+func varNameOf(tok string) string {
+	if i := strings.IndexByte(tok, ':'); i >= 0 {
+		tok = tok[:i]
+	}
+	tok = strings.TrimLeft(tok, "$")
+	tok = strings.Trim(tok, "{}()\"'")
+	if tok == "" {
+		return ""
+	}
+	for _, r := range tok {
+		if r != '_' && (r < '0' || r > '9') && (r < 'a' || r > 'z') && (r < 'A' || r > 'Z') {
+			return ""
+		}
+	}
+	return tok
+}
+
+// recipeLine — ЛОГИЧЕСКАЯ строка рецепта: физические строки, склеенные `\\`.
+//
+// Единица именно такая, а не «тело цели», и это несущее различие. Каждая
+// логическая строка исполняется ОТДЕЛЬНОЙ оболочкой, поэтому переменная,
+// полученная у читателя в одной, в другой не существует. Проверка по всему телу
+// цели этого не видит: приёмщик снял читателя из ОДНОГО из двух блоков
+// `build-services` — привязка осталась во втором, и проверка молчала, тогда как
+// сборка уже пользовалась именем, взятым не у источника.
+type recipeLine struct {
+	Line int // номер первой физической строки — координата для читателя
+	Text string
+}
+
+// recipeLines — разбор тела цели на логические строки.
+func recipeLines(body string) []recipeLine {
+	var out []recipeLine
+	var cur strings.Builder
+	start := 0
+	for i, ln := range strings.Split(body, "\n") {
+		if cur.Len() == 0 {
+			start = i + 1
+		}
+		trimmed := strings.TrimSuffix(ln, "\\")
+		cur.WriteString(trimmed)
+		cur.WriteString(" ")
+		if !strings.HasSuffix(ln, "\\") {
+			if t := strings.TrimSpace(cur.String()); t != "" {
+				out = append(out, recipeLine{Line: start, Text: cur.String()})
+			}
+			cur.Reset()
+		}
+	}
+	if t := strings.TrimSpace(cur.String()); t != "" {
+		out = append(out, recipeLine{Line: start, Text: cur.String()})
+	}
+	return out
+}
+
+// imageArgumentFindings — ссылки на образ в теле цели, не пришедшие от читателя.
+//
+// Привязка ищется в ТОЙ ЖЕ логической строке, что и ссылка: см. recipeLine.
+//
+// Второй возврат — сколько ссылок вообще осмотрено: ноль означает, что формы
+// команд сменились и разбор ослеп, а не что нарушений нет.
+func imageArgumentFindings(target, body string) ([]imageNameFinding, int) {
+	var out []imageNameFinding
+	seen := 0
+	for _, rl := range recipeLines(body) {
+		if t := strings.TrimSpace(rl.Text); strings.HasPrefix(t, "#") || strings.HasPrefix(t, "@#") {
+			continue
+		}
+		bound := map[string]bool{}
+		for _, m := range readerBound.FindAllStringSubmatch(rl.Text, -1) {
+			bound[m[1]] = true
+		}
+		for _, p := range imageArgPatterns {
+			for _, m := range p.Re.FindAllStringSubmatch(rl.Text, -1) {
+				tok := m[1]
+				seen++
+				name := varNameOf(tok)
+				if name == "" {
+					out = append(out, imageNameFinding{
+						File: "deploy/Makefile (цель " + target + ")", Line: rl.Line, Text: tok,
+						Why: p.Cmd + ": ссылка на образ задана ЛИТЕРАЛОМ. Верность литерала — " +
+							"совпадение, а не свойство: он не меняется вслед за именем части. " +
+							"Имя обязано приходить от product_image_name",
+					})
+					continue
+				}
+				if !bound[name] {
+					out = append(out, imageNameFinding{
+						File: "deploy/Makefile (цель " + target + ")", Line: rl.Line, Text: tok,
+						Why: p.Cmd + ": переменная " + name + " в ЭТОЙ логической строке рецепта " +
+							"не получена у читателя имён (нет " + name + "=$(product_image_name …)). " +
+							"Каждая строка рецепта — своя оболочка: привязка из соседней здесь не действует",
+					})
+				}
+			}
+		}
+	}
+	return out, seen
 }
