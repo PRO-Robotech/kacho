@@ -86,7 +86,7 @@ func referenceCatalogueRPCs() map[string]string {
 		"kacho.cloud.compute.v1.MachineTypeService/List":                    why + " (инвентарь: типы машин)",
 		"kacho.cloud.storage.v1.DiskTypeService/Get":                        why + " (инвентарь: типы дисков)",
 		"kacho.cloud.storage.v1.DiskTypeService/List":                       why + " (инвентарь: типы дисков)",
-		"kacho.cloud.iam.v1.PermissionCatalogService/ListPermissionCatalog": why + " (словарь прав платформы)",
+		"kaname.cloud.iam.v1.PermissionCatalogService/ListPermissionCatalog": why + " (словарь прав платформы)",
 	}
 }
 
@@ -174,7 +174,7 @@ var (
 func wildcardSatisfiableRelations(t *testing.T) map[typeRelation]struct{} {
 	t.Helper()
 
-	raw, err := os.ReadFile(filepath.Join(repoRootForWildcardGate(t), "proto/kacho/cloud/iam/v1/fga_model.fga"))
+	raw, err := os.ReadFile(filepath.Join(repoRootForWildcardGate(t), "proto/kaname/cloud/iam/v1/fga_model.fga"))
 	require.NoError(t, err, "the canonical authorization model must be readable — it is what defines the class")
 
 	// type -> relation -> expression

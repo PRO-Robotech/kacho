@@ -542,7 +542,7 @@ func TestNoDomainServesServerStreams(t *testing.T) {
 	// считается НЕ ОСМОТРЕННЫМ, а не «без стримов»: перепись печатает оба списка
 	// раздельно, и «ноль находок» остаётся отличимо от «ноль прочитанного».
 	candidates := []string{
-		"kacho.cloud.iam.v1", "kacho.cloud.vpc.v1", "kacho.cloud.compute.v1",
+		"kaname.cloud.iam.v1", "kacho.cloud.vpc.v1", "kacho.cloud.compute.v1",
 		"kacho.cloud.loadbalancer.v1", "kacho.cloud.geo.v1",
 		"kacho.cloud.storage.v1", "kacho.cloud.registry.v1",
 	}

@@ -53,7 +53,7 @@ import (
 // system never produces, paid for with a second FGA round-trip on every denial.
 // If delegated "may ask about others" is wanted as its own grantable authority
 // (rather than riding on `admin`), it has to be declared in
-// proto/kacho/cloud/iam/v1/fga_model.fga first — then added here.
+// proto/kaname/cloud/iam/v1/fga_model.fga first — then added here.
 var callerAuthorityRelations = []string{"admin"}
 
 // authorizeCaller is the inner defense-in-depth gate. It returns nil (allow) when:

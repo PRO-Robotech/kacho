@@ -46,7 +46,7 @@ const (
 // A set of methods for managing AccessBinding resources.
 //
 // kacho-iam ведет собственный ресурс AccessBinding в пакете
-// kacho.cloud.iam.v1 — это канонический AccessBinding домена IAM,
+// kaname.cloud.iam.v1 — это канонический AccessBinding домена IAM,
 // единственный источник истины для grant-привязок.
 type AccessBindingServiceClient interface {
 	// Returns the specified AccessBinding resource.
@@ -442,7 +442,7 @@ func (c *accessBindingServiceClient) Revoke(ctx context.Context, in *RevokeAcces
 // A set of methods for managing AccessBinding resources.
 //
 // kacho-iam ведет собственный ресурс AccessBinding в пакете
-// kacho.cloud.iam.v1 — это канонический AccessBinding домена IAM,
+// kaname.cloud.iam.v1 — это канонический AccessBinding домена IAM,
 // единственный источник истины для grant-привязок.
 type AccessBindingServiceServer interface {
 	// Returns the specified AccessBinding resource.

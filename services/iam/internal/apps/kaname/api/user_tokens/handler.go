@@ -1,7 +1,7 @@
 // Copyright (c) PRO-Robotech
 // SPDX-License-Identifier: AGPL-3.0-or-later
 
-// handler.go — gRPC handler для kacho.cloud.iam.v1.UserTokenService.
+// handler.go — gRPC handler для kaname.cloud.iam.v1.UserTokenService.
 package user_tokens
 
 import (
@@ -44,7 +44,7 @@ func NewHandler(issue *IssueUserTokenUseCase, revoke *RevokeUserTokenUseCase, li
 //
 // ЧЕМ ГЕЙТИТСЯ ЭТОТ ГЛАГОЛ — по каталогу прав, а не по памяти (#1258):
 //
-//	ГЕЙТ КАТАЛОГА kacho.cloud.iam.v1.UserTokenService/Issue: token_issuer@iam_user
+//	ГЕЙТ КАТАЛОГА kaname.cloud.iam.v1.UserTokenService/Issue: token_issuer@iam_user
 //
 // Здесь стояло `v_update@iam_user`, и это было неверно дважды. Во-первых,
 // каталог гейтит выпуск отношением `token_issuer` (область — из `user_id`
@@ -76,7 +76,7 @@ func NewHandler(issue *IssueUserTokenUseCase, revoke *RevokeUserTokenUseCase, li
 //
 // Предикат для следующего читателя (сверяет каталог, а не этот текст):
 //
-//	jq -r '.[]|select(.fqn=="kacho.cloud.iam.v1.UserTokenService/Issue")
+//	jq -r '.[]|select(.fqn=="kaname.cloud.iam.v1.UserTokenService/Issue")
 //	       |"\(.required_relation)@\(.scope_extractor.object_type)"' \
 //	  gateway/internal/middleware/embed/permission_catalog.json
 //

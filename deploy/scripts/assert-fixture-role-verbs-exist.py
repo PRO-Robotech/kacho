@@ -32,7 +32,7 @@
 # ИСТОЧНИК ИСТИНЫ — МОДЕЛЬ, А НЕ ВТОРОЙ СПИСОК
 #
 # Набор глаголов читается из канонической модели прав
-# (proto/kacho/cloud/iam/v1/fga_model.fga) — из отношений с приставкой `v_`. Ровно
+# (proto/kaname/cloud/iam/v1/fga_model.fga) — из отношений с приставкой `v_`. Ровно
 # та же сторона, которую сторожит гейт дрейфа iam и internal/repohygiene/
 # verbvocabulary_test.go. Держать здесь рукописную копию словаря значило бы завести
 # ту самую вторую таблицу, которая молча разъедется с первой.
@@ -69,7 +69,7 @@ import shutil
 import sys
 import tempfile
 
-MODEL_REL = "proto/kacho/cloud/iam/v1/fga_model.fga"
+MODEL_REL = "proto/kaname/cloud/iam/v1/fga_model.fga"
 
 # Где живут фикстуры, заводящие роли. Предикат — МЕСТО: посев матрицы прав и
 # декларативные кейсы newman. Прод-код и миграции сюда НЕ входят намеренно —

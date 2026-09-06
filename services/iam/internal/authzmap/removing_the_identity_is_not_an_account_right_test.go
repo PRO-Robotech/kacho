@@ -84,7 +84,7 @@ import (
 // По FQN, потому что «снятие личности» — свойство СМЫСЛА RPC, а не его
 // написания. Запись обязана находиться в каталоге, иначе перечень пережил свой
 // предмет.
-const identityRemovalRPC = "kacho.cloud.iam.v1.UserService/Delete"
+const identityRemovalRPC = "kaname.cloud.iam.v1.UserService/Delete"
 
 // identityRemovalSources — круг держателей, в который отношение снятия обязано
 // раскрываться ЦЕЛИКОМ: сам человек и надзор облака.

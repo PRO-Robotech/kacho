@@ -130,11 +130,18 @@ var foundationClasses = map[string]foundationClass{
 // который его РЕАЛИЗУЕТ» (§5.1): контракт доступа — в `kaname`, общие
 // примитивы (операция, поток изменений, учёт потолков, разметка доступа) —
 // в `corelib`, доменные контракты платформы — в `kacho`.
+//
+// После KAN-PKG-1 контракт доступа лежит под СВОИМ корнем (`pkg/api/kaname/…`),
+// и путь с классом теперь СОВПАДАЮТ. Прежде запись переопределяла класс вопреки
+// пути — стабы службы лежали под корнем платформы, — и это переопределение было
+// единственным, что удерживало границу. Совпадение не делает запись лишней:
+// класс объявляется здесь, а не выводится из пути, иначе следующий переезд
+// сменил бы владение молча.
 var foundationSubtrees = []struct {
 	Prefix string
 	Class  foundationClass
 }{
-	{"pkg/api/kacho/cloud/iam", classKaname},
+	{"pkg/api/kaname/cloud/iam", classKaname},
 	{"pkg/api/kacho/cloud/operation", classCorelib},
 	{"pkg/api/kacho/cloud/subscription", classCorelib},
 	{"pkg/api/kacho/cloud/quota", classCorelib},

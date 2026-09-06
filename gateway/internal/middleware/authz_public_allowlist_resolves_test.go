@@ -237,7 +237,7 @@ func TestDefaultPublicAllowlist_EveryEntryResolvesToAServedMethod(t *testing.T) 
 	// "I am broken", never "the tree is clean".
 	for _, control := range []string{
 		"grpc.health.v1.Health/Check",        // grpc-go family
-		"kacho.cloud.iam.v1.UserService/Get", // kacho family
+		"kaname.cloud.iam.v1.UserService/Get", // kacho family
 	} {
 		if r, why := ci.resolve(control); r != resolveOK {
 			t.Fatalf("GATE IS BROKEN: control %q must resolve, got %s (%s) — "+
@@ -320,8 +320,8 @@ func TestAllowlistGate_Injection_DeadEntryIsCaughtAndNamed(t *testing.T) {
 	ci := buildContractIndex(t)
 
 	for _, injected := range []string{
-		"kacho.cloud.iam.v1.GhostService/Vanish",   // service absent from a linked package
-		"kacho.cloud.iam.v1.UserService/Evaporate", // service present, method absent
+		"kaname.cloud.iam.v1.GhostService/Vanish",   // service absent from a linked package
+		"kaname.cloud.iam.v1.UserService/Evaporate", // service present, method absent
 	} {
 		r, why := ci.resolve(injected)
 		if r != resolveMissing {
@@ -346,7 +346,7 @@ func TestAllowlistGate_Injection_DeadEntryIsCaughtAndNamed(t *testing.T) {
 		" grpc.health.v1.Health/Check",       // leading whitespace
 		"grpc.health.v1.Health/Check ",       // trailing whitespace
 		"grpc.health.v1.Health/check",        // wrong method case
-		"kacho.cloud.iam.v1.userservice/Get", // wrong service case
+		"kaname.cloud.iam.v1.userservice/Get", // wrong service case
 	} {
 		switch r, why := ci.resolve(nearMiss); r {
 		case resolveOK:
@@ -369,8 +369,8 @@ func TestAllowlistGate_Injection_LegitimateTwinIsSilent(t *testing.T) {
 
 	for _, live := range []string{
 		// Twin of the injected kacho entries — same package, real methods.
-		"kacho.cloud.iam.v1.UserService/Get",
-		"kacho.cloud.iam.v1.ProjectService/List",
+		"kaname.cloud.iam.v1.UserService/Get",
+		"kaname.cloud.iam.v1.ProjectService/List",
 		// Twins from the grpc-go family. Two of these are deliberately NOT on
 		// the production list any more — Watch because the edge answers it
 		// Unimplemented, ServerReflection because it moved to the cluster-
@@ -428,8 +428,8 @@ func TestAllowlistGate_ReportingBodyActuallyBuckets(t *testing.T) {
 
 	dead, blind := auditAllowlist(ci, []string{
 		"grpc.health.v1.Health/Check",                 // healthy — neither bucket
-		"kacho.cloud.iam.v1.GhostService/Vanish",      // dead: no such service
-		"kacho.cloud.iam.v1.InternalIAMService/Check", // dead: real RPC, not routed on the gRPC edge
+		"kaname.cloud.iam.v1.GhostService/Vanish",      // dead: no such service
+		"kaname.cloud.iam.v1.InternalIAMService/Check", // dead: real RPC, not routed on the gRPC edge
 		realButUnlinked + ".SomeService/SomeMethod",   // blind: real package, unlinked
 	})
 
@@ -461,7 +461,7 @@ func TestAllowlistGate_MistypedPackageIsDeadNotBlindness(t *testing.T) {
 	for _, mistyped := range []string{
 		"kacho.cloud.iam.v2.UserService/Get",     // version typo — no such package
 		"Kacho.cloud.iam.v1.UserService/Get",     // wrong-case package
-		"kacho.cloud.iam.v1.UserService.Get/Get", // dot where the slash belongs
+		"kaname.cloud.iam.v1.UserService.Get/Get", // dot where the slash belongs
 	} {
 		switch r, why := ci.resolve(mistyped); r {
 		case resolveNotLinked:

@@ -46,7 +46,7 @@ func TestPermissionCatalog_RedesignReg(t *testing.T) {
 		// iam AccessBindingService soft-revoke (object-scoped). The unified List is
 		// NOT here: it declares the scope-filtered lane and therefore carries no
 		// relation and no scope of its own — see the dedicated case below.
-		{"kacho.cloud.iam.v1.AccessBindingService/Revoke", "iam.access_bindings.revoke", "v_delete", "iam_access_binding", "access_binding_id"},
+		{"kaname.cloud.iam.v1.AccessBindingService/Revoke", "iam.access_bindings.revoke", "v_delete", "iam_access_binding", "access_binding_id"},
 	}
 	// Каталоги, читаемые ЛЮБЫМ аутентифицированным, стоят на ОТНОШЕНИИ, у которого
 	// есть производитель (#893/#895).
@@ -98,8 +98,8 @@ func TestPermissionCatalog_RedesignReg(t *testing.T) {
 	// every tenant can read the global reference catalogue, so the check passed for
 	// every authenticated subject. The row now says what actually happens, and the
 	// assertions below pin the difference rather than the wording.
-	t.Run("kacho.cloud.iam.v1.AccessBindingService/List", func(t *testing.T) {
-		entry, ok := c.Lookup("kacho.cloud.iam.v1.AccessBindingService/List")
+	t.Run("kaname.cloud.iam.v1.AccessBindingService/List", func(t *testing.T) {
+		entry, ok := c.Lookup("kaname.cloud.iam.v1.AccessBindingService/List")
 		require.True(t, ok)
 		assert.Equal(t, "iam.access_bindings.list", entry.Permission)
 		assert.True(t, entry.ScopeFiltered)
@@ -134,8 +134,8 @@ func TestRestRouter_RedesignReg(t *testing.T) {
 		{"GET", "/storage/v1/images/img-1/operations", "kacho.cloud.storage.v1.ImageService/ListOperations"},
 		{"POST", "/vpc/v1/networks/net-1:add-cidr-blocks", "kacho.cloud.vpc.v1.NetworkService/AddCidrBlocks"},
 		{"POST", "/vpc/v1/networks/net-1:remove-cidr-blocks", "kacho.cloud.vpc.v1.NetworkService/RemoveCidrBlocks"},
-		{"GET", "/iam/v1/accessBindings", "kacho.cloud.iam.v1.AccessBindingService/List"},
-		{"POST", "/iam/v1/accessBindings/acb-1:revoke", "kacho.cloud.iam.v1.AccessBindingService/Revoke"},
+		{"GET", "/iam/v1/accessBindings", "kaname.cloud.iam.v1.AccessBindingService/List"},
+		{"POST", "/iam/v1/accessBindings/acb-1:revoke", "kaname.cloud.iam.v1.AccessBindingService/Revoke"},
 	}
 	for _, tc := range cases {
 		t.Run(tc.method+" "+tc.path, func(t *testing.T) {

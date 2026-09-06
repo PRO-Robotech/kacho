@@ -47,7 +47,7 @@ import (
 const (
 	acrTestGatewaySAN = "spiffe://kacho.cloud/ns/kacho/sa/kacho-api-gateway"
 	acrTestVPCSAN     = "spiffe://kacho.cloud/ns/kacho/sa/kacho-vpc"
-	grantAdminFQN     = "/kacho.cloud.iam.v1.InternalClusterService/GrantAdmin"
+	grantAdminFQN     = "/kaname.cloud.iam.v1.InternalClusterService/GrantAdmin"
 )
 
 // reachedClusterServer is a stub InternalClusterServiceServer recording whether

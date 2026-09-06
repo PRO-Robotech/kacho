@@ -53,7 +53,7 @@ func TestEveryQuotaChargingOwnerAnswersTheTenantRead(t *testing.T) {
 	// величин объявлена в пакете ОБЩЕЙ формы ответа (`quota`), потому что та
 	// форма уже зависит от `iam.v1`, и объявление службы внутри `iam.v1`
 	// замкнуло бы пакеты друг на друга — это отвергает `buf lint`. Собственные
-	// контракты iam при этом лежат в `proto/kacho/cloud/iam`, поэтому в словарь
+	// контракты iam при этом лежат в `proto/kaname/cloud/iam`, поэтому в словарь
 	// эта запись не годится: она верна только для контрактов величин.
 	protoDirOf := platformmodules.AliasesByService()
 	protoDirOf["iam"] = "quota"

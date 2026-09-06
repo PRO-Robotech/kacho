@@ -56,7 +56,7 @@ const (
 	// exemptToken — как полоса освобождения записывается в контракте и в прозе.
 	exemptToken = "<exempt>"
 	// roleContract — контракт, у которого живёт объявление полос.
-	roleContract = "../../../../../../../proto/kacho/cloud/iam/v1/role_service.proto"
+	roleContract = "../../../../../../../proto/kaname/cloud/iam/v1/role_service.proto"
 	// roleUseCaseDir — каталог use-case, чьи комментарии судятся.
 	roleUseCaseDir = "."
 )

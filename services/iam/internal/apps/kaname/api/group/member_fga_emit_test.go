@@ -16,7 +16,7 @@ package group
 // in the SAME writer-tx, and doRemove MUST co-commit the symmetric
 // EmitFGARelationDelete. The tuple's OBJECT type is `group` (the userset type the
 // binding's subjectRef points at — `type group` in the authorization model,
-// proto/kacho/cloud/iam/v1/fga_model.fga), NOT `iam_group` (the object-scope
+// proto/kaname/cloud/iam/v1/fga_model.fga), NOT `iam_group` (the object-scope
 // hierarchy type used by group Create).
 //
 // The journal row is exercised end-to-end against a real Postgres by

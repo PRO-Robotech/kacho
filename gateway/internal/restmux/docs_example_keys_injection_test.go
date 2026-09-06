@@ -251,7 +251,7 @@ func TestDocsExampleKeysFindingNamesTheCoordinate(t *testing.T) {
 		"GET",                     // метод операции
 		"/iam/v1/roles/{role_id}", // её адрес
 		"полоса «ответ»",          // полоса, по которой судили
-		"kacho.cloud.iam.v1.Role", // сообщение, в котором ключ искали
+		"kaname.cloud.iam.v1.Role", // сообщение, в котором ключ искали
 		`"descriptionn"`,          // сам ключ
 	} {
 		if !strings.Contains(got, want) {

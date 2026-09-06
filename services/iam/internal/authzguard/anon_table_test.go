@@ -33,10 +33,10 @@ import (
 )
 
 // iamServicePrefix — only enumerate services in the iam proto package.
-const iamServicePrefix = "kacho.cloud.iam.v1."
+const iamServicePrefix = "kaname.cloud.iam.v1."
 
 // TestAnonTable_AllFullMethodsClassified walks every method in
-// kacho.cloud.iam.v1.* and asserts that anonymous callers reach the handler
+// kaname.cloud.iam.v1.* and asserts that anonymous callers reach the handler
 // (read-only or whitelisted) OR are denied (everything else).
 //
 // Failures here signal one of:

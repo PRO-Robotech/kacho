@@ -439,7 +439,7 @@ hydra:
 
 # AuthZ — per-RPC authorization middleware.
 #   enabled: when true, every authenticated request is gated by a
-#     `kacho.cloud.iam.v1.AuthorizeService.Check` fan-out. When false (the
+#     `kaname.cloud.iam.v1.AuthorizeService.Check` fan-out. When false (the
 #     Go-config default) the middleware is wired but pass-through — only
 #     anonymous-mutating requests are blocked (by kaname authzguard), so
 #     authenticated-but-unauthorized requests leak through.

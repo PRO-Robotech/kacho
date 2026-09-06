@@ -35,12 +35,12 @@ import (
 // listByScopeEntry — catalog row for ListByScope with the dynamic
 // object-type directive. `from_request_field` still carries the scope id
 // (resource_id); `object_type_from_request_field` carries the scope TYPE.
-const listByScopeEntry = `{"fqn":"kacho.cloud.iam.v1.AccessBindingService/ListByScope","permission":"iam.access_bindings_by_resources.listByScope","required_relation":"viewer","scope_extractor":{"object_type":"project","from_request_field":"resource_id","object_type_from_request_field":"resource_type"},"required_acr_min":"2","risk_level":"LOW"}`
+const listByScopeEntry = `{"fqn":"kaname.cloud.iam.v1.AccessBindingService/ListByScope","permission":"iam.access_bindings_by_resources.listByScope","required_relation":"viewer","scope_extractor":{"object_type":"project","from_request_field":"resource_id","object_type_from_request_field":"resource_type"},"required_acr_min":"2","risk_level":"LOW"}`
 
 func TestAuthz_HTTP_ListByScope_AccountScope_DerivesObjectType(t *testing.T) {
 	checker := &fakeChecker{allowed: true}
 	router := &fakeRestRouter{m: map[string]string{
-		"GET /iam/v1/accessBindings:listByScope": "kacho.cloud.iam.v1.AccessBindingService/ListByScope",
+		"GET /iam/v1/accessBindings:listByScope": "kaname.cloud.iam.v1.AccessBindingService/ListByScope",
 	}}
 	mw := buildAuthzMiddleware(t, buildCatalog(t, listByScopeEntry), checker, func(c *middleware.AuthzMiddlewareConfig) {
 		c.RestRouter = router
@@ -66,7 +66,7 @@ func TestAuthz_HTTP_ListByScope_AccountScope_DerivesObjectType(t *testing.T) {
 func TestAuthz_HTTP_ListByScope_ClusterScope_DerivesObjectType(t *testing.T) {
 	checker := &fakeChecker{allowed: true}
 	router := &fakeRestRouter{m: map[string]string{
-		"GET /iam/v1/accessBindings:listByScope": "kacho.cloud.iam.v1.AccessBindingService/ListByScope",
+		"GET /iam/v1/accessBindings:listByScope": "kaname.cloud.iam.v1.AccessBindingService/ListByScope",
 	}}
 	mw := buildAuthzMiddleware(t, buildCatalog(t, listByScopeEntry), checker, func(c *middleware.AuthzMiddlewareConfig) {
 		c.RestRouter = router
@@ -93,7 +93,7 @@ func TestAuthz_GRPC_ListByScope_AccountScope_DerivesObjectType(t *testing.T) {
 	mw := buildAuthzMiddleware(t, buildCatalog(t, listByScopeEntry), checker)
 	_, err := mw.Unary()(withTokenMD("usr_owner", "user"),
 		&iamv1.ListAccessBindingsByScopeRequest{ResourceType: "account", ResourceId: "acc_A"},
-		&grpc.UnaryServerInfo{FullMethod: "/kacho.cloud.iam.v1.AccessBindingService/ListByScope"},
+		&grpc.UnaryServerInfo{FullMethod: "/kaname.cloud.iam.v1.AccessBindingService/ListByScope"},
 		func(ctx context.Context, req any) (any, error) { return "ok", nil })
 	require.NoError(t, err)
 
@@ -110,12 +110,12 @@ func TestAuthz_GRPC_ListByScope_AccountScope_DerivesObjectType(t *testing.T) {
 // entry MUST declare `object_type_from_request_field = "resource_type"`. A
 // static `object_type:"project"` would make an account/cluster-scoped read
 // check `project:<id>` → 403 for the account owner / cluster-admin.
-const listAssignableRolesEntry = `{"fqn":"kacho.cloud.iam.v1.AccessBindingService/ListAssignableRoles","permission":"iam.access_bindings_by_resources.listAssignableRoles","required_relation":"viewer","scope_extractor":{"object_type":"project","from_request_field":"resource_id","object_type_from_request_field":"resource_type"},"required_acr_min":"2","risk_level":"LOW"}`
+const listAssignableRolesEntry = `{"fqn":"kaname.cloud.iam.v1.AccessBindingService/ListAssignableRoles","permission":"iam.access_bindings_by_resources.listAssignableRoles","required_relation":"viewer","scope_extractor":{"object_type":"project","from_request_field":"resource_id","object_type_from_request_field":"resource_type"},"required_acr_min":"2","risk_level":"LOW"}`
 
 func TestAuthz_HTTP_ListAssignableRoles_AccountScope_DerivesObjectType(t *testing.T) {
 	checker := &fakeChecker{allowed: true}
 	router := &fakeRestRouter{m: map[string]string{
-		"GET /iam/v1/accessBindings:listAssignableRoles": "kacho.cloud.iam.v1.AccessBindingService/ListAssignableRoles",
+		"GET /iam/v1/accessBindings:listAssignableRoles": "kaname.cloud.iam.v1.AccessBindingService/ListAssignableRoles",
 	}}
 	mw := buildAuthzMiddleware(t, buildCatalog(t, listAssignableRolesEntry), checker, func(c *middleware.AuthzMiddlewareConfig) {
 		c.RestRouter = router
@@ -141,7 +141,7 @@ func TestAuthz_HTTP_ListAssignableRoles_AccountScope_DerivesObjectType(t *testin
 func TestAuthz_HTTP_ListAssignableRoles_ClusterScope_DerivesObjectType(t *testing.T) {
 	checker := &fakeChecker{allowed: true}
 	router := &fakeRestRouter{m: map[string]string{
-		"GET /iam/v1/accessBindings:listAssignableRoles": "kacho.cloud.iam.v1.AccessBindingService/ListAssignableRoles",
+		"GET /iam/v1/accessBindings:listAssignableRoles": "kaname.cloud.iam.v1.AccessBindingService/ListAssignableRoles",
 	}}
 	mw := buildAuthzMiddleware(t, buildCatalog(t, listAssignableRolesEntry), checker, func(c *middleware.AuthzMiddlewareConfig) {
 		c.RestRouter = router
@@ -168,7 +168,7 @@ func TestAuthz_GRPC_ListAssignableRoles_AccountScope_DerivesObjectType(t *testin
 	mw := buildAuthzMiddleware(t, buildCatalog(t, listAssignableRolesEntry), checker)
 	_, err := mw.Unary()(withTokenMD("usr_owner", "user"),
 		&iamv1.ListAssignableRolesRequest{ResourceType: "account", ResourceId: "acc_A"},
-		&grpc.UnaryServerInfo{FullMethod: "/kacho.cloud.iam.v1.AccessBindingService/ListAssignableRoles"},
+		&grpc.UnaryServerInfo{FullMethod: "/kaname.cloud.iam.v1.AccessBindingService/ListAssignableRoles"},
 		func(ctx context.Context, req any) (any, error) { return "ok", nil })
 	require.NoError(t, err)
 

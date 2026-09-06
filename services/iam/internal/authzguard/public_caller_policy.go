@@ -79,7 +79,7 @@ const (
 	// publicProjectGetMethod — the request-path project validation every
 	// consumer performs before creating a placement-scoped resource
 	// (services/*/internal/clients/iam*: ProjectServiceClient.Get).
-	publicProjectGetMethod = "/kacho.cloud.iam.v1.ProjectService/Get"
+	publicProjectGetMethod = "/kaname.cloud.iam.v1.ProjectService/Get"
 	// publicBatchCheckMethod — the per-object visibility filter every List
 	// handler in vpc/compute/nlb/storage runs (internal/authzfilter): it asks,
 	// for the ids of ONE page, which the end user may see. The service→service
@@ -87,7 +87,7 @@ const (
 	// there — but at least one deployment profile points it at the public
 	// address, so the public listener must admit it or the filter fails closed
 	// and tenants lose their own List results.
-	publicBatchCheckMethod = "/kacho.cloud.iam.v1.AuthorizeService/BatchCheck"
+	publicBatchCheckMethod = "/kaname.cloud.iam.v1.AuthorizeService/BatchCheck"
 )
 
 // UnnamedCallerMessage — ЕДИНСТВЕННЫЙ текст отказа тому, кто не назвался ничем.

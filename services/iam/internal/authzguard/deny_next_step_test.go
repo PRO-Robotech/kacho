@@ -64,7 +64,7 @@ func TestDenyNextStep_NamesWhatIsMissingAndWhereToAskForIt(t *testing.T) {
 
 	// Метод с областью в каталоге: у него есть и право, и объект, на котором
 	// это право выдают, — то есть оба ответа, которых отказу не хватало.
-	const method = "/kacho.cloud.iam.v1.AccessBindingService/Get"
+	const method = "/kaname.cloud.iam.v1.AccessBindingService/Get"
 
 	st := denyThrough(t, reg, method)
 	require.Equal(t, codes.PermissionDenied, st.Code())
@@ -162,7 +162,7 @@ func TestDenyNextStep_NamesTheTierNotTheModelType(t *testing.T) {
 // именно зависимость от запроса и делает отказ различимым.
 func TestDenyNextStep_IsAFunctionOfTheMethodOnly(t *testing.T) {
 	reg := mustRegistry(t)
-	const method = "/kacho.cloud.iam.v1.AccessBindingService/Get"
+	const method = "/kaname.cloud.iam.v1.AccessBindingService/Get"
 
 	deny := func(req any) *status.Status {
 		t.Helper()
@@ -200,7 +200,7 @@ func TestDenyNextStep_IsAFunctionOfTheMethodOnly(t *testing.T) {
 // выдуманный следующий шаг стёр бы различие, ради которого деталь заведена.
 func TestDenyNextStep_CatalogMissStaysBare(t *testing.T) {
 	reg := mustRegistry(t)
-	st := denyThrough(t, reg, "/kacho.cloud.iam.v1.AccessBindingService/NoSuchMethodHere")
+	st := denyThrough(t, reg, "/kaname.cloud.iam.v1.AccessBindingService/NoSuchMethodHere")
 	require.Equal(t, codes.PermissionDenied, st.Code())
 	require.Nil(t, grantRequirement(st),
 		"промах каталога не имеет следующего шага, который можно назвать честно")
@@ -223,7 +223,7 @@ func TestDenyNextStep_StepUpRefusalKeepsItsOwnStep(t *testing.T) {
 	})
 	require.NoError(t, err)
 
-	st := throughInterceptor(t, reg, "/kacho.cloud.iam.v1.AccessBindingService/Get", withStepUp.Err())
+	st := throughInterceptor(t, reg, "/kaname.cloud.iam.v1.AccessBindingService/Get", withStepUp.Err())
 	require.Nil(t, grantRequirement(st),
 		"к отказу, уже назвавшему свой шаг, второй совет не приписывается")
 }

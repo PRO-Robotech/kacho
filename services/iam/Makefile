@@ -161,7 +161,7 @@ operator-docs-check:
 # model-canon-check — блоки модели доступов сверяются с манифестами модулей
 # ПОБАЙТОВО (задача #1089). Цель обходит закрытый набор модулей, порождает блоки
 # типов из манифеста каждого и сравнивает их с каноном
-# proto/kacho/cloud/iam/v1/fga_model.fga, прочитанным ИЗ ДЕРЕВА. Что именно
+# proto/kaname/cloud/iam/v1/fga_model.fga, прочитанным ИЗ ДЕРЕВА. Что именно
 # сверяется — документировано на пакете services/iam/internal/modelrender.
 #
 # ПОБАЙТОВО, А НЕ «ПО СМЫСЛУ»: сверка по смыслу требует разбора обеих сторон и
@@ -286,7 +286,7 @@ proto-vendor:
 proto-lint: proto-vendor
 	cd proto && buf lint
 
-# proto-gen — регенерация Go-stubs доменного proto iam (kacho/cloud/iam/v1) из proto/.
+# proto-gen — регенерация Go-stubs доменного proto iam (kaname/cloud/iam/v1) из proto/.
 # Универсальная ИНФРА (operation/validation/authz_options/cloud-api/google) подтягивается
 # из corelib через proto-vendor только для buf-резолва импортов и НЕ генерируется (Go-stubs
 # живут в kacho-corelib / canonical genproto) — см. proto/buf.gen.yaml inputs.paths.

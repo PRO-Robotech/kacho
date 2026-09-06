@@ -272,7 +272,7 @@ def mint_bootstrap(*, grpc_addr: str | None = None,
     # tombstone (`reserved 1; reserved "ttl_seconds"`) — the lifetime belongs to the
     # issuer's client configuration, so a per-request value only ever changed the
     # number in the RESPONSE, understating the expiry of a cluster-admin credential.
-    # See proto/kacho/cloud/iam/v1/internal_bootstrap_token_service.proto.
+    # See proto/kaname/cloud/iam/v1/internal_bootstrap_token_service.proto.
     #
     # This function kept sending `{"ttlSeconds": N}` after that removal, so every
     # attempt died at the request encoder — `has no known field named ttlSeconds` —
@@ -305,7 +305,7 @@ def mint_bootstrap(*, grpc_addr: str | None = None,
     args = ["grpcurl", "-insecure", "-max-time", "20",
             "-cert", cert_path, "-key", key_path,
             "-d", "{}", addr,
-            "kacho.cloud.iam.v1.InternalBootstrapTokenService/MintBootstrapToken"]
+            "kaname.cloud.iam.v1.InternalBootstrapTokenService/MintBootstrapToken"]
     proc = subprocess.run(args, capture_output=True, text=True, timeout=45)
     if proc.returncode != 0:
         raise RuntimeError(

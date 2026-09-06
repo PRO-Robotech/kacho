@@ -67,7 +67,7 @@ import { verbOptions, WILDCARD } from "./usePermissionCatalog";
 import type { PermissionCatalog } from "./iam";
 
 const here = path.dirname(fileURLToPath(import.meta.url));
-const MODEL_PATH = path.resolve(here, "../../../../proto/kacho/cloud/iam/v1/fga_model.fga");
+const MODEL_PATH = path.resolve(here, "../../../../proto/kaname/cloud/iam/v1/fga_model.fga");
 const model = readFileSync(MODEL_PATH, "utf8").split("\n");
 
 /**

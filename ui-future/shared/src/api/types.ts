@@ -35,7 +35,7 @@ export interface OperationList {
 // ====== IAM (KAC-124: заменил organization-manager + resource-manager) ======
 //
 // Organization / Cloud / Folder упразднены в KAC-124 → заменены на Account / Project
-// (kacho.cloud.iam.v1). Public types для tabular представления / breadcrumbs живут
+// (kaname.cloud.iam.v1). Public types для tabular представления / breadcrumbs живут
 // в api/iam.ts; здесь — минимальные интерфейсы под reverse-lookup в admin UI.
 
 export interface AccountSummary {

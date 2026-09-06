@@ -707,7 +707,7 @@ CASES.append(Case(
         # Здесь стояло `closedVerbs ⊇ [get,list,update,delete]`. Это утверждение не про
         # nlb: `closed_verbs` — ПЕРЕСЕЧЕНИЕ наборов ВСЕХ типов платформы, и его
         # собственный контракт объявляет СУЖЕНИЕ нормой, а не поломкой
-        # (proto/kacho/cloud/iam/v1/permission_catalog_service.proto, поле `closed_verbs`).
+        # (proto/kaname/cloud/iam/v1/permission_catalog_service.proto, поле `closed_verbs`).
         # Сняв `v_update` у ОДНОГО чужого типа (`iam_user` — правку его записи
         # спрашивает другое отношение), платформа вынула глагол из пересечения —
         # и эта проба покраснела, не изменившись в том, что она измеряла.

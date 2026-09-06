@@ -52,7 +52,7 @@ import (
 )
 
 const (
-	roleCreate  = "/kacho.cloud.iam.v1.RoleService/Create"
+	roleCreate  = "/kaname.cloud.iam.v1.RoleService/Create"
 	homeAccount = "acc00000000000000077"
 	homeProject = "prj00000000000000077"
 )

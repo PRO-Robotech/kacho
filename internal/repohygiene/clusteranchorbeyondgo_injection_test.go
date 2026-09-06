@@ -40,10 +40,10 @@ const beyondGoStale = "cluster_kacho_root"
 // где менять нечего, — и объявляла разбор ослепшим там, где он исправен.
 func beyondGoSubjects() map[string]string {
 	return map[string]string{
-		"proto/kacho/cloud/iam/v1/cluster.proto": "" +
+		"proto/kaname/cloud/iam/v1/cluster.proto": "" +
 			"// Singleton cluster resource (`id = \"" + beyondGoDeclared + "\"`).\n" +
 			"message Cluster { string id = 1; }\n",
-		"proto/kacho/cloud/iam/v1/fga_model.fga": "" +
+		"proto/kaname/cloud/iam/v1/fga_model.fga": "" +
 			"type cluster\n  relations\n    define system_admin: [user]\n" +
 			"# якорь: " + beyondGoDeclared + "\n",
 		"services/iam/manifest.yaml": "" +

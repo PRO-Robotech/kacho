@@ -22,7 +22,7 @@ import (
 
 // modelPath — канон модели прав. Отсюда же порождается конфигурация модели, то
 // есть это ИСТОЧНИК, а не его копия.
-const modelPath = "../../../../../proto/kacho/cloud/iam/v1/fga_model.fga"
+const modelPath = "../../../../../proto/kaname/cloud/iam/v1/fga_model.fga"
 
 var (
 	typeLineRe     = regexp.MustCompile(`^type\s+([a-z0-9_]+)\s*$`)

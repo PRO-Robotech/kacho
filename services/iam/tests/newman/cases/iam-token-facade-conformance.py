@@ -1013,7 +1013,7 @@ CASES.append(Case(
 # platform still has no REST door to the mint".
 # ===========================================================================
 
-_MINT_UNBOUND = "/kacho.cloud.iam.v1.InternalBootstrapTokenService/MintBootstrapToken"
+_MINT_UNBOUND = "/kaname.cloud.iam.v1.InternalBootstrapTokenService/MintBootstrapToken"
 _MINT_ACCEPTANCE_PATH = "/iam/v1/internal/bootstrapToken:mint"
 
 

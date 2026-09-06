@@ -124,7 +124,7 @@ EXPECT = {
     # НЕ МОЖЕТ — поэтому здесь DENY по всей строке, а не ALLOW на «своей» клетке.
     # Основание структурное, а не «не хватает выдачи»:
     #
-    #   * `define subject: [user]` (proto/kacho/cloud/iam/v1/fga_model.fga, тип
+    #   * `define subject: [user]` (proto/kaname/cloud/iam/v1/fga_model.fga, тип
     #     `iam_user`) — отношение принимает ТОЛЬКО тип `user`;
     #   * каждый предъявитель этой матрицы аутентифицируется как
     #     `service_account` — объявлено данными в

@@ -1,7 +1,7 @@
 # Copyright (c) PRO-Robotech
 # SPDX-License-Identifier: BUSL-1.1
 
-"""Case-set for `kacho.cloud.iam.v1.InternalClusterService` — cluster-RBAC admin.
+"""Case-set for `kaname.cloud.iam.v1.InternalClusterService` — cluster-RBAC admin.
 
 Covered RPCs: Get, GrantAdmin, RevokeAdmin, ListAdmins.
 

@@ -50,7 +50,7 @@ func servingPkgTree(t *testing.T, body string) (protoDir, cmdDir, root string) {
 			t.Fatalf("создать %s: %v", d, err)
 		}
 	}
-	proto := "syntax = \"proto3\";\npackage kacho.cloud.iam.v1;\n\n" +
+	proto := "syntax = \"proto3\";\npackage kaname.cloud.iam.v1;\n\n" +
 		"service ProjectService {\n  rpc List(Req) returns (Res);\n}\n"
 	if err := os.WriteFile(filepath.Join(protoDir, "synth.proto"), []byte(proto), 0o644); err != nil {
 		t.Fatalf("записать контракт: %v", err)

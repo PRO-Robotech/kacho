@@ -13,7 +13,7 @@
 //
 // SINGLE SOURCE OF TRUTH
 // ----------------------
-// The canonical model is the plain DSL file `proto/kacho/cloud/iam/v1/fga_model.fga`
+// The canonical model is the plain DSL file `proto/kaname/cloud/iam/v1/fga_model.fga`
 // in this repository. Everything else is DERIVED from it:
 //
 //   - вшитая копия `services/iam/internal/authzmodel/fga_model.fga`, из которой
@@ -148,7 +148,7 @@ var nonGrantableModelTypes = map[string]string{
 // canonicalModelRelPath — the canonical authorization model, relative to the
 // monorepo root. This is THE source; the embedded copy the service compiles its
 // derivation plan from is generated out of it.
-const canonicalModelRelPath = "proto/kacho/cloud/iam/v1/fga_model.fga"
+const canonicalModelRelPath = "proto/kaname/cloud/iam/v1/fga_model.fga"
 
 // monorepoRoot walks up from the package directory to the module root (the
 // directory holding go.mod). Deterministic and cwd-independent enough for

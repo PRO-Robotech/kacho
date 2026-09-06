@@ -67,7 +67,7 @@ const (
 	foreignUser = "usr00000000000000042"
 
 	// credentialMint — глагол, у которого армы надзора в модели нет.
-	credentialMint = "/kacho.cloud.iam.v1.UserTokenService/Issue"
+	credentialMint = "/kaname.cloud.iam.v1.UserTokenService/Issue"
 )
 
 // clusterSuperGateFact — единственный факт, которым учётка первичной посадки

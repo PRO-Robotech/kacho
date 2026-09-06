@@ -24,7 +24,7 @@ import (
 // иметь страницы. Первое не даёт новому домену уйти из-под наблюдения молча,
 // второе — записи пережить свой предмет.
 var clientTruthRequestBodyDomains = []ClientTruthRequestBodyDomain{
-	{Name: "iam", ProtoPackage: "kacho.cloud.iam.v1",
+	{Name: "iam", ProtoPackage: "kaname.cloud.iam.v1",
 		DocsDirs:    []string{"services/iam/docs/content", "services/iam/docs/engineering"},
 		UseCaseDirs: []string{"services/iam/internal/apps/kaname/api"}},
 	{Name: "vpc", ProtoPackage: "kacho.cloud.vpc.v1",

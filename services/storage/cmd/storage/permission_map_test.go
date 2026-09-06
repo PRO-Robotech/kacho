@@ -419,7 +419,7 @@ func TestNoTenantDataOnTheClusterSingleton(t *testing.T) {
 // админ-отношение, обессмыслила бы разделение выше — и сделала бы это молча.
 func wildcardSatisfiableClusterRelations(t *testing.T) map[string]bool {
 	t.Helper()
-	const modelPath = "../../../../proto/kacho/cloud/iam/v1/fga_model.fga"
+	const modelPath = "../../../../proto/kaname/cloud/iam/v1/fga_model.fga"
 	raw, err := os.ReadFile(modelPath)
 	if err != nil {
 		t.Fatalf("модель прав не прочитана (%s): %v", modelPath, err)

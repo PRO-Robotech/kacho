@@ -59,7 +59,7 @@ var (
 // doorCoverage возвращает вердикт карты по каждому RPC, который дверь знает.
 //
 // Ключ — та же пара «служба/метод», что и у переписи: полное имя метода из
-// карты («/kacho.cloud.iam.v1.ProjectService/Get») разбирается обратно, чтобы
+// карты («/kaname.cloud.iam.v1.ProjectService/Get») разбирается обратно, чтобы
 // единица счёта осталась одна на весь пакет.
 func doorCoverage() (map[RPC]doorKind, error) {
 	m, err := catalogderive.Derive(authzguard.OwnDoorProtoPackages()...)

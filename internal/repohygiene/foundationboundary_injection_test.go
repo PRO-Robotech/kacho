@@ -495,8 +495,8 @@ func TestClosureJudgeCatchesAForgivenToolchainWithNoSubject(t *testing.T) {
 // prefixFixture — две живые приставки из каждой карты: расщепление † и корень
 // вне `pkg/`. Обе с непустым предметом, поэтому контроль обязан молчать.
 func prefixFixture() ([]string, map[string]int) {
-	declared := []string{"pkg/api/kacho/cloud/iam", "services/iam"}
-	pathsUnder := map[string]int{"pkg/api/kacho/cloud/iam": 83, "services/iam": 2332}
+	declared := []string{"pkg/api/kaname/cloud/iam", "services/iam"}
+	pathsUnder := map[string]int{"pkg/api/kaname/cloud/iam": 83, "services/iam": 2332}
 	return declared, pathsUnder
 }
 

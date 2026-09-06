@@ -102,4 +102,232 @@
 #   причиной, по которой не должно вернуться. Снят был ВЕСЬ файл и весь пакет
 #   контракта, поэтому path и symbol совпадали — buf называет в кавычках путь.
 
-declared: []
+# ===========================================================================
+# ЗАПИСИ ЭТОЙ ВЕТКИ — переезд контракта доступа под собственный корень.
+#
+# ЧТО СНЯТО. Дерево контрактов службы доступа переехало из `kacho/cloud/iam/v1`
+# в `kaname/cloud/iam/v1` вместе с именем пакета (`kacho.cloud.iam.v1` →
+# `kaname.cloud.iam.v1`). Для `buf` это снятие 39 файлов и заведение 39 новых:
+# правило `FILE_NO_DELETE` даёт по одной находке НА ФАЙЛ, поэтому и записей 39,
+# а `path` и `symbol` у каждой совпадают — у снятия файла предмет ровно один.
+#
+# СОРОКОВАЯ ЗАПИСЬ — ДРУГОГО РОДА, и её стоит прочитать отдельно. Общая форма
+# ответа о величинах (`kacho.cloud.quota.v1`) НЕ переименовывается: это контракт
+# платформы, из которого читают пять доменов, и имя службы на нём не появляется.
+# Но одно её поле называет тип области из контракта доступа, и вместе с ним
+# сменилось полное имя типа. Сообщение то же самое, номер поля тот же, порядок
+# байтов на проводе тот же — сменилось ИМЯ, и `FIELD_SAME_TYPE` справедливо
+# считает это сменой типа: сравнивать полные имена — его работа.
+#
+# ЧТО ЭТО ЗНАЧИТ ДЛЯ ВЫЗЫВАЮЩЕГО. Прежнее полное имя метода не резолвится
+# нигде — окна двух имён нет намеренно. REST-пути арендатора (`/iam/v1/…`) не
+# изменились ни одним шаблоном: они бренда не несут и в предмет переезда не
+# входили.
+#
+# ЗАПИСИ ИСТЕКАЮТ САМИ. База сравнения — ствол; после вливания разрыва больше
+# нет, находок ноль, и адъюдикатор назовёт каждую запись потерявшей предмет.
+# Снять их обязано то же изменение, которое поднимет базу, — иначе перечень
+# начнёт прощать пустоту.
+# ===========================================================================
+
+declared:
+  - rule: FIELD_SAME_TYPE
+    path: kacho/cloud/quota/v1/quota.proto
+    symbol: source_scope
+    reason: тип поля назван по новому имени пакета контракта доступа; сообщение то же самое, сменилось только его полное имя
+    issue: kacho#2133
+  - rule: FILE_NO_DELETE
+    path: kacho/cloud/iam/v1/access_binding.proto
+    symbol: kacho/cloud/iam/v1/access_binding.proto
+    reason: файл контракта доступа переехал под собственный корень kaname вместе со всем деревом службы (KAN-PKG-1)
+    issue: kacho#2133
+  - rule: FILE_NO_DELETE
+    path: kacho/cloud/iam/v1/access_binding_service.proto
+    symbol: kacho/cloud/iam/v1/access_binding_service.proto
+    reason: файл контракта доступа переехал под собственный корень kaname вместе со всем деревом службы (KAN-PKG-1)
+    issue: kacho#2133
+  - rule: FILE_NO_DELETE
+    path: kacho/cloud/iam/v1/account.proto
+    symbol: kacho/cloud/iam/v1/account.proto
+    reason: файл контракта доступа переехал под собственный корень kaname вместе со всем деревом службы (KAN-PKG-1)
+    issue: kacho#2133
+  - rule: FILE_NO_DELETE
+    path: kacho/cloud/iam/v1/account_service.proto
+    symbol: kacho/cloud/iam/v1/account_service.proto
+    reason: файл контракта доступа переехал под собственный корень kaname вместе со всем деревом службы (KAN-PKG-1)
+    issue: kacho#2133
+  - rule: FILE_NO_DELETE
+    path: kacho/cloud/iam/v1/authorize_service.proto
+    symbol: kacho/cloud/iam/v1/authorize_service.proto
+    reason: файл контракта доступа переехал под собственный корень kaname вместе со всем деревом службы (KAN-PKG-1)
+    issue: kacho#2133
+  - rule: FILE_NO_DELETE
+    path: kacho/cloud/iam/v1/cluster.proto
+    symbol: kacho/cloud/iam/v1/cluster.proto
+    reason: файл контракта доступа переехал под собственный корень kaname вместе со всем деревом службы (KAN-PKG-1)
+    issue: kacho#2133
+  - rule: FILE_NO_DELETE
+    path: kacho/cloud/iam/v1/cluster_admin_grant.proto
+    symbol: kacho/cloud/iam/v1/cluster_admin_grant.proto
+    reason: файл контракта доступа переехал под собственный корень kaname вместе со всем деревом службы (KAN-PKG-1)
+    issue: kacho#2133
+  - rule: FILE_NO_DELETE
+    path: kacho/cloud/iam/v1/credential_kind.proto
+    symbol: kacho/cloud/iam/v1/credential_kind.proto
+    reason: файл контракта доступа переехал под собственный корень kaname вместе со всем деревом службы (KAN-PKG-1)
+    issue: kacho#2133
+  - rule: FILE_NO_DELETE
+    path: kacho/cloud/iam/v1/group.proto
+    symbol: kacho/cloud/iam/v1/group.proto
+    reason: файл контракта доступа переехал под собственный корень kaname вместе со всем деревом службы (KAN-PKG-1)
+    issue: kacho#2133
+  - rule: FILE_NO_DELETE
+    path: kacho/cloud/iam/v1/group_service.proto
+    symbol: kacho/cloud/iam/v1/group_service.proto
+    reason: файл контракта доступа переехал под собственный корень kaname вместе со всем деревом службы (KAN-PKG-1)
+    issue: kacho#2133
+  - rule: FILE_NO_DELETE
+    path: kacho/cloud/iam/v1/interactive_client.proto
+    symbol: kacho/cloud/iam/v1/interactive_client.proto
+    reason: файл контракта доступа переехал под собственный корень kaname вместе со всем деревом службы (KAN-PKG-1)
+    issue: kacho#2133
+  - rule: FILE_NO_DELETE
+    path: kacho/cloud/iam/v1/internal_bootstrap_token_service.proto
+    symbol: kacho/cloud/iam/v1/internal_bootstrap_token_service.proto
+    reason: файл контракта доступа переехал под собственный корень kaname вместе со всем деревом службы (KAN-PKG-1)
+    issue: kacho#2133
+  - rule: FILE_NO_DELETE
+    path: kacho/cloud/iam/v1/internal_cluster_service.proto
+    symbol: kacho/cloud/iam/v1/internal_cluster_service.proto
+    reason: файл контракта доступа переехал под собственный корень kaname вместе со всем деревом службы (KAN-PKG-1)
+    issue: kacho#2133
+  - rule: FILE_NO_DELETE
+    path: kacho/cloud/iam/v1/internal_iam_service.proto
+    symbol: kacho/cloud/iam/v1/internal_iam_service.proto
+    reason: файл контракта доступа переехал под собственный корень kaname вместе со всем деревом службы (KAN-PKG-1)
+    issue: kacho#2133
+  - rule: FILE_NO_DELETE
+    path: kacho/cloud/iam/v1/internal_interactive_client_service.proto
+    symbol: kacho/cloud/iam/v1/internal_interactive_client_service.proto
+    reason: файл контракта доступа переехал под собственный корень kaname вместе со всем деревом службы (KAN-PKG-1)
+    issue: kacho#2133
+  - rule: FILE_NO_DELETE
+    path: kacho/cloud/iam/v1/internal_limit_service.proto
+    symbol: kacho/cloud/iam/v1/internal_limit_service.proto
+    reason: файл контракта доступа переехал под собственный корень kaname вместе со всем деревом службы (KAN-PKG-1)
+    issue: kacho#2133
+  - rule: FILE_NO_DELETE
+    path: kacho/cloud/iam/v1/internal_module_service.proto
+    symbol: kacho/cloud/iam/v1/internal_module_service.proto
+    reason: файл контракта доступа переехал под собственный корень kaname вместе со всем деревом службы (KAN-PKG-1)
+    issue: kacho#2133
+  - rule: FILE_NO_DELETE
+    path: kacho/cloud/iam/v1/internal_operations_service.proto
+    symbol: kacho/cloud/iam/v1/internal_operations_service.proto
+    reason: файл контракта доступа переехал под собственный корень kaname вместе со всем деревом службы (KAN-PKG-1)
+    issue: kacho#2133
+  - rule: FILE_NO_DELETE
+    path: kacho/cloud/iam/v1/internal_user_service.proto
+    symbol: kacho/cloud/iam/v1/internal_user_service.proto
+    reason: файл контракта доступа переехал под собственный корень kaname вместе со всем деревом службы (KAN-PKG-1)
+    issue: kacho#2133
+  - rule: FILE_NO_DELETE
+    path: kacho/cloud/iam/v1/limit.proto
+    symbol: kacho/cloud/iam/v1/limit.proto
+    reason: файл контракта доступа переехал под собственный корень kaname вместе со всем деревом службы (KAN-PKG-1)
+    issue: kacho#2133
+  - rule: FILE_NO_DELETE
+    path: kacho/cloud/iam/v1/limit_service.proto
+    symbol: kacho/cloud/iam/v1/limit_service.proto
+    reason: файл контракта доступа переехал под собственный корень kaname вместе со всем деревом службы (KAN-PKG-1)
+    issue: kacho#2133
+  - rule: FILE_NO_DELETE
+    path: kacho/cloud/iam/v1/membership.proto
+    symbol: kacho/cloud/iam/v1/membership.proto
+    reason: файл контракта доступа переехал под собственный корень kaname вместе со всем деревом службы (KAN-PKG-1)
+    issue: kacho#2133
+  - rule: FILE_NO_DELETE
+    path: kacho/cloud/iam/v1/membership_service.proto
+    symbol: kacho/cloud/iam/v1/membership_service.proto
+    reason: файл контракта доступа переехал под собственный корень kaname вместе со всем деревом службы (KAN-PKG-1)
+    issue: kacho#2133
+  - rule: FILE_NO_DELETE
+    path: kacho/cloud/iam/v1/package_options.proto
+    symbol: kacho/cloud/iam/v1/package_options.proto
+    reason: файл контракта доступа переехал под собственный корень kaname вместе со всем деревом службы (KAN-PKG-1)
+    issue: kacho#2133
+  - rule: FILE_NO_DELETE
+    path: kacho/cloud/iam/v1/permission_catalog_service.proto
+    symbol: kacho/cloud/iam/v1/permission_catalog_service.proto
+    reason: файл контракта доступа переехал под собственный корень kaname вместе со всем деревом службы (KAN-PKG-1)
+    issue: kacho#2133
+  - rule: FILE_NO_DELETE
+    path: kacho/cloud/iam/v1/project.proto
+    symbol: kacho/cloud/iam/v1/project.proto
+    reason: файл контракта доступа переехал под собственный корень kaname вместе со всем деревом службы (KAN-PKG-1)
+    issue: kacho#2133
+  - rule: FILE_NO_DELETE
+    path: kacho/cloud/iam/v1/project_service.proto
+    symbol: kacho/cloud/iam/v1/project_service.proto
+    reason: файл контракта доступа переехал под собственный корень kaname вместе со всем деревом службы (KAN-PKG-1)
+    issue: kacho#2133
+  - rule: FILE_NO_DELETE
+    path: kacho/cloud/iam/v1/role.proto
+    symbol: kacho/cloud/iam/v1/role.proto
+    reason: файл контракта доступа переехал под собственный корень kaname вместе со всем деревом службы (KAN-PKG-1)
+    issue: kacho#2133
+  - rule: FILE_NO_DELETE
+    path: kacho/cloud/iam/v1/role_service.proto
+    symbol: kacho/cloud/iam/v1/role_service.proto
+    reason: файл контракта доступа переехал под собственный корень kaname вместе со всем деревом службы (KAN-PKG-1)
+    issue: kacho#2133
+  - rule: FILE_NO_DELETE
+    path: kacho/cloud/iam/v1/sa_key_service.proto
+    symbol: kacho/cloud/iam/v1/sa_key_service.proto
+    reason: файл контракта доступа переехал под собственный корень kaname вместе со всем деревом службы (KAN-PKG-1)
+    issue: kacho#2133
+  - rule: FILE_NO_DELETE
+    path: kacho/cloud/iam/v1/service_account.proto
+    symbol: kacho/cloud/iam/v1/service_account.proto
+    reason: файл контракта доступа переехал под собственный корень kaname вместе со всем деревом службы (KAN-PKG-1)
+    issue: kacho#2133
+  - rule: FILE_NO_DELETE
+    path: kacho/cloud/iam/v1/service_account_oauth_client.proto
+    symbol: kacho/cloud/iam/v1/service_account_oauth_client.proto
+    reason: файл контракта доступа переехал под собственный корень kaname вместе со всем деревом службы (KAN-PKG-1)
+    issue: kacho#2133
+  - rule: FILE_NO_DELETE
+    path: kacho/cloud/iam/v1/service_account_service.proto
+    symbol: kacho/cloud/iam/v1/service_account_service.proto
+    reason: файл контракта доступа переехал под собственный корень kaname вместе со всем деревом службы (KAN-PKG-1)
+    issue: kacho#2133
+  - rule: FILE_NO_DELETE
+    path: kacho/cloud/iam/v1/session_revocation.proto
+    symbol: kacho/cloud/iam/v1/session_revocation.proto
+    reason: файл контракта доступа переехал под собственный корень kaname вместе со всем деревом службы (KAN-PKG-1)
+    issue: kacho#2133
+  - rule: FILE_NO_DELETE
+    path: kacho/cloud/iam/v1/session_revocations_service.proto
+    symbol: kacho/cloud/iam/v1/session_revocations_service.proto
+    reason: файл контракта доступа переехал под собственный корень kaname вместе со всем деревом службы (KAN-PKG-1)
+    issue: kacho#2133
+  - rule: FILE_NO_DELETE
+    path: kacho/cloud/iam/v1/user.proto
+    symbol: kacho/cloud/iam/v1/user.proto
+    reason: файл контракта доступа переехал под собственный корень kaname вместе со всем деревом службы (KAN-PKG-1)
+    issue: kacho#2133
+  - rule: FILE_NO_DELETE
+    path: kacho/cloud/iam/v1/user_oauth_client.proto
+    symbol: kacho/cloud/iam/v1/user_oauth_client.proto
+    reason: файл контракта доступа переехал под собственный корень kaname вместе со всем деревом службы (KAN-PKG-1)
+    issue: kacho#2133
+  - rule: FILE_NO_DELETE
+    path: kacho/cloud/iam/v1/user_service.proto
+    symbol: kacho/cloud/iam/v1/user_service.proto
+    reason: файл контракта доступа переехал под собственный корень kaname вместе со всем деревом службы (KAN-PKG-1)
+    issue: kacho#2133
+  - rule: FILE_NO_DELETE
+    path: kacho/cloud/iam/v1/user_token_service.proto
+    symbol: kacho/cloud/iam/v1/user_token_service.proto
+    reason: файл контракта доступа переехал под собственный корень kaname вместе со всем деревом службы (KAN-PKG-1)
+    issue: kacho#2133

@@ -640,12 +640,12 @@
               }
             ],
             "url": {
-              "raw": "{{baseUrl}}/kacho.cloud.iam.v1.InternalSessionRevocationsService/Revoke",
+              "raw": "{{baseUrl}}/kaname.cloud.iam.v1.InternalSessionRevocationsService/Revoke",
               "host": [
                 "{{baseUrl}}"
               ],
               "path": [
-                "kacho.cloud.iam.v1.InternalSessionRevocationsService",
+                "kaname.cloud.iam.v1.InternalSessionRevocationsService",
                 "Revoke"
               ]
             },
@@ -682,7 +682,7 @@
                   "// Missing value = misconfigured harness, NOT a legal mode: FAIL, then skip.",
                   "const __cfgUrl = pm.environment.get('externalBaseUrl') || pm.variables.get('externalBaseUrl') || '';",
                   "if (__cfgUrl) {",
-                  "  pm.request.url = __cfgUrl + pm.variables.replaceIn('/kacho.cloud.iam.v1.InternalSessionRevocationsService/Revoke');",
+                  "  pm.request.url = __cfgUrl + pm.variables.replaceIn('/kaname.cloud.iam.v1.InternalSessionRevocationsService/Revoke');",
                   "} else {",
                   "  pm.test('harness config: externalBaseUrl is set — external-isolation negative — Internal* paths must not be reachable on the advertised external TLS listener', () => {",
                   "    pm.expect.fail('externalBaseUrl is not set — the newman runner (deploy/scripts/newman-e2e.sh / newman-parallel.sh --env-var) did not inject it. This step cannot run, and a check that cannot run MUST NOT be silently dropped.');",
@@ -744,12 +744,12 @@
               }
             ],
             "url": {
-              "raw": "{{baseUrl}}/kacho.cloud.iam.v1.InternalSessionRevocationsService/IsRevoked",
+              "raw": "{{baseUrl}}/kaname.cloud.iam.v1.InternalSessionRevocationsService/IsRevoked",
               "host": [
                 "{{baseUrl}}"
               ],
               "path": [
-                "kacho.cloud.iam.v1.InternalSessionRevocationsService",
+                "kaname.cloud.iam.v1.InternalSessionRevocationsService",
                 "IsRevoked"
               ]
             },
@@ -786,7 +786,7 @@
                   "// Missing value = misconfigured harness, NOT a legal mode: FAIL, then skip.",
                   "const __cfgUrl = pm.environment.get('externalBaseUrl') || pm.variables.get('externalBaseUrl') || '';",
                   "if (__cfgUrl) {",
-                  "  pm.request.url = __cfgUrl + pm.variables.replaceIn('/kacho.cloud.iam.v1.InternalSessionRevocationsService/IsRevoked');",
+                  "  pm.request.url = __cfgUrl + pm.variables.replaceIn('/kaname.cloud.iam.v1.InternalSessionRevocationsService/IsRevoked');",
                   "} else {",
                   "  pm.test('harness config: externalBaseUrl is set — external-isolation negative — Internal* paths must not be reachable on the advertised external TLS listener', () => {",
                   "    pm.expect.fail('externalBaseUrl is not set — the newman runner (deploy/scripts/newman-e2e.sh / newman-parallel.sh --env-var) did not inject it. This step cannot run, and a check that cannot run MUST NOT be silently dropped.');",
@@ -848,12 +848,12 @@
               }
             ],
             "url": {
-              "raw": "{{baseUrl}}/kacho.cloud.iam.v1.InternalSessionRevocationsService/ListByUser",
+              "raw": "{{baseUrl}}/kaname.cloud.iam.v1.InternalSessionRevocationsService/ListByUser",
               "host": [
                 "{{baseUrl}}"
               ],
               "path": [
-                "kacho.cloud.iam.v1.InternalSessionRevocationsService",
+                "kaname.cloud.iam.v1.InternalSessionRevocationsService",
                 "ListByUser"
               ]
             },
@@ -890,7 +890,7 @@
                   "// Missing value = misconfigured harness, NOT a legal mode: FAIL, then skip.",
                   "const __cfgUrl = pm.environment.get('externalBaseUrl') || pm.variables.get('externalBaseUrl') || '';",
                   "if (__cfgUrl) {",
-                  "  pm.request.url = __cfgUrl + pm.variables.replaceIn('/kacho.cloud.iam.v1.InternalSessionRevocationsService/ListByUser');",
+                  "  pm.request.url = __cfgUrl + pm.variables.replaceIn('/kaname.cloud.iam.v1.InternalSessionRevocationsService/ListByUser');",
                   "} else {",
                   "  pm.test('harness config: externalBaseUrl is set — external-isolation negative — Internal* paths must not be reachable on the advertised external TLS listener', () => {",
                   "    pm.expect.fail('externalBaseUrl is not set — the newman runner (deploy/scripts/newman-e2e.sh / newman-parallel.sh --env-var) did not inject it. This step cannot run, and a check that cannot run MUST NOT be silently dropped.');",
@@ -952,12 +952,12 @@
               }
             ],
             "url": {
-              "raw": "{{baseUrl}}/kacho.cloud.iam.v1.InternalIAMService/ForceLogout",
+              "raw": "{{baseUrl}}/kaname.cloud.iam.v1.InternalIAMService/ForceLogout",
               "host": [
                 "{{baseUrl}}"
               ],
               "path": [
-                "kacho.cloud.iam.v1.InternalIAMService",
+                "kaname.cloud.iam.v1.InternalIAMService",
                 "ForceLogout"
               ]
             },
@@ -994,7 +994,7 @@
                   "// Missing value = misconfigured harness, NOT a legal mode: FAIL, then skip.",
                   "const __cfgUrl = pm.environment.get('externalBaseUrl') || pm.variables.get('externalBaseUrl') || '';",
                   "if (__cfgUrl) {",
-                  "  pm.request.url = __cfgUrl + pm.variables.replaceIn('/kacho.cloud.iam.v1.InternalIAMService/ForceLogout');",
+                  "  pm.request.url = __cfgUrl + pm.variables.replaceIn('/kaname.cloud.iam.v1.InternalIAMService/ForceLogout');",
                   "} else {",
                   "  pm.test('harness config: externalBaseUrl is set — external-isolation negative — Internal* paths must not be reachable on the advertised external TLS listener', () => {",
                   "    pm.expect.fail('externalBaseUrl is not set — the newman runner (deploy/scripts/newman-e2e.sh / newman-parallel.sh --env-var) did not inject it. This step cannot run, and a check that cannot run MUST NOT be silently dropped.');",

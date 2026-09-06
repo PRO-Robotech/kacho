@@ -633,12 +633,12 @@ if command -v python3 >/dev/null 2>&1 && [ -f scripts/coverage.py ]; then
   PROTO_GLOB="${COVERAGE_PROTO_GLOB:-}"
   if [ -z "$PROTO_GLOB" ]; then
     for _cand in \
-      '../../../../proto/kacho/cloud/iam/v1/*.proto' \
-      '../../../kacho-proto/proto/kacho/cloud/iam/v1/*.proto'; do
+      '../../../../proto/kaname/cloud/iam/v1/*.proto' \
+      '../../../kacho-proto/proto/kaname/cloud/iam/v1/*.proto'; do
       # shellcheck disable=SC2086
       if compgen -G "$_cand" >/dev/null 2>&1; then PROTO_GLOB="$_cand"; break; fi
     done
-    PROTO_GLOB="${PROTO_GLOB:-../../../../proto/kacho/cloud/iam/v1/*.proto}"
+    PROTO_GLOB="${PROTO_GLOB:-../../../../proto/kaname/cloud/iam/v1/*.proto}"
   fi
   echo "proto-glob: $PROTO_GLOB"
   if python3 scripts/coverage.py \

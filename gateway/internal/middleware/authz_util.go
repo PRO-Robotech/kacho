@@ -48,7 +48,7 @@ func isConcreteResourceScope(entry CatalogEntry) bool {
 
 // normalizeFQN strips the leading `/` from gRPC FullMethod and turns the
 // `pkg.Service/Method` portion into the canonical FQN shape used by the
-// catalog ("kacho.cloud.iam.v1.AuthorizeService/Check").
+// catalog ("kaname.cloud.iam.v1.AuthorizeService/Check").
 func normalizeFQN(full string) string {
 	return strings.TrimPrefix(full, "/")
 }

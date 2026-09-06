@@ -234,7 +234,7 @@ func TestServedCheckCountsAgreeWithTheAuthzCounter(t *testing.T) {
 	const calls = 5
 	for i := 0; i < calls; i++ {
 		_, err := intr(context.Background(), nil,
-			&grpc.UnaryServerInfo{FullMethod: "/kacho.cloud.iam.v1.AuthorizeService/Check"},
+			&grpc.UnaryServerInfo{FullMethod: "/kaname.cloud.iam.v1.AuthorizeService/Check"},
 			func(ctx context.Context, _ any) (any, error) {
 				return dec.Check(ctx, service.CheckRequest{Subject: "user:usr_x"})
 			})
@@ -246,7 +246,7 @@ func TestServedCheckCountsAgreeWithTheAuthzCounter(t *testing.T) {
 	dump := dumpMetrics(t, reg)
 	served := counterValue(t, dump,
 		`kacho_grpc_server_handled_total{grpc_code="OK",grpc_method="Check",`+
-			`grpc_service="kacho.cloud.iam.v1.AuthorizeService",listener="public"}`)
+			`grpc_service="kaname.cloud.iam.v1.AuthorizeService",listener="public"}`)
 	decided := counterValue(t, dump, `kaname_authz_check_decisions_total{decision="allow",rpc="Check"}`)
 	if served != calls || decided != calls {
 		t.Fatalf("обслужено %v, решений %v, вызовов %d — счётчики разошлись:\n%s",

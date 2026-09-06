@@ -157,7 +157,7 @@ func (r *PermissionRegistry) LookupPermission(perm string) []PermissionEntry {
 }
 
 // RequiredACRMin returns the catalog `required_acr_min` for the given RPC FQN
-// (e.g. "kacho.cloud.iam.v1.InternalClusterService/GrantAdmin"), or "" if the
+// (e.g. "kaname.cloud.iam.v1.InternalClusterService/GrantAdmin"), or "" if the
 // FQN is unknown or carries no acr requirement. Satisfies the
 // authzguard.ACRRequirementLookup port for the internal acr-floor.
 // (The api-gateway is the runtime catalog source-of-truth on the public path;

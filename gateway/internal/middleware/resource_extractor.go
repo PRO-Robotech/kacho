@@ -281,7 +281,7 @@ const definitionTierField = "definition_tier"
 // AND its FQN here (both, deliberately — the code-driven allow-list keeps the
 // generated permission-catalog byte-identical).
 var definitionTierScopedFQNs = map[string]struct{}{
-	"kacho.cloud.iam.v1.RoleService/Create": {},
+	"kaname.cloud.iam.v1.RoleService/Create": {},
 }
 
 // definitionTierAnchored reports whether fqn is allowed to resolve its authz
@@ -403,7 +403,7 @@ const legacyProjectScopeField = "project_id"
 // listed here (both, deliberately — the code-driven allow-list keeps the
 // generated permission-catalog byte-identical).
 var legacyProjectScopedFQNs = map[string]struct{}{
-	"kacho.cloud.iam.v1.RoleService/Create": {},
+	"kaname.cloud.iam.v1.RoleService/Create": {},
 }
 
 // legacyProjectAnchored reports whether fqn is allowed to resolve its authz

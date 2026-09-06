@@ -124,7 +124,7 @@ func DefaultRefusalFieldNameOptions(root string) RefusalFieldNameOptions {
 		ProtoPackageOf: map[string]string{
 			"compute":  "kacho.cloud.compute.v1",
 			"geo":      "kacho.cloud.geo.v1",
-			"iam":      "kacho.cloud.iam.v1",
+			"iam":      "kaname.cloud.iam.v1",
 			"nlb":      "kacho.cloud.loadbalancer.v1",
 			"registry": "kacho.cloud.registry.v1",
 			"storage":  "kacho.cloud.storage.v1",

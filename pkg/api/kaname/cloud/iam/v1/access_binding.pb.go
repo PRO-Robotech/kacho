@@ -267,7 +267,7 @@ func (AccessBinding_Scope) EnumDescriptor() ([]byte, []int) {
 // scope-anchor (scope_type, scope_id) — redesign-2026 F7 rename (было
 // resource_type/resource_id; слово «resource» отдано target'у).
 //
-// NB: это канонический AccessBinding из kacho.cloud.iam.v1 — единственный
+// NB: это канонический AccessBinding из kaname.cloud.iam.v1 — единственный
 // источник истины для grant-привязок домена IAM.
 //
 // Runtime-Check грантов выполняется реляционным вычислением по модели прав

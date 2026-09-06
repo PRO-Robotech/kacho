@@ -27,8 +27,8 @@ func TestLimits_AdminSurfaceIsReachableFromOutside(t *testing.T) {
 	require.NoError(t, err)
 
 	const (
-		publicList   = "kacho.cloud.iam.v1.LimitService/List"
-		internalList = "kacho.cloud.iam.v1.InternalLimitService/List"
+		publicList   = "kaname.cloud.iam.v1.LimitService/List"
+		internalList = "kaname.cloud.iam.v1.InternalLimitService/List"
 	)
 
 	pub, ok := c.Lookup(publicList)

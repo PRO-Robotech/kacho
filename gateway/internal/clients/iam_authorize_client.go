@@ -2,7 +2,7 @@
 // SPDX-License-Identifier: BUSL-1.1
 
 // iam_authorize_client.go — gRPC-direct client adapter for
-// `kacho.cloud.iam.v1.AuthorizeService.Check`.
+// `kaname.cloud.iam.v1.AuthorizeService.Check`.
 //
 // The api-gateway authz middleware fans out a Check call for every
 // non-allowlisted RPC. Latency budget: ≤ 5ms p95 on a cache hit, ≤ 15ms p95

@@ -97,7 +97,7 @@ func TestResourceExtractor_FromProto_NilRequest(t *testing.T) {
 
 func TestResourceExtractor_FromHTTP_PathTemplate(t *testing.T) {
 	e := middleware.NewResourceExtractor(map[string]string{
-		"kacho.cloud.iam.v1.ProjectService/Get": "/iam/v1/projects/{project_id}",
+		"kaname.cloud.iam.v1.ProjectService/Get": "/iam/v1/projects/{project_id}",
 	})
 	entry := middleware.CatalogEntry{
 		ScopeExtractor: middleware.ScopeExtractor{
@@ -106,7 +106,7 @@ func TestResourceExtractor_FromHTTP_PathTemplate(t *testing.T) {
 		},
 	}
 	r := httptest.NewRequest(http.MethodGet, "/iam/v1/projects/prj_alpha", nil)
-	id, conflict := e.ExtractFromHTTP(r, "kacho.cloud.iam.v1.ProjectService/Get", entry)
+	id, conflict := e.ExtractFromHTTP(r, "kaname.cloud.iam.v1.ProjectService/Get", entry)
 	require.Nil(t, conflict)
 	assert.Equal(t, "prj_alpha", id.String())
 }
@@ -218,7 +218,7 @@ func TestResourceExtractor_FromHTTP_GenericScopeIDQueryKey_IsNotASource(t *testi
 	r2 := httptest.NewRequest(http.MethodPost, "/iam/v1/authorize:batchCheck",
 		strings.NewReader(`{"scopeId":"prj_batch"}`))
 	r2.Header.Set("Content-Type", "application/json")
-	id2, conflict2 := e.ExtractFromHTTP(r2, "kacho.cloud.iam.v1.AuthorizeService/BatchCheck", scoped)
+	id2, conflict2 := e.ExtractFromHTTP(r2, "kaname.cloud.iam.v1.AuthorizeService/BatchCheck", scoped)
 	require.Nil(t, conflict2)
 	assert.Equal(t, "prj_batch", id2.String())
 }
@@ -295,7 +295,7 @@ func TestResourceExtractor_FromProto_NonProto_Wildcard(t *testing.T) {
 // The anchor resolution is FQN-BOUND: only the RPCs whose request message
 // declares `definition_tier` (today RoleService/Create) may be re-scoped by it.
 // roleCreateFQN is that FQN; the unrelated-FQN arm is locked below.
-const roleCreateFQN = "kacho.cloud.iam.v1.RoleService/Create"
+const roleCreateFQN = "kaname.cloud.iam.v1.RoleService/Create"
 
 func TestResourceExtractor_DefinitionTierScope_Account(t *testing.T) {
 	e := middleware.NewResourceExtractor(nil)
@@ -362,7 +362,7 @@ func TestResourceExtractor_DefinitionTierScope_HTTP_JSONBody(t *testing.T) {
 // smuggle `definitionTier` into any JSON body and choose their own authz scope.
 func TestResourceExtractor_DefinitionTierScope_UnrelatedFQN_NotResolved(t *testing.T) {
 	e := middleware.NewResourceExtractor(nil)
-	const otherFQN = "kacho.cloud.iam.v1.UserService/Invite"
+	const otherFQN = "kaname.cloud.iam.v1.UserService/Invite"
 
 	req := &iamv1.CreateRoleRequest{
 		Name:           "reader",

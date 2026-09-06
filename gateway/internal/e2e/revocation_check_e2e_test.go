@@ -179,7 +179,7 @@ func (h revocationHarness) unary(t *testing.T, hydra *hydraFixture, jti string) 
 		"authorization", "Bearer "+plainBearer(t, hydra, jti)))
 	served := false
 	resp, err := h.auth.Unary()(ctx, nil,
-		&grpc.UnaryServerInfo{FullMethod: "/kacho.cloud.iam.v1.UserService/Get"},
+		&grpc.UnaryServerInfo{FullMethod: "/kaname.cloud.iam.v1.UserService/Get"},
 		func(context.Context, any) (any, error) { served = true; return "ok", nil })
 	if served {
 		h.reached.Store(true)

@@ -35,8 +35,8 @@ func ledgerFindings(
 }
 
 func TestBAT1_73_InjectionProvesTheGateCanFailAndCanStaySilent(t *testing.T) {
-	const respMsg = "kacho.cloud.iam.v1.IssueUserTokenResponse"
-	const syncMsg = "kacho.cloud.iam.v1.MintBootstrapTokenResponse"
+	const respMsg = "kaname.cloud.iam.v1.IssueUserTokenResponse"
+	const syncMsg = "kaname.cloud.iam.v1.MintBootstrapTokenResponse"
 
 	responses := map[string]struct{}{respMsg: {}}
 

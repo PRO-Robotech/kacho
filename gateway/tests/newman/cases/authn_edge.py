@@ -34,7 +34,7 @@
 `GET /iam/v1/accounts` выбран не наугад, и его свойства проверены по дереву:
 
 * в каталоге прав (`gateway/internal/middleware/embed/permission_catalog.json`)
-  запись `kacho.cloud.iam.v1.AccountService/List` несёт `permission="<exempt>"`
+  запись `kaname.cloud.iam.v1.AccountService/List` несёт `permission="<exempt>"`
   БЕЗ `required_acr_min` — значит аутентификация обязательна, per-RPC проверка
   прав пропускается, ответ сужается пообъектным фильтром. Успех положительного
   контроля поэтому не зависит ни от одной выдачи: он проверяет ровно authN;

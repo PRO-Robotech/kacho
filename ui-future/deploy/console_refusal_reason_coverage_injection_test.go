@@ -32,7 +32,7 @@ const srcFormDirect = `package middleware
 func denyStatus() *status.Status {
 	info := &errdetails.ErrorInfo{
 		Reason: "AUTHZ_DENIED",
-		Domain: "kacho.cloud.iam.v1",
+		Domain: "kaname.cloud.iam.v1",
 	}
 	return st
 }`

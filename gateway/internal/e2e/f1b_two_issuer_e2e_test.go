@@ -256,7 +256,7 @@ func newF1bStandWith(t *testing.T, acceptPlatform, requireBinding bool) *f1bStan
 	// Пробный метод регистрируется вручную: предмет пробы — слой authN, а не
 	// тело обработчика, поэтому службы из контракта здесь не нужно.
 	srv.RegisterService(&grpc.ServiceDesc{
-		ServiceName: "kacho.cloud.iam.v1.ProbeService",
+		ServiceName: "kaname.cloud.iam.v1.ProbeService",
 		HandlerType: (*any)(nil),
 		Methods: []grpc.MethodDesc{{
 			MethodName: "Ping",
@@ -282,7 +282,7 @@ func newF1bStandWith(t *testing.T, acceptPlatform, requireBinding bool) *f1bStan
 					return h(ctx, nil)
 				}
 				return interceptor(ctx, &emptyMsg{}, &grpc.UnaryServerInfo{
-					FullMethod: "/kacho.cloud.iam.v1.ProbeService/Ping",
+					FullMethod: "/kaname.cloud.iam.v1.ProbeService/Ping",
 				}, h)
 			},
 		}},
@@ -324,7 +324,7 @@ func (s *f1bStand) callGRPC(t *testing.T, token string) codes.Code {
 	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
 	defer cancel()
 	ctx = metadata.AppendToOutgoingContext(ctx, "authorization", "Bearer "+token)
-	err = conn.Invoke(ctx, "/kacho.cloud.iam.v1.ProbeService/Ping", &emptyMsg{}, &emptyMsg{})
+	err = conn.Invoke(ctx, "/kaname.cloud.iam.v1.ProbeService/Ping", &emptyMsg{}, &emptyMsg{})
 	return status.Code(err)
 }
 
@@ -595,7 +595,7 @@ func TestF1b12_AuthNRefusalsAreIndistinguishableOnTheNativeSurface(t *testing.T)
 		require.NoError(t, err)
 		ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
 		ctx = metadata.AppendToOutgoingContext(ctx, "authorization", "Bearer "+tok)
-		ierr := conn.Invoke(ctx, "/kacho.cloud.iam.v1.ProbeService/Ping", &emptyMsg{}, &emptyMsg{})
+		ierr := conn.Invoke(ctx, "/kaname.cloud.iam.v1.ProbeService/Ping", &emptyMsg{}, &emptyMsg{})
 		cancel()
 		_ = conn.Close()
 

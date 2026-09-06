@@ -54,7 +54,7 @@ import (
 // маршруты независимо от того, что о них думает дверь. Совпадение перечней —
 // предмет отдельной проверки ниже, а не посылка этой.
 var ownDoorProtoPackages = map[string]bool{
-	"kacho.cloud.iam.v1":    true,
+	"kaname.cloud.iam.v1":    true,
 	"kacho.cloud.operation": true,
 	"kacho.cloud.quota.v1":  true,
 }

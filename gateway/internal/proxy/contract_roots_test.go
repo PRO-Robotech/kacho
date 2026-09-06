@@ -46,7 +46,7 @@ func TestRoutableDomain_DerivesTheSameKeyUnderBothRoots(t *testing.T) {
 		{"/kaname.cloud.iam.v1.AccountService/Get", "iam", true},
 		// Прежнее написание службы доступа: корень продукта сменился, и
 		// вызывающий прежней сборки не должен резолвиться никуда.
-		{"/kacho.cloud.iam.v1.AccountService/Get", "iam", true},
+		{"/kaname.cloud.iam.v1.AccountService/Get", "iam", true},
 		// Чужой корень — не наш словарь.
 		{"/example.cloud.iam.v1.AccountService/Get", "", false},
 		// Трёхсегментная форма: ключ выводиться НЕ должен.

@@ -67,7 +67,7 @@ const (
 	// каталог продукта.
 	catalogRelPath = "gateway/internal/middleware/embed/permission_catalog.json"
 	// modelRelPath — канонический текст модели прав.
-	modelRelPath = "proto/kacho/cloud/iam/v1/fga_model.fga"
+	modelRelPath = "proto/kaname/cloud/iam/v1/fga_model.fga"
 	// migrationsRelDir — применённые миграции iam: единственный источник
 	// системных ролей, а значит и правил, в которых живут устаревшие глаголы.
 	migrationsRelDir = "services/iam/internal/migrations"

@@ -79,7 +79,7 @@ func (x *GetSubnetRequest) GetSubnetId() string {
 type ListSubnetsRequest struct {
 	state protoimpl.MessageState `protogen:"open.v1"`
 	// ID of the project to list subnets in.
-	// To get the project ID use a [kacho.cloud.iam.v1.ProjectService.List] request.
+	// To get the project ID use a [kaname.cloud.iam.v1.ProjectService.List] request.
 	ProjectId string `protobuf:"bytes,1,opt,name=project_id,json=projectId,proto3" json:"project_id,omitempty"`
 	// The maximum number of results per page to return. If the number of available
 	// results is larger than [page_size],
@@ -225,7 +225,7 @@ func (x *ListSubnetsResponse) GetNextPageToken() string {
 type CreateSubnetRequest struct {
 	state protoimpl.MessageState `protogen:"open.v1"`
 	// ID of the project to create a subnet in.
-	// To get project ID use a [kacho.cloud.iam.v1.ProjectService.List] request.
+	// To get project ID use a [kaname.cloud.iam.v1.ProjectService.List] request.
 	ProjectId string `protobuf:"bytes,1,opt,name=project_id,json=projectId,proto3" json:"project_id,omitempty"`
 	// Name of the subnet.
 	// The name must be unique within the project.
