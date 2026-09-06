@@ -10,8 +10,8 @@
 //  1. Resolve principal from auth context (operations.PrincipalFromContext).
 //     Anonymous / system-bootstrap → Unauthenticated.
 //  2. (user only) Read user row from Postgres for email + display_name.
-//  3. FGA Check `system_admin@cluster:cluster_kacho_root`.
-//  4. FGA Check `viewer@cluster:cluster_kacho_root`.
+//  3. FGA Check `system_admin@cluster:cluster_root`.
+//  4. FGA Check `viewer@cluster:cluster_root`.
 //  5. Reader.Users().ListAccountsForUser → set of account ids.
 //  6. For each account: Reader.Accounts().Get + AccessBindings().ListBySubject
 //     (filtered to account-scope) → coarse role tags.

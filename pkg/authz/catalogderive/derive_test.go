@@ -69,7 +69,7 @@ func TestDeriveSubstitutesTheClusterSingleton(t *testing.T) {
 	ot, id, xerr := e.Extract(&storagev1.CreateDiskTypeRequest{})
 	require.NoError(t, xerr)
 	assert.Equal(t, "cluster", ot)
-	assert.Equal(t, "cluster_kacho_root", id)
+	assert.Equal(t, "cluster_root", id)
 }
 
 // TestDeriveCarriesTheScopeFilteredLane — полоса «сужает владелец» переносится

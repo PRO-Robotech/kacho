@@ -146,7 +146,7 @@ fi
 
 # ADMIN_JWT — credential for the cluster-internal AddressPool RPCs ONLY.
 # InternalAddressPoolService is authorized on the CLUSTER SINGLETON
-# (`cluster:cluster_kacho_root`, action vpc.address_pools.{list,create,…}), not on the
+# (`cluster:cluster_root`, action vpc.address_pools.{list,create,…}), not on the
 # caller's project/account: a project- or account-scoped grantor (e.g. the umbrella's
 # jwtAccountAdminA) gets a hard 403 "no authorization path to the resource" on both the
 # Create AND the reuse-probe List. When the probe 403s, the script cannot see the pool

@@ -74,7 +74,7 @@ const (
 // заведена миграцией: `system_admin` на синглтоне кластера.
 func clusterSuperGateFact(subject string) map[string]bool {
 	return map[string]bool{
-		subject + "|system_admin|" + "cluster:cluster_kacho_root": true,
+		subject + "|system_admin|" + "cluster:cluster_root": true,
 	}
 }
 
@@ -199,7 +199,7 @@ func TestOwnDoor_ObjectOutageIsNotOverriddenByTheSuperGate(t *testing.T) {
 	// заменяет. Проверяется ОБЪЁМ спрошенного, иначе «не разрешил» было бы
 	// неотличимо от «разрешил бы, да не успел».
 	for _, q := range store.asked {
-		if q == subject+"|system_admin|cluster:cluster_kacho_root" {
+		if q == subject+"|system_admin|cluster:cluster_root" {
 			t.Fatalf("надзор спрошен поверх неответившего объекта: %v", store.asked)
 		}
 	}

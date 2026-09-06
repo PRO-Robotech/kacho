@@ -7,7 +7,7 @@ package pg_test
 // сидит net-new system-роль `owner` (RBAC explicit-model).
 //
 // owner cluster-scoped system-role, rules `[{*,*,*}, selector all]`.
-//   - is_system = true, account_id NULL, cluster_id = cluster_kacho_root.
+//   - is_system = true, account_id NULL, cluster_id = cluster_root.
 //   - детерминированный id (`rol||md5('owner')[:17]`), идемпотентно на re-apply.
 //   - rules плоско-материализуемы: ScopeSelfVerbs(account) непуст (verb-bearing
 //     self), MaterializingSelectors непуст (ARM_ANCHOR forward на содержимое).

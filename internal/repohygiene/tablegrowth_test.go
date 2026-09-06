@@ -219,7 +219,7 @@ var tableGrowthRegistry = []TableGrowthDecl{
 	{
 		Owner: "services/iam", Table: "clusters",
 		Tempo: tempoOurs, Verdict: verdictBound,
-		Reason: "одна строка на установку: CHECK (id = 'cluster_kacho_root') второй не " +
+		Reason: "одна строка на установку: CHECK (id = 'cluster_root') второй не " +
 			"допускает. Кластер — синглтон, и это закреплено ограничением, а не " +
 			"соглашением",
 	},

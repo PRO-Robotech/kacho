@@ -7,7 +7,7 @@ package account
 // acceptance VBC-17 (Account.Delete owner-tuple cleanup, #234). Account.Delete
 // MUST symmetrically revoke the owner-binding's emitted-tuple ledger (owner
 // self-grant + owner-binding hierarchy pointer, like AccessBinding.Delete) AND
-// the SEC-L cluster-pointer (cluster:cluster_kacho_root#cluster@account:<A>),
+// the SEC-L cluster-pointer (cluster:cluster_root#cluster@account:<A>),
 // otherwise the FGA `define admin: … or owner` derivation leaves a dangling
 // owner-tuple → the ex-owner keeps standing admin on a deleted account (VBC-08
 // regression).
@@ -75,7 +75,7 @@ func TestAccountDelete_VBC17_OwnerTuplesRevoked(t *testing.T) {
 		case tp.Relation == "account" && tp.User == "account:"+delTestAcct &&
 			tp.Object == "iam_access_binding:"+delTestBind:
 			hierRevoked = true
-		case tp.Relation == "cluster" && tp.User == "cluster:cluster_kacho_root" &&
+		case tp.Relation == "cluster" && tp.User == "cluster:cluster_root" &&
 			tp.Object == "account:"+delTestAcct:
 			clusterRevoked = true
 		}

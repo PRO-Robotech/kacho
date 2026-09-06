@@ -7,7 +7,7 @@ package seed
 // to convergence.
 //
 // Why a loop (not a one-shot call): RunBootstrapAdmin grants
-// `system_admin@cluster_kacho_root` to the bootstrap user identified by
+// `system_admin@cluster_root` to the bootstrap user identified by
 // KANAME_BOOTSTRAP_ROOT_EMAIL and enqueues the FGA tuple into the
 // transactional fga_outbox. But the bootstrap user row only appears in
 // kaname.users on first login / fixture upsert (InternalUserService.

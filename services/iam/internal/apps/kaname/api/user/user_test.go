@@ -198,7 +198,7 @@ func TestUpsertFromIdentity_SECL_BootstrapEmitsClusterParentTuplesInTx(t *testin
 
 	var accountClusterSeen, projectClusterSeen, ownerSeen bool
 	for _, tup := range repo.fgaTuples() {
-		if tup.Relation == "cluster" && tup.User == "cluster:cluster_kacho_root" {
+		if tup.Relation == "cluster" && tup.User == "cluster:cluster_root" {
 			if strings.HasPrefix(tup.Object, "account:") {
 				accountClusterSeen = true
 			}
@@ -214,9 +214,9 @@ func TestUpsertFromIdentity_SECL_BootstrapEmitsClusterParentTuplesInTx(t *testin
 	assert.True(t, ownerSeen,
 		"bootstrap owner self-grant intent must be co-committed in-tx (D-4: not reconstructible)")
 	assert.True(t, accountClusterSeen,
-		"SEC-L: bootstrap must co-commit account:<id>#cluster@cluster:cluster_kacho_root in-tx")
+		"SEC-L: bootstrap must co-commit account:<id>#cluster@cluster:cluster_root in-tx")
 	assert.True(t, projectClusterSeen,
-		"SEC-L: bootstrap must co-commit project:<id>#cluster@cluster:cluster_kacho_root in-tx")
+		"SEC-L: bootstrap must co-commit project:<id>#cluster@cluster:cluster_root in-tx")
 }
 
 // ── fakes ────────────────────────────────────────────────────────────────

@@ -88,7 +88,7 @@ func TestScopeAdminOutageIsNotADenial(t *testing.T) {
 // разный у двух отказов.
 func TestGrantAuthorityOutageIsUnavailableNotDenied(t *testing.T) {
 	t.Run("хранилище не ответило", func(t *testing.T) {
-		err := requireGrantAuthority(principalCtx(), nil, &outageStore{}, "cluster", "cluster_kacho_root")
+		err := requireGrantAuthority(principalCtx(), nil, &outageStore{}, "cluster", "cluster_root")
 		require.Error(t, err)
 		require.Equal(t, codes.Unavailable, grpcstatus.Code(err),
 			"«спросить не удалось» обязано быть отличимо от «не положено»: дренаж очередей "+
@@ -96,7 +96,7 @@ func TestGrantAuthorityOutageIsUnavailableNotDenied(t *testing.T) {
 	})
 
 	t.Run("хранилище ответило нет", func(t *testing.T) {
-		err := requireGrantAuthority(principalCtx(), nil, &denyStore{}, "cluster", "cluster_kacho_root")
+		err := requireGrantAuthority(principalCtx(), nil, &denyStore{}, "cluster", "cluster_root")
 		require.Error(t, err)
 		require.Equal(t, codes.PermissionDenied, grpcstatus.Code(err),
 			"отказ в правах остаётся отказом — иначе недоступность поглотила бы его")

@@ -752,7 +752,7 @@ type WhoAmIResponse struct {
 	// the user row has no explicit display name.
 	DisplayName string `protobuf:"bytes,4,opt,name=display_name,json=displayName,proto3" json:"display_name,omitempty"`
 	// True when the caller holds `system_admin` on the singleton cluster
-	// object (`cluster:cluster_kacho_root`). Bypasses every per-resource
+	// object (`cluster:cluster_root`). Bypasses every per-resource
 	// authz check at the api-gateway middleware (internal
 	// admin RPCs gate on this).
 	SystemAdmin bool `protobuf:"varint,5,opt,name=system_admin,json=systemAdmin,proto3" json:"system_admin,omitempty"`

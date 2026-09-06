@@ -221,7 +221,7 @@ func seedWithdrawalFixture(t *testing.T, db *sql.DB) {
 	perms := `["` + module + `.` + resource + `.*.` + verb + `"]`
 	_, err := db.Exec(`
 		INSERT INTO kaname.roles (id, cluster_id, name, description, permissions, rules, owner_module)
-		VALUES ('rol_rw_probe', 'cluster_kacho_root', $1, '', $3::jsonb, '[]'::jsonb, $2)`,
+		VALUES ('rol_rw_probe', 'cluster_root', $1, '', $3::jsonb, '[]'::jsonb, $2)`,
 		module+".rwprobe", module, perms)
 	require.NoError(t, err, "фикстура роли не легла")
 
@@ -273,7 +273,7 @@ func seedTargetMemberFixture(db *sql.DB) error {
 		INSERT INTO kaname.access_bindings
 		       (id, subject_type, subject_id, role_id, resource_type, resource_id, status)
 		VALUES ('acb_rw_probe', 'user', 'usr_rw_probe', 'rol_rw_probe', 'cluster',
-		        'cluster_kacho_root', 'ACTIVE')`,
+		        'cluster_root', 'ACTIVE')`,
 	); err != nil {
 		return err
 	}
@@ -324,7 +324,7 @@ func TestIntegration_NewGrantOnARetiredRoleIsRefused(t *testing.T) {
 		INSERT INTO kaname.access_bindings
 		       (id, subject_type, subject_id, role_id, resource_type, resource_id, status)
 		VALUES ('acb_rw_new', 'user', 'usr_rw_probe', 'rol_rw_probe', 'cluster',
-		        'cluster_kacho_root', 'ACTIVE')`)
+		        'cluster_root', 'ACTIVE')`)
 	require.Error(t, err, "новая выдача на снятую роль прошла: продукт обещает право, "+
 		"которого не даёт")
 	require.Contains(t, err.Error(), "23000",
@@ -344,7 +344,7 @@ func TestIntegration_NewGrantOnARetiredRoleIsRefused(t *testing.T) {
 		INSERT INTO kaname.access_bindings
 		       (id, subject_type, subject_id, role_id, resource_type, resource_id, status)
 		VALUES ('acb_rw_live', 'user', 'usr_rw_probe', $1, 'cluster',
-		        'cluster_kacho_root', 'ACTIVE')`, liveRole)
+		        'cluster_root', 'ACTIVE')`, liveRole)
 	require.NoError(t, err,
 		"выдача на ЖИВУЮ роль отвергнута: страж отвергает всё, и отрицание выше "+
 			"зеленело бы на сломанном")

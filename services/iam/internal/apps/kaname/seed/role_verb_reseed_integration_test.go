@@ -56,7 +56,7 @@ import (
 )
 
 // reseedProbeCluster — якорь, по которому роль считается системной.
-const reseedProbeCluster = "cluster_kacho_root"
+const reseedProbeCluster = "cluster_root"
 
 // materializingRules — правило, дающее непустой набор пар. Модуль и ресурс взяты
 // из каталога платформы: правило вне каталога инертно целиком, и проба на нём

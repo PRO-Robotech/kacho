@@ -97,11 +97,11 @@ func countFacts(t *testing.T, ctx context.Context, tx pgx.Tx, objectType, relati
 func TestAsk_RightThatLivesOnlyAsARelationTupleIsAnswered(t *testing.T) {
 	withTx(t, func(ctx context.Context, tx pgx.Tx) {
 		enqueueTuple(t, ctx, tx, "fga.tuple.write",
-			"service_account:sva-mod", "fga_writer", "cluster:cluster_kacho_root")
+			"service_account:sva-mod", "fga_writer", "cluster:cluster_root")
 
 		got, _, err := relverdict.Ask(ctx, tx, relverdict.Query{
 			Subject: "service_account:sva-mod", ObjectType: "cluster",
-			ObjectID: "cluster_kacho_root", Relation: "fga_writer",
+			ObjectID: "cluster_root", Relation: "fga_writer",
 		})
 		if err != nil {
 			t.Fatalf("запрос: %v", err)
@@ -116,7 +116,7 @@ func TestAsk_RightThatLivesOnlyAsARelationTupleIsAnswered(t *testing.T) {
 		// зеленело бы и на проекции, разрешающей всем.
 		other, _, err := relverdict.Ask(ctx, tx, relverdict.Query{
 			Subject: "service_account:sva-other", ObjectType: "cluster",
-			ObjectID: "cluster_kacho_root", Relation: "fga_writer",
+			ObjectID: "cluster_root", Relation: "fga_writer",
 		})
 		if err != nil {
 			t.Fatalf("запрос: %v", err)
@@ -131,11 +131,11 @@ func TestAsk_RightThatLivesOnlyAsARelationTupleIsAnswered(t *testing.T) {
 func TestAsk_WithdrawnRelationTupleStopsAnswering(t *testing.T) {
 	withTx(t, func(ctx context.Context, tx pgx.Tx) {
 		enqueueTuple(t, ctx, tx, "fga.tuple.write",
-			"user:usr-1", "system_viewer", "cluster:cluster_kacho_root")
+			"user:usr-1", "system_viewer", "cluster:cluster_root")
 
 		granted, _, err := relverdict.Ask(ctx, tx, relverdict.Query{
 			Subject: "user:usr-1", ObjectType: "cluster",
-			ObjectID: "cluster_kacho_root", Relation: "system_viewer",
+			ObjectID: "cluster_root", Relation: "system_viewer",
 		})
 		if err != nil {
 			t.Fatalf("запрос: %v", err)
@@ -147,11 +147,11 @@ func TestAsk_WithdrawnRelationTupleStopsAnswering(t *testing.T) {
 		}
 
 		enqueueTuple(t, ctx, tx, "fga.tuple.delete",
-			"user:usr-1", "system_viewer", "cluster:cluster_kacho_root")
+			"user:usr-1", "system_viewer", "cluster:cluster_root")
 
 		revoked, _, err := relverdict.Ask(ctx, tx, relverdict.Query{
 			Subject: "user:usr-1", ObjectType: "cluster",
-			ObjectID: "cluster_kacho_root", Relation: "system_viewer",
+			ObjectID: "cluster_root", Relation: "system_viewer",
 		})
 		if err != nil {
 			t.Fatalf("запрос: %v", err)

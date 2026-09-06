@@ -11,7 +11,7 @@ package project
 // строку (`create_test.go`, `TestCreateProject_SECL_EmitsHierarchyAndClusterTupleInTx`):
 //
 //	account:<A>              --account--> project:<P>
-//	cluster:cluster_kacho_root --cluster--> project:<P>
+//	cluster:cluster_root --cluster--> project:<P>
 //
 // Снятие убирало строку и писало запись аудита — и ничего больше. Кортежи
 // оставались: и в движке отношений, и в проекции журнала (`relation_fact`), из
@@ -90,7 +90,7 @@ func TestDeleteProject_EmitsStructuralTupleDeletesInTx(t *testing.T) {
 			"предка проекта из проекции журнала, и выдача на аккаунт продолжит доходить "+
 			"до объектов под проектом, которого нет")
 	assert.True(t,
-		hasTuple(deletes, "cluster:cluster_kacho_root", "cluster", "project:"+id),
+		hasTuple(deletes, "cluster:cluster_root", "cluster", "project:"+id),
 		"указатель проекта на кластер пережил снятие: удалённый проект остаётся под "+
 			"администратором облака")
 }

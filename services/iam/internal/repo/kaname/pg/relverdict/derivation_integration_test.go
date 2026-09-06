@@ -48,7 +48,7 @@ func seedChain(t *testing.T, ctx context.Context, tx pgx.Tx) {
 		   (object_type, object_id, parent_type, parent_id, depth)
 		 VALUES ('vpc_network', 'net-1', 'project', 'prj-1', 1),
 		        ('project',     'prj-1', 'account', 'acc-1', 1),
-		        ('account',     'acc-1', 'cluster', 'cluster_kacho_root', 1)`)
+		        ('account',     'acc-1', 'cluster', 'cluster_root', 1)`)
 }
 
 func ask(t *testing.T, ctx context.Context, tx pgx.Tx, subject, relation string) relverdict.Verdict {
@@ -69,7 +69,7 @@ func TestAsk_CloudAdministratorReachesTheLeaf(t *testing.T) {
 		seedChain(t, ctx, tx)
 		exec(t, ctx, tx,
 			`INSERT INTO kaname.relation_fact (object_type, object_id, relation, subject)
-			 VALUES ('cluster', 'cluster_kacho_root', 'system_admin', 'user:usr-admin')`)
+			 VALUES ('cluster', 'cluster_root', 'system_admin', 'user:usr-admin')`)
 
 		if got := ask(t, ctx, tx, "user:usr-admin", "v_get"); got != relverdict.Allow {
 			t.Errorf("администратор облака не достал до листа: %s. Строка лежит на кластере "+

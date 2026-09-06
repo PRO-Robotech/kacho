@@ -104,7 +104,7 @@ func ownerBindingHierarchyTuples(a domain.Account, bindingID domain.AccessBindin
 //   - the owner self-grant  user:<owner>#owner@account:<A>
 //   - the hierarchy pointer account:<A>#account@iam_access_binding:<bindingID>
 //
-// The SEC-L cluster pointer (cluster:cluster_kacho_root#cluster@account:<A>) is
+// The SEC-L cluster pointer (cluster:cluster_root#cluster@account:<A>) is
 // DELIBERATELY excluded — it is ACCOUNT-lifecycle (mirrored by Project.Create / user
 // upsert; ties the account to the cluster root) and MUST survive an owner-binding
 // revoke, so it is not part of the owner-binding's revoke set. The reconciler-
@@ -337,7 +337,7 @@ func (u *CreateAccountUseCase) doCreate(ctx context.Context, a domain.Account, d
 	// (SEC-D):
 	//   user:<owner>#owner@account:<id>          — owner self-grant (D-4: NOT
 	//     reconstructible by the reconciler ⇒ in-tx emit is the ONLY guarantee).
-	//   cluster:cluster_kacho_root#cluster@account:<id> — SEC-L cluster pointer.
+	//   cluster:cluster_root#cluster@account:<id> — SEC-L cluster pointer.
 	if ferr := w.EmitFGARelationWrite(ctx, ownerTuples(inserted)); ferr != nil {
 		return nil, shared.MapRepoErr(ferr)
 	}

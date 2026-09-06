@@ -100,7 +100,7 @@ func seedModuleWithLiveRole(t *testing.T, db *sql.DB) {
 	_, err = db.Exec(`
 		INSERT INTO kaname.roles
 		       (id, cluster_id, name, description, permissions, owner_module, created_at)
-		VALUES ($1, 'cluster_kacho_root', $2, 'проба #2026',
+		VALUES ($1, 'cluster_root', $2, 'проба #2026',
 		        '["t2probe.thing.*.get"]'::jsonb, $3, now())`,
 		livenessTestRole, livenessTestModule+".viewer", livenessTestModule)
 	require.NoError(t, err, "живая роль своего модуля")
@@ -379,7 +379,7 @@ func TestIntegration_PlatformRoleIsUntouchedByTheLivenessKey(t *testing.T) {
 	_, err := db.Exec(`
 		INSERT INTO kaname.roles
 		       (id, cluster_id, name, description, permissions, created_at)
-		VALUES ('rol_2026_platform_probe', 'cluster_kacho_root', 'probe-platform',
+		VALUES ('rol_2026_platform_probe', 'cluster_root', 'probe-platform',
 		        'платформенная роль пробы', '["iam.role.*.get"]'::jsonb, now())`)
 	require.NoError(t, err,
 		"платформенная роль отвергнута: ключ шире своего предмета — он судит "+

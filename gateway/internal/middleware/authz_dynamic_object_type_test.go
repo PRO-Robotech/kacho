@@ -73,7 +73,7 @@ func TestAuthz_HTTP_ListByScope_ClusterScope_DerivesObjectType(t *testing.T) {
 	})
 	h := mw.HTTP(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) { w.WriteHeader(http.StatusOK) }))
 	r := httptest.NewRequest(http.MethodGet,
-		"/iam/v1/accessBindings:listByScope?resourceType=cluster&resourceId=cluster_kacho_root", nil)
+		"/iam/v1/accessBindings:listByScope?resourceType=cluster&resourceId=cluster_root", nil)
 	r.Header.Set("X-Kacho-Principal-Id", "usr_boot")
 	r.Header.Set("X-Kacho-Principal-Type", "user")
 	r.Header.Set("X-Kacho-Token-Acr", "2")
@@ -85,7 +85,7 @@ func TestAuthz_HTTP_ListByScope_ClusterScope_DerivesObjectType(t *testing.T) {
 	require.NotNil(t, in)
 	assert.Equal(t, "cluster", in.ResourceType,
 		"FGA object_type must be derived from request resource_type=cluster (Bug A)")
-	assert.Equal(t, "cluster_kacho_root", in.ResourceID)
+	assert.Equal(t, "cluster_root", in.ResourceID)
 }
 
 func TestAuthz_GRPC_ListByScope_AccountScope_DerivesObjectType(t *testing.T) {
@@ -148,7 +148,7 @@ func TestAuthz_HTTP_ListAssignableRoles_ClusterScope_DerivesObjectType(t *testin
 	})
 	h := mw.HTTP(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) { w.WriteHeader(http.StatusOK) }))
 	r := httptest.NewRequest(http.MethodGet,
-		"/iam/v1/accessBindings:listAssignableRoles?resourceType=cluster&resourceId=cluster_kacho_root", nil)
+		"/iam/v1/accessBindings:listAssignableRoles?resourceType=cluster&resourceId=cluster_root", nil)
 	r.Header.Set("X-Kacho-Principal-Id", "usr_boot")
 	r.Header.Set("X-Kacho-Principal-Type", "user")
 	r.Header.Set("X-Kacho-Token-Acr", "2")
@@ -160,7 +160,7 @@ func TestAuthz_HTTP_ListAssignableRoles_ClusterScope_DerivesObjectType(t *testin
 	require.NotNil(t, in)
 	assert.Equal(t, "cluster", in.ResourceType,
 		"FGA object_type must be derived from request resource_type=cluster (scope-polymorphic, D-5)")
-	assert.Equal(t, "cluster_kacho_root", in.ResourceID)
+	assert.Equal(t, "cluster_root", in.ResourceID)
 }
 
 func TestAuthz_GRPC_ListAssignableRoles_AccountScope_DerivesObjectType(t *testing.T) {

@@ -51,8 +51,8 @@ func TestValidateTuple(t *testing.T) {
 		wantCode     verdict // accepted → ожидаем nil
 	}{
 		// Привилегия-эскалация: vpc-SA пытается выписать cluster-admin.
-		{"vpc mints cluster system_admin", "vpc", "service_account:sva1", "system_admin", "cluster:cluster_kacho_root", refused},
-		{"vpc mints cluster admin", "vpc", "service_account:sva1", "admin", "cluster:cluster_kacho_root", refused},
+		{"vpc mints cluster system_admin", "vpc", "service_account:sva1", "system_admin", "cluster:cluster_root", refused},
+		{"vpc mints cluster admin", "vpc", "service_account:sva1", "admin", "cluster:cluster_root", refused},
 		// Privilege relation на своем же объекте — тоже запрещено (только hierarchy).
 		{"vpc editor on own object", "vpc", "user:usr1", "editor", "vpc_network:net1", refused},
 		{"vpc viewer on own object", "vpc", "user:usr1", "viewer", "vpc_network:net1", refused},
@@ -64,7 +64,7 @@ func TestValidateTuple(t *testing.T) {
 		{"vpc writes compute object", "vpc", "user:usr1", "owner", "compute_instance:inst1", refused},
 		{"vpc writes project object", "vpc", "project:prj1", "owner", "project:prj1", refused},
 		// cluster object запрещен даже c hierarchy-relation и даже без известного домена (dev-mode).
-		{"hierarchy relation but cluster object", "", "service_account:sva1", "project", "cluster:cluster_kacho_root", refused},
+		{"hierarchy relation but cluster object", "", "service_account:sva1", "project", "cluster:cluster_root", refused},
 		// Легитимные owner-hierarchy tuple — проходят.
 		{"vpc registers network under project", "vpc", "project:prj1", "project", "vpc_network:net1", accepted},
 		{"compute registers instance under project", "compute", "project:prj1", "project", "compute_instance:inst1", accepted},

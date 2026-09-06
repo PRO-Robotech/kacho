@@ -57,7 +57,7 @@ func TestFGAOutboxEmitter_EmitWriteTx_AppendsRowsAtomically(t *testing.T) {
 	// Read back: expect 2 rows, event_type='fga.tuple.write', payload matches input.
 	// Scope to test-created rows: exclude every migration-seeded relation-tuple —
 	// the SEC-C fga_writer tuples (object `iam_fgaproxy:system`, 0009) and the
-	// cluster-root seeds (object `cluster:cluster_kacho_root`: SEC-L operator
+	// cluster-root seeds (object `cluster:cluster_root`: SEC-L operator
 	// 0010, 5.1 reader SAs 0014).
 	// Отбор ПО СВОИМ объектам, а не «всё, кроме известного посева».
 	//

@@ -6,7 +6,7 @@ package reconcile
 // scope_self_cluster_guard_test.go — RBAC explicit-model 2026 P5 (Q-2 / D-9 guard).
 //
 // The cluster scope-self path is INTENTIONALLY dead: cluster super-admin is served
-// by the D-9 flat short-circuit (cluster:cluster_kacho_root#system_admin), NOT by a
+// by the D-9 flat short-circuit (cluster:cluster_root#system_admin), NOT by a
 // per-object scope-self tuple. scopeSelfMember gates on fgaObjectType("iam.cluster")
 // which is NOT in the objectTypes registry, so a cluster scope NEVER materializes a
 // per-object scope-self member.
@@ -25,7 +25,7 @@ import (
 func TestScopeSelfMember_Cluster_EmitsNothing(t *testing.T) {
 	// A full superuser verb-set on the cluster scope must STILL produce no
 	// scope-self member — cluster is owned by the D-9 short-circuit.
-	_, ok := scopeSelfMember(catalogfixture.Facts(), "user:usr_root", "cluster", "cluster_kacho_root",
+	_, ok := scopeSelfMember(catalogfixture.Facts(), "user:usr_root", "cluster", "cluster_root",
 		[]string{"get", "list", "create", "update", "delete"})
 	if ok {
 		t.Fatalf("cluster scope-self must NOT materialize a per-object member (D-9 short-circuit owns cluster super-admin)")

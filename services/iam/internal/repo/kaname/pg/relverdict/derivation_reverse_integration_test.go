@@ -73,8 +73,8 @@ func seedTwoAccountsChain(t *testing.T, ctx context.Context, tx pgx.Tx, nets []s
 		   (object_type, object_id, parent_type, parent_id, depth)
 		 VALUES ('project', 'prj-1', 'account', 'acc-1', 1),
 		        ('project', 'prj-9', 'account', 'acc-2', 1),
-		        ('account', 'acc-1', 'cluster', 'cluster_kacho_root', 1),
-		        ('account', 'acc-2', 'cluster', 'cluster_kacho_root', 1)`)
+		        ('account', 'acc-1', 'cluster', 'cluster_root', 1),
+		        ('account', 'acc-2', 'cluster', 'cluster_root', 1)`)
 	for _, id := range nets {
 		exec(t, ctx, tx,
 			`INSERT INTO kaname.resource_mirror (object_type, object_id) VALUES ($2, $1)`,
@@ -100,7 +100,7 @@ func seedCloudAdminAndForeignOwner(t *testing.T, ctx context.Context, tx pgx.Tx)
 	t.Helper()
 	exec(t, ctx, tx,
 		`INSERT INTO kaname.relation_fact (object_type, object_id, relation, subject)
-		 VALUES ('cluster', 'cluster_kacho_root', 'system_admin', 'user:usr-admin'),
+		 VALUES ('cluster', 'cluster_root', 'system_admin', 'user:usr-admin'),
 		        ('account', 'acc-2',              'owner',        'user:usr-outsider')`)
 }
 
@@ -303,7 +303,7 @@ func TestExpand_NamesTheDerivedGroundAndWhereItLies(t *testing.T) {
 		if derived.Kind != "fact" {
 			t.Errorf("вид основания %q, ожидался fact: %+v", derived.Kind, *derived)
 		}
-		if derived.ScopeType != "cluster" || derived.ScopeID != "cluster_kacho_root" {
+		if derived.ScopeType != "cluster" || derived.ScopeID != "cluster_root" {
 			t.Errorf("основание названо без места, где лежит (%+v) — снять его негде: на самом "+
 				"объекте такой строки нет", *derived)
 		}

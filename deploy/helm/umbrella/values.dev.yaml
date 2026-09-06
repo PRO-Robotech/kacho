@@ -1637,7 +1637,7 @@ kaname:
     # returns Unimplemented and the handler-side scope-filter fails 503.
     KACHO_AUTHZ_LISTOBJECTS: "on"
     # Bug B fix: bootstrap cluster-admin. kaname's startup reconciler grants
-    # `system_admin@cluster_kacho_root` to this user and enqueues the FGA tuple
+    # `system_admin@cluster_root` to this user and enqueues the FGA tuple
     # via the transactional fga_outbox (replacing the former setup.sh SQL-seed
     # backdoor that bypassed the drainer). The user row is mirrored on first
     # fixture upsert; the reconciler retries until the grant commits. The

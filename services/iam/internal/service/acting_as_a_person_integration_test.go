@@ -132,7 +132,7 @@ func TestIssuingAPersonalTokenIsNotReachableFromInsideTheAccount(t *testing.T) {
 	// Сам человек. Кортеж пишется на заведении пользователя (internal_upsert.go).
 	w.factThroughJournal(t, "user:"+invitee, "subject", "iam_user", invitee)
 	// Уровень 1.
-	w.factThroughJournal(t, "user:"+cloudAdmin, "system_admin", "cluster", "cluster_kacho_root")
+	w.factThroughJournal(t, "user:"+cloudAdmin, "system_admin", "cluster", "cluster_root")
 
 	issueRel, issueType := actingAsGateFromCatalog(t, "kacho.cloud.iam.v1.UserTokenService/Issue")
 	revokeRel, revokeType := actingAsGateFromCatalog(t, "kacho.cloud.iam.v1.UserTokenService/Revoke")
@@ -277,7 +277,7 @@ func seedRoleGrantingUserRead(t *testing.T, w *ciWorld, roleID, bindingID, subje
 	                   jsonb_build_array(jsonb_build_object(
 	                       'module', 'iam', 'resources', jsonb_build_array('user'),
 	                       'verbs',  jsonb_build_array('get'))),
-	                   'cluster_kacho_root')`, roleID)
+	                   'cluster_root')`, roleID)
 	// Тип — в ТОЧЕЧНОЙ форме каталога: именно так его кладёт прод, и именно так
 	// его читает вопрос о доступе.
 	w.exec(t, `INSERT INTO kaname.role_verb (role_id, object_type, verb)

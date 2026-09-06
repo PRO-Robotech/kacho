@@ -27,19 +27,19 @@ const (
 
 // A Cluster resource — singleton root of the Kachō identity hierarchy.
 //
-// Exactly one Cluster row exists, with literal id `cluster_kacho_root` (enforced
+// Exactly one Cluster row exists, with literal id `cluster_root` (enforced
 // by DB-level CHECK + BEFORE INSERT trigger).
 // Used as the root object of the authorization model for cluster-admin grants
-// (`cluster:cluster_kacho_root#system_admin@user:...`).
+// (`cluster:cluster_root#system_admin@user:...`).
 //
 // Identity hierarchy: cluster → account → project → resource. Each downstream
 // level is owned by `kacho-iam` (account / project) or by domain services
 // (vpc / compute / loadbalancer).
 //
-// Resource id: literal `cluster_kacho_root` (not a Crockford-postfix id).
+// Resource id: literal `cluster_root` (not a Crockford-postfix id).
 type Cluster struct {
 	state protoimpl.MessageState `protogen:"open.v1"`
-	// ID of the cluster. Must be the literal `cluster_kacho_root`.
+	// ID of the cluster. Must be the literal `cluster_root`.
 	Id string `protobuf:"bytes,1,opt,name=id,proto3" json:"id,omitempty"`
 	// Display name of the cluster singleton. Output-only: the value is written by
 	// the seed migration and no RPC of this service changes it.

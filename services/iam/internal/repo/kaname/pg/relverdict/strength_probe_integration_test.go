@@ -222,7 +222,7 @@ func newStrFixture(t *testing.T, ctx context.Context, tx pgx.Tx) *strFixture {
 	t.Helper()
 	f := &strFixture{tx: tx, shareSeeded: -1}
 
-	exec(t, ctx, tx, `INSERT INTO kaname.clusters (id, name) VALUES ('cluster_kacho_root', 'kacho')
+	exec(t, ctx, tx, `INSERT INTO kaname.clusters (id, name) VALUES ('cluster_root', 'kacho')
 		 ON CONFLICT DO NOTHING`)
 	exec(t, ctx, tx,
 		`INSERT INTO kaname.accounts (id, name, owner_user_id) VALUES ('acc-1', 'strength-account', $1)`,
@@ -285,7 +285,7 @@ func strSeedRole(t *testing.T, ctx context.Context, tx pgx.Tx, roleID, roleName 
 		         jsonb_build_array(jsonb_build_object(
 		             'module', 'probe', 'resources', jsonb_build_array('*'),
 		             'verbs',  jsonb_build_array($3::text))),
-		         'cluster_kacho_root')`, roleID, roleName, strVerb)
+		         'cluster_root')`, roleID, roleName, strVerb)
 	exec(t, ctx, tx,
 		`INSERT INTO kaname.role_verb (role_id, object_type, verb) VALUES ($1, $2, $3)`,
 		roleID, strCatalogType, strVerb)

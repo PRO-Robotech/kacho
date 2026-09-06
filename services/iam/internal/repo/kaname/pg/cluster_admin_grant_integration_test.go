@@ -169,15 +169,15 @@ func countOutboxByEvent(t *testing.T, ctx context.Context, pool *pgxpool.Pool, e
 	var n int
 	// Count ONLY the cluster-admin grant/revoke tuples these tests emit — they
 	// all carry relation `system_admin` AND a `user:<id>` subject (object
-	// `cluster:cluster_kacho_root` via fgaTuplesGrantSystemAdmin). Discriminating
+	// `cluster:cluster_root` via fgaTuplesGrantSystemAdmin). Discriminating
 	// on relation alone is no longer enough: migration 0058 seeds a
 	// `system_admin` tuple of its own for the bootstrap ServiceAccount
 	// (`service_account:<sva>` on the same object), so the subject-prefix
 	// predicate is what keeps these counts exact. The other migration-seeded
 	// tuples use DIFFERENT relations and are excluded by the relation predicate:
 	// 0009 `fga_writer`@iam_fgaproxy:system, 0010 (operator) + 0014 (reader SAs)
-	// `system_viewer`@cluster:cluster_kacho_root. A prior object-blocklist
-	// (`object NOT IN (…, 'cluster:cluster_kacho_root')`) wrongly excluded the
+	// `system_viewer`@cluster:cluster_root. A prior object-blocklist
+	// (`object NOT IN (…, 'cluster:cluster_root')`) wrongly excluded the
 	// test's OWN system_admin grants too (they share that object), so the
 	// assertions counted 0 — hence discriminating on relation+user, not object.
 	require.NoError(t, pool.QueryRow(ctx,

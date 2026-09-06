@@ -321,7 +321,7 @@ run "cluster_anchor_is_rejected" {
   command = plan
 
   variables {
-    scope = { type = "iam.cluster", id = "cluster_kacho_root" }
+    scope = { type = "iam.cluster", id = "cluster_root" }
   }
 
   expect_failures = [var.scope]

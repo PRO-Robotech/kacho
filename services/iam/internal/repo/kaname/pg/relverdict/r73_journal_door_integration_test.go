@@ -67,7 +67,7 @@ func TestR7_3_27_JournalSurvivesTheDrainRemoval(t *testing.T) {
 	const (
 		subject    = "user:usr_r73journaldoor"
 		objectType = "cluster"
-		objectID   = "cluster_kacho_root"
+		objectID   = "cluster_root"
 		relation   = "system_admin"
 	)
 	object := objectType + ":" + objectID

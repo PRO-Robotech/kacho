@@ -57,7 +57,7 @@ func withdrawalManifest(t *testing.T, module string, roleIDs ...string) *manifes
     description: "Admin probe role for withdrawal"
     tier:
       tierType: iam.cluster
-      tierId: cluster_kacho_root
+      tierId: cluster_root
     rules:
       - module: %s
         resources: [%s]

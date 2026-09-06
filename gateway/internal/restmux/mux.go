@@ -831,7 +831,7 @@ func NewMux(
 			// /iam/v1/internal/cluster/...  Internal-only;
 			// isInternalRoute sends these paths to the internal sub-mux. Catalog gate
 			// (`required_relation: admin`) enforces the FGA computed-alias
-			// `system_admin OR emergency_admin` on `cluster:cluster_kacho_root`.
+			// `system_admin OR emergency_admin` on `cluster:cluster_root`.
 			if err := iampb.RegisterInternalClusterServiceHandlerFromEndpoint(ctx, mux, iamInternalAddr, optsFor("iamInternal")); err != nil {
 				return nil, fmt.Errorf("register iam InternalClusterService: %w", err)
 			}
@@ -843,7 +843,7 @@ func NewMux(
 			// dispatcher 404s them on the external TLS listener, hiding
 			// existence. Registering a client at the identity provider decides
 			// where an authorization code may be delivered, so the catalog gate
-			// requires `system_admin` on `cluster:cluster_kacho_root` and the
+			// requires `system_admin` on `cluster:cluster_root` and the
 			// three mutations additionally carry the step-up floor acr=2.
 			if err := iampb.RegisterInternalInteractiveClientServiceHandlerFromEndpoint(ctx, mux, iamInternalAddr, optsFor("iamInternal")); err != nil {
 				return nil, fmt.Errorf("register iam InternalInteractiveClientService: %w", err)
@@ -854,7 +854,7 @@ func NewMux(
 			// Internal-only; isInternalRoute sends these paths to the internal
 			// sub-mux and the dispatcher 404s them on the external TLS listener,
 			// hiding existence. The five CRUD verbs are catalog-gated on
-			// `system_admin` @ cluster:cluster_kacho_root (mutations additionally
+			// `system_admin` @ cluster:cluster_root (mutations additionally
 			// at acr=2); the two reads carry the NARROW `quota_reader` relation,
 			// because an owner service must not need the whole cluster read tier
 			// to learn its tenant's ceiling.
@@ -868,7 +868,7 @@ func NewMux(
 			// listener. The gRPC router's HasInternalSuffix also blocks the
 			// InternalOperationsService suffix on the public listener.
 			// admin-tier is enforced by the permission-catalog entry
-			// (required_relation: system_admin, scope cluster:cluster_kacho_root, acr 2),
+			// (required_relation: system_admin, scope cluster:cluster_root, acr 2),
 			// parity with InternalClusterService/*; the iam :9091 backend additionally
 			// runs its own per-RPC authz-Check.
 			if err := iampb.RegisterInternalOperationsServiceHandlerFromEndpoint(ctx, mux, iamInternalAddr, optsFor("iamInternal")); err != nil {

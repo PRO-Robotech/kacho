@@ -792,7 +792,7 @@ roles:
     description: "Admin AccessBinding"
     tier:
       tierType: iam.cluster
-      tierId: cluster_kacho_root
+      tierId: cluster_root
     rules:
       - module: iam
         resources: [accessBinding]
@@ -802,7 +802,7 @@ roles:
     description: "Edit AccessBinding"
     tier:
       tierType: iam.cluster
-      tierId: cluster_kacho_root
+      tierId: cluster_root
     rules:
       - module: iam
         resources: [accessBinding]
@@ -812,7 +812,7 @@ roles:
     description: "Read AccessBinding"
     tier:
       tierType: iam.cluster
-      tierId: cluster_kacho_root
+      tierId: cluster_root
     rules:
       - module: iam
         resources: [accessBinding]
@@ -822,7 +822,7 @@ roles:
     description: "Admin Account (CRUD)"
     tier:
       tierType: iam.cluster
-      tierId: cluster_kacho_root
+      tierId: cluster_root
     rules:
       - module: iam
         resources: [account]
@@ -832,7 +832,7 @@ roles:
     description: "Edit Account (update only)"
     tier:
       tierType: iam.cluster
-      tierId: cluster_kacho_root
+      tierId: cluster_root
     rules:
       - module: iam
         resources: [account]
@@ -842,7 +842,7 @@ roles:
     description: "Read Account"
     tier:
       tierType: iam.cluster
-      tierId: cluster_kacho_root
+      tierId: cluster_root
     rules:
       - module: iam
         resources: [account]
@@ -852,7 +852,7 @@ roles:
     description: "Admin Group"
     tier:
       tierType: iam.cluster
-      tierId: cluster_kacho_root
+      tierId: cluster_root
     rules:
       - module: iam
         resources: [group]
@@ -862,7 +862,7 @@ roles:
     description: "Edit Group"
     tier:
       tierType: iam.cluster
-      tierId: cluster_kacho_root
+      tierId: cluster_root
     rules:
       - module: iam
         resources: [group]
@@ -872,7 +872,7 @@ roles:
     description: "Read Group"
     tier:
       tierType: iam.cluster
-      tierId: cluster_kacho_root
+      tierId: cluster_root
     rules:
       - module: iam
         resources: [group]
@@ -882,7 +882,7 @@ roles:
     description: "Admin Project"
     tier:
       tierType: iam.cluster
-      tierId: cluster_kacho_root
+      tierId: cluster_root
     rules:
       - module: iam
         resources: [project]
@@ -892,7 +892,7 @@ roles:
     description: "Edit Project"
     tier:
       tierType: iam.cluster
-      tierId: cluster_kacho_root
+      tierId: cluster_root
     rules:
       - module: iam
         resources: [project]
@@ -902,7 +902,7 @@ roles:
     description: "Read Project"
     tier:
       tierType: iam.cluster
-      tierId: cluster_kacho_root
+      tierId: cluster_root
     rules:
       - module: iam
         resources: [project]
@@ -912,7 +912,7 @@ roles:
     description: "Admin Role catalog"
     tier:
       tierType: iam.cluster
-      tierId: cluster_kacho_root
+      tierId: cluster_root
     rules:
       - module: iam
         resources: [role]
@@ -922,7 +922,7 @@ roles:
     description: "Edit Role"
     tier:
       tierType: iam.cluster
-      tierId: cluster_kacho_root
+      tierId: cluster_root
     rules:
       - module: iam
         resources: [role]
@@ -932,7 +932,7 @@ roles:
     description: "Read Role"
     tier:
       tierType: iam.cluster
-      tierId: cluster_kacho_root
+      tierId: cluster_root
     rules:
       - module: iam
         resources: [role]
@@ -942,7 +942,7 @@ roles:
     description: "Admin ServiceAccount"
     tier:
       tierType: iam.cluster
-      tierId: cluster_kacho_root
+      tierId: cluster_root
     rules:
       - module: iam
         resources: [serviceAccount]
@@ -952,7 +952,7 @@ roles:
     description: "Edit ServiceAccount"
     tier:
       tierType: iam.cluster
-      tierId: cluster_kacho_root
+      tierId: cluster_root
     rules:
       - module: iam
         resources: [serviceAccount]
@@ -962,7 +962,7 @@ roles:
     description: "Read ServiceAccount"
     tier:
       tierType: iam.cluster
-      tierId: cluster_kacho_root
+      tierId: cluster_root
     rules:
       - module: iam
         resources: [serviceAccount]
@@ -972,7 +972,7 @@ roles:
     description: "Read User"
     tier:
       tierType: iam.cluster
-      tierId: cluster_kacho_root
+      tierId: cluster_root
     rules:
       - module: iam
         resources: [user]
