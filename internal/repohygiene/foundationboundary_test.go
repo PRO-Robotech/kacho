@@ -228,8 +228,9 @@ func TestNoModuleEdgeRunsAgainstTheTargetLayout(t *testing.T) {
 	for _, p := range pkgs {
 		fromClass, ok := classOfPackage(p.Dir)
 		if !ok {
-			// Каталог без объявленного класса ловит ось первая; здесь он не
-			// становится молчаливым пропуском, но и не удваивает находку.
+			// Каталог без объявленного класса ловит ось первая (`pkg/*`) либо
+			// ось пятая (верхний корень); здесь он не становится молчаливым
+			// пропуском, но и не удваивает находку.
 			continue
 		}
 		add := func(byImport map[string]int, isTest bool) {
@@ -399,6 +400,55 @@ func TestEveryDeclaredPathPrefixHasASubjectInTheTree(t *testing.T) {
 
 	if len(faults) > 0 {
 		t.Fatalf("карта путей разошлась с деревом (%d):\n  %s",
+			len(faults), strings.Join(faults, "\n  "))
+	}
+}
+
+// TestEveryTreeRootDeclaresItsClass — ось ПЯТАЯ по дереву.
+//
+// Корень `pkg` из обхода исключён НАЗВАННО: его каталоги классифицирует ось
+// первая покаталожно, и один класс на весь корень был бы неправдой — там живут
+// все четыре. Перепись печатает оба числа, чтобы исключение было видно, а не
+// подразумевалось.
+func TestEveryTreeRootDeclaresItsClass(t *testing.T) {
+	root := repoRoot(t)
+
+	tracked, err := treecorpus.UnderWithSuffix(root, ".go")
+	if err != nil {
+		t.Fatalf("состав дерева: %v", err)
+	}
+	if len(tracked) == 0 {
+		t.Fatal("под корнем нет ни одного отслеживаемого файла Go — обход пуст")
+	}
+
+	seen := map[string]struct{}{}
+	for _, abs := range tracked {
+		rel, rerr := filepath.Rel(root, abs)
+		if rerr != nil {
+			t.Fatalf("относительный путь для %s: %v", abs, rerr)
+		}
+		parts := strings.Split(filepath.ToSlash(rel), "/")
+		if len(parts) < 2 {
+			continue // файл в самом корне модуля класса не несёт
+		}
+		seen[parts[0]] = struct{}{}
+	}
+	all := len(seen)
+	delete(seen, "pkg")
+
+	inTree := make([]string, 0, len(seen))
+	for d := range seen {
+		inTree = append(inTree, d)
+	}
+	sort.Strings(inTree)
+
+	faults, census := judgeTreeRoots(inTree, declaredTreeRoots())
+	t.Logf("перепись: верхних корней с файлами Go %d · судится этой осью %d "+
+		"(корень pkg судит ось первая покаталожно) · %s",
+		all, len(inTree), census.RootSummary())
+
+	if len(faults) > 0 {
+		t.Fatalf("класс верхнего корня разошёлся с деревом (%d):\n  %s",
 			len(faults), strings.Join(faults, "\n  "))
 	}
 }

@@ -20,6 +20,7 @@ import (
 
 	operationpb "github.com/PRO-Robotech/kacho/pkg/api/kacho/cloud/operation"
 	"github.com/PRO-Robotech/kacho/pkg/authz"
+	"github.com/PRO-Robotech/kacho/pkg/authz/authziam"
 	"github.com/PRO-Robotech/kacho/pkg/authz/authzmetrics"
 	"github.com/PRO-Robotech/kacho/pkg/authz/proxytuple"
 	coredb "github.com/PRO-Robotech/kacho/pkg/db"
@@ -1090,6 +1091,9 @@ func describe(cfg config.Config, mode servicecontract.Mode, logger *slog.Logger,
 
 		Authz:     servicecontract.AuthzViaIAM,
 		CheckEdge: servicecontract.NewPeerEdge(cfg.AuthZIAMGRPCAddr, checkCreds),
+		// Перевод вопроса в контракт службы доступа приносит СЕРВИС: носитель
+		// принадлежит фундаменту и чужого контракта не знает (приёмка K3-1 §7.2).
+		PeerCheck: authziam.NewCheckClient,
 		// Окно кэша положительных вердиктов — оно же окно отзыва. Читается через
 		// `check.CacheWindow`, потому что ручка реестра несёт landed-значение
 		// «ноль = кэш выключен, отзыв немедленный», а носитель требует строго
