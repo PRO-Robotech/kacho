@@ -34,9 +34,9 @@ package migrations_test
 import (
 	"testing"
 
-	"github.com/PRO-Robotech/kacho-iam/internal/migrations"
 	"github.com/PRO-Robotech/kacho/pkg/dropguard"
 	"github.com/PRO-Robotech/kacho/pkg/dropguard/dropguardtest"
+	"github.com/PRO-Robotech/kaname/internal/migrations"
 )
 
 func TestIntegration_IamDropsAreMeasured(t *testing.T) {

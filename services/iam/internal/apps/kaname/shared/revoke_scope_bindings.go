@@ -55,10 +55,10 @@ import (
 	"google.golang.org/grpc/codes"
 	"google.golang.org/grpc/status"
 
-	"github.com/PRO-Robotech/kacho-iam/internal/domain"
-	"github.com/PRO-Robotech/kacho-iam/internal/outboxtypes"
-	kanamerepo "github.com/PRO-Robotech/kacho-iam/internal/repo/kaname"
-	abrepo "github.com/PRO-Robotech/kacho-iam/internal/repo/kaname/access_binding"
+	"github.com/PRO-Robotech/kaname/internal/domain"
+	"github.com/PRO-Robotech/kaname/internal/outboxtypes"
+	kanamerepo "github.com/PRO-Robotech/kaname/internal/repo/kaname"
+	abrepo "github.com/PRO-Robotech/kaname/internal/repo/kaname/access_binding"
 )
 
 // ScopeBindingRevokePageSize / ScopeBindingRevokeMaxPasses — границы дренажа.

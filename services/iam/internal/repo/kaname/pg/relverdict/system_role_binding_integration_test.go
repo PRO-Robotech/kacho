@@ -32,11 +32,11 @@ import (
 	"github.com/jackc/pgx/v5"
 	"github.com/jackc/pgx/v5/pgxpool"
 
-	"github.com/PRO-Robotech/kacho-iam/internal/apps/kaname/seed"
-	kanamepg "github.com/PRO-Robotech/kacho-iam/internal/repo/kaname/pg"
-	"github.com/PRO-Robotech/kacho-iam/internal/repo/kaname/pg/relverdict"
-	"github.com/PRO-Robotech/kacho-iam/internal/testsupport/catalogfixture"
 	"github.com/PRO-Robotech/kacho/pkg/pgtest"
+	"github.com/PRO-Robotech/kaname/internal/apps/kaname/seed"
+	kanamepg "github.com/PRO-Robotech/kaname/internal/repo/kaname/pg"
+	"github.com/PRO-Robotech/kaname/internal/repo/kaname/pg/relverdict"
+	"github.com/PRO-Robotech/kaname/internal/testsupport/catalogfixture"
 )
 
 // systemRoleEdit / systemRoleAdmin — идентификаторы посеянных миграцией ролей.

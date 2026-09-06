@@ -14,12 +14,12 @@ import (
 
 	"github.com/stretchr/testify/require"
 
-	"github.com/PRO-Robotech/kacho-iam/internal/apps/kaname/api/group"
-	"github.com/PRO-Robotech/kacho-iam/internal/apps/kaname/api/project"
-	"github.com/PRO-Robotech/kacho-iam/internal/apps/kaname/api/role"
-	service_account "github.com/PRO-Robotech/kacho-iam/internal/apps/kaname/api/service_account"
-	"github.com/PRO-Robotech/kacho-iam/internal/domain"
-	"github.com/PRO-Robotech/kacho-iam/internal/testsupport/catalogfixture"
+	"github.com/PRO-Robotech/kaname/internal/apps/kaname/api/group"
+	"github.com/PRO-Robotech/kaname/internal/apps/kaname/api/project"
+	"github.com/PRO-Robotech/kaname/internal/apps/kaname/api/role"
+	service_account "github.com/PRO-Robotech/kaname/internal/apps/kaname/api/service_account"
+	"github.com/PRO-Robotech/kaname/internal/domain"
+	"github.com/PRO-Robotech/kaname/internal/testsupport/catalogfixture"
 )
 
 // ── 5.2-13 Project C/U/D ───────────────────────────────────────────────────────

@@ -15,8 +15,8 @@ package reconcile
 import (
 	"fmt"
 
-	"github.com/PRO-Robotech/kacho-iam/internal/catalog"
-	"github.com/PRO-Robotech/kacho-iam/internal/domain"
+	"github.com/PRO-Robotech/kaname/internal/catalog"
+	"github.com/PRO-Robotech/kaname/internal/domain"
 )
 
 // ruleObjectTuples builds the per-object FGA tuple set for ONE label-matched

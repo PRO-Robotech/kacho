@@ -71,12 +71,12 @@ import (
 	"github.com/jackc/pgx/v5"
 	"github.com/jackc/pgx/v5/pgxpool"
 
-	"github.com/PRO-Robotech/kacho-iam/internal/domain"
-	kanamepg "github.com/PRO-Robotech/kacho-iam/internal/repo/kaname/pg"
-	"github.com/PRO-Robotech/kacho-iam/internal/repo/kaname/pg/planrows"
-	"github.com/PRO-Robotech/kacho-iam/internal/repo/kaname/pg/relverdict"
-	"github.com/PRO-Robotech/kacho-iam/internal/repo/kaname/pg/scalegrid"
 	"github.com/PRO-Robotech/kacho/pkg/pgtest"
+	"github.com/PRO-Robotech/kaname/internal/domain"
+	kanamepg "github.com/PRO-Robotech/kaname/internal/repo/kaname/pg"
+	"github.com/PRO-Robotech/kaname/internal/repo/kaname/pg/planrows"
+	"github.com/PRO-Robotech/kaname/internal/repo/kaname/pg/relverdict"
+	"github.com/PRO-Robotech/kaname/internal/repo/kaname/pg/scalegrid"
 )
 
 // matrixEnv — ручка «запускать замер матрицы», и только это. Что мерить, она не

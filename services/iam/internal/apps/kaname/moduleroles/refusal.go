@@ -63,7 +63,7 @@ import (
 	"google.golang.org/grpc/codes"
 	"google.golang.org/grpc/status"
 
-	"github.com/PRO-Robotech/kacho-iam/internal/apps/kaname/shared"
+	"github.com/PRO-Robotech/kaname/internal/apps/kaname/shared"
 )
 
 const (

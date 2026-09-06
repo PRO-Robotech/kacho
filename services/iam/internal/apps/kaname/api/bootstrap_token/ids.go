@@ -16,7 +16,7 @@
 package bootstrap_token
 
 import (
-	"github.com/PRO-Robotech/kacho-iam/internal/domain"
+	"github.com/PRO-Robotech/kaname/internal/domain"
 )
 
 // Deterministic seed strings — MUST stay byte-identical to migration 0058's

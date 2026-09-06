@@ -35,7 +35,7 @@ import (
 
 	"github.com/stretchr/testify/require"
 
-	"github.com/PRO-Robotech/kacho-iam/internal/authzcascade"
+	"github.com/PRO-Robotech/kaname/internal/authzcascade"
 )
 
 // askerNeverAsked — форма, которую страж НЕ спрашивает.

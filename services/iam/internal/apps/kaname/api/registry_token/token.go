@@ -35,10 +35,10 @@ import (
 	"fmt"
 	"time"
 
-	"github.com/PRO-Robotech/kacho-iam/internal/audiencepolicy"
-	"github.com/PRO-Robotech/kacho-iam/internal/domain"
-	"github.com/PRO-Robotech/kacho-iam/internal/registrytoken"
 	"github.com/PRO-Robotech/kacho/pkg/credsecret"
+	"github.com/PRO-Robotech/kaname/internal/audiencepolicy"
+	"github.com/PRO-Robotech/kaname/internal/domain"
+	"github.com/PRO-Robotech/kaname/internal/registrytoken"
 )
 
 // ErrInvalidCredentials — a validator's rejection (bad/unknown/expired/

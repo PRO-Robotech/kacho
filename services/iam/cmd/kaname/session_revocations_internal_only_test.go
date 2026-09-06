@@ -29,7 +29,7 @@ import (
 
 	iamv1 "github.com/PRO-Robotech/kacho/pkg/api/kacho/cloud/iam/v1"
 
-	sessionrevapp "github.com/PRO-Robotech/kacho-iam/internal/apps/kaname/api/session_revocations"
+	sessionrevapp "github.com/PRO-Robotech/kaname/internal/apps/kaname/api/session_revocations"
 )
 
 func TestSessionRevocations_InternalOnly_NotOnExternalListener(t *testing.T) {

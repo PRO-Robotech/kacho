@@ -58,11 +58,11 @@ import (
 	"github.com/PRO-Robotech/kacho/pkg/pgtest"
 	"github.com/PRO-Robotech/kacho/pkg/subjectchange"
 
-	"github.com/PRO-Robotech/kacho-iam/internal/apps/kaname/api/internal_iam"
-	"github.com/PRO-Robotech/kacho-iam/internal/repo/kaname/access_binding"
-	kanamepg "github.com/PRO-Robotech/kacho-iam/internal/repo/kaname/pg"
-	"github.com/PRO-Robotech/kacho-iam/internal/service"
-	"github.com/PRO-Robotech/kacho-iam/internal/testsupport/iampgtest"
+	"github.com/PRO-Robotech/kaname/internal/apps/kaname/api/internal_iam"
+	"github.com/PRO-Robotech/kaname/internal/repo/kaname/access_binding"
+	kanamepg "github.com/PRO-Robotech/kaname/internal/repo/kaname/pg"
+	"github.com/PRO-Robotech/kaname/internal/service"
+	"github.com/PRO-Robotech/kaname/internal/testsupport/iampgtest"
 )
 
 // verdictCache — наблюдаемое потребителя: держит ли он ещё закешированный

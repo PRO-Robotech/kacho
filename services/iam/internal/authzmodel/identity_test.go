@@ -18,7 +18,7 @@ import (
 	"os"
 	"testing"
 
-	"github.com/PRO-Robotech/kacho-iam/internal/authzplan"
+	"github.com/PRO-Robotech/kaname/internal/authzplan"
 )
 
 func TestEmbeddedModelIsByteIdenticalToCanonical(t *testing.T) {

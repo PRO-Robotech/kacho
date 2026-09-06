@@ -20,8 +20,8 @@ import (
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 
-	"github.com/PRO-Robotech/kacho-iam/internal/domain"
-	kanamepg "github.com/PRO-Robotech/kacho-iam/internal/repo/kaname/pg"
+	"github.com/PRO-Robotech/kaname/internal/domain"
+	kanamepg "github.com/PRO-Robotech/kaname/internal/repo/kaname/pg"
 )
 
 func TestUserTokenRevocations_Upsert_RevokedBefore(t *testing.T) {

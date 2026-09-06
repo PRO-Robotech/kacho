@@ -449,7 +449,7 @@ func CollectFrom(protoDir, cmdDir, root string) (Census, error) {
 
 // МОДУЛЕЙ В ДЕРЕВЕ ДВА, И ОТОБРАЖЕНИЕ ОБЯЗАНО ЗНАТЬ ОБА.
 //
-// Служба несёт свой `go.mod` (`github.com/PRO-Robotech/kacho-iam`) — она
+// Служба несёт свой `go.mod` (`github.com/PRO-Robotech/kaname`) — она
 // выносится отдельным репозиторием. Отрезание ОДНОГО префикса перестало
 // переводить путь импорта в путь дерева: для собственных пакетов службы
 // `TrimPrefix` не срабатывал вовсе, путь оставался целым, каталог не находился,
@@ -457,7 +457,7 @@ func CollectFrom(protoDir, cmdDir, root string) (Census, error) {
 // чистота — это пустой обход, и падать на нём обязан вызывающий.
 const (
 	rootModulePrefix    = "github.com/PRO-Robotech/kacho/"
-	serviceModulePrefix = "github.com/PRO-Robotech/kacho-iam/"
+	serviceModulePrefix = "github.com/PRO-Robotech/kaname/"
 	serviceTreePrefix   = "services/iam/"
 )
 

@@ -35,8 +35,8 @@ import (
 	"testing"
 	"time"
 
-	"github.com/PRO-Robotech/kacho-iam/internal/apps/kaname/config"
 	"github.com/PRO-Robotech/kacho/pkg/tokenpolicy"
+	"github.com/PRO-Robotech/kaname/internal/apps/kaname/config"
 )
 
 // contourTranslated — посадка, на которой выдача ключей переведена на свою

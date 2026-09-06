@@ -8,7 +8,7 @@ package config
 import (
 	"time"
 
-	"github.com/PRO-Robotech/kacho-iam/internal/apps/kaname/retention"
+	"github.com/PRO-Robotech/kaname/internal/apps/kaname/retention"
 )
 
 // RetentionConfig — величины уборки.

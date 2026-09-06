@@ -32,8 +32,8 @@ import (
 	"github.com/PRO-Robotech/kacho/pkg/operations"
 	"github.com/PRO-Robotech/kacho/pkg/pgtest"
 
-	"github.com/PRO-Robotech/kacho-iam/internal/domain"
-	kanamepg "github.com/PRO-Robotech/kacho-iam/internal/repo/kaname/pg"
+	"github.com/PRO-Robotech/kaname/internal/domain"
+	kanamepg "github.com/PRO-Robotech/kaname/internal/repo/kaname/pg"
 )
 
 // evtIDFormat — the audit_outbox_id_check shape (bug #126 regression-guard:

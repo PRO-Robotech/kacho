@@ -27,13 +27,13 @@ import (
 
 	"github.com/jackc/pgx/v5/pgxpool"
 
-	"github.com/PRO-Robotech/kacho-iam/internal/apps/kaname/config"
-	"github.com/PRO-Robotech/kacho-iam/internal/clienttokenwire"
-	"github.com/PRO-Robotech/kacho-iam/internal/domain"
-	"github.com/PRO-Robotech/kacho-iam/internal/handler/clienttokenhttp"
-	kanamepg "github.com/PRO-Robotech/kacho-iam/internal/repo/kaname/pg"
-	"github.com/PRO-Robotech/kacho-iam/internal/tokensigner"
 	"github.com/PRO-Robotech/kacho/pkg/tokenpolicy"
+	"github.com/PRO-Robotech/kaname/internal/apps/kaname/config"
+	"github.com/PRO-Robotech/kaname/internal/clienttokenwire"
+	"github.com/PRO-Robotech/kaname/internal/domain"
+	"github.com/PRO-Robotech/kaname/internal/handler/clienttokenhttp"
+	kanamepg "github.com/PRO-Robotech/kaname/internal/repo/kaname/pg"
+	"github.com/PRO-Robotech/kaname/internal/tokensigner"
 )
 
 // clientTokenPeerTimeout — предел времени ОДНОГО внешнего вызова этого пути.

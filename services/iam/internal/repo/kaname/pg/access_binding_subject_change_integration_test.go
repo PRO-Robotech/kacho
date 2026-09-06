@@ -18,8 +18,8 @@ import (
 
 	coredb "github.com/PRO-Robotech/kacho/pkg/db"
 
-	"github.com/PRO-Robotech/kacho-iam/internal/repo/kaname/access_binding"
-	kanamepg "github.com/PRO-Robotech/kacho-iam/internal/repo/kaname/pg"
+	"github.com/PRO-Robotech/kaname/internal/repo/kaname/access_binding"
+	kanamepg "github.com/PRO-Robotech/kaname/internal/repo/kaname/pg"
 )
 
 func TestAccessBindingWriter_EmitSubjectChange_InTx(t *testing.T) {

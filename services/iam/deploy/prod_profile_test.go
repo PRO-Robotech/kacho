@@ -52,8 +52,8 @@ import (
 	"go.uber.org/multierr"
 	"gopkg.in/yaml.v3"
 
-	"github.com/PRO-Robotech/kacho-iam/internal/apps/kaname/config"
 	coredb "github.com/PRO-Robotech/kacho/pkg/db"
+	"github.com/PRO-Robotech/kaname/internal/apps/kaname/config"
 )
 
 // chartProfiles — цепочка `-f`, которой ставится боевая посадка этого чарта.

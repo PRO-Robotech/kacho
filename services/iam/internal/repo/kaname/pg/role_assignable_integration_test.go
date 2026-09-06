@@ -24,9 +24,9 @@ import (
 	"github.com/PRO-Robotech/kacho/pkg/ids"
 	"github.com/jackc/pgx/v5/pgxpool"
 
-	"github.com/PRO-Robotech/kacho-iam/internal/domain"
-	kanamepg "github.com/PRO-Robotech/kacho-iam/internal/repo/kaname/pg"
-	reporole "github.com/PRO-Robotech/kacho-iam/internal/repo/kaname/role"
+	"github.com/PRO-Robotech/kaname/internal/domain"
+	kanamepg "github.com/PRO-Robotech/kaname/internal/repo/kaname/pg"
+	reporole "github.com/PRO-Robotech/kaname/internal/repo/kaname/role"
 )
 
 // seedProjectRole — INSERT a project-scoped custom role directly (no public

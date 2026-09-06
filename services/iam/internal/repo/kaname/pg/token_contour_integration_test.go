@@ -33,13 +33,13 @@ import (
 	"github.com/PRO-Robotech/kacho/pkg/pgtest"
 	"github.com/PRO-Robotech/kacho/pkg/tokenpolicy"
 
-	"github.com/PRO-Robotech/kacho-iam/internal/apps/kaname/api/signingkeys"
-	"github.com/PRO-Robotech/kacho-iam/internal/domain"
-	"github.com/PRO-Robotech/kacho-iam/internal/handler/jwksproxyhttp"
-	"github.com/PRO-Robotech/kacho-iam/internal/handler/tokenintrospecthttp"
-	"github.com/PRO-Robotech/kacho-iam/internal/keywrap"
-	kanamepg "github.com/PRO-Robotech/kacho-iam/internal/repo/kaname/pg"
-	"github.com/PRO-Robotech/kacho-iam/internal/tokensigner"
+	"github.com/PRO-Robotech/kaname/internal/apps/kaname/api/signingkeys"
+	"github.com/PRO-Robotech/kaname/internal/domain"
+	"github.com/PRO-Robotech/kaname/internal/handler/jwksproxyhttp"
+	"github.com/PRO-Robotech/kaname/internal/handler/tokenintrospecthttp"
+	"github.com/PRO-Robotech/kaname/internal/keywrap"
+	kanamepg "github.com/PRO-Robotech/kaname/internal/repo/kaname/pg"
+	"github.com/PRO-Robotech/kaname/internal/tokensigner"
 )
 
 const contourIssuer = "https://kaname.kacho.local"

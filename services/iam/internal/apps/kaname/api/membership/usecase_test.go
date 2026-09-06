@@ -20,9 +20,9 @@ import (
 	"google.golang.org/grpc/codes"
 	"google.golang.org/grpc/status"
 
-	"github.com/PRO-Robotech/kacho-iam/internal/domain"
-	iamerr "github.com/PRO-Robotech/kacho-iam/internal/errors"
-	repomembership "github.com/PRO-Robotech/kacho-iam/internal/repo/kaname/membership"
+	"github.com/PRO-Robotech/kaname/internal/domain"
+	iamerr "github.com/PRO-Robotech/kaname/internal/errors"
+	repomembership "github.com/PRO-Robotech/kaname/internal/repo/kaname/membership"
 )
 
 type countingReader struct {

@@ -51,10 +51,10 @@ import (
 
 	"github.com/stretchr/testify/require"
 
-	"github.com/PRO-Robotech/kacho-iam/internal/apps/kaname/modulecatalog"
-	"github.com/PRO-Robotech/kacho-iam/internal/apps/kaname/seed"
-	"github.com/PRO-Robotech/kacho-iam/internal/catalog"
-	"github.com/PRO-Robotech/kacho-iam/internal/manifest"
+	"github.com/PRO-Robotech/kaname/internal/apps/kaname/modulecatalog"
+	"github.com/PRO-Robotech/kaname/internal/apps/kaname/seed"
+	"github.com/PRO-Robotech/kaname/internal/catalog"
+	"github.com/PRO-Robotech/kaname/internal/manifest"
 )
 
 // planVerdict — вердикт плана, как его объявляет §2.11.

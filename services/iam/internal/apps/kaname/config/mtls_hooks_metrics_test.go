@@ -10,7 +10,7 @@ import (
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 
-	"github.com/PRO-Robotech/kacho-iam/internal/apps/kaname/config"
+	"github.com/PRO-Robotech/kaname/internal/apps/kaname/config"
 )
 
 // P0 hardening — the :9092 Hydra/Kratos hooks listener and the :9095 /metrics

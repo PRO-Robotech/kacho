@@ -100,12 +100,12 @@ const (
 	//
 	// Пока служба лежала в единственном модуле дерева, хвост импорта совпадал с
 	// каталогом, и одной константы хватало. Служба получила свой модуль
-	// (`github.com/PRO-Robotech/kacho-iam`), и сегмент `services/iam` из пути
+	// (`github.com/PRO-Robotech/kaname`), и сегмент `services/iam` из пути
 	// импорта пропал: хвост перестал совпадать с каталогом. Прежний комментарий
 	// обещал устойчивость к переименованию модуля — обещание было верно
 	// наполовину, потому что величина несла оба смысла сразу.
 	edgeProducerDir    = "services/iam/internal/repo/kaname/pg/resource_mirror"
-	edgeProducerImport = "kacho-iam/internal/repo/kaname/pg/resource_mirror"
+	edgeProducerImport = "kaname/internal/repo/kaname/pg/resource_mirror"
 )
 
 // censusFileFacts — то, что гейт узнаёт об одном файле.

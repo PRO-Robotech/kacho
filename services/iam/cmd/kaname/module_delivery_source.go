@@ -23,9 +23,9 @@ package main
 import (
 	"context"
 
-	moduleapp "github.com/PRO-Robotech/kacho-iam/internal/apps/kaname/api/module"
-	"github.com/PRO-Robotech/kacho-iam/internal/apps/kaname/config"
-	"github.com/PRO-Robotech/kacho-iam/internal/manifest"
+	moduleapp "github.com/PRO-Robotech/kaname/internal/apps/kaname/api/module"
+	"github.com/PRO-Robotech/kaname/internal/apps/kaname/config"
+	"github.com/PRO-Robotech/kaname/internal/manifest"
 )
 
 // manifestDeliverySource — `moduleapp.DeliverySource` над каталогом доставки,

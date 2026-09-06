@@ -18,9 +18,9 @@ import (
 	"google.golang.org/grpc/codes"
 	"google.golang.org/grpc/status"
 
-	"github.com/PRO-Robotech/kacho-iam/internal/domain"
-	reporole "github.com/PRO-Robotech/kacho-iam/internal/repo/kaname/role"
-	"github.com/PRO-Robotech/kacho-iam/internal/testsupport/catalogfixture"
+	"github.com/PRO-Robotech/kaname/internal/domain"
+	reporole "github.com/PRO-Robotech/kaname/internal/repo/kaname/role"
+	"github.com/PRO-Robotech/kaname/internal/testsupport/catalogfixture"
 )
 
 func sysRole(name string) domain.Role {

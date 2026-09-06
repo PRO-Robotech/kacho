@@ -19,9 +19,9 @@ import (
 	"testing"
 	"time"
 
-	"github.com/PRO-Robotech/kacho-iam/internal/apps/kaname/config"
-	"github.com/PRO-Robotech/kacho-iam/internal/registrytokenwire"
 	"github.com/PRO-Robotech/kacho/pkg/grpcsrv"
+	"github.com/PRO-Robotech/kaname/internal/apps/kaname/config"
+	"github.com/PRO-Robotech/kaname/internal/registrytokenwire"
 )
 
 // TestRequireRegistryTokenTLS — по слушателю docker-token (`/iam/token`) едет

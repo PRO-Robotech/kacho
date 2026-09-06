@@ -54,7 +54,7 @@ import (
 
 	"github.com/jackc/pgx/v5"
 
-	"github.com/PRO-Robotech/kacho-iam/internal/repo/kaname/pg/relverdict"
+	"github.com/PRO-Robotech/kaname/internal/repo/kaname/pg/relverdict"
 )
 
 // seedMixedPage кладёт n объектов, из которых доступны ТОЛЬКО чётные.

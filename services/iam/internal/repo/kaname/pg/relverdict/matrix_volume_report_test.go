@@ -14,8 +14,8 @@ import (
 	"strings"
 	"time"
 
-	"github.com/PRO-Robotech/kacho-iam/internal/repo/kaname/pg/scalegrid"
 	"github.com/PRO-Robotech/kacho/pkg/gitenv"
+	"github.com/PRO-Robotech/kaname/internal/repo/kaname/pg/scalegrid"
 )
 
 // matrixReportAbsPath — абсолютный путь отчёта, разрешённый от КОРНЯ дерева.

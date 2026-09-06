@@ -64,9 +64,9 @@ package session_revocations
 import (
 	"context"
 
-	"github.com/PRO-Robotech/kacho-iam/internal/apps/kaname/shared"
-	"github.com/PRO-Robotech/kacho-iam/internal/authzguard"
-	iamerr "github.com/PRO-Robotech/kacho-iam/internal/errors"
+	"github.com/PRO-Robotech/kaname/internal/apps/kaname/shared"
+	"github.com/PRO-Robotech/kaname/internal/authzguard"
+	iamerr "github.com/PRO-Robotech/kaname/internal/errors"
 )
 
 // listByUserRelation — the narrow read relation on `iam_user`. Kept next to the

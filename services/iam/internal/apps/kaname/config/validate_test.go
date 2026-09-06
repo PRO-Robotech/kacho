@@ -8,7 +8,7 @@ import (
 	"testing"
 	"time"
 
-	"github.com/PRO-Robotech/kacho-iam/internal/apps/kaname/config"
+	"github.com/PRO-Robotech/kaname/internal/apps/kaname/config"
 )
 
 // goodEndpoints — a Config seeded with the non-secret invariants already

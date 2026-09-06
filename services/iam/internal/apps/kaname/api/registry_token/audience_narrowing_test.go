@@ -37,7 +37,7 @@ import (
 
 	"github.com/stretchr/testify/require"
 
-	registrytokenuc "github.com/PRO-Robotech/kacho-iam/internal/apps/kaname/api/registry_token"
+	registrytokenuc "github.com/PRO-Robotech/kaname/internal/apps/kaname/api/registry_token"
 )
 
 const (

@@ -36,7 +36,7 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/PRO-Robotech/kacho-iam/internal/clients"
+	"github.com/PRO-Robotech/kaname/internal/clients"
 )
 
 // brandsThatMustNotBeHardcoded — имена продуктов, которых в письме быть не

@@ -27,8 +27,8 @@ import (
 
 	coredb "github.com/PRO-Robotech/kacho/pkg/db"
 
-	"github.com/PRO-Robotech/kacho-iam/internal/repo/kaname/pg/resource_mirror"
-	"github.com/PRO-Robotech/kacho-iam/internal/testsupport/iampgtest"
+	"github.com/PRO-Robotech/kaname/internal/repo/kaname/pg/resource_mirror"
+	"github.com/PRO-Robotech/kaname/internal/testsupport/iampgtest"
 )
 
 func TestResourceMirror_UpsertTx_InsertsRowAtomically(t *testing.T) {

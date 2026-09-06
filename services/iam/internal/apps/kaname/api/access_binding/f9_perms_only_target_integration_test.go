@@ -30,7 +30,7 @@ import (
 
 	iamv1 "github.com/PRO-Robotech/kacho/pkg/api/kacho/cloud/iam/v1"
 
-	kanamepg "github.com/PRO-Robotech/kacho-iam/internal/repo/kaname/pg"
+	kanamepg "github.com/PRO-Robotech/kaname/internal/repo/kaname/pg"
 )
 
 func TestAB_PermsOnlyRole_PerObjectTarget_Rejected(t *testing.T) {

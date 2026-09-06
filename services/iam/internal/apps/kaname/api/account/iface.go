@@ -8,7 +8,7 @@ package account
 // iface'ы из repo-слоя.
 
 import (
-	kanamerepo "github.com/PRO-Robotech/kacho-iam/internal/repo/kaname"
+	kanamerepo "github.com/PRO-Robotech/kaname/internal/repo/kaname"
 )
 
 // Type-alias (не type wrap) — тип взаимозаменяем с источником.

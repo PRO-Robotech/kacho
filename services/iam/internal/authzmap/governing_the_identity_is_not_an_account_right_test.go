@@ -66,7 +66,7 @@ import (
 
 	"github.com/stretchr/testify/require"
 
-	"github.com/PRO-Robotech/kacho-iam/internal/authzplan"
+	"github.com/PRO-Robotech/kaname/internal/authzplan"
 )
 
 // governingRPCs — публичные RPC, чей предмет есть РАСПОРЯЖЕНИЕ СТРОКОЙ ЛИЧНОСТИ:

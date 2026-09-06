@@ -38,7 +38,7 @@ import (
 
 	"github.com/stretchr/testify/require"
 
-	"github.com/PRO-Robotech/kacho-iam/internal/domain"
+	"github.com/PRO-Robotech/kaname/internal/domain"
 )
 
 // TestIntegration_ScopeDefaultAgreesWithTheDomainVocabulary — ветви живого

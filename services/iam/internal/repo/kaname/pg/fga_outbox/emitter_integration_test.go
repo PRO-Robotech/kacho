@@ -26,9 +26,9 @@ import (
 
 	coredb "github.com/PRO-Robotech/kacho/pkg/db"
 
-	"github.com/PRO-Robotech/kacho-iam/internal/clients"
-	"github.com/PRO-Robotech/kacho-iam/internal/repo/kaname/pg/fga_outbox"
-	"github.com/PRO-Robotech/kacho-iam/internal/testsupport/iampgtest"
+	"github.com/PRO-Robotech/kaname/internal/clients"
+	"github.com/PRO-Robotech/kaname/internal/repo/kaname/pg/fga_outbox"
+	"github.com/PRO-Robotech/kaname/internal/testsupport/iampgtest"
 )
 
 func TestFGAOutboxEmitter_EmitWriteTx_AppendsRowsAtomically(t *testing.T) {

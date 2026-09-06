@@ -38,7 +38,7 @@ import (
 
 	iamv1 "github.com/PRO-Robotech/kacho/pkg/api/kacho/cloud/iam/v1"
 
-	"github.com/PRO-Robotech/kacho-iam/internal/apps/kaname/shared"
+	"github.com/PRO-Robotech/kaname/internal/apps/kaname/shared"
 )
 
 // cutoffReader — узкий порт чтения отсечки субъекта.

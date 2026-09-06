@@ -56,7 +56,7 @@ func TestFGAOutboxRowOwnerGate_CatchesASecondRenderer(t *testing.T) {
 	writeInjected(t, root, filepath.Join("services", "iam", "internal", "repo", "kaname", "pg", "rogue.go"),
 		`package pg
 
-import "github.com/PRO-Robotech/kacho-iam/internal/clients"
+import "github.com/PRO-Robotech/kaname/internal/clients"
 
 func emitRogue(tuples []clients.RelationTuple) string {
 	_ = tuples
@@ -91,7 +91,7 @@ func seedOne() string {
 	writeInjected(t, root, filepath.Join("services", "iam", "internal", "diag", "scan.go"),
 		`package diag
 
-import "github.com/PRO-Robotech/kacho-iam/internal/clients"
+import "github.com/PRO-Robotech/kaname/internal/clients"
 
 func pending() (string, []clients.RelationTuple) {
 	return `+"`SELECT count(*) FROM kaname.fga_outbox WHERE sent_at IS NULL`"+`, nil

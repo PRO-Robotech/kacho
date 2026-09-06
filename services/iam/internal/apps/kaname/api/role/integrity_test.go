@@ -27,9 +27,9 @@ import (
 
 	"github.com/stretchr/testify/require"
 
-	"github.com/PRO-Robotech/kacho-iam/internal/domain"
-	reporole "github.com/PRO-Robotech/kacho-iam/internal/repo/kaname/role"
-	"github.com/PRO-Robotech/kacho-iam/internal/testsupport/catalogfixture"
+	"github.com/PRO-Robotech/kaname/internal/domain"
+	reporole "github.com/PRO-Robotech/kaname/internal/repo/kaname/role"
+	"github.com/PRO-Robotech/kaname/internal/testsupport/catalogfixture"
 )
 
 // ruleOn — правило с названными глаголами на одном точечном ресурсе.

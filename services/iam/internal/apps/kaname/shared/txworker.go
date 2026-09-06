@@ -12,7 +12,7 @@ package shared
 import (
 	"context"
 
-	kanamerepo "github.com/PRO-Robotech/kacho-iam/internal/repo/kaname"
+	kanamerepo "github.com/PRO-Robotech/kaname/internal/repo/kaname"
 )
 
 // DoWithWriteTx оборачивает стандартный writer-tx паттерн вокруг одной

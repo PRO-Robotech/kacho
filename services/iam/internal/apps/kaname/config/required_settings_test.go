@@ -56,7 +56,7 @@ import (
 	"go.uber.org/multierr"
 	"gopkg.in/yaml.v3"
 
-	"github.com/PRO-Robotech/kacho-iam/internal/apps/kaname/config"
+	"github.com/PRO-Robotech/kaname/internal/apps/kaname/config"
 )
 
 // lanesUnderTest — полосы посадки личности, на которых прогоняется таблица.

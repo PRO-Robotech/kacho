@@ -32,7 +32,7 @@ func missFixture(t *testing.T, dir, name, importSpec, callSite string) string {
 	return full
 }
 
-const authzmapImport = `"github.com/PRO-Robotech/kacho-iam/internal/authzmap"`
+const authzmapImport = `"github.com/PRO-Robotech/kaname/internal/authzmap"`
 
 // TestIAMCT2_TypeMissRecognizerInjection — распознаватель, обе стороны.
 func TestIAMCT2_TypeMissRecognizerInjection(t *testing.T) {

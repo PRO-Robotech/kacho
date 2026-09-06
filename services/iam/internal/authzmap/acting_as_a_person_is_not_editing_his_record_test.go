@@ -72,7 +72,7 @@ import (
 
 	"github.com/stretchr/testify/require"
 
-	"github.com/PRO-Robotech/kacho-iam/internal/authzplan"
+	"github.com/PRO-Robotech/kaname/internal/authzplan"
 )
 
 // actingAsRPCs — публичные RPC, чей предмет есть ДЕЙСТВИЕ ОТ ИМЕНИ человека:

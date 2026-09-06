@@ -46,9 +46,9 @@ import (
 
 	coredb "github.com/PRO-Robotech/kacho/pkg/db"
 
-	"github.com/PRO-Robotech/kacho-iam/internal/apps/kaname/modulecatalog"
-	"github.com/PRO-Robotech/kacho-iam/internal/catalog"
-	"github.com/PRO-Robotech/kacho-iam/internal/service"
+	"github.com/PRO-Robotech/kaname/internal/apps/kaname/modulecatalog"
+	"github.com/PRO-Robotech/kaname/internal/catalog"
+	"github.com/PRO-Robotech/kaname/internal/service"
 )
 
 // CatalogLockKey — ключ ГЛОБАЛЬНОГО консультативного замка каталога.

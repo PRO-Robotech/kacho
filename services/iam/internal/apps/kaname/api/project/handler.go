@@ -15,9 +15,9 @@ import (
 	operationpb "github.com/PRO-Robotech/kacho/pkg/api/kacho/cloud/operation"
 	"github.com/PRO-Robotech/kacho/pkg/safeconv"
 
-	"github.com/PRO-Robotech/kacho-iam/internal/apps/kaname/shared"
-	"github.com/PRO-Robotech/kacho-iam/internal/domain"
-	repoproject "github.com/PRO-Robotech/kacho-iam/internal/repo/kaname/project"
+	"github.com/PRO-Robotech/kaname/internal/apps/kaname/shared"
+	"github.com/PRO-Robotech/kaname/internal/domain"
+	repoproject "github.com/PRO-Robotech/kaname/internal/repo/kaname/project"
 )
 
 type Handler struct {

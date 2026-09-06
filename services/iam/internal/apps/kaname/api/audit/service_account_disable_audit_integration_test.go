@@ -29,9 +29,9 @@ import (
 
 	"github.com/stretchr/testify/require"
 
-	service_account "github.com/PRO-Robotech/kacho-iam/internal/apps/kaname/api/service_account"
-	"github.com/PRO-Robotech/kacho-iam/internal/domain"
-	kanamepg "github.com/PRO-Robotech/kacho-iam/internal/repo/kaname/pg"
+	service_account "github.com/PRO-Robotech/kaname/internal/apps/kaname/api/service_account"
+	"github.com/PRO-Robotech/kaname/internal/domain"
+	kanamepg "github.com/PRO-Robotech/kaname/internal/repo/kaname/pg"
 )
 
 func TestServiceAccountDisable_RecordsTheEventAndReachesTheIssuanceGate(t *testing.T) {

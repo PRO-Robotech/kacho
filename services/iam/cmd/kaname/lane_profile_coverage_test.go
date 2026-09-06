@@ -60,7 +60,7 @@ import (
 
 	"gopkg.in/yaml.v3"
 
-	"github.com/PRO-Robotech/kacho-iam/internal/apps/kaname/config"
+	"github.com/PRO-Robotech/kaname/internal/apps/kaname/config"
 )
 
 // umbrellaDirFromCmd — каталог зонтичного чарта относительно этого пакета.

@@ -26,7 +26,7 @@ import (
 
 	"github.com/PRO-Robotech/kacho/pkg/outbox"
 
-	kanamepg "github.com/PRO-Robotech/kacho-iam/internal/repo/kaname/pg"
+	kanamepg "github.com/PRO-Robotech/kaname/internal/repo/kaname/pg"
 )
 
 // putCompensationRow кладёт строку очереди с заданной отметкой доставки.

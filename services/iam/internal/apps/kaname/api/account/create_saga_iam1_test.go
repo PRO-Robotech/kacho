@@ -22,7 +22,7 @@ import (
 
 	iamv1 "github.com/PRO-Robotech/kacho/pkg/api/kacho/cloud/iam/v1"
 
-	"github.com/PRO-Robotech/kacho-iam/internal/domain"
+	"github.com/PRO-Robotech/kaname/internal/domain"
 )
 
 func TestAccount_IAM_1_04_CreateSaga_DefaultProjectAndMetadata(t *testing.T) {

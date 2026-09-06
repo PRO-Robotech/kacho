@@ -51,18 +51,18 @@ import (
 
 	"github.com/PRO-Robotech/kacho/pkg/operations"
 
-	"github.com/PRO-Robotech/kacho-iam/internal/authzfilter"
-	"github.com/PRO-Robotech/kacho-iam/internal/clients"
-	"github.com/PRO-Robotech/kacho-iam/internal/domain"
-	kanamerepo "github.com/PRO-Robotech/kacho-iam/internal/repo/kaname"
-	"github.com/PRO-Robotech/kacho-iam/internal/repo/kaname/access_binding"
-	"github.com/PRO-Robotech/kacho-iam/internal/repo/kaname/account"
-	"github.com/PRO-Robotech/kacho-iam/internal/repo/kaname/group"
-	"github.com/PRO-Robotech/kacho-iam/internal/repo/kaname/project"
-	"github.com/PRO-Robotech/kacho-iam/internal/repo/kaname/role"
-	reposa "github.com/PRO-Robotech/kacho-iam/internal/repo/kaname/service_account"
-	"github.com/PRO-Robotech/kacho-iam/internal/repo/kaname/user"
-	"github.com/PRO-Robotech/kacho-iam/internal/repo/kaname/visibility"
+	"github.com/PRO-Robotech/kaname/internal/authzfilter"
+	"github.com/PRO-Robotech/kaname/internal/clients"
+	"github.com/PRO-Robotech/kaname/internal/domain"
+	kanamerepo "github.com/PRO-Robotech/kaname/internal/repo/kaname"
+	"github.com/PRO-Robotech/kaname/internal/repo/kaname/access_binding"
+	"github.com/PRO-Robotech/kaname/internal/repo/kaname/account"
+	"github.com/PRO-Robotech/kaname/internal/repo/kaname/group"
+	"github.com/PRO-Robotech/kaname/internal/repo/kaname/project"
+	"github.com/PRO-Robotech/kaname/internal/repo/kaname/role"
+	reposa "github.com/PRO-Robotech/kaname/internal/repo/kaname/service_account"
+	"github.com/PRO-Robotech/kaname/internal/repo/kaname/user"
+	"github.com/PRO-Robotech/kaname/internal/repo/kaname/visibility"
 )
 
 const (

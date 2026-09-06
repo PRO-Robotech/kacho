@@ -18,7 +18,7 @@ package user_tokens
 import (
 	"context"
 
-	"github.com/PRO-Robotech/kacho-iam/internal/service"
+	"github.com/PRO-Robotech/kaname/internal/service"
 )
 
 const (

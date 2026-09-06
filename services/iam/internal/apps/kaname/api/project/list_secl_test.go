@@ -33,9 +33,9 @@ import (
 
 	"github.com/PRO-Robotech/kacho/pkg/operations"
 
-	"github.com/PRO-Robotech/kacho-iam/internal/authzfilter"
-	"github.com/PRO-Robotech/kacho-iam/internal/clients"
-	repoproject "github.com/PRO-Robotech/kacho-iam/internal/repo/kaname/project"
+	"github.com/PRO-Robotech/kaname/internal/authzfilter"
+	"github.com/PRO-Robotech/kaname/internal/clients"
+	repoproject "github.com/PRO-Robotech/kaname/internal/repo/kaname/project"
 )
 
 // seclFGAStub — captures the subject, supports an id-set and an injectable error

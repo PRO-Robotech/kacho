@@ -59,7 +59,7 @@ import (
 )
 
 // catalogPkgPath — пакет, чей снимок обязан быть запущен.
-const catalogPkgPath = "github.com/PRO-Robotech/kacho-iam/internal/catalog"
+const catalogPkgPath = "github.com/PRO-Robotech/kaname/internal/catalog"
 
 // catalogSnapshotCtor — конструктор снимка.
 const catalogSnapshotCtor = "NewSnapshot"

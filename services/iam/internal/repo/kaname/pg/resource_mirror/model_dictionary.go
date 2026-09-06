@@ -11,7 +11,7 @@ import (
 
 	"github.com/jackc/pgx/v5"
 
-	iamerr "github.com/PRO-Robotech/kacho-iam/internal/errors"
+	iamerr "github.com/PRO-Robotech/kaname/internal/errors"
 )
 
 // model_dictionary.go — ИМЯ ТИПА МОДЕЛИ СПРАШИВАЕТСЯ У ЖИВОЙ СТРОКИ КАТАЛОГА,

@@ -51,10 +51,10 @@ const serviceRoot = "../../../.."
 // domainPkgSuffix — хвост пути СОБСТВЕННОГО пакета domain сервиса iam. Хвост, а
 // не полный путь: гейт не обязан знать имя модуля.
 // Хвост пути ИМПОРТА собственного домена. Служба получила свой модуль
-// (`github.com/PRO-Robotech/kacho-iam`), и сегмент `services/iam` из пути
+// (`github.com/PRO-Robotech/kaname`), и сегмент `services/iam` из пути
 // импорта пропал — прежний хвост перестал совпадать НИ С ОДНИМ импортом, то
 // есть гейт объявил чужими все собственные префиксы сразу.
-const domainPkgSuffix = "kacho-iam/internal/domain"
+const domainPkgSuffix = "kaname/internal/domain"
 
 // strictValidatorName — имя строгой проверки формата (ids.go этого пакета).
 const strictValidatorName = "ValidateResourceID"

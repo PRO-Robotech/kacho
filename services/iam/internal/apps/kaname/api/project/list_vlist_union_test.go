@@ -38,10 +38,10 @@ import (
 
 	"github.com/PRO-Robotech/kacho/pkg/operations"
 
-	"github.com/PRO-Robotech/kacho-iam/internal/authzfilter"
-	"github.com/PRO-Robotech/kacho-iam/internal/clients"
-	"github.com/PRO-Robotech/kacho-iam/internal/domain"
-	repoproject "github.com/PRO-Robotech/kacho-iam/internal/repo/kaname/project"
+	"github.com/PRO-Robotech/kaname/internal/authzfilter"
+	"github.com/PRO-Robotech/kaname/internal/clients"
+	"github.com/PRO-Robotech/kaname/internal/domain"
+	repoproject "github.com/PRO-Robotech/kaname/internal/repo/kaname/project"
 )
 
 // ───────────── relation-aware stub ──────────────────────────────────────────

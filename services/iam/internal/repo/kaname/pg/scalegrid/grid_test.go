@@ -10,7 +10,7 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/PRO-Robotech/kacho-iam/internal/repo/kaname/pg/scalegrid"
+	"github.com/PRO-Robotech/kaname/internal/repo/kaname/pg/scalegrid"
 )
 
 // TestGridDigestMovesWhenTheTopPointDrops — отпечаток сетки ловит СОКРАЩЕНИЕ.

@@ -7,8 +7,8 @@ import (
 	"fmt"
 	"log/slog"
 
-	"github.com/PRO-Robotech/kacho-iam/internal/apps/kaname/config"
-	"github.com/PRO-Robotech/kacho-iam/internal/manifest"
+	"github.com/PRO-Robotech/kaname/internal/apps/kaname/config"
+	"github.com/PRO-Robotech/kaname/internal/manifest"
 )
 
 // module_manifests.go — манифесты модулей ЧИТАЮТСЯ НА СТАРТЕ (задача #1875).

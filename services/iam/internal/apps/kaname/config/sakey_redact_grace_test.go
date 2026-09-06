@@ -9,7 +9,7 @@ import (
 
 	"github.com/stretchr/testify/require"
 
-	"github.com/PRO-Robotech/kacho-iam/internal/apps/kaname/config"
+	"github.com/PRO-Robotech/kaname/internal/apps/kaname/config"
 )
 
 // TestLoad_SAKeyRedactGrace_Default — без override grace-окно затирания

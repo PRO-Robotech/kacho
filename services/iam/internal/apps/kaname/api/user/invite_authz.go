@@ -14,7 +14,7 @@ package user
 import (
 	"context"
 
-	"github.com/PRO-Robotech/kacho-iam/internal/authzguard"
+	"github.com/PRO-Robotech/kaname/internal/authzguard"
 )
 
 // AuthzChecker — narrow port for cascade-traversal Check (same signature as

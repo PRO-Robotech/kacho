@@ -35,11 +35,11 @@ import (
 	"google.golang.org/grpc/codes"
 	"google.golang.org/grpc/status"
 
-	"github.com/PRO-Robotech/kacho-iam/internal/apps/kaname/api/sa_keys"
-	service_account "github.com/PRO-Robotech/kacho-iam/internal/apps/kaname/api/service_account"
-	"github.com/PRO-Robotech/kacho-iam/internal/clients"
-	"github.com/PRO-Robotech/kacho-iam/internal/domain"
-	kanamepg "github.com/PRO-Robotech/kacho-iam/internal/repo/kaname/pg"
+	"github.com/PRO-Robotech/kaname/internal/apps/kaname/api/sa_keys"
+	service_account "github.com/PRO-Robotech/kaname/internal/apps/kaname/api/service_account"
+	"github.com/PRO-Robotech/kaname/internal/clients"
+	"github.com/PRO-Robotech/kaname/internal/domain"
+	kanamepg "github.com/PRO-Robotech/kaname/internal/repo/kaname/pg"
 )
 
 // fakeOAuthProvider stands in for the external authorization server — the ONE

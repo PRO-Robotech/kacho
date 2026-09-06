@@ -43,9 +43,9 @@ package check
 // Величины на момент решения (единица — КАТАЛОГ; ориентир, не гейт, и
 // перемеряются этими же командами из `services/iam`):
 //
-//	go list -deps ./cmd/kaname | grep '^github.com/PRO-Robotech/kacho-iam' | sort
+//	go list -deps ./cmd/kaname | grep '^github.com/PRO-Robotech/kaname' | sort
 //	# → 87 пакетов достижимо из бинаря сервиса
-//	grep -rl 'kacho-iam/internal/authzmap"' --include=*.go . | grep -v '_test.go' \
+//	grep -rl 'kaname/internal/authzmap"' --include=*.go . | grep -v '_test.go' \
 //	  | xargs -n1 dirname | sort -u
 //	# → 11 каталогов-импортёров, из них НЕ достижимы бинарём 2:
 //	#   internal/repo/kaname/pg/scalegrid · internal/scopesourcecensus
@@ -93,7 +93,7 @@ import (
 )
 
 // authzmapImportPath — импортируемый пакет-литерал.
-const authzmapImportPath = "github.com/PRO-Robotech/kacho-iam/internal/authzmap"
+const authzmapImportPath = "github.com/PRO-Robotech/kaname/internal/authzmap"
 
 // iamTreeRel — поддерево, которое обходит гейт: прод-код сервиса ЦЕЛИКОМ, а не
 // только достижимый из его бинаря (почему именно так — врезка «Популяция ШИРЕ

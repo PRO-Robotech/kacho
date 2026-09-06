@@ -42,8 +42,8 @@ import (
 	"testing"
 	"time"
 
-	"github.com/PRO-Robotech/kacho-iam/internal/domain"
-	"github.com/PRO-Robotech/kacho-iam/internal/repo/kaname/pg/reconcile_outbox"
+	"github.com/PRO-Robotech/kaname/internal/domain"
+	"github.com/PRO-Robotech/kaname/internal/repo/kaname/pg/reconcile_outbox"
 )
 
 // discardLogger keeps the worker's non-fatal warnings out of the test output.

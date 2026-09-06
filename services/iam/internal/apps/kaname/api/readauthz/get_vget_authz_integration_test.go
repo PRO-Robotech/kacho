@@ -51,17 +51,17 @@ import (
 	"github.com/PRO-Robotech/kacho/pkg/ids"
 	"github.com/PRO-Robotech/kacho/pkg/operations"
 
-	accountapp "github.com/PRO-Robotech/kacho-iam/internal/apps/kaname/api/account"
-	groupapp "github.com/PRO-Robotech/kacho-iam/internal/apps/kaname/api/group"
-	projectapp "github.com/PRO-Robotech/kacho-iam/internal/apps/kaname/api/project"
-	saapp "github.com/PRO-Robotech/kacho-iam/internal/apps/kaname/api/service_account"
-	userapp "github.com/PRO-Robotech/kacho-iam/internal/apps/kaname/api/user"
-	"github.com/PRO-Robotech/kacho-iam/internal/authzcascade"
-	"github.com/PRO-Robotech/kacho-iam/internal/authzmap"
-	"github.com/PRO-Robotech/kacho-iam/internal/domain"
-	kanamepg "github.com/PRO-Robotech/kacho-iam/internal/repo/kaname/pg"
-	"github.com/PRO-Robotech/kacho-iam/internal/repo/kaname/pg/relverdict"
-	"github.com/PRO-Robotech/kacho-iam/internal/testsupport/iampgtest"
+	accountapp "github.com/PRO-Robotech/kaname/internal/apps/kaname/api/account"
+	groupapp "github.com/PRO-Robotech/kaname/internal/apps/kaname/api/group"
+	projectapp "github.com/PRO-Robotech/kaname/internal/apps/kaname/api/project"
+	saapp "github.com/PRO-Robotech/kaname/internal/apps/kaname/api/service_account"
+	userapp "github.com/PRO-Robotech/kaname/internal/apps/kaname/api/user"
+	"github.com/PRO-Robotech/kaname/internal/authzcascade"
+	"github.com/PRO-Robotech/kaname/internal/authzmap"
+	"github.com/PRO-Robotech/kaname/internal/domain"
+	kanamepg "github.com/PRO-Robotech/kaname/internal/repo/kaname/pg"
+	"github.com/PRO-Robotech/kaname/internal/repo/kaname/pg/relverdict"
+	"github.com/PRO-Robotech/kaname/internal/testsupport/iampgtest"
 )
 
 // readAuthzFixture — живой репозиторий и живая дверь решения над засеянной

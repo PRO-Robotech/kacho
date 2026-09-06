@@ -20,7 +20,7 @@ import (
 	"github.com/PRO-Robotech/kacho/pkg/credsecret"
 	"github.com/PRO-Robotech/kacho/pkg/tokenpolicy"
 
-	"github.com/PRO-Robotech/kacho-iam/internal/domain"
+	"github.com/PRO-Robotech/kaname/internal/domain"
 )
 
 // BAT-1-09 — положительный путь фазы: выдача вида SECRET завершается НА ПУТИ

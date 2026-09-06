@@ -16,8 +16,8 @@ import (
 
 	"github.com/jackc/pgx/v5"
 
-	"github.com/PRO-Robotech/kacho-iam/internal/repo/kaname/pg/reconcile_outbox"
-	"github.com/PRO-Robotech/kacho-iam/internal/service"
+	"github.com/PRO-Robotech/kaname/internal/repo/kaname/pg/reconcile_outbox"
+	"github.com/PRO-Robotech/kaname/internal/service"
 )
 
 // ReconcileEventEmitter — adapter for the γ reconcile-event emit-in-tx.

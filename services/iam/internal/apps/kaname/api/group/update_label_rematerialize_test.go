@@ -49,12 +49,12 @@ import (
 
 	"github.com/PRO-Robotech/kacho/pkg/operations"
 
-	"github.com/PRO-Robotech/kacho-iam/internal/apps/kaname/shared"
-	"github.com/PRO-Robotech/kacho-iam/internal/domain"
-	kanamerepo "github.com/PRO-Robotech/kacho-iam/internal/repo/kaname"
-	accountrepo "github.com/PRO-Robotech/kacho-iam/internal/repo/kaname/account"
-	grouprepo "github.com/PRO-Robotech/kacho-iam/internal/repo/kaname/group"
-	"github.com/PRO-Robotech/kacho-iam/internal/service"
+	"github.com/PRO-Robotech/kaname/internal/apps/kaname/shared"
+	"github.com/PRO-Robotech/kaname/internal/domain"
+	kanamerepo "github.com/PRO-Robotech/kaname/internal/repo/kaname"
+	accountrepo "github.com/PRO-Robotech/kaname/internal/repo/kaname/account"
+	grouprepo "github.com/PRO-Robotech/kaname/internal/repo/kaname/group"
+	"github.com/PRO-Robotech/kaname/internal/service"
 )
 
 const (

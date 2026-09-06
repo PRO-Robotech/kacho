@@ -32,8 +32,8 @@ import (
 	"google.golang.org/grpc/codes"
 	grpcstatus "google.golang.org/grpc/status"
 
-	"github.com/PRO-Robotech/kacho-iam/internal/clients"
 	"github.com/PRO-Robotech/kacho/pkg/operations"
+	"github.com/PRO-Robotech/kaname/internal/clients"
 )
 
 // outageStore — хранилище прав, которое НЕ ОТВЕЧАЕТ. Отличается от отказа

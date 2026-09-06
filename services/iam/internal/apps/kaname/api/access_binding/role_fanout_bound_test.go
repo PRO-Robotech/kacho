@@ -22,9 +22,9 @@ import (
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 
-	roleapp "github.com/PRO-Robotech/kacho-iam/internal/apps/kaname/api/role"
-	"github.com/PRO-Robotech/kacho-iam/internal/domain"
-	"github.com/PRO-Robotech/kacho-iam/internal/testsupport/catalogfixture"
+	roleapp "github.com/PRO-Robotech/kaname/internal/apps/kaname/api/role"
+	"github.com/PRO-Robotech/kaname/internal/domain"
+	"github.com/PRO-Robotech/kaname/internal/testsupport/catalogfixture"
 )
 
 // fakeFanout — a role.RulesMembershipFanout returning a fixed active-binding count

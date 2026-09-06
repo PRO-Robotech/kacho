@@ -22,8 +22,8 @@ import (
 	"google.golang.org/grpc/codes"
 	"google.golang.org/grpc/status"
 
-	"github.com/PRO-Robotech/kacho-iam/internal/apps/kaname/shared"
-	iamerr "github.com/PRO-Robotech/kacho-iam/internal/errors"
+	"github.com/PRO-Robotech/kaname/internal/apps/kaname/shared"
+	iamerr "github.com/PRO-Robotech/kaname/internal/errors"
 )
 
 // reasonOf возвращает пару (reason, domain) первого ErrorInfo; пустые строки

@@ -14,9 +14,9 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/PRO-Robotech/kacho-iam/internal/domain"
-	"github.com/PRO-Robotech/kacho-iam/internal/handler/jwksproxyhttp"
-	"github.com/PRO-Robotech/kacho-iam/internal/handler/registrytokenhttp"
+	"github.com/PRO-Robotech/kaname/internal/domain"
+	"github.com/PRO-Robotech/kaname/internal/handler/jwksproxyhttp"
+	"github.com/PRO-Robotech/kaname/internal/handler/registrytokenhttp"
 )
 
 // twoRecordBinding — привязка публикатора с ДВУМЯ записями: наша (проекция

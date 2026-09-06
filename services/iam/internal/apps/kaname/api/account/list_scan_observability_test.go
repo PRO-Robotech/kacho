@@ -29,10 +29,10 @@ import (
 
 	"github.com/stretchr/testify/require"
 
-	"github.com/PRO-Robotech/kacho-iam/internal/apps/kaname/shared"
-	"github.com/PRO-Robotech/kacho-iam/internal/domain"
-	kanamerepo "github.com/PRO-Robotech/kacho-iam/internal/repo/kaname"
-	repoaccount "github.com/PRO-Robotech/kacho-iam/internal/repo/kaname/account"
+	"github.com/PRO-Robotech/kaname/internal/apps/kaname/shared"
+	"github.com/PRO-Robotech/kaname/internal/domain"
+	kanamerepo "github.com/PRO-Robotech/kaname/internal/repo/kaname"
+	repoaccount "github.com/PRO-Robotech/kaname/internal/repo/kaname/account"
 )
 
 // ───────────── пагинирующий фейк: уважает курсор и размер порции ─────────────

@@ -30,9 +30,9 @@ import (
 
 	iamv1 "github.com/PRO-Robotech/kacho/pkg/api/kacho/cloud/iam/v1"
 
-	internaliam "github.com/PRO-Robotech/kacho-iam/internal/apps/kaname/api/internal_iam"
-	kanamepg "github.com/PRO-Robotech/kacho-iam/internal/repo/kaname/pg"
-	"github.com/PRO-Robotech/kacho-iam/internal/testsupport/iampgtest"
+	internaliam "github.com/PRO-Robotech/kaname/internal/apps/kaname/api/internal_iam"
+	kanamepg "github.com/PRO-Robotech/kaname/internal/repo/kaname/pg"
+	"github.com/PRO-Robotech/kaname/internal/testsupport/iampgtest"
 )
 
 // newRegisterUCWithMirror builds the RegisterResource use-case backed by a real

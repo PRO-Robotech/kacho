@@ -35,10 +35,10 @@ import (
 	"github.com/PRO-Robotech/kacho/pkg/ids"
 	"github.com/PRO-Robotech/kacho/pkg/operations"
 
-	accessbindingapp "github.com/PRO-Robotech/kacho-iam/internal/apps/kaname/api/access_binding"
-	"github.com/PRO-Robotech/kacho-iam/internal/domain"
-	repoab "github.com/PRO-Robotech/kacho-iam/internal/repo/kaname/access_binding"
-	kanamepg "github.com/PRO-Robotech/kacho-iam/internal/repo/kaname/pg"
+	accessbindingapp "github.com/PRO-Robotech/kaname/internal/apps/kaname/api/access_binding"
+	"github.com/PRO-Robotech/kaname/internal/domain"
+	repoab "github.com/PRO-Robotech/kaname/internal/repo/kaname/access_binding"
+	kanamepg "github.com/PRO-Robotech/kaname/internal/repo/kaname/pg"
 )
 
 func bindingCount(t *testing.T, ctx context.Context, repo *kanamepg.Repository, roleID domain.RoleID, resourceType, resourceID string) int {

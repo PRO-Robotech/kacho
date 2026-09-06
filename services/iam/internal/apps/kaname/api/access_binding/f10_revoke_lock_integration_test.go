@@ -38,11 +38,11 @@ import (
 	"github.com/PRO-Robotech/kacho/pkg/ids"
 	"github.com/PRO-Robotech/kacho/pkg/operations"
 
-	accessbindingapp "github.com/PRO-Robotech/kacho-iam/internal/apps/kaname/api/access_binding"
-	"github.com/PRO-Robotech/kacho-iam/internal/clients"
-	"github.com/PRO-Robotech/kacho-iam/internal/domain"
-	abrepo "github.com/PRO-Robotech/kacho-iam/internal/repo/kaname/access_binding"
-	kanamepg "github.com/PRO-Robotech/kacho-iam/internal/repo/kaname/pg"
+	accessbindingapp "github.com/PRO-Robotech/kaname/internal/apps/kaname/api/access_binding"
+	"github.com/PRO-Robotech/kaname/internal/clients"
+	"github.com/PRO-Robotech/kaname/internal/domain"
+	abrepo "github.com/PRO-Robotech/kaname/internal/repo/kaname/access_binding"
+	kanamepg "github.com/PRO-Robotech/kaname/internal/repo/kaname/pg"
 )
 
 // denyingRelations — RelationStore that denies every question.

@@ -55,19 +55,19 @@ import (
 
 	"github.com/PRO-Robotech/kacho/pkg/operations"
 
-	"github.com/PRO-Robotech/kacho-iam/internal/clients"
-	"github.com/PRO-Robotech/kacho-iam/internal/domain"
-	iamerr "github.com/PRO-Robotech/kacho-iam/internal/errors"
-	kanamerepo "github.com/PRO-Robotech/kacho-iam/internal/repo/kaname"
-	ab_repo "github.com/PRO-Robotech/kacho-iam/internal/repo/kaname/access_binding"
-	acct_repo "github.com/PRO-Robotech/kacho-iam/internal/repo/kaname/account"
-	"github.com/PRO-Robotech/kacho-iam/internal/repo/kaname/group"
-	proj_repo "github.com/PRO-Robotech/kacho-iam/internal/repo/kaname/project"
-	role_repo "github.com/PRO-Robotech/kacho-iam/internal/repo/kaname/role"
-	sa_repo "github.com/PRO-Robotech/kacho-iam/internal/repo/kaname/service_account"
-	user_repo "github.com/PRO-Robotech/kacho-iam/internal/repo/kaname/user"
-	"github.com/PRO-Robotech/kacho-iam/internal/repo/kaname/visibility"
-	"github.com/PRO-Robotech/kacho-iam/internal/service"
+	"github.com/PRO-Robotech/kaname/internal/clients"
+	"github.com/PRO-Robotech/kaname/internal/domain"
+	iamerr "github.com/PRO-Robotech/kaname/internal/errors"
+	kanamerepo "github.com/PRO-Robotech/kaname/internal/repo/kaname"
+	ab_repo "github.com/PRO-Robotech/kaname/internal/repo/kaname/access_binding"
+	acct_repo "github.com/PRO-Robotech/kaname/internal/repo/kaname/account"
+	"github.com/PRO-Robotech/kaname/internal/repo/kaname/group"
+	proj_repo "github.com/PRO-Robotech/kaname/internal/repo/kaname/project"
+	role_repo "github.com/PRO-Robotech/kaname/internal/repo/kaname/role"
+	sa_repo "github.com/PRO-Robotech/kaname/internal/repo/kaname/service_account"
+	user_repo "github.com/PRO-Robotech/kaname/internal/repo/kaname/user"
+	"github.com/PRO-Robotech/kaname/internal/repo/kaname/visibility"
+	"github.com/PRO-Robotech/kaname/internal/service"
 )
 
 // ─── Symmetric FGA grant/revoke ────────────────────────────────────────────

@@ -41,9 +41,9 @@ import (
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 
-	"github.com/PRO-Robotech/kacho-iam/internal/apps/kaname/api/access_binding/reconcile"
-	"github.com/PRO-Robotech/kacho-iam/internal/domain"
 	coredb "github.com/PRO-Robotech/kacho/pkg/db"
+	"github.com/PRO-Robotech/kaname/internal/apps/kaname/api/access_binding/reconcile"
+	"github.com/PRO-Robotech/kaname/internal/domain"
 )
 
 // forwardLockFreeBudget — сколько форварду даётся на проход, пока полный проход

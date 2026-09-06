@@ -37,9 +37,9 @@ import (
 
 	"google.golang.org/grpc"
 
-	"github.com/PRO-Robotech/kacho-iam/internal/observability/metrics"
-	"github.com/PRO-Robotech/kacho-iam/internal/service"
 	"github.com/PRO-Robotech/kacho/pkg/grpcsrv"
+	"github.com/PRO-Robotech/kaname/internal/observability/metrics"
+	"github.com/PRO-Robotech/kaname/internal/service"
 )
 
 // fakeSubjectAuthorizer — решатель полос края и сужателя.

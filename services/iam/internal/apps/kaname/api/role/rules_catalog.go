@@ -68,7 +68,7 @@ import (
 
 	"go.uber.org/multierr"
 
-	"github.com/PRO-Robotech/kacho-iam/internal/domain"
+	"github.com/PRO-Robotech/kaname/internal/domain"
 )
 
 // typeCatalog — ПОРТ живого каталога типов, каким его видит use-case: объявлен

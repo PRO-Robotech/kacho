@@ -15,7 +15,7 @@ import (
 	"testing"
 	"time"
 
-	"github.com/PRO-Robotech/kacho-iam/internal/apps/kaname/expiredcredsweep"
+	"github.com/PRO-Robotech/kaname/internal/apps/kaname/expiredcredsweep"
 )
 
 // fakeStore — дублёр долговечной половины.

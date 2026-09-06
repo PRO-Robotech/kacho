@@ -53,12 +53,12 @@ import (
 
 	"github.com/stretchr/testify/require"
 
-	"github.com/PRO-Robotech/kacho-iam/internal/apps/kaname/api/client_token"
-	"github.com/PRO-Robotech/kacho-iam/internal/clientassertion"
-	"github.com/PRO-Robotech/kacho-iam/internal/domain"
-	"github.com/PRO-Robotech/kacho-iam/internal/handler/tokenintrospecthttp"
-	kanamepg "github.com/PRO-Robotech/kacho-iam/internal/repo/kaname/pg"
 	coredb "github.com/PRO-Robotech/kacho/pkg/db"
+	"github.com/PRO-Robotech/kaname/internal/apps/kaname/api/client_token"
+	"github.com/PRO-Robotech/kaname/internal/clientassertion"
+	"github.com/PRO-Robotech/kaname/internal/domain"
+	"github.com/PRO-Robotech/kaname/internal/handler/tokenintrospecthttp"
+	kanamepg "github.com/PRO-Robotech/kaname/internal/repo/kaname/pg"
 )
 
 // cutoffCause — повод, порождающий отсечку, и запись, которую он обязан

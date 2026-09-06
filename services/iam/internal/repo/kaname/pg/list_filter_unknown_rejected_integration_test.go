@@ -31,10 +31,10 @@ import (
 	coredb "github.com/PRO-Robotech/kacho/pkg/db"
 	"github.com/PRO-Robotech/kacho/pkg/pgtest"
 
-	iamerr "github.com/PRO-Robotech/kacho-iam/internal/errors"
-	repoaccount "github.com/PRO-Robotech/kacho-iam/internal/repo/kaname/account"
-	kanamepg "github.com/PRO-Robotech/kacho-iam/internal/repo/kaname/pg"
-	repouser "github.com/PRO-Robotech/kacho-iam/internal/repo/kaname/user"
+	iamerr "github.com/PRO-Robotech/kaname/internal/errors"
+	repoaccount "github.com/PRO-Robotech/kaname/internal/repo/kaname/account"
+	kanamepg "github.com/PRO-Robotech/kaname/internal/repo/kaname/pg"
+	repouser "github.com/PRO-Robotech/kaname/internal/repo/kaname/user"
 )
 
 // TestAccountList_UnknownFilter_445 — the `name=`-family parser (shared by

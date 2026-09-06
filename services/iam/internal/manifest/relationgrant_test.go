@@ -32,8 +32,8 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/PRO-Robotech/kacho-iam/internal/manifest"
-	"github.com/PRO-Robotech/kacho-iam/internal/manifestoracle"
+	"github.com/PRO-Robotech/kaname/internal/manifest"
+	"github.com/PRO-Robotech/kaname/internal/manifestoracle"
 )
 
 // canonOracle — модель, ВНЕСЁННАЯ в загрузчик пробой.

@@ -36,8 +36,8 @@ import (
 
 	"github.com/PRO-Robotech/kacho/pkg/operations"
 
-	"github.com/PRO-Robotech/kacho-iam/internal/domain"
-	repoab "github.com/PRO-Robotech/kacho-iam/internal/repo/kaname/access_binding"
+	"github.com/PRO-Robotech/kaname/internal/domain"
+	repoab "github.com/PRO-Robotech/kaname/internal/repo/kaname/access_binding"
 )
 
 const (

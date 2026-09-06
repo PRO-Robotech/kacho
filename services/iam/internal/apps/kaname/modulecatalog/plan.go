@@ -66,8 +66,8 @@ import (
 	"errors"
 	"fmt"
 
-	"github.com/PRO-Robotech/kacho-iam/internal/apps/kaname/seed"
-	"github.com/PRO-Robotech/kacho-iam/internal/catalog"
+	"github.com/PRO-Robotech/kaname/internal/apps/kaname/seed"
+	"github.com/PRO-Robotech/kaname/internal/catalog"
 )
 
 // Verdict — исход сверки состояния каталога с опорой стража паритета.

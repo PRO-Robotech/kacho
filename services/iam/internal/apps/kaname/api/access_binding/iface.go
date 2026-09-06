@@ -4,7 +4,7 @@
 package access_binding
 
 import (
-	kanamerepo "github.com/PRO-Robotech/kacho-iam/internal/repo/kaname"
+	kanamerepo "github.com/PRO-Robotech/kaname/internal/repo/kaname"
 )
 
 type (

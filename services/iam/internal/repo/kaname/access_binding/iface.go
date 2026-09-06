@@ -8,8 +8,8 @@ import (
 	"context"
 	"time"
 
-	"github.com/PRO-Robotech/kacho-iam/internal/domain"
-	"github.com/PRO-Robotech/kacho-iam/internal/repo/kaname/visibility"
+	"github.com/PRO-Robotech/kaname/internal/domain"
+	"github.com/PRO-Robotech/kaname/internal/repo/kaname/visibility"
 )
 
 type ReaderIface interface {
@@ -250,7 +250,7 @@ type WriterIface interface {
 	// wrong, and the wrong one sat in the interface people read first.
 	//
 	// Caller MUST invoke inside the same Writer-tx as the domain state-change
-	// (запрет #10). Drainer (kacho-iam/internal/clients.NewSubjectChangeApplier)
+	// (запрет #10). Drainer (kaname/internal/clients.NewSubjectChangeApplier)
 	// drains via the corelib generic Drainer[T].
 	EmitSubjectChangeEvent(ctx context.Context, evt SubjectChangeEvent) error
 
@@ -260,7 +260,7 @@ type WriterIface interface {
 	// direct fact in the SAME commit. Tx rollback ⇒ no orphan rows (запрет #10).
 	//
 	// Caller supplies the tuples as {User, Relation, Object} triples (see
-	// kacho-iam/internal/clients.RelationTuple). len(tuples)==0 is a no-op.
+	// kaname/internal/clients.RelationTuple). len(tuples)==0 is a no-op.
 	EmitRelationWrite(ctx context.Context, tuples []RelationTuple) error
 
 	// EmitRelationDelete — symmetric revoke for EmitRelationWrite (event_type='fga.tuple.delete').

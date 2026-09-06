@@ -20,8 +20,8 @@ import (
 
 	"github.com/PRO-Robotech/kacho/pkg/operations"
 
-	"github.com/PRO-Robotech/kacho-iam/internal/domain"
-	ab_repo "github.com/PRO-Robotech/kacho-iam/internal/repo/kaname/access_binding"
+	"github.com/PRO-Robotech/kaname/internal/domain"
+	ab_repo "github.com/PRO-Robotech/kaname/internal/repo/kaname/access_binding"
 )
 
 // TestCreate_E30_MultiSubject_IndependentTupleSets — a Create with two subjects

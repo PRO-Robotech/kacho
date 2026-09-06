@@ -38,7 +38,7 @@ import (
 	"testing"
 	"time"
 
-	"github.com/PRO-Robotech/kacho-iam/internal/repo/kaname/pg/scalegrid"
+	"github.com/PRO-Robotech/kaname/internal/repo/kaname/pg/scalegrid"
 )
 
 func dirtyBase() scalegrid.Provenance {

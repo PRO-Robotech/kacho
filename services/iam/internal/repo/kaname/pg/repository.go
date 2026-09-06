@@ -17,7 +17,7 @@ import (
 	"github.com/jackc/pgx/v5"
 	"github.com/jackc/pgx/v5/pgxpool"
 
-	kaname "github.com/PRO-Robotech/kacho-iam/internal/repo/kaname"
+	kaname "github.com/PRO-Robotech/kaname/internal/repo/kaname"
 )
 
 // Repository — реализация kacho.Repository поверх pgxpool.

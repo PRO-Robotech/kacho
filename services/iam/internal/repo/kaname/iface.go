@@ -23,16 +23,16 @@ package kaname
 import (
 	"context"
 
-	"github.com/PRO-Robotech/kacho-iam/internal/domain"
-	"github.com/PRO-Robotech/kacho-iam/internal/outboxtypes"
-	"github.com/PRO-Robotech/kacho-iam/internal/repo/kaname/access_binding"
-	"github.com/PRO-Robotech/kacho-iam/internal/repo/kaname/account"
-	"github.com/PRO-Robotech/kacho-iam/internal/repo/kaname/group"
-	"github.com/PRO-Robotech/kacho-iam/internal/repo/kaname/project"
-	"github.com/PRO-Robotech/kacho-iam/internal/repo/kaname/role"
-	"github.com/PRO-Robotech/kacho-iam/internal/repo/kaname/service_account"
-	"github.com/PRO-Robotech/kacho-iam/internal/repo/kaname/user"
-	"github.com/PRO-Robotech/kacho-iam/internal/repo/kaname/visibility"
+	"github.com/PRO-Robotech/kaname/internal/domain"
+	"github.com/PRO-Robotech/kaname/internal/outboxtypes"
+	"github.com/PRO-Robotech/kaname/internal/repo/kaname/access_binding"
+	"github.com/PRO-Robotech/kaname/internal/repo/kaname/account"
+	"github.com/PRO-Robotech/kaname/internal/repo/kaname/group"
+	"github.com/PRO-Robotech/kaname/internal/repo/kaname/project"
+	"github.com/PRO-Robotech/kaname/internal/repo/kaname/role"
+	"github.com/PRO-Robotech/kaname/internal/repo/kaname/service_account"
+	"github.com/PRO-Robotech/kaname/internal/repo/kaname/user"
+	"github.com/PRO-Robotech/kaname/internal/repo/kaname/visibility"
 )
 
 // Repository — корневой entry-point. Конкретная реализация — `pg` подпакет.

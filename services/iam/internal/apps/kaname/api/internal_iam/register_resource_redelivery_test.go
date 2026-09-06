@@ -41,7 +41,7 @@ import (
 
 	"google.golang.org/protobuf/types/known/timestamppb"
 
-	"github.com/PRO-Robotech/kacho-iam/internal/service"
+	"github.com/PRO-Robotech/kaname/internal/service"
 )
 
 // ── fakes modelling the monotonic mirror ────────────────────────────────────

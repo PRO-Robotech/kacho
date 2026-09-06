@@ -30,9 +30,9 @@ import (
 
 	"github.com/stretchr/testify/require"
 
-	"github.com/PRO-Robotech/kacho-iam/internal/clients"
-	"github.com/PRO-Robotech/kacho-iam/internal/domain"
-	repoab "github.com/PRO-Robotech/kacho-iam/internal/repo/kaname/access_binding"
+	"github.com/PRO-Robotech/kaname/internal/clients"
+	"github.com/PRO-Robotech/kaname/internal/domain"
+	repoab "github.com/PRO-Robotech/kaname/internal/repo/kaname/access_binding"
 )
 
 // countingFGA — считает КАЖДЫЙ вопрос к хранилищу прав и отвечает `admin`

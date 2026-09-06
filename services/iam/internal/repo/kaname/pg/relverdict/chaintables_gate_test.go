@@ -72,7 +72,7 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/PRO-Robotech/kacho-iam/internal/repo/kaname/pg/scalegrid"
+	"github.com/PRO-Robotech/kaname/internal/repo/kaname/pg/scalegrid"
 )
 
 // chainViewName — имя представления цепи. Названо здесь ЯВНО, потому что гейт

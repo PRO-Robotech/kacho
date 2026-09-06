@@ -8,7 +8,7 @@ import (
 
 	"github.com/stretchr/testify/require"
 
-	"github.com/PRO-Robotech/kacho-iam/internal/apps/kaname/config"
+	"github.com/PRO-Robotech/kaname/internal/apps/kaname/config"
 )
 
 // Имена ENV этого сервиса НЕ ВСТРЕЧАЮТСЯ В КОДЕ КАК ЛИТЕРАЛЫ — они выводятся

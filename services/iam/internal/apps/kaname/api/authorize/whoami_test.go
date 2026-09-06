@@ -23,17 +23,17 @@ import (
 
 	"github.com/PRO-Robotech/kacho/pkg/operations"
 
-	"github.com/PRO-Robotech/kacho-iam/internal/domain"
-	iamerr "github.com/PRO-Robotech/kacho-iam/internal/errors"
-	kanamerepo "github.com/PRO-Robotech/kacho-iam/internal/repo/kaname"
-	"github.com/PRO-Robotech/kacho-iam/internal/repo/kaname/access_binding"
-	"github.com/PRO-Robotech/kacho-iam/internal/repo/kaname/account"
-	"github.com/PRO-Robotech/kacho-iam/internal/repo/kaname/group"
-	"github.com/PRO-Robotech/kacho-iam/internal/repo/kaname/project"
-	"github.com/PRO-Robotech/kacho-iam/internal/repo/kaname/role"
-	"github.com/PRO-Robotech/kacho-iam/internal/repo/kaname/service_account"
-	"github.com/PRO-Robotech/kacho-iam/internal/repo/kaname/user"
-	"github.com/PRO-Robotech/kacho-iam/internal/repo/kaname/visibility"
+	"github.com/PRO-Robotech/kaname/internal/domain"
+	iamerr "github.com/PRO-Robotech/kaname/internal/errors"
+	kanamerepo "github.com/PRO-Robotech/kaname/internal/repo/kaname"
+	"github.com/PRO-Robotech/kaname/internal/repo/kaname/access_binding"
+	"github.com/PRO-Robotech/kaname/internal/repo/kaname/account"
+	"github.com/PRO-Robotech/kaname/internal/repo/kaname/group"
+	"github.com/PRO-Robotech/kaname/internal/repo/kaname/project"
+	"github.com/PRO-Robotech/kaname/internal/repo/kaname/role"
+	"github.com/PRO-Robotech/kaname/internal/repo/kaname/service_account"
+	"github.com/PRO-Robotech/kaname/internal/repo/kaname/user"
+	"github.com/PRO-Robotech/kaname/internal/repo/kaname/visibility"
 )
 
 // ── Fake repo plumbing (narrow surface for WhoAmI: Users().Get +

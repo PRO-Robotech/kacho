@@ -24,15 +24,15 @@ import (
 
 	"github.com/PRO-Robotech/kacho/pkg/operations"
 
-	"github.com/PRO-Robotech/kacho-iam/internal/apps/kaname/api/access_binding/reconcile"
-	accountapp "github.com/PRO-Robotech/kacho-iam/internal/apps/kaname/api/account"
-	saapp "github.com/PRO-Robotech/kacho-iam/internal/apps/kaname/api/service_account"
-	"github.com/PRO-Robotech/kacho-iam/internal/domain"
-	repoab "github.com/PRO-Robotech/kacho-iam/internal/repo/kaname/access_binding"
-	repoacct "github.com/PRO-Robotech/kacho-iam/internal/repo/kaname/account"
-	kanamepg "github.com/PRO-Robotech/kacho-iam/internal/repo/kaname/pg"
+	"github.com/PRO-Robotech/kaname/internal/apps/kaname/api/access_binding/reconcile"
+	accountapp "github.com/PRO-Robotech/kaname/internal/apps/kaname/api/account"
+	saapp "github.com/PRO-Robotech/kaname/internal/apps/kaname/api/service_account"
+	"github.com/PRO-Robotech/kaname/internal/domain"
+	repoab "github.com/PRO-Robotech/kaname/internal/repo/kaname/access_binding"
+	repoacct "github.com/PRO-Robotech/kaname/internal/repo/kaname/account"
+	kanamepg "github.com/PRO-Robotech/kaname/internal/repo/kaname/pg"
 
-	"github.com/PRO-Robotech/kacho-iam/internal/testsupport/catalogfixture"
+	"github.com/PRO-Robotech/kaname/internal/testsupport/catalogfixture"
 	"github.com/jackc/pgx/v5/pgxpool"
 )
 

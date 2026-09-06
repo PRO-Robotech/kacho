@@ -15,7 +15,7 @@ package reconcile
 import (
 	"testing"
 
-	"github.com/PRO-Robotech/kacho-iam/internal/testsupport/catalogfixture"
+	"github.com/PRO-Robotech/kaname/internal/testsupport/catalogfixture"
 )
 
 // TestRuleObjectTuples_TargetGroupMembershipVerbsMaterialize — несущее утверждение.

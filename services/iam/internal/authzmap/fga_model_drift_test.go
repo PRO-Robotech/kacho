@@ -80,7 +80,7 @@ import (
 
 	"github.com/stretchr/testify/require"
 
-	"github.com/PRO-Robotech/kacho-iam/internal/authzmap"
+	"github.com/PRO-Robotech/kaname/internal/authzmap"
 )
 
 // XC-3 S1Ф2: прежде здесь лежал литеральный список `v_*`, продублированный ради

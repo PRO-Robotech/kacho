@@ -29,7 +29,7 @@ import (
 	"strings"
 	"testing"
 
-	iamerr "github.com/PRO-Robotech/kacho-iam/internal/errors"
+	iamerr "github.com/PRO-Robotech/kaname/internal/errors"
 )
 
 // ownerLaneRefusal — текст стороны «ещё ссылаются». Держится здесь дословно,

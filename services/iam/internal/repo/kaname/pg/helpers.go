@@ -7,7 +7,7 @@ import (
 	"encoding/base64"
 	"encoding/json"
 
-	iamerr "github.com/PRO-Robotech/kacho-iam/internal/errors"
+	iamerr "github.com/PRO-Robotech/kaname/internal/errors"
 )
 
 // pagination bounds — parity with kacho-corelib/validate (Kachō page_size contract):

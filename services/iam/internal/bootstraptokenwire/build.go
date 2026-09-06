@@ -28,12 +28,12 @@ import (
 
 	"github.com/jackc/pgx/v5/pgxpool"
 
-	bootstraptoken "github.com/PRO-Robotech/kacho-iam/internal/apps/kaname/api/bootstrap_token"
-	"github.com/PRO-Robotech/kacho-iam/internal/domain"
-	kanamepg "github.com/PRO-Robotech/kacho-iam/internal/repo/kaname/pg"
-	"github.com/PRO-Robotech/kacho-iam/internal/service"
-	"github.com/PRO-Robotech/kacho-iam/internal/tokensigner"
 	"github.com/PRO-Robotech/kacho/pkg/tokenpolicy"
+	bootstraptoken "github.com/PRO-Robotech/kaname/internal/apps/kaname/api/bootstrap_token"
+	"github.com/PRO-Robotech/kaname/internal/domain"
+	kanamepg "github.com/PRO-Robotech/kaname/internal/repo/kaname/pg"
+	"github.com/PRO-Robotech/kaname/internal/service"
+	"github.com/PRO-Robotech/kaname/internal/tokensigner"
 )
 
 // ClaimsComposer — состав утверждений выпускаемого токена.

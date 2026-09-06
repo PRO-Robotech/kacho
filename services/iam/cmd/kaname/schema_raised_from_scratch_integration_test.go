@@ -46,7 +46,7 @@ import (
 
 	"github.com/PRO-Robotech/kacho/pkg/pgtest"
 
-	"github.com/PRO-Robotech/kacho-iam/internal/testsupport/iampgtest"
+	"github.com/PRO-Robotech/kaname/internal/testsupport/iampgtest"
 )
 
 // canonicalSchemaName — имя схемы, которое обязаны производить обе половины

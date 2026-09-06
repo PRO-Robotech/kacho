@@ -73,7 +73,7 @@ import (
 
 	authzv1 "github.com/PRO-Robotech/kacho/pkg/api/kacho/iam/authz/v1"
 
-	"github.com/PRO-Robotech/kacho-iam/internal/authzguard"
+	"github.com/PRO-Robotech/kaname/internal/authzguard"
 )
 
 // Причины освобождения, которые перепись умеет судить. Перечень ЗАКРЫТ:

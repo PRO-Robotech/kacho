@@ -22,8 +22,8 @@ import (
 
 	iamv1 "github.com/PRO-Robotech/kacho/pkg/api/kacho/cloud/iam/v1"
 
-	clusterapp "github.com/PRO-Robotech/kacho-iam/internal/apps/kaname/api/cluster"
-	"github.com/PRO-Robotech/kacho-iam/internal/domain"
+	clusterapp "github.com/PRO-Robotech/kaname/internal/apps/kaname/api/cluster"
+	"github.com/PRO-Robotech/kaname/internal/domain"
 )
 
 // fakeSubjectState — состояние субъекта, каким его вернул бы репозиторий.

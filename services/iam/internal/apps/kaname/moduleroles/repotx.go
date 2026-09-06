@@ -6,8 +6,8 @@ package moduleroles
 import (
 	"context"
 
-	"github.com/PRO-Robotech/kacho-iam/internal/apps/kaname/shared"
-	kanamerepo "github.com/PRO-Robotech/kacho-iam/internal/repo/kaname"
+	"github.com/PRO-Robotech/kaname/internal/apps/kaname/shared"
+	kanamerepo "github.com/PRO-Robotech/kaname/internal/repo/kaname"
 )
 
 // repotx.go — мост между портом применителя и репозиторием сервиса.

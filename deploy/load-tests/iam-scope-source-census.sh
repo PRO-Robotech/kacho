@@ -96,7 +96,7 @@ DBUSER="${DBUSER:-postgres}"
 ALLOW_TYPES="${ALLOW_TYPES:-}"
 REPO_ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)"
 
-# Генератор живёт в СВОЁМ модуле (`services/iam`, github.com/PRO-Robotech/kacho-iam),
+# Генератор живёт в СВОЁМ модуле (`services/iam`, github.com/PRO-Robotech/kaname),
 # а этот прибор — в дереве монорепо. `go run` берёт пакет у ГЛАВНОГО модуля рабочего
 # каталога, поэтому вызов от корня отвечает «main module does not contain package»
 # ДО любого условия внутри — то есть перепись объявляла бы «условие не создано» на

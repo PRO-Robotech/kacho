@@ -34,10 +34,10 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/PRO-Robotech/kacho-iam/internal/apps/kaname/moduleroles"
-	"github.com/PRO-Robotech/kacho-iam/internal/domain"
-	"github.com/PRO-Robotech/kacho-iam/internal/manifest"
-	"github.com/PRO-Robotech/kacho-iam/internal/testsupport/rightsfixture"
+	"github.com/PRO-Robotech/kaname/internal/apps/kaname/moduleroles"
+	"github.com/PRO-Robotech/kaname/internal/domain"
+	"github.com/PRO-Robotech/kaname/internal/manifest"
+	"github.com/PRO-Robotech/kaname/internal/testsupport/rightsfixture"
 )
 
 // subnetVerbsFull — раздел действий `subnet` целиком. Класс `update` покрывает

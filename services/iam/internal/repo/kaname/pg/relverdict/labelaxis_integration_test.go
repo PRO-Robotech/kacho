@@ -32,7 +32,7 @@ import (
 
 	"github.com/jackc/pgx/v5"
 
-	"github.com/PRO-Robotech/kacho-iam/internal/repo/kaname/pg/relverdict"
+	"github.com/PRO-Robotech/kaname/internal/repo/kaname/pg/relverdict"
 )
 
 // labelScopeAccount — область, на которую сделана меточная выдача во всех пробах

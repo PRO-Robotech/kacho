@@ -6,7 +6,7 @@ package config_test
 import (
 	"testing"
 
-	"github.com/PRO-Robotech/kacho-iam/internal/apps/kaname/config"
+	"github.com/PRO-Robotech/kaname/internal/apps/kaname/config"
 )
 
 // TestMetricsListenAddress_Default — the metrics HTTP listener defaults to a

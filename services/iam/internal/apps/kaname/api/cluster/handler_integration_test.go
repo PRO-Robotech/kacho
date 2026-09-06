@@ -40,9 +40,9 @@ import (
 	iamv1 "github.com/PRO-Robotech/kacho/pkg/api/kacho/cloud/iam/v1"
 	operationpb "github.com/PRO-Robotech/kacho/pkg/api/kacho/cloud/operation"
 
-	clusterapp "github.com/PRO-Robotech/kacho-iam/internal/apps/kaname/api/cluster"
-	"github.com/PRO-Robotech/kacho-iam/internal/domain"
-	kanamepg "github.com/PRO-Robotech/kacho-iam/internal/repo/kaname/pg"
+	clusterapp "github.com/PRO-Robotech/kaname/internal/apps/kaname/api/cluster"
+	"github.com/PRO-Robotech/kaname/internal/domain"
+	kanamepg "github.com/PRO-Robotech/kaname/internal/repo/kaname/pg"
 
 	coredb "github.com/PRO-Robotech/kacho/pkg/db"
 )
