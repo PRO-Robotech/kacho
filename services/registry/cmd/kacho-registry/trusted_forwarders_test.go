@@ -79,6 +79,9 @@ func prodCfg(forwarders ...string) config.Config {
 		// (адреса пусты) — по тому же предикату, что читает проводка.
 		IAMAuthzMTLS:              grpcclient.TLSClient{Enable: true},
 		AuthZTrustedForwarderSANs: forwarders,
+		// Домен доверия — величина установки, и конструктор дескриптора требует её
+		// названной: процесс, не назвавший домена, своим не признаёт никого.
+		AuthZTrustDomain: "kacho.cloud",
 	}
 }
 

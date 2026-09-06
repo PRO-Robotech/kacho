@@ -111,19 +111,28 @@ var (
 	envNameRe = regexp.MustCompile(`^-?\s*name:\s*`)
 )
 
-// ScanTrustDomainKnobs выводит имена ручек принимающей стороны ИЗ КОДА: значения
+// TrustDomainKnobSite — ручка принимающей стороны, объявленная КОДОМ, вместе с
+// её координатой. Координата нужна отказу: находка «ручку никто не производит»
+// обязана называть обе стороны, а вторая сторона — вот эта строка.
+type TrustDomainKnobSite struct {
+	File    string
+	Line    int
+	Service string
+	Knob    string
+}
+
+// ScanTrustDomainKnobs выводит ручки принимающей стороны ИЗ КОДА: значения
 // `TrustDomainKnob` в композитных литералах дескриптора посадки.
 //
-// Возвращает пары «служба → имя ручки». Служба берётся из поля `Service` того же
-// литерала: без неё связать ручку с чартом было бы нечем, а связывание по
-// порядку полей — догадка.
-func ScanTrustDomainKnobs(path string, src []byte) (map[string]string, error) {
+// Служба берётся из поля `Service` того же литерала: без неё отказ не назовёт,
+// чей это процесс, а связывание по порядку полей — догадка.
+func ScanTrustDomainKnobs(path string, src []byte) ([]TrustDomainKnobSite, error) {
 	fset := token.NewFileSet()
 	f, perr := parser.ParseFile(fset, path, src, 0)
 	if perr != nil {
 		return nil, perr
 	}
-	out := map[string]string{}
+	var out []TrustDomainKnobSite
 	ast.Inspect(f, func(n ast.Node) bool {
 		lit, ok := n.(*ast.CompositeLit)
 		if !ok {
@@ -155,7 +164,9 @@ func ScanTrustDomainKnobs(path string, src []byte) (map[string]string, error) {
 			}
 		}
 		if service != "" && knob != "" {
-			out[service] = knob
+			out = append(out, TrustDomainKnobSite{
+				File: path, Line: fset.Position(lit.Pos()).Line, Service: service, Knob: knob,
+			})
 		}
 		return true
 	})

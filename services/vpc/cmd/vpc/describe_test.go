@@ -79,6 +79,9 @@ func describeCfg(t *testing.T) (config.Config, config.MTLSConfig) {
 	c.AuthZ.CheckTimeout = 2 * time.Second
 	c.AuthZ.DenyRateLimitPerSec = 100
 	c.AuthZ.TrustedForwarderSANs = []string{"spiffe://kacho.cloud/ns/kacho/sa/kacho-api-gateway"}
+	// Домен доверия — величина установки, и конструктор дескриптора требует её
+	// названной: процесс, не назвавший домена, своим не признаёт никого.
+	c.AuthZ.TrustDomainName = "kacho.cloud"
 
 	var m config.MTLSConfig
 	return c, m

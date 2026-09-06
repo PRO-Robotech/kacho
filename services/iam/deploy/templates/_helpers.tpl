@@ -77,3 +77,17 @@ kaname-svc.requireOperatorSuppliedNames — ОТКАЗ УСТАНОВКИ ОДН
   (len $missing) .Values.name (join "\n\n" $missing)) -}}
 {{- end -}}
 {{- end -}}
+
+{{/*
+kaname-svc.trustDomain — ДОМЕН ДОВЕРИЯ установки, ОДНИМ написанием.
+
+Собственного сертификата этот чарт не чеканит (его чеканит зонтичный), но
+величину принимающей стороны отдаёт процессу он. Объявление живёт здесь по той
+же причине, по какой оно живёт у каждого чарта: взятое своей рукой в месте
+употребления, оно становится вторым адресом одного предмета — и расходится с
+первым молча.
+*/}}
+{{- define "kaname-svc.trustDomain" -}}
+{{- $sp := (.Values.mtls | default dict).spiffe | default dict -}}
+{{- $sp.trustDomain | default "kacho.cloud" -}}
+{{- end -}}

@@ -140,6 +140,17 @@ func RegisterDefaults(v *viper.Viper) {
 	// на пустом списке не стартует (Validate), а значение задаёт чарт.
 	// ENV KACHO_VPC_AUTHZ__TRUSTED_FORWARDER_SANS (через запятую).
 	v.SetDefault("authz.trusted-forwarder-sans", []string{})
+	// trust-domain — домен доверия установки. Пусто по умолчанию, и это самое
+	// строгое прочтение: по необъявленному домену не опознаётся ни один
+	// предъявитель, а боевая посадка на нём не стартует (Validate). Величину
+	// задаёт чарт, а не сборка.
+	//
+	// Ключ объявлен ЗДЕСЬ не ради умолчания, а ради ПРИВЯЗКИ: viper связывает с
+	// переменной окружения только ключи, которые он уже видел. Померено, а не
+	// предположено: без этой строки `KACHO_VPC_AUTHZ__TRUST_DOMAIN` не доезжает
+	// ни в одном написании, и имя переменной в тексте отказа было бы обещанием
+	// возможности, которой нет.
+	v.SetDefault("authz.trust-domain", "")
 
 	// per-object list-filter (per-page BatchCheck-filtered List).
 	// Default enabled=true: List<Resource> возвращает только доступные объекты
