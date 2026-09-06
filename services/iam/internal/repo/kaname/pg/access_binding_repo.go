@@ -1289,7 +1289,7 @@ func newAuditEventID() string {
 	sb.Grow(len("evt_") + bodyLen)
 	sb.WriteString("evt_")
 	for i := 0; i < bodyLen; i++ {
-		bitOff := uint(i*5) % 64 // #nosec G115 -- i is the bounded loop index [0,bodyLen); i*5 cannot overflow uint.
+		bitOff := uint(i*5) % 64 // i is the bounded loop index [0,bodyLen); i*5 cannot overflow uint.
 		src := hi
 		if i >= 12 {
 			src = lo

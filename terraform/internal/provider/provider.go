@@ -101,7 +101,7 @@ func (p *kachoProvider) Configure(ctx context.Context, req provider.ConfigureReq
 					"Укажите путь к PEM-файлу с сертификатами.")
 			return
 		}
-		pem, err := os.ReadFile(clean) // #nosec G304 G703 -- путь задан оператором в его же конфигурации; нормализован и проверен на обычный файл строкой выше
+		pem, err := os.ReadFile(clean) // путь задан оператором в его же конфигурации; нормализован и проверен на обычный файл строкой выше
 		if err != nil {
 			resp.Diagnostics.AddError("Не читается файл корней доверия",
 				"Атрибут ca_bundle указывает на "+clean+", но файл не прочитан: "+err.Error())

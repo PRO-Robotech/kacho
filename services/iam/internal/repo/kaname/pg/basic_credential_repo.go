@@ -86,9 +86,8 @@ const liveSACredentialPredicate = `
 // Резолв строки удостоверения ЛИЧНОСТИ. Состояние владельца — часть ЭТОГО ЖЕ
 // оператора: вторым запросом оно дало бы окно, в котором человек уже заблокирован,
 // а его секрет ещё проходит.
-// #nosec G101 -- это текст SQL-запроса, а не удостоверение: слово `secret_hash`
-// здесь — ИМЯ КОЛОНКИ, в которой лежит хеш. Сам секрет в этом файле не
-// появляется ни в каком виде и хранению не подлежит by construction.
+// Слово `secret_hash` здесь — ИМЯ КОЛОНКИ, в которой лежит хеш. Сам секрет в
+// этом файле не появляется ни в каком виде и хранению не подлежит by construction.
 const resolveUserCredentialSQL = `
 SELECT c.id, c.secret_hash, c.expires_at, u.id, u.display_name
   FROM user_oauth_clients c
@@ -96,7 +95,7 @@ SELECT c.id, c.secret_hash, c.expires_at, u.id, u.display_name
  WHERE c.id = $1` + liveUserCredentialPredicate
 
 // Резолв строки удостоверения СЛУЖЕБНОЙ УЧЁТКИ.
-// #nosec G101 -- то же: имя колонки в тексте запроса, не значение.
+// То же: имя колонки в тексте запроса, не значение.
 const resolveSACredentialSQL = `
 SELECT c.id, c.secret_hash, c.expires_at, s.id, s.name
   FROM service_account_oauth_clients c
