@@ -49,6 +49,10 @@ type trustedPrincipalConfig struct {
 	// end-user principal-metadata (обычно единственный — api-gateway SA). Пусто →
 	// доверяем любому mTLS-verified peer'у (backward-compat) с WARN-предупреждением.
 	forwarders map[string]struct{}
+	// arrival — счётчик того, что запрос сказал о личности (identity_arrival.go).
+	// Нулевой прозрачен: пробе метрики не нужны, развёрнутому слушателю их
+	// ставит носитель контура.
+	arrival *IdentityArrival
 }
 
 // TrustedPrincipalOption — функциональная опция UnaryTrustedPrincipalExtract.
@@ -278,7 +282,10 @@ func withCertIdentityFromPeer(d TrustDomain, ctx context.Context) context.Contex
 func UnaryTrustedPrincipalExtract(opts ...TrustedPrincipalOption) grpc.UnaryServerInterceptor {
 	cfg := buildTrustedPrincipalConfig(opts)
 	return func(ctx context.Context, req any, _ *grpc.UnaryServerInfo, handler grpc.UnaryHandler) (any, error) {
-		ctx = withTrustedPrincipal(ctx, cfg)
+		ctx, err := withTrustedPrincipal(ctx, cfg)
+		if err != nil {
+			return nil, err
+		}
 		return handler(ctx, req)
 	}
 }
@@ -287,7 +294,10 @@ func UnaryTrustedPrincipalExtract(opts ...TrustedPrincipalOption) grpc.UnaryServ
 func StreamTrustedPrincipalExtract(opts ...TrustedPrincipalOption) grpc.StreamServerInterceptor {
 	cfg := buildTrustedPrincipalConfig(opts)
 	return func(srv any, ss grpc.ServerStream, _ *grpc.StreamServerInfo, handler grpc.StreamHandler) error {
-		ctx := withTrustedPrincipal(ss.Context(), cfg)
+		ctx, err := withTrustedPrincipal(ss.Context(), cfg)
+		if err != nil {
+			return err
+		}
 		return handler(srv, &certIdentityStream{ServerStream: ss, ctx: ctx})
 	}
 }
@@ -310,7 +320,15 @@ type trustedPrincipal struct {
 	trusted bool
 }
 
-func withTrustedPrincipal(ctx context.Context, cfg trustedPrincipalConfig) context.Context {
+// withTrustedPrincipal решает, чью личность несёт запрос, и ОТВЕРГАЕТ его, когда
+// личность была объявлена и не приехала (identity_arrival.go).
+//
+// Отказ живёт здесь, а не слоем ниже, потому что «объявлена» — утверждение
+// ЭТОГО слоя: он единственный знает, какие имена читает эта сборка и чью
+// пересылку слушатель почитает. Слой прав отверг бы такой запрос лишь на тех
+// записях каталога, где вопрос о субъекте задаётся, — а освобождённых от него
+// записей в каталоге хватает, и на них наследовать нечего.
+func withTrustedPrincipal(ctx context.Context, cfg trustedPrincipalConfig) (context.Context, error) {
 	trusted := principalIsTrusted(ctx, cfg)
 	// p is whatever the peer FORWARDED — nothing when it forwarded nothing. It is
 	// deliberately NOT seeded with the system principal: trust is a property of
@@ -342,7 +360,18 @@ func withTrustedPrincipal(ctx context.Context, cfg trustedPrincipalConfig) conte
 		// absence: the carrier must report "no principal", not a fabricated one.
 		ctx = operations.WithoutPrincipal(ctx)
 	}
-	return context.WithValue(ctx, trustedPrincipalCtxKey{}, trustedPrincipal{principal: p, acr: acr, trusted: trusted})
+	// Исход наблюдается ВСЕГДА, включая законную безымянность: без неё «личность
+	// объявлена и не приехала» неотличимо от роста безымянных вызовов, то есть
+	// не видно ничем.
+	outcome := arrivalUntrusted
+	if trusted {
+		outcome = classifyIdentityArrival(ctx, forwarded)
+	}
+	cfg.arrival.observe(outcome)
+	if outcome.refused() {
+		return ctx, refusalFor(outcome)
+	}
+	return context.WithValue(ctx, trustedPrincipalCtxKey{}, trustedPrincipal{principal: p, acr: acr, trusted: trusted}), nil
 }
 
 // principalIsTrusted implements the trust decision (see UnaryTrustedPrincipalExtract).

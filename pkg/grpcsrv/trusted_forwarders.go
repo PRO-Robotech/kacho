@@ -196,17 +196,25 @@ func (f TrustedForwarders) Require(g ForwarderGate) error {
 // Домен доверия стоит ПЕРВЫМ аргументом по той же причине, по какой первым
 // стоит звено извлечения личности сертификата: сперва решается, чей это
 // предъявитель, и только потом — вправе ли он представляться другим.
-func PrincipalExtractUnary(d TrustDomain, f TrustedForwarders) []grpc.UnaryServerInterceptor {
+// Дополнительные опции ВАРИАДИЧНЫ намеренно: пара уже собирается семью
+// композиционными корнями и двумя сборками, и расширение подписи развело бы их
+// во времени — половина деревьев перестала бы собираться до сдвига пина.
+// Сегодня отсюда приезжает счётчик исходов личности ([WithIdentityArrival]).
+func PrincipalExtractUnary(d TrustDomain, f TrustedForwarders,
+	opts ...TrustedPrincipalOption,
+) []grpc.UnaryServerInterceptor {
 	return []grpc.UnaryServerInterceptor{
 		UnaryCertIdentityExtract(d),
-		UnaryTrustedPrincipalExtract(WithTrustedForwarders(f)),
+		UnaryTrustedPrincipalExtract(append([]TrustedPrincipalOption{WithTrustedForwarders(f)}, opts...)...),
 	}
 }
 
 // PrincipalExtractStream — то же для stream RPC (тот же инвариант порядка).
-func PrincipalExtractStream(d TrustDomain, f TrustedForwarders) []grpc.StreamServerInterceptor {
+func PrincipalExtractStream(d TrustDomain, f TrustedForwarders,
+	opts ...TrustedPrincipalOption,
+) []grpc.StreamServerInterceptor {
 	return []grpc.StreamServerInterceptor{
 		StreamCertIdentityExtract(d),
-		StreamTrustedPrincipalExtract(WithTrustedForwarders(f)),
+		StreamTrustedPrincipalExtract(append([]TrustedPrincipalOption{WithTrustedForwarders(f)}, opts...)...),
 	}
 }

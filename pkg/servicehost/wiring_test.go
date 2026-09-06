@@ -262,7 +262,7 @@ func TestAccessLogRecordsAStreamCallToo(t *testing.T) {
 	spec := chainSpec()
 	spec.Logger = log
 	var slot decisionSlot
-	chain := streamChain(spec, &slot, probeLatency(t), grpcsrv.ListenerPublic)
+	chain := streamChain(spec, &slot, probeLatency(t), nil, grpcsrv.ListenerPublic)
 	chain = chain[:len(chain)-1] // без слота решения: предмет пробы — журнал
 
 	err := runStreamChain(chain, &fakeStream{ctx: context.Background()}, panicMethod,
@@ -286,7 +286,7 @@ func TestAccessLogRecordsThePanickingStreamCall(t *testing.T) {
 	spec := chainSpec()
 	spec.Logger = log
 	var slot decisionSlot
-	chain := streamChain(spec, &slot, probeLatency(t), grpcsrv.ListenerPublic)
+	chain := streamChain(spec, &slot, probeLatency(t), nil, grpcsrv.ListenerPublic)
 	chain = chain[:len(chain)-1]
 
 	err := runStreamChain(chain, &fakeStream{ctx: context.Background()}, panicMethod,
@@ -315,7 +315,7 @@ func TestStreamBudgetReachesTheStreamHandler(t *testing.T) {
 	spec.HandlingBudget = 5 * time.Second
 	spec.StreamBudget = servicecontract.Value(time.Hour)
 	var slot decisionSlot
-	chain := streamChain(spec, &slot, probeLatency(t), grpcsrv.ListenerPublic)
+	chain := streamChain(spec, &slot, probeLatency(t), nil, grpcsrv.ListenerPublic)
 	chain = chain[:len(chain)-1]
 
 	var (
@@ -370,7 +370,7 @@ func TestStreamBudgetNeverWidensTheCallersDeadline(t *testing.T) {
 	spec := chainSpec()
 	spec.StreamBudget = servicecontract.Value(time.Hour)
 	var slot decisionSlot
-	chain := streamChain(spec, &slot, probeLatency(t), grpcsrv.ListenerPublic)
+	chain := streamChain(spec, &slot, probeLatency(t), nil, grpcsrv.ListenerPublic)
 	chain = chain[:len(chain)-1]
 
 	ctx, cancel := context.WithTimeout(context.Background(), 50*time.Millisecond)

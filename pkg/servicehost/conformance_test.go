@@ -72,8 +72,8 @@ func chainSpec() servicecontract.Spec {
 func TestLatencyIsOutermostAccessLogNextAndDecisionIsLast(t *testing.T) {
 	var slot decisionSlot
 	lat := probeLatency(t)
-	unary := unaryChain(chainSpec(), &slot, lat, grpcsrv.ListenerPublic)
-	stream := streamChain(chainSpec(), &slot, lat, grpcsrv.ListenerPublic)
+	unary := unaryChain(chainSpec(), &slot, lat, nil, grpcsrv.ListenerPublic)
+	stream := streamChain(chainSpec(), &slot, lat, nil, grpcsrv.ListenerPublic)
 
 	// Дескриптор пробы гейта мутаций не несёт (ось не объявлена), поэтому его
 	// звена в цепочке нет — отсюда семь, а не восемь. Длина утверждается вместе
@@ -142,11 +142,11 @@ func TestLatencyIsOutermostAccessLogNextAndDecisionIsLast(t *testing.T) {
 func TestStreamChainDropsTheBudgetLinkOnANotApplicableAxis(t *testing.T) {
 	var slot decisionSlot
 	lat := probeLatency(t)
-	withValue := streamChain(chainSpec(), &slot, lat, grpcsrv.ListenerPublic)
+	withValue := streamChain(chainSpec(), &slot, lat, nil, grpcsrv.ListenerPublic)
 
 	na := chainSpec()
 	na.StreamBudget = servicecontract.NotApplicable[time.Duration]("демо не служит серверных стримов")
-	withoutValue := streamChain(na, &slot, lat, grpcsrv.ListenerPublic)
+	withoutValue := streamChain(na, &slot, lat, nil, grpcsrv.ListenerPublic)
 
 	if len(withoutValue) != len(withValue)-1 {
 		t.Fatalf("изъятие не сняло звена срока: с величиной %d звеньев, с изъятием %d",
@@ -192,7 +192,7 @@ func TestStreamChainDropsTheBudgetLinkOnANotApplicableAxis(t *testing.T) {
 func TestChainBuilderIsDeterministic(t *testing.T) {
 	var slot decisionSlot
 	spec := chainSpec()
-	first, second := unaryChain(spec, &slot, probeLatency(t), grpcsrv.ListenerPublic), unaryChain(spec, &slot, probeLatency(t), grpcsrv.ListenerPublic)
+	first, second := unaryChain(spec, &slot, probeLatency(t), nil, grpcsrv.ListenerPublic), unaryChain(spec, &slot, probeLatency(t), nil, grpcsrv.ListenerPublic)
 	if len(first) != len(second) {
 		t.Fatalf("строитель дал цепочки разной длины: %d против %d", len(first), len(second))
 	}
@@ -223,7 +223,7 @@ func TestForwarderCircleReachesTheChain(t *testing.T) {
 		t.Fatalf("пара звеньев личности изменила состав: %d", len(pair))
 	}
 	var slot decisionSlot
-	chain := unaryChain(spec, &slot, probeLatency(t), grpcsrv.ListenerPublic)
+	chain := unaryChain(spec, &slot, probeLatency(t), nil, grpcsrv.ListenerPublic)
 	// Пара извлечения личности стоит НЕПОСРЕДСТВЕННО перед решением о доступе —
 	// её позиция отсчитывается от хвоста, а не от головы: иначе проба ломалась бы
 	// при появлении любого звена выше и краснела бы на исправном контуре.

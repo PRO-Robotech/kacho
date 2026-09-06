@@ -191,11 +191,23 @@ func serverPair(spec servicecontract.Spec, slot *decisionSlot) (public, internal
 			"диагностическую поверхность без семейства, которого на ней не будет никогда",
 			spec.Service, lerr)
 	}
+	// Исход личности наблюдается ЗДЕСЬ, а не у каждого сервиса, и по той же
+	// причине, по какой здесь стоит измеритель задержки: пока счётчик заводит
+	// каждый у себя, «не завёл» НЕОТЛИЧИМО от «завёл такой же», а без него
+	// «личность объявлена и не приехала» неотличимо от роста безымянных вызовов.
+	arrival, aerr := grpcsrv.NewIdentityArrival(spec.Metrics)
+	if aerr != nil {
+		return nil, nil, fmt.Errorf("servicehost: %s не поднимается — счётчик исходов личности "+
+			"не заводится в переданном реестре: %w. Так выглядит несогласованное объявление серии "+
+			"(то же имя с другой размерностью); поднять процесс значило бы отдать ему полосу, "+
+			"на которой рассинхрон написания ключей неотличим от законной безымянности",
+			spec.Service, aerr)
+	}
 	build := func(creds credentials.TransportCredentials, on grpcsrv.Listener) *grpc.Server {
 		return grpcsrv.NewServer(
 			grpc.Creds(creds),
-			grpc.ChainUnaryInterceptor(unaryChain(spec, slot, lat, on)...),
-			grpc.ChainStreamInterceptor(streamChain(spec, slot, lat, on)...),
+			grpc.ChainUnaryInterceptor(unaryChain(spec, slot, lat, arrival, on)...),
+			grpc.ChainStreamInterceptor(streamChain(spec, slot, lat, arrival, on)...),
 		)
 	}
 	return build(spec.PublicCreds, grpcsrv.ListenerPublic),
@@ -610,7 +622,8 @@ func catalogOf(domains []string) catalogView {
 // Позиция при этом зафиксирована здесь, а не оставлена на усмотрение: когда
 // звено введут, оно встанет на своё место, а не туда, где окажется удобно.
 func unaryChain(spec servicecontract.Spec, slot *decisionSlot,
-	lat *grpcsrv.ServerLatency, on grpcsrv.Listener) []grpc.UnaryServerInterceptor {
+	lat *grpcsrv.ServerLatency, arrival *grpcsrv.IdentityArrival,
+	on grpcsrv.Listener) []grpc.UnaryServerInterceptor {
 	chain := []grpc.UnaryServerInterceptor{
 		lat.UnaryServerInterceptor(on),
 		accessLogUnary(spec.Logger),
@@ -620,7 +633,8 @@ func unaryChain(spec servicecontract.Spec, slot *decisionSlot,
 	if gate, ok := spec.BootGate.Get(); ok && gate != nil {
 		chain = append(chain, bootGateUnary(gate))
 	}
-	chain = append(chain, grpcsrv.PrincipalExtractUnary(carriedTrustDomain(spec), carriedForwarders(spec))...)
+	chain = append(chain, grpcsrv.PrincipalExtractUnary(carriedTrustDomain(spec), carriedForwarders(spec),
+		grpcsrv.WithIdentityArrival(arrival))...)
 	return append(chain, slot.unary())
 }
 
@@ -638,7 +652,8 @@ func unaryChain(spec servicecontract.Spec, slot *decisionSlot,
 // Загрузочного гейта мутаций здесь нет и в unary-варианте он условен по другой
 // причине: мутация в этом продукте всегда unary (см. [bootGateUnary]).
 func streamChain(spec servicecontract.Spec, slot *decisionSlot,
-	lat *grpcsrv.ServerLatency, on grpcsrv.Listener) []grpc.StreamServerInterceptor {
+	lat *grpcsrv.ServerLatency, arrival *grpcsrv.IdentityArrival,
+	on grpcsrv.Listener) []grpc.StreamServerInterceptor {
 	chain := []grpc.StreamServerInterceptor{
 		lat.StreamServerInterceptor(on),
 		accessLogStream(spec.Logger),
@@ -647,7 +662,8 @@ func streamChain(spec servicecontract.Spec, slot *decisionSlot,
 	if budget, ok := spec.StreamBudget.Get(); ok {
 		chain = append(chain, streamBudgetLink(budget))
 	}
-	chain = append(chain, grpcsrv.PrincipalExtractStream(carriedTrustDomain(spec), carriedForwarders(spec))...)
+	chain = append(chain, grpcsrv.PrincipalExtractStream(carriedTrustDomain(spec), carriedForwarders(spec),
+		grpcsrv.WithIdentityArrival(arrival))...)
 	return append(chain, slot.stream())
 }
 

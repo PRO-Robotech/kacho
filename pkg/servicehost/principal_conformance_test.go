@@ -133,7 +133,7 @@ func chainOf(t *testing.T, spec servicecontract.Spec) grpc.UnaryServerIntercepto
 			return false, nil
 		}),
 	}))
-	return chainUnaryServer(unaryChain(spec, &slot, probeLatency(t), grpcsrv.ListenerPublic)...)
+	return chainUnaryServer(unaryChain(spec, &slot, probeLatency(t), nil, grpcsrv.ListenerPublic)...)
 }
 
 // runHostChain прогоняет контекст через цепочку и возвращает то, что увидел бы
