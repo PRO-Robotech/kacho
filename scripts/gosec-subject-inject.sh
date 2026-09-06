@@ -273,10 +273,14 @@ $block
         probe
         printf 'ОТКАЗОВ=%d [%s]\n' \"\${#fails[@]}\" \"\${fails[*]-}\"
     " 2>&1) || rc=$?
-    if printf '%s' "$out" | grep -q "$expect"; then
+    # Сравнение БЕЗ внешнего процесса: `printf … | grep -q` под pipefail даёт
+    # ложное «не найдено» — grep выходит на первом совпадении, писатель слева
+    # получает SIGPIPE, и pipefail поднимает это до статуса конвейера. Гейт
+    # дерева ловит этот класс отдельно (#658).
+    if [[ "$out" == *"$expect"* ]]; then
         ok "$name: код $want → $expect"
     else
-        bad "$name: код $want не дал «$expect»: $(printf '%s' "$out" | tr '\n' '|' | head -c 200)"
+        bad "$name: код $want не дал «$expect»: ${out//$'\n'/|}"
     fi
     rm -rf "$box"
 }
