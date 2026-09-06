@@ -327,17 +327,28 @@ ports:
   # directly (Hydra stays signer/issuer; served kids are Hydra's). ONE-WAY server-TLS,
   # exposed ONLY on the kaname-internal Service (never external, ban #6).
   jwksProxy: 9097
+  # Собственные REST-фронты службы (KAN-REST-1). Вынесенная отдельным продуктом,
+  # служба края платформы не имеет by construction — её HTTP-поверхность обязана
+  # существовать сама. Фронтов ДВА, и раздельность есть свойство СОКЕТА:
+  # «внутреннее не опубликовано наружу» проверяемо ровно тогда, когда оно
+  # недосягаемо, а не отклоняется по дороге.
+  rest: 9098
+  internalRest: 9099
 
 service:
   public:
     type: ClusterIP
     port: 9090
+    # Публичный REST-фронт службы.
+    restPort: 9098
   internal:
     type: ClusterIP
     port: 9091
     # KAC-127 deploy#39 — HTTP hooks/OPA-bundle port exposed on the internal
     # Service (cluster-internal only, запрет #6).
     hooksHttpPort: 9092
+    # Внутренний REST-фронт: выставлен ТОЛЬКО на внутренний Service.
+    internalRestPort: 9099
     # Cluster-INTERNAL Hydra-JWKS proxy port (GET /.well-known/jwks.json), exposed
     # ONLY on kaname-internal (never the public Service, ban #6). Consumed by
     # service-internal.yaml — the registry data-plane fetches JWKS from here.
@@ -630,6 +641,15 @@ mtls:
   # шифрования и аутентификации СЕРВЕРА. mutual потребовал бы client-cert у
   # nginx-sidecar реестра, который его не носит.
   registryTokenClientAuthMode: server-tls-only
+  # Собственные REST-фронты. Обе полосы — ONE-WAY server-TLS: до публичного
+  # фронта дотягивается арендатор обычным HTTP-клиентом и клиентского
+  # сертификата не носит, а RequireAndVerifyClientCert отверг бы его на
+  # рукопожатии — то есть поверхность была бы недостижима ни для кого.
+  # Вызывающего на ней аутентифицирует ПРЕДЪЯВЛЕННОЕ УДОСТОВЕРЕНИЕ, которое
+  # проверяет звено собственного слушателя; TLS здесь даёт шифрование и
+  # аутентификацию СЕРВЕРА, а не вызывающего.
+  restClientAuthMode: server-tls-only
+  internalRestClientAuthMode: server-tls-only
   # ─── internal-CA leaf-cert issuance (this chart owns its Certificate, rule #1) ─
   # kaname is the authz authority itself → SERVER cert only (no client cert,
   # no IAM grant needed — it does not dial peers in SEC-H scope). Server-cert SAN

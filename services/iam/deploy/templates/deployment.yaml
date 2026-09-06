@@ -122,6 +122,13 @@ spec:
             # процесса (authn.hooks-http-endpoint = tcp://0.0.0.0:9092).
             - name: http-hooks
               containerPort: {{ .Values.ports.hooksHttp | default 9092 }}
+            # Собственные REST-фронты службы (KAN-REST-1). ДВА разных порта, а не
+            # разбор пути на общем: принадлежность маршрута фронту обязана быть
+            # свойством того, куда вообще можно дозвониться.
+            - name: http-rest
+              containerPort: {{ .Values.ports.rest | default 9098 }}
+            - name: http-rest-int
+              containerPort: {{ .Values.ports.internalRest | default 9099 }}
           volumeMounts:
             - name: config
               mountPath: /etc/kaname
@@ -139,6 +146,15 @@ spec:
                 secretKeyRef:
                   name: {{ .Values.db.passwordSecretName }}
                   key: {{ .Values.db.passwordSecretKey }}
+            {{- if (index .Values.env "KANAME_REST_UPSTREAM_MTLS_ENABLE") }}
+            # Имя, по которому фронт сверяет сертификат СОБСТВЕННОГО слушателя.
+            # ВЫЧИСЛЯЕТСЯ шаблоном, а не выписывается в профиле: дозвон идёт в
+            # петлю (адрес привязки целью соединения не является), а лист выписан
+            # на имя Service — выписанное руками разошлось бы с ним молча, и
+            # разошлось бы только в боевой посадке, где проверка включена.
+            - name: KANAME_REST_UPSTREAM_MTLS_SERVERNAME
+              value: {{ printf "%s.%s.svc.cluster.local" .Values.name .Release.Namespace | quote }}
+            {{- end }}
             {{- range $k, $v := .Values.env }}
             - name: {{ $k }}
               value: {{ $v | quote }}

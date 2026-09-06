@@ -47,6 +47,7 @@ import (
 	"github.com/PRO-Robotech/kaname/internal/presentedcred"
 	"github.com/PRO-Robotech/kaname/internal/registrytokenwire"
 	kanamepg "github.com/PRO-Robotech/kaname/internal/repo/kaname/pg"
+	"github.com/PRO-Robotech/kaname/internal/restfront"
 
 	"github.com/PRO-Robotech/kaname/internal/apps/kaname/seed"
 	"github.com/PRO-Robotech/kaname/internal/catalog"
@@ -485,6 +486,14 @@ func runServe(cfg config.Config) error {
 	if err != nil {
 		return fmt.Errorf("registry-token listener mTLS config: %w", err)
 	}
+	restTLSConfig, err := mtlsCfg.RESTServerTLSConfig()
+	if err != nil {
+		return fmt.Errorf("public REST front mTLS config: %w", err)
+	}
+	internalRESTTLSConfig, err := mtlsCfg.InternalRESTServerTLSConfig()
+	if err != nil {
+		return fmt.Errorf("internal REST front mTLS config: %w", err)
+	}
 
 	// M1 — startup invariant: production mode MUST run the cluster-internal
 	// listener (:9091) under mTLS RequireAndVerifyClientCert. Without it the
@@ -512,8 +521,29 @@ func runServe(cfg config.Config) error {
 		cfg.AuthN.HooksHTTPListenAddress(),
 		cfg.APIServer.MetricsListenAddress(),
 		cfg.APIServer.JWKSProxy.ListenAddress(),
+		cfg.APIServer.RESTListenAddress(),
+		cfg.APIServer.InternalRESTListenAddress(),
 		mtlsCfg,
 	)); err != nil {
+		return err
+	}
+	// Раздельность поверхностей есть свойство СОКЕТА: «внутреннее не
+	// опубликовано наружу» проверяемо ровно тогда, когда оно недосягаемо.
+	// Совпавшие адреса делают требование невыполнимым by construction, и делают
+	// это МОЛЧА — порт занимает тот слушатель, что успел подняться первым.
+	if err := requireRESTUpstreamCredential(productionMode,
+		cfg.APIServer.RESTListenAddress(),
+		cfg.APIServer.InternalRESTListenAddress(),
+		mtlsCfg,
+	); err != nil {
+		return err
+	}
+	if err := requireDistinctSurfaceAddrs(
+		cfg.APIServer.ListenAddress(),
+		cfg.APIServer.InternalListenAddress(),
+		cfg.APIServer.RESTListenAddress(),
+		cfg.APIServer.InternalRESTListenAddress(),
+	); err != nil {
 		return err
 	}
 
@@ -1237,8 +1267,77 @@ func runServe(cfg config.Config) error {
 		return fmt.Errorf("профиль поверхности зеркала ключей: %w", err)
 	}
 
+	// (5) и (6) Собственные REST-фронты службы — публичный и внутренний.
+	//
+	// Пока служба стоит за краем платформы, её HTTP-поверхность принадлежит
+	// краю. Вынесенная отдельным продуктом, края она не имеет by construction,
+	// и её REST обязан существовать сам.
+	//
+	// Оба фронта — обычные КЛИЕНТЫ собственных gRPC-слушателей: запрос по HTTP
+	// проходит ровно ту цепочку звеньев, что и тот же запрос по gRPC. Иначе к
+	// одному обработчику вели бы два пути с разными решениями по дороге.
+	restUpstream, err := mtlsCfg.RESTUpstreamDialOption()
+	if err != nil {
+		return fmt.Errorf("удостоверение REST-фронта для собственного слушателя: %w", err)
+	}
+	restDialOpts := []grpc.DialOption{restUpstream}
+
+	restAddr := cfg.APIServer.RESTListenAddress()
+	var restHandler http.Handler
+	if restAddr != "" {
+		restHandler, err = restfront.NewPublic(surfaceCtx, restfront.DialTarget(publicAddr), restDialOpts)
+		if err != nil {
+			return fmt.Errorf("публичный REST-фронт: %w", err)
+		}
+	}
+	restSurface, err := iamHTTPSurface(servicecontract.Surface{
+		Name:   "собственный публичный REST-фронт",
+		Mode:   surfaceMode,
+		Logger: logger,
+		Addr: addrAxis(restAddr, "KANAME_API_SERVER__REST_ENDPOINT не задан профилем развёртывания: "+
+			"собственной HTTP-поверхности у службы на этой посадке нет, и арендатор "+
+			"дотянется до неё только через край платформы, которого у отдельно "+
+			"поставленной службы нет"),
+		Handler: restHandler,
+		Reach:   servicecontract.ReachExternal,
+		Auth: servicecontract.Value[servicecontract.SurfaceAuthMech](
+			"предъявленное арендатором удостоверение: фронт переносит его, ничего не " +
+				"добавляя, а проверяет и назначает субъекта звено собственного слушателя"),
+		TLS: restTLSConfig,
+	})
+	if err != nil {
+		return fmt.Errorf("профиль поверхности публичного REST-фронта: %w", err)
+	}
+
+	internalRESTAddr := cfg.APIServer.InternalRESTListenAddress()
+	var internalRESTHandler http.Handler
+	if internalRESTAddr != "" {
+		internalRESTHandler, err = restfront.NewInternal(surfaceCtx, restfront.DialTarget(internalAddr), restDialOpts)
+		if err != nil {
+			return fmt.Errorf("внутренний REST-фронт: %w", err)
+		}
+	}
+	internalRESTSurface, err := iamHTTPSurface(servicecontract.Surface{
+		Name:   "собственный внутренний REST-фронт",
+		Mode:   surfaceMode,
+		Logger: logger,
+		Addr: addrAxis(internalRESTAddr, "KANAME_API_SERVER__INTERNAL_REST_ENDPOINT не задан "+
+			"профилем развёртывания: служебные поверхности по HTTP на этой посадке "+
+			"не обслуживаются"),
+		Handler: internalRESTHandler,
+		Reach:   servicecontract.ReachClusterInternal,
+		Auth: servicecontract.Value[servicecontract.SurfaceAuthMech](
+			"цепочка внутреннего слушателя: проверенный сертификат модуля и его политика " +
+				"вызывающего — фронт своего рубежа не заводит и ничего к личности не добавляет"),
+		TLS: internalRESTTLSConfig,
+	})
+	if err != nil {
+		return fmt.Errorf("профиль поверхности внутреннего REST-фронта: %w", err)
+	}
+
 	httpSurfaces := []servicecontract.SurfaceDescriptor{
 		hooksSurface, metricsSurface, registryTokenSurface, jwksProxySurface,
+		restSurface, internalRESTSurface,
 	}
 
 	// Про четыре не-gRPC поверхности здесь больше не сообщается: о себе

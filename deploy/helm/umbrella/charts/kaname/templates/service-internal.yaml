@@ -31,3 +31,9 @@ spec:
     - name: http-jwks
       port: {{ .Values.service.internal.jwksProxyPort | default 9097 }}
       targetPort: http-jwks
+    # Собственный ВНУТРЕННИЙ REST-фронт службы (KAN-REST-1). Выставлен ТОЛЬКО
+    # здесь: на публичном Service его нет, и это свойство сокета, а не решение,
+    # принимаемое на каждом запросе.
+    - name: http-rest-int
+      port: {{ .Values.service.internal.internalRestPort | default 9099 }}
+      targetPort: http-rest-int

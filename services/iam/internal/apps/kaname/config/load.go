@@ -333,6 +333,14 @@ func listenAddress(endpoint string) string {
 func (c APIServerConfig) ListenAddress() string         { return listenAddress(c.Endpoint) }
 func (c APIServerConfig) InternalListenAddress() string { return listenAddress(c.InternalEndpoint) }
 
+// RESTListenAddress / InternalRESTListenAddress — нормализованные адреса
+// собственных REST-фронтов. Пустой эндпоинт → пустой адрес, то есть фронт не
+// поднимается.
+func (c APIServerConfig) RESTListenAddress() string { return listenAddress(c.RESTEndpoint) }
+func (c APIServerConfig) InternalRESTListenAddress() string {
+	return listenAddress(c.InternalRESTEndpoint)
+}
+
 // MetricsListenAddress — normalised listen-addr for the Prometheus /metrics
 // HTTP server. Empty endpoint → empty (disabled). Separate internal port from
 // the gRPC public/internal listeners (default :9095).

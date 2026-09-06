@@ -107,6 +107,26 @@ type APIServerConfig struct {
 	// cluster-internal hooks (:9092) and metrics (:9095) listeners. Empty
 	// endpoint disables it.
 	RegistryToken RegistryTokenConfig `mapstructure:"registry-token"`
+	// RESTEndpoint — собственный ПУБЛИЧНЫЙ REST-фронт службы.
+	//
+	// Пока служба стоит за краем платформы, её HTTP-поверхность принадлежит
+	// краю. Вынесенная отдельным продуктом, края она не имеет by construction —
+	// и её REST обязан существовать сам.
+	//
+	// УМОЛЧАНИЯ НЕТ намеренно, и это отличает ребро от трёх соседних. У тех
+	// адрес приходит умолчанием процесса и потому непуст всегда: профиль,
+	// умолчавший о них, поднимал их открытым текстом, и заметить это было
+	// неоткуда. Здесь пустой адрес означает «фронт не поднят», и это
+	// НАЗЫВАЕТСЯ — осью самоотчёта с объяснением, что именно не обслуживается.
+	RESTEndpoint string `mapstructure:"rest-endpoint"`
+	// InternalRESTEndpoint — собственный ВНУТРЕННИЙ REST-фронт службы.
+	//
+	// Отдельный слушатель, а не разбор пути на общем: раздельность фронтов есть
+	// свойство СОКЕТА. Тогда «внутреннее не опубликовано» значит «недосягаемо»,
+	// и это доказуемо снаружи одним обращением, а не чтением условия.
+	//
+	// Умолчания нет по той же причине, что у публичного.
+	InternalRESTEndpoint string `mapstructure:"internal-rest-endpoint"`
 	// JWKSProxy — the cluster-INTERNAL Hydra-JWKS proxy HTTP listener
 	// (`GET /.well-known/jwks.json`; default `tcp://0.0.0.0:9097`). A short-TTL
 	// caching reverse-proxy of Hydra's PUBLIC JWKS: the data-plane fetches its

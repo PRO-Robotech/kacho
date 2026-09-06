@@ -21,3 +21,9 @@ spec:
     - name: registry-token
       port: {{ .Values.ports.registryToken | default 9096 }}
       targetPort: registry-token
+    # Собственный ПУБЛИЧНЫЙ REST-фронт службы (KAN-REST-1). Отдельный сокет, а не
+    # путь на общем: «внутреннее не опубликовано наружу» проверяемо ровно тогда,
+    # когда оно недосягаемо. Внутреннего фронта здесь НЕТ и быть не может.
+    - name: http-rest
+      port: {{ .Values.service.public.restPort | default 9098 }}
+      targetPort: http-rest

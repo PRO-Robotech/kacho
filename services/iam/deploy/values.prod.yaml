@@ -176,6 +176,31 @@ env:
   # сертификата сломало бы докерного клиента, который его не предъявляет.
   # Незаданный режим проверки клиента процесс читает как `server-tls-only`,
   # поэтому четвёртой строки у этой ноги нет и быть не должно.
+  # ─── Собственные REST-фронты (KAN-REST-1) ──────────────────────────────────
+  # ONE-WAY server-TLS НАМЕРЕННО: до публичного фронта дотягивается арендатор
+  # обычным HTTP-клиентом и клиентского сертификата не носит — требование
+  # предъявить его отвергло бы КАЖДОГО на рукопожатии, то есть поверхность была
+  # бы недостижима ни для кого. Вызывающего здесь аутентифицирует ПРЕДЪЯВЛЕННОЕ
+  # УДОСТОВЕРЕНИЕ, которое проверяет звено собственного слушателя; TLS даёт
+  # шифрование и аутентификацию СЕРВЕРА, а не вызывающего.
+  KANAME_REST_SERVER_MTLS_ENABLE: "true"
+  KANAME_REST_SERVER_MTLS_CLIENTAUTHMODE: server-tls-only
+  KANAME_REST_SERVER_MTLS_CERTFILE: /etc/kaname/tls/server/tls.crt
+  KANAME_REST_SERVER_MTLS_KEYFILE: /etc/kaname/tls/server/tls.key
+  KANAME_REST_SERVER_MTLS_CLIENTCAFILES: /etc/kaname/tls/server/ca.crt
+  KANAME_INTERNALREST_SERVER_MTLS_ENABLE: "true"
+  KANAME_INTERNALREST_SERVER_MTLS_CLIENTAUTHMODE: server-tls-only
+  KANAME_INTERNALREST_SERVER_MTLS_CERTFILE: /etc/kaname/tls/server/tls.crt
+  KANAME_INTERNALREST_SERVER_MTLS_KEYFILE: /etc/kaname/tls/server/tls.key
+  KANAME_INTERNALREST_SERVER_MTLS_CLIENTCAFILES: /etc/kaname/tls/server/ca.crt
+  # Удостоверение, которым фронт представляется СОБСТВЕННОМУ слушателю. Фронт —
+  # обычный клиент: широкого допуска он не получает и в круг разрешённых
+  # отправителей личности не вносится. Единственное, чем запрос, пришедший через
+  # фронт, называет субъекта, — предъявленное арендатором удостоверение.
+  KANAME_REST_UPSTREAM_MTLS_ENABLE: "true"
+  KANAME_REST_UPSTREAM_MTLS_CERTFILE: /etc/kaname/tls/server/tls.crt
+  KANAME_REST_UPSTREAM_MTLS_KEYFILE: /etc/kaname/tls/server/tls.key
+  KANAME_REST_UPSTREAM_MTLS_CAFILES: /etc/kaname/tls/server/ca.crt
   KANAME_REGISTRYTOKEN_SERVER_MTLS_ENABLE: "true"
   KANAME_REGISTRYTOKEN_SERVER_MTLS_CERTFILE: /etc/kaname/tls/server/tls.crt
   KANAME_REGISTRYTOKEN_SERVER_MTLS_KEYFILE: /etc/kaname/tls/server/tls.key

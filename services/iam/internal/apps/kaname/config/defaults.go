@@ -25,6 +25,12 @@ func RegisterDefaults(v *viper.Viper) {
 	v.SetDefault("api-server.endpoint", "tcp://0.0.0.0:9090")
 	v.SetDefault("api-server.internal-endpoint", "tcp://0.0.0.0:9091")
 	v.SetDefault("api-server.graceful-shutdown", 10*time.Second)
+	// Собственные REST-фронты службы. Умолчание ПУСТОЕ и это решение, а не
+	// недосмотр: адрес, приходящий умолчанием, непуст всегда — профиль,
+	// умолчавший о ребре, поднимал бы его молча. Ключ при этом объявлен, иначе
+	// окружение его не разрешит и ручка станет необъявляемой.
+	v.SetDefault("api-server.rest-endpoint", "")
+	v.SetDefault("api-server.internal-rest-endpoint", "")
 	// Prometheus /metrics HTTP listener — separate cluster-internal port (never
 	// the public tenant gRPC surface). Override via KANAME_API_SERVER__METRICS_ENDPOINT.
 	v.SetDefault("api-server.metrics-endpoint", "tcp://0.0.0.0:9095")

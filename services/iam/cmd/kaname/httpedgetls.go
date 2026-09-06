@@ -100,7 +100,8 @@ func requireHTTPEdgeTLS(productionMode bool, edges []httpEdgeTLS) error {
 //
 // Докерной полосы здесь НЕТ намеренно — у неё свой страж со своей причиной
 // (см. шапку файла).
-func iamHTTPEdges(hooksAddr, metricsAddr, jwksProxyAddr string, mtlsCfg mtlsEnableReader) []httpEdgeTLS {
+func iamHTTPEdges(hooksAddr, metricsAddr, jwksProxyAddr, restAddr, internalRESTAddr string,
+	mtlsCfg mtlsEnableReader) []httpEdgeTLS {
 	return []httpEdgeTLS{
 		{
 			name: "identity-provider hooks", knob: "KANAME_HOOKS_SERVER_MTLS_ENABLE",
@@ -114,6 +115,21 @@ func iamHTTPEdges(hooksAddr, metricsAddr, jwksProxyAddr string, mtlsCfg mtlsEnab
 			why: "this surface carries NO authentication by documented exception, and that " +
 				"exception rests on one-way TLS: without it an unauthenticated plaintext " +
 				"listener decides whose signatures the registry data-plane trusts",
+		},
+		{
+			name: "собственный публичный REST-фронт", knob: "KANAME_REST_SERVER_MTLS_ENABLE",
+			addr: restAddr, enabled: mtlsCfg.RESTTLSEnabled(),
+			why: "по этому проводу идёт ПРЕДЪЯВЛЕННОЕ УДОСТОВЕРЕНИЕ арендатора — то самое, " +
+				"которым он называет себя платформе. Снятое с провода, оно предъявляется " +
+				"повторно кем угодно до истечения срока, и отличить такой вызов от " +
+				"настоящего нечем: подпись верна",
+		},
+		{
+			name: "собственный внутренний REST-фронт", knob: "KANAME_INTERNALREST_SERVER_MTLS_ENABLE",
+			addr: internalRESTAddr, enabled: mtlsCfg.InternalRESTTLSEnabled(),
+			why: "внутренний периметр доверенным не считается (defense-in-depth против " +
+				"бокового движения): по этому проводу идут служебные поверхности, " +
+				"а открытый текст выносит их всякому, кто слушает сеть пода",
 		},
 		{
 			name: "metrics scrape", knob: "KANAME_METRICS_SERVER_MTLS_ENABLE",
@@ -131,4 +147,6 @@ type mtlsEnableReader interface {
 	HooksTLSEnabled() bool
 	MetricsTLSEnabled() bool
 	JWKSProxyTLSEnabled() bool
+	RESTTLSEnabled() bool
+	InternalRESTTLSEnabled() bool
 }

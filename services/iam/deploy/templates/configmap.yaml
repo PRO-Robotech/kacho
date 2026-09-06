@@ -34,6 +34,11 @@ data:
       endpoint: {{ printf "tcp://0.0.0.0:%v" .Values.ports.grpc | quote }}
       internal-endpoint: {{ printf "tcp://0.0.0.0:%v" .Values.ports.internalGrpc | quote }}
       graceful-shutdown: {{ default "10s" .Values.apiServer.gracefulShutdown | quote }}
+      # Собственные REST-фронты. Умолчания у этих адресов НЕТ намеренно: адрес,
+      # приходящий умолчанием процесса, непуст всегда — профиль, о ребре
+      # умолчавший, поднимал бы его молча.
+      rest-endpoint: {{ .Values.apiServer.restEndpoint | quote }}
+      internal-rest-endpoint: {{ .Values.apiServer.internalRestEndpoint | quote }}
       {{- $rt := .Values.apiServer.registryToken | default dict }}
       {{- if or $rt.issuer $rt.service }}
       # Docker Registry v2 token shim. `service` также whitelist'ится как audience в

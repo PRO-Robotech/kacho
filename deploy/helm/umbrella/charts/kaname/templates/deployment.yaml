@@ -228,6 +228,13 @@ spec:
             # Exposed ONLY on kaname-internal (never external, ban #6).
             - name: http-jwks
               containerPort: {{ .Values.ports.jwksProxy | default 9097 }}
+            # Собственные REST-фронты службы (KAN-REST-1). Два РАЗНЫХ порта, а не
+            # разбор пути на общем: принадлежность маршрута фронту обязана быть
+            # свойством того, куда вообще можно дозвониться.
+            - name: http-rest
+              containerPort: {{ .Values.ports.rest | default 9098 }}
+            - name: http-rest-int
+              containerPort: {{ .Values.ports.internalRest | default 9099 }}
           volumeMounts:
             - name: config
               mountPath: /etc/kaname
@@ -353,6 +360,53 @@ spec:
               value: {{ printf "%s/tls.key" $srv | quote }}
             - name: KANAME_JWKSPROXY_SERVER_MTLS_CLIENTCAFILES
               value: {{ printf "%s/ca.crt" $srv | quote }}
+            {{- end }}
+            {{- if (dig "rest" .Values.mtls.httpListeners .Values.mtls) }}
+            # Собственные REST-фронты службы (KAN-REST-1). Переиспользуют ТОТ ЖЕ
+            # серверный набор внутреннего УЦ, что смонтирован выше, — новой PKI
+            # не заводится.
+            #
+            # ONE-WAY (server-tls-only) НАМЕРЕННО: до публичного фронта
+            # дотягивается арендатор обычным HTTP-клиентом, клиентского
+            # сертификата он не носит, и требование предъявить его отвергло бы
+            # каждого на рукопожатии. Вызывающего здесь аутентифицирует
+            # предъявленное удостоверение — его проверяет звено собственного
+            # слушателя, а не транспорт.
+            - name: KANAME_REST_SERVER_MTLS_ENABLE
+              value: "true"
+            - name: KANAME_REST_SERVER_MTLS_CLIENTAUTHMODE
+              value: {{ .Values.mtls.restClientAuthMode | default "server-tls-only" | quote }}
+            - name: KANAME_REST_SERVER_MTLS_CERTFILE
+              value: {{ printf "%s/tls.crt" $srv | quote }}
+            - name: KANAME_REST_SERVER_MTLS_KEYFILE
+              value: {{ printf "%s/tls.key" $srv | quote }}
+            - name: KANAME_REST_SERVER_MTLS_CLIENTCAFILES
+              value: {{ printf "%s/ca.crt" $srv | quote }}
+            - name: KANAME_INTERNALREST_SERVER_MTLS_ENABLE
+              value: "true"
+            - name: KANAME_INTERNALREST_SERVER_MTLS_CLIENTAUTHMODE
+              value: {{ .Values.mtls.internalRestClientAuthMode | default "server-tls-only" | quote }}
+            - name: KANAME_INTERNALREST_SERVER_MTLS_CERTFILE
+              value: {{ printf "%s/tls.crt" $srv | quote }}
+            - name: KANAME_INTERNALREST_SERVER_MTLS_KEYFILE
+              value: {{ printf "%s/tls.key" $srv | quote }}
+            - name: KANAME_INTERNALREST_SERVER_MTLS_CLIENTCAFILES
+              value: {{ printf "%s/ca.crt" $srv | quote }}
+            # Удостоверение, которым фронт представляется СОБСТВЕННОМУ
+            # gRPC-слушателю. Фронт — обычный клиент своего слушателя: широкого
+            # допуска он не получает и в круг разрешённых отправителей личности
+            # не вносится. Имя сервера сверяется с SAN серверного листа, потому
+            # что дозвон идёт в петлю, а лист выписан на имя Service.
+            - name: KANAME_REST_UPSTREAM_MTLS_ENABLE
+              value: "true"
+            - name: KANAME_REST_UPSTREAM_MTLS_CERTFILE
+              value: {{ printf "%s/tls.crt" $srv | quote }}
+            - name: KANAME_REST_UPSTREAM_MTLS_KEYFILE
+              value: {{ printf "%s/tls.key" $srv | quote }}
+            - name: KANAME_REST_UPSTREAM_MTLS_CAFILES
+              value: {{ printf "%s/ca.crt" $srv | quote }}
+            - name: KANAME_REST_UPSTREAM_MTLS_SERVERNAME
+              value: {{ printf "%s.%s.svc.cluster.local" (include "kaname.fullname" .) .Release.Namespace | quote }}
             {{- end }}
             {{- if (dig "registryToken" .Values.mtls.httpListeners .Values.mtls) }}
             # docker-token listener (:9096, `/iam/token`) server-TLS. По этому хопу

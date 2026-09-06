@@ -11,8 +11,10 @@ import (
 
 	"go.uber.org/multierr"
 	"google.golang.org/grpc"
+	"google.golang.org/grpc/credentials/insecure"
 
 	corecfg "github.com/PRO-Robotech/kacho/pkg/config"
+	"github.com/PRO-Robotech/kacho/pkg/grpcclient"
 	"github.com/PRO-Robotech/kacho/pkg/grpcsrv"
 )
 
@@ -128,6 +130,36 @@ type MTLSConfig struct {
 	// не client-cert — mutual сломал бы «verifier untouched»). Неизвестный режим →
 	// fail-closed.
 	JWKSProxyClientAuthMode string `envconfig:"JWKSPROXY_SERVER_MTLS_CLIENTAUTHMODE"`
+
+	// RESTUpstreamMTLS — удостоверение, которым REST-фронт представляется
+	// СОБСТВЕННОМУ gRPC-слушателю.
+	//
+	// Фронт — обычный клиент своего слушателя, и широкого допуска он не
+	// получает: в круг разрешённых отправителей личности он не вносится, и
+	// «этому клиенту можно всё» ему не выдаётся. Единственное, чем запрос,
+	// пришедший через фронт, называет субъекта, — предъявленное арендатором
+	// удостоверение, которое фронт переносит, ничего к нему не добавляя.
+	//
+	// Ручка ОДНА на оба фронта: это один процесс, и личность у него одна.
+	// Вторая ручка об одном предмете разошлась бы с первой молча.
+	// Env: KANAME_REST_UPSTREAM_MTLS_{ENABLE,CERTFILE,KEYFILE,CAFILES,SERVERNAME}.
+	RESTUpstreamMTLS grpcclient.TLSClient `envconfig:"REST_UPSTREAM_MTLS"`
+
+	// RESTServerMTLS — server-creds ПУБЛИЧНОГО REST-фронта службы. Env:
+	// KANAME_REST_SERVER_MTLS_{ENABLE,CERTFILE,KEYFILE,CLIENTCAFILES}.
+	RESTServerMTLS grpcsrv.TLSServer `envconfig:"REST_SERVER_MTLS"`
+
+	// RESTClientAuthMode — per-edge TLS ClientAuth-режим публичного фронта.
+	// Env: KANAME_REST_SERVER_MTLS_CLIENTAUTHMODE.
+	RESTClientAuthMode string `envconfig:"REST_SERVER_MTLS_CLIENTAUTHMODE"`
+
+	// InternalRESTServerMTLS — server-creds ВНУТРЕННЕГО REST-фронта. Env:
+	// KANAME_INTERNALREST_SERVER_MTLS_{ENABLE,CERTFILE,KEYFILE,CLIENTCAFILES}.
+	InternalRESTServerMTLS grpcsrv.TLSServer `envconfig:"INTERNALREST_SERVER_MTLS"`
+
+	// InternalRESTClientAuthMode — per-edge TLS ClientAuth-режим внутреннего
+	// фронта. Env: KANAME_INTERNALREST_SERVER_MTLS_CLIENTAUTHMODE.
+	InternalRESTClientAuthMode string `envconfig:"INTERNALREST_SERVER_MTLS_CLIENTAUTHMODE"`
 
 	// RegistryTokenServerMTLS — server-creds для HTTP docker-token listener
 	// (:9096, `/iam/token`).
@@ -289,6 +321,29 @@ func (m MTLSConfig) RegistryTokenServerTLSConfig() (*tls.Config, error) {
 	return serverTLSConfig(m.RegistryTokenServerMTLS, resolveClientAuthMode(m.RegistryTokenClientAuthMode))
 }
 
+// RESTServerTLSConfig / InternalRESTServerTLSConfig — транспорт собственных
+// REST-фронтов.
+func (m MTLSConfig) RESTServerTLSConfig() (*tls.Config, error) {
+	return serverTLSConfig(m.RESTServerMTLS, resolveClientAuthMode(m.RESTClientAuthMode))
+}
+
+func (m MTLSConfig) InternalRESTServerTLSConfig() (*tls.Config, error) {
+	return serverTLSConfig(m.InternalRESTServerMTLS, resolveClientAuthMode(m.InternalRESTClientAuthMode))
+}
+
+// RESTUpstreamDialOption — как REST-фронт дозванивается до собственного
+// слушателя.
+//
+// В боевой посадке слушатель требует проверенного клиентского сертификата, и
+// фронт предъявляет его наравне со всяким клиентом. Вне боевой — соединение без
+// удостоверения, тот же порядок, что у прочих рёбер стенда.
+func (m MTLSConfig) RESTUpstreamDialOption() (grpc.DialOption, error) {
+	if !m.RESTUpstreamMTLS.Enable {
+		return grpc.WithTransportCredentials(insecure.NewCredentials()), nil
+	}
+	return grpcclient.TLSClientCreds(m.RESTUpstreamMTLS)
+}
+
 // Validate проверяет, что каждое включенное ребро несет корректный cert-set под
 // свой ClientAuth-режим. Включенное-но-некорректное ребро → fail-closed error на
 // старте (aggregated через multierr по ВСЕМ ребрам сразу). Disabled-ребра
@@ -326,12 +381,33 @@ func (m MTLSConfig) Validate() error {
 		"metrics-server":        {m.MetricsServerMTLS, resolveClientAuthMode(m.MetricsClientAuthMode)},
 		"jwks-proxy-server":     {m.JWKSProxyServerMTLS, resolveClientAuthMode(m.JWKSProxyClientAuthMode)},
 		"registry-token-server": {m.RegistryTokenServerMTLS, resolveClientAuthMode(m.RegistryTokenClientAuthMode)},
+		"rest-server":           {m.RESTServerMTLS, resolveClientAuthMode(m.RESTClientAuthMode)},
+		"internal-rest-server":  {m.InternalRESTServerMTLS, resolveClientAuthMode(m.InternalRESTClientAuthMode)},
 	} {
 		if !e.edge.Enable {
 			continue
 		}
 		if err := validateServerEdge(e.edge, e.mode); err != nil {
 			errs = multierr.Append(errs, fmt.Errorf("%s mTLS edge: %w", name, err))
+		}
+	}
+
+	// Удостоверение REST-фронта для СОБСТВЕННОГО слушателя. Половина пары хуже
+	// отсутствия обеих: она выглядит настроенной, а отказ даёт на каждом
+	// запросе — слушатель отвергает клиента без сертификата, и снаружи исправная
+	// служба читается как недоступная.
+	if m.RESTUpstreamMTLS.Enable {
+		if m.RESTUpstreamMTLS.CertFile == "" || m.RESTUpstreamMTLS.KeyFile == "" {
+			errs = multierr.Append(errs, fmt.Errorf(
+				"rest-upstream mTLS edge: удостоверение объявлено включённым, а "+
+					"сертификат или ключ не заданы — фронт не сможет представиться "+
+					"собственному слушателю ни на одном запросе"))
+		}
+		if len(m.RESTUpstreamMTLS.CAFiles) == 0 {
+			errs = multierr.Append(errs, fmt.Errorf(
+				"rest-upstream mTLS edge: не задан набор корней — фронту нечем "+
+					"проверить сертификат собственного слушателя, и соединение "+
+					"либо не состоится, либо состоится без проверки СЕРВЕРА"))
 		}
 	}
 	return errs
@@ -443,3 +519,13 @@ func loadCAPool(files []string) (*x509.CertPool, error) {
 func (c MTLSConfig) HooksTLSEnabled() bool     { return c.HooksServerMTLS.Enable }
 func (c MTLSConfig) MetricsTLSEnabled() bool   { return c.MetricsServerMTLS.Enable }
 func (c MTLSConfig) JWKSProxyTLSEnabled() bool { return c.JWKSProxyServerMTLS.Enable }
+
+// RESTTLSEnabled / InternalRESTTLSEnabled — объявлен ли транспорт собственных
+// REST-фронтов. Спрашивается посадка, а не поле: поле переедет вместе с формой,
+// а вопрос останется тем же.
+func (c MTLSConfig) RESTTLSEnabled() bool         { return c.RESTServerMTLS.Enable }
+func (c MTLSConfig) InternalRESTTLSEnabled() bool { return c.InternalRESTServerMTLS.Enable }
+
+// RESTUpstreamEnabled — объявлено ли удостоверение, которым REST-фронт
+// представляется собственному gRPC-слушателю.
+func (c MTLSConfig) RESTUpstreamEnabled() bool { return c.RESTUpstreamMTLS.Enable }

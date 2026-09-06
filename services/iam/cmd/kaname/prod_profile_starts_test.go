@@ -182,9 +182,36 @@ func TestProductionProfileSatisfiesTheStartupGuards(t *testing.T) {
 			"apiServer", "metricsEndpoint"),
 		httpEdgeAddr(t, values, defaults, "api-server.jwks-proxy.endpoint",
 			"apiServer", "jwksProxy", "endpoint"),
+		// Адрес фронтов профиль объявляет ПОРТОМ, и шаблон выводит эндпоинт из
+		// него же. Читать здесь `apiServer.restEndpoint` значило бы судить путь,
+		// которым адрес не приходит: у этих рёбер умолчания процесса НЕТ (Р5),
+		// поэтому проба получила бы пустое и не судила бы их вовсе — проверка с
+		// формой, но без предмета.
+		httpEdgeAddr(t, values, defaults, "api-server.rest-endpoint",
+			"apiServer", "restEndpoint"),
+		httpEdgeAddr(t, values, defaults, "api-server.internal-rest-endpoint",
+			"apiServer", "internalRestEndpoint"),
 		mtlsCfg,
 	)
 	require.NotEmpty(t, httpEdges, "перечень HTTP-рёбер пуст — вердикт беспредметен")
+	// ПРЕДМЕТ КАЖДОГО РЕБРА, а не только непустота перечня. Ребро с пустым
+	// адресом страж пропускает by construction («слушателя нет — судить нечего»),
+	// поэтому ребро, чей адрес профиль не объявил, проходит проверку МОЛЧА и
+	// неотличимо от объявленного верно. Именно так и было с фронтами: их адрес
+	// приходит из порта, а не из ключа эндпоинта, и первая редакция читала не тот
+	// путь — вердикт был бы о пяти рёбрах из семи.
+	judged := 0
+	for _, e := range httpEdges {
+		if e.addr != "" {
+			judged++
+		}
+	}
+	require.Equal(t, len(httpEdges), judged,
+		"боевой профиль объявил адрес не у всех HTTP-рёбер: рёбра с пустым адресом "+
+			"страж пропускает, то есть о них вердикта НЕТ — «нарушений нет» тут "+
+			"неотличимо от «не судили»")
+	t.Logf("осмотрено: HTTP-рёбер в перечне %d, из них с объявленным адресом %d",
+		len(httpEdges), judged)
 	require.NoError(t, requireHTTPEdgeTLS(productionMode, httpEdges),
 		"боевой профиль не проходит стража транспорта HTTP-рёбер: объявленная посадка неисполнима — процесс не поднимется НИ ПРИ КАКОМ входе")
 }
