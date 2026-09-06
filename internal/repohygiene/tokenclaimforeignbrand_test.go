@@ -70,6 +70,11 @@ type claimBrandScan struct {
 	Census ClaimNameCensus
 	// Prefixes — приставки словаря, отданные предикату, в файлах области.
 	Prefixes []ClaimNameUse
+	// Files — пофайловый разбор всего дерева Go, включая файлы ВНЕ области.
+	// Нужен, чтобы имя чужого словаря нашлось и в файле, который ни одного
+	// имени своего словаря не называет: связная компонента такой файл не
+	// захватывает by construction, а клеймо в нём стоит.
+	Files map[string]ClaimFileScan
 }
 
 func scanClaimBrandTree(t *testing.T) claimBrandScan {
@@ -118,6 +123,7 @@ func scanClaimBrandTree(t *testing.T) claimBrandScan {
 		files[rel] = fs
 	}
 	out.Vocab = DeriveClaimVocabulary(files)
+	out.Files = files
 	for rel, fs := range files {
 		if !out.Vocab.Files[rel] {
 			continue
@@ -199,6 +205,37 @@ func TestTokenClaimsCarryTheProductsOwnName(t *testing.T) {
 				p.Name, p.File, p.Line, p.Func))
 		}
 	}
+
+	// Файл ВНЕ области: он не называет ни одного имени своего словаря, поэтому
+	// связная компонента его не захватывает — а клеймо в нём стоять может.
+	// Судится ДВОЙНИК: имя чужого словаря, у которого в своём словаре есть
+	// тёзка. Однофамильцы приставки под это не подпадают — тёзки у них нет.
+	//
+	// НЕ-ТЕСТОВЫЕ, и это тот же разрез, что у семени словаря: синтетика проб
+	// объявляет чужое имя НАРОЧНО — им доказывается, что гейт умеет упасть.
+	// Судя её, гейт краснел бы на собственном доказательстве, а починка состояла
+	// бы в том, чтобы доказательство обессмыслить.
+	//
+	// ЧТО ЭТО ОСТАВЛЯЕТ НЕПОКРЫТЫМ, названо, а не спрятано: пробный файл,
+	// который называет ТОЛЬКО чужие имена и ни одного своего. Пробу продукта это
+	// не задевает — она называет и своё, поэтому в область входит и судится
+	// правилом выше; предмет исключения — ровно синтетика гейтов.
+	for path, fs := range scan.Files {
+		if scan.Vocab.Files[path] || strings.HasSuffix(path, "_test.go") {
+			continue
+		}
+		for _, u := range fs.Uses {
+			if u.Form == ClaimFormPrefix || u.Namespace != claimForeignNamespace {
+				continue
+			}
+			twin := ForeignTwin(u.Name, claimForeignNamespace, claimOwnNamespace)
+			if _, isClaim := scan.Vocab.Names[twin]; !isClaim {
+				continue
+			}
+			found = append(found, fmt.Sprintf("%s — двойник клейма %s, %s:%d %s",
+				u.Name, twin, u.File, u.Line, u.Func))
+		}
+	}
 	sort.Strings(found)
 	if len(found) > 0 {
 		t.Fatalf("клейм чужого словаря %q найдено %d из %d выведенных:\n  %s\n\n"+
@@ -239,9 +276,20 @@ func TestClaimNameHasNoTwinInTheOtherNamespace(t *testing.T) {
 
 	root := repoRoot(t)
 	tt := newTrackedTree(t, root)
+	// Go из оси Б ИСКЛЮЧЁН, и это не послабление, а разделение труда.
+	//
+	// Ось Б читает СЫРОЙ ТЕКСТ: позиции вне Go нет, судить по ней нечего. На Go
+	// тот же приём находил бы имя в комментарии и в синтетике — то есть в
+	// СОБСТВЕННОМ объяснении гейта и в фикстурах, которые нарочно несут чужое
+	// имя, чтобы инъекция что-то доказывала. Гейт, краснеющий на своём
+	// объяснении, снимают первым.
+	//
+	// Покрытие при этом не теряется: Go целиком судит ось А — по узлу разбора,
+	// поэтому комментарий и синтетика ей не видны by construction, а файл вне
+	// области она добирает правилом двойника выше.
 	var rels []string
 	for rel := range tt.files {
-		if !skipPath(rel) {
+		if !skipPath(rel) && !strings.HasSuffix(rel, ".go") {
 			rels = append(rels, rel)
 		}
 	}
@@ -264,8 +312,9 @@ func TestClaimNameHasNoTwinInTheOtherNamespace(t *testing.T) {
 		}
 	}
 	sort.Strings(found)
-	t.Logf("перепись оси Б: отслеживаемых файлов осмотрено %d (прочитано %d), "+
-		"двойников выведено %d, находок %d", scanned, readable, len(twins), len(found))
+	t.Logf("перепись оси Б: отслеживаемых НЕ-Go файлов осмотрено %d (прочитано %d), "+
+		"двойников выведено %d, находок %d; файлы Go судит ось А — по узлу разбора",
+		scanned, readable, len(twins), len(found))
 
 	if readable == 0 {
 		t.Fatalf("прочитано ноль файлов при %d осмотренных — обход пуст, вердикт беспредметен",
