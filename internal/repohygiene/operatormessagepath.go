@@ -68,7 +68,7 @@ func CollectOperatorMessagePaths(repoRoot string) OperatorMessageCensus {
 	seen := map[string]string{}
 	for _, rel := range OperatorFacingScripts {
 		abs := filepath.Join(repoRoot, rel)
-		body, err := os.ReadFile(filepath.Clean(abs)) // #nosec G304 G703 -- rel из выписанного перечня выше, не из запроса
+		body, err := os.ReadFile(filepath.Clean(abs)) // rel из выписанного перечня выше, не из запроса
 		if err != nil {
 			c.FilesAbsent = append(c.FilesAbsent, rel)
 			continue

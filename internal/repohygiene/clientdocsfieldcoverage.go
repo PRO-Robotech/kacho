@@ -184,7 +184,7 @@ func AuditClientDocsFieldCoverage(
 		}
 		census.PagesJudged++
 
-		// #nosec G304 -- путь получен обходом дерева документации ЭТОГО репозитория
+		// путь получен обходом дерева документации ЭТОГО репозитория
 		raw, rerr := os.ReadFile(filepath.Join(opts.Root, filepath.FromSlash(p.rel)))
 		if rerr != nil {
 			return nil, census, fmt.Errorf("%s: %w", p.rel, rerr)
