@@ -67,6 +67,7 @@ import (
 var deliveryRoster = []string{
 	"Chart.yaml",
 	"delivery_roster_test.go",
+	"foreign_object_defaults_test.go",
 	"prod_profile_test.go",
 	"provider_hops_test.go",
 	"release_namespace_test.go",
