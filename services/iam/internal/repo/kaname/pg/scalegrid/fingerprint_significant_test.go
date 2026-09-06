@@ -34,10 +34,10 @@ func TestSignificantContent_ProvenByInjection(t *testing.T) {
 
 package relverdict
 
-import "github.com/PRO-Robotech/kacho/services/iam/internal/repo/kacho/pg/resource_mirror"
+import "github.com/PRO-Robotech/kacho/services/iam/internal/repo/prevhome/pg/resource_mirror"
 
 // reportPath — куда кладётся отчёт.
-const reportPath = "services/iam/internal/repo/kacho/pg/scalegrid/REPORT-R7-2-strength.txt"
+const reportPath = "services/iam/internal/repo/prevhome/pg/scalegrid/REPORT-R7-2-strength.txt"
 
 // sameSubject — литерал С КОСОЙ ЧЕРТОЙ, координатой НЕ являющийся.
 const sameSubject = "kaname.roles/updated_at"
@@ -116,12 +116,12 @@ func askVerdict() string {
 		},
 		{
 			// ЗАКОННЫЙ БЛИЗНЕЦ переезда: путь импорта СВОЕГО модуля — адрес
-			// кода, а не его поведение. Каталог `repo/kacho/pg` переехал в
+			// кода, а не его поведение. Каталог `repo/prevhome/pg` переехал в
 			// `repo/kaname/pg`, ни один оператор не изменился.
 			name: "каталог переехал в пути импорта своего модуля — НЕ сдвинулся",
 			rel:  "a.go",
 			other: strings.Replace(base,
-				"kacho/services/iam/internal/repo/kacho/pg/resource_mirror",
+				"kacho/services/iam/internal/repo/prevhome/pg/resource_mirror",
 				"kacho/services/iam/internal/repo/kaname/pg/resource_mirror", 1),
 			moved: false,
 		},
@@ -132,7 +132,7 @@ func askVerdict() string {
 			name: "каталог переехал в пути отчёта — НЕ сдвинулся",
 			rel:  "a.go",
 			other: strings.Replace(base,
-				"services/iam/internal/repo/kacho/pg/scalegrid/REPORT",
+				"services/iam/internal/repo/prevhome/pg/scalegrid/REPORT",
 				"services/iam/internal/repo/kaname/pg/scalegrid/REPORT", 1),
 			moved: false,
 		},
