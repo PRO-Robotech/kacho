@@ -85,11 +85,11 @@ const (
 )
 
 func newStorageCtx() context.Context {
-	return grpcsrv.WithCertIdentity(context.Background(), storageSAN, true)
+	return grpcsrv.WithCertIdentityIn(context.Background(), grpcsrv.NewTrustDomain("kacho.cloud"), storageSAN, true)
 }
 
 func newOperatorCtx() context.Context {
-	return grpcsrv.WithCertIdentity(context.Background(), operatorSAN, true)
+	return grpcsrv.WithCertIdentityIn(context.Background(), grpcsrv.NewTrustDomain("kacho.cloud"), operatorSAN, true)
 }
 
 func testPublicPolicy(prod bool) *PublicCallerPolicy {
@@ -108,7 +108,7 @@ func TestPublicCallerPolicy_NeighbourDeniedOnGatewayOnlyRPC(t *testing.T) {
 			for name, ctx := range map[string]context.Context{
 				"storage":  newStorageCtx(),
 				"vpc":      newVPCCtx(),
-				"registry": grpcsrv.WithCertIdentity(context.Background(), registrySAN, true),
+				"registry": grpcsrv.WithCertIdentityIn(context.Background(), grpcsrv.NewTrustDomain("kacho.cloud"), registrySAN, true),
 			} {
 				err := p.allow(ctx, method)
 				if err == nil {
@@ -157,7 +157,7 @@ func TestPublicCallerPolicy_PeerReadEdgesKeepWorking(t *testing.T) {
 		"spiffe://kacho.cloud/ns/kacho/sa/kacho-storage",
 		registrySAN,
 	} {
-		ctx := grpcsrv.WithCertIdentity(context.Background(), san, true)
+		ctx := grpcsrv.WithCertIdentityIn(context.Background(), grpcsrv.NewTrustDomain("kacho.cloud"), san, true)
 		if err := p.allow(ctx, projectGetMethod); err != nil {
 			t.Fatalf("%s denied on %s: %v — this is the request-path project validation of Create", san, projectGetMethod, err)
 		}
@@ -170,7 +170,7 @@ func TestPublicCallerPolicy_PeerReadEdgesKeepWorking(t *testing.T) {
 		"spiffe://kacho.cloud/ns/kacho/sa/kacho-nlb",
 		storageSAN,
 	} {
-		ctx := grpcsrv.WithCertIdentity(context.Background(), san, true)
+		ctx := grpcsrv.WithCertIdentityIn(context.Background(), grpcsrv.NewTrustDomain("kacho.cloud"), san, true)
 		if err := p.allow(ctx, batchCheckMethod); err != nil {
 			t.Fatalf("%s denied on %s: %v — это пер-страничный фильтр видимости List", san, batchCheckMethod, err)
 		}
@@ -196,7 +196,7 @@ func TestPublicCallerPolicy_PeerReadEdgeIsPerRPCNotPerCaller(t *testing.T) {
 // пообъектного фильтра у него нет, и допуск об этом знает.
 func TestPublicCallerPolicy_PeerReadEdgeIsPerCallerNotOpenToAll(t *testing.T) {
 	p := testPublicPolicy(true)
-	registryCtx := grpcsrv.WithCertIdentity(context.Background(), registrySAN, true)
+	registryCtx := grpcsrv.WithCertIdentityIn(context.Background(), grpcsrv.NewTrustDomain("kacho.cloud"), registrySAN, true)
 	if err := p.allow(registryCtx, projectGetMethod); err != nil {
 		t.Fatalf("контроль: registry отвергнут на своём ребре %s: %v", projectGetMethod, err)
 	}
@@ -213,8 +213,8 @@ func TestPublicCallerPolicy_NoVerifiedCert_Prod(t *testing.T) {
 	p := testPublicPolicy(true)
 	for _, ctx := range []context.Context{
 		context.Background(),
-		grpcsrv.WithCertIdentity(context.Background(), gatewaySAN, false), // предъявлен, но не проверен
-		grpcsrv.WithCertIdentity(context.Background(), "spiffe://kacho.cloud/ns/kacho/sa/hydra", true),
+		grpcsrv.WithCertIdentityIn(context.Background(), grpcsrv.NewTrustDomain("kacho.cloud"), gatewaySAN, false), // предъявлен, но не проверен
+		grpcsrv.WithCertIdentityIn(context.Background(), grpcsrv.NewTrustDomain("kacho.cloud"), "spiffe://kacho.cloud/ns/kacho/sa/hydra", true),
 	} {
 		if err := p.allow(ctx, projectGetMethod); err == nil {
 			t.Fatal("a caller without a verified kacho module certificate passed the public floor")

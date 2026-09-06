@@ -750,6 +750,11 @@ func runServe(cfg config.Config) error {
 			Revocations:        kanamepg.NewMintedTokenRevocationRepo(pool),
 			RevocationCacheTTL: cfg.AuthN.PresentedCredential.RevocationCacheTTL,
 			Logger:             logger.With(slog.String("component", "presented_credential")),
+			// Домен доверия — ТОТ ЖЕ объект, что уезжает в пару звеньев
+			// извлечения личности: читатель предъявленного удостоверения
+			// разбирает личность модуля тем же общим извлекателем, и своя
+			// величина здесь разошлась бы с той молча.
+			TrustDomain: cfg.AuthN.TrustDomain(),
 		})
 		if err != nil {
 			return fmt.Errorf("читатель предъявленного удостоверения: %w", err)
@@ -1919,12 +1924,18 @@ func runServe(cfg config.Config) error {
 // у нас запрещённое допущение. НА КАКОМ RPC отправитель вправе появиться,
 // решают пер-RPC политики вызывающего (authzguard.PublicCallerPolicy на :9090,
 // authzguard.CallerPolicy на :9091) — это ортогональный, второй слой.
+// Домен доверия приходит ОТТУДА ЖЕ — из конфигурации, и никогда не задаётся
+// здесь литералом. Круг отправителей отвечает на вопрос «кому позволено
+// говорить за пользователя», домен — на предыдущий: чьи предъявители вообще
+// наши. Скомпилированный домен означал бы, что установка меняет его только
+// пересборкой: сертификаты выпускаются под доменом из величины профиля, и
+// правка величины оставила бы принимающую сторону прежней — молча.
 func identityUnary(cfg config.Config) []grpc.UnaryServerInterceptor {
-	return grpcsrv.PrincipalExtractUnary(cfg.AuthN.TrustedForwarders())
+	return grpcsrv.PrincipalExtractUnary(cfg.AuthN.TrustDomain(), cfg.AuthN.TrustedForwarders())
 }
 
 func identityStream(cfg config.Config) []grpc.StreamServerInterceptor {
-	return grpcsrv.PrincipalExtractStream(cfg.AuthN.TrustedForwarders())
+	return grpcsrv.PrincipalExtractStream(cfg.AuthN.TrustDomain(), cfg.AuthN.TrustedForwarders())
 }
 
 // publicIdentityUnary / publicIdentityStream — цепочка личности ПУБЛИЧНОГО

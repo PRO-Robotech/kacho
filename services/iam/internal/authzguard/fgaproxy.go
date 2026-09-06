@@ -8,8 +8,9 @@
 // expressed as a flat permission-string. It is enforced HERE as ReBAC:
 //
 //  1. The mTLS client-cert SAN (SPIRE format
-//     spiffe://kacho.cloud/ns/<ns>/sa/kacho-<svc>, extracted by SEC-B's
-//     grpcsrv.CertIdentityFromContext) is mapped to a deterministic
+//     spiffe://<trust-domain>/ns/<ns>/sa/kacho-<svc>, extracted by SEC-B's
+//     grpcsrv.CertIdentityFromContext under the domain the installation
+//     declared) is mapped to a deterministic
 //     ServiceAccount id (`'sva' || substr(md5('kacho-<svc>'),1,17)`).
 //  2. A ReBAC Check `service_account:<sva>#fga_writer@cluster:cluster_kacho_root`
 //     is issued. ALLOW → the RPC proceeds; DENY → PermissionDenied. Право
@@ -52,9 +53,6 @@ const (
 	// всему кластеру — честнее стало ОБЪЯВЛЕНИЕ этого права.
 	relationWriteObject = clusterRootObject
 
-	// sanTrustPrefix — the only accepted SPIFFE trust domain (SEC-B extractor
-	// already filters foreign domains; this is a defensive re-check).
-	sanTrustPrefix = "spiffe://kacho.cloud/ns/"
 	// sanSAInfix — the path segment that precedes the service-account name.
 	sanSAInfix = "/sa/"
 	// svcNamePrefix — module SAN service segment is always `kacho-<svc>`.
@@ -104,7 +102,7 @@ func (g *RelationWriteGate) Authorize(ctx context.Context) (string, error) {
 		// Production-mode: unverified peer or no module identity → never trusted.
 		return "", status.Error(codes.PermissionDenied, "permission denied")
 	}
-	domain, ok := SANToServiceDomain(san)
+	domain, ok := SANToServiceDomain(grpcsrv.CertIdentityDomainFromContext(ctx), san)
 	if !ok {
 		// Malformed / foreign-trust-domain SAN → not a module identity.
 		return "", status.Error(codes.PermissionDenied, "permission denied")
@@ -132,11 +130,27 @@ func (g *RelationWriteGate) Authorize(ctx context.Context) (string, error) {
 
 // SANToServiceDomain maps a verified SPIRE SAN to the module service short-name
 // (the domain: `vpc`/`compute`/`nlb`). Accepts only
-// `spiffe://kacho.cloud/ns/<ns>/sa/kacho-<svc>` with a non-empty <svc>; any other
-// shape returns ("", false). The domain drives object-type binding in
+// `spiffe://<trust-domain>/ns/<ns>/sa/kacho-<svc>` with a non-empty <svc>; any
+// other shape returns ("", false). The domain drives object-type binding in
 // ValidateProxyTuple (a vpc module may only register `vpc_*` objects).
-func SANToServiceDomain(san string) (string, bool) {
-	if !strings.HasPrefix(san, sanTrustPrefix) {
+//
+// # Почему домен доверия — АРГУМЕНТ, а не константа
+//
+// Домен объявляет установка, и разбор обязан спрашивать ТОТ ЖЕ домен, который
+// впустил эту личность (`grpcsrv.CertIdentityDomainFromContext`). Пока он стоял
+// здесь литералом, разбор утверждал о домене независимо от того, под каким
+// доменом установка выпускает сертификаты, — и утверждал бы это молча.
+//
+// Проверка домена здесь остаётся не как «второй независимый слой», а как
+// требование к ВХОДУ: строка, не прошедшая извлекатель, сюда попасть не должна,
+// и если попадёт — не будет принята. Называть это защитой в глубину было бы
+// неточно: предикат и величина у обоих слоёв одни.
+//
+// Необъявленный домен не признаёт своим никого (`TrustDomain.Matches`), поэтому
+// нулевое значение здесь фейл-клоуз.
+func SANToServiceDomain(d grpcsrv.TrustDomain, san string) (string, bool) {
+	nsPrefix := d.NamespacePrefix()
+	if nsPrefix == "" || !strings.HasPrefix(san, nsPrefix) {
 		return "", false
 	}
 	idx := strings.LastIndex(san, sanSAInfix)
@@ -152,7 +166,7 @@ func SANToServiceDomain(san string) (string, bool) {
 		return "", false
 	}
 	// The <ns> segment must be non-empty (rejects ns//sa/…).
-	ns := san[len(sanTrustPrefix):idx]
+	ns := san[len(nsPrefix):idx]
 	if ns == "" || strings.HasPrefix(ns, "/") {
 		return "", false
 	}
@@ -161,8 +175,8 @@ func SANToServiceDomain(san string) (string, bool) {
 
 // SANToServiceAccountID maps a verified SPIRE SAN to the deterministic module
 // ServiceAccount id.
-func SANToServiceAccountID(san string) (string, bool) {
-	svc, ok := SANToServiceDomain(san)
+func SANToServiceAccountID(d grpcsrv.TrustDomain, san string) (string, bool) {
+	svc, ok := SANToServiceDomain(d, san)
 	if !ok {
 		return "", false
 	}

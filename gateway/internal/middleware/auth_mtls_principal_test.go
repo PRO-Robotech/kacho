@@ -19,11 +19,11 @@ import (
 	"context"
 	"crypto/tls"
 	"crypto/x509"
-	"github.com/PRO-Robotech/kacho/pkg/grpcsrv"
 	"net/url"
 	"testing"
 	"time"
 
+	"github.com/PRO-Robotech/kacho/pkg/grpcsrv"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 	"google.golang.org/grpc"

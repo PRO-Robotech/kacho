@@ -156,7 +156,7 @@ func TestTrustDomainPostureScannerNamesBothSidesOfADisagreement(t *testing.T) {
 
 	got := TrustDomainDeclDisagreement([]TrustDomainDeclSite{a[0], b[0]})
 	if got == "" {
-		t.Fatalf("расхождение умолчаний не найдено — гейт молчал бы там, где сертификат "+
+		t.Fatalf("расхождение умолчаний не найдено — гейт молчал бы там, где сертификат " +
 			"чеканится под одним доменом, а признаётся другой")
 	}
 	for _, want := range []string{a[0].File, b[0].File, "kacho.cloud", "kaname.local"} {

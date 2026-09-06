@@ -179,6 +179,7 @@ func (c Config) Validate() error {
 	// Ранняя проверка здесь при этом полезна — она отказывает ещё в `main`, до
 	// `runServe`.
 	errs = multierr.Append(errs, c.validateTrustedForwarders())
+	errs = multierr.Append(errs, c.validateTrustDomain())
 
 	if c.AuthN.Mode.IsProduction() {
 		errs = multierr.Append(errs, c.validateProductionAuthNSecrets())
@@ -273,6 +274,30 @@ func (c Config) validateTrustedForwarders() error {
 		DevTrustAny:  c.AuthN.TrustAnyForwarder,
 		SANsKnob:     "authn.trusted-forwarder-sans (env KANAME_AUTHN__TRUSTED_FORWARDER_SANS)",
 		TrustAnyKnob: "authn.trust-any-forwarder (env KANAME_AUTHN__TRUST_ANY_FORWARDER)",
+	})
+}
+
+// validateTrustDomain refuses to start a binary whose installation has not named
+// its trust domain.
+//
+// Круг отправителей выше отвечает на вопрос «кому позволено говорить за
+// пользователя»; домен — на предыдущий: чьи предъявители вообще наши. По
+// необъявленному домену не опознаётся НИ ОДИН сертификат, поэтому процесс,
+// поднявшийся без него, отвергает каждого соседа — и отвергает молча, отказом,
+// неотличимым от вызова без личности.
+//
+// Отказ срабатывает на ЛЮБОМ старте, а не только в боевом: у необъявленного
+// домена нет посадки, в которой он работает. Опт-ина «поднимусь без домена» нет
+// и быть не может — он означал бы согласие не работать.
+//
+// Страж ОБЩИЙ на все службы — `grpcsrv.TrustDomain.Require`, один исход и один
+// текст отказа; различаются только имена ручек. Дескриптор посадки зовёт ТУ ЖЕ
+// функцию с тем же именем ручки, поэтому здесь второе место ВЫЗОВА, а не второй
+// источник решения. Ранняя проверка полезна тем же, чем и у соседки: она
+// отказывает ещё в `main`, до `runServe`, и называет оператору ключ.
+func (c Config) validateTrustDomain() error {
+	return c.AuthN.TrustDomain().Require(grpcsrv.TrustDomainGate{
+		Knob: "authn.trust-domain (env KANAME_AUTHN__TRUST_DOMAIN)",
 	})
 }
 
