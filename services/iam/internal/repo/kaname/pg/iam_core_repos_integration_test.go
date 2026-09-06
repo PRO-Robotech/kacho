@@ -564,7 +564,7 @@ func TestIamExtRepos_6_10_3_Bootstrap_UserNotFound_GracefulSkip(t *testing.T) {
 	})
 	require.NoError(t, err)
 	assert.True(t, res.Skipped)
-	assert.Equal(t, "user not registered", res.SkipReason)
+	assert.Equal(t, seedpkg.BootstrapSkipNotRegistered, res.SkipReason)
 
 	// granted_by='bootstrap' is also carried by the ServiceAccount grant that
 	// migration 0058 seeds, so scope the assertion to the rows RunBootstrapAdmin
@@ -624,7 +624,7 @@ func TestIamExtRepos_6_10_2_Bootstrap_Idempotent(t *testing.T) {
 	})
 	require.NoError(t, err)
 	assert.True(t, res2.Skipped)
-	assert.Equal(t, "concurrent race (23505)", res2.SkipReason)
+	assert.Equal(t, seedpkg.BootstrapSkipConcurrentRace, res2.SkipReason)
 
 	// Only 1 grant exists.
 	var cagCount int

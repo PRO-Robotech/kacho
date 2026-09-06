@@ -139,7 +139,7 @@ func TestRunBootstrapAdmin_UserAbsent_GracefulSkip_NoRows(t *testing.T) {
 		seed.BootstrapAdminInput{Email: "never-registered@prorobotech.ru"})
 	require.NoError(t, err)
 	assert.True(t, res.Skipped)
-	assert.Equal(t, "user not registered", res.SkipReason)
+	assert.Equal(t, seed.BootstrapSkipNotRegistered, res.SkipReason)
 
 	var grantsAfter, outboxAfter int
 	require.NoError(t, pool.QueryRow(ctx, `SELECT count(*) FROM cluster_admin_grants`).Scan(&grantsAfter))

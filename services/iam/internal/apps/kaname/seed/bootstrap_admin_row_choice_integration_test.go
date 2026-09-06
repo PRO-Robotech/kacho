@@ -250,7 +250,7 @@ func TestRunBootstrapAdmin_StateOfTheRowDecides(t *testing.T) {
 		email        string
 		inviteStatus string
 		wantSkipped  bool
-		wantReason   string
+		wantReason   seed.BootstrapSkipReason
 		wantGrants   int
 		wantOutbox   int
 	}{
@@ -270,7 +270,7 @@ func TestRunBootstrapAdmin_StateOfTheRowDecides(t *testing.T) {
 			email:        "blocked@prorobotech.ru",
 			inviteStatus: "BLOCKED",
 			wantSkipped:  true,
-			wantReason:   "user not active",
+			wantReason:   seed.BootstrapSkipNotActive,
 			wantGrants:   0,
 			wantOutbox:   0,
 		},
@@ -282,7 +282,7 @@ func TestRunBootstrapAdmin_StateOfTheRowDecides(t *testing.T) {
 			email:        "invited@prorobotech.ru",
 			inviteStatus: "PENDING",
 			wantSkipped:  true,
-			wantReason:   "user not active",
+			wantReason:   seed.BootstrapSkipNotActive,
 			wantGrants:   0,
 			wantOutbox:   0,
 		},
