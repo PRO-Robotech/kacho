@@ -30,10 +30,11 @@ import (
 	"context"
 	"crypto/tls"
 	"crypto/x509"
-	corequota "github.com/PRO-Robotech/kacho/pkg/quota"
 	"net/url"
 	"strings"
 	"testing"
+
+	corequota "github.com/PRO-Robotech/kacho/pkg/quota"
 
 	"google.golang.org/grpc"
 	"google.golang.org/grpc/credentials"

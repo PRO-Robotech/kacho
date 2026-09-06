@@ -4,10 +4,11 @@
 package config
 
 import (
-	corequota "github.com/PRO-Robotech/kacho/pkg/quota"
 	"strings"
 	"testing"
 	"time"
+
+	corequota "github.com/PRO-Robotech/kacho/pkg/quota"
 )
 
 // Страж старта обязан ОЦЕНИВАТЬ измерения плоскости данных, а не просто печатать

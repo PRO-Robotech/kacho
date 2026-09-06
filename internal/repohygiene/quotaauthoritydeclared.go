@@ -57,11 +57,12 @@ import (
 	"go/ast"
 	"go/parser"
 	"go/token"
-	"io/fs"
 	"os"
 	"path/filepath"
 	"sort"
 	"strings"
+
+	"github.com/PRO-Robotech/kacho/pkg/treecorpus"
 )
 
 // quotaSyncStarter — имя глагола, включающего обе полосы ребра.
@@ -116,16 +117,20 @@ func dirMentions(dir, fragment string) (bool, error) {
 		}
 		return false, fmt.Errorf("%s: %w", dir, err)
 	}
-	found := false
-	err := rootedWalk(dir,
-		func(rel string) bool { return strings.HasSuffix(rel, ".sql") },
-		func(_ string, body []byte) error {
-			if strings.Contains(string(body), fragment) {
-				found = true
-			}
-			return nil
-		})
-	return found, err
+	files, err := treecorpus.UnderWithSuffix(dir, ".sql")
+	if err != nil {
+		return false, fmt.Errorf("состав каталога миграций %s: %w", dir, err)
+	}
+	for _, f := range files {
+		body, rerr := os.ReadFile(f) //nolint:gosec // путь пришёл из индекса git этого дерева
+		if rerr != nil {
+			return false, fmt.Errorf("%s: %w", f, rerr)
+		}
+		if strings.Contains(string(body), fragment) {
+			return true, nil
+		}
+	}
+	return false, nil
 }
 
 // quotaStartSitesOf разбирает композиционный корень службы и отдаёт все места
@@ -139,23 +144,29 @@ func quotaStartSitesOf(root, service string) ([]quotaStartSite, error) {
 		return nil, fmt.Errorf("%s: %w", cmdDir, err)
 	}
 
+	// Состав берётся у ИНДЕКСА git, а не с диска. Правила игнорирования
+	// действуют на любой глубине, и под каталогом службы на всякой машине, где
+	// поднимали стенд или собирали фронтенд, лежит неверсионируемое —
+	// распаковки чартов, сборочные каталоги, отчёты прогонов. Обход по диску
+	// делает вердикт свойством машины, а не дерева.
+	files, err := treecorpus.UnderWithSuffix(cmdDir, ".go")
+	if err != nil {
+		return nil, fmt.Errorf("состав композиционного корня %s: %w", cmdDir, err)
+	}
+
 	var sites []quotaStartSite
-	err := filepath.WalkDir(cmdDir, func(path string, d fs.DirEntry, err error) error {
-		if err != nil {
-			return err
-		}
-		if d.IsDir() || !strings.HasSuffix(path, ".go") || strings.HasSuffix(path, "_test.go") {
-			return nil
+	for _, path := range files {
+		if strings.HasSuffix(path, "_test.go") {
+			continue
 		}
 		fset := token.NewFileSet()
 		file, perr := parser.ParseFile(fset, path, nil, parser.SkipObjectResolution)
 		if perr != nil {
-			return fmt.Errorf("разбор %s: %w", path, perr)
+			return nil, fmt.Errorf("разбор %s: %w", path, perr)
 		}
 		sites = append(sites, quotaStartSitesIn(fset, file, path)...)
-		return nil
-	})
-	return sites, err
+	}
+	return sites, nil
 }
 
 // quotaStartSitesIn — разбор одного файла. Судит УЗЕЛ вызова, а не подстроку:
