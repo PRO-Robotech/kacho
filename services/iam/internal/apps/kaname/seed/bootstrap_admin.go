@@ -49,13 +49,53 @@ type BootstrapAdminInput struct {
 	NowFn     func() time.Time
 }
 
+// BootstrapSkipReason — почему попытка посева ничего не выдала.
+//
+// Тип, а не голая строка, И ЭТО НЕСУЩЕЕ. Значение уезжает меткой счётчика
+// (`BootstrapReconciler`), а метка, приходящая свободной строкой, растит
+// кардинальность и лишает наблюдателя закрытого словаря. Набор объявлен здесь,
+// перечислен в [AllBootstrapSkipReasons] и покрыт отображением в исход попытки
+// ЦЕЛИКОМ — полноту сторожит проба, а не внимательность, поэтому корзины
+// «прочее» в отображении нет.
+//
+// Значения строк сохранены дословно: их читают уже написанные пробы, и смена
+// текста была бы сменой контракта ради типизации.
+type BootstrapSkipReason string
+
+// Набор причин пропуска — ЗАКРЫТ. Новая причина заводится здесь И в
+// [AllBootstrapSkipReasons]; без второго проба полноты отображения краснеет.
+const (
+	// BootstrapSkipEmailEmpty — адрес администратора не задан: посев выключен.
+	// Причина ТЕРМИНАЛЬНАЯ — согласователь на ней останавливается.
+	BootstrapSkipEmailEmpty BootstrapSkipReason = "email empty"
+	// BootstrapSkipNotRegistered — строки личности с этим адресом ещё нет.
+	BootstrapSkipNotRegistered BootstrapSkipReason = "user not registered"
+	// BootstrapSkipNotActive — строка есть, но аутентифицироваться не может.
+	// Держится отдельно от предыдущей намеренно: оператора они отправляют в
+	// разные места — регистрация против разблокировки.
+	BootstrapSkipNotActive BootstrapSkipReason = "user not active"
+	// BootstrapSkipConcurrentRace — выдачу закоммитила соседняя реплика (23505).
+	BootstrapSkipConcurrentRace BootstrapSkipReason = "concurrent race (23505)"
+)
+
+// AllBootstrapSkipReasons — перечень причин пропуска для проб полноты.
+//
+// Существует ради ОДНОГО утверждения: у каждой объявленной причины есть полоса
+// счётчика. Без перечня отображение молча теряло бы новую причину в тишине —
+// ровно тот класс, ради которого KAN-W5-06 заведён.
+var AllBootstrapSkipReasons = []BootstrapSkipReason{
+	BootstrapSkipEmailEmpty,
+	BootstrapSkipNotRegistered,
+	BootstrapSkipNotActive,
+	BootstrapSkipConcurrentRace,
+}
+
 // BootstrapAdminResult — bootstrap-run result (observability / tests).
 type BootstrapAdminResult struct {
 	Skipped bool // true if the run granted nothing
-	// SkipReason — 'email empty' | 'user not registered' | 'user not active' |
-	// 'concurrent race (23505)'. "not registered" and "not active" are kept
-	// apart on purpose: they send an operator to different places.
-	SkipReason    string
+	// SkipReason — причина пропуска из закрытого набора выше. Пусто, когда
+	// выдача закоммичена (Skipped=false).
+	SkipReason    BootstrapSkipReason
 	GrantID       string // id of the cluster_admin_grant created (when Skipped=false)
 	FGAOutboxID   string // id of the enqueued fga_outbox row
 	AuditOutboxID string // id of the enqueued audit_outbox row
@@ -82,7 +122,7 @@ func RunBootstrapAdmin(ctx context.Context, pool *pgxpool.Pool, logger *slog.Log
 	email := strings.TrimSpace(in.Email)
 	if email == "" {
 		logger.DebugContext(ctx, "bootstrap admin: KANAME_BOOTSTRAP_ROOT_EMAIL not set, skipping")
-		return BootstrapAdminResult{Skipped: true, SkipReason: "email empty"}, nil
+		return BootstrapAdminResult{Skipped: true, SkipReason: BootstrapSkipEmailEmpty}, nil
 	}
 
 	// Step 1: какой строке принадлежит этот адрес почты.
@@ -126,11 +166,11 @@ func RunBootstrapAdmin(ctx context.Context, pool *pgxpool.Pool, logger *slog.Log
 			logger.WarnContext(ctx,
 				"bootstrap admin row exists but may not authenticate, skipping cluster admin grant",
 				slog.String("email", email))
-			return BootstrapAdminResult{Skipped: true, SkipReason: "user not active"}, nil
+			return BootstrapAdminResult{Skipped: true, SkipReason: BootstrapSkipNotActive}, nil
 		}
 		logger.InfoContext(ctx, "bootstrap admin user not registered yet, skipping cluster admin grant",
 			slog.String("email", email))
-		return BootstrapAdminResult{Skipped: true, SkipReason: "user not registered"}, nil
+		return BootstrapAdminResult{Skipped: true, SkipReason: BootstrapSkipNotRegistered}, nil
 	}
 	userID := activeID.String
 
@@ -159,7 +199,7 @@ func RunBootstrapAdmin(ctx context.Context, pool *pgxpool.Pool, logger *slog.Log
 				"concurrent bootstrap detected, cluster admin grant already created by another instance",
 				slog.String("email", email),
 				slog.String("user_id", userID))
-			return BootstrapAdminResult{Skipped: true, SkipReason: "concurrent race (23505)", UserID: userID}, nil
+			return BootstrapAdminResult{Skipped: true, SkipReason: BootstrapSkipConcurrentRace, UserID: userID}, nil
 		}
 		return BootstrapAdminResult{}, fmt.Errorf("bootstrap admin: insert cluster_admin_grant: %w", err)
 	}

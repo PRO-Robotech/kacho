@@ -56,6 +56,7 @@ import (
 	"google.golang.org/grpc/status"
 
 	"github.com/PRO-Robotech/kacho/pkg/authz"
+	"github.com/PRO-Robotech/kacho/pkg/authz/catalogderive"
 	corevalidate "github.com/PRO-Robotech/kacho/pkg/validate"
 
 	"github.com/PRO-Robotech/kacho/gateway/internal/allowlist"
@@ -1054,18 +1055,20 @@ func (m *AuthzMiddleware) phaseResource(dr decisionRequest, entry CatalogEntry, 
 		}
 	}
 
-	// cluster — это singleton (`cluster_kacho_root`,
-	// см. kacho-iam/internal/domain/cluster.go::ClusterSingletonID).
+	// cluster — это singleton; его написание объявлено константой
+	// catalogderive.ClusterSingletonID и берётся ОТТУДА, а не повторяется
+	// строкой: переход написания правит объявление, а повторённая рукой строка
+	// продолжила бы спрашивать про прежний объект молча.
 	// Catalog для reference-data (compute.Region/Zone, etc.) задает
 	// scope_extractor: {object_type: cluster, from_request_field: '*'}.
 	// Extractor выдает ResourceID("*") → object="cluster:*" → kaname
 	// AuthorizeService.Check отбивает с "no path: unscoped resource"
 	// (authorize_service.go блокирует req.Resource.ID == "*"). Тут
 	// substitute'им wildcard на канонический singleton id, чтобы Check
-	// шел на cluster:cluster_kacho_root, где tuple-cascade
+	// шел на объект якоря, где tuple-cascade
 	// `define viewer: [user, user:*, ...]` действительно работает.
 	if resourceType == "cluster" && resourceID.IsWildcard() {
-		resourceID = ResourceID("cluster_kacho_root")
+		resourceID = ResourceID(catalogderive.ClusterSingletonID)
 	}
 
 	descriptor := permissionDeniedDescriptor{
