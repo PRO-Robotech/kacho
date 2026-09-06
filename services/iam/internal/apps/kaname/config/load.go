@@ -112,6 +112,7 @@ func Load(path string) (Config, error) {
 		"manifests.compose-model": "KANAME_MANIFESTS__COMPOSE_MODEL",
 		"manifests.admission":     "KANAME_MANIFESTS__ADMISSION",
 
+		"authn.domain":                      "KANAME_AUTHN__DOMAIN",
 		"authn.trusted-forwarder-sans":      "KANAME_AUTHN__TRUSTED_FORWARDER_SANS",
 		"authn.trust-domain":                "KANAME_AUTHN__TRUST_DOMAIN",
 		"authn.trust-any-forwarder":         "KANAME_AUTHN__TRUST_ANY_FORWARDER",
