@@ -298,7 +298,7 @@ func CreateReqFromProto(req *computev1.CreateInstanceRequest) instance.CreateIns
 		Labels:                 req.Labels,
 		ZoneID:                 req.ZoneId,
 		Hostname:               req.Hostname,
-		InstanceKind:           domain.InstanceKind(req.InstanceKind), // #nosec G115 -- proto enum зеркалит domain
+		InstanceKind:           domain.InstanceKind(req.InstanceKind), // proto enum зеркалит domain
 		MachineTypeID:          req.MachineTypeId,
 		CPUGuaranteePercent:    req.CpuGuaranteePercent,
 		BootSource:             bootSourceFromProto(req.BootSource),
@@ -544,7 +544,7 @@ func bootSourceFromProto(bs *computev1.BootSource) domain.BootSource {
 		ID:             bs.Id,
 		Name:           bs.Name,
 		ResolvedDigest: bs.ResolvedDigest,
-		ImageKind:      domain.ImageKind(bs.ImageKind), // #nosec G115 -- proto enum зеркалит domain
+		ImageKind:      domain.ImageKind(bs.ImageKind), // proto enum зеркалит domain
 	}
 	if mv := bs.MaterializedVolume; mv != nil {
 		out.MaterializedVolume = &domain.MaterializedVolume{
@@ -564,7 +564,7 @@ func vmSpecFromProto(v *computev1.VmSpec) *domain.VMSpec {
 	}
 	out := &domain.VMSpec{UserData: v.UserData}
 	if mo := v.MetadataOptions; mo != nil {
-		out.MetadataEndpoint = domain.MetadataOption(mo.MetadataEndpoint) // #nosec G115 -- proto enum зеркалит domain
+		out.MetadataEndpoint = domain.MetadataOption(mo.MetadataEndpoint) // proto enum зеркалит domain
 	}
 	return out
 }
@@ -579,7 +579,7 @@ func containerSpecFromProto(c *computev1.ContainerSpec) *domain.ContainerSpec {
 		Args:          c.Args,
 		Env:           c.Env,
 		WorkingDir:    c.WorkingDir,
-		RestartPolicy: domain.RestartPolicy(c.RestartPolicy), // #nosec G115 -- proto enum зеркалит domain
+		RestartPolicy: domain.RestartPolicy(c.RestartPolicy), // proto enum зеркалит domain
 	}
 	for i := range c.Ports {
 		out.Ports = append(out.Ports, domain.ContainerPort{

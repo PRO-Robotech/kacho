@@ -24,6 +24,7 @@ import (
 	"github.com/PRO-Robotech/kacho/pkg/observability"
 
 	"github.com/PRO-Robotech/kaname/internal/apps/kaname/config"
+	"github.com/PRO-Robotech/kaname/internal/refusaldomain"
 )
 
 // configPathEnv — путь к YAML-конфигу. Пустое значение допустимо (defaults +
@@ -39,6 +40,16 @@ func main() {
 	// (LevelInfo) carries only fatal startup errors. The level-aware logger (per
 	// cfg.Logger.Level) is built in runServe once config is validated.
 	bootLog := observability.NewSlogger(os.Stderr)
+
+	// Продукт объявляет, чем он называет себя в теле отказа, — ДО загрузки
+	// настройки и до подъёма чего бы то ни было: производители отказа читают
+	// объявление на первом же запросе, а отказ настройки — уже отказ, и он
+	// уезжает с доменом. Задача продукта #2099, сценарий WIRE-3-03 приёмки
+	// WIRE-1.
+	if err := refusaldomain.Declare(refusaldomain.ProductSuffix); err != nil {
+		bootLog.Error("refusal domain declaration failed", slog.Any("err", err))
+		os.Exit(1)
+	}
 
 	cfg, err := config.Load(os.Getenv(configPathEnv))
 	if err != nil {

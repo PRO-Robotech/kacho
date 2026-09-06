@@ -21,9 +21,9 @@ KAC-127 Phase 2 — Kratos config ConfigMap (WebAuthn / Passkey enabled).
     указывал на легаси :9091 с REST-подобным путём и падал молча, а объяснение
     ссылалось на «нереализованный» RPC — тот был реализован, не хватало маршрута.
 
-Файл маунтится в Kratos pod как `/etc/kacho-identity/kratos.yaml`. Hydra/Kratos
+Файл маунтится в Kratos pod как `/etc/kaname-identity/kratos.yaml`. Hydra/Kratos
 helm subchart'ы умеют читать config из этого ConfigMap через `config.fromConfigMap`
-или через volume-mount + `kratos --config /etc/kacho-identity/kratos.yaml`.
+или через volume-mount + `kratos --config /etc/kaname-identity/kratos.yaml`.
 В Phase 2 предпочитаем второй вариант (явный mount) — даёт нам полный контроль
 над структурой YAML без оборачивания в `kratos.config.*` (sub-chart wrapper).
 
@@ -45,7 +45,7 @@ valid "uri"»). Переменными служба переопределяет
 свой предмет. Перемерено 2026-08-24, единица счёта — СТРОКА ПРОФИЛЯ:
 
   for f in $(git ls-files 'deploy/helm/umbrella/values*.yaml'); do
-    n=$(grep -cE '/etc/kacho-identity|kratos-config|--config' "$f")
+    n=$(grep -cE '/etc/kaname-identity|kratos-config|--config' "$f")
     [ "$n" -gt 0 ] && echo "$n  $f"
   done
 

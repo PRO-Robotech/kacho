@@ -71,7 +71,7 @@ PY
 assert "подстановки нет" RED "$TMP/values.inject-noinit.yaml"
 
 # (3) процесс читает ШАБЛОН, а не отрендеренное — путь --config возвращён назад.
-sed 's|/etc/kacho-identity-rendered/kratos.yaml|/etc/kacho-identity/kratos.yaml|' \
+sed 's|/etc/kaname-identity-rendered/kratos.yaml|/etc/kaname-identity/kratos.yaml|' \
   "$CHART/values.dev.yaml" > "$TMP/values.inject-oldpath.yaml"
 assert "читает шаблон" RED "$TMP/values.inject-oldpath.yaml"
 

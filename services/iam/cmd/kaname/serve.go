@@ -51,6 +51,7 @@ import (
 
 	"github.com/PRO-Robotech/kaname/internal/apps/kaname/seed"
 	"github.com/PRO-Robotech/kaname/internal/catalog"
+	"github.com/PRO-Robotech/kaname/internal/refusaldomain"
 )
 
 // grpcStopper — поверхность graceful/forced остановки gRPC-сервера. *grpc.Server
@@ -80,6 +81,15 @@ func stopGRPCBounded(srv grpcStopper, timeout time.Duration) {
 func runServe(cfg config.Config) error {
 	ctx, cancel := signal.NotifyContext(context.Background(), syscall.SIGTERM, syscall.SIGINT)
 	defer cancel()
+
+	// Страж стоит ЗДЕСЬ, а не только в main: сборка, поднявшая слушатели в обход
+	// объявления, отвечала бы клиенту отказом с ПУСТЫМ доменом — то есть молча
+	// перестала бы называть себя. Умолчания у величины нет намеренно: то, что
+	// построение подставляет молча, предметом стража быть не может (задача
+	// продукта #2099, сценарий WIRE-3-03 приёмки WIRE-1).
+	if err := refusaldomain.Require(); err != nil {
+		return fmt.Errorf("refusal domain: %w", err)
+	}
 
 	// logger.level was validated in main (cfg.Validate); SlogLevel cannot fail
 	// here. Defensive fallback to INFO keeps the composition root total.
@@ -112,6 +122,17 @@ func runServe(cfg config.Config) error {
 		return err
 	}
 	defer pool.Close()
+
+	// Загрузочный страж: служба не поднимается поверх базы прежней установки.
+	//
+	// Стоит ПЕРВЫМ из стражей базы и до любой записи: он спрашивает не «посильна
+	// ли эта база», а «та ли это база вообще». Схема переименована, переноса нет
+	// (решение владельца — только чистая установка), и старт поверх прежней базы
+	// завёл бы пустую схему рядом, оставив прежние строки невидимыми. Отказ,
+	// отложенный за другие проверки, пришёл бы позже и назвал бы не тот предмет.
+	if err := assertNoRetiredSchema(ctx, pool); err != nil {
+		return err
+	}
 
 	// Загрузочный страж: посадка не вправе обещать базе больше соединений, чем
 	// та принимает. Стоит СРАЗУ за созданием пула — до того, как процесс начнёт
@@ -658,7 +679,12 @@ func runServe(cfg config.Config) error {
 	// no-op (the newman stand has no mTLS, hence no verified certificate to decide
 	// on). This is the second half of the narrowing: the forwarder allow-list below
 	// decides WHO MAY SPEAK FOR A USER, this decides ON WHICH RPC.
-	publicCallerPolicy := authzguard.NewPublicCallerPolicy(productionMode, authzguard.PublicPeerCallableRPCs(), permRegistry)
+	publicCallerPolicy := authzguard.NewPublicCallerPolicy(
+		productionMode, authzguard.PublicPeerCallableRPCs(), permRegistry,
+		// Реализация порта присутствия удостоверения: КЛЮЧ метаданных и
+		// объявленная схема предъявления живут у читателя, и второй их разбор
+		// разошёлся бы с первым молча — на входе, который оба считают годным.
+		presentedcred.Presented)
 
 	// СОБСТВЕННАЯ ДВЕРЬ iam — пообъектный вопрос о доступе на публичном
 	// слушателе.

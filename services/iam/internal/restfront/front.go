@@ -25,7 +25,11 @@ func NewPublic(ctx context.Context, grpcAddr string, opts []grpc.DialOption) (ht
 	if err := registerPublicRESTServices(ctx, mux, grpcAddr, opts); err != nil {
 		return nil, err
 	}
-	return mux, nil
+	// Подсказка аутентификации — только здесь, и почему только здесь, сказано в
+	// challenge.go: внутренний фронт обслуживает модули, называющиеся
+	// сертификатом, и совет «предъяви Bearer» указал бы им действие, которого у
+	// них нет.
+	return withAuthenticationChallenge(mux), nil
 }
 
 // NewInternal собирает внутренний REST-фронт службы.

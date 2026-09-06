@@ -27,6 +27,7 @@ import (
 	"google.golang.org/grpc/status"
 
 	iamerr "github.com/PRO-Robotech/kaname/internal/errors"
+	"github.com/PRO-Robotech/kaname/internal/refusaldomain"
 )
 
 const (
@@ -58,9 +59,14 @@ func referenceRefusal(err error) (error, bool) {
 	}
 
 	st := status.New(codes.FailedPrecondition, iamerr.StripSentinel(err))
+	// Домен берётся у ЕДИНСТВЕННОГО объявления продукта, а не у константы
+	// соседнего модуля: прежняя редакция читала её у модуля учёта величин —
+	// предмета, который из службы выпиливается ЦЕЛИКОМ (#2117). Связь была
+	// невыраженной, и отказ по ссылке перестал бы собираться вместе с чужим
+	// снятием. Задача продукта #2099.
 	withDetails, derr := st.WithDetails(&errdetails.ErrorInfo{
 		Reason: reason,
-		Domain: quotaReasonDomain,
+		Domain: refusaldomain.For(refusaldomain.ServiceIAM),
 	})
 	if derr != nil {
 		// Деталь не прикрепилась — код и текст важнее признака.

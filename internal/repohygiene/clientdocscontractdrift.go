@@ -379,7 +379,7 @@ func AuditClientDocsRetiredFieldInExample(
 		}
 		for _, page := range pages {
 			census.Pages++
-			raw, rerr := os.ReadFile(filepath.Join(opts.Root, filepath.FromSlash(page))) // #nosec G304 -- путь получен обходом собственного дерева
+			raw, rerr := os.ReadFile(filepath.Join(opts.Root, filepath.FromSlash(page))) // путь получен обходом собственного дерева
 			if rerr != nil {
 				return nil, census, rerr
 			}
@@ -541,7 +541,7 @@ func AuditClientDocsDeprecationParity(
 		}
 		for _, page := range pages {
 			census.Pages++
-			raw, rerr := os.ReadFile(filepath.Join(opts.Root, filepath.FromSlash(page))) // #nosec G304 -- путь получен обходом собственного дерева
+			raw, rerr := os.ReadFile(filepath.Join(opts.Root, filepath.FromSlash(page))) // путь получен обходом собственного дерева
 			if rerr != nil {
 				return nil, census, rerr
 			}

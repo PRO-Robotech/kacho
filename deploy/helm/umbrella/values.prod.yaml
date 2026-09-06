@@ -1451,7 +1451,7 @@ kratos:
     # subPath — два тома на один каталог не поставить.
     extraArgs:
       - --config
-      - /etc/kacho-identity-rendered/kratos.yaml
+      - /etc/kaname-identity-rendered/kratos.yaml
     # Величина обратного вызова подставляется в поде ДО старта процесса —
     # объяснение и отказ по закрытой стороне живут в одном месте, в шаблоне
     # `kacho.identity.configRenderInitContainer` (задача #948).
@@ -1516,14 +1516,14 @@ kratos:
       # отрендеренное. Смонтировать оба значило бы держать рядом два файла, из
       # которых рабочий один, — и следующая правка `--config` вернула бы дефект.
       - name: kacho-identity-rendered
-        mountPath: /etc/kacho-identity-rendered
+        mountPath: /etc/kaname-identity-rendered
         readOnly: true
       - name: kacho-identity-schema
-        mountPath: /etc/kacho-identity/identity.schema.json
+        mountPath: /etc/kaname-identity/identity.schema.json
         subPath: identity.schema.json
         readOnly: true
       - name: kacho-identity-hooks
-        mountPath: /etc/kacho-identity/hooks
+        mountPath: /etc/kaname-identity/hooks
         readOnly: true
       - name: kaname-internal-ca
         mountPath: /etc/kaname-ca
@@ -1550,7 +1550,7 @@ kratos:
   statefulSet:
     extraArgs:
       - --config
-      - /etc/kacho-identity-rendered/kratos.yaml
+      - /etc/kaname-identity-rendered/kratos.yaml
     # ─── УРОВЕНЬ ЖУРНАЛА ПОЧТОВОГО ПРОЦЕССА — ЕДИНСТВЕННЫЙ ЕГО ВЛАДЕЛЕЦ ────────
     #
     # Чарт поставщика ставит почтовому процессу `LOG_LEVEL`/`LOG_FORMAT`

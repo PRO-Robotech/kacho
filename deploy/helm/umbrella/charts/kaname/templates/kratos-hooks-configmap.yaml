@@ -4,7 +4,7 @@
 C4 — Kratos web_hook body templates (Jsonnet).
 
 The registration/login provisioning web_hook in kratos-config-configmap.yaml
-references `file:///etc/kacho-identity/hooks/identity-payload.jsonnet`. Kratos
+references `file:///etc/kaname-identity/hooks/identity-payload.jsonnet`. Kratos
 renders this Jsonnet against the flow context (the `ctx` top-level object that
 Kratos injects: `ctx.identity`, `ctx.flow`, `ctx.request_*`, …) and POSTs the
 result to the kaname provisioning route `/iam/v1/hooks/provision` on the
@@ -20,7 +20,7 @@ keys.
   - email        = ctx.identity.traits.email
   - display_name = ctx.identity.traits.display_name (optional; "" when unset).
 
-This ConfigMap is mounted into the Kratos pod at /etc/kacho-identity/hooks/
+This ConfigMap is mounted into the Kratos pod at /etc/kaname-identity/hooks/
 (alongside kratos.yaml + identity.schema.json) by the Kratos sub-chart's
 extraVolumes/extraVolumeMounts wiring — see values.<cluster>.yaml.
 

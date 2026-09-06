@@ -500,7 +500,7 @@ func (u *IssueSAKeyUseCase) Execute(ctx context.Context, in IssueInput) (*operat
 			//
 			// Federated rows (TrustedSubjects non-empty) carry no key
 			// material in the response — nothing to redact, skip the goroutine.
-			go u.scheduleSecretRedact(ctx, op.ID) // #nosec G118 -- deliberate lifetime detach (baggage preserved via WithoutCancel; see comment above).
+			go u.scheduleSecretRedact(ctx, op.ID) // deliberate lifetime detach (baggage preserved via WithoutCancel; see comment above).
 		}
 		return resp, derr
 	})

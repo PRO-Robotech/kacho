@@ -314,7 +314,7 @@ func (u *IssueUserTokenUseCase) Execute(ctx context.Context, in IssueInput) (*op
 		// in-place одним UPDATE на строке operations (идемпотентно). Goroutine
 		// переживает request-scoped ctx (клиент уже получил Operation-конверт).
 		if derr == nil && u.redactor != nil {
-			go u.scheduleSecretRedact(ctx, op.ID) // #nosec G118 -- deliberate lifetime detach (baggage preserved via WithoutCancel; see scheduleSecretRedact).
+			go u.scheduleSecretRedact(ctx, op.ID) // deliberate lifetime detach (baggage preserved via WithoutCancel; see scheduleSecretRedact).
 		}
 		return resp, derr
 	})
