@@ -16,8 +16,8 @@
 // Подставлен один порт — источник состава утверждений. Настоящее объявление
 // состава читает строку реестра своим портом, у которого в дереве пока нет
 // адаптера к базе (он приезжает своим изменением). Дублёр эмитит РОВНО ТО ЖЕ
-// имя, которым настоящее объявление называет клиента, — `kacho_user_token_id`
-// для клиента пользовательского токена и `kacho_sa_key_id` для клиента ключа
+// имя, которым настоящее объявление называет клиента, — `kaname_user_token_id`
+// для клиента пользовательского токена и `kaname_sa_key_id` для клиента ключа
 // служебной учётки, — потому что именно это имя читает вторая сторона отсечки.
 // Совпадение множеств утверждений двух путей выдачи закреплено отдельно
 // (F2-42), поэтому здесь оно не переизмеряется.
@@ -80,13 +80,13 @@ func (issuanceClaims) ClaimsForAssertionClient(
 	switch c.Kind {
 	case domain.AssertionClientUser:
 		return map[string]any{
-			"kacho_principal_id":  c.OwnerID,
-			"kacho_user_token_id": c.ID,
+			"kaname_principal_id":  c.OwnerID,
+			"kaname_user_token_id": c.ID,
 		}, service.ResolvedPrincipal{Kind: service.PrincipalUser, UserID: c.OwnerID}, nil
 	case domain.AssertionClientServiceAccount:
 		return map[string]any{
-			"kacho_principal_id": c.OwnerID,
-			"kacho_sa_key_id":    c.ID,
+			"kaname_principal_id": c.OwnerID,
+			"kaname_sa_key_id":    c.ID,
 		}, service.ResolvedPrincipal{Kind: service.PrincipalServiceAccount}, nil
 	default:
 		return nil, service.ResolvedPrincipal{}, errUnknownAssertionKind

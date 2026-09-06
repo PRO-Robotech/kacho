@@ -302,7 +302,7 @@ type jwtClaims struct {
 	// утверждением.
 	Ext struct {
 		ExtClaims struct {
-			KachoPrincipalID string `json:"kacho_principal_id"`
+			KachoPrincipalID string `json:"kaname_principal_id"`
 		} `json:"ext_claims"`
 	} `json:"ext"`
 }

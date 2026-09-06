@@ -142,7 +142,7 @@ type MintBootstrapTokenResponse struct {
 	// Absolute expiry (truncated to seconds).
 	ExpiresAt *timestamppb.Timestamp `protobuf:"bytes,4,opt,name=expires_at,json=expiresAt,proto3" json:"expires_at,omitempty"`
 	// The bootstrap ServiceAccount id (`sva…`) this token authenticates as —
-	// equals the token's `kacho_principal_id` claim.
+	// equals the token's `kaname_principal_id` claim.
 	PrincipalId string `protobuf:"bytes,5,opt,name=principal_id,json=principalId,proto3" json:"principal_id,omitempty"`
 	// Absolute issuance time (truncated to seconds).
 	IssuedAt      *timestamppb.Timestamp `protobuf:"bytes,6,opt,name=issued_at,json=issuedAt,proto3" json:"issued_at,omitempty"`

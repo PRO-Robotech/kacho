@@ -441,14 +441,14 @@ func TestJWTVerifier_ExtClaimsExtracted(t *testing.T) {
 	})
 	claims := standardClaims()
 	claims["ext_claims"] = map[string]any{
-		"kacho_external_id":    "krt_id_xxx",
-		"kacho_active_account": "acc_a1b2",
-		"kacho_principal_type": "user",
+		"kaname_external_id":    "krt_id_xxx",
+		"kaname_active_account": "acc_a1b2",
+		"kaname_principal_type": "user",
 	}
 	got, err := v.Verify(context.Background(), fix.sign(t, claims))
 	require.NoError(t, err)
 	require.NotNil(t, got.ExtClaims)
-	assert.Equal(t, "acc_a1b2", got.ExtClaims["kacho_active_account"])
+	assert.Equal(t, "acc_a1b2", got.ExtClaims["kaname_active_account"])
 }
 
 func TestJWTVerifier_AudAsString(t *testing.T) {

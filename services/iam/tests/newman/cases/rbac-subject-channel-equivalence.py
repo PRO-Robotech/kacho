@@ -746,7 +746,7 @@ CASES.append(Case(
 
 # ===========================================================================
 # CHANNEL 3 — SA-token. subjects=[service_account:svaAId]; read as jwtSAA (principal
-# kacho_principal_type=service_account, sub=svaAId). Access-set IDENTICAL to user-direct.
+# kaname_principal_type=service_account, sub=svaAId). Access-set IDENTICAL to user-direct.
 # svaAId carries a standing vpc-editor@project-A1 grant that does NOT confer
 # account-A access (AUTHZ-SA-ACCT-GT-A → DENY), so the account read here is driven solely
 # by the ROLE_VIEW@account binding under test.

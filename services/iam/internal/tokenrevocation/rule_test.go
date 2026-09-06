@@ -104,7 +104,7 @@ func TestRevoked_UnreachableStoreIsAThirdOutcome(t *testing.T) {
 func TestRevoked_ClientKeyRevokesTokensItIssued(t *testing.T) {
 	now := time.Date(2026, 9, 6, 12, 0, 0, 0, time.UTC)
 	c := claims(map[string]any{
-		"sub": "usr-alice", "iat": float64(now.Unix()), "kacho_user_token_id": "utk-1",
+		"sub": "usr-alice", "iat": float64(now.Unix()), "kaname_user_token_id": "utk-1",
 	})
 
 	r := &stubReader{before: map[string]time.Time{"utk-1": now.Add(time.Minute)}}
@@ -118,7 +118,7 @@ func TestRevoked_ClientKeyRevokesTokensItIssued(t *testing.T) {
 
 	// Отзыв действует ВПЕРЁД: выпущенное ПОСЛЕ отсечки действительно.
 	later := claims(map[string]any{
-		"sub": "usr-alice", "iat": float64(now.Add(2 * time.Minute).Unix()), "kacho_user_token_id": "utk-1",
+		"sub": "usr-alice", "iat": float64(now.Add(2 * time.Minute).Unix()), "kaname_user_token_id": "utk-1",
 	})
 	revoked, err = tokenrevocation.Revoked(context.Background(),
 		&stubReader{before: map[string]time.Time{"utk-1": now.Add(time.Minute)}}, later)

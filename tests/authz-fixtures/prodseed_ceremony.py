@@ -508,7 +508,7 @@ def stage_mirror(admin: str, ext_id: str, email: str) -> str:
     стадия чеканит предъявителя, и обогащение его состава ищет человека по внешнему
     идентификатору. Не найдя — выдаёт СОКРАЩЁННЫЙ состав: это штатное поведение
     первого входа (мирроринг догоняет), а не сбой. Значит, отдав идентификатор до
-    коммита, стадия 6 отдаёт гонку: предъявитель выпускается без `kacho_user_id`,
+    коммита, стадия 6 отдаёт гонку: предъявитель выпускается без `kaname_user_id`,
     и посев встаёт на стадии 7 сообщением про ЧУЖОЙ предмет — «предъявитель
     принадлежит не тому человеку: None != …», — по которому ищут регрессию в
     обогащении, которой нет.
@@ -847,11 +847,11 @@ def stage_admission_pool(client_id: str, admin: str) -> dict[str, str]:
         claims = _jwt_payload(lvl1)
         ext_claims = ((claims.get("ext") or {}).get("ext_claims")
                       or claims.get("ext_claims") or {})
-        if ext_claims.get("kacho_user_id") != user_id:
+        if ext_claims.get("kaname_user_id") != user_id:
             raise StageError(
                 "8г-личности-заведения",
                 f"слот {slot}: предъявитель принадлежит не тому человеку: "
-                f"{ext_claims.get('kacho_user_id')} != {user_id}")
+                f"{ext_claims.get('kaname_user_id')} != {user_id}")
 
         l1_var, l2_var = cc.admission_bearers(slot)
         values[l1_var] = lvl1
@@ -929,10 +929,10 @@ def main() -> int:
 
         claims1 = _jwt_payload(lvl1)
         ext = (claims1.get("ext") or {}).get("ext_claims") or claims1.get("ext_claims") or {}
-        if ext.get("kacho_user_id") != user_id:
+        if ext.get("kaname_user_id") != user_id:
             raise StageError("7-церемония",
                              f"предъявитель принадлежит не тому человеку: "
-                             f"{ext.get('kacho_user_id')} != {user_id}")
+                             f"{ext.get('kaname_user_id')} != {user_id}")
 
         own_account = stage_own_account(lvl1)
 
@@ -1088,7 +1088,7 @@ def _st_sequence(stage, clock: dict) -> tuple[dict, StageError | None]:
         нет»), после — 200 с каноническим идентификатором;
       * ЧЕКАНКА обогащает состав ровно так, как это делает продукт: ищет
         человека по внешнему идентификатору и, НЕ НАЙДЯ, выдаёт СОКРАЩЁННЫЙ
-        состав без `kacho_user_id` (`token_hook_handler`: ветка «identity has no
+        состав без `kaname_user_id` (`token_hook_handler`: ветка «identity has no
         kacho mirror yet» → `MinimalClaims`). Это не «примерно так»: именно этот
         состав и пришёл в упавшем прогоне.
     Возвращает состав предъявителя и отказ стадии 7, если он случился.
@@ -1108,12 +1108,12 @@ def _st_sequence(stage, clock: dict) -> tuple[dict, StageError | None]:
     try:
         user_id = stage("adm", _ST_EXT, "a@b.c")
         # Чеканка — здесь, ПОСЛЕ стадии 6, как в `main`.
-        claims = {"kacho_user_id": _ST_CANON} if committed() else {}
-        if claims.get("kacho_user_id") != user_id:
+        claims = {"kaname_user_id": _ST_CANON} if committed() else {}
+        if claims.get("kaname_user_id") != user_id:
             return claims, StageError(
                 "7-церемония",
                 f"предъявитель принадлежит не тому человеку: "
-                f"{claims.get('kacho_user_id')} != {user_id}")
+                f"{claims.get('kaname_user_id')} != {user_id}")
         return claims, None
     except StageError as exc:
         return {}, exc
@@ -1550,7 +1550,7 @@ def _self_test() -> int:
 
     (claims_f, err_f), spent_f = run_seq(stage_mirror)
     check("после правки состав предъявителя несёт человека",
-          err_f is None and claims_f.get("kacho_user_id") == _ST_CANON
+          err_f is None and claims_f.get("kaname_user_id") == _ST_CANON
           and spent_f >= _ST_COMMIT_AT_S,
           f"состав {claims_f}, ошибка {err_f}, ждали {spent_f:.1f} с "
           f"(строка коммитится на {_ST_COMMIT_AT_S} с)")
@@ -1597,7 +1597,7 @@ def _self_test() -> int:
         globals()["stage_ceremony"] = lambda _c, subj: (f"l1-{subj}", f"l2-{subj}")
         globals()["stage_edge_accepts"] = lambda bearer: minted.append(bearer)
         globals()["_jwt_payload"] = lambda b: {
-            "ext_claims": {"kacho_user_id": "usr-" + b[len("l1-"):]}}
+            "ext_claims": {"kaname_user_id": "usr-" + b[len("l1-"):]}}
 
         pool = stage_admission_pool("клиент", "админ")
         slots = list(cc.ADMISSION_SLOTS)
@@ -1621,7 +1621,7 @@ def _self_test() -> int:
         # ЗАКОННЫЙ БЛИЗНЕЦ УЖЕ ПРОВЕРЕН ВЫШЕ (состав совпал — стадия прошла).
         # Теперь дефект во плоти: состав называет ДРУГОГО человека.
         globals()["_jwt_payload"] = lambda _b: {
-            "ext_claims": {"kacho_user_id": "usr-кто-то-другой"}}
+            "ext_claims": {"kaname_user_id": "usr-кто-то-другой"}}
         try:
             stage_admission_pool("клиент", "админ")
             check("состав, называющий другого человека, роняет стадию", False,

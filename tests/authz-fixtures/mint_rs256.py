@@ -18,7 +18,7 @@ uses, no dev-bypass, no direct Hydra-admin:
      приватный ключ ОДИН раз. Мы подписываем им утверждение клиента
      (private_key_jwt, RFC 7521/7523) и обмениваем его У НАШЕГО ИЗДАТЕЛЯ
      (`POST /iam/v1/token`, `aud=https://{API_DOMAIN}`) → токен субъекта нашей
-     чеканки, чьи утверждения `kacho_principal_*` резолвятся в его User/SA и
+     чеканки, чьи утверждения `kaname_principal_*` резолвятся в его User/SA и
      привязки.
 
 ОБА ШАГА ЧЕКАНИМ МЫ, И ЭТО НЕ ДЕТАЛЬ (задачи #1119, #1120, #1121). Шаг 1: iam
@@ -52,7 +52,7 @@ STATUS (Phase C, #59) — UNBLOCKED + PROVEN end-to-end:
 
     Осталось верным и не изменилось: SAKeyService.Issue принимает
     `audience:[https://api.kacho.cloud]` (resolveAudience служебного ключа
-    считается с адресатами вызывающего); утверждение `kacho_principal_type=
+    считается с адресатами вызывающего); утверждение `kaname_principal_type=
     service_account` от обогащения делает токен acr-EXEMPT (stepup_gate O-1) и
     достижимым на ручках с acr=1. Блокер `created_by` (#60) для служебных ключей
     закрыт: вызывающий-машина записывает `created_by` = владелец аккаунта целевой
@@ -529,7 +529,7 @@ def user_platform_token(base_url: str, admin_token: str, user_id: str,
 
     Полоса та же, что у `sa_platform_token`, и субъект — другой: человек, а не
     машина. Держать обе нужно именно поэтому — принципал у них разный, и краю
-    он приезжает разными утверждениями (`kacho_principal_type` = `user` против
+    он приезжает разными утверждениями (`kaname_principal_type` = `user` против
     `service_account`).
 
     ОДНО ИМЯ, А НЕ ДВА (#1121). Выпуск персонального токена больше не заводит
