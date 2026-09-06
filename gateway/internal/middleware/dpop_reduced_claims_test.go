@@ -11,7 +11,7 @@ package middleware_test
 // omission is the whole reason it authorizes nothing. The proof-of-possession
 // path used to answer the omission by supplying the raw OIDC `sub` in its place.
 // A supplied identifier is indistinguishable downstream from a claimed one: it
-// lands in the principal headers, is read back as `ext_claims.kacho_principal_*`,
+// lands in the principal headers, is read back as `ext_claims.kaname_principal_*`,
 // and matches the FIRST subject rule — the one reserved for a token that stated
 // its principal outright. So a request that named nobody arrived as somebody, on
 // a surface every authenticated caller can reach.
@@ -50,9 +50,9 @@ func reducedClaims() jwt.MapClaims {
 	c := standardClaims()
 	c["sub"] = "provider-subject-7f3a"
 	c["ext_claims"] = map[string]any{
-		"kacho_external_id":    "krt_id_xxx",
-		"kacho_active_account": "acc_a1b2",
-		"kacho_principal_type": "user",
+		"kaname_external_id":    "krt_id_xxx",
+		"kaname_active_account": "acc_a1b2",
+		"kaname_principal_type": "user",
 	}
 	return c
 }
@@ -61,7 +61,7 @@ func reducedClaims() jwt.MapClaims {
 func namedClaims() jwt.MapClaims {
 	c := reducedClaims()
 	ext, _ := c["ext_claims"].(map[string]any)
-	ext["kacho_principal_id"] = "usr_alice_acc_a1b2"
+	ext["kaname_principal_id"] = "usr_alice_acc_a1b2"
 	return c
 }
 

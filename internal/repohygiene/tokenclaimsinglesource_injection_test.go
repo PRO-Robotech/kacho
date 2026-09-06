@@ -28,9 +28,9 @@ const claimInjectedSecondAssembly = `package iamhooks
 
 func (h *RefreshHookHandler) refreshClaims(u user) map[string]any {
 	claims := map[string]any{
-		"kacho_external_id":    u.ExternalID,
-		"kacho_user_id":        u.ID,
-		"kacho_principal_type": "user",
+		"kaname_external_id":    u.ExternalID,
+		"kaname_user_id":        u.ID,
+		"kaname_principal_type": "user",
 	}
 	return claims
 }
@@ -43,7 +43,7 @@ func (h *RefreshHookHandler) refreshClaims(u user) map[string]any {
 //   - ТРИ вызова сборщиков из ДВУХ разных функций — это и есть «обе стороны»;
 //   - `map[string]any{}` без ключей — состав, собираемый присваиваниями: слепая
 //     зона, названная в шапке разбора, и она обязана быть видна счётчиком;
-//   - `map[string]any{"kacho_route": …}` с ОДНИМ ключом — чтение одного
+//   - `map[string]any{"kaname_route": …}` с ОДНИМ ключом — чтение одного
 //     значения, а не объявление состава.
 const claimInjectedLawfulConsumers = `package service
 
@@ -56,8 +56,8 @@ func (s *TokenEnrichmentService) ClaimsForAssertionClient(c client) map[string]a
 
 func (s *TokenEnrichmentService) EnrichClaims(subject string) map[string]any {
 	acc := map[string]any{}
-	acc["kacho_user_id"] = subject
-	_ = map[string]any{"kacho_route": subject}
+	acc["kaname_user_id"] = subject
+	_ = map[string]any{"kaname_route": subject}
 	return s.userClaims(subject)
 }
 `
@@ -91,7 +91,7 @@ func TestClaimScannerFindsASecondAssembly(t *testing.T) {
 	// Порог обязан РАБОТАТЬ: та же сборка на ключ меньше сборкой не считается.
 	// Без этой половины порог был бы объявлением, а не предикатом.
 	trimmed := strings.Replace(claimInjectedSecondAssembly,
-		"\t\t\"kacho_principal_type\": \"user\",\n", "", 1)
+		"\t\t\"kaname_principal_type\": \"user\",\n", "", 1)
 	as2, _, err := ScanClaimAssemblies("synthetic/iamhooks/refresh.go", []byte(trimmed),
 		claimKeyPrefix, claimMinKeys)
 	if err != nil {
@@ -109,9 +109,9 @@ func TestClaimScannerFindsASecondAssembly(t *testing.T) {
 
 func claims() map[string]string {
 	return map[string]string{
-		"kacho_external_id":    "a",
-		"kacho_user_id":        "b",
-		"kacho_principal_type": "user",
+		"kaname_external_id":    "a",
+		"kaname_user_id":        "b",
+		"kaname_principal_type": "user",
 	}
 }
 `

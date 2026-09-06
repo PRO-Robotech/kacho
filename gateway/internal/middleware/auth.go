@@ -12,7 +12,7 @@
 //     CWE-347), даже если dev-secret задан. Валидно-подписанный HS256 токен в
 //     prod → reject Unauthenticated (единственная принятая стратегия — Hydra JWKS).
 //   - **Hydra JWKS** (RS256/ES256/EdDSA, `WithVerifier`) — реальные login-токены;
-//     principal берется из верифицированных `kacho_principal_*` claims (top-level
+//     principal берется из верифицированных `kaname_principal_*` claims (top-level
 //     или `ext_claims`), SubjectLookuper — fallback только при их отсутствии.
 //
 // Per-mode:
@@ -136,7 +136,7 @@ type AuthInterceptor struct {
 	// включена, но своим никто не признаётся».
 	mtlsDomain grpcsrv.TrustDomain
 	// requireMachineBinding — when true, a token whose principal is a MACHINE
-	// (kacho_principal_type=service_account) must be sender-constrained (RFC
+	// (kaname_principal_type=service_account) must be sender-constrained (RFC
 	// 7800 `cnf`: DPoP jkt or mTLS x5t#S256). See machineBindingViolationFor.
 	requireMachineBinding bool
 	// revocation — asks the identity provider whether a verified token is still
@@ -251,7 +251,7 @@ func (a *AuthInterceptor) WithRequireMachineTokenBinding(require bool) *AuthInte
 // validators (they own the proof check); this guard answers only the prior
 // question — "is this machine credential replayable as a plain bearer?".
 func (a *AuthInterceptor) machineBindingViolation(vt *VerifiedToken) bool {
-	return a.machineBindingViolationFor(vt, verifiedClaim(vt, "kacho_principal_type"))
+	return a.machineBindingViolationFor(vt, verifiedClaim(vt, "kaname_principal_type"))
 }
 
 // machineBindingViolationFor is the same check against an ALREADY-RESOLVED
@@ -284,7 +284,7 @@ func (a *AuthInterceptor) WithKratos(c *KratosClient) *AuthInterceptor {
 // WithVerifier подключает JWKS-валидатор Hydra-issued RS256 access JWT.
 // Когда выставлен, validateJWT детектит signing method: RS256/ES256/EdDSA →
 // проверка через JWKS-verifier (verified claims), HMAC → существующий dev-path.
-// Principal строится из верифицированных `kacho_principal_*` claims напрямую
+// Principal строится из верифицированных `kaname_principal_*` claims напрямую
 // (top-level или ext_claims); SubjectLookuper — fallback только при их
 // отсутствии. nil → JWKS-path выключен (HMAC-only).
 // WithBasicCredentialLane провязывает полосу базового секрета. nil → полосы
@@ -446,7 +446,7 @@ func (a *AuthInterceptor) authorize(ctx context.Context, fullMethod string) (con
 
 	// Hydra-issued RS256/ES256/EdDSA access JWT → validate via JWKS
 	// verifier (a SECOND strategy alongside the HMAC-dev path). On a verified
-	// token the Principal is derived directly from the `kacho_principal_*`
+	// token the Principal is derived directly from the `kaname_principal_*`
 	// claims (top-level or ext_claims) — no SubjectLookuper round-trip unless
 	// those claims are absent. A present-but-bad token (bad sig / expired /
 	// wrong iss / disallowed alg) is REJECTED Unauthenticated (fail-closed),
@@ -536,12 +536,12 @@ func (a *AuthInterceptor) authorize(ctx context.Context, fullMethod string) (con
 
 	// Service Account / API-token principals. A token
 	// minted by the Hydra client_credentials flow (or a static API token)
-	// carries `kacho_principal_type=service_account` + `kacho_sa_id=<svaId>`.
+	// carries `kaname_principal_type=service_account` + `kaname_sa_id=<svaId>`.
 	// `sub` is the SA id itself, which is NOT a User `external_id`, so the
 	// User LookupByExternalID below would miss and (in dev) downgrade the SA
 	// to anonymous. Resolve the SA principal directly from the typed claims.
-	if pt, _ := claims["kacho_principal_type"].(string); pt == "service_account" {
-		saID, _ := claims["kacho_sa_id"].(string)
+	if pt, _ := claims["kaname_principal_type"].(string); pt == "service_account" {
+		saID, _ := claims["kaname_sa_id"].(string)
 		if saID == "" {
 			saID = subjectID
 		}
@@ -555,7 +555,7 @@ func (a *AuthInterceptor) authorize(ctx context.Context, fullMethod string) (con
 
 // authorizeViaLookup резолвит principal через SubjectLookuper по external id
 // (sub). Используется как HMAC-dev tail, так и JWKS-fallback (verified
-// токен без kacho_principal_* claims). Поведение при неудачном резолве зависит
+// токен без kaname_principal_* claims). Поведение при неудачном резолве зависит
 // от mode: dev → anonymous (back-compat newman), production /
 // production-strict → reject Unauthenticated.
 //
@@ -680,19 +680,19 @@ func isAsymmetricJWT(tokenStr string) bool {
 }
 
 // principalFromVerifiedToken derives the Kachō Principal from a JWKS-verified
-// Hydra token's `kacho_principal_*` claims. It reads each claim robustly
+// Hydra token's `kaname_principal_*` claims. It reads each claim robustly
 // from EITHER the top level (Hydra allowed_top_level_claims promotion) OR the
 // nested `ext_claims` map (token_hook session.access_token.ext_claims). Returns
 // an error when the principal claims are absent so the caller can fall back to
 // the SubjectLookuper. displayName comes from a present display claim, else
 // the principal id.
 func principalFromVerifiedToken(vt *VerifiedToken) (pType, pID, displayName string, err error) {
-	pType = verifiedClaim(vt, "kacho_principal_type")
-	pID = verifiedClaim(vt, "kacho_principal_id")
+	pType = verifiedClaim(vt, "kaname_principal_type")
+	pID = verifiedClaim(vt, "kaname_principal_id")
 	if pType == "" || pID == "" {
-		return "", "", "", fmt.Errorf("verified token carries no kacho_principal_* claims")
+		return "", "", "", fmt.Errorf("verified token carries no kaname_principal_* claims")
 	}
-	displayName = verifiedClaim(vt, "kacho_principal_display_name")
+	displayName = verifiedClaim(vt, "kaname_principal_display_name")
 	if displayName == "" {
 		displayName = pID
 	}
@@ -796,7 +796,7 @@ func (a *AuthInterceptor) validateJWT(tokenStr string) (jwt.MapClaims, error) {
 	// affordance ONLY. In production / production-strict it MUST be refused
 	// wholesale — a validly-HS256-signed token (an attacker who learned or
 	// guessed KACHO_API_GATEWAY_AUTHN_DEV_SECRET) would otherwise yield a real
-	// principal, and a `kacho_principal_type=service_account` claim is injected
+	// principal, and a `kaname_principal_type=service_account` claim is injected
 	// as a service_account with NO IAM lookup (symmetric-key principal forgery,
 	// CWE-347). The only accepted Bearer strategy in prod is the asymmetric JWKS
 	// (Hydra) verifier, which runs BEFORE this path for RS256/ES256/EdDSA tokens.
@@ -1138,7 +1138,7 @@ func (a *AuthInterceptor) tryKratosSession(w http.ResponseWriter, r *http.Reques
 
 // tryHydraJWT validates a Hydra-issued asymmetric (RS256/ES256/EdDSA) access JWT
 // over REST via the JWKS verifier (parity with the gRPC interceptor path) and
-// derives the principal from the verified `kacho_principal_*` claims (top-level
+// derives the principal from the verified `kaname_principal_*` claims (top-level
 // or ext_claims), falling back to SubjectLookuper on the verified sub. A
 // present-but-bad token → 401 fail-closed, never anonymous; a key set that could
 // not be fetched → 503 (see keySourceUnanswerable — #1194), also fail-closed.
@@ -1222,7 +1222,7 @@ func (a *AuthInterceptor) tryHydraJWT(w http.ResponseWriter, r *http.Request, ne
 	}
 	// Claims absent → fall back to SubjectLookuper on the verified sub.
 	if vt.Subject == "" {
-		a.logger.Warn("auth.HTTP: Hydra JWT has empty sub and no kacho_principal_* claims")
+		a.logger.Warn("auth.HTTP: Hydra JWT has empty sub and no kaname_principal_* claims")
 		writeHTTPUnauthorized(w, "token missing subject")
 		return true
 	}
@@ -1230,7 +1230,7 @@ func (a *AuthInterceptor) tryHydraJWT(w http.ResponseWriter, r *http.Request, ne
 		a.logger.Debug("auth.HTTP: SubjectLookup failed (Hydra JWT fallback)", "external_id", vt.Subject, "err", lerr.Error())
 	} else if a.machineBindingViolationFor(vt, subj.Type) {
 		// The lookup resolved a MACHINE principal from a token that carried no
-		// kacho_principal_* claims. Same requirement, same rejection.
+		// kaname_principal_* claims. Same requirement, same rejection.
 		a.logger.Warn("auth.HTTP: machine token (resolved by lookup) is not sender-constrained; rejected",
 			"path", r.URL.Path)
 		writeHTTPUnauthorized(w, "sender-constrained token required")
@@ -1275,14 +1275,14 @@ func (a *AuthInterceptor) tryDevSecretJWT(w http.ResponseWriter, r *http.Request
 	}
 	// Service Account / API-token principals.
 	// A client_credentials / API token carries
-	// `kacho_principal_type=service_account` + `kacho_sa_id`; `sub`
+	// `kaname_principal_type=service_account` + `kaname_sa_id`; `sub`
 	// is the SA id, not a User external_id, so the User lookup below
 	// would miss and leave the request principal-less → the authz
 	// layer then denies it as unauthenticated. Resolve the SA
 	// principal directly from the typed claims (parity with the
 	// gRPC intercept path).
-	if pt, _ := claims["kacho_principal_type"].(string); pt == "service_account" {
-		saID, _ := claims["kacho_sa_id"].(string)
+	if pt, _ := claims["kaname_principal_type"].(string); pt == "service_account" {
+		saID, _ := claims["kaname_sa_id"].(string)
 		if saID == "" {
 			saID = subjectID
 		}

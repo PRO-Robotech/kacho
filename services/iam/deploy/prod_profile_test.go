@@ -174,6 +174,10 @@ var configBridge = []bridged{
 	{configKey: "repository.postgres.ssl-mode", valuePath: []string{"repository", "postgres", "sslMode"}},
 	{configKey: "repository.postgres.password-from-env", derive: func(*valueReader) any { return "KANAME_DB_PASSWORD" }},
 	{configKey: "authn.mode", valuePath: []string{"authMode"}},
+	// Доменное имя установки: из него выводится клеймо адресата, уезжающее в
+	// каждом выпущенном токене. Умолчания у ключа нет (задача #2127), поэтому
+	// профиль обязан его назвать, а страж — отказать без него.
+	{configKey: "authn.domain", valuePath: []string{"authn", "domain"}, omitEmpty: true},
 	{configKey: "authn.identity-provider", valuePath: []string{"authn", "identityProvider"}, omitEmpty: true},
 	{configKey: "authn.trusted-forwarder-sans", valuePath: []string{"authn", "trustedForwarderSANs"}, omitEmpty: true},
 	{configKey: "authn.trust-domain", valuePath: []string{"authn", "trustDomain"}, omitEmpty: true},

@@ -131,15 +131,15 @@ func (h *hydraFixture) issueDPoPBoundToken(t *testing.T) (rawToken string, dpopP
 		"auth_time": now,
 		"cnf":       map[string]any{"jkt": thumb},
 		"ext_claims": map[string]any{
-			"kacho_external_id":    "krt_id_xxx",
-			"kacho_active_account": "acc_a1b2",
-			"kacho_principal_type": "user",
+			"kaname_external_id":    "krt_id_xxx",
+			"kaname_active_account": "acc_a1b2",
+			"kaname_principal_type": "user",
 			// The token has to SAY who it is. This fixture used to state only the
 			// type and let the assertion below pass because the middleware
 			// substituted `sub` for the missing identifier — and the sub happened
 			// to be spelled like a principal id, which made the substitution
 			// invisible. It is a token for a principal; it names one.
-			"kacho_principal_id": "usr_alice_acc_a1b2",
+			"kaname_principal_id": "usr_alice_acc_a1b2",
 		},
 	}
 	tok := jwt.NewWithClaims(jwt.SigningMethodES256, claims)

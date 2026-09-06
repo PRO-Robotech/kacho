@@ -176,9 +176,9 @@ func TestBootstrapTokenIsMintedByUsAndLooksLikeWhatTheEdgeAccepts(t *testing.T) 
 	require.True(t, ok)
 	// ПРИНЦИПАЛ. Смена чеканки не вправе тихо сменить того, за кого говорит
 	// токен: край резолвит его по этим утверждениям, а не по `sub`.
-	require.Equal(t, "service_account", mc["kacho_principal_type"])
-	require.Equal(t, bootstraptoken.DeriveIdentity().SvaID, mc["kacho_principal_id"])
-	require.Equal(t, bootstraptoken.DeriveIdentity().SocID, mc["kacho_sa_key_id"])
+	require.Equal(t, "service_account", mc["kaname_principal_type"])
+	require.Equal(t, bootstraptoken.DeriveIdentity().SvaID, mc["kaname_principal_id"])
+	require.Equal(t, bootstraptoken.DeriveIdentity().SocID, mc["kaname_sa_key_id"])
 	require.Equal(t, bootstraptoken.DeriveIdentity().SvaID, res.GetPrincipalId())
 	// `sub` называет ТОГО ЖЕ принципала. Край сегодня резолвит его по утверждениям
 	// выше, но `sub` читают журнал и всякий сторонний потребитель токена: субъект

@@ -14,9 +14,11 @@ import (
 // KANAME_HYDRA_JWKS_URL (cluster-internal hydra-public) → derived
 // ResolveHydraIssuer()+"/.well-known/jwks.json" (back-compat).
 func TestResolveHydraJWKSURL_Precedence(t *testing.T) {
-	// Default: derived from the Hydra issuer's well-known path.
-	c := config.AuthNConfig{}
-	if got := c.ResolveHydraJWKSURL(); got != "https://hydra.api.kacho.cloud/.well-known/jwks.json" {
+	// Default: derived from the Hydra issuer's well-known path. Домен объявлен
+	// ЯВНО: умолчания у него нет (задача #2127), и предмет пробы — деривация, а
+	// не умолчание.
+	c := config.AuthNConfig{Domain: "access.example.invalid"}
+	if got := c.ResolveHydraJWKSURL(); got != "https://hydra.access.example.invalid/.well-known/jwks.json" {
 		t.Fatalf("default ResolveHydraJWKSURL() = %q; want derived issuer well-known", got)
 	}
 

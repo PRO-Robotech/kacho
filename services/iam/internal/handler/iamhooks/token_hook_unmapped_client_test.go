@@ -289,9 +289,9 @@ func TestTokenHook_ClientCredentials_MappedSAKey_StillMints(t *testing.T) {
 
 	require.Equal(t, http.StatusOK, w.Code, "a live SA key must still mint; body: %s", w.Body.String())
 	claims := extClaimsOf(t, w)
-	assert.Equal(t, "service_account", claims["kacho_principal_type"])
-	assert.Equal(t, "sva_01abcdefghjkmnpqr", claims["kacho_principal_id"])
-	assert.Equal(t, "acc_01abcdefghjkmnpqr", claims["kacho_account_id"])
+	assert.Equal(t, "service_account", claims["kaname_principal_type"])
+	assert.Equal(t, "sva_01abcdefghjkmnpqr", claims["kaname_principal_id"])
+	assert.Equal(t, "acc_01abcdefghjkmnpqr", claims["kaname_account_id"])
 }
 
 // ─────────────────── the interactive population: must still mint ───────────────────
@@ -322,7 +322,7 @@ func TestTokenHook_InteractiveFirstLogin_MirrorNotMaterialized_StillMints(t *tes
 	require.Equal(t, http.StatusOK, w.Code,
 		"a human whose mirror has not committed yet must still receive a token; body: %s", w.Body.String())
 	claims := extClaimsOf(t, w)
-	assert.Equal(t, "kratos-identity-just-registered", claims["kacho_external_id"])
+	assert.Equal(t, "kratos-identity-just-registered", claims["kaname_external_id"])
 }
 
 // TestTokenHook_InteractiveRefreshOfUnmirroredIdentity_StillMints — same

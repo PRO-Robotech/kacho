@@ -10,8 +10,8 @@
 //     KANAME_HOOK_TOKEN). Required because secrets are never written to
 //     YAML (workspace policy — secretKeyRef-only).
 //
-// ResolveHydraIssuer() / ResolveAudience() — derived from Domain. Default
-// `api.kacho.cloud` is configurable, avoiding hard-code.
+// ResolveHydraIssuer() / ResolveAudience() — derived from Domain. Умолчания у
+// Domain нет: см. ResolveDomain.
 //
 // All methods are pure (no side-effects; only os.Getenv reads).
 package config
@@ -147,13 +147,17 @@ func (c AuthNConfig) ResolveJWKSEncryptionKeys() ([][]byte, error) {
 	return keys, nil
 }
 
-// ResolveDomain returns the public Kachō domain. Default `api.kacho.cloud`.
+// ResolveDomain — доменное имя посадки, объявленное оператором. Умолчания НЕТ:
+// пустое значение означает «не объявлено» и доезжает до стража старта.
+//
+// Прежде здесь стоял литерал доменного имени платформы. Он был не косметикой:
+// из этого значения выводится клеймо АДРЕСАТА, уезжающее в каждом выпущенном
+// удостоверении, — то есть подставленное построением имя чужого продукта
+// адресовало удостоверения не туда на всякой посадке, ни одна из которых
+// значения не объявляла. Поставщик теперь есть у профиля (чарт), а незаданное
+// значение отвергает страж (`validateDeclaredDomain`).
 func (c AuthNConfig) ResolveDomain() string {
-	d := strings.TrimSpace(c.Domain)
-	if d == "" {
-		return "api.kacho.cloud"
-	}
-	return d
+	return strings.TrimSpace(c.Domain)
 }
 
 // ResolveHydraIssuer returns the Hydra issuer. Precedence: explicit HydraIssuer

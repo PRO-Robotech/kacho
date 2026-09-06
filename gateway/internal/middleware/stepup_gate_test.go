@@ -87,14 +87,14 @@ func TestStepUp_UnknownACRTreatedAsZero(t *testing.T) {
 
 // ── O-1 (#58): service-account acr-exemption (narrow) + mechanism-lock ──────────
 
-// A service-account principal (kacho_principal_type=service_account, acr=0) is
+// A service-account principal (kaname_principal_type=service_account, acr=0) is
 // EXEMPT from the acr step-up floor — parity with the iam :9091 acr-floor
 // (security.md §4.1.2). Covers the bootstrap-admin SA calling an acr>=2 RPC.
 func TestStepUp_ServiceAccountPrincipal_ExemptFromACRFloor(t *testing.T) {
 	g := middleware.NewStepUpGate(nil)
 	tok := &middleware.VerifiedToken{
 		ACR:       "0",
-		ExtClaims: map[string]any{"kacho_principal_type": "service_account"},
+		ExtClaims: map[string]any{"kaname_principal_type": "service_account"},
 	}
 	assert.NoError(t, g.Check(tok, middleware.PermissionRequirement{RequiredACRMin: "2"}),
 		"service-account principal must be exempt from the acr floor (O-1)")
@@ -107,7 +107,7 @@ func TestStepUp_ServiceAccountPrincipal_TopLevelClaim_Exempt(t *testing.T) {
 	g := middleware.NewStepUpGate(nil)
 	tok := &middleware.VerifiedToken{
 		ACR:    "0",
-		Claims: map[string]any{"kacho_principal_type": "service_account"},
+		Claims: map[string]any{"kaname_principal_type": "service_account"},
 	}
 	assert.NoError(t, g.Check(tok, middleware.PermissionRequirement{RequiredACRMin: "2"}))
 }
@@ -118,7 +118,7 @@ func TestStepUp_UserPrincipal_BelowFloor_StillStepUp(t *testing.T) {
 	g := middleware.NewStepUpGate(nil)
 	tok := &middleware.VerifiedToken{
 		ACR:       "1",
-		ExtClaims: map[string]any{"kacho_principal_type": "user"},
+		ExtClaims: map[string]any{"kaname_principal_type": "user"},
 	}
 	assert.ErrorIs(t, g.Check(tok, middleware.PermissionRequirement{RequiredACRMin: "2"}),
 		middleware.ErrStepUpRequired,
