@@ -495,7 +495,7 @@ func TestRelationQuestionsStayInsideTheMeasuredPath(t *testing.T) {
 // `pageAuthority.verdict`, and the declaration it orphaned was still claiming a
 // per-page cost that the same commit had already halved.
 var declaredPerRowQuestions = map[string]string{
-	"../apps/kaname/api/access_binding/list_by_role.go: verdict": "" +
+	"../apps/kaname/api/access_binding/list_by_role.go: grantAuthorityVerdict": "" +
 		"Scope filter over a LIST page, asked once per DISTINCT scope rather than " +
 		"once per row: pageAuthority remembers the cluster-administrator verdict " +
 		"for the whole request and the per-scope admin verdict per scope, so a page " +
