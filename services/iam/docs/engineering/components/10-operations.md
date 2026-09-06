@@ -30,7 +30,7 @@ RPC в kaname возвращают `*operation.Operation` (никогда не �
 | `created_at`               | TIMESTAMPTZ          | да (server)  | да        | UTC.                                           |
 | `modified_at`              | TIMESTAMPTZ          | да (server)  | нет       | На каждое UPDATE.                              |
 | `done`                     | bool                 | да           | нет       | false→true (one-way).                          |
-| `metadata_type`            | TEXT (proto type URL)| —            | —         | `kacho.cloud.iam.v1.CreateAccountMetadata`.    |
+| `metadata_type`            | TEXT (proto type URL)| —            | —         | `kaname.cloud.iam.v1.CreateAccountMetadata`.    |
 | `metadata`                 | BYTEA (proto-Any)    | нет          | —         | `{account_id:"acc_..."}` etc.                  |
 | `response_type` / `_data`  | TEXT / BYTEA         | нет          | редактируется секрет-redactor| Любая proto-message.       |
 | `error_code` / `_message`  | int / TEXT           | нет          | —         | gRPC code + текст.                             |

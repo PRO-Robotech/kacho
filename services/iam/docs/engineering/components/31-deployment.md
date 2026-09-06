@@ -526,12 +526,12 @@ kubectl -n kacho exec deploy/iam -- wget -qO- http://localhost:9092/readyz
 
 # 3. gRPC reflection публичного API (через api-gateway).
 kubectl -n kacho port-forward svc/api-gateway 18080:8080 &
-grpcurl -plaintext localhost:18080 list | grep kacho.cloud.iam.v1
+grpcurl -plaintext localhost:18080 list | grep kaname.cloud.iam.v1
 
 # 4. Bootstrap-юзер через UpsertFromIdentity (internal-порт).
 kubectl -n kacho port-forward svc/iam 9091:9091 &
 grpcurl -plaintext -d '{"external_id":"bootstrap-admin","email":"admin@kacho.cloud","display_name":"bootstrap"}' \
-  localhost:9091 kacho.cloud.iam.v1.InternalUserService/UpsertFromIdentity
+  localhost:9091 kaname.cloud.iam.v1.InternalUserService/UpsertFromIdentity
 ```
 
 ## Связанные компоненты

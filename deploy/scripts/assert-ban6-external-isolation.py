@@ -201,7 +201,7 @@ ABSENT = "НЕ ЗАРЕГИСТРИРОВАН"
 # не про листенер.
 LIVENESS_METHODS = [
     "kacho.cloud.geo.v1.RegionService/List",
-    "kacho.cloud.iam.v1.UserService/List",
+    "kaname.cloud.iam.v1.UserService/List",
 ]
 
 # Признаки того, что ответа ПО СУЩЕСТВУ не было: grpcurl не смог собрать запрос
@@ -809,7 +809,7 @@ def self_test() -> int:
     # (0) законная запись: шлюз отказал в маршрутизации — гейт обязан молчать
     check("(0) NotFound + unknown method (штатная изоляция)",
           "ERROR:\n  Code: NotFound\n  Message: unknown method: "
-          "/kacho.cloud.iam.v1.InternalIAMService/Check", ISOLATED)
+          "/kaname.cloud.iam.v1.InternalIAMService/Check", ISOLATED)
     check("(0b) Unimplemented (та же форма у другого прокси)",
           "ERROR:\n  Code: Unimplemented\n  Message: unknown service", ISOLATED)
 
@@ -901,7 +901,7 @@ def self_test() -> int:
     # там, где незарегистрированный получает отказ маршрутизации. Контрольная
     # проба чужим методом это и проверяет; вот обе её стороны.
     sentinel_ok, _ = counterpart_verdict(
-        "ERROR:\n  Code: Unimplemented\n  Message: unknown service kacho.cloud.iam.v1.InternalIAMService")
+        "ERROR:\n  Code: Unimplemented\n  Message: unknown service kaname.cloud.iam.v1.InternalIAMService")
     sentinel_bad, _ = counterpart_verdict(
         "ERROR:\n  Code: PermissionDenied\n  Message: permission denied")
     ok = sentinel_ok == ABSENT and sentinel_bad != ABSENT

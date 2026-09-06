@@ -149,7 +149,7 @@ curl "http://localhost:18080/iam/v1/projects?account_id=acc_xxx" \
 ```bash
 grpcurl -plaintext -H "Authorization: Bearer $TOKEN" \
   -d '{"account_id":"acc_xxx","name":"prod"}' \
-  localhost:9090 kacho.cloud.iam.v1.ProjectService/Create
+  localhost:9090 kaname.cloud.iam.v1.ProjectService/Create
 ```
 
 ### Идемпотентность

@@ -15,7 +15,7 @@
 перемерить. Перемер даёт **6**.
 
 Единица счёта — отношение, объявленное на типе `cluster` либо `account` в
-`proto/kacho/cloud/iam/v1/fga_model.fga`, чьё имя не встречается ни в одном
+`proto/kaname/cloud/iam/v1/fga_model.fga`, чьё имя не встречается ни в одном
 `required_relation` встроенного каталога прав. Ревизия — линия
 `integration/standalone-iam`, состояние **до** правки этой задачи.
 
