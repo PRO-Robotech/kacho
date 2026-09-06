@@ -122,7 +122,12 @@ func dirMentions(dir, fragment string) (bool, error) {
 		return false, fmt.Errorf("состав каталога миграций %s: %w", dir, err)
 	}
 	for _, f := range files {
-		body, rerr := os.ReadFile(f) //nolint:gosec // путь пришёл из индекса git этого дерева
+		// Диалект подавления здесь `#nosec`, а НЕ `//nolint:gosec`: в этом
+		// дереве сканер читает только собственную форму, и вторая инертна
+		// ПО ПОСТРОЕНИЮ — то есть выглядела бы подавлением и не подавляла
+		// бы ничего.
+		// #nosec G304 -- путь пришёл из индекса git ЭТОГО дерева, не извне
+		body, rerr := os.ReadFile(f)
 		if rerr != nil {
 			return false, fmt.Errorf("%s: %w", f, rerr)
 		}
