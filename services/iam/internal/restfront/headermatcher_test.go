@@ -44,6 +44,8 @@ import (
 
 	"github.com/grpc-ecosystem/grpc-gateway/v2/runtime"
 	"google.golang.org/grpc/metadata"
+
+	"github.com/PRO-Robotech/kacho/pkg/grpcsrv"
 )
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -145,11 +147,18 @@ func TestEveryMuxIsBuiltWithTheNarrowingHeaderMatcher(t *testing.T) {
 // ПРОБА ИСХОДА. Что доезжает до слушателя.
 
 // principalMetadataKeys — ключи, которыми платформа переносит личность.
-// Объявлены один раз в общем фундаменте; здесь они цель, а не источник.
+//
+// БЕРУТСЯ У ФУНДАМЕНТА, а не переписываются. Пока они стояли здесь литералами,
+// это было ВТОРОЕ объявление одного предмета — и оно уже разошлось с первым:
+// третьим ключом значилось `x-kacho-principal-display`, которого не существует
+// (настоящий — `…-display-name`). Проба при этом оставалась зелёной: сужающий
+// сопоставитель отбрасывает пространство имён целиком, поэтому она честно
+// утверждала, что несуществующий ключ не доезжает. Ровно тот класс, ради
+// которого объявление сведено в одно место.
 var principalMetadataKeys = []string{
-	"x-kacho-principal-id",
-	"x-kacho-principal-type",
-	"x-kacho-principal-display",
+	grpcsrv.MDKeyPrincipalID,
+	grpcsrv.MDKeyPrincipalType,
+	grpcsrv.MDKeyPrincipalDisplay,
 }
 
 // metadataThroughMux прогоняет запрос через мультиплексор и возвращает
