@@ -24,17 +24,29 @@
 //     read by a backend / opsproxy via metadata.FromIncomingContext.
 package principalmeta
 
-import "strings"
+import (
+	"strings"
+
+	"github.com/PRO-Robotech/kacho/pkg/principalwire"
+)
 
 // Canonical HTTP header names.
+//
+// ИМЕНА ОБЪЯВЛЕНЫ НЕ ЗДЕСЬ. Их единственное объявление — `pkg/principalwire`,
+// откуда те же имена берёт фундамент. Здесь стоят только псевдонимы: имя,
+// написанное тут своей рукой, было бы вторым объявлением одного предмета, а
+// расходятся такие два МОЛЧА — переименование одной стороны собирается чисто и
+// кончается ПОТЕРЕЙ личности, а не отказом. Разбор — в шапке
+// `pkg/principalwire`; единственность держит гейт дерева `internal/repohygiene`
+// `TestIdentityWireNamespaceIsDeclaredOnce`.
 const (
-	HeaderPrincipalType    = "X-Kacho-Principal-Type"
-	HeaderPrincipalID      = "X-Kacho-Principal-Id"
-	HeaderPrincipalDisplay = "X-Kacho-Principal-Display-Name"
-	HeaderTokenACR         = "X-Kacho-Token-Acr"   // #nosec G101 -- HTTP header name (token ACR claim), not a credential
-	HeaderTokenJti         = "X-Kacho-Token-Jti"   // #nosec G101 -- HTTP header name (token jti claim), not a credential
-	HeaderTokenScope       = "X-Kacho-Token-Scope" // #nosec G101 -- HTTP header name (token scope claim), not a credential
-	HeaderTokenExp         = "X-Kacho-Token-Exp"   // #nosec G101 -- HTTP header name (token exp claim), not a credential
+	HeaderPrincipalType    = principalwire.HeaderPrincipalType
+	HeaderPrincipalID      = principalwire.HeaderPrincipalID
+	HeaderPrincipalDisplay = principalwire.HeaderPrincipalDisplay
+	HeaderTokenACR         = principalwire.HeaderTokenACR
+	HeaderTokenJti         = principalwire.HeaderTokenJti
+	HeaderTokenScope       = principalwire.HeaderTokenScope
+	HeaderTokenExp         = principalwire.HeaderTokenExp
 
 	// HeaderTokenAMR — ПЕРЕЧЕНЬ СПОСОБОВ, которыми предъявитель себя подтвердил
 	// (`amr` у подписанного предъявителя, `authentication_methods` у браузерной
@@ -42,7 +54,7 @@ const (
 	//
 	// Форма значения — набор, разделённый пробелом (см. EncodeAuthMethods):
 	// ПОРЯДОК НЕ ЗНАЧИМ и не сохраняется, читатель обязан спрашивать о членстве.
-	HeaderTokenAMR = "X-Kacho-Token-Amr" // #nosec G101 -- HTTP header name (authentication methods), not a credential
+	HeaderTokenAMR = principalwire.HeaderTokenAMR
 
 	// HeaderTokenMfaAt — МОМЕНТ ПОДТВЕРЖДЕНИЯ личности, секунды эпохи. Второй
 	// довод того же условия: без него свежесть не с чем сравнивать.
@@ -50,7 +62,7 @@ const (
 	// Отсутствующий заголовок означает «источник момента не назвал» — это НЕ
 	// ноль и не «давно»: ноль читался бы как подтверждение в 1970 году, то есть
 	// как величина, над которой можно считать. Довода нет ⇒ довода нет.
-	HeaderTokenMfaAt = "X-Kacho-Token-Mfa-At" // #nosec G101 -- HTTP header name (authentication instant), not a credential
+	HeaderTokenMfaAt = principalwire.HeaderTokenMfaAt
 
 	// HeaderTokenBasicCredentialID — ИДЕНТИФИКАТОР СТРОКИ базового удостоверения,
 	// которым предъявитель открыл запрос (kacho#1450).
@@ -71,17 +83,18 @@ const (
 	//
 	// ОСТАЁТСЯ НА КРАЮ (edgeOnlyKeys): за краем у него потребителя нет, а мост
 	// пропустил бы его наравне с прочими — префикс мост снимает сам.
-	HeaderTokenBasicCredentialID = "X-Kacho-Token-Basic-Credential-Id" // #nosec G101 -- HTTP header name (credential row id), not a credential
+	HeaderTokenBasicCredentialID = principalwire.HeaderTokenBasicCredentialID
 )
 
 // Grpc-Metadata-prefixed HTTP header names (grpc-gateway → gRPC metadata bridge).
+// Псевдонимы единственного объявления — см. выше.
 const (
-	HeaderGRPCMetaPrincipalType    = "Grpc-Metadata-" + HeaderPrincipalType
-	HeaderGRPCMetaPrincipalID      = "Grpc-Metadata-" + HeaderPrincipalID
-	HeaderGRPCMetaPrincipalDisplay = "Grpc-Metadata-" + HeaderPrincipalDisplay
-	HeaderGRPCMetaTokenACR         = "Grpc-Metadata-" + HeaderTokenACR
-	HeaderGRPCMetaTokenJti         = "Grpc-Metadata-" + HeaderTokenJti
-	HeaderGRPCMetaTokenScope       = "Grpc-Metadata-" + HeaderTokenScope
+	HeaderGRPCMetaPrincipalType    = principalwire.HeaderGRPCMetaPrincipalType
+	HeaderGRPCMetaPrincipalID      = principalwire.HeaderGRPCMetaPrincipalID
+	HeaderGRPCMetaPrincipalDisplay = principalwire.HeaderGRPCMetaPrincipalDisplay
+	HeaderGRPCMetaTokenACR         = principalwire.HeaderGRPCMetaTokenACR
+	HeaderGRPCMetaTokenJti         = principalwire.HeaderGRPCMetaTokenJti
+	HeaderGRPCMetaTokenScope       = principalwire.HeaderGRPCMetaTokenScope
 )
 
 // Мостовой формы у доводов условия (`amr` / `mfa-at`) НЕТ, и одного её
@@ -91,38 +104,35 @@ const (
 // явно, ниже (edgeOnlyKeys), а не выведено из формы имени.
 
 // Lowercase gRPC metadata keys (metadata.MD.Get/Append lowercases its argument;
-// backends read exactly these).
+// backends read exactly these). Псевдонимы единственного объявления — см. выше.
 const (
-	MetaPrincipalType    = "x-kacho-principal-type"
-	MetaPrincipalID      = "x-kacho-principal-id"
-	MetaPrincipalDisplay = "x-kacho-principal-display-name"
+	MetaPrincipalType    = principalwire.MetaPrincipalType
+	MetaPrincipalID      = principalwire.MetaPrincipalID
+	MetaPrincipalDisplay = principalwire.MetaPrincipalDisplay
 
-	// MetaPrincipalDisplayBin — ДВОИЧНАЯ форма отображаемого имени.
-	//
-	// Значение обычного метаданного ключа gRPC ограничено печатаемой латиницей;
-	// продукт русскоязычный, и имя, записанное кириллицей, роняет ВЕСЬ вызов,
-	// не дойдя до обработчика. Суффикс `-bin` допускает произвольные байты:
-	// gRPC кодирует значение сам. Тип и идентификатор остаются обычными
-	// ключами — они латиница by construction.
-	MetaPrincipalDisplayBin = "x-kacho-principal-display-name-bin"
-	MetaTokenACR            = "x-kacho-token-acr"    // #nosec G101 -- gRPC metadata key name (token ACR claim), not a credential
-	MetaTokenJti            = "x-kacho-token-jti"    // #nosec G101 -- gRPC metadata key name (token jti claim), not a credential
-	MetaTokenScope          = "x-kacho-token-scope"  // #nosec G101 -- gRPC metadata key name (token scope claim), not a credential
-	MetaTokenAMR            = "x-kacho-token-amr"    // #nosec G101 -- gRPC metadata key name (authentication methods), not a credential
-	MetaTokenMfaAt          = "x-kacho-token-mfa-at" // #nosec G101 -- gRPC metadata key name (authentication instant), not a credential
+	// MetaPrincipalDisplayBin — ДВОИЧНАЯ форма отображаемого имени: обычный ключ
+	// роняет весь вызов на первом не-латинском символе. Разбор — у объявления.
+	MetaPrincipalDisplayBin = principalwire.MetaPrincipalDisplayBin
+
+	MetaTokenACR   = principalwire.MetaTokenACR
+	MetaTokenJti   = principalwire.MetaTokenJti
+	MetaTokenScope = principalwire.MetaTokenScope
+	MetaTokenAMR   = principalwire.MetaTokenAMR
+	MetaTokenMfaAt = principalwire.MetaTokenMfaAt
 
 	// MetaTokenBasicCredentialID — нижнерегистровая форма
 	// [HeaderTokenBasicCredentialID]. Объявлена не ради потребителя за краем —
 	// его нет, — а ради ЗАПРЕТА: набор ключей края (edgeOnlyKeys) ведётся именно
 	// этими именами, и ключ, которого в нём нет, мост пропустил бы молча.
-	MetaTokenBasicCredentialID = "x-kacho-token-basic-credential-id" // #nosec G101 -- gRPC metadata key name (credential row id), not a credential
+	MetaTokenBasicCredentialID = principalwire.MetaTokenBasicCredentialID
 )
 
 // Lowercase prefixes used to strip forgeable client-supplied identity
 // headers/metadata before the gateway sets its own trusted values.
+// Псевдонимы единственного объявления — см. выше.
 const (
-	MetaPrincipalPrefix = "x-kacho-principal-"
-	MetaTokenPrefix     = "x-kacho-token-" // #nosec G101 -- metadata key prefix, not a credential
+	MetaPrincipalPrefix = principalwire.MetaPrincipalPrefix
+	MetaTokenPrefix     = principalwire.MetaTokenPrefix
 )
 
 // Namespace is the reserved prefix of EVERY Kachō identity/context key on the
@@ -134,8 +144,8 @@ const (
 // (runtime.DefaultHeaderMatcher). Both surface forms of the same logical key must
 // therefore be treated identically by any policy over the namespace.
 const (
-	Namespace    = "x-kacho-"
-	BridgePrefix = "grpc-metadata-"
+	Namespace    = principalwire.Namespace
+	BridgePrefix = principalwire.BridgePrefix
 )
 
 // gatewayProducedPrefixes — the CLOSED set of `x-kacho-` sub-families the
@@ -237,23 +247,17 @@ func IsAnnotatorProducedKey(name string) bool { return annotatorProducedKeys[nam
 //
 // НАБОР ОБЯЗАН ИМЕТЬ ПРЕДМЕТ: запись про ключ, которого нет среди производимых
 // краем, — исключение, потерявшее предмет, и гейт пакета считает её находкой.
-var edgeOnlyKeys = map[string]bool{
-	MetaTokenAMR:   true,
-	MetaTokenMfaAt: true,
-	// Идентификатор базового удостоверения: край собирает его ДЛЯ СЕБЯ —
-	// перепрос отзыва на открытых соединениях спрашивает по нему нашего
-	// авторитета (kacho#1450). За краем читателя нет, и заводить его без
-	// мостовой формы значило бы отдать соседу вход решения, которого никто не
-	// производит.
-	MetaTokenBasicCredentialID: true,
-}
+// РЕШЕНИЕ живёт в каталоге `pkg/principalwire` (поле Key.EdgeOnly) — там же,
+// где имена, о которых край и фундамент договариваются. Держать здесь второй
+// перечень значило бы завести второе место об одном предмете: ключ, снятый с
+// края в каталоге и оставшийся в перечне, разошёлся бы молча.
 
 // IsEdgeOnlyKey — остаётся ли этот ключ на краю (мост его не пропускает).
 //
 // Имя приходит нормализованным (нижний регистр, без мостового префикса) — так
 // его отдаёт KachoNamespaceKey, и обе поверхностные формы сводятся к одному
 // имени ещё до этого вопроса.
-func IsEdgeOnlyKey(name string) bool { return edgeOnlyKeys[name] }
+func IsEdgeOnlyKey(name string) bool { return principalwire.IsEdgeOnly(name) }
 
 func IsGatewayProducedKey(name string) bool {
 	for _, p := range gatewayProducedPrefixes {

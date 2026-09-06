@@ -40,14 +40,20 @@
 // requirement.
 package grpcsrv
 
-import "time"
+import (
+	"time"
+
+	"github.com/PRO-Robotech/kacho/pkg/principalwire"
+)
 
 // MDKeyTokenACR is the trusted metadata key carrying the validated JWT `acr`
 // claim, forwarded by the api-gateway on the mTLS-verified gateway→iam re-dial
 // (alongside x-kacho-principal-*). It is read ONLY under the trust invariant
 // (see UnaryTrustedPrincipalExtract) — on an unverified peer it is dropped with
 // the principal (anti-spoof).
-const MDKeyTokenACR = "x-kacho-token-acr" // #nosec G101 -- gRPC metadata header key, not a credential (the "token" substring is a false positive)
+// Имя ключа объявлено ОДИН раз — в `pkg/principalwire`; здесь оно только
+// переименовано под привычное вызывающему имя (см. разбор у MDKeyPrincipalType).
+const MDKeyTokenACR = principalwire.MetaTokenACR
 
 // PrincipalTypeServiceAccount is the `kacho_principal_type` value identifying a
 // MACHINE principal — the claim value stamped by the iam token-hook on a
