@@ -160,7 +160,7 @@ func (u *CreateProjectUseCase) doCreate(ctx context.Context, p domain.Project, a
 			// (запрет #10):
 			//   account:<acc>#account@project:<id>            — project→account
 			//     hierarchy ancestor pointer.
-			//   cluster:cluster_kacho_root#cluster@project:<id> — SEC-L cluster
+			//   cluster:cluster_root#cluster@project:<id> — SEC-L cluster
 			//     pointer so `... or system_viewer from cluster` resolves.
 			// These wire the project into the hierarchy (account/project remain
 			// verb-bearing ancestors in the flat model). The owner's per-object

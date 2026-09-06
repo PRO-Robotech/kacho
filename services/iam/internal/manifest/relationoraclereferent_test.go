@@ -36,7 +36,7 @@ func grantOfRelationCanonDoesNotDeclare() []byte {
         - {type: serviceAccount, name: kacho-vpc}
       grantedRelation: no_such_relation_at_all
       scopeType: iam.cluster
-      scopeId: cluster_kacho_root
+      scopeId: cluster_root
       target: allInScope
 `)
 }
@@ -87,7 +87,7 @@ func TestRelationGrantJudgedOnlyWhenTheModelIsSupplied(t *testing.T) {
         - {type: serviceAccount, name: kacho-vpc}
       grantedRelation: system_viewer
       scopeType: iam.cluster
-      scopeId: cluster_kacho_root
+      scopeId: cluster_root
       target: allInScope
 `), "законная выдача отношением при внесённой модели")
 	if got := ok.Linkage(); got.RelationGrantsJudged != 1 || got.RelationGrantsRead != 1 {

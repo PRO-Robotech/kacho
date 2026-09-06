@@ -122,7 +122,7 @@ func TestAccessBinding_AssignableRoles_AreAccepted(t *testing.T) {
 		`SELECT id FROM roles WHERE is_system = true LIMIT 1`).Scan(&systemRole))
 	require.NoError(t, insertBinding(ctx, pool, domain.RoleID(systemRole), owner, "account", string(acc.ID)),
 		"system role on an account")
-	require.NoError(t, insertBinding(ctx, pool, domain.RoleID(systemRole), owner, "cluster", "cluster_kacho_root"),
+	require.NoError(t, insertBinding(ctx, pool, domain.RoleID(systemRole), owner, "cluster", "cluster_root"),
 		"system role on the cluster")
 }
 
@@ -141,6 +141,6 @@ func TestAccessBinding_CustomRoleOnCluster_IsRefused(t *testing.T) {
 	acc := seedAccount(t, ctx, repo, "acc-assign-cl", owner)
 	role := seedAccountRole(t, ctx, pool, acc.ID, "cluster_attempt_role")
 
-	err = insertBinding(ctx, pool, role, owner, "cluster", "cluster_kacho_root")
+	err = insertBinding(ctx, pool, role, owner, "cluster", "cluster_root")
 	require.Error(t, err, "a custom role must not be bindable on the cluster scope")
 }

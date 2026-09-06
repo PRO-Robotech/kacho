@@ -119,7 +119,7 @@ func TestCallerAuthority_Check_SelfQuery_Allowed(t *testing.T) {
 // subject/resource.
 func TestCallerAuthority_Check_ClusterAdmin_Allowed(t *testing.T) {
 	auth := &authorityStub{allow: map[string]bool{
-		"system_admin|cluster:cluster_kacho_root": true,
+		"system_admin|cluster:cluster_root": true,
 	}}
 	h := newHandlerWithAuthority(true, auth)
 	_, err := h.Check(userCtx("usr_admin"), &iamv1.AuthorizeCheckRequest{

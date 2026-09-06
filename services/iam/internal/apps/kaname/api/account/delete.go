@@ -138,7 +138,7 @@ func (u *DeleteAccountUseCase) doDelete(ctx context.Context, id domain.AccountID
 //     the SAME byte-symmetric revoke AccessBinding.Delete performs, applied to every
 //     binding the deleted account anchors.
 //  2. Emit the delete of the cluster pointer
-//     (cluster:cluster_kacho_root#cluster@account:<A>) — an ACCOUNT-lifecycle tuple
+//     (cluster:cluster_root#cluster@account:<A>) — an ACCOUNT-lifecycle tuple
 //     deliberately excluded from the owner-binding ledger (it must survive an
 //     owner-binding revoke) but which MUST go when the account itself is deleted.
 //

@@ -619,7 +619,7 @@ func runServe(cfg config.Config) error {
 	// (authN+authZ enforced everywhere: read-RPC gate viewer-tier). For
 	// ReadFloorRPCs it requires the CALLER MODULE-SA (derived from the verified
 	// mTLS SAN, same derivation as the fga-proxy gate) to hold the coarse cluster
-	// relation `system_viewer@cluster:cluster_kacho_root`, via the SAME
+	// relation `system_viewer@cluster:cluster_root`, via the SAME
 	// RelationChecker port (the decision door) used by RelationWriteGate / iam.Check.
 	// Default-OFF: dev/newman (prod=false) → NO-OP pass-through (newman stand
 	// byte-identical). Prod fail-closed: no verified SAN → PermissionDenied;
@@ -878,7 +878,7 @@ func runServe(cfg config.Config) error {
 	//     mode (an empty list denies everyone).
 	//  4. internalSystemViewerFloor — per-RPC `system_viewer`-floor
 	//     on the READ-RPC set (ReadFloorRPCs): the caller module-SA must hold
-	//     `system_viewer@cluster:cluster_kacho_root` (relation-tier Check beyond
+	//     `system_viewer@cluster:cluster_root` (relation-tier Check beyond
 	//     the coarse mTLS floor above). Prod fail-closed (PermissionDenied /
 	//     Unavailable); dev no-op. Exempt: PDP Check, secret webhooks, hot-path
 	//     IsRevoked, all mutations. MUST run after internalCallerPolicy (it needs
@@ -1660,7 +1660,7 @@ func runServe(cfg config.Config) error {
 		return nil
 	})
 
-	// Bootstrap-admin reconciler. Grants `system_admin@cluster_kacho_root` to
+	// Bootstrap-admin reconciler. Grants `system_admin@cluster_root` to
 	// the user identified by KANAME_BOOTSTRAP_ROOT_EMAIL and enqueues the
 	// FGA tuple into the transactional fga_outbox, out of which a trigger folds the
 	// direct fact in the same commit. The user row is mirrored only on first login /

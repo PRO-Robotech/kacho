@@ -119,7 +119,7 @@ sequenceDiagram
     SQL->>DB: CREATE TABLE roles ...
     Note over SQL,DB: seed-data
     loop 64 system-роли
-        SQL->>DB: INSERT INTO roles<br/>(id='rol'||substr(md5(name),1,17),<br/>name, rules, is_system=true, cluster_id='cluster_kacho_root')<br/>ON CONFLICT DO NOTHING
+        SQL->>DB: INSERT INTO roles<br/>(id='rol'||substr(md5(name),1,17),<br/>name, rules, is_system=true, cluster_id='cluster_root')<br/>ON CONFLICT DO NOTHING
     end
     Note over DB: Детерминированные id → повторный apply parity
 ```

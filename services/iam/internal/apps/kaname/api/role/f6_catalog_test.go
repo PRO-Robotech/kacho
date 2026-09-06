@@ -26,8 +26,8 @@ import (
 func sysRole(name string) domain.Role {
 	return domain.Role{
 		ID:        domain.RoleID("rol0000000000000sys" + name[:1]),
-		ClusterID: "cluster_kacho_root", // system tier ⇒ isSystemDerived
-		IsSystem:  true,                 // stored flag matches the tier in real data
+		ClusterID: "cluster_root", // system tier ⇒ isSystemDerived
+		IsSystem:  true,           // stored flag matches the tier in real data
 		Name:      domain.RoleName(name),
 		Rules:     domain.Rules{{Module: "compute", Resources: []string{"instance"}, Verbs: []string{"get", "list"}}},
 	}
@@ -39,7 +39,7 @@ func sysRole(name string) domain.Role {
 func TestRole_IAM_1_15_DtoCatalogFields(t *testing.T) {
 	t.Run("canonical editor derives delete* + Editor label", func(t *testing.T) {
 		r := domain.Role{
-			ID: "rol0000000000000edit", ClusterID: "cluster_kacho_root", Name: "edit",
+			ID: "rol0000000000000edit", ClusterID: "cluster_root", Name: "edit",
 			Rules: domain.Rules{{Module: "compute", Resources: []string{"instance"}, Verbs: []string{"get", "list", "create", "update"}}},
 		}
 		pb, err := roleToPb(withPreviewLookup(r))
@@ -69,7 +69,7 @@ func TestRole_IAM_1_15_ListCanonicalFirst(t *testing.T) {
 		repo.roles[string(r.ID)] = r
 	}
 	// a non-canonical system role + a custom role
-	repo.roles["rol000000000000other"] = domain.Role{ID: "rol000000000000other", ClusterID: "cluster_kacho_root", IsSystem: true, Name: "iam.user.view", Rules: f4Rules()}
+	repo.roles["rol000000000000other"] = domain.Role{ID: "rol000000000000other", ClusterID: "cluster_root", IsSystem: true, Name: "iam.user.view", Rules: f4Rules()}
 	repo.roles["rol0000000000000cust"] = domain.Role{ID: "rol0000000000000cust", AccountID: "acc-A000000000000000", Name: "custom-role", Rules: f4Rules()}
 
 	fga := newRoleFGAStub()
@@ -93,7 +93,7 @@ func TestRole_IAM_1_15_ListCanonicalFirst(t *testing.T) {
 func TestRole_IAM_1_16_SystemRoleUpdateImmutable(t *testing.T) {
 	repo := newRoleListFakeRepo()
 	repo.roles["rol0000000000000sys1"] = domain.Role{
-		ID: "rol0000000000000sys1", ClusterID: "cluster_kacho_root", Name: "admin", IsSystem: true,
+		ID: "rol0000000000000sys1", ClusterID: "cluster_root", Name: "admin", IsSystem: true,
 	}
 	uc := NewUpdateRoleUseCase(repo, newRlFakeOps(), catalogfixture.Source())
 

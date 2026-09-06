@@ -62,7 +62,7 @@ miss (info-leak prevention).
 1. **NetworkPolicy** (helm) — ingress на `:9091` только от api-gateway и admin-tooling pod'ов.
 2. **mTLS** — verified client-cert на обоих листенерах.
 3. **per-RPC FGA-Check** — та же цепочка, что на public: cluster-scoped admin-RPC на
-   `cluster:cluster_kacho_root` (`system_admin`/`system_viewer`), IPAM-примитивы —
+   `cluster:cluster_root` (`system_admin`/`system_viewer`), IPAM-примитивы —
    per-object на `vpc_address`. «Internal = доверенный» — запрещённое допущение.
 4. **production-mode fail-closed** — без forwarded-принципала отказ.
 

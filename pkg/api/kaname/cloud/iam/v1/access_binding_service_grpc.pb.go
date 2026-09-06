@@ -195,7 +195,7 @@ type AccessBindingServiceClient interface {
 	//
 	//   - `resource_type ∈ {"account","project","cluster"}` for v1; otherwise
 	//     INVALID_ARGUMENT. `resource_id` must match the type's prefix
-	//     (account⇒acc, project⇒prj; cluster⇒exactly cluster_kacho_root) —
+	//     (account⇒acc, project⇒prj; cluster⇒exactly cluster_root) —
 	//     mismatch → INVALID_ARGUMENT.
 	//   - well-formed-but-missing resource → NOT_FOUND (existence-resolve is
 	//     required for authz); existing resource with 0 assignable roles →
@@ -591,7 +591,7 @@ type AccessBindingServiceServer interface {
 	//
 	//   - `resource_type ∈ {"account","project","cluster"}` for v1; otherwise
 	//     INVALID_ARGUMENT. `resource_id` must match the type's prefix
-	//     (account⇒acc, project⇒prj; cluster⇒exactly cluster_kacho_root) —
+	//     (account⇒acc, project⇒prj; cluster⇒exactly cluster_root) —
 	//     mismatch → INVALID_ARGUMENT.
 	//   - well-formed-but-missing resource → NOT_FOUND (existence-resolve is
 	//     required for authz); existing resource with 0 assignable roles →

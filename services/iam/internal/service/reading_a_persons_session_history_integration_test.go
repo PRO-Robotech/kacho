@@ -73,7 +73,7 @@ func TestReadingSessionHistoryIsNotReachableFromInsideTheAccount(t *testing.T) {
 	// Сам человек. Кортеж пишется на заведении пользователя (internal_upsert.go).
 	w.factThroughJournal(t, "user:"+invitee, "subject", "iam_user", invitee)
 	// Уровень 1.
-	w.factThroughJournal(t, "user:"+cloudAdmin, "system_admin", "cluster", "cluster_kacho_root")
+	w.factThroughJournal(t, "user:"+cloudAdmin, "system_admin", "cluster", "cluster_root")
 
 	// Отношение спрашивается У КАТАЛОГА, а не пишется литералом: каталог
 	// порождается из proto и является единственным источником per-RPC решения

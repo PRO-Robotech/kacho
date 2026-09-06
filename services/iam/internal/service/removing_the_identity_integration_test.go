@@ -89,7 +89,7 @@ func TestRemovingTheIdentityIsNotReachableFromInsideTheAccount(t *testing.T) {
 	// Указатель принадлежности — им цепь областей доводит аккаунт до личности.
 	w.factThroughJournal(t, "account:"+acc, "account", "iam_user", invitee)
 	// Уровень 1.
-	w.factThroughJournal(t, "user:"+cloudAdmin, "system_admin", "cluster", "cluster_kacho_root")
+	w.factThroughJournal(t, "user:"+cloudAdmin, "system_admin", "cluster", "cluster_root")
 
 	// Выдача, живущая В АККАУНТЕ пригласившего, — предмет его законной власти.
 	w.seedRole(t, "rol-rmid2", acc)
@@ -216,7 +216,7 @@ func TestRemovingAnIdentityWithNoAccountScopeReachesOnlyTheCloud(t *testing.T) {
 	// и исключением из аккаунта не снимается — он про личность, а не про участие.
 	w.factThroughJournal(t, "user:"+orphan, "subject", "iam_user", orphan)
 	// Уровень 1.
-	w.factThroughJournal(t, "user:"+cloudAdmin, "system_admin", "cluster", "cluster_kacho_root")
+	w.factThroughJournal(t, "user:"+cloudAdmin, "system_admin", "cluster", "cluster_root")
 
 	// Исключение из аккаунта: ровно тот оператор, каким его делает продукт
 	// (`RemoveMembership`). Указателя области в журнале эта личность не получала

@@ -15,11 +15,11 @@ Region и Zone — глобальный cluster-scoped каталог: они н
 конкретного региона/зоны**, а по cluster-синглтону.
 
 - В модели прав (kaname) **нет типов `region`/`zone`** — есть `type cluster`
-  с синглтоном `cluster:cluster_kacho_root`.
+  с синглтоном `cluster:cluster_root`.
 - **Отношение объявляется в proto и больше нигде.** Каждый admin-RPC несёт
   `required_relation = "system_admin"` рядом со своим `permission`
   (`proto/kacho/cloud/geo/v1/internal_catalog_service.proto`); тапл
-  `cluster:cluster_kacho_root#system_admin` сидит bootstrap kaname. Своей рукописной
+  `cluster:cluster_root#system_admin` сидит bootstrap kaname. Своей рукописной
   карты RPC→объект у geo нет: контур решения о доступе собирает носитель
   (`pkg/servicehost`) по дескриптору (`pkg/servicecontract`), который geo заполняет в
   `services/geo/cmd/kacho-geo/serve.go` (`Authz: servicecontract.AuthzViaIAM`).

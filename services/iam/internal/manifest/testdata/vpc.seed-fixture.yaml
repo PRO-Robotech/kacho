@@ -86,14 +86,14 @@ seed:
         - {type: group, name: vpc-internal-consumers}
       roleId: vpc.internal_consumer
       scopeType: iam.cluster
-      scopeId: cluster_kacho_root
+      scopeId: cluster_root
       target: allInScope        # и будущие интерфейсы с адресами тоже
 
     - subjects:
         - {type: group, name: cloud-network-admins}
       roleId: vpc.address_pool_admin
       scopeType: iam.cluster
-      scopeId: cluster_kacho_root
+      scopeId: cluster_root
       target: allInScope        # и будущие пулы тоже
 
   # ── Чужие группы, в которые вступает служебная запись vpc ────────────────

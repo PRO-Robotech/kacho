@@ -8,7 +8,7 @@ package internal_operations
 // Cluster-wide Internal admin feed: returns ALL IAM operations of the cluster
 // (optional account_id filter), gated admin-tier. The backend iam internal
 // listener is NOT exempt (security.md "AuthN+AuthZ ВЕЗДЕ"): the handler runs a
-// per-user ReBAC Check (system_admin @ cluster:cluster_kacho_root) so a caller
+// per-user ReBAC Check (system_admin @ cluster:cluster_root) so a caller
 // that bypasses the api-gateway and dials :9091 directly is rejected without
 // system_admin. nil checker / backend error / explicit deny → PermissionDenied
 // (fail-closed; mirrors cluster.requireClusterSystemAdmin).

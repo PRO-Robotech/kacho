@@ -12,7 +12,7 @@
 //     grpcsrv.CertIdentityFromContext under the domain the installation
 //     declared) is mapped to a deterministic
 //     ServiceAccount id (`'sva' || substr(md5('kacho-<svc>'),1,17)`).
-//  2. A ReBAC Check `service_account:<sva>#fga_writer@cluster:cluster_kacho_root`
+//  2. A ReBAC Check `service_account:<sva>#fga_writer@cluster:cluster_root`
 //     is issued. ALLOW → the RPC proceeds; DENY → PermissionDenied. Право
 //     выдаётся системной выдачей на кластере (#914) — оно видно перечислением
 //     выдач и закрывается отзывом.
@@ -84,10 +84,10 @@ func (g *RelationWriteGate) WithProductionMode(prod bool) *RelationWriteGate {
 }
 
 // Authorize returns nil iff the verified mTLS client-cert resolves to a module
-// ServiceAccount holding `fga_writer` on `cluster:cluster_kacho_root`. Every other
+// ServiceAccount holding `fga_writer` on `cluster:cluster_root`. Every other
 // outcome is PermissionDenied (fail-closed). Message text is the fixed,
 // non-leaking `"permission denied"`.
-// Authorize проверяет, что caller — модульная SA с `fga_writer@cluster:cluster_kacho_root`,
+// Authorize проверяет, что caller — модульная SA с `fga_writer@cluster:cluster_root`,
 // и возвращает ее домен (vpc/compute/nlb) для object-type binding на write-path.
 // Dev-mode без cert → ("", nil): домен неизвестен, domain-binding в ValidateProxyTuple
 // отключается, но relation-allowlist и forbidden-object-type там действуют всегда.

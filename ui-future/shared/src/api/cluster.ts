@@ -11,14 +11,14 @@
 // `api/client.ts` адаптер уже конвертирует camelCase ↔ snake_case на границе,
 // поэтому здесь поля snake_case (как в proto-схеме).
 //
-// Authorization: каждый RPC требует FGA-relation `admin@cluster:cluster_kacho_root`
+// Authorization: каждый RPC требует FGA-relation `admin@cluster:cluster_root`
 // (computed `system_admin OR emergency_admin`). Ordinary user без этого
 // permission'а получит HTTP 403 от api-gateway middleware.
 
 import { api } from "./client";
 import type { OpenEnum, Operation } from "./types";
 
-/** Cluster singleton — единственная row с id `cluster_kacho_root`. */
+/** Cluster singleton — единственная row с id `cluster_root`. */
 export interface Cluster {
   id: string;
   name?: string;

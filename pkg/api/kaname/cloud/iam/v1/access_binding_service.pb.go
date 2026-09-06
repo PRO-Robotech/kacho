@@ -209,7 +209,7 @@ type CreateAccessBindingRequest struct {
 	// is B3-gated, so the tier must be given explicitly). An empty / non-dotted /
 	// unknown value → sync INVALID_ARGUMENT.
 	ScopeType string `protobuf:"bytes,4,opt,name=scope_type,json=scopeType,proto3" json:"scope_type,omitempty"`
-	// Scope-anchor ID — the anchor object id (`cluster_kacho_root` | `acc…` | `prj…`).
+	// Scope-anchor ID — the anchor object id (`cluster_root` | `acc…` | `prj…`).
 	ScopeId string `protobuf:"bytes,5,opt,name=scope_id,json=scopeId,proto3" json:"scope_id,omitempty"`
 	// Optional lifetime. Unset = the grant does not expire. When set it must be at
 	// least 5 minutes in the future (otherwise INVALID_ARGUMENT, synchronously and
@@ -686,7 +686,7 @@ type ListAccessBindingsByScopeRequest struct {
 	// new-pair-first (it prefers scope_type/scope_id and falls back to the legacy
 	// pair), so the backend needs no further change.
 	ScopeType string `protobuf:"bytes,5,opt,name=scope_type,json=scopeType,proto3" json:"scope_type,omitempty"`
-	// Scope-anchor ID (`cluster_kacho_root` | `acc…` | `prj…`). Paired with
+	// Scope-anchor ID (`cluster_root` | `acc…` | `prj…`). Paired with
 	// `scope_type`; supersedes the legacy `resource_id`. Same migration caveat.
 	ScopeId       string `protobuf:"bytes,6,opt,name=scope_id,json=scopeId,proto3" json:"scope_id,omitempty"`
 	unknownFields protoimpl.UnknownFields
@@ -1319,7 +1319,7 @@ type SubjectPrivilege struct {
 	// resource it projects. Always populated; the legacy bare
 	// `resource_type` (field 4) is populated alongside it.
 	ScopeType string `protobuf:"bytes,12,opt,name=scope_type,json=scopeType,proto3" json:"scope_type,omitempty"`
-	// Scope-anchor ID (`cluster_kacho_root` | `acc…` | `prj…`). Always populated
+	// Scope-anchor ID (`cluster_root` | `acc…` | `prj…`). Always populated
 	// alongside the legacy `resource_id` (field 5).
 	ScopeId string `protobuf:"bytes,13,opt,name=scope_id,json=scopeId,proto3" json:"scope_id,omitempty"`
 	// The GROUP through which the subject holds this privilege (`grp…`), when
@@ -1470,7 +1470,7 @@ type ListAssignableRolesRequest struct {
 	ResourceType string `protobuf:"bytes,1,opt,name=resource_type,json=resourceType,proto3" json:"resource_type,omitempty"`
 	// DEPRECATED — use `scope_id` (field 6). Scope-anchor id; must match the
 	// type's prefix (account⇒acc, project⇒prj; cluster⇒exactly
-	// cluster_kacho_root) — otherwise INVALID_ARGUMENT.
+	// cluster_root) — otherwise INVALID_ARGUMENT.
 	ResourceId string `protobuf:"bytes,2,opt,name=resource_id,json=resourceId,proto3" json:"resource_id,omitempty"`
 	// The maximum number of results per page to return. Default value: 50,
 	// max 1000.

@@ -156,7 +156,7 @@ func (s *spyFGA) Check(context.Context, string, string, string) (bool, error) { 
 
 // TestCreate_SECL_EmitsOwnerAndClusterTupleInTx — the freshly-created account
 // must co-commit its owner self-grant (user:<owner>#owner@account:<id>) AND the
-// cluster parent-pointer (cluster:cluster_kacho_root#cluster@account:<id>) as
+// cluster parent-pointer (cluster:cluster_root#cluster@account:<id>) as
 // fga_outbox INTENTS in the SAME writer-tx — NOT best-effort post-commit through
 // RelationStore.WriteTuples (which lost the tuple on any FGA outage). The owner
 // self-grant is non-reconstructible, so the in-tx emit is the only guarantee.
@@ -184,7 +184,7 @@ func TestCreate_SECL_EmitsOwnerAndClusterTupleInTx(t *testing.T) {
 			strings.HasPrefix(tup.Object, "account:") {
 			ownerSeen = true
 		}
-		if tup.Relation == "cluster" && tup.User == "cluster:cluster_kacho_root" &&
+		if tup.Relation == "cluster" && tup.User == "cluster:cluster_root" &&
 			strings.HasPrefix(tup.Object, "account:") {
 			clusterSeen = true
 		}
@@ -192,7 +192,7 @@ func TestCreate_SECL_EmitsOwnerAndClusterTupleInTx(t *testing.T) {
 	assert.True(t, ownerSeen,
 		"owner self-grant intent must be co-committed in-tx (not reconstructible)")
 	assert.True(t, clusterSeen,
-		"account:<id>#cluster@cluster:cluster_kacho_root must be co-committed in-tx")
+		"account:<id>#cluster@cluster:cluster_root must be co-committed in-tx")
 }
 
 // TestCreate_EmitsOwnerBindingHierarchyTuple — no-access-loss. The owner
@@ -252,7 +252,7 @@ func TestCreate_EmitsOwnerBindingHierarchyTuple(t *testing.T) {
 // the revoked owner retains effective admin (standing privilege). The owner-binding
 // records BOTH binding-lifecycle tuples into the ledger in the same writer-tx.
 //
-// NOTE: the cluster pointer (cluster:cluster_kacho_root#cluster@account:<A>) is
+// NOTE: the cluster pointer (cluster:cluster_root#cluster@account:<A>) is
 // ACCOUNT-lifecycle (mirrored by Project.Create / user upsert; survives owner-binding
 // revoke) and is DELIBERATELY NOT recorded in the owner-binding ledger.
 func TestCreate_RecordsOwnerBindingTuplesInLedger(t *testing.T) {
@@ -287,7 +287,7 @@ func TestCreate_RecordsOwnerBindingTuplesInLedger(t *testing.T) {
 			t.Object == "iam_access_binding:"+bindingID {
 			hierarchyRecorded = true
 		}
-		if t.Relation == "cluster" && t.User == "cluster:cluster_kacho_root" {
+		if t.Relation == "cluster" && t.User == "cluster:cluster_root" {
 			clusterRecorded = true
 		}
 	}

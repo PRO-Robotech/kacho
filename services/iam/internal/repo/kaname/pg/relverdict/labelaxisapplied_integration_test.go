@@ -145,7 +145,7 @@ func seedLabelGrantOnCatalogType(t *testing.T, ctx context.Context, tx pgx.Tx,
 ) {
 	t.Helper()
 	exec(t, ctx, tx,
-		`INSERT INTO kaname.clusters (id, name) VALUES ('cluster_kacho_root', 'kacho')
+		`INSERT INTO kaname.clusters (id, name) VALUES ('cluster_root', 'kacho')
 		 ON CONFLICT DO NOTHING`)
 	exec(t, ctx, tx,
 		`INSERT INTO kaname.roles (id, name, permissions, rules, cluster_id)
@@ -154,7 +154,7 @@ func seedLabelGrantOnCatalogType(t *testing.T, ctx context.Context, tx pgx.Tx,
 		             'module',    'test',
 		             'resources', jsonb_build_array('*'),
 		             'verbs',     jsonb_build_array('get'))),
-		         'cluster_kacho_root')`, roleID, roleID+".get")
+		         'cluster_root')`, roleID, roleID+".get")
 	exec(t, ctx, tx,
 		`INSERT INTO kaname.role_verb (role_id, object_type, verb) VALUES ($1, $2, 'get')`,
 		roleID, catalogType)

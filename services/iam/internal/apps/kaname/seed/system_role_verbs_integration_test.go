@@ -159,7 +159,7 @@ func TestSystemRoleWithoutMaterializingRulesGetsNoVerbs(t *testing.T) {
 	_, err = pool.Exec(ctx,
 		`INSERT INTO kaname.roles (id, name, permissions, rules, cluster_id)
 		 VALUES ('rol-no-rules', 'test.no.rules', '["iam.role.*.get"]'::jsonb, '[]'::jsonb,
-		         'cluster_kacho_root')`)
+		         'cluster_root')`)
 	require.NoError(t, err)
 
 	require.NoError(t, bootSeedLanes(ctx, pool))

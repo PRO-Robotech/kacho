@@ -110,7 +110,7 @@ func (u *ListAssignableRolesUseCase) Execute(ctx context.Context, resourceType, 
 
 // validateAssignableResource enforces D-6: resource_type ∈ {account, project,
 // cluster} and resource_id matches the type (account⇒acc-, project⇒prj-,
-// cluster⇒exactly cluster_kacho_root). All errors are sync InvalidArgument.
+// cluster⇒exactly cluster_root). All errors are sync InvalidArgument.
 func validateAssignableResource(resourceType, resourceID string) error {
 	switch resourceType {
 	case "account":

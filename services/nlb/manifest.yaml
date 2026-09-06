@@ -190,7 +190,7 @@ roles:
     description: "NLB operator (start/stop/getTargetStates/listOperations + viewer on LB hierarchy)"
     tier:
       tierType: iam.cluster
-      tierId: cluster_kacho_root
+      tierId: cluster_root
     rules:
       - module: loadbalancer
         resources: [networkLoadBalancers]
@@ -206,7 +206,7 @@ roles:
     description: "NLB target manager (addTargets/removeTargets/getTargetStates + viewer on LB hierarchy)"
     tier:
       tierType: iam.cluster
-      tierId: cluster_kacho_root
+      tierId: cluster_root
     rules:
       - module: loadbalancer
         resources: [targetGroups]

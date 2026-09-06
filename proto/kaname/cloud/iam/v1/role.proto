@@ -12,7 +12,7 @@ option go_package = "github.com/PRO-Robotech/kacho/pkg/api/kaname/cloud/iam/v1;i
 // A Role resource. Named permission bundle.
 //
 // Roles бывают двух типов:
-//   - system roles (is_system=true, cluster_id='cluster_kacho_root') — seed'ятся
+//   - system roles (is_system=true, cluster_id='cluster_root') — seed'ятся
 //     миграциями kacho-iam, read-only через публичный API (Update/Delete на
 //     system role → FailedPrecondition).
 //   - custom roles (is_system=false) — multi-scope: точно один из
@@ -83,7 +83,7 @@ message Role {
   repeated string permissions = 5 [deprecated = true];
 
   // True for system roles (seed'ятся миграциями, read-only публично). When
-  // true, `cluster_id` MUST equal `cluster_kacho_root` and the other scope
+  // true, `cluster_id` MUST equal `cluster_root` and the other scope
   // fields MUST be empty (DB CHECK `roles_scope_xor`).
   bool is_system = 6;
 
@@ -91,7 +91,7 @@ message Role {
   google.protobuf.Timestamp created_at = 7;
 
   // ID of the Cluster that owns this Role. Non-empty only for system roles
-  // (literal `cluster_kacho_root`).
+  // (literal `cluster_root`).
   string cluster_id = 8;
 
   // TOMBSTONE (DB column dropped in migration 0008; proto field also
@@ -657,7 +657,7 @@ message DefinitionTier {
   // Dotted tier type: `iam.cluster` | `iam.account` | `iam.project`.
   string tier_type = 1;
 
-  // Anchor object id (`cluster_kacho_root` | `acc…` | `prj…`).
+  // Anchor object id (`cluster_root` | `acc…` | `prj…`).
   string tier_id = 2;
 }
 

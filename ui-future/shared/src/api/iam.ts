@@ -627,7 +627,7 @@ export interface UpdateAccessBindingBody {
 // ничего.
 
 /** Anchor id кластерного singleton'а — единственная строка cluster-тира. */
-export const CLUSTER_SCOPE_ID = "cluster_kacho_root";
+export const CLUSTER_SCOPE_ID = "cluster_root";
 
 /** Dotted `scope_type`, который принимает CreateAccessBindingRequest. */
 export const SCOPE_TYPE_BY_TIER: Record<AccessBindingScopeTier, IamScopeType> = {

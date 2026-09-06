@@ -4,7 +4,7 @@
 package pg_test
 
 // cluster_reader_integration_test.go — integration test for
-// ClusterReader.Get (singleton `cluster_kacho_root` seeded by migration).
+// ClusterReader.Get (singleton `cluster_root` seeded by migration).
 //
 // Get happy path (sync read, no Operation envelope).
 
@@ -20,7 +20,7 @@ import (
 	kanamepg "github.com/PRO-Robotech/kaname/internal/repo/kaname/pg"
 )
 
-// TestGet_Singleton — `cluster_kacho_root` row seeded by migration 0001
+// TestGet_Singleton — `cluster_root` row seeded by migration 0001
 // section 3 (squashed baseline). Reader.Get returns it.
 func TestGet_Singleton(t *testing.T) {
 	if testing.Short() {

@@ -106,7 +106,7 @@ func seedRole(t *testing.T, ctx context.Context, tx pgx.Tx, roleID, objType, ver
 	// ограничением схемы. Сеем настоящий, а не обходим FK: фикстура, снимающая
 	// ограничение, доказывала бы работу запроса на данных, которых в проде нет.
 	exec(t, ctx, tx,
-		`INSERT INTO kaname.clusters (id, name) VALUES ('cluster_kacho_root', 'kacho')
+		`INSERT INTO kaname.clusters (id, name) VALUES ('cluster_root', 'kacho')
 		 ON CONFLICT DO NOTHING`)
 	exec(t, ctx, tx,
 		`INSERT INTO kaname.roles (id, name, permissions, rules, cluster_id)
@@ -115,7 +115,7 @@ func seedRole(t *testing.T, ctx context.Context, tx pgx.Tx, roleID, objType, ver
 		             'module',    'test',
 		             'resources', jsonb_build_array('*'),
 		             'verbs',     jsonb_build_array($3::text))),
-		         'cluster_kacho_root')`, roleID, "test."+verb, verb)
+		         'cluster_root')`, roleID, "test."+verb, verb)
 	// ТИП КЛАДЁТСЯ В ТОЙ ФОРМЕ, В КАКОЙ ЕГО КЛАДЁТ ПРОД, — точечной. Вопрос о
 	// доступе приходит формой модели прав, и посев её же доказывал бы согласие
 	// запроса с фикстурой, а не с продом: соединение сходилось бы на данных,

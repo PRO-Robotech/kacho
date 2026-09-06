@@ -2,7 +2,7 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
 
 // cluster_reader.go — read-only adapter for the singleton Cluster
-// row (`cluster_kacho_root`).
+// row (`cluster_root`).
 //
 // Thin wrapper over the existing `ClusterRepo.GetSingleton` (iam_core_repos.go).
 // Exposed as a dedicated `ClusterReader` type so use-cases / handler
@@ -29,7 +29,7 @@ func NewClusterReader(pool *pgxpool.Pool) *ClusterReader {
 	return &ClusterReader{inner: NewClusterRepo(pool)}
 }
 
-// Get — returns the singleton `cluster_kacho_root` row. The DB CHECK
+// Get — returns the singleton `cluster_root` row. The DB CHECK
 // `clusters_id_singleton_ck` guarantees there is at most one cluster row,
 // and migration 0001 section 3 seeds it on schema init.
 func (r *ClusterReader) Get(ctx context.Context) (domain.Cluster, error) {

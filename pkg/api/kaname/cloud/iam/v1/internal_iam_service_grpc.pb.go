@@ -113,7 +113,7 @@ type InternalIAMServiceClient interface {
 	// authz: `<exempt>` на уровне permission-каталога (как все Internal IAM RPC).
 	// Least-priv энфорсится в IAM-handler через ReBAC: mTLS client-cert →
 	// ServiceAccount → relation `fga_writer` на системном объекте
-	// `cluster:cluster_kacho_root`. Нет relation → PermissionDenied. cluster-internal
+	// `cluster:cluster_root`. Нет relation → PermissionDenied. cluster-internal
 	// listener :9091 only — нет google.api.http.
 	RegisterResource(ctx context.Context, in *RegisterResourceRequest, opts ...grpc.CallOption) (*RegisterResourceResponse, error)
 	// UnregisterResource — Internal FGA-proxy: снять owner-hierarchy tuple
@@ -123,7 +123,7 @@ type InternalIAMServiceClient interface {
 	// НЕ NotFound — drainer ретраит безопасно.
 	//
 	// Sync unary, НЕ Operation. authz: `<exempt>` + ReBAC `fga_writer` @
-	// `cluster:cluster_kacho_root` (см. RegisterResource). cluster-internal :9091 only,
+	// `cluster:cluster_root` (см. RegisterResource). cluster-internal :9091 only,
 	// нет google.api.http.
 	UnregisterResource(ctx context.Context, in *UnregisterResourceRequest, opts ...grpc.CallOption) (*UnregisterResourceResponse, error)
 	// GetRoleCompiled — Internal two-projection read (redesign-2026 F5): returns a
@@ -363,7 +363,7 @@ type InternalIAMServiceServer interface {
 	// authz: `<exempt>` на уровне permission-каталога (как все Internal IAM RPC).
 	// Least-priv энфорсится в IAM-handler через ReBAC: mTLS client-cert →
 	// ServiceAccount → relation `fga_writer` на системном объекте
-	// `cluster:cluster_kacho_root`. Нет relation → PermissionDenied. cluster-internal
+	// `cluster:cluster_root`. Нет relation → PermissionDenied. cluster-internal
 	// listener :9091 only — нет google.api.http.
 	RegisterResource(context.Context, *RegisterResourceRequest) (*RegisterResourceResponse, error)
 	// UnregisterResource — Internal FGA-proxy: снять owner-hierarchy tuple
@@ -373,7 +373,7 @@ type InternalIAMServiceServer interface {
 	// НЕ NotFound — drainer ретраит безопасно.
 	//
 	// Sync unary, НЕ Operation. authz: `<exempt>` + ReBAC `fga_writer` @
-	// `cluster:cluster_kacho_root` (см. RegisterResource). cluster-internal :9091 only,
+	// `cluster:cluster_root` (см. RegisterResource). cluster-internal :9091 only,
 	// нет google.api.http.
 	UnregisterResource(context.Context, *UnregisterResourceRequest) (*UnregisterResourceResponse, error)
 	// GetRoleCompiled — Internal two-projection read (redesign-2026 F5): returns a

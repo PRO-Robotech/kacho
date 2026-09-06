@@ -62,7 +62,7 @@ type cluster
    jsonb_build_object(
      'user',     'group:grp1#member',
      'relation', 'quota_reader',
-     'object',   'cluster:cluster_kacho_root'),
+     'object',   'cluster:cluster_root'),
    now());`,
 			wantFinding: false,
 			wantPair:    "cluster#quota_reader",
@@ -75,7 +75,7 @@ type cluster
    jsonb_build_object(
      'user',     'group:grp1#member',
      'relation', 'phantom_reader',
-     'object',   'cluster:cluster_kacho_root'),
+     'object',   'cluster:cluster_root'),
    now());`,
 			wantFinding: true,
 			wantPair:    "cluster#phantom_reader",

@@ -230,7 +230,7 @@ func (h *integrityHarness) addCustomRole(id string, rules ...domain.Rule) string
 func (h *integrityHarness) addSystemRole(id string, rules ...domain.Rule) string {
 	h.repo.roles[id] = domain.Role{
 		ID:        domain.RoleID(id),
-		ClusterID: domain.ClusterID("cluster_kacho_root"),
+		ClusterID: domain.ClusterID("cluster_root"),
 		IsSystem:  true,
 		Name:      domain.RoleName(id),
 		Rules:     domain.Rules(rules),

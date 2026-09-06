@@ -227,7 +227,7 @@ func TestAuthorize_CheckRelation_RichDenyAlso(t *testing.T) {
 	res, err := svc.CheckRelation(context.Background(), CheckRelationRequest{
 		Subject:  "user:usr_dave",
 		Relation: "system_admin",
-		Object:   "cluster:cluster_kacho_root",
+		Object:   "cluster:cluster_root",
 	})
 	if err != nil {
 		t.Fatalf("err: %v", err)
@@ -239,7 +239,7 @@ func TestAuthorize_CheckRelation_RichDenyAlso(t *testing.T) {
 	for _, want := range []string{
 		"user:usr_dave",
 		`lacks relation "system_admin"`,
-		"cluster:cluster_kacho_root",
+		"cluster:cluster_root",
 		"current direct relations:",
 		"viewer",
 	} {

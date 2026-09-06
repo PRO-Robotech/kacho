@@ -11,7 +11,7 @@
 // Registered exclusively on the api-gateway internal mux (cluster-internal listener)
 // under `/iam/v1/internal/cluster/...`; never on the external TLS endpoint.
 //
-// Manages cluster-RBAC admin grants on the singleton `cluster:cluster_kacho_root`
+// Manages cluster-RBAC admin grants on the singleton `cluster:cluster_root`
 // FGA object. Replaces the prior `kubectl exec`-into-openfga workflow for
 // granting / revoking `system_admin` to humans. All mutations follow the
 // `Operation` async envelope: the handler
@@ -24,7 +24,7 @@
 //
 // Authorization gate:
 // every RPC requires the FGA relation `system_admin` on
-// `cluster:cluster_kacho_root` (resolved via `scope_extractor.object_type =
+// `cluster:cluster_root` (resolved via `scope_extractor.object_type =
 // "cluster"`, `from_request_field = "*"` ⇒ the singleton cluster id). The
 // api-gateway authz middleware reads `permission_catalog.json` and enforces
 // this before the request reaches the handler. Non-admin subjects MUST NOT
@@ -54,7 +54,7 @@ const (
 )
 
 // GetClusterRequest — singleton; no fields. Cluster id is implicit
-// (`cluster_kacho_root`).
+// (`cluster_root`).
 type GetClusterRequest struct {
 	state         protoimpl.MessageState `protogen:"open.v1"`
 	unknownFields protoimpl.UnknownFields

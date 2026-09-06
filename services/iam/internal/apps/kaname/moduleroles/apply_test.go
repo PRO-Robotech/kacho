@@ -100,7 +100,7 @@ func vpcManifest(t *testing.T, id, class string) *manifest.Manifest {
 	doc := "apiVersion: iam/v1\nmodule: vpc\nroles:\n" +
 		"  - id: " + id + "\n" +
 		"    description: Распоряжается сетями модуля.\n" +
-		"    tier: {tierType: iam.cluster, tierId: cluster_kacho_root}\n" +
+		"    tier: {tierType: iam.cluster, tierId: cluster_root}\n" +
 		"    rules:\n      - {module: vpc, resources: [network], classes: [" + class + "]}\n"
 	m, err := manifest.Load([]byte(doc))
 	if err != nil {
@@ -243,7 +243,7 @@ func TestApplierRefusesARoleThatTheDomainRejects(t *testing.T) {
 	doc := "apiVersion: iam/v1\nmodule: vpc\nroles:\n" +
 		"  - id: vpc.network.admin\n" +
 		"    description: Распоряжается сетями модуля.\n" +
-		"    tier: {tierType: iam.cluster, tierId: cluster_kacho_root}\n" +
+		"    tier: {tierType: iam.cluster, tierId: cluster_root}\n" +
 		"    rules:\n      - {module: vpc, resources: [network], classes: [get]}\n"
 	m, err := manifest.Load([]byte(doc))
 	if err != nil {

@@ -70,7 +70,7 @@ describe("buildCreateAccessBindingBody", () => {
       scopeId: "",
     });
     expect(body.scope_type).toBe("iam.cluster");
-    expect(body.scope_id).toBe("cluster_kacho_root");
+    expect(body.scope_id).toBe("cluster_root");
   });
 
   it("uses the project tier's dotted name", () => {

@@ -30,7 +30,7 @@ model
 # THE THREE TOP LEVELS ARE THE EXCEPTION, AND THEY CASCADE (owner directive
 # 2026-07-27, .claude/rules/security.md "Три уровня супер-доступа — КАСКАДОМ"):
 #
-#   1. cloud administrator  — `cluster:cluster_kacho_root#system_admin`, over everything;
+#   1. cloud administrator  — `cluster:cluster_root#system_admin`, over everything;
 #   2. bootstrap identity   — the SAME relation (migration 0058 seeds it for the
 #                             bootstrap SA, seed/bootstrap_admin.go for the root
 #                             user), so it needs no separate carrier;
@@ -123,7 +123,7 @@ model
 # `... from organization` derivation — Organization is fully gone.
 #
 # DSL conventions (acceptance §4):
-#   - `cluster:cluster_kacho_root`     — singleton enforced on write-side
+#   - `cluster:cluster_root`     — singleton enforced on write-side
 #     (P3-D17). One global cluster object.
 #   - `account` / `project` — STRUCTURAL parents
 #     (cluster ▶ account ▶ project ▶ <domain resource>);
@@ -177,7 +177,7 @@ type group
     define member: [user, service_account]
 
 # ---------------------------------------------------------------------------
-# Cluster — singleton "cluster_kacho_root". Write-side enforcement rejects
+# Cluster — singleton "cluster_root". Write-side enforcement rejects
 # tuples with any other object id (P3-D17).
 #   - system_admin  — standing cluster administrator.
 #   - system_viewer — read-only cluster catalog viewer.
@@ -249,7 +249,7 @@ type cluster
     #   create / update → editor
     #   delete          → admin
     # Cluster-scoped Internal admin RPCs (compute.regions.delete, etc.)
-    # land on object cluster:cluster_kacho_root with derived relation
+    # land on object cluster:cluster_root with derived relation
     # admin/editor. Without these aliases, FGA Check returned no-path for
     # every system_admin user even though their tuple was correct.
     # `system_admin` covers BOTH editor + admin so a single tuple grants
@@ -1072,7 +1072,7 @@ type vpc_cidr_group
 type vpc_address_pool
   relations
     # kacho:latent — cluster-anchored admin resource; its RPCs gate on
-    # cluster:cluster_kacho_root#system_admin directly, so no module registers an
+    # cluster:cluster_root#system_admin directly, so no module registers an
     # address pool and nothing writes this pointer today. Declared ahead of that
     # producer deliberately: the type is admin-curated and the anchor is what the
     # super-admin cascade below derives over. The marker expires by itself — the

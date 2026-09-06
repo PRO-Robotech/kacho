@@ -175,7 +175,7 @@ func (r *accessBindingResource) Schema(_ context.Context, _ resource.SchemaReque
 					"на что именно под ним — отдельно, в `target`."},
 
 			"scope_id": schema.StringAttribute{Required: true, PlanModifiers: replaceStr,
-				MarkdownDescription: "Идентификатор объекта-якоря: `cluster_kacho_root` для " +
+				MarkdownDescription: "Идентификатор объекта-якоря: `cluster_root` для " +
 					"`iam.cluster`, `acc…` для `iam.account`, `prj…` для `iam.project`."},
 
 			// НАБОР, а не список: получатели — множество, порядок между ними ничего не

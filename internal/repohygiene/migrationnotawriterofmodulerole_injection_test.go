@@ -16,14 +16,14 @@ import (
 // injMigrationVPCRole — вставка роли модуля в живой форме дерева.
 const injMigrationVPCRole = `-- +goose Up
 INSERT INTO kaname.roles (id, cluster_id, account_id, name, description, permissions) VALUES
-  ('rol' || substr(md5('vpc.network.admin'), 1, 17), 'cluster_kacho_root', NULL,
+  ('rol' || substr(md5('vpc.network.admin'), 1, 17), 'cluster_root', NULL,
    'vpc.network.admin', 'Admin Network', '["vpc.network.*"]'::jsonb);
 `
 
 // injMigrationNoOwnerRole — роль БЕЗ модуля-владельца: точки в имени нет.
 const injMigrationNoOwnerRole = `-- +goose Up
 INSERT INTO kaname.roles (id, cluster_id, account_id, name, description, permissions) VALUES
-  ('rol' || substr(md5('owner'), 1, 17), 'cluster_kacho_root', NULL,
+  ('rol' || substr(md5('owner'), 1, 17), 'cluster_root', NULL,
    'owner', 'Owner', '["*.*.*.*"]'::jsonb);
 `
 
@@ -218,7 +218,7 @@ func TestMigrationRoleGateJudgesOnlyAddedMigrations(t *testing.T) {
 // счёта уровней разбор разорвал бы кортеж посередине и сдвинул бы все
 // последующие колонки, то есть прочитал бы имя не той роли.
 const injMigrationDumpForm = `-- +goose Up
-INSERT INTO kaname.roles (id, account_id, name, description, permissions, created_at, cluster_id, project_id, rules, labels, owner_module, live) VALUES ('rol6307d201bf18e6763', NULL, 'vpc.network.admin', 'Admin Network', '["vpc.network.*.*"]', now(), 'cluster_kacho_root', NULL, '[{"verbs": ["*"], "module": "vpc", "resources": ["network"]}]', '{}', NULL, true);
+INSERT INTO kaname.roles (id, account_id, name, description, permissions, created_at, cluster_id, project_id, rules, labels, owner_module, live) VALUES ('rol6307d201bf18e6763', NULL, 'vpc.network.admin', 'Admin Network', '["vpc.network.*.*"]', now(), 'cluster_root', NULL, '[{"verbs": ["*"], "module": "vpc", "resources": ["network"]}]', '{}', NULL, true);
 `
 
 // injMigrationDumpFormNoColumnList — вставка БЕЗ перечня колонок.

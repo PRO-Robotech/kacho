@@ -9,7 +9,7 @@ package pg_test
 // Verifies:
 // - 01: Both new cluster-scoped system roles exist after migration apply.
 // - 02: Permission lists match the design baseline byte-for-byte.
-// - 03: `is_system = true`, `account_id IS NULL`, `cluster_id = 'cluster_kacho_root'`.
+// - 03: `is_system = true`, `account_id IS NULL`, `cluster_id = 'cluster_root'`.
 // - 04: Re-apply (ON CONFLICT DO NOTHING) is idempotent.
 // - 05: `Update` on a system role → ErrFailedPrecondition (immutable contract holds).
 // - 06: `Delete` on a system role → ErrFailedPrecondition "System role".
@@ -200,7 +200,7 @@ func TestSeed_NLB_03_ClusterScopeAndIsSystem(t *testing.T) {
 
 		assert.True(t, isSystem, "%s must be system", tc.name)
 		require.True(t, clusterID.Valid, "%s.cluster_id must be NOT NULL (cluster scope)", tc.name)
-		assert.Equal(t, "cluster_kacho_root", clusterID.String, "%s.cluster_id", tc.name)
+		assert.Equal(t, "cluster_root", clusterID.String, "%s.cluster_id", tc.name)
 		assert.False(t, accountID.Valid, "%s.account_id must be NULL (cluster scope)", tc.name)
 		assert.False(t, projectID.Valid, "%s.project_id must be NULL (cluster scope)", tc.name)
 		assert.Equal(t, tc.name, gotName)
@@ -225,7 +225,7 @@ func TestSeed_NLB_04_ReapplyIdempotent(t *testing.T) {
 		INSERT INTO kaname.roles
 		 (id, cluster_id, account_id, name, description, permissions)
 		VALUES
-		 ($1, 'cluster_kacho_root', NULL,
+		 ($1, 'cluster_root', NULL,
 		 'loadbalancer.operator',
 		 'NLB operator (getTargetStates/listOperations + viewer on LB hierarchy)',
 		 '[
@@ -334,7 +334,7 @@ func TestSeed_NLB_07_GreaterOrEqualSystemRoleCountAfterSeed(t *testing.T) {
 	require.NoError(t, pool.QueryRow(ctx,
 		`SELECT COUNT(*) FROM kaname.roles
 		 WHERE is_system = true
-		 AND cluster_id = 'cluster_kacho_root'`).Scan(&count))
+		 AND cluster_id = 'cluster_root'`).Scan(&count))
 	assert.GreaterOrEqual(t, count, 4,
 		"expect ≥4 cluster-scoped system roles after KAC-NLB seed "+
 			"(2 baseline + 2 KAC-NLB new)")

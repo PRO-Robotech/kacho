@@ -181,7 +181,7 @@ func TestOwnResource_FGAOutbox_AccountOwnerSelfGrantEmittedInTx(t *testing.T) {
 		OwnerUserID: uid,
 	}
 	owner := hierarchyTuple("user", string(uid), "owner", "account", string(accID))
-	clusterPtr := hierarchyTuple("cluster", "cluster_kacho_root", "cluster", "account", string(accID))
+	clusterPtr := hierarchyTuple("cluster", "cluster_root", "cluster", "account", string(accID))
 
 	w, err := repo.Writer(ctx)
 	require.NoError(t, err)

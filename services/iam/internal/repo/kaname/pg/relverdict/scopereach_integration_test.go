@@ -95,7 +95,7 @@ func seedChainThroughProducer(t *testing.T, ctx context.Context, tx pgx.Tx) {
 		// и перевод в словарь модели делает сам производитель.
 		{catalogFormOf(t, "vpc_network"), "net-1", ownerregister.ParentChain(nil, "prj-1", ""), "prj-1", ""},
 		{catalogFormOf(t, "project"), "prj-1", ownerregister.ParentChain(nil, "", "acc-1"), "", "acc-1"},
-		{catalogFormOf(t, "account"), "acc-1", []string{"cluster:cluster_kacho_root"}, "", ""},
+		{catalogFormOf(t, "account"), "acc-1", []string{"cluster:cluster_root"}, "", ""},
 	}
 	for i, r := range regs {
 		registerThroughProducer(t, ctx, tx, r.objectType, r.objectID, r.chain,
@@ -158,7 +158,7 @@ func TestScopeReachesTheRootOnTheChainProducersActuallyWrite(t *testing.T) {
 			 VALUES ('usr-admin', 'ext-admin', 'admin@kacho.local', 'acc-1')`)
 		exec(t, ctx, tx,
 			`INSERT INTO kaname.relation_fact (object_type, object_id, relation, subject)
-			 VALUES ('cluster', 'cluster_kacho_root', 'system_admin', 'user:usr-admin')`)
+			 VALUES ('cluster', 'cluster_root', 'system_admin', 'user:usr-admin')`)
 
 		admin, _, err := relverdict.Ask(ctx, tx, relverdict.Query{
 			Subject: "user:usr-admin", ObjectType: "vpc_network", ObjectID: "net-1", Relation: "v_get",
@@ -295,7 +295,7 @@ func TestScopeReachesTheRootOnTheChainTheTreeActuallyProduces(t *testing.T) {
 			 VALUES ('usr-admin', 'ext-admin', 'admin@kacho.local', 'acc-1')`)
 		exec(t, ctx, tx,
 			`INSERT INTO kaname.relation_fact (object_type, object_id, relation, subject)
-			 VALUES ('cluster', 'cluster_kacho_root', 'system_admin', 'user:usr-admin')`)
+			 VALUES ('cluster', 'cluster_root', 'system_admin', 'user:usr-admin')`)
 		if got := ask("user:usr-admin", "net-1"); got != relverdict.Allow {
 			t.Errorf("администратор облака не достал до объекта арендатора: %s. Это аварийный "+
 				"путь §«Три уровня супер-доступа»: он обязан работать независимо от состояния "+

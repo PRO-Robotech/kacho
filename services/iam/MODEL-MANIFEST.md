@@ -69,7 +69,7 @@ roles:                    # роли, объявленные модулем
     description: полное распоряжение сетями проекта
     tier:                           # ярус — ПАРА, а не слово: тип и идентификатор
       tierType: iam.cluster
-      tierId: cluster_kacho_root
+      tierId: cluster_root
     rules: []                       # выдачи роли
 
 deprecatedVerbs: {}       # глаголы, принимаемые на чтении и не производимые на записи
@@ -176,7 +176,7 @@ roles:
     description: полное распоряжение сценариями арендатора
     tier:
       tierType: iam.cluster
-      tierId: cluster_kacho_root
+      tierId: cluster_root
     rules:
       - module: tenantops                     # правило называет СВОЙ модуль
         resources: [runbook]

@@ -142,7 +142,7 @@ func scopeSelfMember(cat *catalog.Facts, subject string, scopeType, scopeID stri
 //
 // Only the verb-bearing hierarchy scopes account/project materialize a per-object
 // scope-self member. cluster is DELIBERATELY excluded: cluster super-admin is served
-// by the D-9 flat short-circuit (cluster:cluster_kacho_root#system_admin), NOT a
+// by the D-9 flat short-circuit (cluster:cluster_root#system_admin), NOT a
 // per-object tuple — materializing per-object on cluster is the Q-2/D-9 anti-pattern.
 // The sole caller (scopeSelfMember) already gates cluster out ("iam.cluster" has no
 // catalog row at all — the hierarchy apex is not a resource), so this function never

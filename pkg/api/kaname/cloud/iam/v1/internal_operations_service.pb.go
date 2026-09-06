@@ -28,7 +28,7 @@
 //
 // Authorization gate: admin-tier enforced by the
 // api-gateway permission-catalog entry — `required_relation = "system_admin"`,
-// `scope_extractor.object_type = "cluster"` (⇒ singleton `cluster_kacho_root`),
+// `scope_extractor.object_type = "cluster"` (⇒ singleton `cluster_root`),
 // `required_acr_min = "2"` — parity with `InternalClusterService/*`. The
 // gateway authz middleware performs a real per-user FGA Check before the
 // request reaches the handler (the listener-origin gate does NOT bypass gated

@@ -221,7 +221,7 @@ func newGridFixture(t *testing.T, ctx context.Context, tx pgx.Tx) *gridFixture {
 	// Кластер — СИНГЛТОН, и его строку кладёт миграция. `DO NOTHING` здесь не
 	// проглатывание ошибки, а признание факта: идентификатор фиксирован
 	// ограничением схемы, вставить второй нельзя, и наличие первого — норма.
-	exec(t, ctx, tx, `INSERT INTO kaname.clusters (id, name) VALUES ('cluster_kacho_root', 'kacho')
+	exec(t, ctx, tx, `INSERT INTO kaname.clusters (id, name) VALUES ('cluster_root', 'kacho')
 		 ON CONFLICT DO NOTHING`)
 	exec(t, ctx, tx,
 		`INSERT INTO kaname.accounts (id, name, owner_user_id) VALUES ('acc-1', 'probe-account', 'usr-1')`)
@@ -267,7 +267,7 @@ func seedProbeRole(t *testing.T, ctx context.Context, tx pgx.Tx, roleID, roleNam
 		         jsonb_build_array(jsonb_build_object(
 		             'module', 'probe', 'resources', jsonb_build_array('*'),
 		             'verbs',  jsonb_build_array($3::text))),
-		         'cluster_kacho_root')`, roleID, roleName, probeVerb)
+		         'cluster_root')`, roleID, roleName, probeVerb)
 	exec(t, ctx, tx,
 		`INSERT INTO kaname.role_verb (role_id, object_type, verb) VALUES ($1, $2, $3)`,
 		roleID, probeCatalogType, probeVerb)
@@ -364,7 +364,7 @@ func (f *gridFixture) growB(t *testing.T, ctx context.Context, target int) {
 			         jsonb_build_array(jsonb_build_object(
 			             'module', 'probe', 'resources', jsonb_build_array('*'),
 			             'verbs',  jsonb_build_array($3::text))),
-			         'cluster_kacho_root')`, roleID, fmt.Sprintf("probe.b%05d", i), probeVerb))
+			         'cluster_root')`, roleID, fmt.Sprintf("probe.b%05d", i), probeVerb))
 		must(t, s.QueueRaw(ctx,
 			`INSERT INTO kaname.role_verb (role_id, object_type, verb) VALUES ($1, $2, $3)`,
 			roleID, probeCatalogType, probeVerb))
@@ -422,7 +422,7 @@ func (f *gridFixture) setR(t *testing.T, ctx context.Context, target int, rec sc
 			         jsonb_build_array(jsonb_build_object(
 			             'module', 'probe', 'resources', jsonb_build_array('*'),
 			             'verbs',  jsonb_build_array($3::text))),
-			         'cluster_kacho_root')`, roleID, fmt.Sprintf("probe.r%05d", i), probeVerb))
+			         'cluster_root')`, roleID, fmt.Sprintf("probe.r%05d", i), probeVerb))
 		must(t, s.QueueRaw(ctx,
 			`INSERT INTO kaname.role_verb (role_id, object_type, verb) VALUES ($1, $2, $3)`,
 			roleID, probeCatalogType, probeVerb))

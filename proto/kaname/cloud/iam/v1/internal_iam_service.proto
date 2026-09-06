@@ -155,7 +155,7 @@ service InternalIAMService {
   // authz: `<exempt>` на уровне permission-каталога (как все Internal IAM RPC).
   // Least-priv энфорсится в IAM-handler через ReBAC: mTLS client-cert →
   // ServiceAccount → relation `fga_writer` на системном объекте
-  // `cluster:cluster_kacho_root`. Нет relation → PermissionDenied. cluster-internal
+  // `cluster:cluster_root`. Нет relation → PermissionDenied. cluster-internal
   // listener :9091 only — нет google.api.http.
   rpc RegisterResource (RegisterResourceRequest) returns (RegisterResourceResponse) {
     option (kacho.iam.authz.v1.permission) = "<exempt>";
@@ -169,7 +169,7 @@ service InternalIAMService {
   // НЕ NotFound — drainer ретраит безопасно.
   //
   // Sync unary, НЕ Operation. authz: `<exempt>` + ReBAC `fga_writer` @
-  // `cluster:cluster_kacho_root` (см. RegisterResource). cluster-internal :9091 only,
+  // `cluster:cluster_root` (см. RegisterResource). cluster-internal :9091 only,
   // нет google.api.http.
   rpc UnregisterResource (UnregisterResourceRequest) returns (UnregisterResourceResponse) {
     option (kacho.iam.authz.v1.permission) = "<exempt>";

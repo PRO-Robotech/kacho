@@ -11,7 +11,7 @@ package readauthz_test
 //
 // Проверяемый контракт авторизации:
 //
-//	РАЗРЕШИТЬ если  администратор облака (cluster:cluster_kacho_root#system_admin) — любой объект
+//	РАЗРЕШИТЬ если  администратор облака (cluster:cluster_root#system_admin) — любой объект
 //	         ЛИБО   субъект держит v_get на объекте ресурса
 //	иначе    NotFound  (скрыть существование — никогда PermissionDenied, никакого перечисления)
 //	аноним   NotFound  (fail-closed до любого вопроса о доступе)

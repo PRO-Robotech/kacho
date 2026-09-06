@@ -112,7 +112,7 @@ func newRbacFixture(t *testing.T, ctx context.Context, suffix string) *rbacFixtu
 		_, xerr := tx.Exec(ctx, sql, args...)
 		require.NoError(t, xerr, sql)
 	}
-	exec(`INSERT INTO kaname.clusters (id, name) VALUES ('cluster_kacho_root', 'kacho')
+	exec(`INSERT INTO kaname.clusters (id, name) VALUES ('cluster_root', 'kacho')
 	      ON CONFLICT DO NOTHING`)
 	exec(`INSERT INTO kaname.accounts (id, name, owner_user_id)
 	      VALUES ($1, $2, $3)`, "acc-"+suffix, "probe-"+suffix, "usr-"+suffix)
@@ -124,7 +124,7 @@ func newRbacFixture(t *testing.T, ctx context.Context, suffix string) *rbacFixtu
 	// Роль КЛАСТЕРНОГО яруса: на неё ссылаются выдачи всех областей, тогда как
 	// роль проекта ограничена своей. Имя обязано пройти roles_system_name_check.
 	exec(`INSERT INTO kaname.roles (id, name, permissions, cluster_id)
-	      VALUES ($1, $2, '["compute.instance.*.get"]'::jsonb, 'cluster_kacho_root')`,
+	      VALUES ($1, $2, '["compute.instance.*.get"]'::jsonb, 'cluster_root')`,
 		roleID, "kacho.probe"+suffix)
 	require.NoError(t, tx.Commit(ctx))
 
@@ -136,7 +136,7 @@ func newRbacFixture(t *testing.T, ctx context.Context, suffix string) *rbacFixtu
 func (f *rbacFixture) insertRole(ctx context.Context, id, name, perms string) error {
 	_, err := f.pool.Exec(ctx, `
 		INSERT INTO kaname.roles (id, name, permissions, cluster_id)
-		VALUES ($1, $2, $3::jsonb, 'cluster_kacho_root')`, id, name, perms)
+		VALUES ($1, $2, $3::jsonb, 'cluster_root')`, id, name, perms)
 	return err
 }
 
@@ -292,7 +292,7 @@ func TestAccessBindingScope_DerivedFromResourceType(t *testing.T) {
 		id, resType, resID string
 		want               int
 	}{
-		{"acb0000000000000clst1", "cluster", "cluster_kacho_root", 1},
+		{"acb0000000000000clst1", "cluster", "cluster_root", 1},
 		{"acb0000000000000acct1", "account", "acc-sc1", 2},
 		{"acb0000000000000proj1", "project", "prj-sc1", 3},
 		{"acb0000000000000vpcn1", "vpc_network", "enp00000000000000n001", 3},
@@ -338,7 +338,7 @@ func TestAccessBindingScope_OutOfRangeIsRejectedAndOmittedIsDerived(t *testing.T
 	// значение ставит триггер. Вставка без области обязана проходить, иначе
 	// вызывающие, не знающие о колонке, перестали бы работать.
 	require.NoError(t, f.insertBinding(ctx,
-		"acb0000000000000ok001", "cluster", "cluster_kacho_root", subject, -1),
+		"acb0000000000000ok001", "cluster", "cluster_root", subject, -1),
 		"триггер обязан вывести область из типа ресурса")
 	var derived int
 	require.NoError(t, f.pool.QueryRow(ctx,

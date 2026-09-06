@@ -105,7 +105,7 @@ func TestIntegration_Issue2003_ScopeKeysComeFromTranslationNotTruncation(t *test
 	// и у члена (`access_binding_target_members.role_id`).
 	roleID := padOrTrim20("rol_d2003role")
 	_, err := pool.Exec(ctx, `
-		INSERT INTO kaname.clusters (id, name) VALUES ('cluster_kacho_root', 'kacho')
+		INSERT INTO kaname.clusters (id, name) VALUES ('cluster_root', 'kacho')
 		ON CONFLICT DO NOTHING`)
 	require.NoError(t, err, "seed cluster")
 	// `is_system` НЕ задаётся: с миграции 0056 это ПОРОЖДЁННАЯ колонка
@@ -119,7 +119,7 @@ func TestIntegration_Issue2003_ScopeKeysComeFromTranslationNotTruncation(t *test
 		            'module',    'test',
 		            'resources', jsonb_build_array('*'),
 		            'verbs',     jsonb_build_array('get'))),
-		        'cluster_kacho_root')`,
+		        'cluster_root')`,
 		roleID, "kacho.d2003.viewer")
 	require.NoError(t, err, "seed role")
 

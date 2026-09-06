@@ -395,7 +395,7 @@ func (RoleHealth) EnumDescriptor() ([]byte, []int) {
 // A Role resource. Named permission bundle.
 //
 // Roles бывают двух типов:
-//   - system roles (is_system=true, cluster_id='cluster_kacho_root') — seed'ятся
+//   - system roles (is_system=true, cluster_id='cluster_root') — seed'ятся
 //     миграциями kacho-iam, read-only через публичный API (Update/Delete на
 //     system role → FailedPrecondition).
 //   - custom roles (is_system=false) — multi-scope: точно один из
@@ -466,13 +466,13 @@ type Role struct {
 	// Deprecated: Marked as deprecated in kaname/cloud/iam/v1/role.proto.
 	Permissions []string `protobuf:"bytes,5,rep,name=permissions,proto3" json:"permissions,omitempty"`
 	// True for system roles (seed'ятся миграциями, read-only публично). When
-	// true, `cluster_id` MUST equal `cluster_kacho_root` and the other scope
+	// true, `cluster_id` MUST equal `cluster_root` and the other scope
 	// fields MUST be empty (DB CHECK `roles_scope_xor`).
 	IsSystem bool `protobuf:"varint,6,opt,name=is_system,json=isSystem,proto3" json:"is_system,omitempty"`
 	// Creation timestamp.
 	CreatedAt *timestamppb.Timestamp `protobuf:"bytes,7,opt,name=created_at,json=createdAt,proto3" json:"created_at,omitempty"`
 	// ID of the Cluster that owns this Role. Non-empty only for system roles
-	// (literal `cluster_kacho_root`).
+	// (literal `cluster_root`).
 	ClusterId string `protobuf:"bytes,8,opt,name=cluster_id,json=clusterId,proto3" json:"cluster_id,omitempty"`
 	// ID of the Project that owns this Role. Non-empty only for project-scoped
 	// custom roles.
@@ -1377,7 +1377,7 @@ type DefinitionTier struct {
 	state protoimpl.MessageState `protogen:"open.v1"`
 	// Dotted tier type: `iam.cluster` | `iam.account` | `iam.project`.
 	TierType string `protobuf:"bytes,1,opt,name=tier_type,json=tierType,proto3" json:"tier_type,omitempty"`
-	// Anchor object id (`cluster_kacho_root` | `acc…` | `prj…`).
+	// Anchor object id (`cluster_root` | `acc…` | `prj…`).
 	TierId        string `protobuf:"bytes,2,opt,name=tier_id,json=tierId,proto3" json:"tier_id,omitempty"`
 	unknownFields protoimpl.UnknownFields
 	sizeCache     protoimpl.SizeCache

@@ -177,7 +177,7 @@ func TestDenyStaysForbiddenWhereThereIsNoExistenceToHide(t *testing.T) {
 			name:       "no owner text",
 			fullMethod: "/kacho.cloud.geo.v1.RegionService/Get",
 			entry: authz.RPCEntry{Relation: "v_get", Extract: authz.StaticExtractor("cluster", func(any) (string, error) {
-				return "cluster_kacho_root", nil
+				return "cluster_root", nil
 			})},
 			req: &fakeReq{},
 			ctx: ctxWithPrincipal(t, "usr_x", "user"),

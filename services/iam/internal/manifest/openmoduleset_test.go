@@ -58,7 +58,7 @@ const acmeWithRole = acmeEnvelope + `roles:
     description: "Полный доступ к виджетам acme в проекте оператора"
     tier:
       tierType: iam.cluster
-      tierId: cluster_kacho_root
+      tierId: cluster_root
     rules:
       - module: acme
         resources: [widget]
