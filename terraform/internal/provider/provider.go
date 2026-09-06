@@ -29,7 +29,7 @@ type kachoProvider struct{}
 func New() provider.Provider { return &kachoProvider{} }
 
 func (p *kachoProvider) Metadata(_ context.Context, _ provider.MetadataRequest, resp *provider.MetadataResponse) {
-	resp.TypeName = "kacho"
+	resp.TypeName = providerTypeName
 	resp.Version = Version
 }
 

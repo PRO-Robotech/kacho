@@ -57,8 +57,17 @@ type saKeyResource struct{ c *client.Client }
 // NewIAMSAKeyResource — конструктор для реестра провайдера.
 func NewIAMSAKeyResource() resource.Resource { return &saKeyResource{} }
 
-func (r *saKeyResource) Metadata(_ context.Context, req resource.MetadataRequest, resp *resource.MetadataResponse) {
-	resp.TypeName = req.ProviderTypeName + "_iam_service_account_key"
+// MoveState — переезд состояния с прежнего имени типа.
+//
+// Объявление обязательно: одного блока `moved` в настройке оператора НЕДОСТАТОЧНО —
+// исполнитель шлёт запрос переезда целевому типу, и тип, не объявивший поддержки, роняет
+// план. Что именно принимается и почему — iam_type_names.go.
+func (r *saKeyResource) MoveState(ctx context.Context) []resource.StateMover {
+	return movedFromRetiredTypeName(ctx, r)
+}
+
+func (r *saKeyResource) Metadata(_ context.Context, _ resource.MetadataRequest, resp *resource.MetadataResponse) {
+	resp.TypeName = typeNameIAMServiceAccountKey
 }
 
 func (r *saKeyResource) Configure(_ context.Context, req resource.ConfigureRequest, resp *resource.ConfigureResponse) {
@@ -186,7 +195,7 @@ func (r *saKeyResource) Create(ctx context.Context, req resource.CreateRequest, 
 		return
 	}
 	hdr := &client.Headers{IdempotencyKey: client.IdempotencyKey(
-		"kacho_iam_service_account_key", plan.ServiceAccountID.ValueString()+"/"+plan.Name.ValueString(), raw)}
+		typeNameIAMServiceAccountKey, plan.ServiceAccountID.ValueString()+"/"+plan.Name.ValueString(), raw)}
 
 	httpResp, err := r.c.Do(ctx, http.MethodPost, path, body, hdr)
 	if err != nil {

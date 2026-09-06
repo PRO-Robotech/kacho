@@ -69,7 +69,7 @@ var nonCreatingVerbs = map[string]bool{
 	"RemoveTargets": true, "RenameRepository": true, "Restart": true, "Revoke": true, "SetAccessBindings": true,
 	// RemoveFromAccount — глагол СНИМАЮЩИЙ, и это не спорный случай: он выводит
 	// человека из аккаунта, не заводя ничего. Провайдер зовёт его уничтожением
-	// ресурса `kacho_iam_user_invitation` — ресурс моделирует ЧЛЕНСТВО, поэтому
+	// ресурса `kaname_user_invitation` — ресурс моделирует ЧЛЕНСТВО, поэтому
 	// снятие членства и есть его destroy (#1127).
 	"RemoveFromAccount":        true,
 	"SimulateMaintenanceEvent": true, "Start": true, "Stop": true, "Unblock": true, "Update": true, "UpdateAccessBindings": true,
@@ -94,16 +94,16 @@ var tfCoverage = map[string]string{
 	"CidrGroupService":        "kacho_vpc_cidr_group",
 
 	// iam
-	"ProjectService":        "kacho_iam_project",
-	"GroupService":          "kacho_iam_group",
-	"ServiceAccountService": "kacho_iam_service_account",
-	"SAKeyService":          "kacho_iam_service_account_key",
-	"AccountService":        "kacho_iam_account",
-	"RoleService":           "kacho_iam_role",
-	"AccessBindingService":  "kacho_iam_access_binding",
-	"UserService":           "kacho_iam_user_invitation",
+	"ProjectService":        "kaname_project",
+	"GroupService":          "kaname_group",
+	"ServiceAccountService": "kaname_service_account",
+	"SAKeyService":          "kaname_service_account_key",
+	"AccountService":        "kaname_account",
+	"RoleService":           "kaname_role",
+	"AccessBindingService":  "kaname_access_binding",
+	"UserService":           "kaname_user_invitation",
 
-	"UserTokenService": "kacho_iam_user_token",
+	"UserTokenService": "kaname_user_token",
 
 	// nlb
 	"TargetGroupService":         "kacho_nlb_target_group",
@@ -307,7 +307,16 @@ var (
 	// знающий одну форму, объявил бы три существующих ресурса отсутствующими — что он и
 	// сделал при первом прогоне.
 	reTypeName = regexp.MustCompile(`ProviderTypeName\s*\+\s*"(_[a-z0-9_]+)"`)
-	reTypeLit  = regexp.MustCompile(`tfName:\s*"(kacho_[a-z0-9_]+)"`)
+	reTypeLit  = regexp.MustCompile(`tfName:\s*"((?:kacho|kaname)_[a-z0-9_]+)"`)
+	// Третья форма — имя типа ОБЪЯВЛЕНО константой, а не вписано на месте. Она появилась
+	// вместе с переездом типов доступа: у пяти из них полное имя было записано дважды
+	// независимыми литералами, и разойтись они могли молча, поэтому объявление сведено к
+	// одному. Предикат, знающий только литерал, объявил бы девять существующих ресурсов
+	// отсутствующими — что он и сделал при первом прогоне после сведения.
+	reTypeConstDecl  = regexp.MustCompile(`(?m)^\s*(\w+)\s*=\s*"((?:kacho|kaname)_[a-z0-9_]+)"\s*$`)
+	reTypeNameIdent  = regexp.MustCompile(`TypeName\s*=\s*([A-Za-z_]\w*)\b`)
+	reTypeSpecIdent  = regexp.MustCompile(`tfName:\s*([A-Za-z_]\w*)\s*,`)
+	reTypeSpecEither = regexp.MustCompile(`tfName:\s*(?:"((?:kacho|kaname)_[a-z0-9_]+)"|([A-Za-z_]\w*))\s*,`)
 )
 
 // publicCreatingServices — сервисы контрактов, заводящие ресурс.
@@ -444,7 +453,17 @@ func registeredTerraformResources(t *testing.T, root string) map[string]bool {
 
 	out := map[string]bool{}
 
-	// Форма 1: собственный конструктор. Имя типа берётся из Metadata его файла.
+	// Константы имён типов собираются ПЕРВЫМИ: на них ссылаются обе формы ниже, и без
+	// словаря идентификатор неотличим от опечатки.
+	consts := map[string]string{}
+	for _, s := range sources {
+		for _, c := range reTypeConstDecl.FindAllStringSubmatch(s, -1) {
+			consts[c[1]] = c[2]
+		}
+	}
+
+	// Форма 1: собственный конструктор. Имя типа берётся из Metadata его файла — либо
+	// склейкой с префиксом провайдера, либо константой.
 	for _, m := range reRegCtor.FindAllStringSubmatch(registryBody, -1) {
 		ctor := m[1]
 		for _, s := range sources {
@@ -457,17 +476,42 @@ func registeredTerraformResources(t *testing.T, root string) map[string]bool {
 			for _, t := range reTypeLit.FindAllStringSubmatch(s, -1) {
 				out[t[1]] = true
 			}
+			for _, t := range reTypeNameIdent.FindAllStringSubmatch(s, -1) {
+				if v, ok := consts[t[1]]; ok {
+					out[v] = true
+				}
+			}
+			for _, t := range reTypeSpecIdent.FindAllStringSubmatch(s, -1) {
+				if v, ok := consts[t[1]]; ok {
+					out[v] = true
+				}
+			}
 		}
 	}
 
-	// Форма 2: сборка из описания. Имя типа берётся из самого описания.
+	// Форма 2: сборка из описания. Имя типа берётся из самого описания — литералом либо
+	// константой.
 	for _, m := range reRegFlat.FindAllStringSubmatch(registryBody, -1) {
 		spec := m[1]
 		found := false
 		for _, s := range sources {
-			d := regexp.MustCompile(`var\s+` + spec + `\s*=\s*flatSpec\{[^}]*?tfName:\s*"(kacho_[a-z0-9_]+)"`)
-			if g := d.FindStringSubmatch(s); g != nil {
+			d := regexp.MustCompile(`var\s+` + spec + `\s*=\s*flatSpec\{[^}]*?` + reTypeSpecEither.String())
+			g := d.FindStringSubmatch(s)
+			if g == nil {
+				continue
+			}
+			switch {
+			case g[1] != "":
 				out[g[1]] = true
+				found = true
+			case g[2] != "":
+				v, ok := consts[g[2]]
+				if !ok {
+					t.Errorf("описание %s называет имя типа константой %s, которой в пакете "+
+						"провайдера нет: словарь имён и описание разошлись", spec, g[2])
+					continue
+				}
+				out[v] = true
 				found = true
 			}
 		}

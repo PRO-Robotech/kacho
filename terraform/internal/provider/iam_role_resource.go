@@ -84,8 +84,17 @@ var (
 	_ resource.ResourceWithConfigure      = (*roleResource)(nil)
 )
 
-func (r *roleResource) Metadata(_ context.Context, req resource.MetadataRequest, resp *resource.MetadataResponse) {
-	resp.TypeName = req.ProviderTypeName + "_iam_role"
+// MoveState — переезд состояния с прежнего имени типа.
+//
+// Объявление обязательно: одного блока `moved` в настройке оператора НЕДОСТАТОЧНО —
+// исполнитель шлёт запрос переезда целевому типу, и тип, не объявивший поддержки, роняет
+// план. Что именно принимается и почему — iam_type_names.go.
+func (r *roleResource) MoveState(ctx context.Context) []resource.StateMover {
+	return movedFromRetiredTypeName(ctx, r)
+}
+
+func (r *roleResource) Metadata(_ context.Context, _ resource.MetadataRequest, resp *resource.MetadataResponse) {
+	resp.TypeName = typeNameIAMRole
 }
 
 func (r *roleResource) Configure(_ context.Context, req resource.ConfigureRequest, resp *resource.ConfigureResponse) {
@@ -126,7 +135,7 @@ func roleRuleObjectType() types.ObjectType {
 func (r *roleResource) Schema(_ context.Context, _ resource.SchemaRequest, resp *resource.SchemaResponse) {
 	resp.Schema = schema.Schema{
 		MarkdownDescription: "Пользовательская роль — набор прав, который выдаётся субъекту " +
-			"привязкой (`kacho_iam_access_binding`). Сама роль доступа не даёт: она описывает, " +
+			"привязкой (`kaname_access_binding`). Сама роль доступа не даёт: она описывает, " +
 			"ЧТО можно делать, а привязка — КОМУ и ГДЕ.\n\n" +
 			":::tip Право получает ГРУППА, а не перечень людей\n" +
 			"Роль выдавайте группе и добавляйте в неё людей и служебные учётки: снять одного из " +
@@ -608,7 +617,7 @@ func (r *roleResource) Create(ctx context.Context, req resource.CreateRequest, r
 		},
 	}
 
-	id, err := awaitCreate(ctx, r.c, rolesPath, "roleId", "kacho_iam_role",
+	id, err := awaitCreate(ctx, r.c, rolesPath, "roleId", typeNameIAMRole,
 		tier.TierID.ValueString()+"/"+plan.Name.ValueString(), body)
 	if err != nil {
 		resp.Diagnostics.AddError("Создание роли не завершилось", err.Error()+

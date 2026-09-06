@@ -100,7 +100,7 @@ func TestSchemaInjection_RetiredNameInACatalogQueryIsFound(t *testing.T) {
 func TestSchemaInjection_NeighbourNamespaceStaysSilent(t *testing.T) {
 	body := soundSchemaBody +
 		"PERFORM pg_notify('kacho_iam_subjects', NEW.id::text);\n" +
-		"-- метрика kacho_iam_identities_total, тип провайдера kacho_iam_account\n"
+		"-- метрика kacho_iam_identities_total, представление kacho_iam_account\n"
 
 	census, findings, err := scanSchemaName(syntheticCorpus(t, schemaRootWith(t, body)))
 	require.NoError(t, err)

@@ -27,13 +27,13 @@
 terraform {
   required_version = ">= 1.6"
   required_providers {
-    kacho = {
+    kaname = {
       source = "PRO-Robotech/kacho"
     }
   }
 }
 
-resource "kacho_iam_service_account" "this" {
+resource "kaname_service_account" "this" {
   account_id  = var.account_id
   name        = var.name
   description = var.description
@@ -54,10 +54,10 @@ resource "kacho_iam_service_account" "this" {
 # зафиксирован объявлением переменной, а набор атрибутов ресурса шире на вычисляемые поля
 # (идентификатор клиента, идентификатор подписи, сам материал ключа) — общего типа у них
 # нет, и передача целиком дала бы отказ, не называющий ни поля, ни причины.
-resource "kacho_iam_service_account_key" "this" {
+resource "kaname_service_account_key" "this" {
   for_each = var.keys
 
-  service_account_id = kacho_iam_service_account.this.id
+  service_account_id = kaname_service_account.this.id
 
   # `null` означает «не называть»: край подставит ответственного сам. Пробрасывается КАК
   # ЕСТЬ, без подстановки пустой строки вместо null, — пустая строка на проводе от

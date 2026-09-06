@@ -136,11 +136,20 @@ terraform state rm <адрес ресурса>
 
 | Домен | Ресурсы |
 |---|---|
-| IAM | `kacho_iam_account`, `kacho_iam_project`, `kacho_iam_group`, `kacho_iam_role`, `kacho_iam_access_binding`, `kacho_iam_service_account`, `kacho_iam_service_account_key`, `kacho_iam_user_invitation`, `kacho_iam_user_token` |
+| IAM | `kaname_account`, `kaname_project`, `kaname_group`, `kaname_role`, `kaname_access_binding`, `kaname_service_account`, `kaname_service_account_key`, `kaname_user_invitation`, `kaname_user_token` |
 | Вычисления | `kacho_compute_instance`, `kacho_compute_guest_access_key`, `kacho_compute_placement_group` |
 | Балансировщик | `kacho_nlb_target_group`, `kacho_nlb_load_balancer`, `kacho_nlb_listener` |
 | Хранилище | `kacho_storage_volume`, `kacho_storage_snapshot`, `kacho_storage_image` |
 | Реестр | `kacho_registry_registry`, `kacho_registry_repository` |
+
+:::note Ресурсы доступа адресуются приставкой `kaname`
+Служба доступа называет себя своим именем, поэтому её типы начинаются с `kaname_`, а не с
+`kacho_`. Провайдер тот же — меняется только локальное имя, под которым он объявлен.
+Конфигурации, заводящей ресурсы обоих видов, нужны **два** локальных имени и **два** блока
+настройки; имя, оставшееся без блока `provider`, получает ненастроенный провайдер. Подробно
+— на странице «Провайдер Terraform» в документации IAM, там же объявления переезда с
+прежних имён `kacho_iam_*`.
+:::
 
 ### Источники данных
 

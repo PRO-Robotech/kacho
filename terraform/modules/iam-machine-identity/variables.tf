@@ -158,7 +158,7 @@ variable "keys" {
 
   validation {
     condition     = length(var.keys) > 0
-    error_message = "keys не может быть пустым: учётка без ключа — это личность, которой нечем войти. Если ключ действительно не нужен, заводите kacho_iam_service_account напрямую."
+    error_message = "keys не может быть пустым: учётка без ключа — это личность, которой нечем войти. Если ключ действительно не нужен, заводите kaname_service_account напрямую."
   }
 
   validation {

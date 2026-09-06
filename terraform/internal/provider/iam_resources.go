@@ -47,21 +47,21 @@ type iamNamedKind struct {
 
 var (
 	iamProjectKind = iamNamedKind{
-		tfName: "kacho_iam_project", human: "Проект", path: "/iam/v1/projects",
+		tfName: typeNameIAMProject, human: "Проект", path: "/iam/v1/projects",
 		idField: "projectId", prefix: "prj",
 		descr: "Проект — область, внутри которой живут ресурсы платформы.",
 		deleteHint: "Удалению мешает пользовательская роль, определённая в этом проекте: " +
 			"ссылка на проект защищена на уровне хранилища.",
 	}
 	iamGroupKind = iamNamedKind{
-		tfName: "kacho_iam_group", human: "Группа", path: "/iam/v1/groups",
+		tfName: typeNameIAMGroup, human: "Группа", path: "/iam/v1/groups",
 		idField: "groupId", prefix: "grp",
 		descr: "Группа субъектов. Права выдаются группе, а люди и служебные учётки в неё добавляются.",
 		deleteHint: "Удалению мешают действующие выдачи прав на эту группу. Члены группы " +
 			"удалению НЕ мешают — членство снимается вместе с ней.",
 	}
 	iamServiceAccountKind = iamNamedKind{
-		tfName: "kacho_iam_service_account", human: "Служебная учётка", path: "/iam/v1/serviceAccounts",
+		tfName: typeNameIAMServiceAccount, human: "Служебная учётка", path: "/iam/v1/serviceAccounts",
 		idField: "serviceAccountId", prefix: "sva",
 		descr: "Служебная учётная запись — принципал для машинного доступа.",
 		deleteHint: "Удалению мешают действующие выдачи прав и членство в группах. " +
@@ -89,6 +89,15 @@ func NewIAMProjectResource() resource.Resource { return &iamNamedResource{kind: 
 func NewIAMGroupResource() resource.Resource   { return &iamNamedResource{kind: iamGroupKind} }
 func NewIAMServiceAccountResource() resource.Resource {
 	return &iamNamedResource{kind: iamServiceAccountKind}
+}
+
+// MoveState — переезд состояния с прежнего имени типа.
+//
+// Объявление обязательно: одного блока `moved` в настройке оператора НЕДОСТАТОЧНО —
+// исполнитель шлёт запрос переезда целевому типу, и тип, не объявивший поддержки, роняет
+// план. Что именно принимается и почему — iam_type_names.go.
+func (r *iamNamedResource) MoveState(ctx context.Context) []resource.StateMover {
+	return movedFromRetiredTypeName(ctx, r)
 }
 
 func (r *iamNamedResource) Metadata(_ context.Context, _ resource.MetadataRequest, resp *resource.MetadataResponse) {

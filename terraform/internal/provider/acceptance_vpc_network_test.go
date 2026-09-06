@@ -449,7 +449,7 @@ func TestAcceptanceVPCNetwork_UnconfirmedAbsenceStops(t *testing.T) {
 func TestAcceptanceImportSurfaceIsDeliberate(t *testing.T) {
 	accCheckImportable(t, "kacho_vpc_network", NewNetworkResource(), true)
 	accCheckImportable(t, "kacho_nlb_target_group", NewNLBTargetGroupResource(), true)
-	accCheckImportable(t, "kacho_iam_service_account_key", NewIAMSAKeyResource(), false)
+	accCheckImportable(t, "kaname_service_account_key", NewIAMSAKeyResource(), false)
 	accCheckImportable(t, "kacho_compute_instance", NewComputeInstanceResource(), false)
 }
 

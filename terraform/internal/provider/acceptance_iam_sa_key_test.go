@@ -200,7 +200,7 @@ func accSAKeyConfigIssuedBy(e *fakeEdge, name string, ttl int64, issuer string) 
 		line = fmt.Sprintf("\n  created_by_user_id = %q", issuer)
 	}
 	return accProvider(e) + fmt.Sprintf(`
-resource "kacho_iam_service_account_key" "t" {
+resource "kaname_service_account_key" "t" {
   service_account_id = %q%s
   name               = %q
   ttl_seconds        = %d
@@ -225,11 +225,11 @@ func TestAcceptanceIAMServiceAccountKey_SecretSurvivesRefreshAndDiesWithTheKey(t
 			{
 				Config: accSAKeyConfig(e, "acc-key", 3600),
 				Check: resource.ComposeAggregateTestCheckFunc(
-					accCaptureAttr("kacho_iam_service_account_key.t", "id", &keyID),
-					accCaptureAttr("kacho_iam_service_account_key.t", "private_key_pem", &secret),
-					resource.TestCheckResourceAttr("kacho_iam_service_account_key.t", "algorithm", "RS256"),
-					resource.TestCheckResourceAttrSet("kacho_iam_service_account_key.t", "public_key_pem"),
-					resource.TestCheckResourceAttrSet("kacho_iam_service_account_key.t", "client_id"),
+					accCaptureAttr("kaname_service_account_key.t", "id", &keyID),
+					accCaptureAttr("kaname_service_account_key.t", "private_key_pem", &secret),
+					resource.TestCheckResourceAttr("kaname_service_account_key.t", "algorithm", "RS256"),
+					resource.TestCheckResourceAttrSet("kaname_service_account_key.t", "public_key_pem"),
+					resource.TestCheckResourceAttrSet("kaname_service_account_key.t", "client_id"),
 					func(*tfstate.State) error {
 						// Секрет в состоянии — ТОТ, что край выдал, а не пустая строка,
 						// которая тоже прошла бы проверку «атрибут задан».
@@ -246,9 +246,9 @@ func TestAcceptanceIAMServiceAccountKey_SecretSurvivesRefreshAndDiesWithTheKey(t
 				// разложить» затёрло бы его пустотой.
 				RefreshState: true,
 				Check: resource.ComposeAggregateTestCheckFunc(
-					accCheckAttrLate("kacho_iam_service_account_key.t", "id", &keyID),
+					accCheckAttrLate("kaname_service_account_key.t", "id", &keyID),
 					func(s *tfstate.State) error {
-						rs := s.RootModule().Resources["kacho_iam_service_account_key.t"]
+						rs := s.RootModule().Resources["kaname_service_account_key.t"]
 						if got := rs.Primary.Attributes["private_key_pem"]; got != secret {
 							return fmt.Errorf("обновление состояния изменило материал: было %q, стало %q",
 								secret, got)
@@ -265,7 +265,7 @@ func TestAcceptanceIAMServiceAccountKey_SecretSurvivesRefreshAndDiesWithTheKey(t
 				Config: accSAKeyConfig(e, "acc-key", 7200),
 				Check: resource.ComposeAggregateTestCheckFunc(
 					func(s *tfstate.State) error {
-						rs := s.RootModule().Resources["kacho_iam_service_account_key.t"]
+						rs := s.RootModule().Resources["kaname_service_account_key.t"]
 						if rs.Primary.Attributes["id"] == keyID {
 							return fmt.Errorf("идентификатор не сменился: правка не обернулась пересозданием")
 						}
@@ -329,13 +329,13 @@ func TestAcceptanceIAMServiceAccountKey_RevokedOutsideIsDroppedFromState(t *test
 		Steps: []resource.TestStep{
 			{
 				Config: accSAKeyConfig(e, "acc-key-revoked", 3600),
-				Check:  accCaptureAttr("kacho_iam_service_account_key.t", "id", &keyID),
+				Check:  accCaptureAttr("kaname_service_account_key.t", "id", &keyID),
 			},
 			{
 				PreConfig:          func() { e.Forget(keyID) },
 				RefreshState:       true,
 				ExpectNonEmptyPlan: true,
-				Check:              accAbsentFromState("kacho_iam_service_account_key.t"),
+				Check:              accAbsentFromState("kaname_service_account_key.t"),
 			},
 		},
 	})
@@ -364,7 +364,7 @@ func TestAcceptanceIAMServiceAccountKey_StateHoldsTheAddressableID(t *testing.T)
 		Steps: []resource.TestStep{{
 			Config: accSAKeyConfig(e, "acc-key-id", 0),
 			Check: func(s *tfstate.State) error {
-				rs := s.RootModule().Resources["kacho_iam_service_account_key.t"]
+				rs := s.RootModule().Resources["kaname_service_account_key.t"]
 				id := rs.Primary.Attributes["id"]
 				if e.Row(id) == nil {
 					return fmt.Errorf("в состоянии идентификатор %q, которого у края нет", id)
@@ -399,13 +399,13 @@ func TestAcceptanceIAMServiceAccountKey_MachineCallerIssuesWithoutNamingTheIssue
 		Steps: []resource.TestStep{{
 			Config: accSAKeyConfigIssuedBy(e, "acc-key-machine", 3600, ""),
 			Check: resource.ComposeAggregateTestCheckFunc(
-				resource.TestCheckResourceAttrSet("kacho_iam_service_account_key.t", "id"),
-				resource.TestCheckResourceAttrSet("kacho_iam_service_account_key.t", "private_key_pem"),
+				resource.TestCheckResourceAttrSet("kaname_service_account_key.t", "id"),
+				resource.TestCheckResourceAttrSet("kaname_service_account_key.t", "private_key_pem"),
 				// КТО заполняет поле, которого настройка не называла: край, и его ответ
 				// доезжает до состояния. Без этого утверждения проба зеленела бы и на
 				// провайдере, который поле принял, но потерял, — а состояние молчало бы
 				// о том, кто числится выпустившим живой ключ.
-				resource.TestCheckResourceAttr("kacho_iam_service_account_key.t",
+				resource.TestCheckResourceAttr("kaname_service_account_key.t",
 					"created_by_user_id", accSAKeyOwner),
 			),
 		}},
@@ -465,7 +465,7 @@ func TestAcceptanceIAMServiceAccountKey_EmptyIssuerIsRefusedAtPlan(t *testing.T)
 		ProtoV6ProviderFactories: accProviderFactories(t),
 		Steps: []resource.TestStep{{
 			Config: accProvider(e) + fmt.Sprintf(`
-resource "kacho_iam_service_account_key" "t" {
+resource "kaname_service_account_key" "t" {
   service_account_id = %q
   created_by_user_id = ""
   name               = "acc-key-empty-issuer"

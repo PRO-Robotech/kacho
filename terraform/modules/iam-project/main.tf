@@ -4,13 +4,13 @@
 terraform {
   required_version = ">= 1.6"
   required_providers {
-    kacho = {
+    kaname = {
       source = "PRO-Robotech/kacho"
     }
   }
 }
 
-resource "kacho_iam_project" "this" {
+resource "kaname_project" "this" {
   account_id  = var.account_id
   name        = var.name
   description = var.description
@@ -20,7 +20,7 @@ resource "kacho_iam_project" "this" {
 # Группы живут в АККАУНТЕ, а не в проекте: одна и та же группа обычно получает права в
 # нескольких проектах, и завести её внутри проекта значило бы плодить одноимённые группы,
 # состав которых разъедется.
-resource "kacho_iam_group" "this" {
+resource "kaname_group" "this" {
   for_each = var.groups
 
   account_id  = var.account_id
@@ -31,7 +31,7 @@ resource "kacho_iam_group" "this" {
 
 # Служебные учётки — тоже АККАУНТНЫЕ: контракт принимает account_id, поля проекта у них
 # нет. Сузить учётку до проекта можно только выдачей прав, а не местом заведения.
-resource "kacho_iam_service_account" "this" {
+resource "kaname_service_account" "this" {
   for_each = var.service_accounts
 
   account_id  = var.account_id
@@ -49,7 +49,7 @@ resource "kacho_iam_service_account" "this" {
 # означает не переименование, а ЗАМЕНУ: запись под старым ключом уничтожается (человек
 # снимается с аккаунта), под новым заводится приглашение заново. Псевдоним выбирают один
 # раз; переносят его `terraform state mv`, а не правкой ключа.
-resource "kacho_iam_user_invitation" "this" {
+resource "kaname_user_invitation" "this" {
   for_each = var.invitations
 
   account_id   = var.account_id
@@ -64,7 +64,7 @@ resource "kacho_iam_user_invitation" "this" {
   # Проект и роль у края нераздельны: роль требуется тогда и только тогда, когда задан
   # проект. Поэтому проект подставляется РОВНО ТАМ, где названа роль, — иначе приглашение
   # без роли уехало бы с половиной пары и было бы отвергнуто.
-  project_id = each.value.role_id == null ? null : kacho_iam_project.this.id
+  project_id = each.value.role_id == null ? null : kaname_project.this.id
   role_id    = each.value.role_id
 
   # Метки строка членства получает вторым шагом: само приглашение их не принимает вовсе

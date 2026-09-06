@@ -62,7 +62,7 @@ const userTokenDeniedCauses = "Отказ в доступе приходит п�
 	"учёткой, выпустит личный токен лишь тогда, когда этой учётке выдано " +
 	"администрирование облака; иначе применяйте конфигурацию под личностью самого " +
 	"владельца — а машине заводите не личный токен, а ключ служебной учётки " +
-	"(`kacho_iam_service_account_key`), который для неинтерактивного входа и " +
+	"(`kaname_service_account_key`), который для неинтерактивного входа и " +
 	"предназначен.\n\n" +
 	"2) ВТОРОЙ ФАКТОР. Вызывающий-ЧЕЛОВЕК не подтвердил личность повышенным уровнем " +
 	"(step-up): выпуск и отзыв край относит к смене уровня доступа. Пройдите " +
@@ -115,8 +115,17 @@ type userTokenResource struct{ c *client.Client }
 // NewIAMUserTokenResource — конструктор для реестра провайдера.
 func NewIAMUserTokenResource() resource.Resource { return &userTokenResource{} }
 
-func (r *userTokenResource) Metadata(_ context.Context, req resource.MetadataRequest, resp *resource.MetadataResponse) {
-	resp.TypeName = req.ProviderTypeName + "_iam_user_token"
+// MoveState — переезд состояния с прежнего имени типа.
+//
+// Объявление обязательно: одного блока `moved` в настройке оператора НЕДОСТАТОЧНО —
+// исполнитель шлёт запрос переезда целевому типу, и тип, не объявивший поддержки, роняет
+// план. Что именно принимается и почему — iam_type_names.go.
+func (r *userTokenResource) MoveState(ctx context.Context) []resource.StateMover {
+	return movedFromRetiredTypeName(ctx, r)
+}
+
+func (r *userTokenResource) Metadata(_ context.Context, _ resource.MetadataRequest, resp *resource.MetadataResponse) {
+	resp.TypeName = typeNameIAMUserToken
 }
 
 func (r *userTokenResource) Configure(_ context.Context, req resource.ConfigureRequest, resp *resource.ConfigureResponse) {
@@ -348,7 +357,7 @@ func (r *userTokenResource) Create(ctx context.Context, req resource.CreateReque
 	// и уходит заново. Для секрета цена дубля выше обычной: лишний живой токен, о котором
 	// никто не знает.
 	hdr := &client.Headers{IdempotencyKey: client.IdempotencyKey(
-		"kacho_iam_user_token", plan.UserID.ValueString()+"/"+plan.Name.ValueString(), raw)}
+		typeNameIAMUserToken, plan.UserID.ValueString()+"/"+plan.Name.ValueString(), raw)}
 
 	httpResp, err := r.c.Do(ctx, http.MethodPost, userTokensPath(plan.UserID.ValueString()), body, hdr)
 	if err != nil {
