@@ -27,7 +27,7 @@
 свёртки. Паттерн остаётся доступен как escape (`*-<СУФФИКС>`, отрезаются два
 сегмента), но каталог на нём не строится.
 
-Всего кейсов: 738
+Всего кейсов: 742
 
 ## Перепись по модулям
 
@@ -67,7 +67,7 @@
 | `cases/iam-token-facade-conformance.py` | 7 |
 | `cases/iam-user.py` | 43 |
 | `cases/iam-whoami.py` | 3 |
-| `cases/kaname-own-rest-front.py` | 9 |
+| `cases/kaname-own-rest-front.py` | 13 |
 | `cases/label-revoke-iam.py` | 2 |
 | `cases/label-revoke-nlb.py` | 1 |
 | `cases/label-revoke-storage.py` | 3 |
@@ -1006,7 +1006,7 @@
 - `IAM-SET-SVA-LIST-READ-PARITY`
 - `IAM-SET-GRP-LIST-READ-PARITY`
 
-## `cases/kaname-own-rest-front.py` — 9 кейсов
+## `cases/kaname-own-rest-front.py` — 13 кейсов
 
 > Собственный REST-фронт службы (KAN-REST-1): два сокета, а не один с разбором
 > пути. Адресуется ОТДЕЛЬНЫМИ переменными окружения — край платформы и
@@ -1026,3 +1026,7 @@
 - `IAM-OWNREST-NEG-SELF-NAMED`
 - `IAM-OWNREST-NEG-GARBAGE-CURSOR`
 - `IAM-OWNREST-OK-OPERATION-POLL`
+- `IAM-OWNREST-NEG-FOREIGN-OBJECT`
+- `IAM-OWNREST-NEG-ANONYMOUS`
+- `IAM-OWNREST-NEG-PAGE-SIZE`
+- `IAM-OWNREST-NEG-FOREIGN-OPERATION`

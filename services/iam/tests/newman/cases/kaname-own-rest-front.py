@@ -378,3 +378,187 @@ CASES.append(Case(
         ),
     ],
 ))
+
+# ───────────────────────────────────────────────────────────────────────────
+# ЧУЖОЙ ОБЪЕКТ. Отказ обязан быть неотличим от промаха: различимый ответ
+# сообщал бы, существует ли объект.
+# ───────────────────────────────────────────────────────────────────────────
+CASES.append(Case(
+    id="IAM-OWNREST-NEG-FOREIGN-OBJECT",
+    title="Чужой аккаунт через собственный фронт → 404 владельца, побайтово равный ответу на несуществующий идентификатор",
+    classes=["NEG", "SEC"],
+    priority="P0",
+    steps=[
+        Step(
+            name="read-foreign-account",
+            method="GET",
+            path="/iam/v1/accounts/{{accountBId}}",
+            pre_script=_own("/iam/v1/accounts/{{accountBId}}"),
+            # Тот же арендатор, что читает СВОЙ аккаунт в контроле выше.
+            # Отличие от него РОВНО одно: идентификатор объекта.
+            auth="jwtAccountAdminA",
+            test_script=[
+                *assert_status(404),
+                "const j = pm.response.json();",
+                "pm.test('FOREIGN: grpc code 5', () => pm.expect(j.code, JSON.stringify(j)).to.eql(5));",
+                "pm.test('FOREIGN: ответ ВЛАДЕЛЬЦА — называет ресурс и идентификатор; "
+                "промах маршрутизатора назвать их не может, тела он не читал', () => {",
+                "  pm.expect(j.message, JSON.stringify(j)).to.include('not found');",
+                "  pm.expect(j.message, JSON.stringify(j)).to.include(pm.environment.get('accountBId'));",
+                "});",
+                "pm.environment.set('ownRestForeignBody', JSON.stringify(j));",
+            ],
+        ),
+        Step(
+            name="read-absent-account",
+            method="GET",
+            path="/iam/v1/accounts/accdeadbeefdeadbeef0",
+            pre_script=_own("/iam/v1/accounts/accdeadbeefdeadbeef0"),
+            auth="jwtAccountAdminA",
+            test_script=[
+                *assert_status(404),
+                "pm.test('FOREIGN: «есть, но не твой» и «нет такого» различаются ТОЛЬКО идентификатором "
+                "в тексте — иначе ответ служил бы оракулом существования', () => {",
+                "  const foreign = pm.environment.get('ownRestForeignBody');",
+                "  pm.expect(foreign, 'ответ на чужой объект не захвачен').to.be.a('string').and.not.empty;",
+                "  const shape = s => s.replace(/acc[0-9a-z]+/g, '<id>');",
+                "  pm.expect(shape(pm.response.text())).to.eql(shape(foreign));",
+                "});",
+            ],
+        ),
+    ],
+))
+
+# ───────────────────────────────────────────────────────────────────────────
+# БЕЗЫМЯННЫЙ ВЫЗЫВАЮЩИЙ. «Тогда» записано под ПРОИЗВОДИМОЕ: подсказку
+# аутентификации на этой поверхности сегодня производить нечему (её давал край,
+# которого у отдельно поставленной службы нет). Утверждать здесь 401 значило бы
+# записать «Тогда» без производителя.
+# ───────────────────────────────────────────────────────────────────────────
+CASES.append(Case(
+    id="IAM-OWNREST-NEG-ANONYMOUS",
+    title="Без удостоверения запрос не обслуживается, и ответ не сообщает, существует ли объект",
+    classes=["NEG", "SEC"],
+    priority="P0",
+    steps=[
+        Step(
+            name="no-credential-at-all",
+            method="GET",
+            path="/iam/v1/accounts/{{existingAccountId}}",
+            pre_script=_own("/iam/v1/accounts/{{existingAccountId}}"),
+            auth="anonymous",
+            test_script=[
+                *assert_answered("ANON"),
+                "pm.test('ANON: запрос НЕ обслужен', () =>",
+                "  pm.expect(pm.response.code, pm.response.text()).to.not.eql(200));",
+                "pm.test('ANON: отказ принадлежит производимому множеству', () =>",
+                "  pm.expect(pm.response.code, pm.response.text()).to.be.oneOf([401, 403, 404]));",
+                "pm.test('ANON: ответ не сообщает, существует ли запрошенный объект', () => {",
+                "  const body = pm.response.text();",
+                "  pm.expect(body).to.not.include('createdAt');",
+                "});",
+            ],
+        ),
+    ],
+))
+
+# ───────────────────────────────────────────────────────────────────────────
+# РАЗМЕР СТРАНИЦЫ. Тот же порядок «форма до замыкания», что у курсора: ответ на
+# негодный ввод не зависит от того, что вызывающему выдано.
+# ───────────────────────────────────────────────────────────────────────────
+CASES.append(Case(
+    id="IAM-OWNREST-NEG-PAGE-SIZE",
+    title="Размер страницы вне допустимого отвергается, а не подрезается — одинаково у обоих арендаторов",
+    classes=["NEG", "VAL", "BVA"],
+    priority="P1",
+    steps=[
+        Step(
+            name="page-size-over-max-granted",
+            method="GET",
+            path="/iam/v1/accounts?pageSize=100000",
+            pre_script=_own("/iam/v1/accounts?pageSize=100000"),
+            auth="jwtAccountAdminA",
+            test_script=[
+                *assert_status(400),
+                "pm.test('PAGE-SIZE: grpc code 3 — отвергнут, а не подрезан', () =>",
+                "  pm.expect(pm.response.json().code, pm.response.text()).to.eql(3));",
+            ],
+        ),
+        Step(
+            name="page-size-over-max-ungranted",
+            method="GET",
+            path="/iam/v1/accounts?pageSize=100000",
+            pre_script=_own("/iam/v1/accounts?pageSize=100000"),
+            auth="jwtPureNoBindings",
+            test_script=[
+                *assert_status(400),
+                "pm.test('PAGE-SIZE: тот же 400 у того, кому не выдано ничего', () =>",
+                "  pm.expect(pm.response.json().code, pm.response.text()).to.eql(3));",
+            ],
+        ),
+        Step(
+            name="page-size-legal-is-served",
+            method="GET",
+            path="/iam/v1/accounts?pageSize=10",
+            pre_script=_own("/iam/v1/accounts?pageSize=10"),
+            auth="jwtAccountAdminA",
+            test_script=[
+                # ПОЛОЖИТЕЛЬНЫЙ БЛИЗНЕЦ: без него отрицание зеленело бы на списке,
+                # отвергающем любой размер страницы.
+                *assert_status(200),
+                "pm.test('PAGE-SIZE: законный размер обслуживается', () =>",
+                "  pm.expect(pm.response.json(), pm.response.text()).to.have.property('accounts'));",
+            ],
+        ),
+    ],
+))
+
+# ───────────────────────────────────────────────────────────────────────────
+# ЧУЖАЯ ОПЕРАЦИЯ. Решение принимает ОБРАБОТЧИК: предикат владения уходит в
+# запрос к хранилищу, поэтому чужая строка не читается вовсе.
+# ───────────────────────────────────────────────────────────────────────────
+CASES.append(Case(
+    id="IAM-OWNREST-NEG-FOREIGN-OPERATION",
+    title="Чужая операция не читается, и ответ побайтово равен ответу на несуществующий идентификатор",
+    classes=["NEG", "SEC"],
+    priority="P0",
+    steps=[
+        Step(
+            name="poll-absent-operation",
+            method="GET",
+            path="/operations/iopdeadbeefdeadbeef00",
+            pre_script=_own("/operations/iopdeadbeefdeadbeef00"),
+            auth="jwtAccountAdminB",
+            test_script=[
+                *assert_status(404),
+                "const j = pm.response.json();",
+                "pm.test('FOREIGN-OP: grpc code 5', () => pm.expect(j.code, JSON.stringify(j)).to.eql(5));",
+                "pm.environment.set('ownRestAbsentOpBody', JSON.stringify(j));",
+            ],
+        ),
+        Step(
+            name="poll-someone-elses-operation",
+            method="GET",
+            path="/operations/{{ownRestOpId}}",
+            pre_script=_own("/operations/{{ownRestOpId}}") + [
+                "if (!pm.environment.get('ownRestOpId')) {",
+                "  throw new Error('ownRestOpId пуст: операции другого арендатора не существует — "
+                "предмет кейса не создан, и сравнивать нечего');",
+                "}",
+            ],
+            # Операцию породил ДРУГОЙ арендатор (см. OK-OPERATION-POLL).
+            # Отличие от него РОВНО одно: чья операция.
+            auth="jwtAccountAdminB",
+            test_script=[
+                *assert_status(404),
+                "pm.test('FOREIGN-OP: «есть, но не твоя» неотличимо от «нет такой» — "
+                "предикат владения стоит доводом ЗАПРОСА, поэтому чужая строка не читается вовсе', () => {",
+                "  const absent = pm.environment.get('ownRestAbsentOpBody');",
+                "  pm.expect(absent, 'ответ на несуществующую операцию не захвачен').to.be.a('string').and.not.empty;",
+                "  const shape = s => s.replace(/iop[0-9a-z]+/g, '<id>');",
+                "  pm.expect(shape(pm.response.text())).to.eql(shape(absent));",
+                "});",
+            ],
+        ),
+    ],
+))
