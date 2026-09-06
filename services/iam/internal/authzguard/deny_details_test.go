@@ -33,6 +33,7 @@ import (
 
 	"github.com/PRO-Robotech/kaname/internal/apps/kaname/seed"
 	"github.com/PRO-Robotech/kaname/internal/authzguard"
+	"github.com/PRO-Robotech/kaname/internal/contractnaming"
 )
 
 func mustRegistry(t *testing.T) *seed.PermissionRegistry {
@@ -82,15 +83,24 @@ func errorInfo(st *status.Status) *errdetails.ErrorInfo {
 func TestDenyDetail_EveryScopeFilteredMethodNamesItsAction(t *testing.T) {
 	reg := mustRegistry(t)
 
+	// Полоса отбирается по ОБЪЯВЛЕННОМУ имени пакета контракта, а не по
+	// выписанной приставке: приставка, выписанная литералом, чужое имя не
+	// отвергает — она его НЕ ВИДИТ, и полоса молча становится пустой (#2168).
+	ownBand := contractnaming.OwnContractPackage() + "."
 	var band []seed.PermissionEntry
 	for _, e := range reg.All() {
-		if e.ScopeFiltered && strings.HasPrefix(e.FQN, "kacho.cloud.iam.") {
+		if e.ScopeFiltered && strings.HasPrefix(e.FQN, ownBand) {
 			band = append(band, e)
 		}
 	}
 	require.NotEmpty(t, band,
-		"the catalog must expose the scope-filtered marker — without it iam cannot "+
-			"even enumerate the band it is responsible for authorizing")
+		"the catalog must expose the scope-filtered marker on the %s band — without it "+
+			"iam cannot even enumerate the band it is responsible for authorizing", ownBand)
+	// Перепись печатается ВСЕГДА: «нарушений ноль» обязано быть отличимо от
+	// «прочитано ноль». Полоса, ставшая пустой от неверно выбранной приставки,
+	// зеленела бы по каждому утверждению ниже — их бы просто не было.
+	t.Logf("перепись: записей каталога %d · полоса %s · из них пообъектно фильтруемых %d",
+		len(reg.All()), ownBand, len(band))
 
 	for _, e := range band {
 		t.Run(e.FQN, func(t *testing.T) {

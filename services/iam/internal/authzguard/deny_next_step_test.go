@@ -39,6 +39,7 @@ import (
 	"google.golang.org/protobuf/proto"
 
 	"github.com/PRO-Robotech/kaname/internal/authzguard"
+	"github.com/PRO-Robotech/kaname/internal/contractnaming"
 )
 
 // grantRequirement извлекает нарушение предусловия, называющее недостающую
@@ -108,7 +109,7 @@ func TestDenyNextStep_NamesTheTierNotTheModelType(t *testing.T) {
 
 	checked, resourceTier := 0, 0
 	for _, e := range reg.All() {
-		if !strings.HasPrefix(e.FQN, "kacho.cloud.iam.") ||
+		if !strings.HasPrefix(e.FQN, contractnaming.OwnContractPackage()+".") ||
 			e.Permission == "" || e.ScopeExtractor.ObjectType == "" {
 			continue
 		}
@@ -237,7 +238,7 @@ func TestDenyNextStep_EveryScopedMethodNamesItsStep(t *testing.T) {
 	total, named := 0, 0
 	var bare []string
 	for _, e := range reg.All() {
-		if !strings.HasPrefix(e.FQN, "kacho.cloud.iam.") {
+		if !strings.HasPrefix(e.FQN, contractnaming.OwnContractPackage()+".") {
 			continue
 		}
 		if e.Permission == "" || e.ScopeExtractor.ObjectType == "" {
