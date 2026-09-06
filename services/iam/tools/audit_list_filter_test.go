@@ -29,7 +29,16 @@
 //     FINDING, because a source resolving to nothing would take its whole derived
 //     ban with it while the run went on printing OK;
 //   - "zero findings" is unreachable from "zero read": a gate pointed at a tree it
-//     cannot open reports a finding, never OK.
+//     cannot open reports a finding, never OK;
+//   - a RowFilter listing that stops asking the per-object question is REFUSED, and a
+//     listing that asks it in another legitimate form is NOT. This one was written
+//     after the gate spent a day unable to tell those two apart: #2054 moved
+//     ListByRole's per-row question behind a per-request memo, the analyser does not
+//     walk calls on a local variable, and the profile still named the old call. The
+//     finding was real ON THE PROFILE'S TERMS and false about the code — the narrowing
+//     was fully present — and the whole population of listings looked identical from
+//     the gate either way. Naming the new form fixes the red; only the injection below
+//     proves the gate can still go red for the reason it claims to.
 package tools_regression
 
 import (
@@ -253,6 +262,76 @@ func TestGate_RefusesAPageTakenFromAnEnumeration(t *testing.T) {
 			}
 			if tc.wantSource != "" && !strings.Contains(out, tc.wantSource) {
 				t.Fatalf("a DERIVED ban must name the declaration it came from (%s); got:\n%s", tc.wantSource, out)
+			}
+		})
+	}
+}
+
+// TestGate_RowFilterMustStillAskThePerObjectQuestion — the property a passing
+// RowFilter declaration is supposed to carry, injected on the one listing whose
+// per-object question is asked through a per-request memo rather than a batched
+// VisibleSet.
+//
+// Both cases patch the SAME three lines, so each differs from the healthy tree by
+// exactly ONE fact and the difference is the fact under test.
+//
+//   - "narrowing removed" — the loop keeps every row it read. This is the shape the
+//     declaration exists to refuse: the page of "who holds role R" is a map of who
+//     was granted what, and project scope alone does not answer whether the caller
+//     may see THESE rows;
+//   - "narrowing in the older form" — the same question, asked by calling
+//     requireGrantAuthority directly per row. That is what the code did before #2054
+//     and it narrows correctly, just at two store questions per row. The gate must
+//     stay SILENT on it, or the entry naming the memo would be proof that the gate
+//     fires on a TOKEN rather than on the property, and the fix for the red would be
+//     indistinguishable from switching the check off.
+func TestGate_RowFilterMustStillAskThePerObjectQuestion(t *testing.T) {
+	const (
+		file   = "internal/apps/kaname/api/access_binding/list_by_role.go"
+		anchor = "\t\tif err := authority.grantAuthorityVerdict(ctx, string(b.ResourceType), b.ResourceID); err == nil {\n" +
+			"\t\t\tfiltered = append(filtered, b)\n\t\t}"
+	)
+	for _, tc := range []struct {
+		name     string
+		injected string
+		wantRed  bool
+	}{
+		{
+			name:     "narrowing removed",
+			injected: "\t\tfiltered = append(filtered, b)",
+			wantRed:  true,
+		},
+		{
+			name: "narrowing in the older form",
+			injected: "\t\tif err := requireGrantAuthority(ctx, u.repo, u.relations, string(b.ResourceType), b.ResourceID); err == nil {\n" +
+				"\t\t\tfiltered = append(filtered, b)\n\t\t}",
+			wantRed: false,
+		},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			root := copyTrees(t)
+			patch(t, root, file, anchor, tc.injected)
+
+			out, err := runGate(t, root)
+			if !tc.wantRed {
+				if err != nil {
+					t.Fatalf("a listing narrowing in another legitimate form must stay silent; got %v\n%s", err, out)
+				}
+				return
+			}
+			if err == nil {
+				t.Fatalf("a RowFilter listing that asks nothing per object must be refused; got:\n%s", out)
+			}
+			// The finding must name WHICH listing and WHERE it is declared. Without
+			// both, the red is a signal to go looking rather than an answer, and a
+			// gate whose findings need an investigation gets switched off.
+			for _, want := range []string{
+				"access_binding.ListByRole — declared RowFilter",
+				"access_binding/handler.go",
+			} {
+				if !strings.Contains(out, want) {
+					t.Fatalf("the finding must carry %q; got:\n%s", want, out)
+				}
 			}
 		})
 	}
