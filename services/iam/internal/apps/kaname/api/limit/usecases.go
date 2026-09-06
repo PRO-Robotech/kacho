@@ -453,7 +453,7 @@ func moduleSubject(ctx context.Context) string {
 	if !verified || san == "" {
 		return ""
 	}
-	sva, ok := authzguard.SANToServiceAccountID(san)
+	sva, ok := authzguard.SANToServiceAccountID(grpcsrv.CertIdentityDomainFromContext(ctx), san)
 	if !ok {
 		return ""
 	}

@@ -248,7 +248,7 @@ func (p *PublicCallerPolicy) allow(ctx context.Context, fullMethod string) error
 
 	svc, ok := "", false
 	if verified && san != "" {
-		svc, ok = ServiceNameFromSAN(san)
+		svc, ok = ServiceNameFromSAN(grpcsrv.CertIdentityDomainFromContext(ctx), san)
 	}
 	if !ok {
 		// No verified module cert. Dev → no-op; prod → fail-closed.

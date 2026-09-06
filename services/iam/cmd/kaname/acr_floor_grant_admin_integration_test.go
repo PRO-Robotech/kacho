@@ -68,7 +68,7 @@ func (s *reachedClusterServer) GrantAdmin(context.Context, *iamv1.GrantClusterAd
 // gateway→iam edge.
 func seedVerifiedPeer(san, acr string) grpc.UnaryServerInterceptor {
 	return func(ctx context.Context, req any, _ *grpc.UnaryServerInfo, handler grpc.UnaryHandler) (any, error) {
-		ctx = grpcsrv.WithCertIdentity(ctx, san, true)
+		ctx = grpcsrv.WithCertIdentityIn(ctx, grpcsrv.NewTrustDomain("kacho.cloud"), san, true)
 		ctx = grpcsrv.WithTrustedACR(ctx, acr, true)
 		return handler(ctx, req)
 	}

@@ -27,6 +27,10 @@ func postureCfg(mode config.Mode, sslMode string) config.Config {
 	var cfg config.Config
 	cfg.AuthN.Mode = mode
 	cfg.AuthN.TrustedForwarderSANs = []string{"spiffe://kacho.cloud/ns/kacho/sa/kacho-api-gateway"}
+	// Домен доверия — величина установки, и без неё дескриптор не принимается,
+	// а личность сертификата не опознаётся: процесс, не назвавший домена, своим
+	// не признаёт никого.
+	cfg.AuthN.TrustDomainName = "kacho.cloud"
 	cfg.Repository.Postgres.URL = "postgres://u:p@db:5432/kaname"
 	cfg.Repository.Postgres.SSLMode = sslMode
 	cfg.Retention = config.RetentionConfig{Interval: 5 * time.Minute, Batch: 1000, MaxBatchesPerPass: 20}

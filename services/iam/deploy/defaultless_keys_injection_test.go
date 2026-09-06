@@ -16,6 +16,7 @@ package deploy_test
 
 import (
 	"fmt"
+	"regexp"
 	"strings"
 	"testing"
 )
@@ -111,12 +112,13 @@ func TestDefaultlessKeysEmptyTraversalIsNotGreen(t *testing.T) {
 		b := readChartFile(t, chartDir, "values.yaml")
 		// Один факт: каждое снятое умолчание чем-нибудь заполнено. Популяция
 		// пуста, и судить нечего — это отказ, а не чистый чарт.
-		for _, key := range []string{
-			"image: \"\"", "host: \"\"", "passwordSecretName: \"\"", "passwordSecretKey: \"\"",
-			"issuer: \"\"", "service: \"\"", "secretName: \"\"", "identityProvider: \"\"",
-		} {
-			b = strings.ReplaceAll(b, key, strings.TrimSuffix(key, "\"\"")+"\"filled\"")
-		}
+		//
+		// Популяция ВЫВОДИТСЯ, а не перечисляется поимённо. Перечень был бы
+		// вторым местом об одном предмете и разошёлся бы молча: соседняя полоса
+		// завела ключ `trustDomain`, его в перечне не было, популяция пустой не
+		// стала, и самопроверка покраснела на верном чарте. Замена по образцу
+		// «пустая величина → заполненная» опустошает популяцию by construction.
+		b = regexp.MustCompile(`: ""`).ReplaceAllString(b, `: "filled"`)
 		writeChartFile(t, chartDir, "values.yaml", b)
 
 		_, census, err := auditDefaultlessKeys(chartDir)

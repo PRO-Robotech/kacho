@@ -62,7 +62,7 @@ const (
 
 // ctxWithSAN returns a ctx carrying a verified module cert SAN.
 func ctxWithSAN(san string) context.Context {
-	return grpcsrv.WithCertIdentity(context.Background(), san, true)
+	return grpcsrv.WithCertIdentityIn(context.Background(), grpcsrv.NewTrustDomain("kacho.cloud"), san, true)
 }
 
 // 01-unit — dev-mode (prod=false), READ-FQN → pass; checker NOT consulted.
@@ -128,7 +128,7 @@ func TestSystemViewerFloor_Prod_NoCert_Denied(t *testing.T) {
 func TestSystemViewerFloor_Prod_UnverifiedCert_Denied(t *testing.T) {
 	ck := &recordingChecker{allowed: true}
 	f := NewSystemViewerFloor(ck, ReadFloorRPCs()).WithProductionMode(true)
-	ctx := grpcsrv.WithCertIdentity(context.Background(), apiGatewayFloorSAN, false)
+	ctx := grpcsrv.WithCertIdentityIn(context.Background(), grpcsrv.NewTrustDomain("kacho.cloud"), apiGatewayFloorSAN, false)
 	if err := f.allow(ctx, readFloorMethod); status.Code(err) != codes.PermissionDenied {
 		t.Fatalf("prod unverified cert: code = %v, want PermissionDenied", status.Code(err))
 	}

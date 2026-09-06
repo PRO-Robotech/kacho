@@ -176,6 +176,7 @@ var configBridge = []bridged{
 	{configKey: "authn.mode", valuePath: []string{"authMode"}},
 	{configKey: "authn.identity-provider", valuePath: []string{"authn", "identityProvider"}, omitEmpty: true},
 	{configKey: "authn.trusted-forwarder-sans", valuePath: []string{"authn", "trustedForwarderSANs"}, omitEmpty: true},
+	{configKey: "authn.trust-domain", valuePath: []string{"authn", "trustDomain"}, omitEmpty: true},
 }
 
 // restatedDeliberately — ручки боевого профиля, чьё СНЯТИЕ страж не замечает, и

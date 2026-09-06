@@ -61,12 +61,12 @@ func (s fakeStream) Context() context.Context { return s.ctx }
 
 // newGatewayCtx returns a ctx carrying a verified api-gateway module cert SAN.
 func newGatewayCtx() context.Context {
-	return grpcsrv.WithCertIdentity(context.Background(), gatewaySAN, true)
+	return grpcsrv.WithCertIdentityIn(context.Background(), grpcsrv.NewTrustDomain("kacho.cloud"), gatewaySAN, true)
 }
 
 // newVPCCtx returns a ctx carrying a verified kacho-vpc module cert SAN.
 func newVPCCtx() context.Context {
-	return grpcsrv.WithCertIdentity(context.Background(), vpcSAN, true)
+	return grpcsrv.WithCertIdentityIn(context.Background(), grpcsrv.NewTrustDomain("kacho.cloud"), vpcSAN, true)
 }
 
 // testPolicy builds a CallerPolicy with the canonical gateway-only set.
@@ -160,7 +160,7 @@ func TestCallerPolicy_FloorOnly_NoCert_Dev(t *testing.T) {
 // as "no module cert" → PermissionDenied in prod.
 func TestCallerPolicy_UnverifiedCert_Prod(t *testing.T) {
 	p := testPolicy(true)
-	ctx := grpcsrv.WithCertIdentity(context.Background(), gatewaySAN, false)
+	ctx := grpcsrv.WithCertIdentityIn(context.Background(), grpcsrv.NewTrustDomain("kacho.cloud"), gatewaySAN, false)
 	if err := p.allow(ctx, gatewayOnlyMethod); status.Code(err) != codes.PermissionDenied {
 		t.Errorf("prod unverified cert: code = %v, want PermissionDenied", status.Code(err))
 	}
@@ -170,7 +170,7 @@ func TestCallerPolicy_UnverifiedCert_Prod(t *testing.T) {
 // kacho-<svc>) is treated as "no module cert" → PermissionDenied in prod.
 func TestCallerPolicy_NonModuleSAN_Prod(t *testing.T) {
 	p := testPolicy(true)
-	ctx := grpcsrv.WithCertIdentity(context.Background(), "spiffe://kacho.cloud/ns/x/sa/not-a-module", true)
+	ctx := grpcsrv.WithCertIdentityIn(context.Background(), grpcsrv.NewTrustDomain("kacho.cloud"), "spiffe://kacho.cloud/ns/x/sa/not-a-module", true)
 	if err := p.allow(ctx, gatewayOnlyMethod); status.Code(err) != codes.PermissionDenied {
 		t.Errorf("prod non-module SAN: code = %v, want PermissionDenied", status.Code(err))
 	}
