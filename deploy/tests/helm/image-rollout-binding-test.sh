@@ -21,10 +21,24 @@
 # обновилось, исполняемое — нет, а «под Ready» этого не опровергает.
 #
 # ЧЕМ ЭТА ПРОВЕРКА ОТЛИЧАЕТСЯ ОТ «поискать аннотацию по имени» — она
-# ПОВЕДЕНЧЕСКАЯ: рендерим стенд ДВАЖДЫ с РАЗНЫМИ идентификаторами содержимого
-# образов и требуем, чтобы у каждого такого workload'а шаблон пода РАЗЛИЧАЛСЯ.
-# Аннотация, привязанная не к тому значению или отставшая при добавлении сервиса,
-# такую проверку не проходит.
+# ПОВЕДЕНЧЕСКАЯ: стенд рендерится ДВАЖДЫ с РАЗНЫМИ картами идентификаторов, и
+# каждое значение НЕСЁТ ИМЯ СВОЕГО СЕРВИСА. Требуется, чтобы идентификатор
+# каждого сервиса доехал до шаблона пода РОВНО ОДНОГО workload'а — и чтобы тот же
+# workload предъявил его во втором рендере. Привязка, прибитая константой,
+# читающая чужой ключ или не заведённая вовсе, такой проверки не проходит.
+#
+# СООТВЕТСТВИЕ «СЕРВИС ↔ WORKLOAD» ЧИТАЕТСЯ ИЗ ТОГО, ЧТО ШАБЛОН ПРОИЗВОДИТ.
+#
+# Ключ карты — каталог исходников, и шаблон склеивает его ВНУТРИ СЕБЯ
+# (`dig "kachoImageIds" "<каталог>"`); снаружи виден только результат склейки.
+# Прежняя редакция вместо этого выводила имя образа приставкой имени платформы
+# (`kacho-<каталог>`) и искала его среди образов рендера. Вывод был верен, пока
+# имя платформы было и именем каждой её части. Служба управления доступом
+# получила собственное имя продукта (решение владельца #2076) — и распознаватель
+# по приставке чужое имя НЕ ОТВЕРГ, он его НЕ УВИДЕЛ: сервис молча выпал
+# из-под проверки вместе со своей привязкой, а гейт остался зелёным о семи
+# workload'ах из восьми. Ведомость имён здесь поэтому не заводится и не читается
+# вовсе: имя образа этой проверке больше не нужно.
 #
 # ПРЕДМЕТ БЕРЁТСЯ ИЗ ИСТОЧНИКА ИСТИНЫ. Список локально собираемых сервисов
 # читается из `SERVICES` в deploy/Makefile — там же, где их собирают. Свой список
@@ -65,6 +79,15 @@ SERVICES="$(sed -n 's/^SERVICES *:= *//p' "$MAKEFILE" | head -1)"
 SERVICES_N="$(wc -w <<<"$SERVICES" | tr -d '[:space:]')"
 
 # Две карты идентификаторов, отличающиеся ВСЕМИ значениями.
+#
+# Значение НЕСЁТ ИМЯ СВОЕГО СЕРВИСА (`sha256:<суффикс><каталог>`), и это не
+# украшение: по нему разбор ниже узнаёт, ЧЕЙ идентификатор доехал до шаблона
+# пода. Суффикс объявлен переменной, потому что его знают двое — тот, кто
+# карту пишет, и тот, кто её ищет в рендере; выписанный дважды, он разошёлся бы
+# молча, и разбор перестал бы находить кого угодно.
+IDS_SUFFIX_A=aaaa
+IDS_SUFFIX_B=bbbb
+
 mk_ids() { # $1 — суффикс
   echo "global:"
   echo "  kachoImageIds:"
@@ -72,8 +95,8 @@ mk_ids() { # $1 — суффикс
 }
 
 TMPD="$(mktemp -d)"; trap 'rm -rf "$TMPD"' EXIT
-mk_ids aaaa >"$TMPD/ids-a.yaml"
-mk_ids bbbb >"$TMPD/ids-b.yaml"
+mk_ids "$IDS_SUFFIX_A" >"$TMPD/ids-a.yaml"
+mk_ids "$IDS_SUFFIX_B" >"$TMPD/ids-b.yaml"
 
 # render <файл карты> <куда> <что рендерим> — рендер умбреллы.
 #
@@ -93,10 +116,16 @@ echo "=== $SCRIPT: рендер с двумя разными идентифик�
 render "$TMPD/ids-a.yaml" "$TMPD/a.yaml" "values.dev.yaml + карта идентификаторов A"; ok
 render "$TMPD/ids-b.yaml" "$TMPD/b.yaml" "values.dev.yaml + карта идентификаторов B"; ok
 
-SERVICES="$SERVICES" python3 - "$TMPD/a.yaml" "$TMPD/b.yaml" <<'PY'
+SERVICES="$SERVICES" IDS_SUFFIX_A="$IDS_SUFFIX_A" IDS_SUFFIX_B="$IDS_SUFFIX_B" \
+  python3 - "$TMPD/a.yaml" "$TMPD/b.yaml" <<'PY'
 import os, sys, yaml
 
 services = os.environ["SERVICES"].split()
+SUFFIX = {"a": os.environ["IDS_SUFFIX_A"], "b": os.environ["IDS_SUFFIX_B"]}
+
+# Ключ привязки. Объявлен ОДИН раз: им же разбор ищет привязку в рендере и им же
+# текст починки ниже называет её читателю.
+ANNOTATION = "kacho.cloud/image-id"
 
 
 def load(path):
@@ -112,75 +141,84 @@ def index(docs):
     return out
 
 
-def images(w):
-    spec = ((w.get("spec") or {}).get("template") or {}).get("spec") or {}
-    return [c.get("image", "") for c in
-            (spec.get("containers") or []) + (spec.get("initContainers") or [])]
-
-
 def pod_template(w):
     return (w.get("spec") or {}).get("template") or {}
 
 
-def local_image_of(w):
-    """Первый образ workload'а, который СОБИРАЕТСЯ локально (kacho-<svc>:…).
+def binding_value(w):
+    """Значение привязки, ДОЕХАВШЕЕ до шаблона пода.
 
-    Именно собираемые локально несут неизменный тег; образы из реестра
-    адресуются своим тегом/дайджестом и к этой проверке отношения не имеют —
-    требовать привязки с них значило бы красить за чужой порядок поставки.
+    Читается результат, а не объявление: шаблон склеивает ключ карты внутри
+    себя (`dig "kachoImageIds" "<каталог>"`), и снаружи от этой склейки виден
+    только он.
     """
-    for img in images(w):
-        base = img.split("/")[-1]
-        for s in services:
-            if base.startswith(f"kacho-{s}:") or base.startswith(f"kacho-{s}@"):
-                return img
-    return None
+    meta = pod_template(w).get("metadata") or {}
+    return (meta.get("annotations") or {}).get(ANNOTATION)
+
+
+def claimants(idx, suffix):
+    """сервис → workload'ы, предъявившие ЕГО идентификатор.
+
+    Соответствие «сервис ↔ workload» БЕРЁТСЯ ИЗ РЕНДЕРА, а не выводится из имени
+    образа. Вывод `kacho-<каталог>` был верен, пока имя платформы было и именем
+    каждой её части; часть с собственным именем продукта он не отвергает — он её
+    НЕ ВИДИТ, и сервис молча выпадает из-под проверки вместе со своей привязкой.
+    """
+    want = {"sha256:%s%s" % (suffix, s): s for s in services}
+    out = {}
+    for key, w in idx.items():
+        service = want.get(binding_value(w))
+        if service is not None:
+            out.setdefault(service, []).append(key)
+    return out
 
 
 a, b = index(load(sys.argv[1])), index(load(sys.argv[2]))
-subjects, failures = [], []
+claims_a, claims_b = claimants(a, SUFFIX["a"]), claimants(b, SUFFIX["b"])
 
-for key in sorted(a.keys() & b.keys()):
-    kind, name = key
-    img = local_image_of(a[key])
-    if img is None:
-        continue
-    subjects.append(f"{kind}/{name}")
-    if pod_template(a[key]) == pod_template(b[key]):
+bound, failures = [], []
+
+for service in services:
+    wa, wb = sorted(claims_a.get(service, [])), sorted(claims_b.get(service, []))
+
+    if not wa:
         failures.append(
-            f"{kind}/{name} (образ {img}): содержимое образа различается между двумя "
-            f"рендерами, а шаблон пода ПОБАЙТОВО ТОТ ЖЕ → под не перекатится и процесс "
-            f"останется на старом бинарнике под тем же тегом."
+            f"{service}: идентификатор содержимого образа НЕ ДОЕХАЛ до шаблона пода — "
+            f"ни один workload рендера не предъявил его. Такой под не перекатится при "
+            f"пересборке образа под тем же тегом и останется на старом бинарнике."
         )
-    else:
-        print(f"  OK {kind}/{name}: смена содержимого образа меняет шаблон пода")
-
-# «Ноль находок» обязано быть отличимо от «ноль осмотренного».
-print(f"\nworkload'ов на локально собираемых образах: {len(subjects)} "
-      f"(сервисов в SERVICES: {len(services)})")
-
-if not subjects:
-    print("\nFAIL: ни один workload не попал под проверку — предмета нет.")
-    print("      На стенде, который собирает образы локально, это означает сломанное")
-    print("      сопоставление, а не отсутствие таких workload'ов.")
-    sys.exit(1)
-
-# Каждый локально собираемый сервис обязан иметь СВОЙ workload среди осмотренных:
-# иначе сервис, выпавший из рендера профиля, тихо остался бы без привязки.
-covered = set()
-for key in sorted(a.keys() & b.keys()):
-    img = local_image_of(a[key])
-    if not img:
         continue
-    base = img.split("/")[-1]
-    for s in services:
-        if base.startswith(f"kacho-{s}:") or base.startswith(f"kacho-{s}@"):
-            covered.add(s)
-missing = sorted(set(services) - covered)
-if missing:
-    print(f"\nFAIL: сервисы собираются локально, но их workload'ов нет в рендере "
-          f"профиля: {', '.join(missing)}")
-    print("      Такой сервис не проверяется вовсе — и привязку у него потерять некому заметить.")
+
+    if len(wa) > 1:
+        named = ", ".join(f"{k}/{n}" for k, n in wa)
+        failures.append(
+            f"{service}: один и тот же идентификатор предъявили {len(wa)} workload'ов "
+            f"({named}) — значит какой-то из них привязан к ЧУЖОМУ ключу, а свой "
+            f"оставил без наблюдения."
+        )
+        continue
+
+    if wa != wb:
+        kind, name = wa[0]
+        failures.append(
+            f"{service}: {kind}/{name} предъявил идентификатор в первом рендере и НЕ "
+            f"предъявил во втором — значение в шаблоне пода не следует за картой "
+            f"(прибито константой либо читается не тот ключ)."
+        )
+        continue
+
+    kind, name = wa[0]
+    bound.append(f"{kind}/{name}")
+    print(f"  OK {kind}/{name}: привязан к содержимому образа сервиса «{service}»")
+
+# «Ноль находок» обязано быть отличимо от «ноль осмотренного»: печатаются ОБА
+# числа — сколько workload'ов рендер вообще предъявил и сколько из них привязано.
+print(f"\nworkload'ов в рендере: {len(a)}; привязано к содержимому своих образов: "
+      f"{len(bound)} (сервисов в SERVICES: {len(services)})")
+
+if not a:
+    print("\nFAIL: рендер не дал НИ ОДНОГО workload'а — предмета нет, и ноль находок "
+          "ниже ничего не значит.")
     sys.exit(1)
 
 if failures:
@@ -190,11 +228,12 @@ if failures:
     print()
     print("Починка: добавить в spec.template.metadata.annotations привязку к")
     print("идентификатору содержимого образа, например")
-    print('  kacho.cloud/image-id: {{ dig "kachoImageIds" "<svc>" "unset" (.Values.global | default dict) | quote }}')
-    print("Значение пишет `make build-services` в helm/umbrella/values.image-ids.yaml.")
+    print('  %s: {{ dig "kachoImageIds" "<каталог сервиса>" "unset" (.Values.global | default dict) | quote }}'
+          % ANNOTATION)
+    print("Ключ — КАТАЛОГ ИСХОДНИКОВ сервиса (как в SERVICES), а не имя его образа:")
+    print("под этим же ключом значение пишет `make build-services` в")
+    print("helm/umbrella/values.image-ids.yaml.")
     sys.exit(1)
-
-print(f"\n{len(subjects)} workload'ов привязаны к содержимому своих образов")
 PY
 rc=$?
 
@@ -257,14 +296,54 @@ else
   fi
 fi
 
-# (B) КОНТРОЛЬ: образ ИЗ РЕЕСТРА (не собирается локально) привязки не требует.
-#     Без этого случая гейт ловил бы форму, а не существо, и красил бы каждый
-#     сторонний образ стека — первый же ложный срабат его бы и отключил.
+# (B) КОНТРОЛЬ: ИМЯ ОБРАЗА НА ВЕРДИКТ НЕ ВЛИЯЕТ.
+#     Сервису подменяется координата образа на реестровую — привязка при этом на
+#     месте, и гейт обязан молчать. Это регрессия ровно на тот дефект, ради
+#     которого разбор переписан: распознаватель по имени образа здесь ослеп бы
+#     (имя перестало начинаться с приставки платформы) и молча вывел бы сервис
+#     из-под проверки, отчитавшись зелёным о неполном составе.
 foreign="$(EXTRA_SET='--set kacho-geo.image=docker.io/prorobotech/kacho-geo:main-abc' bash "$WORK/tests/helm/$SCRIPT" 2>&1)"; fst=$?
-if [ $fst -eq 0 ]; then
-  echo "  ОК  (B) образ из реестра привязки не требует → МОЛЧИТ"
+if [ $fst -eq 0 ] && [[ "$foreign" == *"привязано к содержимому своих образов: $SERVICES_N"* ]]; then
+  echo "  ОК  (B) смена координаты образа вердикта не меняет → МОЛЧИТ, состав полон"
 else
-  echo "  ПРОВАЛ (B) сторонний образ покрашен"; printf '%s\n' "$foreign" | tail -5 | sed 's/^/      /'; st=1
+  echo "  ПРОВАЛ (B) вердикт зависит от имени образа (exit=$fst)"
+  printf '%s\n' "$foreign" | tail -5 | sed 's/^/      /'; st=1
+fi
+
+# (C) ИНЪЕКЦИЯ: привязка читает ЧУЖОЙ ключ → два предъявителя у одного сервиса и
+#     ни одного у другого. Прежний разбор этого не ловил вовсе: он сверял образы,
+#     а не то, ЧЕЙ идентификатор доехал до шаблона.
+if [ ! -f "$DEPLOY_ROOT/$VICTIM_REL" ]; then
+  echo "  ПРОВАЛ (C) не найден чарт для инъекции ($VICTIM_REL)"; st=1
+else
+  sed 's/dig "kachoImageIds" "geo"/dig "kachoImageIds" "vpc"/' \
+      "$DEPLOY_ROOT/$VICTIM_REL" >"$WORK/$VICTIM_REL"
+  out="$(bash "$WORK/tests/helm/$SCRIPT" 2>&1)"; ist=$?
+  cp "$DEPLOY_ROOT/$VICTIM_REL" "$WORK/$VICTIM_REL"
+  if [ $ist -ne 0 ] && [[ "$out" == *"предъявили 2 workload"* ]] && [[ "$out" == *"geo: идентификатор"* ]]; then
+    echo "  ОК  (C) чужой ключ → КРАСНЫЙ, названы ОБА пострадавших сервиса"
+  else
+    echo "  ПРОВАЛ (C) привязка к чужому ключу не поймана (exit=$ist)"
+    printf '%s\n' "$out" | tail -6 | sed 's/^/      /'; st=1
+  fi
+fi
+
+# (D) ИНЪЕКЦИЯ: привязка ПРИБИТА КОНСТАНТОЙ — значение не следует за картой.
+#     Ветвь «предъявил в первом рендере и не предъявил во втором» заведена вместо
+#     побайтового сравнения шаблонов; без этого случая она была бы мёртвой.
+if [ ! -f "$DEPLOY_ROOT/$VICTIM_REL" ]; then
+  echo "  ПРОВАЛ (D) не найден чарт для инъекции ($VICTIM_REL)"; st=1
+else
+  sed "s|dig \"kachoImageIds\" \"geo\" \"unset\" (.Values.global \| default dict) \| quote|quote \"sha256:${IDS_SUFFIX_A}geo\"|" \
+      "$DEPLOY_ROOT/$VICTIM_REL" >"$WORK/$VICTIM_REL"
+  out="$(bash "$WORK/tests/helm/$SCRIPT" 2>&1)"; ist=$?
+  cp "$DEPLOY_ROOT/$VICTIM_REL" "$WORK/$VICTIM_REL"
+  if [ $ist -ne 0 ] && [[ "$out" == *"не следует за картой"* ]]; then
+    echo "  ОК  (D) привязка константой → КРАСНЫЙ, названа причина"
+  else
+    echo "  ПРОВАЛ (D) прибитая константой привязка принята за живую (exit=$ist)"
+    printf '%s\n' "$out" | tail -6 | sed 's/^/      /'; st=1
+  fi
 fi
 
 echo
