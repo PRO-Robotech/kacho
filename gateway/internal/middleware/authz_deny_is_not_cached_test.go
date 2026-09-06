@@ -59,7 +59,7 @@ func TestAuthz_DenyIsNotCached_FreshGrantAppliesImmediately(t *testing.T) {
 	handlerReached := false
 	call := func() error {
 		_, err := mw.Unary()(withTokenMD("usr_x", "user"), nil,
-			&grpc.UnaryServerInfo{FullMethod: "/kacho.cloud.iam.v1.AccountService/Delete"},
+			&grpc.UnaryServerInfo{FullMethod: "/kaname.cloud.iam.v1.AccountService/Delete"},
 			func(ctx context.Context, req any) (any, error) {
 				handlerReached = true
 				return nil, nil
@@ -93,7 +93,7 @@ func TestAuthz_AllowIsStillCached(t *testing.T) {
 
 	for i := 0; i < 3; i++ {
 		_, err := mw.Unary()(withTokenMD("usr_y", "user"), nil,
-			&grpc.UnaryServerInfo{FullMethod: "/kacho.cloud.iam.v1.AccountService/Delete"},
+			&grpc.UnaryServerInfo{FullMethod: "/kaname.cloud.iam.v1.AccountService/Delete"},
 			func(ctx context.Context, req any) (any, error) { return nil, nil })
 		require.NoError(t, err)
 	}
@@ -111,7 +111,7 @@ func TestAuthz_DenyRepeatedAlwaysAsksAuthority(t *testing.T) {
 
 	for i := 0; i < 4; i++ {
 		_, err := mw.Unary()(withTokenMD("usr_z", "user"), nil,
-			&grpc.UnaryServerInfo{FullMethod: "/kacho.cloud.iam.v1.AccountService/Delete"},
+			&grpc.UnaryServerInfo{FullMethod: "/kaname.cloud.iam.v1.AccountService/Delete"},
 			func(ctx context.Context, req any) (any, error) {
 				t.Fatal("хендлер не должен быть достигнут на отказе")
 				return nil, nil

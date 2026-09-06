@@ -11,6 +11,8 @@ import (
 	"strings"
 	"testing"
 
+	"github.com/PRO-Robotech/kacho/pkg/contractroot"
+
 	"github.com/PRO-Robotech/kacho/pkg/treecorpus"
 )
 
@@ -344,7 +346,14 @@ var (
 func publicCreatingServices(t *testing.T, root string) []string {
 	t.Helper()
 	var out []string
-	for _, rel := range trackedFilesUnder(t, root, "proto/kacho/cloud", ".proto") {
+	// Обход по ОБЪЯВЛЕННЫМ корням: домен под вторым корнем выпал бы из популяции,
+	// и гейт объявил бы, что служба «больше не создаёт ресурс», — находка про
+	// собственную слепоту, а не про дерево.
+	var contractRels []string
+	for _, r := range contractroot.Roots {
+		contractRels = append(contractRels, trackedFilesUnder(t, root, "proto/"+r+"/cloud", ".proto")...)
+	}
+	for _, rel := range contractRels {
 		src, err := os.ReadFile(filepath.Join(root, rel)) // #nosec G304 -- путь из индекса репозитория
 		if err != nil {
 			t.Fatalf("чтение %s: %v", rel, err)

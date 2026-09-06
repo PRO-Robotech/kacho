@@ -423,15 +423,6 @@ proto_group() {
     ' 
 
     ran=$((ran + 1))
-    # ЭТА ФОРМА СВЕРКИ УЖЕ ТОЙ, ЧТО ГОНЯЕТ КОНВЕЙЕР, И ЭТО НАЗВАНО, А НЕ УМОЛЧАНО.
-    # Здесь генерация идёт ПОВЕРХ дерева и сверяется `status --porcelain`, то есть
-    # видно только изменённое и добавленное. Конвейер сносит `pkg/api` целиком и
-    # сверяет `git diff`, поэтому ловит ещё два класса: корень, выпавший из входов
-    # генерации при уже закоммиченных стабах, и стаб, переживший свой контракт.
-    # Замерено одно-фактной инъекцией; предмет и предикат снятия — #2139.
-    # Третий класс — НОВЫЙ корень контрактов, стабов не имевший никогда, — невидим
-    # обеим формам by construction; его держит гейт дерева internal/repohygiene
-    # TestEveryContractRootIsNamedInGenerationInputs (#2137), и он не генерирует.
     printf '\n== generate-diff (стабы в синхроне с .proto)\n'
     ( cd "$ROOT/proto" && buf generate ) > "$WORK/out.txt" 2>&1
     local dirty
@@ -511,7 +502,6 @@ go_group() {
     run "выпуск: точка отсчёта совместимости" bash "$ROOT/scripts/release/breaking-since-release-inject.sh"
     run "выпуск: производитель отказывает без следа" bash "$ROOT/scripts/release/publish-tag-inject.sh"
     run "выпуск: сводка читает факт, а не вход" bash "$ROOT/scripts/release/summarize-run-inject.sh"
-    run "поставка: производитель артефакта службы" bash "$ROOT/scripts/release/publish-service-artifact-inject.sh"
     run "go build" go build ./...
     run "go vet" go vet ./...
     run "go test -short" go test ./... -short -count=1

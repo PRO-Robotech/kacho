@@ -120,7 +120,7 @@ func edgeKindUserTokenAs(machineCaller bool) *edgeKind {
 		//
 		// Идентификатор клиента и идентификатор ключа РАВНЫ `id` строки, и это не
 		// упрощение подделки, а измеренный контракт: у удостоверения одно имя, а не три
-		// (proto/kacho/cloud/iam/v1/user_token_service.proto, IssueUserTokenResponse —
+		// (proto/kaname/cloud/iam/v1/user_token_service.proto, IssueUserTokenResponse —
 		// `client_id` совпадает с `key_id` дословно).
 		OpResponse: func(row *edgeRow) edgeObject {
 			return edgeObject{

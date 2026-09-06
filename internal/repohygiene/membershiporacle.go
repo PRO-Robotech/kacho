@@ -52,7 +52,7 @@ import (
 )
 
 // oracleProtoDir — поверхность, которую судит гейт.
-const oracleProtoDir = "proto/kacho/cloud/iam/v1"
+const oracleProtoDir = "proto/kaname/cloud/iam/v1"
 
 // oracleFilterRoots — прод-код, где объявляются белые списки фильтра.
 var oracleFilterRoots = []string{"services/iam/internal"}

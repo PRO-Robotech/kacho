@@ -5,7 +5,7 @@ syntax = "proto3";
 
 package kacho.cloud.quota.v1;
 
-import "kacho/cloud/iam/v1/limit.proto";
+import "kaname/cloud/iam/v1/limit.proto";
 
 option go_package = "github.com/PRO-Robotech/kacho/pkg/api/kacho/cloud/quota/v1;quotav1";
 
@@ -53,7 +53,7 @@ message Quota {
   // Without it "you are at 16 of 16" does not tell the tenant whether the number
   // is their own override, their account's, or the platform's, and therefore does
   // not tell them who can change it.
-  kacho.cloud.iam.v1.Limit.Scope source_scope = 4;
+  kaname.cloud.iam.v1.Limit.Scope source_scope = 4;
 
   // Id of the object the winning scope names: an account id for ACCOUNT, a
   // project id for PROJECT. Empty when the winner is DEFAULT, and empty ONLY

@@ -74,7 +74,7 @@ import (
 // canonicalModel — каноническая модель прав. Копия у iam
 // (`services/iam/internal/authzmodel/fga_model.fga`) держится гейтом дрейфа и
 // здесь не читается: два чтения об одном предмете разошлись бы молча.
-const canonicalModel = serviceRoot + "/../../proto/kacho/cloud/iam/v1/fga_model.fga"
+const canonicalModel = serviceRoot + "/../../proto/kaname/cloud/iam/v1/fga_model.fga"
 
 // poolObjectType — тип объекта пула адресов в модели прав.
 const poolObjectType = "vpc_address_pool"

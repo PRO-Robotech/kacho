@@ -237,7 +237,7 @@ func TestRetiredBlockStorageIsNotInIAMVocabularies(t *testing.T) {
 // green while the other drifted, which is the exact failure the pair exists to
 // catch.
 const (
-	canonicalModelRelPath = "proto/kacho/cloud/iam/v1/fga_model.fga"
+	canonicalModelRelPath = "proto/kaname/cloud/iam/v1/fga_model.fga"
 	embeddedModelRelPath  = "services/iam/internal/authzmodel/fga_model.fga"
 )
 

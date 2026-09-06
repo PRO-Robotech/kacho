@@ -237,7 +237,7 @@ func (h *TokenHookHandler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	// отдаёт его пустым. kacho-принципал такого токена — ServiceAccount за
 	// OAuth2-клиентом, поэтому fallback на client_id (session, затем request);
 	// enricher резолвит его в SA через LookupByOAuthClientID и штампует
-	// kaname_principal_id = SA-id.
+	// kacho_principal_id = SA-id.
 	if subject == "" {
 		subject = payload.Session.ClientID
 		if subject == "" {
@@ -378,7 +378,7 @@ func (h *TokenHookHandler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		// durable record; the token is already minted at this point).
 		if emitErr := h.audit.Emit(ctx, AuditEvent{
 			EventType:       "authn.token.issued",
-			TenantAccountID: getString(enriched, "kaname_active_account"),
+			TenantAccountID: getString(enriched, "kacho_active_account"),
 			Payload: map[string]any{
 				"subject":          subject,
 				"client_id":        payload.Request.ClientID,

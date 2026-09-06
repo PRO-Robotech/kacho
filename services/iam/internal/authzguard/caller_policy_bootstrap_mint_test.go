@@ -33,7 +33,7 @@ import (
 
 const (
 	// bootstrapMintMethod — the RPC under test.
-	bootstrapMintMethod = "/kacho.cloud.iam.v1.InternalBootstrapTokenService/MintBootstrapToken"
+	bootstrapMintMethod = "/kaname.cloud.iam.v1.InternalBootstrapTokenService/MintBootstrapToken"
 	// seedRunnerSAN — the allow-listed operator/CI identity.
 	seedRunnerSAN = "spiffe://kacho.cloud/ns/kacho/sa/kacho-bootstrap-seeder"
 )

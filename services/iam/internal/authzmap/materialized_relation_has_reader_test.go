@@ -324,7 +324,7 @@ func countCatalogEntries(t *testing.T, root string) int {
 // отношения того же типа. Такое отношение читается косвенно через вывод модели.
 func modelInternalRelationRefs(t *testing.T, root string) map[string]map[string]bool {
 	t.Helper()
-	raw, err := os.ReadFile(filepath.Join(root, "proto", "kacho", "cloud", "iam", "v1", "fga_model.fga"))
+	raw, err := os.ReadFile(filepath.Join(root, "proto", "kaname", "cloud", "iam", "v1", "fga_model.fga"))
 	require.NoError(t, err, "канонической модели нет — предпосылка гейта сломана")
 	reType := regexp.MustCompile(`^type\s+(\S+)`)
 	reDefine := regexp.MustCompile(`^define\s+(\w+)\s*:\s*(.*)$`)

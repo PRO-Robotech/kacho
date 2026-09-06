@@ -99,7 +99,7 @@ deny. Флаг `KACHO_API_GATEWAY_AUTHZ_FAIL_OPEN` существует толь
   вызов, сбрасывает свой кэш решений сразу, не дожидаясь опроса. Закрывает самый частый случай
   «сменил права и тут же проверил».
 - **опрос журнала (сходимость остальных реплик)** — фоновый цикл каждой реплики зовёт
-  `kacho.cloud.iam.v1.InternalIAMService/PollSubjectChanges` на cluster-internal listener'е
+  `kaname.cloud.iam.v1.InternalIAMService/PollSubjectChanges` на cluster-internal listener'е
   `kaname`, читая `kaname.subject_change_outbox` курсором по возрастанию `id`; непустая
   партия означает сброс кэша **этой** реплики. Интервал —
   `KACHO_API_GATEWAY_SUBJECT_CHANGE_POLL_INTERVAL` (дефолт `2s`), поэтому окно сходимости задаёт

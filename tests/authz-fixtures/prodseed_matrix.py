@@ -188,7 +188,7 @@ def upsert_user(ext_id, wait_s=40):
     """
     body = json.dumps({"externalId": ext_id, "email": ext_id, "displayName": ext_id})
     args = ["grpcurl", "-insecure", "-cert", MTLS_CERT, "-key", MTLS_KEY,
-            "-d", body, IAM_GRPC, "kacho.cloud.iam.v1.InternalUserService/UpsertFromIdentity"]
+            "-d", body, IAM_GRPC, "kaname.cloud.iam.v1.InternalUserService/UpsertFromIdentity"]
     out = subprocess.run(args, capture_output=True, text=True).stdout
     d = json.loads(out or "{}")
     uid = (d.get("metadata") or {}).get("userId", "")
@@ -754,7 +754,7 @@ def seed() -> dict:
 
     # ТА ЖЕ полоса, ДРУГОЙ субъект — человек (#1121). Держатся обе, потому что
     # край выводит принципала из утверждений токена, а у человека и машины они
-    # разные (`kaname_principal_type`): полоса, доказанная машиной, о человеке не
+    # разные (`kacho_principal_type`): полоса, доказанная машиной, о человеке не
     # говорит ничего.
     #
     # Субъект СВОЙ, а не один из матричных: выпуск персонального токена — это

@@ -34,19 +34,9 @@
 //	                                          repository.postgres.url из YAML)
 //
 // Источник DSN — приоритет: --dsn > ENV `KACHO_MIGRATOR_DSN` > --config
-// (`config.MigrateDSN`, она же читает `KACHO_NLB_REPOSITORY__POSTGRES__URL`).
-// Так одна и та же `values.yaml` покрывает оба бинаря (kacho-loadbalancer +
-// kacho-migrator) без дублирования.
-//
-// # Конфигурацию читает СВОЯ дверь, и это решение
-//
-// Накат спрашивает у конфигурации то, чем пользуется сам: адрес базы и режим
-// шифрования до неё. Страж посадки СЛУЖБЫ (mTLS рёбер, круг отправителей чужой
-// личности, объявление домена величин, фильтр списков) на него не наложен — у
-// процесса, чья работа `goose up`, нет ни одного из этих предметов, и отказ по
-// ним называл бы оператору не тот. Страж службы при этом не ослаблен ни на
-// байт: он стоит там же, где стоял, — за `config.Load`, которой поднимается
-// `kacho-loadbalancer`. Разбор конфигурации у обеих дверей ОДИН.
+// (config.Load, он же читает `KACHO_NLB_REPOSITORY__POSTGRES__URL`). Так одна и
+// та же `values.yaml` покрывает оба бинаря (kacho-loadbalancer + kacho-migrator)
+// без дублирования.
 //
 // Флаг `--config` есть ТОЛЬКО у этого сервиса, и это решение, а не остаток:
 // nlb читает конфигурацию из смонтированного файла, шесть соседей — из
@@ -56,6 +46,7 @@ package main
 import (
 	"io/fs"
 	"os"
+	"strings"
 
 	_ "github.com/jackc/pgx/v5/stdlib" // регистрирует "pgx" driver для sql.Open
 	"github.com/spf13/cobra"
@@ -212,15 +203,10 @@ func newStatusCmd(opts *rootOptions, migrationsFS fs.FS) *cobra.Command {
 // buildRunner собирает накат из persistent-флагов + ENV + config-fallback.
 //
 // Приоритет DSN один на семь сервисов и живёт в общем пакете:
-// --dsn > ENV KACHO_MIGRATOR_DSN > конфигурация сервиса (здесь —
-// `config.MigrateDSN`, она же читает `KACHO_NLB_REPOSITORY__POSTGRES__URL` и
-// смонтированный `--config`). Своей редакции порядка тут быть не должно: две
-// редакции об одном предмете расходятся молча — и разошлись, общей переменной
-// nlb не читал вовсе.
-//
-// Третий источник читает дверь ТОЧКИ НАКАТА, а не дверь службы: посадка
-// процесса, который служит, накат не связывает, а шифрование до собственной
-// базы — связывает. Границу называет сама `config.MigrateDSN`.
+// --dsn > ENV KACHO_MIGRATOR_DSN > конфигурация сервиса (здесь — config.Load,
+// который сам читает `KACHO_NLB_REPOSITORY__POSTGRES__URL` и смонтированный
+// `--config`). Своей редакции порядка тут быть не должно: две редакции об одном
+// предмете расходятся молча — и разошлись, общей переменной nlb не читал вовсе.
 func buildRunner(opts *rootOptions, migrationsFS fs.FS) (*migratorrun.Runner, error) {
 	// ДИАЛЕКТ СВЕРЯЕТСЯ ПЕРВЫМ, и это порядок, а не стиль. Общий накат сверяет
 	// его тоже — но уже приняв DSN, а до DSN лежит загрузка конфигурации службы.
@@ -234,12 +220,12 @@ func buildRunner(opts *rootOptions, migrationsFS fs.FS) (*migratorrun.Runner, er
 		return nil, err
 	}
 
-	// Запасная конфигурация читается ДВЕРЬЮ ТОЧКИ НАКАТА, а не дверью службы.
-	// Разбор у них один; различается то, ЧТО каждая спрашивает: накат — адрес
-	// своей базы и шифрование до неё, служба — свою посадку целиком. Почему
-	// именно так и что при этом НЕ снимается — `config.MigrateDSN`.
 	dsn, err := migratorcli.ResolveDSN(opts.dsn, func() (string, error) {
-		return config.MigrateDSN(opts.configPath)
+		cfg, cerr := config.Load(opts.configPath)
+		if cerr != nil {
+			return "", cerr
+		}
+		return strings.TrimSpace(cfg.Repository.Postgres.URL), nil
 	})
 	if err != nil {
 		return nil, err

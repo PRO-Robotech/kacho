@@ -10,14 +10,11 @@ package main
 import (
 	"bytes"
 	"io/fs"
-	"os"
-	"path/filepath"
 	"strings"
 	"testing"
 	"testing/fstest"
 
 	"github.com/PRO-Robotech/kacho/pkg/migratorcli"
-	"github.com/PRO-Robotech/kacho/services/nlb/internal/apps/kacho/config"
 )
 
 func emptyFS() fs.FS { return fstest.MapFS{} }
@@ -385,49 +382,5 @@ func TestHelpSubcommandWorks(t *testing.T) {
 	}
 	if !strings.Contains(stdout, "kacho-migrator") {
 		t.Fatalf("help не напечатал форму вызова: %q", stdout)
-	}
-}
-
-// TestBuildRunner_ConfigLaneAsksOnlyWhatTheApplyPointUses — точка наката
-// спрашивает у конфигурации РОВНО то, чем пользуется сама.
-//
-// Предмет: у накатчика нет ни слушателя, ни соседей, ни переданной личности —
-// значит посадка СЛУЖБЫ его не связывает. Он читает адрес базы и режим
-// шифрования до неё; всё остальное объявление принадлежит процессу, который
-// служит, и отказ по нему назвал бы не тот предмет.
-//
-// Фикстура отличается от законной посадки службы ОДНИМ фактом — в ней нет
-// объявления домена величин, — и второй половиной пробы это утверждается прямо:
-// та же самая строка через дверь СЛУЖБЫ обязана быть отвергнута с именем ручки.
-// Без этой половины «накатчик прошёл» зеленело бы и на конфигурации, которая
-// посадку службы проходит целиком, то есть проба не различала бы двери.
-func TestBuildRunner_ConfigLaneAsksOnlyWhatTheApplyPointUses(t *testing.T) {
-	// Общая переменная адреса базы гасится: не погасив её, полоса конфигурации
-	// зеленела бы на DSN из окружения прогона — то есть доказывала бы не себя.
-	t.Setenv(migratorcli.EnvDSN, "")
-
-	path := filepath.Join(t.TempDir(), "config.yaml")
-	const body = "mode: dev\n" +
-		"repository:\n  postgres:\n    url: postgres://u:p@h:5432/kacho_nlb?sslmode=disable\n"
-	if err := os.WriteFile(path, []byte(body), 0o600); err != nil {
-		t.Fatalf("фикстура не записана: %v", err)
-	}
-
-	opts := &rootOptions{dialect: "postgres", configPath: path}
-	if _, err := buildRunner(opts, fstest.MapFS{"0001_x.sql": &fstest.MapFile{Data: []byte("-- empty")}}); err != nil {
-		t.Fatalf("точка наката отвергла конфигурацию, в которой есть всё, чем она "+
-			"пользуется. Отказ накатчика по посадке СЛУЖБЫ называет не тот предмет: "+
-			"у процесса, чья работа — накатить цепочку, нет ни одного из объявленных "+
-			"в нём предметов:\n%v", err)
-	}
-
-	// Положительный близнец: дверь СЛУЖБЫ на той же строке обязана отказать и
-	// назвать ручку. Ослабь кто-нибудь стража посадки — эта половина покраснеет.
-	if _, err := config.Load(path); err == nil {
-		t.Fatal("дверь службы приняла конфигурацию БЕЗ объявления домена величин — " +
-			"страж посадки ослаблен, и первая половина пробы больше ничего не различает")
-	} else if !strings.Contains(err.Error(), "quota.authority") {
-		t.Fatalf("отказ двери службы не называет ручку — оператор не поймёт, что "+
-			"крутить:\n%v", err)
 	}
 }

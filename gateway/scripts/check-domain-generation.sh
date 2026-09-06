@@ -92,25 +92,33 @@ source "${REPO_ROOT}/scripts/lib/stage-proto-tree.sh"
 stage_proto_tree "${PROTO_ROOT}" "${STRIPPED}" "check-stripped-tree" "${DOMAINS[*]}" \
   || finding A2 "раскладка урезанного дерева отказала"
 
+# Обход идёт по ОБЪЯВЛЕННЫМ корням контракта (KACHO_PROTO_ROOTS из библиотеки
+# раскладки), а не по литералу `kacho/cloud`: корень, о котором обход не знает,
+# дал бы «деревьев 0» по опустевшей популяции — то есть находку там, где
+# нарушения нет, и молчание там, где дерево службы выпало из стадии.
 staged=()
-if [[ -d "${STRIPPED}/kacho/cloud" ]]; then
-  for d in "${STRIPPED}"/kacho/cloud/*/; do
+for r in "${KACHO_PROTO_ROOTS[@]}"; do
+  [[ -d "${STRIPPED}/${r}/cloud" ]] || continue
+  for d in "${STRIPPED}/${r}"/cloud/*/; do
     [[ -d "${d}" ]] || continue
     staged+=("$(basename "${d}")")
   done
-fi
-echo "check-domain-generation: урезанное дерево несёт деревьев под kacho/cloud: ${#staged[@]} — ${staged[*]:-(нет)}"
+done
+echo "check-domain-generation: урезанное дерево несёт деревьев контракта: ${#staged[@]} — ${staged[*]:-(нет)}"
 [[ ${#staged[@]} -gt 0 ]] || finding A2 "урезанное дерево пусто — обход беспредметен"
 
 # все домены полного дерева, которых НЕТ в отборе и которых НЕТ в замыкании,
 # обязаны отсутствовать в урезанном дереве
+staged_has() { local n=$1 s; for s in "${staged[@]}"; do [[ "${s}" == "${n}" ]] && return 0; done; return 1; }
 for d in "${DOMAINS[@]}"; do
-  [[ -d "${STRIPPED}/kacho/cloud/${d}" ]] || finding A2 "выбранного домена '${d}' нет в урезанном дереве"
+  staged_has "${d}" || finding A2 "выбранного домена '${d}' нет в урезанном дереве"
 done
 absent=0
 while IFS= read -r d; do
-  [[ -d "${STRIPPED}/kacho/cloud/${d}" ]] || absent=$((absent + 1))
-done < <(for d in "${PROTO_ROOT}"/kacho/cloud/*/; do [[ -d "${d}" ]] && basename "${d}"; done)
+  staged_has "${d}" || absent=$((absent + 1))
+done < <(for r in "${KACHO_PROTO_ROOTS[@]}"; do
+           for d in "${PROTO_ROOT}/${r}"/cloud/*/; do [[ -d "${d}" ]] && basename "${d}"; done
+         done)
 echo "check-domain-generation: доменов полного дерева отсутствует в урезанном: ${absent}"
 [[ "${absent}" -gt 0 ]] || finding A2 "урезанное дерево несёт ВСЕ домены — оно не урезано"
 
@@ -262,7 +270,15 @@ fi
 # ==========================================================================
 ROOTLESS="${WORK}/rootless-proto"
 cp -R "${STRIPPED}" "${ROOTLESS}"
-rm -rf "${ROOTLESS}/kacho/cloud/${DOMAINS[0]}"
+# Корень домена РЕЗОЛВИТСЯ, а не пишется литералом: домены живут под разными
+# корнями (KAN-PKG-1), и `rm -rf` по литеральному пути снял бы НОЛЬ каталогов
+# для домена чужого корня. Тогда генератор честно породил бы выход, а A9
+# объявила бы находку — про ручку, которая читается исправно.
+rootless_root="$(kacho_proto_tree_root "${ROOTLESS}" "${DOMAINS[0]}")" \
+  || finding A9 "домен '${DOMAINS[0]}' не резолвится ни под одним корнем (${KACHO_PROTO_ROOTS[*]})"
+rm -rf "${ROOTLESS}/${rootless_root}/cloud/${DOMAINS[0]}"
+[[ ! -d "${ROOTLESS}/${rootless_root}/cloud/${DOMAINS[0]}" ]] \
+  || finding A9 "домен '${DOMAINS[0]}' не снят из корня без домена — инъекция беспредметна"
 # Спрашивается КАЖДЫЙ генератор порознь: ручка бывает не прочитана у одного из
 # двух, и общий вердикт «отказало» это скрывает.
 rootless_checked=0

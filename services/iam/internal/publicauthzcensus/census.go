@@ -270,7 +270,7 @@ func Collect(root string) (Census, error) {
 	// спрашивала — отсюда и расхождение «записей карты 119 против осмотренных 78».
 	return collectFromDirs(
 		[]string{
-			filepath.Join(root, "proto", "kacho", "cloud", "iam", "v1"),
+			filepath.Join(root, "proto", "kaname", "cloud", "iam", "v1"),
 			filepath.Join(root, "proto", "kacho", "cloud", "operation"),
 			filepath.Join(root, "proto", "kacho", "cloud", "quota", "v1"),
 		},

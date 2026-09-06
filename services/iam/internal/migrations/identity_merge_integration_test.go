@@ -158,7 +158,7 @@ func scopeParentsOf(t *testing.T, db *sql.DB, objectType, objectID string) []str
 func canonicalModelText(t *testing.T) string {
 	t.Helper()
 	path := filepath.Join("..", "..", "..", "..",
-		"proto", "kacho", "cloud", "iam", "v1", "fga_model.fga")
+		"proto", "kaname", "cloud", "iam", "v1", "fga_model.fga")
 	b, err := os.ReadFile(path)
 	require.NoError(t, err,
 		"ПРЕДПОСЫЛКА: канонический текст модели прав обязан читаться — его отсутствие "+

@@ -129,24 +129,7 @@ func RegisterDefaults(v *viper.Viper) {
 	// перестала бы наблюдать незаданное значение вовсе.
 	// AuthN core — configurable domain + Hydra issuer + hooks. Secrets are
 	// resolved from env so they don't sit in YAML/ConfigMap.
-	//
-	// authn.domain — УМОЛЧАНИЯ НЕТ НАМЕРЕННО (задача #2127).
-	//
-	// Из него выводится клеймо АДРЕСАТА, уезжающее в каждом выпущенном
-	// удостоверении и читаемое всяким, кто токен разбирает. Подставленное
-	// построением доменное имя делает это клеймо решением, принятым за
-	// оператора, — и принимается оно молча: посадка выглядит настроенной, а
-	// удостоверения адресованы не туда.
-	//
-	// Величина, которую построение подставляет молча, предметом стража быть не
-	// может: он зелен при любом входе, потому что незаданной она не бывает.
-	// Умолчание живёт в ПРОФИЛЕ — чарт объявляет его из `kacho.domain`, где его
-	// видно тому, кто профиль читает.
-	//
-	// Строки `SetDefault` для этого ключа быть не должно: она и есть то самое
-	// умолчание в коде. Свойство держит проба TestDomainHasNoCompiledInDefault.
-	// Ключ привязан к окружению явно (load.go) — без этого `AutomaticEnv` не
-	// разрешил бы переменную вовсе.
+	v.SetDefault("authn.domain", "api.kacho.cloud")
 	v.SetDefault("authn.hydra-issuer", "")       // resolved via ResolveHydraIssuer() when empty
 	v.SetDefault("authn.hydra-jwks-url", "")     // resolved via ResolveHydraJWKSURL() (env KANAME_HYDRA_JWKS_URL)
 	v.SetDefault("authn.hook-shared-secret", "") // no default — security-sensitive

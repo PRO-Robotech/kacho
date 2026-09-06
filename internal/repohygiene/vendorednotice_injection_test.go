@@ -69,7 +69,7 @@ const ourBodyMentioningAForeignPackage = `// Здесь объяснено, по
 /* package google.api — второй способ записи того же слова в комментарии. */
 syntax = "proto3";
 
-package kacho.cloud.iam.v1;
+package kaname.cloud.iam.v1;
 
 message Reply {
   int32 code = 1;

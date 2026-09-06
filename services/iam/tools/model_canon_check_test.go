@@ -69,7 +69,7 @@ func runCheck(t *testing.T, args ...string) (int, string) {
 func syntheticTree(t *testing.T, vpcResources ...string) string {
 	t.Helper()
 	root := t.TempDir()
-	dir := filepath.Join(root, "proto", "kacho", "cloud", "iam", "v1")
+	dir := filepath.Join(root, "proto", "kaname", "cloud", "iam", "v1")
 	if err := os.MkdirAll(dir, 0o750); err != nil {
 		t.Fatalf("каталог канона: %v", err)
 	}

@@ -405,7 +405,7 @@ func edgeEnumNameMismatches(marshaler *runtime.JSONPb) (probeCount, marshaled, m
 	seen := map[protoreflect.FullName]bool{}
 
 	protoregistry.GlobalFiles.RangeFiles(func(fd protoreflect.FileDescriptor) bool {
-		if !strings.HasPrefix(string(fd.Package()), "kacho.") {
+		if !underDeclaredRoot(string(fd.Package())) {
 			return true
 		}
 		var walk func(msgs protoreflect.MessageDescriptors)

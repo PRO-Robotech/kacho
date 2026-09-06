@@ -219,7 +219,7 @@ func TestRuleWildcardContractAgreesWithTheDomain(t *testing.T) {
 
 // roleContractRel — координата контракта роли ОТНОСИТЕЛЬНО дерева, которое его
 // несёт. Объявлена здесь и одна.
-var roleContractRel = filepath.Join("proto", "kacho", "cloud", "iam", "v1", "role.proto")
+var roleContractRel = filepath.Join("proto", "kaname", "cloud", "iam", "v1", "role.proto")
 
 // readRoleContract читает контракт роли из дерева продукта.
 //

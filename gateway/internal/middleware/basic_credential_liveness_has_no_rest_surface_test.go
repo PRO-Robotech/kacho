@@ -34,8 +34,8 @@ import (
 )
 
 func TestBCL1450_LivenessVerbHasNoRestRoute(t *testing.T) {
-	const liveness = "kacho.cloud.iam.v1.InternalIAMService/CheckBasicCredentialLive"
-	const neighbour = "kacho.cloud.iam.v1.InternalIAMService/ResolveBasicCredential"
+	const liveness = "kaname.cloud.iam.v1.InternalIAMService/CheckBasicCredentialLive"
+	const neighbour = "kaname.cloud.iam.v1.InternalIAMService/ResolveBasicCredential"
 
 	var (
 		scanned          int
@@ -45,7 +45,7 @@ func TestBCL1450_LivenessVerbHasNoRestRoute(t *testing.T) {
 	)
 	for _, r := range generatedRestRoutes {
 		scanned++
-		if strings.HasPrefix(r.FQN, "kacho.cloud.iam.v1.InternalIAMService/") {
+		if strings.HasPrefix(r.FQN, "kaname.cloud.iam.v1.InternalIAMService/") {
 			sameService++
 		}
 		switch r.FQN {

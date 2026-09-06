@@ -163,7 +163,7 @@ var Profile = listfiltergate.Profile{
 	EnumerationSources: vpcEnumerationSources,
 	SubjectScopers:     []string{"ListForCaller"},
 	ProtoFiles:         []string{"kacho/cloud/vpc/v1/address_service.proto"},
-	FGAModel:           "kacho/cloud/iam/v1/fga_model.fga",
+	FGAModel:           "kaname/cloud/iam/v1/fga_model.fga",
 
 	Listings: map[string]listfiltergate.Listing{
 		"address.List":          {Shape: listfiltergate.RowFilter},

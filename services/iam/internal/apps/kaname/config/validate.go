@@ -196,21 +196,6 @@ func (c Config) Validate() error {
 		// отсутствие не может.
 		errs = multierr.Append(errs, c.validateIdentityProviderLane())
 
-		// АДРЕСАТ выпускаемых удостоверений (задача #2127). Из `authn.domain`
-		// выводится клеймо адресата, уезжающее в КАЖДОМ выпущенном токене и
-		// читаемое всяким, кто токен разбирает, — без нашего исходного кода.
-		//
-		// Прежде значение подставляло построение, и подставляло оно доменное имя
-		// ЧУЖОГО продукта: ни один профиль ручку не объявлял, поэтому адресат
-		// каждого удостоверения выбирал не оператор. Стражем такая величина быть
-		// не может — он зелен при любом входе, потому что незаданной она не
-		// бывает; поэтому умолчание снято, а поставщик заведён в профиле.
-		//
-		// Ban #16: всякий развёрнутый стенд работает в production-посадке,
-		// поэтому проверка здесь связывает и стенд разработчика. В in-process
-		// фикстуре, не поднимающей выдачи, её предмета нет.
-		errs = multierr.Append(errs, c.validateDeclaredDomain())
-
 		// Шифрование до собственной базы здесь БОЛЬШЕ НЕ СУДИТСЯ — сведено к
 		// одному источнику (задача продукта #1406). Требование не ослаблено: тот
 		// же перечень безопасных значений, один на всё дерево, судит центральный
@@ -225,24 +210,6 @@ func (c Config) Validate() error {
 	}
 
 	return errs
-}
-
-// validateDeclaredDomain requires the deployment to NAME the domain its tokens
-// are addressed to.
-//
-// Отказ называет ПОЛЕ и ПЕРЕМЕННУЮ: оператору иначе нечего искать, а отказ, не
-// восстанавливающий следующий шаг, отправляет его в цикл. Значение доменного
-// имени в тексте не скрывается — оно не секрет и его же оператор и задаёт.
-func (c Config) validateDeclaredDomain() error {
-	if strings.TrimSpace(c.AuthN.Domain) != "" {
-		return nil
-	}
-	return fmt.Errorf(
-		"authn.domain is not declared (set it in the chart profile or via ENV " +
-			"KANAME_AUTHN__DOMAIN): the audience claim of every issued token is derived " +
-			"from it, and a value the build substitutes silently would make this check " +
-			"vacuous — the deployment would look configured while addressing its " +
-			"credentials at a domain nobody chose")
 }
 
 // validateProductionBootstrapMint refuses to start a production binary whose

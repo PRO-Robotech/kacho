@@ -37,10 +37,10 @@ func TestContextExtractor_BuildHTTP_ExtractsFromVerifiedToken(t *testing.T) {
 		JTI:      "jti-1",
 		Cnf:      middleware.TokenConfirmation{Jkt: "abc", HasJkt: true},
 		ExtClaims: map[string]any{
-			"kaname_mfa_at":            float64(mfaAt.Unix()),
-			"kaname_device_compliance": "tpm-attested",
-			"kaname_passkey_aaguid":    "aaguid-x",
-			"kaname_device_id":         "dev-1",
+			"kacho_mfa_at":            float64(mfaAt.Unix()),
+			"kacho_device_compliance": "tpm-attested",
+			"kacho_passkey_aaguid":    "aaguid-x",
+			"kacho_device_id":         "dev-1",
 		},
 	}
 	r := httptest.NewRequest(http.MethodGet, "/", nil)
@@ -162,32 +162,32 @@ func TestContextExtractor_BuildPeerAddr_WithXFFOverride(t *testing.T) {
 	assert.Equal(t, "10.0.0.1", ctx["client_ip"])
 }
 
-func TestContextExtractor_PreservesUnknownKanameClaims(t *testing.T) {
+func TestContextExtractor_PreservesUnknownKachoClaims(t *testing.T) {
 	e := middleware.NewContextExtractor(time.Now, false)
 	tok := &middleware.VerifiedToken{
 		ExtClaims: map[string]any{
-			"kaname_future_thing": "hello",
+			"kacho_future_thing": "hello",
 		},
 	}
 	r := httptest.NewRequest(http.MethodGet, "/", nil)
 	ctx := e.BuildHTTP(tok, r, middleware.ResolvedSubject{})
-	assert.Equal(t, "hello", ctx["kaname_future_thing"])
+	assert.Equal(t, "hello", ctx["kacho_future_thing"])
 }
 
-func TestContextExtractor_DropsResolvedKanameFields(t *testing.T) {
+func TestContextExtractor_DropsResolvedKachoFields(t *testing.T) {
 	e := middleware.NewContextExtractor(time.Now, false)
 	tok := &middleware.VerifiedToken{
 		ExtClaims: map[string]any{
-			"kaname_user_id":        "usr_x", // already resolved by SubjectExtractor; do not duplicate
-			"kaname_principal_type": "user",
-			"kaname_principal_id":   "usr_x",
+			"kacho_user_id":        "usr_x", // already resolved by SubjectExtractor; do not duplicate
+			"kacho_principal_type": "user",
+			"kacho_principal_id":   "usr_x",
 		},
 	}
 	r := httptest.NewRequest(http.MethodGet, "/", nil)
 	ctx := e.BuildHTTP(tok, r, middleware.ResolvedSubject{})
-	_, leak := ctx["kaname_user_id"]
+	_, leak := ctx["kacho_user_id"]
 	assert.False(t, leak)
-	_, leak2 := ctx["kaname_principal_id"]
+	_, leak2 := ctx["kacho_principal_id"]
 	assert.False(t, leak2)
 }
 

@@ -9,7 +9,7 @@
 | сторона | что говорит | где |
 |---|---|---|
 | **схема** | `user`, `service_account` | `group_members_type_check`, `services/iam/internal/migrations/0001_initial.sql` |
-| **модель прав** | `user`, `service_account`, `federated_subject`, **`group#member`** | `type group` / `define member`, `proto/kacho/cloud/iam/v1/fga_model.fga` |
+| **модель прав** | `user`, `service_account`, `federated_subject`, **`group#member`** | `type group` / `define member`, `proto/kaname/cloud/iam/v1/fga_model.fga` |
 
 Предикаты, которыми это установлено (повторяемы):
 

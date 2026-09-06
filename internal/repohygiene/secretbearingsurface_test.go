@@ -15,6 +15,7 @@ import (
 	"google.golang.org/protobuf/reflect/protoregistry"
 
 	apiv1 "github.com/PRO-Robotech/kacho/pkg/api/kacho/cloud/api"
+	"github.com/PRO-Robotech/kacho/pkg/contractroot"
 	"github.com/PRO-Robotech/kacho/pkg/treecorpus"
 )
 
@@ -130,17 +131,17 @@ func (e secretSurfaceExclusion) id() string { return e.message + "." + e.field }
 // помечено — запись потеряла предмет и становится НАХОДКОЙ: иначе первая же
 // запись переживёт свой предмет и унаследует слепую зону следующему.
 var secretSurfaceExclusions = []secretSurfaceExclusion{
-	{"kacho.cloud.iam.v1.IssueSAKeyResponse", "public_key_pem",
+	{"kaname.cloud.iam.v1.IssueSAKeyResponse", "public_key_pem",
 		"публичная половина ключевой пары; каноническая копия у издателя, раскрытие безвредно"},
-	{"kacho.cloud.iam.v1.IssueUserTokenResponse", "public_key_pem",
+	{"kaname.cloud.iam.v1.IssueUserTokenResponse", "public_key_pem",
 		"публичная половина ключевой пары; ею проверяют подпись утверждения, а не подписывают"},
-	{"kacho.cloud.iam.v1.TrustedSubject", "public_key_pem",
+	{"kaname.cloud.iam.v1.TrustedSubject", "public_key_pem",
 		"публичная половина доверенного субъекта федерации — вход проверки, не секрет"},
-	{"kacho.cloud.iam.v1.UserOAuthClient", "public_key_pem",
+	{"kaname.cloud.iam.v1.UserOAuthClient", "public_key_pem",
 		"публичная половина строки реестра удостоверений"},
-	{"kacho.cloud.iam.v1.ResolveBasicCredentialResponse", "credential_id",
+	{"kaname.cloud.iam.v1.ResolveBasicCredentialResponse", "credential_id",
 		"ИДЕНТИФИКАТОР удостоверения, которым адресуется отзыв; секрета не несёт"},
-	{"kacho.cloud.iam.v1.CheckBasicCredentialLiveRequest", "credential_id",
+	{"kaname.cloud.iam.v1.CheckBasicCredentialLiveRequest", "credential_id",
 		"тот же ИДЕНТИФИКАТОР на ВХОДЕ вопроса о живости (#1450). Входная сторона " +
 			"опаснее выходной: сюда вызывающий волен прислать что угодно, в том числе " +
 			"полную предъявленную строку. Поэтому «секрета не несёт» здесь не обещание, " +
@@ -275,12 +276,18 @@ func secretSurfaceVerdict(
 	return findings, stale, excluded
 }
 
-// collectSecretSurfaceFields — поля контрактов `kacho`, какими их видят
+// collectSecretSurfaceFields — поля НАШИХ контрактов, какими их видят
 // дескрипторы.
+//
+// Отбор идёт по ОБЪЯВЛЕННОМУ множеству корней, а не по литералу `kacho/`.
+// Литерал молча выбросил бы из обхода весь контракт, переехавший под второй
+// корень (KAN-PKG-1), — а помеченные поля живут именно там: перепись напечатала
+// бы «помеченных 0», и ось 1 в этом состоянии тоже отработала бы на пустом
+// множестве. Поймал это самопроверочный отказ ниже, а не находка.
 func collectSecretSurfaceFields() (out []secretSurfaceField, census secretSurfaceCensus) {
 	names := map[string]bool{}
 	protoregistry.GlobalFiles.RangeFiles(func(fd protoreflect.FileDescriptor) bool {
-		if !strings.HasPrefix(string(fd.Path()), "kacho/") {
+		if !underDeclaredContractRoot(string(fd.Path())) {
 			return true
 		}
 		var walk func(ms protoreflect.MessageDescriptors)
@@ -364,7 +371,19 @@ func assertDescriptorSetCoversTheContractTree(t *testing.T) {
 	// (`TestTreeWalkersAskTheIndex`), и он же поймал первую редакцию этой
 	// предпосылки — она ходила `filepath.Walk`.
 	root := filepath.Join(repoRoot(t), "proto")
-	onDiskPaths, err := treecorpus.UnderWithSuffix(filepath.Join(root, "kacho"), ".proto")
+	// Обход идёт по ОБЪЯВЛЕННЫМ корням, а не по литералу: домен, переехавший под
+	// второй корень, выпал бы из популяции, и гейт напечатал бы «помеченных 0» —
+	// молчание, неотличимое от «опцию сняли со всех полей».
+	var onDiskPaths []string
+	var err error
+	for _, r := range contractroot.Roots {
+		sub, serr := treecorpus.UnderWithSuffix(filepath.Join(root, r), ".proto")
+		if serr != nil {
+			err = serr
+			break
+		}
+		onDiskPaths = append(onDiskPaths, sub...)
+	}
 	if err != nil {
 		t.Fatalf("состав дерева контрактов: %v", err)
 	}
@@ -391,4 +410,15 @@ func assertDescriptorSetCoversTheContractTree(t *testing.T) {
 	}
 	t.Logf("предпосылка: контрактов в индексе %d, все в наборе дескрипторов (в наборе всего %d)",
 		len(onDisk), len(inSet))
+}
+
+// underDeclaredContractRoot — лежит ли файл дескриптора под одним из объявленных
+// корней дерева контрактов.
+func underDeclaredContractRoot(path string) bool {
+	for _, r := range contractroot.Roots {
+		if strings.HasPrefix(path, r+"/") {
+			return true
+		}
+	}
+	return false
 }

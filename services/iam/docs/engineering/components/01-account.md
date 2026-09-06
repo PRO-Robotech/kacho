@@ -172,7 +172,7 @@ curl -s "http://localhost:18080/iam/v1/accounts?owner_user_id=usr_xxx" -H "Autho
 grpcurl -plaintext \
   -H "Authorization: Bearer $TOKEN" \
   -d '{"name":"acme"}' \
-  localhost:9090 kacho.cloud.iam.v1.AccountService/Create
+  localhost:9090 kaname.cloud.iam.v1.AccountService/Create
 ```
 
 ### Идемпотентность

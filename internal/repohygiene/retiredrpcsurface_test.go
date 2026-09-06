@@ -57,7 +57,7 @@ var retiredRPCSurface = []RetiredRPC{
 	// Пять имён одной причины: их предметом было ЧУЖОЕ хранилище отношений — его
 	// кортежи, его модель, его store id. Хранилища нет, и предмета у них нет тоже.
 	{
-		FQN: "kacho.cloud.iam.v1.AuthorizeService/ListObjects",
+		FQN: "kaname.cloud.iam.v1.AuthorizeService/ListObjects",
 		Reason: "перечисление отвечало ОГРАНИЧЕННЫМ ПРЕФИКСОМ без продолжения: потолок ставила " +
 			"чужая сторона, признак усечения отдавался честно, а получить остаток было нельзя " +
 			"никак — объекты сверх потолка оставались недостижимы ПРИ ЖИВЫХ ПРАВАХ. Заменителя " +
@@ -66,17 +66,17 @@ var retiredRPCSurface = []RetiredRPC{
 			"«перечисли вселенную → отфильтруй».",
 	},
 	{
-		FQN:    "kacho.cloud.iam.v1.InternalAuthorizeService/ReadTuples",
+		FQN:    "kaname.cloud.iam.v1.InternalAuthorizeService/ReadTuples",
 		Reason: "чтение хранилища кортежей чужого движка. Своя проекция читается своими запросами.",
 	},
 	{
-		FQN: "kacho.cloud.iam.v1.InternalAuthorizeService/ReloadModel",
+		FQN: "kaname.cloud.iam.v1.InternalAuthorizeService/ReloadModel",
 		Reason: "пин идентификатора модели, который чеканил движок. Модель прав осталась и стала " +
 			"источником истины формы, но версии у неё больше не чеканит никто: она встроена в " +
 			"образ службы, и «перезагрузить» её означает выкатить образ.",
 	},
 	{
-		FQN: "kacho.cloud.iam.v1.InternalAuthorizeService/GetFGAStoreInfo",
+		FQN: "kaname.cloud.iam.v1.InternalAuthorizeService/GetFGAStoreInfo",
 		Reason: "сведения о чужом хранилище: его store id, счётчик кортежей, когда модель была в " +
 			"него записана. Ни одной из этих величин не существует.",
 	},
@@ -181,7 +181,7 @@ var retiredRPCSurface = []RetiredRPC{
 	// свойство трафика, а не системы. Поэтому исход «снять», а не «перевести
 	// на журнал»: перевод дал бы работу без выгодоприобретателя.
 	{
-		FQN: "kacho.cloud.iam.v1.InternalAuthorizeService/WriteTuples",
+		FQN: "kaname.cloud.iam.v1.InternalAuthorizeService/WriteTuples",
 		Reason: "административная запись набора кортежей мимо журнала. Вызывающих ноль; " +
 			"собственный комментарий контракта называл вызывающим outbox-worker, который " +
 			"на самом деле писал своим дренажом, а не этим RPC. Хранилища, мимо которого " +
@@ -192,7 +192,7 @@ var retiredRPCSurface = []RetiredRPC{
 			"строкой журнала",
 	},
 	{
-		FQN: "kacho.cloud.iam.v1.InternalIAMService/WriteCreatorTuple",
+		FQN: "kaname.cloud.iam.v1.InternalIAMService/WriteCreatorTuple",
 		Reason: "синхронная запись кортежа создателя мимо журнала. Все пять соседей ушли " +
 			"на RegisterResource (nlb называет это дословно: «Replaces the former direct " +
 			"WriteCreatorTuple»), и вызывающих не осталось ни одного. Живой путь — " +
@@ -201,13 +201,13 @@ var retiredRPCSurface = []RetiredRPC{
 			"больше нет",
 	},
 	{
-		FQN: "kacho.cloud.iam.v1.InternalIamHooksService/TokenHook",
+		FQN: "kaname.cloud.iam.v1.InternalIamHooksService/TokenHook",
 		Reason: "хуки Hydra обслуживаются по HTTP (services/iam/internal/handler/iamhooks), и обслуживаются " +
 			"СВОИМИ структурами тела запроса под контракт Hydra — типы этого proto не читает ни одна строка " +
 			"неgenerated-кода. gRPC-объявление описывало замысел, который не был реализован",
 	},
 	{
-		FQN: "kacho.cloud.iam.v1.InternalIamHooksService/RefreshTokenHook",
+		FQN: "kaname.cloud.iam.v1.InternalIamHooksService/RefreshTokenHook",
 		Reason: "вторая половина того же неreализованного gRPC-объявления хуков Hydra; живой путь — " +
 			"HTTP-обработчик refresh_hook_handler.go со своей формой тела",
 	},

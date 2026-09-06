@@ -8,7 +8,7 @@ package group
 // freshly-created iam_group object right after the writer-tx commits.
 //
 // Regression (Contract-A flat model): the flat authorization model
-// (`proto/kacho/cloud/iam/v1/fga_model.fga`, still the canonical declaration —
+// (`proto/kaname/cloud/iam/v1/fga_model.fga`, still the canonical declaration —
 // stage S6 removed the external ENGINE, not the model) dropped the
 // `<rel> from account` ACCESS cascade on iam_group, so a Group created inside an
 // account got NO admin/v_* tuple by derivation. The async reconcile event

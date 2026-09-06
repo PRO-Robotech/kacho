@@ -9,7 +9,7 @@
 `cases/iam-token-facade-conformance.py` был написан под ОДНУ полосу выдачи —
 внешнего поставщика. Когда платформа завела собственного подписанта, каждый
 литерал полосы стал ложью о верном мире: алгоритм (`RS256`), запись публикатора
-(одна), форма утверждений (вложенная) и контроль `sub !== kaname_principal_id`.
+(одна), форма утверждений (вложенная) и контроль `sub !== kacho_principal_id`.
 Пять кейсов из восьми покраснели на исправной платформе, причём два — чистым
 каскадом: падал шаг, делавший ровно то, что положено делать с величиной, которую
 суита не захватила.
@@ -32,7 +32,7 @@
 | kid ровно в ОДНОЙ записи         | как есть                | один kid в обеих записях                   |
 | alg записи = alg заголовка       | как есть                | запись объявляет другой алгоритм           |
 | материал ключа для подделки      | RSA `n` / EC `x`+`y`    | запись без публичного материала            |
-| состав ≠ пересказ субъекта       | `soc_…` ≠ `sva…`        | `kaname_sa_key_id` = `kaname_principal_id`   |
+| состав ≠ пересказ субъекта       | `soc_…` ≠ `sva…`        | `kacho_sa_key_id` = `kacho_principal_id`   |
 | ответ платформы = состав         | совпадает               | платформа называет другого принципала      |
 | публикатор — только открытое     | нет приватных членов    | в записи появился приватный член ключа     |
 | запись на объявленном адресе     | 200                     | 404 — запись переехала                     |
@@ -106,10 +106,10 @@ def jwt(header: dict, payload: dict) -> str:
 
 def base_claims() -> dict:
     return {
-        "kaname_principal_type": PRINCIPAL_TYPE,
-        "kaname_principal_id": PRINCIPAL_ID,
-        "kaname_sa_key_id": SA_KEY_ID,
-        "kaname_account_id": ACCOUNT_ID,
+        "kacho_principal_type": PRINCIPAL_TYPE,
+        "kacho_principal_id": PRINCIPAL_ID,
+        "kacho_sa_key_id": SA_KEY_ID,
+        "kacho_account_id": ACCOUNT_ID,
     }
 
 
@@ -276,13 +276,13 @@ def main() -> int:
         ("состав: `soc_…` ≠ принципала — молчит", ibt13,
          lambda: Stand(own_lane_bearer()), False, None),
         ("состав: sa_key_id = principal_id — падает", ibt13,
-         lambda: Stand(own_lane_bearer(claims={"kaname_sa_key_id": PRINCIPAL_ID})),
+         lambda: Stand(own_lane_bearer(claims={"kacho_sa_key_id": PRINCIPAL_ID})),
          True, "SUBJECT cannot supply"),
         ("состав: sa_key_id = sub — падает", ibt13,
-         lambda: Stand(provider_lane_bearer(claims={"kaname_sa_key_id": "kacho-bootstrap-admin"})),
+         lambda: Stand(provider_lane_bearer(claims={"kacho_sa_key_id": "kacho-bootstrap-admin"})),
          True, "SUBJECT cannot supply"),
-        ("состав: нет kaname_account_id — падает", ibt13,
-         lambda: Stand(own_lane_bearer(claims={"kaname_account_id": ""})),
+        ("состав: нет kacho_account_id — падает", ibt13,
+         lambda: Stand(own_lane_bearer(claims={"kacho_account_id": ""})),
          True, "SUBJECT cannot supply"),
         ("ответ платформы: называет ДРУГОГО принципала — падает", ibt13,
          lambda: Stand(own_lane_bearer(), subject="service_account:svaSOMEONEELSE0000"),

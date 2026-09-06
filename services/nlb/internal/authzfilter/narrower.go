@@ -18,7 +18,6 @@ import (
 	"google.golang.org/grpc"
 
 	"github.com/PRO-Robotech/kacho/pkg/listnarrow"
-	"github.com/PRO-Robotech/kacho/pkg/listnarrow/narrowiam"
 )
 
 // Narrower — сужатель списочной страницы kacho-nlb.
@@ -45,7 +44,7 @@ type Config struct {
 func New(conn grpc.ClientConnInterface, cfg Config) *Narrower {
 	var cli listnarrow.AuthorizeClient
 	if conn != nil {
-		cli = narrowiam.New(conn)
+		cli = listnarrow.NewAuthorizeClient(conn)
 	}
 	return listnarrow.New(cli, listnarrow.Config{
 		Relations:             PageRelations,

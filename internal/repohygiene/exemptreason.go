@@ -59,12 +59,12 @@ var exemptReasonDictionary = map[string]string{
 // но край при этом ОБЯЗАН извлечь принципала. Строка перечня без живой записи
 // каталога — находка, поэтому запись и координата снимаются одним изменением.
 var EnforcementSite = map[string]string{
-	"kacho.cloud.iam.v1.AccountService/Create":       "services/iam/internal/apps/kaname/api/account/create.go",
-	"kacho.cloud.iam.v1.AuthorizeService/WhoAmI":     "services/iam/internal/apps/kaname/api/authorize/whoami.go",
-	"kacho.cloud.quota.v1.IdentityQuotaService/List": "services/iam/internal/apps/kaname/api/identityquota/handler.go",
-	"kacho.cloud.iam.v1.AccessBindingService/Create": "services/iam/internal/apps/kaname/api/access_binding/create.go",
-	"kacho.cloud.operation.OperationService/Get":     "gateway/internal/opsproxy/proxy.go",
-	"kacho.cloud.operation.OperationService/Cancel":  "gateway/internal/opsproxy/proxy.go",
+	"kaname.cloud.iam.v1.AccountService/Create":       "services/iam/internal/apps/kaname/api/account/create.go",
+	"kaname.cloud.iam.v1.AuthorizeService/WhoAmI":     "services/iam/internal/apps/kaname/api/authorize/whoami.go",
+	"kacho.cloud.quota.v1.IdentityQuotaService/List":  "services/iam/internal/apps/kaname/api/identityquota/handler.go",
+	"kaname.cloud.iam.v1.AccessBindingService/Create": "services/iam/internal/apps/kaname/api/access_binding/create.go",
+	"kacho.cloud.operation.OperationService/Get":      "gateway/internal/opsproxy/proxy.go",
+	"kacho.cloud.operation.OperationService/Cancel":   "gateway/internal/opsproxy/proxy.go",
 }
 
 // ExemptCatalogRow — запись каталога прав вместе с копией, из которой прочитана.

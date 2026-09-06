@@ -59,14 +59,14 @@ func mrrCatalogWith(rel string, scopeFiltered bool) string {
 		sf = `,"scope_filtered":true`
 	}
 	row := func(m string) string {
-		return `{"fqn":"kacho.cloud.iam.v1.MembershipService/` + m + `",` +
+		return `{"fqn":"kaname.cloud.iam.v1.MembershipService/` + m + `",` +
 			`"permission":"iam.memberships.` + strings.ToLower(m) + `",` +
 			`"required_relation":"` + rel + `",` +
 			`"scope_extractor":{"object_type":"account","from_request_field":"account_id"}` + sf + `}`
 	}
 	// Соседняя запись — законный близнец: чтение САМОГО объекта аккаунта
 	// глагольным отношением. Гейт её не судит, и это его названная граница.
-	twin := `{"fqn":"kacho.cloud.iam.v1.AccountService/Get","permission":"iam.accounts.get",` +
+	twin := `{"fqn":"kaname.cloud.iam.v1.AccountService/Get","permission":"iam.accounts.get",` +
 		`"required_relation":"v_get",` +
 		`"scope_extractor":{"object_type":"account","from_request_field":"account_id"}}`
 	return "[" + row("Get") + "," + row("List") + "," + twin + "]"
@@ -92,7 +92,7 @@ func TestMRR_SilentOnTheLawfulDeclaration(t *testing.T) {
 
 // TestMRR_RedWhenTheEntryIsMissing — первый возврат: запись каталога снята.
 func TestMRR_RedWhenTheEntryIsMissing(t *testing.T) {
-	only := `[{"fqn":"kacho.cloud.iam.v1.MembershipService/Get","permission":"p",` +
+	only := `[{"fqn":"kaname.cloud.iam.v1.MembershipService/Get","permission":"p",` +
 		`"required_relation":"viewer",` +
 		`"scope_extractor":{"object_type":"account","from_request_field":"account_id"}}]`
 	got := mrrFindings(t, only, mrrModelLawful)

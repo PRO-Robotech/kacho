@@ -90,7 +90,7 @@ func NewStepUpGate(now func() time.Time) *StepUpGate {
 // grpcsrv.StepUpInput: подставленный клиентом уровень или тип принципала купил
 // бы освобождение.
 type StepUpAssurance struct {
-	// PrincipalType — `kaname_principal_type` предъявителя либо тип субъекта,
+	// PrincipalType — `kacho_principal_type` предъявителя либо тип субъекта,
 	// резолвленного полосой сессии. Единственное значение, снимающее пол, —
 	// grpcsrv.PrincipalTypeServiceAccount; решает это общее правило, не полоса.
 	PrincipalType string
@@ -107,7 +107,7 @@ type StepUpAssurance struct {
 // края и Hydra, поэтому разбор остаётся здесь; вердикт по нему — нет.
 func assuranceFromVerifiedToken(token *VerifiedToken) StepUpAssurance {
 	return StepUpAssurance{
-		PrincipalType: verifiedClaim(token, "kaname_principal_type"),
+		PrincipalType: verifiedClaim(token, "kacho_principal_type"),
 		ACR:           token.ACR,
 		AuthTime:      token.AuthTime,
 	}

@@ -24,7 +24,7 @@ import (
 	"google.golang.org/grpc/metadata"
 	"google.golang.org/grpc/status"
 
-	iamv1 "github.com/PRO-Robotech/kacho/pkg/api/kacho/cloud/iam/v1"
+	iamv1 "github.com/PRO-Robotech/kacho/pkg/api/kaname/cloud/iam/v1"
 
 	"github.com/PRO-Robotech/kacho/gateway/internal/middleware"
 )
@@ -117,7 +117,7 @@ const (
 	deleteEntry = `{"fqn":"kacho.cloud.vpc.v1.NetworkService/Delete","permission":"vpc.networks.delete","required_relation":"editor","scope_extractor":{"object_type":"vpc_network","from_request_field":"network_id"},"required_acr_min":"3","requires_mfa_fresh":true,"risk_level":"HIGH"}`
 	// A real `<exempt>` RPC that is NOT on DefaultPublicAllowlist, so a request
 	// for it reaches the catalog instead of being admitted at decide() step 1.
-	// It used to name kacho.cloud.iam.v1.AuthService/Login — see
+	// It used to name kaname.cloud.iam.v1.AuthService/Login — see
 	// TestAuthz_GRPC_ExemptEntry_Allows for why that made the case vacuous.
 	exemptEntry = `{"fqn":"kacho.cloud.geo.v1.ZoneService/List","permission":"<exempt>"}`
 )
@@ -163,7 +163,7 @@ func TestAuthz_GRPC_CatalogMiss_Denies(t *testing.T) {
 // AUTHENTICATED caller without asking the authorizer.
 //
 // WHY THIS CASE CHANGED SHAPE (it was not weakened — it previously asserted
-// nothing). It used to call /kacho.cloud.iam.v1.AuthService/Login with
+// nothing). It used to call /kaname.cloud.iam.v1.AuthService/Login with
 // context.Background(), i.e. with no credentials, and pass. It passed because
 // that FQN sat on DefaultPublicAllowlist, so the request was admitted at
 // decide() step 1 and the catalog was never consulted: the case named `<exempt>`
@@ -252,10 +252,10 @@ func TestAuthz_GRPC_ExemptEntry_NoSubject_Unauthenticated(t *testing.T) {
 	checker := &fakeChecker{allowed: false}
 	// Use the exempt catalog entry — Login is on the allowlist; build a
 	// non-allowlisted exempt entry for this test.
-	listExemptEntry := `{"fqn":"kacho.cloud.iam.v1.UserService/List","permission":"<exempt>"}`
+	listExemptEntry := `{"fqn":"kaname.cloud.iam.v1.UserService/List","permission":"<exempt>"}`
 	mw := buildAuthzMiddleware(t, buildCatalog(t, listExemptEntry), checker)
 	_, err := mw.Unary()(context.Background(), nil,
-		&grpc.UnaryServerInfo{FullMethod: "/kacho.cloud.iam.v1.UserService/List"},
+		&grpc.UnaryServerInfo{FullMethod: "/kaname.cloud.iam.v1.UserService/List"},
 		func(ctx context.Context, req any) (any, error) { return "ok", nil })
 	require.Error(t, err)
 	st, _ := status.FromError(err)
@@ -625,17 +625,17 @@ func TestAuthz_EmbeddedCatalog_OperationServiceFQNsCorrect(t *testing.T) {
 
 	// AccessBindingService listBy* entries must exist. The scope-based listing
 	// is exposed as ListByScope.
-	_, okListByScope := cat.Lookup("kacho.cloud.iam.v1.AccessBindingService/ListByScope")
+	_, okListByScope := cat.Lookup("kaname.cloud.iam.v1.AccessBindingService/ListByScope")
 	assert.True(t, okListByScope, "catalog must have AccessBindingService/ListByScope")
 
-	_, okListBySubject := cat.Lookup("kacho.cloud.iam.v1.AccessBindingService/ListBySubject")
+	_, okListBySubject := cat.Lookup("kaname.cloud.iam.v1.AccessBindingService/ListBySubject")
 	assert.True(t, okListBySubject, "catalog must have AccessBindingService/ListBySubject")
 
 	// ListSubjectPrivileges — public read, mirrors ListBySubject (viewer
 	// relation, cluster scope-floor, ACR>=2). Catalog entry must exist so the
 	// per-RPC authz middleware applies the anti-anon + ACR floor (the precise
 	// self/account-admin policy is enforced in the iam handler).
-	lsp, okListSubjectPrivileges := cat.Lookup("kacho.cloud.iam.v1.AccessBindingService/ListSubjectPrivileges")
+	lsp, okListSubjectPrivileges := cat.Lookup("kaname.cloud.iam.v1.AccessBindingService/ListSubjectPrivileges")
 	require.True(t, okListSubjectPrivileges, "catalog must have AccessBindingService/ListSubjectPrivileges")
 	assert.False(t, lsp.IsExempt(), "ListSubjectPrivileges must NOT be <exempt> — it carries a real viewer permission gate")
 }

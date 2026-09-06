@@ -1,5 +1,5 @@
 // ServiceAccountKeysPage — Stage 4. Выпуск/список/отзыв static OAuth-ключей
-// сервисных аккаунтов (kacho.cloud.iam.v1.SAKeyService).
+// сервисных аккаунтов (kaname.cloud.iam.v1.SAKeyService).
 //
 // SA-list требует account_id (ListServiceAccountsRequest.account_id), поэтому
 // список best-effort: если 403/empty — пользователь вводит ID SA вручную.

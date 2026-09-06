@@ -1494,7 +1494,7 @@ logs-iam:
 # снято то, что требовало ЖИВОГО движка, а не то, что называет модель.
 # Держится порождением плюс гейтом побайтового равенства
 # (services/iam/internal/authzmodel/identity_test.go).
-OPENFGA_CANONICAL_FGA ?= ../proto/kacho/cloud/iam/v1/fga_model.fga
+OPENFGA_CANONICAL_FGA ?= ../proto/kaname/cloud/iam/v1/fga_model.fga
 FGA_MODEL_EMBED ?= ../services/iam/internal/authzmodel/fga_model.fga
 fga-model-embed:
 	@cp $(OPENFGA_CANONICAL_FGA) $(FGA_MODEL_EMBED)

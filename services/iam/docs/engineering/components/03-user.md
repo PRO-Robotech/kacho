@@ -252,7 +252,7 @@ grpcurl -plaintext -d '{
   "external_id":"ory-sub-xyz",
   "email":"alice@example.com",
   "display_name":"Alice"
-}' localhost:9091 kacho.cloud.iam.v1.InternalUserService/UpsertFromIdentity
+}' localhost:9091 kaname.cloud.iam.v1.InternalUserService/UpsertFromIdentity
 ```
 
 ### Идемпотентность

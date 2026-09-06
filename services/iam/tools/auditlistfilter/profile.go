@@ -91,7 +91,7 @@ func subjectGate(call string) listfiltergate.Listing {
 func edgeGate(file, field string) listfiltergate.Listing {
 	return listfiltergate.Listing{
 		Shape:       listfiltergate.EdgeGate,
-		ProtoFile:   "kacho/cloud/iam/v1/" + file,
+		ProtoFile:   "kaname/cloud/iam/v1/" + file,
 		ParentField: field,
 	}
 }
@@ -194,12 +194,12 @@ var Profile = listfiltergate.Profile{
 	SubjectScopers: []string{"ListForCaller", "listOp.Execute", "identityOfAuthenticatedCaller"},
 
 	ProtoFiles: []string{
-		"kacho/cloud/iam/v1/internal_cluster_service.proto",
-		"kacho/cloud/iam/v1/membership_service.proto",
-		"kacho/cloud/iam/v1/sa_key_service.proto",
-		"kacho/cloud/iam/v1/user_token_service.proto",
+		"kaname/cloud/iam/v1/internal_cluster_service.proto",
+		"kaname/cloud/iam/v1/membership_service.proto",
+		"kaname/cloud/iam/v1/sa_key_service.proto",
+		"kaname/cloud/iam/v1/user_token_service.proto",
 	},
-	FGAModel: "kacho/cloud/iam/v1/fga_model.fga",
+	FGAModel: "kaname/cloud/iam/v1/fga_model.fga",
 
 	Listings: map[string]listfiltergate.Listing{
 		// ---- pages narrowed per object, in the service ----

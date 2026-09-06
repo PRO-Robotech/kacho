@@ -207,10 +207,10 @@ CASES = []
 # её вместе с внешним движком прав). Проба по этому адресу стала бы дублем
 # бессмысленного контроля `/zzz` — тем самым «утверждением, которое не может
 # упасть», ради отличия от которого весь этот блок и написан.
-_UNBOUND_SR_REVOKE = "/kacho.cloud.iam.v1.InternalSessionRevocationsService/Revoke"
-_UNBOUND_SR_ISREVOKED = "/kacho.cloud.iam.v1.InternalSessionRevocationsService/IsRevoked"
-_UNBOUND_SR_LISTBYUSER = "/kacho.cloud.iam.v1.InternalSessionRevocationsService/ListByUser"
-_UNBOUND_FORCE_LOGOUT = "/kacho.cloud.iam.v1.InternalIAMService/ForceLogout"
+_UNBOUND_SR_REVOKE = "/kaname.cloud.iam.v1.InternalSessionRevocationsService/Revoke"
+_UNBOUND_SR_ISREVOKED = "/kaname.cloud.iam.v1.InternalSessionRevocationsService/IsRevoked"
+_UNBOUND_SR_LISTBYUSER = "/kaname.cloud.iam.v1.InternalSessionRevocationsService/ListByUser"
+_UNBOUND_FORCE_LOGOUT = "/kaname.cloud.iam.v1.InternalIAMService/ForceLogout"
 
 # ---------------------------------------------------------------------------
 # Helper: pre_script fragment that overrides the request URL to externalBaseUrl.

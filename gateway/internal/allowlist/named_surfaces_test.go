@@ -271,7 +271,7 @@ func TestNamedSurfaces_RegistryIsUsed(t *testing.T) {
 // опознаёт вообще ничего.
 func TestHasInternalSuffix_BothNamingConventions(t *testing.T) {
 	// Префиксная конвенция — живой пример из дерева.
-	if !allowlist.HasInternalSuffix("/kacho.cloud.iam.v1.InternalIAMService/Check") {
+	if !allowlist.HasInternalSuffix("/kaname.cloud.iam.v1.InternalIAMService/Check") {
 		t.Error("префиксная конвенция Internal<Xxx>Service перестала опознаваться — " +
 			"запрет #6 не держится ни на одном сервисе дерева")
 	}

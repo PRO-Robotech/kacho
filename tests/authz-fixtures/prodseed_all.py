@@ -38,7 +38,7 @@ verified in the tree rather than assumed:
      declare `required_acr_min` ≥ 1 (remeasured; this line read "292 of the 357"
      against a catalog two retirements ago — recheck it rather than quoting it, the
      command is in prodseed_matrix.py). `StepUpGate.Check` exempts principals whose
-     `kaname_principal_type` is exactly `service_account` and NEVER a user.
+     `kacho_principal_type` is exactly `service_account` and NEVER a user.
 A human User principal with an `acr` requires the interactive Kratos→Hydra login, which
 a machine harness cannot drive. So each matrix slot is backed by a ServiceAccount
 carrying the exact bindings that slot assumes — the FGA relation resolved is identical,
@@ -481,7 +481,7 @@ def _self_test() -> int:
         print("SELF-TEST FAIL: an unemitted channel was reported as a breach", file=sys.stderr)
         ok = False
 
-    # The claim-name half. Reading `sub` instead of `kaname_principal_id` reports EVERY
+    # The claim-name half. Reading `sub` instead of `kacho_principal_id` reports EVERY
     # pairing broken, sound ones included — measured, not imagined: the first version of
     # this check did exactly that. A token whose principal claim is absent must be
     # reported as carrying none, never silently accepted.
@@ -512,10 +512,10 @@ def _self_test() -> int:
     # This reader predicts what the edge will make of a token, so it must read
     # exactly what the edge reads.
     def _flat(pid, **extra):
-        """A token of OUR issuance: `kaname_*` at the top level, nothing nested."""
+        """A token of OUR issuance: `kacho_*` at the top level, nothing nested."""
         claims = {"iss": "https://kaname.kacho.local", "sub": "usr_owner_of_the_key",
-                  "kaname_principal_type": "service_account",
-                  "kaname_principal_id": pid, **extra}
+                  "kacho_principal_type": "service_account",
+                  "kacho_principal_id": pid, **extra}
         body = base64.urlsafe_b64encode(json.dumps(claims).encode()).decode().rstrip("=")
         return "eyJhbGciOiJub25lIn0." + body + ".not-a-signature"
 
@@ -546,7 +546,7 @@ def _self_test() -> int:
     # placements, the top level wins — because that is the edge's order. A reader
     # that resolved the other way would judge the seed against a principal the
     # request will not speak as.
-    both = _flat("sva_top", ext_claims={"kaname_principal_id": "sva_nested"})
+    both = _flat("sva_top", ext_claims={"kacho_principal_id": "sva_nested"})
     if pp.token_principal_id(both) != "sva_top":
         print("SELF-TEST FAIL: with both placements present the reader disagrees "
               "with the edge about which one wins", file=sys.stderr)

@@ -45,7 +45,7 @@ const (
 	denyReason = "AUTHZ_DENIED"
 
 	// denyDomain — likewise identical to the edge's, for the same reason.
-	denyDomain = "kacho.cloud.iam.v1"
+	denyDomain = "kaname.cloud.iam.v1"
 
 	// grantRequiredViolation — the violation type naming the missing grant.
 	// Deliberately shaped like the step-up one ("authz.step_up") so a client

@@ -137,7 +137,7 @@ func TestDirNameInjection_ModuleAndContractNamesStaySilent(t *testing.T) {
 	files := soundTree()
 	files["internal/apps/kaname/api/wire.go"] = "" +
 		"import \"github.com/PRO-Robotech/kaname/internal/apps/kaname/api/role\"\n" +
-		"// пакет контракта — kacho.cloud.iam.v1; метрика — kacho_quota_refuse; якорь — cluster_root\n" +
+		"// пакет контракта — kaname.cloud.iam.v1; метрика — kacho_quota_refuse; якорь — cluster_root\n" +
 		"// ручка KACHO_MONOREPO и общий слой tests/newman/kacholib/ тоже несут это слово\n"
 	census, findings, err := scanDirectoryNames(syntheticCorpus(t, dirRootWith(t, files)))
 	require.NoError(t, err)

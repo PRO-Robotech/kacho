@@ -219,7 +219,7 @@ func NewTokenEnrichmentService(cfg TokenEnrichmentConfig, users TokenEnrichmentU
 	return &TokenEnrichmentService{cfg: cfg, users: users, now: time.Now}
 }
 
-// WithClock injects the clock this service stamps `kaname_issued_at` from. A nil
+// WithClock injects the clock this service stamps `kacho_issued_at` from. A nil
 // func keeps time.Now.
 //
 // It exists because the claim set carries a value derived from the clock, and
@@ -251,7 +251,7 @@ func (s *TokenEnrichmentService) UserClaims(u domain.User, subject string, hookC
 }
 
 // WithSAPort wires the ServiceAccount lookup port enabling Phase 3a SA-token
-// enrichment (`kaname_principal_type=service_account` + principal_id +
+// enrichment (`kacho_principal_type=service_account` + principal_id +
 // account_id claims). Returning the receiver keeps the constructor chainable
 // and lets test wiring stay nil.
 func (s *TokenEnrichmentService) WithSAPort(p TokenEnrichmentSAPort) *TokenEnrichmentService {
@@ -260,7 +260,7 @@ func (s *TokenEnrichmentService) WithSAPort(p TokenEnrichmentSAPort) *TokenEnric
 }
 
 // WithUserTokenPort wires the User-token lookup port enabling personal-access-token
-// enrichment (`kaname_principal_type=user` + principal_id + account_id claims for a
+// enrichment (`kacho_principal_type=user` + principal_id + account_id claims for a
 // token minted from a UserOAuthClient client_credentials client). Returning the
 // receiver keeps the constructor chainable; nil-wiring keeps User-token enrichment
 // disabled.
@@ -462,33 +462,33 @@ func (s *TokenEnrichmentService) expired(expiresAt *time.Time) bool {
 // userClaims assembles the ext_claims map for a User subject.
 func (s *TokenEnrichmentService) userClaims(primary domain.User, subject string, hookCtx TokenHookContext) map[string]any {
 	claims := map[string]any{
-		"kaname_external_id":       subject,
-		"kaname_user_id":           string(primary.ID),
-		"kaname_active_account":    string(primary.AccountID),
-		"kaname_groups":            []string{},
-		domain.ClaimPrincipalType:  "user",
-		domain.ClaimPrincipalID:    string(primary.ID),
-		"kaname_account_id":        string(primary.AccountID),
-		"kaname_device_compliance": "unknown",
-		"kaname_mfa_at":            int64(0),
-		"kaname_jkt":               hookCtx.CnfJkt,
-		"kaname_x5t_s256":          hookCtx.CnfX5tS256,
-		"kaname_acr":               hookCtx.ACR,
-		"kaname_audience":          s.cfg.Domain,
-		"kaname_issuer":            s.cfg.HydraIssuer,
-		"kaname_issued_at":         s.now().Unix(),
+		"kacho_external_id":       subject,
+		"kacho_user_id":           string(primary.ID),
+		"kacho_active_account":    string(primary.AccountID),
+		"kacho_groups":            []string{},
+		domain.ClaimPrincipalType: "user",
+		domain.ClaimPrincipalID:   string(primary.ID),
+		"kacho_account_id":        string(primary.AccountID),
+		"kacho_device_compliance": "unknown",
+		"kacho_mfa_at":            int64(0),
+		"kacho_jkt":               hookCtx.CnfJkt,
+		"kacho_x5t_s256":          hookCtx.CnfX5tS256,
+		"kacho_acr":               hookCtx.ACR,
+		"kacho_audience":          s.cfg.Domain,
+		"kacho_issuer":            s.cfg.HydraIssuer,
+		"kacho_issued_at":         s.now().Unix(),
 	}
 
 	// Device compliance: a webauthn/passkey scope ⇒ attested device.
 	for _, sc := range hookCtx.GrantedScopes {
 		if sc == "webauthn" || sc == "passkey" {
-			claims["kaname_device_compliance"] = "attested"
+			claims["kacho_device_compliance"] = "attested"
 			break
 		}
 	}
 	// MFA timestamp: session auth_time when positive.
 	if hookCtx.AuthTime > 0 {
-		claims["kaname_mfa_at"] = hookCtx.AuthTime
+		claims["kacho_mfa_at"] = hookCtx.AuthTime
 	}
 
 	return claims
@@ -500,28 +500,28 @@ func (s *TokenEnrichmentService) userClaims(primary domain.User, subject string,
 // Permission resolution is intentionally OUT OF SCOPE here: per-RPC
 // authorization stays in the api-gateway authz-gate (`internal/authzguard`
 // + `internal_authorize.Check`), which has the live FGA tuple-store as
-// source of truth. Stamping a `kaname_permissions: [...]` claim into the
+// source of truth. Stamping a `kacho_permissions: [...]` claim into the
 // token would freeze a snapshot at issuance time and silently bypass
 // revocations until token expiry — exactly the failure mode the FGA-based
 // gate exists to prevent.
 func (s *TokenEnrichmentService) saClaims(soc domain.ServiceAccountOAuthClient, sa domain.ServiceAccount, subject string, hookCtx TokenHookContext) map[string]any {
 	claims := map[string]any{
-		"kaname_external_id":       subject,
-		"kaname_hydra_client_id":   subject,
-		domain.ClaimPrincipalType:  "service_account",
-		domain.ClaimPrincipalID:    string(soc.SvaID),
-		"kaname_sa_key_id":         string(soc.ID),
-		"kaname_device_compliance": "unknown",
-		"kaname_jkt":               hookCtx.CnfJkt,
-		"kaname_x5t_s256":          hookCtx.CnfX5tS256,
-		"kaname_acr":               hookCtx.ACR,
-		"kaname_audience":          s.cfg.Domain,
-		"kaname_issuer":            s.cfg.HydraIssuer,
-		"kaname_issued_at":         s.now().Unix(),
+		"kacho_external_id":       subject,
+		"kacho_hydra_client_id":   subject,
+		domain.ClaimPrincipalType: "service_account",
+		domain.ClaimPrincipalID:   string(soc.SvaID),
+		"kacho_sa_key_id":         string(soc.ID),
+		"kacho_device_compliance": "unknown",
+		"kacho_jkt":               hookCtx.CnfJkt,
+		"kacho_x5t_s256":          hookCtx.CnfX5tS256,
+		"kacho_acr":               hookCtx.ACR,
+		"kacho_audience":          s.cfg.Domain,
+		"kacho_issuer":            s.cfg.HydraIssuer,
+		"kacho_issued_at":         s.now().Unix(),
 	}
 	if sa.ID != "" {
-		claims["kaname_account_id"] = string(sa.AccountID)
-		claims["kaname_active_account"] = string(sa.AccountID)
+		claims["kacho_account_id"] = string(sa.AccountID)
+		claims["kacho_active_account"] = string(sa.AccountID)
 	}
 	return claims
 }
@@ -533,54 +533,54 @@ func (s *TokenEnrichmentService) saClaims(soc domain.ServiceAccountOAuthClient, 
 // resolution stays out-of-band (FGA gate, same as Phase 3a).
 func (s *TokenEnrichmentService) federatedClaims(soc domain.ServiceAccountOAuthClient, sa domain.ServiceAccount, externalSub string, hookCtx TokenHookContext) map[string]any {
 	claims := map[string]any{
-		// kaname_external_id stays the external assertion sub for audit.
-		"kaname_external_id":        externalSub,
-		"kaname_hydra_client_id":    hookCtx.OAuthClientID,
-		domain.ClaimPrincipalType:   "service_account",
-		domain.ClaimPrincipalID:     string(soc.SvaID),
-		"kaname_sa_key_id":          string(soc.ID),
-		"kaname_federation_issuer":  hookCtx.ExternalIssuer,
-		"kaname_federation_subject": externalSub,
-		"kaname_federation_mode":    "jwt-bearer",
-		"kaname_device_compliance":  "unknown",
-		"kaname_jkt":                hookCtx.CnfJkt,
-		"kaname_x5t_s256":           hookCtx.CnfX5tS256,
-		"kaname_acr":                hookCtx.ACR,
-		"kaname_audience":           s.cfg.Domain,
-		"kaname_issuer":             s.cfg.HydraIssuer,
-		"kaname_issued_at":          s.now().Unix(),
+		// kacho_external_id stays the external assertion sub for audit.
+		"kacho_external_id":        externalSub,
+		"kacho_hydra_client_id":    hookCtx.OAuthClientID,
+		domain.ClaimPrincipalType:  "service_account",
+		domain.ClaimPrincipalID:    string(soc.SvaID),
+		"kacho_sa_key_id":          string(soc.ID),
+		"kacho_federation_issuer":  hookCtx.ExternalIssuer,
+		"kacho_federation_subject": externalSub,
+		"kacho_federation_mode":    "jwt-bearer",
+		"kacho_device_compliance":  "unknown",
+		"kacho_jkt":                hookCtx.CnfJkt,
+		"kacho_x5t_s256":           hookCtx.CnfX5tS256,
+		"kacho_acr":                hookCtx.ACR,
+		"kacho_audience":           s.cfg.Domain,
+		"kacho_issuer":             s.cfg.HydraIssuer,
+		"kacho_issued_at":          s.now().Unix(),
 	}
 	if sa.ID != "" {
-		claims["kaname_account_id"] = string(sa.AccountID)
-		claims["kaname_active_account"] = string(sa.AccountID)
+		claims["kacho_account_id"] = string(sa.AccountID)
+		claims["kacho_active_account"] = string(sa.AccountID)
 	}
 	return claims
 }
 
 // userTokenClaims assembles the ext_claims map for a personal-access-token-issued
 // token (UserOAuthClient client_credentials). The principal is the OWNING User —
-// `kaname_principal_type=user` + principal_id/account_id — so downstream authZ treats
+// `kacho_principal_type=user` + principal_id/account_id — so downstream authZ treats
 // the token exactly like an interactive session of that user. Permission resolution
 // stays out-of-band (FGA gate, same as the SA / interactive paths).
 func (s *TokenEnrichmentService) userTokenClaims(uoc domain.UserOAuthClient, u domain.User, subject string, hookCtx TokenHookContext) map[string]any {
 	claims := map[string]any{
-		"kaname_external_id":       subject,
-		"kaname_hydra_client_id":   subject,
-		domain.ClaimPrincipalType:  "user",
-		domain.ClaimPrincipalID:    string(uoc.UserID),
-		"kaname_user_id":           string(uoc.UserID),
-		"kaname_user_token_id":     string(uoc.ID),
-		"kaname_device_compliance": "unknown",
-		"kaname_jkt":               hookCtx.CnfJkt,
-		"kaname_x5t_s256":          hookCtx.CnfX5tS256,
-		"kaname_acr":               hookCtx.ACR,
-		"kaname_audience":          s.cfg.Domain,
-		"kaname_issuer":            s.cfg.HydraIssuer,
-		"kaname_issued_at":         s.now().Unix(),
+		"kacho_external_id":       subject,
+		"kacho_hydra_client_id":   subject,
+		domain.ClaimPrincipalType: "user",
+		domain.ClaimPrincipalID:   string(uoc.UserID),
+		"kacho_user_id":           string(uoc.UserID),
+		"kacho_user_token_id":     string(uoc.ID),
+		"kacho_device_compliance": "unknown",
+		"kacho_jkt":               hookCtx.CnfJkt,
+		"kacho_x5t_s256":          hookCtx.CnfX5tS256,
+		"kacho_acr":               hookCtx.ACR,
+		"kacho_audience":          s.cfg.Domain,
+		"kacho_issuer":            s.cfg.HydraIssuer,
+		"kacho_issued_at":         s.now().Unix(),
 	}
 	if u.ID != "" {
-		claims["kaname_account_id"] = string(u.AccountID)
-		claims["kaname_active_account"] = string(u.AccountID)
+		claims["kacho_account_id"] = string(u.AccountID)
+		claims["kacho_active_account"] = string(u.AccountID)
 	}
 	return claims
 }
@@ -627,11 +627,11 @@ func (s *TokenEnrichmentService) userTokenClaims(uoc domain.UserOAuthClient, u d
 // names nobody into a subject, and that belongs to the gateway.
 func (s *TokenEnrichmentService) MinimalClaims(subject string) map[string]any {
 	return map[string]any{
-		"kaname_external_id":       subject,
-		domain.ClaimPrincipalType:  "user",
-		"kaname_device_compliance": "unknown",
-		"kaname_issuer":            s.cfg.HydraIssuer,
-		"kaname_audience":          s.cfg.Domain,
-		"kaname_issued_at":         s.now().Unix(),
+		"kacho_external_id":       subject,
+		domain.ClaimPrincipalType: "user",
+		"kacho_device_compliance": "unknown",
+		"kacho_issuer":            s.cfg.HydraIssuer,
+		"kacho_audience":          s.cfg.Domain,
+		"kacho_issued_at":         s.now().Unix(),
 	}
 }

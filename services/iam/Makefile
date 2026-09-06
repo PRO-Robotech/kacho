@@ -8,54 +8,16 @@ MIGRATOR_BIN   := kacho-migrator
 MIGRATOR_CMD   := ./cmd/migrator
 IMAGE          := kaname:dev
 
-# ─── ДВЕ ПОСАДКИ МОДУЛЯ, И ОБЕ ОБЯЗАНЫ РАБОТАТЬ ─────────────────────────────
-#
-# Модуль живёт внутри монорепо И самостоятельным клоном: посторонний клонирует
-# опубликованный репозиторий и ставит службу у себя. Значит ни одна строка этого
-# файла не вправе считать путь вверх литералом: два уровня вверх верны ровно для
-# одной посадки, а в другой резолвятся МОЛЧА в чужой каталог либо роняют разбор
-# шапки — и тогда недоступен весь файл, включая перечень целей (#2144).
-#
-# Литерала подъёма нет и в прозе этого файла: предикат снятия задачи считает его
-# по всему тексту, и объяснение, написанное образцом, краснело бы само на себе.
-#
-# Корень дерева спрашивается у git: он отвечает верно в обеих посадках — корнем
-# монорепо в одной и корнем клона модуля в другой.
-KANAME_TREE_ROOT := $(shell git rev-parse --show-toplevel 2>/dev/null)
-
-# MONOREPO_ROOT — корень МОНОРЕПО, и он непуст ровно тогда, когда модуль лежит
-# внутри монорепо: дерево несёт свой рецепт И не является самим модулем. Пусто —
-# значит соседей по дереву нет, и цели, которым они нужны, обязаны сказать это
-# словами, а не падать невнятно.
-MONOREPO_ROOT := $(shell test -n "$(KANAME_TREE_ROOT)" \
-  && test "$(KANAME_TREE_ROOT)" != "$(CURDIR)" \
-  && test -f "$(KANAME_TREE_ROOT)/Makefile" && echo "$(KANAME_TREE_ROOT)")
-
 # Ревизия дерева уезжает в образ аргументом сборки (IMAGE_BUILD_ARGS).
-# Объявление одно на дерево; здесь — только его адрес, см. разбор в самом файле.
-include provenance.mk
+# Объявление одно на дерево — см. разбор в самом файле.
+include ../../provenance.mk
 
-.PHONY: help build build-migrator test test-short vet lint docker generate audit-list-filter
+.PHONY: build build-migrator test test-short vet lint docker generate audit-list-filter
 .PHONY: proto-install-plugins proto-vendor proto-lint proto-gen
 
-# help — перечень целей. Первая цель файла, поэтому голый `make` печатает её:
-# читатель, впервые открывший модуль, спрашивает «что тут можно запустить», и
-# ответ обязан быть у него до всякого знания о дереве.
-#
-# Перечень ВЫВОДИТСЯ из самого файла (строки `## <цель> — <что делает>`), а не
-# выписывается вторым списком: выписанный разошёлся бы с целями молча.
-help:
-	@echo "Kaname — цели сборки. Посадка: $(if $(MONOREPO_ROOT),модуль внутри монорепо ($(MONOREPO_ROOT)),самостоятельный клон)"
-	@echo ""
-	@sed -n 's/^## /  /p' $(firstword $(MAKEFILE_LIST))
-	@echo ""
-	@echo "Цели, помеченные [монорепо], зовут соседей по дереву и вне монорепо отказывают словами."
-
-## build — бинарь службы в bin/
 build:
 	CGO_ENABLED=0 go build -o bin/$(BINARY) $(CMD)
 
-## build-migrator — отдельный бинарь мигратора в bin/
 build-migrator:
 	CGO_ENABLED=0 go build -o bin/$(MIGRATOR_BIN) $(MIGRATOR_CMD)
 
@@ -63,30 +25,12 @@ build-migrator:
 # и бюджета прогона должна быть ОДНА истина. Собственный `-timeout` в этом файле
 # ни с CI, ни с соседними сервисами не сверялся ничем и разъехался (300s/900s
 # вразнобой, и там где мало — молча недостижимо).
-#
-# ВНЕ МОНОРЕПО делегировать некому, и цель говорит это СЛОВАМИ, называя, что
-# запускать вместо. Своих бюджетов она не заводит намеренно: второе объявление
-# разъехалось бы с каноничным молча — ровно то, ради чего делегация и написана.
-define delegate_to_tree
-	@test -n "$(MONOREPO_ROOT)" || { \
-	  echo "цель $(1) зовёт корневой рецепт дерева, а его рядом нет: модуль стоит"; \
-	  echo "самостоятельным клоном ($(CURDIR)), соседей по монорепо у него не будет."; \
-	  echo "Бюджет прогона объявлен ОДИН раз — в корневом рецепте монорепо, и копии"; \
-	  echo "его здесь нет намеренно: она разошлась бы с ним молча."; \
-	  echo "Запускайте пробы напрямую: $(2)"; \
-	  exit 2; }
-	$(MAKE) -C $(MONOREPO_ROOT) $(1) SVC=iam
-endef
-
-## test — все пробы службы (юниты + интеграция) [монорепо]
 test:
-	$(call delegate_to_tree,test-service,go test ./... -race -cover -count=1 -p 1)
+	$(MAKE) -C ../.. test-service SVC=iam
 
-## test-short — пробы без контейнеров [монорепо]
 test-short:
-	$(call delegate_to_tree,test-service-short,go test ./... -race -cover -short -count=1)
+	$(MAKE) -C ../.. test-service-short SVC=iam
 
-## vet — go vet по модулю
 vet:
 	go vet ./...
 
@@ -98,15 +42,9 @@ vet:
 # Присваивание жёсткое (`:=`), а не `?=`: с `?=` унаследованная из окружения
 # переменная молча вернула бы общий кэш, и защита осталась бы на вид на месте.
 # Переопределить по-прежнему можно — аргументом make, то есть заявив это явно.
-#
-# Якорь — каталог САМОГО МОДУЛЯ, а не корень монорепо двумя уровнями выше:
-# модуль стоит и самостоятельным клоном, где второго уровня нет вовсе, а
-# защищаемое свойство («у каждой рабочей копии свой кэш») от смены якоря не
-# страдает — оно только усиливается.
-GOLANGCI_LINT_CACHE := $(CURDIR)/.cache/golangci-lint
+GOLANGCI_LINT_CACHE := $(abspath $(CURDIR)/../..)/.cache/golangci-lint
 export GOLANGCI_LINT_CACHE
 
-## lint — golangci-lint по модулю
 lint:
 	golangci-lint run ./...
 
@@ -137,7 +75,6 @@ lint:
 # derives the service list from this Makefile and from the workflow and compares
 # them in both directions, and pkg/listfiltergate/coverage_test.go reports an
 # unanalysed service as a finding.
-## audit-list-filter — каждый списочный метод обязан сужать выдачу и объявлять чем
 audit-list-filter:
 	@./tools/audit-list-filter.sh
 
@@ -185,7 +122,6 @@ audit-list-filter:
 #
 # Вызов: `make -C services/iam module-manifest-check`
 .PHONY: module-manifest-check
-## module-manifest-check — форма манифеста каждого модуля дерева
 module-manifest-check:
 	@./tools/module-manifest-check.sh
 
@@ -216,18 +152,16 @@ module-manifest-check:
 #
 # Вызов: `make -C services/iam operator-docs` / `... operator-docs-check`
 .PHONY: operator-docs operator-docs-check
-## operator-docs — порождение операторской документации
 operator-docs:
 	@./tools/operator-docs.sh --write
 
-## operator-docs-check — порождённое сходится с деревом
 operator-docs-check:
 	@./tools/operator-docs.sh
 
 # model-canon-check — блоки модели доступов сверяются с манифестами модулей
 # ПОБАЙТОВО (задача #1089). Цель обходит закрытый набор модулей, порождает блоки
 # типов из манифеста каждого и сравнивает их с каноном
-# proto/kacho/cloud/iam/v1/fga_model.fga, прочитанным ИЗ ДЕРЕВА. Что именно
+# proto/kaname/cloud/iam/v1/fga_model.fga, прочитанным ИЗ ДЕРЕВА. Что именно
 # сверяется — документировано на пакете services/iam/internal/modelrender.
 #
 # ПОБАЙТОВО, А НЕ «ПО СМЫСЛУ»: сверка по смыслу требует разбора обеих сторон и
@@ -270,7 +204,6 @@ operator-docs-check:
 #
 # Вызов: `make -C services/iam model-canon-check`
 .PHONY: model-canon-check
-## model-canon-check — блоки модели доступов сверяются с манифестами побайтово
 model-canon-check:
 	@./tools/model-canon-check.sh
 
@@ -300,7 +233,6 @@ model-canon-check:
 # ради пути `./services/iam/...` отказывает — тот модуль этих пакетов не
 # содержит. В конвейере цель не зовётся, поэтому отказ был тихим.
 .PHONY: cla-check
-## cla-check — подписи вкладов
 cla-check:
 	@go test ./tools/clagate/ -count=1 -v
 
@@ -308,33 +240,23 @@ cla-check:
 # встроена inline в internal/migrations/0001_initial.sql под схемой kaname.
 # Re-копирование common-файла создало бы конфликтующий unqualified
 # public.operations — отсюда no-op.
-## docker — образ службы (тег kaname:dev)
 docker:
-	@test -n "$(IMAGE_BUILD_ARGS)" || { \
-	  echo "ВНИМАНИЕ: величина провенанса не объявлена — образ уедет БЕЗ клейма ревизии"; \
-	  echo "  (клеймо образа и файл ревизии внутри него останутся пустыми)."; \
-	  echo "  Так бывает у самостоятельного клона: объявление величины лежит в корне"; \
-	  echo "  монорепо и в поставку модуля не входит — см. services/iam/provenance.mk."; }
 	docker build $(IMAGE_BUILD_ARGS) -f Dockerfile -t $(IMAGE) .
 
 .PHONY: migrate-up migrate-down migrate-status
 # migrate-* дергают отдельный binary `bin/kacho-migrator`.
 # Зависимость на build-migrator гарантирует, что bin/ актуальный.
-## migrate-up — накатить миграции
 migrate-up: build-migrator
 	KANAME_DB_PASSWORD=secret bin/$(MIGRATOR_BIN) up
 
-## migrate-down — откатить последнюю миграцию
 migrate-down: build-migrator
 	KANAME_DB_PASSWORD=secret bin/$(MIGRATOR_BIN) down
 
-## migrate-status — состояние миграций
 migrate-status: build-migrator
 	KANAME_DB_PASSWORD=secret bin/$(MIGRATOR_BIN) status
 
 # proto-install-plugins — ставит protoc-плагины в $GOBIN (lookup через $PATH для buf).
 # Доменный proto iam генерируется этими тремя плагинами.
-## proto-install-plugins — плагины генерации из модуля
 proto-install-plugins:
 	go install google.golang.org/protobuf/cmd/protoc-gen-go
 	go install google.golang.org/grpc/cmd/protoc-gen-go-grpc
@@ -355,22 +277,19 @@ VENDORED_PROTOS := \
 	kacho/cloud/validation.proto \
 	kacho/iam/authz/v1/authz_options.proto
 
-## proto-vendor — подтянуть общие контракты для резолва импортов [монорепо]
 proto-vendor:
 	@for f in $(VENDORED_PROTOS); do \
 		mkdir -p proto/$$(dirname $$f); \
 		cp $(CORELIB_PROTO)/$$f proto/$$f; \
 	done
 
-## proto-lint — buf lint по контрактам службы [монорепо]
 proto-lint: proto-vendor
 	cd proto && buf lint
 
-# proto-gen — регенерация Go-stubs доменного proto iam (kacho/cloud/iam/v1) из proto/.
+# proto-gen — регенерация Go-stubs доменного proto iam (kaname/cloud/iam/v1) из proto/.
 # Универсальная ИНФРА (operation/validation/authz_options/cloud-api/google) подтягивается
 # из corelib через proto-vendor только для buf-резолва импортов и НЕ генерируется (Go-stubs
 # живут в kacho-corelib / canonical genproto) — см. proto/buf.gen.yaml inputs.paths.
-## proto-gen — регенерация Go-стабов доменных контрактов [монорепо]
 proto-gen: proto-vendor
 	cd proto && buf generate
 
@@ -381,15 +300,14 @@ proto-gen: proto-vendor
 # доменных service.proto собирается в api-gateway (catalog god-node) — обновление
 # этого зеркала прилетает оттуда. Локально это no-op.
 # Копия каталога у iam ОБЯЗАНА побайтово совпадать с копией шлюза — это один
-# источник истины, и гейт `make -C <корень дерева>/gateway permission-catalog-check` роняет
+# источник истины, и гейт `make -C ../../gateway permission-catalog-check` роняет
 # сборку при расхождении. Раньше цель печатала два предложения и выходила с нулём:
 # после регенерации у шлюза её вызывали, она сообщала «всё уже на месте», и копии
 # расходились ровно тогда, когда синхронизация и требовалась. Теперь цель делает
 # то, что называет, и проверяет результат.
-GATEWAY_CATALOG := $(MONOREPO_ROOT)/gateway/internal/middleware/embed/permission_catalog.json
+GATEWAY_CATALOG := ../../gateway/internal/middleware/embed/permission_catalog.json
 IAM_CATALOG_EMBED := internal/apps/kaname/seed/embedded/permission_catalog.json
 .PHONY: sync-permission-catalog
-## sync-permission-catalog — копия каталога прав из копии края [монорепо]
 sync-permission-catalog:
 	@test -f "$(GATEWAY_CATALOG)" || { echo "нет копии шлюза: $(GATEWAY_CATALOG) — нужен полный чекаут монорепо"; exit 1; }
 	cp "$(GATEWAY_CATALOG)" "$(IAM_CATALOG_EMBED)"

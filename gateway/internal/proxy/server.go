@@ -33,7 +33,7 @@ type MethodResolver = methodResolverInternal
 // the domain, so the gate and the resolver cannot come to disagree about what a
 // method needs.
 func RoutableDomain(fullMethod string) (string, bool) {
-	if !strings.HasPrefix(fullMethod, "/kacho.cloud.") {
+	if !hasContractRoot(fullMethod) {
 		return "", false
 	}
 	// fullMethod = "/kacho.cloud.<domain>.<...>/<Method>"
@@ -80,7 +80,7 @@ func RoutableDomain(fullMethod string) (string, bool) {
 func Resolver(backends Backends) MethodResolver {
 	return func(fullMethod string) (string, grpc.ClientConnInterface, bool) {
 		method := fullMethod
-		if !strings.HasPrefix(method, "/kacho.cloud.") {
+		if !hasContractRoot(method) {
 			return "", nil, false
 		}
 		if allowlist.HasInternalSuffix(method) || !allowlist.IsAllowed(method) {

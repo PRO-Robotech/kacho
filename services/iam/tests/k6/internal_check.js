@@ -334,7 +334,7 @@ export default function () {
   if (isDeny) denyInput.add(1);
 
   const started = Date.now();
-  const res = client.invoke('kacho.cloud.iam.v1.InternalIAMService/Check', {
+  const res = client.invoke('kaname.cloud.iam.v1.InternalIAMService/Check', {
     subject_id: t.subject,
     relation: t.relation,
     object: object,

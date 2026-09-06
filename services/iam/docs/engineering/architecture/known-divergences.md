@@ -150,7 +150,7 @@ and one type with no service at all (`vpc_anycast_address_pool`) were declared
 grantable and verb-bearing while the enforced model never declared them.
 
 **Resolution**: the canonical model lives in-repo at
-`proto/kacho/cloud/iam/v1/fga_model.fga`. It is the single source, and the absence of
+`proto/kaname/cloud/iam/v1/fga_model.fga`. It is the single source, and the absence of
 the model is a hard failure with no environment opt-out.
 
 > [!note] Обновлено на стадии S6: копия модели переехала вместе со своим потребителем
@@ -419,13 +419,13 @@ published RPC and two per-row list paths remain, each with a number)._
 
 ---
 
-## 12. Refusal `ErrorInfo.domain` is `kacho.cloud.iam.v1`, not the `<service>.kacho.cloud` form
+## 12. Refusal `ErrorInfo.domain` is `kaname.cloud.iam.v1`, not the `<service>.kacho.cloud` form
 
 **Convention** (`api-conventions.md`, error-format): a machine-readable refusal
 carries `google.rpc.ErrorInfo` whose `domain` is written `"<service>.kacho.cloud"`.
 
 **Divergence**: `internal/authzguard/deny_details.go` stamps
-`domain = "kacho.cloud.iam.v1"` — the value the api-gateway authz middleware has
+`domain = "kaname.cloud.iam.v1"` — the value the api-gateway authz middleware has
 been putting on the wire since it began emitting `AUTHZ_DENIED` / `AUTHN_REQUIRED`.
 
 **Why (by design, not a defect)**: the two layers refuse the SAME class of request
@@ -732,7 +732,7 @@ Postgres у края нет ни одного файла, и завести ег
 **Предикат снятия — механический:**
 
 ```sh
-grep -c '^type iam_membership' proto/kacho/cloud/iam/v1/fga_model.fga   # сегодня 0
+grep -c '^type iam_membership' proto/kaname/cloud/iam/v1/fga_model.fga   # сегодня 0
 ```
 
 **Чем держится, что окно не шире объявленного.** Пробой
@@ -1127,7 +1127,7 @@ git grep -n 'codes\.InvalidArgument, "invalid .* id' -- 'services/iam/**/*.go' '
 выходит НИ ОДНИМ полем. Предикат:
 
 ```sh
-git grep -c 'sent_at' -- 'proto/kacho/cloud/iam/**'   # 0
+git grep -c 'sent_at' -- 'proto/kaname/cloud/iam/**'   # 0
 ```
 
 ### Это НЕ «пишут и не читают» — читателей ТРИ, и каждый несущий

@@ -205,7 +205,7 @@ CASES.append(Case(
 # Отходных путей здесь ровно два, и маска в них не входит: волна, создающая
 # условие, либо открытый долг с числом. Условие СОЗДАНО: человек церемонии
 # существует, владеет своим аккаунтом (`owner` → `admin` → `editor` → `viewer` по
-# модели, `proto/kacho/cloud/iam/v1/fga_model.fga` §type account) и несёт
+# модели, `proto/kaname/cloud/iam/v1/fga_model.fga` §type account) и несёт
 # поднятый уровень входа, которого требует запись каталога у `UserService/Invite`
 # (`required_acr_min: "2"`).
 #

@@ -170,7 +170,7 @@ curl -X POST http://localhost:18080/iam/v1/serviceAccounts/$SA_ID:enable \
 ```bash
 grpcurl -plaintext -H "Authorization: Bearer $TOKEN" \
   -d '{"account_id":"acc_xxx","name":"ci-pipeline"}' \
-  localhost:9090 kacho.cloud.iam.v1.ServiceAccountService/Create
+  localhost:9090 kaname.cloud.iam.v1.ServiceAccountService/Create
 ```
 
 ### Идемпотентность

@@ -80,7 +80,7 @@ type ListAddressesRequest struct {
 	state protoimpl.MessageState `protogen:"open.v1"`
 	// ID of the project to list addresses in.
 	//
-	// To get the project ID use a [kacho.cloud.iam.v1.ProjectService.List] request.
+	// To get the project ID use a [kaname.cloud.iam.v1.ProjectService.List] request.
 	ProjectId string `protobuf:"bytes,1,opt,name=project_id,json=projectId,proto3" json:"project_id,omitempty"`
 	// The maximum number of results per page to return. If the number of available
 	// results is larger than `page_size`, the service returns a [ListAddressesResponse.next_page_token]
@@ -259,7 +259,7 @@ type CreateAddressRequest struct {
 	state protoimpl.MessageState `protogen:"open.v1"`
 	// ID of the project to create a address in.
 	//
-	// To get a project ID make a [kacho.cloud.iam.v1.ProjectService.List] request.
+	// To get a project ID make a [kaname.cloud.iam.v1.ProjectService.List] request.
 	ProjectId string `protobuf:"bytes,1,opt,name=project_id,json=projectId,proto3" json:"project_id,omitempty"`
 	// Name of the address.
 	// The name must be unique within the project.

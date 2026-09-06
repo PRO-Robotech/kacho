@@ -109,7 +109,7 @@ func plainBearer(t *testing.T, hydra *hydraFixture, jti string) string {
 	tok := jwt.NewWithClaims(jwt.SigningMethodES256, jwt.MapClaims{
 		"iss": testIssuer, "aud": []any{testAudience}, "sub": "usr_alice_acc_a1b2",
 		"iat": now, "exp": now + 900, "acr": "2", "jti": jti,
-		"kaname_principal_type": "user", "kaname_principal_id": "usr_alice_acc_a1b2",
+		"kacho_principal_type": "user", "kacho_principal_id": "usr_alice_acc_a1b2",
 	})
 	tok.Header["kid"] = hydra.kid
 	signed, err := tok.SignedString(hydra.priv)
@@ -179,7 +179,7 @@ func (h revocationHarness) unary(t *testing.T, hydra *hydraFixture, jti string) 
 		"authorization", "Bearer "+plainBearer(t, hydra, jti)))
 	served := false
 	resp, err := h.auth.Unary()(ctx, nil,
-		&grpc.UnaryServerInfo{FullMethod: "/kacho.cloud.iam.v1.UserService/Get"},
+		&grpc.UnaryServerInfo{FullMethod: "/kaname.cloud.iam.v1.UserService/Get"},
 		func(context.Context, any) (any, error) { served = true; return "ok", nil })
 	if served {
 		h.reached.Store(true)
@@ -322,7 +322,7 @@ func TestE2E_Revocation_TokenWithoutIdentifier_IsReportedNotSilent(t *testing.T)
 	tok := jwt.NewWithClaims(jwt.SigningMethodES256, jwt.MapClaims{
 		"iss": testIssuer, "aud": []any{testAudience}, "sub": "usr_alice_acc_a1b2",
 		"iat": now, "exp": now + 900, "acr": "2",
-		"kaname_principal_type": "user", "kaname_principal_id": "usr_alice_acc_a1b2",
+		"kacho_principal_type": "user", "kacho_principal_id": "usr_alice_acc_a1b2",
 	})
 	tok.Header["kid"] = hydra.kid
 	signed, err := tok.SignedString(hydra.priv)

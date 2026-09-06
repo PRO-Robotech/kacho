@@ -45,14 +45,14 @@ import (
 // retiredPaths — файлы и каталоги, существовавшие ТОЛЬКО ради снятой поверхности.
 // Путь, вернувшийся в дерево, — возврат поверхности, а не «похожий файл».
 var retiredPaths = []string{
-	"proto/kacho/cloud/iam/v1/condition.proto",
-	"proto/kacho/cloud/iam/v1/conditions_service.proto",
-	"proto/kacho/cloud/iam/v1/access_binding_condition.proto",
-	"pkg/api/kacho/cloud/iam/v1/condition.pb.go",
-	"pkg/api/kacho/cloud/iam/v1/access_binding_condition.pb.go",
-	"pkg/api/kacho/cloud/iam/v1/conditions_service.pb.go",
-	"pkg/api/kacho/cloud/iam/v1/conditions_service.pb.gw.go",
-	"pkg/api/kacho/cloud/iam/v1/conditions_service_grpc.pb.go",
+	"proto/kaname/cloud/iam/v1/condition.proto",
+	"proto/kaname/cloud/iam/v1/conditions_service.proto",
+	"proto/kaname/cloud/iam/v1/access_binding_condition.proto",
+	"pkg/api/kaname/cloud/iam/v1/condition.pb.go",
+	"pkg/api/kaname/cloud/iam/v1/access_binding_condition.pb.go",
+	"pkg/api/kaname/cloud/iam/v1/conditions_service.pb.go",
+	"pkg/api/kaname/cloud/iam/v1/conditions_service.pb.gw.go",
+	"pkg/api/kaname/cloud/iam/v1/conditions_service_grpc.pb.go",
 	"services/iam/internal/apps/kaname/api/conditions",
 	"services/iam/internal/repo/kaname/condition",
 	"services/iam/internal/repo/kaname/pg/conditions_repo.go",
@@ -79,25 +79,25 @@ type surfaceFile struct {
 var surfaceFiles = []surfaceFile{
 	{
 		path:    "gateway/internal/middleware/rest_route_table_gen.go",
-		genre:   "kacho.cloud.iam.v1.AccessBindingService/",
+		genre:   "kaname.cloud.iam.v1.AccessBindingService/",
 		forbid:  "ConditionsService/",
 		whatFor: "таблица REST-маршрутов края",
 	},
 	{
 		path:    "gateway/internal/allowlist/list.go",
-		genre:   "/kacho.cloud.iam.v1.AccessBindingService/",
+		genre:   "/kaname.cloud.iam.v1.AccessBindingService/",
 		forbid:  "ConditionsService/",
 		whatFor: "список обхода края",
 	},
 	{
 		path:    "gateway/internal/middleware/embed/permission_catalog.json",
-		genre:   "kacho.cloud.iam.v1.AccessBindingService/",
+		genre:   "kaname.cloud.iam.v1.AccessBindingService/",
 		forbid:  "ConditionsService/",
 		whatFor: "каталог прав, вшитый в край",
 	},
 	{
 		path:    "services/iam/internal/apps/kaname/seed/embedded/permission_catalog.json",
-		genre:   "kacho.cloud.iam.v1.AccessBindingService/",
+		genre:   "kaname.cloud.iam.v1.AccessBindingService/",
 		forbid:  "ConditionsService/",
 		whatFor: "каталог прав, вшитый в iam (вторая копия)",
 	},
@@ -183,8 +183,8 @@ const (
 	// модель прав, ищи утверждения о ней ОБОИМИ обходами, а не тем, который
 	// запускается из твоего каталога.
 	liveMFARestrictions = 2
-	fgaModelPath        = "proto/kacho/cloud/iam/v1/fga_model.fga"
-	accessBindingPth    = "proto/kacho/cloud/iam/v1/access_binding.proto"
+	fgaModelPath        = "proto/kaname/cloud/iam/v1/fga_model.fga"
+	accessBindingPth    = "proto/kaname/cloud/iam/v1/access_binding.proto"
 )
 
 var (

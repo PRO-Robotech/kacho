@@ -285,7 +285,7 @@ sequenceDiagram
 - `github.com/PRO-Robotech/kacho/pkg` — ids, operations (LRO table + worker),
   db (pgxpool), grpcsrv, observability, outbox/drainer, safeconv; а также shared-proto
   stubs (operation/validation/authz_options).
-- `github.com/PRO-Robotech/kacho/pkg/api/kacho/cloud/iam/v1` — собственные
+- `github.com/PRO-Robotech/kacho/pkg/api/kaname/cloud/iam/v1` — собственные
   доменные proto-stubs (генерируются локально из `proto/`).
 - `github.com/jackc/pgx/v5` — Postgres driver.
 - `github.com/spf13/viper` — конфиг.
@@ -305,6 +305,6 @@ sequenceDiagram
 - Authz-плоскость → [`19-authorize.md`](19-authorize.md),
   [`21-internal-iam.md`](21-internal-iam.md),
   [`29-relational-verdict.md`](29-relational-verdict.md).
-- Conditions (CEL ABAC) — Отдельной главы про условия в этом каталоге нет, и это не пропуск оформления: поля условия сняты с контракта привязки (`reserved 6, 7` в `proto/kacho/cloud/iam/v1/access_binding_service.proto` — их никто не вычислял, и запрос обещал гейт, которого нет). Имя ненаписанной главы не воспроизводится как ссылка: она читается как существующая.
+- Conditions (CEL ABAC) — Отдельной главы про условия в этом каталоге нет, и это не пропуск оформления: поля условия сняты с контракта привязки (`reserved 6, 7` в `proto/kaname/cloud/iam/v1/access_binding_service.proto` — их никто не вычислял, и запрос обещал гейт, которого нет). Имя ненаписанной главы не воспроизводится как ссылка: она читается как существующая.
 - Production deploy / эксплуатация → [`31-deployment.md`](31-deployment.md),
   [`32-observability.md`](32-observability.md), [`33-runbook.md`](33-runbook.md).

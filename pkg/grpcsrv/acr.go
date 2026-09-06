@@ -55,7 +55,7 @@ import (
 // переименовано под привычное вызывающему имя (см. разбор у MDKeyPrincipalType).
 const MDKeyTokenACR = principalwire.MetaTokenACR
 
-// PrincipalTypeServiceAccount is the `kaname_principal_type` value identifying a
+// PrincipalTypeServiceAccount is the `kacho_principal_type` value identifying a
 // MACHINE principal — the claim value stamped by the iam token-hook on a
 // client_credentials service-account token, and the
 // MDKeyPrincipalType metadata value the api-gateway forwards for it.
@@ -112,7 +112,7 @@ func ACRSatisfies(presented, required string) bool {
 // transport plumbing and stays with the caller; DECIDING on them is this
 // package's job.
 type StepUpInput struct {
-	// PrincipalType — the caller's `kaname_principal_type`
+	// PrincipalType — the caller's `kacho_principal_type`
 	// ("user" | "service_account" | "system"). MUST already be trust-filtered by
 	// the caller: pass "" whenever the type came from an unverified peer, so a
 	// forged `service_account` can never buy the exemption (anti-spoof).

@@ -170,7 +170,7 @@ func metadataThroughMux(t *testing.T, mux *runtime.ServeMux, hdrs map[string]str
 		req.Header.Set(k, v)
 	}
 	ctx, err := runtime.AnnotateContext(req.Context(), mux, req,
-		"/kacho.cloud.iam.v1.AccountService/Get")
+		"/kaname.cloud.iam.v1.AccountService/Get")
 	if err != nil {
 		t.Fatalf("аннотирование запроса не состоялось: %v", err)
 	}

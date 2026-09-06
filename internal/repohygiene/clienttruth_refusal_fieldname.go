@@ -87,11 +87,11 @@ import (
 	// Регистрация дескрипторов доменов: источник словаря имён полей и oneof.
 	_ "github.com/PRO-Robotech/kacho/pkg/api/kacho/cloud/compute/v1"
 	_ "github.com/PRO-Robotech/kacho/pkg/api/kacho/cloud/geo/v1"
-	_ "github.com/PRO-Robotech/kacho/pkg/api/kacho/cloud/iam/v1"
 	_ "github.com/PRO-Robotech/kacho/pkg/api/kacho/cloud/loadbalancer/v1"
 	_ "github.com/PRO-Robotech/kacho/pkg/api/kacho/cloud/registry/v1"
 	_ "github.com/PRO-Robotech/kacho/pkg/api/kacho/cloud/storage/v1"
 	_ "github.com/PRO-Robotech/kacho/pkg/api/kacho/cloud/vpc/v1"
+	_ "github.com/PRO-Robotech/kacho/pkg/api/kaname/cloud/iam/v1"
 )
 
 // RefusalFieldNameOptions — вход анализатора.
@@ -124,7 +124,7 @@ func DefaultRefusalFieldNameOptions(root string) RefusalFieldNameOptions {
 		ProtoPackageOf: map[string]string{
 			"compute":  "kacho.cloud.compute.v1",
 			"geo":      "kacho.cloud.geo.v1",
-			"iam":      "kacho.cloud.iam.v1",
+			"iam":      "kaname.cloud.iam.v1",
 			"nlb":      "kacho.cloud.loadbalancer.v1",
 			"registry": "kacho.cloud.registry.v1",
 			"storage":  "kacho.cloud.storage.v1",

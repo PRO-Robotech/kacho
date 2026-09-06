@@ -61,7 +61,7 @@ import (
 
 // DSL — каноническая модель.
 //
-// Побайтовая копия `proto/kacho/cloud/iam/v1/fga_model.fga`. Порождается
+// Побайтовая копия `proto/kaname/cloud/iam/v1/fga_model.fga`. Порождается
 // `make -C deploy fga-model-embed`; правится ТОЛЬКО канонический файл.
 //
 //go:embed fga_model.fga

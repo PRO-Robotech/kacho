@@ -75,6 +75,8 @@ import (
 	"strconv"
 	"strings"
 	"testing"
+
+	"github.com/PRO-Robotech/kacho/pkg/contractroot"
 )
 
 // defaultPredicateKey — ключ записи «все прочие типы» в объявлении вида
@@ -145,9 +147,20 @@ var listReadRelationExceptions = map[string]string{
 		"начнёт отдавать что-то помимо имени, запись подлежит пересмотру вместе с предикатом.",
 }
 
+// contractRootAlt — чередование ОБЪЯВЛЕННЫХ корней для выражений ниже.
+// Литерал одного корня оставил бы домен второго невыведенным, и гейт объявил бы
+// находкой собственную слепоту: «домен не выведен — сверять с каталогом нечем».
+var contractRootAlt = func() string {
+	esc := make([]string, 0, len(contractroot.Roots))
+	for _, r := range contractroot.Roots {
+		esc = append(esc, regexp.QuoteMeta(r))
+	}
+	return "(?:" + strings.Join(esc, "|") + ")"
+}()
+
 var (
-	catalogFqnDomainRe    = regexp.MustCompile(`^kacho\.cloud\.([a-z0-9]+)\.v1\.([A-Za-z0-9]+)/([A-Za-z0-9]+)$`)
-	permissionMapDomainRe = regexp.MustCompile(`/kacho\.cloud\.([a-z0-9]+)\.v1\.`)
+	catalogFqnDomainRe    = regexp.MustCompile(`^` + contractRootAlt + `\.cloud\.([a-z0-9]+)\.v1\.([A-Za-z0-9]+)/([A-Za-z0-9]+)$`)
+	permissionMapDomainRe = regexp.MustCompile(`/` + contractRootAlt + `\.cloud\.([a-z0-9]+)\.v1\.`)
 	// protoPackageDomainRe — второй способ прочитать домен из того же файла.
 	//
 	// Карта прав перестала быть перечнем FQN и стала выводом из аннотаций: домен
@@ -155,7 +168,7 @@ var (
 	// восемьюдесятью повторами в ключах. Первое выражение на таком файле не
 	// находит ничего, и гейт объявил бы «домен не выведен» там, где он назван
 	// яснее прежнего.
-	protoPackageDomainRe = regexp.MustCompile(`"kacho\.cloud\.([a-z0-9]+)\.v1"`)
+	protoPackageDomainRe = regexp.MustCompile(`"` + contractRootAlt + `\.cloud\.([a-z0-9]+)\.v1"`)
 )
 
 // relationStoreQuestions — закрытый список имён, которыми в этом дереве задаётся

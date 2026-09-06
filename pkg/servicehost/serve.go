@@ -39,6 +39,8 @@ import (
 	"google.golang.org/grpc/status"
 	"google.golang.org/protobuf/reflect/protoreflect"
 
+	iamv1 "github.com/PRO-Robotech/kacho/pkg/api/kaname/cloud/iam/v1"
+	"github.com/PRO-Robotech/kacho/pkg/auth"
 	"github.com/PRO-Robotech/kacho/pkg/authz"
 	"github.com/PRO-Robotech/kacho/pkg/authz/catalogderive"
 	"github.com/PRO-Robotech/kacho/pkg/grpcclient"
@@ -259,11 +261,8 @@ func decisionLink(spec servicecontract.Spec, m authz.RPCMap) (*authz.Interceptor
 			return nil, nil, fmt.Errorf("servicehost: %s не поднимается — ребро решения о доступе "+
 				"на %s не собирается: %w", spec.Service, spec.CheckEdge.Addr(), err)
 		}
-		// Перевод вопроса в контракт владельца приносит СЕРВИС
-		// ([servicecontract.Spec.PeerCheck]); носитель набирает соседа и держит
-		// соединение, но чужого контракта не знает. Непустоту сборщика проверил
-		// конструктор дескриптора.
-		opts.Client = withExistenceHiding(spec, m, spec.PeerCheck(conn))
+		opts.Client = withExistenceHiding(spec, m,
+			&iamCheckClient{cli: iamv1.NewInternalIAMServiceClient(conn)})
 		return observe(authz.NewInterceptor(opts)), func() { _ = conn.Close() }, nil
 
 	default:
@@ -297,6 +296,53 @@ func withExistenceHiding(spec servicecontract.Spec, m authz.RPCMap, inner authz.
 		scoped: catalogderive.ObjectScopedTypes(m),
 	}
 }
+
+// iamCheckClient — адаптер клиента владельца модели под порт проверки.
+//
+// Исходящий контекст оборачивается [auth.PropagateOutgoing], чтобы на стороне
+// владельца извлечение личности видело РЕАЛЬНОГО вызывающего, а не сервис,
+// задающий вопрос.
+type iamCheckClient struct {
+	cli iamv1.InternalIAMServiceClient
+}
+
+// Check спрашивает владельца модели и НЕ разбирает прозу его ответа.
+//
+// # Почему причина отказа не читается, хотя соблазн есть
+//
+// Владелец различает в тексте причины «пути к объекту нет» и «не хватает
+// отношения», и два сервиса из семи этот текст разбирали, превращая первое в
+// пропуск к обработчику. Носитель так не делает, и это осознанный выбор, а не
+// потеря:
+//
+//   - пропуск к обработчику на отказе — решение о ДОСТУПЕ, и принимать его по
+//     подстроке чужого сообщения нельзя: тон сообщения стабилен, но не
+//     предназначен для разбора машиной (машинная полоса — token в `details`);
+//   - «пути нет» означает «намерение регистрации ещё не доехало» ровно так же
+//     часто, как «объекта нет»: платформа eventually-consistent. Пропуск в этом
+//     окне отдал бы существующий объект тому, кому он не принадлежит;
+//   - у вопроса есть авторитетный ответчик — СВОЯ БАЗА. Его даёт порт
+//     существования (см. [existenceAwareCheck]), и он же отличает «нет объекта»
+//     от «есть, но не твой» без единого допущения о чужом тексте.
+//
+// Перепись, из-за которой ветка не была введена на все семь: разбор причины
+// живёт у vpc и nlb, у compute, storage, registry, geo и iam его нет
+// (`grep -rl ErrNoPath services/*/... | grep -v _test`). Ввести его разом
+// значило бы завести пропуск там, где сегодня отказ, — то есть ослабить пятерых
+// ради единообразия.
+func (c *iamCheckClient) Check(ctx context.Context, subjectID, relation, object string) (bool, error) {
+	resp, err := c.cli.Check(auth.PropagateOutgoing(ctx), &iamv1.CheckRequest{
+		SubjectId: subjectID,
+		Relation:  relation,
+		Object:    object,
+	})
+	if err != nil {
+		return false, err
+	}
+	return resp.GetAllowed(), nil
+}
+
+var _ authz.CheckClient = (*iamCheckClient)(nil)
 
 // listenAndServe поднимает оба слушателя и гасит их по отмене ctx.
 //

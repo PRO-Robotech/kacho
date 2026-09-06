@@ -12,11 +12,8 @@ import (
 // TestResolveHydraAdminURL_DerivesByDefault — with no override, the admin URL is
 // derived from the issuer (hydra.X → hydra-admin.X), preserving back-compat.
 func TestResolveHydraAdminURL_DerivesByDefault(t *testing.T) {
-	// Домен объявлен ЯВНО: умолчания у него нет (задача #2127), и предмет этой
-	// пробы — ДЕРИВАЦИЯ, а не умолчание. Прежде фикстура была нулевой и молча
-	// опиралась на подставленное построением имя чужого продукта.
-	c := config.AuthNConfig{Domain: "access.example.invalid"} // issuer https://hydra.<domain>
-	if got := c.ResolveHydraAdminURL(); got != "https://hydra-admin.access.example.invalid" {
+	c := config.AuthNConfig{} // default domain api.kacho.cloud, issuer https://hydra.<domain>
+	if got := c.ResolveHydraAdminURL(); got != "https://hydra-admin.api.kacho.cloud" {
 		t.Fatalf("ResolveHydraAdminURL() = %q; want derived hydra-admin.<domain>", got)
 	}
 }
@@ -45,8 +42,8 @@ func TestResolveHydraAdminURL_FieldOverride(t *testing.T) {
 // the external issuer's token endpoint, and honors KANAME_HYDRA_TOKEN_URL for
 // the cluster-internal Hydra public Service.
 func TestResolveHydraTokenURL_DefaultAndOverride(t *testing.T) {
-	c := config.AuthNConfig{Domain: "access.example.invalid"}
-	if got := c.ResolveHydraTokenURL(); got != "https://hydra.access.example.invalid/oauth2/token" {
+	c := config.AuthNConfig{}
+	if got := c.ResolveHydraTokenURL(); got != "https://hydra.api.kacho.cloud/oauth2/token" {
 		t.Fatalf("default ResolveHydraTokenURL() = %q", got)
 	}
 	t.Setenv("KANAME_HYDRA_TOKEN_URL", "http://kacho-umbrella-hydra-public.kacho.svc:4444/oauth2/token")
@@ -59,8 +56,8 @@ func TestResolveHydraTokenURL_DefaultAndOverride(t *testing.T) {
 // audience stays the EXTERNAL issuer's token endpoint (what Hydra recognises),
 // regardless of the cluster-internal POST target.
 func TestResolveHydraTokenEndpoint_ExternalIssuerTokenEndpoint(t *testing.T) {
-	c := config.AuthNConfig{Domain: "access.example.invalid"}
-	if got := c.ResolveHydraTokenEndpoint(); got != "https://hydra.access.example.invalid/oauth2/token" {
+	c := config.AuthNConfig{}
+	if got := c.ResolveHydraTokenEndpoint(); got != "https://hydra.api.kacho.cloud/oauth2/token" {
 		t.Fatalf("ResolveHydraTokenEndpoint() = %q; want external issuer token endpoint", got)
 	}
 }

@@ -10,7 +10,7 @@
 #  отношений распоряжения — набор глаголов принадлежит ТИПУ, а не платформе.
 #
 #  Раздел `resources` порождает блоки типов модели доступов; сверка с каноном
-#  `proto/kacho/cloud/iam/v1/fga_model.fga` ПОБАЙТОВАЯ:
+#  `proto/kaname/cloud/iam/v1/fga_model.fga` ПОБАЙТОВАЯ:
 #      make -C services/iam model-canon-check
 #  Форму документа судит один разбор:
 #      make -C services/iam module-manifest-check

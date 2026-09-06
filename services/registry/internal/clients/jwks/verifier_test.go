@@ -194,14 +194,14 @@ func TestJWKS_Verify_ES256_Valid(t *testing.T) {
 }
 
 // Федеративный SA-токен: Hydra `sub` — это client_id, а Kachō principal id (sva…/usr…)
-// лежит в `ext.ext_claims.kaname_principal_id` (обогащение IAM token-hook'а). Verify
+// лежит в `ext.ext_claims.kacho_principal_id` (обогащение IAM token-hook'а). Verify
 // обязан вернуть principal id, а не сырой client_id — иначе data-plane authz Check
 // целится в несуществующий service_account:<client_id> и отказывает любой push/pull.
 func TestJWKS_Verify_ReturnsKachoPrincipalID(t *testing.T) {
 	js := newJWKSServer(t, "kid-rsa")
 	v := newTestVerifier(t, js.srv.URL, testAud, testHydraIss)
 	claims := hydraClaims("81f92eee-client-uuid", time.Now().Add(time.Hour))
-	claims["ext"] = map[string]any{"ext_claims": map[string]any{"kaname_principal_id": "svaz7x4kcr58s59fx75v"}}
+	claims["ext"] = map[string]any{"ext_claims": map[string]any{"kacho_principal_id": "svaz7x4kcr58s59fx75v"}}
 	tok := js.mintRS256(t, "kid-rsa", claims)
 
 	principal, err := v.Verify(context.Background(), tok)

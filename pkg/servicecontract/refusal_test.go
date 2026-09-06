@@ -22,7 +22,6 @@ import (
 	"time"
 
 	"github.com/prometheus/client_golang/prometheus"
-	"google.golang.org/grpc"
 	"google.golang.org/grpc/credentials"
 	"google.golang.org/grpc/credentials/insecure"
 
@@ -62,7 +61,6 @@ func lawful() servicecontract.Spec {
 		},
 		Authz:          servicecontract.AuthzViaIAM,
 		CheckEdge:      servicecontract.NewPeerEdge("kaname-internal:9091", tlsLike{}),
-		PeerCheck:      func(grpc.ClientConnInterface) authz.CheckClient { return nil },
 		CacheWindow:    5 * time.Second,
 		ClientBudget:   5 * time.Second,
 		HandlingBudget: 30 * time.Second,
@@ -214,37 +212,9 @@ func TestO6_SelfAuthzNeedsNoEdge(t *testing.T) {
 	s := lawful()
 	s.Authz = servicecontract.AuthzSelf
 	s.CheckEdge = servicecontract.PeerEdge{}
-	s.PeerCheck = nil
 	s.SelfCheck = stubCheck{}
 	if _, err := servicecontract.New(s); err != nil {
 		t.Fatalf("владелец модели отвергнут за отсутствие ребра к самому себе: %v", err)
-	}
-}
-
-// TestPeerCheckIsRequiredExactlyWhereTheNeighbourDecides — обе стороны пары
-// «кто переводит вопрос в контракт соседа».
-//
-// Поле заведено затем, чтобы фундамент перестал знать контракт службы доступа
-// (приёмка K3-1 §7.2): носитель набирает соседа, но переводит вопрос сервис.
-// Утверждаются ОБЕ стороны — иначе отрицание зеленело бы на конструкторе,
-// отвергающем всё.
-func TestPeerCheckIsRequiredExactlyWhereTheNeighbourDecides(t *testing.T) {
-	// спрашивает соседа, а сборщика не принёс — находка
-	s := lawful()
-	s.PeerCheck = nil
-	_, err := servicecontract.New(s)
-	if err == nil || !strings.Contains(err.Error(), "PeerCheck") {
-		t.Fatalf("дескриптор без сборщика решателя обязан быть отвергнут: %v", err)
-	}
-
-	// решает у себя, а сборщик принесён — тоже находка: его никто не позовёт
-	s = lawful()
-	s.Authz = servicecontract.AuthzSelf
-	s.CheckEdge = servicecontract.PeerEdge{}
-	s.SelfCheck = stubCheck{}
-	_, err = servicecontract.New(s)
-	if err == nil || !strings.Contains(err.Error(), "PeerCheck") {
-		t.Fatalf("сборщик решателя соседа у владельца модели обязан быть отвергнут: %v", err)
 	}
 }
 

@@ -839,7 +839,7 @@ func runServe(cfg config.Config) error {
 		publicCallerPolicy.Stream(),
 		authzguard.AntiAnonymousStream(logger),
 		// Та же дверь на второй полосе. Стримовых RPC у iam сегодня НОЛЬ
-		// (`git grep -c 'returns (stream' -- proto/kacho/cloud/iam/v1` → 0),
+		// (`git grep -c 'returns (stream' -- proto/kaname/cloud/iam/v1` → 0),
 		// поэтому провязка ничего не решает СЕЙЧАС и стоит здесь ради того,
 		// чтобы решать, когда предмет появится: полоса без двери при полосе с
 		// дверью — это различие, которого никто не принимал, и обнаружилось бы

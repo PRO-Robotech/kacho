@@ -20,7 +20,6 @@ import (
 	"google.golang.org/grpc/connectivity"
 
 	"github.com/PRO-Robotech/kacho/pkg/authz"
-	"github.com/PRO-Robotech/kacho/pkg/authz/authziam"
 	"github.com/PRO-Robotech/kacho/pkg/authz/authzmetrics"
 	"github.com/PRO-Robotech/kacho/pkg/authz/proxytuple"
 	coredb "github.com/PRO-Robotech/kacho/pkg/db"
@@ -39,10 +38,10 @@ import (
 	"github.com/PRO-Robotech/kacho/pkg/servicehost"
 	"github.com/PRO-Robotech/kacho/pkg/subscription"
 
-	iamv1 "github.com/PRO-Robotech/kacho/pkg/api/kacho/cloud/iam/v1"
 	operationpb "github.com/PRO-Robotech/kacho/pkg/api/kacho/cloud/operation"
 	storagev1 "github.com/PRO-Robotech/kacho/pkg/api/kacho/cloud/storage/v1"
 	subscriptionv1 "github.com/PRO-Robotech/kacho/pkg/api/kacho/cloud/subscription"
+	iamv1 "github.com/PRO-Robotech/kacho/pkg/api/kaname/cloud/iam/v1"
 
 	"github.com/PRO-Robotech/kacho/services/storage/internal/apps/kacho/api/disktype"
 	"github.com/PRO-Robotech/kacho/services/storage/internal/apps/kacho/api/disktypebinding"
@@ -646,12 +645,8 @@ func describe(
 		TrustDomain:     servicecontract.Value(cfg.TrustDomain()),
 		TrustDomainKnob: "KACHO_STORAGE_AUTHZ_TRUST_DOMAIN",
 
-		Authz:     servicecontract.AuthzViaIAM,
-		CheckEdge: servicecontract.NewPeerEdge(cfg.AuthZIAMGRPCAddr, checkCreds),
-		// Перевод вопроса в контракт службы доступа приносит СЕРВИС: носитель
-		// принадлежит фундаменту и чужого контракта не знает (приёмка K3-1,
-		// раздел 7.2).
-		PeerCheck:    authziam.NewCheckClient,
+		Authz:        servicecontract.AuthzViaIAM,
+		CheckEdge:    servicecontract.NewPeerEdge(cfg.AuthZIAMGRPCAddr, checkCreds),
 		CacheWindow:  cfg.AuthZCacheTTL,
 		ClientBudget: cfg.AuthZCheckTimeout,
 		// Приёмник величин кеша вердиктов: носитель строит кеш, а

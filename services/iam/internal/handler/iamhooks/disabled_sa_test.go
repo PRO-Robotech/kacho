@@ -115,7 +115,7 @@ func TestTokenHook_DisabledServiceAccount_Refused(t *testing.T) {
 
 	// Nothing was minted: no claim set of any size reached the response.
 	assert.NotContains(t, w.Body.String(), "ext_claims")
-	assert.NotContains(t, w.Body.String(), "kaname_principal_id")
+	assert.NotContains(t, w.Body.String(), "kacho_principal_id")
 	assert.NotContains(t, w.Body.String(), disabledSAAccount,
 		"least of all the claim set naming the account")
 

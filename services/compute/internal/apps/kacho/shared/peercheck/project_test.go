@@ -26,7 +26,7 @@ func (f fakeProjectCheckClient) Exists(context.Context, string) (bool, error) {
 // TestProject_UsesProjectVocabulary locks the error TEXT of the compute →
 // iam project existence-check to the Kachō vocabulary.
 //
-// The resource is `Project` (proto/kacho/cloud/iam/v1/project.proto); `Folder`
+// The resource is `Project` (proto/kaname/cloud/iam/v1/project.proto); `Folder`
 // names nothing in the Kachō API. The caller sends `projectId` and must not get
 // back an error naming a `Folder`: Kachō describes its API in its own terms, and
 // the contract tone is "<Resource> %s not found" (api-conventions.md).

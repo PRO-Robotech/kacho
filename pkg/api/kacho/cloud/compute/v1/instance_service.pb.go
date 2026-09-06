@@ -181,7 +181,7 @@ func (x *GetInstanceRequest) GetInstanceId() string {
 type ListInstancesRequest struct {
 	state protoimpl.MessageState `protogen:"open.v1"`
 	// ID of the project to list instances in.
-	// To get the project ID, use a [kacho.cloud.iam.v1.ProjectService.List] request.
+	// To get the project ID, use a [kaname.cloud.iam.v1.ProjectService.List] request.
 	ProjectId string `protobuf:"bytes,1,opt,name=project_id,json=projectId,proto3" json:"project_id,omitempty"`
 	// The maximum number of results per page to return. If the number of available
 	// results is larger than [page_size],

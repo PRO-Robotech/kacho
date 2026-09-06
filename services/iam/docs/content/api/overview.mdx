@@ -16,7 +16,7 @@ import dedent from 'ts-dedent'
 [AccessBinding](/api/access-binding) и т.д.).
 
 :::info Единый контракт — gRPC, REST — проекция
-Источник истины — Protocol Buffers в `proto/` (домен `kacho.cloud.iam.v1`). REST-поверхность
+Источник истины — Protocol Buffers в `proto/` (домен `kaname.cloud.iam.v1`). REST-поверхность
 строится через **grpc-gateway**: каждый RPC аннотирован `google.api.http`. Семантика (коды
 ошибок, валидация) одинакова для gRPC и REST; примеры ниже — в REST-форме (через `api-gateway`).
 :::

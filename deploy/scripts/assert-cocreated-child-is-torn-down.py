@@ -310,9 +310,9 @@ def premises(root):
             return False
     return [
         ("P1 CreateAccountMetadata объявляет default_project_id",
-         has("proto/kacho/cloud/iam/v1/account.proto",
+         has("proto/kaname/cloud/iam/v1/account.proto",
              r"message CreateAccountMetadata\b[\s\S]{0,600}?\bstring default_project_id\b"),
-         "proto/kacho/cloud/iam/v1/account.proto"),
+         "proto/kaname/cloud/iam/v1/account.proto"),
         ("P2 сага создания аккаунта вставляет проект в своей транзакции",
          has("services/iam/internal/apps/kaname/api/account/create.go",
              r"w\.ProjectsW\(\)\.Insert\("),

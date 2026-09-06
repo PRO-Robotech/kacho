@@ -248,11 +248,11 @@ func TestDocsExampleKeysFindingNamesTheCoordinate(t *testing.T) {
 	got := found[0].String()
 	for _, want := range []string{
 		"services/iam/docs/content/api/role.mdx:", // файл
-		"GET",                     // метод операции
-		"/iam/v1/roles/{role_id}", // её адрес
-		"полоса «ответ»",          // полоса, по которой судили
-		"kacho.cloud.iam.v1.Role", // сообщение, в котором ключ искали
-		`"descriptionn"`,          // сам ключ
+		"GET",                      // метод операции
+		"/iam/v1/roles/{role_id}",  // её адрес
+		"полоса «ответ»",           // полоса, по которой судили
+		"kaname.cloud.iam.v1.Role", // сообщение, в котором ключ искали
+		`"descriptionn"`,           // сам ключ
 	} {
 		if !strings.Contains(got, want) {
 			t.Errorf("текст находки не называет %q:\n  %s", want, got)

@@ -74,7 +74,7 @@ def _await(resp, token, key):
 def upsert_user(ext_id):
     body = json.dumps({"externalId": ext_id, "email": ext_id, "displayName": ext_id})
     args = ["grpcurl", "-insecure", "-cert", MTLS_CERT, "-key", MTLS_KEY,
-            "-d", body, IAM_GRPC, "kacho.cloud.iam.v1.InternalUserService/UpsertFromIdentity"]
+            "-d", body, IAM_GRPC, "kaname.cloud.iam.v1.InternalUserService/UpsertFromIdentity"]
     out = subprocess.run(args, capture_output=True, text=True).stdout
     d = json.loads(out or "{}")
     op = d.get("id")

@@ -8,6 +8,8 @@ import (
 	"path/filepath"
 	"strings"
 	"testing"
+
+	"github.com/PRO-Robotech/kacho/pkg/contractroot"
 )
 
 // flushParityTree раскладывает синтетическое дерево: use-case владельца и файл
@@ -39,7 +41,16 @@ func flushParityTree(t *testing.T, producers []string, flushKeys []string) Subje
 	return SubjectChangeFlushParityOptions{
 		Root: root, ProducerRoot: "api", SelfFlushFile: "edge/authz.go",
 		MethodExists: func(service, method string) bool {
-			return strings.HasPrefix(service, "kacho.") && method != "NoSuchMethod"
+			// Подделка обязана быть НЕ СНИСХОДИТЕЛЬНЕЕ и НЕ СТРОЖЕ продукта:
+			// имя службы признаётся по объявленному множеству корней, а не по
+			// одному литералу. Литерал отверг бы имя из второго корня, и
+			// инъекция краснела бы на собственной строгости.
+			for _, root := range contractroot.Roots {
+				if strings.HasPrefix(service, root+".") {
+					return method != "NoSuchMethod"
+				}
+			}
+			return false
 		},
 	}
 }
@@ -84,7 +95,7 @@ func auditParity(t *testing.T, opts SubjectChangeFlushParityOptions) []SubjectCh
 func TestFlushParityGateFallsWhenAProducerHasNoFlush(t *testing.T) {
 	opts := flushParityTree(t,
 		[]string{producerBody, producerBody, producerTwin},
-		[]string{"kacho.cloud.iam.v1.GroupService/AddMember"})
+		[]string{"kaname.cloud.iam.v1.GroupService/AddMember"})
 	findings := auditParity(t, opts)
 	if len(findings) != 1 || !strings.Contains(findings[0].What, "производителей очереди 2, самосброс покрывает 1") {
 		t.Fatalf("расхождение полос не названо числами обеих: %v", findings)
@@ -100,7 +111,7 @@ func TestFlushParityGateFallsWhenAProducerHasNoFlush(t *testing.T) {
 func TestFlushParityGateSeesTheValueForm(t *testing.T) {
 	opts := flushParityTree(t,
 		[]string{producerValueBody, producerValueBody, producerTwin},
-		[]string{"kacho.cloud.iam.v1.GroupService/AddMember"})
+		[]string{"kaname.cloud.iam.v1.GroupService/AddMember"})
 	findings := auditParity(t, opts)
 	if len(findings) != 1 || !strings.Contains(findings[0].What, "производителей очереди 2, самосброс покрывает 1") {
 		t.Fatalf("обращение значением не сочтено производителем: %v", findings)
@@ -114,8 +125,8 @@ func TestFlushParityGateCountsMixedFormsOnce(t *testing.T) {
 	opts := flushParityTree(t,
 		[]string{producerBody, producerValueBody, producerTwin},
 		[]string{
-			"kacho.cloud.iam.v1.AccessBindingService/Create",
-			"kacho.cloud.iam.v1.AccessBindingService/Delete",
+			"kaname.cloud.iam.v1.AccessBindingService/Create",
+			"kaname.cloud.iam.v1.AccessBindingService/Delete",
 		})
 	if findings := auditParity(t, opts); len(findings) != 0 {
 		t.Fatalf("две формы, два имени — полосы сошлись, а гейт нашёл: %v", findings)
@@ -127,7 +138,7 @@ func TestFlushParityGateCountsMixedFormsOnce(t *testing.T) {
 func TestFlushParityGateFallsOnAnUnresolvableName(t *testing.T) {
 	opts := flushParityTree(t,
 		[]string{producerBody},
-		[]string{"kacho.cloud.iam.v1.GroupService/NoSuchMethod"})
+		[]string{"kaname.cloud.iam.v1.GroupService/NoSuchMethod"})
 	findings := auditParity(t, opts)
 	if len(findings) != 1 || !strings.Contains(findings[0].What, "не разрешается в контракте") {
 		t.Fatalf("неразрешимое имя пропущено при сошедшемся счёте: %v", findings)
@@ -140,8 +151,8 @@ func TestFlushParityGateStaysSilentWhenLanesAgree(t *testing.T) {
 	opts := flushParityTree(t,
 		[]string{producerBody, producerBody, producerTwin},
 		[]string{
-			"kacho.cloud.iam.v1.AccessBindingService/Create",
-			"kacho.cloud.iam.v1.AccessBindingService/Delete",
+			"kaname.cloud.iam.v1.AccessBindingService/Create",
+			"kaname.cloud.iam.v1.AccessBindingService/Delete",
 		})
 	if findings := auditParity(t, opts); len(findings) != 0 {
 		t.Fatalf("сошедшиеся полосы объявлены находкой: %v", findings)

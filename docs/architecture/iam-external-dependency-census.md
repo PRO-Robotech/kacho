@@ -108,7 +108,7 @@ go list -f '{{join .Imports " "}}' ./services/iam/... \
 
 | стаб | прод-файлов iam | прод-файлов прочих | прочих компонентов |
 |---|---:|---:|---|
-| `pkg/api/kacho/cloud/iam/v1` | **92** | 48 | 9 |
+| `pkg/api/kaname/cloud/iam/v1` | **92** | 48 | 9 |
 | `pkg/api/kacho/cloud/operation` | 28 | 132 | 8 |
 | `pkg/api/kacho/cloud/quota/v1` | 2 | 7 | 2 |
 
@@ -136,7 +136,7 @@ go list -f '{{join .Imports " "}}' ./services/iam/... \
 
 | каталог | файлов |
 |---|---:|
-| `kacho/cloud/iam/v1` | 39 |
+| `kaname/cloud/iam/v1` | 39 |
 | `proto/google/` (восемь файлов стандартных опций) | 8 |
 | `kacho/cloud/operation` | 3 |
 | `kacho/cloud/api` | 2 |
@@ -302,11 +302,11 @@ awk -F'\t' '$1 ~ /^pkg\// && $2 ~ /kacho\/services\//' <таблица разб�
 
 **Это НЕ цикл — и посылка задания здесь неверна.** Она исходила из того, что контракт
 iam уедет вместе с iam; решение владельца 2026-09-04 говорит обратное: `proto/`
-остаётся в `kacho`, а с ним остаются и стабы `pkg/api/kacho/cloud/iam/v1`. Тогда
+остаётся в `kacho`, а с ним остаются и стабы `pkg/api/kaname/cloud/iam/v1`. Тогда
 `pkg → pkg/api/.../iam/v1` — ребро **внутри** `kacho`, и снимать его не нужно.
 
 Что при этом надо знать и сказать вслух: **iam перестаёт владеть собственным
-контрактом.** Правка `proto/kacho/cloud/iam/v1/*` становится изменением в `kacho`,
+контрактом.** Правка `proto/kaname/cloud/iam/v1/*` становится изменением в `kacho`,
 которое iam получает выпуском версии. Ровно поэтому здесь есть предмет для решения
 владельца — см. §6, шаг 0.
 
@@ -380,7 +380,7 @@ by construction тоже.
 
 ```sh
 grep -rl 'kacho/iam/authz/v1/authz_options.proto' --include='*.proto' proto/ | wc -l   # 68
-… | grep -vc '^proto/kacho/cloud/iam/'                                                # 46
+… | grep -vc '^proto/kaname/cloud/iam/'                                                # 46
 ```
 
 По доменам: iam 22 · vpc 14 · storage 9 · compute 8 · loadbalancer 5 · registry 3 ·
@@ -484,15 +484,15 @@ awk -F'\t' -v m=$M '$1 ~ /^services\/iam\// &&
 
 # 5. обратная привязка: pkg → iam
 awk -F'\t' -v m=$M '$1 ~ /^pkg\// && index($2,m"/services/")==1' imports.tsv      # пусто
-awk -F'\t' -v m=$M '$1 ~ /^pkg\// && $2==m"/pkg/api/kacho/cloud/iam/v1" {print $1}' imports.tsv | sort -u
+awk -F'\t' -v m=$M '$1 ~ /^pkg\// && $2==m"/pkg/api/kaname/cloud/iam/v1" {print $1}' imports.tsv | sort -u
 
 # 6. цена для соседей
 awk -F'\t' -v m=$M '$1 !~ /^services\/iam\// && index($2,m"/services/iam/")==1' imports.tsv   # пусто
-awk -F'\t' -v m=$M '$1 !~ /^services\/iam\// && index($2,m"/pkg/api/kacho/cloud/iam/")==1 {print $1}' imports.tsv | sort -u | wc -l
+awk -F'\t' -v m=$M '$1 !~ /^services\/iam\// && index($2,m"/pkg/api/kaname/cloud/iam/")==1 {print $1}' imports.tsv | sort -u | wc -l
 
 # 7. разметка прав
 grep -rl 'kacho/iam/authz/v1/authz_options.proto' --include='*.proto' proto/ | wc -l
-grep -rl 'kacho/iam/authz/v1/authz_options.proto' --include='*.proto' proto/ | grep -vc '^proto/kacho/cloud/iam/'
+grep -rl 'kacho/iam/authz/v1/authz_options.proto' --include='*.proto' proto/ | grep -vc '^proto/kaname/cloud/iam/'
 
 # 8. доказательство недостижимости корневого internal/ из чужого модуля
 #    отдельный модуль с replace на дерево; меняется РОВНО один факт — путь импорта

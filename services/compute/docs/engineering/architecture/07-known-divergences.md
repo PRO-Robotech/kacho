@@ -621,7 +621,7 @@ sentinel→code в отдельный слой (если когда-либо) �
   found"`**~~ — **ЗАКРЫТО** (audit 2026-07). Обоснование «паритет с контрактом
   стороннего облака» само по себе нарушало core-правило #2 (проектируем в терминах
   Kachō, без оглядки на чужие облака), поэтому пункт снят, а не продлён. Ресурс
-  называется **`Project`** (`proto/kacho/cloud/iam/v1/project.proto`), клиент шлёт
+  называется **`Project`** (`proto/kaname/cloud/iam/v1/project.proto`), клиент шлёт
   `projectId` — прежнее имя не называет ничего на публичной поверхности, искать его в
   доке бесполезно. `internal/apps/kacho/shared/peercheck/project.go` отдаёт конвенционные
   `NotFound "Project %s not found"` и `Unavailable "project check: upstream project

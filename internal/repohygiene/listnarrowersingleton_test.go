@@ -59,22 +59,6 @@ const batchCheckRequestType = "BatchAuthorizeCheckRequest"
 // sharedNarrowerPkgDir — единственный дом механики.
 const sharedNarrowerPkgDir = "pkg/listnarrow"
 
-// sharedNarrowerAdapterDir — единственный дом ПЕРЕВОДА механики в контракт
-// владельца модели.
-//
-// Заведён отдельной приставкой, потому что предпосылка гейта переехала: тип
-// запроса теперь конструирует адаптер, а не сам сужатель. Порт `listnarrow`
-// говорит типами фундамента (приёмка K3-1 §7.2, задача #2131) — иначе фундамент
-// импортировал бы контракт службы доступа, и после разъезда на три модуля
-// `corelib` потребовал бы `kaname`.
-//
-// Гейт от этого не ослаб и не сузился: предмет у него прежний — ВТОРАЯ механика
-// под `services/`, — а поменялось лишь место, где стоит его положительный
-// контроль. Не перенеси мы контроль, гейт стерёг бы пустое место и молчал бы на
-// всём (`testing.md` §«Гейт на класс», п.9: проверка, чей предмет сняли,
-// замолкает, и отличить это от исправной работы нечем). Ровно это он и сказал.
-const sharedNarrowerAdapterDir = "pkg/listnarrow/narrowiam"
-
 // narrowerConstructionExceptions — файлы под `services/`, которым конструировать этот
 // запрос ПОЛОЖЕНО, и причина у каждого.
 //
@@ -120,25 +104,24 @@ func TestListNarrowingHasExactlyOneImplementation(t *testing.T) {
 	if scanned == 0 {
 		t.Fatalf("гейт не прочитал ни одного прод-файла под services/ — предпосылка обхода сломана")
 	}
-	// Предпосылка на НАСТОЯЩЕМ входе: признак обязан узнавать ЕДИНСТВЕННЫЙ
-	// законный конструктор — адаптер общего сужателя. Без неё «ноль
-	// конструкторов под services/» неотличим от сломанного распознавания.
+	// Предпосылка на НАСТОЯЩЕМ входе: признак обязан узнавать общий сужатель. Без неё
+	// «ноль конструкторов под services/» неотличим от сломанного распознавания.
 	premise := 0
-	for _, name := range []string{"client.go"} {
+	for _, name := range []string{"narrower.go", "object.go"} {
 		if fileConstructsBatchCheckRequest(t, root, filepath.ToSlash(
-			filepath.Join(sharedNarrowerAdapterDir, name))) {
+			filepath.Join(sharedNarrowerPkgDir, name))) {
 			premise++
 		}
 	}
 	if premise == 0 {
 		t.Fatalf("признак не узнаёт НИ ОДНОГО конструктора %s в %s — распознавание сломано "+
-			"либо перевод переехал; гейт стережёт пустое место, и его молчание ничего "+
-			"не доказывает", batchCheckRequestType, sharedNarrowerAdapterDir)
+			"либо механика переехала; гейт стережёт пустое место, и его молчание ничего "+
+			"не доказывает", batchCheckRequestType, sharedNarrowerPkgDir)
 	}
 
 	t.Logf("перепись: прод-файлов под services/ прочитано = %d; конструкторов %s под services/ = %d; "+
 		"конструкторов в %s (предпосылка) = %d; записанных исключений = %d (использовано %d)",
-		scanned, batchCheckRequestType, constructors, sharedNarrowerAdapterDir, premise,
+		scanned, batchCheckRequestType, constructors, sharedNarrowerPkgDir, premise,
 		len(narrowerConstructionExceptions), len(usedExceptions))
 
 	if len(findings) > 0 {

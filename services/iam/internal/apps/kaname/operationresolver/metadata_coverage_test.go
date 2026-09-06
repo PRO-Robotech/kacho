@@ -42,7 +42,7 @@ import (
 const resolverFile = "resolver.go"
 
 // protoGlob — доменное proto iam относительно корня репозитория.
-const protoGlob = "proto/kacho/cloud/iam/v1/*.proto"
+const protoGlob = "proto/kaname/cloud/iam/v1/*.proto"
 
 // metadataDeclRe — объявление метаданных в опции операции: `metadata: "XMetadata"`.
 var metadataDeclRe = regexp.MustCompile(`metadata:\s*"([A-Za-z0-9_]+)"`)

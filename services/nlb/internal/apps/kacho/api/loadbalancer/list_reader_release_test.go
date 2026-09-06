@@ -11,9 +11,11 @@ import (
 
 	lbv1 "github.com/PRO-Robotech/kacho/pkg/api/kacho/cloud/loadbalancer/v1"
 
+	iamv1 "github.com/PRO-Robotech/kacho/pkg/api/kaname/cloud/iam/v1"
 	"github.com/PRO-Robotech/kacho/pkg/listnarrow"
 	"github.com/PRO-Robotech/kacho/pkg/listnarrow/narrowtest"
 	kachorepo "github.com/PRO-Robotech/kacho/services/nlb/internal/repo/kacho"
+	"google.golang.org/grpc"
 )
 
 // The read-TX is a BORROWED POOL CONNECTION, so the order in which List does its
@@ -84,14 +86,15 @@ type readerStateProbe struct {
 
 var _ listnarrow.AuthorizeClient = (*readerStateProbe)(nil)
 
-func (p *readerStateProbe) BatchCheck(_ context.Context, checks []listnarrow.Check) ([]bool, error) {
+func (p *readerStateProbe) BatchCheck(_ context.Context, in *iamv1.BatchAuthorizeCheckRequest,
+	_ ...grpc.CallOption) (*iamv1.BatchAuthorizeCheckResponse, error) {
 	p.calls++
 	p.openedAtCall, p.closedAtCall = p.repo.opened, p.repo.closed
-	out := make([]bool, 0, len(checks))
-	for range checks {
-		out = append(out, true)
+	out := make([]*iamv1.AuthorizeCheckResponse, 0, len(in.GetChecks()))
+	for range in.GetChecks() {
+		out = append(out, &iamv1.AuthorizeCheckResponse{Allowed: true})
 	}
-	return out, nil
+	return &iamv1.BatchAuthorizeCheckResponse{Responses: out}, nil
 }
 
 // TestListLoadBalancers_ReleasesReaderBeforeAuthz — the pooled read-TX must be
