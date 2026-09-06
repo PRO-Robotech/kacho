@@ -27,7 +27,7 @@
 свёртки. Паттерн остаётся доступен как escape (`*-<СУФФИКС>`, отрезаются два
 сегмента), но каталог на нём не строится.
 
-Всего кейсов: 729
+Всего кейсов: 738
 
 ## Перепись по модулям
 
@@ -67,6 +67,7 @@
 | `cases/iam-token-facade-conformance.py` | 7 |
 | `cases/iam-user.py` | 43 |
 | `cases/iam-whoami.py` | 3 |
+| `cases/kaname-own-rest-front.py` | 9 |
 | `cases/label-revoke-iam.py` | 2 |
 | `cases/label-revoke-nlb.py` | 1 |
 | `cases/label-revoke-storage.py` | 3 |
@@ -1005,3 +1006,23 @@
 - `IAM-SET-SVA-LIST-READ-PARITY`
 - `IAM-SET-GRP-LIST-READ-PARITY`
 
+## `cases/kaname-own-rest-front.py` — 9 кейсов
+
+> Собственный REST-фронт службы (KAN-REST-1): два сокета, а не один с разбором
+> пути. Адресуется ОТДЕЛЬНЫМИ переменными окружения — край платформы и
+> собственный фронт суть разные поверхности, и одно значение на обе сделало бы
+> вердикт прогона функцией того, чей стенд поднят.
+>
+> Код 5 различителем здесь НЕ является: промах маршрутизатора и сокрытие
+> существования несут его оба. Различает текст, и каждое отрицание идёт в паре с
+> положительным контролем на том же фронте и тем же путём на соседнем.
+
+- `IAM-OWNREST-OK-PUBLIC-ALIVE`
+- `IAM-OWNREST-NEG-INTERNAL-ON-PUB`
+- `IAM-OWNREST-OK-INTERNAL-ON-INT`
+- `IAM-OWNREST-NEG-UNKNOWN-PATH`
+- `IAM-OWNREST-NEG-METHOD-MISMATCH`
+- `IAM-OWNREST-NEG-BAD-CREDENTIAL`
+- `IAM-OWNREST-NEG-SELF-NAMED`
+- `IAM-OWNREST-NEG-GARBAGE-CURSOR`
+- `IAM-OWNREST-OK-OPERATION-POLL`
