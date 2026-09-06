@@ -628,6 +628,9 @@ func Scan(opts Options) (*Report, error) {
 
 	var dirs []Directive
 	for _, rel := range tracked {
+		// #nosec G304 -- путь склеен из корня осматриваемого дерева и ОТНОСИТЕЛЬНОГО
+		// имени, пришедшего из индекса git этого же дерева; подставить посторонний
+		// файл извне нечем.
 		body, err := os.ReadFile(filepath.Join(root, filepath.FromSlash(rel)))
 		if err != nil {
 			return nil, fmt.Errorf("чтение %s: %w", rel, err)
@@ -672,6 +675,9 @@ func Scan(opts Options) (*Report, error) {
 	rep.Census.Live, rep.Census.Inert = len(live), len(inert)
 
 	ledgerPath := filepath.Join(root, filepath.FromSlash(opts.Ledger))
+	// #nosec G304 -- имя ведомости задаёт вызывающий гейта (в дереве это константа
+	// точки входа), а корень — осматриваемое дерево; из запроса сюда не приходит
+	// ничего.
 	ledgerBody, err := os.ReadFile(ledgerPath)
 	if err != nil {
 		return nil, fmt.Errorf("ведомость %s не прочитана: %w", opts.Ledger, err)
@@ -712,6 +718,8 @@ func owningModule(mods []Module, rel string) string {
 }
 
 func readManifest(path string) ([]Module, error) {
+	// #nosec G304 -- путь собран из каталога артефактов, который называет тот же
+	// вызывающий, что и корень дерева; перечень пишет наш же скрипт скана.
 	body, err := os.ReadFile(path)
 	if err != nil {
 		return nil, fmt.Errorf("перечень скана %s не прочитан: %w. "+
