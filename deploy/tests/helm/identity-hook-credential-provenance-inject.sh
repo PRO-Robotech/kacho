@@ -122,7 +122,7 @@ if sender:
         "spec": {
             "initContainers": [{
                 "name": "identity-config-render",
-                "env": [{"name": "KACHO_IDENTITY_SUBSTITUTED_VARS", "value": owned}],
+                "env": [{"name": "KANAME_IDENTITY_SUBSTITUTED_VARS", "value": owned}],
             }],
             "containers": [{
                 "name": "kratos",

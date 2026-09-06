@@ -95,7 +95,7 @@ for d in yaml.safe_load_all(open(sys.argv[1])):
         if c['name'] != 'identity-config-render':
             continue
         for e in c.get('env', []):
-            if e.get('name') == 'KACHO_IDENTITY_SUBSTITUTED_VARS':
+            if e.get('name') == 'KANAME_IDENTITY_SUBSTITUTED_VARS':
                 print(e.get('value', '')); raise SystemExit(0)
 raise SystemExit("перечень владения не объявлен в рендере")
 PYVARS
@@ -146,7 +146,7 @@ REAL_BASE="$(cat "$TMP/real/src/kratos.yaml")"
 OWNED_NAME="${SUBST_VARS%% *}"
 [ -n "$OWNED_NAME" ] || { echo "ОТКАЗ: перечень владения пуст — фикстуре не на чём стоять"; exit 1; }
 
-export KACHO_IDENTITY_SUBSTITUTED_VARS="$SUBST_VARS"
+export KANAME_IDENTITY_SUBSTITUTED_VARS="$SUBST_VARS"
 
 # Скрипт готовится ОТДЕЛЬНО под каждую карту: пути каталогов у них свои, и общий
 # каталог сделал бы вердикт одной оси функцией того, что оставила соседняя.
@@ -334,7 +334,7 @@ if mode == 'ownership':
     # доказавший.
     old = ('bad=""\n'
            'for n in $left; do\n'
-           '  for o in $owned $KACHO_IDENTITY_SUBSTITUTED_VARS; do\n'
+           '  for o in $owned $KANAME_IDENTITY_SUBSTITUTED_VARS; do\n'
            '    if [ "$n" = "$o" ]; then bad="$bad $n"; break; fi\n'
            '  done\n'
            'done')
@@ -434,10 +434,10 @@ python3 - "$TMP/script.raw" "$TMP/namedefect.raw" <<'PYNAME'
 import io, sys
 src, dst = sys.argv[1], sys.argv[2]
 s = io.open(src, encoding='utf-8').read()
-old = 'eval "KACHO_SUBST_TOKEN=\\${$n-}"'
+old = 'eval "KANAME_SUBST_TOKEN=\\${$n-}"'
 if old not in s:
     raise SystemExit("образец присвоения величины не найден — инъекция сядет не туда")
-io.open(dst, 'w', encoding='utf-8').write(s.replace(old, 'KACHO_SUBST_TOKEN="$n"', 1))
+io.open(dst, 'w', encoding='utf-8').write(s.replace(old, 'KANAME_SUBST_TOKEN="$n"', 1))
 PYNAME
 [ -s "$TMP/namedefect.raw" ] || { echo "  ОТКАЗ D: дефект «имя вместо величины» не внесён"; rc=1; }
 sed "s#/etc/kacho-identity-src#$TMP/real/src#g; s#/etc/kacho-identity-rendered#$TMP/real/rendered#g" \

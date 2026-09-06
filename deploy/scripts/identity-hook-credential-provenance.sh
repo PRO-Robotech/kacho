@@ -134,7 +134,7 @@ for p in data.get('items', []):
             owned = ''
             for ic in spec.get('initContainers', []):
                 for e in ic.get('env', []):
-                    if e.get('name') == 'KACHO_IDENTITY_SUBSTITUTED_VARS':
+                    if e.get('name') == 'KANAME_IDENTITY_SUBSTITUTED_VARS':
                         owned = e.get('value', '')
             print('\t'.join((p['metadata']['name'], c['name'], owned)))
 PY

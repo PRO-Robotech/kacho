@@ -557,7 +557,7 @@ hashers:
 # УДОСТОВЕРЕНИЕ СЮДА НЕ ПОПАДАЕТ (решение Р6). Эта карта настроек читается шире
 # секрета: её отдаёт `kubectl get configmap`, она попадает в рендер чарта, в
 # вывод отладки и в артефакты прогона. Поэтому величины здесь нет — стоит
-# ССЫЛКА `${KACHO_IDENTITY_SMTP_CREDENTIAL}`, а подставляет её шаг
+# ССЫЛКА `${KANAME_IDENTITY_SMTP_CREDENTIAL}`, а подставляет её шаг
 # `kacho.identity.configRenderInitContainer` до старта процесса, тем же приёмом,
 # каким подставляется учётная величина обратных вызовов. Второго механизма не
 # заводится.
@@ -587,7 +587,7 @@ hashers:
 {{/* `index`, а не `get`: splitn отдаёт map[string]string, а `get` объявлен на */}}
 {{/* map[string]interface{} и роняет рендер несовпадением типа. */}}
 {{- $mailParts := splitn "@" 2 (trimPrefix $mailScheme $mailURI) }}
-{{- $mailSpliced := printf "%s%s:${KACHO_IDENTITY_SMTP_CREDENTIAL}@%s" $mailScheme (index $mailParts "_0") (index $mailParts "_1") }}
+{{- $mailSpliced := printf "%s%s:${KANAME_IDENTITY_SMTP_CREDENTIAL}@%s" $mailScheme (index $mailParts "_0") (index $mailParts "_1") }}
 {{- $mailOut := ternary $mailSpliced $mailURI $mailCredDeclared }}
 courier:
   smtp:
@@ -825,8 +825,8 @@ kacho.identity.configRenderInitContainer — подстановка величи
 
       # Чем шаг владеет — объявлено переменной ниже; почему не выведено из
       # окружения, сказано в шапке этого шаблона.
-      : "${KACHO_IDENTITY_SUBSTITUTED_VARS:?перечень имён, которыми владеет шаг подстановки, не объявлен — судить остаток не с чем, и молчаливый проход вернул бы дефект #948}"
-      for n in $KACHO_IDENTITY_SUBSTITUTED_VARS; do
+      : "${KANAME_IDENTITY_SUBSTITUTED_VARS:?перечень имён, которыми владеет шаг подстановки, не объявлен — судить остаток не с чем, и молчаливый проход вернул бы дефект #948}"
+      for n in $KANAME_IDENTITY_SUBSTITUTED_VARS; do
         eval "v=\${$n-}"
         if [ -z "$v" ]; then
           echo "ОТКАЗ: величина \${$n} пуста или не доехала до пода — Secret отсутствует либо пуст; полоса, которая её несёт, была бы отвергнута принимающей стороной, а стенд при этом выглядел бы поднятым" >&2
@@ -883,10 +883,10 @@ kacho.identity.configRenderInitContainer — подстановка величи
         # Форму `${…}` Kubernetes не трогает, поэтому она доезжает дословно; ту
         # же форму использует чтение величины двумя циклами выше.
         # Держит гейт deploy/identity_step_survives_kubernetes_expansion_test.go.
-        eval "KACHO_SUBST_TOKEN=\${$n-}"
-        export KACHO_SUBST_TOKEN
+        eval "KANAME_SUBST_TOKEN=\${$n-}"
+        export KANAME_SUBST_TOKEN
         awk -v name="$n" \
-            'BEGIN { pat = "${" name "}"; tok = ENVIRON["KACHO_SUBST_TOKEN"] }
+            'BEGIN { pat = "${" name "}"; tok = ENVIRON["KANAME_SUBST_TOKEN"] }
              { line = $0; out = ""
                while ((i = index(line, pat)) > 0) {
                  out = out substr(line, 1, i - 1) tok
@@ -895,7 +895,7 @@ kacho.identity.configRenderInitContainer — подстановка величи
                print out line }' "$out" > "$out.tmp"
         mv "$out.tmp" "$out"
       done
-      unset KACHO_SUBST_TOKEN
+      unset KANAME_SUBST_TOKEN
 
       left=$(grep -oE "$REF_RE" "$out" | sed 's/^\${//; s/[^A-Za-z0-9_].*$//' | sort -u || true)
       # Имя называется ОДИН раз: перечень владения и перечень подставленного
@@ -903,7 +903,7 @@ kacho.identity.configRenderInitContainer — подстановка величи
       # печатал одно имя дважды — читателю это выглядит как два разных места.
       bad=""
       for n in $left; do
-        for o in $owned $KACHO_IDENTITY_SUBSTITUTED_VARS; do
+        for o in $owned $KANAME_IDENTITY_SUBSTITUTED_VARS; do
           if [ "$n" = "$o" ]; then bad="$bad $n"; break; fi
         done
       done
@@ -945,7 +945,7 @@ kacho.identity.configRenderInitContainer — подстановка величи
       # чужой переменной находкой не считается — её источник законен и другой
       # (переменная по пути ключа самой службы личности), и суждение о ней
       # принадлежит владельцу имени, а не этому шагу.
-      judged=$(printf '%s %s' "$owned" "$KACHO_IDENTITY_SUBSTITUTED_VARS" | tr ' ' '\n' | grep -v '^$' | sort -u)
+      judged=$(printf '%s %s' "$owned" "$KANAME_IDENTITY_SUBSTITUTED_VARS" | tr ' ' '\n' | grep -v '^$' | sort -u)
       bare=""
       for n in $judged; do
         if sed -E "s/#.*$//; s/$REF_RE//g" "$out" | grep -qw -- "$n"; then
@@ -1019,10 +1019,10 @@ kacho.identity.configRenderInitContainer — подстановка величи
           sed -E "s/#.*$//; s/$REF_RE//g" "$out" | grep -nw -- "$n" | head -5 > "$out.hits" || true
           while IFS= read -r hit; do
             for m in $judged; do
-              eval "KACHO_MASK_VALUE=\${$m-}"
-              [ -n "$KACHO_MASK_VALUE" ] || continue
-              export KACHO_MASK_VALUE
-              hit=$(printf '%s\n' "$hit" | awk 'BEGIN { s = ENVIRON["KACHO_MASK_VALUE"] }
+              eval "KANAME_MASK_VALUE=\${$m-}"
+              [ -n "$KANAME_MASK_VALUE" ] || continue
+              export KANAME_MASK_VALUE
+              hit=$(printf '%s\n' "$hit" | awk 'BEGIN { s = ENVIRON["KANAME_MASK_VALUE"] }
                                                { line = $0; o = ""
                                                  while ((i = index(line, s)) > 0) {
                                                    o = o substr(line, 1, i - 1) "***"
@@ -1033,7 +1033,7 @@ kacho.identity.configRenderInitContainer — подстановка величи
           done < "$out.hits"
           rm -f "$out.hits"
         done
-        unset KACHO_MASK_VALUE
+        unset KANAME_MASK_VALUE
         echo "ОТКАЗ: в отрендеренной конфигурации имя переменной стоит ГОЛЫМ ИМЕНЕМ, без скобок:$bare. Это НЕ ссылка и подстановкой не лечится — строка уедет в заголовок дословно и будет отвергнута принимающей стороной кодом 401, а стенд при этом будет выглядеть поднятым. Где именно — названо строками выше: они дают по исходнику ДВА числа ПОРОЗНЬ и одной единицей счёта — вхождений голым именем и вхождений ссылкой — и потому говорят, пришло ли имя из исходника настроек или его принесла сама величина. Одно число на два состояния этого не говорит: скобки словом не являются" >&2
         exit 1
       fi
@@ -1113,8 +1113,8 @@ kacho.identity.configRenderInitContainer — подстановка величи
     # имени в статическом тексте: побеждает последняя, и какая именно — из
     # объявления не видно. Это два места об одном предмете, и разошлись бы они
     # молча; держит единственность deploy/identity_step_declaration_parses_test.go.
-    - name: KACHO_IDENTITY_SUBSTITUTED_VARS
-      value: "KANAME_HOOK_TOKEN{{ if $mailCredDeclared }} KACHO_IDENTITY_SMTP_CREDENTIAL{{ end }}"
+    - name: KANAME_IDENTITY_SUBSTITUTED_VARS
+      value: "KANAME_HOOK_TOKEN{{ if $mailCredDeclared }} KANAME_IDENTITY_SMTP_CREDENTIAL{{ end }}"
     # Почтовая полоса, ЭФФЕКТИВНАЯ: тот же секрет и тот же ключ, из которого её
     # берёт сам процесс. Ссылка НЕОБЯЗАТЕЛЬНА — подчарт поставщика заводит ключ
     # только когда объявлен его собственный ключ полосы; отсутствие переменной
@@ -1149,7 +1149,7 @@ kacho.identity.configRenderInitContainer — подстановка величи
     # обязательная форма роняет под ДО старта и молча — сообщение получает
     # планировщик, а не оператор. Пустую величину отвергает сам шаг, с текстом,
     # называющим ручку, то есть отказ остался закрытым, но стал ЧИТАЕМЫМ.
-    - name: KACHO_IDENTITY_SMTP_CREDENTIAL
+    - name: KANAME_IDENTITY_SMTP_CREDENTIAL
       valueFrom:
         secretKeyRef:
           name: {{ $mailCredName | quote }}

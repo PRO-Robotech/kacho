@@ -73,12 +73,12 @@ for d in yaml.safe_load_all(open(sys.argv[1])):
         if c['name'] != 'identity-config-render':
             continue
         for e in c.get('env', []):
-            if e.get('name') == 'KACHO_IDENTITY_SUBSTITUTED_VARS':
+            if e.get('name') == 'KANAME_IDENTITY_SUBSTITUTED_VARS':
                 print(e.get('value', '')); raise SystemExit(0)
 raise SystemExit("перечень владения не объявлен в рендере")
 PYVARS
 )" || { echo "ОТКАЗ: перечень владения не извлечён из рендера"; exit 1; }
-export KACHO_IDENTITY_SUBSTITUTED_VARS="$SUBST_VARS"
+export KANAME_IDENTITY_SUBSTITUTED_VARS="$SUBST_VARS"
 sed "s#/etc/kacho-identity-src#$TMP/src#g; s#/etc/kacho-identity-rendered#$TMP/rendered#g" \
   "$TMP/script.raw" > "$TMP/script.sh"
 
@@ -166,7 +166,7 @@ for d in yaml.safe_load_all(open(sys.argv[1])):
         if c['name'] != 'identity-config-render':
             continue
         for e in c.get('env', []):
-            if e.get('name') == 'KACHO_IDENTITY_SUBSTITUTED_VARS':
+            if e.get('name') == 'KANAME_IDENTITY_SUBSTITUTED_VARS':
                 print(e.get('value', '')); raise SystemExit(0)
 raise SystemExit("перечень владения не объявлен в рендере с удостоверением")
 PYVARS
@@ -177,8 +177,8 @@ PYVARS
 # зелёными по отсутствию предмета, а не по исправности. Это «условие не
 # создано», и оно обязано быть отличимо от вердикта.
 case "$CRED_VARS" in
-  *KACHO_IDENTITY_SMTP_CREDENTIAL*) : ;;
-  *) echo "ОТКАЗ: чарт не назвал KACHO_IDENTITY_SMTP_CREDENTIAL в перечне владения ($CRED_VARS) — оси удостоверения проверяли бы пустоту"; exit 1 ;;
+  *KANAME_IDENTITY_SMTP_CREDENTIAL*) : ;;
+  *) echo "ОТКАЗ: чарт не назвал KANAME_IDENTITY_SMTP_CREDENTIAL в перечне владения ($CRED_VARS) — оси удостоверения проверяли бы пустоту"; exit 1 ;;
 esac
 
 sed "s#/etc/kacho-identity-src#$TMP/src#g; s#/etc/kacho-identity-rendered#$TMP/rendered#g" \
@@ -195,8 +195,8 @@ courier:
 selfservice:
   hook_token: "\${KANAME_HOOK_TOKEN}"
 YAML
-  if out="$(KACHO_IDENTITY_SUBSTITUTED_VARS="$CRED_VARS" KANAME_HOOK_TOKEN=tok \
-            KACHO_IDENTITY_SMTP_CREDENTIAL="$cred" COURIER_SMTP_CONNECTION_URI='' \
+  if out="$(KANAME_IDENTITY_SUBSTITUTED_VARS="$CRED_VARS" KANAME_HOOK_TOKEN=tok \
+            KANAME_IDENTITY_SMTP_CREDENTIAL="$cred" COURIER_SMTP_CONNECTION_URI='' \
             sh -euc "$(cat "$TMP/script-cred.sh")" 2>&1)"
   then got=GREEN; else got=RED; fi
   if [ "$got" != "$want" ]; then
@@ -225,7 +225,7 @@ YAML
   [ "$want" = RED ] && red=$((red+1)) || green=$((green+1))
 }
 
-CRED_URI='smtp://noreply%40kacho.cloud:${KACHO_IDENTITY_SMTP_CREDENTIAL}@kacho-umbrella-mailpit:1025/'
+CRED_URI='smtp://noreply%40kacho.cloud:${KANAME_IDENTITY_SMTP_CREDENTIAL}@kacho-umbrella-mailpit:1025/'
 
 echo "=== удостоверение: подстановка, отказ, неразглашение ==="
 run_cred "величина подставляется, в журнал не идёт" GREEN "" "$CRED_VALUE" "$CRED_URI"
@@ -237,15 +237,15 @@ else
   echo "  ОТКАЗ: величина до файла не доехала — «в журнале её нет» ничего не доказывает"; rc=1
 fi
 run_cred "удостоверение пусто"                 RED "пуста"        ""                              "$CRED_URI"
-run_cred "величина равна своему имени"         RED "собственное" "KACHO_IDENTITY_SMTP_CREDENTIAL" "$CRED_URI"
+run_cred "величина равна своему имени"         RED "собственное" "KANAME_IDENTITY_SMTP_CREDENTIAL" "$CRED_URI"
 # ВХОЖДЕНИЕ, А НЕ ТОЛЬКО РАВЕНСТВО. Класс — «величина несёт собственное имя в
 # заголовок»; равенство ловит один его частный случай, и величина вида `ИМЯ=…`
 # проходила проверку входа, уезжала в заголовок и отвергалась тем же `401`.
 # Отказ приходил тремя проверками позже — от стража ВЫХОДА — и советовал править
 # конфигурацию, тогда как править надо секрет (задача #1786).
-run_cred "величина СОДЕРЖИТ своё имя"          RED "собственное" "KACHO_IDENTITY_SMTP_CREDENTIAL=$CRED_VALUE" "$CRED_URI"
+run_cred "величина СОДЕРЖИТ своё имя"          RED "собственное" "KANAME_IDENTITY_SMTP_CREDENTIAL=$CRED_VALUE" "$CRED_URI"
 run_cred "шифрование снято, величина настоящая" RED "без шифрования" "$CRED_VALUE" \
-  'smtp://noreply%40kacho.cloud:${KACHO_IDENTITY_SMTP_CREDENTIAL}@relay:1025/?disable_starttls=true'
+  'smtp://noreply%40kacho.cloud:${KANAME_IDENTITY_SMTP_CREDENTIAL}@relay:1025/?disable_starttls=true'
 
 echo "перепись: инъекций красных $red · законных близнецов зелёных $green"
 [ "$red" -ge 13 ] || { echo "ОТКАЗ: красных инъекций $red — доказательство неполно"; rc=1; }
