@@ -156,10 +156,7 @@ func TestServe_EachListenerChainIsSeededFromTheIdentityBuilder(t *testing.T) {
 	seeded := map[string]bool{}
 	for _, m := range chainAssign.FindAllStringSubmatch(src, -1) {
 		name, op, rhs := m[1], m[2], strings.TrimSpace(m[3])
-		want := "identityUnary(cfg)"
-		if strings.HasSuffix(name, "Stream") {
-			want = "identityStream(cfg)"
-		}
+		want := seedingBuilderFor(name)
 		if op == ":=" {
 			// Заведение. Обязано втягивать цепочку личности из сборщика: смотрим
 			// на ВЕСЬ оператор, а не на первую строку — он многострочный.
@@ -188,6 +185,29 @@ func TestServe_EachListenerChainIsSeededFromTheIdentityBuilder(t *testing.T) {
 			t.Fatalf("serve.go: цепочка %s нигде не заводится боевым сборщиком — "+
 				"страж потерял цель, обнови его вместе с проводкой", name)
 		}
+	}
+}
+
+// seedingBuilderFor — боевой сборщик, которым заводится названная цепочка.
+//
+// У слушателей сборщики РАЗНЫЕ, и это решение, а не дрейф: публичный принимает
+// арендатора, которому в чужом облаке нечем назваться, кроме предъявленного
+// удостоверения, — внутренний принимает соседний модуль по mTLS, и читатель
+// предъявленного там был бы лишним способом назваться. Публичный сборщик при
+// этом ДОПОЛНЯЕТ общую пару, а не заменяет её, и это утверждает своим разбором
+// TestServe_PublicIdentityBuilderStillSeedsFromTheSharedOne: без него страж
+// принял бы публичную цепочку, собранную с нуля и не сужающую круг
+// разрешённых отправителей.
+func seedingBuilderFor(chain string) string {
+	switch chain {
+	case "publicUnary":
+		return "publicIdentityUnary(cfg,"
+	case "publicStream":
+		return "publicIdentityStream(cfg,"
+	case "internalStream":
+		return "identityStream(cfg)"
+	default:
+		return "identityUnary(cfg)"
 	}
 }
 

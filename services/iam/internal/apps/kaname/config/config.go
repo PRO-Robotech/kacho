@@ -291,14 +291,23 @@ type AuthNConfig struct {
 	// Пока выключен, его настройки не требуются; будучи включённым, требует их
 	// все — и требует включённой своей чеканки, потому что выпускает НАШИМ
 	// подписантом и объявляет НАШЕГО издателя ожидаемым адресатом утверждения.
-	ClientToken          ClientTokenConfig `mapstructure:"client-token"`
-	HooksHTTPEndpoint    string            `mapstructure:"hooks-http-endpoint"`
-	SAKeyRedactGrace     time.Duration     `mapstructure:"sakey-redact-grace"`
-	UserTokenRedactGrace time.Duration     `mapstructure:"usertoken-redact-grace"`
-	SAKeyDefaultTTL      time.Duration     `mapstructure:"sakey-default-ttl"`
-	SAKeyMaxTTL          time.Duration     `mapstructure:"sakey-max-ttl"`
-	SAKeyAccessTokenTTL  time.Duration     `mapstructure:"sakey-access-token-ttl"`
-	SAKeyBindDPoP        bool              `mapstructure:"sakey-bind-dpop"`
+	ClientToken ClientTokenConfig `mapstructure:"client-token"`
+	// PresentedCredential — приём удостоверения, ПРЕДЪЯВЛЕННОГО самим
+	// вызывающим, на публичном слушателе (задача продукта #2077).
+	//
+	// Без него личность на публичном слушателе производится ровно двумя
+	// способами, и оба предполагают нашу инфраструктуру рядом: клиентский
+	// сертификат проверенного пира и личность, переданная разрешённым
+	// отправителем. В чужом облаке нет ни того, ни другого — арендатору нечем
+	// назваться.
+	PresentedCredential  PresentedCredentialConfig `mapstructure:"presented-credential"`
+	HooksHTTPEndpoint    string                    `mapstructure:"hooks-http-endpoint"`
+	SAKeyRedactGrace     time.Duration             `mapstructure:"sakey-redact-grace"`
+	UserTokenRedactGrace time.Duration             `mapstructure:"usertoken-redact-grace"`
+	SAKeyDefaultTTL      time.Duration             `mapstructure:"sakey-default-ttl"`
+	SAKeyMaxTTL          time.Duration             `mapstructure:"sakey-max-ttl"`
+	SAKeyAccessTokenTTL  time.Duration             `mapstructure:"sakey-access-token-ttl"`
+	SAKeyBindDPoP        bool                      `mapstructure:"sakey-bind-dpop"`
 	// BootstrapMint — caller gate + key source for
 	// InternalBootstrapTokenService.MintBootstrapToken.
 	BootstrapMint BootstrapMintConfig `mapstructure:"bootstrap-mint"`

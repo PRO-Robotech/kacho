@@ -65,7 +65,12 @@ import (
 	"google.golang.org/grpc/codes"
 	"google.golang.org/grpc/status"
 
+	"strings"
+
 	"github.com/PRO-Robotech/kacho/pkg/grpcsrv"
+	"github.com/PRO-Robotech/kacho/pkg/operations"
+
+	"github.com/PRO-Robotech/kaname/internal/callerorigin"
 )
 
 // Public RPC full-methods that a non-gateway module legitimately calls. Named
@@ -128,6 +133,11 @@ func PublicPeerCallableRPCs() map[string][]string {
 // PublicCallerPolicy enforces the per-RPC caller policy on the public listener.
 // Construct via NewPublicCallerPolicy.
 type PublicCallerPolicy struct {
+	// acrCatalog — FQN → объявленный порог доверия. Читается ТОЛЬКО полосой
+	// предъявленного удостоверения: на ней порог не производит никто, и
+	// признать вызывающего законным, не спросив каталог, значило бы снять
+	// требование, которое каталог продолжает объявлять.
+	acrCatalog ACRRequirementLookup
 	// prodMode = cfg.AuthN.Mode.IsProduction(). dev (false) is a pass-through
 	// (insecure back-compat: the newman stand has no mTLS at all, so there is no
 	// verified certificate to decide on); production is fail-closed.
@@ -140,7 +150,11 @@ type PublicCallerPolicy struct {
 // NewPublicCallerPolicy builds the policy. peerCallable is the per-RPC table of
 // non-gateway callers (see PublicPeerCallableRPCs); prodMode comes from
 // cfg.AuthN.Mode.IsProduction().
-func NewPublicCallerPolicy(prodMode bool, peerCallable map[string][]string) *PublicCallerPolicy {
+func NewPublicCallerPolicy(
+	prodMode bool,
+	peerCallable map[string][]string,
+	acrCatalog ACRRequirementLookup,
+) *PublicCallerPolicy {
 	m := make(map[string]map[string]struct{}, len(peerCallable))
 	for method, svcs := range peerCallable {
 		set := make(map[string]struct{}, len(svcs))
@@ -149,10 +163,13 @@ func NewPublicCallerPolicy(prodMode bool, peerCallable map[string][]string) *Pub
 		}
 		m[method] = set
 	}
-	return &PublicCallerPolicy{prodMode: prodMode, peerCallable: m}
+	return &PublicCallerPolicy{prodMode: prodMode, peerCallable: m, acrCatalog: acrCatalog}
 }
 
 // allow returns nil iff the call may proceed past the policy for fullMethod:
+//   - the caller was named by a credential it PRESENTED and we verified in full
+//     → nil (a tenant of a foreign cloud has no module certificate by
+//     construction; see the branch itself for why this is not a widening).
 //   - no verified module cert: prod → PermissionDenied (floor fail-closed);
 //     dev → nil (insecure back-compat).
 //   - api-gateway → nil (the front door, where per-user ReBAC happens).
@@ -162,6 +179,71 @@ func NewPublicCallerPolicy(prodMode bool, peerCallable map[string][]string) *Pub
 // Message text is the verbatim, non-leaking "permission denied" — identical to
 // the internal policy, so a denial reveals nothing about which arm produced it.
 func (p *PublicCallerPolicy) allow(ctx context.Context, fullMethod string) error {
+	// Вызывающий, названный ПРЕДЪЯВЛЕННЫМ им удостоверением, — законный
+	// публичный вызывающий (задача продукта #2077).
+	//
+	// Без этой ветки объём приёмки KAN-AUTHN-1 закрыт наполовину: читатель
+	// называет арендатора, а здесь его отвергают за отсутствие МОДУЛЬНОГО
+	// сертификата — которого у арендатора чужого облака нет и быть не может, он
+	// приходит обычным клиентом. Тогда «вызов доходит до обработчика»
+	// недостижимо ни при каком токене, и это ровно тот класс, где два правила об
+	// одном запросе делают исполнимый вход несуществующим.
+	//
+	// Расширением поверхности это не является. Пометку ставит ТОЛЬКО читатель и
+	// ТОЛЬКО после того, как проверил предъявленное целиком — подпись
+	// собственным реестром, издателя, адресат, тип, срок, момент начала
+	// действия и отзыв на пути запроса. До этой ветки доходит запрос, который
+	// уже доказал, за кого говорит; всё остальное читатель отверг раньше и
+	// побайтово одинаковым отказом.
+	//
+	// ПРАВО ЗВАТЬ этим не выдаётся: ниже по цепочке стоят отсечка анонима и
+	// пообъектный вопрос к модели доступа, и оба задаются о названном субъекте.
+	// Здесь решается лишь «этот вызывающий вправе быть на этом слушателе».
+	if callerorigin.IsPresentedCredential(ctx) {
+		// ...НО только там, где каталог не объявил порога доверия.
+		//
+		// Порог (`required_acr_min`) на публичном пути производит КРАЙ, и до
+		// этого перехода край стоял на пути всякого публичного вызывающего by
+		// construction: без модульного сертификата дальше не пускали. Полоса
+		// предъявленного проходит МИМО края — значит вместе с краем исчезает и
+		// единственный производитель порога, а каталог продолжает его
+		// объявлять. Пустить такой вызов значило бы снять требование, которого
+		// никто не отменял.
+		//
+		// Отказ здесь — ТОТ ЖЕ, что у соседних ветвей, и это не небрежность:
+		// «сертификата нет» и «доверия недостаточно» суть один ответ «сюда
+		// нельзя», и различать их наружу — оракул.
+		//
+		// Полоса не теряет ничего, что имела: машинный принципал освобождён
+		// общим правилом (у машины нет интерактивной церемонии), а человеку
+		// решает тот же порог, что решал бы на крае.
+		required := p.requiredACRMin(fullMethod)
+		if required == "" || !p.prodMode {
+			return nil
+		}
+		// Решает ОБЩЕЕ правило платформы, а не эта ветвь: ранжирование уровней и
+		// освобождение машинного принципала здесь НЕ ПЕРЕВЫВОДЯТСЯ. Именно такой
+		// раскол однажды пропустил машину через парадную дверь и навсегда
+		// отверг её за ней.
+		//
+		// Оба входа приходят из удостоверения, проверенного ЦЕЛИКОМ, — то есть
+		// уже отфильтрованы доверием, как того требует правило: подделать
+		// «служебная учётка» и купить освобождение нельзя, не подделав подпись.
+		acr, _ := callerorigin.AssuranceFrom(ctx)
+		principalType := ""
+		if pr, named := operations.PrincipalFromContextOK(ctx); named {
+			principalType = pr.Type
+		}
+		if grpcsrv.EvaluateStepUp(grpcsrv.StepUpInput{
+			PrincipalType: principalType,
+			PresentedACR:  acr,
+			RequiredACR:   required,
+		}) != grpcsrv.StepUpAllow {
+			return status.Error(codes.PermissionDenied, "permission denied")
+		}
+		return nil
+	}
+
 	san, verified := grpcsrv.CertIdentityFromContext(ctx)
 
 	svc, ok := "", false
@@ -188,6 +270,20 @@ func (p *PublicCallerPolicy) allow(ctx context.Context, fullMethod string) error
 		return nil
 	}
 	return status.Error(codes.PermissionDenied, "permission denied")
+}
+
+// requiredACRMin — объявленный каталогом порог доверия для полного имени метода.
+//
+// Каталог ключуется полным именем без ведущей косой черты — та же нормализация,
+// что у порога внутреннего слушателя; своей копии разбора имени здесь нет.
+func (p *PublicCallerPolicy) requiredACRMin(fullMethod string) string {
+	if p.acrCatalog == nil {
+		// Каталога нет ⇒ порог не объявлен ни у одного метода. Это состояние
+		// дев-посадки; в боевой каталог обязателен, и его отсутствие отвергает
+		// страж старта, а не эта ветвь.
+		return ""
+	}
+	return p.acrCatalog.RequiredACRMin(strings.TrimPrefix(fullMethod, "/"))
 }
 
 // Unary returns the unary interceptor enforcing the public caller policy.

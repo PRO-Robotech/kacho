@@ -93,7 +93,7 @@ func newOperatorCtx() context.Context {
 }
 
 func testPublicPolicy(prod bool) *PublicCallerPolicy {
-	return NewPublicCallerPolicy(prod, PublicPeerCallableRPCs())
+	return NewPublicCallerPolicy(prod, PublicPeerCallableRPCs(), nil)
 }
 
 // ── сердце правки: сосед не зовёт то, что за парадной дверью ────────────────
@@ -459,7 +459,7 @@ func TestPublicCallerPolicy_RetiredOperatorFanoutIsNotCallable(t *testing.T) {
 	// Контроль формы: ключ с ПУСТЫМ списком отвергает ровно так же. Значит выбор
 	// «снять запись» сделан не ради исхода, а ради правдивости таблицы, — и
 	// «починка» дописыванием пустой строки этот гейт не обойдёт.
-	empty := NewPublicCallerPolicy(true, map[string][]string{accountListMethod: {}})
+	empty := NewPublicCallerPolicy(true, map[string][]string{accountListMethod: {}}, nil)
 	if err := empty.allow(newOperatorCtx(), accountListMethod); status.Code(err) != codes.PermissionDenied {
 		t.Fatalf("контроль формы: пустой список вызывающих дал код %v, ожидался PermissionDenied — "+
 			"объяснение в шапке о неразличимости исходов неверно и его надо переписать",

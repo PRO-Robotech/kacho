@@ -44,6 +44,7 @@ import (
 	"github.com/PRO-Robotech/kaname/internal/handler/jwksproxyhttp"
 	"github.com/PRO-Robotech/kaname/internal/handler/tokenintrospecthttp"
 	"github.com/PRO-Robotech/kaname/internal/observability/metrics"
+	"github.com/PRO-Robotech/kaname/internal/presentedcred"
 	"github.com/PRO-Robotech/kaname/internal/registrytokenwire"
 	kanamepg "github.com/PRO-Robotech/kaname/internal/repo/kaname/pg"
 
@@ -627,7 +628,7 @@ func runServe(cfg config.Config) error {
 	// no-op (the newman stand has no mTLS, hence no verified certificate to decide
 	// on). This is the second half of the narrowing: the forwarder allow-list below
 	// decides WHO MAY SPEAK FOR A USER, this decides ON WHICH RPC.
-	publicCallerPolicy := authzguard.NewPublicCallerPolicy(productionMode, authzguard.PublicPeerCallableRPCs())
+	publicCallerPolicy := authzguard.NewPublicCallerPolicy(productionMode, authzguard.PublicPeerCallableRPCs(), permRegistry)
 
 	// СОБСТВЕННАЯ ДВЕРЬ iam — пообъектный вопрос о доступе на публичном
 	// слушателе.
@@ -688,13 +689,57 @@ func runServe(cfg config.Config) error {
 		return fmt.Errorf("измеритель задержки обслуженного вызова: %w", err)
 	}
 
+	// Читатель удостоверения, ПРЕДЪЯВЛЕННОГО самим вызывающим (#2077).
+	//
+	// Без него личность на публичном слушателе производится ровно двумя
+	// способами, и оба предполагают НАШУ инфраструктуру рядом: клиентский
+	// сертификат проверенного пира и личность, переданная разрешённым
+	// отправителем. В чужом облаке нет ни края, чтобы передать, ни модульного
+	// сертификата у человека — арендатору нечем назваться, и все публичные
+	// службы отвечают ему честным и бесполезным отказом.
+	//
+	// nil означает «приём выключен» и законен: под посадкой внешнего
+	// поставщика личность приходит через край, и читателю нечего делать. Под
+	// посадкой own выключенный приём отвергается стражем настройки, а не
+	// молчаливым nil здесь.
+	var presentedReader *presentedcred.Reader
+	if cfg.AuthN.PresentedCredential.Enabled {
+		if signingKeystore == nil {
+			// Настройка это уже отвергла (страж связывает приём с чеканкой), и
+			// отказ здесь — не второй страж, а отказ ПОСТРОЕНИЯ: собранный
+			// наполовину читатель отвергал бы всё, и узналось бы это на первом
+			// запросе арендатора.
+			return fmt.Errorf("приём предъявленного удостоверения включён, но собственного " +
+				"реестра ключей нет — проверять подпись нечем")
+		}
+		presentedReader, err = presentedcred.New(presentedcred.Config{
+			Issuer:             cfg.AuthN.TokenSigning.Issuer,
+			Audience:           cfg.AuthN.PresentedCredential.Audience,
+			AllowedAlgorithms:  cfg.AuthN.TokenSigning.AllowedAlgorithmList(),
+			Keys:               signingKeystore,
+			Revocations:        kanamepg.NewMintedTokenRevocationRepo(pool),
+			RevocationCacheTTL: cfg.AuthN.PresentedCredential.RevocationCacheTTL,
+			Logger:             logger.With(slog.String("component", "presented_credential")),
+		})
+		if err != nil {
+			return fmt.Errorf("читатель предъявленного удостоверения: %w", err)
+		}
+		metricsReg.NewPresentedCredentialCollector(func() metrics.PresentedCredentialCounts {
+			st := presentedReader.Stats()
+			return metrics.PresentedCredentialCounts{
+				Accepted: st.Accepted, Refused: st.Refused, Unavailable: st.Unavailable,
+			}
+		})
+	}
+
 	// Anti-anonymous guard перед мутирующими RPC: минимальная защита от
 	// анонимного создания Account/Project/AccessBinding/Group/SA/Role
 	// в дополнение к вопросу о доступе через AuthorizeService.
 	//
 	// Порядок: измеритель задержки (оборачивает всё) → recovery → личность вызывающего
-	// (identityUnary: сертификат, затем переданная личность от разрешённого
-	// отправителя) → пер-RPC политика вызывающего → анти-аноним.
+	// (publicIdentityUnary: сертификат, переданная личность от разрешённого
+	// отправителя, затем предъявленное удостоверение) → пер-RPC политика
+	// вызывающего → анти-аноним.
 	publicUnary := append([]grpc.UnaryServerInterceptor{
 		// Измеритель задержки первым — он оборачивает цепочку целиком, поэтому
 		// длительность и код накрывают ВЕСЬ вызов, включая вопрос о доступе.
@@ -713,7 +758,7 @@ func runServe(cfg config.Config) error {
 		// check, so nothing else on the path names the action, and a refusal by
 		// scope was byte-identical to a catalog miss. See deny_details.go.
 		authzguard.DenyDetailUnary(permRegistry),
-	}, identityUnary(cfg)...)
+	}, publicIdentityUnary(cfg, presentedReader)...)
 	publicUnary = append(publicUnary,
 		publicCallerPolicy.Unary(),
 		authzguard.AntiAnonymousUnary(logger),
@@ -728,7 +773,7 @@ func runServe(cfg config.Config) error {
 		// величина, и общая с задержкой вызова не разрешала бы ни ту, ни другую.
 		latency.StreamServerInterceptor(grpcsrv.ListenerPublic),
 		grpcsrv.StreamPanicRecovery(logger),
-	}, identityStream(cfg)...)
+	}, publicIdentityStream(cfg, presentedReader)...)
 	publicStream = append(publicStream,
 		publicCallerPolicy.Stream(),
 		authzguard.AntiAnonymousStream(logger),
@@ -1777,6 +1822,50 @@ func identityUnary(cfg config.Config) []grpc.UnaryServerInterceptor {
 
 func identityStream(cfg config.Config) []grpc.StreamServerInterceptor {
 	return grpcsrv.PrincipalExtractStream(cfg.AuthN.TrustedForwarders())
+}
+
+// publicIdentityUnary / publicIdentityStream — цепочка личности ПУБЛИЧНОГО
+// слушателя: общая пара извлечения плюс читатель предъявленного удостоверения.
+//
+// # Почему у публичного слушателя свой сборщик
+//
+// Слушателей два, и вопрос «чем вызывающий назвался» у них РАЗНЫЙ. К внутреннему
+// дозванивается соседний модуль по mTLS, и предъявленное удостоверение там —
+// лишний способ назваться, которого никто не просил. К публичному приходит
+// арендатор, у которого в чужом облаке нет ни нашего края, чтобы передать
+// личность, ни модульного сертификата; предъявленное — единственное, чем он
+// располагает.
+//
+// # Почему ДОБАВЛЕНИЕ, а не своя сборка
+//
+// Читатель ДОПОЛНЯЕТ общую пару, а не заменяет её: собранная с нуля публичная
+// цепочка потеряла бы круг разрешённых отправителей, и прежний путь отвалился
+// бы молча — пробы внутреннего слушателя остались бы зелёными.
+//
+// # Читатель стоит НАД парой, и это единственная работающая форма
+//
+// Пара извлечения на двух ветках из трёх снимает носитель личности ЯВНЫМ
+// снятием, и снятие имеет приоритет над любым последующим назначением — так
+// устроен носитель платформы, и устроен намеренно. Читатель, поставленный
+// после пары, назначил бы вызывающего, и назначение молча не доехало бы до
+// обработчика. Поэтому читатель прогоняет пару сам и решает по её вердикту:
+// полосы взаимно исключают друг друга, и решение о том, КТО звонит,
+// принимается в одном месте. Держится это исходом, а не комментарием:
+// личность, назначенная читателем, обязана доживать до обработчика.
+func publicIdentityUnary(cfg config.Config, presented *presentedcred.Reader) []grpc.UnaryServerInterceptor {
+	pair := identityUnary(cfg)
+	if presented == nil {
+		return pair
+	}
+	return []grpc.UnaryServerInterceptor{presented.UnaryOver(pair)}
+}
+
+func publicIdentityStream(cfg config.Config, presented *presentedcred.Reader) []grpc.StreamServerInterceptor {
+	pair := identityStream(cfg)
+	if presented == nil {
+		return pair
+	}
+	return []grpc.StreamServerInterceptor{presented.StreamOver(pair)}
 }
 
 // requireRegistryTokenTLS — слушатель docker-token (`/iam/token`, :9096) в

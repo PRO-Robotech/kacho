@@ -314,4 +314,41 @@ var RequiredSettings = []RequiredSetting{
 			"на нём сверка заголовка токена с ключом теряет предмет, и подделанный заголовок прошёл бы",
 		Refusal: "authn.token-signing.allowed-algorithms has no elements",
 	},
+	{
+		Key:    "authn.presented-credential.enabled",
+		Env:    "KANAME_AUTHN__PRESENTED_CREDENTIAL__ENABLED",
+		Supply: SupplyEnv,
+		Lanes:  []IdentityProvider{IdentityProviderOwn},
+		Sample: "true",
+		Why: "читает ли публичный слушатель удостоверение, ПРЕДЪЯВЛЕННОЕ самим вызывающим. " +
+			"На посадке own иного способа назваться у арендатора нет: нашего края, чтобы " +
+			"передать личность, в его установке не существует, а модульного сертификата у " +
+			"человека не бывает. С выключенным приёмом процесс поднимется и ответит честным " +
+			"отказом на каждый публичный вызов",
+		Refusal: "authn.presented-credential.enabled is false",
+	},
+	{
+		Key:         "authn.presented-credential.audience",
+		Env:         "KANAME_AUTHN__PRESENTED_CREDENTIAL__AUDIENCE",
+		Supply:      SupplyEnv,
+		Lanes:       []IdentityProvider{IdentityProviderOwn},
+		Conditional: true,
+		Sample:      "kaname-public",
+		Why: "адресат публичного слушателя: токен, выпущенный этой же установкой для ДРУГОЙ " +
+			"её поверхности, здесь не годится. Незаданный означает «любой», и тогда токен, " +
+			"добытый для одной поверхности, открывает все",
+		Refusal: "authn.presented-credential.audience is empty",
+	},
+	{
+		Key:         "authn.presented-credential.revocation-cache-ttl",
+		Env:         "KANAME_AUTHN__PRESENTED_CREDENTIAL__REVOCATION_CACHE_TTL",
+		Supply:      SupplyEnv,
+		Lanes:       []IdentityProvider{IdentityProviderOwn},
+		Conditional: true,
+		Sample:      "30s",
+		Why: "срок кеша положительного вердикта об отзыве. Это И ЕСТЬ окно отзыва: столько " +
+			"времени субъект, у которого доступ отобрали, продолжает проходить. Умолчания нет " +
+			"намеренно — окно, выбранное за оператора, он не увидит и не пересмотрит",
+		Refusal: "authn.presented-credential.revocation-cache-ttl is not declared",
+	},
 }

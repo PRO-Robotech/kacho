@@ -30,7 +30,19 @@ func laneCfg(p config.IdentityProvider) config.Config {
 	cfg.AuthN.JWKSEncryptionKeyHex = strings.Repeat("ab", 32)
 	cfg.AuthN.IdentityProvider = p
 	cfg.AuthN.TokenSigning = ownMintingSettings()
+	cfg.AuthN.PresentedCredential = presentedCredentialSettings()
 	return cfg
+}
+
+// presentedCredentialSettings — валидная настройка приёма предъявленного.
+// Значения настоящие, а не заглушка: приём проверяется собственным стражем в
+// любом режиме.
+func presentedCredentialSettings() config.PresentedCredentialConfig {
+	return config.PresentedCredentialConfig{
+		Enabled:            true,
+		Audience:           "kaname-public",
+		RevocationCacheTTL: 30 * time.Second,
+	}
 }
 
 // ownMintingSettings — валидная настройка своей чеканки. Своя чеканка

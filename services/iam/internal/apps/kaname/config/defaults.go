@@ -146,6 +146,17 @@ func RegisterDefaults(v *viper.Viper) {
 	v.SetDefault("authn.token-signing.allowed-algorithms", "")
 	v.SetDefault("authn.token-signing.key-set-path", defaultKeySetPath)
 	v.SetDefault("authn.token-signing.key-lifetime", "2160h")
+
+	// Приём предъявленного удостоверения (#2077). Умолчания ПУСТЫЕ намеренно:
+	// «выключено» — единственное безопасное состояние, а адресат и окно отзыва
+	// заданными по умолчанию быть не могут. Величина, которую построение
+	// подставляет молча, предметом стража быть не может: он зелен при любом
+	// входе. Регистрация ключа здесь нужна и для того, чтобы переменная
+	// окружения вообще разрешалась — `AutomaticEnv` резолвит её только для
+	// ключа, который випер уже знает.
+	v.SetDefault("authn.presented-credential.enabled", false)
+	v.SetDefault("authn.presented-credential.audience", "")
+	v.SetDefault("authn.presented-credential.revocation-cache-ttl", "0s")
 	// Токен-эндпоинт платформы (задача #898). Умолчания заданы ТОЛЬКО у
 	// величин, которые описывают НАШ расход и ничего не разрешают: потолок
 	// тела и обычный срок токена. У перечня адресатов, адресата по умолчанию и

@@ -52,6 +52,7 @@ func (c Config) Validate() error {
 	// допустимых алгоритмов означают «не сужаем» на всяком поднятом стенде, и
 	// «зелёный dev» такое состояние маскирует.
 	errs = multierr.Append(errs, c.AuthN.TokenSigning.Validate())
+	errs = multierr.Append(errs, c.AuthN.PresentedCredential.Validate(c.AuthN.TokenSigning, c.AuthN.ClientToken.TokenTTL))
 
 	// Страж токен-эндпоинта платформы (задача #898). Он принимает настройку
 	// своей чеканки параметром: эндпоинт выпускает нашим подписантом и
