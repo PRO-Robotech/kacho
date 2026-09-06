@@ -50,8 +50,8 @@ type networkResource struct{ c *client.Client }
 // NewNetworkResource — конструктор для реестра провайдера.
 func NewNetworkResource() resource.Resource { return &networkResource{} }
 
-func (r *networkResource) Metadata(_ context.Context, req resource.MetadataRequest, resp *resource.MetadataResponse) {
-	resp.TypeName = req.ProviderTypeName + "_vpc_network"
+func (r *networkResource) Metadata(_ context.Context, _ resource.MetadataRequest, resp *resource.MetadataResponse) {
+	resp.TypeName = typeNameVPCNetwork
 }
 
 func (r *networkResource) Configure(_ context.Context, req resource.ConfigureRequest, resp *resource.ConfigureResponse) {
@@ -152,7 +152,7 @@ func (r *networkResource) Create(ctx context.Context, req resource.CreateRequest
 		return
 	}
 	hdr := &client.Headers{IdempotencyKey: client.IdempotencyKey(
-		"kacho_vpc_network", plan.ProjectID.ValueString()+"/"+plan.Name.ValueString(), raw)}
+		typeNameVPCNetwork, plan.ProjectID.ValueString()+"/"+plan.Name.ValueString(), raw)}
 
 	httpResp, err := r.c.Do(ctx, http.MethodPost, networksPath, body, hdr)
 	if err != nil {

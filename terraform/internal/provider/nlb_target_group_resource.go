@@ -119,8 +119,8 @@ type targetGroupResource struct {
 // NewNLBTargetGroupResource — конструктор для реестра провайдера.
 func NewNLBTargetGroupResource() resource.Resource { return &targetGroupResource{} }
 
-func (r *targetGroupResource) Metadata(_ context.Context, req resource.MetadataRequest, resp *resource.MetadataResponse) {
-	resp.TypeName = req.ProviderTypeName + "_nlb_target_group"
+func (r *targetGroupResource) Metadata(_ context.Context, _ resource.MetadataRequest, resp *resource.MetadataResponse) {
+	resp.TypeName = typeNameNLBTargetGroup
 }
 
 func (r *targetGroupResource) Configure(_ context.Context, req resource.ConfigureRequest, resp *resource.ConfigureResponse) {
@@ -743,7 +743,7 @@ func (r *targetGroupResource) Create(ctx context.Context, req resource.CreateReq
 		SlowStart:           slow,
 	}
 
-	id, err := awaitCreate(ctx, r.c, targetGroupsPath, "targetGroupId", "kacho_nlb_target_group",
+	id, err := awaitCreate(ctx, r.c, targetGroupsPath, "targetGroupId", typeNameNLBTargetGroup,
 		plan.ProjectID.ValueString()+"/"+plan.Name.ValueString(), body)
 	if err != nil {
 		resp.Diagnostics.AddError("Создание группы целей не завершилось", err.Error())
