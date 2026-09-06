@@ -79,7 +79,10 @@ func bootConfig(t *testing.T, env map[string]string) config.Config {
 		"KACHO_STORAGE_DB_PASSWORD":                  "secret",
 		"KACHO_STORAGE_AUTHZ_IAM_GRPC_ADDR":          "kaname-internal:9091",
 		"KACHO_STORAGE_AUTHZ_TRUSTED_FORWARDER_SANS": gatewaySAN + "," + computeSAN,
-		"KACHO_STORAGE_AUTH_MODE":                    "dev",
+		// Домен доверия — величина установки: без неё дескриптор не принимается,
+		// потому что процесс, не назвавший домена, своим не признаёт никого.
+		"KACHO_STORAGE_AUTHZ_TRUST_DOMAIN": "kacho.cloud",
+		"KACHO_STORAGE_AUTH_MODE":          "dev",
 	}
 	for k, v := range env {
 		base[k] = v

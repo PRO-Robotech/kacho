@@ -69,6 +69,9 @@ func bootConfig(t *testing.T, env map[string]string) config.Config {
 		"KACHO_REGISTRY_DB_PASSWORD":                  "secret",
 		"KACHO_REGISTRY_AUTHZ_IAM_GRPC_ADDR":          "kaname-internal.kacho.svc:9091",
 		"KACHO_REGISTRY_AUTHZ_TRUSTED_FORWARDER_SANS": gatewaySAN,
+		// Домен доверия — величина установки: без неё дескриптор не принимается,
+		// потому что процесс, не назвавший домена, своим не признаёт никого.
+		"KACHO_REGISTRY_AUTHZ_TRUST_DOMAIN": "kacho.cloud",
 		// dev, потому что боевая посадка требует ФАЙЛОВ сертификатов на обоих
 		// слушателях: собрать транспорт из несуществующих путей нельзя, а
 		// подставлять сюда самодельные — значит проверять свою фикстуру. Всё, что

@@ -116,6 +116,12 @@ data:
         {{- range .Values.authz.trustedForwarderSANs }}
         - {{ . | quote }}
         {{- end }}
+      # Домен доверия установки: то, чьи сертификаты процесс признаёт своими.
+      # Круг выше называет, КОМУ позволено говорить за пользователя; домен
+      # отвечает на предыдущий вопрос — чьи предъявители вообще наши. Берётся из
+      # ТОГО ЖЕ объявления, под которым чеканится собственный сертификат
+      # (certificate.yaml): взятые по отдельности, стороны расходятся молча.
+      trust-domain: {{ include "vpc.trustDomain" . | quote }}
       check-timeout: {{ default "2s" .Values.authz.checkTimeout | quote }}
       cache-ttl: {{ default "5s" .Values.authz.cacheTtl | quote }}
       deny-rate-limit-per-sec: {{ default 100 .Values.authz.denyRateLimitPerSec }}

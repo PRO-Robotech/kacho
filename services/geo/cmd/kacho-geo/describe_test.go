@@ -53,7 +53,10 @@ func bootConfig(t *testing.T, env map[string]string) config.Config {
 		"KACHO_GEO_DB_PASSWORD":                  "secret",
 		"KACHO_GEO_AUTHZ_IAM_GRPC_ADDR":          "kaname-internal:9091",
 		"KACHO_GEO_AUTHZ_TRUSTED_FORWARDER_SANS": "spiffe://kacho.cloud/ns/kacho/sa/kacho-api-gateway",
-		"KACHO_GEO_AUTH_MODE":                    "dev",
+		// Домен доверия — величина установки: без неё дескриптор не принимается,
+		// потому что процесс, не назвавший домена, своим не признаёт никого.
+		"KACHO_GEO_AUTHZ_TRUST_DOMAIN": "kacho.cloud",
+		"KACHO_GEO_AUTH_MODE":          "dev",
 	}
 	for k, v := range env {
 		base[k] = v

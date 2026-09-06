@@ -299,8 +299,8 @@ func TestAdmissionChargesTheUnattributedTogether(t *testing.T) {
 func TestCertIdentitySubjectKeysOnTheVerifiedPeer(t *testing.T) {
 	const san = "spiffe://kacho.cloud/ns/kacho/sa/kacho-compute"
 
-	require.Equal(t, san, CertIdentitySubject(WithCertIdentity(context.Background(), san, true)))
-	require.Empty(t, CertIdentitySubject(WithCertIdentity(context.Background(), san, false)),
+	require.Equal(t, san, CertIdentitySubject(WithCertIdentityIn(context.Background(), NewTrustDomain("kacho.cloud"), san, true)))
+	require.Empty(t, CertIdentitySubject(WithCertIdentityIn(context.Background(), NewTrustDomain("kacho.cloud"), san, false)),
 		"непроверенный пир личностью не считается")
 	require.Empty(t, CertIdentitySubject(context.Background()))
 }

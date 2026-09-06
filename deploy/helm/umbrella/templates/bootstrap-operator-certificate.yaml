@@ -46,7 +46,7 @@
 {{- $ca := $mtls.internalCA | default dict -}}
 {{- $issuerName := $ca.clusterIssuerName | default "kacho-internal-ca" -}}
 {{- $sp := $op.spiffe | default dict -}}
-{{- $trust := $sp.trustDomain | default "kacho.cloud" -}}
+{{- $trust := include "umbrella.trustDomain" . -}}
 {{- $spNs := $sp.namespace | default .Release.Namespace -}}
 {{- $sa := $sp.saName | default "kacho-bootstrap-operator" -}}
 {{- $secret := $op.secretName | default "kacho-bootstrap-operator-client-tls" }}

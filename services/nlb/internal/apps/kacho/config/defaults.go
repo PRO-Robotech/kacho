@@ -127,6 +127,18 @@ func RegisterDefaults(v *viper.Viper) {
 	v.SetDefault("authz.trust-any-forwarder", false)
 	_ = v.BindEnv("authz.trust-any-forwarder", "KACHO_NLB_AUTHZ__TRUST_ANY_FORWARDER")
 
+	// trust-domain — домен доверия установки. Пусто по умолчанию, и это самое
+	// строгое прочтение: по необъявленному домену не опознаётся ни один
+	// предъявитель, а посадка на нём не принимается конструктором дескриптора.
+	//
+	// Привязка ЯВНАЯ по той же причине, что у соседки: viper связывает с
+	// переменной окружения только ключи, которые он уже видел, а имя ключа
+	// несёт дефис — общий заменитель приставки его не покрывает. Без этой
+	// строки имя переменной в тексте отказа было бы обещанием возможности,
+	// которой нет.
+	v.SetDefault("authz.trust-domain", "")
+	_ = v.BindEnv("authz.trust-domain", "KACHO_NLB_AUTHZ__TRUST_DOMAIN")
+
 	// FGA register-drainer (Вариант A).: default-on — drainer
 	// is an in-process goroutine; without it created resources never get an
 	// owner-tuple (worse than the former best-effort path). mTLS on the

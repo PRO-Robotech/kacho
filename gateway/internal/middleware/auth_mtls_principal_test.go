@@ -19,6 +19,7 @@ import (
 	"context"
 	"crypto/tls"
 	"crypto/x509"
+	"github.com/PRO-Robotech/kacho/pkg/grpcsrv"
 	"net/url"
 	"testing"
 	"time"
@@ -66,7 +67,7 @@ func TestAuth_HybridMTLS_VerifiedCert_PrincipalFromSPIFFE_NoJWT(t *testing.T) {
 	lookup := &countingLookup{} // must NOT be called
 	auth := middleware.NewAuthInterceptor(
 		middleware.AuthModeProductionStrict, "", lookup, authTestLogger(),
-	).WithMTLSPrincipal(true)
+	).WithMTLSPrincipal(grpcsrv.NewTrustDomain("kacho.cloud"))
 
 	ctx := peerCtxWithVerifiedCert(t,
 		"spiffe://kacho.cloud/ns/kacho-storage/sa/kacho-storage")
@@ -101,7 +102,7 @@ func TestAuth_HybridMTLS_NoCert_ValidJWT_StillWorks(t *testing.T) {
 	}}
 	auth := middleware.NewAuthInterceptor(
 		middleware.AuthModeDev, secret, lookup, authTestLogger(),
-	).WithMTLSPrincipal(true)
+	).WithMTLSPrincipal(grpcsrv.NewTrustDomain("kacho.cloud"))
 
 	jwt := makeDevJWT(t, secret, "zit-12345")
 	ctx := metadata.NewIncomingContext(context.Background(),
@@ -126,7 +127,7 @@ func TestAuth_HybridMTLS_NoCert_ValidJWT_StillWorks(t *testing.T) {
 func TestAuth_HybridMTLS_NoCert_NoJWT_ProtectedRPC_Unauthenticated(t *testing.T) {
 	auth := middleware.NewAuthInterceptor(
 		middleware.AuthModeProductionStrict, "", &fakeLookup{}, authTestLogger(),
-	).WithMTLSPrincipal(true)
+	).WithMTLSPrincipal(grpcsrv.NewTrustDomain("kacho.cloud"))
 
 	called := false
 	handler := func(_ context.Context, _ any) (any, error) {
@@ -148,7 +149,7 @@ func TestAuth_HybridMTLS_NoCert_NoJWT_ProtectedRPC_Unauthenticated(t *testing.T)
 func TestAuth_HybridMTLS_SpoofedPrincipalHeader_NotTrusted(t *testing.T) {
 	auth := middleware.NewAuthInterceptor(
 		middleware.AuthModeProductionStrict, "", &fakeLookup{}, authTestLogger(),
-	).WithMTLSPrincipal(true)
+	).WithMTLSPrincipal(grpcsrv.NewTrustDomain("kacho.cloud"))
 
 	ctx := metadata.NewIncomingContext(context.Background(), metadata.Pairs(
 		"x-kacho-principal-type", "user",

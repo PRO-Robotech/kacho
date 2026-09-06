@@ -188,6 +188,13 @@ spec:
             {{- end }}
             - name: KACHO_API_GATEWAY_ADVERTISED_ENDPOINT
               value: "{{ .Values.advertisedEndpoint }}"
+            # Домен доверия установки: то, чьи сертификаты край признаёт своими.
+            # Вызывающий, пришедший с проверенным клиентским сертификатом,
+            # становится служебной учёткой по своему SPIFFE-имени, и опознаётся
+            # оно относительно этого домена. Берётся из ТОГО ЖЕ объявления, под
+            # которым чеканится собственный сертификат края (certificate.yaml).
+            - name: KACHO_API_GATEWAY_AUTHN_TRUST_DOMAIN
+              value: {{ include "api-gateway.trustDomain" . | quote }}
             {{- if .Values.authn }}
             - name: KACHO_API_GATEWAY_AUTHN_MODE
               value: {{ include "api-gateway.authMode" . | default "production" | quote }}
