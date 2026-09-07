@@ -20,7 +20,7 @@ import (
 // service but missing from `resourceIDPrefixes` would make every well-formed id
 // of that family 400 at the api-gateway authz edge.
 //
-//   - ids.Prefix* — enumerated from kacho-corelib/ids (compiler-checked: a new
+//   - ids.Prefix* — enumerated from pkg/ids (compiler-checked: a new
 //     prefix constant added there but not referenced here is invisible, but a
 //     constant renamed/removed breaks this test, prompting a re-audit).
 //   - IAM domain prefixes — mirrored as string literals from the IAM domain
@@ -32,7 +32,7 @@ import (
 //     and are not exposed on the public REST resource surface gated by authz.
 var allIDPrefixes = func() map[string]string {
 	m := map[string]string{
-		// kacho-corelib/ids — resource prefixes
+		// pkg/ids — resource prefixes
 		"PrefixCloud":            ids.PrefixCloud,
 		"PrefixFolder":           ids.PrefixFolder,
 		"PrefixOrganization":     ids.PrefixOrganization,
@@ -53,7 +53,7 @@ var allIDPrefixes = func() map[string]string {
 		"PrefixLoadBalancer":     ids.PrefixLoadBalancer,
 		"PrefixListener":         ids.PrefixListener,
 		"PrefixTargetGroup":      ids.PrefixTargetGroup,
-		// kacho-corelib/ids — per-domain operation prefixes
+		// pkg/ids — per-domain operation prefixes
 		"PrefixOperationRM":      ids.PrefixOperationRM,
 		"PrefixOperationVPC":     ids.PrefixOperationVPC,
 		"PrefixOperationCompute": ids.PrefixOperationCompute,
@@ -73,7 +73,7 @@ var allIDPrefixes = func() map[string]string {
 }()
 
 // TestResourceID_GuardEveryLivePrefixIsKnown is the regression guard ensuring a
-// future new resource/operation prefix that lands in kacho-corelib/ids (or a new
+// future new resource/operation prefix that lands in pkg/ids (or a new
 // IAM resource) is also registered in `resourceIDPrefixes`, otherwise every
 // well-formed id of that family would be rejected with InvalidArgument (400) at
 // the gateway authz edge instead of reaching the owner service.

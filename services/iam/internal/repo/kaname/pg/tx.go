@@ -30,7 +30,7 @@ import (
 	"github.com/PRO-Robotech/kaname/internal/service"
 )
 
-// readTx — kacho.Reader поверх pgx.Tx (TxOptions{AccessMode: ReadOnly}).
+// readTx — kaname.Reader поверх pgx.Tx (TxOptions{AccessMode: ReadOnly}).
 type readTx struct {
 	tx pgx.Tx
 }
@@ -63,7 +63,7 @@ func (r *readTx) Visibility() visibility.ReaderIface {
 func (r *readTx) Commit(ctx context.Context) error   { return r.tx.Commit(ctx) }
 func (r *readTx) Rollback(ctx context.Context) error { return r.tx.Rollback(ctx) }
 
-// writeTx — kacho.Writer поверх pgx.Tx (RW).
+// writeTx — kaname.Writer поверх pgx.Tx (RW).
 type writeTx struct {
 	readTx
 	// ownerFKHint — owner id of the account inserted on this tx (if any). Set by

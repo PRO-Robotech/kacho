@@ -41,7 +41,7 @@ import (
 
 // MembershipReader открывает чтение членств.
 //
-// Отдельный корень, а не метод общего `kacho.Reader`: см. `membership.Repo` —
+// Отдельный корень, а не метод общего `kaname.Reader`: см. `membership.Repo` —
 // там названы и довод, и его цена.
 func (r *Repository) MembershipReader(ctx context.Context) (membership.Session, error) {
 	tx, err := r.readPool().BeginTx(ctx, pgx.TxOptions{AccessMode: pgx.ReadOnly})

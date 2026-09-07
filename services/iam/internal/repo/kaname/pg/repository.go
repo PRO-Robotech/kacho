@@ -1,7 +1,7 @@
 // Copyright (c) PRO-Robotech
 // SPDX-License-Identifier: AGPL-3.0-or-later
 
-// Package pg — pgxpool implementation of [kacho.Repository].
+// Package pg — pgxpool implementation of [kaname.Repository].
 //
 // Composition: New(master, slave) → *Repository, поддерживающий Reader/Writer.
 // slave-pool опционально, при nil — fallback на master.
@@ -20,7 +20,7 @@ import (
 	kaname "github.com/PRO-Robotech/kaname/internal/repo/kaname"
 )
 
-// Repository — реализация kacho.Repository поверх pgxpool.
+// Repository — реализация kaname.Repository поверх pgxpool.
 type Repository struct {
 	master *pgxpool.Pool
 	slave  *pgxpool.Pool // nil = fallback на master

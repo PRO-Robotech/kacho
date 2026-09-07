@@ -339,7 +339,7 @@ func TestCreate_OwnerBindingIsSelfValidating(t *testing.T) {
 
 // ── in-memory fakes ─────────────────────────────────────────────────────────
 
-// fakeRepo — минимальный fake kacho.Repository.
+// fakeRepo — минимальный fake kaname.Repository.
 type fakeRepo struct {
 	mu          sync.Mutex
 	insertCount int
