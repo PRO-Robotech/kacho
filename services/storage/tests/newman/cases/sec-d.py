@@ -88,8 +88,12 @@ def _internal_check_url():
         # Кейс её НЕ ВЫПИСЫВАЕТ: второй литерал разошёлся бы с производителем молча,
         # и этот отказ вернулся бы в находки о продукте, хотя адрес внутренней
         # поверхности обязан был дать прогонщик.
-        f"  pm.test('{PRECONDITION_MARK} harness config: internalBaseUrl is set"
-        f" (internal Check probe target)', () => {{",
+        #
+        # В скрипт подпись едет СЕРИАЛИЗАТОРОМ (`js_str`, #1181), а не вклейкой в
+        # литерал: она собирается на стороне Python и целиком отдаётся помощнику,
+        # поэтому подстановка попадает в позицию КОДА. Форма — та же, какой
+        # пользуется сам генератор набора (scripts/gen.py::_auth_pre_script).
+        f"  pm.test({js_str(f'{PRECONDITION_MARK} harness config: internalBaseUrl is set (internal Check probe target)')}, () => {{",
         "    pm.expect.fail('internalBaseUrl is empty — the internal iam:check probe has no target; "
         "inject it (deploy/scripts/newman-e2e.sh) instead of running without the probe');",
         "  });",
