@@ -428,8 +428,13 @@ def tampered_signature_case(*, case_id: str, title: str, env_var: str,
                 # кейсов). Кейс её не выписывает: второй литерал разошёлся бы с
                 # производителем молча, и вердикт перестал бы читать этот отказ
                 # как «условие не создано».
-                f"  pm.test('{PRECONDITION_MARK} harness config: {env_var} is set"
-                f" (нечего портить)', () => {{",
+                #
+                # В скрипт подпись едет СЕРИАЛИЗАТОРОМ (`js_str`, #1181), а не
+                # вклейкой в литерал: она собирается на стороне Python и целиком
+                # отдаётся помощнику, поэтому подстановка попадает в позицию КОДА.
+                # Форма — та же, какой пользуется сам генератор набора
+                # (scripts/gen.py::_auth_pre_script, scripts/gen.py::require_env_url).
+                f"  pm.test({js_str(f'{PRECONDITION_MARK} harness config: {env_var} is set (нечего портить)')}, () => {{",
                 f"    pm.expect.fail('{env_var} не задан — посев фикстур "
                 "(tests/authz-fixtures/setup.sh) не выдал предъявителя. Испортить подпись "
                 "не у чего, а запрос без заголовка проверил бы анонимный доступ, то есть "
@@ -740,9 +745,9 @@ CASES.append(Case(
                 # ЧУЖОЙ полосой, а про нашу кейс не сказал бы ничего.
                 "const _mach = pm.environment.get('jwtPlatformIssuer')"
                 " || pm.variables.get('jwtPlatformIssuer') || '';",
-                # Метка третьего исхода — от производителя набора (см. выше).
-                f"pm.test('{PRECONDITION_MARK} harness config: jwtPlatformIssuer задан"
-                " (с чем сравнивать издателя)',"
+                # Метка третьего исхода — от производителя набора; в скрипт —
+                # сериализатором (см. выше).
+                f"pm.test({js_str(f'{PRECONDITION_MARK} harness config: jwtPlatformIssuer задан (с чем сравнивать издателя)')},"
                 " () => {",
                 "  pm.expect(_mach, 'слот машинной полосы пуст — сравнить не с чем')"
                 ".to.not.eql('');",
