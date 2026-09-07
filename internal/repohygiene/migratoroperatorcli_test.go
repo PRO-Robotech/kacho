@@ -51,22 +51,40 @@ func TestMigratorBinaryIsNamedTheSameEverywhere(t *testing.T) {
 	root, paths := migratorCLICorpus(t)
 
 	var (
-		filesRead   int
-		goParsed    int
-		mentions    []migratorCLIMention
-		selfNamedIn int
+		filesRead    int
+		filesFixture int
+		// mentionsFixture — мест, ушедших из-под наблюдения вместе с изъятием.
+		mentionsFixture int
+		goParsed        int
+		mentions        []migratorCLIMention
+		selfNamedIn     int
 	)
 	for _, p := range paths {
-		raw, err := os.ReadFile(p)
-		if err != nil {
-			t.Fatalf("%s: чтение не удалось: %v", p, err)
-		}
-		filesRead++
 		rel, rerr := filepath.Rel(root, p)
 		if rerr != nil {
 			rel = p
 		}
 		rel = filepath.ToSlash(rel)
+		// Фикстура инъекции вносит дефект настоящим именем; под правилом «имя одно
+		// на продукт» любое внесённое ею имя для этого продукта неверно by
+		// construction. Судить её значило бы запретить доказательство.
+		if MigratorCLIIsInjectionFixture(rel) {
+			filesFixture++
+			// Изъятое ОСМАТРИВАЕТСЯ, но не судится: перепись обязана назвать
+			// ЦЕНУ изъятия — сколько мест ушло из-под наблюдения, — а не только
+			// сколько файлов оно накрыло. Файлов накрывает много, мест уносит
+			// единицы, и путать эти две величины значит объявлять изъятие
+			// шире либо у́же сделанного.
+			if raw, rerr := os.ReadFile(p); rerr == nil {
+				mentionsFixture += len(migratorCLIMentions(rel, string(raw)))
+			}
+			continue
+		}
+		raw, err := os.ReadFile(p)
+		if err != nil {
+			t.Fatalf("%s: чтение не удалось: %v", p, err)
+		}
+		filesRead++
 		content := string(raw)
 		mentions = append(mentions, migratorCLIMentions(rel, content)...)
 
@@ -92,8 +110,10 @@ func TestMigratorBinaryIsNamedTheSameEverywhere(t *testing.T) {
 		names[m.Name]++
 	}
 	t.Logf("перепись: файлов сборки и развёртывания прочитано %d (из них разобрано как Go %d, "+
-		"справку cobra с именем несут %d), мест, называющих бинарь, %d, различных имён %d",
-		filesRead, goParsed, selfNamedIn, len(mentions), len(names))
+		"справку cobra с именем несут %d), фикстур инъекции изъято %d файлов "+
+		"и %d мест, мест, называющих бинарь, %d, различных имён %d",
+		filesRead, goParsed, selfNamedIn, filesFixture, mentionsFixture,
+		len(mentions), len(names))
 
 	if filesRead == 0 {
 		t.Fatal("не прочитано ни одного файла — гейт ничего не осмотрел, и его молчание " +
