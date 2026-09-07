@@ -106,6 +106,10 @@ ACCOUNT_A = "accaaaaaaaaaaaaaaaa1"
 ACCOUNT_B = "accbbbbbbbbbbbbbbbb2"
 ACCOUNT_ABSENT = "accdeadbeefdeadbeef0"
 USER_A = "usraaaaaaaaaaaaaaaa1"
+# Личность ПРЕДЪЯВИТЕЛЯ служебной учётки: `svaAId` ↔ `jwtSAA` — объявленная пара
+# (`tests/authz-fixtures/principal_pairings.py`). `USER_A` остаётся целью
+# привязки и предъявителем НЕ бывает by construction.
+SVA_A = "svaaaaaaaaaaaaaaaaa1"
 OP_OWN = "iopownownownownown01"
 OP_ABSENT = "iopdeadbeefdeadbeef00"
 
@@ -113,6 +117,7 @@ ENV_SEED = {
     "existingAccountId": ACCOUNT_A,
     "accountBId": ACCOUNT_B,
     "userAAAId": USER_A,
+    "svaAId": SVA_A,
     "ownRestOpId": OP_OWN,
     "runId": "r1",
     "ownRestBaseUrl": "http://127.0.0.1:1/own",
@@ -145,6 +150,12 @@ ROUTER_LANE = {
     "known-path-wrong-method": METHOD_MISS,
 }
 
+# Отказ полосы ПРАВКИ. Скрытие существования включается поимённо и на правку
+# аккаунта не распространяется (`pkg/authz`, `HidesExistenceOnDeny`), поэтому
+# отказ приходит СВОИМ кодом, а не кодом промаха, — и по построению не несёт
+# идентификатора, то есть одинаков для чужого объекта и для отсутствующего.
+MUT_REFUSAL = (403, _j({"code": 7, "message": "permission denied", "details": []}))
+
 W_HIDING = {
     **ROUTER_LANE,
     "internal-path-on-internal-front": ONE_REFUSAL,
@@ -152,7 +163,8 @@ W_HIDING = {
                                               "createdAt": "2026-01-01T00:00:00Z"})),
     "malformed-credential": CRED_REFUSAL,
     "expired-shaped-credential": CRED_REFUSAL,
-    "bare-and-bridged-principal-headers": (200, _j({"id": USER_A, "type": "user"})),
+    "bare-and-bridged-principal-headers": (200, _j({"subject": f"service_account:{SVA_A}",
+                                                    "userId": "", "displayName": "ps-sa-a"})),
     "garbage-cursor-granted-caller": (400, _j({"code": 3, "message": "invalid page token", "details": []})),
     "garbage-cursor-ungranted-caller": (400, _j({"code": 3, "message": "invalid page token", "details": []})),
     "create-group-through-own-front": (200, _j({"id": OP_OWN, "done": False})),
@@ -165,7 +177,8 @@ W_HIDING = {
     "page-size-legal-is-served": (200, _j({"accounts": [], "nextPageToken": ""})),
     "poll-absent-operation": (404, _j({"code": 5, "message": f"Operation {OP_ABSENT} not found", "details": []})),
     "poll-someone-elses-operation": (404, _j({"code": 5, "message": f"Operation {OP_OWN} not found", "details": []})),
-    "patch-foreign-account": (404, _j({"code": 5, "message": f"Account {ACCOUNT_B} not found", "details": []})),
+    "patch-foreign-account": MUT_REFUSAL,
+    "patch-absent-account": MUT_REFUSAL,
     "foreign-account-unchanged": (200, _j({"id": ACCOUNT_B, "name": "acct-b",
                                            "createdAt": "2026-01-01T00:00:00Z"})),
 }
@@ -182,7 +195,8 @@ TARGETS = {
 
     ("bare-and-bridged-principal-headers",
      "SELF-NAMED: и НЕ тот, кем вызывающий назвал себя заголовком — ни голой формой, ни мостовой"):
-        (200, _j({"id": "usr-someone-else", "type": "user"})),
+        (200, _j({"subject": "user:usr-someone-else", "userId": "usr-someone-else",
+                  "displayName": "someone"})),
 
     ("read-absent-account",
      "FOREIGN: «есть, но не твой» и «нет такого» различаются ТОЛЬКО идентификатором "
@@ -200,10 +214,22 @@ TARGETS = {
      "стоит доводом ЗАПРОСА, поэтому чужая строка не читается вовсе"):
         (404, _j({"code": 5, "message": "operation belongs to another account", "details": []})),
 
-    ("patch-foreign-account",
-     "FOREIGN-MUT: ответ не сообщает, существует ли объект — ни состояния, ни отметок "
-     "времени в теле нет"):
-        (404, _j({"code": 5, "message": f"Account {ACCOUNT_B} not found", "details": _LEAK_ECHO})),
+    # ЦЕЛЬ НА ПОЛОСЕ ПРАВКИ ОДНА, И ЭТО РЕШЕНИЕ, А НЕ УПУЩЕНИЕ.
+    #
+    # Прежде цель стояла на утверждении «в отказе нет отметки создания» того же
+    # шага. Оно осталось в наборе и по-прежнему несёт свой контроль, но целью
+    # быть перестало: утверждение о РАВЕНСТВЕ двух отказов строго сильнее —
+    # отметку создания отказ на ОТСУТСТВУЮЩИЙ объект нести не может вовсе,
+    # поэтому её утечка в отказ на чужой ломает равенство и ловится здесь же.
+    #
+    # Две цели на этой полосе несовместимы ПО ПОСТРОЕНИЮ: соседний шаг читает
+    # тело этого, поэтому инъекция в него роняет и его утверждение — и «упало
+    # проверяемое» становится неотличимо от «упал сосед», то есть ровно тем, что
+    # правило `collateral` ниже и запрещает.
+    ("patch-absent-account",
+     "FOREIGN-MUT: «есть, но не твой» и «нет такого» неотличимы на маршруте ПРАВКИ — "
+     "иначе отказ служил бы оракулом существования"):
+        (404, _j({"code": 5, "message": f"Account {ACCOUNT_ABSENT} not found", "details": []})),
 }
 
 # Утверждения, которым в W_today проходить ПОЛОЖЕНО, и причина по каждому. Всякое
@@ -244,6 +270,12 @@ HONEST_IN_W_TODAY = {
         "доходит только смаршрутизированное",
     ("no-credential-at-all", "ANON: отказ принадлежит производимому множеству"):
         "принадлежность множеству — положительное наблюдение об отказе, а не отрицание",
+    ("patch-foreign-account", "status 403"):
+        "пара «статус + код» ПИНИТ КОНТРАКТ отказа на правку, а не утверждает неотличимость. "
+        "На этой полосе отказ по правам и есть единственный ответ обработчика, поэтому пара "
+        "совпадает с W_today by construction; различительную работу несёт равенство двух "
+        "отказов в шаге `patch-absent-account`, и оно в W_today падает",
+    ("patch-foreign-account", "FOREIGN-MUT: grpc code 7"): "то же",
 }
 
 # ── Движок ─────────────────────────────────────────────────────────────────
