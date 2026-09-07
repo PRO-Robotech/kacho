@@ -48,14 +48,13 @@ package deploy_test
 import (
 	"os"
 	"os/exec"
-
-	"github.com/PRO-Robotech/kacho/pkg/gitenv"
 	"path/filepath"
 	"regexp"
 	"strings"
 	"testing"
 
 	"github.com/PRO-Robotech/kacho/internal/productnaming"
+	"github.com/PRO-Robotech/kacho/pkg/gitenv"
 )
 
 var servicesDecl = regexp.MustCompile(`(?m)^SERVICES\s*:?=\s*(.+)$`)
@@ -360,7 +359,15 @@ product_image_name "$1"`
 // несущее свойство пробы, а не деталь: обращение к ведомости пустым ключом
 // заставляло bash напечатать СВОЮ диагностику раньше стража — с номером строки
 // библиотеки и именем внутренней переменной. По пути через `product_names_load`
-// этого не видно вовсе: там отказ наступает раньше.
+// этого не видно вовсе: там отказ наступает раньше, и первая редакция этой
+// пробы была ЗЕЛЁНОЙ именно поэтому — заголовок про отказ, проверенный там, где
+// предмета нет.
+//
+// ЧТО ЗДЕСЬ НЕ УТВЕРЖДАЕТСЯ. Прямой путь в дереве один (`make reload-svc`), и у
+// него СВОЯ проверка имени, отсекающая пустое прежде, — значит сегодня этой
+// диагностики не видит никто. Проба закрепляет качество отказа вперёд, а не
+// чинит наблюдаемый симптом: своя проверка вызывающего есть свойство ЕГО кода,
+// и следующий вызывающий её не унаследует.
 func TestShellReaderRefusalNamesTheSubjectOnly(t *testing.T) {
 	_, stderr, code := askImageNameDirect(t, "")
 	if code == 0 {
