@@ -16,6 +16,19 @@ SPDX-License-Identifier: AGPL-3.0-or-later
   членство типа в каталоге выражено **условием приёма в операторе**, а не
   постоянным внешним ключом (§2.1) — довод измерен и назван, цена выбора вынесена
   задачей `#1886`. Замечания В1–В5 круга 3 приняты все пять
+- **⚠️ ПОСЛЕ вердикта документ правлен МАССОВО (`#2214`), и вердикт на нынешнюю
+  редакцию НЕ ПЕРЕНЕСЁН.** Правок 3, строк 24: `5504f44a7f` каталоги службы
+  (13) · `b81adf2760` имя службы (10) · `93ef852fe9` идентификатор лицензии
+  (1). Дельта целиком — подстановка токена (`kacho→kaname` · `kacho-iam→kaname`
+  · `kacho-iam-bootstrap→kaname-bootstrap` и ещё 1); непарных строк 0, пар с
+  изменившимся числом токенов 0; ни один сценарий, производитель, признак
+  готовности и клауза не тронуты. **Одна запись этой правкой стала ЛОЖНОЙ и
+  починена здесь же** — §2.2: объявленный вывод команды правлен, сама команда
+  нет. Одобрение относится к **содержимому**, а не к имени файла: APPROVED выше
+  есть вердикт о редакции, прочитанной проверяющим. Вердикт на нынешнюю
+  редакцию ставит `acceptance-reviewer` своим кругом, а не эта строка. Решение,
+  замер и цена обоих отвергнутых исходов —
+  `../architecture/verdict-names-a-revision-not-a-file.md`
 - **Ревизия измерения:** круг 1 — `9424765ab`; круг 2 — `2ff21ff96`; круг 3 —
   `052715e01`; **круг 4 — та же рабочая копия `/tmp/claude-1000/wt-1031`, ветка
   `lane/1031` от `release/modules-4`, ревизия `1cf44cf69`**. Числа круга 4 сняты
@@ -2321,12 +2334,34 @@ sed -n '22p' services/iam/internal/domain/module_set.go
 # {"iam", "vpc", "compute", "loadbalancer", "registry", "storage"}   ← шесть
 
 git grep -ohE "'kacho-[a-z-]+'" -- services/iam/internal/migrations | sort -u
-# kacho-api-gateway · kacho-bootstrap-admin · kacho-bootstrap-grant · kacho-compute
-# kaname-bootstrap · kacho-nlb · kacho-registry · kacho-root · kacho-storage
-# kacho-system · kacho-vpc · kacho-vpc-operator
+# kacho-api-gateway · kacho-bootstrap-admin · kacho-compute · kacho-iam-bootstrap
+# kacho-nlb · kacho-registry · kacho-root · kacho-storage · kacho-system · kacho-vpc
 
-git grep -c "'kaname'" -- services/iam/internal/migrations    # → пусто
+# модульной учётки с именем службы нет — и предикат судит УЧЁТКУ, а не строку:
+git grep -h "INSERT INTO kaname.service_accounts" -- 'services/iam/internal/migrations/*.sql' \
+  | grep -c "'kaname'"                                            # → 0
+git grep -h "INSERT INTO kaname.service_accounts" -- 'services/iam/internal/migrations/*.sql' \
+  | grep -c "Module SA"                                           # → 6 (контроль: полоса непуста)
 ```
+
+> [!note] Обе строки этого блока перемерены (`#2214`), и по РАЗНЫМ причинам
+> **Перечень выводов** правился массовым переименованием (`b81adf2760`), которое
+> прошло по объявленному выводу и **не могло** пройти по образцу внутри команды:
+> образец ищет прежнее имя. Документ стал утверждать, что команда печатает
+> `kaname-bootstrap`, тогда как она печатает `kacho-iam-bootstrap`, а
+> `'kaname-bootstrap'` не встречается в миграциях ни разу. Перечень приведён к
+> тому, что команда печатает **сегодня**; заодно из него ушли `kacho-bootstrap-grant`
+> и `kacho-vpc-operator` — их сняло другое изменение, к переименованию отношения
+> не имеющее.
+>
+> **Предикат отсутствия учётки** судил не тот предмет: `git grep -c "'kaname'"`
+> по каталогу миграций находит имя **схемы Postgres** (`table_schema = 'kaname'`,
+> девять вхождений в одной миграции, `cb0497e2d1`), а не модульную учётку. Проза ниже при этом
+> **верна** — учётки нет; неверна была единица счёта. Новый предикат судит строку
+> `service_accounts` и несёт **положительный контроль**: без него ноль означал бы
+> и «учётки нет», и «полоса пуста».
+>
+> Класс и решение — `../architecture/verdict-names-a-revision-not-a-file.md` §1.2.
 
 **Модульной учётки `kaname` не существует ни в одной миграции** — и не должна:
 `iam` собственную проксируемую RPC не зовёт, домена SAN у него в этой роли нет, а
