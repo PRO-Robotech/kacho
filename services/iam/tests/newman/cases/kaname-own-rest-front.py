@@ -97,6 +97,14 @@ CASES.append(Case(
             method="GET",
             path="/iam/v1/accounts/{{existingAccountId}}",
             pre_script=_own("/iam/v1/accounts/{{existingAccountId}}"),
+            # Туннель, а не сеть посадки: адрес фронта проброшен и достигается как
+            # 127.0.0.1, а серверный лист выписан внутренним УЦ на ИМЯ Service. На
+            # боевой посадке фронт под TLS (values.dev-prod: publicRest/internalRest
+            # true), и без этого КАЖДЫЙ запрос набора умирал бы на рукопожатии —
+            # то есть «без ответа», а не вердиктом о предмете. Предмет кейсов —
+            # КАКИЕ ПУТИ обслуживает фронт, а не цепочка доверия туннеля; посадку
+            # транспорта утверждает deploy/scripts/assert-production-posture.sh.
+            insecure_tls=True,
             auth="jwtAccountAdminA",
             test_script=[
                 *assert_status(200),
@@ -127,6 +135,14 @@ CASES.append(Case(
             path=_INTERNAL_PATH,
             body={"externalId": "zit-probe-{{runId}}"},
             pre_script=_own(_INTERNAL_PATH),
+            # Туннель, а не сеть посадки: адрес фронта проброшен и достигается как
+            # 127.0.0.1, а серверный лист выписан внутренним УЦ на ИМЯ Service. На
+            # боевой посадке фронт под TLS (values.dev-prod: publicRest/internalRest
+            # true), и без этого КАЖДЫЙ запрос набора умирал бы на рукопожатии —
+            # то есть «без ответа», а не вердиктом о предмете. Предмет кейсов —
+            # КАКИЕ ПУТИ обслуживает фронт, а не цепочка доверия туннеля; посадку
+            # транспорта утверждает deploy/scripts/assert-production-posture.sh.
+            insecure_tls=True,
             # Удостоверение ГОДНОЕ намеренно: без него отказ пришёл бы раньше
             # маршрутизации, и утверждение стало бы «посторонний не пройдёт»
             # вместо «АУТЕНТИФИЦИРОВАННЫЙ не дотянется до служебной поверхности».
@@ -148,6 +164,14 @@ CASES.append(Case(
             path=_INTERNAL_PATH,
             body={"externalId": "zit-probe-{{runId}}"},
             pre_script=_own_internal(_INTERNAL_PATH),
+            # Туннель, а не сеть посадки: адрес фронта проброшен и достигается как
+            # 127.0.0.1, а серверный лист выписан внутренним УЦ на ИМЯ Service. На
+            # боевой посадке фронт под TLS (values.dev-prod: publicRest/internalRest
+            # true), и без этого КАЖДЫЙ запрос набора умирал бы на рукопожатии —
+            # то есть «без ответа», а не вердиктом о предмете. Предмет кейсов —
+            # КАКИЕ ПУТИ обслуживает фронт, а не цепочка доверия туннеля; посадку
+            # транспорта утверждает deploy/scripts/assert-production-posture.sh.
+            insecure_tls=True,
             auth="jwtAccountAdminA",
             test_script=[
                 *assert_answered("INT-ON-INT"),
@@ -179,6 +203,14 @@ CASES.append(Case(
             method="GET",
             path="/iam/v1/zzz-no-such-collection",
             pre_script=_own("/iam/v1/zzz-no-such-collection"),
+            # Туннель, а не сеть посадки: адрес фронта проброшен и достигается как
+            # 127.0.0.1, а серверный лист выписан внутренним УЦ на ИМЯ Service. На
+            # боевой посадке фронт под TLS (values.dev-prod: publicRest/internalRest
+            # true), и без этого КАЖДЫЙ запрос набора умирал бы на рукопожатии —
+            # то есть «без ответа», а не вердиктом о предмете. Предмет кейсов —
+            # КАКИЕ ПУТИ обслуживает фронт, а не цепочка доверия туннеля; посадку
+            # транспорта утверждает deploy/scripts/assert-production-posture.sh.
+            insecure_tls=True,
             auth="jwtAccountAdminA",
             test_script=_mux_miss("UNKNOWN-PATH"),
         ),
@@ -196,6 +228,14 @@ CASES.append(Case(
             method="DELETE",
             path="/iam/v1/accounts",
             pre_script=_own("/iam/v1/accounts"),
+            # Туннель, а не сеть посадки: адрес фронта проброшен и достигается как
+            # 127.0.0.1, а серверный лист выписан внутренним УЦ на ИМЯ Service. На
+            # боевой посадке фронт под TLS (values.dev-prod: publicRest/internalRest
+            # true), и без этого КАЖДЫЙ запрос набора умирал бы на рукопожатии —
+            # то есть «без ответа», а не вердиктом о предмете. Предмет кейсов —
+            # КАКИЕ ПУТИ обслуживает фронт, а не цепочка доверия туннеля; посадку
+            # транспорта утверждает deploy/scripts/assert-production-posture.sh.
+            insecure_tls=True,
             auth="jwtAccountAdminA",
             test_script=[
                 # Утверждение — ПАРА: 501 приходит и от UNIMPLEMENTED обработчика,
@@ -227,6 +267,8 @@ CASES.append(Case(
             pre_script=_own("/iam/v1/accounts/{{existingAccountId}}") + [
                 "pm.request.headers.upsert({key: 'Authorization', value: 'Bearer not-a-credential'});",
             ],
+            # Туннель, а не сеть посадки — см. пояснение у соседних шагов набора.
+            insecure_tls=True,
             test_script=[
                 *assert_status(401),
                 "const j = pm.response.json();",
@@ -245,6 +287,8 @@ CASES.append(Case(
             pre_script=_own("/iam/v1/accounts/{{existingAccountId}}") + [
                 "pm.request.headers.upsert({key: 'Authorization', value: 'Bearer eyJhbGciOiJSUzI1NiJ9.e30.bad'});",
             ],
+            # Туннель, а не сеть посадки — см. пояснение у соседних шагов набора.
+            insecure_tls=True,
             test_script=[
                 *assert_status(401),
                 "pm.test('BAD-CRED: второй негодный предъявитель даёт ПОБАЙТОВО тот же отказ', () => {",
@@ -276,6 +320,8 @@ CASES.append(Case(
                 "pm.request.headers.upsert({key: 'Grpc-Metadata-X-Kacho-Principal-Id', value: 'usr-someone-else'});",
                 "pm.request.headers.upsert({key: 'Grpc-Metadata-X-Kacho-Principal-Type', value: 'user'});",
             ],
+            # Туннель, а не сеть посадки — см. пояснение у соседних шагов набора.
+            insecure_tls=True,
             auth="jwtAccountAdminA",
             test_script=[
                 *assert_status(200),
@@ -304,6 +350,14 @@ CASES.append(Case(
             method="GET",
             path="/iam/v1/accounts?pageToken=not-a-cursor",
             pre_script=_own("/iam/v1/accounts?pageToken=not-a-cursor"),
+            # Туннель, а не сеть посадки: адрес фронта проброшен и достигается как
+            # 127.0.0.1, а серверный лист выписан внутренним УЦ на ИМЯ Service. На
+            # боевой посадке фронт под TLS (values.dev-prod: publicRest/internalRest
+            # true), и без этого КАЖДЫЙ запрос набора умирал бы на рукопожатии —
+            # то есть «без ответа», а не вердиктом о предмете. Предмет кейсов —
+            # КАКИЕ ПУТИ обслуживает фронт, а не цепочка доверия туннеля; посадку
+            # транспорта утверждает deploy/scripts/assert-production-posture.sh.
+            insecure_tls=True,
             auth="jwtAccountAdminA",
             test_script=[
                 *assert_status(400),
@@ -316,6 +370,14 @@ CASES.append(Case(
             method="GET",
             path="/iam/v1/accounts?pageToken=not-a-cursor",
             pre_script=_own("/iam/v1/accounts?pageToken=not-a-cursor"),
+            # Туннель, а не сеть посадки: адрес фронта проброшен и достигается как
+            # 127.0.0.1, а серверный лист выписан внутренним УЦ на ИМЯ Service. На
+            # боевой посадке фронт под TLS (values.dev-prod: publicRest/internalRest
+            # true), и без этого КАЖДЫЙ запрос набора умирал бы на рукопожатии —
+            # то есть «без ответа», а не вердиктом о предмете. Предмет кейсов —
+            # КАКИЕ ПУТИ обслуживает фронт, а не цепочка доверия туннеля; посадку
+            # транспорта утверждает deploy/scripts/assert-production-posture.sh.
+            insecure_tls=True,
             # Тот же ввод, другой арендатор — различие РОВНО в том, что ему выдано.
             auth="jwtPureNoBindings",
             test_script=[
@@ -344,6 +406,14 @@ CASES.append(Case(
             path="/iam/v1/groups",
             body={"accountId": "{{accountAId}}", "name": "ownrest-{{runId}}"},
             pre_script=_own("/iam/v1/groups"),
+            # Туннель, а не сеть посадки: адрес фронта проброшен и достигается как
+            # 127.0.0.1, а серверный лист выписан внутренним УЦ на ИМЯ Service. На
+            # боевой посадке фронт под TLS (values.dev-prod: publicRest/internalRest
+            # true), и без этого КАЖДЫЙ запрос набора умирал бы на рукопожатии —
+            # то есть «без ответа», а не вердиктом о предмете. Предмет кейсов —
+            # КАКИЕ ПУТИ обслуживает фронт, а не цепочка доверия туннеля; посадку
+            # транспорта утверждает deploy/scripts/assert-production-posture.sh.
+            insecure_tls=True,
             auth="jwtAccountAdminA",
             test_script=[
                 *assert_status(200),
@@ -368,6 +438,8 @@ CASES.append(Case(
                 "предмет кейса не создан, и опрашивать нечего');",
                 "}",
             ],
+            # Туннель, а не сеть посадки — см. пояснение у соседних шагов набора.
+            insecure_tls=True,
             auth="jwtAccountAdminA",
             test_script=[
                 *assert_status(200),
@@ -396,6 +468,14 @@ CASES.append(Case(
             method="GET",
             path="/iam/v1/accounts/{{accountBId}}",
             pre_script=_own("/iam/v1/accounts/{{accountBId}}"),
+            # Туннель, а не сеть посадки: адрес фронта проброшен и достигается как
+            # 127.0.0.1, а серверный лист выписан внутренним УЦ на ИМЯ Service. На
+            # боевой посадке фронт под TLS (values.dev-prod: publicRest/internalRest
+            # true), и без этого КАЖДЫЙ запрос набора умирал бы на рукопожатии —
+            # то есть «без ответа», а не вердиктом о предмете. Предмет кейсов —
+            # КАКИЕ ПУТИ обслуживает фронт, а не цепочка доверия туннеля; посадку
+            # транспорта утверждает deploy/scripts/assert-production-posture.sh.
+            insecure_tls=True,
             # Тот же арендатор, что читает СВОЙ аккаунт в контроле выше.
             # Отличие от него РОВНО одно: идентификатор объекта.
             auth="jwtAccountAdminA",
@@ -416,6 +496,14 @@ CASES.append(Case(
             method="GET",
             path="/iam/v1/accounts/accdeadbeefdeadbeef0",
             pre_script=_own("/iam/v1/accounts/accdeadbeefdeadbeef0"),
+            # Туннель, а не сеть посадки: адрес фронта проброшен и достигается как
+            # 127.0.0.1, а серверный лист выписан внутренним УЦ на ИМЯ Service. На
+            # боевой посадке фронт под TLS (values.dev-prod: publicRest/internalRest
+            # true), и без этого КАЖДЫЙ запрос набора умирал бы на рукопожатии —
+            # то есть «без ответа», а не вердиктом о предмете. Предмет кейсов —
+            # КАКИЕ ПУТИ обслуживает фронт, а не цепочка доверия туннеля; посадку
+            # транспорта утверждает deploy/scripts/assert-production-posture.sh.
+            insecure_tls=True,
             auth="jwtAccountAdminA",
             test_script=[
                 *assert_status(404),
@@ -448,6 +536,14 @@ CASES.append(Case(
             method="GET",
             path="/iam/v1/accounts/{{existingAccountId}}",
             pre_script=_own("/iam/v1/accounts/{{existingAccountId}}"),
+            # Туннель, а не сеть посадки: адрес фронта проброшен и достигается как
+            # 127.0.0.1, а серверный лист выписан внутренним УЦ на ИМЯ Service. На
+            # боевой посадке фронт под TLS (values.dev-prod: publicRest/internalRest
+            # true), и без этого КАЖДЫЙ запрос набора умирал бы на рукопожатии —
+            # то есть «без ответа», а не вердиктом о предмете. Предмет кейсов —
+            # КАКИЕ ПУТИ обслуживает фронт, а не цепочка доверия туннеля; посадку
+            # транспорта утверждает deploy/scripts/assert-production-posture.sh.
+            insecure_tls=True,
             auth="anonymous",
             test_script=[
                 *assert_answered("ANON"),
@@ -479,6 +575,14 @@ CASES.append(Case(
             method="GET",
             path="/iam/v1/accounts?pageSize=100000",
             pre_script=_own("/iam/v1/accounts?pageSize=100000"),
+            # Туннель, а не сеть посадки: адрес фронта проброшен и достигается как
+            # 127.0.0.1, а серверный лист выписан внутренним УЦ на ИМЯ Service. На
+            # боевой посадке фронт под TLS (values.dev-prod: publicRest/internalRest
+            # true), и без этого КАЖДЫЙ запрос набора умирал бы на рукопожатии —
+            # то есть «без ответа», а не вердиктом о предмете. Предмет кейсов —
+            # КАКИЕ ПУТИ обслуживает фронт, а не цепочка доверия туннеля; посадку
+            # транспорта утверждает deploy/scripts/assert-production-posture.sh.
+            insecure_tls=True,
             auth="jwtAccountAdminA",
             test_script=[
                 *assert_status(400),
@@ -491,6 +595,14 @@ CASES.append(Case(
             method="GET",
             path="/iam/v1/accounts?pageSize=100000",
             pre_script=_own("/iam/v1/accounts?pageSize=100000"),
+            # Туннель, а не сеть посадки: адрес фронта проброшен и достигается как
+            # 127.0.0.1, а серверный лист выписан внутренним УЦ на ИМЯ Service. На
+            # боевой посадке фронт под TLS (values.dev-prod: publicRest/internalRest
+            # true), и без этого КАЖДЫЙ запрос набора умирал бы на рукопожатии —
+            # то есть «без ответа», а не вердиктом о предмете. Предмет кейсов —
+            # КАКИЕ ПУТИ обслуживает фронт, а не цепочка доверия туннеля; посадку
+            # транспорта утверждает deploy/scripts/assert-production-posture.sh.
+            insecure_tls=True,
             auth="jwtPureNoBindings",
             test_script=[
                 *assert_status(400),
@@ -503,6 +615,14 @@ CASES.append(Case(
             method="GET",
             path="/iam/v1/accounts?pageSize=10",
             pre_script=_own("/iam/v1/accounts?pageSize=10"),
+            # Туннель, а не сеть посадки: адрес фронта проброшен и достигается как
+            # 127.0.0.1, а серверный лист выписан внутренним УЦ на ИМЯ Service. На
+            # боевой посадке фронт под TLS (values.dev-prod: publicRest/internalRest
+            # true), и без этого КАЖДЫЙ запрос набора умирал бы на рукопожатии —
+            # то есть «без ответа», а не вердиктом о предмете. Предмет кейсов —
+            # КАКИЕ ПУТИ обслуживает фронт, а не цепочка доверия туннеля; посадку
+            # транспорта утверждает deploy/scripts/assert-production-posture.sh.
+            insecure_tls=True,
             auth="jwtAccountAdminA",
             test_script=[
                 # ПОЛОЖИТЕЛЬНЫЙ БЛИЗНЕЦ: без него отрицание зеленело бы на списке,
@@ -530,6 +650,14 @@ CASES.append(Case(
             method="GET",
             path="/operations/iopdeadbeefdeadbeef00",
             pre_script=_own("/operations/iopdeadbeefdeadbeef00"),
+            # Туннель, а не сеть посадки: адрес фронта проброшен и достигается как
+            # 127.0.0.1, а серверный лист выписан внутренним УЦ на ИМЯ Service. На
+            # боевой посадке фронт под TLS (values.dev-prod: publicRest/internalRest
+            # true), и без этого КАЖДЫЙ запрос набора умирал бы на рукопожатии —
+            # то есть «без ответа», а не вердиктом о предмете. Предмет кейсов —
+            # КАКИЕ ПУТИ обслуживает фронт, а не цепочка доверия туннеля; посадку
+            # транспорта утверждает deploy/scripts/assert-production-posture.sh.
+            insecure_tls=True,
             auth="jwtAccountAdminB",
             test_script=[
                 *assert_status(404),
@@ -548,6 +676,8 @@ CASES.append(Case(
                 "предмет кейса не создан, и сравнивать нечего');",
                 "}",
             ],
+            # Туннель, а не сеть посадки — см. пояснение у соседних шагов набора.
+            insecure_tls=True,
             # Операцию породил ДРУГОЙ арендатор (см. OK-OPERATION-POLL).
             # Отличие от него РОВНО одно: чья операция.
             auth="jwtAccountAdminB",
@@ -583,6 +713,14 @@ CASES.append(Case(
             path="/iam/v1/accounts/{{accountBId}}",
             body={"name": "seized-by-{{runId}}"},
             pre_script=_own("/iam/v1/accounts/{{accountBId}}"),
+            # Туннель, а не сеть посадки: адрес фронта проброшен и достигается как
+            # 127.0.0.1, а серверный лист выписан внутренним УЦ на ИМЯ Service. На
+            # боевой посадке фронт под TLS (values.dev-prod: publicRest/internalRest
+            # true), и без этого КАЖДЫЙ запрос набора умирал бы на рукопожатии —
+            # то есть «без ответа», а не вердиктом о предмете. Предмет кейсов —
+            # КАКИЕ ПУТИ обслуживает фронт, а не цепочка доверия туннеля; посадку
+            # транспорта утверждает deploy/scripts/assert-production-posture.sh.
+            insecure_tls=True,
             # Тот же арендатор, что успешно читает СВОЙ аккаунт в контроле.
             # Отличие — идентификатор объекта; глагол мутирующий.
             auth="jwtAccountAdminA",
@@ -605,6 +743,14 @@ CASES.append(Case(
             method="GET",
             path="/iam/v1/accounts/{{accountBId}}",
             pre_script=_own("/iam/v1/accounts/{{accountBId}}"),
+            # Туннель, а не сеть посадки: адрес фронта проброшен и достигается как
+            # 127.0.0.1, а серверный лист выписан внутренним УЦ на ИМЯ Service. На
+            # боевой посадке фронт под TLS (values.dev-prod: publicRest/internalRest
+            # true), и без этого КАЖДЫЙ запрос набора умирал бы на рукопожатии —
+            # то есть «без ответа», а не вердиктом о предмете. Предмет кейсов —
+            # КАКИЕ ПУТИ обслуживает фронт, а не цепочка доверия туннеля; посадку
+            # транспорта утверждает deploy/scripts/assert-production-posture.sh.
+            insecure_tls=True,
             # Читает ВЛАДЕЛЕЦ: без этого шага «правка отвергнута» доказывалось бы
             # только кодом ответа, а не тем, что объект остался прежним.
             auth="jwtAccountAdminB",

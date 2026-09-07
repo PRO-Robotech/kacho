@@ -1,6 +1,6 @@
 {
   "info": {
-    "_postman_id": "eb2254a2-363c-5c20-86f4-8f5427e5be75",
+    "_postman_id": "1fcfd411-62ab-5c8f-abdb-63bb2acada87",
     "name": "kaname / newman / label-revoke-iam",
     "schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json"
   },
@@ -1075,7 +1075,7 @@
                   "if (__cfgUrl) {",
                   "  pm.request.url = __cfgUrl + pm.variables.replaceIn('/iam/v1/internal/iam:check');",
                   "} else {",
-                  "  pm.test('harness config: internalBaseUrl is set — internal-only Check probe — /iam/v1/internal/* is served ONLY by the cluster-internal REST listener', () => {",
+                  "  pm.test('[УСЛОВИЕ НЕ СОЗДАНО] harness config: internalBaseUrl is set — internal-only Check probe — /iam/v1/internal/* is served ONLY by the cluster-internal REST listener', () => {",
                   "    pm.expect.fail('internalBaseUrl is not set — the newman runner (deploy/scripts/newman-e2e.sh / newman-parallel.sh --env-var) did not inject it. This step cannot run, and a check that cannot run MUST NOT be silently dropped.');",
                   "  });",
                   "  pm.execution.skipRequest();",
@@ -1594,7 +1594,7 @@
                   "if (__cfgUrl) {",
                   "  pm.request.url = __cfgUrl + pm.variables.replaceIn('/iam/v1/internal/iam:check');",
                   "} else {",
-                  "  pm.test('harness config: internalBaseUrl is set — internal-only Check probe — /iam/v1/internal/* is served ONLY by the cluster-internal REST listener', () => {",
+                  "  pm.test('[УСЛОВИЕ НЕ СОЗДАНО] harness config: internalBaseUrl is set — internal-only Check probe — /iam/v1/internal/* is served ONLY by the cluster-internal REST listener', () => {",
                   "    pm.expect.fail('internalBaseUrl is not set — the newman runner (deploy/scripts/newman-e2e.sh / newman-parallel.sh --env-var) did not inject it. This step cannot run, and a check that cannot run MUST NOT be silently dropped.');",
                   "  });",
                   "  pm.execution.skipRequest();",
@@ -2018,7 +2018,7 @@
                   "if (__cfgUrl) {",
                   "  pm.request.url = __cfgUrl + pm.variables.replaceIn('/iam/v1/internal/iam:check');",
                   "} else {",
-                  "  pm.test('harness config: internalBaseUrl is set — internal-only Check probe — /iam/v1/internal/* is served ONLY by the cluster-internal REST listener', () => {",
+                  "  pm.test('[УСЛОВИЕ НЕ СОЗДАНО] harness config: internalBaseUrl is set — internal-only Check probe — /iam/v1/internal/* is served ONLY by the cluster-internal REST listener', () => {",
                   "    pm.expect.fail('internalBaseUrl is not set — the newman runner (deploy/scripts/newman-e2e.sh / newman-parallel.sh --env-var) did not inject it. This step cannot run, and a check that cannot run MUST NOT be silently dropped.');",
                   "  });",
                   "  pm.execution.skipRequest();",

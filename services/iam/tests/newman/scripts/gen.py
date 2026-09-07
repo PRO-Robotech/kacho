@@ -681,6 +681,37 @@ def assert_operation_envelope() -> List[str]:
 # idiom is allowed to live.
 # ---------------------------------------------------------------------------
 
+# ТРЕТИЙ ИСХОД — МЕТКА, А НЕ ПРОЗА.
+#
+# «Условие не создано» и «продукт неверен» — РАЗНЫЕ вердикты, и до этой метки они
+# приходили в отчёт одним слотом: страж адреса ронял утверждение, а падающее
+# утверждение и есть находка о продукте. Пока это так, «фронт не объявлен
+# харнессу» неотличимо от «фронт сломан» ни глазом, ни машиной — красит суиту
+# целиком и посылает читателя разбирать продукт, который никто не спрашивал.
+#
+# ПОЧЕМУ МЕТКА В ИМЕНИ УТВЕРЖДЕНИЯ. Единственное, что доезжает до отчёта newman
+# от пропущенного запроса, — это упавшее утверждение с его именем
+# (`run.failures[].error.test`): пропуск сам по себе не оставляет следа ВОВСЕ,
+# ровно поэтому здесь и стоит утверждение, а не голый `skipRequest()`.
+#
+# ЧЕМ ЭТО НЕ ЯВЛЯЕТСЯ — сказано прямо, потому что похоже. Снятое из
+# assert-suites-green.sh вычитание тоже ключевалось на ИМЯ, и снято было за то,
+# что имя не несёт ПРИЧИНЫ падения: «это лаг материализации, а не отказ» —
+# утверждение о причине, а имя шага о ней не говорит. Здесь наоборот: имя
+# ПРОИЗВОДИТСЯ тем же блоком, что и утверждение, утверждение существует ТОЛЬКО
+# ради незаданной переменной и падает ТОЛЬКО от неё. Причина не угадывается по
+# имени — она в имени объявлена её собственным автором.
+#
+# И вычитания это по-прежнему не заводит: помеченное НЕ вычитается из вердикта и
+# НЕ зачитывается в успех. Прогон остаётся ненулевым, суита остаётся названной —
+# меняется только КАТЕГОРИЯ, в которой её читают.
+#
+# ЕДИНСТВЕННОСТЬ ПРОИЗВОДИТЕЛЯ — предмет гейта, а не обещания: метку вправе
+# ставить только этот блок, и рукописный кейс, поставивший её себе, обязан быть
+# находкой (scripts/precondition_mark_test.py).
+PRECONDITION_MARK = "[УСЛОВИЕ НЕ СОЗДАНО]"
+
+
 def require_env_url(var: str, path: str, why: str = "") -> List[str]:
     """Pre-request block: point this request at {{<var>}}+path, and FAIL if <var>
     is not set.
@@ -706,10 +737,16 @@ def require_env_url(var: str, path: str, why: str = "") -> List[str]:
     execution-coverage gate cannot tell them apart either, because BOTH are an
     explicit `skipRequest()` and both are therefore "explained".
 
-    So the missing variable is asserted here. If it is lost, the suite goes RED
-    with the variable's name in the message instead of silently shrinking. The
+    So the missing variable is asserted here. If it is lost, the suite STOPS with
+    the variable's name in the message instead of silently shrinking. The
     request is still skipped afterwards — sending it to the wrong listener would
     only add a cascade of confusing 404s on top of a failure already reported.
+
+    ЧТО ИМЕННО ЭТО ЗА ИСХОД — НАЗВАНО МЕТКОЙ. Утверждение несёт `PRECONDITION_MARK`
+    (см. блок выше), поэтому вердикт читает его как «условие не создано», а не как
+    находку о продукте: `assert-suites-green.sh` считает такие отдельной строкой и
+    выходит СВОИМ кодом, когда других отказов нет. Ни вычета, ни зачёта в успех это
+    не заводит — прогон остаётся ненулевым.
 
     exec-coverage.py enforces this shape statically: a `skipRequest()` guard that
     reads a *BaseUrl variable and carries no `pm.test(` fails the gate.
@@ -744,7 +781,7 @@ def require_env_url(var: str, path: str, why: str = "") -> List[str]:
         # replaceIn is identity on a template-free path; see the docstring above.
         f"  pm.request.url = __cfgUrl + pm.variables.replaceIn({js_str(path)});",
         "} else {",
-        f"  pm.test({js_str(f'harness config: {var} is set{reason}')}, () => {{",
+        f"  pm.test({js_str(f'{PRECONDITION_MARK} harness config: {var} is set{reason}')}, () => {{",
         "    pm.expect.fail(" + js_str(
             f"{var} is not set — the newman runner "
             "(deploy/scripts/newman-e2e.sh / newman-parallel.sh --env-var) did not inject it. "
