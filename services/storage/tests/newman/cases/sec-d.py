@@ -83,7 +83,13 @@ def _internal_check_url():
         "if (intBase) {",
         "  pm.request.url = intBase + '/iam/v1/internal/iam:check';",
         "} else {",
-        "  pm.test('harness config: internalBaseUrl is set (internal Check probe target)', () => {",
+        # Метка третьего исхода — от единственного производителя набора
+        # (scripts/gen.py::PRECONDITION_MARK, впрыснут в пространство имён кейсов).
+        # Кейс её НЕ ВЫПИСЫВАЕТ: второй литерал разошёлся бы с производителем молча,
+        # и этот отказ вернулся бы в находки о продукте, хотя адрес внутренней
+        # поверхности обязан был дать прогонщик.
+        f"  pm.test('{PRECONDITION_MARK} harness config: internalBaseUrl is set"
+        f" (internal Check probe target)', () => {{",
         "    pm.expect.fail('internalBaseUrl is empty — the internal iam:check probe has no target; "
         "inject it (deploy/scripts/newman-e2e.sh) instead of running without the probe');",
         "  });",
