@@ -39,7 +39,6 @@ var waivers = []standalonetargets.Waiver{
 	{Target: "migrate-down", Reason: "требует живую базу: предпосылку создаёт стенд, а не дерево"},
 	{Target: "migrate-status", Reason: "требует живую базу: предпосылку создаёт стенд, а не дерево"},
 	{Target: "proto-install-plugins", Reason: "тянет плагины генерации из сети; сеть — предпосылка стенда, а не свойство рецепта"},
-	{Target: "operator-docs", Reason: "порождает документацию в дерево клона; предмет сверки — соседняя цель operator-docs-check, которая её и судит"},
 }
 
 // TestStandaloneTargetsWorkInAStandaloneClone — боевой прогон: каждая цель,
