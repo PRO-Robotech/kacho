@@ -54,6 +54,16 @@ func (c Config) Validate() error {
 	errs = multierr.Append(errs, c.AuthN.TokenSigning.Validate())
 	errs = multierr.Append(errs, c.AuthN.PresentedCredential.Validate(c.AuthN.TokenSigning, c.AuthN.ClientToken.TokenTTL))
 
+	// СВЯЗЫВАНИЕ «поверхность предъявления ⇒ её читатель» (задача продукта #2191).
+	//
+	// Отдельно от стража величин выше: тот судит согласованность величин
+	// ВКЛЮЧЁННОГО читателя, а этот — противоречие между двумя объявлениями.
+	// Действует в ЛЮБОМ режиме: фронт без читателя отвечает одинаково на годное
+	// и на негодное на всяком поднятом стенде, и «зелёный dev» именно это и
+	// маскирует.
+	errs = multierr.Append(errs, c.AuthN.PresentedCredential.ValidateBinding(
+		c.AuthN.Mode.IsProduction(), c.APIServer.RESTListenAddress(), c.AuthN.IdentityProvider))
+
 	// Страж токен-эндпоинта платформы (задача #898). Он принимает настройку
 	// своей чеканки параметром: эндпоинт выпускает нашим подписантом и
 	// объявляет нашего издателя единственной принимаемой формой адресата
