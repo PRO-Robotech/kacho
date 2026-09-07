@@ -6,6 +6,13 @@ SPDX-License-Identifier: AGPL-3.0-or-later
 # Приёмка: модель процесса собирается на старте из доставленных манифестов
 
 - **Статус:** ✅ **APPROVED** — круг 11 (`acceptance-reviewer`), вердикт вынесен
+- **Правка 2026-09-07 после вердикта круга 11, точечная (`#2159`):** в §3.1 строка
+  производителя П-01 приведена к дереву — резолв канона перестал подниматься до
+  корня файловой системы, отказ называет предпосылку, и отказов стало два
+  («лежит выше дерева» / «в дереве нет»). Правлена ОДНА строка таблицы; ни один
+  сценарий, признак готовности и запись замера не тронуты. Вердикт круга 11
+  остаётся вердиктом о **прежнем** содержимом: правка одобренного документа
+  вердикт не переносит
 - **Правка 2026-09-05 после вердикта круга 11, точечная (`#2075`):** в клаузе
   «Тогда» сценария `IAM-MB-1-01` величина канона приведена к сегодняшней
   (`110 717` → `112 362`, единица B) и **выведена под держателя** — до этого
@@ -712,7 +719,7 @@ $ go list -deps ./services/iam/cmd/kaname | grep -c modelrender
 
 | # | производитель | координата | что производит |
 |---|---|---|---|
-| П-01 | `authzplan.ResolveCanonicalModel()` | `services/iam/internal/authzplan/canonical.go:31` | путь и байты канона из дерева; отказ — `canonical model %s not found walking up from %s` (`:64`) |
+| П-01 | `authzplan.ResolveCanonicalModel()` | `services/iam/internal/authzplan/canonical.go` | путь и байты канона из дерева, ОГРАНИЧЕННОГО корнем; отказа два и они различаются — `ErrCanonAboveTree` (канон лежит выше дерева, найденный путь назван) и `ErrCanonNotInTree`; дерево устанавливается индексом, не арифметикой пути (`#2159`) |
 | П-02 | `authzmodel.New(dsl string) (*Plans, error)` | `services/iam/internal/authzmodel/authzmodel.go:113` | **разбор НАЗВАННОЙ модели** — шов композиции; `Shared()` выражен через него |
 | П-03 | `modelrender.Render(manifest.Resource) ([]byte, error)` | `services/iam/internal/modelrender/render.go:74` | байты блока типа; ошибок **ровно две** — `ErrObjectTypeEmpty` (`:54`), `ErrParentEmpty` (`:57`) |
 | П-04 | `modelrender.SplitCanon(dsl []byte) []Block` | `services/iam/internal/modelrender/canon.go:55` | разбор на блоки; граница — пустая строка ЛИБО следующий `type ` в нулевой колонке (`:69-72`) |
