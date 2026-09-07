@@ -193,17 +193,24 @@ func TestKAN_VER_01_IdentityNamedByTheReaderSurvivesToTheHandler(t *testing.T) {
 	}
 }
 
-// TestKAN_DUP_01_BothFormsOnTheRealChain — обе формы личности разом на ТОЙ ЖЕ
-// цепочке, с настоящим проверенным пиром из круга разрешённых отправителей.
+// TestKAN_FWD_01_ForwardedIdentityStillPassesTheRealChain — прежний путь не
+// отозван: проверенный пир из круга разрешённых отправителей по-прежнему
+// называет конечного пользователя на ТОЙ ЖЕ боевой цепочке.
 //
-// Положительный близнец рядом: тот же проверенный пир БЕЗ предъявленного токена
-// проходит и называет конечного пользователя (KAN-FWD-01 — прежний путь не
-// отзывается).
-func TestKAN_DUP_01_BothFormsOnTheRealChain(t *testing.T) {
-	reader, raw := chainReader(t)
+// # Здесь стояло отрицание «обе формы разом — отказ». Оно СНЯТО ВМЕСТЕ С ПРЕДМЕТОМ
+//
+// Приёмка KAN-AUTHN-1 редакцией 2 отозвала решение, которое эта ветка
+// реализовывала: полосы взаимоисключающи ПОСТРОЕНИЕМ — край снимает
+// арендаторское удостоверение перед пересылкой за себя. Сочетания двух форм в
+// одном запросе больше не производит никто, и утверждение о нём стало бы
+// зелёным вердиктом о снятом предмете.
+//
+// Положительный близнец того отрицания выражал требование ЖИВОЕ (ось 7 решения:
+// прежний путь не отзывается) и потому остался — под своим именем.
+func TestKAN_FWD_01_ForwardedIdentityStillPassesTheRealChain(t *testing.T) {
+	reader, _ := chainReader(t)
 	chain := publicChainWithReader(reader)
 
-	// Положительный близнец: только переданная личность.
 	fwdOnly := forwardedIdentity(verifiedCertPeer(t, fwdGatewaySAN), "usr-alice")
 	p, present, err := runChain(t, chain, fwdOnly)
 	if err != nil {
@@ -212,18 +219,6 @@ func TestKAN_DUP_01_BothFormsOnTheRealChain(t *testing.T) {
 	}
 	if !present || p.ID != "usr-alice" {
 		t.Fatalf("прежний путь сломан: %+v (носитель=%v)", p, present)
-	}
-
-	// Отрицание: обе формы разом, отличие от близнеца — ровно предъявленный токен.
-	both := metadata.NewIncomingContext(fwdOnly, mergeIncoming(fwdOnly,
-		metadata.Pairs(presentedcred.MetadataKey, "Bearer "+raw)))
-	if _, _, err := runChain(t, chain, both); err == nil {
-		t.Fatal("обе формы личности в одном запросе приняты — неоднозначность о том, кто " +
-			"звонит, разрешена догадкой")
-	} else if st := status.Convert(err); st.Code() != codes.Unauthenticated ||
-		st.Message() != presentedcred.RefusalMessage || len(st.Proto().GetDetails()) != 0 {
-		t.Errorf("отказ отличим от остальных отказов семейства: код=%s текст=%q подробностей=%d",
-			st.Code(), st.Message(), len(st.Proto().GetDetails()))
 	}
 }
 

@@ -20,10 +20,16 @@ import (
 // interceptors observe "no metadata" rather than an empty MD. The metadata is
 // always .Copy()'d — the incoming map is never shared with the outgoing context,
 // so a later mutation on one side cannot leak into the other.
+//
+// АРЕНДАТОРСКОЕ УДОСТОВЕРЕНИЕ ЗА КРАЙ НЕ УЕЗЖАЕТ. Копия входящих метаданных
+// несла его наравне с личностью, поэтому всякий проксированный запрос отвечал на
+// вопрос «кто звонит» дважды. Снятие стоит здесь, в ОБЩЕМ узле, а не у каждого
+// перехода: разбор и решение по конструкциям сборки помимо узла — в шапке
+// credential_strip.go.
 func OutgoingFromIncoming(ctx context.Context) context.Context {
 	md, ok := metadata.FromIncomingContext(ctx)
 	if !ok {
 		return ctx
 	}
-	return metadata.NewOutgoingContext(ctx, md.Copy())
+	return metadata.NewOutgoingContext(ctx, StripPresentedCredential(md))
 }
