@@ -1,7 +1,15 @@
 # Copyright (c) PRO-Robotech
 # SPDX-License-Identifier: AGPL-3.0-or-later
 
-"""Test coverage.py against synthetic proto + collection."""
+"""Test coverage.py against synthetic proto + collection.
+
+КТО ЭТУ ПРОБУ ИСПОЛНЯЕТ: `.github/scripts/run-python-probes.py`. Состав он
+собирает ОБХОДОМ дерева по образцу `services/*/tests/newman/scripts/*_test.py` и
+НИ ОДИН файл проб по имени не называет — поэтому отдельного шага в конвейере файл
+не требует, а искать вызывающего предикатом `git grep <имя файла>` бесполезно:
+вызова по имени нет ни у кого. Код возврата при этом доезжает до вердикта шага.
+Проводку держит `tools/pythonprobes`.
+"""
 import json
 import subprocess
 import sys
