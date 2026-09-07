@@ -38,6 +38,28 @@ func declareDefaultlessKnob(t *testing.T, chartDir, templateLine string) {
 	writeChartFile(t, chartDir, "templates/service.yaml", tmpl+"\n"+templateLine+"\n")
 }
 
+// declareDefaultlessKnobViaHelper — тот же заведённый ключ, но названный ТЕЛОМ
+// именованного шаблона, а зовущий его шаблон получает величину переходом.
+//
+// Форма несущая: половины лежат в РАЗНЫХ файлах — путь значения называет тело,
+// пустоту узнаёт зовущий, — и распознаватель, читающий их порознь, видит
+// дословную подстановку на верном чарте. Случай существует ради обеих сторон:
+// переход под ветвью обязан молчать, тот же переход без ветви — краснеть.
+func declareDefaultlessKnobViaHelper(t *testing.T, chartDir, callerLine string) {
+	t.Helper()
+	values := readChartFile(t, chartDir, "values.yaml")
+	writeChartFile(t, chartDir, "values.yaml",
+		values+fmt.Sprintf("\n%s: \"\"\n", probeKnobPath))
+
+	helpers := readChartFile(t, chartDir, "templates/_helpers.tpl")
+	writeChartFile(t, chartDir, "templates/_helpers.tpl", helpers+fmt.Sprintf(
+		"\n{{- define \"kaname-svc.injectedProbe\" -}}\n{{- .Values.%s -}}\n{{- end -}}\n",
+		probeKnobPath))
+
+	tmpl := readChartFile(t, chartDir, "templates/service.yaml")
+	writeChartFile(t, chartDir, "templates/service.yaml", tmpl+"\n"+callerLine+"\n")
+}
+
 func TestDefaultlessKeysInjection(t *testing.T) {
 	cases := []chartFixtureCase{
 		{
@@ -80,6 +102,30 @@ func TestDefaultlessKeysInjection(t *testing.T) {
 			wantSubstring: probeKnobPath,
 		},
 	}
+
+	cases = append(cases,
+		chartFixtureCase{
+			// НОВАЯ ФОРМА, ОБРАТНАЯ СТОРОНА: переход в именованный шаблон стоит
+			// БЕЗ ветви, и пустоту не узнаёт никто. Без этого случая переход,
+			// добавленный в распознаватель, прощал бы всё, что через него идёт.
+			name: "путь назван телом именованного шаблона, переход без ветви — находка",
+			mutate: func(t *testing.T, chartDir string) {
+				declareDefaultlessKnobViaHelper(t, chartDir,
+					`  probe: {{ include "kaname-svc.injectedProbe" . }}`)
+			},
+			wantSubstring: probeKnobPath,
+		},
+		chartFixtureCase{
+			// ЗАКОННЫЙ БЛИЗНЕЦ той же формы: РОВНО ОДИН факт отличия — переход
+			// укрыт ветвью. Так отдаётся домен доверия, и на этом чарт верен.
+			name: "путь назван телом именованного шаблона, переход под ветвью — молчание",
+			mutate: func(t *testing.T, chartDir string) {
+				declareDefaultlessKnobViaHelper(t, chartDir,
+					"{{- with (include \"kaname-svc.injectedProbe\" .) }}\n  probe: {{ . }}\n{{- end }}")
+			},
+			wantSubstring: "",
+		},
+	)
 
 	// ЗАКОННЫЕ БЛИЗНЕЦЫ, по одному на форму. От случая выше каждый отличается
 	// РОВНО ОДНИМ фактом — формой, которой ключ укрыт.

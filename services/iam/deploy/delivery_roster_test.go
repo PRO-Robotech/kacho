@@ -66,6 +66,8 @@ import (
 // ПОРЯДОК — алфавитный, и он не несёт смысла: смысл несёт СОСТАВ.
 var deliveryRoster = []string{
 	"Chart.yaml",
+	"boot_guard_defaults_injection_test.go",
+	"boot_guard_defaults_test.go",
 	"defaultless_keys_injection_test.go",
 	"defaultless_keys_test.go",
 	"delivery_roster_test.go",
