@@ -11,8 +11,8 @@ import (
 	"google.golang.org/grpc/codes"
 	"google.golang.org/grpc/status"
 
+	quotav1 "github.com/PRO-Robotech/kacho/pkg/api/kacho/cloud/quota/v1"
 	storagev1 "github.com/PRO-Robotech/kacho/pkg/api/kacho/cloud/storage/v1"
-	iamv1 "github.com/PRO-Robotech/kacho/pkg/api/kaname/cloud/iam/v1"
 	"github.com/PRO-Robotech/kacho/pkg/quota/quotaread"
 	quotaband "github.com/PRO-Robotech/kacho/services/storage/internal/apps/kacho/shared/quota"
 )
@@ -94,7 +94,7 @@ func TestQuotaHandler_ListShowsTheCallersOwnLimitAndUsage(t *testing.T) {
 	require.EqualValues(t, 64, got.GetLimit())
 	require.EqualValues(t, 9, got.GetUsed(),
 		"потребление — половина ответа: без него предел не говорит арендатору, сколько у него осталось")
-	require.Equal(t, iamv1.Limit_PROJECT, got.GetSourceScope(),
+	require.Equal(t, quotav1.Quota_PROJECT, got.GetSourceScope(),
 		"источник величины отличает личное перекрытие от общего правила — иначе непонятно, кто её меняет")
 	require.Equal(t, "prj-mine", got.GetSourceScopeId())
 	require.Equal(t, quotaread.CarrierProject, got.GetCarrierType())

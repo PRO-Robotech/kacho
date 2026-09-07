@@ -21,7 +21,6 @@ import (
 	"google.golang.org/grpc/status"
 
 	quotav1 "github.com/PRO-Robotech/kacho/pkg/api/kacho/cloud/quota/v1"
-	iamv1 "github.com/PRO-Robotech/kacho/pkg/api/kaname/cloud/iam/v1"
 
 	"github.com/PRO-Robotech/kacho/pkg/quota/quotaread"
 )
@@ -95,15 +94,25 @@ func Quotas(states []quotaread.State) []*quotav1.Quota {
 // которую мы не смогли прочитать, значит выдавать незнание за факт. Пустой
 // перечислитель виден арендатору как «источник не назван» и отличим от всех трёх
 // законных областей.
-func Scope(s string) iamv1.Limit_Scope {
+//
+// ПЕРЕЧИСЛЕНИЕ — СВОЁ, а не заимствованное у службы доступа (задача #2117,
+// стадия S2). Имена и номера прежние, поэтому ни провод, ни JSON не изменились
+// ни на байт; изменилось направление зависимости: платформа больше не собирается
+// из контракта продукта, который из неё выносится.
+//
+// ЭТО ЕДИНСТВЕННОЕ МЕСТО ПЕРЕВОДА, и оно тотально по типу. Отсюда следует то,
+// ради чего прежде заимствовали чужое перечисление: область, которой этот
+// словарь не знает, не может быть переведена молча — она попадает в
+// `SCOPE_UNSPECIFIED` здесь, в одной функции, а не расходится по пяти доменам.
+func Scope(s string) quotav1.Quota_Scope {
 	switch s {
 	case "DEFAULT":
-		return iamv1.Limit_DEFAULT
+		return quotav1.Quota_DEFAULT
 	case "ACCOUNT":
-		return iamv1.Limit_ACCOUNT
+		return quotav1.Quota_ACCOUNT
 	case "PROJECT":
-		return iamv1.Limit_PROJECT
+		return quotav1.Quota_PROJECT
 	default:
-		return iamv1.Limit_SCOPE_UNSPECIFIED
+		return quotav1.Quota_SCOPE_UNSPECIFIED
 	}
 }

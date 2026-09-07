@@ -12,7 +12,7 @@ import (
 	"google.golang.org/grpc/status"
 
 	lbv1 "github.com/PRO-Robotech/kacho/pkg/api/kacho/cloud/loadbalancer/v1"
-	iamv1 "github.com/PRO-Robotech/kacho/pkg/api/kaname/cloud/iam/v1"
+	quotav1 "github.com/PRO-Robotech/kacho/pkg/api/kacho/cloud/quota/v1"
 	"github.com/PRO-Robotech/kacho/pkg/quota/quotaread"
 	quotaband "github.com/PRO-Robotech/kacho/services/nlb/internal/apps/kacho/quota"
 	"github.com/PRO-Robotech/kacho/services/nlb/internal/repo/kacho"
@@ -123,7 +123,7 @@ func TestHandler_ListShowsTheCallersOwnLimitAndUsage(t *testing.T) {
 	require.EqualValues(t, 16, got.GetLimit())
 	require.EqualValues(t, 2, got.GetUsed(),
 		"потребление — половина ответа: без него предел не говорит арендатору, сколько у него осталось")
-	require.Equal(t, iamv1.Limit_PROJECT, got.GetSourceScope(),
+	require.Equal(t, quotav1.Quota_PROJECT, got.GetSourceScope(),
 		"источник величины отличает личное перекрытие от общего правила — иначе непонятно, кто её меняет")
 	require.Equal(t, "prj-mine", got.GetSourceScopeId())
 	require.Equal(t, quotaread.CarrierProject, got.GetCarrierType())
