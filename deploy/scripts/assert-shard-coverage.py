@@ -522,19 +522,31 @@ def check(root: pathlib.Path, manifest_path: pathlib.Path, *,
     # То же для знаменателя предиката в прозе манифеста: «→ 0 при N коллекциях».
     # Числитель предиката прогоняется его автором; знаменатель — объём
     # осмотренного, и устаревший он говорит о полноте предиката неправду.
+    # Обход РЕКУРСИВНЫЙ, а не по верхнему уровню. Сегодня знаменатель в манифесте
+    # один и лежит наверху, поэтому перепись от этого не меняется — сказано
+    # затем, чтобы расширение не приняли за находку. Обход верхнего уровня был бы
+    # слепой зоной by construction: знаменатель, записанный в пояснении
+    # транспорта, не попал бы под наблюдение НИ КРАСНЫМ, НИ ЗЕЛЁНЫМ.
+    def _prose(node, path=""):
+        if isinstance(node, dict):
+            for k, v in node.items():
+                yield from _prose(v, f"{path}.{k}" if path else k)
+        elif isinstance(node, list):
+            for i, v in enumerate(node):
+                yield from _prose(v, f"{path}[{i}]")
+        elif isinstance(node, str):
+            yield path, node
+
     prose_totals = 0
-    for key, val in manifest.items():
-        for line in (val if isinstance(val, list) else [val]) if isinstance(val, (list, str)) else []:
-            if not isinstance(line, str):
-                continue
-            m = PROSE_TOTAL.search(line)
-            if m:
-                prose_totals += 1
-                if int(m.group("total")) != tree_total:
-                    findings.append(
-                        f"поле '{key}': предикат объявляет знаменатель {m.group('total')} "
-                        f"коллекций, в дереве {tree_total} — объём осмотренного назван "
-                        f"неверно, и полнота предиката читается шире, чем есть")
+    for where, line in _prose(manifest):
+        m = PROSE_TOTAL.search(line)
+        if m:
+            prose_totals += 1
+            if int(m.group("total")) != tree_total:
+                findings.append(
+                    f"поле '{where}': предикат объявляет знаменатель {m.group('total')} "
+                    f"коллекций, в дереве {tree_total} — объём осмотренного назван "
+                    f"неверно, и полнота предиката читается шире, чем есть")
 
     # Поперечный домен НАЗЫВАЕТСЯ переписью: у него нет своего сервиса, и
     # «на каком шарде он измеряется» иначе восстанавливается только чтением
@@ -1049,6 +1061,20 @@ def _self_test() -> int:
     m = copy.deepcopy(base)
     m["_uif"] = [ln.replace("при 98 коллекциях", "при 7 коллекциях") for ln in m["_uif"]]
     run(m, "(т7) знаменатель предиката разошёлся с деревом", want_red=True,
+        expect="объём осмотренного назван неверно")
+
+    # (т8) СЛЕПАЯ ЗОНА, СНЯТАЯ РЕКУРСИВНЫМ ОБХОДОМ. Знаменатель, записанный не
+    # на верхнем уровне манифеста, а в пояснении вложенного объявления. Обход
+    # верхнего уровня не увидел бы его НИ КРАСНЫМ, НИ ЗЕЛЁНЫМ — то есть молчание
+    # было бы свойством разборщика. Сегодня такого знаменателя в дереве нет,
+    # поэтому перепись расширение не меняет; способность его увидеть держит
+    # ЭТА инъекция, а не наличие предмета.
+    m = copy.deepcopy(base)
+    m["optional_transports"] = dict(m["optional_transports"])
+    first = sorted(m["optional_transports"])[0]
+    m["optional_transports"][first] = dict(m["optional_transports"][first],
+                                           why="набирают его при 7 коллекциях")
+    run(m, "(т8) знаменатель в ГЛУБИНЕ манифеста тоже судится", want_red=True,
         expect="объём осмотренного назван неверно")
 
     print("\n=== самопроверка предиката популяции (синтетическое дерево) ===")
