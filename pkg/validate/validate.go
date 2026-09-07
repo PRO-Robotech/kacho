@@ -5,7 +5,7 @@
 // сервисов (Folder.Name, Network.Name, Subnet.Name и т. п.).
 //
 // Все валидаторы возвращают gRPC ошибку `InvalidArgument` с
-// `BadRequest.field_violations[]` через `kacho-corelib/errors.InvalidArgument()`.
+// `BadRequest.field_violations[]` через `pkg/errors.InvalidArgument()`.
 //
 // Контракт валидации полей:
 //   - Name: единственная форма имени ресурса в дереве — DNS label по RFC 1123,

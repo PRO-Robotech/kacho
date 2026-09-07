@@ -100,7 +100,11 @@ type InterceptorOptions struct {
 
 // Interceptor реализует gRPC unary + stream interceptor'ы.
 //
-// Использование (composition root, напр `kacho-vpc/cmd/kacho-vpc/main.go`):
+// Собирает его НОСИТЕЛЬ (`pkg/servicehost/serve.go`), а не композиционный
+// корень сервиса: сервис объявляет источник решения полем дескриптора, и
+// носитель по нему либо берёт клиента у владельца модели, либо набирает соседа
+// по объявленному ребру. Здесь стояла координата в дереве отдельного сервиса —
+// такого файла нет, и ручной сборки цепочки в сервисах тоже нет:
 //
 //	authzIntr := authz.NewInterceptor(authz.InterceptorOptions{...})
 //	grpc.NewServer(

@@ -74,25 +74,43 @@
 //   - `KACHO_<SVC>_AUTHZ__BREAKGLASS=true` env (dev/break-glass) → bypass Check
 //   - WARN log (rate-limited) + Prometheus alert.
 //
-// # Decoupling от kacho-proto
+// # Фундамент не зависит от контракта службы доступа
 //
-// Пакет НЕ импортирует kacho-proto stubs (см. corelib go.mod — нет ребра
-// build-зависимости). Вместо этого определяет узкий port-интерфейс CheckClient:
+// Пакет НЕ импортирует стабы контракта. Вместо этого он определяет узкий
+// port-интерфейс CheckClient:
 //
 //	type CheckClient interface {
 //	    Check(ctx context.Context, subjectID, relation, object string) (allowed bool, err error)
 //	}
 //
-// Реализация (gRPC client к InternalIAMService.Check) живет в кliente-side
-// adapter'е (например `kacho-vpc/internal/clients/iam_authz_client.go`),
-// который импортирует kacho-proto stubs и реализует authz.CheckClient.
+// Это не украшение слоёв: после разъезда на три модуля такая зависимость дала бы
+// ЦИКЛ — фундамент потребовал бы службу доступа, которая уже требует фундамент, —
+// и Go такой граф не собирает.
+//
+// Реализация (gRPC-клиент к `InternalIAMService.Check`) живёт в адаптере
+// `pkg/authz/authziam`: он импортирует стабы контракта и реализует
+// authz.CheckClient. Каталог объявлен классом `kaname` в карте расщеплений гейта
+// границы фундамента (`internal/repohygiene/foundationboundary.go`) — контракт
+// остаётся у того, кто его реализует.
+//
+// Здесь дважды стояла координата в дереве ОТДЕЛЬНОГО сервиса
+// (`…/internal/clients/iam_authz_client.go`) и имя прежнего репозитория
+// контрактов. Ни того, ни другого в дереве нет: адаптер был один и уехал в
+// носитель, а оттуда — в каталог выше. Правку 534996d979 откатил массовый
+// переезд контракта d46aaa7280, сделанный на отставшей копии; поэтому вместе с
+// текстом заведена проверка, которая назовёт следующий такой откат сама —
+// `internal/repohygiene` `TestFoundationProseNamesNoPolyrepoCoordinate`.
 //
 // # Файлы пакета
 //
 //   - types.go            — RPCMap / Decision / типы
 //   - cache.go            — TTL=5s positive-only кэш + LISTEN-invalidate hook
 //   - interceptor.go      — gRPC unary/stream interceptor
-//   - check_client.go     — port-интерфейс CheckClient + composition helper
+//   - check_client.go     — port-интерфейс CheckClient, CheckClientFunc и
+//     CheckClientFrom (сборщик решателя из соединения; его приносит сервис
+//     полем дескриптора, потому что перевод в чужой контракт фундаменту не
+//     принадлежит)
+//   - authziam/           — единственный адаптер порта к контракту владельца
 //   - rate_limiter.go     — token-bucket per-Principal на denied-storm
 //   - listen_invalidate.go — pgx LISTEN-loop, инвалидирующий cache на NOTIFY
 //   - authzmetrics/        — коллектор величин звена и его окна вердиктов

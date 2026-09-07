@@ -3,7 +3,7 @@
 
 package drainer_test
 
-// Integration tests for kacho-corelib/outbox/drainer.
+// Integration tests for pkg/outbox/drainer.
 //
 // Each test maps 1:1 to a Given-When-Then delivery scenario for the drainer.
 //

@@ -2,7 +2,7 @@
 // SPDX-License-Identifier: Apache-2.0
 
 // Package retry — конвенциональные обертки для повторов gRPC-вызовов с
-// экспоненциальным backoff. Поверх `kacho-corelib/backoff`.
+// экспоненциальным backoff. Поверх `pkg/backoff`.
 //
 // Использование в cross-service-клиентах:
 //
