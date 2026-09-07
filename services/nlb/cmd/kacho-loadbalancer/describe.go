@@ -26,6 +26,7 @@ import (
 	"github.com/prometheus/client_golang/prometheus"
 
 	"github.com/PRO-Robotech/kacho/pkg/authz"
+	"github.com/PRO-Robotech/kacho/pkg/authz/authziam"
 	"github.com/PRO-Robotech/kacho/pkg/authz/proxytuple"
 	coredb "github.com/PRO-Robotech/kacho/pkg/db"
 	"github.com/PRO-Robotech/kacho/pkg/grpcclient"
@@ -132,8 +133,11 @@ func describe(
 		TrustDomain:     servicecontract.Value(cfg.TrustDomain()),
 		TrustDomainKnob: "authz.trust-domain (env KACHO_NLB_AUTHZ__TRUST_DOMAIN)",
 
-		Authz:        servicecontract.AuthzViaIAM,
-		CheckEdge:    servicecontract.NewPeerEdge(checkAddr, checkCreds),
+		Authz:     servicecontract.AuthzViaIAM,
+		CheckEdge: servicecontract.NewPeerEdge(checkAddr, checkCreds),
+		// Перевод вопроса в контракт службы доступа приносит СЕРВИС: носитель
+		// принадлежит фундаменту и чужого контракта не знает (приёмка K3-1 §7.2).
+		PeerCheck:    authziam.NewCheckClient,
 		CacheWindow:  cfg.Authz.Cache.TTL,
 		ClientBudget: cfg.Authz.IAM.RequestTimeout,
 		// Приёмник величин кеша вердиктов: носитель строит кеш, а

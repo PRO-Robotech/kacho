@@ -29,12 +29,10 @@ import (
 	"testing"
 	"time"
 
-	"google.golang.org/grpc"
 	"google.golang.org/grpc/codes"
 	"google.golang.org/grpc/status"
 
 	subscriptionv1 "github.com/PRO-Robotech/kacho/pkg/api/kacho/cloud/subscription"
-	iamv1 "github.com/PRO-Robotech/kacho/pkg/api/kaname/cloud/iam/v1"
 	"github.com/PRO-Robotech/kacho/pkg/listnarrow"
 )
 
@@ -77,24 +75,23 @@ func (p *revocablePeer) callsOn(objectType string) int {
 }
 
 func (p *revocablePeer) BatchCheck(
-	_ context.Context, in *iamv1.BatchAuthorizeCheckRequest, _ ...grpc.CallOption,
-) (*iamv1.BatchAuthorizeCheckResponse, error) {
+	_ context.Context, checks []listnarrow.Check,
+) ([]bool, error) {
 	p.mu.Lock()
 	deny, fail := p.denyType, p.failType
-	for _, c := range in.GetChecks() {
-		p.calls[c.GetResource().GetType()]++
+	for _, c := range checks {
+		p.calls[c.ResourceType]++
 	}
 	p.mu.Unlock()
 
-	out := make([]*iamv1.AuthorizeCheckResponse, 0, len(in.GetChecks()))
-	for _, c := range in.GetChecks() {
-		t := c.GetResource().GetType()
-		if fail != "" && t == fail {
+	out := make([]bool, 0, len(checks))
+	for _, c := range checks {
+		if fail != "" && c.ResourceType == fail {
 			return nil, errors.New("модель не ответила")
 		}
-		out = append(out, &iamv1.AuthorizeCheckResponse{Allowed: t != deny})
+		out = append(out, c.ResourceType != deny)
 	}
-	return &iamv1.BatchAuthorizeCheckResponse{Responses: out}, nil
+	return out, nil
 }
 
 func revocableStand(t *testing.T, peer *revocablePeer) *stand {

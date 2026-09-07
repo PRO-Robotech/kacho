@@ -27,10 +27,8 @@ import (
 
 	"github.com/jackc/pgx/v5/pgxpool"
 	"github.com/stretchr/testify/require"
-	"google.golang.org/grpc"
 
 	computev1 "github.com/PRO-Robotech/kacho/pkg/api/kacho/cloud/compute/v1"
-	iamv1 "github.com/PRO-Robotech/kacho/pkg/api/kaname/cloud/iam/v1"
 	coredb "github.com/PRO-Robotech/kacho/pkg/db"
 	"github.com/PRO-Robotech/kacho/pkg/ids"
 	"github.com/PRO-Robotech/kacho/pkg/operations"
@@ -55,20 +53,18 @@ type batchCheckStub struct {
 	calls          int
 }
 
-func (s *batchCheckStub) BatchCheck(_ context.Context, in *iamv1.BatchAuthorizeCheckRequest, _ ...grpc.CallOption) (*iamv1.BatchAuthorizeCheckResponse, error) {
+func (s *batchCheckStub) BatchCheck(_ context.Context, checks []listnarrow.Check) ([]bool, error) {
 	s.calls++
-	out := &iamv1.BatchAuthorizeCheckResponse{
-		Responses: make([]*iamv1.AuthorizeCheckResponse, 0, len(in.GetChecks())),
-	}
-	for _, c := range in.GetChecks() {
+	out := make([]bool, 0, len(checks))
+	for _, c := range checks {
 		allowed := false
-		for _, id := range s.allowBySubject[c.GetSubject()] {
-			if id == c.GetResource().GetId() {
+		for _, id := range s.allowBySubject[c.Subject] {
+			if id == c.ResourceID {
 				allowed = true
 				break
 			}
 		}
-		out.Responses = append(out.Responses, &iamv1.AuthorizeCheckResponse{Allowed: allowed})
+		out = append(out, allowed)
 	}
 	return out, nil
 }

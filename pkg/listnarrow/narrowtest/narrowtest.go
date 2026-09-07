@@ -15,9 +15,6 @@ import (
 	"context"
 	"sync"
 
-	"google.golang.org/grpc"
-
-	iamv1 "github.com/PRO-Robotech/kacho/pkg/api/kaname/cloud/iam/v1"
 	"github.com/PRO-Robotech/kacho/pkg/listnarrow"
 	"github.com/PRO-Robotech/kacho/pkg/operations"
 )
@@ -62,18 +59,22 @@ type Peer struct {
 }
 
 // BatchCheck — см. listnarrow.AuthorizeClient.
-func (p *Peer) BatchCheck(_ context.Context, in *iamv1.BatchAuthorizeCheckRequest,
-	_ ...grpc.CallOption) (*iamv1.BatchAuthorizeCheckResponse, error) {
+//
+// Дублёр говорит теми же типами ФУНДАМЕНТА, что и порт: подставлять
+// сгенерированный контракт владельца ему больше не нужно, а фундаменту нельзя
+// (приёмка K3-1 §7.2). Ответ отдаётся В ПОРЯДКЕ ВОПРОСОВ и той же длины — то
+// есть ровно по контракту порта, а не снисходительнее его.
+func (p *Peer) BatchCheck(_ context.Context, checks []listnarrow.Check) ([]bool, error) {
 	p.mu.Lock()
 	p.Calls++
-	p.Checks += len(in.GetChecks())
-	for _, c := range in.GetChecks() {
-		p.Subject = c.GetSubject()
-		p.ResourceType = c.GetResource().GetType()
-		p.Action = c.GetAction()
-		p.IDs = append(p.IDs, c.GetResource().GetId())
-		if len(p.Relations) == 0 || p.Relations[len(p.Relations)-1] != c.GetRequiredRelation() {
-			p.Relations = append(p.Relations, c.GetRequiredRelation())
+	p.Checks += len(checks)
+	for _, c := range checks {
+		p.Subject = c.Subject
+		p.ResourceType = c.ResourceType
+		p.Action = c.Action
+		p.IDs = append(p.IDs, c.ResourceID)
+		if len(p.Relations) == 0 || p.Relations[len(p.Relations)-1] != c.RequiredRelation {
+			p.Relations = append(p.Relations, c.RequiredRelation)
 		}
 	}
 	err := p.Err
@@ -83,15 +84,15 @@ func (p *Peer) BatchCheck(_ context.Context, in *iamv1.BatchAuthorizeCheckReques
 	if err != nil {
 		return nil, err
 	}
-	out := make([]*iamv1.AuthorizeCheckResponse, 0, len(in.GetChecks()))
-	for _, c := range in.GetChecks() {
-		allowed := allowAll || allow[c.GetResource().GetId()]
+	out := make([]bool, 0, len(checks))
+	for _, c := range checks {
+		allowed := allowAll || allow[c.ResourceID]
 		if !allowed && allowRel != nil {
-			allowed = allowRel[c.GetResource().GetId()][c.GetRequiredRelation()]
+			allowed = allowRel[c.ResourceID][c.RequiredRelation]
 		}
-		out = append(out, &iamv1.AuthorizeCheckResponse{Allowed: allowed})
+		out = append(out, allowed)
 	}
-	return &iamv1.BatchAuthorizeCheckResponse{Responses: out}, nil
+	return out, nil
 }
 
 // relations — предикат дублёра: одно отношение чтения на все типы. Проба, которой

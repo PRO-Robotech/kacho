@@ -25,12 +25,10 @@ import (
 	"time"
 
 	"github.com/stretchr/testify/require"
-	"google.golang.org/grpc"
 	"google.golang.org/grpc/codes"
 	"google.golang.org/grpc/status"
 
 	computev1 "github.com/PRO-Robotech/kacho/pkg/api/kacho/cloud/compute/v1"
-	iamv1 "github.com/PRO-Robotech/kacho/pkg/api/kaname/cloud/iam/v1"
 	"github.com/PRO-Robotech/kacho/pkg/operations"
 
 	"github.com/PRO-Robotech/kacho/pkg/listnarrow"
@@ -85,27 +83,25 @@ type mockAuthCli struct {
 	lastRelation string
 }
 
-func (m *mockAuthCli) BatchCheck(_ context.Context, in *iamv1.BatchAuthorizeCheckRequest, _ ...grpc.CallOption) (*iamv1.BatchAuthorizeCheckResponse, error) {
+func (m *mockAuthCli) BatchCheck(_ context.Context, checks []listnarrow.Check) ([]bool, error) {
 	m.calls++
 	if m.err != nil {
 		return nil, m.err
 	}
-	out := &iamv1.BatchAuthorizeCheckResponse{
-		Responses: make([]*iamv1.AuthorizeCheckResponse, 0, len(in.GetChecks())),
-	}
-	for _, c := range in.GetChecks() {
-		m.lastAction = c.GetAction()
-		m.lastResType = c.GetResource().GetType()
-		m.lastRelation = c.GetRequiredRelation()
-		key := c.GetSubject() + "|" + c.GetResource().GetType() + "|" + c.GetAction()
+	out := make([]bool, 0, len(checks))
+	for _, c := range checks {
+		m.lastAction = c.Action
+		m.lastResType = c.ResourceType
+		m.lastRelation = c.RequiredRelation
+		key := c.Subject + "|" + c.ResourceType + "|" + c.Action
 		allowed := false
 		for _, id := range m.allowedByKey[key] {
-			if id == c.GetResource().GetId() {
+			if id == c.ResourceID {
 				allowed = true
 				break
 			}
 		}
-		out.Responses = append(out.Responses, &iamv1.AuthorizeCheckResponse{Allowed: allowed})
+		out = append(out, allowed)
 	}
 	return out, nil
 }
