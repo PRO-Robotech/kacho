@@ -74,6 +74,22 @@ spec:
           secret:
             secretName: {{ $tls.secretName | quote }}
         {{- end }}
+        {{- if $tls.clientSecretName }}
+        # МАТЕРИАЛ КЛИЕНТСКОЙ ЛИЧНОСТИ — ОТДЕЛЬНЫЙ ЛИСТ, А НЕ ТОТ ЖЕ САМЫЙ.
+        #
+        # Служба звонит САМА СЕБЕ: её собственные REST-фронты идут к её же
+        # gRPC-слушателю. Лист слушателя выписывается с назначением `server auth`
+        # и без `client auth`, а проверка клиентской цепи идёт именно этим
+        # назначением, — поэтому предъявить серверный лист нельзя ни при каком
+        # входе: рукопожатие обрывается предупреждением `bad certificate`, и
+        # фронт возвращает арендатору 503 (задача #2186).
+        #
+        # Секрет не объявлен — тома нет, посадка прежняя: dev-цепочка чарта
+        # материала TLS не называет вовсе.
+        - name: tls-client
+          secret:
+            secretName: {{ $tls.clientSecretName | quote }}
+        {{- end }}
       initContainers:
         # Миграции БД исполняет отдельный binary `kacho-migrator`
         # (cobra-based CLI), не subcommand основного.
@@ -136,6 +152,11 @@ spec:
             {{- if $tls.secretName }}
             - name: tls-server
               mountPath: {{ printf "%s/server" (required "tls.mountPath не задан при объявленном tls.secretName: путь монтирования обязан быть назван явно — иначе ручки рёбер называют файлы, которых в поде нет" $tls.mountPath) | quote }}
+              readOnly: true
+            {{- end }}
+            {{- if $tls.clientSecretName }}
+            - name: tls-client
+              mountPath: {{ printf "%s/client" (required "tls.mountPath не задан при объявленном tls.clientSecretName: путь монтирования обязан быть назван явно — иначе удостоверение исходящего вызова называет файл, которого в поде нет" $tls.mountPath) | quote }}
               readOnly: true
             {{- end }}
           env:

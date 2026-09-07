@@ -174,6 +174,10 @@ authn:
 # Пути в карте `env` ниже обязаны лежать под ним — это утверждает проба.
 tls:
   secretName: kaname-server-tls
+  # Клиентская личность службы: тем, чем она представляется, когда звонит сама.
+  # Оператор заводит объект Secret тем же внутренним удостоверяющим центром, что
+  # и серверный, но с назначением `client auth`.
+  clientSecretName: kaname-client-tls
 
 # ── ВЕЛИЧИНЫ ИЗ СЕКРЕТА ─────────────────────────────────────────────────────
 #
@@ -255,10 +259,16 @@ env:
   # обычный клиент: широкого допуска он не получает и в круг разрешённых
   # отправителей личности не вносится. Единственное, чем запрос, пришедший через
   # фронт, называет субъекта, — предъявленное арендатором удостоверение.
+  # ПУТИ — НА КЛИЕНТСКИЙ ЛИСТ, а не на серверный. Здесь стоял `server/`, и это
+  # был не недосмотр в одно слово: серверный лист выписан БЕЗ `client auth`,
+  # слушатель проверяет клиентскую цепь именно этим назначением, поэтому
+  # рукопожатие обрывалось предупреждением `bad certificate` — и фронт возвращал
+  # арендатору `503 {"code":14,… "tls: bad certificate"}` на КАЖДОМ запросе,
+  # доходившем до обработчика (задача #2186).
   KANAME_REST_UPSTREAM_MTLS_ENABLE: "true"
-  KANAME_REST_UPSTREAM_MTLS_CERTFILE: /etc/kaname/tls/server/tls.crt
-  KANAME_REST_UPSTREAM_MTLS_KEYFILE: /etc/kaname/tls/server/tls.key
-  KANAME_REST_UPSTREAM_MTLS_CAFILES: /etc/kaname/tls/server/ca.crt
+  KANAME_REST_UPSTREAM_MTLS_CERTFILE: /etc/kaname/tls/client/tls.crt
+  KANAME_REST_UPSTREAM_MTLS_KEYFILE: /etc/kaname/tls/client/tls.key
+  KANAME_REST_UPSTREAM_MTLS_CAFILES: /etc/kaname/tls/client/ca.crt
   KANAME_REGISTRYTOKEN_SERVER_MTLS_ENABLE: "true"
   KANAME_REGISTRYTOKEN_SERVER_MTLS_CERTFILE: /etc/kaname/tls/server/tls.crt
   KANAME_REGISTRYTOKEN_SERVER_MTLS_KEYFILE: /etc/kaname/tls/server/tls.key
