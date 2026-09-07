@@ -21,7 +21,7 @@ option go_package = "github.com/PRO-Robotech/kacho/pkg/api/kacho/cloud/registry/
 // через iam.ProjectService.Get на Create). Owner-иерархия в FGA пишется через
 // fga-proxy (RegisterResource), object-type `registry_registry`.
 message Registry {
-  // ID реестра. Prefix "reg" (kacho-corelib/ids.NewID). Immutable PK.
+  // ID реестра. Prefix "reg" (pkg/ids.NewID). Immutable PK.
   string id = 1;
 
   // ID project-владельца (iam). Immutable после Create.
