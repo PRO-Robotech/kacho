@@ -117,6 +117,7 @@ deploy/scripts/assert-legacy-issuer-acceptance-has-a-subject.py
 deploy/scripts/assert-machine-minter-has-no-dead-exchange-lane.py
 deploy/scripts/assert-metrics-surfaces-answer.sh
 deploy/scripts/assert-outbox-autovacuum.sh
+deploy/scripts/assert-own-front-address-is-read.py
 deploy/scripts/assert-posture-branches-can-be-taken.py
 deploy/scripts/assert-refusal-lane-has-a-reader.py
 deploy/scripts/assert-report-readers-use-the-summary.py
@@ -131,6 +132,7 @@ deploy/scripts/classify-integration-outcome.sh
 deploy/scripts/classify-pg-outside-selection.sh
 deploy/scripts/gen-managed-image-pins.sh
 deploy/scripts/helm-umbrella-deps.sh
+deploy/scripts/own-rest-front-address.py
 deploy/scripts/remeasure-provider-listener-tls.sh
 deploy/scripts/run-injection-proofs.sh
 deploy/scripts/stand-provenance.sh

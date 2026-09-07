@@ -84,6 +84,14 @@ HYDRA_PORT="${HYDRA_PUBLIC_PORT:-14444}"   # OAuth2 token endpoint (production-p
 # а не о поведении. Оба адресата — ЯДРО (iam), то есть есть на каждом стенде.
 IAM_JWKS_PORT="${IAM_JWKS_PORT:-19097}"         # iam JWKS-proxy :9097 (server-TLS)
 IAM_REGTOKEN_PORT="${IAM_REGTOKEN_PORT:-19096}" # iam docker-token handle :9096 (server-TLS)
+# СОБСТВЕННЫЕ REST-ФРОНТЫ СЛУЖБЫ. Здесь объявляется ТОЛЬКО локальный порт
+# проброса — то, что принадлежит этой машине. Порт слушателя, его ТРАНСПОРТ и имя
+# Service объявляет ПОСАДКА и читаются они у неё (own-rest-front-address.py):
+# выписанные здесь литералом, они разошлись бы с чартом молча. Транспорт тут не
+# формальность — на стенде разработки фронты открыты, на боевой посадке под TLS,
+# и обращение открытым текстом к слушателю под TLS ответа не даёт вовсе.
+OWN_REST_PORT="${OWN_REST_PORT:-19098}"                   # собственный публичный REST-фронт
+OWN_INTERNAL_REST_PORT="${OWN_INTERNAL_REST_PORT:-19099}" # собственный внутренний REST-фронт
 # Адрес data plane реестра здесь БОЛЬШЕ НЕ ОБЪЯВЛЯЕТСЯ: его адресат — компонент,
 # а не ядро, и порт вместе с портовой ручкой живёт в deploy/e2e-shards.json
 # (`optional_transports`), откуда его читает цикл ниже. Объявлять его и здесь
@@ -171,6 +179,41 @@ kubectl -n "$NS" port-forward svc/kacho-umbrella-hydra-admin-tls "$HYDRA_ADMIN_P
 # проброс останавливает прогон тем же блоком ниже, а не отдаёт «кейс не смог».
 kubectl -n "$NS" port-forward svc/kaname-internal "$IAM_JWKS_PORT:9097" >/tmp/e2e-pp-iam-jwks.log 2>&1 & PF_PIDS+=($!); PF_WHAT+=("$IAM_JWKS_PORT|iam JWKS-proxy (:9097)|/tmp/e2e-pp-iam-jwks.log")
 kubectl -n "$NS" port-forward svc/kaname "$IAM_REGTOKEN_PORT:9096" >/tmp/e2e-pp-iam-regtoken.log 2>&1 & PF_PIDS+=($!); PF_WHAT+=("$IAM_REGTOKEN_PORT|iam docker-token handle (:9096)|/tmp/e2e-pp-iam-regtoken.log")
+
+# ─── СОБСТВЕННЫЕ REST-ФРОНТЫ: АДРЕС ЧИТАЕТСЯ У ПОСАДКИ, А НЕ ВЫПИСЫВАЕТСЯ ────
+#
+# Кейсы `kaname-own-rest-front` спрашивают СОБСТВЕННУЮ поверхность службы, а не
+# край платформы. Подставить сюда адрес края — хуже красноты: кейс позеленеет,
+# проверив чужую поверхность, и будет утверждать о предмете, которого не касался.
+#
+# АДРЕС НЕ ВЫДУМЫВАЕТСЯ. Посадка фронта не объявила — переменная НЕ
+# инъектируется, проброс не открывается, и кейс сам скажет об этом ТРЕТЬИМ
+# ИСХОДОМ (gen.py::PRECONDITION_MARK → assert-suites-green.sh, код 3).
+#
+# Проброс попадает в PF_WHAT только когда он ОТКРЫТ: неразрешённый адрес — это
+# «условия нет», а не «проброс не встал», и объявить его ожидаемым значило бы
+# уронить прогон блоком живости на предмете, которого в этой посадке не бывает.
+OWN_FRONT_ENV_ARGS=()
+own_front_forward() {  # <public|internal> <локальный порт> <имя переменной проб>
+  local front="$1" local_port="$2" var="$3" addr scheme port svc
+  if ! addr="$(python3 "$SCRIPT_DIR/own-rest-front-address.py" "$front" --namespace "$NS")"; then
+    echo "[parallel] $var НЕ инъектируется: посадка адреса не дала — кейсы скажут «условие не создано» сами"
+    return 0
+  fi
+  scheme="${addr%%|*}"; port="$(echo "$addr" | cut -d'|' -f2)"; svc="${addr##*|}"
+  kubectl -n "$NS" port-forward "svc/$svc" "$local_port:$port" >"/tmp/e2e-pp-$var.log" 2>&1 &
+  PF_PIDS+=($!); PF_WHAT+=("$local_port|$var → svc/$svc (:$port, $scheme)|/tmp/e2e-pp-$var.log")
+  OWN_FRONT_ENV_ARGS+=(--env-var "$var=$scheme://127.0.0.1:$local_port")
+  echo "[parallel] собственный фронт: $var → svc/$svc :$port ($scheme) на 127.0.0.1:$local_port"
+}
+own_front_forward public   "$OWN_REST_PORT"           ownRestBaseUrl
+own_front_forward internal "$OWN_INTERNAL_REST_PORT"  ownInternalRestBaseUrl
+# Та же строка для волн, которые принимают набор аргументов ОДНОЙ строкой.
+OWN_FRONT_ENV_STR=""
+for _a in "${OWN_FRONT_ENV_ARGS[@]}"; do
+  case "$_a" in --env-var) continue ;; esac
+  OWN_FRONT_ENV_STR="$OWN_FRONT_ENV_STR --env-var $_a"
+done
 
 # ─── ПРОБРОСЫ К КОМПОНЕНТАМ — ОТКРЫВАЮТСЯ ПО СПРОСУ, А НЕ ВСЕГДА ─────────────
 #
@@ -465,6 +508,7 @@ launch_wave() {  # $@ = суиты волны; одновременно испо
         --env-var "iamJwksBaseUrl=https://127.0.0.1:$IAM_JWKS_PORT" \
         --env-var "providerPublicBaseUrl=http://localhost:$HYDRA_PORT" \
         --env-var "iamRegistryTokenBaseUrl=https://127.0.0.1:$IAM_REGTOKEN_PORT" \
+        "${OWN_FRONT_ENV_ARGS[@]}" \
         "${OPT_ENV_ARR[@]}" \
         >"$d/out/suite.log" 2>&1; echo "$?" > "$d/out/suite.rc" ) &
     SUITE_PID[$svc]=$!
@@ -530,7 +574,7 @@ if [ "$FAILCLOSED_WAVE" = "true" ] && [[ " $SERVICES " == *" iam "* ]] && [ -f "
   # оставляет out/authz-failclosed.json, по которому вердикт вынесет гейт.
   if ( cd "$REPO_ROOT/services/iam/tests/newman" \
         && env SETUP_NS="$NS" DELAY="$DELAY" \
-           EXTRA_NEWMAN_ARGS="--env-var baseUrl=http://localhost:$GW_PORT --env-var internalBaseUrl=http://localhost:$GW_INTERNAL_PORT --env-var externalBaseUrl=https://127.0.0.1:$GW_TLS_PORT --env-var iamJwksBaseUrl=https://127.0.0.1:$IAM_JWKS_PORT --env-var providerPublicBaseUrl=http://localhost:$HYDRA_PORT --env-var iamRegistryTokenBaseUrl=https://127.0.0.1:$IAM_REGTOKEN_PORT$OPT_ENV_ARGS" \
+           EXTRA_NEWMAN_ARGS="--env-var baseUrl=http://localhost:$GW_PORT --env-var internalBaseUrl=http://localhost:$GW_INTERNAL_PORT --env-var externalBaseUrl=https://127.0.0.1:$GW_TLS_PORT --env-var iamJwksBaseUrl=https://127.0.0.1:$IAM_JWKS_PORT --env-var providerPublicBaseUrl=http://localhost:$HYDRA_PORT --env-var iamRegistryTokenBaseUrl=https://127.0.0.1:$IAM_REGTOKEN_PORT$OWN_FRONT_ENV_STR$OPT_ENV_ARGS" \
            bash "$FAILCLOSED_SH" ); then
     echo "===== [failclosed] GREEN ====="
   else
@@ -606,7 +650,7 @@ if [[ " $SERVICES " == *" iam "* ]] && [ -f "$CEREMONY_SH" ] && [ -f "$CEREMONY_
              HYDRA_PUBLIC_URL="http://localhost:$HYDRA_PORT" \
              HYDRA_ADMIN_URL="https://localhost:$HYDRA_ADMIN_PORT" \
              IAM_INTERNAL_GRPC="localhost:$IAM_INTERNAL_PORT" "${MTLS_ENV[@]}" \
-             EXTRA_NEWMAN_ARGS="--env-var baseUrl=http://localhost:$GW_PORT --env-var internalBaseUrl=http://localhost:$GW_INTERNAL_PORT --env-var externalBaseUrl=https://127.0.0.1:$GW_TLS_PORT --env-var iamJwksBaseUrl=https://127.0.0.1:$IAM_JWKS_PORT --env-var providerPublicBaseUrl=http://localhost:$HYDRA_PORT --env-var iamRegistryTokenBaseUrl=https://127.0.0.1:$IAM_REGTOKEN_PORT$OPT_ENV_ARGS" \
+             EXTRA_NEWMAN_ARGS="--env-var baseUrl=http://localhost:$GW_PORT --env-var internalBaseUrl=http://localhost:$GW_INTERNAL_PORT --env-var externalBaseUrl=https://127.0.0.1:$GW_TLS_PORT --env-var iamJwksBaseUrl=https://127.0.0.1:$IAM_JWKS_PORT --env-var providerPublicBaseUrl=http://localhost:$HYDRA_PORT --env-var iamRegistryTokenBaseUrl=https://127.0.0.1:$IAM_REGTOKEN_PORT$OWN_FRONT_ENV_STR$OPT_ENV_ARGS" \
              bash "$CEREMONY_SH" ); then
       echo "===== [ceremony] GREEN ====="
     else

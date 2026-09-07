@@ -71,6 +71,9 @@
               ]
             }
           },
+          "protocolProfileBehavior": {
+            "strictSSL": false
+          },
           "event": [
             {
               "listen": "prerequest",
@@ -93,7 +96,7 @@
                   "if (__cfgUrl) {",
                   "  pm.request.url = __cfgUrl + pm.variables.replaceIn('/iam/v1/accounts/{{existingAccountId}}');",
                   "} else {",
-                  "  pm.test('harness config: ownRestBaseUrl is set — собственный публичный REST-фронт службы; без него у поверхности нет адреса, и кейс проверял бы край платформы вместо предмета', () => {",
+                  "  pm.test('[УСЛОВИЕ НЕ СОЗДАНО] harness config: ownRestBaseUrl is set — собственный публичный REST-фронт службы; без него у поверхности нет адреса, и кейс проверял бы край платформы вместо предмета', () => {",
                   "    pm.expect.fail('ownRestBaseUrl is not set — the newman runner (deploy/scripts/newman-e2e.sh / newman-parallel.sh --env-var) did not inject it. This step cannot run, and a check that cannot run MUST NOT be silently dropped.');",
                   "  });",
                   "  pm.execution.skipRequest();",
@@ -176,6 +179,9 @@
               }
             }
           },
+          "protocolProfileBehavior": {
+            "strictSSL": false
+          },
           "event": [
             {
               "listen": "prerequest",
@@ -198,7 +204,7 @@
                   "if (__cfgUrl) {",
                   "  pm.request.url = __cfgUrl + pm.variables.replaceIn('/iam/v1/internal/iam:lookupSubject');",
                   "} else {",
-                  "  pm.test('harness config: ownRestBaseUrl is set — собственный публичный REST-фронт службы; без него у поверхности нет адреса, и кейс проверял бы край платформы вместо предмета', () => {",
+                  "  pm.test('[УСЛОВИЕ НЕ СОЗДАНО] harness config: ownRestBaseUrl is set — собственный публичный REST-фронт службы; без него у поверхности нет адреса, и кейс проверял бы край платформы вместо предмета', () => {",
                   "    pm.expect.fail('ownRestBaseUrl is not set — the newman runner (deploy/scripts/newman-e2e.sh / newman-parallel.sh --env-var) did not inject it. This step cannot run, and a check that cannot run MUST NOT be silently dropped.');",
                   "  });",
                   "  pm.execution.skipRequest();",
@@ -277,6 +283,9 @@
               }
             }
           },
+          "protocolProfileBehavior": {
+            "strictSSL": false
+          },
           "event": [
             {
               "listen": "prerequest",
@@ -299,7 +308,7 @@
                   "if (__cfgUrl) {",
                   "  pm.request.url = __cfgUrl + pm.variables.replaceIn('/iam/v1/internal/iam:lookupSubject');",
                   "} else {",
-                  "  pm.test('harness config: ownInternalRestBaseUrl is set — собственный внутренний REST-фронт службы; без него пара «тот же путь на соседнем фронте» распадается, и любой 404 на публичном фронте становится неотличим от мёртвого слушателя', () => {",
+                  "  pm.test('[УСЛОВИЕ НЕ СОЗДАНО] harness config: ownInternalRestBaseUrl is set — собственный внутренний REST-фронт службы; без него пара «тот же путь на соседнем фронте» распадается, и любой 404 на публичном фронте становится неотличим от мёртвого слушателя', () => {",
                   "    pm.expect.fail('ownInternalRestBaseUrl is not set — the newman runner (deploy/scripts/newman-e2e.sh / newman-parallel.sh --env-var) did not inject it. This step cannot run, and a check that cannot run MUST NOT be silently dropped.');",
                   "  });",
                   "  pm.execution.skipRequest();",
@@ -374,6 +383,9 @@
               ]
             }
           },
+          "protocolProfileBehavior": {
+            "strictSSL": false
+          },
           "event": [
             {
               "listen": "prerequest",
@@ -396,7 +408,7 @@
                   "if (__cfgUrl) {",
                   "  pm.request.url = __cfgUrl + pm.variables.replaceIn('/iam/v1/zzz-no-such-collection');",
                   "} else {",
-                  "  pm.test('harness config: ownRestBaseUrl is set — собственный публичный REST-фронт службы; без него у поверхности нет адреса, и кейс проверял бы край платформы вместо предмета', () => {",
+                  "  pm.test('[УСЛОВИЕ НЕ СОЗДАНО] harness config: ownRestBaseUrl is set — собственный публичный REST-фронт службы; без него у поверхности нет адреса, и кейс проверял бы край платформы вместо предмета', () => {",
                   "    pm.expect.fail('ownRestBaseUrl is not set — the newman runner (deploy/scripts/newman-e2e.sh / newman-parallel.sh --env-var) did not inject it. This step cannot run, and a check that cannot run MUST NOT be silently dropped.');",
                   "  });",
                   "  pm.execution.skipRequest();",
@@ -465,6 +477,9 @@
               ]
             }
           },
+          "protocolProfileBehavior": {
+            "strictSSL": false
+          },
           "event": [
             {
               "listen": "prerequest",
@@ -487,7 +502,7 @@
                   "if (__cfgUrl) {",
                   "  pm.request.url = __cfgUrl + pm.variables.replaceIn('/iam/v1/accounts');",
                   "} else {",
-                  "  pm.test('harness config: ownRestBaseUrl is set — собственный публичный REST-фронт службы; без него у поверхности нет адреса, и кейс проверял бы край платформы вместо предмета', () => {",
+                  "  pm.test('[УСЛОВИЕ НЕ СОЗДАНО] harness config: ownRestBaseUrl is set — собственный публичный REST-фронт службы; без него у поверхности нет адреса, и кейс проверял бы край платформы вместо предмета', () => {",
                   "    pm.expect.fail('ownRestBaseUrl is not set — the newman runner (deploy/scripts/newman-e2e.sh / newman-parallel.sh --env-var) did not inject it. This step cannot run, and a check that cannot run MUST NOT be silently dropped.');",
                   "  });",
                   "  pm.execution.skipRequest();",
@@ -559,6 +574,9 @@
               ]
             }
           },
+          "protocolProfileBehavior": {
+            "strictSSL": false
+          },
           "event": [
             {
               "listen": "prerequest",
@@ -571,7 +589,7 @@
                   "if (__cfgUrl) {",
                   "  pm.request.url = __cfgUrl + pm.variables.replaceIn('/iam/v1/accounts/{{existingAccountId}}');",
                   "} else {",
-                  "  pm.test('harness config: ownRestBaseUrl is set — собственный публичный REST-фронт службы; без него у поверхности нет адреса, и кейс проверял бы край платформы вместо предмета', () => {",
+                  "  pm.test('[УСЛОВИЕ НЕ СОЗДАНО] harness config: ownRestBaseUrl is set — собственный публичный REST-фронт службы; без него у поверхности нет адреса, и кейс проверял бы край платформы вместо предмета', () => {",
                   "    pm.expect.fail('ownRestBaseUrl is not set — the newman runner (deploy/scripts/newman-e2e.sh / newman-parallel.sh --env-var) did not inject it. This step cannot run, and a check that cannot run MUST NOT be silently dropped.');",
                   "  });",
                   "  pm.execution.skipRequest();",
@@ -639,6 +657,9 @@
               ]
             }
           },
+          "protocolProfileBehavior": {
+            "strictSSL": false
+          },
           "event": [
             {
               "listen": "prerequest",
@@ -651,7 +672,7 @@
                   "if (__cfgUrl) {",
                   "  pm.request.url = __cfgUrl + pm.variables.replaceIn('/iam/v1/accounts/{{existingAccountId}}');",
                   "} else {",
-                  "  pm.test('harness config: ownRestBaseUrl is set — собственный публичный REST-фронт службы; без него у поверхности нет адреса, и кейс проверял бы край платформы вместо предмета', () => {",
+                  "  pm.test('[УСЛОВИЕ НЕ СОЗДАНО] harness config: ownRestBaseUrl is set — собственный публичный REST-фронт службы; без него у поверхности нет адреса, и кейс проверял бы край платформы вместо предмета', () => {",
                   "    pm.expect.fail('ownRestBaseUrl is not set — the newman runner (deploy/scripts/newman-e2e.sh / newman-parallel.sh --env-var) did not inject it. This step cannot run, and a check that cannot run MUST NOT be silently dropped.');",
                   "  });",
                   "  pm.execution.skipRequest();",
@@ -723,6 +744,9 @@
               ]
             }
           },
+          "protocolProfileBehavior": {
+            "strictSSL": false
+          },
           "event": [
             {
               "listen": "prerequest",
@@ -745,7 +769,7 @@
                   "if (__cfgUrl) {",
                   "  pm.request.url = __cfgUrl + pm.variables.replaceIn('/iam/v1/authorize:whoAmI');",
                   "} else {",
-                  "  pm.test('harness config: ownRestBaseUrl is set — собственный публичный REST-фронт службы; без него у поверхности нет адреса, и кейс проверял бы край платформы вместо предмета', () => {",
+                  "  pm.test('[УСЛОВИЕ НЕ СОЗДАНО] harness config: ownRestBaseUrl is set — собственный публичный REST-фронт службы; без него у поверхности нет адреса, и кейс проверял бы край платформы вместо предмета', () => {",
                   "    pm.expect.fail('ownRestBaseUrl is not set — the newman runner (deploy/scripts/newman-e2e.sh / newman-parallel.sh --env-var) did not inject it. This step cannot run, and a check that cannot run MUST NOT be silently dropped.');",
                   "  });",
                   "  pm.execution.skipRequest();",
@@ -823,6 +847,9 @@
               ]
             }
           },
+          "protocolProfileBehavior": {
+            "strictSSL": false
+          },
           "event": [
             {
               "listen": "prerequest",
@@ -845,7 +872,7 @@
                   "if (__cfgUrl) {",
                   "  pm.request.url = __cfgUrl + pm.variables.replaceIn('/iam/v1/accounts?pageToken=not-a-cursor');",
                   "} else {",
-                  "  pm.test('harness config: ownRestBaseUrl is set — собственный публичный REST-фронт службы; без него у поверхности нет адреса, и кейс проверял бы край платформы вместо предмета', () => {",
+                  "  pm.test('[УСЛОВИЕ НЕ СОЗДАНО] harness config: ownRestBaseUrl is set — собственный публичный REST-фронт службы; без него у поверхности нет адреса, и кейс проверял бы край платформы вместо предмета', () => {",
                   "    pm.expect.fail('ownRestBaseUrl is not set — the newman runner (deploy/scripts/newman-e2e.sh / newman-parallel.sh --env-var) did not inject it. This step cannot run, and a check that cannot run MUST NOT be silently dropped.');",
                   "  });",
                   "  pm.execution.skipRequest();",
@@ -907,6 +934,9 @@
               ]
             }
           },
+          "protocolProfileBehavior": {
+            "strictSSL": false
+          },
           "event": [
             {
               "listen": "prerequest",
@@ -929,7 +959,7 @@
                   "if (__cfgUrl) {",
                   "  pm.request.url = __cfgUrl + pm.variables.replaceIn('/iam/v1/accounts?pageToken=not-a-cursor');",
                   "} else {",
-                  "  pm.test('harness config: ownRestBaseUrl is set — собственный публичный REST-фронт службы; без него у поверхности нет адреса, и кейс проверял бы край платформы вместо предмета', () => {",
+                  "  pm.test('[УСЛОВИЕ НЕ СОЗДАНО] harness config: ownRestBaseUrl is set — собственный публичный REST-фронт службы; без него у поверхности нет адреса, и кейс проверял бы край платформы вместо предмета', () => {",
                   "    pm.expect.fail('ownRestBaseUrl is not set — the newman runner (deploy/scripts/newman-e2e.sh / newman-parallel.sh --env-var) did not inject it. This step cannot run, and a check that cannot run MUST NOT be silently dropped.');",
                   "  });",
                   "  pm.execution.skipRequest();",
@@ -1006,6 +1036,9 @@
               }
             }
           },
+          "protocolProfileBehavior": {
+            "strictSSL": false
+          },
           "event": [
             {
               "listen": "prerequest",
@@ -1028,7 +1061,7 @@
                   "if (__cfgUrl) {",
                   "  pm.request.url = __cfgUrl + pm.variables.replaceIn('/iam/v1/groups');",
                   "} else {",
-                  "  pm.test('harness config: ownRestBaseUrl is set — собственный публичный REST-фронт службы; без него у поверхности нет адреса, и кейс проверял бы край платформы вместо предмета', () => {",
+                  "  pm.test('[УСЛОВИЕ НЕ СОЗДАНО] harness config: ownRestBaseUrl is set — собственный публичный REST-фронт службы; без него у поверхности нет адреса, и кейс проверял бы край платформы вместо предмета', () => {",
                   "    pm.expect.fail('ownRestBaseUrl is not set — the newman runner (deploy/scripts/newman-e2e.sh / newman-parallel.sh --env-var) did not inject it. This step cannot run, and a check that cannot run MUST NOT be silently dropped.');",
                   "  });",
                   "  pm.execution.skipRequest();",
@@ -1094,6 +1127,9 @@
               ]
             }
           },
+          "protocolProfileBehavior": {
+            "strictSSL": false
+          },
           "event": [
             {
               "listen": "prerequest",
@@ -1116,7 +1152,7 @@
                   "if (__cfgUrl) {",
                   "  pm.request.url = __cfgUrl + pm.variables.replaceIn('/operations/{{ownRestOpId}}');",
                   "} else {",
-                  "  pm.test('harness config: ownRestBaseUrl is set — собственный публичный REST-фронт службы; без него у поверхности нет адреса, и кейс проверял бы край платформы вместо предмета', () => {",
+                  "  pm.test('[УСЛОВИЕ НЕ СОЗДАНО] harness config: ownRestBaseUrl is set — собственный публичный REST-фронт службы; без него у поверхности нет адреса, и кейс проверял бы край платформы вместо предмета', () => {",
                   "    pm.expect.fail('ownRestBaseUrl is not set — the newman runner (deploy/scripts/newman-e2e.sh / newman-parallel.sh --env-var) did not inject it. This step cannot run, and a check that cannot run MUST NOT be silently dropped.');",
                   "  });",
                   "  pm.execution.skipRequest();",
@@ -1230,6 +1266,9 @@
               ]
             }
           },
+          "protocolProfileBehavior": {
+            "strictSSL": false
+          },
           "event": [
             {
               "listen": "prerequest",
@@ -1252,7 +1291,7 @@
                   "if (__cfgUrl) {",
                   "  pm.request.url = __cfgUrl + pm.variables.replaceIn('/iam/v1/accounts/{{accountBId}}');",
                   "} else {",
-                  "  pm.test('harness config: ownRestBaseUrl is set — собственный публичный REST-фронт службы; без него у поверхности нет адреса, и кейс проверял бы край платформы вместо предмета', () => {",
+                  "  pm.test('[УСЛОВИЕ НЕ СОЗДАНО] harness config: ownRestBaseUrl is set — собственный публичный REST-фронт службы; без него у поверхности нет адреса, и кейс проверял бы край платформы вместо предмета', () => {",
                   "    pm.expect.fail('ownRestBaseUrl is not set — the newman runner (deploy/scripts/newman-e2e.sh / newman-parallel.sh --env-var) did not inject it. This step cannot run, and a check that cannot run MUST NOT be silently dropped.');",
                   "  });",
                   "  pm.execution.skipRequest();",
@@ -1320,6 +1359,9 @@
               ]
             }
           },
+          "protocolProfileBehavior": {
+            "strictSSL": false
+          },
           "event": [
             {
               "listen": "prerequest",
@@ -1342,7 +1384,7 @@
                   "if (__cfgUrl) {",
                   "  pm.request.url = __cfgUrl + pm.variables.replaceIn('/iam/v1/accounts/accdeadbeefdeadbeef0');",
                   "} else {",
-                  "  pm.test('harness config: ownRestBaseUrl is set — собственный публичный REST-фронт службы; без него у поверхности нет адреса, и кейс проверял бы край платформы вместо предмета', () => {",
+                  "  pm.test('[УСЛОВИЕ НЕ СОЗДАНО] harness config: ownRestBaseUrl is set — собственный публичный REST-фронт службы; без него у поверхности нет адреса, и кейс проверял бы край платформы вместо предмета', () => {",
                   "    pm.expect.fail('ownRestBaseUrl is not set — the newman runner (deploy/scripts/newman-e2e.sh / newman-parallel.sh --env-var) did not inject it. This step cannot run, and a check that cannot run MUST NOT be silently dropped.');",
                   "  });",
                   "  pm.execution.skipRequest();",
@@ -1415,6 +1457,9 @@
               ]
             }
           },
+          "protocolProfileBehavior": {
+            "strictSSL": false
+          },
           "event": [
             {
               "listen": "prerequest",
@@ -1429,7 +1474,7 @@
                   "if (__cfgUrl) {",
                   "  pm.request.url = __cfgUrl + pm.variables.replaceIn('/iam/v1/accounts/{{existingAccountId}}');",
                   "} else {",
-                  "  pm.test('harness config: ownRestBaseUrl is set — собственный публичный REST-фронт службы; без него у поверхности нет адреса, и кейс проверял бы край платформы вместо предмета', () => {",
+                  "  pm.test('[УСЛОВИЕ НЕ СОЗДАНО] harness config: ownRestBaseUrl is set — собственный публичный REST-фронт службы; без него у поверхности нет адреса, и кейс проверял бы край платформы вместо предмета', () => {",
                   "    pm.expect.fail('ownRestBaseUrl is not set — the newman runner (deploy/scripts/newman-e2e.sh / newman-parallel.sh --env-var) did not inject it. This step cannot run, and a check that cannot run MUST NOT be silently dropped.');",
                   "  });",
                   "  pm.execution.skipRequest();",
@@ -1507,6 +1552,9 @@
               ]
             }
           },
+          "protocolProfileBehavior": {
+            "strictSSL": false
+          },
           "event": [
             {
               "listen": "prerequest",
@@ -1529,7 +1577,7 @@
                   "if (__cfgUrl) {",
                   "  pm.request.url = __cfgUrl + pm.variables.replaceIn('/iam/v1/accounts?pageSize=100000');",
                   "} else {",
-                  "  pm.test('harness config: ownRestBaseUrl is set — собственный публичный REST-фронт службы; без него у поверхности нет адреса, и кейс проверял бы край платформы вместо предмета', () => {",
+                  "  pm.test('[УСЛОВИЕ НЕ СОЗДАНО] harness config: ownRestBaseUrl is set — собственный публичный REST-фронт службы; без него у поверхности нет адреса, и кейс проверял бы край платформы вместо предмета', () => {",
                   "    pm.expect.fail('ownRestBaseUrl is not set — the newman runner (deploy/scripts/newman-e2e.sh / newman-parallel.sh --env-var) did not inject it. This step cannot run, and a check that cannot run MUST NOT be silently dropped.');",
                   "  });",
                   "  pm.execution.skipRequest();",
@@ -1591,6 +1639,9 @@
               ]
             }
           },
+          "protocolProfileBehavior": {
+            "strictSSL": false
+          },
           "event": [
             {
               "listen": "prerequest",
@@ -1613,7 +1664,7 @@
                   "if (__cfgUrl) {",
                   "  pm.request.url = __cfgUrl + pm.variables.replaceIn('/iam/v1/accounts?pageSize=100000');",
                   "} else {",
-                  "  pm.test('harness config: ownRestBaseUrl is set — собственный публичный REST-фронт службы; без него у поверхности нет адреса, и кейс проверял бы край платформы вместо предмета', () => {",
+                  "  pm.test('[УСЛОВИЕ НЕ СОЗДАНО] harness config: ownRestBaseUrl is set — собственный публичный REST-фронт службы; без него у поверхности нет адреса, и кейс проверял бы край платформы вместо предмета', () => {",
                   "    pm.expect.fail('ownRestBaseUrl is not set — the newman runner (deploy/scripts/newman-e2e.sh / newman-parallel.sh --env-var) did not inject it. This step cannot run, and a check that cannot run MUST NOT be silently dropped.');",
                   "  });",
                   "  pm.execution.skipRequest();",
@@ -1675,6 +1726,9 @@
               ]
             }
           },
+          "protocolProfileBehavior": {
+            "strictSSL": false
+          },
           "event": [
             {
               "listen": "prerequest",
@@ -1697,7 +1751,7 @@
                   "if (__cfgUrl) {",
                   "  pm.request.url = __cfgUrl + pm.variables.replaceIn('/iam/v1/accounts?pageSize=10');",
                   "} else {",
-                  "  pm.test('harness config: ownRestBaseUrl is set — собственный публичный REST-фронт службы; без него у поверхности нет адреса, и кейс проверял бы край платформы вместо предмета', () => {",
+                  "  pm.test('[УСЛОВИЕ НЕ СОЗДАНО] harness config: ownRestBaseUrl is set — собственный публичный REST-фронт службы; без него у поверхности нет адреса, и кейс проверял бы край платформы вместо предмета', () => {",
                   "    pm.expect.fail('ownRestBaseUrl is not set — the newman runner (deploy/scripts/newman-e2e.sh / newman-parallel.sh --env-var) did not inject it. This step cannot run, and a check that cannot run MUST NOT be silently dropped.');",
                   "  });",
                   "  pm.execution.skipRequest();",
@@ -1764,6 +1818,9 @@
               ]
             }
           },
+          "protocolProfileBehavior": {
+            "strictSSL": false
+          },
           "event": [
             {
               "listen": "prerequest",
@@ -1786,7 +1843,7 @@
                   "if (__cfgUrl) {",
                   "  pm.request.url = __cfgUrl + pm.variables.replaceIn('/operations/iopdeadbeefdeadbeef00');",
                   "} else {",
-                  "  pm.test('harness config: ownRestBaseUrl is set — собственный публичный REST-фронт службы; без него у поверхности нет адреса, и кейс проверял бы край платформы вместо предмета', () => {",
+                  "  pm.test('[УСЛОВИЕ НЕ СОЗДАНО] harness config: ownRestBaseUrl is set — собственный публичный REST-фронт службы; без него у поверхности нет адреса, и кейс проверял бы край платформы вместо предмета', () => {",
                   "    pm.expect.fail('ownRestBaseUrl is not set — the newman runner (deploy/scripts/newman-e2e.sh / newman-parallel.sh --env-var) did not inject it. This step cannot run, and a check that cannot run MUST NOT be silently dropped.');",
                   "  });",
                   "  pm.execution.skipRequest();",
@@ -1848,6 +1905,9 @@
               ]
             }
           },
+          "protocolProfileBehavior": {
+            "strictSSL": false
+          },
           "event": [
             {
               "listen": "prerequest",
@@ -1870,7 +1930,7 @@
                   "if (__cfgUrl) {",
                   "  pm.request.url = __cfgUrl + pm.variables.replaceIn('/operations/{{ownRestOpId}}');",
                   "} else {",
-                  "  pm.test('harness config: ownRestBaseUrl is set — собственный публичный REST-фронт службы; без него у поверхности нет адреса, и кейс проверял бы край платформы вместо предмета', () => {",
+                  "  pm.test('[УСЛОВИЕ НЕ СОЗДАНО] harness config: ownRestBaseUrl is set — собственный публичный REST-фронт службы; без него у поверхности нет адреса, и кейс проверял бы край платформы вместо предмета', () => {",
                   "    pm.expect.fail('ownRestBaseUrl is not set — the newman runner (deploy/scripts/newman-e2e.sh / newman-parallel.sh --env-var) did not inject it. This step cannot run, and a check that cannot run MUST NOT be silently dropped.');",
                   "  });",
                   "  pm.execution.skipRequest();",
@@ -1955,6 +2015,9 @@
               }
             }
           },
+          "protocolProfileBehavior": {
+            "strictSSL": false
+          },
           "event": [
             {
               "listen": "prerequest",
@@ -1977,7 +2040,7 @@
                   "if (__cfgUrl) {",
                   "  pm.request.url = __cfgUrl + pm.variables.replaceIn('/iam/v1/accounts/{{accountBId}}');",
                   "} else {",
-                  "  pm.test('harness config: ownRestBaseUrl is set — собственный публичный REST-фронт службы; без него у поверхности нет адреса, и кейс проверял бы край платформы вместо предмета', () => {",
+                  "  pm.test('[УСЛОВИЕ НЕ СОЗДАНО] harness config: ownRestBaseUrl is set — собственный публичный REST-фронт службы; без него у поверхности нет адреса, и кейс проверял бы край платформы вместо предмета', () => {",
                   "    pm.expect.fail('ownRestBaseUrl is not set — the newman runner (deploy/scripts/newman-e2e.sh / newman-parallel.sh --env-var) did not inject it. This step cannot run, and a check that cannot run MUST NOT be silently dropped.');",
                   "  });",
                   "  pm.execution.skipRequest();",
@@ -2045,6 +2108,9 @@
               ]
             }
           },
+          "protocolProfileBehavior": {
+            "strictSSL": false
+          },
           "event": [
             {
               "listen": "prerequest",
@@ -2067,7 +2133,7 @@
                   "if (__cfgUrl) {",
                   "  pm.request.url = __cfgUrl + pm.variables.replaceIn('/iam/v1/accounts/{{accountBId}}');",
                   "} else {",
-                  "  pm.test('harness config: ownRestBaseUrl is set — собственный публичный REST-фронт службы; без него у поверхности нет адреса, и кейс проверял бы край платформы вместо предмета', () => {",
+                  "  pm.test('[УСЛОВИЕ НЕ СОЗДАНО] harness config: ownRestBaseUrl is set — собственный публичный REST-фронт службы; без него у поверхности нет адреса, и кейс проверял бы край платформы вместо предмета', () => {",
                   "    pm.expect.fail('ownRestBaseUrl is not set — the newman runner (deploy/scripts/newman-e2e.sh / newman-parallel.sh --env-var) did not inject it. This step cannot run, and a check that cannot run MUST NOT be silently dropped.');",
                   "  });",
                   "  pm.execution.skipRequest();",

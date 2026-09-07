@@ -41,6 +41,13 @@ IAM_INTERNAL_PORT="${IAM_INTERNAL_PORT:-19091}"
 # о конфигурации, а не о поведении.
 IAM_JWKS_PORT="${IAM_JWKS_PORT:-19097}"         # iam JWKS-proxy :9097 (server-TLS)
 IAM_REGTOKEN_PORT="${IAM_REGTOKEN_PORT:-19096}" # iam docker-token handle :9096 (server-TLS)
+# СОБСТВЕННЫЕ REST-ФРОНТЫ СЛУЖБЫ. Здесь объявляется ТОЛЬКО локальный порт проброса —
+# то, что принадлежит этой машине. Порт слушателя, его транспорт и имя Service
+# объявляет ПОСАДКА, и читаются они у неё (own-rest-front-address.py): выписанные
+# здесь литералом, они разошлись бы с чартом молча, а прогон пошёл бы по прежнему
+# адресу и назвал бы чужой ответ ответом фронта.
+OWN_REST_PORT="${OWN_REST_PORT:-19098}"                 # собственный публичный REST-фронт
+OWN_INTERNAL_REST_PORT="${OWN_INTERNAL_REST_PORT:-19099}" # собственный внутренний REST-фронт
 # Порт data plane реестра здесь не объявляется: адресат — компонент, и порт вместе
 # с портовой ручкой живёт в deploy/e2e-shards.json (`optional_transports`).
 
@@ -96,6 +103,32 @@ kubectl -n "$NS" port-forward svc/kaname-internal "$IAM_JWKS_PORT:9097" >/tmp/e2
 PF_PIDS+=($!)
 kubectl -n "$NS" port-forward svc/kaname "$IAM_REGTOKEN_PORT:9096" >/tmp/e2e-pf-iam-regtoken.log 2>&1 &
 PF_PIDS+=($!)
+
+# ─── СОБСТВЕННЫЕ REST-ФРОНТЫ: АДРЕС ЧИТАЕТСЯ У ПОСАДКИ ──────────────────────
+#
+# Кейсы `kaname-own-rest-front` спрашивают СОБСТВЕННУЮ поверхность службы, а не
+# край платформы, и адресуются к ней своими переменными. Подставить сюда адрес
+# края — хуже красноты: кейс позеленеет, проверив чужую поверхность.
+#
+# АДРЕСА НЕ ВЫДУМЫВАЮТСЯ. Посадка фронта не объявила — переменная НЕ
+# инъектируется, и кейс сам скажет об этом ТРЕТЬИМ ИСХОДОМ
+# (gen.py::PRECONDITION_MARK → assert-suites-green.sh, код 3). Инъекция
+# «какого-нибудь» адреса превратила бы «условия нет» в вердикт о продукте.
+OWN_FRONT_ENV_ARGS=()
+own_front_forward() {  # <public|internal> <локальный порт> <имя переменной проб>
+  local front="$1" local_port="$2" var="$3" addr scheme port svc
+  if ! addr="$(python3 "$SCRIPT_DIR/own-rest-front-address.py" "$front" --namespace "$NS")"; then
+    echo "[e2e] $var НЕ инъектируется: посадка адреса не дала — кейсы скажут «условие не создано» сами"
+    return 0
+  fi
+  scheme="${addr%%|*}"; port="$(echo "$addr" | cut -d'|' -f2)"; svc="${addr##*|}"
+  kubectl -n "$NS" port-forward "svc/$svc" "$local_port:$port" >"/tmp/e2e-pf-$var.log" 2>&1 &
+  PF_PIDS+=($!)
+  OWN_FRONT_ENV_ARGS+=(--env-var "$var=$scheme://127.0.0.1:$local_port")
+  echo "[e2e] собственный фронт: $var → svc/$svc :$port ($scheme) на 127.0.0.1:$local_port"
+}
+own_front_forward public  "$OWN_REST_PORT"          ownRestBaseUrl
+own_front_forward internal "$OWN_INTERNAL_REST_PORT" ownInternalRestBaseUrl
 
 # ПРОБРОС К КОМПОНЕНТУ — ПО СПРОСУ, ТЕМ ЖЕ ПРЕДИКАТОМ, ЧТО У newman-parallel.sh.
 #
@@ -192,6 +225,7 @@ if [ -n "$COLLECTION" ]; then
     --env-var "iamJwksBaseUrl=https://127.0.0.1:$IAM_JWKS_PORT" \
     --env-var "providerPublicBaseUrl=http://localhost:${HYDRA_PUBLIC_PORT:-14444}" \
     --env-var "iamRegistryTokenBaseUrl=https://127.0.0.1:$IAM_REGTOKEN_PORT" \
+    "${OWN_FRONT_ENV_ARGS[@]}" \
     "${OPT_ENV_ARGS[@]}" \
     --delay-request 15 --reporters cli
 else
@@ -208,6 +242,7 @@ else
     --env-var "iamJwksBaseUrl=https://127.0.0.1:$IAM_JWKS_PORT" \
     --env-var "providerPublicBaseUrl=http://localhost:${HYDRA_PUBLIC_PORT:-14444}" \
     --env-var "iamRegistryTokenBaseUrl=https://127.0.0.1:$IAM_REGTOKEN_PORT" \
+    "${OWN_FRONT_ENV_ARGS[@]}" \
     "${OPT_ENV_ARGS[@]}"
   RAW_RC=$?
   set -e

@@ -1,6 +1,6 @@
 {
   "info": {
-    "_postman_id": "32a20c1a-7baa-5e8f-8cc4-a23cb4484e91",
+    "_postman_id": "0a3de741-a041-5289-9893-4c4ee1541d93",
     "name": "kaname / newman / iam-user",
     "schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json"
   },
@@ -3391,7 +3391,7 @@
                   "if (__cfgUrl) {",
                   "  pm.request.url = __cfgUrl + pm.variables.replaceIn('/iam/v1/internal/iam:check');",
                   "} else {",
-                  "  pm.test('harness config: internalBaseUrl is set — internal-only Check probe — /iam/v1/internal/* is served ONLY by the cluster-internal REST listener', () => {",
+                  "  pm.test('[УСЛОВИЕ НЕ СОЗДАНО] harness config: internalBaseUrl is set — internal-only Check probe — /iam/v1/internal/* is served ONLY by the cluster-internal REST listener', () => {",
                   "    pm.expect.fail('internalBaseUrl is not set — the newman runner (deploy/scripts/newman-e2e.sh / newman-parallel.sh --env-var) did not inject it. This step cannot run, and a check that cannot run MUST NOT be silently dropped.');",
                   "  });",
                   "  pm.execution.skipRequest();",
@@ -3506,7 +3506,7 @@
                   "if (__cfgUrl) {",
                   "  pm.request.url = __cfgUrl + pm.variables.replaceIn('/iam/v1/internal/iam:check');",
                   "} else {",
-                  "  pm.test('harness config: internalBaseUrl is set — internal-only Check probe — /iam/v1/internal/* is served ONLY by the cluster-internal REST listener', () => {",
+                  "  pm.test('[УСЛОВИЕ НЕ СОЗДАНО] harness config: internalBaseUrl is set — internal-only Check probe — /iam/v1/internal/* is served ONLY by the cluster-internal REST listener', () => {",
                   "    pm.expect.fail('internalBaseUrl is not set — the newman runner (deploy/scripts/newman-e2e.sh / newman-parallel.sh --env-var) did not inject it. This step cannot run, and a check that cannot run MUST NOT be silently dropped.');",
                   "  });",
                   "  pm.execution.skipRequest();",

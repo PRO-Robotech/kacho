@@ -1,6 +1,6 @@
 {
   "info": {
-    "_postman_id": "8e97f369-a622-5041-8286-1189743caa39",
+    "_postman_id": "b242ca08-dcf7-5cb1-95f6-9e66c6f5ad51",
     "name": "kaname / newman / iam-rbac-subjects",
     "schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json"
   },
@@ -5448,7 +5448,7 @@
                   "if (__cfgUrl) {",
                   "  pm.request.url = __cfgUrl + pm.variables.replaceIn('/iam/v1/internal/iam:check');",
                   "} else {",
-                  "  pm.test('harness config: internalBaseUrl is set — group-membership Check probe — Internal* path', () => {",
+                  "  pm.test('[УСЛОВИЕ НЕ СОЗДАНО] harness config: internalBaseUrl is set — group-membership Check probe — Internal* path', () => {",
                   "    pm.expect.fail('internalBaseUrl is not set — the newman runner (deploy/scripts/newman-e2e.sh / newman-parallel.sh --env-var) did not inject it. This step cannot run, and a check that cannot run MUST NOT be silently dropped.');",
                   "  });",
                   "  pm.execution.skipRequest();",
