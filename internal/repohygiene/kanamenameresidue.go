@@ -751,6 +751,41 @@ var KanameNameResidueStay = []NameResidueStay{
 		Reason: "отрицательный контроль: проба требует, чтобы канала прежнего имени в базе " +
 			"НЕ БЫЛО; сними имя — и утверждение станет вакуумным",
 	},
+	{
+		Path: "services/iam/internal/supplyhygiene/package_qualifier_test.go", Lane: laneObjectName, Count: 3,
+		Reason: "проверка КВАЛИФИКАТОРА пакета (#2130): отставленное имя — её ВХОД, без " +
+			"него у распознавателя нет предмета, а у находки нет координаты",
+	},
+	{
+		Path: "services/iam/internal/supplyhygiene/package_qualifier_test.go", Lane: borderUnknownForm, Count: 2,
+		Reason: "та же проверка: формы записи, которых держатель остатка не судит, названы " +
+			"в её шапке — иначе граница её собственной полосы неизвестна читателю",
+	},
+	{
+		Path: "services/iam/internal/supplyhygiene/package_qualifier_injection_test.go", Lane: laneObjectName, Count: 12,
+		Reason: "доказательство той проверки инъекцией: дефект вносится отставленным " +
+			"квалификатором, и он же стоит в законных близнецах, на которых она молчит",
+	},
+	{
+		Path: "services/iam/internal/supplyhygiene/package_qualifier_injection_test.go", Lane: laneDomainAddress, Count: 1,
+		Reason: "то же доказательство: имя DNS стенда — законный близнец, на котором " +
+			"проверка обязана молчать; снять его значит сделать близнеца вакуумным",
+	},
+	{
+		Path: "services/iam/internal/supplyhygiene/package_qualifier_injection_test.go", Lane: lanePlatformName, Count: 1,
+		Reason: "то же доказательство: имя платформы отдельным словом — ещё один близнец " +
+			"строчной полосы",
+	},
+	{
+		Path: "services/iam/internal/supplyhygiene/package_qualifier_injection_test.go", Lane: laneContractCoordinate, Count: 1,
+		Reason: "то же доказательство: пакет контракта платформы — близнец, по которому " +
+			"видно, что дискриминатор структурный, а не словарный",
+	},
+	{
+		Path: "services/iam/internal/supplyhygiene/package_qualifier_injection_test.go", Lane: borderUnknownForm, Count: 2,
+		Reason: "то же доказательство: формы вне полос держателя остатка, поданные как " +
+			"вход инъекции",
+	},
 }
 
 // KanameNameResidueDebt — ведомость ОСТАТКА по полосам.
@@ -817,6 +852,14 @@ var KanameNameResidueStay = []NameResidueStay{
 // приставка `kacho-<svc>` из пояснения к имени секрета: имя объекта 676→675
 // (243 файла — число файлов не изменилось, вхождение было не единственным в
 // своём файле). Число опускает ТО ЖЕ изменение, которое остаток сняло.
+//
+// Опустилась ещё раз тем же порядком: имя объекта 675→664 (243→236 файлов) —
+// #2130 снял одиннадцать вхождений прежнего КВАЛИФИКАТОРА пакета из семи файлов
+// службы. Полоса записи там вторая: держатель имён каталогов её не судит by
+// construction, поэтому её вёл собственный гейт
+// (`internal/supplyhygiene/package_qualifier_test.go`), а его вход и его
+// доказательство инъекцией внесены в ведомость решённого остаться выше — сама
+// проверка обязана называть то, что запрещает.
 var KanameNameResidueDebt = []NameResidueDebt{
 	{laneContractCoordinate, 449, 35, "#2133 — имя пакета контракта следует за продуктом (Р14)"},
 	{laneSchemaName, 2, 2, "#2128 — контракт называет схему в комментариях"},
@@ -829,7 +872,7 @@ var KanameNameResidueDebt = []NameResidueDebt{
 	{laneClusterAnchor, 95, 5, "#2113 и Р10 №3 — написание якоря; держатель соседний"},
 	{laneSchemaPrefixKin, 9, 7, "Р5 эпика #2076 — пространство метрик и канал уведомления"},
 	{laneDomainAddress, 577, 169, "Р10 №2 — домен доверия и адреса стенда"},
-	{laneObjectName, 675, 243, "Р3 эпика #2076 — витрина оператора"},
+	{laneObjectName, 664, 236, "Р3 эпика #2076 — витрина оператора"},
 	{laneBrandInText, 99, 76, "Р3 эпика #2076 — бренд в прозе и на клиентских страницах"},
 	{lanePlatformName, 616, 281, "Р3 эпика #2076 — имя платформы отдельным словом"},
 	{borderUnknownForm, 66, 27, "слепая зона распознавателя: рост числа означает новую форму записи"},
