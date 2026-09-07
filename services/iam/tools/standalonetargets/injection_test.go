@@ -149,3 +149,45 @@ func TestModuleRoot_NoMarkerIsNotRun(t *testing.T) {
 	require.ErrorIs(t, err, standalonetargets.ErrPostureNotBuilt,
 		"корень выдуман там, где маркера нет: подъём вернул бы ЧУЖОЙ каталог молча")
 }
+
+// --- Инъекция в СУЖДЕНИЕ: способность назвать отказавшую цель ----------------
+//
+// Половина гейта, зовущая цели, до этой пары предъявлялась только поломкой
+// самого дерева: «раньше было красно, теперь зелено». Такое доказательство не
+// воспроизводится и исчезает вместе с починкой. Пара ниже подаёт отказ НАРОЧНО
+// и меняет против близнеца ровно один факт — код возврата цели.
+
+// TestRun_FailingUnmarkedTargetIsAFinding — инъекция.
+func TestRun_FailingUnmarkedTargetIsAFinding(t *testing.T) {
+	targets := []standalonetargets.Target{{Name: "плохая", Desc: "нарочно отказывает"}}
+	findings, err := standalonetargets.RunTargets("посадка", targets,
+		func(_, _ string) (int, string, error) { return 2, "нечего собирать\n", nil })
+	require.NoError(t, err)
+	require.Len(t, findings, 1, "отказавшая цель не названа находкой")
+	require.Contains(t, findings[0].String(), "плохая", "находка не назвала цель")
+	require.Contains(t, findings[0].String(), "нечего собирать",
+		"находка не несёт текст отказа — имя посылает читателя искать причину, текст её называет")
+}
+
+// TestRun_PassingUnmarkedTargetIsSilent — законный близнец. Отличается ровно
+// одним фактом: код возврата цели.
+func TestRun_PassingUnmarkedTargetIsSilent(t *testing.T) {
+	targets := []standalonetargets.Target{{Name: "хорошая", Desc: "работает"}}
+	findings, err := standalonetargets.RunTargets("посадка", targets,
+		func(_, _ string) (int, string, error) { return 0, "готово\n", nil })
+	require.NoError(t, err)
+	require.Empty(t, findings, "гейт краснеет на цели, отработавшей кодом 0")
+}
+
+// TestRun_LauncherFailureIsNotAFinding — третий исход представим отдельно.
+//
+// «make не нашёлся» и «цель отказала» — разные вердикты. Схлопни их в один, и
+// отсутствие инструмента отчитывалось бы как дефект продукта.
+func TestRun_LauncherFailureIsNotAFinding(t *testing.T) {
+	targets := []standalonetargets.Target{{Name: "любая", Desc: "неважно"}}
+	findings, err := standalonetargets.RunTargets("посадка", targets,
+		func(_, _ string) (int, string, error) { return 0, "", os.ErrNotExist })
+	require.ErrorIs(t, err, standalonetargets.ErrPostureNotBuilt,
+		"отказ запуска выдан за находку")
+	require.Empty(t, findings, "отказ запуска подмешан к находкам")
+}

@@ -11,6 +11,7 @@ package standalonetargets_test
 // выглядит как обычный зелёный.
 
 import (
+	"errors"
 	"os"
 	"os/exec"
 	"path/filepath"
@@ -81,19 +82,10 @@ func TestStandaloneTargetsWorkInAStandaloneClone(t *testing.T) {
 		"записи ведомости, которым больше нечего прощать: %v — послабление живёт, пока у него есть предмет",
 		census.StaleWaiv)
 
-	for _, tgt := range judged {
-		t.Run(tgt.Name, func(t *testing.T) {
-			rc, out := runMake(t, clone, tgt.Name)
-			require.Zerof(t, rc,
-				"цель %q объявлена рабочей вне монорепо (пометки %s в её строке нет), а в самостоятельном клоне отказала кодом %d\n"+
-					"  объявлено:  ## %s — %s\n"+
-					"  посадка:    %s\n"+
-					"  хвост вывода:\n%s\n"+
-					"  исходов два: либо цель работает у арендатора, либо рецепт помечает её %s и\n"+
-					"  отказывает СЛОВАМИ, называя, что делать вместо. Молчаливое красное у всякого,\n"+
-					"  кто склонирует, исходом не является",
-				tgt.Name, "[монорепо]", rc, tgt.Name, tgt.Desc, clone, tail(out, 25), "[монорепо]")
-		})
+	findings, err := standalonetargets.RunTargets(clone, judged, makeRunner(t))
+	require.NoError(t, err, "проверка НЕ ИСПОЛНЯЛАСЬ")
+	for _, f := range findings {
+		t.Errorf("%s\n  посадка: %s", f, clone)
 	}
 }
 
@@ -164,37 +156,26 @@ func buildStandaloneClone(t *testing.T, moduleRoot string) string {
 	return dir
 }
 
-func runMake(t *testing.T, dir, target string) (int, string) {
+// makeRunner — единственное место, где гейт трогает `make`. Отказ ЗАПУСКА
+// («make не нашёлся») отделён от отказа ЦЕЛИ: первый — «проверка не
+// исполнялась», второй — находка, и смешивать их значило бы отчитываться о
+// продукте отсутствием инструмента.
+func makeRunner(t *testing.T) func(dir, target string) (int, string, error) {
 	t.Helper()
-	cmd := exec.Command("make", target)
-	cmd.Dir = dir
-	cmd.Env = append(gitenv.Env(), "GOFLAGS=-mod=mod")
-	start := time.Now()
-	out, err := cmd.CombinedOutput()
-	t.Logf("цель %s: %s, вывода %d байт", target, time.Since(start).Round(time.Millisecond), len(out))
-	if err == nil {
-		return 0, string(out)
+	return func(dir, target string) (int, string, error) {
+		cmd := exec.Command("make", target)
+		cmd.Dir = dir
+		cmd.Env = append(gitenv.Env(), "GOFLAGS=-mod=mod")
+		start := time.Now()
+		out, err := cmd.CombinedOutput()
+		t.Logf("цель %s: %s, вывода %d байт", target, time.Since(start).Round(time.Millisecond), len(out))
+		if err == nil {
+			return 0, string(out), nil
+		}
+		var ee *exec.ExitError
+		if errors.As(err, &ee) {
+			return ee.ExitCode(), string(out), nil
+		}
+		return 0, "", err
 	}
-	var ee *exec.ExitError
-	if ok := asExit(err, &ee); ok {
-		return ee.ExitCode(), string(out)
-	}
-	t.Fatalf("проверка НЕ ИСПОЛНЯЛАСЬ: make %s не запустился: %v", target, err)
-	return -1, ""
-}
-
-func asExit(err error, dst **exec.ExitError) bool {
-	if ee, ok := err.(*exec.ExitError); ok {
-		*dst = ee
-		return true
-	}
-	return false
-}
-
-func tail(s string, n int) string {
-	lines := strings.Split(strings.TrimRight(s, "\n"), "\n")
-	if len(lines) > n {
-		lines = lines[len(lines)-n:]
-	}
-	return "    " + strings.Join(lines, "\n    ")
 }

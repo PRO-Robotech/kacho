@@ -185,3 +185,56 @@ func AssertOutsideAnyRepository(dir string) error {
 		cur = parent
 	}
 }
+
+// Finding — цель, объявленная рабочей вне монорепо, которая в самостоятельном
+// клоне отказала.
+type Finding struct {
+	Target Target
+	Code   int
+	Tail   string
+}
+
+func (f Finding) String() string {
+	return fmt.Sprintf(
+		"цель %q объявлена рабочей вне монорепо (пометки %s в её строке нет), а в самостоятельном клоне отказала кодом %d\n"+
+			"  объявлено:   ## %s — %s\n"+
+			"  хвост вывода:\n%s\n"+
+			"  исходов два: либо цель работает у арендатора, либо рецепт помечает её %s и\n"+
+			"  отказывает СЛОВАМИ, называя, что делать вместо. Молчаливое красное у всякого,\n"+
+			"  кто склонирует, исходом не является",
+		f.Target.Name, monorepoMark, f.Code, f.Target.Name, f.Target.Desc, f.Tail, monorepoMark)
+}
+
+// RunTargets зовёт каждую цель в собранной посадке и возвращает находки.
+//
+// Отделено от фикстуры намеренно: посадку строит проба (ей нужен git и
+// временный каталог), а СУЖДЕНИЕ живёт здесь — и потому доказуемо инъекцией на
+// синтетической посадке, где отказ цели подан нарочно. Гейт, чью способность
+// падать нельзя предъявить иначе как поломкой дерева, доказательства не имеет.
+//
+// Ошибка запуска (`make` не нашёлся) — НЕ находка: это «проверка не
+// исполнялась», и она возвращается отдельно, а не подмешивается к находкам.
+func RunTargets(dir string, targets []Target, run func(dir, target string) (int, string, error)) ([]Finding, error) {
+	var out []Finding
+	for _, t := range targets {
+		code, output, err := run(dir, t.Name)
+		if err != nil {
+			return nil, fmt.Errorf("%w: цель %s не запустилась: %w", ErrPostureNotBuilt, t.Name, err)
+		}
+		if code != 0 {
+			out = append(out, Finding{Target: t, Code: code, Tail: Tail(output, 25)})
+		}
+	}
+	return out, nil
+}
+
+// Tail — последние n строк вывода, с отступом. Находка обязана нести ТЕКСТ
+// отказа цели, а не только её имя: имя посылает читателя искать причину, текст
+// её называет.
+func Tail(s string, n int) string {
+	lines := strings.Split(strings.TrimRight(s, "\n"), "\n")
+	if len(lines) > n {
+		lines = lines[len(lines)-n:]
+	}
+	return "    " + strings.Join(lines, "\n    ")
+}
