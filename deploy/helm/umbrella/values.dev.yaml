@@ -1630,7 +1630,7 @@ kaname:
   initContainer:
     migrator:
       enabled: true
-      command: ["/usr/local/bin/kacho-migrator", "up"]
+      command: ["/usr/local/bin/kaname-migrator", "up"]
   resources:
     requests:
       cpu: 100m

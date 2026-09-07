@@ -66,8 +66,8 @@ COPY . .
 RUN --mount=type=cache,target=/go/pkg/mod \
     go list -deps ./cmd/kaname ./cmd/migrator >/dev/null
 # Skill evgeniy §9 K.1 / AP-9: независимые binary в одном образе.
-# kaname       — gRPC API-сервер (единственный subcommand — `serve`).
-# kacho-migrator  — CLI миграций (cobra: up|down|status|create), используется
+# kaname          — gRPC API-сервер (единственный subcommand — `serve`).
+# kaname-migrator — CLI миграций (cobra: up|down|status|create), используется
 #                   init-container'ом перед стартом основного pod'а.
 #
 # JWKS-ротатора здесь НЕТ и быть не должно: служба не чеканит токены провайдера и
@@ -75,12 +75,12 @@ RUN --mount=type=cache,target=/go/pkg/mod \
 # байт-в-байт (internal/handler/jwksproxyhttp, :9097). Ротировать здесь нечего —
 # см. комментарий там же.
 RUN --mount=type=cache,target=/root/.cache/go-build --mount=type=cache,target=/go/pkg/mod CGO_ENABLED=0 GOOS=${TARGETOS} GOARCH=${TARGETARCH} go build -o /kaname ./cmd/kaname \
- && CGO_ENABLED=0 GOOS=${TARGETOS} GOARCH=${TARGETARCH} go build -o /kacho-migrator ./cmd/migrator
+ && CGO_ENABLED=0 GOOS=${TARGETOS} GOARCH=${TARGETARCH} go build -o /kaname-migrator ./cmd/migrator
 
 FROM mirror.gcr.io/library/alpine:3.24
 RUN apk upgrade --no-cache && apk add --no-cache ca-certificates
 COPY --from=builder /kaname /usr/local/bin/kaname
-COPY --from=builder /kacho-migrator /usr/local/bin/kacho-migrator
+COPY --from=builder /kaname-migrator /usr/local/bin/kaname-migrator
 # ПРОВЕНАНС ОБРАЗА — из какого дерева он собран. Клеймо и файл берут величину из
 # ОДНОГО `ARG`, поэтому разойтись не могут. Файл нужен потому, что у РАБОТАЮЩЕГО
 # контейнера клеймо не прочесть ничем, кроме демона хоста или реестра, — а у

@@ -9,6 +9,7 @@ import (
 	"strings"
 	"testing"
 
+	"github.com/PRO-Robotech/kacho/internal/productnaming"
 	"github.com/PRO-Robotech/kacho/pkg/migratorcli"
 	"github.com/PRO-Robotech/kacho/pkg/treecorpus"
 )
@@ -196,14 +197,23 @@ func TestMigratorCLISurfaceIsDeclared(t *testing.T) {
 	// Величины берутся ИЗ ПРОДУКТА, а не выписываются литералом: выписанный
 	// литерал был бы вторым местом об одном предмете и разошёлся бы с первым
 	// молча — ровно тем способом, каким накопилось само различие.
-	for _, want := range []string{
-		migratorCLIBinaryName,
+	// Имена накатчика — ВСЕ, какие производит владелец имён: продуктов в дереве
+	// два, и документ, назвавший одно, объявил бы поверхность второго
+	// незадекларированной, ничего в дереве не сломав.
+	names := []string{}
+	for _, product := range productnaming.ProductNames() {
+		names = append(names, product+"-migrator")
+	}
+	t.Logf("перепись: продуктов с накатчиком %d, имён названо в решении %d",
+		len(productnaming.ProductNames()), len(names))
+
+	for _, want := range append(names,
 		migratorcli.EnvDSN,
 		"--target",
 		"--dsn",
-		"--dialect " + migratorcli.DialectPostgres,
+		"--dialect "+migratorcli.DialectPostgres,
 		migratorcli.CommandHelp,
-	} {
+	) {
 		if !strings.Contains(doc, want) {
 			t.Errorf("%s не называет %q — на него ссылаются ради этого утверждения",
 				migratorCLIDecisionDoc, want)

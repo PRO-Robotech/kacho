@@ -7,7 +7,7 @@ dist/
 coverage.out
 coverage-full.out
 /kaname
-/kacho-migrator
+/kaname-migrator
 
 # Newman snapshots and run logs (audit trail, локально, не commit)
 tests/newman/out/snap*-local-*.json

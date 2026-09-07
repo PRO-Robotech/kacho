@@ -208,7 +208,7 @@ spec:
         {{- end }}
       initContainers:
         {{- if .Values.initContainer.migrator.enabled }}
-        # skill evgeniy §9 K.1: миграции БД исполняет отдельный binary `kacho-migrator`
+        # skill evgeniy §9 K.1: миграции БД исполняет отдельный binary `kaname-migrator`
         # (тот же image, отдельный entrypoint). DSN собирается мигратором из
         # KANAME_DB_* env (через config-fallback).
         - name: migrate

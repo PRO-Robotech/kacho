@@ -1,7 +1,8 @@
 // Copyright (c) PRO-Robotech
 // SPDX-License-Identifier: BUSL-1.1
 
-// migratoroperatorcli.go — командная строка мигратора одна на семь сервисов.
+// migratoroperatorcli.go — командная строка мигратора одна на семь сервисов,
+// а ИМЯ двоичного файла — одно на продукт.
 //
 // # Предмет: различие, которое видит ОПЕРАТОР (#1461)
 //
@@ -14,7 +15,7 @@
 // что сервисы заводились в разное время. Два из них тихие:
 //
 //   - флаг ПОСЛЕ подкоманды прямая четвёрка теряла молча (`flag.Parse`
-//     останавливается на первом не-флаге), поэтому `kacho-migrator up --dsn X`
+//     останавливается на первом не-флаге), поэтому `<продукт>-migrator up --dsn X`
 //     накатывал на базу из запасного пути и выглядел УСПЕХОМ;
 //   - лишний позиционный аргумент cobra принимала молча (`Args == nil`),
 //     поэтому `up 800001` — догадка о том, как задать цель — накатывал до
@@ -25,16 +26,33 @@
 //
 // # Что требуется
 //
-//  1. Имя бинаря одно — [migratorCLIBinaryName]. Судятся все места, где имя
-//     называется: путь установки, выход сборки, переменная Makefile, константа
-//     в самой точке наката. Разные имена означают, что знание об одном сервисе
-//     к соседнему не применяется.
+//  1. Имя бинаря одно НА ПРОДУКТ — [productnaming.MigratorBinary]. Судятся все
+//     места, где имя называется: путь установки, выход сборки, переменная
+//     Makefile, константа в самой точке наката. Разные имена внутри одного
+//     продукта означают, что знание об одной его службе к соседней не
+//     применяется.
+//
+//     На продукт, а не на дерево: служба управления доступом вынесена
+//     самостоятельным продуктом Kaname и несёт СВОЁ имя накатчика (#2245).
+//     Требование «одно имя на всё дерево» после выноса стало ложным — оно
+//     запрещало бы продукту называться своим именем, то есть работало бы против
+//     решения владельца (#2076). Требование «у каждого своё» было бы обратной
+//     крайностью: шесть служб платформы делят один накатчик, и различие между
+//     ними никем не решалось.
+//
+//     Чьё это место, выводится у владельца имён ([productnaming.PartOfLine]):
+//     из пути дерева службы, из имени подчарта зонта либо из ключа подчарта в
+//     наложении значений. Место, чьего хозяина вывести нельзя, — НАХОДКА:
+//     приписать его соседу хуже, чем остановиться.
+//
 //  2. Разбор аргументов — один из ДВУХ признанных: общий пакет
 //     [migratorCLISharedParserImport] либо cobra. Третий разбор — находка: он и
 //     есть тот способ, каким различие накапливалось.
+//
 //  3. У каждой команды cobra, несущей исполнение (Run/RunE), решено, что делать
 //     с лишним позиционным аргументом (поле Args). Умолчание принимает
 //     произвольные аргументы молча.
+//
 //  4. Корневая команда cobra (та, чьё `Use` называет бинарь) несёт исполнение.
 //     Без него ПУСТАЯ командная строка печатает помощь и выходит УСПЕХОМ, тогда
 //     как прямая форма отвечает отказом: скрипт или init-контейнер, потерявший
@@ -62,10 +80,25 @@
 // умолчание: сегодня бинарь мигратора нигде больше не называется. Предикат,
 // которым это проверено и которым проверяется впредь:
 //
-//	git grep -ln migrator -- . | grep -vE '^(services/|deploy/|internal/repohygiene/|docs/architecture/|pkg/migratorcli/)'
+//	git grep -lnE '[A-Za-z0-9_.]+-migrator' -- . \
+//	  | grep -vE '^(services/|deploy/|internal/repohygiene/|docs/architecture/|pkg/migratorcli/)'
 //
-// На 2026-08-29 он даёт один файл — `.github/scripts/check-volume-mounts.py`, и
-// тот называет КЛЮЧ значений чарта (`migrator.enable`), а не имя бинаря. Формы
+// Предикат ПЕРЕМЕРЕН и СУЖЕН 2026-09-07 (#2245). Прежний искал слово `migrator`,
+// то есть измерял не то, что защищает предпосылка: на 2026-08-29 он объявлялся
+// дающим один файл, а на этом дереве даёт пятнадцать — каталог накатчика, пакет
+// разбора, ключ значений чарта. Сужение до формы `<приставка>-migrator` мерит
+// именно ИМЯ БИНАРЯ, и число становится читаемым.
+//
+// Сегодня он даёт ТРИ файла, и все три законны: владелец имени
+// (`internal/productnaming` — объявление и его проба) и проба формы вызова
+// (`internal/migratorapply`), которая держит СВОЙ литерал пути. Последний —
+// второе место об одном предмете, и снимается он вместе со слепой зоной той же
+// пробы (задача #2255): её обход не доходит до седьмой точки наката, поэтому
+// правка литерала в отрыве от обхода закрыла бы половину предмета.
+//
+// Прежняя редакция называла `.github/scripts/check-volume-mounts.py`; он
+// по-прежнему называет КЛЮЧ значений чарта (`migrator.enable`), а не имя
+// бинаря, и суженным предикатом не находится вовсе. Формы
 // `ENTRYPOINT`/`CMD` с мигратором в дереве нет ни одной. Появится место вне
 // этих двух каталогов — расширять надо корпус, а не толковать молчание гейта
 // как отсутствие находок.
@@ -81,12 +114,11 @@ import (
 	"sort"
 	"strconv"
 	"strings"
+
+	"github.com/PRO-Robotech/kacho/internal/productnaming"
 )
 
 const (
-	// migratorCLIBinaryName — единственное законное имя бинаря мигратора.
-	migratorCLIBinaryName = "kacho-migrator"
-
 	// migratorCLIDecisionDoc — единственное место, где объявлена поверхность CLI.
 	migratorCLIDecisionDoc = "docs/architecture/migrator-cli.md"
 
@@ -136,11 +168,17 @@ var migratorCLIHelpFields = map[string]string{
 }
 
 // migratorCLIMention — одно место, называющее бинарь мигратора.
+//
+// Want — имя, которое накатчик ЭТОГО продукта обязан носить; пустое означает,
+// что хозяина места вывести не удалось, и это отдельная находка, а не
+// умолчание в пользу платформы: молчаливое приписывание платформе объявило бы
+// имя переименованной части нарушением, ничего в дереве не сломав.
 type migratorCLIMention struct {
 	Rel  string
 	Line int
 	Name string
 	Form string
+	Want string
 }
 
 // migratorCLIMentions находит все такие места в одном файле.
@@ -150,6 +188,7 @@ type migratorCLIMention struct {
 func migratorCLIMentions(rel, content string) []migratorCLIMention {
 	var out []migratorCLIMention
 	seen := map[string]bool{}
+	lines := strings.Split(content, "\n")
 
 	add := func(line int, name, form string) {
 		key := fmt.Sprintf("%d/%s", line, name)
@@ -157,10 +196,13 @@ func migratorCLIMentions(rel, content string) []migratorCLIMention {
 			return
 		}
 		seen[key] = true
-		out = append(out, migratorCLIMention{Rel: rel, Line: line, Name: name, Form: form})
+		out = append(out, migratorCLIMention{
+			Rel: rel, Line: line, Name: name, Form: form,
+			Want: migratorCLIWantedName(rel, lines, line-1),
+		})
 	}
 
-	for i, raw := range strings.Split(content, "\n") {
+	for i, raw := range lines {
 		line := i + 1
 		trimmed := strings.TrimSpace(raw)
 		if trimmed == "" || strings.HasPrefix(trimmed, "#") || strings.HasPrefix(trimmed, "//") {
@@ -196,6 +238,7 @@ func migratorCLIGoMentions(rel, src string) ([]migratorCLIMention, error) {
 	if err != nil {
 		return nil, fmt.Errorf("%s: разбор не удался: %w", rel, err)
 	}
+	lines := strings.Split(src, "\n")
 	var out []migratorCLIMention
 	ast.Inspect(file, func(n ast.Node) bool {
 		lit, ok := n.(*ast.CompositeLit)
@@ -225,11 +268,13 @@ func migratorCLIGoMentions(rel, src string) ([]migratorCLIMention, error) {
 					return true
 				}
 				for _, name := range migratorCLINamesOutsideAPath(text) {
+					at := fset.Position(bl.Pos()).Line
 					out = append(out, migratorCLIMention{
 						Rel:  rel,
-						Line: fset.Position(bl.Pos()).Line,
+						Line: at,
 						Name: name,
 						Form: form,
+						Want: migratorCLIWantedName(rel, lines, at-1),
 					})
 				}
 				return true
@@ -256,15 +301,36 @@ func migratorCLINamesOutsideAPath(text string) []string {
 	return out
 }
 
+// migratorCLIWantedName — имя, которое накатчик обязан носить в этом месте.
+//
+// Пустая строка означает «хозяин места не выведен», а НЕ «подойдёт любое»:
+// разводит эти два случая вызывающий, и второй он объявляет находкой.
+func migratorCLIWantedName(rel string, lines []string, at int) string {
+	svc, ok := productnaming.PartOfLine(rel, lines, at)
+	if !ok {
+		return ""
+	}
+	return productnaming.MigratorBinary(svc)
+}
+
 // migratorCLINameFindings — места, называющие бинарь не тем именем.
 func migratorCLINameFindings(mentions []migratorCLIMention) []string {
 	var out []string
 	for _, m := range mentions {
-		if m.Name == migratorCLIBinaryName {
+		if m.Want == "" {
+			out = append(out, fmt.Sprintf(
+				"%s:%d — %s называет бинарь %q, но ЧЕЙ он — не выводится ни из пути, "+
+					"ни из ключа подчарта. Приписать место соседу хуже, чем остановиться: "+
+					"судимым оказался бы не тот продукт",
+				m.Rel, m.Line, m.Form, m.Name))
 			continue
 		}
-		out = append(out, fmt.Sprintf("%s:%d — %s называет бинарь %q, а имя одно: %q",
-			m.Rel, m.Line, m.Form, m.Name, migratorCLIBinaryName))
+		if m.Name == m.Want {
+			continue
+		}
+		out = append(out, fmt.Sprintf("%s:%d — %s называет бинарь %q, а у этого продукта "+
+			"накатчик один и зовётся %q",
+			m.Rel, m.Line, m.Form, m.Name, m.Want))
 	}
 	sort.Strings(out)
 	return out

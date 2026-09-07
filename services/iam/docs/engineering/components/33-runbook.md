@@ -278,7 +278,7 @@ kubectl -n kacho exec deploy/kaname -- \
 ## P3 — Миграции не применились / pod не стартует
 
 Схема — `kaname`, миграции — goose, прогоняются отдельным бинарем
-`cmd/migrator` (`bin/kacho-migrator up`). Если схема отстает от кода — pod
+`cmd/migrator` (`bin/kaname-migrator up`). Если схема отстает от кода — pod
 падает на старте или RPC отдают неожиданные ошибки.
 
 **Диагностика:**
@@ -298,7 +298,7 @@ kubectl -n kacho exec deploy/postgres -- \
    **только новой** миграцией — применную миграцию не редактировать.
 2. **Pod опередил миграцию** (rollout раньше migrator-job) → дождаться/перезапустить
    migrator-job, затем pod.
-3. Локально вне kind: `KANAME_DB_PASSWORD=<...> bin/kacho-migrator up`.
+3. Локально вне kind: `KANAME_DB_PASSWORD=<...> bin/kaname-migrator up`.
 
 ## Cluster-admin grants
 

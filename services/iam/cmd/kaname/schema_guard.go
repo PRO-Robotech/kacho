@@ -70,7 +70,7 @@ const (
 	postgresURLEnvName = "KANAME_REPOSITORY__POSTGRES__URL"
 
 	// migratorUpCommand — чем схема накатывается на чистую базу.
-	migratorUpCommand = "kacho-migrator up"
+	migratorUpCommand = "kaname-migrator up"
 
 	// installDocPath — порядок установки, от корня модуля. Существование
 	// координаты и присутствие в ней названной команды держит проба рядом:

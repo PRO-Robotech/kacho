@@ -298,7 +298,7 @@ kaname:
   image:
     # ── FORWARD ROLL: main-c744f956 (kaname main c744f95, multiarch, Docker Hub-
     #    verified 2026-07-15) supersedes the live feature build KAC-registry-docker-auth-
-    #    c3000530. The tag drives BOTH the main container AND the kacho-migrator init
+    #    c3000530. The tag drives BOTH the main container AND the kaname-migrator init
     #    (chart helper "kaname.image"). Carries:
     #      • #321 SA-key registry-audience union — the audience bug this cutover fixes;
     #      • #319 token name/labels;
