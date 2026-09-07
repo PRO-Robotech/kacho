@@ -78,13 +78,14 @@ package deploy_test
 import (
 	"fmt"
 	"os"
-	"os/exec"
 	"path/filepath"
 	"sort"
 	"strings"
 	"testing"
 
 	"gopkg.in/yaml.v3"
+
+	"github.com/PRO-Robotech/kacho/pkg/gitenv"
 )
 
 // chartNameDecl — объявление одного чарта: то, чем он себя называет.
@@ -240,7 +241,10 @@ func auditChartNameAddressing(decls []chartNameDecl, exists func(string) bool) (
 func trackedChartDecls(t *testing.T) ([]chartNameDecl, map[string]bool) {
 	t.Helper()
 
-	out, err := exec.Command("git", "-C", repoRoot, "ls-files", "-z", "--", "*Chart.yaml").Output()
+	// Помощник, а не прямой вызов: `GIT_DIR` в окружении СИЛЬНЕЕ рабочего
+	// каталога, поэтому `-C` сам по себе репозитория не выбирает. Прогон из хука
+	// отправки наследует эту переменную, и обход ушёл бы в чужое дерево.
+	out, err := gitenv.Command(repoRoot, "ls-files", "-z", "--", "*Chart.yaml").Output()
 	if err != nil {
 		t.Fatalf("индекс git не прочитан (%v) — обход не состоялся, и это НЕ чистое дерево", err)
 	}

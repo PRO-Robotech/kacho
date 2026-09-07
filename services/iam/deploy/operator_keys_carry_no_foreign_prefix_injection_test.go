@@ -36,6 +36,23 @@ const (
 	wholeAliasDig         = `dig "mode" "" $cur`
 )
 
+// ВНОСИМЫЕ ДЕФЕКТЫ. Приставка платформы здесь НЕ воспроизводится дословно, и это
+// решение, а не осторожность: файл уезжает арендатору вместе с каталогом
+// поставки (ведомость `delivery_roster_test.go`), поэтому чужой бренд в нём —
+// ровно та витрина, которую снимает эта же задача.
+//
+// Точность при этом не теряется. Правила пробы ПОЛОЖИТЕЛЬНЫЕ: «домен обязан
+// быть доменом продукта» и «первый сегмент обязан быть объявлен профилем». Обе
+// ветви исполняются любым чужим доменом и любым необъявленным ключом одинаково,
+// и текст находки получается тот же. Историческая приставка названа словами в
+// шапке соседней пробы — там она прозой, а не ключом манифеста.
+const (
+	foreignDomainAnnotation = "example.invalid/image-id: {{ . | quote }}"
+	foreignDomainChecksum   = "example.invalid/config-checksum:"
+	foreignDigGuard         = `{{- with dig "imageIdsByService" "iam" "" (.Values.global | default dict) }}`
+	foreignPathGuard        = "{{- with .Values.imageIdsByService }}"
+)
+
 func TestOperatorKeyPrefixesInjection(t *testing.T) {
 	runChartFixtureCases(t, []chartFixtureCase{
 		{
@@ -52,7 +69,7 @@ func TestOperatorKeyPrefixesInjection(t *testing.T) {
 			mutate: func(t *testing.T, chartDir string) {
 				b := readChartFile(t, chartDir, "templates/deployment.yaml")
 				b = replaceOnceIn(t, b, wholeImageAnnotation,
-					"kacho.cloud/image-id: {{ . | quote }}")
+					foreignDomainAnnotation)
 				writeChartFile(t, chartDir, "templates/deployment.yaml", b)
 			},
 			wantSubstring: "объявлен доменом",
@@ -63,7 +80,7 @@ func TestOperatorKeyPrefixesInjection(t *testing.T) {
 			name: "чужой домен у ключа отпечатка настроек — находка",
 			mutate: func(t *testing.T, chartDir string) {
 				b := readChartFile(t, chartDir, "templates/deployment.yaml")
-				b = replaceOnceIn(t, b, wholeConfigAnnotation, "kacho.cloud/config-checksum:")
+				b = replaceOnceIn(t, b, wholeConfigAnnotation, foreignDomainChecksum)
 				writeChartFile(t, chartDir, "templates/deployment.yaml", b)
 			},
 			wantSubstring: "объявлен доменом",
@@ -76,7 +93,7 @@ func TestOperatorKeyPrefixesInjection(t *testing.T) {
 			mutate: func(t *testing.T, chartDir string) {
 				b := readChartFile(t, chartDir, "templates/deployment.yaml")
 				b = replaceOnceIn(t, b, wholeImageIdGuard,
-					`{{- with dig "kachoImageIds" "iam" "" (.Values.global | default dict) }}`)
+					foreignDigGuard)
 				writeChartFile(t, chartDir, "templates/deployment.yaml", b)
 			},
 			wantSubstring: "строковый довод выборки",
@@ -87,7 +104,7 @@ func TestOperatorKeyPrefixesInjection(t *testing.T) {
 			name: "ключ значений путём, не объявленный чартом — находка",
 			mutate: func(t *testing.T, chartDir string) {
 				b := readChartFile(t, chartDir, "templates/deployment.yaml")
-				b = replaceOnceIn(t, b, wholeImageIdGuard, "{{- with .Values.kachoImageIds }}")
+				b = replaceOnceIn(t, b, wholeImageIdGuard, foreignPathGuard)
 				writeChartFile(t, chartDir, "templates/deployment.yaml", b)
 			},
 			wantSubstring: "не объявлен в values.yaml",
@@ -163,7 +180,7 @@ func TestOperatorKeyPrefixesInjectionRaisesOnlyItsOwn(t *testing.T) {
 			mutate: func(t *testing.T, chartDir string) {
 				b := readChartFile(t, chartDir, "templates/deployment.yaml")
 				b = replaceOnceIn(t, b, wholeImageAnnotation,
-					"kacho.cloud/image-id: {{ . | quote }}")
+					foreignDomainAnnotation)
 				writeChartFile(t, chartDir, "templates/deployment.yaml", b)
 			},
 			wantNew: true,
