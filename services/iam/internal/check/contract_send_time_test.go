@@ -148,7 +148,7 @@ func TestSendTimeStaysQueueLivenessAndOffTheContract(t *testing.T) {
 	root := monorepoRoot(t)
 
 	migrations := readDir(t, filepath.Join(root, iamMigrationsRelDir), ".sql")
-	contracts := readDir(t, filepath.Join(root, iamContractDir), ".proto")
+	contracts := readDir(t, treePath(t, iamContractDir), ".proto")
 
 	wiringFiles := readDir(t, filepath.Join(root, iamMailWiringRelDir), ".go")
 	var wiring strings.Builder

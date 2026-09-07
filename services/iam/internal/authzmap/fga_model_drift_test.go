@@ -81,6 +81,7 @@ import (
 	"github.com/stretchr/testify/require"
 
 	"github.com/PRO-Robotech/kaname/internal/authzmap"
+	"github.com/PRO-Robotech/kaname/internal/authzplan"
 )
 
 // XC-3 S1Ф2: прежде здесь лежал литеральный список `v_*`, продублированный ради
@@ -183,16 +184,32 @@ func monorepoRoot(t *testing.T) string {
 // canonicalModelPath resolves the canonical fga_model.fga. There is NO skip
 // path and NO environment opt-out: if the single source of truth is absent, the
 // drift-gate cannot do its job, and a gate that cannot do its job must be RED.
+// canonicalModelPath — путь модели, по которой судит гейт дрейфа.
+//
+// ЗДЕСЬ СТОЯЛ ВТОРОЙ РЕЗОЛВ ТОГО ЖЕ ПРЕДМЕТА: путь складывался как «самый
+// внешний go.mod» + постоянная монорепо-координата. Два места об одном предмете
+// расходятся молча, и это разошлось: у службы свой модуль, поэтому в
+// самостоятельном клоне самый внешний `go.mod` — она сама, а приписанный к ней
+// каталог контрактов в поставку не входит. 45 проб этого пакета отказывали
+// «model is MISSING» у всякого, кто склонирует, при том что текст модели у него
+// ЕСТЬ — модуль везёт побайтовую копию рядом с кодом, который её применяет.
+//
+// Резолв теперь ОДИН на дерево (`authzplan.ResolveCanonicalModel`): он знает обе
+// посадки, спрашивает канонический файл первым и за пределы своего дерева не
+// выходит ни при каком входе. В монорепо результат не меняется ни на байт —
+// канон там есть, и вторая ветвь недостижима.
+//
+// Отказ по-прежнему ЖЁСТКИЙ и пропуска не имеет: гейт, которому нечего сверять,
+// обязан быть красным. Изменилось не это, а то, ЧТО считается «нечего»:
+// отсутствие модели в дереве, а не отсутствие монорепо вокруг него.
 func canonicalModelPath(t *testing.T) string {
 	t.Helper()
-	p := filepath.Join(monorepoRoot(t), canonicalModelRelPath)
-	if _, err := os.Stat(p); err != nil {
-		t.Fatalf("canonical authorization model %s is MISSING (%v) — the FGA drift-gate "+
+	p, _, err := authzplan.ResolveCanonicalModel()
+	if err != nil {
+		t.Fatalf("canonical authorization model is MISSING (%v) — the FGA drift-gate "+
 			"has no source of truth and CANNOT verify that objectTypes / verbBearingTypes "+
 			"match the model the verdict form actually reads. This is a hard failure by "+
-			"design: restore the file (it is the source `make -C deploy fga-model-embed` "+
-			"copies into services/iam/internal/authzmodel), never disable the gate.",
-			canonicalModelRelPath, err)
+			"design: restore the file, never disable the gate.", err)
 	}
 	return p
 }

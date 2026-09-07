@@ -81,6 +81,26 @@ import (
 // the product.
 const fgaModelRelPath = "proto/kaname/cloud/iam/v1/fga_model.fga"
 
+// shippedModelRelPath — та же модель ПОБАЙТОВО, лежащая ВНУТРИ модуля.
+//
+// Это не вторая истина и не запасной путь: файл порождается из канонического
+// (`make -C deploy fga-model-embed`), вшивается директивой `go:embed` и есть
+// ровно тот текст, по которому служба принимает решения о доступе в рантайме.
+// Побайтовое равенство двух копий держит гейт `internal/authzmodel`
+// (TestEmbeddedModelIsByteIdenticalToCanonical) — там, где обе копии есть.
+//
+// ЗАЧЕМ РЕЗОЛВУ ЗНАТЬ О НЁМ. Каталог контрактов в поставку модуля не входит:
+// у арендатора дерево — сам модуль, и `proto/` в нём нет BY CONSTRUCTION. До
+// этой строки 85 проб модели отказывали в самостоятельном клоне «канона в
+// дереве нет» — то есть красным у каждого, кто склонирует, при том что текст
+// модели у него ЕСТЬ и лежит рядом с кодом, который его применяет.
+//
+// ПОРЯДОК НЕСУЩИЙ: канонический файл спрашивается ПЕРВЫМ. В монорепо он есть,
+// поэтому там резолв не меняется ни на байт — вторая ветвь недостижима, и
+// числа переписей остаются прежними. Вторая ветвь наступает ровно тогда, когда
+// первой нет, и это состояние — свойство ПОСТАВКИ, а не выбор вызывающего.
+const shippedModelRelPath = "internal/authzmodel/fga_model.fga"
+
 // CanonicalModelRelPath — тот же относительный путь для вызывающего, который
 // печатает перепись.
 //
@@ -140,6 +160,19 @@ func ResolveCanonicalModelFrom(root string) (path string, dsl []byte, err error)
 			return cand, nil, rerr
 		}
 		return cand, b, nil
+	case statErr != nil:
+		// Канонического файла в дереве нет. Прежде чем объявлять отказ, тот же
+		// вопрос задаётся ВТОРОЙ постоянной координате — копии, которую модуль
+		// везёт с собой. Обе координаты ФИКСИРОВАНЫ и вызывающим не выбираются:
+		// подменить операнд снимком по-прежнему нечем.
+		shipped := filepath.Join(root, shippedModelRelPath)
+		if sst, serr := os.Stat(shipped); serr == nil && sst.Mode().IsRegular() {
+			b, rerr := os.ReadFile(shipped) // #nosec G304 -- fixed in-tree path, tool-only
+			if rerr != nil {
+				return shipped, nil, rerr
+			}
+			return shipped, b, nil
+		}
 	case statErr == nil:
 		return "", nil, fmt.Errorf(
 			"%w: %s\n  осмотрено дерево:  %s\n  ожидался признак:  обычный файл %s в составе этого дерева\n"+

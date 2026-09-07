@@ -231,8 +231,7 @@ func legacyFormsWithoutASubject(t *testing.T, root string, rows []legacyAccepted
 
 // TestContractIdFormMatchesWhatTheProductMints — несущее утверждение.
 func TestContractIdFormMatchesWhatTheProductMints(t *testing.T) {
-	root := monorepoRoot(t)
-	dir := filepath.Join(root, iamContractDir)
+	dir := treePath(t, iamContractDir)
 	entries, err := os.ReadDir(dir)
 	require.NoError(t, err)
 
