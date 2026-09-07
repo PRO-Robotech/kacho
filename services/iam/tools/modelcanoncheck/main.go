@@ -45,7 +45,6 @@ import (
 	"flag"
 	"fmt"
 	"os"
-	"path/filepath"
 
 	"github.com/PRO-Robotech/kaname/internal/apps/kaname/seed"
 	"github.com/PRO-Robotech/kaname/internal/authzplan"
@@ -106,7 +105,15 @@ func main() {
 	// клон модуля под каталогом с посторонним каноном печатал свой корень и чужие
 	// числа. Сегодня резолв за пределы названного корня не выходит, и эта строка
 	// делает свойство ВИДИМЫМ, а не только истинным.
-	fmt.Printf("канон: %s\n", filepath.Join(root, authzplan.CanonicalModelRelPath()))
+	// Канон называется ТЕМ путём, из которого сняты величины, а не сложенным из
+	// корня и постоянной координаты: резолв знает две координаты, и сложенный
+	// путь назвал бы первую, когда прочитана вторая. Пустой означает, что
+	// величин нет — обход до чтения не дошёл.
+	if census.CanonPath != "" {
+		fmt.Printf("канон: %s\n", census.CanonPath)
+	} else {
+		fmt.Printf("канон: не прочитан (ожидался %s от корня обхода)\n", authzplan.CanonicalModelRelPath())
+	}
 	fmt.Printf("перепись: %s\n", census)
 	for _, f := range findings {
 		fmt.Fprintf(os.Stderr, "НАХОДКА: %s\n", f)
