@@ -108,7 +108,7 @@ func TestGroupMemberKindsAgreeBetweenModelAndMigrationText(t *testing.T) {
 // groupMemberKindsFromModel — виды, принимаемые `type group` / `define member`.
 func groupMemberKindsFromModel(t *testing.T, root string) []string {
 	t.Helper()
-	body, err := os.ReadFile(filepath.Join(root, canonicalModelRelPath))
+	body, err := os.ReadFile(canonicalModelPath(t))
 	require.NoError(t, err)
 	f := parseModelDSL(string(body))
 	require.Truef(t, f.types["group"], "модель не объявляет `type group` — гейт беспредметен")

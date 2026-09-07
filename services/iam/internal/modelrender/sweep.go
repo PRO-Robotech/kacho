@@ -126,6 +126,15 @@ type Census struct {
 	BlocksOwned int
 	// Waived — модулей, прощённых ведомостью позаписно.
 	Waived int
+	// CanonPath — файл, ИЗ КОТОРОГО сняты величины выше.
+	//
+	// Возвращается обходом, а не складывается вызывающим из корня и постоянной
+	// координаты. Резолв канона знает ДВЕ координаты (канонический файл дерева
+	// платформы и побайтовую копию, которую модуль везёт с собой), поэтому
+	// сложенный путь называл бы первую, когда прочитана вторая, — и перепись
+	// утверждала бы о файле, которого не читала. Тот же класс, ради которого
+	// корень печатается отдельной строкой.
+	CanonPath string
 }
 
 // String печатает перепись словами: перечень величин, читаемый человеком в логе
@@ -189,10 +198,11 @@ func Sweep(resources []catalog.ResourceRow, root string, waivers []Waiver) (Cens
 	census := Census{ModulesInSet: len(modules)}
 	var findings []Finding
 
-	_, dsl, err := authzplan.ResolveCanonicalModelFrom(root)
+	canonPath, dsl, err := authzplan.ResolveCanonicalModelFrom(root)
 	if err != nil {
 		return census, []Finding{{Detail: "канон не резолвится: " + err.Error()}}, SweepFinding
 	}
+	census.CanonPath = canonPath
 	canon := make(map[string]Block)
 	for _, b := range SplitCanon(dsl) {
 		canon[b.Type] = b
