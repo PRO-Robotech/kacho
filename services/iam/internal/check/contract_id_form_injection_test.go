@@ -169,7 +169,7 @@ func TestLegacyLedgerEntryExpiresWithItsAcceptor(t *testing.T) {
 // контракта существует и непуст. «Ноль расхождений» на пустом обходе значило бы
 // «ноль прочитанного», а не «ноль находок».
 func TestGateReadsTheContractThatIsActuallyOnDisk(t *testing.T) {
-	entries, err := os.ReadDir(filepath.Join(monorepoRoot(t), iamContractDir))
+	entries, err := os.ReadDir(treePath(t, iamContractDir))
 	require.NoError(t, err)
 	protos := 0
 	for _, e := range entries {

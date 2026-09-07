@@ -164,3 +164,130 @@ func containsAll(s string, subs ...string) bool {
 	}
 	return true
 }
+
+// --- координата модуля НЕ ГНИЁТ: выписанное сверяется с выведенным -----------
+
+// TestModuleCoordinateIsDerivedWhereItCanBeDerived — единственное, что оправдывает
+// выписанную координату `services/iam`.
+//
+// В дереве платформы она ВЫВОДИМА, и здесь выведенное сравнивается с выписанным.
+// Разъедутся (модуль переехал, каталог модулей переименован) — красное, а не
+// тихий промах мимо каталога. В клоне выводить не из чего, и проба это говорит.
+func TestModuleCoordinateIsDerivedWhereItCanBeDerived(t *testing.T) {
+	wd, err := os.Getwd()
+	if err != nil {
+		t.Fatalf("проверка НЕ ИСПОЛНЯЛАСЬ: %v", err)
+	}
+	moduleRoot, err := platformtree.ModuleRootFrom(wd)
+	if err != nil {
+		t.Fatalf("проверка НЕ ИСПОЛНЯЛАСЬ: %v", err)
+	}
+	root, rerr := platformtree.RootFrom(wd)
+	if errors.Is(rerr, platformtree.ErrNoPlatformTree) {
+		t.Skipf("УСЛОВИЕ НЕ СОЗДАНО (не находка): координату выводить не из чего — "+
+			"платформы рядом нет (%s)", moduleRoot)
+	}
+	if rerr != nil {
+		t.Fatalf("проверка НЕ ИСПОЛНЯЛАСЬ: %v", rerr)
+	}
+	derived, err := platformtree.ModuleDirIn(root, moduleRoot)
+	if err != nil {
+		t.Fatalf("проверка НЕ ИСПОЛНЯЛАСЬ: %v", err)
+	}
+	if derived != filepath.FromSlash(platformtree.ModuleDirInPlatform()) {
+		t.Fatalf("выписанная координата модуля %q разошлась с выведенной %q — "+
+			"пути, собранные по выписанной, промахиваются мимо каталога МОЛЧА",
+			platformtree.ModuleDirInPlatform(), derived)
+	}
+	t.Logf("координата модуля сверена: выписано %q, выведено %q", platformtree.ModuleDirInPlatform(), derived)
+}
+
+// --- PathOf: три исхода, каждый со своим близнецом --------------------------
+
+func TestPathOf_InPlatformTreeThePathIsTakenAsWritten(t *testing.T) {
+	base := t.TempDir()
+	mod := mkModule(t, base, "services/iam")
+
+	got, err := platformtree.PathOf(mod, "services/iam/internal/migrations")
+	if err != nil {
+		t.Fatalf("путь в дереве платформы не разрешён: %v", err)
+	}
+	if want := filepath.Join(base, "services", "iam", "internal", "migrations"); got != want {
+		t.Fatalf("получено %s, ожидалось %s", got, want)
+	}
+}
+
+// TestPathOf_InCloneThePrefixIsStripped — инъекция посадкой: тот же путь, но
+// модуль стоит клоном. Отличается от близнеца выше РОВНО ОДНИМ фактом.
+func TestPathOf_InCloneThePrefixIsStripped(t *testing.T) {
+	base := t.TempDir()
+	mod := mkModule(t, base, "kaname")
+
+	got, err := platformtree.PathOf(mod, "services/iam/internal/migrations")
+	if err != nil {
+		t.Fatalf("путь внутри модуля не разрешён в клоне: %v", err)
+	}
+	if want := filepath.Join(mod, "internal", "migrations"); got != want {
+		t.Fatalf("получено %s, ожидалось %s", got, want)
+	}
+}
+
+// TestPathOf_InCloneAPathOutsideTheModuleIsNotAMiss — третий исход, и он несущий:
+// то, что в поставку не входит, обязано давать «условие не создано», а не путь,
+// которого нет.
+func TestPathOf_InCloneAPathOutsideTheModuleIsNotAMiss(t *testing.T) {
+	base := t.TempDir()
+	mod := mkModule(t, base, "kaname")
+
+	for _, rel := range []string{
+		"proto/kaname/cloud/iam/v1/fga_model.fga",
+		"services/vpc/manifest.yaml",
+		"deploy/helm/umbrella",
+	} {
+		if _, err := platformtree.PathOf(mod, rel); !errors.Is(err, platformtree.ErrNoPlatformTree) {
+			t.Fatalf("%s: свойство поставки выдано за отсутствие файла: %v", rel, err)
+		}
+	}
+}
+
+// TestPathOf_TheSamePathsResolveInThePlatformTree — законный близнец предыдущей:
+// те же пути в дереве платформы разрешаются, а не отвергаются. Без него отказ
+// выше зеленел бы и на исправном дереве.
+func TestPathOf_TheSamePathsResolveInThePlatformTree(t *testing.T) {
+	base := t.TempDir()
+	mod := mkModule(t, base, "services/iam")
+
+	for _, rel := range []string{
+		"proto/kaname/cloud/iam/v1/fga_model.fga",
+		"services/vpc/manifest.yaml",
+		"deploy/helm/umbrella",
+	} {
+		if _, err := platformtree.PathOf(mod, rel); err != nil {
+			t.Fatalf("%s: путь дерева платформы отвергнут в дереве платформы: %v", rel, err)
+		}
+	}
+}
+
+// TestPathOf_ModuleRootItselfIsAddressable — координата самого модуля.
+func TestPathOf_ModuleRootItselfIsAddressable(t *testing.T) {
+	base := t.TempDir()
+	mod := mkModule(t, base, "kaname")
+
+	got, err := platformtree.PathOf(mod, "services/iam")
+	if err != nil {
+		t.Fatalf("корень модуля не адресуем: %v", err)
+	}
+	if got != mod {
+		t.Fatalf("получено %s, ожидалось %s", got, mod)
+	}
+}
+
+// TestPathOf_EscapingRelIsRefused — путь, выходящий вверх, координатой не является.
+func TestPathOf_EscapingRelIsRefused(t *testing.T) {
+	base := t.TempDir()
+	mod := mkModule(t, base, "kaname")
+
+	if _, err := platformtree.PathOf(mod, "../соседнее/дерево"); !errors.Is(err, platformtree.ErrModuleRootUnknown) {
+		t.Fatalf("путь вверх принят за координату дерева: %v", err)
+	}
+}

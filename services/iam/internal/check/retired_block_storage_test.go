@@ -289,11 +289,9 @@ func declaredTypes(dsl string) map[string]bool {
 // declared is a question the relational form REFUSES to answer — an error, not a
 // denial (`relverdict.Ask` has no plan for it).
 func TestRetiredBlockStorageIsNotInAuthorizationModel(t *testing.T) {
-	root := monorepoRoot(t)
-
-	canonical, err := os.ReadFile(filepath.Join(root, canonicalModelRelPath))
+	canonical, err := os.ReadFile(treePath(t, canonicalModelRelPath))
 	require.NoError(t, err, "canonical authorization model %s is missing — this gate has no source of truth", canonicalModelRelPath)
-	embRaw, err := os.ReadFile(filepath.Join(root, embeddedModelRelPath))
+	embRaw, err := os.ReadFile(treePath(t, embeddedModelRelPath))
 	require.NoError(t, err, "embedded authorization model %s is missing — the executed model cannot be checked", embeddedModelRelPath)
 
 	canonicalTypes := declaredTypes(string(canonical))
