@@ -761,13 +761,13 @@
               "script": {
                 "type": "text/javascript",
                 "exec": [
-                  "// per-step auth: bearer from env 'jwtAccountAdminA'",
-                  "const __t = pm.environment.get('jwtAccountAdminA') || pm.variables.get('jwtAccountAdminA') || '';",
+                  "// per-step auth: bearer from env 'jwtSAA'",
+                  "const __t = pm.environment.get('jwtSAA') || pm.variables.get('jwtSAA') || '';",
                   "if (__t) {",
                   "  pm.request.headers.upsert({key: 'Authorization', value: 'Bearer ' + __t});",
                   "} else {",
-                  "  pm.test('[УСЛОВИЕ НЕ СОЗДАНО] harness config: jwtAccountAdminA is set (subject under test)', () => {",
-                  "    pm.expect.fail('jwtAccountAdminA is not set — the authz-fixture seed (tests/authz-fixtures/setup.sh) did not provide this subject. Running the step anonymously would test a DIFFERENT principal and pass for the wrong reason.');",
+                  "  pm.test('[УСЛОВИЕ НЕ СОЗДАНО] harness config: jwtSAA is set (subject under test)', () => {",
+                  "    pm.expect.fail('jwtSAA is not set — the authz-fixture seed (tests/authz-fixtures/setup.sh) did not provide this subject. Running the step anonymously would test a DIFFERENT principal and pass for the wrong reason.');",
                   "  });",
                   "  pm.execution.skipRequest();",
                   "}",
@@ -819,13 +819,13 @@
                   "pm.test('status 200', () => pm.expect(pm.response.code, JSON.stringify(pm.response.text())).to.eql(200));",
                   "const j = pm.response.json();",
                   "pm.test('SELF-NAMED: субъект назван — и это владелец ПРЕДЪЯВЛЕННОГО удостоверения', () => {",
-                  "  pm.expect(JSON.stringify(j), JSON.stringify(j))",
-                  "    .to.include(pm.environment.get('userAAAId'));",
+                  "  pm.expect(j.subject, JSON.stringify(j))",
+                  "    .to.eql('service_account:' + pm.environment.get('svaAId'));",
                   "});",
                   "pm.test('SELF-NAMED: и НЕ тот, кем вызывающий назвал себя заголовком — ни голой формой, ни мостовой', () => {",
                   "  // >>> контроль непустоты множества, на котором проверяется отрицание",
-                  "  pm.expect(JSON.stringify(j), 'субъект не назван ВОВСЕ: «чужого идентификатора в теле нет» выполняется на любом теле, где нет ничьего')",
-                  "    .to.include(pm.environment.get('userAAAId'));",
+                  "  pm.expect(j.subject, 'субъект не назван ВОВСЕ: «чужого идентификатора в теле нет» выполняется на любом теле, где нет ничьего')",
+                  "    .to.eql('service_account:' + pm.environment.get('svaAId'));",
                   "  // <<< контроль непустоты",
                   "  pm.expect(JSON.stringify(j), JSON.stringify(j)).to.not.include('usr-someone-else');",
                   "});"
@@ -1115,7 +1115,9 @@
                   "  pm.expect(j, JSON.stringify(j)).to.have.property('id');",
                   "  pm.expect(j.id, JSON.stringify(j)).to.be.a('string').and.not.empty;",
                   "});",
-                  "pm.environment.set('ownRestOpId', j.id);"
+                  "pm.environment.set('ownRestOpId', j.id);",
+                  "pm.environment.set('ownRestMutationServedBody', pm.response.text());",
+                  "pm.environment.set('ownRestMutationServedStatus', String(pm.response.code));"
                 ]
               }
             }
@@ -2027,7 +2029,7 @@
       ]
     },
     {
-      "name": "IAM-OWNREST-NEG-FOREIGN-MUTATION — Правка чужого объекта через собственный фронт → 404, неотличимый от промаха: ответ не сообщает, существует ли объект",
+      "name": "IAM-OWNREST-NEG-FOREIGN-MUTATION — Правка чужого объекта через собственный фронт → отказ, побайтово равный отказу на несуществующий идентификатор: ответ не сообщает, существует ли объект",
       "description": "class:NEG | class:SEC | priority:P0",
       "item": [
         {
@@ -2119,9 +2121,9 @@
               "script": {
                 "type": "text/javascript",
                 "exec": [
-                  "pm.test('status 404', () => pm.expect(pm.response.code, JSON.stringify(pm.response.text())).to.eql(404));",
+                  "pm.test('status 403', () => pm.expect(pm.response.code, JSON.stringify(pm.response.text())).to.eql(403));",
                   "const j = pm.response.json();",
-                  "pm.test('FOREIGN-MUT: grpc code 5', () => pm.expect(j.code, JSON.stringify(j)).to.eql(5));",
+                  "pm.test('FOREIGN-MUT: grpc code 7', () => pm.expect(j.code, JSON.stringify(j)).to.eql(7));",
                   "pm.test('FOREIGN-MUT: ответ не сообщает, существует ли объект — ни состояния, ни отметок времени в теле нет', () => {",
                   "  const body = pm.response.text();",
                   "  // >>> контроль непустоты множества, на котором проверяется отрицание",
@@ -2132,6 +2134,115 @@
                   "  // <<< контроль непустоты",
                   "  pm.expect(body).to.not.include('createdAt');",
                   "  pm.expect(body).to.not.include('seized-by');",
+                  "});",
+                  "pm.environment.set('ownRestForeignMutBody', pm.response.text());",
+                  "pm.environment.set('ownRestForeignMutStatus', String(pm.response.code));"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "IAM-OWNREST-NEG-FOREIGN-MUTATION :: patch-absent-account",
+          "request": {
+            "method": "PATCH",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/iam/v1/accounts/accdeadbeefdeadbeef0",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "iam",
+                "v1",
+                "accounts",
+                "accdeadbeefdeadbeef0"
+              ]
+            },
+            "body": {
+              "mode": "raw",
+              "raw": "{\"name\": \"seized-by-{{runId}}\"}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          },
+          "protocolProfileBehavior": {
+            "strictSSL": false
+          },
+          "event": [
+            {
+              "listen": "prerequest",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "// per-step auth: bearer from env 'jwtAccountAdminA'",
+                  "const __t = pm.environment.get('jwtAccountAdminA') || pm.variables.get('jwtAccountAdminA') || '';",
+                  "if (__t) {",
+                  "  pm.request.headers.upsert({key: 'Authorization', value: 'Bearer ' + __t});",
+                  "} else {",
+                  "  pm.test('[УСЛОВИЕ НЕ СОЗДАНО] harness config: jwtAccountAdminA is set (subject under test)', () => {",
+                  "    pm.expect.fail('jwtAccountAdminA is not set — the authz-fixture seed (tests/authz-fixtures/setup.sh) did not provide this subject. Running the step anonymously would test a DIFFERENT principal and pass for the wrong reason.');",
+                  "  });",
+                  "  pm.execution.skipRequest();",
+                  "}",
+                  "// HARNESS-CONFIG GUARD — ownRestBaseUrl is injected by the newman runner (--env-var).",
+                  "// Missing value = misconfigured harness, NOT a legal mode: FAIL, then skip.",
+                  "const __cfgUrl = pm.environment.get('ownRestBaseUrl') || pm.variables.get('ownRestBaseUrl') || '';",
+                  "if (__cfgUrl) {",
+                  "  pm.request.url = __cfgUrl + pm.variables.replaceIn('/iam/v1/accounts/accdeadbeefdeadbeef0');",
+                  "} else {",
+                  "  pm.test('[УСЛОВИЕ НЕ СОЗДАНО] harness config: ownRestBaseUrl is set — собственный публичный REST-фронт службы; без него у поверхности нет адреса, и кейс проверял бы край платформы вместо предмета', () => {",
+                  "    pm.expect.fail('ownRestBaseUrl is not set — the newman runner (deploy/scripts/newman-e2e.sh / newman-parallel.sh --env-var) did not inject it. This step cannot run, and a check that cannot run MUST NOT be silently dropped.');",
+                  "  });",
+                  "  pm.execution.skipRequest();",
+                  "}",
+                  "(function () {",
+                  "  var _u = '';",
+                  "  try { _u = pm.request.url.toString(); } catch (e) { return; }",
+                  "  try {",
+                  "    if (pm.request.body && pm.request.body.raw) { _u = _u + ' ' + pm.request.body.raw; }",
+                  "  } catch (e) { /* тела может не быть — это не находка */ }",
+                  "  var _all = _u.match(/\\{\\{[A-Za-z0-9_]+\\}\\}/g);",
+                  "  if (!_all) { return; }",
+                  "  var _n = null;",
+                  "  for (var _i = 0; _i < _all.length; _i++) {",
+                  "    var _c = _all[_i].slice(2, -2);",
+                  "    if (!pm.variables.has(_c)) { _n = _c; break; }",
+                  "  }",
+                  "  if (_n === null) { return; }",
+                  "  pm.test('предусловие: {{' + _n + '}} не было захвачено — запрос не отправлен', function () {",
+                  "    pm.expect.fail(_n + ' не определена ни в одной области. Мутация, которая должна была её захватить, не вернула Operation (была отвергнута), либо захват не состоялся. Отправка ушла бы литералом и повтор не сошёлся бы никогда.');",
+                  "  });",
+                  "  pm.execution.skipRequest();",
+                  "})();"
+                ]
+              }
+            },
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('FOREIGN-MUT: «есть, но не твой» и «нет такого» неотличимы на маршруте ПРАВКИ — иначе отказ служил бы оракулом существования', () => {",
+                  "  const foreign = pm.environment.get('ownRestForeignMutBody');",
+                  "  pm.expect(foreign, 'отказ на чужой объект не захвачен — сравнивать не с чем').to.be.a('string').and.not.empty;",
+                  "  const shape = s => s.replace(/acc[0-9a-z]+/g, '<id>');",
+                  "  // >>> контроль непустоты множества, на котором проверяется отрицание",
+                  "  const mutServed = pm.environment.get('ownRestMutationServedBody');",
+                  "  pm.expect(mutServed, 'ответ на законную мутацию не захвачен — сравнивать не с чем').to.be.a('string').and.not.empty;",
+                  "  pm.expect(pm.environment.get('ownRestMutationServedStatus'), 'законная МУТАЦИЯ не обслужена: полоса правки не различает ничего, и «неотличимо» ниже истинно тривиально — на пустом множестве').to.eql('200');",
+                  "  pm.expect(shape(foreign), 'отказ на правку неотличим и от ответа на ЗАКОННУЮ мутацию: полоса правки не различает ничего, и равенство двух отказов ни о чём не свидетельствует').to.not.eql(shape(mutServed));",
+                  "  // <<< контроль непустоты",
+                  "  pm.expect(String(pm.response.code), pm.response.text()).to.eql(pm.environment.get('ownRestForeignMutStatus'));",
+                  "  pm.expect(shape(pm.response.text())).to.eql(shape(foreign));",
                   "});"
                 ]
               }
