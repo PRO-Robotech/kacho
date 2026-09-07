@@ -286,6 +286,43 @@ def assert_iam_operation_envelope() -> List[str]:
     ]
 
 
+# МЕТКА ТРЕТЬЕГО ИСХОДА: «условие не создал ХАРНЕСС», а не «продукт неверен».
+#
+# Страж настройки харнесса падает тогда, когда предмет шага обязан был создать
+# НЕ продукт: адрес поверхности — прогонщик (`--env-var`), субъект — посев
+# фикстур. Его отказ и отказ продукта приходят вердикту ОДНИМ слотом
+# (`assertions.failed`), поэтому без метки «харнесс не отработал» неотличимо от
+# «поверхность сломана» ни глазом, ни машиной, и разбирающий идёт чинить дерево
+# там, где дефекта нет.
+#
+# МЕТКА НЕ ДЕЛАЕТ ИСХОД ЗЕЛЁНЫМ, и это не оговорка, а разница с тем вычитанием,
+# которое из вердикта снято целиком. Прогон остаётся ненулевым, утверждение —
+# красным и названным; меняются КАТЕГОРИЯ и КОД ВОЗВРАТА, то есть место, куда
+# идёт читатель.
+#
+# ПОЧЕМУ МЕТКА В ИМЕНИ УТВЕРЖДЕНИЯ. От пропущенного запроса до отчёта newman
+# доезжает единственная вещь — упавшее утверждение с его именем
+# (`run.failures[].error.test`); сам пропуск следа не оставляет ВОВСЕ. И причина
+# здесь не угадывается по чужому имени шага: имя производит тот же блок, что и
+# утверждение, — то есть «это настройка харнесса» сказано его собственным
+# автором.
+#
+# ТЕКСТ ОБЯЗАН СОВПАДАТЬ С ОСТАЛЬНЫМИ НАБОРАМИ ДОСЛОВНО. Вердикт по КАЖДОЙ
+# суите выносит один скрипт (services/iam/tests/newman/scripts/assert-suites-green.sh,
+# запускается с cwd = каталог проверяемой суиты), а метку он читает у ОДНОГО
+# производителя — services/iam/tests/newman/scripts/gen.py, — потому что берёт её
+# по `dirname "${BASH_SOURCE[0]}"`, а не по cwd. Набор, объявивший другой текст,
+# МОЛЧА выпадает из третьей категории: его стражи снова читаются находками о
+# продукте, хотя метка у них есть. Согласие держит гейт дерева
+# internal/repohygiene/newmanpreconditionmark_test.go, а не эта строка.
+#
+# ЧТО СЮДА НЕ ИДЁТ. Предмет шага, не созданный ПРЕДЫДУЩИМ шагом (операция,
+# которую мутация не вернула), — находка о продукте или о кейсе, а не о
+# харнессе. Такой страж метки не несёт; увести его в третью категорию значило бы
+# завести маску.
+PRECONDITION_MARK = "[УСЛОВИЕ НЕ СОЗДАНО]"
+
+
 def require_env_url(var: str, path: str, why: str = "") -> List[str]:
     """Pre-request block: point this request at {{<var>}}+path, FAILING if <var> is unset.
 
@@ -311,7 +348,7 @@ def require_env_url(var: str, path: str, why: str = "") -> List[str]:
         "if (__cfgUrl) {",
         f"  pm.request.url = __cfgUrl + {js_str(path)};",
         "} else {",
-        f"  pm.test({js_str(f'harness config: {var} is set{reason}')}, () => {{",
+        f"  pm.test({js_str(f'{PRECONDITION_MARK} harness config: {var} is set{reason}')}, () => {{",
         "    pm.expect.fail(" + js_str(
             f"{var} is not set — the newman runner "
             "(deploy/scripts/newman-parallel.sh --env-var) did not inject it. This step cannot "
@@ -409,7 +446,7 @@ def _auth_pre_script(auth: str) -> List[str]:
         # assertion of this step is scored against a principal the case never named;
         # the pre-request assertion above has already run, so the skip stays RECORDED
         # as a failure naming the variable, never a mute one.
-        f"  pm.test({js_str(f'harness config: {auth} is set (subject under test)')}, () => {{",
+        f"  pm.test({js_str(f'{PRECONDITION_MARK} harness config: {auth} is set (subject under test)')}, () => {{",
         "    pm.expect.fail(" + js_str(
             f"{auth} is not set — the authz-fixture seed "
             "(tests/authz-fixtures/setup.sh, or prodseed_all.py under production posture) did "
@@ -426,6 +463,12 @@ def _auth_pre_script(auth: str) -> List[str]:
 # ---------------------------------------------------------------------------
 
 _INJECTED = {
+    # МЕТКА ТРЕТЬЕГО ИСХОДА — рукописному стражу настройки харнесса.
+    # Кейс её НЕ ВЫПИСЫВАЕТ: текст приходит от единственного производителя
+    # набора (scripts/gen.py::PRECONDITION_MARK), иначе завелось бы второе
+    # место об одном предмете, и оно разошлось бы молча — помеченное тихо
+    # вернулось бы в находки о продукте.
+    "PRECONDITION_MARK": PRECONDITION_MARK,
     "Step": Step,
     "Case": Case,
     "assert_status": assert_status,
