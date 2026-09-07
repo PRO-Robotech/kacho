@@ -135,6 +135,66 @@ func TestFpcInjection_TheSameCoordinateWithoutItsFileIsFound(t *testing.T) {
 	}
 }
 
+// ── Полоса КОНТРАКТА: судится `.proto` под `proto/`, и только он ───────────
+//
+// Пара обязательна. Первая половина доказывает, что расширение популяции не
+// вакуумно: дефект в контракте краснеет и называет координату. Вторая — что
+// расширен ВИД файла, а не каталог целиком: соседний файл того же каталога, но
+// другого вида, остаётся вне популяции, и его молчание не есть молчание
+// сломанного обхода (оно подтверждено числом прочитанных).
+
+func TestFpcInjection_DeadCoordinateInTheContractIsFound(t *testing.T) {
+	files := fpcSoundTree()
+	files["proto/kacho/cloud/registry/v1/registry.proto"] = "" +
+		"// ID реестра. Prefix \"reg\" (kacho-corelib/ids.NewID).\n" +
+		"message Registry {}\n"
+	census, findings, err := scanFoundationProse(fpcRootWith(t, files))
+	if err != nil {
+		t.Fatalf("обход: %v", err)
+	}
+	if len(findings) != 1 {
+		t.Fatalf("мёртвая координата контракта не найдена — расширение популяции вакуумно: "+
+			"%v (%s)", findings, census)
+	}
+	got := findings[0].String()
+	for _, want := range []string{"proto/kacho/cloud/registry/v1/registry.proto:1", "kacho-corelib/ids.NewID"} {
+		if !strings.Contains(got, want) {
+			t.Fatalf("находка не называет %q: %s", want, got)
+		}
+	}
+}
+
+func TestFpcInjection_TheSameLineInANonContractFileOfTheContractDirStaysSilent(t *testing.T) {
+	files := fpcSoundTree()
+	files["proto/README.md"] = "ID реестра. Prefix `reg` (kacho-corelib/ids.NewID).\n"
+	census, findings, err := scanFoundationProse(fpcRootWith(t, files))
+	if err != nil {
+		t.Fatalf("обход: %v", err)
+	}
+	if len(findings) != 0 {
+		t.Fatalf("файл вне вида популяции объявлен находкой — расширен каталог, а не вид: %v", findings)
+	}
+	if census.filesRead != 2 {
+		t.Fatalf("молчание не объяснено: прочитано %d файлов вместо 2 контроля, то есть "+
+			"обход мог не состояться вовсе: %s", census.filesRead, census)
+	}
+}
+
+func TestFpcInjection_TheSameContractLineNamingTheCurrentPlaceStaysSilent(t *testing.T) {
+	files := fpcSoundTree()
+	files["proto/kacho/cloud/registry/v1/registry.proto"] = "" +
+		"// ID реестра. Prefix \"reg\" (pkg/ids.NewID).\n" +
+		"message Registry {}\n"
+	files["pkg/ids/ids.go"] = "package ids\n"
+	_, findings, err := scanFoundationProse(fpcRootWith(t, files))
+	if err != nil {
+		t.Fatalf("обход: %v", err)
+	}
+	if len(findings) != 0 {
+		t.Fatalf("контракт, назвавший нынешнее место, объявлен находкой: %v", findings)
+	}
+}
+
 // ── Молчит: голое имя без пути — это НАЗВАНИЕ службы, а не адрес ────────────
 
 func TestFpcInjection_BareServiceNameStaysSilent(t *testing.T) {
