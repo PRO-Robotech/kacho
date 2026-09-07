@@ -712,6 +712,67 @@ def assert_operation_envelope() -> List[str]:
 PRECONDITION_MARK = "[УСЛОВИЕ НЕ СОЗДАНО]"
 
 
+def report_then_skip(title: str, detail: str, indent: str = "") -> List[str]:
+    """ОТКАЗ С ИМЕНЕМ, ПОТОМ ОТМЕНА ЗАПРОСА — единственная форма предохранителя.
+
+    Обе половины несущие, и каждая закрывает свою слепоту:
+
+      * БЕЗ ОТКАЗА пропущенный запрос не оставляет в отчёте следа вовсе — ни
+        утверждения, ни падения, ни записи об исполнении. Проверка исчезает
+        молча, и «её не было» неотличимо от «она прошла»;
+      * БЕЗ ОТМЕНЫ шаг уезжает по адресу, собранному из незахваченной
+        переменной, и ответ по нему судится дальше как свидетельство о продукте.
+
+    ПОЧЕМУ НЕ `throw`. Исключение исполняет ПЕРВУЮ половину и не исполняет
+    вторую: оно записывается отказом СКРИПТА, а запрос всё равно уходит. Это
+    замер, а не догадка о чужом механизме — на прогоне #2196 шаг опроса
+    исполнился 16 раз, ответ получили ВСЕ 16, и путь у всех был `operations/null`.
+    `pm.execution.skipRequest()` пропускает ровно один запрос вместе с его
+    тест-скриптом, поэтому из шага не судится ничего, а утверждение выше уже
+    записано и держит пропуск НАЗВАННЫМ.
+
+    Держит форму `scripts/prerequest_cancel_test.py`: `throw` в исполняемой части
+    pre-request скрипта — находка.
+    """
+    # ОТСТУП ПРИСТАВЛЯЕТСЯ, А НЕ ПОДСТАВЛЯЕТСЯ В f-СТРОКУ. В форме
+    # `f"{indent}pm.test(…)"` значение садится ВПЛОТНУЮ к имени, то есть в
+    # позицию фрагмента идентификатора: непробельный отступ породил бы скрипт,
+    # который не разбирается. Это не гипотеза — так и нашлось,
+    # `js_name_position_test.py` покраснел на первой редакции. Приставка снимает
+    # класс целиком, вместо того чтобы заводить ему запись в перечне исходов.
+    lines = [
+        f"pm.test({js_str(title)}, () => {{",
+        "  pm.expect.fail(" + js_str(detail) + ");",
+        "});",
+        "pm.execution.skipRequest();",
+    ]
+    return [indent + line for line in lines]
+
+
+def precondition_not_met(title: str, detail: str, indent: str = "") -> List[str]:
+    """Та же форма, но третьим ИСХОДОМ: условие не создал харнесс.
+
+    ЧЕМ ОТЛИЧАЕТСЯ ОТ `report_then_skip`. Ровно меткой — и метка меняет не
+    строгость, а АДРЕСАТА: помеченное падение читается вердиктом как «условие не
+    создано» и посылает читателя к прогонщику и посеву, а непомеченное — к
+    продукту. Вычитания метка не заводит: прогон остаётся ненулевым, утверждение
+    остаётся красным и названным (`assert-suites-green.sh`, код 3 — и только
+    когда других отказов нет).
+
+    ЧТО СЮДА НЕ ИДЁТ. Предмет шага, не созданный ПРЕДЫДУЩИМ шагом (операция,
+    которую мутация не вернула), — это находка о продукте или о кейсе, а не о
+    харнессе. Такой страж берёт `report_then_skip` и метки не несёт; увести его в
+    третью категорию значило бы завести маску.
+
+    МЕТКА БЕРЁТСЯ У ЕДИНСТВЕННОГО ОБЪЯВЛЕНИЯ, и производителей формы теперь
+    столько, сколько её вызывающих: рукописный кейс, которому нужен третий исход,
+    зовёт ЭТУ функцию (она впрыснута в пространство имён кейсов) вместо того,
+    чтобы выписывать литерал у себя. Тем и держится запрет
+    `scripts/precondition_mark_test.py` — файл кейса метки не пишет.
+    """
+    return report_then_skip(f"{PRECONDITION_MARK} {title}", detail, indent)
+
+
 def require_env_url(var: str, path: str, why: str = "") -> List[str]:
     """Pre-request block: point this request at {{<var>}}+path, and FAIL if <var>
     is not set.
@@ -781,13 +842,12 @@ def require_env_url(var: str, path: str, why: str = "") -> List[str]:
         # replaceIn is identity on a template-free path; see the docstring above.
         f"  pm.request.url = __cfgUrl + pm.variables.replaceIn({js_str(path)});",
         "} else {",
-        f"  pm.test({js_str(f'{PRECONDITION_MARK} harness config: {var} is set{reason}')}, () => {{",
-        "    pm.expect.fail(" + js_str(
+        *precondition_not_met(
+            f"harness config: {var} is set{reason}",
             f"{var} is not set — the newman runner "
             "(deploy/scripts/newman-e2e.sh / newman-parallel.sh --env-var) did not inject it. "
-            "This step cannot run, and a check that cannot run MUST NOT be silently dropped.") + ");",
-        "  });",
-        "  pm.execution.skipRequest();",
+            "This step cannot run, and a check that cannot run MUST NOT be silently dropped.",
+            indent="  "),
         "}",
     ]
 
@@ -1141,22 +1201,29 @@ def _auth_pre_script(auth: str) -> List[str]:
         # against a different subject entirely. The typical expectation (401/403)
         # then still holds, so the case passes FOR THE WRONG REASON and the subject
         # under test is never exercised. Missing subject = misconfigured harness:
-        # FAIL naming the variable, THEN SKIP — the sanctioned shape, identical to
-        # gen.py::require_env_url. Dropping the header and sending anyway is NOT the
-        # sanctioned shape: the step still travels, and every OTHER assertion it
-        # carries is then scored against a principal the case never named.
+        # FAIL naming the variable, THEN SKIP. Dropping the header and sending anyway
+        # is NOT the sanctioned shape: the step still travels, and every OTHER
+        # assertion it carries is then scored against a principal the case never named.
+        #
+        # ФОРМА БЕРЁТСЯ У ПРОИЗВОДИТЕЛЯ, А НЕ ПЕРЕПИСЫВАЕТСЯ ЗДЕСЬ. Прежде тут
+        # стояла её копия, и комментарий рядом объявлял её «identical to
+        # gen.py::require_env_url» — при том что скопирована была форма, а МЕТКА
+        # третьего исхода нет. Утверждение о тождестве было ложным ровно в том,
+        # ради чего его писали: помеченных стражей в дереве было 220, непомеченных
+        # 2044, и каждый непомеченный приходил вердикту находкой о продукте
+        # (#2187). Тождество теперь не объявляется, а держится построением —
+        # производитель один, и он же ставит метку.
         # `pm.execution.skipRequest()` skips exactly one request — its test script
         # does not run either — so nothing of this step is scored, while the
         # pre-request assertion above has ALREADY run and keeps the skip RECORDED as
         # a failure naming the variable, never a mute one. (`auth="anonymous"` is the
         # DELIBERATE anonymous case and takes the branch above — never affected.)
-        f"  pm.test({js_str(f'harness config: {auth} is set (subject under test)')}, () => {{",
-        "    pm.expect.fail(" + js_str(
+        *precondition_not_met(
+            f"harness config: {auth} is set (subject under test)",
             f"{auth} is not set — the authz-fixture seed "
             "(tests/authz-fixtures/setup.sh) did not provide this subject. Running the step "
-            "anonymously would test a DIFFERENT principal and pass for the wrong reason.") + ");",
-        "  });",
-        "  pm.execution.skipRequest();",
+            "anonymously would test a DIFFERENT principal and pass for the wrong reason.",
+            indent="  "),
         "}",
     ]
 
@@ -1753,6 +1820,13 @@ _INJECTED = {
     "assert_operation_envelope": assert_operation_envelope,
     "assert_created_at_seconds": assert_created_at_seconds,
     "require_env_url": require_env_url,
+    # ФОРМА ПРЕДОХРАНИТЕЛЯ — впрыскивается, потому что без неё рукописный
+    # кейс не может исполнить правило даже при желании автора: у него
+    # остаётся `throw`, который запрос НЕ отменяет, и выписанный у себя
+    # литерал метки, который запрещён гейтом единственности. Обе беды
+    # наблюдались вживую (#2196 и #2187, третий производитель).
+    "report_then_skip": report_then_skip,
+    "precondition_not_met": precondition_not_met,
     "poll_operation_until_done": poll_operation_until_done,
     "retry_until_authorized": _rya,
     "retry_until_present": _rup,
