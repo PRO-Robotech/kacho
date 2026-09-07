@@ -50,7 +50,7 @@ var revocationScanRoots = []string{
 	// задавал пообъектного вопроса на своих слушателях, полагаясь на край, — и
 	// потому его каталог объявлений в перепись не входил. Дверь завела окно;
 	// каталог входит вместе с ним.
-	"services/iam/internal/apps/kacho/config",
+	"services/iam/internal/apps/kaname/config",
 	// Край. Он не лежит под services/, и именно поэтому его окно не попало в
 	// перепись: все корни обхода начинались с services/, так что процесс, через
 	// который проходит КАЖДЫЙ внешний запрос, не был прочитан ни одной из
@@ -497,7 +497,7 @@ func TestKnobShapePredicateHasControlsBothWays(t *testing.T) {
 	for _, k := range []string{
 		"KACHO_API_GATEWAY_SESSION_CACHE_TTL_SECONDS",
 		"KACHO_API_GATEWAY_DPOP_REPLAY_TTL_SECONDS",
-		"KACHO_IAM_INTROSPECTION_CACHE_TTL",
+		"KANAME_INTROSPECTION_CACHE_TTL",
 		"KACHO_VPC_PEER_PROJECT_CACHE_TTL",
 		"http.client.timeout",
 		"authz.cache-size",

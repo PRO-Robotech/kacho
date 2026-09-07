@@ -4,7 +4,7 @@
 package iam_test
 
 // register_applier_permission_denied_test.go — a denial on authorization grounds
-// from kacho-iam is TERMINAL for the register drainer.
+// from kaname is TERMINAL for the register drainer.
 //
 // This is the service the class was first observed in: a register queue in which no
 // row had ever been delivered — every one refused on authorization grounds. The
@@ -30,7 +30,7 @@ import (
 	"google.golang.org/grpc/codes"
 	"google.golang.org/grpc/status"
 
-	iampb "github.com/PRO-Robotech/kacho/pkg/api/kacho/cloud/iam/v1"
+	iampb "github.com/PRO-Robotech/kacho/pkg/api/kaname/cloud/iam/v1"
 	"github.com/PRO-Robotech/kacho/pkg/outbox/drainer"
 
 	"github.com/PRO-Robotech/kacho/services/nlb/internal/clients/iam"

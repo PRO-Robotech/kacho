@@ -35,7 +35,7 @@ func findFactMutations(body string) []string {
 func TestR7_3_27_InjectionRedOnASecondProducer(t *testing.T) {
 	body := `package pg
 
-const backfill = ` + "`" + `INSERT INTO kacho_iam.relation_fact (object_type, object_id, relation, subject)
+const backfill = ` + "`" + `INSERT INTO kaname.relation_fact (object_type, object_id, relation, subject)
 	VALUES ($1, $2, $3, $4) ON CONFLICT DO NOTHING` + "`" + `
 `
 	got := findFactMutations(body)
@@ -54,7 +54,7 @@ func TestR7_3_27_InjectionSilentOnAReader(t *testing.T) {
 	body := `package relverdict
 
 const groundsSQL = ` + "`" + `SELECT f.relation, f.subject
-	  FROM kacho_iam.relation_fact f
+	  FROM kaname.relation_fact f
 	 WHERE f.object_type = $1 AND f.object_id = $2` + "`" + `
 `
 	if got := findFactMutations(body); len(got) != 0 {
@@ -65,7 +65,7 @@ const groundsSQL = ` + "`" + `SELECT f.relation, f.subject
 
 // TestR7_3_27_InjectionSilentWithoutTheTable — файл, не называющий таблицу вовсе.
 func TestR7_3_27_InjectionSilentWithoutTheTable(t *testing.T) {
-	if got := findFactMutations("package pg\n\nconst q = `INSERT INTO kacho_iam.accounts (id) VALUES ($1)`\n"); len(got) != 0 {
+	if got := findFactMutations("package pg\n\nconst q = `INSERT INTO kaname.accounts (id) VALUES ($1)`\n"); len(got) != 0 {
 		t.Fatalf("признак краснеет на записи в ЧУЖУЮ таблицу (%v)", got)
 	}
 }

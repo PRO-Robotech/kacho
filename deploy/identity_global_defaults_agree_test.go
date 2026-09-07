@@ -12,8 +12,8 @@
 // настроек: значения `global`, объявленные подчартом, соседям не раздаются —
 // это свойство Helm, а не наше решение.
 //
-// Второе — в самом подчарте kacho-iam, и нужно оно ровно для того, чтобы
-// `helm template charts/kacho-iam` рендерился САМ ПО СЕБЕ. На таком рендере
+// Второе — в самом подчарте kaname, и нужно оно ровно для того, чтобы
+// `helm template charts/kaname` рендерился САМ ПО СЕБЕ. На таком рендере
 // стоит самопроверка гейта сетевых политик: без умолчаний страж рендера
 // отказывает, вывод пуст, и гейт «пропускает» внесённый дефект — перестаёт
 // краснеть там, где обязан. Поймано на себе: случай «метка сайдкара
@@ -70,7 +70,7 @@ func flatten(prefix string, v any, out map[string]string) {
 
 func TestIdentityGlobalDefaultsOfTheSubchartAgreeWithTheUmbrella(t *testing.T) {
 	umbrella := readYAML(t, filepath.Join(umbrellaDir, "values.yaml"))
-	subchart := readYAML(t, filepath.Join(umbrellaDir, "charts", "kacho-iam", "values.yaml"))
+	subchart := readYAML(t, filepath.Join(umbrellaDir, "charts", "kaname", "values.yaml"))
 
 	pick := func(tree map[string]any, where string) map[string]any {
 		cur := any(tree)
@@ -95,7 +95,7 @@ func TestIdentityGlobalDefaultsOfTheSubchartAgreeWithTheUmbrella(t *testing.T) {
 	u := map[string]string{}
 	s := map[string]string{}
 	flatten("", pick(umbrella, "values.yaml умбреллы"), u)
-	flatten("", pick(subchart, "values.yaml подчарта kacho-iam"), s)
+	flatten("", pick(subchart, "values.yaml подчарта kaname"), s)
 	if len(s) == 0 || len(u) == 0 {
 		t.Fatalf("листьев прочитано: у умбреллы %d, у подчарта %d — пустой результат "+
 			"НЕ означает «всё хорошо»", len(u), len(s))
@@ -132,12 +132,12 @@ func TestIdentityGlobalDefaultsOfTheSubchartAgreeWithTheUmbrella(t *testing.T) {
 // ДВЕ независимые записи, и вычислять одну из другой значило бы сверять запись
 // с самой собой.
 const (
-	hooksAuthorityDefaultChartName = "kacho-iam"
+	hooksAuthorityDefaultChartName = "kaname"
 	hooksAuthorityDefaultPort      = 9092
 )
 
 func TestCallbackAuthorityDefaultsMatchWhatTheSubchartSaysAboutItself(t *testing.T) {
-	subchart := readYAML(t, filepath.Join(umbrellaDir, "charts", "kacho-iam", "values.yaml"))
+	subchart := readYAML(t, filepath.Join(umbrellaDir, "charts", "kaname", "values.yaml"))
 
 	name, _ := subchart["name"].(string)
 	if name == "" {

@@ -11,7 +11,7 @@ import (
 	"google.golang.org/grpc/codes"
 	"google.golang.org/grpc/status"
 
-	iamv1 "github.com/PRO-Robotech/kacho/pkg/api/kacho/cloud/iam/v1"
+	iamv1 "github.com/PRO-Robotech/kacho/pkg/api/kaname/cloud/iam/v1"
 	"github.com/PRO-Robotech/kacho/pkg/auth"
 	"github.com/PRO-Robotech/kacho/pkg/peer"
 
@@ -29,7 +29,7 @@ type IAMClient struct {
 	cli iamv1.ProjectServiceClient
 }
 
-// NewIAMClient создаёт IAMClient поверх готового *grpc.ClientConn к kacho-iam.
+// NewIAMClient создаёт IAMClient поверх готового *grpc.ClientConn к kaname.
 // conn может быть nil в dev-скелете — тогда fail-closed Unavailable.
 func NewIAMClient(conn *grpc.ClientConn) *IAMClient {
 	c := &IAMClient{}
@@ -39,7 +39,7 @@ func NewIAMClient(conn *grpc.ClientConn) *IAMClient {
 	return c
 }
 
-// EnsureProjectExists валидирует project_id через kacho-iam (ProjectService.Get)
+// EnsureProjectExists валидирует project_id через kaname (ProjectService.Get)
 // на request-path Create.
 //
 // Полосу ответа выбирает носитель (pkg/peer), а не рукописный разбор кодов.

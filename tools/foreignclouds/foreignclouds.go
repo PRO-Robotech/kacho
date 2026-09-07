@@ -677,8 +677,8 @@ var debtFiles = map[string]string{
 	"services/nlb/tests/newman/cases/operation.py":             "prose comment; file is owned by concurrent newman work",
 	"services/compute/tests/newman/scripts/run-incremental.js": "prose comment in the suite runner; file is owned by concurrent newman work",
 	"services/compute/tests/newman/scripts/run-incremental.sh": "prose comment in the suite runner; file is owned by concurrent newman work",
-	"services/iam/internal/apps/kacho/shared/doc.go":           "prose comment; services/iam/internal is owned by concurrent work",
-	"services/iam/internal/apps/kacho/shared/errors.go":        "prose comment; services/iam/internal is owned by concurrent work",
+	"services/iam/internal/apps/kaname/shared/doc.go":          "prose comment; services/iam/internal is owned by concurrent work",
+	"services/iam/internal/apps/kaname/shared/errors.go":       "prose comment; services/iam/internal is owned by concurrent work",
 	"services/iam/internal/domain/project.go":                  "prose comment; services/iam/internal is owned by concurrent work",
 	"services/iam/internal/domain/status.go":                   "prose comment; services/iam/internal is owned by concurrent work",
 }

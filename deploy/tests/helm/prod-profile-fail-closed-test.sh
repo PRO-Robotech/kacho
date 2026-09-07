@@ -10,7 +10,7 @@
 # rollouts pass explicitly. This guard renders it via `helm template` and asserts
 # the security floor for EVERY service:
 #   - auth mode is production / production-strict (NEVER dev) on every service
-#     that has a `mode` knob (api-gateway, kacho-iam, kacho-vpc, kacho-nlb,
+#     that has a `mode` knob (api-gateway, kaname, kacho-vpc, kacho-nlb,
 #     kacho-storage);
 #   - kacho-compute (no `mode` knob — pure internal backend) is fail-closed via
 #     per-RPC IAM Check (authzIam non-empty) + list-filter fail-CLOSED + mTLS +
@@ -105,12 +105,12 @@ helm_try kacho-umbrella "$UMBRELLA" -f "$PROD"
 render_nonempty_or_fatal "values.prod.yaml (полный профиль)"
 FULL="$HELM_OUT"; ok
 
-# ── 1. kacho-iam — production-strict + ssl-mode != disable ───────────────────
-IAM_CM="$(render_only "$PROD" charts/kacho-iam/templates/configmap.yaml)"
+# ── 1. kaname — production-strict + ssl-mode != disable ───────────────────
+IAM_CM="$(render_only "$PROD" charts/kaname/templates/configmap.yaml)"
 iam_mode="$(echo "$IAM_CM" | yq '.data."config.yaml"' - | yq '.authn.mode' -)"
 iam_ssl="$(echo "$IAM_CM" | yq '.data."config.yaml"' - | yq '.repository.postgres."ssl-mode"' -)"
-case "$iam_mode" in production|production-strict) ;; *) violation "kacho-iam authn.mode=$iam_mode (want production*, NOT dev)";; esac
-[ "$iam_ssl" != "disable" ] && [ -n "$iam_ssl" ] || violation "kacho-iam ssl-mode=$iam_ssl (must NOT be disable)"; ok
+case "$iam_mode" in production|production-strict) ;; *) violation "kaname authn.mode=$iam_mode (want production*, NOT dev)";; esac
+[ "$iam_ssl" != "disable" ] && [ -n "$iam_ssl" ] || violation "kaname ssl-mode=$iam_ssl (must NOT be disable)"; ok
 
 # ── 2. kacho-vpc — production + ssl-mode != disable ──────────────────────────
 VPC_CM="$(render_only "$PROD" charts/vpc/templates/configmap.yaml)"
@@ -251,11 +251,11 @@ grep -iqE "devSecret:" "$PROD" \
 # the old expectation. The two backend lines are unchanged and still require the
 # relaxed mode: the production overlay is what lifts them, and that is a separate
 # posture question from how a bearer is verified.
-DEV_IAM="$(render_only "$DEV" charts/kacho-iam/templates/configmap.yaml | yq '.data."config.yaml"' - | yq '.authn.mode' -)"
+DEV_IAM="$(render_only "$DEV" charts/kaname/templates/configmap.yaml | yq '.data."config.yaml"' - | yq '.authn.mode' -)"
 DEV_VPC="$(render_only "$DEV" charts/vpc/templates/configmap.yaml | yq '.data."config.yaml"' - | yq '.authn.mode' -)"
 DEV_AGW="$(env_val KACHO_API_GATEWAY_AUTHN_MODE "$(render_only "$DEV" charts/api-gateway/templates/deployment.yaml)")"
 DEV_AGW_SECRET="$(env_val KACHO_API_GATEWAY_AUTHN_DEV_SECRET "$(render_only "$DEV" charts/api-gateway/templates/deployment.yaml)")"
-[ "$DEV_IAM" = "dev" ] || violation "values.dev.yaml kacho-iam authn.mode=$DEV_IAM (expected dev — dev stand changed!)"
+[ "$DEV_IAM" = "dev" ] || violation "values.dev.yaml kaname authn.mode=$DEV_IAM (expected dev — dev stand changed!)"
 [ "$DEV_VPC" = "dev" ] || violation "values.dev.yaml kacho-vpc authn.mode=$DEV_VPC (expected dev — dev stand changed!)"
 case "$DEV_AGW" in production|production-strict) ;; *) violation "values.dev.yaml api-gateway AUTHN_MODE=$DEV_AGW (expected production* — a stand that is up verifies bearers by signature, whatever it is called)";; esac
 [ -z "$DEV_AGW_SECRET" ] || violation "values.dev.yaml renders a shared signing key into the api-gateway (KACHO_API_GATEWAY_AUTHN_DEV_SECRET) — every holder of the profile would be an issuer"; ok

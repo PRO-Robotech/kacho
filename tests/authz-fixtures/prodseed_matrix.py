@@ -27,7 +27,7 @@ sentence was WRONG for half of them and that error cost nine assertions that nev
     THE LIFETIME IS 14400s (4h), NOT 900s — this line said 900s and that was wrong.
     Measured three independent ways (2026-08-04): `exp - iat` on four issued tokens; the
     provider's own config (`ttl.access_token: 4h`); and the absence of a per-client
-    override on this stand (`KACHO_IAM_SAKEY_ACCESSTOKENTTL` unset →
+    override on this stand (`KANAME_SAKEY_ACCESSTOKENTTL` unset →
     `IssueSAKeyUseCase.accessTokenLifespan()` returns "" → the provider default applies).
     The magnitude is the whole point for whoever schedules the wave: "outwait 15 minutes"
     and "outwait 4 hours" are different decisions. Note that
@@ -164,7 +164,7 @@ def _await(resp, token, key):
 def _psql(sql):
     """Run a read-only query against the iam DB from inside its own pod."""
     args = ["kubectl", "-n", KACHO_NS, "exec", PG_IAM_POD, "-c", "postgresql",
-            "--", "sh", "-c", f'PGPASSWORD="$POSTGRES_PASSWORD" psql -U iam -d kacho_iam -h 127.0.0.1 -tAc "{sql}"']
+            "--", "sh", "-c", f'PGPASSWORD="$POSTGRES_PASSWORD" psql -U iam -d kaname -h 127.0.0.1 -tAc "{sql}"']
     return subprocess.run(args, capture_output=True, text=True).stdout.strip()
 
 
@@ -188,7 +188,7 @@ def upsert_user(ext_id, wait_s=40):
     """
     body = json.dumps({"externalId": ext_id, "email": ext_id, "displayName": ext_id})
     args = ["grpcurl", "-insecure", "-cert", MTLS_CERT, "-key", MTLS_KEY,
-            "-d", body, IAM_GRPC, "kacho.cloud.iam.v1.InternalUserService/UpsertFromIdentity"]
+            "-d", body, IAM_GRPC, "kaname.cloud.iam.v1.InternalUserService/UpsertFromIdentity"]
     out = subprocess.run(args, capture_output=True, text=True).stdout
     d = json.loads(out or "{}")
     uid = (d.get("metadata") or {}).get("userId", "")
@@ -196,7 +196,7 @@ def upsert_user(ext_id, wait_s=40):
         return ""
     deadline = time.time() + wait_s
     while time.time() < deadline:
-        if _psql(f"SELECT 1 FROM kacho_iam.users WHERE id='{uid}' LIMIT 1;") == "1":
+        if _psql(f"SELECT 1 FROM kaname.users WHERE id='{uid}' LIMIT 1;") == "1":
             return uid
         time.sleep(1)
     raise RuntimeError(f"user {ext_id} ({uid}) never became durable in {wait_s}s — "
@@ -206,13 +206,13 @@ def upsert_user(ext_id, wait_s=40):
 def db_lookup(ext_id):
     """Discover a user's personal account + default project (ids the production
     upsert created; every real auth stays RS256)."""
-    sql = (f"SET search_path=kacho_iam,public; "
+    sql = (f"SET search_path=kaname,public; "
            f"SELECT a.id||'|'||p.id FROM accounts a "
            f"JOIN users u ON u.id=a.owner_user_id "
            f"JOIN projects p ON p.account_id=a.id AND p.name='default' "
            f"WHERE u.external_id='{ext_id}' LIMIT 1;")
     args = ["kubectl", "-n", KACHO_NS, "exec", PG_IAM_POD, "-c", "postgresql",
-            "--", "sh", "-c", f'PGPASSWORD="$POSTGRES_PASSWORD" psql -U iam -d kacho_iam -h 127.0.0.1 -tAc "{sql}"']
+            "--", "sh", "-c", f'PGPASSWORD="$POSTGRES_PASSWORD" psql -U iam -d kaname -h 127.0.0.1 -tAc "{sql}"']
     for _ in range(25):
         out = subprocess.run(args, capture_output=True, text=True).stdout.strip()
         row = next((ln for ln in out.splitlines() if "|" in ln), None)
@@ -359,7 +359,7 @@ def user_platform_token(uid, created_by):
                                  PLATFORM_TOKEN_URL, API_AUD, PLATFORM_ASSERT_AUD)
 
 
-CLUSTER_ROOT_OBJECT = "cluster:cluster_kacho_root"
+CLUSTER_ROOT_OBJECT = "cluster:cluster_root"
 
 
 def seed_fga_tuple(fga_subject, relation, obj):
@@ -372,21 +372,21 @@ def seed_fga_tuple(fga_subject, relation, obj):
     Кластерный случай и его обоснование — в seed_fga_cluster ниже.
     """
     sql = (
-        "INSERT INTO kacho_iam.fga_outbox (event_type, payload, created_at) "
+        "INSERT INTO kaname.fga_outbox (event_type, payload, created_at) "
         "SELECT 'fga.tuple.write', jsonb_build_object("
         f"'user','{fga_subject}','relation','{relation}','object','{obj}'), now() "
-        "WHERE NOT EXISTS (SELECT 1 FROM kacho_iam.fga_outbox "
+        "WHERE NOT EXISTS (SELECT 1 FROM kaname.fga_outbox "
         f"WHERE payload->>'user'='{fga_subject}' AND payload->>'relation'='{relation}' "
         f"AND payload->>'object'='{obj}');"
     )
     args = ["kubectl", "-n", KACHO_NS, "exec", PG_IAM_POD, "-c", "postgresql",
-            "--", "sh", "-c", f'PGPASSWORD="$POSTGRES_PASSWORD" psql -U iam -d kacho_iam -h 127.0.0.1 -tAc "{sql}"']
+            "--", "sh", "-c", f'PGPASSWORD="$POSTGRES_PASSWORD" psql -U iam -d kaname -h 127.0.0.1 -tAc "{sql}"']
     subprocess.run(args, capture_output=True, text=True)
 
 
 def seed_fga_cluster(fga_subject, relation):
-    """Seed a cluster-scope FGA tuple (<fga_subject> #<relation> @cluster_kacho_root)
-    deterministically via kacho_iam.fga_outbox → drainer → OpenFGA (idempotent
+    """Seed a cluster-scope FGA tuple (<fga_subject> #<relation> @cluster_root)
+    deterministically via kaname.fga_outbox → drainer → OpenFGA (idempotent
     WHERE NOT EXISTS), mirroring the sanctioned dev-mode setup.sh 5a/5c seeds.
 
     Why (cluster-viewer FLOOR, #64/#62): the admin-curated GLOBAL catalog reads —
@@ -394,7 +394,7 @@ def seed_fga_cluster(fga_subject, relation):
     (scope_extractor object_type=cluster). `viewer` derives from `system_viewer` /
     `system_admin` (any_admin), NEVER from an account/project grant. A tenant SA with
     only project/account bindings therefore fails the catalog read with
-    "get lacks relation viewer on cluster:cluster_kacho_root" — yet EVERY authenticated
+    "get lacks relation viewer on cluster:cluster_root" — yet EVERY authenticated
     tenant must read the catalog to launch placement-scoped resources (compute
     authz-deny EXPECTs catalog-read = ALLOW for every non-anon subject). Grant each
     matrix SA `system_viewer@cluster` so the floor is satisfied; it grants ONLY the
@@ -425,16 +425,16 @@ m.assert_bootstrap_accepted_by_the_edge(PUBLIC, boot)
 
 def _seed_bootstrap_root_cluster():
     """Deterministic system_admin + system_viewer @cluster for the bootstrap ROOT
-    user (KACHO_IAM_BOOTSTRAP_ROOT_EMAIL, default admin@prorobotech.ru), mirroring
+    user (KANAME_BOOTSTRAP_ROOT_EMAIL, default admin@prorobotech.ru), mirroring
     dev-mode setup.sh 5a/5c. The bootstrap SA principal already holds system_admin
     @cluster via migration 0058 (deterministic), but the root USER's grant is
     seeded by the ≤180s RunBootstrapAdmin reconciler (racy on a fresh stand) and it
     never gets system_viewer. Best-effort: skip silently if the user is not yet
     provisioned (never fails the seed run)."""
     email = "admin@prorobotech.ru"
-    sql = f"SELECT id FROM kacho_iam.users WHERE external_id='{email}' LIMIT 1;"
+    sql = f"SELECT id FROM kaname.users WHERE external_id='{email}' LIMIT 1;"
     args = ["kubectl", "-n", KACHO_NS, "exec", PG_IAM_POD, "-c", "postgresql",
-            "--", "sh", "-c", f'PGPASSWORD="$POSTGRES_PASSWORD" psql -U iam -d kacho_iam -h 127.0.0.1 -tAc "{sql}"']
+            "--", "sh", "-c", f'PGPASSWORD="$POSTGRES_PASSWORD" psql -U iam -d kaname -h 127.0.0.1 -tAc "{sql}"']
     out = subprocess.run(args, capture_output=True, text=True).stdout.strip()
     uid = next((ln.strip() for ln in out.splitlines() if ln.strip().startswith("usr")), "")
     if not uid:
@@ -754,7 +754,7 @@ def seed() -> dict:
 
     # ТА ЖЕ полоса, ДРУГОЙ субъект — человек (#1121). Держатся обе, потому что
     # край выводит принципала из утверждений токена, а у человека и машины они
-    # разные (`kacho_principal_type`): полоса, доказанная машиной, о человеке не
+    # разные (`kaname_principal_type`): полоса, доказанная машиной, о человеке не
     # говорит ничего.
     #
     # Субъект СВОЙ, а не один из матричных: выпуск персонального токена — это

@@ -36,8 +36,8 @@ import (
 
 	"github.com/stretchr/testify/require"
 
-	"github.com/PRO-Robotech/kacho-iam/internal/domain"
 	"github.com/PRO-Robotech/kacho/pkg/treecorpus"
+	"github.com/PRO-Robotech/kaname/internal/domain"
 )
 
 // exceptionCensus — объём осмотренного.

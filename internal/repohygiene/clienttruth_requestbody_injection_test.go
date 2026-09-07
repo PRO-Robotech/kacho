@@ -76,7 +76,7 @@ func bodyStandOptions(t *testing.T, root string) ClientTruthRequestBodyOptions {
 		Tree:    clientTruthSyntheticTree(t, root),
 		DocExts: []string{".mdx"},
 		Domains: []ClientTruthRequestBodyDomain{
-			{Name: "iam", ProtoPackage: "kacho.cloud.iam.v1",
+			{Name: "iam", ProtoPackage: "kaname.cloud.iam.v1",
 				DocsDirs: []string{"docs"}, UseCaseDirs: []string{"usecase"}},
 			{Name: "vpc", ProtoPackage: "kacho.cloud.vpc.v1"},
 		},
@@ -364,7 +364,7 @@ func TestBodyGate_RedOnGrpcurlBody(t *testing.T) {
 	s := newBodyStand(t)
 	s.write(t, "docs/grpc.mdx",
 		"```bash\ngrpcurl -plaintext -d '{\"subject_id\":\"user:u\",\"чегоНет\":1}' \\\\\n"+
-			"  localhost:9091 kacho.cloud.iam.v1.InternalIAMService/Check\n```\n")
+			"  localhost:9091 kaname.cloud.iam.v1.InternalIAMService/Check\n```\n")
 	findings, census := s.run(t)
 	if len(findings) != 1 {
 		t.Fatalf("findings=%d, ожидался ровно 1: %v", len(findings), findings)

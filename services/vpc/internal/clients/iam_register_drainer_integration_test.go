@@ -16,7 +16,7 @@
 //	permanent-ошибка (InvalidArgument) → poison, очередь не заблокирована
 //
 // testcontainers Postgres 16 + реальный corelib-drainer + реальный applier поверх
-// fake InternalIAMServiceClient (процесс kacho-iam не нужен). Пропускается под -short.
+// fake InternalIAMServiceClient (процесс kaname не нужен). Пропускается под -short.
 package clients_test
 
 import (
@@ -35,7 +35,7 @@ import (
 	"google.golang.org/grpc/codes"
 	"google.golang.org/grpc/status"
 
-	iamv1 "github.com/PRO-Robotech/kacho/pkg/api/kacho/cloud/iam/v1"
+	iamv1 "github.com/PRO-Robotech/kacho/pkg/api/kaname/cloud/iam/v1"
 	coredb "github.com/PRO-Robotech/kacho/pkg/db"
 	"github.com/PRO-Robotech/kacho/pkg/observability"
 	"github.com/PRO-Robotech/kacho/pkg/outbox/drainer"

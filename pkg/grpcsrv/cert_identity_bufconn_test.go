@@ -69,7 +69,7 @@ func serveBufconnNet(t *testing.T, cap *captured, credsOpt grpc.ServerOption) fu
 	srv := grpcsrv.NewServer(
 		credsOpt,
 		grpc.ChainUnaryInterceptor(
-			grpcsrv.UnaryCertIdentityExtract(),
+			grpcsrv.UnaryCertIdentityExtract(grpcsrv.NewTrustDomain("kacho.cloud")),
 			grpcsrv.UnaryTrustedPrincipalExtract(),
 			captureInterceptor(cap),
 		),

@@ -20,11 +20,11 @@ import (
 
 	"google.golang.org/protobuf/types/known/timestamppb"
 
-	iamv1 "github.com/PRO-Robotech/kacho/pkg/api/kacho/cloud/iam/v1"
+	iamv1 "github.com/PRO-Robotech/kacho/pkg/api/kaname/cloud/iam/v1"
 )
 
 // SessionRevocationsClient — minimal port the logout handler needs to push
-// revocations into kacho-iam. Implemented by an adapter around the generated
+// revocations into kaname. Implemented by an adapter around the generated
 // gRPC stub `InternalSessionRevocationsServiceClient.Revoke`. Declared here
 // so the handler is unit-testable without spinning up a gRPC server.
 //
@@ -68,7 +68,7 @@ type CallerVerifier interface {
 //     to revoke sessions (subject/token_jti/revoke_all) but presents no valid
 //     token is refused with 401 — the endpoint never trusts a client-supplied
 //     subject, so it cannot be abused to revoke another user's sessions.
-//  3. Call kacho-iam `InternalSessionRevocationsService.Revoke` for the caller's
+//  3. Call kaname `InternalSessionRevocationsService.Revoke` for the caller's
 //     own identity — revoke_all_user_tokens=false (single jti) or true (full).
 //  4. Call Hydra admin `DELETE /admin/oauth2/auth/sessions/login?subject=...`
 //     with the caller's own subject to invalidate the upstream SSO session —

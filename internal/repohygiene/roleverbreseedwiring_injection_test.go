@@ -29,7 +29,7 @@ func writerPkgOf(t *testing.T, rel, src string) (string, bool) {
 const injWriterSrc = `package pg
 
 func (w *roleWriter) ReplaceRoleVerbs(ctx context.Context) error {
-	_, err := w.tx.Exec(ctx, ` + "`DELETE FROM kacho_iam.role_verb WHERE role_id = $1`" + `)
+	_, err := w.tx.Exec(ctx, ` + "`DELETE FROM kaname.role_verb WHERE role_id = $1`" + `)
 	return err
 }
 `
@@ -37,24 +37,24 @@ func (w *roleWriter) ReplaceRoleVerbs(ctx context.Context) error {
 const injReaderSrc = `package scalegrid
 
 func count(ctx context.Context) error {
-	return row(ctx, ` + "`SELECT count(*)::bigint FROM kacho_iam.role_verb`" + `)
+	return row(ctx, ` + "`SELECT count(*)::bigint FROM kaname.role_verb`" + `)
 }
 `
 
 // TestReseedWiring_WriterPackageIsRecognisedAndReaderIsNot — ось «кто писатель»
 // различает ЗАПИСЬ и ЧТЕНИЕ: без этого весь гейт указывал бы на чужой пакет.
 func TestReseedWiring_WriterPackageIsRecognisedAndReaderIsNot(t *testing.T) {
-	pkg, isWriter := writerPkgOf(t, "services/iam/internal/repo/kacho/pg/role_repo.go", injWriterSrc)
+	pkg, isWriter := writerPkgOf(t, "services/iam/internal/repo/kaname/pg/role_repo.go", injWriterSrc)
 	if !isWriter {
 		t.Fatal("признак МОЛЧИТ на файле, который пишет проекцию, — гейт не способен " +
 			"найти предмет, и его зелёный на дереве ничего не значит")
 	}
-	if want := importOfTreeRel("services/iam/internal/repo/kacho/pg"); pkg != want {
+	if want := importOfTreeRel("services/iam/internal/repo/kaname/pg"); pkg != want {
 		t.Errorf("путь пакета писателя %q, а ожидался %q — находка укажет не туда", pkg, want)
 	}
 
 	// Законный близнец: ЧИТАТЕЛЬ той же таблицы пакетом-писателем не становится.
-	if _, isWriter := writerPkgOf(t, "services/iam/internal/repo/kacho/pg/scalegrid/census.go", injReaderSrc); isWriter {
+	if _, isWriter := writerPkgOf(t, "services/iam/internal/repo/kaname/pg/scalegrid/census.go", injReaderSrc); isWriter {
 		t.Error("читатель проекции признан ПИСАТЕЛЕМ — тогда гейт запретил бы слою " +
 			"use-case импортировать пакет переписи, к записи отношения не имеющий")
 	}
@@ -64,13 +64,13 @@ func TestReseedWiring_WriterPackageIsRecognisedAndReaderIsNot(t *testing.T) {
 // импортирующий пакет писателя, → находка С КООРДИНАТОЙ.
 func TestReseedWiring_InjectionRedOnAUseCaseImportingTheWriter(t *testing.T) {
 	writerPkgs := map[string]string{
-		importOfTreeRel("services/iam/internal/repo/kacho/pg/roleverb"): "services/iam/internal/repo/kacho/pg/roleverb/roleverb.go",
+		importOfTreeRel("services/iam/internal/repo/kaname/pg/roleverb"): "services/iam/internal/repo/kaname/pg/roleverb/roleverb.go",
 	}
 	apps := []useCaseFileImports{{
-		Rel: "services/iam/internal/apps/kacho/seed/role_verb_reseed.go",
+		Rel: "services/iam/internal/apps/kaname/seed/role_verb_reseed.go",
 		Imports: []string{
 			"context",
-			importOfTreeRel("services/iam/internal/repo/kacho/pg/roleverb"),
+			importOfTreeRel("services/iam/internal/repo/kaname/pg/roleverb"),
 		},
 	}}
 	got := useCaseWriterImportFindings(apps, writerPkgs)
@@ -78,7 +78,7 @@ func TestReseedWiring_InjectionRedOnAUseCaseImportingTheWriter(t *testing.T) {
 		t.Fatalf("находок %d, а обязана быть одна: %v — гейт не способен покраснеть "+
 			"на прямом импорте адаптера из use-case", len(got), got)
 	}
-	if !strings.HasPrefix(got[0], "services/iam/internal/apps/kacho/seed/role_verb_reseed.go ") {
+	if !strings.HasPrefix(got[0], "services/iam/internal/apps/kaname/seed/role_verb_reseed.go ") {
 		t.Errorf("находка не названа координатой файла: %q — читатель пойдёт искать "+
 			"её и не найдёт", got[0])
 	}
@@ -89,14 +89,14 @@ func TestReseedWiring_InjectionRedOnAUseCaseImportingTheWriter(t *testing.T) {
 // не являющийся. Гейт обязан молчать: он запрещает импорт ПИСАТЕЛЯ, а не слоя.
 func TestReseedWiring_InjectionSilentOnANeighbouringAdapterImport(t *testing.T) {
 	writerPkgs := map[string]string{
-		importOfTreeRel("services/iam/internal/repo/kacho/pg"): "services/iam/internal/repo/kacho/pg/role_repo.go",
+		importOfTreeRel("services/iam/internal/repo/kaname/pg"): "services/iam/internal/repo/kaname/pg/role_repo.go",
 	}
 	apps := []useCaseFileImports{{
-		Rel: "services/iam/internal/apps/kacho/seed/migrate_backfill.go",
+		Rel: "services/iam/internal/apps/kaname/seed/migrate_backfill.go",
 		Imports: []string{
-			importOfTreeRel("services/iam/internal/repo/kacho/pg/fga_outbox"),
-			importOfTreeRel("services/iam/internal/repo/kacho"),
-			importOfTreeRel("services/iam/internal/apps/kacho/shared"),
+			importOfTreeRel("services/iam/internal/repo/kaname/pg/fga_outbox"),
+			importOfTreeRel("services/iam/internal/repo/kaname"),
+			importOfTreeRel("services/iam/internal/apps/kaname/shared"),
 		},
 	}}
 	if got := useCaseWriterImportFindings(apps, writerPkgs); len(got) != 0 {
@@ -108,11 +108,11 @@ func TestReseedWiring_InjectionSilentOnANeighbouringAdapterImport(t *testing.T) 
 // TestReseedWiring_LayerPredicateSeparatesUseCaseFromRepo — сам писатель лежит в
 // `repo/` и обязан оставаться вне выборки: иначе гейт краснел бы на себе.
 func TestReseedWiring_LayerPredicateSeparatesUseCaseFromRepo(t *testing.T) {
-	if !isUseCaseLayer("services/iam/internal/apps/kacho/seed/role_verb_reseed.go") {
+	if !isUseCaseLayer("services/iam/internal/apps/kaname/seed/role_verb_reseed.go") {
 		t.Error("файл слоя use-case не опознан — выборка гейта пуста, и его молчание " +
 			"ничего не значит")
 	}
-	if isUseCaseLayer("services/iam/internal/repo/kacho/pg/role_repo.go") {
+	if isUseCaseLayer("services/iam/internal/repo/kaname/pg/role_repo.go") {
 		t.Error("файл слоя repo/ отнесён к use-case — гейт краснел бы на самом писателе")
 	}
 }
@@ -173,7 +173,7 @@ func TestReseedWiring_InjectionSilentOnANeighbouringSeedCall(t *testing.T) {
 func TestReseedWiring_InjectionSilentOnTheDeclarationItself(t *testing.T) {
 	src := `package seed
 
-func ReseedSystemRoleVerbs(ctx context.Context, repo kachorepo.Repository) error {
+func ReseedSystemRoleVerbs(ctx context.Context, repo kanamerepo.Repository) error {
 	return nil
 }
 `
@@ -269,7 +269,7 @@ func BackfillOwnerBindings(ctx context.Context) error {
 func TestReseedWiring_InjectionRedOnAQualifiedReseedCallAnywhereInTheTree(t *testing.T) {
 	entries := map[string]bool{"ReseedSystemRoleVerbs": true}
 	got, err := roleVerbReseedRefsIn(
-		"services/iam/internal/apps/kacho/api/role/create.go", injReseedQualifiedCallSrc, entries)
+		"services/iam/internal/apps/kaname/api/role/create.go", injReseedQualifiedCallSrc, entries)
 	if err != nil {
 		t.Fatalf("разбор синтетики: %v", err)
 	}
@@ -291,7 +291,7 @@ func TestReseedWiring_InjectionRedOnAQualifiedReseedCallAnywhereInTheTree(t *tes
 func TestReseedWiring_InjectionRedOnAReseedTakenAsAValue(t *testing.T) {
 	entries := map[string]bool{"ReseedSystemRoleVerbs": true}
 	got, err := roleVerbReseedRefsIn(
-		"services/iam/internal/apps/kacho/seed/migrate_backfill.go", injReseedValueCaptureSrc, entries)
+		"services/iam/internal/apps/kaname/seed/migrate_backfill.go", injReseedValueCaptureSrc, entries)
 	if err != nil {
 		t.Fatalf("разбор синтетики: %v", err)
 	}
@@ -314,8 +314,8 @@ func TestReseedWiring_BootRootIsTheOnlyPlaceWhereAReferenceIsLegal(t *testing.T)
 			"гейт краснел бы на верном дереве", bootCompositionRoot)
 	}
 	for _, rel := range []string{
-		"services/iam/internal/apps/kacho/seed/migrate_backfill.go",
-		"services/iam/internal/apps/kacho/api/role/create.go",
+		"services/iam/internal/apps/kaname/seed/migrate_backfill.go",
+		"services/iam/internal/apps/kaname/api/role/create.go",
 		"services/iam/cmd/migrator/main.go",
 	} {
 		if isBootCompositionRoot(rel) {

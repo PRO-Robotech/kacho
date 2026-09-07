@@ -28,6 +28,9 @@ import (
 func minimalEnv(t *testing.T) {
 	t.Helper()
 	t.Setenv("KACHO_NLB_MODE", "dev")
+	// Объявление домена величин — часть законной посадки: у ручки ровно два
+	// законных значения, и незаданное среди них не значится.
+	t.Setenv("KACHO_NLB_QUOTA__AUTHORITY", "not-deployed")
 	t.Setenv("KACHO_NLB_REPOSITORY__POSTGRES__URL", "postgres://u:p@h/kacho_nlb")
 }
 
@@ -65,13 +68,13 @@ func TestMTLS_SECD17_EnabledClientCredsBuild(t *testing.T) {
 	t.Setenv("KACHO_NLB_MTLS__IAM-REGISTER__CERTFILE", certFile)
 	t.Setenv("KACHO_NLB_MTLS__IAM-REGISTER__KEYFILE", keyFile)
 	t.Setenv("KACHO_NLB_MTLS__IAM-REGISTER__CAFILES", caFile)
-	t.Setenv("KACHO_NLB_MTLS__IAM-REGISTER__SERVERNAME", "kacho-iam.kacho.svc")
+	t.Setenv("KACHO_NLB_MTLS__IAM-REGISTER__SERVERNAME", "kaname.kacho.svc")
 
 	cfg, err := config.Load("")
 	require.NoError(t, err)
 	require.True(t, cfg.MTLS.IAMRegister.Enable)
 	require.Equal(t, certFile, cfg.MTLS.IAMRegister.CertFile)
-	require.Equal(t, "kacho-iam.kacho.svc", cfg.MTLS.IAMRegister.ServerName)
+	require.Equal(t, "kaname.kacho.svc", cfg.MTLS.IAMRegister.ServerName)
 
 	opt, err := grpcclient.TLSClientCreds(cfg.MTLS.IAMRegister)
 	require.NoError(t, err)

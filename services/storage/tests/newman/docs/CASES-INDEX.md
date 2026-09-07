@@ -248,7 +248,7 @@ compute `LF-INST-LST-OVERSHOW-LEAK-GUARD`: владелец создаёт об�
 `pageSize=1000` (чтобы «не видно» не было артефактом первой страницы). Что именно
 сторож доказывает и чего НЕ доказывает — буквально расписано в шапке `cases/authz.py`.
 
-## SEC-D owner-tuple (`cases/sec-d.py`) — register/unregister через kacho-iam
+## SEC-D owner-tuple (`cases/sec-d.py`) — register/unregister через kaname
 
 Полный цикл owner-hierarchy tuple на ВСЕХ трёх ресурсах, которые его эмитят
 (`storage_volume` / `storage_snapshot` / `storage_image`): Create → op done+success →

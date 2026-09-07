@@ -6,7 +6,7 @@
 // services/iam/docs/engineering/acceptance/model-generated-from-manifest.md).
 //
 // Обходит закрытый набор модулей платформы, порождает блоки типов из манифеста
-// каждого и сверяет порождённое с каноном `proto/kacho/cloud/iam/v1/fga_model.fga`
+// каждого и сверяет порождённое с каноном `proto/kaname/cloud/iam/v1/fga_model.fga`
 // ПОБАЙТОВО. Второй операнд сверки резолвится обходом вверх от корня дерева и
 // параметром не является — подменить его снимком нечем (§2 п. 2).
 //
@@ -45,8 +45,8 @@ import (
 	"fmt"
 	"os"
 
-	"github.com/PRO-Robotech/kacho-iam/internal/apps/kacho/seed"
-	"github.com/PRO-Robotech/kacho-iam/internal/modelrender"
+	"github.com/PRO-Robotech/kaname/internal/apps/kaname/seed"
+	"github.com/PRO-Robotech/kaname/internal/modelrender"
 )
 
 // exitNotRun — проверка не исполнялась: вызов разобран не был.

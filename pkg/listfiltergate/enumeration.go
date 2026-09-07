@@ -57,7 +57,7 @@ package listfiltergate
 // # Where a source is resolved from
 //
 // A service's own declarations are resolved from Options.Root. The port through
-// which consumer services ask kacho-iam is NOT service code — it is shared
+// which consumer services ask kaname is NOT service code — it is shared
 // foundation (pkg/…), and it is the shortest path from "narrow this page" to
 // "enumerate the universe", because the RPC it fronts is the one that enumerates.
 // Such a source declares Shared, and is resolved from the MODULE root, which is

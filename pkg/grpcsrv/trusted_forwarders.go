@@ -192,17 +192,29 @@ func (f TrustedForwarders) Require(g ForwarderGate) error {
 // Конструктор существует затем, чтобы пару нельзя было ни разорвать, ни
 // переставить в композиционном корне: до него семь сервисов собирали её вручную
 // четырнадцатью литералами.
-func PrincipalExtractUnary(f TrustedForwarders) []grpc.UnaryServerInterceptor {
+//
+// Домен доверия стоит ПЕРВЫМ аргументом по той же причине, по какой первым
+// стоит звено извлечения личности сертификата: сперва решается, чей это
+// предъявитель, и только потом — вправе ли он представляться другим.
+// Дополнительные опции ВАРИАДИЧНЫ намеренно: пара уже собирается семью
+// композиционными корнями и двумя сборками, и расширение подписи развело бы их
+// во времени — половина деревьев перестала бы собираться до сдвига пина.
+// Сегодня отсюда приезжает счётчик исходов личности ([WithIdentityArrival]).
+func PrincipalExtractUnary(d TrustDomain, f TrustedForwarders,
+	opts ...TrustedPrincipalOption,
+) []grpc.UnaryServerInterceptor {
 	return []grpc.UnaryServerInterceptor{
-		UnaryCertIdentityExtract(),
-		UnaryTrustedPrincipalExtract(WithTrustedForwarders(f)),
+		UnaryCertIdentityExtract(d),
+		UnaryTrustedPrincipalExtract(append([]TrustedPrincipalOption{WithTrustedForwarders(f)}, opts...)...),
 	}
 }
 
 // PrincipalExtractStream — то же для stream RPC (тот же инвариант порядка).
-func PrincipalExtractStream(f TrustedForwarders) []grpc.StreamServerInterceptor {
+func PrincipalExtractStream(d TrustDomain, f TrustedForwarders,
+	opts ...TrustedPrincipalOption,
+) []grpc.StreamServerInterceptor {
 	return []grpc.StreamServerInterceptor{
-		StreamCertIdentityExtract(),
-		StreamTrustedPrincipalExtract(WithTrustedForwarders(f)),
+		StreamCertIdentityExtract(d),
+		StreamTrustedPrincipalExtract(append([]TrustedPrincipalOption{WithTrustedForwarders(f)}, opts...)...),
 	}
 }

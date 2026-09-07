@@ -24,7 +24,7 @@ import (
 //     prefix constant added there but not referenced here is invisible, but a
 //     constant renamed/removed breaks this test, prompting a re-audit).
 //   - IAM domain prefixes — mirrored as string literals from the IAM domain
-//     constants (corelib is UPSTREAM of kacho-iam in the build graph and
+//     constants (corelib is UPSTREAM of kaname in the build graph and
 //     `internal/` is not importable, so the IAM prefixes cannot be imported;
 //     they are duplicated here as the single source-of-truth pointer).
 //     cag/cond/soc/evt are deliberately excluded: they use the

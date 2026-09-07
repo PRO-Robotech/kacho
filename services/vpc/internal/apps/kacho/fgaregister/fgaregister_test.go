@@ -13,7 +13,7 @@ import (
 )
 
 // Payload строки fga_register_outbox обязан нести labels + parent_project_id
-// владельца-ресурса, чтобы kacho-iam материализовал их в resource_mirror для
+// владельца-ресурса, чтобы kaname материализовал их в resource_mirror для
 // selector'а. Это форма leaf-домена, на которую опираются и repo-writer (emit),
 // и clients-applier (forward).
 

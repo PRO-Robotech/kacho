@@ -62,7 +62,7 @@ type CreateNetworkUseCase struct {
 	// зависит детерминированная auto-assoc в Subnet.Create.
 	createDefaultRT *CreateDefaultRTUseCase
 
-	// registrar — синхронная регистрация owner-tuple'а в kacho-iam после commit
+	// registrar — синхронная регистрация owner-tuple'а в kaname после commit
 	// (sync-primary; outbox-intent остается at-least-once backstop'ом). nil →
 	// sync-путь пропускается (dev/no-iam), регистрация только через drainer.
 	registrar fgaregister.Registrar
@@ -99,7 +99,7 @@ func (u *CreateNetworkUseCase) WithLogger(logger *slog.Logger) *CreateNetworkUse
 
 // WithRegistrar подключает синхронный owner-tuple registrar (Decision 2). После
 // коммита Network (+ inline default-SG) те же Item'ы, что эмитятся в
-// outbox-intent, синхронно регистрируются в kacho-iam — owner-grant доступен
+// outbox-intent, синхронно регистрируются в kaname — owner-grant доступен
 // сразу. Nil registrar → sync-путь пропускается (только async drainer).
 func (u *CreateNetworkUseCase) WithRegistrar(r fgaregister.Registrar) *CreateNetworkUseCase {
 	u.registrar = r
@@ -327,7 +327,7 @@ func (u *CreateNetworkUseCase) doCreate(ctx context.Context, netID string, n dom
 
 	// Публикуем INTENT на hierarchy-tuple vpc_network→project в ТОЙ ЖЕ writer-TX,
 	// что и Insert (один commit, без dual-write). Register-drainer позже применит
-	// его через kacho-iam InternalIAMService.RegisterResource (idempotent, retry
+	// его через kaname InternalIAMService.RegisterResource (idempotent, retry
 	// на Unavailable, tuple durable) — так tuple не теряется при transient
 	// FGA-сбое. Inline default-SG tuple — часть ТОГО ЖЕ intent. Network-tuple
 	// несет labels сети + parent_project_id для selector-mirror feed; auto

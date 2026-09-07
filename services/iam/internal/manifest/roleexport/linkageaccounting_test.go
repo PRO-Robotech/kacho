@@ -35,8 +35,8 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/PRO-Robotech/kacho-iam/internal/manifest"
-	"github.com/PRO-Robotech/kacho-iam/internal/manifest/roleexport"
+	"github.com/PRO-Robotech/kaname/internal/manifest"
+	"github.com/PRO-Robotech/kaname/internal/manifest/roleexport"
 )
 
 // treeRootFromPackage — корень дерева относительно каталога пакета.

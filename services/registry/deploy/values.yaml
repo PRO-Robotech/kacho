@@ -1,5 +1,22 @@
 # Copyright (c) PRO-Robotech
 # SPDX-License-Identifier: BUSL-1.1
+
+# ОБЪЯВЛЕНИЕ домена величин. Ровно два законных значения: адрес в форме
+# host:port либо слово `not-deployed`. Пустое значение — НЕ умолчание, а отказ
+# старта: умолчание означало бы выбор за оператора между «потолки действуют» и
+# «потолков нет», и выбор этот был бы невидим.
+#
+# Объявление ОДНО на обе полосы ребра — разрешение величины на пути запроса и
+# фоновую дельту. Приёмка
+# `docs/specs/sub-phase-KAN-QUOTA-1-limit-authority-leaves-iam-acceptance.md`,
+# стадия S1.
+#
+# Сегодня домен величин живёт внутри службы доступа, поэтому значение указывает
+# на её внутренний слушатель, и поведение продукта не меняется ни на байт.
+# Уедет домен — правится ЭТА строка, а не код пяти потребителей.
+quota:
+  authority: "kaname-internal.kacho.svc:9091"
+
 #
 # kacho-registry sub-chart defaults — OCI/Docker registry control-plane + data-plane
 # auth-proxy, over a zot storage backend. Modeled on the kacho-geo sub-chart shape:
@@ -91,7 +108,7 @@ service:
     # и проксирует: `/` → data-plane 127.0.0.1:8080, `/iam/token` → iam registry-token
     # shim (:9096). Когда включён — 443-порт data-plane LB таргетит sidecar (dp-tls).
     # registry-iam-jwks-unify — sidecar БОЛЬШЕ не проксирует JWKS: верификатор тянет
-    # ключи напрямую из cluster-internal kacho-iam JWKS-proxy (:9097, TLS); доверие к
+    # ключи напрямую из cluster-internal kaname JWKS-proxy (:9097, TLS); доверие к
     # internal-CA — через SSL_CERT_DIR (ca.crt секрета registry-dataplane-tls, тот же
     # kacho-internal-ca, что подписывает iam-internal leaf).
     # enabled=false (dev/local, без LB/DNS) → sidecar/cert/cm не рендерятся,
@@ -100,7 +117,7 @@ service:
       enabled: false
       image: nginxinc/nginx-unprivileged:1.31-alpine
       # Upstream, куда nginx проксирует `/iam/token` (iam registry-token shim :9096).
-      iamTokenShimUpstream: kacho-iam.kacho.svc:9096
+      iamTokenShimUpstream: kaname.kacho.svc:9096
       # ─── Server-cert для :8443-listener'а sidecar'а ──────────────────────────
       # Этот серт предъявляется ДОКЕР-КЛИЕНТУ, значит клиент обязан ему ДОВЕРЯТЬ.
       # Дефолт (kacho-internal-ca) годится только для in-cluster/dev-клиентов, которым
@@ -185,14 +202,14 @@ authMode: production
 
 # ─── registry→iam edges + authz ──────────────────────────────────────────────
 authz:
-  # AUTHZ_IAM_GRPC_ADDR — kacho-iam INTERNAL listener (:9091) for per-RPC Check +
+  # AUTHZ_IAM_GRPC_ADDR — kaname INTERNAL listener (:9091) for per-RPC Check +
   # fga-proxy RegisterResource/UnregisterResource. Empty + breakglass=false →
   # validateSecurityConfig REJECTS start (authz Check required).
-  iamGrpcAddr: "kacho-iam-internal.kacho.svc:9091"
-  # IAM_PROJECT_GRPC_ADDR — kacho-iam PUBLIC listener (:9090) for ProjectService.Get
+  iamGrpcAddr: "kaname-internal.kacho.svc:9091"
+  # IAM_PROJECT_GRPC_ADDR — kaname PUBLIC listener (:9090) for ProjectService.Get
   # (existence-validation of project on Create). Separate conn from iamGrpcAddr —
   # ProjectService is registered ONLY on public :9090.
-  iamProjectGrpcAddr: "kacho-iam.kacho.svc:9090"
+  iamProjectGrpcAddr: "kaname.kacho.svc:9090"
   # GEO_GRPC_ADDR — kacho-geo PUBLIC listener (:9090) for RegionService.Get
   # (existence-validation of Registry.region_id on Create — runtime edge
   # registry→geo, REG-1 F4). geo is a leaf domain; registry is never called back
@@ -368,7 +385,7 @@ zot:
 
 # ─── data-plane OCI auth-proxy (registry.kacho.local) ─────────────────────────
 # registry-iam-jwks-unify — JWKS key-distribution moved from Hydra to the cluster-
-# INTERNAL kacho-iam JWKS proxy (:9097). iam serves a byte-for-byte mirror of Hydra's
+# INTERNAL kaname JWKS proxy (:9097). iam serves a byte-for-byte mirror of Hydra's
 # PUBLIC JWKS over one-way server-TLS; Hydra stays the token SIGNER/ISSUER (the
 # issuer-pin below is a SEPARATE knob and is unchanged).
 # tokenAcceptance — приём identity-JWT: КТО принимается и ОТКУДА берётся его набор
@@ -392,8 +409,8 @@ tokenAcceptance:
   # production/-strict требуют https:// у каждого адреса: набор ключей есть
   # единственный якорь доверия проверки подписи.
   # Пример (наш издатель + зеркало прежнего, зеркало живёт до F4):
-  #   "https://iam.kacho.local=https://kacho-iam-internal.kacho.svc:9097/.well-known/kacho/jwks.json,\
-  #    https://hydra.api.kacho.cloud=https://kacho-iam-internal.kacho.svc:9097/.well-known/jwks.json"
+  #   "https://kaname.kacho.local=https://kaname-internal.kacho.svc:9097/.well-known/kaname/jwks.json,\
+  #    https://hydra.api.kacho.cloud=https://kaname-internal.kacho.svc:9097/.well-known/jwks.json"
   issuerKeySets: ""
   # PLATFORM_TOKEN_ISSUER — издатель, под которым чеканит НАША платформа. Он же
   # выбирает полосу приёма: тип токена at+jwt (RFC 9068) и чтение отзыва на
@@ -412,7 +429,7 @@ tokenAcceptance:
 # must not transit cleartext. dev ignores it.
 dataplaneTLSTerminatedExternally: false
 
-# TOKEN_REALM — WWW-Authenticate realm docker follows for a Bearer token (kacho-iam token shim).
+# TOKEN_REALM — WWW-Authenticate realm docker follows for a Bearer token (kaname token shim).
 # Публичный OCI-хост реестра (== serviceAud/endpointBase): docker идёт за Bearer-токеном
 # на https://registry.in-cloud.io/iam/token, который TLS-sidecar проксирует в iam-shim.
 tokenRealm: "https://registry.in-cloud.io/iam/token"
@@ -471,6 +488,7 @@ mtls:
   mountPath: /etc/kacho-registry/tls   # <mp>/server|client/{tls.crt,tls.key,ca.crt}
   edges:
     iamAuthz: false     # registry→iam Check + fga-proxy (internal :9091)
+    quotaAuthority: false # registry→домен величин (Resolve + ListChangedSince, :9091)
     iamProject: false   # registry→iam ProjectService.Get (public :9090)
     geo: false          # registry→geo RegionService.Get (public :9090, REG-1 F4)
     # tokenRevocation — registry→iam авторитет отзыва (internal :9097, F1 #897).
@@ -489,10 +507,11 @@ mtls:
     # данных не поднимается.
     tokenRevocation: false
   serverName:
-    iamAuthz: kacho-iam-internal.kacho.svc
-    iamProject: kacho-iam.kacho.svc
+    quotaAuthority: kaname-internal.kacho.svc # домен величин; сегодня — внутренний слушатель службы доступа
+    iamAuthz: kaname-internal.kacho.svc
+    iamProject: kaname.kacho.svc
     geo: kacho-geo.kacho.svc
-    tokenRevocation: kacho-iam-internal.kacho.svc
+    tokenRevocation: kaname-internal.kacho.svc
 
 # Extra free-form env (KACHO_REGISTRY_*) — merged verbatim onto the server container.
 env: {}

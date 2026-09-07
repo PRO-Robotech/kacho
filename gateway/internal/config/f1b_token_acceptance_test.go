@@ -18,11 +18,11 @@ import (
 )
 
 const (
-	f1bOurs   = "https://iam.kacho.local"
+	f1bOurs   = "https://kaname.kacho.local"
 	f1bLegacy = "https://hydra.api.kacho.test"
-	f1bOursKS = "https://kacho-iam-internal.kacho.svc:9097/.well-known/kacho/jwks.json"
-	f1bLegKS  = "https://kacho-iam-internal.kacho.svc:9097/.well-known/jwks.json"
-	f1bRevURL = "https://kacho-iam-internal.kacho.svc:9097/internal/tokens/introspect"
+	f1bOursKS = "https://kaname-internal.kacho.svc:9097/.well-known/kaname/jwks.json"
+	f1bLegKS  = "https://kaname-internal.kacho.svc:9097/.well-known/jwks.json"
+	f1bRevURL = "https://kaname-internal.kacho.svc:9097/internal/tokens/introspect"
 )
 
 // f1bFullDeclaration — законная посадка с ДВУМЯ издателями и нашей чеканкой.
@@ -198,7 +198,7 @@ func TestF1b04_DegenerateKeySetURLRefusesTheStart(t *testing.T) {
 	// В производственной посадке незащищённая схема отвергается: источник
 	// набора есть единственный якорь доверия проверки подписи.
 	plain := f1bFullDeclaration()
-	plain.TokenIssuerKeySets = f1bOurs + "=http://kacho-iam-internal.kacho.svc:9097/x," +
+	plain.TokenIssuerKeySets = f1bOurs + "=http://kaname-internal.kacho.svc:9097/x," +
 		f1bLegacy + "=" + f1bLegKS
 	if _, err := plain.TokenAcceptance(); err == nil {
 		t.Fatalf("незащищённая схема адреса набора принята в производственной посадке")
@@ -230,7 +230,7 @@ func TestF1b05_AmbiguousAndIncompleteDeclarationsRefuseTheStart(t *testing.T) {
 	// Адрес авторитета отзыва не выводится и в производственной посадке обязан
 	// быть абсолютным и защищённым.
 	weakAuthority := f1bFullDeclaration()
-	weakAuthority.PlatformTokenRevocationURL = "http://kacho-iam-internal.kacho.svc:9097/x"
+	weakAuthority.PlatformTokenRevocationURL = "http://kaname-internal.kacho.svc:9097/x"
 	if _, err := weakAuthority.TokenAcceptance(); err == nil {
 		t.Fatalf("незащищённый адрес авторитета отзыва принят в производственной посадке — " +
 			"ответ решает доступ и не вправе ехать открытым текстом")
@@ -293,7 +293,7 @@ func TestF1b04_TransportRequirementIsSymmetricAcrossBothPaths(t *testing.T) {
 	fallback := config.Config{
 		AppEnv: "production", APIDomain: "api.kacho.test",
 		HydraIssuer:  f1bLegacy,
-		HydraJWKSURL: "http://kacho-iam-internal.kacho.svc:9097/.well-known/jwks.json",
+		HydraJWKSURL: "http://kaname-internal.kacho.svc:9097/.well-known/jwks.json",
 	}
 	if _, err := fallback.TokenAcceptance(); err == nil {
 		t.Fatalf("незащищённый адрес набора принят на ЗАПАСНОМ пути в производственной " +
@@ -304,13 +304,13 @@ func TestF1b04_TransportRequirementIsSymmetricAcrossBothPaths(t *testing.T) {
 	// (2) Путь ОБЪЯВЛЕННЫЙ — тот же адрес, то же отвержение.
 	declared := f1bFullDeclaration()
 	declared.TokenIssuerKeySets = f1bOurs + "=" + f1bOursKS + "," +
-		f1bLegacy + "=http://kacho-iam-internal.kacho.svc:9097/.well-known/jwks.json"
+		f1bLegacy + "=http://kaname-internal.kacho.svc:9097/.well-known/jwks.json"
 	if _, err := declared.TokenAcceptance(); err == nil {
 		t.Fatalf("незащищённый адрес набора принят на ОБЪЯВЛЕННОМ пути")
 	}
 
 	// (3) Положительный контроль на обоих: защищённый адрес принимается.
-	fallback.HydraJWKSURL = "https://kacho-iam-internal.kacho.svc:9097/.well-known/jwks.json"
+	fallback.HydraJWKSURL = "https://kaname-internal.kacho.svc:9097/.well-known/jwks.json"
 	if _, err := fallback.TokenAcceptance(); err != nil {
 		t.Fatalf("защищённый адрес отвергнут на запасном пути: %v", err)
 	}
@@ -321,7 +321,7 @@ func TestF1b04_TransportRequirementIsSymmetricAcrossBothPaths(t *testing.T) {
 	// (4) В режиме разработки послабление действует одинаково на обоих путях —
 	// иначе асимметрия просто переезжает на другую метку окружения.
 	fallback.AppEnv, fallback.HydraJWKSURL = "dev",
-		"http://kacho-iam-internal.kacho.svc:9097/.well-known/jwks.json"
+		"http://kaname-internal.kacho.svc:9097/.well-known/jwks.json"
 	if _, err := fallback.TokenAcceptance(); err != nil {
 		t.Fatalf("незащищённый адрес отвергнут в режиме разработки на запасном пути: %v", err)
 	}

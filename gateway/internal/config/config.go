@@ -78,7 +78,7 @@ type Config struct {
 	// ComputeInternalAddr — admin-only internal-port (9091) of compute backend.
 	// Routes InternalDiskType RESTful endpoints (kacho-only admin).
 	ComputeInternalAddr string `envconfig:"KACHO_API_GATEWAY_COMPUTE_INTERNAL_GRPC" default:"compute.kacho.svc:9091"`
-	// IAMAddr — public gRPC backend of kacho-iam (Account/Project/User/ServiceAccount/Group/Role/AccessBinding).
+	// IAMAddr — public gRPC backend of kaname (Account/Project/User/ServiceAccount/Group/Role/AccessBinding).
 	// Все RPC под /iam/v1/*.
 	IAMAddr string `envconfig:"KACHO_API_GATEWAY_IAM_GRPC" default:"iam.kacho.svc:9090"`
 	// IAMInternalAddr — admin-only internal-port (9091) of iam backend.
@@ -113,13 +113,13 @@ type Config struct {
 	// The geo k8s Service is "kacho-geo" — the bare "geo.kacho.svc"
 	// host does NOT resolve (NXDOMAIN) → the grpc resolver returns no addresses →
 	// "no children to pick from" 503 on every /geo/v1/* request. Target the real
-	// Service name (mirrors kacho-iam / kacho-nlb).
+	// Service name (mirrors kaname / kacho-nlb).
 	GeoAddr string `envconfig:"KACHO_API_GATEWAY_GEO_GRPC" default:"kacho-geo.kacho.svc:9090"`
 
 	// GeoInternalAddr — admin-only internal-port (9091) of kacho-geo backend.
 	// Routes InternalRegionService/InternalZoneService admin-CRUD endpoints
 	// (kacho-only). Cluster-internal listener only.
-	// Separate Service "kacho-geo-internal" (mirrors kacho-iam-internal).
+	// Separate Service "kacho-geo-internal" (mirrors kaname-internal).
 	GeoInternalAddr string `envconfig:"KACHO_API_GATEWAY_GEO_INTERNAL_GRPC" default:"kacho-geo-internal.kacho.svc:9091"`
 
 	// RegistryAddr — public gRPC backend of kacho-registry (RegistryService:
@@ -202,7 +202,7 @@ type Config struct {
 
 	// AuthNMode — режим auth-interceptor:
 	//   - "dev": backwards-compat. Без Bearer = anonymous; невалидный Bearer =
-	//     fallback anonymous. С валидным Bearer + subject в kacho-iam = real Principal.
+	//     fallback anonymous. С валидным Bearer + subject в kaname = real Principal.
 	//   - "production" (default): Bearer обязателен. Невалидный или unknown subject =
 	//     Unauthenticated.
 	//   - "production-strict": то же что production + reject missing Bearer.
@@ -225,6 +225,23 @@ type Config struct {
 	// край читают одно и то же поле, и второй словарь разошёлся бы с первым на
 	// первом же новом значении — молча, потому что обе стороны компилируются.
 	IdentityProvider string `envconfig:"KACHO_API_GATEWAY_IDENTITY_PROVIDER" default:""`
+
+	// AuthNTrustDomain — ДОМЕН ДОВЕРИЯ установки: то, чьи сертификаты край
+	// признаёт своими.
+	//
+	// Край переданную личность не ПРИНИМАЕТ, а отправляет, — но личность
+	// СЕРТИФИКАТА он разбирает: вызывающий, пришедший с проверенным клиентским
+	// сертификатом, становится служебной учёткой по своему SPIFFE-имени
+	// (`principalFromVerifiedPeer`). Домен, по которому это имя опознаётся, —
+	// величина установки, а не сборки: пока он был скомпилирован, правка величины
+	// профиля давала сертификаты, которых край не признавал, и вызывающий молча
+	// проваливался на полосу Bearer'а.
+	//
+	// УМОЛЧАНИЯ НЕТ НАМЕРЕННО, по той же причине, что у посадки личности выше:
+	// непустое умолчание сделало бы контроль на вид включённым и увело бы
+	// установку, забывшую назвать свой домен, в чужой. Пустая величина означает
+	// «своим не признаю никого» и останавливает старт (describePosture).
+	AuthNTrustDomain string `envconfig:"KACHO_API_GATEWAY_AUTHN_TRUST_DOMAIN" default:""`
 
 	// AuthNDevSecret — HMAC-secret для подписи dev-JWT (mode=dev).
 	// Если пуст — Bearer-токены в dev-режиме игнорируются (всегда anonymous).
@@ -527,9 +544,9 @@ type Config struct {
 	// there to receive.
 	IntrospectionTimeoutMs int `envconfig:"KACHO_INTROSPECTION_TIMEOUT_MS" default:"1000"`
 
-	// HookSharedSecret — shared secret для Hydra→kacho-iam back-channel logout
+	// HookSharedSecret — shared secret для Hydra→kaname back-channel logout
 	// (RFC 8254). Также используется как HMAC для CAEP push payload integrity.
-	HookSharedSecret string `envconfig:"KACHO_IAM_HOOK_TOKEN" default:""`
+	HookSharedSecret string `envconfig:"KANAME_HOOK_TOKEN" default:""`
 
 	// AuthNEnableDPoP — feature toggle; true → требовать DPoP/mTLS-bound для
 	// tokens с `cnf` claim, валидировать. False → skip DPoP проверки (legacy
@@ -554,7 +571,7 @@ type Config struct {
 	AuthNEnforceStepUp bool `envconfig:"KACHO_API_GATEWAY_AUTHN_ENFORCE_STEP_UP" default:"false"`
 
 	// AuthNRequireMachineTokenBinding — true → a token whose principal is a
-	// MACHINE (kacho_principal_type=service_account) MUST be sender-constrained
+	// MACHINE (kaname_principal_type=service_account) MUST be sender-constrained
 	// (RFC 7800 `cnf`: DPoP `jkt` or mTLS `x5t#S256`); an unbound machine token
 	// is rejected 401. The human/interactive path is unaffected.
 	//
@@ -565,7 +582,7 @@ type Config struct {
 	// Default false: the identity provider does not yet register OAuth2 clients
 	// that mint bound tokens, so switching this on before issuance lands would
 	// reject every service-account token. Sequence: enable issuance
-	// (kacho-iam sa-key `bindDpop`) → confirm minted machine tokens carry `cnf`
+	// (kaname sa-key `bindDpop`) → confirm minted machine tokens carry `cnf`
 	// → set this true.
 	AuthNRequireMachineTokenBinding bool `envconfig:"KACHO_API_GATEWAY_AUTHN_REQUIRE_MACHINE_TOKEN_BINDING" default:"false"`
 
@@ -581,7 +598,7 @@ type Config struct {
 	// false (fail-closed); only flip to true in dev / staging emergencies.
 	AuthZFailOpen bool `envconfig:"KACHO_API_GATEWAY_AUTHZ_FAIL_OPEN" default:"false"`
 
-	// IAMAuthorizeURL — gRPC address of kacho-iam AuthorizeService. Empty
+	// IAMAuthorizeURL — gRPC address of kaname AuthorizeService. Empty
 	// → derives from IAMAddr (public iam endpoint, port 9090). Отдельный env
 	// позволяет вынести AuthorizeService на свой pod ради HA.
 	IAMAuthorizeURL string `envconfig:"KACHO_API_GATEWAY_IAM_AUTHORIZE_URL" default:""`
@@ -622,7 +639,7 @@ type Config struct {
 	AuthZTrustedProxyCount int `envconfig:"KACHO_API_GATEWAY_AUTHZ_TRUSTED_PROXY_COUNT" default:"1"`
 
 	// SubjectChangePollInterval — how often the subject-change watcher polls
-	// kacho-iam InternalIAMService.PollSubjectChanges to flush the authz
+	// kaname InternalIAMService.PollSubjectChanges to flush the authz
 	// decision cache on sibling replicas that did not process the mutation.
 	// Default 2s. Omit the env var (or set 0) to use the built-in default.
 	SubjectChangePollInterval time.Duration `envconfig:"KACHO_API_GATEWAY_SUBJECT_CHANGE_POLL_INTERVAL" default:"2s"`
@@ -857,14 +874,14 @@ func (c Config) DomainsWithInternalBackend() []string {
 }
 
 // BackendAddrs возвращает карту domain → адрес для инициализации Backends.
-// "iam" / "iamInternal" — kacho-iam public (9090) / internal (9091) endpoints.
+// "iam" / "iamInternal" — kaname public (9090) / internal (9091) endpoints.
 // "loadbalancer" / "loadbalancerInternal" — kacho-nlb public / internal endpoints.
 // Domain-ключ "loadbalancer" совпадает с proto-package `kacho.cloud.loadbalancer.v1.*`,
 // по которому gRPC-роутер (server.go Resolver / shimproxy.go) выбирает backend.
 // "geo" / "geoInternal" — kacho-geo public / internal endpoints. Domain-ключ
 // "geo" совпадает с proto-package `kacho.cloud.geo.v1.*` (та же маршрутизация).
 // "quota" — пакет общей формы ответа о квотах; его единственную службу
-// обслуживает kacho-iam (см. комментарий у ключа).
+// обслуживает kaname (см. комментарий у ключа).
 func (c Config) BackendAddrs() map[string]string {
 	return map[string]string{
 		"vpc":             c.VPCAddr,
@@ -875,7 +892,7 @@ func (c Config) BackendAddrs() map[string]string {
 		"iamInternal":     c.IAMInternalAddr,
 		// "quota" — пакет ОБЩЕЙ формы ответа о квотах, и в нём объявлена ровно
 		// одна служба: чтение квот, носителем которых является личность. Её
-		// обслуживает kacho-iam, поэтому адрес тот же, что у "iam".
+		// обслуживает kaname, поэтому адрес тот же, что у "iam".
 		//
 		// Служба живёт не в `iam.v1` потому, что общая форма ответа уже зависит
 		// от `iam.v1` (область назначенной величины), и обратная ссылка замкнула

@@ -28,7 +28,7 @@ import (
 func TestDataplaneSidecar_TokenHopIsEncryptedAndVerified(t *testing.T) {
 	cm := docOf(t, helmTemplate(t, lbSets...), "registry-dataplane-nginx-cm.yaml", "kind: ConfigMap")
 
-	if strings.Contains(cm, "proxy_pass http://kacho-iam") {
+	if strings.Contains(cm, "proxy_pass http://kaname") {
 		t.Errorf("the docker-login hop to the token shim is cleartext — the Basic password on it "+
 			"is the service-account key's PRIVATE KEY, and it never expires:\n%s", cm)
 	}

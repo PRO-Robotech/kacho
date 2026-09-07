@@ -40,7 +40,7 @@ func TestGeo_S5_BackendAddrs_HasGeoKeys(t *testing.T) {
 	geoInternal, ok := addrs["geoInternal"]
 	require.True(t, ok, "BackendAddrs must contain a \"geoInternal\" key (internal :9091)")
 	// The internal listener is a separate Service: kacho-geo-internal (mirrors
-	// kacho-iam-internal / the iamInternal edge).
+	// kaname-internal / the iamInternal edge).
 	require.Equal(t, "kacho-geo-internal.kacho.svc:9091", geoInternal,
 		"geo internal backend default addr must target the kacho-geo-internal Service")
 }

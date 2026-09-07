@@ -6,10 +6,10 @@ package provider
 import (
 	"google.golang.org/protobuf/proto"
 
-	iamv1 "github.com/PRO-Robotech/kacho/pkg/api/kacho/cloud/iam/v1"
 	registryv1 "github.com/PRO-Robotech/kacho/pkg/api/kacho/cloud/registry/v1"
 	storagev1 "github.com/PRO-Robotech/kacho/pkg/api/kacho/cloud/storage/v1"
 	vpcv1 "github.com/PRO-Robotech/kacho/pkg/api/kacho/cloud/vpc/v1"
+	iamv1 "github.com/PRO-Robotech/kacho/pkg/api/kaname/cloud/iam/v1"
 	"github.com/PRO-Robotech/kacho/pkg/ids"
 )
 
@@ -226,7 +226,7 @@ var storageImageSpec = flatSpec{
 // ---- iam ------------------------------------------------------------------------------
 
 var iamAccountSpec = flatSpec{
-	tfName: "kacho_iam_account", human: "Аккаунт", pathCol: "/iam/v1/accounts",
+	tfName: typeNameIAMAccount, human: "Аккаунт", pathCol: "/iam/v1/accounts",
 	// Префикс литералом, а не константой: экспортированных констант для префиксов iam в
 	// каталоге платформы НЕТ — там они лежат внутри списка членства. Опечатка тем не менее
 	// не проходит молча: импорт сверяет строку и с этим префиксом, и с членством в

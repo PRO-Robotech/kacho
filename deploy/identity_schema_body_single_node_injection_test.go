@@ -68,7 +68,7 @@ func TestSchemaBodySingleNodeGate_ProvenByInjection(t *testing.T) {
 		{
 			name: "законный близнец: АДРЕС тела (`file:///…`) телом не считается — молчит",
 			yaml: "kratos:\n  kratos:\n    config:\n      identity:\n        schemas:\n          - id: kacho_user_v2\n" +
-				"            url: file:///etc/kacho-identity/identity.schema.json\n",
+				"            url: file:///etc/kaname-identity/identity.schema.json\n",
 		},
 		{
 			name:        "ось (2) в одиночку: тело ОДНО, но без якоря — сослаться нечем",
@@ -144,7 +144,7 @@ func TestSchemaBodyRecogniser_ProvenByInjection(t *testing.T) {
 		{name: "форма 2'' — base64 URL-безопасная", value: b64(base64.URLEncoding), want: true},
 		{name: "форма 2''' — base64 URL-безопасная без набивки", value: b64(base64.RawURLEncoding), want: true},
 
-		{name: "законный близнец: адрес файла — телом не считается", value: "file:///etc/kacho-identity/identity.schema.json"},
+		{name: "законный близнец: адрес файла — телом не считается", value: "file:///etc/kaname-identity/identity.schema.json"},
 		{name: "законный близнец: обычная строка настроек", value: "postgres://kratos@pg:5432/kratos?sslmode=require"},
 		{name: "законный близнец: объект JSON БЕЗ properties.traits", value: `{"properties":{"email":{"type":"string"}}}`},
 		{name: "законный близнец: `traits` не под `properties`", value: `{"traits":{"type":"object"},"properties":{"x":{}}}`},

@@ -5,7 +5,7 @@
 // (НЕ через restmux api-gateway — loop-prevention).
 //
 // iam_subject_client.go: вызов `InternalIAMService.LookupSubject` на
-// kacho-iam:9091.
+// kaname:9091.
 package clients
 
 import (
@@ -23,7 +23,7 @@ import (
 
 	operationpb "github.com/PRO-Robotech/kacho/pkg/api/kacho/cloud/operation"
 
-	iamv1 "github.com/PRO-Robotech/kacho/pkg/api/kacho/cloud/iam/v1"
+	iamv1 "github.com/PRO-Robotech/kacho/pkg/api/kaname/cloud/iam/v1"
 
 	"github.com/PRO-Robotech/kacho/gateway/internal/cache"
 	"github.com/PRO-Robotech/kacho/gateway/internal/middleware"
@@ -71,7 +71,7 @@ type IAMSubjectClient struct {
 	upsertBackoff time.Duration
 }
 
-// NewIAMSubjectClient dials kacho-iam:9091 for InternalIAMService.LookupSubject.
+// NewIAMSubjectClient dials kaname:9091 for InternalIAMService.LookupSubject.
 //
 // transportCreds is the per-edge transport-credentials dial-option for the
 // gateway→iam edge (mTLS client-cert when KACHO_API_GATEWAY_MTLS_IAM_ENABLE=true,

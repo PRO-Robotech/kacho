@@ -10,7 +10,7 @@
 // the set of services it was pointed at was written by hand — once in the CI loop
 // (`for svc in compute nlb registry storage vpc`) and once implicitly, by whoever
 // remembered to create a tools/auditlistfilter directory. Two services were never in
-// either list: kacho-iam, which has the largest listing surface in the repository,
+// either list: kaname, which has the largest listing surface in the repository,
 // and kacho-geo. Nothing was red, because nothing was looking.
 //
 // A hand-written census of what to check has exactly the failure mode the gates

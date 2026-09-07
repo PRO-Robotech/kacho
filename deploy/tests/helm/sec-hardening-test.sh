@@ -4,7 +4,7 @@
 # INFRA sec-hardening manifest-assertion guard (offline; no kind cluster).
 #
 # Asserts the container/pod hardening re-applied on the current chart structure:
-#   1. kacho-iam + kacho-geo workloads carry a hardened pod- AND per-container
+#   1. kaname + kacho-geo workloads carry a hardened pod- AND per-container
 #      securityContext (runAsNonRoot, readOnlyRootFilesystem, drop ALL caps,
 #      allowPrivilegeEscalation=false, seccompProfile RuntimeDefault) on EVERY
 #      container incl. init-containers — not only the OPA sidecar.
@@ -58,14 +58,14 @@ assert_sc() {
   ok
 }
 
-# ── 1. kacho-iam workload hardening ──────────────────────────────────────────
-render charts/kacho-iam/templates/deployment.yaml; IAM="$HELM_OUT"
+# ── 1. kaname workload hardening ──────────────────────────────────────────
+render charts/kaname/templates/deployment.yaml; IAM="$HELM_OUT"
 POD_SC=$(echo "$IAM" | yq 'select(.kind == "Deployment") | .spec.template.spec.securityContext')
-[ "$(echo "$POD_SC" | yq '.runAsNonRoot')" = "true" ] || fail "kacho-iam: pod securityContext.runAsNonRoot != true"
-[ "$(echo "$POD_SC" | yq '.seccompProfile.type')" = "RuntimeDefault" ] || fail "kacho-iam: pod seccompProfile != RuntimeDefault"
+[ "$(echo "$POD_SC" | yq '.runAsNonRoot')" = "true" ] || fail "kaname: pod securityContext.runAsNonRoot != true"
+[ "$(echo "$POD_SC" | yq '.seccompProfile.type')" = "RuntimeDefault" ] || fail "kaname: pod seccompProfile != RuntimeDefault"
 ok
-assert_sc "$IAM" "kacho-iam" "kacho-iam"
-assert_sc "$IAM" "migrate" "kacho-iam"
+assert_sc "$IAM" "kaname" "kaname"
+assert_sc "$IAM" "migrate" "kaname"
 
 # ── 2. kacho-geo workload hardening ──────────────────────────────────────────
 render charts/kacho-geo/templates/deployment.yaml; GEO="$HELM_OUT"
@@ -85,10 +85,10 @@ ok
 
 # ── 4. Image digest-pin override (repository@sha256:...) ──────────────────────
 DIG="sha256:0000000000000000000000000000000000000000000000000000000000000000"
-render charts/kacho-iam/templates/deployment.yaml --set kacho-iam.image.digest="$DIG"; IAM_DIG="$HELM_OUT"
+render charts/kaname/templates/deployment.yaml --set kaname.image.digest="$DIG"; IAM_DIG="$HELM_OUT"
 IAM_DIG_IMAGE="$(echo "$IAM_DIG" | yq 'select(.kind == "Deployment") | .spec.template.spec.containers[0].image')"
 [[ "$IAM_DIG_IMAGE" == *"@$DIG"* ]] \
-  || fail "kacho-iam: image.digest override not honoured (expected repository@$DIG)"
+  || fail "kaname: image.digest override not honoured (expected repository@$DIG)"
 render charts/kacho-geo/templates/deployment.yaml --set kacho-geo.imageDigest="$DIG"; GEO_DIG="$HELM_OUT"
 GEO_DIG_IMAGE="$(echo "$GEO_DIG" | yq 'select(.kind == "Deployment") | .spec.template.spec.containers[0].image')"
 [[ "$GEO_DIG_IMAGE" == *"@$DIG"* ]] \

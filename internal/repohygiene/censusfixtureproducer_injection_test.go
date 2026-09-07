@@ -27,9 +27,9 @@ const (
 	// половина инъекций позеленела ВХОЛОСТУЮ — не потому, что гейт молчит на
 	// законном, а потому что условия не возникало вовсе. Отсюда injCensusFacts
 	// ниже, который проверяет предпосылку самой фикстуры.
-	injCensusQuery = `const q = "SELECT 1 FROM kacho_iam.resource_mirror m WHERE NOT EXISTS (SELECT 1 FROM kacho_iam.resource_parent_edge e WHERE e.object_id = m.object_id)"
+	injCensusQuery = `const q = "SELECT 1 FROM kaname.resource_mirror m WHERE NOT EXISTS (SELECT 1 FROM kaname.resource_parent_edge e WHERE e.object_id = m.object_id)"
 `
-	injProducerImport = `import "github.com/PRO-Robotech/kacho-iam/internal/repo/kacho/pg/resource_mirror"
+	injProducerImport = `import "github.com/PRO-Robotech/kaname/internal/repo/kaname/pg/resource_mirror"
 `
 	injProducerCall = `func seed() { _, _ = resource_mirror.UpsertTx(nil, nil, resource_mirror.Row{}) }
 `
@@ -104,7 +104,7 @@ func TestInjection_CensusCallingTheProducerItselfIsSilent(t *testing.T) {
 // остаётся производителем. Иначе гейт краснел бы на переименовании импорта,
 // то есть ловил бы написание, а не вызов.
 func TestInjection_AliasedProducerImportIsStillRecognised(t *testing.T) {
-	src := `import rm "github.com/PRO-Robotech/kacho-iam/internal/repo/kacho/pg/resource_mirror"
+	src := `import rm "github.com/PRO-Robotech/kaname/internal/repo/kaname/pg/resource_mirror"
 ` + injCensusQuery + `func seed() { _, _ = rm.UpsertTx(nil, nil, rm.Row{}) }
 `
 	byDir := map[string][]censusFileFacts{
@@ -123,7 +123,7 @@ func TestInjection_AliasedProducerImportIsStillRecognised(t *testing.T) {
 // такой вызов посевом рёбер — то есть зеленел бы на фикстуре, не посеявшей
 // ничего. Это единственная сторона, где новая редакция СТРОЖЕ прежней.
 func TestInjection_SameNamedFunctionOfAnotherPackageIsNotTheProducer(t *testing.T) {
-	src := `import "github.com/PRO-Robotech/kacho-iam/internal/repo/kacho/pg/target_members"
+	src := `import "github.com/PRO-Robotech/kaname/internal/repo/kaname/pg/target_members"
 ` + injCensusQuery + `func seed() { _ = target_members.UpsertTx(nil, nil, target_members.Member{}) }
 `
 	byDir := map[string][]censusFileFacts{
@@ -139,7 +139,7 @@ func TestInjection_SameNamedFunctionOfAnotherPackageIsNotTheProducer(t *testing.
 // перепись сама кладёт рёбра прямой записью.
 func TestInjection_CensusThatWritesEdgesItselfIsFound(t *testing.T) {
 	src := injProducerImport + injCensusQuery +
-		`const ins = "INSERT INTO kacho_iam.resource_parent_edge (object_id) VALUES ($1)"
+		`const ins = "INSERT INTO kaname.resource_parent_edge (object_id) VALUES ($1)"
 ` + injProducerCall
 	byDir := map[string][]censusFileFacts{
 		"svc/pkg": {injCensusFacts(t, "svc/pkg/census_test.go", src)},
@@ -154,7 +154,7 @@ func TestInjection_CensusThatWritesEdgesItselfIsFound(t *testing.T) {
 // TestInjection_ReaderProbeMayWriteEdgesDirectly — законный близнец второй
 // формы: проба ЧИТАТЕЛЯ (без переписи) вправе класть рёбра прямо.
 func TestInjection_ReaderProbeMayWriteEdgesDirectly(t *testing.T) {
-	src := `const ins = "INSERT INTO kacho_iam.resource_parent_edge (object_id) VALUES ($1)"
+	src := `const ins = "INSERT INTO kaname.resource_parent_edge (object_id) VALUES ($1)"
 `
 	byDir := map[string][]censusFileFacts{
 		"svc/pkg": {injFacts(t, "svc/pkg/reader_test.go", src)},

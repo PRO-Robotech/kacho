@@ -4,7 +4,7 @@
 // Pre-seeded fixture loader.
 //
 // kacho-nlb scenarios depend on resources OWNED by other services
-// (kacho-iam Project, kacho-compute Region/Zone/Instance, kacho-vpc
+// (kaname Project, kacho-compute Region/Zone/Instance, kacho-vpc
 // Subnet/NetworkInterface/Address). Per design §2.6 those refs cross
 // service boundaries and are validated by nlb on the request-path.
 //
@@ -44,7 +44,7 @@ export const FIXTURES = Object.freeze({
 // module init) — k6 throws are caught and surfaced as iteration errors.
 const REQUIRED_KEYS = ['projectId', 'regionId'];
 const REQUIRED_HINTS = {
-  projectId: 'export EXISTING_PROJECT_ID=<kacho-iam project id with editor scope>',
+  projectId: 'export EXISTING_PROJECT_ID=<kaname project id with editor scope>',
   regionId: 'export EXISTING_REGION_ID=ru-central1 (or your region)',
 };
 

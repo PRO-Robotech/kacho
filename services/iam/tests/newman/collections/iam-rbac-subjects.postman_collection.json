@@ -1,7 +1,7 @@
 {
   "info": {
     "_postman_id": "8e97f369-a622-5041-8286-1189743caa39",
-    "name": "kacho-iam / newman / iam-rbac-subjects",
+    "name": "kaname / newman / iam-rbac-subjects",
     "schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json"
   },
   "event": [

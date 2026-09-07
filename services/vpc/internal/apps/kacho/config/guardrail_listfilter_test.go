@@ -21,7 +21,7 @@ import (
 
 // vpc8-C-12: production + ScopeFiltered RPC + list-filter выключен → отказ старта.
 func TestValidateListFilter_Production_ScopeFiltered_FilterDisabled_Fails(t *testing.T) {
-	c := prodCfg(ModeProduction, "kacho-iam:9091")
+	c := prodCfg(ModeProduction, "kaname:9091")
 	c.AuthZ.ListFilter.Enabled = false
 	err := c.validateListFilterAgainst([]string{"/kacho.cloud.vpc.v1.NetworkService/List"})
 	require.Error(t, err)
@@ -32,7 +32,7 @@ func TestValidateListFilter_Production_ScopeFiltered_FilterDisabled_Fails(t *tes
 
 // vpc8-C-13: production-strict + ScopeFiltered + filter выключен → тот же отказ.
 func TestValidateListFilter_ProductionStrict_ScopeFiltered_FilterDisabled_Fails(t *testing.T) {
-	c := prodCfg(ModeProductionStrict, "kacho-iam:9091")
+	c := prodCfg(ModeProductionStrict, "kaname:9091")
 	c.AuthZ.ListFilter.Enabled = false
 	err := c.validateListFilterAgainst([]string{"/svc/List"})
 	require.Error(t, err)
@@ -54,16 +54,16 @@ func TestValidateListFilter_Production_ScopeFiltered_FilterEnabled_NoEndpoint_Fa
 
 // vpc8-C-15: production + ScopeFiltered + filter включён + authorize-endpoint задан → OK.
 func TestValidateListFilter_Production_ScopeFiltered_FilterEnabled_WithAuthorizeEndpoint_Passes(t *testing.T) {
-	c := prodCfg(ModeProduction, "kacho-iam:9091")
+	c := prodCfg(ModeProduction, "kaname:9091")
 	c.AuthZ.ListFilter.Enabled = true
-	c.AuthZ.ListFilter.AuthorizeEndpoint = "kacho-iam:9090"
+	c.AuthZ.ListFilter.AuthorizeEndpoint = "kaname:9090"
 	require.NoError(t, c.validateListFilterAgainst([]string{"/svc/List"}))
 }
 
 // vpc8-C-16: production + ScopeFiltered + filter включён + fallback на iam-endpoint
 // (authorize-endpoint пуст, но iam-endpoint задан) → OK (buildListFilter resolvable).
 func TestValidateListFilter_Production_ScopeFiltered_FilterEnabled_IAMEndpointFallback_Passes(t *testing.T) {
-	c := prodCfg(ModeProduction, "kacho-iam:9091")
+	c := prodCfg(ModeProduction, "kaname:9091")
 	c.AuthZ.ListFilter.Enabled = true
 	c.AuthZ.ListFilter.AuthorizeEndpoint = ""
 	require.NoError(t, c.validateListFilterAgainst([]string{"/svc/List"}))
@@ -94,9 +94,9 @@ func TestValidateListFilter_Production_ScopeFiltered_FilterEnabled_IAMEndpointFa
 // vpc8-C-19: production + ScopeFiltered RPC + фильтр включён, но мягкий проход →
 // отказ старта.
 func TestValidateListFilter_Production_ScopeFiltered_FailOpen_Fails(t *testing.T) {
-	c := prodCfg(ModeProduction, "kacho-iam:9091")
+	c := prodCfg(ModeProduction, "kaname:9091")
 	c.AuthZ.ListFilter.Enabled = true
-	c.AuthZ.ListFilter.AuthorizeEndpoint = "kacho-iam:9090"
+	c.AuthZ.ListFilter.AuthorizeEndpoint = "kaname:9090"
 	c.AuthZ.ListFilter.FailOpen = true
 	err := c.validateListFilterAgainst([]string{"/kacho.cloud.vpc.v1.InternalNetworkInterfaceService/ListByInstance"})
 	require.Error(t, err)
@@ -108,7 +108,7 @@ func TestValidateListFilter_Production_ScopeFiltered_FailOpen_Fails(t *testing.T
 
 // vpc8-C-20: production-strict — тот же отказ (любой IsProduction()).
 func TestValidateListFilter_ProductionStrict_ScopeFiltered_FailOpen_Fails(t *testing.T) {
-	c := prodCfg(ModeProductionStrict, "kacho-iam:9091")
+	c := prodCfg(ModeProductionStrict, "kaname:9091")
 	c.AuthZ.ListFilter.Enabled = true
 	c.AuthZ.ListFilter.FailOpen = true
 	err := c.validateListFilterAgainst([]string{"/svc/List"})
@@ -120,7 +120,7 @@ func TestValidateListFilter_ProductionStrict_ScopeFiltered_FailOpen_Fails(t *tes
 // vpc8-C-21: fail-closed (default) → проходит. Контроль на ту же форму: гард
 // обязан молчать на законной конфигурации, иначе он ловит форму, а не существо.
 func TestValidateListFilter_Production_ScopeFiltered_FailClosed_Passes(t *testing.T) {
-	c := prodCfg(ModeProduction, "kacho-iam:9091")
+	c := prodCfg(ModeProduction, "kaname:9091")
 	c.AuthZ.ListFilter.Enabled = true
 	c.AuthZ.ListFilter.FailOpen = false
 	require.NoError(t, c.validateListFilterAgainst([]string{"/svc/List"}))
@@ -129,7 +129,7 @@ func TestValidateListFilter_Production_ScopeFiltered_FailClosed_Passes(t *testin
 // vpc8-C-22: нет ScopeFiltered RPC → мягкий проход допустим (за такими List стоит
 // per-RPC Check, фильтр там — сужение поверх, а не единственная авторизация).
 func TestValidateListFilter_NoScopeFiltered_FailOpen_Passes(t *testing.T) {
-	c := prodCfg(ModeProduction, "kacho-iam:9091")
+	c := prodCfg(ModeProduction, "kaname:9091")
 	c.AuthZ.ListFilter.Enabled = true
 	c.AuthZ.ListFilter.FailOpen = true
 	require.NoError(t, c.validateListFilterAgainst(nil))
@@ -148,9 +148,9 @@ func TestValidateListFilter_NoScopeFiltered_FailOpen_Passes(t *testing.T) {
 // vpc8-C-24: мягкий проход на dev с ЗАКОННОЙ в остальном посадкой запрещён так
 // же, как в production, — режим перестал быть условием и здесь.
 func TestValidateListFilter_Dev_FailOpen_Fails(t *testing.T) {
-	c := prodCfg(ModeDev, "kacho-iam:9091")
+	c := prodCfg(ModeDev, "kaname:9091")
 	c.AuthZ.ListFilter.Enabled = true
-	c.AuthZ.ListFilter.AuthorizeEndpoint = "kacho-iam:9090"
+	c.AuthZ.ListFilter.AuthorizeEndpoint = "kaname:9090"
 	c.AuthZ.ListFilter.FailOpen = true
 	err := c.validateListFilterAgainst([]string{"/svc/List"})
 	require.Error(t, err)

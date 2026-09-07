@@ -79,7 +79,7 @@ unavailable=0
 missing_names=""
 
 for obj in $workloads; do
-    # `deployment.apps/kacho-iam` → `kacho-iam`; вид сохраняем в имени файла,
+    # `deployment.apps/kaname` → `kaname`; вид сохраняем в имени файла,
     # чтобы одноимённые носители разных видов не затирали друг друга.
     kind=${obj%%/*}
     kind=${kind%%.*}

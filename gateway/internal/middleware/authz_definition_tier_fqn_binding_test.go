@@ -38,7 +38,7 @@ import (
 	"github.com/stretchr/testify/require"
 	"google.golang.org/grpc"
 
-	iamv1 "github.com/PRO-Robotech/kacho/pkg/api/kacho/cloud/iam/v1"
+	iamv1 "github.com/PRO-Robotech/kacho/pkg/api/kaname/cloud/iam/v1"
 
 	"github.com/PRO-Robotech/kacho/gateway/internal/middleware"
 )
@@ -46,11 +46,11 @@ import (
 // inviteEntry — catalog row for UserService/Invite: account-scoped via the
 // request's `account_id`. It declares NO definition_tier anchor (the request
 // message has no such field).
-const inviteEntry = `{"fqn":"kacho.cloud.iam.v1.UserService/Invite","permission":"iam.users.invite","required_relation":"editor","scope_extractor":{"object_type":"account","from_request_field":"account_id"},"required_acr_min":"2","risk_level":"HIGH"}`
+const inviteEntry = `{"fqn":"kaname.cloud.iam.v1.UserService/Invite","permission":"iam.users.invite","required_relation":"editor","scope_extractor":{"object_type":"account","from_request_field":"account_id"},"required_acr_min":"2","risk_level":"HIGH"}`
 
 // roleCreateEntry — catalog row for RoleService/Create: the ONE RPC whose
 // request message carries `definition_tier` (the canonical scope anchor).
-const roleCreateEntry = `{"fqn":"kacho.cloud.iam.v1.RoleService/Create","permission":"iam.roles.create","required_relation":"editor","scope_extractor":{"object_type":"account","from_request_field":"account_id"},"required_acr_min":"1","risk_level":"HIGH"}`
+const roleCreateEntry = `{"fqn":"kaname.cloud.iam.v1.RoleService/Create","permission":"iam.roles.create","required_relation":"editor","scope_extractor":{"object_type":"account","from_request_field":"account_id"},"required_acr_min":"1","risk_level":"HIGH"}`
 
 // TestAuthz_HTTP_DefinitionTierInBody_DoesNotRedirectScope_UnrelatedFQN — the
 // escalation primitive: a `definitionTier` object smuggled into the body of an
@@ -59,7 +59,7 @@ const roleCreateEntry = `{"fqn":"kacho.cloud.iam.v1.RoleService/Create","permiss
 func TestAuthz_HTTP_DefinitionTierInBody_DoesNotRedirectScope_UnrelatedFQN(t *testing.T) {
 	checker := &fakeChecker{allowed: true}
 	router := &fakeRestRouter{m: map[string]string{
-		"POST /iam/v1/users:invite": "kacho.cloud.iam.v1.UserService/Invite",
+		"POST /iam/v1/users:invite": "kaname.cloud.iam.v1.UserService/Invite",
 	}}
 	mw := buildAuthzMiddleware(t, buildCatalog(t, inviteEntry), checker, func(c *middleware.AuthzMiddlewareConfig) {
 		c.RestRouter = router
@@ -91,7 +91,7 @@ func TestAuthz_HTTP_DefinitionTierInBody_DoesNotRedirectScope_UnrelatedFQN(t *te
 func TestAuthz_HTTP_DefinitionTierInBody_UnrelatedFQN_StillDeniesOnCatalogScope(t *testing.T) {
 	checker := &fakeChecker{allowed: false, reasons: []string{"no path"}}
 	router := &fakeRestRouter{m: map[string]string{
-		"POST /iam/v1/users:invite": "kacho.cloud.iam.v1.UserService/Invite",
+		"POST /iam/v1/users:invite": "kaname.cloud.iam.v1.UserService/Invite",
 	}}
 	mw := buildAuthzMiddleware(t, buildCatalog(t, inviteEntry), checker, func(c *middleware.AuthzMiddlewareConfig) {
 		c.RestRouter = router
@@ -126,7 +126,7 @@ func TestAuthz_HTTP_DefinitionTierInBody_UnrelatedFQN_StillDeniesOnCatalogScope(
 func TestAuthz_HTTP_RoleCreate_DefinitionTierResolvesScope(t *testing.T) {
 	checker := &fakeChecker{allowed: true}
 	router := &fakeRestRouter{m: map[string]string{
-		"POST /iam/v1/roles": "kacho.cloud.iam.v1.RoleService/Create",
+		"POST /iam/v1/roles": "kaname.cloud.iam.v1.RoleService/Create",
 	}}
 	mw := buildAuthzMiddleware(t, buildCatalog(t, roleCreateEntry), checker, func(c *middleware.AuthzMiddlewareConfig) {
 		c.RestRouter = router
@@ -159,7 +159,7 @@ func TestAuthz_GRPC_RoleCreate_DefinitionTierResolvesScope(t *testing.T) {
 			Name:           "reader",
 			DefinitionTier: &iamv1.DefinitionTier{TierType: "iam.account", TierId: "acc_alpha"},
 		},
-		&grpc.UnaryServerInfo{FullMethod: "/kacho.cloud.iam.v1.RoleService/Create"},
+		&grpc.UnaryServerInfo{FullMethod: "/kaname.cloud.iam.v1.RoleService/Create"},
 		func(ctx context.Context, req any) (any, error) { return "ok", nil })
 	require.NoError(t, err)
 
@@ -176,7 +176,7 @@ func TestAuthz_GRPC_RoleCreate_DefinitionTierResolvesScope(t *testing.T) {
 func TestAuthz_GRPC_DefinitionTierBearingMessage_OnUnrelatedFQN_KeepsCatalogScope(t *testing.T) {
 	checker := &fakeChecker{allowed: true}
 	// Catalog row for a DIFFERENT FQN, account-scoped from account_id.
-	const otherEntry = `{"fqn":"kacho.cloud.iam.v1.RoleService/CreateLike","permission":"iam.roles.create","required_relation":"editor","scope_extractor":{"object_type":"account","from_request_field":"account_id"},"required_acr_min":"1","risk_level":"HIGH"}`
+	const otherEntry = `{"fqn":"kaname.cloud.iam.v1.RoleService/CreateLike","permission":"iam.roles.create","required_relation":"editor","scope_extractor":{"object_type":"account","from_request_field":"account_id"},"required_acr_min":"1","risk_level":"HIGH"}`
 	mw := buildAuthzMiddleware(t, buildCatalog(t, otherEntry), checker)
 	_, err := mw.Unary()(withTokenMD("usr_attacker", "user"),
 		&iamv1.CreateRoleRequest{
@@ -184,7 +184,7 @@ func TestAuthz_GRPC_DefinitionTierBearingMessage_OnUnrelatedFQN_KeepsCatalogScop
 			AccountId:      "acc_victim",
 			DefinitionTier: &iamv1.DefinitionTier{TierType: "iam.project", TierId: "prj_attacker"},
 		},
-		&grpc.UnaryServerInfo{FullMethod: "/kacho.cloud.iam.v1.RoleService/CreateLike"},
+		&grpc.UnaryServerInfo{FullMethod: "/kaname.cloud.iam.v1.RoleService/CreateLike"},
 		func(ctx context.Context, req any) (any, error) { return "ok", nil })
 	require.NoError(t, err)
 

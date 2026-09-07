@@ -42,9 +42,9 @@ SPDX-License-Identifier: AGPL-3.0-or-later
   корпусу миграций. **Схема ролей не меняется ни одной колонкой**; ни один
   публичный контракт не затрагивается; ни одна применённая миграция не правится
   (запрет #5)
-- **Сервис:** `kacho-iam` — предмет целиком. Затрагивает
+- **Сервис:** `kaname` — предмет целиком. Затрагивает
   `services/iam/internal/migrations/` (одна новая миграция),
-  `services/iam/internal/repo/kacho/pg/` (один новый обход) и
+  `services/iam/internal/repo/kaname/pg/` (один новый обход) и
   `internal/repohygiene/` (один гейт дерева). **`proto/` не затрагивает**,
   **`gateway/` не затрагивает**
 - **Предмет приёмки — ВЫБОР** (чем держится класс; какой из трёх названных задачей
@@ -69,21 +69,21 @@ SPDX-License-Identifier: AGPL-3.0-or-later
 | **П1** | `catalog_resource` (посев 1030001) | 27 живых пар · 3 снятых с преемником | `services/iam/internal/migrations/20260901113757_rule_segments_have_a_referent.sql` |
 | **П2** | ключ `role_rule_ref_res_fk` | отказ 23503 на сегменте, называющем пару вне ЖИВОГО каталога | там же |
 | **П3** | ключ `role_verb_type_fk` | отказ 23503 на выдаче, называющей точечный тип вне живого каталога | там же |
-| **П4** | `pgmaperr.go`, ветви обоих ключей | текст арендатору: `resources: %s is not a live platform resource`, `verbs: %s is not a live verb of resource %s` | `services/iam/internal/repo/kacho/pg/pgmaperr.go` |
-| **П5** | `ReplaceRuleRefs` | единственный писатель проекции объявленных сегментов | `services/iam/internal/repo/kacho/pg/role_repo.go` |
-| **П6** | создание и правка роли | ЕДИНСТВЕННЫЕ вызывающие П5 в прод-коде | `services/iam/internal/apps/kacho/api/role/create.go`, `services/iam/internal/apps/kacho/api/role/update.go` |
-| **П7** | `TestIAMSV107_RuleRefProjectionEqualsWhatRulesDeclare` | обход по ролям: «объявлено, но не спроецировано: роль %q, сегмент %s» + перепись | `services/iam/internal/repo/kacho/pg/system_role_segments_resolve_integration_test.go` |
-| **П8** | `TestIAMCT108_RetiringAResourceWithALiveGrantIsRefused` | снятие ресурса при живой выдаче отвергается, SQLSTATE 23503 | `services/iam/internal/repo/kacho/pg/catalog_referent_integration_test.go` |
+| **П4** | `pgmaperr.go`, ветви обоих ключей | текст арендатору: `resources: %s is not a live platform resource`, `verbs: %s is not a live verb of resource %s` | `services/iam/internal/repo/kaname/pg/pgmaperr.go` |
+| **П5** | `ReplaceRuleRefs` | единственный писатель проекции объявленных сегментов | `services/iam/internal/repo/kaname/pg/role_repo.go` |
+| **П6** | создание и правка роли | ЕДИНСТВЕННЫЕ вызывающие П5 в прод-коде | `services/iam/internal/apps/kaname/api/role/create.go`, `services/iam/internal/apps/kaname/api/role/update.go` |
+| **П7** | `TestIAMSV107_RuleRefProjectionEqualsWhatRulesDeclare` | обход по ролям: «объявлено, но не спроецировано: роль %q, сегмент %s» + перепись | `services/iam/internal/repo/kaname/pg/system_role_segments_resolve_integration_test.go` |
+| **П8** | `TestIAMCT108_RetiringAResourceWithALiveGrantIsRefused` | снятие ресурса при живой выдаче отвергается, SQLSTATE 23503 | `services/iam/internal/repo/kaname/pg/catalog_referent_integration_test.go` |
 | **П9** | `TestIAMCT105_ResourceOutsideTheCatalogIsRefused` | ресурс вне каталога отвергается ключом | там же |
 | **П10** | самопроверка 1030001 (`DO $$ … RAISE EXCEPTION`) | «после переселения остались висячие строки: проекции правила %, выдачи %» | `services/iam/internal/migrations/20260901113757_rule_segments_have_a_referent.sql` |
 | **П11** | `role_grant_orphan` | след ПЕРЕСЕЛЕНИЯ объявления и выдачи при снятии строки каталога | там же |
 | **П12** | `retiredBlockStorage` — древесная половина | ни одно из трёх снятых имён не живёт в четырёх словарях iam, в модели и в каталоге прав | `services/iam/internal/check/retired_block_storage_test.go` |
-| **П13** | `TestRetiredBlockStorageIsGoneFromMigratedSchema` | ни одна из девяти ролей не пережила цепочку миграций; живой близнец пережил | `services/iam/internal/repo/kacho/pg/retired_block_storage_integration_test.go` |
-| **П14** | `ReseedSystemRoleVerbs` | пересчёт проекции глаголов системной роли **из каталожного факта** | `services/iam/internal/apps/kacho/seed/role_verb_reseed.go` |
-| **П15** | `syncAllSystemRoleSelectorsTx` | пересчёт селекторов системной роли **из объявления**, без каталога | `services/iam/internal/apps/kacho/seed/migrate_backfill.go` |
+| **П13** | `TestRetiredBlockStorageIsGoneFromMigratedSchema` | ни одна из девяти ролей не пережила цепочку миграций; живой близнец пережил | `services/iam/internal/repo/kaname/pg/retired_block_storage_integration_test.go` |
+| **П14** | `ReseedSystemRoleVerbs` | пересчёт проекции глаголов системной роли **из каталожного факта** | `services/iam/internal/apps/kaname/seed/role_verb_reseed.go` |
+| **П15** | `syncAllSystemRoleSelectorsTx` | пересчёт селекторов системной роли **из объявления**, без каталога | `services/iam/internal/apps/kaname/seed/migrate_backfill.go` |
 | **П16** | `dottedTypes` | точечный тип НАЗВАННОГО ресурса собирается склейкой `модуль + "." + ресурс`, без сверки | `services/iam/internal/domain/rule_fingerprint.go` |
-| **П17** | `audit_outbox` iam + канонические типы событий выдачи | долговременный след жизненного цикла выдачи, у которого есть читатель | `services/iam/internal/repo/kacho/access_binding/iface.go` |
-| **П18** | джоба `integration (iam)` | прогонщик всех проб `internal/repo/kacho/pg` с настоящим Postgres | `.github/workflows/ci.yaml` |
+| **П17** | `audit_outbox` iam + канонические типы событий выдачи | долговременный след жизненного цикла выдачи, у которого есть читатель | `services/iam/internal/repo/kaname/access_binding/iface.go` |
+| **П18** | джоба `integration (iam)` | прогонщик всех проб `internal/repo/kaname/pg` с настоящим Postgres | `.github/workflows/ci.yaml` |
 
 Проверено исполнением, а не чтением (П12):
 
@@ -591,7 +591,7 @@ fail-closed, — и **разблокируется** приведением пр
 
 ## 4. Out-of-scope — явно
 
-- любое изменение `proto/` и края — предмет целиком внутри `kacho-iam`;
+- любое изменение `proto/` и края — предмет целиком внутри `kaname`;
 - правка применённых миграций — запрет #5;
 - перенос выдач между ролями — отвергнут §2.5 как тихое расширение прав;
 - ретроспективное восстановление следа — §2.6;

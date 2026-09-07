@@ -8,7 +8,7 @@ authz-pipeline (OPA bundle endpoint + OPA sidecars).
 
 Two policies are emitted:
 
-  (1) `opa-bundle-endpoint-ingress` — kacho-iam Internal port :9091 accepts
+  (1) `opa-bundle-endpoint-ingress` — kaname Internal port :9091 accepts
       bundle.tar.gz pulls ONLY from same-namespace pods carrying label
       `kacho.cloud/opa-sidecar=true` (set by sidecar injection). This is
       belt-and-suspenders on top of запрет #6 (Internal port not on external
@@ -16,7 +16,7 @@ Two policies are emitted:
       directly pull guardrails bundle.
 
   (2) `opa-sidecar-egress-allowlist` — restricted egress for pods that carry an
-      OPA sidecar: bundle pull from kacho-iam internal, FGA queries, DNS, and the
+      OPA sidecar: bundle pull from kaname internal, FGA queries, DNS, and the
       dependencies the pod's OWN main container needs. Blocks decision-log
       exfiltration to attacker-controlled endpoints.
 
@@ -26,7 +26,7 @@ Two policies are emitted:
       below governs the MAIN container too. So the list is not "what OPA needs" —
       it is "everything this pod dials", and an omission is an outage, not a
       tightening. That is exactly how it went wrong: the label was rendered
-      unconditionally on kacho-iam (whose sidecar is off in every profile) while
+      unconditionally on kaname (whose sidecar is off in every profile) while
       values.prod turned this policy on, so on a NetworkPolicy-enforcing CNI iam
       would have been cut off from its own Postgres and from Hydra. The label is
       now gated on `opaSidecar.enabled`, and the rules below cover the main
@@ -37,9 +37,9 @@ Toggle via umbrella values:
   opaSidecar:
     networkPolicy:
       enabled: true                   (default true on prod, false on kind/dev)
-      iamPodSelector:                 (which pod-label identifies kacho-iam)
+      iamPodSelector:                 (which pod-label identifies kaname)
         matchLabels:
-          app.kubernetes.io/name: kacho-iam
+          app.kubernetes.io/name: kaname
       apiGatewayPodSelector:
         matchLabels:
           app: api-gateway
@@ -52,7 +52,7 @@ is owned by `ingress-nginx` chart and ingress.yaml in api-gateway sub-chart.
 This file is **internal pod-to-pod** authz wiring only.
 */}}
 
-# ─── Policy 1: OPA bundle endpoint ingress (kacho-iam :9091) ────────────────
+# ─── Policy 1: OPA bundle endpoint ingress (kaname :9091) ────────────────
 apiVersion: networking.k8s.io/v1
 kind: NetworkPolicy
 metadata:
@@ -84,9 +84,9 @@ spec:
       ports:
         - protocol: TCP
           port: 9091
-    # self-ingress — kacho-iam's OWN OPA sidecar pulls bundle from kacho-iam
+    # self-ingress — kaname's OWN OPA sidecar pulls bundle from kaname
     # internal Service (within the same pod is localhost, but Service-routing
-    # may resolve to a sibling kacho-iam replica → allow).
+    # may resolve to a sibling kaname replica → allow).
     - from:
         - podSelector:
             {{- toYaml .Values.opaSidecar.networkPolicy.iamPodSelector | nindent 14 }}
@@ -94,7 +94,7 @@ spec:
         - protocol: TCP
           port: 9091
     # Public port :9090 is governed by separate sub-chart NetworkPolicy
-    # (kacho-iam-internal-allowlist etc.); this NetworkPolicy only adds
+    # (kaname-internal-allowlist etc.); this NetworkPolicy only adds
     # rules — it does NOT override existing ingress rules.
 ---
 # ─── Policy 2: OPA sidecar egress allowlist ─────────────────────────────────
@@ -131,7 +131,7 @@ spec:
           port: 53
         - protocol: TCP
           port: 53
-    # kacho-iam internal :9091 — bundle pull origin.
+    # kaname internal :9091 — bundle pull origin.
     - to:
         - podSelector:
             {{- toYaml .Values.opaSidecar.networkPolicy.iamPodSelector | nindent 14 }}
@@ -139,7 +139,7 @@ spec:
         - protocol: TCP
           port: 9091
     # Own datastore :5432 — REQUIRED, and it is the omission that made this policy
-    # unsafe to enable. The pod selected here is kacho-iam, and cutting a service
+    # unsafe to enable. The pod selected here is kaname, and cutting a service
     # off from its own database is not a tightening — it is an outage of the whole
     # authN/authZ tier. The mirror ingress side is networkpolicy-datastore.yaml
     # (`networkPolicy.datastore.instances[pg-iam].from`).
@@ -149,7 +149,7 @@ spec:
       ports:
         - protocol: TCP
           port: 5432
-    # Hydra public :4444 / admin :4445 — kacho-iam is the single facade to Hydra
+    # Hydra public :4444 / admin :4445 — kaname is the single facade to Hydra
     # (OAuth client lifecycle, token issuance, JWKS mirror). Without this rule the
     # facade cannot reach what it fronts.
     - to:

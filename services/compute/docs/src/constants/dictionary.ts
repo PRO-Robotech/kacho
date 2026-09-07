@@ -2,7 +2,7 @@
 // Меняешь смысл поля → правишь здесь, а не в N страницах.
 export const DICTIONARY = {
   id: { short: 'Идентификатор ресурса (output-only, генерируется сервером)' },
-  projectId: { short: 'Идентификатор проекта (домен kacho-iam); ресурс — project-level' },
+  projectId: { short: 'Идентификатор проекта (домен kaname); ресурс — project-level' },
   name: { short: 'Имя ресурса: DNS label по RFC 1123 — ^[a-z0-9]([-a-z0-9]{0,61}[a-z0-9])?$ (строчные латинские буквы, цифры и дефис; 1..63; цифра первым знаком допустима). Уникально в паре (projectId, name). Пустая строка — законный вход Create: сервер проставит имя, производное от id; в Update отвергается' },
   description: { short: 'Описание (0..256 символов)' },
   labels: { short: 'Метки key:value (до 64 пар)' },
@@ -26,7 +26,7 @@ export const DICTIONARY = {
   bootDisk: { short: 'Зеркало загрузочного тома (output-only; том принадлежит kacho-storage)' },
   secondaryDisks: { short: 'Зеркало дополнительных присоединённых томов (output-only; тома принадлежат kacho-storage)' },
   networkInterfaces: { short: 'Сетевые интерфейсы инстанса (denormalised-зеркало NIC из kacho-vpc)' },
-  serviceAccountId: { short: 'Сервисный аккаунт для аутентификации внутри инстанса (kacho-iam)' },
+  serviceAccountId: { short: 'Сервисный аккаунт для аутентификации внутри инстанса (kaname)' },
   fqdn: { short: 'Доменное имя инстанса (output-only, назначается сервером)' },
   // MachineType
   machineTypeFamily: { short: 'Семейство типа машины: STANDARD | COMPUTE | MEMORY | GPU' },

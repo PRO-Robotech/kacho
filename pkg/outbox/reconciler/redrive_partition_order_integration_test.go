@@ -6,7 +6,7 @@ package reconciler_test
 // Reviving a poisoned intent must respect the order of its partition.
 //
 // A register-outbox carries BOTH the registration and the deregistration of one
-// resource, and the target these intents drive — kacho-iam's resource_mirror — is
+// resource, and the target these intents drive — kaname's resource_mirror — is
 // only PARTIALLY versioned: the last-writer-wins guard covers the update branch,
 // while deregistration is a hard delete that leaves no tombstone. So an intent to
 // register, replayed AFTER the matching deregistration has already been delivered,
@@ -108,7 +108,7 @@ func setupRegisterOutboxPG(t *testing.T) *pgxpool.Pool {
 	return pool
 }
 
-// mirror models kacho-iam's resource_mirror closely enough for the asymmetry that
+// mirror models kaname's resource_mirror closely enough for the asymmetry that
 // matters: registration inserts when the row is absent and is version-gated only
 // when it is present; deregistration is a hard delete that keeps no tombstone.
 type mirror struct {

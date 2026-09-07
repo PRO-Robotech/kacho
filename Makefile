@@ -32,7 +32,7 @@
 # заблуждение. Замерено на тихой машине, `-p 1`, `-count=1`:
 #
 #   vpc/internal/repo             410 с без -race — в 600 с укладывается;
-#   nlb/internal/repo/kacho/pg    312 с без -race — тоже;
+#   nlb/internal/repo/kaname/pg    312 с без -race — тоже;
 #   те же два пакета под -race при -p 12:  990 с и 1133 с — уже нет.
 #
 # И на `-p 12` контейнерные пакеты голодают друг у друга: pkg/outbox/drainer выдал
@@ -41,7 +41,7 @@
 # вердикт не годится. Поэтому бюджет и `-p` заданы здесь, в одном месте.
 #
 # Стоимость самой фикстуры снята там, где она была наибольшей: vpc/internal/repo и
-# nlb/internal/repo/kacho/pg перешли на один Postgres на пакет + клон шаблона на
+# nlb/internal/repo/kaname/pg перешли на один Postgres на пакет + клон шаблона на
 # тест (410 с → 19 с и 312 с → 13 с). Ещё 31 пакет поднимает контейнер на каждый
 # тест — это открытый долг, и явный бюджет его не лечит и не притворяется, что
 # лечит.
@@ -197,7 +197,7 @@ GO ?= go
 UNIT_TIMEOUT ?= 40m
 
 # Интеграционный прогон: бюджет НА ПАКЕТ. 25m — значение, которое CI уже нёс
-# инлайном; выбрано оно было по самому дорогому пакету (iam/internal/repo/kacho/pg,
+# инлайном; выбрано оно было по самому дорогому пакету (iam/internal/repo/kaname/pg,
 # см. историю в ci.yaml), а не «на глаз». Снижать его следует замером, а не
 # ощущением: сейчас запас есть, но 34 пакета всё ещё поднимают контейнер.
 INTEGRATION_TIMEOUT ?= 25m
@@ -207,7 +207,7 @@ SERVICES ?= iam vpc compute geo nlb storage registry
 
 # ─── МОДУЛЬ СЛУЖБЫ IAM ───────────────────────────────────────────────────────
 #
-# Служба iam несёт СВОЙ `go.mod` (`github.com/PRO-Robotech/kacho-iam`): она
+# Служба iam несёт СВОЙ `go.mod` (`github.com/PRO-Robotech/kaname`): она
 # выносится отдельным репозиторием и обязана собираться без дерева монорепо на
 # диске. Следствие, о котором тут и речь: корневой `./...` её пакетов БОЛЬШЕ НЕ
 # ВИДИТ — модуль-родитель заканчивается там, где начинается вложенный.
@@ -246,7 +246,7 @@ IAM_MODULE_DIR ?= services/iam
 #
 # ВТОРАЯ ЗАПИСЬ ЗАВЕДЕНА ЗАДАЧЕЙ #495, и её повод — не удобство. Пробы фоновых
 # проходов nlb не исполняла НИ ОДНА джоба: под кратким они пропускаются (20 из
-# 20), а отбор интеграционной идёт по пути и до apps/kacho/jobs не достаёт.
+# 20), а отбор интеграционной идёт по пути и до apps/kaname/jobs не достаёт.
 # Следствие наблюдалось: фикстура одной из них перестала вставляться при
 # появлении миграции 0035 и десять проб были красны НА САМОМ СТВОЛЕ — сутки, и
 # ни один вердикт этого не сказал. Цена измерена, а не оценена, и предикат
@@ -322,19 +322,19 @@ PG_OUTSIDE_SELECTION_PKGS ?= \
 # Пакеты МОДУЛЯ СЛУЖБЫ iam — пути относительно $(IAM_MODULE_DIR).
 PG_OUTSIDE_SELECTION_PKGS_IAM ?= \
 	./internal/migrations \
-	./internal/apps/kacho/api/bootstrap_token \
+	./internal/apps/kaname/api/bootstrap_token \
 	./internal/scopesourcecensus \
-	./internal/apps/kacho/api/access_binding \
-	./internal/apps/kacho/api/listvisibility \
-	./internal/apps/kacho/api/readauthz \
-	./internal/apps/kacho/api/user \
+	./internal/apps/kaname/api/access_binding \
+	./internal/apps/kaname/api/listvisibility \
+	./internal/apps/kaname/api/readauthz \
+	./internal/apps/kaname/api/user \
 	./internal/authzmap \
 	./internal/service \
 	./internal/testsupport/accesssnapshot \
 	./internal/moduleroleparity \
 	./internal/moduleseedparity \
 	./internal/observability/metrics \
-	./cmd/kacho-iam
+	./cmd/kaname
 
 # ─── Хуки git ────────────────────────────────────────────────────────────────
 #
@@ -353,7 +353,7 @@ PG_OUTSIDE_SELECTION_PKGS_IAM ?= \
 # ЧЕМ ПРОВЯЗЫВАЕТСЯ И ПОЧЕМУ НЕ `core.hooksPath` — в шапке scripts/hooks/install.sh
 # (короткий ответ: он перебивает `.git/hooks` целиком и молча выключает всё, что
 # там уже лежало).
-.PHONY: test test-unit test-integration test-pg-outside-selection test-service test-service-short docs-sites help install-hooks check-hooks hooks-notice scale-grid-small scale-grid-full matrix-volume-small matrix-volume-full
+.PHONY: test test-unit test-integration test-pg-outside-selection test-service test-service-short docs-sites help install-hooks check-hooks hooks-notice scale-grid-small scale-grid-full matrix-volume-small matrix-volume-full release-preflight release-trunk-green release-breaking-since release-probe release-dry-run
 
 ## install-hooks — провязать хуки git из scripts/hooks в этот клон (один раз на клон).
 install-hooks:
@@ -510,39 +510,47 @@ endif
 ## достаёт — то есть без этой цели они не исполнялись бы НИГДЕ. `-short` не передаётся;
 ## `-p 1` сериализует пакеты (контейнерным пробам параллель противопоказана —
 ## см. шапку файла); вердикт выносится ПО ЧИСЛАМ.
+##
+## ВЕРДИКТ ЖИВЁТ В СКРИПТЕ, А НЕ В РЕЦЕПТЕ, И СЧИТАЕТСЯ ПО ПОЛОСАМ.
+## Перепись вынесена в deploy/scripts/classify-pg-outside-selection.sh — ветку
+## внутри рецепта нечем доказать инъекцией, а недоказанная ветка сама становится
+## тем классом, который цель ловит. Полосы (корневой модуль и модуль службы iam)
+## судятся ПОРОЗНЬ и своими логами: перечень пакетов разделён по модулям именно
+## потому, что половина, отчитавшаяся нулём, неотличима от успеха, — а общий счёт
+## отчитавшихся эту половину гасил соседкой, если сумма сходилась.
+##
+## МОДУЛЬНЫЙ ПУТЬ ПОЛОСЫ ВЫВОДИТСЯ (`go list -m`), А НЕ ВПИСЫВАЕТСЯ. Литерал был
+## вторым местом об одном предмете — первым является `go.mod` — и разошёлся молча
+## при переименовании модуля службы iam: её 14 пакетов отчитались `ok`, а перепись
+## знала один модульный путь и увидела 10 из 24. Красное было свойством ПРОВЕРКИ,
+## а не дерева, и разобрать его можно было только сверив вывод с `go.mod` руками.
 test-pg-outside-selection:
 	@set -o pipefail; \
-	log=$$(mktemp); \
-	trap 'rm -f "$$log"' EXIT; \
+	root_log=$$(mktemp); iam_log=$$(mktemp); \
+	trap 'rm -f "$$root_log" "$$iam_log"' EXIT; \
 	root_named=$$(printf '%s\n' $(PG_OUTSIDE_SELECTION_PKGS) | grep -c . || true); \
 	iam_named=$$(printf '%s\n' $(PG_OUTSIDE_SELECTION_PKGS_IAM) | grep -c . || true); \
-	named=$$((root_named + iam_named)); \
 	if [ "$$root_named" -eq 0 ] || [ "$$iam_named" -eq 0 ]; then \
 	  echo "перечень пуст с одной из сторон (корень $$root_named, iam $$iam_named) — это отказ," >&2; \
 	  echo "а не «нечего запускать»: пустая половина дала бы зелёную цель, переставшую" >&2; \
-	  echo "проверять целый модуль, и это неотличимо от успеха." >&2; exit 1; fi; \
-	echo "пакетов заявлено: $$named (корневой модуль $$root_named, модуль службы iam $$iam_named)"; \
-	rc=0; \
+	  echo "проверять целый модуль, и это неотличимо от успеха. Отказ стоит ДО прогона," >&2; \
+	  echo "потому что go test с пустым перечнем проверил бы пакет текущего каталога." >&2; \
+	  exit 1; fi; \
+	root_mod=$$($(GO) list -m) || root_mod=""; \
+	iam_mod=$$($(GO) -C $(IAM_MODULE_DIR) list -m) || iam_mod=""; \
+	if [ -z "$$root_mod" ] || [ -z "$$iam_mod" ]; then \
+	  echo "модульный путь полосы НЕ ВЫВЕДЕН (корень «$$root_mod», iam «$$iam_mod») —" >&2; \
+	  echo "переписи не по чему считать отчитавшиеся пакеты, и её молчание было бы" >&2; \
+	  echo "неотличимо от согласия." >&2; exit 1; fi; \
+	echo "полосы: $$root_mod — заявлено $$root_named · $$iam_mod — заявлено $$iam_named"; \
+	root_rc=0; iam_rc=0; \
 	$(GO) test -race -count=1 -p 1 -v -timeout $(INTEGRATION_TIMEOUT) \
-	  $(PG_OUTSIDE_SELECTION_PKGS) 2>&1 | tee "$$log" || rc=$$?; \
+	  $(PG_OUTSIDE_SELECTION_PKGS) 2>&1 | tee "$$root_log" || root_rc=$$?; \
 	$(GO) test -C $(IAM_MODULE_DIR) -race -count=1 -p 1 -v -timeout $(INTEGRATION_TIMEOUT) \
-	  $(PG_OUTSIDE_SELECTION_PKGS_IAM) 2>&1 | tee -a "$$log" || rc=$$?; \
-	pass=$$(grep -c -- '--- PASS' "$$log" || true); \
-	skip=$$(grep -c -- '--- SKIP' "$$log" || true); \
-	failed=$$(grep -c -- '--- FAIL' "$$log" || true); \
-	reported=$$(grep -cE '^(ok|FAIL|\?)[[:space:]]+github\.com/PRO-Robotech/kacho[-/]' "$$log" || true); \
-	echo "перепись: пакетов отчиталось $$reported из $$named; утверждений пройдено $$pass, пропущено $$skip, упало $$failed"; \
-	if [ "$$rc" -ne 0 ] || [ "$$failed" -gt 0 ]; then \
-	  echo "пробы упали (код $$rc, упавших утверждений $$failed)" >&2; exit 1; fi; \
-	if [ "$$skip" -gt 0 ]; then \
-	  echo "пропущено $$skip проб. Пропуск здесь — ОТКАЗ: пробу, которая не" >&2; \
-	  echo "выполнилась, нельзя засчитать выполненной, а именно ради невозможности" >&2; \
-	  echo "такого зачёта эта цель и заведена." >&2; exit 1; fi; \
-	if [ "$$pass" -eq 0 ]; then \
-	  echo "ноль пройденных утверждений — цель отработала вхолостую и зелёной не будет" >&2; exit 1; fi; \
-	if [ "$$reported" -ne "$$named" ]; then \
-	  echo "отчиталось $$reported пакетов из $$named заявленных — часть перечня не дошла" >&2; \
-	  echo "до прогона, и её молчание неотличимо от успеха." >&2; exit 1; fi
+	  $(PG_OUTSIDE_SELECTION_PKGS_IAM) 2>&1 | tee "$$iam_log" || iam_rc=$$?; \
+	deploy/scripts/classify-pg-outside-selection.sh \
+	  --lane "$$root_mod" "$$root_named" "$$root_log" "$$root_rc" \
+	  --lane "$$iam_mod" "$$iam_named" "$$iam_log" "$$iam_rc"
 
 ## test-service — ВСЁ одного сервиса (юниты + интеграция). SVC обязателен.
 ## Сюда делегируют `make test` в services/<svc>/Makefile.
@@ -591,7 +599,7 @@ help:
 ##                      В конвейере не идёт и не должна: её место — перед
 ##                      правкой и после неё, парой «до/после».
 ##
-## Сетка живёт КОНСТАНТОЙ в services/iam/internal/repo/kacho/pg/scalegrid и
+## Сетка живёт КОНСТАНТОЙ в services/iam/internal/repo/kaname/pg/scalegrid и
 ## ниоткуда не переопределяется. Переменная ниже решает, ЗАПУСКАТЬ ли полный
 ## прогон, и НИКОГДА — что мерить: отчёт, снятый на сокращённой сетке,
 ## неотличим от полного и читается как полный.
@@ -605,12 +613,12 @@ help:
 ##
 ## Стоило трёх перезапусков за одну сессию, каждый — потерянные минуты прогона.
 scale-grid-small:
-	$(GO) test -C $(IAM_MODULE_DIR) ./internal/repo/kacho/pg/relverdict/ \
+	$(GO) test -C $(IAM_MODULE_DIR) ./internal/repo/kaname/pg/relverdict/ \
 	  -run 'TestScaleGrid_SmallGridStaysFlatAndTheControlGrows|TestScaleGrid_StatisticsArePartOfThePointNotHygiene|TestScaleGridSeeder_RowForRowMatchesTheProducer' \
 	  -count=1 -v -timeout $(INTEGRATION_TIMEOUT)
 
 scale-grid-full:
-	KACHO_SCALEGRID_FULL=1 $(GO) test -C $(IAM_MODULE_DIR) ./internal/repo/kacho/pg/relverdict/ \
+	KACHO_SCALEGRID_FULL=1 $(GO) test -C $(IAM_MODULE_DIR) ./internal/repo/kaname/pg/relverdict/ \
 	  -run TestScaleGrid_FullGridReport -count=1 -v -timeout 120m
 
 ## ── ПРИБОР ОБЪЁМА: ОДНА ОПЕРАЦИЯ ПРОТИВ НАЛИТОЙ МАТРИЦЫ (R7-3) ──────────────
@@ -637,10 +645,62 @@ scale-grid-full:
 ## Свежесть отчёта сторожит `TestMatrixVolumeReportIsFreshAndItsSubjectHasNotMoved`
 ## в том же пакете; отсутствие отчёта для него — ОТКАЗ, а не пропуск.
 matrix-volume-small:
-	$(GO) test -C $(IAM_MODULE_DIR) ./internal/repo/kacho/pg/relverdict/ \
+	$(GO) test -C $(IAM_MODULE_DIR) ./internal/repo/kaname/pg/relverdict/ \
 	  -run 'TestMatrixVolume_SmallGridMeasuresSomethingAndStaysFlat|TestMatrixVolumeFreshnessGateCanFailAndCanStaySilent' \
 	  -count=1 -v -timeout $(INTEGRATION_TIMEOUT)
 
 matrix-volume-full:
-	KACHO_MATRIX_VOLUME=1 $(GO) test -C $(IAM_MODULE_DIR) ./internal/repo/kacho/pg/relverdict/ \
+	KACHO_MATRIX_VOLUME=1 $(GO) test -C $(IAM_MODULE_DIR) ./internal/repo/kaname/pg/relverdict/ \
 	  -run TestMatrixVolume_Report -count=1 -v -timeout 120m
+
+## ── ЛИНИЯ ВЫПУСКА: ВЕРСИЯ ПЛАТФОРМЫ ────────────────────────────────────────
+##
+## Служба iam вынесена отдельным репозиторием и потребляет платформу как внешний
+## модуль. Пока версий не публикуется, «бампнуть фундамент до совместимой
+## версии» не является операцией: совместимость выражается НОМЕРОМ, а номеров
+## нет. Политика, цена выбора `v0` и порядок бампа цепочки —
+## docs/architecture/release-and-versioning.md.
+##
+## НЕОБРАТИМЫЙ ШАГ ЗДЕСЬ НЕ ДЕЛАЕТСЯ НИ ОДНОЙ ИЗ ЦЕЛЕЙ. Ссылку создаёт процесс
+## конвейера `release` (ручной запуск с подтверждением) — ровно затем, чтобы
+## гейты нельзя было обойти. Цели ниже отвечают на вопросы, а не публикуют.
+##
+##   release-preflight       — сойдутся ли предпосылки выпуска VERSION
+##   release-trunk-green     — зелены ли обязательные проверки на ревизии REV
+##   release-breaking-since  — какого наименьшего повышения требует накопленная
+##                             дельта контрактов с последней опубликованной
+##   release-probe           — собирается ли VERSION у внешнего потребителя
+##   release-dry-run         — весь набор гейтов разом, без создания чего-либо
+##
+## У самих скриптов исходов ЧЕТЫРЕ, и различать их обязательно: 0 — сошлось,
+## 1 — находка, 2 — позван неверно, 3 — НЕ ВЫПОЛНИЛОСЬ (спросить не удалось).
+## Третий в успех не вычитается: не спрошенная предпосылка не считается
+## выполненной.
+##
+## ЧЕРЕЗ `make` ЭТОТ КОД НЕ ДОХОДИТ, и это надо знать, а не обнаруживать. GNU
+## make на любом отказе рецепта выходит СВОИМ кодом 2 — то есть находка и
+## «не выполнилось» через него неразличимы. Настоящий код make печатает словом
+## («Ошибка 3»), но `$$?` вызывающего его не получает. Поэтому там, где исход
+## читает не человек, а другая проверка, скрипт зовётся НАПРЯМУЮ:
+##
+##   scripts/release/breaking-since-release.sh --require v0.2.0 ; echo $$?
+##
+## Ровно так его и зовёт процесс конвейера — целями этого файла он не
+## пользуется.
+release-preflight:
+	@test -n "$(VERSION)" || { echo "нужна VERSION, напр. make release-preflight VERSION=v0.1.0" >&2; exit 2; }
+	scripts/release/publish-version.sh $(VERSION)
+
+release-trunk-green:
+	scripts/release/assert-trunk-green.sh $(or $(REV),$(shell git rev-parse HEAD))
+
+release-breaking-since:
+	scripts/release/breaking-since-release.sh $(if $(VERSION),--require $(VERSION))
+
+release-probe:
+	@test -n "$(VERSION)" || { echo "нужна VERSION, напр. make release-probe VERSION=v0.1.0" >&2; exit 2; }
+	scripts/release/probe-published.sh $(VERSION)
+
+release-dry-run:
+	@test -n "$(VERSION)" || { echo "нужна VERSION, напр. make release-dry-run VERSION=v0.1.0" >&2; exit 2; }
+	scripts/release/publish-tag.sh $(VERSION) --confirm $(VERSION)

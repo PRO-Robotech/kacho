@@ -73,7 +73,7 @@ func TestCarrierChainMeasuresTheCallOutermost(t *testing.T) {
 	if err != nil {
 		t.Fatalf("измеритель: %v", err)
 	}
-	chain := unaryChain(spec, &slot, lat, grpcsrv.ListenerInternal)
+	chain := unaryChain(spec, &slot, lat, nil, grpcsrv.ListenerInternal)
 	chain = chain[:len(chain)-1]
 
 	_, err = runUnaryChain(chain, context.Background(),
@@ -113,7 +113,7 @@ func TestCarrierMeasuresACallRefusedByTheDecisionLink(t *testing.T) {
 	if err != nil {
 		t.Fatalf("измеритель: %v", err)
 	}
-	chain := unaryChain(spec, &slot, lat, grpcsrv.ListenerPublic)
+	chain := unaryChain(spec, &slot, lat, nil, grpcsrv.ListenerPublic)
 
 	if _, err := runUnaryChain(chain, context.Background(),
 		"/kacho.cloud.demo.v1.WidgetService/Get", nil,

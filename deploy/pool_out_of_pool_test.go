@@ -109,6 +109,8 @@ import (
 	"strconv"
 	"strings"
 	"testing"
+
+	"github.com/PRO-Robotech/kacho/internal/productnaming"
 )
 
 const (
@@ -843,17 +845,33 @@ const kindOutOfPoolUnattributed = "неучтённый захват вне пу
 
 // serviceSourceDir — каталог исходников службы по ключу её значений в умбрелле.
 //
-// Выводится, а не выписывается: ключ и каталог совпадают либо отличаются
-// приставкой имени продукта. Ненайденный каталог — НАХОДКА у вызывающего, а не
-// молчаливый ноль.
+// Соответствие спрашивается у ЕДИНСТВЕННОГО его владельца
+// (`internal/productnaming`), а не выводится здесь заново приставкой имени
+// платформы: с тех пор как часть продукта получила собственное имя (`kaname`),
+// приставка их больше не связывает, и вывод по ней молча не находил каталога.
+// Ненайденный каталог — НАХОДКА у вызывающего, а не молчаливый ноль.
 func serviceSourceDir(root, alias string) (string, bool) {
-	for _, name := range []string{alias, strings.TrimPrefix(alias, "kacho-")} {
+	candidates := []string{alias}
+	if dir, ok := productnaming.ServiceDir(alias); ok {
+		candidates = append(candidates, dir)
+	}
+	for _, name := range candidates {
 		dir := filepath.Join("services", name)
 		if st, err := os.Stat(filepath.Join(root, dir)); err == nil && st.IsDir() {
 			return filepath.ToSlash(dir), true
 		}
 	}
 	return "", false
+}
+
+// chartServiceDirHint — вторая координата в тексте находки: каталог, который
+// владелец соответствия называет для этого ключа. Пусто — если ключ не
+// распознан как часть продукта вовсе.
+func chartServiceDirHint(alias string) string {
+	if dir, ok := productnaming.ServiceDir(alias); ok {
+		return dir
+	}
+	return "(ключ не распознан как часть продукта)"
 }
 
 // outOfPoolPerReplica — сколько соединений реплика службы держит ВНЕ пула.
@@ -874,7 +892,7 @@ func outOfPoolPerReplica(
 	if !ok {
 		return 0, nil, []string{fmt.Sprintf(
 			"каталога исходников не найдено ни по %q, ни по %q — захваты вне пула этой службы "+
-				"не осмотрены вовсе", alias, strings.TrimPrefix(alias, "kacho-"))}
+				"не осмотрены вовсе", alias, chartServiceDirHint(alias))}
 	}
 
 	own := 0

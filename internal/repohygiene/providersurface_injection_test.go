@@ -89,7 +89,7 @@ func TestProviderSurfaceInjection_OurOwnKeySetPathIsSilent(t *testing.T) {
 	src := map[string]string{
 		"services/iam/internal/handler/jwksproxyhttp/handler.go": `package jwksproxyhttp
 const WellKnownJWKSPath = "/.well-known/jwks.json"
-const OurOwn = "/.well-known/kacho/jwks.json"
+const OurOwn = "/.well-known/kaname/jwks.json"
 `,
 	}
 	fs, _ := injectRun(t, src, nil)

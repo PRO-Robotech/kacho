@@ -1,5 +1,5 @@
-// IAM API types + helpers — flat resources verbatim из kacho.cloud.iam.v1.
-// URL-ы из google.api.http annotations в kacho-proto/proto/kacho/cloud/iam/v1/*.
+// IAM API types + helpers — flat resources verbatim из kaname.cloud.iam.v1.
+// URL-ы из google.api.http annotations в kacho-proto/proto/kaname/cloud/iam/v1/*.
 //
 // Все мутации возвращают Operation envelope (см. operation.proto).
 // Список ресурсов:
@@ -617,7 +617,7 @@ export interface UpdateAccessBindingBody {
 }
 
 // ====== CreateAccessBindingRequest body ======
-// Ground truth: proto/kacho/cloud/iam/v1/access_binding_service.proto.
+// Ground truth: proto/kaname/cloud/iam/v1/access_binding_service.proto.
 //   required : subjects[] (или legacy single subject_type/subject_id), role_id,
 //              scope_type (dotted), scope_id, target
 //   tombstone: теги 9/10/11 с именами target_ref / scope_ref
@@ -627,7 +627,7 @@ export interface UpdateAccessBindingBody {
 // ничего.
 
 /** Anchor id кластерного singleton'а — единственная строка cluster-тира. */
-export const CLUSTER_SCOPE_ID = "cluster_kacho_root";
+export const CLUSTER_SCOPE_ID = "cluster_root";
 
 /** Dotted `scope_type`, который принимает CreateAccessBindingRequest. */
 export const SCOPE_TYPE_BY_TIER: Record<AccessBindingScopeTier, IamScopeType> = {

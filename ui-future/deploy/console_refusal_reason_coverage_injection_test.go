@@ -32,7 +32,7 @@ const srcFormDirect = `package middleware
 func denyStatus() *status.Status {
 	info := &errdetails.ErrorInfo{
 		Reason: "AUTHZ_DENIED",
-		Domain: "kacho.cloud.iam.v1",
+		Domain: "kaname.cloud.iam.v1",
 	}
 	return st
 }`
@@ -89,7 +89,7 @@ func TestScannerKnowsEveryLegalFormOfWritingAToken(t *testing.T) {
 func TestCoverageJudgeFallsAndStaysSilentInBothDirections(t *testing.T) {
 	produced := map[string][]string{
 		"AUTHZ_DENIED":   {"gateway/internal/middleware/permission_denied_response.go"},
-		"QUOTA_EXCEEDED": {"services/iam/internal/apps/kacho/shared/quota.go"},
+		"QUOTA_EXCEEDED": {"services/iam/internal/apps/kaname/shared/quota.go"},
 	}
 
 	// ПРОГОН 1 — КОНТРОЛЬ: множества равны, гейт молчит с обеих сторон.
@@ -175,7 +175,7 @@ const QUOTA_TITLES: Record<QuotaLane, string> = {
 // второй — на классификаторе, не исключающем ничего.
 func TestOffConsoleClassifierNamesAConsumerAndOnlyWhereItShould(t *testing.T) {
 	consoleLane := []string{
-		"services/iam/internal/apps/kacho/api/internal_iam/handler.go",
+		"services/iam/internal/apps/kaname/api/internal_iam/handler.go",
 		"pkg/errors/reason.go",
 		"gateway/internal/middleware/permission_denied_response.go",
 		// Законный близнец: имя каталога начинается ТАК ЖЕ, но каталог другой.

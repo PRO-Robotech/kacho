@@ -5,7 +5,7 @@
 // for the PAGINATED per-object filtered List contract.
 //
 // Visibility is no longer expressed in SQL: the repo returns a project-scoped
-// cursor page and the handler then asks kacho-iam about THAT page's ids
+// cursor page and the handler then asks kaname about THAT page's ids
 // (AuthorizeService.BatchCheck). The removed shape — "enumerate every allowed id,
 // then narrow the SQL with `WHERE id = ANY(...)`" — ran into a hard server-side cap
 // on the enumeration (1000 ids, no continuation token) and silently erased a

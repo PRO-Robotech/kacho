@@ -52,7 +52,7 @@ import (
 	"google.golang.org/grpc/codes"
 	"google.golang.org/grpc/status"
 
-	iamv1 "github.com/PRO-Robotech/kacho/pkg/api/kacho/cloud/iam/v1"
+	iamv1 "github.com/PRO-Robotech/kacho/pkg/api/kaname/cloud/iam/v1"
 
 	"github.com/PRO-Robotech/kacho/gateway/internal/middleware"
 )
@@ -66,7 +66,7 @@ const malformedAccountID = "not-an-id"
 const wellFormedAccountID = "acc00000000000wellfm"
 
 // ownerRefusalOnAccountID — текст ВЛАДЕЛЬЦА поля: `shared.ValidateResourceID(id,
-// domain.PrefixAccount, "account")` (services/iam/internal/apps/kacho/shared/ids.go).
+// domain.PrefixAccount, "account")` (services/iam/internal/apps/kaname/shared/ids.go).
 const ownerRefusalOnAccountID = "invalid account id 'not-an-id'"
 
 // edgeRefusalOnMalformedScopeID — текст КРАЯ на полосе формы цели авторизации
@@ -102,12 +102,12 @@ func TestAccountIDMalformedRefusalNamesItsProducerPerVerb(t *testing.T) {
 	t.Run("List — край пропускает, отказ производит владелец", func(t *testing.T) {
 		checker := &fakeChecker{allowed: false, reasons: []string{"no path"}}
 		mw := buildAuthzMiddleware(t,
-			buildCatalog(t, catalogEntryJSON(t, "kacho.cloud.iam.v1.AccessBindingService/List")),
+			buildCatalog(t, catalogEntryJSON(t, "kaname.cloud.iam.v1.AccessBindingService/List")),
 			checker)
 		reached := false
 		_, err := mw.Unary()(withTokenMD("usr_x", "user"),
 			&iamv1.ListAccessBindingsRequest{AccountId: malformedAccountID},
-			&grpc.UnaryServerInfo{FullMethod: "/kacho.cloud.iam.v1.AccessBindingService/List"},
+			&grpc.UnaryServerInfo{FullMethod: "/kaname.cloud.iam.v1.AccessBindingService/List"},
 			func(ctx context.Context, req any) (any, error) {
 				reached = true
 				// Здесь стоит владелец: его отказ и есть тело ответа.
@@ -123,11 +123,11 @@ func TestAccountIDMalformedRefusalNamesItsProducerPerVerb(t *testing.T) {
 	t.Run("ListByAccount — отказ производит край, владелец не вызывается", func(t *testing.T) {
 		checker := &fakeChecker{allowed: false, reasons: []string{"no path"}}
 		mw := buildAuthzMiddleware(t,
-			buildCatalog(t, catalogEntryJSON(t, "kacho.cloud.iam.v1.AccessBindingService/ListByAccount")),
+			buildCatalog(t, catalogEntryJSON(t, "kaname.cloud.iam.v1.AccessBindingService/ListByAccount")),
 			checker)
 		_, err := mw.Unary()(withTokenMD("usr_x", "user"),
 			&iamv1.ListAccessBindingsByAccountRequest{AccountId: malformedAccountID},
-			&grpc.UnaryServerInfo{FullMethod: "/kacho.cloud.iam.v1.AccessBindingService/ListByAccount"},
+			&grpc.UnaryServerInfo{FullMethod: "/kaname.cloud.iam.v1.AccessBindingService/ListByAccount"},
 			func(ctx context.Context, req any) (any, error) {
 				t.Fatal("владелец вызван: край перестал судить форму ЦЕЛИ АВТОРИЗАЦИИ, " +
 					"и отказ «пути нет» снова замаскирует 400 под 403")
@@ -144,11 +144,11 @@ func TestAccountIDMalformedRefusalNamesItsProducerPerVerb(t *testing.T) {
 	t.Run("положительный контроль: годная форма проходит полосу формы", func(t *testing.T) {
 		checker := &fakeChecker{allowed: false, reasons: []string{"no path"}}
 		mw := buildAuthzMiddleware(t,
-			buildCatalog(t, catalogEntryJSON(t, "kacho.cloud.iam.v1.AccessBindingService/ListByAccount")),
+			buildCatalog(t, catalogEntryJSON(t, "kaname.cloud.iam.v1.AccessBindingService/ListByAccount")),
 			checker)
 		_, err := mw.Unary()(withTokenMD("usr_x", "user"),
 			&iamv1.ListAccessBindingsByAccountRequest{AccountId: wellFormedAccountID},
-			&grpc.UnaryServerInfo{FullMethod: "/kacho.cloud.iam.v1.AccessBindingService/ListByAccount"},
+			&grpc.UnaryServerInfo{FullMethod: "/kaname.cloud.iam.v1.AccessBindingService/ListByAccount"},
 			func(ctx context.Context, req any) (any, error) { return "ok", nil })
 		st, _ := status.FromError(err)
 		require.Equal(t, codes.PermissionDenied, st.Code(),

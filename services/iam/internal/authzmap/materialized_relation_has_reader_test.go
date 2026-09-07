@@ -74,8 +74,8 @@ import (
 
 	"github.com/stretchr/testify/require"
 
-	"github.com/PRO-Robotech/kacho-iam/internal/authzmap"
 	"github.com/PRO-Robotech/kacho/pkg/treecorpus"
+	"github.com/PRO-Robotech/kaname/internal/authzmap"
 )
 
 // typeOwner — сервис, которому принадлежит FGA-тип. Нужен, чтобы искать читателя
@@ -120,7 +120,7 @@ func ownerOfType(fgaType string) string {
 // зелёным). Каждый обязан существовать — исчез файл, значит предикат смотрит не туда.
 var emissionSideFiles = []string{
 	filepath.Join("services", "iam", "internal", "authzmap", "fga_types.go"),
-	filepath.Join("services", "iam", "internal", "apps", "kacho", "api", "access_binding", "reconcile", "tuples.go"),
+	filepath.Join("services", "iam", "internal", "apps", "kaname", "api", "access_binding", "reconcile", "tuples.go"),
 }
 
 // knownUnread — пары (тип, отношение), которые материализация пишет, а НИКТО не
@@ -324,7 +324,7 @@ func countCatalogEntries(t *testing.T, root string) int {
 // отношения того же типа. Такое отношение читается косвенно через вывод модели.
 func modelInternalRelationRefs(t *testing.T, root string) map[string]map[string]bool {
 	t.Helper()
-	raw, err := os.ReadFile(filepath.Join(root, "proto", "kacho", "cloud", "iam", "v1", "fga_model.fga"))
+	raw, err := os.ReadFile(filepath.Join(root, "proto", "kaname", "cloud", "iam", "v1", "fga_model.fga"))
 	require.NoError(t, err, "канонической модели нет — предпосылка гейта сломана")
 	reType := regexp.MustCompile(`^type\s+(\S+)`)
 	reDefine := regexp.MustCompile(`^define\s+(\w+)\s*:\s*(.*)$`)

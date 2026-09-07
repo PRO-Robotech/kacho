@@ -26,7 +26,7 @@ func TestLoad_Defaults(t *testing.T) {
 	// Fail-closed prod-гардрейл (S1): production-по-дефолту требует явный
 	// authz.iam-endpoint (либо authn.mode=dev). Задаем endpoint, чтобы изолировать
 	// проверку дефолтов от guardrail-отказа.
-	cfg.AuthZ.IAMEndpoint = "kacho-iam.kacho.svc:9091"
+	cfg.AuthZ.IAMEndpoint = "kaname.kacho.svc:9091"
 	// S1c prod-гардрейл: круг отправителей чужой личности обязан быть сужен.
 	cfg.AuthZ.TrustedForwarderSANs = []string{"spiffe://kacho.cloud/ns/kacho/sa/kacho-api-gateway"}
 	// S1b prod-гардрейл: production требует защищённый sslmode. Дефолт "disable"
@@ -73,8 +73,8 @@ func TestLoad_GeoEndpointDialHost(t *testing.T) {
 
 	cfg, err := Load("")
 	require.NoError(t, err)
-	cfg.AuthZ.IAMEndpoint = "kacho-iam.kacho.svc:9091" // S1 prod-гардрейл
-	cfg.Repository.Postgres.SSLMode = "require"        // S1b prod-гардрейл
+	cfg.AuthZ.IAMEndpoint = "kaname.kacho.svc:9091" // S1 prod-гардрейл
+	cfg.Repository.Postgres.SSLMode = "require"     // S1b prod-гардрейл
 	// S1c prod-гардрейл: круг отправителей чужой личности обязан быть сужен.
 	cfg.AuthZ.TrustedForwarderSANs = []string{"spiffe://kacho.cloud/ns/kacho/sa/kacho-api-gateway"}
 	require.NoError(t, cfg.Validate())
@@ -360,7 +360,7 @@ func TestValidate_ProductionStrict_Passes(t *testing.T) {
 authn:
   mode: production-strict
 authz:
-  iam-endpoint: kacho-iam.kacho.svc:9091
+  iam-endpoint: kaname.kacho.svc:9091
   trusted-forwarder-sans:
     - spiffe://kacho.cloud/ns/kacho/sa/kacho-api-gateway
 repository:

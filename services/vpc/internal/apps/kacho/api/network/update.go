@@ -130,7 +130,7 @@ func (u *UpdateNetworkUseCase) doUpdate(ctx context.Context, in UpdateInput) (*a
 		return nil, serviceerr.MapRepoErr(fmt.Errorf("%w: outbox emit: %v", repo.ErrInternal, err))
 	}
 	// Если labels попали в update_mask (или это full-object PATCH), переэмитим
-	// register-intent с обновленными метками в ТОЙ ЖЕ writer-TX, чтобы kacho-iam
+	// register-intent с обновленными метками в ТОЙ ЖЕ writer-TX, чтобы kaname
 	// держал resource_mirror в актуальном виде для ARM_LABELS-селектора
 	// (reconcile / revoke при смене меток). Update без labels → переэмита нет.
 	// Полное удаление labels → upsert с пустыми метками (НЕ Unregister: сеть все

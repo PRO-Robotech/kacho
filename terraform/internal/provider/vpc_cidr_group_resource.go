@@ -54,8 +54,8 @@ type cidrGroupResource struct{ c *client.Client }
 // NewVPCCidrGroupResource — конструктор для реестра провайдера.
 func NewVPCCidrGroupResource() resource.Resource { return &cidrGroupResource{} }
 
-func (r *cidrGroupResource) Metadata(_ context.Context, req resource.MetadataRequest, resp *resource.MetadataResponse) {
-	resp.TypeName = req.ProviderTypeName + "_vpc_cidr_group"
+func (r *cidrGroupResource) Metadata(_ context.Context, _ resource.MetadataRequest, resp *resource.MetadataResponse) {
+	resp.TypeName = typeNameVPCCIDRGroup
 }
 
 func (r *cidrGroupResource) Configure(_ context.Context, req resource.ConfigureRequest, resp *resource.ConfigureResponse) {
@@ -337,7 +337,7 @@ func (r *cidrGroupResource) Create(ctx context.Context, req resource.CreateReque
 
 	// Ключ повторной подачи считается по ВСЕМУ телу запроса (см. awaitCreate): повтор того
 	// же запроса не создаёт дубля, а исправленный запрос — другой запрос и уходит заново.
-	id, err := awaitCreate(ctx, r.c, cidrGroupsPath, "cidrGroupId", "kacho_vpc_cidr_group",
+	id, err := awaitCreate(ctx, r.c, cidrGroupsPath, "cidrGroupId", typeNameVPCCIDRGroup,
 		plan.ProjectID.ValueString()+"/"+plan.Name.ValueString(), body)
 	if err != nil {
 		resp.Diagnostics.AddError("Создание набора префиксов не завершилось", err.Error())

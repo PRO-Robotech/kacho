@@ -224,16 +224,16 @@ func insertSomewhere() string {
 // journalStandFiles — полный стенд. Ключ — путь от корня.
 func journalStandFiles() map[string]string {
 	return map[string]string{
-		"services/demo/internal/subscriptionjournal/journal.go": standJournalDecl,
-		"services/demo/internal/apps/kacho/api/thing/create.go": standPortCall,
-		"services/demo/internal/repo/outbox.go":                 standLibraryCall,
-		"services/demo/internal/repo/pg/literal.go":             standLiteralStatement,
-		"services/demo/internal/repo/pg/schema.go":              standSchemaFormatted,
-		"services/demo/internal/repo/pg/named.go":               standNameFormatted,
-		"services/demo/internal/repo/pg/probe_test.go":          standTestFileTwin,
-		"services/demo/internal/repo/pg/localtransport.go":      standLocalTransport,
-		"services/demo/internal/migrations/0001_initial.sql":    standTrigger,
-		"pkg/outbox/emit.go":                                    standSharedLibrary,
+		"services/demo/internal/subscriptionjournal/journal.go":  standJournalDecl,
+		"services/demo/internal/apps/kaname/api/thing/create.go": standPortCall,
+		"services/demo/internal/repo/outbox.go":                  standLibraryCall,
+		"services/demo/internal/repo/pg/literal.go":              standLiteralStatement,
+		"services/demo/internal/repo/pg/schema.go":               standSchemaFormatted,
+		"services/demo/internal/repo/pg/named.go":                standNameFormatted,
+		"services/demo/internal/repo/pg/probe_test.go":           standTestFileTwin,
+		"services/demo/internal/repo/pg/localtransport.go":       standLocalTransport,
+		"services/demo/internal/migrations/0001_initial.sql":     standTrigger,
+		"pkg/outbox/emit.go":                                     standSharedLibrary,
 	}
 }
 
@@ -386,13 +386,13 @@ func TestJournalWriteFormZeroMeansSearchedAndNotFound(t *testing.T) {
 	}{
 		{
 			form: JournalFormPortCall,
-			file: "services/demo/internal/apps/kacho/api/thing/create.go",
+			file: "services/demo/internal/apps/kaname/api/thing/create.go",
 			from: "w.Outbox().Emit(ctx,",
 			to:   "w.FGARegisterOutbox().Emit(ctx,",
 			// Форма порта имени таблицы не называет вовсе, поэтому
 			// «перенацелить» её значит перенести в сервис БЕЗ журнала: там она
 			// остаётся экземпляром формы и перестаёт быть точкой владельца.
-			addFile: "services/other/internal/apps/kacho/api/thing/create.go",
+			addFile: "services/other/internal/apps/kaname/api/thing/create.go",
 			addBody: standPortCallElsewhere,
 		},
 		{

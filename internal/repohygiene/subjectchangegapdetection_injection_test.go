@@ -99,10 +99,10 @@ func writeGapTree(t *testing.T, tree gapTree) string {
 	if tree.noFloor {
 		ask = ""
 	}
-	window := "`SELECT id, subject_id FROM kacho_iam.subject_change_outbox " +
+	window := "`SELECT id, subject_id FROM kaname.subject_change_outbox " +
 		"WHERE id > $1 AND id <= $2 ORDER BY id ASC`"
 	if tree.noWindow {
-		window = "`SELECT count(*) FROM kacho_iam.subject_change_outbox`"
+		window = "`SELECT count(*) FROM kaname.subject_change_outbox`"
 	}
 	produce := "\t\treturn subjectchange.PositionLost(1)\n"
 	if tree.noProducer {
@@ -130,7 +130,7 @@ func writeGapTree(t *testing.T, tree gapTree) string {
 	write("services/owner/sweep.go", ""+
 		"package owner\n\n"+
 		"func Sweep(q interface{ Query(string) error }) error {\n"+
-		"\t\treturn q.Query(`DELETE FROM kacho_iam.subject_change_outbox WHERE id <= $1`)\n}\n")
+		"\t\treturn q.Query(`DELETE FROM kaname.subject_change_outbox WHERE id <= $1`)\n}\n")
 
 	return root
 }

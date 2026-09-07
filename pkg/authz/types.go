@@ -157,7 +157,7 @@ const (
 	DecisionAllowed Decision = iota
 	// DecisionDenied — отказано (Check вернул allowed=false).
 	DecisionDenied
-	// DecisionUnavailable — FGA / kacho-iam недоступны (fail-closed).
+	// DecisionUnavailable — FGA / kaname недоступны (fail-closed).
 	DecisionUnavailable
 	// DecisionUnmapped — RPC не в RPCMap (fail-closed по умолчанию).
 	DecisionUnmapped
@@ -206,10 +206,10 @@ func (d Decision) String() string {
 // (fail-closed). Метрика `kacho_authz_unmapped_total{rpc=...}` инкрементируется.
 var ErrUnmapped = errors.New("authz: RPC not mapped in PermissionMap")
 
-// ErrUnavailable — FGA / kacho-iam.Check недоступны. fail-closed default.
+// ErrUnavailable — FGA / kaname.Check недоступны. fail-closed default.
 var ErrUnavailable = errors.New("authz: check service unavailable")
 
-// ErrPermissionDenied — FGA / kacho-iam отвергли запрос (gRPC PermissionDenied).
+// ErrPermissionDenied — FGA / kaname отвергли запрос (gRPC PermissionDenied).
 // Семантически отличается от ErrUnavailable: это легитимный denial subject'а,
 // а НЕ инфраструктурная недоступность. Caller должен мапить на gRPC
 // PermissionDenied (HTTP 403), а не Unavailable (HTTP 503) — иначе клиент

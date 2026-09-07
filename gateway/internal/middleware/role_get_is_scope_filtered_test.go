@@ -34,7 +34,7 @@ func TestRoleGetIsScopeFilteredNotExempt(t *testing.T) {
 		t.Fatalf("каталог прав не прочитан: %v", err)
 	}
 
-	const fqn = "kacho.cloud.iam.v1.RoleService/Get"
+	const fqn = "kaname.cloud.iam.v1.RoleService/Get"
 	entry, ok := cat.Lookup(fqn)
 	if !ok {
 		t.Fatalf("%s не найден в каталоге — запись пропала вместе с гейтом", fqn)
@@ -56,7 +56,7 @@ func TestRoleGetIsScopeFilteredNotExempt(t *testing.T) {
 	// ПОЛОЖИТЕЛЬНЫЙ КОНТРОЛЬ полосы: список ролей стоит на ней же и с самого
 	// начала. Без него проба зеленела бы на каталоге, где сужаемым объявлено
 	// всё подряд, — то есть на снятии гейтов, а не на их уточнении.
-	listEntry, ok := cat.Lookup("kacho.cloud.iam.v1.RoleService/List")
+	listEntry, ok := cat.Lookup("kaname.cloud.iam.v1.RoleService/List")
 	if !ok {
 		t.Fatal("RoleService/List не найден — контроль полосы беспредметен")
 	}

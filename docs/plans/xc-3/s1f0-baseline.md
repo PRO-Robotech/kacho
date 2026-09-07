@@ -30,7 +30,7 @@
 
 Пути в сверке (8): `services/iam/internal/authzmap/`, `…/domain/rule_verbs.go`,
 `…/domain/role_effective_verbs.go`, `…/domain/role_effective_verbs_test.go`,
-`…/apps/kacho/api/role/`, `…/clients/fga_applier.go`,
+`…/apps/kaname/api/role/`, `…/clients/fga_applier.go`,
 `proto/kacho/cloud/iam/v1/fga_model.fga`, `gateway/internal/middleware/embed/permission_catalog.json`.
 
 **Следствие подтверждено на новой базе.** Перемер против `$REV` ловит **дрейф**, а дрейфа
@@ -160,7 +160,7 @@
   3. `services/iam/internal/domain/role_effective_verbs.go` — сам предмет;
   4. `services/iam/internal/domain/role_effective_verbs_test.go` — **собственное зеркало
      T5**: литералы `wantAuthored`/`wantEffective`, wildcard-кейс `:44-45`;
-  5. `services/iam/internal/apps/kacho/api/role/f6_catalog_test.go:48-49` — литеральное
+  5. `services/iam/internal/apps/kaname/api/role/f6_catalog_test.go:48-49` — литеральное
      ожидание на **не**-wildcard роли, поэтому изменение `crudOrder` его не задевает.
 
   Ни один из пяти не сводит T5 с T1 и не спрашивает модель. Механизм расхождения
@@ -298,7 +298,7 @@ WAVE 2 (iam изолированно) → WAVE 3 (fail-closed при свёрн�
 
 Все инъекции — в отдельной чистой копии на `$REV`; после каждой дерево возвращалось к
 `git status --porcelain` = 0. Прогон:
-`go test ./services/iam/internal/authzmap/... ./services/iam/internal/domain/... ./services/iam/internal/apps/kacho/api/role/...`
+`go test ./services/iam/internal/authzmap/... ./services/iam/internal/domain/... ./services/iam/internal/apps/kaname/api/role/...`
 
 **Исходное состояние (без инъекций): ЗЕЛЕНО** — 3 пакета `ok` (`authzmap` 97.9 s).
 
@@ -360,7 +360,7 @@ C′ уже, чем B′: изменены два файла, `crudOrder` ост
 Шаг 2 задачи 0.4 предписывает прогон `go test ./services/iam/... -race`. На этом объёме
 **и B′, и C′ — КРАСНЫЕ**, и краснеет одна и та же проба:
 `TestSyncFGA_ReadAfterWrite_AccountCreate_OwnerCheckImmediately`
-(`services/iam/internal/apps/kacho/api/access_binding/syncfga_read_after_write_e2e_integration_test.go:97-99`).
+(`services/iam/internal/apps/kaname/api/access_binding/syncfga_read_after_write_e2e_integration_test.go:97-99`).
 
 **Контроль на невозмущённом `$REV` пройден:** тот же тест, тот же объём, `-count=1` →
 `ok … 9.095s`. Значит краснота — следствие инъекции, а не предсуществующая. Повторено

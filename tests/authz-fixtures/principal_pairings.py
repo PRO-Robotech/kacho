@@ -40,7 +40,7 @@ import re
 # described above, not a gap in this table.
 # Имя утверждения о принципале — ОДНО объявление на модуль. Три литерала в
 # трёх местах разошлись бы молча, и разошлись бы там, где это не видно.
-_PRINCIPAL_CLAIM = "kacho_principal_id"
+_PRINCIPAL_CLAIM = "kaname_principal_id"
 
 # BINDING_TARGET_ONLY_IDS — та же врезка выше, но ДАННЫМИ (задача #1441, п.5).
 #
@@ -213,7 +213,7 @@ def make_token(principal_id: str, *, nest: bool = False) -> str:
     point is to keep test fixtures visibly NOT credentials: a realistic-looking token in
     a fixture is how a substitution starts reading like a correct hand-off.
     """
-    inner = {_PRINCIPAL_CLAIM: principal_id, "kacho_principal_type": "service_account"}
+    inner = {_PRINCIPAL_CLAIM: principal_id, "kaname_principal_type": "service_account"}
     claims = {"ext": {"ext_claims": inner}} if nest else {"ext_claims": inner}
     body = base64.urlsafe_b64encode(json.dumps(claims).encode()).decode().rstrip("=")
     return "eyJhbGciOiJub25lIn0." + body + ".not-a-signature"

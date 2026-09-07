@@ -138,7 +138,7 @@ REST-проекция игнорирует ключи, которых нет в 
 Авторизация — **per-RPC**, по отношению субъекта к ресурсу или его проекту.
 Интерсептор перед выполнением метода проверяет, что субъект имеет нужное отношение (`relation`)
 на целевой ресурс или его проект (`viewer` для чтения, `editor` для мутаций). Если отношения
-нет → `PERMISSION_DENIED` (HTTP `403`). Проверка идёт к `kacho-iam` (RPC
+нет → `PERMISSION_DENIED` (HTTP `403`). Проверка идёт к `kaname` (RPC
 `InternalIAMService.Check`); вердикт о доступе вычисляет реляционная форма в базе iam по
 модели прав. Недоступность peer-сервиса на
 request-path — `UNAVAILABLE` (fail-closed для мутаций).
@@ -148,7 +148,7 @@ flowchart LR
   cli["Клиент"] -->|"Bearer JWT"| agw["api-gateway"]
   agw -->|"verify JWT"| agw
   agw -->|"compute.v1.* + subject"| cmp["kacho-compute"]
-  cmp -->|"Check(subject, relation, object)"| iamsvc["kacho-iam"]
+  cmp -->|"Check(subject, relation, object)"| iamsvc["kaname"]
   iamsvc -->|"allow / deny"| cmp
   cmp -->|"SQL"| pg[("kacho_compute")]
 ```
@@ -312,7 +312,7 @@ backend.
     <tr><td><code>ins-</code></td><td>Instance</td><td><code>ins-7t4w9e2x5h8mz0c3v</code></td></tr>
     <tr><td><code>mt-</code></td><td>MachineType</td><td><code>mt-k3xe746h019hnz182</code></td></tr>
     <tr><td><code>epd</code></td><td>Operation (Compute), слитно</td><td><code>epdk3xe746h019hnz182</code></td></tr>
-    <tr><td><code>prj</code></td><td>Project (домен kacho-iam; ссылка), слитно</td><td><code>prj9j6y00msn65vcfdq3</code></td></tr>
+    <tr><td><code>prj</code></td><td>Project (домен kaname; ссылка), слитно</td><td><code>prj9j6y00msn65vcfdq3</code></td></tr>
   </tbody>
 </table>
 

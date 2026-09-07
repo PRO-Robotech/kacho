@@ -13,7 +13,7 @@
 //
 // SINGLE SOURCE OF TRUTH
 // ----------------------
-// The canonical model is the plain DSL file `proto/kacho/cloud/iam/v1/fga_model.fga`
+// The canonical model is the plain DSL file `proto/kaname/cloud/iam/v1/fga_model.fga`
 // in this repository. Everything else is DERIVED from it:
 //
 //   - вшитая копия `services/iam/internal/authzmodel/fga_model.fga`, из которой
@@ -31,14 +31,14 @@
 // Их имена здесь намеренно НЕ воспроизводятся обратными кавычками: мёртвое имя,
 // записанное координатой, читается как живое — и гейтом названных целей сборки,
 // и следующим читателем. Вердикт вычисляет форма поверх собственной базы iam
-// (`internal/repo/kacho/pg/relverdict`), и производная у канона осталась одна —
+// (`internal/repo/kaname/pg/relverdict`), и производная у канона осталась одна —
 // вшитая копия выше.
 //
 // THE GATE IS UNCONDITIONAL
 // -------------------------
 // It parses the canonical DSL directly (no Docker → it runs in -short too) and
 // it has NO opt-out: a missing canonical file is a FAILURE, never a skip. The
-// previous revision skipped itself unless KACHO_IAM_REQUIRE_FGA_MODEL was set,
+// previous revision skipped itself unless KANAME_REQUIRE_FGA_MODEL was set,
 // and the file it looked for did not exist in the tree at all — so the gate gave
 // zero protection on every ordinary run while still reporting `ok`. A skipped
 // security gate is neither red nor green; the absence of the source of truth is
@@ -80,7 +80,7 @@ import (
 
 	"github.com/stretchr/testify/require"
 
-	"github.com/PRO-Robotech/kacho-iam/internal/authzmap"
+	"github.com/PRO-Robotech/kaname/internal/authzmap"
 )
 
 // XC-3 S1Ф2: прежде здесь лежал литеральный список `v_*`, продублированный ради
@@ -128,7 +128,7 @@ var tierOnlyObjectTypes = map[string]bool{}
 //   - group — the subject-SET type (`group#member` usersets). The grantable IAM
 //     Group resource is the separate `iam_group` type; this one only carries
 //     `member`.
-//   - cluster — the platform singleton (`cluster:cluster_kacho_root`). Its
+//   - cluster — the platform singleton (`cluster:cluster_root`). Its
 //     relations are the platform-role ladder (system_admin/system_viewer/
 //     console); the cluster itself is not a per-project grantable
 //     resource, it is the D-9 super-admin short-circuit anchor. С #914 он несёт и
@@ -141,14 +141,14 @@ var nonGrantableModelTypes = map[string]string{
 	"user":            "subject type (left side of a tuple, never an authz object)",
 	"service_account": "subject type (left side of a tuple, never an authz object)",
 	"group":           "subject-set type for group#member usersets (the grantable resource is iam_group)",
-	"cluster":         "platform singleton cluster:cluster_kacho_root — super-admin ladder anchor, not a grantable resource",
+	"cluster":         "platform singleton cluster:cluster_root — super-admin ladder anchor, not a grantable resource",
 	"iam_fgaproxy":    "исторический якорь права писать кортежи: живых фактов нет (#914), но его выдают уже применённые миграции",
 }
 
 // canonicalModelRelPath — the canonical authorization model, relative to the
 // monorepo root. This is THE source; the embedded copy the service compiles its
 // derivation plan from is generated out of it.
-const canonicalModelRelPath = "proto/kacho/cloud/iam/v1/fga_model.fga"
+const canonicalModelRelPath = "proto/kaname/cloud/iam/v1/fga_model.fga"
 
 // monorepoRoot walks up from the package directory to the module root (the
 // directory holding go.mod). Deterministic and cwd-independent enough for

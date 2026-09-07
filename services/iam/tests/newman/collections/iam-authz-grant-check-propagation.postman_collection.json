@@ -1,7 +1,7 @@
 {
   "info": {
     "_postman_id": "66af11fc-fc50-5cee-ae75-97227bf59373",
-    "name": "kacho-iam / newman / iam-authz-grant-check-propagation",
+    "name": "kaname / newman / iam-authz-grant-check-propagation",
     "schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json"
   },
   "event": [

@@ -1,7 +1,7 @@
 {
   "info": {
     "_postman_id": "2120fbc9-3a6c-5f1f-80f2-8c49d8b103bc",
-    "name": "kacho-iam / newman / iam-invite-grant-fga",
+    "name": "kaname / newman / iam-invite-grant-fga",
     "schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json"
   },
   "event": [

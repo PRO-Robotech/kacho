@@ -34,6 +34,8 @@ import (
 	"strings"
 	"testing"
 
+	corequota "github.com/PRO-Robotech/kacho/pkg/quota"
+
 	"google.golang.org/grpc"
 	"google.golang.org/grpc/credentials"
 	"google.golang.org/grpc/metadata"
@@ -68,7 +70,7 @@ func prodCfg(forwarders ...string) config.Config {
 	return config.Config{
 		AuthMode:           "production",
 		DBSSLMode:          "require",
-		AuthZIAMGRPCAddr:   "kacho-iam-internal.kacho.svc:9091",
+		AuthZIAMGRPCAddr:   "kaname-internal.kacho.svc:9091",
 		PublicServerMTLS:   grpcsrv.TLSServer{Enable: true},
 		InternalServerMTLS: grpcsrv.TLSServer{Enable: true},
 		// Транспорт поднимаемого ребра registry→iam: с тех пор как страж требует
@@ -77,8 +79,16 @@ func prodCfg(forwarders ...string) config.Config {
 		// ради которого её подставляют; измерение ослабляется только в своей
 		// пробе (peer_transport_test.go). Рёбра project/geo здесь не подняты
 		// (адреса пусты) — по тому же предикату, что читает проводка.
-		IAMAuthzMTLS:              grpcclient.TLSClient{Enable: true},
+		IAMAuthzMTLS: grpcclient.TLSClient{Enable: true},
+		// Объявление домена величин — часть законной посадки: у ручки ровно два
+		// законных значения, и незаданное среди них не значится. Здесь стоит
+		// «не развёрнут», потому что эта отправная точка ребра величин не
+		// поднимает: адрес без удостоверения был бы ВТОРЫМ ослаблением.
+		QuotaAuthority:            corequota.NotDeployed,
 		AuthZTrustedForwarderSANs: forwarders,
+		// Домен доверия — величина установки, и конструктор дескриптора требует её
+		// названной: процесс, не назвавший домена, своим не признаёт никого.
+		AuthZTrustDomain: "kacho.cloud",
 	}
 }
 
@@ -194,7 +204,7 @@ func hostIdentityChain(t *testing.T, forwarders ...string) []grpc.UnaryServerInt
 			forwarders, err)
 	}
 	circle, _ := desc.Spec().Forwarders.Get()
-	return grpcsrv.PrincipalExtractUnary(circle)
+	return grpcsrv.PrincipalExtractUnary(grpcsrv.NewTrustDomain("kacho.cloud"), circle)
 }
 
 // seenIdentity прогоняет запрос через цепочку и возвращает личность, которую

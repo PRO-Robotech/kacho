@@ -712,7 +712,7 @@ func Test_SqlEnumOf_RecognisesDictionaryAndRefusesLookalikes(t *testing.T) {
 // гейт и требует пересмотреть обоснования — вместо того чтобы молча сделать их
 // ложью.
 var declaredQueueEventDictionary = map[string]map[string][]string{
-	"kacho_iam.provider_compensation_outbox": {
+	"kaname.provider_compensation_outbox": {
 		"event_type": {"provider.oauth_client.delete", "provider.trust_grant.delete"},
 	},
 	// Очередь писем приглашения (#1776). Освобождение у неё ОДНО — от разложения
@@ -724,7 +724,7 @@ var declaredQueueEventDictionary = map[string]map[string][]string{
 	// Миграция, добавившая сюда второй вид, покрасит гейт и потребует пересмотреть
 	// обоснование — что и требуется: «разотправить» письмо нельзя, но событие,
 	// меняющее СОСТАВ письма до отправки, обратную половину бы завело.
-	"kacho_iam.invite_mail_outbox": {
+	"kaname.invite_mail_outbox": {
 		"event_type": {"mail.invite.send"},
 	},
 	// Журналы аудита. Закрытого словаря у их ГЛАГОЛА нет и не будет: `event_type`
@@ -735,7 +735,7 @@ var declaredQueueEventDictionary = map[string]map[string][]string{
 	// доставку, никакой ЕДИНИЦЫ СОСТОЯНИЯ, за которую записи могли бы бороться,
 	// в очереди нет. Миграция, вернувшая сюда третье состояние, покрасит гейт и
 	// потребует пересмотреть оба обоснования — что и требуется.
-	"kacho_iam.audit_outbox": {
+	"kaname.audit_outbox": {
 		"status": {"pending", "sent"},
 	},
 	"public.audit_outbox": {

@@ -91,12 +91,12 @@ func sensitiveACR2Set() map[string]struct{} {
 		// of WHO may do this is decided by the model, exactly as it is for
 		// Update. The floor raises assurance for humans; it grants nothing and
 		// withholds nothing from machines.
-		"kacho.cloud.iam.v1.UserTokenService/Issue",
-		"kacho.cloud.iam.v1.UserTokenService/Revoke",
-		"kacho.cloud.iam.v1.SAKeyService/Issue",
-		"kacho.cloud.iam.v1.SAKeyService/Revoke",
-		"kacho.cloud.iam.v1.ServiceAccountService/Disable",
-		"kacho.cloud.iam.v1.ServiceAccountService/Enable",
+		"kaname.cloud.iam.v1.UserTokenService/Issue",
+		"kaname.cloud.iam.v1.UserTokenService/Revoke",
+		"kaname.cloud.iam.v1.SAKeyService/Issue",
+		"kaname.cloud.iam.v1.SAKeyService/Revoke",
+		"kaname.cloud.iam.v1.ServiceAccountService/Disable",
+		"kaname.cloud.iam.v1.ServiceAccountService/Enable",
 		// UserService Block/Unblock belong in the SAME band, for the same reason
 		// and with the same caveat. They write the state that decides whether a
 		// person may authenticate into an Account at all — the human counterpart
@@ -121,16 +121,16 @@ func sensitiveACR2Set() map[string]struct{} {
 		// by the model — `identity_suspender` on `iam_user`, which has NO
 		// account-level source (#1102): the account administrator is not among the
 		// holders, and the cloud administrator reaches it as he reaches everything.
-		"kacho.cloud.iam.v1.UserService/Block",
-		"kacho.cloud.iam.v1.UserService/Unblock",
+		"kaname.cloud.iam.v1.UserService/Block",
+		"kaname.cloud.iam.v1.UserService/Unblock",
 		// B — iam binding grant (5; Create is exempt-permission + acr=2, net-strengthening).
 		// Invite belongs here: it inlines an AccessBinding create (project_id+role_id)
 		// in the invite tx — the same privilege AccessBindingService/Create issues.
-		"kacho.cloud.iam.v1.AccessBindingService/Create",
-		"kacho.cloud.iam.v1.AccessBindingService/Update",
-		"kacho.cloud.iam.v1.AccessBindingService/Delete",
-		"kacho.cloud.iam.v1.AccessBindingService/Revoke",
-		"kacho.cloud.iam.v1.UserService/Invite",
+		"kaname.cloud.iam.v1.AccessBindingService/Create",
+		"kaname.cloud.iam.v1.AccessBindingService/Update",
+		"kaname.cloud.iam.v1.AccessBindingService/Delete",
+		"kaname.cloud.iam.v1.AccessBindingService/Revoke",
+		"kaname.cloud.iam.v1.UserService/Invite",
 		// RemoveFromAccount — ПАРА к Invite, и на этой полосе она стоит по тому же
 		// доводу, что и он: обе меняют СОСТАВ УЧАСТНИКОВ аккаунта. Invite вводит
 		// человека и вместе с ним может выдать право; исключение выводит его и
@@ -139,7 +139,7 @@ func sensitiveACR2Set() map[string]struct{} {
 		// несущего живую выдачу). Соседняя по смыслу `AccessBindingService/Revoke`
 		// стоит здесь же, поэтому оставить исключение на нижнем пороге значило бы
 		// сделать более дешёвую дверь к тому же исходу (#1127).
-		"kacho.cloud.iam.v1.UserService/RemoveFromAccount",
+		"kaname.cloud.iam.v1.UserService/RemoveFromAccount",
 		// C — compute per-resource grant. Поверхность выдачи на самой машине снята
 		// целиком вместе с остальной мёртвой: ни `SetAccessBindings`, ни
 		// `UpdateAccessBindings` у машины больше нет — выдача на ресурс идёт
@@ -147,18 +147,18 @@ func sensitiveACR2Set() map[string]struct{} {
 		// compute здесь поэтому отсутствует, и это не пропуск: у домена не осталось
 		// ни одного RPC, поднимающего планку подтверждения.
 		// D — group membership grant + group destroy (3; Delete = revoke-by-all, R3/B-2)
-		"kacho.cloud.iam.v1.GroupService/AddMember",
-		"kacho.cloud.iam.v1.GroupService/RemoveMember",
-		"kacho.cloud.iam.v1.GroupService/Delete",
+		"kaname.cloud.iam.v1.GroupService/AddMember",
+		"kaname.cloud.iam.v1.GroupService/RemoveMember",
+		"kaname.cloud.iam.v1.GroupService/Delete",
 		// E — role policy mutation (2)
-		"kacho.cloud.iam.v1.RoleService/Update",
-		"kacho.cloud.iam.v1.RoleService/Delete",
+		"kaname.cloud.iam.v1.RoleService/Update",
+		"kaname.cloud.iam.v1.RoleService/Delete",
 		// G — cluster-admin grant (2)
-		"kacho.cloud.iam.v1.InternalClusterService/GrantAdmin",
-		"kacho.cloud.iam.v1.InternalClusterService/RevokeAdmin",
+		"kaname.cloud.iam.v1.InternalClusterService/GrantAdmin",
+		"kaname.cloud.iam.v1.InternalClusterService/RevokeAdmin",
 		// H — tenancy-root destroy (2)
-		"kacho.cloud.iam.v1.AccountService/Delete",
-		"kacho.cloud.iam.v1.ProjectService/Delete",
+		"kaname.cloud.iam.v1.AccountService/Delete",
+		"kaname.cloud.iam.v1.ProjectService/Delete",
 		// I — interactive-login client lifecycle (3). IAM-INT-1 scenario 23.
 		// Sensitive for the same reason category A is: a redirect target is
 		// WHERE AN AUTHORIZATION CODE IS DELIVERED, so creating a client,
@@ -168,9 +168,9 @@ func sensitiveACR2Set() map[string]struct{} {
 		// test below, because the generator's default floor is "2" and an
 		// unstated floor would have put them here by accident rather than by
 		// decision.
-		"kacho.cloud.iam.v1.InternalInteractiveClientService/Create",
-		"kacho.cloud.iam.v1.InternalInteractiveClientService/Update",
-		"kacho.cloud.iam.v1.InternalInteractiveClientService/Delete",
+		"kaname.cloud.iam.v1.InternalInteractiveClientService/Create",
+		"kaname.cloud.iam.v1.InternalInteractiveClientService/Update",
+		"kaname.cloud.iam.v1.InternalInteractiveClientService/Delete",
 		// J — resource-count ceilings (3). Issue #291, S1.
 		//
 		// Sensitive because a ceiling decides how much of a SHARED resource one
@@ -185,9 +185,9 @@ func sensitiveACR2Set() map[string]struct{} {
 		// the complement test below, because the generator's default floor is "2"
 		// and an unstated floor would have put them here by accident rather than
 		// by decision.
-		"kacho.cloud.iam.v1.InternalLimitService/Create",
-		"kacho.cloud.iam.v1.InternalLimitService/Update",
-		"kacho.cloud.iam.v1.InternalLimitService/Delete",
+		"kaname.cloud.iam.v1.InternalLimitService/Create",
+		"kaname.cloud.iam.v1.InternalLimitService/Update",
+		"kaname.cloud.iam.v1.InternalLimitService/Delete",
 
 		// Те же три акта на ПУБЛИЧНОМ адресе (ADM-1 S1, #878). Порог
 		// подтверждения личности принадлежит ДЕЙСТВИЮ, а не адресу: сменить
@@ -195,9 +195,9 @@ func sensitiveACR2Set() map[string]struct{} {
 		// в общей платформе, что и через внутренний путь. Разойдись эти два
 		// перечня хоть на одну запись, публичный адрес стал бы дешёвым обходом
 		// ступени, и обход этот не был бы виден ни в одном диффе.
-		"kacho.cloud.iam.v1.LimitService/Create",
-		"kacho.cloud.iam.v1.LimitService/Update",
-		"kacho.cloud.iam.v1.LimitService/Delete",
+		"kaname.cloud.iam.v1.LimitService/Create",
+		"kaname.cloud.iam.v1.LimitService/Update",
+		"kaname.cloud.iam.v1.LimitService/Delete",
 
 		// K — module-catalog application (1). kacho#1034.
 		//
@@ -223,7 +223,7 @@ func sensitiveACR2Set() map[string]struct{} {
 		// now would produce a surface reachable by no one. The catalog entry states
 		// what the act COSTS; lowering it to "1" because nothing enforces it today
 		// would be a lie about the requirement.
-		"kacho.cloud.iam.v1.InternalModuleService/Apply",
+		"kaname.cloud.iam.v1.InternalModuleService/Apply",
 	}
 	set := make(map[string]struct{}, len(fqns))
 	for _, f := range fqns {
@@ -283,39 +283,39 @@ func TestPermissionCatalog_ACR_ComplementNotTwo(t *testing.T) {
 
 	routine := []string{
 		// B6 author-inert create → routine
-		"kacho.cloud.iam.v1.RoleService/Create",
-		"kacho.cloud.iam.v1.GroupService/Create",
+		"kaname.cloud.iam.v1.RoleService/Create",
+		"kaname.cloud.iam.v1.GroupService/Create",
 		// per-resource ListAccessBindings — reads → routine. Compute-пример снят
 		// вместе с поверхностью выдачи на машине (см. набор «чувствительных» выше).
-		"kacho.cloud.iam.v1.AccessBindingService/ListByScope",
-		"kacho.cloud.iam.v1.AccessBindingService/ListAssignableRoles",
-		"kacho.cloud.iam.v1.AccessBindingService/ListBySubject",
+		"kaname.cloud.iam.v1.AccessBindingService/ListByScope",
+		"kaname.cloud.iam.v1.AccessBindingService/ListAssignableRoles",
+		"kaname.cloud.iam.v1.AccessBindingService/ListBySubject",
 		// B3 subject-delete → routine
-		"kacho.cloud.iam.v1.ServiceAccountService/Delete",
-		"kacho.cloud.iam.v1.UserService/Delete",
+		"kaname.cloud.iam.v1.ServiceAccountService/Delete",
+		"kaname.cloud.iam.v1.UserService/Delete",
 		// B5 non-iam Internal*-admin (sample) → routine
 		"kacho.cloud.geo.v1.InternalRegionService/Create",
 		"kacho.cloud.vpc.v1.InternalAddressPoolService/Create",
 		"kacho.cloud.compute.v1.InternalMachineTypeService/Create",
 		// B4 cluster reads → routine
-		"kacho.cloud.iam.v1.InternalClusterService/Get",
-		"kacho.cloud.iam.v1.InternalClusterService/ListAdmins",
+		"kaname.cloud.iam.v1.InternalClusterService/Get",
+		"kaname.cloud.iam.v1.InternalClusterService/ListAdmins",
 		// interactive-login client READS (IAM-INT-1 scenario 23, negative pair).
 		// These two exist in this list precisely because the generator stamps
 		// "2" when proto omits required_acr_min: if the declaration were ever
 		// dropped from the .proto, the default would silently promote a read to
 		// the sensitive band and BOTH this assertion and the over-inclusion
 		// guard would fire. Reading a client issues no credential.
-		"kacho.cloud.iam.v1.InternalInteractiveClientService/Get",
-		"kacho.cloud.iam.v1.InternalInteractiveClientService/List",
+		"kaname.cloud.iam.v1.InternalInteractiveClientService/Get",
+		"kaname.cloud.iam.v1.InternalInteractiveClientService/List",
 		// routine resource lifecycle
 		"kacho.cloud.vpc.v1.NetworkService/Create",
 		"kacho.cloud.compute.v1.InstanceService/Create",
 		// group non-destructive lifecycle (Delete is sensitive, these are not)
-		"kacho.cloud.iam.v1.GroupService/AddMember", // sanity: this IS "2" (asserted below, negative-control excluded)
+		"kaname.cloud.iam.v1.GroupService/AddMember", // sanity: this IS "2" (asserted below, negative-control excluded)
 	}
 	for _, fqn := range routine {
-		if fqn == "kacho.cloud.iam.v1.GroupService/AddMember" {
+		if fqn == "kaname.cloud.iam.v1.GroupService/AddMember" {
 			continue // control — AddMember is sensitive; asserted in the set-invariant test
 		}
 		e, ok := c.Lookup(fqn)
@@ -331,13 +331,13 @@ func TestPermissionCatalog_ACR_GroupDeleteSensitive(t *testing.T) {
 	c, err := middleware.LoadEmbeddedPermissionCatalog("")
 	require.NoError(t, err)
 
-	del, ok := c.Lookup("kacho.cloud.iam.v1.GroupService/Delete")
+	del, ok := c.Lookup("kaname.cloud.iam.v1.GroupService/Delete")
 	require.True(t, ok)
 	assert.Equal(t, "2", del.RequiredACRMin, "GroupService/Delete is revoke-by-all → sensitive (R3/B-2)")
 
 	for _, fqn := range []string{
-		"kacho.cloud.iam.v1.GroupService/Create",
-		"kacho.cloud.iam.v1.GroupService/ListMembers",
+		"kaname.cloud.iam.v1.GroupService/Create",
+		"kaname.cloud.iam.v1.GroupService/ListMembers",
 	} {
 		e, ok := c.Lookup(fqn)
 		require.True(t, ok)
@@ -352,7 +352,7 @@ func TestPermissionCatalog_ACR_CreateNetStrengthening(t *testing.T) {
 	c, err := middleware.LoadEmbeddedPermissionCatalog("")
 	require.NoError(t, err)
 
-	e, ok := c.Lookup("kacho.cloud.iam.v1.AccessBindingService/Create")
+	e, ok := c.Lookup("kaname.cloud.iam.v1.AccessBindingService/Create")
 	require.True(t, ok)
 	assert.Equal(t, "2", e.RequiredACRMin, "Create must gain acr=2 (close create-instead-of-Update bypass)")
 	assert.Equal(t, "<exempt>", e.Permission, "Create permission must stay <exempt> (acr/permission are orthogonal — net-strengthening)")
@@ -778,6 +778,6 @@ func iamCatalogPath(t *testing.T) string {
 	require.True(t, ok)
 	// this file: <repo>/gateway/internal/middleware/permission_catalog_acr_invariant_test.go
 	repoRoot := filepath.Clean(filepath.Join(filepath.Dir(thisFile), "..", "..", ".."))
-	return filepath.Join(repoRoot, "services", "iam", "internal", "apps", "kacho",
+	return filepath.Join(repoRoot, "services", "iam", "internal", "apps", "kaname",
 		"seed", "embedded", "permission_catalog.json")
 }

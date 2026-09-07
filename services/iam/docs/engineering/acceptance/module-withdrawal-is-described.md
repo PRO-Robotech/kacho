@@ -314,9 +314,9 @@ SPDX-License-Identifier: AGPL-3.0-or-later
   выбирает форму отзыва, называет производителя каждому ответу и **заказывает**
   недостающее задачами-преемниками с предикатом у каждой. Реализация —
   §3 и §10
-- **Сервис:** `kacho-iam` — предмет целиком. Затрагивает (заказами, не правкой)
-  `services/iam/internal/migrations/`, `services/iam/internal/apps/kacho/seed/`,
-  `services/iam/internal/repo/kacho/pg/`. **`proto/` не затрагивает** в этой
+- **Сервис:** `kaname` — предмет целиком. Затрагивает (заказами, не правкой)
+  `services/iam/internal/migrations/`, `services/iam/internal/apps/kaname/seed/`,
+  `services/iam/internal/repo/kaname/pg/`. **`proto/` не затрагивает** в этой
   под-фазе: глагол отзыва — предмет `#1034`, и второй контракт об одном предмете
   здесь не заводится
 - **Предмет приёмки — ВЫБОР** (что значит «отозвать модуль», чем это выражается в
@@ -340,21 +340,21 @@ SPDX-License-Identifier: AGPL-3.0-or-later
 |---|---|---|---|
 | П1 | у всех трёх таблиц каталога есть колонки снятия | `catalog_module` · `catalog_resource` · `catalog_verb` | `grep -n 'retired_at     timestamptz' services/iam/internal/migrations/20260901113757_*.sql` → **3** (строки 123, 162, 249) |
 | П2 | согласие `live` и `retired_at` держит ПРОВЕРКА, а не писатель | `catalog_*_live_matches_retired` | `grep -c 'live_matches_retired' services/iam/internal/migrations/20260901113757_*.sql` → **3** |
-| П3 | правка одного `retired_at` отвергается | `TestIAMCT111_RetiredAtWithoutLiveIsRefused` | `grep -n 'func TestIAMCT111' services/iam/internal/repo/kacho/pg/catalog_referent_integration_test.go` → **513** |
+| П3 | правка одного `retired_at` отвергается | `TestIAMCT111_RetiredAtWithoutLiveIsRefused` | `grep -n 'func TestIAMCT111' services/iam/internal/repo/kaname/pg/catalog_referent_integration_test.go` → **513** |
 | П4 | снятие ресурса с живой выдачей отвергается | `TestIAMCT108_RetiringAResourceWithALiveGrantIsRefused` | тот же файл, строка **340** |
 | П5 | снятие несвязанного ресурса проходит | `TestIAMCT103_RetiringAnUnreferencedResourcePasses` | тот же файл, строка **373** |
 | П6 | переселение и снятие в ОДНОЙ транзакции | `TestIAMCT109_RelocateThenRetireInOneTransaction` | тот же файл, строка **398** |
 | П7 | снятый ресурс несёт преемника, и преемник — живая строка | `TestIAMCT110_RetiredResourceCarriesItsSuccessor` | тот же файл, строка **541** |
 | П8 | конкуренция снятия и выдачи не оставляет висячей строки | `TestIAMCT112_ConcurrentRetireAndGrantLeaveNoDanglingRow` | тот же файл, строка **573** |
-| П9 | снятая строка не доезжает до проекции В РАБОТАЮЩЕМ процессе, **и страж СЛЕДУЮЩЕГО старта это ловит** | `TestIAMCT2_06_07_RetiredAfterStartDoesNotReachTheProjection` | `grep -n 'func TestIAMCT2_06_07' services/iam/internal/repo/kacho/pg/catalog_snapshot_integration_test.go` → **167** |
-| П10 | страж старта сверяет ЖИВЫЕ строки с литералом и отказывает | `seed.AssertCatalogParity`, зовётся из `serve.go` | `grep -n 'func AssertCatalogParity' services/iam/internal/apps/kacho/seed/catalog_parity.go` → **85**; `grep -n 'AssertCatalogParity' services/iam/cmd/kacho-iam/serve.go` → **214** |
+| П9 | снятая строка не доезжает до проекции В РАБОТАЮЩЕМ процессе, **и страж СЛЕДУЮЩЕГО старта это ловит** | `TestIAMCT2_06_07_RetiredAfterStartDoesNotReachTheProjection` | `grep -n 'func TestIAMCT2_06_07' services/iam/internal/repo/kaname/pg/catalog_snapshot_integration_test.go` → **167** |
+| П10 | страж старта сверяет ЖИВЫЕ строки с литералом и отказывает | `seed.AssertCatalogParity`, зовётся из `serve.go` | `grep -n 'func AssertCatalogParity' services/iam/internal/apps/kaname/seed/catalog_parity.go` → **85**; `grep -n 'AssertCatalogParity' services/iam/cmd/kaname/serve.go` → **214** |
 | П11 | пустой каталог отличается от расхождения отдельным отказом | `CatalogParityCensus.Empty` | тот же файл, строка **72** |
-| П12 | тексты отказа ключей проекции существуют и разведены по полосам | `pgmaperr.go` — три ветки | `grep -n 'role_rule_ref_res_fk\|role_rule_ref_verb_fk\|role_verb_type_fk' services/iam/internal/repo/kacho/pg/pgmaperr.go` → **337**, **355**, **361** |
-| П13 | писатель проекции объявленных сегментов ОДИН | `roleWriter.ReplaceRuleRefs` | `grep -n 'func (w \*roleWriter) ReplaceRuleRefs' services/iam/internal/repo/kacho/pg/role_repo.go` → **590** |
+| П12 | тексты отказа ключей проекции существуют и разведены по полосам | `pgmaperr.go` — три ветки | `grep -n 'role_rule_ref_res_fk\|role_rule_ref_verb_fk\|role_verb_type_fk' services/iam/internal/repo/kaname/pg/pgmaperr.go` → **337**, **355**, **361** |
+| П13 | писатель проекции объявленных сегментов ОДИН | `roleWriter.ReplaceRuleRefs` | `grep -n 'func (w \*roleWriter) ReplaceRuleRefs' services/iam/internal/repo/kaname/pg/role_repo.go` → **590** |
 | П14 | след переселения различает популяции ключом | `role_grant_orphan_source_known` | `grep -n 'role_grant_orphan_source_known' services/iam/internal/migrations/20260901113757_*.sql` → **445** |
 | П15 | след сирот снимается **по тому же предикату**, каким ставился, и только у тех, чей предмет исчез | блок `_trace_drop` миграции глаголов | `sed -n '336,369p' services/iam/internal/migrations/20260901231022_system_role_rules_speak_the_verb_dictionary.sql` |
 | П16 | образец самопроверки исхода миграции + переписи | блок «САМОПРОВЕРКА ИСХОДА» | `grep -n 'САМОПРОВЕРКА ИСХОДА' services/iam/internal/migrations/20260901113757_*.sql services/iam/internal/migrations/20260901231022_*.sql` → по одному в каждой |
-| П17 | **глагол отзыва существует в этом же сервисе**, идемпотентный, и различает «отозвал я» от «уже было» | `LimitRepo.Withdraw` | `grep -n 'func (r \*LimitRepo) Withdraw' services/iam/internal/repo/kacho/pg/limit_repo.go` → **177** |
+| П17 | **глагол отзыва существует в этом же сервисе**, идемпотентный, и различает «отозвал я» от «уже было» | `LimitRepo.Withdraw` | `grep -n 'func (r \*LimitRepo) Withdraw' services/iam/internal/repo/kaname/pg/limit_repo.go` → **177** |
 | П18 | отзыв переносится в дельте ЯВНО, а не умолчанием | `LimitChange.withdrawn` | `grep -n 'bool withdrawn' proto/kacho/cloud/iam/v1/limit.proto` → **137** |
 | П19 | контракт отзыва объявляет идемпотентность словами | `InternalLimitService.Delete` | `grep -n 'rpc Delete (DeleteLimitRequest)' proto/kacho/cloud/iam/v1/internal_limit_service.proto` → **152** |
 | П20 | ЧАСТИЧНЫЙ отзыв глагола выражается данными, с предикатом снятия у каждой записи | раздел `deprecatedVerbs` загрузчика | `grep -n 'ErrDeprecatedVerbIncomplete\|RemoveWhen' services/iam/internal/manifest/deprecated.go` |
@@ -490,7 +490,7 @@ go test ./services/iam/internal/check/ -run TestIAMCT114_CatalogSeedMatchesTheLi
 дословно, что после снятия страж **обязан** заговорить:
 
 ```go
-// services/iam/internal/repo/kacho/pg/catalog_snapshot_integration_test.go:232
+// services/iam/internal/repo/kaname/pg/catalog_snapshot_integration_test.go:232
 if _, perr := seed.AssertCatalogParity(ctx, repo); perr == nil {
     t.Errorf("страж паритета молчит при снятой строке живого типа — расхождение литерала " +
         "со строками перестало отказывать в старте")
@@ -751,7 +751,7 @@ UPDATE kacho_iam.catalog_resource
 **Форма не изобретается — она уже работает в этом же сервисе** (П17, П19):
 
 ```go
-// services/iam/internal/repo/kacho/pg/limit_repo.go:177
+// services/iam/internal/repo/kaname/pg/limit_repo.go:177
 // Withdraw — marks the ceiling as no longer applying and reports whether this call
 // was the one that did it.
 UPDATE kacho_iam.limits SET withdrawn_at = now() WHERE id = $1 AND withdrawn_at IS NULL
@@ -854,7 +854,7 @@ RPC: второй контракт об одном предмете разошё
 >
 > **IAM-MW-1-10 из отрицательного к дереву стал ПРОИЗВОДИМЫМ**, и производитель
 > предъявлен: `TestIAMMW110_ModuleMembershipIsAnsweredByCatalogRows`
-> (`services/iam/internal/repo/kacho/pg/module_membership_from_rows_integration_test.go`).
+> (`services/iam/internal/repo/kaname/pg/module_membership_from_rows_integration_test.go`).
 > Он снят парой «красное до — зелёное после» на одной и той же пробе: с
 > поведением ДО (членство из встроенного перечня) модуль, заведённый строкой,
 > отвергался с `Illegal argument module (unknown module 'probe')`; после —
@@ -1238,7 +1238,7 @@ resource` (П12).
 | §2.4 читатель следа | `git grep -n 'role_grant_orphan' -- 'services/iam/**/*.go' ':!*_test.go'` перестал быть пуст |
 | §2.5 оживление | прогон IAM-MW-1-14…17 зелёный; перепись **множеств** совпала |
 | §2.6 идемпотентность | второй отзыв подряд: ноль изменённых строк по **всем** трём таблицам |
-| §2.7 переезд стража (`#1861`) | `grep -n 'LiteralRows' services/iam/internal/apps/kacho/seed/catalog_parity.go` — опорная сторона более не литерал; IAM-MW-1-20 и -21 зелёные **оба** |
+| §2.7 переезд стража (`#1861`) | `grep -n 'LiteralRows' services/iam/internal/apps/kaname/seed/catalog_parity.go` — опорная сторона более не литерал; IAM-MW-1-20 и -21 зелёные **оба** |
 | §3.3 читатель модулей | `grep -n 'func IsKnownModule' services/iam/internal/domain/module_set.go` — либо снят, либо читает строки. **ПРЕДИКАТ ВЫПОЛНЕН ПЕРВОЙ ВЕТВЬЮ** (`#1927`): даёт пусто, `rc=1` — функция снята вместе с литералом, членство пришло портом, путь запроса читает живые строки. Разбор — врезка §3.3; заказ закрыт |
 
 ---
@@ -1303,7 +1303,7 @@ resource` (П12).
 > Расхождение — находка, потому что круг 2 обязался объём не менять.
 
 1. **Прогнать то, чего не прогнал я** (§0.6):
-   `go test ./services/iam/internal/repo/kacho/pg/ -run 'TestIAMCT1(03|08|09|10|11|12)' -count=1`
+   `go test ./services/iam/internal/repo/kaname/pg/ -run 'TestIAMCT1(03|08|09|10|11|12)' -count=1`
    и `-run TestIAMCT2_06_07`. Если П9 не утверждает отказ стража — §0.4, §2.7 и
    IAM-MW-1-19 теряют производителя разом, и это блокирующее;
 2. **Перемерить опровержение посылки** (§0.3) своим маршрутом: предикат задачи по

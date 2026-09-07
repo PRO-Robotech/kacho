@@ -55,18 +55,29 @@ type Config struct {
 	// dev-профиля стенда (values.dev.yaml выставляет его явно).
 	AuthMode string `envconfig:"KACHO_REGISTRY_AUTH_MODE" default:"production"`
 
-	// AuthZIAMGRPCAddr — internal endpoint kacho-iam (:9091) для per-RPC Check
+	// AuthZIAMGRPCAddr — internal endpoint kaname (:9091) для per-RPC Check
 	// (ребро registry→iam authz) И для fga-proxy RegisterResource/UnregisterResource
 	// (Internal-only). Пусто + Breakglass=false → интерсептор НЕ подключается.
 	AuthZIAMGRPCAddr string `envconfig:"KACHO_REGISTRY_AUTHZ_IAM_GRPC_ADDR" default:""`
 
-	// IAMProjectGRPCAddr — PUBLIC endpoint kacho-iam (:9090) для ProjectService.Get
+	// QuotaAuthority — ОБЪЯВЛЕНИЕ домена величин. Ровно два законных значения:
+	// адрес в форме host:port либо слово `not-deployed`. Незаданное значение —
+	// отказ старта: умолчание означало бы выбор за оператора между «потолки
+	// действуют» и «потолков нет», и выбор этот был бы невидим.
+	//
+	// Объявление ОДНО на обе полосы ребра — разрешение величины на пути запроса
+	// и фоновую дельту. Приёмка
+	// `docs/specs/sub-phase-KAN-QUOTA-1-limit-authority-leaves-iam-acceptance.md`,
+	// стадия S1, решение Д1.
+	QuotaAuthority string `envconfig:"KACHO_REGISTRY_QUOTA_AUTHORITY" default:""`
+
+	// IAMProjectGRPCAddr — PUBLIC endpoint kaname (:9090) для ProjectService.Get
 	// (existence-валидация project на Create). ProjectService зарегистрирован ТОЛЬКО
 	// на public :9090; на internal :9091 (AuthZIAMGRPCAddr) его НЕТ — вызов там
 	// возвращает Unimplemented. Поэтому project-ребро держит СОБСТВЕННЫЙ conn на :9090,
 	// отдельный от authz/register-ребра на :9091 (единый conn на :9091 давал
 	// Unimplemented на Get → фикс. INTERNAL на Create ещё до insert'а).
-	IAMProjectGRPCAddr string `envconfig:"KACHO_REGISTRY_IAM_PROJECT_GRPC_ADDR" default:"kacho-iam.kacho.svc:9090"`
+	IAMProjectGRPCAddr string `envconfig:"KACHO_REGISTRY_IAM_PROJECT_GRPC_ADDR" default:"kaname.kacho.svc:9090"`
 	// GeoGRPCAddr — PUBLIC endpoint kacho-geo (:9090) для RegionService.Get
 	// (existence-валидация Registry.region_id на Create — новое ребро registry→geo,
 	// REG-1 F4). RegionService — публичный read-only справочник Geography на :9090.
@@ -109,6 +120,22 @@ type Config struct {
 	// бы ручка, снимающая защиту на развёрнутом стенде.
 	AuthZTrustAnyForwarder bool `envconfig:"KACHO_REGISTRY_AUTHZ_TRUST_ANY_FORWARDER" default:"false"`
 
+	// AuthZTrustDomain — ДОМЕН ДОВЕРИЯ установки: то, чьи сертификаты она признаёт своими.
+	//
+	// Круг отправителей выше называет, КОМУ позволено говорить за пользователя;
+	// домен отвечает на предыдущий вопрос — чьи вообще предъявители наши. Пока он
+	// был скомпилирован, установка меняла его только пересборкой: сертификаты
+	// выпускаются под доменом из величины профиля, а принимающая сторона читала
+	// литерал, и расходились они МОЛЧА — законный отправитель переставал
+	// опознаваться, а отказ выглядел как вызов без личности.
+	//
+	// Умолчания нет намеренно: непустое умолчание сделало бы контроль на вид
+	// включённым и увело бы установку, забывшую назвать свой домен, в чужой.
+	// Пустая величина — отказ старта (Validate), а не «принимаем любой».
+	//
+	// ENV `KACHO_REGISTRY_AUTHZ_TRUST_DOMAIN`.
+	AuthZTrustDomain string `envconfig:"KACHO_REGISTRY_AUTHZ_TRUST_DOMAIN"`
+
 	// AuthZBreakglass — аварийный режим: пропускать все RPC без Check + WARN
 	// (только dev / break-glass).
 	AuthZBreakglass bool `envconfig:"KACHO_REGISTRY_AUTHZ_BREAKGLASS" default:"false"`
@@ -127,7 +154,7 @@ type Config struct {
 	// AuthZDenyBudgetPerSec — устойчивый темп (в секунду на принципала) проверок,
 	// чей исход кэш НЕ поглощает: отказ, сокрытие существования, промах «нет
 	// пути», недоступность модели. По исчерпании звено отвечает
-	// `ResourceExhausted`, не обращаясь к kacho-iam, — то есть сбрасывает шторм
+	// `ResourceExhausted`, не обращаясь к kaname, — то есть сбрасывает шторм
 	// отказов с соседа.
 	//
 	// До носителя контура registry этой отсечки НЕ ИМЕЛ вовсе: поле
@@ -139,7 +166,7 @@ type Config struct {
 	// Почему отсечка нужна и реестру: бюджет тратят ТОЛЬКО непоглощаемые кэшем
 	// исходы, поэтому законное чтение своих реестров её не видит вовсе. Платит
 	// ровно тот, кто штурмует отказами чужие идентификаторы, — и платит за него
-	// не kacho-iam.
+	// не kaname.
 	AuthZDenyBudgetPerSec float64 `envconfig:"KACHO_REGISTRY_AUTHZ_DENY_BUDGET_PER_SEC" default:"100"`
 
 	// AdmissionPublic / AdmissionInternal — ПОТОЛОК ТЕМПА и ОДНОВРЕМЕННОСТИ на
@@ -371,7 +398,7 @@ type Config struct {
 	TokenRevocationMTLS grpcclient.TLSClient `envconfig:"TOKEN_REVOCATION_MTLS"`
 
 	// TokenRealm — realm для WWW-Authenticate; docker сам идёт туда за Bearer-токеном.
-	// Остаётся token-шимом (kacho-iam /iam/token): docker предъявляет SA-key шиму,
+	// Остаётся token-шимом (kaname /iam/token): docker предъявляет SA-key шиму,
 	// шим брокерит токен у Hydra. Для data-plane realm — непрозрачный указатель на
 	// auth-сервер клиента, поэтому Hydra-переключение его не меняет.
 	TokenRealm string `envconfig:"KACHO_REGISTRY_TOKEN_REALM" default:"https://api.kacho.local/iam/token"`
@@ -388,12 +415,12 @@ type Config struct {
 	DataplaneTLSTerminatedExternally bool `envconfig:"KACHO_REGISTRY_DATAPLANE_TLS_TERMINATED_EXTERNALLY" default:"false"`
 
 	// AnonymousSubjectID — the anonymous principal id (the iam-issued anon Hydra client
-	// id, kacho-iam AnonymousClientID) the data-plane resolves to the FGA wildcard
+	// id, kaname AnonymousClientID) the data-plane resolves to the FGA wildcard
 	// `user:*` for anonymous public pull (RG-1 D-7). A VALID anon Bearer whose sub
 	// equals this id reads only PUBLIC repos (repo `user:* v_get` tuple) and can never
 	// write (B03/B14). Пусто (default) → anonymous pull DISABLED (secure-by-default:
 	// анонимный /token не сконфигурирован ⇒ никакой токен не резолвится в user:*).
-	// MUST match kacho-iam's configured AnonymousClientID and be a RESERVED id (no real
+	// MUST match kaname's configured AnonymousClientID and be a RESERVED id (no real
 	// principal shares it).
 	AnonymousSubjectID string `envconfig:"KACHO_REGISTRY_ANONYMOUS_SUBJECT_ID" default:""`
 
@@ -405,12 +432,12 @@ type Config struct {
 	// ===== per-edge mTLS =====
 
 	// IAMAuthzMTLS — client-creds для ребра registry→iam internal (:9091): Check + fga-proxy.
-	// ServerName = kacho-iam-internal.* (реальный dial-host :9091).
+	// ServerName = kaname-internal.* (реальный dial-host :9091).
 	IAMAuthzMTLS grpcclient.TLSClient `envconfig:"IAM_AUTHZ_MTLS"`
 
 	// IAMProjectMTLS — client-creds для ребра registry→iam public (:9090): ProjectService.Get.
 	// Отдельное поле от IAMAuthzMTLS, потому что ServerName public dial-host'а
-	// (kacho-iam.*) ≠ internal (kacho-iam-internal.*): единый ServerName некорректен
+	// (kaname.*) ≠ internal (kaname-internal.*): единый ServerName некорректен
 	// для обоих листенеров под RequireAndVerifyClientCert.
 	IAMProjectMTLS grpcclient.TLSClient `envconfig:"IAM_PROJECT_MTLS"`
 
@@ -418,11 +445,32 @@ type Config struct {
 	// ServerName = kacho-geo public dial-host'а (REG-1 F4 новое ребро).
 	GeoMTLS grpcclient.TLSClient `envconfig:"GEO_MTLS"`
 
+	// QuotaAuthorityMTLS — client-creds ребра registry→домен величин (обе полосы:
+	// InternalLimitService.Resolve на пути запроса и ListChangedSince фоновой
+	// дельтой). Своё, а не заимствованное у authz-ребра: адрес домена величин
+	// объявляется отдельно, и удостоверение обязано следовать за адресом.
+	QuotaAuthorityMTLS grpcclient.TLSClient `envconfig:"QUOTA_AUTHORITY_MTLS"`
+
 	// PublicServerMTLS — server-creds для публичного листенера (:9090).
 	PublicServerMTLS grpcsrv.TLSServer `envconfig:"PUBLIC_SERVER_MTLS"`
 
 	// InternalServerMTLS — server-creds для cluster-internal листенера (:9091).
 	InternalServerMTLS grpcsrv.TLSServer `envconfig:"INTERNAL_SERVER_MTLS"`
+}
+
+// TrustDomain — домен доверия, который РЕАЛЬНО уезжает в пару звеньев извлечения
+// личности на обоих слушателях.
+//
+// Единственный источник этой величины на процесс: проводка, стража старта и
+// самоотчёт о посадке читают ОДИН объект и спрашивают его ОДИН предикат. Значит
+// «страж пропустил» ⟺ «домен реально объявлен» — по построению, а не потому, что
+// три автора написали одинаковые тела.
+//
+// Приведение написанного оператором (пробелы, схема, косые черты) живёт в
+// конструкторе типа и здесь не повторяется: два места об одном предмете
+// расходятся молча. См. grpcsrv.NewTrustDomain.
+func (c Config) TrustDomain() grpcsrv.TrustDomain {
+	return grpcsrv.NewTrustDomain(c.AuthZTrustDomain)
 }
 
 // TrustedForwarders — круг отправителей, который РЕАЛЬНО уезжает в

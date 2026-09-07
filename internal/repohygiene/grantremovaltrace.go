@@ -6,7 +6,7 @@
 //
 // # Предмет
 //
-// Строка `kacho_iam.access_bindings` — это доступ, выданный арендатору. Миграция,
+// Строка `kaname.access_bindings` — это доступ, выданный арендатору. Миграция,
 // удаляющая её, доступ ОТБИРАЕТ; и если рядом нет записи в журнал жизненного
 // цикла выдачи, у которого есть читатель, то «отобрано» становится неотличимо от
 // «никогда не выдавалось». Арендатор видит отсутствие права и не может узнать ни
@@ -14,7 +14,7 @@
 //
 // Класс измерен, а не предположен: на ревизии заведения этой проверки удаление
 // выдач стояло в накатной половине ШЕСТИ миграций, и запись в журнал не
-// сопровождала НИ ОДНУ из них. В `kacho_iam.audit_outbox` не пишет ни одна
+// сопровождала НИ ОДНУ из них. В `kaname.audit_outbox` не пишет ни одна
 // миграция корпуса, поэтому вторая половина предиката сегодня не отсекает
 // ничего — и это сказано вслух, а не скрыто: она начнёт различать в тот день,
 // когда норма впервые исполнится. До того дня её способность различать
@@ -115,8 +115,8 @@ const grantRemovalMigrationsDir = "services/iam/internal/migrations"
 // читается как факт о дереве. Терпимая форма строго шире точной; обе прогнаны на
 // корпусе и дали одно число.
 var (
-	reGrantDelete = regexp.MustCompile(`(?i)delete\s+from\s+kacho_iam\s*\.\s*access_bindings`)
-	reGrantTrace  = regexp.MustCompile(`(?i)insert\s+into\s+kacho_iam\s*\.\s*audit_outbox`)
+	reGrantDelete = regexp.MustCompile(`(?i)delete\s+from\s+kaname\s*\.\s*access_bindings`)
+	reGrantTrace  = regexp.MustCompile(`(?i)insert\s+into\s+kaname\s*\.\s*audit_outbox`)
 	// reGrantTableNamed — таблица выдач, названная ЛЮБЫМ глаголом.
 	//
 	// Ею проверяется предпосылка обоих гейтов после свода миграций (2026-09-04):
@@ -129,7 +129,7 @@ var (
 	// названа слабой честно: она доказывает, что корпус читается и таблица выдач в
 	// нём есть, но НЕ доказывает, что распознаватель узнаёт свой глагол. Второе —
 	// предмет инъекции, и она подаёт вход сама.
-	reGrantTableNamed = regexp.MustCompile(`(?i)\bkacho_iam\s*\.\s*access_bindings\b`)
+	reGrantTableNamed = regexp.MustCompile(`(?i)\bkaname\s*\.\s*access_bindings\b`)
 )
 
 // grantRemovalCensus — объём осмотренного. Три величины, а не одна: «ноль
@@ -226,8 +226,8 @@ func grantRemovalFinding(got int, names []string) string {
 	b.WriteString(". Перечень: ")
 	b.WriteString(strings.Join(names, ", "))
 	if got > grantRemovalRatchet {
-		b.WriteString(". Миграция, удаляющая строки kacho_iam.access_bindings в накатной " +
-			"половине, ОТБИРАЕТ у арендатора доступ; без записи в kacho_iam.audit_outbox " +
+		b.WriteString(". Миграция, удаляющая строки kaname.access_bindings в накатной " +
+			"половине, ОТБИРАЕТ у арендатора доступ; без записи в kaname.audit_outbox " +
 			"«отобрано» неотличимо от «никогда не выдавалось». Оставь след в той же " +
 			"половине — либо, если удаление снимает собственную вставку той же миграции, " +
 			"перенеси его в откатную половину")
@@ -255,7 +255,7 @@ func grantRemovalFinding(got int, names []string) string {
 // объявил бы переносом дедупликацию выдач (проверено — он так и сделал: 1
 // попадание там, где переносов ноль).
 var (
-	reGrantUpdateHead = regexp.MustCompile(`(?i)update\s+(?:kacho_iam\s*\.\s*)?access_bindings\b\s+set\b`)
+	reGrantUpdateHead = regexp.MustCompile(`(?i)update\s+(?:kaname\s*\.\s*)?access_bindings\b\s+set\b`)
 	reGrantAssignRole = regexp.MustCompile(`(?i)\brole_id\s*=`)
 	reGrantWhereOrEnd = regexp.MustCompile(`(?i)\bwhere\b|;`)
 )

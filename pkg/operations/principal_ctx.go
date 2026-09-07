@@ -24,7 +24,7 @@ func WithoutPrincipal(ctx context.Context) context.Context {
 }
 
 // WithPrincipal кладет Principal в context. Используется auth-interceptor'ом
-// api-gateway: после валидации JWT и резолва subject через kacho-iam
+// api-gateway: после валидации JWT и резолва subject через kaname
 // interceptor вызывает WithPrincipal и пробрасывает ctx дальше в handler.
 //
 // Без auth ctx остается пустым и PrincipalFromContext возвращает

@@ -29,7 +29,7 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/PRO-Robotech/kacho-iam/internal/publicauthzcensus"
+	"github.com/PRO-Robotech/kaname/internal/publicauthzcensus"
 )
 
 func TestEveryExemptPublicRPCNamesItsDecider(t *testing.T) {

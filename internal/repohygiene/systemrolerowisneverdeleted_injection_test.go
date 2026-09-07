@@ -46,7 +46,7 @@ const roleDeleteTierGuardSrc = `package pg
 
 func (w *roleWriter) Delete(ctx context.Context, id string) error {
 	row := w.tx.QueryRow(ctx,
-		` + "`DELETE FROM kacho_iam.roles WHERE id = $1 AND cluster_id IS NULL RETURNING 1`" + `, id)
+		` + "`DELETE FROM kaname.roles WHERE id = $1 AND cluster_id IS NULL RETURNING 1`" + `, id)
 	return row.Scan(new(int))
 }
 `
@@ -69,7 +69,7 @@ var errNoSystemRoleDelete = errors.New("DELETE FROM roles здесь не про
 const roleDeleteProjectionSrc = `package pg
 
 func (w *roleWriter) ReplaceRuleRefs(ctx context.Context, id string) error {
-	_, err := w.tx.Exec(ctx, ` + "`DELETE FROM kacho_iam.role_rule_ref WHERE role_id = $1`" + `, id)
+	_, err := w.tx.Exec(ctx, ` + "`DELETE FROM kaname.role_rule_ref WHERE role_id = $1`" + `, id)
 	return err
 }
 `
@@ -77,7 +77,7 @@ func (w *roleWriter) ReplaceRuleRefs(ctx context.Context, id string) error {
 // TestRoleDeleteGateStaysSilentOnTheGuardedStatement — КОНТРОЛЬ. Без него
 // молчание гейта на инъекции было бы неотличимо от молчания мёртвого гейта.
 func TestRoleDeleteGateStaysSilentOnTheGuardedStatement(t *testing.T) {
-	const rel = "services/iam/internal/repo/kacho/pg/role_repo.go"
+	const rel = "services/iam/internal/repo/kaname/pg/role_repo.go"
 
 	sites, census, err := ScanRoleDeletes(rel, []byte(roleDeleteGuardedSrc))
 	if err != nil {
@@ -99,7 +99,7 @@ func TestRoleDeleteGateStaysSilentOnTheGuardedStatement(t *testing.T) {
 // TestRoleDeleteGateRedsOnAnUnguardedStatement — инъекция обязана краснеть и
 // НАЗЫВАТЬ координату: находка, называющая симптом, посылает читателя не туда.
 func TestRoleDeleteGateRedsOnAnUnguardedStatement(t *testing.T) {
-	const rel = "services/iam/internal/repo/kacho/pg/role_repo.go"
+	const rel = "services/iam/internal/repo/kaname/pg/role_repo.go"
 
 	sites, census, err := ScanRoleDeletes(rel, []byte(roleDeleteUnguardedSrc))
 	if err != nil {
@@ -125,7 +125,7 @@ func TestRoleDeleteGateRedsOnAnUnguardedStatement(t *testing.T) {
 
 // TestRoleDeleteGateKnowsBothGuardForms — вторая законная форма сужения.
 func TestRoleDeleteGateKnowsBothGuardForms(t *testing.T) {
-	sites, census, err := ScanRoleDeletes("services/iam/internal/repo/kacho/pg/role_repo.go",
+	sites, census, err := ScanRoleDeletes("services/iam/internal/repo/kaname/pg/role_repo.go",
 		[]byte(roleDeleteTierGuardSrc))
 	if err != nil {
 		t.Fatalf("разбор близнеца: %v", err)
@@ -143,7 +143,7 @@ func TestRoleDeleteGateKnowsBothGuardForms(t *testing.T) {
 // TestRoleDeleteGateStaysSilentOnProse — законный близнец: слово в комментарии и
 // в тексте отказа.
 func TestRoleDeleteGateStaysSilentOnProse(t *testing.T) {
-	sites, census, err := ScanRoleDeletes("services/iam/internal/repo/kacho/pg/doc.go",
+	sites, census, err := ScanRoleDeletes("services/iam/internal/repo/kaname/pg/doc.go",
 		[]byte(roleDeleteProseSrc))
 	if err != nil {
 		t.Fatalf("разбор близнеца: %v", err)
@@ -164,7 +164,7 @@ func TestRoleDeleteGateStaysSilentOnProse(t *testing.T) {
 // TestRoleDeleteGateStaysSilentOnProjectionDelete — законный близнец: удаляется
 // проекция правила, а не строка роли.
 func TestRoleDeleteGateStaysSilentOnProjectionDelete(t *testing.T) {
-	sites, census, err := ScanRoleDeletes("services/iam/internal/repo/kacho/pg/role_repo.go",
+	sites, census, err := ScanRoleDeletes("services/iam/internal/repo/kaname/pg/role_repo.go",
 		[]byte(roleDeleteProjectionSrc))
 	if err != nil {
 		t.Fatalf("разбор близнеца: %v", err)
@@ -195,7 +195,7 @@ func (w *roleWriter) wipe(ctx context.Context) error {
 
 // TestRoleDeleteGateRedsOnAnUnconditionalStatement — оператор без условия.
 func TestRoleDeleteGateRedsOnAnUnconditionalStatement(t *testing.T) {
-	sites, census, err := ScanRoleDeletes("services/iam/internal/repo/kacho/pg/role_repo.go",
+	sites, census, err := ScanRoleDeletes("services/iam/internal/repo/kaname/pg/role_repo.go",
 		[]byte(roleDeleteBareSrc))
 	if err != nil {
 		t.Fatalf("разбор инъекции: %v", err)

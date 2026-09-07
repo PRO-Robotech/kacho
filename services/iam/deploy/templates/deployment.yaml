@@ -1,6 +1,10 @@
 # Copyright (c) PRO-Robotech
 # SPDX-License-Identifier: AGPL-3.0-or-later
 
+{{/* ОТКАЗ ОДНИМ ПЕРЕЧНЕМ, когда не названы объекты, которых чарт не создаёт.
+Зовётся из ОБОИХ шаблонов, ссылающихся на такие объекты: какой из них
+отрендерится первым, решает helm, а перечень обязан быть полным в любом. */}}
+{{- include "kaname-svc.requireOperatorSuppliedNames" . -}}
 apiVersion: apps/v1
 kind: Deployment
 metadata:
@@ -34,7 +38,7 @@ spec:
         kacho.cloud/config-checksum: {{ include (print $.Template.BasePath "/configmap.yaml") . | sha256sum }}
         # Объявления сбора здесь НЕТ, и это не пропуск. Этот каталог чарта не
         # разворачивается ничем: умбрелла тянет iam каталогом сабчарта
-        # (`deploy/helm/umbrella/charts/kacho-iam`), и объявление, стоявшее
+        # (`deploy/helm/umbrella/charts/kaname`), и объявление, стоявшее
         # здесь, не рендерилось ни в одном профиле — то есть было ровно тем
         # классом, ради которого заведена перепись накопителей: артефакт,
         # выглядящий как работа, у которого нет потребителя.
@@ -84,12 +88,12 @@ spec:
               drop: ["ALL"]
           volumeMounts:
             - name: config
-              mountPath: /etc/kacho-iam
+              mountPath: /etc/kaname
               readOnly: true
           env:
-            - name: KACHO_IAM_CONFIG_PATH
-              value: /etc/kacho-iam/config.yaml
-            - name: KACHO_IAM_DB_PASSWORD
+            - name: KANAME_CONFIG_PATH
+              value: /etc/kaname/config.yaml
+            - name: KANAME_DB_PASSWORD
               valueFrom:
                 secretKeyRef:
                   name: {{ .Values.db.passwordSecretName }}
@@ -98,7 +102,7 @@ spec:
         - name: {{ .Values.name }}
           image: "{{ .Values.image }}"
           imagePullPolicy: {{ .Values.imagePullPolicy }}
-          command: ["/usr/local/bin/kacho-iam", "serve"]
+          command: ["/usr/local/bin/kaname", "serve"]
           securityContext:
             allowPrivilegeEscalation: false
             readOnlyRootFilesystem: true
@@ -118,9 +122,16 @@ spec:
             # процесса (authn.hooks-http-endpoint = tcp://0.0.0.0:9092).
             - name: http-hooks
               containerPort: {{ .Values.ports.hooksHttp | default 9092 }}
+            # Собственные REST-фронты службы (KAN-REST-1). ДВА разных порта, а не
+            # разбор пути на общем: принадлежность маршрута фронту обязана быть
+            # свойством того, куда вообще можно дозвониться.
+            - name: http-rest
+              containerPort: {{ .Values.ports.rest | default 9098 }}
+            - name: http-rest-int
+              containerPort: {{ .Values.ports.internalRest | default 9099 }}
           volumeMounts:
             - name: config
-              mountPath: /etc/kacho-iam
+              mountPath: /etc/kaname
               readOnly: true
             {{- if $tls.secretName }}
             - name: tls-server
@@ -128,13 +139,22 @@ spec:
               readOnly: true
             {{- end }}
           env:
-            - name: KACHO_IAM_CONFIG_PATH
-              value: /etc/kacho-iam/config.yaml
-            - name: KACHO_IAM_DB_PASSWORD
+            - name: KANAME_CONFIG_PATH
+              value: /etc/kaname/config.yaml
+            - name: KANAME_DB_PASSWORD
               valueFrom:
                 secretKeyRef:
                   name: {{ .Values.db.passwordSecretName }}
                   key: {{ .Values.db.passwordSecretKey }}
+            {{- if (index .Values.env "KANAME_REST_UPSTREAM_MTLS_ENABLE") }}
+            # Имя, по которому фронт сверяет сертификат СОБСТВЕННОГО слушателя.
+            # ВЫЧИСЛЯЕТСЯ шаблоном, а не выписывается в профиле: дозвон идёт в
+            # петлю (адрес привязки целью соединения не является), а лист выписан
+            # на имя Service — выписанное руками разошлось бы с ним молча, и
+            # разошлось бы только в боевой посадке, где проверка включена.
+            - name: KANAME_REST_UPSTREAM_MTLS_SERVERNAME
+              value: {{ printf "%s.%s.svc.cluster.local" .Values.name .Release.Namespace | quote }}
+            {{- end }}
             {{- range $k, $v := .Values.env }}
             - name: {{ $k }}
               value: {{ $v | quote }}

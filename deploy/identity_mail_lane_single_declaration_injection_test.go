@@ -62,7 +62,7 @@ func newMailLaneFixture(t *testing.T) mailLaneFixture {
 	copyTree(t, umbrellaDir, root)
 	return mailLaneFixture{
 		root:   root,
-		tpl:    filepath.Join(root, "charts", "kacho-iam", "templates", "_kratos-identity.tpl"),
+		tpl:    filepath.Join(root, "charts", "kaname", "templates", "_kratos-identity.tpl"),
 		script: filepath.Join(root, filepath.Base(cutoverScript)),
 	}
 }

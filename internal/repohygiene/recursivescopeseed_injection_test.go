@@ -51,7 +51,7 @@ WITH RECURSIVE speaker(subject) AS (
 ),
 candidate(object_id) AS (
     SELECT m.object_id
-      FROM kacho_iam.resource_mirror m
+      FROM kaname.resource_mirror m
      WHERE m.object_type = $2::text
        AND m.object_id > $3::text
 ),
@@ -60,7 +60,7 @@ scope(object_id, s_type, s_id, depth) AS (
   UNION
     SELECT s.object_id, e.parent_type, e.parent_id, s.depth + 1
       FROM scope s
-      JOIN kacho_iam.resource_parent_edge e
+      JOIN kaname.resource_parent_edge e
         ON e.object_type = s.s_type AND e.object_id = s.s_id
      WHERE s.depth < $5::int
 )
@@ -74,7 +74,7 @@ SELECT c.object_id FROM candidate c
 	const beforeSecondHalf = `
 WITH RECURSIVE candidate(object_id) AS (
     SELECT m.object_id
-      FROM kacho_iam.resource_mirror m
+      FROM kaname.resource_mirror m
      WHERE m.object_type = $2::text
        AND m.object_id > $3::text
      ORDER BY m.object_id
@@ -85,7 +85,7 @@ scope(object_id, s_type, s_id, depth) AS (
   UNION
     SELECT s.object_id, e.parent_type, e.parent_id, s.depth + 1
       FROM scope s
-      JOIN kacho_iam.resource_parent_edge e
+      JOIN kaname.resource_parent_edge e
         ON e.object_type = s.s_type AND e.object_id = s.s_id
      WHERE s.depth < $5::int
 )
@@ -96,14 +96,14 @@ SELECT c.object_id, true AS allowed FROM candidate c ORDER BY c.object_id`
 	const seedReadsTableDirectly = `
 WITH RECURSIVE scope(object_id, s_type, s_id, depth) AS (
     SELECT m.object_id, $2::text, m.object_id, 0
-      FROM kacho_iam.resource_mirror m
+      FROM kaname.resource_mirror m
      WHERE m.object_type = $2::text
   UNION
     SELECT s.object_id, e.parent_type, e.parent_id, s.depth + 1
       FROM scope s
       CROSS JOIN LATERAL (
              SELECT pe.parent_type, pe.parent_id
-               FROM kacho_iam.resource_parent_edge pe
+               FROM kaname.resource_parent_edge pe
               WHERE pe.object_type = s.s_type AND pe.object_id = s.s_id
               ORDER BY pe.depth
               LIMIT $5::int
@@ -117,7 +117,7 @@ SELECT s.object_id FROM scope s`
 	const afterBoth = `
 WITH RECURSIVE candidate(object_id) AS (
     SELECT m.object_id
-      FROM kacho_iam.resource_mirror m
+      FROM kaname.resource_mirror m
      WHERE m.object_type = $2::text
        AND m.object_id > $3::text
      ORDER BY m.object_id
@@ -130,7 +130,7 @@ scope(object_id, s_type, s_id, depth) AS (
       FROM scope s
       CROSS JOIN LATERAL (
              SELECT pe.parent_type, pe.parent_id
-               FROM kacho_iam.resource_parent_edge pe
+               FROM kaname.resource_parent_edge pe
               WHERE pe.object_type = s.s_type AND pe.object_id = s.s_id
               ORDER BY pe.depth
               LIMIT $5::int
@@ -147,7 +147,7 @@ WITH RECURSIVE scope(s_type, s_id, depth) AS (
   UNION
     SELECT e.parent_type, e.parent_id, s.depth + 1
       FROM scope s
-      JOIN kacho_iam.resource_parent_edge e
+      JOIN kaname.resource_parent_edge e
         ON e.object_type = s.s_type AND e.object_id = s.s_id
      WHERE s.depth < $7::int
 )
@@ -167,14 +167,14 @@ SELECT ip FROM ips`
 	cases := []scopeSeedInjection{
 		{
 			name: "инъекция: заход без предела И обычное соединение в цепи",
-			path: "services/iam/internal/repo/kacho/pg/relverdict/list.go",
+			path: "services/iam/internal/repo/kaname/pg/relverdict/list.go",
 			origin: "дословно из перечисления до перехода: кандидаты берутся без предела, " +
 				"предел стоит последним действием",
 			sql: beforeBoth, wantFind: true,
 		},
 		{
 			name: "инъекция: предел на кандидатах есть, цепь всё ещё берёт таблицу целиком",
-			path: "services/iam/internal/repo/kacho/pg/relverdict/list.go",
+			path: "services/iam/internal/repo/kaname/pg/relverdict/list.go",
 			origin: "промежуточное состояние этого же перехода; измерено — кривая осталась " +
 				"растущей, страница из 50 объектов читала все рёбра типа",
 			sql: beforeSecondHalf, wantFind: true,
@@ -187,13 +187,13 @@ SELECT ip FROM ips`
 		},
 		{
 			name:   "законный близнец: сегодняшняя форма перечисления",
-			path:   "services/iam/internal/repo/kacho/pg/relverdict/list.go",
+			path:   "services/iam/internal/repo/kaname/pg/relverdict/list.go",
 			origin: "предел на источнике кандидатов + соединение вбок с пределом",
 			sql:    afterBoth, wantFind: false,
 		},
 		{
 			name:   "законный близнец: вопрос про один объект (вердикт, субъекты, разворот)",
-			path:   "services/iam/internal/repo/kacho/pg/relverdict/query.go",
+			path:   "services/iam/internal/repo/kaname/pg/relverdict/query.go",
 			origin: "заход — строка из доводов запроса; набора нет, раскручивать нечего",
 			sql:    singleObjectSeed, wantFind: false,
 		},

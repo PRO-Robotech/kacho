@@ -292,7 +292,7 @@ func catalogFloor(t *testing.T, fqn string) string {
 // Целевой глагол: чеканка удостоверения пользователя. Каталог объявляет ему пол
 // уровня «2»; REST-адрес разрешает та же таблица маршрутов, что и в проде.
 const (
-	elevatedFQN   = "kacho.cloud.iam.v1.UserTokenService/Issue"
+	elevatedFQN   = "kaname.cloud.iam.v1.UserTokenService/Issue"
 	elevatedRoute = "https://api.kacho.cloud/iam/v1/users/usr-abc/tokens"
 	routineFQN    = "kacho.cloud.vpc.v1.NetworkService/Create"
 	routineRoute  = "https://api.kacho.cloud/vpc/v1/networks"

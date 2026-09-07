@@ -23,15 +23,17 @@
 // activates only under mTLS.
 //
 // The SAN format is the SPIRE-compatible internal trust-domain form
-// spiffe://kacho.cloud/ns/<ns>/sa/kacho-<svc>; cert-manager issues string-SANs in
-// this exact shape. Only URIs under the kacho.cloud trust domain are accepted; a
-// foreign spiffe trust-domain yields empty (no foreign-field leak).
+// spiffe://<trust-domain>/ns/<ns>/sa/kacho-<svc>; cert-manager issues string-SANs
+// in this exact shape. The trust domain is NAMED BY THE INSTALLATION
+// ([TrustDomain]), not compiled in: only URIs under the declared domain are
+// accepted, and a foreign spiffe trust-domain yields empty (no foreign-field
+// leak). An installation that did not name its domain recognizes nobody — see
+// [TrustDomain] on why the zero value is the strictest reading available.
 package grpcsrv
 
 import (
 	"context"
 	"crypto/x509"
-	"strings"
 
 	"google.golang.org/grpc"
 	"google.golang.org/grpc/credentials"
@@ -41,17 +43,16 @@ import (
 	"github.com/PRO-Robotech/kacho/pkg/operations"
 )
 
-// kachoSpiffePrefix is the internal trust-domain prefix of a Kachō module
-// identity SAN. Only URI-SANs starting with this prefix are recognized as a
-// module identity (spiffe://kacho.cloud/ns/<ns>/sa/kacho-<svc>).
-const kachoSpiffePrefix = "spiffe://kacho.cloud/"
-
 // trustedPrincipalConfig — конфиг trust-aware principal-extract'а.
 type trustedPrincipalConfig struct {
 	// forwarders — allow-list cert-identity SAN'ов, которым разрешено форвардить
 	// end-user principal-metadata (обычно единственный — api-gateway SA). Пусто →
 	// доверяем любому mTLS-verified peer'у (backward-compat) с WARN-предупреждением.
 	forwarders map[string]struct{}
+	// arrival — счётчик того, что запрос сказал о личности (identity_arrival.go).
+	// Нулевой прозрачен: пробе метрики не нужны, развёрнутому слушателю их
+	// ставит носитель контура.
+	arrival *IdentityArrival
 }
 
 // TrustedPrincipalOption — функциональная опция UnaryTrustedPrincipalExtract.
@@ -88,14 +89,20 @@ func WithTrustedForwarders(f TrustedForwarders) TrustedPrincipalOption {
 
 // CertIdentity extracts the module identity from a (verified) client-cert as the
 // unmodified, opaque SPIFFE-like SAN string. Selection rule (part of the
-// extractor contract): the FIRST URI-SAN whose value starts with
-// "spiffe://kacho.cloud/" is returned exactly as it appears in the cert; other
-// URI-SANs are ignored and the result is stable across calls.
+// extractor contract): the FIRST URI-SAN belonging to THIS trust domain is
+// returned exactly as it appears in the cert; other URI-SANs are ignored and the
+// result is stable across calls.
+//
+// Метод, а не функция пакета, намеренно: личность существует ОТНОСИТЕЛЬНО
+// домена, и вопрос «наш ли этот предъявитель» без домена не задаётся. Пока это
+// была функция, домен приезжал скомпилированной константой, то есть ответ на
+// него был один на все установки.
 //
 // Returns "" deterministically when cert is nil, has no URI-SANs, or has no
-// URI-SAN under the kacho.cloud trust domain. It never parses or resolves the
-// identity and never panics.
-func CertIdentity(cert *x509.Certificate) string {
+// URI-SAN under the declared trust domain — and ALWAYS when the domain itself is
+// not declared ([TrustDomain.Matches] recognizes nobody then). It never parses or
+// resolves the identity and never panics.
+func (d TrustDomain) CertIdentity(cert *x509.Certificate) string {
 	if cert == nil {
 		return ""
 	}
@@ -103,7 +110,7 @@ func CertIdentity(cert *x509.Certificate) string {
 		if u == nil {
 			continue
 		}
-		if s := u.String(); strings.HasPrefix(s, kachoSpiffePrefix) {
+		if s := u.String(); d.Matches(s) {
 			return s
 		}
 	}
@@ -117,13 +124,32 @@ type certIdentityCtxKey struct{}
 type certIdentity struct {
 	id       string
 	verified bool
+	// domain — домен, ОТНОСИТЕЛЬНО которого личность признана нашей. Хранится
+	// рядом с ней намеренно: вопрос «наш ли предъявитель» без домена не задаётся,
+	// а читатели ниже по цепочке разбирают эту же строку и обязаны спрашивать ТОТ
+	// ЖЕ домен, что её впустил. Величина, взятая ими откуда-то ещё, была бы вторым
+	// местом об одном предмете.
+	domain TrustDomain
 }
 
-// WithCertIdentity stores the extracted cert-identity and the mTLS-verified flag
-// in ctx. Exposed so the principal-aware layer (and tests) can assert the
-// invariant deterministically without a live TLS peer.
-func WithCertIdentity(ctx context.Context, id string, verified bool) context.Context {
-	return context.WithValue(ctx, certIdentityCtxKey{}, certIdentity{id: id, verified: verified})
+// WithCertIdentityIn stores the extracted cert-identity, the domain it was
+// recognized under, and the mTLS-verified flag in ctx. Exposed so the
+// principal-aware layer (and tests) can assert the invariant deterministically
+// without a live TLS peer.
+//
+// # Почему домен здесь ОБЯЗАТЕЛЕН, а формы без него не существует
+//
+// Личность существует ОТНОСИТЕЛЬНО домена, и читатели ниже по цепочке
+// (`authzguard.SANToServiceDomain` и соседи) разбирают эту же строку, спрашивая
+// домен у контекста. Контекст, собранный без домена, отдал бы им нулевое
+// значение — и они fail-closed отвергли бы личность, которую сами же признали
+// нашей. Отказ при этом выглядел бы как отсутствие прав у законного модуля.
+//
+// Форма с двумя аргументами существовала и была снята: она собиралась молча и
+// давала ровно такой контекст. Запретить её значением было нечем — запретили
+// подписью.
+func WithCertIdentityIn(ctx context.Context, d TrustDomain, id string, verified bool) context.Context {
+	return context.WithValue(ctx, certIdentityCtxKey{}, certIdentity{id: id, verified: verified, domain: d})
 }
 
 // CertIdentityFromContext returns the extracted module identity and whether the
@@ -137,6 +163,27 @@ func CertIdentityFromContext(ctx context.Context) (id string, verified bool) {
 		return v.id, v.verified
 	}
 	return "", false
+}
+
+// CertIdentityDomainFromContext returns the trust domain the cert-identity on
+// ctx was recognized under.
+//
+// Существует затем, чтобы читатель личности НИЖЕ по цепочке разбирал её
+// относительно ТОГО ЖЕ домена, который её впустил. Домен, взятый им из своей
+// настройки, был бы вторым местом об одном предмете: две величины совпадают
+// сегодня и разъезжаются молча — а расхождение здесь означает либо отказ
+// законному модулю, либо признание чужого.
+//
+// Нулевой домен у контекста, никогда не проходившего извлекатель, — фейл-клоуз:
+// по необъявленному домену не опознаётся никто.
+func CertIdentityDomainFromContext(ctx context.Context) TrustDomain {
+	if ctx == nil {
+		return TrustDomain{}
+	}
+	if v, ok := ctx.Value(certIdentityCtxKey{}).(certIdentity); ok {
+		return v.domain
+	}
+	return TrustDomain{}
 }
 
 // peerTLSState classifies the transport security of the incoming peer:
@@ -171,17 +218,17 @@ func peerTLSState(ctx context.Context) (tlsPresent bool, verifiedCert *x509.Cert
 //   - insecure (plaintext) peer → ctx untouched (no cert-identity ever set);
 //     CertIdentityFromContext then reports ("", false) and the principal layer
 //     treats the insecure listener as dev backward-compat.
-func UnaryCertIdentityExtract() grpc.UnaryServerInterceptor {
+func UnaryCertIdentityExtract(d TrustDomain) grpc.UnaryServerInterceptor {
 	return func(ctx context.Context, req any, _ *grpc.UnaryServerInfo, handler grpc.UnaryHandler) (any, error) {
-		ctx = withCertIdentityFromPeer(ctx)
+		ctx = withCertIdentityFromPeer(d, ctx)
 		return handler(ctx, req)
 	}
 }
 
 // StreamCertIdentityExtract is the stream analogue of UnaryCertIdentityExtract.
-func StreamCertIdentityExtract() grpc.StreamServerInterceptor {
+func StreamCertIdentityExtract(d TrustDomain) grpc.StreamServerInterceptor {
 	return func(srv any, ss grpc.ServerStream, _ *grpc.StreamServerInfo, handler grpc.StreamHandler) error {
-		ctx := withCertIdentityFromPeer(ss.Context())
+		ctx := withCertIdentityFromPeer(d, ss.Context())
 		return handler(srv, &certIdentityStream{ServerStream: ss, ctx: ctx})
 	}
 }
@@ -193,7 +240,7 @@ type certIdentityStream struct {
 
 func (s *certIdentityStream) Context() context.Context { return s.ctx }
 
-func withCertIdentityFromPeer(ctx context.Context) context.Context {
+func withCertIdentityFromPeer(d TrustDomain, ctx context.Context) context.Context {
 	tlsPresent, leaf := peerTLSState(ctx)
 	if !tlsPresent {
 		// Insecure listener: no client-cert at all. Leave ctx untouched so the
@@ -204,9 +251,9 @@ func withCertIdentityFromPeer(ctx context.Context) context.Context {
 		// TLS but no verified client-cert (defense-in-depth). RequireAndVerify
 		// normally rejects this at handshake; if it ever reaches here, mark the
 		// peer not-verified so principal-metadata is dropped.
-		return WithCertIdentity(ctx, "", false)
+		return WithCertIdentityIn(ctx, d, "", false)
 	}
-	return WithCertIdentity(ctx, CertIdentity(leaf), true)
+	return WithCertIdentityIn(ctx, d, d.CertIdentity(leaf), true)
 }
 
 // UnaryTrustedPrincipalExtract reads x-kacho-principal-* metadata and exposes it
@@ -235,7 +282,10 @@ func withCertIdentityFromPeer(ctx context.Context) context.Context {
 func UnaryTrustedPrincipalExtract(opts ...TrustedPrincipalOption) grpc.UnaryServerInterceptor {
 	cfg := buildTrustedPrincipalConfig(opts)
 	return func(ctx context.Context, req any, _ *grpc.UnaryServerInfo, handler grpc.UnaryHandler) (any, error) {
-		ctx = withTrustedPrincipal(ctx, cfg)
+		ctx, err := withTrustedPrincipal(ctx, cfg)
+		if err != nil {
+			return nil, err
+		}
 		return handler(ctx, req)
 	}
 }
@@ -244,7 +294,10 @@ func UnaryTrustedPrincipalExtract(opts ...TrustedPrincipalOption) grpc.UnaryServ
 func StreamTrustedPrincipalExtract(opts ...TrustedPrincipalOption) grpc.StreamServerInterceptor {
 	cfg := buildTrustedPrincipalConfig(opts)
 	return func(srv any, ss grpc.ServerStream, _ *grpc.StreamServerInfo, handler grpc.StreamHandler) error {
-		ctx := withTrustedPrincipal(ss.Context(), cfg)
+		ctx, err := withTrustedPrincipal(ss.Context(), cfg)
+		if err != nil {
+			return err
+		}
 		return handler(srv, &certIdentityStream{ServerStream: ss, ctx: ctx})
 	}
 }
@@ -267,7 +320,15 @@ type trustedPrincipal struct {
 	trusted bool
 }
 
-func withTrustedPrincipal(ctx context.Context, cfg trustedPrincipalConfig) context.Context {
+// withTrustedPrincipal решает, чью личность несёт запрос, и ОТВЕРГАЕТ его, когда
+// личность была объявлена и не приехала (identity_arrival.go).
+//
+// Отказ живёт здесь, а не слоем ниже, потому что «объявлена» — утверждение
+// ЭТОГО слоя: он единственный знает, какие имена читает эта сборка и чью
+// пересылку слушатель почитает. Слой прав отверг бы такой запрос лишь на тех
+// записях каталога, где вопрос о субъекте задаётся, — а освобождённых от него
+// записей в каталоге хватает, и на них наследовать нечего.
+func withTrustedPrincipal(ctx context.Context, cfg trustedPrincipalConfig) (context.Context, error) {
 	trusted := principalIsTrusted(ctx, cfg)
 	// p is whatever the peer FORWARDED — nothing when it forwarded nothing. It is
 	// deliberately NOT seeded with the system principal: trust is a property of
@@ -299,7 +360,18 @@ func withTrustedPrincipal(ctx context.Context, cfg trustedPrincipalConfig) conte
 		// absence: the carrier must report "no principal", not a fabricated one.
 		ctx = operations.WithoutPrincipal(ctx)
 	}
-	return context.WithValue(ctx, trustedPrincipalCtxKey{}, trustedPrincipal{principal: p, acr: acr, trusted: trusted})
+	// Исход наблюдается ВСЕГДА, включая законную безымянность: без неё «личность
+	// объявлена и не приехала» неотличимо от роста безымянных вызовов, то есть
+	// не видно ничем.
+	outcome := arrivalUntrusted
+	if trusted {
+		outcome = classifyIdentityArrival(ctx, forwarded)
+	}
+	cfg.arrival.observe(outcome)
+	if outcome.refused() {
+		return ctx, refusalFor(outcome)
+	}
+	return context.WithValue(ctx, trustedPrincipalCtxKey{}, trustedPrincipal{principal: p, acr: acr, trusted: trusted}), nil
 }
 
 // principalIsTrusted implements the trust decision (see UnaryTrustedPrincipalExtract).

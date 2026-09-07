@@ -260,11 +260,11 @@ func requireDataplaneIsUnconditional(t *testing.T) {
 
 func TestDeclaredAcceptance_SelfTest(t *testing.T) {
 	const (
-		ours   = "https://iam.kacho.local"
+		ours   = "https://kaname.kacho.local"
 		theirs = "https://hydra.example.invalid"
-		oursKS = "https://kacho-iam-internal.kacho.svc:9097/.well-known/kacho/jwks.json"
-		legKS  = "https://kacho-iam-internal.kacho.svc:9097/.well-known/jwks.json"
-		revURL = "https://kacho-iam-internal.kacho.svc:9097/internal/tokens/introspect"
+		oursKS = "https://kaname-internal.kacho.svc:9097/.well-known/kaname/jwks.json"
+		legKS  = "https://kaname-internal.kacho.svc:9097/.well-known/jwks.json"
+		revURL = "https://kaname-internal.kacho.svc:9097/internal/tokens/introspect"
 	)
 	acceptance := func(mode, issuers, keySets, platform, revocation string) map[string]any {
 		return map[string]any{
@@ -307,7 +307,7 @@ func TestDeclaredAcceptance_SelfTest(t *testing.T) {
 		},
 		{
 			"боевая посадка, набор ключей по открытому HTTP",
-			acceptance("production", ours, ours+"=http://kacho-iam-internal.kacho.svc:9097/keys", "", ""),
+			acceptance("production", ours, ours+"=http://kaname-internal.kacho.svc:9097/keys", "", ""),
 			"https://",
 		},
 
@@ -319,7 +319,7 @@ func TestDeclaredAcceptance_SelfTest(t *testing.T) {
 		},
 		{
 			"посадка разработки: открытый HTTP допустим, наш издатель не принимается",
-			acceptance("dev", theirs, theirs+"=http://kacho-iam-internal.kacho.svc:9097/keys", "", ""),
+			acceptance("dev", theirs, theirs+"=http://kaname-internal.kacho.svc:9097/keys", "", ""),
 			"",
 		},
 	}

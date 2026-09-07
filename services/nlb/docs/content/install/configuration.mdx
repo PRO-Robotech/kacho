@@ -73,7 +73,7 @@ production — ещё и адреса peer-рёбер, в том числе `ext
   <tbody>
     <tr><td><code>extapi.vpc.internal-addr</code></td><td>kacho-vpc :9091 — Address / Subnet / NIC (IPAM)</td></tr>
     <tr><td><code>extapi.compute.internal-addr</code></td><td>kacho-compute :9091 — InstanceService.Get</td></tr>
-    <tr><td><code>extapi.iam.internal-addr</code></td><td>kacho-iam :9091 — ProjectService + InternalIAMService</td></tr>
+    <tr><td><code>extapi.iam.internal-addr</code></td><td>kaname :9091 — ProjectService + InternalIAMService</td></tr>
     <tr><td><code>extapi.def-dial-duration</code></td><td>Дефолтный таймаут дозвона (10s)</td></tr>
   </tbody>
 </table>
@@ -98,7 +98,7 @@ production — ещё и адреса peer-рёбер, в том числе `ext
 ### Secure by default
 
 По умолчанию (`mode: production`) операции **без авторизации и mTLS запрещены**: per-RPC Check
-и mTLS на **обоих** listener'ах обязательны. Если адрес kacho-iam не задан или TLS не включён —
+и mTLS на **обоих** listener'ах обязательны. Если адрес kaname не задан или TLS не включён —
 конфиг не проходит валидацию и сервис не стартует. Это инвариант «AuthN + AuthZ везде»
 (internal `:9091` не освобождён).
 
@@ -172,7 +172,7 @@ production оба server-флага и клиентские рёбра долж�
     extapi:
       vpc:      { internal-addr: kacho-vpc.kacho.svc:9091 }
       compute:  { internal-addr: kacho-compute.kacho.svc:9091 }
-      iam:      { internal-addr: kacho-iam.kacho.svc:9091 }
+      iam:      { internal-addr: kaname.kacho.svc:9091 }
 
     authz:
       list-filter:

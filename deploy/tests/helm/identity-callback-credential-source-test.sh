@@ -102,9 +102,9 @@ YEOF
   else echo "  (A) образец с источником               → ЛОЖНОЕ СРАБАТЫВАНИЕ ($code): $out"; rc=1; fi
 
   # (B) ИНЪЕКЦИЯ: ссылка вернулась в значение — обязан КРАСНЕТЬ
-  sed 's/value: ""/value: "${KACHO_IAM_HOOK_TOKEN}"/' "$tmp/base.yaml" > "$tmp/ref.yaml"
+  sed 's/value: ""/value: "${KANAME_HOOK_TOKEN}"/' "$tmp/base.yaml" > "$tmp/ref.yaml"
   run "$tmp/ref.yaml"
-  if [ "$code" = 1 ] && [[ "$out" == *'несёт ссылку ${KACHO_IAM_HOOK_TOKEN}'* ]]; then
+  if [ "$code" = 1 ] && [[ "$out" == *'несёт ссылку ${KANAME_HOOK_TOKEN}'* ]]; then
     echo "  (B) ссылка в значении конфигурации     → КРАСНЫЙ с координатой"
   else echo "  (B) ссылка в значении конфигурации     → ПРОПУСТИЛ ($code): $out"; rc=1; fi
 

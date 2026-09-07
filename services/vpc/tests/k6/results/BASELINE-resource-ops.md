@@ -53,7 +53,7 @@
 |---|---|---|
 | Кластер | локальный kind `kacho`, узел `kacho-control-plane`, **12 ядер / 63 ГиБ** | `kubectl config current-context` + `docker exec … nproc` |
 | Ревизия стенда | **установима только для iam**: `3ac72e097e1a…-dirty`. У vpc, края и geo метки ревизии на образе **нет** | `make stand-provenance` + `docker inspect … image.revision` |
-| Образы (запущенных подов) | `kacho-vpc:dev` `3e9b405625ec` · `kacho-api-gateway:dev` `ec77010d1633` · `kacho-iam:dev` `2cda8485f29f` · `kacho-geo:dev` `796615ced291` · `openfga/openfga:v1.14.0` | `imageID` **запущенных** подов, `crictl images` на узле |
+| Образы (запущенных подов) | `kacho-vpc:dev` `3e9b405625ec` · `kacho-api-gateway:dev` `ec77010d1633` · `kaname:dev` `2cda8485f29f` · `kacho-geo:dev` `796615ced291` · `openfga/openfga:v1.14.0` | `imageID` **запущенных** подов, `crictl images` на узле |
 | Предел процессора: край | **1.00 ядра** | `cpu.max` в cgroup живого контейнера |
 | Предел процессора: vpc | **2.00 ядра** | то же |
 | Предел процессора: iam | **1.00 ядра**, память **512 МиБ** | то же + `resources.limits` |
@@ -93,8 +93,8 @@ JWKS, не вердикт) и спрашивает отзыв у Hydra (кэш �
 ## Как разложена цена — делением измеренного на измеренное
 
 ```
-проверок на операцию      = Δ kacho_iam_authz_check_duration_seconds_count / Δ обслужено
-время проверок на операцию = Δ kacho_iam_authz_check_duration_seconds_sum   / Δ обслужено
+проверок на операцию      = Δ kaname_authz_check_duration_seconds_count / Δ обслужено
+время проверок на операцию = Δ kaname_authz_check_duration_seconds_sum   / Δ обслужено
 ```
 
 > **Этот счётчик видит НЕ ВСЮ проверку, и это надо знать, читая столбец.**

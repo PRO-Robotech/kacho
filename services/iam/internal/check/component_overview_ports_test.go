@@ -52,7 +52,7 @@ import (
 // вердикта приёмки — оно судит объявление, а не истинность.
 const (
 	// iamRegisterFileRel — единственное место, где службы садятся на слушатели.
-	iamRegisterFileRel = "services/iam/cmd/kacho-iam/grpc_register.go"
+	iamRegisterFileRel = "services/iam/cmd/kaname/grpc_register.go"
 	// iamOverviewDocRel — документ с таблицей портов.
 	iamOverviewDocRel = "services/iam/docs/engineering/components/00-overview.md"
 

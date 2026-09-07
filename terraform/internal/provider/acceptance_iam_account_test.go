@@ -43,7 +43,7 @@ func edgeKindAccount() *edgeKind {
 
 		Create: func(_ *fakeEdge, id string, req edgeObject) (edgeObject, error) {
 			// Отказ края воспроизведён дословно
-			// (services/iam/internal/apps/kacho/api/account/create.go): владелец —
+			// (services/iam/internal/apps/kaname/api/account/create.go): владелец —
 			// ВЫХОДНОЕ поле, и присланное значение отвергается, даже если это
 			// собственный идентификатор вызывающего. Принять и выбросить его было бы
 			// запрещённым третьим исходом: вызывающий получил бы успех на ввод, который
@@ -88,7 +88,7 @@ func accAccountConfig(e *fakeEdge, name, owner string) string {
 		line = fmt.Sprintf("\n  owner_user_id = %q", owner)
 	}
 	return accProvider(e) + fmt.Sprintf(`
-resource "kacho_iam_account" "t" {
+resource "kaname_account" "t" {
   name = %q%s
 }
 `, name, line)
@@ -114,11 +114,11 @@ func TestAcceptanceIAMAccount_CreatedWithoutNamingTheOwner(t *testing.T) {
 		Steps: []resource.TestStep{{
 			Config: accAccountConfig(e, "acc-probe", ""),
 			Check: resource.ComposeAggregateTestCheckFunc(
-				resource.TestCheckResourceAttrSet("kacho_iam_account.t", "id"),
+				resource.TestCheckResourceAttrSet("kaname_account.t", "id"),
 				// КТО заполняет поле, которого настройка не называла: край. Без этого
 				// утверждения проба зеленела бы и на провайдере, теряющем ответ, —
 				// а владелец аккаунта это ровно то, ради чего поле в ресурсе есть.
-				resource.TestCheckResourceAttr("kacho_iam_account.t", "owner_user_id", accAccountOwner),
+				resource.TestCheckResourceAttr("kaname_account.t", "owner_user_id", accAccountOwner),
 			),
 		}},
 	})

@@ -74,11 +74,14 @@ func describeCfg(t *testing.T) (config.Config, config.MTLSConfig) {
 	c.APIServer.SubscriptionIdlePoll = 2 * time.Second
 	c.Repository.Postgres.URL = "postgres://u@h:5432/db"
 	c.Repository.Postgres.SSLMode = "require"
-	c.AuthZ.IAMEndpoint = "kacho-iam-internal:9091"
+	c.AuthZ.IAMEndpoint = "kaname-internal:9091"
 	c.AuthZ.CacheTTL = 5 * time.Second
 	c.AuthZ.CheckTimeout = 2 * time.Second
 	c.AuthZ.DenyRateLimitPerSec = 100
 	c.AuthZ.TrustedForwarderSANs = []string{"spiffe://kacho.cloud/ns/kacho/sa/kacho-api-gateway"}
+	// Домен доверия — величина установки, и конструктор дескриптора требует её
+	// названной: процесс, не назвавший домена, своим не признаёт никого.
+	c.AuthZ.TrustDomainName = "kacho.cloud"
 
 	var m config.MTLSConfig
 	return c, m

@@ -7,7 +7,7 @@ package middleware_test
 // token path must be REFUSED in production / production-strict mode, even when a
 // dev-secret is configured. A validly-HS256-signed token (an attacker who learned
 // or guessed KACHO_API_GATEWAY_AUTHN_DEV_SECRET) otherwise yields a real
-// principal, and a `kacho_principal_type=service_account` claim is injected as a
+// principal, and a `kaname_principal_type=service_account` claim is injected as a
 // service_account with NO IAM lookup — symmetric-key principal forgery (CWE-347).
 // In production the ONLY accepted Bearer strategy is the asymmetric JWKS (Hydra)
 // verifier.
@@ -34,17 +34,17 @@ import (
 )
 
 // makeSAForgeryJWT mints a validly-HS256-signed token asserting a
-// service_account principal (kacho_principal_type=service_account + kacho_sa_id).
+// service_account principal (kaname_principal_type=service_account + kaname_sa_id).
 // This is the forgery payload: on the HMAC-dev path it is injected as a
 // service_account with NO IAM lookup.
 func makeSAForgeryJWT(t *testing.T, secret, saID string) string {
 	t.Helper()
 	tok := jwt.NewWithClaims(jwt.SigningMethodHS256, jwt.MapClaims{
-		"sub":                  saID,
-		"kacho_principal_type": "service_account",
-		"kacho_sa_id":          saID,
-		"exp":                  time.Now().Add(15 * time.Minute).Unix(),
-		"iat":                  time.Now().Unix(),
+		"sub":                   saID,
+		"kaname_principal_type": "service_account",
+		"kaname_sa_id":          saID,
+		"exp":                   time.Now().Add(15 * time.Minute).Unix(),
+		"iat":                   time.Now().Unix(),
 	})
 	signed, err := tok.SignedString([]byte(secret))
 	require.NoError(t, err)
@@ -80,7 +80,7 @@ func TestAuth_Production_HMACServiceAccountForgery_Rejected(t *testing.T) {
 	assert.False(t, called, "a forged HMAC service_account principal must never reach the backend in production")
 }
 
-// gRPC — even a well-formed HMAC USER token whose subject resolves in kacho-iam
+// gRPC — even a well-formed HMAC USER token whose subject resolves in kaname
 // must be refused in production-strict: the symmetric-key path is off entirely,
 // only the asymmetric JWKS verifier is accepted. RED before the fix: the token
 // validates, the subject resolves, the handler runs with a real user principal.

@@ -73,10 +73,10 @@ func mentioning(findings []string, id string) []string {
 }
 
 // realBearer — настоящий носитель дерева, на котором проверяется ось.
-const realBearer = "kacho.cloud.iam.v1.IssueSAKeyResponse.secret"
+const realBearer = "kaname.cloud.iam.v1.IssueSAKeyResponse.secret"
 
 // realExclusion — настоящая законная запись ведомости.
-const realExclusion = "kacho.cloud.iam.v1.IssueSAKeyResponse.public_key_pem"
+const realExclusion = "kaname.cloud.iam.v1.IssueSAKeyResponse.public_key_pem"
 
 // TestBAT1_73_Axis2_InjectionUnmarkedBearerIsAFinding — ОСЬ «снятая пометка».
 func TestBAT1_73_Axis2_InjectionUnmarkedBearerIsAFinding(t *testing.T) {
@@ -128,7 +128,7 @@ func TestBAT1_73_Axis2_InjectionUntouchedTreeIsSilent(t *testing.T) {
 // срабатом. Близнец берётся из НАСТОЯЩЕГО дерева и стоит рядом с находкой — в
 // том же сообщении.
 func TestBAT1_73_Axis2_InjectionNameThatMatchesNothingIsSilent(t *testing.T) {
-	const neighbour = "kacho.cloud.iam.v1.IssueSAKeyResponse.algorithm"
+	const neighbour = "kaname.cloud.iam.v1.IssueSAKeyResponse.algorithm"
 	fields := realSecretSurfaceFields(t)
 	if !hasField(fields, neighbour) {
 		t.Fatalf("соседнего поля %s в дереве нет — фикстура потеряла предмет", neighbour)
@@ -159,7 +159,7 @@ func TestBAT1_73_Axis2_InjectionMarkedAndListedIsAContradiction(t *testing.T) {
 	fields := realSecretSurfaceFields(t)
 	ledger := append([]secretSurfaceExclusion{}, secretSurfaceExclusions...)
 	ledger = append(ledger, secretSurfaceExclusion{
-		message: "kacho.cloud.iam.v1.IssueSAKeyResponse", field: "secret",
+		message: "kaname.cloud.iam.v1.IssueSAKeyResponse", field: "secret",
 		why: "синтетика инъекции: запись на ПОМЕЧЕННОЕ поле",
 	})
 

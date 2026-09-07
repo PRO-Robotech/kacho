@@ -11,6 +11,8 @@ import (
 	"testing"
 	"time"
 
+	corequota "github.com/PRO-Robotech/kacho/pkg/quota"
+
 	"github.com/PRO-Robotech/kacho/pkg/grpcclient"
 	"github.com/PRO-Robotech/kacho/pkg/grpcsrv"
 
@@ -44,7 +46,12 @@ func allEdgesSecured() config.Config {
 		AuthZTrustedForwarderSANs: []string{"spiffe://kacho.cloud/ns/kacho-system/sa/kacho-api-gateway"},
 		// per-object FGA List-filter active (production fail-closed gate).
 		ListFilterEnabled: true,
-		AuthZIAMGRPCAddr:  "kacho-iam.kacho.svc:9091",
+		AuthZIAMGRPCAddr:  "kaname.kacho.svc:9091",
+		// Ребро величин поднимается и защищается наравне с остальными:
+		// объявление «не развёрнут» вывело бы его из наблюдения, и ослабление
+		// его удостоверения перестало бы что-либо значить.
+		QuotaAuthority:     "kaname-internal.kacho.svc:9091",
+		QuotaAuthorityMTLS: grpcclient.TLSClient{Enable: true},
 	}
 }
 
@@ -288,7 +295,8 @@ func TestValidateAuthMode_ProductionStrict_RequiresListFilter(t *testing.T) {
 
 // dev не требует ни mTLS, ни SSL (insecure dev-defaults только логируются).
 func TestValidateAuthMode_DevNoGate(t *testing.T) {
-	prod, err := validateAuthMode(config.Config{AuthMode: "dev"}, discardLogger())
+	prod, err := validateAuthMode(config.Config{AuthMode: "dev",
+		QuotaAuthority: corequota.NotDeployed}, discardLogger())
 	if err != nil {
 		t.Fatalf("dev must not enforce any transport gate; got err: %v", err)
 	}
@@ -309,13 +317,20 @@ func securedProduction() config.Config {
 		AuthZTrustedForwarderSANs: []string{"spiffe://kacho.cloud/ns/kacho-system/sa/kacho-api-gateway"},
 		// per-object FGA List-filter active (production fail-closed gate).
 		ListFilterEnabled: true,
-		AuthZIAMGRPCAddr:  "kacho-iam.kacho.svc:9091",
+		AuthZIAMGRPCAddr:  "kaname.kacho.svc:9091",
 		// Транспорт ребра проверки прав: с тех пор как страж требует его в ОБОИХ
 		// боевых режимах, окружение без этой ручки боевым не является. Фикстура,
 		// снисходительнее продукта, делает невидимым ровно тот дефект, ради
 		// которого её подставляют, — поэтому измерение выставлено и здесь, а
 		// ослабляется только в своей пробе.
 		IAMAuthzMTLS: grpcclient.TLSClient{Enable: true},
+		// Объявление домена величин — часть законной посадки: у ручки ровно два
+		// законных значения, и незаданное среди них не значится. Здесь стоит
+		// «не развёрнут», потому что эта отправная точка ребра величин не
+		// поднимает: адрес без удостоверения был бы ВТОРЫМ ослаблением, и
+		// красное перестало бы означать то, что объявлено пробой. Посадку с
+		// поднятым ребром величин проверяет allEdgesSecured().
+		QuotaAuthority: corequota.NotDeployed,
 	}
 }
 
@@ -325,7 +340,8 @@ func securedProduction() config.Config {
 // production AuthMode leaves listeners plaintext … subject spoofing».
 func TestValidateAuthMode_Production_RequiresListenerMTLS(t *testing.T) {
 	// оба листенера plaintext (+ валидный DBSSL, чтобы изолировать listener-гейт).
-	cfg := config.Config{AuthMode: "production", DBSSLMode: "require"}
+	cfg := config.Config{AuthMode: "production", DBSSLMode: "require",
+		QuotaAuthority: corequota.NotDeployed}
 	_, err := validateAuthMode(cfg, discardLogger())
 	if err == nil {
 		t.Fatalf("production must reject plaintext listeners (forwarded principal spoofing)")
@@ -546,7 +562,8 @@ func TestValidateAuthMode_Production_AcceptsFailClosedListFilter(t *testing.T) {
 // В dev аварийный degraded-режим остаётся доступен — там он и задуман
 // (паритет с AUTHZ_BREAKGLASS, который production отвергает, а dev допускает).
 func TestValidateAuthMode_Dev_AllowsListFilterFailOpen(t *testing.T) {
-	cfg := config.Config{AuthMode: "dev", ListFilterFailOpen: true}
+	cfg := config.Config{AuthMode: "dev", ListFilterFailOpen: true,
+		QuotaAuthority: corequota.NotDeployed}
 	if _, err := validateAuthMode(cfg, discardLogger()); err != nil {
 		t.Fatalf("dev must keep the emergency degraded mode available; got: %v", err)
 	}
@@ -586,7 +603,8 @@ func TestValidateAuthMode_ProductionStrict_SkipPeerValidationRefusesBoot(t *test
 
 // dev — единственный режим, где выключатель задуман; там он остаётся доступен.
 func TestValidateAuthMode_Dev_SkipPeerValidationAllowed(t *testing.T) {
-	if _, err := validateAuthMode(config.Config{AuthMode: "dev", SkipPeerValidation: true}, discardLogger()); err != nil {
+	if _, err := validateAuthMode(config.Config{AuthMode: "dev", SkipPeerValidation: true,
+		QuotaAuthority: corequota.NotDeployed}, discardLogger()); err != nil {
 		t.Fatalf("dev must keep the skip-peer-validation escape available; got: %v", err)
 	}
 }

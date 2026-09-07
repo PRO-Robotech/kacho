@@ -92,10 +92,10 @@ func TestStepDeclarationGateFailsOnAReturnedDefect(t *testing.T) {
 		f := newStepFixture(t)
 		f.replaceOnce(t, anchorOptional,
 			"          key: smtpConnectionURI\n"+
-				"          optional: true    - name: KACHO_IAM_HOOK_TOKEN\n"+
+				"          optional: true    - name: KANAME_HOOK_TOKEN\n"+
 				"      valueFrom:\n"+
 				"        secretKeyRef:\n"+
-				"          name: kacho-iam-hook-token\n"+
+				"          name: kaname-hook-token\n"+
 				"          key: token\n"+
 				"          optional: true")
 		got := f.findings(t)
@@ -116,7 +116,7 @@ func TestStepDeclarationGateFailsOnAReturnedDefect(t *testing.T) {
 		f.replaceOnce(t, anchorOptional,
 			"          key: smtpConnectionURI\n"+
 				"          optional: true\n"+
-				"    - name: KACHO_IAM_HOOK_TOKEN\n"+
+				"    - name: KANAME_HOOK_TOKEN\n"+
 				"      value: \"второе объявление того же имени\"")
 		got := f.findings(t)
 		if len(got) == 0 {
@@ -133,7 +133,7 @@ func TestStepDeclarationGateFailsOnAReturnedDefect(t *testing.T) {
 			"          key: smtpConnectionURI\n"+
 				"          optional: true\n"+
 				"    - name: KACHO_IDENTITY_TWIN\n"+
-				"      value: \"true    - name: KACHO_IAM_HOOK_TOKEN\"")
+				"      value: \"true    - name: KANAME_HOOK_TOKEN\"")
 		if got := f.findings(t); len(got) != 0 {
 			t.Errorf("гейт краснеет на ЗАКОННОМ близнеце — он ловит подстроку, а не разбор: %v", got)
 		}

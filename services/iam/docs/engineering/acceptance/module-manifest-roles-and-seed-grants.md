@@ -44,7 +44,7 @@ SPDX-License-Identifier: AGPL-3.0-or-later
 - **Тип изменения:** ВВОДЯЩЕЕ. Заводится экспортёр «манифест → политика роли» и
   валидатор целостности ролей и преднастроенных выдач. **Ни одного нового поля
   публичного контракта**: `Rule` и `CreateAccessBindingRequest` не трогаются
-- **Сервис:** `kacho-iam` — предмет целиком внутри него, поэтому документ живёт
+- **Сервис:** `kaname` — предмет целиком внутри него, поэтому документ живёт
   рядом с кодом
 - **Миграции:** изменение их **ТРЕБУЕТ** — см. §7. Новая миграция обязана
   цитировать эту приёмку, а `docs/acceptance-ledger.yaml` — нести запись с её
@@ -272,7 +272,7 @@ MOD-RL-08 («участник НЕ получает разрешения на д
 Замер рецензии верен и **узок**: он сверял имя с набором глаголов ТИПА. Настоящий
 вопрос шире — **какое отношение требует гейт этого действия**, и отвечает на него
 каталог прав, а не набор типа. Перепись 92 поимённых глаголов черновика против
-`gateway/internal/middleware/embed/permission_catalog.json` (346 записей; в `services/iam/internal/apps/kacho/seed/embedded/permission_catalog.json`
+`gateway/internal/middleware/embed/permission_catalog.json` (346 записей; в `services/iam/internal/apps/kaname/seed/embedded/permission_catalog.json`
 лежит **побайтово равная** копия — сверено чтением обоих файлов), ключ — метод RPC,
 **не сопоставлено 0**:
 
@@ -2468,7 +2468,7 @@ MOD-RL-13 — провязка готового, а не новый код.
 (`seed/embedded/permission_catalog.json`) и таблицу глаголов типа (`authzmap`), а
 домен по правилу `architecture.md` не зависит ни от того, ни от другого.
 
-**Почему не в `internal/apps/kacho/api/role`:** там use-case публичного RPC; экспорт
+**Почему не в `internal/apps/kaname/api/role`:** там use-case публичного RPC; экспорт
 манифеста RPC не заводит вовсе (§Тип изменения) и на пути запроса не стоит.
 
 ---
@@ -2491,7 +2491,7 @@ MOD-RL-13 — провязка готового, а не новый код.
 
 **Способ заведения сегодня — ровно один: применённая миграция.** Строка роли
 пишется сырым SQL; её проекции (селекторы и глаголы) досеваются на старте —
-`SyncAllSystemRoleSelectors` (`services/iam/internal/apps/kacho/seed/migrate_backfill.go:231`)
+`SyncAllSystemRoleSelectors` (`services/iam/internal/apps/kaname/seed/migrate_backfill.go:231`)
 и парная ей полоса глаголов, у которой после `#1028` **один писатель**
 (гейт `TestIAMRV112_RoleVerbProjectionHasASoleWriter`). Литералов ролей в Go-коде
 продукта нет: перечень живёт в SQL.
@@ -2800,9 +2800,12 @@ vpc (не уникальное имя — вхождение: одно и то �
 > `RoleTierTypes` кластерный ярус перечисляет. Опубликованная схема манифеста
 > приведена к тому же.
 >
-> Замер на ревизии `ebd6122895` (единица счёта названа у каждого числа):
+> Замер на ревизии `2171a6690a` (единица счёта названа у каждого числа; прежняя
+> редакция называла `ebd6122895` — ревизию своей линии, в историю ствола не
+> входящую. Объявление стоит внутри выноски, и прежний образец гейта датировки
+> такие строки не судил вовсе — находка пряталась в счётчике прозы):
 > ```sh
-> git grep -n 'ErrSystemRoleNotAuthorable' -- services/iam ':!*_test.go'
+> git grep -n 'ErrSystemRoleNotAuthorable' -- 'services/iam/**/*.go' ':!*_test.go'
 > #   → 1 строка, и та НАДГРОБИЕ в комментарии (roles.go:24); отказа нет
 > grep -n 'ScopeTypeClusterDotted' services/iam/internal/manifest/roles.go
 > #   → 551 (перечень принимаемых ярусов) и 645 (чтение якоря singleton'а)
@@ -3105,7 +3108,7 @@ MOD-RL-18 (единица — недостающее имя) и три MOD-RL-19
 типы субъектов это отношение принимает по модели.
 
 **Признак нарушения — механический, и производитель у него есть:** запись каталога прав
-(`services/iam/internal/apps/kacho/seed/embedded/permission_catalog.json`, 346 записей,
+(`services/iam/internal/apps/kaname/seed/embedded/permission_catalog.json`, 346 записей,
 побайтово равен копии края), **обе её половины сразу**: `required_relation` **и**
 `scope_extractor.object_type`.
 
@@ -3523,7 +3526,7 @@ listOperations, listUsedAddresses]}` — все семь гейтятся `v_*` 
 >
 > **Производитель Then назван, и кругом 5 он стал ПАРОЙ полей одной записи:**
 > `required_relation` **и** `scope_extractor.object_type` записи каталога
-> `services/iam/internal/apps/kacho/seed/embedded/permission_catalog.json` (346 записей,
+> `services/iam/internal/apps/kaname/seed/embedded/permission_catalog.json` (346 записей,
 > уже встроен в iam и читается `seed/permissions.go:88`). Множество производимого —
 > `{v_*} ∪ {viewer, editor, admin}` **на объекте типа ресурса**, и оно **выводится** из
 > `authzmap.VerbsOfType` / `reconcile/tuples.go` / `domain.Rules.ScopeSelfVerbs`, а не
@@ -4399,7 +4402,7 @@ MOD-RL-21 (полнота относительно живого); заведен
 | набор глаголов типа | `authzmap.VerbsOfType` (`fga_types.go:204`), таблица `typeVerbRelations` | какие `v_*` тип объявляет |
 | приведение правила к глаголам | `authzmap.GrantedVerbs` (`role_verbs.go:51`) | что роль даёт на типе, включая `update ⇒ delete` (`role_verbs.go:91`) |
 | ярус правила | `domain.ResolveVerbsAndTier` (`rule_verbs.go:63`), эмиссия — `reconcile/tuples.go:62,166` | `viewer`/`editor`/`admin` |
-| каталог прав | `services/iam/internal/apps/kacho/seed/embedded/permission_catalog.json` (346 записей, читается `seed/permissions.go:88`; побайтово равен копии края) | `required_relation` и `scope_extractor` каждого действия — **обе половины**, и обе читаются §3.6 п. 3 и §3.7 (до круга 5 второй половины не читала ни одна норма, Р18) |
+| каталог прав | `services/iam/internal/apps/kaname/seed/embedded/permission_catalog.json` (346 записей, читается `seed/permissions.go:88`; побайтово равен копии края) | `required_relation` и `scope_extractor` каждого действия — **обе половины**, и обе читаются §3.6 п. 3 и §3.7 (до круга 5 второй половины не читала ни одна норма, Р18) |
 | типы субъектов, принимаемые отношением | `proto/kacho/cloud/iam/v1/fga_model.fga` — объявления отношений типа `cluster` (`:192` `system_admin`, `:193` `system_viewer`) | вторая половина отказа MOD-RL-19: годен ли получатель-группа |
 | поля формы выдачи | `manifest/manifest.go:170-176` (`Subjects`, `RoleID`, `ScopeType`, `ScopeID`, `Target`, `Resources`), `:187` `TargetResource` | MOD-RL-23 — структура **есть**, читателей у четырёх полей **нет** (§3.9) |
 | форма правила | `proto/kacho/cloud/iam/v1/role.proto:172`; пределы — `domain/rule.go:46,61` | `Rule`, `maxRuleElems = 16`, `ruleVerbRe` |

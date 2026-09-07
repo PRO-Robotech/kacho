@@ -19,10 +19,10 @@
 // под кратким исполняется РОВНО НОЛЬ тестов (63 пропуска, 0 проходов) — то есть
 // их вклад в сигнал CI пуст, а выглядит он как зелёный:
 //
-//	services/iam/internal/apps/kacho/api/audit      20 пропущено, 0 пройдено
+//	services/iam/internal/apps/kaname/api/audit      20 пропущено, 0 пройдено
 //	services/nlb/internal/apps/kacho/jobs           20 / 0
 //	pkg/migrations/common                           10 / 0
-//	services/iam/internal/apps/kacho/api/readauthz   6 / 0
+//	services/iam/internal/apps/kaname/api/readauthz   6 / 0
 //	services/nlb/internal/migrations                 3 / 0
 //	services/{iam,storage,vpc}/internal/migrations   по 1 / 0
 //	services/registry/internal/dataplane/e2e         1 / 0
@@ -183,12 +183,12 @@ var shortGatedOutsideSelection = []string{
 	"pkg/outbox/metrics",
 	"pkg/outbox/reconciler",
 	"services/compute/internal/handler",
-	"services/iam/internal/apps/kacho/api/audit",
-	"services/iam/internal/apps/kacho/api/cluster",
-	"services/iam/internal/apps/kacho/api/internal_iam",
-	"services/iam/internal/apps/kacho/api/sa_keys",
-	"services/iam/internal/apps/kacho/api/session_revocations",
-	"services/iam/internal/apps/kacho/seed",
+	"services/iam/internal/apps/kaname/api/audit",
+	"services/iam/internal/apps/kaname/api/cluster",
+	"services/iam/internal/apps/kaname/api/internal_iam",
+	"services/iam/internal/apps/kaname/api/sa_keys",
+	"services/iam/internal/apps/kaname/api/session_revocations",
+	"services/iam/internal/apps/kaname/seed",
 	"services/nlb/internal/apps/kacho/api/loadbalancer",
 	"services/nlb/internal/apps/kacho/api/targetgroup",
 	"services/registry/internal/dataplane/e2e",
@@ -300,12 +300,12 @@ var shortGatedRunByOwnCIStep = map[string]string{
 	"services/storage/internal/migrations": "make test-pg-outside-selection",
 	"services/vpc/internal/migrations":     "make test-pg-outside-selection",
 
-	"services/iam/internal/apps/kacho/api/bootstrap_token": "make test-pg-outside-selection",
+	"services/iam/internal/apps/kaname/api/bootstrap_token": "make test-pg-outside-selection",
 
 	// Фоновые проходы nlb (реклейм VIP застрявших балансировщиков и слив
 	// таргетов). Двадцать проб, все с настоящим Postgres, все гейтятся кратким
 	// режимом — и до задачи #495 их не исполняла НИ ОДНА джоба: быстрая волна
-	// пропускает, отбор интеграционной идёт по пути и до apps/kacho/jobs не
+	// пропускает, отбор интеграционной идёт по пути и до apps/kaname/jobs не
 	// достаёт. Разрыв был не теоретическим: фикстура реклеймера перестала
 	// вставляться при появлении миграции 0035, десять проб стали красны на самом
 	// стволе, и ни один вердикт конвейера этого не сказал — пакет, отдавший ноль
@@ -363,9 +363,9 @@ var shortGatedRunByOwnCIStep = map[string]string{
 	// Причина освобождения не изменилась (пакеты лежат в apps/ и internal/authz*,
 	// отбор интеграционной джобы идёт по пути и до них не достаёт), сменился
 	// исполнитель.
-	"services/iam/internal/apps/kacho/api/access_binding": "make test-pg-outside-selection",
-	"services/iam/internal/apps/kacho/api/readauthz":      "make test-pg-outside-selection",
-	"services/iam/internal/authzmap":                      "make test-pg-outside-selection",
+	"services/iam/internal/apps/kaname/api/access_binding": "make test-pg-outside-selection",
+	"services/iam/internal/apps/kaname/api/readauthz":      "make test-pg-outside-selection",
+	"services/iam/internal/authzmap":                       "make test-pg-outside-selection",
 
 	// Пробы «страница списка есть страница ВИДИМОГО» (задача #645) — настоящий
 	// Postgres по всем семи списочным поверхностям (прежде — он же и внешний
@@ -378,12 +378,12 @@ var shortGatedRunByOwnCIStep = map[string]string{
 	// пути и до него не достаёт, а под кратким он пропускает себя целиком. Без
 	// этой строки шестьдесят проб печатали бы `ok`, не исполнившись ни разу, —
 	// ровно тот исход, ради предотвращения которого и заведён этот перечень.
-	"services/iam/internal/apps/kacho/api/listvisibility": "make test-pg-outside-selection",
+	"services/iam/internal/apps/kaname/api/listvisibility": "make test-pg-outside-selection",
 	// Снятие фактов объекта личности вместе со строкой человека (IAM-ID-1-61):
 	// проба спрашивает СВОЮ базу о том, исчезли ли прямые факты, — снятие, которое
 	// не доехало, иначе не отличить от применённого. Остальные пробы пакета — юниты по фейкам и идут в быстрой
 	// джобе.
-	"services/iam/internal/apps/kacho/api/user": "make test-pg-outside-selection",
+	"services/iam/internal/apps/kaname/api/user": "make test-pg-outside-selection",
 	// Снимок множества доступа (IAM-ID-1-28/29/30): страницы объектов берутся
 	// курсором из своей базы, а вопрос о доступе задаётся ПРОДОВОЙ дверью решения —
 	// подменив её, инструмент утверждал бы про свою копию правил. Юнит-пробы компаратора идут в быстрой джобе.
@@ -425,7 +425,7 @@ var shortGatedRunByOwnCIStep = map[string]string{
 	//
 	// Долгом это быть не может ровно по доводу соседней записи: предмет пробы —
 	// доказательство ПРОГОНОМ. Соседние пробы применителя (их семь, в
-	// `internal/repo/kacho/pg/`) зелены и оставались зелёными, когда объявленная
+	// `internal/repo/kaname/pg/`) зелены и оставались зелёными, когда объявленная
 	// роль до базы НЕ доезжала: они зовут применитель сами, а на пути старта его
 	// не звал никто. Не исполняйся эта проба — та же слепота вернулась бы, только
 	// уже к самой провязке.
@@ -434,7 +434,7 @@ var shortGatedRunByOwnCIStep = map[string]string{
 	// (`services/<svc>/internal/(repo|clients|reconciler|subscriptionjournal)`) до
 	// него не достаёт by construction, а перенести пробу внутрь отбора нельзя:
 	// проверяемое — сам композиционный корень, и он `package main`.
-	"services/iam/cmd/kacho-iam": pgOutsideMakeTarget,
+	"services/iam/cmd/kaname": pgOutsideMakeTarget,
 
 	// Сверка объявленного манифестом ПОСЕВА модуля с ЖИВОЙ базой (#1891, вторая
 	// половина предиката). Довод тот же и по той же причине: действующий посев
@@ -468,7 +468,7 @@ var shortGatedRunByOwnCIStep = map[string]string{
 	// назвать. Что ИЗМЕРЕНО: пакет собирается и под кратким режимом зелен целиком
 	// (`go test -C services/iam ./internal/observability/metrics/ -short -count=1`
 	// → ok, 0.182 с), пропуск в нём ровно один и гейтится только `-short`, а
-	// таблица пробы `kacho_iam.provider_compensation_outbox` заводится миграцией
+	// таблица пробы `kaname.provider_compensation_outbox` заводится миграцией
 	// 0001, то есть предпосылка прогона в дереве есть.
 	// Предикат снятия оговорки: тот же прогон без `-short` на машине со свободным
 	// местом — впишите сюда его время.

@@ -50,7 +50,7 @@ check "опечатка в адресе репозитория" transient \
 
 # ── (д) НАШЕ: локального сабчарта нет.
 check "локальный сабчарт отсутствует" ours \
-'Error: directory /w/deploy/helm/umbrella/charts/kacho-iam not found'
+'Error: directory /w/deploy/helm/umbrella/charts/kaname not found'
 
 # ── (е) НАШЕ: пин мёртв. Проверяется ПЕРВЫМ даже когда рядом чужая недоступность.
 check "мёртвый пин рядом с чужим отказом" ours \

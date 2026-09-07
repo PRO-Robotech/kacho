@@ -82,7 +82,7 @@ jobs:
         if: ${{ always() && steps.stand.outcome == 'success' }}
         run: |
           "$GITHUB_WORKSPACE/.github/scripts/stand-present-or-explain.sh" "стенд" || exit 0
-          for d in kacho-iam vpc compute kacho-nlb kacho-geo api-gateway; do
+          for d in kaname vpc compute kacho-nlb kacho-geo api-gateway; do
             kubectl -n kacho logs "deploy/$d" --tail=20000 > "stand-logs/$d.log" || true
           done
 `
@@ -145,7 +145,7 @@ func TestSL_Run2_EnumeratedListRedsOnlyTheNewGate(t *testing.T) {
 	joined := strings.Join(finds, "\n")
 	// Находка обязана называть КООРДИНАТУ и сам перечень: без них читатель не
 	// знает, что чинить, и тратит на догадку целый прогон.
-	for _, want := range []string{"synthetic.yml", "журналы сервисов", "kacho-iam"} {
+	for _, want := range []string{"synthetic.yml", "журналы сервисов", "kaname"} {
 		if !strings.Contains(joined, want) {
 			t.Fatalf("находка не называет %q — чинить по ней нельзя:\n%s", want, joined)
 		}
@@ -218,7 +218,7 @@ jobs:
       - name: журналы сервисов
         run: |
           # Здесь стоял выписанный перечень:
-          #   for d in kacho-iam vpc compute kacho-nlb; do kubectl logs "deploy/$d"; done
+          #   for d in kaname vpc compute kacho-nlb; do kubectl logs "deploy/$d"; done
           # Он снят: перечень выводится из стенда.
           "$GITHUB_WORKSPACE/.github/scripts/collect-stand-logs.sh" kacho stand-logs
 `
@@ -308,7 +308,7 @@ func slRunCollector(t *testing.T, workloads, unreadable string) (string, int, st
 // ГЛАВНОЕ УТВЕРЖДЕНИЕ #1741: служба, которой выписанный перечень НЕ ЗНАЛ,
 // попадает в сбор — потому что перечень спрашивается у стенда.
 func TestSL_CollectorTakesServicesTheOldListNeverNamed(t *testing.T) {
-	const workloads = "deployment.apps/kacho-iam deployment.apps/kratos " +
+	const workloads = "deployment.apps/kaname deployment.apps/kratos " +
 		"deployment.apps/kratos-courier deployment.apps/hydra statefulset.apps/zot"
 	out, code, dir := slRunCollector(t, workloads, "")
 	if code != 0 {
@@ -334,7 +334,7 @@ func TestSL_CollectorTakesServicesTheOldListNeverNamed(t *testing.T) {
 
 func TestSL_UnreadableLogIsNamedByNumberAndAnnotation(t *testing.T) {
 	out, code, dir := slRunCollector(t,
-		"deployment.apps/kacho-iam deployment.apps/kratos", "kratos")
+		"deployment.apps/kaname deployment.apps/kratos", "kratos")
 	if code != 0 {
 		t.Fatalf("сборщик вынес вердикт (код %d) на недоступном журнале\n%s", code, out)
 	}

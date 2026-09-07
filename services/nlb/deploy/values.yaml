@@ -1,6 +1,23 @@
 # Copyright (c) PRO-Robotech
 # SPDX-License-Identifier: BUSL-1.1
 
+# ОБЪЯВЛЕНИЕ домена величин. Ровно два законных значения: адрес в форме
+# host:port либо слово `not-deployed`. Пустое значение — НЕ умолчание, а отказ
+# старта: умолчание означало бы выбор за оператора между «потолки действуют» и
+# «потолков нет», и выбор этот был бы невидим.
+#
+# Объявление ОДНО на обе полосы ребра — разрешение величины на пути запроса и
+# фоновую дельту. Приёмка
+# `docs/specs/sub-phase-KAN-QUOTA-1-limit-authority-leaves-iam-acceptance.md`,
+# стадия S1.
+#
+# Сегодня домен величин живёт внутри службы доступа, поэтому значение указывает
+# на её внутренний слушатель, и поведение продукта не меняется ни на байт.
+# Уедет домен — правится ЭТА строка, а не код пяти потребителей.
+quota:
+  authority: "kaname-internal.kacho.svc:9091"
+
+
 # ─── Workload identity / image ────────────────────────────────────────────────
 name: kacho-nlb
 namespace: kacho
@@ -80,11 +97,11 @@ config:
     # Sustained rate (per second, per principal) of the authorization checks the
     # verdict cache does NOT absorb: denials, no-path misses, model outages.
     # Beyond it the decision link answers ResourceExhausted without asking
-    # kacho-iam — it sheds the denial storm off the neighbour. Must be > 0:
+    # kaname — it sheds the denial storm off the neighbour. Must be > 0:
     # a non-positive value reads as "no limit" to the mechanism, so the cut-off
     # would switch itself off silently.
     denyBudgetPerSec: 100
-    # RBAC sub-phase D §11 (issue #111): per-object filtered List via kacho-iam
+    # RBAC sub-phase D §11 (issue #111): per-object filtered List via kaname
     # AuthorizeService.BatchCheck (reuse peers.iam conn). default on.
     # fail-closed (security.md) — failOpen=false; iam down → List → UNAVAILABLE.
     listFilter:
@@ -109,7 +126,7 @@ config:
     # значение, продукт его не применял.
     # requireIam — fail-closed загрузочный гейт. true → мутирующий Create
     # отвергается (UNAVAILABLE), а под остаётся NotReady, пока register-drainer
-    # не подключён к kacho-iam: ресурс не создаётся, пока его намерение о
+    # не подключён к kaname: ресурс не создаётся, пока его намерение о
     # владении некуда доставить. Иначе созданный в этом окне балансировщик
     # остаётся без владельца, а его создатель получает отказ на своём ресурсе.
     #
@@ -171,10 +188,10 @@ peers:
   iam:
     # KAC-178 §2 follow-up: ProjectService.Get живёт на PUBLIC iam listener (9090).
     # InternalIAMService.{Check,RegisterResource} — на INTERNAL (9091).
-    # Раньше defaults были оба на 9091 + неверный service `kacho-iam:9091`
+    # Раньше defaults были оба на 9091 + неверный service `kaname:9091`
     # (у него только port 9090) → ProjectService Unimplemented → 'project lookup failed'.
-    addr: kacho-iam.kacho.svc:9090              # ProjectService (public 9090)
-    internalAddr: kacho-iam-internal.kacho.svc:9091  # InternalIAMService.{Check, RegisterResource}
+    addr: kaname.kacho.svc:9090              # ProjectService (public 9090)
+    internalAddr: kaname-internal.kacho.svc:9091  # InternalIAMService.{Check, RegisterResource}
     tls: false
     dialDuration: 10s
   vpc:
@@ -218,8 +235,8 @@ authz:
 #   mtls.compute      → nlb→compute (Instance-resolve — NOT geography)
 #   mtls.geo          → nlb→geo :9090 (RegionService.Get, epic kacho-geo)
 # serverName на dial-стороне = реальный dial-host (∈ server-SAN пира, КРИТ#1).
-# SEC-I (OQ-5 (b)): iam-register=kacho-iam-internal.* (:9091), iam-project=
-# kacho-iam.* (:9090) — per-listener split (единый ServerName не покрывает оба
+# SEC-I (OQ-5 (b)): iam-register=kaname-internal.* (:9091), iam-project=
+# kaname.* (:9090) — per-listener split (единый ServerName не покрывает оба
 # iam-listener'а под SEC-H RequireAndVerifyClientCert; I6 / latent-bug D-04).
 mtls:
   enable: false
@@ -245,13 +262,16 @@ mtls:
     vpc: false           # nlb→vpc Address/Subnet/NIC
     compute: false       # nlb→compute Instance-resolve (NOT geography)
     geo: false           # nlb→geo :9090 RegionService.Get (epic kacho-geo)
+    quotaAuthority: false # nlb→домен величин (Resolve + ListChangedSince, :9091)
   serverName:
-    iamRegister: kacho-iam-internal.kacho.svc
-    iamProject: kacho-iam.kacho.svc
+    iamRegister: kaname-internal.kacho.svc
+    iamProject: kaname.kacho.svc
     vpc: vpc.kacho.svc
     compute: compute.kacho.svc
     # serverName = реальный :9090 dial-host (∈ geo server-SAN, КРИТ#1).
     geo: kacho-geo.kacho.svc
+    # домен величин; сегодня — внутренний слушатель службы доступа.
+    quotaAuthority: kaname-internal.kacho.svc
 
 # ─── Resource requests/limits + probes ────────────────────────────────────────
 resources:

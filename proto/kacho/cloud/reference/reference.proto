@@ -17,7 +17,7 @@ option go_package = "github.com/PRO-Robotech/kacho/pkg/api/kacho/cloud/reference
 //      vpc (NIC/Address/SG usedBy), storage (Volume usedBy).
 //   2. iam.v1.ResourceRef{type,id}        — closed-table authz/AccessBinding target
 //      (БЕЗ name; `type` из закрытого FGA object-type словаря). Живёт в
-//      kacho/cloud/iam/v1/authorize_service.proto (пакет kacho.cloud.iam.v1) и
+//      kaname/cloud/iam/v1/authorize_service.proto (пакет kaname.cloud.iam.v1) и
 //      переиспользуется AccessBinding.target в том же пакете (import, без
 //      relocation — F8 iam-редизайн добавляет поле; wire/Go-тип уже доступен).
 //   3. registry.v1 OCI referrer-граф      — OCI-1.1 artifact граф (подпись/SBOM/

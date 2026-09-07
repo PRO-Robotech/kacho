@@ -20,10 +20,10 @@
 //
 // # Где наблюдалось
 //
-// Задача #1484. `services/iam/internal/repo/kacho/pg/testhelpers.go` — непроверочный
+// Задача #1484. `services/iam/internal/repo/kaname/pg/testhelpers.go` — непроверочный
 // файл пакета, который импортирует прод-код, — тянул `pkg/pgtest`, а тот
 // `testcontainers-go` вместе с клиентом Docker. Задеты были два бинаря:
-// `services/iam/cmd/kacho-iam` и
+// `services/iam/cmd/kaname` и
 // `services/iam/internal/scopesourcecensus/cmd/scope-source-census-sql` — по 54
 // пакета в каждом, при нуле у всех остальных.
 //

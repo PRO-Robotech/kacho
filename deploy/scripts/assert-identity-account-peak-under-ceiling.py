@@ -63,7 +63,7 @@ CEREMONY_DECL = "tests/authz-fixtures/ceremony_credentials.py"
 CEREMONY_SEED = "tests/authz-fixtures/prodseed_ceremony.py"
 NEIGHBOUR_GATE = "deploy/scripts/assert-cocreated-child-is-torn-down.py"
 IAM_MIGRATIONS = "services/iam/internal/migrations"
-BOOTSTRAP_SOURCE = "services/iam/internal/apps/kacho/api/user/internal_upsert.go"
+BOOTSTRAP_SOURCE = "services/iam/internal/apps/kaname/api/user/internal_upsert.go"
 
 # Предъявители ОДНОГО человека церемонии. Оба обязаны стоять в объявлении церемонии —
 # это проверяется, а не предполагается: переименуют один, и счёт молча перестанет
@@ -88,7 +88,7 @@ BEARER = re.compile(r"bearer from env '([A-Za-z0-9_]+)'")
 # Поэтому: обход ВСЕГО каталога миграций и разбор ПО ИМЕНИ КОЛОНКИ. Первое
 # переживает переименование и свод файлов, второе — перестановку колонок,
 # то есть ровно те два способа, которыми гейт уже сломался.
-QUOTA_TABLE = "kacho_iam.limits"
+QUOTA_TABLE = "kaname.limits"
 QUOTA_WHERE = {"scope": "DEFAULT", "scope_id": "", "kind": "iam.account",
                "withdrawn_at": "NULL"}
 
@@ -763,7 +763,7 @@ def self_test() -> int:
     # него: иначе неизвестно, какой из двух дал отказ.
     import tempfile  # noqa: PLC0415 — нужен только здесь
 
-    _CANON = ("INSERT INTO kacho_iam.limits (id, created_at, scope, scope_id, "
+    _CANON = ("INSERT INTO kaname.limits (id, created_at, scope, scope_id, "
               "kind, limit_value, withdrawn_at, revision) VALUES "
               "('lim-00000000000000032', now(), 'DEFAULT', '', 'iam.account', "
               "5, NULL, 32);\n")
@@ -785,7 +785,7 @@ def self_test() -> int:
 
     # ОСЬ 1 — перестановка колонок. Ровно тот факт, на котором гейт сломался:
     # позиционный разбор вернул бы чужое число либо промолчал.
-    _shuffled = ("INSERT INTO kacho_iam.limits (kind, limit_value, scope, "
+    _shuffled = ("INSERT INTO kaname.limits (kind, limit_value, scope, "
                  "scope_id, withdrawn_at, id, revision, created_at) VALUES "
                  "('iam.account', 5, 'DEFAULT', '', NULL, "
                  "'lim-00000000000000032', 32, now());\n")
@@ -818,7 +818,7 @@ def self_test() -> int:
         # Незнакомая форма записи — ОТКАЗ, а не молчаливый пропуск: пропуск увёл
         # бы величину из-под наблюдения, оставив гейт зелёным.
         ("оператор без списка колонок",
-         "INSERT INTO kacho_iam.limits VALUES ('lim-1', now(), 'DEFAULT', '', "
+         "INSERT INTO kaname.limits VALUES ('lim-1', now(), 'DEFAULT', '', "
          "'iam.account', 5, NULL, 32);\n"),
         # Строка есть, но условие не подходит — величины нет.
         ("вид сменён", _CANON.replace("'iam.account'", "'iam.project'")),

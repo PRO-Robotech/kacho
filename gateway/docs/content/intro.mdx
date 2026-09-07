@@ -35,7 +35,7 @@ import hero from '@site/src/css/hero.module.css'
 **Kachō API Gateway** — единственная точка входа (edge) контрол-плейна платформы Kachō. Он
 принимает клиентские вызовы (gRPC и REST на одном порту), проверяет **кто** их шлёт (AuthN) и
 **что** ему разрешено (AuthZ), и только после этого прозрачно проксирует запрос во внутренний
-доменный backend. За гейтвеем сервисы доменов (`kacho-iam`, `kacho-vpc`, `kacho-compute`,
+доменный backend. За гейтвеем сервисы доменов (`kaname`, `kacho-vpc`, `kacho-compute`,
 `kacho-geo`, `kacho-nlb`, `kacho-registry`) общаются только по внутренней сети.
 
 Бизнес-ценность в том, что **периметр платформы вынесен в один слой**. Клиенту не нужно знать,
@@ -78,7 +78,7 @@ data-plane прокси прикладного трафика. За физиче
 <table>
   <thead><tr><th>Домен</th><th>Backend</th><th>Ресурсы (публично)</th></tr></thead>
   <tbody>
-    <tr><td><strong>IAM</strong></td><td><code>kacho-iam</code></td><td>Account / Project / User / ServiceAccount / Group / Role / AccessBinding</td></tr>
+    <tr><td><strong>IAM</strong></td><td><code>kaname</code></td><td>Account / Project / User / ServiceAccount / Group / Role / AccessBinding</td></tr>
     <tr><td><strong>VPC</strong></td><td><code>kacho-vpc</code></td><td>Network / Subnet / SecurityGroup / RouteTable / Address / Gateway / NetworkInterface</td></tr>
     <tr><td><strong>Compute</strong></td><td><code>kacho-compute</code></td><td>Instance / MachineType</td></tr>
     <tr><td><strong>Storage</strong></td><td><code>kacho-storage</code></td><td>Volume / Snapshot / Image / DiskType</td></tr>
@@ -139,7 +139,7 @@ flowchart LR
     agw["api-gateway<br/>cmux: gRPC + REST · :8080"]
   end
   subgraph cp["Control plane"]
-    iam["kacho-iam<br/>AuthorizeService.Check"]
+    iam["kaname<br/>AuthorizeService.Check"]
     vpc["kacho-vpc"]
     cmp["kacho-compute"]
     geo["kacho-geo"]
@@ -148,7 +148,7 @@ flowchart LR
 
   cli -->|"Bearer JWT / DPoP / cookie"| agw
   agw -->|"AuthZ Check"| iam
-  agw -->|"kacho.cloud.iam.v1"| iam
+  agw -->|"kaname.cloud.iam.v1"| iam
   agw -->|"kacho.cloud.vpc.v1"| vpc
   agw -->|"kacho.cloud.compute.v1"| cmp
   agw -->|"kacho.cloud.geo.v1"| geo
@@ -157,7 +157,7 @@ flowchart LR
 
 Клиент шлёт запрос на единый порт `:8080`; `cmux` различает gRPC (`Content-Type:
 application/grpc`) и REST по одному соединению. Гейтвей аутентифицирует запрос, авторизует его
-per-RPC через `kacho-iam`, затем маршрутизирует в нужный домен по `kacho.cloud.<domain>.v1.*`.
+per-RPC через `kaname`, затем маршрутизирует в нужный домен по `kacho.cloud.<domain>.v1.*`.
 Подробнее — [Маршрутизация](/architecture/routing).
 
 ## Ключевые возможности
@@ -191,7 +191,7 @@ per-RPC через `kacho-iam`, затем маршрутизирует в ну�
   <div className={hero.featureCard}>
     <span className={hero.featureIcon}>◷</span>
     <span className={hero.featureTitle}>Ограниченные кэши</span>
-    <span className={hero.featureBody}>JWKS, introspection, DPoP-replay, authz-decision — все LRU + TTL; кэш решений гейтвей гасит сам, читая журнал смены субъекта у kacho-iam.</span>
+    <span className={hero.featureBody}>JWKS, introspection, DPoP-replay, authz-decision — все LRU + TTL; кэш решений гейтвей гасит сам, читая журнал смены субъекта у kaname.</span>
   </div>
 </div>
 

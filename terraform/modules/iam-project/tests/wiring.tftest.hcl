@@ -5,7 +5,7 @@
 # Провайдер подменён mock_provider — значит проба падает от ошибки в модуле, а не от
 # состояния стенда.
 
-mock_provider "kacho" {}
+mock_provider "kaname" {}
 
 variables {
   account_id = "accprobe0000000000000"
@@ -17,11 +17,11 @@ run "project_is_anchored_to_the_account" {
   command = plan
 
   assert {
-    condition     = kacho_iam_project.this.account_id == var.account_id
+    condition     = kaname_project.this.account_id == var.account_id
     error_message = "проект не привязан к заданному аккаунту"
   }
   assert {
-    condition     = kacho_iam_project.this.name == "probe-project"
+    condition     = kaname_project.this.name == "probe-project"
     error_message = "имя проекта не доехало из переменной"
   }
 }
@@ -38,11 +38,11 @@ run "groups_and_service_accounts_are_account_scoped" {
   # Первая редакция модуля заводила служебную учётку с полем проекта, которого у неё нет.
   # Проба закрепляет область: контракт принимает account_id у всех трёх ресурсов.
   assert {
-    condition     = kacho_iam_group.this["probe-admins"].account_id == var.account_id
+    condition     = kaname_group.this["probe-admins"].account_id == var.account_id
     error_message = "группа заведена не в аккаунте"
   }
   assert {
-    condition     = kacho_iam_service_account.this["probe-ci"].account_id == var.account_id
+    condition     = kaname_service_account.this["probe-ci"].account_id == var.account_id
     error_message = "служебная учётка заведена не в аккаунте"
   }
 }
@@ -59,9 +59,9 @@ run "labels_reach_every_resource" {
 
   assert {
     condition = alltrue([
-      kacho_iam_project.this.labels["origin"] == "terraform",
-      kacho_iam_group.this["probe-admins"].labels["origin"] == "terraform",
-      kacho_iam_service_account.this["probe-ci"].labels["origin"] == "terraform",
+      kaname_project.this.labels["origin"] == "terraform",
+      kaname_group.this["probe-admins"].labels["origin"] == "terraform",
+      kaname_service_account.this["probe-ci"].labels["origin"] == "terraform",
     ])
     error_message = "метки доехали не до всех ресурсов модуля"
   }
@@ -85,17 +85,17 @@ run "invitation_is_anchored_to_the_account" {
   }
 
   assert {
-    condition     = kacho_iam_user_invitation.this["lead"].account_id == var.account_id
+    condition     = kaname_user_invitation.this["lead"].account_id == var.account_id
     error_message = "приглашение заведено не в аккаунте модуля"
   }
   # Почта берётся ЗНАЧЕНИЕМ, а ключ остаётся псевдонимом: если однажды кто-то решит
   # «ключ и есть почта», эта пара утверждений разойдётся первой.
   assert {
-    condition     = kacho_iam_user_invitation.this["lead"].email == "lead@probe.test"
+    condition     = kaname_user_invitation.this["lead"].email == "lead@probe.test"
     error_message = "почта не доехала из значения карты"
   }
   assert {
-    condition     = kacho_iam_user_invitation.this["lead"].display_name == "Ведущий"
+    condition     = kaname_user_invitation.this["lead"].display_name == "Ведущий"
     error_message = "затравка отображаемого имени потеряна при сборке"
   }
 }
@@ -121,15 +121,15 @@ run "starting_grant_points_at_the_module_project" {
   }
 
   assert {
-    condition     = kacho_iam_user_invitation.this["lead"].project_id == kacho_iam_project.this.id
+    condition     = kaname_user_invitation.this["lead"].project_id == kaname_project.this.id
     error_message = "стартовая выдача не связана с проектом модуля по идентификатору"
   }
   assert {
-    condition     = kacho_iam_user_invitation.this["lead"].role_id == "roleprobe0000000000"
+    condition     = kaname_user_invitation.this["lead"].role_id == "roleprobe0000000000"
     error_message = "роль стартовой выдачи потеряна при сборке"
   }
   assert {
-    condition     = kacho_iam_user_invitation.this["viewer"].project_id == null
+    condition     = kaname_user_invitation.this["viewer"].project_id == null
     error_message = "приглашению без роли подставлен проект — к краю уедет половина пары «проект + роль»"
   }
 }
@@ -144,7 +144,7 @@ run "labels_reach_the_invitation" {
   }
 
   assert {
-    condition     = kacho_iam_user_invitation.this["lead"].labels["origin"] == "terraform"
+    condition     = kaname_user_invitation.this["lead"].labels["origin"] == "terraform"
     error_message = "метки модуля не доехали до строки членства"
   }
 }
@@ -164,7 +164,7 @@ run "blocked_request_reaches_the_row" {
   }
 
   assert {
-    condition     = kacho_iam_user_invitation.this["lead"].blocked == true
+    condition     = kaname_user_invitation.this["lead"].blocked == true
     error_message = "запрет входа не доехал до строки членства"
   }
 }

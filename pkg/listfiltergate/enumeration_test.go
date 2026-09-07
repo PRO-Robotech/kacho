@@ -381,7 +381,7 @@ type AuthorizeClient interface {
 // TestDeriveEnumerations_SharedSourceIsResolvedFromTheModuleRoot — a source that is
 // NOT service code.
 //
-// Every consumer service reaches kacho-iam through one shared port, so a derivation
+// Every consumer service reaches kaname through one shared port, so a derivation
 // that could only read the service's own tree would leave the shortest path from
 // "narrow this page" to "enumerate the universe" watched by nobody: each profile
 // would name its own client and none would name the port they all share.

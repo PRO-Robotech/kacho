@@ -17,7 +17,7 @@ const (
 // The action is carried on every AuthorizeCheckRequest for audit/trace; the
 // DECISION is taken on the explicit `required_relation` the filter pins per batch
 // (`v_get` — see authzfilter.visibilityRelations), not on a server-side
-// verb→relation derivation. The verb still MUST be one kacho-iam maps
+// verb→relation derivation. The verb still MUST be one kaname maps
 // (`resolveActionToRelation` maps only the canonical RPC verbs get/list; "read" is
 // UNMAPPED → "Illegal argument action"), because a request that fails
 // action-validation never reaches the relation check.

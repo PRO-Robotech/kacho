@@ -11,7 +11,7 @@ package check_test
 //
 // Правило роли читают с ТРЁХ сторон: селекторы отвечают «подходит ли объект»,
 // проекция глаголов — «разрешено ли действие», проекция объявленных сегментов
-// (`kacho_iam.role_rule_ref`) держит РЕФЕРЕНТ — ключами в каталог ресурсов и в
+// (`kaname.role_rule_ref`) держит РЕФЕРЕНТ — ключами в каталог ресурсов и в
 // каталог глаголов. Первые две пересчитываются на старте
 // (`SyncAllSystemRoleSelectors`, `ReseedSystemRoleVerbs`); третью до этой работы
 // не писал никто, кроме пути ПОЛЬЗОВАТЕЛЬСКОЙ роли и однократного обратного
@@ -82,10 +82,10 @@ const (
 	ruleRefEntryPointMark = "RuleRef"
 
 	// seedPackageDir — каталог досева от корня монорепо.
-	seedPackageDir = "services/iam/internal/apps/kacho/seed"
+	seedPackageDir = "services/iam/internal/apps/kaname/seed"
 
 	// compositionRootDir — каталог композиционного корня службы.
-	compositionRootDir = "services/iam/cmd/kacho-iam"
+	compositionRootDir = "services/iam/cmd/kaname"
 )
 
 // goSourcesOfDir — непробные файлы Go каталога, взятые ПО ИНДЕКСУ git.
@@ -175,7 +175,7 @@ func TestSeedCallsTheSoleWriterOfRuleRefs(t *testing.T) {
 
 	require.NotEmptyf(t, sites,
 		"досев на старте НЕ зовёт %s: проекция объявленных сегментов правила "+
-			"(kacho_iam.role_rule_ref) у системной роли, заведённой будущей миграцией, "+
+			"(kaname.role_rule_ref) у системной роли, заведённой будущей миграцией, "+
 			"не появится ни одной строкой, и ключи референта окажутся ни при чём "+
 			"(kacho#1821). Осмотрено файлов: %d", ruleRefWriterSelector, len(sources))
 }

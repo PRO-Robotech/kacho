@@ -1,7 +1,7 @@
 {
   "info": {
     "_postman_id": "17dd5bc5-f160-550d-922c-e72fc72e3f25",
-    "name": "kacho-iam / newman / authz-deny",
+    "name": "kaname / newman / authz-deny",
     "schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json"
   },
   "event": [

@@ -86,7 +86,7 @@ func TestMigrationMonotonic_CanFailAndStaysSilent(t *testing.T) {
 		},
 		{
 			name:    "добавлено не в каталог миграций",
-			added:   []string{"services/iam/internal/repo/kacho/pg/role_repo.go"},
+			added:   []string{"services/iam/internal/repo/kaname/pg/role_repo.go"},
 			tracked: tracked,
 			why:     "предмет гейта — миграции; краснеть на чужом файле значило бы судить не своё",
 		},

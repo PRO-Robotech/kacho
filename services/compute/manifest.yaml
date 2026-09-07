@@ -8,7 +8,7 @@
 #  служебное (`realization_writer`) — ни под одним из трёх RPC нет.
 #
 #  Раздел `resources` порождает блоки типов модели доступов; сверка с каноном
-#  `proto/kacho/cloud/iam/v1/fga_model.fga` ПОБАЙТОВАЯ:
+#  `proto/kaname/cloud/iam/v1/fga_model.fga` ПОБАЙТОВАЯ:
 #      make -C services/iam model-canon-check
 #  Форму документа судит один разбор:
 #      make -C services/iam module-manifest-check
@@ -114,7 +114,7 @@ resources:
 #  roles — системные роли модуля, объявленные ДАННЫМИ (#1891, #1904).
 #
 #  Писатель этих строк — применитель манифеста, а не миграция: он приводит
-#  `kacho_iam.roles` к объявленному здесь состоянию. Согласие объявления с живой
+#  `kaname.roles` к объявленному здесь состоянию. Согласие объявления с живой
 #  базой держит ПРОГОН, а не чтение:
 #      go test -C services/iam ./internal/moduleroleparity/
 #  Гейт поднимает Postgres, играет цепочку миграций дерева и сравнивает строки
@@ -145,7 +145,7 @@ roles:
     description: "Admin Instance"
     tier:
       tierType: iam.cluster
-      tierId: cluster_kacho_root
+      tierId: cluster_root
     rules:
       - module: compute
         resources: [instance]
@@ -155,7 +155,7 @@ roles:
     description: "Edit Instance"
     tier:
       tierType: iam.cluster
-      tierId: cluster_kacho_root
+      tierId: cluster_root
     rules:
       - module: compute
         resources: [instance]
@@ -165,7 +165,7 @@ roles:
     description: "Read Instance"
     tier:
       tierType: iam.cluster
-      tierId: cluster_kacho_root
+      tierId: cluster_root
     rules:
       - module: compute
         resources: [instance]
@@ -221,7 +221,7 @@ seed:
         - {type: serviceAccount, name: kacho-compute}
       grantedRelation: system_viewer
       scopeType: iam.cluster
-      scopeId: cluster_kacho_root
+      scopeId: cluster_root
       target: allInScope
 
   joins:

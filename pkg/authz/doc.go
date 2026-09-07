@@ -30,7 +30,7 @@
 //	                                                  │
 //	                                                  ▼ Check(subj, rel, obj)
 //	                                       ┌──────────────────────────┐
-//	                                       │  kacho-iam :9091         │
+//	                                       │  kaname :9091         │
 //	                                       │  InternalIAMService.Check│
 //	                                       └──────────────────────────┘
 //
@@ -70,7 +70,7 @@
 //
 // # Fail modes
 //
-//   - kacho-iam.Check unavailable → fail-closed `PermissionDenied`.
+//   - kaname.Check unavailable → fail-closed `PermissionDenied`.
 //   - `KACHO_<SVC>_AUTHZ__BREAKGLASS=true` env (dev/break-glass) → bypass Check
 //   - WARN log (rate-limited) + Prometheus alert.
 //

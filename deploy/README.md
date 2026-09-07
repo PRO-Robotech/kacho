@@ -23,7 +23,7 @@
   выкатки, ради которых цель и заведена; пинит себя **вызывающий**, каждый
   стражем своего стенда.
   Стенд выбирается `MODULE_MANIFESTS_STACK=` (умолчание `dev`); стенд, не
-  объявивший `kacho-iam.manifests.configMapName`, объект не получает, и цель
+  объявивший `kaname.manifests.configMapName`, объект не получает, и цель
   говорит это вслух, а не отказом.
 
   Перечень путей выкатки здесь **не выписан заново**: его выводит обходом дерева
@@ -35,8 +35,22 @@
 ### IAM stack (KAC-105, sub-phase 2.0)
 
 - `make reload-svc-iam` — alias for `make reload-svc SVC=iam`
-- `make psql-iam` — psql в `kacho_iam`-БД (pg-iam)
-- `make logs-iam` — `kubectl logs -f deploy/kacho-iam`
+- `make psql-iam` — psql в `kaname`-БД (pg-iam)
+- `make logs-iam` — `kubectl logs -f deploy/kaname`
+
+> [!warning] База переименована `kacho_iam` → `kaname`: СТАРЫЙ СТЕНД НАДО ПЕРЕСОЗДАТЬ
+> Служба получила собственное имя продукта, и вместе со схемой переименована база.
+> Подчарт `postgresql` создаёт базу **только при первой инициализации тома**, а
+> `pg-iam.primary.persistence` включён — поэтому на стенде, поднятом ДО этого
+> изменения, том по-прежнему держит базу `kacho_iam`, тогда как служба стучится в
+> `kaname`. Обновление на месте (`helm upgrade`) базу не переименовывает.
+>
+> Отличить это от поломки продукта можно по тексту: Postgres отвечает
+> `database "kaname" does not exist` на КАЖДОМ соединении, а под при этом
+> исправно стартует. Это «условие не создано», а не «продукт сломан».
+>
+> Починка — пересоздание стенда (`make dev-down && make dev-up`); том снимается
+> вместе с ним. Данных стенда это не жаль: он поднимается посевом.
 
 Здесь стояла ещё одна цель — про начальные учётные данные администратора того
 поставщика личности, который стенд поднимал до KAC-127. Поставщик заменён на Ory
@@ -93,9 +107,9 @@ Postgres использует `emptyDir` — данные не сохраняю�
 
 Dev-стенд поднимает рядом с остальными сервисами:
 
-- **kacho-iam** — control-plane сервис IAM (Account / Project / User / ServiceAccount /
+- **kaname** — control-plane сервис IAM (Account / Project / User / ServiceAccount /
   Group / Role / AccessBinding). gRPC `:9090` (public) + `:9091` (internal, admin-only).
-  Sub-chart живёт в `helm/umbrella/charts/kacho-iam/`. Image: `kacho-iam:dev`
+  Sub-chart живёт в `helm/umbrella/charts/kaname/`. Image: `kaname:dev`
   (build из `services/iam/` **этого** репозитория — отдельного репозитория сервиса
   не существует с переходом на монорепо).
 - **Ory Kratos + Ory Hydra** — identity и OIDC-issuer. Оба приезжают внешними чартами
@@ -120,8 +134,8 @@ DB-per-service). Перечень выводится из `helm/umbrella/Chart.y
 шаблоне тоже нет — по той же форме.
 
 **Полезные команды** (см. секцию «IAM stack» выше):
-- `make psql-iam` — psql в `kacho_iam`
-- `make logs-iam` — логи kacho-iam
+- `make psql-iam` — psql в `kaname`
+- `make logs-iam` — логи kaname
 
 **Persistence**: все постгресы стенда — `emptyDir`, данные пропадают при
 `make dev-down`. Default-roles seed выполнится заново при `make dev-up`.

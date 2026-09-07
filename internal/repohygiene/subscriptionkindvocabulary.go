@@ -543,7 +543,7 @@ const modulePathPrefix = "github.com/PRO-Robotech/kacho/"
 
 // МОДУЛЬ В ДЕРЕВЕ БОЛЬШЕ НЕ ОДИН.
 //
-// Служба iam несёт свой `go.mod` (`github.com/PRO-Robotech/kacho-iam`): она
+// Служба iam несёт свой `go.mod` (`github.com/PRO-Robotech/kaname`): она
 // выносится отдельным репозиторием и обязана собираться без дерева монорепо на
 // диске. Отображение «путь импорта ↔ путь в дереве» перестало быть отрезанием
 // одного префикса.
@@ -555,7 +555,7 @@ const modulePathPrefix = "github.com/PRO-Robotech/kacho/"
 // перестали видеть код службы вовсе и объявили её накопители «считающими в
 // никуда», ничего в ней не изменив.
 const (
-	iamModulePathPrefix = "github.com/PRO-Robotech/kacho-iam/"
+	iamModulePathPrefix = "github.com/PRO-Robotech/kaname/"
 	iamTreePrefix       = "services/iam/"
 )
 

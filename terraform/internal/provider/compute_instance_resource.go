@@ -155,8 +155,8 @@ type computeInstanceResource struct{ c *client.Client }
 // NewComputeInstanceResource — конструктор для реестра провайдера.
 func NewComputeInstanceResource() resource.Resource { return &computeInstanceResource{} }
 
-func (r *computeInstanceResource) Metadata(_ context.Context, req resource.MetadataRequest, resp *resource.MetadataResponse) {
-	resp.TypeName = req.ProviderTypeName + "_compute_instance"
+func (r *computeInstanceResource) Metadata(_ context.Context, _ resource.MetadataRequest, resp *resource.MetadataResponse) {
+	resp.TypeName = typeNameComputeInstance
 }
 
 func (r *computeInstanceResource) Configure(_ context.Context, req resource.ConfigureRequest, resp *resource.ConfigureResponse) {
@@ -1471,7 +1471,7 @@ func (r *computeInstanceResource) Create(ctx context.Context, req resource.Creat
 		return
 	}
 
-	id, err := awaitCreate(ctx, r.c, instancesPath, "instanceId", "kacho_compute_instance",
+	id, err := awaitCreate(ctx, r.c, instancesPath, "instanceId", typeNameComputeInstance,
 		plan.ProjectID.ValueString()+"/"+plan.Name.ValueString(), body)
 	if err != nil {
 		resp.Diagnostics.AddError("Создание машины не завершилось", instanceCreateHint(err))

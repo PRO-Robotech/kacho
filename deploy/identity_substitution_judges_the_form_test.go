@@ -68,7 +68,7 @@ const formClass = `[A-Za-z_][A-Za-z0-9_]*`
 // ownedVarName — имя переменной, объявляющей перечень имён во владении шага.
 // Оно выводится из самого шага: переменная, чьё значение — список имён, каждое
 // из которых объявлено секретом в этом же контейнере.
-const ownedListVar = "KACHO_IDENTITY_SUBSTITUTED_VARS"
+const ownedListVar = "KANAME_IDENTITY_SUBSTITUTED_VARS"
 
 // substFacts — то, что проверка вывела из объявления.
 type substFacts struct {
@@ -150,7 +150,7 @@ func envSecretVars(block string) []string {
 // ТОЛЬКО когда профиль объявил его источник: безусловно названное, оно роняло бы
 // каждый стенд, где почтовый узел пароля не спрашивает. Отсюда условный литерал
 //
-//	value: "KACHO_IAM_HOOK_TOKEN{{ if … }} KACHO_IDENTITY_SMTP_CREDENTIAL{{ end }}"
+//	value: "KANAME_HOOK_TOKEN{{ if … }} KANAME_IDENTITY_SMTP_CREDENTIAL{{ end }}"
 //
 // Двумя ветками этого не записать: два объявления одного имени в статическом
 // тексте — находка соседнего гейта (identity_step_declaration_parses_test.go),
@@ -446,16 +446,16 @@ func TestSubstitutedListLiteralKnowsBothForms(t *testing.T) {
 		{
 			// Форма первая — безусловный перечень. Была единственной.
 			name:    "безусловный перечень",
-			literal: "KACHO_IAM_HOOK_TOKEN",
-			want:    []string{"KACHO_IAM_HOOK_TOKEN"},
+			literal: "KANAME_HOOK_TOKEN",
+			want:    []string{"KANAME_HOOK_TOKEN"},
 		},
 		{
 			// Форма вторая — условный хвост (решение Р6). Без снятия действия
 			// разбор вернул бы фигурные скобки именами, и согласие перечня с
 			// переменными перестало бы проверяться, оставаясь на вид исполненным.
 			name:    "условный хвост",
-			literal: "KACHO_IAM_HOOK_TOKEN{{ if $mailCredDeclared }} KACHO_IDENTITY_SMTP_CREDENTIAL{{ end }}",
-			want:    []string{"KACHO_IAM_HOOK_TOKEN", "KACHO_IDENTITY_SMTP_CREDENTIAL"},
+			literal: "KANAME_HOOK_TOKEN{{ if $mailCredDeclared }} KANAME_IDENTITY_SMTP_CREDENTIAL{{ end }}",
+			want:    []string{"KANAME_HOOK_TOKEN", "KANAME_IDENTITY_SMTP_CREDENTIAL"},
 		},
 		{
 			// Условная ГОЛОВА — та же форма с другой стороны: если бы снятие
@@ -481,7 +481,7 @@ func TestSubstitutedListLiteralKnowsBothForms(t *testing.T) {
 	// скобки. Проверяется явно — иначе «расширение помогло» неотличимо от
 	// «расширение ничего не изменило» (перепись обязана двигаться).
 	rawFields := uniqueSorted(strings.Fields(
-		"KACHO_IAM_HOOK_TOKEN{{ if $mailCredDeclared }} KACHO_IDENTITY_SMTP_CREDENTIAL{{ end }}"))
+		"KANAME_HOOK_TOKEN{{ if $mailCredDeclared }} KANAME_IDENTITY_SMTP_CREDENTIAL{{ end }}"))
 	if len(rawFields) <= 2 {
 		t.Fatalf("контроль расширения не сработал: без снятия действий разбор дал %v — "+
 			"значит снимать было нечего, и расширение холостое", rawFields)

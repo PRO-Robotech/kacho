@@ -92,7 +92,7 @@ data:
       # public-mTLS → отказ старта (fail-closed). production-strict игнорирует флаг.
       trusted-forwarder: {{ default false .Values.authn.trustedForwarder }}
 
-    # per-RPC Check — kacho-iam.InternalIAMService.Check по authz.iam-endpoint.
+    # per-RPC Check — kaname.InternalIAMService.Check по authz.iam-endpoint.
     #
     # Фильтр видимости (list-filter) — ОТДЕЛЬНОЕ соединение и ДРУГОЙ глагол
     # (AuthorizeService.BatchCheck), со своим адресом и своим транспортом; все ключи
@@ -101,14 +101,18 @@ data:
     #
     # Здесь стояло «на PUBLIC :9090». Утверждение верно лишь там, где профиль задал
     # authorize-endpoint явно: при пустом значении адрес наследуется от
-    # authz.iam-endpoint, чьё умолчание ниже — внутренний kacho-iam-internal:9091.
+    # authz.iam-endpoint, чьё умолчание ниже — внутренний kaname-internal:9091.
     # Снято как второе место об одном предмете.
     #
     # Что остаётся верным независимо от адреса: боевая посадка без
     # list-filter.authorize-tls.enable (или без общего client-cert'а
     # KACHO_VPC_IAM_AUTHZ_MTLS_ENABLE) НЕ СТАРТУЕТ.
+    # Объявление домена величин: одно на обе полосы ребра. Пустое значение
+    # отвергает страж старта — умолчания у него нет by construction.
+    quota:
+      authority: {{ required "quota.authority is required: address host:port or the word not-deployed" .Values.quota.authority | quote }}
     authz:
-      iam-endpoint: {{ default "kacho-iam-internal.kacho.svc:9091" .Values.authz.iamEndpoint | quote }}
+      iam-endpoint: {{ default "kaname-internal.kacho.svc:9091" .Values.authz.iamEndpoint | quote }}
       # Круг отправителей, которым разрешено передавать личность конечного
       # пользователя. Пустой список НЕ запрещает — он не сужает (см. values.yaml);
       # производственная посадка на нём не стартует.
@@ -116,6 +120,12 @@ data:
         {{- range .Values.authz.trustedForwarderSANs }}
         - {{ . | quote }}
         {{- end }}
+      # Домен доверия установки: то, чьи сертификаты процесс признаёт своими.
+      # Круг выше называет, КОМУ позволено говорить за пользователя; домен
+      # отвечает на предыдущий вопрос — чьи предъявители вообще наши. Берётся из
+      # ТОГО ЖЕ объявления, под которым чеканится собственный сертификат
+      # (certificate.yaml): взятые по отдельности, стороны расходятся молча.
+      trust-domain: {{ include "vpc.trustDomain" . | quote }}
       check-timeout: {{ default "2s" .Values.authz.checkTimeout | quote }}
       cache-ttl: {{ default "5s" .Values.authz.cacheTtl | quote }}
       deny-rate-limit-per-sec: {{ default 100 .Values.authz.denyRateLimitPerSec }}
@@ -139,7 +149,7 @@ data:
     #
     # require — fail-closed загрузочный гейт (pkg/outbox/bootgate): мутирующий
     # Create отвергается, а под остаётся NotReady, пока register-drainer не
-    # подключён к kacho-iam. Смысл ровно в том, чтобы ресурс не создавался,
+    # подключён к kaname. Смысл ровно в том, чтобы ресурс не создавался,
     # пока намерение о владении им некуда доставить: созданный в это окно
     # ресурс останется без владельца, и его создатель получит отказ на своём же
     # ресурсе.
@@ -154,7 +164,7 @@ data:
     extapi:
       def-dial-duration: 10s
       iam:
-        endpoint: {{ default "kacho-iam.kacho.svc:9090" .Values.iamAddr | quote }}
+        endpoint: {{ default "kaname.kacho.svc:9090" .Values.iamAddr | quote }}
         tls:
           enable: {{ default false .Values.extapi.iam.tls.enable }}
         dns-lb: {{ default false .Values.extapi.iam.dnsLb }}

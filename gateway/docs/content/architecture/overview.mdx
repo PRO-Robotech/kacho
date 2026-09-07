@@ -27,7 +27,7 @@ title: Архитектура
     <tr><td><code>internal/restmux</code></td><td>grpc-gateway REST (split-mux: public + internal)</td></tr>
     <tr><td><code>internal/opsproxy</code></td><td><code>OperationService</code> fan-out по prefix id</td></tr>
     <tr><td><code>internal/allowlist</code></td><td>Deny-by-default список публичных RPC</td></tr>
-    <tr><td><code>internal/clients</code></td><td>gRPC-клиенты к kacho-iam (authorize / subject / revocations)</td></tr>
+    <tr><td><code>internal/clients</code></td><td>gRPC-клиенты к kaname (authorize / subject / revocations)</td></tr>
     <tr><td><code>internal/&#123;health,watcher,cache,config,listenerorigin,handler&#125;</code></td><td>Health/readiness, опрос журнала смены субъекта, LRU-кэши, конфиг, метка origin listener'а</td></tr>
   </tbody>
 </table>
@@ -121,7 +121,7 @@ stale-доступ ограниченным во времени.
 </table>
 
 Authz-decision-кэш гасит **сам край**: реплика, обслужившая меняющий права вызов, сбрасывает
-свой кэш сразу, а остальные сходятся опросом журнала смены субъекта у `kacho-iam` с интервалом
+свой кэш сразу, а остальные сходятся опросом журнала смены субъекта у `kaname` с интервалом
 `KACHO_API_GATEWAY_SUBJECT_CHANGE_POLL_INTERVAL` (дефолт `2s`); TTL остаётся backstop'ом. Разбор
 путей — [Авторизация](/architecture/authz).
 
@@ -135,7 +135,7 @@ edge.
 
 ```mermaid
 flowchart LR
-  probe["/readyz"] -->|"critical"| iam["kacho-iam<br/>(AuthN/AuthZ)"]
+  probe["/readyz"] -->|"critical"| iam["kaname<br/>(AuthN/AuthZ)"]
   probe -.->|"non-critical"| vpc["kacho-vpc"]
   probe -.->|"non-critical"| cmp["kacho-compute"]
   iam -->|"down → 503"| out["реплика вне rotation"]

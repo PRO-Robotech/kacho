@@ -10,7 +10,7 @@ package deploy_test
 // ПРЕДМЕТ
 //
 // Манифесты приезжают в под ИМЕНОВАННЫМ ConfigMap и читаются процессом ОДИН РАЗ,
-// на старте (`services/iam/cmd/kacho-iam/module_manifests.go`, перечитывания
+// на старте (`services/iam/cmd/kaname/module_manifests.go`, перечитывания
 // нет). Правка карты меняет файлы в томе и НЕ меняет шаблон пода: Kubernetes не
 // видит причины перекатывать под, и процесс продолжает работать с каталогом,
 // прочитанным при старте. Объявленное оператором состояние наступает не в момент
@@ -87,7 +87,7 @@ const digestValuesVar = "MODULE_MANIFESTS_VALUES"
 const digestProducerTarget = "module-manifests-configmap"
 
 // iamDeploymentTemplate — шаблон пода iam от каталога развёртывания.
-const iamDeploymentTemplate = umbrellaDir + "/charts/kacho-iam/templates/deployment.yaml"
+const iamDeploymentTemplate = umbrellaDir + "/charts/kaname/templates/deployment.yaml"
 
 // digestAnnotationDecl — объявление аннотации ЦЕЛИКОМ: ключ как ключ и значение
 // как ВЫЧИСЛЕНИЕ по величине из `.Values.global`.

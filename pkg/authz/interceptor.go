@@ -77,7 +77,7 @@ type InterceptorOptions struct {
 	// кэше, получал ResourceExhausted на запросах, которые ему разрешены.
 	//
 	// Недоступность модели ПЛАТИТ намеренно: сбрасывать нагрузку с падающего
-	// kacho-iam особенно важно, а CheckTimeout ограничивает лишь длительность
+	// kaname особенно важно, а CheckTimeout ограничивает лишь длительность
 	// одного вызова, не их темп. Из-за этого текст отказа не называет отказы (см.
 	// decisionError) — иначе он описывал бы перебой как шторм отказов вызывающего.
 	DenyRateLimitPerSec float64
@@ -380,7 +380,7 @@ func (i *Interceptor) authorize(ctx context.Context, fullMethod string, req any)
 	}
 
 	// 6. Denied-storm cut-off: бюджет СПРАШИВАЕТСЯ до Check-call (отсечка после
-	// вопроса не сняла бы нагрузку с kacho-iam), но ТРАТИТСЯ ниже и только на
+	// вопроса не сняла бы нагрузку с kaname), но ТРАТИТСЯ ниже и только на
 	// исход, который кэш не поглощает (см. DenyRateLimitPerSec). Bucket
 	// per-Principal.
 	if !i.rateLimiter.HasBudget(principalID) {

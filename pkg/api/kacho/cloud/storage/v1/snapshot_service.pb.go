@@ -78,7 +78,7 @@ func (x *GetSnapshotRequest) GetSnapshotId() string {
 type ListSnapshotsRequest struct {
 	state protoimpl.MessageState `protogen:"open.v1"`
 	// ID of the project to list snapshots in.
-	// To get the project ID, use a [kacho.cloud.iam.v1.ProjectService.List] request.
+	// To get the project ID, use a [kaname.cloud.iam.v1.ProjectService.List] request.
 	ProjectId string `protobuf:"bytes,1,opt,name=project_id,json=projectId,proto3" json:"project_id,omitempty"`
 	// The maximum number of results per page to return.
 	PageSize int64 `protobuf:"varint,2,opt,name=page_size,json=pageSize,proto3" json:"page_size,omitempty"`
@@ -207,7 +207,7 @@ func (x *ListSnapshotsResponse) GetNextPageToken() string {
 type CreateSnapshotRequest struct {
 	state protoimpl.MessageState `protogen:"open.v1"`
 	// ID of the project to create a snapshot in.
-	// To get the project ID, use a [kacho.cloud.iam.v1.ProjectService.List] request.
+	// To get the project ID, use a [kaname.cloud.iam.v1.ProjectService.List] request.
 	ProjectId string `protobuf:"bytes,1,opt,name=project_id,json=projectId,proto3" json:"project_id,omitempty"`
 	// ID of the source volume to create the snapshot from.
 	// To get the volume ID, use a [VolumeService.List] request.

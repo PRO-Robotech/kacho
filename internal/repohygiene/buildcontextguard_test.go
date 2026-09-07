@@ -198,9 +198,9 @@ tests/authz-fixtures/out
 		{"tests/authz-fixtures/__pycache__/prodseed_all.cpython-312.pyc", true},
 		{".git/HEAD", true},
 		// ЗАКОННЫЕ ИСХОДНИКИ — обязаны ехать в контекст, иначе сборка сломается.
-		{"services/iam/cmd/kacho-iam/main.go", false},
+		{"services/iam/cmd/kaname/main.go", false},
 		{"go.mod", false},
-		{"proto/kacho/cloud/iam/v1/fga_model.fga", false},
+		{"proto/kaname/cloud/iam/v1/fga_model.fga", false},
 		// Произведённый файл, которого в списке образцов НЕТ, — обязан быть виден.
 		{"deploy/helm/umbrella/Chart.lock", false},
 	}

@@ -15,7 +15,7 @@ package middleware
 // moved the revocation check here (see auth_revocation.go).
 //
 // The token context below travels for the same reason. The cluster-internal arm
-// (kacho-iam authzguard.ACRFloor) decides on the `acr` this gateway forwards, and
+// (kaname authzguard.ACRFloor) decides on the `acr` this gateway forwards, and
 // its only producer sat in that unmounted middleware — so the internal floor read
 // an absent value on every request for its whole life. A control whose input has
 // no producer that runs is not a strict control; it is an unread one.
@@ -263,10 +263,10 @@ func setTokenContextHeaders(r *http.Request, t *VerifiedToken) (unusableMethods 
 		r.Header.Set(principalmeta.HeaderTokenAMR, amr)
 	}
 	// Момент подтверждения берётся ОТТУДА ЖЕ, откуда его читает сборка доводов
-	// (`kacho_mfa_at`), а не из соседнего утверждения о времени входа: два
+	// (`kaname_mfa_at`), а не из соседнего утверждения о времени входа: два
 	// источника одной величины разошлись бы молча, и разошлись бы они на
 	// удостоверении, где значения не совпадают.
-	if at, ok := coerceUnixSeconds(t.ExtClaims["kacho_mfa_at"]); ok && at > 0 {
+	if at, ok := coerceUnixSeconds(t.ExtClaims["kaname_mfa_at"]); ok && at > 0 {
 		r.Header.Set(principalmeta.HeaderTokenMfaAt, strconv.FormatInt(at, 10))
 	}
 	return unusable
@@ -351,7 +351,7 @@ func withTokenContextMetadata(ctx context.Context, vt *VerifiedToken) (context.C
 	if amr != "" {
 		inMD.Set(principalmeta.MetaTokenAMR, amr)
 	}
-	if at, ok := coerceUnixSeconds(vt.ExtClaims["kacho_mfa_at"]); ok && at > 0 {
+	if at, ok := coerceUnixSeconds(vt.ExtClaims["kaname_mfa_at"]); ok && at > 0 {
 		inMD.Set(principalmeta.MetaTokenMfaAt, strconv.FormatInt(at, 10))
 	}
 	return metadata.NewOutgoingContext(metadata.NewIncomingContext(ctx, inMD), outMD), unusable

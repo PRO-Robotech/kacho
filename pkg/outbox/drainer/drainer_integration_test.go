@@ -10,7 +10,7 @@ package drainer_test
 // Test design constraints:
 //   - testcontainers-go Postgres 16, one container per PACKAGE; each test gets
 //     its own database on it (no shared state, parallel-safe — see TestMain).
-//   - Inline copy of the kacho-iam `fga_outbox` DDL (see fgaOutboxSchema in
+//   - Inline copy of the kaname `fga_outbox` DDL (see fgaOutboxSchema in
 //     drainer_testhelpers_test.go, which names the migrations it mirrors).
 //     corelib doesn't own iam migrations.
 //   - Fake-Applier (a recorder; the drainer's consumer is a port, not a
@@ -53,7 +53,7 @@ import (
 // testCfg returns drainer.Config tuned for fast test loops.
 func testCfg() drainer.Config {
 	return drainer.Config{
-		Table:        "kacho_iam.fga_outbox",
+		Table:        "kaname.fga_outbox",
 		Channel:      "kacho_iam_fga_outbox",
 		BatchSize:    32,
 		PollFallback: 1 * time.Second, // tight for test responsiveness
@@ -753,7 +753,7 @@ func TestW1_1_13_IdleDrainer_NoBusyLoop(t *testing.T) {
 	err := pool.QueryRow(ctx, `
 		SELECT COALESCE(seq_scan, 0), COALESCE(idx_scan, 0)
 		  FROM pg_stat_user_tables
-		 WHERE schemaname = 'kacho_iam' AND relname = 'fga_outbox'
+		 WHERE schemaname = 'kaname' AND relname = 'fga_outbox'
 	`).Scan(&seqScan, &idxScan)
 	require.NoError(t, err)
 	t.Logf("pg_stat cross-check: seq_scan=%d idx_scan=%d (secondary)", seqScan, idxScan)

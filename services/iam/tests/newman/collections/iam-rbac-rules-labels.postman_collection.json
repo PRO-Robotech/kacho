@@ -1,7 +1,7 @@
 {
   "info": {
     "_postman_id": "07b15994-3f09-5411-aea2-5da8374e7318",
-    "name": "kacho-iam / newman / iam-rbac-rules-labels",
+    "name": "kaname / newman / iam-rbac-rules-labels",
     "schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json"
   },
   "event": [

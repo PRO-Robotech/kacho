@@ -26,7 +26,7 @@
 // вовсе. Предикаты, которыми перемерено (#2010):
 //
 //	git grep -c 'moduleroles.Reconcile' -- 'services/iam/**/*.go' ':!*_test.go'  → 0
-//	git grep -n 'AssertRoleParity\|TierParity' -- 'services/iam/cmd/kacho-iam/*.go' → пусто
+//	git grep -n 'AssertRoleParity\|TierParity' -- 'services/iam/cmd/kaname/*.go' → пусто
 //
 // `Apply` о снятии не знает by construction, поэтому роль, убранная из раздела,
 // пуск НЕ роняет — она просто остаётся жить, и это первый абзац выше.
@@ -92,7 +92,7 @@ import (
 )
 
 // applierImportPath — пакет применителя ролей модуля.
-const applierImportPath = "github.com/PRO-Robotech/kacho-iam/internal/apps/kacho/moduleroles"
+const applierImportPath = "github.com/PRO-Robotech/kaname/internal/apps/kaname/moduleroles"
 
 // applierDriveNames — имена, которыми применитель ПРИВОДИТСЯ В ДЕЙСТВИЕ.
 // Перечень выведен из объявлений пакета, а не угадан: `NewApplier` собирает
@@ -132,7 +132,7 @@ type RoleWithdrawalCensus struct {
 // `\b` после `roles` отделяет саму таблицу от её проекций (`role_rule_ref`,
 // `role_verb`, `role_rule_selectors`): их запись к отзыву роли отношения не
 // имеет.
-var roleWithdrawalWriteRe = regexp.MustCompile(`(?is)\b(?:update|insert\s+into)\s+(?:kacho_iam\.)?roles\b`)
+var roleWithdrawalWriteRe = regexp.MustCompile(`(?is)\b(?:update|insert\s+into)\s+(?:kaname\.)?roles\b`)
 
 // roleWithdrawalMarkRe — пометка снятия В ПРИСВОЕНИИ. Форма взята из решения
 // (`live boolean` под `CHECK (live = (retired_at IS NULL))`), а не изобретена:

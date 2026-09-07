@@ -146,7 +146,7 @@ func Test_Beta04_UpdateLabels_EmitsNewIntent(t *testing.T) {
 // per-object source_version from the DB clock (now()) at intent-INSERT time, in
 // the SAME writer-tx as the resource mutation. Two sequential mutations of one
 // object (Create, then Update-on-labels) → the Update intent carries a strictly
-// GREATER source_version than the Create intent. This is what lets kacho-iam
+// GREATER source_version than the Create intent. This is what lets kaname
 // apply the mirror UPSERT last-source-state-wins (a reordered stale intent is a
 // no-op). RED before outbox.go stamps jsonb_set('{source_version}', to_jsonb(now())).
 func Test_BetaHardening_RegisterIntentStampsMonotonicSourceVersion(t *testing.T) {

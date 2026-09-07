@@ -68,6 +68,16 @@ func RegisterDefaults(v *viper.Viper) {
 	// Ключи объявлены здесь ещё и затем, чтобы их видел ENV-override: viper
 	// подхватывает переменную окружения только для ИЗВЕСТНОГО ключа, поэтому без
 	// SetDefault `KACHO_VPC_API_SERVER__RATE_LIMIT__*` не доехал бы до поля вовсе.
+	// Объявление домена величин. Умолчание — ПУСТАЯ строка, то есть «оператор не
+	// выбрал», и боевая посадка на ней не поднимается: у ручки ровно два законных
+	// значения, и незаданное среди них не значится.
+	//
+	// Ключ объявлен здесь ещё и затем, чтобы его видел ENV-override: viper
+	// подхватывает переменную окружения только для ИЗВЕСТНОГО ключа, поэтому без
+	// SetDefault `KACHO_VPC_QUOTA__AUTHORITY` не доехал бы до поля ВОВСЕ — ручка
+	// принималась бы профилем и не читалась процессом.
+	v.SetDefault("quota.authority", "")
+
 	v.SetDefault("api-server.rate-limit.public.read-per-sec", 0.0)
 	v.SetDefault("api-server.rate-limit.public.mutation-per-sec", 0.0)
 	v.SetDefault("api-server.rate-limit.public.burst-factor", 0.0)
@@ -78,7 +88,7 @@ func RegisterDefaults(v *viper.Viper) {
 	v.SetDefault("api-server.rate-limit.internal.in-flight", 0)
 
 	// metrics / healthcheck — cluster-internal diagnostic listener (/metrics +
-	// /healthz + /readyz). endpoint=:9095 зеркалит kacho-iam; enable=false ИЛИ
+	// /healthz + /readyz). endpoint=:9095 зеркалит kaname; enable=false ИЛИ
 	// пустой endpoint → listener не поднимается.
 	v.SetDefault("metrics.enable", true)
 	v.SetDefault("metrics.endpoint", ":9095")
@@ -114,7 +124,7 @@ func RegisterDefaults(v *viper.Viper) {
 	v.SetDefault("authn.trusted-forwarder", false)
 
 	// extapi
-	// project-existence peer — kacho-iam (ProjectService.Get).
+	// project-existence peer — kaname (ProjectService.Get).
 	v.SetDefault("extapi.def-dial-duration", 10*time.Second)
 	v.SetDefault("extapi.iam.endpoint", "iam.kacho.svc:9090")
 	v.SetDefault("extapi.iam.tls.enable", false)
@@ -128,7 +138,7 @@ func RegisterDefaults(v *viper.Viper) {
 
 	// authz. По умолчанию iam-endpoint пустой → interceptor не навешивается;
 	// включается через values.yaml / ENV. В dev-стенде — values-dev.yaml
-	// выставит iam-endpoint=kacho-iam.kacho.svc:9091.
+	// выставит iam-endpoint=kaname.kacho.svc:9091.
 	v.SetDefault("authz.iam-endpoint", "")
 	v.SetDefault("authz.iam-tls.enable", false)
 	v.SetDefault("authz.check-timeout", 2*time.Second)
@@ -140,6 +150,17 @@ func RegisterDefaults(v *viper.Viper) {
 	// на пустом списке не стартует (Validate), а значение задаёт чарт.
 	// ENV KACHO_VPC_AUTHZ__TRUSTED_FORWARDER_SANS (через запятую).
 	v.SetDefault("authz.trusted-forwarder-sans", []string{})
+	// trust-domain — домен доверия установки. Пусто по умолчанию, и это самое
+	// строгое прочтение: по необъявленному домену не опознаётся ни один
+	// предъявитель, а боевая посадка на нём не стартует (Validate). Величину
+	// задаёт чарт, а не сборка.
+	//
+	// Ключ объявлен ЗДЕСЬ не ради умолчания, а ради ПРИВЯЗКИ: viper связывает с
+	// переменной окружения только ключи, которые он уже видел. Померено, а не
+	// предположено: без этой строки `KACHO_VPC_AUTHZ__TRUST_DOMAIN` не доезжает
+	// ни в одном написании, и имя переменной в тексте отказа было бы обещанием
+	// возможности, которой нет.
+	v.SetDefault("authz.trust-domain", "")
 
 	// per-object list-filter (per-page BatchCheck-filtered List).
 	// Default enabled=true: List<Resource> возвращает только доступные объекты
@@ -165,7 +186,7 @@ func RegisterDefaults(v *viper.Viper) {
 	// посадка без модели не поднимается вовсе — отказ даёт `ValidateListFilter` на
 	// любой посадке, поэтому объявлять было нечего.
 
-	// iam — интеграция с kacho-iam. require — fail-closed boot-gate (default off:
+	// iam — интеграция с kaname. require — fail-closed boot-gate (default off:
 	// dev/Create разрешён, только Warn). register-drainer-enabled — default-on
 	// (owner-tuple publisher). Ранее оба читались os.LookupEnv в cmd/; теперь —
 	// типизированные ключи со строгой bool-валидацией на decode.

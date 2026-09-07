@@ -14,7 +14,7 @@
 //            DELETE FROM operations WHERE description LIKE 'Create address adrx-%';"
 //
 // Замечание: каждый allocate в worker'е резолвит владельца-проект через
-// kacho-iam (gRPC, не кешируется) → ceiling ≈ ~3000/sec на 1 pod (ниже, чем у
+// kaname (gRPC, не кешируется) → ceiling ≈ ~3000/sec на 1 pod (ниже, чем у
 // Network.Create).
 
 import { Counter } from 'k6/metrics';

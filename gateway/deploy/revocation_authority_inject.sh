@@ -63,7 +63,7 @@ assert 'накладка гасит адрес — краснеет и назы�
 echo "── ось 1, законный близнец: ОТКАТ полосы (наш издатель снят целиком) ──"
 blank_overlay '  tokenAcceptance:
     issuers: "https://localhost:28080/.ory/hydra/public"
-    issuerKeySets: "https://localhost:28080/.ory/hydra/public=https://kacho-iam-internal.kacho.svc:9097/.well-known/jwks.json"
+    issuerKeySets: "https://localhost:28080/.ory/hydra/public=https://kaname-internal.kacho.svc:9097/.well-known/jwks.json"
     platformIssuer: ""
     revocationUrl: ""
 '

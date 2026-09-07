@@ -1,7 +1,7 @@
 // Copyright (c) PRO-Robotech
 // SPDX-License-Identifier: BUSL-1.1
 
-// Package iam — typed adapter-клиенты к kacho-iam (Clean Architecture
+// Package iam — typed adapter-клиенты к kaname (Clean Architecture
 // outbound adapter).
 //
 // Содержит:
@@ -16,7 +16,7 @@
 //   - NewRegisterApplier / DecodeFGARegisterIntent — drainer.Applier/Decoder
 //     halves of the `kacho_nlb.fga_register_outbox` drainer. The Create/Delete
 //     worker persists a FGARegisterIntent in the resource writer-tx; the drainer
-//     reads each row and applies its owner-tuple set through kacho-iam by mTLS
+//     reads each row and applies its owner-tuple set through kaname by mTLS
 //     (replaces the removed best-effort direct-FGA write — `internal/fgawrite` +
 //     HierarchyWriter.WriteCreatorTuple-after-Commit).
 //

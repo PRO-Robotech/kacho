@@ -272,7 +272,7 @@ var reMfaFreshSignature = regexp.MustCompile(`(?m)^condition\s+mfa_fresh\s*\(([^
 func mfaFreshArgumentsFromModel(t *testing.T) []string {
 	t.Helper()
 	raw, err := os.ReadFile(filepath.Join(conditionProbeRepoRoot(t),
-		"proto", "kacho", "cloud", "iam", "v1", "fga_model.fga"))
+		"proto", "kaname", "cloud", "iam", "v1", "fga_model.fga"))
 	require.NoError(t, err, "каноническая модель прав не прочитана — предмет гейта недоступен")
 	m := reMfaFreshSignature.FindSubmatch(raw)
 	require.NotNil(t, m,
@@ -361,9 +361,9 @@ func TestConditionArguments_LanesAgree(t *testing.T) {
 		ACR:     "3",
 		AMR:     []string{"webauthn"},
 		ExtClaims: map[string]any{
-			"kacho_principal_type": "user",
-			"kacho_principal_id":   "usr_alice_acc_a1b2",
-			"kacho_mfa_at":         at.Unix(),
+			"kaname_principal_type": "user",
+			"kaname_principal_id":   "usr_alice_acc_a1b2",
+			"kaname_mfa_at":         at.Unix(),
 		},
 	}
 

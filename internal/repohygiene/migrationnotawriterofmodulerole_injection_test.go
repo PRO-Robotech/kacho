@@ -15,22 +15,22 @@ import (
 
 // injMigrationVPCRole — вставка роли модуля в живой форме дерева.
 const injMigrationVPCRole = `-- +goose Up
-INSERT INTO kacho_iam.roles (id, cluster_id, account_id, name, description, permissions) VALUES
-  ('rol' || substr(md5('vpc.network.admin'), 1, 17), 'cluster_kacho_root', NULL,
+INSERT INTO kaname.roles (id, cluster_id, account_id, name, description, permissions) VALUES
+  ('rol' || substr(md5('vpc.network.admin'), 1, 17), 'cluster_root', NULL,
    'vpc.network.admin', 'Admin Network', '["vpc.network.*"]'::jsonb);
 `
 
 // injMigrationNoOwnerRole — роль БЕЗ модуля-владельца: точки в имени нет.
 const injMigrationNoOwnerRole = `-- +goose Up
-INSERT INTO kacho_iam.roles (id, cluster_id, account_id, name, description, permissions) VALUES
-  ('rol' || substr(md5('owner'), 1, 17), 'cluster_kacho_root', NULL,
+INSERT INTO kaname.roles (id, cluster_id, account_id, name, description, permissions) VALUES
+  ('rol' || substr(md5('owner'), 1, 17), 'cluster_root', NULL,
    'owner', 'Owner', '["*.*.*.*"]'::jsonb);
 `
 
 // injMigrationForeignTable — тот же образец идентификатора во вставке в ЧУЖУЮ
 // таблицу. Предикат без привязки к блоку считал бы это ролью.
 const injMigrationForeignTable = `-- +goose Up
-INSERT INTO kacho_iam.access_bindings (id, subject_id, role_id) VALUES
+INSERT INTO kaname.access_bindings (id, subject_id, role_id) VALUES
   ('acb' || substr(md5('module.storage_sa'), 1, 17),
    'sva' || substr(md5('kacho-storage'), 1, 17),
    'rol' || substr(md5('vpc.network.admin'), 1, 17));
@@ -218,7 +218,7 @@ func TestMigrationRoleGateJudgesOnlyAddedMigrations(t *testing.T) {
 // счёта уровней разбор разорвал бы кортеж посередине и сдвинул бы все
 // последующие колонки, то есть прочитал бы имя не той роли.
 const injMigrationDumpForm = `-- +goose Up
-INSERT INTO kacho_iam.roles (id, account_id, name, description, permissions, created_at, cluster_id, project_id, rules, labels, owner_module, live) VALUES ('rol6307d201bf18e6763', NULL, 'vpc.network.admin', 'Admin Network', '["vpc.network.*.*"]', now(), 'cluster_kacho_root', NULL, '[{"verbs": ["*"], "module": "vpc", "resources": ["network"]}]', '{}', NULL, true);
+INSERT INTO kaname.roles (id, account_id, name, description, permissions, created_at, cluster_id, project_id, rules, labels, owner_module, live) VALUES ('rol6307d201bf18e6763', NULL, 'vpc.network.admin', 'Admin Network', '["vpc.network.*.*"]', now(), 'cluster_root', NULL, '[{"verbs": ["*"], "module": "vpc", "resources": ["network"]}]', '{}', NULL, true);
 `
 
 // injMigrationDumpFormNoColumnList — вставка БЕЗ перечня колонок.
@@ -228,7 +228,7 @@ INSERT INTO kacho_iam.roles (id, account_id, name, description, permissions, cre
 // таблицы — значит завести второе место об одном предмете, которое разойдётся
 // с первой же миграцией, меняющей порядок.
 const injMigrationDumpFormNoColumnList = `-- +goose Up
-INSERT INTO kacho_iam.roles VALUES ('rol6307d201bf18e6763', NULL, 'vpc.network.admin');
+INSERT INTO kaname.roles VALUES ('rol6307d201bf18e6763', NULL, 'vpc.network.admin');
 `
 
 // TestMigrationRoleScannerReadsBothFormsOfTheName — РАСПОЗНАВАТЕЛЬ ЗНАЕТ ОБЕ

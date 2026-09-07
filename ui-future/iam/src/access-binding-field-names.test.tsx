@@ -1,7 +1,7 @@
 // Контракт-замок AccessBinding: карточка привязки читает у ресурса РОВНО те
 // имена, которые сообщение ствола несёт.
 //
-// Ground truth — proto/kacho/cloud/iam/v1/access_binding.proto. У снятого имени
+// Ground truth — proto/kaname/cloud/iam/v1/access_binding.proto. У снятого имени
 // ДВА разных класса, и проверка, знающая только про один, пропускает второй:
 //
 //   1. ЗАХОРОНЕНО (`reserved` вместе с именем) — `scope`, `scope_ref`,
@@ -40,7 +40,7 @@ import { detailExtension } from "@shared/components/organisms/ResourceDetailExte
 import "./registerExtensions";
 
 const here = path.dirname(fileURLToPath(import.meta.url));
-const proto = readFileSync(path.resolve(here, "../../../proto/kacho/cloud/iam/v1/access_binding.proto"), "utf8");
+const proto = readFileSync(path.resolve(here, "../../../proto/kaname/cloud/iam/v1/access_binding.proto"), "utf8");
 
 /** Тело `message <name> { … }` со счётом скобок (вложенные enum/oneof не рвут). */
 function messageBody(name: string): string {

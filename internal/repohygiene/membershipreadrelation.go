@@ -44,7 +44,7 @@ import (
 
 const (
 	mrrCatalog   = "gateway/internal/middleware/embed/permission_catalog.json"
-	mrrModel     = "proto/kacho/cloud/iam/v1/fga_model.fga"
+	mrrModel     = "proto/kaname/cloud/iam/v1/fga_model.fga"
 	mrrScopeType = "account"
 	// mrrTierAnchor — ярус распорядителя, который отношение обязано читать.
 	mrrTierAnchor = "admin"
@@ -56,8 +56,8 @@ const (
 // mrrSubjects — RPC, которые этот гейт судит. Перечень УЗКИЙ намеренно: граница
 // предмета названа в шапке.
 var mrrSubjects = []string{
-	"kacho.cloud.iam.v1.MembershipService/Get",
-	"kacho.cloud.iam.v1.MembershipService/List",
+	"kaname.cloud.iam.v1.MembershipService/Get",
+	"kaname.cloud.iam.v1.MembershipService/List",
 }
 
 // mrrVerbPrefix — приставка, по которой отношение опознаётся как ГЛАГОЛЬНОЕ.

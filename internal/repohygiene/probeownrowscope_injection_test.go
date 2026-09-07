@@ -40,8 +40,8 @@ const synthProbeNegativeInline = `package p
 func probe(ctx c, pool P, t T) {
 	var n int
 	pool.QueryRow(ctx,
-		` + "`" + `SELECT count(*) FROM kacho_iam.fga_outbox
-		  WHERE payload->>'object' NOT IN ('iam_fgaproxy:system', 'cluster:cluster_kacho_root')` + "`" + `).Scan(&n)
+		` + "`" + `SELECT count(*) FROM kaname.fga_outbox
+		  WHERE payload->>'object' NOT IN ('iam_fgaproxy:system', 'cluster:cluster_root')` + "`" + `).Scan(&n)
 }
 `
 
@@ -51,10 +51,10 @@ func probe(ctx c, pool P, t T) {
 const synthProbeNegativeViaConst = `package p
 
 func probe(ctx c, pool P, t T) {
-	const notSeed = ` + "`" + `payload->>'object' NOT IN ('iam_fgaproxy:system', 'cluster:cluster_kacho_root')` + "`" + `
+	const notSeed = ` + "`" + `payload->>'object' NOT IN ('iam_fgaproxy:system', 'cluster:cluster_root')` + "`" + `
 	var n int
 	pool.QueryRow(ctx,
-		` + "`" + `SELECT count(*) FROM kacho_iam.fga_outbox WHERE ` + "`" + `+notSeed).Scan(&n)
+		` + "`" + `SELECT count(*) FROM kaname.fga_outbox WHERE ` + "`" + `+notSeed).Scan(&n)
 }
 `
 
@@ -64,7 +64,7 @@ const synthProbePositiveScope = `package p
 func probe(ctx c, pool P, t T, own []string) {
 	var n int
 	pool.QueryRow(ctx,
-		` + "`" + `SELECT count(*) FROM kacho_iam.fga_outbox
+		` + "`" + `SELECT count(*) FROM kaname.fga_outbox
 		  WHERE payload->>'object' = ANY($1::text[])` + "`" + `, own).Scan(&n)
 }
 `
@@ -75,9 +75,9 @@ const synthProbeDelta = `package p
 
 func probe(ctx c, pool P, t T) {
 	var before, after int
-	pool.QueryRow(ctx, ` + "`" + `SELECT count(*) FROM kacho_iam.fga_outbox` + "`" + `).Scan(&before)
+	pool.QueryRow(ctx, ` + "`" + `SELECT count(*) FROM kaname.fga_outbox` + "`" + `).Scan(&before)
 	act()
-	pool.QueryRow(ctx, ` + "`" + `SELECT count(*) FROM kacho_iam.fga_outbox` + "`" + `).Scan(&after)
+	pool.QueryRow(ctx, ` + "`" + `SELECT count(*) FROM kaname.fga_outbox` + "`" + `).Scan(&after)
 	requireEqual(t, before, after)
 }
 `
@@ -105,7 +105,7 @@ const synthProbeCommentOnly = `package p
 func probe(ctx c, pool P, t T, own []string) {
 	var n int
 	pool.QueryRow(ctx,
-		` + "`" + `SELECT count(*) FROM kacho_iam.fga_outbox WHERE payload->>'object' = ANY($1::text[])` + "`" + `, own).Scan(&n)
+		` + "`" + `SELECT count(*) FROM kaname.fga_outbox WHERE payload->>'object' = ANY($1::text[])` + "`" + `, own).Scan(&n)
 }
 `
 

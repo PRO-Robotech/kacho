@@ -71,7 +71,7 @@ func scanRegistryTokenAudience(profiles map[string]map[string]any, base map[stri
 
 	for _, name := range names {
 		service := laneAddressee(profiles[name], base)
-		ct, _ := dig(profiles[name], "kacho-iam", "config", "authn", "clientToken").(map[string]any)
+		ct, _ := dig(profiles[name], "kaname", "config", "authn", "clientToken").(map[string]any)
 		if ct == nil {
 			continue
 		}
@@ -155,7 +155,7 @@ func TestRegistryTokenAudienceIsInsideThePlatformDeclaration(t *testing.T) {
 // всякий профиль, прошёл бы первую половину и был бы бесполезен.
 func TestRegistryTokenAudienceScannerSeesTheDriftAndIsSilentOnAgreement(t *testing.T) {
 	profile := func(service, audiences string, endpointOn bool) map[string]any {
-		return map[string]any{"kacho-iam": map[string]any{"config": map[string]any{
+		return map[string]any{"kaname": map[string]any{"config": map[string]any{
 			"apiServer": map[string]any{"registryToken": map[string]any{"service": service}},
 			"authn": map[string]any{"clientToken": map[string]any{
 				"enabled": endpointOn, "allowedAudiences": audiences,

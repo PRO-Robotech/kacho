@@ -55,6 +55,8 @@ import (
 	"path"
 	"sort"
 	"strings"
+
+	"github.com/PRO-Robotech/kacho/internal/productnaming"
 )
 
 // Идентификаторы уровней. Держатся именованными константами, потому что их
@@ -180,7 +182,9 @@ func licenseFileWantFor(rel string) (licenseFileWant, bool) {
 			return licenseFileWant{SPDX: licenseBUSL, Subject: alias, Tier: tier.Name}, true
 		}
 		if svc, ok := strings.CutPrefix(dir, "services/"); ok && svc != "" && !strings.Contains(svc, "/") {
-			return licenseFileWant{SPDX: licenseBUSL, Subject: "kacho-" + svc, Tier: tier.Name}, true
+			// Имя предмета спрашивается у владельца имён, а не собирается из
+			// имени платформы: часть продукта вправе носить СВОЁ имя (#2076).
+			return licenseFileWant{SPDX: licenseBUSL, Subject: productnaming.ChartName(svc), Tier: tier.Name}, true
 		}
 	}
 	return licenseFileWant{}, false

@@ -15,53 +15,53 @@ func TestRestRouter_Resolve_KnownRoutes(t *testing.T) {
 		method, path, wantFQN string
 	}{
 		// collection POST (Create)
-		{"POST", "/iam/v1/accounts", "kacho.cloud.iam.v1.AccountService/Create"},
+		{"POST", "/iam/v1/accounts", "kaname.cloud.iam.v1.AccountService/Create"},
 		// item GET with {id} placeholder
-		{"GET", "/iam/v1/accounts/acc0000000000000001", "kacho.cloud.iam.v1.AccountService/Get"},
+		{"GET", "/iam/v1/accounts/acc0000000000000001", "kaname.cloud.iam.v1.AccountService/Get"},
 		// item PATCH (Update)
-		{"PATCH", "/iam/v1/projects/prj0000000000000001", "kacho.cloud.iam.v1.ProjectService/Update"},
+		{"PATCH", "/iam/v1/projects/prj0000000000000001", "kaname.cloud.iam.v1.ProjectService/Update"},
 		// item DELETE
-		{"DELETE", "/iam/v1/accounts/acc0000000000000001", "kacho.cloud.iam.v1.AccountService/Delete"},
+		{"DELETE", "/iam/v1/accounts/acc0000000000000001", "kaname.cloud.iam.v1.AccountService/Delete"},
 		// suffix-action `:verb`
-		{"POST", "/iam/v1/users:invite", "kacho.cloud.iam.v1.UserService/Invite"},
+		{"POST", "/iam/v1/users:invite", "kaname.cloud.iam.v1.UserService/Invite"},
 		// UserService.Update — public async mutation (User labels-only); PATCH on the
 		// item path `/iam/v1/users/{user_id}`, same template as GET/DELETE. Must resolve
 		// so the catalog gate (record_writer on iam_user, acr 1) fires instead of
 		// "no entry for method".
-		{"PATCH", "/iam/v1/users/usr0000000000000001", "kacho.cloud.iam.v1.UserService/Update"},
+		{"PATCH", "/iam/v1/users/usr0000000000000001", "kaname.cloud.iam.v1.UserService/Update"},
 		// AccessBindingService.ListSubjectPrivileges — public read, GET suffix-action;
 		// must resolve so the catalog gate (viewer floor) fires.
-		{"GET", "/iam/v1/accessBindings:listSubjectPrivileges", "kacho.cloud.iam.v1.AccessBindingService/ListSubjectPrivileges"},
+		{"GET", "/iam/v1/accessBindings:listSubjectPrivileges", "kaname.cloud.iam.v1.AccessBindingService/ListSubjectPrivileges"},
 		// AccessBindingService.ListAssignableRoles — public read, GET suffix-action;
 		// must resolve so the scope-polymorphic catalog gate (viewer floor + dynamic
 		// object_type) fires.
-		{"GET", "/iam/v1/accessBindings:listAssignableRoles", "kacho.cloud.iam.v1.AccessBindingService/ListAssignableRoles"},
+		{"GET", "/iam/v1/accessBindings:listAssignableRoles", "kaname.cloud.iam.v1.AccessBindingService/ListAssignableRoles"},
 		// ListByScope — public read, GET suffix-action on the collection; must
 		// resolve so the scope-polymorphic catalog gate (viewer floor + dynamic
 		// object_type from resource_type) fires.
-		{"GET", "/iam/v1/accessBindings:listByScope", "kacho.cloud.iam.v1.AccessBindingService/ListByScope"},
+		{"GET", "/iam/v1/accessBindings:listByScope", "kaname.cloud.iam.v1.AccessBindingService/ListByScope"},
 		// ListByRole + ExpandAccess — public reads, GET suffix-actions on the
 		// collection; must resolve so the cluster-scoped catalog gate (viewer floor,
 		// acr 2) fires.
-		{"GET", "/iam/v1/accessBindings:listByRole", "kacho.cloud.iam.v1.AccessBindingService/ListByRole"},
-		{"GET", "/iam/v1/accessBindings:expandAccess", "kacho.cloud.iam.v1.AccessBindingService/ExpandAccess"},
+		{"GET", "/iam/v1/accessBindings:listByRole", "kaname.cloud.iam.v1.AccessBindingService/ListByRole"},
+		{"GET", "/iam/v1/accessBindings:expandAccess", "kaname.cloud.iam.v1.AccessBindingService/ExpandAccess"},
 		// AccessBindingService.Update — public PATCH on the item path (clears
 		// deletion_protection); must resolve so the catalog gate (editor on
 		// iam_access_binding, acr 2 — parity with Delete) fires instead of "no entry
 		// for method". Same item template as GET/DELETE.
-		{"PATCH", "/iam/v1/accessBindings/abd0000000000000001", "kacho.cloud.iam.v1.AccessBindingService/Update"},
+		{"PATCH", "/iam/v1/accessBindings/abd0000000000000001", "kaname.cloud.iam.v1.AccessBindingService/Update"},
 		// WhoAmI (GET /iam/v1/me) must resolve so the <exempt> bypass fires;
 		// otherwise path->FQN fails → 403 "catalog: no entry for method" breaks the
 		// UI permission bootstrap.
-		{"GET", "/iam/v1/me", "kacho.cloud.iam.v1.AuthorizeService/WhoAmI"},
+		{"GET", "/iam/v1/me", "kaname.cloud.iam.v1.AuthorizeService/WhoAmI"},
 		// PermissionCatalogService.ListPermissionCatalog — public read
 		// (GET /iam/v1/permissionCatalog) on the EXTERNAL listener; must resolve so
 		// the <exempt> catalog bypass fires. The internal-permissions route
 		// (GET /iam/v1/internal/iam/permissions) must NOT resolve anymore
 		// (see TestRestRouter_TombstonedRoutesGone).
-		{"GET", "/iam/v1/permissionCatalog", "kacho.cloud.iam.v1.PermissionCatalogService/ListPermissionCatalog"},
+		{"GET", "/iam/v1/permissionCatalog", "kaname.cloud.iam.v1.PermissionCatalogService/ListPermissionCatalog"},
 		// list with query string is stripped before matching
-		{"GET", "/iam/v1/projects?accountId=acc1", "kacho.cloud.iam.v1.ProjectService/List"},
+		{"GET", "/iam/v1/projects?accountId=acc1", "kaname.cloud.iam.v1.ProjectService/List"},
 		// vpc resource
 		{"GET", "/vpc/v1/networks/enp0000000000000001", "kacho.cloud.vpc.v1.NetworkService/Get"},
 		// Суффиксные действия над CIDR-блоками пула адресов.
@@ -124,7 +124,7 @@ func TestRestRouter_TombstonedRoutesGone(t *testing.T) {
 	}
 	// No route may still map to the tombstoned FQN.
 	for _, rt := range generatedRestRoutes {
-		if rt.FQN == "kacho.cloud.iam.v1.InternalIAMService/ListPermissions" {
+		if rt.FQN == "kaname.cloud.iam.v1.InternalIAMService/ListPermissions" {
 			t.Errorf("route table still contains tombstoned FQN %q (template %q)", rt.FQN, rt.Template)
 		}
 	}
@@ -133,7 +133,7 @@ func TestRestRouter_TombstonedRoutesGone(t *testing.T) {
 func TestRestRouter_PathTemplates(t *testing.T) {
 	r := NewRestRouter()
 	tmpls := r.PathTemplates()
-	if got := tmpls["kacho.cloud.iam.v1.AccountService/Get"]; got != "/iam/v1/accounts/{account_id}" {
+	if got := tmpls["kaname.cloud.iam.v1.AccountService/Get"]; got != "/iam/v1/accounts/{account_id}" {
 		t.Errorf("PathTemplates[AccountService/Get] = %q, want /iam/v1/accounts/{account_id}", got)
 	}
 }
@@ -154,17 +154,17 @@ func TestRestRouter_Resolve_RegeneratedCoverage(t *testing.T) {
 		// VPC InternalNetworkService read (internal-only `:internal` action).
 		{"GET", "/vpc/v1/networks/enp0000000000000001:internal", "kacho.cloud.vpc.v1.InternalNetworkService/GetNetwork"},
 		// IAM SAKeyService — service-account key subpaths under the SA item.
-		{"POST", "/iam/v1/serviceAccounts/sva0000000000000001/keys", "kacho.cloud.iam.v1.SAKeyService/Issue"},
-		{"GET", "/iam/v1/serviceAccounts/sva0000000000000001/keys", "kacho.cloud.iam.v1.SAKeyService/List"},
-		{"DELETE", "/iam/v1/serviceAccounts/sva0000000000000001/keys/key0000000000000001", "kacho.cloud.iam.v1.SAKeyService/Revoke"},
+		{"POST", "/iam/v1/serviceAccounts/sva0000000000000001/keys", "kaname.cloud.iam.v1.SAKeyService/Issue"},
+		{"GET", "/iam/v1/serviceAccounts/sva0000000000000001/keys", "kaname.cloud.iam.v1.SAKeyService/List"},
+		{"DELETE", "/iam/v1/serviceAccounts/sva0000000000000001/keys/key0000000000000001", "kaname.cloud.iam.v1.SAKeyService/Revoke"},
 		// IAM UserTokenService — personal API-token subpaths under the user item
 		// (mirrors SAKeyService, parent-scoped on iam_user).
-		{"POST", "/iam/v1/users/usr0000000000000001/tokens", "kacho.cloud.iam.v1.UserTokenService/Issue"},
-		{"GET", "/iam/v1/users/usr0000000000000001/tokens", "kacho.cloud.iam.v1.UserTokenService/List"},
-		{"DELETE", "/iam/v1/users/usr0000000000000001/tokens/uoc0000000000000001", "kacho.cloud.iam.v1.UserTokenService/Revoke"},
+		{"POST", "/iam/v1/users/usr0000000000000001/tokens", "kaname.cloud.iam.v1.UserTokenService/Issue"},
+		{"GET", "/iam/v1/users/usr0000000000000001/tokens", "kaname.cloud.iam.v1.UserTokenService/List"},
+		{"DELETE", "/iam/v1/users/usr0000000000000001/tokens/uoc0000000000000001", "kaname.cloud.iam.v1.UserTokenService/Revoke"},
 		// IAM AccessBindingService scope-polymorphic reads (GET suffix-actions).
-		{"GET", "/iam/v1/accessBindings:listByScope", "kacho.cloud.iam.v1.AccessBindingService/ListByScope"},
-		{"GET", "/iam/v1/accessBindings:listBySubject", "kacho.cloud.iam.v1.AccessBindingService/ListBySubject"},
+		{"GET", "/iam/v1/accessBindings:listByScope", "kaname.cloud.iam.v1.AccessBindingService/ListByScope"},
+		{"GET", "/iam/v1/accessBindings:listBySubject", "kaname.cloud.iam.v1.AccessBindingService/ListBySubject"},
 		// Registry — first REST-exposed registry resource.
 		{"POST", "/registry/v1/registries", "kacho.cloud.registry.v1.RegistryService/Create"},
 		{"DELETE", "/registry/v1/registries/reg0000000000000001/repositories/app/tags/v1", "kacho.cloud.registry.v1.RegistryService/DeleteTag"},
@@ -184,9 +184,9 @@ func TestRestRouter_Resolve_RegeneratedCoverage(t *testing.T) {
 	// is regenerated from the current tree, no route may resolve to them.
 	for _, rt := range generatedRestRoutes {
 		switch {
-		case strings.HasPrefix(rt.FQN, "kacho.cloud.iam.v1.TrustPolicyService/"),
-			strings.HasPrefix(rt.FQN, "kacho.cloud.iam.v1.OpaBundleService/"),
-			strings.HasPrefix(rt.FQN, "kacho.cloud.iam.v1.FederationExchangeService/"):
+		case strings.HasPrefix(rt.FQN, "kaname.cloud.iam.v1.TrustPolicyService/"),
+			strings.HasPrefix(rt.FQN, "kaname.cloud.iam.v1.OpaBundleService/"),
+			strings.HasPrefix(rt.FQN, "kaname.cloud.iam.v1.FederationExchangeService/"):
 			t.Errorf("route table still contains %q — service removed from proto, stale entry", rt.FQN)
 		}
 	}

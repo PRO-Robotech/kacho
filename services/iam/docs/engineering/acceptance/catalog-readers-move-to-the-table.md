@@ -26,7 +26,7 @@ SPDX-License-Identifier: AGPL-3.0-or-later
 - **Тип изменения:** ЗАВОДЯЩЕЕ. Заводится путь чтения каталога из строк и гейт,
   которым **послабление истекает само**. Ничего не снимается — и §2.1 объясняет,
   почему снятие литерала было бы дефектом, а не завершением работы
-- **Сервис:** `kacho-iam`, предмет целиком внутри него — документ живёт рядом с кодом
+- **Сервис:** `kaname`, предмет целиком внутри него — документ живёт рядом с кодом
 - **`proto/` НЕ затрагивается.** У каталога нет нового поля контракта; изменение
   наблюдаемого арендатором вынесено в `#1814` (§4.1)
 - **Миграции:** **условно** (§3.2 п. 4 — индекс под чтение живого множества, если
@@ -338,10 +338,10 @@ $ for q in "благо продукта" "конкурентоспособн" "�
 
 ```sh
 awk '/^func AssertCatalogParity/,/^}/' \
-  services/iam/internal/apps/kacho/seed/catalog_parity.go |
+  services/iam/internal/apps/kaname/seed/catalog_parity.go |
   grep -c 'readCatalogSet(ctx, pool'      # → 3
 awk '/^func readCatalogSet/,/^}/' \
-  services/iam/internal/apps/kacho/seed/catalog_parity.go |
+  services/iam/internal/apps/kaname/seed/catalog_parity.go |
   grep -c 'pool.Query'                    # → 1
 ```
 
@@ -447,7 +447,7 @@ origin/main`), а этот документ живёт на `lane/1816`. Его 
 
 Механизм при этом в дереве **есть**, и он ровно про эту единицу — наблюдатель
 запросов `pgx.QueryTracer` на соединении
-(`services/iam/internal/repo/kacho/pg/relverdict/batch_roundtrip_integration_test.go`).
+(`services/iam/internal/repo/kaname/pg/relverdict/batch_roundtrip_integration_test.go`).
 Его собственная шапка называет единицу дословно: «наблюдатель запросов … отмечает
 **КАЖДЫЙ оператор, уходящий на сервер**, включая служебные `begin`/`rollback`».
 
@@ -595,8 +595,8 @@ origin/main`), а этот документ живёт на `lane/1816`. Его 
 > исправном коде, ровно класс R2.1, внесённый заново.
 >
 > **Опровергнуто замером:** миграции в окне старта не идут. `ls services/iam/cmd/`
-> → `kacho-iam`, `migrator` — **отдельный бинарь**; `git grep -n 'migrat\|Migrat'
-> -- 'services/iam/cmd/kacho-iam/serve.go'` даёт только комментарии и
+> → `kaname`, `migrator` — **отдельный бинарь**; `git grep -n 'migrat\|Migrat'
+> -- 'services/iam/cmd/kaname/serve.go'` даёт только комментарии и
 > `cfg.MigrateDSN()`, переданный в регистрацию служб, — ни одного применения
 > миграций. Окно старта каталожных `INSERT` не содержит, отсечка по трём таблицам
 > достаточна.
@@ -665,7 +665,7 @@ git grep -n 'kacho_iam.catalog_\(module\|resource\|verb\)' -- '*.go' ':!*_test.g
 
 ```sh
 git grep -n 'FROM kacho_iam\.catalog_' -- '*.go' ':!*_test.go'
-# → 3 строки, все в services/iam/internal/apps/kacho/seed/catalog_parity.go
+# → 3 строки, все в services/iam/internal/apps/kaname/seed/catalog_parity.go
 git grep -nE '(JOIN|UPDATE|INSERT INTO|DELETE FROM) +kacho_iam\.catalog_' -- '*.go' ':!*_test.go'
 # → только те же три литерала parseSeedBlock: иных форм доступа в прод-коде нет
 ```
@@ -883,7 +883,7 @@ grep -nE '^var [a-zA-Z_]+ +=? *map\[' services/iam/internal/authzmap/*.go | grep
 | **смешанные** | и то, и другое | 4 | 0 | **4** |
 | | | **19** | **3** | **16** |
 
-Посев — три файла `services/iam/internal/apps/kacho/seed/`: `catalog_parity.go`,
+Посев — три файла `services/iam/internal/apps/kaname/seed/`: `catalog_parity.go`,
 `role_verb_reseed.go`, `verify_gate.go`.
 
 **Девять из шестнадцати спрашивают только, как ТИП НАЗЫВАЕТСЯ, а не что в
@@ -918,7 +918,7 @@ grep -nE '^var [a-zA-Z_]+ +=? *map\[' services/iam/internal/authzmap/*.go | grep
 > перестал:
 >
 > ```sh
-> grep -l 'internal/authzmap' services/iam/internal/apps/kacho/seed/*.go | grep -v _test
+> grep -l 'internal/authzmap' services/iam/internal/apps/kaname/seed/*.go | grep -v _test
 > # → catalog_parity.go · verify_gate.go
 > ```
 >
@@ -1011,7 +1011,7 @@ git grep -ln 'catalog_resource\|catalog_module\|catalog_verb' -- '*.go' | grep -
 что-то исправляет. **По живому множеству — не исправляет ничего**, и это следует
 из §0.7: страж `seed.AssertCatalogParity` сверяет литерал с живыми строками на
 **каждом** старте и при расхождении **отказывает в пуске**
-(`services/iam/cmd/kacho-iam/serve.go:1323`). Внутри работающего процесса два
+(`services/iam/cmd/kaname/serve.go:1323`). Внутри работающего процесса два
 источника равны по построению, поэтому читатель, спросивший строку вместо
 литерала, получит **тот же ответ**.
 
@@ -1258,11 +1258,11 @@ proto/kacho/cloud/iam/v1/fga_model.fga   (КАНОН — единственны�
 
 | файл | что спрашивает сейчас | что останется на литерале |
 |---|---|---|
-| `apps/kacho/api/role/create.go` | `RoleVerbsFromSelectors` | — |
-| `apps/kacho/api/role/update.go` | `RoleVerbsFromSelectors` | — |
-| `apps/kacho/seed/role_verb_reseed.go` | `RoleVerbsFromSelectors` | — |
-| `apps/kacho/api/access_binding/reconcile/tuples.go` | `VerbsOfType` · `CommonVerbVocabulary` · `GrantedVerbs` | `FGAObjectType` (переходник) |
-| `repo/kacho/pg/reconcile_adapter.go` | `VerbsOfType` · `AllVerbVocabulary` | — |
+| `apps/kaname/api/role/create.go` | `RoleVerbsFromSelectors` | — |
+| `apps/kaname/api/role/update.go` | `RoleVerbsFromSelectors` | — |
+| `apps/kaname/seed/role_verb_reseed.go` | `RoleVerbsFromSelectors` | — |
+| `apps/kaname/api/access_binding/reconcile/tuples.go` | `VerbsOfType` · `CommonVerbVocabulary` · `GrantedVerbs` | `FGAObjectType` (переходник) |
+| `repo/kaname/pg/reconcile_adapter.go` | `VerbsOfType` · `AllVerbVocabulary` | — |
 
 `role_verb_reseed.go` лежит в посеве, но читателем каталожного факта является:
 именно он пишет пары, чей тип обязан иметь живую строку. Оставить его на литерале
@@ -1270,7 +1270,7 @@ proto/kacho/cloud/iam/v1/fga_model.fga   (КАНОН — единственны�
 
 ### 3.2. Что заводится
 
-1. **Порт чтения каталога** — `services/iam/internal/repo/kacho/pg/catalog_repo.go`.
+1. **Порт чтения каталога** — `services/iam/internal/repo/kaname/pg/catalog_repo.go`.
    Сегодня такого файла нет: строки читают только страж и ядро гейта (§0.6);
 2. **снимок** с назначенным периодом обновления и **двумя** счётчиками —
    удавшихся обновлений и отказавших. Два, а не один: счётчик отказов на вопрос
@@ -1337,7 +1337,7 @@ proto/kacho/cloud/iam/v1/fga_model.fga   (КАНОН — единственны�
 >
 > **Текст отказа — самое дорогое из трёх, и вот чем.** Он цитирует сообщение, которое
 > продукт печатает: обе величины в нём — `LiteralModules/Resources/Verbs`, выведенные
-> из `authzmap.CatalogSeedVerbs()` (`services/iam/internal/apps/kacho/seed/catalog_parity.go`,
+> из `authzmap.CatalogSeedVerbs()` (`services/iam/internal/apps/kaname/seed/catalog_parity.go`,
 > `LiteralRows`). Производитель уже отдаёт **135** — ключ сверки `verbKey` несёт признак
 > словаря, поэтому ярусные строки в множество входят. Кейс, написанный по прежнему
 > тексту, был бы красным на исправном продукте, а разбирали бы его как дефект стража.
@@ -1517,11 +1517,11 @@ proto/kacho/cloud/iam/v1/fga_model.fga   (КАНОН — единственны�
 
 | сценарий | производитель | координата | проверено |
 |---|---|---|---|
-| `-02` | текст отказа «каталог модуля пуст» | `apps/kacho/seed/catalog_parity.go`, ветвь `c.Empty()` | цитата снята с исходника |
-| `-02`, `-01` | перепись `перепись каталога модуля` | `cmd/kacho-iam/serve.go:1323` и следующие | прочитано |
-| `-01` (вторая половина) | наблюдатель запросов `pgx.QueryTracer` — механизм счёта операторов, уходящих на сервер | эталон формы: `repo/kacho/pg/relverdict/batch_roundtrip_integration_test.go` | **прогнан предикатом**: `git grep -ln 'QueryTracer' -- '*.go'` → 2 файла; шапка эталона называет ту же единицу дословно |
-| `-01` (вторая половина) | сам страж как **измеряемая** величина `K` — три оператора к таблицам каталога | `apps/kacho/seed/catalog_parity.go:92`, `:97`, `:102`, через `readCatalogSet` | **прогнано**: `grep -c 'readCatalogSet(ctx, pool'` → 3; `grep -c 'pool.Query'` в `readCatalogSet` → 1 |
-| `-12` | текст отказа «литерал и строки каталога разошлись» | `apps/kacho/seed/catalog_parity.go`, ветвь `c.Diverged()` | цитата снята с исходника |
+| `-02` | текст отказа «каталог модуля пуст» | `apps/kaname/seed/catalog_parity.go`, ветвь `c.Empty()` | цитата снята с исходника |
+| `-02`, `-01` | перепись `перепись каталога модуля` | `cmd/kaname/serve.go:1323` и следующие | прочитано |
+| `-01` (вторая половина) | наблюдатель запросов `pgx.QueryTracer` — механизм счёта операторов, уходящих на сервер | эталон формы: `repo/kaname/pg/relverdict/batch_roundtrip_integration_test.go` | **прогнан предикатом**: `git grep -ln 'QueryTracer' -- '*.go'` → 2 файла; шапка эталона называет ту же единицу дословно |
+| `-01` (вторая половина) | сам страж как **измеряемая** величина `K` — три оператора к таблицам каталога | `apps/kaname/seed/catalog_parity.go:92`, `:97`, `:102`, через `readCatalogSet` | **прогнано**: `grep -c 'readCatalogSet(ctx, pool'` → 3; `grep -c 'pool.Query'` в `readCatalogSet` → 1 |
+| `-12` | текст отказа «литерал и строки каталога разошлись» | `apps/kaname/seed/catalog_parity.go`, ветвь `c.Diverged()` | цитата снята с исходника |
 | `-12` | гейт паритета с текстом миграции | `internal/check/catalog_seed_parity_test.go`, `TestIAMCT114_…` | **прогнан, PASS** |
 | `-13` | гейт дрейфа модели, утверждение `R-1` | `internal/authzmap/fga_model_drift_test.go` | шапка прочитана |
 | `-06` | ключ `role_verb_type_fk` | миграция `20260901113757` | объявлен, гейт `TestIAMCT113` его проверяет |
@@ -1573,7 +1573,7 @@ go test ./services/iam/internal/check/ -run '^TestIAMCT2_LiteralIsNotAReadSource
 # → строка есть, число импортёров НЕ ноль (перепись гейта, сценарий `-10`)
 
 # 3. Страж и гейт паритета ЖИВЫ — снятию не подлежат (§2.1).
-git grep -c 'AssertCatalogParity' -- 'services/iam/cmd/kacho-iam/serve.go'   # → не 0
+git grep -c 'AssertCatalogParity' -- 'services/iam/cmd/kaname/serve.go'   # → не 0
 ```
 
 **Первое условие сегодня НЕ выполняется** — предикат даёт **5**, и это ровно пять
@@ -1612,7 +1612,7 @@ git grep -c 'AssertCatalogParity' -- 'services/iam/cmd/kacho-iam/serve.go'   # �
 
 > **Исключение — ПО СИМВОЛУ, а не по каталогу, и это правка круга 1 по собственному
 > замеру.** Первая редакция предиката исключала каталог посева целиком
-> (`grep -v '/apps/kacho/seed/'`) и давала **4**, разойдясь с §3.1, где файлов пять:
+> (`grep -v '/apps/kaname/seed/'`) и давала **4**, разойдясь с §3.1, где файлов пять:
 > под исключение попадал `seed/role_verb_reseed.go` — читатель, который обязан
 > переехать (§3.1). Два места об одном предмете, и неверным было **исключение**.
 >
@@ -1667,7 +1667,7 @@ git grep -c 'AssertCatalogParity' -- 'services/iam/cmd/kacho-iam/serve.go'   # �
    сервер. Обёртка над `pgxpool` для этого не годится **by construction** — страж
    принимает `pool *pgxpool.Pool` (`catalog_parity.go:75`), а это структура, не
    интерфейс, и подставить вместо неё нечего. Эталон формы в дереве —
-   `services/iam/internal/repo/kacho/pg/relverdict/batch_roundtrip_integration_test.go`;
+   `services/iam/internal/repo/kaname/pg/relverdict/batch_roundtrip_integration_test.go`;
    его шапка называет ту же единицу дословно.
 
    Единица — **оператор к таблицам каталога**, ушедший на сервер за время старта
@@ -1862,7 +1862,7 @@ go test ./internal/repohygiene/ -run TestAcceptanceLedgerEntriesHaveASubject -co
 никогда. Проба на этой паре зелена и до работы, и после.
 
 **Что сделано.** Обе пробы (`catalog/facts_test.go`,
-`repo/kacho/pg/catalog_snapshot_integration_test.go`) снимают **живую** пару
+`repo/kaname/pg/catalog_snapshot_integration_test.go`) снимают **живую** пару
 `vpc.cidrGroup` и несут положительный контроль: до снятия пары ЕСТЬ. Утверждение
 `-07` сохранено дословно — литерал по-прежнему считает тип живым, и это ожидаемое
 различие.
@@ -1896,7 +1896,7 @@ go test ./internal/repohygiene/ -run TestAcceptanceLedgerEntriesHaveASubject -co
 §3.2 п. 3 требует величину в конфигурации и профилях. Заведена
 `jobs.catalog-snapshot.refresh-interval` (умолчание — минута), страж старта
 отвергает непозитивную (`CatalogSnapshotConfig.Validate`), профиль объявляет её
-явно (`deploy/helm/umbrella/charts/kacho-iam`).
+явно (`deploy/helm/umbrella/charts/kaname`).
 
 Ноль здесь НЕ выключатель — в отличие от соседней `expired-credential-reclaim`, у
 которой выключатель явный: выключенного обновления у снимка не бывает, снимок без

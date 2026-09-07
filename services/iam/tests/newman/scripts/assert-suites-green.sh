@@ -4,16 +4,16 @@
 # SPDX-License-Identifier: AGPL-3.0-or-later
 
 # assert-suites-green.sh — shared newman suite-green gate for EVERY kacho repo's
-# .github/workflows/newman-e2e.yml. Run with cwd = kacho-iam/tests/newman
-# (collections/ + out/ live there; all repos checkout kacho-iam@main and run the
+# .github/workflows/newman-e2e.yml. Run with cwd = kaname/tests/newman
+# (collections/ + out/ live there; all repos checkout kaname@main and run the
 # shared gen.py + run.sh, so the per-suite reports are identical).
 #
 # WHY this is shared (KAC — newman gate consolidation): each repo's
 # newman-e2e.yml used to carry its own inline copy of the verdict logic, and the
 # copies drifted — fixes for get-malformed (api-gateway#73), delete-binding
 # (iam#108) and the user-per-account invite (iam#113, migration 0011) only ever
-# reached kacho-iam's copy, so vpc/compute/nlb/api-gateway/deploy stayed RED on the
-# very same shared suites that kacho-iam reported GREEN. One script = one source of
+# reached kaname's copy, so vpc/compute/nlb/api-gateway/deploy stayed RED on the
+# very same shared suites that kaname reported GREEN. One script = one source of
 # truth; a change to the verdict lands everywhere at once.
 #
 # NOTHING IS SUBTRACTED FROM THE VERDICT. This gate reports the counts newman

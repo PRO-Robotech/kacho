@@ -17,7 +17,7 @@ red is carried here, as a number and a case list, never as a deduction in the ga
 
 | факт | предикат |
 |---|---|
-| читать свою запись разрешает отношение, принимающее ТОЛЬКО тип `user` | `awk '/^type iam_user/,/^type [^i]/' proto/kacho/cloud/iam/v1/fga_model.fga \| grep 'define subject'` → `[user]` |
+| читать свою запись разрешает отношение, принимающее ТОЛЬКО тип `user` | `awk '/^type iam_user/,/^type [^i]/' proto/kaname/cloud/iam/v1/fga_model.fga \| grep 'define subject'` → `[user]` |
 | каждый предъявитель матрицы — служебная учётка | `tests/authz-fixtures/principal_pairings.py`, раздел про то, что `userNOBId` / `userINVId` / `userPureNoBindingsId` — ТОЛЬКО цели привязки |
 | человеческий предъявитель не проходит порог повышения | `tests/authz-fixtures/mint_rs256.py`, раздел `user_platform_token`: `acr` не несётся, а от порога освобождена только машина. Прежняя редакция называла второй причиной жёсткий kacho-внутренний `aud` — этой причины больше нет: выпуск персонального токена не объявляет адресата у внешнего поставщика (#1121) |
 
@@ -654,7 +654,7 @@ the **ungated** behavior and do NOT assert the gated part:
   projection lives on the internal listener (`InternalIAMService.GetRoleCompiled`, :9091),
   which is not reachable from this public-gateway newman env. Newman covers the **public**
   side (two-projection field-ABSENCE on public `Role.Get`/`List`); the internal-positive is
-  covered by `services/iam/internal/apps/kacho/api/role/f5_compiled_projection_test.go`.
+  covered by `services/iam/internal/apps/kaname/api/role/f5_compiled_projection_test.go`.
 - **IAM-1-33 (INTERNAL never echoes pgx/SQL)** — requires injecting an uncategorized DB
   error on the write path (not reproducible black-box). Integration-covered
   (INTERNAL-opaque mapping tests). Documented here, not a newman case.

@@ -73,6 +73,9 @@ import (
 	"strconv"
 	"strings"
 	"testing"
+
+	"github.com/PRO-Robotech/kacho/internal/productnaming"
+	"github.com/PRO-Robotech/kacho/internal/servicelayout"
 )
 
 // Корень дерева читается от каталога deploy — константа `repoRoot` объявлена
@@ -116,10 +119,25 @@ type serviceConfigChart struct {
 }
 
 var (
-	// reConfigPath — путь конфигурации нашего бинаря. Он же называет сервис.
-	// Форма одна на все чарты, хотя доносится по-разному: env CONFIG_PATH у
-	// iam/vpc, аргумент `--config` у nlb.
-	reConfigPath = regexp.MustCompile(`/etc/kacho-([a-z0-9][a-z0-9-]*)/config\.yaml`)
+	// reConfigPath — путь конфигурации нашего бинаря. Он называет ПРОДУКТ, а не
+	// каталог исходников, и эти два словаря с 2026-09 разные.
+	//
+	// ПРИСТАВКА БРЕНДА ИЗ ОТБОРА СНЯТА, И ЭТО НЕ КОСМЕТИКА. Здесь стояло
+	// `/etc/kacho-(…)`, то есть популяция отбиралась ЛИТЕРАЛОМ приставки. В день,
+	// когда служба управления доступом назвала себя своим именем и перенесла
+	// настройки в `/etc/kaname/`, она вышла из-под этой проверки — не находкой, а
+	// МОЛЧАНИЕМ: распознаватель по приставке чужое имя не отвергает, он его не
+	// видит. Замер до правки: чартов с конфигурацией сервиса 2 из 3, и ключ,
+	// которым чарт объявляет шифрование канала к базе, у выпавшей части не
+	// судился вовсе (задача продукта #2154).
+	//
+	// Признак «наша часть» теперь — членство имени в объявленном словаре имён
+	// продукта (`internal/productnaming`), один на дерево. Часть, назвавшая себя
+	// как угодно, попадает под проверку записью в словаре, а не правкой этого
+	// выражения; чужой процесс, монтирующий свою конфигурацию рядом
+	// (`/etc/opa/config.yaml` у пристяжки правил), словарём отсекается
+	// by construction.
+	reConfigPath = regexp.MustCompile(`/etc/([a-z0-9][a-z0-9-]*)/config\.yaml`)
 	// reListItemName — элемент списка, начинающийся с имени (том, монтирование).
 	reListItemName = regexp.MustCompile(`^\s*-\s+name:\s*(\S+)\s*$`)
 	// reMountPath — монтирование каталога.
@@ -287,11 +305,22 @@ func serviceConfigCharts(t *testing.T) (found []serviceConfigChart, chartsSeen i
 	for _, chartDir := range chartDirs {
 		tmpls := chartTemplates(t, chartDir)
 
-		// Путь конфигурации нашего бинаря — он же называет сервис.
+		// Путь конфигурации нашего бинаря — он называет ЧАСТЬ ПРОДУКТА, а каталог
+		// её исходников выводится из объявленного словаря имён. Совпадения
+		// перебираются ВСЕ: в одном чарте рядом с нашей конфигурацией живёт
+		// конфигурация чужого процесса, и остановка на первом попадании отдала бы
+		// популяцию тому, чьё имя оказалось выше по файлу.
 		svc, mountDir := "", ""
 		for _, tf := range tmpls {
-			if m := reConfigPath.FindStringSubmatch(readFile(t, tf)); m != nil {
-				svc, mountDir = m[1], "/etc/kacho-"+m[1]
+			for _, m := range reConfigPath.FindAllStringSubmatch(readFile(t, tf), -1) {
+				dir, mine := productnaming.ServiceDir(m[1])
+				if !mine {
+					continue
+				}
+				svc, mountDir = dir, "/etc/"+m[1]
+				break
+			}
+			if svc != "" {
 				break
 			}
 		}
@@ -360,7 +389,7 @@ func serviceConfigCharts(t *testing.T) (found []serviceConfigChart, chartsSeen i
 // declaredSections — теги mapstructure корневой структуры Config сервиса.
 func declaredSections(t *testing.T, service string) ([]string, string) {
 	t.Helper()
-	rel := filepath.Join("services", service, "internal", "apps", "kacho", "config", "config.go")
+	rel := filepath.Join("services", service, "internal", "apps", servicelayout.UseCaseSegment(service), "config", "config.go")
 	fset := token.NewFileSet()
 	f, err := parser.ParseFile(fset, filepath.Join(repoRoot, rel), nil, parser.SkipObjectResolution)
 	if err != nil {

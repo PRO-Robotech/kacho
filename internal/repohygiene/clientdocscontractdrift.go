@@ -80,6 +80,7 @@ import (
 	"sort"
 	"strings"
 
+	"github.com/PRO-Robotech/kacho/pkg/contractroot"
 	"github.com/PRO-Robotech/kacho/pkg/treecorpus"
 )
 
@@ -184,16 +185,31 @@ func clientDocsProtoDomains(opts ClientDocsContractDriftOptions) (
 ) {
 	live = map[string]map[string]bool{}
 	reserved = map[string]map[string]bool{}
-	base := filepath.Join(opts.Root, opts.ProtoRoot, "kacho", "cloud")
+	// Корни дерева контрактов берутся из ОБЪЯВЛЕННОГО словаря, а не из литерала
+	// приставки: после переезда домена под второй корень литерал сузил бы
+	// популяцию молча — обход честно напечатал бы «находок ноль» по опустевшему
+	// множеству, и отличить это от исправной работы было бы нечем.
+	bases := contractroot.CloudDirs(filepath.Join(opts.Root, opts.ProtoRoot))
 	// Состав берётся ИЗ ИНДЕКСА, а не обходом диска: чтение внутри колбэка обхода
 	// подвержено подмене пути символической ссылкой между шагом обхода и открытием
 	// файла (G122). Индекс отдаёт готовый перечень, и файл открывается вне обхода.
-	paths, err := treecorpus.UnderWithSuffix(base, ".proto")
-	if err != nil {
-		return nil, nil, 0, err
+	// Путь несёт СВОЙ корень: домен выводится из пути ОТНОСИТЕЛЬНО того корня,
+	// под которым файл найден. Один общий base дал бы для второго корня
+	// относительный путь с `../`, и домен вышел бы мусорным.
+	type rootedPath struct{ base, path string }
+	var paths []rootedPath
+	for _, base := range bases {
+		sub, serr := treecorpus.UnderWithSuffix(base, ".proto")
+		if serr != nil {
+			return nil, nil, 0, serr
+		}
+		for _, sp := range sub {
+			paths = append(paths, rootedPath{base: base, path: sp})
+		}
 	}
-	for _, p := range paths {
-		rel, rerr := filepath.Rel(base, p)
+	for _, rp := range paths {
+		p := rp.path
+		rel, rerr := filepath.Rel(rp.base, p)
 		if rerr != nil {
 			return nil, nil, files, rerr
 		}
@@ -379,7 +395,7 @@ func AuditClientDocsRetiredFieldInExample(
 		}
 		for _, page := range pages {
 			census.Pages++
-			raw, rerr := os.ReadFile(filepath.Join(opts.Root, filepath.FromSlash(page))) // #nosec G304 -- путь получен обходом собственного дерева
+			raw, rerr := os.ReadFile(filepath.Join(opts.Root, filepath.FromSlash(page))) // путь получен обходом собственного дерева
 			if rerr != nil {
 				return nil, census, rerr
 			}
@@ -469,13 +485,22 @@ func (f ClientDocsDeprecationFinding) String() string {
 func clientDocsDeprecatedPaths(opts ClientDocsContractDriftOptions) (map[string]string, int, error) {
 	out := map[string]string{}
 	files := 0
-	base := filepath.Join(opts.Root, opts.ProtoRoot, "kacho", "cloud")
+	// Корни дерева контрактов берутся из ОБЪЯВЛЕННОГО словаря, а не из литерала
+	// приставки: после переезда домена под второй корень литерал сузил бы
+	// популяцию молча — обход честно напечатал бы «находок ноль» по опустевшему
+	// множеству, и отличить это от исправной работы было бы нечем.
+	bases := contractroot.CloudDirs(filepath.Join(opts.Root, opts.ProtoRoot))
 	// Состав из индекса, а не обходом диска — та же причина, что у соседней функции:
 	// чтение внутри колбэка обхода подвержено подмене пути символической ссылкой.
-	paths, err := treecorpus.UnderWithSuffix(base, ".proto")
-	if err != nil {
-		return nil, 0, err
+	var paths []string
+	for _, base := range bases {
+		sub, serr := treecorpus.UnderWithSuffix(base, ".proto")
+		if serr != nil {
+			return nil, 0, serr
+		}
+		paths = append(paths, sub...)
 	}
+
 	for _, p := range paths {
 		raw, rerr := os.ReadFile(p) // #nosec G304 -- путь из индекса собственного дерева
 		if rerr != nil {
@@ -541,7 +566,7 @@ func AuditClientDocsDeprecationParity(
 		}
 		for _, page := range pages {
 			census.Pages++
-			raw, rerr := os.ReadFile(filepath.Join(opts.Root, filepath.FromSlash(page))) // #nosec G304 -- путь получен обходом собственного дерева
+			raw, rerr := os.ReadFile(filepath.Join(opts.Root, filepath.FromSlash(page))) // путь получен обходом собственного дерева
 			if rerr != nil {
 				return nil, census, rerr
 			}

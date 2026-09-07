@@ -4,7 +4,7 @@
 package clients_test
 
 // iam_register_permission_denied_test.go — a denial on authorization grounds from
-// kacho-iam is TERMINAL for the register drainer.
+// kaname is TERMINAL for the register drainer.
 //
 // Repeating an identical request IAM refused on authorization grounds cannot start
 // succeeding: the decision is a function of (caller, relation, object) and a retry
@@ -29,7 +29,7 @@ import (
 	"google.golang.org/grpc/codes"
 	"google.golang.org/grpc/status"
 
-	iamv1 "github.com/PRO-Robotech/kacho/pkg/api/kacho/cloud/iam/v1"
+	iamv1 "github.com/PRO-Robotech/kacho/pkg/api/kaname/cloud/iam/v1"
 	"github.com/PRO-Robotech/kacho/pkg/outbox/drainer"
 
 	"github.com/PRO-Robotech/kacho/services/compute/internal/clients"

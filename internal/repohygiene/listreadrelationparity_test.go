@@ -16,7 +16,7 @@
 //
 // Расхождение измерено, а не предположено: три сервиса спрашивали страницу союзом
 // `viewer ∪ v_list`, а Get гейтили `v_get`; четвёртый ушёл на ярус; пятый —
-// kacho-iam — держал союз на семи публичных списках. В модели это РАЗНЫЕ множества:
+// kaname — держал союз на семи публичных списках. В модели это РАЗНЫЕ множества:
 // ярусные (`viewer`/`editor`/`admin`) и глагольные (`v_*`) отношения развязаны
 // намеренно, как анти-over-grant guard (fga_model.fga, миграция iam 0040). Поэтому
 // расхождение работает в обе стороны: держатель яруса без глагола видит чужое
@@ -75,6 +75,8 @@ import (
 	"strconv"
 	"strings"
 	"testing"
+
+	"github.com/PRO-Robotech/kacho/pkg/contractroot"
 )
 
 // defaultPredicateKey — ключ записи «все прочие типы» в объявлении вида
@@ -128,7 +130,7 @@ var listReadRelationExceptions = map[string]string{
 		"запись подлежит пересмотру вместе с предикатом.",
 
 	"services/registry/internal/check": "" +
-		"Транспортный адаптер той же страницы: он лишь несёт вопрос до kacho-iam партиями " +
+		"Транспортный адаптер той же страницы: он лишь несёт вопрос до kaname партиями " +
 		"(`CheckMany` поверх общего сужателя) и решения о видимости не принимает — " +
 		"отношение приходит аргументом от гейта, который его и выбрал (см. запись про " +
 		"services/registry/internal/handler). Под форму пакет попал именно передачей " +
@@ -145,9 +147,20 @@ var listReadRelationExceptions = map[string]string{
 		"начнёт отдавать что-то помимо имени, запись подлежит пересмотру вместе с предикатом.",
 }
 
+// contractRootAlt — чередование ОБЪЯВЛЕННЫХ корней для выражений ниже.
+// Литерал одного корня оставил бы домен второго невыведенным, и гейт объявил бы
+// находкой собственную слепоту: «домен не выведен — сверять с каталогом нечем».
+var contractRootAlt = func() string {
+	esc := make([]string, 0, len(contractroot.Roots))
+	for _, r := range contractroot.Roots {
+		esc = append(esc, regexp.QuoteMeta(r))
+	}
+	return "(?:" + strings.Join(esc, "|") + ")"
+}()
+
 var (
-	catalogFqnDomainRe    = regexp.MustCompile(`^kacho\.cloud\.([a-z0-9]+)\.v1\.([A-Za-z0-9]+)/([A-Za-z0-9]+)$`)
-	permissionMapDomainRe = regexp.MustCompile(`/kacho\.cloud\.([a-z0-9]+)\.v1\.`)
+	catalogFqnDomainRe    = regexp.MustCompile(`^` + contractRootAlt + `\.cloud\.([a-z0-9]+)\.v1\.([A-Za-z0-9]+)/([A-Za-z0-9]+)$`)
+	permissionMapDomainRe = regexp.MustCompile(`/` + contractRootAlt + `\.cloud\.([a-z0-9]+)\.v1\.`)
 	// protoPackageDomainRe — второй способ прочитать домен из того же файла.
 	//
 	// Карта прав перестала быть перечнем FQN и стала выводом из аннотаций: домен
@@ -155,7 +168,7 @@ var (
 	// восемьюдесятью повторами в ключах. Первое выражение на таком файле не
 	// находит ничего, и гейт объявил бы «домен не выведен» там, где он назван
 	// яснее прежнего.
-	protoPackageDomainRe = regexp.MustCompile(`"kacho\.cloud\.([a-z0-9]+)\.v1"`)
+	protoPackageDomainRe = regexp.MustCompile(`"` + contractRootAlt + `\.cloud\.([a-z0-9]+)\.v1"`)
 )
 
 // relationStoreQuestions — закрытый список имён, которыми в этом дереве задаётся
@@ -292,7 +305,7 @@ func findParityViolations(pkgs []pageFilterPkg, reads map[string][]readGate) []p
 // domainsOf — домены каталога, чьи типы этот пакет фильтрует.
 //
 // Для тотального объявления по типам домен ВЫВОДИТСЯ из самих ключей: они и есть типы
-// объектов каталога, поэтому сервису не нужно иметь карту прав (у kacho-iam её нет —
+// объектов каталога, поэтому сервису не нужно иметь карту прав (у kaname её нет —
 // именно на этом прежняя редакция и слепла бы вторым способом). Для плоского
 // объявления — из карты прав сервиса: догадка по имени каталога не годится,
 // `services/nlb` обслуживает домен `loadbalancer`.

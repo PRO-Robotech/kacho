@@ -219,7 +219,7 @@ var tableGrowthRegistry = []TableGrowthDecl{
 	{
 		Owner: "services/iam", Table: "clusters",
 		Tempo: tempoOurs, Verdict: verdictBound,
-		Reason: "одна строка на установку: CHECK (id = 'cluster_kacho_root') второй не " +
+		Reason: "одна строка на установку: CHECK (id = 'cluster_root') второй не " +
 			"допускает. Кластер — синглтон, и это закреплено ограничением, а не " +
 			"соглашением",
 	},
@@ -402,7 +402,7 @@ var tableGrowthRegistry = []TableGrowthDecl{
 	//
 	// ПОЛОВИНА ЦИТАТЫ ВЫШЕ УЖЕ НЕВЕРНА, и это перемерено: оживитель над
 	// очередями iam ЕСТЬ — над очередью писем (`invite_mail_outbox`,
-	// `cmd/kacho-iam/invite_mail_wiring.go`). Он появился после того, как
+	// `cmd/kaname/invite_mail_wiring.go`). Он появился после того, как
 	// запись была написана, и её посылка «над очередями iam нет ни одного»
 	// пережила свой предмет молча.
 	//
@@ -461,7 +461,7 @@ var tableGrowthRegistry = []TableGrowthDecl{
 			"самого приглашения, поэтому темп задаёт арендатор, а рост ограничен УБОРКОЙ " +
 			"ДОСТАВЛЕННЫХ СТРОК — `pkg/outbox.DeliveredRetention` (7 суток), провязана в " +
 			"композиционном корне владельца (`outbox.StartQueueRetentionSweep` в " +
-			"services/iam/cmd/kacho-iam/invite_mail_wiring.go). Предикат снимает только " +
+			"services/iam/cmd/kaname/invite_mail_wiring.go). Предикат снимает только " +
 			"строки с отметкой СДАЧИ ретранслятору, поэтому отравленная строка — а " +
 			"отравляется здесь именно отказ ПО НАСТРОЙКЕ — не снимается ни при каком " +
 			"возрасте и дожидается возврата, когда настройку починят; и ЩАДИТ сданную " +

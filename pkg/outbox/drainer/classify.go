@@ -122,7 +122,7 @@ func Classify(err error) Class {
 // so the intents queued behind it — including the revocations — apply.
 //
 // It is NOT self-healing on its own, and that matters: a poisoned registration means
-// kacho-iam never got the resource's mirror row, and every candidate query the
+// kaname never got the resource's mirror row, and every candidate query the
 // binding reconciler runs reads that mirror, so the resource has no owner tuple and
 // no materialized verbs until the row is delivered. Poisoning is therefore only
 // correct in a service that also re-drives poisoned rows
@@ -173,7 +173,7 @@ func isPermanentGRPC(err error) bool {
 // молча потерянное намерение, и наблюдать её нечем: «доставлено» и «потеряно»
 // снаружи выглядят одинаково.
 //
-// Выведено 2026-08-16 по kacho#455 из двух очередей kacho-iam, у которых
+// Выведено 2026-08-16 по kacho#455 из двух очередей kaname, у которых
 // травление работало, а возврата не было ни у одной.
 type PermanentPolicy int
 
@@ -269,7 +269,7 @@ func Decide(cls Class, policy PermanentPolicy) Disposition {
 // всё ещё МОЖЕТ отравить строку — по разбору. «Травиться нечему» достигается не
 // терпимостью к битой строке, а тем, что такую строку НЕЛЬЗЯ ЗАПИСАТЬ: каждое
 // условие отказа разбора обязано быть закрыто ограничением схемы у владельца
-// очереди. Для очередей kacho-iam это сделано миграциями 0079/0080 и 0097.
+// очереди. Для очередей kaname это сделано миграциями 0079/0080 и 0097.
 func DecideOutcome(decodeErr, applyErr error, policy PermanentPolicy) Disposition {
 	if decodeErr != nil {
 		return DispositionPoison

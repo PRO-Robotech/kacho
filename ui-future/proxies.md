@@ -30,7 +30,7 @@ The script starts all required port-forwards and stops them when you press `Ctrl
 
 Если после перезапуска kind консоль отвечает отказами вида
 `iam.projectses.list`, предмет ищется в состоянии базы iam и в дренаже журнала
-`kacho_iam.fga_outbox`, а не в отдельном инструменте починки.
+`kaname.fga_outbox`, а не в отдельном инструменте починки.
 
 ## Linux / WSL: run the whole console locally
 

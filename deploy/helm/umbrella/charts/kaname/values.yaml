@@ -1,0 +1,840 @@
+# Copyright (c) PRO-Robotech
+# SPDX-License-Identifier: BUSL-1.1
+# Default values for kaname sub-chart.
+# Все ключи здесь — fallback'и для umbrella values.dev.yaml (которая override'ит через
+# `kaname: { ... }`). НЕ ставить здесь production-secret'ы.
+
+# Phase 2 (KAC-127) — `kacho.domain` пробрасывается из umbrella values.yaml
+# через subchart-import (см. dependencies в umbrella Chart.yaml). Sub-chart
+# читает `.Values.kacho.domain`, но fallback (если subchart запускается
+# standalone, без umbrella) — `api.kacho.cloud`.
+kacho:
+  domain: api.kacho.cloud
+  subdomains:
+    # `app` и `kratos` ПЕРЕЕХАЛИ в `global.kacho.identity` вместе с содержимым
+    # настроек службы личности: оно обязано вычисляться и в контексте подчарта
+    # провайдера, где значений kaname нет. Здесь остаётся только то, что
+    # читают шаблоны САМОГО подчарта, — иначе ключ до процесса не доедет,
+    # а оператор прочтёт строку как заявление о посадке.
+    hydra: hydra
+  iam:
+    # In-cluster Hydra token-эндпоинт (POST /oauth2/token) для client_credentials-обмена
+    # в registry `/iam/token` shim. Пусто → env не эмитится, сервис падает на внешний
+    # issuer-URL (недостижимый в кластере). Prod-профиль ставит cluster-internal Service.
+    hydraTokenURL: ""
+    # Trust anchor for the token-endpoint hop (env KANAME_HYDRA_TOKEN_CA_FILE).
+    # That hop carries a signed client assertion out and the minted bearer back, so
+    # the same discipline applies as for the admin hop: empty → default transport;
+    # set → the only anchor; unreadable → refuse the start. Production refuses to
+    # start on an https address with this empty.
+    hydraTokenCaFile: ""
+    # Upstream Hydra PUBLIC JWKS URL that the cluster-INTERNAL jwks-proxy listener
+    # (:9097) mirrors byte-for-byte (env KANAME_HYDRA_JWKS_URL). Empty → iam falls
+    # back to ResolveHydraIssuer()+"/.well-known/jwks.json". Prod sets the in-cluster
+    # hydra-public base so the iam→Hydra fetch stays inside the cluster. Hydra remains
+    # the token signer/issuer — iam only proxies its JWKS (the served kids are Hydra's).
+    hydraJwksUrl: ""
+    # Trust anchor for the JWKS upstream fetch when that hop is served over TLS
+    # (env KANAME_HYDRA_JWKS_CA_FILE). Empty → the default transport, which is
+    # what the provider's plaintext in-cluster public listener needs today. Set →
+    # that bundle becomes the ONLY anchor for the hop, and one that cannot be read
+    # REFUSES THE START rather than silently falling back to the system roots. A
+    # production-class iam refuses to start when the address is https and this is
+    # empty: the provider's in-cluster certificate is internal-CA issued, the system
+    # roots never chain to it, and the address would read as hardened while every
+    # fetch failed. The bundle is already in the pod when mtls.enable is on, at
+    # <mtls.mountPath>/server/ca.crt — no extra volume is needed.
+    hydraJwksCaFile: ""
+    # In-cluster Hydra ADMIN URL (POST /admin/clients + jwt-bearer trust-grants) used by
+    # sa_keys (SAKeyService.Issue/Revoke) and user_tokens (env KANAME_HYDRA_ADMIN_URL).
+    # Empty → ResolveHydraAdminURL() derives `https://hydra-admin.<domain>` from the issuer,
+    # which is UNREACHABLE from inside the cluster (public ingress hostname does not resolve
+    # in-cluster) → CreateOAuthClient fails → SAKey.Issue op errors ("internal worker error").
+    # Every deployed profile MUST point this at the cluster-internal hydra-admin Service.
+    # Every deployed profile MUST declare it: a production-class iam REFUSES TO
+    # START when it is left to the derivation (config.validateProductionProviderAdminHop).
+    hydraAdminUrl: ""
+    # Trust anchor for the provider-ADMIN hop when that hop is served over TLS
+    # (env KANAME_HYDRA_ADMIN_CA_FILE). The hop carries the administrative
+    # bearer on every OAuth2 client registration, trust grant and session
+    # teardown, and the admin API it opens authenticates nobody — so production
+    # addresses it over https, and https here is only meaningful if the peer is
+    # VERIFIED. The provider's in-cluster certificate is issued by the internal
+    # CA, which this process does not trust by default (its default pool is the
+    # system roots).
+    #
+    # The internal-CA bundle is already in the pod when mtls.enable is on, at
+    # <mtls.mountPath>/server/ca.crt — the same CA that signs the provider's admin
+    # certificate — so no extra volume is needed. A bundle that cannot be read, or
+    # that holds no certificate, REFUSES THE START rather than silently falling
+    # back to the system roots.
+    hydraAdminCaFile: ""
+    # Bootstrap-token (#58) — non-interactive production-seed entry point
+    # (InternalBootstrapTokenService.MintBootstrapToken, :9091). The signing key is
+    # an ES256 (P-256, PKCS#8) private-key PEM held in a Secret; empty secret name →
+    # the env is not emitted → MintBootstrapToken fails closed (mint disabled). The
+    # requested token audience defaults to https://{kacho.domain} (exactly what the
+    # gateway's ExpectedAudience accepts).
+    bootstrapToken:
+      signingKeySecretName: ""
+      signingKeySecretKey: private_key_pem
+    # jwks.encKey* — КЛЮЧ ОБЁРТКИ приватной половины подписного ключа (#897).
+    #
+    # СМЫСЛ РУЧКИ СМЕНИЛСЯ, ИМЯ — НЕТ, и это решение, а не недосмотр. Прежде она
+    # шифровала строки снятого хранилища ключей, у которых не было ни одного
+    # читателя. Теперь ею оборачивается приватная половина подписного ключа в
+    # ключнице iam: платформа чеканит свои токены сама, приватная половина ложится
+    # в базу, класть её открытым текстом нельзя — значит ключ обёртки нужен по
+    # существу.
+    #
+    # Почему не переименовали. Переименование стоило бы правки КАЖДОГО профиля
+    # развёртывания и дало бы окно, в котором старое имя молча игнорируется:
+    # профиль, задавший прежнее имя, выглядел бы настроенным, а процесс читал бы
+    # пустоту. Сменился смысл — он записан здесь и в godoc самой ручки.
+    #
+    # Второй ручки об этом предмете не заводится: одна из двух неизбежно
+    # оказалась бы необязательной. Форма совпадает — страж уже требовал ровно
+    # 32 байта, то есть размер ключа симметричного шифра, которым обёртка и
+    # делается.
+    #
+    # Требуется production boot-guard'ом; без него iam refuse-to-start в
+    # production-mode, и это верно и до, и после смены смысла — изменилось лишь
+    # то, ЧТО перестанет работать при отсутствии ключа: теперь чеканка токенов.
+    #
+    # rotationDays СНЯТ и не возвращается: он объявлялся читаемым отчётом о
+    # состоянии ключей, а ни одна строка Go не читала ни env, ни ключ конфигмапа.
+    # Ротацию ключей ключницы задаёт config.authn.tokenSigning.keyLifetime ниже.
+    jwks:
+      encKeySecretName: kaname-jwks-enc-key
+      encKeySecretKey: enc_key
+    # saKey — lifetime discipline for service-account keys (the machine
+    # credential). Go duration strings.
+    #   defaultTtl    — applied when the caller omits ttl_seconds. Finite by
+    #                   design: "omitted ⇒ never expires" made the default call
+    #                   shape the unbounded one.
+    #   maxTtl        — inclusive ceiling; a larger ttl_seconds is refused
+    #                   InvalidArgument before any OAuth2 client is registered.
+    #   accessTokenTtl — per-client access_token_lifespan for tokens minted from
+    #                   the key. EMPTY here on purpose: the env is then omitted
+    #                   and the provider-global TTL applies, so an existing
+    #                   deployment is unchanged. Production pins it explicitly
+    #                   (values.prod.yaml); the local e2e stand deliberately does
+    #                   NOT, because its Hydra access_token TTL is widened to
+    #                   cover long serial newman waves.
+    saKey:
+      defaultTtl: "2160h"   # 90d
+      maxTtl: "8760h"       # 365d
+      accessTokenTtl: ""
+      # bindDpop — issue sender-constrained (RFC 9449) machine tokens. OFF by
+      # default and deliberately NOT flipped here: it only affects keys issued
+      # after it is on, so it must be enabled first, existing keys rotated, and
+      # only then may the gateway require binding.
+      #
+      # AND IT HAS A READER ONLY WHILE THE CONTOUR IS NOT TRANSLATED (#1137).
+      # Binding is registration metadata for the client MIRROR at the previous
+      # issuer. A profile that turns on `config.authn.clientToken.enabled`
+      # creates no mirror at all, so there this knob is read by nothing — the
+      # operator would declare a control that nothing enforces. iam REFUSES TO
+      # START in that combination, and tests/helm/machine-credential-posture-test.sh
+      # refuses the profile before any pod is created.
+      bindDpop: false
+  hooks:
+    tokenHookSecretName: kaname-hook-token
+    tokenHookSecretKey: token
+
+# ─── Умолчания глобальных значений службы личности ────────────────────────────
+#
+# АВТОРИТЕТНОЕ объявление — в умбрелле (values.yaml, `global.kacho.identity`):
+# только оттуда значения доходят до подчарта ПРОВАЙДЕРА, где по ним считается
+# отпечаток содержимого настроек. Значения `global`, объявленные подчартом,
+# соседям не раздаются — это свойство Helm, а не наше решение.
+#
+# Здесь они нужны ровно для одного: чтобы `helm template charts/kaname`
+# рендерился САМ ПО СЕБЕ, без умбреллы. На таком рендере стоит самопроверка
+# гейта сетевых политик (deploy/tests/helm/networkpolicy-egress-test.sh, случай
+# «метка сайдкара безусловна»): без умолчаний страж рендера отказывает, вывод
+# пуст, и гейт «пропускает» внесённый дефект — то есть перестаёт краснеть там,
+# где обязан.
+#
+# Расхождение этой копии с авторитетной держит гейт, а не внимание:
+# deploy/identity_global_defaults_agree_test.go.
+global:
+  kacho:
+    identity:
+      domain: api.kacho.cloud
+      appSubdomain: app
+      kratosSubdomain: kratos
+      # ─── браузерные адреса: ПУСТО ⇒ вывести из `domain` ──────────────────
+      # Та же идиома, что у `hooks.host`/`hooks.port`. Объявлены затем, чтобы
+      # посадка, где консоль стоит не на `https://<app>.<domain>`, была
+      # ВЫРАЗИМА: стенд разработки раздаёт её по `http://console.kacho.local:28080`
+      # (kind отображает 80 → 28080, слушателя на 443 нет), а потоки — в корне.
+      appBaseURL: ""
+      kratosPublicBaseURL: ""
+      # ─── префикс путей потоков: ПУСТО, то есть КОРЕНЬ ───────────────────
+      # Пустая строка здесь — не «ручка не настроена», а РЕШЕНИЕ, и принято оно
+      # замером на стенде (#1048), а не вкусом. Раздача консоли обслуживает
+      # потоки в КОРНЕ — `^/(login|registration|…)(/|$)` в
+      # ui-future/deploy/templates/configmap-nginx.yaml — и проксирует их службе
+      # Ory. Путь с лишним сегментом в эту регулярку не попадает и уезжает в
+      # SPA-заглушку `location /`, которая отвечает `200` с оболочкой консоли:
+      # отказ выглядит УСПЕХОМ. Ни `404`, ни записи в журнале — только «вход не
+      # открывается», и искать причину неоткуда.
+      #
+      # Почему корень, а не `/auth`. Прежде здесь стояло `/auth`, и ни один
+      # профиль этого не переопределял, кроме стенда разработки. Боевой не
+      # переопределяет и сейчас — значит величина, стоящая ЗДЕСЬ, и есть
+      # величина боя. Возвращать `/auth` можно только вместе с полосой в
+      # раздаче: два места об одном предмете, и их согласие держит
+      # deploy/identity_flow_path_is_served_test.go, а не внимание.
+      flowPathPrefix: ""
+      # Домен cookie сессии и `rp.id` ключей доступа. Пусто ⇒ `domain`.
+      # Cookie с чужим доменом браузер отвергает целиком, поэтому величина
+      # обязана быть родительской для хоста консоли.
+      cookieDomain: ""
+      webauthnRpId: ""
+      # ─── ПОСАДКА БЕЗ ДОМЕННОГО ИМЕНИ ────────────────────────────────────
+      # `true` объявляет ФАКТ о посадке: у её внешнего origin доменного имени
+      # НЕТ — браузер приходит на голый IP-литерал (так стоит консоль на
+      # управляемом кластере a8f60d: ни имени, ни TLS снаружи).
+      #
+      # Следствий два, и оба ВЫНУЖДЕНЫ стандартами, а не выбраны:
+      #   · печенье сессии становится host-only — ключ `domain` не печатается
+      #     вовсе (RFC 6265 §5.1.3: domain-match с IP-литералом ложен всегда,
+      #     значит ЛЮБОЕ значение заставляет браузер отбросить печенье целиком,
+      #     и вход не состоится молча);
+      #   · ключи доступа выключаются — RP ID по WebAuthn L3 §5.1.3 обязан быть
+      #     валидным доменным именем, у IP-литерала его нет by construction.
+      #
+      # Отдельная ручка, а не «пусто ⇒ не печатать»: пустое у `cookieDomain`
+      # уже занято смыслом «не объявлено ⇒ вывести из `domain`», на нём стоит
+      # боевой профиль. Второй смысл у пустого снял бы `domain` печенья в бою.
+      # Одна ручка на два следствия: факт о посадке ОДИН, а две ручки о нём
+      # разошлись бы молча.
+      #
+      # Объявив `true`, профиль ОБЯЗАН очистить `cookieDomain`/`webauthnRpId`,
+      # если их объявил слой под ним, — иначе рендер отказывает и называет обе
+      # величины. Молча выбросить принятое нельзя.
+      domainless: false
+      hooks:
+        scheme: http
+        host: ""
+        port: ""
+      # ─── ПОЧТОВАЯ ПОЛОСА: УМОЛЧАНИЯ НЕТ (Р3 приёмки ID-MAIL-1) ──────────
+      # Пусто ⇒ отказ, а не «разумное значение». Разбор — в умбрелле
+      # (values.yaml, тот же узел): здесь копия ради одиночного рендера
+      # подчарта, и второго изложения одного предмета тут не заводится.
+      smtp:
+        connectionURI: ""
+        fromAddress: ""
+        fromName: ""
+        # Источник удостоверения, не сама величина (Р6). Разбор — в умбрелле.
+        credentialSecret:
+          name: ""
+          key: ""
+
+# Phase 2 (KAC-127) — Kratos identity schema + config ConfigMaps. Управляются
+# флагами; в Phase 2 поднимаются вместе с kaname (один namespace, один Helm
+# release). При желании задеплоить Kratos в отдельный namespace — отключить
+# здесь и завести в стороннем chart'е.
+kratos:
+  identitySchema:
+    enabled: true
+  config:
+    enabled: true
+    # ─── smtp и hooks ПЕРЕЕХАЛИ в `global.kacho.identity` (umbrella values.yaml) ─
+    #
+    # Не «вынесены для красоты»: содержимое настроек службы личности читается из
+    # ДВУХ контекстов — нашего подчарта, где рендерится карта настроек, и
+    # подчарта провайдера, где в шаблон пода кладётся ОТПЕЧАТОК её содержимого.
+    # Без отпечатка правка карты не перекатывает под, и процесс живёт со старым
+    # содержимым (настройки читаются один раз, на старте). Общими для обоих
+    # контекстов являются только `.Values.global` и `.Release`, поэтому иного
+    # места у этих значений нет.
+    #
+    # Здесь они НЕ дублируются намеренно: два объявления одного предмета
+    # разошлись бы молча, и привязка стала бы ложной ровно тогда, когда нужна.
+    # Единственное объявление содержимого —
+    # charts/kaname/templates/_kratos-identity.tpl.
+
+# JWKS rotator CronJob — УДАЛЁН (был вестигиальным) и НЕ возвращается.
+#
+# Он ротировал хранилище подписных ключей, у которого не было ни одного читателя
+# приватной половины: iam тогда токенов не чеканил (единственная подпись — RFC 7523
+# client_assertion ПРЕДЪЯВЛЕННЫМ SA-ключом), а публиковалась только публичная
+# половина, которой подписать ничего нельзя. Хранилище выглядело исправным, потому
+# что запись в него удавалась. Само хранилище снято миграцией.
+#
+# Плюс к тому задание звало подкоманду, которой в бинаре нет, — то есть падало в
+# 100% запусков с самого начала, и никто этого не замечал.
+#
+# ЧТО ЗАМЕНИЛО ЕГО ПРЕДМЕТ (#897). Платформа чеканит токены сама, и у ключницы
+# есть ЧИТАТЕЛЬ приватной половины — подписант. Ротация живёт ВНУТРИ службы, а не
+# в отдельном задании: состояния ключа переключаются под инвариантом базы («в
+# наборе → подписывает», подписывающий ровно один), и внешнее задание не смогло бы
+# ни соблюсти этот порядок, ни увидеть его нарушение. Срок ключа задаётся
+# config.authn.tokenSigning.keyLifetime; ключ обёртки приватной половины — той же
+# ручкой kacho.iam.jwks.encKey* выше.
+
+name: kaname
+replicas: 1
+image:
+  repository: kaname
+  tag: dev
+  # Optional immutable digest pin. When set (e.g. sha256:...) the container image
+  # is referenced as `repository@digest` and `tag` is ignored — reproducible,
+  # tamper-evident deploys (SLSA provenance). Override per env via
+  # values.digests.example.yaml. Empty by default → tag-based reference.
+  digest: ""
+  pullPolicy: IfNotPresent
+
+# INFRA sec-hardening — pod- and per-container securityContext floor applied to
+# EVERY container of this workload (main + migrate init), not
+# just the OPA sidecar. runAsNonRoot + readOnlyRootFilesystem + drop ALL caps +
+# no privilege escalation + seccomp RuntimeDefault (CIS Kubernetes 5.2 / PSS
+# restricted). Overridable per profile; a writable emptyDir is mounted at /tmp
+# so the read-only rootfs does not break scratch writes.
+podSecurityContext:
+  runAsNonRoot: true
+  runAsUser: 65532
+  runAsGroup: 65532
+  fsGroup: 65532
+  seccompProfile:
+    type: RuntimeDefault
+containerSecurityContext:
+  runAsNonRoot: true
+  runAsUser: 65532
+  allowPrivilegeEscalation: false
+  readOnlyRootFilesystem: true
+  capabilities:
+    drop: ["ALL"]
+  seccompProfile:
+    type: RuntimeDefault
+
+ports:
+  grpc: 9090
+  internalGrpc: 9091
+  # KAC-127 Phase 2 — HTTP webhook listener (Hydra hooks + CAEP ingress).
+  # KAC-127 deploy#39 — also serves the OPA policy bundle over HTTP.
+  hooksHttp: 9092
+  # Docker Registry v2 `/iam/token` auth-server HTTP listener — external-reachable
+  # (TLS terminated externally), distinct from hooks (:9092) / metrics (:9095). The
+  # registry data-plane TLS-sidecar proxies docker token exchange here.
+  registryToken: 9096
+  # Cluster-INTERNAL Hydra-JWKS proxy HTTP listener (GET /.well-known/jwks.json) — a
+  # short-TTL caching reverse-proxy of Hydra's PUBLIC JWKS. The registry data-plane
+  # fetches its docker-Bearer verification keys from iam HERE instead of dialing Hydra
+  # directly (Hydra stays signer/issuer; served kids are Hydra's). ONE-WAY server-TLS,
+  # exposed ONLY on the kaname-internal Service (never external, ban #6).
+  jwksProxy: 9097
+  # Собственные REST-фронты службы (KAN-REST-1). Вынесенная отдельным продуктом,
+  # служба края платформы не имеет by construction — её HTTP-поверхность обязана
+  # существовать сама. Фронтов ДВА, и раздельность есть свойство СОКЕТА:
+  # «внутреннее не опубликовано наружу» проверяемо ровно тогда, когда оно
+  # недосягаемо, а не отклоняется по дороге.
+  rest: 9098
+  internalRest: 9099
+
+service:
+  public:
+    type: ClusterIP
+    port: 9090
+    # Публичный REST-фронт службы.
+    restPort: 9098
+  internal:
+    type: ClusterIP
+    port: 9091
+    # KAC-127 deploy#39 — HTTP hooks/OPA-bundle port exposed on the internal
+    # Service (cluster-internal only, запрет #6).
+    hooksHttpPort: 9092
+    # Внутренний REST-фронт: выставлен ТОЛЬКО на внутренний Service.
+    internalRestPort: 9099
+    # Cluster-INTERNAL Hydra-JWKS proxy port (GET /.well-known/jwks.json), exposed
+    # ONLY on kaname-internal (never the public Service, ban #6). Consumed by
+    # service-internal.yaml — the registry data-plane fetches JWKS from here.
+    jwksProxyPort: 9097
+
+db:
+  host: kacho-umbrella-pg-iam
+  port: "5432"
+  user: iam
+  name: kaname
+  passwordSecretName: kacho-umbrella-pg-iam
+  passwordSecretKey: password
+
+config:
+  logger:
+    level: INFO
+  # Фоновые задания. Величина ОБЪЯВЛЕНА здесь, а не вшита в процесс: период
+  # обновления снимка каталога и есть верхняя граница отставания снимка от базы
+  # (kacho#1816). Непозитивная величина отвергается стражем старта — ноль здесь
+  # не выключатель, а снимок, который отстаёт бессрочно, продолжая отвечать.
+  jobs:
+    catalogSnapshot:
+      refreshInterval: 1m
+  apiServer:
+    gracefulShutdown: 10s
+    # ─── Docker Registry v2 token shim (`/iam/token`, :9096) ──────────────────
+    # `issuer` пусто → built-in умолчание (api.kacho.local), пригодное лишь для
+    # локального стенда; на развёрнутом окружении оно обязано нести РЕАЛЬНЫЙ
+    # публичный хост реестра.
+    #
+    # `service` УМОЛЧАНИЯ НЕ ИМЕЕТ — ни здесь, ни в процессе (задача #1184).
+    # Это имя службы РЕЕСТРА, у него две стороны, и объявляет его посадка ОДИН
+    # раз: `global.kacho.registry.serviceAud`. Отсюда оно и приезжает
+    # (см. kaname.laneServiceAud). Встроенное умолчание, стоявшее прежде,
+    # было вторым объявлением того же предмета и молча расходилось с именем,
+    # которое реестр называет докер-клиенту. Задать ключ ниже можно — но только
+    # при ОДИНОЧНОЙ установке чарта; задать его И источник, но по-разному, —
+    # отказ рендера с обеими величинами. Полоса поднята, а имени нет нигде —
+    # отказ старта процесса.
+    #
+    # `service` — это НЕ только fallback для `?service=`: оно же уходит в
+    # issueUC.RegistryAudience (#321) → whitelist'ится как audience в Hydra-клиенте
+    # КАЖДОГО выпускаемого SA-ключа. Расхождение с тем, что docker шлёт в
+    # `?service=`, ломает login:
+    #   Hydra: "Requested audience '<host>' has not been whitelisted by the
+    #           OAuth 2.0 Client" (400) → shim отдаёт 401 → docker: unauthorized.
+    # ⚠ audience фиксируется в клиенте В МОМЕНТ выпуска ключа → ключи, выпущенные
+    # с неверным значением, надо ПЕРЕВЫПУСТИТЬ.
+    #
+    # `issuer` — `iss` + realm в WWW-Authenticate; должен совпадать с realm'ом
+    # data-plane реестра (KACHO_REGISTRY_TOKEN_REALM).
+    registryToken:
+      issuer: ""
+      service: ""
+  repository:
+    postgres:
+      # Приведён к НАИМЕНЬШЕМУ пределу, который эта служба может встретить.
+      #
+      # Здесь стояло 100 — величина, выбранная безотносительно того, сколько
+      # соединений принимает база. На стеках, где предел базы не объявлен ни
+      # одним профилем, действует умолчание сборки образа (100), из которых
+      # обычным клиентам достаётся 97: пул одной реплики не помещался ЦЕЛИКОМ,
+      # а при пяти репликах объявленный потолок (500) превышал принимаемое в
+      # два с половиной раза.
+      #
+      # 80 = 97 доступных − запас на СОБСТВЕННЫЕ непуловые соединения службы
+      # (ожидание оповещений и опросчики очередей; замером #750 их около
+      # четырнадцати на реплику). Это потолок посадки, а не настройка
+      # производительности: узким местом в том же замере была не глубина пула,
+      # а процессор базы.
+      #
+      # Держат это число два механизма: deploy/pool_fits_database_test.go — по
+      # объявлению, до развёртывания; загрузочный страж службы — по ФАКТИЧЕСКОМУ
+      # пределу, спрошенному у базы. Растить число реплик, не уменьшив пул,
+      # страж не даст: он откажет в старте.
+      maxConns: 80
+      sslMode: disable
+  # Секция `authz` снята вместе с внешним движком отношений (kacho#747, S6): её две
+  # ручки переключали источник вердикта потипово и включали теневую сверку двух
+  # форм. Источник один — переключать нечего, сверять не с чем. Профиль, сохранивший
+  # эти значения, объявлял бы посадку, которой в дереве нет; держит это гейт
+  # TestR7_3_32_NoProfileNamesTheRetiredLanding.
+  authn:
+    # secure-by-default (core rule #16); dev — явный opt-in dev-профиля.
+    # ─── посадка личности (#1125) ─────────────────────────────────────────────
+    # ЧЕМ СТЕНД ПРОВЕРЯЕТ ЧЕЛОВЕКА: `external` — внешний поставщик удостоверений,
+    # `own` — наша собственная чеканка. Разводит требования старта: под
+    # `external` обязательны три адреса поставщика, под `own` — ни одного, зато
+    # обязательны своя чеканка и свой вход человека.
+    #
+    # УМОЛЧАНИЯ У ПРОЦЕССА НЕТ, и это осознанно: каждое из двух возможных
+    # умолчаний неверно по-своему — `external` заставило бы профиль, поля не
+    # объявивший, требовать адресов, которых у него нет; `own` МОЛЧА сняло бы
+    # эти требования с профиля, который просто забыли обновить. Поэтому
+    # умолчание живёт ЗДЕСЬ, в базовом профиле, где его видит читающий, а не в
+    # коде, где его не видит никто.
+    #
+    # Значение `external` — сегодняшняя посадка ВСЯКОГО развёрнутого стенда, и
+    # менять её этой задачей не предполагается: перевод стенда — отдельный шаг
+    # со своей проверкой посадки живого процесса.
+    #
+    # Значение объявлено ПЕРЕХОДНЫМ: оно уходит вместе с последним стендом,
+    # который его выбирает.
+    identityProvider: external
+    # ─── своя чеканка токенов (#897) ──────────────────────────────────────────
+    # Рендерится в config.yaml как authn.token-signing.* (env-override:
+    # KANAME_AUTHN__TOKEN_SIGNING__<KEY>).
+    #
+    # ВЫКЛЮЧЕНА ПО УМОЛЧАНИЮ, и это не осторожность, а форма стража: пока чеканка
+    # выключена, её настройки не требуются — страж, требующий того, чем не
+    # пользуются, отказывает в старте без предмета. ВКЛЮЧЁННАЯ чеканка требует их
+    # ВСЕ, и каждое незаданное значение — отказ в старте с именем настройки.
+    #
+    # Асимметрия цены, из которой это выведено: слишком строгая настройка даёт
+    # отказ В СТАРТЕ — видимый сразу; слишком слабая даёт принимаемый чужой токен,
+    # не видимый никогда. Поэтому пустое значение здесь означает НЕ «взять
+    # разумное», а «не сужаем» — и отвергается.
+    tokenSigning:
+      # enabled — включена ли своя чеканка. false → блок не рендерится вовсе, и
+      # ключница с подписантом не поднимаются.
+      enabled: false
+      # issuer — НАШ издатель. Попадает в каждый выпущенный токен и в привязку
+      # «издатель → источник набора» на приёмной стороне. Пусто при enabled:true
+      # = отказ в старте: незаданный издатель означает «любой», то есть токен
+      # любого происхождения принимался бы как наш.
+      issuer: ""
+      # algorithm — алгоритм, закрепляемый за порождаемым ключом 1:1. Значение
+      # вне закрытого словаря платформы (RS256 | ES256 | EdDSA) = отказ в старте.
+      # Умолчания у алгоритма подписи нет намеренно: подпись умолчанием — решение,
+      # принятое за оператора.
+      algorithm: ""
+      # allowedAlgorithms — перечень допустимых алгоритмов ПРИЁМА, через запятую.
+      # Страж считает ЭЛЕМЕНТЫ, а не длину строки: одинокая запятая непуста по
+      # длине и пуста по существу, а пустой перечень означает «принимаем любой» —
+      # и обесценивает заодно сверку «алгоритм токена равен алгоритму ключа»,
+      # которая на этом перечне и держится. Алгоритм чеканки обязан входить сюда:
+      # иначе мы выпускали бы то, что сами же отвергаем.
+      allowedAlgorithms: ""
+      # keySetPath — путь НАШЕЙ записи публикуемого набора на cluster-внутреннем
+      # слушателе (:9097). ОБЪЯВЛЯЕТСЯ, а не выводится из издателя: производный
+      # путь получается у ВСЯКОГО издателя, поэтому состояние «записи источника
+      # нет» не наступало бы никогда, и страж старта стал бы тождественно
+      # истинным. Путь собственный, а не канонический well-known: по каноническому
+      # тот же слушатель отдаёт зеркало прежнего издателя, и оно остаётся там,
+      # пока прежний издатель принимается.
+      keySetPath: /.well-known/kaname/jwks.json
+      # keyLifetime — срок ключа ключницы (Go duration). Ротация исполняется
+      # внутри службы; отдельного задания для неё нет и не заводится.
+      keyLifetime: 2160h
+    # ─── bootstrap-mint caller allow-list (#58 hardening) ────────────────────
+    # SPIFFE SANs of the client certificates permitted to call
+    # InternalBootstrapTokenService/MintBootstrapToken on :9091 — the cluster-admin
+    # token mint. It has NO ReBAC gate (it exists to obtain the FIRST token, before
+    # any relation exists) and NO gateway REST route, so this list IS the
+    # authN+authZ gate; authzguard.CallerPolicy enforces it in EVERY mode.
+    #
+    # DEFAULT EMPTY = deny everyone (the mint has no default caller). An operator
+    # names the identity explicitly — the umbrella issues one for exactly this
+    # purpose (mtls.bootstrapOperator → spiffe://kacho.cloud/ns/kacho/sa/
+    # kacho-bootstrap-operator). In production an ENABLED mint (signing key
+    # present) with an empty list REFUSES TO BOOT (Config.Validate, core rule #16),
+    # so the insecure combination cannot be reached by omission.
+    #
+    # Rendered into config.yaml as authn.bootstrap-mint.allowed-client-sans (env
+    # override: KANAME_AUTHN__BOOTSTRAP_MINT__ALLOWED_CLIENT_SANS, comma-separated).
+    bootstrapMint:
+      allowedClientSANs: []
+    # ─── who may FORWARD an end-user identity to iam ─────────────────────────
+    # Client-certificate SPIFFE SANs permitted to send x-kacho-principal-* headers.
+    # Rendered into config.yaml as authn.trusted-forwarder-sans (env override:
+    # KANAME_AUTHN__TRUSTED_FORWARDER_SANS, comma-separated) and fed into
+    # grpcsrv.WithTrustedForwarders on BOTH gRPC listeners.
+    #
+    # DEFAULT NON-EMPTY, unlike bootstrapMint above, and for the opposite reason:
+    # there an empty list denies everyone (fail-closed), here an empty list TRUSTS
+    # EVERYONE — the corelib contract narrows the circle only when the list is
+    # non-empty. A profile that forgot this knob would ship "any pod with an
+    # internal-CA certificate may act as any tenant". Production refuses to boot on
+    # an empty list, so the omission is loud rather than silent, but the default
+    # must still be safe.
+    #
+    # The entries are the senders that legitimately speak for a user, each
+    # established from a runtime edge rather than by name:
+    #   - api-gateway — the front door; the only sender on the whole surface.
+    #   - vpc/compute/nlb/storage/registry — ProjectService.Get on :9090 (project
+    #     existence + owning account on their own Create path) and
+    #     InternalIAMService.Check / fga-proxy on :9091, all under the end user.
+    #   - geo — InternalIAMService.Check on :9091 under the end user.
+    #
+    # The ns segment is NOT uniform and must not be assumed: it comes from each
+    # peer chart's own mtls.spiffe.namespace, which defaults to the release
+    # namespace but is overridden by storage (kacho-storage). An entry copied
+    # "by pattern" from a neighbour would not
+    # match the certificate that peer actually presents, and the effect would be a
+    # SILENT denial of service on a working path — the peer stays itself, its
+    # forwarded identity is scrubbed, and its read answers as if unauthenticated.
+    # deploy/tests/helm/iam-trusted-forwarder-test.sh derives the expected set by
+    # rendering the peer charts, so a chart that moves namespace fails loudly here
+    # instead of at runtime.
+    #
+    # WHICH RPC each may reach is a separate, narrower decision made in code
+    # (authzguard.PublicPeerCallableRPCs / GatewayFrontedInternalRPCs).
+    trustedForwarderSANs:
+      - spiffe://kacho.cloud/ns/kacho/sa/kacho-api-gateway
+      - spiffe://kacho.cloud/ns/kacho/sa/kacho-vpc
+      - spiffe://kacho.cloud/ns/kacho/sa/kacho-compute
+      - spiffe://kacho.cloud/ns/kacho/sa/kacho-nlb
+      - spiffe://kacho.cloud/ns/kacho-storage/sa/kacho-storage
+      - spiffe://kacho.cloud/ns/kacho/sa/kacho-registry
+      - spiffe://kacho.cloud/ns/kacho/sa/kacho-geo
+      # Здесь стояла запись оператора сети — компонента с таким именем в дереве нет,
+      # и репозитория под него не существует. Круг доверенных отправителей пинится по
+      # ФАКТИЧЕСКИМ отправителям: запись под несуществующего разрешала бы говорить за
+      # пользователя предъявителю сертификата, которого мы не выпускаем. Появится
+      # компонент — запись вернётся вместе с его кодом (решение владельца 2026-08-09).
+
+initContainer:
+  migrator:
+    enabled: true
+    command: ["/usr/local/bin/kacho-migrator", "up"]
+
+resources:
+  requests:
+    cpu: 100m
+    memory: 128Mi
+  limits:
+    cpu: 1000m
+    memory: 512Mi
+
+env: {}
+
+# ─── SEC-H mTLS — server-side, per-edge opt-in (cert-manager internal-CA) ──
+# IAM is a leaf-owner: it terminates inbound service→service mTLS but holds no
+# outgoing peer-dial edges in scope (subject_change drainer is a separate edge,
+# out of SEC-H), so SEC-H wires the SERVER only — both listeners (public :9090 +
+# internal :9091). Strict mirror of the vpc subchart server block (SEC-D).
+#
+# enable=false (default) → NO cert-secret mounted and NO KANAME_*_SERVER_MTLS_*
+# env emitted → current insecure dev behaviour (zero regression). The umbrella
+# values.mtls.yaml overlay flips kaname.mtls.enable=true for the full-stack
+# profile (КРИТ#3 mapping). When enable=true:
+#   - mounts cert-manager secret kaname-server-tls (tls.crt/tls.key/ca.crt) in
+#     volume mtls-server at <mountPath>/server;
+#   - emits, via corelib LoadPrefixed("KANAME"):
+#       KANAME_PUBLIC_SERVER_MTLS_*   (public :9090 listener)
+#       KANAME_INTERNAL_SERVER_MTLS_* (internal :9091 listener)
+#     each = {ENABLE, CERTFILE, KEYFILE, CLIENTCAFILES} → RequireAndVerifyClientCert
+#     against the internal-CA bundle (ca.crt in the server secret).
+mtls:
+  enable: false
+  # ОБЩАЯ РУЧКА — УМОЛЧАНИЕ ДЛЯ ПОЛИСТЕННЫХ НИЖЕ, А НЕ РЕШЕНИЕ О ТРАНСПОРТЕ.
+  # Отдельная от `enable` НАМЕРЕННО: стенд разработки поднимает gRPC-слушатели под
+  # взаимным TLS (enable=true) и при этом держит HTTP-слушатели открытыми — их
+  # вызывающие на том стенде клиентских сертификатов не носят. Умолчание false ⇒
+  # переменные транспорта не эмитятся ⇒ слушатели открыты (байт-в-байт как было).
+  #
+  # БОЕВОЙ ПРОФИЛЬ НА НЕЁ НЕ ОПИРАЕТСЯ: он объявляет каждую полистенную ручку явно.
+  # Величина, которую построение подставляет само, предметом стража быть не может —
+  # он зелен при любом входе. Держит это deploy/kaname_listener_knobs_test.go.
+  httpListeners: false
+  # ─── ПОЛИСТЕННЫЕ РУЧКИ: ОДНА РУЧКА — ОДИН СЛУШАТЕЛЬ ────────────────────────
+  #
+  # Пусто ⇒ берётся общая ручка выше. Здесь они закомментированы затем, чтобы
+  # умолчание чарта осталось прежним; боевой профиль обязан объявить ВСЕ.
+  #
+  # ПОЧЕМУ ПО ОДНОЙ НА СЛУШАТЕЛЯ, А НЕ ПО ГРУППАМ. Здесь стояли две групповые
+  # ручки — одна на «вебхуки и скрейп», вторая на «оба REST-фронта», — и внутри
+  # каждой пары требования оказались ПРОТИВОПОЛОЖНЫМИ. Комментарий рядом честно
+  # называл ловушку словами «включишь — падает выдача токенов, выключишь — не
+  # стартует сервис»: то есть верного значения у ручки не было НИ ОДНОГО, и
+  # боевой профиль был невыразим by construction. Служба не поднималась вовсе.
+  #
+  # hooks: false          # :9092 — обратные вызовы службы личности
+  # metrics: false        # :9095 — скрейп счётчиков процесса
+  # registryToken: false  # :9096 — докерная полоса выдачи токена
+  # jwksProxy: false      # :9097 — зеркало ключей проверки подписи
+  # publicRest: false     # :9098 — собственный публичный REST-фронт
+  # internalRest: false   # :9099 — собственный внутренний REST-фронт
+  # ─── ОБЪЯВЛЕННЫЕ ИСКЛЮЧЕНИЯ: ОТКРЫТЫЙ ТЕКСТ КАК РЕШЕНИЕ ───────────────────
+  #
+  # Ключ ЕДИНСТВЕННЫЙ, и это не недоделка, а область исключения: у остальных
+  # слушателей ручки нет ни в чарте, ни в процессе, поэтому объявить им открытый
+  # текст НЕЧЕМ. Сужение держится построением, а не дисциплиной профиля.
+  #
+  # Основание у этого исключения измерено на стенде: вызывающий слушателя :9092 —
+  # вебхук службы личности — ходит по открытому http и своего доверия не несёт.
+  # Завёрнутый в TLS слушатель отвечает ему «клиент прислал http-запрос на
+  # https-сервер», хук проваливается, и выдача токенов не работает целиком.
+  #
+  # Объявить исключение ВМЕСТЕ с транспортом нельзя: процесс отвечает отказом
+  # старта — два правила об одном предмете говорят противоположное.
+  #
+  # Схема обратного вызова службы личности (ключ `identity.hooks.scheme` в общих
+  # значениях зонтичного чарта) обязана следовать за этой ручкой: полоса,
+  # объявленная открытой к слушателю под TLS — и наоборот, — это два правила об
+  # одном предмете. Их согласие держит deploy/identity_callback_transport_test.go.
+  plaintextExceptions:
+    hooks: false
+  # Per-edge TLS ClientAuth mode for the HTTP listeners (kacho-iam#137). Default
+  # server-tls-only: the hooks edge carries four HMAC-authed Ory webhook
+  # endpoints (Hydra token/refresh + Kratos provision/recovery) — none presents a
+  # client cert
+  # — RequireAndVerifyClientCert would reject them at the handshake (bug #122); the
+  # metrics edge has no scrape client cert wired yet. server-tls-only encrypts the
+  # transport without an impossible client-cert requirement; HMAC stays the
+  # caller-auth on hooks. Flip to "mutual" per edge when a client cert is
+  # provisioned (e.g. an internal-CA Prometheus scrape client for metrics).
+  hooksClientAuthMode: server-tls-only
+  metricsClientAuthMode: server-tls-only
+  # jwks-proxy (:9097) HTTP listener ClientAuth mode. ONE-WAY server-tls-only ON
+  # PURPOSE: the JWKS route serves PUBLIC OIDC verification keys and is
+  # unauthenticated-by-design (a documented exception to authN-on-every-listener,
+  # security.md) — the registry data-plane verifier fetches it with a plain https
+  # client that presents NO client cert; RequireAndVerifyClientCert would reject the
+  # handshake. Encryption + server-auth via the internal-CA leaf; internal-only surface.
+  jwksProxyClientAuthMode: server-tls-only
+  # docker-token listener (:9096) — ONE-WAY server-TLS: аутентификация вызывающего
+  # на этом эндпоинте и ЕСТЬ предъявляемый им Basic (в этом его смысл); не хватало
+  # шифрования и аутентификации СЕРВЕРА. mutual потребовал бы client-cert у
+  # nginx-sidecar реестра, который его не носит.
+  registryTokenClientAuthMode: server-tls-only
+  # Собственные REST-фронты. Обе полосы — ONE-WAY server-TLS: до публичного
+  # фронта дотягивается арендатор обычным HTTP-клиентом и клиентского
+  # сертификата не носит, а RequireAndVerifyClientCert отверг бы его на
+  # рукопожатии — то есть поверхность была бы недостижима ни для кого.
+  # Вызывающего на ней аутентифицирует ПРЕДЪЯВЛЕННОЕ УДОСТОВЕРЕНИЕ, которое
+  # проверяет звено собственного слушателя; TLS здесь даёт шифрование и
+  # аутентификацию СЕРВЕРА, а не вызывающего.
+  restClientAuthMode: server-tls-only
+  internalRestClientAuthMode: server-tls-only
+  # ─── internal-CA leaf-cert issuance (this chart owns its Certificate, rule #1) ─
+  # kaname is the authz authority itself → SERVER cert only (no client cert,
+  # no IAM grant needed — it does not dial peers in SEC-H scope). Server-cert SAN
+  # covers both Services (public kaname :9090 + internal kaname-internal :9091)
+  # AND the internal Hydra-JWKS proxy :9097, which shares the kaname-internal DNS
+  # name — SANs are host-based/port-agnostic, so this same leaf terminates the :9097
+  # one-way server-TLS the registry data-plane trusts (registry-iam-jwks-unify).
+  issuer:
+    name: kacho-internal-ca
+    kind: ClusterIssuer   # ClusterIssuer (cluster-scoped), NOT namespaced Issuer
+  serverHosts: ["kaname", "kaname-internal"]
+  spiffe:
+    trustDomain: kacho.cloud
+    namespace: kacho
+    saName: kaname
+  leafDuration: 2160h
+  leafRenewBefore: 720h
+  # cert-manager secret name (SEC-F naming: kacho-<svc>-server-tls).
+  serverSecretName: kaname-server-tls
+  mountPath: /etc/kaname/tls   # <mountPath>/server/{tls.crt,tls.key,ca.crt}
+
+# ─── KAC-127 Phase 3 — OPA sidecar ───────────────────────────────────────
+# Fallback defaults if umbrella does not override. Umbrella's `opaSidecar.*`
+# section (in values.yaml at top-level) propagates here via subchart import
+# (Helm rule: subchart can read parent values only via `--set` or aliasing;
+# we therefore mirror minimal knobs here for standalone-deploy).
+opaSidecar:
+  enabled: false   # Disabled by default; umbrella `kaname.opaSidecar.*` enables.
+  image: openpolicyagent/opa:1.0.0-rootless
+  logLevel: info
+  resources:
+    requests:
+      cpu: 20m
+      memory: 64Mi
+    limits:
+      cpu: 200m
+      memory: 256Mi
+  # Bundle endpoint port — consumed by opa-sidecar-configmap.yaml (loopback).
+  iamInternalPort: 9092
+  # Bundle resource path → OPA fetches `<service.url>/<resource>`.
+  bundleResource: bundle.tar.gz
+  # Poll interval (~1h TTL, jittered in [min,max] to avoid thundering herd).
+  bundlePollMinSec: 3000   # ~50min
+  bundlePollMaxSec: 3900   # ~65min
+  # Detached-signature verification of the bundle (dev: off; prod: on).
+  bundleSigningEnabled: false
+  # kid of the current JWS signing key (matches the JWKS rotator output).
+  signingKeyId: kaname-signing-key-current
+  # Public-key ConfigMap (managed by the Phase 2 JWKS rotator at runtime).
+  jwks:
+    configMapName: kaname-jwks
+    bootstrapKeyPem: ""
+  # Dev-only inline policy fallback (bypasses bundle signing). MUST stay off on prod.
+  policiesFallback:
+    enabled: false
+
+# metricsScrape — объявление СБОРА величин диагностической поверхности.
+#
+# Выключение требует ПРИЧИНЫ: пустая строка при enabled=false — это «забыли», и
+# декларативная проверка не отличила бы её от «сбора здесь нет намеренно».
+metricsScrape:
+  enabled: true
+  disabledBecause: ""  # port — тот же адрес, который процесс берёт из своей конфигурации.
+  # Отдельного ключа портов у этого чарта нет, поэтому он объявлен здесь; там,
+  # где ключ уже есть, аннотация читает ЕГО — два места об одном порте
+  # разъехались бы молча.
+  port: 9095
+
+# ── ПОСАДКА БЕЗОПАСНОСТИ ─────────────────────────────────────────────────
+# ОДИН адрес на весь флот: `authMode` в корне значений сервиса. Прежний адрес
+# (config.authn.mode) снят; профиль, всё ещё задающий его, получает отказ
+# рендера — молчаливого отката к умолчанию не будет.
+authMode: production
+
+# ── ДОСТАВКА МАНИФЕСТОВ МОДУЛЕЙ (kacho#1875) ─────────────────────────────
+# Манифест модуля объявлен источником истины о том, что у платформы существует,
+# а доехать до работающей службы ему было НЕЧЕМ: ни ручки каталога у процесса,
+# ни монтирования у чарта. Здесь заводится вторая половина — первая живёт в
+# конфигурации службы (секция `manifests`, см. templates/configmap.yaml).
+#
+# ИСТОЧНИК — ВНЕ РЕЛИЗА ОБРАЗА, И ЭТО ПРЕДМЕТ, А НЕ ДЕТАЛЬ. Манифест, запечённый
+# в образ, оставляет отзыв модуля релизом iam — то есть не решает того, ради чего
+# доставка заводится. Поэтому монтируется ИМЕНОВАННЫЙ ConfigMap, который ведёт
+# тот, кто применяет манифесты, а не этот чарт: правка его содержимого есть
+# операция над данными и релиза службы не требует.
+#
+# КТО ЕГО КЛАДЁТ (kacho#1901). Объект порождает `make module-manifests-configmap`
+# (инструмент — pkg/modulemanifest/producer): он обходит `services/*/manifest.yaml`
+# того же дерева и берёт ИМЯ ОБЪЕКТА из тех же профилей, что и helm, — отсюда,
+# из `configMapName` ниже. Одно объявление на обе стороны: второе разошлось бы с
+# первым молча, под смонтировал бы один объект, производитель положил бы другой,
+# каталог доставки приехал бы пустым — и снаружи это неотличимо от «модулей нет».
+#
+# Цель зовёт КАЖДЫЙ путь выкатки ПЕРЕД первым прогоном helm — `dev-up`,
+# `stack-up` и скрипт боевой площадки `helm/umbrella/cutover-fe3455.sh`: процесс
+# читает каталог на старте и на пустом отказывается подниматься. Стенд ей
+# называют явно (`MODULE_MANIFESTS_STACK=<стенд>`), а kind-стража она не несёт —
+# он отвергал бы два боевых пути из трёх (kacho#1901). На посадке, поднимаемой не
+# ими, объект кладут тем же инструментом руками:
+#
+#	go run ./tools/modulemanifests/cmd/module-manifests-configmap \
+#	  -root . deploy/helm/umbrella/<профиль>… | kubectl -n <ns> apply -f -
+#
+# Профиль, не объявивший `configMapName`, доставку не заводит вовсе, и инструмент
+# говорит это отдельным кодом возврата, а не отказом.
+manifests:
+  # configMapName — имя ConfigMap с манифестами модулей. Пусто = доставка не
+  # заведена на этой посадке: том не монтируется, процесс получает пустой
+  # `manifests.dir` и поднимается ровно как прежде.
+  #
+  # Ключ объявлен ПУСТЫМ, а не отсутствует: «доставки нет» — это решение,
+  # принятое посадкой, и оно обязано быть написано, а не выведено из молчания.
+  configMapName: ""
+  # mountPath — каталог, в который том монтируется И из которого читает процесс.
+  # ОДНО объявление на обе половины: два литерала разошлись бы молча, а процесс
+  # читал бы пустой путь — состояние, снаружи неотличимое от «модулей нет».
+  mountPath: /etc/kaname/manifests
+  # required — опирается ли посадка на манифесты. Вместе с `configMapName` это
+  # ПАРА, и страж старта отвергает её неполной В ОБЕ СТОРОНЫ (Config.Validate →
+  # ManifestsConfig.Validate, kacho#1924):
+  #
+  #	configMapName пуст, required: false  — доставка не заведена, посадка поднимается
+  #	configMapName назван, required: true — доставка заведена и обязательна
+  #	configMapName пуст, required: true   — ОТКАЗ: опираемся и не сказали, откуда читать
+  #	configMapName назван, required: false — ОТКАЗ: сказали откуда и объявили, что не опираемся
+  #
+  # Четвёртое сочетание прежде ПРИНИМАЛОСЬ и означало не то, что говорит: чтение
+  # включает сам каталог, и сорванную доставку процесс отвергает независимо от
+  # этой величины. Снимается доставка опустошением ИМЕНИ выше, а не отзывом опоры
+  # здесь. Умолчания у каталога нет намеренно: подставленный был бы непуст всегда.
+  required: false
+  # composeModel — УЧАСТВУЮТ ли доставленные манифесты в модели прав установки
+  # (kacho#1971). Не «читать манифесты»: чтение включает сам каталог выше.
+  #
+  # Величина меняет ПОВЕРХНОСТЬ посадки: пока сборки нет, правка карты настроек
+  # кластера ни на что не влияет; с ней та же правка начинает модель прав
+  # ОПРЕДЕЛЯТЬ. Поэтому объявление сборки обязывает назвать `admission` ниже, и
+  # держит это страж старта службы — ОТКАЗ В ПУСКЕ, а не предупреждение.
+  #
+  # Ключ объявлен ЯВНО, а не опущен, по тому же доводу, что `configMapName`
+  # выше: «сборки нет» — решение посадки, и оно обязано быть написано, а не
+  # выведено из молчания. Умолчание — `false`: умолчание чарта достаётся всякой
+  # посадке, ничего не объявившей, и включённая здесь сборка досталась бы каждому
+  # стенду разом.
+  composeModel: false
+  # admission — КАКИМ ДОПУСКОМ судится собранная модель. Значение — из закрытого
+  # набора службы (`ManifestsConfig`); перечень допустимых печатает отказ старта,
+  # и второй копии этого перечня здесь не заводится: два места об одном предмете
+  # разошлись бы молча — ни сборка, ни пробы такого расхождения не замечают.
+  #
+  #	composeModel: false, admission: ""      — сборка не заведена, посадка поднимается
+  #	composeModel: true,  admission назван   — сборка заведена и суждена
+  #	composeModel: true,  admission: ""      — ОТКАЗ: собираем и не сказали, чем судим
+  #	composeModel: true,  доставки нет       — ОТКАЗ: собирать не из чего
+  #
+  # Умолчания у допуска нет намеренно: подставленный был бы непуст ВСЕГДА, и
+  # собранная модель выглядела бы суждённой на посадке, которая допуска не
+  # объявляла. Состояния «сборка без допуска» не существует.
+  admission: ""

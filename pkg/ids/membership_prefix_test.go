@@ -29,7 +29,7 @@ func TestMembershipPrefix_InCanon(t *testing.T) {
 // TestMembershipID_SQLShapeIsInCanonAlphabet — КОНТРОЛЬ, а не предмет.
 //
 // Идентификатор членства чеканит НЕ `NewHyphenID`, а неизменяемая SQL-функция
-// `kacho_iam.membership_mirror_id` — `'mbr-' || substr(md5(…), 1, 17)`. Проба
+// `kaname.membership_mirror_id` — `'mbr-' || substr(md5(…), 1, 17)`. Проба
 // записывает, что шестнадцатеричные цифры md5 суть подмножество крокфордова
 // алфавита продукта, то есть тело такого идентификатора остаётся в алфавите
 // канона. Она зелена и до записи в канон, и после — именно это и делает её

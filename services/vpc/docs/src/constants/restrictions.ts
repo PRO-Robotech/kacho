@@ -24,7 +24,7 @@ export const RESTRICTIONS = {
     "key: ^[a-z][-_./\\@a-z0-9]{0,62}$ (1..63 байт)",
     'value: ≤ 63 байт (пустое значение допустимо)',
   ],
-  projectId: ['обязателен при Create', 'существование проверяется через kacho-iam ProjectService.Get'],
+  projectId: ['обязателен при Create', 'существование проверяется через kaname ProjectService.Get'],
   cidr: [
     'валидный CIDR-префикс',
     'host-биты = 0 (10.0.0.0/24 — OK; 10.0.0.5/24 → InvalidArgument)',

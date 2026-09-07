@@ -12,7 +12,7 @@ import (
 	"github.com/jackc/pgx/v5"
 )
 
-// ListenInvalidator подключается к kacho_iam Postgres через dedicated pgx-conn
+// ListenInvalidator подключается к kaname Postgres через dedicated pgx-conn
 // (НЕ из пула — dedicated conn required для LISTEN) и слушает channel
 // `kacho_iam_subjects`. На каждый NOTIFY → `cache.InvalidateBySubject(payload)`.
 //
@@ -22,8 +22,8 @@ import (
 //   - После reconnect → conservative `cache.InvalidateAll()` (чтобы не пропустить
 //     NOTIFY в окне disconnect'а).
 type ListenInvalidator struct {
-	// ConnString — pgx connection string на kacho_iam Postgres.
-	// Пример: "postgres://kacho_iam_listener:pwd@host:5432/kacho_iam?sslmode=disable".
+	// ConnString — pgx connection string на kaname Postgres.
+	// Пример: "postgres://kaname_listener:pwd@host:5432/kaname?sslmode=disable".
 	ConnString string
 
 	// Channel — обычно "kacho_iam_subjects".

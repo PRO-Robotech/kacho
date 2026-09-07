@@ -234,7 +234,7 @@ func IsValid(id, prefix string) bool {
 }
 
 // domainStringPrefixes — 3-символьные prefix'ы доменов, чьи prefix-КОНСТАНТЫ
-// живут не в ids, а в internal/ соответствующего сервиса (kacho-iam — downstream
+// живут не в ids, а в internal/ соответствующего сервиса (kaname — downstream
 // в build-графе, его internal-константы сюда не импортируются, см. запрет
 // «internal не importable»). Перечислены литералами, чтобы ids оставался ЕДИНЫМ
 // источником истины и для HasKnownPrefix, и для validate.baseResourceIDPrefixes
@@ -332,7 +332,7 @@ const (
 	// несколько (IAM-ID-1/IAM-ID-2).
 	//
 	// Чеканит его НЕ `NewHyphenID`, а неизменяемая SQL-функция
-	// `kacho_iam.membership_mirror_id` — `'mbr-' || substr(md5(…), 1, 17)`:
+	// `kaname.membership_mirror_id` — `'mbr-' || substr(md5(…), 1, 17)`:
 	// писателей строки членства больше одного (триггер зеркала и два стейтмента
 	// репозитория), и все они обязаны прийти к ОДНОЙ строке на одну пару
 	// «человек × аккаунт». Шестнадцатеричные цифры md5 — подмножество крокфордова

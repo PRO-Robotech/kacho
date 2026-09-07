@@ -1,7 +1,7 @@
 {
   "info": {
     "_postman_id": "7a6fd761-6852-533f-bfc8-f89e8772d3d5",
-    "name": "kacho-iam / newman / iam-membership-read",
+    "name": "kaname / newman / iam-membership-read",
     "schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json"
   },
   "event": [

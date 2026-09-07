@@ -1,0 +1,289 @@
+# Copyright (c) PRO-Robotech
+# SPDX-License-Identifier: BUSL-1.1
+{{/*
+ConfigMap с YAML-конфигом kaname.
+
+Соответствует convention'у kacho-vpc / kacho-compute (skill evgeniy §8 J.1):
+сервис читает config из /etc/kaname/config.yaml; поля можно override через
+ENV `KANAME_<SECTION>__<KEY>=...`.
+
+DB-пароль НЕ кладётся сюда (secret); подтягивается через
+`repository.postgres.password-from-env: KANAME_DB_PASSWORD` и Secret-ENV
+в deployment.yaml.
+
+Здесь только те секции, которые сервис ДЕЙСТВИТЕЛЬНО разбирает: logger,
+api-server, repository, authn. Секция, которой нет в Config, молча
+отбрасывается випером — она выглядит настройкой и ею не является.
+Держит это deploy/service_config_sections_test.go: перечень выше он не читает,
+он сверяет сам блок config.yaml с тегами структуры Config.
+*/}}
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: {{ include "kaname.fullname" . }}-config
+  namespace: {{ .Release.Namespace }}
+  labels:
+    {{- include "kaname.labels" . | nindent 4 }}
+data:
+  config.yaml: |
+    logger:
+      level: {{ default "INFO" .Values.config.logger.level | quote }}
+
+    api-server:
+      endpoint: {{ printf "tcp://0.0.0.0:%v" .Values.ports.grpc | quote }}
+      internal-endpoint: {{ printf "tcp://0.0.0.0:%v" .Values.ports.internalGrpc | quote }}
+      graceful-shutdown: {{ default "10s" .Values.config.apiServer.gracefulShutdown | quote }}
+      # Собственные REST-фронты. Умолчания у этих адресов НЕТ намеренно: адрес,
+      # приходящий умолчанием процесса, непуст всегда — профиль, о ребре
+      # умолчавший, поднимал бы его молча. Здесь профиль называет их явно.
+      rest-endpoint: {{ printf "tcp://0.0.0.0:%v" .Values.ports.rest | quote }}
+      internal-rest-endpoint: {{ printf "tcp://0.0.0.0:%v" .Values.ports.internalRest | quote }}
+      {{- $rt := .Values.config.apiServer.registryToken | default dict }}
+      {{- /* Адресат полосы ВЫВОДИТСЯ из объявленной стороны реестра — одно
+           объявление на обе стороны, см. kaname.laneServiceAud. Прежде здесь
+           стояла только собственная ручка, а незаданная резолвилась встроенным
+           умолчанием процесса: второе объявление того же предмета, молча
+           расходившееся с именем, которое реестр называет докер-клиенту. */}}
+      {{- $laneService := include "kaname.laneServiceAud" . }}
+      {{- if or $rt.issuer $laneService }}
+      # Docker Registry v2 token shim. `service` также whitelist'ится как audience в
+      # Hydra-клиенте каждого выпускаемого SA-ключа (#321) — расхождение с тем, что
+      # docker шлёт в `?service=`, ломает login (Hydra: audience not whitelisted).
+      registry-token:
+        {{- with $rt.issuer }}
+        issuer: {{ . | quote }}
+        {{- end }}
+        {{- with $laneService }}
+        service: {{ . | quote }}
+        {{- end }}
+      {{- end }}
+
+    repository:
+      postgres:
+        url: {{ printf "postgres://%s@%s:%v/%s" .Values.db.user .Values.db.host .Values.db.port .Values.db.name | quote }}
+        max-conns: {{ default 0 .Values.config.repository.postgres.maxConns }}
+        # ВЫВОДИТСЯ ИЗ ТОГО ЖЕ ЗНАЧЕНИЯ, что рендерит `spec.replicas` у Deployment.
+        #
+        # Предел соединений у базы ОБЩИЙ на все реплики, а пул объявлен на ОДНУ:
+        # их произведение не записано нигде, поэтому расхождение между обещанным
+        # и принимаемым не видно ни в одном файле по отдельности. Служба не знает
+        # о себе, сколько её реплик поднято, и знать не обязана — величину ей
+        # СООБЩАЮТ, и сообщает её этот шаблон.
+        #
+        # Отдельной ручки у бюджета НЕТ намеренно: вторая ручка об одном предмете
+        # разошлась бы с числом реплик молча, и страж проверял бы посадку,
+        # которой нет. Одно значение — два места применения.
+        #
+        # СООБЩАЕТСЯ ПОТОЛОК, А НЕ СТАРТОВОЕ ЧИСЛО (#709). `replicas` — это
+        # сколько подов поднимется сразу; при включённом автомасштабировании
+        # потолок объявлен рядом, и базе достаётся именно он. Здесь стояло только
+        # `.Values.replicas`, тогда как godoc `pkg/db.ConnBudget.Replicas` требует
+        # ПОТОЛОК раскладки. Сегодня это ничего не меняет — блока автомасштабирования
+        # у этого чарта нет вовсе (предикат: `grep -c autoscaling
+        # deploy/helm/umbrella/charts/kaname/values.yaml` → 0), — но заведут его,
+        # и страж стал бы занижать обещанное молча, то есть пропускать посадку,
+        # которую сам же обязан отвергнуть.
+        replica-budget: {{ if and .Values.autoscaling .Values.autoscaling.enabled }}{{ required "autoscaling.maxReplicas обязателен при включённом автомасштабировании: без него потолок реплик неизвестен, и загрузочный страж соединений проверял бы не ту величину" .Values.autoscaling.maxReplicas }}{{ else }}{{ .Values.replicas }}{{ end }}
+        # ЯВНО ЗАДАННЫЙ, А НЕ ПОДРАЗУМЕВАЕМЫЙ. Здесь стояло `default "disable"`:
+        # профиль, обнуливший ручку, получал открытый канал к базе МОЛЧА — рендер
+        # зелёный, в манифесте `disable` неотличим от объявленного. `required`
+        # превращает это в отказ с именем настройки, который видит оператор.
+        # Умолчание чарта (values.yaml) осталось на месте — снят только невидимый
+        # подстановочный путь. Что sslmode обязан быть НЕ открытым на боевом
+        # стеке, держит deploy/dbtls_declaration_test.go.
+        ssl-mode: {{ required "config.repository.postgres.sslMode не задан: канал к Postgres обязан быть объявлен явно (disable|require|verify-ca|verify-full); пустое значение молча дало бы открытый текст" .Values.config.repository.postgres.sslMode | quote }}
+        password-from-env: KANAME_DB_PASSWORD
+
+    # Секции `authz` здесь НЕТ, и это не пропуск. Она несла две ручки — перечень
+    # типов, переключённых на реляционную форму, и признак теневой сверки, — и обе
+    # снялись вместе с внешним движком отношений (kacho#747, S6): переключать
+    # больше нечего, сверять не с чем. Оставленный ключ помог бы: helm принимает
+    # его молча, служба его не читает, а профиль объявлял бы посадку, которой в
+    # дереве нет. Держит это гейт TestR7_3_32_NoTemplateWiresTheRetiredEngine.
+
+    authn:
+      mode: {{ default "production" (include "kaname.authMode" .) | quote }}
+      {{- /* ПОСАДКА ЛИЧНОСТИ (задача #1125): чем стенд проверяет человека —
+           внешним поставщиком удостоверений (`external`) или своей чеканкой
+           (`own`). Разводит ТРЕБОВАНИЯ СТАРТА: под `external` обязательны три
+           адреса поставщика, под `own` — ни одного.
+
+           УМОЛЧАНИЯ ЗДЕСЬ НЕТ НАМЕРЕННО, и `default` не ставится: у процесса
+           умолчания тоже нет, поэтому профиль, не объявивший посадку, обязан
+           получить отказ старта с именем поля — а не тихо унаследовать чужой
+           выбор от шаблона. Умолчание живёт в БАЗОВОМ ПРОФИЛЕ чарта, где его
+           видно тому, кто профиль читает. */}}
+      {{- with .Values.config.authn.identityProvider }}
+      identity-provider: {{ . | quote }}
+      {{- end }}
+      {{- /* АДРЕСАТ выпускаемых удостоверений (задача #2127).
+
+           Из него выводится клеймо адресата, уезжающее в КАЖДОМ выпущенном
+           токене и читаемое всяким, кто токен разбирает. Прежде значение
+           подставляло ПОСТРОЕНИЕ, и подставляло доменное имя платформы: этого
+           ключа здесь не было вовсе, поэтому адресат каждого удостоверения
+           выбирал не оператор.
+
+           Значение берётся из `kacho.domain` — того же объявления, из которого
+           уже собраны KANAME_HYDRA_ISSUER и KANAME_BOOTSTRAP_TOKEN_AUDIENCE:
+           второе объявление об одном предмете разошлось бы с первым молча.
+
+           `default` НЕ ставится намеренно: пустое доезжает до стража старта, и
+           он отказывает в пуске, называя настройку. Умолчание шаблона сделало
+           бы профиль, ручку не объявивший, выглядящим настроенным. */}}
+      domain: {{ .Values.kacho.domain | quote }}
+      {{- with .Values.config.authn.hydraIssuer }}
+      # Explicit Hydra issuer override (ResolveHydraIssuer highest precedence, ahead of
+      # the KANAME_HYDRA_ISSUER env + the domain-derived default). Set it when Hydra
+      # advertises a self.issuer that is NOT https://hydra.<domain> — e.g. a kind stand
+      # whose issuer is http://localhost:<nodeport>/.ory/hydra/public/. The private_key_jwt
+      # client_assertion (registry /iam/token, пока тот контур не переведён на свою
+      # чеканку) must carry aud=<issuer>/
+      # oauth2/token, and the minted token `iss` must equal what the gateway pins — both
+      # derive from this. A config value (not a duplicate env) so it resolves deterministically.
+      hydra-issuer: {{ . | quote }}
+      {{- end }}
+      {{- $ts := .Values.config.authn.tokenSigning | default dict }}
+      {{- if $ts.enabled }}
+      # token-signing — СВОЯ чеканка токенов (#897): ключница, подписант, ротация
+      # и публикация набора проверочных ключей.
+      #
+      # Блок рендерится ТОЛЬКО при enabled: пока чеканка выключена, её настройки
+      # не требуются, и страж, требующий того, чем не пользуются, отказывал бы в
+      # старте без предмета. Будучи включённой, чеканка требует их ВСЕ:
+      # незаданное здесь означает «не сужаем», а не «взять разумное» —
+      # незаданный издатель означает «любой», пустой перечень алгоритмов означает
+      # «принимаем любой», а отсутствующий путь набора делает страж записи
+      # источника тождественно истинным. Каждое из трёх невидимо на
+      # положительном пути: токен выпускается, проверяется, запрос проходит.
+      #
+      # Значения НЕ подставляются умолчанием шаблона (`default`) намеренно: тогда
+      # профиль, забывший ручку, выглядел бы настроенным, а решение о посадке
+      # приняла бы эта строка вместо оператора. Пустое доезжает до стража, и он
+      # отказывает в старте, называя настройку.
+      token-signing:
+        enabled: true
+        issuer: {{ $ts.issuer | quote }}
+        algorithm: {{ $ts.algorithm | quote }}
+        allowed-algorithms: {{ $ts.allowedAlgorithms | quote }}
+        key-set-path: {{ $ts.keySetPath | quote }}
+        key-lifetime: {{ $ts.keyLifetime | quote }}
+      {{- end }}
+      {{- $ct := .Values.config.authn.clientToken | default dict }}
+      {{- if $ct.enabled }}
+      # client-token — токен-эндпоинт платформы (#898): выдача по учётным данным
+      # клиента, чья личность доказана подписанным утверждением.
+      #
+      # Блок рендерится ТОЛЬКО при enabled — по той же причине, что блок выше.
+      # Эндпоинт монтируется на УЖЕ объявленную внешне досягаемую поверхность
+      # выдачи (api-server.registry-token) и своего слушателя не заводит: вид
+      # выдачи задан формой запроса, а не выбором порта, и второй слушатель об
+      # одном предмете разошёлся бы с первым в периметре и посадке TLS.
+      #
+      # Умолчания шаблона (`default`) здесь нет намеренно: перечень адресатов,
+      # адресат по умолчанию, срок токена и потолок тела расширяют принимаемое
+      # либо описывают наш расход, и профиль, забывший ручку, выглядел бы
+      # настроенным. Пустое доезжает до стража, и он отказывает в старте,
+      # называя настройку.
+      client-token:
+        enabled: true
+        allowed-audiences: {{ $ct.allowedAudiences | quote }}
+        default-audience: {{ $ct.defaultAudience | quote }}
+        token-ttl: {{ $ct.tokenTtl | quote }}
+        body-ceiling: {{ $ct.bodyCeiling }}
+      {{- end }}
+      {{- $bm := .Values.config.authn.bootstrapMint | default dict }}
+      # bootstrap-mint — caller gate for InternalBootstrapTokenService/
+      # MintBootstrapToken (:9091), the cluster `system_admin` token mint. The RPC
+      # carries no ReBAC Check (it issues the FIRST token, before any relation
+      # exists) and no api-gateway REST route, so this allow-list of client-
+      # certificate SPIFFE SANs IS the gate — enforced by authzguard.CallerPolicy
+      # in EVERY mode. EMPTY ⇒ nobody may mint (fail-closed, no default caller);
+      # in production an enabled mint (signing key present) with an empty list
+      # refuses to boot. The umbrella issues the matching client leaf —
+      # mtls.bootstrapOperator (templates/bootstrap-operator-certificate.yaml).
+      bootstrap-mint:
+        allowed-client-sans:
+{{ toYaml ($bm.allowedClientSANs | default list) | indent 10 }}
+      # trusted-forwarder-sans — the client-certificate SPIFFE SANs allowed to
+      # FORWARD an end-user identity (x-kacho-principal-*) to iam. Fed into
+      # grpcsrv.WithTrustedForwarders on BOTH gRPC listeners.
+      #
+      # An EMPTY list does NOT mean "nobody": the corelib contract narrows the
+      # circle only when the list is non-empty, so empty means "any peer that
+      # presented a certificate from the internal CA". Both gRPC ports are ordinary
+      # Services inside the namespace, every neighbour's certificate is issued by
+      # that same authority, and iam deliberately does not re-ReBAC the end user
+      # (the api-gateway is the single authZ front door) — so an empty list lets any
+      # neighbouring pod act as any tenant. Production REFUSES TO BOOT on an empty
+      # list (Config.Validate → validateProductionTrustedForwarders).
+      #
+      # The chart default is non-empty on purpose — a profile that forgets the knob
+      # must not ship "trust anybody".
+      trusted-forwarder-sans:
+{{ toYaml (.Values.config.authn.trustedForwarderSANs | default list) | indent 8 }}
+
+      # Домен доверия установки: то, чьи сертификаты процесс признаёт своими.
+      # Круг выше называет, КОМУ позволено говорить за пользователя; домен
+      # отвечает на предыдущий вопрос — чьи предъявители вообще наши.
+      #
+      # Берётся из ТОГО ЖЕ объявления, под которым чеканится собственный
+      # сертификат (certificate.yaml): выпускающая и принимающая стороны,
+      # взявшие домен по отдельности, расходятся молча — законный отправитель
+      # перестаёт опознаваться, а отказ выглядит как вызов без личности.
+      trust-domain: {{ include "kaname.trustDomain" . | quote }}
+
+    # ─── Фоновые задания ──────────────────────────────────────────────────────
+    #
+    # Период обновления снимка каталога модуля (kacho#1816). Он И ЕСТЬ верхняя
+    # граница отставания снимка от базы: столько ресурс, снятый в работающем
+    # процессе, продолжает считаться живым. Величина объявляется ПРОФИЛЕМ, а не
+    # вшивается: вшитая — это решение, принятое за оператора и ему не
+    # предъявленное.
+    #
+    # Ноль здесь НЕ выключатель: выключенного обновления у снимка не бывает —
+    # снимок без обновления отстаёт бессрочно и при этом продолжает отвечать, то
+    # есть снаружи выглядит исправным. Непозитивную величину страж старта
+    # ОТВЕРГАЕТ (Config.Validate → CatalogSnapshotConfig.Validate).
+    {{- $cs := (.Values.config.jobs | default dict).catalogSnapshot | default dict }}
+    jobs:
+      catalog-snapshot:
+        refresh-interval: {{ default "1m" $cs.refreshInterval | quote }}
+
+    # ─── Доставка манифестов модулей (kacho#1875) ─────────────────────────────
+    #
+    # Каталог ВЫВОДИТСЯ из того же ключа, которым deployment.yaml монтирует том,
+    # и объявляется ТОЛЬКО когда источник назван. Второй литерал здесь означал бы
+    # два объявления одного каталога: правка одного не двигала бы второй, процесс
+    # читал бы пустой путь — состояние, снаружи неотличимое от «модулей нет».
+    #
+    # Источник не назван — каталог объявляется ПУСТЫМ, а не опускается: процесс
+    # обязан различать «доставка не заведена» и «ключа нет в конфигурации», и
+    # первое есть решение посадки, которое надо написать. Опора при этом
+    # объявляется ВСЕГДА: сочетание «опираемся, а каталог пуст» и есть то, что
+    # страж старта отвергает, — оно обязано доезжать до процесса, а не гаситься
+    # шаблоном.
+    manifests:
+      {{- if .Values.manifests.configMapName }}
+      dir: {{ .Values.manifests.mountPath | quote }}
+      {{- else }}
+      dir: ""
+      {{- end }}
+      required: {{ .Values.manifests.required }}
+      {{- /*
+      Сборка модели прав установки из доставленного и её ДОПУСК (kacho#1971).
+
+      Написаний у этих величин ДВА, и сходятся они здесь: значения чарта —
+      camelCase (`composeModel`), конфигурация службы — kebab
+      (`compose-model`). Расхождение между ними не роняет ни одной сборки —
+      разбор настроек молча отбрасывает незнакомую секцию, — поэтому посадка,
+      объявившая сборку, поднялась бы БЕЗ неё, и страж старта промолчал бы там,
+      где обязан отказать.
+
+      Обе величины доезжают до процесса ВСЕГДА и не гасятся условием шаблона:
+      сочетания «собираем, а допуска нет» и «собираем, а доставки нет» и есть
+      то, что страж старта отвергает, — они обязаны доходить до него, а не
+      исчезать здесь. Условие в шаблоне сделало бы отказ невыразимым.
+      */}}
+      compose-model: {{ .Values.manifests.composeModel }}
+      admission: {{ .Values.manifests.admission | quote }}

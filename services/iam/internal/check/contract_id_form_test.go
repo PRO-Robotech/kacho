@@ -13,9 +13,9 @@ import (
 
 	"github.com/stretchr/testify/require"
 
-	"github.com/PRO-Robotech/kacho-iam/internal/domain"
 	"github.com/PRO-Robotech/kacho/pkg/ids"
 	"github.com/PRO-Robotech/kacho/pkg/treecorpus"
+	"github.com/PRO-Robotech/kaname/internal/domain"
 )
 
 // Форма идентификатора в контракте iam обязана совпадать с той, которую продукт
@@ -130,7 +130,7 @@ var legacyAcceptedForms = []legacyAcceptedForm{
 	{"uoc", "_", "'^uoc_?[0-9a-hjkmnp-tv-z]{17}$'"},
 }
 
-const iamContractDir = "proto/kacho/cloud/iam/v1"
+const iamContractDir = "proto/kaname/cloud/iam/v1"
 
 // TestMintedFormsAreProvenByExecution — форма каждой строки таблицы доказывается
 // ВЫЗОВОМ генератора, а не объявлением рядом с ним.

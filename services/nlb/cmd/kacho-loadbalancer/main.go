@@ -161,7 +161,7 @@ func runServe(configPath string) error {
 
 	// Fail-closed boot-gate: при KACHO_NLB_REQUIRE_IAM=true мутирующий Create
 	// отвергается (UNAVAILABLE), а готовность пода остаётся NotReady, пока дренаж
-	// регистраций не подключён к kacho-iam, — ни один ресурс не создаётся без
+	// регистраций не подключён к kaname, — ни один ресурс не создаётся без
 	// доставляемого намерения о владельце. Стартует НЕ подключённым;
 	// SetConnected(true) вызывается ниже, когда дренаж собран с живым пиром.
 	//
@@ -170,7 +170,7 @@ func runServe(configPath string) error {
 	bootGate := bootgate.New(bootgate.Config{RequireIAM: cfg.FGA.RequireIAM, Service: "kacho-nlb"})
 
 	// Peer-gRPC clients (corlib client-builder) — ДО дескриптора: из соединения с
-	// внутренним листенером kacho-iam строится сужатель списочной выдачи, а он
+	// внутренним листенером kaname строится сужатель списочной выдачи, а он
 	// объявляется осью дескриптора (`Spec.Narrowers`).
 	peerConns, peers, err := dialPeers(ctx, cfg, logger)
 	if err != nil {
@@ -301,24 +301,33 @@ func runServe(configPath string) error {
 
 	// Снимок величины квоты обязан ДОГОНЯТЬ авторитет: без тянущего строка учёта,
 	// заведённая один раз, живёт со своей величиной вечно, и смена предела
-	// администратором не доезжает до проекта никогда. Показывать арендатору такой
-	// снимок значило бы громко назвать число, которое не догонит назначенное, —
-	// поэтому чтение квот и тянущий едут вместе.
+	// администратором не доезжает до проекта никогда.
 	//
-	// Без соседа величин тянущий НЕ собирается, и это названо вслух: «полосы нет»
-	// обязано быть отличимо от «полоса есть и молчит».
-	if peers.Limit != nil {
-		stopQuotaSync, qerr := corequota.StartLimitSyncer(
-			ctx, pool, peers.Limit, kachopg.QuotaSchema, corequota.Config{}, logger)
-		if qerr != nil {
-			return fmt.Errorf("start quota limit syncer: %w", qerr)
-		}
-		defer stopQuotaSync()
-	} else {
-		logger.Warn("resource-count quota: no internal iam endpoint, the limit snapshot will " +
-			"NEVER catch up with the authority — the charging trigger still enforces, but an " +
-			"administrator raising or lowering a ceiling has no effect on this process")
+	// Заведение стоит БЕЗУСЛОВНО: решение «заводить ли» принимает StartLimitSync,
+	// читая объявление домена величин. Пока оно принималось здесь, признаком
+	// служило наличие соединения соседа — и после снятия авторитета величин
+	// подъём отказал бы ПРИ СБОРКЕ, а этот отказ фатален. Приёмка
+	// `docs/specs/sub-phase-KAN-QUOTA-1-limit-authority-leaves-iam-acceptance.md`,
+	// стадия S1.
+	quotaAuthority, qaerr := cfg.QuotaAuthorityDeclaration()
+	if qaerr != nil {
+		return qaerr
 	}
+	// Проверка на nil здесь НЕ избыточна: peers.Limit — конкретный указатель, и
+	// присваивание нулевого указателя интерфейсу даёт НЕнулевой интерфейс с nil
+	// внутри. Тогда сборка приняла бы «источник есть» на неразвёрнутом домене, и
+	// первый же проход упал бы на разыменовании вместо того, чтобы не заводиться
+	// вовсе.
+	var limitSrc corequota.Source
+	if peers.Limit != nil {
+		limitSrc = peers.Limit
+	}
+	stopQuotaSync, qerr := corequota.StartLimitSync(
+		ctx, pool, quotaAuthority, limitSrc, kachopg.QuotaSchema, corequota.Config{}, logger)
+	if qerr != nil {
+		return fmt.Errorf("start quota limit sync: %w", qerr)
+	}
+	defer stopQuotaSync()
 
 	// peers — типизированные clients потребляются handler'ами. Композиционный root
 	// владеет gRPC-conn'ами и закрывает их через defer выше — peers держит ссылки
@@ -620,6 +629,28 @@ func peerDialSpecs(cfg *config.Config) []peerDialSpec {
 			mtls: cfg.MTLS.IAMRegister,
 		},
 		{
+			// Ребро nlb→домен величин: ОДНО ребро, ДВЕ полосы — разрешение
+			// величины на пути запроса и фоновая дельта. Адрес ОБЪЯВЛЕН
+			// (`quota.authority`), а не выведен из адреса соседа по
+			// авторизации: довод «второй адрес того же слушателя разошёлся бы
+			// с первым молча» верен ровно пока авторитет величин и авторитет
+			// авторизации — одна служба, а уход модуля квотирования это
+			// условие снимает.
+			//
+			// Адрес берётся ТЕМ ЖЕ методом, что читает страж старта, поэтому
+			// «страж доволен» ⟺ «дилится объявленное».
+			// Односторонний TLS у этого ребра не объявляется (`tls` не задан):
+			// удостоверение здесь — только клиентский сертификат. Служба величин
+			// стоит на ВНУТРЕННЕМ слушателе, где mTLS требуется на любом
+			// развёрнутом стенде, и ни один профиль дерева одностороннего TLS на
+			// этом ребре не объявляет. Понадобится — у ребра заведётся СВОЯ
+			// ручка, а не переиспользуется чужая: вывод из чужого ребра эта
+			// работа как раз и снимает.
+			name: quotaAuthorityPeerName,
+			addr: quotaAuthorityDialAddr(cfg),
+			mtls: cfg.MTLS.QuotaAuthority,
+		},
+		{
 			name: "geo",
 			addr: firstNonEmpty(cfg.ExtAPI.Geo.Addr, cfg.ExtAPI.Geo.InternalAddr),
 			tls:  cfg.ExtAPI.Geo.TLS,
@@ -658,7 +689,7 @@ func peerDialSpecs(cfg *config.Config) []peerDialSpec {
 // use-case'ы при отсутствующем adapter'е возвращают Unavailable).
 //
 // Внутренняя топология:
-//   - kacho-iam: один conn на InternalAddr — ProjectService.Get живёт и
+//   - kaname: один conn на InternalAddr — ProjectService.Get живёт и
 //     на public, и (через scope-filter) на internal; InternalIAMService.{Check,
 //     RegisterResource, UnregisterResource} — только на internal. Используем
 //     internal listener.
@@ -723,7 +754,7 @@ func dialPeers(
 	// root. A dial error closes everything opened so far and propagates.
 	//
 	// Топология (см. peerDialSpecs doc):
-	//   - kacho-iam: два conn'а ПЕР-LISTENER. PUBLIC (9090) — ProjectService.Get;
+	//   - kaname: два conn'а ПЕР-LISTENER. PUBLIC (9090) — ProjectService.Get;
 	//     INTERNAL (9091) — InternalIAMService.{Check,RegisterResource,Unregister}.
 	//     Раздельные mTLS-поля (IAMProject vs IAMRegister) обязательны: единый
 	//     ServerName не корректен для обоих listener'ов под
@@ -764,10 +795,13 @@ func dialPeers(
 		// InternalIAMService.RegisterResource / UnregisterResource (Internal-only
 		// :9091). Replaces the former direct WriteCreatorTuple (Issue N5).
 		peers.Register = iamclient.NewRegisterResourceClient(iamInternalConn)
-		// Учёт числа ресурсов: резолв разрешённых величин у владельца величин.
-		// ВНУТРЕННИЙ слушатель — величины админская поверхность, на внешнем их
-		// нет и быть не должно (`security.md` §Internal-vs-external).
-		peers.Limit = iamclient.NewLimitClient(iamInternalConn)
+	}
+	// Учёт числа ресурсов: резолв разрешённых величин у ДОМЕНА ВЕЛИЧИН, по
+	// СВОЕМУ объявленному ребру. ВНУТРЕННИЙ слушатель — величины админская
+	// поверхность, на внешнем их нет и быть не должно
+	// (`security.md` §Internal-vs-external).
+	if quotaConn := dialedConns[quotaAuthorityPeerName]; quotaConn != nil {
+		peers.Limit = iamclient.NewLimitClient(quotaConn)
 	}
 	// report the per-listener mTLS state of the iam read/authz edges
 	// (mirror of the register-drainer fga_register_drainer_started "mtls" log).
@@ -905,4 +939,26 @@ func buildListFilter(cfg *config.Config, iamConn clients.Conn, logger *slog.Logg
 		// (iamInternalConn). mtls.iam-project управляет другим, публичным ребром.
 		"iam_authz_mtls", cfg.MTLS.IAMRegister.Enable)
 	return f
+}
+
+// quotaAuthorityPeerName — имя ребра nlb→домен величин в таблице соединений.
+//
+// Объявлено константой, а не литералом в двух местах: имя читают и сборка
+// таблицы, и разбор её результата, и разошедшись, они дали бы `nil`-клиент при
+// исправном соединении — то есть «полосы нет» при живом соседе.
+const quotaAuthorityPeerName = "quota-authority"
+
+// quotaAuthorityDialAddr отдаёт адрес, по которому дилится ребро величин.
+//
+// Читает ТОТ ЖЕ метод, что и страж старта: «страж доволен» обязано означать
+// «дилится объявленное». Пустая строка здесь означает «домен объявлен
+// отсутствующим» — таблица соединений такое ребро не дилит, и это ровно то
+// поведение, которого требует объявление. Отказ разбора здесь не теряется: тот
+// же метод зовёт `Config.Validate`, и процесс до дозвона не доходит.
+func quotaAuthorityDialAddr(cfg *config.Config) string {
+	authority, err := cfg.QuotaAuthorityDeclaration()
+	if err != nil {
+		return ""
+	}
+	return authority.Endpoint()
 }

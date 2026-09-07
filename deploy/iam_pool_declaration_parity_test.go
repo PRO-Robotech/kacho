@@ -71,7 +71,7 @@ func iamPoolPairsFromTree(t *testing.T) []iamPoolPair {
 	t.Helper()
 
 	standalone := filepath.Join(repoRoot, "services", "iam", "deploy")
-	vendored := filepath.Join(umbrellaDir, "charts", "kacho-iam")
+	vendored := filepath.Join(umbrellaDir, "charts", "kaname")
 
 	specs := []struct {
 		posture string
@@ -92,7 +92,7 @@ func iamPoolPairsFromTree(t *testing.T) []iamPoolPair {
 			aFile:   filepath.Join(standalone, "values.dev.yaml"),
 			aPath:   []string{"repository", "postgres", "maxConns"},
 			bFile:   filepath.Join(umbrellaDir, "values.dev.yaml"),
-			bPath:   []string{"kacho-iam", "config", "repository", "postgres", "maxConns"},
+			bPath:   []string{"kaname", "config", "repository", "postgres", "maxConns"},
 		},
 	}
 

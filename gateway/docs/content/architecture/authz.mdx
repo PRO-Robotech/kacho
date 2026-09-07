@@ -8,13 +8,13 @@ title: Авторизация
 
 Эта страница описывает, как гейтвей решает **что** аутентифицированному principal разрешено
 (AuthZ), после того как [аутентификация](/architecture/authn) установила **кто** он. Авторизация —
-per-RPC, deny-by-default, fail-closed: каждый вызов проверяется в `kacho-iam`
+per-RPC, deny-by-default, fail-closed: каждый вызов проверяется в `kaname`
 против встроенного permission-каталога. Ключи конфигурации — [Конфигурация](/install/configuration).
 
 ## Принцип
 
 Гейтвей — единый пункт применения политики (PEP): он не хранит правила, а спрашивает решение у
-`kacho-iam` (PDP): вердикт о доступе вычисляет реляционная форма в собственной базе iam
+`kaname` (PDP): вердикт о доступе вычисляет реляционная форма в собственной базе iam
 по модели прав. Для каждого RPC гейтвей знает, **какое разрешение** требуется (из
 permission-каталога), формирует subject + контекст ресурса и зовёт `AuthorizeService.Check`. Нет записи в каталоге → deny. Ошибка/недоступность IAM → deny
 (fail-closed). Разрешение приходит только на явный `allow`.
@@ -50,7 +50,7 @@ flowchart LR
   map --> subj["собрать subject + resource-context"]
   subj --> cache["authz-decision cache<br/>(LRU + TTL)"]
   cache -->|"hit"| dec["allow / deny"]
-  cache -->|"miss"| check["AuthorizeService.Check<br/>→ kacho-iam"]
+  cache -->|"miss"| check["AuthorizeService.Check<br/>→ kaname"]
   check -->|"allow"| pass["→ backend"]
   check -->|"deny"| deny2["403"]
   check -->|"error / timeout"| deny3["deny (fail-closed)"]
@@ -60,7 +60,7 @@ flowchart LR
 2. **Subject + контекст** — principal из AuthN + идентификаторы ресурса (project/id) из запроса.
 3. **Кэш решений** (`AUTHZ_CACHE_TTL_SECONDS`, `AUTHZ_CACHE_MAX_ENTRIES`) — hit возвращается без
    похода в IAM; miss → `Check`.
-4. **Check** зовёт `kacho-iam` (таймаут `AUTHZ_CHECK_TIMEOUT_MS`, дефолт 200 мс). `allow` →
+4. **Check** зовёт `kaname` (таймаут `AUTHZ_CHECK_TIMEOUT_MS`, дефолт 200 мс). `allow` →
    backend; `deny` → `403`; ошибка/таймаут → **deny** (fail-closed).
 
 ## Step-up: уровень аутентификации (acr)
@@ -93,14 +93,14 @@ deny. Флаг `KACHO_API_GATEWAY_AUTHZ_FAIL_OPEN` существует толь
 
 Решения `Check` кэшируются, поэтому отзыв прав должен быстро сходиться. Соединение открывает
 **гейтвей**: он сам читает журнал смены субъекта у владельца прав и гасит свой кэш сам —
-`kacho-iam` о гейтвее не знает и знать ему нечем. Путей три:
+`kaname` о гейтвее не знает и знать ему нечем. Путей три:
 
 - **самосброс реплики, обслужившей мутацию** — реплика, через которую прошёл меняющий права
   вызов, сбрасывает свой кэш решений сразу, не дожидаясь опроса. Закрывает самый частый случай
   «сменил права и тут же проверил».
 - **опрос журнала (сходимость остальных реплик)** — фоновый цикл каждой реплики зовёт
-  `kacho.cloud.iam.v1.InternalIAMService/PollSubjectChanges` на cluster-internal listener'е
-  `kacho-iam`, читая `kacho_iam.subject_change_outbox` курсором по возрастанию `id`; непустая
+  `kaname.cloud.iam.v1.InternalIAMService/PollSubjectChanges` на cluster-internal listener'е
+  `kaname`, читая `kaname.subject_change_outbox` курсором по возрастанию `id`; непустая
   партия означает сброс кэша **этой** реплики. Интервал —
   `KACHO_API_GATEWAY_SUBJECT_CHANGE_POLL_INTERVAL` (дефолт `2s`), поэтому окно сходимости задаёт
   он, а не TTL записи.
@@ -146,8 +146,8 @@ deny. Флаг `KACHO_API_GATEWAY_AUTHZ_FAIL_OPEN` существует толь
 
 :::note Направление — потребитель → владелец
 Здесь стоял обратный путь: владелец прав дозванивался до гейтвея и гасил его кэш вызовом. Ребра
-из `kacho-iam` наружу больше нет — вместе с ним снят и cluster-internal gRPC-listener гейтвея,
-который его принимал. `kacho-iam` объявлен листом графа рёбер (его зовут, он не зовёт никого), и
+из `kaname` наружу больше нет — вместе с ним снят и cluster-internal gRPC-listener гейтвея,
+который его принимал. `kaname` объявлен листом графа рёбер (его зовут, он не зовёт никого), и
 адрес гейтвея был у него обязательной настройкой, поэтому владелец прав не поднимался там, где
 гейтвея нет вовсе.
 :::

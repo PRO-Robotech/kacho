@@ -44,8 +44,8 @@ type placementGroupResource struct{ c *client.Client }
 // NewPlacementGroupResource — конструктор для реестра провайдера.
 func NewPlacementGroupResource() resource.Resource { return &placementGroupResource{} }
 
-func (r *placementGroupResource) Metadata(_ context.Context, req resource.MetadataRequest, resp *resource.MetadataResponse) {
-	resp.TypeName = req.ProviderTypeName + "_compute_placement_group"
+func (r *placementGroupResource) Metadata(_ context.Context, _ resource.MetadataRequest, resp *resource.MetadataResponse) {
+	resp.TypeName = typeNameComputePlacementGroup
 }
 
 func (r *placementGroupResource) Configure(_ context.Context, req resource.ConfigureRequest, resp *resource.ConfigureResponse) {
@@ -150,7 +150,7 @@ func (r *placementGroupResource) Create(ctx context.Context, req resource.Create
 		"zoneId": body.ZoneId, "regionId": body.RegionId,
 	})
 	hdr := &client.Headers{IdempotencyKey: client.IdempotencyKey(
-		"kacho_compute_placement_group", plan.ProjectID.ValueString()+"/"+plan.Name.ValueString(), raw)}
+		typeNameComputePlacementGroup, plan.ProjectID.ValueString()+"/"+plan.Name.ValueString(), raw)}
 
 	httpResp, err := r.c.Do(ctx, http.MethodPost, placementGroupsPath, body, hdr)
 	if err != nil {

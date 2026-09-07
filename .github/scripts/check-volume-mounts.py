@@ -146,7 +146,7 @@ CHARTS = [
           ["--set", "image.repository=x", "--set", "image.tag=y"],
           [("migrator.enabled", "false", "true"), ("mtls.enable", "false", "true"),
            ("mtls.edges.geo", "false", "true"), ("mtls.edges.iam", "false", "true")]),
-    Chart("kacho-iam", "deploy/helm/umbrella/charts/kacho-iam", [],
+    Chart("kaname", "deploy/helm/umbrella/charts/kaname", [],
           [("mtls.enable", "false", "true"), ("mtls.httpListeners", "false", "true"),
            ("opaSidecar.enabled", "false", "true"),
            ("initContainer.migrator.enabled", "false", "true"),
@@ -269,7 +269,7 @@ def coverage_findings() -> list:
     # определено (см. шапку deploy/helm/umbrella/Chart.yaml). Такие чарты объявлений
     # не несут — но своими они быть не перестают, и выпасть из покрытия по причине
     # «нет строки в dependencies» не должны: ровно так этот гейт и потерял бы
-    # kacho-iam с kacho-geo, не сказав ни слова.
+    # kaname с kacho-geo, не сказав ни слова.
     #
     # Признак — «каталог в charts/, который является чартом и которого НИКТО НЕ
     # ОБЪЯВЛЯЛ», а не список имён. Внешние чарты попадают в `charts/` только по

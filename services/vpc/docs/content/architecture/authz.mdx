@@ -12,7 +12,7 @@ Kachō VPC защищен на двух взаимодополняющих ур�
 
 1. **Авторизация (authz)** — на каждый RPC проверяется, что вызывающий субъект имеет нужное
    отношение (relation) на ресурс или проект. Отношения описывает **модель прав**
-   платформы; вердикт о доступе вычисляет `kacho-iam`.
+   платформы; вердикт о доступе вычисляет `kaname`.
 2. **Приватность данных** — инфраструктурно-чувствительные поля (placement,
    underlay-идентификаторы, host-интерфейсы) **никогда** не покидают internal-поверхность. Публичный API показывает только
    tenant-facing «намерение + результат».
@@ -31,7 +31,7 @@ lateral movement — и они
 
 Авторизация реализована как **gRPC unary + stream interceptor** (из `pkg/authz`),
 включенный в каждый доменный сервис. Перед вызовом бизнес-логики interceptor выясняет тройку
-**subject — relation — object** и делает один `Check` к `kacho-iam`.
+**subject — relation — object** и делает один `Check` к `kaname`.
 
 ```mermaid
 flowchart LR
@@ -41,8 +41,8 @@ flowchart LR
     icpt["authz Interceptor<br/>(corelib/authz)"]
     uc["UseCase / handler"]
   end
-  icpt -->|"Check(subject, relation, object)"| iam["kacho-iam<br/>InternalIAMService"]
-  iam -->|"вердикт по модели прав"| rel[("реляционная форма<br/>в базе kacho_iam")]
+  icpt -->|"Check(subject, relation, object)"| iam["kaname<br/>InternalIAMService"]
+  iam -->|"вердикт по модели прав"| rel[("реляционная форма<br/>в базе kaname")]
   iam -->|"allowed: bool"| icpt
   icpt -->|"allowed → next"| uc
   icpt -. "denied → PERMISSION_DENIED" .-> cli
@@ -158,9 +158,9 @@ vpc_network:{networkId}#project@project:{projectId}
 **kacho-vpc в модель прав напрямую не пишет.** Намерение «зарегистрировать владение» worker на
 Create пишет строкой в transactional-outbox `fga_register_outbox` — **в той же writer-TX**, что
 вставляет ресурс (один commit, без dual-write). Отдельный register-drainer применяет каждое
-намерение через `kacho-iam.InternalIAMService.RegisterResource` (на Delete — `UnregisterResource`):
+намерение через `kaname.InternalIAMService.RegisterResource` (на Delete — `UnregisterResource`):
 idempotent, at-least-once, retry на `Unavailable`. Так намерение durable и не теряется при
-transient-сбое kacho-iam — иначе пользователь создал бы ресурс и не увидел его
+transient-сбое kaname — иначе пользователь создал бы ресурс и не увидел его
 (per-resource Check = DENY).
 
 ```mermaid
@@ -168,19 +168,19 @@ sequenceDiagram
   participant C as Клиент
   participant V as kacho-vpc (worker)
   participant D as register-drainer
-  participant I as kacho-iam
+  participant I as kaname
   C->>V: Create (через authz-гейт на project)
   V->>V: BEGIN · INSERT network · INSERT fga_register_outbox · COMMIT
   V-->>C: Operation done · response = Network
   Note over D,I: асинхронно, вне request-path
   D->>I: RegisterResource: vpc_network:<id>#project@project:<pid>
-  I->>I: прямой факт в базе kacho_iam (idempotent)
+  I->>I: прямой факт в базе kaname (idempotent)
   Note over V,I: теперь Get/Update/Delete этого network авторизуются по project-наследованию
 ```
 
 :::tip NoPath → NOT_FOUND, а не PERMISSION_DENIED
 Между коммитом ресурса и применением регистрации drainer'ом есть короткое окно. Если `Check`
-приходит, когда владение еще не зарегистрировано, `kacho-iam` возвращает «нет пути к объекту».
+приходит, когда владение еще не зарегистрировано, `kaname` возвращает «нет пути к объекту».
 Interceptor трактует это как **pass-through**: запрос идет в handler, который вернет `NOT_FOUND` из БД (если
 ресурса правда нет) или нормальный ответ. Это сознательное решение — не маскировать «ресурс
 существует, но владение еще не зарегистрировано» как `403`.
@@ -190,14 +190,14 @@ Interceptor трактует это как **pass-through**: запрос иде
 
 ## Кэш, инвалидация и fail-policy
 
-`Check` к `kacho-iam` стоит на hot-path каждого RPC, поэтому результат кэшируется.
+`Check` к `kaname` стоит на hot-path каждого RPC, поэтому результат кэшируется.
 
 <table>
   <thead><tr><th>Аспект</th><th>Поведение</th></tr></thead>
   <tbody>
     <tr><td><strong>Кэш</strong></td><td>TTL 5 с, <em>только положительные</em> решения (allowed), per-subject LRU</td></tr>
     <tr><td><strong>Инвалидация</strong></td><td><code>pg\_notify('kacho\_iam\_subjects', subject\_id)</code> → немедленный сброс по субъекту (revoke ≤ 10 с)</td></tr>
-    <tr><td><strong>Mutation fail-mode</strong></td><td><strong>fail-closed</strong>: <code>kacho-iam</code> недоступен → <code>UNAVAILABLE</code> (мутацию не пропускаем)</td></tr>
+    <tr><td><strong>Mutation fail-mode</strong></td><td><strong>fail-closed</strong>: <code>kaname</code> недоступен → <code>UNAVAILABLE</code> (мутацию не пропускаем)</td></tr>
     <tr><td><strong>Read fail-mode</strong></td><td>конфигурируемо: по умолчанию closed; опционально fail-open-logged для чтений</td></tr>
       </tbody>
 </table>
@@ -305,7 +305,7 @@ internal-поверхности, а не в публичном API. Это ст�
     <tr><td>Поле раскрывает placement / физическую инфраструктуру / числовой инфра-id?</td><td>→ только в <code>Internal\*</code>-проекции, не в публичном сообщении</td></tr>
     <tr><td>RPC нужен admin-UI и его нет в публичном API ресурса?</td><td>→ добавить в <code>Internal\*</code>-сервис на <code>:9091</code>, не расширять публичный</td></tr>
     <tr><td>Новый admin-путь проброшен через api-gateway REST?</td><td>→ добавить в TLS-фильтр (404 на external endpoint)</td></tr>
-    <tr><td>Новый ресурс с CRUD?</td><td>→ worker на Create пишет intent в <code>fga\_register\_outbox</code> (в той же TX); drainer регистрирует hierarchy-tuple <code>vpc\_&lt;type&gt;:&lt;id&gt;#project@project:&lt;pid&gt;</code> через <code>kacho-iam.RegisterResource</code></td></tr>
+    <tr><td>Новый ресурс с CRUD?</td><td>→ worker на Create пишет intent в <code>fga\_register\_outbox</code> (в той же TX); drainer регистрирует hierarchy-tuple <code>vpc\_&lt;type&gt;:&lt;id&gt;#project@project:&lt;pid&gt;</code> через <code>kaname.RegisterResource</code></td></tr>
     <tr><td>Новый RPC?</td><td>→ замапить relation (<code>viewer</code>/<code>editor</code>) и object-extractor в authz-RPCMap</td></tr>
   </tbody>
 </table>

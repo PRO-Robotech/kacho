@@ -13,8 +13,8 @@ import (
 
 	"github.com/stretchr/testify/require"
 
-	"github.com/PRO-Robotech/kacho-iam/internal/apps/kacho/shared"
 	"github.com/PRO-Robotech/kacho/pkg/treecorpus"
+	"github.com/PRO-Robotech/kaname/internal/apps/kaname/shared"
 )
 
 // Идентификатор, ПОСЕЯННЫЙ миграцией, обязан проходить проверку формы, которую
@@ -44,7 +44,7 @@ import (
 // # ЧТО ГЕЙТ НЕ СУДИТ
 //
 // Литерал, чей первый сегмент не назван ни одной строкой таблицы
-// (`cluster_kacho_root`, внешние субъекты входа, идентификаторы чужих доменов),
+// (`cluster_root`, внешние субъекты входа, идентификаторы чужих доменов),
 // — не идентификатор ресурса iam, и форма его этой таблицей не задана. Такие
 // значения считаются отдельной величиной переписи, а не находкой.
 //

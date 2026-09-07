@@ -552,7 +552,7 @@ jobs:
         run: npm i -g newman@6
 
       # grpcurl нужен фикстурам (tests/authz-fixtures/setup.sh сеет пользователей через
-      # kacho-iam-internal:9091). Без него шаг падает `FATAL: 'grpcurl' not found in PATH`
+      # kaname-internal:9091). Без него шаг падает `FATAL: 'grpcurl' not found in PATH`
       # ДО первой коллекции — стенд поднят, а проверено ноль.
       - name: grpcurl
         run: |
@@ -881,7 +881,7 @@ jobs:
           COVERAGE_MIN: "30"
         run: |
           python3 scripts/coverage.py \
-            --proto-glob "${GITHUB_WORKSPACE}/proto/kacho/cloud/iam/v1/*.proto" \
+            --proto-glob "${GITHUB_WORKSPACE}/proto/kaname/cloud/iam/v1/*.proto" \
             --collections-glob 'collections/*.postman_collection.json' \
             --min "$COVERAGE_MIN"
 

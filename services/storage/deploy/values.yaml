@@ -1,6 +1,23 @@
 # Copyright (c) PRO-Robotech
 # SPDX-License-Identifier: BUSL-1.1
 
+# ОБЪЯВЛЕНИЕ домена величин. Ровно два законных значения: адрес в форме
+# host:port либо слово `not-deployed`. Пустое значение — НЕ умолчание, а отказ
+# старта: умолчание означало бы выбор за оператора между «потолки действуют» и
+# «потолков нет», и выбор этот был бы невидим.
+#
+# Объявление ОДНО на обе полосы ребра — разрешение величины на пути запроса и
+# фоновую дельту. Приёмка
+# `docs/specs/sub-phase-KAN-QUOTA-1-limit-authority-leaves-iam-acceptance.md`,
+# стадия S1.
+#
+# Сегодня домен величин живёт внутри службы доступа, поэтому значение указывает
+# на её внутренний слушатель, и поведение продукта не меняется ни на байт.
+# Уедет домен — правится ЭТА строка, а не код пяти потребителей.
+quota:
+  authority: "kaname-internal.kacho.svc:9091"
+
+
 # Helm-values kacho-storage. mTLS-секреты / peer-адреса / DB-секрет донастраивает
 # umbrella при интеграции в стенд (values.fe3455-prod.yaml).
 
@@ -101,7 +118,7 @@ config:
   # Peer-адреса (runtime cross-domain edges). Пусто → клиент fail-closed.
   geoGrpcAddr: ""      # storage→geo ZoneService.Get (zone_id), public :9090
   iamGrpcAddr: ""      # storage→iam ProjectService.Get (project_id), public :9090
-  # authzIamGrpcAddr — kacho-iam INTERNAL :9091: несёт per-RPC Check И
+  # authzIamGrpcAddr — kaname INTERNAL :9091: несёт per-RPC Check И
   # RegisterResource/UnregisterResource (FGA-proxy owner-tuple, SEC-D). Пусто →
   # authz-интерсептор и register-drainer не подключаются (dev). Прод ОБЯЗАН задать.
   authzIamGrpcAddr: ""
@@ -131,14 +148,14 @@ config:
   # ничего не ломает. Пусто имеет смысл ставить только там, где mTLS нет вовсе.
   trustedForwarderSANs: "spiffe://kacho.cloud/ns/kacho/sa/kacho-api-gateway,spiffe://kacho.cloud/ns/kacho/sa/kacho-compute"
   # fgaRegisterDrainerEnabled — SEC-D/CS-1 GAP-D: register-drainer применяет
-  # owner-tuple register-intent'ы (kacho_storage.fga_register_outbox) через kacho-iam
+  # owner-tuple register-intent'ы (kacho_storage.fga_register_outbox) через kaname
   # RegisterResource по ребру storage→iam (authzIamGrpcAddr, mTLS). Без него
   # созданные Volume/Snapshot не получают owner-tuple → gateway scope_extractor
   # {storage_volume,volume_id}/{storage_snapshot,snapshot_id} не резолвит target→
   # project (анти-BOLA). Требует непустой authzIamGrpcAddr (иначе intents durable).
   fgaRegisterDrainerEnabled: true
   # listFilter — per-object фильтр видимости: прочитанная страница прогоняется
-  # через kacho-iam AuthorizeService.BatchCheck на `viewer` (то же отношение, что
+  # через kaname AuthorizeService.BatchCheck на `viewer` (то же отношение, что
   # энфорсит Get: в списке видно ровно то, что Get отдаст) по тому же
   # authzIamGrpcAddr. Защищает ДВЕ разные по цене поверхности:
   #
@@ -199,8 +216,8 @@ resources:
 #   storage→iam (все рёбра): KACHO_STORAGE_IAM_CLIENT_MTLS_*   (:9090 ProjectService.Get
 #                           + :9091 Check + :9091 RegisterResource fga-register)
 # Один client-cert (kacho-storage-client-tls) обслуживает ВСЕ storage→iam-дозвоны:
-# serverName=kacho-iam.kacho.svc входит в SAN iam-server-cert'а
-# (serverHosts ["kacho-iam","kacho-iam-internal"]), поэтому валиден и для :9090, и
+# serverName=kaname.kacho.svc входит в SAN iam-server-cert'а
+# (serverHosts ["kaname","kaname-internal"]), поэтому валиден и для :9090, и
 # для internal :9091 (тот же pod предъявляет один cert на обоих листенерах).
 mtls:
   # enable=true в проде: server-mTLS на обоих листенерах. flip в false ТОЛЬКО вместе
@@ -227,15 +244,17 @@ mtls:
   edges:
     geo: false    # storage→geo ZoneService.Get (zone_id, :9090)
     iam: false    # storage→iam ProjectService.Get (:9090) + Check + RegisterResource (:9091)
+    quotaAuthority: false # storage→домен величин (Resolve + ListChangedSince, :9091)
   serverName:
     geo: kacho-geo.kacho.svc     # :9090 ZoneService.Get dial-host (∈ geo server-SAN)
-    iam: kacho-iam.kacho.svc     # ∈ iam server-SAN — валиден для :9090 И internal :9091
+    iam: kaname.kacho.svc     # ∈ iam server-SAN — валиден для :9090 И internal :9091
+    quotaAuthority: kaname-internal.kacho.svc # домен величин; сегодня — внутренний слушатель службы доступа
 
-# INFRA sec-hardening — единый security-floor, идентичный kacho-iam/geo/nlb/registry.
+# INFRA sec-hardening — единый security-floor, идентичный kaname/geo/nlb/registry.
 #
 # Заведён 2026-07-16: trivy config-скан впервые покрыл ВЕСЬ репозиторий и нашёл, что
 # securityContext есть лишь у половины сервисов. В polyrepo IaC-скан был ТОЛЬКО у
-# kacho-iam, а в том репо нет ни одного k8s-манифеста (чарты жили в kacho-deploy) —
+# kaname, а в том репо нет ни одного k8s-манифеста (чарты жили в kacho-deploy) —
 # гейт зеленел, не проверяя ничего.
 #
 # runAsUser 65532 совпадает с `USER 65532` в Dockerfile — образ уже собран под nonroot.

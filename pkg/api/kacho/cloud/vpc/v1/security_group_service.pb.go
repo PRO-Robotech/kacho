@@ -78,7 +78,7 @@ func (x *GetSecurityGroupRequest) GetSecurityGroupId() string {
 type ListSecurityGroupsRequest struct {
 	state protoimpl.MessageState `protogen:"open.v1"`
 	// ID of the project to list security groups in.
-	// To get the project ID, use a [kacho.cloud.iam.v1.ProjectService.List] request.
+	// To get the project ID, use a [kaname.cloud.iam.v1.ProjectService.List] request.
 	ProjectId string `protobuf:"bytes,1,opt,name=project_id,json=projectId,proto3" json:"project_id,omitempty"`
 	// The maximum number of results per page to return. If the number of available
 	// results is larger than [page_size],
@@ -224,7 +224,7 @@ func (x *ListSecurityGroupsResponse) GetNextPageToken() string {
 type CreateSecurityGroupRequest struct {
 	state protoimpl.MessageState `protogen:"open.v1"`
 	// ID of the project for this request to create a security group in.
-	// To get the project ID, use a [kacho.cloud.iam.v1.ProjectService.List] request.
+	// To get the project ID, use a [kaname.cloud.iam.v1.ProjectService.List] request.
 	ProjectId string `protobuf:"bytes,1,opt,name=project_id,json=projectId,proto3" json:"project_id,omitempty"`
 	// Name of the security group.
 	// The name must be unique within the project.

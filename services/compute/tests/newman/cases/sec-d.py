@@ -1,7 +1,7 @@
 # Copyright (c) PRO-Robotech
 # SPDX-License-Identifier: BUSL-1.1
 
-"""Case-set для SEC-D (kacho-compute): FGA owner-tuple через kacho-iam
+"""Case-set для SEC-D (kacho-compute): FGA owner-tuple через kaname
 (transactional-outbox) + opt-in mTLS.
 
 SEC-D устраняет прямой доступ compute к OpenFGA: на каждый resource Create/Delete

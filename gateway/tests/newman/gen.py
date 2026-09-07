@@ -5,7 +5,7 @@
 
 """Thin wrapper around scripts/gen.py so that `cd tests/newman && python gen.py`
 works per the KAC-196 plan §4.1 convention. The real generator lives in
-scripts/gen.py (matches the layout of kacho-iam / kacho-vpc / kacho-compute)."""
+scripts/gen.py (matches the layout of kaname / kacho-vpc / kacho-compute)."""
 from __future__ import annotations
 
 import sys

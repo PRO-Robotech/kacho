@@ -141,7 +141,10 @@ REPO_ROOT = os.path.abspath(os.path.join(os.path.dirname(__file__), "..", ".."))
 # Образец адресует каталог домена ЦЕЛИКОМ. Прежняя редакция брала только
 # `*/v1/*.proto`, и домен, положивший контракт рядом с формой, выпадал из
 # предмета молча: раскладка `v1/` — соглашение, а не инвариант.
-PROTO_GLOB = os.path.join(REPO_ROOT, "proto", "kacho", "cloud", "**", "*.proto")
+# Корней дерева контрактов ДВА (KAN-PKG-1); отбор идёт по объявленному
+# множеству, а не по литералу одного из них.
+PROTO_ROOTS = ("kacho", "kaname")
+PROTO_GLOBS = [os.path.join(REPO_ROOT, "proto", r, "cloud", "**", "*.proto") for r in PROTO_ROOTS]
 FIXTURES = os.path.join(REPO_ROOT, "tests", "authz-fixtures", "out", "authz-fixtures.json")
 
 # Вердикты классификации одной пробы.
@@ -182,7 +185,7 @@ INCONCLUSIVE = "INCONCLUSIVE"
 # монтировать службу. Носители домена ВЫВОДЯТСЯ из дерева
 # (`e2e-ban6-domains.py`, `hosts`), поэтому шестой носитель войдёт в перебор сам.
 INTERNAL_ENDPOINTS = {
-    "iam": ("svc/kacho-iam-internal", 9091, "kacho-iam-internal.kacho.svc.cluster.local"),
+    "iam": ("svc/kaname-internal", 9091, "kaname-internal.kacho.svc.cluster.local"),
     "geo": ("svc/kacho-geo-internal", 9091, "kacho-geo-internal.kacho.svc.cluster.local"),
     "nlb": ("svc/kacho-nlb-internal", 9091, "kacho-nlb-internal.kacho.svc.cluster.local"),
     "registry": ("svc/registry-internal", 9091, "registry-internal.kacho.svc.cluster.local"),
@@ -201,7 +204,7 @@ ABSENT = "НЕ ЗАРЕГИСТРИРОВАН"
 # не про листенер.
 LIVENESS_METHODS = [
     "kacho.cloud.geo.v1.RegionService/List",
-    "kacho.cloud.iam.v1.UserService/List",
+    "kaname.cloud.iam.v1.UserService/List",
 ]
 
 # Признаки того, что ответа ПО СУЩЕСТВУ не было: grpcurl не смог собрать запрос
@@ -291,10 +294,19 @@ def counterpart_verdict(transcript: str) -> tuple[str, str]:
     return SERVED, d
 
 
-def internal_rpcs(proto_glob: str = PROTO_GLOB) -> list[tuple[str, str, str]]:
-    """(package, ServiceName, MethodName) для каждого `service Internal*` в proto."""
+def internal_rpcs(proto_globs: list[str] | None = None) -> list[tuple[str, str, str]]:
+    """(package, ServiceName, MethodName) для каждого `service Internal*` в proto.
+
+    Обходятся ВСЕ объявленные корни дерева контрактов: домен, лежащий под
+    корнем, о котором обход не знает, дал бы не находку и не тишину, а
+    МОЛЧАНИЕ — его Internal-методы просто не попали бы в перечень, и запрет
+    остался бы неproверенным на всей его поверхности.
+    """
     rows: list[tuple[str, str, str]] = []
-    for path in sorted(glob.glob(proto_glob, recursive=True)):
+    paths: list[str] = []
+    for g in (PROTO_GLOBS if proto_globs is None else proto_globs):
+        paths.extend(glob.glob(g, recursive=True))
+    for path in sorted(set(paths)):
         txt = open(path, encoding="utf-8").read()
         m = re.search(r"^package\s+([\w.]+)\s*;", txt, re.M)
         if not m:
@@ -809,7 +821,7 @@ def self_test() -> int:
     # (0) законная запись: шлюз отказал в маршрутизации — гейт обязан молчать
     check("(0) NotFound + unknown method (штатная изоляция)",
           "ERROR:\n  Code: NotFound\n  Message: unknown method: "
-          "/kacho.cloud.iam.v1.InternalIAMService/Check", ISOLATED)
+          "/kaname.cloud.iam.v1.InternalIAMService/Check", ISOLATED)
     check("(0b) Unimplemented (та же форма у другого прокси)",
           "ERROR:\n  Code: Unimplemented\n  Message: unknown service", ISOLATED)
 
@@ -901,7 +913,7 @@ def self_test() -> int:
     # там, где незарегистрированный получает отказ маршрутизации. Контрольная
     # проба чужим методом это и проверяет; вот обе её стороны.
     sentinel_ok, _ = counterpart_verdict(
-        "ERROR:\n  Code: Unimplemented\n  Message: unknown service kacho.cloud.iam.v1.InternalIAMService")
+        "ERROR:\n  Code: Unimplemented\n  Message: unknown service kaname.cloud.iam.v1.InternalIAMService")
     sentinel_bad, _ = counterpart_verdict(
         "ERROR:\n  Code: PermissionDenied\n  Message: permission denied")
     ok = sentinel_ok == ABSENT and sentinel_bad != ABSENT

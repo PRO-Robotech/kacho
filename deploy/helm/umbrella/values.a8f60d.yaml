@@ -376,10 +376,10 @@ registry:
 api-gateway:
   resources: *id002
   image: docker.io/prorobotech/kacho-api-gateway:main-7bb0a6e1
-kacho-iam:
+kaname:
   resources: *id002
   image:
-    repository: docker.io/prorobotech/kacho-iam
+    repository: docker.io/prorobotech/kaname
     tag: main-7bb0a6e1
     pullPolicy: IfNotPresent
 kacho-geo:

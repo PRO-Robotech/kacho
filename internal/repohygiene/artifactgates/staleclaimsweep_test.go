@@ -201,11 +201,11 @@ func selfReferenced(rel string) bool {
 // предиката, снятый с реального дерева, а не синтетический.
 var legitimateCalibrationHits = []struct{ file, contains string }{
 	{
-		file:     "services/iam/internal/apps/kacho/api/access_binding/get_error_mapping_test.go",
+		file:     "services/iam/internal/apps/kaname/api/access_binding/get_error_mapping_test.go",
 		contains: "must map to a retriable code, not PermissionDenied",
 	},
 	{
-		file:     "services/iam/internal/apps/kacho/api/access_binding/get_error_mapping_test.go",
+		file:     "services/iam/internal/apps/kaname/api/access_binding/get_error_mapping_test.go",
 		contains: "must map to a retriable/internal code, not PermissionDenied",
 	},
 	{

@@ -8,19 +8,19 @@ import (
 
 	"google.golang.org/grpc"
 
-	iamv1 "github.com/PRO-Robotech/kacho/pkg/api/kacho/cloud/iam/v1"
+	iamv1 "github.com/PRO-Robotech/kacho/pkg/api/kaname/cloud/iam/v1"
 	"github.com/PRO-Robotech/kacho/pkg/auth"
 	"github.com/PRO-Robotech/kacho/pkg/authz"
 )
 
 // IAMCheckClient — gRPC adapter, реализующий port `authz.CheckClient`
-// поверх `kacho-iam.InternalIAMService.Check`.
+// поверх `kaname.InternalIAMService.Check`.
 type IAMCheckClient struct {
 	cli iamv1.InternalIAMServiceClient
 }
 
 // NewIAMCheckClient создаёт adapter. conn — `*grpc.ClientConn`/`ClientConnInterface`
-// к internal-port'у kacho-iam (обычно `kacho-iam.kacho.svc:9091`).
+// к internal-port'у kaname (обычно `kaname.kacho.svc:9091`).
 func NewIAMCheckClient(conn grpc.ClientConnInterface) *IAMCheckClient {
 	return &IAMCheckClient{cli: iamv1.NewInternalIAMServiceClient(conn)}
 }

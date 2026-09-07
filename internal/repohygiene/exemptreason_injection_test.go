@@ -36,7 +36,7 @@ func hasFinding(j ExemptJudgement, needle string) bool {
 
 func TestR893_ExemptJudgeCanFailAndCanStaySilent(t *testing.T) {
 	sites := map[string]string{
-		"kacho.cloud.iam.v1.UserService/List": "services/iam/internal/apps/kacho/api/user/list.go",
+		"kaname.cloud.iam.v1.UserService/List": "services/iam/internal/apps/kaname/api/user/list.go",
 	}
 
 	cases := []struct {
@@ -52,7 +52,7 @@ func TestR893_ExemptJudgeCanFailAndCanStaySilent(t *testing.T) {
 		{
 			name: "освобождение без причины — находка",
 			rows: []ExemptCatalogRow{
-				{FQN: "kacho.cloud.iam.v1.UserService/List", Permission: ExemptSentinelValue},
+				{FQN: "kaname.cloud.iam.v1.UserService/List", Permission: ExemptSentinelValue},
 			},
 			sites: sites,
 			want:  "полоса `<exempt>` без причины",
@@ -60,7 +60,7 @@ func TestR893_ExemptJudgeCanFailAndCanStaySilent(t *testing.T) {
 		{
 			name: "законный близнец: та же запись с причиной и координатой — молчание",
 			rows: []ExemptCatalogRow{
-				{FQN: "kacho.cloud.iam.v1.UserService/List", Permission: ExemptSentinelValue,
+				{FQN: "kaname.cloud.iam.v1.UserService/List", Permission: ExemptSentinelValue,
 					ExemptReason: ReasonServiceSideAuthz},
 			},
 			sites: sites,
@@ -68,7 +68,7 @@ func TestR893_ExemptJudgeCanFailAndCanStaySilent(t *testing.T) {
 		{
 			name: "причина вне закрытого словаря — находка",
 			rows: []ExemptCatalogRow{
-				{FQN: "kacho.cloud.iam.v1.UserService/List", Permission: ExemptSentinelValue,
+				{FQN: "kaname.cloud.iam.v1.UserService/List", Permission: ExemptSentinelValue,
 					ExemptReason: "SERVICE_SIDE_AUTH"},
 			},
 			sites: sites,
@@ -77,7 +77,7 @@ func TestR893_ExemptJudgeCanFailAndCanStaySilent(t *testing.T) {
 		{
 			name: "прежняя причина «глобальный справочник» больше не существует — находка",
 			rows: []ExemptCatalogRow{
-				{FQN: "kacho.cloud.iam.v1.UserService/List", Permission: ExemptSentinelValue,
+				{FQN: "kaname.cloud.iam.v1.UserService/List", Permission: ExemptSentinelValue,
 					ExemptReason: "PUBLIC_CATALOG"},
 			},
 			sites: sites,
@@ -86,7 +86,7 @@ func TestR893_ExemptJudgeCanFailAndCanStaySilent(t *testing.T) {
 		{
 			name: "причина «внутренний слушатель» у публичной службы — находка",
 			rows: []ExemptCatalogRow{
-				{FQN: "kacho.cloud.iam.v1.UserService/List", Permission: ExemptSentinelValue,
+				{FQN: "kaname.cloud.iam.v1.UserService/List", Permission: ExemptSentinelValue,
 					ExemptReason: ReasonInternalListener},
 			},
 			sites: map[string]string{},
@@ -95,7 +95,7 @@ func TestR893_ExemptJudgeCanFailAndCanStaySilent(t *testing.T) {
 		{
 			name: "законный близнец: та же причина у внутренней службы — молчание",
 			rows: []ExemptCatalogRow{
-				{FQN: "kacho.cloud.iam.v1.InternalUserService/Get", Permission: ExemptSentinelValue,
+				{FQN: "kaname.cloud.iam.v1.InternalUserService/Get", Permission: ExemptSentinelValue,
 					ExemptReason: ReasonInternalListener},
 			},
 			sites: map[string]string{},
@@ -103,7 +103,7 @@ func TestR893_ExemptJudgeCanFailAndCanStaySilent(t *testing.T) {
 		{
 			name: "причина требует координаты, а её не назвали — находка",
 			rows: []ExemptCatalogRow{
-				{FQN: "kacho.cloud.iam.v1.GroupService/List", Permission: ExemptSentinelValue,
+				{FQN: "kaname.cloud.iam.v1.GroupService/List", Permission: ExemptSentinelValue,
 					ExemptReason: ReasonServiceSideAuthz},
 			},
 			sites: map[string]string{},
@@ -112,7 +112,7 @@ func TestR893_ExemptJudgeCanFailAndCanStaySilent(t *testing.T) {
 		{
 			name: "координата названа, но не резолвится — находка",
 			rows: []ExemptCatalogRow{
-				{FQN: "kacho.cloud.iam.v1.UserService/List", Permission: ExemptSentinelValue,
+				{FQN: "kaname.cloud.iam.v1.UserService/List", Permission: ExemptSentinelValue,
 					ExemptReason: ReasonServiceSideAuthz},
 			},
 			sites:  sites,
@@ -122,7 +122,7 @@ func TestR893_ExemptJudgeCanFailAndCanStaySilent(t *testing.T) {
 		{
 			name: "перечень координат пережил свою запись — находка (самоистечение)",
 			rows: []ExemptCatalogRow{
-				{FQN: "kacho.cloud.iam.v1.InternalUserService/Get", Permission: ExemptSentinelValue,
+				{FQN: "kaname.cloud.iam.v1.InternalUserService/Get", Permission: ExemptSentinelValue,
 					ExemptReason: ReasonInternalListener},
 			},
 			sites: sites,
@@ -131,7 +131,7 @@ func TestR893_ExemptJudgeCanFailAndCanStaySilent(t *testing.T) {
 		{
 			name: "причина освобождения у НЕосвобождённой записи — находка",
 			rows: []ExemptCatalogRow{
-				{FQN: "kacho.cloud.iam.v1.NetworkService/Get", Permission: "vpc.networks.get",
+				{FQN: "kaname.cloud.iam.v1.NetworkService/Get", Permission: "vpc.networks.get",
 					ExemptReason: ReasonSelfService},
 			},
 			sites: map[string]string{},
@@ -140,7 +140,7 @@ func TestR893_ExemptJudgeCanFailAndCanStaySilent(t *testing.T) {
 		{
 			name: "законный близнец: обычная запись без причины — молчание",
 			rows: []ExemptCatalogRow{
-				{FQN: "kacho.cloud.iam.v1.NetworkService/Get", Permission: "vpc.networks.get"},
+				{FQN: "kaname.cloud.iam.v1.NetworkService/Get", Permission: "vpc.networks.get"},
 			},
 			sites: map[string]string{},
 		},

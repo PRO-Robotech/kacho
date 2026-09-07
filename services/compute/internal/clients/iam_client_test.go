@@ -14,8 +14,8 @@ import (
 	"google.golang.org/grpc/codes"
 	"google.golang.org/grpc/status"
 
-	iamv1 "github.com/PRO-Robotech/kacho/pkg/api/kacho/cloud/iam/v1"
 	operationv1 "github.com/PRO-Robotech/kacho/pkg/api/kacho/cloud/operation"
+	iamv1 "github.com/PRO-Robotech/kacho/pkg/api/kaname/cloud/iam/v1"
 )
 
 // fakeProjectServiceClient — in-memory iamv1.ProjectServiceClient для unit-теста
@@ -145,7 +145,7 @@ func TestProjectClient_Exists_PositiveCacheBounded(t *testing.T) {
 // bounded by ProjectClient's own per-call timeout, not hang for the life of the
 // caller's (here: undeadlined) ctx. Before the fix, c.cli.Get carried the raw
 // ctx with no deadline of its own — every Create/Move hot-path call would be
-// exposed to an indefinite hang on an app-slow kacho-iam.
+// exposed to an indefinite hang on an app-slow kaname.
 func TestProjectClient_Exists_BlockingPeer_TimesOut(t *testing.T) {
 	unblock := make(chan struct{})
 	defer close(unblock)

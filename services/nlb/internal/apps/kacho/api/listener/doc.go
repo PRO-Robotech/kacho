@@ -60,7 +60,7 @@
 //     `w.FGARegisterOutbox.Emit(fga.register, …)` in the SAME writer-tx as the
 //     listener INSERT (one commit, no dual-write).
 //   - the register-drainer (`cmd/kacho-loadbalancer/main.go`) later applies each
-//     tuple through kacho-iam `InternalIAMService.RegisterResource` by mTLS;
+//     tuple through kaname `InternalIAMService.RegisterResource` by mTLS;
 //     IAM-down → intent stays durable and is retried (tuple is never lost).
 //   - Delete emits the symmetric `fga.unregister` intent (parent-link) →
 //     `UnregisterResource`.

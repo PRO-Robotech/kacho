@@ -1,7 +1,7 @@
 {
   "info": {
     "_postman_id": "7005c354-9491-5e9d-8492-a58fd67ebb3a",
-    "name": "kacho-iam / newman / rbac-visibility-set",
+    "name": "kaname / newman / rbac-visibility-set",
     "schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json"
   },
   "event": [

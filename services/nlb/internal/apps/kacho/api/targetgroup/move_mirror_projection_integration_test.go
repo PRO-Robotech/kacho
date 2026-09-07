@@ -9,7 +9,7 @@ package targetgroup_test
 //
 // Real handler → real Move use-case → real writer-tx emitter → real
 // `kacho_nlb.fga_register_outbox` → real corelib drainer with the production
-// PartitionColumn → real applier. kacho-iam is modelled (Go forbids importing
+// PartitionColumn → real applier. kaname is modelled (Go forbids importing
 // services/iam/internal), faithfully to services/iam/.../resource_mirror:
 //
 //	register(v, parent) → INSERT when absent (UNCONDITIONAL);
@@ -33,15 +33,15 @@ import (
 	"google.golang.org/grpc"
 	"google.golang.org/protobuf/types/known/durationpb"
 
-	iampb "github.com/PRO-Robotech/kacho/pkg/api/kacho/cloud/iam/v1"
 	lbv1 "github.com/PRO-Robotech/kacho/pkg/api/kacho/cloud/loadbalancer/v1"
+	iampb "github.com/PRO-Robotech/kacho/pkg/api/kaname/cloud/iam/v1"
 	"github.com/PRO-Robotech/kacho/pkg/outbox/drainer"
 
 	iamclient "github.com/PRO-Robotech/kacho/services/nlb/internal/clients/iam"
 	"github.com/PRO-Robotech/kacho/services/nlb/internal/domain"
 )
 
-// ---- fake kacho-iam modelling the resource_mirror --------------------------
+// ---- fake kaname modelling the resource_mirror --------------------------
 
 type mirrorRow struct {
 	parentProjectID string

@@ -1,7 +1,7 @@
 // Copyright (c) PRO-Robotech
 // SPDX-License-Identifier: AGPL-3.0-or-later
 
-// Package dto — table-driven generic-based DTO transfers for kacho-iam
+// Package dto — table-driven generic-based DTO transfers for kaname
 // (parity with kacho-vpc/internal/dto/base.go).
 //
 // Layout:
@@ -26,9 +26,9 @@ import (
 
 	"google.golang.org/protobuf/types/known/timestamppb"
 
-	iamv1 "github.com/PRO-Robotech/kacho/pkg/api/kacho/cloud/iam/v1"
+	iamv1 "github.com/PRO-Robotech/kacho/pkg/api/kaname/cloud/iam/v1"
 
-	"github.com/PRO-Robotech/kacho-iam/internal/domain"
+	"github.com/PRO-Robotech/kaname/internal/domain"
 )
 
 // Interface — generic transfer-функтор F → T.

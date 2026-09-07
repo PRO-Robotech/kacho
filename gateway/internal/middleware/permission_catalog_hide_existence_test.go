@@ -29,31 +29,31 @@ func TestCatalogEntry_HidesExistenceOnDeny(t *testing.T) {
 	}{
 		{
 			name: "iam account Get v_get concrete → hide",
-			fqn:  "kacho.cloud.iam.v1.AccountService/Get",
+			fqn:  "kaname.cloud.iam.v1.AccountService/Get",
 			e:    middleware.CatalogEntry{RequiredRelation: "v_get", ScopeExtractor: concrete},
 			want: true,
 		},
 		{
 			name: "iam group Get v_get concrete → hide",
-			fqn:  "kacho.cloud.iam.v1.GroupService/Get",
+			fqn:  "kaname.cloud.iam.v1.GroupService/Get",
 			e:    middleware.CatalogEntry{RequiredRelation: "v_get", ScopeExtractor: middleware.ScopeExtractor{ObjectType: "iam_group", FromRequestField: "group_id"}},
 			want: true,
 		},
 		{
 			name: "explicit flag on a mutation still hides (flag wins)",
-			fqn:  "kacho.cloud.iam.v1.AccountService/Delete",
+			fqn:  "kaname.cloud.iam.v1.AccountService/Delete",
 			e:    middleware.CatalogEntry{RequiredRelation: "v_delete", ScopeExtractor: concrete, HideExistence: true},
 			want: true,
 		},
 		{
 			name: "mutation Delete without flag → no hide (stays 403)",
-			fqn:  "kacho.cloud.iam.v1.AccountService/Delete",
+			fqn:  "kaname.cloud.iam.v1.AccountService/Delete",
 			e:    middleware.CatalogEntry{RequiredRelation: "v_delete", ScopeExtractor: concrete},
 			want: false,
 		},
 		{
 			name: "List (wildcard scope) → no hide",
-			fqn:  "kacho.cloud.iam.v1.AccountService/List",
+			fqn:  "kaname.cloud.iam.v1.AccountService/List",
 			e:    middleware.CatalogEntry{RequiredRelation: "v_list", ScopeExtractor: wildcard},
 			want: false,
 		},
@@ -65,7 +65,7 @@ func TestCatalogEntry_HidesExistenceOnDeny(t *testing.T) {
 		},
 		{
 			name: "Get v_get but wildcard scope → no hide",
-			fqn:  "kacho.cloud.iam.v1.AccountService/Get",
+			fqn:  "kaname.cloud.iam.v1.AccountService/Get",
 			e:    middleware.CatalogEntry{RequiredRelation: "v_get", ScopeExtractor: wildcard},
 			want: false,
 		},

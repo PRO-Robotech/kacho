@@ -18,7 +18,7 @@ import (
 	"github.com/hashicorp/terraform-plugin-framework/types"
 	"google.golang.org/protobuf/proto"
 
-	iamv1 "github.com/PRO-Robotech/kacho/pkg/api/kacho/cloud/iam/v1"
+	iamv1 "github.com/PRO-Robotech/kacho/pkg/api/kaname/cloud/iam/v1"
 	"github.com/PRO-Robotech/kacho/terraform/internal/client"
 )
 
@@ -46,7 +46,7 @@ var (
 // `ACTIVE` и обзаводится внешним идентификатором. Строку заводит `Invite`, а не `Create`:
 // вызова создания пользователя в контракте края НЕТ вовсе — ни рабочего, ни устаревшего.
 // Заголовок службы всё ещё поминает какой-то `Create`, отвечающий «используйте Invite», но
-// метода с таким именем служба не объявляет: `grep -n 'rpc ' proto/kacho/cloud/iam/v1/
+// метода с таким именем служба не объявляет: `grep -n 'rpc ' proto/kaname/cloud/iam/v1/
 // user_service.proto` даёт восемь вызовов, и `Create` среди них нет. Приводить этот отказ
 // как поведение края значило бы обещать ответ, которого некому произвести — потому здесь
 // названо то, что верно: создать пользователя нельзя ничем.
@@ -106,8 +106,17 @@ type userInvitationResource struct{ c *client.Client }
 // NewIAMUserInvitationResource — конструктор для реестра провайдера.
 func NewIAMUserInvitationResource() resource.Resource { return &userInvitationResource{} }
 
-func (r *userInvitationResource) Metadata(_ context.Context, req resource.MetadataRequest, resp *resource.MetadataResponse) {
-	resp.TypeName = req.ProviderTypeName + "_iam_user_invitation"
+// MoveState — переезд состояния с прежнего имени типа.
+//
+// Объявление обязательно: одного блока `moved` в настройке оператора НЕДОСТАТОЧНО —
+// исполнитель шлёт запрос переезда целевому типу, и тип, не объявивший поддержки, роняет
+// план. Что именно принимается и почему — iam_type_names.go.
+func (r *userInvitationResource) MoveState(ctx context.Context) []resource.StateMover {
+	return movedFromRetiredTypeName(ctx, r)
+}
+
+func (r *userInvitationResource) Metadata(_ context.Context, _ resource.MetadataRequest, resp *resource.MetadataResponse) {
+	resp.TypeName = typeNameIAMUserInvitation
 }
 
 func (r *userInvitationResource) Configure(_ context.Context, req resource.ConfigureRequest, resp *resource.ConfigureResponse) {
@@ -382,7 +391,7 @@ func (r *userInvitationResource) Create(ctx context.Context, req resource.Create
 	// Адрес ключа повторной подачи — аккаунт: почта и без того входит в ключ через тело,
 	// и собирать её отдельной строкой незачем.
 	hdr := &client.Headers{IdempotencyKey: client.IdempotencyKey(
-		"kacho_iam_user_invitation", plan.AccountID.ValueString(), raw)}
+		typeNameIAMUserInvitation, plan.AccountID.ValueString(), raw)}
 
 	httpResp, err := r.c.Do(ctx, http.MethodPost, userMembershipPath+":invite", body, hdr)
 	if err != nil {

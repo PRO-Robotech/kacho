@@ -420,10 +420,10 @@ func TestNeighbourProducerClassifiersCanRedden(t *testing.T) {
 			want  string
 		}{
 			// дефект: сосед короткой и полной формой, в голом виде и в URL
-			{"kacho-iam.kacho.svc:9090", "neighbour"},
-			{"kacho-iam.kacho.svc.cluster.local:9090", "neighbour"},
+			{"kaname.kacho.svc:9090", "neighbour"},
+			{"kaname.kacho.svc.cluster.local:9090", "neighbour"},
 			{"http://kacho-umbrella-kratos-public.kacho.svc:80", "neighbour"},
-			{"https://kacho-iam-internal.kacho.svc:9097/.well-known/jwks.json", "neighbour"},
+			{"https://kaname-internal.kacho.svc:9097/.well-known/jwks.json", "neighbour"},
 			// законные близнецы той же формы: их норма НЕ касается
 			{":9090", "listen"},
 			{":8080", "listen"},
@@ -471,7 +471,7 @@ func TestNeighbourProducerClassifiersCanRedden(t *testing.T) {
 
 	t.Run("разбор объявлений", func(t *testing.T) {
 		body := "type Config struct {\n" +
-			"\tA string `envconfig:\"KACHO_X_IAM_GRPC\" default:\"kacho-iam.kacho.svc:9090\"`\n" +
+			"\tA string `envconfig:\"KACHO_X_IAM_GRPC\" default:\"kaname.kacho.svc:9090\"`\n" +
 			"\tB string `envconfig:\"KACHO_X_LISTEN\"   default:\":9090\"`\n" +
 			"\tC string `json:\"c\"`\n" +
 			"}\n"
@@ -479,7 +479,7 @@ func TestNeighbourProducerClassifiersCanRedden(t *testing.T) {
 		if len(got) != 2 {
 			t.Fatalf("разобрано %d объявлений, ожидалось 2: %+v", len(got), got)
 		}
-		if got[0].Key != "KACHO_X_IAM_GRPC" || got[0].Value != "kacho-iam.kacho.svc:9090" || got[0].Line != 2 {
+		if got[0].Key != "KACHO_X_IAM_GRPC" || got[0].Value != "kaname.kacho.svc:9090" || got[0].Line != 2 {
 			t.Errorf("первое объявление разобрано неверно: %+v", got[0])
 		}
 		if got[1].Line != 3 {

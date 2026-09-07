@@ -219,12 +219,17 @@ func everyEdgeLive(t *testing.T) config.Config {
 		AuthZTrustedForwarderSANs: []string{"spiffe://kacho.cloud/ns/kacho-system/sa/kacho-api-gateway"},
 		ListFilterEnabled:         true,
 		// адреса всех условных рёбер заданы ⇒ каждое реально дозванивается
-		IAMGRPCAddr:             "kacho-iam.kacho.svc:9090",
+		IAMGRPCAddr:             "kaname.kacho.svc:9090",
 		GeoGRPCAddr:             "kacho-geo.kacho.svc:9090",
 		VPCGRPCAddr:             "kacho-vpc.kacho.svc:9090",
 		VPCInternalGRPCAddr:     "kacho-vpc-internal.kacho.svc:9091",
 		StorageInternalGRPCAddr: "kacho-storage-internal.kacho.svc:9091",
-		AuthZIAMGRPCAddr:        "kacho-iam-internal.kacho.svc:9091",
+		AuthZIAMGRPCAddr:        "kaname-internal.kacho.svc:9091",
+		// Домен величин объявлен АДРЕСОМ: ребро дилится, значит страж обязан
+		// требовать от него удостоверение. Объявление «не развёрнут» вывело бы
+		// ребро из наблюдения, и отключение его mTLS перестало бы что-либо
+		// значить — фикстура молча перестала бы быть представительной.
+		QuotaAuthority: "kaname-internal.kacho.svc:9091",
 	}
 	v := reflect.ValueOf(&cfg).Elem()
 	for _, field := range dialedEdgeFields(t, moduleRoot(t)) {

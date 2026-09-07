@@ -76,7 +76,7 @@ func scanClientTokenDeclarations(profiles map[string]map[string]any) (findings [
 	sort.Strings(names)
 
 	for _, name := range names {
-		ct := dig(profiles[name], "kacho-iam", "config", "authn", "clientToken")
+		ct := dig(profiles[name], "kaname", "config", "authn", "clientToken")
 		if ct == nil {
 			continue
 		}
@@ -94,7 +94,7 @@ func scanClientTokenDeclarations(profiles map[string]map[string]any) (findings [
 		// Эндпоинт выпускает НАШИМ подписантом. Профиль, включивший его при
 		// выключенной чеканке, не поднимется — и лучше узнать это здесь, чем
 		// на стенде.
-		if ts, _ := dig(profiles[name], "kacho-iam", "config", "authn", "tokenSigning").(map[string]any); ts == nil {
+		if ts, _ := dig(profiles[name], "kaname", "config", "authn", "tokenSigning").(map[string]any); ts == nil {
 			findings = append(findings, clientTokenFinding{name, "эндпоинт включён, своя чеканка не объявлена"})
 		} else if signing, _ := ts["enabled"].(bool); !signing {
 			findings = append(findings, clientTokenFinding{name, "эндпоинт включён при выключенной своей чеканке"})
@@ -187,7 +187,7 @@ func TestClientTokenDeclarationScannerSeesTheOmissionAndIsSilentOnTheDeclared(t 
 		if mutate != nil {
 			mutate(ct)
 		}
-		return map[string]any{"kacho-iam": map[string]any{"config": map[string]any{"authn": map[string]any{
+		return map[string]any{"kaname": map[string]any{"config": map[string]any{"authn": map[string]any{
 			"tokenSigning": map[string]any{"enabled": true},
 			"clientToken":  ct,
 		}}}}
@@ -236,7 +236,7 @@ func TestClientTokenDeclarationScannerSeesTheOmissionAndIsSilentOnTheDeclared(t 
 
 	// (д) эндпоинт при выключенной чеканке — находка: выпускать нечем.
 	got, _ = scanClientTokenDeclarations(map[string]map[string]any{
-		"nosigner.yaml": {"kacho-iam": map[string]any{"config": map[string]any{"authn": map[string]any{
+		"nosigner.yaml": {"kaname": map[string]any{"config": map[string]any{"authn": map[string]any{
 			"tokenSigning": map[string]any{"enabled": false},
 			"clientToken": map[string]any{
 				"enabled": true, "allowedAudiences": "a", "defaultAudience": "a",

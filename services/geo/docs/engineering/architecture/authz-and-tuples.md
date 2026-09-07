@@ -14,12 +14,12 @@ Region и Zone — глобальный cluster-scoped каталог: они н
 одинаковы для всего кластера. Поэтому авторизация ведётся **не по объекту
 конкретного региона/зоны**, а по cluster-синглтону.
 
-- В модели прав (kacho-iam) **нет типов `region`/`zone`** — есть `type cluster`
-  с синглтоном `cluster:cluster_kacho_root`.
+- В модели прав (kaname) **нет типов `region`/`zone`** — есть `type cluster`
+  с синглтоном `cluster:cluster_root`.
 - **Отношение объявляется в proto и больше нигде.** Каждый admin-RPC несёт
   `required_relation = "system_admin"` рядом со своим `permission`
   (`proto/kacho/cloud/geo/v1/internal_catalog_service.proto`); тапл
-  `cluster:cluster_kacho_root#system_admin` сидит bootstrap kacho-iam. Своей рукописной
+  `cluster:cluster_root#system_admin` сидит bootstrap kaname. Своей рукописной
   карты RPC→объект у geo нет: контур решения о доступе собирает носитель
   (`pkg/servicehost`) по дескриптору (`pkg/servicecontract`), который geo заполняет в
   `services/geo/cmd/kacho-geo/serve.go` (`Authz: servicecontract.AuthzViaIAM`).
@@ -49,7 +49,7 @@ Region и Zone — глобальный cluster-scoped каталог: они н
 
 **Следствие:** geo **намеренно НЕ участвует** в потоке регистрации владения
 (`RegisterResource`/`UnregisterResource`), которым vpc/compute регистрируют свои
-ресурсы в kacho-iam. Per-resource записей для Region/Zone не существует, поэтому на
+ресурсы в kaname. Per-resource записей для Region/Zone не существует, поэтому на
 Create/Update/Delete **нечего регистрировать и нечему устаревать** — Check работает
 через cluster-синглтон. Это та же модель, что у admin-ресурса
 `vpc.AddressPool`. `geo_outbox` — **audit-only** (строки CREATED/UPDATED/DELETED через

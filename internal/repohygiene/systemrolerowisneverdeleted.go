@@ -112,7 +112,7 @@ type RoleDeleteCensus struct {
 // Граница `\b` после `roles` отделяет таблицу ролей от её проекций
 // (`role_rule_ref`, `role_verb`, `role_rule_selectors`): их удаление законно —
 // с него начинается приведение правила (`ReplaceRuleRefs`).
-var roleDeleteStmtRe = regexp.MustCompile(`(?im)^\s*(with\b[^\n]*\n\s*)?delete\s+from\s+(kacho_iam\.)?roles\b`)
+var roleDeleteStmtRe = regexp.MustCompile(`(?im)^\s*(with\b[^\n]*\n\s*)?delete\s+from\s+(kaname\.)?roles\b`)
 
 // roleDeleteTailRe — продолжение, по которому оператор отличается от прозы,
 // цитирующей оператор. Привязан к началу ОСТАТКА литерала, поэтому режим

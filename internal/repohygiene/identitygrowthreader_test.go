@@ -33,6 +33,8 @@ import (
 	"sort"
 	"strings"
 	"testing"
+
+	"github.com/PRO-Robotech/kacho/internal/productnaming"
 )
 
 const (
@@ -43,8 +45,14 @@ const (
 )
 
 var (
-	// имя ряда в объявлении константы Go
-	identityGrowthMetricNameRe = regexp.MustCompile(`"(kacho_iam_[a-z0-9_]+)"`)
+	// имя ряда в объявлении константы Go.
+	//
+	// Приставка спрашивается у владельца имён, а не выписывается: часть продукта
+	// вправе носить СВОЁ имя (#2076). Выписанная приставка на переименовании не
+	// краснеет по существу — она обнуляет ПРОЧИТАННОЕ, и гейт начинает судить
+	// пустоту; здесь это видно только потому, что предпосылка объявлена вслух.
+	identityGrowthMetricNameRe = regexp.MustCompile(
+		`"(` + regexp.QuoteMeta(productnaming.MetricNamespace("iam")) + `_[a-z0-9_]+)"`)
 	// строчный комментарий Go
 	identityGrowthGoCommentRe = regexp.MustCompile(`(?m)^\s*//.*$`)
 )
@@ -106,18 +114,18 @@ func TestIdentityGrowthReaderGate_CanFailAndJudgesOnlyExecutableText(t *testing.
 	// срабатывает, поэтому читателем не является.
 	const proseOnly = "```yaml\n" +
 		"- alert: SomethingElse\n" +
-		"  expr: rate(kacho_iam_authz_check_decisions_total[5m]) > 1\n" +
+		"  expr: rate(kaname_authz_check_decisions_total[5m]) > 1\n" +
 		"  annotations:\n" +
-		"    summary: \"смотреть также kacho_iam_identities_total\"\n" +
+		"    summary: \"смотреть также kaname_identities_total\"\n" +
 		"```\n"
 	got := strings.Join(alertExpressionsIn(proseOnly), "\n")
-	if strings.Contains(got, "kacho_iam_identities_total") {
+	if strings.Contains(got, "kaname_identities_total") {
 		t.Fatalf("имя ряда из пояснения принято за читателя: %q", got)
 	}
 	// Законный близнец 1: ряд, действительно стоящий в выражении, читателем
 	// является. Без этой половины предыдущее утверждение прошло бы на разборе,
 	// не находящем вообще ничего.
-	if !strings.Contains(got, "kacho_iam_authz_check_decisions_total") {
+	if !strings.Contains(got, "kaname_authz_check_decisions_total") {
 		t.Fatalf("ряд из выражения правила не найден: %q", got)
 	}
 
@@ -127,12 +135,12 @@ func TestIdentityGrowthReaderGate_CanFailAndJudgesOnlyExecutableText(t *testing.
 	const multiline = "```yaml\n" +
 		"- alert: Multi\n" +
 		"  expr: |\n" +
-		"    sum(rate(kacho_iam_identities_total[1h]))\n" +
-		"      / sum(rate(kacho_iam_identity_ledger_samples_total[1h])) > 0.5\n" +
+		"    sum(rate(kaname_identities_total[1h]))\n" +
+		"      / sum(rate(kaname_identity_ledger_samples_total[1h])) > 0.5\n" +
 		"  for: 10m\n" +
 		"```\n"
 	multi := strings.Join(alertExpressionsIn(multiline), "\n")
-	for _, want := range []string{"kacho_iam_identities_total", "kacho_iam_identity_ledger_samples_total"} {
+	for _, want := range []string{"kaname_identities_total", "kaname_identity_ledger_samples_total"} {
 		if !strings.Contains(multi, want) {
 			t.Fatalf("многострочное выражение прочитано не целиком: %q не найден в %q", want, multi)
 		}
@@ -147,14 +155,14 @@ func TestIdentityGrowthReaderGate_CanFailAndJudgesOnlyExecutableText(t *testing.
 	const commented = "```yaml\n" +
 		"- alert: Commented\n" +
 		"  expr: |\n" +
-		"    # раньше здесь стоял kacho_iam_identities_total\n" +
-		"    rate(kacho_iam_lro_reconcile_runs_total[5m]) > 0\n" +
+		"    # раньше здесь стоял kaname_identities_total\n" +
+		"    rate(kaname_lro_reconcile_runs_total[5m]) > 0\n" +
 		"```\n"
 	com := strings.Join(alertExpressionsIn(commented), "\n")
-	if strings.Contains(com, "kacho_iam_identities_total") {
+	if strings.Contains(com, "kaname_identities_total") {
 		t.Fatalf("ряд из комментария внутри выражения принят за читателя: %q", com)
 	}
-	if !strings.Contains(com, "kacho_iam_lro_reconcile_runs_total") {
+	if !strings.Contains(com, "kaname_lro_reconcile_runs_total") {
 		t.Fatalf("исполняемая часть выражения потеряна вместе с комментарием: %q", com)
 	}
 
@@ -164,13 +172,13 @@ func TestIdentityGrowthReaderGate_CanFailAndJudgesOnlyExecutableText(t *testing.
 	// читателем, гейт зеленел при отсутствующем читателе.
 	const tailInline = "```yaml\n" +
 		"- alert: TailInline\n" +
-		"  expr: increase(kacho_iam_lro_inflight[1h]) > 100  # снято правило про kacho_iam_identities_total\n" +
+		"  expr: increase(kaname_lro_inflight[1h]) > 100  # снято правило про kaname_identities_total\n" +
 		"```\n"
 	tail := strings.Join(alertExpressionsIn(tailInline), "\n")
-	if strings.Contains(tail, "kacho_iam_identities_total") {
+	if strings.Contains(tail, "kaname_identities_total") {
 		t.Fatalf("ряд из ХВОСТОВОГО комментария принят за читателя: %q", tail)
 	}
-	if !strings.Contains(tail, "kacho_iam_lro_inflight") {
+	if !strings.Contains(tail, "kaname_lro_inflight") {
 		t.Fatalf("исполняемая часть выражения снята вместе с хвостовым комментарием: %q", tail)
 	}
 
@@ -179,13 +187,13 @@ func TestIdentityGrowthReaderGate_CanFailAndJudgesOnlyExecutableText(t *testing.
 	const tailBlock = "```yaml\n" +
 		"- alert: TailBlock\n" +
 		"  expr: |\n" +
-		"    increase(kacho_iam_lro_inflight[1h]) > 100  # снято правило про kacho_iam_identities_total\n" +
+		"    increase(kaname_lro_inflight[1h]) > 100  # снято правило про kaname_identities_total\n" +
 		"```\n"
 	tailB := strings.Join(alertExpressionsIn(tailBlock), "\n")
-	if strings.Contains(tailB, "kacho_iam_identities_total") {
+	if strings.Contains(tailB, "kaname_identities_total") {
 		t.Fatalf("ряд из хвостового комментария БЛОЧНОЙ формы принят за читателя: %q", tailB)
 	}
-	if !strings.Contains(tailB, "kacho_iam_lro_inflight") {
+	if !strings.Contains(tailB, "kaname_lro_inflight") {
 		t.Fatalf("исполняемая часть блочного выражения снята вместе с комментарием: %q", tailB)
 	}
 
@@ -198,13 +206,13 @@ func TestIdentityGrowthReaderGate_CanFailAndJudgesOnlyExecutableText(t *testing.
 		name string
 		doc  string
 	}{
-		{"двойные кавычки", "```yaml\n- alert: Q1\n  expr: rate(kacho_iam_identities_total{path=\"/a #b\"}[5m]) > 0\n```\n"},
-		{"одинарные кавычки", "```yaml\n- alert: Q2\n  expr: rate(kacho_iam_identities_total{path='/a #b'}[5m]) > 0\n```\n"},
-		{"сырая строка PromQL", "```yaml\n- alert: Q3\n  expr: rate(kacho_iam_identities_total{path=`/a #b`}[5m]) > 0\n```\n"},
-		{"блочная форма", "```yaml\n- alert: Q4\n  expr: |\n    rate(kacho_iam_identities_total{path=\"/a #b\"}[5m]) > 0\n```\n"},
+		{"двойные кавычки", "```yaml\n- alert: Q1\n  expr: rate(kaname_identities_total{path=\"/a #b\"}[5m]) > 0\n```\n"},
+		{"одинарные кавычки", "```yaml\n- alert: Q2\n  expr: rate(kaname_identities_total{path='/a #b'}[5m]) > 0\n```\n"},
+		{"сырая строка PromQL", "```yaml\n- alert: Q3\n  expr: rate(kaname_identities_total{path=`/a #b`}[5m]) > 0\n```\n"},
+		{"блочная форма", "```yaml\n- alert: Q4\n  expr: |\n    rate(kaname_identities_total{path=\"/a #b\"}[5m]) > 0\n```\n"},
 	} {
 		got := strings.Join(alertExpressionsIn(quoted.doc), "\n")
-		if !strings.Contains(got, "kacho_iam_identities_total") {
+		if !strings.Contains(got, "kaname_identities_total") {
 			t.Fatalf("%s: ряд из выражения потерян — `#` внутри литерала принят за комментарий: %q",
 				quoted.name, got)
 		}
@@ -217,19 +225,19 @@ func TestIdentityGrowthReaderGate_CanFailAndJudgesOnlyExecutableText(t *testing.
 	// открывает ни в YAML, ни в PromQL.
 	const glued = "```yaml\n" +
 		"- alert: Glued\n" +
-		"  expr: rate(kacho_iam_identities_total{ref=\"a#b\"}[5m]) > 0\n" +
+		"  expr: rate(kaname_identities_total{ref=\"a#b\"}[5m]) > 0\n" +
 		"```\n"
 	gl := strings.Join(alertExpressionsIn(glued), "\n")
-	if !strings.Contains(gl, "kacho_iam_identities_total") || !strings.Contains(gl, "> 0") {
+	if !strings.Contains(gl, "kaname_identities_total") || !strings.Contains(gl, "> 0") {
 		t.Fatalf("прижатый `#` принят за начало комментария: %q", gl)
 	}
 
 	// Разбор объявления: имя ряда берётся из кода, а не из его комментария.
 	names := identityGrowthMetricNamesIn(`
-// раньше ряд назывался "kacho_iam_identity_old_total"
-const IdentitiesTotalMetric = "kacho_iam_identities_total"
+// раньше ряд назывался "kaname_identity_old_total"
+const IdentitiesTotalMetric = "kaname_identities_total"
 `)
-	if len(names) != 1 || names[0] != "kacho_iam_identities_total" {
+	if len(names) != 1 || names[0] != "kaname_identities_total" {
 		t.Fatalf("имена рядов прочитаны неверно: %v", names)
 	}
 }
@@ -311,7 +319,7 @@ func alertExpressionsIn(doc string) []string {
 // считаться читателем. Прежняя редакция снимала только строку-комментарий
 // целиком, поэтому подмена вида
 //
-//	expr: increase(kacho_iam_lro_inflight[1h]) > 100  # снято правило про kacho_iam_identities_total
+//	expr: increase(kaname_lro_inflight[1h]) > 100  # снято правило про kaname_identities_total
 //
 // оставляла гейт зелёным при отсутствующем читателе — в ОБЕИХ формах выражения,
 // однострочной и блочной.

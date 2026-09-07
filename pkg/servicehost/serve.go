@@ -39,8 +39,6 @@ import (
 	"google.golang.org/grpc/status"
 	"google.golang.org/protobuf/reflect/protoreflect"
 
-	iamv1 "github.com/PRO-Robotech/kacho/pkg/api/kacho/cloud/iam/v1"
-	"github.com/PRO-Robotech/kacho/pkg/auth"
 	"github.com/PRO-Robotech/kacho/pkg/authz"
 	"github.com/PRO-Robotech/kacho/pkg/authz/catalogderive"
 	"github.com/PRO-Robotech/kacho/pkg/grpcclient"
@@ -191,11 +189,23 @@ func serverPair(spec servicecontract.Spec, slot *decisionSlot) (public, internal
 			"диагностическую поверхность без семейства, которого на ней не будет никогда",
 			spec.Service, lerr)
 	}
+	// Исход личности наблюдается ЗДЕСЬ, а не у каждого сервиса, и по той же
+	// причине, по какой здесь стоит измеритель задержки: пока счётчик заводит
+	// каждый у себя, «не завёл» НЕОТЛИЧИМО от «завёл такой же», а без него
+	// «личность объявлена и не приехала» неотличимо от роста безымянных вызовов.
+	arrival, aerr := grpcsrv.NewIdentityArrival(spec.Metrics)
+	if aerr != nil {
+		return nil, nil, fmt.Errorf("servicehost: %s не поднимается — счётчик исходов личности "+
+			"не заводится в переданном реестре: %w. Так выглядит несогласованное объявление серии "+
+			"(то же имя с другой размерностью); поднять процесс значило бы отдать ему полосу, "+
+			"на которой рассинхрон написания ключей неотличим от законной безымянности",
+			spec.Service, aerr)
+	}
 	build := func(creds credentials.TransportCredentials, on grpcsrv.Listener) *grpc.Server {
 		return grpcsrv.NewServer(
 			grpc.Creds(creds),
-			grpc.ChainUnaryInterceptor(unaryChain(spec, slot, lat, on)...),
-			grpc.ChainStreamInterceptor(streamChain(spec, slot, lat, on)...),
+			grpc.ChainUnaryInterceptor(unaryChain(spec, slot, lat, arrival, on)...),
+			grpc.ChainStreamInterceptor(streamChain(spec, slot, lat, arrival, on)...),
 		)
 	}
 	return build(spec.PublicCreds, grpcsrv.ListenerPublic),
@@ -249,8 +259,11 @@ func decisionLink(spec servicecontract.Spec, m authz.RPCMap) (*authz.Interceptor
 			return nil, nil, fmt.Errorf("servicehost: %s не поднимается — ребро решения о доступе "+
 				"на %s не собирается: %w", spec.Service, spec.CheckEdge.Addr(), err)
 		}
-		opts.Client = withExistenceHiding(spec, m,
-			&iamCheckClient{cli: iamv1.NewInternalIAMServiceClient(conn)})
+		// Перевод вопроса в контракт владельца приносит СЕРВИС
+		// ([servicecontract.Spec.PeerCheck]); носитель набирает соседа и держит
+		// соединение, но чужого контракта не знает. Непустоту сборщика проверил
+		// конструктор дескриптора.
+		opts.Client = withExistenceHiding(spec, m, spec.PeerCheck(conn))
 		return observe(authz.NewInterceptor(opts)), func() { _ = conn.Close() }, nil
 
 	default:
@@ -284,53 +297,6 @@ func withExistenceHiding(spec servicecontract.Spec, m authz.RPCMap, inner authz.
 		scoped: catalogderive.ObjectScopedTypes(m),
 	}
 }
-
-// iamCheckClient — адаптер клиента владельца модели под порт проверки.
-//
-// Исходящий контекст оборачивается [auth.PropagateOutgoing], чтобы на стороне
-// владельца извлечение личности видело РЕАЛЬНОГО вызывающего, а не сервис,
-// задающий вопрос.
-type iamCheckClient struct {
-	cli iamv1.InternalIAMServiceClient
-}
-
-// Check спрашивает владельца модели и НЕ разбирает прозу его ответа.
-//
-// # Почему причина отказа не читается, хотя соблазн есть
-//
-// Владелец различает в тексте причины «пути к объекту нет» и «не хватает
-// отношения», и два сервиса из семи этот текст разбирали, превращая первое в
-// пропуск к обработчику. Носитель так не делает, и это осознанный выбор, а не
-// потеря:
-//
-//   - пропуск к обработчику на отказе — решение о ДОСТУПЕ, и принимать его по
-//     подстроке чужого сообщения нельзя: тон сообщения стабилен, но не
-//     предназначен для разбора машиной (машинная полоса — token в `details`);
-//   - «пути нет» означает «намерение регистрации ещё не доехало» ровно так же
-//     часто, как «объекта нет»: платформа eventually-consistent. Пропуск в этом
-//     окне отдал бы существующий объект тому, кому он не принадлежит;
-//   - у вопроса есть авторитетный ответчик — СВОЯ БАЗА. Его даёт порт
-//     существования (см. [existenceAwareCheck]), и он же отличает «нет объекта»
-//     от «есть, но не твой» без единого допущения о чужом тексте.
-//
-// Перепись, из-за которой ветка не была введена на все семь: разбор причины
-// живёт у vpc и nlb, у compute, storage, registry, geo и iam его нет
-// (`grep -rl ErrNoPath services/*/... | grep -v _test`). Ввести его разом
-// значило бы завести пропуск там, где сегодня отказ, — то есть ослабить пятерых
-// ради единообразия.
-func (c *iamCheckClient) Check(ctx context.Context, subjectID, relation, object string) (bool, error) {
-	resp, err := c.cli.Check(auth.PropagateOutgoing(ctx), &iamv1.CheckRequest{
-		SubjectId: subjectID,
-		Relation:  relation,
-		Object:    object,
-	})
-	if err != nil {
-		return false, err
-	}
-	return resp.GetAllowed(), nil
-}
-
-var _ authz.CheckClient = (*iamCheckClient)(nil)
 
 // listenAndServe поднимает оба слушателя и гасит их по отмене ctx.
 //
@@ -610,7 +576,8 @@ func catalogOf(domains []string) catalogView {
 // Позиция при этом зафиксирована здесь, а не оставлена на усмотрение: когда
 // звено введут, оно встанет на своё место, а не туда, где окажется удобно.
 func unaryChain(spec servicecontract.Spec, slot *decisionSlot,
-	lat *grpcsrv.ServerLatency, on grpcsrv.Listener) []grpc.UnaryServerInterceptor {
+	lat *grpcsrv.ServerLatency, arrival *grpcsrv.IdentityArrival,
+	on grpcsrv.Listener) []grpc.UnaryServerInterceptor {
 	chain := []grpc.UnaryServerInterceptor{
 		lat.UnaryServerInterceptor(on),
 		accessLogUnary(spec.Logger),
@@ -620,7 +587,8 @@ func unaryChain(spec servicecontract.Spec, slot *decisionSlot,
 	if gate, ok := spec.BootGate.Get(); ok && gate != nil {
 		chain = append(chain, bootGateUnary(gate))
 	}
-	chain = append(chain, grpcsrv.PrincipalExtractUnary(carriedForwarders(spec))...)
+	chain = append(chain, grpcsrv.PrincipalExtractUnary(carriedTrustDomain(spec), carriedForwarders(spec),
+		grpcsrv.WithIdentityArrival(arrival))...)
 	return append(chain, slot.unary())
 }
 
@@ -638,7 +606,8 @@ func unaryChain(spec servicecontract.Spec, slot *decisionSlot,
 // Загрузочного гейта мутаций здесь нет и в unary-варианте он условен по другой
 // причине: мутация в этом продукте всегда unary (см. [bootGateUnary]).
 func streamChain(spec servicecontract.Spec, slot *decisionSlot,
-	lat *grpcsrv.ServerLatency, on grpcsrv.Listener) []grpc.StreamServerInterceptor {
+	lat *grpcsrv.ServerLatency, arrival *grpcsrv.IdentityArrival,
+	on grpcsrv.Listener) []grpc.StreamServerInterceptor {
 	chain := []grpc.StreamServerInterceptor{
 		lat.StreamServerInterceptor(on),
 		accessLogStream(spec.Logger),
@@ -647,7 +616,8 @@ func streamChain(spec servicecontract.Spec, slot *decisionSlot,
 	if budget, ok := spec.StreamBudget.Get(); ok {
 		chain = append(chain, streamBudgetLink(budget))
 	}
-	chain = append(chain, grpcsrv.PrincipalExtractStream(carriedForwarders(spec))...)
+	chain = append(chain, grpcsrv.PrincipalExtractStream(carriedTrustDomain(spec), carriedForwarders(spec),
+		grpcsrv.WithIdentityArrival(arrival))...)
 	return append(chain, slot.stream())
 }
 
@@ -662,4 +632,17 @@ func streamChain(spec servicecontract.Spec, slot *decisionSlot,
 func carriedForwarders(spec servicecontract.Spec) grpcsrv.TrustedForwarders {
 	circle, _ := spec.Forwarders.Get()
 	return circle
+}
+
+// carriedTrustDomain — домен доверия контура, поднятого носителем.
+//
+// Ось здесь ВСЕГДА несёт значение по тому же основанию, что и круг отправителей:
+// изъятие («личность сертификата я не разбираю») конструктор дескриптора
+// отвергает у всякого, чей контур поднимает носитель, — именно потому, что пару
+// звеньев извлечения носитель ставит безусловно. Необъявленный домен, доставшийся
+// отсюда, означал бы процесс, не признающий своим ни одного предъявителя, поэтому
+// молчаливого пути к нему нет: до `Serve` доходит только принятый дескриптор.
+func carriedTrustDomain(spec servicecontract.Spec) grpcsrv.TrustDomain {
+	domain, _ := spec.TrustDomain.Get()
+	return domain
 }

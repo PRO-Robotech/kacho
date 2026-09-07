@@ -14,6 +14,7 @@ import (
 
 	"gopkg.in/yaml.v3"
 
+	"github.com/PRO-Robotech/kacho/internal/productnaming"
 	"github.com/PRO-Robotech/kacho/pkg/treecorpus"
 )
 
@@ -181,7 +182,10 @@ func processNameOf(rel string) string {
 func chartDirOf(process string) string {
 	switch process {
 	case "iam", "geo":
-		return "deploy/helm/umbrella/charts/kacho-" + process
+		// Имя чарта спрашивается у владельца имён, а не выводится приставкой
+		// имени платформы: часть продукта вправе носить СВОЁ имя (#2076), и
+		// вывод по приставке уводил бы к каталогу, которого нет.
+		return "deploy/helm/umbrella/charts/" + productnaming.ChartName(process)
 	case "api-gateway":
 		return "gateway/deploy"
 	default:

@@ -86,7 +86,7 @@ func prodCfg(mode Mode, iamEndpoint string) Config {
 
 // vpc8-C-01: production с настроенным authz-endpoint проходит Validate.
 func TestValidate_Production_WithAuthzEndpoint_Passes(t *testing.T) {
-	c := prodCfg(ModeProduction, "kacho-iam.kacho.svc:9091")
+	c := prodCfg(ModeProduction, "kaname.kacho.svc:9091")
 	require.NoError(t, c.Validate())
 }
 
@@ -139,7 +139,7 @@ func TestValidate_AuthzEndpointRequiredUnconditionallyInProduction(t *testing.T)
 func TestValidate_ProductionWithAuthzEndpointPasses(t *testing.T) {
 	for _, mode := range []Mode{ModeProduction, ModeProductionStrict} {
 		t.Run(mode.String(), func(t *testing.T) {
-			require.NoError(t, prodCfg(mode, "kacho-iam.kacho.svc:9091").Validate())
+			require.NoError(t, prodCfg(mode, "kaname.kacho.svc:9091").Validate())
 		})
 	}
 }
@@ -165,7 +165,7 @@ func TestValidate_Dev_NoGuardrail(t *testing.T) {
 
 // vpc8-C-07: production-strict без public-mTLS → отказ (ValidateServerMTLS).
 func TestValidateServerMTLS_ProductionStrict_RequiresPublicMTLS(t *testing.T) {
-	c := prodCfg(ModeProductionStrict, "kacho-iam:9091")
+	c := prodCfg(ModeProductionStrict, "kaname:9091")
 	var m MTLSConfig
 	m.InternalServerMTLS.Enable = true
 	m.PublicServerMTLS.Enable = false
@@ -176,7 +176,7 @@ func TestValidateServerMTLS_ProductionStrict_RequiresPublicMTLS(t *testing.T) {
 
 // vpc8-C-08: production-strict без internal-mTLS → отказ.
 func TestValidateServerMTLS_ProductionStrict_RequiresInternalMTLS(t *testing.T) {
-	c := prodCfg(ModeProductionStrict, "kacho-iam:9091")
+	c := prodCfg(ModeProductionStrict, "kaname:9091")
 	var m MTLSConfig
 	m.PublicServerMTLS.Enable = true
 	m.InternalServerMTLS.Enable = false
@@ -187,7 +187,7 @@ func TestValidateServerMTLS_ProductionStrict_RequiresInternalMTLS(t *testing.T) 
 
 // vpc8-C-09: production-strict с обоими server-mTLS → старт разрешен.
 func TestValidateServerMTLS_ProductionStrict_BothOn_Passes(t *testing.T) {
-	c := prodCfg(ModeProductionStrict, "kacho-iam:9091")
+	c := prodCfg(ModeProductionStrict, "kaname:9091")
 	var m MTLSConfig
 	m.PublicServerMTLS = grpcsrv.TLSServer{Enable: true}
 	m.InternalServerMTLS = grpcsrv.TLSServer{Enable: true}
@@ -199,7 +199,7 @@ func TestValidateServerMTLS_ProductionStrict_BothOn_Passes(t *testing.T) {
 // из client-asserted x-kacho-* metadata; в production он не должен доверять ей по
 // незашифрованному транспорту без явного подтверждения границы доверия (CWE-290).
 func TestValidateServerMTLS_Production_NoMTLS_NoForwarder_Fails(t *testing.T) {
-	c := prodCfg(ModeProduction, "kacho-iam:9091")
+	c := prodCfg(ModeProduction, "kaname:9091")
 	var m MTLSConfig // оба server-mTLS выключены, trusted-forwarder не выставлен
 	err := c.ValidateServerMTLS(m)
 	require.Error(t, err)
@@ -212,7 +212,7 @@ func TestValidateServerMTLS_Production_NoMTLS_NoForwarder_Fails(t *testing.T) {
 
 // vpc8-C-10b: production + public-mTLS включён (без trusted-forwarder) → старт разрешён.
 func TestValidateServerMTLS_Production_PublicMTLS_Passes(t *testing.T) {
-	c := prodCfg(ModeProduction, "kacho-iam:9091")
+	c := prodCfg(ModeProduction, "kaname:9091")
 	var m MTLSConfig
 	m.PublicServerMTLS.Enable = true
 	// internal :9091 — service→service, mTLS обязателен в ЛЮБОМ production-режиме.
@@ -223,7 +223,7 @@ func TestValidateServerMTLS_Production_PublicMTLS_Passes(t *testing.T) {
 // vpc8-C-10c: production + trusted-forwarder=true (без public-mTLS) → старт разрешён
 // (оператор явно подтвердил, что listener за аутентифицированным forwarder'ом).
 func TestValidateServerMTLS_Production_TrustedForwarder_Passes(t *testing.T) {
-	c := prodCfg(ModeProduction, "kacho-iam:9091")
+	c := prodCfg(ModeProduction, "kaname:9091")
 	c.AuthN.TrustedForwarder = true
 	var m MTLSConfig // public-mTLS выключен, но internal обязателен всегда в production
 	m.InternalServerMTLS.Enable = true
@@ -240,7 +240,7 @@ func TestValidateServerMTLS_Production_TrustedForwarder_Passes(t *testing.T) {
 // principal-spoofing (CWE-306/290). У internal НЕТ trusted-forwarder escape-hatch
 // (в отличие от публичного user→edge listener'а).
 func TestValidateServerMTLS_Production_NoInternalMTLS_Fails(t *testing.T) {
-	c := prodCfg(ModeProduction, "kacho-iam:9091")
+	c := prodCfg(ModeProduction, "kaname:9091")
 	var m MTLSConfig
 	m.PublicServerMTLS.Enable = true    // публичный удовлетворён
 	m.InternalServerMTLS.Enable = false // internal выключен → отказ
@@ -253,7 +253,7 @@ func TestValidateServerMTLS_Production_NoInternalMTLS_Fails(t *testing.T) {
 // vpc8-C-10g: production (non-strict) + trusted-forwarder НЕ спасает internal —
 // escape-hatch действует только для публичного listener'а.
 func TestValidateServerMTLS_Production_TrustedForwarder_StillRequiresInternalMTLS(t *testing.T) {
-	c := prodCfg(ModeProduction, "kacho-iam:9091")
+	c := prodCfg(ModeProduction, "kaname:9091")
 	c.AuthN.TrustedForwarder = true
 	var m MTLSConfig // оба выключены; trusted-forwarder закрывает только public
 	err := c.ValidateServerMTLS(m)
@@ -266,7 +266,7 @@ func TestValidateServerMTLS_Production_TrustedForwarder_StillRequiresInternalMTL
 // vpc8-C-10d: production-strict ИГНОРИРУЕТ trusted-forwarder — server-mTLS обязателен
 // всегда (escape-hatch не действует в strict).
 func TestValidateServerMTLS_ProductionStrict_TrustedForwarder_StillRequiresMTLS(t *testing.T) {
-	c := prodCfg(ModeProductionStrict, "kacho-iam:9091")
+	c := prodCfg(ModeProductionStrict, "kaname:9091")
 	c.AuthN.TrustedForwarder = true
 	var m MTLSConfig // оба выключены
 	err := c.ValidateServerMTLS(m)
@@ -277,7 +277,7 @@ func TestValidateServerMTLS_ProductionStrict_TrustedForwarder_StillRequiresMTLS(
 
 // vpc8-C-10e: dev-режим гардом не затронут (public-mTLS не требуется).
 func TestValidateServerMTLS_Dev_NoMTLSRequired(t *testing.T) {
-	c := prodCfg(ModeDev, "kacho-iam:9091")
+	c := prodCfg(ModeDev, "kaname:9091")
 	var m MTLSConfig
 	require.NoError(t, c.ValidateServerMTLS(m))
 }
@@ -310,7 +310,7 @@ func TestValidateBoot_ProductionStrict_AggregatesAllViolations(t *testing.T) {
 // открытым текстом). SEC-hardening r2 (2026-07-05, CWE-319): защищённый sslmode
 // требуется в ЛЮБОМ IsProduction() режиме, не только strict.
 func TestValidate_Production_SSLModeDisable_Fails(t *testing.T) {
-	c := prodCfg(ModeProduction, "kacho-iam:9091")
+	c := prodCfg(ModeProduction, "kaname:9091")
 	c.Repository.Postgres.SSLMode = "disable"
 	err := c.Validate()
 	require.Error(t, err)
@@ -320,7 +320,7 @@ func TestValidate_Production_SSLModeDisable_Fails(t *testing.T) {
 
 // vpc8-C-13: production с ssl-mode=require → проходит.
 func TestValidate_Production_SSLModeRequire_Passes(t *testing.T) {
-	c := prodCfg(ModeProduction, "kacho-iam:9091")
+	c := prodCfg(ModeProduction, "kaname:9091")
 	c.Repository.Postgres.SSLMode = "require"
 	require.NoError(t, c.Validate())
 }
@@ -341,7 +341,7 @@ func TestValidate_Dev_SSLModeDisable_Passes(t *testing.T) {
 // H-D3: невалидный logger.level → ошибка валидации при старте (fail-fast,
 // без тихого fallback в INFO).
 func TestValidate_InvalidLoggerLevel_Fails(t *testing.T) {
-	c := prodCfg(ModeProduction, "kacho-iam:9091")
+	c := prodCfg(ModeProduction, "kaname:9091")
 	c.Logger.Level = "LOUD"
 	err := c.Validate()
 	require.Error(t, err)

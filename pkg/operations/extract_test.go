@@ -21,7 +21,7 @@ import (
 var extractTestFileSeq atomic.Int64
 
 // buildAny строит синтетический *anypb.Any с указанными string-полями по их
-// exact-именам (dynamicpb), без зависимости от kacho-iam proto-stubs. Порядок
+// exact-именам (dynamicpb), без зависимости от kaname proto-stubs. Порядок
 // fields задает field-number 1..N (важно для non-first account_id-инварианта).
 //
 // Синтетический тип регистрируется в глобальном protoregistry, чтобы

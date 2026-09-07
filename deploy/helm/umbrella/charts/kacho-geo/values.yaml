@@ -2,7 +2,7 @@
 # SPDX-License-Identifier: BUSL-1.1
 # kacho-geo sub-chart defaults — Geography (Region/Zone) leaf-service.
 #
-# Vendored sub-chart (lives under umbrella charts/, like kacho-iam), so it
+# Vendored sub-chart (lives under umbrella charts/, like kaname), so it
 # renders WITHOUT the sibling-repo `file://` checkouts. Mirrors the lean
 # kacho-compute deploy chart shape; trimmed to the leaf-service surface:
 #   - public :9090 (RegionService/ZoneService Get/List) + internal :9091
@@ -87,13 +87,13 @@ db:
 # the dev profile (values.dev.yaml sets it).
 authMode: production
 
-# AUTHZ_IAM_GRPC_ADDR — kacho-iam INTERNAL listener for per-RPC Check
+# AUTHZ_IAM_GRPC_ADDR — kaname INTERNAL listener for per-RPC Check
 # (geo→iam authz edge; InternalIAMService.Check lives on :9091, NOT :9090).
 #
-# Empty is a REFUSAL TO START, not a graceful start without kacho-iam. The edge
+# Empty is a REFUSAL TO START, not a graceful start without kaname. The edge
 # carrying the access decision is declared explicitly — address and transport
 # together — and "unset" is not a mode. The service descriptor enforces that.
-authzIamGrpcAddr: "kacho-iam-internal.kacho.svc:9091"
+authzIamGrpcAddr: "kaname-internal.kacho.svc:9091"
 #
 # The emergency pass-all knob is GONE, and its removal is the point rather than
 # a side effect: a chain without the decision link is not expressible to the
@@ -140,7 +140,7 @@ mtls:
     # ключ в новом профиле — открытый канал под решением о доступе.
     iamAuthz: true
   serverName:
-    iamAuthz: kacho-iam-internal.kacho.svc
+    iamAuthz: kaname-internal.kacho.svc
 
 # Extra free-form env (KACHO_GEO_*) — merged verbatim onto both containers.
 env: {}

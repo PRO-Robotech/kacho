@@ -15,10 +15,11 @@ import (
 
 	"google.golang.org/grpc"
 
-	iamv1 "github.com/PRO-Robotech/kacho/pkg/api/kacho/cloud/iam/v1"
+	iamv1 "github.com/PRO-Robotech/kacho/pkg/api/kaname/cloud/iam/v1"
 	"github.com/PRO-Robotech/kacho/pkg/auth"
 	"github.com/PRO-Robotech/kacho/pkg/authz"
 	"github.com/PRO-Robotech/kacho/pkg/listnarrow"
+	"github.com/PRO-Robotech/kacho/pkg/listnarrow/narrowiam"
 )
 
 // CheckTimeout — per-call deadline на один Check-вызов к iam. Зеркалит corelib
@@ -34,20 +35,20 @@ import (
 // ВНУТРИ клиента, чтобы одной правкой покрыть оба call-site'а uniformly.
 const CheckTimeout = 2 * time.Second
 
-// IAMCheckClient адаптирует kacho-iam.InternalIAMService.Check под authz.CheckClient.
+// IAMCheckClient адаптирует kaname.InternalIAMService.Check под authz.CheckClient.
 type IAMCheckClient struct {
 	cli iamv1.InternalIAMServiceClient
 	// narrower — общий сужатель списков поверх ТОГО ЖЕ соединения: `AuthorizeService`
-	// зарегистрирован и на внутреннем листенере kacho-iam, поэтому второго дозвона не
+	// зарегистрирован и на внутреннем листенере kaname, поэтому второго дозвона не
 	// заводится.
 	narrower *listnarrow.Narrower
 }
 
-// NewIAMCheckClient строит адаптер поверх conn к internal-листенеру kacho-iam (:9091).
+// NewIAMCheckClient строит адаптер поверх conn к internal-листенеру kaname (:9091).
 func NewIAMCheckClient(conn grpc.ClientConnInterface) *IAMCheckClient {
 	return &IAMCheckClient{
 		cli: iamv1.NewInternalIAMServiceClient(conn),
-		narrower: listnarrow.New(listnarrow.NewAuthorizeClient(conn), listnarrow.Config{
+		narrower: listnarrow.New(narrowiam.New(conn), listnarrow.Config{
 			// Предикат страницы registry задаётся ЯВНО на каждом вызове (см.
 			// CheckMany), поэтому карта здесь несёт лишь умолчание — но несёт, иначе
 			// сборка сужателя отвергла бы посадку без предиката.

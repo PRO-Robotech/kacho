@@ -53,15 +53,26 @@ type Config struct {
 	// GeoGRPCAddr — public endpoint kacho-geo для валидации zone_id
 	// (ребро storage→geo, ZoneService.Get). Пусто → GeoClient fail-closed.
 	GeoGRPCAddr string `envconfig:"KACHO_STORAGE_GEO_GRPC_ADDR" default:""`
-	// IAMGRPCAddr — endpoint kacho-iam для валидации project_id
+	// IAMGRPCAddr — endpoint kaname для валидации project_id
 	// (ребро storage→iam, ProjectService.Get). Пусто → IAMClient fail-closed.
 	IAMGRPCAddr string `envconfig:"KACHO_STORAGE_IAM_GRPC_ADDR" default:""`
-	// AuthZIAMGRPCAddr — internal endpoint kacho-iam для per-RPC Check
+	// AuthZIAMGRPCAddr — internal endpoint kaname для per-RPC Check
 	// (ребро storage→iam authz, InternalIAMService.Check). Пусто → authz-интерсептор
-	// не подключается (грациозный dev-старт без kacho-iam). Тот же endpoint несёт
+	// не подключается (грациозный dev-старт без kaname). Тот же endpoint несёт
 	// InternalIAMService.RegisterResource/UnregisterResource (FGA-proxy, Internal-only
 	// :9091) — его переиспользует register-drainer + sync-registrar.
 	AuthZIAMGRPCAddr string `envconfig:"KACHO_STORAGE_AUTHZ_IAM_GRPC_ADDR" default:""`
+
+	// QuotaAuthority — ОБЪЯВЛЕНИЕ домена величин. Ровно два законных значения:
+	// адрес в форме host:port либо слово `not-deployed`. Незаданное значение —
+	// отказ старта: умолчание означало бы выбор за оператора между «потолки
+	// действуют» и «потолков нет», и выбор этот был бы невидим.
+	//
+	// Объявление ОДНО на обе полосы ребра — разрешение величины на пути запроса
+	// и фоновую дельту. Приёмка
+	// `docs/specs/sub-phase-KAN-QUOTA-1-limit-authority-leaves-iam-acceptance.md`,
+	// стадия S1, решение Д1.
+	QuotaAuthority string `envconfig:"KACHO_STORAGE_QUOTA_AUTHORITY" default:""`
 
 	// AuthZTrustedForwarderSANs — allow-list личностей сертификата (SPIFFE-SAN),
 	// которым разрешено ПЕРЕДАВАТЬ личность конечного пользователя в метаданных
@@ -101,6 +112,22 @@ type Config struct {
 	// бы ручка, снимающая защиту на развёрнутом стенде.
 	AuthZTrustAnyForwarder bool `envconfig:"KACHO_STORAGE_AUTHZ_TRUST_ANY_FORWARDER" default:"false"`
 
+	// AuthZTrustDomain — ДОМЕН ДОВЕРИЯ установки: то, чьи сертификаты она признаёт своими.
+	//
+	// Круг отправителей выше называет, КОМУ позволено говорить за пользователя;
+	// домен отвечает на предыдущий вопрос — чьи вообще предъявители наши. Пока он
+	// был скомпилирован, установка меняла его только пересборкой: сертификаты
+	// выпускаются под доменом из величины профиля, а принимающая сторона читала
+	// литерал, и расходились они МОЛЧА — законный отправитель переставал
+	// опознаваться, а отказ выглядел как вызов без личности.
+	//
+	// Умолчания нет намеренно: непустое умолчание сделало бы контроль на вид
+	// включённым и увело бы установку, забывшую назвать свой домен, в чужой.
+	// Пустая величина — отказ старта (Validate), а не «принимаем любой».
+	//
+	// ENV `KACHO_STORAGE_AUTHZ_TRUST_DOMAIN`.
+	AuthZTrustDomain string `envconfig:"KACHO_STORAGE_AUTHZ_TRUST_DOMAIN"`
+
 	// AuthZCacheTTL — окно кеша положительных вердиктов авторизации, оно же ОКНО
 	// ОТЗЫВА: столько субъект, у которого право уже отобрали, продолжает
 	// проходить. Отрицательные вердикты не кешируются никогда, поэтому свежая
@@ -128,7 +155,7 @@ type Config struct {
 	// AuthZDenyBudgetPerSec — устойчивый темп (в секунду на принципала) проверок,
 	// чей исход кэш НЕ поглощает: отказ, сокрытие существования, промах «нет
 	// пути», недоступность модели. По исчерпании звено отвечает
-	// `ResourceExhausted`, не обращаясь к kacho-iam, — то есть сбрасывает шторм с
+	// `ResourceExhausted`, не обращаясь к kaname, — то есть сбрасывает шторм с
 	// него.
 	//
 	// Величина 100 не выдумана: это то же число, которое платформа уже выбрала
@@ -138,7 +165,7 @@ type Config struct {
 	// названо здесь.
 	//
 	// Изъятия («ронять некого») у storage быть не может: решение о доступе он
-	// принимает не у себя, а вопросом к kacho-iam — сетевой сосед, которого шторм
+	// принимает не у себя, а вопросом к kaname — сетевой сосед, которого шторм
 	// отказов уронит, у него ЕСТЬ, и на том же соединении живут пообъектный фильтр
 	// видимости и регистрация владельца.
 	AuthZDenyBudgetPerSec float64 `envconfig:"KACHO_STORAGE_AUTHZ_DENY_BUDGET_PER_SEC" default:"100"`
@@ -232,7 +259,7 @@ type Config struct {
 	SubscriptionIdlePoll time.Duration `envconfig:"KACHO_STORAGE_SUBSCRIPTION_IDLE_POLL" default:"2s"`
 
 	// FGARegisterDrainerEnabled — включает register-drainer owner-tuple'ов (SEC-D):
-	// применяет fga_register_outbox-intents через kacho-iam RegisterResource/
+	// применяет fga_register_outbox-intents через kaname RegisterResource/
 	// UnregisterResource по ребру storage→iam (AuthZIAMGRPCAddr, mTLS). Default true;
 	// без него созданные Volume/Snapshot не получают owner-tuple → анти-BOLA
 	// scope_extractor не резолвит target→project. false → intents копятся
@@ -242,7 +269,7 @@ type Config struct {
 	// ===== per-object filtered List =====
 	//
 	// Все ListFilter* — production-edition: configurable, без хардкода. Адрес
-	// authorize-эндпоинта переиспользует AuthZIAMGRPCAddr (kacho-iam internal :9091,
+	// authorize-эндпоинта переиспользует AuthZIAMGRPCAddr (kaname internal :9091,
 	// AuthorizeService.BatchCheck) и те же per-edge creds IAMClientMTLS.
 	//
 	// NB: knob'а «размер allow-list» здесь НЕТ и быть не может: видимость
@@ -362,10 +389,31 @@ type Config struct {
 	GeoClientMTLS grpcclient.TLSClient `envconfig:"GEO_CLIENT_MTLS"`
 	// IAMClientMTLS — client-creds ребра storage→iam (:9090 / :9091 authz).
 	IAMClientMTLS grpcclient.TLSClient `envconfig:"IAM_CLIENT_MTLS"`
+
+	// QuotaAuthorityMTLS — client-creds ребра storage→домен величин (обе полосы:
+	// InternalLimitService.Resolve на пути запроса и ListChangedSince фоновой
+	// дельтой). Своё, а не заимствованное у authz-ребра: адрес домена величин
+	// объявляется отдельно, и удостоверение обязано следовать за адресом.
+	QuotaAuthorityMTLS grpcclient.TLSClient `envconfig:"QUOTA_AUTHORITY_MTLS"`
 	// PublicServerMTLS — server-creds публичного листенера (:9090).
 	PublicServerMTLS grpcsrv.TLSServer `envconfig:"PUBLIC_SERVER_MTLS"`
 	// InternalServerMTLS — server-creds cluster-internal листенера (:9091).
 	InternalServerMTLS grpcsrv.TLSServer `envconfig:"INTERNAL_SERVER_MTLS"`
+}
+
+// TrustDomain — домен доверия, который РЕАЛЬНО уезжает в пару звеньев извлечения
+// личности на обоих слушателях.
+//
+// Единственный источник этой величины на процесс: проводка, стража старта и
+// самоотчёт о посадке читают ОДИН объект и спрашивают его ОДИН предикат. Значит
+// «страж пропустил» ⟺ «домен реально объявлен» — по построению, а не потому, что
+// три автора написали одинаковые тела.
+//
+// Приведение написанного оператором (пробелы, схема, косые черты) живёт в
+// конструкторе типа и здесь не повторяется: два места об одном предмете
+// расходятся молча. См. grpcsrv.NewTrustDomain.
+func (c Config) TrustDomain() grpcsrv.TrustDomain {
+	return grpcsrv.NewTrustDomain(c.AuthZTrustDomain)
 }
 
 // TrustedForwarders — круг отправителей, который РЕАЛЬНО уезжает в

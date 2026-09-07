@@ -236,8 +236,14 @@ type callbackStackFacts struct {
 // hooksListenerTLS повторяет ВЫЧИСЛЕНИЕ ШАБЛОНА, а не пересказывает его словами:
 // полистенное переопределение сильнее общей ручки. Два расчёта одного и того же
 // разъезжаются молча, поэтому расчёт здесь один.
+//
+// Ручка ПОЛИСТЕННАЯ — `hooks`, а не групповая. Здесь стояло имя ручки, накрывавшей
+// ДВА слушателя разом (этот и слушатель скрейпа); их требования противоположны, и
+// профиль не мог быть верным ни в одном её положении. Ручку разделили, и это имя
+// поехало за ней тем же изменением: иначе проверка судила бы величину, которой
+// шаблон больше не читает, и молчала бы при любом транспорте.
 func hooksListenerTLS(effective map[string]any, iamKey string) bool {
-	if v, ok := lookup(effective, iamKey, "mtls", "hooksAndMetrics"); ok {
+	if v, ok := lookup(effective, iamKey, "mtls", "hooks"); ok {
 		return v == true
 	}
 	v, ok := lookup(effective, iamKey, "mtls", "httpListeners")
@@ -536,8 +542,8 @@ func TestSchemeSource_ReadsTheHeadOfTheAddress(t *testing.T) {
 	const port = `{{ .Values.service.internal.hooksHttpPort | default 9092 }}`
 
 	// (а) константа схемы — находка, и её не заслоняет действие порта справа.
-	lit, path := schemeSource("                    url: http://kacho-iam-internal."+
-		"{{ .Release.Namespace }}.svc:"+port, "kacho-iam")
+	lit, path := schemeSource("                    url: http://kaname-internal."+
+		"{{ .Release.Namespace }}.svc:"+port, "kaname")
 	if lit != "http" || path != nil {
 		t.Fatalf("константа схемы не опознана у головы адреса: lit=%q path=%v", lit, path)
 	}
@@ -545,21 +551,21 @@ func TestSchemeSource_ReadsTheHeadOfTheAddress(t *testing.T) {
 	// (б) схема из значений — путь берётся из действия ПЕРЕД `://`, а не из
 	//     последнего действия строки.
 	lit, path = schemeSource("                    url: {{ .Values.kratos.config.hooks.scheme }}"+
-		"://kacho-iam-internal.{{ .Release.Namespace }}.svc:"+port, "kacho-iam")
-	if lit != "" || strings.Join(path, ".") != "kacho-iam.kratos.config.hooks.scheme" {
+		"://kaname-internal.{{ .Release.Namespace }}.svc:"+port, "kaname")
+	if lit != "" || strings.Join(path, ".") != "kaname.kratos.config.hooks.scheme" {
 		t.Fatalf("схема из значений прочитана неверно: lit=%q path=%v", lit, path)
 	}
 
 	// (б2) схема из ГЛОБАЛЬНЫХ значений — путь корневой, ключом подчарта не
 	//      предваряется: `global` раздаётся подчартам, но живёт в корне.
 	lit, path = schemeSource("                    url: {{ .Values.global.kacho.identity.hooks.scheme }}"+
-		"://kacho-iam-internal.{{ .Release.Namespace }}.svc:"+port, "kacho-iam")
+		"://kaname-internal.{{ .Release.Namespace }}.svc:"+port, "kaname")
 	if lit != "" || strings.Join(path, ".") != "global.kacho.identity.hooks.scheme" {
 		t.Fatalf("глобальный путь схемы прочитан как путь подчарта: lit=%q path=%v", lit, path)
 	}
 
 	// (в) строка называет маршрут, но адресом не является — схему взять неоткуда.
-	if lit, path = schemeSource("  описание маршрута ", "kacho-iam"); lit != "" || path != nil {
+	if lit, path = schemeSource("  описание маршрута ", "kaname"); lit != "" || path != nil {
 		t.Fatalf("строка без адреса объявлена объявлением: lit=%q path=%v", lit, path)
 	}
 }

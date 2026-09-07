@@ -78,7 +78,7 @@ func (x *GetNetworkRequest) GetNetworkId() string {
 type ListNetworksRequest struct {
 	state protoimpl.MessageState `protogen:"open.v1"`
 	// ID of the project to list networks in.
-	// To get the project ID, use a [kacho.cloud.iam.v1.ProjectService.List] request.
+	// To get the project ID, use a [kaname.cloud.iam.v1.ProjectService.List] request.
 	ProjectId string `protobuf:"bytes,1,opt,name=project_id,json=projectId,proto3" json:"project_id,omitempty"`
 	// The maximum number of results per page to return. If the number of available
 	// results is larger than [page_size],
@@ -224,7 +224,7 @@ func (x *ListNetworksResponse) GetNextPageToken() string {
 type CreateNetworkRequest struct {
 	state protoimpl.MessageState `protogen:"open.v1"`
 	// ID of the project for this request to create a network in.
-	// To get the project ID, use a [kacho.cloud.iam.v1.ProjectService.List] request.
+	// To get the project ID, use a [kaname.cloud.iam.v1.ProjectService.List] request.
 	ProjectId string `protobuf:"bytes,1,opt,name=project_id,json=projectId,proto3" json:"project_id,omitempty"`
 	// Name of the network.
 	// The name must be unique within the project.

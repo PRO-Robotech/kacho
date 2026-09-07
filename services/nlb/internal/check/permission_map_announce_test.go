@@ -40,7 +40,7 @@ func TestAnnounce_GetIsViewerGatedNotExempt(t *testing.T) {
 	objType, objID, err := e.Extract(&lbv1.GetLoadBalancerAnnounceStateRequest{NetworkLoadBalancerId: "nlb-xyz"})
 	require.NoError(t, err)
 	require.Equal(t, "cluster", objType)
-	require.Equal(t, "cluster_kacho_root", objID)
+	require.Equal(t, "cluster_root", objID)
 }
 
 func TestAnnounce_ReportIsWriterGatedNotExempt(t *testing.T) {

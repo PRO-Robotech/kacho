@@ -2,7 +2,7 @@
 // SPDX-License-Identifier: BUSL-1.1
 
 // Package clients — единая точка сборки gRPC-клиентских соединений из kacho-vpc к
-// peer-сервисам (kacho-iam, kacho-geo) единым паттерном (retries, LB, TLS,
+// peer-сервисам (kaname, kacho-geo) единым паттерном (retries, LB, TLS,
 // metrics), без отдельного dial-кода на каждый клиент.
 //
 // Builder — обёртка над `grpcclient.DialPeer` (`pkg/grpcclient/dial.go`) с

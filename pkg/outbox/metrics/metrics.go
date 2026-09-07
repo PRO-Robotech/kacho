@@ -9,7 +9,7 @@
 // Dependency boundary (Clean Architecture): corelib stays dependency-light — the
 // concrete Prometheus client is NOT imported here. Instead the package defines a
 // small Recorder interface; the service wires a Prometheus-backed Recorder at
-// its composition root (mirroring kacho-iam internal/observability/metrics), and
+// its composition root (mirroring kaname internal/observability/metrics), and
 // tests use the in-memory MemRecorder. The Collector periodically scans an
 // outbox table (DB-side) and feeds the gauges into whatever Recorder it is given.
 //
@@ -579,7 +579,7 @@ func RegisterOutboxDirections() map[string][]string {
 }
 
 // TupleOutboxDirections is the CollectorConfig.Directions value for the iam tuple outbox
-// (`kacho_iam.fga_outbox`): tuple writes and tuple deletes reported apart.
+// (`kaname.fga_outbox`): tuple writes and tuple deletes reported apart.
 //
 // This queue is the one where the asymmetry bites hardest, because it is where revocation
 // physically happens: every AccessBinding removal, every group-member removal and every

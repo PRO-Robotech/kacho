@@ -58,7 +58,7 @@ func NewCreateGatewayUseCase(r Repo, projectClient ProjectClient, opsRepo operat
 }
 
 // WithRegistrar подключает синхронный owner-tuple registrar (Decision 2): после
-// commit Gateway owner-tuple синхронно регистрируется в kacho-iam. Nil →
+// commit Gateway owner-tuple синхронно регистрируется в kaname. Nil →
 // sync-путь пропускается (только async drainer).
 func (u *CreateGatewayUseCase) WithRegistrar(r fgaregister.Registrar) *CreateGatewayUseCase {
 	u.registrar = r
@@ -223,7 +223,7 @@ func (u *CreateGatewayUseCase) doCreate(ctx context.Context, gwID string, g doma
 	// Записываем INTENT hierarchy-tuple vpc_gateway→project в той же writer-TX,
 	// чтобы register-намерение было атомарно с Insert и не терялось при ошибке.
 	// В mirror-feed несем labels Gateway + parent_project_id (ProjectHierarchyItem),
-	// а не голый tuple — иначе resource_mirror в kacho-iam остается без labels и
+	// а не голый tuple — иначе resource_mirror в kaname остается без labels и
 	// ARM_LABELS-селектор не матчит даже свежесозданный Gateway. Симметрично
 	// network/subnet/securitygroup create.
 	items := []fgaregister.Item{
@@ -342,9 +342,6 @@ func (u *CreateGatewayUseCase) allocateExternalAddress(ctx context.Context, w Wr
 // вызывающему в деталях ответа. Тот же токен, каким отвечает полоса выделения
 // адреса напрямую: у одной причины один признак, иначе клиент, ключующийся на
 // токен, обязан был бы знать, каким путём он к ней пришёл.
-//
-// #nosec G101 -- признак причины отказа в публичном контракте, а не секрет:
-// эвристика ключуется на форму литерала (заглавные с подчёркиваниями).
 const reasonExternalUnavailable = "EXTERNAL_ADDRESS_UNAVAILABLE"
 
 // noExternalAddressForGateway — ЕДИНСТВЕННЫЙ ответ вызывающему на любую причину,

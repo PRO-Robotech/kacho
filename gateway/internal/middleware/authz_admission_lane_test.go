@@ -105,7 +105,7 @@ func TestAdmittedWithoutTheModelDoesNotCountAsAllow(t *testing.T) {
 	t.Run("ПОЛОЖИТЕЛЬНЫЙ КОНТРОЛЬ: ответ владельца прав растит именно allow", func(t *testing.T) {
 		checker := &fakeChecker{allowed: true}
 		router := &fakeRestRouter{m: map[string]string{
-			"GET /iam/v1/accessBindings:listByScope": "kacho.cloud.iam.v1.AccessBindingService/ListByScope",
+			"GET /iam/v1/accessBindings:listByScope": "kaname.cloud.iam.v1.AccessBindingService/ListByScope",
 		}}
 		mw := buildAuthzMiddleware(t, buildCatalog(t, listByScopeEntry), checker,
 			func(c *middleware.AuthzMiddlewareConfig) { c.RestRouter = router })

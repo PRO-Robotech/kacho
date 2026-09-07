@@ -61,7 +61,7 @@ func TestScannerIsSilentOnTextThatOnlyLOOKSLikeAnID(t *testing.T) {
 		"  map<string, string> labels = 4;",
 		"  repeated string list<string> = 1;",
 		"// TLS endpoint either (the `Internal…Service` name matches `HasInternalSuffix`,",
-		"// Anchor object id (`cluster_kacho_root`).",
+		"// Anchor object id (`cluster_root`).",
 		"// `system:<bootstrap>` — the literal principal of the seeding flow.",
 		"// access_bindings ⋈ roles — a within-DB JOIN.",
 		"// The account is not a request field — it is resolved from the subject.",

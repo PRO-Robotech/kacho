@@ -119,7 +119,7 @@ Pre-conditions: `tests/authz-fixtures/setup.sh` (jwtAccountAdminA, accountAId).
     `TestAuthz_GRPC_CheckerError_FailClosed` — с законным близнецом
     `TestAuthz_GRPC_CheckerError_FailOpen` рядом;
   * что САМ СЕРВИС отвечает отказом, а не пустой страницей, когда его базы нет.
-    Механизм держит `services/iam/internal/repo/kacho/pg/pgmaperr_test.go`
+    Механизм держит `services/iam/internal/repo/kaname/pg/pgmaperr_test.go`
     (`TestWrapPgErr_ConnectionRefusals_AreUnavailable` и соседи по файлу);
     поверхностной пробы по семи спискам сегодня нет НИ ОДНОЙ.
 
@@ -348,7 +348,7 @@ CASES.append(Case(
 # зеленели бы на стенде, где до сервиса не доезжает ни один запрос. Контролем был
 # первый шаг этого кейса: величина страницы вне допустимого диапазона отвергается
 # ПЕРВЫМ СТЕЙТМЕНТОМ обработчика, до единого обращения к базе
-# (`shared.ValidateVisiblePagination` в `internal/apps/kacho/api/project/list.go`;
+# (`shared.ValidateVisiblePagination` в `internal/apps/kaname/api/project/list.go`;
 # предел — `MaxListPageSize = 1000`), поэтому ответ 400 / gRPC 3 даёт СЕРВИС.
 #
 # Под этим условием он неисполним: полоса отзыва наших токенов короткозамыкает

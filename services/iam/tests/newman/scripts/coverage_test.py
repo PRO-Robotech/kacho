@@ -34,7 +34,7 @@ def test_full_coverage_passes_min_100(tmp_path):
     proto_dir = tmp_path / "proto"; proto_dir.mkdir()
     _write_proto(proto_dir, """
 syntax = "proto3";
-package kacho.cloud.iam.v1;
+package kaname.cloud.iam.v1;
 service FooService {
   rpc Bar (BarRequest) returns (BarResponse);
 }
@@ -55,7 +55,7 @@ def test_partial_coverage_fails_min_100(tmp_path):
     proto_dir = tmp_path / "proto"; proto_dir.mkdir()
     _write_proto(proto_dir, """
 syntax = "proto3";
-package kacho.cloud.iam.v1;
+package kaname.cloud.iam.v1;
 service FooService {
   rpc Bar (BarRequest) returns (BarResponse);
   rpc Baz (BazRequest) returns (BazResponse);
@@ -75,7 +75,7 @@ def test_http_annotation_overrides_heuristic(tmp_path):
     proto_dir = tmp_path / "proto"; proto_dir.mkdir()
     _write_proto(proto_dir, """
 syntax = "proto3";
-package kacho.cloud.iam.v1;
+package kaname.cloud.iam.v1;
 import "google/api/annotations.proto";
 service AccountService {
   rpc Create (CreateAccountRequest) returns (Operation) {
@@ -103,7 +103,7 @@ def test_path_param_template_matches_concrete_url(tmp_path):
     proto_dir = tmp_path / "proto"; proto_dir.mkdir()
     _write_proto(proto_dir, """
 syntax = "proto3";
-package kacho.cloud.iam.v1;
+package kaname.cloud.iam.v1;
 import "google/api/annotations.proto";
 service AccountService {
   rpc Get (GetAccountRequest) returns (Account) {
@@ -128,7 +128,7 @@ def test_commented_out_rpc_not_counted(tmp_path):
     proto_dir.mkdir()
     _write_proto(proto_dir, """
 syntax = "proto3";
-package kacho.cloud.iam.v1;
+package kaname.cloud.iam.v1;
 service FooService {
   // rpc CommentedOut (X) returns (Y);
   /* rpc AlsoCommented (X) returns (Y); */

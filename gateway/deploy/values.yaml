@@ -24,15 +24,15 @@ backends:
   vpcInternal: vpc.kacho.svc:9091
   compute: compute.kacho.svc:9090
   computeInternal: compute.kacho.svc:9091
-  # kacho-iam public + internal endpoints
-  iam: kacho-iam.kacho.svc:9090
-  iamInternal: kacho-iam-internal.kacho.svc:9091
+  # kaname public + internal endpoints
+  iam: kaname.kacho.svc:9090
+  iamInternal: kaname-internal.kacho.svc:9091
   # kacho-nlb public + internal endpoints
   nlb: kacho-nlb.kacho.svc:9090
   nlbInternal: kacho-nlb.kacho.svc:9091
   # kacho-geo public + internal endpoints (Geography Region/Zone leaf service).
-  # The geo k8s Service is "kacho-geo" / "kacho-geo-internal" (mirrors kacho-iam /
-  # kacho-iam-internal). The bare "geo.kacho.svc" host does NOT resolve
+  # The geo k8s Service is "kacho-geo" / "kacho-geo-internal" (mirrors kaname /
+  # kaname-internal). The bare "geo.kacho.svc" host does NOT resolve
   # (NXDOMAIN) → grpc "no children to pick from" 503 on every /geo/v1/* request.
   geo: kacho-geo.kacho.svc:9090
   geoInternal: kacho-geo-internal.kacho.svc:9091
@@ -247,9 +247,9 @@ kratosPublicUrl: ""
 # Both default off. ROLLOUT ORDER matters — flipping
 # requireMachineTokenBinding first rejects every service-account token, because
 # nothing mints bound tokens until the identity provider registers the OAuth2
-# clients accordingly (kacho-iam `kacho.iam.saKey.bindDpop`):
+# clients accordingly (kaname `kacho.iam.saKey.bindDpop`):
 #
-#   1. kacho-iam: saKey.bindDpop=true      → newly issued keys mint bound tokens
+#   1. kaname: saKey.bindDpop=true      → newly issued keys mint bound tokens
 #      (reader caveat, #1137: that knob is registration metadata for the client
 #      MIRROR at the previous issuer. On a stand whose SA-key contour is
 #      TRANSLATED to iam's own token endpoint no mirror is created, so the knob
@@ -439,15 +439,15 @@ hydra:
 
 # AuthZ — per-RPC authorization middleware.
 #   enabled: when true, every authenticated request is gated by a
-#     `kacho.cloud.iam.v1.AuthorizeService.Check` fan-out. When false (the
+#     `kaname.cloud.iam.v1.AuthorizeService.Check` fan-out. When false (the
 #     Go-config default) the middleware is wired but pass-through — only
-#     anonymous-mutating requests are blocked (by kacho-iam authzguard), so
+#     anonymous-mutating requests are blocked (by kaname authzguard), so
 #     authenticated-but-unauthorized requests leak through.
 #   failOpen: when true, transient IAM-Check failures (Unavailable / timeout)
 #     ALLOW the request. Production edition MUST set false (fail-closed). The
 #     access-matrix newman suite also needs false so DENY decisions are not
 #     masked by IAM hiccups.
-#   iamAuthorizeUrl: explicit gRPC address of kacho-iam AuthorizeService
+#   iamAuthorizeUrl: explicit gRPC address of kaname AuthorizeService
 #     (public port 9090). Empty → derived from the `iam` backend address
 #     (KACHO_API_GATEWAY_IAM_GRPC). AuthorizeService is the PUBLIC RPC — it is
 #     NOT routed through the internal :9091 listener (loop-prevention #6).
@@ -506,8 +506,8 @@ appEnv: ""
 # `api-gateway-client-tls` secret. Per-edge ENABLE toggles each edge
 # independently. SERVER_NAME is INTENTIONALLY left unset → config.go
 # EdgeTLSClient derives it from each dial-host (`hostFromAddr`), so the iam/nlb
-# edges verify against BOTH their public (kacho-iam / kacho-nlb) AND internal
-# (kacho-iam-internal / kacho-nlb-internal) dial-hosts — both are in the peer
+# edges verify against BOTH their public (kaname / kacho-nlb) AND internal
+# (kaname-internal / kacho-nlb-internal) dial-hosts — both are in the peer
 # server-SAN. A single override would force one name and break the other.
 mtls:
   enable: false
@@ -635,11 +635,11 @@ idempotency:
   existingSecret: ""
   secretKey: "dsn"
 
-# INFRA sec-hardening — единый security-floor, идентичный kacho-iam/geo/nlb/registry.
+# INFRA sec-hardening — единый security-floor, идентичный kaname/geo/nlb/registry.
 #
 # Заведён 2026-07-16: trivy config-скан впервые покрыл ВЕСЬ репозиторий и нашёл, что
 # securityContext есть лишь у половины сервисов. В polyrepo IaC-скан был ТОЛЬКО у
-# kacho-iam, а в том репо нет ни одного k8s-манифеста (чарты жили в kacho-deploy) —
+# kaname, а в том репо нет ни одного k8s-манифеста (чарты жили в kacho-deploy) —
 # гейт зеленел, не проверяя ничего.
 #
 # runAsUser 65532 совпадает с `USER 65532` в Dockerfile — образ уже собран под nonroot.

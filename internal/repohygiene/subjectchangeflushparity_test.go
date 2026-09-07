@@ -10,7 +10,7 @@ import (
 	"google.golang.org/protobuf/reflect/protoreflect"
 	"google.golang.org/protobuf/reflect/protoregistry"
 
-	_ "github.com/PRO-Robotech/kacho/pkg/api/kacho/cloud/iam/v1"
+	_ "github.com/PRO-Robotech/kacho/pkg/api/kaname/cloud/iam/v1"
 )
 
 // methodExistsInContract — разрешима ли пара «служба/метод» в реестре контрактов.
@@ -32,7 +32,7 @@ func subjectChangeFlushParityOptions(t *testing.T) SubjectChangeFlushParityOptio
 	t.Helper()
 	return SubjectChangeFlushParityOptions{
 		Root:          repoRoot(t),
-		ProducerRoot:  "services/iam/internal/apps/kacho/api",
+		ProducerRoot:  "services/iam/internal/apps/kaname/api",
 		SelfFlushFile: "gateway/internal/middleware/authz.go",
 		MethodExists:  methodExistsInContract,
 	}

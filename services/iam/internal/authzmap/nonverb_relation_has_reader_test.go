@@ -100,8 +100,8 @@ import (
 
 	"github.com/stretchr/testify/require"
 
-	"github.com/PRO-Robotech/kacho-iam/internal/authzplan"
 	"github.com/PRO-Robotech/kacho/pkg/treecorpus"
+	"github.com/PRO-Robotech/kaname/internal/authzplan"
 )
 
 // relPair — (тип объекта модели, имя отношения).

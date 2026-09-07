@@ -28,7 +28,7 @@ func collapse(src string) string {
 //
 // Что изменение прав доезжает от производителя журнала до читателя и заставляет
 // его погасить кэш — утверждает сквозная проба на стороне владельца
-// (`services/iam/internal/repo/kacho/pg`, `TestRightsChangeReachesTheEdge…`): она
+// (`services/iam/internal/repo/kaname/pg`, `TestRightsChangeReachesTheEdge…`): она
 // ставит вопрос через обе стороны на настоящей схеме, настоящем контракте и
 // настоящем читателе `pkg/subjectchange`.
 //

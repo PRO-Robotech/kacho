@@ -98,7 +98,7 @@ func judgeForbiddenProxyTypes(entries, modelTypes, moduleDomains []string) ([]st
 			"запись %q запретительного набора не резолвится ни одним типом модели прав: "+
 				"вход, который она отвергала бы, непредставим, поэтому запись не исключает "+
 				"НИЧЕГО. Чинится именем типа, как его объявляет модель "+
-				"(proto/kacho/cloud/iam/v1/fga_model.fga), либо снятием записи вместе с "+
+				"(proto/kaname/cloud/iam/v1/fga_model.fga), либо снятием записи вместе с "+
 				"предметом", e))
 	}
 

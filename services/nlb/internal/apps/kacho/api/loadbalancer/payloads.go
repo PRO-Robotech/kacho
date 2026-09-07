@@ -51,7 +51,7 @@ func lbAddressOwner(lbID, name string) vpcclient.AddressOwner {
 
 // lbRegisterIntent — FGA-register-intent свежесозданного LB (project-hierarchy).
 //
-// A durable intent carries ONLY proxy-registrable tuples. kacho-iam's
+// A durable intent carries ONLY proxy-registrable tuples. kaname's
 // least-privilege policy accepts the ownership/parent relations declared in
 // pkg/authz/proxytuple and reserves
 // privilege relations for the AccessBinding flow, so the creator (`admin`) tuple

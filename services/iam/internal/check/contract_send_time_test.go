@@ -45,7 +45,7 @@ import (
 
 const (
 	iamMigrationsRelDir = "services/iam/internal/migrations"
-	iamMailWiringRelDir = "services/iam/cmd/kacho-iam"
+	iamMailWiringRelDir = "services/iam/cmd/kaname"
 
 	// inviteMailQueue — имя очереди писем приглашения без схемы.
 	inviteMailQueue = "invite_mail_outbox"

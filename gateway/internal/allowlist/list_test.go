@@ -21,9 +21,9 @@ import (
 func TestGateway_E_Exists_canonical_AllowlistBlocksAllInternalServices(t *testing.T) {
 	internalMethods := []string{
 		// iam
-		"/kacho.cloud.iam.v1.InternalUserService/UpsertFromIdentity",
-		"/kacho.cloud.iam.v1.InternalIAMService/LookupSubject",
-		"/kacho.cloud.iam.v1.InternalIAMService/Check",
+		"/kaname.cloud.iam.v1.InternalUserService/UpsertFromIdentity",
+		"/kaname.cloud.iam.v1.InternalIAMService/LookupSubject",
+		"/kaname.cloud.iam.v1.InternalIAMService/Check",
 	}
 
 	for _, m := range internalMethods {
@@ -44,16 +44,16 @@ func TestGateway_E_Exists_canonical_AllowlistBlocksAllInternalServices(t *testin
 func TestGateway_D3_AllowlistPublicMethodsPresent(t *testing.T) {
 	publicMethods := []string{
 		// iam.v1 — Account / Project
-		"/kacho.cloud.iam.v1.AccountService/Get",
-		"/kacho.cloud.iam.v1.AccountService/List",
-		"/kacho.cloud.iam.v1.AccountService/Create",
-		"/kacho.cloud.iam.v1.AccountService/Update",
-		"/kacho.cloud.iam.v1.AccountService/Delete",
-		"/kacho.cloud.iam.v1.ProjectService/Get",
-		"/kacho.cloud.iam.v1.ProjectService/List",
-		"/kacho.cloud.iam.v1.ProjectService/Create",
-		"/kacho.cloud.iam.v1.ProjectService/Update",
-		"/kacho.cloud.iam.v1.ProjectService/Delete",
+		"/kaname.cloud.iam.v1.AccountService/Get",
+		"/kaname.cloud.iam.v1.AccountService/List",
+		"/kaname.cloud.iam.v1.AccountService/Create",
+		"/kaname.cloud.iam.v1.AccountService/Update",
+		"/kaname.cloud.iam.v1.AccountService/Delete",
+		"/kaname.cloud.iam.v1.ProjectService/Get",
+		"/kaname.cloud.iam.v1.ProjectService/List",
+		"/kaname.cloud.iam.v1.ProjectService/Create",
+		"/kaname.cloud.iam.v1.ProjectService/Update",
+		"/kaname.cloud.iam.v1.ProjectService/Delete",
 		// vpc.v1
 		"/kacho.cloud.vpc.v1.NetworkService/Get",
 		"/kacho.cloud.vpc.v1.NetworkService/List",
@@ -226,58 +226,58 @@ func TestGateway_D8b_ComputeActive(t *testing.T) {
 func TestGateway_KAC105_IamActive(t *testing.T) {
 	publicMethods := []string{
 		// AccountService
-		"/kacho.cloud.iam.v1.AccountService/Get",
-		"/kacho.cloud.iam.v1.AccountService/Create",
-		"/kacho.cloud.iam.v1.AccountService/Update",
-		"/kacho.cloud.iam.v1.AccountService/Delete",
+		"/kaname.cloud.iam.v1.AccountService/Get",
+		"/kaname.cloud.iam.v1.AccountService/Create",
+		"/kaname.cloud.iam.v1.AccountService/Update",
+		"/kaname.cloud.iam.v1.AccountService/Delete",
 		// ProjectService (без Move)
-		"/kacho.cloud.iam.v1.ProjectService/Get",
-		"/kacho.cloud.iam.v1.ProjectService/Create",
+		"/kaname.cloud.iam.v1.ProjectService/Get",
+		"/kaname.cloud.iam.v1.ProjectService/Create",
 		// UserService (read + delete + labels-only Update; Create остается
 		// internal-only через InternalUserService.UpsertFromIdentity).
-		"/kacho.cloud.iam.v1.UserService/Get",
-		"/kacho.cloud.iam.v1.UserService/List",
-		"/kacho.cloud.iam.v1.UserService/Delete",
+		"/kaname.cloud.iam.v1.UserService/Get",
+		"/kaname.cloud.iam.v1.UserService/List",
+		"/kaname.cloud.iam.v1.UserService/Delete",
 		// Public async mutation: User.labels mutable (identity-поля immutable),
 		// возвращает Operation; parity с RoleService/ServiceAccountService Update.
-		"/kacho.cloud.iam.v1.UserService/Update",
+		"/kaname.cloud.iam.v1.UserService/Update",
 		// ServiceAccountService
-		"/kacho.cloud.iam.v1.ServiceAccountService/Create",
-		"/kacho.cloud.iam.v1.ServiceAccountService/Delete",
+		"/kaname.cloud.iam.v1.ServiceAccountService/Create",
+		"/kaname.cloud.iam.v1.ServiceAccountService/Delete",
 		// GroupService (+ AddMember/RemoveMember/ListMembers)
-		"/kacho.cloud.iam.v1.GroupService/Create",
-		"/kacho.cloud.iam.v1.GroupService/AddMember",
-		"/kacho.cloud.iam.v1.GroupService/RemoveMember",
-		"/kacho.cloud.iam.v1.GroupService/ListMembers",
+		"/kaname.cloud.iam.v1.GroupService/Create",
+		"/kaname.cloud.iam.v1.GroupService/AddMember",
+		"/kaname.cloud.iam.v1.GroupService/RemoveMember",
+		"/kaname.cloud.iam.v1.GroupService/ListMembers",
 		// RoleService
-		"/kacho.cloud.iam.v1.RoleService/Create",
-		"/kacho.cloud.iam.v1.RoleService/Delete",
+		"/kaname.cloud.iam.v1.RoleService/Create",
+		"/kaname.cloud.iam.v1.RoleService/Delete",
 		// AccessBindingService (+ ListByScope/ListBySubject/ListByAccount/ListSubjectPrivileges)
-		"/kacho.cloud.iam.v1.AccessBindingService/Create",
+		"/kaname.cloud.iam.v1.AccessBindingService/Create",
 		// RBAC explicit model — Update clears
 		// deletion_protection so a protected binding can be deleted; public mutation
 		// (NOT Internal; goes on external), editor relation, same surface as Delete.
-		"/kacho.cloud.iam.v1.AccessBindingService/Update",
-		"/kacho.cloud.iam.v1.AccessBindingService/Delete",
+		"/kaname.cloud.iam.v1.AccessBindingService/Update",
+		"/kaname.cloud.iam.v1.AccessBindingService/Delete",
 		// ListByScope — scope-scoped list of bindings (sync read).
-		"/kacho.cloud.iam.v1.AccessBindingService/ListByScope",
-		"/kacho.cloud.iam.v1.AccessBindingService/ListBySubject",
-		"/kacho.cloud.iam.v1.AccessBindingService/ListByAccount",
+		"/kaname.cloud.iam.v1.AccessBindingService/ListByScope",
+		"/kaname.cloud.iam.v1.AccessBindingService/ListBySubject",
+		"/kaname.cloud.iam.v1.AccessBindingService/ListByAccount",
 		// public, sync read (NOT Internal; goes on external).
-		"/kacho.cloud.iam.v1.AccessBindingService/ListSubjectPrivileges",
+		"/kaname.cloud.iam.v1.AccessBindingService/ListSubjectPrivileges",
 		// public, sync read (NOT Internal; goes on external).
-		"/kacho.cloud.iam.v1.AccessBindingService/ListAssignableRoles",
+		"/kaname.cloud.iam.v1.AccessBindingService/ListAssignableRoles",
 		// public, sync reads (NOT Internal; on external).
 		// ListByRole: bindings of a role; ExpandAccess: principals expansion. Both
 		// cluster-scoped viewer floor (catalog), acr 2.
-		"/kacho.cloud.iam.v1.AccessBindingService/ListByRole",
-		"/kacho.cloud.iam.v1.AccessBindingService/ExpandAccess",
+		"/kaname.cloud.iam.v1.AccessBindingService/ListByRole",
+		"/kaname.cloud.iam.v1.AccessBindingService/ExpandAccess",
 		// public, sync read (NOT Internal; on external).
 		// PermissionCatalogService.ListPermissionCatalog is an authenticated-floor
 		// read (<exempt> permission in the generated catalog), reachable via REST
 		// GET /iam/v1/permissionCatalog on the external listener so the UI can build
 		// its role/permission palette without an Internal* RPC.
-		"/kacho.cloud.iam.v1.PermissionCatalogService/ListPermissionCatalog",
+		"/kaname.cloud.iam.v1.PermissionCatalogService/ListPermissionCatalog",
 	}
 	for _, m := range publicMethods {
 
@@ -298,13 +298,13 @@ func TestGateway_KAC105_IamActive(t *testing.T) {
 	// TestAllowlist_NoEntryWithoutAnRPC (parity_test.go) для ЛЮБОГО такого пути.
 
 	// InternalIAMService / InternalUserService — internal-only (не на external).
-	// auth-interceptor api-gateway зовет kacho-iam:9091 напрямую через gRPC-client.
+	// auth-interceptor api-gateway зовет kaname:9091 напрямую через gRPC-client.
 	// ListPermissions из этого перечня убран: такого метода у InternalIAMService
 	// нет, то есть строка проверяла отсутствие того, чего не существует.
 	internalMethods := []string{
-		"/kacho.cloud.iam.v1.InternalIAMService/LookupSubject",
-		"/kacho.cloud.iam.v1.InternalUserService/UpsertFromIdentity",
-		"/kacho.cloud.iam.v1.InternalUserService/Get",
+		"/kaname.cloud.iam.v1.InternalIAMService/LookupSubject",
+		"/kaname.cloud.iam.v1.InternalUserService/UpsertFromIdentity",
+		"/kaname.cloud.iam.v1.InternalUserService/Get",
 	}
 	for _, m := range internalMethods {
 
@@ -333,8 +333,8 @@ func TestGateway_KAC105_IamActive(t *testing.T) {
 // недосмотр здесь хуже двустороннего: заблокировать смогли, снять — нет.
 func TestAllowlist_UserBlockUnblock(t *testing.T) {
 	for _, m := range []string{
-		"/kacho.cloud.iam.v1.UserService/Block",
-		"/kacho.cloud.iam.v1.UserService/Unblock",
+		"/kaname.cloud.iam.v1.UserService/Block",
+		"/kaname.cloud.iam.v1.UserService/Unblock",
 	} {
 		if !allowlist.IsAllowed(m) {
 			t.Errorf("%s должен быть в allowlist: без записи gRPC-директор отвергает метод "+

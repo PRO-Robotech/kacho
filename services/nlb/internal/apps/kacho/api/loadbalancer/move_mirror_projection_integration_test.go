@@ -12,7 +12,7 @@ package loadbalancer_test
 // Move use-case, which writes its intents through the real writer-tx emitter
 // into the real `kacho_nlb.fga_register_outbox`; the real corelib drainer claims
 // them with the production PartitionColumn ("resource_id") and applies them with
-// the real applier (iam.NewRegisterApplier). Only kacho-iam itself is a double —
+// the real applier (iam.NewRegisterApplier). Only kaname itself is a double —
 // Go forbids importing services/iam/internal, so the mirror it keeps is modelled
 // here, faithfully to services/iam/.../resource_mirror/emitter.go:
 //
@@ -40,17 +40,17 @@ import (
 	"github.com/stretchr/testify/require"
 	"google.golang.org/grpc"
 
-	iampb "github.com/PRO-Robotech/kacho/pkg/api/kacho/cloud/iam/v1"
 	lbv1 "github.com/PRO-Robotech/kacho/pkg/api/kacho/cloud/loadbalancer/v1"
+	iampb "github.com/PRO-Robotech/kacho/pkg/api/kaname/cloud/iam/v1"
 	"github.com/PRO-Robotech/kacho/pkg/outbox/drainer"
 
 	iamclient "github.com/PRO-Robotech/kacho/services/nlb/internal/clients/iam"
 	"github.com/PRO-Robotech/kacho/services/nlb/internal/domain"
 )
 
-// ---- fake kacho-iam modelling the resource_mirror --------------------------
+// ---- fake kaname modelling the resource_mirror --------------------------
 
-// mirrorRow — the modelled `kacho_iam.resource_mirror` row: the parent scope the
+// mirrorRow — the modelled `kaname.resource_mirror` row: the parent scope the
 // γ selector reads plus the source_version the LWW guard compares against.
 type mirrorRow struct {
 	parentProjectID string

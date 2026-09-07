@@ -10,8 +10,8 @@ SPDX-License-Identifier: AGPL-3.0-or-later
   Числа §5.2 и §9 перемерены на ней теми же предикатами
 - **Задача:** `PRO-Robotech/kacho#1737`
 - **Тип изменения:** АДДИТИВНОЕ — новое поле запроса; ни один существующий вход не меняет смысла
-- **Сервис:** `kacho-iam`; затрагивает `proto/kacho/cloud/iam/v1/access_binding_service.proto`,
-  `services/iam/internal/apps/kacho/api/access_binding`, `services/iam/internal/repo/kacho`,
+- **Сервис:** `kaname`; затрагивает `proto/kacho/cloud/iam/v1/access_binding_service.proto`,
+  `services/iam/internal/apps/kaname/api/access_binding`, `services/iam/internal/repo/kaname`,
   `services/iam/tests/newman`
 - **Предмет приёмки — ВЫБОР** (нужен ли новый глагол); реализация заведена **той же** задачей
 
@@ -110,7 +110,7 @@ SPDX-License-Identifier: AGPL-3.0-or-later
 
 | факт | предикат | значение |
 |---|---|---|
-| выражение фан-аута «аккаунт ⇒ его проекты» **уже есть**, и написаний его **ТРИ** | `grep -c 'FROM projects WHERE account_id' services/iam/internal/repo/kacho/pg/access_binding_repo.go` → **3** | форма известна и проверена в бою; переиспользовать «как есть» **нельзя** — см. §2.2 |
+| выражение фан-аута «аккаунт ⇒ его проекты» **уже есть**, и написаний его **ТРИ** | `grep -c 'FROM projects WHERE account_id' services/iam/internal/repo/kaname/pg/access_binding_repo.go` → **3** | форма известна и проверена в бою; переиспользовать «как есть» **нельзя** — см. §2.2 |
 | `ListFilter` репозитория **уже несёт все предикаты полями** и соединяет их конъюнкцией | `iface.go`: «Every predicate is optional» — `SubjectID`, `RoleID`, `ScopeType`, `ScopeID` | тракт данных конъюнкцию уже умеет |
 | единственный предел — **разбор выражения** фильтра | `parseABListFilter` — «the optional **single-predicate** whitelist filter» | предел синтаксический, не архитектурный |
 | общий разбор фильтра конъюнкции не умеет и объявляет почему | `pkg/filter/filter.go`: «Поддержка AND/OR/STARTS_WITH/IN — не заведена: **у неё нет вызывающего**» | заведение AND — правка ПЛАТФОРМЕННАЯ, задевает каждый списочный глагол дерева |
@@ -504,7 +504,7 @@ GET /iam/v1/accessBindings?filter=subject%3D%22usr-…%22&accountId=acc-…
 
 ## 9. Находки по дороге — заводятся СВОИМИ задачами, здесь не чинятся
 
-1. **godoc `repo/kacho/access_binding/iface.go` лжёт о переиспользовании.** Он
+1. **godoc `repo/kaname/access_binding/iface.go` лжёт о переиспользовании.** Он
    утверждает: «Это ровно то выражение, которым уже пользуется ListByAccount, и
    репозиторий переиспользует его, а не заводит второе». Замер: написаний три, и
    выражение `List` от `ListByAccount` отличается (дизъюнкт по `id`, массив против

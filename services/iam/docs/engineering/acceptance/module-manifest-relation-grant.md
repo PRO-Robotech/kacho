@@ -25,7 +25,7 @@ SPDX-License-Identifier: AGPL-3.0-or-later
 - **Тип изменения:** РАСШИРЯЮЩЕЕ и аддитивное. Форма манифеста получает **один
   НЕобязательный ключ** и правило о допустимом типе получателя. Ни одного поля
   публичного контракта не заводится и не меняется
-- **Сервис:** `kacho-iam` — предмет целиком внутри него, поэтому документ живёт
+- **Сервис:** `kaname` — предмет целиком внутри него, поэтому документ живёт
   рядом с кодом
 - **Миграции:** изменения **НЕ требует**. Колонка `access_bindings.granted_relation`
   и все её ключи живут с применённой миграции
@@ -167,7 +167,7 @@ SPDX-License-Identifier: AGPL-3.0-or-later
 |---|---|---|---|
 | `services/iam/tools/modulemanifestcheck/main.go` | гейт дерева | нет | есть |
 | `services/iam/internal/modelrender/sweep.go` | порождение блоков модели | нет | есть |
-| `services/iam/internal/manifest/check.go` → `LoadDelivered` → `services/iam/cmd/kacho-iam/module_manifests.go` | **старт живой службы** | есть | **нет** |
+| `services/iam/internal/manifest/check.go` → `LoadDelivered` → `services/iam/cmd/kaname/module_manifests.go` | **старт живой службы** | есть | **нет** |
 
 Двое из трёх — оснастка дерева без базы; третий — работающий процесс, у которого
 файла канона нет и не должно быть.
@@ -286,7 +286,7 @@ MOD-RG-13).
 **Цена копии уплачена целиком:** производная порождается целью сборки, а
 побайтовое равенство канону держит гейт (`services/iam/internal/authzmodel/identity_test.go`).
 Прод-импортёров у этой копии сегодня **три**, и один из них — путь запроса
-(`services/iam/internal/apps/kacho/api/authorize/handler.go`), то есть предмет не
+(`services/iam/internal/apps/kaname/api/authorize/handler.go`), то есть предмет не
 нов и опробован.
 
 **Судить каноном здесь — НЕ «спрашивать у ответа», и это надо доказать, а не
@@ -1030,7 +1030,7 @@ MOD-RG-21).
 | расхождение в обе стороны | `parity.go` — `Compare`, `diffSet` | MOD-RG-18 |
 | объявимость группы как следствие объявимости выдачи на неё | `parity.go` — `SplitGroups` | MOD-RG-21 |
 | предикат невыразимости, выведенный из формы | `parity.go:130` — `Binding.ExpressibleByForm` | MOD-RG-19 (снимается, см. 12.2) |
-| три прод-вызывающих разбора, двое без базы | `tools/modulemanifestcheck/main.go:218`, `internal/modelrender/sweep.go:312,498`, `internal/manifest/check.go:297` → `cmd/kacho-iam/module_manifests.go:70` | MOD-RG-14 |
+| три прод-вызывающих разбора, двое без базы | `tools/modulemanifestcheck/main.go:218`, `internal/modelrender/sweep.go:312,498`, `internal/manifest/check.go:297` → `cmd/kaname/module_manifests.go:70` | MOD-RG-14 |
 | различение референта «продукт прохода / потребление» | `services/iam/internal/manifest/typereferent.go` | §3.4 |
 | синтетический канон для инъекции | `services/iam/internal/moduleseedparity/recipient_injection_test.go` — `syntheticModel` | §7 |
 | живые ключи хранилища: взаимоисключение форм, форма имени, ярус, системность | `services/iam/internal/migrations/893001_grant_surface_admits_the_relation_form.sql` | §3.1, 3.2, 3.8 |

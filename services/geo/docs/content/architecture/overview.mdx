@@ -93,7 +93,7 @@ erDiagram
 ## Авторизация — на обоих listener'ах
 
 Сервис поднимает два gRPC-listener'а. **Аутентификация обязательна на обоих.** Авторизация —
-per-RPC Check через kacho-iam везде, **кроме четырёх публичных чтений**,
+per-RPC Check через kaname везде, **кроме четырёх публичных чтений**,
 вынесенных в задокументированное исключение (см. [ниже](#публичные-чтения--исключение-из-проверки-области-по-проекту)).
 Internal-периметр **не считается доверенным** — defense-in-depth против lateral movement.
 
@@ -105,7 +105,7 @@ flowchart LR
   subgraph internal["internal :9091 (mTLS)"]
     int["InternalRegionService / InternalZoneService<br/>(admin CRUD)"]
   end
-  pub -->|"authN (edge)"| iam["kacho-iam"]
+  pub -->|"authN (edge)"| iam["kaname"]
   int -->|"Check system_admin"| iam
 ```
 
@@ -115,7 +115,7 @@ flowchart LR
 - **Internal (`:9091`)** — mTLS + извлечение identity из client-cert → trusted-principal
   (anti-spoof) → authz-Check. Admin-RPC требуют `system_admin`.
 - **Production-режим** (`KACHO_GEO_AUTH_MODE=production`) обязывает проверенный транспорт на
-  обоих listener'ах и на ребре к kacho-iam — иначе сервис не стартует. Ручки, снимающей
+  обоих listener'ах и на ребре к kaname — иначе сервис не стартует. Ручки, снимающей
   проверку прав, не существует: цепочка без звена решения о доступе носителем не
   выражается.
 
@@ -174,7 +174,7 @@ flowchart LR
   cmp["kacho-compute"] -->|"ZoneService.Get (zoneId)"| geo["kacho-geo"]
   vpc["kacho-vpc"] -->|"ZoneService.Get (zoneId)"| geo
   nlb["kacho-nlb"] -->|"RegionService.Get (regionId)"| geo
-  geo -->|"InternalIAMService.Check"| iam["kacho-iam"]
+  geo -->|"InternalIAMService.Check"| iam["kaname"]
 ```
 
 :::info Cross-domain ссылки — без cross-service FK

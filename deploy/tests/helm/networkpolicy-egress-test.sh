@@ -12,9 +12,9 @@
 # не существует: пропуск в списке означает не «строже», а «сервис отрезан».
 #
 # Реальный случай: `opa-sidecar-egress-allowlist` выбирает поды по метке
-# `kacho.cloud/opa-sidecar=true`. Метка рендерилась БЕЗУСЛОВНО на kacho-iam, при
+# `kacho.cloud/opa-sidecar=true`. Метка рендерилась БЕЗУСЛОВНО на kaname, при
 # том что сайдкар выключен во всех профилях, а values.prod включает эту политику.
-# На CNI, который NetworkPolicy энфорсит, kacho-iam остался бы без доступа к
+# На CNI, который NetworkPolicy энфорсит, kaname остался бы без доступа к
 # СОБСТВЕННОЙ Postgres и к Hydra — то есть весь authN/authZ-ярус лёг бы. Дефект
 # латентный: единственный профиль, включающий политику, ни разу не поднимали, а
 # оверлей боевого кластера её выключает.
@@ -139,7 +139,7 @@ if [ "${1:-}" = "--self-test" ]; then
   # закрывает три пути мимо возврата — сигнал, срок ожидания, собственный `fail`
   # внутри окна, — но НЕ закрывает четвёртый: снятие, которое не перехватывается
   # (`SIGKILL`, нехватка памяти, нехватка места). Проверено прерыванием: после
-  # него в дереве оставались `M …/kacho-iam/templates/deployment.yaml` и
+  # него в дереве оставались `M …/kaname/templates/deployment.yaml` и
   # `M …/templates/networkpolicy-authz.yaml`.
   #
   # Хуже всего то, что остаётся ровно тот дефект, который ЭТА проверка и ловит:
@@ -184,11 +184,11 @@ if [ "${1:-}" = "--self-test" ]; then
   rm -f "$r"
 
   # (A) ИНЪЕКЦИЯ: вернуть безусловную метку сайдкара (исходный дефект).
-  # Рендерим сабчарт kacho-iam СТАНДАЛОН из каталога-исходника: умбрелла собирает
+  # Рендерим сабчарт kaname СТАНДАЛОН из каталога-исходника: умбрелла собирает
   # его в `charts/*.tgz`, и правка каталога без `helm dep update` в её рендер не
   # попадает. Проверяемое свойство — «метка соответствует составу пода» —
   # принадлежит именно сабчарту, поэтому и проверяется на нём.
-  IAM="$UMBRELLA/charts/kacho-iam"
+  IAM="$UMBRELLA/charts/kaname"
   dep="$IAM/templates/deployment.yaml"
   # Копия — через inject_backup: она ложится ВНЕ templates/ (helm рендерит всё,
   # что там лежит, и файл-бэкап превращался во второй под с тем же именем —
@@ -208,7 +208,7 @@ PY
   helm template kacho-umbrella "$UMBRELLA" -f "$UMBRELLA/values.prod.yaml" \
     --show-only templates/networkpolicy-authz.yaml 2>/dev/null > "$pol"
   ri="$(mktemp)"
-  { helm template kacho-iam "$IAM" 2>/dev/null; echo '---'; cat "$pol"; } > "$ri"
+  { helm template kaname "$IAM" 2>/dev/null; echo '---'; cat "$pol"; } > "$ri"
   out="$(check "$ri")"
   if [[ "$out" == *"контейнера OPA в нём нет"* ]]; then
     echo "  (A) метка сайдкара безусловна                  → КРАСНЫЙ с координатой"
@@ -218,7 +218,7 @@ PY
   # (A-контроль) тот же сабчарт БЕЗ инъекции: метка отсутствует ⇒ политика его не
   # выбирает ⇒ гейт молчит. Без этой половины (A) доказывала бы лишь то, что гейт
   # умеет краснеть.
-  { helm template kacho-iam "$IAM" 2>/dev/null; echo '---'; cat "$pol"; } > "$ri"
+  { helm template kaname "$IAM" 2>/dev/null; echo '---'; cat "$pol"; } > "$ri"
   out="$(check "$ri")"
   [ -z "$out" ] && echo "  (A-контроль) сабчарт без инъекции             → МОЛЧИТ" \
                 || { echo "  (A-контроль) сабчарт без инъекции             → ЛОЖНОЕ СРАБАТЫВАНИЕ: $out"; rc=1; }
@@ -234,7 +234,7 @@ s = re.sub(r'    - to:\n        - podSelector:\n            \{\{- toYaml \.Value
 open(p, 'w').write(s)
 PY
   render "инъекция A2 (боевой профиль, сайдкар включён)" \
-    -f "$UMBRELLA/values.prod.yaml" --set kacho-iam.opaSidecar.enabled=true
+    -f "$UMBRELLA/values.prod.yaml" --set kaname.opaSidecar.enabled=true
   r="$RENDER_FILE"
   out="$(check "$r")"
   if [[ "$out" == *"отрезан от собственной базы"* ]]; then
@@ -245,7 +245,7 @@ PY
   # (B) КОНТРОЛЬ той же формы: сайдкар ВКЛЮЧЁН, список полон — законная
   #     конструкция, ради которой политика и написана. Гейт обязан смолчать.
   render "контроль B (боевой профиль, сайдкар включён)" \
-    -f "$UMBRELLA/values.prod.yaml" --set kacho-iam.opaSidecar.enabled=true
+    -f "$UMBRELLA/values.prod.yaml" --set kaname.opaSidecar.enabled=true
   r="$RENDER_FILE"
   out="$(check "$r")"
   [ -z "$out" ] && echo "  (B) сайдкар включён, список полон             → МОЛЧИТ" \

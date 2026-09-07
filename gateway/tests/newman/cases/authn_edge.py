@@ -34,7 +34,7 @@
 `GET /iam/v1/accounts` выбран не наугад, и его свойства проверены по дереву:
 
 * в каталоге прав (`gateway/internal/middleware/embed/permission_catalog.json`)
-  запись `kacho.cloud.iam.v1.AccountService/List` несёт `permission="<exempt>"`
+  запись `kaname.cloud.iam.v1.AccountService/List` несёт `permission="<exempt>"`
   БЕЗ `required_acr_min` — значит аутентификация обязательна, per-RPC проверка
   прав пропускается, ответ сужается пообъектным фильтром. Успех положительного
   контроля поэтому не зависит ни от одной выдачи: он проверяет ровно authN;
@@ -79,7 +79,7 @@ newman НЕ отменяет запрос: он уходит БЕЗ заголо
   завести вторую выдачу ключа на каждый прогон — течь фикстур ради имени кейса.
 * **IBT-06** (у RPC нет REST-двери) — держится двумя Go-пробами:
   `gateway/internal/restmux/bootstrap_token_no_rest_route_test.go` и
-  `services/iam/cmd/kacho-iam/bootstrap_token_internal_only_test.go`. Они судят
+  `services/iam/cmd/kaname/bootstrap_token_internal_only_test.go`. Они судят
   по РЕГИСТРАЦИИ маршрута, то есть по тому, чего в дереве нет; e2e-проба на
   `404` слабее — `404` приходит и от опечатки в адресе.
 * **Подделка RS256 своим ключом** (нападающий чеканит собственную пару) —
@@ -292,7 +292,7 @@ CASES.append(Case(
 # перепутать с настоящим: правдоподобная фикстура прячет ровно тот дефект,
 # ради которого её подставляют.
 #
-# Утверждения (`kacho_principal_type=service_account` + `kacho_sa_id`) стоят в
+# Утверждения (`kaname_principal_type=service_account` + `kaname_sa_id`) стоят в
 # теле НАМЕРЕННО: это полезная нагрузка подделки принципала — на симметричной
 # ветке такие утверждения принимались бы БЕЗ обращения к iam. Пустое тело
 # проверяло бы «мусор отвергнут», а не «подделка принципала отвергнута».
@@ -313,8 +313,8 @@ CASES.append(Case(
                 "const _h = _b64uStr(JSON.stringify({ alg: 'HS256', typ: 'JWT' }));",
                 "const _p = _b64uStr(JSON.stringify({",
                 "  sub: 'sva-forged-by-the-conformance-probe',",
-                "  kacho_principal_type: 'service_account',",
-                "  kacho_sa_id: 'sva-forged-by-the-conformance-probe',",
+                "  kaname_principal_type: 'service_account',",
+                "  kaname_sa_id: 'sva-forged-by-the-conformance-probe',",
                 "  iat: _now, exp: _now + 900,",
                 "}));",
                 "const _si = _h + '.' + _p;",
@@ -359,8 +359,8 @@ CASES.append(Case(
                 "const _h = _b64uStr(JSON.stringify({ alg: 'none', typ: 'JWT' }));",
                 "const _p = _b64uStr(JSON.stringify({",
                 "  sub: 'sva-forged-by-the-conformance-probe',",
-                "  kacho_principal_type: 'service_account',",
-                "  kacho_sa_id: 'sva-forged-by-the-conformance-probe',",
+                "  kaname_principal_type: 'service_account',",
+                "  kaname_sa_id: 'sva-forged-by-the-conformance-probe',",
                 "  iat: _now, exp: _now + 900,",
                 "}));",
                 # Третий сегмент пустой — так предписывает RFC 7519 для `none`;
@@ -653,7 +653,7 @@ CASES.append(Case(
 #
 # ЗАЧЕМ ВТОРОЙ КЕЙС НА ТУ ЖЕ ПОЛОСУ. Полосу нашего издателя доказал кейс выше, и
 # доказал он её МАШИННЫМ предъявителем. Принципала край выводит из утверждений
-# токена, и у человека они ДРУГИЕ (`kacho_principal_type` = `user` против
+# токена, и у человека они ДРУГИЕ (`kaname_principal_type` = `user` против
 # `service_account`) — настолько другие, что машинный принципал идёт по
 # отдельной ветке резолва и по отдельной ветке требований к предъявлению. То
 # есть «полоса работает» на машине не говорит о человеке ничего, и обратное
@@ -720,12 +720,12 @@ CASES.append(Case(
                 # соседнего: без этой строки он утверждал бы ровно то же самое.
                 "pm.test('принципал предъявителя — человек, а не служебная учётка', () => {",
                 "  const _p = _seg3(_tok, 1);",
-                "  pm.expect(_claim3(_p, 'kacho_principal_type'), JSON.stringify(_p))"
+                "  pm.expect(_claim3(_p, 'kaname_principal_type'), JSON.stringify(_p))"
                 ".to.eql('user');",
                 "});",
                 "pm.test('токен назван персональным — несёт id выпустившей его строки', () => {",
                 "  const _p = _seg3(_tok, 1);",
-                "  const _tid = _claim3(_p, 'kacho_user_token_id');",
+                "  const _tid = _claim3(_p, 'kaname_user_token_id');",
                 "  pm.expect(_tid, JSON.stringify(_p)).to.be.a('string').and.not.eql('');",
                 "  pm.expect(_tid.slice(0, 3), _tid).to.eql('uoc');",
                 "});",
@@ -745,7 +745,7 @@ CASES.append(Case(
                 "});",
                 "pm.test('принципалы полос РАЗНЫЕ — иначе сравнивались бы два одинаковых',"
                 " () => {",
-                "  pm.expect(_claim3(_seg3(_mach, 1), 'kacho_principal_type'),"
+                "  pm.expect(_claim3(_seg3(_mach, 1), 'kaname_principal_type'),"
                 " 'тип принципала машинной полосы').to.eql('service_account');",
                 "});",
             ],

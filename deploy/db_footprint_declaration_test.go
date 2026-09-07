@@ -501,7 +501,7 @@ func fpFacts(resources map[string]any, extConf string) []dbFootprintFacts {
 	return []dbFootprintFacts{{
 		stack: "injected", production: true, prodWhy: "синтетика",
 		aliases:  []string{"pg-iam"},
-		ours:     map[string]string{"pg-iam": "kacho-iam"},
+		ours:     map[string]string{"pg-iam": "kaname"},
 		declared: map[string]any{"pg-iam": map[string]any{"primary": primary}},
 	}}
 }

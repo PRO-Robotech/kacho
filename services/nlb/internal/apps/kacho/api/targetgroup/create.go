@@ -35,7 +35,7 @@ import (
 //   - Writer-TX → Insert TG (+ inline targets) + outbox CREATED +
 //     FGARegisterOutbox.Emit(fga.register) → Commit (Вариант A: owner-
 //     hierarchy + creator tuple intent written in the SAME tx as Insert — no
-//     dual-write; register-drainer applies it through kacho-iam).
+//     dual-write; register-drainer applies it through kaname).
 //
 // Note про inline targets (+): per-target peer-resolve
 // (instance/nic/ip_ref existence + region match) делается AddTargets'ом, не
@@ -59,7 +59,7 @@ type CreateTargetGroupUseCase struct {
 	opsRepo       OpsRepo
 	projectClient ProjectClient
 	regionClient  RegionClient
-	// registrar — sync-primary owner-tuple registrar (kacho-iam RegisterResource),
+	// registrar — sync-primary owner-tuple registrar (kaname RegisterResource),
 	// вызывается BEST-EFFORT после durable commit TG. nil → только async
 	// register-drainer. См. WithRegistrar.
 	registrar Registrar
@@ -84,7 +84,7 @@ func NewCreateTargetGroupUseCase(
 
 // WithRegistrar подключает sync-primary owner-tuple registrar. После durable
 // commit TG (+ его `fga_register_outbox`-intent'а) те же owner/containment-tuple'ы
-// синхронно регистрируются в kacho-iam — grant создателя доступен сразу.
+// синхронно регистрируются в kaname — grant создателя доступен сразу.
 // BEST-EFFORT: сбой sync-Register логируется и глотается (durable intent +
 // drainer — backstop), Operation.done НЕ гейтится (ban #9). Возвращает self.
 func (u *CreateTargetGroupUseCase) WithRegistrar(r Registrar) *CreateTargetGroupUseCase {
@@ -170,7 +170,7 @@ func (u *CreateTargetGroupUseCase) Execute(
 
 	// Durable commit → op done сразу. Owner-tuple TargetGroup материализуется
 	// eventually-consistent (writer-TX fga_register_outbox intent → register-
-	// drainer → kacho-iam RegisterResource → reconciler backstop); Operation.done
+	// drainer → kaname RegisterResource → reconciler backstop); Operation.done
 	// означает durability ресурса, не видимость owner-tuple в FGA.
 	operations.Run(ctx, u.opsRepo, op.ID, func(workerCtx context.Context) (*anypb.Any, error) {
 		return u.doCreate(workerCtx, tg, principal)
@@ -275,11 +275,11 @@ func (u *CreateTargetGroupUseCase) assertNameUnique(ctx context.Context, project
 
 // tgRegisterIntent builds the FGA-register-intent for a created
 // TargetGroup: the project-hierarchy tuple, carrying tenant labels +
-// parent-project so kacho-iam feeds its resource_mirror (γ selector matchLabels /
+// parent-project so kaname feeds its resource_mirror (γ selector matchLabels /
 // containment). source_version is stamped by the outbox emitter from the DB clock
 // inside the writer-tx.
 //
-// A durable intent carries ONLY proxy-registrable tuples. kacho-iam's
+// A durable intent carries ONLY proxy-registrable tuples. kaname's
 // least-privilege policy accepts the ownership/parent relations declared in
 // pkg/authz/proxytuple and reserves
 // privilege relations for the AccessBinding flow, so the creator (`admin`) tuple
@@ -310,7 +310,7 @@ func tgRegisterIntent(tg *kachorepo.TargetGroupRecord) domain.FGARegisterIntent 
 
 // tgMirrorIntent builds the mirror-feed register-intent for an
 // UPDATED TargetGroup: the project-hierarchy tuple (re-register is idempotent in
-// IAM) carrying the refreshed labels + parent so kacho-iam updates its
+// IAM) carrying the refreshed labels + parent so kaname updates its
 // resource_mirror. No creator tuple — Update never re-assigns ownership; this is a
 // pure labels-refresh feed. source_version is stamped by the outbox emitter.
 func tgMirrorIntent(tg *kachorepo.TargetGroupRecord) domain.FGARegisterIntent {

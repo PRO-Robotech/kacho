@@ -47,13 +47,13 @@ func TestPrincipalExtractPairOrderIsLoadBearing(t *testing.T) {
 	}
 
 	t.Run("constructor_order_lets_the_legitimate_sender_through", func(t *testing.T) {
-		id, present := seen(t, grpcsrv.PrincipalExtractUnary(circle))
+		id, present := seen(t, grpcsrv.PrincipalExtractUnary(grpcsrv.NewTrustDomain("kacho.cloud"), circle))
 		require.True(t, present, "пара в порядке конструктора обязана пропустить личность законного отправителя")
 		require.Equal(t, "usr-alice", id)
 	})
 
 	t.Run("reversed_order_drops_it", func(t *testing.T) {
-		pair := grpcsrv.PrincipalExtractUnary(circle)
+		pair := grpcsrv.PrincipalExtractUnary(grpcsrv.NewTrustDomain("kacho.cloud"), circle)
 		require.Len(t, pair, 2, "пара обязана состоять ровно из двух звеньев")
 		id, present := seen(t, []grpc.UnaryServerInterceptor{pair[1], pair[0]})
 		require.False(t, present,

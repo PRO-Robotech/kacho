@@ -12,23 +12,23 @@
 //     CWE-347), даже если dev-secret задан. Валидно-подписанный HS256 токен в
 //     prod → reject Unauthenticated (единственная принятая стратегия — Hydra JWKS).
 //   - **Hydra JWKS** (RS256/ES256/EdDSA, `WithVerifier`) — реальные login-токены;
-//     principal берется из верифицированных `kacho_principal_*` claims (top-level
+//     principal берется из верифицированных `kaname_principal_*` claims (top-level
 //     или `ext_claims`), SubjectLookuper — fallback только при их отсутствии.
 //
 // Per-mode:
 //   - **dev** (default): backwards-compat. Без Bearer — pass-through anonymous
 //     (Principal{system, anonymous}). С Bearer — валидируется (HMAC-dev ИЛИ Hydra
-//     JWKS по alg); HMAC-subject (external_id) не найден в kacho_iam → fallback на
+//     JWKS по alg); HMAC-subject (external_id) не найден в kaname → fallback на
 //     anonymous, чтобы не ломать существующие newman-сценарии. Bad token (любая
 //     стратегия) → reject Unauthenticated, НИКОГДА anonymous.
-//   - **production**: Subject lookup → kacho-iam; NotFound → reject.
+//   - **production**: Subject lookup → kaname; NotFound → reject.
 //   - **production-strict**: Bearer обязателен **всегда** (`Unauthenticated`
 //     без него); все остальные правила — как в production.
 //
 // Архитектура:
 //
 //	┌─ parse Bearer ─┐    ┌─ JWT validate ─┐    ┌─ SubjectLookup ─┐    ┌─ Principal in ctx ─┐
-//	│ Authorization │ → │ JWKS/HMAC      │ → │ kacho-iam:9091  │ → │ x-kacho-principal-* │
+//	│ Authorization │ → │ JWKS/HMAC      │ → │ kaname:9091  │ → │ x-kacho-principal-* │
 //	└────────────────┘    └─────────────────┘    └─────────────────┘    └─────────────────────┘
 //
 // Loop-prevention: InternalIAMService.LookupSubject зовется **gRPC-direct**
@@ -54,6 +54,7 @@ import (
 	"google.golang.org/grpc/peer"
 	"google.golang.org/grpc/status"
 
+	"github.com/PRO-Robotech/kacho/pkg/grpcsrv"
 	"github.com/PRO-Robotech/kacho/pkg/operations"
 
 	"github.com/PRO-Robotech/kacho/gateway/internal/principalmeta"
@@ -89,7 +90,7 @@ const (
 const authFailedMsg = "authentication failed"
 
 // SubjectLookuper — port-интерфейс для subject-резолва. Реализация —
-// `internal/clients/iam_subject_client.go` (gRPC-direct к kacho-iam:9091).
+// `internal/clients/iam_subject_client.go` (gRPC-direct к kaname:9091).
 // Декларирован тут, чтобы не тащить proto-dep в middleware (Clean
 // Architecture — handler/middleware layer).
 type SubjectLookuper interface {
@@ -128,9 +129,14 @@ type AuthInterceptor struct {
 	subjectLookup SubjectLookuper
 	kratos        *KratosClient // optional Ory Kratos /whoami client (nil → disabled)
 	verifier      TokenVerifier // JWKS-валидатор Hydra RS256 access JWT (nil → disabled, HMAC-only)
-	mtlsPrincipal bool          // derive Principal from a verified client cert (hybrid external listener)
+	// mtlsDomain — домен доверия, ОТНОСИТЕЛЬНО которого личность клиентского
+	// сертификата признаётся нашей. Объявленный домен И ЕСТЬ включение полосы:
+	// пары «флаг + величина» здесь нет намеренно — две величины, обязанные
+	// согласовываться, расходятся молча, и разошлись бы они в сторону «полоса
+	// включена, но своим никто не признаётся».
+	mtlsDomain grpcsrv.TrustDomain
 	// requireMachineBinding — when true, a token whose principal is a MACHINE
-	// (kacho_principal_type=service_account) must be sender-constrained (RFC
+	// (kaname_principal_type=service_account) must be sender-constrained (RFC
 	// 7800 `cnf`: DPoP jkt or mTLS x5t#S256). See machineBindingViolationFor.
 	requireMachineBinding bool
 	// revocation — asks the identity provider whether a verified token is still
@@ -245,7 +251,7 @@ func (a *AuthInterceptor) WithRequireMachineTokenBinding(require bool) *AuthInte
 // validators (they own the proof check); this guard answers only the prior
 // question — "is this machine credential replayable as a plain bearer?".
 func (a *AuthInterceptor) machineBindingViolation(vt *VerifiedToken) bool {
-	return a.machineBindingViolationFor(vt, verifiedClaim(vt, "kacho_principal_type"))
+	return a.machineBindingViolationFor(vt, verifiedClaim(vt, "kaname_principal_type"))
 }
 
 // machineBindingViolationFor is the same check against an ALREADY-RESOLVED
@@ -278,7 +284,7 @@ func (a *AuthInterceptor) WithKratos(c *KratosClient) *AuthInterceptor {
 // WithVerifier подключает JWKS-валидатор Hydra-issued RS256 access JWT.
 // Когда выставлен, validateJWT детектит signing method: RS256/ES256/EdDSA →
 // проверка через JWKS-verifier (verified claims), HMAC → существующий dev-path.
-// Principal строится из верифицированных `kacho_principal_*` claims напрямую
+// Principal строится из верифицированных `kaname_principal_*` claims напрямую
 // (top-level или ext_claims); SubjectLookuper — fallback только при их
 // отсутствии. nil → JWKS-path выключен (HMAC-only).
 // WithBasicCredentialLane провязывает полосу базового секрета. nil → полосы
@@ -299,15 +305,23 @@ func (a *AuthInterceptor) WithVerifier(v TokenVerifier) *AuthInterceptor {
 
 // WithMTLSPrincipal enables the hybrid-listener cert-principal path: when
 // the external TLS listener runs with tls.VerifyClientCertIfGiven, a request that
-// arrived over a connection with a VERIFIED client cert (a valid Kachō cert) has
-// its Principal derived from the cert's SPIFFE SAN BEFORE the JWT path — so a
-// service→service caller authenticates on its mTLS identity with no JWT. When the
-// flag is off (default), or no verified cert is present, the existing JWT flow is
-// unchanged. The cert is trusted ONLY because the listener already verified the
+// arrived over a connection with a VERIFIED client cert (a valid installation
+// cert) has its Principal derived from the cert's SPIFFE SAN BEFORE the JWT path —
+// so a service→service caller authenticates on its mTLS identity with no JWT.
+// With an UNDECLARED domain the path stays off (default) and the existing JWT flow
+// is unchanged. The cert is trusted ONLY because the listener already verified the
 // chain (VerifiedChains non-empty); client-supplied x-kacho-principal-* metadata
 // is still stripped (no spoofing).
-func (a *AuthInterceptor) WithMTLSPrincipal(enable bool) *AuthInterceptor {
-	a.mtlsPrincipal = enable
+//
+// # Почему аргумент — ДОМЕН, а не признак включения
+//
+// Полоса без домена невыразима: имя предъявителя опознаётся относительно домена,
+// и «включено, но домен не назван» означало бы полосу, которая своим не признаёт
+// НИКОГО, — то есть включение, ничего не включающее. Тихого выключения это не
+// заводит: домен объявлен осью посадки (`describePosture`), и процесс с
+// необъявленным доменом не стартует вовсе.
+func (a *AuthInterceptor) WithMTLSPrincipal(d grpcsrv.TrustDomain) *AuthInterceptor {
+	a.mtlsDomain = d
 	return a
 }
 
@@ -362,8 +376,8 @@ func (a *AuthInterceptor) authorize(ctx context.Context, fullMethod string) (con
 	// a cert but no JWT is NOT rejected in production-strict. The cert is trusted
 	// only because the listener already verified it; client-supplied
 	// x-kacho-principal-* metadata was stripped above (no spoofing).
-	if a.mtlsPrincipal {
-		if pType, pID, ok := principalFromVerifiedPeer(ctx); ok {
+	if a.mtlsDomain.IsDeclared() {
+		if pType, pID, ok := principalFromVerifiedPeer(a.mtlsDomain, ctx); ok {
 			a.logger.Debug("auth: principal derived from verified client cert (mTLS)",
 				"method", fullMethod, "type", pType, "id", pID)
 			return a.injectPrincipal(ctx, pType, pID, pID), nil
@@ -432,7 +446,7 @@ func (a *AuthInterceptor) authorize(ctx context.Context, fullMethod string) (con
 
 	// Hydra-issued RS256/ES256/EdDSA access JWT → validate via JWKS
 	// verifier (a SECOND strategy alongside the HMAC-dev path). On a verified
-	// token the Principal is derived directly from the `kacho_principal_*`
+	// token the Principal is derived directly from the `kaname_principal_*`
 	// claims (top-level or ext_claims) — no SubjectLookuper round-trip unless
 	// those claims are absent. A present-but-bad token (bad sig / expired /
 	// wrong iss / disallowed alg) is REJECTED Unauthenticated (fail-closed),
@@ -514,7 +528,7 @@ func (a *AuthInterceptor) authorize(ctx context.Context, fullMethod string) (con
 		return nil, status.Error(codes.Unauthenticated, authFailedMsg)
 	}
 
-	// Resolve subject via kacho-iam (gRPC-direct).
+	// Resolve subject via kaname (gRPC-direct).
 	subjectID, _ := claims["sub"].(string)
 	if subjectID == "" {
 		return nil, status.Error(codes.Unauthenticated, "token missing subject")
@@ -522,12 +536,12 @@ func (a *AuthInterceptor) authorize(ctx context.Context, fullMethod string) (con
 
 	// Service Account / API-token principals. A token
 	// minted by the Hydra client_credentials flow (or a static API token)
-	// carries `kacho_principal_type=service_account` + `kacho_sa_id=<svaId>`.
+	// carries `kaname_principal_type=service_account` + `kaname_sa_id=<svaId>`.
 	// `sub` is the SA id itself, which is NOT a User `external_id`, so the
 	// User LookupByExternalID below would miss and (in dev) downgrade the SA
 	// to anonymous. Resolve the SA principal directly from the typed claims.
-	if pt, _ := claims["kacho_principal_type"].(string); pt == "service_account" {
-		saID, _ := claims["kacho_sa_id"].(string)
+	if pt, _ := claims["kaname_principal_type"].(string); pt == "service_account" {
+		saID, _ := claims["kaname_sa_id"].(string)
 		if saID == "" {
 			saID = subjectID
 		}
@@ -541,7 +555,7 @@ func (a *AuthInterceptor) authorize(ctx context.Context, fullMethod string) (con
 
 // authorizeViaLookup резолвит principal через SubjectLookuper по external id
 // (sub). Используется как HMAC-dev tail, так и JWKS-fallback (verified
-// токен без kacho_principal_* claims). Поведение при неудачном резолве зависит
+// токен без kaname_principal_* claims). Поведение при неудачном резолве зависит
 // от mode: dev → anonymous (back-compat newman), production /
 // production-strict → reject Unauthenticated.
 //
@@ -566,16 +580,16 @@ func (a *AuthInterceptor) authorizeViaLookup(ctx context.Context, fullMethod, su
 		switch a.mode {
 		case AuthModeProductionStrict, AuthModeProduction:
 			// production[-strict]: у токена обязан быть принципал, которому
-			// kacho-iam разрешает аутентифицироваться. Настоящая причина (нет
+			// kaname разрешает аутентифицироваться. Настоящая причина (нет
 			// такой личности либо она есть и запрещена) пишется в лог как есть;
 			// наружу уходит постоянный текст, чтобы валидно подписанный токен
 			// без принципала был неотличим от токена с плохой подписью (никакого
 			// перебора личностей и утечки текста ошибки iam).
-			a.logger.Warn("auth: principal not usable per kacho-iam (rejecting)",
+			a.logger.Warn("auth: principal not usable per kaname (rejecting)",
 				"method", fullMethod, "external_id", subjectID, "err", err)
 			return nil, status.Error(codes.Unauthenticated, authFailedMsg)
 		default: // dev
-			a.logger.Debug("auth: principal not usable per kacho-iam, fallback to anonymous",
+			a.logger.Debug("auth: principal not usable per kaname, fallback to anonymous",
 				"method", fullMethod, "external_id", subjectID, "err", err)
 			return a.injectAnonymous(ctx), nil
 		}
@@ -666,19 +680,19 @@ func isAsymmetricJWT(tokenStr string) bool {
 }
 
 // principalFromVerifiedToken derives the Kachō Principal from a JWKS-verified
-// Hydra token's `kacho_principal_*` claims. It reads each claim robustly
+// Hydra token's `kaname_principal_*` claims. It reads each claim robustly
 // from EITHER the top level (Hydra allowed_top_level_claims promotion) OR the
 // nested `ext_claims` map (token_hook session.access_token.ext_claims). Returns
 // an error when the principal claims are absent so the caller can fall back to
 // the SubjectLookuper. displayName comes from a present display claim, else
 // the principal id.
 func principalFromVerifiedToken(vt *VerifiedToken) (pType, pID, displayName string, err error) {
-	pType = verifiedClaim(vt, "kacho_principal_type")
-	pID = verifiedClaim(vt, "kacho_principal_id")
+	pType = verifiedClaim(vt, "kaname_principal_type")
+	pID = verifiedClaim(vt, "kaname_principal_id")
 	if pType == "" || pID == "" {
-		return "", "", "", fmt.Errorf("verified token carries no kacho_principal_* claims")
+		return "", "", "", fmt.Errorf("verified token carries no kaname_principal_* claims")
 	}
-	displayName = verifiedClaim(vt, "kacho_principal_display_name")
+	displayName = verifiedClaim(vt, "kaname_principal_display_name")
 	if displayName == "" {
 		displayName = pID
 	}
@@ -710,10 +724,11 @@ func verifiedClaim(vt *VerifiedToken, key string) string {
 // yields ok=false so the caller falls through to the JWT path.
 //
 // The principal is mapped from the leaf's SPIFFE URI SAN
-// (spiffe://kacho.cloud/ns/<ns>/sa/<sa>): a service→service caller is a
+// (spiffe://<trust-domain>/ns/<ns>/sa/<sa>): a service→service caller is a
 // `service_account` whose id is the `<sa>` segment. Display name defaults to the
-// id at the call site.
-func principalFromVerifiedPeer(ctx context.Context) (pType, pID string, ok bool) {
+// id at the call site. The trust domain is the one the installation declared —
+// a SAN of any other domain is not ours and yields ok=false.
+func principalFromVerifiedPeer(d grpcsrv.TrustDomain, ctx context.Context) (pType, pID string, ok bool) {
 	p, present := peer.FromContext(ctx)
 	if !present || p == nil {
 		return "", "", false
@@ -727,7 +742,7 @@ func principalFromVerifiedPeer(ctx context.Context) (pType, pID string, ok bool)
 		return "", "", false
 	}
 	for _, u := range leaf.URIs {
-		if sa, matched := saFromSPIFFE(u.String()); matched {
+		if sa, matched := saFromSPIFFE(d, u.String()); matched {
 			return "service_account", sa, true
 		}
 	}
@@ -746,11 +761,20 @@ func verifiedLeaf(chains [][]*x509.Certificate) *x509.Certificate {
 	return nil
 }
 
-// saFromSPIFFE parses a Kachō SPIFFE id of the form
-// `spiffe://kacho.cloud/ns/<ns>/sa/<sa>` and returns the `<sa>` workload segment.
-// Any other URI shape (or a non-Kachō trust domain) → matched=false.
-func saFromSPIFFE(uri string) (sa string, matched bool) {
-	const prefix = "spiffe://kacho.cloud/ns/"
+// saFromSPIFFE parses a SPIFFE id of the form
+// `spiffe://<trust-domain>/ns/<ns>/sa/<sa>` and returns the `<sa>` workload
+// segment. Any other URI shape — or a FOREIGN trust domain — → matched=false.
+//
+// Домен приезжает величиной установки, а не стоит здесь литералом: сертификаты
+// выпускаются под доменом из величины профиля, и скомпилированный домен означал
+// бы, что правка величины оставляет край признающим прежний, — молча, отказом
+// законному вызывающему, неотличимым от отсутствия сертификата.
+func saFromSPIFFE(d grpcsrv.TrustDomain, uri string) (sa string, matched bool) {
+	prefix := d.NamespacePrefix()
+	if prefix == "" {
+		// Домен не объявлен — своим не признаётся никто.
+		return "", false
+	}
 	rest, ok := strings.CutPrefix(uri, prefix)
 	if !ok {
 		return "", false
@@ -772,7 +796,7 @@ func (a *AuthInterceptor) validateJWT(tokenStr string) (jwt.MapClaims, error) {
 	// affordance ONLY. In production / production-strict it MUST be refused
 	// wholesale — a validly-HS256-signed token (an attacker who learned or
 	// guessed KACHO_API_GATEWAY_AUTHN_DEV_SECRET) would otherwise yield a real
-	// principal, and a `kacho_principal_type=service_account` claim is injected
+	// principal, and a `kaname_principal_type=service_account` claim is injected
 	// as a service_account with NO IAM lookup (symmetric-key principal forgery,
 	// CWE-347). The only accepted Bearer strategy in prod is the asymmetric JWKS
 	// (Hydra) verifier, which runs BEFORE this path for RS256/ES256/EdDSA tokens.
@@ -1114,7 +1138,7 @@ func (a *AuthInterceptor) tryKratosSession(w http.ResponseWriter, r *http.Reques
 
 // tryHydraJWT validates a Hydra-issued asymmetric (RS256/ES256/EdDSA) access JWT
 // over REST via the JWKS verifier (parity with the gRPC interceptor path) and
-// derives the principal from the verified `kacho_principal_*` claims (top-level
+// derives the principal from the verified `kaname_principal_*` claims (top-level
 // or ext_claims), falling back to SubjectLookuper on the verified sub. A
 // present-but-bad token → 401 fail-closed, never anonymous; a key set that could
 // not be fetched → 503 (see keySourceUnanswerable — #1194), also fail-closed.
@@ -1198,7 +1222,7 @@ func (a *AuthInterceptor) tryHydraJWT(w http.ResponseWriter, r *http.Request, ne
 	}
 	// Claims absent → fall back to SubjectLookuper on the verified sub.
 	if vt.Subject == "" {
-		a.logger.Warn("auth.HTTP: Hydra JWT has empty sub and no kacho_principal_* claims")
+		a.logger.Warn("auth.HTTP: Hydra JWT has empty sub and no kaname_principal_* claims")
 		writeHTTPUnauthorized(w, "token missing subject")
 		return true
 	}
@@ -1206,7 +1230,7 @@ func (a *AuthInterceptor) tryHydraJWT(w http.ResponseWriter, r *http.Request, ne
 		a.logger.Debug("auth.HTTP: SubjectLookup failed (Hydra JWT fallback)", "external_id", vt.Subject, "err", lerr.Error())
 	} else if a.machineBindingViolationFor(vt, subj.Type) {
 		// The lookup resolved a MACHINE principal from a token that carried no
-		// kacho_principal_* claims. Same requirement, same rejection.
+		// kaname_principal_* claims. Same requirement, same rejection.
 		a.logger.Warn("auth.HTTP: machine token (resolved by lookup) is not sender-constrained; rejected",
 			"path", r.URL.Path)
 		writeHTTPUnauthorized(w, "sender-constrained token required")
@@ -1251,14 +1275,14 @@ func (a *AuthInterceptor) tryDevSecretJWT(w http.ResponseWriter, r *http.Request
 	}
 	// Service Account / API-token principals.
 	// A client_credentials / API token carries
-	// `kacho_principal_type=service_account` + `kacho_sa_id`; `sub`
+	// `kaname_principal_type=service_account` + `kaname_sa_id`; `sub`
 	// is the SA id, not a User external_id, so the User lookup below
 	// would miss and leave the request principal-less → the authz
 	// layer then denies it as unauthenticated. Resolve the SA
 	// principal directly from the typed claims (parity with the
 	// gRPC intercept path).
-	if pt, _ := claims["kacho_principal_type"].(string); pt == "service_account" {
-		saID, _ := claims["kacho_sa_id"].(string)
+	if pt, _ := claims["kaname_principal_type"].(string); pt == "service_account" {
+		saID, _ := claims["kaname_sa_id"].(string)
 		if saID == "" {
 			saID = subjectID
 		}

@@ -45,7 +45,7 @@ func syntheticTree(t *testing.T, name string, manifests map[string]string) (root
 		}
 	}
 	profile = filepath.Join(root, "values.yaml")
-	body := "kacho-iam:\n  manifests:\n    configMapName: " + name + "\n"
+	body := "kaname:\n  manifests:\n    configMapName: " + name + "\n"
 	if err := os.WriteFile(profile, []byte(body), 0o600); err != nil {
 		t.Fatalf("профиль не записан: %v", err)
 	}

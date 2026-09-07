@@ -50,16 +50,15 @@ import (
 	"github.com/PRO-Robotech/kacho/pkg/servicehost"
 
 	computev1 "github.com/PRO-Robotech/kacho/pkg/api/kacho/cloud/compute/v1"
-	iamv1 "github.com/PRO-Robotech/kacho/pkg/api/kacho/cloud/iam/v1"
 	operationpb "github.com/PRO-Robotech/kacho/pkg/api/kacho/cloud/operation"
 	subscriptionv1 "github.com/PRO-Robotech/kacho/pkg/api/kacho/cloud/subscription"
+	iamv1 "github.com/PRO-Robotech/kacho/pkg/api/kaname/cloud/iam/v1"
 	"github.com/PRO-Robotech/kacho/pkg/retention"
 	"github.com/PRO-Robotech/kacho/pkg/subscription"
 	"github.com/PRO-Robotech/kacho/services/compute/internal/subscriptionjournal"
 
 	"github.com/PRO-Robotech/kacho/pkg/observability/health"
 	"github.com/PRO-Robotech/kacho/pkg/ownerregister"
-	corequota "github.com/PRO-Robotech/kacho/pkg/quota"
 	"github.com/PRO-Robotech/kacho/pkg/servicecontract"
 	"github.com/PRO-Robotech/kacho/services/compute/internal/apps/kacho/api/guestaccesskey"
 	"github.com/PRO-Robotech/kacho/services/compute/internal/apps/kacho/api/instance"
@@ -259,7 +258,7 @@ func runServe(cfg config.Config) error {
 		}
 		authzConn, err = dialPeerCreds(cfg.AuthZIAMGRPCAddr, authzCreds, true)
 		if err != nil {
-			return fmt.Errorf("dial kacho-iam (authz): %w", err)
+			return fmt.Errorf("dial kaname (authz): %w", err)
 		}
 		defer authzConn.Close()
 		logger.Info("compute→iam read/authz mTLS state",
@@ -268,44 +267,27 @@ func runServe(cfg config.Config) error {
 		)
 	}
 
-	// Резолв величин квоты идёт на ВНУТРЕННИЙ слушатель kacho-iam — по тому же
-	// адресу, что уже объявлен оператором для проверки прав.
+	// Ребро compute→домен величин: ОДНО ребро, ДВЕ полосы — разрешение величины
+	// на пути запроса и фоновая дельта, которой снимок догоняет авторитет.
 	//
-	// Это НЕ вывод адреса из чужого: адрес внутреннего контура объявлен
-	// оператором явно, и здесь он переиспользуется. Своей ручки у резолва нет
-	// именно потому, что второй адрес того же слушателя разошёлся бы с первым
-	// молча — и контроль ушёл бы в никуда, выглядя включённым.
+	// Адрес ОБЪЯВЛЕН ручкой, а не выведен из адреса авторизации. Прежде он
+	// выводился, и довод был верен ровно до тех пор, пока авторитет величин и
+	// авторитет авторизации — одна служба; уход модуля квотирования из службы
+	// доступа это условие снимает.
 	//
-	// Пустой адрес (dev без соседа) → полоса не собирается. Это означает
-	// «раннего отказа и материализации нет», а НЕ «предела нет»: место занимает
-	// триггер, и при отсутствии строк учёта он отвергает вставку «потолок не
-	// назван». На любом поднятом стенде адрес обязан быть задан — иначе домен
-	// перестаёт принимать создание, и это видно с первой же мутации, а не тихо.
-	var quotaLimits quota.LimitResolver
-	if authzConn != nil {
-		limitClient := clients.NewLimitClient(authzConn)
-		quotaLimits = limitClient
-		logger.Info("resource-count quota: limits resolver wired",
-			"endpoint", cfg.AuthZIAMGRPCAddr, "service", "compute")
-
-		// Снимок величины обязан ДОГОНЯТЬ авторитет: без тянущего строка,
-		// заведённая один раз, живёт со своей величиной вечно, и смена предела
-		// администратором не доезжает до проекта никогда. Показывать арендатору
-		// такой снимок значило бы громко назвать число, которое не догонит
-		// назначенное, — поэтому чтение и тянущий едут вместе.
-		stopQuotaSync, qerr := corequota.StartLimitSyncer(
-			ctx, pool, limitClient, repo.QuotaSchema, corequota.Config{}, logger)
-		if qerr != nil {
-			return fmt.Errorf("start quota limit syncer: %w", qerr)
-		}
-		defer stopQuotaSync()
-	} else {
-		logger.Warn("resource-count quota: no internal kacho-iam endpoint, limits resolver is OFF " +
-			"and the limit snapshot will NEVER catch up with the authority. " +
-			"The charging trigger still enforces, so creates are refused with " +
-			"\"no ceiling stated\" until the endpoint is configured, and an administrator " +
-			"raising or lowering a ceiling has no effect on this process")
+	// Ветки «полоса не собирается, потому что соседа не задали» здесь БОЛЬШЕ НЕТ:
+	// незаданное объявление отвергает страж старта, а объявленное отсутствие —
+	// законная посадка, в которой тянущий не заводится и состояние курсора
+	// называет причину. Приёмка ухода модуля квотирования из службы доступа,
+	// стадия S1 (имя документа приёмки здесь не цитируется: страж комментариев
+	// этой службы отвергает процессный лексикон, а он входит в имя файла).
+	quotaEdge, stopQuotaEdge, qerr := buildQuotaAuthorityEdge(
+		ctx, cfg, pool, repo.QuotaSchema, logger)
+	if qerr != nil {
+		return qerr
 	}
+	defer stopQuotaEdge()
+	quotaLimits := quotaEdge.Limits
 
 	// Сборка use-case'ов идёт ПОСЛЕ объявления резолва величин: полоса учёта —
 	// их зависимость, а её источник — соединение внутреннего контура выше.
@@ -432,7 +414,7 @@ func runServe(cfg config.Config) error {
 
 	// register-drainer — applies FGA owner-tuple register/unregister intents
 	// (compute_fga_register_outbox, written transactionally by repo.Insert/Delete)
-	// via kacho-iam InternalIAMService.RegisterResource/UnregisterResource over the
+	// via kaname InternalIAMService.RegisterResource/UnregisterResource over the
 	// (optionally mTLS) compute→iam edge. Idempotent + retry-on-Unavailable; the
 	// owner-tuple is never lost. Default-on; without it created resources get no
 	// per-resource FGA tuple. Drainer Run-loop + outbox backstop (reconciler +
@@ -904,17 +886,25 @@ func insecureEdgesInProductionStrict(cfg config.Config) error {
 	if cfg.FGARegisterDrainerEnabled && !cfg.IAMRegisterMTLS.Enable {
 		insecure = append(insecure, "IAM_REGISTER_MTLS_ENABLE")
 	}
+	// Ребро compute→домен величин. Провод живой ровно тогда, когда объявление
+	// разрешилось адресом, — тем же методом, каким его читает проводка, поэтому
+	// «страж увидел ребро» ⟺ «ребро дилится» by construction, а не по совпадению
+	// двух одинаково написанных условий. Полос у ребра две, и обе идут по этому
+	// проводу, поэтому удостоверение одно.
+	if cfg.QuotaAuthorityEdgeLive() && !cfg.QuotaAuthorityMTLS.Enable {
+		insecure = append(insecure, "QUOTA_AUTHORITY_MTLS_ENABLE")
+	}
 	if len(insecure) == 0 {
 		return nil
 	}
 	return fmt.Errorf("production-strict mode requires per-edge mTLS on all live transport edges; insecure (Enable=false): %s", strings.Join(insecure, ", "))
 }
 
-// dialPeers открывает gRPC-клиенты к peer-сервисам (kacho-iam — public :9090 для
+// dialPeers открывает gRPC-клиенты к peer-сервисам (kaname — public :9090 для
 // project-existence-check; kacho-geo — public :9090 для zone_id-валидации Instance)
 // либо возвращает no-op-заглушки при KACHO_COMPUTE_SKIP_PEER_VALIDATION=true.
 //
-// project-existence-check идёт в kacho-iam.ProjectService.Get.
+// project-existence-check идёт в kaname.ProjectService.Get.
 //
 // zone_id-валидация Instance идёт через geo.v1.ZoneService.Get (clients.GeoClient);
 // Geography (Region/Zone) принадлежит kacho-geo — compute их больше не обслуживает,
@@ -1191,7 +1181,7 @@ func buildListFilter(cfg config.Config, authzConn *grpc.ClientConn, logger *slog
 	return f
 }
 
-// startRegisterDrainer dials the kacho-iam internal endpoint over the
+// startRegisterDrainer dials the kaname internal endpoint over the
 // compute→iam edge (mTLS opt-in via cfg.IAMRegisterClientCreds — enable=false →
 // insecure dev) and starts a corelib outbox/drainer over
 // compute_fga_register_outbox. Each pending intent is replayed through
@@ -1222,7 +1212,7 @@ func startRegisterDrainer(cfg config.Config, pool *pgxpool.Pool, rec metrics.Rec
 	// idle pings keep the conn warm.
 	conn, cerr := grpc.NewClient(addr, creds, grpcclient.KeepaliveDialOption(true))
 	if cerr != nil {
-		return nil, nil, fmt.Errorf("dial kacho-iam (register-drainer): %w", cerr)
+		return nil, nil, fmt.Errorf("dial kaname (register-drainer): %w", cerr)
 	}
 
 	applier := clients.NewIAMRegisterApplier(conn)
@@ -1301,7 +1291,7 @@ func startRegisterDrainer(cfg config.Config, pool *pgxpool.Pool, rec metrics.Rec
 	return d.Run, func() { _ = conn.Close() }, nil
 }
 
-// buildSyncRegistrar дилит kacho-iam internal :9091 (InternalIAMService.
+// buildSyncRegistrar дилит kaname internal :9091 (InternalIAMService.
 // RegisterResource) тем же compute→iam fga-proxy ребром (mTLS opt-in через
 // cfg.IAMRegisterClientCreds — enable=false → insecure dev) и собирает синхронный
 // owner-tuple registrar (owner-tuple op-gating P4). Отдельный dial-conn
@@ -1319,7 +1309,7 @@ func buildSyncRegistrar(cfg config.Config, logger *slog.Logger) (*ownerregister.
 	}
 	conn, cerr := grpc.NewClient(addr, creds, grpcclient.KeepaliveDialOption(true))
 	if cerr != nil {
-		return nil, nil, fmt.Errorf("dial kacho-iam (sync registrar): %w", cerr)
+		return nil, nil, fmt.Errorf("dial kaname (sync registrar): %w", cerr)
 	}
 	logger.Info("owner-tuple sync-registrar dialed", "iam_addr", addr, "mtls", cfg.IAMRegisterMTLS.Enable)
 	// Форма доставки — ОДНА на все сервисы (pkg/ownerregister): своего

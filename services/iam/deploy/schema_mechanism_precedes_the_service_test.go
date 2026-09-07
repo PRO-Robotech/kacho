@@ -19,6 +19,22 @@
 // приходит только в чужом кластере и только на первом обращении к таблице.
 //
 // ─────────────────────────────────────────────────────────────────────────────
+// ГДЕ ЭТА ПРОБА ИСПОЛНЯЕТСЯ
+//
+// В ОБОИХ деревьях, и это не деталь: вердикт о посадке нужен там, где посадку
+// исполняют, — у арендатора, а не только у нас. Каталог `deploy/` уезжает ему
+// целиком, поэтому и раскладок у него две:
+//
+//	монорепо   <корень>/services/*/deploy   — служба среди соседей;
+//	поставка   <корень>/deploy              — служба и есть весь продукт.
+//
+// Корень ищется ПОДЪЁМОМ до маркера `go.mod` (tree_root_test.go), а не счётом
+// `..`: фиксированное число верно ровно в одном из двух деревьев, а во втором
+// указывает наружу репозитория. До 2026-09-06 здесь стояло `../../..`, и у
+// арендатора обход не читал НИЧЕГО — проба была поставлена, слот занят, вердикта
+// не было.
+//
+// ─────────────────────────────────────────────────────────────────────────────
 // ПОЧЕМУ ОБЪЯВЛЕНИЕ, А НЕ РЕНДЕР
 //
 // Рендер требует `helm` на машине и `helm dep build` для чартов с зависимостями;
@@ -88,11 +104,6 @@ import (
 // назначениями Dockerfile.
 const migratorBinaryPath = "/usr/local/bin/kacho-migrator"
 
-// chartUnderTest — служба, чей чарт эта проба ОБЯЗАНА осмотреть. Проверка
-// собственной предпосылки: обход, потерявший iam, дал бы зелёное о чужих чартах
-// и молчание о том единственном, ради которого проба заведена.
-const chartUnderTest = "iam"
-
 // templateLine — строка шаблона вместе с её отступом и признаком комментария.
 // Комментарий хранится, а не выбрасывается: перепись обязана назвать, сколько
 // строк прочитано, включая те, что судить нельзя.
@@ -118,7 +129,12 @@ type containerDecl struct {
 // chartAudit — что осмотрено в одном чарте. Величины печатаются переписью: «ноль
 // находок» обязано быть отличимо от «ноль прочитанного».
 type chartAudit struct {
-	service        string
+	service string
+	// isSelf — это чарт СОБСТВЕННОГО модуля пробы, а не соседа. Признак
+	// структурный (каталог рядом с маркером `go.mod`), а не по имени: имя
+	// каталога у арендатора выбирает клонирующий, и предпосылка, опознающая
+	// свой чарт по имени, у половины клонов не выполняется молча.
+	isSelf         bool
 	templateLines  int
 	initItems      int
 	serviceItems   int
@@ -304,23 +320,93 @@ func valueIsTrue(values map[string]any, path string) bool {
 	return ok && b
 }
 
-// auditSchemaMechanism осматривает все чарты служб под названным корнем. Корень
+// discoverChartDirs собирает каталоги чартов служб под названными корнями, в
+// ОБЕИХ раскладках сразу:
+//
+//	<корень>/services/*/deploy   — монорепо: служба среди соседей;
+//	<корень>/deploy              — поставка: служба и есть весь продукт.
+//
+// Раскладки перечислены обе, а не выбраны по признаку дерева: выбор означал бы,
+// что в одном из деревьев ветвь не исполняется никогда — то есть доказывается
+// прогоном, которого не бывает. Здесь же монорепо читает обе (вторая под его
+// корнем пуста), а поставка читает обе (первая под её корнем пуста), и код
+// исполняется один.
+//
+// Повторы снимаются по очищенному пути: в монорепо служебный корень лежит ПОД
+// внешним, поэтому её собственный чарт находится дважды.
+func discoverChartDirs(roots []string) ([]string, error) {
+	seen := map[string]bool{}
+	dirs := []string{}
+	for _, root := range roots {
+		if root == "" {
+			continue
+		}
+		layouts := []string{
+			filepath.Join(root, "services", "*", "deploy", "values.yaml"),
+			filepath.Join(root, "deploy", "values.yaml"),
+		}
+		for _, pattern := range layouts {
+			valuePaths, err := filepath.Glob(pattern)
+			if err != nil {
+				return nil, err
+			}
+			for _, vp := range valuePaths {
+				dir := filepath.Clean(filepath.Dir(vp))
+				if seen[dir] {
+					continue
+				}
+				seen[dir] = true
+				dirs = append(dirs, dir)
+			}
+		}
+	}
+	sort.Strings(dirs)
+	return dirs, nil
+}
+
+// chartLabel — как чарт называется в переписи и в находках.
+//
+// Имя берётся из `Chart.yaml`, а НЕ из имени каталога: каталог у арендатора
+// зовётся так, как решил клонирующий, и метка, выведенная из него, у каждого
+// клона своя. Имя чарта кладёт тот же, кто кладёт шаблоны. Запасной путь —
+// имя каталога-владельца: у синтетической фикстуры `Chart.yaml` нет, и
+// требовать его значило бы менять два факта разом.
+func chartLabel(chartDir string) string {
+	raw, err := os.ReadFile(filepath.Join(chartDir, "Chart.yaml"))
+	if err == nil {
+		var meta struct {
+			Name string `yaml:"name"`
+		}
+		if yaml.Unmarshal(raw, &meta) == nil && strings.TrimSpace(meta.Name) != "" {
+			return strings.TrimSpace(meta.Name)
+		}
+	}
+	return filepath.Base(filepath.Dir(chartDir))
+}
+
+// auditSchemaMechanism осматривает чарты служб под названными корнями. Корни —
 // параметр, а не константа: тем же кодом судит и настоящее дерево, и внесённый
 // дефект во временной копии — иначе доказательство способности упасть проверяло
 // бы не то, что исполняется.
-func auditSchemaMechanism(root string) ([]chartAudit, []finding, error) {
-	valuePaths, err := filepath.Glob(filepath.Join(root, "services", "*", "deploy", "values.yaml"))
+//
+// selfChartDir называет чарт СОБСТВЕННОГО модуля пробы; пустая строка означает
+// «своего чарта среди этих корней нет» и законна для синтетического входа.
+func auditSchemaMechanism(selfChartDir string, roots ...string) ([]chartAudit, []finding, error) {
+	chartDirs, err := discoverChartDirs(roots)
 	if err != nil {
 		return nil, nil, err
 	}
-	sort.Strings(valuePaths)
+	self := ""
+	if selfChartDir != "" {
+		self = filepath.Clean(selfChartDir)
+	}
 
 	audits := []chartAudit{}
 	findings := []finding{}
 
-	for _, vp := range valuePaths {
-		chartDir := filepath.Dir(vp)
-		service := filepath.Base(filepath.Dir(chartDir))
+	for _, chartDir := range chartDirs {
+		vp := filepath.Join(chartDir, "values.yaml")
+		service := chartLabel(chartDir)
 
 		rawValues, err := os.ReadFile(vp)
 		if err != nil {
@@ -336,7 +422,7 @@ func auditSchemaMechanism(root string) ([]chartAudit, []finding, error) {
 			continue
 		}
 
-		audit := chartAudit{service: service}
+		audit := chartAudit{service: service, isSelf: self != "" && chartDir == self}
 		tmplPath := filepath.Join(chartDir, "templates", "deployment.yaml")
 		rawTmpl, err := os.ReadFile(tmplPath)
 		if err != nil {
@@ -352,7 +438,10 @@ func auditSchemaMechanism(root string) ([]chartAudit, []finding, error) {
 		lines := readTemplateLines(string(rawTmpl))
 		audit.templateLines = len(lines)
 
-		dfPath := filepath.Join(root, "services", service, "Dockerfile")
+		// Dockerfile ищется РЯДОМ С ЧАРТОМ, а не складывается из корня и имени
+		// службы: склейка верна ровно для раскладки монорепо, а у поставки
+		// сегмента `services/<имя>` не существует вовсе.
+		dfPath := filepath.Join(filepath.Dir(chartDir), "Dockerfile")
 		rawDF, err := os.ReadFile(dfPath)
 		if err != nil {
 			return nil, nil, fmt.Errorf("%s: Dockerfile не прочитан: %w", service, err)
@@ -457,9 +546,13 @@ func auditSchemaMechanism(root string) ([]chartAudit, []finding, error) {
 }
 
 func TestSchemaMechanismPrecedesTheService(t *testing.T) {
-	root := filepath.Join("..", "..", "..")
+	// Корни ИЩУТСЯ ПОДЪЁМОМ, а не складываются из `..` (см. tree_root_test.go):
+	// глубина этого каталога в двух деревьях разная, и фиксированное число
+	// уводило обход наружу репозитория у всякого, кто продукт склонировал.
+	svcRoot := serviceRoot(t)
+	outer := outerRoot(t)
 
-	audits, findings, err := auditSchemaMechanism(root)
+	audits, findings, err := auditSchemaMechanism(filepath.Join(svcRoot, "deploy"), svcRoot, outer)
 	if err != nil {
 		t.Fatalf("обход не состоялся: %v", err)
 	}
@@ -467,19 +560,27 @@ func TestSchemaMechanismPrecedesTheService(t *testing.T) {
 	// Пустой обход — не зелёное. Проба, ничего не прочитавшая, обязана падать:
 	// иначе «ноль находок» неотличимо от «ноль прочитанного».
 	if len(audits) == 0 {
-		t.Fatalf("осмотрено 0 чартов служб с базой — обход беспредметен, вердикт недействителен")
+		t.Fatalf("осмотрено 0 чартов служб с базой — обход беспредметен, вердикт недействителен "+
+			"(служебный корень %s, внешний %s)", svcRoot, outer)
 	}
 
 	// Проверка собственной предпосылки: обход, потерявший чарт, ради которого
-	// проба заведена, дал бы зелёное о чужих чартах.
+	// проба заведена, дал бы зелёное о чужих чартах — а в дереве поставки чужих
+	// чартов нет вовсе, и тогда зелёное было бы о пустоте.
+	//
+	// Признак СТРУКТУРНЫЙ — «чарт лежит рядом с маркером своего модуля», — а не
+	// имя: прежняя редакция сверяла имя каталога с константой "iam", и у
+	// арендатора, чей клон зовётся иначе, предпосылка не выполнялась бы, ничего
+	// в продукте не сломав.
 	sawChartUnderTest := false
 	for _, a := range audits {
-		if a.service == chartUnderTest {
+		if a.isSelf {
 			sawChartUnderTest = true
 		}
 	}
 	if !sawChartUnderTest {
-		t.Fatalf("чарта %q среди осмотренных нет — предпосылка пробы не выполнена", chartUnderTest)
+		t.Fatalf("собственного чарта модуля (%s) среди осмотренных нет — предпосылка пробы не выполнена",
+			filepath.Join(svcRoot, "deploy"))
 	}
 
 	totalLines, totalInit, totalService, totalDest := 0, 0, 0, 0
@@ -488,8 +589,12 @@ func TestSchemaMechanismPrecedesTheService(t *testing.T) {
 		totalInit += a.initItems
 		totalService += a.serviceItems
 		totalDest += a.dockerfileDest
-		t.Logf("осмотрено: %s — строк шаблона %d, init-контейнеров %d, служебных контейнеров %d, назначений Dockerfile %d",
-			a.service, a.templateLines, a.initItems, a.serviceItems, a.dockerfileDest)
+		own := ""
+		if a.isSelf {
+			own = " (собственный чарт модуля)"
+		}
+		t.Logf("осмотрено: %s%s — строк шаблона %d, init-контейнеров %d, служебных контейнеров %d, назначений Dockerfile %d",
+			a.service, own, a.templateLines, a.initItems, a.serviceItems, a.dockerfileDest)
 	}
 	t.Logf("перепись: чартов с базой %d, строк шаблонов %d, init-контейнеров %d, служебных контейнеров %d, назначений Dockerfile %d, находок %d",
 		len(audits), totalLines, totalInit, totalService, totalDest, len(findings))

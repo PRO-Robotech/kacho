@@ -4,7 +4,7 @@
 // Command kacho-registry — control-plane gRPC реестра образов (Registry).
 //
 // Leaf-сервис: по build не зависит ни от чего в Kachō, в runtime — consumer
-// authz Check у kacho-iam + data-proxy к zot. Публичный :9090 —
+// authz Check у kaname + data-proxy к zot. Публичный :9090 —
 // RegistryService (Registry CRUD + проекции repos/tags из zot); cluster-internal
 // :9091 — InternalRegistryService (GC / stats), никогда не на внешнем TLS
 // endpoint (только cluster-internal). Оба листенера несут per-RPC authz Check.

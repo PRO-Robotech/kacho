@@ -33,9 +33,9 @@ title: Конфигурация
 
 | Переменная | Куда | Зачем |
 |---|---|---|
-| `KACHO_STORAGE_IAM_GRPC_ADDR` | kacho-iam, публичный | Существование проекта |
+| `KACHO_STORAGE_IAM_GRPC_ADDR` | kaname, публичный | Существование проекта |
 | `KACHO_STORAGE_GEO_GRPC_ADDR` | kacho-geo, публичный | Существование зоны и региона, резолв «зона → регион» |
-| `KACHO_STORAGE_AUTHZ_IAM_GRPC_ADDR` | kacho-iam, **внутренний** | Проверка прав на каждом запросе и регистрация владельца ресурса |
+| `KACHO_STORAGE_AUTHZ_IAM_GRPC_ADDR` | kaname, **внутренний** | Проверка прав на каждом запросе и регистрация владельца ресурса |
 
 Пустой адрес означает, что клиент не подключён. Для `AUTHZ_IAM_GRPC_ADDR` пустого
 значения **не бывает ни на какой посадке**: ребро, по которому принимается решение о
@@ -115,7 +115,7 @@ title: Конфигурация
 
 Бюджет отказов тратят только исходы, которые кэш не поглощает: отказ, промах «нет пути»,
 недоступность модели. Штатное чтение его не расходует — платит тот, кто штурмует
-отказами, и платит за него не kacho-iam.
+отказами, и платит за него не kaname.
 
 ## Проверка конфигурации при загрузке
 
@@ -136,7 +136,7 @@ title: Конфигурация
 | Пустой список доверенных отправителей | общий | `Forwarders: … KACHO_STORAGE_AUTHZ_TRUSTED_FORWARDER_SANS is empty …` |
 | Фильтр видимости выключен | свой | `per-object List filter required: set KACHO_STORAGE_LIST_FILTER_ENABLED=true` |
 | Фильтр в режиме мягкого прохода | свой | `fail-closed List filter required: set KACHO_STORAGE_LIST_FILTER_FAIL_OPEN=false` |
-| Не взведён клиентский mTLS рёбер к kacho-iam или kacho-geo | свой | `verified transport required on the storage→iam edges …` |
+| Не взведён клиентский mTLS рёбер к kaname или kacho-geo | свой | `verified transport required on the storage→iam edges …` |
 
 Сообщения отказа намеренно называют переменную и причину: без этого стенд не поднять.
 

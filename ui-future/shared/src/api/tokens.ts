@@ -1,11 +1,11 @@
 // Tokens API — SAKeyService + UserTokenService bindings (Stage 4).
 //
 // REST endpoints (verbatim из kacho-proto google.api.http annotations):
-//   SA keys (kacho.cloud.iam.v1.SAKeyService):
+//   SA keys (kaname.cloud.iam.v1.SAKeyService):
 //     POST   /iam/v1/serviceAccounts/{service_account_id}/keys           → Issue  → Operation → IssueSAKeyResponse
 //     GET    /iam/v1/serviceAccounts/{service_account_id}/keys           → List   → {keys: ServiceAccountOAuthClient[]}
 //     DELETE /iam/v1/serviceAccounts/{service_account_id}/keys/{key_id}  → Revoke → Operation
-//   User tokens (kacho.cloud.iam.v1.UserTokenService):
+//   User tokens (kaname.cloud.iam.v1.UserTokenService):
 //     POST   /iam/v1/users/{user_id}/tokens             → Issue  → Operation → IssueUserTokenResponse
 //     GET    /iam/v1/users/{user_id}/tokens             → List   → {tokens: UserOAuthClient[]}
 //     DELETE /iam/v1/users/{user_id}/tokens/{token_id}  → Revoke → Operation

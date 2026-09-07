@@ -22,6 +22,7 @@ import (
 	"time"
 
 	"github.com/prometheus/client_golang/prometheus"
+	"google.golang.org/grpc"
 	"google.golang.org/grpc/credentials"
 	"google.golang.org/grpc/credentials/insecure"
 
@@ -50,15 +51,18 @@ func (tlsLike) Info() credentials.ProtocolInfo {
 // отрицание ниже зеленело бы на полностью сломанном конструкторе.
 func lawful() servicecontract.Spec {
 	return servicecontract.Spec{
-		Service:    "kacho-demo",
-		Mode:       servicecontract.ModeProduction,
-		Forwarders: servicecontract.Value(grpcsrv.NewTrustedForwarders("spiffe://kacho.cloud/ns/kacho/sa/kacho-api-gateway")),
+		Service:         "kacho-demo",
+		Mode:            servicecontract.ModeProduction,
+		Forwarders:      servicecontract.Value(grpcsrv.NewTrustedForwarders("spiffe://kacho.cloud/ns/kacho/sa/kacho-api-gateway")),
+		TrustDomain:     servicecontract.Value(grpcsrv.NewTrustDomain("kacho.cloud")),
+		TrustDomainKnob: "KACHO_DEMO_AUTHZ_TRUST_DOMAIN",
 		ForwarderKnobs: servicecontract.ForwarderKnobs{
 			SANs:     "KACHO_DEMO_AUTHZ_TRUSTED_FORWARDER_SANS",
 			TrustAny: "KACHO_DEMO_AUTHZ_TRUST_ANY_FORWARDER",
 		},
 		Authz:          servicecontract.AuthzViaIAM,
-		CheckEdge:      servicecontract.NewPeerEdge("kacho-iam-internal:9091", tlsLike{}),
+		CheckEdge:      servicecontract.NewPeerEdge("kaname-internal:9091", tlsLike{}),
+		PeerCheck:      func(grpc.ClientConnInterface) authz.CheckClient { return nil },
 		CacheWindow:    5 * time.Second,
 		ClientBudget:   5 * time.Second,
 		HandlingBudget: 30 * time.Second,
@@ -190,7 +194,7 @@ func TestO6_CheckEdgeWithoutAddressRefusesStart(t *testing.T) {
 // взведена, а креды выродились» им не проходит.
 func TestO8_CheckEdgeOnInsecureTransportRefusesProductionStart(t *testing.T) {
 	s := lawful()
-	s.CheckEdge = servicecontract.NewPeerEdge("kacho-iam-internal:9091", insecure.NewCredentials())
+	s.CheckEdge = servicecontract.NewPeerEdge("kaname-internal:9091", insecure.NewCredentials())
 	refuses(t, s, "CheckEdge")
 
 	// Законный близнец: вне боевой посадки тот же транспорт принимается. Без
@@ -210,9 +214,37 @@ func TestO6_SelfAuthzNeedsNoEdge(t *testing.T) {
 	s := lawful()
 	s.Authz = servicecontract.AuthzSelf
 	s.CheckEdge = servicecontract.PeerEdge{}
+	s.PeerCheck = nil
 	s.SelfCheck = stubCheck{}
 	if _, err := servicecontract.New(s); err != nil {
 		t.Fatalf("владелец модели отвергнут за отсутствие ребра к самому себе: %v", err)
+	}
+}
+
+// TestPeerCheckIsRequiredExactlyWhereTheNeighbourDecides — обе стороны пары
+// «кто переводит вопрос в контракт соседа».
+//
+// Поле заведено затем, чтобы фундамент перестал знать контракт службы доступа
+// (приёмка K3-1 §7.2): носитель набирает соседа, но переводит вопрос сервис.
+// Утверждаются ОБЕ стороны — иначе отрицание зеленело бы на конструкторе,
+// отвергающем всё.
+func TestPeerCheckIsRequiredExactlyWhereTheNeighbourDecides(t *testing.T) {
+	// спрашивает соседа, а сборщика не принёс — находка
+	s := lawful()
+	s.PeerCheck = nil
+	_, err := servicecontract.New(s)
+	if err == nil || !strings.Contains(err.Error(), "PeerCheck") {
+		t.Fatalf("дескриптор без сборщика решателя обязан быть отвергнут: %v", err)
+	}
+
+	// решает у себя, а сборщик принесён — тоже находка: его никто не позовёт
+	s = lawful()
+	s.Authz = servicecontract.AuthzSelf
+	s.CheckEdge = servicecontract.PeerEdge{}
+	s.SelfCheck = stubCheck{}
+	_, err = servicecontract.New(s)
+	if err == nil || !strings.Contains(err.Error(), "PeerCheck") {
+		t.Fatalf("сборщик решателя соседа у владельца модели обязан быть отвергнут: %v", err)
 	}
 }
 
@@ -561,10 +593,12 @@ func TestO13_LawfulDevSpecWithARegistryIsAccepted(t *testing.T) {
 // посадка целиком, проводки носителя ни одного поля.
 func ownContourSpec() servicecontract.Spec {
 	return servicecontract.Spec{
-		Service:    "kacho-demo-own",
-		Mode:       servicecontract.ModeProduction,
-		OwnContour: "контур входящего пути демо собран в его композиционном корне",
-		Forwarders: servicecontract.Value(grpcsrv.NewTrustedForwarders("spiffe://kacho.cloud/ns/kacho/sa/kacho-api-gateway")),
+		Service:         "kacho-demo-own",
+		Mode:            servicecontract.ModeProduction,
+		OwnContour:      "контур входящего пути демо собран в его композиционном корне",
+		Forwarders:      servicecontract.Value(grpcsrv.NewTrustedForwarders("spiffe://kacho.cloud/ns/kacho/sa/kacho-api-gateway")),
+		TrustDomain:     servicecontract.Value(grpcsrv.NewTrustDomain("kacho.cloud")),
+		TrustDomainKnob: "KACHO_DEMO_AUTHZ_TRUST_DOMAIN",
 		ForwarderKnobs: servicecontract.ForwarderKnobs{
 			SANs:     "KACHO_DEMO_AUTHZ_TRUSTED_FORWARDER_SANS",
 			TrustAny: "KACHO_DEMO_AUTHZ_TRUST_ANY_FORWARDER",

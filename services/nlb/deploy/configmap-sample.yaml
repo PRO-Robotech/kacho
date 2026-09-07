@@ -6,6 +6,8 @@
 # Все ключи опциональны: defaults — в `internal/apps/kacho/config/defaults.go`
 # (evgeniy §J.3). Required (без default'а):
 #   - repository.postgres.url           — DSN до kacho_nlb БД.
+#   - quota.authority                   — где живёт домен величин: адрес host:port
+#                                         либо слово `not-deployed`.
 #   - extapi.iam.internal-addr          — адрес iam INTERNAL listener'а; по нему
 #                                         идёт per-RPC Check. Required в mode=production.
 #
@@ -20,6 +22,22 @@
 # dev — relaxed validation (TLS optional).
 # production — TLS required, extapi.iam.internal-addr required.
 mode: dev
+
+# ─── Домен величин ──────────────────────────────────────────────────────────
+# Объявление ОДНО на обе полосы ребра: разрешение величины на пути запроса и
+# фоновая дельта, которой снимок догоняет авторитет. Два объявления об одном
+# ребре разошлись бы молча — там, где расхождение значит «спрашиваем у одного,
+# догоняем у другого».
+#
+# Ровно два законных значения: адрес host:port либо слово `not-deployed`.
+# Умолчания нет НИ В КАКОМ режиме — оно означало бы выбор за оператора между
+# «потолки действуют» и «потолков нет», и выбор был бы невидим.
+#
+# Здесь `not-deployed`: пример — локальная посадка без соседа. Стенд с доменом
+# величин ставит его адрес, и тогда обязательно удостоверение
+# (`mtls.quota-authority.enable`), иначе процесс не поднимается.
+quota:
+  authority: not-deployed
 
 # ─── Logger ─────────────────────────────────────────────────────────────────
 logger:
@@ -94,7 +112,7 @@ authz:
     ttl: 5s                   # NFR KAC-108: ≤ 10s — выдерживается с margin
     size: 10000               # LRU capacity (entries)
   deny-budget-per-sec: 100  # отсечка шторма непоглощаемых кэшем проверок (на принципала)
-  # RBAC sub-phase D §11 (issue #111): per-object filtered List через kacho-iam
+  # RBAC sub-phase D §11 (issue #111): per-object filtered List через kaname
   # AuthorizeService.BatchCheck (reuse iam conn). default on,
   # fail-closed (security.md). ENV: KACHO_NLB_AUTHZ__LIST_FILTER__ENABLED etc.
   list-filter:

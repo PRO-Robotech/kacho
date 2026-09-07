@@ -81,7 +81,7 @@ func TestAccessLogRecordsThePanickingCall(t *testing.T) {
 	spec.Logger = log
 
 	var slot decisionSlot
-	chain := unaryChain(spec, &slot, probeLatency(t), grpcsrv.ListenerPublic)
+	chain := unaryChain(spec, &slot, probeLatency(t), nil, grpcsrv.ListenerPublic)
 	// Слот решения о доступе на этой пробе не нужен: паника случается ниже него.
 	// Убираем последнее звено, чтобы вызов дошёл до обработчика.
 	chain = chain[:len(chain)-1]
@@ -284,7 +284,7 @@ func TestHandlingBudgetReachesTheHandler(t *testing.T) {
 	spec := chainSpec()
 	spec.HandlingBudget = 5 * time.Second
 	var slot decisionSlot
-	chain := unaryChain(spec, &slot, probeLatency(t), grpcsrv.ListenerPublic)
+	chain := unaryChain(spec, &slot, probeLatency(t), nil, grpcsrv.ListenerPublic)
 	chain = chain[:len(chain)-1] // без слота решения: предмет пробы — срок
 
 	dl, has := deadlineOfCall(t, chain, context.Background())
@@ -321,7 +321,7 @@ func TestHandlingBudgetNeverWidensTheCallersDeadline(t *testing.T) {
 	spec := chainSpec()
 	spec.HandlingBudget = time.Hour
 	var slot decisionSlot
-	chain := unaryChain(spec, &slot, probeLatency(t), grpcsrv.ListenerPublic)
+	chain := unaryChain(spec, &slot, probeLatency(t), nil, grpcsrv.ListenerPublic)
 	chain = chain[:len(chain)-1]
 
 	ctx, cancel := context.WithTimeout(context.Background(), 50*time.Millisecond)
@@ -369,7 +369,7 @@ func gateSpec(gate servicecontract.Axis[servicecontract.BootGate]) servicecontra
 func callThroughChain(t *testing.T, spec servicecontract.Spec, method string) (reached bool, err error) {
 	t.Helper()
 	var slot decisionSlot
-	chain := unaryChain(spec, &slot, probeLatency(t), grpcsrv.ListenerPublic)
+	chain := unaryChain(spec, &slot, probeLatency(t), nil, grpcsrv.ListenerPublic)
 	chain = chain[:len(chain)-1]
 	_, err = runUnaryChain(chain, context.Background(), method, nil,
 		func(context.Context, any) (any, error) { reached = true; return "ok", nil })
@@ -653,9 +653,11 @@ func TestProbeIsWiredOnlyWhenItIsBrought(t *testing.T) {
 // контроля любое «отказано» зеленело бы по чужой причине.
 func acceptableSpec() servicecontract.Spec {
 	return servicecontract.Spec{
-		Service:    "kacho-demo",
-		Mode:       servicecontract.ModeDev,
-		Forwarders: servicecontract.Value(grpcsrv.NewTrustedForwarders("spiffe://kacho.cloud/ns/kacho/sa/kacho-api-gateway")),
+		Service:         "kacho-demo",
+		Mode:            servicecontract.ModeDev,
+		Forwarders:      servicecontract.Value(grpcsrv.NewTrustedForwarders("spiffe://kacho.cloud/ns/kacho/sa/kacho-api-gateway")),
+		TrustDomain:     servicecontract.Value(grpcsrv.NewTrustDomain("kacho.cloud")),
+		TrustDomainKnob: "KACHO_DEMO_AUTHZ_TRUST_DOMAIN",
 		ForwarderKnobs: servicecontract.ForwarderKnobs{
 			SANs:     "KACHO_DEMO_AUTHZ_TRUSTED_FORWARDER_SANS",
 			TrustAny: "KACHO_DEMO_AUTHZ_TRUST_ANY_FORWARDER",

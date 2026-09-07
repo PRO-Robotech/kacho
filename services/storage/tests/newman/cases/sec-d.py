@@ -1,7 +1,7 @@
 # Copyright (c) PRO-Robotech
 # SPDX-License-Identifier: BUSL-1.1
 
-"""Case-set для SEC-D (kacho-storage): owner-hierarchy tuple через kacho-iam
+"""Case-set для SEC-D (kacho-storage): owner-hierarchy tuple через kaname
 (transactional-outbox) на всех трёх ресурсах, которые его эмитят.
 
 storage не ходит в OpenFGA напрямую. На каждый Create/Delete Volume/Snapshot/Image
@@ -40,7 +40,7 @@ project`), одинаково требуют, чтобы структурная 
 existingProjectId (_suiteProjectId из env); имена суффиксуются {{runId}}; свои
 ресурсы кейс удаляет за собой. id-префиксы: Volume `vol`, Snapshot `snp`, Image `img`.
 
-# requires: umbrella-стенд (kacho-storage + kacho-iam + kacho-geo за gateway) и
+# requires: umbrella-стенд (kacho-storage + kaname + kacho-geo за gateway) и
 # {{internalBaseUrl}} (инжектится deploy/scripts/newman-e2e.sh; в шаблоне env есть
 # дефолт :18081). mTLS-mismatch и iam-peer-down — инфраструктурные негативы
 # (dedicated chaos/TLS-профиль), здесь их нет намеренно.
@@ -108,7 +108,7 @@ def _check_step(name, obj_type, id_var, expect_allowed, budget=90, interval_ms=5
 
     БЮДЖЕТ РАЗМЕРЕН ПО СОБСТВЕННОМУ СРОКУ ПОЧИНКИ ПЛАТФОРМЫ, А НЕ НА ГЛАЗОК.
     Прежние 20×500 мс = 10 с были КОРОЧЕ, чем период выметающего прохода
-    реконсайлера iam (KACHO_IAM_RECONCILE_SWEEP_INTERVAL_MS, умолчание 30 с), то
+    реконсайлера iam (KANAME_RECONCILE_SWEEP_INTERVAL_MS, умолчание 30 с), то
     есть проба требовала снятия быстрее, чем система обязуется чинить состояние.
     Утверждать так значит утверждать необъявленный срок, а не свойство.
 

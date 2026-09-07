@@ -68,14 +68,14 @@ const (
     extraEnv:
       # ДОВЕРИЕ: ДОПОЛНЯЕТ
       - name: SSL_CERT_FILE
-        value: /etc/kacho-iam-ca/ca.crt
+        value: /etc/kaname-ca/ca.crt
 `
 	// A: якорь пинен, посадка НЕ объявлена — сегодняшний дефект #1753.
 	trustCaseUndeclared = `
   sidecar:
     extraEnv:
       - name: SSL_CERT_FILE
-        value: /etc/kacho-iam-ca/ca.crt
+        value: /etc/kaname-ca/ca.crt
 `
 	// B: объявлена исключительность, пинена ОДНА переменная — вторая
 	// продолжает читаться, и объявленное недостижимо by construction.
@@ -84,7 +84,7 @@ const (
     extraEnv:
       # ДОВЕРИЕ: ТОЛЬКО-ВНУТРЕННЕЕ
       - name: SSL_CERT_FILE
-        value: /etc/kacho-iam-ca/ca.crt
+        value: /etc/kaname-ca/ca.crt
 `
 	// B-близнец: та же отметка, но пинены ОБЕ — обеспечено, обязано молчать.
 	trustCaseBackedExclusive = `
@@ -92,9 +92,9 @@ const (
     extraEnv:
       # ДОВЕРИЕ: ТОЛЬКО-ВНУТРЕННЕЕ
       - name: SSL_CERT_FILE
-        value: /etc/kacho-iam-ca/ca.crt
+        value: /etc/kaname-ca/ca.crt
       - name: SSL_CERT_DIR
-        value: /etc/kacho-iam-ca
+        value: /etc/kaname-ca
 `
 	// C: отметка осталась, якорей больше нет — пережила свой предмет.
 	trustCaseOutlived = `

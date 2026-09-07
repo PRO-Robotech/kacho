@@ -42,7 +42,7 @@ SPDX-License-Identifier: AGPL-3.0-or-later
   меняется ни одной строкой (§2.7). **`proto/` не затрагивается** — ни одно поле,
   ни один глагол, ни одна аннотация каталога прав. `gateway/` не затрагивается:
   обе RPC живут только на внутреннем слушателе `:9091`
-- **Сервис:** `kacho-iam` — предмет почти целиком. **Общий фундамент
+- **Сервис:** `kaname` — предмет почти целиком. **Общий фундамент
   (`pkg/authz/proxytuple`) трогается ровно одной записью запретительного
   набора** — правка круга 4, довод и границы в §4; предикат чистоты фундамента
   остаётся пустым, и landed-гейт намерений от неё не краснеет (измерено)
@@ -73,9 +73,9 @@ SPDX-License-Identifier: AGPL-3.0-or-later
 | Производитель | Что производит | Координата | Предикат |
 |---|---|---|---|
 | `proxytuple.ValidateTuple` | вердикт «принять/отвергнуть» по тройке (субъект, отношение, тип объекта) | `pkg/authz/proxytuple/policy.go:222` | `git grep -n 'func ValidateTuple' -- pkg/authz/proxytuple` |
-| `validateProxyTuple` | перевод вердикта в транспорт — `PermissionDenied "permission denied"` | `services/iam/internal/apps/kacho/api/internal_iam/handler.go:180` | `git grep -n 'func validateProxyTuple' -- services/iam` |
+| `validateProxyTuple` | перевод вердикта в транспорт — `PermissionDenied "permission denied"` | `services/iam/internal/apps/kaname/api/internal_iam/handler.go:180` | `git grep -n 'func validateProxyTuple' -- services/iam` |
 | обе RPC зовут его **до** use-case | сужение стоит на пути запроса, а не в глубине | `handler.go:192` и `handler.go:217` | `git grep -n 'validateProxyTuple(domain' -- services/iam` |
-| `validateTuple` (use-case) | грамматика `<тип>:<id>` → `InvalidArgument` с именем поля | `services/iam/internal/apps/kacho/api/internal_iam/register_resource.go:629` | `git grep -n 'func validateTuple' -- services/iam` |
+| `validateTuple` (use-case) | грамматика `<тип>:<id>` → `InvalidArgument` с именем поля | `services/iam/internal/apps/kaname/api/internal_iam/register_resource.go:629` | `git grep -n 'func validateTuple' -- services/iam` |
 | `RelationWriteGate.Authorize` | личность модуля из проверенного SAN + `fga_writer` на кластере; возвращает **домен SAN** | `services/iam/internal/authzguard/fgaproxy.go:97` | `git grep -n 'func (g \*RelationWriteGate) Authorize' -- services/iam` |
 | `ServiceAccountIDForService` | детерминированный `sva`+md5 id модульной учётки | `services/iam/internal/authzguard/fgaproxy.go:176` | `git grep -n 'func ServiceAccountIDForService' -- services/iam` |
 | `authzmap.DottedType` / `FGAObjectType` | **единственный** переходник между словарём модели и словарём каталога | `services/iam/internal/authzmap/type_dictionaries.go` | `git grep -n 'Второго переходника' -- services/iam` |
@@ -83,12 +83,12 @@ SPDX-License-Identifier: AGPL-3.0-or-later
 | `catalog_module` · `catalog_resource` · `catalog_verb` | словарь **строками**, с ключами `(module, resource, live)` и `(dotted, live)` | `20260901113757_rule_segments_have_a_referent.sql:121,153,242` | `git grep -n 'CREATE TABLE kacho_iam.catalog_' -- services/iam/internal/migrations` |
 | гейт паритета литерала и строк | расхождение посева каталога с `authzmap` | `services/iam/internal/check/catalog_seed_parity.go` | `git grep -n 'catalogSeedCensus' -- services/iam` |
 | гейт сверки намерения с приёмной стороной | тройка **каждого** эмитента прогоняется через `ValidateTuple` на сборке, в обе стороны | `internal/repohygiene/proxytupleintent_test.go` | `git grep -n 'Две половины, и вторая обязательна' -- internal/repohygiene` |
-| замок текста отказа **полосы А** | `PermissionDenied` + **дословно** `"permission denied"`, без причины | `services/iam/internal/apps/kacho/api/internal_iam/proxy_tuple_refusal_transport_test.go:26` | `git grep -n 'func TestProxyTupleRefusalMapsToPermissionDenied' -- services/iam` |
+| замок текста отказа **полосы А** | `PermissionDenied` + **дословно** `"permission denied"`, без причины | `services/iam/internal/apps/kaname/api/internal_iam/proxy_tuple_refusal_transport_test.go:26` | `git grep -n 'func TestProxyTupleRefusalMapsToPermissionDenied' -- services/iam` |
 | модульные учётки строками | `sva` + `substr(md5('kacho-<svc>'),1,17)` в `service_accounts` | `0009_sec_c_module_sa_least_priv.sql:63` | `grep -n "INSERT INTO kacho_iam.service_accounts" services/iam/internal/migrations/0009_sec_c_module_sa_least_priv.sql` |
 | якорь права записи | `fga_writer` спрашивается на **кластере**, а не на прежнем внеиерархическом объекте | `20260823002000_relation_write_moves_onto_the_cluster.sql` | `git grep -n 'relationWriteObject = clusterRootObject' -- services/iam ':!*.md'` |
 | `<exempt>` в каталоге прав | обе RPC освобождены от пообъектного Check, причина названа `INTERNAL_LISTENER` | `proto/kacho/cloud/iam/v1/internal_iam_service.proto:161` | `grep -n 'exempt_reason' proto/kacho/cloud/iam/v1/internal_iam_service.proto` |
-| **`shared.MapRepoErr`** *(круг 2)* | **единственный** перевод sentinel → gRPC для обеих RPC; SQLSTATE **не читает**, хвост даёт `Internal "internal error"` | `services/iam/internal/apps/kacho/shared/errors.go:47`, хвост `:108` | `git grep -n 'func MapRepoErr' -- services/iam` |
-| **`wrapPgErr`** *(круг 2)* | перевод SQLSTATE → sentinel: `23503` → `ErrFailedPrecondition`, текст по умолчанию `"referenced resource not found or still in use"` | `services/iam/internal/repo/kacho/pg/pgmaperr.go:45`, текст `:383` | `git grep -n 'func wrapPgErr' -- services/iam` |
+| **`shared.MapRepoErr`** *(круг 2)* | **единственный** перевод sentinel → gRPC для обеих RPC; SQLSTATE **не читает**, хвост даёт `Internal "internal error"` | `services/iam/internal/apps/kaname/shared/errors.go:47`, хвост `:108` | `git grep -n 'func MapRepoErr' -- services/iam` |
+| **`wrapPgErr`** *(круг 2)* | перевод SQLSTATE → sentinel: `23503` → `ErrFailedPrecondition`, текст по умолчанию `"referenced resource not found or still in use"` | `services/iam/internal/repo/kaname/pg/pgmaperr.go:45`, текст `:383` | `git grep -n 'func wrapPgErr' -- services/iam` |
 | **`drainer.Classify`** *(круг 2)* | **экспортированный** классификатор исхода применения у модуля: постоянный ⟺ `InvalidArgument` либо `PermissionDenied` | `pkg/outbox/drainer/classify.go:82`, предикат `:145` | `git grep -n 'func Classify' -- pkg/outbox/drainer` |
 | **`pkg/errors.Reason`** *(круг 2)* | закрытый **компилятором** словарь токенов полос резолва идентификатора; значений пять | `pkg/errors/reason.go:33`, закрытость `pkg/errors/reason_closed_test.go` | `git grep -n 'func AllReasons' -- pkg/errors` |
 | **`isPureGrant`** *(круг 2)* | публичная выдача — **чистый кортеж**: строки зеркала не пишет вовсе | `register_resource.go:224` | `git grep -n 'func (t tupleIntent) isPureGrant' -- services/iam` |
@@ -100,8 +100,8 @@ SPDX-License-Identifier: AGPL-3.0-or-later
 | `catalog_module_identity` в любом написании | `git grep -c catalog_module_identity -- . ':!*.md'` → **пусто** | **и не заводится** — вынесена кругом 4 задачей `#1885` (§2.2, §3.6) |
 | колонки, несущей имя типа в словаре **модели**, у `catalog_resource` | DDL `20260901113757:153`—`188`: `module`, `resource`, `dotted`, `retired_at`, `retired_reason`, `superseded_by`, `live` — и всё | **не заводится**: приведение делает единственный переходник (§2.3) |
 | ключа у `resource_mirror.object_type` | `grep -n 'CONSTRAINT' services/iam/internal/migrations/0019_resource_mirror.sql` → PK + три проверки, **ноль** внешних ключей | **и не заводится** — круг 4 выбрал условие приёма в операторе, довод в §2.1 |
-| условия каталога **в операторе записи зеркала** | `git grep -n 'catalog_resource' -- services/iam/internal/repo/kacho/pg/resource_mirror` → пусто | **заводится этой работой** (§2.1) |
-| записи в журнал на полосе отказа проксируемого кортежа | `grep -n 'h\.logger' services/iam/internal/apps/kacho/api/internal_iam/handler.go` → **одно** попадание, и оно присваивание (строка 146) | **заводится этой работой** (§2.6) |
+| условия каталога **в операторе записи зеркала** | `git grep -n 'catalog_resource' -- services/iam/internal/repo/kaname/pg/resource_mirror` → пусто | **заводится этой работой** (§2.1) |
+| записи в журнал на полосе отказа проксируемого кортежа | `grep -n 'h\.logger' services/iam/internal/apps/kaname/api/internal_iam/handler.go` → **одно** попадание, и оно присваивание (строка 146) | **заводится этой работой** (§2.6) |
 | производителя текста «имя типа в отказе» **на полосе А** | замок `proxy_tuple_refusal_transport_test.go:37` требует **дословно** `"permission denied"` | полоса А не трогается; различимость полосы А — в журнал (§2.6) |
 | производителя проверки отношения по `catalog_verb` | `catalog_verb` несёт **109** строк и **ноль** из `project`/`parent`/`owner`/`v_get` | обещание снимается: сверка невыразима (§2.4) |
 | **пути от SQLSTATE к sentinel на полосе зеркала** *(круг 2)* | `wrapPgErr` **неэкспортирована** и живёт в пакете `pg`; зеркало — отдельный пакет `resource_mirror`, оборачивает голым `fmt.Errorf` (`emitter.go:190`, `:327`) | **заводится этой работой** (§2.6): перевод пишется **на полосе**, а не переиспользуется чужой |
@@ -1102,7 +1102,7 @@ iam») — та же цена на соседней оси. Ни одна из �
 - **Модель прав (`fga_model.fga`) не трогается.** Ни отношения, ни типы.
 - **Форма очереди намерений не трогается.** `fga_outbox` разделяется многими
   производителями (посев старта, JIT, аварийный доступ, эта полоса —
-  `services/iam/internal/repo/kacho/pg/fga_outbox/emitter.go:131`), и условие,
+  `services/iam/internal/repo/kaname/pg/fga_outbox/emitter.go:131`), и условие,
   положенное в общий эмитент, отвергло бы собственные выдачи iam на объекты, у
   которых строки каталога **ресурсов** нет by construction — например на
   кластерную вершину. Условие стоит **на полосе прокси**, а не в общем эмитенте.
@@ -1206,7 +1206,7 @@ iam») — та же цена на соседней оси. Ни одна из �
   ошибки. Это лок на `Б3` круга 1, и круг 4 его **не ослабляет**: оператор §2.1
   возвращает два факта, поэтому штатный ноль строк идемпотентной вставки отказом
   не читается **by construction**
-- **Производитель:** полоса целиком; замок словаря — `services/iam/internal/repo/kacho/pg/scalegrid/seed.go:93`
+- **Производитель:** полоса целиком; замок словаря — `services/iam/internal/repo/kaname/pg/scalegrid/seed.go:93`
 
 **`IAM-MV-02` (характеризующий, несущий). Балансировщик регистрирует свой тип.**
 - **Дано:** учётка `kacho-nlb`; домен SAN `nlb`, модуль каталога `loadbalancer`
@@ -1586,7 +1586,7 @@ iam») — та же цена на соседней оси. Ни одна из �
 |---|---|
 | landed-гейт тройки эмитентов (`internal/repohygiene`) | тройка каждого эмитента прогоняется через правило приёма **на сборке, без БД**. Работа **сужает** правило приёма одной записью (§4), значит гейт обязан остаться зелёным — и это **измерено кругом 4** в обеих посадках, а не обещано. **Прогонять с отключённым кешем**: пакет отказывается выносить вердикт на кешируемом прогоне, и без `-count=1` печатает отказ, который легко принять за находку (наблюдалось кругом 4) |
 | `services/iam/internal/authzmap/canonical_model_drift_test.go` | звено цепи авторитета §1.1: каждый тип каталога существует в модели. Работа его **не трогает и не вправе тронуть** |
-| `services/iam/internal/check/catalog_seed_parity.go` и `apps/kacho/seed/catalog_parity.go` | двусторонний паритет литерала и строк. Работа каталога **не меняет ни одной строкой** — значит оба обязаны остаться зелёными **без правки**, и это машинное доказательство того, что цепь авторитета не тронута |
+| `services/iam/internal/check/catalog_seed_parity.go` и `apps/kaname/seed/catalog_parity.go` | двусторонний паритет литерала и строк. Работа каталога **не меняет ни одной строкой** — значит оба обязаны остаться зелёными **без правки**, и это машинное доказательство того, что цепь авторитета не тронута |
 | landed-замок транспорта полосы А | краснеет, если работа тронула её; а она не трогается (§2.6) |
 | `pkg/errors/reason_closed_test.go` | закрытость словаря токенов; работа его не расширяет (§2.6), значит гейт обязан остаться зелёным без правки |
 
@@ -1978,10 +1978,10 @@ use-case**, до эмиссии кортежа, а закрытый список
 
 **Опровержение первое, по исходу.** Дословный прогон даёт **57 файлов**, и
 не-тестовых среди них большинство — включая
-`services/iam/internal/repo/kacho/pg/pgmaperr.go:45` (`wrapPgErr`), где `23503`
+`services/iam/internal/repo/kaname/pg/pgmaperr.go:45` (`wrapPgErr`), где `23503`
 переводится в `iamerr.ErrFailedPrecondition` с текстом по умолчанию
 `"referenced resource not found or still in use"` (`:383`), и
-`services/iam/internal/repo/kacho/pg/maperr.go:10`, где это отображение объявлено
+`services/iam/internal/repo/kaname/pg/maperr.go:10`, где это отображение объявлено
 шапкой. Перевод SQLSTATE → sentinel в iam **существует и работает**.
 
 **Опровержение второе, по самому предикату — и оно объясняет первое.** У `git
@@ -2251,9 +2251,9 @@ awk '/INSERT INTO kacho_iam.catalog_verb/,/;/' <миграция> \
 4. **лишняя строка каталога РОНЯЕТ СТАРТ, а не расширяет словарь.**
    ```sh
    grep -n 'func (c CatalogParityCensus) Diverged' -A2 \
-     services/iam/internal/apps/kacho/seed/catalog_parity.go
+     services/iam/internal/apps/kaname/seed/catalog_parity.go
    # return len(c.MissingRows) > 0 || len(c.ExtraRows) > 0
-   grep -n 'AssertCatalogParity' services/iam/cmd/kacho-iam/serve.go   # :1323
+   grep -n 'AssertCatalogParity' services/iam/cmd/kaname/serve.go   # :1323
    ```
    Сверка **двусторонняя** (`ExtraRows`), а её отказ **фатален** (`return
    fmt.Errorf`, и комментарий рядом объявляет фатальность намеренной).
@@ -2322,15 +2322,15 @@ sed -n '22p' services/iam/internal/domain/module_set.go
 
 git grep -ohE "'kacho-[a-z-]+'" -- services/iam/internal/migrations | sort -u
 # kacho-api-gateway · kacho-bootstrap-admin · kacho-bootstrap-grant · kacho-compute
-# kacho-iam-bootstrap · kacho-nlb · kacho-registry · kacho-root · kacho-storage
+# kaname-bootstrap · kacho-nlb · kacho-registry · kacho-root · kacho-storage
 # kacho-system · kacho-vpc · kacho-vpc-operator
 
-git grep -c "'kacho-iam'" -- services/iam/internal/migrations    # → пусто
+git grep -c "'kaname'" -- services/iam/internal/migrations    # → пусто
 ```
 
-**Модульной учётки `kacho-iam` не существует ни в одной миграции** — и не должна:
+**Модульной учётки `kaname` не существует ни в одной миграции** — и не должна:
 `iam` собственную проксируемую RPC не зовёт, домена SAN у него в этой роли нет, а
-`ServiceAccountIDForService("iam")` называл бы `sva`+md5(`kacho-iam`), строки под
+`ServiceAccountIDForService("iam")` называл бы `sva`+md5(`kaname`), строки под
 который нет. Значит для модуля `iam` строка identity **неконструируема ключом
 `service_accounts(id)`**, который §2.2 сама и требует.
 
@@ -2359,7 +2359,7 @@ git grep -c "'kacho-iam'" -- services/iam/internal/migrations    # → пуст�
 identity полагается модулю, у которого есть модульная учётка и домен SAN, — и
 предикат этого признака поставить в §2.10 вместо `domain.KnownModules()`.
 Соответственно правятся §2.7 п. 3, §2.10 п. 1, число `IAM-MV-14`, строка §6 «у
-каждого модуля есть identity» и ось инъекции §7.2. Заводить строку `kacho-iam`
+каждого модуля есть identity» и ось инъекции §7.2. Заводить строку `kaname`
 ради счёта — **не исход**: это принципал, которого никто не предъявляет, то есть
 расширение поверхности ради зелёного гейта.
 
@@ -2569,9 +2569,9 @@ Go**». Заводить вторую задачу об одном предме�
 ### 16.2. Б5 — ПРИНЯТО. Набор носителей identity назван ПРИЗНАКОМ
 
 **Оба прогона проверяющего воспроизведены, оба подтверждены:**
-`domain.KnownModules()` — шесть имён, включая `iam`; модульной учётки `kacho-iam`
+`domain.KnownModules()` — шесть имён, включая `iam`; модульной учётки `kaname`
 в миграциях **ноль** (мой предикат считал вхождения по каждому имени, а не
-`sort -u`: `kacho-iam-bootstrap` есть, `kacho-iam` — нет).
+`sort -u`: `kaname-bootstrap` есть, `kaname` — нет).
 
 **Признак назван и он не перечень:** строка identity полагается модулю, чья учётка
 **состоит в группе писателей отношений**, то есть держит `fga_writer` на кластере
@@ -2615,7 +2615,7 @@ Go**». Заводить вторую задачу об одном предме�
 | §2.10 п. 1 и `IAM-MV-14` неконструируемы | набор **выводится** обходом миграций; перепись печатает **обе** величины; ожидание — пять, и оно помечено ориентиром |
 | инъекция §7.2 проверяет не ту сторону | ось разбита на две — «нет строки у писателя» и «есть строка без выдачи», плюс отдельная ось предпосылки (пустой обход роняет гейт) |
 
-**Заводить `kacho-iam` ради счёта — не исход**, и это записано в §2.2: принципал,
+**Заводить `kaname` ради счёта — не исход**, и это записано в §2.2: принципал,
 которого никто не предъявляет, есть расширение поверхности ради зелёного гейта.
 
 **Ослабление названо вслух** (§6): признак держат оператор и гейт, а **не** ключ —

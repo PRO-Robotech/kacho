@@ -41,7 +41,7 @@ helper-функции). Дальше — обычные инкрементные
 | 0003 | `0003_drop_security_group_status.sql` | DROP `security_groups.status` — у SG нет provisioning-lifecycle, статус никем не наблюдался |
 | 0004 | `0004_address_pool_cidrs.sql` | нормализованная child-таблица `address_pool_cidrs` + EXCLUDE gist — CIDR пулов не пересекаются per `kind` (declarative, race-free) |
 | 0005 | `0005_default_sg_fk_and_unique.sql` | `networks.default_security_group_id` → nullable + FK ON DELETE SET NULL; partial UNIQUE `security_groups_one_default_per_network` |
-| 0006 | `0006_fga_register_outbox.sql` | таблица `fga_register_outbox` (transactional-outbox для регистрации owner-tuple в FGA через kacho-iam) + LISTEN/NOTIFY-триггер |
+| 0006 | `0006_fga_register_outbox.sql` | таблица `fga_register_outbox` (transactional-outbox для регистрации owner-tuple в FGA через kaname) + LISTEN/NOTIFY-триггер |
 | 0007 | `0007_network_vrf_id.sql` | `networks.vrf_id bigint` — sequence-backed уникальный per-network VRF id (инфра-чувствительное поле data-plane, отдается только через `InternalNetworkService.GetNetwork`) |
 | 0008 | `0008_fga_register_outbox_resource_cols.sql` | additive `resource_kind` / `resource_id` на `fga_register_outbox` (нужны reconciler'у для адресации intent по ресурсу) |
 | 0009 | `0009_operations_account_id.sql` | additive nullable `operations.account_id` (общий LRO-writer из `pkg/operations` INSERT'ит колонку безусловно) + partial index |
@@ -295,7 +295,7 @@ trigger vpc_outbox_notify_trg AFTER INSERT
 
 ### `fga_register_outbox` (миграция 0006/0008)
 
-Transactional-outbox для регистрации владения через `kacho-iam`. Намерение
+Transactional-outbox для регистрации владения через `kaname`. Намерение
 «register/unregister» пишется строкой в той же writer-TX, что вставляет/удаляет
 ресурс (один commit, без dual-write); отдельный register-drainer применяет каждое намерение
 через `InternalIAMService.RegisterResource`/`Unregister`. LISTEN/NOTIFY-канал

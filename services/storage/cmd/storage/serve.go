@@ -20,6 +20,7 @@ import (
 	"google.golang.org/grpc/connectivity"
 
 	"github.com/PRO-Robotech/kacho/pkg/authz"
+	"github.com/PRO-Robotech/kacho/pkg/authz/authziam"
 	"github.com/PRO-Robotech/kacho/pkg/authz/authzmetrics"
 	"github.com/PRO-Robotech/kacho/pkg/authz/proxytuple"
 	coredb "github.com/PRO-Robotech/kacho/pkg/db"
@@ -38,19 +39,17 @@ import (
 	"github.com/PRO-Robotech/kacho/pkg/servicehost"
 	"github.com/PRO-Robotech/kacho/pkg/subscription"
 
-	iamv1 "github.com/PRO-Robotech/kacho/pkg/api/kacho/cloud/iam/v1"
 	operationpb "github.com/PRO-Robotech/kacho/pkg/api/kacho/cloud/operation"
 	storagev1 "github.com/PRO-Robotech/kacho/pkg/api/kacho/cloud/storage/v1"
 	subscriptionv1 "github.com/PRO-Robotech/kacho/pkg/api/kacho/cloud/subscription"
+	iamv1 "github.com/PRO-Robotech/kacho/pkg/api/kaname/cloud/iam/v1"
 
-	corequota "github.com/PRO-Robotech/kacho/pkg/quota"
 	"github.com/PRO-Robotech/kacho/services/storage/internal/apps/kacho/api/disktype"
 	"github.com/PRO-Robotech/kacho/services/storage/internal/apps/kacho/api/disktypebinding"
 	"github.com/PRO-Robotech/kacho/services/storage/internal/apps/kacho/api/image"
 	"github.com/PRO-Robotech/kacho/services/storage/internal/apps/kacho/api/snapshot"
 	"github.com/PRO-Robotech/kacho/services/storage/internal/apps/kacho/api/storagebackend"
 	"github.com/PRO-Robotech/kacho/services/storage/internal/apps/kacho/api/volume"
-	"github.com/PRO-Robotech/kacho/services/storage/internal/apps/kacho/shared/quota"
 	"github.com/PRO-Robotech/kacho/services/storage/internal/apps/kacho/shared/serviceerr"
 	"github.com/PRO-Robotech/kacho/services/storage/internal/authzfilter"
 	"github.com/PRO-Robotech/kacho/services/storage/internal/clients"
@@ -371,52 +370,42 @@ func runServe(cfg config.Config) error {
 	imageUC.WithListFilter(narrower)
 
 	// ── совещательная полоса учёта числа ресурсов (приёмка квот, DoD S4 п.1) ──
-	// Величину назначает kacho-iam и разрешает старшинство областей У СЕБЯ
+	// Величину назначает kaname и разрешает старшинство областей У СЕБЯ
 	// (`InternalLimitService.Resolve` на том же внутреннем соединении, которым мы
 	// уже спрашиваем права, — нового ребра работа не заводит). Строку учёта
 	// заводит владелец типа: ребро «владелец величин → владелец типа» замкнуло бы
 	// цикл, запрещённый polyrepo.md.
 	//
-	// Без соединения с соседом полоса НЕ собирается, и это осознанно: спрашивать
-	// величины не у кого. «Полоса не собрана» означает «нет РАННЕГО отказа», а не
-	// «нет предела» — место по-прежнему занимает триггер в той же транзакции, что
-	// вставка, поэтому исчерпание приезжает отказом операции, а «потолок не
-	// назван» остаётся отказом. Молча снять учёт отсутствием соседа нельзя: ровно
-	// так контроль и становится мёртвым, оставаясь на вид работающим.
+	// Ребро storage→домен величин: ОДНО ребро, ДВЕ полосы — разрешение величины
+	// на пути запроса и фоновая дельта, которой снимок догоняет авторитет.
+	//
+	// Адрес ОБЪЯВЛЕН ручкой, а не выведен из адреса авторизации. Ветки «полоса не
+	// собирается, потому что соседа не задали» здесь БОЛЬШЕ НЕТ: незаданное
+	// объявление отвергает страж старта, а объявленное отсутствие — законная
+	// посадка, в которой тянущий не заводится, а состояние курсора называет
+	// причину. Приёмка
+	// `docs/specs/sub-phase-KAN-QUOTA-1-limit-authority-leaves-iam-acceptance.md`,
+	// стадия S1.
+	quotaEdge, stopQuotaEdge, qerr := buildQuotaAuthorityEdge(ctx, cfg, pool, iamClient, logger)
+	if qerr != nil {
+		return qerr
+	}
+	defer stopQuotaEdge()
+
 	var quotaHandler *handler.QuotaHandler
-	if authzConn != nil {
-		limitClient := clients.NewLimitClient(authzConn)
-		quotaGuard := quota.NewGuard(pg.NewQuotaRepo(pool), limitClient, iamClient)
-		volumeUC.WithQuota(quotaGuard)
-		snapshotUC.WithQuota(quotaGuard)
-		imageUC.WithQuota(quotaGuard)
+	if quotaEdge.Guard != nil {
+		volumeUC.WithQuota(quotaEdge.Guard)
+		snapshotUC.WithQuota(quotaEdge.Guard)
+		imageUC.WithQuota(quotaEdge.Guard)
 		// Чтение квот арендатором — та же полоса, что и ранний отказ: у чтения и
 		// у полосы ровно два источника, и они одни и те же.
-		quotaHandler = handler.NewQuotaHandler(quotaGuard)
-
-		// Снимок величины обязан ДОГОНЯТЬ авторитет: без тянущего строка,
-		// заведённая один раз, живёт со своей величиной вечно, и смена предела
-		// администратором не доезжает до проекта никогда. Показывать арендатору
-		// такой снимок значило бы громко назвать число, которое не догонит
-		// назначенное, — поэтому чтение и тянущий едут вместе.
-		stopQuotaSync, qerr := corequota.StartLimitSyncer(
-			ctx, pool, limitClient, pg.QuotaSchema, corequota.Config{}, logger)
-		if qerr != nil {
-			return fmt.Errorf("start quota limit syncer: %w", qerr)
-		}
-		defer stopQuotaSync()
-	} else {
-		logger.Warn("resource-count quota advisory band NOT wired (authz.iam-addr empty) — " +
-			"the charging trigger still holds the ceiling, but the tenant learns of exhaustion " +
-			"from the operation instead of a synchronous refusal, and the limit snapshot will " +
-			"NEVER catch up with the authority: an administrator raising or lowering a ceiling " +
-			"has no effect on this process")
+		quotaHandler = handler.NewQuotaHandler(quotaEdge.Guard)
 	}
 
 	// ── FGA owner-tuple register-drainer + sync-registrar (SEC-D, анти-BOLA) ──
 	// Volume/Snapshot/Image Create/Delete эмитят register/unregister-intent в
 	// kacho_storage.fga_register_outbox (writer-TX). register-drainer применяет их
-	// через kacho-iam RegisterResource/UnregisterResource (тот же :9091 mTLS-conn,
+	// через kaname RegisterResource/UnregisterResource (тот же :9091 mTLS-conn,
 	// что и вопрос о правах — RegisterResource Internal-only, ban #6). sync-registrar
 	// регистрирует owner-tuple сразу после Create-commit (immediate анти-BOLA-резолв,
 	// без гонки с async drainer'ом; drainer — at-least-once backstop). authzConn nil
@@ -427,7 +416,7 @@ func runServe(cfg config.Config) error {
 		}
 		// Отравление обязано быть паузой, а не потерей: без периодического
 		// redrive недоставленная регистрация оставляет ресурс без mirror-строки в
-		// kacho-iam, а значит без owner-tuple и без материализованных глаголов —
+		// kaname, а значит без owner-tuple и без материализованных глаголов —
 		// невидимым для authz до ручной правки БД. См. redrive_backstop.go.
 		if derr := startRedriveBackstop(ctx, pool, logger); derr != nil {
 			return fmt.Errorf("start redrive backstop: %w", derr)
@@ -452,7 +441,7 @@ func runServe(cfg config.Config) error {
 	// подстраховка. Без него строка операции, пережившая смерть процесса (перекат,
 	// OOM, исчерпание бюджета терминальной записи) или так и не дождавшаяся места в
 	// очереди исполнителя, остаётся «в процессе» НАВСЕГДА, и клиент не узнаёт исхода
-	// ни разу. Не зависит ни от kacho-iam, ни от дренажа регистраций: это сверка со
+	// ни разу. Не зависит ни от kaname, ни от дренажа регистраций: это сверка со
 	// СВОЕЙ БД. См. recovery.go.
 	lroReconciler := startLRORecovery(ctx, pool, operationresolver.Readers{
 		Volume:   volumeRepo,
@@ -650,8 +639,18 @@ func describe(
 			OptIn:    cfg.AuthZTrustAnyForwarder,
 		},
 
-		Authz:        servicecontract.AuthzViaIAM,
-		CheckEdge:    servicecontract.NewPeerEdge(cfg.AuthZIAMGRPCAddr, checkCreds),
+		// Домен доверия — ЗНАЧЕНИЕ: личность клиентского сертификата этот процесс
+		// разбирает, и разбирает её ОТНОСИТЕЛЬНО домена. Читается из той же
+		// функции, значение которой уезжает в пару звеньев извлечения личности,
+		// поэтому «страж пропустил» ⟺ «домен реально объявлен».
+		TrustDomain:     servicecontract.Value(cfg.TrustDomain()),
+		TrustDomainKnob: "KACHO_STORAGE_AUTHZ_TRUST_DOMAIN",
+
+		Authz:     servicecontract.AuthzViaIAM,
+		CheckEdge: servicecontract.NewPeerEdge(cfg.AuthZIAMGRPCAddr, checkCreds),
+		// Перевод вопроса в контракт службы доступа приносит СЕРВИС: носитель
+		// принадлежит фундаменту и чужого контракта не знает (приёмка K3-1 §7.2).
+		PeerCheck:    authziam.NewCheckClient,
 		CacheWindow:  cfg.AuthZCacheTTL,
 		ClientBudget: cfg.AuthZCheckTimeout,
 		// Приёмник величин кеша вердиктов: носитель строит кеш, а
@@ -685,7 +684,7 @@ func describe(
 		StreamBudget: servicecontract.Value(cfg.SubscriptionStreamBudget),
 
 		// Бюджет отказов объявляется ВЕЛИЧИНОЙ, а не изъятием: решение о доступе
-		// storage принимает не у себя, а вопросом к kacho-iam, — то есть сетевой
+		// storage принимает не у себя, а вопросом к kaname, — то есть сетевой
 		// сосед, которого шторм отказов может уронить, у него ЕСТЬ, и на том же
 		// соединении живут пообъектный сужатель и регистрация владельца. Изъятие
 		// («ронять некого») законно только у владельца модели, решающего в своём
@@ -997,7 +996,7 @@ func authzConnHealth(conn *grpc.ClientConn) error {
 // внутренних деталей наружу.
 var (
 	errLROWorkerDown   = errors.New("LRO dispatcher loop not running")
-	errIAMConnShutdown = errors.New("connection to kacho-iam is shut down")
+	errIAMConnShutdown = errors.New("connection to kaname is shut down")
 )
 
 // Сроки диагностической поверхности. Названы константами, а не вписаны в
@@ -1052,7 +1051,7 @@ func describeDiagnosticSurface(endpoint string, m *metrics.Metrics, agg *health.
 	})
 }
 
-// buildListFilter собирает пообъектный сужатель видимости (kacho-iam
+// buildListFilter собирает пообъектный сужатель видимости (kaname
 // AuthorizeService.BatchCheck по id ПРОЧИТАННОЙ страницы).
 //
 // Возвращается КОНКРЕТНЫЙ тип: один и тот же сужатель обслуживает обе двери

@@ -146,36 +146,56 @@ func selectorKind(sel *ast.SelectorExpr) string {
 	return ""
 }
 
-// TestTypeNamesAreDistinctAndPrefixed — имя типа обязано быть своим у каждого.
+// TestTypeNamesAreDistinctAndPrefixed — имя типа обязано быть своим у каждого и
+// принадлежать ОБЪЯВЛЕННОМУ семейству.
 //
 // Положительная сторона предыдущей пробы: ссылка из реестра есть и тогда, когда
 // два ресурса объявили ОДНО имя типа — второй молча заслонил бы первого.
+//
+// Семейств два, и оба названы решением: платформа и служба доступа, которая называет себя
+// своим именем. Прежняя редакция требовала приставки провайдера ото всех — требование
+// верное ровно до тех пор, пока служба не получила собственное имя. Снять его совсем
+// значило бы разрешить любую приставку: третье семейство появилось бы молча, и арендатор
+// узнал бы о нём из отказа «Invalid resource type», а не из решения.
 func TestTypeNamesAreDistinctAndPrefixed(t *testing.T) {
 	p := New().(*kachoProvider)
 	seen := map[string]bool{}
+	families := map[string]int{}
+
+	// Семейство службы доступа выводится из её объявленного имени, а не вписывается:
+	// второе написание того же семейства разошлось бы с первым молча.
+	accessTypeNameFamily := strings.SplitN(typeNameIAMAccount, "_", 2)[0]
+
+	check := func(name, what string) {
+		if seen[name] {
+			t.Errorf("имя типа %q объявлено дважды — второй %s заслоняет первого", name, what)
+		}
+		seen[name] = true
+		switch {
+		case strings.HasPrefix(name, providerTypeName+"_"):
+			families[providerTypeName]++
+		case strings.HasPrefix(name, accessTypeNameFamily+"_"):
+			families[accessTypeNameFamily]++
+		default:
+			t.Errorf("имя типа %q не принадлежит ни одному объявленному семейству (%s, %s).\n"+
+				"Семейство — решение о том, чьё это имя: приставка, заведённая без него, "+
+				"требует от арендатора второго локального имени провайдера, о котором "+
+				"никто не написал.", name, providerTypeName, accessTypeNameFamily)
+		}
+	}
 
 	for _, ctor := range p.Resources(context.Background()) {
-		name := typeNameOfResource(ctor())
-		if seen[name] {
-			t.Errorf("имя типа %q объявлено дважды — второй ресурс заслоняет первого", name)
-		}
-		seen[name] = true
-		if !strings.HasPrefix(name, "kacho_") {
-			t.Errorf("имя типа %q не несёт префикса провайдера", name)
-		}
+		check(typeNameOfResource(ctor()), "ресурс")
 	}
 	for _, ctor := range p.DataSources(context.Background()) {
-		name := typeNameOfDataSource(ctor())
-		if seen[name] {
-			t.Errorf("имя типа %q объявлено дважды", name)
-		}
-		seen[name] = true
-		if !strings.HasPrefix(name, "kacho_") {
-			t.Errorf("имя типа %q не несёт префикса провайдера", name)
-		}
+		check(typeNameOfDataSource(ctor()), "источник данных")
 	}
 
-	t.Logf("имён в реестре: %d", len(seen))
+	if len(families) != 2 {
+		t.Errorf("семейств имён в реестре %d, объявлено 2 — перечень семейств и дерево "+
+			"разошлись: %v", len(families), families)
+	}
+	t.Logf("имён в реестре: %d, по семействам: %v", len(seen), families)
 	if len(seen) < 20 {
 		t.Errorf("в реестре %d имён — меньше, чем заведено ресурсов и источников; "+
 			"проверка различимости осматривает не всё", len(seen))

@@ -87,8 +87,8 @@ type loadBalancerResource struct{ c *client.Client }
 // NewNLBLoadBalancerResource — конструктор для реестра провайдера.
 func NewNLBLoadBalancerResource() resource.Resource { return &loadBalancerResource{} }
 
-func (r *loadBalancerResource) Metadata(_ context.Context, req resource.MetadataRequest, resp *resource.MetadataResponse) {
-	resp.TypeName = req.ProviderTypeName + "_nlb_load_balancer"
+func (r *loadBalancerResource) Metadata(_ context.Context, _ resource.MetadataRequest, resp *resource.MetadataResponse) {
+	resp.TypeName = typeNameNLBLoadBalancer
 }
 
 func (r *loadBalancerResource) Configure(_ context.Context, req resource.ConfigureRequest, resp *resource.ConfigureResponse) {
@@ -306,7 +306,7 @@ func (r *loadBalancerResource) Create(ctx context.Context, req resource.CreateRe
 		V6Source:              vipSource(vipSourceOf(ctx, plan.V6Source)),
 	}
 
-	id, err := awaitCreate(ctx, r.c, loadBalancersPath, "networkLoadBalancerId", "kacho_nlb_load_balancer",
+	id, err := awaitCreate(ctx, r.c, loadBalancersPath, "networkLoadBalancerId", typeNameNLBLoadBalancer,
 		plan.ProjectID.ValueString()+"/"+plan.Name.ValueString(), body)
 	if err != nil {
 		resp.Diagnostics.AddError("Создание балансировщика не завершилось", err.Error())

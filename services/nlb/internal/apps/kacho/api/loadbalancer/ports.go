@@ -90,7 +90,7 @@ type SecurityGroupClient = vpcclient.SecurityGroupClient
 // Анти-oracle: несоответствие/no-access → generic InvalidArgument.
 type AddressClient = vpcclient.AddressClient
 
-// Registrar — sync-primary owner-tuple registrar (kacho-iam
+// Registrar — sync-primary owner-tuple registrar (kaname
 // InternalIAMService.RegisterResource). Create после durable commit ресурса +
 // его `fga_register_outbox`-intent'а синхронно регистрирует owner/containment-
 // tuple, чтобы grant создателя был виден сразу (закрывает async-only окно). nil

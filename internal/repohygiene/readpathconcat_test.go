@@ -45,7 +45,7 @@
 // Вне объёма по дереву есть ещё два вхождения формы, и оба разобраны, а не
 // умолчаны — иначе «ноль находок» читалось бы шире, чем есть:
 //
-//   - `services/iam/internal/apps/kacho/seed/migrate_backfill.go` — сравнение
+//   - `services/iam/internal/apps/kaname/seed/migrate_backfill.go` — сравнение
 //     `o.payload->>'user' = 'account:' || b.resource_id`. Склеена колонка
 //     ВНЕШНЕЙ, уже привязанной таблицы, то есть коррелированный скаляр; у
 //     внутренней стороны колонки нет вовсе — там извлечение из JSONB, которое
@@ -147,7 +147,7 @@ func TestReadPathComparesColumnsNotConcatenations(t *testing.T) {
 // объявление читается ТЕКСТОМ — но именно объявление, а не второй перечень.
 // Свой перечень каталогов не двинулся бы от появления третьего и продолжал бы
 // сторожить прежние два.
-const fingerprintSource = "services/iam/internal/repo/kacho/pg/scalegrid/fingerprint.go"
+const fingerprintSource = "services/iam/internal/repo/kaname/pg/scalegrid/fingerprint.go"
 
 // fingerprintDirDecl — строка вида `verdictDir = "…"` в этом объявлении.
 var fingerprintDirDecl = regexp.MustCompile(`(?m)^\s*(\w*[Dd]ir)\s*=\s*"([^"]+)"`)
@@ -203,7 +203,7 @@ func collectPredicateConcats(t *testing.T, root string, files []string) ([]conca
 		}
 		c.files++
 		for _, lit := range sqlLiteralsOf(filepath.Base(rel), body) {
-			if !strings.Contains(lit.sql, "kacho_iam.") {
+			if !strings.Contains(lit.sql, "kaname.") {
 				continue
 			}
 			c.literals++

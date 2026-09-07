@@ -65,6 +65,29 @@ type Config struct {
 	FGA         FGAConfig         `mapstructure:"fga"`
 	MTLS        MTLSConfig        `mapstructure:"mtls"`
 	Jobs        JobsConfig        `mapstructure:"jobs"`
+	Quota       QuotaConfig       `mapstructure:"quota"`
+}
+
+// QuotaConfig — секция quota: ОБЪЯВЛЕНИЕ домена величин.
+//
+// Прежде адрес домена величин ВЫВОДИЛСЯ из адреса внутреннего слушателя соседа
+// по авторизации. Довод был верен ровно до тех пор, пока авторитет величин и
+// авторитет авторизации — одна служба; уход модуля квотирования из службы
+// доступа это условие снимает.
+//
+// Приёмка `docs/specs/sub-phase-KAN-QUOTA-1-limit-authority-leaves-iam-acceptance.md`,
+// стадия S1, решение Д1.
+type QuotaConfig struct {
+	// Authority — где живёт домен величин. РОВНО ДВА законных значения:
+	// адрес в форме host:port либо слово `not-deployed`. Незаданное значение —
+	// отказ старта: умолчание означало бы выбор за оператора между «потолки
+	// действуют» и «потолков нет», и выбор этот был бы невидим.
+	//
+	// Объявление ОДНО на обе полосы ребра — разрешение величины на пути запроса
+	// и фоновую дельту: ребро одно, и два объявления о нём разошлись бы молча.
+	//
+	// ENV `KACHO_NLB_QUOTA__AUTHORITY`.
+	Authority string `mapstructure:"authority"`
 }
 
 // Mode возвращает резолвленный enum-режим (после `Validate`).
@@ -315,7 +338,7 @@ type AuthzConfig struct {
 	// DenyBudgetPerSec — устойчивый темп (в секунду на принципала) тех проверок
 	// прав, чей исход кэш НЕ поглощает: отказ, промах «нет пути», недоступность
 	// модели. По исчерпании звено решения отвечает `ResourceExhausted`, не
-	// обращаясь к kacho-iam, — то есть сбрасывает шторм отказов с соседа.
+	// обращаясь к kaname, — то есть сбрасывает шторм отказов с соседа.
 	//
 	// 100/с — та же величина, что до перевода на носитель стояла в композиционном
 	// корне литералом (`DenyRateLimitPerSec: 100`). Штатную работу тенанта она не
@@ -333,7 +356,7 @@ type AuthzConfig struct {
 	// форвардить end-user principal-metadata (обычно единственный — api-gateway SA).
 	// Пробрасывается в grpcsrv.UnaryTrustedPrincipalExtract(WithTrustedForwarders)
 	// на ОБОИХ листенерах. Пусто (default) → любой mTLS-verified peer доверен как
-	// форвардер (паритет с insecure dev back-compat и kacho-iam internal); задаётся в
+	// форвардер (паритет с insecure dev back-compat и kaname internal); задаётся в
 	// production для defense-in-depth против confused-deputy (внутренний сервис со
 	// своим валидным cert'ом не может выдать себя за пользователя). ENV
 	// `KACHO_NLB_AUTHZ__TRUSTED_FORWARDER_SANS` (comma-separated).
@@ -350,6 +373,22 @@ type AuthzConfig struct {
 	// старта на пустом круге. В боевом режиме НЕ действует — иначе это была бы
 	// ручка, снимающая защиту на развёрнутом стенде.
 	TrustAnyForwarder bool `mapstructure:"trust-any-forwarder"`
+
+	// TrustDomainName — ДОМЕН ДОВЕРИЯ установки: то, чьи сертификаты она признаёт своими.
+	//
+	// Круг отправителей выше называет, КОМУ позволено говорить за пользователя;
+	// домен отвечает на предыдущий вопрос — чьи вообще предъявители наши. Пока он
+	// был скомпилирован, установка меняла его только пересборкой: сертификаты
+	// выпускаются под доменом из величины профиля, а принимающая сторона читала
+	// литерал, и расходились они МОЛЧА — законный отправитель переставал
+	// опознаваться, а отказ выглядел как вызов без личности.
+	//
+	// Умолчания нет намеренно: непустое умолчание сделало бы контроль на вид
+	// включённым и увело бы установку, забывшую назвать свой домен, в чужой.
+	// Пустая величина — отказ старта (Validate), а не «принимаем любой».
+	//
+	// ENV `KACHO_NLB_AUTHZ__TRUST_DOMAIN`, ключ YAML `authz.trust-domain`.
+	TrustDomainName string `mapstructure:"trust-domain"`
 }
 
 // AuthzListFilterConfig — per-object filtered List (RBAC).
@@ -377,7 +416,7 @@ type AuthzListFilterConfig struct {
 	FailOpen bool `mapstructure:"fail-open"`
 
 	// Breakglass — аварийный режим: когда модели прав на этой посадке нет вовсе
-	// (`enabled=false` либо соединение с kacho-iam не собрано), списки отдаются
+	// (`enabled=false` либо соединение с kaname не собрано), списки отдаются
 	// НЕсуженными вместо отказа.
 	//
 	// Он остаётся явным исключением, а не умолчанием: прежде «фильтр выключен» само
@@ -409,7 +448,7 @@ type AuthzCacheConfig struct {
 // Прямой best-effort tuple-write (адрес прежнего движка, его стор и модель) удалён;
 // вместо него
 // owner-hierarchy tuple пишется register-intent'ом в `fga_register_outbox` в той же
-// writer-tx (Вариант A), а register-drainer применяет его через kacho-iam
+// writer-tx (Вариант A), а register-drainer применяет его через kaname
 // InternalIAMService.RegisterResource/UnregisterResource по mTLS.
 type FGAConfig struct {
 	// RegisterDrainer — register-drainer (fga_register_outbox → IAM
@@ -465,15 +504,15 @@ type MTLSConfig struct {
 	// IAMRegister — client-cert на ВНУТРЕННЕМ ребре nlb→iam-internal (9091):
 	// InternalIAMService.Check (per-RPC authz-gate) + RegisterResource/
 	// UnregisterResource (register-drainer). ServerName =
-	// kacho-iam-internal.* (фактический :9091 dial-host).:
+	// kaname-internal.* (фактический :9091 dial-host).:
 	// этот же conn несёт Check, поэтому read/authz authz-ребро покрыто им.
 	IAMRegister grpcclient.TLSClient `mapstructure:"iam-register"`
 	// IAMProject — client-cert на ПУБЛИЧНОМ ребре nlb→iam (9090):
 	// ProjectService.Get (existence + leaf-owner). ((b),
 	// per-listener split): отдельное поле, потому что public dial-host =
-	// kacho-iam.* (≠ kacho-iam-internal.*) и единый ServerName не может быть
+	// kaname.* (≠ kaname-internal.*) и единый ServerName не может быть
 	// корректен для обоих listener'ов под RequireAndVerifyClientCert (
-	// latent-bug). ServerName = kacho-iam.* (фактический :9090 dial-host).
+	// latent-bug). ServerName = kaname.* (фактический :9090 dial-host).
 	IAMProject grpcclient.TLSClient `mapstructure:"iam-project"`
 	// VPC — client-cert на ребре nlb→vpc (Address/Subnet/NIC IPAM).
 	VPC grpcclient.TLSClient `mapstructure:"vpc"`
@@ -482,6 +521,12 @@ type MTLSConfig struct {
 	Compute grpcclient.TLSClient `mapstructure:"compute"`
 	// Geo — client-cert на ребре nlb→geo (RegionService.Get, kacho-geo).
 	Geo grpcclient.TLSClient `mapstructure:"geo"`
+	// QuotaAuthority — client-cert на ребре nlb→домен величин (обе полосы:
+	// InternalLimitService.Resolve на пути запроса и ListChangedSince фоновой
+	// дельтой). Своё, а не заимствованное у authz-ребра: адрес домена величин
+	// объявляется отдельно (`quota.authority`), и удостоверение обязано
+	// следовать за адресом.
+	QuotaAuthority grpcclient.TLSClient `mapstructure:"quota-authority"`
 }
 
 // ─── Jobs (background workers) ───────────────────────────────────────────────
@@ -511,6 +556,21 @@ type FreeIPConfig struct {
 	// считается «застрявшей»: свежий in-flight create/delete (моложе порога) не
 	// трогается, пока легитимный worker дорабатывает. Default 5m. Должен быть > 0.
 	AgeThreshold time.Duration `mapstructure:"age-threshold"`
+}
+
+// TrustDomain — домен доверия, который РЕАЛЬНО уезжает в пару звеньев извлечения
+// личности на обоих слушателях.
+//
+// Единственный источник этой величины на процесс: проводка, стража старта и
+// самоотчёт о посадке читают ОДИН объект и спрашивают его ОДИН предикат. Значит
+// «страж пропустил» ⟺ «домен реально объявлен» — по построению, а не потому, что
+// три автора написали одинаковые тела.
+//
+// Приведение написанного оператором (пробелы, схема, косые черты) живёт в
+// конструкторе типа и здесь не повторяется: два места об одном предмете
+// расходятся молча. См. grpcsrv.NewTrustDomain.
+func (c *Config) TrustDomain() grpcsrv.TrustDomain {
+	return grpcsrv.NewTrustDomain(c.Authz.TrustDomainName)
 }
 
 // TrustedForwarders — круг отправителей, который РЕАЛЬНО уезжает в

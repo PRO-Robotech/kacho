@@ -1,7 +1,7 @@
 {
   "info": {
     "_postman_id": "35f3d67a-d9a8-51e6-8694-026ce0c05779",
-    "name": "kacho-iam / newman / iam-permission-catalog",
+    "name": "kaname / newman / iam-permission-catalog",
     "schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json"
   },
   "event": [
