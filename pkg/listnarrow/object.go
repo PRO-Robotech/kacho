@@ -9,8 +9,6 @@ import (
 
 	"google.golang.org/grpc/codes"
 	"google.golang.org/grpc/status"
-
-	iamv1 "github.com/PRO-Robotech/kacho/pkg/api/kaname/cloud/iam/v1"
 )
 
 // AllowedOnObject — ОДИНОЧНАЯ дверь того же механизма: «можно ли этому вызывающему
@@ -53,28 +51,29 @@ func AllowedOnObject(
 			"object gate: resourceType, action, id and at least one relation required")
 	}
 
-	checks := make([]*iamv1.AuthorizeCheckRequest, 0, len(relations))
+	checks := make([]Check, 0, len(relations))
 	for _, relation := range relations {
-		checks = append(checks, &iamv1.AuthorizeCheckRequest{
+		checks = append(checks, Check{
 			Subject:          subject,
-			Resource:         &iamv1.ResourceRef{Type: resourceType, Id: id},
+			ResourceType:     resourceType,
+			ResourceID:       id,
 			Action:           action,
 			RequiredRelation: relation,
 		})
 	}
-	resp, cerr := n.askOnce(ctx, &iamv1.BatchAuthorizeCheckRequest{Checks: checks})
+	verdicts, cerr := n.askOnce(ctx, checks)
 	if cerr != nil {
 		return false, objectGateErr(cerr, n)
 	}
 	// Ответ не той длины выровнять с вопросами нельзя, и решение, принятое по
 	// смещённому ответу, неверно так, что вызывающий этого не обнаружит.
-	if len(resp.GetResponses()) != len(checks) {
+	if len(verdicts) != len(checks) {
 		return false, status.Errorf(codes.Unavailable,
 			"object gate: AuthorizeService.BatchCheck returned %d responses for %d checks",
-			len(resp.GetResponses()), len(checks))
+			len(verdicts), len(checks))
 	}
-	for _, r := range resp.GetResponses() {
-		if r.GetAllowed() {
+	for _, allowed := range verdicts {
+		if allowed {
 			return true, nil
 		}
 	}

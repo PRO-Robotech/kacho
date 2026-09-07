@@ -18,13 +18,11 @@ import (
 	"github.com/PRO-Robotech/kacho/pkg/operations"
 	"github.com/PRO-Robotech/kacho/pkg/pgtest"
 
-	iamv1 "github.com/PRO-Robotech/kacho/pkg/api/kaname/cloud/iam/v1"
 	"github.com/PRO-Robotech/kacho/pkg/listnarrow"
 	"github.com/PRO-Robotech/kacho/pkg/listnarrow/narrowtest"
 	"github.com/PRO-Robotech/kacho/services/nlb/internal/apps/kacho/api/loadbalancer"
 	"github.com/PRO-Robotech/kacho/services/nlb/internal/domain"
 	kachopg "github.com/PRO-Robotech/kacho/services/nlb/internal/repo/kacho/pg"
-	"google.golang.org/grpc"
 )
 
 // The unit-level order assertion (list_reader_release_test.go) says the reader is
@@ -87,8 +85,7 @@ var _ listnarrow.AuthorizeClient = (*secondReaderProbe)(nil)
 // BatchCheck стоит там, где стоит kaname: наблюдение переехало на СОСЕДА, потому
 // что сужатель теперь один на дерево, и подставлять его целиком значило бы наблюдать
 // не тот момент. Момент здесь — сетевой вопрос о правах со страницей на руках.
-func (p *secondReaderProbe) BatchCheck(_ context.Context, in *iamv1.BatchAuthorizeCheckRequest,
-	_ ...grpc.CallOption) (*iamv1.BatchAuthorizeCheckResponse, error) {
+func (p *secondReaderProbe) BatchCheck(_ context.Context, checks []listnarrow.Check) ([]bool, error) {
 	p.calls++
 	ctx, cancel := context.WithTimeout(context.Background(), p.budget)
 	defer cancel()
@@ -102,11 +99,11 @@ func (p *secondReaderProbe) BatchCheck(_ context.Context, in *iamv1.BatchAuthori
 	} else {
 		_ = rd.Close()
 	}
-	out := make([]*iamv1.AuthorizeCheckResponse, 0, len(in.GetChecks()))
-	for range in.GetChecks() {
-		out = append(out, &iamv1.AuthorizeCheckResponse{Allowed: true})
+	out := make([]bool, 0, len(checks))
+	for range checks {
+		out = append(out, true)
 	}
-	return &iamv1.BatchAuthorizeCheckResponse{Responses: out}, nil
+	return out, nil
 }
 
 // TestListLoadBalancers_DoesNotHoldPooledConnectionAcrossAuthz — with a pool of one,

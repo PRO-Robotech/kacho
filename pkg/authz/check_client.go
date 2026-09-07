@@ -3,7 +3,11 @@
 
 package authz
 
-import "context"
+import (
+	"context"
+
+	"google.golang.org/grpc"
+)
 
 // CheckClient — port-интерфейс (DIP). Реализация — клиентский adapter в
 // сервисе (например `kacho-vpc/internal/clients/iam_authz_client.go`),
@@ -39,3 +43,19 @@ type CheckClientFunc func(ctx context.Context, subjectID, relation, object strin
 func (f CheckClientFunc) Check(ctx context.Context, subjectID, relation, object string) (bool, error) {
 	return f(ctx, subjectID, relation, object)
 }
+
+// CheckClientFrom — СБОРЩИК решателя из соединения с владельцем модели.
+//
+// Именованный тип живёт здесь, у порта, а не у дескриптора носителя, и это не
+// стиль. Дескриптор (`pkg/servicecontract`) обязан оставаться пакетом, которому
+// звено цепочки выразить НЕЧЕМ: его гейт (`internal/repohygiene`
+// `TestDescriptorCarriesNoChainLink`) держит это тем, что из grpc там доступны
+// только креденшелы. Поле типа `func(grpc.ClientConnInterface) CheckClient`
+// втащило бы туда grpc целиком и обезвредило предпосылку гейта — он это и
+// сказал, когда поле объявили там.
+//
+// Соединение по-прежнему набирает НОСИТЕЛЬ по объявленному ребру; наружу
+// вынесен ровно перевод вопроса в контракт владельца, потому что контракт
+// принадлежит службе доступа, а не фундаменту (приёмка K3-1 §7.2, задача
+// #2131). Боевая реализация — `pkg/authz/authziam`.
+type CheckClientFrom func(conn grpc.ClientConnInterface) CheckClient

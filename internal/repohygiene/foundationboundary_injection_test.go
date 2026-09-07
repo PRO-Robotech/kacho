@@ -642,3 +642,127 @@ func TestDeclaredPrefixesCoversBothPathMaps(t *testing.T) {
 	t.Logf("перепись: приставок расщепления %d · корней %d · в перечне %d",
 		len(foundationSubtrees), len(foundationRoots), len(declaredPrefixes()))
 }
+
+// --------------------- ось ПЯТАЯ: верхний корень дерева ---------------------
+
+// TestRootJudgeIsSilentWhenEveryRootDeclaresItsClass — положительный близнец.
+func TestRootJudgeIsSilentWhenEveryRootDeclaresItsClass(t *testing.T) {
+	faults, census := judgeTreeRoots(
+		[]string{"gateway", "internal", "services", "terraform"},
+		map[string]foundationClass{
+			"gateway": classKacho, "internal": classToolchain,
+			"services": classKacho, "terraform": classKacho,
+		})
+	if len(faults) != 0 {
+		t.Fatalf("на объявленных корнях находок быть не должно: %v", faults)
+	}
+	if census.Catalogs != 4 || census.Declared != 4 {
+		t.Fatalf("перепись обязана называть объём: %+v", census)
+	}
+}
+
+// TestRootJudgeCatchesANewTopLevelRootWithNoDeclaredClass — ГЛАВНАЯ проба этой
+// оси: корень, который заведёт разъезд.
+//
+// До этой оси каталог вне известных карт падал в умолчание «оснастка сборки», а
+// оснастка не участвует НИ В ОДНОЙ запрещённой паре — значит рёбра всего, что
+// попало в умолчание, не судились вовсе. Гейт, заведённый стеречь границу, был
+// бы слеп к ПЕРВОМУ ЖЕ её нарушению в новом модуле.
+func TestRootJudgeCatchesANewTopLevelRootWithNoDeclaredClass(t *testing.T) {
+	faults, census := judgeTreeRoots(
+		[]string{"corelib", "internal", "services"},
+		map[string]foundationClass{"internal": classToolchain, "services": classKacho})
+	if len(faults) != 1 {
+		t.Fatalf("новый верхний корень без объявленного класса обязан быть находкой, получено %v", faults)
+	}
+	if !strings.Contains(faults[0], "corelib") {
+		t.Fatalf("находка обязана называть корень: %s", faults[0])
+	}
+	if census.Catalogs != 3 {
+		t.Fatalf("перепись обязана считать ПРОЧИТАННЫЕ корни, а не признанные: %+v", census)
+	}
+}
+
+// TestRootJudgeCatchesADeclarationWithNoRootInTheTree — вторая сторона.
+func TestRootJudgeCatchesADeclarationWithNoRootInTheTree(t *testing.T) {
+	faults, _ := judgeTreeRoots(
+		[]string{"services"},
+		map[string]foundationClass{"services": classKacho, "nosuchroot": classKacho})
+	if len(faults) != 1 || !strings.Contains(faults[0], "nosuchroot") {
+		t.Fatalf("запись о несуществующем корне обязана истечь сама: %v", faults)
+	}
+}
+
+// TestRootJudgeRefusesAnEmptyWalkInsteadOfReportingNoFindings — пустой обход.
+func TestRootJudgeRefusesAnEmptyWalkInsteadOfReportingNoFindings(t *testing.T) {
+	faults, _ := judgeTreeRoots(nil, map[string]foundationClass{"services": classKacho})
+	if len(faults) == 0 {
+		t.Fatal("пустой обход обязан быть ОТКАЗОМ, а не «находок ноль»")
+	}
+}
+
+// TestForbiddenEdgeInsideANewRootIsSeen — проверяемый признак, названный
+// приёмщиком дословно: подай в новый корень ребро запрещённого направления и
+// убедись, что гейт краснеет.
+//
+// Проба судит РАЗРЕШЕНИЕ КЛАССА, а не вердикт: пока `classOfPackage` отвечала на
+// незнакомый корень «оснастка сборки», ребро из него не попадало в
+// `forbiddenDirections` НИ ОДНОЙ парой, и обход прочитывал файл, ничего о нём не
+// сказав.
+func TestForbiddenEdgeInsideANewRootIsSeen(t *testing.T) {
+	// Незнакомый верхний корень не имеет права получить класс умолчанием.
+	if cls, ok := classOfPackage("corelib/listnarrow"); ok {
+		t.Fatalf("незнакомый верхний корень получил класс %q умолчанием — "+
+			"ребро из него не судилось бы ни одной парой", cls)
+	}
+	// А объявленный — обязан судиться: ребро в контракт платформы запрещено.
+	from, okFrom := classOfPackage("internal/repohygiene")
+	if !okFrom || from != classToolchain {
+		t.Fatalf("объявленный корень оснастки обязан разрешаться: %v %v", from, okFrom)
+	}
+}
+
+// TestEdgeOutOfANewlyDeclaredRootIsJudged — вторая половина признака: корень,
+// ОБЪЯВЛЕННЫЙ фундаментом, обязан судиться запрещённой парой.
+//
+// Первая половина (`TestForbiddenEdgeInsideANewRoot`) утверждает, что незнакомый
+// корень класса не получает. Одной её мало: она доказывает, что молчания больше
+// нет, и ничего не говорит о том, что после объявления гейт заговорит. Обе
+// половины вместе и составляют «подай ребро и убедись, что краснеет».
+//
+// Корень подаётся ВРЕМЕННОЙ записью карты, а не файлом в дереве: записи без
+// предмета в дереве — находка оси четвёртой, и постоянная запись про `corelib/`
+// покраснила бы её ровно за то, за что и должна.
+func TestEdgeOutOfANewlyDeclaredRootIsJudged(t *testing.T) {
+	saved := foundationRoots
+	t.Cleanup(func() { foundationRoots = saved })
+	foundationRoots = append(append([]struct {
+		Prefix string
+		Class  foundationClass
+	}{}, saved...), struct {
+		Prefix string
+		Class  foundationClass
+	}{"corelib", classCorelib})
+
+	from, ok := classOfPackage("corelib/listnarrow")
+	if !ok || from != classCorelib {
+		t.Fatalf("объявленный корень фундамента обязан разрешаться в corelib: %q %v", from, ok)
+	}
+	to, okTo := classOfPackage("pkg/api/kacho/cloud/vpc/v1")
+	if !okTo {
+		t.Fatal("контракт платформы обязан разрешаться")
+	}
+	if !forbiddenDirections[[2]foundationClass{from, to}] {
+		t.Fatalf("ребро %s -> %s обязано быть запрещённым: без этого файл в новом "+
+			"корне прочитывался бы и молча разрешался", from, to)
+	}
+
+	// И судья обязан назвать его находкой, а не промолчать.
+	faults, _ := judgeBoundaryEdges(
+		[]boundaryEdge{{From: "corelib/listnarrow", To: "pkg/api/kacho/cloud/vpc/v1",
+			FromClass: from, ToClass: to, Prod: 1}},
+		nil, 1, 1)
+	if len(faults) != 1 || !strings.Contains(faults[0], "corelib/listnarrow") {
+		t.Fatalf("ребро запрещённого направления из нового корня обязано быть находкой: %v", faults)
+	}
+}

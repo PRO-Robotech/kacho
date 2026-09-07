@@ -12,11 +12,9 @@ import (
 	"sync/atomic"
 	"time"
 
-	"google.golang.org/grpc"
 	"google.golang.org/grpc/codes"
 	"google.golang.org/grpc/status"
 
-	iamv1 "github.com/PRO-Robotech/kacho/pkg/api/kaname/cloud/iam/v1"
 	"github.com/PRO-Robotech/kacho/pkg/authz"
 	"github.com/PRO-Robotech/kacho/pkg/validate"
 )
@@ -53,11 +51,38 @@ const (
 // равно объявлен, а не спрятан в теле функции.
 const defaultRelationsKey = ""
 
-// AuthorizeClient — узкий порт к kaname `AuthorizeService`. Сигнатура совпадает со
-// сгенерированным клиентом, поэтому боевая реализация — тонкий проброс.
+// Check — ОДИН вопрос о доступе, объявленный типами ФУНДАМЕНТА.
+//
+// Прежде порт говорил сгенерированным типом владельца модели, и сигнатура
+// совпадала с его клиентом — «боевая реализация тонкий проброс». Цена этого
+// удобства названа приёмкой K3-1 §7.2: фундамент импортировал контракт службы
+// доступа, то есть после разъезда `corelib` потребовал бы `kaname`, а `kaname`
+// уже требует `corelib`. Цикл на уровне модулей, который Go не собирает.
+//
+// Поэтому шов проходит СКВОЗЬ ТИП: вопрос и вердикт объявлены здесь, а перевод
+// в контракт владельца живёт у того, кто этот контракт реализует
+// (`pkg/listnarrow/narrowiam`, класс `kaname`).
+type Check struct {
+	// Subject — принципал в форме владельца модели (`<тип>:<id>`).
+	Subject string
+	// ResourceType — тип объекта в словаре модели прав.
+	ResourceType string
+	// ResourceID — идентификатор объекта.
+	ResourceID string
+	// Action — метод, ради которого задан вопрос.
+	Action string
+	// RequiredRelation — отношение, которого метод требует.
+	RequiredRelation string
+}
+
+// AuthorizeClient — узкий порт к владельцу модели.
+//
+// Контракт ответа: вердикты В ПОРЯДКЕ ВОПРОСОВ и ТОЙ ЖЕ ДЛИНЫ. Иная длина —
+// не «считаем отказом», а fail-closed ошибка у вызывающего: молчаливое смещение
+// индексов выдало бы вердикт одного объекта за другой, и страница была бы
+// неверна так, что вызывающий этого не обнаружит.
 type AuthorizeClient interface {
-	BatchCheck(ctx context.Context, in *iamv1.BatchAuthorizeCheckRequest,
-		opts ...grpc.CallOption) (*iamv1.BatchAuthorizeCheckResponse, error)
+	BatchCheck(ctx context.Context, checks []Check) ([]bool, error)
 }
 
 // Config — посадка сужателя.
@@ -473,17 +498,18 @@ func (n *Narrower) askBatch(
 	batch []string,
 	out *batchVerdicts,
 ) error {
-	checks := make([]*iamv1.AuthorizeCheckRequest, 0, len(batch))
+	checks := make([]Check, 0, len(batch))
 	for _, id := range batch {
-		checks = append(checks, &iamv1.AuthorizeCheckRequest{
+		checks = append(checks, Check{
 			Subject:          subject,
-			Resource:         &iamv1.ResourceRef{Type: resourceType, Id: id},
+			ResourceType:     resourceType,
+			ResourceID:       id,
 			Action:           action,
 			RequiredRelation: relation,
 		})
 	}
 
-	resp, cerr := n.askOnce(ctx, &iamv1.BatchAuthorizeCheckRequest{Checks: checks})
+	verdicts, cerr := n.askOnce(ctx, checks)
 	if cerr != nil {
 		return cerr
 	}
@@ -491,13 +517,13 @@ func (n *Narrower) askBatch(
 	// Расхождение — не «считаем отказом», а fail-closed ошибка: молчаливое смещение
 	// индексов выдало бы вердикт одного объекта за другой, и страница была бы неверна
 	// так, что вызывающий этого не обнаружит.
-	if len(resp.GetResponses()) != len(batch) {
-		return &misalignedAnswerError{got: len(resp.GetResponses()), want: len(batch), relation: relation}
+	if len(verdicts) != len(batch) {
+		return &misalignedAnswerError{got: len(verdicts), want: len(batch), relation: relation}
 	}
 	out.allowed = make([]string, 0, len(batch))
 	out.denied = make([]string, 0, len(batch))
-	for i, r := range resp.GetResponses() {
-		if r.GetAllowed() {
+	for i, allowed := range verdicts {
+		if allowed {
 			out.allowed = append(out.allowed, batch[i])
 		} else {
 			out.denied = append(out.denied, batch[i])
@@ -536,11 +562,10 @@ func itoa(n int) string {
 
 // askOnce делает ровно один запрос под собственным сроком. Контекст уже несёт бюджет
 // операции, поэтому фактическим сроком становится РАНЬШИЙ из двух.
-func (n *Narrower) askOnce(ctx context.Context, req *iamv1.BatchAuthorizeCheckRequest) (
-	*iamv1.BatchAuthorizeCheckResponse, error) {
+func (n *Narrower) askOnce(ctx context.Context, checks []Check) ([]bool, error) {
 	callCtx, cancel := context.WithTimeout(ctx, n.cfg.Timeout)
 	defer cancel()
-	return n.cli.BatchCheck(callCtx, req)
+	return n.cli.BatchCheck(callCtx, checks)
 }
 
 // handleErr — реакция на отказ приёмной стороны.
