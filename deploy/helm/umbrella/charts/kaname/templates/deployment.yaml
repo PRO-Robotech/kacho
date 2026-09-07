@@ -178,11 +178,23 @@ spec:
             optional: true
         {{- end }}
         {{- if .Values.mtls.enable }}
-        # SEC-H mTLS — cert-manager internal-CA server secret (tls.crt/tls.key/ca.crt).
-        # IAM is a leaf-owner: server-side only (both listeners), no client edge in scope.
+        # SEC-H mTLS — cert-manager internal-CA секреты: лист СЛУШАТЕЛЯ и лист
+        # КЛИЕНТА, в разных каталогах (cert-manager кладёт tls.crt/tls.key/ca.crt).
+        #
+        # Здесь стояло «server-side only, no client edge in scope» — и это
+        # пережило свой предмет: собственные REST-фронты службы дозваниваются до
+        # её же gRPC-слушателя, то есть исходящее соединение у неё ЕСТЬ. Пока
+        # клиентского листа не было, фронт предъявлял серверный, слушатель
+        # отвергал его на рукопожатии, и каждый доходивший до обработчика запрос
+        # возвращался арендатору как 503 (задача #2186).
         - name: mtls-server
           secret:
             secretName: {{ .Values.mtls.serverSecretName | quote }}
+        {{- if .Values.mtls.clientSecretName }}
+        - name: mtls-client
+          secret:
+            secretName: {{ .Values.mtls.clientSecretName | quote }}
+        {{- end }}
         {{- end }}
         {{- if .Values.opaSidecar.enabled }}
         # KAC-127 Phase 3 (acceptance §5.6) — OPA sidecar config + JWKS public key.
@@ -274,6 +286,11 @@ spec:
             - name: mtls-server
               mountPath: {{ printf "%s/server" .Values.mtls.mountPath | quote }}
               readOnly: true
+            {{- if .Values.mtls.clientSecretName }}
+            - name: mtls-client
+              mountPath: {{ printf "%s/client" .Values.mtls.mountPath | quote }}
+              readOnly: true
+            {{- end }}
             {{- end }}
           env:
             - name: KANAME_CONFIG_PATH
@@ -285,10 +302,17 @@ spec:
                   key: {{ .Values.db.passwordSecretKey }}
             {{- if .Values.mtls.enable }}
             {{- $srv := printf "%s/server" .Values.mtls.mountPath }}
+            {{- $cli := printf "%s/client" .Values.mtls.mountPath }}
             # SEC-H mTLS server-creds (both listeners) — corelib grpcsrv.TLSServer
             # via config.LoadPrefixed("KANAME"). RequireAndVerifyClientCert
-            # against the internal-CA bundle (ca.crt in the server secret). IAM is
-            # a leaf-owner: server-side only, no outgoing peer-dial edge in scope.
+            # against the internal-CA bundle (ca.crt in the server secret).
+            #
+            # ДВА КАТАЛОГА, А НЕ ОДИН, И ЭТО НЕСУЩЕЕ. `$srv` — лист СЛУШАТЕЛЯ, он
+            # выписан с назначением `server auth` и БЕЗ `client auth` (так и
+            # сказано в шаблоне сертификата). `$cli` — лист КЛИЕНТА, которым
+            # процесс представляется, когда звонит сам. Проверка клиентской цепи
+            # идёт с назначением `clientAuth`, поэтому серверный лист её не
+            # проходит НИ ПРИ КАКОМ входе — путать их нельзя.
             - name: KANAME_PUBLIC_SERVER_MTLS_ENABLE
               value: "true"
             - name: KANAME_PUBLIC_SERVER_MTLS_CERTFILE
@@ -473,14 +497,27 @@ spec:
             # получает и в круг разрешённых отправителей личности не вносится.
             # Имя сервера сверяется с SAN серверного листа, потому что дозвон
             # идёт в петлю, а лист выписан на имя Service.
+            {{- if not .Values.mtls.clientSecretName }}
+            {{- fail "kaname: подняты собственные REST-фронты, а mtls.clientSecretName не объявлен — предъявить своему gRPC-слушателю нечего. Серверный лист выписан с назначением `server auth` и БЕЗ `client auth`, проверка клиентской цепи идёт именно этим назначением, поэтому подстановка серверного листа даёт `tls: bad certificate` на КАЖДОМ запросе. Объявите mtls.clientSecretName (шаблон сертификата выпустит клиентский лист сам) либо снимите mtls.publicRest и mtls.internalRest" }}
+            {{- end }}
             - name: KANAME_REST_UPSTREAM_MTLS_ENABLE
               value: "true"
+            #
+            # ПРЕДЪЯВЛЯЕТСЯ КЛИЕНТСКИЙ ЛИСТ (`$cli`), а не серверный. Здесь стоял
+            # `$srv`, и это был не недосмотр в одну букву: серверный лист выписан
+            # БЕЗ `client auth`, слушатель проверяет клиентскую цепь именно этим
+            # назначением, поэтому рукопожатие обрывалось предупреждением
+            # `bad certificate` — и фронт возвращал арендатору
+            # `503 {"code":14,… "tls: bad certificate"}` на КАЖДОМ запросе,
+            # доходившем до обработчика. Отказ был детерминированный и от токена
+            # не зависел: проверка предъявленного живёт на слушателе, до которого
+            # фронт не доезжал (задача #2186).
             - name: KANAME_REST_UPSTREAM_MTLS_CERTFILE
-              value: {{ printf "%s/tls.crt" $srv | quote }}
+              value: {{ printf "%s/tls.crt" $cli | quote }}
             - name: KANAME_REST_UPSTREAM_MTLS_KEYFILE
-              value: {{ printf "%s/tls.key" $srv | quote }}
+              value: {{ printf "%s/tls.key" $cli | quote }}
             - name: KANAME_REST_UPSTREAM_MTLS_CAFILES
-              value: {{ printf "%s/ca.crt" $srv | quote }}
+              value: {{ printf "%s/ca.crt" $cli | quote }}
             - name: KANAME_REST_UPSTREAM_MTLS_SERVERNAME
               value: {{ printf "%s.%s.svc.cluster.local" (include "kaname.fullname" .) .Release.Namespace | quote }}
             {{- end }}

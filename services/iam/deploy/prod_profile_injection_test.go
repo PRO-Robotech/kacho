@@ -199,3 +199,72 @@ func TestRenderRefusalPathsAreDerivedFromTheTemplate(t *testing.T) {
 		require.Error(t, injErr)
 	})
 }
+
+// ── ось 4: страж монтирования различает ЛИСТЫ, а не только корень каталога ───
+//
+// Заведена задачей #2186. Прежний предикат спрашивал одно: «путь начинается с
+// tls.mountPath». На популяции из ОДНОГО листа это совпадало с «секрет
+// объявлен», и допущение было невидимо. Листов стало два — слушателя и
+// клиента, — и путь под `<mount>/client` проходил проверку префикса при
+// необъявленном секрете клиента: каталога в поде нет, а профиль читается как
+// настроенный.
+//
+// Каждый случай меняет РОВНО ОДИН факт против законного близнеца.
+func TestMountGuardDistinguishesTheLeaves(t *testing.T) {
+	// Законная посадка: оба листа объявлены, пути под своими подкаталогами.
+	legal := func() map[string]any {
+		return map[string]any{"tls": map[string]any{
+			"mountPath":        "/etc/kaname/tls",
+			"secretName":       "kaname-server-tls",
+			"clientSecretName": "kaname-client-tls",
+		}}
+	}
+	envs := map[string]string{
+		"KANAME_PUBLIC_SERVER_MTLS_CERTFILE": "/etc/kaname/tls/server/tls.crt",
+		"KANAME_REST_UPSTREAM_MTLS_CERTFILE": "/etc/kaname/tls/client/tls.crt",
+		"KANAME_REST_UPSTREAM_MTLS_CAFILES":  "/etc/kaname/tls/client/ca.crt",
+	}
+
+	t.Run("законный близнец: оба листа объявлены — молчит", func(t *testing.T) {
+		require.NoError(t, filesAreMountable(legal(), envs),
+			"верная посадка обязана молчать, иначе первый ложный срабат снимет проверку")
+	})
+
+	t.Run("СЕКРЕТ КЛИЕНТА НЕ ОБЪЯВЛЕН — находка называет ручку и ключ", func(t *testing.T) {
+		merged := legal()
+		delete(merged["tls"].(map[string]any), "clientSecretName") // единственное отличие
+		err := filesAreMountable(merged, envs)
+		require.Error(t, err, "путь под <mount>/client при необъявленном секрете клиента — "+
+			"каталога в поде нет; прежний предикат это пропускал, потому что префикс совпадал")
+		require.Contains(t, err.Error(), "KANAME_REST_UPSTREAM_MTLS_CERTFILE")
+		require.Contains(t, err.Error(), "tls.clientSecretName")
+		require.NotContains(t, err.Error(), "KANAME_PUBLIC_SERVER_MTLS_CERTFILE",
+			"снятие секрета КЛИЕНТА не вправе обвинять путь под листом слушателя")
+	})
+
+	t.Run("СЕКРЕТ СЛУШАТЕЛЯ НЕ ОБЪЯВЛЕН — зеркало того же класса", func(t *testing.T) {
+		merged := legal()
+		delete(merged["tls"].(map[string]any), "secretName") // единственное отличие
+		err := filesAreMountable(merged, envs)
+		require.Error(t, err)
+		require.Contains(t, err.Error(), "KANAME_PUBLIC_SERVER_MTLS_CERTFILE")
+		require.Contains(t, err.Error(), "tls.secretName")
+	})
+
+	t.Run("ПОДКАТАЛОГ, КОТОРОГО ЧАРТ НЕ ЗАВОДИТ — находка, а не молчание", func(t *testing.T) {
+		err := filesAreMountable(legal(), map[string]string{
+			"KANAME_REST_UPSTREAM_MTLS_CERTFILE": "/etc/kaname/tls/сторонний/tls.crt",
+		})
+		require.Error(t, err, "переименует шаблон подкаталог — путь под неизвестным именем "+
+			"обязан стать находкой, а не пройти молча")
+		require.Contains(t, err.Error(), "client, server")
+	})
+
+	t.Run("ПУТЬ ВНЕ МОНТИРОВАНИЯ — прежняя ось не потеряна", func(t *testing.T) {
+		err := filesAreMountable(legal(), map[string]string{
+			"KANAME_REST_UPSTREAM_MTLS_CERTFILE": "/чужой/каталог/tls.crt",
+		})
+		require.Error(t, err)
+		require.Contains(t, err.Error(), "вне каталога")
+	})
+}

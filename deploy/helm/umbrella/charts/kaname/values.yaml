@@ -580,23 +580,32 @@ resources:
 
 env: {}
 
-# ─── SEC-H mTLS — server-side, per-edge opt-in (cert-manager internal-CA) ──
-# IAM is a leaf-owner: it terminates inbound service→service mTLS but holds no
-# outgoing peer-dial edges in scope (subject_change drainer is a separate edge,
-# out of SEC-H), so SEC-H wires the SERVER only — both listeners (public :9090 +
-# internal :9091). Strict mirror of the vpc subchart server block (SEC-D).
+# ─── SEC-H mTLS — оба листа, per-edge opt-in (cert-manager internal-CA) ──
+# Служба — лист графа: соседей она не зовёт, и в этом смысле «leaf-owner»
+# остаётся верным. Но ОДНОГО листа сертификата ей не хватает, и здесь стояло
+# обратное — «holds no outgoing peer-dial edges … wires the SERVER only».
 #
-# enable=false (default) → NO cert-secret mounted and NO KANAME_*_SERVER_MTLS_*
-# env emitted → current insecure dev behaviour (zero regression). The umbrella
-# values.mtls.yaml overlay flips kaname.mtls.enable=true for the full-stack
-# profile (КРИТ#3 mapping). When enable=true:
-#   - mounts cert-manager secret kaname-server-tls (tls.crt/tls.key/ca.crt) in
-#     volume mtls-server at <mountPath>/server;
-#   - emits, via corelib LoadPrefixed("KANAME"):
-#       KANAME_PUBLIC_SERVER_MTLS_*   (public :9090 listener)
-#       KANAME_INTERNAL_SERVER_MTLS_* (internal :9091 listener)
-#     each = {ENABLE, CERTFILE, KEYFILE, CLIENTCAFILES} → RequireAndVerifyClientCert
-#     against the internal-CA bundle (ca.crt in the server secret).
+# Утверждение пережило свой предмет: собственные REST-фронты службы
+# дозваниваются до её ЖЕ gRPC-слушателя, то есть исходящее соединение у неё
+# есть — просто оно идёт в петлю, а не к соседу. Пока клиентского листа не было,
+# фронт предъявлял серверный; тот выписан БЕЗ `client auth`, слушатель отвергал
+# его на рукопожатии, и каждый доходивший до обработчика запрос возвращался
+# арендатору как 503 (задача #2186).
+#
+# enable=false (умолчание) → секреты не монтируются и переменные транспорта не
+# эмитятся → прежняя посадка стенда разработки, байт-в-байт. При enable=true:
+#   - монтируется kaname-server-tls (tls.crt/tls.key/ca.crt) в томе mtls-server
+#     по пути <mountPath>/server — ЛИСТ СЛУШАТЕЛЯ, назначение `server auth`;
+#   - монтируется kaname-client-tls в томе mtls-client по пути <mountPath>/client
+#     — ЛИСТ КЛИЕНТА, назначение `client auth`, с SPIFFE-именем в SAN;
+#   - эмитятся, через corelib LoadPrefixed("KANAME"):
+#       KANAME_PUBLIC_SERVER_MTLS_*   (публичный слушатель :9090)
+#       KANAME_INTERNAL_SERVER_MTLS_* (внутренний слушатель :9091)
+#     каждый = {ENABLE, CERTFILE, KEYFILE, CLIENTCAFILES} → RequireAndVerifyClientCert
+#     по корням внутреннего центра (ca.crt в секрете слушателя);
+#       KANAME_REST_UPSTREAM_MTLS_*   (удостоверение фронта перед своим же
+#     слушателем) = {ENABLE, CERTFILE, KEYFILE, CAFILES, SERVERNAME} — и все три
+#     файла берутся из КЛИЕНТСКОГО секрета, а не из серверного.
 mtls:
   enable: false
   # ОБЩАЯ РУЧКА — УМОЛЧАНИЕ ДЛЯ ПОЛИСТЕННЫХ НИЖЕ, А НЕ РЕШЕНИЕ О ТРАНСПОРТЕ.
@@ -680,12 +689,24 @@ mtls:
   restClientAuthMode: server-tls-only
   internalRestClientAuthMode: server-tls-only
   # ─── internal-CA leaf-cert issuance (this chart owns its Certificate, rule #1) ─
-  # kaname is the authz authority itself → SERVER cert only (no client cert,
-  # no IAM grant needed — it does not dial peers in SEC-H scope). Server-cert SAN
-  # covers both Services (public kaname :9090 + internal kaname-internal :9091)
-  # AND the internal Hydra-JWKS proxy :9097, which shares the kaname-internal DNS
-  # name — SANs are host-based/port-agnostic, so this same leaf terminates the :9097
-  # one-way server-TLS the registry data-plane trusts (registry-iam-jwks-unify).
+  # Листа ДВА, и это не симметрия ради симметрии. Серверный SAN покрывает оба
+  # Service (публичный kaname :9090 и внутренний kaname-internal :9091) И зеркало
+  # ключей :9097, которое живёт на том же имени, — SAN привязаны к хосту, а не к
+  # порту, поэтому один лист терминирует и одностороннюю TLS зеркала, которой
+  # доверяет плоскость данных реестра (registry-iam-jwks-unify).
+  #
+  # КЛИЕНТСКИЙ ЛИСТ ЗАВЕДЁН ЗАДАЧЕЙ #2186. Здесь стояло «SERVER cert only (no
+  # client cert … it does not dial peers)», и это утверждение пережило свой
+  # предмет: собственные REST-фронты службы дозваниваются до её же
+  # gRPC-слушателя, то есть исходящее соединение у неё ЕСТЬ. Пока клиентского
+  # листа не было, фронт предъявлял серверный — а тот выписан БЕЗ `client auth`,
+  # и слушатель отвергал его на рукопожатии; каждый доходивший до обработчика
+  # запрос возвращался арендатору как 503.
+  #
+  # Клиентский лист НЕ расширяет допуска: он лишь позволяет фронту завершить
+  # рукопожатие. В круг тех, кто вправе говорить за пользователя
+  # (`authn.trustedForwarderSANs`), эта личность не вносится, и решение о доступе
+  # по-прежнему принимается по удостоверению, предъявленному арендатором.
   issuer:
     name: kacho-internal-ca
     kind: ClusterIssuer   # ClusterIssuer (cluster-scoped), NOT namespaced Issuer
@@ -696,9 +717,13 @@ mtls:
     saName: kaname
   leafDuration: 2160h
   leafRenewBefore: 720h
-  # cert-manager secret name (SEC-F naming: kacho-<svc>-server-tls).
+  # cert-manager secret names. Пусто у клиентского означало бы «личности нет»:
+  # блок клиентского сертификата в templates/certificate.yaml читает ИМЕННО этот
+  # ключ, и без него он не срабатывает ни разу — молча, потому что шаблон
+  # рендерится и под поднимается.
   serverSecretName: kaname-server-tls
-  mountPath: /etc/kaname/tls   # <mountPath>/server/{tls.crt,tls.key,ca.crt}
+  clientSecretName: kaname-client-tls
+  mountPath: /etc/kaname/tls   # <mountPath>/server|client/{tls.crt,tls.key,ca.crt}
 
 # ─── KAC-127 Phase 3 — OPA sidecar ───────────────────────────────────────
 # Fallback defaults if umbrella does not override. Umbrella's `opaSidecar.*`

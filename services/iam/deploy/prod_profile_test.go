@@ -690,19 +690,39 @@ func applySecretStandIns(merged map[string]any, envs map[string]string) error {
 }
 
 // filesAreMountable — каждый путь к файлу, названный ручкой, лежит под
-// каталогом, который чарт монтирует.
+// каталогом, который чарт монтирует, И этот каталог обеспечен ОБЪЯВЛЕННЫМ
+// секретом.
 //
 // Ручка, называющая путь, которого под не несёт, — объявленная и неисполнимая
-// возможность: процесс отказывает в пуске на нечитаемом файле, а профиль читается
-// как настроенный.
+// возможность: процесс отказывает в пуске на нечитаемом файле, а профиль
+// читается как настроенный.
+//
+// # ПРЕДПОСЫЛКА ПЕРЕСМОТРЕНА ПРИ РАСШИРЕНИИ ПОПУЛЯЦИИ (задача #2186)
+//
+// Проверка писалась, когда у службы был ОДИН лист. На такой популяции «путь
+// начинается с tls.mountPath» и «секрет объявлен» совпадали, и допущение было
+// невидимо. Листов стало два — слушателя и клиента, в соседних подкаталогах
+// одного монтирования, — и прежний предикат стал пропускать ровно тот класс,
+// ради которого написан: путь под `<mount>/client` проходил проверку префикса,
+// хотя секрета клиента профиль не объявлял и каталога в поде не было.
+//
+// Подкаталоги названы ЗДЕСЬ по одному ключу секрета на каждый, и это
+// fail-closed: переименует шаблон подкаталог — путь под неизвестным именем
+// станет находкой, а не молчанием.
 func filesAreMountable(merged map[string]any, envs map[string]string) error {
 	mount, _ := at(merged, "tls", "mountPath").(string)
-	secret, _ := at(merged, "tls", "secretName").(string)
+
+	// подкаталог монтирования → ключ значений, объявляющий его секрет.
+	leafSecretKey := map[string]string{
+		"server": "secretName",
+		"client": "clientSecretName",
+	}
 
 	var named []string
 	for k, v := range envs {
 		if !strings.HasSuffix(k, "_CERTFILE") && !strings.HasSuffix(k, "_KEYFILE") &&
-			!strings.HasSuffix(k, "_CLIENTCAFILES") && !strings.HasSuffix(k, "_CA_FILE") {
+			!strings.HasSuffix(k, "_CLIENTCAFILES") && !strings.HasSuffix(k, "_CA_FILE") &&
+			!strings.HasSuffix(k, "_CAFILES") {
 			continue
 		}
 		for _, p := range strings.Split(v, ",") {
@@ -717,26 +737,53 @@ func filesAreMountable(merged map[string]any, envs map[string]string) error {
 	sort.Strings(named)
 
 	var errs error
-	if strings.TrimSpace(secret) == "" {
-		errs = multierr.Append(errs, fmt.Errorf(
-			"профиль называет %d путь(ей) к материалу TLS и не объявляет tls.secretName — "+
-				"монтировать нечего, и процесс откажет в пуске на нечитаемом файле", len(named)))
-	}
 	if strings.TrimSpace(mount) == "" {
 		errs = multierr.Append(errs, fmt.Errorf(
 			"профиль называет %d путь(ей) к материалу TLS и не объявляет tls.mountPath — "+
 				"проверить досягаемость не с чем", len(named)))
 		return errs
 	}
+	prefix := strings.TrimSuffix(mount, "/") + "/"
 	for _, n := range named {
 		path := n[strings.Index(n, "=")+1:]
-		if !strings.HasPrefix(path, strings.TrimSuffix(mount, "/")+"/") {
+		if !strings.HasPrefix(path, prefix) {
 			errs = multierr.Append(errs, fmt.Errorf(
 				"ручка %s называет путь вне каталога, который монтирует чарт (tls.mountPath=%s) — "+
 					"файла по этому пути в поде не будет", n, mount))
+			continue
+		}
+		rest := strings.TrimPrefix(path, prefix)
+		leaf := rest
+		if i := strings.Index(rest, "/"); i >= 0 {
+			leaf = rest[:i]
+		}
+		key, known := leafSecretKey[leaf]
+		if !known {
+			errs = multierr.Append(errs, fmt.Errorf(
+				"ручка %s называет подкаталог %q монтирования, которого чарт не заводит — "+
+					"известны %s; файла по этому пути в поде не будет",
+				n, leaf, strings.Join(sortedKeys(leafSecretKey), ", "))) //nolint:gocritic
+			continue
+		}
+		secret, _ := at(merged, "tls", key).(string)
+		if strings.TrimSpace(secret) == "" {
+			errs = multierr.Append(errs, fmt.Errorf(
+				"ручка %s называет путь под %s%s, а tls.%s не объявлен — том не заводится, "+
+					"каталога в поде нет, и процесс откажет в пуске на нечитаемом файле",
+				n, prefix, leaf, key))
 		}
 	}
 	return errs
+}
+
+// sortedKeys — детерминизм текста находки.
+func sortedKeys(m map[string]string) []string {
+	out := make([]string, 0, len(m))
+	for k := range m {
+		out = append(out, k)
+	}
+	sort.Strings(out)
+	return out
 }
 
 // writeRenderedConfig собирает config.yaml так, как его собирает шаблон чарта,
