@@ -733,14 +733,14 @@
               }
             ],
             "url": {
-              "raw": "{{baseUrl}}/iam/v1/authorize:whoAmI",
+              "raw": "{{baseUrl}}/iam/v1/me",
               "host": [
                 "{{baseUrl}}"
               ],
               "path": [
                 "iam",
                 "v1",
-                "authorize:whoAmI"
+                "me"
               ]
             }
           },
@@ -767,7 +767,7 @@
                   "// Missing value = misconfigured harness, NOT a legal mode: FAIL, then skip.",
                   "const __cfgUrl = pm.environment.get('ownRestBaseUrl') || pm.variables.get('ownRestBaseUrl') || '';",
                   "if (__cfgUrl) {",
-                  "  pm.request.url = __cfgUrl + pm.variables.replaceIn('/iam/v1/authorize:whoAmI');",
+                  "  pm.request.url = __cfgUrl + pm.variables.replaceIn('/iam/v1/me');",
                   "} else {",
                   "  pm.test('[УСЛОВИЕ НЕ СОЗДАНО] harness config: ownRestBaseUrl is set — собственный публичный REST-фронт службы; без него у поверхности нет адреса, и кейс проверял бы край платформы вместо предмета', () => {",
                   "    pm.expect.fail('ownRestBaseUrl is not set — the newman runner (deploy/scripts/newman-e2e.sh / newman-parallel.sh --env-var) did not inject it. This step cannot run, and a check that cannot run MUST NOT be silently dropped.');",
@@ -810,9 +810,12 @@
                 "exec": [
                   "pm.test('status 200', () => pm.expect(pm.response.code, JSON.stringify(pm.response.text())).to.eql(200));",
                   "const j = pm.response.json();",
-                  "pm.test('SELF-NAMED: субъект назван УДОСТОВЕРЕНИЕМ, а не заголовком вызывающего', () => {",
-                  "  const body = JSON.stringify(j);",
-                  "  pm.expect(body).to.not.include('usr-someone-else');",
+                  "pm.test('SELF-NAMED: субъект назван — и это владелец ПРЕДЪЯВЛЕННОГО удостоверения', () => {",
+                  "  pm.expect(JSON.stringify(j), JSON.stringify(j))",
+                  "    .to.include(pm.environment.get('userAAAId'));",
+                  "});",
+                  "pm.test('SELF-NAMED: и НЕ тот, кем вызывающий назвал себя заголовком — ни голой формой, ни мостовой', () => {",
+                  "  pm.expect(JSON.stringify(j), JSON.stringify(j)).to.not.include('usr-someone-else');",
                   "});"
                 ]
               }
