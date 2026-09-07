@@ -28,6 +28,8 @@ Coverage:
                                          external + пин к absent-path контролю. НЕ доказывает
                                          route-изоляцию (см. «TWO FAMILIES» ниже) и прямо это заявляет
   IAM-INT-OK-INT-USER-UPSERT           — UpsertFromIdentity → 200 на internal (positive control)
+  IAM-INT-OK-INT-USER-UPSERT-IDEM      — повторный вызов с тем же externalId возвращает ТОТ ЖЕ
+                                         user id (семантика UPSERT), тоже на internal
   IAM-INT-OK-INT-IAM-LOOKUPSUBJECT     — LookupSubject → РОВНО 200 на internal (positive control;
                                          `oneOf([200,404])` снят — 404 здесь и был бы дефектом)
   IAM-INT-OK-INT-IAM-LOOKUPSUBJECT-UNKNOWN
@@ -43,6 +45,11 @@ Coverage:
   IAM-INT-NEG-EXT-LIMIT-CREATE         — InternalLimitService.Create → 404 mux-miss на external (VPCQ-10)
   IAM-INT-OK-INT-LIMIT-LIST            — тот же путь на internal → 200 со списком и посеянными
                                          умолчаниями (positive control)
+
+Перечень выше СХОДИТСЯ с тем, что модуль объявляет, и держится это гейтом
+`internal/repohygiene` `TestCaseCoverageBlockMatchesWhatTheModuleDeclares`, а не
+вниманием: выписанный рядом с растущим составом перечень владельца не имеет.
+Одной позиции здесь недоставало (#2207).
 
 Why no black-box POSITIVE revoke→IsRevoked case:
   InternalSessionRevocationsService is gRPC-only on :9091 — the api-gateway does
