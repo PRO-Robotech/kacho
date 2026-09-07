@@ -1,21 +1,30 @@
 // Copyright (c) PRO-Robotech
 // SPDX-License-Identifier: Apache-2.0
 
-// catalog.go — чтение сгенерированного каталога прав.
+// catalog.go — форма строки сгенерированного каталога прав, разделяемая с
+// теми, кто его читает.
 //
 // Каталог — ВЫХОД генератора, а карта сервиса теперь выводится из его ВХОДА
-// (аннотаций). Читать его здесь нужно ровно для одного: чтобы сверить выход со
+// (аннотаций). Читать его нужно ровно для одного: чтобы сверить выход со
 // входом. Пока обе стороны сходятся, «каталог, который читает оператор» и
 // «правило, которое исполняет сервис» — одно и то же утверждение.
+//
+// ЧТЕНИЯ ЗДЕСЬ НЕТ (PRO-Robotech/kacho#2211). Прежде пакет нёс `LoadCatalog`,
+// поднимавшийся от `dir` до go.mod и читавший `CatalogPath` под найденным
+// корнем; комментарий утверждал, что «dir только выбирает старт подъёма,
+// поэтому им нельзя назвать другой файл» — гарантию, которой подъём не даёт:
+// он находит ПЕРВЫЙ go.mod выше `dir`, а чей это модуль — не спрашивает.
+// Значение `dir` вне модуля дало бы корень чужого дерева и каталог, выведенный
+// из него. Снято, а не починено: у `LoadCatalog`/`moduleRoot` не было ни
+// одного вызывающего — ни в прод-коде, ни в тестах, ни в этом модуле, ни в
+// `services/iam` (замер: `git grep -n '\bLoadCatalog('` находит только само
+// объявление). Единственный живой читатель каталога
+// (`internal/repohygiene/catalogparity_test.go`) резолвит корень своим
+// `repoRoot(t)` и читает файл сам, эту функцию не зовя. Предмета, которому
+// нужна была бы гарантия, не было — значит нечего было ни чинить, ни
+// подтверждать.
 
 package catalogderive
-
-import (
-	"encoding/json"
-	"fmt"
-	"os"
-	"path/filepath"
-)
 
 // CatalogPath is the repo-relative location of the generated catalog embedded
 // into the api-gateway binary. It is the artefact the gateway actually enforces.
@@ -41,54 +50,4 @@ type Entry struct {
 	// authz.RPCEntry.HideExistence; see catalogHidesExistence for the derived
 	// (unmarked) majority.
 	HideExistence bool `json:"hide_existence"`
-}
-
-// LoadCatalog reads the generated catalog, keyed by gRPC full method
-// ("/kacho.cloud.storage.v1.VolumeService/Get") so it joins directly against
-// authz.RPCMap keys. The catalog stores FQNs without the leading slash.
-//
-// dir is any directory inside the module; the repo root is located by walking up
-// to the go.mod that declares the module.
-func LoadCatalog(dir string) (map[string]Entry, error) {
-	root, err := moduleRoot(dir)
-	if err != nil {
-		return nil, err
-	}
-	// The read target is not caller-chosen: CatalogPath is a constant in this
-	// package and root is this module's own directory, located by walking up to
-	// the go.mod that declares it. `dir` only says where to start walking, so no
-	// value of it can name a different file. The package has no non-test
-	// importer either — every caller is a *_test.go parity check, so this never
-	// runs while a request is being served.
-	raw, err := os.ReadFile(filepath.Join(root, CatalogPath)) // #nosec G304 -- constant path under this module's own root; `dir` only picks the walk-up start
-	if err != nil {
-		return nil, fmt.Errorf("read permission catalog: %w", err)
-	}
-	var rows []Entry
-	if err := json.Unmarshal(raw, &rows); err != nil {
-		return nil, fmt.Errorf("decode permission catalog: %w", err)
-	}
-	out := make(map[string]Entry, len(rows))
-	for _, r := range rows {
-		out["/"+r.FQN] = r
-	}
-	return out, nil
-}
-
-// moduleRoot walks up from dir until it finds the go.mod of this module.
-func moduleRoot(dir string) (string, error) {
-	abs, err := filepath.Abs(dir)
-	if err != nil {
-		return "", err
-	}
-	for {
-		if _, err := os.Stat(filepath.Join(abs, "go.mod")); err == nil {
-			return abs, nil
-		}
-		parent := filepath.Dir(abs)
-		if parent == abs {
-			return "", fmt.Errorf("go.mod not found above %s", dir)
-		}
-		abs = parent
-	}
 }

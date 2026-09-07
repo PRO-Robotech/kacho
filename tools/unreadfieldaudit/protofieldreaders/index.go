@@ -441,11 +441,31 @@ func patternIn(rel, orig string) string {
 }
 
 // ownerModule — ближайший модуль на пути вверх от dir, не выше корня обхода.
+//
+// dir ОБЯЗАН быть относительным к cwd (PRO-Robotech/kacho#2211, census row 3).
+// Единственный вызывающий (planWalks) уже отсекает абсолютные шаблоны раньше,
+// но эта функция не полагается на чужой фильтр: она проверяет свою предпосылку
+// сама. Причина — не педантизм. `cur` на каждом шаге кладётся ВТОРЫМ сегментом
+// в `filepath.Join(cwd, cur, "go.mod")`; Join не трактует абсолютный `cur`
+// особо, он просто склеивает строки и чистит результат — значит абсолютный dir
+// превращается в путь ВНУТРИ cwd, которого на диске нет никогда, и цикл
+// climbing доходит до "/", ни разу не заглянув в РЕАЛЬНЫЙ каталог, который dir
+// называл. Guard `cur == "."` на такой вход не срабатывает вовсе — climbing
+// уходит в "/", а функция молча отвечает "этим владеет корневой модуль",
+// хотя каталог, на который указывал dir, мог принадлежать СОВСЕМ другому
+// модулю (проверено одно-фактным вызовом на пути внутри вложенного модуля:
+// вернулся корень, а не найденный вложенный).
 func ownerModule(cwd, dir, rootPath string) (string, string, error) {
-	for cur := filepath.Clean(dir); ; cur = filepath.Dir(cur) {
-		if cur == "." || cur == string(filepath.Separator) {
-			return ".", rootPath, nil
-		}
+	if filepath.IsAbs(dir) {
+		return "", "", fmt.Errorf(
+			"ownerModule: dir %q is absolute — the walk-up climbs cwd-relative "+
+				"path segments and an absolute dir defeats it silently (every "+
+				"level is checked as a nonsense path glued onto cwd, so climbing "+
+				"reaches the OS root without ever inspecting the directory named, "+
+				"and reports the root module regardless of which module actually "+
+				"owns it); callers must pass dir relative to cwd (%s)", dir, cwd)
+	}
+	for cur := filepath.Clean(dir); cur != "."; cur = filepath.Dir(cur) {
 		p, err := modulePath(filepath.Join(cwd, cur, "go.mod"))
 		if err != nil {
 			return "", "", err
@@ -454,6 +474,7 @@ func ownerModule(cwd, dir, rootPath string) (string, string, error) {
 			return cur, p, nil
 		}
 	}
+	return ".", rootPath, nil
 }
 
 type nestedModule struct{ dir, path string }
