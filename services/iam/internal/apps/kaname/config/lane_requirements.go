@@ -201,24 +201,21 @@ var LaneRequirements = []LaneRequirement{
 				IdentityProviderSetting, IdentityProviderExternal)
 		},
 	},
-	{
-		Lanes:   laneOwn,
-		Element: "приём предъявленного удостоверения включён",
-		Stage:   LaneStageConfig,
-		Check: func(c Config, _ LaneWiring) error {
-			if c.AuthN.PresentedCredential.Enabled {
-				return nil
-			}
-			return fmt.Errorf(
-				"production mode: %s=%s but authn.presented-credential.enabled is false — on this "+
-					"posture there is no edge of ours to forward an identity and no module "+
-					"certificate for a person, so a tenant has NOTHING to name itself with: every "+
-					"public RPC would answer an honest and useless refusal. Enable it, or declare "+
-					"%s=%s",
-				IdentityProviderSetting, IdentityProviderOwn,
-				IdentityProviderSetting, IdentityProviderExternal)
-		},
-	},
+	// ЗДЕСЬ СТОЯЛА СТРОКА «приём предъявленного удостоверения включён», и она
+	// ПЕРЕЕХАЛА, а не исчезла: PresentedCredentialConfig.ValidateBinding.
+	//
+	// Причина переезда — АНТЕЦЕДЕНТ. Здесь требование предъявлялось посадке
+	// `own`, которую не выбирает ни один профиль развёртывания, тогда как
+	// собственный публичный фронт поднимается на ЛЮБОЙ посадке — его поднимает
+	// объявленный адрес, а не выбор посадки. Связывание существовало, его
+	// антецедент не наступал никогда, следствие не требовалось ни разу, и всё
+	// выглядело настроенным.
+	//
+	// Второй строкой рядом это не чинится: у требования один предмет, и два
+	// стража о нём разошлись бы молча. Поэтому антецедент стал дизъюнкцией
+	// («фронт поднят ИЛИ посадка без края»), а требование живёт в ОДНОМ месте —
+	// и это место не таблица полос, потому что строка, названная обеими
+	// полосами, клеткой произведения не является (см. шапку файла).
 	{
 		Lanes:   laneOwn,
 		Element: "подписант своей чеканки провязан",

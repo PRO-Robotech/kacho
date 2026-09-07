@@ -42,6 +42,7 @@ import (
 	"github.com/PRO-Robotech/kacho/gateway/internal/middleware"
 	gwmetrics "github.com/PRO-Robotech/kacho/gateway/internal/observability/metrics"
 	"github.com/PRO-Robotech/kacho/gateway/internal/opsproxy"
+	"github.com/PRO-Robotech/kacho/gateway/internal/principalmeta"
 	"github.com/PRO-Robotech/kacho/gateway/internal/proxy"
 	"github.com/PRO-Robotech/kacho/gateway/internal/restmux"
 	"github.com/PRO-Robotech/kacho/gateway/internal/subscriptionstream"
@@ -1075,7 +1076,20 @@ func main() {
 	diagMetrics.RegisterSubscriptionStream(subscriptionStream.Stats,
 		cfg.SubscriptionMaxStreams, cfg.SubscriptionMaxStreamsPerSubject)
 
-	httpMux.Handle("/", restHandler)
+	// АРЕНДАТОРСКОЕ УДОСТОВЕРЕНИЕ ЗА КРАЙ НЕ УЕЗЖАЕТ (приёмка KAN-AUTHN-1, ось 8).
+	//
+	// Обёртка стоит ВПЛОТНУЮ к пересылающему обработчику, а не в общей цепочке
+	// края: цепочка обслуживает и собственные обработчики края — выход и поток
+	// изменений, — а они удостоверение читают САМИ. Снятие в цепочке отобрало бы
+	// его у них, и «снимаем после того, как край прочитал» перестало бы быть
+	// верным.
+	//
+	// Мост библиотеки переносит удостоверение своим особым случаем, ДО
+	// обращения к сопоставителю входящих заголовков, поэтому сузить его
+	// сопоставителем нельзя — снимается сам заголовок запроса. Разбор и решения
+	// по конструкциям сборки помимо общего узла — в шапке
+	// gateway/internal/principalmeta/credential_strip.go.
+	httpMux.Handle("/", principalmeta.StripCredentialBeforeForwarding(restHandler))
 
 	// Хранилище однократности `Idempotency-Key`.
 	//
