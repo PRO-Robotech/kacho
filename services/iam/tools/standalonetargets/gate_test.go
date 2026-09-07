@@ -122,14 +122,27 @@ func buildStandaloneClone(t *testing.T, moduleRoot string) string {
 		treeish = "HEAD:" + filepath.ToSlash(rel)
 	}
 
+	// Выгрузка идёт ОТ КОРНЯ ДЕРЕВА, а не из каталога модуля, и это не стиль:
+	// путь в `<tree-ish>:<путь>` git разрешает ОТНОСИТЕЛЬНО рабочего каталога,
+	// поэтому та же строка, поданная из services/iam, ищет services/iam/services/iam
+	// и выгружает НОЛЬ файлов — молча, кодом 0. Клон вышел бы пустым, а гейт
+	// объявил бы «судить нечего» вместо вердикта о целях.
 	tar := exec.Command("tar", "-x", "-C", dir)
-	ar := gitenv.Command(moduleRoot, "archive", "--format=tar", treeish)
+	ar := gitenv.Command(treeRoot, "archive", "--format=tar", treeish)
 	pipe, err := ar.StdoutPipe()
 	require.NoError(t, err)
 	tar.Stdin = pipe
 	require.NoError(t, tar.Start())
 	require.NoError(t, ar.Run(), "проверка НЕ ИСПОЛНЯЛАСЬ: состав коммита модуля не выгружен")
 	require.NoError(t, tar.Wait(), "проверка НЕ ИСПОЛНЯЛАСЬ: состав коммита модуля не распакован")
+
+	// Пустая выгрузка — отдельный исход, и назвать его надо ЗДЕСЬ. Обе команды
+	// выше выходят кодом 0 на пустом дереве, поэтому без этой проверки гейт
+	// поехал бы дальше и упал позже, назвав виновником невиновный шаг.
+	entries, rerr := os.ReadDir(dir)
+	require.NoError(t, rerr)
+	require.NotEmptyf(t, entries,
+		"проверка НЕ ИСПОЛНЯЛАСЬ: выгрузка состава коммита (%s из %s) дала ноль файлов", treeish, treeRoot)
 
 	// Клон обязан быть репозиторием: цели спрашивают у git и корень дерева, и
 	// состав коммита. Распакованный архив дал бы им «проверка не исполнялась» —
