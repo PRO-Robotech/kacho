@@ -58,3 +58,74 @@ export const STRUCTURAL_BODY_ROW_MARKS = ['[aria-hidden="true"]', ".ant-table-pl
 export function dataRowSelector(scope: string): string {
   return `${scope} tbody tr` + STRUCTURAL_BODY_ROW_MARKS.map((mark) => `:not(${mark})`).join("");
 }
+
+/**
+ * Числа о теле таблицы, снятые ОДНИМ обходом DOM.
+ *
+ * `settled` — таблица не в состоянии загрузки. Признак СЕМАНТИЧЕСКИЙ
+ * (`aria-busy` над самой таблицей), а не по имени класса: имя переживёт свой
+ * предмет молча.
+ */
+export type BodyCensus = {
+  settled: boolean;
+  dataRows: number;
+  bodyRows: number;
+  menus: number;
+  checkboxes: number;
+};
+
+/**
+ * Перепись тела таблицы — ВСЕ числа с одного состояния DOM.
+ *
+ * # Предмет (#2237)
+ *
+ * Сквозная проба «в строках списка нет флажков и группового удаления» снимала
+ * строки данных, строки тела и меню ТРЕМЯ отдельными обращениями к странице, а
+ * положительный контроль — четвёртым, ещё раньше. Числа сравнивались между
+ * собой, хотя относились к РАЗНЫМ моментам одной страницы.
+ *
+ * Прогон 34142361500 дал отказ, противоречащий сам себе: «строк данных 0, меню
+ * 48 (всего строк в теле таблицы 49)». Снимок DOM того же отказа показывал 48
+ * строк без единого служебного признака — продукт был исправен, а между
+ * контролем и утверждением список успел уйти в состояние загрузки.
+ *
+ * # Почему функция живёт ЗДЕСЬ, а не в самой пробе
+ *
+ * Её исполняют ДВА разных мира, и оба должны получить одно и то же:
+ *
+ *   • браузер — `page.evaluate(censusOfBody, …)` сериализует функцию и
+ *     исполняет её В СТРАНИЦЕ синхронно; перерисоваться между её строками
+ *     нечему by construction;
+ *   • jsdom — гейт рядом с этим модулем подаёт ей синтетическое тело и
+ *     доказывает, что противоречивой тройки она не даёт ни при каком порядке
+ *     подмен, тогда как четыре отдельных чтения дают её ровно ту же.
+ *
+ * Копия предиката в пробе разошлась бы с гейтом молча — обе отвечают одинаково
+ * на исправном дереве.
+ *
+ * # Ограничение, наложенное сериализацией
+ *
+ * Функция НЕ ДОЛЖНА ссылаться ни на что за пределами своих параметров:
+ * `page.evaluate` переносит в страницу её текст, а не замыкание. Поэтому оба
+ * селектора приходят аргументом, а не берутся из констант модуля.
+ */
+export function censusOfBody(arg: { scope: string; dataSelector: string }): BodyCensus {
+  const root = document.querySelector(arg.scope);
+  // Занятой считается ТА область, что накрывает саму таблицу: «где угодно в
+  // консоли крутится спиннер» сделало бы признак вечно ложным из-за соседнего
+  // виджета, и проба краснела бы там, где список давно готов. Признак опять
+  // семантический плюс структурный — ни одного имени класса.
+  const busyOverTable =
+    root !== null &&
+    Array.prototype.some.call(
+      root.querySelectorAll('[aria-busy="true"]'),
+      (el: Element) => el.querySelector("tbody") !== null,
+    );
+  return {
+    settled: root !== null && !busyOverTable,
+    dataRows: document.querySelectorAll(arg.dataSelector).length,
+    bodyRows: document.querySelectorAll(`${arg.scope} tbody tr`).length,
+    menus: document.querySelectorAll(`${arg.scope} tbody .anticon-more`).length,
+    checkboxes: document.querySelectorAll(`${arg.scope} tbody input[type="checkbox"]`).length,
+  };
+}
