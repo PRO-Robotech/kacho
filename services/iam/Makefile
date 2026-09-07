@@ -4,7 +4,7 @@
 BINARY         := kaname
 CMD            := ./cmd/kaname
 # Отдельный binary мигратора.
-MIGRATOR_BIN   := kacho-migrator
+MIGRATOR_BIN   := kaname-migrator
 MIGRATOR_CMD   := ./cmd/migrator
 IMAGE          := kaname:dev
 
@@ -346,7 +346,7 @@ docker:
 	docker build $(IMAGE_BUILD_ARGS) -f Dockerfile -t $(IMAGE) .
 
 .PHONY: migrate-up migrate-down migrate-status
-# migrate-* дергают отдельный binary `bin/kacho-migrator`.
+# migrate-* дергают отдельный binary `bin/kaname-migrator`.
 # Зависимость на build-migrator гарантирует, что bin/ актуальный.
 ## migrate-up — накатить миграции
 migrate-up: build-migrator

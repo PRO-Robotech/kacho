@@ -96,12 +96,12 @@ spec:
             secretName: {{ $tls.clientSecretName | quote }}
         {{- end }}
       initContainers:
-        # Миграции БД исполняет отдельный binary `kacho-migrator`
+        # Миграции БД исполняет отдельный binary `kaname-migrator`
         # (cobra-based CLI), не subcommand основного.
         - name: migrate
           image: "{{ .Values.image }}"
           imagePullPolicy: {{ .Values.imagePullPolicy }}
-          command: ["/usr/local/bin/kacho-migrator", "up"]
+          command: ["/usr/local/bin/kaname-migrator", "up"]
           securityContext:
             allowPrivilegeEscalation: false
             readOnlyRootFilesystem: true

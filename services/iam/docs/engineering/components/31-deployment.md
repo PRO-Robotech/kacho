@@ -13,11 +13,11 @@ helm-chart, config + секреты, миграции и порядок запу
 | Бинарник | Назначение |
 |---|---|
 | `kaname` | gRPC API-сервер (`serve`) — основной процесс Deployment'а |
-| `kacho-migrator` | CLI миграций БД (`up`/`down`/`status`/`create`), запускается init-контейнером |
+| `kaname-migrator` | CLI миграций БД (`up`/`down`/`status`/`create`), запускается init-контейнером |
 
 `kaname` обслуживает только `serve` — миграции вынесены в отдельный
-`kacho-migrator` (cmd-binary не смешивает обязанности). Попытка
-`kaname migrate ...` падает с подсказкой использовать `kacho-migrator`.
+`kaname-migrator` (cmd-binary не смешивает обязанности). Попытка
+`kaname migrate ...` падает с подсказкой использовать `kaname-migrator`.
 
 ## Listener-порты
 
@@ -106,7 +106,7 @@ flowchart TB
         Kratos[Ory Kratos] -- provision-hook :9092 --> IAM
         Hydra[Ory Hydra] -- token/refresh-hook :9092 --> IAM
         IAM -- admin API: JWKS --> Hydra
-        Migrate[initContainer kacho-migrator] -. goose up .-> PG
+        Migrate[initContainer kaname-migrator] -. goose up .-> PG
         Prom[Prometheus] -- scrape :9095 --> IAM
     end
 ```
@@ -157,7 +157,7 @@ authn:
 ```
 
 `templates/deployment.yaml` запускает init-контейнер `migrate`
-(`kacho-migrator up`) перед основным контейнером `iam` (`kaname serve`).
+(`kaname-migrator up`) перед основным контейнером `iam` (`kaname serve`).
 Pod hardened: `runAsNonRoot` (uid 65532), `readOnlyRootFilesystem`,
 `drop: ["ALL"]`, `seccompProfile: RuntimeDefault`. Readiness/liveness — TCP-probe
 на gRPC-порт. `Service` публикует `grpc` (9090) и `grpc-internal` (9091).
@@ -277,23 +277,23 @@ anonymous fail-closed); dev-стенд явно опускает его до `de
 
 ## Миграции
 
-Миграции исполняет отдельный `kacho-migrator` (init-контейнер
+Миграции исполняет отдельный `kaname-migrator` (init-контейнер
 `templates/deployment.yaml`), а не основной бинарник. Схема — `kaname`,
 набор goose-миграций (`internal/migrations/0001_initial.sql` и далее по
 возрастанию).
 
 ```bash
 # Применить до latest.
-kacho-migrator up
+kaname-migrator up
 
 # Статус (applied / pending).
-kacho-migrator status
+kaname-migrator status
 
 # Откат на одну версию назад.
-kacho-migrator down
+kaname-migrator down
 
 # Источник DSN: --dsn > ENV KACHO_MIGRATOR_DSN > viper-config kaname.
-KANAME_DB_PASSWORD=secret kacho-migrator up
+KANAME_DB_PASSWORD=secret kaname-migrator up
 ```
 
 ## Своя чеканка токенов: ключница, ротация, публикация, отзыв
@@ -499,7 +499,7 @@ RPC отчёта о состоянии JWKS **снят с контракта ц�
 sequenceDiagram
     autonumber
     participant Helm
-    participant Init as initContainer kacho-migrator
+    participant Init as initContainer kaname-migrator
     participant PG as Postgres
     participant Pod as kaname Pod
 

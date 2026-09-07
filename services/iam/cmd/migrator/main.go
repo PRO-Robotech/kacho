@@ -1,15 +1,15 @@
 // Copyright (c) PRO-Robotech
 // SPDX-License-Identifier: AGPL-3.0-or-later
 
-// Package main — отдельный binary `kacho-migrator`: единая точка сборки CLI
+// Package main — отдельный binary `kaname-migrator`: единая точка сборки CLI
 // миграций (cmd-binary не смешивает обязанности). Обслуживает миграции БД
 // сервиса kaname (схема `kaname`).
 //
 // API совпадает с goose-flavour:
 //
-//	kacho-migrator up [--target <version>]
-//	kacho-migrator down [--target <version>]
-//	kacho-migrator status
+//	kaname-migrator up [--target <version>]
+//	kaname-migrator down [--target <version>]
+//	kaname-migrator status
 //
 // # Глагола `create` здесь НЕТ — и это решение, а не пропуск (#566)
 //
@@ -95,9 +95,9 @@ func newRootCmd(migrationsFS fs.FS) *cobra.Command {
 	opts := &rootOptions{}
 
 	root := &cobra.Command{
-		Use:   "kacho-migrator",
+		Use:   "kaname-migrator",
 		Short: "Database migrations runner for kaname",
-		Long: "kacho-migrator — отдельный CLI для управления миграциями БД сервиса kaname.\n" +
+		Long: "kaname-migrator — отдельный CLI для управления миграциями БД сервиса kaname.\n" +
 			"Одна точка сборки на use-case (cmd-binary не смешивает обязанности).\n\n" +
 			"Новая миграция заводится РУКОЙ: internal/migrations/YYYYMMDDHHMMSS_<что>.sql\n" +
 			"(метка времени заведения: date -u +%Y%m%d%H%M%S).\n" +

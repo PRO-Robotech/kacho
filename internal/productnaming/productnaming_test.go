@@ -183,3 +183,48 @@ func TestMetricNamespaceFollowsTheSameNameAsTheChart(t *testing.T) {
 		}
 	}
 }
+
+func TestProductNameSeparatesTheProductFromThePart(t *testing.T) {
+	// Обе стороны разом, иначе проверка зеленела бы на выводе, который
+	// продукт от части не отличает: у переименованной части они совпадают,
+	// у остальных — расходятся, и различие это и есть предмет.
+	for _, c := range []struct{ svc, product, chart string }{
+		{"iam", "kaname", "kaname"},
+		{"vpc", "kacho", "kacho-vpc"},
+		{"api-gateway", "kacho", "kacho-api-gateway"},
+	} {
+		if got := productnaming.ProductName(c.svc); got != c.product {
+			t.Errorf("ProductName(%q) = %q, ожидалось %q", c.svc, got, c.product)
+		}
+		if got := productnaming.ChartName(c.svc); got != c.chart {
+			t.Errorf("ChartName(%q) = %q, ожидалось %q", c.svc, got, c.chart)
+		}
+		if c.svc != "iam" && productnaming.ProductName(c.svc) == productnaming.ChartName(c.svc) {
+			t.Errorf("ProductName(%q) совпало с ChartName — у части БЕЗ своего имени "+
+				"продукт и часть обязаны различаться, иначе вывод не различает их вовсе",
+				c.svc)
+		}
+	}
+}
+
+func TestMigratorBinaryFollowsTheProductNotThePart(t *testing.T) {
+	// Имя накатчика ОДНО НА ПРОДУКТ, а не на службу: шесть служб платформы
+	// делят одно имя, Kaname несёт своё.
+	for _, c := range []struct{ svc, want string }{
+		{"iam", "kaname-migrator"},
+		{"vpc", "kacho-migrator"},
+		{"compute", "kacho-migrator"},
+		{"geo", "kacho-migrator"},
+	} {
+		if got := productnaming.MigratorBinary(c.svc); got != c.want {
+			t.Errorf("MigratorBinary(%q) = %q, ожидалось %q", c.svc, got, c.want)
+		}
+	}
+	// Отрицательная половина: имя накатчика Kaname не совпадает с платформенным.
+	// Без неё проверка выше осталась бы зелёной на выводе, который приставку
+	// продукта не читает вовсе.
+	if productnaming.MigratorBinary("iam") == productnaming.MigratorBinary("vpc") {
+		t.Error("накатчик Kaname назван так же, как накатчик платформы — " +
+			"переименование не различает продукты")
+	}
+}

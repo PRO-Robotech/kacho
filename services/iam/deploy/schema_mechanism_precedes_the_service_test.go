@@ -12,8 +12,9 @@
 // что создаёт схему, обязано ехать В САМОМ ЧАРТЕ — иначе установка в пустой
 // кластер даёт службу без базы, то есть продукт, который не поднимается.
 //
-// Механизм в дереве ЕСТЬ: init-контейнер, исполняющий отдельный binary
-// `kacho-migrator`. Предмет этой пробы — не завести его, а УДЕРЖАТЬ: сегодня его
+// Механизм в дереве ЕСТЬ: init-контейнер, исполняющий отдельный binary накатчика
+// (`kaname-migrator` у Kaname; у служб платформы он носит имя платформы — имя
+// одно на ПРОДУКТ, #2245). Предмет этой пробы — не завести его, а УДЕРЖАТЬ: сегодня его
 // не держит ничто. Снятие init-контейнера проходит молча — `helm template` и
 // `helm lint` остаются зелёными, ни одна проба дерева не краснеет, а отказ
 // приходит только в чужом кластере и только на первом обращении к таблице.
@@ -99,10 +100,29 @@ import (
 	"gopkg.in/yaml.v3"
 )
 
-// migratorBinaryPath — путь, по которому чарт зовёт накат схемы. Одна величина на
-// обе стороны сверки: и для поиска в объявлении чарта, и для сверки с
-// назначениями Dockerfile.
-const migratorBinaryPath = "/usr/local/bin/kacho-migrator"
+// migratorPathRe — путь накатчика: АБСОЛЮТНЫЙ путь, чьё последнее имя
+// оканчивается на `migrator`.
+//
+// # Почему признак ФОРМЫ, а не литерал имени
+//
+// До 2026-09-07 здесь стоял один литерал на всё дерево, и он был верен ровно
+// пока имя накатчика было одно. Служба управления доступом вынесена
+// самостоятельным продуктом Kaname и несёт СВОЁ имя (`kaname-migrator`, #2245),
+// а шесть служб платформы делят прежнее. Литерал после этого стал неверен для
+// пяти чартов из шести — и неверен ГРОМКО: проба объявила бы механизм наката
+// отсутствующим там, где он есть.
+//
+// Владельца имён (`internal/productnaming`) отсюда не спросить: он лежит в
+// `internal/` ЧУЖОГО модуля, и правило Go его не отдаёт. Своя копия правила
+// именования была бы вторым местом об одном предмете — она разошлась бы с
+// первым молча, и разошлась бы на следующем переименовании.
+//
+// Признак формы обходится без имени вовсе, и проба от этого СИЛЬНЕЕ: пункт (2)
+// ниже требует, чтобы названный путь лежал среди назначений `COPY --from=…`
+// СОБСТВЕННОГО Dockerfile службы. То есть чарт обязан звать то, что его же
+// образ кладёт, — а как это названо, решает продукт. Прежний литерал этой связи
+// не проверял: он сверял обе стороны с третьей величиной, выписанной здесь.
+var migratorPathRe = regexp.MustCompile(`^/\S*/[A-Za-z0-9_.-]*migrator$`)
 
 // templateLine — строка шаблона вместе с её отступом и признаком комментария.
 // Комментарий хранится, а не выбрасывается: перепись обязана назвать, сколько
@@ -265,14 +285,18 @@ func splitContainers(body []templateLine) []containerDecl {
 	return out
 }
 
-// namesMigrator отвечает, зовёт ли объявленный контейнер накат схемы.
-func namesMigrator(c containerDecl) bool {
+// namesMigrator отвечает, зовёт ли объявленный контейнер накат схемы, и каким
+// путём именно.
+//
+// Путь возвращается, а не только признак: пункт (2) сверяет с назначениями
+// Dockerfile ИМЕННО ЕГО, а не величину, выписанную рядом.
+func namesMigrator(c containerDecl) (string, bool) {
 	for _, a := range c.invocation {
-		if a == migratorBinaryPath {
-			return true
+		if migratorPathRe.MatchString(a) {
+			return a, true
 		}
 	}
-	return false
+	return "", false
 }
 
 // dockerfileDestinations собирает пути, по которым образ службы что-либо кладёт.
@@ -460,7 +484,7 @@ func auditSchemaMechanism(selfChartDir string, roots ...string) ([]chartAudit, [
 		// (3) Порядок: накат, попавший в служебные контейнеры, исполняется
 		// ОДНОВРЕМЕННО со службой, а не раньше неё.
 		for _, c := range serviceItems {
-			if namesMigrator(c) {
+			if _, ok := namesMigrator(c); ok {
 				findings = append(findings, finding{
 					service: service,
 					where:   fmt.Sprintf("%s:%d", tmplPath, c.line),
@@ -487,9 +511,11 @@ func auditSchemaMechanism(selfChartDir string, roots ...string) ([]chartAudit, [
 
 		// (1) Механизм есть — судится исполнимая часть, не проза.
 		var migrator *containerDecl
+		var migratorPath string
 		for i := range initItems {
-			if namesMigrator(initItems[i]) {
+			if p, ok := namesMigrator(initItems[i]); ok {
 				migrator = &initItems[i]
+				migratorPath = p
 				break
 			}
 		}
@@ -497,16 +523,21 @@ func auditSchemaMechanism(selfChartDir string, roots ...string) ([]chartAudit, [
 			findings = append(findings, finding{
 				service: service,
 				where:   fmt.Sprintf("%s:%d", tmplPath, initLine),
-				what: fmt.Sprintf("ни один init-контейнер не зовёт %s — механизма создания схемы нет "+
-					"(упоминание в комментарии механизмом не является)", migratorBinaryPath),
+				what: "ни один init-контейнер не зовёт накатчик (абсолютный путь, чьё имя " +
+					"оканчивается на `migrator`) — механизма создания схемы нет " +
+					"(упоминание в комментарии механизмом не является)",
 			})
 			continue
 		}
 
-		// (2) Он исполним — путь производится собственным образом службы.
+		// (2) Он исполним — путь производится СОБСТВЕННЫМ образом службы.
+		//
+		// Сверяется ровно тот путь, который назвал чарт: связь «чарт зовёт то, что
+		// его же образ кладёт» и есть предмет пункта. Сверка обеих сторон с
+		// третьей, выписанной величиной этой связи не проверяла бы вовсе.
 		produced := false
 		for _, d := range dests {
-			if d == migratorBinaryPath {
+			if d == migratorPath {
 				produced = true
 				break
 			}
@@ -516,7 +547,7 @@ func auditSchemaMechanism(selfChartDir string, roots ...string) ([]chartAudit, [
 				service: service,
 				where:   fmt.Sprintf("%s:%d", tmplPath, migrator.line),
 				what: fmt.Sprintf("чарт зовёт %s, а %s по этому пути ничего не кладёт (назначений прочитано %d) — "+
-					"объявленная и неисполнимая возможность", migratorBinaryPath, dfPath, len(dests)),
+					"объявленная и неисполнимая возможность", migratorPath, dfPath, len(dests)),
 			})
 		}
 

@@ -137,7 +137,7 @@ func TestUnknownCommandIsStillNamed(t *testing.T) {
 // а не совпадение с литералом: литерал был бы второй редакцией того же текста и
 // разошёлся бы с первой молча.
 func TestRefusalTextsComeFromTheSharedProducer(t *testing.T) {
-	const binary = "kacho-migrator"
+	const binary = "kaname-migrator"
 	for _, tc := range []struct {
 		args []string
 		want string
@@ -211,7 +211,7 @@ func TestHelpSubcommandWorks(t *testing.T) {
 	if err != nil {
 		t.Fatalf("help объявлен отказом: %v", err)
 	}
-	if !strings.Contains(stdout, "kacho-migrator") {
+	if !strings.Contains(stdout, "kaname-migrator") {
 		t.Fatalf("help не напечатал форму вызова: %q", stdout)
 	}
 }

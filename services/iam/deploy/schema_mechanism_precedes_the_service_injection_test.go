@@ -102,10 +102,10 @@ func replaceOnce(t *testing.T, body, old, new string) string {
 }
 
 const (
-	migratorCommandLine = `          command: ["/usr/local/bin/kacho-migrator", "up"]`
+	migratorCommandLine = `          command: ["/usr/local/bin/kaname-migrator", "up"]`
 	serviceCommandLine  = `          command: ["/usr/local/bin/kaname", "serve"]`
 	initImageLine       = `          image: "{{ .Values.image }}"`
-	dockerfileCopyLine  = `COPY --from=builder /kacho-migrator /usr/local/bin/kacho-migrator`
+	dockerfileCopyLine  = `COPY --from=builder /kaname-migrator /usr/local/bin/kaname-migrator`
 )
 
 func TestSchemaMechanismInjection(t *testing.T) {
@@ -185,6 +185,55 @@ func TestSchemaMechanismInjection(t *testing.T) {
 				writeFixture(t, root, "deploy/values.yaml", v+"\nmigrator:\n  enabled: true\n")
 			},
 			wantSubstring: "",
+		},
+		{
+			// Ось ПРОДУКТА (#2245). Накатчик переименован ОБЕИМИ сторонами разом —
+			// чарт зовёт и Dockerfile кладёт одно и то же новое имя. Проба обязана
+			// молчать: её предмет — СВЯЗЬ между сторонами, а не имя, которое она
+			// когда-то выписала у себя. До #2245 здесь стоял литерал на всё дерево,
+			// и этот вход давал ложную находку у пяти чартов платформы из шести.
+			//
+			// Имя подставляется ПОСТОРОННЕЕ, а не имя платформы, и это решение:
+			// предмет случая — независимость от имени, поэтому имя, чем-либо
+			// нагруженное, доказывало бы у́же. Держатель, судящий ИМЯ платформы на
+			// витрине Kaname, — соседний, и его инъекция подставляет именно её.
+			name: "накатчик назван ПОСТОРОННИМ именем обеими сторонами — молчание",
+			mutate: func(t *testing.T, root string) {
+				b := readFixture(t, root, "deploy/templates/deployment.yaml")
+				b = replaceOnce(t, b, migratorCommandLine,
+					`          command: ["/usr/local/bin/legacy-migrator", "up"]`)
+				writeFixture(t, root, "deploy/templates/deployment.yaml", b)
+				d := readFixture(t, root, "Dockerfile")
+				d = replaceOnce(t, d, dockerfileCopyLine,
+					`COPY --from=builder /legacy-migrator /usr/local/bin/legacy-migrator`)
+				writeFixture(t, root, "Dockerfile", d)
+			},
+			wantSubstring: "",
+		},
+		{
+			// Тот же вход, изменён РОВНО ОДИН факт против случая выше — сторону
+			// сборки не переименовали. Связь порвана, и проба обязана назвать это.
+			name: "переименована одна сторона из двух — находка",
+			mutate: func(t *testing.T, root string) {
+				b := readFixture(t, root, "deploy/templates/deployment.yaml")
+				b = replaceOnce(t, b, migratorCommandLine,
+					`          command: ["/usr/local/bin/legacy-migrator", "up"]`)
+				writeFixture(t, root, "deploy/templates/deployment.yaml", b)
+			},
+			wantSubstring: "неисполнимая возможность",
+		},
+		{
+			// Путь, чьё имя на `migrator` НЕ оканчивается, накатчиком не является:
+			// иначе проба засчитала бы механизмом любой init-контейнер, и снятие
+			// наката прошло бы молча.
+			name: "init-контейнер зовёт не накатчик — находка",
+			mutate: func(t *testing.T, root string) {
+				b := readFixture(t, root, "deploy/templates/deployment.yaml")
+				b = replaceOnce(t, b, migratorCommandLine,
+					`          command: ["/usr/local/bin/kaname", "serve"]`)
+				writeFixture(t, root, "deploy/templates/deployment.yaml", b)
+			},
+			wantSubstring: "ни один init-контейнер не зовёт",
 		},
 		{
 			// Тот же вход, изменён РОВНО ОДИН факт против случая выше — умолчание

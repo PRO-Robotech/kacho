@@ -59,7 +59,7 @@ REST-примеры идут через `api-gateway` (порт указан к�
     # API-сервер → bin/kaname
     make build
 
-    # мигратор → bin/kacho-migrator
+    # мигратор → bin/kaname-migrator
     make build-migrator
   `}
 </CodeBlock>
@@ -73,10 +73,10 @@ REST-примеры идут через `api-gateway` (порт указан к�
 <CodeBlock language="bash">
   {dedent`
     # применить все миграции (up)
-    KANAME_DB_PASSWORD=secret bin/kacho-migrator up
+    KANAME_DB_PASSWORD=secret bin/kaname-migrator up
 
     # посмотреть текущий статус
-    KANAME_DB_PASSWORD=secret bin/kacho-migrator status
+    KANAME_DB_PASSWORD=secret bin/kaname-migrator status
   `}
 </CodeBlock>
 

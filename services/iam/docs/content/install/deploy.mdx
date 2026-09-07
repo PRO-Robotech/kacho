@@ -28,7 +28,7 @@ Helm-чарт (часть umbrella-стенда платформы). Эта ст
 
 ## Сборка образа
 
-Двухстадийная сборка: компиляция Go-бинарей (`kaname` + `kacho-migrator`), затем минимальный
+Двухстадийная сборка: компиляция Go-бинарей (`kaname` + `kaname-migrator`), затем минимальный
 рантайм-образ.
 
 <CodeBlock language="bash">
@@ -46,11 +46,11 @@ Helm-чарт (часть umbrella-стенда платформы). Эта ст
 
 ```mermaid
 flowchart LR
-  mig["init: kacho-migrator up"] --> app["kaname serve"]
+  mig["init: kaname-migrator up"] --> app["kaname serve"]
   app -->|"нужен доступ"| deps["PostgreSQL · Kratos · Hydra"]
 ```
 
-1. **Миграции** — `kacho-migrator up` накатывает схему `kaname` (обычно init-container перед
+1. **Миграции** — `kaname-migrator up` накатывает схему `kaname` (обычно init-container перед
    основным подом).
 2. **Сервис** — `kaname serve` поднимает listener'ы (`:9090` public, `:9091` internal,
    `:9092` hooks, `:9095` metrics).
@@ -75,7 +75,7 @@ flowchart LR
 Что делать — одно из двух:
 
 1. **чистая база** — направьте `KANAME_REPOSITORY__POSTGRES__URL` на базу без схемы
-   `kacho_iam` и накатите схему: `kacho-migrator up`;
+   `kacho_iam` и накатите схему: `kaname-migrator up`;
 2. **та же база** — решив судьбу прежних данных самостоятельно, снимите в ней схему
    `kacho_iam`. Служба такой операции за оператора не делает.
 
@@ -126,9 +126,9 @@ initContainer'ом и прогоняются `up` **на каждом старт
 ```bash
 # ДО helm rollback, пока в поде ещё НОВЫЙ образ: у него есть down-файл.
 kubectl -n <namespace> exec deploy/<деплой kaname> -- \
-  /usr/local/bin/kacho-migrator status
+  /usr/local/bin/kaname-migrator status
 kubectl -n <namespace> exec deploy/<деплой kaname> -- \
-  /usr/local/bin/kacho-migrator down --target <версия, до которой откатываем>
+  /usr/local/bin/kaname-migrator down --target <версия, до которой откатываем>
 ```
 
 ### Шаг 3. Вернуть образ
@@ -159,5 +159,5 @@ Down-миграция воссоздаёт схему **пустой**. Стро
 |---|---|
 | ревизия релиза вернулась | `helm history <релиз>` — последняя запись со статусом `deployed` |
 | под работает нужным образом | `kubectl -n <namespace> get pod -l app=<деплой kaname> -o jsonpath='{..image}'` |
-| схема на ожидаемой версии | `kacho-migrator status` — головная применённая версия |
+| схема на ожидаемой версии | `kaname-migrator status` — головная применённая версия |
 | зависимости сервиса живы | `readinessProbe` спрашивает `/readyz`, поэтому `kubectl get pods` показывает готовность **по зависимостям**, а не по открытому сокету: под в `0/1` — это отказ зависимости, а не «ещё поднимается» |
