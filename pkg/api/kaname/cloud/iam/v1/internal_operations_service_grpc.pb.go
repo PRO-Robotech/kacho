@@ -23,7 +23,7 @@
 // account-scoped public list.
 //
 // Sync read; cursor `(created_at,id)` ASC; `page_size` clamped to max 1000
-// (no single-shot cluster-wide dump). Hits the local `kacho_iam` operations
+// (no single-shot cluster-wide dump). Hits the local `kaname` operations
 // table only — asks no authorization question on the request path.
 //
 // Authorization gate: admin-tier enforced by the

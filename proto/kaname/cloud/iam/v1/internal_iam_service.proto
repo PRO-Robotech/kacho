@@ -73,7 +73,7 @@ service InternalIAMService {
   // five neighbours had long since moved to `RegisterResource` (nlb says so
   // verbatim: «Replaces the former direct WriteCreatorTuple»), leaving zero.
   // What remained was a door writing straight into the relation store, past
-  // `kacho_iam.fga_outbox` — a tuple the `relation_fact` projection (migration
+  // `kaname.fga_outbox` — a tuple the `relation_fact` projection (migration
   // 0098) would never see. Never re-add an RPC under that name: the live path
   // is RegisterResource / UnregisterResource, where the intent lands in the
   // journal first and the direct write is only an accelerator.
@@ -358,7 +358,7 @@ message RegisterResourceRequest {
   string trace_id = 4;
 
   // Tenant labels зеркала ресурса. Output-only mirror в
-  // `kacho_iam.resource_mirror`; source of truth = owner-сервис. Питает
+  // `kaname.resource_mirror`; source of truth = owner-сервис. Питает
   // `bySelector` (matchLabels) и containment. Пусто для legacy-caller'ов
   // (graceful). IAM делает минимальную sanity-валидацию, не дублируя owner-pattern.
   map<string, string> labels = 5;
