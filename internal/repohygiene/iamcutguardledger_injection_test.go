@@ -44,6 +44,11 @@ func ledgerTwin() ([]iamCutGuard, iamCutLedgerFacts) {
 			Carrier: "services/iam/tools/five_test.go",
 			Verdict: iamCutReclassified, Why: "координаты синтетические",
 		},
+		{
+			Carrier: "services/iam/internal/e/six_test.go",
+			Verdict: iamCutSubjectMoved, SuccessorFile: "services/iam/tools/six.sh",
+			Why: "предмет перенесён к своему единственному исполнителю",
+		},
 	}
 	f := iamCutLedgerFacts{
 		ServicePresent: true,
@@ -53,6 +58,8 @@ func ledgerTwin() ([]iamCutGuard, iamCutLedgerFacts) {
 			"services/iam/internal/c/three_test.go": true,
 			"services/iam/internal/d/four_test.go":  true,
 			"services/iam/tools/five_test.go":       true,
+			"services/iam/internal/e/six_test.go":   true,
+			"services/iam/tools/six.sh":             true,
 			"gateway/x.json":                        true,
 			"deploy/y.txt":                          true,
 			"Makefile":                              true,
@@ -75,7 +82,9 @@ func TestIamCutLedgerInjection_SilentOnALegitimateLedger(t *testing.T) {
 	if len(found) != 0 {
 		t.Fatalf("законный близнец объявлен находкой: %s", strings.Join(found, "; "))
 	}
-	if c.Entries != 5 || c.CarriersJudged != 5 || c.SuccessorsRead != 2 {
+	// Перенесённый предмет тоже читается — отдельной ветвью, поэтому преемников
+	// прочитано три, а не два: два файла проб и один файл предмета.
+	if c.Entries != 6 || c.CarriersJudged != 6 || c.SuccessorsRead != 3 {
 		t.Fatalf("перепись не сходится с входом: %+v", c)
 	}
 }
@@ -229,4 +238,67 @@ func anyContains(hay []string, needle string) bool {
 		}
 	}
 	return false
+}
+
+// ── ось «предмет перенесён к службе» (#2378): четыре инъекции ───────────────
+//
+// Она отличается от всех прочих ЗНАКОМ требования к месту: у переноса
+// утверждения преемник обязан лежать ВНЕ службы, у перенесённого предмета —
+// ВНУТРИ. Обе стороны проверяются, иначе исход стал бы способом объявить
+// перенос там, где ничего не переехало.
+
+// TestIamCutLedgerInjection_FindsAMovedSubjectThatIsNotInTheTree — переезд
+// объявлен, файла нет.
+func TestIamCutLedgerInjection_FindsAMovedSubjectThatIsNotInTheTree(t *testing.T) {
+	t.Parallel()
+	l, f := ledgerTwin()
+	f.PathExists["services/iam/tools/six.sh"] = false
+	assertExactlyOne(t, l, f, "переезд объявлен и не сделан")
+}
+
+// TestIamCutLedgerInjection_FindsAMovedSubjectKeepingAPlatformCoordinate —
+// координата платформы у перенесённого предмета: две координаты одного предмета,
+// а истекала бы только одна.
+func TestIamCutLedgerInjection_FindsAMovedSubjectKeepingAPlatformCoordinate(t *testing.T) {
+	t.Parallel()
+	l, f := ledgerTwin()
+	l[5].PlatformSubject = "Makefile"
+	assertExactlyOne(t, l, f, "всё ещё назван координатой платформы")
+}
+
+// TestIamCutLedgerInjection_FindsAMovedSubjectLandingOutsideTheService — «перенесён»
+// туда, где он и был: у платформы. Тогда исполнителя у него по-прежнему нет.
+func TestIamCutLedgerInjection_FindsAMovedSubjectLandingOutsideTheService(t *testing.T) {
+	t.Parallel()
+	l, f := ledgerTwin()
+	l[5].SuccessorFile = "deploy/six.sh"
+	f.PathExists["deploy/six.sh"] = true
+	assertExactlyOne(t, l, f, "он остался у платформы")
+}
+
+// TestIamCutLedgerInjection_FindsAMovedSubjectWithoutADestination — переезд без
+// координаты: то же обещание, что и перенос, объявленный словами.
+func TestIamCutLedgerInjection_FindsAMovedSubjectWithoutADestination(t *testing.T) {
+	t.Parallel()
+	l, f := ledgerTwin()
+	l[5].SuccessorFile = ""
+	assertExactlyOne(t, l, f, "не называет, КУДА перенесён")
+}
+
+// TestIamCutLedgerInjection_MovedSubjectNotJudgedAfterTheCut — после разреза
+// перенесённый предмет НЕ судится, и это обязано быть видно числом: файл уехал
+// вместе со службой, и его отсутствие в дереве платформы есть норма, а не
+// находка.
+func TestIamCutLedgerInjection_MovedSubjectNotJudgedAfterTheCut(t *testing.T) {
+	t.Parallel()
+	l, f := ledgerTwin()
+	f.ServicePresent = false
+	f.PathExists["services/iam/tools/six.sh"] = false
+	found, c := auditIamCutLedger(l, f)
+	if len(found) != 0 {
+		t.Fatalf("после разреза отсутствие перенесённого предмета объявлено находкой: %v", found)
+	}
+	if c.SuccessorsRead != 2 {
+		t.Fatalf("перенесённый предмет зачтён прочитанным при отсутствии службы: %+v", c)
+	}
 }

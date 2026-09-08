@@ -104,6 +104,16 @@ func auditIamCutLedger(l []iamCutGuard, f iamCutLedgerFacts) ([]string, iamCutLe
 						"переклассификация означает, что предмета нет вовсе",
 					e.Carrier, e.PlatformSubject))
 			}
+		case e.Verdict == iamCutSubjectMoved:
+			// Предмет ПЕРЕЕХАЛ: платформенной координаты не осталось. Объявить её
+			// значило бы держать две координаты одного предмета, и истекала бы
+			// только одна.
+			if e.PlatformSubject != "" {
+				found = append(found, fmt.Sprintf(
+					"%s: перенесённый предмет всё ещё назван координатой платформы %q — "+
+						"после переезда её не остаётся, и запись истекала бы по чужому файлу",
+					e.Carrier, e.PlatformSubject))
+			}
 		case e.PlatformSubject == "":
 			found = append(found, fmt.Sprintf(
 				"%s: исход %q без координаты предмета — истекать записи нечем",
@@ -138,6 +148,37 @@ func auditIamCutLedger(l []iamCutGuard, f iamCutLedgerFacts) ([]string, iamCutLe
 				found = append(found, fmt.Sprintf(
 					"%s: %s не объявляет пробы %s — преемник назван, но утверждения в нём нет",
 					e.Carrier, e.SuccessorFile, e.SuccessorTest))
+			}
+		case iamCutSubjectMoved:
+			// Новая координата предмета обязана существовать, пока служба в
+			// дереве: «перенесено» без файла — то же обещание, что и перенос,
+			// объявленный словами.
+			if e.SuccessorFile == "" {
+				found = append(found, fmt.Sprintf(
+					"%s: исход %q не называет, КУДА перенесён предмет — переезд объявлен и не "+
+						"проверяем ничем", e.Carrier, e.Verdict))
+				break
+			}
+			if e.SuccessorTest != "" || e.SuccessorIssue != 0 {
+				found = append(found, fmt.Sprintf(
+					"%s: исход %q называет пробу либо задачу — у перенесённого предмета "+
+						"преемника не бывает, у него есть новая координата", e.Carrier, e.Verdict))
+				break
+			}
+			if !strings.HasPrefix(e.SuccessorFile, iamCutServiceDir+"/") {
+				found = append(found, fmt.Sprintf(
+					"%s: предмет объявлен перенесённым в %s — это вне %s, то есть он остался "+
+						"у платформы, и исход назван неверно",
+					e.Carrier, e.SuccessorFile, iamCutServiceDir))
+				break
+			}
+			if f.ServicePresent {
+				c.SuccessorsRead++
+				if !f.PathExists[e.SuccessorFile] {
+					found = append(found, fmt.Sprintf(
+						"%s: перенесённого предмета %s в дереве нет — переезд объявлен и не сделан",
+						e.Carrier, e.SuccessorFile))
+				}
 			}
 		case iamCutRemainder:
 			if e.SuccessorIssue <= 0 {
@@ -218,7 +259,10 @@ func iamCutLedgerFactsFromTree(t *testing.T, root string, tt *trackedTree, l []i
 		resolve(e.Carrier)
 		resolve(e.PlatformSubject)
 		resolve(e.SuccessorFile)
-		if e.SuccessorFile == "" || !f.PathExists[e.SuccessorFile] {
+		// Пробы разбираются только там, где исход их ТРЕБУЕТ. У перенесённого
+		// предмета преемник — сам файл предмета, и он не обязан быть Go: разбор
+		// оболочки как Go отказал бы, и отказ выглядел бы находкой ведомости.
+		if e.SuccessorFile == "" || e.SuccessorTest == "" || !f.PathExists[e.SuccessorFile] {
 			continue
 		}
 		if _, done := f.TestsDeclaredBy[e.SuccessorFile]; done {
@@ -264,7 +308,8 @@ func TestIamCutGuardLedgerIsHonest(t *testing.T) {
 
 	byVerdict := make([]string, 0, len(c.ByVerdict))
 	for _, v := range []iamCutVerdict{
-		iamCutTransferred, iamCutCovered, iamCutSubjectLeave, iamCutRemainder, iamCutReclassified,
+		iamCutTransferred, iamCutCovered, iamCutSubjectLeave, iamCutSubjectMoved,
+		iamCutRemainder, iamCutReclassified,
 	} {
 		byVerdict = append(byVerdict, fmt.Sprintf("%s %d", v, c.ByVerdict[v]))
 	}
@@ -313,12 +358,23 @@ func TestIamCutGuardLedgerCoversTheAdjudication(t *testing.T) {
 // Ось несущая: преемник внутри службы уехал бы вместе с ней, и «перенесено»
 // означало бы «переложено на ту же полку». Проверяется отдельно от гейта выше,
 // потому что существование файла и его МЕСТО — разные утверждения.
+//
+// Исход SubjectMoved из этой оси ИСКЛЮЧЁН, и это не послабление, а другой
+// предмет: там названный файл — не преемник утверждения, а САМ ПЕРЕНЕСЁННЫЙ
+// предмет, и лежать он обязан ИМЕННО внутри службы. Требование «вне службы»
+// применённое к нему, означало бы «прибор обязан остаться там, где у него нет
+// исполнителя». Место для него судит гейт выше — с обратным знаком, поэтому
+// оси не совпадают и молчание одной не покрывается другой.
 func TestIamCutGuardLedgerSuccessorsAreOutsideTheService(t *testing.T) {
 	t.Parallel()
 	var findings []string
-	named := 0
+	named, moved := 0, 0
 	for _, e := range iamCutGuardLedger {
 		if e.SuccessorFile == "" {
+			continue
+		}
+		if e.Verdict == iamCutSubjectMoved {
+			moved++
 			continue
 		}
 		named++
@@ -328,7 +384,8 @@ func TestIamCutGuardLedgerSuccessorsAreOutsideTheService(t *testing.T) {
 					"ничего не переносит", e.Carrier, e.SuccessorFile))
 		}
 	}
-	t.Logf("перепись: записей с названным преемником %d", named)
+	t.Logf("перепись: записей с названным преемником %d; перенесённых предметов %d "+
+		"(судятся обратной осью гейта ведомости, не этой)", named, moved)
 	if named == 0 {
 		t.Fatal("ни одна запись не называет преемника-файла — ось беспредметна")
 	}
