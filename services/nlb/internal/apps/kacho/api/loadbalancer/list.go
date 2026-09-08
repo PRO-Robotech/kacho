@@ -17,7 +17,7 @@ import (
 
 // ListLoadBalancersUseCase — sync list с фильтром `project_id` (required) +
 // optional `name="<value>"` (от proto request.Filter, через общий
-// shared.ParseNameFilter — kacho-corelib/filter.Parse, whitelist {"name"}) +
+// shared.ParseNameFilter — pkg/filter.Parse, whitelist {"name"}) +
 // cursor-based pagination.
 //
 // Порядок принципиален: страница берётся из БД ПЕРВОЙ, права проверяются на её

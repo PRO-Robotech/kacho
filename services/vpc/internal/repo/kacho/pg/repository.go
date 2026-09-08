@@ -50,7 +50,7 @@ type Repository struct {
 //     появляется — composition root передает второй pool, и Reader-TX уходят
 //     на нее без изменений в use-case-слое.
 //
-// Pools создаются в composition root (обычно из `kacho-corelib/db.NewPool`).
+// Pools создаются в composition root (обычно из `pkg/db.NewPool`).
 func New(masterPool, slavePool *pgxpool.Pool) *Repository {
 	if slavePool == nil {
 		slavePool = masterPool
@@ -305,7 +305,7 @@ func (w *writerImpl) Abort() {
 }
 
 // outboxEmitter — emit в `vpc_outbox` через текущую TX writer'а. Делегирует
-// helpers.EmitVPC (который оборачивает kacho-corelib/outbox.Emit с фиксированной
+// helpers.EmitVPC (который оборачивает pkg/outbox.Emit с фиксированной
 // таблицей "vpc_outbox" + trigger pg_notify('vpc_outbox', ...)).
 type outboxEmitter struct {
 	tx pgx.Tx

@@ -16,7 +16,7 @@
 #     -f values.prod.yaml         # production AUTH flip (correct chart paths):
 #                                 #   authn.mode=production/production-strict,
 #                                 #   sslmode=require, mTLS on, Hydra JWKS/issuer,
-#                                 #   fail-closed authz, opaSidecar+datastore NP.
+#                                 #   fail-closed authz, datastore NP.
 #     -f values.fe3455-prod.yaml  # THIS: revert values.prod's operator-provisioned
 #                                 #   assumptions (existingSecret) back to greenfield
 #                                 #   self-provisioning, add cert-manager PG server
@@ -197,19 +197,6 @@ pg-hydra:
   image: { registry: docker.io, repository: bitnamilegacy/postgresql, tag: 16.4.0-debian-12-r0 }
   volumePermissions: { image: { registry: docker.io, repository: bitnamilegacy/os-shell } }
   auth: { existingSecret: kacho-umbrella-pg-hydra, username: hydra, database: hydra }
-
-# ── ALL NetworkPolicies DISABLED on fe3455 (per operator decision) ──
-# The umbrella NPs are authored for the target production cluster's CNI/DNS/topology
-# and mis-fire on fe3455 (Beget CNI): the opa-sidecar egress allow-list omits PG
-# :5432 and its DNS to-selector (kube-system/k8s-app=kube-dns) doesn't match fe3455
-# CoreDNS → iam's DB/DNS egress dropped; the datastore/internal ingress policies
-# similarly need per-cluster selector tuning. NetworkPolicy is a defense-in-depth
-# network-segmentation layer — NOT the core auth. The production security posture
-# (mTLS transport, Hydra-JWT authN, ReBAC authZ, sslmode=require) is fully
-# intact without it. Re-enable + per-cluster-tune as a follow-up.
-opaSidecar:
-  networkPolicy:
-    enabled: false           # opa-sidecar-egress + opa-bundle ingress
 networkPolicy:
   datastore:
     enabled: false           # pg-<svc>-ingress-allowlist (all 6)

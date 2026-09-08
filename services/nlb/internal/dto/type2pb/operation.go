@@ -13,7 +13,7 @@ import (
 // могли uniform-вызывать `dto.Transfer(dto.FromTo(opPb, &dst))` для всех output
 // типов (LRO Operation проходит через тот же DTO-пайплайн что и ресурсы).
 //
-// Pass-through нужен потому, что `kacho-corelib/operations.Operation` (domain
+// Pass-through нужен потому, что `pkg/operations.Operation` (domain
 // LRO) → `*operationv1.Operation` (proto) — конверсия живёт в corelib (см.
 // operations.OperationToProto). К моменту handler-вызова это уже proto-type,
 // и DTO-пайплайн должен прокинуть его без изменений (но с тем же error-shape).

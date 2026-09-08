@@ -289,8 +289,8 @@ image:
   pullPolicy: IfNotPresent
 
 # INFRA sec-hardening — pod- and per-container securityContext floor applied to
-# EVERY container of this workload (main + migrate init), not
-# just the OPA sidecar. runAsNonRoot + readOnlyRootFilesystem + drop ALL caps +
+# EVERY container of this workload (main + migrate init).
+# runAsNonRoot + readOnlyRootFilesystem + drop ALL caps +
 # no privilege escalation + seccomp RuntimeDefault (CIS Kubernetes 5.2 / PSS
 # restricted). Overridable per profile; a writable emptyDir is mounted at /tmp
 # so the read-only rootfs does not break scratch writes.
@@ -314,8 +314,9 @@ containerSecurityContext:
 ports:
   grpc: 9090
   internalGrpc: 9091
-  # KAC-127 Phase 2 — HTTP webhook listener (Hydra hooks + CAEP ingress).
-  # KAC-127 deploy#39 — also serves the OPA policy bundle over HTTP.
+  # HTTP-слушатель перехватов (перехваты выдачи и обновления токена, приём
+  # событий). Здесь стояло, что он же отдаёт пакет правил наложения: такого
+  # маршрута у службы нет ни одного, а комментарий пережил предмет (#2141).
   hooksHttp: 9092
   # Docker Registry v2 `/iam/token` auth-server HTTP listener — external-reachable
   # (TLS terminated externally), distinct from hooks (:9092) / metrics (:9095). The
@@ -332,23 +333,33 @@ ports:
   # существовать сама. Фронтов ДВА, и раздельность есть свойство СОКЕТА:
   # «внутреннее не опубликовано наружу» проверяемо ровно тогда, когда оно
   # недосягаемо, а не отклоняется по дороге.
-  rest: 9098
-  internalRest: 9099
+  #
+  # УМОЛЧАНИЯ У НИХ НЕТ НАМЕРЕННО, и это то же решение, что у процесса (#2247).
+  # Здесь стояли номера портов, поэтому состояние «фронта на этом стенде нет»
+  # не выражалось профилем ВОВСЕ: всякая посадка поднимала оба фронта, ничего о
+  # них не сказав, — при том что комментарий у рендера обещал обратное.
+  #
+  #   rest: 9098          # публичный фронт: объявляет ПРОФИЛЬ
+  #   internalRest: 9099  # внутренний фронт: объявляет ПРОФИЛЬ
 
 service:
   public:
     type: ClusterIP
     port: 9090
-    # Публичный REST-фронт службы.
-    restPort: 9098
+    # Публичный REST-фронт службы. Номер порта Service выводится из объявленного
+    # порта фронта (`ports.rest`), если профиль не назвал его отдельно: одно
+    # объявление фронта — один источник, и Service не может указать туда, где
+    # контейнер не слушает.
+    #   restPort: 9098    # объявляет ПРОФИЛЬ
   internal:
     type: ClusterIP
     port: 9091
-    # KAC-127 deploy#39 — HTTP hooks/OPA-bundle port exposed on the internal
-    # Service (cluster-internal only, запрет #6).
+    # Порт перехватов, выставленный на внутренний Service (cluster-internal
+    # only, запрет #6).
     hooksHttpPort: 9092
-    # Внутренний REST-фронт: выставлен ТОЛЬКО на внутренний Service.
-    internalRestPort: 9099
+    # Внутренний REST-фронт: выставлен ТОЛЬКО на внутренний Service. Номер
+    # выводится из `ports.internalRest`, если профиль не назвал его отдельно.
+    #   internalRestPort: 9099   # объявляет ПРОФИЛЬ
     # Cluster-INTERNAL Hydra-JWKS proxy port (GET /.well-known/jwks.json), exposed
     # ONLY on kaname-internal (never the public Service, ban #6). Consumed by
     # service-internal.yaml — the registry data-plane fetches JWKS from here.
@@ -762,41 +773,6 @@ mtls:
   serverSecretName: kaname-server-tls
   clientSecretName: kaname-client-tls
   mountPath: /etc/kaname/tls   # <mountPath>/server|client/{tls.crt,tls.key,ca.crt}
-
-# ─── KAC-127 Phase 3 — OPA sidecar ───────────────────────────────────────
-# Fallback defaults if umbrella does not override. Umbrella's `opaSidecar.*`
-# section (in values.yaml at top-level) propagates here via subchart import
-# (Helm rule: subchart can read parent values only via `--set` or aliasing;
-# we therefore mirror minimal knobs here for standalone-deploy).
-opaSidecar:
-  enabled: false   # Disabled by default; umbrella `kaname.opaSidecar.*` enables.
-  image: openpolicyagent/opa:1.0.0-rootless
-  logLevel: info
-  resources:
-    requests:
-      cpu: 20m
-      memory: 64Mi
-    limits:
-      cpu: 200m
-      memory: 256Mi
-  # Bundle endpoint port — consumed by opa-sidecar-configmap.yaml (loopback).
-  iamInternalPort: 9092
-  # Bundle resource path → OPA fetches `<service.url>/<resource>`.
-  bundleResource: bundle.tar.gz
-  # Poll interval (~1h TTL, jittered in [min,max] to avoid thundering herd).
-  bundlePollMinSec: 3000   # ~50min
-  bundlePollMaxSec: 3900   # ~65min
-  # Detached-signature verification of the bundle (dev: off; prod: on).
-  bundleSigningEnabled: false
-  # kid of the current JWS signing key (matches the JWKS rotator output).
-  signingKeyId: kaname-signing-key-current
-  # Public-key ConfigMap (managed by the Phase 2 JWKS rotator at runtime).
-  jwks:
-    configMapName: kaname-jwks
-    bootstrapKeyPem: ""
-  # Dev-only inline policy fallback (bypasses bundle signing). MUST stay off on prod.
-  policiesFallback:
-    enabled: false
 
 # metricsScrape — объявление СБОРА величин диагностической поверхности.
 #

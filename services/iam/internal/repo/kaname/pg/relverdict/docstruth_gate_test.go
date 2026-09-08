@@ -48,7 +48,6 @@ package relverdict_test
 import (
 	"fmt"
 	"os"
-	"path/filepath"
 	"regexp"
 	"sort"
 	"strconv"
@@ -57,6 +56,10 @@ import (
 
 	"github.com/PRO-Robotech/kacho/pkg/gitenv"
 	"github.com/PRO-Robotech/kaname/internal/migrations"
+
+	"github.com/PRO-Robotech/kaname/internal/testsupport/platformtree"
+
+	"github.com/PRO-Robotech/kaname/internal/treeposture"
 )
 
 const (
@@ -107,7 +110,11 @@ func docsRepoRoot(t *testing.T) string {
 
 func readTreeFile(t *testing.T, root, rel string) string {
 	t.Helper()
-	body, err := os.ReadFile(filepath.Join(root, rel))
+	abs, perr := treeposture.PathUnder(root, rel)
+	if perr != nil {
+		t.Fatalf("координата %s не приведена к посадке корня %s: %v", rel, root, perr)
+	}
+	body, err := os.ReadFile(abs)
 	if err != nil {
 		t.Fatalf("текст %s не прочитан (%v): источник, который гейт не смог прочитать, — "+
 			"ОТКАЗ, а не пропуск", rel, err)
@@ -434,8 +441,7 @@ func diffSets(want, got map[string]bool) setDiff {
 // Текст, которого гейт не смог прочитать, — ОТКАЗ, а не пропуск: молчащий на
 // нечитаемом источнике гейт сторожит только тех, у кого источник читается.
 func TestR7_4_17_InjectionMissingTextRefusesInsteadOfPassing(t *testing.T) {
-	root := docsRepoRoot(t)
-	if _, err := os.ReadFile(filepath.Join(root, chainArchDoc)); err != nil {
+	if _, err := os.ReadFile(platformtree.RequirePath(t, chainArchDoc)); err != nil {
 		t.Fatalf("предпосылка не выполнена: документ цепи отсутствует в дереве (%v)", err)
 	}
 	// Вырожденный вход: комментарий обхода не найден — гейт обязан отказать, а

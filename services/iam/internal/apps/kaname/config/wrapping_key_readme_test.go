@@ -34,6 +34,8 @@ import (
 	"testing"
 
 	"github.com/PRO-Robotech/kaname/internal/keywrap"
+
+	"github.com/PRO-Robotech/kaname/internal/testsupport/platformtree"
 )
 
 // chartREADME — координата раздела о выдаче этого секрета.
@@ -96,7 +98,9 @@ func moduleRoot(t *testing.T) string {
 // sealedSecretSection возвращает строки раздела о выдаче секрета.
 func sealedSecretSection(t *testing.T) []string {
 	t.Helper()
-	path := filepath.Join(moduleRoot(t), chartREADME)
+	// README ЗОНТИЧНОГО ЧАРТА — часть дерева стенда платформы; в поставку
+	// модуля он не входит by construction.
+	path := platformtree.RequirePath(t, chartREADME)
 	raw, err := os.ReadFile(path)
 	if err != nil {
 		t.Fatalf("README чарта не прочитан (%s): %v", chartREADME, err)

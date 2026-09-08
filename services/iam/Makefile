@@ -35,7 +35,7 @@ MONOREPO_ROOT := $(shell test -n "$(KANAME_TREE_ROOT)" \
 # Объявление одно на дерево; здесь — только его адрес, см. разбор в самом файле.
 include provenance.mk
 
-.PHONY: help build build-migrator test test-short vet lint docker generate audit-list-filter
+.PHONY: test-standalone help build build-migrator test test-short vet lint docker generate audit-list-filter
 .PHONY: proto-install-plugins proto-vendor proto-lint proto-gen
 
 # help — перечень целей. Первая цель файла, поэтому голый `make` печатает её:
@@ -73,7 +73,10 @@ define delegate_to_tree
 	  echo "самостоятельным клоном ($(CURDIR)), соседей по монорепо у него не будет."; \
 	  echo "Бюджет прогона объявлен ОДИН раз — в корневом рецепте монорепо, и копии"; \
 	  echo "его здесь нет намеренно: она разошлась бы с ним молча."; \
-	  echo "Запускайте пробы напрямую: $(2)"; \
+	  echo "Что РАБОТАЕТ здесь: make test-standalone (или ARGS=... для своих флагов)."; \
+	  echo "Он гоняет $(2) и печатает перепись обеих величин: сколько пакетов"; \
+	  echo "исполнено и сколько проб ПРОПУЩЕНО по непостроенной предпосылке —"; \
+	  echo "часть проб судит дерево платформы, которого в поставке нет by construction."; \
 	  exit 2; }
 	$(MAKE) -C $(MONOREPO_ROOT) $(1) SVC=iam
 endef
@@ -110,6 +113,23 @@ test:
 ## test-short — пробы без контейнеров [монорепо]
 test-short:
 	$(call delegate_to_tree,test-service-short,go test ./... -race -cover -short -count=1)
+
+## test-standalone — пробы модуля в самостоятельном клоне, с переписью пропущенного
+##
+## Единственная цель проб, работающая ВНЕ монорепо, и потому названная в отказе
+## целей `test`/`test-short`: указывать арендатору путь, которого нет, — это
+## «возможность объявлена и неисполнима».
+##
+## Перепись печатает ОБЕ величины. Пробы, судящие дерево платформы (манифесты
+## соседних модулей, каталог контрактов, зонтичный чарт, историю), у арендатора
+## не «красные» — у них НЕ СОЗДАНО УСЛОВИЕ, и этот третий исход не вычитается из
+## вердикта и не зачитывается в успех. Не печатать его числом значило бы делать
+## зелёный прогон неотличимым от прогона, который ничего не спросил.
+##
+##   make test-standalone                 # -short, без контейнеров
+##   make test-standalone ARGS="-race"    # свои флаги
+test-standalone:
+	@bash scripts/test-standalone.sh $(ARGS)
 
 ## vet — go vet по модулю
 vet:

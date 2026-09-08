@@ -18,6 +18,8 @@ import (
 	"testing"
 
 	"github.com/stretchr/testify/require"
+
+	"github.com/PRO-Robotech/kaname/internal/testsupport/platformtree"
 )
 
 // TestIsRevokedDocGate_SilentOnTheTree — положительный контроль.
@@ -30,7 +32,7 @@ func TestIsRevokedDocGate_SilentOnTheTree(t *testing.T) {
 	facts := isRevokedDocFacts{
 		Comments:        laneComments(t, root),
 		CallerFiles:     callers,
-		EdgeExportsRead: fileDeclaresMethod(t, root+"/"+edgeClientFile, edgeReadMethod),
+		EdgeExportsRead: fileDeclaresMethod(t, platformtree.RequirePath(t, edgeClientFile), edgeReadMethod),
 	}
 	require.Empty(t, auditIsRevokedDoc(facts),
 		"гейт находит нарушение на исправном дереве — он ловит форму, а не существо")
@@ -41,7 +43,7 @@ func TestIsRevokedDocGate_FallsOnEachAxis(t *testing.T) {
 	root := monorepoRootForDoc(t)
 	callers, _, _ := isRevokedCallSites(t, root, true)
 	comments := laneComments(t, root)
-	edge := fileDeclaresMethod(t, root+"/"+edgeClientFile, edgeReadMethod)
+	edge := fileDeclaresMethod(t, platformtree.RequirePath(t, edgeClientFile), edgeReadMethod)
 
 	require.True(t, edge,
 		"ПРЕДПОСЫЛКА ОПЫТА: клиент края обязан экспонировать %s — иначе оси про край "+

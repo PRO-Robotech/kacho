@@ -89,6 +89,8 @@ import (
 
 	"github.com/PRO-Robotech/kacho/pkg/platformmodules"
 	"github.com/PRO-Robotech/kacho/pkg/treecorpus"
+
+	"github.com/PRO-Robotech/kaname/internal/treeposture"
 )
 
 // requestPathReach — поддеревья, которые достигает путь запроса. Пути от корня
@@ -310,7 +312,13 @@ func localNameOfImportPath(file *ast.File, path string) string {
 func requestPathFiles(root string) ([]string, error) {
 	var all []string
 	for _, rel := range requestPathReach {
-		files, err := treecorpus.UnderWithSuffix(filepath.Join(root, rel), ".go")
+		// Координата приводится к ПОСАДКЕ названного корня: перечисленные
+		// каталоги — собственные каталоги модуля, они едут вместе с ним.
+		dir, perr := treeposture.PathUnder(root, rel)
+		if perr != nil {
+			return nil, perr
+		}
+		files, err := treecorpus.UnderWithSuffix(dir, ".go")
 		if err != nil {
 			return nil, err
 		}

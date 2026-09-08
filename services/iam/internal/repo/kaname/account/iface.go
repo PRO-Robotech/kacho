@@ -40,7 +40,7 @@ type WriterIface interface {
 }
 
 // ListFilter — параметры List-RPC (ListAccountsRequest).
-// Set of fields and filter-string parsing through kacho-corelib/filter.
+// Set of fields and filter-string parsing through pkg/filter.
 type ListFilter struct {
 	PageSize int32
 	// PageToken — токен, КАК ЕГО ПРИСЛАЛ КЛИЕНТ. Его разбирает use-case (форма

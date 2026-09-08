@@ -10,7 +10,7 @@
 package domain
 
 // ID prefixes for kaname resources. Mirrors the canonical prefix
-// constants in `kacho-corelib/ids` so the use-case layer can refer to short
+// constants in `pkg/ids` so the use-case layer can refer to short
 // names locally (`PrefixAccount`, `PrefixProject`, …) without re-importing
 // corelib for trivial id construction.
 const (
@@ -28,7 +28,7 @@ const (
 	PrefixOperationIAM = "iop"
 )
 
-// ShortIDLen — full id length (prefix + body); matches kacho-corelib/ids.
+// ShortIDLen — full id length (prefix + body); matches pkg/ids.
 const ShortIDLen = 20
 
 // PrincipalType — allowed values for kaname.operations.principal_type.

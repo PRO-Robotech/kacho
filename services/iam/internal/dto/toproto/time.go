@@ -22,7 +22,7 @@ import (
 const tsTruncate = time.Second
 
 // timeObj — empty struct-receiver for the time.Time → pb timestamp
-// transfer method (parity with kacho-vpc/internal/dto/toproto/time.go).
+// transfer method (parity with services/vpc/internal/dto/toproto/time.go).
 type timeObj struct{}
 
 func (timeObj) toPb(t time.Time) (*timestamppb.Timestamp, error) {

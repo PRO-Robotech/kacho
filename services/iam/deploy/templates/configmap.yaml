@@ -37,8 +37,12 @@ data:
       # Собственные REST-фронты. Умолчания у этих адресов НЕТ намеренно: адрес,
       # приходящий умолчанием процесса, непуст всегда — профиль, о ребре
       # умолчавший, поднимал бы его молча.
+      {{- if .Values.apiServer.restEndpoint }}
       rest-endpoint: {{ .Values.apiServer.restEndpoint | quote }}
+      {{- end }}
+      {{- if .Values.apiServer.internalRestEndpoint }}
       internal-rest-endpoint: {{ .Values.apiServer.internalRestEndpoint | quote }}
+      {{- end }}
       {{- $rt := .Values.apiServer.registryToken | default dict }}
       {{- if or $rt.issuer $rt.service }}
       # Docker Registry v2 token shim. `service` также whitelist'ится как audience в

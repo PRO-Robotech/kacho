@@ -146,10 +146,14 @@ spec:
             # Собственные REST-фронты службы (KAN-REST-1). ДВА разных порта, а не
             # разбор пути на общем: принадлежность маршрута фронту обязана быть
             # свойством того, куда вообще можно дозвониться.
+            {{- if .Values.ports.rest }}
             - name: http-rest
-              containerPort: {{ .Values.ports.rest | default 9098 }}
+              containerPort: {{ .Values.ports.rest }}
+            {{- end }}
+            {{- if .Values.ports.internalRest }}
             - name: http-rest-int
-              containerPort: {{ .Values.ports.internalRest | default 9099 }}
+              containerPort: {{ .Values.ports.internalRest }}
+            {{- end }}
           volumeMounts:
             - name: config
               mountPath: /etc/kaname

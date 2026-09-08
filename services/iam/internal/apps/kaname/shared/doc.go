@@ -2,7 +2,7 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
 
 // Package shared — общие helpers для всех api-слайсов (parity с
-// kacho-vpc/internal/apps/kacho/shared).
+// services/vpc/internal/apps/kacho/shared).
 //
 // Содержит:
 //   - errors.go     — sentinel → gRPC status mapping (MapRepoErr,

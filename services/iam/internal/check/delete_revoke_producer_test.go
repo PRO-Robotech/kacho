@@ -16,14 +16,14 @@ package check
 // собственные пробы; здесь бы утверждение о доезде было вакуумным.
 
 import (
-	"path/filepath"
 	"testing"
+
+	"github.com/PRO-Robotech/kaname/internal/testsupport/platformtree"
 )
 
 // TestDeletingAnOwnObjectHasARevokeProducer — гейт по дереву.
 func TestDeletingAnOwnObjectHasARevokeProducer(t *testing.T) {
-	root := catalogRepoRoot(t)
-	apiDir := filepath.Join(root, "services", "iam", "internal", "apps", "kaname", "api")
+	apiDir := platformtree.RequirePath(t, "services/iam/internal/apps/kaname/api")
 
 	census, findings, err := ScanDeleteRevokeProducers(apiDir)
 	if err != nil {

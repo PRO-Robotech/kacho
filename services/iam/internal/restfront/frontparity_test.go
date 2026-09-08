@@ -46,6 +46,8 @@ import (
 	_ "github.com/PRO-Robotech/kacho/pkg/api/kacho/cloud/operation"
 	_ "github.com/PRO-Robotech/kacho/pkg/api/kacho/cloud/quota/v1"
 	_ "github.com/PRO-Robotech/kacho/pkg/api/kaname/cloud/iam/v1"
+
+	"github.com/PRO-Robotech/kaname/internal/testsupport/platformtree"
 )
 
 // ownDoorProtoPackages — пакеты контракта, чьи службы служба поднимает.
@@ -348,7 +350,7 @@ func repoRoot(t *testing.T) string {
 
 func grpcRegisterDir(t *testing.T) string {
 	t.Helper()
-	return filepath.Join(repoRoot(t), "services", "iam", "cmd", "kaname")
+	return platformtree.RequirePath(t, "services/iam/cmd/kaname")
 }
 
 func restFrontDir(t *testing.T) string {

@@ -148,7 +148,3 @@ func TestRoleRulesOfEveryManifestNameTheirOwnModule(t *testing.T) {
 	t.Logf("перепись: %s · ролей %d · правил %d · чужих модулей %d",
 		rep.Summary(), roles, rules, foreign)
 }
-
-// Корень дерева здесь не выписывается: он спрашивается у объявленного владельца
-// (`internal/testsupport/platformtree`). Литерал-подъём был координатой
-// РАСКЛАДКИ монорепо и вне её приводил к чужому дереву (kacho#2254).

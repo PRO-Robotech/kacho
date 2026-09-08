@@ -1340,10 +1340,11 @@ func runServe(cfg config.Config) error {
 			"поставленной службы нет"),
 		Handler: restHandler,
 		Reach:   servicecontract.ReachExternal,
-		Auth: servicecontract.Value[servicecontract.SurfaceAuthMech](
-			"предъявленное арендатором удостоверение: фронт переносит его, ничего не " +
-				"добавляя, а проверяет и назначает субъекта звено собственного слушателя"),
-		TLS: restTLSConfig,
+		// Ось ВЫВОДИТСЯ из того, построено ли звено, а не вписывается: здесь
+		// стояла константа, и она объявляла работу механизма на посадке, где
+		// его нет (#2194).
+		Auth: restFrontAuthAxis(presentedReader != nil),
+		TLS:  restTLSConfig,
 	})
 	if err != nil {
 		return fmt.Errorf("профиль поверхности публичного REST-фронта: %w", err)

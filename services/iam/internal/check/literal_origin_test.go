@@ -42,6 +42,8 @@ import (
 	"testing"
 
 	"github.com/PRO-Robotech/kacho/pkg/treecorpus"
+
+	"github.com/PRO-Robotech/kaname/internal/testsupport/platformtree"
 )
 
 // literalPackageRel — пакет, объявляющий литерал каталога.
@@ -154,7 +156,7 @@ var literalOriginMakefiles = []string{"Makefile", "services/iam/Makefile"}
 // TestIAMCT2_11_LiteralIsNotDerivedFromRows — сценарий `-11`.
 func TestIAMCT2_11_LiteralIsNotDerivedFromRows(t *testing.T) {
 	root := catalogRepoRoot(t)
-	pkgFiles, err := treecorpus.UnderWithSuffix(filepath.Join(root, literalPackageRel), ".go")
+	pkgFiles, err := treecorpus.UnderWithSuffix(platformtree.RequirePath(t, literalPackageRel), ".go")
 	if err != nil {
 		t.Fatalf("состав пакета-литерала: %v", err)
 	}

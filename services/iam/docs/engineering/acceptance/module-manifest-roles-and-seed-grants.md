@@ -70,6 +70,20 @@ SPDX-License-Identifier: AGPL-3.0-or-later
   входа нет **ни у одного** сценария §4, потому что все три раздела сегодня
   отвергаются разбором. Задача обязана нести метку `blocked` и строку
   `Blocked by #1778` в теле (§10)
+- **⚠️ ПОСЛЕ вердикта документ правлен (`#2212`), и вердикт на нынешнюю
+  редакцию НЕ ПЕРЕНЕСЁН.** Координат приведено к дереву: **4**. Правка одна и
+  механическая — приставка пути контракта `proto/kacho/cloud/iam/` →
+  `proto/kaname/cloud/iam/`: домен доступа переехал (`d46aaa7280`), и прежний
+  корень в дереве **не существует** (`git ls-files 'proto/kacho/cloud/iam/**'`
+  → 0). До правки координата не резолвилась, то есть **молчала**: читатель уходил
+  за ней и не находил. **НЕ тронуты** ни один сценарий, производитель, признак
+  готовности, клауза и ни одно число: непарных строк 0, пар с изменившимся числом
+  токенов 0. Записи замера, привязанные к ревизии, где прежний путь ЖИВ, оставлены
+  как есть намеренно — их перечень и предикат в теле задачи. Одобрение относится к
+  **содержимому**, а не к имени файла: APPROVED выше есть вердикт о редакции,
+  прочитанной проверяющим. Вердикт на нынешнюю редакцию ставит
+  `acceptance-reviewer` своим кругом, а не эта строка. Решение —
+  `../architecture/verdict-names-a-revision-not-a-file.md`
 
 ---
 
@@ -2373,11 +2387,11 @@ MOD-RL-05 «пригодные классы `network` — `get`, `list`, `update
 | # | утверждение | предикат | итог |
 |---|---|---|---|
 | П1 | «разделы `roles` и `seed` остаются авторскими, второго объявления не возникает» | `internal/repohygiene/catalogparity_test.go:244` — гейт `TestNoServiceDeclaresItsPermissionsASecondTime` читает **только** не-тестовые `.go` и ловит литеральную сборку карты прав; ролей и посева не касается | **подтверждено** |
-| П2 | «`grants` изоморфен `Rule`» | `proto/kacho/cloud/iam/v1/role.proto:172` | **НЕ подтверждено** — §2.4 |
+| П2 | «`grants` изоморфен `Rule`» | `proto/kaname/cloud/iam/v1/role.proto:172` | **НЕ подтверждено** — §2.4 |
 | П3 | «прототип ловит шесть перечисленных нарушений» | прогон `roles.py` + чтение | **НЕ подтверждено**: ловит **3 из 6** — §2.5 |
 | П4 | «валидатор роняет 12 инъекций и молчит на законном близнеце» | `bash roles-inject.sh ../vpc.manifest.yaml` | **НЕ подтверждено**: утверждений **38** — 30 инъекций и 8 законных близнецов, все зелены |
 | П5 | брифинг: «черновик инструмента теперь в git» | `git ls-files docs/manifest-dcl/` → **0** строк; `git status --porcelain docs/manifest-dcl/` → `?? docs/manifest-dcl/` | **НЕ подтверждено** — каталог не отслеживается |
-| П6 | «системные роли сеются миграцией, `tier_type: iam.cluster` отвергается» | `proto/kacho/cloud/iam/v1/role_service.proto:226` — «`iam.cluster` rejected — system roles are seeded, not API-created» | **подтверждено** |
+| П6 | «системные роли сеются миграцией, `tier_type: iam.cluster` отвергается» | `proto/kaname/cloud/iam/v1/role_service.proto:226` — «`iam.cluster` rejected — system roles are seeded, not API-created» | **подтверждено** |
 | П7 | «экспортёр покрывает роли уровня аккаунта и проекта» | §2.2 + §2.3 | **НЕ подтверждено** — такая роль неадресуема ни одной выдачей манифеста |
 | П8 | «18 действующих системных ролей vpc воспроизводятся манифестом дословно» | §2.6 | **подтверждено частично**: воспроизводимы **выводом из `resources`**, но не разделом `roles`, и вывод даёт **30** при живых **18** |
 | П9 | брифинг: «асимметрия правила вступлений — проверь, касается ли ролей» | `roles.py:288` (`if b.get("roleId") not in role_ids:`) — координата уточнена кругом 3 по Р10; круг 1 указывал `:284`, а это проверка **субъекта** | **касается** — §3.4 |
@@ -4414,9 +4428,9 @@ MOD-RL-21 (полнота относительно живого); заведен
 | приведение правила к глаголам | `authzmap.GrantedVerbs` (`role_verbs.go:51`) | что роль даёт на типе, включая `update ⇒ delete` (`role_verbs.go:91`) |
 | ярус правила | `domain.ResolveVerbsAndTier` (`rule_verbs.go:63`), эмиссия — `reconcile/tuples.go:62,166` | `viewer`/`editor`/`admin` |
 | каталог прав | `services/iam/internal/apps/kaname/seed/embedded/permission_catalog.json` (346 записей, читается `seed/permissions.go:88`; побайтово равен копии края) | `required_relation` и `scope_extractor` каждого действия — **обе половины**, и обе читаются §3.6 п. 3 и §3.7 (до круга 5 второй половины не читала ни одна норма, Р18) |
-| типы субъектов, принимаемые отношением | `proto/kacho/cloud/iam/v1/fga_model.fga` — объявления отношений типа `cluster` (`:192` `system_admin`, `:193` `system_viewer`) | вторая половина отказа MOD-RL-19: годен ли получатель-группа |
+| типы субъектов, принимаемые отношением | `proto/kaname/cloud/iam/v1/fga_model.fga` — объявления отношений типа `cluster` (`:192` `system_admin`, `:193` `system_viewer`) | вторая половина отказа MOD-RL-19: годен ли получатель-группа |
 | поля формы выдачи | `manifest/manifest.go:170-176` (`Subjects`, `RoleID`, `ScopeType`, `ScopeID`, `Target`, `Resources`), `:187` `TargetResource` | MOD-RL-23 — структура **есть**, читателей у четырёх полей **нет** (§3.9) |
-| форма правила | `proto/kacho/cloud/iam/v1/role.proto:172`; пределы — `domain/rule.go:46,61` | `Rule`, `maxRuleElems = 16`, `ruleVerbRe` |
+| форма правила | `proto/kaname/cloud/iam/v1/role.proto:172`; пределы — `domain/rule.go:46,61` | `Rule`, `maxRuleElems = 16`, `ruleVerbRe` |
 | форма имени роли | `0056_role_definition_tier.sql:56-59` (блок `+goose Up`) | `roles_system_name_check`, `roles_custom_name_check` |
 | назначаемость роли | `domain/role_scope.go:110` | «cluster ⇒ only SYSTEM» |
 | сверка `roleId` выдачи | `manifest/linkage.go` — `roleIDs`, `rolesDeclared`, `RoleRefsChecked/Read` | MOD-RL-13 — **провязка**, не новый код |

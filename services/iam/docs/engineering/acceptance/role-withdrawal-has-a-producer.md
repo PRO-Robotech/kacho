@@ -92,6 +92,30 @@ SPDX-License-Identifier: AGPL-3.0-or-later
   запись с префиксом `IAM-RW-1` и вердиктом (гейт `internal/repohygiene`
   `TestNewMigrationCitesAnApprovedAcceptance`). Пока вердикт не APPROVED,
   миграция не заводится
+- **⚠️ ПОСЛЕ вердикта документ правлен (`#2212`), и вердикт на нынешнюю
+  редакцию НЕ ПЕРЕНЕСЁН.** Координат приведено к дереву: **1**. Правка одна и
+  механическая — приставка пути контракта `proto/kacho/cloud/iam/` →
+  `proto/kaname/cloud/iam/`: домен доступа переехал (`d46aaa7280`), и прежний
+  корень в дереве **не существует** (`git ls-files 'proto/kacho/cloud/iam/**'`
+  → 0). До правки координата не резолвилась, то есть **молчала**: читатель уходил
+  за ней и не находил. **НЕ тронуты** ни один сценарий, производитель, признак
+  готовности, клауза и ни одно число: непарных строк 0, пар с изменившимся числом
+  токенов 0. Записи замера, привязанные к ревизии, где прежний путь ЖИВ, оставлены
+  как есть намеренно — их перечень и предикат в теле задачи. **В ЭТОМ документе
+  таких записей три, и с ними сделано разное.** Две команды `git show origin/main:…`
+  (§«Предикат — с ревизией», Р11) оставлены дословно: на стволе продукта прежний
+  корень **жив** (`git ls-tree -r origin/main --name-only | grep -c
+  '^proto/kacho/cloud/iam/'` → не ноль), и правка сломала бы верную команду.
+  Третья — парная к первой, `git show HEAD:…`, — перепиннена на ревизию, которую
+  комментарий рядом уже называл (`d94d7b9af6`), потому что нынешний `HEAD` линии
+  этого пути не несёт и команда молча давала ноль вместо документированных **13**;
+  путь в ней остался прежним, ибо на той ревизии он и есть прежний (проверено:
+  `git show d94d7b9af6:proto/kacho/cloud/iam/v1/role.proto | grep -cE …` → 13).
+  Одобрение относится к
+  **содержимому**, а не к имени файла: APPROVED выше есть вердикт о редакции,
+  прочитанной проверяющим. Вердикт на нынешнюю редакцию ставит
+  `acceptance-reviewer` своим кругом, а не эта строка. Решение —
+  `../architecture/verdict-names-a-revision-not-a-file.md`
 
 ---
 
@@ -276,7 +300,7 @@ SQL); происхождение ложной посылки подтвержд�
 | Е10 | `roles` в прод-коде вердикта вне комментария | обход `services/iam/internal/repo/kaname/pg/relverdict/*.go` без `_test.go`; единица — вхождение вне строки-комментария | **1**, и это **ось меток** (`labelaxis.go:66`, `iamDirectLabelTable["iam_role"]`) |
 | Е11 | что вердикт читает как ПРАВО роли | тот же обход; единица — **строка вне комментария** в прод-файле `relverdict/` | `role_verb` **4**, `role_rule_selectors` **4** |
 | Е12 | ведомость отобранного и её читатель | писателей `INSERT INTO kacho_iam.role_grant_orphan` — **3** (`catalog_consequence_sql.go`); читателей `FROM kacho_iam.role_grant_orphan` — **1** (`role_repo.go:198`, `WithdrawnGrants`) | ведомость **читается** |
-| Е13 | контракт роли уже несёт состояние целости | `proto/kacho/cloud/iam/v1/role.proto`: `health` (22), `declared_segments` (23), `unresolved_segments` (24), `withdrawn_grants` (25) | **4** поля |
+| Е13 | контракт роли уже несёт состояние целости | `proto/kaname/cloud/iam/v1/role.proto`: `health` (22), `declared_segments` (23), `unresolved_segments` (24), `withdrawn_grants` (25) | **4** поля |
 | Е14 | манифестов в дереве · ролей ими объявлено | `ls services/*/manifest.yaml`; роли — счёт `- id:` в разделе `roles:` | **6** манифестов · **42** роли (iam 19, vpc 18, compute 3, nlb 2, registry 0, storage 0) |
 | Е15 | владелец роли и его ключ | `roles.owner_module` + `roles_owner_module_fk FOREIGN KEY (owner_module) REFERENCES kacho_iam.catalog_module (module)` — на ПЕРВИЧНЫЙ ключ, `20260902190500` | **есть** |
 | Е16 | уникальность имени системной роли | `roles_system_unique ON kacho_iam.roles (cluster_id, name) WHERE is_system = true` (`0056`) | **есть**, `live` в ней **нет** |
@@ -920,7 +944,7 @@ deny.
 git show origin/main:proto/kacho/cloud/iam/v1/role.proto \
   | grep -cE 'RoleHealth health|declared_segments|unresolved_segments|withdrawn_grants'   # → 0
 # на ревизии этой линии (d94d7b9af6 / 9b48df5720)
-git show HEAD:proto/kacho/cloud/iam/v1/role.proto \
+git show d94d7b9af6:proto/kacho/cloud/iam/v1/role.proto \
   | grep -cE 'RoleHealth health|declared_segments|unresolved_segments|withdrawn_grants'   # → 13
 ```
 

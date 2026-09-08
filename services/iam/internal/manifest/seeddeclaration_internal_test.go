@@ -106,7 +106,11 @@ type seedProducerCensus struct {
 // взгляд человека. Недосчёт был бы опасен, и его здесь нет by construction.
 func findSeedRowProducers(t *testing.T) seedProducerCensus {
 	t.Helper()
-	root := platformtree.Require(t)
+	// Корень обхода берётся резолвером посадки: в монорепо это корень платформы,
+	// в самостоятельном клоне — корень модуля. Подъём каталогами верен ровно для
+	// одной посадки и в другой выводит ВЫШЕ корня — в чужое дерево, откуда обход
+	// читал бы кеш модулей и объявлял находки о нём.
+	root, _ := platformtree.RequireCorpus(t)
 	var census seedProducerCensus
 	fset := token.NewFileSet()
 

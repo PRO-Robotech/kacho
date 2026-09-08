@@ -9,7 +9,7 @@ import "github.com/PRO-Robotech/kacho/services/compute/internal/ports"
 // test-helper'у `internal/ports/portmock` возвращать их без зависимости от
 // use-case-пакетов. Здесь — ре-экспорт через `var`-alias'ы (те же error-value,
 // поэтому `errors.Is(err, serviceerr.ErrNotFound)` работает). Зеркалит
-// kacho-vpc/internal/apps/kacho/shared/serviceerr/errors.go.
+// services/vpc/internal/apps/kacho/shared/serviceerr/errors.go.
 var (
 	// ErrNotFound возвращается, когда ресурс не найден.
 	ErrNotFound = ports.ErrNotFound

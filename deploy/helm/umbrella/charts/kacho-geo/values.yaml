@@ -9,7 +9,7 @@
 #     (InternalRegion/ZoneService admin CRUD — ban #6: never on external TLS);
 #   - goose migrator init-container (kacho-migrator up) → schema kacho_geo;
 #   - the ONLY cross-domain edge is geo→iam (per-RPC InternalIAMService.Check);
-#     no vpc/compute/register edges, no OPA sidecar, no list-filter, no
+#     no vpc/compute/register edges, no list-filter, no
 #     write-side FGA tuple (geo is leaf; consumers call IN to geo).
 #
 # Image tag is a PLACEHOLDER (registry push pending — epic kacho-geo). The real

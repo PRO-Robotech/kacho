@@ -1539,13 +1539,22 @@ kaname:
   ports:
     grpc: 9090
     internalGrpc: 9091
+    # СОБСТВЕННЫЕ REST-ФРОНТЫ ОБЪЯВЛЯЕТ ПРОФИЛЬ, А НЕ УМОЛЧАНИЕ ЧАРТА (#2247).
+    # Умолчания у них нет ни у процесса, ни у чарта: порт, здесь не названный,
+    # означает «этой двери у пода нет» — фронт не поднимается, под её не
+    # объявляет, Service до неё не ведёт, и процесс говорит об этом при старте.
+    # Этому стенду оба фронта нужны: до них ходит сквозной харнесс проб.
+    rest: 9098
+    internalRest: 9099
   service:
     public:
       type: ClusterIP
       port: 9090
+      restPort: 9098
     internal:
       type: ClusterIP
       port: 9091
+      internalRestPort: 9099
   db:
     host: kacho-umbrella-pg-iam
     port: "5432"
@@ -1651,60 +1660,6 @@ kaname:
     # fixture upsert; the reconciler retries until the grant commits. The
     # authz-fixtures bootstrap user is admin@prorobotech.ru.
     KANAME_BOOTSTRAP_ROOT_EMAIL: "admin@prorobotech.ru"
-  # KAC-127 Phase 3: OPA sidecar config propagated from umbrella to sub-chart.
-  # KAC-127 (deploy#39 fix): включён — kaname отдаёт OPA-bundle по HTTP на
-  # :9092; см. комментарий у top-level `opaSidecar` ниже.
-  # OPA sidecar config — read by the kaname sub-chart (deployment.yaml injects
-  # the sidecar; the opa/jwks ConfigMaps now live in charts/kaname/templates/).
-  # Disabled in dev (the OPA bundle-over-HTTP delivery on :9092 is wired but the
-  # sidecar is off until the bundle pipeline is finalized — see kaname chart).
-  opaSidecar:
-    enabled: false
-    # `1.0.0-rootless` тег не существует. Нужен ИМЕННО opa-envoy вариант —
-    # kaname Deployment передаёт OPA-сайдкару `--set=plugins.envoy_ext_authz_grpc.*`;
-    # плагин есть только в opa-envoy-сборке. `-static` = rootless static-build.
-    image: openpolicyagent/opa:1.0.0-envoy-static
-    logLevel: info
-    # OPA pulls the bundle from kaname IN THE SAME pod via loopback
-    # (127.0.0.1:9092 HTTP) — not via Service (Service routes only to Ready pods,
-    # but the pod is Ready only after the bundle loads → rollout deadlock).
-    # Отсюда и отсутствие имени хоста: шаблон подставляет петлю, а стоявший
-    # здесь `iamInternalHost` называл Service — то есть противоречил соседней
-    # строке и не читался ничем.
-    iamInternalPort: 9092
-    bundleResource: bundle.tar.gz
-    # kaname OpaBundleService currently produces an UNSIGNED tarball, so OPA
-    # must not require in-bundle `.signatures.json`. Hardening follow-up: flip true.
-    bundleSigningEnabled: false
-    # Shorter poll interval on dev for faster iteration on Rego changes.
-    bundlePollMinSec: 60   # ~1min
-    bundlePollMaxSec: 90
-    signingKeyId: kaname-signing-key-current
-    jwks:
-      configMapName: kaname-jwks
-      bootstrapKeyPem: ""
-    policiesFallback:
-      enabled: false
-    resources:
-      requests:
-        cpu: 20m
-        memory: 64Mi
-      limits:
-        cpu: 100m
-        memory: 256Mi
-
-# ─── Cross-cutting authz NetworkPolicy (umbrella template networkpolicy-authz) ─
-# The OPA sidecar config itself now lives in the kaname sub-chart
-# (kaname.opaSidecar above). Only the cross-cutting pod-to-pod allowlist stays
-# at umbrella level. Disabled on dev (would break port-forward debugging of :9091).
-opaSidecar:
-  networkPolicy:
-    enabled: false
-
-# Sub-chart propagation note: opaSidecar is propagated to the kaname
-# sub-chart via the kaname.opaSidecar block above (inside the kaname:
-# top-level mapping). Duplicate top-level
-# `kaname:` block would last-wins-overwrite — see KAC-127 PR review.
 
 # ─── KAC-NLB: kacho-nlb L4 NLB control-plane (sub-phase 4.0) ─────────────
 #

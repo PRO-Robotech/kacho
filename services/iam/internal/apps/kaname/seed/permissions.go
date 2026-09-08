@@ -72,7 +72,7 @@ type PermissionEntry struct {
 //
 // ⚠️ **MIRROR — NOT runtime source-of-truth.**
 // The runtime catalog consumed by the api-gateway authz-interceptor lives in
-// `kacho-api-gateway/internal/middleware/embed/permission_catalog.json` and
+// `gateway/internal/middleware/embed/permission_catalog.json` and
 // is read by api-gateway middleware. This mirror is used ONLY by kaname
 // integration tests (verifying JSON-schema and embed-parsing infrastructure);
 // it is NOT used by the kaname runtime (there is no per-RPC catalog lookup

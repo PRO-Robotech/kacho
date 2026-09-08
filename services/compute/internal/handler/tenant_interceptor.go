@@ -9,7 +9,7 @@
 // листенерах (см. internal/check) + per-object listauthz-фильтр на List
 // (list_filter.go). Здесь остаётся только то, что моделью не выражается:
 // production-mode AuthN-гейт (anonymous fail-closed) и admin-гейт internal
-// :9091 листенера. Зеркалит kacho-vpc/internal/handler/tenant_interceptor.go.
+// :9091 листенера. Зеркалит services/vpc/internal/handler/authn_interceptor.go.
 package handler
 
 import (

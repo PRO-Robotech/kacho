@@ -14,7 +14,7 @@ import (
 )
 
 // ListOperationsUseCase — sync per-Listener Operations history.
-// Tonkii wrapper над `kacho-corelib/operations.Repo.List`
+// Tonkii wrapper над `pkg/operations.Repo.List`
 // с фильтром `resource_id == <listener_id>` (extractResourceID per
 // CreateListenerMetadata.listener_id / UpdateListenerMetadata.listener_id /
 // DeleteListenerMetadata.listener_id).

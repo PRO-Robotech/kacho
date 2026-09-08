@@ -3,7 +3,7 @@
 
 // Package operationresolver — доменный resolver осиротевших LRO для kacho-vpc.
 //
-// Движок reconciler'а живет в kacho-corelib/operations (он сканирует таблицу
+// Движок reconciler'а живет в pkg/operations (он сканирует таблицу
 // operations по grace-окну и клеймит orphan'ы под FOR UPDATE SKIP LOCKED). Сам
 // resolver — доменная часть в сервисе: он знает типы метаданных VPC
 // (*vpcv1.<Verb><Resource>Metadata) и сверяет осиротевшую операцию с

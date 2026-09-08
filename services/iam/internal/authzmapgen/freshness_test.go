@@ -37,18 +37,6 @@ import (
 	"github.com/PRO-Robotech/kaname/internal/testsupport/platformtree"
 )
 
-// treeRoot — корень дерева платформы, спрошенный у объявленного владельца.
-//
-// Литерал `"../../../.."` здесь стоял и был координатой РАСКЛАДКИ монорепо: в
-// самостоятельном клоне модуля он приводит к каталогу, в который клон
-// распаковали, и вердикт выносился бы о чужом дереве (kacho#2254). Владелец
-// возвращает корень там, где платформа есть, и назначает ПРОПУСК с названной
-// предпосылкой там, где её нет.
-func treeRoot(t *testing.T) string {
-	t.Helper()
-	return platformtree.Require(t)
-}
-
 func renderTree(t *testing.T, root string) ([]byte, authzmapgen.Census) {
 	t.Helper()
 	tables, err := authzmapgen.CollectSynthetic(root)
@@ -66,7 +54,10 @@ func renderTree(t *testing.T, root string) ([]byte, authzmapgen.Census) {
 // TestGeneratedTablesAreFresh — файл в дереве побайтово равен тому, что даёт
 // производитель СЕГОДНЯ.
 func TestGeneratedTablesAreFresh(t *testing.T) {
-	census, err := authzmapgen.CheckFresh(treeRoot(t))
+	// Читается ДЕРЕВО ПЛАТФОРМЫ: манифесты соседних модулей, каталог
+	// контрактов и канон модели в поставку нашего модуля не входят by
+	// construction. Их отсутствие — «условие не создано», а не находка.
+	census, err := authzmapgen.CheckFresh(platformtree.Require(t))
 	t.Logf("осмотрено: %s", census.Summary())
 	if census.Resources == 0 {
 		t.Fatal("ресурсов ноль — «файл свеж» здесь означало бы «сверять было нечего»")

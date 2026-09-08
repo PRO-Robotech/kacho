@@ -17,6 +17,8 @@ import (
 
 	"github.com/PRO-Robotech/kacho/pkg/gitenv"
 	"github.com/PRO-Robotech/kacho/pkg/treecorpus"
+
+	"github.com/PRO-Robotech/kaname/internal/testsupport/platformtree"
 )
 
 // Число, датированное САМОССЫЛКОЙ, проверить нельзя; ревизия, проверенная
@@ -229,7 +231,7 @@ func readMarkdownTree(t *testing.T, docsDir string) map[string]string {
 // внутри выбранного куска, и его отсутствие — факт, а не следствие усечения.
 // Во всех прочих положениях исход — НЕ ВЫПОЛНИЛОСЬ, и он не вычитается из
 // вердикта и не зачитывается в успех.
-func gitAncestry(t *testing.T, root string) func(string) ancestryVerdict {
+func gitAncestry(t *testing.T, root string, hashes []string) func(string) ancestryVerdict {
 	t.Helper()
 	if _, err := exec.LookPath("git"); err != nil {
 		t.Logf("git недоступен — половина «предок» НЕ ВЫПОЛНЯЛАСЬ")
@@ -261,6 +263,31 @@ func gitAncestry(t *testing.T, root string) func(string) ancestryVerdict {
 		t.Logf("история УСЕЧЕНА: «не предок» принимается только для ревизий моложе границы (%s)", boundary)
 	}
 
+	// РЕПОЗИТОРИЙ БЕЗ ЭТОЙ ИСТОРИИ ВЕРДИКТА НЕ ВЫНОСИТ ВОВСЕ.
+	//
+	// Поставка модуля историю НЕ несёт: `git archive` отдаёт состав коммита, и у
+	// арендатора получается свежий репозиторий с одним коммитом. В нём не
+	// резолвится НИ ОДНА названная ревизия — не потому, что документы врут, а
+	// потому что судить не в чем. Прежняя редакция отвечала на это «не предок»,
+	// и каждый замер становился находкой у КАЖДОГО, кто склонирует.
+	//
+	// Различает не число коммитов, а ОДНО наблюдение: знает ли дерево хоть одну
+	// из названных ревизий. Знает — значит история та, и не резолвящаяся ревизия
+	// есть находка (описка в хеше, ссылка на снятую линию). Не знает ни одной —
+	// значит история чужая, и вердикт не выносится ни по одной.
+	knowsAny := false
+	for _, h := range hashes {
+		if _, e := git("cat-file", "-e", h+"^{commit}"); e == nil {
+			knowsAny = true
+			break
+		}
+	}
+	if !knowsAny {
+		t.Logf("история этого дерева не знает НИ ОДНОЙ из %d названных ревизий — "+
+			"вердикт о предке НЕ ВЫНОСИТСЯ (поставка модуля историю не несёт)", len(hashes))
+		return func(string) ancestryVerdict { return ancestryUnjudged }
+	}
+
 	return func(hash string) ancestryVerdict {
 		if _, e := git("cat-file", "-e", hash+"^{commit}"); e != nil {
 			if shallow {
@@ -287,11 +314,21 @@ func gitAncestry(t *testing.T, root string) func(string) ancestryVerdict {
 // TestMeasurementRevisionsAreDatedByHashAndBelongToThisHistory — несущее утверждение.
 func TestMeasurementRevisionsAreDatedByHashAndBelongToThisHistory(t *testing.T) {
 	root := monorepoRoot(t)
-	docs := readMarkdownTree(t, filepath.Join(root, iamDocsRelDir))
+	docs := readMarkdownTree(t, platformtree.RequirePath(t, iamDocsRelDir))
 
 	require.NotZerof(t, len(docs), "обход документации пуст — вердикт беспредметен (%s)", iamDocsRelDir)
 
-	findings, c := auditMeasurementDating(docs, datingLedger(), gitAncestry(t, root))
+	// Перечень названных ревизий собирается ДО вердикта: он и есть предпосылка
+	// половины «предок» — дерево, не знающее ни одной из них, судить о них не
+	// может (см. шапку `gitAncestry`).
+	var named []string
+	for _, body := range docs {
+		for _, m := range reInlineHash.FindAllStringSubmatch(body, -1) {
+			named = append(named, m[1])
+		}
+	}
+
+	findings, c := auditMeasurementDating(docs, datingLedger(), gitAncestry(t, root, named))
 
 	t.Logf("перепись: документов прочитано %d · объявлений замера %d · датировано хешем %d · "+
 		"самоссылкой %d · чужой линией %d · процитировано прозой %d · записей ведомости %d "+

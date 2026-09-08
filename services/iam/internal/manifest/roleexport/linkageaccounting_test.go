@@ -41,21 +41,13 @@ import (
 	"github.com/PRO-Robotech/kaname/internal/testsupport/platformtree"
 )
 
-// treeRoot — корень дерева платформы, спрошенный у объявленного владельца.
-//
-// Здесь стоял литерал `"../../../../.."` — координата РАСКЛАДКИ монорепо. Вне
-// монорепо он резолвится молча и даёт чужой каталог; неверное значение отвечало
-// бы «манифестов ноль», то есть зелёным (kacho#2254). Владелец различает две
-// посадки и в клоне назначает ПРОПУСК с названной предпосылкой.
-func treeRoot(t *testing.T) string {
-	t.Helper()
-	return platformtree.Require(t)
-}
-
 // realManifests — шесть манифестов дерева, прочитанных настоящим загрузчиком.
 func realManifests(t *testing.T) []*manifest.Manifest {
 	t.Helper()
-	paths, err := filepath.Glob(filepath.Join(treeRoot(t), "services", "*", "manifest.yaml"))
+	// Читается ДЕРЕВО ПЛАТФОРМЫ: манифесты соседних модулей, каталог
+	// контрактов и канон модели в поставку нашего модуля не входят by
+	// construction. Их отсутствие — «условие не создано», а не находка.
+	paths, err := filepath.Glob(filepath.Join(platformtree.RequirePath(t, "services"), "*", "manifest.yaml"))
 	if err != nil {
 		t.Fatalf("обход дерева отказал: %v", err)
 	}

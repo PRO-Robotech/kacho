@@ -16,6 +16,8 @@ import (
 
 	"github.com/PRO-Robotech/kaname/internal/authzmap"
 	"github.com/PRO-Robotech/kaname/internal/domain"
+
+	"github.com/PRO-Robotech/kaname/internal/testsupport/platformtree"
 )
 
 // Block-storage retire gate — the iam half.
@@ -322,7 +324,6 @@ func TestRetiredBlockStorageIsNotInAuthorizationModel(t *testing.T) {
 // permission catalog. They are required to be byte-identical, so checking one
 // would let the other drift while this gate stayed green.
 func TestRetiredBlockStorageIsNotInPermissionCatalog(t *testing.T) {
-	root := monorepoRoot(t)
 	copies := []string{
 		filepath.Join("gateway", "internal", "middleware", "embed", "permission_catalog.json"),
 		filepath.Join("services", "iam", "internal", "apps", "kaname", "seed", "embedded", "permission_catalog.json"),
@@ -337,7 +338,10 @@ func TestRetiredBlockStorageIsNotInPermissionCatalog(t *testing.T) {
 	}
 
 	for _, rel := range copies {
-		raw, err := os.ReadFile(filepath.Join(root, rel))
+		// Копия каталога у КРАЯ живёт у платформы, копия модуля едет с ним:
+		// резолвер приводит обе координаты к посадке и в первом случае даёт
+		// «условие не создано», а не «нет файла».
+		raw, err := os.ReadFile(platformtree.RequirePath(t, rel))
 		require.NoError(t, err, "permission catalog copy %s is missing", rel)
 		var rows []entry
 		require.NoError(t, json.Unmarshal(raw, &rows), "decode %s", rel)

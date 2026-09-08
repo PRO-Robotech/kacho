@@ -6,7 +6,7 @@
 // Pipeline (per request):
 //
 //  1. Resolve permission → FGA relation (`<domain>.<resource>.<verb>` →
-//     `<resource>_<verb>` per kacho-corelib/authz convention).
+//     `<resource>_<verb>` per pkg/authz convention).
 //  2. Build Conditions context (`current_time` from server clock; merges
 //     user-provided `context` from the RPC body).
 //  3. Вердикт реляционной формы по плану, скомпилированному из модели прав.
@@ -1160,7 +1160,7 @@ func (s *AuthorizeService) ExpandRelations(ctx context.Context, req ExpandReques
 }
 
 // resolveActionToRelation — `<domain>.<resource>.<verb>` → FGA relation.
-// Convention from kacho-corelib/authz: relation is `<resource>_<verb>` for
+// Convention from pkg/authz: relation is `<resource>_<verb>` for
 // verbs in {get,list,update,delete,create} mapped to {viewer,viewer,editor,
 // admin,editor}. For domain-specific actions we fall back to the verb
 // directly (`compute.instances.ssh` → `ssh`).

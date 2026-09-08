@@ -50,13 +50,20 @@ import (
 	"regexp"
 	"strings"
 	"testing"
+
+	"github.com/PRO-Robotech/kaname/internal/testsupport/platformtree"
 )
 
 const (
 	// exemptToken — как полоса освобождения записывается в контракте и в прозе.
 	exemptToken = "<exempt>"
 	// roleContract — контракт, у которого живёт объявление полос.
-	roleContract = "../../../../../../../proto/kaname/cloud/iam/v1/role_service.proto"
+	//
+	// Координата от корня ПЛАТФОРМЫ, а не подъём каталогами: число шагов вверх
+	// верно ровно для одной посадки, и в самостоятельном клоне тот же путь
+	// выводит ВЫШЕ корня клона. Контракты в поставку модуля не входят —
+	// отсутствие каталога здесь «условие не создано», а не находка.
+	roleContract = "proto/kaname/cloud/iam/v1/role_service.proto"
 	// roleUseCaseDir — каталог use-case, чьи комментарии судятся.
 	roleUseCaseDir = "."
 )
@@ -149,7 +156,7 @@ func roleUseCaseSources(t *testing.T) map[string]string {
 // Способность падать доказывает не этот прогон, а инъекция
 // (`exemptclaim_injection_test.go`).
 func TestUseCaseDoesNotClaimAnExemptLaneTheContractNeverDeclared(t *testing.T) {
-	contract, err := os.ReadFile(roleContract)
+	contract, err := os.ReadFile(platformtree.RequirePath(t, roleContract))
 	if err != nil {
 		t.Fatalf("контракт не прочитан (%s): %v", roleContract, err)
 	}

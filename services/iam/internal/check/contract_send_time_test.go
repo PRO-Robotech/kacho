@@ -12,6 +12,8 @@ import (
 	"testing"
 
 	"github.com/stretchr/testify/require"
+
+	"github.com/PRO-Robotech/kaname/internal/testsupport/platformtree"
 )
 
 // Время сдачи письма ретранслятору остаётся живостью очереди и на контракт не
@@ -145,12 +147,11 @@ func readDir(t *testing.T, dir, ext string) map[string]string {
 
 // TestSendTimeStaysQueueLivenessAndOffTheContract — несущее утверждение.
 func TestSendTimeStaysQueueLivenessAndOffTheContract(t *testing.T) {
-	root := monorepoRoot(t)
 
-	migrations := readDir(t, filepath.Join(root, iamMigrationsRelDir), ".sql")
+	migrations := readDir(t, platformtree.RequirePath(t, iamMigrationsRelDir), ".sql")
 	contracts := readDir(t, treePath(t, iamContractDir), ".proto")
 
-	wiringFiles := readDir(t, filepath.Join(root, iamMailWiringRelDir), ".go")
+	wiringFiles := readDir(t, platformtree.RequirePath(t, iamMailWiringRelDir), ".go")
 	var wiring strings.Builder
 	for _, body := range wiringFiles {
 		wiring.WriteString(body)

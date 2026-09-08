@@ -11,6 +11,8 @@ import (
 	"testing"
 
 	"github.com/PRO-Robotech/kacho/pkg/treecorpus"
+
+	"github.com/PRO-Robotech/kaname/internal/testsupport/platformtree"
 )
 
 // ЗДЕСЬ СТОЯЛ СТРАЖ KEEPALIVE НА МЕЖСЛУЖЕБНОМ ДОЗВОНЕ — его предмет исчез вместе
@@ -140,27 +142,11 @@ func TestIamIsALeafAndCallsNobodyByGRPC(t *testing.T) {
 // деревом при первом переезде и молча начал бы обходить пустоту.
 func iamServiceRoot(t *testing.T) string {
 	t.Helper()
-	dir, err := os.Getwd()
-	if err != nil {
-		t.Fatalf("рабочий каталог: %v", err)
-	}
-	// Корнем берётся САМЫЙ ВНЕШНИЙ `go.mod`, а не первый встречный: у службы
-	// теперь СВОЙ модуль, и подъём «до первого» останавливался бы в её каталоге,
-	// а пути ниже называют место В ДЕРЕВЕ МОНОРЕПО — от корня.
-	outermost := ""
-	for {
-		if _, statErr := os.Stat(filepath.Join(dir, "go.mod")); statErr == nil {
-			outermost = dir
-		}
-		parent := filepath.Dir(dir)
-		if parent == dir {
-			if outermost != "" {
-				return filepath.Join(outermost, "services", "iam")
-			}
-			t.Fatal("корень репозитория не найден: go.mod отсутствует во всех каталогах вверх")
-		}
-		dir = parent
-	}
+	// Корень СВОЕГО модуля, приведённый к посадке. Прежде он собирался подъёмом
+	// до САМОГО ВНЕШНЕГО `go.mod` с приписыванием `services/iam` — форма, верная
+	// ровно для монорепо: в самостоятельном клоне самый внешний `go.mod` есть
+	// корень клона, и приписанный подкаталог не существует.
+	return platformtree.RequirePath(t, "services/iam")
 }
 
 func itoa(n int) string {

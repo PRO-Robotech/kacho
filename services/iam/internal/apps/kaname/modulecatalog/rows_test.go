@@ -33,10 +33,18 @@ import (
 	"github.com/PRO-Robotech/kaname/internal/apps/kaname/modulecatalog"
 	"github.com/PRO-Robotech/kaname/internal/authzmap"
 	"github.com/PRO-Robotech/kaname/internal/manifest"
+
+	"github.com/PRO-Robotech/kaname/internal/testsupport/platformtree"
 )
 
-// manifestsRoot — каталог сервисов монорепо относительно этого пакета.
-const manifestsRoot = "../../../../../../services"
+// manifestsRootRel — каталог манифестов МОДУЛЕЙ ПЛАТФОРМЫ, координатой от её
+// корня.
+//
+// Подъёма каталогами здесь больше нет: число шагов вверх верно ровно для одной
+// посадки, а в самостоятельном клоне тот же подъём выводит ВЫШЕ его корня — в
+// чужое дерево либо в никуда. Манифесты соседних модулей в поставку не входят
+// by construction, поэтому их отсутствие — «условие не создано».
+const manifestsRootRel = "services"
 
 // deliveredManifests — манифесты, ВЫВЕДЕННЫЕ обходом дерева.
 //
@@ -44,6 +52,7 @@ const manifestsRoot = "../../../../../../services"
 // молча — ровно тем классом, который корпус ловит в документах.
 func deliveredManifests(t *testing.T) []*manifest.Manifest {
 	t.Helper()
+	manifestsRoot := platformtree.RequirePath(t, manifestsRootRel)
 	paths, err := filepath.Glob(filepath.Join(manifestsRoot, "*", "manifest.yaml"))
 	require.NoError(t, err)
 	sort.Strings(paths)
@@ -64,7 +73,7 @@ func TestManifestRowsReproduceTheSeededCatalog(t *testing.T) {
 	manifests := deliveredManifests(t)
 	require.NotEmpty(t, manifests,
 		"обход дерева не нашёл ни одного манифеста по %s: вердикт этой пробы беспредметен, "+
-			"а «расхождений 0» неотличимо от «прочитано 0»", manifestsRoot)
+			"а «расхождений 0» неотличимо от «прочитано 0»", manifestsRootRel)
 
 	gotModules := map[string]bool{}
 	gotResources := map[string]bool{}
