@@ -597,33 +597,27 @@ func ScanInherit(service, path, src string) ([]InheritSite, int, error) {
 // session, DPoP replay) are deliberately absent: those ride the credential
 // revocation lane, which is immediate by a different mechanism entirely. See
 // authz.RevocationPolicy, section "Что НЕ ездит по этому окну".
+//
+// # The third thing: a process that builds NOTHING and still holds a window
+//
+// This question answers "does the process build the cache ITSELF". A process
+// that hands its window to the service HOST — naming the value as a descriptor
+// field, with the host building the one cache for everybody — builds nothing
+// here and answers "no" while holding a full window. That is the majority form
+// in this tree, not a corner: five of the eight holders own their window only
+// that way (measured on release/kaname @ 369c7d491b, unit of count = process).
+//
+// So this predicate is ONE FORM of ownership, never the whole question. Both
+// forms live in ownership.go behind ScanWindowOwnership, and a census that
+// wants "which processes hold a window" must ask that one and print the two
+// numbers SEPARATELY. Summing them hides which half went blind.
 func ScanConstructors(path, src string) (bool, error) {
-	fset := token.NewFileSet()
-	f, err := parser.ParseFile(fset, path, src, parser.ParseComments)
+	// Одна реализация формы 1 на всё: см. ownership.go. Раньше этот обход был
+	// написан здесь, а вторая форма владения окном — в теле пробы, поэтому
+	// переписи одного предмета разошлись, и меньшая читалась как полная.
+	own, err := ScanWindowOwnership(path, src)
 	if err != nil {
-		return false, fmt.Errorf("parse %s: %w", path, err)
+		return false, err
 	}
-	found := false
-	ast.Inspect(f, func(n ast.Node) bool {
-		call, ok := n.(*ast.CallExpr)
-		if !ok {
-			return true
-		}
-		switch fn := call.Fun.(type) {
-		case *ast.SelectorExpr:
-			// A QUALIFIED call. The package qualifier is deliberately NOT
-			// examined. Pinning it to "authz" made the answer depend on where
-			// the constructor lives rather than on what it builds: moving the
-			// very same cache into a package of its own took the process out
-			// of the census, silently. Extraction into a package is ordinary
-			// refactoring — the tree already does it twice next door — and it
-			// must not be able to retire a security parameter.
-			found = found || verdictCacheCtorNames[fn.Sel.Name]
-		case *ast.Ident:
-			// The same name, called unqualified from inside its own package.
-			found = found || verdictCacheCtorNames[fn.Name]
-		}
-		return true
-	})
-	return found, nil
+	return own.ByConstructor, nil
 }

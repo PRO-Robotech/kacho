@@ -22,9 +22,7 @@
 package repohygiene
 
 import (
-	"go/ast"
-	"go/parser"
-	"go/token"
+	"fmt"
 	"os"
 	"path/filepath"
 	"sort"
@@ -286,45 +284,38 @@ func TestInheritedWindowsAreDeclared(t *testing.T) {
 	}
 }
 
-// TestEveryVerdictCacheServiceIsDeclared — сервис, строящий кеш вердиктов,
+// TestEveryVerdictCacheServiceIsDeclared — процесс, ДЕРЖАЩИЙ окно отзыва,
 // объявлен политикой, каким бы именем он свою ручку ни назвал.
 //
 // Перепись по ИМЕНАМ РУЧЕК — закрытый словарь, и потому она по построению не
-// видит сервис, приехавший с новым именем. Здесь вопрос задан без словаря —
-// «строит ли этот сервис кеш вердиктов вообще», — поэтому сервис, который кеш
-// СТРОИТ, ловится, не дожидаясь, пока кто-нибудь дополнит список.
+// видит процесс, приехавший с новым именем. Здесь вопрос задан иначе — «держит
+// ли этот процесс окно вообще», — поэтому имя ручки роли не играет.
 //
-// Ровно настолько, и не дальше. Прежняя редакция этого комментария обещала
-// поймать седьмой сервис «в день появления»; обещание было неверно, и неверно
-// в худшую сторону. Окно можно было получить, не построив кеш: конструктор
-// интерсептора заводил его за молчащего вызывающего, и тогда в исходнике
-// сервиса не оставалось ничего, что этот обход мог бы найти. Проверка читала
-// такой файл, засчитывала его в «осмотрено» и объявляла чистым.
+// Ровно настолько, и не дальше; границ у вопроса ТРИ, и все три названы, потому
+// что каждая однажды была обещана прочь.
 //
-// Неназванный кеш ловит TestNoServiceTakesTheWindowImplicitly ниже; отказ в
-// старте на него даёт сам конструктор.
+//  1. «Строит ли кеш» — не то же, что «держит окно». Конструктор интерсептора
+//     заводил кеш за молчащего вызывающего, и тогда в исходнике сервиса не
+//     оставалось ничего, что обход мог бы найти. Прежняя редакция этого
+//     комментария обещала поймать седьмой сервис «в день появления» — обещание
+//     было неверно, и неверно в худшую сторону: проверка читала такой файл,
+//     засчитывала его в «осмотрено» и объявляла чистым. Ловит это
+//     TestNoServiceTakesTheWindowImplicitly ниже; отказ в старте на неназванный
+//     кеш даёт сам конструктор.
+//  2. Форм владения ДВЕ, и вторая — большинство дерева. Процесс, отдавший окно
+//     дескриптору носителя, не строит ничего, и обход, спрашивавший про
+//     конструктор, молчал о нём. Форму знает
+//     revocationwindowgate.ScanWindowOwnership; перепись печатает величину по
+//     каждой, а ноль по любой — отказ предпосылки.
+//  3. Обе формы — словари (имён конструкторов и имени поля). Единица переписи
+//     здесь ПРОЦЕСС, и процесс, уже засчитанный, вторым окном её не двигает.
+//     Величину спрашивает без словаря TestEveryAuthzWindowKnobIsDeclared, у
+//     которого единица — ОКНО.
 func TestEveryVerdictCacheServiceIsDeclared(t *testing.T) {
-	root := repoRoot(t)
-
-	// Процессы, а не каталоги под services/. Край — такой же процесс с таким же
-	// кешем вердиктов, но лежит вне services/, и обход, начинавшийся с одного
-	// этого каталога, не мог его увидеть в принципе.
-	processes := map[string]string{}
-	servicesDir := filepath.Join(root, "services")
-	svcEntries, err := os.ReadDir(servicesDir)
+	held, filesRead, err := verdictCacheHoldersUnder(repoRoot(t))
 	if err != nil {
-		t.Fatalf("предпосылка гейта нарушена: каталог services/ не читается: %v", err)
+		t.Fatalf("%v", err)
 	}
-	for _, svc := range svcEntries {
-		if svc.IsDir() {
-			processes[svc.Name()] = filepath.Join(servicesDir, svc.Name())
-		}
-	}
-	gatewayDir := filepath.Join(root, "gateway")
-	if _, serr := os.Stat(gatewayDir); serr != nil {
-		t.Fatalf("предпосылка гейта нарушена: дерево края gateway/ не читается: %v", serr)
-	}
-	processes[gatewayProcess] = gatewayDir
 
 	declared := map[string]bool{}
 	for key := range authz.RevocationPolicy.Windows {
@@ -334,60 +325,23 @@ func TestEveryVerdictCacheServiceIsDeclared(t *testing.T) {
 		declared[strings.SplitN(key, " ", 2)[0]] = true
 	}
 
-	filesRead := 0
-	building := map[string]bool{}
-	for name, dir := range processes { //nolint:dupl // перепись процессов, см. verdictCacheProcesses
-		err := filepath.WalkDir(dir,
-			func(p string, d os.DirEntry, err error) error {
-				if err != nil || d.IsDir() {
-					return err //nolint:wrapcheck // walk error propagates as-is
-				}
-				if !strings.HasSuffix(p, ".go") || strings.HasSuffix(p, "_test.go") {
-					return nil
-				}
-				src, rerr := os.ReadFile(p)
-				if rerr != nil {
-					return rerr //nolint:wrapcheck // read error propagates as-is
-				}
-				filesRead++
-				found, perr := revocationwindowgate.ScanConstructors(p, string(src))
-				if perr != nil {
-					return perr //nolint:wrapcheck // parse error propagates as-is
-				}
-				if found {
-					building[name] = true
-				}
-				return nil
-			})
-		if err != nil {
-			t.Fatalf("обход %s: %v", dir, err)
-		}
-	}
+	byCtor, byDescriptor := ownershipByForm(held)
+	t.Logf("осмотрено: файлов процессов прочитано=%d, процессов держит окно=%d "+
+		"(формой «%s»=%d, формой «%s»=%d), процессов объявлено политикой=%d, "+
+		"распознаваемых конструкторов=%v, поле дескриптора=%q",
+		filesRead, len(held),
+		revocationwindowgate.OwnershipFormNames()[0], byCtor,
+		revocationwindowgate.OwnershipFormNames()[1], byDescriptor,
+		len(declared), revocationwindowgate.VerdictCacheCtorNames(),
+		revocationwindowgate.DescriptorWindowField)
 
-	t.Logf("осмотрено: файлов процессов прочитано=%d, процессов строит кеш вердиктов=%d, "+
-		"процессов объявлено политикой=%d, распознаваемых локальных конструкторов=%v",
-		filesRead, len(building), len(declared), revocationwindowgate.VerdictCacheCtorNames())
+	assertHolderCensusIsNotVacuous(t, filesRead, held)
 
-	if filesRead == 0 {
-		t.Fatalf("предпосылка гейта нарушена: не прочитано ни одного файла сервисов")
-	}
-	if len(building) == 0 {
-		t.Fatalf("предпосылка гейта нарушена: прочитано %d файлов, но ни один сервис не строит "+
-			"кеш вердиктов; конструктор переименован либо кеши переехали", filesRead)
-	}
-
-	var undeclared []string
-	for svc := range building {
-		if !declared[svc] {
-			undeclared = append(undeclared, svc)
-		}
-	}
-	sort.Strings(undeclared)
-	for _, svc := range undeclared {
-		t.Errorf("процесс строит кеш вердиктов, но политикой не объявлен: «%s».\n"+
+	for _, svc := range undeclaredHolders(held, declared) {
+		t.Errorf("процесс держит кеш вердиктов, но политикой не объявлен: «%s» (%s).\n"+
 			"Кешируется положительный вердикт ⇒ у процесса есть окно отзыва. "+
 			"Внеси его в pkg/authz.RevocationPolicy (Windows — если у него своя ручка, "+
-			"Inherited — если он берёт умолчание).", svc)
+			"Inherited — если он берёт умолчание).", svc, formsOf(held[svc]))
 	}
 }
 
@@ -738,44 +692,46 @@ func TestNoCallSiteTakesTheWindowUnprovably(t *testing.T) {
 // решит взять умолчание, упрётся в красное и обязан будет либо завести ручку,
 // либо записать исключение осознанно — то есть решением, а не умолчанием.
 func TestEveryVerdictCacheProcessDeclaresItsOwnKnob(t *testing.T) {
-	building, filesRead := verdictCacheProcesses(t)
+	held, filesRead, err := verdictCacheHoldersUnder(repoRoot(t))
+	if err != nil {
+		t.Fatalf("%v", err)
+	}
 
 	withOwnKnob := map[string]bool{}
 	for key := range authz.RevocationPolicy.Windows {
 		withOwnKnob[strings.SplitN(key, " ", 2)[0]] = true
 	}
 
-	t.Logf("осмотрено: файлов процессов прочитано=%d, процессов строит кеш вердиктов=%d, "+
-		"процессов со своей ручкой=%d, площадок в Inherited=%d",
-		filesRead, len(building), len(withOwnKnob), len(authz.RevocationPolicy.Inherited))
+	byCtor, byDescriptor := ownershipByForm(held)
+	t.Logf("осмотрено: файлов процессов прочитано=%d, процессов держит окно=%d "+
+		"(формой «%s»=%d, формой «%s»=%d), процессов со своей ручкой=%d, площадок в Inherited=%d",
+		filesRead, len(held),
+		revocationwindowgate.OwnershipFormNames()[0], byCtor,
+		revocationwindowgate.OwnershipFormNames()[1], byDescriptor,
+		len(withOwnKnob), len(authz.RevocationPolicy.Inherited))
 
-	if filesRead == 0 {
-		t.Fatalf("предпосылка гейта нарушена: не прочитано ни одного файла процессов")
-	}
-	if len(building) == 0 {
-		t.Fatalf("предпосылка гейта нарушена: прочитано %d файлов, но ни один процесс не строит "+
-			"кеш вердиктов; конструктор переименован либо кеши переехали", filesRead)
-	}
+	assertHolderCensusIsNotVacuous(t, filesRead, held)
 
 	var inherited []string
-	for svc := range building {
+	for svc := range held {
 		if !withOwnKnob[svc] {
 			inherited = append(inherited, svc)
 		}
 	}
 	sort.Strings(inherited)
 	for _, svc := range inherited {
-		t.Errorf("процесс держит кеш вердиктов, но своей ручки окна у него нет: «%s».\n"+
+		t.Errorf("процесс держит кеш вердиктов, но своей ручки окна у него нет: «%s» (%s).\n"+
 			"Окно отзыва этого процесса принадлежит платформе: оператор не может сузить его "+
 			"на конкретной посадке, и в конфигурации сервиса о нём нет ни строки. Заведи ручку "+
-			"KACHO_<SVC>_AUTHZ_CACHE_TTL и запись в pkg/authz.RevocationPolicy.Windows.", svc)
+			"KACHO_<SVC>_AUTHZ_CACHE_TTL и запись в pkg/authz.RevocationPolicy.Windows.",
+			svc, formsOf(held[svc]))
 	}
 
 	// Обратная сторона: запись Windows, под которой в дереве нет процесса,
 	// строящего кеш вердиктов, — находка. Иначе перепись переживёт свой предмет.
 	var stale []string
 	for svc := range withOwnKnob {
-		if !building[svc] {
+		if _, holds := held[svc]; !holds {
 			stale = append(stale, svc)
 		}
 	}
@@ -786,19 +742,38 @@ func TestEveryVerdictCacheProcessDeclaresItsOwnKnob(t *testing.T) {
 	}
 }
 
-// verdictCacheProcesses — процессы дерева, строящие кеш вердиктов, и число
-// прочитанных файлов. Единица — ПРОЦЕСС, а не каталог под services/: край живёт
-// вне services/, и обход, начинавшийся с одного этого каталога, не мог его
-// увидеть в принципе.
-func verdictCacheProcesses(t *testing.T) (map[string]bool, int) {
-	t.Helper()
-	root := repoRoot(t)
+// ────────────────────────────────────────────────────────────────────────────
+// Один обход, две формы владения, перепись ПО КАЖДОЙ
+// ────────────────────────────────────────────────────────────────────────────
 
+// verdictCacheHoldersUnder — процессы дерева root, держащие окно отзыва, форма
+// владения по каждому и число прочитанных файлов.
+//
+// # Единица — ПРОЦЕСС, а не каталог под services/
+//
+// Край живёт вне services/, и обход, начинавшийся с одного этого каталога, не
+// мог его увидеть в принципе.
+//
+// # Обход ОДИН, и это предмет, а не оформление
+//
+// Проверок о «кто держит окно» две, и до 2026-09-08 у каждой был свой обход:
+// одна знала обе формы владения, другая — только вызов конструктора. Формально
+// это был дубль, помеченный директивой линтера; по существу — два места об
+// одном предмете, из которых верно одно. Разошлись они молча и сильно: в одном
+// прогоне переписи печатали 3 и 8, и меньшая принадлежала проверке, чьё имя
+// обещает «каждый процесс с кешем вердиктов объявлен». Заметить потерю было
+// нечем — её
+// предпосылка («хоть одна площадка найдена») выполнялась на трёх, а «не нашла»
+// и «нечего искать» с этой стороны выглядят одинаково.
+//
+// Формы распознаёт `revocationwindowgate.ScanWindowOwnership`, и он же
+// единственный, кто их знает.
+func verdictCacheHoldersUnder(root string) (map[string]revocationwindowgate.WindowOwnership, int, error) {
 	processes := map[string]string{}
 	servicesDir := filepath.Join(root, "services")
 	svcEntries, err := os.ReadDir(servicesDir)
 	if err != nil {
-		t.Fatalf("предпосылка гейта нарушена: каталог services/ не читается: %v", err)
+		return nil, 0, fmt.Errorf("предпосылка гейта нарушена: каталог services/ не читается: %w", err)
 	}
 	for _, svc := range svcEntries {
 		if svc.IsDir() {
@@ -807,12 +782,12 @@ func verdictCacheProcesses(t *testing.T) (map[string]bool, int) {
 	}
 	gatewayDir := filepath.Join(root, "gateway")
 	if _, serr := os.Stat(gatewayDir); serr != nil {
-		t.Fatalf("предпосылка гейта нарушена: дерево края gateway/ не читается: %v", serr)
+		return nil, 0, fmt.Errorf("предпосылка гейта нарушена: дерево края gateway/ не читается: %w", serr)
 	}
 	processes[gatewayProcess] = gatewayDir
 
 	filesRead := 0
-	building := map[string]bool{}
+	held := map[string]revocationwindowgate.WindowOwnership{}
 	for name, dir := range processes {
 		werr := filepath.WalkDir(dir, func(p string, d os.DirEntry, err error) error {
 			if err != nil || d.IsDir() {
@@ -826,61 +801,109 @@ func verdictCacheProcesses(t *testing.T) (map[string]bool, int) {
 				return rerr //nolint:wrapcheck // read error propagates as-is
 			}
 			filesRead++
-			found, perr := revocationwindowgate.ScanConstructors(p, string(src))
+			own, perr := revocationwindowgate.ScanWindowOwnership(p, string(src))
 			if perr != nil {
 				return perr //nolint:wrapcheck // parse error propagates as-is
 			}
-			if found || declaresCacheWindowToHost(string(src)) {
-				building[name] = true
+			if own.Any() {
+				held[name] = held[name].Merge(own)
 			}
 			return nil
 		})
 		if werr != nil {
-			t.Fatalf("обход %s: %v", dir, werr)
+			return nil, 0, fmt.Errorf("обход %s: %w", dir, werr)
 		}
 	}
-	return building, filesRead
+	return held, filesRead, nil
 }
 
-// declaresCacheWindowToHost — ВТОРАЯ форма владения кешем вердиктов: процесс не
-// зовёт конструктор кеша сам, а отдаёт окно ДЕСКРИПТОРУ, и кеш строит носитель.
+// ownershipByForm — сколько процессов держат окно КАЖДОЙ формой.
 //
-// Почему это засчитывается, а не читается как «кеша нет». Предмет гейта —
-// «процесс, держащий кеш вердиктов, обязан иметь СВОЮ ручку окна отзыва», и он
-// про ВЛАДЕНИЕ ЧИСЛОМ, а не про адрес вызова конструктора. У переведённого на
-// носитель процесса окно по-прежнему его собственное: значение приезжает из его
-// ручки в поле `CacheWindow`, а конструктор кеша просто переехал в одно место на
-// все сервисы. Не засчитывать это значило бы объявить находкой ровно тот
-// переезд, ради которого носитель и заводится, — и заодно потерять требование
-// своей ручки для всех переведённых.
-//
-// Признаком взято ИМЯ ПОЛЯ в литерале: оно принадлежит закрытому набору осей
-// дескриптора, поэтому совпасть случайно ему не с чем.
-func declaresCacheWindowToHost(src string) bool {
-	fset := token.NewFileSet()
-	file, err := parser.ParseFile(fset, "", src, parser.SkipObjectResolution)
-	if err != nil {
-		// Разбор здесь не обязан удаваться на любом файле дерева; молчание
-		// безопасно, потому что первая форма (вызов конструктора) уже проверена.
-		return false
+// Величины считаются порознь и печатаются порознь. Сумма их не заменяет:
+// «форма 1 исчезла» и «площадок стало меньше» дают одинаковую сумму, а означают
+// разное — первое есть ослепшая половина распознавателя.
+func ownershipByForm(held map[string]revocationwindowgate.WindowOwnership) (byCtor, byDescriptor int) {
+	for _, own := range held {
+		if own.ByConstructor {
+			byCtor++
+		}
+		if own.ByDescriptor {
+			byDescriptor++
+		}
 	}
-	declared := false
-	ast.Inspect(file, func(n ast.Node) bool {
-		lit, ok := n.(*ast.CompositeLit)
-		if !ok {
-			return true
+	return byCtor, byDescriptor
+}
+
+// formsOf — как именно площадка держит окно, для текста находки. Находка,
+// называющая процесс и не называющая форму, посылает читателя искать вызов
+// конструктора там, где его нет вовсе.
+func formsOf(own revocationwindowgate.WindowOwnership) string {
+	names := revocationwindowgate.OwnershipFormNames()
+	var forms []string
+	if own.ByConstructor {
+		forms = append(forms, names[0])
+	}
+	if own.ByDescriptor {
+		forms = append(forms, names[1])
+	}
+	if len(forms) == 0 {
+		return "форма не установлена"
+	}
+	return strings.Join(forms, ", ")
+}
+
+// assertHolderCensusIsNotVacuous — предпосылка обхода, ПО КАЖДОЙ форме.
+//
+// Общая предпосылка («хоть одна площадка найдена») слепа ровно к тому случаю,
+// ради которого этот файл переписан: половина распознавателя умирает, вторая
+// продолжает находить свои площадки, и перепись выглядит здоровой. Поэтому ноль
+// по ЛЮБОЙ форме — отказ: он означает либо переименованный конструктор, либо
+// переименованное поле дескриптора, и в обоих случаях молчание проверки
+// перестало значить «чисто».
+func assertHolderCensusIsNotVacuous(t *testing.T, filesRead int, held map[string]revocationwindowgate.WindowOwnership) {
+	t.Helper()
+	if why := holderCensusVacuity(filesRead, held); why != "" {
+		t.Fatalf("предпосылка гейта нарушена: %s", why)
+	}
+}
+
+// holderCensusVacuity — причина, по которой перепись держателей окна ничего не
+// измерила, либо пустая строка.
+//
+// Отделено от утверждения намеренно: предпосылку, роняющую прогон, иначе нельзя
+// проверить инъекцией — а проверка, чью способность падать не доказали,
+// неотличима от вечно-зелёной. Текст находки живёт здесь в единственном
+// экземпляре, поэтому инъекция судит ровно то, что прочтёт человек.
+func holderCensusVacuity(filesRead int, held map[string]revocationwindowgate.WindowOwnership) string {
+	if filesRead == 0 {
+		return "не прочитано ни одного файла процессов"
+	}
+	byCtor, byDescriptor := ownershipByForm(held)
+	names := revocationwindowgate.OwnershipFormNames()
+	if byCtor == 0 {
+		return fmt.Sprintf("прочитано %d файлов, но формой «%s» окно не держит НИ ОДИН процесс. "+
+			"Конструктор переименован либо все площадки перешли на дескриптор — реши, что из "+
+			"двух: в первом случае половина распознавателя ослепла и молчит, во втором форму "+
+			"надо снять вместе с её предметом. Распознаваемые конструкторы: %v",
+			filesRead, names[0], revocationwindowgate.VerdictCacheCtorNames())
+	}
+	if byDescriptor == 0 {
+		return fmt.Sprintf("прочитано %d файлов, но формой «%s» окно не держит НИ ОДИН процесс. "+
+			"Поле %q переименовано либо дескриптор носителя больше не несёт окна — в первом "+
+			"случае из-под наблюдения ушло большинство площадок дерева, и ушло молча",
+			filesRead, names[1], revocationwindowgate.DescriptorWindowField)
+	}
+	return ""
+}
+
+// undeclaredHolders — процессы, держащие окно и не объявленные политикой.
+func undeclaredHolders(held map[string]revocationwindowgate.WindowOwnership, declared map[string]bool) []string {
+	var out []string
+	for svc := range held {
+		if !declared[svc] {
+			out = append(out, svc)
 		}
-		for _, elt := range lit.Elts {
-			kv, ok := elt.(*ast.KeyValueExpr)
-			if !ok {
-				continue
-			}
-			if key, ok := kv.Key.(*ast.Ident); ok && key.Name == "CacheWindow" {
-				declared = true
-				return false
-			}
-		}
-		return true
-	})
-	return declared
+	}
+	sort.Strings(out)
+	return out
 }
