@@ -17,6 +17,8 @@ import (
 	"path/filepath"
 	"strings"
 	"testing"
+
+	"github.com/PRO-Robotech/kaname/internal/treeposture"
 )
 
 // missFixture — файл, читающий пакет и берущий у двузначного символа оба
@@ -147,7 +149,14 @@ func TestIAMCT2_DecodedMissLedgerHasASubject(t *testing.T) {
 		t.Skip("ведомость пуста — утверждать не о чем; это законная цель, а не поломка")
 	}
 	for f, why := range decodedMissFiles {
-		if _, err := os.Stat(filepath.Join(root, f)); err != nil {
+		// Координата приводится к ПОСАДКЕ: записи ведомости называют собственные
+		// файлы модуля, и в клоне они лежат от его корня, без приставки.
+		abs, perr := treeposture.PathUnder(root, f)
+		if perr != nil {
+			t.Errorf("запись ведомости %q не приведена к посадке: %v", f, perr)
+			continue
+		}
+		if _, err := os.Stat(abs); err != nil {
 			t.Errorf("запись ведомости %q не резолвится в дереве: %v", f, err)
 		}
 		if strings.TrimSpace(why) == "" {

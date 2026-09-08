@@ -70,6 +70,8 @@ import (
 	"github.com/stretchr/testify/require"
 
 	"github.com/PRO-Robotech/kacho/pkg/gitenv"
+
+	"github.com/PRO-Robotech/kaname/internal/treeposture"
 )
 
 const (
@@ -94,7 +96,12 @@ const (
 // вердикт не попадает, а файл, пропавший из индекса, не остаётся осмотренным.
 func goSourcesOfDir(t *testing.T, root, dir string) map[string]string {
 	t.Helper()
-	out, err := gitenv.Command(root, "ls-files", "-z", "--", dir+"/*.go").Output()
+	// Координата каталога приводится к ПОСАДКЕ и берётся ОТНОСИТЕЛЬНО корня:
+	// `git ls-files` судит по путям индекса, а в самостоятельном клоне у файлов
+	// модуля приставки `services/iam` нет. Без приведения обход вернул бы пусто —
+	// и «ноль находок» стало бы неотличимо от «ноль прочитанного».
+	rel := treeposture.Under(treeposture.PrefixUnder(root), strings.TrimPrefix(dir, "services/iam/"))
+	out, err := gitenv.Command(root, "ls-files", "-z", "--", rel+"/*.go").Output()
 	if err != nil {
 		t.Fatalf("git ls-files %s: %v — состав каталога не установлен, "+
 			"и «ноль находок» здесь означало бы «ноль прочитанного»", dir, err)

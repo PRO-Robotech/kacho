@@ -17,6 +17,8 @@ import (
 
 	"github.com/PRO-Robotech/kacho/pkg/treecorpus"
 	"github.com/stretchr/testify/require"
+
+	"github.com/PRO-Robotech/kaname/internal/testsupport/platformtree"
 )
 
 // Потолок ТЕМПА заведения аккаунтов (задача #618) — три на личность в час. Значит
@@ -413,8 +415,7 @@ func auditProbeFile(name, src string) ([]string, rateCensus, error) {
 
 // TestProbesOutgrowingTheRateCeilingLiftIt — несущее утверждение.
 func TestProbesOutgrowingTheRateCeilingLiftIt(t *testing.T) {
-	root := monorepoRoot(t)
-	dir := filepath.Join(root, accountProbeDirRel)
+	dir := platformtree.RequirePath(t, accountProbeDirRel)
 
 	paths, err := treecorpus.UnderWithSuffix(dir, "_test.go")
 	require.NoError(t, err)
