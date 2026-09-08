@@ -327,6 +327,9 @@ func (s *Server) serve(
 	stream subscriptionv1.InternalSubscriptionService_SubscribeServer,
 ) error {
 	storage := s.cfg.Journal.Storage
+	// Состояние доставки — СВОЁ у каждого потока: у каждого свой вызывающий,
+	// свой курсор и своё окно материализации гранта (`grant.go`).
+	d := &delivery{}
 	h := newWatermark(storage.Table, storage.PositionColumn, s.log, s.now)
 	if err := s.settle(ctx, conn, h, storage.Table); err != nil {
 		return err
@@ -382,8 +385,14 @@ func (s *Server) serve(
 		return err
 	}
 
+	// Перепись доставки печатается ОДИН раз, при закрытии потока: обе её
+	// величины окончательны только тогда. Она стоит `defer`-ом, чтобы называться
+	// на КАЖДОМ исходе — чистом конце, отказе, уходе клиента, — иначе поток,
+	// закончившийся отказом, унёс бы своё расхождение молча.
+	defer d.census(s.log, storage.Table)
+
 	for {
-		cursor, err = s.drain(ctx, conn, h, cursor, filter, stream)
+		cursor, err = s.drain(ctx, conn, h, d, cursor, filter, stream)
 		if err != nil {
 			return err
 		}
