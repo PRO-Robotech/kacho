@@ -142,7 +142,10 @@ line() { # line <trusted_forwarders-фрагмент>
   # нет вовсе, и «нет листенера» обязано быть отличимо от «листенер без mTLS».
   # У ЭТОГО сервиса листенер есть, поэтому величина — "true".
   printf '"db_sslmode":"require","public_mtls":true,"internal_mtls":"true","authz_check":true,'
-  printf '"identity_provider":"n/a"%s}' "$1"
+  # own_rest_*_tls — состояние СОБСТВЕННЫХ REST-фронтов процесса (задача #2108).
+  # У реестра их нет: его HTTP-поверхность принадлежит краю платформы, поэтому
+  # «n/a» здесь не удобство фикстуры, а то, что этот процесс и докладывает.
+  printf '"identity_provider":"n/a","own_rest_public_tls":"n/a","own_rest_internal_tls":"n/a"%s}' "$1"
 }
 verdict() { echo "$1" | jq -r --argjson need_fwd "$2" "$JQPROG"; }
 
