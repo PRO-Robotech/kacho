@@ -22,9 +22,13 @@ spec:
     # есть свойство СОКЕТА, а не объекта Service. Внутренний фронт слушает свой
     # порт, и на публичном порту его маршруты не резолвятся ни при каком запросе.
     # Кто дотянется до какого порта, решает сеть кластера, а не эта запись.
+    {{- if .Values.ports.rest }}
     - name: http-rest
-      port: {{ .Values.ports.rest | default 9098 }}
+      port: {{ .Values.ports.rest }}
       targetPort: http-rest
+    {{- end }}
+    {{- if .Values.ports.internalRest }}
     - name: http-rest-int
-      port: {{ .Values.ports.internalRest | default 9099 }}
+      port: {{ .Values.ports.internalRest }}
       targetPort: http-rest-int
+    {{- end }}
