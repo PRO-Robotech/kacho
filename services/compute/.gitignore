@@ -20,7 +20,7 @@ tests/k6/*.summary.json
 # (Go-stubs тоже single-source corelib). Доменные proto (kacho/cloud/{compute,access,maintenance})
 # остаются tracked.
 /proto/google/
-/proto/kacho/cloud/api/
+/proto/corelib/api/
 /proto/kacho/cloud/operation/
 /proto/kacho/cloud/validation.proto
 /proto/kacho/iam/

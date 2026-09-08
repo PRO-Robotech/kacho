@@ -45,7 +45,7 @@ syntax = "proto3";
 package kaname.cloud.iam.v1;
 
 import "google/api/annotations.proto";
-import "kacho/cloud/api/operation.proto";
+import "corelib/api/v1/operation.proto";
 import "kaname/cloud/iam/v1/internal_limit_service.proto";
 import "kaname/cloud/iam/v1/limit.proto";
 import "kacho/cloud/operation/operation.proto";
@@ -104,7 +104,7 @@ service LimitService {
       post: "/iam/v1/limits"
       body: "*"
     };
-    option (kacho.cloud.api.operation) = {
+    option (corelib.api.v1.operation) = {
       metadata: "CreateLimitMetadata"
       response: "Limit"
     };
@@ -127,7 +127,7 @@ service LimitService {
       patch: "/iam/v1/limits/{limit_id}"
       body: "*"
     };
-    option (kacho.cloud.api.operation) = {
+    option (corelib.api.v1.operation) = {
       metadata: "UpdateLimitMetadata"
       response: "Limit"
     };
@@ -149,7 +149,7 @@ service LimitService {
     option (google.api.http) = {
       delete: "/iam/v1/limits/{limit_id}"
     };
-    option (kacho.cloud.api.operation) = {
+    option (corelib.api.v1.operation) = {
       metadata: "DeleteLimitMetadata"
       response: "Limit"
     };

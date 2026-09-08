@@ -66,7 +66,7 @@ VENDORED_INFRA_PROTOS = \
 	google/api/annotations.proto \
 	google/api/http.proto \
 	google/rpc/status.proto \
-	kacho/cloud/api/operation.proto \
+	corelib/api/v1/operation.proto \
 	kacho/cloud/operation/operation.proto \
 	kacho/cloud/validation.proto \
 	corelib/authz/v1/authz_options.proto

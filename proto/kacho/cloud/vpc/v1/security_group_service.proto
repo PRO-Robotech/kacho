@@ -7,7 +7,7 @@ package kacho.cloud.vpc.v1;
 
 import "google/api/annotations.proto";
 import "google/protobuf/field_mask.proto";
-import "kacho/cloud/api/operation.proto";
+import "corelib/api/v1/operation.proto";
 import "kacho/cloud/vpc/v1/security_group.proto";
 import "kacho/cloud/operation/operation.proto";
 import "corelib/authz/v1/authz_options.proto";
@@ -53,7 +53,7 @@ service SecurityGroupService {
     // Creates a security group in the specified project and network.
     rpc Create (CreateSecurityGroupRequest) returns (operation.Operation) {
         option (google.api.http) = { post: "/vpc/v1/securityGroups" body: "*" };
-        option (kacho.cloud.api.operation) = {
+        option (corelib.api.v1.operation) = {
             metadata: "CreateSecurityGroupMetadata"
             response: "SecurityGroup"
         };
@@ -70,7 +70,7 @@ service SecurityGroupService {
     // Method starts an asynchronous operation that can be cancelled while it is in progress.
     rpc Update (UpdateSecurityGroupRequest) returns (operation.Operation) {
         option (google.api.http) = { patch: "/vpc/v1/securityGroups/{security_group_id}" body: "*" };
-        option (kacho.cloud.api.operation) = {
+        option (corelib.api.v1.operation) = {
             metadata: "UpdateSecurityGroupMetadata"
             response: "SecurityGroup"
         };
@@ -86,7 +86,7 @@ service SecurityGroupService {
     // Updates the rules of the specified security group.
     rpc UpdateRules (UpdateSecurityGroupRulesRequest) returns (operation.Operation) {
         option (google.api.http) = { patch: "/vpc/v1/securityGroups/{security_group_id}/rules" body: "*" };
-        option (kacho.cloud.api.operation) = {
+        option (corelib.api.v1.operation) = {
             metadata: "UpdateSecurityGroupMetadata"
             response: "SecurityGroup"
         };
@@ -102,7 +102,7 @@ service SecurityGroupService {
     // Updates the specified rule.
     rpc UpdateRule (UpdateSecurityGroupRuleRequest) returns (operation.Operation) {
         option (google.api.http) = { patch: "/vpc/v1/securityGroups/{security_group_id}/rules/{rule_id}" body: "*" };
-        option (kacho.cloud.api.operation) = {
+        option (corelib.api.v1.operation) = {
             metadata: "UpdateSecurityGroupRuleMetadata"
             response: "SecurityGroup"
         };
@@ -118,7 +118,7 @@ service SecurityGroupService {
     // Deletes the specified security group.
     rpc Delete (DeleteSecurityGroupRequest) returns (operation.Operation) {
         option (google.api.http) = { delete: "/vpc/v1/securityGroups/{security_group_id}" };
-        option (kacho.cloud.api.operation) = {
+        option (corelib.api.v1.operation) = {
             metadata: "DeleteSecurityGroupMetadata"
             response: "google.protobuf.Empty"
         };

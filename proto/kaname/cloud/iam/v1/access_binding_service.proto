@@ -8,7 +8,7 @@ package kaname.cloud.iam.v1;
 import "google/api/annotations.proto";
 import "google/protobuf/field_mask.proto";
 import "google/protobuf/timestamp.proto";
-import "kacho/cloud/api/operation.proto";
+import "corelib/api/v1/operation.proto";
 import "kaname/cloud/iam/v1/access_binding.proto";
 import "kacho/cloud/operation/operation.proto";
 import "corelib/authz/v1/authz_options.proto";
@@ -38,7 +38,7 @@ service AccessBindingService {
   // scope_id) → ALREADY_EXISTS (partial UNIQUE WHERE revoked_at IS NULL).
   rpc Create (CreateAccessBindingRequest) returns (kacho.cloud.operation.Operation) {
     option (google.api.http) = { post: "/iam/v1/accessBindings" body: "*" };
-    option (kacho.cloud.api.operation) = {
+    option (corelib.api.v1.operation) = {
       metadata: "CreateAccessBindingMetadata"
       response: "AccessBinding"
     };
@@ -60,7 +60,7 @@ service AccessBindingService {
   // Deletes the specified access binding.
   rpc Delete (DeleteAccessBindingRequest) returns (kacho.cloud.operation.Operation) {
     option (google.api.http) = { delete: "/iam/v1/accessBindings/{access_binding_id}" };
-    option (kacho.cloud.api.operation) = {
+    option (corelib.api.v1.operation) = {
       metadata: "DeleteAccessBindingMetadata"
       response: "google.protobuf.Empty"
     };
@@ -82,7 +82,7 @@ service AccessBindingService {
   // INVALID_ARGUMENT. Async (returns Operation), like the other mutations.
   rpc Update (UpdateAccessBindingRequest) returns (kacho.cloud.operation.Operation) {
     option (google.api.http) = { patch: "/iam/v1/accessBindings/{access_binding_id}" body: "*" };
-    option (kacho.cloud.api.operation) = {
+    option (corelib.api.v1.operation) = {
       metadata: "UpdateAccessBindingMetadata"
       response: "AccessBinding"
     };
@@ -410,7 +410,7 @@ service AccessBindingService {
   // Async (returns Operation), like the other mutations.
   rpc Revoke (RevokeAccessBindingRequest) returns (kacho.cloud.operation.Operation) {
     option (google.api.http) = { post: "/iam/v1/accessBindings/{access_binding_id}:revoke" body: "*" };
-    option (kacho.cloud.api.operation) = {
+    option (corelib.api.v1.operation) = {
       metadata: "RevokeAccessBindingMetadata"
       response: "AccessBinding"
     };

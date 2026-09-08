@@ -10,8 +10,8 @@
 package iamv1
 
 import (
+	_ "github.com/PRO-Robotech/kacho/pkg/api/corelib/api/v1"
 	_ "github.com/PRO-Robotech/kacho/pkg/api/corelib/authz/v1"
-	_ "github.com/PRO-Robotech/kacho/pkg/api/kacho/cloud/api"
 	operation "github.com/PRO-Robotech/kacho/pkg/api/kacho/cloud/operation"
 	_ "google.golang.org/genproto/googleapis/api/annotations"
 	protoreflect "google.golang.org/protobuf/reflect/protoreflect"
@@ -615,7 +615,7 @@ var File_kaname_cloud_iam_v1_service_account_service_proto protoreflect.FileDesc
 
 const file_kaname_cloud_iam_v1_service_account_service_proto_rawDesc = "" +
 	"\n" +
-	"1kaname/cloud/iam/v1/service_account_service.proto\x12\x13kaname.cloud.iam.v1\x1a\x1cgoogle/api/annotations.proto\x1a google/protobuf/field_mask.proto\x1a\x1fkacho/cloud/api/operation.proto\x1a)kaname/cloud/iam/v1/service_account.proto\x1a%kacho/cloud/operation/operation.proto\x1a$corelib/authz/v1/authz_options.proto\"H\n" +
+	"1kaname/cloud/iam/v1/service_account_service.proto\x12\x13kaname.cloud.iam.v1\x1a\x1cgoogle/api/annotations.proto\x1a google/protobuf/field_mask.proto\x1a\x1ecorelib/api/v1/operation.proto\x1a)kaname/cloud/iam/v1/service_account.proto\x1a%kacho/cloud/operation/operation.proto\x1a$corelib/authz/v1/authz_options.proto\"H\n" +
 	"\x18GetServiceAccountRequest\x12,\n" +
 	"\x12service_account_id\x18\x01 \x01(\tR\x10serviceAccountId\"\x8f\x01\n" +
 	"\x1aListServiceAccountsRequest\x12\x1d\n" +

@@ -22,7 +22,7 @@ tests/newman/out/baseline-*.json
 # Vendored corelib-owned инфра-proto — единственный источник в kacho-corelib/proto.
 # В git здесь НЕ хранится; `make proto-vendor` подтягивает перед buf generate/lint.
 /proto/google/
-/proto/kacho/cloud/api/operation.proto
+/proto/corelib/api/v1/operation.proto
 /proto/kacho/cloud/operation/operation.proto
 /proto/kacho/cloud/validation.proto
 /proto/corelib/authz/v1/authz_options.proto

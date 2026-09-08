@@ -103,7 +103,7 @@ VENDORED_PROTO := \
 	google/api/field_behavior.proto \
 	google/api/http.proto \
 	google/rpc/status.proto \
-	kacho/cloud/api/operation.proto \
+	corelib/api/v1/operation.proto \
 	kacho/cloud/operation/operation.proto \
 	kacho/cloud/validation.proto \
 	corelib/authz/v1/authz_options.proto

@@ -107,7 +107,7 @@ func TestTransportMessageReach_SilentOnTouchedMessages(t *testing.T) {
 service S {
   rpc Get (GetThingRequest) returns (GetThingResponse);
   rpc Create (CreateThingRequest) returns (Operation) {
-    option (kacho.cloud.api.operation) = { metadata: "CreateThingMetadata" response: "Thing" };
+    option (corelib.api.v1.operation) = { metadata: "CreateThingMetadata" response: "Thing" };
   }
 }
 message GetThingRequest { string id = 1; }

@@ -129,7 +129,7 @@ go list -f '{{join .Imports " "}}' ./services/iam/... \
 
 - `pkg/ownerregister` — 5 файлов iam при 14 у compute и 11 у storage;
 - `pkg/platformmodules` — 5 файлов iam, 11 у корневого `internal/`, 2 у `pkg/`;
-- `pkg/api/kacho/cloud/api` — общие опции контракта.
+- `pkg/api/corelib/api/v1` — разметка операции (до #2395 — `pkg/api/kacho/cloud/api`).
 
 Предикат: `comm -13` двух отсортированных списков прод- и тест-импортов.
 То есть тестовая надстройка **почти не расширяет** внешнюю зависимость по `pkg/`:
@@ -146,15 +146,28 @@ go list -f '{{join .Imports " "}}' ./services/iam/... \
 | `kaname/cloud/iam/v1` | 39 |
 | `proto/google/` (восемь файлов стандартных опций) | 8 |
 | `kacho/cloud/operation` | 3 |
-| `kacho/cloud/api` | 2 |
+| `corelib/api/v1` | 1 |
 | `kacho/cloud/quota/v1` | 2 |
 | `kacho/iam/authz/v1` | 1 |
 
 Вне домена iam и вне стандартных опций Google — **8 файлов** (пути ниже — относительные внутри `proto/`):
-`kacho/cloud/api/operation.proto`, `kacho/cloud/api/secret_options.proto`,
+`corelib/api/v1/operation.proto`,
 `kacho/cloud/operation/{operation,operation_service,package_options}.proto`,
 `kacho/cloud/quota/v1/{quota,identity_quota_service}.proto`,
-`kacho/iam/authz/v1/authz_options.proto`.
+`corelib/authz/v1/authz_options.proto`.
+
+> [!note] Координаты обновлены 2026-09-09, числа — НЕ перемерены
+> Два переезда сместили состав, не меняя его размера: #2089 увёл
+> `kacho/iam/authz/v1` → `corelib/authz/v1`, #2395 — `kacho/cloud/api` в две
+> стороны (`operation.proto` → `corelib/api/v1`, `secret_options.proto` →
+> `kaname/cloud/iam/v1`, к домену службы). Поэтому строка `kacho/cloud/api`
+> из таблицы выше ушла, а `kaname/cloud/iam/v1` приняла её второй файл.
+>
+> Числа таблицы остаются числами СВОЕЙ ревизии и здесь не пересчитывались
+> арифметикой: замыкание импортов — не перечень каталога (в дереве у
+> `kaname/cloud/iam/v1` файлов 41, в замыкании документа — 39), и вычесть одно
+> из другого значило бы назвать разными мерками один предмет. Перемер —
+> предикатом документа, отдельным заходом.
 
 Генерация ведётся `proto/buf.gen.yaml` (три плагина через `go run`, выход —
 `pkg/api`, `paths=source_relative`). Плагины берутся **из модуля**, поэтому версия

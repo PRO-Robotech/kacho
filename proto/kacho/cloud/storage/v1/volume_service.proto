@@ -7,7 +7,7 @@ package kacho.cloud.storage.v1;
 
 import "google/api/annotations.proto";
 import "google/protobuf/field_mask.proto";
-import "kacho/cloud/api/operation.proto";
+import "corelib/api/v1/operation.proto";
 import "kacho/cloud/operation/operation.proto";
 import "kacho/cloud/storage/v1/volume.proto";
 import "corelib/authz/v1/authz_options.proto";
@@ -48,7 +48,7 @@ service VolumeService {
       post: "/storage/v1/volumes"
       body: "*"
     };
-    option (kacho.cloud.api.operation) = {
+    option (corelib.api.v1.operation) = {
       metadata: "CreateVolumeMetadata"
       response: "Volume"
     };
@@ -74,7 +74,7 @@ service VolumeService {
       patch: "/storage/v1/volumes/{volume_id}"
       body: "*"
     };
-    option (kacho.cloud.api.operation) = {
+    option (corelib.api.v1.operation) = {
       metadata: "UpdateVolumeMetadata"
       response: "Volume"
     };
@@ -93,7 +93,7 @@ service VolumeService {
   // FailedPrecondition "Volume <id> is in use" (FK RESTRICT).
   rpc Delete(DeleteVolumeRequest) returns (operation.Operation) {
     option (google.api.http) = {delete: "/storage/v1/volumes/{volume_id}"};
-    option (kacho.cloud.api.operation) = {
+    option (corelib.api.v1.operation) = {
       metadata: "DeleteVolumeMetadata"
       response: "google.protobuf.Empty"
     };
@@ -142,7 +142,7 @@ service VolumeService {
       post: "/storage/v1/volumes/{volume_id}:changeDiskType"
       body: "*"
     };
-    option (kacho.cloud.api.operation) = {
+    option (corelib.api.v1.operation) = {
       metadata: "ChangeDiskTypeMetadata"
       response: "Volume"
     };

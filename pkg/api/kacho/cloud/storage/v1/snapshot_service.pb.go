@@ -10,8 +10,8 @@
 package storagev1
 
 import (
+	_ "github.com/PRO-Robotech/kacho/pkg/api/corelib/api/v1"
 	_ "github.com/PRO-Robotech/kacho/pkg/api/corelib/authz/v1"
-	_ "github.com/PRO-Robotech/kacho/pkg/api/kacho/cloud/api"
 	operation "github.com/PRO-Robotech/kacho/pkg/api/kacho/cloud/operation"
 	_ "google.golang.org/genproto/googleapis/api/annotations"
 	protoreflect "google.golang.org/protobuf/reflect/protoreflect"
@@ -843,7 +843,7 @@ var File_kacho_cloud_storage_v1_snapshot_service_proto protoreflect.FileDescript
 
 const file_kacho_cloud_storage_v1_snapshot_service_proto_rawDesc = "" +
 	"\n" +
-	"-kacho/cloud/storage/v1/snapshot_service.proto\x12\x16kacho.cloud.storage.v1\x1a\x1cgoogle/api/annotations.proto\x1a google/protobuf/field_mask.proto\x1a\x1fkacho/cloud/api/operation.proto\x1a%kacho/cloud/operation/operation.proto\x1a%kacho/cloud/storage/v1/snapshot.proto\x1a$corelib/authz/v1/authz_options.proto\"5\n" +
+	"-kacho/cloud/storage/v1/snapshot_service.proto\x12\x16kacho.cloud.storage.v1\x1a\x1cgoogle/api/annotations.proto\x1a google/protobuf/field_mask.proto\x1a\x1ecorelib/api/v1/operation.proto\x1a%kacho/cloud/operation/operation.proto\x1a%kacho/cloud/storage/v1/snapshot.proto\x1a$corelib/authz/v1/authz_options.proto\"5\n" +
 	"\x12GetSnapshotRequest\x12\x1f\n" +
 	"\vsnapshot_id\x18\x01 \x01(\tR\n" +
 	"snapshotId\"\x99\x01\n" +

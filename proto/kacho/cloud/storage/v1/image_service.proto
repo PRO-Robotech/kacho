@@ -7,7 +7,7 @@ package kacho.cloud.storage.v1;
 
 import "google/api/annotations.proto";
 import "google/protobuf/field_mask.proto";
-import "kacho/cloud/api/operation.proto";
+import "corelib/api/v1/operation.proto";
 import "kacho/cloud/operation/operation.proto";
 import "kacho/cloud/storage/v1/image.proto";
 import "corelib/authz/v1/authz_options.proto";
@@ -48,7 +48,7 @@ service ImageService {
       post: "/storage/v1/images"
       body: "*"
     };
-    option (kacho.cloud.api.operation) = {
+    option (corelib.api.v1.operation) = {
       metadata: "CreateImageMetadata"
       response: "Image"
     };
@@ -70,7 +70,7 @@ service ImageService {
       patch: "/storage/v1/images/{image_id}"
       body: "*"
     };
-    option (kacho.cloud.api.operation) = {
+    option (corelib.api.v1.operation) = {
       metadata: "UpdateImageMetadata"
       response: "Image"
     };
@@ -90,7 +90,7 @@ service ImageService {
   // dependency).
   rpc Delete(DeleteImageRequest) returns (operation.Operation) {
     option (google.api.http) = {delete: "/storage/v1/images/{image_id}"};
-    option (kacho.cloud.api.operation) = {
+    option (corelib.api.v1.operation) = {
       metadata: "DeleteImageMetadata"
       response: "google.protobuf.Empty"
     };
@@ -119,7 +119,7 @@ service ImageService {
       post: "/storage/v1/images/{image_id}:copy"
       body: "*"
     };
-    option (kacho.cloud.api.operation) = {
+    option (corelib.api.v1.operation) = {
       metadata: "CopyImageMetadata"
       response: "Image"
     };

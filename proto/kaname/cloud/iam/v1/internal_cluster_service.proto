@@ -30,7 +30,7 @@ package kaname.cloud.iam.v1;
 
 import "google/api/annotations.proto";
 import "google/protobuf/timestamp.proto";
-import "kacho/cloud/api/operation.proto";
+import "corelib/api/v1/operation.proto";
 import "kaname/cloud/iam/v1/cluster.proto";
 import "kaname/cloud/iam/v1/cluster_admin_grant.proto";
 import "kacho/cloud/operation/operation.proto";
@@ -76,7 +76,7 @@ service InternalClusterService {
       post: "/iam/v1/internal/cluster/admins"
       body: "*"
     };
-    option (kacho.cloud.api.operation) = {
+    option (corelib.api.v1.operation) = {
       metadata: "GrantClusterAdminMetadata"
       response: "ClusterAdminGrant"
     };
@@ -104,7 +104,7 @@ service InternalClusterService {
     option (google.api.http) = {
       delete: "/iam/v1/internal/cluster/admins/{subject_id}"
     };
-    option (kacho.cloud.api.operation) = {
+    option (corelib.api.v1.operation) = {
       metadata: "RevokeClusterAdminMetadata"
       response: "ClusterAdminGrant"
     };

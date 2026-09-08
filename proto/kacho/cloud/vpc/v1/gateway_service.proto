@@ -7,7 +7,7 @@ package kacho.cloud.vpc.v1;
 
 import "google/api/annotations.proto";
 import "google/protobuf/field_mask.proto";
-import "kacho/cloud/api/operation.proto";
+import "corelib/api/v1/operation.proto";
 import "kacho/cloud/operation/operation.proto";
 import "kacho/cloud/vpc/v1/gateway.proto";
 import "corelib/authz/v1/authz_options.proto";
@@ -52,7 +52,7 @@ service GatewayService {
   // Creates a gateway in the specified project.
   rpc Create (CreateGatewayRequest) returns (operation.Operation) {
     option (google.api.http) = {post: "/vpc/v1/gateways" body: "*"};
-    option (kacho.cloud.api.operation) = {
+    option (corelib.api.v1.operation) = {
       metadata: "CreateGatewayMetadata"
       response: "Gateway"
     };
@@ -68,7 +68,7 @@ service GatewayService {
   // Updates the specified gateway.
   rpc Update (UpdateGatewayRequest) returns (operation.Operation) {
     option (google.api.http) = {patch: "/vpc/v1/gateways/{gateway_id}" body: "*"};
-    option (kacho.cloud.api.operation) = {
+    option (corelib.api.v1.operation) = {
       metadata: "UpdateGatewayMetadata"
       response: "Gateway"
     };
@@ -84,7 +84,7 @@ service GatewayService {
   // Deletes the specified gateway.
   rpc Delete (DeleteGatewayRequest) returns (operation.Operation) {
     option (google.api.http) = {delete: "/vpc/v1/gateways/{gateway_id}"};
-    option (kacho.cloud.api.operation) = {
+    option (corelib.api.v1.operation) = {
       metadata: "DeleteGatewayMetadata"
       response: "google.protobuf.Empty"
     };

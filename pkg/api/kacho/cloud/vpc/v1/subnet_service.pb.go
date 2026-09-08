@@ -10,8 +10,8 @@
 package vpcv1
 
 import (
+	_ "github.com/PRO-Robotech/kacho/pkg/api/corelib/api/v1"
 	_ "github.com/PRO-Robotech/kacho/pkg/api/corelib/authz/v1"
-	_ "github.com/PRO-Robotech/kacho/pkg/api/kacho/cloud/api"
 	operation "github.com/PRO-Robotech/kacho/pkg/api/kacho/cloud/operation"
 	reference "github.com/PRO-Robotech/kacho/pkg/api/kacho/cloud/reference"
 	_ "google.golang.org/genproto/googleapis/api/annotations"
@@ -1098,7 +1098,7 @@ var File_kacho_cloud_vpc_v1_subnet_service_proto protoreflect.FileDescriptor
 
 const file_kacho_cloud_vpc_v1_subnet_service_proto_rawDesc = "" +
 	"\n" +
-	"'kacho/cloud/vpc/v1/subnet_service.proto\x12\x12kacho.cloud.vpc.v1\x1a\x1cgoogle/api/annotations.proto\x1a google/protobuf/field_mask.proto\x1a\x1fkacho/cloud/api/operation.proto\x1a%kacho/cloud/operation/operation.proto\x1a%kacho/cloud/reference/reference.proto\x1a\x1fkacho/cloud/vpc/v1/subnet.proto\x1a$corelib/authz/v1/authz_options.proto\"/\n" +
+	"'kacho/cloud/vpc/v1/subnet_service.proto\x12\x12kacho.cloud.vpc.v1\x1a\x1cgoogle/api/annotations.proto\x1a google/protobuf/field_mask.proto\x1a\x1ecorelib/api/v1/operation.proto\x1a%kacho/cloud/operation/operation.proto\x1a%kacho/cloud/reference/reference.proto\x1a\x1fkacho/cloud/vpc/v1/subnet.proto\x1a$corelib/authz/v1/authz_options.proto\"/\n" +
 	"\x10GetSubnetRequest\x12\x1b\n" +
 	"\tsubnet_id\x18\x01 \x01(\tR\bsubnetId\"\x87\x01\n" +
 	"\x12ListSubnetsRequest\x12\x1d\n" +

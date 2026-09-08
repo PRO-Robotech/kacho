@@ -31,7 +31,7 @@ package kaname.cloud.iam.v1;
 
 import "google/api/annotations.proto";
 import "google/protobuf/field_mask.proto";
-import "kacho/cloud/api/operation.proto";
+import "corelib/api/v1/operation.proto";
 import "kaname/cloud/iam/v1/interactive_client.proto";
 import "kacho/cloud/operation/operation.proto";
 import "corelib/authz/v1/authz_options.proto";
@@ -88,7 +88,7 @@ service InternalInteractiveClientService {
       post: "/iam/v1/internal/interactiveClients"
       body: "*"
     };
-    option (kacho.cloud.api.operation) = {
+    option (corelib.api.v1.operation) = {
       metadata: "CreateInteractiveClientMetadata"
       response: "InteractiveClient"
     };
@@ -112,7 +112,7 @@ service InternalInteractiveClientService {
       patch: "/iam/v1/internal/interactiveClients/{interactive_client_id}"
       body: "*"
     };
-    option (kacho.cloud.api.operation) = {
+    option (corelib.api.v1.operation) = {
       metadata: "UpdateInteractiveClientMetadata"
       response: "InteractiveClient"
     };
@@ -134,7 +134,7 @@ service InternalInteractiveClientService {
     option (google.api.http) = {
       delete: "/iam/v1/internal/interactiveClients/{interactive_client_id}"
     };
-    option (kacho.cloud.api.operation) = {
+    option (corelib.api.v1.operation) = {
       metadata: "DeleteInteractiveClientMetadata"
       response: "InteractiveClient"
     };

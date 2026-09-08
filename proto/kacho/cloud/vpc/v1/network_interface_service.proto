@@ -7,7 +7,7 @@ package kacho.cloud.vpc.v1;
 
 import "google/api/annotations.proto";
 import "google/protobuf/field_mask.proto";
-import "kacho/cloud/api/operation.proto";
+import "corelib/api/v1/operation.proto";
 import "kacho/cloud/operation/operation.proto";
 import "kacho/cloud/vpc/v1/network_interface.proto";
 import "corelib/authz/v1/authz_options.proto";
@@ -57,7 +57,7 @@ service NetworkInterfaceService {
   // Creates a network interface in the specified project.
   rpc Create(CreateNetworkInterfaceRequest) returns (operation.Operation) {
     option (google.api.http) = { post: "/vpc/v1/networkInterfaces" body: "*" };
-    option (kacho.cloud.api.operation) = {
+    option (corelib.api.v1.operation) = {
       metadata: "CreateNetworkInterfaceMetadata"
       response: "NetworkInterface"
     };
@@ -73,7 +73,7 @@ service NetworkInterfaceService {
   // Updates the specified network interface (name/description/labels/security_group_ids).
   rpc Update(UpdateNetworkInterfaceRequest) returns (operation.Operation) {
     option (google.api.http) = { patch: "/vpc/v1/networkInterfaces/{network_interface_id}" body: "*" };
-    option (kacho.cloud.api.operation) = {
+    option (corelib.api.v1.operation) = {
       metadata: "UpdateNetworkInterfaceMetadata"
       response: "NetworkInterface"
     };
@@ -91,7 +91,7 @@ service NetworkInterfaceService {
   // to an instance.
   rpc Delete(DeleteNetworkInterfaceRequest) returns (operation.Operation) {
     option (google.api.http) = { delete: "/vpc/v1/networkInterfaces/{network_interface_id}" };
-    option (kacho.cloud.api.operation) = {
+    option (corelib.api.v1.operation) = {
       metadata: "DeleteNetworkInterfaceMetadata"
       response: "google.protobuf.Empty"
     };

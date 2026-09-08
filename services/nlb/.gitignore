@@ -20,7 +20,7 @@ tests/k6/*.summary.json
 # Pulled in transiently by `make proto-vendor` before buf lint/generate for import
 # resolution only; NOT generated here and NOT committed (Go-stubs live in kacho-corelib).
 /proto/google/
-/proto/kacho/cloud/api/
+/proto/corelib/api/
 /proto/kacho/cloud/operation/
 /proto/kacho/cloud/validation.proto
 /proto/kacho/iam/

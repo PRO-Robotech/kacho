@@ -7,7 +7,7 @@ package kacho.cloud.vpc.v1;
 
 import "google/api/annotations.proto";
 import "google/protobuf/field_mask.proto";
-import "kacho/cloud/api/operation.proto";
+import "corelib/api/v1/operation.proto";
 import "kacho/cloud/operation/operation.proto";
 import "kacho/cloud/vpc/v1/address.proto";
 import "corelib/authz/v1/authz_options.proto";
@@ -56,7 +56,7 @@ service AddressService {
       post: "/vpc/v1/addresses"
       body: "*"
     };
-    option (kacho.cloud.api.operation) = {
+    option (corelib.api.v1.operation) = {
       metadata: "CreateAddressMetadata"
       response: "Address"
     };
@@ -75,7 +75,7 @@ service AddressService {
       patch: "/vpc/v1/addresses/{address_id}"
       body: "*"
     };
-    option (kacho.cloud.api.operation) = {
+    option (corelib.api.v1.operation) = {
       metadata: "UpdateAddressMetadata"
       response: "Address"
     };
@@ -91,7 +91,7 @@ service AddressService {
   // Deletes the specified address.
   rpc Delete(DeleteAddressRequest) returns (operation.Operation) {
     option (google.api.http) = {delete: "/vpc/v1/addresses/{address_id}"};
-    option (kacho.cloud.api.operation) = {
+    option (corelib.api.v1.operation) = {
       metadata: "DeleteAddressMetadata"
       response: "google.protobuf.Empty"
     };

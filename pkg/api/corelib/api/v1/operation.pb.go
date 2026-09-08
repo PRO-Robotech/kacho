@@ -5,7 +5,7 @@
 // versions:
 // 	protoc-gen-go v1.36.11
 // 	protoc        (unknown)
-// source: kacho/cloud/api/operation.proto
+// source: corelib/api/v1/operation.proto
 
 package apiv1
 
@@ -42,7 +42,7 @@ type Operation struct {
 
 func (x *Operation) Reset() {
 	*x = Operation{}
-	mi := &file_kacho_cloud_api_operation_proto_msgTypes[0]
+	mi := &file_corelib_api_v1_operation_proto_msgTypes[0]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -54,7 +54,7 @@ func (x *Operation) String() string {
 func (*Operation) ProtoMessage() {}
 
 func (x *Operation) ProtoReflect() protoreflect.Message {
-	mi := &file_kacho_cloud_api_operation_proto_msgTypes[0]
+	mi := &file_corelib_api_v1_operation_proto_msgTypes[0]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -67,7 +67,7 @@ func (x *Operation) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use Operation.ProtoReflect.Descriptor instead.
 func (*Operation) Descriptor() ([]byte, []int) {
-	return file_kacho_cloud_api_operation_proto_rawDescGZIP(), []int{0}
+	return file_corelib_api_v1_operation_proto_rawDescGZIP(), []int{0}
 }
 
 func (x *Operation) GetMetadata() string {
@@ -84,53 +84,53 @@ func (x *Operation) GetResponse() string {
 	return ""
 }
 
-var file_kacho_cloud_api_operation_proto_extTypes = []protoimpl.ExtensionInfo{
+var file_corelib_api_v1_operation_proto_extTypes = []protoimpl.ExtensionInfo{
 	{
 		ExtendedType:  (*descriptorpb.MethodOptions)(nil),
 		ExtensionType: (*Operation)(nil),
 		Field:         87334,
-		Name:          "kacho.cloud.api.operation",
+		Name:          "corelib.api.v1.operation",
 		Tag:           "bytes,87334,opt,name=operation",
-		Filename:      "kacho/cloud/api/operation.proto",
+		Filename:      "corelib/api/v1/operation.proto",
 	},
 }
 
 // Extension fields to descriptorpb.MethodOptions.
 var (
-	// optional kacho.cloud.api.Operation operation = 87334;
-	E_Operation = &file_kacho_cloud_api_operation_proto_extTypes[0]
+	// optional corelib.api.v1.Operation operation = 87334;
+	E_Operation = &file_corelib_api_v1_operation_proto_extTypes[0]
 )
 
-var File_kacho_cloud_api_operation_proto protoreflect.FileDescriptor
+var File_corelib_api_v1_operation_proto protoreflect.FileDescriptor
 
-const file_kacho_cloud_api_operation_proto_rawDesc = "" +
+const file_corelib_api_v1_operation_proto_rawDesc = "" +
 	"\n" +
-	"\x1fkacho/cloud/api/operation.proto\x12\x0fkacho.cloud.api\x1a google/protobuf/descriptor.proto\"C\n" +
+	"\x1ecorelib/api/v1/operation.proto\x12\x0ecorelib.api.v1\x1a google/protobuf/descriptor.proto\"C\n" +
 	"\tOperation\x12\x1a\n" +
 	"\bmetadata\x18\x01 \x01(\tR\bmetadata\x12\x1a\n" +
-	"\bresponse\x18\x02 \x01(\tR\bresponse:Z\n" +
-	"\toperation\x12\x1e.google.protobuf.MethodOptions\x18\xa6\xaa\x05 \x01(\v2\x1a.kacho.cloud.api.OperationR\toperationB=Z;github.com/PRO-Robotech/kacho/pkg/api/kacho/cloud/api;apiv1b\x06proto3"
+	"\bresponse\x18\x02 \x01(\tR\bresponse:Y\n" +
+	"\toperation\x12\x1e.google.protobuf.MethodOptions\x18\xa6\xaa\x05 \x01(\v2\x19.corelib.api.v1.OperationR\toperationB<Z:github.com/PRO-Robotech/kacho/pkg/api/corelib/api/v1;apiv1b\x06proto3"
 
 var (
-	file_kacho_cloud_api_operation_proto_rawDescOnce sync.Once
-	file_kacho_cloud_api_operation_proto_rawDescData []byte
+	file_corelib_api_v1_operation_proto_rawDescOnce sync.Once
+	file_corelib_api_v1_operation_proto_rawDescData []byte
 )
 
-func file_kacho_cloud_api_operation_proto_rawDescGZIP() []byte {
-	file_kacho_cloud_api_operation_proto_rawDescOnce.Do(func() {
-		file_kacho_cloud_api_operation_proto_rawDescData = protoimpl.X.CompressGZIP(unsafe.Slice(unsafe.StringData(file_kacho_cloud_api_operation_proto_rawDesc), len(file_kacho_cloud_api_operation_proto_rawDesc)))
+func file_corelib_api_v1_operation_proto_rawDescGZIP() []byte {
+	file_corelib_api_v1_operation_proto_rawDescOnce.Do(func() {
+		file_corelib_api_v1_operation_proto_rawDescData = protoimpl.X.CompressGZIP(unsafe.Slice(unsafe.StringData(file_corelib_api_v1_operation_proto_rawDesc), len(file_corelib_api_v1_operation_proto_rawDesc)))
 	})
-	return file_kacho_cloud_api_operation_proto_rawDescData
+	return file_corelib_api_v1_operation_proto_rawDescData
 }
 
-var file_kacho_cloud_api_operation_proto_msgTypes = make([]protoimpl.MessageInfo, 1)
-var file_kacho_cloud_api_operation_proto_goTypes = []any{
-	(*Operation)(nil),                  // 0: kacho.cloud.api.Operation
+var file_corelib_api_v1_operation_proto_msgTypes = make([]protoimpl.MessageInfo, 1)
+var file_corelib_api_v1_operation_proto_goTypes = []any{
+	(*Operation)(nil),                  // 0: corelib.api.v1.Operation
 	(*descriptorpb.MethodOptions)(nil), // 1: google.protobuf.MethodOptions
 }
-var file_kacho_cloud_api_operation_proto_depIdxs = []int32{
-	1, // 0: kacho.cloud.api.operation:extendee -> google.protobuf.MethodOptions
-	0, // 1: kacho.cloud.api.operation:type_name -> kacho.cloud.api.Operation
+var file_corelib_api_v1_operation_proto_depIdxs = []int32{
+	1, // 0: corelib.api.v1.operation:extendee -> google.protobuf.MethodOptions
+	0, // 1: corelib.api.v1.operation:type_name -> corelib.api.v1.Operation
 	2, // [2:2] is the sub-list for method output_type
 	2, // [2:2] is the sub-list for method input_type
 	1, // [1:2] is the sub-list for extension type_name
@@ -138,27 +138,27 @@ var file_kacho_cloud_api_operation_proto_depIdxs = []int32{
 	0, // [0:0] is the sub-list for field type_name
 }
 
-func init() { file_kacho_cloud_api_operation_proto_init() }
-func file_kacho_cloud_api_operation_proto_init() {
-	if File_kacho_cloud_api_operation_proto != nil {
+func init() { file_corelib_api_v1_operation_proto_init() }
+func file_corelib_api_v1_operation_proto_init() {
+	if File_corelib_api_v1_operation_proto != nil {
 		return
 	}
 	type x struct{}
 	out := protoimpl.TypeBuilder{
 		File: protoimpl.DescBuilder{
 			GoPackagePath: reflect.TypeOf(x{}).PkgPath(),
-			RawDescriptor: unsafe.Slice(unsafe.StringData(file_kacho_cloud_api_operation_proto_rawDesc), len(file_kacho_cloud_api_operation_proto_rawDesc)),
+			RawDescriptor: unsafe.Slice(unsafe.StringData(file_corelib_api_v1_operation_proto_rawDesc), len(file_corelib_api_v1_operation_proto_rawDesc)),
 			NumEnums:      0,
 			NumMessages:   1,
 			NumExtensions: 1,
 			NumServices:   0,
 		},
-		GoTypes:           file_kacho_cloud_api_operation_proto_goTypes,
-		DependencyIndexes: file_kacho_cloud_api_operation_proto_depIdxs,
-		MessageInfos:      file_kacho_cloud_api_operation_proto_msgTypes,
-		ExtensionInfos:    file_kacho_cloud_api_operation_proto_extTypes,
+		GoTypes:           file_corelib_api_v1_operation_proto_goTypes,
+		DependencyIndexes: file_corelib_api_v1_operation_proto_depIdxs,
+		MessageInfos:      file_corelib_api_v1_operation_proto_msgTypes,
+		ExtensionInfos:    file_corelib_api_v1_operation_proto_extTypes,
 	}.Build()
-	File_kacho_cloud_api_operation_proto = out.File
-	file_kacho_cloud_api_operation_proto_goTypes = nil
-	file_kacho_cloud_api_operation_proto_depIdxs = nil
+	File_corelib_api_v1_operation_proto = out.File
+	file_corelib_api_v1_operation_proto_goTypes = nil
+	file_corelib_api_v1_operation_proto_depIdxs = nil
 }

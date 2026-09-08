@@ -50,8 +50,8 @@
 package iamv1
 
 import (
+	_ "github.com/PRO-Robotech/kacho/pkg/api/corelib/api/v1"
 	_ "github.com/PRO-Robotech/kacho/pkg/api/corelib/authz/v1"
-	_ "github.com/PRO-Robotech/kacho/pkg/api/kacho/cloud/api"
 	operation "github.com/PRO-Robotech/kacho/pkg/api/kacho/cloud/operation"
 	_ "google.golang.org/genproto/googleapis/api/annotations"
 	protoreflect "google.golang.org/protobuf/reflect/protoreflect"
@@ -71,7 +71,7 @@ var File_kaname_cloud_iam_v1_limit_service_proto protoreflect.FileDescriptor
 
 const file_kaname_cloud_iam_v1_limit_service_proto_rawDesc = "" +
 	"\n" +
-	"'kaname/cloud/iam/v1/limit_service.proto\x12\x13kaname.cloud.iam.v1\x1a\x1cgoogle/api/annotations.proto\x1a\x1fkacho/cloud/api/operation.proto\x1a0kaname/cloud/iam/v1/internal_limit_service.proto\x1a\x1fkaname/cloud/iam/v1/limit.proto\x1a%kacho/cloud/operation/operation.proto\x1a$corelib/authz/v1/authz_options.proto2\xd0\a\n" +
+	"'kaname/cloud/iam/v1/limit_service.proto\x12\x13kaname.cloud.iam.v1\x1a\x1cgoogle/api/annotations.proto\x1a\x1ecorelib/api/v1/operation.proto\x1a0kaname/cloud/iam/v1/internal_limit_service.proto\x1a\x1fkaname/cloud/iam/v1/limit.proto\x1a%kacho/cloud/operation/operation.proto\x1a$corelib/authz/v1/authz_options.proto2\xd0\a\n" +
 	"\fLimitService\x12\xa1\x01\n" +
 	"\x03Get\x12$.kaname.cloud.iam.v1.GetLimitRequest\x1a\x1a.kaname.cloud.iam.v1.Limit\"X\x8a\xb5\x18\x0eiam.limits.get\x92\xb5\x18\fsystem_admin\x9a\xb5\x18\f\n" +
 	"\acluster\x12\x01*\xa2\xb5\x18\x011\x82\xd3\xe4\x93\x02\x1b\x12\x19/iam/v1/limits/{limit_id}\x12\xa7\x01\n" +
