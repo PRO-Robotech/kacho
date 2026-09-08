@@ -55,23 +55,32 @@ func TestGate_IamHistoryIsConfirmed(t *testing.T) {
 	// ПРЕДПОСЫЛКА ГЕЙТА — ИСТОРИЯ ДОМЕНА, и она есть не у всякого дерева.
 	//
 	// Ведомость объявляет ОБЛАСТЬ (`scope`) ОТНОСИТЕЛЬНО СЕБЯ (`.`), и к корню
-	// судимого дерева её сводит `Inspect`. Область поэтому резолвится в обеих
-	// посадках; не резолвится ИСТОРИЯ: в дереве, собранном из состава коммита без
-	// неё (проверка поставки, свежий `git init` у арендатора), обход не находит ни
-	// одного коммита — и гейт честно называет это отказом предпосылки.
+	// судимого дерева её сводит `Inspect`. Область поэтому резолвится в ОБЕИХ
+	// посадках — и ровно с этого начинается предмет: пока она резолвилась только
+	// в монорепо, «условие не создано» опознавалось по НЕРЕЗОЛВУ ОБЛАСТИ, то есть
+	// побочным следствием, а не предметом. Область резолвится — предмет пропал, и
+	// дерево БЕЗ истории домена стало красным вместо третьего исхода.
 	//
-	// Отказ предпосылки — «условие не создано», а не находка о продукте:
-	// вердикта о подтверждении соглашения такой прогон не выносит ВОВСЕ, и
-	// выдавать его за красное значило бы красить каждого, кто склонировал.
-	if len(rep.PremiseFailures) > 0 {
-		t.Skipf("УСЛОВИЕ НЕ СОЗДАНО (не находка): предпосылка гейта не выполнена в этом дереве — %v.\n"+
-			"Осмотрено коммитов: %d. Боевой прогон судит ИСТОРИЮ домена; дерево без неё "+
-			"вердикта о соглашении не даёт ни в одну сторону.", rep.PremiseFailures, rep.CommitsExamined)
+	// Опознаётся он теперь ПРЯМО: дерево, в котором обход области не дал истории
+	// домена, вердикта о соглашении не выносит ни в одну сторону. Разводит исходы
+	// `clagate.Classify` — она же держит несущее свойство: в дереве платформы
+	// пропуск НЕДОСТИЖИМ, поэтому короткий обход остаётся там находкой и гейт
+	// нельзя снять поломкой ведомости.
+	//
+	// Посадку называет РЕЗОЛВЕР, а не проба: приставка модуля в составе непуста
+	// только тогда, когда рядом лежит дерево платформы.
+	inPlatformTree := prefix != ""
+	switch outcome, why := clagate.Classify(rep, inPlatformTree); outcome {
+	case clagate.OutcomeUnmetPremise:
+		t.Skipf("УСЛОВИЕ НЕ СОЗДАНО (не находка): %s.\n"+
+			"Посадка: %s. Осмотрено коммитов: %d.", why, root, rep.CommitsExamined)
+	case clagate.OutcomeBlindWalk:
+		t.Fatalf("гейт слеп, и это находка о нём: %s.\n"+
+			"Посадка: %s. Осмотрено коммитов: %d.", why, root, rep.CommitsExamined)
+	case clagate.OutcomeJudge:
+		// Предмет есть — судим ниже.
 	}
 
-	require.Greater(t, rep.CommitsExamined, 500,
-		"осмотрено %d коммитов — это не похоже на историю домена: обход усечён или область объявлена мимо дерева",
-		rep.CommitsExamined)
 	require.GreaterOrEqual(t, rep.IdentitiesSeen, 2,
 		"обход увидел %d личностей — при одной вердикт о РАЗЛИЧЕНИИ своего и стороннего вакуумен",
 		rep.IdentitiesSeen)
@@ -92,9 +101,11 @@ func TestGate_IamHistoryIsConfirmed(t *testing.T) {
 		"записи ведомости, которым больше нечего покрывать: %v — исключение живёт, пока у него есть предмет",
 		rep.UnusedEntries)
 
-	t.Logf("осмотрено: коммитов=%d, вкладов(коммит×личность)=%d, личностей=%d; "+
-		"свои=%d, подписью=%d, ведомостью=%d, освобождено=%d",
-		rep.CommitsExamined, rep.ContributionsInspected, rep.IdentitiesSeen,
+	// Посадка печатается ВМЕСТЕ с числами: те же величины в двух посадках
+	// означают разное, и вердикт, не назвавший посадки, сказан неизвестно о чём.
+	t.Logf("посадка: %s (дерево платформы: %t); осмотрено: коммитов=%d, "+
+		"вкладов(коммит×личность)=%d, личностей=%d; свои=%d, подписью=%d, ведомостью=%d, освобождено=%d",
+		root, inPlatformTree, rep.CommitsExamined, rep.ContributionsInspected, rep.IdentitiesSeen,
 		rep.ByOwners, rep.ConfirmedBySignOff, rep.ConfirmedByLedger, rep.Waived)
 }
 
@@ -596,4 +607,173 @@ func TestPlacement_DirectoryOutsideAnyRepositoryIsNotAFinding(t *testing.T) {
 	_, err := treeroot.Locate(dir)
 	require.ErrorIs(t, err, treeroot.ErrTreeNotResolved,
 		"каталог без репозитория обязан давать «проверка НЕ ИСПОЛНЯЛАСЬ», а не находку")
+}
+
+// --- Три исхода боевого прогона: инъекция в обе стороны по каждой оси -------
+//
+// Ветвление живёт в `clagate.Classify`, а не в боевой пробе, ровно ради этого
+// раздела: проба идёт в том дереве, в котором её запустили, поэтому доказать
+// она может только ту сторону, что случилась. Здесь обе величины — посадка и
+// глубина обхода — приходят аргументами, и каждая ось судится в обе стороны.
+//
+// Каждая инъекция ниже отличается от своего положительного близнеца РОВНО
+// ОДНИМ фактом; отличие названо в заголовке пробы.
+
+// domainHistory — отчёт дерева, историю домена НЕСУЩЕГО. Все инъекции ниже
+// строятся ОТ НЕГО, чтобы отличие было ровно одно.
+func domainHistory() clagate.Report {
+	return clagate.Report{
+		LedgerPath:      "cla-ledger.yaml",
+		Scope:           []string{"."},
+		RevRange:        "HEAD",
+		CommitsExamined: clagate.HistoryFloorCommits + 1,
+	}
+}
+
+// TestClassify_DomainHistoryIsJudgedInBothPostures — ПОЛОЖИТЕЛЬНЫЙ КОНТРОЛЬ, и
+// он несущий.
+//
+// Без него всё, что ниже, зеленело бы на `Classify`, которая не выносит
+// вердикта НИКОГДА: «пропуск там, где надо» и «пропуск всегда» неотличимы, пока
+// не показано, что вердикт вообще бывает. Вторая половина — про арендатора:
+// настоящий клон истории домена НЕ ЛИШЁН, и гейт обязан работать в нём как в
+// монорепо, иначе третий исход съел бы ровно ту посадку, ради которой цель
+// перестала быть помеченной `[монорепо]`.
+func TestClassify_DomainHistoryIsJudgedInBothPostures(t *testing.T) {
+	for _, inPlatformTree := range []bool{true, false} {
+		outcome, why := clagate.Classify(domainHistory(), inPlatformTree)
+		require.Equal(t, clagate.OutcomeJudge, outcome,
+			"дерево с историей домена (посадка платформы: %t) обязано ДАВАТЬ вердикт: %s",
+			inPlatformTree, why)
+		require.Empty(t, why, "у вынесенного вердикта нет причины отказа — иначе она вводит в заблуждение")
+	}
+}
+
+// TestClassify_ShallowWalkInThePlatformTreeIsAFinding — ИНЪЕКЦИЯ.
+//
+// Отличие от близнеца выше РОВНО ОДНО: обход дал ровно порог вместо порога+1.
+// В дереве платформы история есть by construction, поэтому короткий обход
+// означает слепоту САМОГО ОБХОДА — находку, а не свойство поставки.
+func TestClassify_ShallowWalkInThePlatformTreeIsAFinding(t *testing.T) {
+	rep := domainHistory()
+	rep.CommitsExamined = clagate.HistoryFloorCommits
+
+	outcome, why := clagate.Classify(rep, true)
+
+	require.Equal(t, clagate.OutcomeBlindWalk, outcome,
+		"короткий обход в дереве платформы обязан быть находкой, иначе гейт снимается срезом истории")
+	require.Contains(t, why, "500", "находка обязана называть порог")
+	require.Contains(t, why, "[.]", "находка обязана называть область — иначе искать нечего")
+	require.Contains(t, why, "HEAD", "находка обязана называть диапазон обхода")
+}
+
+// TestClassify_ShallowWalkInAStandaloneCloneIsNotAFinding — тот же отчёт,
+// отличие РОВНО ОДНО: посадка.
+//
+// Это и есть предмет починки: фикстура гейта самостоятельных целей — состав
+// коммита, пересобранный `git init`-ом в один коммит. Истории домена у неё нет,
+// и красное у неё было бы красным у всякого, кто распакует поставку.
+func TestClassify_ShallowWalkInAStandaloneCloneIsNotAFinding(t *testing.T) {
+	rep := domainHistory()
+	rep.CommitsExamined = clagate.HistoryFloorCommits
+
+	outcome, why := clagate.Classify(rep, false)
+
+	require.Equal(t, clagate.OutcomeUnmetPremise, outcome,
+		"дерево без истории домена обязано давать ТРЕТИЙ исход, а не вердикт о продукте")
+	require.Contains(t, why, "САМОСТОЯТЕЛЬНАЯ",
+		"пропуск обязан НАЗЫВАТЬ непостроенную предпосылку — иначе он неотличим от заглушенной пробы")
+}
+
+// TestClassify_BrokenPremiseInThePlatformTreeIsAFinding — ИНЪЕКЦИЯ по ВТОРОЙ
+// оси: основание гейта не построено (ведомость без своих, область мимо дерева).
+//
+// Отличие от `domainHistory` ровно одно: непустой перечень отказов основания.
+// Прежняя редакция пропускала такой прогон БЕЗУСЛОВНО — то есть гейт снимался
+// поломкой собственной ведомости, молча и в монорепо.
+func TestClassify_BrokenPremiseInThePlatformTreeIsAFinding(t *testing.T) {
+	rep := domainHistory()
+	rep.PremiseFailures = []string{`область "services/nonexistent" в дереве не разрешается`}
+
+	outcome, why := clagate.Classify(rep, true)
+
+	require.Equal(t, clagate.OutcomeBlindWalk, outcome,
+		"поломка основания в дереве платформы обязана быть находкой, иначе гейт снимается правкой ведомости")
+	require.Contains(t, why, "services/nonexistent",
+		"находка обязана называть координату — иначе читатель ищет не там")
+}
+
+// TestClassify_BrokenPremiseInAStandaloneCloneIsNotAFinding — тот же отчёт,
+// отличие РОВНО ОДНО: посадка.
+func TestClassify_BrokenPremiseInAStandaloneCloneIsNotAFinding(t *testing.T) {
+	rep := domainHistory()
+	rep.PremiseFailures = []string{"у объявленных областей [.] нет ни одного коммита во всей истории"}
+
+	outcome, why := clagate.Classify(rep, false)
+
+	require.Equal(t, clagate.OutcomeUnmetPremise, outcome)
+	require.Contains(t, why, "нет ни одного коммита",
+		"пропуск обязан называть, ЧЕГО не хватило")
+}
+
+// TestClassify_TheSkipBranchIsUnreachableInThePlatformTree — НЕСУЩЕЕ
+// утверждение, из которого следует «в монорепо пропущено ноль».
+//
+// Оно проверяется перебором форм отчёта, а не доверием к автору ветвления:
+// пропуск, достижимый в дереве платформы, был бы маской — гейт снимался бы
+// правкой ведомости или срезом истории, и отличить это от исправной работы
+// нечем.
+func TestClassify_TheSkipBranchIsUnreachableInThePlatformTree(t *testing.T) {
+	shallow := domainHistory()
+	shallow.CommitsExamined = 0
+
+	broken := domainHistory()
+	broken.PremiseFailures = []string{"ведомость не называет ни одной своей личности"}
+
+	both := shallow
+	both.PremiseFailures = broken.PremiseFailures
+
+	forms := map[string]clagate.Report{
+		"история домена":            domainHistory(),
+		"пустой обход":              shallow,
+		"основание не построено":    broken,
+		"и то и другое сразу":       both,
+		"область не объявлена":      {RevRange: "HEAD", PremiseFailures: []string{"ведомость не называет области"}},
+		"отчёт в нулевом состоянии": {},
+	}
+
+	for name, rep := range forms {
+		outcome, why := clagate.Classify(rep, true)
+		require.NotEqual(t, clagate.OutcomeUnmetPremise, outcome,
+			"форма отчёта %q дала в дереве платформы ПРОПУСК: %s", name, why)
+	}
+	require.Len(t, forms, 6, "перебор усечён — перепись форм обязана быть названа числом")
+}
+
+// TestClassify_ASnapshotRepositoryIsNotDomainHistory — та же пара, но на
+// НАСТОЯЩЕМ отчёте настоящего репозитория, а не на собранном руками.
+//
+// Синтетический репозиторий из одного коммита — ровно то, что строит фикстура
+// гейта самостоятельных целей: состав коммита, распакованный и пересобранный
+// `git init`-ом. Отличие двух вызовов ниже — РОВНО ОДНО: посадка.
+func TestClassify_ASnapshotRepositoryIsNotDomainHistory(t *testing.T) {
+	dir := writeRepo(t, []commit{
+		{name: "Свой", email: "owner@example.com", message: "самостоятельная посадка модуля"},
+	})
+
+	rep := inspectFixture(t, dir, minimalLedger)
+
+	require.Empty(t, rep.PremiseFailures,
+		"область снимка резолвится и история у него есть — предмет починки именно в этом: "+
+			"нерезолв области предметом БОЛЬШЕ НЕ является")
+	require.Equal(t, 1, rep.CommitsExamined,
+		"снимок обязан давать ровно один коммит — иначе фикстура перестала изображать поставку")
+
+	standalone, why := clagate.Classify(rep, false)
+	require.Equal(t, clagate.OutcomeUnmetPremise, standalone,
+		"снимок в самостоятельной посадке обязан давать третий исход: %s", why)
+
+	platform, _ := clagate.Classify(rep, true)
+	require.Equal(t, clagate.OutcomeBlindWalk, platform,
+		"тот же отчёт в дереве платформы обязан быть НАХОДКОЙ — иначе дискриминатором служит не посадка")
 }
