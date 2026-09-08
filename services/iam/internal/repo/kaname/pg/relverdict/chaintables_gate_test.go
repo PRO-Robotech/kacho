@@ -288,6 +288,12 @@ func chainCatalogueCouplingFindings(mine, appliance []string) []string {
 // chainCatalogueDir — каталог чтения ВЫВОДИТСЯ, а не выписывается: `go test`
 // запускает бинарь из каталога пакета, а пакет и есть каталог чтения. Выписанный
 // путь пережил бы переезд пакета и сторожил бы пустоту.
+//
+// Ответ даётся В КООРДИНАТАХ ПРИБОРА, то есть от корня ПЛАТФОРМЫ: перечень
+// `Fingerprint.Files` записан так в обеих посадках. Путь, отсчитанный от корня
+// самостоятельного клона, приставки `services/iam` не несёт, и фильтр по нему не
+// нашёл бы НИ ОДНОГО файла — «ноль находок» стало бы «ноль прочитанного»
+// (наблюдалось при снятии пропуска по задаче продукта #2273).
 func chainCatalogueDir(t *testing.T, root string) string {
 	t.Helper()
 	wd, err := os.Getwd()
@@ -305,7 +311,11 @@ func chainCatalogueDir(t *testing.T, root string) string {
 		t.Fatalf("каталог пакета %s не лежит под корнем дерева %s (rel=%q, err=%v): гейт "+
 			"сверял бы файлы чужого дерева", wd, root, rel, err)
 	}
-	return filepath.ToSlash(rel)
+	slash := filepath.ToSlash(rel)
+	if md := treeposture.ModuleDirInPlatform(); slash != md && !strings.HasPrefix(slash, md+"/") {
+		slash = treeposture.Under(md, slash)
+	}
+	return slash
 }
 
 // TestR7_4_16_ChainTableUnnamedByTheReadCatalogueIsAFinding — гейт.
@@ -379,7 +389,14 @@ func TestR7_4_16_ChainTableUnnamedByTheReadCatalogueIsAFinding(t *testing.T) {
 	// который эту таблицу не читает).
 	walkFiles, holders := map[string]bool{}, map[string][]string{}
 	for _, rel := range catalogueFiles {
-		body, rerr := os.ReadFile(filepath.Join(root, rel))
+		// Координата приводится к ПОСАДКЕ, а не складывается с корнем: склейка
+		// верна ровно для монорепо, и в самостоятельном клоне гейт отказывал бы
+		// «нет файла» там, где файл есть уровнем выше (задача продукта #2273).
+		abs, perr := treeposture.PathUnder(root, rel)
+		if perr != nil {
+			t.Fatalf("координата %s не приведена к посадке: %v", rel, perr)
+		}
+		body, rerr := os.ReadFile(abs)
 		if rerr != nil {
 			t.Fatalf("чтение файла каталога %s: %v", rel, rerr)
 		}
