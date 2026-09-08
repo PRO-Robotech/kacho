@@ -159,6 +159,32 @@ func executableLines(text string) []string {
 	return out
 }
 
+// goExecutableLines — строки файла Go БЕЗ строчных комментариев.
+//
+// Отдельно от executableLines, и это не дробление ради дробления: тот снимает
+// комментарии YAML и шаблона (`#`, `{{/* */}}`), которых в Go нет, и НЕ знает
+// про `//`. Предпосылка гейта ходит именно по Go, поэтому на общем распознавателе
+// она считала бы потребителем ВОСПОМИНАНИЕ о снятом обращении — комментарий,
+// объясняющий снятие. Тогда гейт объявлял бы «потребитель вернулся» на прозе о
+// том, что он не вернулся, и снятие механизма стало бы невозможно описать.
+//
+// Судится НАЧАЛО строки, а не вхождение `//` где угодно: последовательность
+// `//` стоит внутри всякого адреса со схемой, и вырезание её по месту испортило
+// бы ровно те строки, ради которых предпосылка и заведена.
+//
+// Поймано инъекцией (`TestRulesOverlayInjection_PremiseReadsCodeNotItsMemoryOfIt`),
+// а не чтением: обе половины по отдельности выглядели верными.
+func goExecutableLines(text string) []string {
+	var out []string
+	for _, line := range strings.Split(text, "\n") {
+		if strings.HasPrefix(strings.TrimSpace(line), "//") {
+			continue
+		}
+		out = append(out, line)
+	}
+	return out
+}
+
 // TestRulesOverlayLeftNoRemnantInTheDelivery — гейт класса.
 func TestRulesOverlayLeftNoRemnantInTheDelivery(t *testing.T) {
 	var (
@@ -181,7 +207,7 @@ func TestRulesOverlayLeftNoRemnantInTheDelivery(t *testing.T) {
 			return err
 		}
 		census.consumerFiles++
-		for _, line := range executableLines(string(raw)) {
+		for _, line := range goExecutableLines(string(raw)) {
 			if strings.Contains(line, "/v1/data/") {
 				census.consumerHits++
 				break
