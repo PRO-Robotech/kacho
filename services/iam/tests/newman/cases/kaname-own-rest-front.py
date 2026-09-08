@@ -25,6 +25,33 @@
     Поэтому каждое такое утверждение идёт В ПАРЕ с положительным контролем на
     том же фронте И с тем же путём на СОСЕДНЕМ фронте.
 
+ТЕЛО ДЛЯ ПОБАЙТОВОГО СРАВНЕНИЯ ЗАХВАТЫВАЕТСЯ СЫРЫМ — И ОБЕ СТОРОНЫ ОДИНАКОВО.
+Захват `JSON.stringify(pm.response.json())` РАЗБИРАЕТ тело и печатает его заново,
+то есть сравнивает не то, что пришло по проводу, а его пересборку. Сравнивать
+такую пересборку с `pm.response.text()` соседнего шага нельзя: формы разные, и
+вердикт утверждения становится свойством СБОРКИ, а не продукта.
+
+Причина названа в самом кодировщике: `protojson` после каждой запятой
+однострочного вывода ставит пробел ЛИБО НЕ СТАВИТ — по решению, выведенному из
+хэша двоичного файла (`internal/detrand`: «output does not change within a
+program, while ensuring that the output is unstable across different builds»).
+Внутри одного процесса решение постоянно, между сборками — нет.
+
+Следствие измерено, а не предположено: два прогона одного и того же набора на
+СОСЕДНИХ ревизиях дали тела 74 и 76 байт (`{"code":5,"message":…` против
+`{"code":5, "message":…`), при побайтово одинаковых скриптах шагов. Пока провод
+отдавал компактно, смешанное сравнение зеленело — то есть эти утверждения были
+зелены ПО СОВПАДЕНИЮ всю свою жизнь, а не потому, что проверяли объявленное.
+
+Отсюда правило набора: тело, участвующее в сравнении, захватывается
+`pm.response.text()` НА ОБЕИХ сторонах. Это законно и это самая сильная форма —
+оба тела приходят от ОДНОГО процесса в ОДНОМ прогоне, поэтому различие пробелов
+или порядка ключей между ними было бы настоящим оракулом существования и обязано
+ронять пробу. Пересборка такое различие СКРЫВАЕТ.
+
+Держит форму гейт `scripts/body_capture_form_test.py`: он читает исполняемую
+часть коллекций и падает, когда захват и сравнение одного тела разошлись формой.
+
 УТВЕРЖДЕНИЕ О НЕОТЛИЧИМОСТИ НЕ ПРОВЕРЯЕТСЯ НА ПУСТОМ МНОЖЕСТВЕ. «Побайтово тот
 же отказ», «неотличимо от нет-такой», «ответ не сообщает о существовании»,
 «субъект не тот, кем назвался», «запрос не обслужен» — истинны ТРИВИАЛЬНО там,
@@ -371,7 +398,7 @@ CASES.append(Case(
                 "pm.test('BAD-CRED: текст ЕДИНСТВЕННЫЙ — различимость сообщила бы предъявителю, "
                 "какая половина предъявленного неверна', () =>",
                 "  pm.expect(j.message, JSON.stringify(j)).to.eql('credential is not accepted'));",
-                "pm.environment.set('ownRestRefusalBody', JSON.stringify(j));",
+                "pm.environment.set('ownRestRefusalBody', pm.response.text());",
             ],
         ),
         Step(
@@ -394,7 +421,7 @@ CASES.append(Case(
                 "всё, поэтому равенство двух отказов ни о чём не свидетельствует')"
                 ".to.not.eql(served);",
                 _CONTROL_CLOSE,
-                "  pm.expect(JSON.stringify(pm.response.json())).to.eql(first);",
+                "  pm.expect(pm.response.text()).to.eql(first);",
                 "});",
             ],
         ),
@@ -648,7 +675,7 @@ CASES.append(Case(
                 "  pm.expect(j.message, JSON.stringify(j)).to.include('not found');",
                 "  pm.expect(j.message, JSON.stringify(j)).to.include(pm.environment.get('accountBId'));",
                 "});",
-                "pm.environment.set('ownRestForeignBody', JSON.stringify(j));",
+                "pm.environment.set('ownRestForeignBody', pm.response.text());",
             ],
         ),
         Step(
@@ -844,7 +871,7 @@ CASES.append(Case(
                 *assert_status(404),
                 "const j = pm.response.json();",
                 "pm.test('FOREIGN-OP: grpc code 5', () => pm.expect(j.code, JSON.stringify(j)).to.eql(5));",
-                "pm.environment.set('ownRestAbsentOpBody', JSON.stringify(j));",
+                "pm.environment.set('ownRestAbsentOpBody', pm.response.text());",
             ],
         ),
         Step(

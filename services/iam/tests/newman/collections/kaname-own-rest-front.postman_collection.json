@@ -630,7 +630,7 @@
                   "  pm.expect(j.code, JSON.stringify(j)).to.eql(16));",
                   "pm.test('BAD-CRED: текст ЕДИНСТВЕННЫЙ — различимость сообщила бы предъявителю, какая половина предъявленного неверна', () =>",
                   "  pm.expect(j.message, JSON.stringify(j)).to.eql('credential is not accepted'));",
-                  "pm.environment.set('ownRestRefusalBody', JSON.stringify(j));"
+                  "pm.environment.set('ownRestRefusalBody', pm.response.text());"
                 ]
               }
             }
@@ -717,7 +717,7 @@
                   "  pm.expect(pm.environment.get('ownRestServedStatus'), 'законный запрос НЕ обслужен: на этой поверхности не различается ничто, и отрицание ниже истинно тривиально — на пустом множестве').to.eql('200');",
                   "  pm.expect(first, 'отказ побайтово равен ОТВЕТУ НА ЗАКОННЫЙ запрос: одинаково всё, поэтому равенство двух отказов ни о чём не свидетельствует').to.not.eql(served);",
                   "  // <<< контроль непустоты",
-                  "  pm.expect(JSON.stringify(pm.response.json())).to.eql(first);",
+                  "  pm.expect(pm.response.text()).to.eql(first);",
                   "});"
                 ]
               }
@@ -1352,7 +1352,7 @@
                   "  pm.expect(j.message, JSON.stringify(j)).to.include('not found');",
                   "  pm.expect(j.message, JSON.stringify(j)).to.include(pm.environment.get('accountBId'));",
                   "});",
-                  "pm.environment.set('ownRestForeignBody', JSON.stringify(j));"
+                  "pm.environment.set('ownRestForeignBody', pm.response.text());"
                 ]
               }
             }
@@ -1918,7 +1918,7 @@
                   "pm.test('status 404', () => pm.expect(pm.response.code, JSON.stringify(pm.response.text())).to.eql(404));",
                   "const j = pm.response.json();",
                   "pm.test('FOREIGN-OP: grpc code 5', () => pm.expect(j.code, JSON.stringify(j)).to.eql(5));",
-                  "pm.environment.set('ownRestAbsentOpBody', JSON.stringify(j));"
+                  "pm.environment.set('ownRestAbsentOpBody', pm.response.text());"
                 ]
               }
             }
