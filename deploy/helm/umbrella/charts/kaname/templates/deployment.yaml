@@ -562,8 +562,8 @@ spec:
             - name: KANAME_HOOK_TOKEN
               valueFrom:
                 secretKeyRef:
-                  name: {{ .Values.kacho.hooks.tokenHookSecretName }}
-                  key: {{ .Values.kacho.hooks.tokenHookSecretKey }}
+                  name: {{ .Values.platform.hooks.tokenHookSecretName }}
+                  key: {{ .Values.platform.hooks.tokenHookSecretKey }}
                   optional: true
             # Ключ ОБЁРТКИ приватной половины подписного ключа (AES-256-GCM).
             #
@@ -580,15 +580,15 @@ spec:
             - name: KANAME_JWKS_ENC_KEY
               valueFrom:
                 secretKeyRef:
-                  name: {{ .Values.kacho.iam.jwks.encKeySecretName }}
-                  key: {{ .Values.kacho.iam.jwks.encKeySecretKey }}
+                  name: {{ .Values.platform.iam.jwks.encKeySecretName }}
+                  key: {{ .Values.platform.iam.jwks.encKeySecretKey }}
                   optional: true
             # SA-key lifetime discipline. A service-account key is the machine's
             # credential; machine principals are exempt from step-up (a machine
             # has no second factor), which holds only while the credential is
             # itself time-bounded. defaultTtl replaces "ttl_seconds omitted ⇒
             # never expires"; maxTtl is the inclusive ceiling.
-            {{- with .Values.kacho.iam.saKey }}
+            {{- with .Values.platform.iam.saKey }}
             {{- if .defaultTtl }}
             - name: KANAME_SAKEY_DEFAULT_TTL
               value: {{ .defaultTtl | quote }}
@@ -616,13 +616,13 @@ spec:
             {{- end }}
             {{- end }}
             - name: KANAME_HYDRA_ISSUER
-              value: {{ printf "https://%s.%s" .Values.kacho.subdomains.hydra .Values.kacho.domain | quote }}
+              value: {{ printf "https://%s.%s" .Values.platform.subdomains.hydra .Values.platform.domain | quote }}
             # Bootstrap-token (#58) — requested token audience the gateway accepts
             # (ExpectedAudience = https://{APIDomain}); signing key from a Secret
             # (optional — empty ⇒ env absent ⇒ MintBootstrapToken fails closed).
             - name: KANAME_BOOTSTRAP_TOKEN_AUDIENCE
-              value: {{ printf "https://%s" .Values.kacho.domain | quote }}
-            {{- with .Values.kacho.iam.bootstrapToken }}
+              value: {{ printf "https://%s" .Values.platform.domain | quote }}
+            {{- with .Values.platform.iam.bootstrapToken }}
             {{- if .signingKeySecretName }}
             - name: KANAME_BOOTSTRAP_SA_PRIVATE_KEY_PEM
               valueFrom:
@@ -632,7 +632,7 @@ spec:
                   optional: true
             {{- end }}
             {{- end }}
-            {{- with .Values.kacho.iam.hydraTokenURL }}
+            {{- with .Values.platform.iam.hydraTokenURL }}
             # In-cluster Hydra token-эндпоинт для client_credentials-обмена в
             # registry `/iam/token` shim. Без него ResolveHydraTokenURL() падает на
             # внешний issuer-URL, недостижимый изнутри кластера. Пусто → не эмитится
@@ -640,7 +640,7 @@ spec:
             - name: KANAME_HYDRA_TOKEN_URL
               value: {{ . | quote }}
             {{- end }}
-            {{- with .Values.kacho.iam.hydraTokenCaFile }}
+            {{- with .Values.platform.iam.hydraTokenCaFile }}
             # Trust anchor for the token-endpoint hop, which carries a signed client
             # assertion out and the minted bearer back. Same discipline as the admin
             # hop: empty → default transport; set → the only anchor; unreadable →
@@ -648,7 +648,7 @@ spec:
             - name: KANAME_HYDRA_TOKEN_CA_FILE
               value: {{ . | quote }}
             {{- end }}
-            {{- with .Values.kacho.iam.hydraJwksUrl }}
+            {{- with .Values.platform.iam.hydraJwksUrl }}
             # registry-iam-jwks-unify — upstream Hydra PUBLIC JWKS URL that the
             # cluster-INTERNAL jwks-proxy listener (:9097) mirrors byte-for-byte.
             # Empty → not emitted → iam falls back to
@@ -658,7 +658,7 @@ spec:
             - name: KANAME_HYDRA_JWKS_URL
               value: {{ . | quote }}
             {{- end }}
-            {{- with .Values.kacho.iam.hydraJwksCaFile }}
+            {{- with .Values.platform.iam.hydraJwksCaFile }}
             # Trust anchor for that upstream fetch. Empty → the default transport,
             # which is what the provider's plaintext in-cluster listener needs. Set →
             # that bundle becomes the ONLY anchor for the hop, and one that cannot be
@@ -668,7 +668,7 @@ spec:
             - name: KANAME_HYDRA_JWKS_CA_FILE
               value: {{ . | quote }}
             {{- end }}
-            {{- with .Values.kacho.iam.hydraAdminUrl }}
+            {{- with .Values.platform.iam.hydraAdminUrl }}
             # In-cluster Hydra ADMIN endpoint (POST /admin/clients + jwt-bearer
             # trust-grants) for sa_keys (SAKeyService.Issue/Revoke) + user_tokens.
             # Empty → not emitted → ResolveHydraAdminURL() derives
@@ -679,7 +679,7 @@ spec:
             - name: KANAME_HYDRA_ADMIN_URL
               value: {{ . | quote }}
             {{- end }}
-            {{- with .Values.kacho.iam.hydraAdminCaFile }}
+            {{- with .Values.platform.iam.hydraAdminCaFile }}
             # Trust anchor for the provider-ADMIN hop (https). Unset → the default
             # system-root pool, which an internal-CA certificate never chains to.
             # Set → that bundle becomes the ONLY anchor for the hop, and one that

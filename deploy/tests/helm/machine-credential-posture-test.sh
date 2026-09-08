@@ -92,7 +92,7 @@ while IFS= read -r _p; do PROFILES+=("$_p"); done < <(ls -1 "$PROFILE_DIR"/value
 
 # bind_of / translated_of — ОДИН предикат на обе секции. Две копии одного
 # условия разошлись бы там, где расхождение не видно.
-bind_of()       { yq '.["kaname"].kacho.iam.saKey.bindDpop // false' "$1"; }
+bind_of()       { yq '.["kaname"].platform.iam.saKey.bindDpop // false' "$1"; }
 translated_of() { yq '.["kaname"].config.authn.clientToken.enabled // false' "$1"; }
 enforce_of()    { yq '.["api-gateway"].authn.requireMachineTokenBinding // false' "$1"; }
 
@@ -141,9 +141,9 @@ render_only "$PROD" charts/kaname/templates/deployment.yaml; IAM_PROD="$HELM_OUT
   || fail "prod: KANAME_SAKEY_DEFAULT_TTL absent — an omitted ttl_seconds would mint a never-expiring key"
 [[ "$IAM_PROD" == *'KANAME_SAKEY_MAX_TTL'* ]] \
   || fail "prod: KANAME_SAKEY_MAX_TTL absent — no ceiling on how long a machine credential may live"
-prod_atl="$(yq '.["kaname"].kacho.iam.saKey.accessTokenTtl // ""' "$PROD")"
+prod_atl="$(yq '.["kaname"].platform.iam.saKey.accessTokenTtl // ""' "$PROD")"
 [ -n "$prod_atl" ] \
-  || fail "prod: kaname.kacho.iam.saKey.accessTokenTtl unset — SA-key clients would inherit the global TTL with no second layer"
+  || fail "prod: kaname.platform.iam.saKey.accessTokenTtl unset — SA-key clients would inherit the global TTL with no second layer"
 ok
 
 # ── 3. DEV keeps bounded keys but does NOT pin the per-client token lifespan ──
@@ -151,7 +151,7 @@ render_only "$DEV" charts/kaname/templates/deployment.yaml; IAM_DEV="$HELM_OUT"
 [ -n "$IAM_DEV" ] || fail "kaname deployment did not render in dev profile"
 [[ "$IAM_DEV" == *'KANAME_SAKEY_MAX_TTL'* ]] \
   || fail "dev: the SA-key ceiling must apply on the local stand too"
-dev_atl="$(yq '.["kaname"].kacho.iam.saKey.accessTokenTtl // ""' "$DEV")"
+dev_atl="$(yq '.["kaname"].platform.iam.saKey.accessTokenTtl // ""' "$DEV")"
 [ -z "$dev_atl" ] \
   || fail "dev: saKey.accessTokenTtl='$dev_atl' — the local stand deliberately inherits the widened global TTL; pinning it 401s late newman collections"
 ok

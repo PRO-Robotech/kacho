@@ -1526,7 +1526,7 @@ kaname:
   # from the issuer — a public ingress host that does NOT resolve in-cluster → sa_keys
   # CreateOAuthClient fails → SAKeyService.Issue op finishes with error ("internal worker
   # error"). Point it at the cluster-internal hydra-admin Service (Ory split public/admin).
-  kacho:
+  platform:
     iam:
       hydraAdminUrl: "http://kacho-umbrella-hydra-admin:4445"
   # mTLS: server-only (authz authority; gateway/vpc/compute/nlb dial iam over mTLS).
