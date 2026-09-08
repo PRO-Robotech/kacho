@@ -12,8 +12,6 @@ import (
 	"testing"
 
 	"github.com/PRO-Robotech/kacho/pkg/gitenv"
-
-	"github.com/PRO-Robotech/kaname/internal/testsupport/platformtree"
 )
 
 // void_message_names_the_walk_root_test.go — сообщение о ТРЕТЬЕЙ категории исхода
@@ -93,7 +91,7 @@ func emptyRepo(t *testing.T) string {
 func voidCanonTree(t *testing.T) string {
 	t.Helper()
 	root := t.TempDir()
-	dir := platformtree.RequirePath(t, "proto/kaname/cloud/iam/v1")
+	dir := filepath.Join(root, "proto", "kaname", "cloud", "iam", "v1")
 	if err := os.MkdirAll(dir, 0o750); err != nil {
 		t.Fatalf("каталог канона: %v", err)
 	}
