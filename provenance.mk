@@ -37,10 +37,28 @@ GIT_COMMIT := $(shell git rev-parse HEAD 2>/dev/null || echo unknown)
 GIT_DIRTY  := $(shell test -n "$(KACHO_REPO_ROOT)" && test -n "$$(git -C '$(KACHO_REPO_ROOT)' status --porcelain 2>/dev/null)" && echo "-dirty" || echo "")
 GIT_REF    := $(shell git rev-parse --abbrev-ref HEAD 2>/dev/null || echo unknown)
 
+# KACHO_IMAGE_REVISION — ТА САМАЯ величина, под именем. У неё два читателя, и
+# оба обязаны брать её здесь:
+#
+#   • сборка — вписывает её в образ (IMAGE_BUILD_ARGS ниже);
+#   • ПРОВЕРКА ПОСАДКИ — сверяет с тем, что исполняет работающий контейнер
+#     (`deploy/scripts/stand-provenance.sh --expect`, задача #2180).
+#
+# До имени величина существовала только внутри строки аргументов сборки, и
+# второму читателю пришлось бы её ВЫЧИСЛИТЬ заново — то есть завести второе
+# объявление одного предмета. Разошлись бы они молча и ровно там, где расхождение
+# не видно: на форме отметки грязи.
+#
+# ТАРГЕТА ДЛЯ ПЕЧАТИ ЗДЕСЬ НЕТ НАМЕРЕННО. Файл включается `include`-ом ДО первой
+# цели включающего Makefile, поэтому цель, объявленная тут, стала бы у него целью
+# по умолчанию — `make` без аргументов в deploy/ перестал бы собирать сервисы.
+# Читатель извне берёт величину ad-hoc целью: `make -f provenance.mk --eval=…`.
+KACHO_IMAGE_REVISION := $(GIT_COMMIT)$(GIT_DIRTY)
+
 # IMAGE_BUILD_ARGS — то, что дописывается к КАЖДОМУ `docker build` образа продукта.
 # Dockerfile из этой одной величины делает и клеймо (для реестра и демона), и файл
 # /etc/kacho/image-revision (для `kubectl exec`, то есть для обоих стендов
 # одинаково). Источник один — разъехаться нечему.
 IMAGE_BUILD_ARGS := \
-  --build-arg KACHO_IMAGE_REVISION="$(GIT_COMMIT)$(GIT_DIRTY)" \
+  --build-arg KACHO_IMAGE_REVISION="$(KACHO_IMAGE_REVISION)" \
   --build-arg KACHO_IMAGE_VERSION="$(GIT_REF)"

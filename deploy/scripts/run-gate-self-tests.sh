@@ -101,6 +101,7 @@ DECLARED="
 .github/scripts/install-pinned-browser.sh
 .github/scripts/newman-live.py
 .github/scripts/run-python-probes.py
+.github/scripts/stand-revision-verdict.sh
 .github/scripts/stand-up.sh
 deploy/scripts/assert-admin-hop-transport.sh
 deploy/scripts/assert-alt-fixtures-are-another.py
