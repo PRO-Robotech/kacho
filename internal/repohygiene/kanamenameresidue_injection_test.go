@@ -190,6 +190,7 @@ func nameResidueLanes(t *testing.T, world map[string][]byte) map[string]int {
 // Прогон первый из трёх. Без него «инъекция покрасила полосу» ничего не
 // доказывает: полоса могла краснеть и до неё.
 func TestKanameNameResidueControlWorldIsSound(t *testing.T) {
+	t.Parallel()
 	got := nameResidueLanes(t, nameResidueWorld())
 	subjects := nameResidueSubjects()
 	twins := nameResidueBorderTwins()
@@ -231,6 +232,7 @@ func TestKanameNameResidueControlWorldIsSound(t *testing.T) {
 // своим вхождением» выбрана потому, что она меняет ровно один факт: у мира
 // прибавляется одно вхождение известной формы, и больше ничего.
 func TestKanameNameResidueInjectionRaisesOnlyItsOwnLane(t *testing.T) {
+	t.Parallel()
 	base := nameResidueLanes(t, nameResidueWorld())
 
 	for lane, subject := range nameResidueSubjects() {
@@ -278,6 +280,7 @@ func nameResidueSiblingPath(path string) string {
 // Без него держатель ловил бы «слово похожей формы», а не имя платформы, и
 // первое же срабатывание на собственном имени продукта его бы отключило.
 func TestKanameNameResidueOwnProductNameStaysSilent(t *testing.T) {
+	t.Parallel()
 	base := nameResidueLanes(t, nameResidueWorld())
 
 	world := nameResidueWorld()
@@ -302,6 +305,7 @@ func TestKanameNameResidueOwnProductNameStaysSilent(t *testing.T) {
 // теряет диакритическую форму МОЛЧА, и потеря приходится на прозу — туда, где
 // бренд платформы стоит как своё имя продукта.
 func TestKanameNameResidueReadsTheMacronFormAnAsciiPredicateMisses(t *testing.T) {
+	t.Parallel()
 	const macronOnly = "Консоль остаётся частью Kachō.\n"
 	const asciiOnly = "Консоль остаётся частью Kacho.\n"
 
@@ -355,6 +359,7 @@ func TestKanameNameResidueReadsTheMacronFormAnAsciiPredicateMisses(t *testing.T)
 // TestKanameNameResidueStayLedgerExpiresWithItsSubject — ведомость решённого
 // остаться прощает точное число и истекает вместе с предметом.
 func TestKanameNameResidueStayLedgerExpiresWithItsSubject(t *testing.T) {
+	t.Parallel()
 	subject := nameResidueSubjects()[laneSchemaName]
 
 	cases := []struct {
@@ -438,6 +443,7 @@ func TestKanameNameResidueStayLedgerExpiresWithItsSubject(t *testing.T) {
 // то же изменение, которое остаток сняло. Потолок (`не больше чем`) запрещён:
 // он не краснеет никогда и потому не истекает.
 func TestKanameNameResidueDebtLedgerIsExactInBothDirections(t *testing.T) {
+	t.Parallel()
 	world := nameResidueWorld()
 	base := nameResidueLanes(t, world)
 
@@ -508,6 +514,7 @@ func ledgerFindingSays(findings []NameResidueLedgerFinding, lane, want string) b
 // TestKanameNameResidueRefusesOnBeingBeyondItsPredicate — держатель ОТКАЗЫВАЕТ
 // там, где вердикт был бы беспредметен, а не выдаёт тихий ноль.
 func TestKanameNameResidueRefusesOnBeingBeyondItsPredicate(t *testing.T) {
+	t.Parallel()
 	cases := []struct {
 		name  string
 		world map[string][]byte
@@ -587,6 +594,7 @@ func TestKanameNameResidueRefusesOnBeingBeyondItsPredicate(t *testing.T) {
 // Появись седьмая ось — доказательства по ней не было бы, и её молчание не
 // отличалось бы от молчания мёртвой проверки.
 func TestKanameNameResidueEveryAxisHasASubjectInTheInjection(t *testing.T) {
+	t.Parallel()
 	subjects := nameResidueSubjects()
 	covered := map[NameResidueAxis]int{}
 	for lane := range subjects {
@@ -621,6 +629,7 @@ func TestKanameNameResidueEveryAxisHasASubjectInTheInjection(t *testing.T) {
 // Мир для каждого случая берётся общий и дополняется ОДНИМ файлом: так
 // «полоса выросла» означает «выросла от этого файла», а не «была такой».
 func TestKanameNameResidueTrackerReferenceIsToldByForm(t *testing.T) {
+	t.Parallel()
 	base := nameResidueLanes(t, nameResidueWorld())
 
 	cases := []struct {

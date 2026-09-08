@@ -835,6 +835,7 @@ func readListReadCatalog(t *testing.T, root string) []listReadCatalogEntry {
 // ─────────────────────────────── сам гейт ───────────────────────────────────
 
 func TestListReadRelationParity(t *testing.T) {
+	t.Parallel()
 	root := repoRoot(t)
 	pkgs, filesWalked := discoverPageFilters(t, root)
 	reads, catalogGets := loadReadGates(t, root)
@@ -889,6 +890,7 @@ func TestListReadRelationParity(t *testing.T) {
 // есть запись с причиной. Четвёртого не бывает — «гейт его не увидел» это не исход, а
 // слепое пятно, и именно так оно и выглядело в прошлый раз.
 func TestListReadRelationParity_EveryPageFilterIsAccountedFor(t *testing.T) {
+	t.Parallel()
 	root := repoRoot(t)
 	pkgs, _ := discoverPageFilters(t, root)
 
@@ -969,6 +971,7 @@ func pageFilterOutcome(p pageFilterPkg, declarerImportPaths map[string]bool) (re
 // одним — есть ли у фильтра собственные отношения. Прежняя редакция обе клетки
 // считала делегированием, потому что смотрела только на импорт.
 func TestListReadRelationParity_DelegationMustBeReal(t *testing.T) {
+	t.Parallel()
 	declarers := map[string]bool{"github.com/PRO-Robotech/kacho/services/vpc/internal/authzfilter": true}
 	importsDeclarer := map[string]bool{"github.com/PRO-Robotech/kacho/services/vpc/internal/authzfilter": true}
 
@@ -1019,6 +1022,7 @@ func TestListReadRelationParity_DelegationMustBeReal(t *testing.T) {
 // Каждый запрет опирается на факт о дереве. Факт меняется — запрет тихо становится
 // ложью, и первым это заметит не тот, кто должен.
 func TestListReadRelationParity_PremiseHolds(t *testing.T) {
+	t.Parallel()
 	root := repoRoot(t)
 	pkgs, filesWalked := discoverPageFilters(t, root)
 	reads, catalogGets := loadReadGates(t, root)
@@ -1183,6 +1187,7 @@ func TestListReadRelationParity_PremiseHolds(t *testing.T) {
 // Проба даёт ОДНУ И ТУ ЖЕ конструкцию в двух написаниях и требует одинакового ответа,
 // плюс держит границу: то, что строкой не является, скаляром-субъектом не считается.
 func TestListReadRelationParity_ReadsValuesNotSpelling(t *testing.T) {
+	t.Parallel()
 	relations := map[string]bool{"viewer": true, "v_list": true, "v_get": true}
 
 	parse := func(t *testing.T, src string) (*ast.File, *token.FileSet) {
@@ -1353,6 +1358,7 @@ func Head(ids []string, limit int) []string { return ids }
 //
 // Гейт, который только срабатывает, ничего не говорит о том, что он пропускает.
 func TestListReadRelationParity_GateDiscriminates(t *testing.T) {
+	t.Parallel()
 	reads := map[string][]readGate{
 		"vpc":     {{objectType: "vpc_subnet", relation: "v_get", methods: []string{"SubnetService"}}},
 		"storage": {{objectType: "storage_volume", relation: "viewer", methods: []string{"VolumeService"}}},
@@ -1418,6 +1424,7 @@ func TestListReadRelationParity_GateDiscriminates(t *testing.T) {
 // как есть — молчит, включая тип, чьё чтение отношения не несёт вовсе (`iam_role`): он
 // законный близнец той же формы, и гейт не вправе на него краснеть.
 func TestListReadRelationParity_CatchesTheFifthInstance(t *testing.T) {
+	t.Parallel()
 	root := repoRoot(t)
 	pkgs, _ := discoverPageFilters(t, root)
 	reads, _ := loadReadGates(t, root)
@@ -1493,6 +1500,7 @@ func TestListReadRelationParity_CatchesTheFifthInstance(t *testing.T) {
 // Половина «краснеет» здесь достигается не подменой предиката, а самим фактом
 // УЗНАВАНИЯ: если форма не узнаётся, пакета нет в переписи, и сверять нечего.
 func TestListReadRelationParity_SeesDeclarersThatDelegateToTheSharedNarrower(t *testing.T) {
+	t.Parallel()
 	root := repoRoot(t)
 	pkgs, _ := discoverPageFilters(t, root)
 

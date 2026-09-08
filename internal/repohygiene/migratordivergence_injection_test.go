@@ -242,6 +242,7 @@ func factsAsInTree(t *testing.T) []migratorServiceFacts {
 // дерево, и снятые строки «не возвращаются» просто потому, что их объяснение
 // лежит рядом.
 func TestMigratorDivergenceParserReadsCodeNotProse(t *testing.T) {
+	t.Parallel()
 	prose := entryFactsForProbe(t, srcEntryNamesOnlyInComments)
 	if prose.HandlesTarget || prose.ResolvesDSN || prose.DeclaresConfigFlag || prose.ParsesWithStdlibFlag {
 		t.Fatalf("имена, названные только в прозе, засчитаны за предмет: %+v — "+
@@ -277,6 +278,7 @@ func TestMigratorDivergenceParserReadsCodeNotProse(t *testing.T) {
 // TestMigratorDivergenceGateSpeaksOnADefect — гейт КРАСНЕЕТ на каждом настоящем
 // нарушении ведомости и НАЗЫВАЕТ ключ.
 func TestMigratorDivergenceGateSpeaksOnADefect(t *testing.T) {
+	t.Parallel()
 	doc := docWithEveryKey()
 
 	t.Run("живая строка потеряла предмет", func(t *testing.T) {
@@ -384,6 +386,7 @@ func TestMigratorDivergenceGateSpeaksOnADefect(t *testing.T) {
 // TestMigratorDivergenceGateStaysSilentOnLegitimateTwins — законные состояния
 // гейт НЕ трогает. Без этой половины он ловил бы форму, а не существо.
 func TestMigratorDivergenceGateStaysSilentOnLegitimateTwins(t *testing.T) {
+	t.Parallel()
 	doc := docWithEveryKey()
 
 	t.Run("дерево как есть", func(t *testing.T) {

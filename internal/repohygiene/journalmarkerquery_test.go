@@ -91,6 +91,7 @@ func journalTablesFromMigrations(t *testing.T, root string, rels []string) ([]Jo
 
 // TestJournalWithoutDeliveryMarkerIsNotQueriedByIt — сам гейт.
 func TestJournalWithoutDeliveryMarkerIsNotQueriedByIt(t *testing.T) {
+	t.Parallel()
 	root := repoRoot(t)
 	tt := newTrackedTree(t, root)
 

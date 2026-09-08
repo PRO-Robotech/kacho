@@ -52,6 +52,7 @@ func r73RetiredEnumerationSurface() []RetiredRPC {
 
 // TestR7_3_28_RetiredEnumerationSurfaceIsGoneEverywhere — R7-3-28.
 func TestR7_3_28_RetiredEnumerationSurfaceIsGoneEverywhere(t *testing.T) {
+	t.Parallel()
 	retired := r73RetiredEnumerationSurface()
 	if len(retired) == 0 {
 		t.Fatal("из общей ведомости не выведено НИ ОДНОГО имени этой стадии — " +

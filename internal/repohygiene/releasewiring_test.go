@@ -230,6 +230,7 @@ func distinctStrings(in []string) []string {
 }
 
 func TestVersionPublishingHasACallerInThePipeline(t *testing.T) {
+	t.Parallel()
 	a := auditReleaseWiring(repoRoot(t), releaseProducerFile)
 
 	// Перепись печатается ВСЕГДА: «ноль находок» обязано быть отличимо от

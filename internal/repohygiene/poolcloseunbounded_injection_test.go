@@ -83,6 +83,7 @@ func TestSomething(t *testing.T) {
 
 // TestPoolCloseScannerFailsOnTheDefect — сторона (а).
 func TestPoolCloseScannerFailsOnTheDefect(t *testing.T) {
+	t.Parallel()
 	fs, err := ScanPoolCloses("synthetic/x_test.go", []byte(injectedUnbounded))
 	if err != nil {
 		t.Fatalf("разбор синтетики: %v", err)
@@ -117,6 +118,7 @@ func TestPoolCloseScannerFailsOnTheDefect(t *testing.T) {
 
 // TestPoolCloseScannerIsSilentOnTheLegitimateTwin — сторона (б).
 func TestPoolCloseScannerIsSilentOnTheLegitimateTwin(t *testing.T) {
+	t.Parallel()
 	fs, err := ScanPoolCloses("synthetic/x_test.go", []byte(injectedBounded))
 	if err != nil {
 		t.Fatalf("разбор синтетики: %v", err)
@@ -137,6 +139,7 @@ func TestPoolCloseScannerIsSilentOnTheLegitimateTwin(t *testing.T) {
 // заголовке как ограничение радиуса; проба держит это утверждение честным —
 // изменится разбор, и здесь станет видно, что заголовок пора править.
 func TestPoolCloseScannerNamesItsBlindSpot(t *testing.T) {
+	t.Parallel()
 	const viaParam = `package x
 
 func helper(t *testing.T, pool *pgxpool.Pool) {

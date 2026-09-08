@@ -28,6 +28,7 @@ func moduleKnowsNoEdgeOptions(t *testing.T) ModuleKnowsNoEdgeOptions {
 // Способность падать доказывает не этот прогон, а инъекция
 // (`moduleknowsnoedge_injection_test.go`): здесь только вердикт.
 func TestNoModuleIsTypedByItsConsumer(t *testing.T) {
+	t.Parallel()
 	var log strings.Builder
 	findings, census, err := AuditModuleKnowsNoEdge(moduleKnowsNoEdgeOptions(t), &log)
 	if err != nil {

@@ -54,6 +54,7 @@ var chainLinkTypeNames = map[string]string{
 
 // TestDescriptorCarriesNoChainLink — сам гейт.
 func TestDescriptorCarriesNoChainLink(t *testing.T) {
+	t.Parallel()
 	root := repoRoot(t)
 	files, err := treecorpus.Under(filepath.Join(root, contractPkgRel))
 	if err != nil {

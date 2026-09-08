@@ -15,6 +15,7 @@ import (
 // `subscriptionfloorafterpage.go`; здесь он не пересказывается, иначе два места
 // об одном предмете разошлись бы молча.
 func TestSubscriptionAsksTheFloorAfterThePage(t *testing.T) {
+	t.Parallel()
 	root := repoRoot(t)
 	var log strings.Builder
 

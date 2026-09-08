@@ -32,6 +32,7 @@ import (
 )
 
 func TestMembershipOracle_TheQuestionIsNotAskableOnThePublicSurface(t *testing.T) {
+	t.Parallel()
 	root := repoRoot(t)
 	tree, err := treecorpus.NewTree(root)
 	if err != nil {

@@ -155,6 +155,7 @@ func prodGoRoots(root string) ([]string, error) {
 // страж не связывает ошибку вопроса о правах так, что её нельзя отличить от
 // отказа.
 func TestRelationCheckOutcomeLanesAreNotCollapsed(t *testing.T) {
+	t.Parallel()
 	root := repoRoot(t)
 
 	roots, err := prodGoRoots(root)

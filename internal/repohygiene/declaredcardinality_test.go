@@ -255,6 +255,7 @@ func auditExemptionMarkers(corpus string, roster map[string]exemption) []string 
 // Правка маркера «чтобы позеленело» исходом не является: маркер — предикат
 // снятия, а не украшение записи.
 func TestExemptionRetirementMarkersHaveAProducer(t *testing.T) {
+	t.Parallel()
 	root := repoRoot(t)
 	corpus, files, err := exemptionMarkerCorpus(root)
 	if err != nil {
@@ -304,6 +305,7 @@ func TestExemptionRetirementMarkersHaveAProducer(t *testing.T) {
 // Без стороны «молчит» проверка ловила бы форму («маркер вообще есть в записи»),
 // а не существо; без стороны «краснеет» она была бы объявлением.
 func TestExemptionMarkerProducerJudgeCutsBothWays(t *testing.T) {
+	t.Parallel()
 	root := repoRoot(t)
 	corpus, files, err := exemptionMarkerCorpus(root)
 	if err != nil || files == 0 {
@@ -343,6 +345,7 @@ const labelsMapLimit = 64
 
 // TestDeclaredCardinalityLimitsHaveAnEnforcer — сам гейт.
 func TestDeclaredCardinalityLimitsHaveAnEnforcer(t *testing.T) {
+	t.Parallel()
 	root := repoRoot(t)
 
 	type decl struct{ key, bound string }
@@ -432,6 +435,7 @@ func TestDeclaredCardinalityLimitsHaveAnEnforcer(t *testing.T) {
 //
 // Пока предел не объявлен в контракте, запись живёт здесь — с причиной, а не молча.
 func TestEnforcedCardinalityLimitsAreDeclared(t *testing.T) {
+	t.Parallel()
 	root := repoRoot(t)
 
 	// Пределы, которые прод-код ПРОВЕРЯЕТ, но контракт пока не объявляет.
@@ -458,6 +462,7 @@ func TestEnforcedCardinalityLimitsAreDeclared(t *testing.T) {
 // исполнитель существует и знает то же число. Без этой проверки строка «у меток
 // исполнитель общий» была бы утверждением без предмета — ровно тем, что ловит гейт.
 func TestLabelsLimitPremiseHolds(t *testing.T) {
+	t.Parallel()
 	root := repoRoot(t)
 	body, err := os.ReadFile(filepath.Join(root, "pkg/validate/validate.go"))
 	if err != nil {
@@ -540,6 +545,7 @@ func goConstValue(root, rel, ident string) (int, error) {
 // требовать факт. Комментарий, потерявший число при правке предела, краснит гейт
 // по имени поля: величина, названная в двух местах, обязана быть одной.
 func TestDeclaredCardinalityLimitIsAlsoStatedInProse(t *testing.T) {
+	t.Parallel()
 	root := repoRoot(t)
 
 	if len(prosePlacement) != len(declaredCardinality) {

@@ -45,6 +45,7 @@ func gateRepoRoot(t *testing.T) string {
 
 // Ось 1 — отрицание.
 func TestStandRecipesNeverDeriveAnImageNameByPrefix(t *testing.T) {
+	t.Parallel()
 	root := gateRepoRoot(t)
 
 	found, scope, err := productImageDerivations(root)
@@ -72,6 +73,7 @@ func TestStandRecipesNeverDeriveAnImageNameByPrefix(t *testing.T) {
 // то, что просит чарт». Прежняя редакция проверяла ВХОЖДЕНИЕ подстроки и была
 // вакуумна с обеих сторон — разбор в шапке productimagename.go.
 func TestEveryImageArgumentComesFromTheDeclaredNames(t *testing.T) {
+	t.Parallel()
 	root := gateRepoRoot(t)
 
 	lib := filepath.Join(root, "deploy", "scripts", "lib", "product-names.sh")
@@ -148,6 +150,7 @@ func makeTargetBody(mk, target string) (string, bool) {
 var ciImageEntry = regexp.MustCompile(`(?m)(?:^|["\s])([A-Za-z0-9][A-Za-z0-9._-]*):(services/[A-Za-z0-9-]+|gateway):`)
 
 func TestImageBuildPipelineAgreesWithTheDeclaredNames(t *testing.T) {
+	t.Parallel()
 	root := gateRepoRoot(t)
 
 	b, err := os.ReadFile(filepath.Join(root, ".github", "workflows", "docker-build.yml"))

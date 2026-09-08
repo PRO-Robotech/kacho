@@ -26,6 +26,7 @@ var (
 func injIsGoPkgDir(dir string) bool { return injGoDirs[dir] }
 
 func TestCrossModuleGoPathGateCutsBothWays(t *testing.T) {
+	t.Parallel()
 	cases := []struct {
 		name string
 		src  string
@@ -93,6 +94,7 @@ func TestCrossModuleGoPathGateCutsBothWays(t *testing.T) {
 // не по совпадению. Гейт, чья находка не называет места, посылает читателя
 // искать вручную — и его снимают как непонятный.
 func TestCrossModuleGoPathGateNamesTheCoordinate(t *testing.T) {
+	t.Parallel()
 	src := "# шапка\n# ещё строка\ngo test ./services/iam/internal/authzmap/ -run X\n"
 	got := findCrossModuleGoPaths(
 		map[string]string{"services/vpc/manifest.yaml": src}, injModules, injIsGoPkgDir)
@@ -117,6 +119,7 @@ func TestCrossModuleGoPathGateNamesTheCoordinate(t *testing.T) {
 // молчание. Пустой перечень модулей обязан давать ноль находок при любом входе —
 // иначе гейт судил бы дерево, в котором его предмета нет.
 func TestCrossModuleGoPathGateIsVacuousWithoutASecondModule(t *testing.T) {
+	t.Parallel()
 	src := "go test ./services/iam/tools/clagate/\n"
 	got := findCrossModuleGoPaths(map[string]string{"carrier.sh": src}, nil, injIsGoPkgDir)
 	if len(got) != 0 {

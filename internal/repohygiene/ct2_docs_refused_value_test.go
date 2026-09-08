@@ -26,6 +26,7 @@ func docsRefusedValueOptions(t *testing.T) DocsRefusedValueOptions {
 // Способность падать доказывает не этот прогон, а инъекция
 // (`ct2_docs_refused_value_injection_test.go`): здесь только вердикт.
 func TestDocsNamingARefusedValueSaysItIsRefused(t *testing.T) {
+	t.Parallel()
 	var log strings.Builder
 	findings, census, err := AuditDocsRefusedValue(docsRefusedValueOptions(t), &log)
 	if err != nil {

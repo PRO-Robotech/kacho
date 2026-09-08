@@ -48,6 +48,7 @@ func migratorCLICorpus(t *testing.T) (root string, paths []string) {
 // гейт зелёным с переписью «различных имён 1», хотя расхождение было живо
 // именно в ней — то есть молчание гейта читалось как «имя одно».
 func TestMigratorBinaryIsNamedTheSameEverywhere(t *testing.T) {
+	t.Parallel()
 	root, paths := migratorCLICorpus(t)
 
 	var (
@@ -142,6 +143,7 @@ func TestMigratorBinaryIsNamedTheSameEverywhere(t *testing.T) {
 // головы. Гейт требует, чтобы вопрос был решён; КАК решён — дело команды
 // (`NoArgs`, `ExactArgs`, своя проверка), и гейт об этом не судит.
 func TestMigratorArgumentParsingIsOneOfTwoAndDecidesExtraArguments(t *testing.T) {
+	t.Parallel()
 	root := repoRoot(t)
 	paths, err := treecorpus.UnderWithSuffix(filepath.Join(root, "services"), ".go")
 	if err != nil {
@@ -206,6 +208,7 @@ func TestMigratorArgumentParsingIsOneOfTwoAndDecidesExtraArguments(t *testing.T)
 // решения: гейт продолжал бы требовать равенства, а прочитать, каким оно
 // объявлено, было бы негде.
 func TestMigratorCLISurfaceIsDeclared(t *testing.T) {
+	t.Parallel()
 	root := repoRoot(t)
 	raw, err := os.ReadFile(filepath.Join(root, migratorCLIDecisionDoc))
 	if err != nil {
@@ -252,6 +255,7 @@ func TestMigratorCLISurfaceIsDeclared(t *testing.T) {
 // ОБЪЯВЛЕНИЕ текста: звать производителя точка наката вправе сколько угодно,
 // писать свою редакцию — нет.
 func TestMigratorRefusalTextsHaveOneProducer(t *testing.T) {
+	t.Parallel()
 	root := repoRoot(t)
 
 	var corpus []string

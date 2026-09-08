@@ -614,6 +614,7 @@ func exprStringLiterals(e ast.Expr) []string {
 
 // TestProbesDoNotWriteIntoTheTreeTheyRunFrom — гейт по дереву.
 func TestProbesDoNotWriteIntoTheTreeTheyRunFrom(t *testing.T) {
+	t.Parallel()
 	root := repoRoot(t)
 	sources := probeSources(t, root)
 

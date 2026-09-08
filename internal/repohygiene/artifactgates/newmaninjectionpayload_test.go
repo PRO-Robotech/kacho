@@ -220,6 +220,7 @@ func nmBodyName(raw string) (string, bool) {
 }
 
 func TestInjectionPayloadCarriesWhatItsNamePromises(t *testing.T) {
+	t.Parallel()
 	root := repoRoot(t)
 
 	// Состав берётся из ИНДЕКСА git: под корнем лежат рабочие копии агентов и

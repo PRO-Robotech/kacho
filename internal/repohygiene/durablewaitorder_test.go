@@ -105,6 +105,7 @@ type waitOrderStats struct {
 // Списка исключений у гейта нет намеренно: запись в нём пережила бы свой
 // предмет и вернула бы ровно ту неразличимость, ради которой гейт написан.
 func TestDurableStateNeverAssertedAfterInProcessWait(t *testing.T) {
+	t.Parallel()
 	root := repoRoot(t)
 
 	var (
@@ -174,6 +175,7 @@ func TestDurableStateNeverAssertedAfterInProcessWait(t *testing.T) {
 // истекать сами. Запись, которой больше нечего распознавать, создаёт
 // впечатление покрытия, которого нет.
 func TestPgxCallNamesHaveSubject(t *testing.T) {
+	t.Parallel()
 	root := repoRoot(t)
 	seen := map[string]int{}
 	forEachTestGoFileForWaitOrder(t, root, func(rel string, body []byte) {
@@ -193,6 +195,7 @@ func TestPgxCallNamesHaveSubject(t *testing.T) {
 }
 
 func TestDBHandleNamesHaveSubject(t *testing.T) {
+	t.Parallel()
 	root := repoRoot(t)
 	seen := map[string]int{}
 	forEachTestGoFileForWaitOrder(t, root, func(rel string, body []byte) {
@@ -538,6 +541,7 @@ func countIdentUses(t *testing.T, name string, body []byte, want map[string]stri
 // TestWaitOrderGateRedOnInjectedDefect — возвращённый дефект краснит гейт И
 // называет координату.
 func TestWaitOrderGateRedOnInjectedDefect(t *testing.T) {
+	t.Parallel()
 	const src = `package x
 
 func TestProbe(t *testing.T) {
@@ -575,6 +579,7 @@ func TestProbe(t *testing.T) {
 // циклом со сном. «Подождать срок» и «подождать исход» различаются не формой
 // вызова, поэтому цикл обязан ловиться так же.
 func TestWaitOrderGateRedOnSleepLoopWait(t *testing.T) {
+	t.Parallel()
 	const src = `package x
 
 func TestProbe(t *testing.T) {
@@ -606,6 +611,7 @@ func TestProbe(t *testing.T) {
 // формы: то же чтение за тем же ожиданием, но ожидание САМО спрашивает базу.
 // Без этой половины гейт ловил бы форму, а не существо.
 func TestWaitOrderGateSilentWhenWaitAsksTheDatabase(t *testing.T) {
+	t.Parallel()
 	const src = `package x
 
 func TestProbe(t *testing.T) {
@@ -640,6 +646,7 @@ func TestProbe(t *testing.T) {
 // (сборщик метрик). Без производности ручки это читалось бы как ожидание в
 // памяти и давало ложную находку на каждой такой пробе.
 func TestWaitOrderGateSilentWhenDerivedHandleAsksTheDatabase(t *testing.T) {
+	t.Parallel()
 	const src = `package x
 
 func TestProbe(t *testing.T) {
@@ -667,6 +674,7 @@ func TestProbe(t *testing.T) {
 // TestWaitOrderGateSilentWhenNextStatementIsItselfAWait — окно закрывается
 // следующим ожиданием: чтение, стоящее ВНУТРИ него, упорядочено уже им.
 func TestWaitOrderGateSilentWhenNextStatementIsItselfAWait(t *testing.T) {
+	t.Parallel()
 	const src = `package x
 
 func TestProbe(t *testing.T) {
@@ -695,6 +703,7 @@ func TestProbe(t *testing.T) {
 // контроль распознавания: утверждение о том же свидетеле, на который ждали,
 // находкой не является. Иначе гейт краснел бы на каждой пробе с фейком.
 func TestWaitOrderGateSilentOnInProcessAssertionAfterInProcessWait(t *testing.T) {
+	t.Parallel()
 	const src = `package x
 
 func TestProbe(t *testing.T) {

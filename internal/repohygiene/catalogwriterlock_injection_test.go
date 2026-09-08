@@ -226,6 +226,7 @@ const catalogWriterRel = "services/iam/internal/repo/kaname/pg/catalog_writer.go
 
 // TestG1_ControlTheLockingWriterIsSilent — прогон 1: годный вход проходит.
 func TestG1_ControlTheLockingWriterIsSilent(t *testing.T) {
+	t.Parallel()
 	f, census := scanCatalogOne(t, "контроль", catalogWriterRel, catalogWriterLocked)
 
 	if census.Executed == 0 {
@@ -247,6 +248,7 @@ func TestG1_ControlTheLockingWriterIsSilent(t *testing.T) {
 
 // TestG1_InjectionRedsTheWriterThatDoesNotLock — прогон 2: одно-фактный дефект.
 func TestG1_InjectionRedsTheWriterThatDoesNotLock(t *testing.T) {
+	t.Parallel()
 	f, census := scanCatalogOne(t, "инъекция «замок снят»", catalogWriterRel, catalogWriterNoLock)
 
 	if census.Executed == 0 {
@@ -288,6 +290,7 @@ func TestG1_InjectionRedsTheWriterThatDoesNotLock(t *testing.T) {
 // `t.Fatalf`). Здесь доказано, что на пустом и на не-пишущем составе величины
 // действительно нулевые, то есть у той ветки отказа есть производитель.
 func TestG1_InjectionProvesTheEmptyWalkCannotBeGreen(t *testing.T) {
+	t.Parallel()
 	// (а) состав пуст: находок ноль И переписи ноль. Первое без второго и есть
 	// молчание мёртвой проверки.
 	f, census, err := ScanCatalogWriteLocking(nil)
@@ -336,6 +339,7 @@ func (w roleWriter) Upsert(ctx context.Context, id string) error {
 // TestG1_StaysSilentOnTheFileThatPARSESTheSameStatements — законный близнец, и
 // он несущий: без него гейт был бы неотличим от предиката по подстроке.
 func TestG1_StaysSilentOnTheFileThatPARSESTheSameStatements(t *testing.T) {
+	t.Parallel()
 	const rel = "services/iam/internal/check/catalog_seed_parity.go"
 
 	f, census := scanCatalogOne(t, "близнец «разбор текста миграции»", rel,
@@ -382,6 +386,7 @@ func TestG1_StaysSilentOnTheFileThatPARSESTheSameStatements(t *testing.T) {
 // TestG1_RedsTheSessionLockAndTheWrongKeySeparately — две оси причины, каждая
 // одним фактом против того же контроля.
 func TestG1_RedsTheSessionLockAndTheWrongKeySeparately(t *testing.T) {
+	t.Parallel()
 	// ── Сессионный замок вместо транзакционного ──────────────────────────────
 	f, census := scanCatalogOne(t, "инъекция «замок сессионный»", catalogWriterRel,
 		catalogWriterSessionLock)
@@ -425,6 +430,7 @@ func TestG1_RedsTheSessionLockAndTheWrongKeySeparately(t *testing.T) {
 // Единица суждения — ТИП. Единица «пакет» смолчала бы: замок в пакете есть,
 // берёт его первый тип, а пишет второй.
 func TestG1_RedsASecondWriterWhileTheFirstOneStillLocks(t *testing.T) {
+	t.Parallel()
 	const dir = "services/iam/internal/repo/kaname/pg/"
 
 	f, census, err := ScanCatalogWriteLocking([]CatalogSource{

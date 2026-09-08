@@ -50,6 +50,7 @@ func slpAudit(t *testing.T, folders ...nmItem) ([]slpFinding, slpCensus) {
 // ─── подкласс A: допуск шире собственного БЕЗУСЛОВНОГО пина ──────────────────
 
 func TestSLP_A_UnconditionalPinNarrowerThanAllowanceIsAFinding(t *testing.T) {
+	t.Parallel()
 	step := nmStep("create-badregion", "POST", "{{baseUrl}}/registry/v1/registries",
 		"pm.test('rejected 4xx', () => pm.expect(pm.response.code).to.be.oneOf([400, 409]));",
 		"pm.test('grpc 9', () => pm.expect(pm.response.json().code).to.eql(9));",
@@ -74,6 +75,7 @@ func TestSLP_A_UnconditionalPinNarrowerThanAllowanceIsAFinding(t *testing.T) {
 // две, и допуск законен. Без этой пробы гейт ловил бы форму, а не существо, и
 // первый же ложный срабат его отключил бы.
 func TestSLP_A_ConditionalPinIsLawfulAndSilent(t *testing.T) {
+	t.Parallel()
 	step := nmStep("update-immutable", "PATCH", "{{baseUrl}}/iam/v1/accounts/{{id}}",
 		"pm.test('rejected', () => pm.expect(pm.response.code).to.be.oneOf([400, 403]));",
 		"if (pm.response.code === 400) {",
@@ -96,6 +98,7 @@ func TestSLP_A_ConditionalPinIsLawfulAndSilent(t *testing.T) {
 // лежат во взаимоисключающих ветках. Ровно эта форма живёт в `load-balancer` и
 // дала четыре ложные находки первой редакции предиката.
 func TestSLP_A_BranchOnFixtureIsLawfulAndSilent(t *testing.T) {
+	t.Parallel()
 	step := nmStep("cr-mismatch", "POST", "{{baseUrl}}/nlb/v1/networkLoadBalancers",
 		"if (!pm.environment.get('vpcSubnetId')) {",
 		"  pm.test('no fixture', () => pm.expect(pm.response.code).to.be.oneOf([400, 404, 503]));",
@@ -115,6 +118,7 @@ func TestSLP_A_BranchOnFixtureIsLawfulAndSilent(t *testing.T) {
 
 // Законный близнец №3: допуск ровно равен образу пина — сужать нечего.
 func TestSLP_A_AllowanceEqualToPinImageIsSilent(t *testing.T) {
+	t.Parallel()
 	step := nmStep("cancel-done", "POST", "{{baseUrl}}/operations/{{opId}}:cancel",
 		"pm.test('rejected', () => pm.expect(pm.response.code).to.eql(400));",
 		"pm.test('grpc 9', () => pm.expect(pm.response.json().code).to.eql(9));",
@@ -132,6 +136,7 @@ func TestSLP_A_AllowanceEqualToPinImageIsSilent(t *testing.T) {
 // ─── подкласс B: полоса операций ─────────────────────────────────────────────
 
 func TestSLP_B_StatusOutsideTheOperationsLaneIsAFinding(t *testing.T) {
+	t.Parallel()
 	step := nmStep("cancel-as-B", "POST", "{{baseUrl}}/operations/{{opId}}:cancel",
 		"pm.test('rejected', () => pm.expect(pm.response.code).to.be.oneOf([400, 403, 404, 409]));",
 	)
@@ -149,6 +154,7 @@ func TestSLP_B_StatusOutsideTheOperationsLaneIsAFinding(t *testing.T) {
 
 // Законный близнец: тот же путь, допуск ровно из производимых полосой статусов.
 func TestSLP_B_LawfulOperationsAllowanceIsSilent(t *testing.T) {
+	t.Parallel()
 	step := nmStep("cancel-as-B", "POST", "{{baseUrl}}/operations/{{opId}}:cancel",
 		"pm.test('rejected', () => pm.expect(pm.response.code).to.be.oneOf([400, 403, 404]));",
 	)
@@ -165,6 +171,7 @@ func TestSLP_B_LawfulOperationsAllowanceIsSilent(t *testing.T) {
 // и это его объявленная граница: у создания ресурса производитель 409 есть
 // (UNIQUE → ALREADY_EXISTS), поэтому такой допуск законен.
 func TestSLP_B_SameStatusOnAnotherLaneIsSilent(t *testing.T) {
+	t.Parallel()
 	step := nmStep("seed-pool", "POST", "{{baseUrl}}/vpc/v1/addressPools",
 		"pm.test('посев идемпотентен', () => pm.expect(pm.response.code).to.be.oneOf([200, 409]));",
 	)
@@ -184,6 +191,7 @@ func TestSLP_B_SameStatusOnAnotherLaneIsSilent(t *testing.T) {
 // любой полосе, включая операции, — иначе гейт краснел бы на пробе, проверяющей
 // нерегистрацию маршрута.
 func TestSLP_B_EdgeOwnStatusIsSilentOnTheOperationsLane(t *testing.T) {
+	t.Parallel()
 	step := nmStep("wrong-method", "GET", "{{baseUrl}}/operations/{{opId}}:cancel",
 		"pm.test('маршрут есть, метод не тот', () => pm.expect(pm.response.code).to.be.oneOf([404, 405]));",
 	)
@@ -202,6 +210,7 @@ func TestSLP_B_EdgeOwnStatusIsSilentOnTheOperationsLane(t *testing.T) {
 // записанное в ней оказывается ВНЕ НАБЛЮДЕНИЯ, и гейт молчит, не давая ни
 // красного, ни зелёного (`testing.md` §«Гейт на класс», п.7).
 func TestSLP_EveryAllowanceFormIsRead(t *testing.T) {
+	t.Parallel()
 	forms := map[string]string{
 		"oneOf":   "pm.test('t', () => pm.expect(pm.response.code).to.be.oneOf([400, 409]));",
 		"include": "pm.test('t', () => pm.expect([400, 409], 'hint').to.include(pm.response.code));",
@@ -230,6 +239,7 @@ func TestSLP_EveryAllowanceFormIsRead(t *testing.T) {
 // Комментарий — не утверждение. Гейт, читающий сырой текст, краснел бы на разборе,
 // который сам же просил написать рядом с проверкой.
 func TestSLP_CommentIsNotAnAssertion(t *testing.T) {
+	t.Parallel()
 	step := nmStep("s", "POST", "{{baseUrl}}/operations/{{opId}}:cancel",
 		"// 409 снят: производителя у него на этой полосе нет — oneOf([400, 409]) не краснел никогда",
 		"pm.test('rejected', () => pm.expect(pm.response.code).to.eql(400));",
@@ -249,6 +259,7 @@ func TestSLP_CommentIsNotAnAssertion(t *testing.T) {
 // Синтетика доказывает свойство синтетики. Эта проба доказывает, что гейт читает
 // ту форму, которой генераторы пишут СЕГОДНЯ.
 func TestSLP_RealTreeStepGoesRedWhenAStatusIsAdded(t *testing.T) {
+	t.Parallel()
 	root := repoRoot(t)
 	tt := newTrackedTree(t, root)
 	var cols []string
@@ -323,6 +334,7 @@ func TestSLP_RealTreeStepGoesRedWhenAStatusIsAdded(t *testing.T) {
 // Пустой корпус — ОТКАЗ, а не «находок нет»: иначе переезд коллекций молча
 // выключил бы гейт.
 func TestSLP_EmptyCorpusIsARefusalNotSilence(t *testing.T) {
+	t.Parallel()
 	dir := t.TempDir()
 	f, cen, err := auditStatusLaneProducers(dir, nil, slpLane())
 	if err != nil {
@@ -340,6 +352,7 @@ func TestSLP_EmptyCorpusIsARefusalNotSilence(t *testing.T) {
 // Перепись производителей полосы — утверждение о ДЕРЕВЕ, и оно проверяется здесь,
 // а не объявляется в шапке.
 func TestSLP_OperationsLaneProducersAreCountedFromTheTree(t *testing.T) {
+	t.Parallel()
 	root := repoRoot(t)
 	tt := newTrackedTree(t, root)
 	lane, producers, err := slpOpsLaneStatuses(root, slpGoFilesOf(tt))
@@ -369,6 +382,7 @@ func TestSLP_OperationsLaneProducersAreCountedFromTheTree(t *testing.T) {
 // пакета `codes`. Разойдутся — перепись производителей начнёт пропускать коды
 // молча, и «409 не производится» станет свойством слепоты, а не дерева.
 func TestSLP_CodeNameTableAgreesWithThePackage(t *testing.T) {
+	t.Parallel()
 	byName := slpGrpcCodeByName()
 	for _, want := range []string{"OK", "InvalidArgument", "NotFound", "AlreadyExists",
 		"PermissionDenied", "FailedPrecondition", "Aborted", "Internal", "Unavailable", "Unauthenticated"} {
@@ -468,6 +482,7 @@ func slpInjectStatus(items any) bool {
 // отмены, а не упоминание её имени. Регистрация общего обработчика в композиционном
 // корне каждого сервиса реализацией НЕ является и здесь не считается.
 func TestSLP_OperationsLaneHasExactlyTheProducersTheGateReads(t *testing.T) {
+	t.Parallel()
 	root := repoRoot(t)
 	tt := newTrackedTree(t, root)
 
@@ -524,6 +539,7 @@ func TestSLP_OperationsLaneHasExactlyTheProducersTheGateReads(t *testing.T) {
 // упасть не может — и требовать от неё состава исходов значило бы краснеть на
 // коде, который никаких исходов не обещает.
 func TestSLP_RetryPredicateFormIsNotAnAllowance(t *testing.T) {
+	t.Parallel()
 	step := nmStep("poll", "GET", "{{baseUrl}}/operations/{{opId}}",
 		"const _p200retryCode = [403, 409].includes(pm.response.code);",
 		"if (_p200retryCode) { pm.execution.setNextRequest(pm.info.requestName); return; }",

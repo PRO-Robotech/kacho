@@ -78,6 +78,7 @@ func selfReferentialDeps(t *testing.T, raw string) []string {
 }
 
 func TestNoSubchartMaterialisedOverItsOwnSource(t *testing.T) {
+	t.Parallel()
 	root := repoRoot(t)
 	path := filepath.Join(root, umbrellaChart)
 	raw, err := os.ReadFile(path)
@@ -112,6 +113,7 @@ func TestNoSubchartMaterialisedOverItsOwnSource(t *testing.T) {
 // большинство) обязана оставлять его молчащим, иначе гейт отключат при первом
 // ложном срабатывании.
 func TestSelfReferentialDepDetectorSeesTheForm(t *testing.T) {
+	t.Parallel()
 	cases := []struct {
 		name string
 		yaml string

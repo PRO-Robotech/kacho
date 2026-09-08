@@ -18,6 +18,7 @@ var contractRootLiteralDirs = []string{"internal/repohygiene", "tools"}
 // TestPopulationIsSelectedByTheDeclaredRootsNotALiteral — отбор популяции берётся
 // у объявленного словаря корней.
 func TestPopulationIsSelectedByTheDeclaredRootsNotALiteral(t *testing.T) {
+	t.Parallel()
 	root := repoRoot(t)
 	findings, census, err := AuditContractRootLiterals(root, contractRootLiteralDirs)
 	if err != nil {

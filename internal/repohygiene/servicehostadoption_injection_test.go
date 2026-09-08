@@ -104,6 +104,7 @@ func synthAdoptionTree(t *testing.T, svc string, files map[string]string) string
 // TestAdoptionGateRedOnOwnAssembly — направление (а): корень собирает сервер сам
 // → гейт находит это И НАЗЫВАЕТ КООРДИНАТУ. Без координаты находка не действие.
 func TestAdoptionGateRedOnOwnAssembly(t *testing.T) {
+	t.Parallel()
 	root := synthAdoptionTree(t, "demo", map[string]string{"serve.go": synthRootOwnAssembly})
 	res := auditHostAdoption(t, root)
 	t.Log(res.summary)
@@ -133,6 +134,7 @@ func TestAdoptionGateRedOnOwnAssembly(t *testing.T) {
 // TestAdoptionGateSilentOnConvertedRoot — направление (б): переведённый корень
 // той же формы гейта не задевает.
 func TestAdoptionGateSilentOnConvertedRoot(t *testing.T) {
+	t.Parallel()
 	root := synthAdoptionTree(t, "demo", map[string]string{"serve.go": synthRootOnHost})
 	res := auditHostAdoption(t, root)
 	t.Log(res.summary)
@@ -154,6 +156,7 @@ func TestAdoptionGateSilentOnConvertedRoot(t *testing.T) {
 // Эта проба и есть доказательство, что распознавание идёт по исполняемой части:
 // без неё «гейт читает AST, а не текст» осталось бы утверждением о намерении.
 func TestAdoptionGateIgnoresProseDecoyEvenNextToADefect(t *testing.T) {
+	t.Parallel()
 	// Только приманка — гейт обязан МОЛЧАТЬ.
 	quiet := auditHostAdoption(t, synthAdoptionTree(t, "demo",
 		map[string]string{"doc.go": synthRootDecoy}))
@@ -187,6 +190,7 @@ func TestAdoptionGateIgnoresProseDecoyEvenNextToADefect(t *testing.T) {
 // иначе запись переживает свой предмет и укрывает следующую сборку, которую в
 // этом корне заведут.
 func TestAdoptionExceptionsExpireWhenTheirSubjectIsGone(t *testing.T) {
+	t.Parallel()
 	// Берём ЛЮБОЕ имя из действующего перечня и строим дерево, где этот сервис
 	// уже переведён. Имя берётся из самого перечня, а не выписывается: выписанное
 	// пережило бы правку перечня и проба стала бы вакуумной.

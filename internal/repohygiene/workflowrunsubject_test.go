@@ -126,6 +126,7 @@ func checkWorkflowRunSubject(path, raw string) []string {
 
 // TestWorkflowRunUsesTheSubjectCommit — по дереву.
 func TestWorkflowRunUsesTheSubjectCommit(t *testing.T) {
+	t.Parallel()
 	root := repoRoot(t)
 	files := listWorkflows(t, root)
 
@@ -157,6 +158,7 @@ func TestWorkflowRunUsesTheSubjectCommit(t *testing.T) {
 
 // TestWorkflowRunSubjectDetectorSeesBothForms — инъекция в обе стороны.
 func TestWorkflowRunSubjectDetectorSeesBothForms(t *testing.T) {
+	t.Parallel()
 	const okRef = "${{ github.event.workflow_run.head_sha }}"
 
 	cases := []struct {

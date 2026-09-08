@@ -41,6 +41,7 @@ import (
 // комментариях этого дерева (в том числе в шапке самого механизма), и предикат
 // по тексту краснел бы на собственном объяснении.
 func TestOperationsTableOwnersWireTheRetentionSweep(t *testing.T) {
+	t.Parallel()
 	root := repoRoot(t)
 
 	type pkgState struct {

@@ -161,6 +161,7 @@ func scanNameProducers(fset *token.FileSet, filename string, src any) (found []n
 }
 
 func TestNoToolProducesAMigrationFileName(t *testing.T) {
+	t.Parallel()
 	root := repoRoot(t)
 
 	tree, err := treecorpus.NewTree(root)

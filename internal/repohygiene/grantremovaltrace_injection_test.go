@@ -34,6 +34,7 @@ import (
 // предмет и краснела бы на исправном гейте — тот самый класс, который эта
 // инъекция и стережёт. Поэтому база строится ПО КОНСТАНТЕ и следует за ней сама.
 func TestGrantRemovalTraceGateInjection(t *testing.T) {
+	t.Parallel()
 	// Прощённые сегодня — минимальные тела, несущие ровно предмет. Их РОВНО
 	// столько, сколько объявляет храповик: при нуле база пуста, и все оси ниже
 	// остаются осмысленными, потому что каждая считает ОТНОСИТЕЛЬНО базы.
@@ -178,6 +179,7 @@ func TestGrantRemovalTraceGateInjection(t *testing.T) {
 // дедупликацию выдач. Первая редакция этого разбора так и сделала — одно
 // попадание там, где переносов ноль.
 func TestGrantRoleReassignmentDiscriminatorCutsBothWays(t *testing.T) {
+	t.Parallel()
 	corpus := []grantMigrationSource{
 		// ЛОВИТСЯ: role_id стоит среди присваиваний.
 		{Name: "0200_move.sql", Body: "-- +goose Up\n" +

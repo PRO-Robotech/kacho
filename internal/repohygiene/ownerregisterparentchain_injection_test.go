@@ -197,6 +197,7 @@ func chainlessLiterals(t *testing.T, src string) []string {
 // НАЗЫВАЯ координату. Без имени места находка бесполезна: гейт, печатающий
 // «где-то в дереве что-то не так», снимают следующим коммитом.
 func TestParentChainGateRedOnChainlessRegister(t *testing.T) {
+	t.Parallel()
 	hits := chainlessLiterals(t, injectedChainlessRegister)
 	if len(hits) == 0 {
 		t.Fatal("гейт НЕ увидел запрос регистрации без цепи предков — он не поймал бы " +
@@ -214,6 +215,7 @@ func TestParentChainGateRedOnChainlessRegister(t *testing.T) {
 // отключат при первом же ложном срабатывании, и тогда он не поймает и настоящий
 // дефект.
 func TestParentChainGateSilentOnLawfulForms(t *testing.T) {
+	t.Parallel()
 	for name, src := range map[string]string{
 		"цепь названа и вычислена":         lawfulChainNamed,
 		"объект без предка по построению":  lawfulRootObject,
@@ -229,6 +231,7 @@ func TestParentChainGateSilentOnLawfulForms(t *testing.T) {
 // TestParentChainProductionRecognisesOnlyRealAssembly — измерение (B) отличает
 // сборку цепи от её передачи.
 func TestParentChainProductionRecognisesOnlyRealAssembly(t *testing.T) {
+	t.Parallel()
 	assembly := map[string]string{
 		"вычисление из области": lawfulChainNamed,
 		"явный литерал":         lawfulZeroValueReturn,
@@ -264,6 +267,7 @@ func TestParentChainProductionRecognisesOnlyRealAssembly(t *testing.T) {
 // прошли бы вакуумно (реальный класс — «гейт читает свой недетерминизм как
 // свойство»).
 func TestParentChainInjectionInputsAreDistinguishable(t *testing.T) {
+	t.Parallel()
 	bearing := map[string]string{
 		"дефект":       injectedChainlessRegister,
 		"цепь названа": lawfulChainNamed,

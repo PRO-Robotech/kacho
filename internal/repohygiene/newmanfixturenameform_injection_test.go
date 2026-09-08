@@ -46,6 +46,7 @@ func parseShape(t *testing.T, script string) pmCollection {
 }
 
 func TestFixtureNameJudgeCatchesTheDefectAndSparesTheTwin(t *testing.T) {
+	t.Parallel()
 	t.Run("на фикстуре с именем вне канона — краснеет и называет координату", func(t *testing.T) {
 		f, withName, judged, _ := judgeFixtureNames("проба/коллекция.json", parseShape(t, assertSuccess))
 		if withName != 1 || judged != 1 {
@@ -119,6 +120,7 @@ func parseReferent(t *testing.T, url string) pmCollection {
 }
 
 func TestFixtureNameJudgeSparesTheOtherReferentOnly(t *testing.T) {
+	t.Parallel()
 	t.Run("законный близнец: имя РОЛИ — судья молчит и считает освобождение", func(t *testing.T) {
 		f, withName, judged, spared := judgeFixtureNames(
 			"проба/коллекция.json", parseReferent(t, "{{baseUrl}}/iam/v1/roles"))

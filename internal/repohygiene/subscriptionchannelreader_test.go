@@ -59,6 +59,7 @@ var channelReadExemptions = map[string]string{
 
 // TestChannelIsReadByTheStreamServerAlone — сам гейт.
 func TestChannelIsReadByTheStreamServerAlone(t *testing.T) {
+	t.Parallel()
 	root := repoRoot(t)
 	tt := newTrackedTree(t, root)
 

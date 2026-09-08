@@ -117,12 +117,14 @@ func requireFinding(t *testing.T, findings []SubscriptionServerFinding, kind, mu
 // Первое утверждение и самое важное: без него всякое отрицание ниже зеленело бы
 // на анализаторе, находящем всё подряд.
 func TestServerStandIsQuietOnALegitimateTree(t *testing.T) {
+	t.Parallel()
 	s := newServerStand(t)
 	requireQuietStand(t, s.audit(t), "законное дерево: один глагол, один сервер в фундаменте, чужой Subscribe рядом")
 }
 
 // B. Второй сервер — В СЕРВИСЕ. Ровно то, ради чего гейт написан.
 func TestServerStandRedsOnASecondServerInAService(t *testing.T) {
+	t.Parallel()
 	s := newServerStand(t)
 	s.write(t, "services/vpc/internal/handler/watch.go", `package handler
 
@@ -143,6 +145,7 @@ func (w *Watch) Subscribe(req *SubscriptionRequest, stream InternalSubscriptionS
 // на двух серверах рядом друг с другом — то есть на том же расхождении, только
 // ближе.
 func TestServerStandRedsOnASecondServerInsideTheFoundation(t *testing.T) {
+	t.Parallel()
 	s := newServerStand(t)
 	s.write(t, "pkg/subscription2/server.go", `package subscription2
 
@@ -163,6 +166,7 @@ func (o *Other) Subscribe(req *SubscriptionRequest, stream InternalSubscriptionS
 
 // D. Второй потоковый глагол в контракте — второй язык подписки.
 func TestServerStandRedsOnASecondStreamingVerb(t *testing.T) {
+	t.Parallel()
 	s := newServerStand(t)
 	s.write(t, "proto/kacho/cloud/vpc/v1/watch.proto", `
 syntax = "proto3";
@@ -179,6 +183,7 @@ service InternalWatchService {
 // Пара к D. Без неё гейт нельзя было бы носить через фазу перевода доменов: он
 // краснел бы на состоянии, которое сам же и предписывает пройти.
 func TestServerStandIsQuietOnAnAllowedSecondVerb(t *testing.T) {
+	t.Parallel()
 	s := newServerStand(t)
 	s.write(t, "proto/kacho/cloud/vpc/v1/watch.proto", `
 syntax = "proto3";
@@ -196,6 +201,7 @@ service InternalWatchService {
 
 // F. Запись ведомости, которой НЕЧЕГО исключать, — сама находка.
 func TestServerStandRedsOnAnExpiredAllowance(t *testing.T) {
+	t.Parallel()
 	s := newServerStand(t)
 	requireFinding(t, s.audit(t, SubscriptionStreamAllowance{
 		Method:  "Watch",
@@ -206,6 +212,7 @@ func TestServerStandRedsOnAnExpiredAllowance(t *testing.T) {
 
 // G. Запись ведомости БЕЗ ПРИЧИНЫ объявлением не является.
 func TestServerStandRedsOnAnAllowanceWithoutAReason(t *testing.T) {
+	t.Parallel()
 	s := newServerStand(t)
 	s.write(t, "proto/kacho/cloud/vpc/v1/watch.proto", `
 syntax = "proto3";
@@ -221,6 +228,7 @@ service InternalWatchService {
 // H. Глагол объявлен, СЕРВЕРА НЕТ — состояние между фазами, и оно обязано быть
 // названо, а не молчаливо зелено.
 func TestServerStandRedsWhenTheVerbHasNoServer(t *testing.T) {
+	t.Parallel()
 	s := newServerStand(t)
 	if err := os.Remove(filepath.Join(s.root, "pkg/subscription/server.go")); err != nil {
 		t.Fatal(err)
@@ -230,6 +238,7 @@ func TestServerStandRedsWhenTheVerbHasNoServer(t *testing.T) {
 
 // I. Сервер есть, ГЛАГОЛА НЕТ — обратное состояние, и оно тоже названо.
 func TestServerStandRedsWhenTheServerHasNoVerb(t *testing.T) {
+	t.Parallel()
 	s := newServerStand(t)
 	if err := os.Remove(filepath.Join(s.root,
 		"proto/kacho/cloud/subscription/subscription.proto")); err != nil {
@@ -244,6 +253,7 @@ func TestServerStandRedsWhenTheServerHasNoVerb(t *testing.T) {
 // Отдельным утверждением, потому что соседний анализатор этой же фазы на этом
 // уже краснел — на собственном объяснении.
 func TestServerStandIgnoresAStreamingVerbInAComment(t *testing.T) {
+	t.Parallel()
 	s := newServerStand(t)
 	s.write(t, "proto/kacho/cloud/vpc/v1/doc.proto", `
 syntax = "proto3";
@@ -259,6 +269,7 @@ package kacho.cloud.vpc.v1;
 
 // K. Пустой обход — ОТКАЗ, а не «ноль находок».
 func TestServerStandRefusesAnEmptyWalk(t *testing.T) {
+	t.Parallel()
 	root := t.TempDir()
 	var log strings.Builder
 	_, census, err := AuditSubscriptionServerSingularity(SubscriptionServerOptions{

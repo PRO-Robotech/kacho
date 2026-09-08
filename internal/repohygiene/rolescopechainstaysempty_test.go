@@ -33,6 +33,7 @@ var roleScopeChainPrefixes = []string{"services/iam/"}
 // Заведёт кто-нибудь третью ветвь — факт перестанет быть верным, а доступ
 // вернётся МОЛЧА. Этот гейт и есть то единственное, что об этом скажет.
 func TestRoleScopeChainOfAModuleRoleStaysEmpty(t *testing.T) {
+	t.Parallel()
 	root := repoRoot(t)
 	tt := newTrackedTree(t, root)
 

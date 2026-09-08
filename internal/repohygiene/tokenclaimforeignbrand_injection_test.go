@@ -130,6 +130,7 @@ func claimInjForeign(v ClaimVocabulary) []string {
 // однофамильца на месте, гейт молчит. Без него краснота инъекций ничего не
 // доказывает: проверка, краснеющая всегда, находит и на чистом дереве.
 func TestClaimBrandControl_CleanTreeIsSilent(t *testing.T) {
+	t.Parallel()
 	v := DeriveClaimVocabulary(map[string]ClaimFileScan{
 		"synthetic/service/mint.go":      claimInjScan(t, "synthetic/service/mint.go", claimInjMint),
 		"synthetic/observability/reg.go": claimInjScan(t, "synthetic/observability/reg.go", claimInjNamesakes),
@@ -151,6 +152,7 @@ func TestClaimBrandControl_CleanTreeIsSilent(t *testing.T) {
 // TestClaimBrandInjection_ForeignMintIsFound — сторона (а): клеймо чужого
 // словаря в месте чеканки становится находкой, и находка несёт координату.
 func TestClaimBrandInjection_ForeignMintIsFound(t *testing.T) {
+	t.Parallel()
 	v := DeriveClaimVocabulary(map[string]ClaimFileScan{
 		"synthetic/service/mint.go":      claimInjScan(t, "synthetic/service/mint.go", claimInjForeignMint),
 		"synthetic/observability/reg.go": claimInjScan(t, "synthetic/observability/reg.go", claimInjNamesakes),
@@ -172,6 +174,7 @@ func TestClaimBrandInjection_ForeignMintIsFound(t *testing.T) {
 // чеканки. Без этого шага чужое имя, только читаемое, оставалось бы вне
 // наблюдения — не находкой и не чистотой, а невидимостью.
 func TestClaimBrandInjection_ReadOnlyClaimIsDerived(t *testing.T) {
+	t.Parallel()
 	v := DeriveClaimVocabulary(map[string]ClaimFileScan{
 		"synthetic/service/mint.go":      claimInjScan(t, "synthetic/service/mint.go", claimInjMint),
 		"synthetic/middleware/read.go":   claimInjScan(t, "synthetic/middleware/read.go", claimInjReaderOnly),
@@ -194,6 +197,7 @@ func TestClaimBrandInjection_ReadOnlyClaimIsDerived(t *testing.T) {
 // предикату, находится отдельно от имён: она переносит словарь разом и при
 // смене имён молча перестаёт совпадать.
 func TestClaimBrandInjection_PrefixIsFound(t *testing.T) {
+	t.Parallel()
 	fs := claimInjScan(t, "synthetic/middleware/read.go", claimInjReaderOnly)
 	var prefixes []ClaimNameUse
 	for _, u := range fs.Uses {
@@ -213,6 +217,7 @@ func TestClaimBrandInjection_PrefixIsFound(t *testing.T) {
 // приставки: та же форма, свой словарь. Без него гейт ловил бы ФОРМУ, а не
 // существо, и первый же законный предикат его отключил бы.
 func TestClaimBrandInjection_PrefixOfOwnNamespaceIsSilent(t *testing.T) {
+	t.Parallel()
 	src := strings.ReplaceAll(claimInjReaderOnly, `"kacho_`, `"kaname_`)
 	fs := claimInjScan(t, "synthetic/middleware/read.go", src)
 	for _, u := range fs.Uses {
@@ -227,6 +232,7 @@ func TestClaimBrandInjection_PrefixOfOwnNamespaceIsSilent(t *testing.T) {
 // Посевной набор и профиль развёртывания клеймо называют, а позиции у них нет.
 // Судится пара, выведенная из места чеканки.
 func TestClaimTwinInjection_TwinOutsideGoIsFound(t *testing.T) {
+	t.Parallel()
 	twins := map[string]string{"kacho_user_id": "kaname_user_id"}
 
 	const profile = `allowed_top_level_claims:
@@ -250,6 +256,7 @@ func TestClaimTwinInjection_TwinOutsideGoIsFound(t *testing.T) {
 //   - имя, ВНУТРИ которого стоит искомое (`kacho_user_id_legacy`), находкой не
 //     является: без границы токена отказ называл бы имя, которого в тексте нет.
 func TestClaimTwinInjection_NamesakeAndSubstringAreSilent(t *testing.T) {
+	t.Parallel()
 	twins := map[string]string{"kacho_user_id": "kaname_user_id"}
 
 	const lawful = `metrics:
@@ -314,6 +321,7 @@ var foundationSchemaFunctions = map[string]any{
 // Проверяется ИСХОД разбора, а не объявление: `ScanClaimMint` обязана вернуть
 // ноль ключей, и тогда словарь по такому файлу не выводится вовсе.
 func TestClaimBrandControl_MembershipSetIsNotAMint(t *testing.T) {
+	t.Parallel()
 	for name, src := range map[string]string{
 		"значение bool":     claimInjSetLedger,
 		"значение struct{}": claimInjSetLedgerAsStructSet,
@@ -349,6 +357,7 @@ func TestClaimBrandControl_MembershipSetIsNotAMint(t *testing.T) {
 // чеканку вовсе, — и его молчание на ведомости было бы неотличимо от молчания
 // мёртвого разбора.
 func TestClaimBrandInjection_CompositionOfTheSameNamesIsAMint(t *testing.T) {
+	t.Parallel()
 	mint, err := ScanClaimMint("synthetic/repohygiene/ledger.go",
 		[]byte(claimInjSetLedgerAsComposition), claimNamespaces, claimMinKeys)
 	if err != nil {
@@ -480,6 +489,7 @@ func claimInjArea(files map[string]ClaimFileScan) func(string) bool {
 // Без него краснота инъекций ничего не доказывает: проверка, краснеющая всегда,
 // находит и на чистом дереве.
 func TestClaimAuthorControl_MintedTreeIsSilent(t *testing.T) {
+	t.Parallel()
 	v, files := claimInjAuthorTree(t, false)
 	a := AuditClaimAuthors(v, claimInjArea(files), map[string]string{})
 	if len(a.Missing) != 0 {
@@ -501,6 +511,7 @@ func TestClaimAuthorControl_MintedTreeIsSilent(t *testing.T) {
 // клеймо в токен. Распознаватель, знающий одну запись, объявил бы чеканимое имя
 // читаемым — и гейт потребовал бы автора у имени, у которого автор есть.
 func TestClaimAuthorControl_ConstKeyIsAMint(t *testing.T) {
+	t.Parallel()
 	mint, err := ScanClaimMint("synthetic/service/mint.go", []byte(claimInjMintByConst),
 		claimNamespaces, claimMinKeys)
 	if err != nil {
@@ -536,6 +547,7 @@ func TestClaimAuthorControl_ConstKeyIsAMint(t *testing.T) {
 // молчание на настоящей чеканке было бы неотличимо от молчания разбора,
 // выдумывающего авторов.
 func TestClaimAuthorInjection_UnresolvedIdentInventsNoAuthor(t *testing.T) {
+	t.Parallel()
 	v := DeriveClaimVocabulary(map[string]ClaimFileScan{
 		"synthetic/service/mint.go": claimInjScan(t, "synthetic/service/mint.go", claimInjMintByConst),
 	})
@@ -555,6 +567,7 @@ func TestClaimAuthorInjection_UnresolvedIdentInventsNoAuthor(t *testing.T) {
 // объявленный в дереве под ДВУМЯ разными именами, не раскрывается ни в одно из
 // них: раскрыть его значило бы выбрать за автора.
 func TestClaimAuthorInjection_AmbiguousIdentIsNotResolved(t *testing.T) {
+	t.Parallel()
 	const otherHome = `package other
 
 const ClaimPrincipalType = "kaname_audience"
@@ -581,6 +594,7 @@ const ClaimPrincipalType = "kaname_audience"
 //
 // Изменённый факт против контроля ровно один: добавлен файл-читатель.
 func TestClaimAuthorInjection_ReadWithoutMinterIsFound(t *testing.T) {
+	t.Parallel()
 	v, files := claimInjAuthorTree(t, true)
 	a := AuditClaimAuthors(v, claimInjArea(files), map[string]string{})
 	deviceClaim := claimInjName("device_id")
@@ -599,6 +613,7 @@ func TestClaimAuthorInjection_ReadWithoutMinterIsFound(t *testing.T) {
 // Без него гейт не имел бы способа принять законный случай, и его снял бы
 // первый, кто на такой случай наткнётся.
 func TestClaimAuthorControl_RecordedDecisionIsSilent(t *testing.T) {
+	t.Parallel()
 	v, files := claimInjAuthorTree(t, true)
 	a := AuditClaimAuthors(v, claimInjArea(files), map[string]string{
 		claimInjName("device_id"): "решено там-то",
@@ -620,6 +635,7 @@ func TestClaimAuthorControl_RecordedDecisionIsSilent(t *testing.T) {
 // Без самоистечения запись переживает свой предмет и молча прощает следующего,
 // кто унаследует ровно эту слепую зону.
 func TestClaimAuthorInjection_LedgerExpiresByItself(t *testing.T) {
+	t.Parallel()
 	v, files := claimInjAuthorTree(t, true)
 	area := claimInjArea(files)
 
@@ -644,6 +660,7 @@ func TestClaimAuthorInjection_LedgerExpiresByItself(t *testing.T) {
 // доказательстве, а починка состояла бы в том, чтобы доказательство
 // обессмыслить.
 func TestClaimAuthorControl_TestOnlyNameIsOutOfArea(t *testing.T) {
+	t.Parallel()
 	files := map[string]ClaimFileScan{
 		"synthetic/service/mint.go":  claimInjScan(t, "synthetic/service/mint.go", claimInjMintByConst),
 		"synthetic/domain/claims.go": claimInjScan(t, "synthetic/domain/claims.go", claimInjConstHome),
@@ -665,6 +682,7 @@ func TestClaimAuthorControl_TestOnlyNameIsOutOfArea(t *testing.T) {
 // TestClaimAuthorControl_EmptyVocabularyIsNotGreen — пустой обход НЕ есть
 // чистота: область пуста, и порог гейта обязан это поймать.
 func TestClaimAuthorControl_EmptyVocabularyIsNotGreen(t *testing.T) {
+	t.Parallel()
 	a := AuditClaimAuthors(DeriveClaimVocabulary(map[string]ClaimFileScan{}),
 		func(string) bool { return true }, map[string]string{})
 	if len(a.Area) != 0 {

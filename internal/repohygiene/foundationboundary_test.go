@@ -180,6 +180,7 @@ func treePathOfImport(imp string) (string, bool) {
 //
 // Сверка двусторонняя: каталог без записи и запись без каталога — обе находки.
 func TestEveryFoundationCatalogDeclaresItsClass(t *testing.T) {
+	t.Parallel()
 	root := repoRoot(t)
 
 	tracked, err := treecorpus.Under(filepath.Join(root, "pkg"))
@@ -218,6 +219,7 @@ func TestEveryFoundationCatalogDeclaresItsClass(t *testing.T) {
 // отвечает одинаково на «ребро снято» и «ребро переехало в службу» — то есть
 // не различает сделанное и перенесённое (приёмка §7.4).
 func TestNoModuleEdgeRunsAgainstTheTargetLayout(t *testing.T) {
+	t.Parallel()
 	root := repoRoot(t)
 	pkgs, files := readTreePackages(t, root)
 
@@ -288,6 +290,7 @@ func TestNoModuleEdgeRunsAgainstTheTargetLayout(t *testing.T) {
 // Генераторы `gateway/cmd/protoc-gen-*` исключены намеренно: они сами оснастка
 // сборки, и включив их, мы получили бы замыкание, доказывающее свою же посылку.
 func TestShippedBinariesDoNotExecuteBuildToolchain(t *testing.T) {
+	t.Parallel()
 	root := repoRoot(t)
 	pkgs, _ := readTreePackages(t, root)
 
@@ -369,6 +372,7 @@ func isShippedBinaryDir(dir string) bool {
 // разрешать, — находка. Неверный класс ловят оси 1–3; мёртвое ИМЯ не ловил
 // никто.
 func TestEveryDeclaredPathPrefixHasASubjectInTheTree(t *testing.T) {
+	t.Parallel()
 	root := repoRoot(t)
 
 	tracked, err := treecorpus.Under(root)
@@ -411,6 +415,7 @@ func TestEveryDeclaredPathPrefixHasASubjectInTheTree(t *testing.T) {
 // все четыре. Перепись печатает оба числа, чтобы исключение было видно, а не
 // подразумевалось.
 func TestEveryTreeRootDeclaresItsClass(t *testing.T) {
+	t.Parallel()
 	root := repoRoot(t)
 
 	tracked, err := treecorpus.UnderWithSuffix(root, ".go")

@@ -47,6 +47,7 @@ const identityWireCensusFloor = 1000
 
 // TestIdentityWireNamespaceIsDeclaredOnce — сам гейт.
 func TestIdentityWireNamespaceIsDeclaredOnce(t *testing.T) {
+	t.Parallel()
 	root := repoRoot(t)
 	tt := newTrackedTree(t, root)
 

@@ -78,6 +78,7 @@ type ReadinessChecker struct {
 // Контроль: всё цело — молчат ОБЕ оси. Без него красное соседней пробы
 // неотличимо от красного гейта, а зелёное — от гейта, не способного упасть.
 func TestReadinessCarrierGateSilentOnAConformingTree(t *testing.T) {
+	t.Parallel()
 	root := synthCarrierTree(t, map[string]string{
 		"services/x/cmd/x/observability.go": carrierMountSrc,
 	})
@@ -103,6 +104,7 @@ func TestReadinessCarrierGateSilentOnAConformingTree(t *testing.T) {
 
 // Инъекция ОСИ 1: снято построение носителем — краснеет ось 1, ось 2 молчит.
 func TestReadinessCarrierGateRedWhenTheMountIsNotBuiltByTheCarrier(t *testing.T) {
+	t.Parallel()
 	root := synthCarrierTree(t, map[string]string{
 		"services/x/cmd/x/observability.go": ownMountSrc,
 	})
@@ -131,6 +133,7 @@ func TestReadinessCarrierGateRedWhenTheMountIsNotBuiltByTheCarrier(t *testing.T)
 // Инъекция ОСИ 2: монтирование законное, но рядом заведён свой тип именованной
 // проверки — краснеет ось 2, ось 1 молчит.
 func TestReadinessCarrierGateRedOnALocalCheckerTypeBesideALegitimateMount(t *testing.T) {
+	t.Parallel()
 	root := synthCarrierTree(t, map[string]string{
 		"services/x/cmd/x/observability.go": carrierMountSrc,
 		"services/x/cmd/x/checker.go":       ownCheckerTypeSrc,
@@ -155,6 +158,7 @@ func TestReadinessCarrierGateRedOnALocalCheckerTypeBesideALegitimateMount(t *tes
 // импорта носителя носителем не делает — иначе одноимённый метод чужого типа
 // прошёл бы за общий носитель.
 func TestReadinessCarrierGateIgnoresAReadyHandlerCallWithoutTheImport(t *testing.T) {
+	t.Parallel()
 	root := synthCarrierTree(t, map[string]string{
 		"services/x/cmd/x/observability.go": `package main
 
@@ -186,6 +190,7 @@ func diagnosticMux(a own) *http.ServeMux {
 // Отрицательный контроль РАСПОЗНАВАНИЯ, часть 2: импорт носителя без вызова
 // носителем не делает — иначе импорт ради константы зеленил бы гейт.
 func TestReadinessCarrierGateIgnoresTheImportWithoutTheCall(t *testing.T) {
+	t.Parallel()
 	root := synthCarrierTree(t, map[string]string{
 		"services/x/cmd/x/observability.go": `package main
 
@@ -220,6 +225,7 @@ func diagnosticMux() *http.ServeMux {
 // публичных путей края. Текстовый поиск принял бы объяснение за исполнение —
 // тот самый класс, ради которого гейт разбирает синтаксическое дерево.
 func TestReadinessCarrierGateIgnoresThePathInAComment(t *testing.T) {
+	t.Parallel()
 	root := synthCarrierTree(t, map[string]string{
 		"services/x/cmd/x/doc.go": `package main
 
@@ -247,6 +253,7 @@ const why = "/readyz"
 // (`testing.md` §«Гейт на класс», п.7). В этом дереве обе формы законны и обе
 // встречаются.
 func TestReadinessCarrierGateKnowsBothPatternForms(t *testing.T) {
+	t.Parallel()
 	for name, pattern := range map[string]string{"голый путь": "/readyz", "путь с методом": "GET /readyz"} {
 		t.Run(name, func(t *testing.T) {
 			root := synthCarrierTree(t, map[string]string{
@@ -281,6 +288,7 @@ func diagnosticMux(agg *health.Aggregator) *http.ServeMux {
 // Гейт на таком обходе обязан отказать (`filesRead == 0` — его собственный
 // `Fatalf`), а не объявить дерево чистым.
 func TestReadinessCarrierScanReportsAnEmptyWalk(t *testing.T) {
+	t.Parallel()
 	root := synthCarrierTree(t, map[string]string{"services/README.md": "нет ни одного файла Go\n"})
 	reach, err := scanReadinessCarriers(root)
 	if err != nil {
@@ -295,6 +303,7 @@ func TestReadinessCarrierScanReportsAnEmptyWalk(t *testing.T) {
 // Предпосылка, часть 2: каталога сервисов НЕТ — это ОТКАЗ обхода, а не пустой
 // результат. Иначе переезд каталога читался бы как «нарушений не найдено».
 func TestReadinessCarrierScanRefusesWhenTheServicesDirIsGone(t *testing.T) {
+	t.Parallel()
 	root := synthCarrierTree(t, map[string]string{"README.md": "каталога services/ нет вовсе\n"})
 	if _, err := scanReadinessCarriers(root); err == nil {
 		t.Fatal("каталога сервисов нет, а обход вернул успех — переезд каталога читался бы " +

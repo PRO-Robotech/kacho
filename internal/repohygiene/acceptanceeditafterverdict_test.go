@@ -34,6 +34,7 @@ const acceptanceHomeDir = "services/iam/docs/engineering/acceptance"
 
 // TestAcceptanceEditedAfterItsVerdictSaysSo — несущее утверждение.
 func TestAcceptanceEditedAfterItsVerdictSaysSo(t *testing.T) {
+	t.Parallel()
 	root := repoRoot(t)
 	findings, census, err := AuditAcceptanceEditsAfterVerdict(root, acceptanceHomeDir)
 	if err != nil {

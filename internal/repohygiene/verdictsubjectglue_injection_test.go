@@ -54,6 +54,7 @@ func auditInjected(t *testing.T, name, lit string) ([]glueFinding, glueCensus) {
 // TestG3RedOnTheGlueThatWasThere — инъекция настоящим входом: гейт краснеет и
 // НАЗЫВАЕТ КООРДИНАТУ.
 func TestG3RedOnTheGlueThatWasThere(t *testing.T) {
+	t.Parallel()
 	found, c := auditInjected(t, "injected.go", injectedGlueSQL)
 	if len(found) != 1 {
 		t.Fatalf("на форме, стоявшей в дереве до починки, находок %d, ожидалась одна "+
@@ -75,6 +76,7 @@ func TestG3RedOnTheGlueThatWasThere(t *testing.T) {
 // Без неё гейт ловил бы ФОРМУ, а не существо, и первый же ложный срабат его
 // отключил бы.
 func TestG3SilentOnItsThreeLegalTwins(t *testing.T) {
+	t.Parallel()
 	for _, tw := range []struct{ name, sql, why string }{
 		{"проекция субъекта", twinProjectionSQL,
 			"склейка в списке выборки называет ответ, а не отбирает строки"},

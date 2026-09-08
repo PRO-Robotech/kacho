@@ -40,6 +40,7 @@ func moduleCacheDir(t *testing.T) string {
 }
 
 func TestEveryPinnedModuleCarriesALicense(t *testing.T) {
+	t.Parallel()
 	root := repoRoot(t)
 	body, err := os.ReadFile(filepath.Join(root, "go.mod"))
 	if err != nil {

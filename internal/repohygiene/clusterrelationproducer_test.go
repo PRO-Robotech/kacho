@@ -149,6 +149,7 @@ func relationsProducedOnCluster(files []string) (map[string]int, int, error) {
 }
 
 func TestClusterScopedCatalogEntryNamesARelationSomeoneProduces(t *testing.T) {
+	t.Parallel()
 	catalogPath := filepath.Join("..", "..",
 		"services", "iam", "internal", "apps", "kaname", "seed", "embedded", "permission_catalog.json")
 	raw, err := os.ReadFile(catalogPath)

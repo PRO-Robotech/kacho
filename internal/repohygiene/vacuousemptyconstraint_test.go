@@ -102,6 +102,7 @@ type emptyConstraintScan struct {
 // TestCheckNeverAcceptsBecauseItsConstraintIsEmpty — ни одна отвергающая проверка
 // не принимает вход только потому, что пуст её источник ограничения.
 func TestCheckNeverAcceptsBecauseItsConstraintIsEmpty(t *testing.T) {
+	t.Parallel()
 	root := repoRoot(t)
 
 	var hits []string
@@ -592,6 +593,7 @@ func forEachProductionGoFileForEmptyConstraint(t *testing.T, root string, fn fun
 // здесь). Форма записи у них та же, что у законной охраны ниже; различает их
 // только роль.
 func TestEmptyConstraintGateRedOnInjectedDefect(t *testing.T) {
+	t.Parallel()
 	const src = `package x
 
 func eachWithinSupernet(supernet, blocks []string, family, field string) error {
@@ -665,6 +667,7 @@ func eachWithinSupernet(supernet, blocks []string, family, field string) error {
 // Без этой стороны гейт запрещал бы ранний выход как таковой — и был бы снят
 // первым же ложным срабатыванием.
 func TestEmptyConstraintGateSilentOnLawfulSameShape(t *testing.T) {
+	t.Parallel()
 	const src = `package x
 
 func guardOnSubjectItself(supernet, blocks []string) error {
@@ -748,6 +751,7 @@ func guardOnWhatIsBuiltFromTheSubject(rules []ruleT, owner string) error {
 // расширил триггер до неё: пустой список заданий законно означает «делать нечего»,
 // и требовать от него отказа было бы запретом про то, чего не спрашивали.
 func TestEmptyConstraintGateIgnoresUnrelatedGuard(t *testing.T) {
+	t.Parallel()
 	const src = `package x
 
 func applyAll(updates []updateT, targets []targetT) error {

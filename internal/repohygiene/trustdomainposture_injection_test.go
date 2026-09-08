@@ -75,6 +75,7 @@ func postureKnobTokens() []string {
 // TestTrustDomainPostureScannerAcceptsOneDeclaration — прогон-контроль: на
 // верной записи находок нет, а перепись НЕ ноль.
 func TestTrustDomainPostureScannerAcceptsOneDeclaration(t *testing.T) {
+	t.Parallel()
 	decls, uses, census := ScanTrustDomainPosture(
 		"deploy/helm/umbrella/charts/kaname/templates/certificate.yaml", "kaname",
 		[]byte(postureChartWellFormed), postureKnobTokens())
@@ -108,6 +109,7 @@ func TestTrustDomainPostureScannerAcceptsOneDeclaration(t *testing.T) {
 // TestTrustDomainPostureScannerFindsASecondAddress — сторона (а): второй адрес
 // домена становится находкой, и находка несёт координату.
 func TestTrustDomainPostureScannerFindsASecondAddress(t *testing.T) {
+	t.Parallel()
 	decls, uses, _ := ScanTrustDomainPosture(
 		"deploy/helm/umbrella/charts/kaname/templates/certificate.yaml", "kaname",
 		[]byte(postureChartSecondAddress), postureKnobTokens())
@@ -138,6 +140,7 @@ func TestTrustDomainPostureScannerFindsASecondAddress(t *testing.T) {
 // TestTrustDomainPostureScannerNamesBothSidesOfADisagreement — расхождение
 // умолчаний называет ОБЕ стороны и обе величины.
 func TestTrustDomainPostureScannerNamesBothSidesOfADisagreement(t *testing.T) {
+	t.Parallel()
 	a, _, _ := ScanTrustDomainPosture("deploy/helm/umbrella/charts/kaname/templates/_helpers.tpl",
 		"kaname", []byte(postureHelperDeclaration), nil)
 	b, _, _ := ScanTrustDomainPosture("deploy/helm/umbrella/charts/kacho-geo/templates/_helpers.tpl",
@@ -170,6 +173,7 @@ func TestTrustDomainPostureScannerNamesBothSidesOfADisagreement(t *testing.T) {
 // TestTrustDomainPostureScannerIsSilentOnProse — сторона (б): проза, называющая
 // и ручку, и домен, молчание не теряет.
 func TestTrustDomainPostureScannerIsSilentOnProse(t *testing.T) {
+	t.Parallel()
 	decls, uses, census := ScanTrustDomainPosture(
 		"deploy/helm/umbrella/values.prod.yaml", "umbrella",
 		[]byte(postureProseNamesTheKnob), postureKnobTokens())
@@ -190,6 +194,7 @@ func TestTrustDomainPostureScannerIsSilentOnProse(t *testing.T) {
 // написанном ОПЕРАТОРУ, и форм у него две. Распознаватель, знающий одну, к
 // службе со второй формой слеп — и слеп молча.
 func TestTrustDomainKnobTokensKnowsBothFormsOfTheName(t *testing.T) {
+	t.Parallel()
 	got := TrustDomainKnobTokens("authn.trust-domain (env KANAME_AUTHN__TRUST_DOMAIN)")
 	want := map[string]bool{"authn.trust-domain": false, "KANAME_AUTHN__TRUST_DOMAIN": false}
 	for _, g := range got {

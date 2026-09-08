@@ -371,6 +371,7 @@ func sortedTagSet(m map[string]struct{}) []string {
 // проходит, называя перепись. Красным он становится там, где такой признак есть
 // и ломает сборку пакета.
 func TestExcludingBuildTagLeavesThePackageBuildable(t *testing.T) {
+	t.Parallel()
 	root := repoRoot(t)
 
 	findings, census, err := auditExcludingBuildTags(root)

@@ -99,6 +99,7 @@ message CreateNetworkLoadBalancerRequest {
 }
 
 func TestNlbNameScopeGateInjection(t *testing.T) {
+	t.Parallel()
 	t.Run("КОНТРОЛЬ: согласованное дерево — гейт молчит", func(t *testing.T) {
 		root := writeNlbScopeTree(t, nlbScopeFixture{
 			listenerScopeInProto: "parent load balancer",

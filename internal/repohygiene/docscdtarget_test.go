@@ -226,6 +226,7 @@ func docCdResolvesUnderAnyBase(target string, bases []string, dirs map[string]bo
 // ── гейт на дереве ───────────────────────────────────────────────────────────
 
 func TestDocsDoNotChangeIntoADirectoryTheTreeDoesNotHave(t *testing.T) {
+	t.Parallel()
 	root := repoRoot(t)
 	docs, dirs := trackedDocsAndDirs(t, root)
 
@@ -338,6 +339,7 @@ title: deploy
 `
 
 func TestDocsCdGate_ProvenByInjection(t *testing.T) {
+	t.Parallel()
 	// Дерево-близнец боевого: страница сайта документации сервиса, каталог стенда
 	// deploy лежит в корне репозитория, соседнего репозитория стенда нет.
 	tree := func(command string) map[string]string {
@@ -411,6 +413,7 @@ func TestDocsCdGate_ProvenByInjection(t *testing.T) {
 // читатель объявил ноль там, где было шесть. Проба держит каждую отдельно:
 // сломается любая — покраснеет именно она, а не «где-то ноль».
 func TestDocsCdGate_ReadsTheRegionsItClaims(t *testing.T) {
+	t.Parallel()
 	t.Run("MDX-регион читается, а огороженным блоком не является", func(t *testing.T) {
 		chunks := executableChunks(fmt.Sprintf(mdxStandPage, "cd deploy"), true)
 		var seen []string

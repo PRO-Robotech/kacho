@@ -155,6 +155,7 @@ func findKeyPaths(node *yaml.Node, name string, trail []string) []string {
 // Проваливается на: ключе прежнего написания в любом файле значений и на пустом
 // обходе (гейт, не прочитавший ни одного объявления, не утверждает ничего).
 func TestDatabaseTLSKeyHasOneSpelling(t *testing.T) {
+	t.Parallel()
 	root := repoRoot(t)
 	files := valuesFiles(t, root)
 

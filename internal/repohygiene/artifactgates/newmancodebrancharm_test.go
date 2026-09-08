@@ -310,6 +310,7 @@ func rcbAuditStep(rel, title string, it nmItem, cen *rcbCensus) []rcbFinding {
 }
 
 func TestNewmanCodeBranchLivesInsideItsStepAdmission(t *testing.T) {
+	t.Parallel()
 	root := repoRoot(t)
 	tt := newTrackedTree(t, root)
 

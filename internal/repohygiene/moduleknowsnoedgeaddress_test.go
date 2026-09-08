@@ -25,6 +25,7 @@ import (
 // Порог нижний, а не точный: число законных упоминаний края растёт и падает с
 // каждой правкой прозы, и точное число здесь запретило бы её править.
 func TestEdgeAddressLaneActuallyInspectsTheRealTree(t *testing.T) {
+	t.Parallel()
 	var log strings.Builder
 	_, census, err := AuditModuleKnowsNoEdge(moduleKnowsNoEdgeOptions(t), &log)
 	if err != nil {

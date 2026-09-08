@@ -94,6 +94,7 @@ func bothWiredTree() judgeWiringTree {
 // TestModelCanonCheckWiringGate_Injection — обе способности по каждой оси, и
 // три прогона на разделимость предметов.
 func TestModelCanonCheckWiringGate_Injection(t *testing.T) {
+	t.Parallel()
 	// ── ПРОГОН 1, КОНТРОЛЬ: провязаны обе цели — молчат ОБА гейта ──────────
 	//
 	// Стоит первым и не является формальностью: без него всякая находка ниже

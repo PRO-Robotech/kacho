@@ -268,6 +268,7 @@ func buildTagPkgSet(m map[string]map[string]bool) map[string]bool {
 // другое — «ноль прочитанных файлов»: тогда молчание означает, что судья не
 // работал, а вовсе не что дерево чисто.
 func TestBuildTaggedTestPackagesCompileUnderTheirOwnTag(t *testing.T) {
+	t.Parallel()
 	root := repoRoot(t)
 
 	findings, census, err := auditBuildTaggedTestPackages(root)

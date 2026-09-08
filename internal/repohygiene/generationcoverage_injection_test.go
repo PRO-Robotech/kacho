@@ -49,6 +49,7 @@ func generationDeclWith(paths string) string {
 }
 
 func TestGenerationCoverageDetectorSeesBothSides(t *testing.T) {
+	t.Parallel()
 	cases := []struct {
 		name    string
 		yaml    string
@@ -167,6 +168,7 @@ func TestGenerationCoverageDetectorSeesBothSides(t *testing.T) {
 // TestGenerationCoverageRefusesAnEmptyCorpus — пустой обход ОТКАЗ, а не чистое
 // дерево.
 func TestGenerationCoverageRefusesAnEmptyCorpus(t *testing.T) {
+	t.Parallel()
 	findings, census := checkGenerationCoverage("синтетика/buf.gen.yaml",
 		generationDeclWith("    paths:\n      - kacho\n"), nil)
 	if len(findings) == 0 {
@@ -181,6 +183,7 @@ func TestGenerationCoverageRefusesAnEmptyCorpus(t *testing.T) {
 // TestGenerationCoverageRefusesAnUnparsedDeclaration — неразобранное объявление
 // не выдаётся за проверенное.
 func TestGenerationCoverageRefusesAnUnparsedDeclaration(t *testing.T) {
+	t.Parallel()
 	findings, _ := checkGenerationCoverage("синтетика/buf.gen.yaml",
 		"inputs: [ это не YAML\n", generationCorpus())
 	if len(findings) == 0 {
@@ -192,6 +195,7 @@ func TestGenerationCoverageRefusesAnUnparsedDeclaration(t *testing.T) {
 // константа: проверка, печатающая одно и то же число при любом входе, о объёме
 // осмотренного не утверждает ничего.
 func TestGenerationCoverageCensusGrowsWithTheCorpus(t *testing.T) {
+	t.Parallel()
 	decl := generationDeclWith("    paths:\n      - kacho\n      - kaname\n")
 
 	small := generationCorpus()

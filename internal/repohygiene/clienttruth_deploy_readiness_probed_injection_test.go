@@ -33,6 +33,7 @@ func writeTemplate(t *testing.T, body string) string {
 }
 
 func TestReadinessBlockReaderJudgesTheProbeNotTheProseAroundIt(t *testing.T) {
+	t.Parallel()
 	cases := []struct {
 		name string
 		body string
@@ -146,6 +147,7 @@ func TestReadinessBlockReaderJudgesTheProbeNotTheProseAroundIt(t *testing.T) {
 // Первая редакция гейта знала одну и не видела iam вовсе — сервис, строящий
 // готовность и не пробируемый по ней, оказывался не нарушителем, а невидимкой.
 func TestReadinessDetectorSeesTheRouteWhereverItIsRegistered(t *testing.T) {
+	t.Parallel()
 	root := t.TempDir()
 	deep := filepath.Join(root, "internal", "handler", "hooks")
 	if err := os.MkdirAll(deep, 0o750); err != nil {

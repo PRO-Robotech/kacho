@@ -52,6 +52,7 @@ func nameFormSynthTree(t *testing.T, extra map[string]string) string {
 // TestInjection_FormCopyIsFound — подложенная КОПИЯ формы находится и называется
 // координатой; законный близнец рядом молчит.
 func TestInjection_FormCopyIsFound(t *testing.T) {
+	t.Parallel()
 	// Сторона «должен упасть»: сервис завёл свою копию канона.
 	root := nameFormSynthTree(t, map[string]string{
 		"services/vpc/internal/domain/types.go": "package domain\n\n" +
@@ -86,6 +87,7 @@ func TestInjection_FormCopyIsFound(t *testing.T) {
 // TestInjection_SecondDerivationIsFound — второе производство умолчания
 // находится; одно объявление молчит.
 func TestInjection_SecondDerivationIsFound(t *testing.T) {
+	t.Parallel()
 	root := nameFormSynthTree(t, map[string]string{
 		"services/compute/internal/apps/naming.go": "package apps\n\n" +
 			"func defaultNameForID(id string) string { return \"vm-\" + id }\n",
@@ -111,6 +113,7 @@ func TestInjection_SecondDerivationIsFound(t *testing.T) {
 // им самим: без канона он судить не берётся и говорит об этом, а не молчит.
 // «Ноль находок» обязано быть отличимо от «ноль прочитанного».
 func TestInjection_MissingCanonIsRefusalNotSilence(t *testing.T) {
+	t.Parallel()
 	root := t.TempDir()
 	abs := filepath.Join(root, "pkg", "validate", "validate.go")
 	if err := os.MkdirAll(filepath.Dir(abs), 0o755); err != nil {

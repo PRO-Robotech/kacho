@@ -118,6 +118,7 @@ func dockerIgnoreExcludes(pats []string, rel string) bool {
 }
 
 func TestBuildContextCarriesNothingOurPipelinesWrite(t *testing.T) {
+	t.Parallel()
 	root := repoRoot(t)
 
 	raw, err := os.ReadFile(filepath.Join(root, ".dockerignore"))
@@ -178,6 +179,7 @@ func TestBuildContextCarriesNothingOurPipelinesWrite(t *testing.T) {
 // произведённом пути и молчать на исключённом. Входы взяты из дерева, а не
 // придуманы: это те самые пути, которые сегодня писали конвейеры.
 func TestBuildContextPredicateCutsBothWays(t *testing.T) {
+	t.Parallel()
 	pats := dockerIgnorePatterns(`.git
 **/tests/newman/collections
 deploy/helm/umbrella/values.image-ids.yaml

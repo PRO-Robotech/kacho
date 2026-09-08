@@ -158,6 +158,7 @@ const modelOwnerRubiconCount = 6
 //   - ноль прочитанных файлов → падение с этим текстом, а не «рубежей не
 //     найдено».
 func TestModelOwnerStillCarriesTheRubiconsTheDecisionRestsOn(t *testing.T) {
+	t.Parallel()
 	ex, declared := hostAdoptionExceptions["iam"]
 	if !declared || ex.kind != adoptionDecided {
 		t.Skip("iam больше не объявлен решением владельца — основание держать не за что; " +

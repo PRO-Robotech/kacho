@@ -39,6 +39,7 @@ func readmeTrackedSet(paths ...string) func(string) bool {
 }
 
 func TestReadmeModuleCountGateCanFailAndCanStaySilent(t *testing.T) {
+	t.Parallel()
 	// Законный близнец: перечень назван командой, следствия адресованы документу
 	// дерева. Гейт обязан МОЛЧАТЬ.
 	const sound = "# Kacho\n\n" +

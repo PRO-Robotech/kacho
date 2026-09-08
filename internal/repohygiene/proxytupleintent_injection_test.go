@@ -31,6 +31,7 @@ import (
 // TestProxyIdentityCarriersRedsOnAWriterWithoutAnIdentity — ось 1: службы нет в
 // словаре написаний вовсе.
 func TestProxyIdentityCarriersRedsOnAWriterWithoutAnIdentity(t *testing.T) {
+	t.Parallel()
 	// КОНТРОЛЬ: те же писатели без инъекции — слепых ноль.
 	base := []string{"compute", "nlb", "registry", "storage", "vpc"}
 	carriers, blind := proxyIdentityCarriers(base)
@@ -64,6 +65,7 @@ func TestProxyIdentityCarriersRedsOnAWriterWithoutAnIdentity(t *testing.T) {
 // пустом домене отвечает «не знаю», а словарная судит лишь типы, известные
 // закрытой таблице.
 func TestProxyIdentityCarriersRedsOnAWriterWithoutAnObjectDomain(t *testing.T) {
+	t.Parallel()
 	carriers, blind := proxyIdentityCarriers([]string{"vpc", "geo"})
 	if len(blind) != 1 || blind[0] != "geo" {
 		t.Fatalf("объявленная служба БЕЗ домена типов объекта не стала находкой: слепых %v\n"+
@@ -80,6 +82,7 @@ func TestProxyIdentityCarriersRedsOnAWriterWithoutAnObjectDomain(t *testing.T) {
 // У балансировщика различны два написания из трёх. Гейт, судящий совпадение
 // короткого имени с модулем каталога, отверг бы его — и отверг бы законное.
 func TestProxyIdentityCarriersStaysSilentOnDivergentSpellings(t *testing.T) {
+	t.Parallel()
 	carriers, blind := proxyIdentityCarriers([]string{"nlb"})
 	if len(blind) != 0 {
 		t.Fatalf("служба с РАЗЛИЧНЫМИ написаниями объявлена слепой: %v\n"+
@@ -97,6 +100,7 @@ func TestProxyIdentityCarriersStaysSilentOnDivergentSpellings(t *testing.T) {
 // Находка, называющая симптом вместо предмета, посылает читателя искать не там;
 // на неё тратят прогон, а потом снимают гейт как непонятный.
 func TestProxyIntentCensusFindingNamesTheBlindWriter(t *testing.T) {
+	t.Parallel()
 	_, blind := proxyIdentityCarriers([]string{"vpc", "madeup", "geo"})
 	joined := strings.Join(blind, ",")
 	for _, want := range []string{"geo", "madeup"} {

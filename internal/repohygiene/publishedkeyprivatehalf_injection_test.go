@@ -86,6 +86,7 @@ type PublishedKey struct {
 
 // TestKeyProjectionScannerFailsOnTheDefect — сторона (а).
 func TestKeyProjectionScannerFailsOnTheDefect(t *testing.T) {
+	t.Parallel()
 	found, census, err := ScanKeyProjections("synthetic/signing_key.go", []byte(keyInjectedDefect))
 	if err != nil {
 		t.Fatalf("разбор синтетики: %v", err)
@@ -118,6 +119,7 @@ func TestKeyProjectionScannerFailsOnTheDefect(t *testing.T) {
 // Пара обязана быть НАЙДЕНА и при этом не дать ни одной находки. Проверяются оба
 // утверждения: гейт, потерявший пару, зеленеет на любом дереве.
 func TestKeyProjectionScannerIsSilentOnTheLegitimateTwin(t *testing.T) {
+	t.Parallel()
 	found, _, err := ScanKeyProjections("synthetic/signing_key.go", []byte(keyInjectedLegitimate))
 	if err != nil {
 		t.Fatalf("разбор синтетики: %v", err)
@@ -151,6 +153,7 @@ func TestKeyProjectionScannerIsSilentOnTheLegitimateTwin(t *testing.T) {
 // Без этой стороны разбор проверял бы имена, а не предмет: достаточно было бы
 // назвать поле Handle, и приватный ключ уехал бы в ответ под законным именем.
 func TestKeyProjectionScannerCatchesPrivateHiddenBehindANeutralName(t *testing.T) {
+	t.Parallel()
 	const src = `package domain
 
 import "crypto/ed25519"
@@ -186,6 +189,7 @@ type PublishedKey struct {
 // F1-05 требует ОТДЕЛЬНОГО типа, а не только отсутствия поля: проекция в самоё
 // себя обходит требование, ничего формально не нарушая.
 func TestKeyProjectionScannerCatchesTheUnseparatedForm(t *testing.T) {
+	t.Parallel()
 	const src = `package domain
 
 type SigningKeyRecord struct {
@@ -216,6 +220,7 @@ func (r SigningKeyRecord) Published() SigningKeyRecord { return r }
 // Проба держит то утверждение честным: вырастет радиус — здесь станет видно, что
 // заголовок пора править.
 func TestKeyProjectionScannerNamesItsBlindSpot(t *testing.T) {
+	t.Parallel()
 	const src = `package domain
 
 type SigningKeyRecord struct {
@@ -250,6 +255,7 @@ type PublishedKey struct {
 // Без этого условия под гейт попало бы всякое приведение в дереве, и первый же
 // ложный срабат его отключил бы.
 func TestKeyProjectionScannerIgnoresAKeylessProjection(t *testing.T) {
+	t.Parallel()
 	const src = `package api
 
 type Row struct {

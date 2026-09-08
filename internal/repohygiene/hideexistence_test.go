@@ -69,6 +69,7 @@ var composedNotFoundFormats = map[string]string{
 // «Оставить как есть» исходом не является: мёртвая строка утверждает, что
 // платформа отвечает текстом владельца, которого больше нет.
 func TestHideExistenceTablesCarryNoUnreachableType(t *testing.T) {
+	t.Parallel()
 	root := repoRoot(t)
 	reachable := catalogScopeObjectTypes(t, root)
 
@@ -99,6 +100,7 @@ func TestHideExistenceTablesCarryNoUnreachableType(t *testing.T) {
 // таблицей: комментарий пережил удаление файлов, на которые ссылался, и ничего об
 // этом не сказало.
 func TestHideExistenceFormatsMatchTheOwningServiceSource(t *testing.T) {
+	t.Parallel()
 	root := repoRoot(t)
 	sources := serviceSourceCorpus(t, root)
 	if len(sources) == 0 {

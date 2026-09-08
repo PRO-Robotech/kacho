@@ -91,6 +91,7 @@ func readBudgetOptions(t *testing.T) ReadBudgetOptions {
 
 // TestNoMutationBuysTheReadBudget — ядро гейта, на НАСТОЯЩЕМ дереве.
 func TestNoMutationBuysTheReadBudget(t *testing.T) {
+	t.Parallel()
 	findings, census, err := AuditReadBudgetClassification(readBudgetOptions(t), os.Stdout)
 	require.NoError(t, err)
 	require.Empty(t, findings,
@@ -114,6 +115,7 @@ func TestNoMutationBuysTheReadBudget(t *testing.T) {
 // назван по-читательски», а его молчание выше есть следствие ЗАПИСАННОГО решения,
 // а не слепоты. Обратная сторона — сам гейт выше: с исключением он молчит.
 func TestReadBudgetGate_SeesTheRealTreeFormWhenNotExempt(t *testing.T) {
+	t.Parallel()
 	opts := readBudgetOptions(t)
 	opts.Exempt = nil
 

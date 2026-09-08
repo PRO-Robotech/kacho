@@ -40,6 +40,7 @@ const (
 // послаблением, которое переживёт свой предмет. Сосед добавляется вместе со своей
 // сверкой, а не строкой в перечне.
 func TestRegistryPublicRPCIsNamedOnAClientPage(t *testing.T) {
+	t.Parallel()
 	root := repoRoot(t)
 
 	protoBytes, err := os.ReadFile(filepath.Join(root, registryServiceProto))

@@ -54,6 +54,7 @@ func nmJumpTo(name, target string) nmItem {
 // Дефект в его натуральном виде: шаг-цель переименован проходом обёртки окна
 // видимости (`setup-lb` → `setup-lb-rya3`), ссылка на него осталась прежней.
 func TestJumpTargetGateRedWhenTargetWasRenamed(t *testing.T) {
+	t.Parallel()
 	findings, cen := nmJumpAudit(t, nmFolder("LST-CR-CRUD-OK — создание слушателя",
 		nmStep("setup-lb-rya3", "POST", "{{baseUrl}}/nlb/v1/networkLoadBalancers",
 			"pm.test('status 200', () => pm.expect(pm.response.code).to.eql(200));"),
@@ -83,6 +84,7 @@ func TestJumpTargetGateRedWhenTargetWasRenamed(t *testing.T) {
 // Второй вид того же дефекта: цель нашлась, но не одна. Newman уйдёт в первый
 // одноимённый шаг — то есть переход исполнится и уведёт не туда.
 func TestJumpTargetGateRedOnAmbiguousTarget(t *testing.T) {
+	t.Parallel()
 	findings, cen := nmJumpAudit(t, nmFolder("TG-DEL-NEG-INUSE",
 		nmStep("create", "POST", "{{baseUrl}}/nlb/v1/targetGroups"),
 		nmStep("create", "POST", "{{baseUrl}}/nlb/v1/targetGroups"),
@@ -104,6 +106,7 @@ func TestJumpTargetGateRedOnAmbiguousTarget(t *testing.T) {
 // Близнец 1: буквальный переход, который РАЗРЕШАЕТСЯ. Ровно та же конструкция,
 // что и в находке выше, — отличается только тем, ради чего гейт заведён.
 func TestJumpTargetGateSilentWhenTargetResolves(t *testing.T) {
+	t.Parallel()
 	findings, cen := nmJumpAudit(t, nmFolder("LST-CR-CRUD-OK — создание слушателя",
 		nmStep("setup-lb", "POST", "{{baseUrl}}/nlb/v1/networkLoadBalancers"),
 		nmJumpTo("poll-op-1", "setup-lb"),
@@ -120,6 +123,7 @@ func TestJumpTargetGateSilentWhenTargetResolves(t *testing.T) {
 // Близнец 2: самоповтор. Целью он резолвит СЕБЯ всегда и буквальным переходом не
 // является — иначе гейт краснел бы на каждом поллере операции в дереве.
 func TestJumpTargetGateSilentOnSelfLoop(t *testing.T) {
+	t.Parallel()
 	self := nmStep("poll-op-1", "GET", "{{baseUrl}}/operations/{{opId}}",
 		"const j = pm.response.json();",
 		"if (!j.done) {",
@@ -145,6 +149,7 @@ func TestJumpTargetGateSilentOnSelfLoop(t *testing.T) {
 // то есть ровно тот исход, ради которого гейт заведён. Он обязан молчать, иначе
 // правило нельзя было бы исполнить.
 func TestJumpTargetGateSilentWhenReferenceFollowsTheRename(t *testing.T) {
+	t.Parallel()
 	findings, cen := nmJumpAudit(t, nmFolder("LST-CR-CRUD-OK — создание слушателя",
 		nmStep("setup-lb-rya3", "POST", "{{baseUrl}}/nlb/v1/networkLoadBalancers"),
 		nmJumpTo("poll-op-1", "setup-lb-rya3"),
@@ -160,6 +165,7 @@ func TestJumpTargetGateSilentWhenReferenceFollowsTheRename(t *testing.T) {
 // Близнец 4: переход в шаг ДРУГОЙ папки той же коллекции. Newman резолвит цель по
 // имени в пределах прогона, а не папки, — гейт обязан считать так же.
 func TestJumpTargetGateSilentAcrossFolders(t *testing.T) {
+	t.Parallel()
 	findings, cen := nmJumpAudit(t,
 		nmFolder("ACB-PRECLEAN", nmStep("grant-view", "POST", "{{baseUrl}}/iam/v1/accessBindings")),
 		nmFolder("ACB-RD-AUTHZ-OK", nmJumpTo("await-del", "grant-view")),
@@ -178,6 +184,7 @@ func TestJumpTargetGateSilentAcrossFolders(t *testing.T) {
 // доказывала бы свойство своих же строк: сменится форма перехода в генераторах —
 // гейт по дереву станет вечнозелёным, а эти пробы этого не заметят.
 func TestJumpTargetAuditReadsRealCollections(t *testing.T) {
+	t.Parallel()
 	root := repoRoot(t)
 	tt := newTrackedTree(t, root)
 	var cols []string

@@ -56,6 +56,7 @@ exit 1
 // Исход 3 сам по себе — улика: блок не выходит этим кодом НИ В ОДНОЙ своей ветке
 // (только 0 и 1), значит `case` не был достигнут.
 func TestLegacyInlineLoopExhibitsTheDefect(t *testing.T) {
+	t.Parallel()
 	s := newVerdictStubs(t, wholePayload, 3, 3, 0) // на третьем заходе было бы зелено
 
 	legacy := filepath.Join(s.dir, "legacy-inline.sh")
@@ -78,6 +79,7 @@ func TestLegacyInlineLoopExhibitsTheDefect(t *testing.T) {
 // TestCurrentScriptSurvivesWhereTheLegacyFormDied — законный близнец на том же
 // харнессе и том же входе: отличается только форма, и она решает исход.
 func TestCurrentScriptSurvivesWhereTheLegacyFormDied(t *testing.T) {
+	t.Parallel()
 	s := newVerdictStubs(t, wholePayload, 3, 3, 0)
 
 	script := filepath.Join(repoRoot(t), ".github", "scripts", "pr-verdict-wait.sh")
@@ -97,6 +99,7 @@ func TestCurrentScriptSurvivesWhereTheLegacyFormDied(t *testing.T) {
 // Если бы прежнюю форму запускали без `-e`, а нынешнюю с ним, сравнение измеряло
 // бы способ запуска, а не форму записи.
 func TestBothFormsWereRunTheSameWay(t *testing.T) {
+	t.Parallel()
 	if !strings.Contains(providerShellFlags, "-e") {
 		t.Fatalf("харнесс запускает не так, как провайдер (%q): предпосылка инъекции "+
 			"ложна, и её вердикт ничего не значит", providerShellFlags)

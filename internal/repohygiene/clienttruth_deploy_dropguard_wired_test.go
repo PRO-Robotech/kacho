@@ -118,6 +118,7 @@ func callsDropguardGate(t *testing.T, dir string) (found bool, filesRead int) {
 // сверяется с живой базой) и на пустом обходе (гейт, не прочитавший ни одного
 // сервиса, не утверждает ничего).
 func TestEveryServiceThatDropsRowsCountsThemBeforeMigrating(t *testing.T) {
+	t.Parallel()
 	root := repoRoot(t)
 	dirs := migrationDirs(t, root)
 

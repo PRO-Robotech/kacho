@@ -97,6 +97,7 @@ func (s *bodyStand) run(t *testing.T) ([]ClientTruthRequestBodyFinding, ClientTr
 // TestBodyGate_SilentOnALegalPage — контроль. Без него любое «краснеет» ниже
 // доказывало бы лишь то, что гейт краснеет всегда.
 func TestBodyGate_SilentOnALegalPage(t *testing.T) {
+	t.Parallel()
 	s := newBodyStand(t)
 	findings, census := s.run(t)
 	if len(findings) != 0 {
@@ -118,6 +119,7 @@ func TestBodyGate_SilentOnALegalPage(t *testing.T) {
 // TestBodyGate_RedOnKeyAbsentFromTheMessage — ПЕРВЫЙ предикат: ключа нет в
 // сообщении вовсе (форма дефекта #1615 — снятое тумбстоуном поле).
 func TestBodyGate_RedOnKeyAbsentFromTheMessage(t *testing.T) {
+	t.Parallel()
 	s := newBodyStand(t)
 	s.write(t, "docs/ok.mdx", curlDoc(`{ "name": "acme", "scopeRef": { "tier": "PROJECT" } }`))
 	findings, _ := s.run(t)
@@ -139,6 +141,7 @@ func TestBodyGate_RedOnKeyAbsentFromTheMessage(t *testing.T) {
 // но код отвергает его присутствие (форма дефекта #1603). Первый предикат этот
 // случай НЕ ловит — ради него второй и заведён.
 func TestBodyGate_RedOnKeyTheCodeRejects(t *testing.T) {
+	t.Parallel()
 	s := newBodyStand(t)
 	s.write(t, "docs/ok.mdx", curlDoc(`{ "name": "acme", "description": "ACME" }`))
 	findings, _ := s.run(t)
@@ -160,6 +163,7 @@ func TestBodyGate_RedOnKeyTheCodeRejects(t *testing.T) {
 // предиката: тот же вызов отказа, но по обычному поводу. Поле обязано остаться
 // разрешённым, иначе гейт запрещает присылать всё, что вообще проверяется.
 func TestBodyGate_SilentWhenTheRejectLosesItsMarker(t *testing.T) {
+	t.Parallel()
 	s := newBodyStand(t)
 	s.write(t, "usecase/account/create.go", `package account
 
@@ -181,6 +185,7 @@ func run() error {
 // TestBodyGate_RedOnNestedKey — рекурсия: неизвестный ключ ВНУТРИ объекта.
 // Без неё самое неугадываемое место (ветвь oneof) осталось бы вне наблюдения.
 func TestBodyGate_RedOnNestedKey(t *testing.T) {
+	t.Parallel()
 	s := newBodyStand(t)
 	s.write(t, "docs/ok.mdx",
 		"<CodeBlock language=\"bash\">\n  {dedent`\n"+
@@ -199,6 +204,7 @@ func TestBodyGate_RedOnNestedKey(t *testing.T) {
 // произвольны by construction, и углубляться в неё значило бы краснеть на
 // законном.
 func TestBodyGate_SilentOnMapKeys(t *testing.T) {
+	t.Parallel()
 	s := newBodyStand(t)
 	s.write(t, "docs/ok.mdx", curlDoc(`{ "name": "acme", "labels": { "env": "prod", "любой": "ключ" } }`))
 	findings, _ := s.run(t)
@@ -215,6 +221,7 @@ func TestBodyGate_SilentOnMapKeys(t *testing.T) {
 // пропускал чужое сознательно, он его не видел. Пример на странице iam, зовущий
 // vpc, — такая же инструкция клиенту, и ошибка в ней стоит того же.
 func TestBodyGate_ForeignDomainPathIsJudgedByItsOwner(t *testing.T) {
+	t.Parallel()
 	s := newBodyStand(t)
 	// Отдельным файлом: законная страница стенда остаётся положительным
 	// контролем, иначе «находка одна» было бы неотличимо от «краснеет всегда».
@@ -251,6 +258,7 @@ func TestBodyGate_ForeignDomainPathIsJudgedByItsOwner(t *testing.T) {
 // неверный путь даёт `404` без тела — отказ, который не называет верного
 // написания и не восстанавливает следующий шаг.
 func TestBodyGate_RedOnPathThatResolvesNowhere(t *testing.T) {
+	t.Parallel()
 	s := newBodyStand(t)
 	// Отдельным файлом: законная страница стенда остаётся положительным
 	// контролем — без неё «ключей рассужено ноль» означало бы и находку, и
@@ -295,6 +303,7 @@ func TestBodyGate_RedOnPathThatResolvesNowhere(t *testing.T) {
 // гейт обязан судить. Взята команда, где пути нет и вправду: он целиком в
 // переменной.
 func TestBodyGate_SilentWhenTheAddressIsNotInTheCommand(t *testing.T) {
+	t.Parallel()
 	s := newBodyStand(t)
 	s.write(t, "docs/var.mdx",
 		"```bash\ncurl -X POST \"$KACHO_ACCOUNTS_URL\" \\\\\n"+
@@ -315,6 +324,7 @@ func TestBodyGate_SilentWhenTheAddressIsNotInTheCommand(t *testing.T) {
 // TestBodyGate_ResponseBlockIsNotJudged — блок JSON, показывающий ОТВЕТ,
 // инструкцией не является: в ответе законны выходные поля, которых на входе нет.
 func TestBodyGate_ResponseBlockIsNotJudged(t *testing.T) {
+	t.Parallel()
 	s := newBodyStand(t)
 	s.write(t, "docs/resp.mdx",
 		"<CodeBlock language=\"json\">\n  {dedent`\n"+
@@ -331,6 +341,7 @@ func TestBodyGate_ResponseBlockIsNotJudged(t *testing.T) {
 // TestBodyGate_FailsWhenPackageYieldsNoMethods — «ноль находок» обязано быть
 // отличимо от «прочитано ноль»: пакета с таким именем нет.
 func TestBodyGate_FailsWhenPackageYieldsNoMethods(t *testing.T) {
+	t.Parallel()
 	s := newBodyStand(t)
 	var log strings.Builder
 	opts := bodyStandOptions(t, s.root)
@@ -347,6 +358,7 @@ func TestBodyGate_FailsWhenPackageYieldsNoMethods(t *testing.T) {
 // TestBodyGate_FailsWhenNoDomainIsNamed — вырожденный вход: доменов ноль.
 // «Находок ноль» на нём было бы получено даром.
 func TestBodyGate_FailsWhenNoDomainIsNamed(t *testing.T) {
+	t.Parallel()
 	s := newBodyStand(t)
 	var log strings.Builder
 	opts := bodyStandOptions(t, s.root)
@@ -361,6 +373,7 @@ func TestBodyGate_FailsWhenNoDomainIsNamed(t *testing.T) {
 // настоящие дефекты — включая тело метода `Internal*`, у которого HTTP-привязки
 // нет by construction и которого первый распознаватель не увидел бы никогда.
 func TestBodyGate_RedOnGrpcurlBody(t *testing.T) {
+	t.Parallel()
 	s := newBodyStand(t)
 	s.write(t, "docs/grpc.mdx",
 		"```bash\ngrpcurl -plaintext -d '{\"subject_id\":\"user:u\",\"чегоНет\":1}' \\\\\n"+
@@ -384,6 +397,7 @@ func TestBodyGate_RedOnGrpcurlBody(t *testing.T) {
 // TestBodyGate_GrpcurlUnknownServiceIsNotAFinding — законный близнец: служба вне
 // регистра (соседний домен) находкой не является и уходит в перепись.
 func TestBodyGate_GrpcurlUnknownServiceIsNotAFinding(t *testing.T) {
+	t.Parallel()
 	s := newBodyStand(t)
 	s.write(t, "docs/grpc.mdx",
 		"```bash\ngrpcurl -plaintext -d '{\"чужое\":1}' \\\\\n"+
@@ -407,6 +421,7 @@ func TestBodyGate_GrpcurlUnknownServiceIsNotAFinding(t *testing.T) {
 // вместе с положительным контролем («посчитано»): без второго оно зеленело бы на
 // нераспознанной строке.
 func TestBodyGate_CountsDiagramBodiesWithoutJudgingThem(t *testing.T) {
+	t.Parallel()
 	s := newBodyStand(t)
 	s.write(t, "docs/diagram.mdx",
 		"```mermaid\nsequenceDiagram\n"+
@@ -437,6 +452,7 @@ func TestBodyGate_CountsDiagramBodiesWithoutJudgingThem(t *testing.T) {
 // сопоставление требовало равенства длин, два верных примера реестра (имя
 // репозитория содержит слэш) объявлялись документирующими несуществующий путь.
 func TestBodyGate_MultiSegmentRouteIsRecognised(t *testing.T) {
+	t.Parallel()
 	s := newBodyStand(t)
 	// Страница пишется ДО построения входа: состав синтетического дерева
 	// снимается один раз, и файл, появившийся после, в обход не попадёт.
@@ -476,6 +492,7 @@ func TestBodyGate_MultiSegmentRouteIsRecognised(t *testing.T) {
 // читалось бы как «тел столько и было», и сужение распознавателя прошло бы
 // незамеченным. Замер на день заведения — 10 таких тел в дереве.
 func TestBodyGate_CountsBodiesThatAreNotJSON(t *testing.T) {
+	t.Parallel()
 	s := newBodyStand(t)
 	s.write(t, "docs/placeholder.mdx",
 		"<CodeBlock language=\"bash\">\n  {dedent`\n"+
@@ -520,6 +537,7 @@ func TestBodyGate_CountsBodiesThatAreNotJSON(t *testing.T) {
 // раскрытия оболочкой становится валидным. Девять живых тел дерева написаны так, и
 // до этой правки ни одно не судилось.
 func TestBodyGate_ShellInterpolatedBodyIsJudged(t *testing.T) {
+	t.Parallel()
 	s := newBodyStand(t)
 	s.write(t, "docs/shell.mdx", curlDoc(`{ "name": "'"$NAME"'", "нетакогополя": "'"${X}"'" }`))
 	findings, census := s.run(t)
@@ -540,6 +558,7 @@ func TestBodyGate_ShellInterpolatedBodyIsJudged(t *testing.T) {
 // (1-контроль) ЗАКОННЫЙ БЛИЗНЕЦ — то же тело, но все ключи настоящие. Без него
 // «краснеет на подстановке» было бы неотличимо от «краснеет на подстановке всегда».
 func TestBodyGate_ShellInterpolatedLawfulBodyIsSilent(t *testing.T) {
+	t.Parallel()
 	s := newBodyStand(t)
 	s.write(t, "docs/shell-ok.mdx", curlDoc(`{ "name": "'"$NAME"'" }`))
 	findings, census := s.run(t)
@@ -556,6 +575,7 @@ func TestBodyGate_ShellInterpolatedLawfulBodyIsSilent(t *testing.T) {
 // с шаблоном; схема живёт в переменной. Одиннадцать живых тел дерева написаны так, и
 // до этой правки все уходили в «адреса в команде нет».
 func TestBodyGate_PathWithoutASchemeIsRouted(t *testing.T) {
+	t.Parallel()
 	s := newBodyStand(t)
 	s.write(t, "docs/nohost.mdx",
 		"```bash\ncurl -X POST $BASE/iam/v1/accounts \\\\\n"+
@@ -575,6 +595,7 @@ func TestBodyGate_PathWithoutASchemeIsRouted(t *testing.T) {
 // (2-контроль) Путь ищется ВНЕ ТЕЛА. Иначе строка-значение, похожая на путь, стала бы
 // адресом запроса — и пример судился бы против чужого сообщения молча.
 func TestBodyGate_PathInsideTheBodyIsNotTakenForTheAddress(t *testing.T) {
+	t.Parallel()
 	s := newBodyStand(t)
 	s.write(t, "docs/pathinbody.mdx",
 		"```bash\ncurl -X POST \"$KACHO_ACCOUNTS_URL\" \\\\\n"+
@@ -592,6 +613,7 @@ func TestBodyGate_PathInsideTheBodyIsNotTakenForTheAddress(t *testing.T) {
 // дереве живая (одно тело), и до этой правки она молча получала умолчание GET, то
 // есть не сопоставлялась ни с одним маршрутом мутации.
 func TestBodyGate_VerbWrittenWithoutASpaceIsRead(t *testing.T) {
+	t.Parallel()
 	s := newBodyStand(t)
 	s.write(t, "docs/tight.mdx",
 		"```bash\ncurl -XPOST 'http://localhost:18080/iam/v1/accounts' \\\\\n"+

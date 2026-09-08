@@ -127,6 +127,7 @@ func cleanTwoModuleTree() map[string]string {
 // молчат и новая полоса (vpc), и прежняя (iam). Без этого прогона молчание
 // существующего контроля было бы неотличимо от молчания мёртвого.
 func TestModuleKnowsNoEdgeControlBothLanesSilent(t *testing.T) {
+	t.Parallel()
 	findings := auditModuleTree(t, moduleKnowsNoEdgeTree(t, cleanTwoModuleTree()))
 	if len(findings) != 0 {
 		t.Fatalf("законные близнецы объявлены находками: %v", findings)
@@ -138,6 +139,7 @@ func TestModuleKnowsNoEdgeControlBothLanesSilent(t *testing.T) {
 // TestModuleKnowsNoEdgeInjectionOutsideIamRedsOnlyThatModule — дефект в vpc
 // находится (прежний анализатор был к нему слеп), а полоса iam при этом молчит.
 func TestModuleKnowsNoEdgeInjectionOutsideIamRedsOnlyThatModule(t *testing.T) {
+	t.Parallel()
 	files := cleanTwoModuleTree()
 	files["services/vpc/wiring.go"] = "package svc\n\nconst envEdge = \"KACHO_VPC_GATEWAY_INTERNAL_ADDR\"\n"
 	findings := auditModuleTree(t, moduleKnowsNoEdgeTree(t, files))
@@ -161,6 +163,7 @@ func TestModuleKnowsNoEdgeInjectionOutsideIamRedsOnlyThatModule(t *testing.T) {
 // прежней, о сохранности способности падать не говорит ничего — говорит этот
 // прогон.
 func TestModuleKnowsNoEdgeInjectionInsideIamRedsOnlyThatModule(t *testing.T) {
+	t.Parallel()
 	files := cleanTwoModuleTree()
 	files["services/iam/wiring.go"] = "package svc\n\nconst envEdge = \"KANAME_GATEWAY_INTERNAL_ADDR\"\n"
 	findings := auditModuleTree(t, moduleKnowsNoEdgeTree(t, files))
@@ -181,6 +184,7 @@ func TestModuleKnowsNoEdgeInjectionInsideIamRedsOnlyThatModule(t *testing.T) {
 
 // TestModuleKnowsNoEdgeFallsOnTheContractImport — форма 1: тип края в импорте.
 func TestModuleKnowsNoEdgeFallsOnTheContractImport(t *testing.T) {
+	t.Parallel()
 	files := cleanTwoModuleTree()
 	files["services/nlb/push.go"] = `package svc
 
@@ -203,6 +207,7 @@ var _ = edge.NewInternalAuthzCacheServiceClient
 // Судится отдельно от контракта: модуль, собранный вместе с краем, не поднимется
 // там, где края нет, даже не назвав ни одной ручки.
 func TestModuleKnowsNoEdgeFallsOnTheEdgeCodeImport(t *testing.T) {
+	t.Parallel()
 	files := cleanTwoModuleTree()
 	files["services/storage/reach.go"] = `package svc
 
@@ -220,6 +225,7 @@ var _ = mux.New
 // TestModuleKnowsNoEdgeFallsOnTheChartKnob — форма 3: ручка в чарте. Снятый код
 // при живой посадке оставляет отказ старта.
 func TestModuleKnowsNoEdgeFallsOnTheChartKnob(t *testing.T) {
+	t.Parallel()
 	files := cleanTwoModuleTree()
 	files["services/compute/deploy/deployment.yaml"] = "env:\n" +
 		"  # исторически здесь стояла KACHO_COMPUTE_GATEWAY_INTERNAL_ADDR\n" +
@@ -240,6 +246,7 @@ func TestModuleKnowsNoEdgeFallsOnTheChartKnob(t *testing.T) {
 // возможных дома чарта, и второй (зонтичный) обязан судиться так же. Иначе
 // расширение перечня шаблонов было бы холостым.
 func TestModuleKnowsNoEdgeJudgesTheSecondChartHome(t *testing.T) {
+	t.Parallel()
 	files := cleanTwoModuleTree()
 	files["deploy/helm/umbrella/charts/kacho-geo/values.yaml"] =
 		"gatewayInternalAddr: KACHO_GEO_GATEWAY_INTERNAL_ADDR\n"
@@ -254,6 +261,7 @@ func TestModuleKnowsNoEdgeJudgesTheSecondChartHome(t *testing.T) {
 // TestModuleKnowsNoEdgeStaysSilentOnTestFiles — проба, импортирующая контракт
 // края, находкой не является: судится ПРОД-код.
 func TestModuleKnowsNoEdgeStaysSilentOnTestFiles(t *testing.T) {
+	t.Parallel()
 	files := cleanTwoModuleTree()
 	files["services/vpc/probe_test.go"] = `package svc
 
@@ -270,6 +278,7 @@ import _ "github.com/PRO-Robotech/kacho/pkg/api/kacho/cloud/apigateway/v1"
 // ключи самого края, делает анализатор ложным: край держит адреса модулей
 // законно, и каждая проза о нём стала бы находкой. Отказ громче молчания.
 func TestModuleKnowsNoEdgeRefusesWhenItsPremiseBreaks(t *testing.T) {
+	t.Parallel()
 	opts := moduleKnowsNoEdgeTree(t, map[string]string{
 		"services/api/legal.go": "package svc\n",
 	})
@@ -285,6 +294,7 @@ func TestModuleKnowsNoEdgeRefusesWhenItsPremiseBreaks(t *testing.T) {
 // TestModuleKnowsNoEdgeRefusesOnAnEmptyWalk — ноль модулей это «ноль
 // прочитанного», а не «ноль находок».
 func TestModuleKnowsNoEdgeRefusesOnAnEmptyWalk(t *testing.T) {
+	t.Parallel()
 	root := t.TempDir()
 	if err := os.MkdirAll(filepath.Join(root, "services"), 0o750); err != nil {
 		t.Fatal(err)
@@ -300,6 +310,7 @@ func TestModuleKnowsNoEdgeRefusesOnAnEmptyWalk(t *testing.T) {
 // TestModuleKnowsNoEdgeDerivesTheModuleListFromTheTree — перечень выводится, а не
 // выписан: модуль, заведённый в дереве, попадает в перепись сам.
 func TestModuleKnowsNoEdgeDerivesTheModuleListFromTheTree(t *testing.T) {
+	t.Parallel()
 	files := cleanTwoModuleTree()
 	files["services/brandnew/legal.go"] = "package svc\n"
 	_, census, err := AuditModuleKnowsNoEdge(moduleKnowsNoEdgeTree(t, files), nil)
@@ -315,6 +326,7 @@ func TestModuleKnowsNoEdgeDerivesTheModuleListFromTheTree(t *testing.T) {
 // модуля. Проба зовёт ТУ ЖЕ функцию, что анализатор: вторая копия предиката
 // разошлась бы с первой молча.
 func TestModuleKnowsNoEdgeKnobPrefixIsDerived(t *testing.T) {
+	t.Parallel()
 	for module, want := range map[string]string{
 		"iam": "KANAME_GATEWAY",
 		"vpc": "KACHO_VPC_GATEWAY",

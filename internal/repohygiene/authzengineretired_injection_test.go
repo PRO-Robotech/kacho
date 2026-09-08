@@ -15,6 +15,7 @@ import "testing"
 // TestR7_3_26_InjectionRedOnAReturnedEngineCall — вернули обращение к снятому
 // хранилищу → гейт КРАСНЕЕТ и НАЗЫВАЕТ КООРДИНАТУ.
 func TestR7_3_26_InjectionRedOnAReturnedEngineCall(t *testing.T) {
+	t.Parallel()
 	sources := map[string]string{
 		"services/iam/internal/apps/kaname/api/thing/decide.go": `package thing
 
@@ -58,6 +59,7 @@ func decide(ctx context.Context, s store, subject, relation, object string) (boo
 // Отдельно от предыдущей: возвращение ТИПА и возвращение ВЫЗОВА — разные исходы,
 // и находка обязана называть, что именно она видит.
 func TestR7_3_26_InjectionRedOnAReturnedEngineType(t *testing.T) {
+	t.Parallel()
 	sources := map[string]string{
 		"services/iam/internal/clients/back.go": `package clients
 
@@ -85,6 +87,7 @@ type OpenFGAHTTPClient struct{ Endpoint string }
 // лежит в `fga_model.fga` и стала источником истины формы, учётка посредника
 // зовётся `iam_fgaproxy`. Гейт, краснеющий на них, краснеет на исправном дереве.
 func TestR7_3_26_InjectionSilentOnTheLegitimateTwin(t *testing.T) {
+	t.Parallel()
 	sources := map[string]string{
 		"services/iam/internal/repo/kaname/pg/journal.go": `package pg
 
@@ -125,6 +128,7 @@ func journalName(ctx context.Context) string {
 // `Check` и `CheckWithContext` в словарь намеренно не входят — их отвечает форма,
 // и запрет на них означал бы запрет на решение о доступе вообще.
 func TestR7_3_26_InjectionSilentOnANeighbouringPortWithTheSameVerb(t *testing.T) {
+	t.Parallel()
 	sources := map[string]string{
 		"services/iam/internal/authzcascade/door.go": `package authzcascade
 
@@ -157,6 +161,7 @@ func (c *Client) CheckWithContext(ctx context.Context, subject, relation, object
 
 // TestR7_3_26_ScopeIsAsserted — «ноль находок» отличимо от «ноль прочитанного».
 func TestR7_3_26_ScopeIsAsserted(t *testing.T) {
+	t.Parallel()
 	findings, census, err := FindRetiredEngineSurface(map[string]string{}, nil)
 	if err != nil {
 		t.Fatalf("разбор: %v", err)

@@ -47,6 +47,7 @@ $$;
 `
 
 func TestQuotaAbsentAuthorityGate_FailsOnEachRemovedGuardAndIsSilentOnItsLegalTwin(t *testing.T) {
+	t.Parallel()
 	cases := []struct {
 		name string
 		body string
@@ -120,6 +121,7 @@ func TestQuotaAbsentAuthorityGate_FailsOnEachRemovedGuardAndIsSilentOnItsLegalTw
 // по сырому тексту нашёл бы её в собственном объяснении, оставшись зелёным на
 // снятой защите (`testing.md` §«Гейт на класс», п. 4).
 func TestQuotaAbsentAuthorityGate_CommentIsNotTheExecutablePart(t *testing.T) {
+	t.Parallel()
 	stripped := strings.Replace(goodBody,
 		"    IF COALESCE(v_absent, false) THEN\n        RETURN NULL;\n    END IF;\n",
 		"    -- Здесь стояла охрана IF COALESCE(v_absent, false) THEN RETURN NULL; END IF;\n"+
@@ -138,6 +140,7 @@ func TestQuotaAbsentAuthorityGate_CommentIsNotTheExecutablePart(t *testing.T) {
 // В нём стоит ПРЕЖНЕЕ тело, не знающее объявления, и это его смысл. Судя откат,
 // гейт краснел бы на КАЖДОЙ верной миграции этого предмета.
 func TestQuotaAbsentAuthorityGate_DownBlockIsNotJudged(t *testing.T) {
+	t.Parallel()
 	legacy := strings.Replace(goodBody,
 		"       AND (COALESCE(v_absent, false) OR used < limit_value);",
 		"       AND used < limit_value;", 1)
@@ -153,6 +156,7 @@ func TestQuotaAbsentAuthorityGate_DownBlockIsNotJudged(t *testing.T) {
 // Запись без причины следующий читатель снимет как непонятную либо унаследует не
 // разобравшись; самоистечение освобождения проверяет сам гейт на живом дереве.
 func TestQuotaAbsentAuthorityGate_ExemptionListIsNotEmptyAndSaysWhy(t *testing.T) {
+	t.Parallel()
 	if len(quotaAuthorityAwareExempt) == 0 {
 		t.Fatal("перечень освобождённых пуст: у гейта нет ни одного объявленного различия, " +
 			"хотя владелец величин отличается от потребителя by construction")

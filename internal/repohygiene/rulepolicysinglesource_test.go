@@ -20,6 +20,7 @@ import (
 const rulePolicyCensusFloor = 5
 
 func TestRulePolicyIsDerivedInOnePlace(t *testing.T) {
+	t.Parallel()
 	root := repoRoot(t)
 
 	sites, census, err := ScanRulePolicySites(root)

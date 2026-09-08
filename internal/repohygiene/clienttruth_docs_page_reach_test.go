@@ -18,6 +18,7 @@ import (
 // clienttruth_docs_page_reach.go. Способность падать и молчать доказана
 // инъекцией: clienttruth_docs_page_reach_injection_test.go.
 func TestDocsPagesAreReachableFromTheMenu(t *testing.T) {
+	t.Parallel()
 	root := repoRoot(t)
 
 	// Состав дерева — ИНДЕКС git: под docs/ на машине, где собирали сайт, лежит

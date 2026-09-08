@@ -149,6 +149,7 @@ func classRuleDeclarationsIn(fset *token.FileSet, file *ast.File, rel string) []
 // Ноль объявлений — тоже находка, и она о распознавателе: «объявлений ноль»
 // означало бы, что гейт ослеп, а не что правило исчезло.
 func TestVerbClassRuleIsDeclaredOnce(t *testing.T) {
+	t.Parallel()
 	root := repoRoot(t)
 	tt := newTrackedTree(t, root)
 
@@ -207,6 +208,7 @@ const manifestLoaderDir = "services/iam/internal/manifest"
 // закрытой таблицы из 27, и автор всё равно обязан знать, попал ли его ресурс в
 // исключение.
 func TestObjectTypeIsNeverDerivedFromTheResourceName(t *testing.T) {
+	t.Parallel()
 	root := repoRoot(t)
 	tt := newTrackedTree(t, root)
 

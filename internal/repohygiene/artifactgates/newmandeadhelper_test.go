@@ -115,6 +115,7 @@ func auditDeadInjectedHelpers(reports map[string]deadHelperReport) ([]string, de
 // второй. И он не судит помощники, которые не впрыскиваются: те потребляются
 // самим генератором и видны его собственному разбору.
 func TestNewmanInjectedHelperHasACallerInItsSuite(t *testing.T) {
+	t.Parallel()
 	root := repoRoot(t)
 	tt := newTrackedTree(t, root)
 

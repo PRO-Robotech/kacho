@@ -39,6 +39,7 @@ const (
 // МНОЖЕСТВА, а не мощности: совпадение счёта при разошедшемся составе — тот же
 // класс, что он ловит.
 func TestVpcSchemaPageAgreesWithTheTree(t *testing.T) {
+	t.Parallel()
 	root := repoRoot(t)
 
 	live := vpcSchemaLiveTables(readVpcMigrations(t, root))

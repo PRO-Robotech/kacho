@@ -43,6 +43,7 @@ import (
 // объявлен и потому сверяем. Четвёртая реализация, написанная завтра, без
 // объявления не пройдёт.
 func TestEveryTokenVerifierTakesItsCompositionFromThePolicy(t *testing.T) {
+	t.Parallel()
 	roots := []string{"../../gateway", "../../services", "../../pkg"}
 
 	// Пакеты, где объявлен состав: путь каталога → true.

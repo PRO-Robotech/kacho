@@ -184,6 +184,7 @@ func closedVocabularyNames(body *ast.BlockStmt, consts map[string]bool) map[stri
 // TestDiagnosticCollectorLabelsAreAClosedVocabulary — значения меток берутся из
 // закрытого словаря, а не из данных.
 func TestDiagnosticCollectorLabelsAreAClosedVocabulary(t *testing.T) {
+	t.Parallel()
 	methods, scanned := collectDiagnosticCollectors(t)
 	t.Logf("осмотрено не-тестовых файлов Go: %d; коллекторов диагностической поверхности: %d",
 		scanned, len(methods))
@@ -272,6 +273,7 @@ func closedLabelArg(arg ast.Expr, consts, closed map[string]bool) bool {
 // TestDiagnosticCollectorsDoNotDialOut — в момент сбора коллектор не зовёт
 // ничего, кроме сборки метрик.
 func TestDiagnosticCollectorsDoNotDialOut(t *testing.T) {
+	t.Parallel()
 	// Пакеты, которые коллектору законно звать в момент сбора. Список УЗКИЙ
 	// намеренно: всё, что не собирает метрику из уже прочитанной величины, —
 	// повод объясниться, а не расширить перечень.

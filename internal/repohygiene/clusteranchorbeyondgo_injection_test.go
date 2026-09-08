@@ -139,6 +139,7 @@ func beyondGoRun(
 //
 // Молчание на пустом обходе не отличалось бы от молчания мёртвой проверки.
 func TestBeyondGoInjection_ControlIsSilent(t *testing.T) {
+	t.Parallel()
 	findings, ledgerFindings, census := beyondGoRun(t, beyondGoWorld(), nil)
 
 	if len(findings) != 0 {
@@ -172,6 +173,7 @@ func TestBeyondGoInjection_ControlIsSilent(t *testing.T) {
 // Прогонов столько, сколько видов: распознаватель, ослепший на одном виде, дал
 // бы по нему молчание, неотличимое от отсутствия предмета.
 func TestBeyondGoInjection_StaleSpellingRedsPerKind(t *testing.T) {
+	t.Parallel()
 	kinds := beyondGoKinds(t)
 	if len(kinds) < 12 {
 		t.Fatalf("видов в синтетическом мире %d — меньше, чем в дереве (12); "+
@@ -218,6 +220,7 @@ func TestBeyondGoInjection_StaleSpellingRedsPerKind(t *testing.T) {
 // Без второй половины близнец, которого гейт не читает вовсе, молчал бы по той
 // же причине, что мёртвая проверка.
 func TestBeyondGoInjection_RenamedTwinIsSilentAndCensusGrows(t *testing.T) {
+	t.Parallel()
 	base := beyondGoWorld()
 	_, _, baseCensus := beyondGoRun(t, base, nil)
 
@@ -252,6 +255,7 @@ func TestBeyondGoInjection_RenamedTwinIsSilentAndCensusGrows(t *testing.T) {
 // Поиск по одной недобирает МОЛЧА: недостача приходится ровно на прозу, где
 // предмет объясняли словами, а не координатой.
 func TestBeyondGoInjection_DiacriticFormIsSeen(t *testing.T) {
+	t.Parallel()
 	world := beyondGoWorld()
 	world["services/iam/docs/content/api/role.mdx"] = []byte(
 		"Роли привязаны к кластеру (`cluster_kachō_root`).\n")
@@ -271,6 +275,7 @@ func TestBeyondGoInjection_DiacriticFormIsSeen(t *testing.T) {
 // TestBeyondGoInjection_LedgerForgivesExactlyItsSubject — ведомость прощает
 // названное вхождение и НЕ прощает соседнее.
 func TestBeyondGoInjection_LedgerForgivesExactlyItsSubject(t *testing.T) {
+	t.Parallel()
 	world := beyondGoWorld()
 	world["services/iam/MODEL-MANIFEST.md"] = []byte("    tierId: " + beyondGoStale + "\n")
 	world["services/iam/manifest.yaml"] = []byte("seedGrants:\n  - tierId: " + beyondGoStale + "\n")
@@ -297,6 +302,7 @@ func TestBeyondGoInjection_LedgerForgivesExactlyItsSubject(t *testing.T) {
 // Без этого ведомость не истекала бы: запись пережила бы свой предмет и
 // продолжила прощать вперёд ту находку, ради которой гейт заведён.
 func TestBeyondGoInjection_LedgerWithNothingToForgiveIsAFinding(t *testing.T) {
+	t.Parallel()
 	cases := map[string]ClusterAnchorBeyondGoException{
 		"файла нет в обходе": {
 			Path:  "services/iam/docs/engineering/acceptance/never-existed.md",
@@ -335,6 +341,7 @@ func TestBeyondGoInjection_LedgerWithNothingToForgiveIsAFinding(t *testing.T) {
 // Потолок не краснеет никогда, поэтому не истекает и прощает вперёд ту находку,
 // ради которой гейт заведён.
 func TestBeyondGoInjection_LedgerCeilingIsAFinding(t *testing.T) {
+	t.Parallel()
 	world := beyondGoWorld()
 	world["services/iam/MODEL-MANIFEST.md"] = []byte(
 		"    tierId: " + beyondGoStale + "\n    scopeId: " + beyondGoStale + "\n")
@@ -369,6 +376,7 @@ func TestBeyondGoInjection_LedgerCeilingIsAFinding(t *testing.T) {
 // Молчание здесь было бы худшим исходом: «расхождений ноль» тривиально верно на
 // дереве, которого не читали, и на образце, который предмета не узнаёт.
 func TestBeyondGoInjection_PremiseFailuresAreRefusals(t *testing.T) {
+	t.Parallel()
 	t.Run("написание не объявлено", func(t *testing.T) {
 		_, _, _, err := FindClusterAnchorBeyondGo(beyondGoWorld(), "", nil)
 		if err == nil {

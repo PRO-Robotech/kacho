@@ -103,6 +103,7 @@ func leaseRelTo(t *testing.T, path string) string {
 }
 
 func TestReleaseLaneNeverReadsARefusalAsProofOfRelease(t *testing.T) {
+	t.Parallel()
 	root := repoRoot(t)
 
 	// --- предпосылка: предмет запрета существует ------------------------------

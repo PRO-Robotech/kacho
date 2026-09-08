@@ -60,6 +60,7 @@ func symlink(t *testing.T, target, link string) {
 // анализатор на том же дереве отрабатывает и находит подложенное имя. Без него
 // отрицание зеленело бы на анализаторе, который не работает вовсе.
 func TestRetiredRPCSurface_DoesNotReadThroughASymlinkOutOfTheProtoRoot(t *testing.T) {
+	t.Parallel()
 	const ghost = "kacho.cloud.demo.v1.AlphaService/Vanish"
 	dead := RetiredRPC{FQN: ghost, Reason: "снято в тесте"}
 
@@ -125,6 +126,7 @@ service AlphaService {
 // которого в дереве нет, и гейт паритета сообщает о нём как о неподнятом — то
 // есть требует «починить» то, чего в репозитории не существует.
 func TestGRPCMountParity_DoesNotReadThroughASymlinkOutOfTheAPIRoot(t *testing.T) {
+	t.Parallel()
 	// ── положительный контроль: на дереве без симлинка гейт молчит ───────────
 	if f, c, err := AuditGRPCMountParity(tinyOptions(tinyTree(t, true, "")), nil); err != nil || len(f) != 0 {
 		t.Fatalf("положительный контроль: ожидались ноль находок и отсутствие ошибки, "+

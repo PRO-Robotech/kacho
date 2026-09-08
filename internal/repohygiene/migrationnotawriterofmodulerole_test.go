@@ -151,6 +151,7 @@ func migrationRoleFindings(sites []MigrationRoleSite, bearing map[string]string)
 
 // TestMODRD23MigrationDoesNotWriteARoleOfAManifestBearingModule — сам гейт.
 func TestMODRD23MigrationDoesNotWriteARoleOfAManifestBearingModule(t *testing.T) {
+	t.Parallel()
 	root := repoRoot(t)
 	tt := newTrackedTree(t, root)
 

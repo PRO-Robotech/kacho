@@ -311,6 +311,7 @@ func territoryName(root string) string {
 func oneLine(s string) string { return strings.Join(strings.Fields(s), " ") }
 
 func TestNoLicenseClaimsTerritoryGovernedByAnother(t *testing.T) {
+	t.Parallel()
 	root := repoRoot(t)
 
 	var paths []string

@@ -164,6 +164,7 @@ func checkReadmeModuleCount(readmePresent bool, readme string, modules []string,
 
 // TestReadmeDerivesTheModuleListInsteadOfWritingIt — гейт на дереве.
 func TestReadmeDerivesTheModuleListInsteadOfWritingIt(t *testing.T) {
+	t.Parallel()
 	root := repoRoot(t)
 	tree := newTrackedTree(t, root)
 

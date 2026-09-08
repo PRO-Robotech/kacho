@@ -130,6 +130,7 @@ jobs:
 `
 
 func TestWorkflowJobIdentifierDetectorSeesBothForms(t *testing.T) {
+	t.Parallel()
 	cases := []struct {
 		name     string
 		body     string
@@ -216,6 +217,7 @@ func TestWorkflowJobIdentifierDetectorSeesBothForms(t *testing.T) {
 // TestWorkflowJobIdentifierGateNamesTheLine — координата указывает на ту строку,
 // где стоит виновный ключ, а не на начало файла: правка идёт по адресу.
 func TestWorkflowJobIdentifierGateNamesTheLine(t *testing.T) {
+	t.Parallel()
 	findings, _ := auditWorkflowIdentifiers("w.yml", synthWorkflowCyrillicJobKey)
 	if len(findings) != 1 {
 		t.Fatalf("находок %d, ожидалась одна: %v", len(findings), findings)

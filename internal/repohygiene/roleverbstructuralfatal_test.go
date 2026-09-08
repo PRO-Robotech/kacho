@@ -261,6 +261,7 @@ func inspectStructuralFatal(filename, src string) (structuralFatalReport, error)
 // TestIAMRV108_BootAbortsOnTheStructuralBand — структурная полоса пересчёта
 // проекции роли роняет старт, а не сообщается и забывается.
 func TestIAMRV108_BootAbortsOnTheStructuralBand(t *testing.T) {
+	t.Parallel()
 	root := repoRoot(t)
 	path := root + "/" + bootCompositionRoot
 	b, err := os.ReadFile(path) // #nosec G304 -- путь из этого же дерева

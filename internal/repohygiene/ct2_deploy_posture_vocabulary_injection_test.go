@@ -23,6 +23,7 @@ import (
 // выполняется, и красное приходило бы от неё, а не от проверяемой оси
 // (`testing.md` §«Гейт на класс», п.2в).
 func TestPostureVocabularySingleSourceInjectionCutsBothWays(t *testing.T) {
+	t.Parallel()
 	const home = `package servicecontract
 
 var modeVocabulary = []struct {

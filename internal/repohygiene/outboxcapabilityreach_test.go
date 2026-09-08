@@ -414,6 +414,7 @@ func ocrScan(c ocrCorpus) (ocrResult, error) {
 // Способность гейта краснеть и молчать доказана инъекцией в обе стороны —
 // outboxcapabilityreach_injection_test.go.
 func TestOutboxCapabilityHasADriver(t *testing.T) {
+	t.Parallel()
 	root := repoRoot(t)
 	// Состав — у индекса git, а не у диска: иначе вердикт стал бы свойством
 	// рабочего каталога (игнорируемые копии, распаковки, отчёты), а не коммита.

@@ -208,6 +208,7 @@ func scanNewmanVars(t *testing.T, root string) newmanScan {
 
 // TestNewmanVariablesAreDefined — ни одна используемая {{var}} не остаётся без источника.
 func TestNewmanVariablesAreDefined(t *testing.T) {
+	t.Parallel()
 	scan := scanNewmanVars(t, repoRoot(t))
 
 	// Предпосылка: корпус прочитан. Прежняя редакция здесь ПРОПУСКАЛА проверку, и
@@ -253,6 +254,7 @@ func TestNewmanVariablesAreDefined(t *testing.T) {
 // TestKnownGapsAreTracked — каждая запись knownGaps несёт ссылку на тикет, и карта не
 // разрастается молча.
 func TestKnownGapsAreTracked(t *testing.T) {
+	t.Parallel()
 	for k, issue := range knownGaps {
 		if !strings.Contains(issue, "#") {
 			t.Errorf("knownGaps[%q] = %q — нужна ссылка на тикет (owner/repo#N)", k, issue)
@@ -271,6 +273,7 @@ func TestKnownGapsAreTracked(t *testing.T) {
 //
 // Поэтому запись, которой больше нечего исключать, — находка, а не «просто больше не нужна».
 func TestKnownGapsStillHaveSubject(t *testing.T) {
+	t.Parallel()
 	if len(knownGaps) == 0 {
 		return // исключать нечего — гейт взведён для следующей записи
 	}
@@ -319,6 +322,7 @@ func TestKnownGapsStillHaveSubject(t *testing.T) {
 // перестаёт, набор шлюза по-прежнему находится, и перепись прочитанных коллекций
 // печатается — «ноль находок» обязано быть отличимо от «ноль прочитанного».
 func TestNewmanCorpusComesFromTheIndex(t *testing.T) {
+	t.Parallel()
 	root := t.TempDir()
 	git := func(args ...string) {
 		t.Helper()

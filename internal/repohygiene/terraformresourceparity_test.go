@@ -194,6 +194,7 @@ var tfExtraResources = map[string]string{
 // исключать. Проверка стоит ниже, в самом гейте.
 
 func TestEveryPublicAPIResourceHasATerraformResource(t *testing.T) {
+	t.Parallel()
 	root := repoRoot(t)
 
 	services := publicCreatingServices(t, root)

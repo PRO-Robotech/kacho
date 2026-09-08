@@ -183,6 +183,7 @@ func findMigrationVersionCollisions(rel []string) (migrationUniqueCensus, []migr
 // миграций (это один набор, применяемый одним инструментом к одной базе).
 // Одинаковый номер в разных каталогах — норма и находкой не является.
 func TestMigrationVersionsAreUniquePerDirectory(t *testing.T) {
+	t.Parallel()
 	root := repoRoot(t)
 
 	tree, err := treecorpus.NewTree(root)

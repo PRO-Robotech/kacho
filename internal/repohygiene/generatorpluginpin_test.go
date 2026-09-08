@@ -149,6 +149,7 @@ func checkGeneratorPluginPins(path, raw string, modulePkgs map[string]bool) ([]s
 
 // TestGeneratorPluginsArePinned — по дереву.
 func TestGeneratorPluginsArePinned(t *testing.T) {
+	t.Parallel()
 	root := repoRoot(t)
 
 	out, err := gitenv.Command(root, "ls-files", "-z", "*buf.gen.yaml").Output()
@@ -217,6 +218,7 @@ func modulePinnedPackages(t *testing.T, root string) map[string]bool {
 
 // TestGeneratorPluginPinDetectorSeesBothForms — инъекция в обе стороны.
 func TestGeneratorPluginPinDetectorSeesBothForms(t *testing.T) {
+	t.Parallel()
 	pinned := map[string]bool{"example.com/cmd/protoc-gen-go": true}
 
 	cases := []struct {

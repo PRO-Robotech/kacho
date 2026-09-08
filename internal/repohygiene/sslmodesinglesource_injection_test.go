@@ -18,6 +18,7 @@ import (
 // всегда, не заметит возвращённой копии. Поэтому у каждой оси стоит ЗАКОННЫЙ
 // БЛИЗНЕЦ — конструкция той же формы, на которой гейт обязан молчать.
 func TestSSLModeSingleSourceInjectionCutsBothWays(t *testing.T) {
+	t.Parallel()
 	cases := []struct {
 		name string
 		rel  string
@@ -147,6 +148,7 @@ var modes = []string{"require", "verify-ca", "verify-full"}
 // Пустой обход — ОТКАЗ, а не молчаливый успех: «ноль находок» обязано быть
 // отличимо от «ноль прочитанного».
 func TestSSLModeSingleSourceEmptyWalkIsNotSuccess(t *testing.T) {
+	t.Parallel()
 	dir := t.TempDir()
 	findings, cen, err := auditSSLModeSingleSource(dir, nil)
 	if err != nil {

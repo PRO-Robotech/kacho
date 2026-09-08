@@ -103,6 +103,7 @@ func (c retiredOptionCensus) total() int {
 
 // TestValidationFamilyIsRetiredFromTheContracts — полоса А-01/А-02 приёмки PROTO-1.
 func TestValidationFamilyIsRetiredFromTheContracts(t *testing.T) {
+	t.Parallel()
 	assertDescriptorSetCoversTheContractTree(t)
 
 	var findings []string

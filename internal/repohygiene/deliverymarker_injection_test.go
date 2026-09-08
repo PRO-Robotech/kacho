@@ -22,6 +22,7 @@ import (
 // ─── СУЖДЕНИЕ: обе стороны оси ───────────────────────────────────────────────
 
 func TestDeliveryMarkerVerdictRedsOnQueueWithoutTheMarker(t *testing.T) {
+	t.Parallel()
 	ref := TableRef{Owner: "services/x", Name: "x_outbox"}
 	findings, classified, queues, journals := deliveryMarkerVerdict(
 		map[TableRef]bool{ref: false},
@@ -45,6 +46,7 @@ func TestDeliveryMarkerVerdictRedsOnQueueWithoutTheMarker(t *testing.T) {
 }
 
 func TestDeliveryMarkerVerdictSilentOnQueueWithTheMarker(t *testing.T) {
+	t.Parallel()
 	// ЗАКОННЫЙ БЛИЗНЕЦ той же формы: та же семья, тот же вид записи — и признак
 	// на месте. Без него отрицание выше зеленело бы на судье, отвергающем всё.
 	ref := TableRef{Owner: "services/x", Name: "x_outbox"}
@@ -58,6 +60,7 @@ func TestDeliveryMarkerVerdictSilentOnQueueWithTheMarker(t *testing.T) {
 }
 
 func TestDeliveryMarkerVerdictRedsOnJournalCarryingTheMarker(t *testing.T) {
+	t.Parallel()
 	// ВТОРАЯ СТОРОНА ОСИ. Без неё гейт зеленел бы на реестре, объявившем
 	// журналом всё подряд, — то есть на самом дешёвом способе его замолчать.
 	ref := TableRef{Owner: "services/y", Name: "y_journal"}
@@ -78,6 +81,7 @@ func TestDeliveryMarkerVerdictRedsOnJournalCarryingTheMarker(t *testing.T) {
 }
 
 func TestDeliveryMarkerVerdictSilentOnJournalWithoutTheMarker(t *testing.T) {
+	t.Parallel()
 	ref := TableRef{Owner: "services/y", Name: "y_journal"}
 	findings, _, _, _ := deliveryMarkerVerdict(
 		map[TableRef]bool{ref: false},
@@ -89,6 +93,7 @@ func TestDeliveryMarkerVerdictSilentOnJournalWithoutTheMarker(t *testing.T) {
 }
 
 func TestDeliveryMarkerVerdictIgnoresUnclassifiedEntries(t *testing.T) {
+	t.Parallel()
 	// Необъявленная семья — законное значение: гейт судит объявленное, а не
 	// требует объявления от всех. Проверяется на входе, который у ОБЪЯВЛЕННОЙ
 	// записи был бы находкой в обе стороны.
@@ -110,6 +115,7 @@ func TestDeliveryMarkerVerdictIgnoresUnclassifiedEntries(t *testing.T) {
 }
 
 func TestDeliveryMarkerVerdictRedsOnFamilyOutsideTheClosedVocabulary(t *testing.T) {
+	t.Parallel()
 	// Словарь ЗАКРЫТ: значение, собранное автором самому себе, обязано быть
 	// находкой, а не молча принятым синонимом.
 	ref := TableRef{Owner: "services/w", Name: "w_t"}
@@ -135,6 +141,7 @@ func scanMarkerOne(t *testing.T, sql string) map[TableRef]bool {
 }
 
 func TestScanDeliveryMarkerSeesTheColumnDeclaredByCreate(t *testing.T) {
+	t.Parallel()
 	got := scanMarkerOne(t, `-- +goose Up
 CREATE TABLE q (
   id BIGSERIAL PRIMARY KEY,
@@ -148,6 +155,7 @@ CREATE TABLE q (
 }
 
 func TestScanDeliveryMarkerSilentWhenCreateDeclaresAnotherShape(t *testing.T) {
+	t.Parallel()
 	// ЗАКОННЫЙ БЛИЗНЕЦ: ровно та же форма таблицы, но форма ЖУРНАЛА —
 	// `sequence_no`/`processed_at`. Это и есть те четыре таблицы дерева, из-за
 	// которых гейт заведён.
@@ -163,6 +171,7 @@ CREATE TABLE j (
 }
 
 func TestScanDeliveryMarkerSeesAlterAdd(t *testing.T) {
+	t.Parallel()
 	got := scanMarkerOne(t, `-- +goose Up
 CREATE TABLE q (id BIGSERIAL PRIMARY KEY);
 ALTER TABLE q ADD COLUMN sent_at TIMESTAMPTZ;
@@ -173,6 +182,7 @@ ALTER TABLE q ADD COLUMN sent_at TIMESTAMPTZ;
 }
 
 func TestScanDeliveryMarkerHonoursTheOrderOfApplication(t *testing.T) {
+	t.Parallel()
 	// НЕСУЩЕЕ: в этом дереве колонку дважды заводили и снимали, и порядок есть
 	// единственное, что различает очередь и журнал, ПЕРЕСТАВШИЙ быть очередью.
 	got := scanMarkerOne(t, `-- +goose Up
@@ -185,6 +195,7 @@ ALTER TABLE q DROP COLUMN sent_at;
 }
 
 func TestScanDeliveryMarkerIgnoresTheDownSection(t *testing.T) {
+	t.Parallel()
 	// Секция Down — ОТКАТ. Засчитав её, разбор объявил бы снятой каждую
 	// заведённую колонку, и гейт краснел бы на всём дереве.
 	got := scanMarkerOne(t, `-- +goose Up
@@ -198,6 +209,7 @@ ALTER TABLE q DROP COLUMN sent_at;
 }
 
 func TestScanDeliveryMarkerDoesNotMatchANeighbourColumnName(t *testing.T) {
+	t.Parallel()
 	// ЗАКОННЫЙ БЛИЗНЕЦ по ГРАНИЦЕ ИМЕНИ: соседние колонки, содержащие имя
 	// признака как подстроку, признаком не являются. Без границы разбор объявил
 	// бы очередью журнал, у которого есть `notified_at`.
@@ -214,6 +226,7 @@ CREATE TABLE j (
 }
 
 func TestScanDeliveryMarkerDoesNotMatchTheNameInsideAConstraint(t *testing.T) {
+	t.Parallel()
 	// Имя признака, встреченное ВНУТРИ элемента (ссылка, частичный индекс,
 	// проверка), объявлением колонки не является: сверка идёт с ПЕРВЫМ словом
 	// элемента верхнего уровня.
@@ -237,6 +250,7 @@ CREATE TABLE j (
 // названа здесь поимённо и проверена, включая формы, которые обязаны НЕ
 // считаться действием над ней.
 func TestScanKnowsEveryLegalFormOfTheMarkerAction(t *testing.T) {
+	t.Parallel()
 	for _, tc := range []struct {
 		name, sql string
 		want      bool
@@ -298,6 +312,7 @@ ALTER TABLE q ADD COLUMN address TEXT;`, false},
 // Пара обязательна и проверяется В ОДНОЙ пробе: невиданная таблица — находка,
 // виденная без признака — молчание.
 func TestDeliveryMarkerVerdictRedsOnJournalTheScanNeverSaw(t *testing.T) {
+	t.Parallel()
 	ref := TableRef{Owner: "services/y", Name: "y_journal"}
 	decl := []TableGrowthDecl{{Owner: ref.Owner, Table: ref.Name, Family: familyJournal}}
 
@@ -330,6 +345,7 @@ func TestDeliveryMarkerVerdictRedsOnJournalTheScanNeverSaw(t *testing.T) {
 // карте не появляется, и ветвь `!seen` суждения недостижима на настоящем дереве
 // — то есть была бы мёртвой при живом предмете.
 func TestScanDeliveryMarkerRecordsTheTableItSawWithoutTheMarker(t *testing.T) {
+	t.Parallel()
 	got := scanMarkerOne(t, `-- +goose Up
 CREATE TABLE j (
   sequence_no BIGSERIAL PRIMARY KEY,

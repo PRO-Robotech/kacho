@@ -124,6 +124,7 @@ func rulePolicyScan(t *testing.T, files map[string]string) []string {
 // TestRulePolicyGateIsSilentOnItsOwnHome — законный близнец: литералы в своём
 // файле молчат.
 func TestRulePolicyGateIsSilentOnItsOwnHome(t *testing.T) {
+	t.Parallel()
 	findings := rulePolicyScan(t, map[string]string{
 		rulePolicyHomeFile: rulePolicyHome,
 	})
@@ -136,6 +137,7 @@ func TestRulePolicyGateIsSilentOnItsOwnHome(t *testing.T) {
 // TestRulePolicyGateRedsOnASecondDeclarationSite — инъекция: политика
 // собирается вторым местом.
 func TestRulePolicyGateRedsOnASecondDeclarationSite(t *testing.T) {
+	t.Parallel()
 	const intruder = "services/iam/internal/domain/rule.go"
 	findings := rulePolicyScan(t, map[string]string{
 		rulePolicyHomeFile: rulePolicyHome,
@@ -163,6 +165,7 @@ func relaxedForSeed() RulePolicy { return RulePolicy{tier: tierPlatform} }
 // TestRulePolicyGateRedsOnASecondDeriver — вторая функция вывода означает
 // второй словарь политик.
 func TestRulePolicyGateRedsOnASecondDeriver(t *testing.T) {
+	t.Parallel()
 	findings := rulePolicyScan(t, map[string]string{
 		rulePolicyHomeFile: rulePolicyHome,
 		"services/iam/internal/domain/role.go": `package domain
@@ -179,6 +182,7 @@ func PolicyOfRole(isSystem bool, owner string) RulePolicy { return RulePolicy{} 
 // TestRulePolicyGateRedsWhenTheDeriverIsGone — обратная сторона той же оси:
 // вывода нет вовсе. Без неё «ровно одно» проверялось бы в одну сторону.
 func TestRulePolicyGateRedsWhenTheDeriverIsGone(t *testing.T) {
+	t.Parallel()
 	findings := rulePolicyScan(t, map[string]string{
 		rulePolicyHomeFile: `package domain
 

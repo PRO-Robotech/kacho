@@ -127,6 +127,7 @@ func auditGeneratorHeaders(headers map[string]string, modules map[string]map[str
 // признака структурны — упомянут ли общий слой, названа ли координата ЧУЖОГО
 // генератора, существует ли модуль из примера вызова.
 func TestNewmanGeneratorHeaderDescribesItsOwnSuite(t *testing.T) {
+	t.Parallel()
 	root := repoRoot(t)
 	tt := newTrackedTree(t, root)
 

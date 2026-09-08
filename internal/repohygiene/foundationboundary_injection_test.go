@@ -44,6 +44,7 @@ func catalogFixture() ([]string, map[string]foundationClass) {
 }
 
 func TestCatalogJudgeIsSilentWhenEveryCatalogDeclaresItsClass(t *testing.T) {
+	t.Parallel()
 	inTree, declared := catalogFixture()
 
 	faults, census := judgeFoundationCatalogs(inTree, declared)
@@ -61,6 +62,7 @@ func TestCatalogJudgeIsSilentWhenEveryCatalogDeclaresItsClass(t *testing.T) {
 }
 
 func TestCatalogJudgeCatchesACatalogWithNoDeclaredClass(t *testing.T) {
+	t.Parallel()
 	inTree, declared := catalogFixture()
 	inTree = append(inTree, "principalwire") // 52-й каталог заведён, класса нет
 
@@ -90,6 +92,7 @@ func TestCatalogJudgeCatchesACatalogWithNoDeclaredClass(t *testing.T) {
 // сторона той же сверки. Без этого прогона её молчание в контроле неотличимо от
 // молчания мёртвой ветви.
 func TestCatalogJudgeCatchesADeclarationWithNoCatalog(t *testing.T) {
+	t.Parallel()
 	inTree, declared := catalogFixture()
 	declared["retiredpackage"] = classCorelib // запись описывает несуществующее
 
@@ -105,6 +108,7 @@ func TestCatalogJudgeCatchesADeclarationWithNoCatalog(t *testing.T) {
 }
 
 func TestCatalogJudgeCatchesAClassOutsideTheClosedSet(t *testing.T) {
+	t.Parallel()
 	inTree, declared := catalogFixture()
 	declared["ids"] = foundationClass("фундамент")
 
@@ -121,6 +125,7 @@ func TestCatalogJudgeCatchesAClassOutsideTheClosedSet(t *testing.T) {
 
 // TestCatalogJudgeRefusesAnEmptyWalkInsteadOfReportingNoFindings — K3-15.
 func TestCatalogJudgeRefusesAnEmptyWalkInsteadOfReportingNoFindings(t *testing.T) {
+	t.Parallel()
 	_, declared := catalogFixture()
 
 	faults, census := judgeFoundationCatalogs(nil, declared)
@@ -151,6 +156,7 @@ func edgeFixture() ([]boundaryEdge, []knownBoundaryEdge) {
 }
 
 func TestEdgeJudgeIsSilentWhenTheTreeMatchesTheLedger(t *testing.T) {
+	t.Parallel()
 	observed, ledger := edgeFixture()
 
 	faults, census := judgeBoundaryEdges(observed, ledger, 5914, 11647)
@@ -167,6 +173,7 @@ func TestEdgeJudgeIsSilentWhenTheTreeMatchesTheLedger(t *testing.T) {
 
 // TestEdgeJudgeCatchesAnEdgeThatTheLedgerDoesNotName — новое нарушение.
 func TestEdgeJudgeCatchesAnEdgeThatTheLedgerDoesNotName(t *testing.T) {
+	t.Parallel()
 	observed, ledger := edgeFixture()
 	observed = append(observed, boundaryEdge{
 		From: "pkg/outbox", To: "pkg/api/kaname/cloud/iam/v1",
@@ -192,6 +199,7 @@ func TestEdgeJudgeCatchesAnEdgeThatTheLedgerDoesNotName(t *testing.T) {
 // послабления. Это соседняя сторона той же сверки, и она обязана быть доказана
 // отдельно: в контроле её молчание неотличимо от молчания мёртвой ветви.
 func TestEdgeJudgeCatchesALedgerRowWithNothingToForgive(t *testing.T) {
+	t.Parallel()
 	observed, ledger := edgeFixture()
 	observed = observed[:1] // ребро З8 в дереве закрыли, запись осталась
 
@@ -210,6 +218,7 @@ func TestEdgeJudgeCatchesALedgerRowWithNothingToForgive(t *testing.T) {
 // TestEdgeJudgeCatchesGrowthUnderAnAlreadyNamedEdge — счёт точный, а не потолок:
 // ребро между уже названными пакетами, набравшее лишний файл, — нарушение.
 func TestEdgeJudgeCatchesGrowthUnderAnAlreadyNamedEdge(t *testing.T) {
+	t.Parallel()
 	observed, ledger := edgeFixture()
 	observed[0].Prod = 4 // прибавился четвёртый прод-файл
 
@@ -225,6 +234,7 @@ func TestEdgeJudgeCatchesGrowthUnderAnAlreadyNamedEdge(t *testing.T) {
 }
 
 func TestEdgeJudgeRefusesAnEmptyWalkInsteadOfReportingNoFindings(t *testing.T) {
+	t.Parallel()
 	_, ledger := edgeFixture()
 
 	faults, census := judgeBoundaryEdges(nil, ledger, 0, 0)
@@ -253,6 +263,7 @@ func closureFixture() (map[string]foundationClass, map[string]string) {
 }
 
 func TestClosureJudgeIsSilentWhenOnlyForgivenToolchainIsShipped(t *testing.T) {
+	t.Parallel()
 	reached, ledger := closureFixture()
 
 	faults, census := judgeShippedToolchain(reached, ledger, 17)
@@ -270,6 +281,7 @@ func TestClosureJudgeIsSilentWhenOnlyForgivenToolchainIsShipped(t *testing.T) {
 }
 
 func TestClosureJudgeCatchesToolchainThatNoLedgerRowForgives(t *testing.T) {
+	t.Parallel()
 	reached, ledger := closureFixture()
 	reached["listfiltergate"] = classToolchain // новая оснастка уехала в поставку
 
@@ -286,6 +298,7 @@ func TestClosureJudgeCatchesToolchainThatNoLedgerRowForgives(t *testing.T) {
 
 // TestClosureJudgeCatchesALedgerRowWithNothingToForgive — соседняя сторона.
 func TestClosureJudgeCatchesALedgerRowWithNothingToForgive(t *testing.T) {
+	t.Parallel()
 	reached, ledger := closureFixture()
 	delete(reached, "gitenv") // долг закрыт, запись осталась
 
@@ -304,6 +317,7 @@ func TestClosureJudgeCatchesALedgerRowWithNothingToForgive(t *testing.T) {
 // близнец, сформулированный как отказ: замыкание без рантайм-пакетов означает,
 // что «оснастки не нашлось» относится к непрочитанному.
 func TestClosureJudgeCatchesAClosureWithoutAnyRuntimePackage(t *testing.T) {
+	t.Parallel()
 	ledger := map[string]string{}
 	reached := map[string]foundationClass{"tokenpolicy": classKaname}
 
@@ -315,6 +329,7 @@ func TestClosureJudgeCatchesAClosureWithoutAnyRuntimePackage(t *testing.T) {
 }
 
 func TestClosureJudgeRefusesAnEmptyWalkInsteadOfReportingNoFindings(t *testing.T) {
+	t.Parallel()
 	reached, ledger := closureFixture()
 
 	noBinaries, census := judgeShippedToolchain(reached, ledger, 0)
@@ -338,6 +353,7 @@ func TestClosureJudgeRefusesAnEmptyWalkInsteadOfReportingNoFindings(t *testing.T
 // остатка. Победа самой длинной приставки проверяется парой, у которой обе
 // приставки совпадают началом.
 func TestClassOfPackageResolvesSplitSubtreesAndRefusesUnknownCatalogs(t *testing.T) {
+	t.Parallel()
 	cases := []struct {
 		path string
 		want foundationClass
@@ -387,6 +403,7 @@ func TestClassOfPackageResolvesSplitSubtreesAndRefusesUnknownCatalogs(t *testing
 // является: она ничего не прощает, никогда не совпадает с наблюдённым и потому
 // выглядит работающей, ничего не удерживая.
 func TestEveryLedgerRowNamesAGenuinelyForbiddenDirection(t *testing.T) {
+	t.Parallel()
 	if len(knownBoundaryEdges) == 0 {
 		t.Skip("ведомость пуста — прощать нечего, и это цель, а не поломка")
 	}
@@ -418,6 +435,7 @@ func TestEveryLedgerRowNamesAGenuinelyForbiddenDirection(t *testing.T) {
 // топологической сортировкой: если после снятия всех истоков остаётся хоть одна
 // вершина, в графе есть цикл.
 func TestTargetModuleLayoutIsAcyclic(t *testing.T) {
+	t.Parallel()
 	modules := []foundationClass{classCorelib, classKaname, classKacho}
 
 	allowed := map[foundationClass][]foundationClass{}
@@ -475,6 +493,7 @@ func TestTargetModuleLayoutIsAcyclic(t *testing.T) {
 // TestClosureJudgeCatchesAForgivenToolchainWithNoSubject — послабление без
 // предмета: оно выглядит записью ведомости и не снимается ничем.
 func TestClosureJudgeCatchesAForgivenToolchainWithNoSubject(t *testing.T) {
+	t.Parallel()
 	reached, ledger := closureFixture()
 	ledger["gitenv"] = "" // предмет стёрт, запись осталась
 
@@ -501,6 +520,7 @@ func prefixFixture() ([]string, map[string]int) {
 }
 
 func TestPrefixJudgeIsSilentWhenEveryDeclaredPrefixHasASubject(t *testing.T) {
+	t.Parallel()
 	declared, pathsUnder := prefixFixture()
 
 	faults, census := judgeFoundationPrefixes(declared, pathsUnder)
@@ -517,6 +537,7 @@ func TestPrefixJudgeIsSilentWhenEveryDeclaredPrefixHasASubject(t *testing.T) {
 
 // TestPrefixJudgeCatchesADeadSubtreeEntry — мёртвая запись карты расщеплений.
 func TestPrefixJudgeCatchesADeadSubtreeEntry(t *testing.T) {
+	t.Parallel()
 	declared, pathsUnder := prefixFixture()
 	declared = append(declared, "pkg/api/kacho/cloud/nosuchdomain") // путей 0
 
@@ -542,6 +563,7 @@ func TestPrefixJudgeCatchesADeadSubtreeEntry(t *testing.T) {
 // Прогон отдельный: молчание соседней карты в контроле иначе неотличимо от
 // молчания мёртвой ветви.
 func TestPrefixJudgeCatchesADeadRootEntry(t *testing.T) {
+	t.Parallel()
 	declared, pathsUnder := prefixFixture()
 	declared = append(declared, "services/nosuchservice")
 
@@ -562,6 +584,7 @@ func TestPrefixJudgeCatchesADeadRootEntry(t *testing.T) {
 // при неизменной переписи означало бы, что запись не прочитана, — то есть тот же
 // класс «ноль находок против ноль прочитанного», только внутри пробы.
 func TestPrefixJudgeStaysSilentOnALiveAdditionAtAGrownCensus(t *testing.T) {
+	t.Parallel()
 	declared, pathsUnder := prefixFixture()
 	_, before := judgeFoundationPrefixes(declared, pathsUnder)
 
@@ -582,6 +605,7 @@ func TestPrefixJudgeStaysSilentOnALiveAdditionAtAGrownCensus(t *testing.T) {
 }
 
 func TestPrefixJudgeRefusesAnEmptyWalkInsteadOfReportingNoFindings(t *testing.T) {
+	t.Parallel()
 	declared, pathsUnder := prefixFixture()
 
 	noDecl, _ := judgeFoundationPrefixes(nil, pathsUnder)
@@ -610,6 +634,7 @@ func TestPrefixJudgeRefusesAnEmptyWalkInsteadOfReportingNoFindings(t *testing.T)
 // запись карты, здесь — целая карта, выпавшая из обхода. Поэтому сверяется не
 // только состав, но и ЧИСЛО: пропажа карты обязана быть арифметически видна.
 func TestDeclaredPrefixesCoversBothPathMaps(t *testing.T) {
+	t.Parallel()
 	got := map[string]bool{}
 	for _, p := range declaredPrefixes() {
 		got[p] = true
@@ -647,6 +672,7 @@ func TestDeclaredPrefixesCoversBothPathMaps(t *testing.T) {
 
 // TestRootJudgeIsSilentWhenEveryRootDeclaresItsClass — положительный близнец.
 func TestRootJudgeIsSilentWhenEveryRootDeclaresItsClass(t *testing.T) {
+	t.Parallel()
 	faults, census := judgeTreeRoots(
 		[]string{"gateway", "internal", "services", "terraform"},
 		map[string]foundationClass{
@@ -669,6 +695,7 @@ func TestRootJudgeIsSilentWhenEveryRootDeclaresItsClass(t *testing.T) {
 // попало в умолчание, не судились вовсе. Гейт, заведённый стеречь границу, был
 // бы слеп к ПЕРВОМУ ЖЕ её нарушению в новом модуле.
 func TestRootJudgeCatchesANewTopLevelRootWithNoDeclaredClass(t *testing.T) {
+	t.Parallel()
 	faults, census := judgeTreeRoots(
 		[]string{"corelib", "internal", "services"},
 		map[string]foundationClass{"internal": classToolchain, "services": classKacho})
@@ -685,6 +712,7 @@ func TestRootJudgeCatchesANewTopLevelRootWithNoDeclaredClass(t *testing.T) {
 
 // TestRootJudgeCatchesADeclarationWithNoRootInTheTree — вторая сторона.
 func TestRootJudgeCatchesADeclarationWithNoRootInTheTree(t *testing.T) {
+	t.Parallel()
 	faults, _ := judgeTreeRoots(
 		[]string{"services"},
 		map[string]foundationClass{"services": classKacho, "nosuchroot": classKacho})
@@ -695,6 +723,7 @@ func TestRootJudgeCatchesADeclarationWithNoRootInTheTree(t *testing.T) {
 
 // TestRootJudgeRefusesAnEmptyWalkInsteadOfReportingNoFindings — пустой обход.
 func TestRootJudgeRefusesAnEmptyWalkInsteadOfReportingNoFindings(t *testing.T) {
+	t.Parallel()
 	faults, _ := judgeTreeRoots(nil, map[string]foundationClass{"services": classKacho})
 	if len(faults) == 0 {
 		t.Fatal("пустой обход обязан быть ОТКАЗОМ, а не «находок ноль»")
@@ -710,6 +739,7 @@ func TestRootJudgeRefusesAnEmptyWalkInsteadOfReportingNoFindings(t *testing.T) {
 // `forbiddenDirections` НИ ОДНОЙ парой, и обход прочитывал файл, ничего о нём не
 // сказав.
 func TestForbiddenEdgeInsideANewRootIsSeen(t *testing.T) {
+	t.Parallel()
 	// Незнакомый верхний корень не имеет права получить класс умолчанием.
 	if cls, ok := classOfPackage("corelib/listnarrow"); ok {
 		t.Fatalf("незнакомый верхний корень получил класс %q умолчанием — "+
@@ -734,6 +764,10 @@ func TestForbiddenEdgeInsideANewRootIsSeen(t *testing.T) {
 // предмета в дереве — находка оси четвёртой, и постоянная запись про `corelib/`
 // покраснила бы её ровно за то, за что и должна.
 func TestEdgeOutOfANewlyDeclaredRootIsJudged(t *testing.T) {
+	// БЕЗ t.Parallel() — намеренно, запись стоит в ведомости последовательных
+	// проб (probeparallelism_test.go, sequentialProbes). Проба ВРЕМЕННО правит
+	// пакетную карту корней, а её читают соседние пробы того же пакета: под
+	// параллелью они видят чужую временную запись.
 	saved := foundationRoots
 	t.Cleanup(func() { foundationRoots = saved })
 	foundationRoots = append(append([]struct {

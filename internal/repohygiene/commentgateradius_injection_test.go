@@ -94,6 +94,7 @@ func scanOne(t *testing.T, rel string, src []byte) *CommentProhibitionList {
 
 // TestRadiusGateFiresOnlyOnTheMissingDeclaration — три прогона.
 func TestRadiusGateFiresOnlyOnTheMissingDeclaration(t *testing.T) {
+	t.Parallel()
 	const rel = "services/probe/internal/commentlint/commentlint_test.go"
 
 	// ── ПРОГОН 1: контроль. Объявление на месте и называет живую координату.
@@ -169,6 +170,7 @@ func TestRadiusGateFiresOnlyOnTheMissingDeclaration(t *testing.T) {
 // TestRadiusGateStaysSilentOnLegitimateTwins — законные близнецы. Без них гейт
 // ловит форму, а не существо, и первый же ложный вердикт его отключит.
 func TestRadiusGateStaysSilentOnLegitimateTwins(t *testing.T) {
+	t.Parallel()
 	t.Run("служебный набор без нормативных совпадений — объявления не требует", func(t *testing.T) {
 		list := scanOne(t, "services/probe/internal/commentlint/commentlint_test.go",
 			prohibitionSource("", forbidsOnlyRealViolations...))

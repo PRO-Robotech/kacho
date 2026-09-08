@@ -136,6 +136,7 @@ type fieldReaderResult struct {
 //
 // Проверено инъекцией в обе стороны (`descriptorfieldreader_injection_test.go`).
 func TestEveryDescriptorFieldHasAReader(t *testing.T) {
+	t.Parallel()
 	res := auditDescriptorFieldReaders(t, repoRoot(t))
 	t.Log(res.summary)
 

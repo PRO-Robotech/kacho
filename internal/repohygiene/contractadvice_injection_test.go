@@ -109,6 +109,7 @@ var adviceCases = []adviceCase{
 // Каждая форма совета: дефект — находка с координатой и именем; законный
 // близнец той же формы — молчание.
 func TestContractAdviceInjectionPerForm(t *testing.T) {
+	t.Parallel()
 	// Контроль: корпус без прозы вовсе. Молчание здесь обязано быть, иначе
 	// красное на инъекции пришло бы не от инъекции.
 	if c := adviceRun(t, "Blocks the membership."); len(c.Findings) != 0 {
@@ -165,6 +166,7 @@ func TestContractAdviceInjectionPerForm(t *testing.T) {
 // Законные близнецы, ради которых предикат сужен до совета: каждый из них
 // широкий предикат «всякое имя обязано резолвиться» объявил бы находкой.
 func TestContractAdviceStaysSilentOnLawfulProse(t *testing.T) {
+	t.Parallel()
 	cases := []struct {
 		name  string
 		prose string
@@ -231,6 +233,7 @@ func TestContractAdviceStaysSilentOnLawfulProse(t *testing.T) {
 // доказанного входа, — «на всякий случай» и подлежит снятию (`testing.md`
 // §«Гейт на класс», п.7), а расширение с доказанным входом — нет.
 func TestContractAdviceTellsAMessageFromAVerb(t *testing.T) {
+	t.Parallel()
 	// Объявленное сообщение в том же обороте — молчание.
 	silent := adviceRun(t, "Состояние не позволяет отказать: вместо BlockRequest здесь нечего снимать.")
 	if len(silent.Findings) != 0 {
@@ -264,6 +267,7 @@ func TestContractAdviceTellsAMessageFromAVerb(t *testing.T) {
 // близнец того же обрамления — молчание. Односторонняя проба зеленела бы на
 // распознавателе, который скобки просто выбрасывает.
 func TestContractAdviceReadsBothWaysOfDelimitingAName(t *testing.T) {
+	t.Parallel()
 	cases := []struct {
 		delim string
 		bad   string // совет на глагол, которого у SubjectService нет
@@ -320,6 +324,7 @@ func TestContractAdviceReadsBothWaysOfDelimitingAName(t *testing.T) {
 // добавляется ОДИН синтетический контракт: находка обязана появиться ровно одна
 // и ровно в нём.
 func TestContractAdviceInjectionOnTheRealCorpus(t *testing.T) {
+	t.Parallel()
 	root := repoRoot(t)
 	sources, err := loadContractAdviceSources(root)
 	if err != nil {
@@ -370,6 +375,7 @@ func TestContractAdviceInjectionOnTheRealCorpus(t *testing.T) {
 // Без этого «ноль находок» неотличимо от «ноль прочитанного» — тот самый класс,
 // который весь корпус и ловит.
 func TestContractAdviceRefusesAnEmptyTraversal(t *testing.T) {
+	t.Parallel()
 	t.Run("корпус пуст", func(t *testing.T) {
 		c := auditContractAdvice(nil)
 		if c.Files != 0 || c.Blocks != 0 {

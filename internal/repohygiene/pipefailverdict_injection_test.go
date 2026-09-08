@@ -184,6 +184,7 @@ fi
 // ─────────────────────────────────────────────────────────────────────────────
 
 func TestPipefailVerdictGateRedensOnTheReturnedPipe(t *testing.T) {
+	t.Parallel()
 	cases := []struct {
 		name string
 		src  string
@@ -231,6 +232,7 @@ func TestPipefailVerdictGateRedensOnTheReturnedPipe(t *testing.T) {
 // ─────────────────────────────────────────────────────────────────────────────
 
 func TestPipefailVerdictGateStaysSilentOnTheLawfulTwin(t *testing.T) {
+	t.Parallel()
 	cases := []struct {
 		name string
 		src  string
@@ -287,6 +289,7 @@ func TestPipefailVerdictGateStaysSilentOnTheLawfulTwin(t *testing.T) {
 // ─────────────────────────────────────────────────────────────────────────────
 
 func TestPipefailVerdictCensusDistinguishesCleanFromUnread(t *testing.T) {
+	t.Parallel()
 	// Пустой корпус: ноль прочитанного. Гейт дерева на этом ФАТАЛИТ; здесь
 	// закрепляется то, на чём он это решение принимает.
 	census, findings := auditPipefailVerdicts(map[string]string{})

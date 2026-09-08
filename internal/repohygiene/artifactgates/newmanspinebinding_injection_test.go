@@ -76,6 +76,7 @@ const (
 
 // Законный близнец (проверка кейсов): связывание набора — гейт МОЛЧИТ.
 func TestSpineBindingCleanValidatorIsSilent(t *testing.T) {
+	t.Parallel()
 	findings, cen := nmSpineAudit(t, "проверка кейсов", nmValidatorRel, nmCleanValidator)
 	if len(findings) != 0 {
 		t.Fatalf("гейт нашёл предмет на законной форме — он ловит обращение к хребту вообще,\n"+
@@ -91,6 +92,7 @@ func TestSpineBindingCleanValidatorIsSilent(t *testing.T) {
 // Законный близнец (проба): тот же вердикт на втором виде потребителя.
 // Без него расширение охвата было бы объявлено, а не доказано.
 func TestSpineBindingCleanProbeIsSilent(t *testing.T) {
+	t.Parallel()
 	findings, cen := nmSpineAudit(t, "проба", nmProbeRel, nmCleanProbe)
 	if len(findings) != 0 {
 		t.Fatalf("гейт краснеет на пробе, берущей связывание набора: %v", findings)
@@ -105,6 +107,7 @@ func TestSpineBindingCleanProbeIsSilent(t *testing.T) {
 // проверок звали загрузчик своими руками и перестали исполняться на смене его
 // подписи.
 func TestSpineBindingInjectionDirectLoaderCallIsFound(t *testing.T) {
+	t.Parallel()
 	injected := strings.Replace(nmCleanValidator, "gen._RUN.load(f)", "gen.load_cases_module(f)", 1)
 	findings, cen := nmSpineAudit(t, "проверка кейсов", nmValidatorRel, injected)
 	if len(findings) == 0 {
@@ -126,6 +129,7 @@ func TestSpineBindingInjectionDirectLoaderCallIsFound(t *testing.T) {
 // руками. По каждой из ЧЕТЫРЁХ функций хребта отдельно: форма, о которой
 // распознаватель не знает, не находка и не молчание, а НЕВИДИМОСТЬ.
 func TestSpineBindingInjectionProbeCallsEachSpineFunctionDirectly(t *testing.T) {
+	t.Parallel()
 	for _, fn := range []string{
 		"load_cases_module", "case_to_postman", "step_to_postman", "build_collection",
 	} {
@@ -147,6 +151,7 @@ func TestSpineBindingInjectionProbeCallsEachSpineFunctionDirectly(t *testing.T) 
 // Каждый метод связывания узнаётся. Метод, о котором распознаватель не знает,
 // объявил бы законный вызов находкой — и первый же ложный срабат снял бы гейт.
 func TestSpineBindingEveryBindingMethodIsRecognised(t *testing.T) {
+	t.Parallel()
 	for _, method := range []string{"load", "case_item", "step_item", "collection"} {
 		injected := strings.Replace(nmCleanProbe, "gen._RUN.case_item(case)", "gen._RUN."+method+"(case)", 1)
 		findings, cen := nmSpineAudit(t, "проба", nmProbeRel, injected)
@@ -164,6 +169,7 @@ func TestSpineBindingEveryBindingMethodIsRecognised(t *testing.T) {
 // элементом словаря генераторов. Форма, неизвестная распознавателю, уводит
 // написанное в ней из-под наблюдения.
 func TestSpineBindingReceiverIsNotPinnedToTheNameGen(t *testing.T) {
+	t.Parallel()
 	injected := strings.Replace(nmCleanProbe,
 		"gen._RUN.case_item(case)", "GENERATORS[svc].case_to_postman(case)", 1)
 	findings, _ := nmSpineAudit(t, "проба", nmProbeRel, injected)
@@ -176,6 +182,7 @@ func TestSpineBindingReceiverIsNotPinnedToTheNameGen(t *testing.T) {
 // Проза, называющая хребет, — НЕ вызов. Без этой пробы гейт краснел бы на
 // собственном объяснении, и его сняли бы как непонятный.
 func TestSpineBindingProseAboutTheSpineIsNotACall(t *testing.T) {
+	t.Parallel()
 	prose := strings.Replace(nmCleanValidator,
 		`"""Проверка кейсов набора: уникальность идентификаторов и каталогизация."""`,
 		`"""Проверка кейсов набора.
@@ -197,6 +204,7 @@ func TestSpineBindingProseAboutTheSpineIsNotACall(t *testing.T) {
 // распознаватель читал сырой текст и на этой форме краснел бы: шапки самих
 // потребителей цитируют вызов именно так.
 func TestSpineBindingProseQuotingTheCallVerbatimIsNotACall(t *testing.T) {
+	t.Parallel()
 	prose := strings.Replace(nmCleanValidator,
 		`"""Проверка кейсов набора: уникальность идентификаторов и каталогизация."""`,
 		`"""Проверка кейсов набора.
@@ -215,6 +223,7 @@ func TestSpineBindingProseQuotingTheCallVerbatimIsNotACall(t *testing.T) {
 // Комментарий с тем же текстом — тоже не вызов, и это ОТДЕЛЬНАЯ ветвь
 // распознавателя: строковый литерал и комментарий снимаются разными правилами.
 func TestSpineBindingCommentQuotingTheCallIsNotACall(t *testing.T) {
+	t.Parallel()
 	commented := strings.Replace(nmCleanValidator,
 		"        mod = gen._RUN.load(f)",
 		"        # было: mod = gen.case_to_postman(f)\n        mod = gen._RUN.load(f)", 1)
@@ -230,6 +239,7 @@ func TestSpineBindingCommentQuotingTheCallIsNotACall(t *testing.T) {
 // Предпосылка: потребитель, вовсе не зовущий хребет, — это отказ, а не
 // молчание. Без этой ветви гейт, потерявший предмет, был бы вечнозелёным.
 func TestSpineBindingNoCallSitesIsARefusal(t *testing.T) {
+	t.Parallel()
 	_, cen := nmSpineAudit(t, "проба", nmProbeRel, "#!/usr/bin/env python3\nprint('ничего не грузим')\n")
 	if cen.callSites != 0 {
 		t.Fatalf("обращений насчитано %d там, где их нет", cen.callSites)

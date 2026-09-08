@@ -80,6 +80,7 @@ type glueCensus struct {
 }
 
 func TestVerdictSubjectIsComparedByColumnPairNotByGlue(t *testing.T) {
+	t.Parallel()
 	findings, c := collectSubjectGlue(t, filepath.Join(repoRoot(t), verdictGlueRoot))
 
 	// ПРОВЕРКА СВОЕЙ ПРЕДПОСЫЛКИ. Запрет обоснован тем, что в этих файлах есть

@@ -50,6 +50,7 @@ const quotaEdgeKey = "quotaAuthority"
 var quotaProfileConsumers = []string{"vpc", "compute", "storage", "registry", "kacho-nlb"}
 
 func TestQuotaAuthorityProfilesDeclareBothHalvesOfThePair(t *testing.T) {
+	t.Parallel()
 	root := repoRoot(t)
 	umbrella := filepath.Join(root, "deploy", "helm", "umbrella")
 
@@ -155,6 +156,7 @@ func anyEdgeEnabled(edges map[string]any) bool {
 // ловит шаблон, синтаксически верный, но рендерящийся во что-то иное. Вторую
 // половину закрывает рендер на прогоне посадки; здесь она названа, а не скрыта.
 func TestQuotaAuthorityChartsHaveNoDefault(t *testing.T) {
+	t.Parallel()
 	root := repoRoot(t)
 
 	// Каталоги чартов ВЫВОДЯТСЯ из тех же потребителей, что и перепись выше:

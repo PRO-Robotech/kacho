@@ -61,6 +61,7 @@ func realTreeSamples(t *testing.T) (binary listedPackage, containerDep string, c
 }
 
 func TestProdBinaryContainerClientGateCutsBothWays(t *testing.T) {
+	t.Parallel()
 	binary, containerDep, carrier := realTreeSamples(t)
 	t.Logf("вход инъекции взят из дерева: бинарь %s · зависимость %s · законный носитель %s",
 		binary.ImportPath, containerDep, carrier.ImportPath)

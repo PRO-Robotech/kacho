@@ -13,6 +13,7 @@ import (
 // Способность падать доказывает не этот прогон, а инъекция
 // (`clienttruth_refusal_fieldname_injection_test.go`): здесь только вердикт.
 func TestResourceRefusalNamesAContractField(t *testing.T) {
+	t.Parallel()
 	var log strings.Builder
 	findings, census, err := AuditRefusalFieldNames(DefaultRefusalFieldNameOptions(repoRoot(t)), &log)
 	if err != nil {

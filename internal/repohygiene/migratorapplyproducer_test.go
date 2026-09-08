@@ -105,6 +105,7 @@ func migratorApplyProofTestFiles(t *testing.T, tt *trackedTree) int {
 // TestMigratorApplyProofHasAProducer — доказательство наката существует и его
 // кто-то гоняет.
 func TestMigratorApplyProofHasAProducer(t *testing.T) {
+	t.Parallel()
 	root := repoRoot(t)
 	tt := newTrackedTree(t, root)
 

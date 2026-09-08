@@ -184,6 +184,7 @@ func (s claimBrandScan) assertCensusStands(t *testing.T) {
 
 // TestTokenClaimsCarryTheProductsOwnName — ось А: идентичность.
 func TestTokenClaimsCarryTheProductsOwnName(t *testing.T) {
+	t.Parallel()
 	scan := scanClaimBrandTree(t)
 	scan.log(t, "ось А")
 	scan.assertCensusStands(t)
@@ -257,6 +258,7 @@ func TestTokenClaimsCarryTheProductsOwnName(t *testing.T) {
 // не подпадают by construction — в словарь клейм они не входят, значит двойника
 // не порождают.
 func TestClaimNameHasNoTwinInTheOtherNamespace(t *testing.T) {
+	t.Parallel()
 	scan := scanClaimBrandTree(t)
 	scan.log(t, "ось Б")
 	scan.assertCensusStands(t)
@@ -420,6 +422,7 @@ func claimNameIsNamedOutsideTests(scan claimBrandScan, name string) bool {
 // словарь. Суждение, спрятанное внутрь тела пробы, доказывается только деревом —
 // то есть ровно тем состоянием, ради которого проверка и заведена.
 func TestEveryClaimNameHasAnAuthor(t *testing.T) {
+	t.Parallel()
 	scan := scanClaimBrandTree(t)
 	scan.log(t, "ось В")
 	scan.assertCensusStands(t)

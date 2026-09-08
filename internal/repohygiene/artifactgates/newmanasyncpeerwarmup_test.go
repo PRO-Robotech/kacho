@@ -110,6 +110,7 @@ var (
 var nmMutVerbs = map[string]bool{"POST": true, "PUT": true, "PATCH": true, "DELETE": true}
 
 func TestAsyncMutationDoesNotCarryAnUnwarmedPeerId(t *testing.T) {
+	t.Parallel()
 	root := repoRoot(t)
 
 	// Состав — из ИНДЕКСА git: под корнем лежат рабочие копии агентов и распаковки

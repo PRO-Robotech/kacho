@@ -25,6 +25,7 @@ import (
 // Заводить запись в перечень объяснений — НЕ исход: он закрыт и предназначен
 // только для прозы О САМИХ маркерах.
 func TestNoDeferredWorkInTheTree(t *testing.T) {
+	t.Parallel()
 	root := repoRoot(t)
 	findings, census, err := auditDeferredWork(root)
 	if err != nil {
@@ -104,6 +105,7 @@ func synthDeferralTree(t *testing.T, files map[string]string) string {
 
 // Сторона дефекта: маркер в прод-коде роняет гейт и называет координату.
 func TestDeferralGateCatchesAMarkerInProductionCode(t *testing.T) {
+	t.Parallel()
 	root := synthDeferralTree(t, map[string]string{
 		"services/x/internal/thing.go": "package thing\n\n// TODO: дочинить после релиза\nfunc F() {}\n",
 	})
@@ -127,6 +129,7 @@ func TestDeferralGateCatchesAMarkerInProductionCode(t *testing.T) {
 // дерева, и «находок ноль» там означало «не читал»: запрет держался не свойством
 // дерева, а тем, что нарушение легло в один из семи названных каталогов.
 func TestDeferralGateCatchesAMarkerOutsideTheHandwrittenRoots(t *testing.T) {
+	t.Parallel()
 	root := synthDeferralTree(t, map[string]string{
 		"ui-future/console/src/app.ts": "export const x = 1;\n" +
 			"// " + "TODO" + ": дочинить после релиза\n",
@@ -150,6 +153,7 @@ func TestDeferralGateCatchesAMarkerOutsideTheHandwrittenRoots(t *testing.T) {
 // Без этой половины запрет ловил бы форму, а не существо: первая же фикстура
 // соседнего гейта, обязанная написать форму дефекта, красила бы прогон.
 func TestDeferralGateStaysSilentOnLawfulTree(t *testing.T) {
+	t.Parallel()
 	root := synthDeferralTree(t, map[string]string{
 		"services/x/internal/thing_test.go": "package thing\n\n// TODO: фикстура гейта пишет форму дефекта\n",
 		"deploy/chart.yaml":                 "kind: ConfigMap\n# объяснение без отсрочки\n",
@@ -175,6 +179,7 @@ func TestDeferralGateStaysSilentOnLawfulTree(t *testing.T) {
 // каждая форма проверяется НА СКВОЗНОМ пути — тем же auditDeferredWork, что
 // работает по дереву, а не образцом в отрыве от сита.
 func TestEveryDeferralFormIsCaughtThroughTheSieve(t *testing.T) {
+	t.Parallel()
 	if len(deferralForms) == 0 {
 		t.Fatal("осмотрено: форм 0 — «все формы ловятся» здесь означало бы «форм нет»")
 	}
@@ -209,6 +214,7 @@ func TestEveryDeferralFormIsCaughtThroughTheSieve(t *testing.T) {
 // Корпус двуязычен, и запрет, знающий только TODO, обходится словом «потом» без
 // единой уловки — то есть был бы запретом написания, а не отсрочки.
 func TestDeferralGateCatchesTheRussianForm(t *testing.T) {
+	t.Parallel()
 	root := synthDeferralTree(t, map[string]string{
 		"services/x/internal/thing.go": "package thing\n\n// пока заглушка, потом доделаем\nfunc F() {}\n",
 	})
@@ -233,6 +239,7 @@ func TestDeferralGateCatchesTheRussianForm(t *testing.T) {
 // обещание рядом с ней — краснеть. Без положительного контроля «ноль находок»
 // было бы неотличимо от гейта, разучившегося падать.
 func TestDeferralGateStaysSilentOnAQuotedMentionOfTheMarker(t *testing.T) {
+	t.Parallel()
 	root := synthDeferralTree(t, map[string]string{
 		// Упоминание в прямом порядке слов — под отрицанием, в кавычках.
 		"services/x/docs/acceptance/a.md": "То, что задача не делает, названо явно\n" +
@@ -287,6 +294,7 @@ func TestDeferralGateStaysSilentOnAQuotedMentionOfTheMarker(t *testing.T) {
 // перестановку из двух, оставляет вторую вне наблюдения — не находкой и не
 // чистотой, а невидимостью (норма §«Гейт на класс», п.7).
 func TestDeferralGateCatchesTheReversedRussianWordOrder(t *testing.T) {
+	t.Parallel()
 	root := synthDeferralTree(t, map[string]string{
 		"services/x/internal/thing.go": "package thing\n\n// " + "доделаем " + "потом\nfunc F() {}\n",
 	})

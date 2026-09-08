@@ -249,6 +249,7 @@ func cdShellBearing(rel string) bool {
 }
 
 func TestCdInAndListNeitherSwallowsFailureNorLeaksCwd(t *testing.T) {
+	t.Parallel()
 	root := repoRoot(t)
 	tree := newTrackedTree(t, root)
 
@@ -306,6 +307,7 @@ func TestCdInAndListNeitherSwallowsFailureNorLeaksCwd(t *testing.T) {
 // молчать на законных близнецах той же формы. Без второй половины гейт ловил бы
 // форму, а не существо, и первый же ложный срабат его снял бы.
 func TestCdPredicateCutsBothWays(t *testing.T) {
+	t.Parallel()
 	cases := []struct {
 		name string
 		body string

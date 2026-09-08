@@ -52,6 +52,7 @@ var clientExpiryTables = []string{"user_oauth_clients", "service_account_oauth_c
 
 // TestClientExpiryIsNeverUpdated — сам гейт.
 func TestClientExpiryIsNeverUpdated(t *testing.T) {
+	t.Parallel()
 	root := repoRoot(t)
 	tt := newTrackedTree(t, root)
 

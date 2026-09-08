@@ -419,6 +419,7 @@ func (m staleClaimMarker) compile(t *testing.T) (*regexp.Regexp, string) {
 // TestStaleClaimSweepIsTakenByName — перепись по имени механизма: числа сверяются
 // с объявленными, «ноль находок» отличается от «ноль прочитанного».
 func TestStaleClaimSweepIsTakenByName(t *testing.T) {
+	t.Parallel()
 	root := repoRoot(t)
 
 	if len(staleClaimMarkers) == 0 {
@@ -489,6 +490,7 @@ func TestStaleClaimSweepIsTakenByName(t *testing.T) {
 //   - тот же литерал внутри альтернативы / необязательной группы / повторения —
 //     НЕ выводится (иначе отсев выбросил бы законные совпадения второй ветви).
 func TestStaleClaimPrefilterIsDerivedNotAssumed(t *testing.T) {
+	t.Parallel()
 	for _, tc := range []struct {
 		name, pattern, want string
 	}{
@@ -527,6 +529,7 @@ func TestStaleClaimPrefilterIsDerivedNotAssumed(t *testing.T) {
 // НАДпредикат, законные совпадения которого перечислены явно; всё, что он ловит
 // сверх перечня и сверх реестра, роняет гейт на предпосылке.
 func TestStaleClaimRosterCoversKnownOccurrences(t *testing.T) {
+	t.Parallel()
 	root := repoRoot(t)
 	files, _, _ := staleClaimCensus(t, root)
 	if len(files) == 0 {
@@ -593,6 +596,7 @@ func legitimateCalibration(rel, line string) bool {
 // живёт в чужом файле, который эта работа не трогает), а не к тому, что видно
 // рядом с правкой.
 func TestStaleClaimLegitimateHitsStillHaveSubject(t *testing.T) {
+	t.Parallel()
 	root := repoRoot(t)
 	files, _, _ := staleClaimCensus(t, root)
 
@@ -632,6 +636,7 @@ func TestStaleClaimLegitimateHitsStillHaveSubject(t *testing.T) {
 // Файл, переставший цитировать маркеры, из списка обязан уйти: иначе он остаётся
 // вне переписи, и туда можно внести утверждение о механизме незамеченным.
 func TestStaleClaimSelfReferenceStillHasSubject(t *testing.T) {
+	t.Parallel()
 	root := repoRoot(t)
 	res := make([]*regexp.Regexp, len(staleClaimMarkers))
 	for i, m := range staleClaimMarkers {
@@ -693,6 +698,7 @@ func TestStaleClaimSelfReferenceStillHasSubject(t *testing.T) {
 // рядом с каждым из этих мест (комментарии объясняют выбор класса), и текстовый
 // поиск зачёл бы объяснение за реализацию.
 func TestStaleClaimPremiseHolds(t *testing.T) {
+	t.Parallel()
 	root := repoRoot(t)
 
 	t.Run("отказ_в_правах_терминален_у_применителя_nlb", func(t *testing.T) {

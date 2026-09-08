@@ -58,6 +58,7 @@ var factMutations = []string{"INSERT INTO " + factTable, "UPDATE " + factTable, 
 // TestR7_3_27_OnlyTheJournalProducesTheDirectFact — в непроверочном коде Go нет ни
 // одной записи в таблицу прямого факта.
 func TestR7_3_27_OnlyTheJournalProducesTheDirectFact(t *testing.T) {
+	t.Parallel()
 	root := repoRoot(t)
 	out, err := gitenv.Command(root, "ls-files", "-z", "--", "*.go").Output()
 	if err != nil {

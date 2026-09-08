@@ -223,6 +223,7 @@ func synthArtifactRule(rel string) bool {
 }
 
 func TestShellProbeWriteGateSeparatesLiveWritesFromReads(t *testing.T) {
+	t.Parallel()
 	const (
 		defRedirect  = "deploy/tests/helm/synth-redirect-test.sh"
 		defCopyBack  = "deploy/tests/helm/synth-copy-back-test.sh"
@@ -407,6 +408,7 @@ func TestShellProbeWriteGateSeparatesLiveWritesFromReads(t *testing.T) {
 // как случайность: иначе «ноль находок» на дереве без производителей читалось бы
 // как чистота, и гейт молчал бы именно там, где он сломан.
 func TestShellProbeWriteGateNeedsAProducerToSayAnything(t *testing.T) {
+	t.Parallel()
 	const rel = "deploy/tests/helm/synth-redirect-test.sh"
 
 	with, _ := auditShellProbeWritesToLiveTree(map[string]string{rel: synthShellRedirect}, nil)
@@ -437,6 +439,7 @@ func TestShellProbeWriteGateNeedsAProducerToSayAnything(t *testing.T) {
 // файлов, по раскладке 63, вместе 65 — то есть каждый признак пропускает то,
 // что видит другой. Гейт, взявший один, тихо не читал бы целый вид суит.
 func TestShellProbeCorpusTakesBothConventions(t *testing.T) {
+	t.Parallel()
 	cases := []struct {
 		rel  string
 		want bool
@@ -500,6 +503,7 @@ func loadPriorEditions(t *testing.T) map[string]string {
 // объявил бы остальные две чистыми. Число проверяется здесь на настоящих
 // исходниках, а не на пересказе.
 func TestShellProbeWriteGateFindsAllThreeHistoricalSuites(t *testing.T) {
+	t.Parallel()
 	findings, census := auditShellProbeWritesToLiveTree(loadPriorEditions(t), nil)
 	if census.Files != len(priorEditions) {
 		t.Fatalf("разобрано %d фикстур из %d — молчание по непрочитанному ничего не "+
@@ -531,6 +535,7 @@ func TestShellProbeWriteGateFindsAllThreeHistoricalSuites(t *testing.T) {
 // одна не лишняя. Без этих двух случаев можно было бы снять любую одну и не
 // заметить.
 func TestShellProbeWriteGateSeesWhatATextualPredicateCannot(t *testing.T) {
+	t.Parallel()
 	src := loadPriorEditions(t)
 
 	suites := func(caps shellAuditCapabilities) int {

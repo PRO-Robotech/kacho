@@ -86,6 +86,7 @@ func mapErr(err error) error {
 `
 
 func TestSQLStateHomeGateCatchesAnOwnDecision(t *testing.T) {
+	t.Parallel()
 	sites, census, err := ScanSQLStateLiterals("injected/pg/errmap.go", []byte(sqlStateInjectedOwnDecision))
 	if err != nil {
 		t.Fatalf("разбор инъекции: %v", err)
@@ -107,6 +108,7 @@ func TestSQLStateHomeGateCatchesAnOwnDecision(t *testing.T) {
 }
 
 func TestSQLStateHomeGateIsSilentOnTheLegitimateTwin(t *testing.T) {
+	t.Parallel()
 	sites, census, err := ScanSQLStateLiterals("injected/pg/errmap.go", []byte(sqlStateInjectedLegitimateTwin))
 	if err != nil {
 		t.Fatalf("разбор близнеца: %v", err)
@@ -212,6 +214,7 @@ func lookupSubject(ctx context.Context, ext string) (*Subject, error) {
 `
 
 func TestStatusTailGateCatchesAnEchoedError(t *testing.T) {
+	t.Parallel()
 	mappers, census, err := ScanStatusMappers("injected/shared/errors.go", []byte(statusTailInjectedEcho))
 	if err != nil {
 		t.Fatalf("разбор инъекции: %v", err)
@@ -245,6 +248,7 @@ func TestStatusTailGateCatchesAnEchoedError(t *testing.T) {
 }
 
 func TestStatusTailGateIsSilentOnTheLegitimateTwin(t *testing.T) {
+	t.Parallel()
 	mappers, census, err := ScanStatusMappers("injected/shared/errors.go", []byte(statusTailInjectedLegitimateTwin))
 	if err != nil {
 		t.Fatalf("разбор близнеца: %v", err)
@@ -355,6 +359,7 @@ func droppedConstraintIn(migrationSQL string) int {
 `
 
 func TestTextFaultGateCatchesADecisionMadeByWords(t *testing.T) {
+	t.Parallel()
 	sites, census, err := ScanTextFaultDecisions("injected/address/helpers.go", []byte(textFaultInjectedWordDecision))
 	if err != nil {
 		t.Fatalf("разбор инъекции: %v", err)
@@ -382,6 +387,7 @@ func TestTextFaultGateCatchesADecisionMadeByWords(t *testing.T) {
 }
 
 func TestTextFaultGateIsSilentOnTheLegitimateTwin(t *testing.T) {
+	t.Parallel()
 	sites, census, err := ScanTextFaultDecisions("injected/address/helpers.go", []byte(textFaultInjectedLegitimateTwin))
 	if err != nil {
 		t.Fatalf("разбор близнеца: %v", err)
@@ -413,6 +419,7 @@ func TestTextFaultGateIsSilentOnTheLegitimateTwin(t *testing.T) {
 // показав этого ничем. Здесь проверяется, что инъекция словами НЕ трогает
 // предмет соседей: ни места решения по коду, ни текста ветки по умолчанию.
 func TestTextFaultInjectionBreaksOnlyTheNewProperty(t *testing.T) {
+	t.Parallel()
 	src := []byte(textFaultInjectedWordDecision)
 
 	// Сосед первый — МЕСТО решения по коду. Литерал "SQLSTATE 23505" коду

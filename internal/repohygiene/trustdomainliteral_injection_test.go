@@ -83,6 +83,7 @@ const kachoSpiffePrefix = "spiffe://kacho.cloud/"
 // TestTrustDomainScannerFindsADeclaredDomain — сторона (а): внесённый дефект
 // становится находкой, и находка несёт координату.
 func TestTrustDomainScannerFindsADeclaredDomain(t *testing.T) {
+	t.Parallel()
 	sites, census, err := ScanTrustDomainLiterals(
 		"services/iam/internal/authzguard/fgaproxy.go", []byte(trustDomainInjectedDefect))
 	if err != nil {
@@ -123,6 +124,7 @@ func TestTrustDomainScannerFindsADeclaredDomain(t *testing.T) {
 // TestTrustDomainScannerIsSilentOnALegitimateTwin — сторона (б): законный
 // близнец молчание не теряет.
 func TestTrustDomainScannerIsSilentOnALegitimateTwin(t *testing.T) {
+	t.Parallel()
 	sites, census, err := ScanTrustDomainLiterals(
 		"services/iam/internal/authzguard/fgaproxy.go", []byte(trustDomainInjectedLegitimate))
 	if err != nil {
@@ -142,6 +144,7 @@ func TestTrustDomainScannerIsSilentOnALegitimateTwin(t *testing.T) {
 // владельца форма законна, а домен — нет. Отличие между двумя фикстурами —
 // ОДИН факт: власть-заполнитель против власти-домена.
 func TestTrustDomainOwnerMayDeclareTheShapeButNotTheDomain(t *testing.T) {
+	t.Parallel()
 	shape, _, err := ScanTrustDomainLiterals("pkg/grpcsrv/trust_domain.go", []byte(trustDomainInjectedOwnerShape))
 	if err != nil {
 		t.Fatalf("разбор синтетики владельца: %v", err)

@@ -130,6 +130,7 @@ var domainsWithoutAWiredMap = []string{
 // (обе копии) либо вернуть аннотацию. «Поправить JSON руками» исходом не
 // является: он генерируется, и правка переживёт ровно до следующей генерации.
 func TestCatalogMatchesTheAnnotationsItWasGeneratedFrom(t *testing.T) {
+	t.Parallel()
 	root := repoRoot(t)
 
 	raw, err := os.ReadFile(filepath.Join(root, catalogEmbedPath))
@@ -242,6 +243,7 @@ func diffAnnotationAgainstRow(fqn string, a catalogderive.Annotations, row catal
 // от списка proto-пакетов сервиса, а требуемое отношение объявить аннотацией
 // метода в proto.
 func TestNoServiceDeclaresItsPermissionsASecondTime(t *testing.T) {
+	t.Parallel()
 	root := repoRoot(t)
 	tt := newTrackedTree(t, root)
 
@@ -369,6 +371,7 @@ func inspectRPCMapConstruction(f *ast.File) (literals int, deriveCalls int) {
 //  3. провязать нельзя по существу -> внести домен в domainsWithoutAWiredMap с
 //     разбором, чем именно держится сужение.
 func TestScopeFilteredRowsBelongToADomainThatEnforcesThem(t *testing.T) {
+	t.Parallel()
 	root := repoRoot(t)
 
 	raw, err := os.ReadFile(filepath.Join(root, catalogEmbedPath))

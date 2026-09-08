@@ -41,6 +41,7 @@ func forbiddenTypesFixture() (entries, modelTypes, domains []string) {
 }
 
 func TestForbiddenTypesJudgeIsSilentOnAgreement(t *testing.T) {
+	t.Parallel()
 	entries, modelTypes, domains := forbiddenTypesFixture()
 
 	faults, census := judgeForbiddenProxyTypes(entries, modelTypes, domains)
@@ -64,6 +65,7 @@ func TestForbiddenTypesJudgeIsSilentOnAgreement(t *testing.T) {
 }
 
 func TestForbiddenTypesJudgeCatchesAnEntryWithoutAReferent(t *testing.T) {
+	t.Parallel()
 	entries, modelTypes, domains := forbiddenTypesFixture()
 	entries = append(entries, "role") // тип модели называется `iam_role`
 
@@ -87,6 +89,7 @@ func TestForbiddenTypesJudgeCatchesAnEntryWithoutAReferent(t *testing.T) {
 }
 
 func TestForbiddenTypesJudgeCatchesANonModuleTypeWithoutAnEntry(t *testing.T) {
+	t.Parallel()
 	entries, modelTypes, domains := forbiddenTypesFixture()
 	modelTypes = append(modelTypes, "iam_group") // немодульный тип, записи нет
 
@@ -116,6 +119,7 @@ func TestForbiddenTypesJudgeCatchesANonModuleTypeWithoutAnEntry(t *testing.T) {
 // Без этого прогона сторона «тип без записи» краснела бы на каждом ресурсе
 // платформы, и первое же ложное срабатывание сняло бы гейт целиком.
 func TestForbiddenTypesJudgeIsSilentOnAModuleTypeOutsideTheSet(t *testing.T) {
+	t.Parallel()
 	entries, modelTypes, domains := forbiddenTypesFixture()
 	modelTypes = append(modelTypes, "vpc_subnet") // модульный тип, записи нет — законно
 

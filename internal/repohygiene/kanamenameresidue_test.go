@@ -106,6 +106,7 @@ func kanameSurfaceCorpus(t *testing.T) map[string][]byte {
 // чтобы остаток не рос молча и чтобы его снижение было НАЗВАНО тем же
 // изменением, которое его снизило.
 func TestKanameSurfaceNameResidueMatchesItsLedgers(t *testing.T) {
+	t.Parallel()
 	findings, ledgerFindings, census, err := FindKanameNameResidue(
 		kanameSurfaceCorpus(t), KanameNameResidueStay, KanameNameResidueDebt)
 	if err != nil {
@@ -241,6 +242,7 @@ func nameResidueShown(n int) int {
 // теряет. Здесь считается ровно эта величина — файлы, невидимые ASCII-предикату
 // целиком, — и её ноль объявляется отказом, а не тихим успехом.
 func TestKanameNameResidueRecognizerReadsBothLatinFormsOfTheTree(t *testing.T) {
+	t.Parallel()
 	corpus := kanameSurfaceCorpus(t)
 	_, _, census, err := FindKanameNameResidue(corpus, KanameNameResidueStay, KanameNameResidueDebt)
 	if err != nil {
@@ -307,6 +309,7 @@ func TestKanameNameResidueRecognizerReadsBothLatinFormsOfTheTree(t *testing.T) {
 // граница беспредметна; появится — её обязан научиться читать разбор, а не эта
 // проба объяснить, почему он не стал.
 func TestKanameNameResidueEncodedFormsAreAbsentFromTheSurface(t *testing.T) {
+	t.Parallel()
 	corpus := kanameSurfaceCorpus(t)
 	// base64 обычной формы имени в трёх выравниваниях плюс процентное и \u.
 	encodings := map[string]string{
@@ -353,6 +356,7 @@ func TestKanameNameResidueEncodedFormsAreAbsentFromTheSurface(t *testing.T) {
 // Остаток без владельца снимать некому: он переживает линию и становится
 // свойством дерева, о котором никто не отвечает.
 func TestKanameNameResidueDebtLedgerNamesAnOwnerForEveryLane(t *testing.T) {
+	t.Parallel()
 	_, _, census, err := FindKanameNameResidue(
 		kanameSurfaceCorpus(t), KanameNameResidueStay, KanameNameResidueDebt)
 	if err != nil {
@@ -386,6 +390,7 @@ func TestKanameNameResidueDebtLedgerNamesAnOwnerForEveryLane(t *testing.T) {
 // Строка, называющая полосу, до которой ни одно правило не доходит, прощает
 // вникуда и переживёт свой предмет молча.
 func TestKanameNameResidueLedgerRowsAreReachable(t *testing.T) {
+	t.Parallel()
 	produced := map[string]bool{}
 	for _, rule := range kanameResidueRules {
 		produced[rule.Lane] = true

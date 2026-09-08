@@ -203,6 +203,7 @@ func oracleLanes(t *testing.T, f oracleFixture) map[string]string {
 // TestOracleGate_SilentOnTheLawfulSurface — КОНТРОЛЬ. Без него всякое красное
 // ниже доказывало бы лишь то, что гейт краснеет всегда.
 func TestOracleGate_SilentOnTheLawfulSurface(t *testing.T) {
+	t.Parallel()
 	got := oracleLanes(t, oracleFixture{})
 	if len(got) != 0 {
 		t.Fatalf("гейт краснеет на законной поверхности: %v — все три близнеца "+
@@ -213,6 +214,7 @@ func TestOracleGate_SilentOnTheLawfulSurface(t *testing.T) {
 
 // TestOracleGate_LaneA_SubjectFieldOnAnUnscopedRead — инъекция A.
 func TestOracleGate_LaneA_SubjectFieldOnAnUnscopedRead(t *testing.T) {
+	t.Parallel()
 	// Списочному чтению БЕЗ обязательного аккаунта, чей ответ аккаунт называет,
 	// добавлено поле субъекта — ровно тот вход, который и заводят.
 	got := oracleLanes(t, oracleFixture{protoExtra: `
@@ -235,6 +237,7 @@ service WidgetBySubjectService {
 // Ею полоса A становится МАШИННЫМ исполнителем границы объёма: «возврат поля
 // аккаунта на ресурс пользователя» перестаёт держаться обещанием.
 func TestOracleGate_LaneA_AccountFieldBackOnTheUserResource(t *testing.T) {
+	t.Parallel()
 	got := oracleLanes(t, oracleFixture{userExtraFields: "  string account_id = 3;\n"})
 	if got["UserService/Get"] != "A" {
 		t.Fatalf("полоса A не заметила возвращённое поле аккаунта на ресурсе человека: %v", got)
@@ -245,6 +248,7 @@ func TestOracleGate_LaneA_AccountFieldBackOnTheUserResource(t *testing.T) {
 //
 // Ею полоса A закрывает форму «перечень членств вместе с человеком».
 func TestOracleGate_LaneA_MembershipsFieldOnTheUserResource(t *testing.T) {
+	t.Parallel()
 	got := oracleLanes(t, oracleFixture{userExtraFields: "  repeated Membership memberships = 3;\n"})
 	if got["UserService/Get"] != "A" {
 		t.Fatalf("полоса A не заметила поле членств на ресурсе человека: %v", got)
@@ -253,6 +257,7 @@ func TestOracleGate_LaneA_MembershipsFieldOnTheUserResource(t *testing.T) {
 
 // TestOracleGate_LaneB_SubjectTermInAnUnscopedWhitelist — инъекция B.
 func TestOracleGate_LaneB_SubjectTermInAnUnscopedWhitelist(t *testing.T) {
+	t.Parallel()
 	got := oracleLanes(t, oracleFixture{whitelistTerms: `"name", "userId"`})
 	if got["WidgetService/List"] != "B" {
 		t.Fatalf("полоса B не заметила терм субъекта в белом списке чтения без "+
@@ -268,6 +273,7 @@ func TestOracleGate_LaneB_SubjectTermInAnUnscopedWhitelist(t *testing.T) {
 // утверждается прямо: контроль выше молчит именно из-за него, а не потому, что
 // полоса B ничего не читает.
 func TestOracleGate_LaneB_SubjectTermStaysLawfulWhenAccountIsMandatory(t *testing.T) {
+	t.Parallel()
 	c, err := SurveyMembershipOracle(oracleInjectionTree(t, oracleFixture{}))
 	if err != nil {
 		t.Fatalf("обход: %v", err)
@@ -297,6 +303,7 @@ func TestOracleGate_LaneB_SubjectTermStaysLawfulWhenAccountIsMandatory(t *testin
 // полоса C остаётся объявлением, а гейт зелен ровно на том входе, ради которого
 // заведён.
 func TestOracleGate_LaneC_FlatMembershipRead(t *testing.T) {
+	t.Parallel()
 	got := oracleLanes(t, oracleFixture{protoExtra: `
 message GetFlatMembershipRequest {
   string membership_id = 1;
@@ -320,6 +327,7 @@ service FlatMembershipService {
 // Перестанет идентификатор быть вычислимым — запрет обязан быть ПЕРЕСМОТРЕН, а
 // не унаследован молча. Гейт обязан это ЗАМЕТИТЬ.
 func TestOracleGate_LaneC_PremiseIsCheckedNotAssumed(t *testing.T) {
+	t.Parallel()
 	c, err := SurveyMembershipOracle(oracleInjectionTree(t, oracleFixture{}))
 	if err != nil {
 		t.Fatalf("обход: %v", err)
@@ -364,6 +372,7 @@ func TestOracleGate_LaneC_PremiseIsCheckedNotAssumed(t *testing.T) {
 
 // TestOracleGate_QuenchEntryExpiresWithItsProof — гасящая запись самоистекает.
 func TestOracleGate_QuenchEntryExpiresWithItsProof(t *testing.T) {
+	t.Parallel()
 	tree := oracleInjectionTree(t, oracleFixture{})
 	proofs := SurveyOracleQuenchProofs(tree)
 	if len(proofs) == 0 {
@@ -413,6 +422,7 @@ func TestOracleGate_QuenchEntryExpiresWithItsProof(t *testing.T) {
 // остался бы зелёным при снятом сужении — гейт удостоверял бы собственное
 // объяснение.
 func TestOracleGate_QuenchProofIsNotSatisfiedByProse(t *testing.T) {
+	t.Parallel()
 	tree := oracleInjectionTree(t, oracleFixture{})
 	root := tree.Root()
 	target := oracleQuenchedByNarrowing[0]
@@ -433,6 +443,7 @@ func TestOracleGate_QuenchProofIsNotSatisfiedByProse(t *testing.T) {
 // TestOracleGate_CensusIsNotVacuous — перепись обязана быть НЕПУСТОЙ, иначе
 // «ноль находок» означает «ноль прочитанного».
 func TestOracleGate_CensusIsNotVacuous(t *testing.T) {
+	t.Parallel()
 	c, err := SurveyMembershipOracle(oracleInjectionTree(t, oracleFixture{}))
 	if err != nil {
 		t.Fatalf("обход: %v", err)

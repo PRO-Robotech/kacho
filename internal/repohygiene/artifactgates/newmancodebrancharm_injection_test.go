@@ -34,6 +34,7 @@ const rcbURL = "{{baseUrl}}/nlb/v1/networkLoadBalancers?projectId={{garbageProje
 // ─── контроль: чистый шаг молчит, и он ПРОЧИТАН ──────────────────────────────
 
 func TestRCB_CleanDecisionTableIsSilentAndSeen(t *testing.T) {
+	t.Parallel()
 	step := nmStep("viewer", "GET", rcbURL,
 		"pm.test('no data leaked', () => {",
 		"  if (pm.response.code === 200) {",
@@ -59,6 +60,7 @@ func TestRCB_CleanDecisionTableIsSilentAndSeen(t *testing.T) {
 // ─── ось: противоречие в ОДНОЙ И ТОЙ ЖЕ ветви ────────────────────────────────
 
 func TestRCB_BranchOutsideAdmissionInTheSameArmIsAFinding(t *testing.T) {
+	t.Parallel()
 	step := nmStep("lst-stranger", "GET", rcbURL,
 		"pm.test('refused', () => pm.expect(pm.response.code).to.be.oneOf([403, 404]));",
 		"if (pm.response.code === 200) {",
@@ -90,6 +92,7 @@ func TestRCB_BranchOutsideAdmissionInTheSameArmIsAFinding(t *testing.T) {
 // Полоса повтора: ветвь по коду вне допуска, но шаг несёт переход — ответ, на
 // который она смотрит, до утверждений не доходит.
 func TestRCB_RetryLaneIsLawfulAndCounted(t *testing.T) {
+	t.Parallel()
 	step := nmStep("get-fresh", "GET", "{{baseUrl}}/vpc/v1/networks/{{netId}}",
 		"if (pm.response.code === 403) {",
 		"  pm.execution.setNextRequest(pm.info.requestName);",
@@ -108,6 +111,7 @@ func TestRCB_RetryLaneIsLawfulAndCounted(t *testing.T) {
 
 // Допуск содержит код ветви: ветка — его пин, а не противоречие.
 func TestRCB_BranchInsideAdmissionIsLawfulAndSilent(t *testing.T) {
+	t.Parallel()
 	step := nmStep("list", "GET", rcbURL,
 		"pm.test('page or refusal', () => pm.expect(pm.response.code).to.be.oneOf([200, 403]));",
 		"if (pm.response.code === 200) {",
@@ -126,6 +130,7 @@ func TestRCB_BranchInsideAdmissionIsLawfulAndSilent(t *testing.T) {
 // Ветвь по ЧУЖОМУ полю (`j.code` внутри тела) — не предмет: допуск шага говорит
 // про код края. Иначе гейт краснел бы на разборе тела ответа.
 func TestRCB_BranchOnForeignFieldIsNotABranchAtAll(t *testing.T) {
+	t.Parallel()
 	step := nmStep("del-system", "DELETE", "{{baseUrl}}/iam/v1/roles/{{sysRoleId}}",
 		"const j = pm.response.json();",
 		"pm.test('sync refusal', () => pm.expect(pm.response.code).to.be.oneOf([400]));",
@@ -147,6 +152,7 @@ func TestRCB_BranchOnForeignFieldIsNotABranchAtAll(t *testing.T) {
 // формой в корпусе записано большинство допусков, и построчный распознаватель
 // вывел бы их все из-под наблюдения — не находкой, а невидимостью.
 func TestRCB_MultiLineAdmissionIsRecognised(t *testing.T) {
+	t.Parallel()
 	step := nmStep("lst-stranger", "GET", rcbURL,
 		"pm.test('refused', () =>",
 		"  pm.expect(pm.response.code, pm.response.text())",

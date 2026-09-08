@@ -168,6 +168,7 @@ func injRun(t *testing.T, root string, r FoundationRoster) FoundationCensus {
 // имени возможности в его каталоге нет вовсе. Именно на нём наивный предикат
 // («упомянул ли слушатель») дал бы находку, и она была бы ложной.
 func TestFoundationGateStaysSilentOnLegitimateAdoption(t *testing.T) {
+	t.Parallel()
 	cen := injRun(t, injTree(t, injBase()), injRoster())
 	if len(cen.Listeners) != 2 || len(cen.Sites) != 3 {
 		t.Fatalf("вход построен неверно: каталогов %d (нужно 2), мест сборки %d (нужно 3) — "+
@@ -190,6 +191,7 @@ func TestFoundationGateStaysSilentOnLegitimateAdoption(t *testing.T) {
 //	объединение по каталогу на этом же входе по-прежнему отвечает «несёт» —
 //	то есть прежняя единица счёта промолчала бы, и это не догадка, а замер.
 func TestFoundationGateCountsBySiteNotByDirectory(t *testing.T) {
+	t.Parallel()
 	files := injBase()
 	injDropInternalWiring(files)
 	root := injTree(t, files)
@@ -240,6 +242,7 @@ func TestFoundationGateCountsBySiteNotByDirectory(t *testing.T) {
 // относящиеся ко ВТОРОМУ месту, и разбирает получившийся исходник заново.
 // Ожидание точное: ровно одно место теряет возможность, соседнее — сохраняет.
 func TestFoundationGateRedensWhenARealListenerLosesItsWiring(t *testing.T) {
+	t.Parallel()
 	root := repoRoot(t)
 	r := foundationRoster()
 	sv := foundationSurveyTree(t, root, r)
@@ -458,6 +461,7 @@ func injDropCallsInRange(body string, from, to int, symbols []string) (string, i
 // Каждая форма записи проверяется отдельно: одна проверка на все сразу не
 // отличила бы «истекает пропуск» от «истекает что-нибудь».
 func TestFoundationLedgerEntriesExpireOnTheirOwn(t *testing.T) {
+	t.Parallel()
 	root := injTree(t, injBase()) // дерево, где ВСЕ места усыновили
 
 	cases := []struct {
@@ -579,6 +583,7 @@ func TestFoundationLedgerEntriesExpireOnTheirOwn(t *testing.T) {
 
 // TestFoundationProviderClaimIsVerifiedAgainstTheTree — предпосылка гейта.
 func TestFoundationProviderClaimIsVerifiedAgainstTheTree(t *testing.T) {
+	t.Parallel()
 	scan := func(t *testing.T, root, dir string) map[string]*FoundationScan {
 		t.Helper()
 		s, err := ScanGoTree(filepath.Join(root, filepath.FromSlash(dir)))
@@ -624,6 +629,7 @@ func TestFoundationProviderClaimIsVerifiedAgainstTheTree(t *testing.T) {
 // TestFoundationWrapperDeclarationIsVerifiedAgainstTheTree — объявление обёртки
 // есть ПОСЛАБЛЕНИЕ, и оно обязано истекать само.
 func TestFoundationWrapperDeclarationIsVerifiedAgainstTheTree(t *testing.T) {
+	t.Parallel()
 	t.Run("обёртка с предметом молчит", func(t *testing.T) {
 		root := injTree(t, injBase())
 		r := injRoster()
@@ -690,6 +696,7 @@ func TestFoundationWrapperDeclarationIsVerifiedAgainstTheTree(t *testing.T) {
 // TestFoundationRosterRefusesCapabilityWithoutSubject — возможность, объявленная
 // обязательной, обязана существовать, быть видимой и знать свою единицу счёта.
 func TestFoundationRosterRefusesCapabilityWithoutSubject(t *testing.T) {
+	t.Parallel()
 	root := injTree(t, injBase())
 
 	t.Run("настоящая возможность молчит", func(t *testing.T) {
@@ -741,6 +748,7 @@ func TestFoundationRosterRefusesCapabilityWithoutSubject(t *testing.T) {
 // TestFoundationCensusRefusesWhenThereAreNoListeners — «ноль находок» обязано
 // быть отличимо от «ноль прочитанного».
 func TestFoundationCensusRefusesWhenThereAreNoListeners(t *testing.T) {
+	t.Parallel()
 	root := injTree(t, map[string]string{
 		"pkg/fake/wire.go":  "package fake\n\nfunc Wire() int { return 1 }\n",
 		"pkg/host/serve.go": "package host\n\nimport \"x/pkg/fake\"\n\nfunc Serve() int { return fake.Wire() }\n",
@@ -773,6 +781,7 @@ func TestFoundationCensusRefusesWhenThereAreNoListeners(t *testing.T) {
 // контроль исчезал без следа при самой вероятной форме правки. Пропуск здесь
 // запрещён: не нашли производителя — это отказ.
 func TestFoundationAdoptionIgnoresMentionsInComments(t *testing.T) {
+	t.Parallel()
 	root := repoRoot(t)
 	recovery := FoundationCapability{
 		Name: "восстановление после паники", Pkg: "pkg/grpcsrv",
@@ -850,6 +859,7 @@ func TestFoundationAdoptionIgnoresMentionsInComments(t *testing.T) {
 // запись. Ожидание точное: находка ровно одна на каждую единицу, которую запись
 // прикрывала, и все они называют ту самую возможность.
 func TestFoundationGateRedensOnTheRealTreeWhenAnEntryIsRemoved(t *testing.T) {
+	t.Parallel()
 	root := repoRoot(t)
 	base := foundationRoster()
 	sv := foundationSurveyTree(t, root, base)

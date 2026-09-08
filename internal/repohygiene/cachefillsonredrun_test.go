@@ -189,6 +189,7 @@ func checkCacheFillOnRed(path, raw string) ([]string, cacheCensus) {
 
 // TestCacheFillsOnTheRunThatPaidForIt — по дереву.
 func TestCacheFillsOnTheRunThatPaidForIt(t *testing.T) {
+	t.Parallel()
 	root := repoRoot(t)
 	files := listWorkflows(t, root)
 
@@ -219,6 +220,7 @@ func TestCacheFillsOnTheRunThatPaidForIt(t *testing.T) {
 // TestCacheFillDetectorSeesBothForms — инъекция в обе стороны: заведомый
 // экземпляр обязан быть пойман, законный близнец той же формы — пропущен.
 func TestCacheFillDetectorSeesBothForms(t *testing.T) {
+	t.Parallel()
 	cases := []struct {
 		name    string
 		yaml    string

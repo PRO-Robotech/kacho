@@ -175,6 +175,7 @@ func auditShapeCapabilities(r shapeCapabilityReport) ([]string, shapeCapabilityC
 // сторонам, а перепись печатает роды порознь: переход предмета из рода в род
 // виден числом, а не по памяти.
 func TestNewmanHelperShapeCapabilityHasACaller(t *testing.T) {
+	t.Parallel()
 	root := repoRoot(t)
 	tt := newTrackedTree(t, root)
 

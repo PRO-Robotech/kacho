@@ -37,6 +37,7 @@ func goodLedger() *RetiredLedger {
 }
 
 func TestRetiredLedgerInjection(t *testing.T) {
+	t.Parallel()
 	present := liveSet("20260904000000_iam_schema_baseline.sql")
 
 	// ── Положительный контроль: законное надгробие молчит. Без него всякое
@@ -119,6 +120,7 @@ func TestRetiredLedgerInjection(t *testing.T) {
 // как цитаты уйдут. Проба, падающая на достижении своей цели, толкала бы держать
 // запись ради зелёного.
 func TestRetiredLedgerAbsenceIsNotAFinding(t *testing.T) {
+	t.Parallel()
 	dir := t.TempDir()
 	l, err := ReadRetiredLedger(dir)
 	if err != nil {
@@ -136,6 +138,7 @@ func TestRetiredLedgerAbsenceIsNotAFinding(t *testing.T) {
 // прочитанный как «надгробия нет», снял бы проверку целиком и выглядел бы как
 // чистое дерево.
 func TestRetiredLedgerUnparseableIsAnError(t *testing.T) {
+	t.Parallel()
 	dir := t.TempDir()
 	if err := os.WriteFile(filepath.Join(dir, RetiredLedgerName), []byte("{не json"), 0o600); err != nil {
 		t.Fatal(err)

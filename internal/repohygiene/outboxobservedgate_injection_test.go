@@ -136,6 +136,7 @@ func injKeys(decls []deliveryColumnDecl) []string {
 
 // TestDeliveryColumnScanFindsAQueueThatPromisesDelivery — сторона «краснеет».
 func TestDeliveryColumnScanFindsAQueueThatPromisesDelivery(t *testing.T) {
+	t.Parallel()
 	decls := injDecls(t, "svc", injQueueMigration)
 
 	if got := injKeys(decls); len(got) != 1 || got[0] != "svc/lonely_outbox" {
@@ -163,6 +164,7 @@ func TestDeliveryColumnScanFindsAQueueThatPromisesDelivery(t *testing.T) {
 // вырезаться, а Down-секция обязана отрезаться ДО вырезания (маркер отката сам
 // является комментарием).
 func TestDeliveryColumnScanIgnoresCommentsAndDownSections(t *testing.T) {
+	t.Parallel()
 	decls := injDecls(t, "svc", injQueueMigration)
 	keys := injKeys(decls)
 	for _, forbidden := range []string{"svc/ghost_outbox", "svc/down_only_outbox"} {
@@ -185,6 +187,7 @@ func TestDeliveryColumnScanIgnoresCommentsAndDownSections(t *testing.T) {
 // Без этой стороны предикат был бы «имя оканчивается на _outbox», и четыре ленты
 // изменений дерева стали бы находками.
 func TestDeliveryColumnScanSilentOnAChangeFeed(t *testing.T) {
+	t.Parallel()
 	if got := injKeys(injDecls(t, "svc", injFeedMigration)); len(got) != 0 {
 		t.Errorf("лента изменений доставки не обещает — колонок sent_at/next_attempt_at у неё "+
 			"нет, и спрашивать с неё нечего; разбор нашёл %v", got)
@@ -194,6 +197,7 @@ func TestDeliveryColumnScanSilentOnAChangeFeed(t *testing.T) {
 // TestDeliveryColumnScanDropsWhatTheTreeDropped — запись не переживает свой
 // предмет.
 func TestDeliveryColumnScanDropsWhatTheTreeDropped(t *testing.T) {
+	t.Parallel()
 	if got := injKeys(injDecls(t, "svc", injQueueMigration, injDroppedMigration)); len(got) != 0 {
 		t.Errorf("снятая таблица обязана уйти из переписи, иначе запись о ней переживёт свой "+
 			"предмет; разбор нашёл %v", got)
@@ -203,6 +207,7 @@ func TestDeliveryColumnScanDropsWhatTheTreeDropped(t *testing.T) {
 // TestDeliveryAdvancerReadsStatementsNotComments — оператор движения читается из
 // строкового литерала, а не из текста файла.
 func TestDeliveryAdvancerReadsStatementsNotComments(t *testing.T) {
+	t.Parallel()
 	live := goDeliveryAdvancersIn(map[string]string{"repo/mark.go": injAdvancerGo})
 	if len(live["lonely_outbox"]) != 1 {
 		t.Errorf("настоящий оператор движения обязан быть найден: %v", live)
@@ -225,6 +230,7 @@ func TestDeliveryAdvancerReadsStatementsNotComments(t *testing.T) {
 // Исходы разведены намеренно: свернуть их в один булев «всё в порядке» значило бы
 // записать «доставки нет» там, где она есть, и наоборот.
 func TestDeliveryClassificationCoversAllFourOutcomes(t *testing.T) {
+	t.Parallel()
 	cases := []struct {
 		name                                         string
 		advanced, drained, observed, noted, declared bool
@@ -254,6 +260,7 @@ func TestDeliveryClassificationCoversAllFourOutcomes(t *testing.T) {
 // распознавание) — и это и есть требование «ноль находок отличимо от ноль
 // прочитанного».
 func TestDeliveryColumnScanPremiseEmptyWhenNothingIsDeclared(t *testing.T) {
+	t.Parallel()
 	if got := injKeys(injDecls(t, "svc", "-- +goose Up\n\nSELECT 1;\n")); len(got) != 0 {
 		t.Errorf("на дереве без очередей перепись обязана быть пустой, нашлось %v", got)
 	}

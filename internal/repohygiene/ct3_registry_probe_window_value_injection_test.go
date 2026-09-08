@@ -86,6 +86,7 @@ var ct3DefectForms = []struct {
 
 // (а) НАСТОЯЩИЙ ДЕФЕКТ в каждой форме — находка с координатой И с именем формы.
 func TestCt3ProbeWindowInjection_EachWrittenFormIsAFinding(t *testing.T) {
+	t.Parallel()
 	for _, d := range ct3DefectForms {
 		t.Run(d.name, func(t *testing.T) {
 			root := writeCt3ProbeTree(t, ct3ProbeFile{
@@ -139,6 +140,7 @@ const ct3LawfulNeighbours = `# бюджет объявлен на связыва
 // (б)+(в) ЗАКОННЫЙ БЛИЗНЕЦ и соседние законные формы обязаны МОЛЧАТЬ, а перепись
 // — показать, что обход их ПРОЧИТАЛ: молчание на непрочитанном не доказательство.
 func TestCt3ProbeWindowInjection_LawfulTextIsSilent(t *testing.T) {
+	t.Parallel()
 	root := writeCt3ProbeTree(t,
 		ct3ProbeFile{rel: ct3InCorpus("scripts/dataplane-e2e.sh"), body: ct3LawfulReplacement},
 		ct3ProbeFile{rel: ct3InCorpus("cases/registry-authz.py"), body: ct3LawfulNeighbours},
@@ -162,6 +164,7 @@ func TestCt3ProbeWindowInjection_LawfulTextIsSilent(t *testing.T) {
 // посчитана один раз. Иначе один дефект считался бы дважды, и перепись врала бы
 // в ту сторону, которую труднее заметить, — в сторону завышения.
 func TestCt3ProbeWindowInjection_OneLineCountsOnce(t *testing.T) {
+	t.Parallel()
 	root := writeCt3ProbeTree(t, ct3ProbeFile{
 		rel:  ct3InCorpus("docs/RESULTS.md"),
 		body: "- pull -> 200 (poll-retry to absorb FGA propagation, ~0.6-2s);\n",
@@ -178,6 +181,7 @@ func TestCt3ProbeWindowInjection_OneLineCountsOnce(t *testing.T) {
 // (шапка гейта), и проба обязана это решение закрепить — иначе следующий
 // расширит обход, не заметив, что перечень владельцев окна тем самым сменился.
 func TestCt3ProbeWindowInjection_ScopeIsTheRegistryProbeCorpus(t *testing.T) {
+	t.Parallel()
 	defect := "# (FGA-пропагация ~0.6–2s) — ждём.\n"
 	root := writeCt3ProbeTree(t,
 		ct3ProbeFile{rel: "services/nlb/tests/newman/cases/load-balancer.py", body: defect},
@@ -203,6 +207,7 @@ func TestCt3ProbeWindowInjection_ScopeIsTheRegistryProbeCorpus(t *testing.T) {
 // различает их ТОЛЬКО перепись — поэтому она и печатается всегда, а прогон на
 // пустом обходе падает проверкой предпосылки в самом гейте.
 func TestCt3ProbeWindowInjection_EmptyWalkIsDistinguishable(t *testing.T) {
+	t.Parallel()
 	c, findings := ct3ProbeRun(t, t.TempDir())
 	if c.FilesRead != 0 || c.LinesScanned != 0 {
 		t.Fatalf("на пустом дереве обход обязан быть пуст: файлов %d, строк %d",

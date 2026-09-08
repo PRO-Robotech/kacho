@@ -129,6 +129,7 @@ func clientDocsWritePage(t *testing.T, root, rel, body string) {
 
 // TestRetiredFieldGateFallsOnAnExampleShowingARetiredName — ось «забранное имя».
 func TestRetiredFieldGateFallsOnAnExampleShowingARetiredName(t *testing.T) {
+	t.Parallel()
 	root := clientDocsDriftFixture(t)
 
 	// ЛОВИТСЯ: ключ примера — имя, забранное контрактом СВОЕГО домена.
@@ -167,6 +168,7 @@ func TestRetiredFieldGateFallsOnAnExampleShowingARetiredName(t *testing.T) {
 // формы. Без них гейт ловил бы форму, а не существо: первый ложный срабат его
 // отключит, и вместе с ним перестанут читать настоящие находки.
 func TestRetiredFieldGateStaysSilentOnLawfulTwins(t *testing.T) {
+	t.Parallel()
 	root := clientDocsDriftFixture(t)
 
 	// МОЛЧИТ на трёх осях сразу:
@@ -203,6 +205,7 @@ func TestRetiredFieldGateStaysSilentOnLawfulTwins(t *testing.T) {
 // законные формы записи примера. Форма, о которой он не знает, — не край: всё
 // записанное в ней оказывается вне наблюдения.
 func TestRetiredFieldGateReadsBothExampleForms(t *testing.T) {
+	t.Parallel()
 	root := clientDocsDriftFixture(t)
 	clientDocsWritePage(t, root, "services/widget/docs/content/api/widget.mdx",
 		"# Widget\n\n```json\n{\n  \"oldShape\": \"round\"\n}\n```\n")
@@ -217,6 +220,7 @@ func TestRetiredFieldGateReadsBothExampleForms(t *testing.T) {
 
 // TestDeprecationGateFallsOnADeprecatedVerbShownAsCurrent — ось «пометка».
 func TestDeprecationGateFallsOnADeprecatedVerbShownAsCurrent(t *testing.T) {
+	t.Parallel()
 	root := clientDocsDriftFixture(t)
 	clientDocsWritePage(t, root, "services/widget/docs/content/api/widget.mdx", `
 # Widget
@@ -244,6 +248,7 @@ func TestDeprecationGateFallsOnADeprecatedVerbShownAsCurrent(t *testing.T) {
 
 // TestDeprecationGateStaysSilentOnLawfulTwins — два законных близнеца.
 func TestDeprecationGateStaysSilentOnLawfulTwins(t *testing.T) {
+	t.Parallel()
 	root := clientDocsDriftFixture(t)
 
 	// МОЛЧИТ: помеченный путь несёт пометку в СВОЁМ блоке;
@@ -285,6 +290,7 @@ func TestDeprecationGateStaysSilentOnLawfulTwins(t *testing.T) {
 // Без этой оси гейт зеленел бы от пометки, стоящей у соседней операции на той же
 // странице, — то есть от текста, который вызывающий этого пути не прочтёт.
 func TestDeprecationMarkIsNotCountedFromANeighbouringBlock(t *testing.T) {
+	t.Parallel()
 	root := clientDocsDriftFixture(t)
 	clientDocsWritePage(t, root, "services/widget/docs/content/api/widget.mdx", `
 # Widget
@@ -313,6 +319,7 @@ func TestDeprecationMarkIsNotCountedFromANeighbouringBlock(t *testing.T) {
 // TestDeprecationMarkIsReadFromTheDeclarationNotAnyComment — пометка контракта
 // читается из блока комментариев ПЕРЕД глаголом, а не откуда попало в файле.
 func TestDeprecationMarkIsReadFromTheDeclarationNotAnyComment(t *testing.T) {
+	t.Parallel()
 	root := clientDocsDriftFixture(t)
 	// Пометка стоит в прозе ПОСЛЕ объявления соседнего глагола — то есть
 	// относится к тексту, а не к глаголу ниже.
@@ -350,6 +357,7 @@ service WidgetService {
 // TestBothGatesFallOnAnEmptyWalk — «ноль находок» обязано быть отличимо от «ноль
 // прочитанного».
 func TestBothGatesFallOnAnEmptyWalk(t *testing.T) {
+	t.Parallel()
 	root := t.TempDir()
 	opts := ClientDocsContractDriftOptions{Root: root, ProtoRoot: "proto"}
 

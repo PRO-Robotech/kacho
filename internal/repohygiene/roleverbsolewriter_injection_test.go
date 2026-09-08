@@ -125,6 +125,7 @@ func (w catalogWriter) ResettleTenantProjections(ctx context.Context) error {
 // Дерево цело: автор один, применитель автором НЕ является. Обе формы вместе
 // обязаны дать ровно одного — иначе всё, что ниже, судит сломанный признак.
 func TestIAMRV112_AxisAuthor_ControlSeesExactlyOneAuthor(t *testing.T) {
+	t.Parallel()
 	if got := authorsOf(t, srcAuthor, roleVerbTable); len(got) != 1 {
 		t.Fatalf("на пути роли авторов %d, а он ровно один: %v", len(got), got)
 	}
@@ -139,6 +140,7 @@ func TestIAMRV112_AxisAuthor_ControlSeesExactlyOneAuthor(t *testing.T) {
 // Второй вносящий со своим сырым SQL в слое досева — ровно тот писатель, что жил
 // в дереве до #1028. Ось обязана покраснеть и НАЗВАТЬ функцию.
 func TestIAMRV112_AxisAuthor_RedOnASecondAuthor(t *testing.T) {
+	t.Parallel()
 	src := `package seed
 
 func replaceRoleVerbsTx(ctx context.Context, tx pgxExecer, roleID string) error {
@@ -170,6 +172,7 @@ func replaceRoleVerbsTx(ctx context.Context, tx pgxExecer, roleID string) error 
 // краснеющая здесь, отвергала бы применитель каталога — то есть саму возможность
 // снять модуль.
 func TestIAMRV112_AxisAuthor_SilentOnAPureRemover(t *testing.T) {
+	t.Parallel()
 	if got := authorsOf(t, srcResettler, roleVerbTable); len(got) != 0 {
 		t.Errorf("ось авторства краснеет на СНИМАЮЩЕМ: %v — под таким предикатом снятие "+
 			"модуля не прошло бы ни разу", got)
@@ -180,6 +183,7 @@ func TestIAMRV112_AxisAuthor_SilentOnAPureRemover(t *testing.T) {
 
 // TestIAMRV112_AxisRelocation_ControlSeesTheResettlerAsRelocating — КОНТРОЛЬ.
 func TestIAMRV112_AxisRelocation_ControlSeesTheResettlerAsRelocating(t *testing.T) {
+	t.Parallel()
 	if got := strandedOf(t, srcResettler, roleVerbTable); len(got) != 0 {
 		t.Fatalf("настоящая форма применителя признана НЕ переселяющей: %v — признак "+
 			"переселения не видит `INSERT INTO %s` в том же операторе, и всё, что ниже, "+
@@ -193,6 +197,7 @@ func TestIAMRV112_AxisRelocation_ControlSeesTheResettlerAsRelocating(t *testing.
 // осталась законной по всем прочим осям: он не вносит строку, лежит в слое
 // репозитория, автора не удваивает, — и именно поэтому ось нужна отдельная.
 func TestIAMRV112_AxisRelocation_RedWhenRemovalStrandsTheRow(t *testing.T) {
+	t.Parallel()
 	src := `package pg
 
 func (w catalogWriter) ResettleTenantProjections(ctx context.Context) error {
@@ -226,6 +231,7 @@ func (w catalogWriter) ResettleTenantProjections(ctx context.Context) error {
 // нечего. Гейт обязан отличать это от снятия по чужому поводу, иначе путь роли
 // краснел бы на каждой правке роли.
 func TestIAMRV112_AxisRelocation_SilentOnTheAuthorsOwnDelete(t *testing.T) {
+	t.Parallel()
 	stranded := strandedOf(t, srcAuthor, roleVerbTable)
 	if len(stranded) != 1 {
 		t.Fatalf("признак не увидел снятия у автора: %v", stranded)
@@ -248,6 +254,7 @@ func TestIAMRV112_AxisRelocation_SilentOnTheAuthorsOwnDelete(t *testing.T) {
 // Близнец, названный одним экземпляром, оставил бы вторую форму непроверенной, и
 // гейт, ловящий `SELECT` за запись, покраснел бы на ней при первом же прогоне.
 func TestIAMRV112_InjectionSilentOnBothReaders(t *testing.T) {
+	t.Parallel()
 	whole := `package scalegrid
 
 func (c *census) read() error {
@@ -282,6 +289,7 @@ func expand(ctx context.Context) error {
 // Гейт по подстроке над текстом файла краснел бы здесь — то есть на собственном
 // объяснении. Признак судит узел-литерал разобранного дерева и обязан молчать.
 func TestIAMRV112_InjectionSilentOnItsOwnExplanation(t *testing.T) {
+	t.Parallel()
 	src := `package repohygiene
 
 // Предмет: INSERT INTO kaname.role_verb из второго места — находка.
@@ -297,6 +305,7 @@ func explain() {}
 
 // TestIAMRV112_InjectionSilentOnAnotherTable — запись в чужую таблицу не находка.
 func TestIAMRV112_InjectionSilentOnAnotherTable(t *testing.T) {
+	t.Parallel()
 	src := `package pg
 
 func put(ctx context.Context) error {
@@ -313,6 +322,7 @@ func put(ctx context.Context) error {
 // Она проверяется отдельно от первых двух, потому что инъекция обязана ронять
 // ТОЛЬКО проверяемое: автор может быть ОДИН и при этом лежать не там.
 func TestIAMRV112_LayerPredicateSeparatesRepoFromSeed(t *testing.T) {
+	t.Parallel()
 	inRepo := "services/iam/internal/repo/kaname/pg/role_repo.go"
 	inSeed := "services/iam/internal/apps/kaname/seed/migrate_backfill.go"
 
@@ -335,6 +345,7 @@ func TestIAMRV112_LayerPredicateSeparatesRepoFromSeed(t *testing.T) {
 // молчания на чтении.
 
 func TestIAMCT105_InjectionRedOnASecondRuleRefAuthor(t *testing.T) {
+	t.Parallel()
 	src := `package seed
 
 func reseedRuleRefsTx(ctx context.Context, tx pgxExecer, roleID string) error {
@@ -352,6 +363,7 @@ func reseedRuleRefsTx(ctx context.Context, tx pgxExecer, roleID string) error {
 }
 
 func TestIAMCT105_InjectionRedWhenRuleRefRemovalStrandsTheRow(t *testing.T) {
+	t.Parallel()
 	src := `package pg
 
 func (w catalogWriter) resettle(ctx context.Context) error {
@@ -363,6 +375,7 @@ func (w catalogWriter) resettle(ctx context.Context) error {
 }
 
 func TestIAMCT105_InjectionSilentOnARuleRefReader(t *testing.T) {
+	t.Parallel()
 	src := `package relverdict
 
 func rulesRefsOfRole(ctx context.Context, q pgxQuerier, roleID string) (int, error) {
@@ -377,6 +390,7 @@ func rulesRefsOfRole(ctx context.Context, q pgxQuerier, roleID string) (int, err
 }
 
 func TestIAMCT105_InjectionSilentOnTheOtherProjection(t *testing.T) {
+	t.Parallel()
 	if got := opsOfTable(t, srcAuthor, roleRuleRefTable); len(got) != 0 {
 		t.Fatalf("признак второй таблицы обязан судить ТОЛЬКО её: иначе расширение охвата "+
 			"смешало бы две популяции и находка называла бы не тот предмет; найдено: %v", got)

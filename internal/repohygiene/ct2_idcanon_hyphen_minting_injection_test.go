@@ -94,6 +94,7 @@ func canonOf(prefixes ...string) map[string]struct{} {
 // TestCanonInjection_SilentWhenCanonCoversMinting — положительный контроль.
 // Без него «краснеет на инъекции» было бы неотличимо от «краснеет всегда».
 func TestCanonInjection_SilentWhenCanonCoversMinting(t *testing.T) {
+	t.Parallel()
 	s := newCanonStand(t)
 	findings, census := s.run(t, canonOf("khp", "mhp"))
 	if len(findings) != 0 {
@@ -108,6 +109,7 @@ func TestCanonInjection_SilentWhenCanonCoversMinting(t *testing.T) {
 // TestCanonInjection_MissingPrefixIsFoundThroughADomainConstant — предмет гейта.
 // Литерала в вызове нет: префикс приезжает константой чужого пакета.
 func TestCanonInjection_MissingPrefixIsFoundThroughADomainConstant(t *testing.T) {
+	t.Parallel()
 	s := newCanonStand(t)
 
 	// Предпосылка самой инъекции: литерального `NewHyphenID("mhp")` в стенде
@@ -141,6 +143,7 @@ func TestCanonInjection_MissingPrefixIsFoundThroughADomainConstant(t *testing.T)
 // слитная чеканка префиксом, которого нет в ДЕФИСНОМ каталоге, находкой не
 // является. Без него гейт объявил бы нарушением каждый legacy-префикс дерева.
 func TestCanonInjection_ConcatMintingIsNotJudged(t *testing.T) {
+	t.Parallel()
 	s := newCanonStand(t)
 	findings, census := s.run(t, canonOf("khp", "mhp"))
 	for _, f := range findings {
@@ -158,6 +161,7 @@ func TestCanonInjection_ConcatMintingIsNotJudged(t *testing.T) {
 // TestCanonInjection_EmptyWalkIsVisible — обход, которому нечего читать, обязан
 // быть ОТЛИЧИМ от обхода без находок: премиса вердикта опирается на это.
 func TestCanonInjection_EmptyWalkIsVisible(t *testing.T) {
+	t.Parallel()
 	empty := t.TempDir()
 	var log strings.Builder
 	findings, census, err := AuditHyphenMintedPrefixesInCanon(
@@ -180,6 +184,7 @@ func TestCanonInjection_EmptyWalkIsVisible(t *testing.T) {
 // починкой #1722. Это дословно дофиксовое состояние продукта, поэтому проба
 // показывает не макет, а то самое красное, ради которого гейт заведён.
 func TestCanonInjection_RealTreeAgainstThePreFixCanon(t *testing.T) {
+	t.Parallel()
 	canon := ids.KnownHyphenPrefixes()
 	for _, p := range []string{"sb", "dtb"} {
 		if _, ok := canon[p]; !ok {

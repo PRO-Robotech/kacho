@@ -157,6 +157,7 @@ func requireOneFindingAbout(t *testing.T, findings []SubjectChangeGapDetectionFi
 
 // TestGapDetectionInjection_IntactTreeIsSilent — ПРОГОН 1, контроль.
 func TestGapDetectionInjection_IntactTreeIsSilent(t *testing.T) {
+	t.Parallel()
 	findings, census, err := auditGapTree(t, gapTree{})
 	if err != nil {
 		t.Fatalf("обход синтетики: %v", err)
@@ -182,6 +183,7 @@ func TestGapDetectionInjection_IntactTreeIsSilent(t *testing.T) {
 // TestGapDetectionInjection_WindowWithoutTheFloorIsAFinding — ПРОГОН 2: снято
 // НОВОЕ звено у дерева, где остальные целы.
 func TestGapDetectionInjection_WindowWithoutTheFloorIsAFinding(t *testing.T) {
+	t.Parallel()
 	findings, census, err := auditGapTree(t, gapTree{noFloor: true})
 	if err != nil {
 		t.Fatalf("обход синтетики: %v", err)
@@ -200,6 +202,7 @@ func TestGapDetectionInjection_WindowWithoutTheFloorIsAFinding(t *testing.T) {
 // TestGapDetectionInjection_RefusalWithoutAProducerIsAFinding — ПРОГОН 3: снято
 // СУЩЕСТВУЮЩЕЕ звено; окно при этом пол спрашивает, и утверждение о нём молчит.
 func TestGapDetectionInjection_RefusalWithoutAProducerIsAFinding(t *testing.T) {
+	t.Parallel()
 	findings, census, err := auditGapTree(t, gapTree{noProducer: true})
 	if err != nil {
 		t.Fatalf("обход синтетики: %v", err)
@@ -213,6 +216,7 @@ func TestGapDetectionInjection_RefusalWithoutAProducerIsAFinding(t *testing.T) {
 
 // TestGapDetectionInjection_RefusalNobodyParsesIsAFinding — вторая сторона шва.
 func TestGapDetectionInjection_RefusalNobodyParsesIsAFinding(t *testing.T) {
+	t.Parallel()
 	findings, _, err := auditGapTree(t, gapTree{noParser: true})
 	if err != nil {
 		t.Fatalf("обход синтетики: %v", err)
@@ -223,6 +227,7 @@ func TestGapDetectionInjection_RefusalNobodyParsesIsAFinding(t *testing.T) {
 // TestGapDetectionInjection_SecondSpellingOfTheTokenIsAFinding — два написания
 // одного признака.
 func TestGapDetectionInjection_SecondSpellingOfTheTokenIsAFinding(t *testing.T) {
+	t.Parallel()
 	findings, _, err := auditGapTree(t, gapTree{secondToken: true})
 	if err != nil {
 		t.Fatalf("обход синтетики: %v", err)
@@ -238,6 +243,7 @@ func TestGapDetectionInjection_SecondSpellingOfTheTokenIsAFinding(t *testing.T) 
 // класс, что «ноль находок неотличим от ноль прочитанного», и он обязан быть
 // отказом обхода, а не зелёным вердиктом.
 func TestGapDetectionInjection_NoWindowIsAnEmptyTraversalNotSilence(t *testing.T) {
+	t.Parallel()
 	findings, census, err := auditGapTree(t, gapTree{noWindow: true})
 	if err == nil {
 		t.Fatalf("беспредметный обход дал вердикт вместо отказа: находок %d", len(findings))
@@ -264,6 +270,7 @@ func TestGapDetectionInjection_NoWindowIsAnEmptyTraversalNotSilence(t *testing.T
 // а гейт остался бы зелёным. Проба требует МОЛЧАНИЯ, потому что вторая форма
 // законна ровно так же, как первая.
 func TestGapDetectionInjection_FloorFilledByFullObservationIsSilent(t *testing.T) {
+	t.Parallel()
 	findings, census, err := auditGapTree(t, gapTree{floorViaAdvance: true})
 	if err != nil {
 		t.Fatalf("обход синтетики: %v", err)
@@ -287,6 +294,7 @@ func TestGapDetectionInjection_FloorFilledByFullObservationIsSilent(t *testing.T
 // ответить одним вызовом» — законный ответ на это, и распознаватель, её не
 // знающий, объявил бы правильный код нарушением.
 func TestGapDetectionInjection_FloorTakenByOneObservingCallIsSilent(t *testing.T) {
+	t.Parallel()
 	findings, census, err := auditGapTree(t, gapTree{floorViaObserve: true})
 	if err != nil {
 		t.Fatalf("обход синтетики: %v", err)
@@ -310,6 +318,7 @@ func TestGapDetectionInjection_FloorTakenByOneObservingCallIsSilent(t *testing.T
 // Инъекция трогает РОВНО порядок: тот же вызов пола, та же страница, тот же
 // производитель отказа — переставлены местами два оператора.
 func TestGapDetectionInjection_FloorTakenBeforeThePageIsAFinding(t *testing.T) {
+	t.Parallel()
 	findings, census, err := auditGapTree(t, gapTree{floorBeforePage: true})
 	if err != nil {
 		t.Fatalf("обход синтетики: %v", err)

@@ -41,6 +41,7 @@ const renderGuardName = "render-guard.sh"
 
 // TestEveryOfflineRenderGuardIsInvoked — ни один страж рендера не остаётся немым.
 func TestEveryOfflineRenderGuardIsInvoked(t *testing.T) {
+	t.Parallel()
 	root := repoRoot(t)
 
 	guards := findRenderGuards(t, root)
@@ -409,6 +410,7 @@ func anyMentions(reachable []string, guard string) bool {
 // Без обратной половины «все провязаны» было бы неотличимо от предиката, который
 // считает достижимым всё: он бы молчал и на настоящем немом страже.
 func TestRenderGuardReachabilityIsSymmetric(t *testing.T) {
+	t.Parallel()
 	guard := "services/x/deploy/tests/" + renderGuardName
 	cases := []struct {
 		name      string
@@ -457,6 +459,7 @@ func TestRenderGuardReachabilityIsSymmetric(t *testing.T) {
 // зовёт. Предикат «упомянута в workflow» покрасил бы их — и первый же ложный
 // срабат отключил бы гейт целиком.
 func TestMakeTargetParserFollowsPrereqsAndSubMake(t *testing.T) {
+	t.Parallel()
 	dir := t.TempDir()
 	body := strings.Join([]string{
 		"entry: dep",

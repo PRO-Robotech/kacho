@@ -126,6 +126,7 @@ func (s *nameFormStand) mustRun(
 // TestNameFormInjection_CleanStandIsSilent — КОНТРОЛЬ. Без него всякая
 // последующая краснота неотличима от анализатора, краснеющего на всём.
 func TestNameFormInjection_CleanStandIsSilent(t *testing.T) {
+	t.Parallel()
 	s := newNameFormStand(t)
 	findings, census := s.mustRun(t)
 	if len(findings) != 0 {
@@ -150,6 +151,7 @@ func TestNameFormInjection_CleanStandIsSilent(t *testing.T) {
 // TestNameFormInjection_DivergentAlphabetIsFound — снято ОДНО свойство:
 // алфавит контракта разошёлся с применяемым. Прочее у носителя цело.
 func TestNameFormInjection_DivergentAlphabetIsFound(t *testing.T) {
+	t.Parallel()
 	s := newNameFormStand(t)
 	s.write(t, "proto/kacho/cloud/probe/v1/thing.proto",
 		"syntax = \"proto3\";\n"+
@@ -182,6 +184,7 @@ func TestNameFormInjection_DivergentAlphabetIsFound(t *testing.T) {
 // совпадает, разошлась ГРАНИЦА ДЛИНЫ. Без этой пробы ось длины была бы объявлена
 // и не проверена.
 func TestNameFormInjection_DivergentLengthIsFound(t *testing.T) {
+	t.Parallel()
 	s := newNameFormStand(t)
 	s.write(t, "services/probe/docs/src/constants/restrictions.ts",
 		"export const RESTRICTIONS = {\n"+
@@ -201,6 +204,7 @@ func TestNameFormInjection_DivergentLengthIsFound(t *testing.T) {
 // распознавателя требовала скобок и не видела этот вид ВОВСЕ: не «редкий край», а
 // шесть объявлений вне наблюдения (`testing.md` §«Гейт на класс», п.7).
 func TestNameFormInjection_ParenlessFormIsJudged(t *testing.T) {
+	t.Parallel()
 	s := newNameFormStand(t)
 	s.write(t, "proto/kacho/cloud/probe/v1/thing_service.proto",
 		"syntax = \"proto3\";\n"+
@@ -221,6 +225,7 @@ func TestNameFormInjection_ParenlessFormIsJudged(t *testing.T) {
 // TestNameFormInjection_LiveExemptionSuppresses — послабление с ЖИВЫМ предметом
 // снимает находку и считается переписью.
 func TestNameFormInjection_LiveExemptionSuppresses(t *testing.T) {
+	t.Parallel()
 	s := newNameFormStand(t)
 	s.write(t, "services/probe/docs/content/api/thing.mdx",
 		"# Thing\n\nИмя — `^[a-c0-8]([-a-c0-8]{1,44}[a-c0-8])?$`.\n")
@@ -241,6 +246,7 @@ func TestNameFormInjection_LiveExemptionSuppresses(t *testing.T) {
 // TestNameFormInjection_StaleExemptionIsAFinding — послабление, которому нечего
 // исключать, обязано быть находкой: иначе слепая зона переживёт свой предмет.
 func TestNameFormInjection_StaleExemptionIsAFinding(t *testing.T) {
+	t.Parallel()
 	s := newNameFormStand(t)
 	findings, _ := s.mustRun(t, NameFormClaimExemption{
 		File:    "services/probe/docs/content/api/thing.mdx",
@@ -259,6 +265,7 @@ func TestNameFormInjection_StaleExemptionIsAFinding(t *testing.T) {
 // отличимо от «ноль прочитанного». Обход пустого дерева даёт нулевую перепись, и
 // вердикт о настоящем дереве обязан на ней падать своей премисой.
 func TestNameFormInjection_EmptyWalkIsNotSilentSuccess(t *testing.T) {
+	t.Parallel()
 	s := newNameFormStand(t)
 	empty := t.TempDir()
 	s.write(t, "unused", "")
@@ -280,6 +287,7 @@ func TestNameFormInjection_EmptyWalkIsNotSilentSuccess(t *testing.T) {
 // TestNameFormInjection_UnparseableSourceIsAnError — истину брать неоткуда, и это
 // ОТКАЗ, а не молчаливый зелёный: анализатор без источника сравнивал бы с пустотой.
 func TestNameFormInjection_UnparseableSourceIsAnError(t *testing.T) {
+	t.Parallel()
 	s := newNameFormStand(t)
 	s.write(t, "pkg/validate/nameform/nameform.go", "package nameform\n// формы здесь больше нет\n")
 	if _, _, err := s.run(t); err == nil {

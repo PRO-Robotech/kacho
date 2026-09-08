@@ -21,6 +21,7 @@ import (
 // TestSignedTypesRulesCatchACollision — сторона (а): совпадение двух значений
 // становится находкой, и находка называет координату.
 func TestSignedTypesRulesCatchACollision(t *testing.T) {
+	t.Parallel()
 	defects := signedTypesDistinctnessDefects([]string{"at+jwt", "at+jwt"})
 	if len(defects) != 1 {
 		t.Fatalf("находок %d, ожидалась 1: %v", len(defects), defects)
@@ -54,6 +55,7 @@ func TestSignedTypesRulesCatchACollision(t *testing.T) {
 // TestSignedTypesRulesAreSilentOnDistinctValues — сторона (б): два разных
 // значения, объявленных в том же месте, находкой не являются.
 func TestSignedTypesRulesAreSilentOnDistinctValues(t *testing.T) {
+	t.Parallel()
 	defects := signedTypesDistinctnessDefects([]string{"at+jwt", "client-authentication+jwt"})
 	if len(defects) != 0 {
 		t.Fatalf("законные значения объявлены находкой (%v) — гейт краснел бы на исправной "+
@@ -95,6 +97,7 @@ func check(hdr header) bool {
 // TestSignedTypesScannerFindsASecondDeclaration — разбор отличает объявление от
 // употребления.
 func TestSignedTypesScannerFindsASecondDeclaration(t *testing.T) {
+	t.Parallel()
 	values := []string{"at+jwt", "client-authentication+jwt"}
 	decls, census, err := ScanDeclaredStringValues(
 		"synthetic/registrytokenwire/minter.go", []byte(signedTypesInjectedSecondDeclaration), values)
@@ -131,6 +134,7 @@ func TestSignedTypesScannerFindsASecondDeclaration(t *testing.T) {
 // TestSignedTypeDebtRulesCatchABareEntry — правила ведомости обязаны краснеть на
 // голой записи и МОЛЧАТЬ на полной.
 func TestSignedTypeDebtRulesCatchABareEntry(t *testing.T) {
+	t.Parallel()
 	lawful := signedTypeDebtEntry{
 		File:  "services/x/config.go",
 		Name:  "TokenTypePlatform",
@@ -167,6 +171,7 @@ func TestSignedTypeDebtRulesCatchABareEntry(t *testing.T) {
 // TestSignedTypeDebtStaleRuleCatchesAnEntryWithoutSubject — запись, которой
 // больше нечего исключать, роняет прогон.
 func TestSignedTypeDebtStaleRuleCatchesAnEntryWithoutSubject(t *testing.T) {
+	t.Parallel()
 	entries := []signedTypeDebtEntry{
 		{File: "a.go", Name: "A", Why: "w", Until: "u"},
 		{File: "b.go", Name: "B", Why: "w", Until: "u"},

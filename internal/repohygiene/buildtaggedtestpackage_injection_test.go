@@ -93,6 +93,7 @@ func auditSynthTagged(t *testing.T, root string) ([]buildTagFinding, buildTagCen
 // стоит обращение к тому, чего в пакете нет, — гейт КРАСНЕЕТ и НАЗЫВАЕТ
 // координату. Находка без координаты не есть действие.
 func TestBuildTagGateRedOnInjectedDefect(t *testing.T) {
+	t.Parallel()
 	root := synthTaggedModule(t, taggedProbe("x.Missing()"))
 
 	findings, census := auditSynthTagged(t, root)
@@ -122,6 +123,7 @@ func TestBuildTagGateRedOnInjectedDefect(t *testing.T) {
 // Без этой стороны гейт ловил бы форму «в дереве есть признак сборки», то есть
 // краснел бы на каждом законном теге.
 func TestBuildTagGateSilentOnLegitimateTwin(t *testing.T) {
+	t.Parallel()
 	root := synthTaggedModule(t, taggedProbe("x.Existing()"))
 
 	findings, census := auditSynthTagged(t, root)
@@ -141,6 +143,7 @@ func TestBuildTagGateSilentOnLegitimateTwin(t *testing.T) {
 // в комментарии посреди файла и звать сборку с тегом, которого нет, — вызов
 // прошёл бы молча, и гейт стал бы проверкой с формой, но без содержания.
 func TestBuildTagGateReadsOnlyTheHeader(t *testing.T) {
+	t.Parallel()
 	body := "package pkg\n\n" +
 		"import \"testing\"\n\n" +
 		"// Ниже — не признак сборки, а разговор о нём:\n" +
@@ -179,6 +182,7 @@ func TestBuildTagGateReadsOnlyTheHeader(t *testing.T) {
 // Проба закрепляет разницу дословно, чтобы следующая правка отбора не вернула
 // прежнее поведение молча.
 func TestBuildTagSelectionTakesOnlyEnablingTags(t *testing.T) {
+	t.Parallel()
 	cases := []struct {
 		line string
 		want []string

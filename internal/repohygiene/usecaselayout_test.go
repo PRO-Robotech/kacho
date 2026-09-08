@@ -86,6 +86,7 @@ var useCaseLayoutHandoff = []string{"services/iam/internal/service"}
 // Каталог с именем слоя, лежащий вне слоя, ни одному из четырёх исходов не
 // отвечает.
 func TestUseCaseLayerHasOneLayout(t *testing.T) {
+	t.Parallel()
 	root := repoRoot(t)
 
 	var hits []string
@@ -143,6 +144,7 @@ func TestUseCaseLayerHasOneLayout(t *testing.T) {
 // вторую раскладку туда можно будет вернуть, и никто не возразит. Поэтому
 // пустое исключение здесь считается ошибкой, а не «просто больше не нужно».
 func TestUseCaseLayoutExemptionsStillHaveSubject(t *testing.T) {
+	t.Parallel()
 	root := repoRoot(t)
 
 	for _, rel := range useCaseLayoutHandoff {
@@ -179,6 +181,7 @@ func TestUseCaseLayoutExemptionsStillHaveSubject(t *testing.T) {
 // будущее: до перекладки compute (коммит перед этим) эта проверка была КРАСНОЙ
 // — ровно на compute, и именно так и должна была себя вести.
 func TestUseCaseLayoutPremiseHolds(t *testing.T) {
+	t.Parallel()
 	root := repoRoot(t)
 	total := 0
 

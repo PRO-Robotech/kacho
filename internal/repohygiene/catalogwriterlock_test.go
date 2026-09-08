@@ -43,6 +43,7 @@ func catalogWriteFindings(sites []CatalogWriteFinding) []string {
 
 // TestIAM1034_EveryCatalogRowWriterTakesTheCatalogLock — сам гейт Г1.
 func TestIAM1034_EveryCatalogRowWriterTakesTheCatalogLock(t *testing.T) {
+	t.Parallel()
 	root := repoRoot(t)
 	tt := newTrackedTree(t, root)
 

@@ -192,6 +192,7 @@ func scanSignedTypeDeclarations(t *testing.T) ([]StringValueDeclaration, int, St
 
 // TestSignedMaterialTypesAreDeclaredOnceAndDistinct — сам гейт.
 func TestSignedMaterialTypesAreDeclaredOnceAndDistinct(t *testing.T) {
+	t.Parallel()
 	values := tokenpolicy.SignedMaterialTypes()
 
 	// (1) Предпосылка: видов подписанного ДВА и более. Один вид разделять не с
@@ -309,6 +310,7 @@ func TestSignedMaterialTypesAreDeclaredOnceAndDistinct(t *testing.T) {
 // TestSignedTypeDebtIsWellFormed — каждая запись ведомости несёт координату,
 // письменное обоснование и предикат снятия, и ни одна не повторяется.
 func TestSignedTypeDebtIsWellFormed(t *testing.T) {
+	t.Parallel()
 	t.Logf("ведомость: %d записей", len(signedTypeDebt))
 	for _, bad := range signedTypeDebtDefects(signedTypeDebt) {
 		t.Error(bad)
@@ -323,6 +325,7 @@ func TestSignedTypeDebtIsWellFormed(t *testing.T) {
 // действующий долг, а освободившееся место унаследовал бы новый дефект с тем же
 // путём.
 func TestSignedTypeDebtExpiresOnItsOwn(t *testing.T) {
+	t.Parallel()
 	decls, parsed, census := scanSignedTypeDeclarations(t)
 	t.Logf("перепись: файлов разобрано %d, объявлений типов подписанного найдено %d, "+
 		"записей ведомости %d", parsed, census.Matches, len(signedTypeDebt))

@@ -121,6 +121,7 @@ func slRun(t *testing.T, body string) ([]string, slCensus) {
 // ───────────────────── ТРИ ПРОГОНА ОДНОЙ ФИКСТУРЫ ───────────────────────────
 
 func TestSL_Run1_ControlBothGatesSilent(t *testing.T) {
+	t.Parallel()
 	finds, cen := slRun(t, slLawful)
 	if cen.logSteps == 0 {
 		t.Fatalf("гейт не увидел ни одного шага, читающего журналы: перепись %+v — "+
@@ -135,6 +136,7 @@ func TestSL_Run1_ControlBothGatesSilent(t *testing.T) {
 }
 
 func TestSL_Run2_EnumeratedListRedsOnlyTheNewGate(t *testing.T) {
+	t.Parallel()
 	finds, cen := slRun(t, slEnumerated)
 	if cen.logSteps == 0 {
 		t.Fatalf("гейт не увидел шага, читающего журналы: перепись %+v", cen)
@@ -158,6 +160,7 @@ func TestSL_Run2_EnumeratedListRedsOnlyTheNewGate(t *testing.T) {
 }
 
 func TestSL_Run3_MissingGuardRedsOnlyTheNeighbour(t *testing.T) {
+	t.Parallel()
 	echo, _ := checkClusterDiagnosticsEcho("synthetic.yml", slEchoDefect)
 	if len(echo) == 0 {
 		t.Fatal("сосед #728 промолчал на своём предмете — его молчание в прогоне 2 " +
@@ -173,6 +176,7 @@ func TestSL_Run3_MissingGuardRedsOnlyTheNeighbour(t *testing.T) {
 // Близнец 1: обход по перечню, выведенному подстановкой, — предмет запрета
 // отсутствует by construction.
 func TestSL_DerivedLoopIsLawfulAndSeen(t *testing.T) {
+	t.Parallel()
 	finds, cen := slRun(t, slLawful)
 	if cen.loops < 2 {
 		t.Fatalf("распознаватель обходов увидел %d — законные близнецы не осмотрены, "+
@@ -186,6 +190,7 @@ func TestSL_DerivedLoopIsLawfulAndSeen(t *testing.T) {
 // Близнец 2: обход по литеральному перечню, НЕ читающий журналов, — чужой
 // предмет. Гейт запрещает не всякий перечень, а перечень В СБОРЕ ЖУРНАЛОВ.
 func TestSL_EnumeratedLoopThatReadsNoLogsIsLawful(t *testing.T) {
+	t.Parallel()
 	const body = `
 name: проба
 jobs:
@@ -210,6 +215,7 @@ jobs:
 // Близнец 3: форма, названная в КОММЕНТАРИИ. Гейт по подстроке краснел бы на
 // собственном объяснении — и на этом самом файле.
 func TestSL_TheFormNamedInACommentIsNotCode(t *testing.T) {
+	t.Parallel()
 	const body = `
 name: проба
 jobs:
@@ -308,6 +314,7 @@ func slRunCollector(t *testing.T, workloads, unreadable string) (string, int, st
 // ГЛАВНОЕ УТВЕРЖДЕНИЕ #1741: служба, которой выписанный перечень НЕ ЗНАЛ,
 // попадает в сбор — потому что перечень спрашивается у стенда.
 func TestSL_CollectorTakesServicesTheOldListNeverNamed(t *testing.T) {
+	t.Parallel()
 	const workloads = "deployment.apps/kaname deployment.apps/kratos " +
 		"deployment.apps/kratos-courier deployment.apps/hydra statefulset.apps/zot"
 	out, code, dir := slRunCollector(t, workloads, "")
@@ -333,6 +340,7 @@ func TestSL_CollectorTakesServicesTheOldListNeverNamed(t *testing.T) {
 }
 
 func TestSL_UnreadableLogIsNamedByNumberAndAnnotation(t *testing.T) {
+	t.Parallel()
 	out, code, dir := slRunCollector(t,
 		"deployment.apps/kaname deployment.apps/kratos", "kratos")
 	if code != 0 {
@@ -356,6 +364,7 @@ func TestSL_UnreadableLogIsNamedByNumberAndAnnotation(t *testing.T) {
 }
 
 func TestSL_EmptyStandIsSaidOutLoudNotSwallowed(t *testing.T) {
+	t.Parallel()
 	out, code, _ := slRunCollector(t, "", "")
 	if code != 0 {
 		t.Fatalf("сборщик вынес вердикт (код %d) на пустом стенде\n%s", code, out)

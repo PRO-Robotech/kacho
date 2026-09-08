@@ -72,6 +72,7 @@ func requireQuiet(t *testing.T, findings []string, c familyReaderCensus) {
 // TestFamilyReaderCensusCatchesEveryFormOfTheOption — сторона дефекта, по одной
 // инъекции на каждую форму записи.
 func TestFamilyReaderCensusCatchesEveryFormOfTheOption(t *testing.T) {
+	t.Parallel()
 	forms := []struct {
 		name string
 		body string
@@ -120,6 +121,7 @@ func TestFamilyReaderCensusCatchesEveryFormOfTheOption(t *testing.T) {
 // TestFamilyReaderCensusIsQuietOnLegalTwins — сторона молчания. Каждый близнец
 // отличается от находки РОВНО ОДНОЙ осью, и ось названа.
 func TestFamilyReaderCensusIsQuietOnLegalTwins(t *testing.T) {
+	t.Parallel()
 	twins := []struct {
 		name string
 		body string
@@ -184,6 +186,7 @@ func TestFamilyReaderCensusIsQuietOnLegalTwins(t *testing.T) {
 // Запись, которой больше нечего исключать, — находка, а не безобидный остаток:
 // иначе она молча унаследует следующую слепую зону. Проверяются обе стороны.
 func TestFamilyReaderExemptionExpiresWithItsSubject(t *testing.T) {
+	t.Parallel()
 	const exempt = "internal/repohygiene/validationfamilyreaders_injection_test.go"
 	if _, ok := familyReaderExemptions[exempt]; !ok {
 		t.Fatalf("предпосылка пробы исчезла: %s больше не значится в ведомости", exempt)
@@ -235,6 +238,7 @@ func TestFamilyReaderExemptionExpiresWithItsSubject(t *testing.T) {
 //
 // Оси четыре, и каждая — отдельный исход разбиения, а не оттенок одного.
 func TestTreeCorpusPartitionRefusesToLoseFilesSilently(t *testing.T) {
+	t.Parallel()
 	const root = "/repo"
 	ok := func(path string) ([]byte, error) { return []byte("package x\n"), nil }
 

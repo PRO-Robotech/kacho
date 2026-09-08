@@ -212,6 +212,7 @@ var postureReachRelaxations = map[string]postureReachRelaxation{}
 // каждая ось заведена, — «ноль находок» становится неотличимо от «ноль
 // прочитанного». Числа сюда НЕ переписываются: их печатает прогон.
 func TestServiceDeclaringPostureKnobsHasABootGuard(t *testing.T) {
+	t.Parallel()
 	root := repoRoot(t)
 
 	reach, err := scanPostureReach(root)
@@ -306,6 +307,7 @@ func TestServiceDeclaringPostureKnobsHasABootGuard(t *testing.T) {
 // поведение, — только что утверждение об ошибке связано с результатом вызова.
 // Истинность утверждения держит прогон самого пакета, а не чтение.
 func TestCentralDescriptorCarriesARefusalWitness(t *testing.T) {
+	t.Parallel()
 	root := repoRoot(t)
 	dir := filepath.Join(root, "pkg", "servicecontract")
 

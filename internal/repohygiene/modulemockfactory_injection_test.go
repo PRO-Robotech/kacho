@@ -85,6 +85,7 @@ jest.unstable_mockModule("antd", () => antdDouble);
 `
 
 func TestModuleMockFactoryGateFailsOnDynamicResolution(t *testing.T) {
+	t.Parallel()
 	findings, calls, static := auditModuleMockFactories(map[string]string{
 		"ui-future/x/src/Panel.test.tsx":  synthMockDynamicFactory,
 		"ui-future/x/src/Editor.test.tsx": synthMockDynamicFactoryBlock,
@@ -112,6 +113,7 @@ func TestModuleMockFactoryGateFailsOnDynamicResolution(t *testing.T) {
 }
 
 func TestModuleMockFactoryGateStaysSilentOnStaticResolution(t *testing.T) {
+	t.Parallel()
 	findings, calls, static := auditModuleMockFactories(map[string]string{
 		"ui-future/x/src/test/setup.ts":    synthMockStaticFactory,
 		"ui-future/x/src/Users.test.tsx":   synthMockInlineObject,

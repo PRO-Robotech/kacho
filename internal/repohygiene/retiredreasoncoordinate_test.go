@@ -15,6 +15,7 @@ import (
 // один раз, а метод, который она называет живым, снимает потом кто-то другой и
 // в другом изменении.
 func TestRetiredRPCReasons_NameOnlyLiveCoordinates(t *testing.T) {
+	t.Parallel()
 	var log strings.Builder
 	findings, census, err := AuditRetiredReasonCoordinates(RetiredReasonOptions{
 		Root:    repoRoot(t),
@@ -54,6 +55,7 @@ func TestRetiredRPCReasons_NameOnlyLiveCoordinates(t *testing.T) {
 // «а нам нужна подписка» — то есть под предмет, ради которого единая форма и
 // заводится. Проба — замок: снять запись можно только осознанно.
 func TestRetiredRPCSurface_LifecycleFeedNamesAreBuried(t *testing.T) {
+	t.Parallel()
 	buried := map[string]bool{}
 	for _, r := range retiredRPCSurface {
 		buried[r.FQN] = true

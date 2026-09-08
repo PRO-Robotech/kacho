@@ -43,6 +43,7 @@ UNION ALL
 
 // TestRoleScopeChainGateStaysSilentOnTheLegalTwin — КОНТРОЛЬ.
 func TestRoleScopeChainGateStaysSilentOnTheLegalTwin(t *testing.T) {
+	t.Parallel()
 	found, census := ScanRoleScopeChain("services/iam/internal/migrations/legal.sql",
 		roleScopeChainLegalBranches)
 
@@ -70,6 +71,7 @@ func TestRoleScopeChainGateStaysSilentOnTheLegalTwin(t *testing.T) {
 // молчать — иначе красное пришло бы от соседа, и гейт мог бы оказаться
 // вакуумным, не показав этого ничем.
 func TestRoleScopeChainGateRedsOnAThirdProducer(t *testing.T) {
+	t.Parallel()
 	injected := roleScopeChainLegalBranches + `
 UNION ALL
   SELECT 'iam_role'::text, o.id, 'cluster'::text, o.cluster_id, 1
@@ -105,6 +107,7 @@ UNION ALL
 // обязателен — молчание этого распознавателя при живом первом было бы неотличимо
 // от исправной работы.
 func TestRoleScopeChainGateRedsOnADirectSeed(t *testing.T) {
+	t.Parallel()
 	injected := `
 INSERT INTO kaname.resource_parent_edge (object_type, object_id, parent_type, parent_id, depth)
 VALUES ('iam_role', 'rol_probe', 'account', 'acc_probe', 1);
@@ -124,6 +127,7 @@ VALUES ('iam_role', 'rol_probe', 'account', 'acc_probe', 1);
 // от этого не становится. Без этой пробы гейт краснел бы на словаре — то есть на
 // строке, которая не производит ничего.
 func TestRoleScopeChainGateIgnoresANonProducer(t *testing.T) {
+	t.Parallel()
 	dictionary := `
 INSERT INTO kaname.scope_chain_type_dictionary (dotted, model_type) VALUES
   ('iam.role', 'iam_role');

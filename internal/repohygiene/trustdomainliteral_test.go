@@ -29,6 +29,7 @@ const trustDomainCensusFloor = 1000
 
 // TestTrustDomainIsDeclaredNotCompiled — сам гейт.
 func TestTrustDomainIsDeclaredNotCompiled(t *testing.T) {
+	t.Parallel()
 	root := repoRoot(t)
 	tt := newTrackedTree(t, root)
 

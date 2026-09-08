@@ -49,6 +49,7 @@ var retiredEngineModelVersionTable = TableRef{Owner: "services/iam", Name: "fga_
 
 // TestRetiredEngineModelVersionTableIsGone — сама проверка.
 func TestRetiredEngineModelVersionTableIsGone(t *testing.T) {
+	t.Parallel()
 	root := repoRoot(t)
 	state, census := readTableGrowthTree(t, root)
 

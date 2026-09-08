@@ -19,6 +19,7 @@ import (
 // ради которого гейт заведён: «снято 0» при непрочитанном корпусе выглядит так
 // же, как чистое дерево.
 func TestGateCarrierIsNotRemovedSilently(t *testing.T) {
+	t.Parallel()
 	root := repoRoot(t)
 
 	// Присутствие рабочего дерева git и «ствол не резолвится — ОТКАЗ, а не

@@ -205,6 +205,7 @@ func otherReferent(it pmItem) string {
 }
 
 func TestFixtureNamesObeyTheCanonWhereTheServiceMigrated(t *testing.T) {
+	t.Parallel()
 	root := repoRoot(t)
 	migrated := canonMigratedServices(t, root)
 	if len(migrated) == 0 {

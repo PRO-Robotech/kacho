@@ -57,6 +57,7 @@ var carriedMirrorTokens = []string{"hydra_client_id", "HydraClientID"}
 
 // TestCarriedCoordinateLedgerExpiresOnItsOwn — сам гейт.
 func TestCarriedCoordinateLedgerExpiresOnItsOwn(t *testing.T) {
+	t.Parallel()
 	root := repoRoot(t)
 	tt := newTrackedTree(t, root)
 

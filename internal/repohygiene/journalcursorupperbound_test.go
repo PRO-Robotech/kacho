@@ -80,6 +80,7 @@ func journalCursorOptions(t *testing.T) JournalCursorOptions {
 // Способность падать доказывает не этот прогон, а инъекция
 // (`journalcursorupperbound_injection_test.go`): здесь только вердикт.
 func TestJournalReadersNeverAdvanceOnABareSequenceNumber(t *testing.T) {
+	t.Parallel()
 	var log strings.Builder
 	findings, census, err := AuditJournalCursorUpperBound(journalCursorOptions(t), &log)
 	if err != nil {

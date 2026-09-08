@@ -153,6 +153,7 @@ var proseFieldLanes = map[string]string{
 
 // Соответствие полей носителю — сверкой С НИМ, а не прочтением его кода.
 func TestProseFieldsMatchTheCarrier(t *testing.T) {
+	t.Parallel()
 	byOutcome := map[string]peer.Outcome{
 		"Missing":     peer.OutcomeMissing,
 		"State":       peer.OutcomeStateRefused,
@@ -199,6 +200,7 @@ func laneSideByName(name string) (laneSide, bool) {
 // заведённая в фундаменте, для гейта осталась бы безымянной — и он молчал бы
 // именно о ней.
 func TestLanesByNameCoversTheWholeDictionary(t *testing.T) {
+	t.Parallel()
 	declared := map[string]bool{}
 	for _, r := range kerrors.AllReasons() {
 		declared[r.Token()] = true
@@ -233,6 +235,7 @@ func TestLanesByNameCoversTheWholeDictionary(t *testing.T) {
 // отвечать о ЧУЖОМ ресурсе своей полосой — и гейт молчал бы, потому что искал
 // только недостающее.
 func TestLaneSidesMatchTheCarrier(t *testing.T) {
+	t.Parallel()
 	produced := map[string]bool{}
 	for _, o := range peer.AllOutcomes() {
 		r := o.Reason()
@@ -358,6 +361,7 @@ func collectGeoOwnerAdapters(t *testing.T, root string) (adapters []string, file
 // было; как только он появился, гейт покраснел на коде, который конвенции
 // предписывают. Узкая популяция предпосылку не подтверждает — она её СКРЫВАЕТ.
 func TestOwnerSideIsDecidedByPathOnlyWhileOwnerIsNoConsumer(t *testing.T) {
+	t.Parallel()
 	adapters, filesRead := collectGeoOwnerAdapters(t, repoRoot(t))
 
 	if filesRead == 0 {
@@ -689,6 +693,7 @@ func judgeLaneSites(sites []laneSite) (findings []laneFinding, tally laneTally) 
 // полосы, не может разойтись с её машинным признаком, а выписанный руками —
 // расходится, и расходится молча (HTTP-статус тот же).
 func TestGeoPeerLaneIsBuiltByTheClosedType(t *testing.T) {
+	t.Parallel()
 	sites, filesRead := collectLaneSites(t, repoRoot(t), prodRoots)
 	findings, tally := judgeLaneSites(sites)
 
@@ -725,6 +730,7 @@ func TestGeoPeerLaneIsBuiltByTheClosedType(t *testing.T) {
 // Гейт смотрит на эмиссию через закрытый тип, то есть на код, КОТОРОГО ЕЩЁ НЕТ:
 // сегодняшние места он проходит, а следующего, кто соберёт такую пару, назовёт.
 func TestLaneCodeDoesNotContradictItsText(t *testing.T) {
+	t.Parallel()
 	sites, filesRead := collectLaneSites(t, repoRoot(t), prodRoots)
 
 	var checked int
@@ -760,6 +766,7 @@ func TestLaneCodeDoesNotContradictItsText(t *testing.T) {
 // правка объявления полосы без правки этой строки обязана покраснеть здесь и
 // назвать себя, а не разъехаться молча.
 func TestCanonMatchesOwnerDecision(t *testing.T) {
+	t.Parallel()
 	if got := canonPeerMissLane.Code().String(); got != "FailedPrecondition" {
 		t.Fatalf("канон полосы промаха разошёлся с решением владельца §9 п.1 приёмки XC-6:\n"+
 			"    объявление pkg/errors говорит %s, решение — FailedPrecondition.\n"+
@@ -774,6 +781,7 @@ func TestCanonMatchesOwnerDecision(t *testing.T) {
 // нечего распознавать, создаёт впечатление покрытия, которого нет, — и её
 // унаследует следующая слепая зона.
 func TestGeoLaneTextsHaveSubject(t *testing.T) {
+	t.Parallel()
 	sites, filesRead := collectLaneSites(t, repoRoot(t), prodRoots)
 
 	for txt, why := range geoLaneTexts {

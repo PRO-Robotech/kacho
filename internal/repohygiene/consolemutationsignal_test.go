@@ -266,6 +266,7 @@ func consoleMutationScan(t *testing.T) (findings []consoleMutationSite, stale []
 }
 
 func TestConsoleMutationGoesThroughTheSignalMechanism(t *testing.T) {
+	t.Parallel()
 	findings, _, c := consoleMutationScan(t)
 
 	t.Logf("осмотрено: исходников %d · мест мутации %d · файлов-действий %d "+
@@ -306,6 +307,7 @@ func TestConsoleMutationGoesThroughTheSignalMechanism(t *testing.T) {
 // один они дали бы один вердикт на два разных вопроса. Здесь спрашивается не
 // «все ли заведены», а «не описывает ли ведомость несуществующий долг».
 func TestConsoleMutationLedgerHasSubject(t *testing.T) {
+	t.Parallel()
 	_, stale, c := consoleMutationScan(t)
 
 	t.Logf("ведомость: записей %d · из них с живым предметом %d", len(consoleMutationLedger), c.Ledgered)

@@ -22,6 +22,7 @@ import (
 
 // TestMigrationRemovingGrantsLeavesATrace — IAM-RM-1-11.
 func TestMigrationRemovingGrantsLeavesATrace(t *testing.T) {
+	t.Parallel()
 	root := repoRoot(t)
 
 	paths, err := treecorpus.UnderWithSuffix(
@@ -88,6 +89,7 @@ func TestMigrationRemovingGrantsLeavesATrace(t *testing.T) {
 // («перенести выдачи на роли-преемники») не исполнялся ни разу, а не что кто-то
 // его исполнил.
 func TestNoMigrationMovesGrantsBetweenRoles(t *testing.T) {
+	t.Parallel()
 	root := repoRoot(t)
 
 	paths, err := treecorpus.UnderWithSuffix(

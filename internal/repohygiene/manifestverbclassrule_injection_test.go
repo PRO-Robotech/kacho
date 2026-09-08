@@ -49,6 +49,7 @@ func ClassOfCanonicalVerb(name string) (string, bool) {
 // «второго объявления нет» зеленело бы и на распознавателе, не находящем
 // НИЧЕГО.
 func TestClassRuleRecognizerFindsTheOwner(t *testing.T) {
+	t.Parallel()
 	if got := classRuleDeclarationsInSource(t, classRuleOwner); len(got) != 1 {
 		t.Fatalf("распознаватель нашёл %d объявлений в файле, где оно одно: %v", len(got), got)
 	}
@@ -58,6 +59,7 @@ func TestClassRuleRecognizerFindsTheOwner(t *testing.T) {
 // правила, написанная В ДРУГОЙ ФОРМЕ (свой switch вместо общего набора), —
 // находка с координатой и именем функции.
 func TestClassRuleRecognizerFindsASecondDeclaration(t *testing.T) {
+	t.Parallel()
 	got := classRuleDeclarationsInSource(t, classRuleOwner+`
 func classOf(verb string) (string, bool) {
 	switch verb {
@@ -82,6 +84,7 @@ func classOf(verb string) (string, bool) {
 // форма, а тот самый вход, на котором наивный распознаватель дал бы ложную
 // находку.
 func TestClassRuleRecognizerIsSilentOnTheDisplayPrecedenceTwin(t *testing.T) {
+	t.Parallel()
 	got := classRuleDeclarationsInSource(t, `package p
 
 var verbDisplayPrecedence = []string{"get", "list", "create", "update", "delete"}
@@ -105,6 +108,7 @@ func orderVerbs(set map[string]bool) []string {
 // кто ПРАВИЛО ЗОВЁТ, объявлением его не является. Иначе гейт краснел бы на
 // каждом потребителе и запрещал бы пользоваться единственным объявлением.
 func TestClassRuleRecognizerIsSilentOnAMereCaller(t *testing.T) {
+	t.Parallel()
 	got := classRuleDeclarationsInSource(t, `package p
 
 func classOfVerb(name string) (string, bool) {
@@ -121,6 +125,7 @@ func classOfVerb(name string) (string, bool) {
 // Распознаватель требует РАВЕНСТВА множеств, а не включения, — иначе он поймал
 // бы его.
 func TestClassRuleRecognizerIsSilentOnTheTierClassifier(t *testing.T) {
+	t.Parallel()
 	got := classRuleDeclarationsInSource(t, `package p
 
 func verbTier(verb string) (string, bool) {
@@ -152,6 +157,7 @@ func objectTypeWritesInSource(t *testing.T, src string) (reads int, writes []str
 // TestObjectTypeRecognizerFindsARestoredDerivation — инъекция: правило вывода
 // вернулось присваиванием.
 func TestObjectTypeRecognizerFindsARestoredDerivation(t *testing.T) {
+	t.Parallel()
 	reads, writes := objectTypeWritesInSource(t, `package p
 
 func fill(r *Resource, module string) {
@@ -175,6 +181,7 @@ func fill(r *Resource, module string) {
 // TestObjectTypeRecognizerIsSilentWhenTheFieldIsOnlyRead — законный близнец:
 // поле только читается, и это ровно то, чего требует снятие правила.
 func TestObjectTypeRecognizerIsSilentWhenTheFieldIsOnlyRead(t *testing.T) {
+	t.Parallel()
 	reads, writes := objectTypeWritesInSource(t, `package p
 
 func check(r *Resource) error {

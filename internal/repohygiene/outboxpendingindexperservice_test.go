@@ -151,6 +151,7 @@ func pendingIndexKeysFor(inv map[string]map[string]string, table string) []strin
 // намеренно: без него «две записи» зеленело бы и на инвентаре, который просто
 // перестал что-либо находить.
 func Test_PendingIndexInventory_KeepsSameNamedQueuesOfServicesApart(t *testing.T) {
+	t.Parallel()
 	root := syntheticPendingIndexTree(t, false)
 	inv, files := pendingIndexInventory(t, root, syntheticMigrationSQL)
 
@@ -179,6 +180,7 @@ func Test_PendingIndexInventory_KeepsSameNamedQueuesOfServicesApart(t *testing.T
 // сервисе, который обход проходит РАНЬШЕ. Инвентарь обязан показать его
 // отсутствие ИМЕННО у этого сервиса и не тронуть соседа.
 func Test_PendingIndexInventory_SeesDropInEarlierWalkedService(t *testing.T) {
+	t.Parallel()
 	root := syntheticPendingIndexTree(t, true)
 	inv, files := pendingIndexInventory(t, root, syntheticMigrationSQL)
 
@@ -265,6 +267,7 @@ SELECT 1;
 // краснеющий гейт снимают как непонятный. Форма в дереве уже используется
 // (iam 0055/0056, nlb 0012/0021).
 func Test_PendingIndexInventory_ReplaysStatementsInTextOrder(t *testing.T) {
+	t.Parallel()
 	root := syntheticStatementOrderTree(t)
 	inv, files := pendingIndexInventory(t, root, syntheticMigrationSQL)
 
@@ -311,6 +314,7 @@ func Test_PendingIndexInventory_ReplaysStatementsInTextOrder(t *testing.T) {
 // (без предиката по `sent_at`) инвентарь обязан пропустить. Без этой половины
 // проба зеленела бы на инвентаре, который начал считать любой индекс подряд.
 func Test_PendingIndexInventory_SeesPartialUniqueIndex(t *testing.T) {
+	t.Parallel()
 	root := t.TempDir()
 	writeSyntheticMigration(t, root, "alpha", "0001_create.sql", `
 -- +goose Up

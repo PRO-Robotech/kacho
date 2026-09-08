@@ -88,6 +88,7 @@ const (
 
 // TestEveryConsoleLintHasAProducer — вердикт на настоящем дереве.
 func TestEveryConsoleLintHasAProducer(t *testing.T) {
+	t.Parallel()
 	root := repoRoot(t)
 	uiRoot := filepath.Join(root, "ui-future")
 
@@ -171,6 +172,7 @@ func judgeConsoleLintProducers(declaring, called []string) []string {
 
 // TestConsoleLintChainsAgree — второй судья того же скрипта: одно ли зовут.
 func TestConsoleLintChainsAgree(t *testing.T) {
+	t.Parallel()
 	root := repoRoot(t)
 	facts := scanConsolePackages(t, filepath.Join(root, "ui-future"))
 	if len(facts) == 0 {

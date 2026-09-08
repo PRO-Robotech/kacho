@@ -199,6 +199,7 @@ type adoptionResult struct {
 //
 // Проверено инъекцией в обе стороны (`servicehostadoption_injection_test.go`).
 func TestCompositionRootsCarryNoServerConstructionOfTheirOwn(t *testing.T) {
+	t.Parallel()
 	res := auditHostAdoption(t, repoRoot(t))
 	t.Log(res.summary)
 

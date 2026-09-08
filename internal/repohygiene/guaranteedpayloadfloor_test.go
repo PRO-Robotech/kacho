@@ -25,6 +25,7 @@ import (
 // предметы». Они разные ровно до того дня, когда продукт пообещал арендатору
 // число; с этого дня они два места об одном.
 func TestGuaranteedPayloadFloorIsOnePlace(t *testing.T) {
+	t.Parallel()
 	root := repoRoot(t)
 	findings, census, err := auditGuaranteedPayloadFloor(root)
 	if err != nil {

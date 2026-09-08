@@ -16,6 +16,7 @@ import (
 // TestSubscriptionSingularity_CatchesDomainOwnRequest — ДЕФЕКТ: домен объявил
 // свой запрос подписки, послабления на него нет.
 func TestSubscriptionSingularity_CatchesDomainOwnRequest(t *testing.T) {
+	t.Parallel()
 	root := subscriptionStand(t, map[string]string{
 		"proto/kacho/cloud/subscription/subscription.proto": standCommonForm,
 		"proto/kacho/cloud/demo/v1/demo_watch.proto":        standDomainOwnRequest,
@@ -41,6 +42,7 @@ func TestSubscriptionSingularity_CatchesDomainOwnRequest(t *testing.T) {
 // TestSubscriptionSingularity_SilentWhenDomainImportsCommonForm — ЗАКОННЫЙ
 // БЛИЗНЕЦ: тот же домен, тот же путь файла, но общий тип импортируется.
 func TestSubscriptionSingularity_SilentWhenDomainImportsCommonForm(t *testing.T) {
+	t.Parallel()
 	root := subscriptionStand(t, map[string]string{
 		"proto/kacho/cloud/subscription/subscription.proto": standCommonForm,
 		"proto/kacho/cloud/demo/v1/demo_watch.proto":        standDomainImportsCommon,
@@ -66,6 +68,7 @@ func TestSubscriptionSingularity_SilentWhenDomainImportsCommonForm(t *testing.T)
 // TestSubscriptionSingularity_DomainRequestIsExcusedByLedger — та же сторона с
 // другого конца: доменное объявление, СТОЯЩЕЕ в ведомости, прогон не роняет.
 func TestSubscriptionSingularity_DomainRequestIsExcusedByLedger(t *testing.T) {
+	t.Parallel()
 	root := subscriptionStand(t, map[string]string{
 		"proto/kacho/cloud/subscription/subscription.proto": standCommonForm,
 		"proto/kacho/cloud/demo/v1/demo_watch.proto":        standDomainOwnRequest,
@@ -95,6 +98,7 @@ func TestSubscriptionSingularity_DomainRequestIsExcusedByLedger(t *testing.T) {
 // TestSubscriptionSingularity_CatchesStaleAllowance — ДЕФЕКТ: запись ведомости
 // стоит, а объявления, которое она исключала, в дереве нет.
 func TestSubscriptionSingularity_CatchesStaleAllowance(t *testing.T) {
+	t.Parallel()
 	root := subscriptionStand(t, map[string]string{
 		"proto/kacho/cloud/subscription/subscription.proto": standCommonForm,
 		"proto/kacho/cloud/other/v1/other.proto":            standFiller,
@@ -121,6 +125,7 @@ func TestSubscriptionSingularity_CatchesStaleAllowance(t *testing.T) {
 // состояние, ради которого эпик заведён. Падение на нём толкало бы держать
 // запись ради зелёного.
 func TestSubscriptionSingularity_EmptyLedgerIsTheGoalNotAFailure(t *testing.T) {
+	t.Parallel()
 	root := subscriptionStand(t, map[string]string{
 		"proto/kacho/cloud/subscription/subscription.proto": standCommonForm,
 		"proto/kacho/cloud/other/v1/other.proto":            standFiller,
@@ -145,6 +150,7 @@ func TestSubscriptionSingularity_EmptyLedgerIsTheGoalNotAFailure(t *testing.T) {
 // общей формы нет. Именно на нём гейт обязан быть красным, иначе он не различает
 // «форма объявлена» и «форма не объявлена вовсе».
 func TestSubscriptionSingularity_MissingCommonFormIsAFinding(t *testing.T) {
+	t.Parallel()
 	root := subscriptionStand(t, map[string]string{
 		"proto/kacho/cloud/other/v1/other.proto": standFiller,
 	})
@@ -165,6 +171,7 @@ func TestSubscriptionSingularity_MissingCommonFormIsAFinding(t *testing.T) {
 // фильтров рядом с общим: он не доменный, поэтому ведомостью не покрывается, и
 // поймать его обязан отдельный исход.
 func TestSubscriptionSingularity_SecondFormInCommonPackageIsAFinding(t *testing.T) {
+	t.Parallel()
 	second := `syntax = "proto3";
 package kacho.cloud.subscription;
 message LegacySubscriptionRequest {
@@ -190,6 +197,7 @@ message LegacySubscriptionRequest {
 // с подходящим именем формой подписки не является. Стенд несёт такое внутри
 // общей формы: гейт, считающий по сырому тексту, засчитал бы его.
 func TestSubscriptionSingularity_NestedNameIsNotADeclaration(t *testing.T) {
+	t.Parallel()
 	root := subscriptionStand(t, map[string]string{
 		"proto/kacho/cloud/subscription/subscription.proto": standCommonForm,
 		"proto/kacho/cloud/other/v1/other.proto":            standFiller,
@@ -211,6 +219,7 @@ func TestSubscriptionSingularity_NestedNameIsNotADeclaration(t *testing.T) {
 // TestSubscriptionSingularity_EmptyWalkIsAnError — премиса: пустое дерево не
 // даёт «ноль находок».
 func TestSubscriptionSingularity_EmptyWalkIsAnError(t *testing.T) {
+	t.Parallel()
 	root := subscriptionStand(t, map[string]string{"proto/.keep": ""})
 	if _, _, err := AuditSubscriptionFormSingularity(subscriptionStandOptions(root), nil); err == nil {
 		t.Fatal("пустой обход прошёл как «ноль находок» — гейт инертен и об этом не сообщает")
@@ -220,6 +229,7 @@ func TestSubscriptionSingularity_EmptyWalkIsAnError(t *testing.T) {
 // TestSubscriptionSingularity_AllowanceWithoutIssueIsRejected — послабление без
 // задачи не может истечь даже в принципе, поэтому не принимается вовсе.
 func TestSubscriptionSingularity_AllowanceWithoutIssueIsRejected(t *testing.T) {
+	t.Parallel()
 	root := subscriptionStand(t, map[string]string{
 		"proto/kacho/cloud/subscription/subscription.proto": standCommonForm,
 		"proto/kacho/cloud/other/v1/other.proto":            standFiller,
@@ -243,6 +253,7 @@ func TestSubscriptionSingularity_AllowanceWithoutIssueIsRejected(t *testing.T) {
 // дерево несёт общую форму и оба законных близнеца сразу. Молчать обязаны обе
 // ветви, и молчание получено на прочитанном дереве, а не на пустом.
 func TestSubscriptionSingularity_ControlBothBranchesSilent(t *testing.T) {
+	t.Parallel()
 	root := subscriptionStand(t, map[string]string{
 		"proto/kacho/cloud/subscription/subscription.proto": standCommonForm,
 		"proto/kacho/cloud/other/v1/paged_list.proto":       standPagedListTwin,
@@ -284,6 +295,7 @@ func TestSubscriptionSingularity_ControlBothBranchesSilent(t *testing.T) {
 // принадлежит, поэтому ветвь имени обязана остаться на нуле, и красное приходит
 // ровно от новой ветви.
 func TestSubscriptionSingularity_CatchesForeignNamedSubscription(t *testing.T) {
+	t.Parallel()
 	for _, tc := range []struct {
 		file, body, symbol, where string
 	}{
@@ -336,6 +348,7 @@ func TestSubscriptionSingularity_CatchesForeignNamedSubscription(t *testing.T) {
 // стоит входом СЕРВЕРНО-ПОТОКОВОГО глагола. Эта ветвь имён не читает вовсе и
 // потому переименованием не снимается ни при каком имени.
 func TestSubscriptionSingularity_CatchesSubscriptionByStreamingUse(t *testing.T) {
+	t.Parallel()
 	root := subscriptionStand(t, map[string]string{
 		"proto/kacho/cloud/subscription/subscription.proto": standCommonForm,
 		"proto/kacho/cloud/demo/v1/demo_feed.proto":         standStreamingVerbOverPlainName,
@@ -383,6 +396,7 @@ func TestSubscriptionSingularity_CatchesSubscriptionByStreamingUse(t *testing.T)
 // смерти: расширение распознавателя могло бы незаметно вытеснить то, что гейт
 // умел с самого начала.
 func TestSubscriptionSingularity_NameBranchStillCatchesShapelessRequest(t *testing.T) {
+	t.Parallel()
 	root := subscriptionStand(t, map[string]string{
 		"proto/kacho/cloud/subscription/subscription.proto": standCommonForm,
 		"proto/kacho/cloud/demo/v1/demo_name_only.proto":    standNameOnlyRequest,
@@ -415,6 +429,7 @@ func TestSubscriptionSingularity_NameBranchStillCatchesShapelessRequest(t *testi
 // состава, предъявленный отдельно и в одиночку: страничный список несёт ось
 // видов И поле позиции, и разделяет их только размер страницы.
 func TestSubscriptionSingularity_SilentOnPagedListTwin(t *testing.T) {
+	t.Parallel()
 	root := subscriptionStand(t, map[string]string{
 		"proto/kacho/cloud/subscription/subscription.proto": standCommonForm,
 		"proto/kacho/cloud/other/v1/paged_list.proto":       standPagedListTwin,
@@ -439,6 +454,7 @@ func TestSubscriptionSingularity_SilentOnPagedListTwin(t *testing.T) {
 // ТЕЛА: весь состав подписки лежит во вложенном сообщении, владелец его не
 // несёт. Гейт, читающий поля построчно, засчитал бы их владельцу.
 func TestSubscriptionSingularity_SilentOnNestedShape(t *testing.T) {
+	t.Parallel()
 	root := subscriptionStand(t, map[string]string{
 		"proto/kacho/cloud/subscription/subscription.proto": standCommonForm,
 		"proto/kacho/cloud/other/v1/nested.proto":           standNestedShapeIsNotADeclaration,
@@ -470,6 +486,7 @@ func TestSubscriptionSingularity_SilentOnNestedShape(t *testing.T) {
 // иначе проба доказывала бы только прямую сторону слепоты, а обратная (исчез
 // дискриминатор ⇒ список объявлен подпиской) осталась бы непроверенной.
 func TestSubscriptionSingularity_CatchesShapeInEveryFieldForm(t *testing.T) {
+	t.Parallel()
 	for _, tc := range []struct {
 		form string
 		body string
@@ -520,6 +537,7 @@ func TestSubscriptionSingularity_CatchesShapeInEveryFieldForm(t *testing.T) {
 // («без размера страницы» при размере третьей строкой), а гейт, краснеющий на
 // верном коде, отключают первым.
 func TestSubscriptionSingularity_SilentOnPagedListWithModifiedSize(t *testing.T) {
+	t.Parallel()
 	root := subscriptionStand(t, map[string]string{
 		"proto/kacho/cloud/subscription/subscription.proto": standCommonForm,
 		"proto/kacho/cloud/other/v1/paged.proto":            standPagedListOptionalSize,
@@ -547,6 +565,7 @@ func TestSubscriptionSingularity_SilentOnPagedListWithModifiedSize(t *testing.T)
 // выброшенным полем по числу СООБЩЕНИЙ неотличимо от прочитанного целиком, и
 // «находок нет» у ветви состава означает «не читал».
 func TestSubscriptionSingularity_BlindFieldFormIsAnError(t *testing.T) {
+	t.Parallel()
 	root := subscriptionStand(t, map[string]string{
 		"proto/kacho/cloud/subscription/subscription.proto": standCommonForm,
 		"proto/kacho/cloud/other/v1/odd.proto":              standUnknownFieldForm,
@@ -568,6 +587,7 @@ func TestSubscriptionSingularity_BlindFieldFormIsAnError(t *testing.T) {
 // слепоты: карта осью и позицией не является, но ПРОЧИТАНА быть обязана.
 // Страж, не знающий карт, падал бы на каждом втором контракте дерева — их 108.
 func TestSubscriptionSingularity_SilentOnMapField(t *testing.T) {
+	t.Parallel()
 	root := subscriptionStand(t, map[string]string{
 		"proto/kacho/cloud/subscription/subscription.proto": standCommonForm,
 		"proto/kacho/cloud/other/v1/labels.proto":           standMapFieldTwin,

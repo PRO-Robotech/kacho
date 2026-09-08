@@ -78,6 +78,7 @@ func readExemptCatalogRows(t *testing.T, root, rel string) []ExemptCatalogRow {
 // закрытого словаря; у не-освобождённой записи причины нет; по каждой причине
 // выполнено её собственное требование.
 func TestR893_ExemptLaneNamesItsReason(t *testing.T) {
+	t.Parallel()
 	root := repoRoot(t)
 
 	var rows []ExemptCatalogRow

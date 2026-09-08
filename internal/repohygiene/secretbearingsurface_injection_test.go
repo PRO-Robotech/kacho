@@ -80,6 +80,7 @@ const realExclusion = "kaname.cloud.iam.v1.IssueSAKeyResponse.public_key_pem"
 
 // TestBAT1_73_Axis2_InjectionUnmarkedBearerIsAFinding — ОСЬ «снятая пометка».
 func TestBAT1_73_Axis2_InjectionUnmarkedBearerIsAFinding(t *testing.T) {
+	t.Parallel()
 	fields := realSecretSurfaceFields(t)
 	if !hasField(fields, realBearer) {
 		t.Fatalf("носителя %s в дереве нет — фикстура ПОТЕРЯЛА ПРЕДМЕТ", realBearer)
@@ -108,6 +109,7 @@ func TestBAT1_73_Axis2_InjectionUnmarkedBearerIsAFinding(t *testing.T) {
 
 // TestBAT1_73_Axis2_InjectionUntouchedTreeIsSilent — ОСЬ «законный близнец».
 func TestBAT1_73_Axis2_InjectionUntouchedTreeIsSilent(t *testing.T) {
+	t.Parallel()
 	fields := realSecretSurfaceFields(t)
 	findings, stale, excluded := secretSurfaceVerdict(fields, secretSurfaceExclusions)
 	if len(findings) != 0 {
@@ -128,6 +130,7 @@ func TestBAT1_73_Axis2_InjectionUntouchedTreeIsSilent(t *testing.T) {
 // срабатом. Близнец берётся из НАСТОЯЩЕГО дерева и стоит рядом с находкой — в
 // том же сообщении.
 func TestBAT1_73_Axis2_InjectionNameThatMatchesNothingIsSilent(t *testing.T) {
+	t.Parallel()
 	const neighbour = "kaname.cloud.iam.v1.IssueSAKeyResponse.algorithm"
 	fields := realSecretSurfaceFields(t)
 	if !hasField(fields, neighbour) {
@@ -156,6 +159,7 @@ func TestBAT1_73_Axis2_InjectionNameThatMatchesNothingIsSilent(t *testing.T) {
 // иначе ведомость проглатывает поле, вводимое самой фазой, ось 1 отрабатывает на
 // пустом множестве, и §4.3.2 остаётся держаться прозой.
 func TestBAT1_73_Axis2_InjectionMarkedAndListedIsAContradiction(t *testing.T) {
+	t.Parallel()
 	fields := realSecretSurfaceFields(t)
 	ledger := append([]secretSurfaceExclusion{}, secretSurfaceExclusions...)
 	ledger = append(ledger, secretSurfaceExclusion{
@@ -178,6 +182,7 @@ func TestBAT1_73_Axis2_InjectionMarkedAndListedIsAContradiction(t *testing.T) {
 
 // TestBAT1_73_Axis2_InjectionLedgerExpiresOnItsOwn — ОСЬ «самоистечение», обе формы.
 func TestBAT1_73_Axis2_InjectionLedgerExpiresOnItsOwn(t *testing.T) {
+	t.Parallel()
 	fields := realSecretSurfaceFields(t)
 
 	// ЗДЕСЬ ИНЪЕКЦИЯ НАШЛА ДЕФЕКТ В МОЁМ ЖЕ СУЖДЕНИИ, И ЭТО ЗАПИСАНО НАРОЧНО.
@@ -238,6 +243,7 @@ func TestBAT1_73_Axis2_InjectionLedgerExpiresOnItsOwn(t *testing.T) {
 // сотнями находок, ведомость пришлось бы вести в сотни строк, и её перестали бы
 // читать. Здесь это ЗАМЕРЕНО, а не объявлено.
 func TestBAT1_73_Axis2_InjectionStructuralCursorSubtractionIsLoadBearing(t *testing.T) {
+	t.Parallel()
 	fields := realSecretSurfaceFields(t)
 
 	silent, _, _ := secretSurfaceVerdict(fields, secretSurfaceExclusions)
@@ -261,6 +267,7 @@ func TestBAT1_73_Axis2_InjectionStructuralCursorSubtractionIsLoadBearing(t *test
 
 // TestBAT1_73_Axis2_InjectionBlindInputIsNotHealth — ОСЬ «ноль — это слепота».
 func TestBAT1_73_Axis2_InjectionBlindInputIsNotHealth(t *testing.T) {
+	t.Parallel()
 	findings, stale, excluded := secretSurfaceVerdict(nil, nil)
 	if len(findings) != 0 || len(stale) != 0 || excluded != 0 {
 		t.Fatalf("пустой вход дал находки %v / просроченные %v / прощённых %d",

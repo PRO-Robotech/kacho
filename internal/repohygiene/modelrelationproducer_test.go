@@ -79,6 +79,7 @@ type modelRelation struct {
 // TestConsumerOwnedStructuralRelationsHaveProducers — у структурного отношения
 // на типе сервиса-потребителя есть производитель либо пометка спящего.
 func TestConsumerOwnedStructuralRelationsHaveProducers(t *testing.T) {
+	t.Parallel()
 	root := repoRoot(t)
 	rels, typesSeen, definesSeen := collectStructuralRelations(t, root)
 
@@ -146,6 +147,7 @@ func TestConsumerOwnedStructuralRelationsHaveProducers(t *testing.T) {
 // Иначе она вырождается в глушилку: следующий читатель видит «спящее» и не может
 // установить, чего ждут и когда это перестанет быть верным.
 func TestLatentMarkerCarriesAReason(t *testing.T) {
+	t.Parallel()
 	root := repoRoot(t)
 	rels, _, _ := collectStructuralRelations(t, root)
 

@@ -258,6 +258,7 @@ func calledHelper(body *ast.BlockStmt, pkgHelpers map[string]bool) string {
 // разобранного выражения, обязан применить его ОПЕРАТОР либо назвать
 // неподдерживаемый отказом.
 func TestFilterOwnerHonoursTheParsedOperator(t *testing.T) {
+	t.Parallel()
 	sites, filesRead := collectFilterOperatorSites(t, []string{"services", "gateway", "pkg"})
 
 	var findings []string

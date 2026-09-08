@@ -21,6 +21,7 @@ import (
 // ─────────────── ось 1: пакет проб обязан объявить стража ───────────────
 
 func TestCachedVerdictGate_PackageAxisFindsAndSpares(t *testing.T) {
+	t.Parallel()
 	t.Run("краснеет: пакет проб без TestMain", func(t *testing.T) {
 		f := judgeGuardedPackages([]testMainFacts{{pkgDir: "internal/x"}})
 		if len(f) != 1 || !strings.Contains(f[0], "internal/x") {
@@ -53,6 +54,7 @@ func TestCachedVerdictGate_PackageAxisFindsAndSpares(t *testing.T) {
 // объявил бы пакет прикрытым при отсутствующем страже. Проба подаёт обе формы
 // РЯДОМ: настоящее объявление обязано считаться, литерал — нет.
 func TestCachedVerdictGate_TestMainInAStringLiteralIsNotADeclaration(t *testing.T) {
+	t.Parallel()
 	// Нарушитель: TestMain только в тексте фикстуры, объявления нет.
 	inLiteral := "package x\n\n" +
 		"const fixture = `package y\n" +
@@ -75,6 +77,7 @@ func TestCachedVerdictGate_TestMainInAStringLiteralIsNotADeclaration(t *testing.
 // ─────────── ось 2: конструктор реального индекса обязан звать стража ───────────
 
 func TestCachedVerdictGate_ConstructorAxisFindsAndSpares(t *testing.T) {
+	t.Parallel()
 	t.Run("краснеет: читает индекс, стража не зовёт", func(t *testing.T) {
 		f := judgeGuardedConstructors([]constructorFacts{{name: "Third", reachesIndex: true}})
 		if len(f) != 1 || !strings.Contains(f[0], "Third") {
@@ -105,6 +108,7 @@ func TestCachedVerdictGate_ConstructorAxisFindsAndSpares(t *testing.T) {
 // ─────────── ось 3: рецепт Makefile обязан отключать кеш ───────────
 
 func TestCachedVerdictGate_MakefileAxisFindsAndSpares(t *testing.T) {
+	t.Parallel()
 	// Настоящий ввод: кусок Makefile в той же форме, что и в дереве, —
 	// с целями, продолжениями строк и объяснением в комментариях.
 	makefile := "" +

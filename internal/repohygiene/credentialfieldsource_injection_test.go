@@ -81,6 +81,7 @@ func findingsMentioning(findings []string, id string) []string {
 
 // TestBAT1_68_InjectionOwnCommentRemovedIsAFinding — ОСЬ «собственный источник».
 func TestBAT1_68_InjectionOwnCommentRemovedIsAFinding(t *testing.T) {
+	t.Parallel()
 	src := realCredentialLaneSource(t)
 	const own = "\t// CredentialID — идентификатор удостоверения; им адресуется отзыв.\n"
 	if !strings.Contains(src, own) {
@@ -112,6 +113,7 @@ func TestBAT1_68_InjectionOwnCommentRemovedIsAFinding(t *testing.T) {
 //
 // Без неё отрицание выше зеленело бы на гейте, который краснеет всегда.
 func TestBAT1_68_InjectionUntouchedTreeIsSilent(t *testing.T) {
+	t.Parallel()
 	_, _, findings, stale, read, sourced := judgeTree(t, nil, openCredentialFieldFindings)
 	if read == 0 || sourced == 0 {
 		t.Fatalf("перепись пуста (читаемых %d, с источником %d) — суждение ослепло", read, sourced)
@@ -131,6 +133,7 @@ func TestBAT1_68_InjectionUntouchedTreeIsSilent(t *testing.T) {
 // комментарием. Здесь обе стороны: групповая форма ЗАСЧИТЫВАЕТСЯ, а суженный до
 // одного имени комментарий перестаёт покрывать остальные два.
 func TestBAT1_68_InjectionGroupCommentCoversTheFieldsItNames(t *testing.T) {
+	t.Parallel()
 	src := realCredentialLaneSource(t)
 	const group = "// PrincipalType / PrincipalID / DisplayName — из ответа авторитета."
 	if !strings.Contains(src, group) {
@@ -171,6 +174,7 @@ func TestBAT1_68_InjectionGroupCommentCoversTheFieldsItNames(t *testing.T) {
 // Проба самоистекает: появится читатель — она покраснеет и потребует назвать
 // источник, что и есть правильный исход.
 func TestBAT1_68_InjectionUnreadFieldNeedsNoSource(t *testing.T) {
+	t.Parallel()
 	_, carriers, findings, _, _, _ := judgeTree(t, nil, openCredentialFieldFindings)
 
 	var found bool
@@ -209,6 +213,7 @@ func TestBAT1_68_InjectionUnreadFieldNeedsNoSource(t *testing.T) {
 // обещанием: следующий, кто заведёт полосу под другим именем, увидит здесь, чем
 // это кончается.
 func TestBAT1_68_InjectionMeasuresTheLimitOfTheNamePredicate(t *testing.T) {
+	t.Parallel()
 	src := realCredentialLaneSource(t)
 	const decl = "func (l *BasicCredentialLane) Verify("
 	if !strings.Contains(src, decl) {
@@ -273,6 +278,7 @@ func judgeSynth(t *testing.T, files map[string]string, ledger []openCredentialFi
 // печатала правдоподобное число. Здесь обобщённая форма прогоняется рядом с
 // простой: обе обязаны судиться одинаково.
 func TestBAT1_68_InjectionGenericCarrierIsSeen(t *testing.T) {
+	t.Parallel()
 	const laneSrc = `package lane
 
 import "context"
@@ -312,6 +318,7 @@ func read(e struct{ Subject string }) string { return e.Subject }
 
 // TestBAT1_68_InjectionLedgerExpiresOnItsOwn — ОСЬ «самоистечение», ОБЕ формы.
 func TestBAT1_68_InjectionLedgerExpiresOnItsOwn(t *testing.T) {
+	t.Parallel()
 	const bare = `package lane
 
 import "context"
@@ -393,6 +400,7 @@ func read(c struct{ Subject string }) string { return c.Subject }
 // находок при непустой переписи: иначе гейт, чей обход ослеп, читался бы как
 // гейт над исправным деревом. Ветвь `read == 0` самого гейта на этом и стоит.
 func TestBAT1_68_InjectionBlindWalkIsNotHealth(t *testing.T) {
+	t.Parallel()
 	findings, stale, read, sourced, total := credentialFieldVerdict(nil, nil)
 	if len(findings) != 0 || len(stale) != 0 {
 		t.Fatalf("пустой корпус дал находки %v / просроченные %v", findings, stale)

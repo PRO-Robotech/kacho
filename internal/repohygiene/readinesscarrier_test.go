@@ -57,6 +57,7 @@ import (
 // носителя готовности есть свойство ДЕРЕВА, и держать его может только обход
 // дерева.
 func TestEveryServiceServingReadyzBuildsItWithTheDeclaredCarrier(t *testing.T) {
+	t.Parallel()
 	root := repoRoot(t)
 	reach, err := scanReadinessCarriers(root)
 	if err != nil {

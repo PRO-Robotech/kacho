@@ -170,6 +170,7 @@ func synthTrack(t *testing.T, root string) {
 // TestPanicRecoveryGateRedOnInjectedDefect — направление (а): звено снято ->
 // гейт краснеет И НАЗЫВАЕТ КООРДИНАТУ. Без координаты находка не действие.
 func TestPanicRecoveryGateRedOnInjectedDefect(t *testing.T) {
+	t.Parallel()
 	root := synthTree(t, synthRootUnwired, nil)
 	res := auditPanicRecoveryWiring(t, root)
 	t.Log(res.summary)
@@ -196,6 +197,7 @@ func TestPanicRecoveryGateRedOnInjectedDefect(t *testing.T) {
 // этот файл за защиту (ложно-зелёный на снятом звене) либо споткнулся бы о него;
 // он читает исполняемую часть, поэтому не делает ни того, ни другого.
 func TestPanicRecoveryGateSilentOnLawfulSameShape(t *testing.T) {
+	t.Parallel()
 	root := synthTree(t, synthRootWired, map[string]string{
 		"services/demo/cmd/demo/recovery.go": synthLRORecoveryDecoy,
 	})
@@ -218,6 +220,7 @@ func TestPanicRecoveryGateSilentOnLawfulSameShape(t *testing.T) {
 // покраснеть. Эта проба и есть доказательство, что распознавание не по имени:
 // без неё «гейт читает существо» осталось бы утверждением о намерении.
 func TestPanicRecoveryGateIgnoresLRORecoveryDecoyEvenWhenUnwired(t *testing.T) {
+	t.Parallel()
 	root := synthTree(t, synthRootUnwired, map[string]string{
 		"services/demo/cmd/demo/recovery.go": synthLRORecoveryDecoy,
 	})
@@ -281,6 +284,7 @@ func Serve(ctx context.Context, d any, public, internal Registrar) error { retur
 // («ноль, и никто не поднимает их вместо него») — и объявляла бы находкой сам
 // перевод, краснея тем сильнее, чем дальше он продвинулся.
 func TestPanicRecoveryGateAcceptsACarrierBorneComponent(t *testing.T) {
+	t.Parallel()
 	root := synthTree(t, synthCarrierRoot, map[string]string{
 		"pkg/servicehost/serve.go": synthCarrierPkg,
 	})
@@ -303,6 +307,7 @@ func TestPanicRecoveryGateAcceptsACarrierBorneComponent(t *testing.T) {
 // (`componentsWithoutAListenerOrACarrier`), а не её копия: копия доказывала бы
 // свойство копии. Вход — тот же, что аудит собирает по дереву.
 func TestPanicRecoveryGateRefusesAComponentThatServesNothing(t *testing.T) {
+	t.Parallel()
 	components := []listenerComponent{{name: "demo", cmdRoot: "services/demo/cmd"}}
 
 	// (а) ни листенеров, ни носителя — предпосылка обязана назвать компонент.
@@ -390,6 +395,7 @@ func RegisterDemoServiceServer(srv interface{}, impl interface{}) {}
 // пробах этого файла перепись печатала «отсеяно 0», то есть новая ветвь не
 // исполнялась ни в одну сторону.
 func TestPanicRecoveryGateSkipsAServiceBuilderNextToAWiredListener(t *testing.T) {
+	t.Parallel()
 	root := synthTree(t, synthServiceBuilder, nil)
 	res := auditPanicRecoveryWiring(t, root)
 	t.Log(res.summary)
@@ -418,6 +424,7 @@ func TestPanicRecoveryGateSkipsAServiceBuilderNextToAWiredListener(t *testing.T)
 // там, где обязан краснеть. Проба подаёт именно этот вход: пара со ошибкой,
 // звена нет, но на значении РЕГИСТРИРУЮТ.
 func TestPanicRecoveryGateStillSeesAListenerWhoseConstructorReturnsAPair(t *testing.T) {
+	t.Parallel()
 	root := synthTree(t, synthPairAssignedListener, nil)
 	res := auditPanicRecoveryWiring(t, root)
 	t.Log(res.summary)

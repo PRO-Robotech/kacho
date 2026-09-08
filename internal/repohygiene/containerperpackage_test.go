@@ -194,6 +194,7 @@ type scan struct {
 
 // TestNoPackageStartsAContainerPerTest — сам гейт против дерева.
 func TestNoPackageStartsAContainerPerTest(t *testing.T) {
+	t.Parallel()
 	root := repoRoot(t)
 	sc := scanTree(t, root)
 
@@ -482,6 +483,7 @@ func contains(xs []string, s string) bool {
 // Гейт выше на дереве зелёный, и зелёный сам по себе ничего не доказывает: ровно так
 // же он выглядел бы, если бы вердикт не умел краснеть.
 func TestPerTestContainerJudgeFiresAndStaysSilent(t *testing.T) {
+	t.Parallel()
 	const pkg = "services/example/internal/repo"
 
 	t.Run("краснеет: два теста доходят до старта", func(t *testing.T) {
@@ -532,6 +534,7 @@ func TestPerTestContainerJudgeFiresAndStaysSilent(t *testing.T) {
 // Без второй половины гейт ловил бы форму (упоминание testcontainers), а не существо
 // (сколько тестов до неё доходит), и первый же законный TestMain его бы отключил.
 func TestPerTestContainerScannerFindsAPlantedViolatorAndSpacesTheLegitimateTwin(t *testing.T) {
+	t.Parallel()
 	// Нарушитель: два теста зовут хелпер, который стартует контейнер.
 	violator := `package repo_test
 import (
@@ -661,6 +664,7 @@ func reachingTestsIn(t *testing.T, src string) int {
 // покрывать пустоту, оставаясь при этом невидимой. Предикат снятия внешний по
 // отношению к самой записи: существование каталога и файла-держателя в индексе git.
 func TestSanctionedProvidersStillExist(t *testing.T) {
+	t.Parallel()
 	root := repoRoot(t)
 	// --others --exclude-standard добавляет к индексу файлы, ЕЩЁ не добавленные, но
 	// которые git добавит (не игнорируемые). Без них тест падал бы на каждом честном
@@ -718,6 +722,7 @@ func TestSanctionedProvidersStillExist(t *testing.T) {
 // стартующими. Исчезнут — перепись покраснеет и потребует обновления, а не тихо
 // потеряет предмет.
 func TestScannerClassifiesKnownStartersInTheTree(t *testing.T) {
+	t.Parallel()
 	sc := scanTree(t, repoRoot(t))
 
 	must := []funcKey{
@@ -749,6 +754,7 @@ func TestScannerClassifiesKnownStartersInTheTree(t *testing.T) {
 // конструктор — гейт ослепнет и останется ЗЕЛЁНЫМ, что неотличимо от чистого дерева.
 // Поэтому каждый объявленный путь обязан встречаться в дереве хотя бы раз.
 func TestContainerStartAPIsStillExistInTheTree(t *testing.T) {
+	t.Parallel()
 	root := repoRoot(t)
 	out, err := gitenv.Command(root, "grep", "-l", "testcontainers", "--", "*.go").Output()
 	if err != nil {

@@ -121,6 +121,7 @@ func probe(ctx c, pool P, t T, own []string) {
 `
 
 func TestProbeOwnRowScopeGateCutsBothWays(t *testing.T) {
+	t.Parallel()
 	defects := map[string]string{
 		"negative_inline.go":    synthProbeNegativeInline,
 		"negative_via_const.go": synthProbeNegativeViaConst,

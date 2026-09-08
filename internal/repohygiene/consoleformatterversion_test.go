@@ -68,6 +68,7 @@ var consoleExactVersionRe = regexp.MustCompile(`^\d+\.\d+\.\d+(?:-[0-9A-Za-z.-]+
 
 // TestConsoleFormatIsJudgedByOneVersion — вердикт на настоящем дереве.
 func TestConsoleFormatIsJudgedByOneVersion(t *testing.T) {
+	t.Parallel()
 	root := repoRoot(t)
 	uiRoot := filepath.Join(root, "ui-future")
 

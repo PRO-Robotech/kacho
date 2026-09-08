@@ -75,6 +75,7 @@ var keyAlgorithmKeyRequired = map[string]string{
 
 // TestKeyAlgorithmDictionaryMatchesTheCode — сам гейт.
 func TestKeyAlgorithmDictionaryMatchesTheCode(t *testing.T) {
+	t.Parallel()
 	root := repoRoot(t)
 	tt := newTrackedTree(t, root)
 

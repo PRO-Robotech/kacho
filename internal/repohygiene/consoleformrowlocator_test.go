@@ -27,6 +27,7 @@ const consoleSpecsRel = "ui-future/e2e/specs"
 // Гейт НЕ МОЖЕТ пройти вхолостую: пустой корпус спек и ноль распознанных
 // выражений — отказ, а не молчание. Объём осмотренного печатается всегда.
 func TestConsoleFormRowLocatorExcludesTheEnclosingBlock(t *testing.T) {
+	t.Parallel()
 	root := repoRoot(t)
 	dir := filepath.Join(root, consoleSpecsRel)
 

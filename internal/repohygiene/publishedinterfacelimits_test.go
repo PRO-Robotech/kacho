@@ -30,6 +30,7 @@ import (
 // сторона». Именно поэтому он и написан: там, где исполнения нет, единственное, что
 // стоит между обещанием и вымыслом, — совпадение числа и записанный долг.
 func TestPublishedInterfaceLimitsAreOnePlace(t *testing.T) {
+	t.Parallel()
 	root := repoRoot(t)
 	findings, census, err := auditPublishedInterfaceLimits(root)
 	if err != nil {

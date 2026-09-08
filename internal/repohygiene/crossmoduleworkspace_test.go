@@ -175,6 +175,7 @@ func checkCrossModuleWorkspace(modules []string, exampleSrc string, examplePrese
 
 // TestCrossModuleWorkspaceExampleNamesEveryModule — гейт на дереве.
 func TestCrossModuleWorkspaceExampleNamesEveryModule(t *testing.T) {
+	t.Parallel()
 	root := repoRoot(t)
 	tree := newTrackedTree(t, root)
 
@@ -233,6 +234,7 @@ func TestCrossModuleWorkspaceExampleNamesEveryModule(t *testing.T) {
 // `go.work` молча поменял бы смысл `./...` для всех, а игнорируемый образец
 // нельзя было бы взять копией — его бы просто не было в свежем клоне.
 func TestCrossModuleWorkspaceItselfStaysOutOfTheIndex(t *testing.T) {
+	t.Parallel()
 	root := repoRoot(t)
 	tree := newTrackedTree(t, root)
 

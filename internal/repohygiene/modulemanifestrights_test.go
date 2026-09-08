@@ -297,6 +297,7 @@ func sortedKeysOfDeprecated(m map[string]struct {
 // Способность гейта упасть доказывается на СИНТЕТИЧЕСКОМ дереве, где предмет
 // есть by construction (modulemanifestrights_injection_test.go).
 func TestManifestIsNotASecondDeclarationOfARight(t *testing.T) {
+	t.Parallel()
 	root := repoRoot(t)
 	tr := readTreeRights(t, newTrackedTree(t, root))
 

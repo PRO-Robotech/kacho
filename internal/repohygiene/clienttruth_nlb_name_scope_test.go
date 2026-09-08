@@ -20,6 +20,7 @@ import (
 // этого гейта упасть и смолчать доказана инъекцией в обе стороны:
 // clienttruth_nlb_name_scope_injection_test.go.
 func TestNlbNameUniquenessScopeIsStatedAsTheDatabaseEnforcesIt(t *testing.T) {
+	t.Parallel()
 	root := repoRoot(t)
 
 	// Состав дерева — ИНДЕКС git, а не обход диска: под services/ и proto/ на

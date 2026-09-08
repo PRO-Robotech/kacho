@@ -59,6 +59,7 @@ func nmCaptureLines(envVar string) []string {
 // ─── красное на настоящем дефекте ────────────────────────────────────────────
 
 func TestCapturedVarGateRedOnInjectedDefect(t *testing.T) {
+	t.Parallel()
 	findings, cen := nmCapturedVarAudit(t, nmFolder("LST-CR-CRUD-OK — создание слушателя",
 		nmStep("setup-subnet", "POST", "{{baseUrl}}/vpc/v1/subnets", nmCaptureLines("lstSubnetId")...),
 	))
@@ -87,6 +88,7 @@ func TestCapturedVarGateRedOnInjectedDefect(t *testing.T) {
 // Комментарии такого вида дописывают сами проходы генератора, поэтому ловушка не
 // выдумана.
 func TestCapturedVarGateReadsCodeNotComment(t *testing.T) {
+	t.Parallel()
 	script := append([]string{
 		"// Здесь стояло: pm.test('status 200', () => pm.expect(pm.response.code).to.eql(200));",
 		"/* и блоком тоже: pm.response.to.have.status(200) */",
@@ -106,6 +108,7 @@ func TestCapturedVarGateReadsCodeNotComment(t *testing.T) {
 // ─── молчание на законных близнецах той же формы ─────────────────────────────
 
 func TestCapturedVarGateSilentOnLawfulSameShape(t *testing.T) {
+	t.Parallel()
 	cases := []struct {
 		name          string
 		step          nmItem
@@ -245,6 +248,7 @@ func TestCapturedVarGateSilentOnLawfulSameShape(t *testing.T) {
 // («в дереве есть шаг, который захватывает и утверждает») перестанет выполняться
 // вслух, а не молча.
 func TestCapturedVarGateRedOnStrippedTreeStep(t *testing.T) {
+	t.Parallel()
 	root := repoRoot(t)
 	tt := newTrackedTree(t, root)
 
@@ -361,6 +365,7 @@ func nmDeferredCaptureLines(envVar string) []string {
 }
 
 func TestCapturedVarGateRedOnDeferredInitCapture(t *testing.T) {
+	t.Parallel()
 	findings, cen := nmCapturedVarAudit(t, nmFolder("LST-CR-CRUD-OK — создание слушателя",
 		nmStep("setup-subnet", "POST", "{{baseUrl}}/vpc/v1/subnets",
 			nmDeferredCaptureLines("lstSubnetId")...),
@@ -391,6 +396,7 @@ func TestCapturedVarGateRedOnDeferredInitCapture(t *testing.T) {
 // глубину присваивания значило бы закрыть имя вместе с блоком `try` — и гейт
 // снова промолчал бы, теперь уже по другой причине.
 func TestCapturedVarGateRedOnReassignedInitialisedName(t *testing.T) {
+	t.Parallel()
 	findings, cen := nmCapturedVarAudit(t, nmFolder("SETUP — резолв каталога размещения",
 		nmStep("_SETUP-ZONES", "GET", "{{baseUrl}}/geo/v1/zones",
 			"const code = (pm.response && pm.response.code) || 0;",
@@ -418,6 +424,7 @@ func TestCapturedVarGateRedOnReassignedInitialisedName(t *testing.T) {
 // Каждый утверждает ОЖИДАЕМОЕ число увиденных захватов: без этого «находок ноль»
 // значило бы и «гейт промолчал по существу», и «гейт смотрел мимо».
 func TestCapturedVarGateSilentOnLawfulDeferredShapes(t *testing.T) {
+	t.Parallel()
 	cases := []struct {
 		name          string
 		lines         []string

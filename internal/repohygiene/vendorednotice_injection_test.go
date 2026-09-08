@@ -121,6 +121,7 @@ func vendoredKindsOf(fs []VendoredNoticeFinding) []string {
 // осмотренного НЕ нулевой. Без этой пробы молчание гейта неотличимо от молчания
 // мёртвого гейта.
 func TestVendoredNoticeControlIsSilent(t *testing.T) {
+	t.Parallel()
 	files := []VendoredFile{
 		{Rel: vendoredRel, Source: apacheNotice + vendoredBody},
 		{Rel: ourRel, Source: ourBody},
@@ -139,6 +140,7 @@ func TestVendoredNoticeControlIsSilent(t *testing.T) {
 // Инъекция снимает ОДИН факт — головной блок комментария; всё остальное у файла
 // на месте (пакет объявлен, копия лицензии лежит).
 func TestVendoredNoticeRedsWhenTheNoticeIsCutOut(t *testing.T) {
+	t.Parallel()
 	files := []VendoredFile{
 		{Rel: vendoredRel, Source: vendoredBody}, // шапка снята
 		{Rel: ourRel, Source: ourBody},
@@ -168,6 +170,7 @@ func TestVendoredNoticeRedsWhenTheNoticeIsCutOut(t *testing.T) {
 // контракт уведомления первоисточника не несёт и нести не обязан. Без этой
 // пробы гейт был бы неотличим от требования чужой шапки от всего дерева.
 func TestVendoredNoticeStaysSilentOnOurOwnContract(t *testing.T) {
+	t.Parallel()
 	files := []VendoredFile{{Rel: ourRel, Source: ourBody}}
 	got, c := ScanVendoredNotices(files, licenseNowhere)
 	if len(got) != 0 {
@@ -182,6 +185,7 @@ func TestVendoredNoticeStaysSilentOnOurOwnContract(t *testing.T) {
 // контракт, чья ПРОЗА называет чужой пакет, вендоренным не становится. Гейт,
 // судящий подстроку, краснел бы на собственном объяснении.
 func TestVendoredNoticeReadsTheStatementNotTheProse(t *testing.T) {
+	t.Parallel()
 	files := []VendoredFile{{Rel: ourRel, Source: ourBodyMentioningAForeignPackage}}
 	got, c := ScanVendoredNotices(files, licenseNowhere)
 	if len(got) != 0 {
@@ -196,6 +200,7 @@ func TestVendoredNoticeReadsTheStatementNotTheProse(t *testing.T) {
 // TestVendoredNoticeRedsWhenTheLicenseCopyIsAbsent — ось 2: §4(a). Инъекция
 // снимает ОДИН факт — копию лицензии в корне; уведомление у файла на месте.
 func TestVendoredNoticeRedsWhenTheLicenseCopyIsAbsent(t *testing.T) {
+	t.Parallel()
 	files := []VendoredFile{{Rel: vendoredRel, Source: apacheNotice + vendoredBody}}
 	got, _ := ScanVendoredNotices(files, licenseNowhere)
 	if len(got) != 1 || got[0].Kind != "license-copy-missing" {
@@ -210,6 +215,7 @@ func TestVendoredNoticeRedsWhenTheLicenseCopyIsAbsent(t *testing.T) {
 // свойство КОРНЯ. Без этого перечень из четырёх строк читался бы как четыре
 // разных предмета, и починка одного выглядела бы неполной.
 func TestVendoredMissingLicenseIsReportedOncePerRoot(t *testing.T) {
+	t.Parallel()
 	files := []VendoredFile{
 		{Rel: "proto/google/rpc/status.proto", Source: apacheNotice + vendoredBody},
 		{Rel: "proto/google/api/http.proto", Source: apacheNotice +
@@ -229,6 +235,7 @@ func TestVendoredMissingLicenseIsReportedOncePerRoot(t *testing.T) {
 // копия лежит, но названа в них РАЗНАЯ лицензия. Один снятый факт — название
 // лицензии в уведомлении.
 func TestVendoredNoticeRedsWhenItNamesAnotherLicense(t *testing.T) {
+	t.Parallel()
 	wrong := strings.Replace(apacheNotice,
 		"Licensed under the Apache License, Version 2.0",
 		"Licensed under the Mozilla Public License, Version 2.0", 1)
@@ -247,6 +254,7 @@ func TestVendoredNoticeRedsWhenItNamesAnotherLicense(t *testing.T) {
 // вынесен», и находка при этом НЕ выдумывается. Ноль находок здесь означает
 // «сверять было нечем», и перепись обязана это отличать.
 func TestVendoredNoticeNamesItsOwnBoundary(t *testing.T) {
+	t.Parallel()
 	files := []VendoredFile{{Rel: vendoredRel, Source: apacheNotice + vendoredBody}}
 	got, c := ScanVendoredNotices(files, func(string) string { return bsdCopy })
 	if len(got) != 0 {
@@ -262,6 +270,7 @@ func TestVendoredNoticeNamesItsOwnBoundary(t *testing.T) {
 // рядом и находка, и невынесенная ось, находка объявляется. Граница обязана
 // быть границей, а не способом снять проверку.
 func TestVendoredNoticeBoundaryDoesNotMaskAFinding(t *testing.T) {
+	t.Parallel()
 	files := []VendoredFile{
 		{Rel: vendoredRel, Source: vendoredBody}, // уведомления нет — ось 1
 		{Rel: "proto/google/api/http.proto", Source: apacheNotice +
@@ -279,6 +288,7 @@ func TestVendoredNoticeBoundaryDoesNotMaskAFinding(t *testing.T) {
 // TestVendorRootIsDerivedNotDefaulted — корень выводится ПО ПРАВИЛУ, и умолчание
 // отличимо от вывода. Без этого «взято каталогом файла» читалось бы как «выведено».
 func TestVendorRootIsDerivedNotDefaulted(t *testing.T) {
+	t.Parallel()
 	root, derived := VendorRootFor("proto/google/rpc/status.proto", "google.rpc")
 	if root != "proto/google" || !derived {
 		t.Fatalf("вывод по сегменту пути сорвался: %q derived=%v", root, derived)
@@ -294,6 +304,7 @@ func TestVendorRootIsDerivedNotDefaulted(t *testing.T) {
 // TestVendoredEmptyInputIsNotCleanliness — разбор пустого набора не выдаёт
 // «чисто»: перепись остаётся нулевой, и держатель дерева на ней падает.
 func TestVendoredEmptyInputIsNotCleanliness(t *testing.T) {
+	t.Parallel()
 	got, c := ScanVendoredNotices(nil, licenseThere)
 	if len(got) != 0 || c.FilesRead != 0 || c.Ours != 0 {
 		t.Fatalf("пустой вход разобран неверно: находок %d, перепись %+v", len(got), c)
@@ -304,6 +315,7 @@ func TestVendoredEmptyInputIsNotCleanliness(t *testing.T) {
 // выписано в гейте: зашитое слово «Apache» судило бы будущий чужой файл по
 // чужой мерке.
 func TestLicenseTitleComesFromTheCopy(t *testing.T) {
+	t.Parallel()
 	if got := LicenseTitle(apacheCopy); got != "Apache License" {
 		t.Fatalf("название лицензии прочитано неверно: %q", got)
 	}

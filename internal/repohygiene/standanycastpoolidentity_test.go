@@ -39,6 +39,7 @@ const (
 // отказ с именем файла, а не молчание. «Ноль расхождений» на пустом файле было
 // бы неотличимо от согласия, поэтому объём разобранного печатается.
 func TestStandAnycastPoolBaselineMatchesTheNlbSeeder(t *testing.T) {
+	t.Parallel()
 	root := repoRoot(t)
 
 	fromSQL, err := ParseStandPoolIdentityFromSQL(mustReadTreeFile(t, filepath.Join(root, standPoolSQLRel)))

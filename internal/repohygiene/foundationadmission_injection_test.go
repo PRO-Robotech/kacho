@@ -133,6 +133,7 @@ func admCensus(t *testing.T, wireFirst, wireSecond bool, ledger []FoundationLedg
 // точное: ровно одна находка, и она называет ПОСТРАДАВШЕЕ место с координатой
 // файла — иначе среди двух серверов одного каталога виновника не найти.
 func TestAdmissionGateRedensOnANewListenerWithoutTheCeiling(t *testing.T) {
+	t.Parallel()
 	cen := admCensus(t, true, false, nil, nil)
 
 	if len(cen.Findings) != 1 {
@@ -170,6 +171,7 @@ func TestAdmissionGateRedensOnANewListenerWithoutTheCeiling(t *testing.T) {
 // значат разное («работы ещё нет» против «работы не предвидится»), и запись,
 // принятая переписью не по своему смыслу, стала бы маской.
 func TestAdmissionGateStaysSilentOnARecordedExemption(t *testing.T) {
+	t.Parallel()
 	cap := admCapability(t)
 
 	t.Run("пропуск с номером задачи", func(t *testing.T) {
@@ -211,6 +213,7 @@ func TestAdmissionGateStaysSilentOnARecordedExemption(t *testing.T) {
 // в очередь работу, которой не требуется (ровно так пропуск края и жил бы после
 // #692, если бы его не сняли). Вторая не даёт долгу быть неотличимым от забытого.
 func TestAdmissionExemptionSelfExpires(t *testing.T) {
+	t.Parallel()
 	cap := admCapability(t)
 
 	t.Run("нечего исключать", func(t *testing.T) {

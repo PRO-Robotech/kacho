@@ -26,6 +26,7 @@ func reasonTinyOptions(root string, retired ...RetiredRPC) RetiredReasonOptions 
 // сервис `AlphaService` в дереве ЕСТЬ, но без такого метода. Гейт, сверяющий одно
 // лишь имя метода либо одно лишь имя сервиса, здесь промолчит.
 func TestRetiredReasonCoordinates_CatchesDeadCoordinate(t *testing.T) {
+	t.Parallel()
 	root := retiredTinyTree(t, retiredTinyProto, retiredTinyStubs, []string{})
 	dead := RetiredRPC{
 		FQN:    "kacho.cloud.demo.v1.GammaService/Old",
@@ -51,6 +52,7 @@ func TestRetiredReasonCoordinates_CatchesDeadCoordinate(t *testing.T) {
 // TestRetiredReasonCoordinates_SilentOnLiveCoordinate — ЗАКОННЫЙ БЛИЗНЕЦ: та же
 // форма фразы, но координата резолвится.
 func TestRetiredReasonCoordinates_SilentOnLiveCoordinate(t *testing.T) {
+	t.Parallel()
 	root := retiredTinyTree(t, retiredTinyProto, retiredTinyStubs, []string{})
 	alive := RetiredRPC{
 		FQN:    "kacho.cloud.demo.v1.GammaService/Old",
@@ -75,6 +77,7 @@ func TestRetiredReasonCoordinates_SilentOnLiveCoordinate(t *testing.T) {
 // TestRetiredReasonCoordinates_ShortNameResolves — сокращённое имя сервиса
 // (без пакета) обязано резолвиться: причины пишут и так, и так.
 func TestRetiredReasonCoordinates_ShortNameResolves(t *testing.T) {
+	t.Parallel()
 	root := retiredTinyTree(t, retiredTinyProto, retiredTinyStubs, []string{})
 	short := RetiredRPC{FQN: "kacho.cloud.demo.v1.GammaService/Old", Reason: "живой путь — AlphaService/Ping"}
 
@@ -91,6 +94,7 @@ func TestRetiredReasonCoordinates_ShortNameResolves(t *testing.T) {
 // сопоставление идёт по СЕГМЕНТУ, а не по подстроке. Иначе `AlphaService`
 // разрешался бы хвостом чужого имени.
 func TestRetiredReasonCoordinates_SuffixIsBySegment(t *testing.T) {
+	t.Parallel()
 	root := retiredTinyTree(t, retiredTinyProto, retiredTinyStubs, []string{})
 	substr := RetiredRPC{FQN: "kacho.cloud.demo.v1.GammaService/Old", Reason: "живой путь — SuperAlphaService/Ping"}
 
@@ -106,6 +110,7 @@ func TestRetiredReasonCoordinates_SuffixIsBySegment(t *testing.T) {
 // TestRetiredReasonCoordinates_NoCoordinateIsTheGoal — причина БЕЗ координат
 // законна и предпочтительна: ноль упоминаний — цель гейта, а не его поломка.
 func TestRetiredReasonCoordinates_NoCoordinateIsTheGoal(t *testing.T) {
+	t.Parallel()
 	root := retiredTinyTree(t, retiredTinyProto, retiredTinyStubs, []string{})
 	plain := RetiredRPC{
 		FQN:    "kacho.cloud.demo.v1.GammaService/Old",
@@ -129,6 +134,7 @@ func TestRetiredReasonCoordinates_NoCoordinateIsTheGoal(t *testing.T) {
 // TestRetiredReasonCoordinates_EmptyLedgerIsAnError — пустая перепись: гейту
 // нечего читать, и «ноль находок» тут не вердикт.
 func TestRetiredReasonCoordinates_EmptyLedgerIsAnError(t *testing.T) {
+	t.Parallel()
 	root := retiredTinyTree(t, retiredTinyProto, retiredTinyStubs, []string{})
 	if _, _, err := AuditRetiredReasonCoordinates(reasonTinyOptions(root), nil); err == nil {
 		t.Fatal("пустая перепись прошла как «ноль находок» — гейт инертен и об этом не сообщает")
@@ -139,6 +145,7 @@ func TestRetiredReasonCoordinates_EmptyLedgerIsAnError(t *testing.T) {
 // премисы: не прочитано ни одного метода ⇒ «координата мертва» было бы получено
 // даром для ЛЮБОЙ координаты.
 func TestRetiredReasonCoordinates_EmptyStubsIsAnError(t *testing.T) {
+	t.Parallel()
 	root := t.TempDir()
 	dead := RetiredRPC{FQN: "kacho.cloud.demo.v1.GammaService/Old", Reason: "живой путь — AlphaService/Ping"}
 	if _, _, err := AuditRetiredReasonCoordinates(reasonTinyOptions(root, dead), nil); err == nil {

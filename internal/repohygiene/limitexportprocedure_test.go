@@ -39,6 +39,7 @@ var requiredExportProcedures = map[string]string{
 
 // TestUpgradeGuideCarriesTheExportProcedureVerbatim — сам гейт.
 func TestUpgradeGuideCarriesTheExportProcedureVerbatim(t *testing.T) {
+	t.Parallel()
 	root := repoRoot(t)
 	tt := newTrackedTree(t, root)
 

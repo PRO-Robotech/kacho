@@ -57,6 +57,7 @@ func caseModules(t *testing.T, root string) []string {
 }
 
 func TestCaseCoverageBlockMatchesWhatTheModuleDeclares(t *testing.T) {
+	t.Parallel()
 	root := repoRoot(t)
 	mods := map[string]string{}
 	for _, rel := range caseModules(t, root) {

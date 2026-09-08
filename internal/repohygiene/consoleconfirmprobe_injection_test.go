@@ -96,6 +96,7 @@ func joinConfirmFindings(fs []confirmFinding) string {
 // TestConfirmGateRedOnUnprobedConfirmation — направление (а): подтверждение есть,
 // пробы рядом нет, в перечне место не названо — гейт КРАСНЕЕТ с координатой.
 func TestConfirmGateRedOnUnprobedConfirmation(t *testing.T) {
+	t.Parallel()
 	root := synthConsoleTree(t, synthConfirmComponent, "")
 
 	findings, census := auditSynthConfirm(t, root, map[string]string{})
@@ -113,6 +114,7 @@ func TestConfirmGateRedOnUnprobedConfirmation(t *testing.T) {
 // TestConfirmGateSilentOnProbedConfirmation — направление (б): тот же компонент,
 // то же подтверждение, но рядом проба, ОТКРЫВАЮЩАЯ его. Гейт МОЛЧИТ.
 func TestConfirmGateSilentOnProbedConfirmation(t *testing.T) {
+	t.Parallel()
 	root := synthConsoleTree(t, synthConfirmComponent, synthConfirmProbe)
 
 	findings, census := auditSynthConfirm(t, root, map[string]string{})
@@ -133,6 +135,7 @@ func TestConfirmGateSilentOnProbedConfirmation(t *testing.T) {
 // Без этого различия гейт засчитывал бы любую соседнюю пробу и был бы зелёным
 // ровно там, где необратимый шаг никем не проверен.
 func TestConfirmGateRedOnProbeThatDoesNotOpenTheConfirmation(t *testing.T) {
+	t.Parallel()
 	root := synthConsoleTree(t, synthConfirmComponent, synthShallowProbe)
 
 	findings, census := auditSynthConfirm(t, root, map[string]string{})
@@ -147,6 +150,7 @@ func TestConfirmGateRedOnProbeThatDoesNotOpenTheConfirmation(t *testing.T) {
 // TestConfirmRosterEntryExpiresWhenSubjectIsGone — послабление истекает САМО:
 // подтверждения в файле больше нет, а запись осталась.
 func TestConfirmRosterEntryExpiresWhenSubjectIsGone(t *testing.T) {
+	t.Parallel()
 	root := synthConsoleTree(t, synthPlainComponent, "")
 	roster := map[string]string{"ui-future/mod/src/Thing.tsx": "когда-то было подтверждение"}
 
@@ -165,6 +169,7 @@ func TestConfirmRosterEntryExpiresWhenSubjectIsGone(t *testing.T) {
 // TestConfirmRosterEntryExpiresWhenProbeArrives — вторая форма самоистечения:
 // место покрылось пробой, а запись о непокрытости осталась.
 func TestConfirmRosterEntryExpiresWhenProbeArrives(t *testing.T) {
+	t.Parallel()
 	root := synthConsoleTree(t, synthConfirmComponent, synthConfirmProbe)
 	roster := map[string]string{"ui-future/mod/src/Thing.tsx": "пробы нет"}
 
@@ -184,6 +189,7 @@ func TestConfirmRosterEntryExpiresWhenProbeArrives(t *testing.T) {
 // Пустой перечень непокрытых — то, ради чего перечень заведён. Проверка,
 // краснеющая на нём, толкала бы держать запись ради зелёного.
 func TestConfirmGateSilentOnEmptyRoster(t *testing.T) {
+	t.Parallel()
 	root := synthConsoleTree(t, synthConfirmComponent, synthConfirmProbe)
 
 	findings, census := auditSynthConfirm(t, root, map[string]string{})

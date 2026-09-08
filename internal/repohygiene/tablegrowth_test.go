@@ -925,6 +925,7 @@ func readTableGrowthTree(t *testing.T, root string) (tableGrowthState, TableGrow
 
 // TestLiveTablesNameTheirGrowthLimit — сам гейт.
 func TestLiveTablesNameTheirGrowthLimit(t *testing.T) {
+	t.Parallel()
 	root := repoRoot(t)
 	state, census := readTableGrowthTree(t, root)
 	findings, stale, counts := tableGrowthVerdict(state, tableGrowthRegistry)

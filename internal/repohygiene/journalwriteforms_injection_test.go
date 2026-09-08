@@ -273,6 +273,7 @@ func censusOfStand(t *testing.T, files map[string]string) JournalWriteFormCensus
 // ноль. Без этого прогона молчание гейта на инъекции соседнего свойства было бы
 // неотличимо от молчания мёртвого.
 func TestJournalWriteFormCensusControl(t *testing.T) {
+	t.Parallel()
 	c := censusOfStand(t, journalStandFiles())
 
 	if len(c.Owners) != 1 || c.Owners[0].Service != "demo" || c.Owners[0].Bare != "demo_outbox" {
@@ -323,6 +324,7 @@ func TestJournalWriteFormCensusControl(t *testing.T) {
 // Каждый из них — форма, ПОХОЖАЯ на точку записи журнала. Без этих утверждений
 // перепись ловила бы форму, а не существо, и первый ложный срабат её отключил бы.
 func TestJournalWriteFormCensusIgnoresLegitimateTwins(t *testing.T) {
+	t.Parallel()
 	c := censusOfStand(t, journalStandFiles())
 	all := append([]JournalWritePoint(nil), c.Points...)
 
@@ -376,6 +378,7 @@ func TestJournalWriteFormCensusIgnoresLegitimateTwins(t *testing.T) {
 // Прочие формы при этом обязаны остаться на месте — инъекция роняет только
 // проверяемое.
 func TestJournalWriteFormZeroMeansSearchedAndNotFound(t *testing.T) {
+	t.Parallel()
 	for _, tc := range []struct {
 		form    JournalWriteForm
 		file    string
@@ -472,6 +475,7 @@ func TestJournalWriteFormZeroMeansSearchedAndNotFound(t *testing.T) {
 // же формы — константа пакета (`named.go`) и параметр функции (`pkg/outbox`), —
 // и они обязаны молчать.
 func TestJournalCensusFindsUnresolvedInsert(t *testing.T) {
+	t.Parallel()
 	files := journalStandFiles()
 	files["services/demo/internal/repo/pg/unresolved.go"] = standUnresolvedInsert
 	c := censusOfStand(t, files)
@@ -508,6 +512,7 @@ func TestJournalCensusFindsUnresolvedInsert(t *testing.T) {
 // всё, что требуется от элементов вообще, и молчание соседней проверки стало бы
 // неотличимо от её смерти (`testing.md` §«Гейт на класс», п. 2в).
 func TestJournalCensusFindsJournalWithoutProducer(t *testing.T) {
+	t.Parallel()
 	files := journalStandFiles()
 	files["services/quiet/internal/subscriptionjournal/journal.go"] =
 		strings.Replace(standJournalDecl, "demo_outbox", "quiet_outbox", 1)
@@ -535,6 +540,7 @@ func TestJournalCensusFindsJournalWithoutProducer(t *testing.T) {
 // искали». Отличить одно от другого читатель не может ничем, поэтому гейт
 // обязан сказать это сам.
 func TestJournalCensusFindsDeadRecognizer(t *testing.T) {
+	t.Parallel()
 	files := journalStandFiles()
 	// Форма триггера уходит из дерева целиком: миграций не остаётся.
 	delete(files, "services/demo/internal/migrations/0001_initial.sql")
@@ -556,6 +562,7 @@ func TestJournalCensusFindsDeadRecognizer(t *testing.T) {
 // Пустой обход даёт ноль находок так же, как исправное дерево. Различие обязано
 // быть названо, иначе «ноль находок» неотличимо от «ноль прочитанного».
 func TestJournalCensusRefusesAnEmptyWalk(t *testing.T) {
+	t.Parallel()
 	c := censusOfStand(t, map[string]string{"README.md": "нечего осматривать\n"})
 	fails := JournalCensusPremiseFailures(c)
 	if len(fails) != 2 {

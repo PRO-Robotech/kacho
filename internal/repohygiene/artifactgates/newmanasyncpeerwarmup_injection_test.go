@@ -168,6 +168,7 @@ func nmSeedBeta(varName string) []nmItem {
 
 // Чужой свежий идентификатор уезжает в асинхронную мутацию первым обращением.
 func TestAsyncPeerWarmupGate_FailsWhenPeerIdGoesStraightIntoAnAsyncMutation(t *testing.T) {
+	t.Parallel()
 	steps := append(nmSeedBeta("betaRef"),
 		nmStepBody("create-alpha", "POST", "{{baseUrl}}/alpha/v1/alphas",
 			`{"projectId": "{{projId}}", "betaId": "{{betaRef}}"}`),
@@ -196,6 +197,7 @@ func TestAsyncPeerWarmupGate_FailsWhenPeerIdGoesStraightIntoAnAsyncMutation(t *t
 // Тот же дефект, но ссылка стоит в АДРЕСЕ, а не в теле. Разбор, читающий только
 // тело, промолчал бы на половине дерева.
 func TestAsyncPeerWarmupGate_FailsWhenPeerIdIsInThePathOfAnAsyncMutation(t *testing.T) {
+	t.Parallel()
 	steps := append(nmSeedBeta("betaRef"),
 		nmStepBody("update-alpha", "PATCH", "{{baseUrl}}/alpha/v1/alphas/{{alphaId}}?ref={{betaRef}}",
 			`{"name": "x"}`),
@@ -224,6 +226,7 @@ func TestAsyncPeerWarmupGate_FailsWhenPeerIdIsInThePathOfAnAsyncMutation(t *test
 
 // Прогрев чтением — форма, посаженная PR #350.
 func TestAsyncPeerWarmupGate_SilentWhenPeerIdIsWarmedByAPriorRead(t *testing.T) {
+	t.Parallel()
 	steps := append(nmSeedBeta("betaRef"),
 		nmStep("warm-beta", "GET", "{{baseUrl}}/beta/v1/betas/{{betaRef}}",
 			"pm.test('status 200', () => pm.expect(pm.response.code).to.eql(200));"),
@@ -245,6 +248,7 @@ func TestAsyncPeerWarmupGate_SilentWhenPeerIdIsWarmedByAPriorRead(t *testing.T) 
 
 // Повтор по ИСХОДУ операции — второй законный исход, названный в issue.
 func TestAsyncPeerWarmupGate_SilentWhenThePollRedrivesTheMutation(t *testing.T) {
+	t.Parallel()
 	steps := append(nmSeedBeta("betaRef"),
 		nmStepBody("create-alpha", "POST", "{{baseUrl}}/alpha/v1/alphas",
 			`{"projectId": "{{projId}}", "betaId": "{{betaRef}}"}`),
@@ -264,6 +268,7 @@ func TestAsyncPeerWarmupGate_SilentWhenThePollRedrivesTheMutation(t *testing.T) 
 // Повтор по исходу, названный ЧУЖИМ именем, этот шаг не прикрывает. Иначе один
 // повтор в кейсе выключал бы гейт на всех его мутациях.
 func TestAsyncPeerWarmupGate_FailsWhenTheRedriveNamesAnotherStep(t *testing.T) {
+	t.Parallel()
 	steps := append(nmSeedBeta("betaRef"),
 		nmStepBody("create-alpha", "POST", "{{baseUrl}}/alpha/v1/alphas",
 			`{"projectId": "{{projId}}", "betaId": "{{betaRef}}"}`),
@@ -283,6 +288,7 @@ func TestAsyncPeerWarmupGate_FailsWhenTheRedriveNamesAnotherStep(t *testing.T) {
 // собственной БД, отдельной проверки прав нет. Ровно то, что issue называет
 // «создал сеть → создал в ней подсеть».
 func TestAsyncPeerWarmupGate_SilentWhenTheFreshIdBelongsToTheSameDomain(t *testing.T) {
+	t.Parallel()
 	steps := []nmItem{
 		nmStepBody("seed-alpha", "POST", "{{baseUrl}}/alpha/v1/alphas",
 			`{"projectId": "{{projId}}"}`, nmPublish("parentAlphaId")...),
@@ -307,6 +313,7 @@ func TestAsyncPeerWarmupGate_SilentWhenTheFreshIdBelongsToTheSameDomain(t *testi
 // Чужая свежая ссылка, которая ЕСТЬ цель проверки прав самого шага: полосу
 // закрывает синхронный 403, и обёртка на ней работает.
 func TestAsyncPeerWarmupGate_SilentWhenTheFreshIdIsTheStepsOwnScopeTarget(t *testing.T) {
+	t.Parallel()
 	steps := append(nmSeedBeta("scopeRef"),
 		nmStepBody("create-alpha", "POST", "{{baseUrl}}/alpha/v1/alphas",
 			`{"projectId": "{{scopeRef}}", "name": "a"}`),
@@ -330,6 +337,7 @@ func TestAsyncPeerWarmupGate_SilentWhenTheFreshIdIsTheStepsOwnScopeTarget(t *tes
 // этого RPC, послабление предмета не имеет и обязано истечь само — та же форма
 // становится находкой. Это и есть самоистечение, а не вечный список исключений.
 func TestAsyncPeerWarmupGate_ScopeTargetExemptionExpiresWithItsCatalogEntry(t *testing.T) {
+	t.Parallel()
 	catalogWithoutAlphaCreate := `[
   {"fqn":"kacho.cloud.synth.v1.BetaService/Create",
    "scope_extractor":{"object_type":"project","from_request_field":"project_id"}}
@@ -357,6 +365,7 @@ func TestAsyncPeerWarmupGate_ScopeTargetExemptionExpiresWithItsCatalogEntry(t *t
 // кодом ответа, обёртка окна видимости на ней работает. Требовать прогрева здесь
 // значило бы чинить закрытое.
 func TestAsyncPeerWarmupGate_SilentOnASynchronousMutation(t *testing.T) {
+	t.Parallel()
 	steps := append(nmSeedBeta("betaRef"),
 		nmStepBody("rename-alpha", "POST", "{{baseUrl}}/alpha/v1/alphas/{{alphaId}}:rename",
 			`{"name": "n", "betaId": "{{betaRef}}"}`))
@@ -387,6 +396,7 @@ func TestAsyncPeerWarmupGate_SilentOnASynchronousMutation(t *testing.T) {
 // Идентификатор, ОПУБЛИКОВАННЫЙ чтением (каталог зон/регионов, discover-шаг), уже
 // прочитан by construction — окна у него нет.
 func TestAsyncPeerWarmupGate_SilentWhenThePeerIdWasPublishedByARead(t *testing.T) {
+	t.Parallel()
 	steps := []nmItem{
 		nmStep("discover-beta", "GET", "{{baseUrl}}/beta/v1/betas/{{seedBetaId}}",
 			"pm.environment.set('betaRef', pm.response.json().id);"),
@@ -408,6 +418,7 @@ func TestAsyncPeerWarmupGate_SilentWhenThePeerIdWasPublishedByARead(t *testing.T
 // Комментарий с координатой не является объявлением маршрута. Иначе первая же
 // синтетическая фикстура в соседнем файле сломала бы гейт или замаскировала дефект.
 func TestAsyncPeerWarmupGate_CommentedRouteIsNotARoute(t *testing.T) {
+	t.Parallel()
 	dir := t.TempDir()
 	p := filepath.Join(dir, nmSynthProtoRel)
 	if err := os.MkdirAll(filepath.Dir(p), 0o750); err != nil {
@@ -445,6 +456,7 @@ func TestAsyncPeerWarmupGate_CommentedRouteIsNotARoute(t *testing.T) {
 // дереве. Пропадёт любая — синтетика выше продолжит зеленеть, доказывая свойство
 // вчерашнего дерева; эта проба скажет об этом прямо.
 func TestAsyncPeerWarmupGate_PremisesPresentInTheRealTree(t *testing.T) {
+	t.Parallel()
 	root := repoRoot(t)
 	tt := newTrackedTree(t, root)
 	var cols, protos []string

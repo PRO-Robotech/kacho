@@ -228,6 +228,7 @@ var tfDataSourceExempt = map[string]dsExemption{
 }
 
 func TestEveryReadOnlyAPIServiceHasATerraformDataSource(t *testing.T) {
+	t.Parallel()
 	root := repoRoot(t)
 
 	census := readOnlyServiceCensus(t, root)
@@ -884,6 +885,7 @@ func dsDedupPlain(in []string) []string {
 // комментарии стоят над КАЖДЫМ конструктором («NewGeoRegionDataSource — kacho_geo_region»), и
 // текстовый разбор объявил бы покрытым непровязанное.
 func TestDataSourceRegistryReadsTheRegistryNotTheDeclaration(t *testing.T) {
+	t.Parallel()
 	const src = `package provider
 
 type kachoProvider struct{}
@@ -987,6 +989,7 @@ func (p *kachoProvider) DataSources(_ context.Context) []func() datasource.DataS
 // объявлял бы находки по каждому сервису вместо честного отказа — то есть лгал бы уверенно и
 // подробно.
 func TestDataSourceRegistryAbsenceDiffersFromEmptiness(t *testing.T) {
+	t.Parallel()
 	const empty = `package provider
 
 type kachoProvider struct{}
@@ -1019,6 +1022,7 @@ func (p *kachoProvider) Resources(_ context.Context) []func() resource.Resource 
 // факт изменится — запрет обязан сказать об этом сам, а не выдать ложные находки по каждому
 // сервису.
 func TestDataSourceRegistryNamesTheFormItDoesNotKnow(t *testing.T) {
+	t.Parallel()
 	const src = `package provider
 
 type kachoProvider struct{}
@@ -1046,6 +1050,7 @@ func (p *kachoProvider) DataSources(_ context.Context) []func() datasource.DataS
 // публичный; сервис с глаголом `ListNamespaces` отличается от справочника только ИМЕНЕМ глагола
 // — и обязан не потеряться, а потребовать классификации.
 func TestReadOnlyServiceCensusCutsBothWays(t *testing.T) {
+	t.Parallel()
 	const src = `
 service ZoneService {
   rpc Get(GetZoneRequest) returns (Zone);

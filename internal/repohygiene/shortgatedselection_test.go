@@ -486,6 +486,7 @@ var shortGatedRunByOwnCIStep = map[string]string{
 
 // TestShortGatedPackagesAreEitherSelectedOrCounted — сам гейт против дерева.
 func TestShortGatedPackagesAreEitherSelectedOrCounted(t *testing.T) {
+	t.Parallel()
 	root := repoRoot(t)
 	gated, scanned := shortGatedPackages(t, root)
 	t.Logf("осмотрено пакетов с тестами: %d; краткогейтящих: %d", scanned, len(gated))
@@ -512,6 +513,7 @@ func TestShortGatedPackagesAreEitherSelectedOrCounted(t *testing.T) {
 // каждый случай, который она ОБЯЗАНА поймать, и каждый, который обязана
 // пропустить.
 func TestShortGateSelectionJudgeFiresAndStaysSilent(t *testing.T) {
+	t.Parallel()
 	const inSelection = "services/vpc/internal/repo/kacho/pg"
 	const outside = "services/iam/internal/authzmap"
 
@@ -684,6 +686,7 @@ func judgeShortGateSelection(gated, declared []string, ownStep map[string]string
 // живёт в корневом Makefile; здесь его КОПИЯ. Разойдутся — и гейт будет судить
 // по несуществующему отбору, оставаясь при этом зелёным.
 func TestIntegrationSelectionCopyMatchesTheMakefile(t *testing.T) {
+	t.Parallel()
 	root := repoRoot(t)
 	// #nosec G304 -- читается корневой Makefile этого же репозитория.
 	raw, err := os.ReadFile(filepath.Join(root, "Makefile"))
@@ -702,6 +705,7 @@ func TestIntegrationSelectionCopyMatchesTheMakefile(t *testing.T) {
 // хелперов с `testing.Short()` в НЕ-тестовом коде. Не станет их — замыкание
 // превратится в мёртвый код, а комментарий выше — в ложь.
 func TestShortGateHelperClosureHasSubject(t *testing.T) {
+	t.Parallel()
 	root := repoRoot(t)
 	helpers := shortGateHelpers(t, root)
 	if len(helpers) == 0 {

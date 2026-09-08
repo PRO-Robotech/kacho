@@ -121,6 +121,7 @@ var surfaceProfileExceptions = map[string]surfaceProfileException{}
 //
 // Проверено инъекцией в обе стороны (`nongrpcsurfaceprofile_injection_test.go`).
 func TestCompositionRootsRaiseNoNonGRPCListenerOfTheirOwn(t *testing.T) {
+	t.Parallel()
 	res := auditSurfaceProfile(t, repoRoot(t))
 	t.Log(res.summary)
 

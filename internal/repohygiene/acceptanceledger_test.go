@@ -114,6 +114,7 @@ func uniq(in []string) []string {
 // от них значило бы держать ствол красным за прошлое, которого правкой не
 // изменить (ban #5 запрещает править применённую миграцию).
 func TestNewMigrationCitesAnApprovedAcceptance(t *testing.T) {
+	t.Parallel()
 	root := repoRoot(t)
 	l := loadLedger(t, root)
 
@@ -213,6 +214,7 @@ func check(findings *[]string, rel, what string, e ledgerEntry, byDoc map[string
 // унаследует следующая слепая зона, а долг без номера задачи не имеет
 // ответственного.
 func TestAcceptanceLedgerEntriesHaveASubject(t *testing.T) {
+	t.Parallel()
 	root := repoRoot(t)
 	l := loadLedger(t, root)
 

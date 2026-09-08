@@ -26,6 +26,7 @@ func showcaseCorpus(rel, body string) map[string]string {
 // ── гейт ГОВОРИТ: имя платформы на каждой форме витрины ────────────────────
 
 func TestKanameShowcaseGateSpeaksOnEveryFormOfTheName(t *testing.T) {
+	t.Parallel()
 	for _, tc := range []struct {
 		name, rel, body string
 	}{
@@ -99,6 +100,7 @@ func TestKanameShowcaseGateSpeaksOnEveryFormOfTheName(t *testing.T) {
 // срабат его отключил бы.
 
 func TestKanameShowcaseGateStaysSilentOnLegitimateTwins(t *testing.T) {
+	t.Parallel()
 	for _, tc := range []struct {
 		name, rel, body string
 		wantJudged      int
@@ -163,6 +165,7 @@ func TestKanameShowcaseGateStaysSilentOnLegitimateTwins(t *testing.T) {
 // Изъятие, которого не видно в переписи, неотличимо от слепой зоны: «ноль
 // находок» читалось бы как «имени нет», тогда как файл вовсе не читали.
 func TestKanameShowcaseExemptionsAreNamedNotSilent(t *testing.T) {
+	t.Parallel()
 	corpus := map[string]string{
 		"services/iam/INSTALL.md":                                   "`kaname-migrator up`\n",
 		"services/iam/deploy/schema_test.go":                        "\"kacho-migrator\"\n",
@@ -191,6 +194,7 @@ func TestKanameShowcaseExemptionsAreNamedNotSilent(t *testing.T) {
 // Проверяется здесь, а не только в прогоне по дереву: «ноль находок» на пустом
 // корпусе обязано быть отличимо от «ноль находок» на прочитанном.
 func TestKanameShowcaseEmptyCorpusIsNotAPass(t *testing.T) {
+	t.Parallel()
 	findings, census := repohygiene.KanameMigratorShowcaseScan(map[string]string{})
 	if len(findings) != 0 {
 		t.Fatalf("на пустом корпусе появились находки: %v", findings)

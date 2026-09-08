@@ -126,6 +126,7 @@ func catalogTwinFaultsOn(t *testing.T, tree judgeWiringTree) []string {
 
 // TestCatalogCopyParityWiringGate_Injection — обе способности по каждой оси.
 func TestCatalogCopyParityWiringGate_Injection(t *testing.T) {
+	t.Parallel()
 	// ── ПРОГОН 1, КОНТРОЛЬ: провязаны все три цели — молчат все ─────────────
 	//
 	// Стоит первым и не является формальностью: без него всякая находка ниже

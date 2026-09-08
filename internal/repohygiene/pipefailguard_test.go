@@ -383,6 +383,7 @@ func defaultsShell(defaults *yaml.Node) string {
 
 // TestNoPipelineLosesItsStatus — по всему дереву, а не по одному файлу.
 func TestNoPipelineLosesItsStatus(t *testing.T) {
+	t.Parallel()
 	root := repoRoot(t)
 	tree := newTrackedTree(t, root)
 
@@ -488,6 +489,7 @@ func renderPipeFindings(rel string, hits []pipeFinding) string {
 // ─────────────────────────────────────────────────────────────────────────────
 
 func TestMakefilePredicateCutsBothWays(t *testing.T) {
+	t.Parallel()
 	cases := []struct {
 		name string
 		body string
@@ -564,6 +566,7 @@ func TestMakefilePredicateCutsBothWays(t *testing.T) {
 }
 
 func TestWorkflowPredicateCutsBothWays(t *testing.T) {
+	t.Parallel()
 	const step = "jobs:\n  j:\n    steps:\n      - run: |\n          go test ./... | tee out.log\n"
 	cases := []struct {
 		name string
@@ -652,6 +655,7 @@ func TestWorkflowPredicateCutsBothWays(t *testing.T) {
 // строка и есть команда). Одна формула для обеих даёт промах на единицу —
 // первая редакция указывала на строку выше.
 func TestWorkflowLineNumbersPointAtThePipeline(t *testing.T) {
+	t.Parallel()
 	cases := []struct {
 		name string
 		body string

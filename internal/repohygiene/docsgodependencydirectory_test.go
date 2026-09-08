@@ -234,6 +234,7 @@ func scanGoDependencyClaims(docs []string, read func(rel string) ([]byte, error)
 // ── гейт на дереве ───────────────────────────────────────────────────────────
 
 func TestGoDependencyClaimsNameADirectoryThatHasGoCode(t *testing.T) {
+	t.Parallel()
 	root := repoRoot(t)
 	docs, files := trackedDocsAndFiles(t, root)
 	tree := directoriesOf(files)

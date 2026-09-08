@@ -184,6 +184,7 @@ var kindsWithoutADebitProducer = map[string]quotaDebt{
 // TestEveryCatalogueKindHasADebitProducer — у каждого вида каталога есть тот,
 // кто списывает под ним место, либо вид стоит в объявленном долге.
 func TestEveryCatalogueKindHasADebitProducer(t *testing.T) {
+	t.Parallel()
 	root := repoRoot(t)
 
 	catalogue := readQuotaCatalogue(t, root)
@@ -316,6 +317,7 @@ func TestEveryCatalogueKindHasADebitProducer(t *testing.T) {
 // первая редакция разбора читала только первый аргумент триггера и недосчитывала
 // четыре вида — то есть находила БОЛЬШЕ, чем есть, и выглядела при этом строже.
 func TestQuotaKindProducerGate_CanFailAndNamesTheKind(t *testing.T) {
+	t.Parallel()
 	// Инъекция: трёхаргументная форма, разбитая на строки ровно так, как её
 	// пишут в дереве. Разбор обязан достать ОБА вида, а не только первый.
 	const nested = `
@@ -567,6 +569,7 @@ func readQuotaMechanisms(t *testing.T, root string) (map[string]map[missingPiece
 // ни одной, и выглядело бы это строже прежней прозы, оставаясь тем же самым
 // необеспеченным утверждением.
 func TestQuotaDebtReasonProbe_CanFailAndStaysSilentOnTheGenuineGap(t *testing.T) {
+	t.Parallel()
 	// Инъекция: текст, ЗАВОДЯЩИЙ обе части. Долг, называющий их недостающими,
 	// обязан быть объявлен устаревшим — обе поимённо.
 	const real = `

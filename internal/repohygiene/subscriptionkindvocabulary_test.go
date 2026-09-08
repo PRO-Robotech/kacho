@@ -25,6 +25,7 @@ func subscriptionKindOptions(t *testing.T) SubscriptionKindOptions {
 // Способность падать доказывает не этот прогон, а инъекция
 // (`subscriptionkindvocabulary_injection_test.go`): здесь только вердикт.
 func TestSubscriptionKindVocabularyHasOneWriting(t *testing.T) {
+	t.Parallel()
 	var log strings.Builder
 	findings, census, err := AuditSubscriptionKindVocabulary(subscriptionKindOptions(t), &log)
 	if err != nil {

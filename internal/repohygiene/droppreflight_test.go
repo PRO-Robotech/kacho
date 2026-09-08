@@ -202,6 +202,7 @@ func readMigrator(t *testing.T, dir string) (migratorFacts, int) {
 // провал, а не «чисто»: «ноль находок» обязано быть отличимо от «ноль
 // прочитанного».
 func TestEveryMigratorCountsBeforeItDrops(t *testing.T) {
+	t.Parallel()
 	root := repoRoot(t)
 	servicesDir := filepath.Join(root, "services")
 	entries, err := os.ReadDir(servicesDir)

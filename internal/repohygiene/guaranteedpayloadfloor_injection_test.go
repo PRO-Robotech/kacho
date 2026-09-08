@@ -90,6 +90,7 @@ func payloadFloorJoin(findings []payloadFloorFinding) string {
 // байт» для значения метки). Гейт обязан её пропускать — иначе он ловит слово
 // «байт», а не обещание продукта.
 func TestPayloadFloorGateSilentOnLegitimateForm(t *testing.T) {
+	t.Parallel()
 	root := synthPayloadFloorTree(t, map[string]string{
 		"services/vpc/docs/content/api/security-group.mdx": "" +
 			"# Группа\n\n" +
@@ -113,6 +114,7 @@ func TestPayloadFloorGateSilentOnLegitimateForm(t *testing.T) {
 // (а1) Дефект: документация называет ДРУГОЕ число. Ровно так расходится пара
 // «код + проза», и расходится молча — ни сборка, ни слияние об этом не скажут.
 func TestPayloadFloorGateRedOnDocNumberDrift(t *testing.T) {
+	t.Parallel()
 	root := synthPayloadFloorTree(t, map[string]string{
 		"services/vpc/docs/content/architecture/data-plane.mdx": "" +
 			"# Граница\n\n" +
@@ -135,6 +137,7 @@ func TestPayloadFloorGateRedOnDocNumberDrift(t *testing.T) {
 // (а2) Дефект: второе объявление той же величины. Два места об одном предмете —
 // и первая же правка разведёт их.
 func TestPayloadFloorGateRedOnSecondDeclaration(t *testing.T) {
+	t.Parallel()
 	root := synthPayloadFloorTree(t, map[string]string{
 		"services/vpc/internal/handler/frame.go": "" +
 			"package handler\n\n" +
@@ -159,6 +162,7 @@ func TestPayloadFloorGateRedOnSecondDeclaration(t *testing.T) {
 // число (1450 — объявление возможностей исполнителя стенда, законная величина
 // другого предмета), и гейт обязан промолчать о ней.
 func TestPayloadFloorGateRedOnLiteralInProductionCode(t *testing.T) {
+	t.Parallel()
 	root := synthPayloadFloorTree(t, map[string]string{
 		"services/vpc/internal/handler/frame.go": "" +
 			"package handler\n\n" +
@@ -183,6 +187,7 @@ func TestPayloadFloorGateRedOnLiteralInProductionCode(t *testing.T) {
 // (а4) Дефект: величину не читает никто. Объявление без читателя выглядит
 // закреплённым и не держит ничего — обещание при нём обеспечено ничем.
 func TestPayloadFloorGateRedOnDeclarationWithoutReader(t *testing.T) {
+	t.Parallel()
 	root := synthPayloadFloorTree(t, map[string]string{
 		"services/vpc/internal/apps/kacho/config/validate.go": "" +
 			"package config\n\n" +
@@ -202,6 +207,7 @@ func TestPayloadFloorGateRedOnDeclarationWithoutReader(t *testing.T) {
 // (а5) Дефект: величина есть в коде, обещания в документации нет вовсе. Тогда
 // арендатор догадывается, а догадка у каждого своя.
 func TestPayloadFloorGateRedOnPromiseMissingFromDocs(t *testing.T) {
+	t.Parallel()
 	root := synthPayloadFloorTree(t, map[string]string{
 		"services/vpc/docs/content/architecture/data-plane.mdx": "" +
 			"# Граница\n\nПро полезную нагрузку кадра здесь не сказано ничего.\n",
@@ -220,6 +226,7 @@ func TestPayloadFloorGateRedOnPromiseMissingFromDocs(t *testing.T) {
 // (а6) Дефект: формулировка обещания стоит, числа рядом нет — сверять нечем.
 // Отдельный случай от (а5): страница выглядит дающей обещание.
 func TestPayloadFloorGateRedOnAnchorWithoutItsNumber(t *testing.T) {
+	t.Parallel()
 	root := synthPayloadFloorTree(t, map[string]string{
 		"services/vpc/docs/content/architecture/data-plane.mdx": "" +
 			"# Граница\n\n" +
@@ -239,6 +246,7 @@ func TestPayloadFloorGateRedOnAnchorWithoutItsNumber(t *testing.T) {
 // (а7) Дефект: число обещания названо в документации ТАМ, где формулировки нет.
 // Такое место гейту невидимо по существу — оно переживёт правку величины.
 func TestPayloadFloorGateRedOnUnanchoredNumber(t *testing.T) {
+	t.Parallel()
 	root := synthPayloadFloorTree(t, map[string]string{
 		"services/vpc/docs/content/api/subnet.mdx": "" +
 			"# Подсеть\n\nРазмер полезной части кадра — 1400 байт.\n",
@@ -257,6 +265,7 @@ func TestPayloadFloorGateRedOnUnanchoredNumber(t *testing.T) {
 // (а8) Предпосылка гейта проверяет СЕБЯ: величина, заданная не литералом, лишает
 // его возможности сверить документацию — и он обязан упасть, а не промолчать.
 func TestPayloadFloorGateRedOnNonLiteralDeclaration(t *testing.T) {
+	t.Parallel()
 	root := synthPayloadFloorTree(t, map[string]string{
 		"services/vpc/internal/domain/frame_guarantee.go": "" +
 			"package domain\n\n" +
@@ -278,6 +287,7 @@ func TestPayloadFloorGateRedOnNonLiteralDeclaration(t *testing.T) {
 // обещанием быть не перестаёт. Без этого случая гейт краснел бы на верной
 // странице, и его сняли бы как шумный.
 func TestPayloadFloorGateSilentOnTypographicNumber(t *testing.T) {
+	t.Parallel()
 	root := synthPayloadFloorTree(t, map[string]string{
 		"services/vpc/docs/content/architecture/data-plane.mdx": "" +
 			"# Граница\n\n" +

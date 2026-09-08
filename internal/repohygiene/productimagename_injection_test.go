@@ -33,6 +33,7 @@ func recipe(imageWord string) string {
 }
 
 func TestImageDerivationGateCanFail(t *testing.T) {
+	t.Parallel()
 	// ── ДЕФЕКТ: имя выведено приставкой из переменной ────────────────────────
 	for _, defect := range []string{
 		"kacho-$$svc:dev",   // форма make

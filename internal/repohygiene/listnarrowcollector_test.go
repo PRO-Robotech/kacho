@@ -177,6 +177,7 @@ func collectNarrowConsumers(t *testing.T) (consumers map[string]*narrowConsumer,
 // сужателя есть свой зарегистрированный коллектор, и его имя совпадает с
 // каталогом потребителя.
 func TestEveryListNarrowConsumerRegistersItsCollector(t *testing.T) {
+	t.Parallel()
 	consumers, harnessSites, scanned := collectNarrowConsumers(t)
 
 	// Объём осмотренного — отдельное утверждение: «ноль находок» обязано быть
@@ -251,6 +252,7 @@ func TestEveryListNarrowConsumerRegistersItsCollector(t *testing.T) {
 // предпосылке, если их не нашлось: молчание на пустом перечне ничего не
 // доказывает.
 func TestEveryListNarrowConsumerExportsItsVerdictWindow(t *testing.T) {
+	t.Parallel()
 	consumers, _, scanned := collectNarrowConsumers(t)
 
 	services := make([]string, 0, len(consumers))

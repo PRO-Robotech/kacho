@@ -164,6 +164,7 @@ func auditReleasePublisher(root, runner string) releaseAudit {
 }
 
 func TestMonorepoCarriesAVersionPublisher(t *testing.T) {
+	t.Parallel()
 	root := repoRoot(t)
 
 	runnerPath := filepath.Join(root, "scripts", "ci-local.sh")

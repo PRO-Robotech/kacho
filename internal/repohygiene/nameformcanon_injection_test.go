@@ -25,6 +25,7 @@ import (
 const nameFormLiteral = `'^[a-z0-9]([-a-z0-9]{0,61}[a-z0-9])?$'`
 
 func TestNameFormCanonAdoptions_ProvenByInjection(t *testing.T) {
+	t.Parallel()
 	// ── ОБЕ ЗАКОННЫЕ ФОРМЫ ЗАПИСИ, каждая подачей ──────────────────────────
 	//
 	// Форма миграции пишется человеком: форма кладётся в переменную plpgsql.
@@ -103,6 +104,7 @@ func TestNameFormCanonAdoptions_ProvenByInjection(t *testing.T) {
 }
 
 func TestNameFormConstraintNaming_ProvenByInjection(t *testing.T) {
+	t.Parallel()
 	a := nameFormAdoption{Service: "alpha", File: "services/alpha/internal/migrations/0001_initial.sql"}
 	const suffix = "_name_check"
 

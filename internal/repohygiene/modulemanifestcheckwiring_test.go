@@ -59,6 +59,7 @@ const moduleManifestCheckTarget = "module-manifest-check"
 // не схлопывать в успех: пустое дерево отчитывалось бы зелёным так же уверенно,
 // как проверенное. Заводить вторую проверку формы взамен провязки — нельзя.
 func TestModuleManifestCheckTargetHasACaller(t *testing.T) {
+	t.Parallel()
 	root := repoRoot(t)
 	w, err := readJudgeTargetWiring(root, moduleManifestCheckTarget)
 	if err != nil {

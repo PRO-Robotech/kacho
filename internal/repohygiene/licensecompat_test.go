@@ -31,6 +31,7 @@ import (
 
 // TestNoImportCrossesAnIncompatibleLicenseBoundary — сам гейт.
 func TestNoImportCrossesAnIncompatibleLicenseBoundary(t *testing.T) {
+	t.Parallel()
 	root := repoRoot(t)
 	pkgs, files := readTreePackages(t, root)
 

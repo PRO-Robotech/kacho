@@ -65,6 +65,7 @@ func scanFor(t *testing.T, files map[string]string) bgCensus {
 
 // A. Фоновая петля БЕЗ записи — находка, и находка НАЗЫВАЕТ координату.
 func TestInjection_LoopWithoutFanoutRecordIsAFinding(t *testing.T) {
+	t.Parallel()
 	c := scanFor(t, map[string]string{
 		"services/x/internal/jobs/runner.go": loopSource("// Run крутит работу.\n", ""),
 	})
@@ -82,6 +83,7 @@ func TestInjection_LoopWithoutFanoutRecordIsAFinding(t *testing.T) {
 
 // A'. ЗАКОННЫЙ БЛИЗНЕЦ: та же петля с записью — гейт молчит.
 func TestInjection_LoopWithFanoutRecordIsSilent(t *testing.T) {
+	t.Parallel()
 	c := scanFor(t, map[string]string{
 		"services/x/internal/jobs/runner.go": loopSource(
 			"// Run крутит работу.\n//\n// РЕПЛИКИ: клейм — строки берутся клеймом с пропуском занятых,\n"+
@@ -101,6 +103,7 @@ func TestInjection_LoopWithFanoutRecordIsSilent(t *testing.T) {
 // B. Вид ВНЕ закрытого словаря — находка. Иначе словарь пополнялся бы по ходу
 // дела, и «прочее» вернулось бы под другим именем.
 func TestInjection_UnknownFanoutKindIsAFinding(t *testing.T) {
+	t.Parallel()
 	c := scanFor(t, map[string]string{
 		"services/x/internal/jobs/runner.go": loopSource(
 			"// РЕПЛИКИ: как-нибудь — разберёмся потом, сейчас и так работает нормально.\n", ""),
@@ -114,6 +117,7 @@ func TestInjection_UnknownFanoutKindIsAFinding(t *testing.T) {
 // C. Причина-отписка — находка. Проверка НАЛИЧИЯ маркера без проверки содержания
 // есть ровно та форма без содержания, которую гейт и ловит.
 func TestInjection_EmptyReasonIsAFinding(t *testing.T) {
+	t.Parallel()
 	c := scanFor(t, map[string]string{
 		"services/x/internal/jobs/runner.go": loopSource("// РЕПЛИКИ: на-реплику — ок\n", ""),
 	})
@@ -126,6 +130,7 @@ func TestInjection_EmptyReasonIsAFinding(t *testing.T) {
 // C'. ЗАКОННЫЙ БЛИЗНЕЦ к C: тот же вид с настоящей причиной — молчание. Без него
 // проба C зеленела бы и на гейте, отвергающем вид «на-реплику» целиком.
 func TestInjection_PerReplicaWithRealReasonIsSilent(t *testing.T) {
+	t.Parallel()
 	c := scanFor(t, map[string]string{
 		"services/x/internal/jobs/runner.go": loopSource(
 			"// РЕПЛИКИ: на-реплику — петля обновляет кэш СВОЕГО процесса и общего\n"+
@@ -139,6 +144,7 @@ func TestInjection_PerReplicaWithRealReasonIsSilent(t *testing.T) {
 // D. Петля БЕЗ тика/уведомления/паузы фоновой не считается — иначе гейт требовал
 // бы записи от каждого `for` в дереве и был бы снят первым же читателем.
 func TestInjection_PlainLoopIsNotBackgroundWork(t *testing.T) {
+	t.Parallel()
 	c := scanFor(t, map[string]string{
 		"services/x/internal/jobs/plain.go": "package svc\n\nfunc Sum(xs []int) int {\n" +
 			"\ttotal := 0\n\tfor _, x := range xs {\n\t\ttotal += x\n\t}\n\treturn total\n}\n",
@@ -154,6 +160,7 @@ func TestInjection_PlainLoopIsNotBackgroundWork(t *testing.T) {
 // E. Пауза и ожидание уведомления — тоже фоновая работа. Без этого утверждения
 // признак сузился бы до тикера, и петля на `time.Sleep` уехала бы мимо гейта.
 func TestInjection_SleepAndNotifyLoopsAreBackgroundWork(t *testing.T) {
+	t.Parallel()
 	sleepLoop := "package svc\n\nimport (\n\t\"context\"\n\t\"time\"\n)\n\n" +
 		"func Run(ctx context.Context) {\n\tfor {\n\t\tif ctx.Err() != nil {\n\t\t\treturn\n\t\t}\n" +
 		"\t\ttime.Sleep(time.Second)\n\t}\n}\n"
@@ -182,6 +189,7 @@ func TestInjection_SleepAndNotifyLoopsAreBackgroundWork(t *testing.T) {
 // Проба существует ради того, чтобы исключение не расползлось: если оно однажды
 // начнёт покрывать прод-код, это утверждение покраснеет вместе с ним.
 func TestInjection_MocksAndClientSDKAreOutOfScope(t *testing.T) {
+	t.Parallel()
 	body := loopSource("// Run крутит работу.\n", "")
 	c := scanFor(t, map[string]string{
 		"services/x/internal/ports/portmock/portmock.go": body,
@@ -198,6 +206,7 @@ func TestInjection_MocksAndClientSDKAreOutOfScope(t *testing.T) {
 
 // G. Проба и каталог вне развёрнутого процесса не осматриваются.
 func TestInjection_TestFilesAndOutOfTreeDirsAreNotScanned(t *testing.T) {
+	t.Parallel()
 	body := loopSource("// Run крутит работу.\n", "")
 	c := scanFor(t, map[string]string{
 		"services/x/internal/jobs/runner_test.go": body,
@@ -213,6 +222,7 @@ func TestInjection_TestFilesAndOutOfTreeDirsAreNotScanned(t *testing.T) {
 // H. Одна функция — одна запись, даже если петель в ней две. Иначе гейт требовал
 // бы копию маркера, а копия расходится с оригиналом молча.
 func TestInjection_TwoLoopsInOneFunctionNeedOneRecord(t *testing.T) {
+	t.Parallel()
 	two := "package svc\n\nimport (\n\t\"context\"\n\t\"time\"\n)\n\n" +
 		"// РЕПЛИКИ: одиночка — проход берёт одна реплика замком прохода в базе.\n" +
 		"func Run(ctx context.Context) {\n" +
@@ -239,6 +249,7 @@ func TestInjection_TwoLoopsInOneFunctionNeedOneRecord(t *testing.T) {
 // и петля была гейту невидима: ни красного, ни зелёного, молчание. Утверждение
 // идёт ПАРОЙ, иначе расширение ловило бы форму, а не существо.
 func TestInjection_TickerChannelInAVariableIsBackgroundWork(t *testing.T) {
+	t.Parallel()
 	// Дефект: петля с подменяемыми часами и БЕЗ записи об исходе.
 	swappable := "package svc\n\nimport (\n\t\"context\"\n\t\"time\"\n)\n\n" +
 		"func work(context.Context) {}\n\n" +
@@ -268,6 +279,7 @@ func TestInjection_TickerChannelInAVariableIsBackgroundWork(t *testing.T) {
 // из переменной, — то есть краснело бы на исправном дереве и было бы снято
 // первым же обходом.
 func TestInjection_ChannelFromCallDataIsNotBackgroundWork(t *testing.T) {
+	t.Parallel()
 	fromCaller := "package svc\n\nimport \"context\"\n\n" +
 		"func work(context.Context, int) {}\n\n" +
 		"func Consume(ctx context.Context, in <-chan int) {\n" +
@@ -290,6 +302,7 @@ func TestInjection_ChannelFromCallDataIsNotBackgroundWork(t *testing.T) {
 // Признак узкий намеренно, и здесь это утверждается: узнаётся ровно тот
 // идентификатор, в который канал положили.
 func TestInjection_OnlyTheVariableThatGotTheTickerCounts(t *testing.T) {
+	t.Parallel()
 	mixed := "package svc\n\nimport (\n\t\"context\"\n\t\"time\"\n)\n\n" +
 		"func work(context.Context) {}\n\n" +
 		"func Run(ctx context.Context, other <-chan int) {\n" +

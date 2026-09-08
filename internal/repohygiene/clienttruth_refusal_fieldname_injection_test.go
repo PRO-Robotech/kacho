@@ -55,6 +55,7 @@ func auditInjectedRefusalFields(t *testing.T, root string) ([]RefusalFieldNameFi
 
 // TestRefusalFieldNameInjectionCatchesTheRealDefect — КРАСНОЕ на настоящем дефекте.
 func TestRefusalFieldNameInjectionCatchesTheRealDefect(t *testing.T) {
+	t.Parallel()
 	// Подсеть называет доменное имя; группа CIDR — своё законное поле.
 	findings, census := auditInjectedRefusalFields(t, injectRefusalTree(t, "v4_cidr_blocks", "v4_cidr_blocks"))
 	if census.Judged != 2 {
@@ -82,6 +83,7 @@ func TestRefusalFieldNameInjectionCatchesTheRealDefect(t *testing.T) {
 // Без этой стороны анализатор ловил бы строку, а не существо: `v4_cidr_blocks`
 // у группы CIDR — настоящее поле её контракта.
 func TestRefusalFieldNameInjectionStaysSilentOnTheLegitimateTwin(t *testing.T) {
+	t.Parallel()
 	findings, census := auditInjectedRefusalFields(t, injectRefusalTree(t, "ipv4_cidr_primary", "v4_cidr_blocks"))
 	if census.Judged != 2 {
 		t.Fatalf("рассужено имён %d, ожидалось 2", census.Judged)
@@ -97,6 +99,7 @@ func TestRefusalFieldNameInjectionStaysSilentOnTheLegitimateTwin(t *testing.T) {
 // ВЕРНЫХ отказа (`gateway`, `disk`) — оба называли ветвь oneof. Сторона
 // проверяется отдельно, потому что именно её отсутствие давало обвинение наугад.
 func TestRefusalFieldNameAcceptsOneofNames(t *testing.T) {
+	t.Parallel()
 	root := t.TempDir()
 	dir := filepath.Join(root, "services", "vpc", "internal", "apps", "kacho", "api", "gateway")
 	if err := os.MkdirAll(dir, 0o755); err != nil {
@@ -121,6 +124,7 @@ func TestRefusalFieldNameAcceptsOneofNames(t *testing.T) {
 //
 // Без отдельного числа «находок ноль» было бы неотличимо от «судить было нечего».
 func TestRefusalFieldNameCountsWhatItCannotJudge(t *testing.T) {
+	t.Parallel()
 	root := t.TempDir()
 	dir := filepath.Join(root, "services", "vpc", "internal", "apps", "kacho", "api", "subnet")
 	if err := os.MkdirAll(dir, 0o755); err != nil {
@@ -143,6 +147,7 @@ func TestRefusalFieldNameCountsWhatItCannotJudge(t *testing.T) {
 
 // TestRefusalFieldNameFailsOnAnEmptyWalk — пустой обход не выдаёт себя за чистый.
 func TestRefusalFieldNameFailsOnAnEmptyWalk(t *testing.T) {
+	t.Parallel()
 	root := t.TempDir()
 	if err := os.MkdirAll(filepath.Join(root, "services"), 0o755); err != nil {
 		t.Fatal(err)

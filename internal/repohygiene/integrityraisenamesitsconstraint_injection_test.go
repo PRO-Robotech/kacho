@@ -61,6 +61,7 @@ func integrityUnnamedLiveSites(files map[string]string) []IntegrityRaiseSite {
 }
 
 func TestIntegrityRaiseGateFallsAndStaysSilentOnItsTwin(t *testing.T) {
+	t.Parallel()
 	named := fmt.Sprintf(integrityInjectionMigration, integrityNamedClause)
 	unnamed := fmt.Sprintf(integrityInjectionMigration, "")
 
@@ -153,6 +154,7 @@ func TestIntegrityRaiseGateFallsAndStaysSilentOnItsTwin(t *testing.T) {
 // Заведено отдельно, потому что это единственная ось, где ошибка разбора даёт
 // красное на ВЕРНОМ дереве: гейт с ложными находками отключают первым.
 func TestIntegrityRaiseParserSeesTheWholeStatement(t *testing.T) {
+	t.Parallel()
 	named := fmt.Sprintf(integrityInjectionMigration, integrityNamedClause)
 	if !strings.Contains(named, "ERRCODE") || !strings.Contains(named, "CONSTRAINT") {
 		t.Fatal("фикстура не несёт обеих клауз — контроль беспредметен")

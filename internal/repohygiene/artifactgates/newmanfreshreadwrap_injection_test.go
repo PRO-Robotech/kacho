@@ -65,6 +65,7 @@ func frwAudit(t *testing.T, shared, generator string) ([]string, freshReadWrapCe
 // ─── молчание на ЗАКОННОМ близнеце ───────────────────────────────────────────
 
 func TestFreshReadWrapWiredGeneratorIsSilent(t *testing.T) {
+	t.Parallel()
 	findings, cen := frwAudit(t, frwShared, frwWiredGenerator)
 	if len(findings) != 0 {
 		t.Fatalf("гейт краснеет на сведённом генераторе: предикат взят из общего слоя\n"+
@@ -81,6 +82,7 @@ func TestFreshReadWrapWiredGeneratorIsSilent(t *testing.T) {
 // ─── красное на настоящем дефекте: предикат НЕ ПРОВЯЗАН ──────────────────────
 
 func TestFreshReadWrapInjectionUnwiredGeneratorIsFound(t *testing.T) {
+	t.Parallel()
 	// Возвращаем ровно тот дефект, ради которого гейт заведён: полоса видимости
 	// у набора есть, предикат доступен, а сериализация кейса его не применяет —
 	// значит обёртка ставится вручную, и пропуск неотличим от решения.
@@ -102,6 +104,7 @@ func TestFreshReadWrapInjectionUnwiredGeneratorIsFound(t *testing.T) {
 // ─── красное на настоящем дефекте: предикат НЕДОСТУПЕН ───────────────────────
 
 func TestFreshReadWrapInjectionMissingImportIsFound(t *testing.T) {
+	t.Parallel()
 	// Объявления в общем слое НЕ достаточно: оно одинаково истинно для
 	// генератора, который предикат импортирует, и для того, который о нём не
 	// знает. Снимаем импорт — предикат в дереве есть, а этому набору недоступен.
@@ -120,6 +123,7 @@ func TestFreshReadWrapInjectionMissingImportIsFound(t *testing.T) {
 // ─── ПРЕДПОСЫЛКА: обход импорта обязан быть живым ────────────────────────────
 
 func TestFreshReadWrapImportRecognizerSeesTheList(t *testing.T) {
+	t.Parallel()
 	// Отдельная ось: если форма импорта изменится и обход её не прочитает,
 	// «доступен» снова начнёт вычисляться только по локальному `def` — то есть
 	// вернётся ровно тот дефект, который переустройство и чинило.
@@ -141,6 +145,7 @@ func TestFreshReadWrapImportRecognizerSeesTheList(t *testing.T) {
 // ─── ПРЕДПОСЫЛКА: старая полоса не приписана новой ───────────────────────────
 
 func TestFreshReadWrapLocalDeclarationStillCounts(t *testing.T) {
+	t.Parallel()
 	// Контроль в обратную сторону: генератор, объявивший предикат У СЕБЯ (форма
 	// до сведения), обязан по-прежнему считаться защищённым. Иначе гейт требовал
 	// бы переезда как условия — то есть судил бы раскладку, а не свойство.
@@ -194,6 +199,7 @@ def case_to_postman(case):
 `
 
 func TestFreshReadWrapBoundLaneIsRecognised(t *testing.T) {
+	t.Parallel()
 	findings, cen := frwAudit(t, frwShared, frwBoundLaneGenerator)
 	if cen.withLane != 1 {
 		t.Fatalf("распознаватель не видит полосу, взятую импортом и связанную окном набора:\n"+
@@ -208,6 +214,7 @@ func TestFreshReadWrapBoundLaneIsRecognised(t *testing.T) {
 }
 
 func TestFreshReadWrapBoundLaneUnwiredIsFound(t *testing.T) {
+	t.Parallel()
 	// Тот же генератор с ВОЗВРАЩЁННЫМ дефектом: полоса есть и доступна, а
 	// сериализация кейса предикат не применяет. Без распознавания третьей формы
 	// эта находка не появилась бы вовсе — набор был бы пропущен раньше проверки.
@@ -231,6 +238,7 @@ func TestFreshReadWrapBoundLaneUnwiredIsFound(t *testing.T) {
 // доказательством бы не было.
 
 func TestFreshReadWrapLaneWithoutHeadIsFound(t *testing.T) {
+	t.Parallel()
 	headless := strings.Replace(frwBoundLaneGenerator,
 		"budget=25, interval_ms=500, lane_head=True", "budget=25, interval_ms=500", 1)
 	findings, cen := frwAudit(t, frwShared, headless)
@@ -253,6 +261,7 @@ func TestFreshReadWrapLaneWithoutHeadIsFound(t *testing.T) {
 // Без этой ветви гейт зеленел бы на объяснении, которым набор рассказывает, чего
 // у него нет.
 func TestFreshReadWrapProseAboutHeadIsNotAHead(t *testing.T) {
+	t.Parallel()
 	prose := strings.Replace(frwBoundLaneGenerator,
 		"_rya = functools.partial(retry_until_authorized, budget=25, interval_ms=500, lane_head=True)",
 		"# голову полосы (lane_head=True) этот набор пока не несёт\n"+
@@ -271,6 +280,7 @@ func TestFreshReadWrapProseAboutHeadIsNotAHead(t *testing.T) {
 // живёт в реализации общего слоя. Требовать её от копии значило бы судить
 // раскладку, а её судит соседний гейт.
 func TestFreshReadWrapOwnLaneCopyIsNotAskedForAHead(t *testing.T) {
+	t.Parallel()
 	local := `
 def retry_until_authorized(step):
     return step
@@ -297,6 +307,7 @@ def case_to_postman(case):
 // закрывающей скобки. Обход, начатый не с той позиции, отвечает «головы нет» на
 // ЛЮБОМ входе — то есть гейт краснеет всегда и его отключают первым.
 func TestFreshReadWrapHeadRecognizerReadsTheWholeBinding(t *testing.T) {
+	t.Parallel()
 	multiline := "_rya = functools.partial(retry_until_authorized,\n" +
 		"                        budget=25, interval_ms=500, lane_head=True)\n"
 	bound, head := laneBindingHasHead(multiline)

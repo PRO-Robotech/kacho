@@ -89,6 +89,7 @@ func (s *verbStand) run(
 
 // TestVerbCanonInjection_CleanStandIsSilent — КОНТРОЛЬ.
 func TestVerbCanonInjection_CleanStandIsSilent(t *testing.T) {
+	t.Parallel()
 	s := newVerbStand(t)
 	findings, census := s.run(t)
 	if len(findings) != 0 {
@@ -108,6 +109,7 @@ func TestVerbCanonInjection_CleanStandIsSilent(t *testing.T) {
 // TestVerbCanonInjection_DashedVerbIsFound — снято ОДНО свойство: суффикс записан
 // дефисом. Остальное у адреса цело.
 func TestVerbCanonInjection_DashedVerbIsFound(t *testing.T) {
+	t.Parallel()
 	s := newVerbStand(t)
 	s.write(t, "proto/kacho/cloud/probe/v1/thing_service.proto",
 		"syntax = \"proto3\";\n"+
@@ -144,6 +146,7 @@ func TestVerbCanonInjection_DashedVerbIsFound(t *testing.T) {
 // TestVerbCanonInjection_UnderscoreVerbIsFound — вторая незаконная запись того же
 // предмета. Без неё анализатор мог бы ловить ОДИН разделитель, а не форму.
 func TestVerbCanonInjection_UnderscoreVerbIsFound(t *testing.T) {
+	t.Parallel()
 	s := newVerbStand(t)
 	s.write(t, "proto/kacho/cloud/probe/v1/snake_service.proto",
 		"syntax = \"proto3\";\n"+
@@ -161,6 +164,7 @@ func TestVerbCanonInjection_UnderscoreVerbIsFound(t *testing.T) {
 // TestVerbCanonInjection_UppercaseFirstIsFound — заглавная первым знаком:
 // `:AddBlocks` каноном не является, и это третий вид отступления.
 func TestVerbCanonInjection_UppercaseFirstIsFound(t *testing.T) {
+	t.Parallel()
 	s := newVerbStand(t)
 	s.write(t, "proto/kacho/cloud/probe/v1/upper_service.proto",
 		"syntax = \"proto3\";\n"+
@@ -183,6 +187,7 @@ func TestVerbCanonInjection_UppercaseFirstIsFound(t *testing.T) {
 // привязку, оставил бы прежнюю запись вне наблюдения ровно в тот день, когда она
 // станет предметом (`testing.md` §«Гейт на класс», п.7).
 func TestVerbCanonInjection_AdditionalBindingIsJudged(t *testing.T) {
+	t.Parallel()
 	s := newVerbStand(t)
 	s.write(t, "proto/kacho/cloud/probe/v1/thing_service.proto",
 		"syntax = \"proto3\";\n"+
@@ -217,6 +222,7 @@ func TestVerbCanonInjection_AdditionalBindingIsJudged(t *testing.T) {
 // TestVerbCanonInjection_LiveExemptionSuppresses — послабление с ЖИВЫМ предметом
 // снимает находку и считается переписью.
 func TestVerbCanonInjection_LiveExemptionSuppresses(t *testing.T) {
+	t.Parallel()
 	s := newVerbStand(t)
 	s.write(t, "proto/kacho/cloud/probe/v1/legacy_service.proto",
 		"syntax = \"proto3\";\n"+
@@ -241,6 +247,7 @@ func TestVerbCanonInjection_LiveExemptionSuppresses(t *testing.T) {
 // TestVerbCanonInjection_StaleExemptionIsAFinding — послабление, которому нечего
 // исключать, обязано быть находкой: иначе слепая зона переживёт свой предмет.
 func TestVerbCanonInjection_StaleExemptionIsAFinding(t *testing.T) {
+	t.Parallel()
 	s := newVerbStand(t)
 	findings, _ := s.run(t, VerbCanonExemption{
 		File:   "proto/kacho/cloud/probe/v1/legacy_service.proto",
@@ -258,6 +265,7 @@ func TestVerbCanonInjection_StaleExemptionIsAFinding(t *testing.T) {
 // TestVerbCanonInjection_EmptyWalkIsNotSilentSuccess — «ноль находок» обязано
 // быть отличимо от «ноль прочитанного».
 func TestVerbCanonInjection_EmptyWalkIsNotSilentSuccess(t *testing.T) {
+	t.Parallel()
 	root := t.TempDir()
 	if err := os.MkdirAll(filepath.Join(root, "proto"), 0o755); err != nil {
 		t.Fatalf("mkdir: %v", err)

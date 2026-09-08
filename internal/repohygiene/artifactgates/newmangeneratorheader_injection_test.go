@@ -43,6 +43,7 @@ func nmHeaderAudit(t *testing.T, doc string, mods ...string) ([]string, headerCe
 
 // Законный близнец — гейт МОЛЧИТ, и перепись это подтверждает числами.
 func TestGeneratorHeaderCleanIsSilent(t *testing.T) {
+	t.Parallel()
 	findings, cen := nmHeaderAudit(t, nmCleanHeader, "network")
 	if len(findings) != 0 {
 		t.Fatalf("гейт нашёл предмет на законной шапке: %v", findings)
@@ -55,6 +56,7 @@ func TestGeneratorHeaderCleanIsSilent(t *testing.T) {
 // ОСЬ I: шапка молчит про общий слой — тогда читателю негде узнать, где живёт
 // форма коллекции, и он пойдёт сверяться с соседом.
 func TestGeneratorHeaderInjectionNoSharedLayerIsFound(t *testing.T) {
+	t.Parallel()
 	doc := strings.Replace(nmCleanHeader,
 		"Форму коллекции собирает общий модуль tests/newman/kacholib/gen_shared.py.",
 		"Форму коллекции собирает этот файл.", 1)
@@ -76,6 +78,7 @@ func TestGeneratorHeaderInjectionNoSharedLayerIsFound(t *testing.T) {
 // ОСЬ II: шапка называет образцом ЧУЖОЙ генератор — ровно та форма, что жила в
 // дереве («intentionally a near-mirror of …/gen.py»).
 func TestGeneratorHeaderInjectionForeignGeneratorIsFound(t *testing.T) {
+	t.Parallel()
 	doc := nmCleanHeader + "\nThe generator is intentionally a near-mirror of services/vpc/tests/newman/scripts/gen.py.\n"
 	findings, cen := nmHeaderAudit(t, doc, "network")
 	if len(findings) == 0 {
@@ -92,6 +95,7 @@ func TestGeneratorHeaderInjectionForeignGeneratorIsFound(t *testing.T) {
 
 // Та же ось в форме координаты прежнего полирепо: `../kacho-vpc/...`.
 func TestGeneratorHeaderInjectionLegacyRepoPathIsFound(t *testing.T) {
+	t.Parallel()
 	doc := nmCleanHeader + "\nСтруктурно — копия `../kacho-compute/tests/newman/scripts/gen.py`.\n"
 	findings, _ := nmHeaderAudit(t, doc, "network")
 	if len(findings) == 0 {
@@ -105,6 +109,7 @@ func TestGeneratorHeaderInjectionLegacyRepoPathIsFound(t *testing.T) {
 
 // ОСЬ II, законный близнец: ссылка на СВОЙ путь образцом не является.
 func TestGeneratorHeaderOwnPathIsNotForeign(t *testing.T) {
+	t.Parallel()
 	doc := "\ntests/newman/scripts/gen.py — генератор набора probe.\n" +
 		"Полный путь: services/probe/tests/newman/scripts/gen.py.\n" +
 		"Использование:\n    python3 scripts/gen.py network\n" +
@@ -120,6 +125,7 @@ func TestGeneratorHeaderOwnPathIsNotForeign(t *testing.T) {
 // жила в дереве дважды: шапка, скопированная у соседа, и модуль, снятый расколом
 // домена.
 func TestGeneratorHeaderInjectionUsageNamesAMissingModuleIsFound(t *testing.T) {
+	t.Parallel()
 	findings, cen := nmHeaderAudit(t, nmCleanHeader, "operation")
 	if len(findings) == 0 {
 		t.Fatalf("гейт не увидел пример вызова, ведущий в никуда.\nперепись: %+v", cen)
@@ -136,6 +142,7 @@ func TestGeneratorHeaderInjectionUsageNamesAMissingModuleIsFound(t *testing.T) {
 // ОСЬ III, законный близнец: пример без имени модуля (только флаг) предметом не
 // является — иначе гейт краснел бы на шапке, которая просто короче.
 func TestGeneratorHeaderUsageWithOnlyAFlagIsNotAFinding(t *testing.T) {
+	t.Parallel()
 	doc := strings.Replace(nmCleanHeader,
 		"    python3 scripts/gen.py network     # один модуль",
 		"    python3 scripts/gen.py --validate  # делегировать проверке кейсов", 1)
@@ -151,6 +158,7 @@ func TestGeneratorHeaderUsageWithOnlyAFlagIsNotAFinding(t *testing.T) {
 // Предпосылка распознавателя шапки: тройной литерал читается целиком, а не до
 // первой пустой строки. Без этой пробы сужение распознавателя прошло бы молча.
 func TestGeneratorHeaderDocstringReaderTakesTheWholeLiteral(t *testing.T) {
+	t.Parallel()
 	src := "#!/usr/bin/env python3\n\"\"\"первая строка\n\nвторая строка\n\"\"\"\nimport sys\n"
 	got := moduleDocstring(src)
 	if !strings.Contains(got, "вторая строка") {

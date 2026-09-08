@@ -46,6 +46,7 @@ roles:
 // TestMigrationRoleGateRedsWhenTheModuleHasAManifest — инъекция обязана
 // краснеть и называть обе стороны: файл миграции и файл манифеста.
 func TestMigrationRoleGateRedsWhenTheModuleHasAManifest(t *testing.T) {
+	t.Parallel()
 	site, ok := ScanModuleManifest("services/vpc/module-manifest.yaml", []byte(injManifestVPC))
 	if !ok || site.Module != "vpc" {
 		t.Fatalf("манифест не опознан по содержимому: ok=%v site=%+v", ok, site)
@@ -70,6 +71,7 @@ func TestMigrationRoleGateRedsWhenTheModuleHasAManifest(t *testing.T) {
 // TestMigrationRoleGateStaysSilentOnLegalTwins — законные близнецы, каждый
 // своей осью.
 func TestMigrationRoleGateStaysSilentOnLegalTwins(t *testing.T) {
+	t.Parallel()
 	bearing := map[string]string{"vpc": "services/vpc/module-manifest.yaml"}
 
 	t.Run("модуль БЕЗ манифеста", func(t *testing.T) {
@@ -129,6 +131,7 @@ func TestMigrationRoleGateStaysSilentOnLegalTwins(t *testing.T) {
 // TestModuleManifestIsRecognisedByContentNotByPath — распознаватель знает
 // формы: манифест опознаётся ключами оболочки, а файл без них — нет.
 func TestModuleManifestIsRecognisedByContentNotByPath(t *testing.T) {
+	t.Parallel()
 	if _, ok := ScanModuleManifest("a/b/anything.yaml", []byte(injManifestVPC)); !ok {
 		t.Errorf("манифест на произвольном пути не опознан — гейт был бы привязан к пути, " +
 			"который выбирает не он")
@@ -159,6 +162,7 @@ const (
 // Поэтому красное не может прийти от соседней оси — ни манифест, ни имя роли,
 // ни привязка к блоку здесь не меняются.
 func TestMigrationRoleGateJudgesOnlyAddedMigrations(t *testing.T) {
+	t.Parallel()
 	bearing := map[string]string{"vpc": "services/vpc/manifest.yaml"}
 	added := map[string]bool{injMigrationAddedRel: true}
 
@@ -246,6 +250,7 @@ INSERT INTO kaname.roles VALUES ('rol6307d201bf18e6763', NULL, 'vpc.network.admi
 // находка и не молчание, а НЕВИДИМОСТЬ: каждая вставленная роль оказалась вне
 // наблюдения, при том что обход, перепись и диагностика были целы.
 func TestMigrationRoleScannerReadsBothFormsOfTheName(t *testing.T) {
+	t.Parallel()
 	for _, tc := range []struct {
 		name, body string
 	}{
@@ -288,6 +293,7 @@ func TestMigrationRoleScannerReadsBothFormsOfTheName(t *testing.T) {
 //
 // Пара обязательна: непрочитанный блок обязан считаться, прочитанный — нет.
 func TestMigrationRoleScannerCountsABlockItCannotRead(t *testing.T) {
+	t.Parallel()
 	sites, census := ScanMigrationRoleInserts(
 		"synthetic.sql", []byte(injMigrationDumpFormNoColumnList))
 	if census.Blocks != 1 {

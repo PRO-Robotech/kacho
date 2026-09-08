@@ -57,6 +57,7 @@ const operationsImportPath = "/pkg/operations"
 // «Уберу operations.Run» тоже исход, но тогда мутация становится синхронной, и
 // это отдельное контрактное решение, а не способ обойти гейт.
 func TestEveryServiceWithAsyncMutationsResolvesOrphanedOperations(t *testing.T) {
+	t.Parallel()
 	root := repoRoot(t)
 	svcRoot := filepath.Join(root, "services")
 
@@ -142,6 +143,7 @@ func TestEveryServiceWithAsyncMutationsResolvesOrphanedOperations(t *testing.T) 
 // corelib, и проверять надо именно его. Требовать литерал в каждом корне значило
 // бы запрещать законную форму.
 func TestOrphanGraceExceedsOperationTimeout(t *testing.T) {
+	t.Parallel()
 	root := repoRoot(t)
 
 	worker, err := os.ReadFile(filepath.Join(root, "pkg/operations/worker.go"))

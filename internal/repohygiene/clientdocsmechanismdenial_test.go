@@ -317,6 +317,7 @@ func denialMechanismDeclared(root string, list subscriptionDocsLister) (int, int
 
 // TestClientDocsDoNotDenyTheSubscriptionTheTreeHas — гейт.
 func TestClientDocsDoNotDenyTheSubscriptionTheTreeHas(t *testing.T) {
+	t.Parallel()
 	root := repoRoot(t)
 	list := subscriptionDocsLister(treecorpus.UnderWithSuffix)
 

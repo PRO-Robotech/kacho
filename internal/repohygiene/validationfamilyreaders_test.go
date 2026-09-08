@@ -264,6 +264,7 @@ func stripLineComments(path, body string) string {
 
 // TestNoCheckReadsTheRetiredValidationFamily — полоса Л-04.
 func TestNoCheckReadsTheRetiredValidationFamily(t *testing.T) {
+	t.Parallel()
 	root := repoRoot(t)
 
 	// ОХВАТ ВЫВОДИТСЯ ИЗ ИНДЕКСА ЦЕЛИКОМ, а не выписывается перечнем каталогов.

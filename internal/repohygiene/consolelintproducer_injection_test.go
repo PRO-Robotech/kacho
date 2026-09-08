@@ -59,6 +59,7 @@ func consoleUniformChains() map[string]string {
 
 // TestConsoleLintGateControl — ПРОГОН 1: всё цело, молчат оба судьи.
 func TestConsoleLintGateControl(t *testing.T) {
+	t.Parallel()
 	if f := judgeConsoleLintProducers(consoleLintingPkgs, consoleLintingPkgs); len(f) != 0 {
 		t.Errorf("судья ПРОИЗВОДИТЕЛЯ краснеет на целом входе — он ловит форму, "+
 			"а не существо: %v", f)
@@ -75,6 +76,7 @@ func TestConsoleLintGateControl(t *testing.T) {
 
 // TestConsoleLintProducerGateFailsOnAnUnproducedScript — ПРОГОН 2а.
 func TestConsoleLintProducerGateFailsOnAnUnproducedScript(t *testing.T) {
+	t.Parallel()
 	// Ровно то состояние ствола, ради которого гейт заведён: объявляют десять,
 	// зовёт никто.
 	f := judgeConsoleLintProducers(consoleLintingPkgs, nil)
@@ -96,6 +98,7 @@ func TestConsoleLintProducerGateFailsOnAnUnproducedScript(t *testing.T) {
 
 // TestConsoleLintProducerGateFailsOnACallWithoutADeclaration — ПРОГОН 2б.
 func TestConsoleLintProducerGateFailsOnACallWithoutADeclaration(t *testing.T) {
+	t.Parallel()
 	// Обратная сторона шва: корневой скрипт зовёт пакет, у которого скрипта нет.
 	f := judgeConsoleLintProducers(consoleLintingPkgs, append(consoleLintingPkgs, "shared"))
 	if len(f) != 1 || !strings.Contains(f[0], "ui-future/shared") {
@@ -105,6 +108,7 @@ func TestConsoleLintProducerGateFailsOnACallWithoutADeclaration(t *testing.T) {
 
 // TestConsoleLintChainGateFailsOnADivergedChain — ПРОГОН 2в.
 func TestConsoleLintChainGateFailsOnADivergedChain(t *testing.T) {
+	t.Parallel()
 	chains := consoleUniformChains()
 	// Правка ОДНОГО объявления — та самая форма, которой цепочки разошлись бы молча.
 	chains["nlb"] = "npm run lint:js && npm run typecheck"
@@ -132,6 +136,7 @@ func TestConsoleLintChainGateFailsOnADivergedChain(t *testing.T) {
 // покраснел ТОЛЬКО существующий судья. Без этого прогона его молчание выше
 // неотличимо от того, что он мёртв.
 func TestConsoleLintGateLeavesTheExistingControlAlone(t *testing.T) {
+	t.Parallel()
 	if f := judgeConsoleFormatProducers(consoleFormattedPkgs, nil); len(f) == 0 {
 		t.Fatal("СУЩЕСТВУЮЩИЙ судья формата молчит на снятом производителе — он мёртв, " +
 			"и его молчание в прогонах выше ничего не доказывало")
@@ -147,6 +152,7 @@ func TestConsoleLintGateLeavesTheExistingControlAlone(t *testing.T) {
 
 // TestConsoleWorkflowCallDetectorKnowsEveryForm — все три формы, каждая отдельно.
 func TestConsoleWorkflowCallDetectorKnowsEveryForm(t *testing.T) {
+	t.Parallel()
 	for _, c := range []struct {
 		name   string
 		body   string
@@ -174,6 +180,7 @@ func TestConsoleWorkflowCallDetectorKnowsEveryForm(t *testing.T) {
 // Именно эта форма делала предикат по сырому тексту ложным: в день заведения
 // ui.yml нёс два совпадения `npm run lint:js`, и оба были комментариями.
 func TestConsoleWorkflowCommentIsNotACall(t *testing.T) {
+	t.Parallel()
 	commented := "# здесь объясняется, зачем нужен npm run lint\n" +
 		"        # и почему его звал бы npm run lint\n"
 	if consoleWorkflowCallsScript(shellExecutablePart(commented), "lint") {

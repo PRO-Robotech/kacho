@@ -37,6 +37,7 @@ func required() map[string]string {
 // TestExportProcedureGate_ControlIsSilent — контроль. Стоит первым: утверждение,
 // что гейт отвергает, ничего не стоит рядом с гейтом, отвергающим всё.
 func TestExportProcedureGate_ControlIsSilent(t *testing.T) {
+	t.Parallel()
 	census, findings := JudgeExportProcedure(goodGuide(), required())
 	if len(findings) != 0 {
 		t.Fatalf("годный корпус обязан молчать, получено: %v", findings)
@@ -48,6 +49,7 @@ func TestExportProcedureGate_ControlIsSilent(t *testing.T) {
 
 // TestExportProcedureGate_MissingProcedureIsAFinding — процедуру вычеркнули.
 func TestExportProcedureGate_MissingProcedureIsAFinding(t *testing.T) {
+	t.Parallel()
 	g := goodGuide()
 	g[injectedGuide] = "## 6. Обновление версии\n\nНакатите миграции и запустите службу.\n"
 
@@ -62,6 +64,7 @@ func TestExportProcedureGate_MissingProcedureIsAFinding(t *testing.T) {
 // словами. Это и есть второе написание, ради которого гейт заведён: расходится
 // всегда то, которое не исполняется.
 func TestExportProcedureGate_SecondSpellingIsAFinding(t *testing.T) {
+	t.Parallel()
 	g := goodGuide()
 	g[injectedGuide] = strings.Replace(g[injectedGuide],
 		dropguard.PreserveCommand("kaname.limits"),
@@ -73,6 +76,7 @@ func TestExportProcedureGate_SecondSpellingIsAFinding(t *testing.T) {
 
 // TestExportProcedureGate_MissingGuideIsAFinding — инструкции нет вовсе.
 func TestExportProcedureGate_MissingGuideIsAFinding(t *testing.T) {
+	t.Parallel()
 	_, findings := JudgeExportProcedure(map[string]string{}, required())
 	requireExportFindingNames(t, findings, injectedGuide, "kaname.limits")
 }
@@ -81,6 +85,7 @@ func TestExportProcedureGate_MissingGuideIsAFinding(t *testing.T) {
 // команды о таблице нет. Образец шагом не является: имя таблицы в нём обязан
 // подставить оператор, а он подставляет его по отказу, которого ещё не видел.
 func TestExportProcedureGate_TemplateAloneIsAFinding(t *testing.T) {
+	t.Parallel()
 	g := map[string]string{injectedGuide: "    " + dropguard.PreserveCommand("<таблица>") + "\n"}
 
 	census, findings := JudgeExportProcedure(g, required())
@@ -94,6 +99,7 @@ func TestExportProcedureGate_TemplateAloneIsAFinding(t *testing.T) {
 // чужая инструкция с ГОДНОЙ процедурой о своей таблице молчит и не подменяет
 // собой требуемую.
 func TestExportProcedureGate_AnotherGuideIsNotJudgedIntoSilence(t *testing.T) {
+	t.Parallel()
 	g := goodGuide()
 	g["services/vpc/INSTALL.md"] = "    " + dropguard.PreserveCommand("kacho_vpc.leases") + "\n"
 
@@ -110,6 +116,7 @@ func TestExportProcedureGate_AnotherGuideIsNotJudgedIntoSilence(t *testing.T) {
 // отличимо от «прочитано ноль». Гейт сам этого не различает и не обязан: пустой
 // обход роняет прогон в `limitexportprocedure_test.go`, судящем живое дерево.
 func TestExportProcedureGate_EmptyCorpusCountsZero(t *testing.T) {
+	t.Parallel()
 	census, _ := JudgeExportProcedure(map[string]string{}, map[string]string{})
 	if census.Guides != 0 || census.Lines != 0 || census.Procedures != 0 {
 		t.Fatalf("пустой корпус обязан давать нулевую перепись: %s", census.String())

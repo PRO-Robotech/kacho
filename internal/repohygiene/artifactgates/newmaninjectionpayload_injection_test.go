@@ -70,6 +70,7 @@ func nmPayloadAudit(t *testing.T, folders ...nmItem) ([]nmPayloadFinding, nmPayl
 // ─── красное на НАСТОЯЩЕМ дефекте #701 ───────────────────────────────────────
 
 func TestInjectionPayloadGateRedOnNullbyteReplacedBySpace(t *testing.T) {
+	t.Parallel()
 	findings, cen := nmPayloadAudit(t, nmFolder("NET-CR-SEC-NULLBYTE — Security probe: nullbyte in name",
 		nmPayloadStep("cr-nullbyte-rya142", "x y"),
 	))
@@ -97,6 +98,7 @@ func TestInjectionPayloadGateRedOnNullbyteReplacedBySpace(t *testing.T) {
 // ─── законный близнец: та же нагрузка после фикса #701 ───────────────────────
 
 func TestInjectionPayloadGateSilentOnRealNullByte(t *testing.T) {
+	t.Parallel()
 	findings, cen := nmPayloadAudit(t, nmFolder("NET-CR-SEC-NULLBYTE — Security probe: nullbyte in name",
 		nmPayloadStep("cr-nullbyte-rya142", "x\x00y"),
 	))
@@ -111,6 +113,7 @@ func TestInjectionPayloadGateSilentOnRealNullByte(t *testing.T) {
 // ─── законные близнецы той же формы: шесть остальных видов ───────────────────
 
 func TestInjectionPayloadGateSilentOnTheOtherSixKinds(t *testing.T) {
+	t.Parallel()
 	folders := []nmItem{
 		nmFolder("NET-CR-SEC-SQLI — sqli", nmPayloadStep("cr-sqli-r1", "test' OR 1=1--")),
 		nmFolder("NET-CR-SEC-UNION — union", nmPayloadStep("cr-union-r2", "x' UNION SELECT * FROM operations--")),
@@ -131,6 +134,7 @@ func TestInjectionPayloadGateSilentOnTheOtherSixKinds(t *testing.T) {
 // Каждый предикат обязан иметь СВОЙ производитель отказа: без этого «шесть видов
 // молчат» держалось бы на одном работающем предикате и пяти тождественно-истинных.
 func TestEachKindPredicateHasItsOwnProducer(t *testing.T) {
+	t.Parallel()
 	// Подмена — правдоподобная: строка того же назначения, у которой снят ровно
 	// тот признак, который обещает имя вида.
 	swapped := map[string]string{
@@ -180,6 +184,7 @@ func nmMaxNameLen() int {
 // ─── фикстурный шаг внутри кейса нагрузкой НЕ считается ──────────────────────
 
 func TestFixtureStepInsideSecCaseIsNotReadAsPayload(t *testing.T) {
+	t.Parallel()
 	findings, cen := nmPayloadAudit(t, nmFolder("SUB-CR-SEC-PATH — path",
 		nmFixtureStep("pre-create-net"),
 		nmPayloadStep("cr-path-rya352", "../../etc/passwd"),
@@ -196,6 +201,7 @@ func TestFixtureStepInsideSecCaseIsNotReadAsPayload(t *testing.T) {
 // ─── вторая форма имени шага (`<id> :: <шаг>`) читается наравне с первой ──────
 
 func TestPrefixedStepNameIsRecognised(t *testing.T) {
+	t.Parallel()
 	const folderName = "IAM-ACC-CR-SEC-INJECTION — Security: SQL injection in name"
 
 	ok, cenOK := nmPayloadAudit(t, nmFolder(folderName,
@@ -224,6 +230,7 @@ func nmItemRename(it nmItem, name string) nmItem {
 // ─── кейс внедрения без узнанной нагрузки ────────────────────────────────────
 
 func TestSecCaseWithoutRecognisedPayloadIsAFinding(t *testing.T) {
+	t.Parallel()
 	findings, cen := nmPayloadAudit(t, nmFolder("NET-CR-SEC-UNICODE — новый вид, предиката нет",
 		nmPayloadStep("cr-unicode-r1", "‮evil"),
 	))
@@ -242,6 +249,7 @@ func TestSecCaseWithoutRecognisedPayloadIsAFinding(t *testing.T) {
 // ─── запись списка исключений: молчит при предмете, истекает без него ────────
 
 func TestWaivedSecCaseIsSilentAndIsCountedAsUsed(t *testing.T) {
+	t.Parallel()
 	const waived = "LST-CR-SEC-TG-CROSS-PROJECT"
 	if _, ok := nmSecFoldersWithoutPayload[waived]; !ok {
 		t.Fatalf("проба опирается на запись %q, которой в списке гейта нет — "+
@@ -260,6 +268,7 @@ func TestWaivedSecCaseIsSilentAndIsCountedAsUsed(t *testing.T) {
 }
 
 func TestWaiverIsReportedUnusedWhenItsSubjectIsGone(t *testing.T) {
+	t.Parallel()
 	_, cen := nmPayloadAudit(t, nmFolder("NET-CR-SEC-PATH — path",
 		nmPayloadStep("cr-path-r1", "../../etc/passwd"),
 	))
@@ -272,6 +281,7 @@ func TestWaiverIsReportedUnusedWhenItsSubjectIsGone(t *testing.T) {
 // ─── перепись отличает «ноль находок» от «ноль прочитанного» ─────────────────
 
 func TestEmptyTreeYieldsZeroCensusNotSilentGreen(t *testing.T) {
+	t.Parallel()
 	findings, cen := nmPayloadAudit(t, nmFolder("NET-CR-CRUD-OK — обычный кейс",
 		nmFixtureStep("cr-net"),
 	))

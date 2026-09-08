@@ -120,6 +120,7 @@ _INJECTED = {
 // ─── РАЗБОР: возможность отличима от стража ─────────────────────────────────
 
 func TestShapeCapabilityParserTellsCapabilityFromGuard(t *testing.T) {
+	t.Parallel()
 	// Дискриминатор — что делает ВТОРАЯ ВЕТВЬ, а не что стоит в условии: в обоих
 	// исходниках стоит один и тот же `isinstance(x, str)`. Распознаватель,
 	// судящий по условию, объявил бы стража возможностью и потребовал бы для
@@ -147,6 +148,7 @@ func TestShapeCapabilityParserTellsCapabilityFromGuard(t *testing.T) {
 // ─── РАЗБОР: цепочка имён РАСКРЫВАЕТСЯ, а прозу за вызов не считает ─────────
 
 func TestShapeCapabilityParserResolvesTheAliasChainAndIgnoresProse(t *testing.T) {
+	t.Parallel()
 	// Вызов в модуле кейсов идёт по имени ИЗ ТАБЛИЦЫ ВПРЫСКА, а не по имени
 	// объявления, и приезжает туда через `functools.partial`. Распознаватель,
 	// знающий только имя объявления, дал бы ноль вызовов у ЖИВОЙ формы — то есть
@@ -179,6 +181,7 @@ retry_until_present(None, ['a', 'b'])
 // ─── РАЗБОР: привязка ПОЗИЦИОННОГО аргумента названа, а не проглочена ───────
 
 func TestShapeCapabilityParserNamesTheShiftedIndex(t *testing.T) {
+	t.Parallel()
 	// `functools.partial(f, X)` съедает первый позиционный, и индекс проверяемого
 	// параметра сдвигается. Перепись, не знающая об этом, считала бы форму НЕ ТОГО
 	// аргумента — то есть отвечала бы уверенно и неверно.
@@ -205,6 +208,7 @@ _INJECTED = {"retry_until_present": _rup}
 // ─── РАЗБОР: форма проверки, которой он НЕ ЗНАЕТ, названа отдельно ──────────
 
 func TestShapeCapabilityParserNamesTheFormItDoesNotKnow(t *testing.T) {
+	t.Parallel()
 	// Проверка типа вне `if`/`if-else` не попадает ни в возможности, ни в стражи.
 	// Молчание здесь означало бы невидимость — а она хуже находки: ни красного,
 	// ни зелёного.
@@ -241,6 +245,7 @@ func nmCapability(shapes map[string]int) shapeSubject {
 // модулей 132, формы: строка 28, перечень 0) — то есть инъекция повторяет не
 // выдуманный, а бывший вход. Предикат повторения назван в шапке гейта.
 func TestShapeCapabilityInjectionDeadFormIsFound(t *testing.T) {
+	t.Parallel()
 	findings, cen := auditShapeCapabilities(nmShapeReport(
 		nmCapability(map[string]int{"str": 28, "seq": 0, "unknown": 0})))
 
@@ -261,6 +266,7 @@ func TestShapeCapabilityInjectionDeadFormIsFound(t *testing.T) {
 // ЗАКОННЫЙ БЛИЗНЕЦ: обе формы зовут — МОЛЧИТ, и перепись подтверждает, что
 // предмет был осмотрен. Без этой пробы молчание было бы неотличимо от слепоты.
 func TestShapeCapabilityBothFormsCalledIsSilent(t *testing.T) {
+	t.Parallel()
 	findings, cen := auditShapeCapabilities(nmShapeReport(
 		nmCapability(map[string]int{"str": 33, "seq": 1, "unknown": 0})))
 
@@ -276,6 +282,7 @@ func TestShapeCapabilityBothFormsCalledIsSilent(t *testing.T) {
 // Ось разведена: у стража нули по обеим формам, и гейт, судящий по числам без
 // рода, дал бы здесь ДВЕ ложные находки.
 func TestShapeCapabilityGuardNeedsNoCallerOfTheRefusedForm(t *testing.T) {
+	t.Parallel()
 	guard := shapeSubject{
 		File: "services/iam/tests/newman/scripts/gen.py", Func: "js_name", Param: "value",
 		Kind: "guard", Line: 167, Index: 0, Aliases: []string{"js_name"},
@@ -292,6 +299,7 @@ func TestShapeCapabilityGuardNeedsNoCallerOfTheRefusedForm(t *testing.T) {
 
 // ИНЪЕКЦИЯ: неизвестная разбору форма — находка, а не молчание.
 func TestShapeCapabilityInjectionUnknownFormIsFound(t *testing.T) {
+	t.Parallel()
 	s := nmCapability(map[string]int{"str": 1, "seq": 1, "unknown": 0})
 	s.Kind = "unknown-form"
 	findings, cen := auditShapeCapabilities(nmShapeReport(s))
@@ -307,6 +315,7 @@ func TestShapeCapabilityInjectionUnknownFormIsFound(t *testing.T) {
 // мёртвую форму. Ось разведена намеренно: перепись форм при сдвиге недостоверна,
 // и объявлять по ней форму мёртвой значило бы отвечать уверенно и неверно.
 func TestShapeCapabilityInjectionShiftedIndexIsFound(t *testing.T) {
+	t.Parallel()
 	s := nmCapability(map[string]int{"str": 0, "seq": 0, "unknown": 0})
 	s.Shifted = []string{"_rup"}
 	findings, cen := auditShapeCapabilities(nmShapeReport(s))

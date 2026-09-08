@@ -49,6 +49,7 @@ var (
 // ---- ось 1: файл лицензии ---------------------------------------------------
 
 func TestDependencyLicenseGate_RedsOnAModuleWithoutALicense(t *testing.T) {
+	t.Parallel()
 	cache := fakeModuleCache(t, map[DirectDependency]map[string]string{
 		depUnlicensed: {"go.mod": "module example.com/Some-Vendor/toolkit\n", "README.md": "# toolkit\n"},
 	})
@@ -68,6 +69,7 @@ func TestDependencyLicenseGate_RedsOnAModuleWithoutALicense(t *testing.T) {
 }
 
 func TestDependencyLicenseGate_SilentOnTheLegalTwinWithALicenseFile(t *testing.T) {
+	t.Parallel()
 	cache := fakeModuleCache(t, map[DirectDependency]map[string]string{
 		depLicensed: {"go.mod": "module example.com/Other-Vendor/toolkit\n", "README.md": "# toolkit\n", "LICENSE": "MIT\n"},
 	})
@@ -83,6 +85,7 @@ func TestDependencyLicenseGate_SilentOnTheLegalTwinWithALicenseFile(t *testing.T
 // Пара выше различается ОДНИМ фактом. Проба ниже утверждает это дословно:
 // один и тот же модуль краснеет без файла и молчит с ним.
 func TestDependencyLicenseGate_TheOnlyDifferenceIsTheLicenseFile(t *testing.T) {
+	t.Parallel()
 	files := map[string]string{"go.mod": "module m\n", "README.md": "# m\n"}
 	cache := fakeModuleCache(t, map[DirectDependency]map[string]string{depUnlicensed: files})
 	if findings, c := ScanDependencyLicenses([]DirectDependency{depUnlicensed}, DiskLicenseProbe(cache)); len(findings) != 1 {
@@ -100,6 +103,7 @@ func TestDependencyLicenseGate_TheOnlyDifferenceIsTheLicenseFile(t *testing.T) {
 // Основы имени — все четыре, каждая своей пробой: иначе распознаватель мог бы
 // знать одну форму записи предмета и молчать о трёх остальных.
 func TestDependencyLicenseGate_KnowsEveryConventionalFileName(t *testing.T) {
+	t.Parallel()
 	for _, name := range []string{"LICENSE", "LICENSE.txt", "LICENCE", "COPYING", "COPYING.LESSER", "NOTICE", "license", "License-MIT"} {
 		t.Run(name, func(t *testing.T) {
 			cache := fakeModuleCache(t, map[DirectDependency]map[string]string{
@@ -116,6 +120,7 @@ func TestDependencyLicenseGate_KnowsEveryConventionalFileName(t *testing.T) {
 // ---- ось 2: заголовок SPDX вместо файла ------------------------------------
 
 func TestDependencyLicenseGate_SilentOnAModuleDeclaringItsLicenseBySpdxHeader(t *testing.T) {
+	t.Parallel()
 	cache := fakeModuleCache(t, map[DirectDependency]map[string]string{
 		depLicensed: {"go.mod": "module m\n", "doc.go": "// " + spdxTag + ": MIT\npackage m\n"},
 	})
@@ -131,6 +136,7 @@ func TestDependencyLicenseGate_SilentOnAModuleDeclaringItsLicenseBySpdxHeader(t 
 // Законный близнец предыдущей: тот же корневой .go, но БЕЗ заголовка. Без этой
 // пробы «молчит на SPDX» было бы неотличимо от «молчит на любом .go в корне».
 func TestDependencyLicenseGate_RedsOnTheSameFileWithoutTheSpdxHeader(t *testing.T) {
+	t.Parallel()
 	cache := fakeModuleCache(t, map[DirectDependency]map[string]string{
 		depUnlicensed: {"go.mod": "module m\n", "doc.go": "// пакет без объявления лицензии\npackage m\n"},
 	})
@@ -143,6 +149,7 @@ func TestDependencyLicenseGate_RedsOnTheSameFileWithoutTheSpdxHeader(t *testing.
 // ---- ось 3: непрочитанный каталог НЕ засчитывается в проверенные ------------
 
 func TestDependencyLicenseGate_UnresolvedIsNeitherFindingNorPass(t *testing.T) {
+	t.Parallel()
 	cache := t.TempDir() // каталога модуля нет вовсе
 	findings, census := ScanDependencyLicenses([]DirectDependency{depUnlicensed}, DiskLicenseProbe(cache))
 	if len(findings) != 0 {
@@ -159,6 +166,7 @@ func TestDependencyLicenseGate_UnresolvedIsNeitherFindingNorPass(t *testing.T) {
 // ---- ось 4: разбор go.mod --------------------------------------------------
 
 func TestDependencyLicenseGate_ParsesBothRequireForms(t *testing.T) {
+	t.Parallel()
 	body := "module example.com/tree\n\ngo 1.25\n\n" +
 		"require example.com/single v0.1.0\n\n" +
 		"require (\n\texample.com/block v0.2.0\n\texample.com/indirect v0.3.0 // indirect\n)\n"
@@ -184,6 +192,7 @@ func TestDependencyLicenseGate_ParsesBothRequireForms(t *testing.T) {
 }
 
 func TestDependencyLicenseGate_EmptyParseIsAnEmptyTraversal(t *testing.T) {
+	t.Parallel()
 	deps := ParseGoModRequires("module example.com/tree\n\ngo 1.25\n")
 	if len(deps) != 0 {
 		t.Fatalf("на go.mod без require разобрано %d записей", len(deps))
@@ -200,6 +209,7 @@ func TestDependencyLicenseGate_EmptyParseIsAnEmptyTraversal(t *testing.T) {
 // ---- ось 5: кодировка пути модуля ------------------------------------------
 
 func TestDependencyLicenseGate_EscapesUppercaseInTheModulePath(t *testing.T) {
+	t.Parallel()
 	// Путь синтетический намеренно: имя снятого модуля, оставленное здесь
 	// «просто как данные пробы», пережило бы свой предмет.
 	if got := EscapeModulePath("example.com/H-BF/ToolKit"); got != "example.com/!h-!b!f/!tool!kit" {
@@ -235,6 +245,7 @@ func chainProbe(probes ...LicenseProbe) LicenseProbe {
 // пином, и проба, опирающаяся на его каталог, стала бы беспредметной там, где
 // снятие как раз и удалось.
 func TestDependencyLicenseGate_RedsWhenAnUnlicensedModuleIsPutIntoTheRealGoMod(t *testing.T) {
+	t.Parallel()
 	root := repoRoot(t)
 	body, err := os.ReadFile(filepath.Join(root, "go.mod"))
 	if err != nil {
@@ -268,6 +279,7 @@ func TestDependencyLicenseGate_RedsWhenAnUnlicensedModuleIsPutIntoTheRealGoMod(t
 // после снятия зависимости. Без неё «краснеет на возвращённом дефекте» было бы
 // неотличимо от «краснеет всегда».
 func TestDependencyLicenseGate_SilentOnTheRealTreeAsItStands(t *testing.T) {
+	t.Parallel()
 	root := repoRoot(t)
 	body, err := os.ReadFile(filepath.Join(root, "go.mod"))
 	if err != nil {

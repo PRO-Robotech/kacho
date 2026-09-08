@@ -106,6 +106,7 @@ func reachOfClientToken(t *testing.T, dir string) (string, repohygiene.SurfaceCe
 // регистрации внутреннюю досягаемость, прошёл бы первую половину и был бы
 // бесполезен.
 func TestSurfaceScannerSeesAnInternalMountAndIsSilentOnTheExternalOne(t *testing.T) {
+	t.Parallel()
 	// (а) законная посадка — путь на внешне досягаемой поверхности.
 	reach, census := reachOfClientToken(t, syntheticRoot(t, "mux"))
 	if reach != repohygiene.ExternalReach {
@@ -135,6 +136,7 @@ func TestSurfaceScannerSeesAnInternalMountAndIsSilentOnTheExternalOne(t *testing
 // неотличима от отсутствующей, и гейт объявил бы «маршрутов нет» там, где они
 // есть.
 func TestSurfaceScannerReportsWhatItCouldNotLink(t *testing.T) {
+	t.Parallel()
 	dir := t.TempDir()
 	src := `package main
 

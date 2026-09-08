@@ -43,6 +43,7 @@ func id() string { return why }
 // TestDerivedIDGateRedsOnASecondDeclaration — инъекция обязана краснеть И
 // называть координату.
 func TestDerivedIDGateRedsOnASecondDeclaration(t *testing.T) {
+	t.Parallel()
 	const rel = "services/iam/internal/authzguard/fgaproxy.go"
 	sites, census, err := ScanDerivedIDDeclarations(rel, []byte(derivedIDInjectionSrc))
 	if err != nil {
@@ -70,6 +71,7 @@ func TestDerivedIDGateRedsOnASecondDeclaration(t *testing.T) {
 // осью: (а) упоминание пути в комментарии и строке; (б) тот же импорт в ПРОБЕ;
 // (в) файл самого дома.
 func TestDerivedIDGateStaysSilentOnLegalTwins(t *testing.T) {
+	t.Parallel()
 	t.Run("путь назван в тексте, импорта нет", func(t *testing.T) {
 		sites, census, err := ScanDerivedIDDeclarations("services/iam/internal/authzguard/fgaproxy.go",
 			[]byte(derivedIDTwinSrc))
@@ -117,6 +119,7 @@ func TestDerivedIDGateStaysSilentOnLegalTwins(t *testing.T) {
 // законные формы записи предмета. Форма, которой он не знает, даёт МОЛЧАНИЕ, а
 // не находку: объявление уезжает вне наблюдения.
 func TestDerivedIDScannerKnowsEveryImportForm(t *testing.T) {
+	t.Parallel()
 	const src = `package p
 
 import (

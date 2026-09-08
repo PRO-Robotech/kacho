@@ -78,6 +78,7 @@ type gitFinding struct {
 }
 
 func TestGitCommandsRunWithScrubbedEnvironment(t *testing.T) {
+	t.Parallel()
 	root := repoRoot(t)
 
 	files, err := treecorpus.UnderWithSuffix(root, ".go")
@@ -441,6 +442,7 @@ func isGitBinary(name string) bool {
 // Сверка идёт в ОБЕ стороны — иначе половина запрета зеленела бы на пустом
 // перечне.
 func TestHookAndHelperScrubTheSameVariables(t *testing.T) {
+	t.Parallel()
 	root := repoRoot(t)
 	hookPath := filepath.Join(root, "scripts", "hooks", "pre-push")
 	raw, err := os.ReadFile(hookPath) // #nosec G304 -- путь собран из корня дерева

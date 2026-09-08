@@ -33,6 +33,7 @@ func scanSource(t *testing.T, src string) (calls int, leaks int) {
 }
 
 func TestGitCommandGateCutsBothWays(t *testing.T) {
+	t.Parallel()
 	const preamble = `package p
 
 import (
@@ -165,6 +166,7 @@ func f() { _ = "exec.Command(\"git\", \"add\", \"-A\")" }`,
 // Гейт, который знает о находке и не говорит где, заставляет искать её руками, и
 // его снимут первым.
 func TestGitCommandGateNamesTheCoordinate(t *testing.T) {
+	t.Parallel()
 	const src = `package p
 
 import "os/exec"

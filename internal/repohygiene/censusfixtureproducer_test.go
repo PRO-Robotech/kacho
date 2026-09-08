@@ -263,6 +263,7 @@ func judgeCensusFixtures(byDir map[string][]censusFileFacts) []string {
 // TestCensusFixturesSeedThroughTheProducer — фикстура пробы-переписи идёт через
 // производителя, а не пишет предмет переписи сама.
 func TestCensusFixturesSeedThroughTheProducer(t *testing.T) {
+	t.Parallel()
 	root := repoRoot(t)
 	producerPkg := producerPackageName(t, root)
 

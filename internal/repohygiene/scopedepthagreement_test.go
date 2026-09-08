@@ -91,6 +91,7 @@ var (
 )
 
 func TestScopeDepthBoundsAgreeAcrossAllThreePlaces(t *testing.T) {
+	t.Parallel()
 	root := repoRoot(t)
 
 	code := readFileForDepth(t, filepath.Join(root, scopeDepthConstFile))

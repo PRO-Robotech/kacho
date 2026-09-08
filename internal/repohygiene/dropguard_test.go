@@ -62,6 +62,7 @@ func migrationDirs(t *testing.T, root string) map[string]string {
 // (исключение пережило свой предмет), несовпадении вида с тем, что миграция реально
 // делает, и на ненулевом ожидании, под которое в миграциях нет ни одного INSERT.
 func TestEveryDropIsDeclaredWithANumber(t *testing.T) {
+	t.Parallel()
 	root := repoRoot(t)
 	dirs := migrationDirs(t, root)
 

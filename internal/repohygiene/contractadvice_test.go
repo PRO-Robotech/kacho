@@ -47,6 +47,7 @@ import (
 // со своим номером задачи и своей проверкой самоистечения (`testing.md` §«Гейт
 // на класс», п.5).
 func TestContractAdviceNamesADeclaredVerb(t *testing.T) {
+	t.Parallel()
 	root := repoRoot(t)
 
 	sources, err := loadContractAdviceSources(root)

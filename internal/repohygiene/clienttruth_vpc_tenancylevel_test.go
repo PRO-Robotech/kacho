@@ -13,6 +13,7 @@ import (
 // Способность падать доказывает не этот прогон, а инъекция
 // (`clienttruth_vpc_tenancylevel_injection_test.go`): здесь только вердикт.
 func TestProtoCommentsNameContainersThatExist(t *testing.T) {
+	t.Parallel()
 	var log strings.Builder
 	findings, census, err := AuditTenancyLevels(TenancyLevelOptions{
 		Tree:      clientTruthRepoTree(t),

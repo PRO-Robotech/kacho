@@ -89,6 +89,7 @@ func docsReachInjectionCensus(t *testing.T, f docsReachFixture) docsReachCensus 
 }
 
 func TestDocsPageReachGateInjection(t *testing.T) {
+	t.Parallel()
 	t.Run("КОНТРОЛЬ: все страницы подключены — гейт молчит", func(t *testing.T) {
 		c := docsReachInjectionCensus(t, docsReachControlFixture())
 		if c.Judged != 1 {

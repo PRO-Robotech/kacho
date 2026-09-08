@@ -19,6 +19,7 @@ import (
 // TestEveryContractRootIsNamedInGenerationInputs — каждый наш контракт назван
 // во входах объявления генерации, и каждый объявленный путь имеет предмет.
 func TestEveryContractRootIsNamedInGenerationInputs(t *testing.T) {
+	t.Parallel()
 	root := repoRoot(t)
 
 	modules := generationModulePaths(t, root)

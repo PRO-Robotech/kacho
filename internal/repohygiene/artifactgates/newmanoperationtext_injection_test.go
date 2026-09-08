@@ -55,6 +55,7 @@ const optOpsURLFixture = "{{baseUrl}}/operations/{{garbageOpId}}"
 // ─── ось 1: приведение регистра ──────────────────────────────────────────────
 
 func TestOPT_LowercasedMessageAssertionIsAFinding(t *testing.T) {
+	t.Parallel()
 	step := nmStep("get-nx", "GET", optOpsURLFixture,
 		"pm.test('text matches', () => pm.expect(pm.response.json().message.toLowerCase()).to.include('not found'));",
 	)
@@ -81,6 +82,7 @@ func TestOPT_LowercasedMessageAssertionIsAFinding(t *testing.T) {
 
 // Законный близнец №1: равенство вычисленному тексту, регистр сохранён.
 func TestOPT_VerbatimEqualityIsLawfulAndSilent(t *testing.T) {
+	t.Parallel()
 	step := nmStep("get-nx", "GET", optOpsURLFixture,
 		"pm.test('сообщение дословно равно тексту владельца', () => "+
 			"pm.expect(pm.response.json().message).to.eql('operation ' + pm.environment.get('garbageOpId') + ' not found'));",
@@ -98,6 +100,7 @@ func TestOPT_VerbatimEqualityIsLawfulAndSilent(t *testing.T) {
 // Законный близнец №2: ОТРИЦАНИЕ. Приведение регистра там РАСШИРЯЕТ проверку,
 // поэтому запрет к нему не относится — и это сказано в шапке гейта.
 func TestOPT_NegationWithLowercaseIsLawfulAndSilent(t *testing.T) {
+	t.Parallel()
 	step := nmStep("get-nx", "GET", optOpsURLFixture,
 		"pm.test('сообщение дословно равно тексту владельца', () => "+
 			"pm.expect(pm.response.json().message).to.eql('operation ' + pm.environment.get('garbageOpId') + ' not found'));",
@@ -112,6 +115,7 @@ func TestOPT_NegationWithLowercaseIsLawfulAndSilent(t *testing.T) {
 // ─── ось 2: вхождение вместо равенства ───────────────────────────────────────
 
 func TestOPT_SubstringWithoutEqualityIsAFinding(t *testing.T) {
+	t.Parallel()
 	step := nmStep("cancel-done", "POST", "{{baseUrl}}/operations/{{opId}}:cancel",
 		"pm.test('mentions already completed', () => pm.expect(pm.response.json().message).to.include('already completed'));",
 	)
@@ -133,6 +137,7 @@ func TestOPT_SubstringWithoutEqualityIsAFinding(t *testing.T) {
 // ─── ось 3: текст без производителя ──────────────────────────────────────────
 
 func TestOPT_TextWithNoProducerIsAFinding(t *testing.T) {
+	t.Parallel()
 	step := nmStep("get-garbage", "GET", optOpsURLFixture,
 		"pm.test('текст края', () => pm.expect(pm.response.json().message).to.eql('operation id has an unknown prefix'));",
 	)
@@ -151,6 +156,7 @@ func TestOPT_TextWithNoProducerIsAFinding(t *testing.T) {
 // Законный близнец №3: тот же вид записи, но текст ПРОИЗВОДИТСЯ — с уже
 // подставленным значением, как пишется ожидание при литеральном id в пути.
 func TestOPT_SubstitutedTextWithProducerIsLawfulAndSilent(t *testing.T) {
+	t.Parallel()
 	step := nmStep("get-malformed-op", "GET", "{{baseUrl}}/operations/garbage-not-an-op-id",
 		"pm.test('текст края', () => pm.expect(pm.response.json().message).to.eql('invalid operation id \"garbage-not-an-op-id\"'));",
 	)
@@ -169,6 +175,7 @@ func TestOPT_SubstitutedTextWithProducerIsLawfulAndSilent(t *testing.T) {
 // полоса; вычислить его двумя каталогами нельзя, и гейт о нём не высказывается.
 // Без этой пробы граница была бы объявлением, а не свойством.
 func TestOPT_OwnerErrorMessageIsNotJudged(t *testing.T) {
+	t.Parallel()
 	step := nmStep("poll-op", "GET", "{{baseUrl}}/operations/{{opId}}",
 		"const j = pm.response.json();",
 		"pm.test('op error text', () => pm.expect((j.error && j.error.message || '').toLowerCase()).to.include('not found'));",
@@ -185,6 +192,7 @@ func TestOPT_OwnerErrorMessageIsNotJudged(t *testing.T) {
 
 // Шаг ВНЕ полосы операций не судится: тексты доменных ресурсов вычисляются не здесь.
 func TestOPT_NonOperationStepIsNotJudged(t *testing.T) {
+	t.Parallel()
 	step := nmStep("get-nx-net", "GET", "{{baseUrl}}/vpc/v1/networks/{{garbageNetworkId}}",
 		"pm.test('mentions not found', () => pm.expect(pm.response.json().message.toLowerCase()).to.include('not found'));",
 	)
@@ -203,6 +211,7 @@ func TestOPT_NonOperationStepIsNotJudged(t *testing.T) {
 // Синтетика доказывает разбор; эта проба доказывает, что разбор применим к той
 // форме записи, которую производят генераторы СЕГОДНЯ.
 func TestOPT_RealCollectionStepWithTheDefectBackIsAFinding(t *testing.T) {
+	t.Parallel()
 	root := repoRoot(t)
 	rel := filepath.Join("services", "vpc", "tests", "newman", "collections", "operation.postman_collection.json")
 	raw, err := os.ReadFile(filepath.Join(root, rel)) // #nosec G304 -- путь фиксирован в этой пробе
@@ -259,6 +268,7 @@ func TestOPT_RealCollectionStepWithTheDefectBackIsAFinding(t *testing.T) {
 // Перепись производителей на настоящем дереве обязана быть непустой и покрывать
 // оба каталога. Утверждение «текст вычислен» иначе становится памятью автора.
 func TestOPT_ProducerCensusOnTheRealTreeIsNonEmpty(t *testing.T) {
+	t.Parallel()
 	root := repoRoot(t)
 	tt := newTrackedTree(t, root)
 	templates, covered, err := optTemplates(root, optGoFiles(tt))
@@ -288,6 +298,7 @@ func TestOPT_ProducerCensusOnTheRealTreeIsNonEmpty(t *testing.T) {
 // Пустая перепись шаблонов — отказ, а не «ноль находок»: иначе всякий текст
 // кейса оказался бы «без производителя», и гейт покраснел бы на всём дереве.
 func TestOPT_EmptyTemplateCensusMakesEveryTextAFinding(t *testing.T) {
+	t.Parallel()
 	step := nmStep("get-nx", "GET", optOpsURLFixture,
 		"pm.test('дословно', () => pm.expect(pm.response.json().message).to.eql('operation ' + pm.environment.get('garbageOpId') + ' not found'));",
 	)

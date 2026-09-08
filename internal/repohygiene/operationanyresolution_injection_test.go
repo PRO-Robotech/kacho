@@ -48,6 +48,7 @@ func surface(cmd string, protoPkgs ...string) binaryProtoSurface {
 // воспроизведение НАСТОЯЩЕГО дефекта: владелец линкует `emptypb`, край — нет.
 // Поверхности синтетические, но решение принимает ТА ЖЕ функция, что и гейт.
 func TestCompletenessGateFailsWhenTheEdgeCannotResolveWhatAnOwnerBuilds(t *testing.T) {
+	t.Parallel()
 	const wkt = "google.golang.org/protobuf/types/known/emptypb"
 	const stub = "github.com/PRO-Robotech/kacho/pkg/api/kacho/cloud/vpc"
 
@@ -71,6 +72,7 @@ func TestCompletenessGateFailsWhenTheEdgeCannotResolveWhatAnOwnerBuilds(t *testi
 // та же форма, но пакет у края есть. Без этой половины гейт был бы неотличим от
 // предиката, отвечающего «нет» на что угодно.
 func TestCompletenessGateIsSilentWhenTheEdgeLinksTheSamePackage(t *testing.T) {
+	t.Parallel()
 	const wkt = "google.golang.org/protobuf/types/known/emptypb"
 	edge := surface("gateway/cmd/api-gateway", wkt)
 	owner := surface("services/vpc/cmd/vpc", wkt)
@@ -86,6 +88,7 @@ func TestCompletenessGateIsSilentWhenTheEdgeLinksTheSamePackage(t *testing.T) {
 // требовать их все значило бы завести проверку, все находки которой ложны, —
 // такую отключают первой, и вместе с ней перестают читать настоящую.
 func TestCompletenessGateIgnoresPackagesThatRegisterNothing(t *testing.T) {
+	t.Parallel()
 	pkg := goListPackage{ImportPath: "github.com/PRO-Robotech/kacho/pkg/outbox",
 		GoFiles: []string{"outbox.go", "drainer.go"}}
 	if pkg.registersProtoMessages() {
@@ -134,6 +137,7 @@ const importAnyEmpty = "\t\"google.golang.org/protobuf/types/known/anypb\"\n" +
 // Перечень форм печатается переписью гейта; расхождение между этой таблицей и
 // перечнем — находка, и она проверяется отдельной пробой ниже.
 func TestRecognizerJudgesEveryDeclaredForm(t *testing.T) {
+	t.Parallel()
 	cases := []struct {
 		form    string
 		imports string
@@ -179,6 +183,7 @@ func TestRecognizerJudgesEveryDeclaredForm(t *testing.T) {
 // объявляет объём, которого доказательство не покрывает: читатель увидит «судимых
 // форм 5» и решит, что каждая проверена.
 func TestRecognizerFormTableMatchesTheCensus(t *testing.T) {
+	t.Parallel()
 	const provenForms = 5 // четыре формы записи типа + второй глагол упаковки
 	if len(anyPackFormNames) != provenForms {
 		t.Fatalf("перепись объявляет %d судимых форм, инъекцией покрыто %d — "+
@@ -189,6 +194,7 @@ func TestRecognizerFormTableMatchesTheCensus(t *testing.T) {
 // TestRecognizerIsSilentOnLegalTwins — законные близнецы. Без них гейт ловил бы
 // форму, а не существо, и первый же ложный срабат его отключил бы.
 func TestRecognizerIsSilentOnLegalTwins(t *testing.T) {
+	t.Parallel()
 	twins := []struct {
 		name    string
 		imports string
@@ -253,6 +259,7 @@ func TestRecognizerIsSilentOnLegalTwins(t *testing.T) {
 // умолчанием. Место, тип которого распознаватель прочесть не может, обязано
 // попасть в перепись: «ноль находок» иначе неотличимо от «ноль прочитанного».
 func TestUnwrittenArgumentIsCountedNotSwallowed(t *testing.T) {
+	t.Parallel()
 	root, rel := writeSynthetic(t, synth(importAnyEmpty,
 		"m := &emptypb.Empty{}\n\t_, _ = anypb.New(m)\n\t_, _ = anypb.New(&emptypb.Empty{})"))
 	census := collectAnyPackSites(root, []string{rel})
@@ -269,6 +276,7 @@ func TestUnwrittenArgumentIsCountedNotSwallowed(t *testing.T) {
 // (Go-имя и proto-адрес) выводятся из ОДНОГО значения, поэтому разойтись не
 // могут. Проба утверждает именно это, а не наличие строки в файле.
 func TestDeclarationIsReadByValuesNotByText(t *testing.T) {
+	t.Parallel()
 	coords := operationany.AnchoredGoCoordinates()
 	urls := operationany.AnchoredTypeURLs()
 	if len(coords) == 0 || len(coords) != len(urls) {

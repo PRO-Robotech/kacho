@@ -36,6 +36,7 @@ func applierDeleteFindings(sites []ApplierDeleteSite) []string {
 
 // TestMODRD15ApplierNeverDeletesARoleRow — сам гейт.
 func TestMODRD15ApplierNeverDeletesARoleRow(t *testing.T) {
+	t.Parallel()
 	root := repoRoot(t)
 	tt := newTrackedTree(t, root)
 

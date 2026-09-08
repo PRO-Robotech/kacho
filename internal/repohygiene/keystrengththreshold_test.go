@@ -52,6 +52,7 @@ const (
 
 // TestKeyStrengthFloorIsDeclaredExactlyOnce — сам гейт.
 func TestKeyStrengthFloorIsDeclaredExactlyOnce(t *testing.T) {
+	t.Parallel()
 	root := repoRoot(t)
 	tt := newTrackedTree(t, root)
 

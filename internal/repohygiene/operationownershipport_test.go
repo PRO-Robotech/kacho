@@ -75,6 +75,7 @@ var operationServiceRoots = []string{"services", "gateway", "pkg"}
 // красит гейт и печатает координату; шесть законных реализаций
 // (vpc/compute/geo/registry/storage + сам corelib) он пропускает молча.
 func TestOperationCancelGoesThroughOwnershipScopedPort(t *testing.T) {
+	t.Parallel()
 	root := repoRoot(t)
 	impls := operationServiceImplPackages(t, root)
 
@@ -127,6 +128,7 @@ func TestOperationCancelGoesThroughOwnershipScopedPort(t *testing.T) {
 // есть предмет. Запись, которой больше нечего исключать, унаследует следующую
 // слепую зону, поэтому здесь она считается находкой.
 func TestUnscopedCancelExemptionsStillHaveSubject(t *testing.T) {
+	t.Parallel()
 	root := repoRoot(t)
 	impls := operationServiceImplPackages(t, root)
 
@@ -164,6 +166,7 @@ func TestUnscopedCancelExemptionsStillHaveSubject(t *testing.T) {
 // или сменит имя, требование станет невыполнимым, а гейт продолжит требовать
 // своё.
 func TestOwnershipScopedPortPremiseHolds(t *testing.T) {
+	t.Parallel()
 	root := repoRoot(t)
 	body := string(mustRead(t, filepath.Join(root, "pkg/operations/owner.go")))
 	for _, want := range []string{"func AsOwned(", "CancelOwned(ctx context.Context", "GetOwned(ctx context.Context"} {

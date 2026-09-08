@@ -144,6 +144,7 @@ func asExitError(err error, target **exec.ExitError) bool {
 // Это и есть регрессия на #1073: под прежней формой (код возврата в блоке `run:`
 // под `bash -e`) заходов было бы РОВНО ОДИН, а исход — 3.
 func TestVerdictWaitPollsUntilTheChecksFinish(t *testing.T) {
+	t.Parallel()
 	// Решатель говорит «ещё идут» дважды, на третий — «зелено».
 	s := newVerdictStubs(t, wholePayload, 3, 3, 0)
 
@@ -160,6 +161,7 @@ func TestVerdictWaitPollsUntilTheChecksFinish(t *testing.T) {
 
 // TestVerdictWaitStopsAtTheFirstRed — красное решает сразу, ждать нечего.
 func TestVerdictWaitStopsAtTheFirstRed(t *testing.T) {
+	t.Parallel()
 	s := newVerdictStubs(t, wholePayload, 1)
 
 	code, out := runWaitScript(t, s, 10)
@@ -176,6 +178,7 @@ func TestVerdictWaitStopsAtTheFirstRed(t *testing.T) {
 // TestVerdictWaitNeverCallsUnfinishedGreen — заходы кончились, а проверки нет:
 // это «вердикта НЕТ», а не «зелено».
 func TestVerdictWaitNeverCallsUnfinishedGreen(t *testing.T) {
+	t.Parallel()
 	s := newVerdictStubs(t, wholePayload, 3) // «ещё идут» всегда
 
 	code, out := runWaitScript(t, s, 4)
@@ -197,6 +200,7 @@ func TestVerdictWaitNeverCallsUnfinishedGreen(t *testing.T) {
 // произнесено над подмножеством, которое никто целиком не читал, — то есть ложное
 // зелёное в том самом месте, что стережёт ложное зелёное.
 func TestVerdictWaitRefusesATruncatedPage(t *testing.T) {
+	t.Parallel()
 	truncated := `{"total_count": 137, "check_runs": [{"name":"a"},{"name":"b"}]}`
 	s := newVerdictStubs(t, truncated, 0) // решатель СКАЗАЛ БЫ «зелено»
 
@@ -216,6 +220,7 @@ func TestVerdictWaitRefusesATruncatedPage(t *testing.T) {
 // TestVerdictWaitSurvivesAFailedPoll — сбой опроса не есть вердикт: сеть моргнула,
 // спрашиваем снова.
 func TestVerdictWaitSurvivesAFailedPoll(t *testing.T) {
+	t.Parallel()
 	s := newVerdictStubs(t, wholePayload, 0)
 	// Получатель падает на первом заходе и отвечает на втором.
 	flag := filepath.Join(s.dir, "first-done")
@@ -238,6 +243,7 @@ func TestVerdictWaitSurvivesAFailedPoll(t *testing.T) {
 
 // TestVerdictWaitRejectsAnUnknownCode — неизвестный код не «зелено».
 func TestVerdictWaitRejectsAnUnknownCode(t *testing.T) {
+	t.Parallel()
 	s := newVerdictStubs(t, wholePayload, 2) // 2 = вход не разобран
 
 	code, out := runWaitScript(t, s, 3)
@@ -256,6 +262,7 @@ func TestVerdictWaitRejectsAnUnknownCode(t *testing.T) {
 // Без этого утверждения пробы доказывали бы свойство файла, которого конвейер не
 // исполняет: прежний цикл жил в YAML, и именно поэтому его не проверял никто.
 func TestVerdictWaitIsTheStepTheWorkflowRuns(t *testing.T) {
+	t.Parallel()
 	root := repoRoot(t)
 	raw, err := os.ReadFile(filepath.Join(root, ".github", "workflows", "required-verdict.yml"))
 	if err != nil {

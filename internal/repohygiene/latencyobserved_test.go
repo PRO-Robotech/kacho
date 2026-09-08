@@ -84,6 +84,7 @@ type listenerRaiser struct {
 // TestEveryGRPCListenerObservesItsLatency — слушатель, поднятый мимо носителя,
 // наблюдает задержку сам.
 func TestEveryGRPCListenerObservesItsLatency(t *testing.T) {
+	t.Parallel()
 	root := repoRoot(t)
 	raisers, scanned, err := scanLatencyObservers(root)
 	if err != nil {

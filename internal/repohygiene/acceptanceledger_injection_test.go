@@ -28,6 +28,7 @@ import (
 //	           та же находка этого НЕ говорит (иначе гейт назвал бы читателю
 //	           лечение не от той болезни).
 func TestAcceptanceLedgerGateInjection(t *testing.T) {
+	t.Parallel()
 	root := t.TempDir()
 
 	run := func(args ...string) {
@@ -210,6 +211,7 @@ func TestAcceptanceLedgerGateInjection(t *testing.T) {
 //	отзыв        APPROVED + снятая санкция → находка (два утверждения об одном
 //	             предмете); APPROVED без отзыва → молчание.
 func TestAcceptanceLedgerEntryAuditInjection(t *testing.T) {
+	t.Parallel()
 	cited := map[string]bool{"sub-phase-ok-acceptance.md": true}
 	prefixes := map[string]bool{"OK-1": true, "DEBT-1": true, "GONE-1": true, "WD-1": true}
 

@@ -41,6 +41,7 @@ type metricsRoute struct {
 // TestEdgeMetricsRouteIsMountedOnTheDiagnosticSurfaceOnly — маршрут экспозиции у
 // края ровно один, и он в объявлении диагностической поверхности.
 func TestEdgeMetricsRouteIsMountedOnTheDiagnosticSurfaceOnly(t *testing.T) {
+	t.Parallel()
 	// Имя функции, объявляющей диагностическую поверхность края. Разъедется с
 	// кодом — гейт упадёт на своей предпосылке (ниже), а не промолчит.
 	const surfaceFn = "describeDiagnosticSurface"

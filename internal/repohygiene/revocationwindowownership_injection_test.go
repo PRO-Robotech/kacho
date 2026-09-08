@@ -115,6 +115,7 @@ func ownershipRun(t *testing.T, root string) (map[string]revocationwindowgate.Wi
 // ────────────────────────────────────────────────────────────────────────────
 
 func TestOwnershipInjection_Form1_UndeclaredHolderIsAFinding(t *testing.T) {
+	t.Parallel()
 	root := writeOwnershipTree(t,
 		ownershipFixture{process: "alpha", body: srcHoldsByConstructor},
 		ownershipFixture{process: gatewayProcess, body: srcHoldsByDescriptor},
@@ -135,6 +136,7 @@ func TestOwnershipInjection_Form1_UndeclaredHolderIsAFinding(t *testing.T) {
 // TestOwnershipInjection_Form1_DeclaredHolderIsSilent — законный близнец.
 // Дельта против мира выше — ОДИН факт: запись в объявленном множестве.
 func TestOwnershipInjection_Form1_DeclaredHolderIsSilent(t *testing.T) {
+	t.Parallel()
 	root := writeOwnershipTree(t,
 		ownershipFixture{process: "alpha", body: srcHoldsByConstructor},
 		ownershipFixture{process: gatewayProcess, body: srcHoldsByDescriptor},
@@ -154,6 +156,7 @@ func TestOwnershipInjection_Form1_DeclaredHolderIsSilent(t *testing.T) {
 // ────────────────────────────────────────────────────────────────────────────
 
 func TestOwnershipInjection_Form2_UndeclaredHolderIsAFinding(t *testing.T) {
+	t.Parallel()
 	root := writeOwnershipTree(t,
 		ownershipFixture{process: "beta", body: srcHoldsByDescriptor},
 		ownershipFixture{process: gatewayProcess, body: srcHoldsByConstructor},
@@ -176,6 +179,7 @@ func TestOwnershipInjection_Form2_UndeclaredHolderIsAFinding(t *testing.T) {
 
 // TestOwnershipInjection_Form2_DeclaredHolderIsSilent — законный близнец формы 2.
 func TestOwnershipInjection_Form2_DeclaredHolderIsSilent(t *testing.T) {
+	t.Parallel()
 	root := writeOwnershipTree(t,
 		ownershipFixture{process: "beta", body: srcHoldsByDescriptor},
 		ownershipFixture{process: gatewayProcess, body: srcHoldsByConstructor},
@@ -192,6 +196,7 @@ func TestOwnershipInjection_Form2_DeclaredHolderIsSilent(t *testing.T) {
 //
 // Без него отрицания выше зеленели бы и на переписи, забирающей всех подряд.
 func TestOwnershipInjection_NonHolderIsNotSweptIn(t *testing.T) {
+	t.Parallel()
 	root := writeOwnershipTree(t,
 		ownershipFixture{process: "gamma", body: srcHoldsNothing},
 		ownershipFixture{process: "alpha", body: srcHoldsByConstructor},
@@ -220,6 +225,7 @@ func TestOwnershipInjection_NonHolderIsNotSweptIn(t *testing.T) {
 // ради которого этот файл заведён: половина распознавателя умирает, вторая
 // продолжает находить свои площадки, и перепись выглядит здоровой.
 func TestOwnershipInjection_VacuityIsPerForm(t *testing.T) {
+	t.Parallel()
 	ctor := revocationwindowgate.WindowOwnership{ByConstructor: true}
 	desc := revocationwindowgate.WindowOwnership{ByDescriptor: true}
 	names := revocationwindowgate.OwnershipFormNames()
@@ -280,6 +286,7 @@ func TestOwnershipInjection_VacuityIsPerForm(t *testing.T) {
 // ради которого файл заведён. Здесь оно становится представимым: если кто-то
 // снова заведёт второй обход, эти числа разойдутся.
 func TestOwnershipInjection_BothCensusesReadOneWalk(t *testing.T) {
+	t.Parallel()
 	root := repoRoot(t)
 	first, firstRead, err := verdictCacheHoldersUnder(root)
 	if err != nil {

@@ -68,6 +68,7 @@ func anchorRun(t *testing.T, world map[string]string) ([]AnchorDeclaration, []An
 //
 // Проба, молчащая на пустом обходе, молчала бы и на сломанном дереве.
 func TestClusterAnchorInjection_ControlIsSilent(t *testing.T) {
+	t.Parallel()
 	decls, findings, census := anchorRun(t, anchorWorld())
 
 	if len(findings) != 0 {
@@ -92,6 +93,7 @@ func TestClusterAnchorInjection_ControlIsSilent(t *testing.T) {
 // TestClusterAnchorInjection_BareAnchorLiteralIsFound — инъекция НОВОГО
 // свойства: написание, повторённое литералом, краснеет и называет координату.
 func TestClusterAnchorInjection_BareAnchorLiteralIsFound(t *testing.T) {
+	t.Parallel()
 	world := anchorWorld()
 	world["gateway/internal/middleware/authz.go"] = `package middleware
 
@@ -125,6 +127,7 @@ func anchor() string { return "cluster_kacho_root" }
 //
 // Отличие от предыдущей — ОДИН факт: форма литерала.
 func TestClusterAnchorInjection_ObjectFormLiteralIsFound(t *testing.T) {
+	t.Parallel()
 	world := anchorWorld()
 	world["services/iam/internal/apps/bypass.go"] = `package apps
 
@@ -149,6 +152,7 @@ const object = "cluster:cluster_kacho_root"
 // Краснеть обязана ТОЛЬКО проверка согласия; перепись литералов при этом
 // молчит — иначе её молчание в предыдущих пробах ничего не доказывало бы.
 func TestClusterAnchorInjection_DeclarationsDisagree(t *testing.T) {
+	t.Parallel()
 	world := anchorWorld()
 	world["services/iam/internal/domain/constants.go"] = `package domain
 
@@ -176,6 +180,7 @@ const ClusterSingletonID = "cluster_root"
 // Молчание здесь было бы худшим из исходов: «литералов мимо объявления нет»
 // тривиально верно на дереве, где объявления нет вовсе.
 func TestClusterAnchorInjection_NoDeclarationIsRefusal(t *testing.T) {
+	t.Parallel()
 	world := map[string]string{
 		"services/iam/internal/apps/bypass.go": `package apps
 
