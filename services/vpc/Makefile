@@ -106,7 +106,7 @@ VENDORED_PROTO := \
 	kacho/cloud/api/operation.proto \
 	kacho/cloud/operation/operation.proto \
 	kacho/cloud/validation.proto \
-	kacho/iam/authz/v1/authz_options.proto
+	corelib/authz/v1/authz_options.proto
 
 proto-vendor:
 	@for f in $(VENDORED_PROTO); do \

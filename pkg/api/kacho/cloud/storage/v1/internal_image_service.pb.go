@@ -10,7 +10,7 @@
 package storagev1
 
 import (
-	_ "github.com/PRO-Robotech/kacho/pkg/api/kacho/iam/authz/v1"
+	_ "github.com/PRO-Robotech/kacho/pkg/api/corelib/authz/v1"
 	protoreflect "google.golang.org/protobuf/reflect/protoreflect"
 	protoimpl "google.golang.org/protobuf/runtime/protoimpl"
 	timestamppb "google.golang.org/protobuf/types/known/timestamppb"
@@ -361,7 +361,7 @@ var File_kacho_cloud_storage_v1_internal_image_service_proto protoreflect.FileDe
 
 const file_kacho_cloud_storage_v1_internal_image_service_proto_rawDesc = "" +
 	"\n" +
-	"3kacho/cloud/storage/v1/internal_image_service.proto\x12\x16kacho.cloud.storage.v1\x1a\x1fgoogle/protobuf/timestamp.proto\x1a\"kacho/cloud/storage/v1/image.proto\x1a*kacho/cloud/storage/v1/status_reason.proto\x1a&kacho/iam/authz/v1/authz_options.proto\"4\n" +
+	"3kacho/cloud/storage/v1/internal_image_service.proto\x12\x16kacho.cloud.storage.v1\x1a\x1fgoogle/protobuf/timestamp.proto\x1a\"kacho/cloud/storage/v1/image.proto\x1a*kacho/cloud/storage/v1/status_reason.proto\x1a$corelib/authz/v1/authz_options.proto\"4\n" +
 	"\x17GetInternalImageRequest\x12\x19\n" +
 	"\bimage_id\x18\x01 \x01(\tR\aimageId\"\x81\x03\n" +
 	"\x14RegisterImageRequest\x12\x1d\n" +

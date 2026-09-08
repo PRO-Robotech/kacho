@@ -146,7 +146,7 @@ var foundationSubtrees = []struct {
 	{"pkg/api/kacho/cloud/operation", classCorelib},
 	{"pkg/api/kacho/cloud/subscription", classCorelib},
 	{"pkg/api/kacho/cloud/quota", classCorelib},
-	{"pkg/api/kacho/iam/authz", classCorelib},
+	{"pkg/api/corelib/authz", classCorelib},
 	{"pkg/quota/quotaiam", classKaname},
 	{"pkg/quota/quotapb", classKaname},
 
@@ -299,6 +299,23 @@ var knownBoundaryEdges = []knownBoundaryEdge{
 	// не изменились. Запись снята ТЕМ ЖЕ изменением, что импорт: ведомость несёт
 	// точный счёт и краснеет сама, когда прощать становится нечего.
 	{"pkg/api/kaname/cloud/iam/v1", "pkg/api/kacho/cloud/api", 18, 0, "K3-НОВОЕ"},
+
+	// #2089 — словарь аннотаций доступа переехал под нейтральный корень
+	// (`pkg/api/kacho/iam/authz/v1` → `pkg/api/corelib/authz/v1`), и в дереве
+	// платформы прежнего пакета больше НЕТ ни одним файлом. Два пакета службы
+	// продолжают называть прежний путь, и это не забытая правка, а СЛЕДСТВИЕ
+	// ПОРЯДКА ПИНОВ: модуль службы резолвит платформу опубликованной версией
+	// (`services/iam/go.mod`), а нового пути в ней ещё нет. Перевести их сейчас
+	// значит получить модуль, который не собирается, — предикат `go build -C
+	// services/iam ./...` отвечает на это первым же файлом.
+	//
+	// Класс у пути прежний — словарь аннотаций всегда был `corelib`; изменился
+	// не он, а КООРДИНАТА, и до бампа пина её называют два разных места.
+	// Записи снимает то же изменение, которое бампит пин и переводит импорты:
+	// ведомость несёт точный счёт и краснеет сама, когда прощать становится
+	// нечего.
+	{"services/iam/internal/authzguard", "pkg/api/kacho/iam/authz/v1", 0, 1, "#2089 до бампа пина"},
+	{"services/iam/internal/publicauthzcensus", "pkg/api/kacho/iam/authz/v1", 1, 0, "#2089 до бампа пина"},
 }
 
 // boundaryCensus — объём осмотренного. Печатается ВСЕГДА: «ноль находок»

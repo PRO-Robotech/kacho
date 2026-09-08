@@ -9,7 +9,7 @@ import "google/protobuf/timestamp.proto";
 import "kacho/cloud/api/operation.proto";
 import "kaname/cloud/iam/v1/session_revocation.proto";
 import "kacho/cloud/operation/operation.proto";
-import "kacho/iam/authz/v1/authz_options.proto";
+import "corelib/authz/v1/authz_options.proto";
 
 option go_package = "github.com/PRO-Robotech/kacho/pkg/api/kaname/cloud/iam/v1;iamv1";
 
@@ -46,8 +46,8 @@ service InternalSessionRevocationsService {
     // Cluster-internal listener-protected; callers are
     // kacho-iam internal logout handler, ForceLogout admin RPC,
     // back-channel logout, CAEP receiver — all server-side.
-    option (kacho.iam.authz.v1.permission) = "<exempt>";
-    option (kacho.iam.authz.v1.exempt_reason)  = "INTERNAL_LISTENER";
+    option (corelib.authz.v1.permission) = "<exempt>";
+    option (corelib.authz.v1.exempt_reason)  = "INTERNAL_LISTENER";
   }
 
   // IsRevoked — sync hot-path lookup for api-gateway: `SELECT 1 FROM
@@ -57,8 +57,8 @@ service InternalSessionRevocationsService {
     // Cluster-internal listener-protected; called by api-gateway itself
     // before authz can possibly run — chicken-and-egg means this MUST
     // bypass per-RPC authz.
-    option (kacho.iam.authz.v1.permission) = "<exempt>";
-    option (kacho.iam.authz.v1.exempt_reason)  = "INTERNAL_LISTENER";
+    option (corelib.authz.v1.permission) = "<exempt>";
+    option (corelib.authz.v1.exempt_reason)  = "INTERNAL_LISTENER";
   }
 
   // ListByUser — admin / audit endpoint: enumerate active revocations for a
@@ -96,19 +96,19 @@ service InternalSessionRevocationsService {
   // `system_viewer@cluster` held by that module's own service account — and
   // neither of them reads `user_id`.
   rpc ListByUser (ListByUserRequest) returns (ListByUserResponse) {
-    option (kacho.iam.authz.v1.permission)        = "iam.session_revocations.listByUser";
-    option (kacho.iam.authz.v1.required_relation) = "session_reader";
-    option (kacho.iam.authz.v1.scope_extractor)   = {
+    option (corelib.authz.v1.permission)        = "iam.session_revocations.listByUser";
+    option (corelib.authz.v1.required_relation) = "session_reader";
+    option (corelib.authz.v1.scope_extractor)   = {
       object_type:        "iam_user"
       from_request_field: "user_id"
     };
-    option (kacho.iam.authz.v1.required_acr_min) = "1";
+    option (corelib.authz.v1.required_acr_min) = "1";
     // A refusal is the user's own miss, not "you may not". kacho-iam answers a
     // denied caller that way already; the flag is what makes an edge that ever
     // routes this RPC answer the same, instead of a 403 that tells an outsider
     // the user exists. The edge heuristic does not cover this shape on its own —
     // it hides only `/Get` on a `v_get` scope — so the flag has to be explicit.
-    option (kacho.iam.authz.v1.hide_existence) = true;
+    option (corelib.authz.v1.hide_existence) = true;
   }
 
   // SessionCutoffOf — момент, раньше которого сессии человека недействительны.
@@ -131,8 +131,8 @@ service InternalSessionRevocationsService {
     // Cluster-internal listener-protected; called by api-gateway itself on the
     // authN layer — before authz can possibly run. Same chicken-and-egg as
     // `IsRevoked` above, and the same lane.
-    option (kacho.iam.authz.v1.permission) = "<exempt>";
-    option (kacho.iam.authz.v1.exempt_reason)  = "INTERNAL_LISTENER";
+    option (corelib.authz.v1.permission) = "<exempt>";
+    option (corelib.authz.v1.exempt_reason)  = "INTERNAL_LISTENER";
   }
 }
 

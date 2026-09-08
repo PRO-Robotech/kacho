@@ -12,20 +12,20 @@ import "kacho/cloud/api/operation.proto";
 import "kacho/cloud/loadbalancer/v1/health_check.proto";
 import "kacho/cloud/loadbalancer/v1/target_group.proto";
 import "kacho/cloud/operation/operation.proto";
-import "kacho/iam/authz/v1/authz_options.proto";
+import "corelib/authz/v1/authz_options.proto";
 
 option go_package = "github.com/PRO-Robotech/kacho/pkg/api/kacho/cloud/loadbalancer/v1;loadbalancerv1";
 
 service TargetGroupService {
   rpc Get(GetTargetGroupRequest) returns (TargetGroup) {
     option (google.api.http) = {get: "/nlb/v1/targetGroups/{target_group_id}"};
-    option (kacho.iam.authz.v1.permission)        = "loadbalancer.targetGroups.get";
-    option (kacho.iam.authz.v1.required_relation) = "v_get";
-    option (kacho.iam.authz.v1.scope_extractor)   = {
+    option (corelib.authz.v1.permission)        = "loadbalancer.targetGroups.get";
+    option (corelib.authz.v1.required_relation) = "v_get";
+    option (corelib.authz.v1.scope_extractor)   = {
       object_type:        "nlb_target_group"
       from_request_field: "target_group_id"
     };
-    option (kacho.iam.authz.v1.required_acr_min) = "1";
+    option (corelib.authz.v1.required_acr_min) = "1";
   }
 
   rpc List(ListTargetGroupsRequest) returns (ListTargetGroupsResponse) {
@@ -42,9 +42,9 @@ service TargetGroupService {
     // объекты и отфильтровать ими. Перечисление снято: у него жёсткий серверный
     // предел и нет продолжения, поэтому ресурсы сверх предела становились владельцу
     // невидимы при живых правах.
-    option (kacho.iam.authz.v1.permission) = "loadbalancer.targetGroups.list";
-    option (kacho.iam.authz.v1.scope_filtered) = true;
-    option (kacho.iam.authz.v1.required_acr_min) = "1";
+    option (corelib.authz.v1.permission) = "loadbalancer.targetGroups.list";
+    option (corelib.authz.v1.scope_filtered) = true;
+    option (corelib.authz.v1.required_acr_min) = "1";
   }
 
   rpc Create(CreateTargetGroupRequest) returns (operation.Operation) {
@@ -56,13 +56,13 @@ service TargetGroupService {
       metadata: "CreateTargetGroupMetadata"
       response: "TargetGroup"
     };
-    option (kacho.iam.authz.v1.permission)        = "loadbalancer.targetGroups.create";
-    option (kacho.iam.authz.v1.required_relation) = "editor";
-    option (kacho.iam.authz.v1.scope_extractor)   = {
+    option (corelib.authz.v1.permission)        = "loadbalancer.targetGroups.create";
+    option (corelib.authz.v1.required_relation) = "editor";
+    option (corelib.authz.v1.scope_extractor)   = {
       object_type:        "project"
       from_request_field: "project_id"
     };
-    option (kacho.iam.authz.v1.required_acr_min) = "1";
+    option (corelib.authz.v1.required_acr_min) = "1";
   }
 
   rpc Update(UpdateTargetGroupRequest) returns (operation.Operation) {
@@ -74,13 +74,13 @@ service TargetGroupService {
       metadata: "UpdateTargetGroupMetadata"
       response: "TargetGroup"
     };
-    option (kacho.iam.authz.v1.permission)        = "loadbalancer.targetGroups.update";
-    option (kacho.iam.authz.v1.required_relation) = "v_update";
-    option (kacho.iam.authz.v1.scope_extractor)   = {
+    option (corelib.authz.v1.permission)        = "loadbalancer.targetGroups.update";
+    option (corelib.authz.v1.required_relation) = "v_update";
+    option (corelib.authz.v1.scope_extractor)   = {
       object_type:        "nlb_target_group"
       from_request_field: "target_group_id"
     };
-    option (kacho.iam.authz.v1.required_acr_min) = "1";
+    option (corelib.authz.v1.required_acr_min) = "1";
   }
 
   rpc Delete(DeleteTargetGroupRequest) returns (operation.Operation) {
@@ -89,13 +89,13 @@ service TargetGroupService {
       metadata: "DeleteTargetGroupMetadata"
       response: "google.protobuf.Empty"
     };
-    option (kacho.iam.authz.v1.permission)        = "loadbalancer.targetGroups.delete";
-    option (kacho.iam.authz.v1.required_relation) = "v_delete";
-    option (kacho.iam.authz.v1.scope_extractor)   = {
+    option (corelib.authz.v1.permission)        = "loadbalancer.targetGroups.delete";
+    option (corelib.authz.v1.required_relation) = "v_delete";
+    option (corelib.authz.v1.scope_extractor)   = {
       object_type:        "nlb_target_group"
       from_request_field: "target_group_id"
     };
-    option (kacho.iam.authz.v1.required_acr_min) = "1";
+    option (corelib.authz.v1.required_acr_min) = "1";
   }
 
   // Move the target group to another project. Blocked if currently attached
@@ -109,15 +109,15 @@ service TargetGroupService {
       metadata: "MoveTargetGroupMetadata"
       response: "TargetGroup"
     };
-    option (kacho.iam.authz.v1.permission)        = "loadbalancer.targetGroups.move";
-    option (kacho.iam.authz.v1.required_relation) = "v_update";
+    option (corelib.authz.v1.permission)        = "loadbalancer.targetGroups.move";
+    option (corelib.authz.v1.required_relation) = "v_update";
     // Source-project scope; destination editor check added by a
     // scope-conditional extractor in kacho-nlb (design §6.5).
-    option (kacho.iam.authz.v1.scope_extractor)   = {
+    option (corelib.authz.v1.scope_extractor)   = {
       object_type:        "nlb_target_group"
       from_request_field: "target_group_id"
     };
-    option (kacho.iam.authz.v1.required_acr_min) = "1";
+    option (corelib.authz.v1.required_acr_min) = "1";
   }
 
   rpc AddTargets(AddTargetsRequest) returns (operation.Operation) {
@@ -129,16 +129,16 @@ service TargetGroupService {
       metadata: "AddTargetsMetadata"
       response: "TargetGroup"
     };
-    option (kacho.iam.authz.v1.permission)        = "loadbalancer.targetGroups.addTargets";
+    option (corelib.authz.v1.permission)        = "loadbalancer.targetGroups.addTargets";
     // NLB-TGT-1: управление СОСТАВОМ группы — собственное отношение, объявленное
     // надмножеством `v_update` в канонической модели. Пока здесь стояло `v_update`,
     // право управлять составом было невыдаваемо отдельно от права менять саму группу.
-    option (kacho.iam.authz.v1.required_relation) = "v_addtargets";
-    option (kacho.iam.authz.v1.scope_extractor)   = {
+    option (corelib.authz.v1.required_relation) = "v_addtargets";
+    option (corelib.authz.v1.scope_extractor)   = {
       object_type:        "nlb_target_group"
       from_request_field: "target_group_id"
     };
-    option (kacho.iam.authz.v1.required_acr_min) = "1";
+    option (corelib.authz.v1.required_acr_min) = "1";
   }
 
   rpc RemoveTargets(RemoveTargetsRequest) returns (operation.Operation) {
@@ -150,25 +150,25 @@ service TargetGroupService {
       metadata: "RemoveTargetsMetadata"
       response: "TargetGroup"
     };
-    option (kacho.iam.authz.v1.permission)        = "loadbalancer.targetGroups.removeTargets";
+    option (corelib.authz.v1.permission)        = "loadbalancer.targetGroups.removeTargets";
     // NLB-TGT-1 — см. AddTargets выше: собственное отношение, надмножество `v_update`.
-    option (kacho.iam.authz.v1.required_relation) = "v_removetargets";
-    option (kacho.iam.authz.v1.scope_extractor)   = {
+    option (corelib.authz.v1.required_relation) = "v_removetargets";
+    option (corelib.authz.v1.scope_extractor)   = {
       object_type:        "nlb_target_group"
       from_request_field: "target_group_id"
     };
-    option (kacho.iam.authz.v1.required_acr_min) = "1";
+    option (corelib.authz.v1.required_acr_min) = "1";
   }
 
   rpc ListOperations(ListTargetGroupOperationsRequest) returns (ListTargetGroupOperationsResponse) {
     option (google.api.http) = {get: "/nlb/v1/targetGroups/{target_group_id}/operations"};
-    option (kacho.iam.authz.v1.permission)        = "loadbalancer.targetGroups.listOperations";
-    option (kacho.iam.authz.v1.required_relation) = "v_list";
-    option (kacho.iam.authz.v1.scope_extractor)   = {
+    option (corelib.authz.v1.permission)        = "loadbalancer.targetGroups.listOperations";
+    option (corelib.authz.v1.required_relation) = "v_list";
+    option (corelib.authz.v1.scope_extractor)   = {
       object_type:        "nlb_target_group"
       from_request_field: "target_group_id"
     };
-    option (kacho.iam.authz.v1.required_acr_min) = "1";
+    option (corelib.authz.v1.required_acr_min) = "1";
   }
 }
 

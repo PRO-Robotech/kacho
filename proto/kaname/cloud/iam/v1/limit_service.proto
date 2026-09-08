@@ -49,7 +49,7 @@ import "kacho/cloud/api/operation.proto";
 import "kaname/cloud/iam/v1/internal_limit_service.proto";
 import "kaname/cloud/iam/v1/limit.proto";
 import "kacho/cloud/operation/operation.proto";
-import "kacho/iam/authz/v1/authz_options.proto";
+import "corelib/authz/v1/authz_options.proto";
 
 option go_package = "github.com/PRO-Robotech/kacho/pkg/api/kaname/cloud/iam/v1;iamv1";
 
@@ -70,13 +70,13 @@ service LimitService {
     option (google.api.http) = {
       get: "/iam/v1/limits/{limit_id}"
     };
-    option (kacho.iam.authz.v1.permission)        = "iam.limits.get";
-    option (kacho.iam.authz.v1.required_relation) = "system_admin";
-    option (kacho.iam.authz.v1.scope_extractor)   = {
+    option (corelib.authz.v1.permission)        = "iam.limits.get";
+    option (corelib.authz.v1.required_relation) = "system_admin";
+    option (corelib.authz.v1.scope_extractor)   = {
       object_type:        "cluster"
       from_request_field: "*"
     };
-    option (kacho.iam.authz.v1.required_acr_min) = "1";
+    option (corelib.authz.v1.required_acr_min) = "1";
   }
 
   // Перечисляет пределы, при желании сужая до одной области, объекта области
@@ -85,13 +85,13 @@ service LimitService {
     option (google.api.http) = {
       get: "/iam/v1/limits"
     };
-    option (kacho.iam.authz.v1.permission)        = "iam.limits.list";
-    option (kacho.iam.authz.v1.required_relation) = "system_admin";
-    option (kacho.iam.authz.v1.scope_extractor)   = {
+    option (corelib.authz.v1.permission)        = "iam.limits.list";
+    option (corelib.authz.v1.required_relation) = "system_admin";
+    option (corelib.authz.v1.scope_extractor)   = {
       object_type:        "cluster"
       from_request_field: "*"
     };
-    option (kacho.iam.authz.v1.required_acr_min) = "1";
+    option (corelib.authz.v1.required_acr_min) = "1";
   }
 
   // Объявляет потолок для тройки (область, объект области, вид).
@@ -108,13 +108,13 @@ service LimitService {
       metadata: "CreateLimitMetadata"
       response: "Limit"
     };
-    option (kacho.iam.authz.v1.permission)        = "iam.limits.create";
-    option (kacho.iam.authz.v1.required_relation) = "system_admin";
-    option (kacho.iam.authz.v1.scope_extractor)   = {
+    option (corelib.authz.v1.permission)        = "iam.limits.create";
+    option (corelib.authz.v1.required_relation) = "system_admin";
+    option (corelib.authz.v1.scope_extractor)   = {
       object_type:        "cluster"
       from_request_field: "*"
     };
-    option (kacho.iam.authz.v1.required_acr_min) = "2";
+    option (corelib.authz.v1.required_acr_min) = "2";
   }
 
   // Меняет величину потолка. `value` — единственное изменяемое поле: тройка,
@@ -131,13 +131,13 @@ service LimitService {
       metadata: "UpdateLimitMetadata"
       response: "Limit"
     };
-    option (kacho.iam.authz.v1.permission)        = "iam.limits.update";
-    option (kacho.iam.authz.v1.required_relation) = "system_admin";
-    option (kacho.iam.authz.v1.scope_extractor)   = {
+    option (corelib.authz.v1.permission)        = "iam.limits.update";
+    option (corelib.authz.v1.required_relation) = "system_admin";
+    option (corelib.authz.v1.scope_extractor)   = {
       object_type:        "cluster"
       from_request_field: "*"
     };
-    option (kacho.iam.authz.v1.required_acr_min) = "2";
+    option (corelib.authz.v1.required_acr_min) = "2";
   }
 
   // Снимает потолок. Тройка проваливается к следующей области; снятие
@@ -153,12 +153,12 @@ service LimitService {
       metadata: "DeleteLimitMetadata"
       response: "Limit"
     };
-    option (kacho.iam.authz.v1.permission)        = "iam.limits.delete";
-    option (kacho.iam.authz.v1.required_relation) = "system_admin";
-    option (kacho.iam.authz.v1.scope_extractor)   = {
+    option (corelib.authz.v1.permission)        = "iam.limits.delete";
+    option (corelib.authz.v1.required_relation) = "system_admin";
+    option (corelib.authz.v1.scope_extractor)   = {
       object_type:        "cluster"
       from_request_field: "*"
     };
-    option (kacho.iam.authz.v1.required_acr_min) = "2";
+    option (corelib.authz.v1.required_acr_min) = "2";
   }
 }

@@ -10,8 +10,8 @@
 package vpcv1
 
 import (
+	_ "github.com/PRO-Robotech/kacho/pkg/api/corelib/authz/v1"
 	operation "github.com/PRO-Robotech/kacho/pkg/api/kacho/cloud/operation"
-	_ "github.com/PRO-Robotech/kacho/pkg/api/kacho/iam/authz/v1"
 	protoreflect "google.golang.org/protobuf/reflect/protoreflect"
 	protoimpl "google.golang.org/protobuf/runtime/protoimpl"
 	timestamppb "google.golang.org/protobuf/types/known/timestamppb"
@@ -858,7 +858,7 @@ var File_kacho_cloud_vpc_v1_internal_address_service_proto protoreflect.FileDesc
 
 const file_kacho_cloud_vpc_v1_internal_address_service_proto_rawDesc = "" +
 	"\n" +
-	"1kacho/cloud/vpc/v1/internal_address_service.proto\x12\x12kacho.cloud.vpc.v1\x1a\x1fgoogle/protobuf/timestamp.proto\x1a%kacho/cloud/operation/operation.proto\x1a(kacho/cloud/vpc/v1/address_service.proto\x1a&kacho/iam/authz/v1/authz_options.proto\":\n" +
+	"1kacho/cloud/vpc/v1/internal_address_service.proto\x12\x12kacho.cloud.vpc.v1\x1a\x1fgoogle/protobuf/timestamp.proto\x1a%kacho/cloud/operation/operation.proto\x1a(kacho/cloud/vpc/v1/address_service.proto\x1a$corelib/authz/v1/authz_options.proto\":\n" +
 	"\x19AllocateInternalIPRequest\x12\x1d\n" +
 	"\n" +
 	"address_id\x18\x01 \x01(\tR\taddressId\":\n" +

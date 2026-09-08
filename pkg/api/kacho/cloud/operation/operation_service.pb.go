@@ -10,7 +10,7 @@
 package operationv1
 
 import (
-	_ "github.com/PRO-Robotech/kacho/pkg/api/kacho/iam/authz/v1"
+	_ "github.com/PRO-Robotech/kacho/pkg/api/corelib/authz/v1"
 	_ "google.golang.org/genproto/googleapis/api/annotations"
 	protoreflect "google.golang.org/protobuf/reflect/protoreflect"
 	protoimpl "google.golang.org/protobuf/runtime/protoimpl"
@@ -120,7 +120,7 @@ var File_kacho_cloud_operation_operation_service_proto protoreflect.FileDescript
 
 const file_kacho_cloud_operation_operation_service_proto_rawDesc = "" +
 	"\n" +
-	"-kacho/cloud/operation/operation_service.proto\x12\x15kacho.cloud.operation\x1a\x1cgoogle/api/annotations.proto\x1a%kacho/cloud/operation/operation.proto\x1a&kacho/iam/authz/v1/authz_options.proto\"8\n" +
+	"-kacho/cloud/operation/operation_service.proto\x12\x15kacho.cloud.operation\x1a\x1cgoogle/api/annotations.proto\x1a%kacho/cloud/operation/operation.proto\x1a$corelib/authz/v1/authz_options.proto\"8\n" +
 	"\x13GetOperationRequest\x12!\n" +
 	"\foperation_id\x18\x01 \x01(\tR\voperationId\";\n" +
 	"\x16CancelOperationRequest\x12!\n" +

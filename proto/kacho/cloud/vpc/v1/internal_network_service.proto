@@ -5,7 +5,7 @@ syntax = "proto3";
 
 package kacho.cloud.vpc.v1;
 import "google/api/annotations.proto";
-import "kacho/iam/authz/v1/authz_options.proto";
+import "corelib/authz/v1/authz_options.proto";
 import "kacho/cloud/vpc/v1/network.proto";
 
 option go_package = "github.com/PRO-Robotech/kacho/pkg/api/kacho/cloud/vpc/v1;vpcv1";
@@ -29,13 +29,13 @@ service InternalNetworkService {
   //   - InvalidArgument: sg_id не относится к этой network (FK validation).
   //   - FailedPrecondition: network уже имеет другой default_security_group_id.
   rpc SetDefaultSecurityGroupId(SetDefaultSecurityGroupIdRequest) returns (SetDefaultSecurityGroupIdResponse) {
-    option (kacho.iam.authz.v1.permission)        = "vpc.networks.set_default_sg";
-    option (kacho.iam.authz.v1.required_relation) = "system_admin";
-    option (kacho.iam.authz.v1.scope_extractor)   = {
+    option (corelib.authz.v1.permission)        = "vpc.networks.set_default_sg";
+    option (corelib.authz.v1.required_relation) = "system_admin";
+    option (corelib.authz.v1.scope_extractor)   = {
       object_type:        "cluster"
       from_request_field: "*"
     };
-    option (kacho.iam.authz.v1.required_acr_min) = "1";
+    option (corelib.authz.v1.required_acr_min) = "1";
   }
 
   // GetNetwork — internal-only read, возвращающий Network вместе с
@@ -51,18 +51,18 @@ service InternalNetworkService {
     // Custom-verb путь `:internal` отличает от public GET /vpc/v1/networks/{id}.
     // Регистрируется ТОЛЬКО на cluster-internal mux (api-gateway vpcInternalAddr).
     option (google.api.http)                      = { get: "/vpc/v1/networks/{network_id}:internal" };
-    option (kacho.iam.authz.v1.permission)        = "vpc.networks.get_internal";
+    option (corelib.authz.v1.permission)        = "vpc.networks.get_internal";
     // GetNetwork — READ инфра-чувствительного vrf_id: гейтим read-tier
     // `system_viewer` (а не `system_admin`). Нужный потребитель — kacho-vpc-net
     // оператор (least-priv `system_viewer@cluster`, SEC-L mig 0010). `system_viewer`
     // НЕ содержит wildcard `user:*` → tenant'ы read-доступа не получают (инфра
     // закрыта); мутация SetDefaultSecurityGroupId — по-прежнему system_admin.
-    option (kacho.iam.authz.v1.required_relation) = "system_viewer";
-    option (kacho.iam.authz.v1.scope_extractor)   = {
+    option (corelib.authz.v1.required_relation) = "system_viewer";
+    option (corelib.authz.v1.scope_extractor)   = {
       object_type:        "cluster"
       from_request_field: "*"
     };
-    option (kacho.iam.authz.v1.required_acr_min) = "1";
+    option (corelib.authz.v1.required_acr_min) = "1";
   }
 }
 

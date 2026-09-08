@@ -10,7 +10,7 @@ import "google/protobuf/field_mask.proto";
 import "kacho/cloud/api/operation.proto";
 import "kacho/cloud/compute/v1/guest_access_key.proto";
 import "kacho/cloud/operation/operation.proto";
-import "kacho/iam/authz/v1/authz_options.proto";
+import "corelib/authz/v1/authz_options.proto";
 
 option go_package = "github.com/PRO-Robotech/kacho/pkg/api/kacho/cloud/compute/v1;computev1";
 
@@ -25,26 +25,26 @@ service GuestAccessKeyService {
     option (google.api.http) = {
       get: "/compute/v1/guestAccessKeys/{guest_access_key_id}"
     };
-    option (kacho.iam.authz.v1.permission)        = "compute.guest_access_keys.get";
-    option (kacho.iam.authz.v1.required_relation) = "v_get";
-    option (kacho.iam.authz.v1.scope_extractor)   = {
+    option (corelib.authz.v1.permission)        = "compute.guest_access_keys.get";
+    option (corelib.authz.v1.required_relation) = "v_get";
+    option (corelib.authz.v1.scope_extractor)   = {
       object_type:        "compute_guest_access_key"
       from_request_field: "guest_access_key_id"
     };
-    option (kacho.iam.authz.v1.required_acr_min) = "1";
+    option (corelib.authz.v1.required_acr_min) = "1";
   }
 
   rpc List(ListGuestAccessKeysRequest) returns (ListGuestAccessKeysResponse) {
     option (google.api.http) = {
       get: "/compute/v1/guestAccessKeys"
     };
-    option (kacho.iam.authz.v1.permission)        = "compute.guest_access_keys.list";
-    option (kacho.iam.authz.v1.required_relation) = "viewer";
-    option (kacho.iam.authz.v1.scope_extractor)   = {
+    option (corelib.authz.v1.permission)        = "compute.guest_access_keys.list";
+    option (corelib.authz.v1.required_relation) = "viewer";
+    option (corelib.authz.v1.scope_extractor)   = {
       object_type:        "project"
       from_request_field: "project_id"
     };
-    option (kacho.iam.authz.v1.required_acr_min) = "1";
+    option (corelib.authz.v1.required_acr_min) = "1";
   }
 
   rpc Create(CreateGuestAccessKeyRequest) returns (operation.Operation) {
@@ -56,13 +56,13 @@ service GuestAccessKeyService {
       metadata: "CreateGuestAccessKeyMetadata"
       response: "GuestAccessKey"
     };
-    option (kacho.iam.authz.v1.permission)        = "compute.guest_access_keys.create";
-    option (kacho.iam.authz.v1.required_relation) = "editor";
-    option (kacho.iam.authz.v1.scope_extractor)   = {
+    option (corelib.authz.v1.permission)        = "compute.guest_access_keys.create";
+    option (corelib.authz.v1.required_relation) = "editor";
+    option (corelib.authz.v1.scope_extractor)   = {
       object_type:        "project"
       from_request_field: "project_id"
     };
-    option (kacho.iam.authz.v1.required_acr_min) = "1";
+    option (corelib.authz.v1.required_acr_min) = "1";
   }
 
   // Update — правка косметической части ключа.
@@ -81,13 +81,13 @@ service GuestAccessKeyService {
       metadata: "UpdateGuestAccessKeyMetadata"
       response: "GuestAccessKey"
     };
-    option (kacho.iam.authz.v1.permission)        = "compute.guest_access_keys.update";
-    option (kacho.iam.authz.v1.required_relation) = "v_update";
-    option (kacho.iam.authz.v1.scope_extractor)   = {
+    option (corelib.authz.v1.permission)        = "compute.guest_access_keys.update";
+    option (corelib.authz.v1.required_relation) = "v_update";
+    option (corelib.authz.v1.scope_extractor)   = {
       object_type:        "compute_guest_access_key"
       from_request_field: "guest_access_key_id"
     };
-    option (kacho.iam.authz.v1.required_acr_min) = "1";
+    option (corelib.authz.v1.required_acr_min) = "1";
   }
 
   // ListOperations — операции над этим ключом.
@@ -96,13 +96,13 @@ service GuestAccessKeyService {
   // «что происходило с этим ключом» задаётся ему самому, а не журналу целиком.
   rpc ListOperations(ListGuestAccessKeyOperationsRequest) returns (ListGuestAccessKeyOperationsResponse) {
     option (google.api.http) = {get: "/compute/v1/guestAccessKeys/{guest_access_key_id}/operations"};
-    option (kacho.iam.authz.v1.permission)        = "compute.guest_access_key_operations.listOperations";
-    option (kacho.iam.authz.v1.required_relation) = "v_list";
-    option (kacho.iam.authz.v1.scope_extractor)   = {
+    option (corelib.authz.v1.permission)        = "compute.guest_access_key_operations.listOperations";
+    option (corelib.authz.v1.required_relation) = "v_list";
+    option (corelib.authz.v1.scope_extractor)   = {
       object_type:        "compute_guest_access_key"
       from_request_field: "guest_access_key_id"
     };
-    option (kacho.iam.authz.v1.required_acr_min) = "1";
+    option (corelib.authz.v1.required_acr_min) = "1";
   }
 
   // Delete — снятие ключа.
@@ -119,13 +119,13 @@ service GuestAccessKeyService {
       metadata: "DeleteGuestAccessKeyMetadata"
       response: "google.protobuf.Empty"
     };
-    option (kacho.iam.authz.v1.permission)        = "compute.guest_access_keys.delete";
-    option (kacho.iam.authz.v1.required_relation) = "v_delete";
-    option (kacho.iam.authz.v1.scope_extractor)   = {
+    option (corelib.authz.v1.permission)        = "compute.guest_access_keys.delete";
+    option (corelib.authz.v1.required_relation) = "v_delete";
+    option (corelib.authz.v1.scope_extractor)   = {
       object_type:        "compute_guest_access_key"
       from_request_field: "guest_access_key_id"
     };
-    option (kacho.iam.authz.v1.required_acr_min) = "1";
+    option (corelib.authz.v1.required_acr_min) = "1";
   }
 }
 

@@ -10,7 +10,7 @@ import "google/protobuf/field_mask.proto";
 import "kacho/cloud/api/operation.proto";
 import "kacho/cloud/vpc/v1/network.proto";
 import "kacho/cloud/operation/operation.proto";
-import "kacho/iam/authz/v1/authz_options.proto";
+import "corelib/authz/v1/authz_options.proto";
 
 option go_package = "github.com/PRO-Robotech/kacho/pkg/api/kacho/cloud/vpc/v1;vpcv1";
 
@@ -21,13 +21,13 @@ service NetworkService {
   // Get the list of available Network resources by making a [List] request.
   rpc Get (GetNetworkRequest) returns (Network) {
     option (google.api.http) = { get: "/vpc/v1/networks/{network_id}" };
-    option (kacho.iam.authz.v1.permission)        = "vpc.networks.get";
-    option (kacho.iam.authz.v1.required_relation) = "v_get";
-    option (kacho.iam.authz.v1.scope_extractor)   = {
+    option (corelib.authz.v1.permission)        = "vpc.networks.get";
+    option (corelib.authz.v1.required_relation) = "v_get";
+    option (corelib.authz.v1.scope_extractor)   = {
       object_type:        "vpc_network"
       from_request_field: "network_id"
     };
-    option (kacho.iam.authz.v1.required_acr_min) = "1";
+    option (corelib.authz.v1.required_acr_min) = "1";
   }
 
   // Retrieves the list of Network resources in the specified project.
@@ -60,13 +60,13 @@ service NetworkService {
     // their grants were live. There is likewise no pre-resolved allow-set to
     // short-circuit on before touching the database — the page is read first
     // and the question is asked about it.
-    option (kacho.iam.authz.v1.permission)        = "vpc.networks.list";
-    option (kacho.iam.authz.v1.required_relation) = "viewer";
-    option (kacho.iam.authz.v1.scope_extractor)   = {
+    option (corelib.authz.v1.permission)        = "vpc.networks.list";
+    option (corelib.authz.v1.required_relation) = "viewer";
+    option (corelib.authz.v1.scope_extractor)   = {
       object_type:        "project"
       from_request_field: "project_id"
     };
-    option (kacho.iam.authz.v1.required_acr_min) = "1";
+    option (corelib.authz.v1.required_acr_min) = "1";
   }
 
   // Creates a network in the specified project using the data specified in the request.
@@ -77,13 +77,13 @@ service NetworkService {
       metadata: "CreateNetworkMetadata"
       response: "Network"
     };
-    option (kacho.iam.authz.v1.permission)        = "vpc.networks.create";
-    option (kacho.iam.authz.v1.required_relation) = "editor";
-    option (kacho.iam.authz.v1.scope_extractor)   = {
+    option (corelib.authz.v1.permission)        = "vpc.networks.create";
+    option (corelib.authz.v1.required_relation) = "editor";
+    option (corelib.authz.v1.scope_extractor)   = {
       object_type:        "project"
       from_request_field: "project_id"
     };
-    option (kacho.iam.authz.v1.required_acr_min) = "1";
+    option (corelib.authz.v1.required_acr_min) = "1";
   }
 
   // Updates the specified network.
@@ -94,13 +94,13 @@ service NetworkService {
       metadata: "UpdateNetworkMetadata"
       response: "Network"
     };
-    option (kacho.iam.authz.v1.permission)        = "vpc.networks.update";
-    option (kacho.iam.authz.v1.required_relation) = "v_update";
-    option (kacho.iam.authz.v1.scope_extractor)   = {
+    option (corelib.authz.v1.permission)        = "vpc.networks.update";
+    option (corelib.authz.v1.required_relation) = "v_update";
+    option (corelib.authz.v1.scope_extractor)   = {
       object_type:        "vpc_network"
       from_request_field: "network_id"
     };
-    option (kacho.iam.authz.v1.required_acr_min) = "1";
+    option (corelib.authz.v1.required_acr_min) = "1";
   }
 
   // Deletes the specified network.
@@ -110,13 +110,13 @@ service NetworkService {
       metadata: "DeleteNetworkMetadata"
       response: "google.protobuf.Empty"
     };
-    option (kacho.iam.authz.v1.permission)        = "vpc.networks.delete";
-    option (kacho.iam.authz.v1.required_relation) = "v_delete";
-    option (kacho.iam.authz.v1.scope_extractor)   = {
+    option (corelib.authz.v1.permission)        = "vpc.networks.delete";
+    option (corelib.authz.v1.required_relation) = "v_delete";
+    option (corelib.authz.v1.scope_extractor)   = {
       object_type:        "vpc_network"
       from_request_field: "network_id"
     };
-    option (kacho.iam.authz.v1.required_acr_min) = "1";
+    option (corelib.authz.v1.required_acr_min) = "1";
   }
 
   // Extends the network's declared IPv4/IPv6 supernet with additional CIDR
@@ -131,13 +131,13 @@ service NetworkService {
       metadata: "UpdateNetworkMetadata"
       response: "Network"
     };
-    option (kacho.iam.authz.v1.permission)        = "vpc.network_cidr_blocks.addCidrBlocks";
-    option (kacho.iam.authz.v1.required_relation) = "v_update";
-    option (kacho.iam.authz.v1.scope_extractor)   = {
+    option (corelib.authz.v1.permission)        = "vpc.network_cidr_blocks.addCidrBlocks";
+    option (corelib.authz.v1.required_relation) = "v_update";
+    option (corelib.authz.v1.scope_extractor)   = {
       object_type:        "vpc_network"
       from_request_field: "network_id"
     };
-    option (kacho.iam.authz.v1.required_acr_min) = "1";
+    option (corelib.authz.v1.required_acr_min) = "1";
   }
 
   // Shrinks the network's declared supernet by removing CIDR block(s). A block
@@ -151,25 +151,25 @@ service NetworkService {
       metadata: "UpdateNetworkMetadata"
       response: "Network"
     };
-    option (kacho.iam.authz.v1.permission)        = "vpc.network_cidr_blocks.removeCidrBlocks";
-    option (kacho.iam.authz.v1.required_relation) = "v_update";
-    option (kacho.iam.authz.v1.scope_extractor)   = {
+    option (corelib.authz.v1.permission)        = "vpc.network_cidr_blocks.removeCidrBlocks";
+    option (corelib.authz.v1.required_relation) = "v_update";
+    option (corelib.authz.v1.scope_extractor)   = {
       object_type:        "vpc_network"
       from_request_field: "network_id"
     };
-    option (kacho.iam.authz.v1.required_acr_min) = "1";
+    option (corelib.authz.v1.required_acr_min) = "1";
   }
 
   // Lists operations for the specified network.
   rpc ListOperations (ListNetworkOperationsRequest) returns (ListNetworkOperationsResponse) {
     option (google.api.http) = { get: "/vpc/v1/networks/{network_id}/operations" };
-    option (kacho.iam.authz.v1.permission)        = "vpc.network_operations.listOperations";
-    option (kacho.iam.authz.v1.required_relation) = "v_list";
-    option (kacho.iam.authz.v1.scope_extractor)   = {
+    option (corelib.authz.v1.permission)        = "vpc.network_operations.listOperations";
+    option (corelib.authz.v1.required_relation) = "v_list";
+    option (corelib.authz.v1.scope_extractor)   = {
       object_type:        "vpc_network"
       from_request_field: "network_id"
     };
-    option (kacho.iam.authz.v1.required_acr_min) = "1";
+    option (corelib.authz.v1.required_acr_min) = "1";
   }
 }
 

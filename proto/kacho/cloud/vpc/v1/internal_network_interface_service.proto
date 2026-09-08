@@ -6,7 +6,7 @@ syntax = "proto3";
 package kacho.cloud.vpc.v1;
 
 import "kacho/cloud/vpc/v1/network_interface.proto";
-import "kacho/iam/authz/v1/authz_options.proto";
+import "corelib/authz/v1/authz_options.proto";
 
 option go_package = "github.com/PRO-Robotech/kacho/pkg/api/kacho/cloud/vpc/v1;vpcv1";
 
@@ -37,26 +37,26 @@ service InternalNetworkInterfaceService {
   // subnet rows (free-or-ours, same project, zone-coherent unless the subnet is
   // REGIONAL/anycast) and never calls compute.
   rpc Attach(AttachNetworkInterfaceRequest) returns (AttachNetworkInterfaceResponse) {
-    option (kacho.iam.authz.v1.permission)        = "vpc.network_interfaces.attach";
-    option (kacho.iam.authz.v1.required_relation) = "editor";
-    option (kacho.iam.authz.v1.scope_extractor)   = {
+    option (corelib.authz.v1.permission)        = "vpc.network_interfaces.attach";
+    option (corelib.authz.v1.required_relation) = "editor";
+    option (corelib.authz.v1.scope_extractor)   = {
       object_type:        "vpc_network_interface"
       from_request_field: "nic_id"
     };
-    option (kacho.iam.authz.v1.required_acr_min) = "1";
+    option (corelib.authz.v1.required_acr_min) = "1";
   }
 
   // Detach — idempotent release of the NIC↔Instance binding (clears used_by_id /
   // used_by_index) when the binding belongs to the given instance; a NIC that is
   // already free → OK.
   rpc Detach(DetachNetworkInterfaceRequest) returns (DetachNetworkInterfaceResponse) {
-    option (kacho.iam.authz.v1.permission)        = "vpc.network_interfaces.detach";
-    option (kacho.iam.authz.v1.required_relation) = "editor";
-    option (kacho.iam.authz.v1.scope_extractor)   = {
+    option (corelib.authz.v1.permission)        = "vpc.network_interfaces.detach";
+    option (corelib.authz.v1.required_relation) = "editor";
+    option (corelib.authz.v1.scope_extractor)   = {
       object_type:        "vpc_network_interface"
       from_request_field: "nic_id"
     };
-    option (kacho.iam.authz.v1.required_acr_min) = "1";
+    option (corelib.authz.v1.required_acr_min) = "1";
   }
 
   // ListByInstance — batched read of NIC attachments for the given instances, used
@@ -77,9 +77,9 @@ service InternalNetworkInterfaceService {
   // check admitted everyone and returned the interfaces of any named instance,
   // across projects and accounts. Interface attachments are not reference data.
   rpc ListByInstance(ListNetworkInterfacesByInstanceRequest) returns (ListNetworkInterfacesByInstanceResponse) {
-    option (kacho.iam.authz.v1.permission)       = "vpc.network_interfaces.listByInstance";
-    option (kacho.iam.authz.v1.scope_filtered)   = true;
-    option (kacho.iam.authz.v1.required_acr_min) = "1";
+    option (corelib.authz.v1.permission)       = "vpc.network_interfaces.listByInstance";
+    option (corelib.authz.v1.scope_filtered)   = true;
+    option (corelib.authz.v1.required_acr_min) = "1";
   }
 }
 

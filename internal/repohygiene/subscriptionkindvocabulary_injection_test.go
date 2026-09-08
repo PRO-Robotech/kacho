@@ -40,13 +40,13 @@ package kacho.cloud.probe.v1;
 // Анализатор, считающий сырой текст, объявил бы призрак известным платформе.
 service ProbeService {
   rpc Get(GetRequest) returns (Probe) {
-    option (kacho.iam.authz.v1.scope_extractor) = {
+    option (corelib.authz.v1.scope_extractor) = {
       object_type:        "probe_machine"
       from_request_field: "machine_id"
     };
   }
   rpc List(ListRequest) returns (ListResponse) {
-    option (kacho.iam.authz.v1.scope_extractor) = {
+    option (corelib.authz.v1.scope_extractor) = {
       object_type:        "probe_balancer"
       from_request_field: "project_id"
     };

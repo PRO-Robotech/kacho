@@ -10,7 +10,7 @@
 package loadbalancerv1
 
 import (
-	_ "github.com/PRO-Robotech/kacho/pkg/api/kacho/iam/authz/v1"
+	_ "github.com/PRO-Robotech/kacho/pkg/api/corelib/authz/v1"
 	protoreflect "google.golang.org/protobuf/reflect/protoreflect"
 	protoimpl "google.golang.org/protobuf/runtime/protoimpl"
 	timestamppb "google.golang.org/protobuf/types/known/timestamppb"
@@ -343,7 +343,7 @@ var File_kacho_cloud_loadbalancer_v1_internal_load_balancer_announce_service_pro
 
 const file_kacho_cloud_loadbalancer_v1_internal_load_balancer_announce_service_proto_rawDesc = "" +
 	"\n" +
-	"Ikacho/cloud/loadbalancer/v1/internal_load_balancer_announce_service.proto\x12\x1bkacho.cloud.loadbalancer.v1\x1a\x1fgoogle/protobuf/timestamp.proto\x1a7kacho/cloud/loadbalancer/v1/network_load_balancer.proto\x1a&kacho/iam/authz/v1/authz_options.proto\"\x84\x02\n" +
+	"Ikacho/cloud/loadbalancer/v1/internal_load_balancer_announce_service.proto\x12\x1bkacho.cloud.loadbalancer.v1\x1a\x1fgoogle/protobuf/timestamp.proto\x1a7kacho/cloud/loadbalancer/v1/network_load_balancer.proto\x1a$corelib/authz/v1/authz_options.proto\"\x84\x02\n" +
 	"\x11AnnounceZoneState\x12\x17\n" +
 	"\azone_id\x18\x01 \x01(\tR\x06zoneId\x12E\n" +
 	"\n" +

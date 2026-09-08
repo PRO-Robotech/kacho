@@ -10,7 +10,7 @@
 package computev1
 
 import (
-	_ "github.com/PRO-Robotech/kacho/pkg/api/kacho/iam/authz/v1"
+	_ "github.com/PRO-Robotech/kacho/pkg/api/corelib/authz/v1"
 	protoreflect "google.golang.org/protobuf/reflect/protoreflect"
 	protoimpl "google.golang.org/protobuf/runtime/protoimpl"
 	timestamppb "google.golang.org/protobuf/types/known/timestamppb"
@@ -246,7 +246,7 @@ var File_kacho_cloud_compute_v1_internal_realization_service_proto protoreflect.
 
 const file_kacho_cloud_compute_v1_internal_realization_service_proto_rawDesc = "" +
 	"\n" +
-	"9kacho/cloud/compute/v1/internal_realization_service.proto\x12\x16kacho.cloud.compute.v1\x1a\x1fgoogle/protobuf/timestamp.proto\x1a&kacho/iam/authz/v1/authz_options.proto\"\x98\x02\n" +
+	"9kacho/cloud/compute/v1/internal_realization_service.proto\x12\x16kacho.cloud.compute.v1\x1a\x1fgoogle/protobuf/timestamp.proto\x1a$corelib/authz/v1/authz_options.proto\"\x98\x02\n" +
 	" ReportInstanceRealizationRequest\x12\x1f\n" +
 	"\vinstance_id\x18\x01 \x01(\tR\n" +
 	"instanceId\x12L\n" +

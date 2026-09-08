@@ -12,7 +12,7 @@ import "kacho/cloud/api/secret_options.proto";
 import "kaname/cloud/iam/v1/credential_kind.proto";
 import "kaname/cloud/iam/v1/user_oauth_client.proto";
 import "kacho/cloud/operation/operation.proto";
-import "kacho/iam/authz/v1/authz_options.proto";
+import "corelib/authz/v1/authz_options.proto";
 
 option go_package = "github.com/PRO-Robotech/kacho/pkg/api/kaname/cloud/iam/v1;iamv1";
 
@@ -82,26 +82,26 @@ service UserTokenService {
       metadata: "IssueUserTokenMetadata"
       response: "IssueUserTokenResponse"
     };
-    option (kacho.iam.authz.v1.permission)        = "iam.issue_user_tokens.issue";
-    option (kacho.iam.authz.v1.required_relation) = "token_issuer";
-    option (kacho.iam.authz.v1.scope_extractor)   = {
+    option (corelib.authz.v1.permission)        = "iam.issue_user_tokens.issue";
+    option (corelib.authz.v1.required_relation) = "token_issuer";
+    option (corelib.authz.v1.scope_extractor)   = {
       object_type:        "iam_user"
       from_request_field: "user_id"
     };
-    option (kacho.iam.authz.v1.required_acr_min)  = "2";
+    option (corelib.authz.v1.required_acr_min)  = "2";
   }
 
   rpc List (ListUserTokensRequest) returns (ListUserTokensResponse) {
     option (google.api.http) = {
       get: "/iam/v1/users/{user_id}/tokens"
     };
-    option (kacho.iam.authz.v1.permission)        = "iam.user_tokens.list";
-    option (kacho.iam.authz.v1.required_relation) = "token_reader";
-    option (kacho.iam.authz.v1.scope_extractor)   = {
+    option (corelib.authz.v1.permission)        = "iam.user_tokens.list";
+    option (corelib.authz.v1.required_relation) = "token_reader";
+    option (corelib.authz.v1.scope_extractor)   = {
       object_type:        "iam_user"
       from_request_field: "user_id"
     };
-    option (kacho.iam.authz.v1.required_acr_min) = "1";
+    option (corelib.authz.v1.required_acr_min) = "1";
   }
 
   rpc Revoke (RevokeUserTokenRequest) returns (kacho.cloud.operation.Operation) {
@@ -112,13 +112,13 @@ service UserTokenService {
       metadata: "RevokeUserTokenMetadata"
       response: "RevokeUserTokenResponse"
     };
-    option (kacho.iam.authz.v1.permission)        = "iam.revoke_user_tokens.revoke";
-    option (kacho.iam.authz.v1.required_relation) = "token_issuer";
-    option (kacho.iam.authz.v1.scope_extractor)   = {
+    option (corelib.authz.v1.permission)        = "iam.revoke_user_tokens.revoke";
+    option (corelib.authz.v1.required_relation) = "token_issuer";
+    option (corelib.authz.v1.scope_extractor)   = {
       object_type:        "iam_user"
       from_request_field: "user_id"
     };
-    option (kacho.iam.authz.v1.required_acr_min)  = "2";
+    option (corelib.authz.v1.required_acr_min)  = "2";
   }
 }
 

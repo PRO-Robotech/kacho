@@ -10,7 +10,7 @@ import "google/protobuf/field_mask.proto";
 import "kacho/cloud/api/operation.proto";
 import "kacho/cloud/compute/v1/placement_group.proto";
 import "kacho/cloud/operation/operation.proto";
-import "kacho/iam/authz/v1/authz_options.proto";
+import "corelib/authz/v1/authz_options.proto";
 
 option go_package = "github.com/PRO-Robotech/kacho/pkg/api/kacho/cloud/compute/v1;computev1";
 
@@ -21,26 +21,26 @@ service PlacementGroupService {
     option (google.api.http) = {
       get: "/compute/v1/placementGroups/{placement_group_id}"
     };
-    option (kacho.iam.authz.v1.permission)        = "compute.placement_groups.get";
-    option (kacho.iam.authz.v1.required_relation) = "v_get";
-    option (kacho.iam.authz.v1.scope_extractor)   = {
+    option (corelib.authz.v1.permission)        = "compute.placement_groups.get";
+    option (corelib.authz.v1.required_relation) = "v_get";
+    option (corelib.authz.v1.scope_extractor)   = {
       object_type:        "compute_placement_group"
       from_request_field: "placement_group_id"
     };
-    option (kacho.iam.authz.v1.required_acr_min) = "1";
+    option (corelib.authz.v1.required_acr_min) = "1";
   }
 
   rpc List(ListPlacementGroupsRequest) returns (ListPlacementGroupsResponse) {
     option (google.api.http) = {
       get: "/compute/v1/placementGroups"
     };
-    option (kacho.iam.authz.v1.permission)        = "compute.placement_groups.list";
-    option (kacho.iam.authz.v1.required_relation) = "viewer";
-    option (kacho.iam.authz.v1.scope_extractor)   = {
+    option (corelib.authz.v1.permission)        = "compute.placement_groups.list";
+    option (corelib.authz.v1.required_relation) = "viewer";
+    option (corelib.authz.v1.scope_extractor)   = {
       object_type:        "project"
       from_request_field: "project_id"
     };
-    option (kacho.iam.authz.v1.required_acr_min) = "1";
+    option (corelib.authz.v1.required_acr_min) = "1";
   }
 
   rpc Create(CreatePlacementGroupRequest) returns (operation.Operation) {
@@ -52,13 +52,13 @@ service PlacementGroupService {
       metadata: "CreatePlacementGroupMetadata"
       response: "PlacementGroup"
     };
-    option (kacho.iam.authz.v1.permission)        = "compute.placement_groups.create";
-    option (kacho.iam.authz.v1.required_relation) = "editor";
-    option (kacho.iam.authz.v1.scope_extractor)   = {
+    option (corelib.authz.v1.permission)        = "compute.placement_groups.create";
+    option (corelib.authz.v1.required_relation) = "editor";
+    option (corelib.authz.v1.scope_extractor)   = {
       object_type:        "project"
       from_request_field: "project_id"
     };
-    option (kacho.iam.authz.v1.required_acr_min) = "1";
+    option (corelib.authz.v1.required_acr_min) = "1";
   }
 
   // Update — правка косметической части.
@@ -75,13 +75,13 @@ service PlacementGroupService {
       metadata: "UpdatePlacementGroupMetadata"
       response: "PlacementGroup"
     };
-    option (kacho.iam.authz.v1.permission)        = "compute.placement_groups.update";
-    option (kacho.iam.authz.v1.required_relation) = "v_update";
-    option (kacho.iam.authz.v1.scope_extractor)   = {
+    option (corelib.authz.v1.permission)        = "compute.placement_groups.update";
+    option (corelib.authz.v1.required_relation) = "v_update";
+    option (corelib.authz.v1.scope_extractor)   = {
       object_type:        "compute_placement_group"
       from_request_field: "placement_group_id"
     };
-    option (kacho.iam.authz.v1.required_acr_min) = "1";
+    option (corelib.authz.v1.required_acr_min) = "1";
   }
 
   // Delete — снятие группы.
@@ -97,24 +97,24 @@ service PlacementGroupService {
       metadata: "DeletePlacementGroupMetadata"
       response: "google.protobuf.Empty"
     };
-    option (kacho.iam.authz.v1.permission)        = "compute.placement_groups.delete";
-    option (kacho.iam.authz.v1.required_relation) = "v_delete";
-    option (kacho.iam.authz.v1.scope_extractor)   = {
+    option (corelib.authz.v1.permission)        = "compute.placement_groups.delete";
+    option (corelib.authz.v1.required_relation) = "v_delete";
+    option (corelib.authz.v1.scope_extractor)   = {
       object_type:        "compute_placement_group"
       from_request_field: "placement_group_id"
     };
-    option (kacho.iam.authz.v1.required_acr_min) = "1";
+    option (corelib.authz.v1.required_acr_min) = "1";
   }
 
   rpc ListOperations(ListPlacementGroupOperationsRequest) returns (ListPlacementGroupOperationsResponse) {
     option (google.api.http) = {get: "/compute/v1/placementGroups/{placement_group_id}/operations"};
-    option (kacho.iam.authz.v1.permission)        = "compute.placement_group_operations.listOperations";
-    option (kacho.iam.authz.v1.required_relation) = "v_list";
-    option (kacho.iam.authz.v1.scope_extractor)   = {
+    option (corelib.authz.v1.permission)        = "compute.placement_group_operations.listOperations";
+    option (corelib.authz.v1.required_relation) = "v_list";
+    option (corelib.authz.v1.scope_extractor)   = {
       object_type:        "compute_placement_group"
       from_request_field: "placement_group_id"
     };
-    option (kacho.iam.authz.v1.required_acr_min) = "1";
+    option (corelib.authz.v1.required_acr_min) = "1";
   }
 }
 

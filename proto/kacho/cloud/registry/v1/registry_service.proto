@@ -10,7 +10,7 @@ import "google/protobuf/field_mask.proto";
 import "kacho/cloud/api/operation.proto";
 import "kacho/cloud/operation/operation.proto";
 import "kacho/cloud/registry/v1/registry.proto";
-import "kacho/iam/authz/v1/authz_options.proto";
+import "corelib/authz/v1/authz_options.proto";
 
 option go_package = "github.com/PRO-Robotech/kacho/pkg/api/kacho/cloud/registry/v1;registryv1";
 
@@ -22,13 +22,13 @@ service RegistryService {
   // Get — sync-чтение одного реестра. v_get на registry_registry.
   rpc Get(GetRegistryRequest) returns (Registry) {
     option (google.api.http) = {get: "/registry/v1/registries/{registry_id}"};
-    option (kacho.iam.authz.v1.permission) = "registry.registries.get";
-    option (kacho.iam.authz.v1.required_relation) = "v_get";
-    option (kacho.iam.authz.v1.scope_extractor) = {
+    option (corelib.authz.v1.permission) = "registry.registries.get";
+    option (corelib.authz.v1.required_relation) = "v_get";
+    option (corelib.authz.v1.scope_extractor) = {
       object_type: "registry_registry"
       from_request_field: "registry_id"
     };
-    option (kacho.iam.authz.v1.required_acr_min) = "1";
+    option (corelib.authz.v1.required_acr_min) = "1";
   }
 
   // List — sync-список реестров project'а. Scope-filtered: handler читает страницу
@@ -43,9 +43,9 @@ service RegistryService {
   // продолжения), союза тоже: спрашивается одно отношение.
   rpc List(ListRegistriesRequest) returns (ListRegistriesResponse) {
     option (google.api.http) = {get: "/registry/v1/registries"};
-    option (kacho.iam.authz.v1.permission) = "registry.registries.list";
-    option (kacho.iam.authz.v1.scope_filtered) = true;
-    option (kacho.iam.authz.v1.required_acr_min) = "1";
+    option (corelib.authz.v1.permission) = "registry.registries.list";
+    option (corelib.authz.v1.scope_filtered) = true;
+    option (corelib.authz.v1.required_acr_min) = "1";
   }
 
   // Create — async. create-child = editor-tier на parent-project (Check на
@@ -59,13 +59,13 @@ service RegistryService {
       metadata: "CreateRegistryMetadata"
       response: "Registry"
     };
-    option (kacho.iam.authz.v1.permission) = "registry.registries.create";
-    option (kacho.iam.authz.v1.required_relation) = "editor";
-    option (kacho.iam.authz.v1.scope_extractor) = {
+    option (corelib.authz.v1.permission) = "registry.registries.create";
+    option (corelib.authz.v1.required_relation) = "editor";
+    option (corelib.authz.v1.scope_extractor) = {
       object_type: "project"
       from_request_field: "project_id"
     };
-    option (kacho.iam.authz.v1.required_acr_min) = "1";
+    option (corelib.authz.v1.required_acr_min) = "1";
   }
 
   // Update — async, mutable labels/description (name/project immutable). v_update.
@@ -84,14 +84,14 @@ service RegistryService {
       metadata: "UpdateRegistryMetadata"
       response: "Registry"
     };
-    option (kacho.iam.authz.v1.permission) = "registry.registries.update";
-    option (kacho.iam.authz.v1.required_relation) = "v_update";
-    option (kacho.iam.authz.v1.scope_extractor) = {
+    option (corelib.authz.v1.permission) = "registry.registries.update";
+    option (corelib.authz.v1.required_relation) = "v_update";
+    option (corelib.authz.v1.scope_extractor) = {
       object_type: "registry_registry"
       from_request_field: "registry_id"
     };
-    option (kacho.iam.authz.v1.required_acr_min) = "1";
-    option (kacho.iam.authz.v1.hide_existence) = true;
+    option (corelib.authz.v1.required_acr_min) = "1";
+    option (corelib.authz.v1.hide_existence) = true;
   }
 
   // Delete — async, forward-only (DELETING терминальный). v_delete. Снимает
@@ -105,14 +105,14 @@ service RegistryService {
       metadata: "DeleteRegistryMetadata"
       response: "google.protobuf.Empty"
     };
-    option (kacho.iam.authz.v1.permission) = "registry.registries.delete";
-    option (kacho.iam.authz.v1.required_relation) = "v_delete";
-    option (kacho.iam.authz.v1.scope_extractor) = {
+    option (corelib.authz.v1.permission) = "registry.registries.delete";
+    option (corelib.authz.v1.required_relation) = "v_delete";
+    option (corelib.authz.v1.scope_extractor) = {
       object_type: "registry_registry"
       from_request_field: "registry_id"
     };
-    option (kacho.iam.authz.v1.required_acr_min) = "1";
-    option (kacho.iam.authz.v1.hide_existence) = true;
+    option (corelib.authz.v1.required_acr_min) = "1";
+    option (corelib.authz.v1.hide_existence) = true;
   }
 
   // ListOperations — sync-история async-операций реестра (per-resource, фильтр по
@@ -120,13 +120,13 @@ service RegistryService {
   // registry_registry (как Get) → в allowlist как публичный gRPC-путь.
   rpc ListOperations(ListRegistryOperationsRequest) returns (ListRegistryOperationsResponse) {
     option (google.api.http) = {get: "/registry/v1/registries/{registry_id}/operations"};
-    option (kacho.iam.authz.v1.permission) = "registry.registries.listOperations";
-    option (kacho.iam.authz.v1.required_relation) = "v_list";
-    option (kacho.iam.authz.v1.scope_extractor) = {
+    option (corelib.authz.v1.permission) = "registry.registries.listOperations";
+    option (corelib.authz.v1.required_relation) = "v_list";
+    option (corelib.authz.v1.scope_extractor) = {
       object_type: "registry_registry"
       from_request_field: "registry_id"
     };
-    option (kacho.iam.authz.v1.required_acr_min) = "1";
+    option (corelib.authz.v1.required_acr_min) = "1";
   }
 
   // === Repository-scoped RPC — ПОРЯДОК ОБЪЯВЛЕНИЯ ЗНАЧИМ (REST-precedence) =====
@@ -158,9 +158,9 @@ service RegistryService {
   // Bare `{repository=**}` catch-all — объявлен ПЕРЕД sub-resource'ами (precedence).
   rpc GetRepository(GetRepositoryRequest) returns (Repository) {
     option (google.api.http) = {get: "/registry/v1/registries/{registry_id}/repositories/{repository=**}"};
-    option (kacho.iam.authz.v1.permission) = "registry.repositories.get";
-    option (kacho.iam.authz.v1.scope_filtered) = true;
-    option (kacho.iam.authz.v1.required_acr_min) = "1";
+    option (corelib.authz.v1.permission) = "registry.repositories.get";
+    option (corelib.authz.v1.scope_filtered) = true;
+    option (corelib.authz.v1.required_acr_min) = "1";
   }
 
   // ListRepositories — sync-проекция repos из zot. Per-repo listauthz: handler
@@ -176,9 +176,9 @@ service RegistryService {
   // без wildcard, не матчит непустой хвост).
   rpc ListRepositories(ListRepositoriesRequest) returns (ListRepositoriesResponse) {
     option (google.api.http) = {get: "/registry/v1/registries/{registry_id}/repositories"};
-    option (kacho.iam.authz.v1.permission) = "registry.repositories.list";
-    option (kacho.iam.authz.v1.scope_filtered) = true;
-    option (kacho.iam.authz.v1.required_acr_min) = "1";
+    option (corelib.authz.v1.permission) = "registry.repositories.list";
+    option (corelib.authz.v1.scope_filtered) = true;
+    option (corelib.authz.v1.required_acr_min) = "1";
   }
 
   // CreateRepository — async. Вставка overlay-строки (durable, survives-empty);
@@ -194,9 +194,9 @@ service RegistryService {
       metadata: "CreateRepositoryMetadata"
       response: "Repository"
     };
-    option (kacho.iam.authz.v1.permission) = "registry.repositories.create";
-    option (kacho.iam.authz.v1.scope_filtered) = true;
-    option (kacho.iam.authz.v1.required_acr_min) = "1";
+    option (corelib.authz.v1.permission) = "registry.repositories.create";
+    option (corelib.authz.v1.scope_filtered) = true;
+    option (corelib.authz.v1.required_acr_min) = "1";
   }
 
   // UpdateRepository — async, FieldMask-PATCH overlay (description/labels/visibility;
@@ -213,9 +213,9 @@ service RegistryService {
       metadata: "UpdateRepositoryMetadata"
       response: "Repository"
     };
-    option (kacho.iam.authz.v1.permission) = "registry.repositories.update";
-    option (kacho.iam.authz.v1.scope_filtered) = true;
-    option (kacho.iam.authz.v1.required_acr_min) = "1";
+    option (corelib.authz.v1.permission) = "registry.repositories.update";
+    option (corelib.authz.v1.scope_filtered) = true;
+    option (corelib.authz.v1.required_acr_min) = "1";
   }
 
   // DeleteRepository — async, reject-if-tags (D-4). Пустой durable → снимает overlay
@@ -230,9 +230,9 @@ service RegistryService {
       metadata: "DeleteRepositoryMetadata"
       response: "google.protobuf.Empty"
     };
-    option (kacho.iam.authz.v1.permission) = "registry.repositories.delete";
-    option (kacho.iam.authz.v1.scope_filtered) = true;
-    option (kacho.iam.authz.v1.required_acr_min) = "1";
+    option (corelib.authz.v1.permission) = "registry.repositories.delete";
+    option (corelib.authz.v1.scope_filtered) = true;
+    option (corelib.authz.v1.required_acr_min) = "1";
   }
 
   // ListTags — sync-проекция тегов repo из zot. Per-repo Check v_list на
@@ -241,9 +241,9 @@ service RegistryService {
   // (см. блок-заголовок «ПОРЯДОК ОБЪЯВЛЕНИЯ ЗНАЧИМ»).
   rpc ListTags(ListTagsRequest) returns (ListTagsResponse) {
     option (google.api.http) = {get: "/registry/v1/registries/{registry_id}/repositories/{repository}/tags"};
-    option (kacho.iam.authz.v1.permission) = "registry.repositories.list";
-    option (kacho.iam.authz.v1.scope_filtered) = true;
-    option (kacho.iam.authz.v1.required_acr_min) = "1";
+    option (corelib.authz.v1.permission) = "registry.repositories.list";
+    option (corelib.authz.v1.scope_filtered) = true;
+    option (corelib.authz.v1.required_acr_min) = "1";
   }
 
   // DeleteTag — async, единственный destructive-путь для образов (data-plane
@@ -256,9 +256,9 @@ service RegistryService {
       metadata: "DeleteTagMetadata"
       response: "google.protobuf.Empty"
     };
-    option (kacho.iam.authz.v1.permission) = "registry.repositories.delete";
-    option (kacho.iam.authz.v1.scope_filtered) = true;
-    option (kacho.iam.authz.v1.required_acr_min) = "1";
+    option (corelib.authz.v1.permission) = "registry.repositories.delete";
+    option (corelib.authz.v1.scope_filtered) = true;
+    option (corelib.authz.v1.required_acr_min) = "1";
   }
 
   // RenameRepository — async, в пределах ОДНОГО реестра (new_name — голое repo-имя;
@@ -281,9 +281,9 @@ service RegistryService {
       metadata: "RenameRepositoryMetadata"
       response: "Repository"
     };
-    option (kacho.iam.authz.v1.permission) = "registry.repositories.update";
-    option (kacho.iam.authz.v1.scope_filtered) = true;
-    option (kacho.iam.authz.v1.required_acr_min) = "1";
+    option (corelib.authz.v1.permission) = "registry.repositories.update";
+    option (corelib.authz.v1.scope_filtered) = true;
+    option (corelib.authz.v1.required_acr_min) = "1";
   }
 
   // ListReferrers — sync-проекция referrer-графа одного subject_digest (D-8: bounded
@@ -293,9 +293,9 @@ service RegistryService {
   // Sub-resource `…/referrers` — объявлен ПОСЛЕ catch-all'ов → пробуется РАНЬШЕ.
   rpc ListReferrers(ListReferrersRequest) returns (ListReferrersResponse) {
     option (google.api.http) = {get: "/registry/v1/registries/{registry_id}/repositories/{repository=**}/referrers"};
-    option (kacho.iam.authz.v1.permission) = "registry.repositories.get";
-    option (kacho.iam.authz.v1.scope_filtered) = true;
-    option (kacho.iam.authz.v1.required_acr_min) = "1";
+    option (corelib.authz.v1.permission) = "registry.repositories.get";
+    option (corelib.authz.v1.scope_filtered) = true;
+    option (corelib.authz.v1.required_acr_min) = "1";
   }
 }
 

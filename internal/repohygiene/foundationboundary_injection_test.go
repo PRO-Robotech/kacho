@@ -363,7 +363,7 @@ func TestClassOfPackageResolvesSplitSubtreesAndRefusesUnknownCatalogs(t *testing
 		{"pkg/api/kacho/cloud/operation/v1", classCorelib},
 		{"pkg/api/kacho/cloud/subscription", classCorelib},
 		{"pkg/api/kacho/cloud/quota/v1", classCorelib},
-		{"pkg/api/kacho/iam/authz/v1", classCorelib},
+		{"pkg/api/corelib/authz/v1", classCorelib},
 		{"pkg/api/kacho/cloud/vpc/v1", classKacho},
 		// расщепление pkg/quota (приёмка §5.3): остаток corelib, два подпакета kaname
 		{"pkg/quota", classCorelib},

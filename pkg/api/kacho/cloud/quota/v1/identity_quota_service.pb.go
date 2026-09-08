@@ -10,7 +10,7 @@
 package quotav1
 
 import (
-	_ "github.com/PRO-Robotech/kacho/pkg/api/kacho/iam/authz/v1"
+	_ "github.com/PRO-Robotech/kacho/pkg/api/corelib/authz/v1"
 	_ "google.golang.org/genproto/googleapis/api/annotations"
 	protoreflect "google.golang.org/protobuf/reflect/protoreflect"
 	protoimpl "google.golang.org/protobuf/runtime/protoimpl"
@@ -126,7 +126,7 @@ var File_kacho_cloud_quota_v1_identity_quota_service_proto protoreflect.FileDesc
 
 const file_kacho_cloud_quota_v1_identity_quota_service_proto_rawDesc = "" +
 	"\n" +
-	"1kacho/cloud/quota/v1/identity_quota_service.proto\x12\x14kacho.cloud.quota.v1\x1a\x1cgoogle/api/annotations.proto\x1a kacho/cloud/quota/v1/quota.proto\x1a&kacho/iam/authz/v1/authz_options.proto\"\x1b\n" +
+	"1kacho/cloud/quota/v1/identity_quota_service.proto\x12\x14kacho.cloud.quota.v1\x1a\x1cgoogle/api/annotations.proto\x1a kacho/cloud/quota/v1/quota.proto\x1a$corelib/authz/v1/authz_options.proto\"\x1b\n" +
 	"\x19ListIdentityQuotasRequest\"Q\n" +
 	"\x1aListIdentityQuotasResponse\x123\n" +
 	"\x06quotas\x18\x01 \x03(\v2\x1b.kacho.cloud.quota.v1.QuotaR\x06quotas2\xbb\x01\n" +

@@ -10,7 +10,7 @@ import "google/protobuf/field_mask.proto";
 import "kacho/cloud/api/operation.proto";
 import "kacho/cloud/vpc/v1/cidr_group.proto";
 import "kacho/cloud/operation/operation.proto";
-import "kacho/iam/authz/v1/authz_options.proto";
+import "corelib/authz/v1/authz_options.proto";
 
 option go_package = "github.com/PRO-Robotech/kacho/pkg/api/kacho/cloud/vpc/v1;vpcv1";
 
@@ -20,13 +20,13 @@ service CidrGroupService {
   // Returns the specified CidrGroup resource.
   rpc Get (GetCidrGroupRequest) returns (CidrGroup) {
     option (google.api.http) = { get: "/vpc/v1/cidrGroups/{cidr_group_id}" };
-    option (kacho.iam.authz.v1.permission)        = "vpc.cidr_groups.get";
-    option (kacho.iam.authz.v1.required_relation) = "v_get";
-    option (kacho.iam.authz.v1.scope_extractor)   = {
+    option (corelib.authz.v1.permission)        = "vpc.cidr_groups.get";
+    option (corelib.authz.v1.required_relation) = "v_get";
+    option (corelib.authz.v1.scope_extractor)   = {
       object_type:        "vpc_cidr_group"
       from_request_field: "cidr_group_id"
     };
-    option (kacho.iam.authz.v1.required_acr_min) = "1";
+    option (corelib.authz.v1.required_acr_min) = "1";
   }
 
   // Retrieves the list of CidrGroup resources in the specified project.
@@ -44,13 +44,13 @@ service CidrGroupService {
     //
     // This mirrors the seven sibling top-level Lists of the domain rather than
     // standing alone.
-    option (kacho.iam.authz.v1.permission)        = "vpc.cidr_groups.list";
-    option (kacho.iam.authz.v1.required_relation) = "viewer";
-    option (kacho.iam.authz.v1.scope_extractor)   = {
+    option (corelib.authz.v1.permission)        = "vpc.cidr_groups.list";
+    option (corelib.authz.v1.required_relation) = "viewer";
+    option (corelib.authz.v1.scope_extractor)   = {
       object_type:        "project"
       from_request_field: "project_id"
     };
-    option (kacho.iam.authz.v1.required_acr_min) = "1";
+    option (corelib.authz.v1.required_acr_min) = "1";
   }
 
   // Creates a CIDR group in the specified project.
@@ -61,13 +61,13 @@ service CidrGroupService {
       metadata: "CreateCidrGroupMetadata"
       response: "CidrGroup"
     };
-    option (kacho.iam.authz.v1.permission)        = "vpc.cidr_groups.create";
-    option (kacho.iam.authz.v1.required_relation) = "editor";
-    option (kacho.iam.authz.v1.scope_extractor)   = {
+    option (corelib.authz.v1.permission)        = "vpc.cidr_groups.create";
+    option (corelib.authz.v1.required_relation) = "editor";
+    option (corelib.authz.v1.scope_extractor)   = {
       object_type:        "project"
       from_request_field: "project_id"
     };
-    option (kacho.iam.authz.v1.required_acr_min) = "1";
+    option (corelib.authz.v1.required_acr_min) = "1";
   }
 
   // Updates the cosmetic fields of the specified CIDR group — name, description
@@ -85,13 +85,13 @@ service CidrGroupService {
       metadata: "UpdateCidrGroupMetadata"
       response: "CidrGroup"
     };
-    option (kacho.iam.authz.v1.permission)        = "vpc.cidr_groups.update";
-    option (kacho.iam.authz.v1.required_relation) = "v_update";
-    option (kacho.iam.authz.v1.scope_extractor)   = {
+    option (corelib.authz.v1.permission)        = "vpc.cidr_groups.update";
+    option (corelib.authz.v1.required_relation) = "v_update";
+    option (corelib.authz.v1.scope_extractor)   = {
       object_type:        "vpc_cidr_group"
       from_request_field: "cidr_group_id"
     };
-    option (kacho.iam.authz.v1.required_acr_min) = "1";
+    option (corelib.authz.v1.required_acr_min) = "1";
   }
 
   // Adds CIDR block(s) to the group. Idempotent: a block already in the group is
@@ -106,13 +106,13 @@ service CidrGroupService {
       metadata: "UpdateCidrGroupMetadata"
       response: "CidrGroup"
     };
-    option (kacho.iam.authz.v1.permission)        = "vpc.cidr_group_blocks.addCidrBlocks";
-    option (kacho.iam.authz.v1.required_relation) = "v_update";
-    option (kacho.iam.authz.v1.scope_extractor)   = {
+    option (corelib.authz.v1.permission)        = "vpc.cidr_group_blocks.addCidrBlocks";
+    option (corelib.authz.v1.required_relation) = "v_update";
+    option (corelib.authz.v1.scope_extractor)   = {
       object_type:        "vpc_cidr_group"
       from_request_field: "cidr_group_id"
     };
-    option (kacho.iam.authz.v1.required_acr_min) = "1";
+    option (corelib.authz.v1.required_acr_min) = "1";
   }
 
   // Removes CIDR block(s) from the group. Idempotent in the same sense: removing
@@ -131,13 +131,13 @@ service CidrGroupService {
       metadata: "UpdateCidrGroupMetadata"
       response: "CidrGroup"
     };
-    option (kacho.iam.authz.v1.permission)        = "vpc.cidr_group_blocks.removeCidrBlocks";
-    option (kacho.iam.authz.v1.required_relation) = "v_update";
-    option (kacho.iam.authz.v1.scope_extractor)   = {
+    option (corelib.authz.v1.permission)        = "vpc.cidr_group_blocks.removeCidrBlocks";
+    option (corelib.authz.v1.required_relation) = "v_update";
+    option (corelib.authz.v1.scope_extractor)   = {
       object_type:        "vpc_cidr_group"
       from_request_field: "cidr_group_id"
     };
-    option (kacho.iam.authz.v1.required_acr_min) = "1";
+    option (corelib.authz.v1.required_acr_min) = "1";
   }
 
   // Deletes the specified CIDR group. A group a rule still points at cannot be
@@ -149,25 +149,25 @@ service CidrGroupService {
       metadata: "DeleteCidrGroupMetadata"
       response: "google.protobuf.Empty"
     };
-    option (kacho.iam.authz.v1.permission)        = "vpc.cidr_groups.delete";
-    option (kacho.iam.authz.v1.required_relation) = "v_delete";
-    option (kacho.iam.authz.v1.scope_extractor)   = {
+    option (corelib.authz.v1.permission)        = "vpc.cidr_groups.delete";
+    option (corelib.authz.v1.required_relation) = "v_delete";
+    option (corelib.authz.v1.scope_extractor)   = {
       object_type:        "vpc_cidr_group"
       from_request_field: "cidr_group_id"
     };
-    option (kacho.iam.authz.v1.required_acr_min) = "1";
+    option (corelib.authz.v1.required_acr_min) = "1";
   }
 
   // Lists operations for the specified CIDR group.
   rpc ListOperations (ListCidrGroupOperationsRequest) returns (ListCidrGroupOperationsResponse) {
     option (google.api.http) = { get: "/vpc/v1/cidrGroups/{cidr_group_id}/operations" };
-    option (kacho.iam.authz.v1.permission)        = "vpc.cidr_group_operations.listOperations";
-    option (kacho.iam.authz.v1.required_relation) = "v_list";
-    option (kacho.iam.authz.v1.scope_extractor)   = {
+    option (corelib.authz.v1.permission)        = "vpc.cidr_group_operations.listOperations";
+    option (corelib.authz.v1.required_relation) = "v_list";
+    option (corelib.authz.v1.scope_extractor)   = {
       object_type:        "vpc_cidr_group"
       from_request_field: "cidr_group_id"
     };
-    option (kacho.iam.authz.v1.required_acr_min) = "1";
+    option (corelib.authz.v1.required_acr_min) = "1";
   }
 }
 

@@ -182,11 +182,11 @@ func TestTransportMessageReach_StreamingAndWrappedRPCDeclarationsAreCounted(t *t
 	dir := transportFixture(t, `
 service S {
   rpc Watch (WatchRequest) returns (stream Event) {
-    option (kacho.iam.authz.v1.permission) = "x.y.watch";
+    option (corelib.authz.v1.permission) = "x.y.watch";
   }
   rpc Invalidate (InvalidateSubjectRequest)
     returns (InvalidateSubjectResponse) {
-    option (kacho.iam.authz.v1.permission) = "x.y.invalidate";
+    option (corelib.authz.v1.permission) = "x.y.invalidate";
   }
   rpc Upload (stream UploadChunkRequest) returns (UploadResponse);
 }

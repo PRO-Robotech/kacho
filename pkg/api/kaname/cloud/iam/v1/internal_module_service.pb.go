@@ -101,9 +101,9 @@
 package iamv1
 
 import (
+	_ "github.com/PRO-Robotech/kacho/pkg/api/corelib/authz/v1"
 	_ "github.com/PRO-Robotech/kacho/pkg/api/kacho/cloud/api"
 	operation "github.com/PRO-Robotech/kacho/pkg/api/kacho/cloud/operation"
-	_ "github.com/PRO-Robotech/kacho/pkg/api/kacho/iam/authz/v1"
 	_ "google.golang.org/genproto/googleapis/api/annotations"
 	protoreflect "google.golang.org/protobuf/reflect/protoreflect"
 	protoimpl "google.golang.org/protobuf/runtime/protoimpl"
@@ -1228,7 +1228,7 @@ var File_kaname_cloud_iam_v1_internal_module_service_proto protoreflect.FileDesc
 
 const file_kaname_cloud_iam_v1_internal_module_service_proto_rawDesc = "" +
 	"\n" +
-	"1kaname/cloud/iam/v1/internal_module_service.proto\x12\x13kaname.cloud.iam.v1\x1a\x1cgoogle/api/annotations.proto\x1a\x1fkacho/cloud/api/operation.proto\x1a%kacho/cloud/operation/operation.proto\x1a&kacho/iam/authz/v1/authz_options.proto\"+\n" +
+	"1kaname/cloud/iam/v1/internal_module_service.proto\x12\x13kaname.cloud.iam.v1\x1a\x1cgoogle/api/annotations.proto\x1a\x1fkacho/cloud/api/operation.proto\x1a%kacho/cloud/operation/operation.proto\x1a$corelib/authz/v1/authz_options.proto\"+\n" +
 	"\x11PlanModuleRequest\x12\x16\n" +
 	"\x06module\x18\x01 \x01(\tR\x06module\"\x80\b\n" +
 	"\x12PlanModuleResponse\x12\x16\n" +

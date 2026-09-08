@@ -8,7 +8,7 @@ package kaname.cloud.iam.v1;
 import "google/api/annotations.proto";
 import "google/protobuf/struct.proto";
 import "google/protobuf/timestamp.proto";
-import "kacho/iam/authz/v1/authz_options.proto";
+import "corelib/authz/v1/authz_options.proto";
 
 option go_package = "github.com/PRO-Robotech/kacho/pkg/api/kaname/cloud/iam/v1;iamv1";
 
@@ -68,7 +68,7 @@ service AuthorizeService {
   // list on a "no path" deny.
   rpc Check (AuthorizeCheckRequest) returns (AuthorizeCheckResponse) {
     option (google.api.http) = { post: "/iam/v1/authorize:check" body: "*" };
-    option (kacho.iam.authz.v1.permission) = "iam.authorize.check";
+    option (corelib.authz.v1.permission) = "iam.authorize.check";
     // The subject's type is embedded in its ARN and the queried resource is a
     // nested ResourceRef carrying its own type, so neither yields an object the
     // edge can name before the call. kacho-iam decides: self-query ∨ cluster-admin
@@ -78,8 +78,8 @@ service AuthorizeService {
     // singleton and called it a "coarse outer gate". It is not a gate: the cluster
     // bootstrap grants that relation to `user:*` for the global reference
     // catalogue, so it passed for every authenticated principal.
-    option (kacho.iam.authz.v1.scope_filtered)   = true;
-    option (kacho.iam.authz.v1.required_acr_min) = "1";
+    option (corelib.authz.v1.scope_filtered)   = true;
+    option (corelib.authz.v1.required_acr_min) = "1";
   }
 
   // BatchCheck — multiple checks bundled in one RPC.
@@ -108,13 +108,13 @@ service AuthorizeService {
   // Hard cap: ≤ 100 checks per batch (InvalidArgument otherwise).
   rpc BatchCheck (BatchAuthorizeCheckRequest) returns (BatchAuthorizeCheckResponse) {
     option (google.api.http) = { post: "/iam/v1/authorize:batchCheck" body: "*" };
-    option (kacho.iam.authz.v1.permission)        = "iam.authorize.batchCheck";
-    option (kacho.iam.authz.v1.required_relation) = "viewer";
-    option (kacho.iam.authz.v1.scope_extractor)   = {
+    option (corelib.authz.v1.permission)        = "iam.authorize.batchCheck";
+    option (corelib.authz.v1.required_relation) = "viewer";
+    option (corelib.authz.v1.scope_extractor)   = {
       object_type:        "project"
       from_request_field: "scope_id"
     };
-    option (kacho.iam.authz.v1.required_acr_min) = "1";
+    option (corelib.authz.v1.required_acr_min) = "1";
   }
 
   // TOMBSTONE: `ListObjects` ("enumerate every id of `resource_type` the subject
@@ -138,14 +138,14 @@ service AuthorizeService {
   // Hard cap: page size ≤ 1000 (InvalidArgument otherwise).
   rpc ListSubjects (ListSubjectsRequest) returns (ListSubjectsResponse) {
     option (google.api.http) = { post: "/iam/v1/authorize:listSubjects" body: "*" };
-    option (kacho.iam.authz.v1.permission) = "iam.authorize.listSubjects";
+    option (corelib.authz.v1.permission) = "iam.authorize.listSubjects";
     // The queried resource may be of any type (vpc_network / account / …). The
     // edge can read the nested ResourceRef.id but not its .type, so it cannot
     // build the object at all. kacho-iam decides: cluster-admin ∨ `admin` on the
     // real `<resource.type>:<resource.id>`. See AuthorizeService.Check for why the
     // previous `viewer`-on-cluster row was not a gate.
-    option (kacho.iam.authz.v1.scope_filtered)   = true;
-    option (kacho.iam.authz.v1.required_acr_min) = "1";
+    option (corelib.authz.v1.scope_filtered)   = true;
+    option (corelib.authz.v1.required_acr_min) = "1";
   }
 
   // ExpandRelations — return the subjects that resolve `relation` on `resource`,
@@ -157,13 +157,13 @@ service AuthorizeService {
   // bound. The response is read-only.
   rpc ExpandRelations (ExpandRelationsRequest) returns (ExpandRelationsResponse) {
     option (google.api.http) = { post: "/iam/v1/authorize:expandRelations" body: "*" };
-    option (kacho.iam.authz.v1.permission) = "iam.authorize.expand";
+    option (corelib.authz.v1.permission) = "iam.authorize.expand";
     // Same shape as AuthorizeService.ListSubjects: the resource type is a field of
     // the nested ResourceRef, so the edge cannot build the object. kacho-iam
     // decides: cluster-admin ∨ `admin` on the real
     // `<resource.type>:<resource.id>`.
-    option (kacho.iam.authz.v1.scope_filtered)   = true;
-    option (kacho.iam.authz.v1.required_acr_min) = "1";
+    option (corelib.authz.v1.scope_filtered)   = true;
+    option (corelib.authz.v1.required_acr_min) = "1";
   }
 
   // WhoAmI — return the authenticated caller's identity + a permission
@@ -186,8 +186,8 @@ service AuthorizeService {
     // callers are rejected by the handler with Unauthenticated. No
     // scope_extractor / relation is required because there is no
     // tenant-scoped object to gate on.
-    option (kacho.iam.authz.v1.permission) = "<exempt>";
-    option (kacho.iam.authz.v1.exempt_reason)  = "SELF_SERVICE";
+    option (corelib.authz.v1.permission) = "<exempt>";
+    option (corelib.authz.v1.exempt_reason)  = "SELF_SERVICE";
   }
 }
 

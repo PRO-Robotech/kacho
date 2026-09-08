@@ -16,7 +16,7 @@
 // promise about that service was unbacked and no comparison could see it.
 //
 // Deriving removes the second declaration rather than adding a third checker:
-// both artefacts now come from ONE source, the `kacho.iam.authz.v1` method
+// both artefacts now come from ONE source, the `corelib.authz.v1` method
 // options, so "the service asks something else" stops being expressible.
 //
 // # Why the annotations and not the generated JSON
@@ -49,7 +49,7 @@ import (
 	"google.golang.org/protobuf/reflect/protoregistry"
 	"google.golang.org/protobuf/types/descriptorpb"
 
-	authzv1 "github.com/PRO-Robotech/kacho/pkg/api/kacho/iam/authz/v1"
+	authzv1 "github.com/PRO-Robotech/kacho/pkg/api/corelib/authz/v1"
 	"github.com/PRO-Robotech/kacho/pkg/authz"
 )
 
