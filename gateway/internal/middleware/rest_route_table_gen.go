@@ -147,7 +147,7 @@ var generatedRestRoutes = []restRoute{
 	{Method: "GET", Template: "/iam/v1/projects/{project_id}", FQN: "kaname.cloud.iam.v1.ProjectService/Get"},
 	{Method: "PATCH", Template: "/iam/v1/projects/{project_id}", FQN: "kaname.cloud.iam.v1.ProjectService/Update"},
 	{Method: "GET", Template: "/iam/v1/projects/{project_id}/operations", FQN: "kaname.cloud.iam.v1.ProjectService/ListOperations"},
-	{Method: "GET", Template: "/iam/v1/quotas", FQN: "kacho.cloud.quota.v1.IdentityQuotaService/List"},
+	{Method: "GET", Template: "/iam/v1/quotas", FQN: "kaname.cloud.iam.v1.IdentityQuotaService/List"},
 	{Method: "GET", Template: "/iam/v1/roles", FQN: "kaname.cloud.iam.v1.RoleService/List"},
 	{Method: "POST", Template: "/iam/v1/roles", FQN: "kaname.cloud.iam.v1.RoleService/Create"},
 	{Method: "DELETE", Template: "/iam/v1/roles/{role_id}", FQN: "kaname.cloud.iam.v1.RoleService/Delete"},

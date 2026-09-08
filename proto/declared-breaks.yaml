@@ -239,3 +239,19 @@ declared:
     symbol: kacho.iam.authz.v1.ScopeExtractor
     reason: Тип значения расширения 50003 сменил полное имя вместе с пакетом; состав полей сообщения не изменился ни одним.
     issue: kacho#2089
+
+  # ПЕРЕЕЗД, А НЕ СНЯТИЕ ВОЗМОЖНОСТИ. Объявление службы арендаторского чтения
+  # квот личности ушло из пакета общей ФОРМЫ ответа в собственный контракт службы
+  # доступа (`kaname/cloud/iam/v1/identity_quota_service.proto`). Служба, её метод,
+  # HTTP-путь `/iam/v1/quotas`, форма ответа, имена и номера ВСЕХ полей и арм —
+  # прежние дословно; согласие двух объявлений держит проба дескрипторов
+  # `TestIdentityQuotaShapeMatchesThePlatformShapeVerbatim`, а не обещание.
+  #
+  # Что для клиента ДЕЙСТВИТЕЛЬНО меняется — полное имя метода gRPC
+  # (`kacho.cloud.quota.v1.…` → `kaname.cloud.iam.v1.…`). Для клиента REST не
+  # меняется ничто: путь и JSON прежние.
+  - rule: FILE_NO_DELETE
+    path: kacho/cloud/quota/v1/identity_quota_service.proto
+    symbol: kacho/cloud/quota/v1/identity_quota_service.proto
+    reason: Объявление службы переехало в собственный контракт службы доступа; путь, форма ответа, имена и номера полей сохранены дословно.
+    issue: kacho#2362

@@ -228,12 +228,15 @@ var AllowedMethods = map[string]struct{}{
 	// iam.v1 — AccountService
 	"/kaname.cloud.iam.v1.AccountService/Get":  {},
 	"/kaname.cloud.iam.v1.AccountService/List": {},
-	// quota.v1 — IdentityQuotaService (только чтение, и только о СЕБЕ: поля,
+	// iam.v1 — IdentityQuotaService (только чтение, и только о СЕБЕ: поля,
 	// которым можно было бы назвать чужую личность, у запроса нет).
 	//
-	// Служба объявлена в пакете общей формы ответа, а не в `iam.v1`: та форма уже
-	// зависит от `iam.v1`, и обратная ссылка замкнула бы пакеты друг на друга.
-	"/kacho.cloud.quota.v1.IdentityQuotaService/List": {},
+	// Объявлена в СОБСТВЕННОМ контракте службы доступа. Прежде лежала в пакете
+	// общей формы ответа по доводу «та форма зависит от `iam.v1`, и обратная
+	// ссылка замкнула бы пакеты» — довод пережил свой предмет: импортов у общей
+	// формы сегодня НЕТ вовсе, и переезд домой добавляет ребро в уже
+	// существующем направлении (kacho#2362, решение `Д9`).
+	"/kaname.cloud.iam.v1.IdentityQuotaService/List": {},
 
 	"/kaname.cloud.iam.v1.AccountService/Create":            {},
 	"/kaname.cloud.iam.v1.AccountService/Update":            {},

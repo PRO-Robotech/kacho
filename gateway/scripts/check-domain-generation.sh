@@ -44,7 +44,7 @@
 # Коды возврата: 0 — находок нет · 1 — находка · 2 — предмета нет (нет buf/go).
 #
 # Использование:
-#   scripts/check-domain-generation.sh [ДОМЕН...]     # умолчание: iam operation quota
+#   scripts/check-domain-generation.sh [ДОМЕН...]     # умолчание: iam operation
 
 set -euo pipefail
 
@@ -55,7 +55,15 @@ ANCHOR="${REPO_ROOT}/proto/kacho/iam/authz/catalog/v1/permissions_catalog_root.p
 
 DOMAINS=("$@")
 if [[ ${#DOMAINS[@]} -eq 0 ]]; then
-  DOMAINS=(iam operation quota)
+  # Домены, чьи службы iam поднимает на своих слушателях.
+  #
+  # ЗДЕСЬ БЫЛ ТРЕТЬИМ `quota`, и его основание УШЛО: служба чтения квот личности
+  # объявлялась в пакете общей формы ответа, а теперь — в собственном контракте
+  # службы доступа (kacho#2362, решение `Д9`). Замер на день снятия: отбор с
+  # `quota` и без него даёт один и тот же доменный выход — записей каталога 119,
+  # маршрутов 106, — то есть вклад домена стал нулевым. Запись, потерявшая
+  # предмет, снята ТЕМ ЖЕ изменением, что и её предмет.
+  DOMAINS=(iam operation)
 fi
 
 command -v buf >/dev/null || { echo "БЕЗ ПРЕДМЕТА: buf не установлен — сверять нечего" >&2; exit 2; }
