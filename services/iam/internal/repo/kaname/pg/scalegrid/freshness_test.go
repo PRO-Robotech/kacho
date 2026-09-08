@@ -57,7 +57,6 @@ import (
 	"testing"
 	"time"
 
-	"github.com/PRO-Robotech/kacho/pkg/gitenv"
 	"github.com/PRO-Robotech/kaname/internal/repo/kaname/pg/scalegrid"
 
 	"github.com/PRO-Robotech/kaname/internal/testsupport/platformtree"
@@ -222,17 +221,22 @@ func guardedReports() []guardedReport {
 
 // TestScaleGridFullReportIsFreshAndItsSubjectHasNotMoved — гейт свежести.
 func TestScaleGridFullReportIsFreshAndItsSubjectHasNotMoved(t *testing.T) {
-	// ОТПЕЧАТОК ЗАМЕРА ПОСТАВЛЕН НА ДЕРЕВЕ ПЛАТФОРМЫ, и сверять его можно только
-	// там. Словарь координат, которым прибор нормализует значащее содержимое,
-	// выводится из состава КОРНЯ: в монорепо это `services`, `proto`, `pkg`, в
-	// самостоятельном клоне — `internal`, `cmd`, `docs`. Словари разные, значит
-	// разные и отпечатки одного и того же кода.
+	// КОРЕНЬ ОБХОДА, А НЕ ДЕРЕВО ПЛАТФОРМЫ (задача продукта #2273).
 	//
-	// Это «условие не создано», а не находка: отчёт снят на стенде монорепо, а
-	// пересъёмка требует стенда, которого у арендатора нет. Что отпечаток вообще
-	// ЗАВИСИТ ОТ ПОСАДКИ — отдельный предмет: прибор объявляет себя неподвижным
-	// при переезде каталога, и здесь это обещание не держится.
-	root := platformtree.Require(t)
+	// Здесь стоял `Require`, то есть ПРОПУСК в самостоятельном клоне, и причина
+	// была названа честно: словарь координат прибора выводился из состава КОРНЯ,
+	// а корень в монорепо и в клоне разный — один и тот же код давал разные
+	// отпечатки, и сверять записанное в шапке было не с чем.
+	//
+	// Причины больше нет: словарь выводится из ПОСТАВКИ модуля, и отпечаток в
+	// обеих посадках один (`fingerprint_posture_test.go`). Оба операнда гейта —
+	// отчёт и код — с модулем едут, поэтому пропуск здесь означал бы «условие не
+	// создано» там, где оно создано, а послабление, у которого исчез предмет,
+	// само есть находка.
+	//
+	// `RequireCorpus` пропуска не имеет by construction: обе посадки дают корень,
+	// и отказ означал бы, что его нет ни у одной.
+	root, _ := platformtree.RequireCorpus(t)
 
 	reports := guardedReports()
 	if len(reports) == 0 {
@@ -458,23 +462,6 @@ func TestScaleGridFreshnessGateCanFailAndCanStaySilent(t *testing.T) {
 }
 
 // ── вспомогательное ─────────────────────────────────────────────────────────
-
-// repoRoot — корень дерева.
-//
-// Спрашивается у git через `pkg/gitenv`, а не собирается из `..`: число
-// шагов вверх зависит от того, где лежит вызывающий, и переезд файла молча увёл
-// бы гейт смотреть в другой каталог. Прямой `exec.Command("git", …)` в этом
-// дереве — находка отдельного гейта: унаследованные `GIT_DIR`/`GIT_INDEX_FILE`
-// увели бы команду в чужой репозиторий.
-func repoRoot(t *testing.T) string {
-	t.Helper()
-	out, err := gitenv.Command("", "rev-parse", "--show-toplevel").Output()
-	if err != nil {
-		t.Fatalf("корень дерева не установлен (%v): гейту негде искать отчёт, и его молчание "+
-			"не означало бы свежести", err)
-	}
-	return strings.TrimSpace(string(out))
-}
 
 func valueAfter(text, marker string) string {
 	i := strings.Index(text, marker)
