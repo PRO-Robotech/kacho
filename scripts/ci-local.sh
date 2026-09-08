@@ -523,6 +523,13 @@ go_group() {
     run "выпуск: производитель отказывает без следа" bash "$ROOT/scripts/release/publish-tag-inject.sh"
     run "выпуск: сводка читает факт, а не вход" bash "$ROOT/scripts/release/summarize-run-inject.sh"
     run "поставка: производитель артефакта службы" bash "$ROOT/scripts/release/publish-service-artifact-inject.sh"
+    # Предмет этой — ЧЕМ мерится блокатор выпуска. Прежний предикат взаимности
+    # (#1766) искал подстроку в пути импорта и потому объявил блокатор снятым от
+    # ПЕРЕИМЕНОВАНИЯ каталога стабов при неизменном графе модулей (17 -> 0,
+    # коммит a10bfd208d, #2231). Инъекция проводит ту же одно-фактную дельту и
+    # требует, чтобы вердикт не шелохнулся, — а обратное `require`, ни одного
+    # импорта не написавшее, чтобы его перевернуло.
+    run "выпуск: взаимность мерится графом модулей, а не путём" bash "$ROOT/scripts/release/assert-no-module-reciprocity-inject.sh"
     run "go build" go build ./...
     run "go vet" go vet ./...
     run "go test -short" go test ./... -short -count=1

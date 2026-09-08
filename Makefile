@@ -353,7 +353,7 @@ PG_OUTSIDE_SELECTION_PKGS_IAM ?= \
 # ЧЕМ ПРОВЯЗЫВАЕТСЯ И ПОЧЕМУ НЕ `core.hooksPath` — в шапке scripts/hooks/install.sh
 # (короткий ответ: он перебивает `.git/hooks` целиком и молча выключает всё, что
 # там уже лежало).
-.PHONY: test test-unit test-integration test-pg-outside-selection test-service test-service-short docs-sites help install-hooks check-hooks hooks-notice scale-grid-small scale-grid-full matrix-volume-small matrix-volume-full release-preflight release-trunk-green release-breaking-since release-probe release-pin-agrees release-dry-run
+.PHONY: test test-unit test-integration test-pg-outside-selection test-service test-service-short docs-sites help install-hooks check-hooks hooks-notice scale-grid-small scale-grid-full matrix-volume-small matrix-volume-full release-preflight release-trunk-green release-breaking-since release-probe release-pin-agrees release-no-reciprocity release-dry-run
 
 ## install-hooks — провязать хуки git из scripts/hooks в этот клон (один раз на клон).
 install-hooks:
@@ -675,6 +675,10 @@ matrix-volume-full:
 ##                             KACHO_PIN_CROSSTREE_NETWORK=1 — дерево вынесенной
 ##                             службы). Не спрошенное дерево согласным НЕ
 ##                             считается: перепись называет «сверено N» всегда
+##   release-no-reciprocity  — ацикличен ли граф ОБЪЯВЛЕННЫХ модулей дерева.
+##                             Мерит директивы module/require/replace, а НЕ
+##                             подстроку в пути импорта: переименование каталога
+##                             вердикта не двигает, обратное require — двигает
 ##   release-dry-run         — весь набор гейтов разом, без создания чего-либо
 ##
 ## У самих скриптов исходов ЧЕТЫРЕ, и различать их обязательно: 0 — сошлось,
@@ -708,6 +712,9 @@ release-probe:
 
 release-pin-agrees:
 	scripts/release/assert-pin-agrees.sh $(if $(REQUIRE_RELEASED),--require-released)
+
+release-no-reciprocity:
+	scripts/release/assert-no-module-reciprocity.sh
 
 release-dry-run:
 	@test -n "$(VERSION)" || { echo "нужна VERSION, напр. make release-dry-run VERSION=v0.1.0" >&2; exit 2; }
