@@ -253,7 +253,13 @@ var quotaCensusRules = []quotaCensusRule{
 			"proto/kacho/cloud/quota/",
 			"tools/quota-refusal-migration/",
 		},
-		NotPrefixes: []string{"proto/kacho/cloud/quota/v1/identity_quota_service.proto"},
+		// ЗДЕСЬ СТОЯЛО ИСКЛЮЧЕНИЕ на контракт чтения учёта личности: он лежал
+		// внутри пакета общей формы, а поверхностью был не общей. Предмет
+		// исключения УШЁЛ ИЗ ОБЛАСТИ — объявление переехало в собственный
+		// контракт службы доступа (kacho#2362, решение `Д9`), — поэтому
+		// исключение снято тем же изменением. Оставленное, оно исключало бы
+		// несуществующее и унаследовалось бы следующим читателем как описание
+		// действительности.
 	},
 	{
 		Surface: quotaSurfaceOwners, Code: "B5",
@@ -294,8 +300,12 @@ var quotaCensusRules = []quotaCensusRule{
 	},
 	{
 		Surface: quotaSurfaceIAMLedger, Code: "C3",
+		// Координата ПЕРЕЕХАЛА вместе с предметом (kacho#2362, решение `Д9`):
+		// объявление службы чтения ушло из пакета общей формы ответа в
+		// собственный контракт службы доступа. Предмет правила не исчез — он
+		// сменил место, поэтому правило правится, а не снимается.
 		Why:      "контракт чтения учёта личности",
-		Prefixes: []string{"proto/kacho/cloud/quota/v1/identity_quota_service.proto"},
+		Prefixes: []string{"proto/kaname/cloud/iam/v1/identity_quota_service.proto"},
 	},
 	{
 		Surface: quotaSurfaceIAMLedger, Code: "C4",

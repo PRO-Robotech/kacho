@@ -124,7 +124,6 @@ import (
 	computepb "github.com/PRO-Robotech/kacho/pkg/api/kacho/cloud/compute/v1"
 	// geo.v1 — Region/Zone leaf-сервис kacho-geo.
 	geopb "github.com/PRO-Robotech/kacho/pkg/api/kacho/cloud/geo/v1"
-	quotapb "github.com/PRO-Robotech/kacho/pkg/api/kacho/cloud/quota/v1"
 	iampb "github.com/PRO-Robotech/kacho/pkg/api/kaname/cloud/iam/v1"
 
 	// kacho-nlb (loadbalancer.v1) — public RPC под /nlb/v1/*.
@@ -720,7 +719,7 @@ func NewMux(
 			// уже занято. Публичная поверхность и ТОЛЬКО чтение о себе: величину
 			// меняет администратор облака через iam.v1.InternalLimitService на
 			// внутреннем слушателе. Обслуживает её kaname, поэтому адрес тот же.
-			if err := quotapb.RegisterIdentityQuotaServiceHandlerFromEndpoint(ctx, mux, iamAddr, optsFor("iam")); err != nil {
+			if err := iampb.RegisterIdentityQuotaServiceHandlerFromEndpoint(ctx, mux, iamAddr, optsFor("iam")); err != nil {
 				return nil, fmt.Errorf("register iam IdentityQuotaService: %w", err)
 			}
 			if err := iampb.RegisterAccountServiceHandlerFromEndpoint(ctx, mux, iamAddr, optsFor("iam")); err != nil {

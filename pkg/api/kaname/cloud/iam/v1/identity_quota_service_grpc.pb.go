@@ -5,9 +5,9 @@
 // versions:
 // - protoc-gen-go-grpc v1.6.2
 // - protoc             (unknown)
-// source: kacho/cloud/quota/v1/identity_quota_service.proto
+// source: kaname/cloud/iam/v1/identity_quota_service.proto
 
-package quotav1
+package iamv1
 
 import (
 	context "context"
@@ -22,7 +22,7 @@ import (
 const _ = grpc.SupportPackageIsVersion9
 
 const (
-	IdentityQuotaService_List_FullMethodName = "/kacho.cloud.quota.v1.IdentityQuotaService/List"
+	IdentityQuotaService_List_FullMethodName = "/kaname.cloud.iam.v1.IdentityQuotaService/List"
 )
 
 // IdentityQuotaServiceClient is the client API for IdentityQuotaService service.
@@ -31,18 +31,26 @@ const (
 //
 // IdentityQuotaService — the ceilings carried by the CALLER THEMSELVES.
 //
-// # Why this one service lives beside the shape instead of inside its owner
+// # Why this service is declared HERE, in the access service's own contract
 //
-// Every other owner declares its `QuotaService` in its own package. This one
-// cannot: the shared answer shape imports `kaname.cloud.iam.v1` for the scope of a
-// stated value, so declaring the service inside `iam.v1` would make the two
-// packages depend on each other — and a package cycle is refused by `buf lint`,
-// not by taste. It therefore lives beside the message it returns.
+// It answers about a ceiling this service enforces, in a row of this service's
+// own database, and it calls nobody. A tenant-facing surface of a product being
+// carved out into its own must be declared in that product's contract —
+// otherwise the module it was declared inside takes the surface with it when it
+// leaves, though the subject of the surface stays (kacho#2362, decision `Д9`).
 //
-// This is NOT the "single summary endpoint" the shared message's doc rules out.
+// A PREVIOUS COMMENT HERE SAID THE OPPOSITE, AND ITS PREMISE HAD DIED. It read:
+// the shared answer shape imports `kaname.cloud.iam.v1`, so declaring the
+// service inside `iam.v1` would close a package cycle. That was true when it was
+// written and is no longer: the shared shape has NO imports at all today — it
+// states the scope arm itself, precisely so the platform keeps building once
+// this contract is removed. The dependency runs one way and only one way, and
+// this file adds an edge in the direction that already exists.
+//
+// This is NOT the "single summary endpoint" the shared shape's doc rules out.
 // That one is refused because it would need `iam -> owner` calls to learn what is
 // spent elsewhere, closing a cycle in the service graph. This service answers
-// about ONE kind, counted in iam's own database, and calls nobody.
+// about ONE kind, counted in this service's own database, and calls nobody.
 //
 // # Why the subject is a human and not a project
 //
@@ -59,9 +67,7 @@ const (
 // their consumption, or that a ceiling exists at all — indistinguishable, from
 // their side, from a broken platform.
 //
-// READ ONLY. The value is administered through `iam.v1.InternalLimitService`
-// under `system_admin` on the internal listener. A tenant who can raise their own
-// ceiling does not have one.
+// READ ONLY. A tenant who can raise their own ceiling does not have one.
 type IdentityQuotaServiceClient interface {
 	// List the quotas carried by the calling identity.
 	//
@@ -73,6 +79,11 @@ type IdentityQuotaServiceClient interface {
 	//
 	// NO PAGINATION, DELIBERATELY. One kind is carried by the identity today, and
 	// the catalogue that could add more is closed and bounded by a migration.
+	//
+	// THE HTTP PATH IS UNCHANGED BY THE MOVE, and that is the point of the move
+	// being a move: the tenant's URL, the response shape, and every field name and
+	// number are what they have always been. What changed is which contract
+	// declares them.
 	List(ctx context.Context, in *ListIdentityQuotasRequest, opts ...grpc.CallOption) (*ListIdentityQuotasResponse, error)
 }
 
@@ -100,18 +111,26 @@ func (c *identityQuotaServiceClient) List(ctx context.Context, in *ListIdentityQ
 //
 // IdentityQuotaService — the ceilings carried by the CALLER THEMSELVES.
 //
-// # Why this one service lives beside the shape instead of inside its owner
+// # Why this service is declared HERE, in the access service's own contract
 //
-// Every other owner declares its `QuotaService` in its own package. This one
-// cannot: the shared answer shape imports `kaname.cloud.iam.v1` for the scope of a
-// stated value, so declaring the service inside `iam.v1` would make the two
-// packages depend on each other — and a package cycle is refused by `buf lint`,
-// not by taste. It therefore lives beside the message it returns.
+// It answers about a ceiling this service enforces, in a row of this service's
+// own database, and it calls nobody. A tenant-facing surface of a product being
+// carved out into its own must be declared in that product's contract —
+// otherwise the module it was declared inside takes the surface with it when it
+// leaves, though the subject of the surface stays (kacho#2362, decision `Д9`).
 //
-// This is NOT the "single summary endpoint" the shared message's doc rules out.
+// A PREVIOUS COMMENT HERE SAID THE OPPOSITE, AND ITS PREMISE HAD DIED. It read:
+// the shared answer shape imports `kaname.cloud.iam.v1`, so declaring the
+// service inside `iam.v1` would close a package cycle. That was true when it was
+// written and is no longer: the shared shape has NO imports at all today — it
+// states the scope arm itself, precisely so the platform keeps building once
+// this contract is removed. The dependency runs one way and only one way, and
+// this file adds an edge in the direction that already exists.
+//
+// This is NOT the "single summary endpoint" the shared shape's doc rules out.
 // That one is refused because it would need `iam -> owner` calls to learn what is
 // spent elsewhere, closing a cycle in the service graph. This service answers
-// about ONE kind, counted in iam's own database, and calls nobody.
+// about ONE kind, counted in this service's own database, and calls nobody.
 //
 // # Why the subject is a human and not a project
 //
@@ -128,9 +147,7 @@ func (c *identityQuotaServiceClient) List(ctx context.Context, in *ListIdentityQ
 // their consumption, or that a ceiling exists at all — indistinguishable, from
 // their side, from a broken platform.
 //
-// READ ONLY. The value is administered through `iam.v1.InternalLimitService`
-// under `system_admin` on the internal listener. A tenant who can raise their own
-// ceiling does not have one.
+// READ ONLY. A tenant who can raise their own ceiling does not have one.
 type IdentityQuotaServiceServer interface {
 	// List the quotas carried by the calling identity.
 	//
@@ -142,6 +159,11 @@ type IdentityQuotaServiceServer interface {
 	//
 	// NO PAGINATION, DELIBERATELY. One kind is carried by the identity today, and
 	// the catalogue that could add more is closed and bounded by a migration.
+	//
+	// THE HTTP PATH IS UNCHANGED BY THE MOVE, and that is the point of the move
+	// being a move: the tenant's URL, the response shape, and every field name and
+	// number are what they have always been. What changed is which contract
+	// declares them.
 	List(context.Context, *ListIdentityQuotasRequest) (*ListIdentityQuotasResponse, error)
 	mustEmbedUnimplementedIdentityQuotaServiceServer()
 }
@@ -199,7 +221,7 @@ func _IdentityQuotaService_List_Handler(srv interface{}, ctx context.Context, de
 // It's only intended for direct use with grpc.RegisterService,
 // and not to be introspected or modified (even as a copy)
 var IdentityQuotaService_ServiceDesc = grpc.ServiceDesc{
-	ServiceName: "kacho.cloud.quota.v1.IdentityQuotaService",
+	ServiceName: "kaname.cloud.iam.v1.IdentityQuotaService",
 	HandlerType: (*IdentityQuotaServiceServer)(nil),
 	Methods: []grpc.MethodDesc{
 		{
@@ -208,5 +230,5 @@ var IdentityQuotaService_ServiceDesc = grpc.ServiceDesc{
 		},
 	},
 	Streams:  []grpc.StreamDesc{},
-	Metadata: "kacho/cloud/quota/v1/identity_quota_service.proto",
+	Metadata: "kaname/cloud/iam/v1/identity_quota_service.proto",
 }
