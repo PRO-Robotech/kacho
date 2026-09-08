@@ -105,7 +105,10 @@ jobs:
       # `fetch-depth: 0` нужен гейтам: они читают ссылки и историю.
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1  # v7
         with:
-          ref: main
+          # ПРОБА (ветка wip/probe-2306, kacho#2306): ствол подменён ссылкой
+          # запуска, чтобы холостой прогон исполнил ИСПРАВЛЕННЫЕ скрипты. В
+          # ствол эта строка НЕ идёт — там публикуется вершина main и только она.
+          ref: ${{ github.ref }}
           fetch-depth: 0
 
       - uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e  # v7

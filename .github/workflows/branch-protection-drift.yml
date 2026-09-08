@@ -55,7 +55,6 @@ on:
 permissions:
   contents: read
   checks: read
-  administration: read
 
 jobs:
   drift:
