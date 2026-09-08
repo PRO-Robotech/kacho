@@ -31,21 +31,6 @@ spec:
     metadata:
       labels:
         {{- include "kaname.labels" . | nindent 8 }}
-        {{- if .Values.opaSidecar.enabled }}
-        # KAC-127 Phase 3: pod label that the OPA-sidecar egress NetworkPolicy
-        # uses to allowlist outbound traffic. Without it, OPA sidecar cannot
-        # reach bundle endpoint (intentional fail-closed for unlabeled pods).
-        #
-        # Привязан к opaSidecar.enabled ОСОЗНАННО. Метка объявляет «в этом поде
-        # есть OPA-сайдкар», и её читает egress-политика умбреллы. Раньше метка
-        # рендерилась безусловно, а сайдкар выключен во ВСЕХ профилях — то есть
-        # политика выбирала под, сайдкара в котором нет. Это не косметика:
-        # NetworkPolicy действует на ПОД, а не на контейнер, поэтому выбранный под
-        # получает default-deny на исходящий трафик по всему списку правил
-        # политики — вместе с ОСНОВНЫМ контейнером kaname. Метка обязана
-        # означать ровно то, что говорит.
-        kacho.cloud/opa-sidecar: "true"
-        {{- end }}
       annotations:
         # ── ОБЪЯВЛЕНИЕ СБОРА ВЕЛИЧИН ──────────────────────────────────────────
         #
@@ -96,17 +81,6 @@ spec:
         kacho.cloud/image-id: {{ dig "kachoImageIds" "iam" "unset" (.Values.global | default dict) | quote }}
         # ConfigMap-content hash → pod rolling-restart при изменении config.yaml.
         kacho.cloud/config-checksum: {{ include (print $.Template.BasePath "/configmap.yaml") . | sha256sum }}
-        {{- if .Values.opaSidecar.enabled }}
-        # config-checksum выше хэширует ТОЛЬКО configmap.yaml, а с включённым
-        # OPA-сайдкаром под потребляет ещё два ConfigMap'а: политику сайдкара
-        # и JWKS. Без привязки к ИХ содержимому правка
-        # любого из них не перекатывает под — процесс и сайдкар продолжают
-        # применять то, что загрузили на старте, при уже переписанном ConfigMap.
-        # Класс инцидента kacho-storage (2026-07-25), здесь — на authz-политике
-        # и на ключах верификации, то есть с более высокой ценой расхождения.
-        kacho.cloud/opa-sidecar-checksum: {{ include (print $.Template.BasePath "/opa-sidecar-configmap.yaml") . | sha256sum }}
-        kacho.cloud/jwks-checksum: {{ include (print $.Template.BasePath "/jwks-configmap.yaml") . | sha256sum }}
-        {{- end }}
         {{- if .Values.manifests.configMapName }}
         # ПРИВЯЗКА ПОДА К СОДЕРЖИМОМУ ДОСТАВКИ МАНИФЕСТОВ (kacho#1981).
         #
@@ -196,16 +170,6 @@ spec:
             secretName: {{ .Values.mtls.clientSecretName | quote }}
         {{- end }}
         {{- end }}
-        {{- if .Values.opaSidecar.enabled }}
-        # KAC-127 Phase 3 (acceptance §5.6) — OPA sidecar config + JWKS public key.
-        # Shared ConfigMaps managed at umbrella level (not per sub-chart).
-        - name: opa-config
-          configMap:
-            name: opa-sidecar-config
-        - name: kaname-jwks
-          configMap:
-            name: {{ .Values.opaSidecar.jwks.configMapName | default "kaname-jwks" }}
-        {{- end }}
       initContainers:
         {{- if .Values.initContainer.migrator.enabled }}
         # skill evgeniy §9 K.1: миграции БД исполняет отдельный binary `kaname-migrator`
@@ -243,10 +207,13 @@ spec:
               containerPort: {{ .Values.ports.grpc }}
             - name: grpc-internal
               containerPort: {{ .Values.ports.internalGrpc }}
-            # KAC-127 Phase 2 — HTTP webhook listener (Hydra token/refresh hooks,
-            # CAEP ingress). KAC-127 deploy#39 — also serves the OPA policy
-            # bundle (/opa/v1/bundle.tar.gz) for the OPA sidecar, which pulls
-            # over HTTP and cannot reach the gRPC :9091 mux. Cluster-internal.
+            # HTTP-слушатель перехватов (перехваты выдачи и обновления токена,
+            # приём событий). Cluster-internal.
+            #
+            # Здесь стояло, что этот же порт отдаёт пакет правил наложения.
+            # Такого маршрута у службы нет ни одного: наложение снято вместе со
+            # своим потребителем, а комментарий пережил предмет и продолжал
+            # обещать выдачу, которой не бывает.
             - name: http-hooks
               containerPort: {{ .Values.ports.hooksHttp | default 9092 }}
             # Docker Registry v2 `/iam/token` auth-server HTTP listener — отдельный,
@@ -740,62 +707,3 @@ spec:
             periodSeconds: 30
           resources:
             {{- toYaml .Values.resources | nindent 12 }}
-        {{- if .Values.opaSidecar.enabled }}
-        # ─── KAC-127 Phase 3 — OPA sidecar (acceptance §5.6, P3-D6) ────────
-        # Per-pod OPA evaluates Rego guardrails after FGA Check allows. Localhost-
-        # only listener (:8181) — no Service, no external access. KAC-127
-        # (deploy#39): bundle pulled over HTTP from kaname's HTTP listener
-        # (:9092, route /opa/v1/bundle.tar.gz) — the OPA bundle plugin speaks
-        # HTTP and cannot use the gRPC :9091 mux.
-        - name: opa
-          image: {{ .Values.opaSidecar.image | default "openpolicyagent/opa:1.0.0-rootless" | quote }}
-          imagePullPolicy: IfNotPresent
-          args:
-            - run
-            - --server
-            - --addr=127.0.0.1:8181
-            - --diagnostic-addr=0.0.0.0:8282
-            - --config-file=/config/config.yaml
-            - --log-level={{ .Values.opaSidecar.logLevel | default "info" }}
-            - --log-format=json
-            - --set=plugins.envoy_ext_authz_grpc.enabled=false
-          volumeMounts:
-            - name: opa-config
-              mountPath: /config
-              readOnly: true
-            - name: kaname-jwks
-              mountPath: /jwks
-              readOnly: true
-          ports:
-            # Diagnostic port (health, metrics) is exposed on 0.0.0.0 for kubelet
-            # probes — Rego eval API stays on 127.0.0.1:8181 (intra-pod only).
-            - name: opa-diag
-              containerPort: 8282
-              protocol: TCP
-          readinessProbe:
-            httpGet:
-              path: /health?bundles=true
-              port: opa-diag
-            initialDelaySeconds: 10
-            periodSeconds: 5
-            failureThreshold: 6
-          livenessProbe:
-            httpGet:
-              path: /health
-              port: opa-diag
-            initialDelaySeconds: 30
-            periodSeconds: 30
-          resources:
-            requests:
-              cpu: {{ .Values.opaSidecar.resources.requests.cpu | default "20m" }}
-              memory: {{ .Values.opaSidecar.resources.requests.memory | default "64Mi" }}
-            limits:
-              cpu: {{ .Values.opaSidecar.resources.limits.cpu | default "200m" }}
-              memory: {{ .Values.opaSidecar.resources.limits.memory | default "256Mi" }}
-          securityContext:
-            allowPrivilegeEscalation: false
-            readOnlyRootFilesystem: true
-            runAsNonRoot: true
-            capabilities:
-              drop: [ALL]
-        {{- end }}
