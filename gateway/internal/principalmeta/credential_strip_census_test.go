@@ -55,6 +55,12 @@ const (
 	// groupBehindTheEdge — читает на поверхности, до которой край ПРОКСИРУЕТ
 	// запрос. Ровно этот читатель — предмет приёмки KAN-AUTHN-1.
 	groupBehindTheEdge
+	// groupNamesTheKeyToSearchForIt — НЕ читатель и не узел снятия: гейт,
+	// называющий ключ затем, чтобы ИСКАТЬ его в дереве. Перепись находит его по
+	// тому же признаку, что и читателей, и группа ему нужна отдельная: отнести
+	// гейт к читателям значило бы сказать о нём неправду, а вычесть из обхода —
+	// завести исключение, которому нечего исключать.
+	groupNamesTheKeyToSearchForIt
 	// groupStripsIt — САМ узел снятия. Он имя удостоверения не читает, а
 	// объявляет: перепись находит его по тому же признаку, что и читателей, и
 	// адъюдицировать его надо отдельной группой — отнести к читателям значило
@@ -75,6 +81,8 @@ func (g credentialReaderGroup) String() string {
 		return "читает на собственной поверхности"
 	case groupBehindTheEdge:
 		return "читает ЗА краем"
+	case groupNamesTheKeyToSearchForIt:
+		return "называет ключ, чтобы искать его"
 	case groupStripsIt:
 		return "САМ узел снятия"
 	default:
@@ -104,6 +112,8 @@ var credentialReaderCensus = map[string]credentialReaderGroup{
 	"services/registry/internal/dataplane/proxy.go":       groupOwnSurface,
 
 	"services/iam/internal/presentedcred/reader.go": groupBehindTheEdge,
+
+	"internal/repohygiene/bothidentityformsproducer.go": groupNamesTheKeyToSearchForIt,
 
 	"gateway/internal/principalmeta/credential_strip.go": groupStripsIt,
 }
