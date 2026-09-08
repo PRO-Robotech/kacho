@@ -87,9 +87,9 @@ func (c *decisionCache) Invalidate() { c.c.Invalidate() }
 func (c *decisionCache) Size() int { return c.c.Len() }
 
 // buildCacheKey — stable cache key over (subject, action, resource,
-// principal-binding context). Including `acr`/`mfa_at`/`client_ip`/
-// `device_id`/`passkey_aaguid`/`device_attestation`/`amr_claims` ensures
-// step-up AND condition-input changes invalidate naturally; excluding
+// principal-binding context). Including
+// `acr`/`mfa_at`/`client_ip`/`device_attestation`/`amr_claims` ensures step-up
+// AND condition-input changes invalidate naturally; excluding
 // `current_time`/`jti`/`dpop_jkt`/`auth_time` avoids per-request cache busts
 // for fields that are either enforced independently (dpop_jkt/auth_time via
 // the DPoP-replay cache and mfa-staleness gate) or intentionally volatile
@@ -105,8 +105,11 @@ func buildCacheKey(subject, action, resourceType, resourceID string, contextMap 
 	// doc-comment for the full input list and which ones are exempt.
 	parts := []string{subject, action, resourceType, resourceID}
 	if contextMap != nil {
+		// Перечень несёт ровно то, что извлекатель ПРОИЗВОДИТ: ключ, которого
+		// никто не кладёт в состав, ключ кеша не меняет никогда, а читается как
+		// живой вход условия — то есть обещает влияние, которого нет.
 		keys := []string{
-			"acr_value", "mfa_at", "client_ip", "device_id", "passkey_aaguid",
+			"acr_value", "mfa_at", "client_ip",
 			"device_attestation", "amr_claims",
 		}
 		sort.Strings(keys) // deterministic

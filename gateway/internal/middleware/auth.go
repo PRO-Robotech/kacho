@@ -534,14 +534,20 @@ func (a *AuthInterceptor) authorize(ctx context.Context, fullMethod string) (con
 		return nil, status.Error(codes.Unauthenticated, "token missing subject")
 	}
 
-	// Service Account / API-token principals. A token
-	// minted by the Hydra client_credentials flow (or a static API token)
-	// carries `kaname_principal_type=service_account` + `kaname_sa_id=<svaId>`.
-	// `sub` is the SA id itself, which is NOT a User `external_id`, so the
-	// User LookupByExternalID below would miss and (in dev) downgrade the SA
-	// to anonymous. Resolve the SA principal directly from the typed claims.
+	// Service Account / API-token principals. A token minted by the Hydra
+	// client_credentials flow (or a static API token) declares itself with
+	// `kaname_principal_type=service_account`, and the id it is resolved by is
+	// `kaname_principal_id` — the single shape every mint stamps. `sub` is not a
+	// User `external_id` here, so the User LookupByExternalID below would miss
+	// and (in dev) downgrade the SA to anonymous; the typed claim answers first.
+	//
+	// Здесь читалось ещё `kaname_sa_id` — с откатом на `sub`, если его нет. Имя
+	// не чеканит ни одна полоса выпуска, поэтому читатель брал откат ВСЕГДА. А
+	// откат называет машину не тем идентификатором, каким её знает модель прав:
+	// выпуск кладёт `sub` в `kaname_hydra_client_id`, то есть это субъект
+	// провайдера, тогда как принципал стоит в `kaname_principal_id` (`sva_…`).
 	if pt, _ := claims["kaname_principal_type"].(string); pt == "service_account" {
-		saID, _ := claims["kaname_sa_id"].(string)
+		saID, _ := claims["kaname_principal_id"].(string)
 		if saID == "" {
 			saID = subjectID
 		}
@@ -1274,15 +1280,15 @@ func (a *AuthInterceptor) tryDevSecretJWT(w http.ResponseWriter, r *http.Request
 		return true
 	}
 	// Service Account / API-token principals.
-	// A client_credentials / API token carries
-	// `kaname_principal_type=service_account` + `kaname_sa_id`; `sub`
-	// is the SA id, not a User external_id, so the User lookup below
-	// would miss and leave the request principal-less → the authz
-	// layer then denies it as unauthenticated. Resolve the SA
-	// principal directly from the typed claims (parity with the
-	// gRPC intercept path).
+	// A client_credentials / API token declares itself with
+	// `kaname_principal_type=service_account` and is resolved by
+	// `kaname_principal_id`; `sub` is not a User external_id, so the
+	// User lookup below would miss and leave the request
+	// principal-less → the authz layer then denies it as
+	// unauthenticated. Resolve the SA principal directly from the
+	// typed claims (parity with the gRPC intercept path).
 	if pt, _ := claims["kaname_principal_type"].(string); pt == "service_account" {
-		saID, _ := claims["kaname_sa_id"].(string)
+		saID, _ := claims["kaname_principal_id"].(string)
 		if saID == "" {
 			saID = subjectID
 		}

@@ -39,8 +39,6 @@ func TestContextExtractor_BuildHTTP_ExtractsFromVerifiedToken(t *testing.T) {
 		ExtClaims: map[string]any{
 			"kaname_mfa_at":            float64(mfaAt.Unix()),
 			"kaname_device_compliance": "tpm-attested",
-			"kaname_passkey_aaguid":    "aaguid-x",
-			"kaname_device_id":         "dev-1",
 		},
 	}
 	r := httptest.NewRequest(http.MethodGet, "/", nil)
@@ -53,8 +51,12 @@ func TestContextExtractor_BuildHTTP_ExtractsFromVerifiedToken(t *testing.T) {
 	assert.Equal(t, []string{"webauthn", "pwd"}, ctx["amr_claims"])
 	assert.Equal(t, mfaAt.Unix(), ctx["mfa_at"])
 	assert.Equal(t, "tpm-attested", ctx["device_attestation"])
-	assert.Equal(t, "aaguid-x", ctx["passkey_aaguid"])
-	assert.Equal(t, "dev-1", ctx["device_id"])
+	// `passkey_aaguid` и `device_id` здесь утверждались как отдельные ключи
+	// условия. Оба сняты вместе со своим предметом: ни одно из двух клейм не
+	// чеканит ни один путь выпуска, а закрытый словарь условий модели прав их
+	// не читает ни одним предикатом. Приходящее клеймо этих имён теперь едет
+	// насквозь под своим именем — как всякое незнакомое (см.
+	// TestContextExtractor_PreservesUnknownKachoClaims).
 	assert.Equal(t, "abc", ctx["dpop_jkt"])
 	assert.Equal(t, "jti-1", ctx["jti"])
 	assert.Equal(t, "user", ctx["subject_kind"])

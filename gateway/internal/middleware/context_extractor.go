@@ -27,8 +27,6 @@
 //	amr_claims          []string                        — from token.AMR
 //	mfa_at              timestamp                       — from ext_claims.kaname_mfa_at
 //	device_attestation  string                          — from ext_claims.kaname_device_compliance
-//	passkey_aaguid      string                          — from ext_claims.kaname_passkey_aaguid
-//	device_id           string                          — from ext_claims.kaname_device_id
 //	dpop_jkt            string                          — from token.Cnf.Jkt
 //	auth_time           timestamp                       — from token.AuthTime
 //	jti                 string                          — from token.JTI (for replay-trace correlation)
@@ -173,23 +171,18 @@ func (e *ContextExtractor) fillFromToken(out map[string]any, t *VerifiedToken) {
 		if v, ok := ext["kaname_device_compliance"].(string); ok && v != "" {
 			out["device_attestation"] = v
 		}
-		if v, ok := ext["kaname_passkey_aaguid"].(string); ok && v != "" {
-			out["passkey_aaguid"] = v
-		}
-		if v, ok := ext["kaname_device_id"].(string); ok && v != "" {
-			out["device_id"] = v
-		}
 		// Forward any other kaname_* claims under their original name so
 		// future Conditions can read them without an extractor change.
 		for k, v := range ext {
 			if !strings.HasPrefix(k, "kaname_") {
 				continue
 			}
-			// Already extracted above.
+			// Already extracted above, or already carried as the principal
+			// itself — a claim that names WHO is calling is not an input to a
+			// condition about the call.
 			switch k {
-			case "kaname_mfa_at", "kaname_device_compliance", "kaname_passkey_aaguid",
-				"kaname_device_id", "kaname_principal_type", "kaname_principal_id",
-				"kaname_user_id", "kaname_sa_id", "kaname_workload_id":
+			case "kaname_mfa_at", "kaname_device_compliance",
+				"kaname_principal_type", "kaname_principal_id", "kaname_user_id":
 				continue
 			}
 			out[k] = v

@@ -69,28 +69,41 @@ func TestSubjectExtractor_FallbackKachoUserID(t *testing.T) {
 	assert.Equal(t, "ext_claims.kaname_user_id", r.Source)
 }
 
-func TestSubjectExtractor_FallbackKachoSAID(t *testing.T) {
+// TestSubjectExtractor_UnmintedIdClaimResolvesNothing — здесь стояли две пробы
+// полос `kaname_sa_id` и `kaname_workload_id`. Полосы сняты вместе со своим
+// предметом: ни одно из двух имён не чеканит ни один путь выпуска, поэтому
+// сработать они не могли ни на одном токене этого продукта.
+//
+// Проба ЗАМЕНЕНА, а не удалена: она запирает снятие. Состав, называющий машину
+// только снятым именем, обязан не резолвить НИЧЕГО — иначе полоса вернулась бы
+// незамеченной, а вернувшаяся `workload` ещё и подменила бы опознаваемый в
+// журнале `external:<sub>` на субъект, которого модель прав назвать не может
+// (тип `workload` в ней не объявлен).
+//
+// Рядом — ПОЛОЖИТЕЛЬНЫЙ близнец: тот же вызывающий, названный единой формой,
+// резолвится. Без него отрицание зеленело бы и на разборе, переставшем работать
+// вовсе.
+func TestSubjectExtractor_UnmintedIdClaimResolvesNothing(t *testing.T) {
 	e := middleware.NewSubjectExtractor(false)
-	tok := &middleware.VerifiedToken{
-		ExtClaims: map[string]any{
-			"kaname_sa_id": "sva_old",
-		},
+	for _, claim := range []string{"kaname_sa_id", "kaname_workload_id"} {
+		tok := &middleware.VerifiedToken{
+			Subject:   "hydra-sub-xyz",
+			ExtClaims: map[string]any{claim: "sva_old"},
+		}
+		_, ok := e.Extract(tok)
+		assert.False(t, ok, "%s полосой резолва больше не является", claim)
 	}
-	r, ok := e.Extract(tok)
-	require.True(t, ok)
-	assert.Equal(t, "service_account:sva_old", r.FGA)
-}
 
-func TestSubjectExtractor_FallbackKachoWorkloadID(t *testing.T) {
-	e := middleware.NewSubjectExtractor(false)
 	tok := &middleware.VerifiedToken{
 		ExtClaims: map[string]any{
-			"kaname_workload_id": "wid_xyz",
+			"kaname_principal_type": "service_account",
+			"kaname_principal_id":   "sva_old",
 		},
 	}
 	r, ok := e.Extract(tok)
-	require.True(t, ok)
-	assert.Equal(t, "workload:wid_xyz", r.FGA)
+	require.True(t, ok, "единая форма обязана резолвиться — иначе отрицание выше "+
+		"зеленеет на разборе, который перестал работать вовсе")
+	assert.Equal(t, "service_account:sva_old", r.FGA)
 }
 
 func TestSubjectExtractor_NoFallback_NoExtClaims_Rejects(t *testing.T) {
