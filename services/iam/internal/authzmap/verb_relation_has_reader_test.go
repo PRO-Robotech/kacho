@@ -44,12 +44,13 @@ import (
 	"encoding/json"
 	"fmt"
 	"os"
-	"path/filepath"
 	"sort"
 	"strings"
 	"testing"
 
 	"github.com/stretchr/testify/require"
+
+	"github.com/PRO-Robotech/kaname/internal/testsupport/platformtree"
 )
 
 // catalogRelPath — встроенная копия каталога прав на стороне iam. Вторая копия
@@ -334,7 +335,7 @@ func declaredVerbPairs(t *testing.T) map[verbPair]bool {
 // хендлере перечисляется отдельно, а не «подразумевается».
 func catalogEnforcedPairs(t *testing.T) map[verbPair]bool {
 	t.Helper()
-	path := filepath.Join(monorepoRoot(t), catalogRelPath)
+	path := platformtree.RequirePath(t, catalogRelPath)
 	data, err := os.ReadFile(path)
 	require.NoErrorf(t, err, "каталог прав %s не прочитан — перепись читателей не имеет источника", catalogRelPath)
 

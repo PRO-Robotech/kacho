@@ -66,13 +66,14 @@ package authzmap_test
 import (
 	"encoding/json"
 	"os"
-	"path/filepath"
 	"sort"
 	"testing"
 
 	"github.com/stretchr/testify/require"
 
 	"github.com/PRO-Robotech/kaname/internal/authzplan"
+
+	"github.com/PRO-Robotech/kaname/internal/testsupport/platformtree"
 )
 
 // actingAsRPCs — публичные RPC, чей предмет есть ДЕЙСТВИЕ ОТ ИМЕНИ человека:
@@ -244,7 +245,7 @@ type catalogGate struct {
 
 func catalogByFQN(t *testing.T) map[string]catalogGate {
 	t.Helper()
-	data, err := os.ReadFile(filepath.Join(monorepoRoot(t), catalogRelPath))
+	data, err := os.ReadFile(platformtree.RequirePath(t, catalogRelPath))
 	require.NoErrorf(t, err, "каталог прав %s не прочитан", catalogRelPath)
 
 	var entries []struct {
