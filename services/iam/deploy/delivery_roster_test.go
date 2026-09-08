@@ -81,6 +81,7 @@ var deliveryRoster = []string{
 	"prod_profile_render_test.go",
 	"prod_profile_test.go",
 	"provider_hops_test.go",
+	"render-guard.sh",
 	"release_namespace_test.go",
 	"schema_mechanism_precedes_the_service_injection_test.go",
 	"schema_mechanism_precedes_the_service_test.go",
