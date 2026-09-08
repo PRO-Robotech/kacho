@@ -54,6 +54,8 @@ import (
 
 	"github.com/jackc/pgx/v5/pgxpool"
 	"github.com/stretchr/testify/require"
+
+	"github.com/PRO-Robotech/kaname/internal/testsupport/platformtree"
 )
 
 // createGate — (тип объекта области, требуемое отношение) одной записи каталога,
@@ -67,8 +69,7 @@ type createGate struct {
 // различные пары для записей с глаголом `create`.
 func createGatesFromCatalog(t *testing.T) []createGate {
 	t.Helper()
-	root := monorepoRootForCreateAuthority(t)
-	raw, err := os.ReadFile(filepath.Join(root,
+	raw, err := os.ReadFile(platformtree.RequirePath(t,
 		"services/iam/internal/apps/kaname/seed/embedded/permission_catalog.json"))
 	require.NoError(t, err, "каталог прав не прочитан — у пробы нет population")
 
