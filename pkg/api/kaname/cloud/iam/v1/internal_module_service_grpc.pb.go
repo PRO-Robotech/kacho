@@ -10,7 +10,7 @@
 // InternalModuleService — Internal-only.
 //
 // WHAT IT MANAGES. The rows of the permission-module catalog
-// (`kacho_iam.catalog_module` / `catalog_resource` / `catalog_verb`) of ONE
+// (`kaname.catalog_module` / `catalog_resource` / `catalog_verb`) of ONE
 // module: what a delivered manifest would write and withdraw (`Plan`), the act
 // of bringing those rows to the declared state (`Apply`), and two reads over the
 // live set (`Get`, `List`).

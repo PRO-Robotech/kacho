@@ -453,7 +453,7 @@ type RegisterResourceRequest struct {
 	// Trace-id для correlation в логах (модуль ↔ IAM ↔ FGA). Optional.
 	TraceId string `protobuf:"bytes,4,opt,name=trace_id,json=traceId,proto3" json:"trace_id,omitempty"`
 	// Tenant labels зеркала ресурса. Output-only mirror в
-	// `kacho_iam.resource_mirror`; source of truth = owner-сервис. Питает
+	// `kaname.resource_mirror`; source of truth = owner-сервис. Питает
 	// `bySelector` (matchLabels) и containment. Пусто для legacy-caller'ов
 	// (graceful). IAM делает минимальную sanity-валидацию, не дублируя owner-pattern.
 	Labels map[string]string `protobuf:"bytes,5,rep,name=labels,proto3" json:"labels,omitempty" protobuf_key:"bytes,1,opt,name=key" protobuf_val:"bytes,2,opt,name=value"`

@@ -16,7 +16,7 @@ syntax = "proto3";
 // tuple as a journal intent and flips the Operation to `done=true` within ≤2s.
 //
 // Read RPCs (`Get`, `ListAdmins`) are synchronous; they hit the local
-// `kacho_iam` schema only.
+// `kaname` schema only.
 //
 // Authorization gate:
 // every RPC requires the FGA relation `system_admin` on
@@ -64,7 +64,7 @@ service InternalClusterService {
   // re-granting an already-active subject returns success with the existing
   // grant id.
   //
-  // The handler validates user existence (`kacho_iam.users` SELECT in the
+  // The handler validates user existence (`kaname.users` SELECT in the
   // same TX) and then atomically inserts a `cluster_admin_grants` row
   // (`INSERT … ON CONFLICT (subject_type, subject_id) WHERE granted_until IS
   // NULL DO NOTHING`), an `fga_outbox` write-tuple row, and an
@@ -118,8 +118,8 @@ service InternalClusterService {
   }
 
   // Lists currently-active cluster admins. Sync read; joins
-  // `kacho_iam.cluster_admin_grants` (`WHERE granted_until IS NULL`) with
-  // `kacho_iam.users` to enrich each entry with subject email / display
+  // `kaname.cluster_admin_grants` (`WHERE granted_until IS NULL`) with
+  // `kaname.users` to enrich each entry with subject email / display
   // name and the granter's email. No pagination — admins are expected to be
   // ≤50 in practice.
   //
@@ -149,7 +149,7 @@ message GrantClusterAdminRequest {
   ClusterGrantSubjectType subject_type = 1;
 
   // User id of the new admin. Must match `^usr[0-9a-hjkmnp-tv-z]{17}$` and
-  // exist in `kacho_iam.users` (missing user returns InvalidArgument).
+  // exist in `kaname.users` (missing user returns InvalidArgument).
   string subject_id = 2;
 }
 
@@ -200,7 +200,7 @@ message ListClusterAdminsResponse {
 }
 
 // ClusterAdminEntry — denormalized projection of one active
-// `cluster_admin_grants` row joined with `kacho_iam.users` for the subject
+// `cluster_admin_grants` row joined with `kaname.users` for the subject
 // and the granter. Used exclusively by `ListAdmins` — the underlying source
 // of truth is still `ClusterAdminGrant` (see `cluster_admin_grant.proto`).
 //
@@ -217,12 +217,12 @@ message ClusterAdminEntry {
   // User id of the admin (`usr<17>`).
   string subject_id = 3;
 
-  // Subject email enriched from `kacho_iam.users`. Empty string when the
+  // Subject email enriched from `kaname.users`. Empty string when the
   // user row is absent (dangling reference; should not happen, surfaced as
   // empty for graceful UI degradation).
   string subject_email = 4;
 
-  // Subject display name enriched from `kacho_iam.users`. Empty string when
+  // Subject display name enriched from `kaname.users`. Empty string when
   // the user row is absent.
   string subject_display_name = 5;
 
@@ -230,7 +230,7 @@ message ClusterAdminEntry {
   // `"bootstrap"` for the initial bootstrap-seeded admin).
   string granted_by_user_id = 6;
 
-  // Granter email enriched from `kacho_iam.users`. Empty string when
+  // Granter email enriched from `kaname.users`. Empty string when
   // `granted_by_user_id == "bootstrap"` or when the granter user row is
   // absent.
   string granted_by_email = 7;

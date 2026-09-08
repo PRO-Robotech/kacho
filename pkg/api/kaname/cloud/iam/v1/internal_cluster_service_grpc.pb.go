@@ -20,7 +20,7 @@
 // tuple as a journal intent and flips the Operation to `done=true` within ≤2s.
 //
 // Read RPCs (`Get`, `ListAdmins`) are synchronous; they hit the local
-// `kacho_iam` schema only.
+// `kaname` schema only.
 //
 // Authorization gate:
 // every RPC requires the FGA relation `system_admin` on
@@ -71,7 +71,7 @@ type InternalClusterServiceClient interface {
 	// re-granting an already-active subject returns success with the existing
 	// grant id.
 	//
-	// The handler validates user existence (`kacho_iam.users` SELECT in the
+	// The handler validates user existence (`kaname.users` SELECT in the
 	// same TX) and then atomically inserts a `cluster_admin_grants` row
 	// (`INSERT … ON CONFLICT (subject_type, subject_id) WHERE granted_until IS
 	// NULL DO NOTHING`), an `fga_outbox` write-tuple row, and an
@@ -92,8 +92,8 @@ type InternalClusterServiceClient interface {
 	// REST exposed ONLY on the cluster-internal listener.
 	RevokeAdmin(ctx context.Context, in *RevokeClusterAdminRequest, opts ...grpc.CallOption) (*operation.Operation, error)
 	// Lists currently-active cluster admins. Sync read; joins
-	// `kacho_iam.cluster_admin_grants` (`WHERE granted_until IS NULL`) with
-	// `kacho_iam.users` to enrich each entry with subject email / display
+	// `kaname.cluster_admin_grants` (`WHERE granted_until IS NULL`) with
+	// `kaname.users` to enrich each entry with subject email / display
 	// name and the granter's email. No pagination — admins are expected to be
 	// ≤50 in practice.
 	//
@@ -167,7 +167,7 @@ type InternalClusterServiceServer interface {
 	// re-granting an already-active subject returns success with the existing
 	// grant id.
 	//
-	// The handler validates user existence (`kacho_iam.users` SELECT in the
+	// The handler validates user existence (`kaname.users` SELECT in the
 	// same TX) and then atomically inserts a `cluster_admin_grants` row
 	// (`INSERT … ON CONFLICT (subject_type, subject_id) WHERE granted_until IS
 	// NULL DO NOTHING`), an `fga_outbox` write-tuple row, and an
@@ -188,8 +188,8 @@ type InternalClusterServiceServer interface {
 	// REST exposed ONLY on the cluster-internal listener.
 	RevokeAdmin(context.Context, *RevokeClusterAdminRequest) (*operation.Operation, error)
 	// Lists currently-active cluster admins. Sync read; joins
-	// `kacho_iam.cluster_admin_grants` (`WHERE granted_until IS NULL`) with
-	// `kacho_iam.users` to enrich each entry with subject email / display
+	// `kaname.cluster_admin_grants` (`WHERE granted_until IS NULL`) with
+	// `kaname.users` to enrich each entry with subject email / display
 	// name and the granter's email. No pagination — admins are expected to be
 	// ≤50 in practice.
 	//

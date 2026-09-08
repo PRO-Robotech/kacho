@@ -20,7 +20,7 @@
 // tuple as a journal intent and flips the Operation to `done=true` within ≤2s.
 //
 // Read RPCs (`Get`, `ListAdmins`) are synchronous; they hit the local
-// `kacho_iam` schema only.
+// `kaname` schema only.
 //
 // Authorization gate:
 // every RPC requires the FGA relation `system_admin` on
@@ -98,7 +98,7 @@ type GrantClusterAdminRequest struct {
 	// return InvalidArgument `"Illegal argument subject_type: only 'user' supported in this version"`.
 	SubjectType ClusterGrantSubjectType `protobuf:"varint,1,opt,name=subject_type,json=subjectType,proto3,enum=kaname.cloud.iam.v1.ClusterGrantSubjectType" json:"subject_type,omitempty"`
 	// User id of the new admin. Must match `^usr[0-9a-hjkmnp-tv-z]{17}$` and
-	// exist in `kacho_iam.users` (missing user returns InvalidArgument).
+	// exist in `kaname.users` (missing user returns InvalidArgument).
 	SubjectId     string `protobuf:"bytes,2,opt,name=subject_id,json=subjectId,proto3" json:"subject_id,omitempty"`
 	unknownFields protoimpl.UnknownFields
 	sizeCache     protoimpl.SizeCache
@@ -407,7 +407,7 @@ func (x *ListClusterAdminsResponse) GetAdmins() []*ClusterAdminEntry {
 }
 
 // ClusterAdminEntry — denormalized projection of one active
-// `cluster_admin_grants` row joined with `kacho_iam.users` for the subject
+// `cluster_admin_grants` row joined with `kaname.users` for the subject
 // and the granter. Used exclusively by `ListAdmins` — the underlying source
 // of truth is still `ClusterAdminGrant` (see `cluster_admin_grant.proto`).
 //
@@ -422,17 +422,17 @@ type ClusterAdminEntry struct {
 	SubjectType ClusterGrantSubjectType `protobuf:"varint,2,opt,name=subject_type,json=subjectType,proto3,enum=kaname.cloud.iam.v1.ClusterGrantSubjectType" json:"subject_type,omitempty"`
 	// User id of the admin (`usr<17>`).
 	SubjectId string `protobuf:"bytes,3,opt,name=subject_id,json=subjectId,proto3" json:"subject_id,omitempty"`
-	// Subject email enriched from `kacho_iam.users`. Empty string when the
+	// Subject email enriched from `kaname.users`. Empty string when the
 	// user row is absent (dangling reference; should not happen, surfaced as
 	// empty for graceful UI degradation).
 	SubjectEmail string `protobuf:"bytes,4,opt,name=subject_email,json=subjectEmail,proto3" json:"subject_email,omitempty"`
-	// Subject display name enriched from `kacho_iam.users`. Empty string when
+	// Subject display name enriched from `kaname.users`. Empty string when
 	// the user row is absent.
 	SubjectDisplayName string `protobuf:"bytes,5,opt,name=subject_display_name,json=subjectDisplayName,proto3" json:"subject_display_name,omitempty"`
 	// User id of the granter (`usr<17>` for a regular admin, or the literal
 	// `"bootstrap"` for the initial bootstrap-seeded admin).
 	GrantedByUserId string `protobuf:"bytes,6,opt,name=granted_by_user_id,json=grantedByUserId,proto3" json:"granted_by_user_id,omitempty"`
-	// Granter email enriched from `kacho_iam.users`. Empty string when
+	// Granter email enriched from `kaname.users`. Empty string when
 	// `granted_by_user_id == "bootstrap"` or when the granter user row is
 	// absent.
 	GrantedByEmail string `protobuf:"bytes,7,opt,name=granted_by_email,json=grantedByEmail,proto3" json:"granted_by_email,omitempty"`

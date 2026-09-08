@@ -10,7 +10,7 @@
 // InternalModuleService — Internal-only.
 //
 // WHAT IT MANAGES. The rows of the permission-module catalog
-// (`kacho_iam.catalog_module` / `catalog_resource` / `catalog_verb`) of ONE
+// (`kaname.catalog_module` / `catalog_resource` / `catalog_verb`) of ONE
 // module: what a delivered manifest would write and withdraw (`Plan`), the act
 // of bringing those rows to the declared state (`Apply`), and two reads over the
 // live set (`Get`, `List`).
@@ -874,7 +874,7 @@ func (x *GetModuleRequest) GetModule() string {
 	return ""
 }
 
-// ModuleResourceRow — one LIVE row of `kacho_iam.catalog_resource`, as the
+// ModuleResourceRow — one LIVE row of `kaname.catalog_resource`, as the
 // catalog serves it.
 type ModuleResourceRow struct {
 	state protoimpl.MessageState `protogen:"open.v1"`
@@ -937,7 +937,7 @@ func (x *ModuleResourceRow) GetObjectType() string {
 	return ""
 }
 
-// ModuleVerbRow — one LIVE row of `kacho_iam.catalog_verb`.
+// ModuleVerbRow — one LIVE row of `kaname.catalog_verb`.
 type ModuleVerbRow struct {
 	state protoimpl.MessageState `protogen:"open.v1"`
 	// Resource this verb belongs to, within the module.

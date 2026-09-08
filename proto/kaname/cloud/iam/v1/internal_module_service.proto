@@ -6,7 +6,7 @@ syntax = "proto3";
 // InternalModuleService — Internal-only.
 //
 // WHAT IT MANAGES. The rows of the permission-module catalog
-// (`kacho_iam.catalog_module` / `catalog_resource` / `catalog_verb`) of ONE
+// (`kaname.catalog_module` / `catalog_resource` / `catalog_verb`) of ONE
 // module: what a delivered manifest would write and withdraw (`Plan`), the act
 // of bringing those rows to the declared state (`Apply`), and two reads over the
 // live set (`Get`, `List`).
@@ -479,7 +479,7 @@ message GetModuleRequest {
   string module = 1;
 }
 
-// ModuleResourceRow — one LIVE row of `kacho_iam.catalog_resource`, as the
+// ModuleResourceRow — one LIVE row of `kaname.catalog_resource`, as the
 // catalog serves it.
 message ModuleResourceRow {
   // Resource name within the module (`gateway`, `network`), without the module
@@ -496,7 +496,7 @@ message ModuleResourceRow {
   string object_type = 2;
 }
 
-// ModuleVerbRow — one LIVE row of `kacho_iam.catalog_verb`.
+// ModuleVerbRow — one LIVE row of `kaname.catalog_verb`.
 message ModuleVerbRow {
   // Resource this verb belongs to, within the module.
   string resource = 1;
