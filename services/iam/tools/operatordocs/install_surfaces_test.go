@@ -116,7 +116,11 @@ func judgeInstallSurfaces(t *testing.T, roster surfaceroster.Roster, rows map[st
 			// Умолчания у адреса нет: поверхность поднимает ПОСАДКА. Документ
 			// обязан назвать её всё равно — оператор решает, открывать ли дверь,
 			// ДО того как поднимет её профилем.
-			port = postureDeclaredPort(s.SettingKey)
+			//
+			// Порт ЧИТАЕТСЯ у поставляемого профиля, а не выписывается здесь:
+			// выписанный был бы вторым местом об одном предмете и разошёлся бы
+			// с профилем молча — ровно тот класс, ради которого гейт заведён.
+			port = s.PosturePort
 		}
 		require.NotEmptyf(t, port,
 			"у поверхности %q (%s) не удалось установить порт: гейт судил бы о том, чего не прочитал",
@@ -171,21 +175,6 @@ func judgeInstallSurfaces(t *testing.T, roster surfaceroster.Roster, rows map[st
 		"  поверхностей ОБЪЯВЛЕНО %d · НАЗВАНО ДОКУМЕНТОМ %d",
 		strings.Join(lines, "\n"), len(rows), roster.FilesRead, declared, named)
 	return declared, named, findings
-}
-
-// postureDeclaredPort — порт поверхности, чей адрес объявляет посадка.
-//
-// Величины взяты из боевого профиля, который поставляется рядом с чартом: он и
-// есть та посадка, о которой документ говорит. Согласие с ним держит гейт
-// маршрутов (`deploy`), читающий рендер этого профиля.
-func postureDeclaredPort(settingKey string) string {
-	switch settingKey {
-	case "api-server.rest-endpoint":
-		return "9098"
-	case "api-server.internal-rest-endpoint":
-		return "9099"
-	}
-	return ""
 }
 
 // listenerTablePresent — ПРЕДПОСЫЛКА гейта: таблица вообще прочитана.

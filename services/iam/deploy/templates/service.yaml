@@ -28,7 +28,6 @@ gRPC, выставляет тем же движением внутренний g
 {{- $svc := .Values.service | default dict -}}
 {{- $public := $svc.public | default dict -}}
 {{- $internal := $svc.internal | default dict -}}
-{{- $api := .Values.apiServer | default dict -}}
 apiVersion: v1
 kind: Service
 metadata:
@@ -59,9 +58,16 @@ spec:
     # Порт ВЫВОДИТСЯ из адреса, который профиль отдаёт процессу: дверь одна, и
     # ручка у неё одна. Не объявлен адрес — фронт не поднят, и вести к нему
     # нечем.
-    {{- if $api.restEndpoint }}
+    #
+    # ПУТЬ ЗНАЧЕНИЙ ПИШЕТСЯ ЦЕЛИКОМ, а не через локальный псевдоним: условие
+    # подъёма фронта читает не только helm. Его читает гейт выразимости
+    # (`deploy/own_rest_front_is_profile_expressible_test.go`), сверяя охрану с
+    # ключом, ОБЪЯВЛЯЮЩИМ фронт; за псевдонимом он ключа не видит и справедливо
+    # считает материализацию безусловной. Псевдоним здесь стоял и не давал
+    # ничего, кроме этой слепоты.
+    {{- if .Values.apiServer.restEndpoint }}
     - name: http-rest
-      port: {{ include "kaname-svc.surfacePort" $api.restEndpoint }}
+      port: {{ include "kaname-svc.surfacePort" .Values.apiServer.restEndpoint }}
       targetPort: http-rest
     {{- end }}
 ---
@@ -97,8 +103,8 @@ spec:
     # Собственный ВНУТРЕННИЙ REST-фронт. Выставлен ТОЛЬКО здесь: на публичном
     # объекте его нет, и это свойство сокета, а не решение, принимаемое на
     # каждом запросе.
-    {{- if $api.internalRestEndpoint }}
+    {{- if .Values.apiServer.internalRestEndpoint }}
     - name: http-rest-int
-      port: {{ include "kaname-svc.surfacePort" $api.internalRestEndpoint }}
+      port: {{ include "kaname-svc.surfacePort" .Values.apiServer.internalRestEndpoint }}
       targetPort: http-rest-int
     {{- end }}

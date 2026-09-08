@@ -39,6 +39,8 @@ import (
 	"sort"
 	"strconv"
 	"strings"
+
+	"gopkg.in/yaml.v3"
 )
 
 // Surface — одна поверхность, поднимаемая процессом.
@@ -65,6 +67,12 @@ type Surface struct {
 	DefaultPort string
 	// GRPC — поверхность является gRPC-слушателем.
 	GRPC bool
+	// PostureAddr — адрес, который объявляет ПОСТАВЛЯЕМЫЙ боевой профиль.
+	// Заполняется у поверхностей без умолчания: их поднимает посадка, и вне
+	// профиля порт у них не определён ничем.
+	PostureAddr string
+	// PosturePort — порт из [Surface.PostureAddr].
+	PosturePort string
 }
 
 // Roster — прочитанный перечень плюс объём осмотренного.
@@ -130,12 +138,24 @@ func Read(iamRoot string) (Roster, error) {
 	}
 	r.FilesRead++
 
+	posture, err := readPostureAddrs(filepath.Join(iamRoot, "deploy/values.prod.yaml"))
+	if err != nil {
+		return r, err
+	}
+	r.FilesRead++
+
 	all := append(append([]Surface{}, grpcListeners...), declared...)
 	for i := range all {
 		addr := defaults[all[i].SettingKey]
 		all[i].DefaultAddr = addr
 		if m := portRe.FindStringSubmatch(addr); m != nil {
 			all[i].DefaultPort = m[1]
+		}
+		if p, ok := posture[all[i].SettingKey]; ok {
+			all[i].PostureAddr = p
+			if m := portRe.FindStringSubmatch(p); m != nil {
+				all[i].PosturePort = m[1]
+			}
 		}
 	}
 	sort.Slice(all, func(i, j int) bool { return all[i].SettingKey < all[j].SettingKey })
@@ -313,4 +333,69 @@ func IAMRoot(fromDir string) (string, error) {
 			return "", fmt.Errorf("корень дерева службы не найден от %s", fromDir)
 		}
 	}
+}
+
+// PostureAddr — адреса, которые объявляет ПОСТАВЛЯЕМЫЙ боевой профиль, по ключу
+// конфигурации.
+//
+// Нужны поверхностям, у которых умолчания адреса нет намеренно: их поднимает
+// посадка, и вне профиля их порт не определён ничем.
+//
+// ЧИТАЮТСЯ, А НЕ ВЫПИСЫВАЮТСЯ. Выписанный порт — второе место об одном предмете:
+// профиль сменит адрес, а перечень продолжит называть прежний, и разойдутся они
+// молча — ровно тот класс, против которого этот пакет написан.
+func readPostureAddrs(path string) (map[string]string, error) {
+	raw, err := os.ReadFile(path) // #nosec G304 -- путь из дерева службы
+	if err != nil {
+		return nil, fmt.Errorf("боевой профиль %s: %w", path, err)
+	}
+	var tree map[string]any
+	if err := yaml.Unmarshal(raw, &tree); err != nil {
+		return nil, fmt.Errorf("разбор боевого профиля %s: %w", path, err)
+	}
+	out := map[string]string{}
+	var walk func(prefix []string, node any)
+	walk = func(prefix []string, node any) {
+		switch v := node.(type) {
+		case map[string]any:
+			for k, sub := range v {
+				walk(append(append([]string{}, prefix...), k), sub)
+			}
+		case string:
+			if portRe.MatchString(v) {
+				out[settingKeyFromHelmPath(prefix)] = v
+			}
+		}
+	}
+	walk(nil, tree)
+	return out, nil
+}
+
+// settingKeyFromHelmPath — правило связывания ключа профиля с ключом
+// конфигурации: `apiServer.restEndpoint` → `api-server.rest-endpoint`.
+//
+// То же правило, которым их связывает шаблон карты настроек; здесь оно
+// применяется к пути, а не переписывается таблицей соответствий.
+func settingKeyFromHelmPath(path []string) string {
+	segs := make([]string, 0, len(path))
+	for _, p := range path {
+		segs = append(segs, deCamel(p))
+	}
+	return strings.Join(segs, ".")
+}
+
+// deCamel — `internalRestEndpoint` → `internal-rest-endpoint`.
+func deCamel(s string) string {
+	var b strings.Builder
+	for i, r := range s {
+		if r >= 'A' && r <= 'Z' {
+			if i > 0 {
+				b.WriteByte('-')
+			}
+			b.WriteRune(r - 'A' + 'a')
+			continue
+		}
+		b.WriteRune(r)
+	}
+	return b.String()
 }
