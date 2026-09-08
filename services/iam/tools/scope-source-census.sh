@@ -1,8 +1,8 @@
 #!/usr/bin/env bash
 # Copyright (c) PRO-Robotech
-# SPDX-License-Identifier: BUSL-1.1
+# SPDX-License-Identifier: AGPL-3.0-or-later
 #
-# iam-scope-source-census.sh — перепись ИСТОЧНИКОВ звена цепи областей: что о
+# scope-source-census.sh — перепись ИСТОЧНИКОВ звена цепи областей: что о
 # предке объекта знает ЦЕПЬ (представление `kaname.resource_scope_edge`)
 # против того, что о нём знают ДВА других источника — колонка собственной строки
 # объекта и ПРОЕКЦИЯ ЖУРНАЛА (`kaname.relation_fact`), из которой реляционная
@@ -69,9 +69,9 @@
 #       «ноль прочитанного», поэтому объём осмотренного печатается ВСЕГДА.
 #
 # Использование:
-#   ./iam-scope-source-census.sh                       # перепись на стенде
-#   ALLOW_TYPES=iam_group:extra ./iam-scope-source-census.sh
-#   PSQL_DSN=postgres://... ./iam-scope-source-census.sh   # против любой базы
+#   ./scope-source-census.sh                       # перепись на стенде
+#   ALLOW_TYPES=iam_group:extra ./scope-source-census.sh
+#   PSQL_DSN=postgres://... ./scope-source-census.sh   # против любой базы
 #
 # PSQL_DSN — адрес базы для ПРЯМОГО подключения вместо `kubectl exec` в под
 # стенда. Это не лазейка для проб, а переносимость прибора: перепись обязана
@@ -94,18 +94,21 @@ PG_POD="${PG_POD:-kacho-umbrella-pg-iam-0}"
 DB="${DB:-kaname}"
 DBUSER="${DBUSER:-postgres}"
 ALLOW_TYPES="${ALLOW_TYPES:-}"
-REPO_ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)"
+MODULE_ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 
-# Генератор живёт в СВОЁМ модуле (`services/iam`, github.com/PRO-Robotech/kaname),
-# а этот прибор — в дереве монорепо. `go run` берёт пакет у ГЛАВНОГО модуля рабочего
-# каталога, поэтому вызов от корня отвечает «main module does not contain package»
-# ДО любого условия внутри — то есть перепись объявляла бы «условие не создано» на
-# исправном дереве. Каталог модуля и путь пакета ВНУТРИ него поэтому разведены:
-# GEN_DIR задаёт главный модуль, GEN_PKG адресуется относительно него, GEN остаётся
-# путём от корня дерева и служит только для сообщений.
-GEN_DIR="services/iam"
+# Прибор лежит В ТОМ ЖЕ модуле, что и генератор (github.com/PRO-Robotech/kaname),
+# и адресуется от СВОЕГО каталога, а не от корня дерева платформы (#2378). Прежде
+# он жил под `deploy/` платформы, и координата генератора складывалась из корня
+# монорепо: после разреза службы такого корня рядом не будет, а исполнителей вне
+# службы у прибора ноль — то есть он остался бы у платформы без единого читателя,
+# а его проба уехала бы со службой и объявила третий исход.
+#
+# `go run` берёт пакет у ГЛАВНОГО модуля рабочего каталога, поэтому вызов не из
+# корня модуля отвечает «main module does not contain package» ДО любого условия
+# внутри — то есть перепись объявляла бы «условие не создано» на исправном дереве.
+# Отсюда переход в MODULE_ROOT перед вызовом.
 GEN_PKG="./internal/scopesourcecensus/cmd/scope-source-census-sql"
-GEN="./$GEN_DIR/${GEN_PKG#./}"
+GEN="$GEN_PKG"
 
 die_precond() { echo "УСЛОВИЕ НЕ СОЗДАНО: $*" >&2; exit 3; }
 
@@ -171,9 +174,9 @@ command -v go >/dev/null 2>&1 \
   || die_precond "нет go: перечень типов выводится из дерева генератором $GEN, выписывать его здесь нельзя"
 SQL_FILE="$(mktemp)"; TYPES_FILE="$(mktemp)"
 trap 'rm -f "$SQL_FILE" "$TYPES_FILE"' EXIT
-( cd "$REPO_ROOT/$GEN_DIR" && go run "$GEN_PKG" sql ) > "$SQL_FILE" \
+( cd "$MODULE_ROOT" && go run "$GEN_PKG" sql ) > "$SQL_FILE" \
   || die_precond "генератор запроса переписи ($GEN sql) отказал — перечень типов не получен"
-( cd "$REPO_ROOT/$GEN_DIR" && go run "$GEN_PKG" types ) > "$TYPES_FILE" \
+( cd "$MODULE_ROOT" && go run "$GEN_PKG" types ) > "$TYPES_FILE" \
   || die_precond "генератор перечня типов ($GEN types) отказал"
 declared=$(grep -c . "$TYPES_FILE" || true)
 [ "${declared:-0}" -gt 0 ] \
