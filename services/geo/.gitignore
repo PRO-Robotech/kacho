@@ -18,13 +18,6 @@ coverage-full.out
 go.work
 go.work.sum
 
-# Vendored corelib-owned инфра-протосы — единственный источник в kacho-corelib.
-# Локально подтягиваются `make proto-vendor` для buf-резолва импортов; в git их нет.
-/proto/google/
-/proto/kacho/cloud/api/
-/proto/kacho/cloud/operation/
-/proto/kacho/cloud/validation.proto
-/proto/kacho/iam/
 .claude/
 
 # AI-оснастка (источник истины — kacho-workspace, локально синкается) — не коммитим

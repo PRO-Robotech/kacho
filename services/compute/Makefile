@@ -9,7 +9,7 @@ IMAGE          := kacho-compute:dev
 # Объявление одно на дерево — см. разбор в самом файле.
 include ../../provenance.mk
 
-.PHONY: build test test-short vet lint docker audit-list-filter proto-install-plugins proto-lint proto-vendor proto-gen
+.PHONY: build test test-short vet lint docker audit-list-filter
 
 build:
 	CGO_ENABLED=0 go build -o bin/$(BINARY) $(CMD)
@@ -70,40 +70,6 @@ lint:
 
 docker:
 	cd .. && docker build $(IMAGE_BUILD_ARGS) -f kacho-compute/Dockerfile -t $(IMAGE) .
-
-# proto-install-plugins — ставит protoc-плагины в $GOBIN (lookup через $PATH для buf).
-# Доменный proto compute генерируется этими тремя плагинами; permission-catalog для compute —
-# hand-written (internal/check/permission_map.go), buf-catalog-плагин не нужен.
-proto-install-plugins:
-	go install google.golang.org/protobuf/cmd/protoc-gen-go
-	go install google.golang.org/grpc/cmd/protoc-gen-go-grpc
-	go install github.com/grpc-ecosystem/grpc-gateway/v2/protoc-gen-grpc-gateway
-
-proto-lint:
-	cd proto && buf lint
-
-# proto-vendor — подтягивает corelib-owned инфра-протосы
-# (operation/validation/authz_options/cloud-api + vendored google) из ../kacho-corelib/proto
-# в proto/ для buf-резолва импортов. Единственный источник истины этих файлов —
-# kacho-corelib; здесь они gitignored и в git не коммитятся (Go-stubs тоже single-source
-# corelib). Запускается перед proto-gen.
-proto-vendor:
-	@set -e; src=../kacho-corelib/proto; \
-	for f in google/api/annotations.proto google/api/field_behavior.proto \
-	         google/api/http.proto google/rpc/status.proto \
-	         kacho/cloud/api/operation.proto kacho/cloud/operation/operation.proto \
-	         kacho/cloud/validation.proto corelib/authz/v1/authz_options.proto; do \
-	  mkdir -p "proto/$$(dirname $$f)"; \
-	  cp "$$src/$$f" "proto/$$f"; \
-	done
-
-# proto-gen — регенерация Go-stubs доменного proto compute (kacho/cloud/compute/v1,
-# kacho/cloud/access, kacho/cloud/maintenance/v2) из proto/. Универсальная ИНФРА
-# (operation/validation/authz_options/cloud-api/google) подтягивается proto-vendor только
-# для buf-резолва импортов и НЕ генерируется (Go-stubs живут в kacho-corelib / canonical
-# genproto) — см. proto/buf.gen.yaml inputs.paths.
-proto-gen: proto-vendor
-	cd proto && buf generate
 
 .PHONY: migrate-up migrate-down migrate-status
 migrate-up:
