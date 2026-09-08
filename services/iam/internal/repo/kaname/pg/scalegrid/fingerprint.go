@@ -18,6 +18,8 @@ import (
 	"sort"
 	"strconv"
 	"strings"
+
+	"github.com/PRO-Robotech/kaname/internal/treeposture"
 )
 
 // ОТПЕЧАТОК ПРЕДМЕТА ЗАМЕРА — «ИЗМЕНИЛОСЬ ЛИ ТО, ЧТО ОТЧЁТ МЕРИЛ»
@@ -142,7 +144,11 @@ func ComputeFingerprint(root string) (Fingerprint, error) {
 	// бы от новой таблицы в запросе и продолжал бы сторожить прежние.
 	tables := map[string]bool{}
 	for _, rel := range code {
-		body, rerr := os.ReadFile(filepath.Join(root, rel)) // #nosec G304 -- rel получен обходом СОБСТВЕННОГО дерева репозитория (git ls-files под корнем root), не из запроса и не от пользователя; прибор читает свои же файлы, чтобы взять их отпечаток
+		abs, aerr := under(root, rel)
+		if aerr != nil {
+			return fp, aerr
+		}
+		body, rerr := os.ReadFile(abs) // #nosec G304 -- rel получен обходом СОБСТВЕННОГО дерева репозитория (git ls-files под корнем root), не из запроса и не от пользователя; прибор читает свои же файлы, чтобы взять их отпечаток
 		if rerr != nil {
 			return fp, fmt.Errorf("scalegrid: чтение %s: %w", rel, rerr)
 		}
@@ -318,6 +324,24 @@ type repoCoordinates struct {
 	topLevel map[string]bool
 	// modules — путь Go-модуля по каталогу файла; считается один раз на каталог.
 	modules map[string]string
+}
+
+// under — координата дерева, ПРИВЕДЁННАЯ к посадке названного корня.
+//
+// Прибор читает свои каталоги по координатам вида `services/iam/...`. Склейка их
+// с корнем верна ровно для монорепо: в самостоятельном клоне корень репозитория
+// и есть корень модуля, и склеенный путь указывает в несуществующий подкаталог —
+// отпечаток не вычисляется, а отказ звучит «нет файла» там, где файл есть.
+//
+// Отказ резолва здесь НЕ проглатывается: путь, лежащий вне поставки модуля,
+// означает «условие не создано», и прибор обязан сказать это, а не отдать
+// отпечаток, взятый не с того состава.
+func under(root, rel string) (string, error) {
+	p, err := treeposture.PathUnder(root, rel)
+	if err != nil {
+		return "", fmt.Errorf("scalegrid: координата %s не приведена к посадке корня %s: %w", rel, root, err)
+	}
+	return p, nil
 }
 
 // newRepoCoordinates — распознаватель по текущему дереву.
@@ -523,7 +547,11 @@ func contentHash(root string, files []string) (string, error) {
 	}
 	h := sha256.New()
 	for _, rel := range files {
-		body, err := os.ReadFile(filepath.Join(root, rel)) // #nosec G304 -- rel получен обходом СОБСТВЕННОГО дерева репозитория под корнем root, не из запроса и не от пользователя; прибор читает свои же файлы, чтобы взять их отпечаток
+		abs, err := under(root, rel)
+		if err != nil {
+			return "", err
+		}
+		body, err := os.ReadFile(abs) // #nosec G304 -- rel получен обходом СОБСТВЕННОГО дерева репозитория под корнем root, не из запроса и не от пользователя; прибор читает свои же файлы, чтобы взять их отпечаток
 		if err != nil {
 			return "", fmt.Errorf("scalegrid: чтение %s: %w", rel, err)
 		}
@@ -626,7 +654,11 @@ func withoutScaffolding(root string, files []string) ([]string, error) {
 			continue
 		}
 		seen[rel] = true
-		body, err := os.ReadFile(filepath.Join(root, rel)) // #nosec G304 -- rel получен обходом СОБСТВЕННОГО каталога
+		abs, aerr := under(root, rel)
+		if aerr != nil {
+			return nil, aerr
+		}
+		body, err := os.ReadFile(abs) // #nosec G304 -- rel получен обходом СОБСТВЕННОГО каталога
 		if err != nil {
 			return nil, fmt.Errorf("scalegrid: чтение оснастки %s: %w", rel, err)
 		}
@@ -657,7 +689,11 @@ func ContentOf(root, rel string) string {
 }
 
 func nonTestGoFiles(root, dir string) ([]string, error) {
-	entries, err := os.ReadDir(filepath.Join(root, dir))
+	abs, err := under(root, dir)
+	if err != nil {
+		return nil, err
+	}
+	entries, err := os.ReadDir(abs)
 	if err != nil {
 		return nil, fmt.Errorf("scalegrid: состав %s: %w", dir, err)
 	}
@@ -674,7 +710,11 @@ func nonTestGoFiles(root, dir string) ([]string, error) {
 }
 
 func migrationsNaming(root string, tables []string) ([]string, error) {
-	entries, err := os.ReadDir(filepath.Join(root, migrateDir))
+	absMigrate, err := under(root, migrateDir)
+	if err != nil {
+		return nil, err
+	}
+	entries, err := os.ReadDir(absMigrate)
 	if err != nil {
 		return nil, fmt.Errorf("scalegrid: состав %s: %w", migrateDir, err)
 	}
@@ -684,7 +724,7 @@ func migrationsNaming(root string, tables []string) ([]string, error) {
 		if e.IsDir() || !strings.HasSuffix(name, ".sql") {
 			continue
 		}
-		body, rerr := os.ReadFile(filepath.Join(root, migrateDir, name)) // #nosec G304 -- name получено обходом СОБСТВЕННОГО каталога миграций репозитория, не из запроса и не от пользователя; прибор читает свои же файлы, чтобы взять их отпечаток
+		body, rerr := os.ReadFile(filepath.Join(absMigrate, name)) // #nosec G304 -- name получено обходом СОБСТВЕННОГО каталога миграций репозитория, не из запроса и не от пользователя; прибор читает свои же файлы, чтобы взять их отпечаток
 		if rerr != nil {
 			return nil, fmt.Errorf("scalegrid: чтение миграции %s: %w", name, rerr)
 		}
@@ -855,7 +895,11 @@ func ComputeWriteDeleteFingerprint(root string) (Fingerprint, error) {
 	}
 	tables := map[string]bool{}
 	for _, rel := range code {
-		body, rerr := os.ReadFile(filepath.Join(root, rel)) // #nosec G304 -- rel получен обходом СОБСТВЕННОГО дерева репозитория под корнем root, не из запроса и не от пользователя
+		abs, aerr := under(root, rel)
+		if aerr != nil {
+			return fp, aerr
+		}
+		body, rerr := os.ReadFile(abs) // #nosec G304 -- rel получен обходом СОБСТВЕННОГО дерева репозитория под корнем root, не из запроса и не от пользователя
 		if rerr != nil {
 			return fp, fmt.Errorf("scalegrid: чтение %s: %w", rel, rerr)
 		}

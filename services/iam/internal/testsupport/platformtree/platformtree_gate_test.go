@@ -291,3 +291,137 @@ func TestPathOf_EscapingRelIsRefused(t *testing.T) {
 		t.Fatalf("путь вверх принят за координату дерева: %v", err)
 	}
 }
+
+// TestCorpusRoot_InPlatformTreeTheModuleLivesUnderItsPrefix — обход в монорепо:
+// корень платформы, приставка `services/iam`.
+func TestCorpusRoot_InPlatformTreeTheModuleLivesUnderItsPrefix(t *testing.T) {
+	base := t.TempDir()
+	mod := mkModule(t, base, "services/iam")
+
+	root, prefix, err := platformtree.CorpusRoot(mod)
+	if err != nil {
+		t.Fatalf("корень обхода не установлен: %v", err)
+	}
+	if root != base {
+		t.Fatalf("корень обхода: получено %s, ожидалось %s", root, base)
+	}
+	if prefix != "services/iam" {
+		t.Fatalf("приставка: получено %q, ожидалось %q", prefix, "services/iam")
+	}
+}
+
+// TestCorpusRoot_InCloneTheModuleIsTheTreeItself — законный близнец предыдущей,
+// отличается РОВНО ОДНИМ фактом (посадкой). Приставка ПУСТА, а не «services/iam»:
+// в клоне файлы модуля лежат от его собственного корня.
+//
+// Здесь несущее отличие от `Require`: пропуска НЕТ. Предмет таких проб —
+// собственная композиция модуля, и в поставку она входит; пропуск означал бы
+// «условие не создано» там, где оно создано.
+func TestCorpusRoot_InCloneTheModuleIsTheTreeItself(t *testing.T) {
+	base := t.TempDir()
+	mod := mkModule(t, base, "kaname")
+
+	root, prefix, err := platformtree.CorpusRoot(mod)
+	if err != nil {
+		t.Fatalf("корень обхода не установлен в клоне: %v", err)
+	}
+	if root != mod {
+		t.Fatalf("корень обхода: получено %s, ожидалось %s", root, mod)
+	}
+	if prefix != "" {
+		t.Fatalf("приставка: получено %q, ожидалась пустая", prefix)
+	}
+}
+
+// TestCorpusRoot_NoModuleMarkerIsRefused — без маркера модуля судить не о чем, и
+// это ОТКАЗ, а не пустая приставка: пустая означала бы «модуль и есть дерево».
+func TestCorpusRoot_NoModuleMarkerIsRefused(t *testing.T) {
+	bare := t.TempDir()
+	if _, _, err := platformtree.CorpusRoot(bare); !errors.Is(err, platformtree.ErrModuleRootUnknown) {
+		t.Fatalf("каталог без go.mod принят за корень обхода: %v", err)
+	}
+}
+
+// TestUnder_JoinsWithoutLeadingSlash — склейка приставки с координатой.
+//
+// Ось «пустая приставка» несущая: конкатенация дала бы `/internal/x`, и обход
+// состава не совпал бы ни с одной записью — МОЛЧА, то есть «ноль находок» стало
+// бы неотличимо от «ноль прочитанного».
+func TestUnder_JoinsWithoutLeadingSlash(t *testing.T) {
+	cases := []struct{ prefix, rel, want string }{
+		{"services/iam", "internal/x", "services/iam/internal/x"},
+		{"", "internal/x", "internal/x"},
+		{".", "internal/x", "internal/x"},
+		{"services/iam", "./internal/x", "services/iam/internal/x"},
+		{"services/iam", "", "services/iam"},
+		{"", "", ""},
+	}
+	for _, c := range cases {
+		if got := platformtree.Under(c.prefix, c.rel); got != c.want {
+			t.Errorf("Under(%q, %q) = %q, ожидалось %q", c.prefix, c.rel, got, c.want)
+		}
+	}
+	t.Logf("осмотрено случаев склейки: %d", len(cases))
+}
+
+// TestPathUnder_TheSameCoordinateResolvesInBothPostures — координата, данная
+// ВМЕСТЕ С КОРНЕМ, приводится к посадке этого корня.
+//
+// Две половины отличаются РОВНО ОДНИМ фактом — посадкой корня, — и обе обязаны
+// разрешиться: миграции, отчёты и собственные каталоги едут с модулем.
+func TestPathUnder_TheSameCoordinateResolvesInBothPostures(t *testing.T) {
+	const rel = "services/iam/internal/migrations"
+
+	platformBase := t.TempDir()
+	mkModule(t, platformBase, "services/iam")
+	got, err := platformtree.PathUnder(platformBase, rel)
+	if err != nil {
+		t.Fatalf("дерево платформы: %v", err)
+	}
+	if want := filepath.Join(platformBase, "services", "iam", "internal", "migrations"); got != want {
+		t.Fatalf("дерево платформы: получено %s, ожидалось %s", got, want)
+	}
+
+	cloneBase := t.TempDir()
+	mod := mkModule(t, cloneBase, "kaname")
+	got, err = platformtree.PathUnder(mod, rel)
+	if err != nil {
+		t.Fatalf("самостоятельный клон: %v", err)
+	}
+	if want := filepath.Join(mod, "internal", "migrations"); got != want {
+		t.Fatalf("клон: получено %s, ожидалось %s", got, want)
+	}
+}
+
+// TestPathUnder_OutsideTheModuleInACloneIsNotAMiss — третий исход сохранён и на
+// этом входе: чего в поставку не входит, даёт «условие не создано».
+func TestPathUnder_OutsideTheModuleInACloneIsNotAMiss(t *testing.T) {
+	cloneBase := t.TempDir()
+	mod := mkModule(t, cloneBase, "kaname")
+
+	if _, err := platformtree.PathUnder(mod, "proto/kaname/cloud/iam/v1/fga_model.fga"); !errors.Is(err, platformtree.ErrNoPlatformTree) {
+		t.Fatalf("свойство поставки выдано за отсутствие файла: %v", err)
+	}
+
+	// Законный близнец: тот же путь под корнем платформы разрешается.
+	platformBase := t.TempDir()
+	mkModule(t, platformBase, "services/iam")
+	if _, err := platformtree.PathUnder(platformBase, "proto/kaname/cloud/iam/v1/fga_model.fga"); err != nil {
+		t.Fatalf("путь дерева платформы отвергнут в дереве платформы: %v", err)
+	}
+}
+
+// TestPrefixUnder_IsEmptyOnlyInAClone — приставка выводится из корня.
+func TestPrefixUnder_IsEmptyOnlyInAClone(t *testing.T) {
+	platformBase := t.TempDir()
+	mkModule(t, platformBase, "services/iam")
+	if got := platformtree.PrefixUnder(platformBase); got != "services/iam" {
+		t.Fatalf("дерево платформы: приставка %q, ожидалась %q", got, "services/iam")
+	}
+
+	cloneBase := t.TempDir()
+	mod := mkModule(t, cloneBase, "kaname")
+	if got := platformtree.PrefixUnder(mod); got != "" {
+		t.Fatalf("клон: приставка %q, ожидалась пустая", got)
+	}
+}

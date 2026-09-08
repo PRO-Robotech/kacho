@@ -52,7 +52,6 @@ package scalegrid_test
 import (
 	"fmt"
 	"os"
-	"path/filepath"
 	"sort"
 	"strings"
 	"testing"
@@ -60,6 +59,8 @@ import (
 
 	"github.com/PRO-Robotech/kacho/pkg/gitenv"
 	"github.com/PRO-Robotech/kaname/internal/repo/kaname/pg/scalegrid"
+
+	"github.com/PRO-Robotech/kaname/internal/testsupport/platformtree"
 )
 
 // scaleGridReportMaxAge — В8, величина ратифицирована владельцем.
@@ -221,7 +222,17 @@ func guardedReports() []guardedReport {
 
 // TestScaleGridFullReportIsFreshAndItsSubjectHasNotMoved — гейт свежести.
 func TestScaleGridFullReportIsFreshAndItsSubjectHasNotMoved(t *testing.T) {
-	root := repoRoot(t)
+	// ОТПЕЧАТОК ЗАМЕРА ПОСТАВЛЕН НА ДЕРЕВЕ ПЛАТФОРМЫ, и сверять его можно только
+	// там. Словарь координат, которым прибор нормализует значащее содержимое,
+	// выводится из состава КОРНЯ: в монорепо это `services`, `proto`, `pkg`, в
+	// самостоятельном клоне — `internal`, `cmd`, `docs`. Словари разные, значит
+	// разные и отпечатки одного и того же кода.
+	//
+	// Это «условие не создано», а не находка: отчёт снят на стенде монорепо, а
+	// пересъёмка требует стенда, которого у арендатора нет. Что отпечаток вообще
+	// ЗАВИСИТ ОТ ПОСАДКИ — отдельный предмет: прибор объявляет себя неподвижным
+	// при переезде каталога, и здесь это обещание не держится.
+	root := platformtree.Require(t)
 
 	reports := guardedReports()
 	if len(reports) == 0 {
@@ -230,7 +241,11 @@ func TestScaleGridFullReportIsFreshAndItsSubjectHasNotMoved(t *testing.T) {
 	}
 	for _, gr := range reports {
 		t.Run(gr.path, func(t *testing.T) {
-			body, err := os.ReadFile(filepath.Join(root, gr.path))
+			// Координата приводится к ПОСАДКЕ: отчёты едут вместе с модулем,
+			// поэтому в самостоятельном клоне они лежат от его корня, без
+			// приставки `services/iam`. Сложенный путь был бы верен ровно для
+			// монорепо, и «отчёта нет» звучало бы там, где отчёт есть.
+			body, err := os.ReadFile(platformtree.RequirePath(t, gr.path))
 			if err != nil {
 				t.Fatalf("отчёта нет по пути %s (%v).\n"+
 					"Малая сетка в конвейере утверждает отсутствие ДЕГРАДАЦИИ на двух точках; "+

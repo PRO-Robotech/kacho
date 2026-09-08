@@ -50,6 +50,8 @@ import (
 	"strconv"
 	"strings"
 	"testing"
+
+	"github.com/PRO-Robotech/kaname/internal/testsupport/platformtree"
 )
 
 // hintDirs — каталоги, чьи пробы печатают команды пересъёма.
@@ -227,12 +229,16 @@ func resolves(root string, cmd resnapshotCommand, pattern string) error {
 
 // TestEveryResnapshotHintNamesAResolvablePackage — гейт.
 func TestEveryResnapshotHintNamesAResolvablePackage(t *testing.T) {
-	root := repoRoot(t)
+	// Подсказки пересъёма записаны в посадке МОНОРЕПО (`-C services/iam`), и
+	// гейт исполняет их по-настоящему. В самостоятельном клоне такого каталога
+	// нет by construction, поэтому ЗАКОННАЯ форма перестала бы резолвиться, и
+	// гейт объявил бы находкой посадку, а не подсказку.
+	root := platformtree.Require(t)
 
 	var all []resnapshotCommand
 	var total collectCensus
 	for _, relDir := range hintDirs {
-		found, census, err := collectResnapshotCommands(filepath.Join(root, relDir), relDir)
+		found, census, err := collectResnapshotCommands(platformtree.RequirePath(t, relDir), relDir)
 		if err != nil {
 			t.Fatalf("обход %s: %v", relDir, err)
 		}
@@ -291,7 +297,14 @@ func TestEveryResnapshotHintNamesAResolvablePackage(t *testing.T) {
 // гейте выше: подделки здесь нет, различие между случаями — РОВНО ОДНО
 // (переехал ли образец на форму `-C services/iam`).
 func TestResnapshotHintCheckerCanFail(t *testing.T) {
-	root := repoRoot(t)
+	// Доказательство исполняет НАСТОЯЩИЕ команды подсказки, а они записаны в
+	// посадке монорепо (`-C services/iam`). В самостоятельном клоне такого
+	// каталога нет by construction, и законная форма перестала бы резолвиться —
+	// гейт объявил бы находкой посадку, а не подсказку.
+	//
+	// Это «условие не создано», а не находка о продукте, поэтому предпосылку
+	// назначает дерево, а не проба.
+	root := platformtree.Require(t)
 	dir := t.TempDir()
 
 	// СИНТЕТИКА СОБИРАЕТСЯ, А НЕ ПИШЕТСЯ ЦЕЛИКОМ — и это не стиль.
