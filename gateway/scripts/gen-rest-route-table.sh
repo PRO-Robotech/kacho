@@ -146,6 +146,29 @@ mkdir -p "$(dirname "${OUT}")"
 cp "${STAGE}/out/rest_route_table_gen.go" "${OUT}"
 
 
+# --- перепись распознавателя: прочитанное против распознанного ---
+#
+# Распознаватель эмитированных доменов — ОБЩИЙ (см. lib/stage-proto-tree.sh).
+# Здесь стояла его рукописная копия с ЛИТЕРАЛОМ приставки `kacho.cloud.`: с
+# появлением второго корня контракта (KAN-PKG-1) она перестала видеть дерево
+# службы ЦЕЛИКОМ и НЕ КРАСНЕЛА при этом — просто называла заниженное число.
+#
+# Перепись печатает ОБЕ величины: имён прочитано и доменов распознано. Одно число
+# скрыло бы ровно тот случай, ради которого распознаватель заведён, — имя, чей
+# корень распознавателю неизвестен.
+emitted_names="$(kacho_proto_output_fqns "${OUT}" 'FQN' | wc -l | tr -d ' ')"
+emitted_roots="$(kacho_proto_output_roots "${OUT}" 'FQN' | tr '\n' ' ')"
+emitted_domains_all="$(kacho_proto_emitted_domains "${OUT}" 'FQN')"
+emitted_count="$(printf '%s' "${emitted_domains_all}" | grep -c . || true)"
+echo "распознано: имён ${emitted_names}, корней (${emitted_roots% }), доменов ${emitted_count} —" \
+     "$(printf '%s' "${emitted_domains_all}" | tr '\n' ' ')"
+if [[ "${emitted_names}" -gt 0 && "${emitted_count}" -eq 0 ]]; then
+  echo "ERR: имён прочитано ${emitted_names}, доменов распознано 0 —" >&2
+  echo "     распознаватель ослеп на корне выхода. Объявленный перечень корней —" >&2
+  echo "     KACHO_PROTO_ROOTS в lib/stage-proto-tree.sh." >&2
+  exit 1
+fi
+
 # --- эмитированный домен обязан быть ОБЪЯВЛЕН ---
 #
 # Замыкание импортов добирает деревья, нужные для компиляции; часть из них несёт
@@ -163,8 +186,8 @@ if [[ -n "${GEN_DOMAINS// /}" ]]; then
       [[ "${emitted_domain}" == "${sel}" ]] && declared=1
     done
     [[ "${declared}" -eq 1 ]] || undeclared="${undeclared} ${emitted_domain}"
-  done < <(sed -n 's/.*FQN: "kacho\.cloud\.\([a-z0-9_]*\)\..*/\1/p' "${OUT}" | sort -u)
-  echo "эмитировано доменов: ${emitted}"
+  done < <(kacho_proto_emitted_domains "${OUT}" 'FQN')
+  echo "эмитировано доменов (сверено с отбором): ${emitted}"
   if [[ -n "${undeclared}" ]]; then
     echo "ERR: эмитированы домены вне отбора:${undeclared}" >&2
     echo "     Их RPC попали в выход замыканием импортов. Объявите их в" >&2
