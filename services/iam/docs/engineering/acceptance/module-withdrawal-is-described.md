@@ -333,6 +333,20 @@ SPDX-License-Identifier: AGPL-3.0-or-later
 - **Предмет приёмки — ВЫБОР** (что значит «отозвать модуль», чем это выражается в
   данных, что происходит с выданным, и обратимо ли это). Форма закрытия — та, что
   описана в `git-issues.md` §«предмет задачи — ВЫБОР, и закрывает его приёмка»
+- **⚠️ ПОСЛЕ вердикта документ правлен (`#2212`), и вердикт на нынешнюю
+  редакцию НЕ ПЕРЕНЕСЁН.** Координат приведено к дереву: **2**. Правка одна и
+  механическая — приставка пути контракта `proto/kacho/cloud/iam/` →
+  `proto/kaname/cloud/iam/`: домен доступа переехал (`d46aaa7280`), и прежний
+  корень в дереве **не существует** (`git ls-files 'proto/kacho/cloud/iam/**'`
+  → 0). До правки координата не резолвилась, то есть **молчала**: читатель уходил
+  за ней и не находил. **НЕ тронуты** ни один сценарий, производитель, признак
+  готовности, клауза и ни одно число: непарных строк 0, пар с изменившимся числом
+  токенов 0. Записи замера, привязанные к ревизии, где прежний путь ЖИВ, оставлены
+  как есть намеренно — их перечень и предикат в теле задачи. Одобрение относится к
+  **содержимому**, а не к имени файла: APPROVED выше есть вердикт о редакции,
+  прочитанной проверяющим. Вердикт на нынешнюю редакцию ставит
+  `acceptance-reviewer` своим кругом, а не эта строка. Решение —
+  `../architecture/verdict-names-a-revision-not-a-file.md`
 
 ---
 
@@ -366,8 +380,8 @@ SPDX-License-Identifier: AGPL-3.0-or-later
 | П15 | след сирот снимается **по тому же предикату**, каким ставился, и только у тех, чей предмет исчез | блок `_trace_drop` миграции глаголов | `sed -n '336,369p' services/iam/internal/migrations/20260901231022_system_role_rules_speak_the_verb_dictionary.sql` |
 | П16 | образец самопроверки исхода миграции + переписи | блок «САМОПРОВЕРКА ИСХОДА» | `grep -n 'САМОПРОВЕРКА ИСХОДА' services/iam/internal/migrations/20260901113757_*.sql services/iam/internal/migrations/20260901231022_*.sql` → по одному в каждой |
 | П17 | **глагол отзыва существует в этом же сервисе**, идемпотентный, и различает «отозвал я» от «уже было» | `LimitRepo.Withdraw` | `grep -n 'func (r \*LimitRepo) Withdraw' services/iam/internal/repo/kaname/pg/limit_repo.go` → **177** |
-| П18 | отзыв переносится в дельте ЯВНО, а не умолчанием | `LimitChange.withdrawn` | `grep -n 'bool withdrawn' proto/kacho/cloud/iam/v1/limit.proto` → **137** |
-| П19 | контракт отзыва объявляет идемпотентность словами | `InternalLimitService.Delete` | `grep -n 'rpc Delete (DeleteLimitRequest)' proto/kacho/cloud/iam/v1/internal_limit_service.proto` → **152** |
+| П18 | отзыв переносится в дельте ЯВНО, а не умолчанием | `LimitChange.withdrawn` | `grep -n 'bool withdrawn' proto/kaname/cloud/iam/v1/limit.proto` → **137** |
+| П19 | контракт отзыва объявляет идемпотентность словами | `InternalLimitService.Delete` | `grep -n 'rpc Delete (DeleteLimitRequest)' proto/kaname/cloud/iam/v1/internal_limit_service.proto` → **152** |
 | П20 | ЧАСТИЧНЫЙ отзыв глагола выражается данными, с предикатом снятия у каждой записи | раздел `deprecatedVerbs` загрузчика | `grep -n 'ErrDeprecatedVerbIncomplete\|RemoveWhen' services/iam/internal/manifest/deprecated.go` |
 | П21 | снятый ТИП не грантуем ни на одном плече правила | `domain.IsRetiredType` | `grep -n 'func IsRetiredType' services/iam/internal/domain/retired_types.go` → **60** |
 | П22 | гейт дерева сверяет посев с литералом, инъекция в обе стороны | `TestIAMCT114_CatalogSeedMatchesTheLiteral` + шесть инъекций | `grep -n 'func TestIAMCT114' services/iam/internal/check/catalog_seed_parity_test.go` → **71**; `grep -c '^func TestIAMCT114_Injection' services/iam/internal/check/catalog_seed_parity_injection_test.go` → **6** |

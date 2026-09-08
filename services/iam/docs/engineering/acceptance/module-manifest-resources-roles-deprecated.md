@@ -74,6 +74,20 @@ SPDX-License-Identifier: AGPL-3.0-or-later
 - **Предмет приёмки — ВЫБОР.** Что каждый из трёх разделов принимает, что
   отвергает **с именем поля**, и чего он не вправе принять молча. Реализация
   заводится этой же задачей
+- **⚠️ ПОСЛЕ вердикта документ правлен (`#2212`), и вердикт на нынешнюю
+  редакцию НЕ ПЕРЕНЕСЁН.** Координат приведено к дереву: **8**. Правка одна и
+  механическая — приставка пути контракта `proto/kacho/cloud/iam/` →
+  `proto/kaname/cloud/iam/`: домен доступа переехал (`d46aaa7280`), и прежний
+  корень в дереве **не существует** (`git ls-files 'proto/kacho/cloud/iam/**'`
+  → 0). До правки координата не резолвилась, то есть **молчала**: читатель уходил
+  за ней и не находил. **НЕ тронуты** ни один сценарий, производитель, признак
+  готовности, клауза и ни одно число: непарных строк 0, пар с изменившимся числом
+  токенов 0. Записи замера, привязанные к ревизии, где прежний путь ЖИВ, оставлены
+  как есть намеренно — их перечень и предикат в теле задачи. Одобрение относится к
+  **содержимому**, а не к имени файла: APPROVED выше есть вердикт о редакции,
+  прочитанной проверяющим. Вердикт на нынешнюю редакцию ставит
+  `acceptance-reviewer` своим кругом, а не эта строка. Решение —
+  `../architecture/verdict-names-a-revision-not-a-file.md`
 
 ---
 
@@ -108,7 +122,7 @@ python3 -c "import json;print(list(json.load(open(
 grep -cE '^\s+"vpc\.' services/iam/internal/authzmap/fga_types.go   # 9 — привязка к
 #   началу строки ОБЯЗАТЕЛЬНА: без неё предикат даёт 10, считая godoc-пример
 #   в комментарии той же функции (§1.2)
-grep -c '^type vpc_'  proto/kacho/cloud/iam/v1/fga_model.fga
+grep -c '^type vpc_'  proto/kaname/cloud/iam/v1/fga_model.fga
 # строки каталога домена vpc
 python3 -c "import json;d=json.load(open('gateway/internal/middleware/embed/permission_catalog.json'));\
 print(sum(1 for e in d if e['permission'].startswith('vpc.')))"
@@ -444,9 +458,9 @@ grep -rhoE "'[a-z]+\.[a-zA-Z_]+\.(admin|edit|view)'" services/iam/internal/migra
 ```sh
 sed -n '/^type Rule struct/,/^}/p' services/iam/internal/domain/rule.go
   → Module · Resources · Verbs · ResourceNames · MatchLabels
-git grep -n '\bclasses\b' -- 'proto/kacho/cloud/iam/v1/*.proto' 'services/iam/internal/domain/*.go'
+git grep -n '\bclasses\b' -- 'proto/kaname/cloud/iam/v1/*.proto' 'services/iam/internal/domain/*.go'
   → пусто
-grep -n 'repeated Rule\|message Role' proto/kacho/cloud/iam/v1/role.proto
+grep -n 'repeated Rule\|message Role' proto/kaname/cloud/iam/v1/role.proto
   → 42: message Role     93:   repeated Rule rules = 11;
 ```
 
@@ -541,7 +555,7 @@ construction, а манифест системных ролей не объяв�
 названо, и оно тоже изоморфно контракту:
 
 ```sh
-sed -n '148,160p' proto/kacho/cloud/iam/v1/role.proto
+sed -n '148,160p' proto/kaname/cloud/iam/v1/role.proto
   → DefinitionTier: tier_type (`iam.cluster` | `iam.account` | `iam.project`) + tier_id
   → «`is_system` (tag 6) is DERIVED from the tier (tier_type == `iam.cluster`)»
 ```
@@ -1363,7 +1377,7 @@ git show c59525c66:<файл> | grep -cE '^\*\*MOD-MR-[0-9]+а? —'   # → 29
 # MOD-MR-09 — отношения без единого RPC и их дом
 python3 - <<'P'
 import re,json,collections
-model=open('proto/kacho/cloud/iam/v1/fga_model.fga').read()
+model=open('proto/kaname/cloud/iam/v1/fga_model.fga').read()
 cat=json.load(open('gateway/internal/middleware/embed/permission_catalog.json'))
 used={e.get('required_relation','') for e in cat}
 std={'project','account','cluster','super_admin','admin','editor','viewer','member','parent'}
@@ -1381,7 +1395,7 @@ python3 - <<'P'
 import re
 G={'user','service_account','group#member'}; T={'admin','editor','viewer'}
 hits=set()
-for b in re.split(r'^type ',open('proto/kacho/cloud/iam/v1/fga_model.fga').read(),flags=re.M)[1:]:
+for b in re.split(r'^type ',open('proto/kaname/cloud/iam/v1/fga_model.fga').read(),flags=re.M)[1:]:
     n=b.split('\n')[0].strip(); t=set(); odd=False
     for line in b.split('\n'):
         m=re.match(r'\s*define ([a-z_]+):\s*(.*)$',line)
@@ -1722,9 +1736,9 @@ MOD-MR-12 и MOD-MR-13 делают `classes` несущим ключом `grant
 ```sh
 sed -n '/^type Rule struct/,/^}/p' services/iam/internal/domain/rule.go
   → Module · Resources · Verbs · ResourceNames · MatchLabels
-grep -rn '\bclasses\b' proto/kacho/cloud/iam/v1/*.proto services/iam/internal/domain/*.go
+grep -rn '\bclasses\b' proto/kaname/cloud/iam/v1/*.proto services/iam/internal/domain/*.go
   → пусто
-sed -n '172,200p' proto/kacho/cloud/iam/v1/role.proto
+sed -n '172,200p' proto/kaname/cloud/iam/v1/role.proto
   → resources = 2 · verbs = 3 · resource_names = 4 · match_labels
 ```
 

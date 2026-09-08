@@ -21,7 +21,7 @@ import (
 // Aliased from `internal/repo/kacho.Repository` to keep package boundary clean.
 type RepoFactory = kachorepo.Repository
 
-// OperationsRepo — async LRO repo (shared `kacho-corelib/operations.Repo`).
+// OperationsRepo — async LRO repo (shared `pkg/operations.Repo`).
 // Aliased to local name so use-cases don't reach into corelib by full path.
 type OperationsRepo = operations.Repo
 

@@ -10,7 +10,7 @@ import (
 	iamerr "github.com/PRO-Robotech/kaname/internal/errors"
 )
 
-// pagination bounds — parity with kacho-corelib/validate (Kachō page_size contract):
+// pagination bounds — parity with pkg/validate (Kachō page_size contract):
 // 0 → DefaultPageSize, (0..MaxPageSize] → as-is, >MaxPageSize → InvalidArgument.
 const (
 	defaultListPageSize int64 = 50
@@ -35,7 +35,7 @@ func effectivePageSize(pageSize int32) (int64, error) {
 }
 
 // base64URLEncode/Decode — alias'ы под StdEncoding с padding (parity с
-// kacho-vpc/internal/repo/helpers). Используются для cursor-based page_token.
+// services/vpc/internal/repo/helpers). Используются для cursor-based page_token.
 func base64URLEncode(b []byte) string { return base64.StdEncoding.EncodeToString(b) }
 func base64URLDecode(s string) ([]byte, error) {
 	return base64.StdEncoding.DecodeString(s)

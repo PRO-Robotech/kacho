@@ -66,6 +66,20 @@ SPDX-License-Identifier: AGPL-3.0-or-later
   зарегистрированным и что остаётся производителю отказа. Половин было две, и
   вторая («чей это тип») кругом 4 **вынесена** — под-фаза production-complete в
   своих границах, и границы названы (§2.11)
+- **⚠️ ПОСЛЕ вердикта документ правлен (`#2212`), и вердикт на нынешнюю
+  редакцию НЕ ПЕРЕНЕСЁН.** Координат приведено к дереву: **3**. Правка одна и
+  механическая — приставка пути контракта `proto/kacho/cloud/iam/` →
+  `proto/kaname/cloud/iam/`: домен доступа переехал (`d46aaa7280`), и прежний
+  корень в дереве **не существует** (`git ls-files 'proto/kacho/cloud/iam/**'`
+  → 0). До правки координата не резолвилась, то есть **молчала**: читатель уходил
+  за ней и не находил. **НЕ тронуты** ни один сценарий, производитель, признак
+  готовности, клауза и ни одно число: непарных строк 0, пар с изменившимся числом
+  токенов 0. Записи замера, привязанные к ревизии, где прежний путь ЖИВ, оставлены
+  как есть намеренно — их перечень и предикат в теле задачи. Одобрение относится к
+  **содержимому**, а не к имени файла: APPROVED выше есть вердикт о редакции,
+  прочитанной проверяющим. Вердикт на нынешнюю редакцию ставит
+  `acceptance-reviewer` своим кругом, а не эта строка. Решение —
+  `../architecture/verdict-names-a-revision-not-a-file.md`
 
 ---
 
@@ -99,7 +113,7 @@ SPDX-License-Identifier: AGPL-3.0-or-later
 | замок текста отказа **полосы А** | `PermissionDenied` + **дословно** `"permission denied"`, без причины | `services/iam/internal/apps/kaname/api/internal_iam/proxy_tuple_refusal_transport_test.go:26` | `git grep -n 'func TestProxyTupleRefusalMapsToPermissionDenied' -- services/iam` |
 | модульные учётки строками | `sva` + `substr(md5('kacho-<svc>'),1,17)` в `service_accounts` | `0009_sec_c_module_sa_least_priv.sql:63` | `grep -n "INSERT INTO kacho_iam.service_accounts" services/iam/internal/migrations/0009_sec_c_module_sa_least_priv.sql` |
 | якорь права записи | `fga_writer` спрашивается на **кластере**, а не на прежнем внеиерархическом объекте | `20260823002000_relation_write_moves_onto_the_cluster.sql` | `git grep -n 'relationWriteObject = clusterRootObject' -- services/iam ':!*.md'` |
-| `<exempt>` в каталоге прав | обе RPC освобождены от пообъектного Check, причина названа `INTERNAL_LISTENER` | `proto/kacho/cloud/iam/v1/internal_iam_service.proto:161` | `grep -n 'exempt_reason' proto/kacho/cloud/iam/v1/internal_iam_service.proto` |
+| `<exempt>` в каталоге прав | обе RPC освобождены от пообъектного Check, причина названа `INTERNAL_LISTENER` | `proto/kaname/cloud/iam/v1/internal_iam_service.proto:161` | `grep -n 'exempt_reason' proto/kaname/cloud/iam/v1/internal_iam_service.proto` |
 | **`shared.MapRepoErr`** *(круг 2)* | **единственный** перевод sentinel → gRPC для обеих RPC; SQLSTATE **не читает**, хвост даёт `Internal "internal error"` | `services/iam/internal/apps/kaname/shared/errors.go:47`, хвост `:108` | `git grep -n 'func MapRepoErr' -- services/iam` |
 | **`wrapPgErr`** *(круг 2)* | перевод SQLSTATE → sentinel: `23503` → `ErrFailedPrecondition`, текст по умолчанию `"referenced resource not found or still in use"` | `services/iam/internal/repo/kaname/pg/pgmaperr.go:45`, текст `:383` | `git grep -n 'func wrapPgErr' -- services/iam` |
 | **`drainer.Classify`** *(круг 2)* | **экспортированный** классификатор исхода применения у модуля: постоянный ⟺ `InvalidArgument` либо `PermissionDenied` | `pkg/outbox/drainer/classify.go:82`, предикат `:145` | `git grep -n 'func Classify' -- pkg/outbox/drainer` |
@@ -330,7 +344,7 @@ compute_disk           знаком=false -> в зеркало ложится "c
 
 | звено | что несёт | сколько | чем связано со следующим |
 |---|---|---:|---|
-| `proto/kacho/cloud/iam/v1/fga_model.fga` | **то, ЧТО умеет решаться** | 32 типа | `authzmap/canonical_model_drift_test.go` — каждый тип каталога обязан существовать в модели; обратное направление **намеренно** не требуется |
+| `proto/kaname/cloud/iam/v1/fga_model.fga` | **то, ЧТО умеет решаться** | 32 типа | `authzmap/canonical_model_drift_test.go` — каждый тип каталога обязан существовать в модели; обратное направление **намеренно** не требуется |
 | `authzmap.objectTypes` | **то, что сервис умеет НАЗВАТЬ** — переходник «модель ↔ каталог» | 27 пар | `authzmap.CatalogSeedResources()` (`catalog_seed.go:50`) выводит посев **из** карты |
 | `catalog_resource` строками | тот же словарь **данными**, на которые можно повесить ключ | 27 живых + 3 снятых | `seed.AssertCatalogParity` — сверка **двусторонняя**, отказ **фатален** для старта (`serve.go:1334`) |
 

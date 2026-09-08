@@ -84,7 +84,7 @@ func TestListLoadBalancers_FilterName(t *testing.T) {
 }
 
 // TestListLoadBalancers_InvalidFilter — после унификации name=-парсера на
-// shared.ParseNameFilter (kacho-corelib/filter.Parse) malformed / unknown-field
+// shared.ParseNameFilter (pkg/filter.Parse) malformed / unknown-field
 // filter — InvalidArgument (раньше loadbalancer молча игнорировал такой фильтр и
 // возвращал ВСЕ project-rows; reconciled к строгой канонической семантике —
 // см. shared/namefilter_test.go для полного контракта парсера).

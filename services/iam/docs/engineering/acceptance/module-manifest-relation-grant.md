@@ -24,7 +24,8 @@ SPDX-License-Identifier: AGPL-3.0-or-later
 - **Ревизия измерения (продукт):** `872ef7170` — ветка `lane/z3`, впереди
   `origin/release/modules-6` на **0**, позади на **0** (`git rev-list --count`).
   Все числа и координаты сняты на ней; канон модели прав адресуется отпечатком
-  содержимого `sha256sum proto/kacho/cloud/iam/v1/fga_model.fga` → `a87e29e03f3c…`
+  содержимого `sha256sum proto/kaname/cloud/iam/v1/fga_model.fga` → `a87e29e03f3c…`
+
 - **Задача:** `PRO-Robotech/kacho#1936`
 - **Эпик:** `PRO-Robotech/kacho#1087` — домен описывается манифестом
 - **Приёмка-основание:** `module-manifest-roles-and-seed-grants.md` (APPROVED,
@@ -42,8 +43,30 @@ SPDX-License-Identifier: AGPL-3.0-or-later
   и все её ключи живут с применённой миграции
   `893001_grant_surface_admits_the_relation_form.sql`; эта работа зеркалит живое
   хранилище формой манифеста, а не заводит хранилище
+- **⚠️ ПОСЛЕ вердикта документ правлен (`#2212`), и вердикт на нынешнюю
+  редакцию НЕ ПЕРЕНЕСЁН.** Координат приведено к дереву: **3**. Правка одна и
+  механическая — приставка пути контракта `proto/kacho/cloud/iam/` →
+  `proto/kaname/cloud/iam/`: домен доступа переехал (`d46aaa7280`), и прежний
+  корень в дереве **не существует** (`git ls-files 'proto/kacho/cloud/iam/**'`
+  → 0). До правки координата не резолвилась, то есть **молчала**: читатель уходил
+  за ней и не находил. **НЕ тронуты** ни один сценарий, производитель, признак
+  готовности, клауза и ни одно число: непарных строк 0, пар с изменившимся числом
+  токенов 0. Записи замера, привязанные к ревизии, где прежний путь ЖИВ, оставлены
+  как есть намеренно — их перечень и предикат в теле задачи. Одобрение относится к
+  **содержимому**, а не к имени файла: APPROVED выше есть вердикт о редакции,
+  прочитанной проверяющим. Вердикт на нынешнюю редакцию ставит
+  `acceptance-reviewer` своим кругом, а не эта строка. Решение —
+  `../architecture/verdict-names-a-revision-not-a-file.md`
 
 ---
+
+> [!note] Координата приведена к дереву (`#2212`), ЧИСЛА — замера своей ревизии
+> Домен доступа переехал в `proto/kaname/`, и адрес выше указывает на нынешний
+> канон. Величины рядом (`110717 B` · `md5 438d2cbf00ad…` · отпечаток `a87e29e0…`)
+> остаются записью замера, верной на ревизии этого документа: `b25cb9e3a9`
+> и `5dcefe67` дают ровно их, а сегодня канон — `112324 B`, `md5 de552adbc046`
+> (предикат: `git cat-file -s <ревизия>:<путь канона>`). Числа не правлены
+> намеренно — правка сделала бы ложной верную запись.
 
 ## 0. Замер посылок задачи — в обе стороны
 
@@ -227,7 +250,7 @@ SPDX-License-Identifier: AGPL-3.0-or-later
 > сообщила, что поля `granted_relation` в нём нет вовсе, а имя брать неоткуда.
 > Перемер опровергает это: объявление стоит в `access_binding.proto:222`, в
 > message `AccessBinding` (предикат:
-> `grep -nE '^\s*(string|bool|repeated)\s+granted_relation\s*=' proto/kacho/cloud/iam/v1/access_binding*.proto`
+> `grep -nE '^\s*(string|bool|repeated)\s+granted_relation\s*=' proto/kaname/cloud/iam/v1/access_binding*.proto`
 > → одна строка). Расхождение — в единице счёта: поля нет в **запросе создания** и
 > есть в **форме чтения**. Вывод об имени у обеих сторон совпал, но довод здесь
 > сильнее: у предмета есть имя в контракте, и его не приходится выводить.
@@ -1036,7 +1059,7 @@ MOD-RG-21).
 | перевод точечного якоря в тип объекта | `services/iam/internal/domain/access_binding_scope.go:132` — `ScopeTypeFromDotted` | MOD-RG-10, 12, 23 |
 | точечные ярусы константами, без литералов | `services/iam/internal/domain` — `ScopeType*Dotted`, перечень `RoleTierTypes` (`manifest/roles.go:476`) собран из них | MOD-RG-23 |
 | **образец** отказа на закрытом словаре: текст собирается из САМОГО словаря, второй копии не заводится | `manifest/roles.go:482-484` — `roleTierTypesList()`, вызовы на `:546,554` | форма отказов P4 и P10 |
-| канон: `cluster.system_viewer` = `[user, service_account]`, `cluster.quota_reader` и `cluster.fga_writer` принимают `group#member`, `cluster.any_admin` вычисляемое | `proto/kacho/cloud/iam/v1/fga_model.fga`, блок `type cluster` | MOD-RG-07, 08, 09, 11 |
+| канон: `cluster.system_viewer` = `[user, service_account]`, `cluster.quota_reader` и `cluster.fga_writer` принимают `group#member`, `cluster.any_admin` вычисляемое | `proto/kaname/cloud/iam/v1/fga_model.fga`, блок `type cluster` | MOD-RG-07, 08, 09, 11 |
 | перепись сверки четырьмя величинами на подраздел + поимённая печать выведенного | `services/iam/internal/moduleseedparity/parity.go` — `Subsection`, `Census`, `Result`, `nameEach` | MOD-RG-17, 19 |
 | расхождение в обе стороны | `parity.go` — `Compare`, `diffSet` | MOD-RG-18 |
 | объявимость группы как следствие объявимости выдачи на неё | `parity.go` — `SplitGroups` | MOD-RG-21 |

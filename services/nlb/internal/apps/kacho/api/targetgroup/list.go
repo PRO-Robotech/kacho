@@ -17,7 +17,7 @@ import (
 
 // ListTargetGroupsUseCase — sync list filter by project_id (required) + optional
 // `name="<value>"` filter (через общий shared.ParseNameFilter —
-// kacho-corelib/filter.Parse, whitelist {"name"}) + cursor-based pagination
+// pkg/filter.Parse, whitelist {"name"}) + cursor-based pagination
 // .
 type ListTargetGroupsUseCase struct {
 	repo  Repo

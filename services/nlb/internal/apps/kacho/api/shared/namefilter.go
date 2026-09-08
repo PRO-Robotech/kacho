@@ -13,7 +13,7 @@ import (
 )
 
 // nameField is the only whitelisted filter field in the current NLB API surface
-// (filter — kacho-corelib/filter.Parse с whitelist полей; текущий whitelist — name=).
+// (filter — pkg/filter.Parse с whitelist полей; текущий whitelist — name=).
 const nameField = "name"
 
 // ParseNameFilter parses the request `filter` string and returns the parsed
@@ -21,7 +21,7 @@ const nameField = "name"
 //
 // It is the single source of truth for `name` filtering across all NLB List
 // use-cases (NetworkLoadBalancer / TargetGroup / Listener), replacing three
-// divergent local parsers. It delegates to kacho-corelib/filter.Parse so the
+// divergent local parsers. It delegates to pkg/filter.Parse so the
 // grammar and error texts match every other Kachō service.
 //
 // Возвращается УЗЕЛ, а не его значение (#460). Прежняя редакция отдавала

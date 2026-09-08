@@ -25,7 +25,7 @@ import (
 // Поддерживаемые фильтры (per proto + design):
 //   - load_balancer_id   — required (пустой отвергается use-case синхронно)
 //   - filter=`name="…"`  — optional name-equality filter через общий
-//     shared.ParseNameFilter (kacho-corelib/filter.Parse, whitelist {"name"});
+//     shared.ParseNameFilter (pkg/filter.Parse, whitelist {"name"});
 //     unknown-поле / unquoted / malformed → InvalidArgument.
 type ListUseCase struct {
 	repo  RepoFactory

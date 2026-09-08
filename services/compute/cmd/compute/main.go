@@ -593,7 +593,7 @@ func runServe(cfg config.Config) error {
 
 // validateAuthMode разбирает KACHO_COMPUTE_AUTH_MODE (whitelist), для
 // production-strict валидирует cross-service TLS + DB sslmode, логирует insecure
-// dev-defaults. Зеркалит kacho-vpc/cmd/vpc/main.go::validateAuthMode.
+// dev-defaults. Зеркалит services/vpc/cmd/vpc/main.go::validateAuthMode.
 func validateAuthMode(cfg config.Config, logger *slog.Logger) (productionMode bool, err error) {
 	// Breakglass в production — ОТКАЗ СТАРТА, и проверяется ПЕРВЫМ, чтобы причина
 	// не тонула в жалобах на другие рёбра (breakglass как раз их и снимал).

@@ -14,9 +14,9 @@ import (
 
 // ParseNameFilter is the single name= filter parser shared by all nlb List
 // use-cases (loadbalancer / targetgroup / listener). It delegates to
-// kacho-corelib/filter.Parse with the canonical whitelist {"name"} so the
+// pkg/filter.Parse with the canonical whitelist {"name"} so the
 // grammar + error texts are identical across resources (api-conventions:
-// `filter` — kacho-corelib/filter.Parse с whitelist полей).
+// `filter` — pkg/filter.Parse с whitelist полей).
 //
 // Contract (reconciled from three divergent local parsers — see review report):
 //   - empty input            → (nil, nil)              // no filter

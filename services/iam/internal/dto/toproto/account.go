@@ -5,7 +5,7 @@ package toproto
 
 // account.go — Transfer domain.Account → *iamv1.Account.
 // Registered via init() (use-cases blank-import the package).
-// Parity with kacho-vpc/internal/dto/toproto/network.go.
+// Parity with services/vpc/internal/dto/toproto/network.go.
 
 import (
 	"google.golang.org/protobuf/types/known/timestamppb"

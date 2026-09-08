@@ -94,6 +94,20 @@ SPDX-License-Identifier: AGPL-3.0-or-later
   два состояния обязательно: «приёмка одобрена» и «вход существует» — разные
   утверждения, и второе проверяется предикатом
   (`git grep -c 'sectionsNotDescribedYet' services/iam/internal/manifest/manifest.go`)
+- **⚠️ ПОСЛЕ вердикта документ правлен (`#2212`), и вердикт на нынешнюю
+  редакцию НЕ ПЕРЕНЕСЁН.** Координат приведено к дереву: **11**. Правка одна и
+  механическая — приставка пути контракта `proto/kacho/cloud/iam/` →
+  `proto/kaname/cloud/iam/`: домен доступа переехал (`d46aaa7280`), и прежний
+  корень в дереве **не существует** (`git ls-files 'proto/kacho/cloud/iam/**'`
+  → 0). До правки координата не резолвилась, то есть **молчала**: читатель уходил
+  за ней и не находил. **НЕ тронуты** ни один сценарий, производитель, признак
+  готовности, клауза и ни одно число: непарных строк 0, пар с изменившимся числом
+  токенов 0. Записи замера, привязанные к ревизии, где прежний путь ЖИВ, оставлены
+  как есть намеренно — их перечень и предикат в теле задачи. Одобрение относится к
+  **содержимому**, а не к имени файла: APPROVED выше есть вердикт о редакции,
+  прочитанной проверяющим. Вердикт на нынешнюю редакцию ставит
+  `acceptance-reviewer` своим кругом, а не эта строка. Решение —
+  `../architecture/verdict-names-a-revision-not-a-file.md`
 
 ---
 
@@ -167,7 +181,7 @@ bash bytecmp.sh ../vpc.manifest.yaml
 девять дней разошёлся с деревом:
 
 ```sh
-cmp tools/live-model.fga proto/kacho/cloud/iam/v1/fga_model.fga
+cmp tools/live-model.fga proto/kaname/cloud/iam/v1/fga_model.fga
   → differ: byte 5238, line 81
 ```
 
@@ -198,7 +212,7 @@ cmp tools/live-model.fga proto/kacho/cloud/iam/v1/fga_model.fga
 типов модели:
 
 ```sh
-grep '^type ' proto/kacho/cloud/iam/v1/fga_model.fga | sed 's/^type //' \
+grep '^type ' proto/kaname/cloud/iam/v1/fga_model.fga | sed 's/^type //' \
   | awk -F_ '{print $1}' | sort | uniq -c | sort -rn
 ```
 
@@ -237,9 +251,17 @@ grep '^type ' proto/kacho/cloud/iam/v1/fga_model.fga | sed 's/^type //' \
 
 ```sh
 git ls-files | grep -E '\.fga$'
-  → proto/kacho/cloud/iam/v1/fga_model.fga        110717 B  md5 438d2cbf00ad
+  → proto/kaname/cloud/iam/v1/fga_model.fga        110717 B  md5 438d2cbf00ad
   → services/iam/internal/authzmodel/fga_model.fga 110717 B  md5 438d2cbf00ad
 ```
+
+> [!note] Координата приведена к дереву (`#2212`), ЧИСЛА — замера своей ревизии
+> Домен доступа переехал в `proto/kaname/`, и адрес выше указывает на нынешний
+> канон. Величины рядом (`110717 B` · `md5 438d2cbf00ad…` · отпечаток `a87e29e0…`)
+> остаются записью замера, верной на ревизии этого документа: `b25cb9e3a9`
+> и `5dcefe67` дают ровно их, а сегодня канон — `112324 B`, `md5 de552adbc046`
+> (предикат: `git cat-file -s <ревизия>:<путь канона>`). Числа не правлены
+> намеренно — правка сделала бы ложной верную запись.
 
 Шапка `services/iam/internal/authzmodel/identity_test.go` называет причину дословно:
 третья копия снята вместе с внешним движком отношений (#1038). Число «три» пережило
@@ -289,7 +311,7 @@ no longer`) — 23 внутри блоков и 35 по всему файлу. �
 python3 - <<'EOF'
 import re
 cur=None; n=0
-for ln in open('proto/kacho/cloud/iam/v1/fga_model.fga'):
+for ln in open('proto/kaname/cloud/iam/v1/fga_model.fga'):
     m=re.match(r'^type ([a-z0-9_]+)\s*$', ln)
     if m: cur=m.group(1); continue
     if re.match(r'^\s+#', ln):                       # ОТСТУПЛЕННЫЙ = внутриблочный
@@ -352,7 +374,7 @@ import re
 src=open('services/iam/internal/authzmap/fga_types.go').read()
 body=re.search(r'objectTypes = map\[string\]string\{(.*?)\n\}',src,re.S).group(1)
 pairs=re.findall(r'"([^"]+)"\s*:\s*"([^"]+)"',body)
-canon=[l.split()[1] for l in open('proto/kacho/cloud/iam/v1/fga_model.fga') if l.startswith('type ')]
+canon=[l.split()[1] for l in open('proto/kaname/cloud/iam/v1/fga_model.fga') if l.startswith('type ')]
 mods={}
 for k,v in pairs: mods.setdefault(k.split('.')[0],set()).add(v)
 print('записей',len(pairs),'| типов канона',len(canon))
@@ -549,7 +571,7 @@ PY
 1. **Блоки типов модуля порождаются из его манифеста.** Рука правит манифест;
    блоки — производная.
 2. **Сверка побайтовая, канон читается ИЗ ДЕРЕВА.** Ни снимок, ни вырезка, ни
-   зеркало не являются каноном. Канон — `proto/kacho/cloud/iam/v1/fga_model.fga`,
+   зеркало не являются каноном. Канон — `proto/kaname/cloud/iam/v1/fga_model.fga`,
    резолвится ОТ КОРНЯ ДЕРЕВА и за его пределы не выходит
    (`authzplan.ResolveCanonicalModel`, `#2159`). **Путь второго
    операнда не является параметром сверщика**: подменить канон снимком невозможно
@@ -890,7 +912,7 @@ grep -rn 'contains(sectionsNotDescribedYet' --include='*_test.go' services/
 
 - **Дано:** рабочая копия монорепо с каноническим файлом модели.
 - **Когда:** сверщик спрашивает канон.
-- **Тогда:** он получает путь `proto/kacho/cloud/iam/v1/fga_model.fga` и его байты
+- **Тогда:** он получает путь `proto/kaname/cloud/iam/v1/fga_model.fga` и его байты
   через `authzplan.ResolveCanonicalModel()`; отсутствие файла — **жёсткий отказ**
   с названным путём, а не пустой канон.
 - **Производитель:** П-01. Функция возвращает `error`, **называющий предпосылку**:
@@ -1348,7 +1370,7 @@ APPROVED-решения, а не мнение:** #1778 §2.6 постанови�
 python3 - <<'PY'
 import re
 cur=None; n=0
-for ln in open('proto/kacho/cloud/iam/v1/fga_model.fga'):
+for ln in open('proto/kaname/cloud/iam/v1/fga_model.fga'):
     m=re.match(r'^type ([a-z0-9_]+)\s*$', ln)
     if m: cur=m.group(1); continue
     if re.match(r'^\s*#', ln):
@@ -1930,7 +1952,7 @@ diff /tmp/a /tmp/b
 собственным замером**, и опровергнута в сторону, делающую находку **больше**:
 
 ```sh
-grep '^type ' proto/kacho/cloud/iam/v1/fga_model.fga | wc -l          → 32
+grep '^type ' proto/kaname/cloud/iam/v1/fga_model.fga | wc -l          → 32
 python3 …  # значения authzmap.objectTypes                             → 27, все в каноне
 ```
 
@@ -2329,7 +2351,7 @@ module "iam"          → err=<nil>          ← второй, ради поте
    > врезке §2 п. 6, этого числа не даёт», — и приводила свои 59 475 Б для 27 типов и
    > 65 828 Б для всех 32 блоков канона. Перемерено **производителем**, а не сторонним
    > разборщиком: `modelrender.SplitCanon` на каноне
-   > `proto/kacho/cloud/iam/v1/fga_model.fga` (110 717 Б, побайтово равен ревизии
+   > `proto/kaname/cloud/iam/v1/fga_model.fga` (110 717 Б, побайтово равен ревизии
    > приёмки `5dcefe67`). Под **единицей A** врезки §2 п. 6 воспроизводятся **все
    > четыре** клетки таблицы выше — точно, а не с точностью до порядка:
    >
@@ -2364,7 +2386,7 @@ module "iam"          → err=<nil>          ← второй, ради поте
    >   b          { n += length($0)+1 }
    >   END { for (t in sz) if (t in own) { c++; s+=sz[t]; if (t !~ /^vpc_/) { c2++; s2+=sz[t] } }
    >         print "objectTypes:", c, s; print "вне обхода при vpc:", c2, s2 }
-   > ' services/iam/internal/authzmap/fga_types.go proto/kacho/cloud/iam/v1/fga_model.fga
+   > ' services/iam/internal/authzmap/fga_types.go proto/kaname/cloud/iam/v1/fga_model.fga
    >   → objectTypes: 27 79950
    >   → вне обхода при vpc: 18 73399
    > ```

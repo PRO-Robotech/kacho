@@ -835,11 +835,11 @@ func nullableStr(s string) any {
 
 // targetIDPrefix — 3-char prefix для target row id. Target — embedded child
 // TargetGroup (не tenant-facing ресурс верхнего уровня), у него нет PrefixTarget
-// в kacho-corelib/ids. Локальный prefix "tgt" парный с TargetGroup prefix "tgr".
+// в pkg/ids. Локальный prefix "tgt" парный с TargetGroup prefix "tgr".
 const targetIDPrefix = "tgt"
 
 // newTargetID — генерит stable id для target row. Используем
-// kacho-corelib/ids.NewID с локальным 3-char prefix — это даёт 17-char
+// pkg/ids.NewID с локальным 3-char prefix — это даёт 17-char
 // crockford-base32 suffix с crypto/rand-энтропией, формат идентичен другим
 // kacho-ресурсам. Stable id критичен для RemoveTargets/peer-validate.
 func newTargetID() string {

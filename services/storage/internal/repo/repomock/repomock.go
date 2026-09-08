@@ -247,7 +247,7 @@ func (m *DiskTypeRepo) Delete(ctx context.Context, id string) error { return m.D
 
 // ---- operations.Repo (in-memory, для async-LRO unit-тестов) ----
 
-// OpsRepo — in-memory реализация kacho-corelib/operations.Repo. Async-worker
+// OpsRepo — in-memory реализация pkg/operations.Repo. Async-worker
 // (operations.Run) вызывает MarkDone/MarkError на этой строке; тест ждёт терминала
 // через AwaitOpDone (детерминированный поллинг, не фиксированный time.Sleep).
 type OpsRepo struct {

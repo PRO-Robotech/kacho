@@ -38,6 +38,20 @@ SPDX-License-Identifier: AGPL-3.0-or-later
   которых `#1984` заводилась, к этому кругу уже были исправлены** кругом 5
   (`d4fb573a06`): её посылка на сегодняшнем дереве неверна, и это записано в
   закрывающем комментарии задачи числами; **§A5 — три важных круга 5 и приведение §4/§7 к посаженному**
+- **⚠️ ПОСЛЕ вердикта документ правлен (`#2212`), и вердикт на нынешнюю
+  редакцию НЕ ПЕРЕНЕСЁН.** Координат приведено к дереву: **4**. Правка одна и
+  механическая — приставка пути контракта `proto/kacho/cloud/iam/` →
+  `proto/kaname/cloud/iam/`: домен доступа переехал (`d46aaa7280`), и прежний
+  корень в дереве **не существует** (`git ls-files 'proto/kacho/cloud/iam/**'`
+  → 0). До правки координата не резолвилась, то есть **молчала**: читатель уходил
+  за ней и не находил. **НЕ тронуты** ни один сценарий, производитель, признак
+  готовности, клауза и ни одно число: непарных строк 0, пар с изменившимся числом
+  токенов 0. Записи замера, привязанные к ревизии, где прежний путь ЖИВ, оставлены
+  как есть намеренно — их перечень и предикат в теле задачи. Одобрение относится к
+  **содержимому**, а не к имени файла: APPROVED выше есть вердикт о редакции,
+  прочитанной проверяющим. Вердикт на нынешнюю редакцию ставит
+  `acceptance-reviewer` своим кругом, а не эта строка. Решение —
+  `../architecture/verdict-names-a-revision-not-a-file.md`
 
 ---
 
@@ -299,7 +313,7 @@ SPDX-License-Identifier: AGPL-3.0-or-later
 | **П15** | образец use-case внутренней службы: **терминальный** конверт `Operation`, аудит в той же транзакции, актор из проверенной личности «never from the request body» | `api/cluster/grant_admin.go` — `:152` создание op, `:160` `Create`, `:180` `MarkDoneWithMetadata`, `:188` `op.Done = true`, `:192` возврат конверта; `:170-171` отказ: `MarkError` **и** `return nil, gerr` |
 | **П16** | различение анонимного вызывающего и явного системного | `operations.PrincipalFromContextOK` (`pkg/operations/principal_ctx.go:57`); `WithoutPrincipal` (:23) |
 | **П17** | **приёмник журнала аудита** и его доставка | `pkg/audit` (`Shipper`); решение — `services/iam/docs/engineering/architecture/audit-outbox-has-no-receiver.md` (имя историческое, содержание противоположное: приёмник заведён `#812`) |
-| **П18** | образец Internal-службы: `system_admin` + `scope_extractor{cluster, "*"}`, ступени `"2"` на мутациях и `"1"` на чтениях **объявлены явно** | `proto/kacho/cloud/iam/v1/internal_cluster_service.proto` |
+| **П18** | образец Internal-службы: `system_admin` + `scope_extractor{cluster, "*"}`, ступени `"2"` на мутациях и `"1"` на чтениях **объявлены явно** | `proto/kaname/cloud/iam/v1/internal_cluster_service.proto` |
 | **П19** | регистрация только на внутреннем слушателе | `grpc_register.go:114`; зовётся `serve.go:701`, публичная — `:700` |
 | **П20** | проба ban #6 через `bufconn`: публичный ⇒ `Unimplemented`, внутренний ⇒ иное | `register_resource_internal_only_test.go` |
 | **П21** | отношение `system_admin` на `cluster` НЕ выполнимо подстановкой | `fga_model.fga:192` — `[user, service_account]`. Подстановка есть (`grep -c 'user:\*'` → **9**) и на `cluster` стоит у `viewer` (:227) |
@@ -510,7 +524,7 @@ seq 1 "$(tail -1 /tmp/have)" | diff - /tmp/have      # → пусто
 ### 2.1. Четыре глагола, одна способность; поверхность — `Internal…`
 
 Служба — `InternalModuleService`, пакет `kacho.cloud.iam.v1`, файл
-`proto/kacho/cloud/iam/v1/internal_module_service.proto`.
+`proto/kaname/cloud/iam/v1/internal_module_service.proto`.
 
 Префикс `Internal` — **действующий дискриминатор ban #6**: метод такой службы не
 попадает во внешний маршрутизатор by construction и не регистрируется на публичном
@@ -1278,7 +1292,7 @@ Production-complete в своих границах (ban #14).
 
 | # | Что | Каталог |
 |---|---|---|
-| О1 | контракт `InternalModuleService` — `Plan`, `Apply`, `Get`, `List`; ступени объявлены **явно у всех четырёх** | `proto/kacho/cloud/iam/v1/internal_module_service.proto` |
+| О1 | контракт `InternalModuleService` — `Plan`, `Apply`, `Get`, `List`; ступени объявлены **явно у всех четырёх** | `proto/kaname/cloud/iam/v1/internal_module_service.proto` |
 | О2 | регенерация каталога прав; обе встроенные копии побайтово равны | порождённый артефакт, §4.3 |
 | О3 | **шесть правок одного файла, а не одна** (В1(2)): запись `Apply` в `sensitiveACR2Set()` + **четыре числа** — 32→33 трижды, 287→290 «рутина», 346→350 «итог каталога» | `gateway/internal/middleware/permission_catalog_acr_invariant_test.go`, §4.3 |
 | О4 | регистрация службы **только** на внутреннем слушателе + проба ban #6 | `services/iam/cmd/kaname/grpc_register.go` |
@@ -2069,7 +2083,7 @@ sed -n '1,/^## §R\. /p' <этот файл> | grep -nE \
 **Ц5 СУЖЕНА до производимого, и род расхождения назван.** Прежняя редакция
 обещала «**объём**»; производится **оценка на момент плана**, и так её называет сам
 контракт: поля `pruned_selector_*_at_plan_time` под пометкой `ESTIMATES`
-(`proto/kacho/cloud/iam/v1/internal_module_service.proto:285-288`, ревизия
+(`proto/kaname/cloud/iam/v1/internal_module_service.proto:285-288`, ревизия
 `19fbd5616b`). Это тот же род, что блокировал линию три круга, — но с **другой**
 стороны шва: не «Тогда» без производителя, а **ценность шире производителя**.
 Перечень §6а полон настолько, насколько точны его формулировки, и эта была неточна.

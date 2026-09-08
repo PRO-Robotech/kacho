@@ -2,7 +2,7 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
 
 // Package repomock — mock-impl iface'ов из `internal/repo/kaname/*` для unit-тестов
-// use-case'ов (parity с kacho-vpc/internal/repo/repomock).
+// use-case'ов (parity с services/vpc/internal/repo/repomock).
 //
 // Моки генерируются через `mockery` либо рукописными struct'ами с in-memory
 // map (parity с kacho-vpc).

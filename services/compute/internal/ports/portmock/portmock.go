@@ -6,7 +6,7 @@
 // unit-тестами use-case-пакетов (`internal/apps/kacho/api/<resource>`) и
 // `internal/handler`.
 //
-// Зависит только от `internal/ports`, `internal/domain` и `kacho-corelib/operations`
+// Зависит только от `internal/ports`, `internal/domain` и `pkg/operations`
 // — НЕ от use-case-пакетов, поэтому их white-box тесты могут его импортировать
 // без import-cycle.
 package portmock
@@ -791,7 +791,7 @@ var _ ports.StorageClient = (*StorageClient)(nil)
 
 // ---- operations.Repo ----
 
-// OpsRepo — in-memory реализация kacho-corelib/operations.Repo.
+// OpsRepo — in-memory реализация pkg/operations.Repo.
 type OpsRepo struct {
 	mu  sync.Mutex
 	ops map[string]*operations.Operation

@@ -12,7 +12,7 @@
 //	"enp" → vpc               (операции по Network / RouteTable / SecurityGroup)
 //	"e9b" → vpc               (операции по Subnet / Address)
 //	"epd" → compute           (ВСЕ операции compute-домена: Instance/MachineType —
-//	                           PrefixOperationCompute == PrefixInstance, см. kacho-corelib/ids.
+//	                           PrefixOperationCompute == PrefixInstance, см. pkg/ids.
 //	                           Блочное хранение здесь БОЛЬШЕ НЕ значится: Volume/Snapshot/Image/
 //	                           DiskType принадлежат kacho-storage и несут собственный op-префикс)
 //	"iop" → iam               (ВСЕ операции iam-домена: Account/Project/User/SA/Group/Role/AccessBinding)
