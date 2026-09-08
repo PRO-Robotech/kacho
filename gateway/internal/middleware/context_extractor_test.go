@@ -56,7 +56,7 @@ func TestContextExtractor_BuildHTTP_ExtractsFromVerifiedToken(t *testing.T) {
 	// чеканит ни один путь выпуска, а закрытый словарь условий модели прав их
 	// не читает ни одним предикатом. Приходящее клеймо этих имён теперь едет
 	// насквозь под своим именем — как всякое незнакомое (см.
-	// TestContextExtractor_PreservesUnknownKachoClaims).
+	// TestContextExtractor_PreservesUnknownKanameClaims).
 	assert.Equal(t, "abc", ctx["dpop_jkt"])
 	assert.Equal(t, "jti-1", ctx["jti"])
 	assert.Equal(t, "user", ctx["subject_kind"])
@@ -164,7 +164,7 @@ func TestContextExtractor_BuildPeerAddr_WithXFFOverride(t *testing.T) {
 	assert.Equal(t, "10.0.0.1", ctx["client_ip"])
 }
 
-func TestContextExtractor_PreservesUnknownKachoClaims(t *testing.T) {
+func TestContextExtractor_PreservesUnknownKanameClaims(t *testing.T) {
 	e := middleware.NewContextExtractor(time.Now, false)
 	tok := &middleware.VerifiedToken{
 		ExtClaims: map[string]any{
@@ -176,7 +176,7 @@ func TestContextExtractor_PreservesUnknownKachoClaims(t *testing.T) {
 	assert.Equal(t, "hello", ctx["kaname_future_thing"])
 }
 
-func TestContextExtractor_DropsResolvedKachoFields(t *testing.T) {
+func TestContextExtractor_DropsResolvedKanameFields(t *testing.T) {
 	e := middleware.NewContextExtractor(time.Now, false)
 	tok := &middleware.VerifiedToken{
 		ExtClaims: map[string]any{
