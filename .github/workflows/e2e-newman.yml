@@ -821,49 +821,49 @@ jobs:
         working-directory: services/iam/tests/newman
         env:
           SUITE_LABEL: iam
-        run: bash scripts/assert-suites-green.sh
+        run: bash "${GITHUB_WORKSPACE}/tests/newman/scripts/assert-suites-green.sh"
 
       - name: гейт — newman зелёный (vpc)
         if: ${{ always() && env.STAND_PRECONDITION_UNMET != '1' && contains(format(' {0} ', matrix.shard.suites), ' vpc ') }}
         working-directory: services/vpc/tests/newman
         env:
           SUITE_LABEL: vpc
-        run: bash "${GITHUB_WORKSPACE}/services/iam/tests/newman/scripts/assert-suites-green.sh"
+        run: bash "${GITHUB_WORKSPACE}/tests/newman/scripts/assert-suites-green.sh"
 
       - name: гейт — newman зелёный (compute)
         if: ${{ always() && env.STAND_PRECONDITION_UNMET != '1' && contains(format(' {0} ', matrix.shard.suites), ' compute ') }}
         working-directory: services/compute/tests/newman
         env:
           SUITE_LABEL: compute
-        run: bash "${GITHUB_WORKSPACE}/services/iam/tests/newman/scripts/assert-suites-green.sh"
+        run: bash "${GITHUB_WORKSPACE}/tests/newman/scripts/assert-suites-green.sh"
 
       - name: гейт — newman зелёный (nlb)
         if: ${{ always() && env.STAND_PRECONDITION_UNMET != '1' && contains(format(' {0} ', matrix.shard.suites), ' nlb ') }}
         working-directory: services/nlb/tests/newman
         env:
           SUITE_LABEL: nlb
-        run: bash "${GITHUB_WORKSPACE}/services/iam/tests/newman/scripts/assert-suites-green.sh"
+        run: bash "${GITHUB_WORKSPACE}/tests/newman/scripts/assert-suites-green.sh"
 
       - name: гейт — newman зелёный (storage)
         if: ${{ always() && env.STAND_PRECONDITION_UNMET != '1' && contains(format(' {0} ', matrix.shard.suites), ' storage ') }}
         working-directory: services/storage/tests/newman
         env:
           SUITE_LABEL: storage
-        run: bash "${GITHUB_WORKSPACE}/services/iam/tests/newman/scripts/assert-suites-green.sh"
+        run: bash "${GITHUB_WORKSPACE}/tests/newman/scripts/assert-suites-green.sh"
 
       - name: гейт — newman зелёный (registry)
         if: ${{ always() && env.STAND_PRECONDITION_UNMET != '1' && contains(format(' {0} ', matrix.shard.suites), ' registry ') }}
         working-directory: services/registry/tests/newman
         env:
           SUITE_LABEL: registry
-        run: bash "${GITHUB_WORKSPACE}/services/iam/tests/newman/scripts/assert-suites-green.sh"
+        run: bash "${GITHUB_WORKSPACE}/tests/newman/scripts/assert-suites-green.sh"
 
       - name: гейт — newman зелёный (geo)
         if: ${{ always() && env.STAND_PRECONDITION_UNMET != '1' && contains(format(' {0} ', matrix.shard.suites), ' geo ') }}
         working-directory: services/geo/tests/newman
         env:
           SUITE_LABEL: geo
-        run: bash "${GITHUB_WORKSPACE}/services/iam/tests/newman/scripts/assert-suites-green.sh"
+        run: bash "${GITHUB_WORKSPACE}/tests/newman/scripts/assert-suites-green.sh"
 
       # api-gateway: суита живёт в gateway/, а не в services/ — отсюда отдельный
       # working-directory и отдельная строка в маске артефактов ниже. Она покрывает
@@ -874,7 +874,7 @@ jobs:
         working-directory: gateway/tests/newman
         env:
           SUITE_LABEL: api-gateway
-        run: bash "${GITHUB_WORKSPACE}/services/iam/tests/newman/scripts/assert-suites-green.sh"
+        run: bash "${GITHUB_WORKSPACE}/tests/newman/scripts/assert-suites-green.sh"
 
       # ban #6 на внешнем листенере — свойство ЛИСТЕНЕРА, а не суиты, и гоняется на
       # КАЖДОМ шарде по СВОЕМУ набору доменов.
@@ -917,7 +917,7 @@ jobs:
         env:
           COVERAGE_MIN: "30"
         run: |
-          python3 scripts/coverage.py \
+          python3 "${GITHUB_WORKSPACE}/tests/newman/scripts/coverage.py" \
             --proto-glob "${GITHUB_WORKSPACE}/proto/kaname/cloud/iam/v1/*.proto" \
             --collections-glob 'collections/*.postman_collection.json' \
             --min "$COVERAGE_MIN"

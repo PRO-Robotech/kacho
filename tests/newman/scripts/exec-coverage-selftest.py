@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 # Copyright (c) PRO-Robotech
-# SPDX-License-Identifier: AGPL-3.0-or-later
+# SPDX-License-Identifier: BUSL-1.1
 """Самопроверка exec-coverage.py: РАЗЛИЧАЕТ ли он записанный пропуск и немой разрыв.
 
 ЧТО ДОКАЗЫВАЕТСЯ, и почему без этого нельзя.

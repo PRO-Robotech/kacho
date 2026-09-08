@@ -178,7 +178,7 @@ run_one() {
 #
 # Returns 1 when for ANY stem: out/<stem>.json is absent (MISSING),
 # assertions.failed>0, requests.failed>0 (UNANSWERED), assertions.total==0 (MUTE),
-# or rc!=0. Shape mirrors services/iam/tests/newman/scripts/assert-suites-green.sh.
+# or rc!=0. Shape mirrors tests/newman/scripts/assert-suites-green.sh.
 # ВЕДОМОСТЬ ОЖИДАНИЯ — ЧЕТВЁРТАЯ ВЕЛИЧИНА, И ОНА НЕ ВЕРДИКТ (задача #1251).
 #
 # Обёртки ожидания (окно материализации прав, видимость соседа, наличие в списке,

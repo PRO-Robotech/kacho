@@ -191,7 +191,7 @@ core 277→**283**. `gen.py` зелёный (нет дублей case-id — har
 api-gateway REST не проброшен; известное ограничение харнесса, memory `local-newman-env-blocked`). Live-probe
 шести кейсов **не** выполнен → RED-фаза не наблюдалась локально. Кейсы построены как точные зеркала уже-зелёных
 Disk-эталонов на идентичном handler-паттерне; **финальная зелёность подтверждается umbrella-CI** (gate
-`services/iam/tests/newman/scripts/assert-suites-green.sh`) с поднятым storage/vpc/iam. Требуют `existingZoneId`
+`tests/newman/scripts/assert-suites-green.sh`) с поднятым storage/vpc/iam. Требуют `existingZoneId`
 (pre-disk) — как остальные disk-sourced кейсы.
 
 ## Бывший coverage-gap — malformed-id → InvalidArgument (предмет исчез)

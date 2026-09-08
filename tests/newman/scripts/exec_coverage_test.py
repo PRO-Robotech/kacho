@@ -1,5 +1,5 @@
 # Copyright (c) PRO-Robotech
-# SPDX-License-Identifier: AGPL-3.0-or-later
+# SPDX-License-Identifier: BUSL-1.1
 
 """Regression lock for exec-coverage.py — the execution-coverage gate.
 

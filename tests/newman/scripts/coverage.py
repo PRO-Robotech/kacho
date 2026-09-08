@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 
 # Copyright (c) PRO-Robotech
-# SPDX-License-Identifier: AGPL-3.0-or-later
+# SPDX-License-Identifier: BUSL-1.1
 
 """
 coverage.py — newman RPC→case-id coverage gate for kaname.

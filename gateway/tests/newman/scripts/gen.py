@@ -308,7 +308,7 @@ def assert_iam_operation_envelope() -> List[str]:
 # автором.
 #
 # ТЕКСТ ОБЯЗАН СОВПАДАТЬ С ОСТАЛЬНЫМИ НАБОРАМИ ДОСЛОВНО. Вердикт по КАЖДОЙ
-# суите выносит один скрипт (services/iam/tests/newman/scripts/assert-suites-green.sh,
+# суите выносит один скрипт (tests/newman/scripts/assert-suites-green.sh,
 # запускается с cwd = каталог проверяемой суиты), а метку он читает у ОДНОГО
 # производителя — services/iam/tests/newman/scripts/gen.py, — потому что берёт её
 # по `dirname "${BASH_SOURCE[0]}"`, а не по cwd. Набор, объявивший другой текст,
