@@ -880,8 +880,6 @@ func (c Config) DomainsWithInternalBackend() []string {
 // по которому gRPC-роутер (server.go Resolver / shimproxy.go) выбирает backend.
 // "geo" / "geoInternal" — kacho-geo public / internal endpoints. Domain-ключ
 // "geo" совпадает с proto-package `kacho.cloud.geo.v1.*` (та же маршрутизация).
-// "quota" — пакет общей формы ответа о квотах; его единственную службу
-// обслуживает kaname (см. комментарий у ключа).
 func (c Config) BackendAddrs() map[string]string {
 	return map[string]string{
 		"vpc":             c.VPCAddr,
@@ -890,16 +888,13 @@ func (c Config) BackendAddrs() map[string]string {
 		"computeInternal": c.ComputeInternalAddr,
 		"iam":             c.IAMAddr,
 		"iamInternal":     c.IAMInternalAddr,
-		// "quota" — пакет ОБЩЕЙ формы ответа о квотах, и в нём объявлена ровно
-		// одна служба: чтение квот, носителем которых является личность. Её
-		// обслуживает kaname, поэтому адрес тот же, что у "iam".
-		//
-		// Служба живёт не в `iam.v1` потому, что общая форма ответа уже зависит
-		// от `iam.v1` (область назначенной величины), и обратная ссылка замкнула
-		// бы пакеты друг на друга — это отвергает `buf lint`, а не вкус.
-		// Роутер выбирает backend по сегменту пакета, поэтому ключ обязан быть
-		// здесь: без него метод разрешался бы в никуда, оставаясь в allow-list.
-		"quota":                c.IAMAddr,
+		// ЗДЕСЬ БЫЛ КЛЮЧ "quota" — пакет общей формы ответа о квотах, в котором
+		// объявлялась одна служба: чтение квот носителя-личности. Объявление
+		// переехало в собственный контракт службы доступа (kacho#2362, решение
+		// `Д9`), и роутер выбирает для неё backend по сегменту `kaname.…iam`,
+		// то есть по ключу "iam". Ключ, который не потребляет никто, — либо
+		// мёртвая провязка, либо домен, забытый в разрешённом списке; здесь
+		// первое, и он снят ТЕМ ЖЕ изменением, что и его предмет.
 		"loadbalancer":         c.NLBAddr,
 		"loadbalancerInternal": c.NLBInternalAddr,
 		"geo":                  c.GeoAddr,
