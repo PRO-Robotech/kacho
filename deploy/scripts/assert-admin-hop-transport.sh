@@ -335,22 +335,28 @@ command -v kubectl >/dev/null 2>&1 || { echo "FATAL: нужен kubectl"; exit 2
 # ЦЕЛЬ ПИНИТСЯ ПО КЛАСТЕРУ, А НЕ ПО ИМЕНИ КОНТЕКСТА. Одноимённый контекст уже
 # однажды вёл в другой кластер: имя выбирает автор kubeconfig, совпадение имён
 # ничего не доказывает.
+# ИМЯ КЛАСТЕРА БЕРЁТСЯ ИЗ ОКРУЖЕНИЯ, А НЕ ВЫПИСЫВАЕТСЯ. Шарды сквозных проб
+# поднимают каждый свой кластер (`kacho-iam`, `kacho-vpc`, …), и выписанное имя
+# делает пробу неисполнимой на всех, кроме одного: она честно отказывается
+# судить и роняет подъём. Умолчание совпадает с объявлением сборки, поэтому
+# одиночный стенд ведёт себя как прежде.
+CLUSTER_NAME="${CLUSTER_NAME:-kacho}"
 ctx="$(kubectl config current-context 2>/dev/null)"
 case "$ctx" in
-  kind-kacho) ;;
-  *) echo "ABORT: активный kube-контекст '$ctx' — не kind-kacho."; exit 2 ;;
+  "kind-$CLUSTER_NAME") ;;
+  *) echo "ABORT: активный kube-контекст '$ctx' — не kind-$CLUSTER_NAME."; exit 2 ;;
 esac
-want_srv="$(kind get kubeconfig --name kacho 2>/dev/null | sed -n 's/^ *server: *//p' | head -1)"
+want_srv="$(kind get kubeconfig --name "$CLUSTER_NAME" 2>/dev/null | sed -n 's/^ *server: *//p' | head -1)"
 have_srv="$(kubectl config view --minify -o jsonpath='{.clusters[0].cluster.server}' 2>/dev/null)"
 if [ -z "$want_srv" ]; then
-  echo "ABORT: kind не знает кластера 'kacho' — сверить адрес apiserver'а НЕ С ЧЕМ,"
+  echo "ABORT: kind не знает кластера '$CLUSTER_NAME' — сверить адрес apiserver'а НЕ С ЧЕМ,"
   echo "       а «не с чем сверить» означает «не проверили», а не «всё хорошо»."
   exit 2
 fi
 if [ "$want_srv" != "$have_srv" ]; then
-  echo "ABORT: контекст называется kind-kacho, но ведёт НЕ в этот кластер."
+  echo "ABORT: контекст называется kind-'$CLUSTER_NAME', но ведёт НЕ в этот кластер."
   echo "       активный → $have_srv"
-  echo "       kind-kacho на самом деле → $want_srv"
+  echo "       kind-$CLUSTER_NAME на самом деле → $want_srv"
   exit 2
 fi
 
