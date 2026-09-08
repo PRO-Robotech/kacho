@@ -31,6 +31,7 @@ package contractroot
 import (
 	"os"
 	"path/filepath"
+	"strings"
 )
 
 // Roots — объявленное закрытое множество корней дерева контрактов.
@@ -50,6 +51,42 @@ func PackagePrefixes() []string {
 		out = append(out, r+".cloud.")
 	}
 	return out
+}
+
+// NamePrefixes — корни в форме приставки ПОЛНОГО ИМЕНИ (`kacho.`, `kaname.`).
+//
+// Отдельно от PackagePrefixes: не всякий контракт дерева лежит под `<корень>.cloud.`
+// — каталог прав объявлен как `kacho.iam.authz.catalog.v1`. Отбор по `.cloud.`
+// оставил бы его вне популяции, и это было бы МОЛЧАНИЕ, а не находка.
+func NamePrefixes() []string {
+	out := make([]string, 0, len(Roots))
+	for _, r := range Roots {
+		out = append(out, r+".")
+	}
+	return out
+}
+
+// PathPrefixes — те же корни в форме приставки ПУТИ (`kacho/`, `kaname/`).
+func PathPrefixes() []string {
+	out := make([]string, 0, len(Roots))
+	for _, r := range Roots {
+		out = append(out, r+"/")
+	}
+	return out
+}
+
+// HasAnyPrefix — начинается ли s с приставки какого-нибудь объявленного корня.
+//
+// Существует ради вызывающих, которые прежде писали `strings.HasPrefix(s, "kacho.")`.
+// Литерал был верен, пока корень был один, и после появления второго перестал
+// НАХОДИТЬ дерево второго корня — не покраснел и не позеленел, а замолчал.
+func HasAnyPrefix(s string, prefixes []string) bool {
+	for _, p := range prefixes {
+		if strings.HasPrefix(s, p) {
+			return true
+		}
+	}
+	return false
 }
 
 // CloudDirs — существующие каталоги `<protoDir>/<корень>/cloud`. Возвращает
