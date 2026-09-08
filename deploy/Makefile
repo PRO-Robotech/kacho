@@ -10,7 +10,7 @@
         report-reader-discipline alt-fixture-discipline posture-branch-discipline \
         verdict-aggregator-discipline ceremony-declaration-discipline \
         dialled-transport-discipline delete-step-discipline \
-        reload-svc-nlb psql-nlb logs-nlb seed-nlb seed-geo seed-storage seed-vpc-pools \
+        helm-deps reload-svc-nlb psql-nlb logs-nlb seed-nlb seed-geo seed-storage seed-vpc-pools \
         seed-vpc-pools-check e2e-newman stand-provenance stand-provenance-self-test \
         managed-image-pins managed-image-pins-check stack-up
 
@@ -968,6 +968,29 @@ assert-outbox-autovacuum: guard-kind-context
 # повторным полным гейтом посадки, а не заявляется.
 admin-hop-injection: guard-kind-context
 	@bash scripts/inject-admin-hop-defects.sh
+
+# helm-deps — материализация зависимостей умбреллы ЧЕРЕЗ MAKE.
+#
+# Цель тонкая НАМЕРЕННО: она ничего не решает и ничего не классифицирует, а
+# только зовёт единственного владельца материализации. Нужна она затем, чтобы
+# шаг конвейера мог делегировать классификацию исхода единственному владельцу
+# ПОДЪЁМА (.github/scripts/stand-up.sh) в ТОЙ ЖЕ форме, что три остальные
+# работы подъёма: `stand-up.sh --label … --dir deploy -- make <цель>`.
+#
+# ПОЧЕМУ ФОРМА, А НЕ ВКУС. Тело делегирующего шага ИСПОЛНЯЕТСЯ гейтом
+# scripts/assert-stand-precondition-wiring.py (звено 6) — по три прогона на шаг,
+# в подставном дереве, где `make`/`helm`/`kubectl` заменены заглушками. Шаг,
+# зовущий скрипт напрямую, исполнял бы там НАСТОЯЩИЙ скрипт, а в подставном
+# дереве нет ни Chart.yaml, ни архивов: контрольный прогон вышел бы кодом 2, и
+# гейт назвал бы вызов неисполнимым — при исправном шаге.
+#
+# КОД 3 ЧЕРЕЗ MAKE НЕ ПРОХОДИТ, и это ничего не теряет: make отвечает своей
+# двойкой на любой упавший рецепт, поэтому причину везёт ОТМЕТКА-файл, которую
+# кладёт владелец материализации и читает владелец подъёма. Так устроены все
+# четыре работы подъёма, и это единственная форма, при которой развилка вообще
+# исполняется (разбор — в шапке .github/scripts/stand-up.sh).
+helm-deps:
+	bash scripts/helm-umbrella-deps.sh
 
 helm-lint:
 	bash scripts/helm-umbrella-deps.sh
